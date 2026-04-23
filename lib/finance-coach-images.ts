@@ -1,0 +1,50 @@
+/** Erlaubte MIME-Typen für KI-Coach-Belegfotos (Server prüft erneut). */
+export const COACH_IMAGE_MIME = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif'])
+
+export type CoachImagePart = { mimeType: string; base64: string }
+
+const MAX_EDGE = 1600
+const JPEG_QUALITY = 0.82
+
+export const COACH_MAX_IMAGES_PER_SEND = 4
+
+/** Kassenbon / Foto fürs Canvas; Ausgabe meist JPEG für kleinere Payloads. */
+export async function compressImageFileForCoach(file: File): Promise<CoachImagePart> {
+  if (!file.type.startsWith('image/')) {
+    throw new Error('Nur Bilddateien sind erlaubt.')
+  }
+  if (!COACH_IMAGE_MIME.has(file.type)) {
+    throw new Error('Nur JPEG, PNG, WebP oder GIF.')
+  }
+  const bitmap = await createImageBitmap(file).catch(() => {
+    throw new Error('Bild konnte nicht gelesen werden (Format?).')
+  })
+  try {
+    const maxSide = Math.max(bitmap.width, bitmap.height)
+    const scale = maxSide > MAX_EDGE ? MAX_EDGE / maxSide : 1
+    const w = Math.max(1, Math.round(bitmap.width * scale))
+    const h = Math.max(1, Math.round(bitmap.height * scale))
+    const canvas = document.createElement('canvas')
+    canvas.width = w
+    canvas.height = h
+    const ctx = canvas.getContext('2d')
+    if (!ctx) throw new Error('Canvas nicht verfügbar.')
+    if (file.type === 'image/png' || file.type === 'image/webp' || file.type === 'image/gif') {
+      ctx.fillStyle = '#fff'
+      ctx.fillRect(0, 0, w, h)
+    }
+    ctx.drawImage(bitmap, 0, 0, w, h)
+    const mimeOut = file.type === 'image/png' ? 'image/png' : 'image/jpeg'
+    const dataUrl = canvas.toDataURL(mimeOut, mimeOut === 'image/jpeg' ? JPEG_QUALITY : undefined)
+    const comma = dataUrl.indexOf(',')
+    const base64 = comma >= 0 ? dataUrl.slice(comma + 1) : ''
+    if (!base64) throw new Error('Bildkompression lieferte keine Daten.')
+    return { mimeType: mimeOut, base64 }
+  } finally {
+    bitmap.close()
+  }
+}
+
+export function coachImageDataUrl(part: CoachImagePart): string {
+  return `data:${part.mimeType};base64,${part.base64}`
+}

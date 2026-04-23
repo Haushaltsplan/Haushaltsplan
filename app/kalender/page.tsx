@@ -1,0 +1,535 @@
+'use client'
+
+import { appModalBackdropClassName, appModalPanelClassName } from '@/lib/app-modal-overlay'
+import {
+  KALENDER_KATEGORIEN,
+  baueMonatsZellen,
+  filterEintraegeFuerTag,
+  formatMonatTitelDe,
+  heuteAlsIsoDatum,
+  isoDatumAusJahrMonatTag,
+  kalenderKategorieMeta,
+  ladeKalenderEintraege,
+  monatPlusDelta,
+  normalisiereKalenderKategorie,
+  parseIsoDatum,
+  type KalenderEintrag,
+  type KalenderKategorieId,
+  type KalenderMonatKopf,
+  speichereKalenderEintraege,
+  sortiereEintraegeNachUhrzeitDannTitel,
+} from '@/lib/haushalt-kalender'
+import { KalenderFotoImport } from '@/components/kalender-foto-import'
+import { TerminMorgenReminderEinstellungen } from '@/components/termin-morgen-reminder'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import toast from 'react-hot-toast'
+
+const WOCHENTAGE_KURZ = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'] as const
+
+function jetztAlsMonatKopf(): KalenderMonatKopf {
+  const d = new Date()
+  return { jahr: d.getFullYear(), monat: d.getMonth() + 1 }
+}
+
+type ModalModus = { art: 'neu'; datum: string } | { art: 'bearbeiten'; eintrag: KalenderEintrag }
+
+export default function KalenderPage() {
+  const [sicht, setSicht] = useState<KalenderMonatKopf>(jetztAlsMonatKopf)
+  const [eintraege, setEintraege] = useState<KalenderEintrag[]>([])
+  const [ausgewaehlt, setAusgewaehlt] = useState<string | null>(null)
+  const [modal, setModal] = useState<ModalModus | null>(null)
+
+  const monatErsterMount = useRef(true)
+
+  useEffect(() => {
+    setEintraege(ladeKalenderEintraege())
+  }, [])
+
+  useEffect(() => {
+    if (monatErsterMount.current) {
+      monatErsterMount.current = false
+      return
+    }
+    setAusgewaehlt((prev) => {
+      const iso = prev ?? heuteAlsIsoDatum()
+      const d = parseIsoDatum(iso)
+      if (!d) return isoDatumAusJahrMonatTag(sicht.jahr, sicht.monat, 1)
+      if (d.jahr === sicht.jahr && d.monat === sicht.monat) return iso
+      return isoDatumAusJahrMonatTag(sicht.jahr, sicht.monat, 1)
+    })
+  }, [sicht])
+
+  const persist = useCallback((next: KalenderEintrag[]) => {
+    setEintraege(next)
+    speichereKalenderEintraege(next)
+  }, [])
+
+  const heuteIso = heuteAlsIsoDatum()
+  const ausgewaehltNorm = ausgewaehlt ?? heuteIso
+
+  const zellen = useMemo(() => baueMonatsZellen(sicht.jahr, sicht.monat), [sicht.jahr, sicht.monat])
+
+  const proTagEintraege = useMemo(() => {
+    const m = new Map<string, KalenderEintrag[]>()
+    for (const e of eintraege) {
+      const list = m.get(e.datum) || []
+      list.push(e)
+      m.set(e.datum, list)
+    }
+    for (const [iso, list] of m) {
+      m.set(
+        iso,
+        [...list].sort(sortiereEintraegeNachUhrzeitDannTitel),
+      )
+    }
+    return m
+  }, [eintraege])
+
+  const listAmTag = useMemo(
+    () => filterEintraegeFuerTag(eintraege, ausgewaehltNorm).sort(sortiereEintraegeNachUhrzeitDannTitel),
+    [eintraege, ausgewaehltNorm],
+  )
+
+  function waehleDatum(iso: string) {
+    setAusgewaehlt(iso)
+  }
+
+  function monatDavor() {
+    setSicht((s) => monatPlusDelta(s, -1))
+  }
+
+  function monatDanach() {
+    setSicht((s) => monatPlusDelta(s, 1))
+  }
+
+  function springeHeute() {
+    setSicht(jetztAlsMonatKopf())
+    setAusgewaehlt(heuteAlsIsoDatum())
+  }
+
+  function oeffneNeuFuerTag(tag: number) {
+    const iso = isoDatumAusJahrMonatTag(sicht.jahr, sicht.monat, tag)
+    waehleDatum(iso)
+    setModal({ art: 'neu', datum: iso })
+  }
+
+  return (
+    <div className="min-w-0 space-y-5 animate-in fade-in duration-500">
+      <div className="min-w-0 overflow-hidden rounded-2xl border border-slate-800 bg-slate-900 p-4 shadow-lg shadow-black/25 sm:p-5">
+        <h1 className="text-[11px] font-bold uppercase tracking-widest text-slate-500">Kalender</h1>
+        <p className="mt-0.5 text-xs text-slate-500 sm:text-sm">
+          Kategorien mit festen Farben (z. B. Geburtstag, Termin, Urlaub) — lokal in diesem Browser gespeichert.
+        </p>
+        <ul className="mt-3 flex flex-wrap gap-x-3 gap-y-1.5 text-[10px] text-slate-500 sm:gap-x-4 sm:text-[11px]">
+          {KALENDER_KATEGORIEN.map((k) => (
+            <li key={k.id} className="inline-flex items-center gap-1.5">
+              <span className={`h-2 w-2 shrink-0 rounded-full ${k.dot}`} aria-hidden />
+              <span className="text-slate-400">{k.label}</span>
+            </li>
+          ))}
+        </ul>
+      </div>
+
+      <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,20rem)] lg:items-start">
+        <div className="overflow-hidden rounded-2xl border border-slate-800 bg-slate-900/90 shadow-lg shadow-black/20">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800 px-3 py-3 sm:px-4">
+            <div className="flex items-center gap-1 sm:gap-2">
+              <button
+                type="button"
+                onClick={monatDavor}
+                className="rounded-lg border border-slate-600 bg-slate-800/60 px-2.5 py-1.5 text-sm font-bold text-slate-200 transition hover:bg-slate-800"
+                aria-label="Vorheriger Monat"
+              >
+                ←
+              </button>
+              <button
+                type="button"
+                onClick={monatDanach}
+                className="rounded-lg border border-slate-600 bg-slate-800/60 px-2.5 py-1.5 text-sm font-bold text-slate-200 transition hover:bg-slate-800"
+                aria-label="Nächster Monat"
+              >
+                →
+              </button>
+            </div>
+            <h2 className="min-w-0 flex-1 text-center text-base font-black capitalize tracking-tight text-slate-100 sm:text-lg">
+              {formatMonatTitelDe(sicht)}
+            </h2>
+            <button
+              type="button"
+              onClick={springeHeute}
+              className="rounded-lg bg-teal-600 px-3 py-1.5 text-xs font-black uppercase tracking-wide text-white shadow-sm shadow-teal-950/30 transition hover:bg-teal-500"
+            >
+              Heute
+            </button>
+          </div>
+
+          <div className="grid grid-cols-7 border-b border-slate-800/80 text-center text-[10px] font-bold uppercase tracking-wider text-slate-500 sm:text-[11px]">
+            {WOCHENTAGE_KURZ.map((w) => (
+              <div key={w} className="px-0.5 py-2 sm:py-2.5">
+                {w}
+              </div>
+            ))}
+          </div>
+
+          <div className="grid grid-cols-7">
+            {zellen.map((z, i) => {
+              if (z == null) {
+                return <div key={`e-${i}`} className="min-h-[3.25rem] border-b border-r border-slate-800/60 bg-slate-950/25 sm:min-h-[4rem]" />
+              }
+              const iso = isoDatumAusJahrMonatTag(sicht.jahr, sicht.monat, z)
+              const amTag = proTagEintraege.get(iso) || []
+              const n = amTag.length
+              const isHeute = iso === heuteIso
+              const isSel = iso === ausgewaehltNorm
+              return (
+                <button
+                  key={iso}
+                  type="button"
+                  onClick={() => {
+                    waehleDatum(iso)
+                  }}
+                  onDoubleClick={(e) => {
+                    e.preventDefault()
+                    oeffneNeuFuerTag(z)
+                  }}
+                  className={`min-h-[3.25rem] border-b border-r border-slate-800/60 p-1 text-left align-top transition sm:min-h-[4rem] sm:p-1.5 ${
+                    isSel ? 'bg-teal-950/45 ring-1 ring-inset ring-teal-500/50' : 'hover:bg-slate-800/40'
+                  } ${isHeute && !isSel ? 'bg-sky-950/30' : ''}`}
+                  title="Einfach: Tag wählen · Doppelklick: neuer Eintrag"
+                >
+                  <span
+                    className={`inline-flex h-6 min-w-[1.5rem] items-center justify-center rounded-md text-xs font-bold tabular-nums sm:text-sm ${
+                      isHeute ? 'bg-sky-600 text-white' : 'text-slate-200'
+                    }`}
+                  >
+                    {z}
+                  </span>
+                  {n > 0 ? (
+                    <div className="mt-1 flex flex-wrap content-start items-center gap-0.5" aria-label={`${n} Einträge`}>
+                      {amTag.slice(0, 5).map((ev) => {
+                        const st = kalenderKategorieMeta(ev.kategorie)
+                        return <span key={ev.id} className={`h-1.5 w-1.5 shrink-0 rounded-full ${st.dot}`} title={st.label} />
+                      })}
+                      {n > 5 ? (
+                        <span className="ml-0.5 text-[9px] font-bold text-slate-400">+{n - 5}</span>
+                      ) : null}
+                    </div>
+                  ) : null}
+                </button>
+              )
+            })}
+          </div>
+          <p className="border-t border-slate-800/80 px-3 py-2 text-[10px] text-slate-500 sm:px-4">
+            Tipp: Doppelklick auf einen Tag, um schnell einen Eintrag anzulegen.
+          </p>
+        </div>
+
+        <aside className="overflow-hidden rounded-2xl border border-slate-800 bg-slate-900 shadow-lg shadow-black/20">
+          <div className="border-b border-slate-800 px-4 py-3">
+            <p className="text-[11px] font-bold uppercase tracking-widest text-slate-500">Ausgewählter Tag</p>
+            <p className="mt-0.5 text-sm font-bold text-slate-100">
+              {new Date(ausgewaehltNorm + 'T12:00:00').toLocaleDateString('de-DE', {
+                weekday: 'long',
+                day: 'numeric',
+                month: 'long',
+                year: 'numeric',
+              })}
+            </p>
+          </div>
+          <div className="max-h-[min(50vh,28rem)] space-y-2 overflow-y-auto px-3 py-3 sm:px-4">
+            {listAmTag.length === 0 ? (
+              <p className="text-sm text-slate-500">Keine Einträge an diesem Tag.</p>
+            ) : (
+              <ul className="space-y-2">
+                {listAmTag.map((e) => {
+                  const km = kalenderKategorieMeta(e.kategorie)
+                  return (
+                    <li key={e.id}>
+                      <button
+                        type="button"
+                        onClick={() => setModal({ art: 'bearbeiten', eintrag: e })}
+                        className={`w-full rounded-xl border border-slate-700/90 bg-slate-800/40 pl-2 pr-3 py-2.5 text-left transition hover:border-teal-600/50 hover:bg-slate-800/80 ${km.listBorder} ${km.listBg}`}
+                      >
+                        <div className="flex items-start gap-2.5">
+                          <span
+                            className={`mt-0.5 h-8 w-1 shrink-0 rounded-full ${km.leftBar}`}
+                            aria-hidden
+                            title={km.label}
+                          />
+                          <div className="min-w-0 flex-1">
+                            <span
+                              className={`inline-flex rounded px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide ${km.badge}`}
+                            >
+                              {km.label}
+                            </span>
+                            <div className="mt-1 flex items-start justify-between gap-2">
+                              <span className="min-w-0 break-words text-left text-sm font-semibold text-slate-100">
+                                {e.titel}
+                              </span>
+                              {e.uhrzeit.trim() ? (
+                                <span className="shrink-0 rounded-md bg-slate-950/50 px-1.5 py-0.5 text-[10px] font-mono font-bold text-slate-200">
+                                  {e.uhrzeit}
+                                </span>
+                              ) : null}
+                            </div>
+                            {e.notiz.trim() ? (
+                              <p className="mt-1 line-clamp-3 text-xs text-slate-400">{e.notiz}</p>
+                            ) : null}
+                          </div>
+                        </div>
+                      </button>
+                    </li>
+                  )
+                })}
+              </ul>
+            )}
+          </div>
+          <div className="border-t border-slate-800 px-3 py-3 sm:px-4">
+            <button
+              type="button"
+              onClick={() => {
+                setModal({ art: 'neu', datum: ausgewaehltNorm })
+              }}
+              className="w-full rounded-xl bg-teal-600 py-2.5 text-sm font-black text-white shadow-md shadow-teal-950/30 transition hover:bg-teal-500"
+            >
+              Eintrag hinzufügen
+            </button>
+          </div>
+        </aside>
+      </div>
+
+      <TerminMorgenReminderEinstellungen />
+
+      <KalenderFotoImport
+        onImport={(zeilen) => {
+          const neu: KalenderEintrag[] = zeilen.map((z) => ({
+            id: globalThis.crypto?.randomUUID?.() ?? `k-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+            titel: z.titel,
+            datum: z.datum,
+            notiz: '',
+            uhrzeit: z.uhrzeit,
+            kategorie: normalisiereKalenderKategorie(z.kategorie),
+          }))
+          persist([...eintraege, ...neu])
+        }}
+      />
+
+      {modal ? (
+        <EintragModal
+          modus={modal}
+          onClose={() => setModal(null)}
+          onSpeichern={(eingabe) => {
+            if (eingabe.art === 'neu') {
+              const neu: KalenderEintrag = {
+                id: globalThis.crypto?.randomUUID?.() ?? `k-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+                datum: eingabe.datum,
+                titel: eingabe.titel,
+                notiz: eingabe.notiz,
+                uhrzeit: eingabe.uhrzeit,
+                kategorie: normalisiereKalenderKategorie(eingabe.kategorie),
+              }
+              persist([...eintraege, neu])
+              toast.success('Eintrag gespeichert.')
+            } else {
+              const next = eintraege.map((e) =>
+                e.id === eingabe.id
+                  ? {
+                      ...e,
+                      datum: eingabe.datum,
+                      titel: eingabe.titel,
+                      notiz: eingabe.notiz,
+                      uhrzeit: eingabe.uhrzeit,
+                      kategorie: normalisiereKalenderKategorie(eingabe.kategorie),
+                    }
+                  : e,
+              )
+              persist(next)
+              toast.success('Änderung gespeichert.')
+            }
+            setModal(null)
+          }}
+          onLoeschen={(id) => {
+            const next = eintraege.filter((e) => e.id !== id)
+            persist(next)
+            toast.success('Eintrag gelöscht.')
+            setModal(null)
+          }}
+        />
+      ) : null}
+    </div>
+  )
+}
+
+type EintragFormPayload =
+  | { art: 'neu'; datum: string; titel: string; notiz: string; uhrzeit: string; kategorie: KalenderKategorieId }
+  | { art: 'bearbeiten'; id: string; datum: string; titel: string; notiz: string; uhrzeit: string; kategorie: KalenderKategorieId }
+
+function EintragModal(props: {
+  modus: ModalModus
+  onClose: () => void
+  onSpeichern: (p: EintragFormPayload) => void
+  onLoeschen: (id: string) => void
+}) {
+  const initial =
+    props.modus.art === 'neu'
+      ? { titel: '', notiz: '', uhrzeit: '', kategorie: 'termin' as KalenderKategorieId }
+      : {
+          titel: props.modus.eintrag.titel,
+          notiz: props.modus.eintrag.notiz,
+          uhrzeit: props.modus.eintrag.uhrzeit,
+          kategorie: normalisiereKalenderKategorie(props.modus.eintrag.kategorie),
+        }
+  const [titel, setTitel] = useState(initial.titel)
+  const [notiz, setNotiz] = useState(initial.notiz)
+  const [uhrzeit, setUhrzeit] = useState(initial.uhrzeit)
+  const [kategorie, setKategorie] = useState<KalenderKategorieId>(initial.kategorie)
+  const [datum, setDatum] = useState(props.modus.art === 'neu' ? props.modus.datum : props.modus.eintrag.datum)
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') props.onClose()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [props.onClose])
+
+  return (
+    <div
+      className={appModalBackdropClassName}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="kal-modal-title"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) props.onClose()
+      }}
+    >
+      <div
+        className={`${appModalPanelClassName} max-h-[min(90vh,32rem)] overflow-y-auto`}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="border-b border-slate-800 px-4 py-3 sm:px-5">
+          <h3 id="kal-modal-title" className="text-base font-black text-slate-100">
+            {props.modus.art === 'neu' ? 'Neuer Eintrag' : 'Eintrag bearbeiten'}
+          </h3>
+        </div>
+        <form
+          className="space-y-3 px-4 py-4 sm:px-5"
+          onSubmit={(ev) => {
+            ev.preventDefault()
+            const t = titel.trim()
+            if (!t) {
+              toast.error('Bitte einen Titel eingeben.')
+              return
+            }
+            const u = uhrzeit.trim()
+            if (u && !/^\d{1,2}:\d{2}$/.test(u)) {
+              toast.error('Uhrzeit als HH:MM (z. B. 14:30) oder leer lassen.')
+              return
+            }
+            if (props.modus.art === 'neu') {
+              props.onSpeichern({ art: 'neu', datum, titel: t, notiz: notiz.trim(), uhrzeit: u, kategorie })
+            } else {
+              props.onSpeichern({
+                art: 'bearbeiten',
+                id: props.modus.eintrag.id,
+                datum,
+                titel: t,
+                notiz: notiz.trim(),
+                uhrzeit: u,
+                kategorie,
+              })
+            }
+          }}
+        >
+          <div className="block">
+            <span className="text-[10px] font-black uppercase tracking-wider text-slate-500">Kategorie</span>
+            <div className="mt-1.5 grid grid-cols-2 gap-1.5 sm:grid-cols-3" role="group" aria-label="Eintrags-Kategorie wählen">
+              {KALENDER_KATEGORIEN.map((k) => {
+                const aktiv = kategorie === k.id
+                return (
+                  <button
+                    key={k.id}
+                    type="button"
+                    onClick={() => setKategorie(k.id)}
+                    className={`flex items-center gap-2 rounded-lg border px-2 py-2 text-left text-xs font-bold transition ${
+                      aktiv
+                        ? `${k.listBorder} ${k.listBg} text-slate-100 ring-2 ring-offset-2 ring-offset-slate-900 ring-slate-500/30`
+                        : 'border-slate-700/90 bg-slate-950/60 text-slate-400 hover:border-slate-600 hover:text-slate-200'
+                    }`}
+                  >
+                    <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${k.dot}`} aria-hidden />
+                    <span className="min-w-0 leading-tight">{k.label}</span>
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+          <label className="block text-[10px] font-black uppercase tracking-wider text-slate-500">
+            Titel
+            <input
+              className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 py-2 px-2.5 text-sm font-semibold text-slate-100 outline-none focus:ring-2 focus:ring-teal-500/45"
+              value={titel}
+              onChange={(e) => setTitel(e.target.value)}
+              autoFocus
+            />
+          </label>
+          <label className="block text-[10px] font-black uppercase tracking-wider text-slate-500">
+            Datum
+            <input
+              type="date"
+              className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 py-2 px-2.5 text-sm font-bold text-slate-100 outline-none focus:ring-2 focus:ring-teal-500/45"
+              value={datum}
+              onChange={(e) => setDatum(e.target.value)}
+            />
+          </label>
+          <label className="block text-[10px] font-black uppercase tracking-wider text-slate-500">
+            Uhrzeit (optional)
+            <input
+              type="time"
+              className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 py-2 px-2.5 text-sm font-bold text-slate-100 outline-none focus:ring-2 focus:ring-teal-500/45"
+              value={uhrzeit}
+              onChange={(e) => setUhrzeit(e.target.value)}
+            />
+          </label>
+          <label className="block text-[10px] font-black uppercase tracking-wider text-slate-500">
+            Notiz (optional)
+            <textarea
+              className="mt-1 min-h-[4rem] w-full rounded-lg border border-slate-700 bg-slate-950 py-2 px-2.5 text-sm text-slate-100 outline-none focus:ring-2 focus:ring-teal-500/45"
+              value={notiz}
+              onChange={(e) => setNotiz(e.target.value)}
+              rows={3}
+            />
+          </label>
+          <div className="flex flex-wrap items-center justify-end gap-2 pt-1">
+            {props.modus.art === 'bearbeiten' ? (
+              <button
+                type="button"
+                className="mr-auto rounded-lg border border-rose-700/60 bg-rose-950/40 px-3 py-2 text-xs font-bold text-rose-200 transition hover:bg-rose-900/50"
+                onClick={() => {
+                  if (props.modus.art !== 'bearbeiten') return
+                  const ok = window.confirm('Diesen Eintrag wirklich löschen?')
+                  if (ok) props.onLoeschen(props.modus.eintrag.id)
+                }}
+              >
+                Löschen
+              </button>
+            ) : null}
+            <button
+              type="button"
+              className="rounded-lg border border-slate-600 bg-slate-800/60 px-3 py-2 text-sm font-bold text-slate-200"
+              onClick={props.onClose}
+            >
+              Abbrechen
+            </button>
+            <button
+              type="submit"
+              className="rounded-lg bg-teal-600 px-4 py-2 text-sm font-black text-white shadow-sm shadow-teal-950/30"
+            >
+              Speichern
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  )
+}
