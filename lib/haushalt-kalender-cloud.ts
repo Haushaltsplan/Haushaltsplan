@@ -37,19 +37,25 @@ function eintragToRow(e: KalenderEintrag) {
   }
 }
 
-/** Lädt alle Einträge aus Supabase oder `null` bei Fehler / nicht konfiguriert. */
-export async function ladeKalenderAusCloud(): Promise<KalenderEintrag[] | null> {
-  if (!istSupabaseClientKonfiguriert()) return null
+export type LadeKalenderCloudErgebnis =
+  | { ok: true; rows: KalenderEintrag[] }
+  | { ok: false; message: string }
+
+/** Lädt alle Einträge aus Supabase. Nur aufrufen, wenn `istSupabaseClientKonfiguriert()`. */
+export async function ladeKalenderAusCloud(): Promise<LadeKalenderCloudErgebnis> {
+  if (!istSupabaseClientKonfiguriert()) {
+    return { ok: false, message: 'Supabase ist nicht konfiguriert.' }
+  }
   const { data, error } = await supabase
     .from(TABLE)
     .select('id, datum, titel, notiz, uhrzeit, kategorie')
     .order('datum', { ascending: true })
   if (error) {
     console.error('Kalender-Cloud: Laden', error)
-    return null
+    return { ok: false, message: error.message }
   }
-  if (!data?.length) return []
-  return (data as DbRow[]).map(rowToEintrag)
+  if (!data?.length) return { ok: true, rows: [] }
+  return { ok: true, rows: (data as DbRow[]).map(rowToEintrag) }
 }
 
 /**

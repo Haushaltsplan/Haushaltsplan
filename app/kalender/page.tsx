@@ -3,13 +3,15 @@
 import { appModalBackdropClassName, appModalPanelClassName } from '@/lib/app-modal-overlay'
 import {
   KALENDER_KATEGORIEN,
+  KALENDER_SYNC_EVENT,
   baueMonatsZellen,
   filterEintraegeFuerTag,
   formatMonatTitelDe,
   heuteAlsIsoDatum,
   isoDatumAusJahrMonatTag,
   kalenderKategorieMeta,
-  ladeKalenderEintraegeVonQuelle,
+  ladeKalenderEintraege,
+  ladeKalenderEintraegeVonQuelleMitMeta,
   monatPlusDelta,
   normalisiereKalenderKategorie,
   parseIsoDatum,
@@ -51,14 +53,47 @@ export default function KalenderPage() {
 
   useEffect(() => {
     let cancelled = false
-    void ladeKalenderEintraegeVonQuelle().then((rows) => {
+    void ladeKalenderEintraegeVonQuelleMitMeta().then(({ eintraege, warnung }) => {
       if (cancelled) return
-      setEintraege(rows)
+      setEintraege(eintraege)
       setKalenderBereit(true)
+      if (warnung) toast.error(`Kalender-Sync: ${warnung}`)
     })
     return () => {
       cancelled = true
     }
+  }, [])
+
+  /** Wenn `KalenderCloudBootstrap` o.ä. nachträglich in localStorage schreibt, während der erste Render leer war. */
+  useEffect(() => {
+    const onSync = () => {
+      setEintraege(ladeKalenderEintraege())
+    }
+    try {
+      window.addEventListener(KALENDER_SYNC_EVENT, onSync)
+    } catch {
+      // ignore
+    }
+    return () => {
+      try {
+        window.removeEventListener(KALENDER_SYNC_EVENT, onSync)
+      } catch {
+        // ignore
+      }
+    }
+  }, [])
+
+  /** Wieder in die App wechseln (Handy) → frisch von Supabase laden. */
+  useEffect(() => {
+    if (typeof document === 'undefined' || !istSupabaseClientKonfiguriert()) return
+    const onSichtbar = () => {
+      if (document.visibilityState !== 'visible') return
+      void ladeKalenderEintraegeVonQuelleMitMeta().then(({ eintraege }) => {
+        setEintraege(eintraege)
+      })
+    }
+    document.addEventListener('visibilitychange', onSichtbar)
+    return () => document.removeEventListener('visibilitychange', onSichtbar)
   }, [])
 
   useEffect(() => {

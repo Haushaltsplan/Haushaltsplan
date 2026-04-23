@@ -142,26 +142,42 @@ export function speichereKalenderEintraege(eintraege: KalenderEintrag[]) {
   }
 }
 
+export type LadeKalenderVonQuelleMeta = {
+  eintraege: KalenderEintrag[]
+  /** z. B. Tabelle in Supabase fehlt, oder erster Cloud-Upload schlägt fehl */
+  warnung: string | null
+}
+
 /**
  * Lädt bevorzugt aus Supabase (gleiche Daten auf Handy + PC) und spiegelt in localStorage.
  * Wenn die Cloud leer ist, lokalen Stand einmal hochladen. Bei Cloud-Fehler: nur localStorage.
  */
-export async function ladeKalenderEintraegeVonQuelle(): Promise<KalenderEintrag[]> {
+export async function ladeKalenderEintraegeVonQuelleMitMeta(): Promise<LadeKalenderVonQuelleMeta> {
   const local = ladeKalenderEintraege()
-  if (!istSupabaseClientKonfiguriert()) return local
+  if (!istSupabaseClientKonfiguriert()) {
+    return { eintraege: local, warnung: null }
+  }
   const { ladeKalenderAusCloud, speichereKalenderInCloud } = await import('@/lib/haushalt-kalender-cloud')
-  const cloud = await ladeKalenderAusCloud()
-  if (cloud === null) return local
+  const res = await ladeKalenderAusCloud()
+  if (!res.ok) {
+    return { eintraege: local, warnung: res.message }
+  }
+  const cloud = res.rows
   if (cloud.length === 0 && local.length > 0) {
     const r = await speichereKalenderInCloud(local)
     if (r.ok) {
       speichereKalenderEintraege(local)
-      return local
+      return { eintraege: local, warnung: null }
     }
-    return local
+    return { eintraege: local, warnung: r.message }
   }
   speichereKalenderEintraege(cloud)
-  return cloud
+  return { eintraege: cloud, warnung: null }
+}
+
+export async function ladeKalenderEintraegeVonQuelle(): Promise<KalenderEintrag[]> {
+  const m = await ladeKalenderEintraegeVonQuelleMitMeta()
+  return m.eintraege
 }
 
 /** Lokalen Stand speichern und bei konfigurierter Supabase mit der Cloud abgleichen. */
