@@ -1,6 +1,6 @@
 'use client'
 
-import { ladeKalenderEintraege } from '@/lib/haushalt-kalender'
+import { KALENDER_SYNC_EVENT, ladeKalenderEintraege } from '@/lib/haushalt-kalender'
 import {
   bauHinweisText,
   heuteAlsIsoDatumLocal,
@@ -58,9 +58,12 @@ export function TerminMorgenReminderRunner() {
       pruef()
     }
     window.addEventListener(TERMIN_REMINDER_EVENT, onEinstellung)
+    const onKalender = () => pruef()
+    window.addEventListener(KALENDER_SYNC_EVENT, onKalender)
     return () => {
       window.clearInterval(t)
       window.removeEventListener(TERMIN_REMINDER_EVENT, onEinstellung)
+      window.removeEventListener(KALENDER_SYNC_EVENT, onKalender)
     }
   }, [pruef])
 

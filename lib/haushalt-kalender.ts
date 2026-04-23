@@ -1,7 +1,10 @@
+import { istSupabaseClientKonfiguriert } from '@/lib/supabase'
+
 /**
- * Einfache Kalender-Einträge (lokal im Browser, kein Server).
+ * Einfache Kalender-Einträge; Standard: lokal. Mit Supabase zusätzlich geräteübergreifend.
  */
 export const KALENDER_STORAGE_KEY = 'mein-haushalt.kalender.v1' as const
+export const KALENDER_SYNC_EVENT = 'mein-haushalt:kalender' as const
 
 /** Feste Kategorien mit konsistenten Farben in der UI */
 export const KALENDER_KATEGORIEN = [
@@ -129,9 +132,48 @@ export function speichereKalenderEintraege(eintraege: KalenderEintrag[]) {
   if (typeof window === 'undefined') return
   try {
     window.localStorage.setItem(KALENDER_STORAGE_KEY, JSON.stringify(eintraege))
+    try {
+      window.dispatchEvent(new CustomEvent(KALENDER_SYNC_EVENT))
+    } catch {
+      // ignore
+    }
   } catch {
     // Speicher voll o.ä.
   }
+}
+
+/**
+ * Lädt bevorzugt aus Supabase (gleiche Daten auf Handy + PC) und spiegelt in localStorage.
+ * Wenn die Cloud leer ist, lokalen Stand einmal hochladen. Bei Cloud-Fehler: nur localStorage.
+ */
+export async function ladeKalenderEintraegeVonQuelle(): Promise<KalenderEintrag[]> {
+  const local = ladeKalenderEintraege()
+  if (!istSupabaseClientKonfiguriert()) return local
+  const { ladeKalenderAusCloud, speichereKalenderInCloud } = await import('@/lib/haushalt-kalender-cloud')
+  const cloud = await ladeKalenderAusCloud()
+  if (cloud === null) return local
+  if (cloud.length === 0 && local.length > 0) {
+    const r = await speichereKalenderInCloud(local)
+    if (r.ok) {
+      speichereKalenderEintraege(local)
+      return local
+    }
+    return local
+  }
+  speichereKalenderEintraege(cloud)
+  return cloud
+}
+
+/** Lokalen Stand speichern und bei konfigurierter Supabase mit der Cloud abgleichen. */
+export async function speichereKalenderEintraegeMitCloud(
+  eintraege: KalenderEintrag[],
+): Promise<{ cloudOk: boolean; message?: string }> {
+  speichereKalenderEintraege(eintraege)
+  if (!istSupabaseClientKonfiguriert()) return { cloudOk: true }
+  const { speichereKalenderInCloud } = await import('@/lib/haushalt-kalender-cloud')
+  const r = await speichereKalenderInCloud(eintraege)
+  if (r.ok) return { cloudOk: true }
+  return { cloudOk: false, message: r.message }
 }
 
 export function heuteAlsIsoDatum(): string {

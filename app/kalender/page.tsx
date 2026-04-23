@@ -9,18 +9,19 @@ import {
   heuteAlsIsoDatum,
   isoDatumAusJahrMonatTag,
   kalenderKategorieMeta,
-  ladeKalenderEintraege,
+  ladeKalenderEintraegeVonQuelle,
   monatPlusDelta,
   normalisiereKalenderKategorie,
   parseIsoDatum,
   type KalenderEintrag,
   type KalenderKategorieId,
   type KalenderMonatKopf,
-  speichereKalenderEintraege,
+  speichereKalenderEintraegeMitCloud,
   sortiereEintraegeNachUhrzeitDannTitel,
 } from '@/lib/haushalt-kalender'
 import { KalenderFotoImport } from '@/components/kalender-foto-import'
 import { TerminMorgenReminderEinstellungen } from '@/components/termin-morgen-reminder'
+import { istSupabaseClientKonfiguriert } from '@/lib/supabase'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import toast from 'react-hot-toast'
 
@@ -44,11 +45,20 @@ export default function KalenderPage() {
   const [eintraege, setEintraege] = useState<KalenderEintrag[]>([])
   const [ausgewaehlt, setAusgewaehlt] = useState<string | null>(null)
   const [modal, setModal] = useState<ModalModus | null>(null)
+  const [kalenderBereit, setKalenderBereit] = useState(false)
 
   const monatErsterMount = useRef(true)
 
   useEffect(() => {
-    setEintraege(ladeKalenderEintraege())
+    let cancelled = false
+    void ladeKalenderEintraegeVonQuelle().then((rows) => {
+      if (cancelled) return
+      setEintraege(rows)
+      setKalenderBereit(true)
+    })
+    return () => {
+      cancelled = true
+    }
   }, [])
 
   useEffect(() => {
@@ -65,9 +75,12 @@ export default function KalenderPage() {
     })
   }, [sicht])
 
-  const persist = useCallback((next: KalenderEintrag[]) => {
+  const persist = useCallback(async (next: KalenderEintrag[]) => {
     setEintraege(next)
-    speichereKalenderEintraege(next)
+    const r = await speichereKalenderEintraegeMitCloud(next)
+    if (!r.cloudOk && r.message) {
+      toast.error(`Kalender-Sync: ${r.message}`)
+    }
   }, [])
 
   const heuteIso = heuteAlsIsoDatum()
@@ -124,7 +137,19 @@ export default function KalenderPage() {
       <div className="min-w-0 overflow-hidden rounded-2xl border border-slate-800 bg-slate-900 p-4 shadow-lg shadow-black/25 sm:p-5">
         <h1 className="text-[11px] font-bold uppercase tracking-widest text-slate-500">Kalender</h1>
         <p className="mt-0.5 text-xs text-slate-500 sm:text-sm">
-          Kategorien mit festen Farben (z. B. Geburtstag, Termin, Urlaub) — lokal in diesem Browser gespeichert.
+          Kategorien mit festen Farben (z. B. Geburtstag, Termin, Urlaub).
+          {istSupabaseClientKonfiguriert() ? (
+            <>
+              {' '}
+              <strong className="font-medium text-teal-200/90">Synchron über Supabase</strong> — dieselben Einträge am PC und
+              auf dem Handy (ein gemeinsames Haushalts-Projekt).
+            </>
+          ) : (
+            <>
+              {' '}
+              Ohne Supabase-Konfiguration nur in diesem Browser gespeichert (kein Abgleich zwischen Geräten).
+            </>
+          )}
         </p>
         <ul className="mt-3 flex flex-wrap gap-x-3 gap-y-1.5 text-[10px] text-slate-500 sm:gap-x-4 sm:text-[11px]">
           {KALENDER_KATEGORIEN.map((k) => (
@@ -136,7 +161,12 @@ export default function KalenderPage() {
         </ul>
       </div>
 
-      <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,20rem)] lg:items-start">
+      {!kalenderBereit ? (
+        <div className="flex min-h-[14rem] items-center justify-center rounded-2xl border border-slate-800 bg-slate-900/90 px-4 text-sm text-slate-400">
+          Kalender wird geladen …
+        </div>
+      ) : (
+        <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,20rem)] lg:items-start">
         <div className="overflow-hidden rounded-2xl border border-slate-800 bg-slate-900/90 shadow-lg shadow-black/20">
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800 px-3 py-3 sm:px-4">
             <div className="flex items-center gap-1 sm:gap-2">
@@ -357,29 +387,32 @@ export default function KalenderPage() {
             </button>
           </div>
         </aside>
-      </div>
+        </div>
+      )}
 
       <TerminMorgenReminderEinstellungen />
 
-      <KalenderFotoImport
-        onImport={(zeilen) => {
-          const neu: KalenderEintrag[] = zeilen.map((z) => ({
-            id: globalThis.crypto?.randomUUID?.() ?? `k-${Date.now()}-${Math.random().toString(16).slice(2)}`,
-            titel: z.titel,
-            datum: z.datum,
-            notiz: '',
-            uhrzeit: z.uhrzeit,
-            kategorie: normalisiereKalenderKategorie(z.kategorie),
-          }))
-          persist([...eintraege, ...neu])
-        }}
-      />
+      {kalenderBereit ? (
+        <KalenderFotoImport
+          onImport={(zeilen) => {
+            const neu: KalenderEintrag[] = zeilen.map((z) => ({
+              id: globalThis.crypto?.randomUUID?.() ?? `k-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+              titel: z.titel,
+              datum: z.datum,
+              notiz: '',
+              uhrzeit: z.uhrzeit,
+              kategorie: normalisiereKalenderKategorie(z.kategorie),
+            }))
+            void persist([...eintraege, ...neu])
+          }}
+        />
+      ) : null}
 
       {modal ? (
         <EintragModal
           modus={modal}
           onClose={() => setModal(null)}
-          onSpeichern={(eingabe) => {
+          onSpeichern={async (eingabe) => {
             if (eingabe.art === 'neu') {
               const neu: KalenderEintrag = {
                 id: globalThis.crypto?.randomUUID?.() ?? `k-${Date.now()}-${Math.random().toString(16).slice(2)}`,
@@ -389,7 +422,7 @@ export default function KalenderPage() {
                 uhrzeit: eingabe.uhrzeit,
                 kategorie: normalisiereKalenderKategorie(eingabe.kategorie),
               }
-              persist([...eintraege, neu])
+              await persist([...eintraege, neu])
               toast.success('Eintrag gespeichert.')
             } else {
               const next = eintraege.map((e) =>
@@ -404,14 +437,14 @@ export default function KalenderPage() {
                     }
                   : e,
               )
-              persist(next)
+              await persist(next)
               toast.success('Änderung gespeichert.')
             }
             setModal(null)
           }}
-          onLoeschen={(id) => {
+          onLoeschen={async (id) => {
             const next = eintraege.filter((e) => e.id !== id)
-            persist(next)
+            await persist(next)
             toast.success('Eintrag gelöscht.')
             setModal(null)
           }}
@@ -428,8 +461,8 @@ type EintragFormPayload =
 function EintragModal(props: {
   modus: ModalModus
   onClose: () => void
-  onSpeichern: (p: EintragFormPayload) => void
-  onLoeschen: (id: string) => void
+  onSpeichern: (p: EintragFormPayload) => void | Promise<void>
+  onLoeschen: (id: string) => void | Promise<void>
 }) {
   const initial =
     props.modus.art === 'neu'
@@ -475,7 +508,7 @@ function EintragModal(props: {
         </div>
         <form
           className="space-y-3 px-4 py-4 sm:px-5"
-          onSubmit={(ev) => {
+          onSubmit={async (ev) => {
             ev.preventDefault()
             const t = titel.trim()
             if (!t) {
@@ -488,9 +521,9 @@ function EintragModal(props: {
               return
             }
             if (props.modus.art === 'neu') {
-              props.onSpeichern({ art: 'neu', datum, titel: t, notiz: notiz.trim(), uhrzeit: u, kategorie })
+              await props.onSpeichern({ art: 'neu', datum, titel: t, notiz: notiz.trim(), uhrzeit: u, kategorie })
             } else {
-              props.onSpeichern({
+              await props.onSpeichern({
                 art: 'bearbeiten',
                 id: props.modus.eintrag.id,
                 datum,
@@ -566,10 +599,10 @@ function EintragModal(props: {
               <button
                 type="button"
                 className="mr-auto rounded-lg border border-rose-700/60 bg-rose-950/40 px-3 py-2 text-xs font-bold text-rose-200 transition hover:bg-rose-900/50"
-                onClick={() => {
+                onClick={async () => {
                   if (props.modus.art !== 'bearbeiten') return
                   const ok = window.confirm('Diesen Eintrag wirklich löschen?')
-                  if (ok) props.onLoeschen(props.modus.eintrag.id)
+                  if (ok) await props.onLoeschen(props.modus.eintrag.id)
                 }}
               >
                 Löschen
