@@ -72,7 +72,7 @@ export function SiteNav() {
             />
             <div
               id="site-nav-mobile-panel"
-              className="fixed left-0 right-0 top-16 z-50 border-b border-slate-800 bg-slate-900/98 p-3 shadow-2xl shadow-black/50"
+              className="fixed left-0 right-0 top-[var(--app-nav-offset)] z-50 max-h-[min(70vh,calc(100dvh-var(--app-nav-offset)))] overflow-y-auto border-b border-slate-800 bg-slate-900/98 p-3 shadow-2xl shadow-black/50"
               role="navigation"
               aria-label="Hauptnavigation"
             >

@@ -7,6 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "check:ki": "node scripts/verify-ki.mjs",
     "db:lager": "node scripts/apply-lager-schema.cjs"
   },
   "dependencies": {

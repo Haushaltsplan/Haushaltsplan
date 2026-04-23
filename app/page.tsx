@@ -992,7 +992,7 @@ export default function LagerPage() {
             </div>
           </div>
 
-          <div className="w-full min-w-0 overflow-hidden">
+          <div className="w-full min-w-0 overflow-x-auto [-webkit-overflow-scrolling:touch]">
             <table className="w-full max-w-full table-fixed border-collapse text-left text-[12px] leading-tight sm:text-[13px]">
               <colgroup>
                 <col className="min-w-0 [width:32%]" />

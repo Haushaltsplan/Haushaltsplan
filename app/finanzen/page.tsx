@@ -1055,13 +1055,13 @@ export default function FinanzenPage() {
   const sliderValue = sliderIdx >= 0 ? sliderIdx : Math.max(0, monatsListeNavigation.length - 1)
 
   return (
-    <div className="space-y-10 animate-in fade-in duration-500">
-      <div className="flex flex-col justify-between gap-8 rounded-[2rem] border border-slate-800/90 bg-gradient-to-b from-slate-900 to-slate-950 p-8 text-center shadow-xl shadow-black/40 sm:p-10 lg:flex-row lg:items-stretch lg:gap-10 lg:text-left">
+    <div className="min-w-0 max-w-full space-y-6 animate-in fade-in duration-500 sm:space-y-10">
+      <div className="flex flex-col justify-between gap-6 rounded-2xl border border-slate-800/90 bg-gradient-to-b from-slate-900 to-slate-950 p-4 text-center shadow-xl shadow-black/40 sm:gap-8 sm:rounded-[2rem] sm:p-8 md:p-10 lg:flex-row lg:items-stretch lg:gap-10 lg:text-left">
         <div className="flex flex-1 flex-col justify-center lg:min-w-0">
           <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-slate-500">Saldo im Ansichtsmonat</p>
-          <p className="mt-1.5 text-[15px] font-semibold text-slate-300">{formatMonatsLabelDe(ansichtMonat)}</p>
+          <p className="mt-1.5 text-sm font-semibold text-slate-300 sm:text-[15px]">{formatMonatsLabelDe(ansichtMonat)}</p>
           <p
-            className={`mt-3 text-5xl font-bold tracking-tight tabular-nums sm:text-6xl ${saldo >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}
+            className={`mt-2 break-words text-3xl font-bold leading-tight tracking-tight tabular-nums sm:mt-3 sm:text-5xl md:text-6xl ${saldo >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}
           >
             {saldo.toLocaleString('de-DE', { style: 'currency', currency: 'EUR' })}
           </p>
@@ -1069,20 +1069,20 @@ export default function FinanzenPage() {
             Nur <strong className="font-medium text-slate-400">gebuchte</strong> Einnahmen und Ausgaben dieses Monats — wie in der Liste mit echten Buchungsdaten (ohne reine Monatsplan-Zeilen).
           </p>
         </div>
-        <div className="flex w-full flex-col gap-4 lg:w-auto lg:max-w-md lg:shrink-0">
-          <div className="flex shrink-0 items-stretch justify-center gap-0 rounded-2xl border border-slate-700/70 bg-slate-950/60 p-1 shadow-inner">
-            <div className="flex flex-1 flex-col justify-center rounded-xl bg-slate-900/80 px-5 py-4 text-left">
-              <span className="text-[11px] font-semibold uppercase tracking-wide text-emerald-400/95">Einnahmen</span>
-              <span className="mt-0.5 text-[11px] text-slate-500">im Monat</span>
-              <span className="mt-2 text-2xl font-semibold tabular-nums text-slate-100">
+        <div className="flex w-full min-w-0 flex-col gap-4 lg:w-auto lg:max-w-md lg:shrink-0">
+          <div className="flex min-w-0 shrink-0 items-stretch justify-center gap-0 overflow-hidden rounded-2xl border border-slate-700/70 bg-slate-950/60 p-1 shadow-inner">
+            <div className="flex min-w-0 flex-1 flex-col justify-center rounded-xl bg-slate-900/80 px-3 py-3 text-left sm:px-5 sm:py-4">
+              <span className="text-[10px] font-semibold uppercase tracking-wide text-emerald-400/95 sm:text-[11px]">Einnahmen</span>
+              <span className="mt-0.5 text-[10px] text-slate-500 sm:text-[11px]">im Monat</span>
+              <span className="mt-1.5 break-words text-base font-semibold leading-tight tabular-nums text-slate-100 sm:mt-2 sm:text-2xl">
                 +{gesEin.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €
               </span>
             </div>
-            <div className="w-px self-stretch bg-slate-700/80" />
-            <div className="flex flex-1 flex-col justify-center rounded-xl bg-slate-900/80 px-5 py-4 text-left">
-              <span className="text-[11px] font-semibold uppercase tracking-wide text-rose-400/95">Ausgaben</span>
-              <span className="mt-0.5 text-[11px] text-slate-500">im Monat</span>
-              <span className="mt-2 text-2xl font-semibold tabular-nums text-slate-100">
+            <div className="w-px shrink-0 self-stretch bg-slate-700/80" />
+            <div className="flex min-w-0 flex-1 flex-col justify-center rounded-xl bg-slate-900/80 px-3 py-3 text-left sm:px-5 sm:py-4">
+              <span className="text-[10px] font-semibold uppercase tracking-wide text-rose-400/95 sm:text-[11px]">Ausgaben</span>
+              <span className="mt-0.5 text-[10px] text-slate-500 sm:text-[11px]">im Monat</span>
+              <span className="mt-1.5 break-words text-base font-semibold leading-tight tabular-nums text-slate-100 sm:mt-2 sm:text-2xl">
                 −{gesAus.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €
               </span>
             </div>
@@ -1130,7 +1130,7 @@ export default function FinanzenPage() {
             ) : (
               <>
                 <p
-                  className={`mt-2 text-3xl font-bold tabular-nums tracking-tight ${topfStand >= 0 ? 'text-violet-200' : 'text-rose-300'}`}
+                  className={`mt-2 break-words text-2xl font-bold tabular-nums tracking-tight sm:text-3xl ${topfStand >= 0 ? 'text-violet-200' : 'text-rose-300'}`}
                 >
                   {topfStand.toLocaleString('de-DE', { style: 'currency', currency: 'EUR' })}
                 </p>
@@ -1212,21 +1212,22 @@ export default function FinanzenPage() {
         </div>
       </div>
 
-      <div className="rounded-[2rem] border border-slate-800/90 bg-gradient-to-b from-slate-900 to-slate-950 p-6 shadow-xl shadow-black/30 md:p-8">
-        <div className="flex flex-col gap-5 md:flex-row md:items-start md:justify-between">
+      <div className="rounded-2xl border border-slate-800/90 bg-gradient-to-b from-slate-900 to-slate-950 p-4 shadow-xl shadow-black/30 sm:rounded-[2rem] sm:p-6 md:p-8">
+        <div className="flex flex-col gap-4 sm:gap-5 md:flex-row md:items-start md:justify-between">
           <div className="min-w-0">
             <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-sky-400/90">Ansichtsmonat</p>
-            <p className="mt-1 text-xl font-semibold tracking-tight text-slate-100">{formatMonatsLabelDe(ansichtMonat)}</p>
-            <p className="mt-3 max-w-xl text-[13px] leading-relaxed text-slate-500">
+            <p className="mt-1 text-lg font-semibold tracking-tight text-slate-100 sm:text-xl">{formatMonatsLabelDe(ansichtMonat)}</p>
+            <p className="mt-2 max-w-xl text-xs leading-relaxed text-slate-500 sm:mt-3 sm:text-[13px]">
               Liste und Summen gelten für diesen Kalendermonat (Buchungsdatum bzw. Rechnungsdatum aus PDF/Bild-Import). Die Leiste unten
               springt zwischen allen Monaten mit Daten.
             </p>
           </div>
-          <div className="inline-flex flex-wrap items-center gap-1.5 rounded-xl border border-slate-700/70 bg-slate-950/70 p-1 shadow-inner md:shrink-0">
+          <div className="flex w-full min-w-0 flex-col gap-2 sm:w-auto sm:max-w-full md:shrink-0">
+            <div className="flex w-full min-w-0 flex-wrap items-stretch justify-stretch gap-1 rounded-xl border border-slate-700/70 bg-slate-950/70 p-1 shadow-inner sm:inline-flex sm:w-auto sm:flex-nowrap sm:items-center sm:justify-center sm:gap-1.5">
             <button
               type="button"
               onClick={() => verschiebeAnsichtMonat(-1)}
-              className="rounded-lg px-3.5 py-2.5 text-sm font-semibold text-slate-200 transition hover:bg-slate-800"
+              className="shrink-0 rounded-lg px-3 py-2.5 text-sm font-semibold text-slate-200 transition hover:bg-slate-800 sm:px-3.5"
               aria-label="Vorheriger Monat"
             >
               ◀
@@ -1238,12 +1239,12 @@ export default function FinanzenPage() {
                 const v = e.target.value
                 if (v) setAnsichtMonat(v)
               }}
-              className="min-w-[10.5rem] rounded-lg border-0 bg-transparent px-2 py-2 text-sm font-semibold text-slate-100 outline-none ring-0"
+              className="min-h-[2.75rem] min-w-0 flex-1 rounded-lg border-0 bg-transparent px-1 py-2 text-sm font-semibold text-slate-100 outline-none ring-0 sm:min-w-[9.5rem] sm:flex-none sm:px-2"
             />
             <button
               type="button"
               onClick={() => verschiebeAnsichtMonat(1)}
-              className="rounded-lg px-3.5 py-2.5 text-sm font-semibold text-slate-200 transition hover:bg-slate-800"
+              className="shrink-0 rounded-lg px-3 py-2.5 text-sm font-semibold text-slate-200 transition hover:bg-slate-800 sm:px-3.5"
               aria-label="Nächster Monat"
             >
               ▶
@@ -1251,13 +1252,14 @@ export default function FinanzenPage() {
             <button
               type="button"
               onClick={() => setAnsichtMonat(aktuellesIsoMonat())}
-              className="rounded-lg bg-emerald-600/90 px-4 py-2.5 text-xs font-bold text-white shadow-sm shadow-emerald-950/30 transition hover:bg-emerald-500"
+              className="w-full rounded-lg bg-emerald-600/90 px-3 py-2.5 text-xs font-bold text-white shadow-sm shadow-emerald-950/30 transition hover:bg-emerald-500 sm:w-auto sm:px-4"
             >
               Heute
             </button>
           </div>
+          </div>
         </div>
-        <div className="mt-6 rounded-xl border border-slate-800/90 bg-slate-950/40 px-4 py-4">
+        <div className="mt-5 rounded-xl border border-slate-800/90 bg-slate-950/40 px-3 py-3 sm:mt-6 sm:px-4 sm:py-4">
           <label className="mb-3 block text-[11px] font-semibold uppercase tracking-wide text-slate-500">
             Schnellwahl über alle Monate mit Buchungen
           </label>
@@ -1281,7 +1283,7 @@ export default function FinanzenPage() {
       </div>
 
       <div className="grid min-w-0 gap-6 lg:grid-cols-[minmax(0,17.5rem)_1fr] xl:grid-cols-[minmax(0,19rem)_1fr] lg:gap-8">
-        <div className="h-fit min-w-0 overflow-hidden rounded-[2rem] border border-slate-800/90 bg-gradient-to-b from-slate-900 to-slate-950 p-5 shadow-xl shadow-black/35 sm:p-6">
+        <div className="h-fit min-w-0 overflow-hidden rounded-2xl border border-slate-800/90 bg-gradient-to-b from-slate-900 to-slate-950 p-4 shadow-xl shadow-black/35 sm:rounded-[2rem] sm:p-6">
           <h2 className="mb-4 text-base font-semibold tracking-tight text-slate-100">Neue Buchung</h2>
           <div className="mb-4 flex rounded-xl border border-slate-700/70 bg-slate-950/70 p-1 shadow-inner">
             <button
@@ -1433,12 +1435,15 @@ export default function FinanzenPage() {
           )}
         </div>
 
-        <div className="min-w-0 overflow-x-auto overflow-y-visible rounded-[2rem] border border-slate-800/90 bg-gradient-to-b from-slate-900 to-slate-950 shadow-xl shadow-black/35">
-          <div className="border-b border-slate-800/80 bg-slate-900/90 p-4 md:p-5">
-            <div className="flex flex-col gap-4">
+        <div className="min-w-0 max-lg:overflow-x-hidden overflow-y-visible lg:overflow-x-auto rounded-2xl border border-slate-800/90 bg-gradient-to-b from-slate-900 to-slate-950 shadow-xl shadow-black/35 lg:rounded-[2rem]">
+          <div className="border-b border-slate-800/80 bg-slate-900/90 p-3 sm:p-4 md:p-5">
+            <div className="flex flex-col gap-3 sm:gap-4">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between sm:gap-4">
                 <div className="min-w-0 flex-1">
-                  <label htmlFor="finanz-liste-suche" className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                  <label
+                    htmlFor="finanz-liste-suche"
+                    className="text-[10px] font-semibold uppercase tracking-wide text-slate-500 sm:text-[11px]"
+                  >
                     Buchungen durchsuchen
                   </label>
                   <input
@@ -1449,42 +1454,52 @@ export default function FinanzenPage() {
                     placeholder="Bezeichnung, Notiz oder Datum …"
                     value={finanzListeSuche}
                     onChange={(e) => setFinanzListeSuche(e.target.value)}
-                    className="mt-2 w-full rounded-xl border border-slate-700/90 bg-slate-950/90 px-4 py-3 text-[15px] text-slate-100 outline-none focus:border-sky-600/50 focus:ring-2 focus:ring-sky-500/25"
+                    className="mt-1.5 w-full rounded-xl border border-slate-700/90 bg-slate-950/90 px-3 py-2.5 text-sm text-slate-100 outline-none focus:border-sky-600/50 focus:ring-2 focus:ring-sky-500/25 sm:mt-2 sm:px-4 sm:py-3 sm:text-[15px]"
                   />
                 </div>
                 {finanzSort.modus !== 'preset' && (
                   <button
                     type="button"
                     onClick={() => setFinanzSort({ modus: 'preset', dir: 'desc' })}
-                    className="shrink-0 rounded-xl border border-slate-600/90 bg-slate-950/80 px-4 py-2.5 text-xs font-semibold text-slate-300 transition hover:bg-slate-800"
+                    className="shrink-0 rounded-xl border border-slate-600/90 bg-slate-950/80 px-3 py-2 text-[11px] font-semibold text-slate-300 transition hover:bg-slate-800 sm:px-4 sm:py-2.5 sm:text-xs"
                   >
                     Standardsortierung
                   </button>
                 )}
               </div>
-              <div className="flex min-w-0 flex-wrap items-center gap-2">
-                <span className="shrink-0 text-[10px] font-semibold uppercase tracking-wide text-slate-500">Liste</span>
-                <div className="inline-flex min-w-0 flex-1 items-stretch gap-0 overflow-hidden rounded-lg border border-slate-700/80 bg-slate-950/80 p-0.5 shadow-inner sm:flex-none sm:shrink-0">
+              <div className="flex min-w-0 flex-col gap-1.5 sm:flex-row sm:flex-wrap sm:items-center sm:gap-2">
+                <span className="shrink-0 text-[9px] font-semibold uppercase tracking-wide text-slate-500 sm:text-[10px]">
+                  Liste
+                </span>
+                <div className="grid min-w-0 w-full max-w-full grid-cols-3 overflow-hidden rounded-lg border border-slate-700/80 bg-slate-950/80 p-0.5 shadow-inner lg:inline-flex lg:w-auto lg:max-w-none lg:flex-none lg:shrink-0 lg:justify-start">
                   <button
                     type="button"
                     onClick={() => setFinanzListenFilter('alle')}
-                    className={`px-3 py-2 text-[11px] font-bold uppercase tracking-wide transition ${finanzListenFilter === 'alle' ? 'rounded-md bg-slate-600 text-white' : 'rounded-md text-slate-400 hover:bg-slate-800/80 hover:text-slate-200'}`}
+                    className={`min-w-0 px-1.5 py-2 text-[9px] font-bold uppercase leading-tight tracking-wide transition lg:px-3 lg:text-[11px] ${
+                      finanzListenFilter === 'alle' ? 'rounded-md bg-slate-600 text-white' : 'rounded-md text-slate-400 hover:bg-slate-800/80 hover:text-slate-200'
+                    }`}
                   >
                     Alle
                   </button>
                   <button
                     type="button"
                     onClick={() => setFinanzListenFilter('einnahme')}
-                    className={`px-3 py-2 text-[11px] font-bold uppercase tracking-wide transition ${finanzListenFilter === 'einnahme' ? 'rounded-md bg-emerald-600 text-white' : 'rounded-md text-emerald-400/90 hover:bg-emerald-950/50'}`}
+                    className={`min-w-0 px-1.5 py-2 text-[9px] font-bold uppercase leading-tight tracking-wide transition lg:px-3 lg:text-[11px] ${
+                      finanzListenFilter === 'einnahme' ? 'rounded-md bg-emerald-600 text-white' : 'rounded-md text-emerald-400/90 hover:bg-emerald-950/50'
+                    }`}
                   >
-                    Einnahmen
+                    <span className="lg:hidden">Einnahm.</span>
+                    <span className="hidden lg:inline">Einnahmen</span>
                   </button>
                   <button
                     type="button"
                     onClick={() => setFinanzListenFilter('ausgabe')}
-                    className={`px-3 py-2 text-[11px] font-bold uppercase tracking-wide transition ${finanzListenFilter === 'ausgabe' ? 'rounded-md bg-rose-600 text-white' : 'rounded-md text-rose-400/90 hover:bg-rose-950/50'}`}
+                    className={`min-w-0 px-1.5 py-2 text-[9px] font-bold uppercase leading-tight tracking-wide transition lg:px-3 lg:text-[11px] ${
+                      finanzListenFilter === 'ausgabe' ? 'rounded-md bg-rose-600 text-white' : 'rounded-md text-rose-400/90 hover:bg-rose-950/50'
+                    }`}
                   >
-                    Ausgaben
+                    <span className="lg:hidden">Ausgab.</span>
+                    <span className="hidden lg:inline">Ausgaben</span>
                   </button>
                 </div>
               </div>
@@ -1492,115 +1507,206 @@ export default function FinanzenPage() {
           </div>
           <div className="min-w-0 px-1 pb-1 sm:px-2 sm:pb-2">
             {/*
-              Ein gemeinsames Grid für Kopfzeile + alle Datenzeilen, damit `1fr` und die Betrag-Spalte
-              über alle Zeilen dieselbe Breite haben (sonst sitzt „Betrag“ nicht über den Zahlen).
+              < lg: Karten (kein 4-Spalten-Grid; greift zuverlässig auf dem Handy, auch bei „Desktop-Website“/Zoom).
+              Ab lg: gemeinsames Grid, damit 1fr und Betrags-Spalte bündig sind.
             */}
-            <div
-              className="grid w-full min-w-0 grid-cols-[minmax(0,5.75rem)_minmax(0,1fr)_8.25rem_auto] items-start gap-x-3 bg-slate-900/95 px-3 py-0 text-[11px] font-semibold uppercase tracking-wide text-slate-500 sm:grid-cols-[minmax(0,6.25rem)_minmax(0,1fr)_9rem_auto] sm:gap-x-4 sm:px-5"
-              role="table"
-              aria-label="Buchungen im Ansichtsmonat"
-            >
-              <div className="min-w-0 border-b border-slate-800/90 py-3 text-left" role="columnheader">
-                <button
-                  type="button"
-                  onClick={() => finanzSortKlick('datum')}
-                  className="inline-flex max-w-full items-center gap-1 rounded-lg px-1 py-1 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-400 transition hover:bg-slate-800/80 hover:text-slate-200"
-                >
-                  Datum
-                  <span className="shrink-0 font-mono text-[10px] text-sky-400/90" aria-hidden>
-                    {finanzSortPfeil('datum')}
-                  </span>
-                </button>
-              </div>
-              <div className="min-w-0 border-b border-slate-800/90 py-3 text-left" role="columnheader">
-                <button
-                  type="button"
-                  onClick={() => finanzSortKlick('position')}
-                  className="inline-flex max-w-full min-w-0 items-center gap-1 rounded-lg px-1 py-1 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-400 transition hover:bg-slate-800/80 hover:text-slate-200"
-                >
-                  Position
-                  <span className="shrink-0 font-mono text-[10px] text-sky-400/90" aria-hidden>
-                    {finanzSortPfeil('position')}
-                  </span>
-                </button>
-              </div>
-              <div className="min-w-0 border-b border-slate-800/90 py-3 text-right tabular-nums" role="columnheader">
-                <button
-                  type="button"
-                  onClick={() => finanzSortKlick('betrag')}
-                  className="inline-flex w-full min-w-0 items-center justify-end gap-1 rounded-lg px-1 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-400 transition hover:bg-slate-800/80 hover:text-slate-200"
-                >
-                  Betrag
-                  <span className="shrink-0 font-mono text-[10px] text-sky-400/90" aria-hidden>
-                    {finanzSortPfeil('betrag')}
-                  </span>
-                </button>
-              </div>
-              <div className="shrink-0 border-b border-slate-800/90 py-3 pr-2 text-right sm:pr-3" role="columnheader">
-                Aktion
-              </div>
-
-              {finanzListeAngezeigt.map((item: any, i: number) => (
-                <Fragment key={item.id ?? i}>
-                  <div
-                    className={`min-w-0 py-3.5 tabular-nums text-[12px] text-slate-300 sm:py-4 sm:text-[13px] ${i === 0 ? 'border-t-0' : 'border-t border-slate-800/60'} ${item.__geplant ? 'bg-amber-950/15' : ''} hover:bg-slate-800/25`}
-                  >
-                    {formatDateDDMMYYYY(datumFuerListenanzeige(item))}
-                  </div>
-                  <div
-                    className={`min-w-0 py-3.5 sm:py-4 ${i === 0 ? 'border-t-0' : 'border-t border-slate-800/60'} ${item.__geplant ? 'bg-amber-950/15' : ''} hover:bg-slate-800/25`}
-                  >
-                    <div className="flex min-w-0 items-start gap-2 sm:gap-2.5">
-                      <KategorieMark
-                        kategorie={String(item.kategorie ?? '')}
-                        isEinnahme={Boolean(item.isIn)}
-                        geplant={Boolean(item.__geplant)}
-                        groesse="sm"
-                        className="mt-0.5 shrink-0"
-                      />
-                      <div className="min-w-0 hyphens-none">
-                        <p className="break-words text-[13px] font-semibold leading-snug text-slate-100 sm:text-[15px]">
-                          {item.kategorie}
-                        </p>
-                        {item.beschreibung ? (
-                          <p className="mt-1 line-clamp-2 break-words text-[11px] leading-relaxed text-slate-500 sm:text-[12px]">
-                            {item.beschreibung}
-                          </p>
-                        ) : null}
-                      </div>
+            {finanzListeAngezeigt.length > 0 ? (
+              <>
+                <ul className="lg:hidden" aria-label="Buchungen im Ansichtsmonat (kompakt)">
+                  <li className="list-none border-b border-slate-800/60 px-0.5 pb-2.5">
+                    <p className="text-[9px] font-semibold uppercase tracking-wide text-slate-500">Sortierung</p>
+                    <div className="mt-1.5 grid w-full min-w-0 grid-cols-3 gap-1.5">
+                      {(
+                        [
+                          ['datum', 'Datum'] as const,
+                          ['position', 'Titel'] as const,
+                          ['betrag', 'Betrag'] as const,
+                        ] as const
+                      ).map(([modus, label]) => (
+                        <button
+                          key={modus}
+                          type="button"
+                          onClick={() => finanzSortKlick(modus)}
+                          className={`min-w-0 rounded-lg border px-1 py-1.5 text-center text-[9px] font-semibold leading-tight transition ${
+                            finanzSort.modus === modus
+                              ? 'border-sky-500/60 bg-sky-500/10 text-sky-200'
+                              : 'border-slate-700/80 bg-slate-950/80 text-slate-400 hover:border-slate-600 hover:text-slate-200'
+                          }`}
+                        >
+                          {label}
+                          <span className="ml-0.5 font-mono text-sky-400/90" aria-hidden>
+                            {finanzSortPfeil(modus) || '\u00a0'}
+                          </span>
+                        </button>
+                      ))}
                     </div>
-                  </div>
-                  <div
-                    className={`min-w-0 whitespace-nowrap py-3.5 text-right text-[13px] font-semibold tabular-nums sm:py-4 sm:text-[15px] ${i === 0 ? 'border-t-0' : 'border-t border-slate-800/60'} ${item.__geplant ? 'bg-amber-950/15' : ''} hover:bg-slate-800/25 ${item.isIn ? 'text-emerald-400' : 'text-rose-400'}`}
-                  >
-                    {item.isIn ? '+' : '−'}
-                    {Number(item.betrag).toLocaleString('de-DE', {
-                      minimumFractionDigits: 2,
-                      maximumFractionDigits: 2,
-                    })}
-                    {'\u00a0'}€
-                  </div>
-                  <div
-                    className={`flex shrink-0 items-center justify-end gap-1 py-3.5 pr-2 sm:gap-1.5 sm:py-4 sm:pr-3 ${i === 0 ? 'border-t-0' : 'border-t border-slate-800/60'} ${item.__geplant ? 'bg-amber-950/15' : ''} hover:bg-slate-800/25`}
-                  >
+                  </li>
+                  {finanzListeAngezeigt.map((item: any, i: number) => (
+                    <li
+                      key={item.id ?? i}
+                      className={`list-none border-b border-slate-800/50 py-3 last:pb-1 ${item.__geplant ? 'bg-amber-950/12' : ''}`}
+                    >
+                      <div className="flex min-w-0 items-start justify-between gap-2">
+                        <p className="shrink-0 text-[12px] font-medium tabular-nums text-slate-300">
+                          {formatDateDDMMYYYY(datumFuerListenanzeige(item))}
+                        </p>
+                        <p
+                          className={`min-w-0 break-words text-right text-[14px] font-bold leading-tight tabular-nums ${
+                            item.isIn ? 'text-emerald-400' : 'text-rose-400'
+                          }`}
+                        >
+                          {item.isIn ? '+' : '−'}
+                          {Number(item.betrag).toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          {'\u00a0'}€
+                        </p>
+                      </div>
+                      <div className="mt-2 flex min-w-0 items-start gap-2">
+                        <KategorieMark
+                          kategorie={String(item.kategorie ?? '')}
+                          isEinnahme={Boolean(item.isIn)}
+                          geplant={Boolean(item.__geplant)}
+                          groesse="sm"
+                          className="mt-0.5 shrink-0"
+                        />
+                        <div className="min-w-0 hyphens-none">
+                          <p className="break-words text-[14px] font-semibold leading-snug text-slate-100">
+                            {item.kategorie}
+                          </p>
+                          {item.beschreibung ? (
+                            <p className="mt-0.5 line-clamp-2 break-words text-[11px] leading-relaxed text-slate-500">
+                              {item.beschreibung}
+                            </p>
+                          ) : null}
+                        </div>
+                      </div>
+                      <div className="mt-3 grid min-w-0 grid-cols-2 gap-2">
+                        <button
+                          type="button"
+                          onClick={() => starteBearbeitungBuchung(item)}
+                          className="rounded-lg border border-slate-600/80 bg-slate-950/90 py-2.5 text-center text-xs font-semibold text-sky-200 transition hover:border-sky-500/50 hover:bg-sky-500/10"
+                        >
+                          Bearbeiten
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => loescheBuchung(item)}
+                          className="rounded-lg border border-slate-600/80 bg-slate-950/90 py-2.5 text-center text-xs font-semibold text-rose-200 transition hover:border-rose-500/50 hover:bg-rose-500/10"
+                        >
+                          Löschen
+                        </button>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+
+                <div
+                  className="hidden w-full min-w-0 lg:grid grid-cols-[minmax(0,5.75rem)_minmax(0,1fr)_8.25rem_auto] items-start gap-x-3 bg-slate-900/95 px-3 py-0 text-[11px] font-semibold uppercase leading-tight tracking-wide text-slate-500 md:grid-cols-[minmax(0,6.25rem)_minmax(0,1fr)_9rem_auto] md:gap-x-4 md:px-5"
+                  role="table"
+                  aria-label="Buchungen im Ansichtsmonat"
+                >
+                  <div className="min-w-0 border-b border-slate-800/90 py-3" role="columnheader">
                     <button
                       type="button"
-                      onClick={() => starteBearbeitungBuchung(item)}
-                      className="rounded-lg border border-slate-700/80 bg-slate-950/80 px-2.5 py-1.5 text-[11px] font-semibold text-sky-200 transition hover:bg-sky-500/15 sm:px-3 sm:py-2 sm:text-xs"
+                      onClick={() => finanzSortKlick('datum')}
+                      className="inline-flex max-w-full items-center gap-1 rounded-lg px-1 py-1 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-400 transition hover:bg-slate-800/80 hover:text-slate-200"
                     >
-                      Bearbeiten
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => loescheBuchung(item)}
-                      className="rounded-lg border border-slate-700/80 bg-slate-950/80 px-2.5 py-1.5 text-[11px] font-semibold text-rose-300/95 transition hover:bg-rose-500/15 sm:px-3 sm:py-2 sm:text-xs"
-                    >
-                      Löschen
+                      Datum
+                      <span className="shrink-0 font-mono text-[10px] text-sky-400/90" aria-hidden>
+                        {finanzSortPfeil('datum')}
+                      </span>
                     </button>
                   </div>
-                </Fragment>
-              ))}
-            </div>
+                  <div className="min-w-0 border-b border-slate-800/90 py-3" role="columnheader">
+                    <button
+                      type="button"
+                      onClick={() => finanzSortKlick('position')}
+                      className="inline-flex max-w-full min-w-0 items-center gap-1 rounded-lg px-1 py-1 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-400 transition hover:bg-slate-800/80 hover:text-slate-200"
+                    >
+                      Position
+                      <span className="shrink-0 font-mono text-[10px] text-sky-400/90" aria-hidden>
+                        {finanzSortPfeil('position')}
+                      </span>
+                    </button>
+                  </div>
+                  <div className="min-w-0 border-b border-slate-800/90 py-3 text-right tabular-nums" role="columnheader">
+                    <button
+                      type="button"
+                      onClick={() => finanzSortKlick('betrag')}
+                      className="inline-flex w-full min-w-0 items-center justify-end gap-1 rounded-lg px-1 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-400 transition hover:bg-slate-800/80 hover:text-slate-200"
+                    >
+                      Betrag
+                      <span className="shrink-0 font-mono text-[10px] text-sky-400/90" aria-hidden>
+                        {finanzSortPfeil('betrag')}
+                      </span>
+                    </button>
+                  </div>
+                  <div className="shrink-0 border-b border-slate-800/90 py-3 pr-3 text-right text-[11px]" role="columnheader">
+                    Aktion
+                  </div>
+
+                  {finanzListeAngezeigt.map((item: any, i: number) => (
+                    <Fragment key={item.id ?? i}>
+                      <div
+                        className={`min-w-0 py-4 tabular-nums text-[13px] text-slate-300 ${i === 0 ? 'border-t-0' : 'border-t border-slate-800/60'} ${item.__geplant ? 'bg-amber-950/15' : ''} hover:bg-slate-800/25`}
+                      >
+                        {formatDateDDMMYYYY(datumFuerListenanzeige(item))}
+                      </div>
+                      <div
+                        className={`min-w-0 py-4 ${i === 0 ? 'border-t-0' : 'border-t border-slate-800/60'} ${item.__geplant ? 'bg-amber-950/15' : ''} hover:bg-slate-800/25`}
+                      >
+                        <div className="flex min-w-0 items-start gap-2.5">
+                          <KategorieMark
+                            kategorie={String(item.kategorie ?? '')}
+                            isEinnahme={Boolean(item.isIn)}
+                            geplant={Boolean(item.__geplant)}
+                            groesse="sm"
+                            className="mt-0.5 shrink-0"
+                          />
+                          <div className="min-w-0 hyphens-none">
+                            <p className="break-words text-[15px] font-semibold leading-snug text-slate-100">
+                              {item.kategorie}
+                            </p>
+                            {item.beschreibung ? (
+                              <p className="mt-1 line-clamp-2 break-words text-[12px] leading-relaxed text-slate-500">
+                                {item.beschreibung}
+                              </p>
+                            ) : null}
+                          </div>
+                        </div>
+                      </div>
+                      <div
+                        className={`min-w-0 whitespace-nowrap py-4 text-right text-[15px] font-semibold tabular-nums ${i === 0 ? 'border-t-0' : 'border-t border-slate-800/60'} ${item.__geplant ? 'bg-amber-950/15' : ''} hover:bg-slate-800/25 ${item.isIn ? 'text-emerald-400' : 'text-rose-400'}`}
+                      >
+                        {item.isIn ? '+' : '−'}
+                        {Number(item.betrag).toLocaleString('de-DE', {
+                          minimumFractionDigits: 2,
+                          maximumFractionDigits: 2,
+                        })}
+                        {'\u00a0'}€
+                      </div>
+                      <div
+                        className={`flex shrink-0 items-center justify-end gap-1.5 py-4 pr-3 ${i === 0 ? 'border-t-0' : 'border-t border-slate-800/60'} ${item.__geplant ? 'bg-amber-950/15' : ''} hover:bg-slate-800/25`}
+                      >
+                        <button
+                          type="button"
+                          onClick={() => starteBearbeitungBuchung(item)}
+                          className="rounded-lg border border-slate-700/80 bg-slate-950/80 px-3 py-2 text-xs font-semibold text-sky-200 transition hover:bg-sky-500/15"
+                        >
+                          Bearbeiten
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => loescheBuchung(item)}
+                          className="rounded-lg border border-slate-700/80 bg-slate-950/80 px-3 py-2 text-xs font-semibold text-rose-300/95 transition hover:bg-rose-500/15"
+                        >
+                          Löschen
+                        </button>
+                      </div>
+                    </Fragment>
+                  ))}
+                </div>
+              </>
+            ) : null}
           </div>
           {finanzListe.length === 0 && (
             <div className="border-t border-slate-800/60 px-6 py-20 text-center text-sm italic text-slate-600">Hier ist noch alles ruhig…</div>
@@ -1613,7 +1719,7 @@ export default function FinanzenPage() {
         </div>
       </div>
 
-      <div className="overflow-hidden rounded-[2rem] border border-slate-800/90 bg-gradient-to-b from-slate-900 to-slate-950 p-6 shadow-xl shadow-black/35 sm:p-8">
+      <div className="overflow-hidden rounded-2xl border border-slate-800/90 bg-gradient-to-b from-slate-900 to-slate-950 p-4 shadow-xl shadow-black/35 sm:rounded-[2rem] sm:p-8">
         <div className="mb-6 flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
           <div className="min-w-0">
             <h2 className="text-lg font-semibold tracking-tight text-slate-100">Daueraufträge</h2>

@@ -101,6 +101,7 @@ export function FinanceCoachProvider({ children }: { children: ReactNode }) {
   const [open, setOpen] = useState(false)
   const [kiConfigured, setKiConfigured] = useState<boolean | null>(null)
   const [kiProvider, setKiProvider] = useState<'gemini' | 'openai' | null>(null)
+  const [kiHostedNote, setKiHostedNote] = useState<string | null>(null)
   const [input, setInput] = useState('')
   const [draftImages, setDraftImages] = useState<CoachImagePart[]>([])
   const [loading, setLoading] = useState(false)
@@ -115,17 +116,22 @@ export function FinanceCoachProvider({ children }: { children: ReactNode }) {
       if (cancelled) return
       setKiConfigured(null)
       setKiProvider(null)
+      setKiHostedNote(null)
     })
     void fetch('/api/finance-coach')
       .then((r) => r.json())
-      .then((d: { configured?: boolean; provider?: string }) => {
+      .then((d: { configured?: boolean; provider?: string; hostedNote?: string }) => {
         if (!cancelled) {
           setKiConfigured(d.configured === true)
           setKiProvider(d.provider === 'gemini' || d.provider === 'openai' ? d.provider : null)
+          setKiHostedNote(typeof d.hostedNote === 'string' && d.hostedNote.trim() ? d.hostedNote.trim() : null)
         }
       })
       .catch(() => {
-        if (!cancelled) setKiConfigured(false)
+        if (!cancelled) {
+          setKiConfigured(false)
+          setKiHostedNote(null)
+        }
       })
     return () => {
       cancelled = true
@@ -204,7 +210,7 @@ export function FinanceCoachProvider({ children }: { children: ReactNode }) {
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="fixed bottom-5 right-5 z-[60] flex h-14 w-14 items-center justify-center rounded-2xl border border-violet-500/50 bg-violet-600 text-xl font-black text-white shadow-xl shadow-violet-950/50 transition-transform hover:scale-105 hover:bg-violet-500 active:scale-95 md:bottom-8 md:right-8"
+        className="fixed z-[60] flex h-14 w-14 items-center justify-center rounded-2xl border border-violet-500/50 bg-violet-600 text-xl font-black text-white shadow-xl shadow-violet-950/50 transition-transform hover:scale-105 hover:bg-violet-500 active:scale-95 bottom-[max(1.25rem,env(safe-area-inset-bottom))] right-[max(1.25rem,env(safe-area-inset-right))] md:bottom-8 md:right-8"
         title="KI-Coach: Fragen zu deinem Haushalt & Verhalten"
         aria-label="KI-Coach öffnen"
       >
@@ -255,6 +261,11 @@ export function FinanceCoachProvider({ children }: { children: ReactNode }) {
               {kiConfigured === false && (
                 <div className="rounded-xl border border-amber-700/60 bg-amber-950/40 p-3 text-xs leading-relaxed text-amber-100">
                   <p className="font-bold text-amber-200">KI ist noch nicht eingerichtet</p>
+                  {kiHostedNote ? (
+                    <p className="mt-2 rounded-lg border border-amber-600/40 bg-amber-950/70 p-2.5 text-[11px] leading-relaxed text-amber-50">
+                      {kiHostedNote}
+                    </p>
+                  ) : null}
                   <ol className="mt-2 list-decimal space-y-1.5 pl-4 text-amber-100/95">
                     <li>
                       Im Projektordner die Datei <code className="rounded bg-slate-950 px-1 py-0.5 text-[11px] text-slate-300">.env.local</code>{' '}
@@ -299,6 +310,13 @@ export function FinanceCoachProvider({ children }: { children: ReactNode }) {
                     </li>
                     <li>
                       Datei speichern, <strong>Dev-Server stoppen und neu starten</strong> (<code className="rounded bg-slate-950 px-1">npm run dev</code>), dann dieses Panel erneut öffnen.
+                    </li>
+                    <li>
+                      <span className="font-semibold text-amber-200">App online (z. B. Vercel):</span> Die Datei{' '}
+                      <code className="rounded bg-slate-950 px-1 text-[11px]">.env.local</code> liegt nur auf deinem Rechner — im Vercel-Dashboard unter{' '}
+                      <strong className="text-amber-100">Settings → Environment Variables</strong> dieselbe Variable{' '}
+                      <code className="rounded bg-slate-950 px-1 text-[11px]">GEMINI_API_KEY</code> (oder <code className="rounded bg-slate-950 px-1 text-[11px]">OPENAI_API_KEY</code>) für{' '}
+                      <strong>Production</strong> setzen und ein <strong>neues Deployment</strong> auslösen.
                     </li>
                   </ol>
                 </div>

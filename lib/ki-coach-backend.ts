@@ -11,17 +11,33 @@ export type CoachProvider = 'openai' | 'gemini'
 
 const ALLOWED_MIME = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif'])
 
+function normalisiereEnvApiKey(raw: string | undefined): string {
+  if (raw == null) return ''
+  let s = String(raw).replace(/^\uFEFF/, '')
+  s = s.trim()
+  if ((s.startsWith('"') && s.endsWith('"')) || (s.startsWith("'") && s.endsWith("'"))) {
+    s = s.slice(1, -1).trim()
+  }
+  return s
+}
+
 function openAiApiKey() {
-  return (process.env.OPENAI_API_KEY || process.env.AI_API_KEY || '').trim()
+  return normalisiereEnvApiKey(
+    process.env.OPENAI_API_KEY || process.env.AI_API_KEY,
+  )
 }
 
 function geminiApiKey() {
-  return (
+  return normalisiereEnvApiKey(
     process.env.GEMINI_API_KEY ||
-    process.env.GOOGLE_GENERATIVE_AI_API_KEY ||
-    process.env.GOOGLE_AI_API_KEY ||
-    ''
-  ).trim()
+      process.env.GOOGLE_GENERATIVE_AI_API_KEY ||
+      process.env.GOOGLE_AI_API_KEY,
+  )
+}
+
+/** Z. B. Kassenzettel-Route, die direkt mit Gemini spricht; nutzt dieselbe Normalisierung wie `resolveCoachProvider`. */
+export function readGeminiApiKeyFromEnv(): string {
+  return geminiApiKey()
 }
 
 export function resolveCoachProvider(): { provider: CoachProvider; apiKey: string } | null {

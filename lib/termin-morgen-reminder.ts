@@ -1,4 +1,4 @@
-import type { KalenderEintrag } from '@/lib/haushalt-kalender'
+import { kalenderKategorieMeta, type KalenderEintrag } from '@/lib/haushalt-kalender'
 
 export const TERMIN_REMINDER_SETTINGS_KEY = 'mein-haushalt.termin-reminder.v1' as const
 export const TERMIN_REMINDER_EVENT = 'mein-haushalt:termin-reminder' as const
@@ -56,17 +56,17 @@ export function heuteAlsIsoDatumLocal(): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
-/** Echte Termine: Kategorie „Termin“ (rot), nicht Geburtstag/Urlaub usw. */
-export function sammleTerminTitelFuerTag(eintraege: KalenderEintrag[], iso: string): string[] {
-  const t: string[] = []
+/** Alle Einträge an einem Tag, als Lesetext „Kategorielabel: Titel“ (für die Benachrichtigung). */
+export function sammleKalenderHinweisZeilenFuerTag(eintraege: KalenderEintrag[], iso: string): string[] {
+  const rows: { k: string; t: string; line: string }[] = []
   for (const e of eintraege) {
     if (e.datum !== iso) continue
-    if (e.kategorie !== 'termin') continue
-    const x = (e.titel || '').trim()
-    if (x) t.push(x)
+    const title = (e.titel || '').trim() || 'Ohne Titel'
+    const label = kalenderKategorieMeta(e.kategorie).label
+    rows.push({ k: e.kategorie, t: title, line: `${label}: ${title}` })
   }
-  t.sort((a, b) => a.localeCompare(b, 'de', { sensitivity: 'base' }))
-  return t
+  rows.sort((a, b) => a.k.localeCompare(b.k) || a.t.localeCompare(b.t, 'de', { sensitivity: 'base' }))
+  return rows.map((r) => r.line)
 }
 
 /** Wie lange ab Start der Zielstunde (z. B. 7:00) nach Terminen gesucht wird. */
@@ -90,27 +90,27 @@ export function sollTerminHinweisZuenden(
   fensterMinuten: number,
 ):
   | { zuenden: false }
-  | { zuenden: true; titel: string[]; heuteIso: string } {
+  | { zuenden: true; zeilen: string[]; heuteIso: string } {
   if (!einst.enabled) return { zuenden: false }
   if (!feuertHinweisFenster(jetzt, einst.stunde, fensterMinuten)) return { zuenden: false }
   const heuteIso = heuteAlsIsoDatumFor(jetzt)
   if (einst.letzterHinweisTag === heuteIso) return { zuenden: false }
-  const titel = sammleTerminTitelFuerTag(eintraege, heuteIso)
-  if (titel.length === 0) return { zuenden: false }
-  return { zuenden: true, titel, heuteIso }
+  const zeilen = sammleKalenderHinweisZeilenFuerTag(eintraege, heuteIso)
+  if (zeilen.length === 0) return { zuenden: false }
+  return { zuenden: true, zeilen, heuteIso }
 }
 
 function heuteAlsIsoDatumFor(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
-export function bauHinweisText(titel: string[]): { uberschrift: string; text: string } {
-  if (titel.length === 0) return { uberschrift: 'Heute stehen Termine an', text: 'Öffne den Kalender für Details.' }
-  if (titel.length === 1) {
-    return { uberschrift: 'Heute: Termin', text: titel[0] }
+export function bauHinweisText(zeilen: string[]): { uberschrift: string; text: string } {
+  if (zeilen.length === 0) return { uberschrift: 'Heute im Kalender', text: 'Öffne den Kalender für Details.' }
+  if (zeilen.length === 1) {
+    return { uberschrift: 'Heute im Kalender', text: zeilen[0]! }
   }
   return {
-    uberschrift: `Heute: ${titel.length} Termine`,
-    text: titel.join(' · '),
+    uberschrift: `Heute: ${zeilen.length} Kalendereinträge`,
+    text: zeilen.join(' · '),
   }
 }

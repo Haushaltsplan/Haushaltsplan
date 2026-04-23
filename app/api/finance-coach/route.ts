@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { prepareCoachMessages, resolveCoachProvider, runCoachCompletion } from '@/lib/ki-coach-backend'
 
 export const runtime = 'nodejs'
+export const dynamic = 'force-dynamic'
 
 function buildSystemPrompt(context: unknown): string {
   const contextBlock =
@@ -20,9 +21,16 @@ Antworte auf Deutsch, knapp strukturiert (kurze Absätze oder Aufzählungen), ma
 
 export async function GET() {
   const resolved = resolveCoachProvider()
+  const isVercel = Boolean(process.env.VERCEL)
   return NextResponse.json({
     configured: Boolean(resolved),
     provider: resolved?.provider,
+    ...(!resolved && isVercel
+      ? {
+          hostedNote:
+            'Auf Vercel: Project Settings → Environment Variables → GEMINI_API_KEY (oder OPENAI_API_KEY) für Production setzen, Deployment neu bauen. .env.local wird nicht mit deployt.',
+        }
+      : {}),
   })
 }
 

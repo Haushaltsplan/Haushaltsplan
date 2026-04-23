@@ -18,18 +18,11 @@ import {
 import { lagerKategorieFinal, normalisiereLagerKategorie } from '@/lib/lager-produkt-kategorie'
 import { findeProduktIdNachLagerZuordnung } from '@/lib/lager-artikel-kanonisch'
 import { produktAnzeigeNameAusBon } from '@/lib/produkt-name-normalize'
+import { readGeminiApiKeyFromEnv } from '@/lib/ki-coach-backend'
 import { createSupabaseAdmin } from '@/lib/supabase-admin'
 
 export const runtime = 'nodejs'
-
-function geminiApiKey() {
-  return (
-    process.env.GEMINI_API_KEY ||
-    process.env.GOOGLE_GENERATIVE_AI_API_KEY ||
-    process.env.GOOGLE_AI_API_KEY ||
-    ''
-  ).trim()
-}
+export const dynamic = 'force-dynamic'
 
 function geminiModel() {
   return (
@@ -254,7 +247,7 @@ async function bucheZeile(admin: ReturnType<typeof createSupabaseAdmin>, z: Kass
 }
 
 export async function POST(req: Request) {
-  const gKey = geminiApiKey()
+  const gKey = readGeminiApiKeyFromEnv()
   let body: Record<string, unknown>
   try {
     body = await req.json()

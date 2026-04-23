@@ -37,25 +37,27 @@ export default function RootLayout({
 
   return (
     <html lang="de">
-      <body className={`${inter.className} bg-slate-950 text-slate-200 min-h-screen antialiased`}>
-        <nav className="sticky top-0 z-50 border-b border-slate-800 bg-slate-950 text-slate-200 shadow-2xl shadow-black/40">
-          <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-3 px-4">
-            <div className="flex min-w-0 flex-1 items-center gap-3 md:gap-8">
+      <body
+        className={`${inter.className} bg-slate-950 text-slate-200 min-h-screen min-h-[100dvh] antialiased`}
+      >
+        <nav className="sticky top-0 z-50 border-b border-slate-800 bg-slate-950 pt-[env(safe-area-inset-top,0px)] text-slate-200 shadow-2xl shadow-black/40">
+          <div className="mx-auto flex h-16 max-w-6xl min-w-0 items-center justify-between gap-2 px-3 sm:gap-3 sm:px-4">
+            <div className="flex min-w-0 flex-1 items-center gap-2 sm:gap-3 md:gap-8">
               <Link
                 href="/"
-                className="truncate text-lg font-black tracking-tighter text-emerald-400 transition-colors hover:text-emerald-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/50 sm:text-xl md:text-2xl"
+                className="min-w-0 shrink truncate text-base font-black tracking-tighter text-emerald-400 transition-colors hover:text-emerald-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/50 sm:text-lg md:text-2xl"
               >
                 Haushaltsplan
               </Link>
               <SiteNav />
             </div>
-            <div className="shrink-0 font-mono text-[10px] text-slate-600 sm:text-xs">v1.0.30</div>
+            <div className="hidden shrink-0 font-mono text-xs text-slate-600 sm:block">v1.0.30</div>
           </div>
         </nav>
 
         {oeffentlicheUrl ? (
           <div className="border-b border-slate-800 bg-slate-900/80">
-            <div className="mx-auto max-w-6xl px-4 py-2.5 text-center text-[12px] leading-snug text-slate-400 md:text-left">
+            <div className="mx-auto min-w-0 max-w-6xl px-3 py-2.5 text-center text-[12px] leading-snug text-slate-400 sm:px-4 md:text-left">
               <span className="font-semibold text-slate-300">Öffentliche Adresse </span>
               (Lesezeichen, teilen, unterwegs im Browser):{' '}
               <a
@@ -82,7 +84,9 @@ export default function RootLayout({
         />
 
         <Providers>
-          <div className="max-w-6xl mx-auto py-8 px-4">{children}</div>
+          <div className="mx-auto min-w-0 w-full max-w-6xl px-3 py-6 pb-[max(1.5rem,env(safe-area-inset-bottom))] sm:px-4 sm:py-8">
+            {children}
+          </div>
         </Providers>
       </body>
     </html>

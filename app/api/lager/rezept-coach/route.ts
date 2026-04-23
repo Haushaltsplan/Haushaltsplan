@@ -9,6 +9,7 @@ import {
 } from '@/lib/rezept-coach-types'
 
 export const runtime = 'nodejs'
+export const dynamic = 'force-dynamic'
 
 type LagerZeile = { produkt_id: string; name: string; menge: number; einheit: string }
 

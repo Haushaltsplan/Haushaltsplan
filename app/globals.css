@@ -4,6 +4,13 @@
   --foreground-rgb: 226, 232, 240;
   --background-start-rgb: 2, 6, 23;
   --background-end-rgb: 15, 23, 42;
+  /* Oben: Safe-Area + fixe Nav-Höhe (4rem) — für mobiles Menü-Panel */
+  --app-nav-offset: calc(env(safe-area-inset-top, 0px) + 4rem);
+}
+
+html {
+  overflow-x: clip;
+  -webkit-text-size-adjust: 100%;
 }
 
 body {
@@ -11,4 +18,8 @@ body {
   background: rgb(var(--background-start-rgb));
   margin: 0;
   padding: 0;
+  overflow-x: clip;
+  /* Seiten sicher — verhindert „Überstehen“ unter Punch-Hole / Home-Indikator */
+  padding-left: env(safe-area-inset-left, 0px);
+  padding-right: env(safe-area-inset-right, 0px);
 }

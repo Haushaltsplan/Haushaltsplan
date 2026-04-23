@@ -33,6 +33,12 @@ function jetztAlsMonatKopf(): KalenderMonatKopf {
 
 type ModalModus = { art: 'neu'; datum: string } | { art: 'bearbeiten'; eintrag: KalenderEintrag }
 
+function eintragKurzzeile(ev: KalenderEintrag) {
+  const t = (ev.titel || 'Ohne Titel').trim()
+  const u = ev.uhrzeit.trim()
+  return u ? `${u} ${t}` : t
+}
+
 export default function KalenderPage() {
   const [sicht, setSicht] = useState<KalenderMonatKopf>(jetztAlsMonatKopf)
   const [eintraege, setEintraege] = useState<KalenderEintrag[]>([])
@@ -174,7 +180,7 @@ export default function KalenderPage() {
           <div className="grid grid-cols-7">
             {zellen.map((z, i) => {
               if (z == null) {
-                return <div key={`e-${i}`} className="min-h-[3.25rem] border-b border-r border-slate-800/60 bg-slate-950/25 sm:min-h-[4rem]" />
+                return <div key={`e-${i}`} className="min-h-[5rem] border-b border-r border-slate-800/60 bg-slate-950/25 sm:min-h-[6.5rem]" />
               }
               const iso = isoDatumAusJahrMonatTag(sicht.jahr, sicht.monat, z)
               const amTag = proTagEintraege.get(iso) || []
@@ -192,26 +198,80 @@ export default function KalenderPage() {
                     e.preventDefault()
                     oeffneNeuFuerTag(z)
                   }}
-                  className={`min-h-[3.25rem] border-b border-r border-slate-800/60 p-1 text-left align-top transition sm:min-h-[4rem] sm:p-1.5 ${
+                  className={`min-h-[5rem] border-b border-r border-slate-800/60 p-0.5 text-left align-top transition sm:min-h-[6.5rem] sm:p-1.5 ${
                     isSel ? 'bg-teal-950/45 ring-1 ring-inset ring-teal-500/50' : 'hover:bg-slate-800/40'
                   } ${isHeute && !isSel ? 'bg-sky-950/30' : ''}`}
-                  title="Einfach: Tag wählen · Doppelklick: neuer Eintrag"
+                  title={
+                    n > 0
+                      ? `Einfach: Tag wählen · Doppelklick: neuer Eintrag — ${n} Einträge: ${amTag.map((e) => eintragKurzzeile(e)).join(' · ')}`
+                      : 'Einfach: Tag wählen · Doppelklick: neuer Eintrag'
+                  }
+                  aria-label={
+                    n > 0
+                      ? `Tag ${z}, ${n} ${n === 1 ? 'Eintrag' : 'Einträge'}: ${amTag.map((e) => eintragKurzzeile(e)).join('. ')}`
+                      : `Tag ${z}, keine Einträge`
+                  }
                 >
                   <span
-                    className={`inline-flex h-6 min-w-[1.5rem] items-center justify-center rounded-md text-xs font-bold tabular-nums sm:text-sm ${
+                    className={`inline-flex h-5 min-w-[1.5rem] items-center justify-center rounded-md text-[11px] font-bold tabular-nums sm:h-6 sm:text-sm ${
                       isHeute ? 'bg-sky-600 text-white' : 'text-slate-200'
                     }`}
                   >
                     {z}
                   </span>
                   {n > 0 ? (
-                    <div className="mt-1 flex flex-wrap content-start items-center gap-0.5" aria-label={`${n} Einträge`}>
-                      {amTag.slice(0, 5).map((ev) => {
+                    <div className="mt-0.5 min-h-0 min-w-0" aria-hidden>
+                      {amTag.slice(0, 2).map((ev) => {
                         const st = kalenderKategorieMeta(ev.kategorie)
-                        return <span key={ev.id} className={`h-1.5 w-1.5 shrink-0 rounded-full ${st.dot}`} title={st.label} />
+                        return (
+                          <div key={ev.id} className="mt-0.5 flex min-w-0 items-start gap-0.5 sm:mt-0.5">
+                            <span className={`mt-0.5 h-1.5 w-1.5 flex-shrink-0 rounded-full ${st.dot}`} title={st.label} />
+                            <span className="line-clamp-2 min-w-0 break-words text-left text-[7px] leading-tight text-slate-200 sm:text-[8px]">
+                              {ev.uhrzeit.trim() ? (
+                                <>
+                                  <span className="whitespace-nowrap font-mono text-slate-500">{ev.uhrzeit}</span>
+                                  <span className="text-slate-300"> {ev.titel.trim() || 'Ohne Titel'}</span>
+                                </>
+                              ) : (
+                                ev.titel.trim() || 'Ohne Titel'
+                              )}
+                            </span>
+                          </div>
+                        )
                       })}
-                      {n > 5 ? (
-                        <span className="ml-0.5 text-[9px] font-bold text-slate-400">+{n - 5}</span>
+                      {amTag[2] != null ? (
+                        <div className="mt-0.5 hidden min-w-0 items-start gap-0.5 sm:flex" key={amTag[2].id}>
+                          <span
+                            className={`mt-0.5 h-1.5 w-1.5 flex-shrink-0 rounded-full ${kalenderKategorieMeta(amTag[2].kategorie).dot}`}
+                            title={kalenderKategorieMeta(amTag[2].kategorie).label}
+                          />
+                          <span className="line-clamp-2 min-w-0 break-words text-left text-[7px] leading-tight text-slate-200 sm:text-[8px]">
+                            {amTag[2].uhrzeit.trim() ? (
+                              <>
+                                <span className="whitespace-nowrap font-mono text-slate-500">{amTag[2].uhrzeit}</span>
+                                <span className="text-slate-300"> {amTag[2].titel.trim() || 'Ohne Titel'}</span>
+                              </>
+                            ) : (
+                              amTag[2].titel.trim() || 'Ohne Titel'
+                            )}
+                          </span>
+                        </div>
+                      ) : null}
+                      {n > 2 ? (
+                        n === 3 ? (
+                          <p className="mt-0.5 pl-1 text-[7px] font-bold leading-tight text-slate-500 sm:hidden">
+                            +1 weiterer
+                          </p>
+                        ) : (
+                          <>
+                            <p className="mt-0.5 pl-1 text-[7px] font-bold leading-tight text-slate-500 sm:hidden">
+                              +{n - 2} weitere
+                            </p>
+                            <p className="mt-0.5 hidden pl-1 text-[7px] font-bold leading-tight text-slate-500 sm:block">
+                              +{n - 3} weitere
+                            </p>
+                          </>
+                        )
                       ) : null}
                     </div>
                   ) : null}
@@ -220,7 +280,8 @@ export default function KalenderPage() {
             })}
           </div>
           <p className="border-t border-slate-800/80 px-3 py-2 text-[10px] text-slate-500 sm:px-4">
-            Tipp: Doppelklick auf einen Tag, um schnell einen Eintrag anzulegen.
+            Im Monatsraster: Titel (und Uhrzeit) pro Tag lesen; bei vielen Einträgen <span className="whitespace-nowrap">„+N weitere“</span>.
+            Tipp: Doppelklick auf einen Tag, um schnell einen Eintrag anzulegen. Rechts: vollständige Liste inkl. Notiz.
           </p>
         </div>
 

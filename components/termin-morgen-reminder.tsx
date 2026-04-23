@@ -6,7 +6,7 @@ import {
   heuteAlsIsoDatumLocal,
   HINWEIS_FENSTER_MINUTEN,
   ladeTerminReminderEinstellungen,
-  sammleTerminTitelFuerTag,
+  sammleKalenderHinweisZeilenFuerTag,
   sollTerminHinweisZuenden,
   speichereTerminReminderEinstellungen,
   TERMIN_REMINDER_EVENT,
@@ -22,7 +22,7 @@ function darfWebNotifications() {
 
 /**
  * Tägliche Erinnerung (lokale Uhrzeit, Standard 7:00) — sofern an dem Tag
- * mindestens ein Eintrag mit Kategorie „Termin“ (rot) vorgesehen ist.
+ * mindestens ein Kalendereintrag (alle Kategorien) vorgesehen ist.
  * Benötigt Browser-Benachrichtigungs-Erlaubnis; am zuverlässigsten, wenn
  * der Tab oder die PWA im Hintergrund offen ist.
  */
@@ -36,7 +36,7 @@ export function TerminMorgenReminderRunner() {
     const jetzt = new Date()
     const r = sollTerminHinweisZuenden(eintraege, einst, jetzt, HINWEIS_FENSTER_MINUTEN)
     if (!r.zuenden) return
-    const { uberschrift, text } = bauHinweisText(r.titel)
+    const { uberschrift, text } = bauHinweisText(r.zeilen)
     try {
       new Notification(uberschrift, {
         body: text,
@@ -107,11 +107,12 @@ export function TerminMorgenReminderEinstellungen() {
   return (
     <div className="overflow-hidden rounded-2xl border border-slate-800 bg-slate-900/80 shadow-md shadow-black/20">
       <div className="border-b border-slate-800 px-4 py-3 sm:px-5">
-        <h2 className="text-sm font-black text-slate-100 sm:text-base">Tägliche Termin-Erinnerung</h2>
+        <h2 className="text-sm font-black text-slate-100 sm:text-base">Tägliche Kalender-Erinnerung</h2>
         <p className="mt-1 text-[11px] leading-relaxed text-slate-500 sm:text-xs">
-          Wenn an einem Tag <strong className="text-rose-200/90">Kategorie „Termin“</strong> (rot) hinterlegt ist, erscheint
-          (falls erlaubt) in einem kurzen Fenster ab der eingestellten Uhr eine Benachrichtigung. Es wird pro Tag nur einmal
-          erinnert. Ohne laufendes Hintergrund-Tab/Server: bei komplett geschlossenem Browser kann die Erinnerung ausbleiben.
+          Wenn an einem Tag <strong className="text-slate-200/90">irgendein</strong> Kalendereintrag hinterlegt ist (Termin,
+          Geburtstag, Urlaub, Feiertag, Erinnerung, Sonstiges), erscheint (falls erlaubt) in einem kurzen Fenster ab der
+          eingestellten Uhr eine Benachrichtigung. Es wird pro Tag nur einmal erinnert. Ohne laufendes
+          Hintergrund-Tab/Server: bei komplett geschlossenem Browser kann die Erinnerung ausbleiben.
         </p>
       </div>
       <div className="space-y-3 px-4 py-4 sm:px-5">
@@ -184,8 +185,10 @@ export function TerminMorgenReminderEinstellungen() {
                 className="rounded-lg border border-slate-600 bg-slate-800/60 px-3 py-2 text-xs font-bold text-slate-200 transition hover:bg-slate-800 disabled:opacity-40"
                 disabled={perm !== 'granted' || !einst.enabled}
                 onClick={() => {
-                  const t = sammleTerminTitelFuerTag(ladeKalenderEintraege(), heuteAlsIsoDatumLocal())
-                  const { uberschrift, text } = bauHinweisText(t.length ? t : ['Beispiel: Arzt 10:00'])
+                  const t = sammleKalenderHinweisZeilenFuerTag(ladeKalenderEintraege(), heuteAlsIsoDatumLocal())
+                  const { uberschrift, text } = bauHinweisText(
+                    t.length ? t : ['Termin: Beispiel 10:00 Uhr', 'Erinnerung: Einkaufsliste'],
+                  )
                   try {
                     new Notification(uberschrift, { body: text, tag: 'mein-haushalt-termin-test' })
                   } catch {
@@ -198,8 +201,8 @@ export function TerminMorgenReminderEinstellungen() {
               </button>
             </div>
             <p className="text-[10px] leading-relaxed text-slate-600">
-              Nur Einträge mit <strong className="text-rose-200/80">Kategorie „Termin“</strong> zählen. Geburtstage (grün) oder
-              Urlaub (lila) lösen keinen „Termin“-Hinweis aus; dafür bitte echten Termin anlegen oder Kategorie wählen.
+              In der Meldung erscheint pro Eintrag <strong className="text-slate-400">Kategorielabel: Titel</strong>, z. B. „Geburtstag: …“
+              oder „Urlaub: …“.
             </p>
           </>
         )}
