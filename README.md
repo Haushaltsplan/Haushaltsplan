@@ -34,3 +34,18 @@ You can check out [the Next.js GitHub repository](https://github.com/vercel/next
 The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
 
 Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+
+---
+
+## Web-App starten (Launch)
+
+1. **Vercel-Konto:** [vercel.com](https://vercel.com) anmelden (z. B. mit GitHub).
+2. **Projekt verbinden:** Im Dashboard **Add New… → Project**, Git-Repository importieren **oder** lokal im Projektordner:
+   - `npx vercel login`
+   - `npx vercel` (Preview) bzw. `npx vercel --prod` (Produktion).
+   - Wenn ein alter `VERCEL_TOKEN` in der Umgebung steht und Fehler kommt: Token in den System-Umgebungsvariablen entfernen oder `vercel login` erneut ausführen.
+3. **Umgebungsvariablen:** Unter **Project → Settings → Environment Variables** die Werte aus deiner lokalen `.env.local` übernehmen (mindestens die, die du nutzt — siehe `.env.example`). Wichtig für die Anzeige der öffentlichen URL in der App: `NEXT_PUBLIC_APP_URL` auf die **Vercel-URL** setzen (z. B. `https://dein-projekt.vercel.app`).
+4. **Neu deployen:** Nach dem Speichern der Variablen **Redeploy** der letzten Deployment auslösen (oder neu pushen).
+5. **Android:** Seite in Chrome öffnen → Menü → **App installieren** / **Zum Startbildschirm hinzufügen**.
+
+`.env.local` wird **nicht** ins Git committed — die Production-Keys liegen nur bei Vercel.
