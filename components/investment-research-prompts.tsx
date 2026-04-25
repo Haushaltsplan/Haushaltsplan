@@ -299,7 +299,52 @@ Akkumulation: Ist das Volumen bei steigenden Kursen höher als bei fallenden Kur
 V-Shape Erholung: Wie schnell erholt sich der Kurs nach einem Schock (lange rote Kerzen) im Vergleich zum restlichen Chartverlauf?
 Marktstellung: Signalisiert der Chart ein „Flucht in Qualität“-Verhalten der Anleger?`,
   },
+  {
+    id: 'earningsanalyse',
+    title: 'Prompt für Earningsanalyse',
+    text: `Rolle: Agiere als Senior Equity Analyst mit einem Fokus auf fundamentale Analyse und Quality Compounders. Deine Arbeitsweise ist chirurgisch: Du dringst tiefer in die Materie ein als der Rest des Marktes. Dein Ziel ist es, das Narrativ des Managements zu dekonstruieren.
+
+Aufgabe: Analysiere die mitgesendeten Dokumente (Earnings Release PDF und Investor Presentation). Zerlege den Bericht bis ins kleinste Detail. Schau genau dorthin, wo es „weh tut“ – in die trockenen, langweiligen und komplexen Bereiche, die andere Analysten gerne übersehen.
+
+WICHTIGE VORGABEN:
+
+Keine Oberflächlichkeit: Ignoriere die bunten Bilder. Konzentriere dich auf die Substanz. Suche nach Inkonsistenzen zwischen den Slides und dem kleingedruckten Zahlenteil.
+
+Analytische Härte: Identifiziere Anzeichen von "Earnings Management" oder Bilanzkosmetik. Wo versucht das Management, Schwächen hinter komplexen Formulierungen oder bereinigten Kennzahlen (Non-GAAP) zu verstecken?
+
+Format: Erstelle einen strukturierten, messerscharfen Fließtext.
+
+Struktur des Berichts:
+
+Die strategische Sezierung: Welches Thema ist für dieses Geschäftsmodell in diesem Quartal geschäftskritisch? Analysiere nicht nur, was gesagt wurde, sondern was verschwiegen wurde.
+
+Management-Spin vs. Bilanz-Realität: Wo weicht das glatte Narrativ der Slides von der harten Realität der Reporting-Tabellen ab? Achte auf Änderungen in der Berichterstattung oder neue Fokus-Metriken, die von alten Problemen ablenken sollen.
+
+Forensik der Kennzahlen: Nenne die spezifischen, „trockenen“ Kennzahlen aus dem Anhang (z.B. Working Capital Trends, Cashflow-Konvertierung, Rückstellungen), die den wahren Zustand des Unternehmens verraten.
+
+Moat-Check & Kapitalallokation: Gab es subtile Hinweise auf eine Erosion der Preismacht? Wurde Kapital diszipliniert investiert oder zur Kaschierung von Wachstumsschwächen genutzt?
+
+Zusammenfassende Warnsignale:
+
+Die rote Flagge: Beschreibe das spezifische Warnsignal, das die Quality-Compounder-Thesis am stärksten gefährdet – gerade wenn es tief im Bericht versteckt ist.
+
+Die kritische Fußnote: Was ist das langweiligste, aber gefährlichste Detail im Kleingedruckten (z.B. latente Steuern, Pensionsverpflichtungen, Stock-based Compensation, Akquisitionskosten)?
+
+Befehl: Analysiere jetzt die angehängten Dateien mit maximaler Detailtiefe und erstelle ausschließlich diesen Bericht als Fließtext.`,
+  },
 ]
+
+const STEP_SUBTITLES: Record<string, string> = {
+  'schritt-1': 'Geschäftsmodell, Nachfrage und Margenqualität',
+  'schritt-2': 'Wettbewerbsvorteile und wirtschaftlicher Burggraben',
+  'schritt-3': 'Managementqualität und Kapitalallokation',
+  'schritt-4': 'Forensisches Finanz-Audit (Kennzahlencheck)',
+  'schritt-5': 'Bewertung, Fair Value und Renditeszenarien',
+  'schritt-6': 'Killer-Risiken, Verwässerung und Bilanzrisiken',
+  'schritt-7': 'Makro, Geopolitik, ESG und Antifragilität',
+  'schritt-8': 'Chartstruktur, Volumen und technische Resilienz',
+  earningsanalyse: 'Earnings-Release und Investor-Presentation forensisch sezieren',
+}
 
 function parsePersistedPrompts(raw: string | null): PromptStep[] | null {
   if (!raw) return null
@@ -320,6 +365,7 @@ function parsePersistedPrompts(raw: string | null): PromptStep[] | null {
 export function InvestmentResearchPrompts() {
   const [steps, setSteps] = useState<PromptStep[]>(DEFAULT_STEPS)
   const [loaded, setLoaded] = useState(false)
+  const [openIds, setOpenIds] = useState<string[]>([])
 
   useEffect(() => {
     const next = parsePersistedPrompts(window.localStorage.getItem(STORAGE_KEY))
@@ -355,14 +401,18 @@ export function InvestmentResearchPrompts() {
     toast.success('Alle Prompts zurückgesetzt')
   }
 
+  function toggleOpen(stepId: string) {
+    setOpenIds((prev) => (prev.includes(stepId) ? prev.filter((id) => id !== stepId) : [...prev, stepId]))
+  }
+
   return (
     <section className="rounded-[2.5rem] border border-slate-800 bg-slate-900 p-6 shadow-2xl shadow-black/35 sm:p-8">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <p className="text-xs font-bold uppercase tracking-widest text-sky-400/90">Research-Prompts</p>
-          <h2 className="mt-1 text-2xl font-black tracking-tight text-slate-100">Quality-Analyse gespeichert</h2>
+          <h2 className="mt-1 text-2xl font-black tracking-tight text-slate-100">Prompts für Unternehmensanalyse</h2>
           <p className="mt-2 text-sm text-slate-400">
-            Editierbar und lokal gespeichert. Pro Schritt kannst du direkt kopieren.
+            Kompakt mit auf- und zuklappbaren Schritten. Editierbar, lokal gespeichert und direkt kopierbar.
           </p>
         </div>
         <button
@@ -379,10 +429,25 @@ export function InvestmentResearchPrompts() {
       </p>
 
       <div className="mt-5 space-y-4">
-        {steps.map((step) => (
+        {steps.map((step, index) => {
+          const isOpen = openIds.includes(step.id)
+          return (
           <article key={step.id} className="rounded-2xl border border-slate-800 bg-slate-950/50 p-4">
-            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-              <h3 className="text-sm font-bold text-slate-100">{step.title}</h3>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <button
+                type="button"
+                onClick={() => toggleOpen(step.id)}
+                className="min-w-0 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500/40 rounded-lg p-1"
+                aria-expanded={isOpen}
+              >
+                <h3 className="text-sm font-bold text-slate-100">
+                  {step.title}
+                  <span className="ml-2 text-[11px] font-medium text-slate-500">({isOpen ? 'zuklappen' : 'aufklappen'})</span>
+                </h3>
+                <p className="mt-0.5 text-[12px] text-slate-400">
+                  {STEP_SUBTITLES[step.id] || `Analyse-Schritt ${index + 1}`}
+                </p>
+              </button>
               <div className="flex items-center gap-2">
                 <button
                   type="button"
@@ -400,17 +465,23 @@ export function InvestmentResearchPrompts() {
                 </button>
               </div>
             </div>
-            <textarea
-              value={step.text}
-              onChange={(e) => {
-                const value = e.target.value
-                setSteps((prev) => prev.map((s) => (s.id === step.id ? { ...s, text: value } : s)))
-              }}
-              className="min-h-[14rem] w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2.5 text-xs leading-relaxed text-slate-200 outline-none focus:ring-2 focus:ring-sky-500/40"
-              spellCheck={false}
-            />
+            {!isOpen ? (
+              <p className="mt-3 text-[11px] text-slate-500">
+                Inhalt eingeklappt · {step.text.length.toLocaleString('de-DE')} Zeichen
+              </p>
+            ) : (
+              <textarea
+                value={step.text}
+                onChange={(e) => {
+                  const value = e.target.value
+                  setSteps((prev) => prev.map((s) => (s.id === step.id ? { ...s, text: value } : s)))
+                }}
+                className="mt-3 min-h-[14rem] w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2.5 text-xs leading-relaxed text-slate-200 outline-none focus:ring-2 focus:ring-sky-500/40"
+                spellCheck={false}
+              />
+            )}
           </article>
-        ))}
+        )})}
       </div>
     </section>
   )
