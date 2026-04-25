@@ -22,7 +22,6 @@ import {
   sortiereEintraegeNachUhrzeitDannTitel,
 } from '@/lib/haushalt-kalender'
 import { KalenderFotoImport } from '@/components/kalender-foto-import'
-import { TerminMorgenReminderEinstellungen } from '@/components/termin-morgen-reminder'
 import { istSupabaseClientKonfiguriert } from '@/lib/supabase'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import toast from 'react-hot-toast'
@@ -171,29 +170,6 @@ export default function KalenderPage() {
     <div className="min-w-0 space-y-5 animate-in fade-in duration-500">
       <div className="min-w-0 overflow-hidden rounded-2xl border border-slate-800 bg-slate-900 p-4 shadow-lg shadow-black/25 sm:p-5">
         <h1 className="text-[11px] font-bold uppercase tracking-widest text-slate-500">Kalender</h1>
-        <p className="mt-0.5 text-xs text-slate-500 sm:text-sm">
-          Kategorien mit festen Farben (z. B. Geburtstag, Termin, Urlaub).
-          {istSupabaseClientKonfiguriert() ? (
-            <>
-              {' '}
-              <strong className="font-medium text-teal-200/90">Synchron über Supabase</strong> — dieselben Einträge am PC und
-              auf dem Handy (ein gemeinsames Haushalts-Projekt).
-            </>
-          ) : (
-            <>
-              {' '}
-              Ohne Supabase-Konfiguration nur in diesem Browser gespeichert (kein Abgleich zwischen Geräten).
-            </>
-          )}
-        </p>
-        <ul className="mt-3 flex flex-wrap gap-x-3 gap-y-1.5 text-[10px] text-slate-500 sm:gap-x-4 sm:text-[11px]">
-          {KALENDER_KATEGORIEN.map((k) => (
-            <li key={k.id} className="inline-flex items-center gap-1.5">
-              <span className={`h-2 w-2 shrink-0 rounded-full ${k.dot}`} aria-hidden />
-              <span className="text-slate-400">{k.label}</span>
-            </li>
-          ))}
-        </ul>
       </div>
 
       {!kalenderBereit ? (
@@ -344,10 +320,6 @@ export default function KalenderPage() {
               )
             })}
           </div>
-          <p className="border-t border-slate-800/80 px-3 py-2 text-[10px] text-slate-500 sm:px-4">
-            Im Monatsraster: Titel (und Uhrzeit) pro Tag lesen; bei vielen Einträgen <span className="whitespace-nowrap">„+N weitere“</span>.
-            Tipp: Doppelklick auf einen Tag, um schnell einen Eintrag anzulegen. Rechts: vollständige Liste inkl. Notiz.
-          </p>
         </div>
 
         <aside className="overflow-hidden rounded-2xl border border-slate-800 bg-slate-900 shadow-lg shadow-black/20">
@@ -424,8 +396,6 @@ export default function KalenderPage() {
         </aside>
         </div>
       )}
-
-      <TerminMorgenReminderEinstellungen />
 
       {kalenderBereit ? (
         <KalenderFotoImport

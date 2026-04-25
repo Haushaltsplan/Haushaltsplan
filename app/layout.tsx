@@ -32,8 +32,6 @@ export default function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const oeffentlicheUrl = (process.env.NEXT_PUBLIC_APP_URL || "").trim().replace(/\/$/, "")
-
   return (
     <html lang="de">
       <body
@@ -47,21 +45,6 @@ export default function RootLayout({
             <div className="hidden shrink-0 font-mono text-xs text-slate-600 sm:block">v1.0.30</div>
           </div>
         </nav>
-
-        {oeffentlicheUrl ? (
-          <div className="border-b border-slate-800 bg-slate-900/80">
-            <div className="mx-auto min-w-0 max-w-6xl px-3 py-2.5 text-center text-[12px] leading-snug text-slate-400 sm:px-4 md:text-left">
-              <span className="font-semibold text-slate-300">Öffentliche Adresse </span>
-              (Lesezeichen, teilen, unterwegs im Browser):{' '}
-              <a
-                href={oeffentlicheUrl}
-                className="break-all font-mono text-[11px] text-sky-300 underline decoration-sky-700 underline-offset-2 hover:text-sky-200"
-              >
-                {oeffentlicheUrl}
-              </a>
-            </div>
-          </div>
-        ) : null}
 
         <Toaster
           position="bottom-center"

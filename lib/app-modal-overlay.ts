@@ -14,6 +14,6 @@ export const appModalPanelClassName =
 export const appModalPanelWideScrollClassName =
   'max-h-[min(92vh,40rem)] w-full max-w-lg overflow-y-auto rounded-2xl border border-slate-700 bg-slate-900 shadow-2xl shadow-black/50'
 
-/** KI-Coach: fester Rahmen, Inhalt scrollt innen. */
+/** KI-Coach: fester Rahmen, Inhalt scrollt innen (KI-erkennbar: Violett-Akzent). */
 export const appModalPanelCoachClassName =
-  'flex max-h-[min(92vh,44rem)] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-slate-700 bg-slate-900 shadow-2xl shadow-black/50'
+  'flex max-h-[min(92vh,44rem)] w-full max-w-lg flex-col overflow-hidden rounded-2xl border-2 border-violet-500/45 bg-gradient-to-b from-violet-950/45 to-slate-900 shadow-2xl shadow-violet-950/25 ring-1 ring-violet-400/15'

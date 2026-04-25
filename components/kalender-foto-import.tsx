@@ -2,6 +2,7 @@
 
 import { kalenderKategorieMeta } from '@/lib/haushalt-kalender'
 import type { KalenderFotoImportZeile } from '@/lib/kalender-foto-vision'
+import { KI_CHIP, KI_PANEL_OUTER } from '@/lib/ki-ui'
 import { useCallback, useId, useRef, useState } from 'react'
 import toast from 'react-hot-toast'
 
@@ -71,9 +72,14 @@ export function KalenderFotoImport({ onImport }: Props) {
   }
 
   return (
-    <div className="overflow-hidden rounded-2xl border border-slate-800 bg-slate-900/80 shadow-md shadow-black/20">
-      <div className="border-b border-slate-800 px-4 py-3 sm:px-5">
-        <h2 className="text-sm font-black text-slate-100 sm:text-base">Foto importieren</h2>
+    <div className={`overflow-hidden rounded-2xl ${KI_PANEL_OUTER}`}>
+      <div className="border-b border-violet-800/40 px-4 py-3 sm:px-5">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className={KI_CHIP} aria-hidden>
+            KI
+          </span>
+          <h2 className="text-sm font-black text-violet-100 sm:text-base">Foto importieren</h2>
+        </div>
         <p className="mt-1 text-[11px] leading-relaxed text-slate-500 sm:text-xs">
           Foto hochladen (Einladung, Ticket, Arztbrief, Screenshot). Die KI liest <strong className="text-slate-400">Datum</strong> und{' '}
           <strong className="text-slate-400">Titel</strong> und schlägt eine <strong className="text-slate-400">Kategorie</strong> vor — bitte vor dem

@@ -1063,9 +1063,6 @@ export default function FinanzenPage() {
           >
             {saldo.toLocaleString('de-DE', { style: 'currency', currency: 'EUR' })}
           </p>
-          <p className="mx-auto mt-3 max-w-md text-center text-[12px] leading-relaxed text-slate-500 lg:mx-0 lg:text-left">
-            Nur <strong className="font-medium text-slate-400">gebuchte</strong> Einnahmen und Ausgaben dieses Monats — wie in der Liste mit echten Buchungsdaten (ohne reine Monatsplan-Zeilen).
-          </p>
         </div>
         <div className="flex w-full min-w-0 flex-col gap-4 lg:w-auto lg:max-w-md lg:shrink-0">
           <div className="flex min-w-0 shrink-0 items-stretch justify-center gap-0 overflow-hidden rounded-2xl border border-slate-700/70 bg-slate-950/60 p-1 shadow-inner">
@@ -1215,10 +1212,6 @@ export default function FinanzenPage() {
           <div className="min-w-0">
             <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-sky-400/90">Ansichtsmonat</p>
             <p className="mt-1 text-lg font-semibold tracking-tight text-slate-100 sm:text-xl">{formatMonatsLabelDe(ansichtMonat)}</p>
-            <p className="mt-2 max-w-xl text-xs leading-relaxed text-slate-500 sm:mt-3 sm:text-[13px]">
-              Liste und Summen gelten für diesen Kalendermonat (Buchungsdatum bzw. Rechnungsdatum aus PDF/Bild-Import). Die Leiste unten
-              springt zwischen allen Monaten mit Daten.
-            </p>
           </div>
           <div className="flex w-full min-w-0 flex-col gap-2 sm:w-auto sm:max-w-full md:shrink-0">
             <div className="flex w-full min-w-0 flex-wrap items-stretch justify-stretch gap-1 rounded-xl border border-slate-700/70 bg-slate-950/70 p-1 shadow-inner sm:inline-flex sm:w-auto sm:flex-nowrap sm:items-center sm:justify-center sm:gap-1.5">
@@ -1316,7 +1309,6 @@ export default function FinanzenPage() {
             onChange={(e) => setGrund(e.target.value)}
           />
           <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-slate-500">Datum (TT/MM/JJJJ)</label>
-          <p className="mb-2 text-[12px] leading-relaxed text-slate-500">Das eingegebene Datum wird direkt als Buchungsdatum gespeichert.</p>
           <input
             type="text"
             placeholder="TT/MM/JJJJ"
@@ -1719,11 +1711,6 @@ export default function FinanzenPage() {
         <div className="mb-6 flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
           <div className="min-w-0">
             <h2 className="text-lg font-semibold tracking-tight text-slate-100">Daueraufträge</h2>
-            <p className="mt-2 max-w-xl text-[13px] leading-relaxed text-slate-500">
-              Monatliche Abbuchungen (Bausparer, Versicherungen, Abos …). Am{' '}
-              <span className="font-medium text-slate-400">konfigurierten Tag</span> wird gebucht, sobald der Tag erreicht
-              ist und für den Monat noch keine automatische Buchung erfolgte.
-            </p>
           </div>
           <div className="flex shrink-0 flex-col gap-2 sm:flex-row sm:flex-wrap sm:justify-end">
             <button

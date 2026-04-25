@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import toast from 'react-hot-toast'
+import { CollapsibleChevron, CollapsibleRowHeaderEnd, LABEL_ZUKLAPPEN } from '@/components/collapsible-ui'
 
 type PromptStep = {
   id: string
@@ -334,18 +335,6 @@ Befehl: Analysiere jetzt die angehängten Dateien mit maximaler Detailtiefe und 
   },
 ]
 
-const STEP_SUBTITLES: Record<string, string> = {
-  'schritt-1': 'Geschäftsmodell, Nachfrage und Margenqualität',
-  'schritt-2': 'Wettbewerbsvorteile und wirtschaftlicher Burggraben',
-  'schritt-3': 'Managementqualität und Kapitalallokation',
-  'schritt-4': 'Forensisches Finanz-Audit (Kennzahlencheck)',
-  'schritt-5': 'Bewertung, Fair Value und Renditeszenarien',
-  'schritt-6': 'Killer-Risiken, Verwässerung und Bilanzrisiken',
-  'schritt-7': 'Makro, Geopolitik, ESG und Antifragilität',
-  'schritt-8': 'Chartstruktur, Volumen und technische Resilienz',
-  earningsanalyse: 'Earnings-Release und Investor-Presentation forensisch sezieren',
-}
-
 function parsePersistedPrompts(raw: string | null): PromptStep[] | null {
   if (!raw) return null
   try {
@@ -365,7 +354,9 @@ function parsePersistedPrompts(raw: string | null): PromptStep[] | null {
 export function InvestmentResearchPrompts() {
   const [steps, setSteps] = useState<PromptStep[]>(DEFAULT_STEPS)
   const [loaded, setLoaded] = useState(false)
-  const [openIds, setOpenIds] = useState<string[]>([])
+  const [sectionOpen, setSectionOpen] = useState(false)
+  const [openId, setOpenId] = useState<string | null>(null)
+  const [earningsOpen, setEarningsOpen] = useState(false)
 
   useEffect(() => {
     const next = parsePersistedPrompts(window.localStorage.getItem(STORAGE_KEY))
@@ -378,7 +369,9 @@ export function InvestmentResearchPrompts() {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(steps))
   }, [steps, loaded])
 
-  const totalChars = useMemo(() => steps.reduce((acc, s) => acc + s.text.length, 0), [steps])
+  const analysisSteps = useMemo(() => steps.filter((s) => s.id !== 'earningsanalyse'), [steps])
+  const earningsStep = useMemo(() => steps.find((s) => s.id === 'earningsanalyse') ?? null, [steps])
+  const totalChars = useMemo(() => analysisSteps.reduce((acc, s) => acc + s.text.length, 0), [analysisSteps])
 
   async function copyStepText(step: PromptStep) {
     try {
@@ -402,7 +395,7 @@ export function InvestmentResearchPrompts() {
   }
 
   function toggleOpen(stepId: string) {
-    setOpenIds((prev) => (prev.includes(stepId) ? prev.filter((id) => id !== stepId) : [...prev, stepId]))
+    setOpenId((prev) => (prev === stepId ? null : stepId))
   }
 
   return (
@@ -410,10 +403,7 @@ export function InvestmentResearchPrompts() {
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <p className="text-xs font-bold uppercase tracking-widest text-sky-400/90">Research-Prompts</p>
-          <h2 className="mt-1 text-2xl font-black tracking-tight text-slate-100">Prompts für Unternehmensanalyse</h2>
-          <p className="mt-2 text-sm text-slate-400">
-            Kompakt mit auf- und zuklappbaren Schritten. Editierbar, lokal gespeichert und direkt kopierbar.
-          </p>
+          <h2 className="mt-1 text-2xl font-black tracking-tight text-slate-100">Analyse-Prompts</h2>
         </div>
         <button
           type="button"
@@ -425,64 +415,115 @@ export function InvestmentResearchPrompts() {
       </div>
 
       <p className="mt-4 text-[11px] text-slate-500">
-        {steps.length} Schritte · {totalChars.toLocaleString('de-DE')} Zeichen
+        {analysisSteps.length} Schritte · {totalChars.toLocaleString('de-DE')} Zeichen
       </p>
 
-      <div className="mt-5 space-y-4">
-        {steps.map((step, index) => {
-          const isOpen = openIds.includes(step.id)
-          return (
-          <article key={step.id} className="rounded-2xl border border-slate-800 bg-slate-950/50 p-4">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <button
-                type="button"
-                onClick={() => toggleOpen(step.id)}
-                className="min-w-0 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500/40 rounded-lg p-1"
-                aria-expanded={isOpen}
-              >
-                <h3 className="text-sm font-bold text-slate-100">
-                  {step.title}
-                  <span className="ml-2 text-[11px] font-medium text-slate-500">({isOpen ? 'zuklappen' : 'aufklappen'})</span>
-                </h3>
-                <p className="mt-0.5 text-[12px] text-slate-400">
-                  {STEP_SUBTITLES[step.id] || `Analyse-Schritt ${index + 1}`}
-                </p>
-              </button>
-              <div className="flex items-center gap-2">
+      <div className="mt-5 overflow-hidden rounded-2xl border border-white/10 bg-gradient-to-b from-slate-900/40 to-slate-950/90 ring-1 ring-white/5 shadow-inner shadow-black/20">
+        <button
+          type="button"
+          onClick={() => setSectionOpen((v) => !v)}
+          className="group flex w-full items-center justify-between gap-3 px-4 py-3.5 text-left transition hover:bg-white/[0.04]"
+          aria-expanded={sectionOpen}
+        >
+          <span className="text-sm font-bold tracking-tight text-slate-100">Prompt für Unternehmensanalyse (8 Schritte)</span>
+          <CollapsibleRowHeaderEnd open={sectionOpen} labels={LABEL_ZUKLAPPEN} tone="sky" />
+        </button>
+        {!sectionOpen ? null : (
+          <div className="space-y-2 border-t border-slate-800/90 bg-slate-950/20 p-3">
+            {analysisSteps.map((step) => {
+              const isOpen = openId === step.id
+              return (
+                <article
+                  key={step.id}
+                  className="rounded-xl border border-white/10 bg-slate-950/50 p-3 ring-1 ring-white/[0.04]"
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <button
+                      type="button"
+                      onClick={() => toggleOpen(step.id)}
+                      className="group flex min-w-0 flex-1 items-center justify-between gap-2 rounded-lg p-1 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500/40"
+                      aria-expanded={isOpen}
+                    >
+                      <h3 className="min-w-0 text-sm font-bold text-slate-100">{step.title}</h3>
+                      <CollapsibleChevron open={isOpen} tone="sky" size="sm" />
+                    </button>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => resetStep(step.id)}
+                        className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-1.5 text-[11px] font-semibold text-slate-300 transition hover:bg-slate-800"
+                      >
+                        Zurücksetzen
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void copyStepText(step)}
+                        className="rounded-lg bg-sky-600 px-3 py-1.5 text-[11px] font-bold text-white transition hover:bg-sky-500"
+                      >
+                        Copy
+                      </button>
+                    </div>
+                  </div>
+                  {!isOpen ? null : (
+                    <textarea
+                      value={step.text}
+                      onChange={(e) => {
+                        const value = e.target.value
+                        setSteps((prev) => prev.map((s) => (s.id === step.id ? { ...s, text: value } : s)))
+                      }}
+                      className="mt-3 min-h-[14rem] w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2.5 text-xs leading-relaxed text-slate-200 outline-none focus:ring-2 focus:ring-sky-500/40"
+                      spellCheck={false}
+                    />
+                  )}
+                </article>
+              )
+            })}
+          </div>
+        )}
+      </div>
+
+      {earningsStep ? (
+        <div className="mt-4 overflow-hidden rounded-2xl border border-white/10 bg-gradient-to-b from-slate-900/40 to-slate-950/90 ring-1 ring-white/5 shadow-inner shadow-black/20">
+          <button
+            type="button"
+            onClick={() => setEarningsOpen((v) => !v)}
+            className="group flex w-full items-center justify-between gap-3 px-4 py-3.5 text-left transition hover:bg-white/[0.04]"
+            aria-expanded={earningsOpen}
+          >
+            <span className="text-sm font-bold tracking-tight text-slate-100">Prompt für Earningsanalyse</span>
+            <CollapsibleRowHeaderEnd open={earningsOpen} labels={LABEL_ZUKLAPPEN} tone="sky" />
+          </button>
+          {!earningsOpen ? null : (
+            <div className="space-y-2 border-t border-slate-800 p-3">
+              <div className="flex items-center justify-end gap-2">
                 <button
                   type="button"
-                  onClick={() => resetStep(step.id)}
+                  onClick={() => resetStep(earningsStep.id)}
                   className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-1.5 text-[11px] font-semibold text-slate-300 transition hover:bg-slate-800"
                 >
                   Zurücksetzen
                 </button>
                 <button
                   type="button"
-                  onClick={() => void copyStepText(step)}
+                  onClick={() => void copyStepText(earningsStep)}
                   className="rounded-lg bg-sky-600 px-3 py-1.5 text-[11px] font-bold text-white transition hover:bg-sky-500"
                 >
                   Copy
                 </button>
               </div>
-            </div>
-            {!isOpen ? (
-              <p className="mt-3 text-[11px] text-slate-500">
-                Inhalt eingeklappt · {step.text.length.toLocaleString('de-DE')} Zeichen
-              </p>
-            ) : (
               <textarea
-                value={step.text}
+                value={earningsStep.text}
                 onChange={(e) => {
                   const value = e.target.value
-                  setSteps((prev) => prev.map((s) => (s.id === step.id ? { ...s, text: value } : s)))
+                  setSteps((prev) => prev.map((s) => (s.id === earningsStep.id ? { ...s, text: value } : s)))
                 }}
-                className="mt-3 min-h-[14rem] w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2.5 text-xs leading-relaxed text-slate-200 outline-none focus:ring-2 focus:ring-sky-500/40"
+                className="min-h-[14rem] w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2.5 text-xs leading-relaxed text-slate-200 outline-none focus:ring-2 focus:ring-sky-500/40"
                 spellCheck={false}
               />
-            )}
-          </article>
-        )})}
-      </div>
+            </div>
+          )}
+        </div>
+      ) : null}
     </section>
   )
 }

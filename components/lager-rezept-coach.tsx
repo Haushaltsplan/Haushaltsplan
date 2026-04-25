@@ -2,6 +2,7 @@
 
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import toast from 'react-hot-toast'
+import { CollapsibleRowHeaderEnd, LABEL_EINKLAPPEN } from '@/components/collapsible-ui'
 import {
   COACH_MAX_IMAGES_PER_SEND,
   coachImageDataUrl,
@@ -12,6 +13,7 @@ import { appModalBackdropClassName, appModalPanelClassName } from '@/lib/app-mod
 import { buildMehrKochanleitungPrompt } from '@/lib/rezept-kochanleitung-prompt'
 import { normalisiereRezeptKategorie } from '@/lib/lager-rezept-katalog-kategorie'
 import { supabase } from '@/lib/supabase'
+import { KI_ASSISTANT_BUBBLE, KI_CHIP, KI_INNER_WELL, KI_PANEL_OUTER } from '@/lib/ki-ui'
 import {
   normalisiereKcalGesamt,
   parseRezeptCoachAntwortJson,
@@ -361,7 +363,7 @@ export function RezeptStructuredCards({
 export function LagerRezeptCoach({ artikel, onLagerAktualisiert, onKatalogGeaendert }: Props) {
   const [open, setOpen] = useState(false)
   const [kiConfigured, setKiConfigured] = useState<boolean | null>(null)
-  const [kiProvider, setKiProvider] = useState<'gemini' | 'openai' | null>(null)
+  const [, setKiProvider] = useState<'gemini' | 'openai' | null>(null)
   const [input, setInput] = useState('')
   const [draftImages, setDraftImages] = useState<CoachImagePart[]>([])
   const [loading, setLoading] = useState(false)
@@ -631,22 +633,25 @@ export function LagerRezeptCoach({ artikel, onLagerAktualisiert, onKatalogGeaend
 
   return (
     <>
-    <div className="rounded-[2rem] border border-slate-800 bg-slate-900 shadow-xl shadow-black/30">
+    <div className={`rounded-[2rem] ${KI_PANEL_OUTER}`}>
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className="flex w-full items-center justify-between gap-4 px-6 py-5 text-left transition hover:bg-slate-800/40 md:px-8"
+        className="group flex w-full items-center justify-between gap-4 px-6 py-5 text-left transition hover:bg-violet-950/20 md:px-8"
         aria-expanded={open}
       >
-        <div>
-          <h2 className="text-lg font-black text-teal-300">KI: Rezepte gegen Lebensmittelverschwendung</h2>
-          <p className="mt-1 text-sm text-slate-500">
-            Nutzt deinen aktuellen Vorrat ({mitBestand} Artikel mit positivem Bestand) — optional Foto vom Kühlschrank.
-          </p>
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className={KI_CHIP} aria-hidden>
+              KI
+            </span>
+            <h2 className="min-w-0 text-lg font-black text-violet-100">
+              Rezepte gegen Lebensmittelverschwendung
+            </h2>
+          </div>
+          <p className="mt-1 text-sm text-slate-500">{mitBestand} Artikel mit Bestand</p>
         </div>
-        <span className="shrink-0 rounded-xl border border-slate-600 px-3 py-1.5 text-xs font-bold text-slate-400">
-          {open ? 'Einklappen' : 'Aufklappen'}
-        </span>
+        <CollapsibleRowHeaderEnd open={open} labels={LABEL_EINKLAPPEN} tone="violet" />
       </button>
 
       {open && (
@@ -664,12 +669,6 @@ export function LagerRezeptCoach({ artikel, onLagerAktualisiert, onKatalogGeaend
               </p>
             </div>
           )}
-          {kiConfigured === true && kiProvider && (
-            <p className="mb-2 shrink-0 text-[10px] text-slate-600">
-              Verbunden: {kiProvider === 'gemini' ? 'Gemini' : 'OpenAI'} — Daten gehen an den KI-Dienst.
-            </p>
-          )}
-
           <div className="mb-1 flex shrink-0 items-center justify-between gap-2">
             <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-500">Konversation</span>
             {messages.length > 0 && (
@@ -678,25 +677,11 @@ export function LagerRezeptCoach({ artikel, onLagerAktualisiert, onKatalogGeaend
               </span>
             )}
           </div>
-          <div className="flex min-h-[13rem] max-h-[min(30rem,52vh)] flex-col overflow-hidden rounded-xl border border-slate-800/80 bg-slate-950/60">
+          <div
+            className={`flex min-h-[13rem] max-h-[min(30rem,52vh)] flex-col overflow-hidden rounded-xl ${KI_INNER_WELL}`}
+          >
             <div className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain p-3 md:p-4">
-              {messages.length === 0 && (
-                <div className="rounded-lg border border-dashed border-slate-700/80 bg-slate-900/40 px-3 py-4">
-                  <p className="text-[13px] font-semibold text-slate-400">So geht&apos;s</p>
-                  <ul className="mt-2 list-inside list-disc space-y-1.5 text-xs leading-relaxed text-slate-500">
-                    <li>Frage stellen oder Vorschlag unten antippen — der Bestand wird automatisch mitgeschickt.</li>
-                    <li>
-                      Rezepte mit <span className="font-semibold text-slate-400">Mengen</span> und Schritten; bei Bedarf
-                      „Kochanleitung ausführlicher“ und erneut senden.
-                    </li>
-                    <li>
-                      „Zutaten aus Vorrat ausbuchen“ legt eine Mahlzeit an und bucht den Bestand ab — Kostenrückblick unter „Gekocht
-                      und gegessen“ (Service Role nötig).
-                    </li>
-                    <li>Optional Foto vom Kühlschrank anhängen.</li>
-                  </ul>
-                </div>
-              )}
+              {messages.length === 0 ? null : null}
               {messages.map((m, i) =>
                 m.role === 'user' ? (
                   <div key={i} className="flex justify-end">
@@ -722,12 +707,10 @@ export function LagerRezeptCoach({ artikel, onLagerAktualisiert, onKatalogGeaend
                   </div>
                 ) : (
                   <div key={i} className="flex justify-start">
-                    <div className="w-full max-w-full rounded-2xl rounded-bl-md border border-slate-700/90 border-l-4 border-l-teal-500 bg-slate-900/80 pl-3.5 pr-3 py-3 shadow-inner shadow-black/20 md:pl-4 md:pr-4">
-                      <div className="mb-2 flex items-center gap-2 border-b border-slate-800/80 pb-2">
-                        <span className="rounded-md bg-teal-950/80 px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wider text-teal-300/95">
-                          KI
-                        </span>
-                        <span className="text-[11px] text-slate-500">Rezeptvorschläge</span>
+                    <div className={`w-full max-w-full rounded-2xl rounded-bl-md pl-3.5 pr-3 py-3 md:pl-4 md:pr-4 ${KI_ASSISTANT_BUBBLE}`}>
+                      <div className="mb-2 flex items-center gap-2 border-b border-violet-800/50 pb-2">
+                        <span className={KI_CHIP}>KI</span>
+                        <span className="text-[11px] font-semibold text-violet-200/90">Rezeptvorschläge</span>
                       </div>
                       {m.structured ? (
                         <RezeptStructuredCards
@@ -748,12 +731,12 @@ export function LagerRezeptCoach({ artikel, onLagerAktualisiert, onKatalogGeaend
                 ),
               )}
               {loading && (
-                <div className="flex items-center gap-2 rounded-lg border border-teal-900/40 bg-teal-950/25 px-3 py-2">
+                <div className="flex items-center gap-2 rounded-lg border border-violet-500/35 bg-violet-950/40 px-3 py-2">
                   <span className="relative flex h-2 w-2">
-                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-teal-400/60 opacity-75" />
-                    <span className="relative inline-flex h-2 w-2 rounded-full bg-teal-400" />
+                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-violet-400/60 opacity-75" />
+                    <span className="relative inline-flex h-2 w-2 rounded-full bg-violet-400" />
                   </span>
-                  <span className="text-xs font-semibold text-teal-300/90">Antwort wird erstellt …</span>
+                  <span className="text-xs font-semibold text-violet-200/95">Antwort wird erstellt …</span>
                 </div>
               )}
               <div ref={endRef} />
@@ -761,7 +744,6 @@ export function LagerRezeptCoach({ artikel, onLagerAktualisiert, onKatalogGeaend
           </div>
 
           <div className="mt-4 shrink-0 space-y-2 border-t border-slate-800/80 pt-4">
-            <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-500">Schnellstart</p>
             <div className="flex flex-wrap gap-2">
               <button
                 type="button"
@@ -829,7 +811,6 @@ export function LagerRezeptCoach({ artikel, onLagerAktualisiert, onKatalogGeaend
               </div>
             )}
 
-            <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-500">Deine Nachricht</p>
             <textarea
               value={input}
               onChange={(e) => setInput(e.target.value)}
@@ -844,11 +825,10 @@ export function LagerRezeptCoach({ artikel, onLagerAktualisiert, onKatalogGeaend
               placeholder={
                 kiConfigured === false
                   ? 'Zuerst KI-Schlüssel in .env.local …'
-                  : 'Frage oder Wunsch … optional Foto vom Vorrat.'
+                  : 'Nachricht …'
               }
               className="w-full resize-none rounded-xl border border-slate-700 bg-slate-950 p-3 text-sm text-slate-100 outline-none focus:ring-2 focus:ring-teal-500/40 disabled:opacity-50"
             />
-            <p className="text-[10px] text-slate-600">Enter sendet · Shift+Enter für neue Zeile</p>
             <div className="flex flex-wrap gap-2">
               <button
                 type="button"
@@ -880,9 +860,6 @@ export function LagerRezeptCoach({ artikel, onLagerAktualisiert, onKatalogGeaend
                 Senden
               </button>
             </div>
-            <p className="text-[10px] text-slate-600">
-              Lagerliste und Text/Fotos werden an denselben KI-Dienst wie der Finanz-Coach gesendet (externe Verarbeitung).
-            </p>
           </div>
         </div>
       )}

@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import toast from 'react-hot-toast'
+import { CollapsiblePillButton, LABEL_EINKLAPPEN } from '@/components/collapsible-ui'
 import {
   COACH_MAX_IMAGES_PER_SEND,
   compressImageFileForCoach,
@@ -9,6 +10,7 @@ import {
 } from '@/lib/finance-coach-images'
 import type { Kassenzeile } from '@/lib/kassenzettel-gemini'
 import { LAGER_PRODUKT_KATEGORIEN } from '@/lib/lager-produkt-kategorie'
+import { KI_CHIP, KI_PANEL_OUTER } from '@/lib/ki-ui'
 
 type Props = { disabled?: boolean; onBuchungFertig: () => void }
 
@@ -162,11 +164,17 @@ export function LagerKassenzettelPanel({ disabled, onBuchungFertig }: Props) {
   const hatEntwurf = images.length > 0 || (positionen != null && positionen.length > 0)
 
   return (
-    <div className="rounded-xl border border-violet-800/45 bg-slate-900/95 p-3 shadow-md shadow-black/20 sm:p-3.5">
+    <div className={`rounded-xl p-3 shadow-md shadow-black/20 sm:p-3.5 ${KI_PANEL_OUTER}`}>
       <div className="flex flex-wrap items-center gap-2 sm:gap-3">
         <div className="min-w-0 flex-1">
-          <h2 className="text-sm font-bold tracking-tight text-violet-200 sm:text-base">Kassenzettel → Speisekammer</h2>
-          <p className="text-[10px] leading-snug text-slate-500 sm:text-[11px]">Foto vom Bon · KI · Positionen prüfen · buchen</p>
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
+            <span className={KI_CHIP} aria-hidden>
+              KI
+            </span>
+            <h2 className="min-w-0 text-sm font-bold tracking-tight text-violet-100 sm:text-base">
+              Kassenzettel → Speisekammer
+            </h2>
+          </div>
         </div>
         {hatEntwurf ? (
           <div className="flex flex-wrap items-center gap-1.5 text-[10px] font-semibold text-slate-400">
@@ -182,13 +190,14 @@ export function LagerKassenzettelPanel({ disabled, onBuchungFertig }: Props) {
             ) : null}
           </div>
         ) : null}
-        <button
-          type="button"
+        <CollapsiblePillButton
+          open={aufgeklappt}
           onClick={() => setAufgeklappt((o) => !o)}
-          className="shrink-0 rounded-lg border border-slate-600 bg-slate-800/80 px-2.5 py-1.5 text-[11px] font-bold text-slate-300 hover:bg-slate-700"
-        >
-          {aufgeklappt ? 'Einklappen' : 'Aufklappen'}
-        </button>
+          labels={LABEL_EINKLAPPEN}
+          tone="violet"
+          compact
+          aria-expanded={aufgeklappt}
+        />
       </div>
 
       {aufgeklappt && (

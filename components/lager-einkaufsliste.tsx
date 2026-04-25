@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import toast from 'react-hot-toast'
+import { CollapsibleRowHeaderEnd, LABEL_EINKLAPPEN } from '@/components/collapsible-ui'
 import {
   verbrauchKennzahlenFuerProdukt,
   vorschlagsMengeEinkauf,
@@ -185,7 +186,7 @@ export function LagerEinkaufsliste({ produkte, verbrauchHistorie, refreshKey }: 
       <button
         type="button"
         onClick={() => setOffen((o) => !o)}
-        className="flex w-full items-center justify-between gap-2 px-3 py-2.5 text-left transition hover:bg-slate-800/40 sm:px-4"
+        className="group flex w-full items-center justify-between gap-2 px-3 py-2.5 text-left transition hover:bg-slate-800/40 sm:px-4"
         aria-expanded={offen}
       >
         <div className="min-w-0">
@@ -194,11 +195,11 @@ export function LagerEinkaufsliste({ produkte, verbrauchHistorie, refreshKey }: 
             Artikel ohne Bestand · Preise und Verbrauch · Menge editierbar
           </p>
         </div>
-        <div className="flex shrink-0 items-center gap-2">
+        <div className="flex shrink-0 items-center gap-2.5 sm:gap-3">
           <span className="rounded-md border border-amber-900/50 bg-amber-950/40 px-2 py-0.5 text-[11px] font-bold tabular-nums text-amber-100">
             {zeilen.length}
           </span>
-          <span className="text-[11px] font-bold text-slate-500">{offen ? 'Einklappen' : 'Aufklappen'}</span>
+          <CollapsibleRowHeaderEnd open={offen} labels={LABEL_EINKLAPPEN} tone="amber" size="sm" />
         </div>
       </button>
 

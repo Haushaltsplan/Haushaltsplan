@@ -31,6 +31,7 @@ import type { LagerVerbrauchHistorieZeile } from '@/lib/lager-einkaufsliste-verb
 import { supabase } from '@/lib/supabase'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import toast from 'react-hot-toast'
+import { CollapsibleRowHeaderEnd, LABEL_EINKLAPPEN } from '@/components/collapsible-ui'
 
 type Lb = { aktuelle_menge?: number }
 type ProduktRow = {
@@ -685,9 +686,6 @@ export default function LagerPage() {
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
             <h1 className="text-[11px] font-bold uppercase tracking-widest text-slate-500">Speisekammer</h1>
-            <p className="mt-0.5 text-xs text-slate-500 sm:text-sm">
-              Lebensmittel, Einkauf, Küche und Rezepte — Übersicht nach Basiseinheit (kg, Liter, Stück).
-            </p>
           </div>
         </div>
         <div className="mt-4 grid w-full min-w-0 grid-cols-2 gap-2 sm:grid-cols-4 sm:gap-2.5">
@@ -709,7 +707,6 @@ export default function LagerPage() {
           <div className="flex min-h-[4.75rem] min-w-0 flex-col justify-center rounded-xl border border-violet-800/50 bg-violet-950/35 px-2.5 py-2.5 sm:min-h-0 sm:px-3 sm:py-3">
             <span className="truncate text-[9px] font-bold uppercase tracking-wide text-violet-300 sm:text-[10px]">Vorratswert</span>
             <span className="mt-0.5 truncate text-xl font-black tabular-nums leading-tight text-violet-100 sm:text-2xl">{formatEur(lagerwertGesamt)}</span>
-            <span className="mt-1 line-clamp-2 text-[10px] leading-snug text-slate-500">Menge × Ø (sonst letzter Kauf)</span>
           </div>
         </div>
       </div>
@@ -731,7 +728,6 @@ export default function LagerPage() {
           }`}
         >
           Bestand
-          <span className="mt-0.5 block text-[10px] font-semibold opacity-90 sm:text-[11px]">Zettel, anlegen, Liste</span>
         </button>
         <button
           type="button"
@@ -745,7 +741,6 @@ export default function LagerPage() {
           }`}
         >
           Küche & Verlauf
-          <span className="mt-0.5 block text-[10px] font-semibold opacity-90 sm:text-[11px]">Rezepte, Mahlzeiten, Historie</span>
         </button>
       </div>
 
@@ -760,20 +755,16 @@ export default function LagerPage() {
               <button
                 type="button"
                 onClick={() => setLagerManuellOffen((o) => !o)}
-                className="flex w-full items-center justify-between gap-2 px-4 py-3 text-left transition hover:bg-slate-800/40"
+                className="group flex w-full items-center justify-between gap-2 px-4 py-3 text-left transition hover:bg-slate-800/40"
                 aria-expanded={lagerManuellOffen}
               >
                 <div className="min-w-0">
                   <h2 className="text-sm font-bold text-slate-100 sm:text-base">Manuell erfassen</h2>
-                  <p className="text-[10px] text-slate-500 sm:text-[11px]">Eine Kaufzeile ohne Kassenzettel-Import</p>
                 </div>
-                <span className="shrink-0 text-[11px] font-bold text-slate-500">{lagerManuellOffen ? 'Einklappen' : 'Aufklappen'}</span>
+                <CollapsibleRowHeaderEnd open={lagerManuellOffen} labels={LABEL_EINKLAPPEN} tone="neutral" size="sm" />
               </button>
               {lagerManuellOffen && (
                 <div className="border-t border-slate-800 px-4 pb-4 pt-2">
-                  <p className="mb-2.5 text-[10px] leading-snug text-slate-600 sm:text-[11px]">
-                    Kauf-Menge und -Einheit wie auf dem Zettel; Umrechnung in Basiseinheit erfolgt automatisch. Bekannte Namen werden zusammengeführt.
-                  </p>
                   <div className="grid gap-2.5 sm:grid-cols-2">
                     <label className="block text-[10px] font-black uppercase tracking-wider text-slate-500 sm:col-span-2">
                       Bezeichnung
@@ -863,9 +854,6 @@ export default function LagerPage() {
                         disabled={formularLaden}
                       />
                     </label>
-                    <p className="text-[10px] leading-snug text-slate-600 sm:col-span-2">
-                      Basiseinheit gilt nur für neue Artikel; bei Treffer in der Speisekammer bleibt die gespeicherte Basiseinheit.
-                    </p>
                     <button
                       type="button"
                       onClick={() => void speichernNeuesProdukt()}
@@ -936,10 +924,6 @@ export default function LagerPage() {
               </div>
             </div>
             <div className="mt-4 flex flex-col gap-3 rounded-xl border border-slate-800/90 bg-slate-950/50 p-3 sm:p-4">
-              <p className="text-xs leading-relaxed text-slate-400 sm:text-[13px]">
-                Gleiche Artikel (Umlaut, Singular/Plural) werden beim Anlegen automatisch erkannt. Spalte <strong className="text-slate-300">Wert</strong>: aktuelle
-                Menge × Ø-Preis (ohne Ø: letzter Kaufpreis).
-              </p>
               <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
                 <button
                   type="button"

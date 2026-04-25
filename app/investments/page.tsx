@@ -1,4 +1,5 @@
 import type { Metadata } from 'next'
+import { InvestmentMantra } from '@/components/investment-mantra'
 import { InvestmentResearchPrompts } from '@/components/investment-research-prompts'
 
 export const metadata: Metadata = {
@@ -14,17 +15,10 @@ export default function InvestmentsPage() {
   const konfiguriert = parqetUrl.length > 0
 
   return (
-    <div className="mx-auto max-w-2xl space-y-8 animate-in fade-in duration-500">
+    <div className="mx-auto max-w-5xl space-y-8 animate-in fade-in duration-500">
       <div className="rounded-[2.5rem] border border-violet-800/40 bg-slate-900 p-10 shadow-2xl shadow-black/40">
         <p className="mb-2 text-xs font-bold uppercase tracking-widest text-violet-400/90">Investments</p>
         <h1 className="text-3xl font-black tracking-tight text-slate-100">Portfolio in Parqet</h1>
-        <p className="mt-4 leading-relaxed text-slate-400">
-          Depot, Allokation und Performance pflegst du in{' '}
-          <strong className="text-slate-300">Parqet</strong>. Der Link kommt aus{' '}
-          <code className="rounded bg-slate-950 px-1.5 py-0.5 text-xs text-slate-300">.env.local</code> (
-          <code className="text-xs text-emerald-300/90">NEXT_PUBLIC_PARQET_PORTFOLIO_URL</code>) — es werden keine
-          Kursdaten in dieser App importiert.
-        </p>
 
         {konfiguriert ? (
           <div className="mt-8 flex flex-col gap-4 sm:flex-row sm:items-center">
@@ -36,9 +30,6 @@ export default function InvestmentsPage() {
             >
               Portfolio in Parqet öffnen
             </a>
-            <p className="text-[11px] leading-relaxed text-slate-500">
-              Öffnet in einem neuen Tab. Bei geteilten Links beachte, wer die URL sieht.
-            </p>
           </div>
         ) : (
           <div className="mt-8 rounded-2xl border border-amber-800/50 bg-amber-950/30 p-5 text-sm leading-relaxed text-amber-100">
@@ -56,6 +47,7 @@ export default function InvestmentsPage() {
           </div>
         )}
       </div>
+      <InvestmentMantra />
       <InvestmentResearchPrompts />
     </div>
   )

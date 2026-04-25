@@ -262,7 +262,7 @@ export default function BesitzPage() {
         positionen,
         auswahl: positionen.map(() => true),
       })
-      toast.success(`${positionen.length} Position(en) erkannt — bitte prüfen und übernehmen.`)
+      toast.success(`${positionen.length} erkannt`)
     } catch {
       toast.error('Netzwerkfehler beim PDF-Import.')
     } finally {
@@ -318,12 +318,9 @@ export default function BesitzPage() {
     <div className="mx-auto max-w-5xl space-y-8 px-4 pb-16 pt-6 animate-in fade-in duration-500 md:px-6">
       <div className="rounded-[2rem] border border-amber-800/40 bg-gradient-to-b from-slate-900 to-slate-950 p-6 shadow-xl shadow-black/35 sm:p-8">
         <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-amber-400/90">Besitz</p>
-        <h1 className="mt-1 text-2xl font-black tracking-tight text-slate-100 sm:text-3xl">Deine Sachen &amp; Anschaffungspreise</h1>
-        <p className="mt-3 max-w-2xl text-[13px] leading-relaxed text-slate-500">
-          Hier listest du alles ein, was du besitzt — Klamotten, Schuhe, Geräte, Möbel usw. — mit dem{' '}
-          <strong className="font-medium text-slate-400">Einkaufspreis</strong>. Optional: Kaufdatum, Händler, Hersteller/Marke, Notiz.
-          Per <strong className="font-medium text-slate-400">PDF-Beleg</strong> können gekaufte Artikel per KI vorgefüllt werden (gleicher API-Schlüssel wie Finanz-/Rezept-Coach).
-          Daten liegen in Supabase (wie Speisekammer &amp; Finanzen).
+        <h1 className="mt-1 text-2xl font-black tracking-tight text-slate-100 sm:text-3xl">Gegenstände &amp; Einkaufspreise</h1>
+        <p className="mt-2 max-w-xl text-xs text-slate-500">
+          Manuell eintragen oder <strong className="font-medium text-slate-400">Beleg-PDF</strong> importieren (Vorschau prüfen).
         </p>
         {!laden && !schemaFehlt && zeilen.length > 0 && (
           <p className="mt-4 text-sm text-slate-400">
@@ -336,11 +333,11 @@ export default function BesitzPage() {
       </div>
 
       {schemaFehlt && (
-        <div className="rounded-2xl border border-amber-700/50 bg-amber-950/30 p-5 text-sm leading-relaxed text-amber-100">
+        <div className="rounded-2xl border border-amber-700/50 bg-amber-950/30 p-4 text-sm text-amber-100">
           <p className="font-bold text-amber-200">Tabelle „besitz_gegenstand“ fehlt</p>
-          <p className="mt-2">
-            Bitte in Supabase die Migration ausführen:{' '}
-            <code className="rounded bg-slate-950 px-1.5 py-0.5 text-xs text-slate-300">
+          <p className="mt-1.5 text-xs text-amber-100/90">
+            Migration in Supabase:{' '}
+            <code className="rounded bg-slate-950 px-1.5 py-0.5 text-[11px] text-slate-300">
               supabase/migrations/20260426120000_besitz_gegenstand.sql
             </code>
           </p>
@@ -358,7 +355,7 @@ export default function BesitzPage() {
                   type="text"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  placeholder="z. B. Winterjacke, Laufschuhe, Kopfhörer …"
+                  placeholder="z. B. Jacke, Kopfhörer"
                   className="w-full rounded-xl border border-slate-700/90 bg-slate-950/90 px-4 py-3 text-[15px] text-slate-100 outline-none focus:border-amber-600/50 focus:ring-2 focus:ring-amber-500/25"
                 />
               </div>
@@ -403,7 +400,7 @@ export default function BesitzPage() {
                   type="text"
                   value={haendler}
                   onChange={(e) => setHaendler(e.target.value)}
-                  placeholder="z. B. Zalando, MediaMarkt …"
+                  placeholder="Shop (optional)"
                   className="w-full rounded-xl border border-slate-700/90 bg-slate-950/90 px-4 py-3 text-sm text-slate-100 outline-none focus:border-amber-600/50 focus:ring-2 focus:ring-amber-500/25"
                 />
               </div>
@@ -413,7 +410,7 @@ export default function BesitzPage() {
                   type="text"
                   value={hersteller}
                   onChange={(e) => setHersteller(e.target.value)}
-                  placeholder="z. B. Nike, Apple, Bosch …"
+                  placeholder="Marke (optional)"
                   className="w-full rounded-xl border border-slate-700/90 bg-slate-950/90 px-4 py-3 text-sm text-slate-100 outline-none focus:border-amber-600/50 focus:ring-2 focus:ring-amber-500/25"
                 />
               </div>
@@ -423,7 +420,6 @@ export default function BesitzPage() {
                   type="text"
                   value={notiz}
                   onChange={(e) => setNotiz(e.target.value)}
-                  placeholder="Größe, Farbe, Modell …"
                   className="w-full rounded-xl border border-slate-700/90 bg-slate-950/90 px-4 py-3 text-sm text-slate-100 outline-none focus:border-amber-600/50 focus:ring-2 focus:ring-amber-500/25"
                 />
               </div>
@@ -451,13 +447,9 @@ export default function BesitzPage() {
           </div>
 
           <div className="rounded-[2rem] border border-slate-800/90 bg-gradient-to-b from-slate-900 to-slate-950 p-6 shadow-xl shadow-black/30 sm:p-8">
-            <h2 className="text-lg font-bold text-slate-100">PDF-Beleg importieren (KI)</h2>
-            <p className="mt-2 max-w-2xl text-[13px] leading-relaxed text-slate-500">
-              Rechnung oder Kassenbon als PDF: mit <strong className="font-medium text-slate-400">auswählbarem Text</strong>{' '}
-              oder als <strong className="font-medium text-slate-400">gescanntes PDF</strong> (ohne Textlayer). Gescannte PDFs
-              werden per <strong className="font-medium text-slate-400">Gemini</strong> aus dem Dokument gelesen — dafür
-              muss <code className="rounded bg-slate-900 px-1 py-0.5 font-mono text-[11px] text-slate-400">GEMINI_API_KEY</code>{' '}
-              gesetzt sein (reicht auch neben OpenAI). Du prüfst die Vorschau und legst die markierten Zeilen in einem Schritt an.
+            <h2 className="text-lg font-bold text-slate-100">Beleg-PDF (KI)</h2>
+            <p className="mt-1.5 text-xs text-slate-500">
+              Text-PDFs werden lokal eingelesen, Scans per Gemini (<code className="rounded bg-slate-900 px-1 font-mono text-[10px] text-slate-400">GEMINI_API_KEY</code>).
             </p>
             <div className="mt-4">
               <label
@@ -585,7 +577,7 @@ export default function BesitzPage() {
                 type="search"
                 value={suche}
                 onChange={(e) => setSuche(e.target.value)}
-                placeholder="Suche in Bezeichnung, Händler, Hersteller, Notiz …"
+                placeholder="Suchen …"
                 className="w-full rounded-xl border border-slate-700/90 bg-slate-950/90 px-4 py-3 text-sm text-slate-100 outline-none focus:border-amber-600/50 focus:ring-2 focus:ring-amber-500/25"
               />
             </div>
@@ -593,7 +585,7 @@ export default function BesitzPage() {
             {laden ? (
               <p className="mt-10 py-12 text-center text-slate-500">Lade Einträge …</p>
             ) : zeilen.length === 0 ? (
-              <p className="mt-10 py-12 text-center text-slate-500">Noch keine Gegenstände — oben das erste Stück eintragen.</p>
+              <p className="mt-10 py-12 text-center text-slate-500">Noch leer — oben anlegen.</p>
             ) : gefiltert.length === 0 ? (
               <p className="mt-10 py-12 text-center text-slate-500">Keine Treffer für Filter oder Suche.</p>
             ) : (

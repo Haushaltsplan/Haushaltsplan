@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import toast from 'react-hot-toast'
+import { CollapsibleRowHeaderEnd, LABEL_EINKLAPPEN } from '@/components/collapsible-ui'
 import { appModalBackdropClassName, appModalPanelWideScrollClassName } from '@/lib/app-modal-overlay'
 import { supabase } from '@/lib/supabase'
 
@@ -259,7 +260,7 @@ export function LagerGekochteMahlzeiten({ produktOptionen, refreshKey, onNachBuc
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className="flex w-full items-center justify-between gap-4 px-6 py-5 text-left transition hover:bg-slate-800/40 md:px-8"
+        className="group flex w-full items-center justify-between gap-4 px-6 py-5 text-left transition hover:bg-slate-800/40 md:px-8"
         aria-expanded={open}
       >
         <div>
@@ -269,9 +270,7 @@ export function LagerGekochteMahlzeiten({ produktOptionen, refreshKey, onNachBuc
             <span className="font-semibold text-slate-400">geschätzte</span> Zutatenkosten (Ø aus Kassenzettel-Einkäufen).
           </p>
         </div>
-        <span className="shrink-0 rounded-xl border border-slate-600 px-3 py-1.5 text-xs font-bold text-slate-400">
-          {open ? 'Einklappen' : 'Aufklappen'}
-        </span>
+        <CollapsibleRowHeaderEnd open={open} labels={LABEL_EINKLAPPEN} tone="violet" />
       </button>
 
       {open && (

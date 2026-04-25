@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import toast from 'react-hot-toast'
+import { CollapsibleRowHeaderEnd, LABEL_EINKLAPPEN } from '@/components/collapsible-ui'
 import {
   normalisiereRezeptKategorie,
   REZEPT_KATALOG_KATEGORIEN,
@@ -232,7 +233,7 @@ export function LagerRezeptKatalog({ artikel, refreshKey }: Props) {
       <button
         type="button"
         onClick={() => setOffen((o) => !o)}
-        className="flex w-full items-center justify-between gap-3 px-5 py-4 text-left transition hover:bg-slate-800/40 md:px-6"
+        className="group flex w-full items-center justify-between gap-3 px-5 py-4 text-left transition hover:bg-slate-800/40 md:px-6"
         aria-expanded={offen}
       >
         <div className="min-w-0">
@@ -241,9 +242,12 @@ export function LagerRezeptKatalog({ artikel, refreshKey }: Props) {
             Gespeicherte KI-Rezepte · Rating 1–10 (1 schlecht, 10 am besten) · geschätzte kcal fürs Gesamtgericht
           </p>
         </div>
-        <span className="shrink-0 rounded-lg border border-slate-600 px-2.5 py-1 text-[11px] font-bold text-slate-400">
-          {zaehlerText}
-        </span>
+        <div className="flex shrink-0 items-center gap-2 sm:gap-2.5">
+          <span className="rounded-lg border border-slate-600/90 bg-slate-950/40 px-2.5 py-1 text-[11px] font-bold text-slate-300">
+            {zaehlerText}
+          </span>
+          <CollapsibleRowHeaderEnd open={offen} labels={LABEL_EINKLAPPEN} tone="teal" size="sm" />
+        </div>
       </button>
 
       {offen && (
