@@ -250,6 +250,23 @@ export function formatMonatTitelDe(m: KalenderMonatKopf): string {
   }
 }
 
+/** Alle YYYY-MM-DD von `vonIso` bis `bisIso` inkl. Leer, wenn ungültig oder Ende vor Start. */
+export function listeIsoDatenInklusiv(vonIso: string, bisIso: string): string[] {
+  const a = parseIsoDatum(vonIso)
+  const b = parseIsoDatum(bisIso)
+  if (!a || !b) return []
+  const start = new Date(a.jahr, a.monat - 1, a.tag)
+  const end = new Date(b.jahr, b.monat - 1, b.tag)
+  if (end < start) return []
+  const out: string[] = []
+  for (let d = new Date(start.getTime()); d <= end; d.setDate(d.getDate() + 1)) {
+    out.push(
+      `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`,
+    )
+  }
+  return out
+}
+
 export function filterEintraegeFuerTag(eintraege: KalenderEintrag[], iso: string): KalenderEintrag[] {
   return eintraege.filter((e) => e.datum === iso)
 }

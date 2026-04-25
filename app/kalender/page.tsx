@@ -12,6 +12,7 @@ import {
   kalenderKategorieMeta,
   ladeKalenderEintraege,
   ladeKalenderEintraegeVonQuelleMitMeta,
+  listeIsoDatenInklusiv,
   monatPlusDelta,
   normalisiereKalenderKategorie,
   parseIsoDatum,
@@ -22,11 +23,21 @@ import {
   sortiereEintraegeNachUhrzeitDannTitel,
 } from '@/lib/haushalt-kalender'
 import { KalenderFotoImport } from '@/components/kalender-foto-import'
+import { bayernFeiertageFuerJahr } from '@/lib/bayern-feiertage'
 import { istSupabaseClientKonfiguriert } from '@/lib/supabase'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import toast from 'react-hot-toast'
 
 const WOCHENTAGE_KURZ = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'] as const
+
+/** DataTransfer-Typ für Ziehen einer Kalenderkategorie auf einen Tag */
+const KALENDER_DND_MIME = 'application/x-mh-kal-kat' as const
+
+const MAX_TAGE_AUF_EINMAL = 400
+
+function neuesKalenderId() {
+  return globalThis.crypto?.randomUUID?.() ?? `k-${Date.now()}-${Math.random().toString(16).slice(2)}`
+}
 
 function jetztAlsMonatKopf(): KalenderMonatKopf {
   const d = new Date()
@@ -47,8 +58,15 @@ export default function KalenderPage() {
   const [ausgewaehlt, setAusgewaehlt] = useState<string | null>(null)
   const [modal, setModal] = useState<ModalModus | null>(null)
   const [kalenderBereit, setKalenderBereit] = useState(false)
+  const [dragOverIso, setDragOverIso] = useState<string | null>(null)
 
   const monatErsterMount = useRef(true)
+
+  useEffect(() => {
+    const end = () => setDragOverIso(null)
+    window.addEventListener('dragend', end)
+    return () => window.removeEventListener('dragend', end)
+  }, [])
 
   useEffect(() => {
     let cancelled = false
@@ -117,6 +135,27 @@ export default function KalenderPage() {
     }
   }, [])
 
+  const legeKategorieAufTag = useCallback(
+    (iso: string, kategorieRaw: string) => {
+      const kategorie = normalisiereKalenderKategorie(kategorieRaw)
+      const km = kalenderKategorieMeta(kategorie)
+      const neu: KalenderEintrag = {
+        id: neuesKalenderId(),
+        datum: iso,
+        titel: km.label,
+        notiz: '',
+        uhrzeit: '',
+        kategorie,
+      }
+      waehleDatum(iso)
+      void persist([...eintraege, neu])
+      toast.success(
+        `${km.label} — ${new Date(iso + 'T12:00:00').toLocaleDateString('de-DE', { day: 'numeric', month: 'short' })}`,
+      )
+    },
+    [eintraege, persist],
+  )
+
   const heuteIso = heuteAlsIsoDatum()
   const ausgewaehltNorm = ausgewaehlt ?? heuteIso
 
@@ -160,6 +199,40 @@ export default function KalenderPage() {
     setAusgewaehlt(heuteAlsIsoDatum())
   }
 
+  function einfuegeBayernFeiertageFuerAktuellesJahr() {
+    const jahr = sicht.jahr
+    const rows = bayernFeiertageFuerJahr(jahr)
+    if (rows.length === 0) {
+      toast.error('Keine Feiertage für dieses Jahr berechenbar.')
+      return
+    }
+    const bekannt = new Set(
+      eintraege
+        .filter((e) => e.kategorie === 'feiertag')
+        .map((e) => `${e.datum}\t${e.titel.trim()}`),
+    )
+    const neu: KalenderEintrag[] = []
+    for (const r of rows) {
+      const key = `${r.datum}\t${r.name}`
+      if (bekannt.has(key)) continue
+      bekannt.add(key)
+      neu.push({
+        id: neuesKalenderId(),
+        datum: r.datum,
+        titel: r.name,
+        notiz: 'Gesetzlicher Feiertag in Bayern',
+        uhrzeit: '',
+        kategorie: 'feiertag',
+      })
+    }
+    if (neu.length === 0) {
+      toast('Alle bayerischen Feiertage für dieses Jahr sind bereits im Kalender.')
+      return
+    }
+    void persist([...eintraege, ...neu])
+    toast.success(`${neu.length} Feiertag(e) für ${jahr} eingefügt (Kategorie: Feiertag).`)
+  }
+
   function oeffneNeuFuerTag(tag: number) {
     const iso = isoDatumAusJahrMonatTag(sicht.jahr, sicht.monat, tag)
     waehleDatum(iso)
@@ -201,13 +274,47 @@ export default function KalenderPage() {
             <h2 className="min-w-0 flex-1 text-center text-base font-black capitalize tracking-tight text-slate-100 sm:text-lg">
               {formatMonatTitelDe(sicht)}
             </h2>
-            <button
-              type="button"
-              onClick={springeHeute}
-              className="rounded-lg bg-teal-600 px-3 py-1.5 text-xs font-black uppercase tracking-wide text-white shadow-sm shadow-teal-950/30 transition hover:bg-teal-500"
-            >
-              Heute
-            </button>
+            <div className="flex flex-wrap items-center justify-end gap-1.5">
+              <button
+                type="button"
+                onClick={einfuegeBayernFeiertageFuerAktuellesJahr}
+                className="rounded-lg border border-amber-600/50 bg-amber-950/50 px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-wide text-amber-200 transition hover:bg-amber-900/60 sm:text-xs"
+                title="Gesetzliche Feiertage für Bayern in dieses Jahr eintragen (Kategorie Feiertag)"
+              >
+                Feiertage {sicht.jahr}
+              </button>
+              <button
+                type="button"
+                onClick={springeHeute}
+                className="rounded-lg bg-teal-600 px-3 py-1.5 text-xs font-black uppercase tracking-wide text-white shadow-sm shadow-teal-950/30 transition hover:bg-teal-500"
+              >
+                Heute
+              </button>
+            </div>
+          </div>
+
+          <div className="border-b border-slate-800/80 bg-slate-950/40 px-2 py-2 sm:px-3">
+            <p className="mb-1.5 text-[9px] font-bold uppercase tracking-wide text-slate-500 sm:text-[10px]">
+              Kategorie auf einen Tag ziehen
+            </p>
+            <div className="flex flex-wrap gap-1.5" role="list" aria-label="Kategorien zum Ziehen">
+              {KALENDER_KATEGORIEN.map((k) => (
+                <div
+                  key={k.id}
+                  role="listitem"
+                  draggable
+                  onDragStart={(e) => {
+                    e.dataTransfer.setData(KALENDER_DND_MIME, k.id)
+                    e.dataTransfer.effectAllowed = 'copy'
+                  }}
+                  className={`flex cursor-grab select-none items-center gap-1.5 rounded-lg border border-slate-600/80 bg-slate-900/80 px-2 py-1 text-[10px] font-bold text-slate-200 shadow-sm active:cursor-grabbing sm:text-xs ${k.listBorder}`}
+                  title={`${k.label} auf Kalendertag ziehen (Desktop)`}
+                >
+                  <span className={`h-2 w-2 shrink-0 rounded-full ${k.dot}`} aria-hidden />
+                  {k.label}
+                </div>
+              ))}
+            </div>
           </div>
 
           <div className="grid grid-cols-7 border-b border-slate-800/80 text-center text-[10px] font-bold uppercase tracking-wider text-slate-500 sm:text-[11px]">
@@ -239,13 +346,28 @@ export default function KalenderPage() {
                     e.preventDefault()
                     oeffneNeuFuerTag(z)
                   }}
+                  onDragOver={(e) => {
+                    if (![...e.dataTransfer.types].includes(KALENDER_DND_MIME)) return
+                    e.preventDefault()
+                    e.dataTransfer.dropEffect = 'copy'
+                    setDragOverIso(iso)
+                  }}
+                  onDrop={(e) => {
+                    e.preventDefault()
+                    setDragOverIso(null)
+                    const kid = e.dataTransfer.getData(KALENDER_DND_MIME)
+                    if (!kid) return
+                    legeKategorieAufTag(iso, kid)
+                  }}
                   className={`min-h-[5rem] border-b border-r border-slate-800/60 p-0.5 text-left align-top transition sm:min-h-[6.5rem] sm:p-1.5 ${
                     isSel ? 'bg-teal-950/45 ring-1 ring-inset ring-teal-500/50' : 'hover:bg-slate-800/40'
-                  } ${isHeute && !isSel ? 'bg-sky-950/30' : ''}`}
+                  } ${isHeute && !isSel ? 'bg-sky-950/30' : ''} ${
+                    dragOverIso === iso ? 'ring-2 ring-inset ring-teal-400/90' : ''
+                  }`}
                   title={
                     n > 0
-                      ? `Einfach: Tag wählen · Doppelklick: neuer Eintrag — ${n} Einträge: ${amTag.map((e) => eintragKurzzeile(e)).join(' · ')}`
-                      : 'Einfach: Tag wählen · Doppelklick: neuer Eintrag'
+                      ? `Einfach: Tag wählen · Doppelklick: neuer Eintrag — Kategorie hierher ziehen — ${n} Einträge: ${amTag.map((e) => eintragKurzzeile(e)).join(' · ')}`
+                      : 'Einfach: Tag wählen · Doppelklick: neuer Eintrag · Kategorie hierher ziehen'
                   }
                   aria-label={
                     n > 0
@@ -401,7 +523,7 @@ export default function KalenderPage() {
         <KalenderFotoImport
           onImport={(zeilen) => {
             const neu: KalenderEintrag[] = zeilen.map((z) => ({
-              id: globalThis.crypto?.randomUUID?.() ?? `k-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+              id: neuesKalenderId(),
               titel: z.titel,
               datum: z.datum,
               notiz: '',
@@ -419,16 +541,21 @@ export default function KalenderPage() {
           onClose={() => setModal(null)}
           onSpeichern={async (eingabe) => {
             if (eingabe.art === 'neu') {
-              const neu: KalenderEintrag = {
-                id: globalThis.crypto?.randomUUID?.() ?? `k-${Date.now()}-${Math.random().toString(16).slice(2)}`,
-                datum: eingabe.datum,
+              const kat = normalisiereKalenderKategorie(eingabe.kategorie)
+              const neues: KalenderEintrag[] = eingabe.termine.map((d) => ({
+                id: neuesKalenderId(),
+                datum: d,
                 titel: eingabe.titel,
                 notiz: eingabe.notiz,
                 uhrzeit: eingabe.uhrzeit,
-                kategorie: normalisiereKalenderKategorie(eingabe.kategorie),
-              }
-              await persist([...eintraege, neu])
-              toast.success('Eintrag gespeichert.')
+                kategorie: kat,
+              }))
+              await persist([...eintraege, ...neues])
+              toast.success(
+                neues.length === 1
+                  ? 'Eintrag gespeichert.'
+                  : `${neues.length} Einträge für ${neues.length} Tage gespeichert.`,
+              )
             } else {
               const next = eintraege.map((e) =>
                 e.id === eingabe.id
@@ -460,7 +587,14 @@ export default function KalenderPage() {
 }
 
 type EintragFormPayload =
-  | { art: 'neu'; datum: string; titel: string; notiz: string; uhrzeit: string; kategorie: KalenderKategorieId }
+  | {
+      art: 'neu'
+      termine: string[]
+      titel: string
+      notiz: string
+      uhrzeit: string
+      kategorie: KalenderKategorieId
+    }
   | { art: 'bearbeiten'; id: string; datum: string; titel: string; notiz: string; uhrzeit: string; kategorie: KalenderKategorieId }
 
 function EintragModal(props: {
@@ -483,6 +617,7 @@ function EintragModal(props: {
   const [uhrzeit, setUhrzeit] = useState(initial.uhrzeit)
   const [kategorie, setKategorie] = useState<KalenderKategorieId>(initial.kategorie)
   const [datum, setDatum] = useState(props.modus.art === 'neu' ? props.modus.datum : props.modus.eintrag.datum)
+  const [datumBis, setDatumBis] = useState('')
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -508,7 +643,7 @@ function EintragModal(props: {
       >
         <div className="border-b border-slate-800 px-4 py-3 sm:px-5">
           <h3 id="kal-modal-title" className="text-base font-black text-slate-100">
-            {props.modus.art === 'neu' ? 'Neuer Eintrag' : 'Eintrag bearbeiten'}
+            {props.modus.art === 'neu' ? 'Neuer Eintrag (optional mehrere Tage)' : 'Eintrag bearbeiten'}
           </h3>
         </div>
         <form
@@ -526,7 +661,22 @@ function EintragModal(props: {
               return
             }
             if (props.modus.art === 'neu') {
-              await props.onSpeichern({ art: 'neu', datum, titel: t, notiz: notiz.trim(), uhrzeit: u, kategorie })
+              let termine: string[]
+              if (datumBis.trim()) {
+                const list = listeIsoDatenInklusiv(datum, datumBis.trim())
+                if (list.length === 0) {
+                  toast.error('Ende liegt vor dem Start oder Datumsangaben sind ungültig.')
+                  return
+                }
+                if (list.length > MAX_TAGE_AUF_EINMAL) {
+                  toast.error(`Maximal ${MAX_TAGE_AUF_EINMAL} Tage auf einmal.`)
+                  return
+                }
+                termine = list
+              } else {
+                termine = [datum]
+              }
+              await props.onSpeichern({ art: 'neu', termine, titel: t, notiz: notiz.trim(), uhrzeit: u, kategorie })
             } else {
               await props.onSpeichern({
                 art: 'bearbeiten',
@@ -572,15 +722,32 @@ function EintragModal(props: {
               autoFocus
             />
           </label>
-          <label className="block text-[10px] font-black uppercase tracking-wider text-slate-500">
-            Datum
-            <input
-              type="date"
-              className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 py-2 px-2.5 text-sm font-bold text-slate-100 outline-none focus:ring-2 focus:ring-teal-500/45"
-              value={datum}
-              onChange={(e) => setDatum(e.target.value)}
-            />
-          </label>
+          <div className="block sm:grid sm:grid-cols-2 sm:gap-3">
+            <label className="block text-[10px] font-black uppercase tracking-wider text-slate-500">
+              {props.modus.art === 'neu' ? 'Von' : 'Datum'}
+              <input
+                type="date"
+                className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 py-2 px-2.5 text-sm font-bold text-slate-100 outline-none focus:ring-2 focus:ring-teal-500/45"
+                value={datum}
+                onChange={(e) => setDatum(e.target.value)}
+              />
+            </label>
+            {props.modus.art === 'neu' ? (
+              <label className="mt-2 block text-[10px] font-black uppercase tracking-wider text-slate-500 sm:mt-0">
+                Bis (optional)
+                <input
+                  type="date"
+                  min={datum}
+                  className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 py-2 px-2.5 text-sm font-bold text-slate-100 outline-none focus:ring-2 focus:ring-teal-500/45"
+                  value={datumBis}
+                  onChange={(e) => setDatumBis(e.target.value)}
+                />
+                <span className="mt-0.5 block text-[9px] font-normal text-slate-500">
+                  Gleicher Titel, Uhrzeit &amp; Notiz für jeden Tag im Zeitraum
+                </span>
+              </label>
+            ) : null}
+          </div>
           <label className="block text-[10px] font-black uppercase tracking-wider text-slate-500">
             Uhrzeit (optional)
             <input
