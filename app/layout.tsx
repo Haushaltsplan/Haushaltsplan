@@ -1,6 +1,5 @@
 import type { Metadata, Viewport } from "next";
 import { Inter } from "next/font/google";
-import Link from "next/link";
 import { SiteNav } from "@/components/site-nav";
 import "./globals.css";
 import { Providers } from "./providers";
@@ -42,13 +41,7 @@ export default function RootLayout({
       >
         <nav className="sticky top-0 z-50 border-b border-slate-800 bg-slate-950 pt-[env(safe-area-inset-top,0px)] text-slate-200 shadow-2xl shadow-black/40">
           <div className="mx-auto flex h-16 max-w-6xl min-w-0 items-center justify-between gap-2 px-3 sm:gap-3 sm:px-4">
-            <div className="flex min-w-0 flex-1 items-center gap-2 sm:gap-3 md:gap-8">
-              <Link
-                href="/finanzen"
-                className="min-w-0 shrink truncate text-base font-black tracking-tighter text-emerald-400 transition-colors hover:text-emerald-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/50 sm:text-lg md:text-2xl"
-              >
-                Haushaltsplan
-              </Link>
+            <div className="flex min-w-0 flex-1 items-center">
               <SiteNav />
             </div>
             <div className="hidden shrink-0 font-mono text-xs text-slate-600 sm:block">v1.0.30</div>

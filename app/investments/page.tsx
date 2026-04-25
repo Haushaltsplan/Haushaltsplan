@@ -1,4 +1,5 @@
 import type { Metadata } from 'next'
+import { InvestmentResearchPrompts } from '@/components/investment-research-prompts'
 
 export const metadata: Metadata = {
   title: 'Investments',
@@ -55,6 +56,7 @@ export default function InvestmentsPage() {
           </div>
         )}
       </div>
+      <InvestmentResearchPrompts />
     </div>
   )
 }
