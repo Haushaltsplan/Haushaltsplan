@@ -2,7 +2,6 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { useEffect, useState } from 'react'
 
 const links = [
   { href: '/finanzen', label: 'Finanzen', emoji: '💰', color: 'text-emerald-400', ring: 'focus-visible:ring-emerald-500/50' },
@@ -19,16 +18,6 @@ function linkActive(pathname: string, href: string) {
 
 export function SiteNav() {
   const pathname = usePathname()
-  const [open, setOpen] = useState(false)
-
-  useEffect(() => {
-    if (!open) return
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setOpen(false)
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [open])
 
   return (
     <>
@@ -51,56 +40,24 @@ export function SiteNav() {
         })}
       </div>
 
-      <div className="md:hidden">
-        <button
-          type="button"
-          className="rounded-lg border border-slate-600 bg-slate-900 px-3 py-2 text-xs font-black uppercase tracking-wide text-slate-200 transition-colors hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-500/60"
-          aria-expanded={open}
-          aria-controls="site-nav-mobile-panel"
-          onClick={() => setOpen((o) => !o)}
-        >
-          {open ? 'Schließen' : 'Menü'}
-        </button>
-
-        {open ? (
-          <>
-            <button
-              type="button"
-              className="fixed inset-0 z-40 bg-black/55 backdrop-blur-[2px]"
-              aria-label="Menü schließen"
-              onClick={() => setOpen(false)}
-            />
-            <div
-              id="site-nav-mobile-panel"
-              className="fixed left-0 right-0 top-[var(--app-nav-offset)] z-50 max-h-[min(70vh,calc(100dvh-var(--app-nav-offset)))] overflow-y-auto border-b border-slate-800 bg-slate-900/98 p-3 shadow-2xl shadow-black/50"
-              role="navigation"
-              aria-label="Hauptnavigation"
-            >
-              <ul className="flex flex-col gap-1">
-                {links.map((l) => {
-                  const active = linkActive(pathname, l.href)
-                  return (
-                    <li key={l.href}>
-                      <Link
-                        href={l.href}
-                        onClick={() => setOpen(false)}
-                        className={`flex items-center gap-3 rounded-xl px-4 py-3 text-base font-bold focus-visible:outline-none focus-visible:ring-2 ${l.ring} ${
-                          active ? `bg-slate-800 ${l.color}` : 'text-slate-300 hover:bg-slate-800/70'
-                        }`}
-                        aria-current={active ? 'page' : undefined}
-                      >
-                        <span className="text-xl" aria-hidden>
-                          {l.emoji}
-                        </span>
-                        {l.label}
-                      </Link>
-                    </li>
-                  )
-                })}
-              </ul>
-            </div>
-          </>
-        ) : null}
+      <div className="md:hidden min-w-0 w-full">
+        <div className="flex w-full min-w-0 items-center gap-1 overflow-x-auto pb-0.5">
+          {links.map((l) => {
+            const active = linkActive(pathname, l.href)
+            return (
+              <Link
+                key={l.href}
+                href={l.href}
+                className={`shrink-0 rounded-lg px-2.5 py-2 text-xs font-bold transition-all focus-visible:outline-none focus-visible:ring-2 ${l.ring} ${
+                  active ? `bg-slate-800/90 ${l.color}` : 'text-slate-400 hover:bg-slate-800/80 hover:text-slate-200'
+                }`}
+                aria-current={active ? 'page' : undefined}
+              >
+                <span aria-hidden>{l.emoji}</span> {l.label}
+              </Link>
+            )
+          })}
+        </div>
       </div>
     </>
   )

@@ -5,7 +5,7 @@ export default function manifest(): MetadataRoute.Manifest {
     name: 'Haushaltsplan',
     short_name: 'Haushaltsplan',
     description: 'Finanzen, Speisekammer, Investments',
-    start_url: '/',
+    start_url: '/finanzen',
     display: 'standalone',
     background_color: '#020617',
     theme_color: '#0f172a',

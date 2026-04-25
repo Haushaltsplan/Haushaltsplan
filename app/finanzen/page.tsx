@@ -135,7 +135,7 @@ function isoErsterDesMonatsVonDatumStatic(referenceIso?: string | null): string 
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`
 }
 
-/** Ausgaben aus PDF- oder Bild-Rechnung: echtes Buchungsdatum, nicht Monatsanfang. */
+/** Ausgaben aus PDF- oder Bild-Rechnung. */
 function istRechnungsbelegImport(beschreibung?: string) {
   const b = beschreibung
   return typeof b === 'string' && (b.includes('Rechnung • PDF:') || b.includes('Rechnung • Bild:'))
@@ -144,9 +144,8 @@ function istRechnungsbelegImport(beschreibung?: string) {
 /** Gleiche Logik wie in der Komponente `datumFuerListenanzeige` — für useMemo ohne Hook-Warnungen. */
 function datumFuerListenanzeigeMonat(item: { __geplant?: boolean; beschreibung?: string; datum?: string }) {
   if (item.__geplant) return item.datum ?? isoErsterDesMonatsVonDatumStatic(undefined)
-  if (istRechnungsbelegImport(item.beschreibung))
-    return item.datum ?? isoErsterDesMonatsVonDatumStatic(undefined)
-  return isoErsterDesMonatsVonDatumStatic(item.datum)
+  if (istRechnungsbelegImport(item.beschreibung)) return item.datum ?? isoErsterDesMonatsVonDatumStatic(undefined)
+  return item.datum ?? isoErsterDesMonatsVonDatumStatic(undefined)
 }
 
 function monatSchluesselFuerZeile(item: { __geplant?: boolean; beschreibung?: string; datum?: string }) {
@@ -243,17 +242,17 @@ export default function FinanzenPage() {
     return typeof b === 'string' && b.includes('Dauerauftrag (Auto)')
   }
 
-  /** Manuell per PDF- oder Bild-Import — Datum kommt von der Rechnung, nicht Monatsanfang. */
+  /** Manuell per PDF- oder Bild-Import. */
   function istPdfRechnungsImport(item: { beschreibung?: string }) {
     return istRechnungsbelegImport(item.beschreibung)
   }
 
-  /** Erster Kalendertag des aktuellen Monats (YYYY-MM-01), für DB-Inserts ohne Rechnungs-PDF. */
+  /** Erster Kalendertag des aktuellen Monats (YYYY-MM-01), für geplante Dauerauftrag-Zeilen. */
   function isoErsterAktuellerMonat(): string {
     return isoErsterAktuellerMonatStatic()
   }
 
-  /** Erster des Monats derselben Kalenderperiode wie das gespeicherte Datum (für Anzeige/Sortierung). */
+  /** Erster des Monats derselben Kalenderperiode (nur für geplante Darstellungen). */
   function isoErsterDesMonatsVonDatum(referenceIso?: string | null): string {
     return isoErsterDesMonatsVonDatumStatic(referenceIso)
   }
@@ -731,7 +730,7 @@ export default function FinanzenPage() {
     const teile = [`Grund: ${grund.trim()}`]
     if (notiz.trim()) teile.push(notiz.trim())
     const beschreibung = teile.join(' • ')
-    const datum = isoErsterDesMonatsVonDatum(isoDate)
+    const datum = isoDate
     const zielTabelle = typ === 'einnahme' ? 'einnahmen' : 'ausgaben'
     const { error } = await supabase.from(zielTabelle).insert([
       {
@@ -886,8 +885,7 @@ export default function FinanzenPage() {
     const isoDate = toIsoDateFromDDMMYYYY(buchungEdit.datumStr)
     if (!isoDate) return toast.error('Datum im Format Tag/Monat/Jahr (TT/MM/JJJJ).')
 
-    const pdf = istPdfRechnungsImport({ beschreibung: buchungEdit.beschreibung })
-    const datum = pdf ? isoDate : isoErsterDesMonatsVonDatum(isoDate)
+    const datum = isoDate
 
     const zielTabelle = buchungEdit.isIn ? 'einnahmen' : 'ausgaben'
     const { error } = await supabase
@@ -1318,9 +1316,7 @@ export default function FinanzenPage() {
             onChange={(e) => setGrund(e.target.value)}
           />
           <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-slate-500">Datum (TT/MM/JJJJ)</label>
-          <p className="mb-2 text-[12px] leading-relaxed text-slate-500">
-            Wird als Monatserster des gewählten Monats gespeichert (ohne Rechnungs-PDF/-bild).
-          </p>
+          <p className="mb-2 text-[12px] leading-relaxed text-slate-500">Das eingegebene Datum wird direkt als Buchungsdatum gespeichert.</p>
           <input
             type="text"
             placeholder="TT/MM/JJJJ"
@@ -1934,7 +1930,7 @@ export default function FinanzenPage() {
                   {istPdfRechnungsImport({ beschreibung: buchungEdit.beschreibung }) ? (
                     <span className="normal-case font-normal text-rose-300/90"> — Rechnung: echtes Datum</span>
                   ) : (
-                    <span className="normal-case font-normal text-slate-400"> — wird als Monatserster gespeichert</span>
+                    <span className="normal-case font-normal text-slate-400"> — manuelle Buchung: echtes Datum</span>
                   )}
                 </label>
                 <input

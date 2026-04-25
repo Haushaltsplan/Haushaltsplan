@@ -44,7 +44,7 @@ export default function RootLayout({
           <div className="mx-auto flex h-16 max-w-6xl min-w-0 items-center justify-between gap-2 px-3 sm:gap-3 sm:px-4">
             <div className="flex min-w-0 flex-1 items-center gap-2 sm:gap-3 md:gap-8">
               <Link
-                href="/"
+                href="/finanzen"
                 className="min-w-0 shrink truncate text-base font-black tracking-tighter text-emerald-400 transition-colors hover:text-emerald-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/50 sm:text-lg md:text-2xl"
               >
                 Haushaltsplan

@@ -20,6 +20,21 @@ function darfWebNotifications() {
   return typeof window !== 'undefined' && (window.isSecureContext || window.location?.hostname === 'localhost')
 }
 
+function istIosGeraet() {
+  if (typeof navigator === 'undefined') return false
+  const ua = navigator.userAgent || ''
+  return /iPhone|iPad|iPod/i.test(ua)
+}
+
+function istStandalonePwa() {
+  if (typeof window === 'undefined') return false
+  try {
+    return window.matchMedia('(display-mode: standalone)').matches || (navigator as any).standalone === true
+  } catch {
+    return false
+  }
+}
+
 /**
  * Tägliche Erinnerung (lokale Uhrzeit, Standard 7:00) — sofern an dem Tag
  * mindestens ein Kalendereintrag (alle Kategorien) vorgesehen ist.
@@ -94,6 +109,10 @@ export function TerminMorgenReminderEinstellungen() {
 
   const sicher = darfWebNotifications()
   const perm = typeof Notification === 'undefined' ? 'unsupported' : Notification.permission
+  const ios = istIosGeraet()
+  const standalone = istStandalonePwa()
+  const iosHinweisNoetig = ios && !standalone
+  const kannAktivieren = sicher && perm !== 'unsupported' && !iosHinweisNoetig
   function aendereStunde(raw: string) {
     if (einst == null) return
     const s = einst
@@ -135,9 +154,15 @@ export function TerminMorgenReminderEinstellungen() {
                 type="checkbox"
                 className="mt-1 h-4 w-4 rounded border-slate-600 bg-slate-900 text-teal-600 focus:ring-teal-500/40"
                 checked={einst.enabled}
+                disabled={!kannAktivieren && !einst.enabled}
                 onChange={async (ev) => {
                   const an = ev.target.checked
                   if (an) {
+                    if (!kannAktivieren) {
+                      speichereTerminReminderEinstellungen({ ...einst, enabled: false })
+                      refresh()
+                      return
+                    }
                     if (Notification.permission === 'default') {
                       const p = await Notification.requestPermission()
                       if (p !== 'granted') {
@@ -203,6 +228,12 @@ export function TerminMorgenReminderEinstellungen() {
                 Testmeldung
               </button>
             </div>
+            {iosHinweisNoetig ? (
+              <p className="text-xs text-amber-200/90">
+                iPhone/iPad: Web-Push funktioniert nur als installierte App. Bitte in Safari auf{' '}
+                <strong>Teilen → Zum Home-Bildschirm</strong>, dann die App vom Homescreen starten und die Benachrichtigung erneut aktivieren.
+              </p>
+            ) : null}
             <p className="text-[10px] leading-relaxed text-slate-600">
               In der Meldung erscheint pro Eintrag <strong className="text-slate-400">Kategorielabel: Titel</strong>, z. B. „Geburtstag: …“
               oder „Urlaub: …“.
