@@ -20,6 +20,9 @@
 # production
 /build
 
+# Lokale Caches (z. B. frühere API-Caches)
+.cache
+
 # misc
 .DS_Store
 *.pem
