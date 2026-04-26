@@ -1,65 +1,175 @@
 'use client'
 
+import { startTransition, useLayoutEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
+import {
+  DndContext,
+  KeyboardSensor,
+  PointerSensor,
+  closestCenter,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from '@dnd-kit/core'
+import {
+  SortableContext,
+  arrayMove,
+  horizontalListSortingStrategy,
+  sortableKeyboardCoordinates,
+  useSortable,
+} from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
 
-const links = [
+const LINK_DEFS = [
   { href: '/', label: 'Start', emoji: '🏡', color: 'text-cyan-400', ring: 'focus-visible:ring-cyan-500/50' },
   { href: '/finanzen', label: 'Finanzen', emoji: '💰', color: 'text-emerald-400', ring: 'focus-visible:ring-emerald-500/50' },
   { href: '/speisekammer', label: 'Speisekammer', emoji: '🍳', color: 'text-sky-400', ring: 'focus-visible:ring-sky-500/50' },
   { href: '/kalender', label: 'Kalender', emoji: '📅', color: 'text-teal-400', ring: 'focus-visible:ring-teal-500/50' },
+  { href: '/natur', label: 'Natur', emoji: '🌿', color: 'text-lime-400', ring: 'focus-visible:ring-lime-500/50' },
   { href: '/besitz', label: 'Besitz', emoji: '👜', color: 'text-amber-400', ring: 'focus-visible:ring-amber-500/50' },
   { href: '/investments', label: 'Investments', emoji: '📈', color: 'text-violet-400', ring: 'focus-visible:ring-violet-500/50' },
 ] as const
+
+type NavItem = (typeof LINK_DEFS)[number]
+const HREF_TO_DEF = new Map(LINK_DEFS.map((d) => [d.href, d] as const))
+const DEFAULT_HREF_ORDER = LINK_DEFS.map((d) => d.href)
+const NAV_ORDER_KEY = 'mein-haushalt:nav-href-order'
+
+function mergePersistedWithKnown(saved: string[] | null | undefined): string[] {
+  const known = new Set<string>(HREF_TO_DEF.keys())
+  const next: string[] = []
+  if (Array.isArray(saved)) {
+    for (const h of saved) {
+      if (known.has(h) && !next.includes(h)) next.push(h)
+    }
+  }
+  for (const h of DEFAULT_HREF_ORDER) {
+    if (!next.includes(h)) next.push(h)
+  }
+  return next
+}
 
 function linkActive(pathname: string, href: string) {
   if (href === '/') return pathname === '/'
   return pathname === href || pathname.startsWith(`${href}/`)
 }
 
-export function SiteNav() {
-  const pathname = usePathname()
+function SortableNavItem({ def, pathname }: { def: NavItem; pathname: string }) {
+  const active = linkActive(pathname, def.href)
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: def.href,
+  })
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+  }
 
   return (
-    <>
-      <div className="hidden items-center gap-0.5 md:flex">
-        {links.map((l) => {
-          const active = linkActive(pathname, l.href)
-          return (
-            <Link
-              key={l.href}
-              href={l.href}
-              className={`flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-bold transition-all focus-visible:outline-none focus-visible:ring-2 md:px-4 ${l.ring} ${
-                active ? `bg-slate-800/90 ${l.color}` : 'text-slate-500 hover:bg-slate-800/80 hover:text-slate-300'
-              }`}
-              aria-current={active ? 'page' : undefined}
-            >
-              <span aria-hidden>{l.emoji}</span>
-              {l.label}
-            </Link>
-          )
-        })}
-      </div>
+    <div
+      ref={setNodeRef}
+      style={style}
+      className={`flex shrink-0 items-stretch rounded-lg ${
+        isDragging ? 'z-20 scale-[1.02] opacity-95 shadow-lg shadow-black/40' : ''
+      }`}
+    >
+      <button
+        type="button"
+        title="Ziehen zum Sortieren"
+        className={`flex shrink-0 touch-none select-none items-center justify-center rounded-l-md border border-slate-700/90 border-r-0 bg-slate-900/60 px-1.5 text-slate-500 transition hover:text-slate-300 md:px-1 ${
+          isDragging ? 'cursor-grabbing' : 'cursor-grab'
+        }`}
+        aria-label={`Reihenfolge: ${def.label}`}
+        aria-grabbed={isDragging}
+        {...attributes}
+        {...listeners}
+      >
+        <span className="text-[10px] leading-none tracking-tighter" aria-hidden>
+          ⋮⋮
+        </span>
+      </button>
+      <Link
+        href={def.href}
+        className={`flex min-w-0 items-center gap-1.5 border border-l-0 border-slate-700/90 py-2 pr-2.5 pl-1 text-xs font-bold focus-visible:outline-none focus-visible:ring-2 md:gap-2 md:px-3 md:py-2 md:text-sm ${def.ring} ${
+          active
+            ? `border-slate-600/80 bg-slate-800/90 ${def.color}`
+            : 'text-slate-400 hover:border-slate-600/50 hover:bg-slate-800/80 hover:text-slate-200 md:text-slate-500 md:hover:text-slate-300'
+        }`}
+        aria-current={active ? 'page' : undefined}
+      >
+        <span aria-hidden>{def.emoji}</span>
+        {def.label}
+      </Link>
+    </div>
+  )
+}
 
-      <div className="md:hidden min-w-0 w-full">
-        <div className="flex w-full min-w-0 items-center gap-1 overflow-x-auto pb-0.5">
-          {links.map((l) => {
-            const active = linkActive(pathname, l.href)
-            return (
-              <Link
-                key={l.href}
-                href={l.href}
-                className={`shrink-0 rounded-lg px-2.5 py-2 text-xs font-bold transition-all focus-visible:outline-none focus-visible:ring-2 ${l.ring} ${
-                  active ? `bg-slate-800/90 ${l.color}` : 'text-slate-400 hover:bg-slate-800/80 hover:text-slate-200'
-                }`}
-                aria-current={active ? 'page' : undefined}
-              >
-                <span aria-hidden>{l.emoji}</span> {l.label}
-              </Link>
-            )
-          })}
+export function SiteNav() {
+  const pathname = usePathname()
+  const [order, setOrder] = useState<string[]>(DEFAULT_HREF_ORDER)
+
+  useLayoutEffect(() => {
+    try {
+      const raw = localStorage.getItem(NAV_ORDER_KEY)
+      if (raw) {
+        const parsed = JSON.parse(raw) as unknown
+        if (Array.isArray(parsed) && parsed.every((x) => typeof x === 'string')) {
+          const merged = mergePersistedWithKnown(parsed)
+          startTransition(() => {
+            setOrder(merged)
+          })
+        }
+      }
+    } catch {
+      /* ignore */
+    }
+  }, [])
+
+  const orderedDefs: NavItem[] = useMemo(() => {
+    return order
+      .map((href) => HREF_TO_DEF.get(href as NavItem['href']))
+      .filter((d): d is NavItem => Boolean(d))
+  }, [order])
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  )
+
+  const onDragEnd = (e: DragEndEvent) => {
+    const { active, over } = e
+    if (!over) return
+    if (active.id === over.id) return
+    setOrder((prev) => {
+      const oldI = prev.indexOf(String(active.id))
+      const newI = prev.indexOf(String(over.id))
+      if (oldI < 0 || newI < 0) return prev
+      const next = arrayMove(prev, oldI, newI)
+      try {
+        localStorage.setItem(NAV_ORDER_KEY, JSON.stringify(next))
+      } catch {
+        /* ignore */
+      }
+      return next
+    })
+  }
+
+  return (
+    <DndContext
+      sensors={sensors}
+      collisionDetection={closestCenter}
+      onDragEnd={onDragEnd}
+    >
+      <SortableContext
+        items={order}
+        strategy={horizontalListSortingStrategy}
+      >
+        <div className="flex w-full min-w-0 items-center gap-0.5 overflow-x-auto pb-0.5 [scrollbar-gutter:stable] md:overflow-visible md:pb-0">
+          {orderedDefs.map((d) => (
+            <SortableNavItem key={d.href} def={d} pathname={pathname} />
+          ))}
         </div>
-      </div>
-    </>
+      </SortableContext>
+    </DndContext>
   )
 }
