@@ -1,4 +1,6 @@
 import type { Metadata, Viewport } from "next";
+import Image from "next/image";
+import Link from "next/link";
 import { Inter } from "next/font/google";
 import { SiteNav } from "@/components/site-nav";
 import "./globals.css";
@@ -14,13 +16,14 @@ export const viewport: Viewport = {
 };
 
 export const metadata: Metadata = {
-  title: { default: "Haushaltsplan", template: "%s · Haushaltsplan" },
-  description: "Haushaltsplan — Finanzen, Speisekammer, Besitz, Investments",
-  applicationName: "Haushaltsplan",
+  title: { default: "Omnia", template: "%s · Omnia" },
+  description:
+    "Omnia — Finanzen, Speisekammer, Kalender, Besitz, Investments und mehr an einem Ort.",
+  applicationName: "Omnia",
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
-    title: "Haushaltsplan",
+    title: "Omnia",
   },
   formatDetection: {
     telephone: false,
@@ -38,11 +41,27 @@ export default function RootLayout({
         className={`${inter.className} bg-slate-950 text-slate-200 min-h-screen min-h-[100dvh] antialiased`}
       >
         <nav className="sticky top-0 z-50 border-b border-slate-800 bg-slate-950 pt-[env(safe-area-inset-top,0px)] text-slate-200 shadow-2xl shadow-black/40">
-          <div className="mx-auto flex h-16 max-w-6xl min-w-0 items-center justify-between gap-2 px-3 sm:gap-3 sm:px-4">
-            <div className="flex min-w-0 flex-1 items-center">
+          <div className="mx-auto flex h-[4.25rem] max-w-6xl min-w-0 items-center justify-between gap-2 px-3 sm:h-[4.75rem] sm:gap-3 sm:px-4">
+            <div className="flex min-w-0 flex-1 items-center gap-2.5 sm:gap-3">
+              <Link
+                href="/"
+                className="relative shrink-0 p-0 transition hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/50"
+                aria-label="Omnia – Startseite"
+                title="Startseite"
+              >
+                <Image
+                  src="/icon.svg"
+                  alt=""
+                  width={128}
+                  height={128}
+                  unoptimized
+                  className="h-12 w-12 object-contain sm:h-14 sm:w-14"
+                  priority
+                />
+              </Link>
               <SiteNav />
             </div>
-            <div className="hidden shrink-0 font-mono text-xs text-slate-600 sm:block">v1.0.30</div>
+            <div className="hidden shrink-0 font-mono text-xs text-slate-600 sm:block">v1.1.0</div>
           </div>
         </nav>
 

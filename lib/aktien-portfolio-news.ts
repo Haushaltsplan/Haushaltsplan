@@ -175,7 +175,7 @@ export async function ladeAktienPortfolioNews(): Promise<{
       try {
         const res = await fetch(url, {
           next: { revalidate: 300 },
-          headers: { 'User-Agent': 'mein-haushalt/1.0 (private; portfolio news)' },
+          headers: { 'User-Agent': 'omnia/1.0 (private; portfolio news)' },
         })
         if (!res.ok) {
           fehler.push(`Google News: ${res.status}`)

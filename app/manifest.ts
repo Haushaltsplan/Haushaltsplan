@@ -2,9 +2,9 @@ import type { MetadataRoute } from 'next'
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: 'Haushaltsplan',
-    short_name: 'Haushaltsplan',
-    description: 'Finanzen, Speisekammer, Investments',
+    name: 'Omnia',
+    short_name: 'Omnia',
+    description: 'Finanzen, Speisekammer, Kalender, Natur & mehr',
     start_url: '/',
     display: 'standalone',
     background_color: '#020617',
@@ -12,8 +12,8 @@ export default function manifest(): MetadataRoute.Manifest {
     lang: 'de',
     orientation: 'portrait-primary',
     icons: [
-      { src: '/icon', sizes: '512x512', type: 'image/png', purpose: 'any' },
-      { src: '/apple-icon', sizes: '180x180', type: 'image/png', purpose: 'any' },
+      { src: '/icon.svg', sizes: 'any', type: 'image/svg+xml', purpose: 'any' },
+      { src: '/apple-icon.svg', sizes: 'any', type: 'image/svg+xml', purpose: 'any' },
     ],
   }
 }

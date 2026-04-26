@@ -1,6 +1,6 @@
 'use client'
 
-import { startTransition, useLayoutEffect, useMemo, useState } from 'react'
+import { startTransition, useEffect, useLayoutEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import {
@@ -104,9 +104,51 @@ function SortableNavItem({ def, pathname }: { def: NavItem; pathname: string }) 
   )
 }
 
+/** Gleiche Klassen wie in SortableNavItem — ohne dnd-kit (vermeidet aria-describedby-Hydration-Mismatch). */
+function StatischeLeiste({ orderedDefs, pathname }: { orderedDefs: NavItem[]; pathname: string }) {
+  return (
+    <div className="flex w-full min-w-0 items-center gap-0.5 overflow-x-auto pb-0.5 [scrollbar-gutter:stable] md:overflow-visible md:pb-0">
+      {orderedDefs.map((d) => {
+        const active = linkActive(pathname, d.href)
+        return (
+          <div
+            key={d.href}
+            className="flex shrink-0 items-stretch rounded-lg"
+            style={{ transform: 'none', transition: 'none' }}
+          >
+            <div
+              className="flex w-[1.5rem] shrink-0 select-none items-center justify-center rounded-l-md border border-slate-700/90 border-r-0 bg-slate-900/40 px-1 text-slate-600 md:w-[1.35rem]"
+              aria-hidden
+            >
+              <span className="text-[10px] leading-none opacity-40">⋮⋮</span>
+            </div>
+            <Link
+              href={d.href}
+              className={`flex min-w-0 items-center gap-1.5 border border-l-0 border-slate-700/90 py-2 pr-2.5 pl-1 text-xs font-bold focus-visible:outline-none focus-visible:ring-2 md:gap-2 md:px-3 md:py-2 md:text-sm ${d.ring} ${
+                active
+                  ? `border-slate-600/80 bg-slate-800/90 ${d.color}`
+                  : 'text-slate-400 hover:border-slate-600/50 hover:bg-slate-800/80 hover:text-slate-200 md:text-slate-500 md:hover:text-slate-300'
+              }`}
+              aria-current={active ? 'page' : undefined}
+            >
+              <span aria-hidden>{d.emoji}</span>
+              {d.label}
+            </Link>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
 export function SiteNav() {
   const pathname = usePathname()
   const [order, setOrder] = useState<string[]>(DEFAULT_HREF_ORDER)
+  const [dndBereit, setDndBereit] = useState(false)
+
+  useEffect(() => {
+    setDndBereit(true)
+  }, [])
 
   useLayoutEffect(() => {
     try {
@@ -152,6 +194,10 @@ export function SiteNav() {
       }
       return next
     })
+  }
+
+  if (!dndBereit) {
+    return <StatischeLeiste orderedDefs={orderedDefs} pathname={pathname} />
   }
 
   return (

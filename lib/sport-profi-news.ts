@@ -35,7 +35,7 @@ function artikelIstAktuell(veroeffentlichtAm: string | null): boolean {
 
 const FETCH: RequestInit = {
   next: { revalidate: 300 },
-  headers: { 'User-Agent': 'mein-haushalt/1.0 (private; pro sport news)' },
+  headers: { 'User-Agent': 'omnia/1.0 (private; pro sport news)' },
 }
 
 function rohZuEintrag(roh: RohGoogleNewsEintrag): NewsEintrag {

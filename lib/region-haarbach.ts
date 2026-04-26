@@ -437,7 +437,7 @@ export async function ladeRegionNews(): Promise<{
       try {
         const res = await fetch(url, {
           next: { revalidate: 300 },
-          headers: { 'User-Agent': 'mein-haushalt/1.0 (private; region overview)' },
+          headers: { 'User-Agent': 'omnia/1.0 (private; region overview)' },
         })
         if (!res.ok) {
           if (res.status !== 404 && res.status !== 410) {
