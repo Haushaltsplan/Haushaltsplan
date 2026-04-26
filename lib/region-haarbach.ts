@@ -1,3 +1,4 @@
+import { parseGoogleNewsRssItems, type RohGoogleNewsEintrag } from '@/lib/google-news-rss'
 import { passtNewsLautRegionSchlagwortliste } from '@/lib/region-haarbach-news-filter'
 
 /**
@@ -93,10 +94,7 @@ export type NewsEintrag = {
   veroeffentlichtAm: string | null
 }
 
-type RohNewsEintrag = NewsEintrag & {
-  /** nur für Lokal-Filter, nicht an UI */
-  sucheFuerLokal: string
-}
+type RohNewsEintrag = RohGoogleNewsEintrag
 
 export function wmoCodeToDe(code: number): string {
   const t: Record<number, string> = {
@@ -366,54 +364,6 @@ export async function ladeWetterHaarbach(): Promise<WetterOverview> {
   }
 }
 
-function decodeXmlText(s: string): string {
-  return s
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/gi, '$1')
-    .replace(/<[^>]+>/g, '')
-    .trim()
-}
-
-function parseIsoAusPubDateRaw(raw: string | undefined): string | null {
-  if (!raw) return null
-  const s = decodeXmlText(String(raw).trim())
-  if (!s) return null
-  const t = Date.parse(s)
-  if (!Number.isFinite(t)) return null
-  return new Date(t).toISOString()
-}
-
-function parseRssItems(xml: string, quelle: string, max: number): RohNewsEintrag[] {
-  const out: RohNewsEintrag[] = []
-  const re = /<item[^>]*>([\s\S]*?)<\/item>/gi
-  let m: RegExpExecArray | null
-  while ((m = re.exec(xml)) && out.length < max) {
-    const block = m[1]
-    const tRaw =
-      block.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1] ?? ''
-    const lRaw = block.match(/<link[^>]*>([\s\S]*?)<\/link>/i)?.[1] ?? ''
-    const pRaw =
-      block.match(/<pubDate[^>]*>([\s\S]*?)<\/pubDate>/i)?.[1] ??
-      block.match(/<dc:date[^>]*>([\s\S]*?)<\/dc:date>/i)?.[1] ??
-      block.match(/<updated[^>]*>([\s\S]*?)<\/updated>/i)?.[1] ??
-      ''
-    const dRaw = block.match(/<description[^>]*>([\s\S]*?)<\/description>/i)?.[1] ?? ''
-    const titel = decodeXmlText(tRaw)
-    const href = decodeXmlText(lRaw)
-    const beschreibung = decodeXmlText(dRaw)
-    const veroeffentlichtAm = parseIsoAusPubDateRaw(pRaw) || null
-    const sucheFuerLokal = `${titel} ${beschreibung}`.replace(/\s+/g, ' ').trim()
-    if (titel && href) {
-      out.push({ titel, href, quelle, veroeffentlichtAm, sucheFuerLokal })
-    }
-  }
-  return out
-}
-
 /** Suchanfragen so gewählt, dass Treffer meist eure Orts-Schläger aus der Whitelist nennen. */
 const GOOGLE_NEWS_1 = encodeURIComponent(
   'Aidenbach OR Aldersbach OR Ortenburg OR Egglham OR Fürstenzell OR Kößlarn OR Tettenweis',
@@ -463,10 +413,6 @@ const FEEDS: Array<{ url: string; quelle: string }> = [
     url: `https://news.google.com/rss/search?q=${GOOGLE_PNP_GRIESBACH_RUHSTORF}&hl=de&gl=DE&ceid=DE:de`,
     quelle: 'Google News',
   },
-  {
-    url: 'https://www.pnp.de/lokales/landkreis-passau/feed/',
-    quelle: 'Passauer Neue Presse',
-  },
 ]
 
 /** Nur Artikel mit bekanntem Datum innerhalb der letzten 14 Tage (UTC → gleicher Kalendertag ok). */
@@ -494,11 +440,13 @@ export async function ladeRegionNews(): Promise<{
           headers: { 'User-Agent': 'mein-haushalt/1.0 (private; region overview)' },
         })
         if (!res.ok) {
-          fehler.push(`${quelle}: ${res.status}`)
+          if (res.status !== 404 && res.status !== 410) {
+            fehler.push(`${quelle}: ${res.status}`)
+          }
           return
         }
         const xml = await res.text()
-        const items = parseRssItems(xml, quelle, 60)
+        const items = parseGoogleNewsRssItems(xml, quelle, 60)
         alle.push(...items)
       } catch (e) {
         fehler.push(

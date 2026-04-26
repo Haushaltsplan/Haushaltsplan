@@ -1,11 +1,13 @@
 import type { Metadata } from 'next'
 import { RegionWetterAnzeige } from '@/components/region-wetter-anzeige'
+import { ladeAktienPortfolioNews } from '@/lib/aktien-portfolio-news'
 import {
   ladeRegionNews,
   ladeWetterHaarbach,
   REGION_HAARBACH,
   wetterBeiLadefehler,
 } from '@/lib/region-haarbach'
+import { ladeProfirennradsportNews, ladeProfiWintersportNews } from '@/lib/sport-profi-news'
 
 export const revalidate = 300
 
@@ -47,13 +49,25 @@ function formatNewsDatum(iso: string | null) {
 export default async function StartUebersichtPage() {
   let wetter: Awaited<ReturnType<typeof ladeWetterHaarbach>>
   let news: Awaited<ReturnType<typeof ladeRegionNews>>
+  let portfolioNews: Awaited<ReturnType<typeof ladeAktienPortfolioNews>>
+  let rennradNews: Awaited<ReturnType<typeof ladeProfirennradsportNews>>
+  let winterNews: Awaited<ReturnType<typeof ladeProfiWintersportNews>>
   try {
-    ;[wetter, news] = await Promise.all([ladeWetterHaarbach(), ladeRegionNews()])
+    ;[wetter, news, portfolioNews, rennradNews, winterNews] = await Promise.all([
+      ladeWetterHaarbach(),
+      ladeRegionNews(),
+      ladeAktienPortfolioNews(),
+      ladeProfirennradsportNews(),
+      ladeProfiWintersportNews(),
+    ])
   } catch (e) {
     wetter = wetterBeiLadefehler(
       e instanceof Error ? e.message : 'Laden der Startseite fehlgeschlagen',
     )
     news = { artikel: [], fehler: e instanceof Error ? e.message : 'News nicht erreichbar' }
+    portfolioNews = { artikel: [], fehler: e instanceof Error ? e.message : 'News nicht erreichbar' }
+    rennradNews = { artikel: [], fehler: e instanceof Error ? e.message : 'News nicht erreichbar' }
+    winterNews = { artikel: [], fehler: e instanceof Error ? e.message : 'News nicht erreichbar' }
   }
 
   return (
@@ -76,7 +90,7 @@ export default async function StartUebersichtPage() {
       <section className="rounded-2xl border border-slate-800 bg-slate-900/80 p-5 shadow-lg shadow-black/20">
         <details className="app-disclosure group" open>
           <summary className="flex cursor-pointer list-none select-none items-start justify-between gap-3 text-left outline-offset-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-500/50">
-            <h2 className="text-xs font-black uppercase tracking-widest text-amber-200/80">News</h2>
+            <h2 className="text-xs font-black uppercase tracking-widest text-amber-200/80">News aus der Umgebung</h2>
             <span className="mt-0.5 shrink-0 text-slate-500 transition group-open:rotate-180" aria-hidden>
               <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <path d="M6 9l6 6 6-6" strokeLinecap="round" strokeLinejoin="round" />
@@ -88,6 +102,141 @@ export default async function StartUebersichtPage() {
             {news.artikel.length === 0 && !news.fehler ? <p className="mt-2 text-sm text-slate-500">Keine Meldungen.</p> : null}
             <ul className="mt-3 space-y-2.5">
               {news.artikel.map((a, i) => (
+                <li
+                  key={a.href + i}
+                  className="flex flex-col gap-0.5 border-b border-slate-800/60 pb-2.5 last:border-0 last:pb-0 sm:flex-row sm:items-baseline sm:gap-3"
+                >
+                  <time
+                    className="shrink-0 text-xs font-mono tabular-nums text-slate-500"
+                    dateTime={a.veroeffentlichtAm ?? undefined}
+                  >
+                    {formatNewsDatum(a.veroeffentlichtAm)}
+                  </time>
+                  <div className="min-w-0 flex-1">
+                    <a
+                      href={a.href}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-[15px] font-semibold text-slate-100 underline decoration-slate-600 underline-offset-2 transition hover:text-cyan-200"
+                    >
+                      {a.titel}
+                    </a>
+                    <span className="ml-1.5 text-xs text-slate-600">· {a.quelle}</span>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </details>
+      </section>
+
+      <section className="rounded-2xl border border-slate-800 bg-slate-900/80 p-5 shadow-lg shadow-black/20">
+        <details className="app-disclosure group" open>
+          <summary className="flex cursor-pointer list-none select-none items-start justify-between gap-3 text-left outline-offset-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-500/50">
+            <h2 className="text-xs font-black uppercase tracking-widest text-emerald-200/80">News zu meinen Investments</h2>
+            <span className="mt-0.5 shrink-0 text-slate-500 transition group-open:rotate-180" aria-hidden>
+              <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M6 9l6 6 6-6" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </span>
+          </summary>
+          <div className="pt-1">
+            {portfolioNews.fehler ? <p className="mt-1 text-xs text-amber-200/60">{portfolioNews.fehler}</p> : null}
+            {portfolioNews.artikel.length === 0 && !portfolioNews.fehler ? (
+              <p className="mt-2 text-sm text-slate-500">Keine Meldungen.</p>
+            ) : null}
+            <ul className="mt-3 space-y-2.5">
+              {portfolioNews.artikel.map((a, i) => (
+                <li
+                  key={a.href + i}
+                  className="flex flex-col gap-0.5 border-b border-slate-800/60 pb-2.5 last:border-0 last:pb-0 sm:flex-row sm:items-baseline sm:gap-3"
+                >
+                  <time
+                    className="shrink-0 text-xs font-mono tabular-nums text-slate-500"
+                    dateTime={a.veroeffentlichtAm ?? undefined}
+                  >
+                    {formatNewsDatum(a.veroeffentlichtAm)}
+                  </time>
+                  <div className="min-w-0 flex-1">
+                    <a
+                      href={a.href}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-[15px] font-semibold text-slate-100 underline decoration-slate-600 underline-offset-2 transition hover:text-cyan-200"
+                    >
+                      {a.titel}
+                    </a>
+                    <span className="ml-1.5 text-xs text-slate-600">· {a.quelle}</span>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </details>
+      </section>
+
+      <section className="rounded-2xl border border-slate-800 bg-slate-900/80 p-5 shadow-lg shadow-black/20">
+        <details className="app-disclosure group" open>
+          <summary className="flex cursor-pointer list-none select-none items-start justify-between gap-3 text-left outline-offset-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-500/50">
+            <h2 className="text-xs font-black uppercase tracking-widest text-orange-200/80">News zum Profirennradsport</h2>
+            <span className="mt-0.5 shrink-0 text-slate-500 transition group-open:rotate-180" aria-hidden>
+              <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M6 9l6 6 6-6" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </span>
+          </summary>
+          <div className="pt-1">
+            {rennradNews.fehler ? <p className="mt-1 text-xs text-amber-200/60">{rennradNews.fehler}</p> : null}
+            {rennradNews.artikel.length === 0 && !rennradNews.fehler ? (
+              <p className="mt-2 text-sm text-slate-500">Keine Meldungen.</p>
+            ) : null}
+            <ul className="mt-3 space-y-2.5">
+              {rennradNews.artikel.map((a, i) => (
+                <li
+                  key={a.href + i}
+                  className="flex flex-col gap-0.5 border-b border-slate-800/60 pb-2.5 last:border-0 last:pb-0 sm:flex-row sm:items-baseline sm:gap-3"
+                >
+                  <time
+                    className="shrink-0 text-xs font-mono tabular-nums text-slate-500"
+                    dateTime={a.veroeffentlichtAm ?? undefined}
+                  >
+                    {formatNewsDatum(a.veroeffentlichtAm)}
+                  </time>
+                  <div className="min-w-0 flex-1">
+                    <a
+                      href={a.href}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-[15px] font-semibold text-slate-100 underline decoration-slate-600 underline-offset-2 transition hover:text-cyan-200"
+                    >
+                      {a.titel}
+                    </a>
+                    <span className="ml-1.5 text-xs text-slate-600">· {a.quelle}</span>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </details>
+      </section>
+
+      <section className="rounded-2xl border border-slate-800 bg-slate-900/80 p-5 shadow-lg shadow-black/20">
+        <details className="app-disclosure group" open>
+          <summary className="flex cursor-pointer list-none select-none items-start justify-between gap-3 text-left outline-offset-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-500/50">
+            <h2 className="text-xs font-black uppercase tracking-widest text-sky-200/80">News zum Profi Wintersport</h2>
+            <span className="mt-0.5 shrink-0 text-slate-500 transition group-open:rotate-180" aria-hidden>
+              <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M6 9l6 6 6-6" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </span>
+          </summary>
+          <div className="pt-1">
+            {winterNews.fehler ? <p className="mt-1 text-xs text-amber-200/60">{winterNews.fehler}</p> : null}
+            {winterNews.artikel.length === 0 && !winterNews.fehler ? (
+              <p className="mt-2 text-sm text-slate-500">Keine Meldungen.</p>
+            ) : null}
+            <ul className="mt-3 space-y-2.5">
+              {winterNews.artikel.map((a, i) => (
                 <li
                   key={a.href + i}
                   className="flex flex-col gap-0.5 border-b border-slate-800/60 pb-2.5 last:border-0 last:pb-0 sm:flex-row sm:items-baseline sm:gap-3"
