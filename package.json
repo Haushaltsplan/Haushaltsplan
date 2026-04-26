@@ -3,6 +3,8 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "icon:raster": "node scripts/rasterize-omnia-icon.mjs",
+    "prebuild": "node scripts/rasterize-omnia-icon.mjs",
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
@@ -31,6 +33,7 @@
     "eslint": "^9",
     "eslint-config-next": "16.2.4",
     "pg": "^8.14.1",
+    "sharp": "^0.33.5",
     "tailwindcss": "^4",
     "typescript": "^5"
   }

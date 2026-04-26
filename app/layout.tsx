@@ -20,6 +20,14 @@ export const metadata: Metadata = {
   description:
     "Omnia — Finanzen, Speisekammer, Kalender, Besitz, Investments und mehr an einem Ort.",
   applicationName: "Omnia",
+  // app/apple-icon.png = 180×180 PNG fürs Home-Screen-Icon (nicht im icons-Array duplizieren)
+  icons: {
+    icon: [
+      { url: "/icon.svg", type: "image/svg+xml" },
+      { url: "/omnia-192.png", sizes: "192x192", type: "image/png" },
+      { url: "/omnia-512.png", sizes: "512x512", type: "image/png" },
+    ],
+  },
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
