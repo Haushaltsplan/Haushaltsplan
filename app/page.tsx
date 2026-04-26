@@ -8,6 +8,7 @@ import {
   wetterBeiLadefehler,
 } from '@/lib/region-haarbach'
 import { ladeProfirennradsportNews, ladeProfiWintersportNews } from '@/lib/sport-profi-news'
+import { DetailsDisclosureTriggerEnd } from '@/components/collapsible-ui'
 
 export const revalidate = 300
 
@@ -87,17 +88,13 @@ export default async function StartUebersichtPage() {
         ortName={REGION_HAARBACH.name}
       />
 
-      <section className="rounded-2xl border border-slate-800 bg-slate-900/80 p-5 shadow-lg shadow-black/20">
-        <details className="app-disclosure group" open>
-          <summary className="flex cursor-pointer list-none select-none items-start justify-between gap-3 text-left outline-offset-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-500/50">
-            <h2 className="text-xs font-black uppercase tracking-widest text-amber-200/80">News aus der Umgebung</h2>
-            <span className="mt-0.5 shrink-0 text-slate-500 transition group-open:rotate-180" aria-hidden>
-              <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M6 9l6 6 6-6" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-            </span>
+      <section className="overflow-hidden rounded-2xl border border-slate-800 bg-slate-900/80 shadow-lg shadow-black/20">
+        <details className="app-disclosure group border-t border-slate-800/80 bg-slate-950/30">
+          <summary className="flex cursor-pointer list-none select-none items-center justify-between gap-3 px-4 py-4 text-left outline-offset-2 transition-colors hover:bg-slate-800/35 focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-500/50 sm:px-8">
+            <p className="min-w-0 pr-1 text-[11px] font-black uppercase tracking-widest text-amber-200/80">News aus der Umgebung</p>
+            <DetailsDisclosureTriggerEnd tone="amber" />
           </summary>
-          <div className="pt-1">
+          <div className="px-4 pb-4 sm:px-8">
             {news.fehler ? <p className="mt-1 text-xs text-amber-200/60">{news.fehler}</p> : null}
             {news.artikel.length === 0 && !news.fehler ? <p className="mt-2 text-sm text-slate-500">Keine Meldungen.</p> : null}
             <ul className="mt-3 space-y-2.5">
@@ -130,17 +127,13 @@ export default async function StartUebersichtPage() {
         </details>
       </section>
 
-      <section className="rounded-2xl border border-slate-800 bg-slate-900/80 p-5 shadow-lg shadow-black/20">
-        <details className="app-disclosure group" open>
-          <summary className="flex cursor-pointer list-none select-none items-start justify-between gap-3 text-left outline-offset-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-500/50">
-            <h2 className="text-xs font-black uppercase tracking-widest text-emerald-200/80">News zu meinen Investments</h2>
-            <span className="mt-0.5 shrink-0 text-slate-500 transition group-open:rotate-180" aria-hidden>
-              <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M6 9l6 6 6-6" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-            </span>
+      <section className="overflow-hidden rounded-2xl border border-slate-800 bg-slate-900/80 shadow-lg shadow-black/20">
+        <details className="app-disclosure group border-t border-slate-800/80 bg-slate-950/30">
+          <summary className="flex cursor-pointer list-none select-none items-center justify-between gap-3 px-4 py-4 text-left outline-offset-2 transition-colors hover:bg-slate-800/35 focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-500/50 sm:px-8">
+            <p className="min-w-0 pr-1 text-[11px] font-black uppercase tracking-widest text-emerald-200/80">News zu meinen Investments</p>
+            <DetailsDisclosureTriggerEnd tone="emerald" />
           </summary>
-          <div className="pt-1">
+          <div className="px-4 pb-4 sm:px-8">
             {portfolioNews.fehler ? <p className="mt-1 text-xs text-amber-200/60">{portfolioNews.fehler}</p> : null}
             {portfolioNews.artikel.length === 0 && !portfolioNews.fehler ? (
               <p className="mt-2 text-sm text-slate-500">Keine Meldungen.</p>
@@ -175,17 +168,13 @@ export default async function StartUebersichtPage() {
         </details>
       </section>
 
-      <section className="rounded-2xl border border-slate-800 bg-slate-900/80 p-5 shadow-lg shadow-black/20">
-        <details className="app-disclosure group" open>
-          <summary className="flex cursor-pointer list-none select-none items-start justify-between gap-3 text-left outline-offset-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-500/50">
-            <h2 className="text-xs font-black uppercase tracking-widest text-orange-200/80">News zum Profirennradsport</h2>
-            <span className="mt-0.5 shrink-0 text-slate-500 transition group-open:rotate-180" aria-hidden>
-              <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M6 9l6 6 6-6" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-            </span>
+      <section className="overflow-hidden rounded-2xl border border-slate-800 bg-slate-900/80 shadow-lg shadow-black/20">
+        <details className="app-disclosure group border-t border-slate-800/80 bg-slate-950/30">
+          <summary className="flex cursor-pointer list-none select-none items-center justify-between gap-3 px-4 py-4 text-left outline-offset-2 transition-colors hover:bg-slate-800/35 focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-500/50 sm:px-8">
+            <p className="min-w-0 pr-1 text-[11px] font-black uppercase tracking-widest text-orange-200/80">News zum Profirennradsport</p>
+            <DetailsDisclosureTriggerEnd tone="orange" />
           </summary>
-          <div className="pt-1">
+          <div className="px-4 pb-4 sm:px-8">
             {rennradNews.fehler ? <p className="mt-1 text-xs text-amber-200/60">{rennradNews.fehler}</p> : null}
             {rennradNews.artikel.length === 0 && !rennradNews.fehler ? (
               <p className="mt-2 text-sm text-slate-500">Keine Meldungen.</p>
@@ -220,17 +209,13 @@ export default async function StartUebersichtPage() {
         </details>
       </section>
 
-      <section className="rounded-2xl border border-slate-800 bg-slate-900/80 p-5 shadow-lg shadow-black/20">
-        <details className="app-disclosure group" open>
-          <summary className="flex cursor-pointer list-none select-none items-start justify-between gap-3 text-left outline-offset-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-500/50">
-            <h2 className="text-xs font-black uppercase tracking-widest text-sky-200/80">News zum Profi Wintersport</h2>
-            <span className="mt-0.5 shrink-0 text-slate-500 transition group-open:rotate-180" aria-hidden>
-              <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M6 9l6 6 6-6" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-            </span>
+      <section className="overflow-hidden rounded-2xl border border-slate-800 bg-slate-900/80 shadow-lg shadow-black/20">
+        <details className="app-disclosure group border-t border-slate-800/80 bg-slate-950/30">
+          <summary className="flex cursor-pointer list-none select-none items-center justify-between gap-3 px-4 py-4 text-left outline-offset-2 transition-colors hover:bg-slate-800/35 focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-500/50 sm:px-8">
+            <p className="min-w-0 pr-1 text-[11px] font-black uppercase tracking-widest text-sky-200/80">News zum Profi Wintersport</p>
+            <DetailsDisclosureTriggerEnd tone="sky" />
           </summary>
-          <div className="pt-1">
+          <div className="px-4 pb-4 sm:px-8">
             {winterNews.fehler ? <p className="mt-1 text-xs text-amber-200/60">{winterNews.fehler}</p> : null}
             {winterNews.artikel.length === 0 && !winterNews.fehler ? (
               <p className="mt-2 text-sm text-slate-500">Keine Meldungen.</p>

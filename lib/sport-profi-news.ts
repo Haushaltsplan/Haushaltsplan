@@ -1,26 +1,14 @@
 import { parseGoogleNewsRssItems, type RohGoogleNewsEintrag } from '@/lib/google-news-rss'
 import type { NewsEintrag } from '@/lib/region-haarbach'
 import { SPORT_RENNRAD_SCHLUESSELWOERTER } from '@/lib/sport-rennrad-keywords'
+import { SPORT_WINTER_SCHLUESSELWOERTER } from '@/lib/sport-winter-keywords'
+import { passtRadsportEintrag, passtWintersportEintrag } from '@/lib/sport-profi-news-filter'
 
 /**
- * Lokal: in `.env.local` **eine** Zeile, die die Listing-Suche ersetzt (OR, site:…, when:…).
- * Leer = eingebettete Team-/Rennen-Keywords aus `sport-rennrad-keywords.ts` (in Batches an Google).
+ * Lokal: in `.env.local` **eine** Zeile, die die jeweilige Listing-Suche ersetzt.
+ * Radsport: `sport-rennrad-keywords.ts` Batches. Wintersport: `sport-winter-keywords.ts` Batches.
  * @see .env.example — HAUSHALT_SPORT_RENNRAD_QUERY, HAUSHALT_SPORT_WINTER_QUERY
  */
-function kernAusEnv(n: string, fallback: string): string {
-  const v = (process.env[n] ?? '').trim()
-  return v.length > 0 ? v : fallback
-}
-
-const KERN_WINTER = kernAusEnv(
-  'HAUSHALT_SPORT_WINTER_QUERY',
-  [
-    'Biathlon OR Skispringen',
-    '"Ski alpin" OR "alpine" OR Slalom OR "Super G" OR "Nordische Kombination"',
-    'Langlauf OR "FIS" OR "Weltcup" OR "Wintersport" OR "Wintersport-WM"',
-    'Bob OR Rodeln OR "Eisschnelllauf" OR "Short Track" OR "Eiskunstlauf"',
-  ].join(' OR '),
-)
 
 /**
  * Google-News-Operator `when:` — siehe frühere Diskussion; ohne `when:` oft alte Top-Treffer.
@@ -35,8 +23,6 @@ function qMitZeitfenster(kern: string): string {
   }
   return encodeURIComponent(`${t} when:${WHEN_STANDARD}`)
 }
-
-const Q_PROFI_WINTER = qMitZeitfenster(KERN_WINTER)
 
 const NEWS_MAX_ALTER_MS = 14 * 24 * 60 * 60 * 1000
 
@@ -84,15 +70,19 @@ function chunken<T>(arr: T[], size: number): T[][] {
 }
 
 /** Obergrenze, damit `q` pro Request nicht die URL sprengt (Google ~2k) */
-const RENNRAD_BEGRIFFE_PRO_BATCH = 6
+const SPORT_BEGRIFFE_PRO_BATCH = 6
 
-function verarbeiteRohNews(alle: RohGoogleNewsEintrag[]): { artikel: NewsEintrag[] } {
+function verarbeiteRohNews(
+  alle: RohGoogleNewsEintrag[],
+  passt: (roh: RohGoogleNewsEintrag) => boolean,
+): { artikel: NewsEintrag[] } {
   const gesehen = new Set<string>()
   const artikel: NewsEintrag[] = []
   for (const roh of alle) {
     if (gesehen.has(roh.href)) continue
     gesehen.add(roh.href)
     if (!artikelIstAktuell(roh.veroeffentlichtAm)) continue
+    if (!passt(roh)) continue
     artikel.push(rohZuEintrag(roh))
   }
   artikel.sort((a, b) => {
@@ -131,12 +121,13 @@ async function fetchGoogleNewsRoh(
 async function ladeEinenSportFeed(
   qParam: string,
   label: string,
+  passt: (roh: RohGoogleNewsEintrag) => boolean,
 ): Promise<{ artikel: NewsEintrag[]; fehler: string | null }> {
   const { roh, httpFehler } = await fetchGoogleNewsRoh(qParam)
   if (httpFehler) {
     return { artikel: [], fehler: `Google News (${label}): ${httpFehler}` }
   }
-  const { artikel } = verarbeiteRohNews(roh)
+  const { artikel } = verarbeiteRohNews(roh, passt)
   return { artikel, fehler: null }
 }
 
@@ -145,7 +136,7 @@ async function ladeRennradAusKeywordBatches(): Promise<{
   fehler: string | null
 }> {
   const begriffe = SPORT_RENNRAD_SCHLUESSELWOERTER.map(alsSuchbegriff).filter((s) => s.length > 0)
-  const kacheln = chunken(begriffe, RENNRAD_BEGRIFFE_PRO_BATCH)
+  const kacheln = chunken(begriffe, SPORT_BEGRIFFE_PRO_BATCH)
   const fehler: string[] = []
   const alle: RohGoogleNewsEintrag[] = []
 
@@ -160,7 +151,9 @@ async function ladeRennradAusKeywordBatches(): Promise<{
     }),
   )
 
-  const { artikel } = verarbeiteRohNews(alle)
+  const { artikel } = verarbeiteRohNews(alle, (r) =>
+    passtRadsportEintrag(r, SPORT_RENNRAD_SCHLUESSELWOERTER),
+  )
   return {
     artikel,
     fehler: fehler.length ? fehler.join(' · ') : null,
@@ -177,11 +170,52 @@ export function ladeProfirennradsportNews(): Promise<{
 }> {
   const fromEnv = (process.env.HAUSHALT_SPORT_RENNRAD_QUERY ?? '').trim()
   if (fromEnv) {
-    return ladeEinenSportFeed(qMitZeitfenster(fromEnv), 'Radsport')
+    return ladeEinenSportFeed(qMitZeitfenster(fromEnv), 'Radsport', (r) =>
+      passtRadsportEintrag(r, SPORT_RENNRAD_SCHLUESSELWOERTER),
+    )
   }
   return ladeRennradAusKeywordBatches()
 }
 
+async function ladeWinterAusKeywordBatches(): Promise<{
+  artikel: NewsEintrag[]
+  fehler: string | null
+}> {
+  const begriffe = SPORT_WINTER_SCHLUESSELWOERTER.map(alsSuchbegriff).filter((s) => s.length > 0)
+  const kacheln = chunken(begriffe, SPORT_BEGRIFFE_PRO_BATCH)
+  const fehler: string[] = []
+  const alle: RohGoogleNewsEintrag[] = []
+
+  await Promise.all(
+    kacheln.map(async (g) => {
+      const orKette = g.join(' OR ')
+      if (!orKette) return
+      const q = qMitZeitfenster(orKette)
+      const { roh, httpFehler } = await fetchGoogleNewsRoh(q)
+      if (httpFehler) fehler.push(httpFehler)
+      alle.push(...roh)
+    }),
+  )
+
+  const { artikel } = verarbeiteRohNews(alle, (r) =>
+    passtWintersportEintrag(r, SPORT_WINTER_SCHLUESSELWOERTER),
+  )
+  return {
+    artikel,
+    fehler: fehler.length ? fehler.join(' · ') : null,
+  }
+}
+
+/**
+ * Wintersport: `HAUSHALT_SPORT_WINTER_QUERY` ersetzt die eingebettete Liste;
+ * sonst Batches mit `SPORT_WINTER_SCHLUESSELWOERTER` + `when:14d`.
+ */
 export function ladeProfiWintersportNews() {
-  return ladeEinenSportFeed(Q_PROFI_WINTER, 'Wintersport')
+  const fromEnv = (process.env.HAUSHALT_SPORT_WINTER_QUERY ?? '').trim()
+  if (fromEnv) {
+    return ladeEinenSportFeed(qMitZeitfenster(fromEnv), 'Wintersport', (r) =>
+      passtWintersportEintrag(r, SPORT_WINTER_SCHLUESSELWOERTER),
+    )
+  }
+  return ladeWinterAusKeywordBatches()
 }

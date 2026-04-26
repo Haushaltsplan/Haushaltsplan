@@ -1,5 +1,6 @@
 'use client'
 
+import { DetailsDisclosureTriggerEnd } from '@/components/collapsible-ui'
 import { WindIkon, WetterHimmelIcon, PrognoseTagKachel, iconKategorie, prognoseKopfzeile } from '@/components/wetter-zeichen'
 import type { WetterTagPrognose } from '@/lib/region-haarbach'
 import { windHimmelsrichtungKurz } from '@/lib/region-haarbach'
@@ -102,13 +103,9 @@ export function RegionWetter7TageTageszeitenClient({ prognose7Tage }: Props) {
 
   return (
     <details className="app-disclosure group border-t border-slate-800/80 bg-slate-950/30" open>
-      <summary className="flex cursor-pointer list-none select-none items-start justify-between gap-3 px-4 py-4 text-left outline-offset-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-500/50 sm:px-8">
+      <summary className="flex cursor-pointer list-none select-none items-center justify-between gap-3 px-4 py-4 text-left outline-offset-2 transition-colors hover:bg-slate-800/35 focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-500/50 sm:px-8">
         <p className="min-w-0 pr-1 text-[11px] font-black uppercase tracking-widest text-cyan-200/70">7-Tage-Ausblick</p>
-        <span className="mt-1 shrink-0 text-slate-500 transition group-open:rotate-180" aria-hidden>
-          <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M6 9l6 6 6-6" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-        </span>
+        <DetailsDisclosureTriggerEnd tone="sky" />
       </summary>
       <div className="px-4 pb-4 sm:px-8">
         <div className="mt-0 flex snap-x snap-mandatory gap-2.5 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] sm:grid sm:grid-cols-7 sm:gap-2 sm:overflow-visible sm:pb-0 [&::-webkit-scrollbar]:hidden">
