@@ -41,6 +41,7 @@ export function LagerKassenzettelPanel({ disabled, onBuchungFertig }: Props) {
   const [loading, setLoading] = useState(false)
   const [aufgeklappt, setAufgeklappt] = useState(false)
   const fileRef = useRef<HTMLInputElement | null>(null)
+  const cameraRef = useRef<HTMLInputElement | null>(null)
 
   useEffect(() => {
     if (images.length > 0 || (positionen != null && positionen.length > 0)) setAufgeklappt(true)
@@ -225,8 +226,27 @@ export function LagerKassenzettelPanel({ disabled, onBuchungFertig }: Props) {
           e.target.value = ''
         }}
       />
+      <input
+        ref={cameraRef}
+        type="file"
+        accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp"
+        capture="environment"
+        className="hidden"
+        onChange={(e) => {
+          void addFiles(e.target.files)
+          e.target.value = ''
+        }}
+      />
 
           <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              disabled={disabled || loading || images.length >= COACH_MAX_IMAGES_PER_SEND}
+              onClick={() => cameraRef.current?.click()}
+              className="rounded-lg border border-sky-600/55 bg-sky-950/40 px-3 py-2 text-xs font-bold text-sky-100 hover:bg-sky-900/40 disabled:opacity-40"
+            >
+              Foto aufnehmen
+            </button>
             <button
               type="button"
               disabled={disabled || loading || images.length >= COACH_MAX_IMAGES_PER_SEND}

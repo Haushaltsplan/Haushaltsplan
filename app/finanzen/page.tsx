@@ -361,14 +361,22 @@ export default function FinanzenPage() {
   }
 
   async function ladeDaten() {
-    const { data: ein } = await supabase.from('einnahmen').select('*').order('datum', { ascending: false })
-    const { data: aus } = await supabase.from('ausgaben').select('*').order('datum', { ascending: false })
+    const { data: ein, error: einErr } = await supabase.from('einnahmen').select('*').order('datum', { ascending: false })
+    const { data: aus, error: ausErr } = await supabase.from('ausgaben').select('*').order('datum', { ascending: false })
+    if (einErr || ausErr) {
+      console.warn('[Finanzen] ladeDaten', einErr ?? ausErr)
+      toast.error('Finanzdaten konnten nicht geladen werden (RLS/DB prüfen).')
+    }
     setEinnahmen(ein || [])
     setAusgaben(aus || [])
   }
 
   async function ladeDauerauftraege() {
-    const { data } = await supabase.from('dauerauftraege').select('*').order('tag_des_monats', { ascending: true })
+    const { data, error } = await supabase.from('dauerauftraege').select('*').order('tag_des_monats', { ascending: true })
+    if (error) {
+      console.warn('[Finanzen] ladeDauerauftraege', error)
+      toast.error('Daueraufträge konnten nicht geladen werden (RLS/DB prüfen).')
+    }
     setDauerauftraege(data || [])
   }
 
