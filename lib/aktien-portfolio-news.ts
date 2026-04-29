@@ -50,8 +50,18 @@ const UNTERNEHMEN: string[] = [
 /** Google `q=`: muss in Verbindung mit Unternehmen vorkommen (rohe Vorfilterung) */
 const SIGNAL_SUCHFELDER = [
   'Quartal',
+  'Quartalszahlen',
+  'Quartalsbericht',
+  'Quartalsearnings',
+  'Quartalskonferenz',
   'Quartalsergebnis',
+  'Geschäftszahlen',
+  'Geschäftsbericht',
+  'Geschäftsquartal',
+  'Konzernergebnis',
   'Jahreszahlen',
+  'Jahresergebnis',
+  'Jahresbilanz',
   'Dividende',
   'Dividend',
   'Insider',
@@ -63,6 +73,7 @@ const SIGNAL_SUCHFELDER = [
   'merger',
   'earnings',
   'EBIT',
+  'EPS',
   'Q1',
   'Q2',
   'Q3',
@@ -83,9 +94,32 @@ const SIGNAL_SUCHFELDER = [
   'Kredit',
   'Emission',
   'Jahresbericht',
+  'Zahlenlage',
+  'Bilanzpressekonferenz',
+  'Konferenzcall',
 ].map((s) => (s.includes(' ') || /[^a-zA-Z0-9äöüÄÖÜß-]/.test(s) ? `"${s.replace(/"/g, '')}"` : s))
 
 const SIGNAL_MUSTER = `(${SIGNAL_SUCHFELDER.join(' OR ')})`
+
+/** Zweite RSS-Runde: weniger UND-Stufen bei Google — fängt Überschriften ohne „Q2“ etc. mit */
+const LOCKERE_SIGNAL_SUCHFELDER = [
+  '"Quartalszahlen"',
+  '"Geschäftszahlen"',
+  '"Geschäftsbericht"',
+  '"Konzernergebnis"',
+  'Quartalsbericht',
+  'Quartalsearnings',
+  'Quartalskonferenz',
+  'earnings',
+  'Jahresergebnis',
+  'Konferenzcall',
+  'Bilanz',
+  'Guidance',
+  'Zahlen',
+  'Umsatz',
+].map((s) => (s.includes(' ') || /[^a-zA-Z0-9äöüÄÖÜß-]/.test(s) ? `"${s.replace(/"/g, '')}"` : s))
+
+const LOCKERE_SIGNAL_MUSTER = `(${LOCKERE_SIGNAL_SUCHFELDER.join(' OR ')})`
 
 function alsSuchbegriff(name: string): string {
   const t = name.trim()
@@ -104,7 +138,8 @@ function chunken<T>(arr: T[], size: number): T[][] {
   return out
 }
 
-const NEWS_MAX_ALTER_MS = 14 * 24 * 60 * 60 * 1000
+/** Quartalszyklen / Nachricht — etwas großzügiger als 14 Tage */
+const NEWS_MAX_ALTER_MS = 28 * 24 * 60 * 60 * 1000
 
 function artikelIstAktuell(veroeffentlichtAm: string | null): boolean {
   if (!veroeffentlichtAm) return false
@@ -131,7 +166,7 @@ function istWichtigerPortfolioEintrag(titel: string, roh: string): boolean {
   const m: RegExp[] = [
     /\bq[1-4](\s*[-–]\s*|\s+)(20[2-3]\d|fy)/i,
     /\b(20[2-3]\d)\b.*\b(q[1-4]|quarter(ly|sergebnis|ser?))\b/i,
-    /\b(quartal|quarter(ly|serzahlen|sbericht|ser(ergebnis|zahlen))|jahres(ergebnis|zahlen|bilanz)|quartalszahl|jahres(bericht|abschlus))\b/i,
+    /\b(quartals(zahlen|bericht|ergebnis|konferenz)|quarter(ly|serzahlen|sbericht|ser(ergebnis|zahlen))|geschäfts(zahl|ergebnis|bericht)|jahres(ergebnis|zahlen|bilanz)|quartalszahl|jahres(bericht|abschlus))\b/i,
     /\b(earnings|umsatz(ergebnis|rückgang|wachs)|revenue(?!s?\s+share| per)|netto(ergebnis|verlust|gewinn)|ebit|ebitda|eps)\b/i,
     /\b(ergebnis|zahlen|bericht|report|filings?)\b.*\b(überraschend|verfehl|trifft|schläg|fällt|meld(et|e)|veröffent|stellt? vor)\b/i,
     /\b(dividend|dividendenausschütt|ausschütt(ung|squote)|sonderdivid|rendite pro aktie|yield)\b/i,
@@ -146,9 +181,17 @@ function istWichtigerPortfolioEintrag(titel: string, roh: string): boolean {
     /\b(guidance|ausblick|prognose(?!-)|ziel(s)?korridor|zahlen( für)?\s*20[2-3]\d)\b/i,
     /\b(stock|aktien?)-?split|aktiensplit|reverse\s*split|kapitalerhöh(ung|en)|dilut|ausbuchung|gewinn(ser)?warn|profit\s*warn(ing)?\b/i,
     /\b(moody|fitch|s&p|standard\s*(&|and|und)\s*poor|downgrad|upgrad|watchlist|rating(änder(ung|en)|-?eins| review))\b/i,
+    /\b(analyst(en)?|schätzung|prognose|erwartung).*?\b(übertrifft|überrascht|verfehl|trifft|schlägt)\b/i,
+    /\b(übertrifft|überrascht|enttäusch).*?\b(erwartung|prognose|schätzung|analyst)\b/i,
   ]
 
-  return m.some((re) => re.test(s))
+  if (m.some((re) => re.test(s))) return true
+
+  /** Nach zweiter RSS-Runde: noch immer firmenbezogene Finanznachricht, ohne strenge Zahlen-Syntax */
+  const weich =
+    /\b(quartals|geschäfts|jahres|konzer(n|nergeb)|bilanz|umsatz|gewinn|netto|ebit|eps|dividend)\b/i.test(s) &&
+    /\b(aktie|börse|investor|kapitalmarkt|wall\s*street|nasdaq|nyse|analyst|ceo|cfo|vorstand)\b/i.test(s)
+  return weich
 }
 
 /**
@@ -160,35 +203,42 @@ export async function ladeAktienPortfolioNews(): Promise<{
   fehler: string | null
 }> {
   const firmenRoh = UNTERNEHMEN.map(alsSuchbegriff).filter((s) => s.length > 0)
-  const firmenKacheln = chunken(firmenRoh, 4)
+  /** Kleinere Pakete → einfachere Google-Queries, oft mehr Treffer pro Firma */
+  const firmenKacheln = chunken(firmenRoh, 3)
   const fehler: string[] = []
   const alle: RohGoogleNewsEintrag[] = []
 
-  await Promise.all(
-    firmenKacheln.map(async (g) => {
-      const orFirmen = g.join(' OR ')
-      if (!orFirmen) return
-      const q = `(${orFirmen}) AND ${SIGNAL_MUSTER}`
-      const url = `https://news.google.com/rss/search?q=${encodeURIComponent(
-        q,
-      )}&hl=de&gl=DE&ceid=DE:de`
-      try {
-        const res = await fetch(url, {
-          next: { revalidate: 300 },
-          headers: { 'User-Agent': 'omnia/1.0 (private; portfolio news)' },
-        })
-        if (!res.ok) {
-          fehler.push(`Google News: ${res.status}`)
-          return
-        }
-        const xml = await res.text()
-        const items = parseGoogleNewsRssItems(xml, 'Google News', 100)
-        alle.push(...items)
-      } catch (e) {
-        fehler.push(e instanceof Error ? e.message : 'Fehler')
+  async function holeChunk(orFirmen: string, signalBlock: string, label: string) {
+    if (!orFirmen.trim()) return
+    const q = `(${orFirmen}) AND ${signalBlock}`
+    const url = `https://news.google.com/rss/search?q=${encodeURIComponent(q)}&hl=de&gl=DE&ceid=DE:de`
+    try {
+      const res = await fetch(url, {
+        next: { revalidate: 300 },
+        headers: { 'User-Agent': 'omnia/1.0 (private; portfolio news)' },
+      })
+      if (!res.ok) {
+        fehler.push(`Google News (${label}): ${res.status}`)
+        return
       }
+      const xml = await res.text()
+      const items = parseGoogleNewsRssItems(xml, 'Google News', 120)
+      alle.push(...items)
+    } catch (e) {
+      fehler.push(e instanceof Error ? e.message : 'Fehler')
+    }
+  }
+
+  await Promise.all([
+    ...firmenKacheln.map(async (g) => {
+      const orFirmen = g.join(' OR ')
+      await holeChunk(orFirmen, SIGNAL_MUSTER, 'eng')
     }),
-  )
+    ...firmenKacheln.map(async (g) => {
+      const orFirmen = g.join(' OR ')
+      await holeChunk(orFirmen, LOCKERE_SIGNAL_MUSTER, 'weit')
+    }),
+  ])
 
   const seen = new Set<string>()
   const dedup: NewsEintrag[] = []
@@ -212,7 +262,7 @@ export async function ladeAktienPortfolioNews(): Promise<{
   })
 
   return {
-    artikel: dedup.slice(0, 12),
+    artikel: dedup.slice(0, 36),
     fehler: fehler.length ? fehler.join(' · ') : null,
   }
 }

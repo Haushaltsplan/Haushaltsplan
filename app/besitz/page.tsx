@@ -39,6 +39,23 @@ function heuteIsoDatum() {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
+function istBesitzPdfDatei(file: File): boolean {
+  return file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')
+}
+
+function istBesitzBelegfotoDatei(file: File): boolean {
+  const n = file.name.toLowerCase()
+  return (
+    file.type === 'image/jpeg' ||
+    file.type === 'image/png' ||
+    file.type === 'image/webp' ||
+    n.endsWith('.jpg') ||
+    n.endsWith('.jpeg') ||
+    n.endsWith('.png') ||
+    n.endsWith('.webp')
+  )
+}
+
 export default function BesitzPage() {
   const [zeilen, setZeilen] = useState<BesitzRow[]>([])
   const [laden, setLaden] = useState(true)
@@ -227,20 +244,25 @@ export default function BesitzPage() {
     await lade()
   }
 
-  async function handlePdfImport(event: React.ChangeEvent<HTMLInputElement>) {
+  async function handleBelegImport(event: React.ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0]
     event.target.value = ''
     if (!file) return
-    if (file.type !== 'application/pdf' && !file.name.toLowerCase().endsWith('.pdf')) {
-      toast.error('Bitte eine PDF-Datei hochladen.')
+
+    const isPdf = istBesitzPdfDatei(file)
+    const isFoto = istBesitzBelegfotoDatei(file)
+    if (!isPdf && !isFoto) {
+      toast.error('Bitte eine PDF-Datei oder ein Foto (JPEG, PNG, WebP) wählen.')
       return
     }
+
     setPdfLaden(true)
     setPdfVorschau(null)
     try {
       const formData = new FormData()
       formData.append('file', file)
-      const res = await fetch('/api/besitz/pdf-import', { method: 'POST', body: formData })
+      const apiUrl = isPdf ? '/api/besitz/pdf-import' : '/api/besitz/foto-import'
+      const res = await fetch(apiUrl, { method: 'POST', body: formData })
       const data = (await res.json().catch(() => ({}))) as {
         error?: string
         positionen?: BesitzPdfPosition[]
@@ -248,7 +270,7 @@ export default function BesitzPage() {
         hinweis?: string
       }
       if (!res.ok || typeof data.error === 'string') {
-        toast.error(data.error || 'PDF konnte nicht ausgewertet werden.')
+        toast.error(data.error || 'Beleg konnte nicht ausgewertet werden.')
         return
       }
       const positionen = Array.isArray(data.positionen) ? data.positionen : []
@@ -264,7 +286,7 @@ export default function BesitzPage() {
       })
       toast.success(`${positionen.length} erkannt`)
     } catch {
-      toast.error('Netzwerkfehler beim PDF-Import.')
+      toast.error('Netzwerkfehler beim Beleg-Import.')
     } finally {
       setPdfLaden(false)
     }
@@ -447,26 +469,29 @@ export default function BesitzPage() {
           </div>
 
           <div className="rounded-[2rem] border border-slate-800/90 bg-gradient-to-b from-slate-900 to-slate-950 p-6 shadow-xl shadow-black/30 sm:p-8">
-            <h2 className="text-lg font-bold text-slate-100">Beleg-PDF (KI)</h2>
+            <h2 className="text-lg font-bold text-slate-100">Beleg importieren (PDF oder Foto)</h2>
             <p className="mt-1.5 text-xs text-slate-500">
-              Text-PDFs werden lokal eingelesen, Scans per Gemini (<code className="rounded bg-slate-900 px-1 font-mono text-[10px] text-slate-400">GEMINI_API_KEY</code>).
+              Text-PDFs werden lokal eingelesen; gescannte PDFs, Handy-Fotos und Bilder werden per KI ausgewertet (wie Finanz-Coach:{' '}
+              <code className="rounded bg-slate-900 px-1 font-mono text-[10px] text-slate-400">GEMINI_API_KEY</code> oder{' '}
+              <code className="rounded bg-slate-900 px-1 font-mono text-[10px] text-slate-400">OPENAI_API_KEY</code>
+              ).
             </p>
             <div className="mt-4">
               <label
-                htmlFor="besitz-pdf-import"
+                htmlFor="besitz-beleg-import"
                 className={`inline-flex cursor-pointer items-center justify-center rounded-xl border-2 border-dashed px-5 py-3.5 text-sm font-semibold transition-colors ${
                   pdfLaden ? 'cursor-not-allowed border-slate-700 text-slate-600' : 'border-amber-700/55 text-amber-200/95 hover:bg-amber-950/25'
                 }`}
               >
-                {pdfLaden ? 'PDF wird ausgewertet…' : 'PDF auswählen …'}
+                {pdfLaden ? 'Beleg wird ausgewertet…' : 'PDF oder Foto auswählen …'}
               </label>
               <input
-                id="besitz-pdf-import"
+                id="besitz-beleg-import"
                 type="file"
-                accept="application/pdf,.pdf"
+                accept="application/pdf,.pdf,image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp"
                 className="hidden"
                 disabled={pdfLaden}
-                onChange={(e) => void handlePdfImport(e)}
+                onChange={(e) => void handleBelegImport(e)}
               />
             </div>
             {pdfVorschau ? (

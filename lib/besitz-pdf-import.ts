@@ -1,4 +1,4 @@
-import { normalisiereBesitzKategorie } from '@/lib/besitz-kategorien'
+import { BESITZ_KATEGORIEN, normalisiereBesitzKategorie } from '@/lib/besitz-kategorien'
 
 export type BesitzPdfPosition = {
   name: string
@@ -8,6 +8,48 @@ export type BesitzPdfPosition = {
   haendler: string | null
   hersteller: string | null
   notiz: string | null
+}
+
+/** Gemini `responseSchema` für Kassenbon-/Rechnungs-Extraktion (PDF-Text, gescanntes PDF oder Foto). */
+export const BESITZ_BELEG_KI_RESPONSE_SCHEMA: Record<string, unknown> = {
+  type: 'OBJECT',
+  properties: {
+    positionen: {
+      type: 'ARRAY',
+      items: {
+        type: 'OBJECT',
+        properties: {
+          name: { type: 'STRING' },
+          kategorie: { type: 'STRING' },
+          einkaufspreis_eur: { type: 'NUMBER' },
+          einkaufsdatum: { type: 'STRING', nullable: true },
+          haendler: { type: 'STRING', nullable: true },
+          hersteller: { type: 'STRING', nullable: true },
+          notiz: { type: 'STRING', nullable: true },
+        },
+        required: ['name', 'kategorie', 'einkaufspreis_eur'],
+      },
+    },
+  },
+  required: ['positionen'],
+}
+
+export function buildBesitzBelegKiSystemPrompt(): string {
+  const cats = BESITZ_KATEGORIEN.map((c) => `\`${c}\``).join(', ')
+  return `Du extrahierst gekaufte **Waren und Artikel** aus dem Text eines **Kassenbons oder einer Rechnung** (z. B. Mode, Schuhe, Elektronik, Haushalt).
+
+Antwort: **Nur** ein JSON-Objekt mit genau einem Feld \`positionen\` (Array). Jedes Listenelement:
+- \`name\` (Pflicht): kurze Produktbezeichnung auf Deutsch.
+- \`kategorie\` (Pflicht): **genau eine** dieser Bezeichnungen, exakt so geschrieben: ${cats}.
+- \`einkaufspreis_eur\` (Pflicht): **positive** Zahl in Euro für diese Position (Zeilensumme; wenn nur Stückpreis × Menge erkennbar, das Produkt von Rabatt-/Gutscheinzeilen trennen).
+- \`einkaufsdatum\` (optional): \`YYYY-MM-DD\` nur wenn eindeutig im Text.
+- \`haendler\` (optional): Filiale, Kette oder **Verkaufs**-Shop (wo gekauft), nicht die Marke.
+- \`hersteller\` (optional): **Marke oder Hersteller** der Ware (z. B. Nike, Apple, Bosch), wenn im Beleg erkennbar — sonst weglassen oder null.
+- \`notiz\` (optional): z. B. Größe, Farbe, Artikelnummer — kurz.
+
+**Nicht** übernehmen: Zeilen wie „Summe“, „Gesamt“, „MwSt“, „Pfand“, „Rabatt“, „Gutschein“, „Barzahlung“, „VISA“, „EC-Terminal“, reine Servicegebühren ohne Ware.
+
+Wenn der Text **keine** brauchbaren Produktzeilen enthält: \`positionen\` = leeres Array \`[]\`.`
 }
 
 function extractJsonObject(text: string): string | null {

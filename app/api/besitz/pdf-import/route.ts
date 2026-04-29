@@ -1,7 +1,10 @@
 import { NextResponse } from 'next/server'
 import pdf from 'pdf-parse/lib/pdf-parse.js'
-import { BESITZ_KATEGORIEN } from '@/lib/besitz-kategorien'
-import { parseBesitzPdfKiJson } from '@/lib/besitz-pdf-import'
+import {
+  BESITZ_BELEG_KI_RESPONSE_SCHEMA,
+  buildBesitzBelegKiSystemPrompt,
+  parseBesitzPdfKiJson,
+} from '@/lib/besitz-pdf-import'
 import type { CoachMessage } from '@/lib/ki-coach-backend'
 import { resolveCoachProvider, runCoachCompletion } from '@/lib/ki-coach-backend'
 
@@ -10,47 +13,6 @@ export const runtime = 'nodejs'
 const MAX_PDF_TEXT_CHARS = 14_000
 /** Gescannte PDFs ohne Textlayer: direkt an Gemini (inline PDF), Größenlimit grob unter API-Limits. */
 const MAX_PDF_INLINE_BYTES = 10 * 1024 * 1024
-
-const BESITZ_PDF_GEMINI_SCHEMA: Record<string, unknown> = {
-  type: 'OBJECT',
-  properties: {
-    positionen: {
-      type: 'ARRAY',
-      items: {
-        type: 'OBJECT',
-        properties: {
-          name: { type: 'STRING' },
-          kategorie: { type: 'STRING' },
-          einkaufspreis_eur: { type: 'NUMBER' },
-          einkaufsdatum: { type: 'STRING', nullable: true },
-          haendler: { type: 'STRING', nullable: true },
-          hersteller: { type: 'STRING', nullable: true },
-          notiz: { type: 'STRING', nullable: true },
-        },
-        required: ['name', 'kategorie', 'einkaufspreis_eur'],
-      },
-    },
-  },
-  required: ['positionen'],
-}
-
-function buildSystemPrompt(): string {
-  const cats = BESITZ_KATEGORIEN.map((c) => `\`${c}\``).join(', ')
-  return `Du extrahierst gekaufte **Waren und Artikel** aus dem Text eines **Kassenbons oder einer Rechnung** (z. B. Mode, Schuhe, Elektronik, Haushalt).
-
-Antwort: **Nur** ein JSON-Objekt mit genau einem Feld \`positionen\` (Array). Jedes Listenelement:
-- \`name\` (Pflicht): kurze Produktbezeichnung auf Deutsch.
-- \`kategorie\` (Pflicht): **genau eine** dieser Bezeichnungen, exakt so geschrieben: ${cats}.
-- \`einkaufspreis_eur\` (Pflicht): **positive** Zahl in Euro für diese Position (Zeilensumme; wenn nur Stückpreis × Menge erkennbar, das Produkt von Rabatt-/Gutscheinzeilen trennen).
-- \`einkaufsdatum\` (optional): \`YYYY-MM-DD\` nur wenn eindeutig im Text.
-- \`haendler\` (optional): Filiale, Kette oder **Verkaufs**-Shop (wo gekauft), nicht die Marke.
-- \`hersteller\` (optional): **Marke oder Hersteller** der Ware (z. B. Nike, Apple, Bosch), wenn im Beleg erkennbar — sonst weglassen oder null.
-- \`notiz\` (optional): z. B. Größe, Farbe, Artikelnummer — kurz.
-
-**Nicht** übernehmen: Zeilen wie „Summe“, „Gesamt“, „MwSt“, „Pfand“, „Rabatt“, „Gutschein“, „Barzahlung“, „VISA“, „EC-Terminal“, reine Servicegebühren ohne Ware.
-
-Wenn der Text **keine** brauchbaren Produktzeilen enthält: \`positionen\` = leeres Array \`[]\`.`
-}
 
 export async function POST(request: Request) {
   const resolved = resolveCoachProvider()
@@ -104,7 +66,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'PDF konnte nicht gelesen werden.' }, { status: 500 })
   }
 
-  const systemText = buildSystemPrompt()
+  const systemText = buildBesitzBelegKiSystemPrompt()
   let userMessages: CoachMessage[]
   let hinweisPrefix = ''
 
@@ -144,7 +106,7 @@ export async function POST(request: Request) {
   try {
     const result = await runCoachCompletion(resolved.provider, resolved.apiKey, systemText, userMessages, {
       temperature: 0.15,
-      jsonResponse: { schema: BESITZ_PDF_GEMINI_SCHEMA },
+      jsonResponse: { schema: BESITZ_BELEG_KI_RESPONSE_SCHEMA },
     })
 
     if (!result.ok) {
