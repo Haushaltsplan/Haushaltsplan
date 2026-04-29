@@ -6,6 +6,16 @@ import type { ReactNode } from 'react'
 import { useEffect, useState } from 'react'
 import toast from 'react-hot-toast'
 
+const APP_URL = (process.env.NEXT_PUBLIC_APP_URL || '').trim()
+
+function loginRedirectUrl(): string {
+  if (APP_URL.startsWith('https://') || APP_URL.startsWith('http://')) {
+    return APP_URL.replace(/\/+$/, '')
+  }
+  if (typeof window !== 'undefined') return window.location.origin
+  return ''
+}
+
 export function AuthGate({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null)
   const [loading, setLoading] = useState(true)
@@ -39,7 +49,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
     try {
       const { error } = await supabase.auth.signInWithOtp({
         email: clean,
-        options: { emailRedirectTo: window.location.origin },
+        options: { emailRedirectTo: loginRedirectUrl() },
       })
       if (error) {
         toast.error(error.message || 'Login-Link konnte nicht gesendet werden.')
