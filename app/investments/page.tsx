@@ -1,13 +1,18 @@
 import type { Metadata } from 'next'
 import { InvestmentMantra } from '@/components/investment-mantra'
 import { InvestmentResearchPrompts } from '@/components/investment-research-prompts'
+import { Sp500MoversSection } from '@/components/sp500-movers-section'
+import { ladeSp500MoversBericht } from '@/lib/sp500-tagesmovers'
+
+export const revalidate = 60
 
 export const metadata: Metadata = {
   title: 'Investments',
   description: 'Portfolio in Parqet verfolgen',
 }
 
-export default function InvestmentsPage() {
+export default async function InvestmentsPage() {
+  const sp500Bericht = await ladeSp500MoversBericht()
   const parqetUrl =
     typeof process.env.NEXT_PUBLIC_PARQET_PORTFOLIO_URL === 'string'
       ? process.env.NEXT_PUBLIC_PARQET_PORTFOLIO_URL.trim()
@@ -47,6 +52,9 @@ export default function InvestmentsPage() {
           </div>
         )}
       </div>
+
+      <Sp500MoversSection bericht={sp500Bericht} />
+
       <InvestmentMantra />
       <InvestmentResearchPrompts />
     </div>
