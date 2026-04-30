@@ -10,6 +10,7 @@ import {
   wetterOrtKoordinaten,
 } from '@/lib/region-haarbach'
 import { ladeProfirennradsportNews, ladeProfiWintersportNews } from '@/lib/sport-profi-news'
+import { ladeRegionVeranstaltungen } from '@/lib/region-veranstaltungen'
 import { DetailsDisclosureTriggerEnd } from '@/components/collapsible-ui'
 
 export const revalidate = 300
@@ -61,13 +62,15 @@ export default async function StartUebersichtPage({ searchParams }: StartPagePro
   let portfolioNews: Awaited<ReturnType<typeof ladeAktienPortfolioNews>>
   let rennradNews: Awaited<ReturnType<typeof ladeProfirennradsportNews>>
   let winterNews: Awaited<ReturnType<typeof ladeProfiWintersportNews>>
+  let veranstaltungen: Awaited<ReturnType<typeof ladeRegionVeranstaltungen>>
   try {
-    ;[wetter, news, portfolioNews, rennradNews, winterNews] = await Promise.all([
+    ;[wetter, news, portfolioNews, rennradNews, winterNews, veranstaltungen] = await Promise.all([
       ladeWetterRegion(ortId),
       ladeRegionNews(),
       ladeAktienPortfolioNews(),
       ladeProfirennradsportNews(),
       ladeProfiWintersportNews(),
+      ladeRegionVeranstaltungen(),
     ])
   } catch (e) {
     wetter = wetterBeiLadefehler(
@@ -77,6 +80,7 @@ export default async function StartUebersichtPage({ searchParams }: StartPagePro
     portfolioNews = { artikel: [], fehler: e instanceof Error ? e.message : 'News nicht erreichbar' }
     rennradNews = { artikel: [], fehler: e instanceof Error ? e.message : 'News nicht erreichbar' }
     winterNews = { artikel: [], fehler: e instanceof Error ? e.message : 'News nicht erreichbar' }
+    veranstaltungen = { artikel: [], fehler: e instanceof Error ? e.message : 'Veranstaltungen nicht erreichbar' }
   }
 
   return (
@@ -96,6 +100,49 @@ export default async function StartUebersichtPage({ searchParams }: StartPagePro
         ortId={ortId}
         ortName={ortWetter.name}
       />
+
+      <section className="overflow-hidden rounded-2xl border border-slate-800 bg-slate-900/80 shadow-lg shadow-black/20">
+        <details className="app-disclosure group border-t border-slate-800/80 bg-slate-950/30" open>
+          <summary className="flex cursor-pointer list-none select-none items-center justify-between gap-3 px-4 py-4 text-left outline-offset-2 transition-colors hover:bg-slate-800/35 focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-500/50 sm:px-8">
+            <p className="min-w-0 pr-1 text-[11px] font-black uppercase tracking-widest text-violet-200/80">
+              Veranstaltungen im Umkreis von ca. 30 km (Haarbach)
+            </p>
+            <DetailsDisclosureTriggerEnd tone="violet" />
+          </summary>
+          <div className="px-4 pb-4 sm:px-8">
+            {veranstaltungen.fehler ? <p className="mt-1 text-xs text-amber-200/60">{veranstaltungen.fehler}</p> : null}
+            {veranstaltungen.artikel.length === 0 && !veranstaltungen.fehler ? (
+              <p className="mt-2 text-sm text-slate-500">Aktuell keine passenden Veranstaltungs-Hinweise gefunden.</p>
+            ) : null}
+            <ul className="mt-3 space-y-2.5">
+              {veranstaltungen.artikel.map((a, i) => (
+                <li
+                  key={a.href + i}
+                  className="flex flex-col gap-0.5 border-b border-slate-800/60 pb-2.5 last:border-0 last:pb-0 sm:flex-row sm:items-baseline sm:gap-3"
+                >
+                  <time
+                    className="shrink-0 text-xs font-mono tabular-nums text-slate-500"
+                    dateTime={a.veroeffentlichtAm ?? undefined}
+                  >
+                    {formatNewsDatum(a.veroeffentlichtAm)}
+                  </time>
+                  <div className="min-w-0 flex-1">
+                    <a
+                      href={a.href}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-[15px] font-semibold text-slate-100 underline decoration-slate-600 underline-offset-2 transition hover:text-cyan-200"
+                    >
+                      {a.titel}
+                    </a>
+                    <span className="ml-1.5 text-xs text-slate-600">· {a.quelle}</span>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </details>
+      </section>
 
       <section className="overflow-hidden rounded-2xl border border-slate-800 bg-slate-900/80 shadow-lg shadow-black/20">
         <details className="app-disclosure group border-t border-slate-800/80 bg-slate-950/30">
