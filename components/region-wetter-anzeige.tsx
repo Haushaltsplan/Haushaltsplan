@@ -103,6 +103,64 @@ export function RegionWetterAnzeige({ wetter, aktualisiertAnzeige, ortName }: Pr
         </div>
       </div>
 
+      {wetter.historieVorJahr ? (
+        <details className="app-disclosure group border-t border-slate-800/80 bg-slate-950/25">
+          <summary className="flex cursor-pointer list-none select-none items-center justify-between gap-3 px-4 py-4 text-left outline-offset-2 transition-colors hover:bg-slate-800/35 focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-500/50 sm:px-8">
+            <p className="min-w-0 pr-1 text-[11px] font-black uppercase tracking-widest text-amber-200/85">
+              Vor einem Jahr · {wetter.historieVorJahr.datumAnzeigeDe}
+            </p>
+            <DetailsDisclosureTriggerEnd tone="sky" />
+          </summary>
+          <div className="grid gap-4 px-4 pb-5 sm:grid-cols-[1fr_auto] sm:items-center sm:px-8">
+            <div>
+              <div className="flex flex-wrap items-end gap-3">
+                <span className="text-4xl font-black tabular-nums leading-none text-slate-100 sm:text-5xl">
+                  {wetter.historieVorJahr.tMin}° – {wetter.historieVorJahr.tMax}°
+                </span>
+                <div className="pb-1">
+                  <p className="text-base font-semibold text-slate-200">{wetter.historieVorJahr.zustandDe}</p>
+                  <p className="text-xs text-slate-500">Tagesmin / ‑max (Archiv)</p>
+                </div>
+              </div>
+              <div className="mt-4 grid gap-2 text-sm text-slate-300 sm:grid-cols-2">
+                {wetter.historieVorJahr.windMaxKmh != null ? (
+                  <p>
+                    <span className="text-slate-500">Wind (max.)</span>{' '}
+                    <span className="font-semibold text-slate-100">{wetter.historieVorJahr.windMaxKmh} km/h</span>
+                    {wetter.historieVorJahr.windRichtungGrad != null ? (
+                      <span className="text-slate-500">
+                        {' '}
+                        · {windHimmelsrichtungKurz(wetter.historieVorJahr.windRichtungGrad)} (
+                        {Math.round(wetter.historieVorJahr.windRichtungGrad)}°)
+                      </span>
+                    ) : null}
+                  </p>
+                ) : null}
+                {wetter.historieVorJahr.windBoeenMaxKmh != null ? (
+                  <p>
+                    <span className="text-slate-500">Böen (max.)</span>{' '}
+                    <span className="font-semibold text-amber-200/90">{wetter.historieVorJahr.windBoeenMaxKmh} km/h</span>
+                  </p>
+                ) : null}
+                {wetter.historieVorJahr.niederschlagMm != null ? (
+                  <p>
+                    <span className="text-slate-500">Niederschlag</span>{' '}
+                    <span className="font-semibold text-slate-100">{wetter.historieVorJahr.niederschlagMm} mm</span>
+                  </p>
+                ) : null}
+              </div>
+            </div>
+            <div className="flex justify-center sm:justify-end">
+              <WetterHimmelIcon
+                kategorie={iconKategorie(wetter.historieVorJahr.wmoCode)}
+                pixel={100}
+                className="opacity-95 drop-shadow-[0_0_18px_rgba(251,191,36,0.12)]"
+              />
+            </div>
+          </div>
+        </details>
+      ) : null}
+
       {(wetter.stundenPrognose ?? []).length > 0 ? (
         <details className="app-disclosure group border-t border-slate-800/80 bg-slate-950/25" open>
           <summary className="flex cursor-pointer list-none select-none items-center justify-between gap-3 px-4 py-4 text-left outline-offset-2 transition-colors hover:bg-slate-800/35 focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-500/50 sm:px-8">
@@ -148,6 +206,15 @@ export function RegionWetterAnzeige({ wetter, aktualisiertAnzeige, ortName }: Pr
         {aktualisiertAnzeige} ·{' '}
         <a className="underline decoration-slate-700 hover:text-slate-500" href="https://open-meteo.com/" target="_blank" rel="noreferrer">
           Open-Meteo
+        </a>
+        {' · '}
+        <a
+          className="underline decoration-slate-700 hover:text-slate-500"
+          href="https://open-meteo.com/en/docs/historical-weather-api"
+          target="_blank"
+          rel="noreferrer"
+        >
+          Archiv
         </a>
       </p>
     </div>

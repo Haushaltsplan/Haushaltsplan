@@ -39,6 +39,23 @@ export type WetterTagPrognose = {
   windRichtungGrad: number | null
 }
 
+/** Aggregierter Kalendertag aus Open-Meteo Archive (Vergleich „vor einem Jahr“). */
+export type WetterHistorieTag = {
+  /** YYYY-MM-DD (Europe/Berlin) */
+  datumIso: string
+  /** z. B. 30.04.2025 */
+  datumAnzeigeDe: string
+  wmoCode: number
+  zustandDe: string
+  tMin: number
+  tMax: number
+  windMaxKmh: number | null
+  windBoeenMaxKmh: number | null
+  windRichtungGrad: number | null
+  /** Tages-Niederschlagssumme laut Modell, mm */
+  niederschlagMm: number | null
+}
+
 export type WetterOverview = {
   /** WMO Weather interpretation code (Open-Meteo), z. B. 0 = klar */
   wmoCode: number
@@ -60,6 +77,8 @@ export type WetterOverview = {
   prognose7Tage: WetterTagPrognose[]
   /** Nächste Stunden (nur künftige volle Stunden, typ. bis zu 12) */
   stundenPrognose: WetterStundePrognose[]
+  /** Derselbe Kalendertag wie heute (Europe/Berlin), ein Jahr zurück (29.02. → 28.02. im Vorjahr). */
+  historieVorJahr: WetterHistorieTag | null
   aktualisiert: string
   fehler: string | null
 }
@@ -81,8 +100,92 @@ export function wetterBeiLadefehler(nachricht: string | null): WetterOverview {
     morgenTMax: null,
     prognose7Tage: [],
     stundenPrognose: [],
+    historieVorJahr: null,
     aktualisiert: new Date().toISOString(),
     fehler: nachricht,
+  }
+}
+
+/** Kalendertag in Europe/Berlin, ein Jahr zurück (Schaltjahre: Tag kappen). */
+export function kalenderdatumVorJahrEuropeBerlin(jetzt: Date = new Date()): { iso: string; anzeigeDe: string } {
+  const dtf = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Europe/Berlin',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  })
+  const parts = dtf.formatToParts(jetzt)
+  const y = Number(parts.find((p) => p.type === 'year')?.value)
+  const m = Number(parts.find((p) => p.type === 'month')?.value)
+  const day = Number(parts.find((p) => p.type === 'day')?.value)
+  if (!Number.isFinite(y) || !Number.isFinite(m) || !Number.isFinite(day)) {
+    const fallback = new Date(jetzt)
+    fallback.setFullYear(fallback.getFullYear() - 1)
+    const iso = fallback.toISOString().slice(0, 10)
+    return { iso, anzeigeDe: iso.split('-').reverse().join('.') }
+  }
+  const targetY = y - 1
+  const maxDay = new Date(targetY, m, 0).getDate()
+  const d = Math.min(day, maxDay)
+  const iso = `${targetY}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`
+  const anzeigeDe = `${String(d).padStart(2, '0')}.${String(m).padStart(2, '0')}.${targetY}`
+  return { iso, anzeigeDe }
+}
+
+async function ladeWetterArchivTag(lat: number, lon: number, datumIso: string, datumAnzeigeDe: string): Promise<WetterHistorieTag | null> {
+  const u = new URL('https://archive-api.open-meteo.com/v1/archive')
+  u.searchParams.set('latitude', String(lat))
+  u.searchParams.set('longitude', String(lon))
+  u.searchParams.set('start_date', datumIso)
+  u.searchParams.set('end_date', datumIso)
+  u.searchParams.set('timezone', 'Europe/Berlin')
+  u.searchParams.set('wind_speed_unit', 'kmh')
+  u.searchParams.set(
+    'daily',
+    'weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,wind_speed_10m_max,wind_gusts_10m_max,wind_direction_10m_dominant',
+  )
+  try {
+    const res = await fetch(u.toString(), { next: { revalidate: 86_400 } })
+    if (!res.ok) return null
+    const j = (await res.json()) as {
+      daily?: {
+        time?: string[]
+        weather_code?: number[]
+        temperature_2m_max?: number[]
+        temperature_2m_min?: number[]
+        precipitation_sum?: number[]
+        wind_speed_10m_max?: number[]
+        wind_gusts_10m_max?: number[]
+        wind_direction_10m_dominant?: number[]
+      }
+    }
+    const d = j.daily
+    if (!d?.time?.length) return null
+    const i = d.time.findIndex((t) => String(t).slice(0, 10) === datumIso)
+    if (i < 0) return null
+    const wc = Number(d.weather_code?.[i])
+    const wmo = Number.isFinite(wc) ? wc : 3
+    const tMax = d.temperature_2m_max?.[i]
+    const tMin = d.temperature_2m_min?.[i]
+    if (tMax == null || tMin == null || !Number.isFinite(Number(tMax)) || !Number.isFinite(Number(tMin))) return null
+    const wMax = d.wind_speed_10m_max?.[i]
+    const wGust = d.wind_gusts_10m_max?.[i]
+    const wDir = d.wind_direction_10m_dominant?.[i]
+    const prec = d.precipitation_sum?.[i]
+    return {
+      datumIso,
+      datumAnzeigeDe,
+      wmoCode: wmo,
+      zustandDe: wmoCodeToDe(wmo),
+      tMin: Math.round(Number(tMin) * 10) / 10,
+      tMax: Math.round(Number(tMax) * 10) / 10,
+      windMaxKmh: wMax != null && Number.isFinite(Number(wMax)) ? Math.round(Number(wMax) * 10) / 10 : null,
+      windBoeenMaxKmh: wGust != null && Number.isFinite(Number(wGust)) ? Math.round(Number(wGust) * 10) / 10 : null,
+      windRichtungGrad: wDir != null && Number.isFinite(Number(wDir)) ? Number(wDir) : null,
+      niederschlagMm: prec != null && Number.isFinite(Number(prec)) ? Math.round(Number(prec) * 10) / 10 : null,
+    }
+  } catch {
+    return null
   }
 }
 
@@ -215,8 +318,12 @@ export async function ladeWetterHaarbach(): Promise<WetterOverview> {
   u.searchParams.set('hourly', 'weather_code,temperature_2m,wind_speed_10m')
   u.searchParams.set('wind_speed_unit', 'kmh')
 
+  const vorJahrDatum = kalenderdatumVorJahrEuropeBerlin()
   try {
-    const res = await fetch(u.toString(), { next: { revalidate: 600 } })
+    const [res, historieVorJahr] = await Promise.all([
+      fetch(u.toString(), { next: { revalidate: 600 } }),
+      ladeWetterArchivTag(p.lat, p.lon, vorJahrDatum.iso, vorJahrDatum.anzeigeDe),
+    ])
     if (!res.ok) {
       return {
         wmoCode: 3,
@@ -233,6 +340,7 @@ export async function ladeWetterHaarbach(): Promise<WetterOverview> {
         morgenTMax: null,
         prognose7Tage: [],
         stundenPrognose: [],
+        historieVorJahr,
         aktualisiert: new Date().toISOString(),
         fehler: `Wetterdienst: HTTP ${res.status}`,
       }
@@ -339,6 +447,7 @@ export async function ladeWetterHaarbach(): Promise<WetterOverview> {
       morgenTMax: morgenTMax != null ? Math.round(morgenTMax * 10) / 10 : null,
       prognose7Tage,
       stundenPrognose,
+      historieVorJahr,
       aktualisiert: c?.time || new Date().toISOString(),
       fehler: null,
     }
@@ -358,6 +467,7 @@ export async function ladeWetterHaarbach(): Promise<WetterOverview> {
       morgenTMax: null,
       prognose7Tage: [],
       stundenPrognose: [],
+      historieVorJahr: null,
       aktualisiert: new Date().toISOString(),
       fehler: e instanceof Error ? e.message : 'Wetter nicht erreichbar',
     }
