@@ -394,11 +394,13 @@ export async function ladeSp500MoversBericht(): Promise<Sp500MoversBericht> {
     const flop10roh = [...mitAenderung].sort((a, b) => a.aenderungProzent - b.aenderungProzent).slice(0, 10)
 
     const sessionUnix = top10roh[0]?.kursZeitUnix ?? flop10roh[0]?.kursZeitUnix ?? null
-    let sessionLabel = `Letzte reguläre US-Handelssitzung (NYSE/Nasdaq) · Quelle: ${datenQuelle}`
+    let sessionLabel = 'Letzte reguläre US-Handelssitzung (NYSE/Nasdaq)'
     if (sessionUnix != null) {
       try {
         const d = new Date(sessionUnix * 1000)
-        sessionLabel = `Kursstand: ${d.toLocaleString('de-DE', { timeZone: 'America/New_York', dateStyle: 'medium', timeStyle: 'short' })} (New York) · Quelle: ${datenQuelle}`
+        const ny = d.toLocaleString('de-DE', { timeZone: 'America/New_York', dateStyle: 'medium', timeStyle: 'short' })
+        const de = d.toLocaleString('de-DE', { timeZone: 'Europe/Berlin', dateStyle: 'medium', timeStyle: 'short' })
+        sessionLabel = `Kursstand: ${ny} (New York) · ${de} (Deutschland)`
       } catch {
         /* ignore */
       }

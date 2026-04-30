@@ -26,7 +26,7 @@ async function main() {
       width: 512,
       height: 512,
       channels: 4,
-      background: '#020617',
+      background: '#030304',
     },
   })
     .composite([{ input: maskableForeground, left: inset, top: inset }])

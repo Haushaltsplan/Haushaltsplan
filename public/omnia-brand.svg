@@ -1,0 +1,54 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 420" role="img" aria-label="Omnia">
+  <defs>
+    <linearGradient id="brand-bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0a0a0c"/>
+      <stop offset="100%" stop-color="#030304"/>
+    </linearGradient>
+    <linearGradient id="brand-silver" x1="18%" y1="12%" x2="82%" y2="88%">
+      <stop offset="0%" stop-color="#f1f4f7"/>
+      <stop offset="32%" stop-color="#c8cdd4"/>
+      <stop offset="68%" stop-color="#8e96a0"/>
+      <stop offset="100%" stop-color="#5c6370"/>
+    </linearGradient>
+    <radialGradient id="brand-halo" cx="50%" cy="44%" r="56%">
+      <stop offset="0%" stop-color="#9ca89a" stop-opacity="0.12"/>
+      <stop offset="55%" stop-color="#5a6b62" stop-opacity="0.04"/>
+      <stop offset="100%" stop-color="#030304" stop-opacity="0"/>
+    </radialGradient>
+    <style type="text/css">
+      @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@500;600&amp;display=swap');
+      .omnia-wordmark {
+        font-family: 'Outfit', system-ui, -apple-system, 'Segoe UI', sans-serif;
+        font-weight: 600;
+        font-size: 58px;
+        letter-spacing: 0.52em;
+        fill: url(#brand-silver);
+      }
+    </style>
+  </defs>
+  <rect width="720" height="420" rx="40" fill="url(#brand-bg)"/>
+  <g transform="translate(232 40) scale(0.5)">
+    <circle cx="256" cy="242" r="172" fill="url(#brand-halo)"/>
+    <path
+      fill="url(#brand-silver)"
+      fill-rule="evenodd"
+      d="M256 64
+         A192 192 0 0 1 448 256
+         A192 192 0 0 1 256 448
+         A192 192 0 0 1 64 256
+         A192 192 0 0 1 256 64
+         Z
+         M256 112
+         A144 144 0 0 0 112 256
+         A144 144 0 0 0 256 400
+         A144 144 0 0 0 400 256
+         A144 144 0 0 0 256 112
+         Z"
+    />
+    <g fill="none" stroke="url(#brand-silver)" stroke-width="18" stroke-linecap="round">
+      <ellipse cx="256" cy="256" rx="118" ry="64"/>
+      <ellipse cx="256" cy="256" rx="64" ry="118"/>
+    </g>
+  </g>
+  <text x="360" y="368" class="omnia-wordmark" text-anchor="middle">OMNIA</text>
+</svg>

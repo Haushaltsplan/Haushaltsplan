@@ -80,7 +80,7 @@ export function Sp500MoversSection({ bericht }: { bericht: Sp500MoversBericht })
         <summary className="flex cursor-pointer list-none items-start justify-between gap-3">
           <div>
             <p className="text-xs font-bold uppercase tracking-widest text-violet-400/90">Marktoverview</p>
-            <h2 className="mt-2 text-2xl font-black tracking-tight text-slate-100">S&amp;P 500 — Top &amp; Flop (ein Handelstag)</h2>
+            <h2 className="mt-2 text-2xl font-black tracking-tight text-slate-100">S&amp;P 500 — Top &amp; Flop</h2>
             <p className="mt-3 text-sm leading-relaxed text-slate-400">{bericht.sessionLabel}</p>
           </div>
           <DetailsDisclosureTriggerEnd tone="violet" />
