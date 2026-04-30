@@ -1,7 +1,9 @@
 import type { Metadata } from 'next'
 import { InvestmentMantra } from '@/components/investment-mantra'
 import { InvestmentResearchPrompts } from '@/components/investment-research-prompts'
+import { Nasdaq100MoversSection } from '@/components/nasdaq100-movers-section'
 import { Sp500MoversSection } from '@/components/sp500-movers-section'
+import { ladeNasdaq100MoversBericht } from '@/lib/nasdaq100-tagesmovers'
 import { ladeSp500MoversBericht } from '@/lib/sp500-tagesmovers'
 
 export const revalidate = 60
@@ -12,7 +14,10 @@ export const metadata: Metadata = {
 }
 
 export default async function InvestmentsPage() {
-  const sp500Bericht = await ladeSp500MoversBericht()
+  const [sp500Bericht, nasdaq100Bericht] = await Promise.all([
+    ladeSp500MoversBericht(),
+    ladeNasdaq100MoversBericht(),
+  ])
   const parqetUrl =
     typeof process.env.NEXT_PUBLIC_PARQET_PORTFOLIO_URL === 'string'
       ? process.env.NEXT_PUBLIC_PARQET_PORTFOLIO_URL.trim()
@@ -54,6 +59,7 @@ export default async function InvestmentsPage() {
       </div>
 
       <Sp500MoversSection bericht={sp500Bericht} />
+      <Nasdaq100MoversSection bericht={nasdaq100Bericht} />
 
       <InvestmentMantra />
       <InvestmentResearchPrompts />

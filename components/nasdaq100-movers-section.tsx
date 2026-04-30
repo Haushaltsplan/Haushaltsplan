@@ -1,12 +1,12 @@
 import { DetailsDisclosureTriggerEnd } from '@/components/collapsible-ui'
-import type { Sp500MoversBericht, Sp500MoverEintrag } from '@/lib/sp500-tagesmovers'
+import type { Nasdaq100MoversBericht, Nasdaq100MoverEintrag } from '@/lib/nasdaq100-tagesmovers'
 
 function logoUrlFuerSymbol(symbol: string): string {
   const alias = symbol.trim().toUpperCase() === 'META' ? 'FB' : symbol
   return `https://static2.finnhub.io/file/publicdatany/finnhubimage/stock_logo/${encodeURIComponent(alias)}.png`
 }
 
-function MoverKarte({ z, gut }: { z: Sp500MoverEintrag; gut: boolean }) {
+function MoverKarte({ z, gut }: { z: Nasdaq100MoverEintrag; gut: boolean }) {
   const farbe = gut ? 'text-emerald-300' : 'text-rose-300'
   const rand = gut ? 'border-emerald-800/40' : 'border-rose-800/40'
   return (
@@ -64,11 +64,11 @@ function MoverKarte({ z, gut }: { z: Sp500MoverEintrag; gut: boolean }) {
   )
 }
 
-export function Sp500MoversSection({ bericht }: { bericht: Sp500MoversBericht }) {
+export function Nasdaq100MoversSection({ bericht }: { bericht: Nasdaq100MoversBericht }) {
   if (bericht.fehler) {
     return (
       <section className="rounded-[2.5rem] border border-amber-800/45 bg-amber-950/25 p-8 text-sm text-amber-100">
-        <p className="font-bold text-amber-200">S&amp;P 500 Tages-Movers</p>
+        <p className="font-bold text-amber-200">Nasdaq 100 Tages-Movers</p>
         <p className="mt-2">{bericht.fehler}</p>
       </section>
     )
@@ -80,7 +80,7 @@ export function Sp500MoversSection({ bericht }: { bericht: Sp500MoversBericht })
         <summary className="flex cursor-pointer list-none items-start justify-between gap-3">
           <div>
             <p className="text-xs font-bold uppercase tracking-widest text-violet-400/90">Marktoverview</p>
-            <h2 className="mt-2 text-2xl font-black tracking-tight text-slate-100">S&amp;P 500 — Top &amp; Flop (ein Handelstag)</h2>
+            <h2 className="mt-2 text-2xl font-black tracking-tight text-slate-100">Nasdaq 100 — Top &amp; Flop (ein Handelstag)</h2>
             <p className="mt-3 text-sm leading-relaxed text-slate-400">{bericht.sessionLabel}</p>
           </div>
           <DetailsDisclosureTriggerEnd tone="violet" />
