@@ -2,12 +2,12 @@
 
 import { DetailsDisclosureTriggerEnd } from '@/components/collapsible-ui'
 import { WindIkon, WetterHimmelIcon, PrognoseTagKachel, iconKategorie, prognoseKopfzeile } from '@/components/wetter-zeichen'
-import type { WetterTagPrognose } from '@/lib/region-haarbach'
+import type { WetterOrtId, WetterTagPrognose } from '@/lib/region-haarbach'
 import { windHimmelsrichtungKurz } from '@/lib/region-haarbach'
 import type { TageszeitenPrognoseAntwort, WetterTageszeitSlot } from '@/lib/region-wetter-tageszeiten'
 import { useCallback, useState } from 'react'
 
-type Props = { prognose7Tage?: WetterTagPrognose[] | null }
+type Props = { ortId: WetterOrtId; prognose7Tage?: WetterTagPrognose[] | null }
 
 function formatDatumKopf(datumIso: string): string {
   try {
@@ -59,7 +59,7 @@ function TageszeitZeile({ z }: { z: WetterTageszeitSlot }) {
   )
 }
 
-export function RegionWetter7TageTageszeitenClient({ prognose7Tage }: Props) {
+export function RegionWetter7TageTageszeitenClient({ ortId, prognose7Tage }: Props) {
   const tage = prognose7Tage ?? []
   const [aktiv, setAktiv] = useState<string | null>(null)
   const [laden, setLaden] = useState(false)
@@ -96,7 +96,7 @@ export function RegionWetter7TageTageszeitenClient({ prognose7Tage }: Props) {
         setLaden(false)
       }
     },
-    [aktiv],
+    [aktiv, ortId],
   )
 
   if (tage.length === 0) return null

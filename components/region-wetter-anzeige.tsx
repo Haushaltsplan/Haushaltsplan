@@ -1,10 +1,17 @@
 import { DetailsDisclosureTriggerEnd } from '@/components/collapsible-ui'
+import { RegionWetterArchivClient } from '@/components/region-wetter-archiv.client'
+import { RegionWetterOrtwahlClient } from '@/components/region-wetter-ortwahl.client'
 import { RegionWetter7TageTageszeitenClient } from '@/components/region-wetter-7tage-tageszeiten.client'
 import { WindIkon, WetterHimmelIcon, iconKategorie } from '@/components/wetter-zeichen'
-import type { WetterOverview } from '@/lib/region-haarbach'
-import { windHimmelsrichtungAusGrad, windHimmelsrichtungKurz } from '@/lib/region-haarbach'
+import type { WetterOverview, WetterOrtId } from '@/lib/region-haarbach'
+import { kalenderdatumVorJahrEuropeBerlin, windHimmelsrichtungAusGrad, windHimmelsrichtungKurz } from '@/lib/region-haarbach'
 
-type Props = { wetter: WetterOverview; aktualisiertAnzeige: string; ortName: string }
+type Props = {
+  wetter: WetterOverview
+  aktualisiertAnzeige: string
+  ortId: WetterOrtId
+  ortName: string
+}
 
 function PfeilWindAusRichtung({ grad }: { grad: number }) {
   return (
@@ -27,19 +34,23 @@ function PfeilWindAusRichtung({ grad }: { grad: number }) {
   )
 }
 
-export function RegionWetterAnzeige({ wetter, aktualisiertAnzeige, ortName }: Props) {
+export function RegionWetterAnzeige({ wetter, aktualisiertAnzeige, ortId, ortName }: Props) {
   if (wetter.fehler) {
     return <p className="text-sm text-amber-200/90">{wetter.fehler}</p>
   }
 
   const kat = iconKategorie(wetter.wmoCode)
   const grad = wetter.windRichtungGrad
+  const vorJahrDatum = kalenderdatumVorJahrEuropeBerlin()
 
   return (
     <div className="overflow-hidden rounded-2xl border border-sky-800/50 bg-gradient-to-br from-sky-950/60 via-slate-900/95 to-slate-950 shadow-xl shadow-sky-950/20">
       <div className="grid gap-6 p-6 sm:grid-cols-[1fr_auto] sm:items-center sm:gap-8 sm:p-8">
         <div>
-          <h2 className="text-sm font-black uppercase tracking-widest text-sky-200/90">Wetter · {ortName}</h2>
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <h2 className="text-sm font-black uppercase tracking-widest text-sky-200/90">Wetter · {ortName}</h2>
+            <RegionWetterOrtwahlClient aktuell={ortId} />
+          </div>
           <div className="mt-4 flex flex-wrap items-end gap-3">
             <span className="text-6xl font-black tabular-nums leading-none text-slate-50 sm:text-7xl">{wetter.tempC}°</span>
             <div className="pb-1.5">
@@ -103,63 +114,14 @@ export function RegionWetterAnzeige({ wetter, aktualisiertAnzeige, ortName }: Pr
         </div>
       </div>
 
-      {wetter.historieVorJahr ? (
-        <details className="app-disclosure group border-t border-slate-800/80 bg-slate-950/25">
-          <summary className="flex cursor-pointer list-none select-none items-center justify-between gap-3 px-4 py-4 text-left outline-offset-2 transition-colors hover:bg-slate-800/35 focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-500/50 sm:px-8">
-            <p className="min-w-0 pr-1 text-[11px] font-black uppercase tracking-widest text-amber-200/85">
-              Vor einem Jahr · {wetter.historieVorJahr.datumAnzeigeDe}
-            </p>
-            <DetailsDisclosureTriggerEnd tone="sky" />
-          </summary>
-          <div className="grid gap-4 px-4 pb-5 sm:grid-cols-[1fr_auto] sm:items-center sm:px-8">
-            <div>
-              <div className="flex flex-wrap items-end gap-3">
-                <span className="text-4xl font-black tabular-nums leading-none text-slate-100 sm:text-5xl">
-                  {wetter.historieVorJahr.tMin}° – {wetter.historieVorJahr.tMax}°
-                </span>
-                <div className="pb-1">
-                  <p className="text-base font-semibold text-slate-200">{wetter.historieVorJahr.zustandDe}</p>
-                  <p className="text-xs text-slate-500">Tagesmin / ‑max (Archiv)</p>
-                </div>
-              </div>
-              <div className="mt-4 grid gap-2 text-sm text-slate-300 sm:grid-cols-2">
-                {wetter.historieVorJahr.windMaxKmh != null ? (
-                  <p>
-                    <span className="text-slate-500">Wind (max.)</span>{' '}
-                    <span className="font-semibold text-slate-100">{wetter.historieVorJahr.windMaxKmh} km/h</span>
-                    {wetter.historieVorJahr.windRichtungGrad != null ? (
-                      <span className="text-slate-500">
-                        {' '}
-                        · {windHimmelsrichtungKurz(wetter.historieVorJahr.windRichtungGrad)} (
-                        {Math.round(wetter.historieVorJahr.windRichtungGrad)}°)
-                      </span>
-                    ) : null}
-                  </p>
-                ) : null}
-                {wetter.historieVorJahr.windBoeenMaxKmh != null ? (
-                  <p>
-                    <span className="text-slate-500">Böen (max.)</span>{' '}
-                    <span className="font-semibold text-amber-200/90">{wetter.historieVorJahr.windBoeenMaxKmh} km/h</span>
-                  </p>
-                ) : null}
-                {wetter.historieVorJahr.niederschlagMm != null ? (
-                  <p>
-                    <span className="text-slate-500">Niederschlag</span>{' '}
-                    <span className="font-semibold text-slate-100">{wetter.historieVorJahr.niederschlagMm} mm</span>
-                  </p>
-                ) : null}
-              </div>
-            </div>
-            <div className="flex justify-center sm:justify-end">
-              <WetterHimmelIcon
-                kategorie={iconKategorie(wetter.historieVorJahr.wmoCode)}
-                pixel={100}
-                className="opacity-95 drop-shadow-[0_0_18px_rgba(251,191,36,0.12)]"
-              />
-            </div>
-          </div>
-        </details>
-      ) : null}
+      <RegionWetterArchivClient
+        key={`${ortId}-${vorJahrDatum.iso}`}
+        ortId={ortId}
+        startDatumIso={vorJahrDatum.iso}
+        initialHistorie={
+          wetter.historieVorJahr?.datumIso === vorJahrDatum.iso ? wetter.historieVorJahr : null
+        }
+      />
 
       {(wetter.stundenPrognose ?? []).length > 0 ? (
         <details className="app-disclosure group border-t border-slate-800/80 bg-slate-950/25" open>
@@ -200,7 +162,7 @@ export function RegionWetterAnzeige({ wetter, aktualisiertAnzeige, ortName }: Pr
         </details>
       ) : null}
 
-      <RegionWetter7TageTageszeitenClient prognose7Tage={wetter.prognose7Tage ?? []} />
+      <RegionWetter7TageTageszeitenClient ortId={ortId} prognose7Tage={wetter.prognose7Tage ?? []} />
 
       <p className="border-t border-slate-800/60 px-6 py-2 text-[10px] text-slate-600 sm:px-8">
         {aktualisiertAnzeige} ·{' '}

@@ -1,4 +1,5 @@
 import { ladeTageszeitenFuerTag } from '@/lib/region-wetter-tageszeiten'
+import { parseWetterOrtId, wetterOrtKoordinaten } from '@/lib/region-haarbach'
 import { NextResponse, type NextRequest } from 'next/server'
 
 export async function GET(request: NextRequest) {
@@ -7,7 +8,9 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ fehler: 'Parameter „datum“ fehlt (YYYY-MM-DD)' }, { status: 400 })
   }
 
-  const r = await ladeTageszeitenFuerTag(datum)
+  const ortId = parseWetterOrtId(request.nextUrl.searchParams.get('ort'))
+  const { lat, lon } = wetterOrtKoordinaten(ortId)
+  const r = await ladeTageszeitenFuerTag(datum, { lat, lon })
   if (r.fehler) {
     return NextResponse.json(r, { status: 502 })
   }

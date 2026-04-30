@@ -14,6 +14,69 @@ export const REGION_HAARBACH = {
   lon: 13.1805,
 } as const
 
+/** Pinzgau — gleiche Datenquelle wie Haarbach (Open-Meteo), Ortsmitte grob OSM-nah */
+export const REGION_LEOGANG = {
+  name: 'Leogang',
+  bezirk: 'Bezirk Zell am See',
+  land: 'Salzburg',
+  lat: 47.4394,
+  lon: 12.7611,
+} as const
+
+export type WetterOrtId = 'haarbach' | 'leogang'
+
+export function parseWetterOrtId(raw: string | undefined | null): WetterOrtId {
+  const s = raw?.trim().toLowerCase()
+  if (s === 'leogang') return 'leogang'
+  return 'haarbach'
+}
+
+export function wetterOrtKoordinaten(id: WetterOrtId): { name: string; lat: number; lon: number } {
+  switch (id) {
+    case 'leogang':
+      return { name: REGION_LEOGANG.name, lat: REGION_LEOGANG.lat, lon: REGION_LEOGANG.lon }
+    default:
+      return { name: REGION_HAARBACH.name, lat: REGION_HAARBACH.lat, lon: REGION_HAARBACH.lon }
+  }
+}
+
+/** Kalenderdatum als ISO (Europe/Berlin, „heute“). */
+export function heuteIsoEuropeBerlin(jetzt = new Date()): string {
+  const dtf = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Europe/Berlin',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  })
+  const parts = dtf.formatToParts(jetzt)
+  const y = parts.find((p) => p.type === 'year')?.value
+  const mo = parts.find((p) => p.type === 'month')?.value
+  const da = parts.find((p) => p.type === 'day')?.value
+  if (!y || !mo || !da) return jetzt.toISOString().slice(0, 10)
+  return `${y}-${mo}-${da}`
+}
+
+/** Reines Kalenderdatum YYYY-MM-DD um ±n Tage verschieben (ohne TZ-Uhrzeitfallen). */
+export function isoDatumPlusKalendertage(iso: string, deltaTage: number): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso.trim())
+  if (!m) return iso
+  const y = Number(m[1])
+  const mo = Number(m[2])
+  const da = Number(m[3])
+  const u = Date.UTC(y, mo - 1, da + deltaTage)
+  const d = new Date(u)
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`
+}
+
+export function isoZuDatumAnzeigeDe(iso: string): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso.trim())
+  if (!m) return iso
+  return `${m[3]}.${m[2]}.${m[1]}`
+}
+
+/** Untergrenze Open-Meteo Archive (großzügig). */
+export const WETTER_ARCHIV_DATUM_MIN = '1940-01-01'
+
 /** Eine stündliche Vorhersage (ab der ersten Stunde nach `current.time`) */
 export type WetterStundePrognose = {
   /** ISO-ähnlich wie von Open-Meteo, Europe/Berlin */
@@ -132,7 +195,12 @@ export function kalenderdatumVorJahrEuropeBerlin(jetzt: Date = new Date()): { is
   return { iso, anzeigeDe }
 }
 
-async function ladeWetterArchivTag(lat: number, lon: number, datumIso: string, datumAnzeigeDe: string): Promise<WetterHistorieTag | null> {
+export async function ladeWetterArchivTag(
+  lat: number,
+  lon: number,
+  datumIso: string,
+  datumAnzeigeDe: string,
+): Promise<WetterHistorieTag | null> {
   const u = new URL('https://archive-api.open-meteo.com/v1/archive')
   u.searchParams.set('latitude', String(lat))
   u.searchParams.set('longitude', String(lon))
@@ -299,8 +367,8 @@ function naechsteStundenPrognose(
   return out
 }
 
-export async function ladeWetterHaarbach(): Promise<WetterOverview> {
-  const p = { lat: REGION_HAARBACH.lat, lon: REGION_HAARBACH.lon }
+export async function ladeWetterRegion(ortId: WetterOrtId = 'haarbach'): Promise<WetterOverview> {
+  const p = wetterOrtKoordinaten(ortId)
   const u = new URL('https://api.open-meteo.com/v1/forecast')
   u.searchParams.set('latitude', String(p.lat))
   u.searchParams.set('longitude', String(p.lon))
@@ -472,6 +540,10 @@ export async function ladeWetterHaarbach(): Promise<WetterOverview> {
       fehler: e instanceof Error ? e.message : 'Wetter nicht erreichbar',
     }
   }
+}
+
+export async function ladeWetterHaarbach(): Promise<WetterOverview> {
+  return ladeWetterRegion('haarbach')
 }
 
 /** Suchanfragen so gewählt, dass Treffer meist eure Orts-Schläger aus der Whitelist nennen. */

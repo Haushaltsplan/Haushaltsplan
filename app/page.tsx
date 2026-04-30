@@ -3,9 +3,11 @@ import { RegionWetterAnzeige } from '@/components/region-wetter-anzeige'
 import { ladeAktienPortfolioNews } from '@/lib/aktien-portfolio-news'
 import {
   ladeRegionNews,
-  ladeWetterHaarbach,
+  ladeWetterRegion,
+  parseWetterOrtId,
   REGION_HAARBACH,
   wetterBeiLadefehler,
+  wetterOrtKoordinaten,
 } from '@/lib/region-haarbach'
 import { ladeProfirennradsportNews, ladeProfiWintersportNews } from '@/lib/sport-profi-news'
 import { DetailsDisclosureTriggerEnd } from '@/components/collapsible-ui'
@@ -47,15 +49,21 @@ function formatNewsDatum(iso: string | null) {
   }
 }
 
-export default async function StartUebersichtPage() {
-  let wetter: Awaited<ReturnType<typeof ladeWetterHaarbach>>
+type StartPageProps = { searchParams?: Promise<{ ort?: string }> }
+
+export default async function StartUebersichtPage({ searchParams }: StartPageProps) {
+  const sp = searchParams != null ? await searchParams : {}
+  const ortId = parseWetterOrtId(sp.ort)
+  const ortWetter = wetterOrtKoordinaten(ortId)
+
+  let wetter: Awaited<ReturnType<typeof ladeWetterRegion>>
   let news: Awaited<ReturnType<typeof ladeRegionNews>>
   let portfolioNews: Awaited<ReturnType<typeof ladeAktienPortfolioNews>>
   let rennradNews: Awaited<ReturnType<typeof ladeProfirennradsportNews>>
   let winterNews: Awaited<ReturnType<typeof ladeProfiWintersportNews>>
   try {
     ;[wetter, news, portfolioNews, rennradNews, winterNews] = await Promise.all([
-      ladeWetterHaarbach(),
+      ladeWetterRegion(ortId),
       ladeRegionNews(),
       ladeAktienPortfolioNews(),
       ladeProfirennradsportNews(),
@@ -85,7 +93,8 @@ export default async function StartUebersichtPage() {
       <RegionWetterAnzeige
         wetter={wetter}
         aktualisiertAnzeige={formatUhr(wetter.aktualisiert)}
-        ortName={REGION_HAARBACH.name}
+        ortId={ortId}
+        ortName={ortWetter.name}
       />
 
       <section className="overflow-hidden rounded-2xl border border-slate-800 bg-slate-900/80 shadow-lg shadow-black/20">

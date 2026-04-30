@@ -79,7 +79,10 @@ function modusWmo(codes: number[]): number {
 /**
  * Stündliche Open-Meteo-Daten (ein Kalendertag, Europe/Berlin) in vier Tageszeiten.
  */
-export async function ladeTageszeitenFuerTag(datumIso: string): Promise<TageszeitenPrognoseAntwort> {
+export async function ladeTageszeitenFuerTag(
+  datumIso: string,
+  koordinaten?: { lat: number; lon: number },
+): Promise<TageszeitenPrognoseAntwort> {
   if (!DATUM.test(datumIso)) {
     return { datumIso, tageszeiten: [], fehler: 'Ungültiges Datumsformat' }
   }
@@ -88,7 +91,7 @@ export async function ladeTageszeitenFuerTag(datumIso: string): Promise<Tageszei
     return { datumIso, tageszeiten: [], fehler: 'Ungültiges Datum' }
   }
 
-  const p = { lat: REGION_HAARBACH.lat, lon: REGION_HAARBACH.lon }
+  const p = koordinaten ?? { lat: REGION_HAARBACH.lat, lon: REGION_HAARBACH.lon }
   const u = new URL('https://api.open-meteo.com/v1/forecast')
   u.searchParams.set('latitude', String(p.lat))
   u.searchParams.set('longitude', String(p.lon))
