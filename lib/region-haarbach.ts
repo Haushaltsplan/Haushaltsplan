@@ -119,6 +119,13 @@ export type WetterHistorieTag = {
   niederschlagMm: number | null
 }
 
+/** Sonnenauf-/untergang je Kalendertag (Zeichenketten wie von Open-Meteo, Europe/Berlin). */
+export type WetterSonnenTag = {
+  datumIso: string
+  sonnenaufgangIso: string
+  sonnenuntergangIso: string
+}
+
 export type WetterOverview = {
   /** WMO Weather interpretation code (Open-Meteo), z. B. 0 = klar */
   wmoCode: number
@@ -140,6 +147,8 @@ export type WetterOverview = {
   prognose7Tage: WetterTagPrognose[]
   /** Nächste Stunden (nur künftige volle Stunden, typ. bis zu 12) */
   stundenPrognose: WetterStundePrognose[]
+  /** Tägliche Sonnenzeiten aus der Vorhersage (Reihenfolge wie Open-Meteo `daily.time`). */
+  sonnenzeitenTage: WetterSonnenTag[]
   /** Derselbe Kalendertag wie heute (Europe/Berlin), ein Jahr zurück (29.02. → 28.02. im Vorjahr). */
   historieVorJahr: WetterHistorieTag | null
   aktualisiert: string
@@ -163,6 +172,7 @@ export function wetterBeiLadefehler(nachricht: string | null): WetterOverview {
     morgenTMax: null,
     prognose7Tage: [],
     stundenPrognose: [],
+    sonnenzeitenTage: [],
     historieVorJahr: null,
     aktualisiert: new Date().toISOString(),
     fehler: nachricht,
@@ -315,6 +325,58 @@ export function windHimmelsrichtungKurz(grad: number): string {
   return labels[Math.round(r / 45) % 8]
 }
 
+/** Minuten seit Mitternacht aus Open-Meteo-Zeitstrings (`timezone=Europe/Berlin`, ohne Offset-Suffix). */
+function openMeteoZeitZuMinutenSeitMitternacht(iso: string): number | null {
+  const m = /^(\d{4}-\d{2}-\d{2})T(\d{2}):(\d{2})/.exec(iso.trim())
+  if (!m) return null
+  return parseInt(m[2], 10) * 60 + parseInt(m[3], 10)
+}
+
+/** Sortierschlüssel YYYY-MM-DDTHH:mm — ohne JS Date(), damit Server-UTC keine falschen Tag-/Nacht-Grenzen erzeugt. */
+function normalizeOpenMeteoZeitKey(iso: string): string | null {
+  const m = /^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2})/.exec(iso.trim())
+  return m ? `${m[1]}T${m[2]}` : null
+}
+
+/** Grobe Nacht (22–5 Uhr lokale API-Zeit), wenn keine Sonnenzeiten vorliegen. */
+function wetterNachtFallbackNachOpenMeteoIso(jetztIso: string): boolean {
+  const mins = openMeteoZeitZuMinutenSeitMitternacht(jetztIso)
+  if (mins == null) return false
+  return mins >= 22 * 60 || mins < 6 * 60
+}
+
+/**
+ * Liegt der Zeitpunkt außerhalb des hellen Tags zwischen Sonnenauf- und -untergang?
+ * `jetztIso` und Sonnenzeiten wie von Open-Meteo geliefert (lokal Europe/Berlin).
+ */
+export function zeitpunktIstNachtNachSonne(
+  jetztIso: string,
+  sonnenaufgangIso: string | null | undefined,
+  sonnenuntergangIso: string | null | undefined,
+): boolean {
+  if (!sonnenaufgangIso || !sonnenuntergangIso) return wetterNachtFallbackNachOpenMeteoIso(jetztIso)
+  const zKey = normalizeOpenMeteoZeitKey(jetztIso)
+  const srKey = normalizeOpenMeteoZeitKey(sonnenaufgangIso)
+  const ssKey = normalizeOpenMeteoZeitKey(sonnenuntergangIso)
+  if (!zKey || !srKey || !ssKey) return wetterNachtFallbackNachOpenMeteoIso(jetztIso)
+  return zKey < srKey || zKey >= ssKey
+}
+
+/** Für eine stündliche ISO-Zeile (Kalendertag = Präfix YYYY-MM-DD): Nacht relativ zu Sonnenzeiten dieses Tags. */
+export function zeitpunktIstNachtFuerKalendertag(zeitIso: string, sonnenzeitenTage: WetterSonnenTag[]): boolean {
+  const tag = zeitIso.trim().slice(0, 10)
+  const row = sonnenzeitenTage.find((s) => s.datumIso === tag)
+  if (!row) return wetterNachtFallbackNachOpenMeteoIso(zeitIso)
+  return zeitpunktIstNachtNachSonne(zeitIso, row.sonnenaufgangIso, row.sonnenuntergangIso)
+}
+
+/** HH:MM aus Open-Meteo-Zeile (bereits lokale Ortszeit der API-Anfrage). */
+export function formatUhrzeitKurzDe(iso: string): string {
+  const m = /^(\d{4}-\d{2}-\d{2})T(\d{2}):(\d{2})/.exec(iso.trim())
+  if (!m) return '—'
+  return `${m[2]}:${m[3]}`
+}
+
 const STUNDEN_AUSBLICK_MAX = 12
 
 function naechsteStundenPrognose(
@@ -379,7 +441,7 @@ export async function ladeWetterRegion(ortId: WetterOrtId = 'haarbach'): Promise
   )
   u.searchParams.set(
     'daily',
-    'weather_code,temperature_2m_max,temperature_2m_min,wind_speed_10m_max,wind_gusts_10m_max,wind_direction_10m_dominant',
+    'weather_code,temperature_2m_max,temperature_2m_min,wind_speed_10m_max,wind_gusts_10m_max,wind_direction_10m_dominant,sunrise,sunset',
   )
   u.searchParams.set('forecast_days', '8')
   u.searchParams.set('forecast_hours', '48')
@@ -408,6 +470,7 @@ export async function ladeWetterRegion(ortId: WetterOrtId = 'haarbach'): Promise
         morgenTMax: null,
         prognose7Tage: [],
         stundenPrognose: [],
+        sonnenzeitenTage: [],
         historieVorJahr,
         aktualisiert: new Date().toISOString(),
         fehler: `Wetterdienst: HTTP ${res.status}`,
@@ -438,6 +501,8 @@ export async function ladeWetterRegion(ortId: WetterOrtId = 'haarbach'): Promise
         wind_speed_10m_max?: number[]
         wind_gusts_10m_max?: number[]
         wind_direction_10m_dominant?: number[]
+        sunrise?: string[]
+        sunset?: string[]
       }
     }
     const c = j.current
@@ -455,6 +520,19 @@ export async function ladeWetterRegion(ortId: WetterOrtId = 'haarbach'): Promise
     const wrMax = d?.wind_speed_10m_max
     const wrGust = d?.wind_gusts_10m_max
     const wrDir = d?.wind_direction_10m_dominant
+
+    const sonnenzeitenTage: WetterSonnenTag[] = []
+    if (d?.time?.length && d.sunrise?.length && d.sunset?.length) {
+      const nSonne = Math.min(d.time.length, d.sunrise.length, d.sunset.length)
+      for (let i = 0; i < nSonne; i++) {
+        const datumIso = String(d.time[i]).slice(0, 10)
+        const sonnenaufgangIso = d.sunrise[i]
+        const sonnenuntergangIso = d.sunset[i]
+        if (typeof sonnenaufgangIso === 'string' && typeof sonnenuntergangIso === 'string') {
+          sonnenzeitenTage.push({ datumIso, sonnenaufgangIso, sonnenuntergangIso })
+        }
+      }
+    }
 
     const prognose7Tage: WetterTagPrognose[] = []
     if (d?.time?.length && d.weather_code?.length && d.temperature_2m_max?.length && d.temperature_2m_min?.length) {
@@ -515,6 +593,7 @@ export async function ladeWetterRegion(ortId: WetterOrtId = 'haarbach'): Promise
       morgenTMax: morgenTMax != null ? Math.round(morgenTMax * 10) / 10 : null,
       prognose7Tage,
       stundenPrognose,
+      sonnenzeitenTage,
       historieVorJahr,
       aktualisiert: c?.time || new Date().toISOString(),
       fehler: null,
@@ -535,6 +614,7 @@ export async function ladeWetterRegion(ortId: WetterOrtId = 'haarbach'): Promise
       morgenTMax: null,
       prognose7Tage: [],
       stundenPrognose: [],
+      sonnenzeitenTage: [],
       historieVorJahr: null,
       aktualisiert: new Date().toISOString(),
       fehler: e instanceof Error ? e.message : 'Wetter nicht erreichbar',

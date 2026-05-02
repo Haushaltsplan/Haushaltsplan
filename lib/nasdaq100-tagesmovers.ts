@@ -1,26 +1,5 @@
-import {
-  decodeXmlText,
-  googleNewsItemsNachDatumFiltern,
-  googleNewsItemsNachDatumSortieren,
-  parseGoogleNewsRssItems,
-} from '@/lib/google-news-rss'
-import {
-  beschreibungAusRssBlock,
-  kiMoverKurzfassungAkzeptieren,
-  moverBrancheAnzeige,
-  moverKurzfassungOhneKi,
-  rssBeschreibungenZuKurzfassung,
-  schlagzeilePasstZuTagesbewegungGrob,
-} from '@/lib/investment-movers-begruendung'
-import { ergaenzeMoversMitArtikelKoerper } from '@/lib/investment-movers-artikel-fetch'
-import {
-  fuehreMoverKiEinordnungMitCooldown,
-  moverArtikeltextLadenAktiv,
-  moverKiEinordnungIstAktiviert,
-  moverKiGoogleSearchGroundedBatchCap,
-  moverKiGoogleSearchGroundingAktiv,
-} from '@/lib/investment-movers-ki-einordnung'
-import { resolveCoachProvider } from '@/lib/ki-coach-backend'
+import { decodeXmlText } from '@/lib/google-news-rss'
+import { moverBrancheAnzeige } from '@/lib/investment-movers-begruendung'
 
 const NASDAQ100_WIKI_RAW_URL = 'https://en.wikipedia.org/w/index.php?title=Nasdaq-100&action=raw'
 
@@ -33,11 +12,6 @@ const YAHOO_FETCH_HEADERS = {
   Referer: 'https://finance.yahoo.com/',
   Accept: 'application/json',
 } as const
-const NEWS_PRO_AKTION = 5
-const MOVER_NEWS_WHEN = 'when:3d'
-const MOVER_NEWS_MAX_ALTER_MS = 72 * 60 * 60 * 1000
-const MOVER_NEWS_FALLBACK_ALTER_MS = 5 * 24 * 60 * 60 * 1000
-const NEWS_RSS_FETCH_MAX = 48
 const POLYGON_API_KEY = (process.env.POLYGON_API_KEY || process.env.NEXT_PUBLIC_POLYGON_API_KEY || '').trim()
 
 export type Nasdaq100MoverEintrag = {
@@ -52,8 +26,6 @@ export type Nasdaq100MoverEintrag = {
   kurs: number | null
   /** Unix-Sekunden der Kurszeit (Yahoo) */
   kursZeitUnix: number | null
-  /** Kurze Einordnung zur Tagesbewegung (ohne Quellenangaben). */
-  kurzfassung: string
 }
 
 export type Nasdaq100MoversBericht = {
@@ -62,7 +34,7 @@ export type Nasdaq100MoversBericht = {
   top10: Nasdaq100MoverEintrag[]
   flop10: Nasdaq100MoverEintrag[]
   fehler: string | null
-  /** Hinweis wenn keine KI — Einordnung nur Schlagzeilen */
+  /** Ungenutzt (früher KI-/News-Hinweis); bleibt aus Kompatibilität. */
   kiHinweis: string | null
   anzahlPositiv: number
   anzahlNegativ: number
@@ -241,60 +213,6 @@ async function ladePolygonQuotes(symbolsCsv: string[]): Promise<YahooQuoteRoh[]>
   return out
 }
 
-type ArtikelInfo = {
-  schlagzeilen: Array<{ titel: string; href: string }>
-  zusammenfassungRoh: string | null
-  meldungsAuszuege: string[]
-}
-
-async function ladeArtikelInfoFuerAktie(
-  symbol: string,
-  unternehmensname: string,
-  aenderungProzent: number,
-): Promise<ArtikelInfo> {
-  const leer: ArtikelInfo = { schlagzeilen: [], zusammenfassungRoh: null, meldungsAuszuege: [] }
-  const q = encodeURIComponent(
-    `(${symbol} OR "${unternehmensname.replace(/"/g, '')}") (Aktie OR stock OR earnings OR Quartalszahlen OR guidance) ${MOVER_NEWS_WHEN}`,
-  )
-  const url = `https://news.google.com/rss/search?q=${q}&hl=de&gl=DE&ceid=DE:de`
-  try {
-    const res = await fetch(url, {
-      next: { revalidate: 900 },
-      headers: { 'User-Agent': 'omnia/1.0 (private; sp500 mover news)' },
-    })
-    if (!res.ok) return leer
-    const xml = await res.text()
-    const rohListe = parseGoogleNewsRssItems(xml, 'Google News', NEWS_RSS_FETCH_MAX)
-    const sortiert = googleNewsItemsNachDatumSortieren(rohListe)
-    let zeit = googleNewsItemsNachDatumFiltern(sortiert, MOVER_NEWS_MAX_ALTER_MS)
-    if (zeit.length === 0) zeit = googleNewsItemsNachDatumFiltern(sortiert, MOVER_NEWS_FALLBACK_ALTER_MS)
-    if (zeit.length === 0 && sortiert.length > 0) {
-      zeit = sortiert.slice(0, Math.min(14, sortiert.length))
-    }
-    const grobPasssend = zeit.filter((x) => schlagzeilePasstZuTagesbewegungGrob(x.titel, aenderungProzent))
-    const zeilen = grobPasssend.length > 0 ? grobPasssend : zeit
-
-    const gekuerzt = zeilen
-      .map((x) => ({
-        titel: x.titel.replace(/\s+/g, ' ').trim(),
-        href: x.href.trim(),
-        beschreibung: x.beschreibung,
-      }))
-      .filter((x) => x.titel.length > 0 && x.href.length > 0)
-      .map((x) => ({ ...x, titel: x.titel.length > 160 ? `${x.titel.slice(0, 157)}…` : x.titel }))
-      .slice(0, NEWS_PRO_AKTION)
-
-    const schlagzeilen = gekuerzt.map(({ titel, href }) => ({ titel, href }))
-    const rssSnippets = gekuerzt.map((x) => beschreibungAusRssBlock(x.beschreibung, unternehmensname))
-    const meldungsAuszuege = rssSnippets
-    const zusammenfassungRoh = rssBeschreibungenZuKurzfassung(rssSnippets)
-
-    return { schlagzeilen, zusammenfassungRoh, meldungsAuszuege }
-  } catch {
-    return leer
-  }
-}
-
 export async function ladeNasdaq100MoversBericht(): Promise<Nasdaq100MoversBericht> {
   try {
     const konst = await ladeKonstituenten()
@@ -303,14 +221,11 @@ export async function ladeNasdaq100MoversBericht(): Promise<Nasdaq100MoversBeric
     const symZuBranche = new Map(konst.map((k) => [k.symbol, k.branche]))
     const yahooSymbole = konst.map((k) => yahooSymbolAusCsv(k.symbol))
 
-    let datenQuelle = 'Yahoo Finance (Spark)'
     let quotes: YahooQuoteRoh[]
     try {
       quotes = POLYGON_API_KEY ? await ladePolygonQuotes(konst.map((k) => k.symbol)) : await ladeYahooQuotes(yahooSymbole)
-      if (POLYGON_API_KEY) datenQuelle = 'Polygon Snapshot'
     } catch {
       quotes = await ladeYahooQuotes(yahooSymbole)
-      datenQuelle = 'Yahoo Finance (Spark, Fallback)'
     }
     const yahooZuCsv = new Map<string, string>()
     for (const k of konst) {
@@ -375,91 +290,19 @@ export async function ladeNasdaq100MoversBericht(): Promise<Nasdaq100MoversBeric
       }
     }
 
-    const alle20 = [...top10roh, ...flop10roh]
-    const artikelInfos: ArtikelInfo[] = []
-    for (const batch of teileArray(alle20, 5)) {
-      const teil = await Promise.all(batch.map((z) => ladeArtikelInfoFuerAktie(z.symbol, z.name, z.aenderungProzent)))
-      artikelInfos.push(...teil)
-    }
-
-    const mitNewsBasis = alle20.map((z, i) => ({
+    const baueEintrag = (z: (typeof top10roh)[number]) => ({
       symbol: z.symbol,
       name: z.name,
       sektor: z.sektor,
       branche: z.branche,
-      moverKontext:
-        i < 10
-          ? 'Nasdaq 100 — zu den 10 stärksten Tagesperformance-Werten'
-          : 'Nasdaq 100 — zu den 10 schwächsten Tagesperformance-Werten',
+      brancheAnzeige: moverBrancheAnzeige(z.branche, z.sektor),
       aenderungProzent: z.aenderungProzent,
       kurs: z.kurs,
       kursZeitUnix: z.kursZeitUnix,
-      schlagzeilen: artikelInfos[i]?.schlagzeilen ?? [],
-      zusammenfassungRoh: artikelInfos[i]?.zusammenfassungRoh ?? null,
-      meldungsAuszuege: artikelInfos[i]?.meldungsAuszuege ?? [],
-    }))
+    })
 
-    const mitNews = moverArtikeltextLadenAktiv()
-      ? await ergaenzeMoversMitArtikelKoerper(mitNewsBasis, { artikelProSymbol: 2, parallelitaet: 6 })
-      : mitNewsBasis.map((z) => ({
-          ...z,
-          artikelKoerperTexte: new Array(z.schlagzeilen.length).fill(''),
-        }))
-
-    const kiMap = await fuehreMoverKiEinordnungMitCooldown(mitNews)
-
-    const hatSchluessel = resolveCoachProvider()
-    const kiWuenschen = moverKiEinordnungIstAktiviert()
-    let kiHinweisBasis: string
-    if (kiWuenschen && hatSchluessel) {
-      const cap = moverKiGoogleSearchGroundedBatchCap()
-      const gGround =
-        hatSchluessel.provider === 'gemini' && moverKiGoogleSearchGroundingAktiv()
-          ? ` Gemini: Live-Web (Grounding) nur für ${cap == null ? 'jedes' : `die ersten ${cap}`} KI-Batch(es) je Index — Kontingent schonen (MOVER_KI_GOOGLE_SEARCH_MAX_BATCHES, Standard 1). Weitere Batches ohne Web; längere Pause nach Web: MOVER_KI_GOOGLE_SEARCH_PAUSE_MS. Komplett aus: MOVER_KI_GOOGLE_SEARCH=0.`
-          : ''
-      kiHinweisBasis =
-        'Kurse und Ranglisten kommen von Yahoo/Polygon (ohne KI). Nur die Formulierung der Einordnungstexte nutzt Gemini/OpenAI in kleinen Paketen mit Pause. Artikelabruf für Lesetext bleibt ohne LLM.' +
-        gGround
-    } else if (hatSchluessel && !kiWuenschen) {
-      kiHinweisBasis =
-        'Kurse und Ranglisten ohne KI (Yahoo/Polygon). Einordnung nur aus Auszügen (Artikelabruf + RSS), ohne Sprachmodell — MOVER_USE_KI ist ausgeschaltet.'
-    } else {
-      kiHinweisBasis =
-        'Kurse und Ranglisten ohne KI (Yahoo/Polygon). Mit GEMINI_API_KEY oder OPENAI_API_KEY wird die Einordnung automatisch formuliert; MOVER_USE_KI=0 schaltet das ab.'
-    }
-    const kiHinweis =
-      POLYGON_API_KEY && datenQuelle.startsWith('Polygon')
-        ? kiHinweisBasis
-        : [kiHinweisBasis, 'Für stabilere Live-Daten kannst du POLYGON_API_KEY in .env.local setzen.']
-            .filter(Boolean)
-            .join(' ')
-
-    const baueEintraege = (slice: typeof mitNews) =>
-      slice.map((z) => {
-        const ki = kiMap?.[z.symbol.toUpperCase()]
-        const koerper = z.artikelKoerperTexte.filter((t) => t.trim().length > 0)
-        const ohneKi = moverKurzfassungOhneKi({
-          koerperTexte: koerper,
-          meldungsAuszuege: z.meldungsAuszuege,
-          prozent: z.aenderungProzent,
-        })
-        const kurzfassung =
-          kiMoverKurzfassungAkzeptieren(ki?.kurzfassung, z.schlagzeilen) ?? ohneKi
-        return {
-          symbol: z.symbol,
-          name: z.name,
-          sektor: z.sektor,
-          branche: z.branche,
-          brancheAnzeige: moverBrancheAnzeige(z.branche, z.sektor),
-          aenderungProzent: z.aenderungProzent,
-          kurs: z.kurs,
-          kursZeitUnix: z.kursZeitUnix,
-          kurzfassung,
-        }
-      })
-
-    const top10 = baueEintraege(mitNews.slice(0, 10))
-    const flop10 = baueEintraege(mitNews.slice(10, 20))
+    const top10 = top10roh.map(baueEintrag)
+    const flop10 = flop10roh.map(baueEintrag)
 
     const anzahlPositiv = mitAenderung.filter((x) => x.aenderungProzent > 0).length
     const anzahlNegativ = mitAenderung.filter((x) => x.aenderungProzent < 0).length
@@ -470,7 +313,7 @@ export async function ladeNasdaq100MoversBericht(): Promise<Nasdaq100MoversBeric
       top10,
       flop10,
       fehler: null,
-      kiHinweis,
+      kiHinweis: null,
       anzahlPositiv,
       anzahlNegativ,
       anzahlUnveraendert,

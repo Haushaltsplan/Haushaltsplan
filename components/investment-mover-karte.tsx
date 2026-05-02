@@ -6,8 +6,6 @@ export type InvestmentMoverKarteDaten = {
   brancheAnzeige: string | null
   aenderungProzent: number
   kurs: number | null
-  /** Kurze Einordnung zur Tagesbewegung — ohne Quellenliste. */
-  kurzfassung: string
 }
 
 function logoUrlFuerSymbol(symbol: string): string {
@@ -46,8 +44,6 @@ export function InvestmentMoverKarte({ z }: { z: InvestmentMoverKarteDaten }) {
       {z.kurs != null ? (
         <p className="mt-2 text-xs tabular-nums text-zinc-400">Kurs ca. {z.kurs.toFixed(2)} USD</p>
       ) : null}
-
-      <p className="mt-3 text-sm leading-relaxed text-zinc-200">{z.kurzfassung}</p>
     </li>
   )
 }

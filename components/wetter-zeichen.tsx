@@ -15,12 +15,23 @@ export function iconKategorie(
   return 'wolke'
 }
 
+export type HimmelKategorie = ReturnType<typeof iconKategorie> | 'mond' | 'halb_nacht'
+
+/** Tags/Wettercodes mit klarem Himmel zeigen bei Nacht Mond statt Sonne (API-Codes sind tagesneutral). */
+export function iconKategorieAnzeige(code: number, nacht: boolean): HimmelKategorie {
+  if (nacht) {
+    if (code === 0 || code === 1) return 'mond'
+    if (code === 2) return 'halb_nacht'
+  }
+  return iconKategorie(code)
+}
+
 export function WetterHimmelIcon({
   kategorie,
   className,
   pixel = 140,
 }: {
-  kategorie: ReturnType<typeof iconKategorie>
+  kategorie: HimmelKategorie
   className?: string
   pixel?: number
 }) {
@@ -47,6 +58,24 @@ export function WetterHimmelIcon({
           <path
             d="M 70 40 Q 100 50 100 80 Q 100 102 80 110 Q 40 100 50 64"
             className="fill-slate-500/80"
+          />
+        </svg>
+      )
+    case 'mond':
+      return (
+        <svg className={cn} viewBox="0 0 128 128" width={pixel} height={pixel} aria-hidden>
+          <circle cx="62" cy="58" r="24" className="fill-slate-200/95" />
+          <circle cx="78" cy="48" r="19" className="fill-zinc-950" />
+        </svg>
+      )
+    case 'halb_nacht':
+      return (
+        <svg className={cn} viewBox="0 0 128 128" width={pixel} height={pixel} aria-hidden>
+          <circle cx="42" cy="56" r="20" className="fill-slate-200/95" />
+          <circle cx="54" cy="48" r="15" className="fill-zinc-950" />
+          <path
+            d="M 70 40 Q 100 50 100 80 Q 100 102 80 110 Q 40 100 50 64"
+            className="fill-slate-500/78"
           />
         </svg>
       )

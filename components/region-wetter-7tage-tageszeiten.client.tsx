@@ -1,7 +1,13 @@
 'use client'
 
 import { DetailsDisclosureTriggerEnd } from '@/components/collapsible-ui'
-import { WindIkon, WetterHimmelIcon, PrognoseTagKachel, iconKategorie, prognoseKopfzeile } from '@/components/wetter-zeichen'
+import {
+  WindIkon,
+  WetterHimmelIcon,
+  PrognoseTagKachel,
+  iconKategorieAnzeige,
+  prognoseKopfzeile,
+} from '@/components/wetter-zeichen'
 import type { WetterOrtId, WetterTagPrognose } from '@/lib/region-haarbach'
 import { windHimmelsrichtungKurz } from '@/lib/region-haarbach'
 import type { TageszeitenPrognoseAntwort, WetterTageszeitSlot } from '@/lib/region-wetter-tageszeiten'
@@ -22,7 +28,7 @@ function formatDatumKopf(datumIso: string): string {
 }
 
 function TageszeitZeile({ z }: { z: WetterTageszeitSlot }) {
-  const kat = iconKategorie(z.wmoCode)
+  const kat = iconKategorieAnzeige(z.wmoCode, z.id === 'nacht')
   const grad = z.windRichtungGrad
   return (
     <div className="flex flex-col gap-3 border-b border-slate-800/50 py-3 last:border-0 sm:flex-row sm:items-center sm:gap-4">

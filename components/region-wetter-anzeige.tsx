@@ -2,9 +2,17 @@ import { DetailsDisclosureTriggerEnd } from '@/components/collapsible-ui'
 import { RegionWetterArchivClient } from '@/components/region-wetter-archiv.client'
 import { RegionWetterOrtwahlClient } from '@/components/region-wetter-ortwahl.client'
 import { RegionWetter7TageTageszeitenClient } from '@/components/region-wetter-7tage-tageszeiten.client'
-import { WindIkon, WetterHimmelIcon, iconKategorie } from '@/components/wetter-zeichen'
+import { WindIkon, WetterHimmelIcon, iconKategorieAnzeige } from '@/components/wetter-zeichen'
 import type { WetterOverview, WetterOrtId } from '@/lib/region-haarbach'
-import { kalenderdatumVorJahrEuropeBerlin, windHimmelsrichtungAusGrad, windHimmelsrichtungKurz } from '@/lib/region-haarbach'
+import {
+  formatUhrzeitKurzDe,
+  heuteIsoEuropeBerlin,
+  kalenderdatumVorJahrEuropeBerlin,
+  windHimmelsrichtungAusGrad,
+  windHimmelsrichtungKurz,
+  zeitpunktIstNachtFuerKalendertag,
+  zeitpunktIstNachtNachSonne,
+} from '@/lib/region-haarbach'
 
 type Props = {
   wetter: WetterOverview
@@ -39,7 +47,14 @@ export function RegionWetterAnzeige({ wetter, aktualisiertAnzeige, ortId, ortNam
     return <p className="text-sm text-amber-200/90">{wetter.fehler}</p>
   }
 
-  const kat = iconKategorie(wetter.wmoCode)
+  const heuteIso = heuteIsoEuropeBerlin()
+  const sonneHeute = wetter.sonnenzeitenTage.find((s) => s.datumIso === heuteIso)
+  const nachtJetzt =
+    sonneHeute != null
+      ? zeitpunktIstNachtNachSonne(wetter.aktualisiert, sonneHeute.sonnenaufgangIso, sonneHeute.sonnenuntergangIso)
+      : zeitpunktIstNachtNachSonne(wetter.aktualisiert, null, null)
+
+  const kat = iconKategorieAnzeige(wetter.wmoCode, nachtJetzt)
   const grad = wetter.windRichtungGrad
   const vorJahrDatum = kalenderdatumVorJahrEuropeBerlin()
 
@@ -111,6 +126,22 @@ export function RegionWetterAnzeige({ wetter, aktualisiertAnzeige, ortId, ortNam
               </span>
             </p>
           ) : null}
+          {sonneHeute ? (
+            <>
+              <p>
+                <span className="text-zinc-500">Sonnenaufgang</span>{' '}
+                <span className="font-semibold tabular-nums text-zinc-100">
+                  {formatUhrzeitKurzDe(sonneHeute.sonnenaufgangIso)}
+                </span>
+              </p>
+              <p>
+                <span className="text-zinc-500">Sonnenuntergang</span>{' '}
+                <span className="font-semibold tabular-nums text-zinc-100">
+                  {formatUhrzeitKurzDe(sonneHeute.sonnenuntergangIso)}
+                </span>
+              </p>
+            </>
+          ) : null}
         </div>
       </div>
 
@@ -132,7 +163,8 @@ export function RegionWetterAnzeige({ wetter, aktualisiertAnzeige, ortId, ortNam
           <div className="px-4 pb-4 sm:px-8">
             <div className="flex snap-x snap-mandatory gap-2.5 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
               {(wetter.stundenPrognose ?? []).map((s) => {
-                const katS = iconKategorie(s.wmoCode)
+                const nachtSlot = zeitpunktIstNachtFuerKalendertag(s.zeitIso, wetter.sonnenzeitenTage)
+                const katS = iconKategorieAnzeige(s.wmoCode, nachtSlot)
                 let uhr = '—'
                 try {
                   const t = new Date(s.zeitIso)
