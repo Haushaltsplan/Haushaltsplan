@@ -1,4 +1,4 @@
-import type { InvestmentMoverKarteDaten } from '@/components/investment-mover-karte'
+import type { InvestmentMoverKarteDaten } from '@/components/investment-mover-karte-types'
 import type { PortfolioPositionMitNotiz } from '@/lib/investment-portfolio-types'
 import { ladePortfolioKomplett, standardPortfolioPositionenMitMeta } from '@/lib/investment-portfolio-store'
 
@@ -236,6 +236,8 @@ export async function ladePortfolioKurseBericht(): Promise<PortfolioKurseBericht
       }
       const notizGetrimmt = p.notiz.trim()
       return {
+        portfolioZeilenId: p.id,
+        portfolioKarte: true,
         symbol: p.symbolYahoo,
         name: p.name,
         brancheAnzeige: null,
@@ -281,6 +283,8 @@ export async function ladePortfolioKurseBericht(): Promise<PortfolioKurseBericht
       sessionLabel: '—',
       positionen: defs
         .map((p) => ({
+          portfolioZeilenId: p.id,
+          portfolioKarte: true,
           symbol: p.symbolYahoo,
           name: p.name,
           brancheAnzeige: null,
