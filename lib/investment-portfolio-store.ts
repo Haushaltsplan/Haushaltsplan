@@ -9,6 +9,19 @@ import { istSupabaseClientKonfiguriert } from '@/lib/supabase'
 
 const DATEIPFAD = path.join(process.cwd(), 'data', 'investment-portfolio.json')
 
+/** Tabellen noch nicht migriert / Schema-Cache kennt sie nicht — dann lokale Datei nutzen. */
+function portfolioSupabaseTabellenFehlen(message: string): boolean {
+  const m = message.toLowerCase()
+  if (!m.includes('investment_portfolio')) return false
+  return (
+    m.includes('schema cache') ||
+    m.includes('could not find') ||
+    m.includes('does not exist') ||
+    m.includes('pgrst205') ||
+    (m.includes('relation') && m.includes('does not exist'))
+  )
+}
+
 /** Reproduzierbare Seed-Zeilen aus dem eingebauten Portfolio (bis zur ersten Speicherung). */
 export function standardPortfolioPositionenMitMeta(): PortfolioPositionMitNotiz[] {
   return portfolioStandardZeilenMitMeta()
@@ -56,6 +69,16 @@ async function schreibeDateiPortfolio(rows: PortfolioPositionMitNotiz[]): Promis
 export async function ladePortfolioKomplett(): Promise<PortfolioKomplett> {
   if (istSupabaseClientKonfiguriert()) {
     const cloud = await ladePortfolioStateAusCloud()
+    if (!cloud.ok && portfolioSupabaseTabellenFehlen(cloud.message)) {
+      console.warn(
+        '[Portfolio] Supabase-Tabellen fehlen noch — nutze data/investment-portfolio.json. Migration: npm run db:investment-portfolio',
+      )
+      const datei = await leseDateiPortfolio()
+      if (!datei.vorhanden) {
+        return { positionen: standardPortfolioPositionenMitMeta(), verwendetStandardliste: true }
+      }
+      return { positionen: datei.rows, verwendetStandardliste: false }
+    }
     if (!cloud.ok) {
       console.error(cloud.message)
       const std = standardPortfolioPositionenMitMeta()
@@ -78,7 +101,24 @@ export async function speicherePortfolioPositionen(
   rows: PortfolioPositionMitNotiz[],
 ): Promise<{ ok: true } | { ok: false; message: string }> {
   if (istSupabaseClientKonfiguriert()) {
-    return speicherePortfolioInCloud(rows)
+    const cloud = await speicherePortfolioInCloud(rows)
+    if (cloud.ok) return cloud
+    if (portfolioSupabaseTabellenFehlen(cloud.message)) {
+      console.warn(
+        '[Portfolio] Supabase-Speichern nicht möglich (Tabellen fehlen) — schreibe data/investment-portfolio.json. Migration: npm run db:investment-portfolio',
+      )
+      try {
+        await schreibeDateiPortfolio(rows)
+        return { ok: true }
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : 'Portfolio konnte nicht geschrieben werden.'
+        return {
+          ok: false,
+          message: `${msg} — Zusätzlich fehlen die Supabase-Tabellen (npm run db:investment-portfolio).`,
+        }
+      }
+    }
+    return cloud
   }
   try {
     await schreibeDateiPortfolio(rows)

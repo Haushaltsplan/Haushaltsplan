@@ -10,7 +10,8 @@
     "start": "next start",
     "lint": "eslint",
     "check:ki": "node scripts/verify-ki.mjs",
-    "db:lager": "node scripts/apply-lager-schema.cjs"
+    "db:lager": "node scripts/apply-lager-schema.cjs",
+    "db:investment-portfolio": "node scripts/apply-investment-portfolio-schema.cjs"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
