@@ -70,10 +70,7 @@ async function ladeYahooSpark(symbole: string[]): Promise<Map<string, { pct: num
 }
 
 /** Yahoo kann Symbol-Schreibweise leicht variieren — mehrere Schlüssel versuchen. */
-function quoteFuerSymbol(
-  map: Map<string, { pct: number | null; preis: number | null; zeitUnix: number | null }>,
-  symbolYahoo: string,
-): { pct: number | null; preis: number | null; zeitUnix: number | null } | undefined {
+function trefferAusYahooSymbolMap<T>(map: Map<string, T>, symbolYahoo: string): T | undefined {
   const roh = symbolYahoo.trim()
   const kandidaten = [
     roh.toUpperCase(),
@@ -81,10 +78,79 @@ function quoteFuerSymbol(
     roh.replace(/-/g, '.').toUpperCase(),
   ]
   for (const k of kandidaten) {
-    const hit = map.get(k)
-    if (hit) return hit
+    if (map.has(k)) return map.get(k)
   }
   return undefined
+}
+
+type YahooChartJson = {
+  chart?: {
+    result?: Array<{
+      indicators?: {
+        adjclose?: Array<{ adjclose?: (number | null)[] }>
+        quote?: Array<{ close?: (number | null)[] }>
+      }
+    }>
+  }
+}
+
+const YAHOO_CHART_BATCH = 8
+
+function prozentErsterZuLetzterSchlusskurse(arr: (number | null | undefined)[]): number | null {
+  const valid: number[] = []
+  for (const x of arr) {
+    if (x != null && Number.isFinite(Number(x))) valid.push(Number(x))
+  }
+  if (valid.length < 2) return null
+  const first = valid[0]
+  const last = valid[valid.length - 1]
+  if (first === 0) return null
+  return Math.round(((last - first) / first) * 10_000) / 100
+}
+
+async function yahooChartRangeReturn(symbol: string, range: 'ytd' | '5y' | '10y'): Promise<number | null> {
+  const sym = symbol.trim()
+  const u = new URL(`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(sym)}`)
+  u.searchParams.set('range', range)
+  u.searchParams.set('interval', range === 'ytd' ? '1d' : '1wk')
+  try {
+    const res = await fetch(u.toString(), {
+      next: { revalidate: 300 },
+      headers: YAHOO_FETCH_HEADERS,
+    })
+    if (!res.ok) return null
+    const j = (await res.json()) as YahooChartJson
+    const result = j.chart?.result?.[0]
+    if (!result) return null
+    const adj = result.indicators?.adjclose?.[0]?.adjclose
+    const closes = adj?.length ? adj : result.indicators?.quote?.[0]?.close
+    if (!closes?.length) return null
+    return prozentErsterZuLetzterSchlusskurse(closes)
+  } catch {
+    return null
+  }
+}
+
+async function ladePortfolioChartReturns(
+  symbole: string[],
+): Promise<Map<string, { ytd: number | null; fuenfJahre: number | null; zehnJahre: number | null }>> {
+  const uniq = [...new Set(symbole.map((s) => s.trim()).filter(Boolean))]
+  const out = new Map<string, { ytd: number | null; fuenfJahre: number | null; zehnJahre: number | null }>()
+  const batches = teileArray(uniq, YAHOO_CHART_BATCH)
+  for (const batch of batches) {
+    await Promise.all(
+      batch.map(async (sym) => {
+        const key = sym.trim().toUpperCase()
+        const [ytd, fuenfJahre, zehnJahre] = await Promise.all([
+          yahooChartRangeReturn(sym, 'ytd'),
+          yahooChartRangeReturn(sym, '5y'),
+          yahooChartRangeReturn(sym, '10y'),
+        ])
+        out.set(key, { ytd, fuenfJahre, zehnJahre })
+      }),
+    )
+  }
+  return out
 }
 
 export type PortfolioKurseBericht = {
@@ -96,11 +162,12 @@ export type PortfolioKurseBericht = {
 export async function ladePortfolioKurseBericht(): Promise<PortfolioKurseBericht> {
   try {
     const symbole = PORTFOLIO_POSITIONEN.map((p) => p.symbolYahoo)
-    const map = await ladeYahooSpark(symbole)
+    const [map, chartMap] = await Promise.all([ladeYahooSpark(symbole), ladePortfolioChartReturns(symbole)])
 
     let maxZeit: number | null = null
     const positionen: InvestmentMoverKarteDaten[] = PORTFOLIO_POSITIONEN.map((p) => {
-      const q = quoteFuerSymbol(map, p.symbolYahoo)
+      const q = trefferAusYahooSymbolMap(map, p.symbolYahoo)
+      const cr = trefferAusYahooSymbolMap(chartMap, p.symbolYahoo)
       if (q?.zeitUnix != null && Number.isFinite(q.zeitUnix)) {
         maxZeit = maxZeit == null ? q.zeitUnix : Math.max(maxZeit, q.zeitUnix)
       }
@@ -111,6 +178,9 @@ export async function ladePortfolioKurseBericht(): Promise<PortfolioKurseBericht
         aenderungProzent: q?.pct ?? null,
         kurs: q?.preis ?? null,
         notierung: p.notierung,
+        ytdProzent: cr?.ytd ?? null,
+        fuenfJahreProzent: cr?.fuenfJahre ?? null,
+        zehnJahreProzent: cr?.zehnJahre ?? null,
       }
     })
 
@@ -143,6 +213,9 @@ export async function ladePortfolioKurseBericht(): Promise<PortfolioKurseBericht
         aenderungProzent: null,
         kurs: null,
         notierung: p.notierung,
+        ytdProzent: null,
+        fuenfJahreProzent: null,
+        zehnJahreProzent: null,
       })).sort((a, b) => a.name.localeCompare(b.name, 'de')),
       fehler: e instanceof Error ? e.message : 'Portfolio-Kurse nicht erreichbar',
     }
