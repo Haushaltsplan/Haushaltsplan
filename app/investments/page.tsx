@@ -52,13 +52,13 @@ async function InvestmentsMarktPanels() {
         <MarketUebersichtSection embedded uebersicht={marktUebersicht} />
       </PageSectionPanel>
       <PageSectionPanel>
+        <PortfolioHoldingsSection embedded bericht={portfolioBericht} />
+      </PageSectionPanel>
+      <PageSectionPanel>
         <Sp500MoversSection embedded bericht={sp500Bericht} />
       </PageSectionPanel>
       <PageSectionPanel>
         <Nasdaq100MoversSection embedded bericht={nasdaq100Bericht} />
-      </PageSectionPanel>
-      <PageSectionPanel>
-        <PortfolioHoldingsSection embedded bericht={portfolioBericht} />
       </PageSectionPanel>
     </>
   )

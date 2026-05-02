@@ -1,9 +1,6 @@
 import { parseGoogleNewsRssItems, type RohGoogleNewsEintrag } from '@/lib/google-news-rss'
-import { PORTFOLIO_UNTERNEHMEN_NAMEN } from '@/lib/investment-portfolio-data'
+import { ladePortfolioKomplett } from '@/lib/investment-portfolio-store'
 import type { NewsEintrag } from '@/lib/region-haarbach'
-
-/** Unternehmen im Portfolio (gleiche Reihenfolge/Namen wie Investments-Kurse). */
-const UNTERNEHMEN = PORTFOLIO_UNTERNEHMEN_NAMEN
 
 /** Google `q=`: muss in Verbindung mit Unternehmen vorkommen (rohe Vorfilterung) */
 const SIGNAL_SUCHFELDER = [
@@ -160,7 +157,8 @@ export async function ladeAktienPortfolioNews(): Promise<{
   artikel: NewsEintrag[]
   fehler: string | null
 }> {
-  const firmenRoh = UNTERNEHMEN.map(alsSuchbegriff).filter((s) => s.length > 0)
+  const { positionen } = await ladePortfolioKomplett()
+  const firmenRoh = positionen.map((p) => p.name).map(alsSuchbegriff).filter((s) => s.length > 0)
   /** Kleinere Pakete → einfachere Google-Queries, oft mehr Treffer pro Firma */
   const firmenKacheln = chunken(firmenRoh, 3)
   const fehler: string[] = []

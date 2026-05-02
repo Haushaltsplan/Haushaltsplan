@@ -1,4 +1,5 @@
 import { InvestmentMoverKarte, type InvestmentMoverKarteDaten } from '@/components/investment-mover-karte'
+import { PortfolioHoldingsBearbeitenClient } from '@/components/portfolio-holdings-bearbeiten.client'
 import { DetailsDisclosureTriggerEnd } from '@/components/collapsible-ui'
 import type { PortfolioKurseBericht } from '@/lib/portfolio-kurse'
 
@@ -27,7 +28,7 @@ export function PortfolioHoldingsSection({
 
   return (
     <section className={shell}>
-      <details className="group" open>
+      <details className="group">
         <summary className="flex cursor-pointer list-none items-start justify-between gap-3 rounded-lg py-1 outline-none hover:bg-zinc-900/50 [&::-webkit-details-marker]:hidden">
           <div className="min-w-0 pr-1">
             <p className="text-xs font-semibold uppercase tracking-wide text-zinc-400">Portfolio</p>
@@ -42,6 +43,11 @@ export function PortfolioHoldingsSection({
             {bericht.fehler}
           </p>
         ) : null}
+
+        <PortfolioHoldingsBearbeitenClient
+          bearbeitbarePositionen={bericht.bearbeitbarePositionen}
+          verwendetStandardliste={bericht.portfolioVerwendetStandardliste}
+        />
 
         <div className="mt-5 grid gap-8 lg:grid-cols-2 lg:gap-10">
           <div className="min-w-0">
@@ -94,7 +100,10 @@ export function PortfolioHoldingsSection({
         <p className="mt-6 text-[11px] leading-relaxed text-zinc-500">
           YTD, „5 J.“ und „10 J.“ beziehen sich auf die Performance vom ersten bis zum letzten gelieferten Kurs der Serie
           (Yahoo Finance Chart, bereinigte Schlusskurse). „5 J.“ und „10 J.“ nutzen etwa wöchentliche Kerzen über das
-          gewählte Zurückblicksfenster — kein exakter Kalenderzeitraum.
+          gewählte Zurückblicksfenster — kein exakter Kalenderzeitraum. „Zu ATH“ ist{' '}
+          <span className="whitespace-nowrap">(Kurs − ATH) / ATH</span> in %; ATH ist das Maximum der bereinigten
+          Wochenschlüsse über die gesamte Yahoo-Serie (<span className="whitespace-nowrap">range=max</span>), Vergleich
+          mit dem aktuellen Spark-Kurs oder sonst dem letzten Wochenschluss — kein garantiert intraday-genaues Rekordhoch.
         </p>
       </details>
     </section>

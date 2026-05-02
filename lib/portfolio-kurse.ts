@@ -1,5 +1,6 @@
 import type { InvestmentMoverKarteDaten } from '@/components/investment-mover-karte'
-import { PORTFOLIO_POSITIONEN } from '@/lib/investment-portfolio-data'
+import type { PortfolioPositionMitNotiz } from '@/lib/investment-portfolio-types'
+import { ladePortfolioKomplett, standardPortfolioPositionenMitMeta } from '@/lib/investment-portfolio-store'
 
 /** Yahoo blockiert oft `/v7/finance/quote` mit 401; `/v7/finance/spark` bleibt zuverlässig (wie S&P-Movers). */
 const YAHOO_SPARK_BATCH = 20
@@ -108,6 +109,63 @@ function prozentErsterZuLetzterSchlusskurse(arr: (number | null | undefined)[]):
   return Math.round(((last - first) / first) * 10_000) / 100
 }
 
+function prozentAbstandKursZuAth(aktuell: number, ath: number): number | null {
+  if (!Number.isFinite(aktuell) || !Number.isFinite(ath) || ath === 0) return null
+  return Math.round(((aktuell - ath) / ath) * 10_000) / 100
+}
+
+/** ATH = Maximum der Serie; Vergleich mit Spark-Kurs, sondern letztem Wochenschluss der Serie. */
+async function yahooChartAthAbstandProzent(symbol: string, referenzPreis: number | null): Promise<number | null> {
+  const sym = symbol.trim()
+  const u = new URL(`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(sym)}`)
+  u.searchParams.set('range', 'max')
+  u.searchParams.set('interval', '1wk')
+  try {
+    const res = await fetch(u.toString(), {
+      next: { revalidate: 3600 },
+      headers: YAHOO_FETCH_HEADERS,
+    })
+    if (!res.ok) return null
+    const j = (await res.json()) as YahooChartJson
+    const result = j.chart?.result?.[0]
+    if (!result) return null
+    const adj = result.indicators?.adjclose?.[0]?.adjclose
+    const closes = adj?.length ? adj : result.indicators?.quote?.[0]?.close
+    if (!closes?.length) return null
+    const valid: number[] = []
+    for (const x of closes) {
+      if (x != null && Number.isFinite(Number(x))) valid.push(Number(x))
+    }
+    if (valid.length < 1) return null
+    const ath = Math.max(...valid)
+    const cur =
+      referenzPreis != null && Number.isFinite(referenzPreis) ? referenzPreis : valid[valid.length - 1]
+    return prozentAbstandKursZuAth(cur, ath)
+  } catch {
+    return null
+  }
+}
+
+async function ladePortfolioAthAbstand(
+  symbole: string[],
+  sparkMap: Map<string, { pct: number | null; preis: number | null; zeitUnix: number | null }>,
+): Promise<Map<string, number | null>> {
+  const uniq = [...new Set(symbole.map((s) => s.trim()).filter(Boolean))]
+  const out = new Map<string, number | null>()
+  const batches = teileArray(uniq, YAHOO_CHART_BATCH)
+  for (const batch of batches) {
+    await Promise.all(
+      batch.map(async (sym) => {
+        const key = sym.trim().toUpperCase()
+        const q = trefferAusYahooSymbolMap(sparkMap, sym)
+        const pct = await yahooChartAthAbstandProzent(sym, q?.preis ?? null)
+        out.set(key, pct)
+      }),
+    )
+  }
+  return out
+}
+
 async function yahooChartRangeReturn(symbol: string, range: 'ytd' | '5y' | '10y'): Promise<number | null> {
   const sym = symbol.trim()
   const u = new URL(`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(sym)}`)
@@ -156,21 +214,27 @@ async function ladePortfolioChartReturns(
 export type PortfolioKurseBericht = {
   sessionLabel: string
   positionen: InvestmentMoverKarteDaten[]
+  bearbeitbarePositionen: PortfolioPositionMitNotiz[]
+  portfolioVerwendetStandardliste: boolean
   fehler: string | null
 }
 
 export async function ladePortfolioKurseBericht(): Promise<PortfolioKurseBericht> {
   try {
-    const symbole = PORTFOLIO_POSITIONEN.map((p) => p.symbolYahoo)
+    const { positionen: defs, verwendetStandardliste } = await ladePortfolioKomplett()
+    const symbole = defs.map((p) => p.symbolYahoo)
     const [map, chartMap] = await Promise.all([ladeYahooSpark(symbole), ladePortfolioChartReturns(symbole)])
+    const athMap = await ladePortfolioAthAbstand(symbole, map)
 
     let maxZeit: number | null = null
-    const positionen: InvestmentMoverKarteDaten[] = PORTFOLIO_POSITIONEN.map((p) => {
+    const positionen: InvestmentMoverKarteDaten[] = defs.map((p) => {
       const q = trefferAusYahooSymbolMap(map, p.symbolYahoo)
       const cr = trefferAusYahooSymbolMap(chartMap, p.symbolYahoo)
+      const athQ = trefferAusYahooSymbolMap(athMap, p.symbolYahoo)
       if (q?.zeitUnix != null && Number.isFinite(q.zeitUnix)) {
         maxZeit = maxZeit == null ? q.zeitUnix : Math.max(maxZeit, q.zeitUnix)
       }
+      const notizGetrimmt = p.notiz.trim()
       return {
         symbol: p.symbolYahoo,
         name: p.name,
@@ -181,6 +245,8 @@ export async function ladePortfolioKurseBericht(): Promise<PortfolioKurseBericht
         ytdProzent: cr?.ytd ?? null,
         fuenfJahreProzent: cr?.fuenfJahre ?? null,
         zehnJahreProzent: cr?.zehnJahre ?? null,
+        athAbstandProzent: athQ ?? null,
+        notiz: notizGetrimmt ? notizGetrimmt : null,
       }
     })
 
@@ -202,21 +268,34 @@ export async function ladePortfolioKurseBericht(): Promise<PortfolioKurseBericht
     const fehler =
       ohneKurs > 0 ? `${ohneKurs} Position(en): keine Spark-Daten — Symbol prüfen oder später erneut laden.` : null
 
-    return { sessionLabel, positionen, fehler }
+    return {
+      sessionLabel,
+      positionen,
+      bearbeitbarePositionen: defs,
+      portfolioVerwendetStandardliste: verwendetStandardliste,
+      fehler,
+    }
   } catch (e) {
+    const defs = standardPortfolioPositionenMitMeta()
     return {
       sessionLabel: '—',
-      positionen: PORTFOLIO_POSITIONEN.map((p) => ({
-        symbol: p.symbolYahoo,
-        name: p.name,
-        brancheAnzeige: null,
-        aenderungProzent: null,
-        kurs: null,
-        notierung: p.notierung,
-        ytdProzent: null,
-        fuenfJahreProzent: null,
-        zehnJahreProzent: null,
-      })).sort((a, b) => a.name.localeCompare(b.name, 'de')),
+      positionen: defs
+        .map((p) => ({
+          symbol: p.symbolYahoo,
+          name: p.name,
+          brancheAnzeige: null,
+          aenderungProzent: null,
+          kurs: null,
+          notierung: p.notierung,
+          ytdProzent: null,
+          fuenfJahreProzent: null,
+          zehnJahreProzent: null,
+          athAbstandProzent: null,
+          notiz: p.notiz.trim() ? p.notiz.trim() : null,
+        }))
+        .sort((a, b) => a.name.localeCompare(b.name, 'de')),
+      bearbeitbarePositionen: defs,
+      portfolioVerwendetStandardliste: true,
       fehler: e instanceof Error ? e.message : 'Portfolio-Kurse nicht erreichbar',
     }
   }

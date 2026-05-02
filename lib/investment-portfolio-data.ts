@@ -1,5 +1,5 @@
 /**
- * Festes Portfolio — gleiche Namen wie für News auf der Startseite (`aktien-portfolio-news`).
+ * Eingebaute Standard-Watchlist (bis du unter Investments eine eigene Liste speicherst).
  * Yahoo-Symbole für Spark-Kurse; `notierung` nur für die Kurszeile in der UI.
  */
 export type PortfolioPositionDefinition = {
@@ -8,7 +8,7 @@ export type PortfolioPositionDefinition = {
   notierung: string
 }
 
-export const PORTFOLIO_POSITIONEN: PortfolioPositionDefinition[] = [
+export const DEFAULT_PORTFOLIO_POSITIONEN: PortfolioPositionDefinition[] = [
   { name: 'Alphabet', symbolYahoo: 'GOOGL', notierung: 'USD' },
   { name: 'Mastercard', symbolYahoo: 'MA', notierung: 'USD' },
   { name: 'Microsoft', symbolYahoo: 'MSFT', notierung: 'USD' },
@@ -50,5 +50,3 @@ export const PORTFOLIO_POSITIONEN: PortfolioPositionDefinition[] = [
   { name: 'Netflix', symbolYahoo: 'NFLX', notierung: 'USD' },
   { name: 'BlackRock', symbolYahoo: 'BLK', notierung: 'USD' },
 ]
-
-export const PORTFOLIO_UNTERNEHMEN_NAMEN: string[] = PORTFOLIO_POSITIONEN.map((p) => p.name)

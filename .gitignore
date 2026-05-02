@@ -23,6 +23,9 @@
 # Lokale Caches (z. B. frühere API-Caches)
 .cache
 
+# Investments-Portfolio ohne Supabase (lokal geschrieben von /api/investment-portfolio)
+/data/investment-portfolio.json
+
 # misc
 .DS_Store
 *.pem

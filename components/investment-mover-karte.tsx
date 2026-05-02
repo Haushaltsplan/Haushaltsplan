@@ -14,6 +14,13 @@ export type InvestmentMoverKarteDaten = {
   fuenfJahreProzent?: number | null
   /** Portfolio: ca. 10 Jahre % (Yahoo Chart, adjusted, wöchentlich). */
   zehnJahreProzent?: number | null
+  /**
+   * Portfolio: Abstand zum ATH der Yahoo-Serie in %: ((Kurs − ATH) / ATH) × 100.
+   * Negativ = unter Höchststand; ATH = Maximum der bereinigten Wochenschlüsse (`range=max`).
+   */
+  athAbstandProzent?: number | null
+  /** Portfolio: Freitext unter dem Namen. */
+  notiz?: string | null
 }
 
 /** Finnhub-Logos: Kürzel ohne Börsensuffix (`RMS.PA` → `RMS`). */
@@ -41,11 +48,15 @@ function farbeUndStringProzent(p: number | null | undefined): { cls: string; s: 
 
 export function InvestmentMoverKarte({ z }: { z: InvestmentMoverKarteDaten }) {
   const zeigeLangfrist =
-    z.ytdProzent !== undefined || z.fuenfJahreProzent !== undefined || z.zehnJahreProzent !== undefined
+    z.ytdProzent !== undefined ||
+    z.fuenfJahreProzent !== undefined ||
+    z.zehnJahreProzent !== undefined ||
+    z.athAbstandProzent !== undefined
   const tag = farbeUndStringProzent(z.aenderungProzent)
   const ytd = farbeUndStringProzent(z.ytdProzent)
   const z5 = farbeUndStringProzent(z.fuenfJahreProzent)
   const z10 = farbeUndStringProzent(z.zehnJahreProzent)
+  const ath = farbeUndStringProzent(z.athAbstandProzent)
 
   return (
     <li className="rounded-xl border border-zinc-800/90 bg-zinc-950/50 px-3 py-3">
@@ -61,6 +72,9 @@ export function InvestmentMoverKarte({ z }: { z: InvestmentMoverKarteDaten }) {
           <div className="min-w-0">
             <p className="font-mono text-sm font-semibold text-white">{z.symbol}</p>
             <p className="truncate text-xs leading-snug text-zinc-400">{z.name}</p>
+            {z.notiz?.trim() ? (
+              <p className="mt-1 whitespace-pre-wrap text-[11px] leading-snug text-zinc-500">{z.notiz.trim()}</p>
+            ) : null}
             {z.brancheAnzeige ? (
               <p className="mt-0.5 text-xs leading-snug text-zinc-500">
                 <span className="text-zinc-500">Branche: </span>
@@ -86,6 +100,15 @@ export function InvestmentMoverKarte({ z }: { z: InvestmentMoverKarteDaten }) {
             <div className="flex items-baseline justify-end gap-3">
               <dt className="text-[11px] font-medium uppercase tracking-wide text-zinc-500">10 J.</dt>
               <dd className={`text-sm font-semibold tabular-nums ${z10.cls}`}>{z10.s}</dd>
+            </div>
+            <div className="flex items-baseline justify-end gap-3">
+              <dt
+                className="max-w-[5.5rem] text-right text-[11px] font-medium uppercase leading-snug tracking-wide text-zinc-500"
+                title="Abstand zum Höchststand der Yahoo-Historie (bereinigte Wochenschlüsse, range=max); Kurs lt. Spark wo verfügbar."
+              >
+                zu ATH
+              </dt>
+              <dd className={`text-sm font-semibold tabular-nums ${ath.cls}`}>{ath.s}</dd>
             </div>
           </dl>
         ) : (
