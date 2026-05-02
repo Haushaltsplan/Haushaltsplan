@@ -20,41 +20,15 @@ import {
   useSortable,
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-
-const LINK_DEFS = [
-  { href: '/', label: 'Start', emoji: '🏡', color: 'text-cyan-400', ring: 'focus-visible:ring-cyan-500/50' },
-  { href: '/finanzen', label: 'Finanzen', emoji: '💰', color: 'text-emerald-400', ring: 'focus-visible:ring-emerald-500/50' },
-  { href: '/speisekammer', label: 'Speisekammer', emoji: '🍳', color: 'text-sky-400', ring: 'focus-visible:ring-sky-500/50' },
-  { href: '/kalender', label: 'Kalender', emoji: '📅', color: 'text-teal-400', ring: 'focus-visible:ring-teal-500/50' },
-  { href: '/natur', label: 'Natur', emoji: '🌿', color: 'text-lime-400', ring: 'focus-visible:ring-lime-500/50' },
-  { href: '/rennrad', label: 'Rennrad', emoji: '🚴', color: 'text-rose-400', ring: 'focus-visible:ring-rose-500/50' },
-  { href: '/besitz', label: 'Besitz', emoji: '👜', color: 'text-amber-400', ring: 'focus-visible:ring-amber-500/50' },
-  { href: '/investments', label: 'Investments', emoji: '📈', color: 'text-violet-400', ring: 'focus-visible:ring-violet-500/50' },
-] as const
-
-type NavItem = (typeof LINK_DEFS)[number]
-const HREF_TO_DEF = new Map(LINK_DEFS.map((d) => [d.href, d] as const))
-const DEFAULT_HREF_ORDER = LINK_DEFS.map((d) => d.href)
-const NAV_ORDER_KEY = 'mein-haushalt:nav-href-order'
-
-function mergePersistedWithKnown(saved: string[] | null | undefined): string[] {
-  const known = new Set<string>(HREF_TO_DEF.keys())
-  const next: string[] = []
-  if (Array.isArray(saved)) {
-    for (const h of saved) {
-      if (known.has(h) && !next.includes(h)) next.push(h)
-    }
-  }
-  for (const h of DEFAULT_HREF_ORDER) {
-    if (!next.includes(h)) next.push(h)
-  }
-  return next
-}
-
-function linkActive(pathname: string, href: string) {
-  if (href === '/') return pathname === '/'
-  return pathname === href || pathname.startsWith(`${href}/`)
-}
+import {
+  DEFAULT_HREF_ORDER,
+  HREF_TO_DEF,
+  NAV_ORDER_CHANGED_EVENT,
+  NAV_ORDER_KEY,
+  type NavItem,
+  linkActive,
+  mergePersistedWithKnown,
+} from '@/lib/nav-model'
 
 function SortableNavItem({ def, pathname }: { def: NavItem; pathname: string }) {
   const active = linkActive(pathname, def.href)
@@ -142,6 +116,7 @@ function StatischeLeiste({ orderedDefs, pathname }: { orderedDefs: NavItem[]; pa
   )
 }
 
+/** Horizontale Navigation — vor allem für Mobilgeräte; Desktop nutzt `SiteSidebar`. */
 export function SiteNav() {
   const pathname = usePathname()
   const [order, setOrder] = useState<string[]>(DEFAULT_HREF_ORDER)
@@ -193,6 +168,9 @@ export function SiteNav() {
       } catch {
         /* ignore */
       }
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new Event(NAV_ORDER_CHANGED_EVENT))
+      }
       return next
     })
   }
@@ -202,15 +180,8 @@ export function SiteNav() {
   }
 
   return (
-    <DndContext
-      sensors={sensors}
-      collisionDetection={closestCenter}
-      onDragEnd={onDragEnd}
-    >
-      <SortableContext
-        items={order}
-        strategy={horizontalListSortingStrategy}
-      >
+    <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
+      <SortableContext items={order} strategy={horizontalListSortingStrategy}>
         <div className="flex w-full min-w-0 items-center gap-0.5 overflow-x-auto pb-0.5 [scrollbar-gutter:stable] md:overflow-visible md:pb-0">
           {orderedDefs.map((d) => (
             <SortableNavItem key={d.href} def={d} pathname={pathname} />

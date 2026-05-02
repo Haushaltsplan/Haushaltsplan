@@ -2,6 +2,7 @@
 
 import { useCallback, useId, useState } from 'react'
 import toast from 'react-hot-toast'
+import { PageChrome, PageHero, pageSectionPanelClass, pageSectionShellClass } from '@/components/page-shell'
 import {
   type NaturBestimmungErgebnis,
   type NaturKategorieId,
@@ -132,12 +133,15 @@ export function NaturBestimmenClient() {
     : 'bg-slate-500'
 
   return (
-    <div className="space-y-8">
-      <header>
-        <h1 className="text-2xl font-bold tracking-tight text-slate-100 sm:text-3xl">Natur bestimmen</h1>
-      </header>
+    <PageChrome>
+      <PageHero
+        eyebrow="Natur"
+        title="Bestimmen"
+        description="Tiere, Pflanzen und Pilze per KI einordnen — keine Fach- oder Essbarkeitsgarantie."
+      />
 
-      <div className="rounded-2xl border border-slate-800 bg-slate-900/40 p-4 sm:p-6">
+      <section className={pageSectionShellClass}>
+        <div className={pageSectionPanelClass}>
         <div className="flex flex-col gap-4 sm:flex-row sm:items-stretch sm:gap-6">
           <div className="flex min-h-[200px] min-w-0 flex-1 flex-col items-center justify-center rounded-xl border border-dashed border-slate-600 bg-slate-950/50 p-3">
             {blick.length > 0 ? (
@@ -228,7 +232,8 @@ export function NaturBestimmenClient() {
             </div>
           </div>
         </div>
-      </div>
+        </div>
+      </section>
 
       {ergebnis && (
         <section className="space-y-4" aria-live="polite">
@@ -299,6 +304,6 @@ export function NaturBestimmenClient() {
           </div>
         </section>
       )}
-    </div>
+    </PageChrome>
   )
 }

@@ -6,6 +6,7 @@ import { buildFinanceCoachSnapshot, useFinanceCoachSnapshot } from '@/components
 import { KategorieMark } from '@/lib/kategorie-icon'
 import { berechneAusgabenMonatsFeedback } from '@/lib/finanzen-ausgaben-feedback'
 import toast from 'react-hot-toast'
+import { PageChrome } from '@/components/page-shell'
 
 /** Monatlich am 1. des Monats (Ausgaben) — Import legt nur fehlende Bezeichnungen an. */
 const VORGABE_DAUERAUFTRAeGE_MONATSANFANG: Array<{
@@ -1061,8 +1062,8 @@ export default function FinanzenPage() {
   const sliderValue = sliderIdx >= 0 ? sliderIdx : Math.max(0, monatsListeNavigation.length - 1)
 
   return (
-    <div className="min-w-0 max-w-full space-y-6 animate-in fade-in duration-500 sm:space-y-10">
-      <div className="flex flex-col justify-between gap-6 rounded-2xl border border-slate-800/90 bg-gradient-to-b from-slate-900 to-slate-950 p-4 text-center shadow-xl shadow-black/40 sm:gap-8 sm:rounded-[2rem] sm:p-8 md:p-10 lg:flex-row lg:items-stretch lg:gap-10 lg:text-left">
+    <PageChrome className="max-w-full sm:space-y-10">
+      <div className="flex flex-col justify-between gap-6 rounded-2xl border border-zinc-700/35 bg-zinc-950/55 p-4 text-center shadow-xl shadow-black/40 ring-1 ring-white/[0.04] backdrop-blur-xl sm:gap-8 sm:rounded-[2rem] sm:p-8 md:p-10 lg:flex-row lg:items-stretch lg:gap-10 lg:text-left">
         <div className="flex flex-1 flex-col justify-center lg:min-w-0">
           <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-slate-500">Saldo im Ansichtsmonat</p>
           <p className="mt-1.5 text-sm font-semibold text-slate-300 sm:text-[15px]">{formatMonatsLabelDe(ansichtMonat)}</p>
@@ -1073,16 +1074,16 @@ export default function FinanzenPage() {
           </p>
         </div>
         <div className="flex w-full min-w-0 flex-col gap-4 lg:w-auto lg:max-w-md lg:shrink-0">
-          <div className="flex min-w-0 shrink-0 items-stretch justify-center gap-0 overflow-hidden rounded-2xl border border-slate-700/70 bg-slate-950/60 p-1 shadow-inner">
-            <div className="flex min-w-0 flex-1 flex-col justify-center rounded-xl bg-slate-900/80 px-3 py-3 text-left sm:px-5 sm:py-4">
+          <div className="flex min-w-0 shrink-0 items-stretch justify-center gap-0 overflow-hidden rounded-2xl border border-zinc-700/50 bg-zinc-950/60 p-1 shadow-inner">
+            <div className="flex min-w-0 flex-1 flex-col justify-center rounded-xl bg-zinc-900/75 px-3 py-3 text-left sm:px-5 sm:py-4">
               <span className="text-[10px] font-semibold uppercase tracking-wide text-emerald-400/95 sm:text-[11px]">Einnahmen</span>
               <span className="mt-0.5 text-[10px] text-slate-500 sm:text-[11px]">im Monat</span>
               <span className="mt-1.5 break-words text-base font-semibold leading-tight tabular-nums text-slate-100 sm:mt-2 sm:text-2xl">
                 +{gesEin.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €
               </span>
             </div>
-            <div className="w-px shrink-0 self-stretch bg-slate-700/80" />
-            <div className="flex min-w-0 flex-1 flex-col justify-center rounded-xl bg-slate-900/80 px-3 py-3 text-left sm:px-5 sm:py-4">
+            <div className="w-px shrink-0 self-stretch bg-zinc-700/80" />
+            <div className="flex min-w-0 flex-1 flex-col justify-center rounded-xl bg-zinc-900/75 px-3 py-3 text-left sm:px-5 sm:py-4">
               <span className="text-[10px] font-semibold uppercase tracking-wide text-rose-400/95 sm:text-[11px]">Ausgaben</span>
               <span className="mt-0.5 text-[10px] text-slate-500 sm:text-[11px]">im Monat</span>
               <span className="mt-1.5 break-words text-base font-semibold leading-tight tabular-nums text-slate-100 sm:mt-2 sm:text-2xl">
@@ -1215,7 +1216,7 @@ export default function FinanzenPage() {
         </div>
       </div>
 
-      <div className="rounded-2xl border border-slate-800/90 bg-gradient-to-b from-slate-900 to-slate-950 p-4 shadow-xl shadow-black/30 sm:rounded-[2rem] sm:p-6 md:p-8">
+      <div className="rounded-2xl border border-zinc-700/35 bg-zinc-950/50 p-4 shadow-xl shadow-black/25 ring-1 ring-white/[0.04] backdrop-blur-xl sm:rounded-[2rem] sm:p-6 md:p-8">
         <div className="flex flex-col gap-4 sm:gap-5 md:flex-row md:items-start md:justify-between">
           <div className="min-w-0">
             <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-sky-400/90">Ansichtsmonat</p>
@@ -1956,6 +1957,6 @@ export default function FinanzenPage() {
           </div>
         </div>
       )}
-    </div>
+    </PageChrome>
   )
 }

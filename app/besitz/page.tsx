@@ -3,6 +3,14 @@
 import { BESITZ_KATEGORIEN, normalisiereBesitzKategorie } from '@/lib/besitz-kategorien'
 import type { BesitzPdfPosition } from '@/lib/besitz-pdf-import'
 import { supabase } from '@/lib/supabase'
+import {
+  PageChrome,
+  PageHero,
+  pageSectionHeaderClass,
+  pageSectionPanelClass,
+  pageSectionShellClass,
+  pageSectionTitleClass,
+} from '@/components/page-shell'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import toast from 'react-hot-toast'
 
@@ -337,22 +345,27 @@ export default function BesitzPage() {
   }
 
   return (
-    <div className="mx-auto max-w-5xl space-y-8 px-4 pb-16 pt-6 animate-in fade-in duration-500 md:px-6">
-      <div className="rounded-[2rem] border border-amber-800/40 bg-gradient-to-b from-slate-900 to-slate-950 p-6 shadow-xl shadow-black/35 sm:p-8">
-        <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-amber-400/90">Besitz</p>
-        <h1 className="mt-1 text-2xl font-black tracking-tight text-slate-100 sm:text-3xl">Gegenstände &amp; Einkaufspreise</h1>
-        <p className="mt-2 max-w-xl text-xs text-slate-500">
-          Manuell eintragen oder <strong className="font-medium text-slate-400">Beleg-PDF</strong> importieren (Vorschau prüfen).
-        </p>
-        {!laden && !schemaFehlt && zeilen.length > 0 && (
-          <p className="mt-4 text-sm text-slate-400">
-            Gesamtwert <span className="font-bold text-amber-200/95">{formatEur(summeGesamt)}</span>
-            {gefiltert.length !== zeilen.length ? (
-              <span className="text-slate-500"> · gefiltert {formatEur(summeGefiltert)}</span>
+    <PageChrome>
+      <PageHero
+        eyebrow="Besitz"
+        title="Gegenstände & Einkaufspreise"
+        description={
+          <>
+            <p>
+              Manuell eintragen oder <strong className="font-medium text-zinc-300">Beleg-PDF</strong> importieren
+              (Vorschau prüfen).
+            </p>
+            {!laden && !schemaFehlt && zeilen.length > 0 ? (
+              <p className="mt-3 text-sm text-zinc-400">
+                Gesamtwert <span className="font-bold text-amber-200/95">{formatEur(summeGesamt)}</span>
+                {gefiltert.length !== zeilen.length ? (
+                  <span className="text-zinc-500"> · gefiltert {formatEur(summeGefiltert)}</span>
+                ) : null}
+              </p>
             ) : null}
-          </p>
-        )}
-      </div>
+          </>
+        }
+      />
 
       {schemaFehlt && (
         <div className="rounded-2xl border border-amber-700/50 bg-amber-950/30 p-4 text-sm text-amber-100">
@@ -368,9 +381,12 @@ export default function BesitzPage() {
 
       {!schemaFehlt && (
         <>
-          <div className="rounded-[2rem] border border-slate-800/90 bg-gradient-to-b from-slate-900 to-slate-950 p-6 shadow-xl shadow-black/30 sm:p-8">
-            <h2 className="text-lg font-bold text-slate-100">{bearbeitenId ? 'Eintrag bearbeiten' : 'Neuer Gegenstand'}</h2>
-            <div className="mt-5 grid gap-4 sm:grid-cols-2">
+          <section className={pageSectionShellClass}>
+            <div className={pageSectionHeaderClass}>
+              <h2 className={pageSectionTitleClass}>{bearbeitenId ? 'Eintrag bearbeiten' : 'Neuer Gegenstand'}</h2>
+            </div>
+            <div className={pageSectionPanelClass}>
+            <div className="grid gap-4 sm:grid-cols-2">
               <div className="sm:col-span-2">
                 <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-slate-500">Bezeichnung</label>
                 <input
@@ -466,17 +482,21 @@ export default function BesitzPage() {
                 </button>
               ) : null}
             </div>
-          </div>
+            </div>
+          </section>
 
-          <div className="rounded-[2rem] border border-slate-800/90 bg-gradient-to-b from-slate-900 to-slate-950 p-6 shadow-xl shadow-black/30 sm:p-8">
-            <h2 className="text-lg font-bold text-slate-100">Beleg importieren (PDF oder Foto)</h2>
-            <p className="mt-1.5 text-xs text-slate-500">
+          <section className={pageSectionShellClass}>
+            <div className={pageSectionHeaderClass}>
+              <h2 className={pageSectionTitleClass}>Beleg importieren (PDF oder Foto)</h2>
+              <p className="mt-2 text-xs leading-relaxed text-zinc-400">
               Text-PDFs werden lokal eingelesen; gescannte PDFs, Handy-Fotos und Bilder werden per KI ausgewertet (wie Finanz-Coach:{' '}
-              <code className="rounded bg-slate-900 px-1 font-mono text-[10px] text-slate-400">GEMINI_API_KEY</code> oder{' '}
-              <code className="rounded bg-slate-900 px-1 font-mono text-[10px] text-slate-400">OPENAI_API_KEY</code>
+              <code className="rounded bg-zinc-950 px-1 font-mono text-[10px] text-zinc-400">GEMINI_API_KEY</code> oder{' '}
+              <code className="rounded bg-zinc-950 px-1 font-mono text-[10px] text-zinc-400">OPENAI_API_KEY</code>
               ).
-            </p>
-            <div className="mt-4">
+              </p>
+            </div>
+            <div className={pageSectionPanelClass}>
+            <div className="mt-0">
               <label
                 htmlFor="besitz-beleg-import"
                 className={`inline-flex cursor-pointer items-center justify-center rounded-xl border-2 border-dashed px-5 py-3.5 text-sm font-semibold transition-colors ${
@@ -565,13 +585,15 @@ export default function BesitzPage() {
                 </div>
               </div>
             ) : null}
-          </div>
+            </div>
+          </section>
 
-          <div className="rounded-[2rem] border border-slate-800/90 bg-gradient-to-b from-slate-900 to-slate-950 p-6 shadow-xl shadow-black/30 sm:p-8">
+          <section className={pageSectionShellClass}>
+            <div className={pageSectionHeaderClass}>
             <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
               <div className="min-w-0 flex-1">
-                <h2 className="text-lg font-bold text-slate-100">Liste</h2>
-                <p className="mt-1 text-[12px] text-slate-500">{laden ? 'Lade …' : `${gefiltert.length} von ${zeilen.length} Einträgen`}</p>
+                <h2 className={pageSectionTitleClass}>Liste</h2>
+                <p className="mt-1 text-[12px] text-zinc-400">{laden ? 'Lade …' : `${gefiltert.length} von ${zeilen.length} Einträgen`}</p>
               </div>
               <div className="flex flex-wrap items-center gap-2">
                 <select
@@ -597,7 +619,9 @@ export default function BesitzPage() {
                 </select>
               </div>
             </div>
-            <div className="mt-4">
+            </div>
+            <div className={pageSectionPanelClass}>
+            <div className="mt-0">
               <input
                 type="search"
                 value={suche}
@@ -658,9 +682,10 @@ export default function BesitzPage() {
                 ))}
               </ul>
             )}
-          </div>
+            </div>
+          </section>
         </>
       )}
-    </div>
+    </PageChrome>
   )
 }

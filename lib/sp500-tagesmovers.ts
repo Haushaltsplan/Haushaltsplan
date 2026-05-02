@@ -1,5 +1,25 @@
-import { decodeXmlText, parseGoogleNewsRssItems } from '@/lib/google-news-rss'
-import { resolveCoachProvider, runCoachCompletion } from '@/lib/ki-coach-backend'
+import {
+  googleNewsItemsNachDatumFiltern,
+  googleNewsItemsNachDatumSortieren,
+  parseGoogleNewsRssItems,
+} from '@/lib/google-news-rss'
+import {
+  beschreibungAusRssBlock,
+  kiMoverKurzfassungAkzeptieren,
+  moverBrancheAnzeige,
+  moverKurzfassungOhneKi,
+  rssBeschreibungenZuKurzfassung,
+  schlagzeilePasstZuTagesbewegungGrob,
+} from '@/lib/investment-movers-begruendung'
+import { ergaenzeMoversMitArtikelKoerper } from '@/lib/investment-movers-artikel-fetch'
+import {
+  fuehreMoverKiEinordnungMitCooldown,
+  moverArtikeltextLadenAktiv,
+  moverKiEinordnungIstAktiviert,
+  moverKiGoogleSearchGroundedBatchCap,
+  moverKiGoogleSearchGroundingAktiv,
+} from '@/lib/investment-movers-ki-einordnung'
+import { resolveCoachProvider } from '@/lib/ki-coach-backend'
 
 const KONSTITUENTEN_CSV_URL =
   'https://raw.githubusercontent.com/datasets/s-and-p-500-companies/master/data/constituents.csv'
@@ -13,7 +33,13 @@ const YAHOO_FETCH_HEADERS = {
   Referer: 'https://finance.yahoo.com/',
   Accept: 'application/json',
 } as const
-const NEWS_PRO_AKTION = 3
+/** Anzahl verwendeter Meldungen pro Mover (nach Datum/Richtungsfilter). */
+const NEWS_PRO_AKTION = 5
+/** Google News „when:“ — nur sehr frische Treffer anfragen (zusätzlich PubDate-Filter). */
+const MOVER_NEWS_WHEN = 'when:3d'
+const MOVER_NEWS_MAX_ALTER_MS = 72 * 60 * 60 * 1000
+const MOVER_NEWS_FALLBACK_ALTER_MS = 5 * 24 * 60 * 60 * 1000
+const NEWS_RSS_FETCH_MAX = 48
 const POLYGON_API_KEY = (process.env.POLYGON_API_KEY || process.env.NEXT_PUBLIC_POLYGON_API_KEY || '').trim()
 
 export type Sp500MoverEintrag = {
@@ -21,16 +47,15 @@ export type Sp500MoverEintrag = {
   name: string
   sektor: string | null
   branche: string | null
+  /** Branche/Sektor für die Anzeige (Konstituenten-Daten). */
+  brancheAnzeige: string | null
   /** Tagesveränderung der letzten regulären US-Sitzung, % */
   aenderungProzent: number
   kurs: number | null
   /** Unix-Sekunden der Kurszeit (Yahoo) */
   kursZeitUnix: number | null
-  schlagzeilen: Array<{ titel: string; href: string }>
-  /** Kurzfassung aus dem führenden Artikel (KI falls konfiguriert). */
-  artikelZusammenfassung: string
-  /** Begründung der Tagesbewegung (als ausklappbare Zusatzinfo in der UI). */
-  begruendung: string
+  /** Kurze Einordnung zur Tagesbewegung (ohne Quellenangaben). */
+  kurzfassung: string
 }
 
 export type Sp500MoversBericht = {
@@ -137,7 +162,7 @@ async function ladeYahooQuotes(symbols: string[]): Promise<YahooQuoteRoh[]> {
     const u = new URL('https://query1.finance.yahoo.com/v7/finance/spark')
     u.searchParams.set('symbols', batch.join(','))
     const res = await fetch(u.toString(), {
-      next: { revalidate: 600 },
+      next: { revalidate: 60 },
       headers: YAHOO_FETCH_HEADERS,
     })
     if (!res.ok) throw new Error(`Yahoo Finance: HTTP ${res.status}`)
@@ -197,11 +222,21 @@ async function ladePolygonQuotes(symbolsCsv: string[]): Promise<YahooQuoteRoh[]>
   return out
 }
 
-type ArtikelInfo = { schlagzeilen: Array<{ titel: string; href: string }>; zusammenfassungRoh: string | null }
+type ArtikelInfo = {
+  schlagzeilen: Array<{ titel: string; href: string }>
+  zusammenfassungRoh: string | null
+  /** Parallele Auszüge zu schlagzeilen (RSS-Beschreibung), für KI-Kontext. */
+  meldungsAuszuege: string[]
+}
 
-async function ladeArtikelInfoFuerAktie(symbol: string, unternehmensname: string): Promise<ArtikelInfo> {
+async function ladeArtikelInfoFuerAktie(
+  symbol: string,
+  unternehmensname: string,
+  aenderungProzent: number,
+): Promise<ArtikelInfo> {
+  const leer: ArtikelInfo = { schlagzeilen: [], zusammenfassungRoh: null, meldungsAuszuege: [] }
   const q = encodeURIComponent(
-    `(${symbol} OR "${unternehmensname.replace(/"/g, '')}") (Aktie OR stock OR earnings OR Quartalszahlen OR guidance)`,
+    `(${symbol} OR "${unternehmensname.replace(/"/g, '')}") (Aktie OR stock OR earnings OR Quartalszahlen OR guidance) ${MOVER_NEWS_WHEN}`,
   )
   const url = `https://news.google.com/rss/search?q=${q}&hl=de&gl=DE&ceid=DE:de`
   try {
@@ -209,120 +244,36 @@ async function ladeArtikelInfoFuerAktie(symbol: string, unternehmensname: string
       next: { revalidate: 900 },
       headers: { 'User-Agent': 'omnia/1.0 (private; sp500 mover news)' },
     })
-    if (!res.ok) return { schlagzeilen: [], zusammenfassungRoh: null }
+    if (!res.ok) return leer
     const xml = await res.text()
-    const items = parseGoogleNewsRssItems(xml, 'Google News', NEWS_PRO_AKTION * 2)
-    const schlagzeilen = items
+    const rohListe = parseGoogleNewsRssItems(xml, 'Google News', NEWS_RSS_FETCH_MAX)
+    const sortiert = googleNewsItemsNachDatumSortieren(rohListe)
+    let zeit = googleNewsItemsNachDatumFiltern(sortiert, MOVER_NEWS_MAX_ALTER_MS)
+    if (zeit.length === 0) zeit = googleNewsItemsNachDatumFiltern(sortiert, MOVER_NEWS_FALLBACK_ALTER_MS)
+    if (zeit.length === 0 && sortiert.length > 0) {
+      zeit = sortiert.slice(0, Math.min(14, sortiert.length))
+    }
+    const grobPasssend = zeit.filter((x) => schlagzeilePasstZuTagesbewegungGrob(x.titel, aenderungProzent))
+    const zeilen = grobPasssend.length > 0 ? grobPasssend : zeit
+
+    const gekuerzt = zeilen
       .map((x) => ({
         titel: x.titel.replace(/\s+/g, ' ').trim(),
         href: x.href.trim(),
+        beschreibung: x.beschreibung,
       }))
       .filter((x) => x.titel.length > 0 && x.href.length > 0)
       .map((x) => ({ ...x, titel: x.titel.length > 160 ? `${x.titel.slice(0, 157)}…` : x.titel }))
       .slice(0, NEWS_PRO_AKTION)
 
-    const descRaw = /<description[^>]*>([\s\S]*?)<\/description>/i.exec(xml)?.[1] ?? ''
-    const desc = decodeXmlText(descRaw).replace(/\s+/g, ' ').trim()
-    const zusammenfassungRoh = desc.length >= 30 ? (desc.length > 320 ? `${desc.slice(0, 317)}…` : desc) : null
-    return { schlagzeilen, zusammenfassungRoh }
+    const schlagzeilen = gekuerzt.map(({ titel, href }) => ({ titel, href }))
+    const rssSnippets = gekuerzt.map((x) => beschreibungAusRssBlock(x.beschreibung, unternehmensname))
+    const meldungsAuszuege = rssSnippets
+    const zusammenfassungRoh = rssBeschreibungenZuKurzfassung(rssSnippets)
+
+    return { schlagzeilen, zusammenfassungRoh, meldungsAuszuege }
   } catch {
-    return { schlagzeilen: [], zusammenfassungRoh: null }
-  }
-}
-
-function begruendungAusSchlagzeilen(schlagzeilen: Array<{ titel: string; href: string }>, prozent: number): string {
-  if (schlagzeilen.length === 0) {
-    return `Für diese Aktie (${prozent >= 0 ? '+' : ''}${prozent.toFixed(2)} %) wurden in den abgefragten News keine klaren Tages-Schlagzeilen gefunden. Marktbewegungen entstehen oft durch viele parallele Faktoren.`
-  }
-  const richtung = prozent >= 0 ? 'positiv' : 'negativ'
-  return `Laut aktuellen Schlagzeilen könnte die ${richtung} Tagesbewegung u. a. damit zusammenhängen: „${schlagzeilen[0].titel}“. Das ist keine sichere Ursache — Kurse reagieren auf viele Einflüsse gleichzeitig.`
-}
-
-function zusammenfassungFallback(zusammenfassungRoh: string | null, schlagzeilen: Array<{ titel: string; href: string }>): string {
-  if (zusammenfassungRoh && zusammenfassungRoh.length > 0) return zusammenfassungRoh
-  if (schlagzeilen.length >= 2) return `${schlagzeilen[0].titel} ${schlagzeilen[1].titel}`
-  if (schlagzeilen[0]) return schlagzeilen[0].titel
-  return 'Keine belastbare Artikelzusammenfassung verfügbar.'
-}
-
-function jsonAusKiAntwort(roh: string): Record<string, string> | null {
-  let t = roh.trim()
-  if (t.startsWith('```')) {
-    t = t.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/i, '').trim()
-  }
-  try {
-    const j = JSON.parse(t) as unknown
-    if (!j || typeof j !== 'object' || Array.isArray(j)) return null
-    const o = j as Record<string, unknown>
-    const out: Record<string, string> = {}
-    for (const [k, v] of Object.entries(o)) {
-      if (typeof v === 'string' && v.trim()) out[k.toUpperCase()] = v.trim()
-    }
-    return Object.keys(out).length ? out : null
-  } catch {
-    return null
-  }
-}
-
-async function kiEinordnungenFuerAlle(
-  zeilen: Array<{
-    symbol: string
-    name: string
-    sektor: string | null
-    branche: string | null
-    aenderungProzent: number
-    schlagzeilen: Array<{ titel: string; href: string }>
-    zusammenfassungRoh: string | null
-  }>,
-): Promise<Record<string, { summary: string; reason: string }> | null> {
-  const coach = resolveCoachProvider()
-  if (!coach) return null
-
-  const payload = {
-    aktien: zeilen.map((z) => ({
-      symbol: z.symbol,
-      name: z.name,
-      sektor: z.sektor,
-      branche: z.branche,
-      aenderungProzent: Math.round(z.aenderungProzent * 100) / 100,
-      schlagzeilen: z.schlagzeilen,
-      zusammenfassungRoh: z.zusammenfassungRoh,
-    })),
-  }
-
-  const systemText = `Du bist ein präziser Finanzredakteur (Deutsch).
-Du bekommst pro Aktie Symbol, Name, Sektor/Branche, Tagesveränderung in Prozent (letzte reguläre US-Handelssitzung), 0–3 Schlagzeilen und optional einen kurzen Rohtext aus dem Artikel.
-Schreibe für JEDES Symbol genau einen Eintrag in einem JSON-Objekt: Schlüssel = Symbol in GROSSBUCHSTABEN, Wert = Objekt mit "summary" und "reason".
-Regeln:
-- "summary": 2-3 Sätze, konkret und inhaltlich dicht. Nenne die wichtigsten Treiber aus den gelieferten Quellen und wenn sinnvoll den Branchenkontext.
-- "reason": 2 Sätze mit klarer Herleitung aus den Quellen, warum die Tagesbewegung plausibel ist.
-- Nutze nur gelieferte Inhalte; keine erfundenen Zahlen oder Ereignisse.
-- Schreibe klar und direkt, vermeide schwammige Formulierungen wie „könnte“, „möglicherweise“, „laut Medien“, außer es ist zwingend.
-- Keine Anlageberatung, keine Kauf-/Verkaufsempfehlung.
-Antwort NUR als JSON-Objekt, keine Markdown-Fences, kein weiterer Text.`
-
-  const userText = JSON.stringify(payload)
-
-  const res = await runCoachCompletion(coach.provider, coach.apiKey, systemText, [{ role: 'user', content: userText }], {
-    temperature: 0.25,
-  })
-  if (!res.ok) return null
-  let t = res.reply.trim()
-  if (t.startsWith('```')) t = t.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/i, '').trim()
-  try {
-    const j = JSON.parse(t) as Record<string, unknown>
-    const out: Record<string, { summary: string; reason: string }> = {}
-    for (const [k, v] of Object.entries(j ?? {})) {
-      if (!v || typeof v !== 'object' || Array.isArray(v)) continue
-      const o = v as Record<string, unknown>
-      const summary = typeof o.summary === 'string' ? o.summary.trim() : ''
-      const reason = typeof o.reason === 'string' ? o.reason.trim() : ''
-      if (!summary && !reason) continue
-      out[k.toUpperCase()] = { summary, reason }
-    }
-    return Object.keys(out).length ? out : null
-  } catch {
-    return null
+    return leer
   }
 }
 
@@ -409,26 +360,55 @@ export async function ladeSp500MoversBericht(): Promise<Sp500MoversBericht> {
     const alle20 = [...top10roh, ...flop10roh]
     const artikelInfos: ArtikelInfo[] = []
     for (const batch of teileArray(alle20, 5)) {
-      const teil = await Promise.all(batch.map((z) => ladeArtikelInfoFuerAktie(z.symbol, z.name)))
+      const teil = await Promise.all(batch.map((z) => ladeArtikelInfoFuerAktie(z.symbol, z.name, z.aenderungProzent)))
       artikelInfos.push(...teil)
     }
 
-    const mitNews = alle20.map((z, i) => ({
+    const mitNewsBasis = alle20.map((z, i) => ({
       symbol: z.symbol,
       name: z.name,
       sektor: z.sektor,
       branche: z.branche,
+      moverKontext:
+        i < 10
+          ? 'S&P 500 — zu den 10 stärksten Tagesperformance-Werten'
+          : 'S&P 500 — zu den 10 schwächsten Tagesperformance-Werten',
       aenderungProzent: z.aenderungProzent,
       kurs: z.kurs,
       kursZeitUnix: z.kursZeitUnix,
       schlagzeilen: artikelInfos[i]?.schlagzeilen ?? [],
       zusammenfassungRoh: artikelInfos[i]?.zusammenfassungRoh ?? null,
+      meldungsAuszuege: artikelInfos[i]?.meldungsAuszuege ?? [],
     }))
 
-    const kiMap = await kiEinordnungenFuerAlle(mitNews)
-    const kiHinweisBasis = resolveCoachProvider()
-      ? null
-      : 'Optional: Mit GEMINI_API_KEY oder OPENAI_API_KEY in .env.local liefert die Seite zusätzlich kurze KI-Einordnungen zu den Schlagzeilen.'
+    const mitNews = moverArtikeltextLadenAktiv()
+      ? await ergaenzeMoversMitArtikelKoerper(mitNewsBasis, { artikelProSymbol: 2, parallelitaet: 6 })
+      : mitNewsBasis.map((z) => ({
+          ...z,
+          artikelKoerperTexte: new Array(z.schlagzeilen.length).fill(''),
+        }))
+
+    const kiMap = await fuehreMoverKiEinordnungMitCooldown(mitNews)
+
+    const hatSchluessel = resolveCoachProvider()
+    const kiWuenschen = moverKiEinordnungIstAktiviert()
+    let kiHinweisBasis: string
+    if (kiWuenschen && hatSchluessel) {
+      const cap = moverKiGoogleSearchGroundedBatchCap()
+      const gGround =
+        hatSchluessel.provider === 'gemini' && moverKiGoogleSearchGroundingAktiv()
+          ? ` Gemini: Live-Web (Grounding) nur für ${cap == null ? 'jedes' : `die ersten ${cap}`} KI-Batch(es) je Index — Kontingent schonen (MOVER_KI_GOOGLE_SEARCH_MAX_BATCHES, Standard 1). Weitere Batches ohne Web; längere Pause nach Web: MOVER_KI_GOOGLE_SEARCH_PAUSE_MS. Komplett aus: MOVER_KI_GOOGLE_SEARCH=0.`
+          : ''
+      kiHinweisBasis =
+        'Kurse und Ranglisten kommen von Yahoo/Polygon (ohne KI). Nur die Formulierung der Einordnungstexte nutzt Gemini/OpenAI in kleinen Paketen mit Pause. Artikelabruf für Lesetext bleibt ohne LLM.' +
+        gGround
+    } else if (hatSchluessel && !kiWuenschen) {
+      kiHinweisBasis =
+        'Kurse und Ranglisten ohne KI (Yahoo/Polygon). Einordnung nur aus Auszügen (Artikelabruf + RSS), ohne Sprachmodell — MOVER_USE_KI ist ausgeschaltet.'
+    } else {
+      kiHinweisBasis =
+        'Kurse und Ranglisten ohne KI (Yahoo/Polygon). Mit GEMINI_API_KEY oder OPENAI_API_KEY wird die Einordnung automatisch formuliert; MOVER_USE_KI=0 schaltet das ab.'
+    }
     const kiHinweis =
       POLYGON_API_KEY && datenQuelle.startsWith('Polygon')
         ? kiHinweisBasis
@@ -439,19 +419,24 @@ export async function ladeSp500MoversBericht(): Promise<Sp500MoversBericht> {
     const baueEintraege = (slice: typeof mitNews) =>
       slice.map((z) => {
         const ki = kiMap?.[z.symbol.toUpperCase()]
-        const summaryFallback = zusammenfassungFallback(z.zusammenfassungRoh, z.schlagzeilen)
-        const begruendungFallback = begruendungAusSchlagzeilen(z.schlagzeilen, z.aenderungProzent)
+        const koerper = z.artikelKoerperTexte.filter((t) => t.trim().length > 0)
+        const ohneKi = moverKurzfassungOhneKi({
+          koerperTexte: koerper,
+          meldungsAuszuege: z.meldungsAuszuege,
+          prozent: z.aenderungProzent,
+        })
+        const kurzfassung =
+          kiMoverKurzfassungAkzeptieren(ki?.kurzfassung, z.schlagzeilen) ?? ohneKi
         return {
           symbol: z.symbol,
           name: z.name,
           sektor: z.sektor,
           branche: z.branche,
+          brancheAnzeige: moverBrancheAnzeige(z.branche, z.sektor),
           aenderungProzent: z.aenderungProzent,
           kurs: z.kurs,
           kursZeitUnix: z.kursZeitUnix,
-          schlagzeilen: z.schlagzeilen,
-          artikelZusammenfassung: ki?.summary && ki.summary.length > 0 ? ki.summary : summaryFallback,
-          begruendung: ki?.reason && ki.reason.length > 0 ? ki.reason : begruendungFallback,
+          kurzfassung,
         }
       })
 

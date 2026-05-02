@@ -1,12 +1,18 @@
 import type { Metadata } from 'next'
+import { PageChrome, PageHero, PageSection, PageSectionPanel } from '@/components/page-shell'
+import { InvestmentsMinuteRefresh } from '@/components/investments-minute-refresh'
 import { InvestmentMantra } from '@/components/investment-mantra'
 import { InvestmentResearchPrompts } from '@/components/investment-research-prompts'
+import { MarketUebersichtSection } from '@/components/market-uebersicht-section'
 import { Nasdaq100MoversSection } from '@/components/nasdaq100-movers-section'
 import { Sp500MoversSection } from '@/components/sp500-movers-section'
+import { ladeMarktUebersicht } from '@/lib/market-uebersicht'
 import { ladeNasdaq100MoversBericht } from '@/lib/nasdaq100-tagesmovers'
 import { ladeSp500MoversBericht } from '@/lib/sp500-tagesmovers'
 
-export const revalidate = 60
+const revSec = Number(process.env.INVESTMENTS_PAGE_REVALIDATE_SECONDS)
+export const revalidate =
+  Number.isFinite(revSec) && revSec >= 60 ? Math.floor(revSec) : 300
 
 export const metadata: Metadata = {
   title: 'Investments',
@@ -14,10 +20,10 @@ export const metadata: Metadata = {
 }
 
 export default async function InvestmentsPage() {
-  const [sp500Bericht, nasdaq100Bericht] = await Promise.all([
-    ladeSp500MoversBericht(),
-    ladeNasdaq100MoversBericht(),
-  ])
+  const marktUebersicht = await ladeMarktUebersicht()
+  /** Nacheinander statt parallel: weniger gleichzeitige Gemini-/HTTP-Last (Movers sind schwer). */
+  const sp500Bericht = await ladeSp500MoversBericht()
+  const nasdaq100Bericht = await ladeNasdaq100MoversBericht()
   const parqetUrl =
     typeof process.env.NEXT_PUBLIC_PARQET_PORTFOLIO_URL === 'string'
       ? process.env.NEXT_PUBLIC_PARQET_PORTFOLIO_URL.trim()
@@ -25,44 +31,56 @@ export default async function InvestmentsPage() {
   const konfiguriert = parqetUrl.length > 0
 
   return (
-    <div className="mx-auto max-w-5xl space-y-8 animate-in fade-in duration-500">
-      <div className="rounded-[2.5rem] border border-violet-800/40 bg-slate-900 p-10 shadow-2xl shadow-black/40">
-        <p className="mb-2 text-xs font-bold uppercase tracking-widest text-violet-400/90">Investments</p>
-        <h1 className="text-3xl font-black tracking-tight text-slate-100">Portfolio in Parqet</h1>
+    <PageChrome>
+      <InvestmentsMinuteRefresh />
 
-        {konfiguriert ? (
-          <div className="mt-8 flex flex-col gap-4 sm:flex-row sm:items-center">
+      <PageHero
+        eyebrow="Investments"
+        title="Portfolio in Parqet"
+        actions={
+          konfiguriert ? (
             <a
               href={parqetUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center justify-center rounded-2xl bg-violet-600 px-8 py-4 text-center text-lg font-black text-white shadow-lg shadow-violet-950/40 transition-transform hover:bg-violet-500 active:scale-[0.98]"
+              className="inline-flex shrink-0 items-center justify-center rounded-full border border-white/15 bg-white/[0.08] px-5 py-2.5 text-center text-sm font-medium text-white shadow-md shadow-black/25 backdrop-blur-md transition hover:border-white/25 hover:bg-white/[0.12]"
             >
-              Portfolio in Parqet öffnen
+              Parqet öffnen
             </a>
-          </div>
-        ) : (
-          <div className="mt-8 rounded-2xl border border-amber-800/50 bg-amber-950/30 p-5 text-sm leading-relaxed text-amber-100">
-            <p className="font-bold text-amber-200">Parqet-Link fehlt</p>
-            <p className="mt-2">
-              Lege im Projektroot in <code className="rounded bg-slate-950 px-1.5 py-0.5 text-xs">.env.local</code> eine
-              Zeile an:
-            </p>
-            <code className="mt-3 block rounded-xl bg-slate-950 p-3 text-xs text-emerald-300/95">
-              NEXT_PUBLIC_PARQET_PORTFOLIO_URL=https://app.parqet.com/p/dein-teilen-link
-            </code>
-            <p className="mt-3 text-xs text-amber-200/90">
-              Datei speichern, Dev-Server neu starten (<code className="rounded bg-black/30 px-1">npm run dev</code>).
-            </p>
-          </div>
-        )}
-      </div>
+          ) : (
+            <div className="max-w-md rounded-lg border border-orange-900/35 bg-orange-950/15 px-4 py-3 text-sm leading-relaxed text-orange-50">
+              <span className="font-semibold text-orange-100">Parqet-Link fehlt.</span>{' '}
+              In <code className="rounded bg-zinc-950 px-1.5 py-0.5 font-mono text-xs text-zinc-300">.env.local</code>{' '}
+              die Variable{' '}
+              <code className="rounded bg-zinc-950 px-1.5 py-0.5 font-mono text-xs text-teal-400">
+                NEXT_PUBLIC_PARQET_PORTFOLIO_URL
+              </code>{' '}
+              setzen und den Dev-Server neu starten.
+            </div>
+          )
+        }
+      />
 
-      <Sp500MoversSection bericht={sp500Bericht} />
-      <Nasdaq100MoversSection bericht={nasdaq100Bericht} />
+      <PageSection titleId="investments-markt-heading" title="Markt">
+        <PageSectionPanel>
+          <MarketUebersichtSection embedded uebersicht={marktUebersicht} />
+        </PageSectionPanel>
+        <PageSectionPanel>
+          <Sp500MoversSection embedded bericht={sp500Bericht} />
+        </PageSectionPanel>
+        <PageSectionPanel>
+          <Nasdaq100MoversSection embedded bericht={nasdaq100Bericht} />
+        </PageSectionPanel>
+      </PageSection>
 
-      <InvestmentMantra />
-      <InvestmentResearchPrompts />
-    </div>
+      <PageSection titleId="investments-research-heading" title="Research">
+        <PageSectionPanel>
+          <InvestmentMantra embedded />
+        </PageSectionPanel>
+        <PageSectionPanel>
+          <InvestmentResearchPrompts embedded />
+        </PageSectionPanel>
+      </PageSection>
+    </PageChrome>
   )
 }

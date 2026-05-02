@@ -279,13 +279,19 @@ function istGeminiQuotaOderRateLimit(httpStatus: number, message: string, apiSta
   return false
 }
 
+type CallGeminiEinModellOptions = {
+  temperature: number
+  jsonResponse?: CoachJsonResponseConfig
+  /** Grounding mit Google Search — siehe https://ai.google.dev/gemini-api/docs/google-search */
+  geminiGoogleSearch?: boolean
+}
+
 async function callGeminiEinModell(
   apiKey: string,
   model: string,
   systemText: string,
   userMessages: CoachMessage[],
-  temperature: number,
-  jsonResponse?: CoachJsonResponseConfig,
+  opts: CallGeminiEinModellOptions,
 ): Promise<
   | { ok: true; reply: string }
   | { ok: false; httpStatus: number; hint: string; apiStatus?: string; quotaOderRateLimit: boolean }
@@ -297,16 +303,19 @@ async function callGeminiEinModell(
     parts: m.role === 'assistant' ? [{ text: m.content }] : geminiPartsForUser(m),
   }))
 
-  const generationConfig: Record<string, unknown> = { temperature }
-  if (jsonResponse?.schema) {
+  const generationConfig: Record<string, unknown> = { temperature: opts.temperature }
+  if (opts.jsonResponse?.schema) {
     generationConfig.responseMimeType = 'application/json'
-    generationConfig.responseSchema = jsonResponse.schema
+    generationConfig.responseSchema = opts.jsonResponse.schema
   }
 
-  const body = {
+  const body: Record<string, unknown> = {
     systemInstruction: { parts: [{ text: systemText }] },
     contents,
     generationConfig,
+  }
+  if (opts.geminiGoogleSearch) {
+    body.tools = [{ google_search: {} }]
   }
 
   const res = await fetch(url, {
@@ -354,8 +363,7 @@ async function callGemini(
   apiKey: string,
   systemText: string,
   userMessages: CoachMessage[],
-  temperature: number,
-  jsonResponse?: CoachJsonResponseConfig,
+  callOpts: CallGeminiEinModellOptions,
 ): Promise<{ ok: true; reply: string } | { ok: false; status: number; hint: string }> {
   const models = geminiModelKandidaten()
   if (!models.length) {
@@ -367,7 +375,7 @@ async function callGemini(
 
   for (let i = 0; i < models.length; i++) {
     const model = models[i]!
-    const r = await callGeminiEinModell(apiKey, model, systemText, userMessages, temperature, jsonResponse)
+    const r = await callGeminiEinModell(apiKey, model, systemText, userMessages, callOpts)
     if (r.ok) {
       if (i > 0) {
         console.warn(`[ki-coach] Gemini: automatisch auf Modell „${model}“ gewechselt (${i} vorherige(r) Modell(e): Quota, Rate-Limit, 404 oder ähnlich).`)
@@ -402,6 +410,11 @@ export type RunCoachCompletionOptions = {
   temperature?: number
   /** Nur JSON-Antwort (Gemini: Schema; OpenAI: json_object). */
   jsonResponse?: CoachJsonResponseConfig
+  /**
+   * Nur Gemini: Grounding mit Google Search (Live-Web).
+   * Doku: https://ai.google.dev/gemini-api/docs/google-search
+   */
+  geminiGoogleSearch?: boolean
 }
 
 export async function runCoachCompletion(
@@ -413,7 +426,11 @@ export async function runCoachCompletion(
 ): Promise<{ ok: true; reply: string } | { ok: false; status: number; hint: string }> {
   const t = options?.temperature ?? 0.55
   if (provider === 'gemini') {
-    return callGemini(apiKey, systemText, userMessages, t, options?.jsonResponse)
+    return callGemini(apiKey, systemText, userMessages, {
+      temperature: t,
+      jsonResponse: options?.jsonResponse,
+      geminiGoogleSearch: options?.geminiGoogleSearch,
+    })
   }
   return callOpenAI(apiKey, systemText, userMessages, t, Boolean(options?.jsonResponse))
 }

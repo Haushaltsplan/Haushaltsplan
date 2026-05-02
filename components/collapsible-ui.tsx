@@ -52,6 +52,49 @@ export function CollapsibleChevron({ open, tone = 'neutral', size = 'md' }: { op
 
 type CollapsibleLabels = { open: string; closed: string }
 
+/** Einheitliche Klapp-Pille (weiße Schrift) — z. B. Investments. */
+export type DisclosureSurface = 'default' | 'glass'
+
+const disclosureGlassShell =
+  'inline-flex shrink-0 items-center gap-1.5 rounded-full border border-white/15 bg-white/[0.08] px-3 py-1.5 text-[11px] font-medium tracking-wide text-white shadow-md shadow-black/25 backdrop-blur-md transition-colors hover:border-white/25 hover:bg-white/[0.12]'
+
+function DisclosureGlassChevron({ open }: { open?: boolean }) {
+  return (
+    <svg
+      className={cn(
+        'h-3 w-3 shrink-0 text-white transition-transform duration-300 ease-out motion-reduce:transition-none',
+        open && 'rotate-180',
+      )}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.25"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d="m6 9 6 6 6-6" />
+    </svg>
+  )
+}
+
+function DisclosureGlassChevronDetails() {
+  return (
+    <svg
+      className="h-3 w-3 shrink-0 text-white transition-transform duration-300 ease-out motion-reduce:transition-none group-open:rotate-180"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.25"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d="m6 9 6 6 6-6" />
+    </svg>
+  )
+}
+
 export const LABEL_EINKLAPPEN: CollapsibleLabels = { open: 'Einklappen', closed: 'Aufklappen' }
 export const LABEL_ZUKLAPPEN: CollapsibleLabels = { open: 'Zuklappen', closed: 'Aufklappen' }
 
@@ -60,14 +103,25 @@ export function CollapsibleTriggerEnd({
   labels = LABEL_EINKLAPPEN,
   tone = 'neutral',
   size = 'md',
+  surface = 'default',
   className,
 }: {
   open: boolean
   labels?: CollapsibleLabels
   tone?: Tone
   size?: 'sm' | 'md'
+  surface?: DisclosureSurface
   className?: string
 }) {
+  if (surface === 'glass') {
+    return (
+      <div className={cn(disclosureGlassShell, className)} title={open ? labels.open : labels.closed}>
+        <span className="select-none whitespace-nowrap text-white">{open ? labels.open : labels.closed}</span>
+        <DisclosureGlassChevron open={open} />
+      </div>
+    )
+  }
+
   return (
     <div className={cn('flex min-w-0 items-center gap-2 sm:gap-2.5', className)}>
       <span
@@ -82,7 +136,13 @@ export function CollapsibleTriggerEnd({
 }
 
 /** Eleganter Vollbalken-Kopf: linke Inhalte + Klapp-Steuerung rechts. `group` am umschließenden <button> setzen. */
-export function CollapsibleRowHeaderEnd(props: { open: boolean; labels?: CollapsibleLabels; tone?: Tone; size?: 'sm' | 'md' }) {
+export function CollapsibleRowHeaderEnd(props: {
+  open: boolean
+  labels?: CollapsibleLabels
+  tone?: Tone
+  size?: 'sm' | 'md'
+  surface?: DisclosureSurface
+}) {
   return <CollapsibleTriggerEnd {...props} className="shrink-0" />
 }
 
@@ -120,11 +180,23 @@ export function DetailsDisclosureTriggerEnd({
   labels = LABEL_EINKLAPPEN,
   tone = 'neutral',
   size = 'md',
+  surface = 'default',
 }: {
   labels?: CollapsibleLabels
   tone?: Tone
   size?: 'sm' | 'md'
+  surface?: DisclosureSurface
 }) {
+  if (surface === 'glass') {
+    return (
+      <div className={cn(disclosureGlassShell)}>
+        <span className="group-open:hidden select-none whitespace-nowrap text-white">{labels.closed}</span>
+        <span className="hidden select-none whitespace-nowrap text-white group-open:inline">{labels.open}</span>
+        <DisclosureGlassChevronDetails />
+      </div>
+    )
+  }
+
   return (
     <div className="flex min-w-0 shrink-0 items-center gap-2 sm:gap-2.5">
       <span className="hidden min-[360px]:inline text-[10px] font-medium tracking-[0.12em] text-slate-500 transition-colors group-hover:text-slate-200 sm:text-[11px]">
@@ -143,6 +215,7 @@ export function CollapsiblePillButton({
   labels = LABEL_ZUKLAPPEN,
   tone = 'emerald',
   compact = false,
+  surface = 'default',
   'aria-expanded': ariaExpanded,
 }: {
   open: boolean
@@ -151,8 +224,26 @@ export function CollapsiblePillButton({
   tone?: Tone
   /** Schmalere Pille für enge Toolbars (z. B. Kassenzettel). */
   compact?: boolean
+  surface?: DisclosureSurface
   'aria-expanded'?: boolean
 }) {
+  if (surface === 'glass') {
+    return (
+      <button
+        type="button"
+        onClick={onClick}
+        aria-expanded={ariaExpanded}
+        className={cn(
+          disclosureGlassShell,
+          'cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-white/35 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-950',
+        )}
+      >
+        <span className="select-none whitespace-nowrap text-white">{open ? labels.open : labels.closed}</span>
+        <DisclosureGlassChevron open={open} />
+      </button>
+    )
+  }
+
   return (
     <button
       type="button"

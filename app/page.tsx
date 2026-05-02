@@ -1,4 +1,5 @@
 import type { Metadata } from 'next'
+import { PageChrome, PageHero } from '@/components/page-shell'
 import { RegionWetterAnzeige } from '@/components/region-wetter-anzeige'
 import { ladeAktienPortfolioNews } from '@/lib/aktien-portfolio-news'
 import {
@@ -80,15 +81,16 @@ export default async function StartUebersichtPage({ searchParams }: StartPagePro
   }
 
   return (
-    <div className="mx-auto max-w-4xl space-y-6 animate-in fade-in duration-500">
-      <div className="px-0.5">
-        <h1 className="text-2xl font-black tracking-tight text-slate-100 sm:text-3xl">
-          {REGION_HAARBACH.name}
-          <span className="ml-2 text-base font-semibold text-slate-500 sm:text-lg">
-            {REGION_HAARBACH.kreis}
-          </span>
-        </h1>
-      </div>
+    <PageChrome>
+      <PageHero
+        eyebrow="Start"
+        title={
+          <>
+            {REGION_HAARBACH.name}
+            <span className="ml-2 text-base font-semibold text-zinc-400 sm:text-lg">{REGION_HAARBACH.kreis}</span>
+          </>
+        }
+      />
 
       <RegionWetterAnzeige
         wetter={wetter}
@@ -97,23 +99,23 @@ export default async function StartUebersichtPage({ searchParams }: StartPagePro
         ortName={ortWetter.name}
       />
 
-      <section className="overflow-hidden rounded-2xl border border-slate-800 bg-slate-900/80 shadow-lg shadow-black/20">
-        <details className="app-disclosure group border-t border-slate-800/80 bg-slate-950/30">
-          <summary className="flex cursor-pointer list-none select-none items-center justify-between gap-3 px-4 py-4 text-left outline-offset-2 transition-colors hover:bg-slate-800/35 focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-500/50 sm:px-8">
+      <section className="overflow-hidden rounded-2xl border border-zinc-700/35 bg-zinc-950/50 shadow-xl shadow-black/25 ring-1 ring-white/[0.04] backdrop-blur-xl">
+        <details className="app-disclosure group border-t border-zinc-800/70 bg-zinc-950/25">
+          <summary className="flex cursor-pointer list-none select-none items-center justify-between gap-3 px-4 py-4 text-left outline-offset-2 transition-colors hover:bg-zinc-800/35 focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-500/50 sm:px-8">
             <p className="min-w-0 pr-1 text-[11px] font-black uppercase tracking-widest text-amber-200/80">News aus der Umgebung</p>
             <DetailsDisclosureTriggerEnd tone="amber" />
           </summary>
           <div className="px-4 pb-4 sm:px-8">
             {news.fehler ? <p className="mt-1 text-xs text-amber-200/60">{news.fehler}</p> : null}
-            {news.artikel.length === 0 && !news.fehler ? <p className="mt-2 text-sm text-slate-500">Keine Meldungen.</p> : null}
+            {news.artikel.length === 0 && !news.fehler ? <p className="mt-2 text-sm text-zinc-500">Keine Meldungen.</p> : null}
             <ul className="mt-3 space-y-2.5">
               {news.artikel.map((a, i) => (
                 <li
                   key={a.href + i}
-                  className="flex flex-col gap-0.5 border-b border-slate-800/60 pb-2.5 last:border-0 last:pb-0 sm:flex-row sm:items-baseline sm:gap-3"
+                  className="flex flex-col gap-0.5 border-b border-zinc-800/60 pb-2.5 last:border-0 last:pb-0 sm:flex-row sm:items-baseline sm:gap-3"
                 >
                   <time
-                    className="shrink-0 text-xs font-mono tabular-nums text-slate-500"
+                    className="shrink-0 text-xs font-mono tabular-nums text-zinc-500"
                     dateTime={a.veroeffentlichtAm ?? undefined}
                   >
                     {formatNewsDatum(a.veroeffentlichtAm)}
@@ -123,11 +125,11 @@ export default async function StartUebersichtPage({ searchParams }: StartPagePro
                       href={a.href}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="text-[15px] font-semibold text-slate-100 underline decoration-slate-600 underline-offset-2 transition hover:text-cyan-200"
+                      className="text-[15px] font-semibold text-zinc-100 underline decoration-zinc-600 underline-offset-2 transition hover:text-cyan-200"
                     >
                       {a.titel}
                     </a>
-                    <span className="ml-1.5 text-xs text-slate-600">· {a.quelle}</span>
+                    <span className="ml-1.5 text-xs text-zinc-600">· {a.quelle}</span>
                   </div>
                 </li>
               ))}
@@ -136,25 +138,25 @@ export default async function StartUebersichtPage({ searchParams }: StartPagePro
         </details>
       </section>
 
-      <section className="overflow-hidden rounded-2xl border border-slate-800 bg-slate-900/80 shadow-lg shadow-black/20">
-        <details className="app-disclosure group border-t border-slate-800/80 bg-slate-950/30">
-          <summary className="flex cursor-pointer list-none select-none items-center justify-between gap-3 px-4 py-4 text-left outline-offset-2 transition-colors hover:bg-slate-800/35 focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-500/50 sm:px-8">
+      <section className="overflow-hidden rounded-2xl border border-zinc-700/35 bg-zinc-950/50 shadow-xl shadow-black/25 ring-1 ring-white/[0.04] backdrop-blur-xl">
+        <details className="app-disclosure group border-t border-zinc-800/70 bg-zinc-950/25">
+          <summary className="flex cursor-pointer list-none select-none items-center justify-between gap-3 px-4 py-4 text-left outline-offset-2 transition-colors hover:bg-zinc-800/35 focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-500/50 sm:px-8">
             <p className="min-w-0 pr-1 text-[11px] font-black uppercase tracking-widest text-emerald-200/80">News zu meinen Investments</p>
             <DetailsDisclosureTriggerEnd tone="emerald" />
           </summary>
           <div className="px-4 pb-4 sm:px-8">
             {portfolioNews.fehler ? <p className="mt-1 text-xs text-amber-200/60">{portfolioNews.fehler}</p> : null}
             {portfolioNews.artikel.length === 0 && !portfolioNews.fehler ? (
-              <p className="mt-2 text-sm text-slate-500">Keine Meldungen.</p>
+              <p className="mt-2 text-sm text-zinc-500">Keine Meldungen.</p>
             ) : null}
             <ul className="mt-3 space-y-2.5">
               {portfolioNews.artikel.map((a, i) => (
                 <li
                   key={a.href + i}
-                  className="flex flex-col gap-0.5 border-b border-slate-800/60 pb-2.5 last:border-0 last:pb-0 sm:flex-row sm:items-baseline sm:gap-3"
+                  className="flex flex-col gap-0.5 border-b border-zinc-800/60 pb-2.5 last:border-0 last:pb-0 sm:flex-row sm:items-baseline sm:gap-3"
                 >
                   <time
-                    className="shrink-0 text-xs font-mono tabular-nums text-slate-500"
+                    className="shrink-0 text-xs font-mono tabular-nums text-zinc-500"
                     dateTime={a.veroeffentlichtAm ?? undefined}
                   >
                     {formatNewsDatum(a.veroeffentlichtAm)}
@@ -164,11 +166,11 @@ export default async function StartUebersichtPage({ searchParams }: StartPagePro
                       href={a.href}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="text-[15px] font-semibold text-slate-100 underline decoration-slate-600 underline-offset-2 transition hover:text-cyan-200"
+                      className="text-[15px] font-semibold text-zinc-100 underline decoration-zinc-600 underline-offset-2 transition hover:text-cyan-200"
                     >
                       {a.titel}
                     </a>
-                    <span className="ml-1.5 text-xs text-slate-600">· {a.quelle}</span>
+                    <span className="ml-1.5 text-xs text-zinc-600">· {a.quelle}</span>
                   </div>
                 </li>
               ))}
@@ -177,25 +179,25 @@ export default async function StartUebersichtPage({ searchParams }: StartPagePro
         </details>
       </section>
 
-      <section className="overflow-hidden rounded-2xl border border-slate-800 bg-slate-900/80 shadow-lg shadow-black/20">
-        <details className="app-disclosure group border-t border-slate-800/80 bg-slate-950/30">
-          <summary className="flex cursor-pointer list-none select-none items-center justify-between gap-3 px-4 py-4 text-left outline-offset-2 transition-colors hover:bg-slate-800/35 focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-500/50 sm:px-8">
+      <section className="overflow-hidden rounded-2xl border border-zinc-700/35 bg-zinc-950/50 shadow-xl shadow-black/25 ring-1 ring-white/[0.04] backdrop-blur-xl">
+        <details className="app-disclosure group border-t border-zinc-800/70 bg-zinc-950/25">
+          <summary className="flex cursor-pointer list-none select-none items-center justify-between gap-3 px-4 py-4 text-left outline-offset-2 transition-colors hover:bg-zinc-800/35 focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-500/50 sm:px-8">
             <p className="min-w-0 pr-1 text-[11px] font-black uppercase tracking-widest text-orange-200/80">News zum Profirennradsport</p>
             <DetailsDisclosureTriggerEnd tone="orange" />
           </summary>
           <div className="px-4 pb-4 sm:px-8">
             {rennradNews.fehler ? <p className="mt-1 text-xs text-amber-200/60">{rennradNews.fehler}</p> : null}
             {rennradNews.artikel.length === 0 && !rennradNews.fehler ? (
-              <p className="mt-2 text-sm text-slate-500">Keine Meldungen.</p>
+              <p className="mt-2 text-sm text-zinc-500">Keine Meldungen.</p>
             ) : null}
             <ul className="mt-3 space-y-2.5">
               {rennradNews.artikel.map((a, i) => (
                 <li
                   key={a.href + i}
-                  className="flex flex-col gap-0.5 border-b border-slate-800/60 pb-2.5 last:border-0 last:pb-0 sm:flex-row sm:items-baseline sm:gap-3"
+                  className="flex flex-col gap-0.5 border-b border-zinc-800/60 pb-2.5 last:border-0 last:pb-0 sm:flex-row sm:items-baseline sm:gap-3"
                 >
                   <time
-                    className="shrink-0 text-xs font-mono tabular-nums text-slate-500"
+                    className="shrink-0 text-xs font-mono tabular-nums text-zinc-500"
                     dateTime={a.veroeffentlichtAm ?? undefined}
                   >
                     {formatNewsDatum(a.veroeffentlichtAm)}
@@ -205,11 +207,11 @@ export default async function StartUebersichtPage({ searchParams }: StartPagePro
                       href={a.href}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="text-[15px] font-semibold text-slate-100 underline decoration-slate-600 underline-offset-2 transition hover:text-cyan-200"
+                      className="text-[15px] font-semibold text-zinc-100 underline decoration-zinc-600 underline-offset-2 transition hover:text-cyan-200"
                     >
                       {a.titel}
                     </a>
-                    <span className="ml-1.5 text-xs text-slate-600">· {a.quelle}</span>
+                    <span className="ml-1.5 text-xs text-zinc-600">· {a.quelle}</span>
                   </div>
                 </li>
               ))}
@@ -218,25 +220,25 @@ export default async function StartUebersichtPage({ searchParams }: StartPagePro
         </details>
       </section>
 
-      <section className="overflow-hidden rounded-2xl border border-slate-800 bg-slate-900/80 shadow-lg shadow-black/20">
-        <details className="app-disclosure group border-t border-slate-800/80 bg-slate-950/30">
-          <summary className="flex cursor-pointer list-none select-none items-center justify-between gap-3 px-4 py-4 text-left outline-offset-2 transition-colors hover:bg-slate-800/35 focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-500/50 sm:px-8">
+      <section className="overflow-hidden rounded-2xl border border-zinc-700/35 bg-zinc-950/50 shadow-xl shadow-black/25 ring-1 ring-white/[0.04] backdrop-blur-xl">
+        <details className="app-disclosure group border-t border-zinc-800/70 bg-zinc-950/25">
+          <summary className="flex cursor-pointer list-none select-none items-center justify-between gap-3 px-4 py-4 text-left outline-offset-2 transition-colors hover:bg-zinc-800/35 focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-500/50 sm:px-8">
             <p className="min-w-0 pr-1 text-[11px] font-black uppercase tracking-widest text-sky-200/80">News zum Profi Wintersport</p>
             <DetailsDisclosureTriggerEnd tone="sky" />
           </summary>
           <div className="px-4 pb-4 sm:px-8">
             {winterNews.fehler ? <p className="mt-1 text-xs text-amber-200/60">{winterNews.fehler}</p> : null}
             {winterNews.artikel.length === 0 && !winterNews.fehler ? (
-              <p className="mt-2 text-sm text-slate-500">Keine Meldungen.</p>
+              <p className="mt-2 text-sm text-zinc-500">Keine Meldungen.</p>
             ) : null}
             <ul className="mt-3 space-y-2.5">
               {winterNews.artikel.map((a, i) => (
                 <li
                   key={a.href + i}
-                  className="flex flex-col gap-0.5 border-b border-slate-800/60 pb-2.5 last:border-0 last:pb-0 sm:flex-row sm:items-baseline sm:gap-3"
+                  className="flex flex-col gap-0.5 border-b border-zinc-800/60 pb-2.5 last:border-0 last:pb-0 sm:flex-row sm:items-baseline sm:gap-3"
                 >
                   <time
-                    className="shrink-0 text-xs font-mono tabular-nums text-slate-500"
+                    className="shrink-0 text-xs font-mono tabular-nums text-zinc-500"
                     dateTime={a.veroeffentlichtAm ?? undefined}
                   >
                     {formatNewsDatum(a.veroeffentlichtAm)}
@@ -246,11 +248,11 @@ export default async function StartUebersichtPage({ searchParams }: StartPagePro
                       href={a.href}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="text-[15px] font-semibold text-slate-100 underline decoration-slate-600 underline-offset-2 transition hover:text-cyan-200"
+                      className="text-[15px] font-semibold text-zinc-100 underline decoration-zinc-600 underline-offset-2 transition hover:text-cyan-200"
                     >
                       {a.titel}
                     </a>
-                    <span className="ml-1.5 text-xs text-slate-600">· {a.quelle}</span>
+                    <span className="ml-1.5 text-xs text-zinc-600">· {a.quelle}</span>
                   </div>
                 </li>
               ))}
@@ -258,6 +260,6 @@ export default async function StartUebersichtPage({ searchParams }: StartPagePro
           </div>
         </details>
       </section>
-    </div>
+    </PageChrome>
   )
 }

@@ -32,6 +32,7 @@ import { supabase } from '@/lib/supabase'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import toast from 'react-hot-toast'
 import { CollapsibleRowHeaderEnd, LABEL_EINKLAPPEN } from '@/components/collapsible-ui'
+import { PageChrome, PageHero, pageSectionPanelClass, pageSectionShellClass } from '@/components/page-shell'
 
 type Lb = { aktuelle_menge?: number }
 type ProduktRow = {
@@ -681,38 +682,37 @@ export default function LagerPage() {
     : null
 
   return (
-    <div className="min-w-0 space-y-5 animate-in fade-in duration-500">
-      <div className="min-w-0 overflow-hidden rounded-2xl border border-slate-800 bg-slate-900 p-4 shadow-lg shadow-black/25 sm:p-5">
-        <div className="flex flex-wrap items-end justify-between gap-3">
-          <div>
-            <h1 className="text-[11px] font-bold uppercase tracking-widest text-slate-500">Speisekammer</h1>
-          </div>
-        </div>
-        <div className="mt-4 grid w-full min-w-0 grid-cols-2 gap-2 sm:grid-cols-4 sm:gap-2.5">
-          <div className="flex min-h-[4.75rem] min-w-0 flex-col justify-center rounded-xl border border-slate-700/80 bg-slate-800/50 px-2.5 py-2.5 sm:min-h-0 sm:px-3 sm:py-3">
+    <PageChrome>
+      <PageHero eyebrow="Speisekammer" title="Vorrat & Einkauf" />
+
+      <section className={pageSectionShellClass}>
+        <div className={pageSectionPanelClass}>
+          <div className="grid w-full min-w-0 grid-cols-2 gap-2 sm:grid-cols-4 sm:gap-2.5">
+          <div className="flex min-h-[4.75rem] min-w-0 flex-col justify-center rounded-xl border border-zinc-700/80 bg-zinc-800/45 px-2.5 py-2.5 sm:min-h-0 sm:px-3 sm:py-3">
             <span className="truncate text-[9px] font-bold uppercase tracking-wide text-emerald-400 sm:text-[10px]">Artikel</span>
-            <span className="mt-0.5 truncate text-2xl font-black tabular-nums text-slate-100 sm:text-3xl">{gesamtProdukte}</span>
-            <span className="mt-1 truncate text-[10px] text-slate-500">erfasst</span>
+            <span className="mt-0.5 truncate text-2xl font-black tabular-nums text-zinc-100 sm:text-3xl">{gesamtProdukte}</span>
+            <span className="mt-1 truncate text-[10px] text-zinc-500">erfasst</span>
           </div>
-          <div className="flex min-h-[4.75rem] min-w-0 flex-col justify-center rounded-xl border border-slate-700/80 bg-slate-800/50 px-2.5 py-2.5 sm:min-h-0 sm:px-3 sm:py-3">
+          <div className="flex min-h-[4.75rem] min-w-0 flex-col justify-center rounded-xl border border-zinc-700/80 bg-zinc-800/45 px-2.5 py-2.5 sm:min-h-0 sm:px-3 sm:py-3">
             <span className="truncate text-[9px] font-bold uppercase tracking-wide text-sky-400 sm:text-[10px]">Mit Bestand</span>
-            <span className="mt-0.5 truncate text-2xl font-black tabular-nums text-slate-100 sm:text-3xl">{mitBestand}</span>
-            <span className="mt-1 truncate text-[10px] text-slate-500">&gt; 0</span>
+            <span className="mt-0.5 truncate text-2xl font-black tabular-nums text-zinc-100 sm:text-3xl">{mitBestand}</span>
+            <span className="mt-1 truncate text-[10px] text-zinc-500">&gt; 0</span>
           </div>
-          <div className="flex min-h-[4.75rem] min-w-0 flex-col justify-center rounded-xl border border-slate-700/80 bg-slate-800/50 px-2.5 py-2.5 sm:min-h-0 sm:px-3 sm:py-3">
+          <div className="flex min-h-[4.75rem] min-w-0 flex-col justify-center rounded-xl border border-zinc-700/80 bg-zinc-800/45 px-2.5 py-2.5 sm:min-h-0 sm:px-3 sm:py-3">
             <span className="truncate text-[9px] font-bold uppercase tracking-wide text-rose-400 sm:text-[10px]">Ohne Bestand</span>
-            <span className="mt-0.5 truncate text-2xl font-black tabular-nums text-slate-100 sm:text-3xl">{leerbestand}</span>
-            <span className="mt-1 truncate text-[10px] text-slate-500">Menge 0</span>
+            <span className="mt-0.5 truncate text-2xl font-black tabular-nums text-zinc-100 sm:text-3xl">{leerbestand}</span>
+            <span className="mt-1 truncate text-[10px] text-zinc-500">Menge 0</span>
           </div>
           <div className="flex min-h-[4.75rem] min-w-0 flex-col justify-center rounded-xl border border-violet-800/50 bg-violet-950/35 px-2.5 py-2.5 sm:min-h-0 sm:px-3 sm:py-3">
             <span className="truncate text-[9px] font-bold uppercase tracking-wide text-violet-300 sm:text-[10px]">Vorratswert</span>
             <span className="mt-0.5 truncate text-xl font-black tabular-nums leading-tight text-violet-100 sm:text-2xl">{formatEur(lagerwertGesamt)}</span>
           </div>
+          </div>
         </div>
-      </div>
+      </section>
 
       <div
-        className="sticky top-2 z-20 flex min-w-0 flex-wrap gap-1 rounded-xl border border-slate-800 bg-slate-950/90 p-1 shadow-md shadow-black/25 backdrop-blur-md"
+        className="sticky top-2 z-20 flex min-w-0 flex-wrap gap-1 rounded-xl border border-zinc-700/35 bg-zinc-950/90 p-1 shadow-md shadow-black/25 ring-1 ring-white/[0.04] backdrop-blur-md"
         role="tablist"
         aria-label="Speisekammer: Bereiche"
       >
@@ -1236,6 +1236,6 @@ export default function LagerPage() {
         onClose={() => setModal(null)}
         onErfolg={() => void ladeDaten()}
       />
-    </div>
+    </PageChrome>
   )
 }

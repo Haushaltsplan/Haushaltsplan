@@ -1,5 +1,13 @@
 'use client'
 
+import {
+  PageChrome,
+  PageHero,
+  pageSectionHeaderClass,
+  pageSectionPanelClass,
+  pageSectionShellClass,
+  pageSectionTitleClass,
+} from '@/components/page-shell'
 import { useCallback, useMemo, useState } from 'react'
 import toast from 'react-hot-toast'
 
@@ -176,19 +184,25 @@ export function RennradRoutenClient() {
   }, [aktiveRoute])
 
   return (
-    <div className="space-y-10 animate-in fade-in duration-500">
-      <header className="rounded-[2rem] border border-rose-900/40 bg-gradient-to-b from-slate-900 to-slate-950 p-6 shadow-xl shadow-black/35 sm:p-8">
-        <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-rose-400/90">Rennrad</p>
-        <h1 className="mt-2 text-2xl font-black tracking-tight text-slate-100 sm:text-3xl">Routen planen</h1>
-        <p className="mt-2 max-w-3xl text-sm leading-relaxed text-slate-400">
-          Filterbare Routen mit <strong className="text-slate-300">km-Range</strong>, <strong className="text-slate-300">Hoehenmeter-Range</strong> und
-          Wegtyp-Praeferenz. Danach GPX fuer Garmin Connect exportieren.
-        </p>
-      </header>
+    <PageChrome>
+      <PageHero
+        eyebrow="Rennrad"
+        title="Routen planen"
+        description={
+          <>
+            Filterbare Routen mit <strong className="font-semibold text-zinc-200">km-Range</strong>,{' '}
+            <strong className="font-semibold text-zinc-200">Höhenmeter-Range</strong> und Wegtyp-Präferenz. Danach GPX für
+            Garmin Connect exportieren.
+          </>
+        }
+      />
 
-      <section className="rounded-2xl border border-slate-800/90 bg-slate-900/60 p-6 shadow-lg shadow-black/20 sm:p-8">
-        <h2 className="text-lg font-bold text-slate-100">Planungsparameter</h2>
-        <div className="mt-6 grid gap-6 lg:grid-cols-3">
+      <section className={pageSectionShellClass}>
+        <div className={pageSectionHeaderClass}>
+          <h2 className={pageSectionTitleClass}>Planungsparameter</h2>
+        </div>
+        <div className={pageSectionPanelClass}>
+        <div className="grid gap-6 lg:grid-cols-3">
           <PunktBlock titel="Start" q={qStart} setQ={setQStart} treffer={trStart} gewaehlt={start} onWaehlen={setStart} onSuchen={() => void suche('start')} sucheBusy={sucheBusy === 'start'} />
           <PunktBlock titel="Via (optional)" q={qVia} setQ={setQVia} treffer={trVia} gewaehlt={via} onWaehlen={setVia} onSuchen={() => void suche('via')} sucheBusy={sucheBusy === 'via'} optional />
           <PunktBlock titel="Ziel" q={qZiel} setQ={setQZiel} treffer={trZiel} gewaehlt={ziel} onWaehlen={setZiel} onSuchen={() => void suche('ziel')} sucheBusy={sucheBusy === 'ziel'} />
@@ -223,13 +237,14 @@ export function RennradRoutenClient() {
           >
             {planungBusy ? 'Suche Routen …' : 'Routen berechnen'}
           </button>
-          {hmHinweis ? <span className="text-xs text-slate-500">{hmHinweis}</span> : null}
+          {hmHinweis ? <span className="text-xs text-zinc-500">{hmHinweis}</span> : null}
+        </div>
         </div>
       </section>
 
-      <section className="rounded-2xl border border-slate-800/90 bg-slate-900/50 p-6 sm:p-8">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <h2 className="text-lg font-bold text-slate-100">Routen-Vorschau</h2>
+      <section className={pageSectionShellClass}>
+        <div className={`${pageSectionHeaderClass} flex flex-wrap items-center justify-between gap-3`}>
+          <h2 className={pageSectionTitleClass}>Routen-Vorschau</h2>
           <button
             type="button"
             onClick={() => void ladeGpx()}
@@ -240,6 +255,7 @@ export function RennradRoutenClient() {
           </button>
         </div>
 
+        <div className={pageSectionPanelClass}>
         {aktiveRoute ? (
           <div className="mt-5 grid gap-5 lg:grid-cols-[1.05fr_1.45fr]">
             <div className="space-y-3">
@@ -270,10 +286,11 @@ export function RennradRoutenClient() {
             </div>
           </div>
         ) : (
-          <p className="mt-4 text-sm text-slate-500">Noch keine Route berechnet.</p>
+          <p className="mt-4 text-sm text-zinc-500">Noch keine Route berechnet.</p>
         )}
+        </div>
       </section>
-    </div>
+    </PageChrome>
   )
 }
 

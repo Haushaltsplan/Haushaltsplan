@@ -21,6 +21,7 @@ import {
   sortiereEintraegeNachUhrzeitDannTitel,
 } from '@/lib/haushalt-kalender'
 import { KalenderFotoImport } from '@/components/kalender-foto-import'
+import { PageChrome, PageHero } from '@/components/page-shell'
 import { bayernFeiertageFuerJahr } from '@/lib/bayern-feiertage'
 import { istSupabaseClientKonfiguriert } from '@/lib/supabase'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -234,19 +235,17 @@ export default function KalenderPage() {
   }
 
   return (
-    <div className="min-w-0 space-y-5 animate-in fade-in duration-500">
-      <div className="min-w-0 overflow-hidden rounded-2xl border border-slate-800 bg-slate-900 p-4 shadow-lg shadow-black/25 sm:p-5">
-        <h1 className="text-[11px] font-bold uppercase tracking-widest text-slate-500">Kalender</h1>
-      </div>
+    <PageChrome>
+      <PageHero eyebrow="Kalender" title="Termine & Übersicht" />
 
       {!kalenderBereit ? (
-        <div className="flex min-h-[14rem] items-center justify-center rounded-2xl border border-slate-800 bg-slate-900/90 px-4 text-sm text-slate-400">
+        <div className="flex min-h-[14rem] items-center justify-center rounded-2xl border border-zinc-700/35 bg-zinc-950/50 px-4 text-sm text-zinc-400 shadow-xl shadow-black/25 ring-1 ring-white/[0.04] backdrop-blur-xl">
           Kalender wird geladen …
         </div>
       ) : (
         <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,20rem)] lg:items-start">
-        <div className="overflow-hidden rounded-2xl border border-slate-800 bg-slate-900/90 shadow-lg shadow-black/20">
-          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800 px-3 py-3 sm:px-4">
+        <div className="overflow-hidden rounded-2xl border border-zinc-700/35 bg-zinc-950/50 shadow-xl shadow-black/25 ring-1 ring-white/[0.04] backdrop-blur-xl">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-zinc-800/70 px-3 py-3 sm:px-4">
             <div className="flex items-center gap-1 sm:gap-2">
               <button
                 type="button"
@@ -287,7 +286,7 @@ export default function KalenderPage() {
             </div>
           </div>
 
-          <div className="border-b border-slate-800/80 bg-slate-950/40 px-2 py-2 sm:px-3">
+          <div className="border-b border-zinc-800/70 bg-zinc-950/35 px-2 py-2 sm:px-3">
             <p className="mb-1.5 text-[9px] font-bold uppercase tracking-wide text-slate-500 sm:text-[10px]">
               Kategorie auf einen Tag ziehen
             </p>
@@ -311,7 +310,7 @@ export default function KalenderPage() {
             </div>
           </div>
 
-          <div className="grid grid-cols-7 border-b border-slate-800/80 text-center text-[10px] font-bold uppercase tracking-wider text-slate-500 sm:text-[11px]">
+          <div className="grid grid-cols-7 border-b border-zinc-800/70 text-center text-[10px] font-bold uppercase tracking-wider text-zinc-500 sm:text-[11px]">
             {WOCHENTAGE_KURZ.map((w) => (
               <div key={w} className="px-0.5 py-2 sm:py-2.5">
                 {w}
@@ -322,7 +321,7 @@ export default function KalenderPage() {
           <div className="grid grid-cols-7">
             {zellen.map((z, i) => {
               if (z == null) {
-                return <div key={`e-${i}`} className="min-h-[5rem] border-b border-r border-slate-800/60 bg-slate-950/25 sm:min-h-[6.5rem]" />
+                return <div key={`e-${i}`} className="min-h-[5rem] border-b border-r border-zinc-800/60 bg-zinc-950/25 sm:min-h-[6.5rem]" />
               }
               const iso = isoDatumAusJahrMonatTag(sicht.jahr, sicht.monat, z)
               const amTag = proTagEintraege.get(iso) || []
@@ -353,7 +352,7 @@ export default function KalenderPage() {
                     if (!kid) return
                     legeKategorieAufTag(iso, kid)
                   }}
-                  className={`min-h-[5rem] border-b border-r border-slate-800/60 p-0.5 text-left align-top transition sm:min-h-[6.5rem] sm:p-1.5 ${
+                  className={`min-h-[5rem] border-b border-r border-zinc-800/60 p-0.5 text-left align-top transition sm:min-h-[6.5rem] sm:p-1.5 ${
                     isSel ? 'bg-teal-950/45 ring-1 ring-inset ring-teal-500/50' : 'hover:bg-slate-800/40'
                   } ${isHeute && !isSel ? 'bg-sky-950/30' : ''} ${
                     dragOverIso === iso ? 'ring-2 ring-inset ring-teal-400/90' : ''
@@ -438,9 +437,9 @@ export default function KalenderPage() {
           </div>
         </div>
 
-        <aside className="overflow-hidden rounded-2xl border border-slate-800 bg-slate-900 shadow-lg shadow-black/20">
-          <div className="border-b border-slate-800 px-4 py-3">
-            <p className="text-[11px] font-bold uppercase tracking-widest text-slate-500">Ausgewählter Tag</p>
+        <aside className="overflow-hidden rounded-2xl border border-zinc-700/35 bg-zinc-950/50 shadow-xl shadow-black/25 ring-1 ring-white/[0.04] backdrop-blur-xl">
+          <div className="border-b border-zinc-800/70 px-4 py-3">
+            <p className="text-[11px] font-bold uppercase tracking-widest text-zinc-400">Ausgewählter Tag</p>
             <p className="mt-0.5 text-sm font-bold text-slate-100">
               {new Date(ausgewaehltNorm + 'T12:00:00').toLocaleDateString('de-DE', {
                 weekday: 'long',
@@ -498,7 +497,7 @@ export default function KalenderPage() {
               </ul>
             )}
           </div>
-          <div className="border-t border-slate-800 px-3 py-3 sm:px-4">
+          <div className="border-t border-zinc-800/70 px-3 py-3 sm:px-4">
             <button
               type="button"
               onClick={() => {
@@ -577,6 +576,6 @@ export default function KalenderPage() {
           }}
         />
       ) : null}
-    </div>
+    </PageChrome>
   )
 }
