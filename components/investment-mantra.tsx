@@ -116,7 +116,6 @@ export function InvestmentMantra({ embedded = false }: { embedded?: boolean }) {
           onClick={() => setOpen((v) => !v)}
           labels={LABEL_ZUKLAPPEN}
           compact
-          surface="glass"
           aria-expanded={open}
         />
       </div>

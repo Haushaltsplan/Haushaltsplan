@@ -1,4 +1,5 @@
 import type { Metadata } from 'next'
+import { Suspense } from 'react'
 import { PageChrome, PageHero, PageSection, PageSectionPanel } from '@/components/page-shell'
 import { InvestmentsMinuteRefresh } from '@/components/investments-minute-refresh'
 import { InvestmentMantra } from '@/components/investment-mantra'
@@ -11,17 +12,53 @@ import { ladeNasdaq100MoversBericht } from '@/lib/nasdaq100-tagesmovers'
 import { ladeSp500MoversBericht } from '@/lib/sp500-tagesmovers'
 
 export const dynamic = 'force-dynamic'
+/** Lange Movers-Pipelines (HTTP + optional KI); auf Vercel ggf. Plan-Maximum beachten. */
+export const maxDuration = 120
 
 export const metadata: Metadata = {
   title: 'Investments',
   description: 'Portfolio in Parqet verfolgen',
 }
 
-export default async function InvestmentsPage() {
-  const marktUebersicht = await ladeMarktUebersicht()
-  /** Nacheinander statt parallel: weniger gleichzeitige Gemini-/HTTP-Last (Movers sind schwer). */
-  const sp500Bericht = await ladeSp500MoversBericht()
-  const nasdaq100Bericht = await ladeNasdaq100MoversBericht()
+function InvestmentsMarktFallback() {
+  return (
+    <>
+      {[0, 1, 2].map((key) => (
+        <PageSectionPanel key={key}>
+          <div className="space-y-3 animate-pulse">
+            <div className="h-3 w-36 rounded bg-zinc-800/90" />
+            <div className="h-5 w-52 max-w-full rounded bg-zinc-800/70" />
+            <div className="h-28 rounded-xl bg-zinc-900/55 sm:h-32" />
+          </div>
+        </PageSectionPanel>
+      ))}
+    </>
+  )
+}
+
+async function InvestmentsMarktPanels() {
+  const [marktUebersicht, sp500Bericht, nasdaq100Bericht] = await Promise.all([
+    ladeMarktUebersicht(),
+    ladeSp500MoversBericht(),
+    ladeNasdaq100MoversBericht(),
+  ])
+
+  return (
+    <>
+      <PageSectionPanel>
+        <MarketUebersichtSection embedded uebersicht={marktUebersicht} />
+      </PageSectionPanel>
+      <PageSectionPanel>
+        <Sp500MoversSection embedded bericht={sp500Bericht} />
+      </PageSectionPanel>
+      <PageSectionPanel>
+        <Nasdaq100MoversSection embedded bericht={nasdaq100Bericht} />
+      </PageSectionPanel>
+    </>
+  )
+}
+
+export default function InvestmentsPage() {
   const parqetUrl =
     typeof process.env.NEXT_PUBLIC_PARQET_PORTFOLIO_URL === 'string'
       ? process.env.NEXT_PUBLIC_PARQET_PORTFOLIO_URL.trim()
@@ -60,15 +97,9 @@ export default async function InvestmentsPage() {
       />
 
       <PageSection titleId="investments-markt-heading" title="Markt">
-        <PageSectionPanel>
-          <MarketUebersichtSection embedded uebersicht={marktUebersicht} />
-        </PageSectionPanel>
-        <PageSectionPanel>
-          <Sp500MoversSection embedded bericht={sp500Bericht} />
-        </PageSectionPanel>
-        <PageSectionPanel>
-          <Nasdaq100MoversSection embedded bericht={nasdaq100Bericht} />
-        </PageSectionPanel>
+        <Suspense fallback={<InvestmentsMarktFallback />}>
+          <InvestmentsMarktPanels />
+        </Suspense>
       </PageSection>
 
       <PageSection titleId="investments-research-heading" title="Research">

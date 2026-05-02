@@ -35,7 +35,7 @@ export function Sp500MoversSection({
             <h2 className="mt-1 text-base font-semibold tracking-tight text-white">Top / Flop</h2>
             <p className="mt-1 text-xs leading-relaxed text-zinc-400">{bericht.sessionLabel}</p>
           </div>
-          <DetailsDisclosureTriggerEnd surface="glass" size="sm" />
+          <DetailsDisclosureTriggerEnd size="sm" />
         </summary>
         <div className="mt-3 flex justify-between gap-3 rounded-lg border border-zinc-800/90 bg-zinc-950/40 px-3 py-2 text-xs">
           <span title="Titel mit positivem Tag">

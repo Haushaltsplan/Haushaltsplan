@@ -4,7 +4,6 @@ import { useEffect, useMemo, useState } from 'react'
 import toast from 'react-hot-toast'
 import {
   CollapsibleAnimatedBody,
-  CollapsibleChevron,
   CollapsiblePillButton,
   CollapsibleRowHeaderEnd,
   LABEL_ZUKLAPPEN,
@@ -419,7 +418,6 @@ export function InvestmentResearchPrompts({ embedded = false }: { embedded?: boo
           onClick={() => setPromptsPanelOpen((v) => !v)}
           labels={LABEL_ZUKLAPPEN}
           compact
-          surface="glass"
           aria-expanded={promptsPanelOpen}
         />
       </div>
@@ -433,7 +431,7 @@ export function InvestmentResearchPrompts({ embedded = false }: { embedded?: boo
             aria-expanded={sectionOpen}
           >
             <span>Unternehmensanalyse (8 Schritte)</span>
-            <CollapsibleRowHeaderEnd open={sectionOpen} labels={LABEL_ZUKLAPPEN} size="sm" surface="glass" />
+            <CollapsibleRowHeaderEnd open={sectionOpen} labels={LABEL_ZUKLAPPEN} size="sm" />
           </button>
           {!sectionOpen ? null : (
             <div className="space-y-3 border-t border-zinc-800/90 bg-zinc-950/20 p-4">
@@ -449,7 +447,7 @@ export function InvestmentResearchPrompts({ embedded = false }: { embedded?: boo
                         aria-expanded={isOpen}
                       >
                         <h3 className="min-w-0 text-sm font-medium text-white">{step.title}</h3>
-                        <CollapsibleChevron open={isOpen} tone="neutral" size="sm" />
+                        <CollapsibleRowHeaderEnd open={isOpen} labels={LABEL_ZUKLAPPEN} size="sm" />
                       </button>
                       <div className="flex items-center gap-2">
                         <button
@@ -495,7 +493,7 @@ export function InvestmentResearchPrompts({ embedded = false }: { embedded?: boo
               aria-expanded={earningsOpen}
             >
               <span>Earningsanalyse</span>
-              <CollapsibleRowHeaderEnd open={earningsOpen} labels={LABEL_ZUKLAPPEN} size="sm" surface="glass" />
+              <CollapsibleRowHeaderEnd open={earningsOpen} labels={LABEL_ZUKLAPPEN} size="sm" />
             </button>
             {!earningsOpen ? null : (
               <div className="space-y-3 border-t border-zinc-800/90 p-4">

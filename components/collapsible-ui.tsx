@@ -103,7 +103,7 @@ export function CollapsibleTriggerEnd({
   labels = LABEL_EINKLAPPEN,
   tone = 'neutral',
   size = 'md',
-  surface = 'default',
+  surface = 'glass',
   className,
 }: {
   open: boolean
@@ -180,7 +180,7 @@ export function DetailsDisclosureTriggerEnd({
   labels = LABEL_EINKLAPPEN,
   tone = 'neutral',
   size = 'md',
-  surface = 'default',
+  surface = 'glass',
 }: {
   labels?: CollapsibleLabels
   tone?: Tone
@@ -215,7 +215,7 @@ export function CollapsiblePillButton({
   labels = LABEL_ZUKLAPPEN,
   tone = 'emerald',
   compact = false,
-  surface = 'default',
+  surface = 'glass',
   'aria-expanded': ariaExpanded,
 }: {
   open: boolean
