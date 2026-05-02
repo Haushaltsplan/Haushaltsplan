@@ -10,9 +10,7 @@ import { ladeMarktUebersicht } from '@/lib/market-uebersicht'
 import { ladeNasdaq100MoversBericht } from '@/lib/nasdaq100-tagesmovers'
 import { ladeSp500MoversBericht } from '@/lib/sp500-tagesmovers'
 
-const revSec = Number(process.env.INVESTMENTS_PAGE_REVALIDATE_SECONDS)
-export const revalidate =
-  Number.isFinite(revSec) && revSec >= 60 ? Math.floor(revSec) : 300
+export const dynamic = 'force-dynamic'
 
 export const metadata: Metadata = {
   title: 'Investments',

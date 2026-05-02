@@ -2,6 +2,7 @@
  * Movers-KI in kleineren Gemini-/OpenAI-Anfragen mit Pause dazwischen (weniger Rate-Limits / Aussetzer).
  */
 
+import { PHASE_PRODUCTION_BUILD } from 'next/constants'
 import { kiMoverEinordnungSystemPrompt } from '@/lib/investment-movers-begruendung'
 import { resolveCoachProvider, runCoachCompletion } from '@/lib/ki-coach-backend'
 
@@ -98,6 +99,8 @@ export function moverArtikeltextLadenAktiv(): boolean {
 export async function fuehreMoverKiEinordnungMitCooldown(
   zeilen: InvestmentMoverKiZeile[],
 ): Promise<Record<string, MoverKiEinordnungEintrag> | null> {
+  if (process.env.NEXT_PHASE === PHASE_PRODUCTION_BUILD) return null
+
   if (!moverKiEinordnungIstAktiviert() || zeilen.length === 0) return null
   const coach = resolveCoachProvider()
   if (!coach) return null
