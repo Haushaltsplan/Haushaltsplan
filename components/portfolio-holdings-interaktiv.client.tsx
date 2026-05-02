@@ -183,29 +183,31 @@ function PortfolioPositionZeile({
     return (
       <li className="rounded-xl border border-zinc-800/90 bg-zinc-950/50 px-3 py-3">
         <div className="flex flex-wrap items-start justify-between gap-3">
-          <div className="flex min-w-0 flex-1 flex-wrap items-start gap-2">
+          <div className="flex min-w-0 flex-1 items-start gap-2.5">
             <StockLogo symbol={draft.symbolYahoo.trim() || '?'} />
-            <div className="grid min-w-0 flex-1 gap-2 sm:grid-cols-2">
-              <input
-                value={draft.name}
-                disabled={pending}
-                onChange={(e) => setDraft((d) => ({ ...d, name: e.target.value }))}
-                placeholder="Name"
-                className="w-full rounded-lg border border-zinc-800 bg-zinc-950 px-2 py-1.5 text-sm text-white outline-none ring-teal-700/40 focus:ring-2"
-              />
-              <input
-                value={draft.symbolYahoo}
-                disabled={pending}
-                onChange={(e) => setDraft((d) => ({ ...d, symbolYahoo: e.target.value.toUpperCase() }))}
-                placeholder="Ticker"
-                spellCheck={false}
-                className="w-full rounded-lg border border-zinc-800 bg-zinc-950 px-2 py-1.5 font-mono text-sm text-white outline-none ring-teal-700/40 focus:ring-2"
-              />
+            <div className="min-w-0 max-w-xl flex-1 space-y-2">
+              <div className="flex flex-wrap gap-2">
+                <input
+                  value={draft.name}
+                  disabled={pending}
+                  onChange={(e) => setDraft((d) => ({ ...d, name: e.target.value }))}
+                  placeholder="Name"
+                  className="min-w-0 flex-1 rounded-lg border border-zinc-800 bg-zinc-950 px-2 py-1.5 text-sm text-white outline-none ring-teal-700/40 focus:ring-2"
+                />
+                <input
+                  value={draft.symbolYahoo}
+                  disabled={pending}
+                  onChange={(e) => setDraft((d) => ({ ...d, symbolYahoo: e.target.value.toUpperCase() }))}
+                  placeholder="Ticker"
+                  spellCheck={false}
+                  className="w-[7.25rem] shrink-0 rounded-lg border border-zinc-800 bg-zinc-950 px-2 py-1.5 font-mono text-sm text-white outline-none ring-teal-700/40 focus:ring-2"
+                />
+              </div>
               <select
                 value={nt}
                 disabled={pending}
                 onChange={(e) => setDraft((d) => ({ ...d, notierung: e.target.value }))}
-                className="w-full rounded-lg border border-zinc-800 bg-zinc-950 px-2 py-1.5 text-sm text-white outline-none ring-teal-700/40 focus:ring-2 sm:col-span-2"
+                className="w-full max-w-[12rem] rounded-lg border border-zinc-800 bg-zinc-950 px-2 py-1.5 text-sm text-white outline-none ring-teal-700/40 focus:ring-2"
               >
                 {NOTIERUNGEN.map((n) => (
                   <option key={n} value={n}>
@@ -218,19 +220,21 @@ function PortfolioPositionZeile({
                 disabled={pending}
                 onChange={(e) => setDraft((d) => ({ ...d, notiz: e.target.value }))}
                 placeholder="Notiz"
-                rows={2}
-                className="w-full resize-y rounded-lg border border-zinc-800 bg-zinc-950 px-2 py-1.5 text-sm leading-snug text-zinc-100 outline-none ring-teal-700/40 focus:ring-2 sm:col-span-2"
+                rows={3}
+                className="w-full max-w-xl resize-y rounded-lg border border-zinc-800 bg-zinc-950 px-2 py-1.5 text-[13px] leading-snug text-zinc-100 outline-none ring-teal-700/40 focus:ring-2"
               />
             </div>
           </div>
-          <div className="flex shrink-0 items-start gap-1">
-            <IconCheck
-              aria-label="Speichern"
-              disabled={pending}
-              className={`${btn} text-teal-400 hover:text-teal-300`}
-              onClick={() => void onPersistReplaceRow(draft)}
-            />
-            <IconX aria-label="Abbrechen" disabled={pending} className={btn} onClick={onCancelEdit} />
+          <div className="flex shrink-0 items-center gap-1">
+            <span className="flex shrink-0 gap-0.5">
+              <IconCheck
+                aria-label="Speichern"
+                disabled={pending}
+                className={`${btn} text-teal-400 hover:text-teal-300`}
+                onClick={() => void onPersistReplaceRow(draft)}
+              />
+              <IconX aria-label="Abbrechen" disabled={pending} className={btn} onClick={onCancelEdit} />
+            </span>
             <InvestmentMoverKarteMetrikSpalte z={z} />
           </div>
         </div>

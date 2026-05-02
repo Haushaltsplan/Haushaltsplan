@@ -70,13 +70,15 @@ export function InvestmentMoverKarteBodyClient({
   return (
     <>
       <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="flex min-w-0 items-center gap-2.5">
+        <div className="flex min-w-0 flex-1 items-start gap-2.5">
           <StockLogo symbol={z.symbol} />
-          <div className="min-w-0">
+          <div className="min-w-0 max-w-xl flex-1">
             <p className="font-mono text-sm font-semibold text-white">{z.symbol}</p>
             <p className="truncate text-xs leading-snug text-zinc-400">{z.name}</p>
             {z.notiz?.trim() ? (
-              <p className="mt-1 whitespace-pre-wrap text-[11px] leading-snug text-zinc-500">{z.notiz.trim()}</p>
+              <p className="mt-1 whitespace-pre-wrap break-words text-[11px] leading-snug text-zinc-500">
+                {z.notiz.trim()}
+              </p>
             ) : null}
             {z.brancheAnzeige ? (
               <p className="mt-0.5 text-xs leading-snug text-zinc-500">
@@ -86,7 +88,7 @@ export function InvestmentMoverKarteBodyClient({
             ) : null}
           </div>
         </div>
-        <div className="flex shrink-0 items-start gap-1">
+        <div className="flex shrink-0 items-center gap-1">
           {kopfExtrasObenRechts}
           <InvestmentMoverKarteMetrikSpalte z={z} />
         </div>
