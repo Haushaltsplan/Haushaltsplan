@@ -4,18 +4,30 @@ export type InvestmentMoverKarteDaten = {
   name: string
   /** Branche/Sektor aus den Konstituenten-Daten (Anzeige). */
   brancheAnzeige: string | null
-  aenderungProzent: number
+  aenderungProzent: number | null
   kurs: number | null
+  /** Optional z. B. Portfolio: Währung für die Kurszeile (Standard USD bei Movers). */
+  notierung?: string
+}
+
+/** Finnhub-Logos: Kürzel ohne Börsensuffix (`RMS.PA` → `RMS`). */
+function logoTickerFuerSymbol(symbol: string): string {
+  const t = symbol.trim()
+  const dot = t.indexOf('.')
+  const basis = dot > 0 ? t.slice(0, dot) : t
+  const normalized = basis.replace(/-/g, '')
+  return normalized.toUpperCase() === 'META' ? 'FB' : normalized
 }
 
 function logoUrlFuerSymbol(symbol: string): string {
-  const alias = symbol.trim().toUpperCase() === 'META' ? 'FB' : symbol
-  return `https://static2.finnhub.io/file/publicdatany/finnhubimage/stock_logo/${encodeURIComponent(alias)}.png`
+  return `https://static2.finnhub.io/file/publicdatany/finnhubimage/stock_logo/${encodeURIComponent(logoTickerFuerSymbol(symbol))}.png`
 }
 
 export function InvestmentMoverKarte({ z }: { z: InvestmentMoverKarteDaten }) {
-  const farbe = z.aenderungProzent >= 0 ? 'text-teal-400' : 'text-red-400/90'
-  const pctStr = `${z.aenderungProzent >= 0 ? '+' : ''}${z.aenderungProzent}%`
+  const p = z.aenderungProzent
+  const pctOk = p != null && Number.isFinite(p)
+  const farbe = pctOk ? (p >= 0 ? 'text-teal-400' : 'text-red-400/90') : 'text-zinc-500'
+  const pctStr = pctOk ? `${p >= 0 ? '+' : ''}${p}%` : '—'
 
   return (
     <li className="rounded-xl border border-zinc-800/90 bg-zinc-950/50 px-3 py-3">
@@ -42,7 +54,9 @@ export function InvestmentMoverKarte({ z }: { z: InvestmentMoverKarteDaten }) {
         <p className={`text-base font-semibold tabular-nums ${farbe}`}>{pctStr}</p>
       </div>
       {z.kurs != null ? (
-        <p className="mt-2 text-xs tabular-nums text-zinc-400">Kurs ca. {z.kurs.toFixed(2)} USD</p>
+        <p className="mt-2 text-xs tabular-nums text-zinc-400">
+          Kurs ca. {z.kurs.toFixed(2)} {z.notierung ?? 'USD'}
+        </p>
       ) : null}
     </li>
   )

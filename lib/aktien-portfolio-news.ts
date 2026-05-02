@@ -1,51 +1,9 @@
 import { parseGoogleNewsRssItems, type RohGoogleNewsEintrag } from '@/lib/google-news-rss'
+import { PORTFOLIO_UNTERNEHMEN_NAMEN } from '@/lib/investment-portfolio-data'
 import type { NewsEintrag } from '@/lib/region-haarbach'
 
-/**
- * Unternehmen im Portfolio (Suchbegriffe für Google News)
- */
-const UNTERNEHMEN: string[] = [
-  'Alphabet',
-  'Mastercard',
-  'Microsoft',
-  'Hermès',
-  'S&P Global',
-  'Visa',
-  'ResMed',
-  'ASML Holding',
-  'Zoetis',
-  'MSCI',
-  'UnitedHealth',
-  'Thermo Fisher Scientific',
-  'Waste Management',
-  'Old Dominion Freight Line',
-  'LVMH',
-  'ServiceNow',
-  'Linde',
-  'Balchem Corporation',
-  'Kinsale Capital',
-  'Home Depot',
-  'Halma',
-  'Arista Networks',
-  "McDonald's",
-  'Rollins',
-  'Veeva Systems',
-  'Sherwin-Williams',
-  'Straumann Holding',
-  'Graco',
-  'Alimentation Couche-Tard',
-  'Sika',
-  'Danaher',
-  'Datadog',
-  'Edwards Lifesciences',
-  'IMCD',
-  'Mensch und Maschine',
-  'Union Pacific',
-  'Upstart',
-  'Wolters Kluwer',
-  'Netflix',
-  'BlackRock',
-]
+/** Unternehmen im Portfolio (gleiche Reihenfolge/Namen wie Investments-Kurse). */
+const UNTERNEHMEN = PORTFOLIO_UNTERNEHMEN_NAMEN
 
 /** Google `q=`: muss in Verbindung mit Unternehmen vorkommen (rohe Vorfilterung) */
 const SIGNAL_SUCHFELDER = [

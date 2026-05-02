@@ -6,9 +6,11 @@ import { InvestmentMantra } from '@/components/investment-mantra'
 import { InvestmentResearchPrompts } from '@/components/investment-research-prompts'
 import { MarketUebersichtSection } from '@/components/market-uebersicht-section'
 import { Nasdaq100MoversSection } from '@/components/nasdaq100-movers-section'
+import { PortfolioHoldingsSection } from '@/components/portfolio-holdings-section'
 import { Sp500MoversSection } from '@/components/sp500-movers-section'
 import { ladeMarktUebersicht } from '@/lib/market-uebersicht'
 import { ladeNasdaq100MoversBericht } from '@/lib/nasdaq100-tagesmovers'
+import { ladePortfolioKurseBericht } from '@/lib/portfolio-kurse'
 import { ladeSp500MoversBericht } from '@/lib/sp500-tagesmovers'
 
 export const dynamic = 'force-dynamic'
@@ -23,7 +25,7 @@ export const metadata: Metadata = {
 function InvestmentsMarktFallback() {
   return (
     <>
-      {[0, 1, 2].map((key) => (
+      {[0, 1, 2, 3].map((key) => (
         <PageSectionPanel key={key}>
           <div className="space-y-3 animate-pulse">
             <div className="h-3 w-36 rounded bg-zinc-800/90" />
@@ -37,10 +39,11 @@ function InvestmentsMarktFallback() {
 }
 
 async function InvestmentsMarktPanels() {
-  const [marktUebersicht, sp500Bericht, nasdaq100Bericht] = await Promise.all([
+  const [marktUebersicht, sp500Bericht, nasdaq100Bericht, portfolioBericht] = await Promise.all([
     ladeMarktUebersicht(),
     ladeSp500MoversBericht(),
     ladeNasdaq100MoversBericht(),
+    ladePortfolioKurseBericht(),
   ])
 
   return (
@@ -53,6 +56,9 @@ async function InvestmentsMarktPanels() {
       </PageSectionPanel>
       <PageSectionPanel>
         <Nasdaq100MoversSection embedded bericht={nasdaq100Bericht} />
+      </PageSectionPanel>
+      <PageSectionPanel>
+        <PortfolioHoldingsSection embedded bericht={portfolioBericht} />
       </PageSectionPanel>
     </>
   )
