@@ -1062,39 +1062,40 @@ export default function FinanzenPage() {
   const sliderValue = sliderIdx >= 0 ? sliderIdx : Math.max(0, monatsListeNavigation.length - 1)
 
   return (
-    <PageChrome className="max-w-full">
+    <PageChrome className="max-w-full" density="compact">
       <PageHero
         eyebrow="Finanzen"
         title="Einnahmen & Ausgaben"
         description="Monatsbilanz, Buchungen, Belege und Daueraufträge im Überblick."
+        density="compact"
       />
 
-      <PageSection titleId="finanzen-monatsuebersicht" title="Monatsübersicht">
-        <PageSectionPanel>
-          <div className="flex flex-col justify-between gap-4 text-center sm:flex-row sm:items-stretch sm:gap-5 lg:text-left">
+      <PageSection titleId="finanzen-monatsuebersicht" title="Monatsübersicht" density="compact">
+        <PageSectionPanel density="compact">
+          <div className="flex flex-col justify-between gap-3 text-center sm:flex-row sm:items-stretch sm:gap-4 lg:text-left">
         <div className="flex flex-1 flex-col justify-center lg:min-w-0">
           <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-slate-500">Saldo im Ansichtsmonat</p>
-          <p className="mt-1.5 text-sm font-semibold text-slate-300 sm:text-[15px]">{formatMonatsLabelDe(ansichtMonat)}</p>
+          <p className="mt-1 text-sm font-semibold text-slate-300 sm:text-[15px]">{formatMonatsLabelDe(ansichtMonat)}</p>
           <p
-            className={`mt-2 break-words text-3xl font-bold leading-tight tracking-tight tabular-nums sm:mt-2 sm:text-4xl md:text-5xl ${saldo >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}
+            className={`mt-1 break-words text-2xl font-bold leading-tight tracking-tight tabular-nums sm:mt-1.5 sm:text-3xl md:text-4xl ${saldo >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}
           >
             {saldo.toLocaleString('de-DE', { style: 'currency', currency: 'EUR' })}
           </p>
         </div>
-        <div className="flex w-full min-w-0 flex-col gap-4 lg:w-auto lg:max-w-md lg:shrink-0">
-          <div className="flex min-w-0 shrink-0 items-stretch justify-center gap-0 overflow-hidden rounded-2xl border border-zinc-700/50 bg-zinc-950/60 p-1 shadow-inner">
-            <div className="flex min-w-0 flex-1 flex-col justify-center rounded-xl bg-zinc-900/75 px-3 py-3 text-left sm:px-5 sm:py-4">
+        <div className="flex w-full min-w-0 flex-col gap-2.5 lg:w-auto lg:max-w-md lg:shrink-0">
+          <div className="flex min-w-0 shrink-0 items-stretch justify-center gap-0 overflow-hidden rounded-xl border border-zinc-700/50 bg-zinc-950/60 p-1 shadow-inner sm:rounded-2xl">
+            <div className="flex min-w-0 flex-1 flex-col justify-center rounded-lg bg-zinc-900/75 px-3 py-2.5 text-left sm:rounded-xl sm:px-4 sm:py-3">
               <span className="text-[10px] font-semibold uppercase tracking-wide text-emerald-400/95 sm:text-[11px]">Einnahmen</span>
               <span className="mt-0.5 text-[10px] text-slate-500 sm:text-[11px]">im Monat</span>
-              <span className="mt-1.5 break-words text-base font-semibold leading-tight tabular-nums text-slate-100 sm:mt-2 sm:text-2xl">
+              <span className="mt-1 break-words text-base font-semibold leading-tight tabular-nums text-slate-100 sm:text-xl">
                 +{gesEin.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €
               </span>
             </div>
             <div className="w-px shrink-0 self-stretch bg-zinc-700/80" />
-            <div className="flex min-w-0 flex-1 flex-col justify-center rounded-xl bg-zinc-900/75 px-3 py-3 text-left sm:px-5 sm:py-4">
+            <div className="flex min-w-0 flex-1 flex-col justify-center rounded-lg bg-zinc-900/75 px-3 py-2.5 text-left sm:rounded-xl sm:px-4 sm:py-3">
               <span className="text-[10px] font-semibold uppercase tracking-wide text-rose-400/95 sm:text-[11px]">Ausgaben</span>
               <span className="mt-0.5 text-[10px] text-slate-500 sm:text-[11px]">im Monat</span>
-              <span className="mt-1.5 break-words text-base font-semibold leading-tight tabular-nums text-slate-100 sm:mt-2 sm:text-2xl">
+              <span className="mt-1 break-words text-base font-semibold leading-tight tabular-nums text-slate-100 sm:text-xl">
                 −{gesAus.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €
               </span>
             </div>
@@ -1122,12 +1123,12 @@ export default function FinanzenPage() {
             </div>
           )}
 
-          <div className="rounded-2xl border border-violet-800/50 bg-violet-950/25 p-4 text-left shadow-inner">
+          <div className="rounded-xl border border-violet-800/50 bg-violet-950/25 p-3 text-left shadow-inner sm:rounded-2xl sm:p-3.5">
             <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-violet-300/90">Erarbeiteter Puffer</p>
             {topfSchemaOk === null ? (
-              <p className="mt-2 text-sm text-slate-500">Wird geladen …</p>
+              <p className="mt-1.5 text-sm text-slate-500">Wird geladen …</p>
             ) : topfSchemaOk === false ? (
-              <p className="mt-2 text-[13px] leading-relaxed text-amber-200/90">
+              <p className="mt-1.5 text-[13px] leading-relaxed text-amber-200/90">
                 Tabellen fehlen oder sind nicht erreichbar. In Supabase die Migrationen ausführen:{' '}
                 <code className="mt-1 block rounded bg-slate-950/80 px-1.5 py-1 text-[11px] text-slate-300">
                   supabase/migrations/20260421000000_finanz_rest_topf.sql
@@ -1142,12 +1143,12 @@ export default function FinanzenPage() {
             ) : (
               <>
                 <p
-                  className={`mt-2 break-words text-2xl font-bold tabular-nums tracking-tight sm:text-3xl ${topfStand >= 0 ? 'text-violet-200' : 'text-rose-300'}`}
+                  className={`mt-1.5 break-words text-xl font-bold tabular-nums tracking-tight sm:text-2xl ${topfStand >= 0 ? 'text-violet-200' : 'text-rose-300'}`}
                 >
                   {topfStand.toLocaleString('de-DE', { style: 'currency', currency: 'EUR' })}
                 </p>
                 {topfMonatEintrag ? (
-                  <div className="mt-2 space-y-2">
+                  <div className="mt-1.5 space-y-1.5">
                     <div>
                       <p className="text-[12px] text-slate-500">
                         {formatMonatsLabelDe(ansichtMonat)}: verbucht{' '}
@@ -1213,7 +1214,7 @@ export default function FinanzenPage() {
                     type="button"
                     disabled={topfBuchungLaden}
                     onClick={() => void buchRestTopfFuerAnsichtsmonat()}
-                    className="mt-3 w-full rounded-xl bg-violet-600 py-2.5 text-sm font-bold text-white shadow-md shadow-violet-950/30 transition hover:bg-violet-500 disabled:opacity-40"
+                    className="mt-2 w-full rounded-xl bg-violet-600 py-2 text-sm font-bold text-white shadow-md shadow-violet-950/30 transition hover:bg-violet-500 disabled:opacity-40"
                   >
                     {topfBuchungLaden ? '…' : 'Monatssaldo in Puffer übernehmen'}
                   </button>
@@ -1224,12 +1225,12 @@ export default function FinanzenPage() {
         </div>
           </div>
         </PageSectionPanel>
-        <PageSectionPanel>
-      <div className="space-y-4">
-        <div className="flex flex-col gap-3 sm:gap-4 md:flex-row md:items-start md:justify-between">
+        <PageSectionPanel density="compact">
+      <div className="space-y-3">
+        <div className="flex flex-col gap-2 sm:gap-3 md:flex-row md:items-start md:justify-between">
           <div className="min-w-0">
             <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-sky-400/90">Ansichtsmonat</p>
-            <p className="mt-1 text-lg font-semibold tracking-tight text-slate-100 sm:text-xl">{formatMonatsLabelDe(ansichtMonat)}</p>
+            <p className="mt-0.5 text-base font-semibold tracking-tight text-slate-100 sm:text-lg">{formatMonatsLabelDe(ansichtMonat)}</p>
           </div>
           <div className="flex w-full min-w-0 flex-col gap-2 sm:w-auto sm:max-w-full md:shrink-0">
             <div className="flex w-full min-w-0 flex-wrap items-stretch justify-stretch gap-1 rounded-xl border border-slate-700/70 bg-slate-950/70 p-1 shadow-inner sm:inline-flex sm:w-auto sm:flex-nowrap sm:items-center sm:justify-center sm:gap-1.5">
@@ -1268,8 +1269,8 @@ export default function FinanzenPage() {
           </div>
           </div>
         </div>
-        <div className="mt-4 rounded-xl border border-slate-800/90 bg-slate-950/40 px-3 py-3 sm:px-4 sm:py-4">
-          <label className="mb-3 block text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+        <div className="mt-2 rounded-xl border border-slate-800/90 bg-slate-950/40 px-3 py-2.5 sm:px-4 sm:py-3">
+          <label className="mb-2 block text-[11px] font-semibold uppercase tracking-wide text-slate-500">
             Schnellwahl über alle Monate mit Buchungen
           </label>
           <input
@@ -1284,7 +1285,7 @@ export default function FinanzenPage() {
             }}
             className="h-2.5 w-full cursor-pointer accent-sky-500"
           />
-          <div className="mt-3 flex justify-between text-[11px] font-medium text-slate-500">
+          <div className="mt-2 flex justify-between text-[11px] font-medium text-slate-500">
             <span>{formatMonatsLabelDe(monatsListeNavigation[0] || ansichtMonat)}</span>
             <span>{formatMonatsLabelDe(monatsListeNavigation[monatsListeNavigation.length - 1] || ansichtMonat)}</span>
           </div>
@@ -1293,8 +1294,8 @@ export default function FinanzenPage() {
         </PageSectionPanel>
       </PageSection>
 
-      <PageSection titleId="finanzen-buchungen-heading" title="Buchungen">
-        <PageSectionPanel>
+      <PageSection titleId="finanzen-buchungen-heading" title="Buchungen" density="compact">
+        <PageSectionPanel density="compact">
       <div className="grid min-w-0 gap-4 lg:grid-cols-[minmax(0,17.5rem)_1fr] xl:grid-cols-[minmax(0,19rem)_1fr] lg:gap-5">
         <div className="h-fit min-w-0 overflow-hidden rounded-2xl border border-slate-800/90 bg-gradient-to-b from-slate-900 to-slate-950 p-4 shadow-xl shadow-black/35 sm:p-5">
           <h2 className="mb-4 text-base font-semibold tracking-tight text-slate-100">Neue Buchung</h2>
@@ -1731,8 +1732,8 @@ export default function FinanzenPage() {
         </PageSectionPanel>
       </PageSection>
 
-      <PageSection titleId="finanzen-dauerauftraege-heading" title="Daueraufträge">
-        <PageSectionPanel>
+      <PageSection titleId="finanzen-dauerauftraege-heading" title="Daueraufträge" density="compact">
+        <PageSectionPanel density="compact">
       <div className="overflow-hidden rounded-2xl border border-slate-800/90 bg-gradient-to-b from-slate-900 to-slate-950 p-4 shadow-xl shadow-black/35 sm:p-5">
         <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:justify-end">
           <button
