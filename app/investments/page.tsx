@@ -1,19 +1,19 @@
 import type { Metadata } from 'next'
 import { Suspense } from 'react'
 import { PageChrome, PageHero, PageSection, PageSectionPanel } from '@/components/page-shell'
+import {
+  InvestmentsMarktNasdaq100Panel,
+  InvestmentsMarktPortfolioPanel,
+  InvestmentsMarktSp500Panel,
+  InvestmentsMarktUebersichtPanel,
+} from '@/components/investments-markt-streaming'
 import { InvestmentsMinuteRefresh } from '@/components/investments-minute-refresh'
 import { InvestmentMantra } from '@/components/investment-mantra'
 import { InvestmentResearchPrompts } from '@/components/investment-research-prompts'
-import { MarketUebersichtSection } from '@/components/market-uebersicht-section'
-import { Nasdaq100MoversSection } from '@/components/nasdaq100-movers-section'
-import { PortfolioHoldingsSection } from '@/components/portfolio-holdings-section'
-import { Sp500MoversSection } from '@/components/sp500-movers-section'
-import { ladeMarktUebersicht } from '@/lib/market-uebersicht'
-import { ladeNasdaq100MoversBericht } from '@/lib/nasdaq100-tagesmovers'
-import { ladePortfolioKurseBericht } from '@/lib/portfolio-kurse'
-import { ladeSp500MoversBericht } from '@/lib/sp500-tagesmovers'
 
-export const dynamic = 'force-dynamic'
+/** Kurs-/News-Fetches nutzen `next.revalidate`; Wiederholungsbesuche & CDN profitieren. `router.refresh()` aktualisiert weiter manuell/zeitgesteuert. */
+export const revalidate = 120
+
 /** Lange Movers-Pipelines (HTTP + optional KI); auf Vercel ggf. Plan-Maximum beachten. */
 export const maxDuration = 120
 
@@ -22,45 +22,15 @@ export const metadata: Metadata = {
   description: 'Portfolio in Parqet verfolgen',
 }
 
-function InvestmentsMarktFallback() {
+function MarktPanelSkeleton() {
   return (
-    <>
-      {[0, 1, 2, 3].map((key) => (
-        <PageSectionPanel key={key}>
-          <div className="space-y-3 animate-pulse">
-            <div className="h-3 w-36 rounded bg-zinc-800/90" />
-            <div className="h-5 w-52 max-w-full rounded bg-zinc-800/70" />
-            <div className="h-28 rounded-xl bg-zinc-900/55 sm:h-32" />
-          </div>
-        </PageSectionPanel>
-      ))}
-    </>
-  )
-}
-
-async function InvestmentsMarktPanels() {
-  const [marktUebersicht, sp500Bericht, nasdaq100Bericht, portfolioBericht] = await Promise.all([
-    ladeMarktUebersicht(),
-    ladeSp500MoversBericht(),
-    ladeNasdaq100MoversBericht(),
-    ladePortfolioKurseBericht(),
-  ])
-
-  return (
-    <>
-      <PageSectionPanel>
-        <MarketUebersichtSection embedded uebersicht={marktUebersicht} />
-      </PageSectionPanel>
-      <PageSectionPanel>
-        <PortfolioHoldingsSection embedded bericht={portfolioBericht} />
-      </PageSectionPanel>
-      <PageSectionPanel>
-        <Sp500MoversSection embedded bericht={sp500Bericht} />
-      </PageSectionPanel>
-      <PageSectionPanel>
-        <Nasdaq100MoversSection embedded bericht={nasdaq100Bericht} />
-      </PageSectionPanel>
-    </>
+    <PageSectionPanel>
+      <div className="space-y-3 animate-pulse">
+        <div className="h-3 w-36 rounded bg-zinc-800/90" />
+        <div className="h-5 w-52 max-w-full rounded bg-zinc-800/70" />
+        <div className="h-28 rounded-xl bg-zinc-900/55 sm:h-32" />
+      </div>
+    </PageSectionPanel>
   )
 }
 
@@ -103,8 +73,17 @@ export default function InvestmentsPage() {
       />
 
       <PageSection titleId="investments-markt-heading" title="Markt">
-        <Suspense fallback={<InvestmentsMarktFallback />}>
-          <InvestmentsMarktPanels />
+        <Suspense fallback={<MarktPanelSkeleton />}>
+          <InvestmentsMarktUebersichtPanel />
+        </Suspense>
+        <Suspense fallback={<MarktPanelSkeleton />}>
+          <InvestmentsMarktPortfolioPanel />
+        </Suspense>
+        <Suspense fallback={<MarktPanelSkeleton />}>
+          <InvestmentsMarktSp500Panel />
+        </Suspense>
+        <Suspense fallback={<MarktPanelSkeleton />}>
+          <InvestmentsMarktNasdaq100Panel />
         </Suspense>
       </PageSection>
 

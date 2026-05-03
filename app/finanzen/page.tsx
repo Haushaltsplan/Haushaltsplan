@@ -550,12 +550,10 @@ export default function FinanzenPage() {
 
   useEffect(() => {
     const run = async () => {
-      await ladeDaten()
-      await ladeDauerauftraege()
+      await Promise.all([ladeDaten(), ladeDauerauftraege(), ladeRestTopf()])
       await verarbeiteDauerauftraege()
-      await ladeRestTopf()
     }
-    run()
+    void run()
   }, [])
 
   /** Fehlende Monate bis inkl. letztem abgeschlossenen (bzw. laufendem Monat am letzten Kalendertag) automatisch in den Topf buchen. */
