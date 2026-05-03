@@ -6,7 +6,7 @@ import { buildFinanceCoachSnapshot, useFinanceCoachSnapshot } from '@/components
 import { KategorieMark } from '@/lib/kategorie-icon'
 import { berechneAusgabenMonatsFeedback } from '@/lib/finanzen-ausgaben-feedback'
 import toast from 'react-hot-toast'
-import { PageChrome } from '@/components/page-shell'
+import { PageChrome, PageHero, PageSection, PageSectionPanel } from '@/components/page-shell'
 
 /** Monatlich am 1. des Monats (Ausgaben) — Import legt nur fehlende Bezeichnungen an. */
 const VORGABE_DAUERAUFTRAeGE_MONATSANFANG: Array<{
@@ -1062,13 +1062,21 @@ export default function FinanzenPage() {
   const sliderValue = sliderIdx >= 0 ? sliderIdx : Math.max(0, monatsListeNavigation.length - 1)
 
   return (
-    <PageChrome className="max-w-full sm:space-y-10">
-      <div className="flex flex-col justify-between gap-6 rounded-2xl border border-zinc-700/35 bg-zinc-950/55 p-4 text-center shadow-xl shadow-black/40 ring-1 ring-white/[0.04] backdrop-blur-xl sm:gap-8 sm:rounded-[2rem] sm:p-8 md:p-10 lg:flex-row lg:items-stretch lg:gap-10 lg:text-left">
+    <PageChrome className="max-w-full">
+      <PageHero
+        eyebrow="Finanzen"
+        title="Einnahmen & Ausgaben"
+        description="Monatsbilanz, Buchungen, Belege und Daueraufträge im Überblick."
+      />
+
+      <PageSection titleId="finanzen-monatsuebersicht" title="Monatsübersicht">
+        <PageSectionPanel>
+          <div className="flex flex-col justify-between gap-4 text-center sm:flex-row sm:items-stretch sm:gap-5 lg:text-left">
         <div className="flex flex-1 flex-col justify-center lg:min-w-0">
           <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-slate-500">Saldo im Ansichtsmonat</p>
           <p className="mt-1.5 text-sm font-semibold text-slate-300 sm:text-[15px]">{formatMonatsLabelDe(ansichtMonat)}</p>
           <p
-            className={`mt-2 break-words text-3xl font-bold leading-tight tracking-tight tabular-nums sm:mt-3 sm:text-5xl md:text-6xl ${saldo >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}
+            className={`mt-2 break-words text-3xl font-bold leading-tight tracking-tight tabular-nums sm:mt-2 sm:text-4xl md:text-5xl ${saldo >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}
           >
             {saldo.toLocaleString('de-DE', { style: 'currency', currency: 'EUR' })}
           </p>
@@ -1214,10 +1222,11 @@ export default function FinanzenPage() {
             )}
           </div>
         </div>
-      </div>
-
-      <div className="rounded-2xl border border-zinc-700/35 bg-zinc-950/50 p-4 shadow-xl shadow-black/25 ring-1 ring-white/[0.04] backdrop-blur-xl sm:rounded-[2rem] sm:p-6 md:p-8">
-        <div className="flex flex-col gap-4 sm:gap-5 md:flex-row md:items-start md:justify-between">
+          </div>
+        </PageSectionPanel>
+        <PageSectionPanel>
+      <div className="space-y-4">
+        <div className="flex flex-col gap-3 sm:gap-4 md:flex-row md:items-start md:justify-between">
           <div className="min-w-0">
             <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-sky-400/90">Ansichtsmonat</p>
             <p className="mt-1 text-lg font-semibold tracking-tight text-slate-100 sm:text-xl">{formatMonatsLabelDe(ansichtMonat)}</p>
@@ -1259,7 +1268,7 @@ export default function FinanzenPage() {
           </div>
           </div>
         </div>
-        <div className="mt-5 rounded-xl border border-slate-800/90 bg-slate-950/40 px-3 py-3 sm:mt-6 sm:px-4 sm:py-4">
+        <div className="mt-4 rounded-xl border border-slate-800/90 bg-slate-950/40 px-3 py-3 sm:px-4 sm:py-4">
           <label className="mb-3 block text-[11px] font-semibold uppercase tracking-wide text-slate-500">
             Schnellwahl über alle Monate mit Buchungen
           </label>
@@ -1281,9 +1290,13 @@ export default function FinanzenPage() {
           </div>
         </div>
       </div>
+        </PageSectionPanel>
+      </PageSection>
 
-      <div className="grid min-w-0 gap-6 lg:grid-cols-[minmax(0,17.5rem)_1fr] xl:grid-cols-[minmax(0,19rem)_1fr] lg:gap-8">
-        <div className="h-fit min-w-0 overflow-hidden rounded-2xl border border-slate-800/90 bg-gradient-to-b from-slate-900 to-slate-950 p-4 shadow-xl shadow-black/35 sm:rounded-[2rem] sm:p-6">
+      <PageSection titleId="finanzen-buchungen-heading" title="Buchungen">
+        <PageSectionPanel>
+      <div className="grid min-w-0 gap-4 lg:grid-cols-[minmax(0,17.5rem)_1fr] xl:grid-cols-[minmax(0,19rem)_1fr] lg:gap-5">
+        <div className="h-fit min-w-0 overflow-hidden rounded-2xl border border-slate-800/90 bg-gradient-to-b from-slate-900 to-slate-950 p-4 shadow-xl shadow-black/35 sm:p-5">
           <h2 className="mb-4 text-base font-semibold tracking-tight text-slate-100">Neue Buchung</h2>
           <div className="mb-4 flex rounded-xl border border-slate-700/70 bg-slate-950/70 p-1 shadow-inner">
             <button
@@ -1432,9 +1445,9 @@ export default function FinanzenPage() {
           )}
         </div>
 
-        <div className="min-w-0 max-lg:overflow-x-hidden overflow-y-visible lg:overflow-x-auto rounded-2xl border border-slate-800/90 bg-gradient-to-b from-slate-900 to-slate-950 shadow-xl shadow-black/35 lg:rounded-[2rem]">
-          <div className="border-b border-slate-800/80 bg-slate-900/90 p-3 sm:p-4 md:p-5">
-            <div className="flex flex-col gap-3 sm:gap-4">
+        <div className="min-w-0 max-lg:overflow-x-hidden overflow-y-visible lg:overflow-x-auto rounded-2xl border border-slate-800/90 bg-gradient-to-b from-slate-900 to-slate-950 shadow-xl shadow-black/35">
+          <div className="border-b border-slate-800/80 bg-slate-900/90 p-3 sm:p-4">
+            <div className="flex flex-col gap-3 sm:gap-3">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between sm:gap-4">
                 <div className="min-w-0 flex-1">
                   <label
@@ -1715,41 +1728,40 @@ export default function FinanzenPage() {
           )}
         </div>
       </div>
+        </PageSectionPanel>
+      </PageSection>
 
-      <div className="overflow-hidden rounded-2xl border border-slate-800/90 bg-gradient-to-b from-slate-900 to-slate-950 p-4 shadow-xl shadow-black/35 sm:rounded-[2rem] sm:p-8">
-        <div className="mb-6 flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-          <div className="min-w-0">
-            <h2 className="text-lg font-semibold tracking-tight text-slate-100">Daueraufträge</h2>
-          </div>
-          <div className="flex shrink-0 flex-col gap-2 sm:flex-row sm:flex-wrap sm:justify-end">
-            <button
-              type="button"
-              onClick={async () => {
-                await verarbeiteDauerauftraege()
-              }}
-              className="rounded-xl bg-emerald-600 px-4 py-2.5 text-xs font-bold text-white shadow-md shadow-emerald-950/30 transition hover:bg-emerald-500"
-            >
-              Abbuchungen jetzt ausführen
-            </button>
-            <button
-              type="button"
-              onClick={async () => {
-                if (
-                  !window.confirm(
-                    'Standard-Daueraufträge importieren?\n\nEs werden nur Einträge angelegt, deren Bezeichnung noch nicht existiert (keine Dubletten).',
-                  )
+      <PageSection titleId="finanzen-dauerauftraege-heading" title="Daueraufträge">
+        <PageSectionPanel>
+      <div className="overflow-hidden rounded-2xl border border-slate-800/90 bg-gradient-to-b from-slate-900 to-slate-950 p-4 shadow-xl shadow-black/35 sm:p-5">
+        <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:justify-end">
+          <button
+            type="button"
+            onClick={async () => {
+              await verarbeiteDauerauftraege()
+            }}
+            className="rounded-xl bg-emerald-600 px-4 py-2.5 text-xs font-bold text-white shadow-md shadow-emerald-950/30 transition hover:bg-emerald-500"
+          >
+            Abbuchungen jetzt ausführen
+          </button>
+          <button
+            type="button"
+            onClick={async () => {
+              if (
+                !window.confirm(
+                  'Standard-Daueraufträge importieren?\n\nEs werden nur Einträge angelegt, deren Bezeichnung noch nicht existiert (keine Dubletten).',
                 )
-                  return
-                await importiereVorgabeDauerauftraege()
-              }}
-              className="rounded-xl border border-slate-600/90 bg-slate-950/60 px-4 py-2.5 text-xs font-semibold text-slate-200 transition hover:bg-slate-800"
-            >
-              Standard importieren
-            </button>
-          </div>
+              )
+                return
+              await importiereVorgabeDauerauftraege()
+            }}
+            className="rounded-xl border border-slate-600/90 bg-slate-950/60 px-4 py-2.5 text-xs font-semibold text-slate-200 transition hover:bg-slate-800"
+          >
+            Standard importieren
+          </button>
         </div>
 
-        <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
           <div id="dauerauftrag-neu" className="min-w-0 space-y-3 rounded-xl border border-slate-800/90 bg-slate-950/45 p-5">
             <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
               {daEditId != null ? 'Dauerauftrag bearbeiten' : 'Neuer Dauerauftrag'}
@@ -1873,6 +1885,8 @@ export default function FinanzenPage() {
           </div>
         </div>
       </div>
+        </PageSectionPanel>
+      </PageSection>
 
       {buchungEdit && (
         <div

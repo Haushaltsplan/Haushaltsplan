@@ -155,7 +155,7 @@ export function RegionWetterAnzeige({ wetter, aktualisiertAnzeige, ortId, ortNam
       />
 
       {(wetter.stundenPrognose ?? []).length > 0 ? (
-        <details className="app-disclosure group border-t border-zinc-800/70 bg-zinc-950/25" open>
+        <details className="app-disclosure group border-t border-zinc-800/70 bg-zinc-950/25">
           <summary className="flex cursor-pointer list-none select-none items-center justify-between gap-3 px-4 py-4 text-left outline-offset-2 transition-colors hover:bg-zinc-800/35 focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-500/50 sm:px-8">
             <p className="min-w-0 pr-1 text-[11px] font-black uppercase tracking-widest text-sky-200/80">Nächste Stunden</p>
             <DetailsDisclosureTriggerEnd tone="sky" />

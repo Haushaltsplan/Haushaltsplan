@@ -108,7 +108,7 @@ export function RegionWetter7TageTageszeitenClient({ ortId, prognose7Tage }: Pro
   if (tage.length === 0) return null
 
   return (
-    <details className="app-disclosure group border-t border-slate-800/80 bg-slate-950/30" open>
+    <details className="app-disclosure group border-t border-slate-800/80 bg-slate-950/30">
       <summary className="flex cursor-pointer list-none select-none items-center justify-between gap-3 px-4 py-4 text-left outline-offset-2 transition-colors hover:bg-slate-800/35 focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-500/50 sm:px-8">
         <p className="min-w-0 pr-1 text-[11px] font-black uppercase tracking-widest text-cyan-200/70">7-Tage-Ausblick</p>
         <DetailsDisclosureTriggerEnd tone="sky" />
