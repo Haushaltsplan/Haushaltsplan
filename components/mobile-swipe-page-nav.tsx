@@ -11,8 +11,13 @@ import {
   mergePersistedWithKnown,
 } from '@/lib/nav-model'
 
-const SWIPE_MIN_DX = 72
-const SWIPE_MAX_ABS_DY = 72
+/** Normales Wischen: etwas niedriger = schneller „greift“. */
+const SWIPE_MIN_DX = 48
+/** Kurzer Flick: weniger Weg nötig, wenn Bewegung schnell genug. */
+const FLICK_MIN_DX = 32
+const FLICK_MAX_MS = 340
+/** Mindestgeschwindigkeit in px/ms für Flick-Erkennung. */
+const FLICK_MIN_VX = 0.2
 
 function swipeTargetIgnored(el: EventTarget | null): boolean {
   if (!(el instanceof Element)) return false
@@ -35,6 +40,9 @@ export function MobileSwipePageNav({ children }: { children: ReactNode }) {
   const router = useRouter()
   const [order, setOrder] = useState<string[]>(DEFAULT_HREF_ORDER)
   const [mobileNav, setMobileNav] = useState(false)
+
+  const navRef = useRef({ pathname, order })
+  navRef.current = { pathname, order }
 
   const reloadOrderFromStorage = useCallback(() => {
     try {
@@ -69,11 +77,20 @@ export function MobileSwipePageNav({ children }: { children: ReactNode }) {
     return () => mq.removeEventListener('change', sync)
   }, [])
 
+  useEffect(() => {
+    if (!mobileNav) return
+    const { pathname: p, order: o } = navRef.current
+    const next = adjacentNavHref(p, o, 'next')
+    const prev = adjacentNavHref(p, o, 'prev')
+    if (next) router.prefetch(next)
+    if (prev) router.prefetch(prev)
+  }, [mobileNav, pathname, order, router])
+
   const gestureRef = useRef<{
     pointerId: number
     x: number
     y: number
-    ignore: boolean
+    t0: number
   } | null>(null)
 
   const onPointerDown = useCallback(
@@ -88,48 +105,51 @@ export function MobileSwipePageNav({ children }: { children: ReactNode }) {
         pointerId: e.pointerId,
         x: e.clientX,
         y: e.clientY,
-        ignore: false,
+        t0: typeof performance !== 'undefined' ? performance.now() : Date.now(),
       }
     },
     [mobileNav],
   )
 
-  const onPointerMove = useCallback((e: React.PointerEvent) => {
-    const g = gestureRef.current
-    if (!g || g.pointerId !== e.pointerId || g.ignore) return
-    const dx = e.clientX - g.x
-    const dy = e.clientY - g.y
-    if (Math.abs(dy) > SWIPE_MAX_ABS_DY && Math.abs(dy) >= Math.abs(dx)) {
-      g.ignore = true
-    }
-  }, [])
-
   const endGesture = useCallback(
     (e: React.PointerEvent) => {
       const g = gestureRef.current
       gestureRef.current = null
-      if (!g || g.pointerId !== e.pointerId || g.ignore || !mobileNav) return
+      if (!g || g.pointerId !== e.pointerId || !mobileNav) return
 
       const dx = e.clientX - g.x
       const dy = e.clientY - g.y
-      if (Math.abs(dx) < SWIPE_MIN_DX) return
-      if (Math.abs(dx) < Math.abs(dy) * 1.15) return
-      if (Math.abs(dy) > SWIPE_MAX_ABS_DY) return
+      const adx = Math.abs(dx)
+      const ady = Math.abs(dy)
 
-      // Finger nach links → nächste Seite
+      if (adx < 1 && ady < 1) return
+
+      if (ady > adx * 1.06) return
+
+      const t1 = typeof performance !== 'undefined' ? performance.now() : Date.now()
+      const dt = Math.max(8, t1 - g.t0)
+      const vx = adx / dt
+
+      const flick = dt <= FLICK_MAX_MS && vx >= FLICK_MIN_VX && adx >= FLICK_MIN_DX && adx >= ady * 0.92
+      const pull = adx >= SWIPE_MIN_DX && adx > ady * 1.02
+
+      if (!flick && !pull) return
+
       const direction = dx < 0 ? 'next' : 'prev'
-      const href = adjacentNavHref(pathname, order, direction)
+      const { pathname: p, order: o } = navRef.current
+      const href = adjacentNavHref(p, o, direction)
       if (!href) return
-      router.push(href)
+      startTransition(() => {
+        router.push(href)
+      })
     },
-    [mobileNav, pathname, order, router],
+    [mobileNav, router],
   )
 
   return (
     <div
       className="min-h-full touch-pan-y"
       onPointerDown={onPointerDown}
-      onPointerMove={onPointerMove}
       onPointerUp={endGesture}
       onPointerCancel={endGesture}
     >
