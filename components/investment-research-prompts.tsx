@@ -508,7 +508,9 @@ export function InvestmentResearchPrompts({ embedded = false }: { embedded?: boo
   const [steps, setSteps] = useState<PromptStep[]>(DEFAULT_STEPS)
   const [loaded, setLoaded] = useState(false)
   const [promptsPanelOpen, setPromptsPanelOpen] = useState(false)
-  const [sectionOpen, setSectionOpen] = useState(true)
+  const [sectionOpen, setSectionOpen] = useState(false)
+  const [earningsOpen, setEarningsOpen] = useState(false)
+  const [earningsCallOpen, setEarningsCallOpen] = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -574,6 +576,7 @@ export function InvestmentResearchPrompts({ embedded = false }: { embedded?: boo
     }
     const next: PromptStep = { id, title: 'Neuer Prompt', text: '' }
     setSteps((prev) => [...prev.slice(0, insertAt), next, ...prev.slice(insertAt)])
+    setPromptsPanelOpen(true)
     setSectionOpen(true)
     toast.success('Prompt hinzugefügt')
   }
@@ -709,132 +712,152 @@ export function InvestmentResearchPrompts({ embedded = false }: { embedded?: boo
         </div>
 
         {earningsStep ? (
-          <div className="mt-3 overflow-hidden rounded-xl border border-zinc-800/90 bg-zinc-950/30 p-4">
-            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-zinc-800/60 pb-3">
-              <h3 className="text-sm font-medium text-white">Earningsanalyse</h3>
-              <div className="flex flex-wrap items-center justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={() => void copyStepText(earningsStep)}
-                  className="rounded-lg bg-teal-700 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-teal-600"
-                >
-                  Kopieren
-                </button>
-                <button
-                  type="button"
-                  disabled
-                  title="Dieser Standard-Prompt kann nicht gelöscht werden."
-                  className="cursor-not-allowed rounded-lg border border-zinc-800 bg-zinc-900/80 px-3 py-1.5 text-xs font-medium text-zinc-600"
-                >
-                  Löschen
-                </button>
-                <button
-                  type="button"
-                  onClick={() => resetStep(earningsStep.id)}
-                  className="rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-1.5 text-xs font-medium text-zinc-300 transition hover:bg-zinc-800"
-                >
-                  Zurücksetzen
-                </button>
+          <div className="mt-3 overflow-hidden rounded-xl border border-zinc-800/90 bg-zinc-950/30">
+            <button
+              type="button"
+              onClick={() => setEarningsOpen((v) => !v)}
+              className="group flex w-full items-center justify-between gap-3 px-4 py-3 text-left text-sm font-medium text-white transition hover:bg-zinc-900/60"
+              aria-expanded={earningsOpen}
+            >
+              <span>Earningsanalyse</span>
+              <CollapsibleRowHeaderEnd open={earningsOpen} labels={LABEL_ZUKLAPPEN} size="sm" />
+            </button>
+            <CollapsibleAnimatedBody open={earningsOpen} className="border-t border-zinc-800/90">
+              <div className="space-y-3 p-4">
+                <div className="flex flex-wrap items-center justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => void copyStepText(earningsStep)}
+                    className="rounded-lg bg-teal-700 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-teal-600"
+                  >
+                    Kopieren
+                  </button>
+                  <button
+                    type="button"
+                    disabled
+                    title="Dieser Standard-Prompt kann nicht gelöscht werden."
+                    className="cursor-not-allowed rounded-lg border border-zinc-800 bg-zinc-900/80 px-3 py-1.5 text-xs font-medium text-zinc-600"
+                  >
+                    Löschen
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => resetStep(earningsStep.id)}
+                    className="rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-1.5 text-xs font-medium text-zinc-300 transition hover:bg-zinc-800"
+                  >
+                    Zurücksetzen
+                  </button>
+                </div>
+                <div className="space-y-3">
+                  <div>
+                    <label
+                      htmlFor={`research-prompt-title-${earningsStep.id}`}
+                      className="mb-1 block text-xs font-medium text-zinc-500"
+                    >
+                      Titel (bearbeiten)
+                    </label>
+                    <input
+                      id={`research-prompt-title-${earningsStep.id}`}
+                      type="text"
+                      value={earningsStep.title}
+                      onChange={(e) => updateStep(earningsStep.id, { title: e.target.value })}
+                      className="w-full rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm text-white outline-none focus:ring-2 focus:ring-zinc-600"
+                      autoComplete="off"
+                    />
+                  </div>
+                  <div>
+                    <label
+                      htmlFor={`research-prompt-body-${earningsStep.id}`}
+                      className="mb-1 block text-xs font-medium text-zinc-500"
+                    >
+                      Prompt-Text (bearbeiten)
+                    </label>
+                    <textarea
+                      id={`research-prompt-body-${earningsStep.id}`}
+                      value={earningsStep.text}
+                      onChange={(e) => updateStep(earningsStep.id, { text: e.target.value })}
+                      className="min-h-[14rem] w-full rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2.5 text-sm leading-relaxed text-zinc-200 outline-none focus:ring-2 focus:ring-zinc-600"
+                      spellCheck={false}
+                    />
+                  </div>
+                </div>
               </div>
-            </div>
-            <div className="mt-3 space-y-3">
-              <div>
-                <label
-                  htmlFor={`research-prompt-title-${earningsStep.id}`}
-                  className="mb-1 block text-xs font-medium text-zinc-500"
-                >
-                  Titel (bearbeiten)
-                </label>
-                <input
-                  id={`research-prompt-title-${earningsStep.id}`}
-                  type="text"
-                  value={earningsStep.title}
-                  onChange={(e) => updateStep(earningsStep.id, { title: e.target.value })}
-                  className="w-full rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm text-white outline-none focus:ring-2 focus:ring-zinc-600"
-                  autoComplete="off"
-                />
-              </div>
-              <div>
-                <label
-                  htmlFor={`research-prompt-body-${earningsStep.id}`}
-                  className="mb-1 block text-xs font-medium text-zinc-500"
-                >
-                  Prompt-Text (bearbeiten)
-                </label>
-                <textarea
-                  id={`research-prompt-body-${earningsStep.id}`}
-                  value={earningsStep.text}
-                  onChange={(e) => updateStep(earningsStep.id, { text: e.target.value })}
-                  className="min-h-[14rem] w-full rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2.5 text-sm leading-relaxed text-zinc-200 outline-none focus:ring-2 focus:ring-zinc-600"
-                  spellCheck={false}
-                />
-              </div>
-            </div>
+            </CollapsibleAnimatedBody>
           </div>
         ) : null}
 
         {earningsCallStep ? (
-          <div className="mt-3 overflow-hidden rounded-xl border border-zinc-800/90 bg-zinc-950/30 p-4">
-            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-zinc-800/60 pb-3">
-              <h3 className="text-sm font-medium text-white">Earnings Call (Transkript)</h3>
-              <div className="flex flex-wrap items-center justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={() => void copyStepText(earningsCallStep)}
-                  className="rounded-lg bg-teal-700 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-teal-600"
-                >
-                  Kopieren
-                </button>
-                <button
-                  type="button"
-                  disabled
-                  title="Dieser Standard-Prompt kann nicht gelöscht werden."
-                  className="cursor-not-allowed rounded-lg border border-zinc-800 bg-zinc-900/80 px-3 py-1.5 text-xs font-medium text-zinc-600"
-                >
-                  Löschen
-                </button>
-                <button
-                  type="button"
-                  onClick={() => resetStep(earningsCallStep.id)}
-                  className="rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-1.5 text-xs font-medium text-zinc-300 transition hover:bg-zinc-800"
-                >
-                  Zurücksetzen
-                </button>
+          <div className="mt-3 overflow-hidden rounded-xl border border-zinc-800/90 bg-zinc-950/30">
+            <button
+              type="button"
+              onClick={() => setEarningsCallOpen((v) => !v)}
+              className="group flex w-full items-center justify-between gap-3 px-4 py-3 text-left text-sm font-medium text-white transition hover:bg-zinc-900/60"
+              aria-expanded={earningsCallOpen}
+            >
+              <span>Earnings Call (Transkript)</span>
+              <CollapsibleRowHeaderEnd open={earningsCallOpen} labels={LABEL_ZUKLAPPEN} size="sm" />
+            </button>
+            <CollapsibleAnimatedBody open={earningsCallOpen} className="border-t border-zinc-800/90">
+              <div className="space-y-3 p-4">
+                <div className="flex flex-wrap items-center justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => void copyStepText(earningsCallStep)}
+                    className="rounded-lg bg-teal-700 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-teal-600"
+                  >
+                    Kopieren
+                  </button>
+                  <button
+                    type="button"
+                    disabled
+                    title="Dieser Standard-Prompt kann nicht gelöscht werden."
+                    className="cursor-not-allowed rounded-lg border border-zinc-800 bg-zinc-900/80 px-3 py-1.5 text-xs font-medium text-zinc-600"
+                  >
+                    Löschen
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => resetStep(earningsCallStep.id)}
+                    className="rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-1.5 text-xs font-medium text-zinc-300 transition hover:bg-zinc-800"
+                  >
+                    Zurücksetzen
+                  </button>
+                </div>
+                <div className="space-y-3">
+                  <div>
+                    <label
+                      htmlFor={`research-prompt-title-${earningsCallStep.id}`}
+                      className="mb-1 block text-xs font-medium text-zinc-500"
+                    >
+                      Titel (bearbeiten)
+                    </label>
+                    <input
+                      id={`research-prompt-title-${earningsCallStep.id}`}
+                      type="text"
+                      value={earningsCallStep.title}
+                      onChange={(e) => updateStep(earningsCallStep.id, { title: e.target.value })}
+                      className="w-full rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm text-white outline-none focus:ring-2 focus:ring-zinc-600"
+                      autoComplete="off"
+                    />
+                  </div>
+                  <div>
+                    <label
+                      htmlFor={`research-prompt-body-${earningsCallStep.id}`}
+                      className="mb-1 block text-xs font-medium text-zinc-500"
+                    >
+                      Prompt-Text (bearbeiten)
+                    </label>
+                    <textarea
+                      id={`research-prompt-body-${earningsCallStep.id}`}
+                      value={earningsCallStep.text}
+                      onChange={(e) => updateStep(earningsCallStep.id, { text: e.target.value })}
+                      className="min-h-[14rem] w-full rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2.5 text-sm leading-relaxed text-zinc-200 outline-none focus:ring-2 focus:ring-zinc-600"
+                      spellCheck={false}
+                    />
+                  </div>
+                </div>
               </div>
-            </div>
-            <div className="mt-3 space-y-3">
-              <div>
-                <label
-                  htmlFor={`research-prompt-title-${earningsCallStep.id}`}
-                  className="mb-1 block text-xs font-medium text-zinc-500"
-                >
-                  Titel (bearbeiten)
-                </label>
-                <input
-                  id={`research-prompt-title-${earningsCallStep.id}`}
-                  type="text"
-                  value={earningsCallStep.title}
-                  onChange={(e) => updateStep(earningsCallStep.id, { title: e.target.value })}
-                  className="w-full rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm text-white outline-none focus:ring-2 focus:ring-zinc-600"
-                  autoComplete="off"
-                />
-              </div>
-              <div>
-                <label
-                  htmlFor={`research-prompt-body-${earningsCallStep.id}`}
-                  className="mb-1 block text-xs font-medium text-zinc-500"
-                >
-                  Prompt-Text (bearbeiten)
-                </label>
-                <textarea
-                  id={`research-prompt-body-${earningsCallStep.id}`}
-                  value={earningsCallStep.text}
-                  onChange={(e) => updateStep(earningsCallStep.id, { text: e.target.value })}
-                  className="min-h-[14rem] w-full rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2.5 text-sm leading-relaxed text-zinc-200 outline-none focus:ring-2 focus:ring-zinc-600"
-                  spellCheck={false}
-                />
-              </div>
-            </div>
+            </CollapsibleAnimatedBody>
           </div>
         ) : null}
       </CollapsibleAnimatedBody>
