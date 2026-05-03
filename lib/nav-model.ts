@@ -37,3 +37,32 @@ export function linkActive(pathname: string, href: string) {
   if (href === '/') return pathname === '/'
   return pathname === href || pathname.startsWith(`${href}/`)
 }
+
+/** Längster bekannter Nav-Href zur Route (Unterseiten werden der Tab-Route zugeordnet). */
+export function navHrefForPathname(pathname: string, orderedHrefs: readonly string[]): string | null {
+  let best: string | null = null
+  let bestLen = -1
+  for (const href of orderedHrefs) {
+    if (!linkActive(pathname, href)) continue
+    if (href.length > bestLen) {
+      best = href
+      bestLen = href.length
+    }
+  }
+  return best
+}
+
+/** Nachbar in der aktuellen Reihenfolge; bei unbekannter Route oder Rand `null`. */
+export function adjacentNavHref(
+  pathname: string,
+  orderedHrefs: readonly string[],
+  direction: 'next' | 'prev',
+): string | null {
+  if (orderedHrefs.length === 0) return null
+  const current = navHrefForPathname(pathname, orderedHrefs)
+  if (!current) return null
+  const i = orderedHrefs.indexOf(current)
+  if (i < 0) return null
+  if (direction === 'next') return orderedHrefs[i + 1] ?? null
+  return orderedHrefs[i - 1] ?? null
+}

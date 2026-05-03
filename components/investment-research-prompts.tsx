@@ -15,7 +15,11 @@ type PromptStep = {
   text: string
 }
 
-const STORAGE_KEY = 'mein-haushalt.investments.research-prompts.v1'
+const STORAGE_KEY = 'mein-haushalt.investments.research-prompts.v2'
+/** Ältere Installationen ohne strukturierte Liste */
+const STORAGE_KEY_LEGACY = 'mein-haushalt.investments.research-prompts.v1'
+
+const DEFAULT_BY_ID = new Map<string, PromptStep>()
 
 const DEFAULT_STEPS: PromptStep[] = [
   {
@@ -340,20 +344,82 @@ Befehl: Analysiere jetzt die angehängten Dateien mit maximaler Detailtiefe und 
   },
 ]
 
-function parsePersistedPrompts(raw: string | null): PromptStep[] | null {
-  if (!raw) return null
-  try {
-    const parsed = JSON.parse(raw) as Array<Partial<PromptStep>>
-    if (!Array.isArray(parsed)) return null
-    const byId = new Map(parsed.map((p) => [String(p.id || ''), p]))
-    return DEFAULT_STEPS.map((step) => {
-      const candidate = byId.get(step.id)
-      const text = typeof candidate?.text === 'string' && candidate.text.trim().length > 0 ? candidate.text : step.text
-      return { ...step, text }
-    })
-  } catch {
-    return null
+for (const s of DEFAULT_STEPS) DEFAULT_BY_ID.set(s.id, s)
+
+type PersistFileV2 = { v: 2; steps: PromptStep[] }
+
+function migrateLegacyPromptArray(parsed: unknown[]): PromptStep[] {
+  const byId = new Map(
+    parsed.map((p) => [String((p as Partial<PromptStep>).id || ''), p as Partial<PromptStep>]),
+  )
+  return DEFAULT_STEPS.map((step) => {
+    const candidate = byId.get(step.id)
+    const text =
+      typeof candidate?.text === 'string' && candidate.text.trim().length > 0 ? candidate.text : step.text
+    const title =
+      typeof candidate?.title === 'string' && candidate.title.trim().length > 0
+        ? candidate.title.trim()
+        : step.title
+    return { ...step, title, text }
+  })
+}
+
+function clampPromptStep(row: unknown): PromptStep | null {
+  if (!row || typeof row !== 'object') return null
+  const o = row as Record<string, unknown>
+  const id = typeof o.id === 'string' ? o.id.trim() : ''
+  if (!id) return null
+  const def = DEFAULT_BY_ID.get(id)
+  const title =
+    typeof o.title === 'string' && o.title.trim().length > 0 ? o.title.trim() : def?.title ?? 'Neuer Prompt'
+  const text = typeof o.text === 'string' ? o.text : def?.text ?? ''
+  return { id, title, text }
+}
+
+function ensureDefaultEarnings(steps: PromptStep[]): PromptStep[] {
+  if (steps.some((s) => s.id === 'earningsanalyse')) return steps
+  const e = DEFAULT_BY_ID.get('earningsanalyse')
+  return e ? [...steps, { ...e }] : steps
+}
+
+/** Gespeicherte v2-Liste übernehmen (ohne gelöschte Einträge automatisch wieder einzufügen). */
+function normalizeV2Steps(rows: unknown[]): PromptStep[] {
+  const seen = new Set<string>()
+  const steps: PromptStep[] = []
+  for (const row of rows) {
+    const s = clampPromptStep(row)
+    if (!s || seen.has(s.id)) continue
+    seen.add(s.id)
+    steps.push(s)
   }
+  return ensureDefaultEarnings(steps)
+}
+
+function loadStepsFromStorage(): PromptStep[] {
+  try {
+    const rawPrimary = window.localStorage.getItem(STORAGE_KEY)
+    const rawLegacy = window.localStorage.getItem(STORAGE_KEY_LEGACY)
+    const raw = rawPrimary ?? rawLegacy
+    if (!raw) return [...DEFAULT_STEPS]
+    const parsed = JSON.parse(raw) as unknown
+    if (
+      parsed &&
+      typeof parsed === 'object' &&
+      !Array.isArray(parsed) &&
+      (parsed as PersistFileV2).v === 2 &&
+      Array.isArray((parsed as PersistFileV2).steps)
+    ) {
+      return normalizeV2Steps((parsed as PersistFileV2).steps)
+    }
+    if (Array.isArray(parsed)) return migrateLegacyPromptArray(parsed)
+  } catch {
+    /* ignore */
+  }
+  return [...DEFAULT_STEPS]
+}
+
+function persistSteps(steps: PromptStep[]) {
+  window.localStorage.setItem(STORAGE_KEY, JSON.stringify({ v: 2, steps } satisfies PersistFileV2))
 }
 
 export function InvestmentResearchPrompts({ embedded = false }: { embedded?: boolean }) {
@@ -365,14 +431,20 @@ export function InvestmentResearchPrompts({ embedded = false }: { embedded?: boo
   const [earningsOpen, setEarningsOpen] = useState(false)
 
   useEffect(() => {
-    const next = parsePersistedPrompts(window.localStorage.getItem(STORAGE_KEY))
-    if (next) setSteps(next)
-    setLoaded(true)
+    let cancelled = false
+    void Promise.resolve().then(() => {
+      if (cancelled) return
+      setSteps(loadStepsFromStorage())
+      setLoaded(true)
+    })
+    return () => {
+      cancelled = true
+    }
   }, [])
 
   useEffect(() => {
     if (!loaded) return
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(steps))
+    persistSteps(steps)
   }, [steps, loaded])
 
   const analysisSteps = useMemo(() => steps.filter((s) => s.id !== 'earningsanalyse'), [steps])
@@ -389,14 +461,48 @@ export function InvestmentResearchPrompts({ embedded = false }: { embedded?: boo
   }
 
   function resetStep(stepId: string) {
-    const original = DEFAULT_STEPS.find((s) => s.id === stepId)
+    const original = DEFAULT_BY_ID.get(stepId)
     if (!original) return
-    setSteps((prev) => prev.map((s) => (s.id === stepId ? { ...s, text: original.text } : s)))
+    setSteps((prev) => prev.map((s) => (s.id === stepId ? { ...original } : s)))
     toast.success('Prompt zurückgesetzt')
+  }
+
+  function restoreAllDefaults() {
+    if (
+      !window.confirm(
+        'Alle Prompts auf die Standardversion zurücksetzen? Eigene Prompts und Änderungen gehen verloren.',
+      )
+    )
+      return
+    setSteps([...DEFAULT_STEPS])
+    toast.success('Alle Standard-Prompts wiederhergestellt')
+  }
+
+  function addPrompt() {
+    const id = `custom-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 9)}`
+    const earIdx = steps.findIndex((s) => s.id === 'earningsanalyse')
+    const insertAt = earIdx >= 0 ? earIdx : steps.length
+    const next: PromptStep = { id, title: 'Neuer Prompt', text: '' }
+    setSteps((prev) => [...prev.slice(0, insertAt), next, ...prev.slice(insertAt)])
+    setOpenId(id)
+    setSectionOpen(true)
+    toast.success('Prompt hinzugefügt')
+  }
+
+  function deletePrompt(stepId: string) {
+    if (stepId === 'earningsanalyse') return
+    if (!window.confirm('Diesen Prompt wirklich löschen?')) return
+    setSteps((prev) => prev.filter((s) => s.id !== stepId))
+    setOpenId((prev) => (prev === stepId ? null : prev))
+    toast.success('Prompt gelöscht')
   }
 
   function toggleOpen(stepId: string) {
     setOpenId((prev) => (prev === stepId ? null : stepId))
+  }
+
+  function updateStep(stepId: string, patch: Partial<Pick<PromptStep, 'title' | 'text'>>) {
+    setSteps((prev) => prev.map((s) => (s.id === stepId ? { ...s, ...patch } : s)))
   }
 
   const shell = embedded ? 'space-y-3' : 'rounded-2xl border border-zinc-800 bg-zinc-900/70 p-4'
@@ -412,6 +518,13 @@ export function InvestmentResearchPrompts({ embedded = false }: { embedded?: boo
           <p className="mt-1 text-sm text-zinc-400">
             {analysisSteps.length} Schritte · {totalChars.toLocaleString('de-DE')} Zeichen
           </p>
+          <button
+            type="button"
+            onClick={restoreAllDefaults}
+            className="mt-2 text-xs font-medium text-zinc-500 underline-offset-2 transition hover:text-teal-400 hover:underline"
+          >
+            Alle Standard-Prompts wiederherstellen
+          </button>
         </div>
         <CollapsiblePillButton
           open={promptsPanelOpen}
@@ -430,7 +543,7 @@ export function InvestmentResearchPrompts({ embedded = false }: { embedded?: boo
             className="group flex w-full items-center justify-between gap-3 px-4 py-3 text-left text-sm font-medium text-white transition hover:bg-zinc-900/60"
             aria-expanded={sectionOpen}
           >
-            <span>Unternehmensanalyse (8 Schritte)</span>
+            <span>Unternehmensanalyse ({analysisSteps.length} Schritte)</span>
             <CollapsibleRowHeaderEnd open={sectionOpen} labels={LABEL_ZUKLAPPEN} size="sm" />
           </button>
           {!sectionOpen ? null : (
@@ -449,13 +562,22 @@ export function InvestmentResearchPrompts({ embedded = false }: { embedded?: boo
                         <h3 className="min-w-0 text-sm font-medium text-white">{step.title}</h3>
                         <CollapsibleRowHeaderEnd open={isOpen} labels={LABEL_ZUKLAPPEN} size="sm" />
                       </button>
-                      <div className="flex items-center gap-2">
+                      <div className="flex flex-wrap items-center gap-2">
+                        {DEFAULT_BY_ID.has(step.id) ? (
+                          <button
+                            type="button"
+                            onClick={() => resetStep(step.id)}
+                            className="rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-1.5 text-xs font-medium text-zinc-300 transition hover:bg-zinc-800"
+                          >
+                            Zurücksetzen
+                          </button>
+                        ) : null}
                         <button
                           type="button"
-                          onClick={() => resetStep(step.id)}
-                          className="rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-1.5 text-xs font-medium text-zinc-300 transition hover:bg-zinc-800"
+                          onClick={() => deletePrompt(step.id)}
+                          className="rounded-lg border border-rose-900/80 bg-zinc-900 px-3 py-1.5 text-xs font-medium text-rose-300 transition hover:bg-rose-950/50"
                         >
-                          Zurücksetzen
+                          Löschen
                         </button>
                         <button
                           type="button"
@@ -467,19 +589,44 @@ export function InvestmentResearchPrompts({ embedded = false }: { embedded?: boo
                       </div>
                     </div>
                     {!isOpen ? null : (
-                      <textarea
-                        value={step.text}
-                        onChange={(e) => {
-                          const value = e.target.value
-                          setSteps((prev) => prev.map((s) => (s.id === step.id ? { ...s, text: value } : s)))
-                        }}
-                        className="mt-3 min-h-[14rem] w-full rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2.5 text-sm leading-relaxed text-zinc-200 outline-none focus:ring-2 focus:ring-zinc-600"
-                        spellCheck={false}
-                      />
+                      <div className="mt-3 space-y-3">
+                        <div>
+                          <label htmlFor={`research-prompt-title-${step.id}`} className="mb-1 block text-xs font-medium text-zinc-500">
+                            Titel
+                          </label>
+                          <input
+                            id={`research-prompt-title-${step.id}`}
+                            type="text"
+                            value={step.title}
+                            onChange={(e) => updateStep(step.id, { title: e.target.value })}
+                            className="w-full rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm text-white outline-none focus:ring-2 focus:ring-zinc-600"
+                            autoComplete="off"
+                          />
+                        </div>
+                        <div>
+                          <label htmlFor={`research-prompt-body-${step.id}`} className="mb-1 block text-xs font-medium text-zinc-500">
+                            Prompt-Text
+                          </label>
+                          <textarea
+                            id={`research-prompt-body-${step.id}`}
+                            value={step.text}
+                            onChange={(e) => updateStep(step.id, { text: e.target.value })}
+                            className="min-h-[14rem] w-full rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2.5 text-sm leading-relaxed text-zinc-200 outline-none focus:ring-2 focus:ring-zinc-600"
+                            spellCheck={false}
+                          />
+                        </div>
+                      </div>
                     )}
                   </article>
                 )
               })}
+              <button
+                type="button"
+                onClick={addPrompt}
+                className="w-full rounded-xl border border-dashed border-zinc-700 bg-zinc-950/40 px-4 py-3 text-sm font-medium text-zinc-400 transition hover:border-teal-700/55 hover:bg-zinc-900/50 hover:text-teal-200"
+              >
+                + Prompt hinzufügen
+              </button>
             </div>
           )}
         </div>
@@ -513,15 +660,39 @@ export function InvestmentResearchPrompts({ embedded = false }: { embedded?: boo
                     Kopieren
                   </button>
                 </div>
-                <textarea
-                  value={earningsStep.text}
-                  onChange={(e) => {
-                    const value = e.target.value
-                    setSteps((prev) => prev.map((s) => (s.id === earningsStep.id ? { ...s, text: value } : s)))
-                  }}
-                  className="min-h-[14rem] w-full rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2.5 text-sm leading-relaxed text-zinc-200 outline-none focus:ring-2 focus:ring-zinc-600"
-                  spellCheck={false}
-                />
+                <div className="space-y-3">
+                  <div>
+                    <label
+                      htmlFor={`research-prompt-title-${earningsStep.id}`}
+                      className="mb-1 block text-xs font-medium text-zinc-500"
+                    >
+                      Titel
+                    </label>
+                    <input
+                      id={`research-prompt-title-${earningsStep.id}`}
+                      type="text"
+                      value={earningsStep.title}
+                      onChange={(e) => updateStep(earningsStep.id, { title: e.target.value })}
+                      className="w-full rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm text-white outline-none focus:ring-2 focus:ring-zinc-600"
+                      autoComplete="off"
+                    />
+                  </div>
+                  <div>
+                    <label
+                      htmlFor={`research-prompt-body-${earningsStep.id}`}
+                      className="mb-1 block text-xs font-medium text-zinc-500"
+                    >
+                      Prompt-Text
+                    </label>
+                    <textarea
+                      id={`research-prompt-body-${earningsStep.id}`}
+                      value={earningsStep.text}
+                      onChange={(e) => updateStep(earningsStep.id, { text: e.target.value })}
+                      className="min-h-[14rem] w-full rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2.5 text-sm leading-relaxed text-zinc-200 outline-none focus:ring-2 focus:ring-zinc-600"
+                      spellCheck={false}
+                    />
+                  </div>
+                </div>
               </div>
             )}
           </div>

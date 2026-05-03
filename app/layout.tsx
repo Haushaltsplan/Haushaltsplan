@@ -4,6 +4,7 @@ import Link from "next/link";
 import { Inter } from "next/font/google";
 import { SiteNav } from "@/components/site-nav";
 import { SiteSidebar } from "@/components/site-sidebar";
+import { MobileSwipePageNav } from "@/components/mobile-swipe-page-nav";
 import "./globals.css";
 import { Providers } from "./providers";
 import { Toaster } from "react-hot-toast";
@@ -91,7 +92,7 @@ export default function RootLayout({
 
             <Providers>
               <main className="min-h-0 w-full min-w-0 flex-1 overflow-y-auto px-3 py-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] sm:px-6 sm:py-6 md:px-8 md:py-8">
-                {children}
+                <MobileSwipePageNav>{children}</MobileSwipePageNav>
               </main>
             </Providers>
           </div>
