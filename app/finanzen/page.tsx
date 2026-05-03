@@ -6,7 +6,7 @@ import { buildFinanceCoachSnapshot, useFinanceCoachSnapshot } from '@/components
 import { KategorieMark } from '@/lib/kategorie-icon'
 import { berechneAusgabenMonatsFeedback } from '@/lib/finanzen-ausgaben-feedback'
 import toast from 'react-hot-toast'
-import { PageChrome, PageHero, PageSection, PageSectionPanel } from '@/components/page-shell'
+import { PageChrome, PageSection, PageSectionPanel } from '@/components/page-shell'
 
 /** Monatlich am 1. des Monats (Ausgaben) — Import legt nur fehlende Bezeichnungen an. */
 const VORGABE_DAUERAUFTRAeGE_MONATSANFANG: Array<{
@@ -1063,13 +1063,6 @@ export default function FinanzenPage() {
 
   return (
     <PageChrome className="max-w-full" density="compact">
-      <PageHero
-        eyebrow="Finanzen"
-        title="Einnahmen & Ausgaben"
-        description="Monatsbilanz, Buchungen, Belege und Daueraufträge im Überblick."
-        density="compact"
-      />
-
       <PageSection titleId="finanzen-monatsuebersicht" title="Monatsübersicht" density="compact">
         <PageSectionPanel density="compact">
           <div className="flex flex-col justify-between gap-3 text-center sm:flex-row sm:items-stretch sm:gap-4 lg:text-left">

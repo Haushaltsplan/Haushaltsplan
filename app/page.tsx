@@ -1,5 +1,5 @@
 import type { Metadata } from 'next'
-import { PageChrome, PageHero } from '@/components/page-shell'
+import { PageChrome, PageSection, PageSectionPanel } from '@/components/page-shell'
 import { RegionWetterAnzeige } from '@/components/region-wetter-anzeige'
 import { ladeAktienPortfolioNews } from '@/lib/aktien-portfolio-news'
 import {
@@ -81,31 +81,31 @@ export default async function StartUebersichtPage({ searchParams }: StartPagePro
   }
 
   return (
-    <PageChrome>
-      <PageHero
-        eyebrow="Start"
-        title={
-          <>
-            {REGION_HAARBACH.name}
-            <span className="ml-2 text-base font-semibold text-zinc-400 sm:text-lg">{REGION_HAARBACH.kreis}</span>
-          </>
-        }
-      />
+    <PageChrome density="compact">
+      <PageSection titleId="start-region-heading" title="Region & Wetter" density="compact">
+        <PageSectionPanel density="compact">
+          <p className="mb-3 text-xs text-zinc-500">
+            <span className="font-semibold text-zinc-300">{REGION_HAARBACH.name}</span>
+            <span className="mx-1.5 text-zinc-600">·</span>
+            {REGION_HAARBACH.kreis}
+          </p>
+          <RegionWetterAnzeige
+            wetter={wetter}
+            aktualisiertAnzeige={formatUhr(wetter.aktualisiert)}
+            ortId={ortId}
+            ortName={ortWetter.name}
+          />
+        </PageSectionPanel>
+      </PageSection>
 
-      <RegionWetterAnzeige
-        wetter={wetter}
-        aktualisiertAnzeige={formatUhr(wetter.aktualisiert)}
-        ortId={ortId}
-        ortName={ortWetter.name}
-      />
-
-      <section className="overflow-hidden rounded-2xl border border-zinc-700/35 bg-zinc-950/50 shadow-xl shadow-black/25 ring-1 ring-white/[0.04] backdrop-blur-xl">
-        <details className="app-disclosure group border-t border-zinc-800/70 bg-zinc-950/25">
-          <summary className="flex cursor-pointer list-none select-none items-center justify-between gap-3 px-4 py-4 text-left outline-offset-2 transition-colors hover:bg-zinc-800/35 focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-500/50 sm:px-8">
+      <PageSection titleId="start-news-heading" title="News & Sport" density="compact">
+        <PageSectionPanel density="compact">
+        <details className="app-disclosure group bg-zinc-950/20">
+          <summary className="flex cursor-pointer list-none select-none items-center justify-between gap-3 rounded-lg px-3 py-2.5 text-left outline-offset-2 transition-colors hover:bg-zinc-800/35 focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-500/50 sm:px-4">
             <p className="min-w-0 pr-1 text-[11px] font-black uppercase tracking-widest text-amber-200/80">News aus der Umgebung</p>
             <DetailsDisclosureTriggerEnd tone="amber" />
           </summary>
-          <div className="px-4 pb-4 sm:px-8">
+          <div className="px-3 pb-3 pt-1 sm:px-4">
             {news.fehler ? <p className="mt-1 text-xs text-amber-200/60">{news.fehler}</p> : null}
             {news.artikel.length === 0 && !news.fehler ? <p className="mt-2 text-sm text-zinc-500">Keine Meldungen.</p> : null}
             <ul className="mt-3 space-y-2.5">
@@ -136,15 +136,15 @@ export default async function StartUebersichtPage({ searchParams }: StartPagePro
             </ul>
           </div>
         </details>
-      </section>
+        </PageSectionPanel>
 
-      <section className="overflow-hidden rounded-2xl border border-zinc-700/35 bg-zinc-950/50 shadow-xl shadow-black/25 ring-1 ring-white/[0.04] backdrop-blur-xl">
-        <details className="app-disclosure group border-t border-zinc-800/70 bg-zinc-950/25">
-          <summary className="flex cursor-pointer list-none select-none items-center justify-between gap-3 px-4 py-4 text-left outline-offset-2 transition-colors hover:bg-zinc-800/35 focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-500/50 sm:px-8">
+        <PageSectionPanel density="compact">
+        <details className="app-disclosure group bg-zinc-950/20">
+          <summary className="flex cursor-pointer list-none select-none items-center justify-between gap-3 rounded-lg px-3 py-2.5 text-left outline-offset-2 transition-colors hover:bg-zinc-800/35 focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-500/50 sm:px-4">
             <p className="min-w-0 pr-1 text-[11px] font-black uppercase tracking-widest text-emerald-200/80">News zu meinen Investments</p>
             <DetailsDisclosureTriggerEnd tone="emerald" />
           </summary>
-          <div className="px-4 pb-4 sm:px-8">
+          <div className="px-3 pb-3 pt-1 sm:px-4">
             {portfolioNews.fehler ? <p className="mt-1 text-xs text-amber-200/60">{portfolioNews.fehler}</p> : null}
             {portfolioNews.artikel.length === 0 && !portfolioNews.fehler ? (
               <p className="mt-2 text-sm text-zinc-500">Keine Meldungen.</p>
@@ -177,15 +177,15 @@ export default async function StartUebersichtPage({ searchParams }: StartPagePro
             </ul>
           </div>
         </details>
-      </section>
+        </PageSectionPanel>
 
-      <section className="overflow-hidden rounded-2xl border border-zinc-700/35 bg-zinc-950/50 shadow-xl shadow-black/25 ring-1 ring-white/[0.04] backdrop-blur-xl">
-        <details className="app-disclosure group border-t border-zinc-800/70 bg-zinc-950/25">
-          <summary className="flex cursor-pointer list-none select-none items-center justify-between gap-3 px-4 py-4 text-left outline-offset-2 transition-colors hover:bg-zinc-800/35 focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-500/50 sm:px-8">
+        <PageSectionPanel density="compact">
+        <details className="app-disclosure group bg-zinc-950/20">
+          <summary className="flex cursor-pointer list-none select-none items-center justify-between gap-3 rounded-lg px-3 py-2.5 text-left outline-offset-2 transition-colors hover:bg-zinc-800/35 focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-500/50 sm:px-4">
             <p className="min-w-0 pr-1 text-[11px] font-black uppercase tracking-widest text-orange-200/80">News zum Profirennradsport</p>
             <DetailsDisclosureTriggerEnd tone="orange" />
           </summary>
-          <div className="px-4 pb-4 sm:px-8">
+          <div className="px-3 pb-3 pt-1 sm:px-4">
             {rennradNews.fehler ? <p className="mt-1 text-xs text-amber-200/60">{rennradNews.fehler}</p> : null}
             {rennradNews.artikel.length === 0 && !rennradNews.fehler ? (
               <p className="mt-2 text-sm text-zinc-500">Keine Meldungen.</p>
@@ -218,15 +218,15 @@ export default async function StartUebersichtPage({ searchParams }: StartPagePro
             </ul>
           </div>
         </details>
-      </section>
+        </PageSectionPanel>
 
-      <section className="overflow-hidden rounded-2xl border border-zinc-700/35 bg-zinc-950/50 shadow-xl shadow-black/25 ring-1 ring-white/[0.04] backdrop-blur-xl">
-        <details className="app-disclosure group border-t border-zinc-800/70 bg-zinc-950/25">
-          <summary className="flex cursor-pointer list-none select-none items-center justify-between gap-3 px-4 py-4 text-left outline-offset-2 transition-colors hover:bg-zinc-800/35 focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-500/50 sm:px-8">
+        <PageSectionPanel density="compact">
+        <details className="app-disclosure group bg-zinc-950/20">
+          <summary className="flex cursor-pointer list-none select-none items-center justify-between gap-3 rounded-lg px-3 py-2.5 text-left outline-offset-2 transition-colors hover:bg-zinc-800/35 focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-500/50 sm:px-4">
             <p className="min-w-0 pr-1 text-[11px] font-black uppercase tracking-widest text-sky-200/80">News zum Profi Wintersport</p>
             <DetailsDisclosureTriggerEnd tone="sky" />
           </summary>
-          <div className="px-4 pb-4 sm:px-8">
+          <div className="px-3 pb-3 pt-1 sm:px-4">
             {winterNews.fehler ? <p className="mt-1 text-xs text-amber-200/60">{winterNews.fehler}</p> : null}
             {winterNews.artikel.length === 0 && !winterNews.fehler ? (
               <p className="mt-2 text-sm text-zinc-500">Keine Meldungen.</p>
@@ -259,7 +259,8 @@ export default async function StartUebersichtPage({ searchParams }: StartPagePro
             </ul>
           </div>
         </details>
-      </section>
+        </PageSectionPanel>
+      </PageSection>
     </PageChrome>
   )
 }
