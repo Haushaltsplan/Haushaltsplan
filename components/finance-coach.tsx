@@ -12,6 +12,7 @@ import {
 } from 'react'
 import toast from 'react-hot-toast'
 import { appModalBackdropClassName, appModalPanelCoachClassName } from '@/lib/app-modal-overlay'
+import { CoachFormattedReply } from '@/components/coach-formatted-reply'
 import { KiBrandChip, KiSparklesIcon } from '@/components/ki-brand'
 import { KI_ASSISTANT_BUBBLE } from '@/lib/ki-ui'
 
@@ -300,11 +301,15 @@ export function FinanceCoachProvider({ children }: { children: ReactNode }) {
                   key={i}
                   className={
                     m.role === 'user'
-                      ? 'ml-6 rounded-xl border border-emerald-800/50 bg-emerald-950/40 px-3 py-2 text-sm leading-relaxed text-emerald-100'
-                      : `mr-4 px-3 py-2.5 text-sm leading-relaxed ${KI_ASSISTANT_BUBBLE}`
+                      ? 'ml-6 min-w-0 max-w-[min(100%,calc(100%-1.5rem))] rounded-xl border border-emerald-800/50 bg-emerald-950/40 px-3 py-2.5'
+                      : `mr-4 min-w-0 max-w-[min(100%,calc(100%-1rem))] px-3 py-3 text-sm ${KI_ASSISTANT_BUBBLE}`
                   }
                 >
-                  {m.content}
+                  {m.role === 'user' ? (
+                    <CoachFormattedReply content={m.content} accent="emerald" />
+                  ) : (
+                    <CoachFormattedReply content={m.content} accent="violet" />
+                  )}
                 </div>
               ))}
               {loading && (

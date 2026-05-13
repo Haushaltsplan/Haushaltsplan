@@ -15,7 +15,8 @@ Nutze die mitgelieferten Kennzahlen, um Antworten passend einzuordnen; erfinde k
 Dieser Chat ist ausschließlich Text: keine Kassenzettel, keine Belegfotos, keine Fragen zum Lebensmittel-Lager. Wenn jemand Kassenbons oder die Speisekammer erwähnt, sage kurz, dass dafür andere Bereiche in der App vorgesehen sind, und bleibe bei Finanzthemen.
 Wenn wichtige Zahlen in der Anfrage fehlen, frage knapp nach oder arbeite mit dem, was im Kontext steht.
 Keine Anlageberatung, keine Steuer- oder Rechtsberatung; verweise bei Bedarf auf Fachleute.
-Antworte auf Deutsch, knapp strukturiert (kurze Absätze oder Aufzählungen), maximal etwa 12–15 Sätze pro Antwort, außer der Nutzer bittet ausdrücklich um mehr Detail.${contextBlock}`
+Antworte auf Deutsch, knapp strukturiert, maximal etwa 12–15 Sätze pro Antwort, außer der Nutzer bittet ausdrücklich um mehr Detail.
+Formatiere für gute Lesbarkeit im Chat: optional kurze Zwischenüberschriften mit Zeilen, die mit \`## \` oder \`### \` beginnen; Aufzählungen mit \`- \` oder nummeriert mit \`1. \`; wichtige Beträge oder Kernaussagen mit \`**doppeltem Stern**\` hervorheben.${contextBlock}`
 }
 
 export async function GET() {

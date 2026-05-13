@@ -1,6 +1,6 @@
 'use client'
 
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import toast from 'react-hot-toast'
 import { CollapsibleRowHeaderEnd, LABEL_EINKLAPPEN } from '@/components/collapsible-ui'
 import {
@@ -13,6 +13,7 @@ import { appModalBackdropClassName, appModalPanelClassName } from '@/lib/app-mod
 import { buildMehrKochanleitungPrompt } from '@/lib/rezept-kochanleitung-prompt'
 import { normalisiereRezeptKategorie } from '@/lib/lager-rezept-katalog-kategorie'
 import { supabase } from '@/lib/supabase'
+import { CoachFormattedReply, formatInlineMarkdown } from '@/components/coach-formatted-reply'
 import { KiBrandChip } from '@/components/ki-brand'
 import { KI_ASSISTANT_BUBBLE, KI_INNER_WELL, KI_PANEL_OUTER } from '@/lib/ki-ui'
 import {
@@ -54,104 +55,7 @@ type Props = {
   onKatalogGeaendert?: () => void
 }
 
-/** `**fett**` und schlichte Markdown-Zeilen für übersichtliche KI-Antworten. */
-function formatInlineMarkdown(text: string): ReactNode[] {
-  const parts = text.split(/(\*\*[^*]+\*\*)/g)
-  return parts.map((p, i) => {
-    if (p.startsWith('**') && p.endsWith('**') && p.length > 4) {
-      return (
-        <strong key={i} className="font-semibold text-slate-100">
-          {p.slice(2, -2)}
-        </strong>
-      )
-    }
-    return <Fragment key={i}>{p}</Fragment>
-  })
-}
-
-function RezeptCoachFormattedReply({ content }: { content: string }) {
-  const raw = content.replace(/\r\n/g, '\n').trimEnd()
-  const lines = raw.split('\n')
-  const out: ReactNode[] = []
-  let key = 0
-
-  const isHeading = (s: string) => /^#{1,3}\s+/.test(s.trim())
-  const isBullet = (s: string) => /^[-*•]\s+/.test(s.trim())
-  const isNumbered = (s: string) => /^\d{1,2}\.\s+/.test(s.trim())
-
-  let i = 0
-  while (i < lines.length) {
-    const line = lines[i] ?? ''
-    const t = line.trim()
-
-    if (!t) {
-      i++
-      continue
-    }
-
-    if (isHeading(t)) {
-      const level = (t.match(/^#+/)?.[0] ?? '#').length
-      const text = t.replace(/^#+\s+/, '')
-      const cls =
-        level <= 2
-          ? 'text-[15px] font-bold tracking-tight text-teal-200'
-          : 'text-[13px] font-bold tracking-tight text-teal-300/95'
-      out.push(
-        <h4 key={key++} className={`${cls} mt-1 first:mt-0`}>
-          {formatInlineMarkdown(text)}
-        </h4>,
-      )
-      i++
-      continue
-    }
-
-    if (isBullet(t) || isNumbered(t)) {
-      const ordered = isNumbered(t)
-      const items: string[] = []
-      while (i < lines.length) {
-        const lt = (lines[i] ?? '').trim()
-        if (!lt) break
-        if (ordered && !isNumbered(lt)) break
-        if (!ordered && !isBullet(lt)) break
-        const stripped = lt.replace(/^[-*•]\s+/, '').replace(/^\d{1,2}\.\s+/, '')
-        items.push(stripped)
-        i++
-      }
-      const ListTag = ordered ? 'ol' : 'ul'
-      out.push(
-        <ListTag
-          key={key++}
-          className={`list-outside space-y-1.5 pl-4 text-[13px] leading-snug text-slate-300 ${ordered ? 'list-decimal' : 'list-disc'}`}
-        >
-          {items.map((item, j) => (
-            <li key={j} className="pl-1">
-              {formatInlineMarkdown(item)}
-            </li>
-          ))}
-        </ListTag>,
-      )
-      continue
-    }
-
-    const para: string[] = []
-    while (i < lines.length) {
-      const lt = (lines[i] ?? '').trim()
-      if (!lt) break
-      if (isHeading(lt) || isBullet(lt) || isNumbered(lt)) break
-      para.push(lines[i]!.trim())
-      i++
-    }
-    if (para.length) {
-      out.push(
-        <p key={key++} className="text-[13px] leading-relaxed text-slate-300">
-          {formatInlineMarkdown(para.join(' '))}
-        </p>,
-      )
-    }
-  }
-
-  return <div className="space-y-2.5">{out}</div>
-}
+const MD_STRONG = 'font-semibold text-slate-100'
 
 function bestandFuerProdukt(artikel: LagerRezeptArtikelZeile[], produktId: string | null | undefined): number {
   if (!produktId) return 0
@@ -196,7 +100,7 @@ export function RezeptStructuredCards({
   return (
     <div className="space-y-4">
       {data.einleitung?.trim() ? (
-        <p className="text-[13px] leading-relaxed text-slate-300">{formatInlineMarkdown(data.einleitung.trim())}</p>
+        <p className="text-[13px] leading-relaxed text-slate-300">{formatInlineMarkdown(data.einleitung.trim(), MD_STRONG)}</p>
       ) : null}
       {(data.rezepte || []).map((g, idx) => {
         const actionKey = `${g.titel}#${idx}`
@@ -348,7 +252,7 @@ export function RezeptStructuredCards({
                 <ol className="mt-1.5 list-outside list-decimal space-y-3 pl-5 text-[14px] leading-relaxed text-slate-200 marker:font-bold marker:text-teal-400/90">
                   {anzeige.kochschritte.map((s, si) => (
                     <li key={si} className="border-l-2 border-teal-900/50 pl-3">
-                      {formatInlineMarkdown(s)}
+                      {formatInlineMarkdown(s, MD_STRONG)}
                     </li>
                   ))}
                 </ol>
@@ -723,7 +627,7 @@ export function LagerRezeptCoach({ artikel, onLagerAktualisiert, onKatalogGeaend
                           speichernKatalogKey={speichernKatalogKey}
                         />
                       ) : (
-                        <RezeptCoachFormattedReply content={m.content} />
+                        <CoachFormattedReply content={m.content} accent="teal" />
                       )}
                     </div>
                   </div>
