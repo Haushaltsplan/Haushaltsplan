@@ -8,6 +8,7 @@ import {
   pageSectionShellClass,
   pageSectionTitleClass,
 } from '@/components/page-shell'
+import { RennradHoehenprofil, type HoehenprofilPunkt } from '@/components/rennrad-hoehenprofil'
 import dynamic from 'next/dynamic'
 import { useCallback, useMemo, useState } from 'react'
 import toast from 'react-hot-toast'
@@ -25,7 +26,6 @@ const RennradRouteKarte = dynamic(
 )
 
 type Treffer = { lat: number; lng: number; display_name: string }
-type Wegtyp = 'belag_bevorzugt' | 'bundesstrasse_meiden' | 'beides'
 type RoutenModus = 'runde' | 'strecke'
 
 type RoutePreview = {
@@ -35,8 +35,12 @@ type RoutePreview = {
   ascentM: number | null
   bundesstrasseHits: number
   unpavedHints: number
+  stadtHits: number
+  autobahnHits: number
+  landstrasseHits: number
   coords: Array<{ lat: number; lng: number }>
   ortsfolge?: string[]
+  hoehenprofil?: HoehenprofilPunkt[] | null
 }
 
 export function RennradRoutenClient() {
@@ -53,7 +57,10 @@ export function RennradRoutenClient() {
   const [zielKm, setZielKm] = useState('100')
   const [zielHm, setZielHm] = useState('')
 
-  const [wegtyp, setWegtyp] = useState<Wegtyp>('beides')
+  const [optBundes, setOptBundes] = useState(false)
+  const [optBelag, setOptBelag] = useState(false)
+  const [optStadt, setOptStadt] = useState(false)
+  const [optLand, setOptLand] = useState(false)
 
   const [sucheBusy, setSucheBusy] = useState<'start' | 'ziel' | null>(null)
   const [planungBusy, setPlanungBusy] = useState(false)
@@ -150,7 +157,10 @@ export function RennradRoutenClient() {
           ziel: modus === 'strecke' && ziel ? ziel : undefined,
           zielKm: km,
           zielHm: hmPayload,
-          wegtyp,
+          bundesstrassenMeiden: optBundes,
+          nurBelagGeteert: optBelag,
+          staedteMeiden: optStadt,
+          landstrassenBevorzugen: optLand,
         }),
       })
       const data = (await res.json()) as {
@@ -182,7 +192,7 @@ export function RennradRoutenClient() {
     } finally {
       setPlanungBusy(false)
     }
-  }, [start, ziel, zielKm, zielHm, wegtyp, modus])
+  }, [start, ziel, zielKm, zielHm, modus, optBundes, optBelag, optStadt, optLand])
 
   const ladeGpx = useCallback(async () => {
     if (!aktiveRoute) {
@@ -228,11 +238,12 @@ export function RennradRoutenClient() {
         description={
           <>
             <strong className="font-semibold text-zinc-200">Rundkurs</strong>: Start, Ziel-Länge und optional HM — die
-            App schlägt Schleifen (Start → Wendepunkt → Start) vor.{' '}
+            App plant eine <strong className="font-semibold text-zinc-200">Dreiecksrunde</strong> (Start → Ecke A → Ecke
+            B → Start), damit du nicht dieselbe Strecke hin und zurück fährst.{' '}
             <strong className="font-semibold text-zinc-200">Strecke</strong>: zusätzlich Zielort — Route von Start zum
             Ziel mit Umwegen, damit die Gesamtlänge zu deiner Vorgabe passt. Karte mit OpenStreetMap, Streckenführung aus
-            OSRM-Schritten (Straßen- und Ortsnamen, soweit OSM sie liefert). Höhenmeter per OpenTopoData (Schätzung). GPX
-            für Garmin wie gewohnt.
+            OSRM-Schritten (Straßen- und Ortsnamen, soweit OSM sie liefert). Höhenprofil und HM per OpenTopoData
+            (Schätzung). Weg-Checkboxen steuern Filter per Namensheuristik. GPX für Garmin wie gewohnt.
           </>
         }
       />
@@ -312,17 +323,37 @@ export function RennradRoutenClient() {
             />
           </div>
 
-          <div className="mt-4 lg:max-w-md">
-            <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-slate-500">Wegtyp</label>
-            <select
-              value={wegtyp}
-              onChange={(e) => setWegtyp(e.target.value as Wegtyp)}
-              className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2.5 text-sm text-slate-200 outline-none focus:ring-2 focus:ring-rose-500/30 sm:w-auto"
-            >
-              <option value="belag_bevorzugt">Nur geteerte Straßen bevorzugen</option>
-              <option value="bundesstrasse_meiden">Bundesstraßen meiden</option>
-              <option value="beides">Geteert bevorzugen + Bundesstraßen meiden</option>
-            </select>
+          <div className="mt-6 max-w-xl">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Weg (Checkboxen)</p>
+            <p className="mt-1 text-xs text-slate-600">
+              Filter nutzen OSRM-/OSM-Schrittnamen — keine Garantie, aber Orientierung für die Auswahl.
+            </p>
+            <ul className="mt-3 space-y-2.5">
+              <WegCheckbox
+                checked={optBundes}
+                onChange={setOptBundes}
+                id="weg-bundes"
+                label="Bundesstraßen meiden"
+              />
+              <WegCheckbox
+                checked={optBelag}
+                onChange={setOptBelag}
+                id="weg-belag"
+                label="Nur geteerte / gepflasterte Straßen (unbefestigt meiden)"
+              />
+              <WegCheckbox
+                checked={optStadt}
+                onChange={setOptStadt}
+                id="weg-stadt"
+                label="Städte meiden (Innenstadt, Zentrum, Hbf, …)"
+              />
+              <WegCheckbox
+                checked={optLand}
+                onChange={setOptLand}
+                id="weg-land"
+                label="Landstraßen bevorzugen (Autobahn-/A-Strecken schlechter bewerten)"
+              />
+            </ul>
           </div>
 
           <div className="mt-6 flex flex-wrap items-center gap-3">
@@ -372,7 +403,8 @@ export function RennradRoutenClient() {
                         {r.distanceKm.toFixed(1)} km · {r.ascentM == null ? 'hm n/a' : `${r.ascentM} hm`}
                       </p>
                       <p className="mt-1 text-[11px] text-slate-500">
-                        Bundesstraßen: {r.bundesstrasseHits} · Unbefestigt-Hinweise: {r.unpavedHints}
+                        B-Straße: {r.bundesstrasseHits ?? 0} · unbefestigt: {r.unpavedHints ?? 0} · Stadt:{' '}
+                        {r.stadtHits ?? 0} · A/Autobahn: {r.autobahnHits ?? 0} · Land/Kreis: {r.landstrasseHits ?? 0}
                       </p>
                     </button>
                   )
@@ -382,6 +414,7 @@ export function RennradRoutenClient() {
                 <div className="overflow-hidden rounded-xl border border-slate-800/90 bg-slate-950/65">
                   <RennradRouteKarte key={aktiveRoute.id} coords={aktiveRoute.coords} />
                 </div>
+                <RennradHoehenprofil key={`${aktiveRoute.id}-prof`} profil={aktiveRoute.hoehenprofil} />
                 <StreckenfolgePanel ortsfolge={aktiveRoute.ortsfolge} />
               </div>
             </div>
@@ -391,6 +424,33 @@ export function RennradRoutenClient() {
         </div>
       </section>
     </PageChrome>
+  )
+}
+
+function WegCheckbox({
+  id,
+  label,
+  checked,
+  onChange,
+}: {
+  id: string
+  label: string
+  checked: boolean
+  onChange: (v: boolean) => void
+}) {
+  return (
+    <li className="flex items-start gap-3">
+      <input
+        id={id}
+        type="checkbox"
+        checked={checked}
+        onChange={(e) => onChange(e.target.checked)}
+        className="mt-1 h-4 w-4 shrink-0 rounded border-slate-600 bg-slate-950 text-rose-600 focus:ring-rose-500/40"
+      />
+      <label htmlFor={id} className="cursor-pointer text-sm leading-snug text-slate-300">
+        {label}
+      </label>
+    </li>
   )
 }
 

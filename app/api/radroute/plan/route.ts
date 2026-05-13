@@ -1,20 +1,29 @@
 import { NextResponse } from 'next/server'
 
 export const runtime = 'nodejs'
-export const maxDuration = 60
+export const maxDuration = 120
 
 type LatLng = { lat: number; lng: number }
-type Wegtyp = 'belag_bevorzugt' | 'bundesstrasse_meiden' | 'beides'
 
 type Body = {
   start?: { lat?: unknown; lng?: unknown }
-  /** Gesetzter Zielpunkt → Streckenmodus (Start … Ziel mit optionalen Umwegen). Ohne → Rundkurs. */
   ziel?: { lat?: unknown; lng?: unknown } | null
   zielKm?: unknown
   zielHm?: unknown
   kmTolerancePct?: unknown
   hmTolerancePct?: unknown
-  wegtyp?: unknown
+  /** Checkboxen (alle optional, Standard false). */
+  bundesstrassenMeiden?: unknown
+  nurBelagGeteert?: unknown
+  staedteMeiden?: unknown
+  landstrassenBevorzugen?: unknown
+}
+
+type WegOptionen = {
+  bundesstrassenMeiden: boolean
+  nurBelagGeteert: boolean
+  staedteMeiden: boolean
+  landstrassenBevorzugen: boolean
 }
 
 type OsrmStep = { name?: string; ref?: string }
@@ -25,9 +34,15 @@ type OsrmRoute = {
   legs?: OsrmLeg[]
 }
 
+type HoehenprofilPunkt = { km: number; m: number }
+
 function parseNum(v: unknown, fallback: number): number {
   const n = typeof v === 'number' ? v : Number.parseFloat(String(v ?? ''))
   return Number.isFinite(n) ? n : fallback
+}
+
+function parseBool(v: unknown): boolean {
+  return v === true || v === 'true' || v === 1 || v === '1'
 }
 
 function coord(raw: unknown): LatLng | null {
@@ -38,6 +53,15 @@ function coord(raw: unknown): LatLng | null {
   if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null
   if (lat < -90 || lat > 90 || lng < -180 || lng > 180) return null
   return { lat, lng }
+}
+
+function leseWegOptionen(body: Body): WegOptionen {
+  return {
+    bundesstrassenMeiden: parseBool(body.bundesstrassenMeiden),
+    nurBelagGeteert: parseBool(body.nurBelagGeteert),
+    staedteMeiden: parseBool(body.staedteMeiden),
+    landstrassenBevorzugen: parseBool(body.landstrassenBevorzugen),
+  }
 }
 
 function haversineKm(a: LatLng, b: LatLng): number {
@@ -87,55 +111,125 @@ function sampleCoords(coords: LatLng[], max: number): LatLng[] {
   return out
 }
 
-async function ermittleHm(coords: LatLng[]): Promise<number | null> {
-  const sampled = sampleCoords(coords, 120)
-  if (sampled.length < 2) return null
-  const loc = sampled.map((p) => `${p.lat.toFixed(5)},${p.lng.toFixed(5)}`).join('|')
-  const datasets = ['eudem25m', 'srtm30m'] as const
+const HM_SAMPLE_MAX = 96
 
+function schrittText(s: OsrmStep): string {
+  const name = typeof s.name === 'string' ? s.name.trim() : ''
+  const ref = typeof s.ref === 'string' ? s.ref.trim() : ''
+  return `${name} ${ref}`.trim()
+}
+
+function ausStepsMerkmale(legs: OsrmLeg[] | undefined): {
+  bundesstrasseHits: number
+  unpavedHints: number
+  stadtHits: number
+  autobahnHits: number
+  landstrasseHits: number
+} {
+  let bundes = 0
+  let unpaved = 0
+  let stadt = 0
+  let autobahn = 0
+  let land = 0
+  for (const leg of legs || []) {
+    for (const s of leg.steps || []) {
+      const t = schrittText(s)
+      if (t.length < 2) continue
+      if (/\b(B\s?\d{1,3}|Bundesstra(ss|ß)e)\b/i.test(t)) bundes++
+      if (/\b(schotter|gravel|unpaved|track|waldweg|forstweg|naturbelassen|unbefestigt)\b/i.test(t)) unpaved++
+      if (
+        /\b(innenstadt|altstadt|stadtzentrum|stadtkern|zentrum|hauptbahnhof|\bhbf\b|bahnhofsviertel|messe|kongresszentrum|city-?mitte|inner\s*city)\b/i.test(
+          t,
+        )
+      )
+        stadt++
+      if (/\b(autobahn|bab|fernstr\.?\s*1)\b/i.test(t) || /\bA\s?\d{1,3}\b/i.test(t)) autobahn++
+      if (/\b(land|kreis)stra(ss|ß)e|\bL-?\d{2,4}\b|\bK-?\d{1,4}\b/i.test(t)) land++
+    }
+  }
+  return {
+    bundesstrasseHits: bundes,
+    unpavedHints: unpaved,
+    stadtHits: stadt,
+    autobahnHits: autobahn,
+    landstrasseHits: land,
+  }
+}
+
+/** Hartfilter (nur wenn Option aktiv). Landstraßen: nur Weich-Score, kein Ausschluss. */
+function routePasstWegfilterStrikt(r: RouteRow, w: WegOptionen): boolean {
+  if (w.bundesstrassenMeiden && r.bundesstrasseHits > 0) return false
+  if (w.nurBelagGeteert && r.unpavedHints > 0) return false
+  if (w.staedteMeiden && r.stadtHits > 0) return false
+  return true
+}
+
+function wegWeichScore(r: RouteRow, w: WegOptionen): number {
+  let p = 0
+  if (w.bundesstrassenMeiden) p += r.bundesstrasseHits * 22
+  if (w.nurBelagGeteert) p += r.unpavedHints * 18
+  if (w.staedteMeiden) p += r.stadtHits * 28
+  if (w.landstrassenBevorzugen) {
+    p += r.autobahnHits * 52
+    p -= Math.min(40, r.landstrasseHits * 6)
+  }
+  return p
+}
+
+async function hoehenUndProfil(coords: LatLng[]): Promise<{ hm: number | null; profil: HoehenprofilPunkt[] | null }> {
+  const sampled = sampleCoords(coords, HM_SAMPLE_MAX)
+  if (sampled.length < 2) return { hm: null, profil: null }
+  const locStr = sampled.map((p) => `${p.lat.toFixed(5)},${p.lng.toFixed(5)}`).join('|')
+
+  const datasets = ['eudem25m', 'srtm30m', 'srtm90m'] as const
   for (const ds of datasets) {
-    const url = `https://api.opentopodata.org/v1/${ds}?locations=${encodeURIComponent(loc)}`
     try {
-      const res = await fetch(url, { cache: 'no-store', headers: { Accept: 'application/json' } })
+      const res = await fetch(`https://api.opentopodata.org/v1/${ds}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify({ locations: locStr }),
+        cache: 'no-store',
+      })
       if (!res.ok) continue
-      const j = (await res.json()) as { results?: Array<{ elevation?: number | null }>; error?: string }
-      if (typeof j.error === 'string' && j.error.length > 0) continue
-      if (!Array.isArray(j.results) || j.results.length < 2) continue
+      const j = (await res.json()) as {
+        status?: string
+        results?: Array<{ elevation?: number | null }>
+      }
+      if (j.status !== 'OK' || !Array.isArray(j.results) || j.results.length < 2) continue
+
+      const elev: (number | null)[] = j.results.map((r) =>
+        typeof r.elevation === 'number' && Number.isFinite(r.elevation) ? r.elevation : null,
+      )
+      let anyNum = false
       let hm = 0
       let prev: number | null = null
-      let anyNum = false
-      for (const r of j.results) {
-        const e = typeof r.elevation === 'number' && Number.isFinite(r.elevation) ? r.elevation : null
+      for (const e of elev) {
         if (e != null) anyNum = true
         if (prev != null && e != null && e > prev) hm += e - prev
         if (e != null) prev = e
       }
       if (!anyNum) continue
-      return Math.round(hm)
+
+      const profil: HoehenprofilPunkt[] = []
+      let cumKm = 0
+      for (let i = 0; i < sampled.length; i++) {
+        const e = elev[i]
+        if (e == null) continue
+        if (i > 0) cumKm += haversineKm(sampled[i - 1]!, sampled[i]!)
+        profil.push({ km: Math.round(cumKm * 10) / 10, m: Math.round(e) })
+      }
+
+      return {
+        hm: Math.round(hm),
+        profil: profil.length >= 2 ? profil : null,
+      }
     } catch {
       continue
     }
   }
-  return null
+  return { hm: null, profil: null }
 }
 
-function ausStepsPenalty(legs: OsrmLeg[] | undefined): { bundesstrasseHits: number; unpavedHints: number } {
-  const names: string[] = []
-  for (const leg of legs || []) {
-    for (const s of leg.steps || []) {
-      if (typeof s.name === 'string' && s.name.trim()) names.push(s.name.trim())
-    }
-  }
-  let bundes = 0
-  let rough = 0
-  for (const n of names) {
-    if (/\b(B\s?\d{1,3}|Bundesstra(?:ss|ß)e)\b/i.test(n)) bundes++
-    if (/\b(schotter|gravel|waldweg|forstweg|unpaved|track)\b/i.test(n)) rough++
-  }
-  return { bundesstrasseHits: bundes, unpavedHints: rough }
-}
-
-/** Straßen- und Ortsnamen aus OSRM-Schritten (Reihenfolge, ohne direkte Wiederholung). */
 function sammleSchrittNamen(legs: OsrmLeg[] | undefined, max = 55): string[] {
   const out: string[] = []
   const seen = new Set<string>()
@@ -155,12 +249,6 @@ function sammleSchrittNamen(legs: OsrmLeg[] | undefined, max = 55): string[] {
   return out
 }
 
-function wegtypErlaubt(wegtyp: Wegtyp, bundes: number, rough: number): boolean {
-  if (wegtyp === 'bundesstrasse_meiden' && bundes > 0) return false
-  if (wegtyp === 'beides' && (bundes > 0 || rough > 0)) return false
-  return true
-}
-
 type RouteRow = {
   id: string
   nameBase: string
@@ -169,11 +257,16 @@ type RouteRow = {
   coords: LatLng[]
   bundesstrasseHits: number
   unpavedHints: number
+  stadtHits: number
+  autobahnHits: number
+  landstrasseHits: number
   ortsfolge: string[]
+  hoehenprofil: HoehenprofilPunkt[] | null
 }
 
-const WINDING_FACTORS = [2.9, 3.3, 3.7, 4.2] as const
-const BEARINGS = [0, 30, 60, 90, 120, 150, 180, 210, 240, 270, 300, 330] as const
+const TRI_BEARINGS = [0, 45, 90, 135, 180, 225, 270, 315] as const
+const TRI_R_FRAKTION = [0.26, 0.32, 0.38] as const
+const TRI_ZWEITWINKEL = [74, 92, 108] as const
 const STRECKEN_UMWEG_GRAD = [0, 35, 70, 110, 145, 180, 220, 255, 290, 325] as const
 
 function filtereUndSortiere(
@@ -182,27 +275,25 @@ function filtereUndSortiere(
   maxKm: number,
   minHm: number,
   maxHm: number,
-  wegtyp: Wegtyp,
+  weg: WegOptionen,
   zielKm: number,
   zielHm: number,
   hmAktiv: boolean,
-  wegtypStrikt: boolean,
+  wegStrikt: boolean,
 ): RouteRow[] {
   const pass = rows.filter((r) => {
     if (r.distKm < minKm || r.distKm > maxKm) return false
     if (hmAktiv && r.hm != null && (r.hm < minHm || r.hm > maxHm)) return false
     if (hmAktiv && r.hm == null) return false
-    if (wegtypStrikt && !wegtypErlaubt(wegtyp, r.bundesstrasseHits, r.unpavedHints)) return false
+    if (wegStrikt && !routePasstWegfilterStrikt(r, weg)) return false
     return true
   })
 
   const score = (r: RouteRow) => {
     const kmP = Math.abs(r.distKm - zielKm) * 10
     const hmP = hmAktiv && r.hm != null ? Math.abs(r.hm - zielHm) * 0.25 : r.hm == null && hmAktiv ? 200 : 0
-    const roadP =
-      (wegtyp === 'bundesstrasse_meiden' || wegtyp === 'beides' ? r.bundesstrasseHits * 22 : 0) +
-      (wegtyp === 'belag_bevorzugt' || wegtyp === 'beides' ? r.unpavedHints * 14 : 0)
-    return kmP + hmP + roadP
+    const wegP = wegStrikt ? wegWeichScore(r, weg) * 0.35 : wegWeichScore(r, weg)
+    return kmP + hmP + wegP
   }
 
   return pass.sort((a, b) => score(a) - score(b)).slice(0, 6)
@@ -219,18 +310,22 @@ async function osrmZuRow(
     .filter((p) => Number.isFinite(p.lat) && Number.isFinite(p.lng))
   if (coords.length < 2) return null
   const distKm = (r.route.distance || 0) / 1000
-  const p = ausStepsPenalty(r.route.legs)
+  const m = ausStepsMerkmale(r.route.legs)
   const ortsfolge = sammleSchrittNamen(r.route.legs)
-  const hm = await ermittleHm(coords)
+  const { hm, profil } = await hoehenUndProfil(coords)
   return {
     id,
     nameBase,
     distKm,
     hm,
     coords,
-    bundesstrasseHits: p.bundesstrasseHits,
-    unpavedHints: p.unpavedHints,
+    bundesstrasseHits: m.bundesstrasseHits,
+    unpavedHints: m.unpavedHints,
+    stadtHits: m.stadtHits,
+    autobahnHits: m.autobahnHits,
+    landstrasseHits: m.landstrasseHits,
     ortsfolge,
+    hoehenprofil: profil,
   }
 }
 
@@ -241,7 +336,7 @@ async function planeRundkurs(
   maxKm: number,
   minHm: number,
   maxHm: number,
-  wegtyp: Wegtyp,
+  weg: WegOptionen,
   hmAktiv: boolean,
   zielHm: number,
   kmTol: number,
@@ -250,20 +345,25 @@ async function planeRundkurs(
   const routeRows: RouteRow[] = []
   let idx = 0
 
-  for (const deg of BEARINGS) {
-    for (const wf of WINDING_FACTORS) {
-      const radiusKm = Math.max(4, Math.min(95, zielKm / wf))
-      const wende = punktBei(start, deg, radiusKm)
-      const raw = await osrmRoute([start, wende, start])
-      if (distKmOutOfLoose(raw, minKm, maxKm)) continue
-      idx += 1
-      const row = await osrmZuRow(`r-${idx}`, `Runde ${deg}°`, raw)
-      if (!row || row.distKm < 6 || row.distKm > 420) continue
-      routeRows.push(row)
+  for (const deg of TRI_BEARINGS) {
+    for (const rf of TRI_R_FRAKTION) {
+      const R = Math.max(5, Math.min(58, zielKm * rf))
+      for (const dDelta of TRI_ZWEITWINKEL) {
+        const A = punktBei(start, deg, R)
+        const B = punktBei(start, deg + dDelta, R * 0.9)
+        if (haversineKm(A, B) < 2.5) continue
+
+        const raw = await osrmRoute([start, A, B, start])
+        if (distKmOutOfLoose(raw, minKm, maxKm)) continue
+        idx += 1
+        const row = await osrmZuRow(`r-${idx}`, `Rundkurs ${deg}° · zweite Ecke +${dDelta}°`, raw)
+        if (!row || row.distKm < 6 || row.distKm > 420) continue
+        routeRows.push(row)
+      }
     }
   }
 
-  return finalizeRows(routeRows, minKm, maxKm, minHm, maxHm, wegtyp, zielKm, zielHm, hmAktiv, kmTol, hmTol, 'Rundkurs')
+  return finalizeRows(routeRows, minKm, maxKm, minHm, maxHm, weg, zielKm, zielHm, hmAktiv, kmTol, hmTol, 'Rundkurs')
 }
 
 function distKmOutOfLoose(raw: { ok: true; route: OsrmRoute } | { ok: false }, minKm: number, maxKm: number): boolean {
@@ -280,14 +380,13 @@ async function planeStrecke(
   maxKm: number,
   minHm: number,
   maxHm: number,
-  wegtyp: Wegtyp,
+  weg: WegOptionen,
   hmAktiv: boolean,
   zielHm: number,
   kmTol: number,
   hmTol: number,
 ): Promise<{ routes: ReturnType<typeof mapRowsToJson>['routes']; warnung: string | null; hmHinweis: string }> {
-  const luft = haversineKm(start, zielPt)
-  const directEstimate = Math.max(8, luft * 1.25)
+  const directEstimate = Math.max(8, haversineKm(start, zielPt) * 1.25)
 
   const mitte: LatLng = { lat: (start.lat + zielPt.lat) / 2, lng: (start.lng + zielPt.lng) / 2 }
   const detourRadius = Math.max(4, Math.min(38, Math.max(0, zielKm - directEstimate) / 2))
@@ -311,7 +410,7 @@ async function planeStrecke(
     routeRows.push(row)
   }
 
-  return finalizeRows(routeRows, minKm, maxKm, minHm, maxHm, wegtyp, zielKm, zielHm, hmAktiv, kmTol, hmTol, 'Strecke')
+  return finalizeRows(routeRows, minKm, maxKm, minHm, maxHm, weg, zielKm, zielHm, hmAktiv, kmTol, hmTol, 'Strecke')
 }
 
 function mapRowsToJson(basis: RouteRow[]) {
@@ -323,8 +422,12 @@ function mapRowsToJson(basis: RouteRow[]) {
       ascentM: r.hm,
       bundesstrasseHits: r.bundesstrasseHits,
       unpavedHints: r.unpavedHints,
+      stadtHits: r.stadtHits,
+      autobahnHits: r.autobahnHits,
+      landstrasseHits: r.landstrasseHits,
       coords: sampleCoords(r.coords, 320),
       ortsfolge: r.ortsfolge,
+      hoehenprofil: r.hoehenprofil,
     })),
   }
 }
@@ -335,7 +438,7 @@ function finalizeRows(
   maxKm: number,
   minHm: number,
   maxHm: number,
-  wegtyp: Wegtyp,
+  weg: WegOptionen,
   zielKm: number,
   zielHm: number,
   hmAktiv: boolean,
@@ -343,19 +446,19 @@ function finalizeRows(
   hmTol: number,
   modusLabel: string,
 ): { routes: ReturnType<typeof mapRowsToJson>['routes']; warnung: string | null; hmHinweis: string } {
-  let basis = filtereUndSortiere(routeRows, minKm, maxKm, minHm, maxHm, wegtyp, zielKm, zielHm, hmAktiv, true)
+  let basis = filtereUndSortiere(routeRows, minKm, maxKm, minHm, maxHm, weg, zielKm, zielHm, hmAktiv, true)
 
   if (basis.length === 0) {
     const minKm2 = zielKm * (1 - Math.min(0.28, kmTol + 0.12))
     const maxKm2 = zielKm * (1 + Math.min(0.28, kmTol + 0.12))
     const minHm2 = hmAktiv ? zielHm * (1 - Math.min(0.5, hmTol + 0.15)) : 0
     const maxHm2 = hmAktiv ? zielHm * (1 + Math.min(0.5, hmTol + 0.15)) : 1e9
-    basis = filtereUndSortiere(routeRows, minKm2, maxKm2, minHm2, maxHm2, wegtyp, zielKm, zielHm, hmAktiv, false)
+    basis = filtereUndSortiere(routeRows, minKm2, maxKm2, minHm2, maxHm2, weg, zielKm, zielHm, hmAktiv, false)
   }
 
   if (basis.length === 0) {
     basis = routeRows
-      .filter((r) => wegtypErlaubt(wegtyp, r.bundesstrasseHits, r.unpavedHints))
+      .filter((r) => routePasstWegfilterStrikt(r, weg))
       .sort((a, b) => {
         const da = Math.abs(a.distKm - zielKm) + (hmAktiv && a.hm != null ? Math.abs(a.hm - zielHm) * 0.02 : 0)
         const db = Math.abs(b.distKm - zielKm) + (hmAktiv && b.hm != null ? Math.abs(b.hm - zielHm) * 0.02 : 0)
@@ -369,17 +472,23 @@ function finalizeRows(
   }
 
   const { routes } = mapRowsToJson(basis)
+  const wegHinweis =
+    'Wegfilter: Heuristik aus OSRM/OSM-Schritten (Bundesstraße, Belag, Orts-/Autobahn-/Kreisstraßen-Hinweise).'
+  const hmHinweis =
+    modusLabel === 'Rundkurs'
+      ? `${modusLabel}: Dreieck Start → Ecke A → Ecke B → Start. Höhenprofil & HM: OpenTopoData (POST, bis ${HM_SAMPLE_MAX} Stützpunkte; EU-DEM / SRTM — Schätzung). ${wegHinweis}`
+      : `${modusLabel}. Höhenprofil & HM: OpenTopoData (POST, bis ${HM_SAMPLE_MAX} Stützpunkte; EU-DEM / SRTM — Schätzung). ${wegHinweis}`
   return {
     routes,
     warnung:
       routes.length === 0
         ? modusLabel === 'Strecke'
           ? 'Keine befahrbare Strecke gefunden.'
-          : 'Keine befahrbare Schleife gefunden.'
+          : 'Keine befahrbare Runde gefunden.'
         : basis.length < 3
           ? 'Nur wenige passende Varianten — Toleranzen ggf. lockern oder Ziel-Länge anpassen.'
           : null,
-    hmHinweis: `${modusLabel}. Höhenmeter: OpenTopoData (EU-DEM / SRTM, Schätzung). Orts-/Straßennamen aus OSRM-Schritten. Wegtyp: Heuristik aus OSM.`,
+    hmHinweis,
   }
 }
 
@@ -415,10 +524,7 @@ export async function POST(req: Request) {
   const minHm = hmAktiv ? zielHm * (1 - hmTol) : 0
   const maxHm = hmAktiv ? zielHm * (1 + hmTol) : 1e9
 
-  const wegtyp: Wegtyp =
-    body.wegtyp === 'bundesstrasse_meiden' || body.wegtyp === 'beides' || body.wegtyp === 'belag_bevorzugt'
-      ? body.wegtyp
-      : 'belag_bevorzugt'
+  const weg = leseWegOptionen(body)
 
   let result: { routes: ReturnType<typeof mapRowsToJson>['routes']; warnung: string | null; hmHinweis: string }
 
@@ -433,9 +539,9 @@ export async function POST(req: Request) {
         { status: 400 },
       )
     }
-    result = await planeStrecke(start, zielPt, zielKm, minKm, maxKm, minHm, maxHm, wegtyp, hmAktiv, zielHm, kmTol, hmTol)
+    result = await planeStrecke(start, zielPt, zielKm, minKm, maxKm, minHm, maxHm, weg, hmAktiv, zielHm, kmTol, hmTol)
   } else {
-    result = await planeRundkurs(start, zielKm, minKm, maxKm, minHm, maxHm, wegtyp, hmAktiv, zielHm, kmTol, hmTol)
+    result = await planeRundkurs(start, zielKm, minKm, maxKm, minHm, maxHm, weg, hmAktiv, zielHm, kmTol, hmTol)
   }
 
   return NextResponse.json({
