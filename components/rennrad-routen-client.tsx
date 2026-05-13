@@ -38,6 +38,7 @@ type RoutePreview = {
   stadtHits: number
   autobahnHits: number
   landstrasseHits: number
+  wiederbesucheOrte?: number
   coords: Array<{ lat: number; lng: number }>
   ortsfolge?: string[]
   hoehenprofil?: HoehenprofilPunkt[] | null
@@ -242,8 +243,9 @@ export function RennradRoutenClient() {
             B → Start), damit du nicht dieselbe Strecke hin und zurück fährst.{' '}
             <strong className="font-semibold text-zinc-200">Strecke</strong>: zusätzlich Zielort — Route von Start zum
             Ziel mit Umwegen, damit die Gesamtlänge zu deiner Vorgabe passt. Karte mit OpenStreetMap, Streckenführung aus
-            OSRM-Schritten (Straßen- und Ortsnamen, soweit OSM sie liefert). Höhenprofil und HM per OpenTopoData
-            (Schätzung). Weg-Checkboxen steuern Filter per Namensheuristik. GPX für Garmin wie gewohnt.
+            OSRM-Schritten. <strong className="font-semibold text-zinc-200">Höhenmeter</strong>: bei Eingabe gilt{' '}
+            <strong className="font-semibold text-zinc-200">±10 %</strong> zur Vorgabe (kein größeres Abweichen).
+            Rennrad: <strong className="font-semibold text-zinc-200">Autobahn/BAB nie</strong> (StVO). GPX für Garmin wie gewohnt.
           </>
         }
       />
@@ -317,7 +319,7 @@ export function RennradRoutenClient() {
             />
             <ZahlFeld
               label="Ziel-Höhenmeter (optional)"
-              hint="Leer = egal; sonst z. B. 1200"
+              hint="Leer = egal; sonst ±10 % zur Vorgabe"
               value={zielHm}
               onChange={setZielHm}
             />
@@ -326,7 +328,7 @@ export function RennradRoutenClient() {
           <div className="mt-6 max-w-xl">
             <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Weg (Checkboxen)</p>
             <p className="mt-1 text-xs text-slate-600">
-              Filter nutzen OSRM-/OSM-Schrittnamen — keine Garantie, aber Orientierung für die Auswahl.
+              Filter nutzen OSRM-/OSM-Schrittnamen — keine Garantie. Rennrad: Autobahn/BAB werden nie genutzt.
             </p>
             <ul className="mt-3 space-y-2.5">
               <WegCheckbox
@@ -404,7 +406,8 @@ export function RennradRoutenClient() {
                       </p>
                       <p className="mt-1 text-[11px] text-slate-500">
                         B-Straße: {r.bundesstrasseHits ?? 0} · unbefestigt: {r.unpavedHints ?? 0} · Stadt:{' '}
-                        {r.stadtHits ?? 0} · A/Autobahn: {r.autobahnHits ?? 0} · Land/Kreis: {r.landstrasseHits ?? 0}
+                        {r.stadtHits ?? 0} · BAB/A: {r.autobahnHits ?? 0} · Land/Kreis: {r.landstrasseHits ?? 0} ·
+                        Wiederbesuche: {r.wiederbesucheOrte ?? 0}
                       </p>
                     </button>
                   )

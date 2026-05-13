@@ -119,6 +119,16 @@ function schrittText(s: OsrmStep): string {
   return `${name} ${ref}`.trim()
 }
 
+/** Autobahn nur bei eindeutigen Hinweisen (Rennrad / StVO — keine „A“-Fehltreffer in Ortsnamen). */
+function istAutobahnSchritt(s: OsrmStep): boolean {
+  const name = typeof s.name === 'string' ? s.name : ''
+  const ref = typeof s.ref === 'string' ? s.ref.trim() : ''
+  if (/\b(autobahn|bab|bundesautobahn)\b/i.test(name)) return true
+  if (ref && /^(A|a)\s?\d{1,3}([;\/]|$)/.test(ref)) return true
+  if (ref && /;\s*(A|a)\s?\d{1,3}\b/.test(ref)) return true
+  return false
+}
+
 function ausStepsMerkmale(legs: OsrmLeg[] | undefined): {
   bundesstrasseHits: number
   unpavedHints: number
@@ -135,6 +145,7 @@ function ausStepsMerkmale(legs: OsrmLeg[] | undefined): {
     for (const s of leg.steps || []) {
       const t = schrittText(s)
       if (t.length < 2) continue
+      if (istAutobahnSchritt(s)) autobahn++
       if (/\b(B\s?\d{1,3}|Bundesstra(ss|ß)e)\b/i.test(t)) bundes++
       if (/\b(schotter|gravel|unpaved|track|waldweg|forstweg|naturbelassen|unbefestigt)\b/i.test(t)) unpaved++
       if (
@@ -143,7 +154,6 @@ function ausStepsMerkmale(legs: OsrmLeg[] | undefined): {
         )
       )
         stadt++
-      if (/\b(autobahn|bab|fernstr\.?\s*1)\b/i.test(t) || /\bA\s?\d{1,3}\b/i.test(t)) autobahn++
       if (/\b(land|kreis)stra(ss|ß)e|\bL-?\d{2,4}\b|\bK-?\d{1,4}\b/i.test(t)) land++
     }
   }
@@ -156,8 +166,52 @@ function ausStepsMerkmale(legs: OsrmLeg[] | undefined): {
   }
 }
 
-/** Hartfilter (nur wenn Option aktiv). Landstraßen: nur Weich-Score, kein Ausschluss. */
+/** Normalisierung für Wiederholungs-Vergleich (Orts-/Straßenteil vor erstem Komma). */
+function schrittOrtToken(label: string): string {
+  const t = label.split(',')[0]?.trim().toLowerCase() ?? ''
+  return t.replace(/\s+/g, ' ')
+}
+
+/** Alle Schritt-Labels in Fahrtrichtung (inkl. Wiederholungen) — für „nicht 2× am selben Ort“. */
+function schrittLabelsSerien(legs: OsrmLeg[] | undefined, max = 200): string[] {
+  const out: string[] = []
+  for (const leg of legs || []) {
+    for (const s of leg.steps || []) {
+      const name = typeof s.name === 'string' ? s.name.trim() : ''
+      const ref = typeof s.ref === 'string' ? s.ref.trim() : ''
+      const label = name && ref && name !== ref ? `${name} (${ref})` : name || ref
+      if (label.length < 2) continue
+      out.push(label)
+      if (out.length >= max) return out
+    }
+  }
+  return out
+}
+
+/** Wiederbesuch: gleicher Ort/Straße nach mindestens einem anderen Schritt (nicht nur „noch auf derselben Straße“). */
+function wiederbesucheOrtSerie(labels: string[]): number {
+  const tokens = labels.map(schrittOrtToken).filter((t) => t.length >= 3)
+  let hits = 0
+  for (let i = 0; i < tokens.length; i++) {
+    const t = tokens[i]!
+    for (let j = i + 2; j < tokens.length; j++) {
+      if (tokens[j] === t) {
+        hits++
+        break
+      }
+    }
+  }
+  return hits
+}
+
+/** Rennrad: Autobahn / BAB nie (StVO). */
+function routeIstRennradErlaubt(r: RouteRow): boolean {
+  return r.autobahnHits === 0
+}
+
+/** Hartfilter (Checkboxen). Autobahn immer ausgeschlossen. */
 function routePasstWegfilterStrikt(r: RouteRow, w: WegOptionen): boolean {
+  if (!routeIstRennradErlaubt(r)) return false
   if (w.bundesstrassenMeiden && r.bundesstrasseHits > 0) return false
   if (w.nurBelagGeteert && r.unpavedHints > 0) return false
   if (w.staedteMeiden && r.stadtHits > 0) return false
@@ -170,7 +224,6 @@ function wegWeichScore(r: RouteRow, w: WegOptionen): number {
   if (w.nurBelagGeteert) p += r.unpavedHints * 18
   if (w.staedteMeiden) p += r.stadtHits * 28
   if (w.landstrassenBevorzugen) {
-    p += r.autobahnHits * 52
     p -= Math.min(40, r.landstrasseHits * 6)
   }
   return p
@@ -262,12 +315,20 @@ type RouteRow = {
   landstrasseHits: number
   ortsfolge: string[]
   hoehenprofil: HoehenprofilPunkt[] | null
+  /** Wiederbesuche desselben Orts/Straße (siehe schrittLabelsSerien). */
+  wiederbesucheOrte: number
 }
 
-const TRI_BEARINGS = [0, 45, 90, 135, 180, 225, 270, 315] as const
-const TRI_R_FRAKTION = [0.26, 0.32, 0.38] as const
-const TRI_ZWEITWINKEL = [74, 92, 108] as const
+const TRI_BEARINGS = [0, 36, 72, 108, 144, 180, 216, 252, 288, 324] as const
+const TRI_R_FRAKTION = [0.24, 0.3, 0.36, 0.42] as const
+const TRI_ZWEITWINKEL = [76, 92, 108] as const
 const STRECKEN_UMWEG_GRAD = [0, 35, 70, 110, 145, 180, 220, 255, 290, 325] as const
+
+/** Je mehr hm pro km gewünscht, desto größer die Luftlinien-Ecken (mehr Profil zum Klettern). */
+function hmRadiusFaktor(zielKm: number, zielHm: number): number {
+  const mProKm = zielHm / Math.max(20, zielKm)
+  return 1 + Math.min(0.55, Math.max(0, (mProKm - 5) / 35))
+}
 
 function filtereUndSortiere(
   rows: RouteRow[],
@@ -280,8 +341,10 @@ function filtereUndSortiere(
   zielHm: number,
   hmAktiv: boolean,
   wegStrikt: boolean,
+  modus: 'Rundkurs' | 'Strecke',
 ): RouteRow[] {
   const pass = rows.filter((r) => {
+    if (!routeIstRennradErlaubt(r)) return false
     if (r.distKm < minKm || r.distKm > maxKm) return false
     if (hmAktiv && r.hm != null && (r.hm < minHm || r.hm > maxHm)) return false
     if (hmAktiv && r.hm == null) return false
@@ -291,9 +354,11 @@ function filtereUndSortiere(
 
   const score = (r: RouteRow) => {
     const kmP = Math.abs(r.distKm - zielKm) * 10
-    const hmP = hmAktiv && r.hm != null ? Math.abs(r.hm - zielHm) * 0.25 : r.hm == null && hmAktiv ? 200 : 0
+    const hmP = hmAktiv && r.hm != null ? Math.abs(r.hm - zielHm) * 0.85 : r.hm == null && hmAktiv ? 400 : 0
     const wegP = wegStrikt ? wegWeichScore(r, weg) * 0.35 : wegWeichScore(r, weg)
-    return kmP + hmP + wegP
+    const wiederP = r.wiederbesucheOrte * 55
+    const rundenBonus = modus === 'Rundkurs' ? -12 : 8
+    return kmP + hmP + wegP + wiederP + rundenBonus
   }
 
   return pass.sort((a, b) => score(a) - score(b)).slice(0, 6)
@@ -312,6 +377,8 @@ async function osrmZuRow(
   const distKm = (r.route.distance || 0) / 1000
   const m = ausStepsMerkmale(r.route.legs)
   const ortsfolge = sammleSchrittNamen(r.route.legs)
+  const serien = schrittLabelsSerien(r.route.legs)
+  const wiederbesucheOrte = wiederbesucheOrtSerie(serien)
   const { hm, profil } = await hoehenUndProfil(coords)
   return {
     id,
@@ -326,6 +393,7 @@ async function osrmZuRow(
     landstrasseHits: m.landstrasseHits,
     ortsfolge,
     hoehenprofil: profil,
+    wiederbesucheOrte,
   }
 }
 
@@ -344,13 +412,14 @@ async function planeRundkurs(
 ): Promise<{ routes: ReturnType<typeof mapRowsToJson>['routes']; warnung: string | null; hmHinweis: string }> {
   const routeRows: RouteRow[] = []
   let idx = 0
+  const hmFaktor = hmAktiv ? hmRadiusFaktor(zielKm, zielHm) : 1
 
   for (const deg of TRI_BEARINGS) {
     for (const rf of TRI_R_FRAKTION) {
-      const R = Math.max(5, Math.min(58, zielKm * rf))
+      const R = Math.max(5, Math.min(62, zielKm * rf * hmFaktor))
       for (const dDelta of TRI_ZWEITWINKEL) {
         const A = punktBei(start, deg, R)
-        const B = punktBei(start, deg + dDelta, R * 0.9)
+        const B = punktBei(start, deg + dDelta, R * 0.92)
         if (haversineKm(A, B) < 2.5) continue
 
         const raw = await osrmRoute([start, A, B, start])
@@ -358,6 +427,7 @@ async function planeRundkurs(
         idx += 1
         const row = await osrmZuRow(`r-${idx}`, `Rundkurs ${deg}° · zweite Ecke +${dDelta}°`, raw)
         if (!row || row.distKm < 6 || row.distKm > 420) continue
+        if (!routeIstRennradErlaubt(row)) continue
         routeRows.push(row)
       }
     }
@@ -407,6 +477,7 @@ async function planeStrecke(
     const nameBase = vi === 0 ? 'Strecke · direkt' : `Strecke · Umweg ${STRECKEN_UMWEG_GRAD[vi - 1] ?? vi}°`
     const row = await osrmZuRow(`s-${idx}`, nameBase, raw)
     if (!row || row.distKm < 5 || row.distKm > 450) continue
+    if (!routeIstRennradErlaubt(row)) continue
     routeRows.push(row)
   }
 
@@ -425,6 +496,7 @@ function mapRowsToJson(basis: RouteRow[]) {
       stadtHits: r.stadtHits,
       autobahnHits: r.autobahnHits,
       landstrasseHits: r.landstrasseHits,
+      wiederbesucheOrte: r.wiederbesucheOrte,
       coords: sampleCoords(r.coords, 320),
       ortsfolge: r.ortsfolge,
       hoehenprofil: r.hoehenprofil,
@@ -444,49 +516,65 @@ function finalizeRows(
   hmAktiv: boolean,
   kmTol: number,
   hmTol: number,
-  modusLabel: string,
+  modusLabel: 'Rundkurs' | 'Strecke',
 ): { routes: ReturnType<typeof mapRowsToJson>['routes']; warnung: string | null; hmHinweis: string } {
-  let basis = filtereUndSortiere(routeRows, minKm, maxKm, minHm, maxHm, weg, zielKm, zielHm, hmAktiv, true)
+  let basis = filtereUndSortiere(routeRows, minKm, maxKm, minHm, maxHm, weg, zielKm, zielHm, hmAktiv, true, modusLabel)
 
   if (basis.length === 0) {
-    const minKm2 = zielKm * (1 - Math.min(0.28, kmTol + 0.12))
-    const maxKm2 = zielKm * (1 + Math.min(0.28, kmTol + 0.12))
-    const minHm2 = hmAktiv ? zielHm * (1 - Math.min(0.5, hmTol + 0.15)) : 0
-    const maxHm2 = hmAktiv ? zielHm * (1 + Math.min(0.5, hmTol + 0.15)) : 1e9
-    basis = filtereUndSortiere(routeRows, minKm2, maxKm2, minHm2, maxHm2, weg, zielKm, zielHm, hmAktiv, false)
+    const minKm2 = zielKm * (1 - Math.min(0.22, kmTol + 0.08))
+    const maxKm2 = zielKm * (1 + Math.min(0.22, kmTol + 0.08))
+    basis = filtereUndSortiere(
+      routeRows,
+      minKm2,
+      maxKm2,
+      minHm,
+      maxHm,
+      weg,
+      zielKm,
+      zielHm,
+      hmAktiv,
+      false,
+      modusLabel,
+    )
   }
+
+  const passtHm = (r: RouteRow) =>
+    !hmAktiv || (r.hm != null && r.hm >= minHm && r.hm <= maxHm)
 
   if (basis.length === 0) {
     basis = routeRows
-      .filter((r) => routePasstWegfilterStrikt(r, weg))
+      .filter((r) => routeIstRennradErlaubt(r) && routePasstWegfilterStrikt(r, weg) && passtHm(r))
       .sort((a, b) => {
-        const da = Math.abs(a.distKm - zielKm) + (hmAktiv && a.hm != null ? Math.abs(a.hm - zielHm) * 0.02 : 0)
-        const db = Math.abs(b.distKm - zielKm) + (hmAktiv && b.hm != null ? Math.abs(b.hm - zielHm) * 0.02 : 0)
+        const da = Math.abs(a.distKm - zielKm) + (hmAktiv && a.hm != null ? Math.abs(a.hm - zielHm) * 0.08 : 0)
+        const db = Math.abs(b.distKm - zielKm) + (hmAktiv && b.hm != null ? Math.abs(b.hm - zielHm) * 0.08 : 0)
         return da - db
       })
       .slice(0, 6)
   }
 
   if (basis.length === 0) {
-    basis = routeRows.sort((a, b) => Math.abs(a.distKm - zielKm) - Math.abs(b.distKm - zielKm)).slice(0, 6)
+    basis = routeRows
+      .filter((r) => routeIstRennradErlaubt(r) && passtHm(r))
+      .sort((a, b) => Math.abs(a.distKm - zielKm) - Math.abs(b.distKm - zielKm))
+      .slice(0, 6)
   }
 
   const { routes } = mapRowsToJson(basis)
   const wegHinweis =
-    'Wegfilter: Heuristik aus OSRM/OSM-Schritten (Bundesstraße, Belag, Orts-/Autobahn-/Kreisstraßen-Hinweise).'
+    'Rennrad: Autobahn/BAB nie. Wegfilter: Heuristik aus OSRM/OSM-Schritten. Bei HM-Vorgabe gilt ±10 % zur Ziel-HM (kein Aufweichen).'
   const hmHinweis =
     modusLabel === 'Rundkurs'
-      ? `${modusLabel}: Dreieck Start → Ecke A → Ecke B → Start. Höhenprofil & HM: OpenTopoData (POST, bis ${HM_SAMPLE_MAX} Stützpunkte; EU-DEM / SRTM — Schätzung). ${wegHinweis}`
-      : `${modusLabel}. Höhenprofil & HM: OpenTopoData (POST, bis ${HM_SAMPLE_MAX} Stützpunkte; EU-DEM / SRTM — Schätzung). ${wegHinweis}`
+      ? `${modusLabel}: Dreieck Start → Ecke A → Ecke B → Start (Rundkurse bevorzugt). Höhenprofil & HM: OpenTopoData (Schätzung, bis ${HM_SAMPLE_MAX} Punkte). ${wegHinweis}`
+      : `${modusLabel}. Rundkurse werden in der Auswahl leicht bevorzugt (Strecken-Modus). ${wegHinweis}`
   return {
     routes,
     warnung:
       routes.length === 0
         ? modusLabel === 'Strecke'
-          ? 'Keine befahrbare Strecke gefunden.'
-          : 'Keine befahrbare Runde gefunden.'
+          ? 'Keine Strecke im Rahmen km/HM (±10 % HM) und StVO-Filter — Ziel-Länge, HM oder Checkboxen anpassen.'
+          : 'Keine Runde im Rahmen km/HM (±10 % HM) und StVO-Filter — Ziel-Länge, HM oder Checkboxen anpassen.'
         : basis.length < 3
-          ? 'Nur wenige passende Varianten — Toleranzen ggf. lockern oder Ziel-Länge anpassen.'
+          ? 'Nur wenige passende Varianten — ggf. Ziel-Länge leicht ändern oder Rundkurs wählen.'
           : null,
     hmHinweis,
   }
@@ -517,7 +605,8 @@ export async function POST(req: Request) {
   const zielHm = hmAktiv ? zielHmRaw : 0
 
   const kmTol = Math.min(35, Math.max(6, parseNum(body.kmTolerancePct, 15))) / 100
-  const hmTol = Math.min(55, Math.max(12, parseNum(body.hmTolerancePct, 35))) / 100
+  /** HM: fest ±10 % zur Vorgabe (keine größere Abweichung). */
+  const hmTol = hmAktiv ? 0.1 : 0
 
   const minKm = zielKm * (1 - kmTol)
   const maxKm = zielKm * (1 + kmTol)
