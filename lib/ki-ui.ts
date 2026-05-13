@@ -1,5 +1,7 @@
 /**
  * Einheitliche Optik für KI-Flächen — so erkennt man sofort: hier arbeitet ein KI-Dienst.
+ *
+ * Badge mit Sparkles-Icon: `KiBrandChip` / `KiSparklesIcon` in `@/components/ki-brand`.
  */
 export const KI_PANEL_OUTER =
   'border-2 border-violet-500/45 bg-gradient-to-br from-violet-950/50 via-slate-900 to-slate-950 shadow-xl shadow-violet-950/30 ring-1 ring-violet-400/20'

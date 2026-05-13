@@ -12,7 +12,8 @@ import {
 } from 'react'
 import toast from 'react-hot-toast'
 import { appModalBackdropClassName, appModalPanelCoachClassName } from '@/lib/app-modal-overlay'
-import { KI_ASSISTANT_BUBBLE, KI_CHIP } from '@/lib/ki-ui'
+import { KiBrandChip, KiSparklesIcon } from '@/components/ki-brand'
+import { KI_ASSISTANT_BUBBLE } from '@/lib/ki-ui'
 
 export type FinanceCoachContextSnapshot = {
   saldo: number
@@ -180,11 +181,11 @@ export function FinanceCoachProvider({ children }: { children: ReactNode }) {
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="fixed z-[60] flex h-14 w-14 items-center justify-center rounded-2xl border border-violet-500/50 bg-violet-600 text-xl font-black text-white shadow-xl shadow-violet-950/50 transition-transform hover:scale-105 hover:bg-violet-500 active:scale-95 bottom-[max(1.25rem,env(safe-area-inset-bottom))] right-[max(1.25rem,env(safe-area-inset-right))] md:bottom-8 md:right-8"
+        className="fixed z-[60] flex h-14 w-14 items-center justify-center rounded-2xl border border-violet-500/50 bg-violet-600 text-white shadow-xl shadow-violet-950/50 transition-transform hover:scale-105 hover:bg-violet-500 active:scale-95 bottom-[max(1.25rem,env(safe-area-inset-bottom))] right-[max(1.25rem,env(safe-area-inset-right))] md:bottom-8 md:right-8"
         title="Finanz-Coach: Fragen zu Einnahmen, Ausgaben und Saldo"
         aria-label="Finanz-Coach öffnen"
       >
-        KI
+        <KiSparklesIcon size={28} className="drop-shadow-sm" />
       </button>
 
       {open && (
@@ -203,9 +204,7 @@ export function FinanceCoachProvider({ children }: { children: ReactNode }) {
           >
             <div className="flex items-center justify-between border-b border-violet-800/50 bg-violet-950/25 px-4 py-3">
               <div className="flex min-w-0 items-center gap-2">
-                <span className={KI_CHIP} aria-hidden>
-                  KI
-                </span>
+                <KiBrandChip iconSize={14} />
                 <h2
                   id="finance-coach-title"
                   className="min-w-0 text-sm font-black uppercase tracking-wide text-violet-200"

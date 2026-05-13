@@ -10,7 +10,8 @@ import {
 } from '@/lib/finance-coach-images'
 import type { Kassenzeile } from '@/lib/kassenzettel-gemini'
 import { LAGER_PRODUKT_KATEGORIEN } from '@/lib/lager-produkt-kategorie'
-import { KI_CHIP, KI_PANEL_OUTER } from '@/lib/ki-ui'
+import { KiBrandChip } from '@/components/ki-brand'
+import { KI_PANEL_OUTER } from '@/lib/ki-ui'
 
 type Props = { disabled?: boolean; onBuchungFertig: () => void }
 
@@ -169,9 +170,7 @@ export function LagerKassenzettelPanel({ disabled, onBuchungFertig }: Props) {
       <div className="flex flex-wrap items-center gap-2 sm:gap-3">
         <div className="min-w-0 flex-1">
           <div className="flex min-w-0 flex-wrap items-center gap-2">
-            <span className={KI_CHIP} aria-hidden>
-              KI
-            </span>
+            <KiBrandChip iconSize={14} />
             <h2 className="min-w-0 text-sm font-bold tracking-tight text-violet-100 sm:text-base">
               Kassenzettel → Speisekammer
             </h2>

@@ -2,6 +2,7 @@
 
 import { useCallback, useId, useState } from 'react'
 import toast from 'react-hot-toast'
+import { KiSparklesIcon } from '@/components/ki-brand'
 import { PageChrome, PageHero, pageSectionPanelClass, pageSectionShellClass } from '@/components/page-shell'
 import {
   type NaturBestimmungErgebnis,
@@ -217,8 +218,9 @@ export function NaturBestimmenClient() {
                 type="button"
                 onClick={absenden}
                 disabled={blick.length < 1 || loading}
-                className="flex-1 rounded-xl border border-cyan-600/50 bg-cyan-950/40 py-3 text-sm font-bold text-cyan-100 transition enabled:hover:bg-cyan-900/50 disabled:cursor-not-allowed disabled:opacity-40"
+                className="flex flex-1 items-center justify-center gap-2 rounded-xl border border-cyan-600/50 bg-cyan-950/40 py-3 text-sm font-bold text-cyan-100 transition enabled:hover:bg-cyan-900/50 disabled:cursor-not-allowed disabled:opacity-40"
               >
+                <KiSparklesIcon size={18} className="shrink-0 text-cyan-200/90" />
                 {loading ? 'Analysiere…' : 'Bestimmen'}
               </button>
               <button

@@ -13,7 +13,8 @@ import { appModalBackdropClassName, appModalPanelClassName } from '@/lib/app-mod
 import { buildMehrKochanleitungPrompt } from '@/lib/rezept-kochanleitung-prompt'
 import { normalisiereRezeptKategorie } from '@/lib/lager-rezept-katalog-kategorie'
 import { supabase } from '@/lib/supabase'
-import { KI_ASSISTANT_BUBBLE, KI_CHIP, KI_INNER_WELL, KI_PANEL_OUTER } from '@/lib/ki-ui'
+import { KiBrandChip } from '@/components/ki-brand'
+import { KI_ASSISTANT_BUBBLE, KI_INNER_WELL, KI_PANEL_OUTER } from '@/lib/ki-ui'
 import {
   normalisiereKcalGesamt,
   parseRezeptCoachAntwortJson,
@@ -642,9 +643,7 @@ export function LagerRezeptCoach({ artikel, onLagerAktualisiert, onKatalogGeaend
       >
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
-            <span className={KI_CHIP} aria-hidden>
-              KI
-            </span>
+            <KiBrandChip iconSize={14} />
             <h2 className="min-w-0 text-lg font-black text-violet-100">
               Rezepte gegen Lebensmittelverschwendung
             </h2>
@@ -709,7 +708,7 @@ export function LagerRezeptCoach({ artikel, onLagerAktualisiert, onKatalogGeaend
                   <div key={i} className="flex justify-start">
                     <div className={`w-full max-w-full rounded-2xl rounded-bl-md pl-3.5 pr-3 py-3 md:pl-4 md:pr-4 ${KI_ASSISTANT_BUBBLE}`}>
                       <div className="mb-2 flex items-center gap-2 border-b border-violet-800/50 pb-2">
-                        <span className={KI_CHIP}>KI</span>
+                        <KiBrandChip iconSize={12} decorative={false} />
                         <span className="text-[11px] font-semibold text-violet-200/90">Rezeptvorschläge</span>
                       </div>
                       {m.structured ? (

@@ -18,6 +18,7 @@ import {
   BesitzGebrauchtpreisKiRoot,
   BesitzGebrauchtpreisKiToggle,
 } from '@/components/besitz-gebrauchtpreis-ki'
+import { KiBrandChip } from '@/components/ki-brand'
 
 type BesitzRow = {
   id: string
@@ -492,7 +493,10 @@ export default function BesitzPage() {
 
           <section className={pageSectionShellClass}>
             <div className={pageSectionHeaderClass}>
-              <h2 className={pageSectionTitleClass}>Beleg importieren (PDF oder Foto)</h2>
+              <div className="flex flex-wrap items-center gap-2">
+                <KiBrandChip iconSize={14} />
+                <h2 className={pageSectionTitleClass}>Beleg importieren (PDF oder Foto)</h2>
+              </div>
               <p className="mt-2 text-xs leading-relaxed text-zinc-400">
               Text-PDFs werden lokal eingelesen; gescannte PDFs, Handy-Fotos und Bilder werden per KI ausgewertet (wie Finanz-Coach:{' '}
               <code className="rounded bg-zinc-950 px-1 font-mono text-[10px] text-zinc-400">GEMINI_API_KEY</code> oder{' '}

@@ -2,7 +2,8 @@
 
 import { kalenderKategorieMeta } from '@/lib/haushalt-kalender'
 import type { KalenderFotoImportZeile } from '@/lib/kalender-foto-vision'
-import { KI_CHIP, KI_PANEL_OUTER } from '@/lib/ki-ui'
+import { KiBrandChip } from '@/components/ki-brand'
+import { KI_PANEL_OUTER } from '@/lib/ki-ui'
 import { useCallback, useId, useRef, useState } from 'react'
 import toast from 'react-hot-toast'
 
@@ -75,9 +76,7 @@ export function KalenderFotoImport({ onImport }: Props) {
     <div className={`overflow-hidden rounded-2xl ${KI_PANEL_OUTER}`}>
       <div className="border-b border-violet-800/40 px-4 py-3 sm:px-5">
         <div className="flex flex-wrap items-center gap-2">
-          <span className={KI_CHIP} aria-hidden>
-            KI
-          </span>
+          <KiBrandChip iconSize={14} />
           <h2 className="text-sm font-black text-violet-100 sm:text-base">Foto importieren</h2>
         </div>
         <p className="mt-1 text-[11px] leading-relaxed text-slate-500 sm:text-xs">
