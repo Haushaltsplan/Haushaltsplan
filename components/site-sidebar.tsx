@@ -4,6 +4,7 @@ import Image from 'next/image'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { startTransition, useCallback, useEffect, useLayoutEffect, useMemo, useState } from 'react'
+import { istInvestmentsGesperrt, investmentsSperreNavTitle } from '@/lib/investments-sperre'
 import {
   DEFAULT_HREF_ORDER,
   HREF_TO_DEF,
@@ -74,16 +75,35 @@ export function SiteSidebar() {
       <nav className="flex flex-1 flex-col gap-0.5 overflow-y-auto px-2 py-3" aria-label="Hauptnavigation">
         {orderedDefs.map((d) => {
           const active = linkActive(pathname, d.href)
+          const investmentsGesperrt = d.href === '/investments' && istInvestmentsGesperrt()
+          const itemClass = `flex items-center gap-3 rounded-lg px-3 py-2.5 text-[13px] font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-teal-500/35 ${
+            active
+              ? 'bg-zinc-800/95 text-white shadow-sm shadow-black/20'
+              : 'text-zinc-400 hover:bg-zinc-800/40 hover:text-white'
+          }`
+          if (investmentsGesperrt) {
+            return (
+              <span
+                key={d.href}
+                title={investmentsSperreNavTitle()}
+                aria-current={active ? 'page' : undefined}
+                className={`${itemClass} cursor-default opacity-60 ${
+                  active ? '' : 'hover:bg-transparent hover:text-zinc-400'
+                }`}
+              >
+                <span className="flex h-7 w-7 shrink-0 items-center justify-center text-[17px] leading-none" aria-hidden>
+                  {d.emoji}
+                </span>
+                <span className="min-w-0 truncate">{d.label}</span>
+              </span>
+            )
+          }
           return (
             <Link
               key={d.href}
               href={d.href}
               aria-current={active ? 'page' : undefined}
-              className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-[13px] font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-teal-500/35 ${
-                active
-                  ? 'bg-zinc-800/95 text-white shadow-sm shadow-black/20'
-                  : 'text-zinc-400 hover:bg-zinc-800/40 hover:text-white'
-              }`}
+              className={itemClass}
             >
               <span className="flex h-7 w-7 shrink-0 items-center justify-center text-[17px] leading-none" aria-hidden>
                 {d.emoji}

@@ -2,6 +2,11 @@ import type { Metadata } from 'next'
 import { Suspense } from 'react'
 import { PageChrome, PageHero, PageSection, PageSectionPanel } from '@/components/page-shell'
 import {
+  investmentsSperreFreischaltungKurzDE,
+  investmentsSperreLetzterTagDisplayDE,
+  istInvestmentsGesperrt,
+} from '@/lib/investments-sperre'
+import {
   InvestmentsMarktNasdaq100Panel,
   InvestmentsMarktPortfolioPanel,
   InvestmentsMarktSp500Panel,
@@ -35,6 +40,34 @@ function MarktPanelSkeleton() {
 }
 
 export default function InvestmentsPage() {
+  if (istInvestmentsGesperrt()) {
+    return (
+      <PageChrome>
+        <PageHero
+          eyebrow="Investments"
+          title="Aktienpause"
+          description={
+            <>
+              Dieser Bereich ist absichtlich bis einschließlich{' '}
+              <span className="font-medium text-zinc-200">{investmentsSperreLetzterTagDisplayDE()}</span>{' '}
+              ausgeblendet — inklusive Parqet-Link, Kursen und Research, damit keine Kursschau in Versuchung führt.
+              Ab dem <span className="font-medium text-zinc-200">{investmentsSperreFreischaltungKurzDE()}</span> ist
+              hier wieder alles wie gewohnt erreichbar.
+            </>
+          }
+        />
+        <PageSection titleId="investments-pause-heading" title="Pause aktiv">
+          <PageSectionPanel>
+            <p className="text-sm leading-relaxed text-zinc-400">
+              Wenn du diese Seite direkt aufgerufen hast: gut, dass die Sperre greift. Nutze die Zeit gerne für etwas
+              anderes — die Märkte sind auch ohne täglichen Blick da.
+            </p>
+          </PageSectionPanel>
+        </PageSection>
+      </PageChrome>
+    )
+  }
+
   const parqetUrl =
     typeof process.env.NEXT_PUBLIC_PARQET_PORTFOLIO_URL === 'string'
       ? process.env.NEXT_PUBLIC_PARQET_PORTFOLIO_URL.trim()

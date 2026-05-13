@@ -20,6 +20,7 @@ import {
   useSortable,
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
+import { istInvestmentsGesperrt, investmentsSperreNavTitle } from '@/lib/investments-sperre'
 import {
   DEFAULT_HREF_ORDER,
   HREF_TO_DEF,
@@ -32,6 +33,12 @@ import {
 
 function SortableNavItem({ def, pathname }: { def: NavItem; pathname: string }) {
   const active = linkActive(pathname, def.href)
+  const investmentsGesperrt = def.href === '/investments' && istInvestmentsGesperrt()
+  const tabClass = `flex min-w-0 items-center gap-1.5 border border-l-0 border-slate-700/90 py-2 pr-2.5 pl-1 text-xs font-bold focus-visible:outline-none focus-visible:ring-2 md:gap-2 md:px-3 md:py-2 md:text-sm ${def.ring} ${
+    active
+      ? `border-slate-600/80 bg-slate-800/90 ${def.color}`
+      : 'text-slate-400 hover:border-slate-600/50 hover:bg-slate-800/80 hover:text-slate-200 md:text-slate-500 md:hover:text-slate-300'
+  }`
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: def.href,
   })
@@ -63,18 +70,23 @@ function SortableNavItem({ def, pathname }: { def: NavItem; pathname: string }) 
           ⋮⋮
         </span>
       </button>
-      <Link
-        href={def.href}
-        className={`flex min-w-0 items-center gap-1.5 border border-l-0 border-slate-700/90 py-2 pr-2.5 pl-1 text-xs font-bold focus-visible:outline-none focus-visible:ring-2 md:gap-2 md:px-3 md:py-2 md:text-sm ${def.ring} ${
-          active
-            ? `border-slate-600/80 bg-slate-800/90 ${def.color}`
-            : 'text-slate-400 hover:border-slate-600/50 hover:bg-slate-800/80 hover:text-slate-200 md:text-slate-500 md:hover:text-slate-300'
-        }`}
-        aria-current={active ? 'page' : undefined}
-      >
-        <span aria-hidden>{def.emoji}</span>
-        {def.label}
-      </Link>
+      {investmentsGesperrt ? (
+        <span
+          title={investmentsSperreNavTitle()}
+          aria-current={active ? 'page' : undefined}
+          className={`${tabClass} cursor-default opacity-60 ${
+            active ? '' : 'hover:border-slate-700/90 hover:bg-transparent hover:text-slate-400 md:hover:text-slate-400'
+          }`}
+        >
+          <span aria-hidden>{def.emoji}</span>
+          {def.label}
+        </span>
+      ) : (
+        <Link href={def.href} className={tabClass} aria-current={active ? 'page' : undefined}>
+          <span aria-hidden>{def.emoji}</span>
+          {def.label}
+        </Link>
+      )}
     </div>
   )
 }
@@ -85,6 +97,12 @@ function StatischeLeiste({ orderedDefs, pathname }: { orderedDefs: NavItem[]; pa
     <div className="flex w-full min-w-0 items-center gap-0.5 overflow-x-auto pb-0.5 [scrollbar-gutter:stable] md:overflow-visible md:pb-0">
       {orderedDefs.map((d) => {
         const active = linkActive(pathname, d.href)
+        const investmentsGesperrt = d.href === '/investments' && istInvestmentsGesperrt()
+        const tabClass = `flex min-w-0 items-center gap-1.5 border border-l-0 border-slate-700/90 py-2 pr-2.5 pl-1 text-xs font-bold focus-visible:outline-none focus-visible:ring-2 md:gap-2 md:px-3 md:py-2 md:text-sm ${d.ring} ${
+          active
+            ? `border-slate-600/80 bg-slate-800/90 ${d.color}`
+            : 'text-slate-400 hover:border-slate-600/50 hover:bg-slate-800/80 hover:text-slate-200 md:text-slate-500 md:hover:text-slate-300'
+        }`
         return (
           <div
             key={d.href}
@@ -97,18 +115,23 @@ function StatischeLeiste({ orderedDefs, pathname }: { orderedDefs: NavItem[]; pa
             >
               <span className="text-[10px] leading-none opacity-40">⋮⋮</span>
             </div>
-            <Link
-              href={d.href}
-              className={`flex min-w-0 items-center gap-1.5 border border-l-0 border-slate-700/90 py-2 pr-2.5 pl-1 text-xs font-bold focus-visible:outline-none focus-visible:ring-2 md:gap-2 md:px-3 md:py-2 md:text-sm ${d.ring} ${
-                active
-                  ? `border-slate-600/80 bg-slate-800/90 ${d.color}`
-                  : 'text-slate-400 hover:border-slate-600/50 hover:bg-slate-800/80 hover:text-slate-200 md:text-slate-500 md:hover:text-slate-300'
-              }`}
-              aria-current={active ? 'page' : undefined}
-            >
-              <span aria-hidden>{d.emoji}</span>
-              {d.label}
-            </Link>
+            {investmentsGesperrt ? (
+              <span
+                title={investmentsSperreNavTitle()}
+                aria-current={active ? 'page' : undefined}
+                className={`${tabClass} cursor-default opacity-60 ${
+                  active ? '' : 'hover:border-slate-700/90 hover:bg-transparent hover:text-slate-400 md:hover:text-slate-400'
+                }`}
+              >
+                <span aria-hidden>{d.emoji}</span>
+                {d.label}
+              </span>
+            ) : (
+              <Link href={d.href} className={tabClass} aria-current={active ? 'page' : undefined}>
+                <span aria-hidden>{d.emoji}</span>
+                {d.label}
+              </Link>
+            )}
           </div>
         )
       })}

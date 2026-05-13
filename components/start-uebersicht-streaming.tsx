@@ -3,6 +3,11 @@ import { DetailsDisclosureTriggerEnd } from '@/components/collapsible-ui'
 import { RegionWetterAnzeige } from '@/components/region-wetter-anzeige'
 import { ladeAktienPortfolioNews } from '@/lib/aktien-portfolio-news'
 import {
+  investmentsSperreFreischaltungKurzDE,
+  investmentsSperreLetzterTagDisplayDE,
+  istInvestmentsGesperrt,
+} from '@/lib/investments-sperre'
+import {
   ladeRegionNews,
   ladeWetterRegion,
   REGION_HAARBACH,
@@ -150,6 +155,20 @@ async function ladeNewsPortfolio() {
 }
 
 export async function StartNewsPortfolioPanel() {
+  if (istInvestmentsGesperrt()) {
+    return (
+      <PageSectionPanel density="compact">
+        <div className="rounded-lg border border-violet-900/40 bg-violet-950/20 px-3 py-3 sm:px-4">
+          <p className="text-[11px] font-black uppercase tracking-widest text-violet-200/75">News zu meinen Investments</p>
+          <p className="mt-2 text-sm leading-relaxed text-zinc-400">
+            Während der Aktienpause (bis einschließlich {investmentsSperreLetzterTagDisplayDE()}) sind hier keine
+            Schlagzeilen geladen — bewusst ruhig. Ab {investmentsSperreFreischaltungKurzDE()} erscheint die Liste wieder.
+          </p>
+        </div>
+      </PageSectionPanel>
+    )
+  }
+
   const portfolioNews = await ladeNewsPortfolio()
   return (
     <PageSectionPanel density="compact">
