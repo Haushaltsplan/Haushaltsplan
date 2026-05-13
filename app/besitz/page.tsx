@@ -13,7 +13,11 @@ import {
 } from '@/components/page-shell'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import toast from 'react-hot-toast'
-import { BesitzGebrauchtpreisKi } from '@/components/besitz-gebrauchtpreis-ki'
+import {
+  BesitzGebrauchtpreisKiPanel,
+  BesitzGebrauchtpreisKiRoot,
+  BesitzGebrauchtpreisKiToggle,
+} from '@/components/besitz-gebrauchtpreis-ki'
 
 type BesitzRow = {
   id: string
@@ -641,45 +645,50 @@ export default function BesitzPage() {
             ) : (
               <ul className="mt-6 divide-y divide-slate-800/80">
                 {gefiltert.map((z) => (
-                  <li key={z.id} className="flex flex-col gap-3 py-4 first:pt-0 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
-                    <div className="min-w-0 flex-1">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="rounded-lg border border-amber-800/50 bg-amber-950/40 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-200/95">
-                          {normalisiereBesitzKategorie(z.kategorie)}
-                        </span>
-                        <span className="text-[11px] tabular-nums text-slate-500">{formatDatumDe(z.einkaufsdatum)}</span>
+                  <li key={z.id} className="flex flex-col gap-0 py-4 first:pt-0">
+                    <BesitzGebrauchtpreisKiRoot row={z}>
+                      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
+                        <div className="min-w-0 flex-1">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="rounded-lg border border-amber-800/50 bg-amber-950/40 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-200/95">
+                              {normalisiereBesitzKategorie(z.kategorie)}
+                            </span>
+                            <span className="text-[11px] tabular-nums text-slate-500">{formatDatumDe(z.einkaufsdatum)}</span>
+                          </div>
+                          <p className="mt-1.5 text-base font-semibold text-slate-100">{z.name}</p>
+                          {z.hersteller ? (
+                            <p className="mt-0.5 text-sm text-slate-300">
+                              <span className="text-slate-500">Hersteller:</span> {z.hersteller}
+                            </p>
+                          ) : null}
+                          {z.haendler ? <p className="mt-0.5 text-sm text-slate-400">{z.haendler}</p> : null}
+                          {z.notiz ? <p className="mt-1 text-[13px] leading-relaxed text-slate-500">{z.notiz}</p> : null}
+                        </div>
+                        <div className="flex shrink-0 flex-col items-stretch gap-2 sm:items-end">
+                          <span className="text-lg font-bold tabular-nums text-amber-200 sm:text-right">
+                            {formatEur(Number(z.einkaufspreis_eur))}
+                          </span>
+                          <div className="flex flex-wrap items-center justify-end gap-2">
+                            <button
+                              type="button"
+                              onClick={() => starteBearbeiten(z)}
+                              className="rounded-lg border border-slate-600 px-3 py-1.5 text-xs font-semibold text-sky-200 transition hover:bg-sky-500/15"
+                            >
+                              Bearbeiten
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => void loeschen(z.id)}
+                              className="rounded-lg border border-slate-600 px-3 py-1.5 text-xs font-semibold text-rose-300/95 transition hover:bg-rose-500/15"
+                            >
+                              Löschen
+                            </button>
+                            <BesitzGebrauchtpreisKiToggle />
+                          </div>
+                        </div>
                       </div>
-                      <p className="mt-1.5 text-base font-semibold text-slate-100">{z.name}</p>
-                      {z.hersteller ? (
-                        <p className="mt-0.5 text-sm text-slate-300">
-                          <span className="text-slate-500">Hersteller:</span> {z.hersteller}
-                        </p>
-                      ) : null}
-                      {z.haendler ? <p className="mt-0.5 text-sm text-slate-400">{z.haendler}</p> : null}
-                      {z.notiz ? <p className="mt-1 text-[13px] leading-relaxed text-slate-500">{z.notiz}</p> : null}
-                    </div>
-                    <div className="flex shrink-0 flex-col items-stretch gap-2 sm:items-end">
-                      <span className="text-lg font-bold tabular-nums text-amber-200 sm:text-right">
-                        {formatEur(Number(z.einkaufspreis_eur))}
-                      </span>
-                      <div className="flex flex-wrap gap-2 sm:justify-end">
-                        <button
-                          type="button"
-                          onClick={() => starteBearbeiten(z)}
-                          className="rounded-lg border border-slate-600 px-3 py-1.5 text-xs font-semibold text-sky-200 transition hover:bg-sky-500/15"
-                        >
-                          Bearbeiten
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => void loeschen(z.id)}
-                          className="rounded-lg border border-slate-600 px-3 py-1.5 text-xs font-semibold text-rose-300/95 transition hover:bg-rose-500/15"
-                        >
-                          Löschen
-                        </button>
-                      </div>
-                      <BesitzGebrauchtpreisKi row={z} />
-                    </div>
+                      <BesitzGebrauchtpreisKiPanel />
+                    </BesitzGebrauchtpreisKiRoot>
                   </li>
                 ))}
               </ul>

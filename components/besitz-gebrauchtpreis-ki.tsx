@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useId, useState } from 'react'
+import { createContext, useCallback, useContext, useId, useMemo, useState, type ReactNode } from 'react'
 import type { BesitzGebrauchtpreisErgebnis } from '@/lib/besitz-gebrauchtpreis-ki'
 import { COACH_MAX_IMAGES_PER_MESSAGE } from '@/lib/ki-coach-backend'
 
@@ -15,18 +15,84 @@ export type BesitzGebrauchtpreisKiRow = {
   notiz: string | null
 }
 
+type Ctx = {
+  row: BesitzGebrauchtpreisKiRow
+  offen: boolean
+  setOffen: (v: boolean) => void
+  panelDomId: string
+}
+
+const BesitzGebrauchtpreisKiContext = createContext<Ctx | null>(null)
+
+function useBesitzGebrauchtpreisKi(): Ctx {
+  const c = useContext(BesitzGebrauchtpreisKiContext)
+  if (!c) throw new Error('BesitzGebrauchtpreisKi* nur innerhalb von BesitzGebrauchtpreisKiRoot')
+  return c
+}
+
 function formatEur(n: number) {
   return n.toLocaleString('de-DE', { style: 'currency', currency: 'EUR' })
 }
 
-export function BesitzGebrauchtpreisKi({ row }: { row: BesitzGebrauchtpreisKiRow }) {
-  const panelId = useId()
+/** Sparkles — Gebrauchtwert / KI-Schätzung */
+function IconGebrauchtpreisKi({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      width="18"
+      height="18"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z" />
+      <path d="M20 3v4" />
+      <path d="M22 5h-4" />
+      <path d="M4 17v2" />
+      <path d="M5 18H3" />
+    </svg>
+  )
+}
+
+export function BesitzGebrauchtpreisKiRoot({ row, children }: { row: BesitzGebrauchtpreisKiRow; children: ReactNode }) {
   const [offen, setOffen] = useState(false)
+  const panelDomId = useId()
+  const value = useMemo(() => ({ row, offen, setOffen, panelDomId }), [row, offen, panelDomId])
+  return <BesitzGebrauchtpreisKiContext.Provider value={value}>{children}</BesitzGebrauchtpreisKiContext.Provider>
+}
+
+export function BesitzGebrauchtpreisKiToggle() {
+  const { offen, setOffen, panelDomId } = useBesitzGebrauchtpreisKi()
+  return (
+    <button
+      type="button"
+      aria-expanded={offen}
+      aria-controls={panelDomId}
+      title={offen ? 'Gebrauchtwert ausblenden' : 'Gebrauchtwert (KI)'}
+      onClick={() => setOffen(!offen)}
+      className={`inline-flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-lg border text-violet-200 transition ${
+        offen
+          ? 'border-violet-400 bg-violet-900/50 ring-1 ring-violet-500/30'
+          : 'border-violet-600/50 bg-violet-950/35 hover:bg-violet-900/40'
+      }`}
+    >
+      <span className="sr-only">Gebrauchtwert per KI schätzen</span>
+      <IconGebrauchtpreisKi className="shrink-0 opacity-95" />
+    </button>
+  )
+}
+
+/** Muss nach der Hauptzeile stehen; volle Breite, kein Overlay. */
+export function BesitzGebrauchtpreisKiPanel() {
+  const { row, offen, setOffen, panelDomId } = useBesitzGebrauchtpreisKi()
   const [dateien, setDateien] = useState<File[]>([])
   const [busy, setBusy] = useState(false)
   const [fehler, setFehler] = useState<string | null>(null)
   const [ergebnis, setErgebnis] = useState<BesitzGebrauchtpreisErgebnis | null>(null)
-  const [grounding, setGrounding] = useState<boolean | null>(null)
 
   const onFiles = useCallback((list: FileList | null) => {
     if (!list?.length) {
@@ -44,13 +110,12 @@ export function BesitzGebrauchtpreisKi({ row }: { row: BesitzGebrauchtpreisKiRow
 
   const absenden = useCallback(async () => {
     if (dateien.length === 0) {
-      setFehler('Bitte mindestens ein Foto auswählen.')
+      setFehler('Mindestens ein Foto wählen.')
       return
     }
     setBusy(true)
     setFehler(null)
     setErgebnis(null)
-    setGrounding(null)
     try {
       const formData = new FormData()
       formData.append(
@@ -72,7 +137,6 @@ export function BesitzGebrauchtpreisKi({ row }: { row: BesitzGebrauchtpreisKiRow
       const data = (await res.json().catch(() => ({}))) as {
         error?: string
         ergebnis?: BesitzGebrauchtpreisErgebnis
-        grounding_aktiv?: boolean
       }
       if (!res.ok || typeof data.error === 'string') {
         setFehler(data.error || 'Anfrage fehlgeschlagen.')
@@ -80,7 +144,6 @@ export function BesitzGebrauchtpreisKi({ row }: { row: BesitzGebrauchtpreisKiRow
       }
       if (data.ergebnis) {
         setErgebnis(data.ergebnis)
-        setGrounding(typeof data.grounding_aktiv === 'boolean' ? data.grounding_aktiv : null)
       } else {
         setFehler('Keine nutzbare Antwort.')
       }
@@ -91,95 +154,83 @@ export function BesitzGebrauchtpreisKi({ row }: { row: BesitzGebrauchtpreisKiRow
     }
   }, [dateien, row])
 
+  if (!offen) return null
+
   return (
-    <div className="mt-3 w-full border-t border-slate-800/80 pt-3">
-      <button
-        type="button"
-        aria-expanded={offen}
-        aria-controls={panelId}
-        onClick={() => setOffen((o) => !o)}
-        className="rounded-lg border border-violet-600/50 bg-violet-950/35 px-3 py-1.5 text-xs font-semibold text-violet-200 transition hover:bg-violet-900/40"
-      >
-        {offen ? 'Gebrauchtwert (KI) ausblenden' : 'Gebrauchtwert (KI)'}
-      </button>
+    <div
+      id={panelDomId}
+      className="w-full min-w-0 border-t border-slate-800/90 pt-3 mt-1"
+    >
+      <div className="flex flex-col gap-3 rounded-xl border border-slate-800/90 bg-slate-950/70 p-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
+        <div className="flex min-w-0 flex-1 flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
+          <label className="inline-flex w-fit shrink-0 cursor-pointer items-center justify-center rounded-lg border border-dashed border-slate-600 px-3 py-2 text-[11px] font-semibold text-slate-200 hover:bg-slate-800/50">
+            Fotos (max. {COACH_MAX_IMAGES_PER_MESSAGE})
+            <input
+              type="file"
+              accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp"
+              multiple
+              className="hidden"
+              onChange={(e) => onFiles(e.target.files)}
+            />
+          </label>
+          {dateien.length > 0 ? (
+            <p className="min-w-0 truncate text-[11px] text-slate-500" title={dateien.map((f) => f.name).join(', ')}>
+              {dateien.length}× {dateien.map((f) => f.name).join(', ')}
+            </p>
+          ) : null}
+        </div>
+        <div className="flex shrink-0 flex-wrap items-center gap-2 sm:justify-end">
+          <button
+            type="button"
+            disabled={busy || dateien.length === 0}
+            onClick={() => void absenden()}
+            className="rounded-lg bg-violet-600 px-3 py-2 text-xs font-bold text-white shadow-md shadow-violet-950/30 transition hover:bg-violet-500 disabled:opacity-40"
+          >
+            {busy ? '…' : 'Schätzen'}
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setOffen(false)
+              setDateien([])
+              setErgebnis(null)
+              setFehler(null)
+            }}
+            className="rounded-lg border border-slate-600 px-3 py-2 text-xs font-semibold text-slate-400 transition hover:bg-slate-800/80"
+          >
+            Schließen
+          </button>
+        </div>
+      </div>
 
-      {offen ? (
-        <div id={panelId} className="mt-3 rounded-xl border border-slate-700/80 bg-slate-950/60 p-4 text-sm text-slate-300">
-          <p className="text-[12px] leading-relaxed text-slate-400">
-            Fotos vom <strong className="font-medium text-slate-300">aktuellen Zustand</strong> hochladen — die KI schätzt eine
-            typische <strong className="font-medium text-slate-300">Gebraucht-Verkaufsspanne</strong> (privat, DE) und berücksichtigt
-            Stammdaten. Bei Gemini kann optional eine Websuche die Marktlage stützen.{' '}
-            <span className="text-slate-500">Keine rechtsverbindliche Bewertung.</span>
+      {fehler ? <p className="mt-2 text-[12px] text-rose-300">{fehler}</p> : null}
+
+      {ergebnis ? (
+        <div className="mt-3 space-y-2.5 rounded-lg border border-slate-800/80 bg-slate-900/40 p-3 text-[13px] text-slate-300">
+          <p className="text-lg font-bold tabular-nums text-emerald-200/95">
+            {formatEur(ergebnis.preis_wahrscheinlich_eur)}{' '}
+            <span className="text-sm font-normal text-slate-400">
+              ({formatEur(ergebnis.preis_min_eur)} – {formatEur(ergebnis.preis_max_eur)})
+            </span>
           </p>
-
-          <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
-            <label className="inline-flex cursor-pointer items-center justify-center rounded-lg border border-dashed border-slate-600 px-4 py-2 text-xs font-semibold text-slate-200 hover:bg-slate-800/50">
-              Fotos wählen (max. {COACH_MAX_IMAGES_PER_MESSAGE})
-              <input
-                type="file"
-                accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp"
-                multiple
-                className="hidden"
-                onChange={(e) => onFiles(e.target.files)}
-              />
-            </label>
-            {dateien.length > 0 ? (
-              <span className="text-[11px] text-slate-500">
-                {dateien.length} Datei{dateien.length === 1 ? '' : 'en'}: {dateien.map((f) => f.name).join(', ')}
-              </span>
-            ) : null}
-          </div>
-
-          <div className="mt-3 flex flex-wrap gap-2">
-            <button
-              type="button"
-              disabled={busy || dateien.length === 0}
-              onClick={() => void absenden()}
-              className="rounded-lg bg-violet-600 px-4 py-2 text-xs font-bold text-white shadow-md shadow-violet-950/30 transition hover:bg-violet-500 disabled:opacity-40"
-            >
-              {busy ? '…' : 'Preis schätzen'}
-            </button>
-          </div>
-
-          {fehler ? <p className="mt-3 text-[12px] text-rose-300">{fehler}</p> : null}
-
-          {grounding === true ? (
-            <p className="mt-2 text-[11px] text-slate-500">Hinweis: Websuche (Google) zur Markteinordnung war aktiv.</p>
-          ) : grounding === false ? (
-            <p className="mt-2 text-[11px] text-slate-500">Hinweis: Schätzung ohne Live-Websuche (Modellwissen / Fallback).</p>
+          <p>
+            <span className="text-slate-500">Zustand:</span>{' '}
+            <span className="font-medium text-slate-200">{ergebnis.zustand_stufe}</span> — {ergebnis.zustand_kurz}
+          </p>
+          <p>
+            <span className="text-slate-500">Markt:</span> {ergebnis.markt_einordnung}
+          </p>
+          <p>
+            <span className="text-slate-500">Begründung:</span> {ergebnis.begruendung}
+          </p>
+          {ergebnis.unsicherheiten.length > 0 ? (
+            <ul className="list-inside list-disc text-[12px] text-slate-400">
+              {ergebnis.unsicherheiten.map((u, i) => (
+                <li key={i}>{u}</li>
+              ))}
+            </ul>
           ) : null}
-
-          {ergebnis ? (
-            <div className="mt-4 space-y-3 rounded-lg border border-slate-800 bg-slate-900/50 p-3 text-[13px]">
-              <p className="text-lg font-bold tabular-nums text-emerald-200/95">
-                {formatEur(ergebnis.preis_wahrscheinlich_eur)}{' '}
-                <span className="text-sm font-normal text-slate-400">
-                  ({formatEur(ergebnis.preis_min_eur)} – {formatEur(ergebnis.preis_max_eur)})
-                </span>
-              </p>
-              <p>
-                <span className="text-slate-500">Zustand:</span>{' '}
-                <span className="font-medium text-slate-200">{ergebnis.zustand_stufe}</span> — {ergebnis.zustand_kurz}
-              </p>
-              <p>
-                <span className="text-slate-500">Markt:</span> {ergebnis.markt_einordnung}
-              </p>
-              <p>
-                <span className="text-slate-500">Begründung:</span> {ergebnis.begruendung}
-              </p>
-              {ergebnis.unsicherheiten.length > 0 ? (
-                <div>
-                  <p className="text-slate-500">Unsicherheiten</p>
-                  <ul className="mt-1 list-inside list-disc text-[12px] text-slate-400">
-                    {ergebnis.unsicherheiten.map((u, i) => (
-                      <li key={i}>{u}</li>
-                    ))}
-                  </ul>
-                </div>
-              ) : null}
-              <p className="text-[11px] text-slate-500">{ergebnis.hinweis_rechtlich}</p>
-            </div>
-          ) : null}
+          <p className="text-[11px] text-slate-500">{ergebnis.hinweis_rechtlich}</p>
         </div>
       ) : null}
     </div>
