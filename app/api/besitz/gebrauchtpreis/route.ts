@@ -1,0 +1,191 @@
+import { NextResponse } from 'next/server'
+import {
+  BESITZ_GEBRAUCHTPREIS_RESPONSE_SCHEMA,
+  buildBesitzGebrauchtpreisSystemPrompt,
+  buildBesitzGebrauchtpreisUserText,
+  parseBesitzGebrauchtpreisJson,
+  type BesitzProduktKontext,
+} from '@/lib/besitz-gebrauchtpreis-ki'
+import type { CoachMessage } from '@/lib/ki-coach-backend'
+import { COACH_MAX_IMAGES_PER_MESSAGE, resolveCoachProvider, runCoachCompletion } from '@/lib/ki-coach-backend'
+
+export const runtime = 'nodejs'
+export const maxDuration = 120
+
+const MAX_BYTES_PRO_DATEI = 12 * 1024 * 1024
+
+function mimeFuerProduktfoto(file: File): 'image/jpeg' | 'image/png' | 'image/webp' | null {
+  const n = file.name.toLowerCase()
+  if (file.type === 'image/jpeg' || n.endsWith('.jpg') || n.endsWith('.jpeg')) return 'image/jpeg'
+  if (file.type === 'image/png' || n.endsWith('.png')) return 'image/png'
+  if (file.type === 'image/webp' || n.endsWith('.webp')) return 'image/webp'
+  return null
+}
+
+function envGoogleSearchDefaultTrue(): boolean {
+  const v = process.env.BESITZ_GEBRAUCHTPREIS_GOOGLE_SEARCH?.trim().toLowerCase()
+  if (v === '0' || v === 'false' || v === 'no' || v === 'off') return false
+  return true
+}
+
+function parseProduktJson(raw: string): BesitzProduktKontext | null {
+  let o: unknown
+  try {
+    o = JSON.parse(raw) as unknown
+  } catch {
+    return null
+  }
+  if (!o || typeof o !== 'object') return null
+  const p = o as Record<string, unknown>
+  const name = typeof p.name === 'string' ? p.name.trim() : ''
+  const kategorie = typeof p.kategorie === 'string' ? p.kategorie.trim() : ''
+  const einkaufspreis_eur =
+    typeof p.einkaufspreis_eur === 'number'
+      ? p.einkaufspreis_eur
+      : Number.parseFloat(String(p.einkaufspreis_eur ?? ''))
+  if (!name || !kategorie || !Number.isFinite(einkaufspreis_eur) || einkaufspreis_eur < 0) return null
+  return {
+    name,
+    kategorie,
+    einkaufspreis_eur: Math.round(einkaufspreis_eur * 100) / 100,
+    einkaufsdatum: typeof p.einkaufsdatum === 'string' ? p.einkaufsdatum.trim().slice(0, 10) || null : null,
+    haendler: typeof p.haendler === 'string' ? p.haendler.trim() || null : null,
+    hersteller: typeof p.hersteller === 'string' ? p.hersteller.trim() || null : null,
+    notiz: typeof p.notiz === 'string' ? p.notiz.trim() || null : null,
+  }
+}
+
+export async function POST(request: Request) {
+  const resolved = resolveCoachProvider()
+  if (!resolved) {
+    return NextResponse.json(
+      {
+        error:
+          'KI ist nicht konfiguriert (wie Finanz-Coach): GEMINI_API_KEY oder OPENAI_API_KEY in .env.local, Dev-Server neu starten.',
+      },
+      { status: 501 },
+    )
+  }
+
+  const contentType = request.headers.get('content-type') || ''
+  if (!contentType.includes('multipart/form-data')) {
+    return NextResponse.json({ error: 'Bitte Fotos per Formular-Upload senden.' }, { status: 400 })
+  }
+
+  let formData: FormData
+  try {
+    formData = await request.formData()
+  } catch {
+    return NextResponse.json({ error: 'Ungültiges Formular.' }, { status: 400 })
+  }
+
+  const produktRaw = formData.get('produkt')
+  if (typeof produktRaw !== 'string' || !produktRaw.trim()) {
+    return NextResponse.json({ error: 'Feld „produkt“ (JSON) fehlt.' }, { status: 400 })
+  }
+  const produkt = parseProduktJson(produktRaw)
+  if (!produkt) {
+    return NextResponse.json({ error: 'Ungültiges Produkt-JSON.' }, { status: 400 })
+  }
+
+  const alle = formData.getAll('fotos')
+  const dateien: File[] = []
+  for (const e of alle) {
+    if (e instanceof File && e.size > 0) dateien.push(e)
+  }
+  if (dateien.length === 0) {
+    return NextResponse.json({ error: 'Mindestens ein Foto (JPEG, PNG oder WebP) erforderlich.' }, { status: 400 })
+  }
+  if (dateien.length > COACH_MAX_IMAGES_PER_MESSAGE) {
+    return NextResponse.json(
+      { error: `Maximal ${COACH_MAX_IMAGES_PER_MESSAGE} Fotos pro Anfrage.` },
+      { status: 400 },
+    )
+  }
+
+  const images: { mimeType: 'image/jpeg' | 'image/png' | 'image/webp'; base64: string }[] = []
+  for (const file of dateien) {
+    if (file.size > MAX_BYTES_PRO_DATEI) {
+      return NextResponse.json(
+        { error: `Datei zu groß (max. ${Math.round(MAX_BYTES_PRO_DATEI / (1024 * 1024))} MB pro Bild).` },
+        { status: 413 },
+      )
+    }
+    const mime = mimeFuerProduktfoto(file)
+    if (!mime) {
+      return NextResponse.json({ error: 'Nur JPEG, PNG oder WebP.' }, { status: 400 })
+    }
+    try {
+      const bytes = Buffer.from(await file.arrayBuffer())
+      images.push({ mimeType: mime, base64: bytes.toString('base64') })
+    } catch (e) {
+      console.error('besitz/gebrauchtpreis buffer', e)
+      return NextResponse.json({ error: 'Datei konnte nicht gelesen werden.' }, { status: 500 })
+    }
+  }
+
+  const systemText = buildBesitzGebrauchtpreisSystemPrompt()
+  const mitWeb =
+    resolved.provider === 'gemini' && envGoogleSearchDefaultTrue()
+      ? true
+      : false
+  const userText = buildBesitzGebrauchtpreisUserText(produkt, images.length, mitWeb)
+
+  const userMessages: CoachMessage[] = [
+    {
+      role: 'user',
+      content: userText,
+      images,
+    },
+  ]
+
+  const jsonOpts = { jsonResponse: { schema: BESITZ_GEBRAUCHTPREIS_RESPONSE_SCHEMA } }
+
+  try {
+    let groundingNachAntwort = false
+    let result = await runCoachCompletion(resolved.provider, resolved.apiKey, systemText, userMessages, {
+      temperature: 0.35,
+      ...jsonOpts,
+      geminiGoogleSearch: mitWeb,
+    })
+
+    if (result.ok) {
+      groundingNachAntwort = mitWeb
+    } else if (
+      resolved.provider === 'gemini' &&
+      mitWeb &&
+      (result.status === 400 || /tool|google|search|schema|invalid/i.test(result.hint))
+    ) {
+      const userTextOhneWeb = buildBesitzGebrauchtpreisUserText(produkt, images.length, false)
+      result = await runCoachCompletion(resolved.provider, resolved.apiKey, systemText, [
+        { role: 'user', content: userTextOhneWeb, images },
+      ], {
+        temperature: 0.35,
+        ...jsonOpts,
+        geminiGoogleSearch: false,
+      })
+      groundingNachAntwort = false
+    }
+
+    if (!result.ok) {
+      return NextResponse.json({ error: `KI: ${result.hint}` }, { status: 502 })
+    }
+
+    const parsed = parseBesitzGebrauchtpreisJson(result.reply)
+    if (!parsed) {
+      return NextResponse.json(
+        { error: 'KI-Antwort konnte nicht ausgewertet werden.', roh: result.reply.slice(0, 2000) },
+        { status: 502 },
+      )
+    }
+
+    return NextResponse.json({
+      ergebnis: parsed,
+      /** Ob die erfolgreiche Antwort mit Google-Search-Grounding lief (nur Gemini). */
+      grounding_aktiv: resolved.provider === 'gemini' && groundingNachAntwort,
+    })
+  } catch (e) {
+    console.error('besitz/gebrauchtpreis', e)
+    return NextResponse.json({ error: 'Verarbeitung fehlgeschlagen.' }, { status: 502 })
+  }
+}

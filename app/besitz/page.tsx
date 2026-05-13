@@ -13,6 +13,7 @@ import {
 } from '@/components/page-shell'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import toast from 'react-hot-toast'
+import { BesitzGebrauchtpreisKi } from '@/components/besitz-gebrauchtpreis-ki'
 
 type BesitzRow = {
   id: string
@@ -677,6 +678,7 @@ export default function BesitzPage() {
                           Löschen
                         </button>
                       </div>
+                      <BesitzGebrauchtpreisKi row={z} />
                     </div>
                   </li>
                 ))}
