@@ -40,8 +40,12 @@ export function readGeminiApiKeyFromEnv(): string {
   return geminiApiKey()
 }
 
-export function resolveCoachProvider(): { provider: CoachProvider; apiKey: string } | null {
-  const mode = (process.env.FINANCE_COACH_PROVIDER || 'auto').toLowerCase().trim()
+/**
+ * Welcher KI-Anbieter genutzt wird (gleiche Logik wie `resolveCoachProvider`, aber mit frei wählbarem Modus-String).
+ * `mode`: `auto` | `gemini` | `openai` (case-insensitive).
+ */
+export function resolveCoachProviderFromMode(modeRaw: string | undefined): { provider: CoachProvider; apiKey: string } | null {
+  const mode = (modeRaw || 'auto').toLowerCase().trim()
   const gKey = geminiApiKey()
   const oKey = openAiApiKey()
 
@@ -54,6 +58,21 @@ export function resolveCoachProvider(): { provider: CoachProvider; apiKey: strin
   if (gKey) return { provider: 'gemini', apiKey: gKey }
   if (oKey) return { provider: 'openai', apiKey: oKey }
   return null
+}
+
+export function resolveCoachProvider(): { provider: CoachProvider; apiKey: string } | null {
+  return resolveCoachProviderFromMode(process.env.FINANCE_COACH_PROVIDER)
+}
+
+/** Für Fehlermeldungen: ob die Laufzeitumgebung einen nicht-leeren Schlüssel sieht (kein Key-Wert). */
+export function coachProviderSchluesselDiagnose(): {
+  gemini_gesetzt: boolean
+  openai_gesetzt: boolean
+} {
+  return {
+    gemini_gesetzt: Boolean(geminiApiKey()),
+    openai_gesetzt: Boolean(openAiApiKey()),
+  }
 }
 
 function stripDataUrlBase64(raw: string): string {

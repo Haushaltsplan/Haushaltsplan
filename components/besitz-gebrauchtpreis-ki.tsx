@@ -122,12 +122,40 @@ export function BesitzGebrauchtpreisKiPanel() {
         formData.append('fotos', f)
       }
       const res = await fetch('/api/besitz/gebrauchtpreis', { method: 'POST', body: formData })
-      const data = (await res.json().catch(() => ({}))) as {
+      const rawText = await res.text()
+      let data: {
         error?: string
         ergebnis?: BesitzGebrauchtpreisErgebnis
+        ki_provider?: string | null
+        ki_modus?: string
+        schluessel?: { gemini_gesetzt: boolean; openai_gesetzt: boolean }
+      } = {}
+      try {
+        data = rawText ? (JSON.parse(rawText) as typeof data) : {}
+      } catch {
+        setFehler(`Antwort nicht lesbar (HTTP ${res.status}). ${rawText.slice(0, 280)}`)
+        return
       }
+
+      const providerHint =
+        typeof data.ki_provider === 'string'
+          ? ` [KI-Anbieter: ${data.ki_provider}]`
+          : data.ki_provider === null && typeof data.ki_modus === 'string'
+            ? ` [Modus: ${data.ki_modus}, kein API-Schlüssel]`
+            : ''
+
+      const diag = data.schluessel
+      const diagHint =
+        diag && typeof diag === 'object'
+          ? ` (Server sieht: Gemini=${diag.gemini_gesetzt ? 'ja' : 'nein'}, OpenAI=${diag.openai_gesetzt ? 'ja' : 'nein'})`
+          : ''
+
       if (!res.ok || typeof data.error === 'string') {
-        setFehler(data.error || 'Anfrage fehlgeschlagen.')
+        const msg =
+          typeof data.error === 'string' && data.error.trim()
+            ? data.error.trim()
+            : rawText.trim().slice(0, 400) || `HTTP ${res.status}`
+        setFehler(`${msg}${providerHint}${diagHint}`)
         return
       }
       if (data.ergebnis) {

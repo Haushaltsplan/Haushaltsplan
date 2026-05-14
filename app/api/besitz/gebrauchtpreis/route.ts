@@ -7,7 +7,12 @@ import {
   type BesitzProduktKontext,
 } from '@/lib/besitz-gebrauchtpreis-ki'
 import type { CoachMessage } from '@/lib/ki-coach-backend'
-import { COACH_MAX_IMAGES_PER_MESSAGE, resolveCoachProvider, runCoachCompletion } from '@/lib/ki-coach-backend'
+import {
+  COACH_MAX_IMAGES_PER_MESSAGE,
+  coachProviderSchluesselDiagnose,
+  resolveCoachProviderFromMode,
+  runCoachCompletion,
+} from '@/lib/ki-coach-backend'
 
 export const runtime = 'nodejs'
 export const maxDuration = 120
@@ -62,36 +67,46 @@ function parseProduktJson(raw: string): BesitzProduktKontext | null {
 }
 
 export async function POST(request: Request) {
-  const resolved = resolveCoachProvider()
+  const modeBesitz =
+    process.env.BESITZ_GEBRAUCHTPREIS_PROVIDER?.trim() ||
+    process.env.FINANCE_COACH_PROVIDER?.trim() ||
+    'auto'
+  const resolved = resolveCoachProviderFromMode(modeBesitz)
   if (!resolved) {
     return NextResponse.json(
       {
         error:
-          'KI ist nicht konfiguriert (wie Finanz-Coach): GEMINI_API_KEY oder OPENAI_API_KEY in .env.local, Dev-Server neu starten.',
+          'KI ist nicht konfiguriert (wie Finanz-Coach): GEMINI_API_KEY oder OPENAI_API_KEY in .env.local, Dev-Server neu starten. ' +
+          'Wenn nur Gemini genutzt wird: FINANCE_COACH_PROVIDER leer oder `auto` oder `gemini` — nicht `openai`.',
+        ki_provider: null,
+        ki_modus: modeBesitz,
+        schluessel: coachProviderSchluesselDiagnose(),
       },
       { status: 501 },
     )
   }
 
+  const kiMeta = { ki_provider: resolved.provider, ki_modus: modeBesitz }
+
   const contentType = request.headers.get('content-type') || ''
   if (!/multipart\/form-data/i.test(contentType)) {
-    return NextResponse.json({ error: 'Bitte Fotos per Formular-Upload senden.' }, { status: 400 })
+    return NextResponse.json({ ...kiMeta, error: 'Bitte Fotos per Formular-Upload senden.' }, { status: 400 })
   }
 
   let formData: FormData
   try {
     formData = await request.formData()
   } catch {
-    return NextResponse.json({ error: 'Ungültiges Formular.' }, { status: 400 })
+    return NextResponse.json({ ...kiMeta, error: 'Ungültiges Formular.' }, { status: 400 })
   }
 
   const produktRaw = formData.get('produkt')
   if (typeof produktRaw !== 'string' || !produktRaw.trim()) {
-    return NextResponse.json({ error: 'Feld „produkt“ (JSON) fehlt.' }, { status: 400 })
+    return NextResponse.json({ ...kiMeta, error: 'Feld „produkt“ (JSON) fehlt.' }, { status: 400 })
   }
   const produkt = parseProduktJson(produktRaw)
   if (!produkt) {
-    return NextResponse.json({ error: 'Ungültiges Produkt-JSON.' }, { status: 400 })
+    return NextResponse.json({ ...kiMeta, error: 'Ungültiges Produkt-JSON.' }, { status: 400 })
   }
 
   const alle = formData.getAll('fotos')
@@ -100,11 +115,14 @@ export async function POST(request: Request) {
     if (e instanceof File && e.size > 0) dateien.push(e)
   }
   if (dateien.length === 0) {
-    return NextResponse.json({ error: 'Mindestens ein Foto (JPEG, PNG, WebP oder HEIC) erforderlich.' }, { status: 400 })
+    return NextResponse.json(
+      { ...kiMeta, error: 'Mindestens ein Foto (JPEG, PNG, WebP oder HEIC) erforderlich.' },
+      { status: 400 },
+    )
   }
   if (dateien.length > COACH_MAX_IMAGES_PER_MESSAGE) {
     return NextResponse.json(
-      { error: `Maximal ${COACH_MAX_IMAGES_PER_MESSAGE} Fotos pro Anfrage.` },
+      { ...kiMeta, error: `Maximal ${COACH_MAX_IMAGES_PER_MESSAGE} Fotos pro Anfrage.` },
       { status: 400 },
     )
   }
@@ -113,7 +131,7 @@ export async function POST(request: Request) {
   for (const file of dateien) {
     if (file.size > MAX_BYTES_PRO_DATEI) {
       return NextResponse.json(
-        { error: `Datei zu groß (max. ${Math.round(MAX_BYTES_PRO_DATEI / (1024 * 1024))} MB pro Bild).` },
+        { ...kiMeta, error: `Datei zu groß (max. ${Math.round(MAX_BYTES_PRO_DATEI / (1024 * 1024))} MB pro Bild).` },
         { status: 413 },
       )
     }
@@ -121,6 +139,7 @@ export async function POST(request: Request) {
     if (!mime) {
       return NextResponse.json(
         {
+          ...kiMeta,
           error:
             'Bildformat nicht erkannt (JPEG, PNG, WebP, HEIC). Bei Kamera ohne Endung: bitte „Aus Galerie“ mit JPEG wählen oder iPhone auf „Kompatibel“ stellen.',
         },
@@ -133,8 +152,9 @@ export async function POST(request: Request) {
     ) {
       return NextResponse.json(
         {
+          ...kiMeta,
           error:
-            'HEIC/HEIF wird von OpenAI-Vision nicht unterstützt. Bitte Foto als JPEG speichern oder in .env.local GEMINI_API_KEY setzen (Finanz-Coach nutzt dann Gemini).',
+            'HEIC/HEIF wird von OpenAI-Vision nicht unterstützt. Bitte JPEG wählen oder BESITZ_GEBRAUCHTPREIS_PROVIDER=gemini bzw. GEMINI_API_KEY setzen.',
         },
         { status: 400 },
       )
@@ -144,7 +164,7 @@ export async function POST(request: Request) {
       images.push({ mimeType: mime, base64: bytes.toString('base64') })
     } catch (e) {
       console.error('besitz/gebrauchtpreis buffer', e)
-      return NextResponse.json({ error: 'Datei konnte nicht gelesen werden.' }, { status: 500 })
+      return NextResponse.json({ ...kiMeta, error: 'Datei konnte nicht gelesen werden.' }, { status: 500 })
     }
   }
 
@@ -163,7 +183,11 @@ export async function POST(request: Request) {
     },
   ]
 
-  const jsonOpts = { jsonResponse: { schema: BESITZ_GEBRAUCHTPREIS_RESPONSE_SCHEMA } }
+  /** OpenAI: `json_object` + Vision ist fehleranfällig; Gemini nutzt strukturiertes Schema. */
+  const jsonOpts =
+    resolved.provider === 'gemini'
+      ? { jsonResponse: { schema: BESITZ_GEBRAUCHTPREIS_RESPONSE_SCHEMA } }
+      : undefined
 
   try {
     let groundingNachAntwort = false
@@ -192,24 +216,31 @@ export async function POST(request: Request) {
     }
 
     if (!result.ok) {
-      return NextResponse.json({ error: `KI: ${result.hint}` }, { status: 502 })
+      return NextResponse.json({ ...kiMeta, error: `KI: ${result.hint}` }, { status: 502 })
     }
 
     const parsed = parseBesitzGebrauchtpreisJson(result.reply)
     if (!parsed) {
       return NextResponse.json(
-        { error: 'KI-Antwort konnte nicht ausgewertet werden.', roh: result.reply.slice(0, 2000) },
+        {
+          ...kiMeta,
+          error:
+            resolved.provider === 'openai'
+              ? 'KI-Antwort konnte nicht ausgewertet werden (OpenAI liefert manchmal kein sauberes JSON). Tipp: BESITZ_GEBRAUCHTPREIS_PROVIDER=gemini in .env.local oder FINANCE_COACH_PROVIDER=gemini.'
+              : 'KI-Antwort konnte nicht ausgewertet werden.',
+          roh: result.reply.slice(0, 2000),
+        },
         { status: 502 },
       )
     }
 
     return NextResponse.json({
       ergebnis: parsed,
-      /** Ob die erfolgreiche Antwort mit Google-Search-Grounding lief (nur Gemini). */
       grounding_aktiv: resolved.provider === 'gemini' && groundingNachAntwort,
+      ...kiMeta,
     })
   } catch (e) {
     console.error('besitz/gebrauchtpreis', e)
-    return NextResponse.json({ error: 'Verarbeitung fehlgeschlagen.' }, { status: 502 })
+    return NextResponse.json({ ...kiMeta, error: 'Verarbeitung fehlgeschlagen.' }, { status: 502 })
   }
 }
