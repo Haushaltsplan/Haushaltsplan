@@ -3,6 +3,7 @@
 import { createContext, useCallback, useContext, useId, useMemo, useRef, useState, type ReactNode } from 'react'
 import type { BesitzGebrauchtpreisErgebnis } from '@/lib/besitz-gebrauchtpreis-ki'
 import { KiSparklesIcon } from '@/components/ki-brand'
+import { compressImageFileToJpegUpload } from '@/lib/finance-coach-images'
 import { COACH_MAX_IMAGES_PER_MESSAGE } from '@/lib/ki-coach-backend'
 
 export type BesitzGebrauchtpreisKiRow = {
@@ -105,6 +106,16 @@ export function BesitzGebrauchtpreisKiPanel() {
     setFehler(null)
     setErgebnis(null)
     try {
+      const hochladen: File[] = []
+      for (const f of dateien) {
+        try {
+          hochladen.push(await compressImageFileToJpegUpload(f, { maxEdge: 1024, quality: 0.72 }))
+        } catch (e) {
+          setFehler(e instanceof Error ? e.message : 'Bild konnte nicht vorbereitet werden.')
+          return
+        }
+      }
+
       const formData = new FormData()
       formData.append(
         'produkt',
@@ -118,7 +129,7 @@ export function BesitzGebrauchtpreisKiPanel() {
           notiz: row.notiz,
         }),
       )
-      for (const f of dateien) {
+      for (const f of hochladen) {
         formData.append('fotos', f)
       }
       const res = await fetch('/api/besitz/gebrauchtpreis', { method: 'POST', body: formData })
@@ -133,7 +144,11 @@ export function BesitzGebrauchtpreisKiPanel() {
       try {
         data = rawText ? (JSON.parse(rawText) as typeof data) : {}
       } catch {
-        setFehler(`Antwort nicht lesbar (HTTP ${res.status}). ${rawText.slice(0, 280)}`)
+        const zuGross =
+          res.status === 413
+            ? 'Anfrage zu groß (413). Bitte weniger oder kleinere Fotos; die App verkleinert vor dem Senden, das Server-Limit kann trotzdem erreicht werden. '
+            : ''
+        setFehler(`${zuGross}Antwort nicht lesbar (HTTP ${res.status}). ${rawText.slice(0, 280)}`)
         return
       }
 
@@ -151,11 +166,15 @@ export function BesitzGebrauchtpreisKiPanel() {
           : ''
 
       if (!res.ok || typeof data.error === 'string') {
+        const prefix =
+          res.status === 413
+            ? 'Upload zu groß für den Server (413). Bitte weniger Fotos wählen oder erneut versuchen (Fotos werden vor dem Senden verkleinert). '
+            : ''
         const msg =
           typeof data.error === 'string' && data.error.trim()
             ? data.error.trim()
             : rawText.trim().slice(0, 400) || `HTTP ${res.status}`
-        setFehler(`${msg}${providerHint}${diagHint}`)
+        setFehler(`${prefix}${msg}${providerHint}${diagHint}`)
         return
       }
       if (data.ergebnis) {
@@ -234,7 +253,10 @@ export function BesitzGebrauchtpreisKiPanel() {
               {dateien.length}/{COACH_MAX_IMAGES_PER_MESSAGE}: {dateien.map((f) => f.name || '(Kamera)').join(', ')}
             </p>
           ) : (
-            <p className="text-[11px] text-slate-500">Bis zu {COACH_MAX_IMAGES_PER_MESSAGE} Bilder — Kamera oder Galerie.</p>
+            <p className="text-[11px] text-slate-500">
+              Bis zu {COACH_MAX_IMAGES_PER_MESSAGE} Bilder — Kamera oder Galerie. Vor dem Senden werden sie als JPEG
+              verkleinert (Server-Limit).
+            </p>
           )}
         </div>
         <div className="flex shrink-0 flex-wrap items-center gap-2 sm:justify-end">

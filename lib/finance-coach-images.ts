@@ -48,3 +48,65 @@ export async function compressImageFileForCoach(file: File): Promise<CoachImageP
 export function coachImageDataUrl(part: CoachImagePart): string {
   return `data:${part.mimeType};base64,${part.base64}`
 }
+
+export type CompressImageUploadOpts = {
+  /** Längere Kante max. in px (Standard: 1024 — kleinere Requests, z. B. Vercel-Payload-Limit). */
+  maxEdge?: number
+  /** JPEG-Qualität 0–1 (Standard: 0.72). */
+  quality?: number
+}
+
+/**
+ * Für FormData-Uploads (z. B. Besitz-Gebrauchtwert): Dekodiert im Browser, skaliert, liefert ein **JPEG-File**.
+ * Reduziert 413 „Request entity too large“ (Serverless-Payload-Limits).
+ */
+export async function compressImageFileToJpegUpload(
+  file: File,
+  opts?: CompressImageUploadOpts,
+): Promise<File> {
+  const maxEdge = opts?.maxEdge ?? 1024
+  const quality = opts?.quality ?? 0.72
+  const t = (file.type || '').toLowerCase()
+  const extOk = /\.(heic|heif|jpe?g|png|gif|webp)$/i.test(file.name)
+  if (!t.startsWith('image/') && !extOk) {
+    throw new Error('Nur Bilddateien sind erlaubt.')
+  }
+
+  const bitmap = await createImageBitmap(file).catch(() => {
+    throw new Error(
+      'Bild konnte nicht gelesen werden (Format?). Tipp: HEIC wird nicht überall unterstützt — in der Galerie als JPEG speichern oder „Kompatibel“ am iPhone.',
+    )
+  })
+  try {
+    const maxSide = Math.max(bitmap.width, bitmap.height)
+    const scale = maxSide > maxEdge ? maxEdge / maxSide : 1
+    const w = Math.max(1, Math.round(bitmap.width * scale))
+    const h = Math.max(1, Math.round(bitmap.height * scale))
+    const canvas = document.createElement('canvas')
+    canvas.width = w
+    canvas.height = h
+    const ctx = canvas.getContext('2d')
+    if (!ctx) throw new Error('Canvas nicht verfügbar.')
+    if (t === 'image/png' || t === 'image/webp' || t === 'image/gif') {
+      ctx.fillStyle = '#fff'
+      ctx.fillRect(0, 0, w, h)
+    }
+    ctx.drawImage(bitmap, 0, 0, w, h)
+
+    const blob = await new Promise<Blob>((resolve, reject) => {
+      canvas.toBlob(
+        (b) => (b ? resolve(b) : reject(new Error('JPEG-Kompression lieferte keine Daten.'))),
+        'image/jpeg',
+        quality,
+      )
+    })
+
+    const base = file.name
+      .replace(/\.[^.\\/]+$/, '')
+      .replace(/[^\w\-äöüÄÖÜß]+/gi, '_')
+      .slice(0, 60)
+    return new File([blob], `${base || 'foto'}.jpg`, { type: 'image/jpeg', lastModified: Date.now() })
+  } finally {
+    bitmap.close()
+  }
+}
