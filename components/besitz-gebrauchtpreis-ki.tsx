@@ -1,6 +1,6 @@
 'use client'
 
-import { createContext, useCallback, useContext, useId, useMemo, useState, type ReactNode } from 'react'
+import { createContext, useCallback, useContext, useId, useMemo, useRef, useState, type ReactNode } from 'react'
 import type { BesitzGebrauchtpreisErgebnis } from '@/lib/besitz-gebrauchtpreis-ki'
 import { KiSparklesIcon } from '@/components/ki-brand'
 import { COACH_MAX_IMAGES_PER_MESSAGE } from '@/lib/ki-coach-backend'
@@ -29,6 +29,16 @@ function useBesitzGebrauchtpreisKi(): Ctx {
   const c = useContext(BesitzGebrauchtpreisKiContext)
   if (!c) throw new Error('BesitzGebrauchtpreisKi* nur innerhalb von BesitzGebrauchtpreisKiRoot')
   return c
+}
+
+function mergeFotosListe(bisher: File[], neu: FileList | null): File[] {
+  if (!neu?.length) return bisher
+  const cap = COACH_MAX_IMAGES_PER_MESSAGE
+  const out = [...bisher]
+  for (let i = 0; i < neu.length && out.length < cap; i++) {
+    out.push(neu[i]!)
+  }
+  return out
 }
 
 function formatEur(n: number) {
@@ -70,17 +80,18 @@ export function BesitzGebrauchtpreisKiPanel() {
   const [busy, setBusy] = useState(false)
   const [fehler, setFehler] = useState<string | null>(null)
   const [ergebnis, setErgebnis] = useState<BesitzGebrauchtpreisErgebnis | null>(null)
+  const galerieRef = useRef<HTMLInputElement>(null)
+  const kameraRef = useRef<HTMLInputElement>(null)
 
-  const onFiles = useCallback((list: FileList | null) => {
-    if (!list?.length) {
-      setDateien([])
-      return
-    }
-    const next: File[] = []
-    for (let i = 0; i < list.length && next.length < COACH_MAX_IMAGES_PER_MESSAGE; i++) {
-      next.push(list[i]!)
-    }
-    setDateien(next)
+  const hinzufuegenFotos = useCallback((list: FileList | null) => {
+    if (!list?.length) return
+    setDateien((d) => mergeFotosListe(d, list))
+    setErgebnis(null)
+    setFehler(null)
+  }, [])
+
+  const alleFotosLeeren = useCallback(() => {
+    setDateien([])
     setErgebnis(null)
     setFehler(null)
   }, [])
@@ -100,7 +111,7 @@ export function BesitzGebrauchtpreisKiPanel() {
         JSON.stringify({
           name: row.name,
           kategorie: row.kategorie,
-          einkaufspreis_eur: row.einkaufspreis_eur,
+          einkaufspreis_eur: Number(row.einkaufspreis_eur),
           einkaufsdatum: row.einkaufsdatum,
           haendler: row.haendler,
           hersteller: row.hersteller,
@@ -139,22 +150,64 @@ export function BesitzGebrauchtpreisKiPanel() {
       className="w-full min-w-0 border-t border-slate-800/90 pt-3 mt-1"
     >
       <div className="flex flex-col gap-3 rounded-xl border border-slate-800/90 bg-slate-950/70 p-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
-        <div className="flex min-w-0 flex-1 flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
-          <label className="inline-flex w-fit shrink-0 cursor-pointer items-center justify-center rounded-lg border border-dashed border-slate-600 px-3 py-2 text-[11px] font-semibold text-slate-200 hover:bg-slate-800/50">
-            Fotos (max. {COACH_MAX_IMAGES_PER_MESSAGE})
-            <input
-              type="file"
-              accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp"
-              multiple
-              className="hidden"
-              onChange={(e) => onFiles(e.target.files)}
-            />
-          </label>
+        <div className="flex min-w-0 flex-1 flex-col gap-2">
+          <input
+            ref={kameraRef}
+            type="file"
+            accept="image/jpeg,image/png,image/webp,image/heic,image/heif,.jpg,.jpeg,.png,.webp,.heic,.heif"
+            capture="environment"
+            className="hidden"
+            onChange={(e) => {
+              hinzufuegenFotos(e.target.files)
+              e.target.value = ''
+            }}
+          />
+          <input
+            ref={galerieRef}
+            type="file"
+            accept="image/jpeg,image/png,image/webp,image/heic,image/heif,.jpg,.jpeg,.png,.webp,.heic,.heif"
+            multiple
+            className="hidden"
+            onChange={(e) => {
+              hinzufuegenFotos(e.target.files)
+              e.target.value = ''
+            }}
+          />
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              disabled={busy || dateien.length >= COACH_MAX_IMAGES_PER_MESSAGE}
+              onClick={() => kameraRef.current?.click()}
+              className="rounded-lg border border-sky-600/55 bg-sky-950/40 px-3 py-2 text-[11px] font-bold text-sky-100 transition hover:bg-sky-900/40 disabled:opacity-40"
+            >
+              Foto aufnehmen
+            </button>
+            <button
+              type="button"
+              disabled={busy || dateien.length >= COACH_MAX_IMAGES_PER_MESSAGE}
+              onClick={() => galerieRef.current?.click()}
+              className="rounded-lg border border-violet-600/55 bg-violet-950/40 px-3 py-2 text-[11px] font-bold text-violet-100 transition hover:bg-violet-900/40 disabled:opacity-40"
+            >
+              Aus Galerie
+            </button>
+            {dateien.length > 0 ? (
+              <button
+                type="button"
+                disabled={busy}
+                onClick={alleFotosLeeren}
+                className="rounded-lg border border-slate-600 px-3 py-2 text-[11px] font-semibold text-slate-400 transition hover:bg-slate-800/80 disabled:opacity-40"
+              >
+                Fotos leeren
+              </button>
+            ) : null}
+          </div>
           {dateien.length > 0 ? (
-            <p className="min-w-0 truncate text-[11px] text-slate-500" title={dateien.map((f) => f.name).join(', ')}>
-              {dateien.length}× {dateien.map((f) => f.name).join(', ')}
+            <p className="min-w-0 truncate text-[11px] text-slate-500" title={dateien.map((f) => f.name || f.type).join(', ')}>
+              {dateien.length}/{COACH_MAX_IMAGES_PER_MESSAGE}: {dateien.map((f) => f.name || '(Kamera)').join(', ')}
             </p>
-          ) : null}
+          ) : (
+            <p className="text-[11px] text-slate-500">Bis zu {COACH_MAX_IMAGES_PER_MESSAGE} Bilder — Kamera oder Galerie.</p>
+          )}
         </div>
         <div className="flex shrink-0 flex-wrap items-center gap-2 sm:justify-end">
           <button

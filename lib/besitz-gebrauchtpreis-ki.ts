@@ -17,6 +17,7 @@ export const BESITZ_GEBRAUCHTPREIS_RESPONSE_SCHEMA: Record<string, unknown> = {
     unsicherheiten: { type: 'ARRAY', items: { type: 'STRING' } },
     hinweis_rechtlich: { type: 'STRING' },
   },
+  /** Nur Kernfelder zwingend — sonst scheitert Gemini oft, wenn Arrays/Text mal fehlen. */
   required: [
     'zustand_kurz',
     'zustand_stufe',
@@ -25,8 +26,6 @@ export const BESITZ_GEBRAUCHTPREIS_RESPONSE_SCHEMA: Record<string, unknown> = {
     'preis_wahrscheinlich_eur',
     'markt_einordnung',
     'begruendung',
-    'unsicherheiten',
-    'hinweis_rechtlich',
   ],
 }
 

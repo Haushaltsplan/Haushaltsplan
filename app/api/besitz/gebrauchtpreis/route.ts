@@ -14,11 +14,16 @@ export const maxDuration = 120
 
 const MAX_BYTES_PRO_DATEI = 12 * 1024 * 1024
 
-function mimeFuerProduktfoto(file: File): 'image/jpeg' | 'image/png' | 'image/webp' | null {
+type ProduktFotoMime = 'image/jpeg' | 'image/png' | 'image/webp' | 'image/heic' | 'image/heif'
+
+function mimeFuerProduktfoto(file: File): ProduktFotoMime | null {
+  const t = (file.type || '').toLowerCase().trim()
   const n = file.name.toLowerCase()
-  if (file.type === 'image/jpeg' || n.endsWith('.jpg') || n.endsWith('.jpeg')) return 'image/jpeg'
-  if (file.type === 'image/png' || n.endsWith('.png')) return 'image/png'
-  if (file.type === 'image/webp' || n.endsWith('.webp')) return 'image/webp'
+  if (t === 'image/jpeg' || t === 'image/jpg' || n.endsWith('.jpg') || n.endsWith('.jpeg')) return 'image/jpeg'
+  if (t === 'image/png' || n.endsWith('.png')) return 'image/png'
+  if (t === 'image/webp' || n.endsWith('.webp')) return 'image/webp'
+  if (t === 'image/heic' || n.endsWith('.heic')) return 'image/heic'
+  if (t === 'image/heif' || n.endsWith('.heif')) return 'image/heif'
   return null
 }
 
@@ -39,10 +44,11 @@ function parseProduktJson(raw: string): BesitzProduktKontext | null {
   const p = o as Record<string, unknown>
   const name = typeof p.name === 'string' ? p.name.trim() : ''
   const kategorie = typeof p.kategorie === 'string' ? p.kategorie.trim() : ''
+  const einkaufRaw = p.einkaufspreis_eur
   const einkaufspreis_eur =
-    typeof p.einkaufspreis_eur === 'number'
-      ? p.einkaufspreis_eur
-      : Number.parseFloat(String(p.einkaufspreis_eur ?? ''))
+    typeof einkaufRaw === 'number' && Number.isFinite(einkaufRaw)
+      ? einkaufRaw
+      : Number.parseFloat(String(einkaufRaw ?? '').trim().replace(/\s/g, '').replace(',', '.'))
   if (!name || !kategorie || !Number.isFinite(einkaufspreis_eur) || einkaufspreis_eur < 0) return null
   return {
     name,
@@ -68,7 +74,7 @@ export async function POST(request: Request) {
   }
 
   const contentType = request.headers.get('content-type') || ''
-  if (!contentType.includes('multipart/form-data')) {
+  if (!/multipart\/form-data/i.test(contentType)) {
     return NextResponse.json({ error: 'Bitte Fotos per Formular-Upload senden.' }, { status: 400 })
   }
 
@@ -94,7 +100,7 @@ export async function POST(request: Request) {
     if (e instanceof File && e.size > 0) dateien.push(e)
   }
   if (dateien.length === 0) {
-    return NextResponse.json({ error: 'Mindestens ein Foto (JPEG, PNG oder WebP) erforderlich.' }, { status: 400 })
+    return NextResponse.json({ error: 'Mindestens ein Foto (JPEG, PNG, WebP oder HEIC) erforderlich.' }, { status: 400 })
   }
   if (dateien.length > COACH_MAX_IMAGES_PER_MESSAGE) {
     return NextResponse.json(
@@ -103,7 +109,7 @@ export async function POST(request: Request) {
     )
   }
 
-  const images: { mimeType: 'image/jpeg' | 'image/png' | 'image/webp'; base64: string }[] = []
+  const images: { mimeType: string; base64: string }[] = []
   for (const file of dateien) {
     if (file.size > MAX_BYTES_PRO_DATEI) {
       return NextResponse.json(
@@ -113,7 +119,25 @@ export async function POST(request: Request) {
     }
     const mime = mimeFuerProduktfoto(file)
     if (!mime) {
-      return NextResponse.json({ error: 'Nur JPEG, PNG oder WebP.' }, { status: 400 })
+      return NextResponse.json(
+        {
+          error:
+            'Bildformat nicht erkannt (JPEG, PNG, WebP, HEIC). Bei Kamera ohne Endung: bitte „Aus Galerie“ mit JPEG wählen oder iPhone auf „Kompatibel“ stellen.',
+        },
+        { status: 400 },
+      )
+    }
+    if (
+      resolved.provider === 'openai' &&
+      (mime === 'image/heic' || mime === 'image/heif')
+    ) {
+      return NextResponse.json(
+        {
+          error:
+            'HEIC/HEIF wird von OpenAI-Vision nicht unterstützt. Bitte Foto als JPEG speichern oder in .env.local GEMINI_API_KEY setzen (Finanz-Coach nutzt dann Gemini).',
+        },
+        { status: 400 },
+      )
     }
     try {
       const bytes = Buffer.from(await file.arrayBuffer())
