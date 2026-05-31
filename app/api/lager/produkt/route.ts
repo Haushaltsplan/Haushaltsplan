@@ -245,13 +245,42 @@ export async function PATCH(req: Request) {
     return NextResponse.json({ error: 'Name darf nicht leer sein.' }, { status: 400 })
   }
 
-  const patch: Record<string, string> = {}
+  const patch: Record<string, unknown> = {}
   if (name !== undefined) patch.name = name
   if (einheit !== undefined) patch.einheit = einheit
   if (kategorie !== undefined) patch.kategorie = kategorie
 
+  // MHD (Mindesthaltbarkeit): 'YYYY-MM-DD' setzen oder null/'' zum Löschen.
+  if ('mhd' in body) {
+    const raw = body.mhd
+    if (raw == null || (typeof raw === 'string' && raw.trim() === '')) {
+      patch.mhd = null
+    } else if (typeof raw === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(raw.trim())) {
+      patch.mhd = raw.trim()
+    } else {
+      return NextResponse.json({ error: 'MHD muss ein Datum (YYYY-MM-DD) oder leer sein.' }, { status: 400 })
+    }
+  }
+
+  // Mindestbestand: positive Zahl setzen oder null/0 zum Deaktivieren.
+  if ('mindestbestand' in body) {
+    const raw = body.mindestbestand
+    if (raw == null || raw === '') {
+      patch.mindestbestand = null
+    } else {
+      const num = Number(raw)
+      if (!Number.isFinite(num) || num < 0) {
+        return NextResponse.json({ error: 'Mindestbestand muss eine Zahl ≥ 0 sein.' }, { status: 400 })
+      }
+      patch.mindestbestand = num > 0 ? Math.round(num * 1000) / 1000 : null
+    }
+  }
+
   if (Object.keys(patch).length === 0) {
-    return NextResponse.json({ error: 'Keine Felder zum Aktualisieren (name, einheit, kategorie).' }, { status: 400 })
+    return NextResponse.json(
+      { error: 'Keine Felder zum Aktualisieren (name, einheit, kategorie, mhd, mindestbestand).' },
+      { status: 400 },
+    )
   }
 
   try {
@@ -259,7 +288,7 @@ export async function PATCH(req: Request) {
       .from('produkte')
       .update(patch)
       .eq('id', id)
-      .select('id, name, einheit, kategorie')
+      .select('id, name, einheit, kategorie, mhd, mindestbestand')
       .single()
     if (error) throw new Error(error.message)
     return NextResponse.json({ ok: true, produkt: data })

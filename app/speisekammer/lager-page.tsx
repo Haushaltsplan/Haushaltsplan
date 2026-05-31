@@ -7,6 +7,8 @@ import { LagerBestandVerlauf } from '@/components/lager-bestand-verlauf'
 import { LagerGekochteMahlzeiten } from '@/components/lager-gekochte-mahlzeiten'
 import { LagerRezeptCoach } from '@/components/lager-rezept-coach'
 import { LagerRezeptKatalog } from '@/components/lager-rezept-katalog'
+import { LagerUebersicht } from '@/components/lager-uebersicht'
+import { istUnterMindestbestand, mhdKurzLabel, mhdStatus } from '@/lib/lager-mhd'
 import {
   basisEinheitFuerPreisanzeige,
   defaultBasisEinheitAusKauf,
@@ -47,6 +49,10 @@ type ProduktRow = {
   durchschnittspreis?: number | null
   /** Einzelpreis der chronologisch letzten Einkaufszeile (gesamtpreis / Basis-Menge). */
   letzterEinkaufspreis?: number | null
+  /** Nächstes Mindesthaltbarkeitsdatum 'YYYY-MM-DD' (Grocy-Ablaufampel). */
+  mhd?: string | null
+  /** Mindestvorrat in Basiseinheit (Nachkauf-Schwelle). */
+  mindestbestand?: number | null
 }
 
 function lagerMenge(p: Pick<ProduktRow, 'lagerbestand'>): number {
@@ -488,8 +494,28 @@ export default function LagerPage() {
 
   const gesamtProdukte = produkte.length
   const mitBestand = produkte.filter((p) => lagerMenge(p) > 0).length
-  const leerbestand = produkte.filter((p) => lagerMenge(p) <= 0).length
   const lagerwertGesamt = useMemo(() => summeBestandswert(produkte), [produkte])
+
+  const uebersichtItems = useMemo(
+    () =>
+      produkte.map((p) => ({
+        id: p.id,
+        name: p.name,
+        menge: lagerMenge(p),
+        einheit: basisEinheitFuerPreisanzeige(basisEinheitAnzeige(p)),
+        mhd: p.mhd ?? null,
+        mindestbestand: p.mindestbestand ?? null,
+      })),
+    [produkte],
+  )
+
+  const oeffneArtikel = useCallback(
+    (id: string) => {
+      const p = produkte.find((x) => x.id === id)
+      if (p) setModal({ typ: 'bearbeiten', p })
+    },
+    [produkte],
+  )
 
   const produkteGefiltert = useMemo(() => {
     const q = artikelSuche.trim()
@@ -678,6 +704,8 @@ export default function LagerPage() {
         basis_einheit: basisEinheitAnzeige(modal.p),
         kategorie: normalisiereLagerKategorie(modal.p.kategorie ?? null),
         bestand: lagerMenge(modal.p),
+        mhd: modal.p.mhd ?? null,
+        mindestbestand: modal.p.mindestbestand ?? null,
       }
     : null
 
@@ -687,27 +715,13 @@ export default function LagerPage() {
 
       <section className={pageSectionShellClass}>
         <div className={pageSectionPanelClass}>
-          <div className="grid w-full min-w-0 grid-cols-2 gap-2 sm:grid-cols-4 sm:gap-2.5">
-          <div className="flex min-h-[4.75rem] min-w-0 flex-col justify-center rounded-xl border border-zinc-700/80 bg-zinc-800/45 px-2.5 py-2.5 sm:min-h-0 sm:px-3 sm:py-3">
-            <span className="truncate text-[9px] font-bold uppercase tracking-wide text-emerald-400 sm:text-[10px]">Artikel</span>
-            <span className="mt-0.5 truncate text-2xl font-black tabular-nums text-zinc-100 sm:text-3xl">{gesamtProdukte}</span>
-            <span className="mt-1 truncate text-[10px] text-zinc-500">erfasst</span>
-          </div>
-          <div className="flex min-h-[4.75rem] min-w-0 flex-col justify-center rounded-xl border border-zinc-700/80 bg-zinc-800/45 px-2.5 py-2.5 sm:min-h-0 sm:px-3 sm:py-3">
-            <span className="truncate text-[9px] font-bold uppercase tracking-wide text-sky-400 sm:text-[10px]">Mit Bestand</span>
-            <span className="mt-0.5 truncate text-2xl font-black tabular-nums text-zinc-100 sm:text-3xl">{mitBestand}</span>
-            <span className="mt-1 truncate text-[10px] text-zinc-500">&gt; 0</span>
-          </div>
-          <div className="flex min-h-[4.75rem] min-w-0 flex-col justify-center rounded-xl border border-zinc-700/80 bg-zinc-800/45 px-2.5 py-2.5 sm:min-h-0 sm:px-3 sm:py-3">
-            <span className="truncate text-[9px] font-bold uppercase tracking-wide text-rose-400 sm:text-[10px]">Ohne Bestand</span>
-            <span className="mt-0.5 truncate text-2xl font-black tabular-nums text-zinc-100 sm:text-3xl">{leerbestand}</span>
-            <span className="mt-1 truncate text-[10px] text-zinc-500">Menge 0</span>
-          </div>
-          <div className="flex min-h-[4.75rem] min-w-0 flex-col justify-center rounded-xl border border-violet-800/50 bg-violet-950/35 px-2.5 py-2.5 sm:min-h-0 sm:px-3 sm:py-3">
-            <span className="truncate text-[9px] font-bold uppercase tracking-wide text-violet-300 sm:text-[10px]">Vorratswert</span>
-            <span className="mt-0.5 truncate text-xl font-black tabular-nums leading-tight text-violet-100 sm:text-2xl">{formatEur(lagerwertGesamt)}</span>
-          </div>
-          </div>
+          <LagerUebersicht
+            items={uebersichtItems}
+            artikelGesamt={gesamtProdukte}
+            mitBestand={mitBestand}
+            vorratswert={lagerwertGesamt}
+            onOeffnen={oeffneArtikel}
+          />
         </div>
       </section>
 
@@ -1069,8 +1083,30 @@ export default function LagerPage() {
                     >
                       <td className="min-w-0 px-1.5 py-2 pl-2 align-middle sm:px-2 sm:pl-3">
                         <div className="truncate font-semibold text-slate-100">{p.name}</div>
-                        <div className="mt-0.5 truncate text-[10px] text-slate-500">
-                          {normalisiereLagerKategorie(p.kategorie ?? null)}
+                        <div className="mt-0.5 flex min-w-0 flex-wrap items-center gap-1">
+                          <span className="truncate text-[10px] text-slate-500">
+                            {normalisiereLagerKategorie(p.kategorie ?? null)}
+                          </span>
+                          {(() => {
+                            const st = mhdStatus(p.mhd ?? null)
+                            if (st === 'keine') return null
+                            const cls =
+                              st === 'abgelaufen'
+                                ? 'border-rose-700/50 bg-rose-900/30 text-rose-200'
+                                : st === 'bald'
+                                  ? 'border-amber-700/50 bg-amber-900/30 text-amber-200'
+                                  : 'border-slate-700/60 bg-slate-800/50 text-slate-400'
+                            return (
+                              <span className={`inline-flex shrink-0 items-center rounded border px-1 text-[9px] font-bold ${cls}`}>
+                                MHD {mhdKurzLabel(p.mhd ?? null)}
+                              </span>
+                            )
+                          })()}
+                          {istUnterMindestbestand(menge, p.mindestbestand ?? null) ? (
+                            <span className="inline-flex shrink-0 items-center rounded border border-sky-700/50 bg-sky-900/30 px-1 text-[9px] font-bold text-sky-200">
+                              nachkaufen
+                            </span>
+                          ) : null}
                         </div>
                       </td>
                       <td className="min-w-0 px-1 py-2 text-right align-middle sm:px-1.5">

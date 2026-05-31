@@ -15,6 +15,10 @@ export type LagerProduktModalZeile = {
   basis_einheit: string
   kategorie: string
   bestand: number
+  /** MHD als 'YYYY-MM-DD' oder null. */
+  mhd?: string | null
+  /** Mindestvorrat in Basiseinheit oder null. */
+  mindestbestand?: number | null
 }
 
 type Modus = 'bearbeiten' | 'verbrauch' | null
@@ -37,7 +41,12 @@ function BearbeitenForm({
 }) {
   const [name, setName] = useState(produkt.name)
   const [kategorie, setKategorie] = useState<string>(normalisiereLagerKategorie(produkt.kategorie))
+  const [mhd, setMhd] = useState<string>(produkt.mhd ?? '')
+  const [mindestbestand, setMindestbestand] = useState<string>(
+    produkt.mindestbestand != null && produkt.mindestbestand > 0 ? String(produkt.mindestbestand).replace('.', ',') : '',
+  )
   const [pending, setPending] = useState(false)
+  const einheitLabel = basisEinheitFuerPreisanzeige(produkt.basis_einheit)
 
   async function speichernProdukt() {
     const n = name.trim()
@@ -47,12 +56,25 @@ function BearbeitenForm({
     }
     const pid = produkt.id
     const kat = normalisiereLagerKategorie(kategorie)
+
+    const mhdWert = mhd.trim() ? mhd.trim() : null
+    const minRoh = mindestbestand.trim().replace(',', '.')
+    let minWert: number | null = null
+    if (minRoh) {
+      const num = Number(minRoh)
+      if (!Number.isFinite(num) || num < 0) {
+        toast.error('Mindestbestand muss eine Zahl ≥ 0 sein.')
+        return
+      }
+      minWert = num > 0 ? Math.round(num * 1000) / 1000 : null
+    }
+
     setPending(true)
     try {
       const res = await fetch('/api/lager/produkt', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: pid, name: n, kategorie: kat }),
+        body: JSON.stringify({ id: pid, name: n, kategorie: kat, mhd: mhdWert, mindestbestand: minWert }),
       })
       const data = (await res.json()) as { error?: string }
       if (!res.ok && res.status !== 501) {
@@ -62,7 +84,7 @@ function BearbeitenForm({
       if (res.status === 501) {
         const { error } = await supabase
           .from('produkte')
-          .update({ name: n, kategorie: kat })
+          .update({ name: n, kategorie: kat, mhd: mhdWert, mindestbestand: minWert })
           .eq('id', pid)
         if (error) {
           toast.error(
@@ -106,9 +128,35 @@ function BearbeitenForm({
           </option>
         ))}
       </select>
-      <p className="mb-6 rounded-lg border border-slate-800 bg-slate-950/80 px-3 py-2 text-sm text-slate-400">
-        Basiseinheit (fest):{' '}
-        <span className="font-semibold text-slate-200">{basisEinheitFuerPreisanzeige(produkt.basis_einheit)}</span>
+      <div className="mb-4 grid grid-cols-2 gap-3">
+        <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500">
+          Haltbar bis (MHD)
+          <input
+            type="date"
+            className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2.5 font-semibold text-slate-100 outline-none focus:ring-2 focus:ring-amber-500/40"
+            value={mhd}
+            onChange={(e) => setMhd(e.target.value)}
+            disabled={pending}
+          />
+        </label>
+        <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500">
+          Mindestbestand ({einheitLabel})
+          <input
+            type="text"
+            inputMode="decimal"
+            placeholder="z. B. 2"
+            className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2.5 font-semibold text-slate-100 outline-none focus:ring-2 focus:ring-sky-500/40"
+            value={mindestbestand}
+            onChange={(e) => setMindestbestand(e.target.value)}
+            disabled={pending}
+          />
+        </label>
+      </div>
+      <p className="mb-6 rounded-lg border border-slate-800 bg-slate-950/80 px-3 py-2 text-xs text-slate-400">
+        Basiseinheit (fest): <span className="font-semibold text-slate-200">{einheitLabel}</span>
+        <span className="mt-1 block text-slate-500">
+          MHD speist die Ablauf-Ampel, der Mindestbestand die „Nachkaufen"-Liste in der Übersicht.
+        </span>
       </p>
       <div className="flex gap-3">
         <button
