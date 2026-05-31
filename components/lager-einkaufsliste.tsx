@@ -9,6 +9,8 @@ import {
   type LagerVerbrauchHistorieZeile,
 } from '@/lib/lager-einkaufsliste-verbrauch'
 import { basisEinheitFuerPreisanzeige, istLagerBasisEinheit, produktEinheitZuBasis, type LagerBasisEinheit } from '@/lib/lager-einheiten'
+import { istUnterMindestbestand } from '@/lib/lager-mhd'
+import { abonniereMerker, entferneMerker, gemerkteIds } from '@/lib/einkaufsliste-merker'
 
 const SESSION_KEY = 'mein-haushalt:einkaufsliste-v1'
 
@@ -28,6 +30,7 @@ type ProduktKurz = {
   lagerbestand?: Lb | Lb[] | null
   durchschnittspreis?: number | null
   letzterEinkaufspreis?: number | null
+  mindestbestand?: number | null
 }
 
 function lagerMenge(p: Pick<ProduktKurz, 'lagerbestand'>): number {
@@ -100,6 +103,7 @@ export function LagerEinkaufsliste({ produkte, verbrauchHistorie, refreshKey }: 
   const [offen, setOffen] = useState(true)
   const [hidden, setHidden] = useState<string[]>([])
   const [mengen, setMengen] = useState<Record<string, number>>({})
+  const [gemerkt, setGemerkt] = useState<string[]>([])
   /** Nach `refreshKey`: einmal kein Speichern, damit nicht alte UI-Zustände frisch geladene Session überschreiben. */
   const skipPersistOnce = useRef(false)
 
@@ -117,6 +121,11 @@ export function LagerEinkaufsliste({ produkte, verbrauchHistorie, refreshKey }: 
     }
     savePersist({ hidden, mengen })
   }, [hidden, mengen])
+
+  useEffect(() => {
+    setGemerkt(gemerkteIds())
+    return abonniereMerker(() => setGemerkt(gemerkteIds()))
+  }, [refreshKey])
 
   const idsMitBestand = useMemo(() => {
     const s = new Set<string>()
@@ -138,21 +147,30 @@ export function LagerEinkaufsliste({ produkte, verbrauchHistorie, refreshKey }: 
     })
   }, [idsMitBestand])
 
+  const gemerktSet = useMemo(() => new Set(gemerkt), [gemerkt])
+
   const kandidaten = useMemo(() => {
     return produkte
-      .filter((p) => lagerMenge(p) <= 0)
-      .filter((p) => !hidden.includes(p.id))
-      .sort((a, b) => a.name.localeCompare(b.name, 'de'))
-  }, [produkte, hidden])
+      .map((p) => {
+        const m = lagerMenge(p)
+        const leer = m <= 0
+        const unterMin = istUnterMindestbestand(m, p.mindestbestand ?? null)
+        const merk = gemerktSet.has(p.id)
+        const grund: 'leer' | 'min' | 'merker' | null = leer ? 'leer' : unterMin ? 'min' : merk ? 'merker' : null
+        return { p, grund }
+      })
+      .filter((x) => x.grund != null && !hidden.includes(x.p.id))
+      .sort((a, b) => a.p.name.localeCompare(b.p.name, 'de'))
+  }, [produkte, hidden, gemerktSet])
 
   const zeilen = useMemo(() => {
-    return kandidaten.map((p) => {
+    return kandidaten.map(({ p, grund }) => {
       const basis = basisEinheitAnzeige(p)
       const einheit = basisEinheitFuerPreisanzeige(basis)
       const k = verbrauchKennzahlenFuerProdukt(verbrauchHistorie, p.id)
       const vorschlag = vorschlagsMengeEinkauf(k)
       const menge = mengen[p.id] ?? vorschlag
-      return { p, basis, einheit, k, menge, vorschlag }
+      return { p, basis, einheit, k, menge, vorschlag, grund }
     })
   }, [kandidaten, verbrauchHistorie, mengen])
 
@@ -174,6 +192,8 @@ export function LagerEinkaufsliste({ produkte, verbrauchHistorie, refreshKey }: 
       delete n[id]
       return n
     })
+    // Manuell gemerkte Artikel auch aus dem Merker nehmen, sonst tauchen sie wieder auf.
+    entferneMerker(id)
   }
 
   function ausgeblendeteZurueck() {
@@ -192,7 +212,7 @@ export function LagerEinkaufsliste({ produkte, verbrauchHistorie, refreshKey }: 
         <div className="min-w-0">
           <h2 className="text-sm font-bold text-amber-100 sm:text-base">Einkaufsliste</h2>
           <p className="text-[10px] text-slate-500 sm:text-[11px]">
-            Artikel ohne Bestand · Preise und Verbrauch · Menge editierbar
+            Ohne Bestand · unter Mindestbestand · gemerkt · Menge editierbar
           </p>
         </div>
         <div className="flex shrink-0 items-center gap-2.5 sm:gap-3">
@@ -217,8 +237,8 @@ export function LagerEinkaufsliste({ produkte, verbrauchHistorie, refreshKey }: 
 
           {zeilen.length === 0 ? (
             <p className="py-3 text-center text-xs text-slate-500">
-              Keine Artikel ohne Bestand{hidden.length ? ' (oder alle ausgeblendet)' : ''}. Nach Kassen-Import mit Bestand
-              verschwinden Zeilen automatisch.
+              Nichts nachzukaufen{hidden.length ? ' (oder alle ausgeblendet)' : ''}. Hier erscheinen Artikel ohne Bestand,
+              unter Mindestbestand oder per 🛒 gemerkte.
             </p>
           ) : (
             <div className="overflow-x-auto rounded-lg border border-slate-800/90">
@@ -235,10 +255,17 @@ export function LagerEinkaufsliste({ produkte, verbrauchHistorie, refreshKey }: 
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-800/80">
-                  {zeilen.map(({ p, basis, einheit, k, menge, vorschlag }) => (
+                  {zeilen.map(({ p, basis, einheit, k, menge, vorschlag, grund }) => (
                     <tr key={p.id} className="bg-slate-950/30">
                       <td className="max-w-[14rem] px-2 py-1.5 sm:px-3">
-                        <div className="truncate font-semibold text-slate-100">{p.name}</div>
+                        <div className="flex min-w-0 items-center gap-1.5">
+                          <span className="truncate font-semibold text-slate-100">{p.name}</span>
+                          {grund === 'min' ? (
+                            <span className="shrink-0 rounded border border-sky-700/50 bg-sky-900/30 px-1 text-[9px] font-bold text-sky-200">unter Min.</span>
+                          ) : grund === 'merker' ? (
+                            <span className="shrink-0 rounded border border-violet-700/50 bg-violet-900/30 px-1 text-[9px] font-bold text-violet-200">gemerkt</span>
+                          ) : null}
+                        </div>
                         <div className="truncate text-[10px] text-slate-600">{einheit}</div>
                       </td>
                       <td className="whitespace-nowrap px-2 py-1.5 text-right text-sky-100/90 sm:px-3">

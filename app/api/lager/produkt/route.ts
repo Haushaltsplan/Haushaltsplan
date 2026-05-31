@@ -71,6 +71,13 @@ export async function POST(req: Request) {
   const kategorie = normalisiereLagerKategorie(
     typeof body.kategorie === 'string' && body.kategorie.trim() ? body.kategorie : null,
   )
+  const mhd =
+    typeof body.mhd === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(body.mhd.trim()) ? body.mhd.trim() : null
+  const mindestbestandRaw = body.mindestbestand == null || body.mindestbestand === '' ? null : Number(body.mindestbestand)
+  const mindestbestand =
+    mindestbestandRaw != null && Number.isFinite(mindestbestandRaw) && mindestbestandRaw > 0
+      ? Math.round(mindestbestandRaw * 1000) / 1000
+      : null
 
   if (!name) {
     return NextResponse.json({ error: 'Bezeichnung (name) fehlt.' }, { status: 400 })
@@ -157,6 +164,14 @@ export async function POST(req: Request) {
         }
       }
 
+      // MHD/Mindestbestand bei manueller Erfassung mitpflegen, wenn angegeben.
+      const zusatz: Record<string, unknown> = {}
+      if (mhd) zusatz.mhd = mhd
+      if (mindestbestand != null) zusatz.mindestbestand = mindestbestand
+      if (Object.keys(zusatz).length > 0) {
+        await admin.from('produkte').update(zusatz).eq('id', produktId)
+      }
+
       return NextResponse.json({ ok: true, id: produktId, neuerArtikel: false })
     }
 
@@ -179,6 +194,8 @@ export async function POST(req: Request) {
           einheit: einheitLabelFuerProdukt(basisNeu),
           basis_einheit: basisNeu,
           kategorie,
+          ...(mhd ? { mhd } : {}),
+          ...(mindestbestand != null ? { mindestbestand } : {}),
         },
       ])
       .select('id')
@@ -276,9 +293,21 @@ export async function PATCH(req: Request) {
     }
   }
 
+  // Barcode-Bindung: setzen oder null zum Entfernen.
+  if ('barcode' in body) {
+    const raw = body.barcode
+    if (raw == null || (typeof raw === 'string' && raw.trim() === '')) {
+      patch.barcode = null
+    } else if (typeof raw === 'string') {
+      patch.barcode = raw.trim()
+    } else {
+      return NextResponse.json({ error: 'Barcode muss Text oder leer sein.' }, { status: 400 })
+    }
+  }
+
   if (Object.keys(patch).length === 0) {
     return NextResponse.json(
-      { error: 'Keine Felder zum Aktualisieren (name, einheit, kategorie, mhd, mindestbestand).' },
+      { error: 'Keine Felder zum Aktualisieren (name, einheit, kategorie, mhd, mindestbestand, barcode).' },
       { status: 400 },
     )
   }
@@ -288,8 +317,11 @@ export async function PATCH(req: Request) {
       .from('produkte')
       .update(patch)
       .eq('id', id)
-      .select('id, name, einheit, kategorie, mhd, mindestbestand')
+      .select('id, name, einheit, kategorie, mhd, mindestbestand, barcode')
       .single()
+    if (error && /barcode/i.test(error.message) && /unique|duplicate/i.test(error.message)) {
+      return NextResponse.json({ error: 'Dieser Barcode ist bereits einem anderen Artikel zugeordnet.' }, { status: 409 })
+    }
     if (error) throw new Error(error.message)
     return NextResponse.json({ ok: true, produkt: data })
   } catch (e) {

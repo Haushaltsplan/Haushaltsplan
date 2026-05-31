@@ -8,7 +8,12 @@ import { LagerGekochteMahlzeiten } from '@/components/lager-gekochte-mahlzeiten'
 import { LagerRezeptCoach } from '@/components/lager-rezept-coach'
 import { LagerRezeptKatalog } from '@/components/lager-rezept-katalog'
 import { LagerUebersicht } from '@/components/lager-uebersicht'
+import { LagerAuswertungen } from '@/components/lager-auswertungen'
+import { LagerAblaufTimeline } from '@/components/lager-ablauf-timeline'
+import { LagerBarcodeScanner } from '@/components/lager-barcode-scanner'
 import { istUnterMindestbestand, mhdKurzLabel, mhdStatus } from '@/lib/lager-mhd'
+import { bucheSchnellMinus, bucheSchnellPlus } from '@/lib/lager-schnellbuchung'
+import { abonniereMerker, istGemerkt, toggleMerker } from '@/lib/einkaufsliste-merker'
 import {
   basisEinheitFuerPreisanzeige,
   defaultBasisEinheitAusKauf,
@@ -53,6 +58,8 @@ type ProduktRow = {
   mhd?: string | null
   /** Mindestvorrat in Basiseinheit (Nachkauf-Schwelle). */
   mindestbestand?: number | null
+  /** Gebundener Barcode/EAN. */
+  barcode?: string | null
 }
 
 function lagerMenge(p: Pick<ProduktRow, 'lagerbestand'>): number {
@@ -124,6 +131,8 @@ export default function LagerPage() {
   const [neuMenge, setNeuMenge] = useState('')
   const [neuGesamtpreis, setNeuGesamtpreis] = useState('')
   const [neuKategorie, setNeuKategorie] = useState<string>('Sonstiges')
+  const [neuMhd, setNeuMhd] = useState('')
+  const [neuMindestbestand, setNeuMindestbestand] = useState('')
   const [formularLaden, setFormularLaden] = useState(false)
   const [duplikatLaden, setDuplikatLaden] = useState(false)
   const [bestandLeerenLaden, setBestandLeerenLaden] = useState(false)
@@ -139,9 +148,14 @@ export default function LagerPage() {
   const [lagerRefreshKey, setLagerRefreshKey] = useState(0)
   const [rezeptKatalogRefreshKey, setRezeptKatalogRefreshKey] = useState(0)
   const [verbrauchHistorie, setVerbrauchHistorie] = useState<LagerVerbrauchHistorieZeile[]>([])
-  /** Reduziert vertikale Blähung: Bestand vs. Küche/Rezepte. */
-  const [lagerHauptTab, setLagerHauptTab] = useState<'bestand' | 'kueche'>('bestand')
+  /** Reduziert vertikale Blähung: Bestand vs. Küche/Rezepte vs. Auswertungen. */
+  const [lagerHauptTab, setLagerHauptTab] = useState<'bestand' | 'kueche' | 'auswertungen'>('bestand')
   const [lagerManuellOffen, setLagerManuellOffen] = useState(false)
+  const [scannerOffen, setScannerOffen] = useState(false)
+  /** Tick, damit „auf Liste gemerkt"-Markierungen in der Tabelle live aktualisieren. */
+  const [, setMerkerTick] = useState(0)
+
+  useEffect(() => abonniereMerker(() => setMerkerTick((t) => t + 1)), [])
 
   useEffect(() => {
     if (!neuKaufEinheit) return
@@ -422,6 +436,8 @@ export default function LagerPage() {
           gesamtpreis: g,
           einkaufsdatum,
           kategorie: neuKategorie,
+          mhd: neuMhd.trim() || null,
+          mindestbestand: neuMindestbestand.trim() ? parseDeZahl(neuMindestbestand) : null,
         }),
       })
       const data = (await res.json()) as { error?: string; neuerArtikel?: boolean }
@@ -454,6 +470,8 @@ export default function LagerPage() {
       setNeuKaufEinheit('Stück')
       setNeuBasisEinheit('Stück')
       setNeuKategorie('Sonstiges')
+      setNeuMhd('')
+      setNeuMindestbestand('')
       setEinkaufsdatum(heuteAlsYYYYMMD())
       await ladeDaten()
     } finally {
@@ -514,6 +532,30 @@ export default function LagerPage() {
       const p = produkte.find((x) => x.id === id)
       if (p) setModal({ typ: 'bearbeiten', p })
     },
+    [produkte],
+  )
+
+  async function schnellBuchen(p: ProduktRow, richtung: 'plus' | 'minus') {
+    const menge = lagerMenge(p)
+    const r = richtung === 'plus' ? await bucheSchnellPlus(p.id, menge) : await bucheSchnellMinus(p.id, menge)
+    if (!r.ok) {
+      toast.error(r.fehler || 'Buchung fehlgeschlagen.')
+      return
+    }
+    const u = basisEinheitFuerPreisanzeige(basisEinheitAnzeige(p))
+    toast.success(`${richtung === 'plus' ? '+1' : '−1'} ${u} · ${p.name}`)
+    await ladeDaten()
+  }
+
+  const scannerProdukte = useMemo(
+    () =>
+      produkte.map((p) => ({
+        id: p.id,
+        name: p.name,
+        barcode: p.barcode ?? null,
+        menge: lagerMenge(p),
+        einheit: basisEinheitFuerPreisanzeige(basisEinheitAnzeige(p)),
+      })),
     [produkte],
   )
 
@@ -756,11 +798,37 @@ export default function LagerPage() {
         >
           Küche & Verlauf
         </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={lagerHauptTab === 'auswertungen'}
+          onClick={() => setLagerHauptTab('auswertungen')}
+          className={`min-w-0 flex-1 rounded-lg px-3 py-2.5 text-left text-xs font-black transition sm:flex-none sm:px-4 sm:text-sm ${
+            lagerHauptTab === 'auswertungen'
+              ? 'bg-sky-600 text-white shadow-sm shadow-sky-950/40'
+              : 'text-slate-400 hover:bg-slate-800/80 hover:text-slate-200'
+          }`}
+        >
+          Auswertungen
+        </button>
       </div>
 
       {lagerHauptTab === 'bestand' && (
         <>
           <LagerKassenzettelPanel onBuchungFertig={() => void ladeDaten()} />
+
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setScannerOffen(true)}
+              className="inline-flex items-center gap-2 rounded-xl border border-sky-600/55 bg-sky-950/40 px-4 py-2.5 text-sm font-bold text-sky-100 transition hover:bg-sky-900/40"
+            >
+              <span aria-hidden>▦</span> Barcode scannen
+            </button>
+            <span className="text-[11px] text-slate-500">Artikel per Kamera ein-/ausbuchen oder neu zuordnen.</span>
+          </div>
+
+          <LagerAblaufTimeline items={uebersichtItems} onOeffnen={oeffneArtikel} />
 
           <LagerEinkaufsliste produkte={produkte} verbrauchHistorie={verbrauchHistorie} refreshKey={lagerRefreshKey} />
 
@@ -855,6 +923,28 @@ export default function LagerPage() {
                         <option value="kg">kg</option>
                         <option value="Liter">Liter</option>
                       </select>
+                    </label>
+                    <label className="block text-[10px] font-black uppercase tracking-wider text-slate-500">
+                      Haltbar bis (MHD)
+                      <input
+                        type="date"
+                        className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 py-2 px-2 text-sm font-bold text-slate-100 outline-none focus:ring-2 focus:ring-amber-500/45"
+                        value={neuMhd}
+                        onChange={(e) => setNeuMhd(e.target.value)}
+                        disabled={formularLaden}
+                      />
+                    </label>
+                    <label className="block text-[10px] font-black uppercase tracking-wider text-slate-500">
+                      Mindestbestand
+                      <input
+                        type="text"
+                        inputMode="decimal"
+                        placeholder="optional, z. B. 2"
+                        className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 py-2 px-2.5 text-sm font-semibold text-slate-100 outline-none focus:ring-2 focus:ring-sky-500/45"
+                        value={neuMindestbestand}
+                        onChange={(e) => setNeuMindestbestand(e.target.value)}
+                        disabled={formularLaden}
+                      />
                     </label>
                     <label className="block text-[10px] font-black uppercase tracking-wider text-slate-500 sm:col-span-2">
                       Gesamtpreis (€)
@@ -993,11 +1083,11 @@ export default function LagerPage() {
           <div className="w-full min-w-0 overflow-x-auto [-webkit-overflow-scrolling:touch]">
             <table className="w-full max-w-full table-fixed border-collapse text-left text-[12px] leading-tight sm:text-[13px]">
               <colgroup>
-                <col className="min-w-0 [width:32%]" />
-                <col className="min-w-0 [width:14%]" />
-                <col className="min-w-0 [width:14%]" />
-                <col className="min-w-0 [width:26%]" />
-                <col className="min-w-0 [width:14%]" />
+                <col className="min-w-0 [width:28%]" />
+                <col className="min-w-0 [width:12%]" />
+                <col className="min-w-0 [width:12%]" />
+                <col className="min-w-0 [width:18%]" />
+                <col className="min-w-0 [width:30%]" />
               </colgroup>
               <thead>
                 <tr className="border-b border-slate-800/90 bg-slate-900/95 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
@@ -1110,8 +1200,11 @@ export default function LagerPage() {
                         </div>
                       </td>
                       <td className="min-w-0 px-1 py-2 text-right align-middle sm:px-1.5">
-                        <span
-                          className={`inline-flex max-w-full items-center justify-end rounded-md border px-1 py-0.5 text-[10px] font-semibold tabular-nums sm:px-1.5 sm:text-[11px] ${
+                        <button
+                          type="button"
+                          onClick={() => setModal({ typ: 'verbrauch', p })}
+                          title="Menge ausbuchen (genau)"
+                          className={`inline-flex max-w-full items-center justify-end rounded-md border px-1 py-0.5 text-[10px] font-semibold tabular-nums transition hover:brightness-125 sm:px-1.5 sm:text-[11px] ${
                             menge > 0
                               ? 'border-emerald-800/40 bg-emerald-500/[0.12] text-emerald-200'
                               : 'border-rose-800/45 bg-rose-500/[0.1] text-rose-200'
@@ -1119,7 +1212,7 @@ export default function LagerPage() {
                         >
                           <span className="min-w-0 truncate">{menge}</span>
                           <span className="ml-0.5 shrink-0 opacity-90">{basisEinheitFuerPreisanzeige(basis)}</span>
-                        </span>
+                        </button>
                       </td>
                       <td className="min-w-0 truncate px-1 py-2 text-right align-middle tabular-nums font-medium text-violet-100 sm:px-1.5">
                         {wert != null ? formatEur(wert) : '—'}
@@ -1138,17 +1231,43 @@ export default function LagerPage() {
                         <div className="inline-flex items-center justify-end gap-0.5">
                           <button
                             type="button"
-                            onClick={() => setModal({ typ: 'verbrauch', p })}
-                            className="rounded-md border border-amber-800/40 bg-amber-500/15 px-1.5 py-1 text-[11px] font-bold text-amber-100 transition hover:bg-amber-500/25 sm:px-2"
-                            title="Ausbuchen"
-                            aria-label="Ausbuchen"
+                            onClick={() => void schnellBuchen(p, 'minus')}
+                            disabled={menge <= 0}
+                            className="rounded-md border border-amber-800/40 bg-amber-500/15 px-1.5 py-1 text-[11px] font-black text-amber-100 transition hover:bg-amber-500/25 disabled:opacity-30"
+                            title="1 ausbuchen"
+                            aria-label="Eins ausbuchen"
                           >
-                            −
+                            −1
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => void schnellBuchen(p, 'plus')}
+                            className="rounded-md border border-emerald-800/40 bg-emerald-500/15 px-1.5 py-1 text-[11px] font-black text-emerald-100 transition hover:bg-emerald-500/25"
+                            title="1 einbuchen"
+                            aria-label="Eins einbuchen"
+                          >
+                            +1
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const nun = toggleMerker(p.id)
+                              toast.success(nun ? `„${p.name}" auf die Einkaufsliste gesetzt.` : `„${p.name}" von der Liste entfernt.`)
+                            }}
+                            className={`rounded-md border px-1.5 py-1 text-[11px] font-bold transition ${
+                              istGemerkt(p.id)
+                                ? 'border-sky-600/60 bg-sky-500/20 text-sky-100'
+                                : 'border-slate-600/60 text-slate-300 hover:bg-slate-800'
+                            }`}
+                            title="Auf die Einkaufsliste setzen"
+                            aria-label="Auf die Einkaufsliste setzen"
+                          >
+                            🛒
                           </button>
                           <button
                             type="button"
                             onClick={() => setModal({ typ: 'bearbeiten', p })}
-                            className="rounded-md border border-slate-600/60 px-1.5 py-1 text-[11px] font-bold text-slate-300 transition hover:bg-slate-800 sm:px-2"
+                            className="rounded-md border border-slate-600/60 px-1.5 py-1 text-[11px] font-bold text-slate-300 transition hover:bg-slate-800"
                             title="Bearbeiten"
                             aria-label="Bearbeiten"
                           >
@@ -1157,7 +1276,7 @@ export default function LagerPage() {
                           <button
                             type="button"
                             onClick={() => void produktLoeschen(p)}
-                            className="rounded-md border border-rose-800/45 px-1.5 py-1 text-[11px] font-bold text-rose-300 transition hover:bg-rose-500/15 sm:px-2"
+                            className="rounded-md border border-rose-800/45 px-1.5 py-1 text-[11px] font-bold text-rose-300 transition hover:bg-rose-500/15"
                             title="Löschen"
                             aria-label="Löschen"
                           >
@@ -1266,12 +1385,32 @@ export default function LagerPage() {
         </div>
       )}
 
+      {lagerHauptTab === 'auswertungen' && (
+        <LagerAuswertungen
+          refreshKey={lagerRefreshKey}
+          produkte={produkte.map((p) => ({
+            id: p.id,
+            name: p.name,
+            kategorie: p.kategorie ?? null,
+            einheit: basisEinheitAnzeige(p),
+          }))}
+        />
+      )}
+
       <LagerProduktModals
         modus={modal?.typ ?? null}
         produkt={modalZeile ?? null}
         onClose={() => setModal(null)}
         onErfolg={() => void ladeDaten()}
       />
+
+      {scannerOffen && (
+        <LagerBarcodeScanner
+          produkte={scannerProdukte}
+          onClose={() => setScannerOffen(false)}
+          onAenderung={() => void ladeDaten()}
+        />
+      )}
     </PageChrome>
   )
 }
