@@ -225,10 +225,13 @@ export default function FinanzenPage() {
   /** `alle` = alle Zeilen des Monats; sonst nur Einnahmen- bzw. Ausgaben-Zeilen (inkl. geplante Daueraufträge passend zum Typ). */
   const [finanzListenFilter, setFinanzListenFilter] = useState<'alle' | 'einnahme' | 'ausgabe'>('alle')
   const [finanzListeSuche, setFinanzListeSuche] = useState('')
+  /** Standardmäßig neueste Buchungen zuerst (nach Datum). */
   const [finanzSort, setFinanzSort] = useState<{
     modus: 'preset' | 'datum' | 'position' | 'betrag'
     dir: 'asc' | 'desc'
-  }>({ modus: 'preset', dir: 'desc' })
+  }>({ modus: 'datum', dir: 'desc' })
+  /** Liste zeigt zunächst nur die letzten 5 Buchungen; Rest per Klick aufklappen. */
+  const [alleBuchungenZeigen, setAlleBuchungenZeigen] = useState(false)
 
   type TopfMonatRow = { monat: string; saldo_monat: number; gebucht_am: string; automatisch?: boolean | null }
   const [topfMeta, setTopfMeta] = useState({ stand_offset: 0 })
@@ -619,6 +622,11 @@ export default function FinanzenPage() {
   useEffect(() => {
     setTopfAnpassenOffen(false)
   }, [ansichtMonat])
+
+  // „Mehr anzeigen“ zurücksetzen, wenn sich der Inhalt der Liste grundlegend ändert.
+  useEffect(() => {
+    setAlleBuchungenZeigen(false)
+  }, [ansichtMonat, finanzListenFilter, finanzListeSuche])
 
   useEffect(() => {
     if (!buchungEdit) return
@@ -1054,6 +1062,12 @@ export default function FinanzenPage() {
     return rows
   }, [finanzListe, finanzListenFilter, finanzListeSuche, finanzSort])
 
+  const BUCHUNGEN_VORSCHAU = 5
+  const finanzListeSichtbar = useMemo(
+    () => (alleBuchungenZeigen ? finanzListeAngezeigt : finanzListeAngezeigt.slice(0, BUCHUNGEN_VORSCHAU)),
+    [finanzListeAngezeigt, alleBuchungenZeigen],
+  )
+
   function finanzSortKlick(modus: 'datum' | 'position' | 'betrag') {
     setFinanzSort((s) => {
       if (s.modus !== modus) {
@@ -1483,13 +1497,13 @@ export default function FinanzenPage() {
                     className="mt-1.5 w-full rounded-xl border border-slate-700/90 bg-slate-950/90 px-3 py-2.5 text-sm text-slate-100 outline-none focus:border-sky-600/50 focus:ring-2 focus:ring-sky-500/25 sm:mt-2 sm:px-4 sm:py-3 sm:text-[15px]"
                   />
                 </div>
-                {finanzSort.modus !== 'preset' && (
+                {!(finanzSort.modus === 'datum' && finanzSort.dir === 'desc') && (
                   <button
                     type="button"
-                    onClick={() => setFinanzSort({ modus: 'preset', dir: 'desc' })}
+                    onClick={() => setFinanzSort({ modus: 'datum', dir: 'desc' })}
                     className="shrink-0 rounded-xl border border-slate-600/90 bg-slate-950/80 px-3 py-2 text-[11px] font-semibold text-slate-300 transition hover:bg-slate-800 sm:px-4 sm:py-2.5 sm:text-xs"
                   >
-                    Standardsortierung
+                    Neueste zuerst
                   </button>
                 )}
               </div>
@@ -1567,7 +1581,7 @@ export default function FinanzenPage() {
                       ))}
                     </div>
                   </li>
-                  {finanzListeAngezeigt.map((item: any, i: number) => (
+                  {finanzListeSichtbar.map((item: any, i: number) => (
                     <li
                       key={item.id ?? i}
                       className={`list-none border-b border-slate-800/50 py-3 last:pb-1 ${item.__geplant ? 'bg-amber-950/12' : ''}`}
@@ -1670,7 +1684,7 @@ export default function FinanzenPage() {
                     Aktion
                   </div>
 
-                  {finanzListeAngezeigt.map((item: any, i: number) => (
+                  {finanzListeSichtbar.map((item: any, i: number) => (
                     <Fragment key={item.id ?? i}>
                       <div
                         className={`min-w-0 py-4 tabular-nums text-[13px] text-slate-300 ${i === 0 ? 'border-t-0' : 'border-t border-slate-800/60'} ${item.__geplant ? 'bg-amber-950/15' : ''} hover:bg-slate-800/25`}
@@ -1733,6 +1747,20 @@ export default function FinanzenPage() {
                 </div>
               </>
             ) : null}
+            {finanzListeAngezeigt.length > BUCHUNGEN_VORSCHAU && (
+              <div className="px-1 pb-2 pt-2 sm:px-2">
+                <button
+                  type="button"
+                  onClick={() => setAlleBuchungenZeigen((v) => !v)}
+                  aria-expanded={alleBuchungenZeigen}
+                  className="w-full rounded-xl border border-slate-700/80 bg-slate-950/70 py-2.5 text-xs font-semibold text-sky-200 transition hover:border-sky-500/50 hover:bg-sky-500/10"
+                >
+                  {alleBuchungenZeigen
+                    ? 'Weniger anzeigen'
+                    : `Alle ${finanzListeAngezeigt.length} Buchungen anzeigen (${finanzListeAngezeigt.length - BUCHUNGEN_VORSCHAU} weitere)`}
+                </button>
+              </div>
+            )}
           </div>
           {finanzListe.length === 0 && (
             <div className="border-t border-slate-800/60 px-6 py-20 text-center text-sm italic text-slate-600">Hier ist noch alles ruhig…</div>

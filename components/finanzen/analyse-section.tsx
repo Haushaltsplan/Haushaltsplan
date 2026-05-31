@@ -1,10 +1,10 @@
 'use client'
 
-import { useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { PageSection, PageSectionPanel } from '@/components/page-shell'
 import { DonutChart } from '@/components/finanzen/donut-chart'
 import { BalkenChart, type MonatsBalken } from '@/components/finanzen/balken-chart'
-import { summiereNachKategorie } from '@/lib/finanz-kategorisierung'
+import { summiereNachKategorie, ordneKategorieZu, kategorieDef, type FinanzKategorieKey } from '@/lib/finanz-kategorisierung'
 
 type Buchung = { kategorie?: string | null; beschreibung?: string | null; betrag?: number | string | null; datum?: string | null }
 
@@ -36,6 +36,22 @@ function eur(n: number) {
   return n.toLocaleString('de-DE', { style: 'currency', currency: 'EUR' })
 }
 
+function formatDatumKurz(iso?: string | null) {
+  if (!iso) return ''
+  const d = new Date(String(iso))
+  if (Number.isNaN(d.getTime())) return String(iso)
+  return d.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: '2-digit' })
+}
+
+/** „Grund“ aus der Beschreibung für die Detailanzeige (ohne Systemtext). */
+function detailNotiz(beschreibung?: string | null): string {
+  const b = String(beschreibung ?? '')
+  if (/dauerauftrag \(auto\)/i.test(b)) return 'Dauerauftrag'
+  if (/monatsplan/i.test(b)) return 'geplant'
+  const m = b.match(/grund:\s*([^•]+)/i)
+  return (m ? m[1] : b).trim()
+}
+
 export function AnalyseSection({
   einnahmen,
   ausgaben,
@@ -63,6 +79,29 @@ export function AnalyseSection({
   )
 
   const ausgabenKategorien = useMemo(() => summiereNachKategorie(ausgabenAnsicht, false), [ausgabenAnsicht])
+
+  const [offeneKategorie, setOffeneKategorie] = useState<FinanzKategorieKey | null>(null)
+
+  // Beim Monatswechsel die aufgeklappte Kategorie zurücksetzen.
+  useEffect(() => {
+    setOffeneKategorie(null)
+  }, [ansichtMonat])
+
+  const buchungenJeKategorie = useMemo(() => {
+    const m = new Map<FinanzKategorieKey, Buchung[]>()
+    for (const r of ausgabenAnsicht) {
+      const key = ordneKategorieZu(r.kategorie, r.beschreibung, false)
+      const arr = m.get(key) ?? []
+      arr.push(r)
+      m.set(key, arr)
+    }
+    for (const [, arr] of m) {
+      arr.sort((a, b) => new Date(String(b.datum ?? '')).getTime() - new Date(String(a.datum ?? '')).getTime())
+    }
+    return m
+  }, [ausgabenAnsicht])
+
+  const offeneBuchungen = offeneKategorie ? buchungenJeKategorie.get(offeneKategorie) ?? [] : []
 
   const monatsReihe = useMemo<MonatsBalken[]>(() => {
     const keys: string[] = []
@@ -95,26 +134,86 @@ export function AnalyseSection({
     <PageSection titleId="finanzen-analyse-heading" title="Analyse" density="compact">
       <PageSectionPanel density="compact">
         <div className="grid gap-4 lg:grid-cols-2">
-          {/* Donut: Ausgaben nach Kategorie */}
+          {/* Donut: Ausgaben nach Kategorie (Kategorie anklicken zeigt die Buchungen) */}
           <div className="rounded-2xl border border-slate-800/90 bg-gradient-to-b from-slate-900 to-slate-950 p-4 shadow-xl shadow-black/30 sm:p-5">
             <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-rose-400/90">Ausgaben nach Kategorie</p>
             <div className="mt-3 flex flex-col items-center gap-4 sm:flex-row sm:items-center sm:gap-5">
               <DonutChart segmente={ausgabenKategorien} />
-              <ul className="min-w-0 flex-1 space-y-1.5">
+              <ul className="min-w-0 flex-1 space-y-0.5">
                 {ausgabenKategorien.length === 0 ? (
                   <li className="text-[12px] text-slate-600">Keine Ausgaben in diesem Monat.</li>
                 ) : (
-                  ausgabenKategorien.map((k) => (
-                    <li key={k.key} className="flex items-center gap-2 text-[12px]">
-                      <span className="h-2.5 w-2.5 shrink-0 rounded-sm" style={{ backgroundColor: k.farbe }} aria-hidden />
-                      <span className="min-w-0 flex-1 truncate text-slate-300">{k.label}</span>
-                      <span className="shrink-0 tabular-nums text-slate-400">{Math.round(k.anteil * 100)}%</span>
-                      <span className="shrink-0 tabular-nums font-semibold text-slate-200">{eur(k.betrag)}</span>
-                    </li>
-                  ))
+                  ausgabenKategorien.map((k) => {
+                    const aktiv = offeneKategorie === k.key
+                    return (
+                      <li key={k.key}>
+                        <button
+                          type="button"
+                          onClick={() => setOffeneKategorie((prev) => (prev === k.key ? null : k.key))}
+                          aria-expanded={aktiv}
+                          className={`flex w-full items-center gap-2 rounded-lg px-1.5 py-1.5 text-left text-[12px] transition ${
+                            aktiv ? 'bg-slate-800/70 ring-1 ring-slate-600/60' : 'hover:bg-slate-800/40'
+                          }`}
+                        >
+                          <span className="h-2.5 w-2.5 shrink-0 rounded-sm" style={{ backgroundColor: k.farbe }} aria-hidden />
+                          <span className="min-w-0 flex-1 truncate text-slate-300">{k.label}</span>
+                          <span className="shrink-0 tabular-nums text-slate-400">{Math.round(k.anteil * 100)}%</span>
+                          <span className="shrink-0 tabular-nums font-semibold text-slate-200">{eur(k.betrag)}</span>
+                          <span
+                            className={`shrink-0 text-slate-500 transition-transform ${aktiv ? 'rotate-90' : ''}`}
+                            aria-hidden
+                          >
+                            ›
+                          </span>
+                        </button>
+                      </li>
+                    )
+                  })
                 )}
               </ul>
             </div>
+
+            {offeneKategorie && (
+              <div className="mt-3 rounded-xl border border-slate-800 bg-slate-950/55 p-3">
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <p className="flex items-center gap-2 text-[12px] font-semibold text-slate-200">
+                    <span className="h-2.5 w-2.5 rounded-sm" style={{ backgroundColor: kategorieDef(offeneKategorie).farbe }} aria-hidden />
+                    {kategorieDef(offeneKategorie).label}
+                    <span className="font-normal text-slate-500">({offeneBuchungen.length})</span>
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setOffeneKategorie(null)}
+                    className="rounded-md px-2 py-0.5 text-[11px] font-semibold text-slate-400 hover:bg-slate-800 hover:text-slate-200"
+                  >
+                    Schließen
+                  </button>
+                </div>
+                {offeneBuchungen.length === 0 ? (
+                  <p className="text-[12px] text-slate-600">Keine Buchungen in dieser Kategorie.</p>
+                ) : (
+                  <ul className="space-y-1">
+                    {offeneBuchungen.map((b, i) => (
+                      <li
+                        key={i}
+                        className="flex items-center gap-2 border-b border-slate-800/50 py-1.5 text-[12px] last:border-0"
+                      >
+                        <span className="w-14 shrink-0 tabular-nums text-slate-500">{formatDatumKurz(b.datum)}</span>
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-slate-200">{String(b.kategorie ?? '—')}</span>
+                          {detailNotiz(b.beschreibung) && (
+                            <span className="block truncate text-[11px] text-slate-500">{detailNotiz(b.beschreibung)}</span>
+                          )}
+                        </span>
+                        <span className="shrink-0 tabular-nums font-semibold text-rose-400">
+                          −{eur(Number(b.betrag) || 0)}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Kennzahlen + Prognose */}

@@ -43,6 +43,8 @@ export type FinanzKategorieDef = {
 /**
  * Reihenfolge = Priorität bei der Zuordnung (spezifische zuerst, `sonstiges` zuletzt).
  * `einkommen` wird separat behandelt (nur für Einnahmen relevant).
+ * Schlüsselwörter sind bereits in `deutschLower`-Form (ae/oe/ue/ss, keine Umlaute) und werden
+ * nur als ganze Wörter (Wortgrenzen) erkannt, damit z. B. „auto“ nicht in „Dauerauftrag“ matcht.
  */
 export const FINANZ_KATEGORIEN: readonly FinanzKategorieDef[] = [
   {
@@ -50,57 +52,9 @@ export const FINANZ_KATEGORIEN: readonly FinanzKategorieDef[] = [
     label: 'Einkommen',
     farbe: '#34d399',
     textClass: 'text-emerald-300',
-    keywords: ['gehalt', 'lohn', 'salary', 'einkommen', 'rueckerstattung', 'erstattung', 'zinsen', 'dividende', 'verkauf', 'bonus', 'gutschrift'],
-  },
-  {
-    key: 'lebensmittel',
-    label: 'Lebensmittel & Drogerie',
-    farbe: '#22c55e',
-    textClass: 'text-green-300',
     keywords: [
-      'rewe', 'edeka', 'lidl', 'aldi', 'kaufland', 'penny', 'netto', 'supermarkt', 'lebensmittel',
-      'einkauf', 'baecker', 'metzger', 'getraenke', 'dm', 'dm-drogerie', 'rossmann', 'mueller', 'drogerie',
-    ],
-  },
-  {
-    key: 'wohnen',
-    label: 'Wohnen & Nebenkosten',
-    farbe: '#f59e0b',
-    textClass: 'text-amber-300',
-    keywords: [
-      'miete', 'nebenkosten', 'wohnung', 'strom', 'gas', 'wasser', 'heizung', 'waerme', 'enbw', 'eon',
-      'e.on', 'stadtwerke', 'vattenfall', 'rundfunk', 'gez', 'internet', 'dsl', 'glasfaser', 'hausrat', 'bausparer', 'schwaebisch hall',
-    ],
-  },
-  {
-    key: 'mobilitaet',
-    label: 'Mobilität & Auto',
-    farbe: '#0ea5e9',
-    textClass: 'text-sky-300',
-    keywords: [
-      'shell', 'aral', 'esso', 'total', 'tanken', 'benzin', 'diesel', 'sprit', 'tankstelle', 'auto',
-      'kfz', 'adac', 'bahn', 'db ', 'deutsche bahn', 'ticket', 'bus', 'tram', 'uber', 'bolt', 'taxi', 'parken', 'maut',
-    ],
-  },
-  {
-    key: 'abos',
-    label: 'Abos & Digital',
-    farbe: '#8b5cf6',
-    textClass: 'text-violet-300',
-    keywords: [
-      'netflix', 'spotify', 'discovery', 'disney', 'amazon prime', 'prime', 'youtube', 'apple', 'icloud',
-      'gemini', 'chatgpt', 'openai', 'microsoft', 'adobe', 'dropbox', 'github', 'strava', 'whoop',
-      'handy', 'mobilfunk', 'o2', 'telekom', 'vodafone', 'abo', 'streaming',
-    ],
-  },
-  {
-    key: 'versicherung',
-    label: 'Versicherung',
-    farbe: '#f43f5e',
-    textClass: 'text-rose-300',
-    keywords: [
-      'versicherung', 'allianz', 'haftpflicht', 'hausrat', 'lebensversicherung', 'rechtsschutz',
-      'huk', 'axa', 'ergo', 'devk', 'krankenversicherung', 'unfallversicherung', 'kfz-versicherung',
+      'gehalt', 'lohn', 'salary', 'einkommen', 'rueckerstattung', 'erstattung', 'zinsen', 'dividende',
+      'bonus', 'gutschrift', 'honorar', 'taschengeld', 'kindergeld', 'bafoeg',
     ],
   },
   {
@@ -109,8 +63,78 @@ export const FINANZ_KATEGORIEN: readonly FinanzKategorieDef[] = [
     farbe: '#2dd4bf',
     textClass: 'text-teal-300',
     keywords: [
-      'aktien', 'etf', 'fond', 'fonds', 'sparplan', 'sparen', 'depot', 'trade republic', 'traderepublic',
-      'scalable', 'rente', 'uniprofirente', 'uniglobal', 'union investment', 'altersvorsorge', 'ruerup', 'riester',
+      'aktien', 'aktie', 'etf', 'fond', 'fonds', 'sparplan', 'sparen', 'sparbuch', 'depot',
+      'trade republic', 'traderepublic', 'scalable', 'comdirect', 'consorsbank', 'finanzen.net',
+      'rente', 'uniprofirente', 'uniglobal', 'uniprofi', 'union investment', 'altersvorsorge',
+      'ruerup', 'riester', 'bausparer', 'bauspar', 'schwaebisch hall', 'wuestenrot',
+      'vermoegenswirksame', 'vwl', 'festgeld', 'tagesgeld', 'krypto', 'bitcoin', 'gold',
+    ],
+  },
+  {
+    key: 'versicherung',
+    label: 'Versicherung',
+    farbe: '#f43f5e',
+    textClass: 'text-rose-300',
+    keywords: [
+      'versicherung', 'allianz', 'haftpflicht', 'lebensversicherung', 'rechtsschutz', 'huk',
+      'huk24', 'axa', 'ergo', 'devk', 'generali', 'wgv', 'lvm', 'krankenversicherung',
+      'unfallversicherung', 'hausratversicherung', 'berufsunfaehigkeit', 'zusatzversicherung', 'police',
+    ],
+  },
+  {
+    key: 'abos',
+    label: 'Abos & Digital',
+    farbe: '#8b5cf6',
+    textClass: 'text-violet-300',
+    keywords: [
+      'netflix', 'spotify', 'discovery', 'disney', 'amazon prime', 'prime video', 'paramount', 'wow',
+      'dazn', 'audible', 'youtube', 'apple', 'icloud', 'gemini', 'chatgpt', 'openai', 'microsoft',
+      'office', 'adobe', 'dropbox', 'github', 'strava', 'whoop', 'handy', 'handyvertrag', 'mobilfunk',
+      'o2', 'telekom', 'vodafone', 'congstar', 'abo', 'streaming', 'patreon',
+    ],
+  },
+  {
+    key: 'mobilitaet',
+    label: 'Mobilität & Auto',
+    farbe: '#0ea5e9',
+    textClass: 'text-sky-300',
+    keywords: [
+      'shell', 'aral', 'esso', 'totalenergies', 'tanken', 'benzin', 'diesel', 'sprit', 'tankstelle',
+      'auto', 'autohaus', 'kfz', 'adac', 'werkstatt', 'reifen', 'deutsche bahn', 'bahn', 'flixbus',
+      'flixtrain', 'mvg', 'bvg', 'ticket', 'fahrkarte', 'bus', 'tram', 'uber', 'bolt', 'taxi',
+      'parken', 'parkhaus', 'maut', 'leasing',
+    ],
+  },
+  {
+    key: 'lebensmittel',
+    label: 'Lebensmittel & Drogerie',
+    farbe: '#22c55e',
+    textClass: 'text-green-300',
+    keywords: [
+      'rewe', 'edeka', 'lidl', 'aldi', 'kaufland', 'penny', 'netto', 'denns', 'alnatura',
+      'supermarkt', 'lebensmittel', 'einkauf', 'wocheneinkauf', 'baecker', 'baeckerei', 'metzger',
+      'getraenkemarkt', 'getraenke', 'dm', 'rossmann', 'mueller', 'drogerie',
+    ],
+  },
+  {
+    key: 'gesundheit',
+    label: 'Gesundheit',
+    farbe: '#06b6d4',
+    textClass: 'text-cyan-300',
+    keywords: [
+      'apotheke', 'arzt', 'aerztin', 'zahnarzt', 'klinik', 'krankenhaus', 'physio', 'physiotherapie',
+      'brille', 'optiker', 'medikament', 'rezept', 'gesundheit',
+    ],
+  },
+  {
+    key: 'wohnen',
+    label: 'Wohnen & Nebenkosten',
+    farbe: '#f59e0b',
+    textClass: 'text-amber-300',
+    keywords: [
+      'miete', 'kaltmiete', 'warmmiete', 'nebenkosten', 'wohnung', 'strom', 'gas', 'wasser', 'heizung',
+      'waerme', 'enbw', 'eon', 'stadtwerke', 'vattenfall', 'rundfunk', 'rundfunkbeitrag', 'gez',
+      'internet', 'dsl', 'glasfaser', 'moebel', 'hausgeld', 'grundsteuer', 'muellabfuhr',
     ],
   },
   {
@@ -119,17 +143,11 @@ export const FINANZ_KATEGORIEN: readonly FinanzKategorieDef[] = [
     farbe: '#e879f9',
     textClass: 'text-fuchsia-300',
     keywords: [
-      'restaurant', 'mcdonald', 'burger king', 'cafe', 'bar', 'kino', 'urlaub', 'reise', 'hotel',
-      'amazon', 'zalando', 'otto', 'ikea', 'mediamarkt', 'saturn', 'kleidung', 'shopping', 'thalia',
-      'fitness', 'gym', 'sport', 'hobby', 'konzert', 'freizeit',
+      'restaurant', 'mcdonald', 'burger king', 'cafe', 'kneipe', 'kino', 'urlaub', 'reise', 'hotel',
+      'airbnb', 'booking', 'amazon', 'zalando', 'otto', 'ikea', 'mediamarkt', 'saturn', 'kleidung',
+      'shopping', 'thalia', 'fitnessstudio', 'fitness', 'gym', 'sportverein', 'hobby', 'konzert',
+      'freizeit', 'steam', 'spielwaren',
     ],
-  },
-  {
-    key: 'gesundheit',
-    label: 'Gesundheit',
-    farbe: '#06b6d4',
-    textClass: 'text-cyan-300',
-    keywords: ['apotheke', 'arzt', 'zahnarzt', 'klinik', 'physio', 'brille', 'optiker', 'medikament', 'gesundheit'],
   },
   {
     key: 'sonstiges',
@@ -148,6 +166,40 @@ export function kategorieDef(key: FinanzKategorieKey): FinanzKategorieDef {
   return KATEGORIE_BY_KEY.get(key) ?? KATEGORIE_BY_KEY.get('sonstiges')!
 }
 
+/** true, wenn `needle` als ganzes Wort in `text` vorkommt (Wortgrenzen = Nicht-alphanumerisch). */
+function enthaeltGanzesWort(text: string, needle: string): boolean {
+  if (!needle) return false
+  const istWortzeichen = (c: string) => c !== '' && /[a-z0-9]/.test(c)
+  let from = 0
+  for (;;) {
+    const i = text.indexOf(needle, from)
+    if (i < 0) return false
+    const vor = i === 0 ? '' : text[i - 1]
+    const nach = i + needle.length >= text.length ? '' : text[i + needle.length]
+    if (!istWortzeichen(vor) && !istWortzeichen(nach)) return true
+    from = i + 1
+  }
+}
+
+/**
+ * Baut den Text, gegen den Schlüsselwörter geprüft werden. Wichtig:
+ * - der Firmen-/Anbietername (`kategorie`) ist das Hauptsignal,
+ * - aus `beschreibung` wird nur ein vom Nutzer eingegebener „Grund“ verwendet,
+ * - System-Beschreibungen („Dauerauftrag (Auto)“, „Monatsplan …“, „Rechnung • …“) werden ignoriert,
+ *   damit z. B. „(Auto)“ nicht fälschlich Mobilität triggert.
+ */
+function matchText(kategorie?: string | null, beschreibung?: string | null): string {
+  const kat = deutschLower(String(kategorie ?? ''))
+  const rohB = String(beschreibung ?? '')
+  const istSystemtext = /dauerauftrag \(auto\)|monatsplan|rechnung\s*[•:]/i.test(rohB)
+  let grund = ''
+  if (!istSystemtext && rohB.trim()) {
+    const m = rohB.match(/grund:\s*([^•]+)/i)
+    grund = deutschLower(m ? m[1] : rohB)
+  }
+  return `${kat} ${grund}`.trim()
+}
+
 /**
  * Ordnet eine Buchung einer Oberkategorie zu.
  * `istEinnahme` erzwingt für Einnahmen die Kategorie „Einkommen“, sofern nicht klar etwas anderes
@@ -158,12 +210,12 @@ export function ordneKategorieZu(
   beschreibung?: string | null,
   istEinnahme = false,
 ): FinanzKategorieKey {
-  const text = `${deutschLower(String(kategorie ?? ''))} ${deutschLower(String(beschreibung ?? ''))}`.trim()
+  const text = matchText(kategorie, beschreibung)
 
   if (istEinnahme) {
     // Einnahmen sind in aller Regel Einkommen; nur eindeutige Spar-/Anlage-Rückflüsse abweichend.
     for (const needle of kategorieDef('sparen').keywords) {
-      if (text.includes(needle)) return 'sparen'
+      if (enthaeltGanzesWort(text, needle)) return 'sparen'
     }
     return 'einkommen'
   }
@@ -171,7 +223,7 @@ export function ordneKategorieZu(
   for (const def of FINANZ_KATEGORIEN) {
     if (def.key === 'einkommen' || def.key === 'sonstiges') continue
     for (const needle of def.keywords) {
-      if (needle && text.includes(needle)) return def.key
+      if (enthaeltGanzesWort(text, needle)) return def.key
     }
   }
   return 'sonstiges'
