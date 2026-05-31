@@ -7,6 +7,7 @@ export const NAV_LINK_DEFS = [
   { href: '/rennrad', label: 'Rennrad', emoji: '🚴', color: 'text-rose-400', ring: 'focus-visible:ring-rose-500/50' },
   { href: '/besitz', label: 'Besitz', emoji: '👜', color: 'text-amber-400', ring: 'focus-visible:ring-amber-500/50' },
   { href: '/investments', label: 'Investments', emoji: '📈', color: 'text-violet-400', ring: 'focus-visible:ring-violet-500/50' },
+  { href: '/einstellungen', label: 'Einstellungen', emoji: '⚙️', color: 'text-slate-300', ring: 'focus-visible:ring-slate-500/50' },
 ] as const
 
 export type NavItem = (typeof NAV_LINK_DEFS)[number]
