@@ -8,7 +8,7 @@ const securityHeaders = [
   { key: "X-DNS-Prefetch-Control", value: "off" },
   {
     key: "Permissions-Policy",
-    value: "camera=(), microphone=(), geolocation=(self), interest-cohort=()",
+    value: "camera=(self), microphone=(), geolocation=(self), interest-cohort=()",
   },
   // Erzwingt HTTPS im Browser (greift nur über HTTPS; lokal/HTTP unschädlich).
   { key: "Strict-Transport-Security", value: "max-age=63072000; includeSubDomains; preload" },

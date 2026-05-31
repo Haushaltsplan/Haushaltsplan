@@ -19,6 +19,7 @@
     "@dnd-kit/utilities": "^3.2.2",
     "@mozilla/readability": "^0.6.0",
     "@supabase/supabase-js": "^2.103.3",
+    "@zxing/browser": "^0.2.0",
     "autoprefixer": "^10.5.0",
     "jsdom": "^29.1.1",
     "leaflet": "^1.9.4",
