@@ -19,7 +19,8 @@ import { lagerKategorieFinal, normalisiereLagerKategorie } from '@/lib/lager-pro
 import { findeProduktIdNachLagerZuordnung } from '@/lib/lager-artikel-kanonisch'
 import { produktAnzeigeNameAusBon } from '@/lib/produkt-name-normalize'
 import { readGeminiApiKeyFromEnv } from '@/lib/ki-coach-backend'
-import { createSupabaseAdmin } from '@/lib/supabase-admin'
+import { createSupabaseFuerRequest } from '@/lib/supabase-user'
+import type { SupabaseClient } from '@supabase/supabase-js'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -150,7 +151,7 @@ function gesamtFuerZeile(z: Kassenzeile): number {
 }
 
 async function findOrCreateProdukt(
-  admin: ReturnType<typeof createSupabaseAdmin>,
+  admin: SupabaseClient,
   name: string,
   ersteKaufEinheit: LagerKaufEinheit,
   kategorie: string,
@@ -196,7 +197,7 @@ async function findOrCreateProdukt(
   return pid
 }
 
-async function bucheZeile(admin: ReturnType<typeof createSupabaseAdmin>, z: Kassenzeile) {
+async function bucheZeile(admin: SupabaseClient, z: Kassenzeile) {
   const gesamt = gesamtFuerZeile(z)
   if (!Number.isFinite(gesamt) || gesamt < 0) {
     throw new Error('Ungültiger Zeilenpreis.')
@@ -272,17 +273,9 @@ export async function POST(req: Request) {
     }
 
     // buchen
-    let admin: ReturnType<typeof createSupabaseAdmin>
-    try {
-      admin = createSupabaseAdmin()
-    } catch {
-      return NextResponse.json(
-        {
-          error:
-            'SUPABASE_SERVICE_ROLE_KEY fehlt in .env.local — Buchung nur serverseitig mit Service Role. Schlüssel: Supabase → Project Settings → API.',
-        },
-        { status: 501 },
-      )
+    const admin = createSupabaseFuerRequest(req)
+    if (!admin) {
+      return NextResponse.json({ error: 'Anmeldung erforderlich.' }, { status: 401 })
     }
 
     const positionen = normalizePositionen(body.positionen)

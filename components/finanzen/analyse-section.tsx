@@ -4,9 +4,33 @@ import { useEffect, useMemo, useState } from 'react'
 import { PageSection, PageSectionPanel } from '@/components/page-shell'
 import { DonutChart } from '@/components/finanzen/donut-chart'
 import { BalkenChart, type MonatsBalken } from '@/components/finanzen/balken-chart'
-import { summiereNachKategorie, ordneKategorieZu, kategorieDef, type FinanzKategorieKey } from '@/lib/finanz-kategorisierung'
+import { summiereNachKategorie, effektiveKategorie } from '@/lib/finanz-kategorisierung'
 
-type Buchung = { kategorie?: string | null; beschreibung?: string | null; betrag?: number | string | null; datum?: string | null }
+type Buchung = {
+  kategorie?: string | null
+  beschreibung?: string | null
+  betrag?: number | string | null
+  datum?: string | null
+  kategorie_key?: string | null
+}
+
+type DonutModus = 'ausgaben' | 'einnahmen'
+
+type AnalyseSegment = {
+  key: string
+  label: string
+  farbe: string
+  betrag: number
+  anteil: number
+  rows: Buchung[]
+}
+
+/** Farbpalette für Einnahmequellen (Donut nach Quelle). */
+const EINNAHMEN_PALETTE = ['#34d399', '#22d3ee', '#60a5fa', '#a78bfa', '#f472b6', '#fbbf24', '#fb923c', '#4ade80']
+
+function nachDatumAbsteigend(a: Buchung, b: Buchung) {
+  return new Date(String(b.datum ?? '')).getTime() - new Date(String(a.datum ?? '')).getTime()
+}
 
 function monatsKey(iso?: string | null): string | null {
   if (!iso) return null
@@ -78,30 +102,79 @@ export function AnalyseSection({
     [ausgabenAnsicht],
   )
 
-  const ausgabenKategorien = useMemo(() => summiereNachKategorie(ausgabenAnsicht, false), [ausgabenAnsicht])
+  const [donutModus, setDonutModus] = useState<DonutModus>('ausgaben')
+  const [offenerKey, setOffenerKey] = useState<string | null>(null)
 
-  const [offeneKategorie, setOffeneKategorie] = useState<FinanzKategorieKey | null>(null)
-
-  // Beim Monatswechsel die aufgeklappte Kategorie zurücksetzen.
+  // Beim Monats- oder Moduswechsel die aufgeklappte Position zurücksetzen.
   useEffect(() => {
-    setOffeneKategorie(null)
-  }, [ansichtMonat])
+    setOffenerKey(null)
+  }, [ansichtMonat, donutModus])
 
-  const buchungenJeKategorie = useMemo(() => {
-    const m = new Map<FinanzKategorieKey, Buchung[]>()
+  // Ausgaben: Segmente nach Oberkategorie (inkl. manueller Korrektur).
+  const ausgabenSegmente = useMemo<AnalyseSegment[]>(() => {
+    const summen = summiereNachKategorie(ausgabenAnsicht, false)
+    const rowsByKey = new Map<string, Buchung[]>()
     for (const r of ausgabenAnsicht) {
-      const key = ordneKategorieZu(r.kategorie, r.beschreibung, false)
-      const arr = m.get(key) ?? []
+      const key = effektiveKategorie(r, false)
+      const arr = rowsByKey.get(key) ?? []
       arr.push(r)
-      m.set(key, arr)
+      rowsByKey.set(key, arr)
     }
-    for (const [, arr] of m) {
-      arr.sort((a, b) => new Date(String(b.datum ?? '')).getTime() - new Date(String(a.datum ?? '')).getTime())
-    }
-    return m
+    for (const [, arr] of rowsByKey) arr.sort(nachDatumAbsteigend)
+    return summen.map((s) => ({
+      key: s.key,
+      label: s.label,
+      farbe: s.farbe,
+      betrag: s.betrag,
+      anteil: s.anteil,
+      rows: rowsByKey.get(s.key) ?? [],
+    }))
   }, [ausgabenAnsicht])
 
-  const offeneBuchungen = offeneKategorie ? buchungenJeKategorie.get(offeneKategorie) ?? [] : []
+  // Einnahmen: Segmente nach Quelle (Top 8 + „Sonstige“).
+  const einnahmenSegmente = useMemo<AnalyseSegment[]>(() => {
+    const m = new Map<string, Buchung[]>()
+    for (const r of einnahmenAnsicht) {
+      const name = String(r.kategorie ?? '').trim() || 'Ohne Angabe'
+      const arr = m.get(name) ?? []
+      arr.push(r)
+      m.set(name, arr)
+    }
+    const eintraege = [...m.entries()]
+      .map(([name, rows]) => ({
+        name,
+        rows: [...rows].sort(nachDatumAbsteigend),
+        betrag: rows.reduce((a, b) => a + (Number(b.betrag) || 0), 0),
+      }))
+      .sort((a, b) => b.betrag - a.betrag)
+    const gesamt = eintraege.reduce((a, e) => a + e.betrag, 0)
+    const top = eintraege.slice(0, 8)
+    const rest = eintraege.slice(8)
+    const segmente: AnalyseSegment[] = top.map((e, i) => ({
+      key: `quelle:${e.name}`,
+      label: e.name,
+      farbe: EINNAHMEN_PALETTE[i % EINNAHMEN_PALETTE.length],
+      betrag: e.betrag,
+      anteil: gesamt > 0 ? e.betrag / gesamt : 0,
+      rows: e.rows,
+    }))
+    if (rest.length > 0) {
+      const restBetrag = rest.reduce((a, e) => a + e.betrag, 0)
+      segmente.push({
+        key: 'quelle:__rest',
+        label: 'Sonstige',
+        farbe: '#64748b',
+        betrag: restBetrag,
+        anteil: gesamt > 0 ? restBetrag / gesamt : 0,
+        rows: rest.flatMap((e) => e.rows).sort(nachDatumAbsteigend),
+      })
+    }
+    return segmente
+  }, [einnahmenAnsicht])
+
+  const istAusgaben = donutModus === 'ausgaben'
+  const aktiveSegmente = istAusgaben ? ausgabenSegmente : einnahmenSegmente
+  const offenesSegment = offenerKey ? aktiveSegmente.find((s) => s.key === offenerKey) ?? null : null
 
   const monatsReihe = useMemo<MonatsBalken[]>(() => {
     const keys: string[] = []
@@ -125,7 +198,7 @@ export function AnalyseSection({
   }, [einnahmen, ausgaben, ansichtMonat])
 
   const sparquote = gesEin > 0 ? (gesEin - gesAus) / gesEin : 0
-  const groessteKategorie = ausgabenKategorien[0] ?? null
+  const groessteKategorie = ausgabenSegmente[0] ?? null
 
   const erwarteterSaldo = Math.round((gesEin + geplanteEinnahmen - (gesAus + geplanteAusgaben)) * 100) / 100
   const habenOffenePosten = geplanteEinnahmen > 0 || geplanteAusgaben > 0
@@ -134,22 +207,44 @@ export function AnalyseSection({
     <PageSection titleId="finanzen-analyse-heading" title="Analyse" density="compact">
       <PageSectionPanel density="compact">
         <div className="grid gap-4 lg:grid-cols-2">
-          {/* Donut: Ausgaben nach Kategorie (Kategorie anklicken zeigt die Buchungen) */}
+          {/* Donut: Ausgaben nach Kategorie / Einnahmen nach Quelle (anklicken zeigt die Buchungen) */}
           <div className="rounded-2xl border border-slate-800/90 bg-gradient-to-b from-slate-900 to-slate-950 p-4 shadow-xl shadow-black/30 sm:p-5">
-            <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-rose-400/90">Ausgaben nach Kategorie</p>
+            <div className="flex items-center justify-between gap-2">
+              <p className={`text-[11px] font-bold uppercase tracking-[0.18em] ${istAusgaben ? 'text-rose-400/90' : 'text-emerald-400/90'}`}>
+                {istAusgaben ? 'Ausgaben nach Kategorie' : 'Einnahmen nach Quelle'}
+              </p>
+              <div className="inline-flex rounded-lg border border-slate-700/80 bg-slate-950/60 p-0.5 text-[11px] font-semibold">
+                <button
+                  type="button"
+                  onClick={() => setDonutModus('ausgaben')}
+                  className={`rounded-md px-2.5 py-1 transition ${istAusgaben ? 'bg-rose-500/20 text-rose-300' : 'text-slate-400 hover:text-slate-200'}`}
+                >
+                  Ausgaben
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDonutModus('einnahmen')}
+                  className={`rounded-md px-2.5 py-1 transition ${!istAusgaben ? 'bg-emerald-500/20 text-emerald-300' : 'text-slate-400 hover:text-slate-200'}`}
+                >
+                  Einnahmen
+                </button>
+              </div>
+            </div>
             <div className="mt-3 flex flex-col items-center gap-4 sm:flex-row sm:items-center sm:gap-5">
-              <DonutChart segmente={ausgabenKategorien} />
+              <DonutChart segmente={aktiveSegmente} />
               <ul className="min-w-0 flex-1 space-y-0.5">
-                {ausgabenKategorien.length === 0 ? (
-                  <li className="text-[12px] text-slate-600">Keine Ausgaben in diesem Monat.</li>
+                {aktiveSegmente.length === 0 ? (
+                  <li className="text-[12px] text-slate-600">
+                    {istAusgaben ? 'Keine Ausgaben in diesem Monat.' : 'Keine Einnahmen in diesem Monat.'}
+                  </li>
                 ) : (
-                  ausgabenKategorien.map((k) => {
-                    const aktiv = offeneKategorie === k.key
+                  aktiveSegmente.map((k) => {
+                    const aktiv = offenerKey === k.key
                     return (
                       <li key={k.key}>
                         <button
                           type="button"
-                          onClick={() => setOffeneKategorie((prev) => (prev === k.key ? null : k.key))}
+                          onClick={() => setOffenerKey((prev) => (prev === k.key ? null : k.key))}
                           aria-expanded={aktiv}
                           className={`flex w-full items-center gap-2 rounded-lg px-1.5 py-1.5 text-left text-[12px] transition ${
                             aktiv ? 'bg-slate-800/70 ring-1 ring-slate-600/60' : 'hover:bg-slate-800/40'
@@ -173,27 +268,27 @@ export function AnalyseSection({
               </ul>
             </div>
 
-            {offeneKategorie && (
+            {offenesSegment && (
               <div className="mt-3 rounded-xl border border-slate-800 bg-slate-950/55 p-3">
                 <div className="mb-2 flex items-center justify-between gap-2">
                   <p className="flex items-center gap-2 text-[12px] font-semibold text-slate-200">
-                    <span className="h-2.5 w-2.5 rounded-sm" style={{ backgroundColor: kategorieDef(offeneKategorie).farbe }} aria-hidden />
-                    {kategorieDef(offeneKategorie).label}
-                    <span className="font-normal text-slate-500">({offeneBuchungen.length})</span>
+                    <span className="h-2.5 w-2.5 rounded-sm" style={{ backgroundColor: offenesSegment.farbe }} aria-hidden />
+                    {offenesSegment.label}
+                    <span className="font-normal text-slate-500">({offenesSegment.rows.length})</span>
                   </p>
                   <button
                     type="button"
-                    onClick={() => setOffeneKategorie(null)}
+                    onClick={() => setOffenerKey(null)}
                     className="rounded-md px-2 py-0.5 text-[11px] font-semibold text-slate-400 hover:bg-slate-800 hover:text-slate-200"
                   >
                     Schließen
                   </button>
                 </div>
-                {offeneBuchungen.length === 0 ? (
-                  <p className="text-[12px] text-slate-600">Keine Buchungen in dieser Kategorie.</p>
+                {offenesSegment.rows.length === 0 ? (
+                  <p className="text-[12px] text-slate-600">Keine Buchungen.</p>
                 ) : (
                   <ul className="space-y-1">
-                    {offeneBuchungen.map((b, i) => (
+                    {offenesSegment.rows.map((b, i) => (
                       <li
                         key={i}
                         className="flex items-center gap-2 border-b border-slate-800/50 py-1.5 text-[12px] last:border-0"
@@ -205,8 +300,9 @@ export function AnalyseSection({
                             <span className="block truncate text-[11px] text-slate-500">{detailNotiz(b.beschreibung)}</span>
                           )}
                         </span>
-                        <span className="shrink-0 tabular-nums font-semibold text-rose-400">
-                          −{eur(Number(b.betrag) || 0)}
+                        <span className={`shrink-0 tabular-nums font-semibold ${istAusgaben ? 'text-rose-400' : 'text-emerald-400'}`}>
+                          {istAusgaben ? '−' : '+'}
+                          {eur(Number(b.betrag) || 0)}
                         </span>
                       </li>
                     ))}

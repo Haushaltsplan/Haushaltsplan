@@ -63,11 +63,13 @@ export const FINANZ_KATEGORIEN: readonly FinanzKategorieDef[] = [
     farbe: '#2dd4bf',
     textClass: 'text-teal-300',
     keywords: [
-      'aktien', 'aktie', 'etf', 'fond', 'fonds', 'sparplan', 'sparen', 'sparbuch', 'depot',
-      'trade republic', 'traderepublic', 'scalable', 'comdirect', 'consorsbank', 'finanzen.net',
-      'rente', 'uniprofirente', 'uniglobal', 'uniprofi', 'union investment', 'altersvorsorge',
-      'ruerup', 'riester', 'bausparer', 'bauspar', 'schwaebisch hall', 'wuestenrot',
-      'vermoegenswirksame', 'vwl', 'festgeld', 'tagesgeld', 'krypto', 'bitcoin', 'gold',
+      'aktien', 'aktie', 'etf', 'msci', 'fondssparplan', 'fonds', 'fond', 'sparplan', 'sparrate',
+      'sparbuch', 'sparen', 'depot', 'wertpapier', 'trade republic', 'traderepublic', 'scalable capital',
+      'scalable', 'comdirect', 'consorsbank', 'flatex', 'smartbroker', 'etoro', 'weltsparen',
+      'coinbase', 'binance', 'bitpanda', 'kraken', 'krypto', 'bitcoin', 'ethereum', 'gold',
+      'rente', 'uniprofirente', 'uniprofi', 'uniglobal', 'union investment', 'altersvorsorge',
+      'betriebsrente', 'ruerup', 'riester', 'bausparer', 'bauspar', 'schwaebisch hall', 'wuestenrot',
+      'lbs', 'vermoegenswirksame', 'vwl', 'festgeld', 'tagesgeld',
     ],
   },
   {
@@ -76,9 +78,10 @@ export const FINANZ_KATEGORIEN: readonly FinanzKategorieDef[] = [
     farbe: '#f43f5e',
     textClass: 'text-rose-300',
     keywords: [
-      'versicherung', 'allianz', 'haftpflicht', 'lebensversicherung', 'rechtsschutz', 'huk',
-      'huk24', 'axa', 'ergo', 'devk', 'generali', 'wgv', 'lvm', 'krankenversicherung',
-      'unfallversicherung', 'hausratversicherung', 'berufsunfaehigkeit', 'zusatzversicherung', 'police',
+      'versicherung', 'allianz', 'haftpflicht', 'lebensversicherung', 'rechtsschutz', 'huk24', 'huk',
+      'axa', 'ergo', 'devk', 'generali', 'gothaer', 'signal iduna', 'debeka', 'barmenia',
+      'cosmosdirekt', 'getsafe', 'friday', 'wgv', 'lvm', 'krankenversicherung', 'unfallversicherung',
+      'hausratversicherung', 'berufsunfaehigkeit', 'zusatzversicherung', 'kfz-versicherung', 'police',
     ],
   },
   {
@@ -87,10 +90,14 @@ export const FINANZ_KATEGORIEN: readonly FinanzKategorieDef[] = [
     farbe: '#8b5cf6',
     textClass: 'text-violet-300',
     keywords: [
-      'netflix', 'spotify', 'discovery', 'disney', 'amazon prime', 'prime video', 'paramount', 'wow',
-      'dazn', 'audible', 'youtube', 'apple', 'icloud', 'gemini', 'chatgpt', 'openai', 'microsoft',
-      'office', 'adobe', 'dropbox', 'github', 'strava', 'whoop', 'handy', 'handyvertrag', 'mobilfunk',
-      'o2', 'telekom', 'vodafone', 'congstar', 'abo', 'streaming', 'patreon',
+      'netflix', 'spotify', 'disney', 'discovery', 'amazon prime', 'prime video', 'paramount',
+      'sky', 'wow', 'dazn', 'joyn', 'rtl+', 'crunchyroll', 'mubi', 'twitch', 'audible', 'kindle',
+      'youtube', 'apple', 'icloud', 'itunes', 'google one', 'gemini', 'chatgpt', 'openai',
+      'microsoft', 'office', 'adobe', 'dropbox', 'notion', 'canva', 'github', 'linkedin', 'xing',
+      'parship', 'tinder', 'bumble', 'strava', 'whoop', 'patreon', 'playstation plus', 'game pass',
+      'nintendo online', 'handyvertrag', 'handy', 'mobilfunk', 'o2', 'telekom', 'vodafone',
+      'congstar', '1&1', '1und1', 'freenet', 'aldi talk', 'lidl connect', 'drillisch', 'winsim',
+      'abo', 'streaming',
     ],
   },
   {
@@ -99,10 +106,12 @@ export const FINANZ_KATEGORIEN: readonly FinanzKategorieDef[] = [
     farbe: '#0ea5e9',
     textClass: 'text-sky-300',
     keywords: [
-      'shell', 'aral', 'esso', 'totalenergies', 'tanken', 'benzin', 'diesel', 'sprit', 'tankstelle',
-      'auto', 'autohaus', 'kfz', 'adac', 'werkstatt', 'reifen', 'deutsche bahn', 'bahn', 'flixbus',
-      'flixtrain', 'mvg', 'bvg', 'ticket', 'fahrkarte', 'bus', 'tram', 'uber', 'bolt', 'taxi',
-      'parken', 'parkhaus', 'maut', 'leasing',
+      'shell', 'aral', 'esso', 'totalenergies', 'agip', 'hoyer', 'tanken', 'benzin', 'diesel',
+      'sprit', 'tankstelle', 'auto', 'autohaus', 'kfz', 'adac', 'werkstatt', 'tuev', 'dekra', 'atu',
+      'pitstop', 'reifen', 'waschanlage', 'sixt', 'europcar', 'hertz', 'car2go', 'sharenow',
+      'deutsche bahn', 'bahn', 'db navigator', 'flixbus', 'flixtrain', 'mvg', 'bvg', 'rmv', 'hvv',
+      'vvs', 'mvv', 'oepnv', 'ticket', 'fahrkarte', 'monatskarte', 'deutschlandticket', 'bus', 'tram',
+      'uber', 'bolt', 'taxi', 'parken', 'parkhaus', 'maut', 'leasing',
     ],
   },
   {
@@ -111,9 +120,10 @@ export const FINANZ_KATEGORIEN: readonly FinanzKategorieDef[] = [
     farbe: '#22c55e',
     textClass: 'text-green-300',
     keywords: [
-      'rewe', 'edeka', 'lidl', 'aldi', 'kaufland', 'penny', 'netto', 'denns', 'alnatura',
-      'supermarkt', 'lebensmittel', 'einkauf', 'wocheneinkauf', 'baecker', 'baeckerei', 'metzger',
-      'getraenkemarkt', 'getraenke', 'dm', 'rossmann', 'mueller', 'drogerie',
+      'rewe', 'edeka', 'lidl', 'aldi', 'kaufland', 'penny', 'netto', 'denns', 'alnatura', 'globus',
+      'famila', 'marktkauf', 'tegut', 'supermarkt', 'lebensmittel', 'einkauf', 'wocheneinkauf',
+      'baecker', 'baeckerei', 'konditorei', 'metzger', 'fleischerei', 'getraenkemarkt', 'getraenke',
+      'dm', 'rossmann', 'mueller', 'budni', 'drogerie',
     ],
   },
   {
@@ -122,8 +132,10 @@ export const FINANZ_KATEGORIEN: readonly FinanzKategorieDef[] = [
     farbe: '#06b6d4',
     textClass: 'text-cyan-300',
     keywords: [
-      'apotheke', 'arzt', 'aerztin', 'zahnarzt', 'klinik', 'krankenhaus', 'physio', 'physiotherapie',
-      'brille', 'optiker', 'medikament', 'rezept', 'gesundheit',
+      'apotheke', 'arzt', 'aerztin', 'hausarzt', 'facharzt', 'zahnarzt', 'klinik', 'krankenhaus',
+      'physio', 'physiotherapie', 'krankengymnastik', 'heilpraktiker', 'massage', 'therapie',
+      'brille', 'optiker', 'fielmann', 'apollo optik', 'kontaktlinsen', 'medikament', 'rezept',
+      'zuzahlung', 'gesundheit',
     ],
   },
   {
@@ -132,9 +144,11 @@ export const FINANZ_KATEGORIEN: readonly FinanzKategorieDef[] = [
     farbe: '#f59e0b',
     textClass: 'text-amber-300',
     keywords: [
-      'miete', 'kaltmiete', 'warmmiete', 'nebenkosten', 'wohnung', 'strom', 'gas', 'wasser', 'heizung',
-      'waerme', 'enbw', 'eon', 'stadtwerke', 'vattenfall', 'rundfunk', 'rundfunkbeitrag', 'gez',
-      'internet', 'dsl', 'glasfaser', 'moebel', 'hausgeld', 'grundsteuer', 'muellabfuhr',
+      'miete', 'kaltmiete', 'warmmiete', 'nebenkosten', 'wohngeld', 'kaution', 'vermieter',
+      'hausverwaltung', 'wohnung', 'strom', 'gas', 'wasser', 'abwasser', 'heizung', 'waerme', 'enbw',
+      'eon', 'rwe', 'vattenfall', 'lichtblick', 'yello', 'eprimo', 'stadtwerke', 'gasag', 'swm',
+      'rundfunkbeitrag', 'rundfunk', 'gez', 'internet', 'dsl', 'glasfaser', 'kabel', 'hausgeld',
+      'grundsteuer', 'muellabfuhr', 'muell',
     ],
   },
   {
@@ -143,10 +157,26 @@ export const FINANZ_KATEGORIEN: readonly FinanzKategorieDef[] = [
     farbe: '#e879f9',
     textClass: 'text-fuchsia-300',
     keywords: [
-      'restaurant', 'mcdonald', 'burger king', 'cafe', 'kneipe', 'kino', 'urlaub', 'reise', 'hotel',
-      'airbnb', 'booking', 'amazon', 'zalando', 'otto', 'ikea', 'mediamarkt', 'saturn', 'kleidung',
-      'shopping', 'thalia', 'fitnessstudio', 'fitness', 'gym', 'sportverein', 'hobby', 'konzert',
-      'freizeit', 'steam', 'spielwaren',
+      // Gastronomie & Ausgehen
+      'restaurant', 'mcdonald', 'burger king', 'kfc', 'subway', 'pizza', 'lieferando', 'dominos',
+      'starbucks', 'cafe', 'kneipe', 'kino', 'theater', 'museum', 'freizeitpark', 'schwimmbad',
+      'konzert', 'festival',
+      // Reisen
+      'urlaub', 'reise', 'hotel', 'airbnb', 'booking', 'flug', 'fluege', 'ryanair', 'lufthansa', 'eurowings',
+      // Mode & Schuhe
+      'kleidung', 'mode', 'schuhe', 'sneaker', 'zalando', 'about you', 'aboutyou', 'zara', 'h&m',
+      'c&a', 'primark', 'nike', 'adidas', 'puma', 'levis', 'hugo boss', 'calvin klein',
+      'tommy hilfiger', 'jack wolfskin', 'the north face', 'snipes', 'deichmann', 'bonprix', 'esprit',
+      // Beauty & Parfüm
+      'parfum', 'parfuem', 'parfuemerie', 'kosmetik', 'beauty', 'douglas', 'flaconi', 'sephora',
+      'make-up', 'schminke',
+      // Elektronik & allg. Shopping
+      'amazon', 'otto', 'ebay', 'mediamarkt', 'saturn', 'conrad', 'cyberport', 'notebooksbilliger',
+      'alternate', 'elektronik', 'ikea', 'hoeffner', 'xxxlutz', 'shopping', 'thalia', 'hugendubel',
+      'spielwaren',
+      // Sport & Hobby
+      'decathlon', 'sportscheck', 'fitnessstudio', 'fitness', 'mcfit', 'fitx', 'clever fit', 'gym',
+      'sportverein', 'hobby', 'steam', 'playstation', 'xbox', 'nintendo', 'freizeit',
     ],
   },
   {
@@ -164,6 +194,22 @@ const KATEGORIE_BY_KEY = new Map<FinanzKategorieKey, FinanzKategorieDef>(
 
 export function kategorieDef(key: FinanzKategorieKey): FinanzKategorieDef {
   return KATEGORIE_BY_KEY.get(key) ?? KATEGORIE_BY_KEY.get('sonstiges')!
+}
+
+export function istKategorieKey(x: unknown): x is FinanzKategorieKey {
+  return typeof x === 'string' && KATEGORIE_BY_KEY.has(x as FinanzKategorieKey)
+}
+
+/**
+ * Effektive Kategorie einer Buchung: Eine vom Nutzer gesetzte `kategorie_key` (manuelle Korrektur)
+ * hat Vorrang vor der automatischen Zuordnung.
+ */
+export function effektiveKategorie(
+  row: { kategorie?: string | null; beschreibung?: string | null; kategorie_key?: string | null },
+  istEinnahme = false,
+): FinanzKategorieKey {
+  if (istKategorieKey(row.kategorie_key)) return row.kategorie_key
+  return ordneKategorieZu(row.kategorie, row.beschreibung, istEinnahme)
 }
 
 /** true, wenn `needle` als ganzes Wort in `text` vorkommt (Wortgrenzen = Nicht-alphanumerisch). */
@@ -201,7 +247,25 @@ function matchText(kategorie?: string | null, beschreibung?: string | null): str
 }
 
 /**
- * Ordnet eine Buchung einer Oberkategorie zu.
+ * Bewertet, wie gut ein Text zu einer Kategorie passt. Treffer werden nach Länge gewichtet
+ * (längere/spezifischere Begriffe zählen mehr, z. B. „amazon prime“ schlägt „amazon“), und ein
+ * zusätzlicher Treffer gibt einen kleinen Bonus.
+ */
+function bewerteKategorie(text: string, def: FinanzKategorieDef): number {
+  let score = 0
+  let treffer = 0
+  for (const needle of def.keywords) {
+    if (enthaeltGanzesWort(text, needle)) {
+      score = Math.max(score, needle.length)
+      treffer++
+    }
+  }
+  return treffer === 0 ? 0 : score + (treffer - 1)
+}
+
+/**
+ * Ordnet eine Buchung einer Oberkategorie zu (Scoring statt „erster Treffer gewinnt“).
+ * Bei Gleichstand entscheidet die Reihenfolge in `FINANZ_KATEGORIEN` (spezifischere zuerst).
  * `istEinnahme` erzwingt für Einnahmen die Kategorie „Einkommen“, sofern nicht klar etwas anderes
  * (z. B. eine Sparbuchung als Einnahme) gemeint ist.
  */
@@ -214,19 +278,20 @@ export function ordneKategorieZu(
 
   if (istEinnahme) {
     // Einnahmen sind in aller Regel Einkommen; nur eindeutige Spar-/Anlage-Rückflüsse abweichend.
-    for (const needle of kategorieDef('sparen').keywords) {
-      if (enthaeltGanzesWort(text, needle)) return 'sparen'
-    }
-    return 'einkommen'
+    return bewerteKategorie(text, kategorieDef('sparen')) > 0 ? 'sparen' : 'einkommen'
   }
 
+  let beste: FinanzKategorieKey = 'sonstiges'
+  let bestScore = 0
   for (const def of FINANZ_KATEGORIEN) {
     if (def.key === 'einkommen' || def.key === 'sonstiges') continue
-    for (const needle of def.keywords) {
-      if (enthaeltGanzesWort(text, needle)) return def.key
+    const s = bewerteKategorie(text, def)
+    if (s > bestScore) {
+      bestScore = s
+      beste = def.key
     }
   }
-  return 'sonstiges'
+  return beste
 }
 
 export type KategorieSumme = {
@@ -237,16 +302,16 @@ export type KategorieSumme = {
   anteil: number
 }
 
-/** Aggregiert Buchungen nach Oberkategorie (absteigend nach Betrag). */
+/** Aggregiert Buchungen nach Oberkategorie (absteigend nach Betrag). Berücksichtigt manuelle Korrekturen. */
 export function summiereNachKategorie(
-  rows: Array<{ kategorie?: string | null; beschreibung?: string | null; betrag?: number | string | null }>,
+  rows: Array<{ kategorie?: string | null; beschreibung?: string | null; kategorie_key?: string | null; betrag?: number | string | null }>,
   istEinnahme = false,
 ): KategorieSumme[] {
   const map = new Map<FinanzKategorieKey, number>()
   for (const r of rows) {
     const b = Number(r.betrag)
     if (!Number.isFinite(b)) continue
-    const key = ordneKategorieZu(r.kategorie, r.beschreibung, istEinnahme)
+    const key = effektiveKategorie(r, istEinnahme)
     map.set(key, (map.get(key) || 0) + b)
   }
   const gesamt = [...map.values()].reduce((a, b) => a + b, 0)

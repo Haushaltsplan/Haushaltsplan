@@ -1,25 +1,14 @@
 import { NextResponse } from 'next/server'
 import { gruppiereProduktIdsFuerLagerDuplikate, mergeProduktDuplikateFuerSchluessel } from '@/lib/merge-produkt-duplikate'
-import { createSupabaseAdmin } from '@/lib/supabase-admin'
+import { createSupabaseFuerRequest } from '@/lib/supabase-user'
 
 export const runtime = 'nodejs'
 
-function adminOr501() {
-  try {
-    return createSupabaseAdmin()
-  } catch {
-    return null
-  }
-}
-
 /** Führt Gruppen mit gleicher Namens-Normalform oder gleichem Lager-Sammel-Schlüssel zusammen (kürzester Name / UUID bleibt). */
-export async function POST() {
-  const admin = adminOr501()
+export async function POST(req: Request) {
+  const admin = createSupabaseFuerRequest(req)
   if (!admin) {
-    return NextResponse.json(
-      { error: 'SUPABASE_SERVICE_ROLE_KEY fehlt — Zusammenführung im Browser nutzen (gleicher Knopf).' },
-      { status: 501 },
-    )
+    return NextResponse.json({ error: 'Anmeldung erforderlich.' }, { status: 401 })
   }
 
   try {

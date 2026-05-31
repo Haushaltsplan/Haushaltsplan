@@ -12,17 +12,9 @@ import { einkaufsdatumLokalZuIsoMitMittag } from '@/lib/lager-einkaufsdatum'
 import { normalisiereLagerKategorie } from '@/lib/lager-produkt-kategorie'
 import { findeProduktIdNachLagerZuordnung } from '@/lib/lager-artikel-kanonisch'
 import { produktAnzeigeNameAusBon } from '@/lib/produkt-name-normalize'
-import { createSupabaseAdmin } from '@/lib/supabase-admin'
+import { createSupabaseFuerRequest } from '@/lib/supabase-user'
 
 export const runtime = 'nodejs'
-
-function adminOr501() {
-  try {
-    return createSupabaseAdmin()
-  } catch {
-    return null
-  }
-}
 
 function einheitLabelFuerProdukt(b: LagerBasisEinheit): string {
   if (b === 'Liter') return 'Liter'
@@ -53,15 +45,9 @@ function parseKaufMenge(body: Record<string, unknown>): number {
 
 /** Neues Produkt inkl. erstem Bestand und Einkaufszeile (Ø-/Letzt-Preis). */
 export async function POST(req: Request) {
-  const admin = adminOr501()
+  const admin = createSupabaseFuerRequest(req)
   if (!admin) {
-    return NextResponse.json(
-      {
-        error:
-          'SUPABASE_SERVICE_ROLE_KEY fehlt in .env.local — Anlegen mit Bestand nur serverseitig mit Service Role.',
-      },
-      { status: 501 },
-    )
+    return NextResponse.json({ error: 'Anmeldung erforderlich.' }, { status: 401 })
   }
 
   let body: Record<string, unknown>
@@ -232,15 +218,9 @@ export async function POST(req: Request) {
 }
 
 export async function PATCH(req: Request) {
-  const admin = adminOr501()
+  const admin = createSupabaseFuerRequest(req)
   if (!admin) {
-    return NextResponse.json(
-      {
-        error:
-          'SUPABASE_SERVICE_ROLE_KEY fehlt in .env.local — Änderung nur serverseitig mit Service Role.',
-      },
-      { status: 501 },
-    )
+    return NextResponse.json({ error: 'Anmeldung erforderlich.' }, { status: 401 })
   }
 
   let body: Record<string, unknown>
@@ -291,15 +271,9 @@ export async function PATCH(req: Request) {
 }
 
 export async function DELETE(req: Request) {
-  const admin = adminOr501()
+  const admin = createSupabaseFuerRequest(req)
   if (!admin) {
-    return NextResponse.json(
-      {
-        error:
-          'SUPABASE_SERVICE_ROLE_KEY fehlt in .env.local — Löschen nur serverseitig mit Service Role.',
-      },
-      { status: 501 },
-    )
+    return NextResponse.json({ error: 'Anmeldung erforderlich.' }, { status: 401 })
   }
 
   let id = ''

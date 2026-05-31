@@ -1,6 +1,5 @@
 import { supabase } from '@/lib/supabase'
 
-export type BudgetRow = { id: string; kategorie_key: string; monatslimit: number }
 export type SparzielRow = {
   id: string
   titel: string
@@ -16,36 +15,6 @@ function tabelleFehlt(error: { message?: string; code?: string } | null | undefi
   if (!error) return false
   const msg = String(error.message || '').toLowerCase()
   return msg.includes('does not exist') || String(error.code || '') === '42P01'
-}
-
-export async function ladeBudgets(): Promise<LadeErgebnis<BudgetRow>> {
-  const { data, error } = await supabase
-    .from('finanz_budget')
-    .select('id, kategorie_key, monatslimit')
-    .order('kategorie_key', { ascending: true })
-  if (error) {
-    if (tabelleFehlt(error)) return { schemaOk: false, rows: [] }
-    console.warn('[finanz_budget] laden', error.message)
-    return { schemaOk: false, rows: [] }
-  }
-  return {
-    schemaOk: true,
-    rows: (data || []).map((r) => ({
-      id: String(r.id),
-      kategorie_key: String(r.kategorie_key),
-      monatslimit: Number(r.monatslimit) || 0,
-    })),
-  }
-}
-
-export async function setzeBudget(kategorieKey: string, monatslimit: number) {
-  return supabase
-    .from('finanz_budget')
-    .upsert({ kategorie_key: kategorieKey, monatslimit }, { onConflict: 'owner_user_id,kategorie_key' })
-}
-
-export async function loescheBudget(id: string) {
-  return supabase.from('finanz_budget').delete().eq('id', id)
 }
 
 export async function ladeSparziele(): Promise<LadeErgebnis<SparzielRow>> {
@@ -98,4 +67,37 @@ export async function speichereSparziel(input: {
 
 export async function loescheSparziel(id: string) {
   return supabase.from('finanz_sparziel').delete().eq('id', id)
+}
+
+export type VermoegenRow = { id: string; titel: string; betrag: number }
+
+export async function ladeVermoegen(): Promise<LadeErgebnis<VermoegenRow>> {
+  const { data, error } = await supabase
+    .from('finanz_vermoegen')
+    .select('id, titel, betrag')
+    .order('erstellt_am', { ascending: true })
+  if (error) {
+    if (tabelleFehlt(error)) return { schemaOk: false, rows: [] }
+    console.warn('[finanz_vermoegen] laden', error.message)
+    return { schemaOk: false, rows: [] }
+  }
+  return {
+    schemaOk: true,
+    rows: (data || []).map((r) => ({
+      id: String(r.id),
+      titel: String(r.titel),
+      betrag: Number(r.betrag) || 0,
+    })),
+  }
+}
+
+export async function speichereVermoegenPosten(input: { id?: string; titel: string; betrag: number }) {
+  if (input.id) {
+    return supabase.from('finanz_vermoegen').update({ titel: input.titel, betrag: input.betrag }).eq('id', input.id)
+  }
+  return supabase.from('finanz_vermoegen').insert({ titel: input.titel, betrag: input.betrag })
+}
+
+export async function loescheVermoegenPosten(id: string) {
+  return supabase.from('finanz_vermoegen').delete().eq('id', id)
 }

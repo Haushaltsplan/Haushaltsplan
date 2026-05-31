@@ -1,23 +1,15 @@
 import { NextResponse } from 'next/server'
-import { createSupabaseAdmin } from '@/lib/supabase-admin'
+import { createSupabaseFuerRequest } from '@/lib/supabase-user'
 
 export const runtime = 'nodejs'
 
 const CHUNK = 150
 
 /** Löscht alle Zeilen in `produkte` (CASCADE: Bestand, Einkäufe, Verbrauch). */
-export async function POST() {
-  let admin: ReturnType<typeof createSupabaseAdmin>
-  try {
-    admin = createSupabaseAdmin()
-  } catch {
-    return NextResponse.json(
-      {
-        error:
-          'SUPABASE_SERVICE_ROLE_KEY fehlt in .env.local — Massen-Löschen nur serverseitig mit Service Role.',
-      },
-      { status: 501 },
-    )
+export async function POST(req: Request) {
+  const admin = createSupabaseFuerRequest(req)
+  if (!admin) {
+    return NextResponse.json({ error: 'Anmeldung erforderlich.' }, { status: 401 })
   }
 
   try {

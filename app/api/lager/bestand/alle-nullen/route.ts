@@ -1,21 +1,13 @@
 import { NextResponse } from 'next/server'
-import { createSupabaseAdmin } from '@/lib/supabase-admin'
+import { createSupabaseFuerRequest } from '@/lib/supabase-user'
 
 export const runtime = 'nodejs'
 
 /** Setzt alle `lagerbestand.aktuelle_menge` auf 0 (Artikel & Einkaufshistorie bleiben). */
-export async function POST() {
-  let admin: ReturnType<typeof createSupabaseAdmin>
-  try {
-    admin = createSupabaseAdmin()
-  } catch {
-    return NextResponse.json(
-      {
-        error:
-          'SUPABASE_SERVICE_ROLE_KEY fehlt in .env.local — Leeren nur serverseitig mit Service Role.',
-      },
-      { status: 501 },
-    )
+export async function POST(req: Request) {
+  const admin = createSupabaseFuerRequest(req)
+  if (!admin) {
+    return NextResponse.json({ error: 'Anmeldung erforderlich.' }, { status: 401 })
   }
 
   try {

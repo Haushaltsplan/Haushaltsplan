@@ -3,6 +3,7 @@
 import { useMemo } from 'react'
 import { PageSection, PageSectionPanel } from '@/components/page-shell'
 import { KategorieMark } from '@/lib/kategorie-icon'
+import { ordneKategorieZu } from '@/lib/finanz-kategorisierung'
 
 type Dauerauftrag = {
   id: string | number
@@ -37,6 +38,8 @@ export function AboSection({ dauerauftraege }: { dauerauftraege: Dauerauftrag[] 
   const abos = useMemo(() => {
     return dauerauftraege
       .filter((d) => String(d.typ || '').toLowerCase().trim() !== 'einnahme')
+      // Spar-/Anlage-Daueraufträge (Aktien, Bausparer, Fonds, Rente …) gehören nicht zu Fixkosten.
+      .filter((d) => ordneKategorieZu(d.kategorie, null, false) !== 'sparen')
       .map((d) => {
         const betrag = Number(d.betrag) || 0
         const tag = Number(d.tag_des_monats) || 1

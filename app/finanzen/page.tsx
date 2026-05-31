@@ -8,9 +8,13 @@ import { berechneAusgabenMonatsFeedback } from '@/lib/finanzen-ausgaben-feedback
 import toast from 'react-hot-toast'
 import { PageChrome, PageSection, PageSectionPanel } from '@/components/page-shell'
 import { AnalyseSection } from '@/components/finanzen/analyse-section'
-import { BudgetSection } from '@/components/finanzen/budget-section'
 import { AboSection } from '@/components/finanzen/abo-section'
+import { SparenSection } from '@/components/finanzen/sparen-section'
 import { SparzieleSection } from '@/components/finanzen/sparziele-section'
+import { JahresSection } from '@/components/finanzen/jahres-section'
+import { VermoegenSection } from '@/components/finanzen/vermoegen-section'
+import { DauerauftragVorschlaege } from '@/components/finanzen/dauerauftrag-vorschlaege'
+import { FINANZ_KATEGORIEN, effektiveKategorie, istKategorieKey, ordneKategorieZu, kategorieDef, type FinanzKategorieKey } from '@/lib/finanz-kategorisierung'
 
 /** Monatlich am 1. des Monats (Ausgaben) — Import legt nur fehlende Bezeichnungen an. */
 const VORGABE_DAUERAUFTRAeGE_MONATSANFANG: Array<{
@@ -212,6 +216,8 @@ export default function FinanzenPage() {
     betrag: string
     beschreibung: string
     datumStr: string
+    /** Manuelle Kategorie-Korrektur ('' = automatisch zuordnen). */
+    kategorieKey: FinanzKategorieKey | ''
   } | null>(null)
 
   const [pendingInvoice, setPendingInvoice] = useState<{
@@ -224,6 +230,8 @@ export default function FinanzenPage() {
 
   /** `alle` = alle Zeilen des Monats; sonst nur Einnahmen- bzw. Ausgaben-Zeilen (inkl. geplante Daueraufträge passend zum Typ). */
   const [finanzListenFilter, setFinanzListenFilter] = useState<'alle' | 'einnahme' | 'ausgabe'>('alle')
+  /** Filter der Buchungsliste nach Oberkategorie (`alle` = kein Filter). */
+  const [finanzKategorieFilter, setFinanzKategorieFilter] = useState<FinanzKategorieKey | 'alle'>('alle')
   const [finanzListeSuche, setFinanzListeSuche] = useState('')
   /** Standardmäßig neueste Buchungen zuerst (nach Datum). */
   const [finanzSort, setFinanzSort] = useState<{
@@ -626,7 +634,7 @@ export default function FinanzenPage() {
   // „Mehr anzeigen“ zurücksetzen, wenn sich der Inhalt der Liste grundlegend ändert.
   useEffect(() => {
     setAlleBuchungenZeigen(false)
-  }, [ansichtMonat, finanzListenFilter, finanzListeSuche])
+  }, [ansichtMonat, finanzListenFilter, finanzListeSuche, finanzKategorieFilter])
 
   useEffect(() => {
     if (!buchungEdit) return
@@ -892,6 +900,7 @@ export default function FinanzenPage() {
       betrag: Number(item.betrag).toFixed(2),
       beschreibung: String(item.beschreibung ?? ''),
       datumStr: formatDateDDMMYYYY(datumFuerListenanzeige(item)),
+      kategorieKey: istKategorieKey(item.kategorie_key) ? item.kategorie_key : '',
     })
   }
 
@@ -907,15 +916,32 @@ export default function FinanzenPage() {
     const datum = isoDate
 
     const zielTabelle = buchungEdit.isIn ? 'einnahmen' : 'ausgaben'
-    const { error } = await supabase
+    const kategorieKeyWert = buchungEdit.kategorieKey ? buchungEdit.kategorieKey : null
+    let { error } = await supabase
       .from(zielTabelle)
       .update({
         kategorie,
         betrag: parsedBetrag,
         beschreibung: buchungEdit.beschreibung.trim(),
         datum,
+        kategorie_key: kategorieKeyWert,
       })
       .eq('id', buchungEdit.id)
+
+    // Spalte fehlt noch (Migration nicht ausgeführt) → ohne Kategorie-Korrektur erneut speichern.
+    if (error) {
+      const em = String(error.message || '').toLowerCase()
+      if (em.includes('kategorie_key') || (em.includes('column') && em.includes('does not exist'))) {
+        if (kategorieKeyWert) {
+          toast.error('Kategorie-Korrektur benötigt die Migration 20260531130000_finanz_kategorie_override.sql.')
+        }
+        const retry = await supabase
+          .from(zielTabelle)
+          .update({ kategorie, betrag: parsedBetrag, beschreibung: buchungEdit.beschreibung.trim(), datum })
+          .eq('id', buchungEdit.id)
+        error = retry.error
+      }
+    }
 
     if (error) {
       toast.error('Buchung konnte nicht gespeichert werden.')
@@ -1029,6 +1055,10 @@ export default function FinanzenPage() {
     if (finanzListenFilter === 'einnahme') rows = rows.filter((r: any) => Boolean(r.isIn))
     else if (finanzListenFilter === 'ausgabe') rows = rows.filter((r: any) => !r.isIn)
 
+    if (finanzKategorieFilter !== 'alle') {
+      rows = rows.filter((r: any) => effektiveKategorie(r, Boolean(r.isIn)) === finanzKategorieFilter)
+    }
+
     const q = finanzListeSuche.trim().toLowerCase()
     if (q) {
       rows = rows.filter((r: any) => {
@@ -1060,7 +1090,7 @@ export default function FinanzenPage() {
     }
 
     return rows
-  }, [finanzListe, finanzListenFilter, finanzListeSuche, finanzSort])
+  }, [finanzListe, finanzListenFilter, finanzKategorieFilter, finanzListeSuche, finanzSort])
 
   const BUCHUNGEN_VORSCHAU = 5
   const finanzListeSichtbar = useMemo(
@@ -1323,6 +1353,8 @@ export default function FinanzenPage() {
         geplanteAusgaben={geplanteAusgaben}
       />
 
+      <JahresSection einnahmen={einnahmen} ausgaben={ausgaben} ansichtMonat={ansichtMonat} />
+
       <PageSection titleId="finanzen-buchungen-heading" title="Buchungen" density="compact">
         <PageSectionPanel density="compact">
       <div className="grid min-w-0 gap-4 lg:grid-cols-[minmax(0,17.5rem)_1fr] xl:grid-cols-[minmax(0,19rem)_1fr] lg:gap-5">
@@ -1542,6 +1574,19 @@ export default function FinanzenPage() {
                     <span className="hidden lg:inline">Ausgaben</span>
                   </button>
                 </div>
+                <select
+                  value={finanzKategorieFilter}
+                  onChange={(e) => setFinanzKategorieFilter(e.target.value as FinanzKategorieKey | 'alle')}
+                  aria-label="Nach Kategorie filtern"
+                  className="min-w-0 w-full rounded-lg border border-slate-700/80 bg-slate-950/80 px-2.5 py-2 text-[11px] font-semibold text-slate-300 outline-none focus:ring-2 focus:ring-sky-500/25 sm:w-auto"
+                >
+                  <option value="alle">Alle Kategorien</option>
+                  {FINANZ_KATEGORIEN.map((k) => (
+                    <option key={k.key} value={k.key}>
+                      {k.label}
+                    </option>
+                  ))}
+                </select>
               </div>
             </div>
           </div>
@@ -1775,13 +1820,22 @@ export default function FinanzenPage() {
         </PageSectionPanel>
       </PageSection>
 
-      <BudgetSection ausgabenAnsicht={ausgabenAnsicht} monatLabel={formatMonatsLabelDe(ansichtMonat)} />
-
       <AboSection dauerauftraege={dauerauftraege} />
+
+      <SparenSection dauerauftraege={dauerauftraege} />
 
       <PageSection titleId="finanzen-dauerauftraege-heading" title="Daueraufträge" density="compact">
         <PageSectionPanel density="compact">
       <div className="overflow-hidden rounded-2xl border border-slate-800/90 bg-gradient-to-b from-slate-900 to-slate-950 p-4 shadow-xl shadow-black/35 sm:p-5">
+        <DauerauftragVorschlaege
+          einnahmen={einnahmen}
+          ausgaben={ausgaben}
+          dauerauftraege={dauerauftraege}
+          onAngelegt={async () => {
+            await ladeDauerauftraege()
+            await verarbeiteDauerauftraege()
+          }}
+        />
         <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:justify-end">
           <button
             type="button"
@@ -1938,6 +1992,8 @@ export default function FinanzenPage() {
 
       <SparzieleSection />
 
+      <VermoegenSection puffer={topfStand} />
+
       {buchungEdit && (
         <div
           className={appModalBackdropClassName}
@@ -1984,6 +2040,28 @@ export default function FinanzenPage() {
                 className="w-full rounded-xl border border-slate-700/90 bg-slate-950/90 px-3 py-2.5 text-sm text-slate-100 outline-none focus:ring-2 focus:ring-sky-500/30"
                 placeholder="Notiz / Beschreibung"
               />
+              <div>
+                <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                  Kategorie
+                </label>
+                <select
+                  value={buchungEdit.kategorieKey}
+                  onChange={(e) =>
+                    setBuchungEdit((p) => (p ? { ...p, kategorieKey: e.target.value as FinanzKategorieKey | '' } : p))
+                  }
+                  className="w-full rounded-xl border border-slate-700/90 bg-slate-950/90 px-3 py-2.5 text-sm text-slate-100 outline-none focus:ring-2 focus:ring-sky-500/30"
+                >
+                  <option value="">
+                    Automatisch ({kategorieDef(ordneKategorieZu(buchungEdit.kategorie, buchungEdit.beschreibung, buchungEdit.isIn)).label})
+                  </option>
+                  {FINANZ_KATEGORIEN.map((k) => (
+                    <option key={k.key} value={k.key}>
+                      {k.label}
+                    </option>
+                  ))}
+                </select>
+                <p className="mt-1 text-[11px] text-slate-500">Manuelle Korrektur überschreibt die automatische Zuordnung.</p>
+              </div>
               <div>
                 <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-slate-500">
                   Datum (TT/MM/JJJJ)

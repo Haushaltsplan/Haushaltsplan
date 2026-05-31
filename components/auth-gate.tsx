@@ -12,6 +12,17 @@ const APP_URL = (process.env.NEXT_PUBLIC_APP_URL || '').trim()
 const DEV_EMAIL = (process.env.NEXT_PUBLIC_DEV_EMAIL || '').trim()
 const DEV_PASSWORD = (process.env.NEXT_PUBLIC_DEV_PASSWORD || '').trim()
 
+/** Erlaubte E-Mail(s) — nur diese Konten dürfen die App nutzen (leer = keine zusätzliche Einschränkung). */
+const ALLOWED_EMAILS = (process.env.NEXT_PUBLIC_ALLOWED_EMAILS || '')
+  .split(/[,;\s]+/)
+  .map((s) => s.trim().toLowerCase())
+  .filter(Boolean)
+
+function emailErlaubt(email: string | null | undefined): boolean {
+  if (ALLOWED_EMAILS.length === 0) return true
+  return ALLOWED_EMAILS.includes(String(email || '').toLowerCase())
+}
+
 function loginRedirectUrl(): string {
   if (APP_URL.startsWith('https://') || APP_URL.startsWith('http://')) {
     return APP_URL.replace(/\/+$/, '')
@@ -32,6 +43,19 @@ export function AuthGate({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true)
   const [email, setEmail] = useState('')
   const [sending, setSending] = useState(false)
+  const [verweigert, setVerweigert] = useState(false)
+
+  // Setzt Session nur, wenn die E-Mail erlaubt ist; sonst sofort abmelden.
+  const uebernehmeSession = (next: Session | null) => {
+    if (next && !emailErlaubt(next.user?.email)) {
+      setVerweigert(true)
+      setSession(null)
+      void supabase.auth.signOut()
+      return
+    }
+    setVerweigert(false)
+    setSession(next ?? null)
+  }
 
   useEffect(() => {
     let mounted = true
@@ -54,14 +78,14 @@ export function AuthGate({ children }: { children: ReactNode }) {
         return
       }
 
-      setSession(data.session ?? null)
+      uebernehmeSession(data.session ?? null)
       setLoading(false)
     }
 
     void init()
 
     const { data: sub } = supabase.auth.onAuthStateChange((_event, next) => {
-      setSession(next ?? null)
+      uebernehmeSession(next ?? null)
       setLoading(false)
     })
     return () => {
@@ -76,11 +100,16 @@ export function AuthGate({ children }: { children: ReactNode }) {
       toast.error('Bitte E-Mail eingeben.')
       return
     }
+    if (!emailErlaubt(clean)) {
+      toast.error('Diese E-Mail ist für diese App nicht freigeschaltet.')
+      return
+    }
     setSending(true)
     try {
       const { error } = await supabase.auth.signInWithOtp({
         email: clean,
-        options: { emailRedirectTo: loginRedirectUrl() },
+        // Keine neuen Konten über die App anlegen — nur bestehende (du) dürfen sich anmelden.
+        options: { emailRedirectTo: loginRedirectUrl(), shouldCreateUser: false },
       })
       if (error) {
         toast.error(error.message || 'Login-Link konnte nicht gesendet werden.')
@@ -103,6 +132,11 @@ export function AuthGate({ children }: { children: ReactNode }) {
         <p className="mt-2 text-sm text-slate-400">
           Für Datenschutz: Zugriff nur nach Login. Auf dem Handy reicht das normalerweise einmal pro Gerät.
         </p>
+        {verweigert && (
+          <p className="mt-3 rounded-lg border border-rose-700/50 bg-rose-950/30 px-3 py-2 text-[13px] text-rose-200">
+            Dieses Konto hat keinen Zugriff auf diese App.
+          </p>
+        )}
         <input
           type="email"
           value={email}
