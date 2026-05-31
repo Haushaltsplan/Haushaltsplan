@@ -2,8 +2,16 @@
 
 import { appModalBackdropClassName, appModalPanelClassName } from '@/lib/app-modal-overlay'
 import { bucheSchnellMinus, bucheSchnellPlus } from '@/lib/lager-schnellbuchung'
+import { lagerKategorieAusArtikel } from '@/lib/lager-produkt-kategorie'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import toast from 'react-hot-toast'
+
+type OffVorschlag = {
+  anzeigeName: string
+  rohName: string
+  kategorie: string
+  marke?: string
+}
 
 export type ScannerProdukt = {
   id: string
@@ -45,6 +53,8 @@ export function LagerBarcodeScanner({ produkte, onClose, onAenderung }: Props) {
   const [kameraFehler, setKameraFehler] = useState<string | null>(null)
   const [suche, setSuche] = useState('')
   const [busy, setBusy] = useState(false)
+  const [off, setOff] = useState<OffVorschlag | null>(null)
+  const [offLaden, setOffLaden] = useState(false)
 
   const treffer = useMemo(() => {
     if (!code) return null
@@ -120,10 +130,38 @@ export function LagerBarcodeScanner({ produkte, onClose, onAenderung }: Props) {
     return () => window.removeEventListener('keydown', onKey)
   }, [onClose])
 
+  useEffect(() => {
+    if (!code || treffer) {
+      setOff(null)
+      return
+    }
+    let abbruch = false
+    setOffLaden(true)
+    void fetch(`/api/lager/barcode-lookup?code=${encodeURIComponent(code)}`)
+      .then((r) => r.json())
+      .then((data: { gefunden?: boolean; produkt?: OffVorschlag }) => {
+        if (abbruch) return
+        if (data.gefunden && data.produkt) {
+          setOff(data.produkt)
+          setSuche(data.produkt.anzeigeName)
+        } else setOff(null)
+      })
+      .catch(() => {
+        if (!abbruch) setOff(null)
+      })
+      .finally(() => {
+        if (!abbruch) setOffLaden(false)
+      })
+    return () => {
+      abbruch = true
+    }
+  }, [code, treffer])
+
   function neuScannen() {
     setCode(null)
     setSuche('')
     setManuell('')
+    setOff(null)
     setKameraFehler(null)
     setScanAktiv(detectorVerfuegbar)
   }
@@ -160,8 +198,52 @@ export function LagerBarcodeScanner({ produkte, onClose, onAenderung }: Props) {
         toast.error(data.error || 'Zuordnen fehlgeschlagen.')
         return
       }
-      toast.success(`Barcode mit „${p.name}" verknüpft.`)
+      const kat = lagerKategorieAusArtikel(p.name)
+      toast.success(
+        kat !== 'Sonstiges'
+          ? `„${p.name}" verknüpft · Warengruppe ${kat}.`
+          : `Barcode mit „${p.name}" verknüpft.`,
+      )
       onAenderung()
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function legeNeuAn() {
+    if (!code) return
+    const bez = (off?.anzeigeName || suche.trim()).trim()
+    if (!bez) {
+      toast.error('Bitte einen Artikelnamen eingeben oder warten, bis der Barcode-Lookup fertig ist.')
+      return
+    }
+    const kat = off?.kategorie || lagerKategorieAusArtikel(bez)
+    const heute = new Date()
+    const datum = `${heute.getFullYear()}-${String(heute.getMonth() + 1).padStart(2, '0')}-${String(heute.getDate()).padStart(2, '0')}`
+    setBusy(true)
+    try {
+      const res = await fetch('/api/lager/produkt', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: bez,
+          kauf_menge: 1,
+          kauf_einheit: 'Stück',
+          basis_einheit: 'Stück',
+          gesamtpreis: 0,
+          einkaufsdatum: datum,
+          kategorie: kat,
+          barcode: code,
+        }),
+      })
+      const data = (await res.json().catch(() => ({}))) as { error?: string }
+      if (!res.ok) {
+        toast.error(data.error || 'Anlegen fehlgeschlagen.')
+        return
+      }
+      toast.success(`„${bez}" angelegt (${kat}) und Barcode gespeichert.`)
+      onAenderung()
+      neuScannen()
     } finally {
       setBusy(false)
     }
@@ -169,9 +251,19 @@ export function LagerBarcodeScanner({ produkte, onClose, onAenderung }: Props) {
 
   const sucheTreffer = useMemo(() => {
     const q = suche.trim().toLowerCase()
-    if (!q) return produkte.slice(0, 8)
-    return produkte.filter((p) => p.name.toLowerCase().includes(q)).slice(0, 12)
-  }, [suche, produkte])
+    let liste = produkte
+    if (q) {
+      liste = produkte.filter((p) => p.name.toLowerCase().includes(q))
+    } else if (off?.anzeigeName) {
+      const hint = off.anzeigeName.toLowerCase()
+      liste = [...produkte].sort((a, b) => {
+        const am = a.name.toLowerCase().includes(hint) ? 0 : 1
+        const bm = b.name.toLowerCase().includes(hint) ? 0 : 1
+        return am - bm || a.name.localeCompare(b.name, 'de')
+      })
+    }
+    return liste.slice(0, 12)
+  }, [suche, produkte, off])
 
   return (
     <div className={appModalBackdropClassName} role="presentation" onClick={(e) => e.target === e.currentTarget && onClose()}>
@@ -251,7 +343,19 @@ export function LagerBarcodeScanner({ produkte, onClose, onAenderung }: Props) {
               </div>
             ) : (
               <div className="rounded-xl border border-sky-800/45 bg-sky-950/20 p-3">
-                <p className="text-[13px] font-semibold text-sky-100">Unbekannter Code — einem Artikel zuordnen:</p>
+                {offLaden ? (
+                  <p className="text-[12px] text-slate-500">Produkt wird im Barcode-Verzeichnis gesucht…</p>
+                ) : off ? (
+                  <div className="mb-3 rounded-lg border border-violet-800/40 bg-violet-950/25 px-3 py-2">
+                    <p className="text-[11px] font-bold uppercase tracking-wide text-violet-300">Erkannt</p>
+                    <p className="mt-1 font-semibold text-slate-100">{off.anzeigeName}</p>
+                    <p className="mt-0.5 text-[12px] text-slate-400">
+                      Warengruppe: <span className="font-bold text-emerald-300">{off.kategorie}</span>
+                      {off.marke ? ` · ${off.marke}` : ''}
+                    </p>
+                  </div>
+                ) : null}
+                <p className="text-[13px] font-semibold text-sky-100">Unbekannter Code — zuordnen oder neu anlegen:</p>
                 <input
                   value={suche}
                   onChange={(e) => setSuche(e.target.value)}
@@ -271,8 +375,16 @@ export function LagerBarcodeScanner({ produkte, onClose, onAenderung }: Props) {
                       <span className="shrink-0 text-[11px] tabular-nums text-slate-500">{p.menge} {p.einheit}</span>
                     </button>
                   ))}
-                  {sucheTreffer.length === 0 ? <p className="px-1 py-2 text-[12px] text-slate-500">Kein Artikel gefunden.</p> : null}
+                  {sucheTreffer.length === 0 ? <p className="px-1 py-2 text-[12px] text-slate-500">Kein passender Artikel — unten neu anlegen.</p> : null}
                 </div>
+                <button
+                  type="button"
+                  disabled={busy || offLaden}
+                  onClick={() => void legeNeuAn()}
+                  className="mt-3 w-full rounded-lg bg-emerald-600 py-2.5 text-sm font-black text-white hover:bg-emerald-500 disabled:opacity-40"
+                >
+                  Neu anlegen{off ? ` (${off.kategorie})` : ''}
+                </button>
               </div>
             )}
 

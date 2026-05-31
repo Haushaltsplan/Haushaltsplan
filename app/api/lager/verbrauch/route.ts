@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { chargeVerbrauchenFifo } from '@/lib/lager-charge'
 import { createSupabaseFuerRequest } from '@/lib/supabase-user'
 
 export const runtime = 'nodejs'
@@ -57,6 +58,11 @@ export async function POST(req: Request) {
       notiz: notiz || null,
     })
     if (vErr) throw new Error(vErr.message)
+
+    const fifo = await chargeVerbrauchenFifo(admin, produktId, menge)
+    if (!fifo.ok && fifo.fehler && !fifo.fehler.includes('lager_charge')) {
+      throw new Error(fifo.fehler)
+    }
 
     return NextResponse.json({ ok: true, neue_menge: neu })
   } catch (e) {

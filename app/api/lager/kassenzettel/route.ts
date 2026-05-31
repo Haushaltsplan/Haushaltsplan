@@ -12,11 +12,12 @@ import {
 } from '@/lib/lager-einheiten'
 import {
   applyMultipackGetraenkKorrektur,
+  findeProduktIdNachLagerZuordnung,
   istLagerIrrelevantPfandOderLeergut,
   lagerArtikelSammelname,
 } from '@/lib/lager-artikel-kanonisch'
+import { chargeHinzufuegen } from '@/lib/lager-charge'
 import { lagerKategorieFinal, normalisiereLagerKategorie } from '@/lib/lager-produkt-kategorie'
-import { findeProduktIdNachLagerZuordnung } from '@/lib/lager-artikel-kanonisch'
 import { produktAnzeigeNameAusBon } from '@/lib/produkt-name-normalize'
 import { readGeminiApiKeyFromEnv } from '@/lib/ki-coach-backend'
 import { createSupabaseFuerRequest } from '@/lib/supabase-user'
@@ -245,6 +246,8 @@ async function bucheZeile(admin: SupabaseClient, z: Kassenzeile) {
     gesamtpreis: gesamt,
   })
   if (eErr) throw new Error(eErr.message)
+
+  await chargeHinzufuegen(admin, produktId, basisRounded)
 }
 
 export async function POST(req: Request) {

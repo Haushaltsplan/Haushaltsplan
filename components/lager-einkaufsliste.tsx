@@ -9,7 +9,7 @@ import {
   type LagerVerbrauchHistorieZeile,
 } from '@/lib/lager-einkaufsliste-verbrauch'
 import { basisEinheitFuerPreisanzeige, istLagerBasisEinheit, produktEinheitZuBasis, type LagerBasisEinheit } from '@/lib/lager-einheiten'
-import { istUnterMindestbestand } from '@/lib/lager-mhd'
+import { istUnterMindestbestand, mhdStatus } from '@/lib/lager-mhd'
 import { abonniereMerker, entferneMerker, gemerkteIds } from '@/lib/einkaufsliste-merker'
 
 const SESSION_KEY = 'mein-haushalt:einkaufsliste-v1'
@@ -31,6 +31,8 @@ type ProduktKurz = {
   durchschnittspreis?: number | null
   letzterEinkaufspreis?: number | null
   mindestbestand?: number | null
+  mhd?: string | null
+  immer_da?: boolean | null
 }
 
 function lagerMenge(p: Pick<ProduktKurz, 'lagerbestand'>): number {
@@ -147,20 +149,44 @@ export function LagerEinkaufsliste({ produkte, verbrauchHistorie, refreshKey }: 
     })
   }, [idsMitBestand])
 
+  /** Nach Bon-Import / Einbuchung: Merker für Artikel mit Bestand entfernen. */
+  useEffect(() => {
+    for (const id of idsMitBestand) {
+      if (gemerkt.includes(id)) entferneMerker(id)
+    }
+  }, [idsMitBestand, gemerkt])
+
   const gemerktSet = useMemo(() => new Set(gemerkt), [gemerkt])
 
   const kandidaten = useMemo(() => {
     return produkte
       .map((p) => {
         const m = lagerMenge(p)
+        const st = mhdStatus(p.mhd ?? null)
+        const ablauf = m > 0 && (st === 'bald' || st === 'abgelaufen')
         const leer = m <= 0
         const unterMin = istUnterMindestbestand(m, p.mindestbestand ?? null)
+        const immerDa = Boolean(p.immer_da) && (leer || unterMin)
         const merk = gemerktSet.has(p.id)
-        const grund: 'leer' | 'min' | 'merker' | null = leer ? 'leer' : unterMin ? 'min' : merk ? 'merker' : null
+
+        let grund: 'ablauf' | 'leer' | 'min' | 'immer_da' | 'merker' | null = null
+        if (ablauf) grund = 'ablauf'
+        else if (immerDa && leer) grund = 'immer_da'
+        else if (leer) grund = 'leer'
+        else if (unterMin) grund = p.immer_da ? 'immer_da' : 'min'
+        else if (immerDa) grund = 'immer_da'
+        else if (merk) grund = 'merker'
+
         return { p, grund }
       })
       .filter((x) => x.grund != null && !hidden.includes(x.p.id))
-      .sort((a, b) => a.p.name.localeCompare(b.p.name, 'de'))
+      .sort((a, b) => {
+        const prio = { ablauf: 0, leer: 1, min: 2, immer_da: 3, merker: 4 }
+        const pa = prio[a.grund!] ?? 9
+        const pb = prio[b.grund!] ?? 9
+        if (pa !== pb) return pa - pb
+        return a.p.name.localeCompare(b.p.name, 'de')
+      })
   }, [produkte, hidden, gemerktSet])
 
   const zeilen = useMemo(() => {
@@ -212,7 +238,7 @@ export function LagerEinkaufsliste({ produkte, verbrauchHistorie, refreshKey }: 
         <div className="min-w-0">
           <h2 className="text-sm font-bold text-amber-100 sm:text-base">Einkaufsliste</h2>
           <p className="text-[10px] text-slate-500 sm:text-[11px]">
-            Ohne Bestand · unter Mindestbestand · gemerkt · Menge editierbar
+            Ablauf · leer · unter Min. · Immer-da · gemerkt
           </p>
         </div>
         <div className="flex shrink-0 items-center gap-2.5 sm:gap-3">
@@ -237,8 +263,8 @@ export function LagerEinkaufsliste({ produkte, verbrauchHistorie, refreshKey }: 
 
           {zeilen.length === 0 ? (
             <p className="py-3 text-center text-xs text-slate-500">
-              Nichts nachzukaufen{hidden.length ? ' (oder alle ausgeblendet)' : ''}. Hier erscheinen Artikel ohne Bestand,
-              unter Mindestbestand oder per 🛒 gemerkte.
+              Nichts auf der Liste{hidden.length ? ' (oder ausgeblendet)' : ''}. Hier erscheinen bald ablaufende Artikel,
+              leere Bestände, Unter-Mindestbestand, Immer-da-Favoriten und per 🛒 Gemerktes.
             </p>
           ) : (
             <div className="overflow-x-auto rounded-lg border border-slate-800/90">
@@ -260,8 +286,12 @@ export function LagerEinkaufsliste({ produkte, verbrauchHistorie, refreshKey }: 
                       <td className="max-w-[14rem] px-2 py-1.5 sm:px-3">
                         <div className="flex min-w-0 items-center gap-1.5">
                           <span className="truncate font-semibold text-slate-100">{p.name}</span>
-                          {grund === 'min' ? (
+                          {grund === 'ablauf' ? (
+                            <span className="shrink-0 rounded border border-amber-700/50 bg-amber-900/30 px-1 text-[9px] font-bold text-amber-200">läuft ab</span>
+                          ) : grund === 'min' ? (
                             <span className="shrink-0 rounded border border-sky-700/50 bg-sky-900/30 px-1 text-[9px] font-bold text-sky-200">unter Min.</span>
+                          ) : grund === 'immer_da' ? (
+                            <span className="shrink-0 rounded border border-teal-700/50 bg-teal-900/30 px-1 text-[9px] font-bold text-teal-200">Immer da</span>
                           ) : grund === 'merker' ? (
                             <span className="shrink-0 rounded border border-violet-700/50 bg-violet-900/30 px-1 text-[9px] font-bold text-violet-200">gemerkt</span>
                           ) : null}

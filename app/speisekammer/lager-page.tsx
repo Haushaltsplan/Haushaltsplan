@@ -11,7 +11,10 @@ import { LagerUebersicht } from '@/components/lager-uebersicht'
 import { LagerAuswertungen } from '@/components/lager-auswertungen'
 import { LagerAblaufTimeline } from '@/components/lager-ablauf-timeline'
 import { LagerBarcodeScanner } from '@/components/lager-barcode-scanner'
+import { LagerWasKochen } from '@/components/lager-was-kochen'
+import { LagerVerbrauchHinweise } from '@/components/lager-verbrauch-hinweise'
 import { istUnterMindestbestand, mhdKurzLabel, mhdStatus } from '@/lib/lager-mhd'
+import { preisAenderungLabel, preisAenderungProzent } from '@/lib/lager-preis-trend'
 import { bucheSchnellMinus, bucheSchnellPlus } from '@/lib/lager-schnellbuchung'
 import { abonniereMerker, istGemerkt, toggleMerker } from '@/lib/einkaufsliste-merker'
 import {
@@ -27,7 +30,12 @@ import {
 } from '@/lib/lager-einheiten'
 import { einkaufsdatumLokalZuIsoMitMittag } from '@/lib/lager-einkaufsdatum'
 import { findeProduktIdNachLagerZuordnung } from '@/lib/lager-artikel-kanonisch'
-import { LAGER_PRODUKT_KATEGORIEN, normalisiereLagerKategorie } from '@/lib/lager-produkt-kategorie'
+import {
+  LAGER_PRODUKT_KATEGORIEN,
+  lagerKategorieAusArtikel,
+  lagerKategorieFuerErfassung,
+  normalisiereLagerKategorie,
+} from '@/lib/lager-produkt-kategorie'
 import { gruppiereProduktIdsFuerLagerDuplikate, mergeProduktDuplikateFuerSchluessel } from '@/lib/merge-produkt-duplikate'
 import {
   namenGleichFuerLager,
@@ -60,6 +68,10 @@ type ProduktRow = {
   mindestbestand?: number | null
   /** Gebundener Barcode/EAN. */
   barcode?: string | null
+  /** Immer auf Einkaufsliste wenn unter Mindestbestand. */
+  immer_da?: boolean | null
+  /** Preis je Basiseinheit vor letztem Einkauf (für Trend). */
+  vorletzterEinkaufspreis?: number | null
 }
 
 function lagerMenge(p: Pick<ProduktRow, 'lagerbestand'>): number {
@@ -141,6 +153,9 @@ export default function LagerPage() {
   const [artikelSuche, setArtikelSuche] = useState('')
   /** Leer = alle Warengruppen. */
   const [lagerKategorieFilter, setLagerKategorieFilter] = useState('')
+  /** Schnellfilter Bestandsliste (Grocy-Stil). */
+  const [bestandFilter, setBestandFilter] = useState<'ablauf' | 'nachkaufen' | 'leer' | 'ohne_mhd' | ''>('')
+  const [letzterEinkaufAmMap, setLetzterEinkaufAmMap] = useState<Map<string, string>>(new Map())
   const [lagerSort, setLagerSort] = useState<{
     key: 'name' | 'durchschnitt' | 'letzter' | 'bestand' | 'wert'
     dir: 'asc' | 'desc'
@@ -205,19 +220,22 @@ export default function LagerPage() {
     }
 
     if (eErr) {
-      setProdukte(base.map((p) => ({ ...p, durchschnittspreis: null, letzterEinkaufspreis: null })))
+      setProdukte(base.map((p) => ({ ...p, durchschnittspreis: null, letzterEinkaufspreis: null, vorletzterEinkaufspreis: null })))
+      setLetzterEinkaufAmMap(new Map())
       setLagerRefreshKey((k) => k + 1)
       return
     }
 
     const acc = new Map<string, { sumP: number; sumM: number }>()
-    const letzterEinzel = new Map<string, number>()
+    const preiseProPid = new Map<string, number[]>()
+    const einkaufAm = new Map<string, string>()
     for (const r of einRows || []) {
       const row = r as {
         produkt_id: string
         menge: number
         basis_menge?: number | null
         gesamtpreis: number
+        erstellt_am: string
       }
       const pid = String(row.produkt_id)
       const basisM = Number(row.basis_menge) > 0 ? Number(row.basis_menge) : Number(row.menge) || 0
@@ -226,21 +244,28 @@ export default function LagerPage() {
       nu.sumM += basisM
       acc.set(pid, nu)
 
-      if (!letzterEinzel.has(pid)) {
-        const m = basisM
-        const g = Number(row.gesamtpreis) || 0
-        if (m > 0 && Number.isFinite(g)) {
-          letzterEinzel.set(pid, Math.round((g / m) * 1000000) / 1000000)
-        }
+      if (!einkaufAm.has(pid) && row.erstellt_am) {
+        einkaufAm.set(pid, String(row.erstellt_am))
+      }
+      const m = basisM
+      const g = Number(row.gesamtpreis) || 0
+      if (m > 0 && Number.isFinite(g)) {
+        const einzel = Math.round((g / m) * 1000000) / 1000000
+        const arr = preiseProPid.get(pid) || []
+        if (arr.length < 2) arr.push(einzel)
+        preiseProPid.set(pid, arr)
       }
     }
 
+    setLetzterEinkaufAmMap(einkaufAm)
     setProdukte(
       base.map((p) => {
         const a = acc.get(p.id)
         const avg = a && a.sumM > 0 ? Math.round((a.sumP / a.sumM) * 1_000_000) / 1_000_000 : null
-        const zuletzt = letzterEinzel.get(p.id) ?? null
-        return { ...p, durchschnittspreis: avg, letzterEinkaufspreis: zuletzt }
+        const preise = preiseProPid.get(p.id) || []
+        const zuletzt = preise[0] ?? null
+        const vorher = preise[1] ?? null
+        return { ...p, durchschnittspreis: avg, letzterEinkaufspreis: zuletzt, vorletzterEinkaufspreis: vorher }
       }),
     )
     setLagerRefreshKey((k) => k + 1)
@@ -265,6 +290,7 @@ export default function LagerPage() {
     gesamtpreis: number,
     datum: string,
     kategorieRo: string,
+    mhdOptional?: string | null,
   ): Promise<{ neuerArtikel: boolean }> {
     const erstelltAm = einkaufsdatumLokalZuIsoMitMittag(datum)
     const kaufR = Math.round(kaufMenge * 1000) / 1000
@@ -273,7 +299,7 @@ export default function LagerPage() {
     const { data: alle, error: aErr } = await supabase.from('produkte').select('id, name')
     if (aErr) throw new Error(aErr.message)
     const vorhanden = findeProduktIdNachLagerZuordnung((alle || []) as { id: string; name: string }[], bezeichnung)
-    const kategorie = normalisiereLagerKategorie(kategorieRo)
+    const kategorie = lagerKategorieFuerErfassung(bezeichnung, kategorieRo)
 
     let neuAngelegt = false
     let basis: LagerBasisEinheit
@@ -364,6 +390,15 @@ export default function LagerPage() {
             : eErr.message,
       )
     }
+    const mhdCharge = mhdOptional?.trim() && /^\d{4}-\d{2}-\d{2}$/.test(mhdOptional.trim()) ? mhdOptional.trim() : null
+    if (mhdCharge) {
+      await supabase.from('produkte').update({ mhd: mhdCharge }).eq('id', pid)
+    }
+    await supabase.from('lager_charge').insert({
+      produkt_id: pid,
+      menge: basisR,
+      ...(mhdCharge ? { mhd: mhdCharge } : {}),
+    })
     return { neuerArtikel: !vorhanden }
   }
 
@@ -445,7 +480,7 @@ export default function LagerPage() {
       let neuerArtikel = true
       if (res.status === 501) {
         try {
-          const r = await buchungNeuesProduktDirekt(bezeichnung, m, kaufE, basisNeu, g, einkaufsdatum, neuKategorie)
+          const r = await buchungNeuesProduktDirekt(bezeichnung, m, kaufE, basisNeu, g, einkaufsdatum, neuKategorie, neuMhd.trim() || null)
           neuerArtikel = r.neuerArtikel
         } catch (e) {
           toast.error(e instanceof Error ? e.message : 'Anlegen fehlgeschlagen.')
@@ -547,6 +582,21 @@ export default function LagerPage() {
     await ladeDaten()
   }
 
+  async function mindestbestandSetzen(id: string, wert: number) {
+    const res = await fetch('/api/lager/produkt', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id, mindestbestand: wert }),
+    })
+    const data = (await res.json()) as { error?: string }
+    if (!res.ok && res.status !== 501) throw new Error(data.error || 'Speichern fehlgeschlagen.')
+    if (res.status === 501) {
+      const { error } = await supabase.from('produkte').update({ mindestbestand: wert }).eq('id', id)
+      if (error) throw new Error(error.message)
+    }
+    await ladeDaten()
+  }
+
   const scannerProdukte = useMemo(
     () =>
       produkte.map((p) => ({
@@ -564,6 +614,18 @@ export default function LagerPage() {
     let rows = produkte
     if (lagerKategorieFilter) {
       rows = rows.filter((p) => normalisiereLagerKategorie(p.kategorie ?? null) === lagerKategorieFilter)
+    }
+    if (bestandFilter === 'ablauf') {
+      rows = rows.filter((p) => {
+        const st = mhdStatus(p.mhd ?? null)
+        return lagerMenge(p) > 0 && (st === 'bald' || st === 'abgelaufen')
+      })
+    } else if (bestandFilter === 'nachkaufen') {
+      rows = rows.filter((p) => istUnterMindestbestand(lagerMenge(p), p.mindestbestand ?? null))
+    } else if (bestandFilter === 'leer') {
+      rows = rows.filter((p) => lagerMenge(p) <= 0)
+    } else if (bestandFilter === 'ohne_mhd') {
+      rows = rows.filter((p) => lagerMenge(p) > 0 && !p.mhd)
     }
     if (q) {
       const qLower = q.toLowerCase()
@@ -618,7 +680,7 @@ export default function LagerPage() {
       return String(a.name).localeCompare(String(b.name), 'de', { sensitivity: 'base' })
     })
     return sorted
-  }, [produkte, artikelSuche, lagerKategorieFilter, lagerSort])
+  }, [produkte, artikelSuche, lagerKategorieFilter, bestandFilter, lagerSort])
 
   const lagerwertGefiltert = useMemo(() => summeBestandswert(produkteGefiltert), [produkteGefiltert])
 
@@ -748,6 +810,7 @@ export default function LagerPage() {
         bestand: lagerMenge(modal.p),
         mhd: modal.p.mhd ?? null,
         mindestbestand: modal.p.mindestbestand ?? null,
+        immer_da: modal.p.immer_da ?? false,
       }
     : null
 
@@ -828,6 +891,23 @@ export default function LagerPage() {
             <span className="text-[11px] text-slate-500">Artikel per Kamera ein-/ausbuchen oder neu zuordnen.</span>
           </div>
 
+          <LagerWasKochen
+            refreshKey={lagerRefreshKey}
+            artikel={produkte.map((p) => ({
+              id: p.id,
+              name: p.name,
+              menge: lagerMenge(p),
+              einheit: basisEinheitFuerPreisanzeige(basisEinheitAnzeige(p)),
+            }))}
+          />
+
+          <LagerVerbrauchHinweise
+            produkte={produkte}
+            verbrauchHistorie={verbrauchHistorie}
+            letzterEinkaufAm={letzterEinkaufAmMap}
+            onMindestbestandSetzen={mindestbestandSetzen}
+          />
+
           <LagerAblaufTimeline items={uebersichtItems} onOeffnen={oeffneArtikel} />
 
           <LagerEinkaufsliste produkte={produkte} verbrauchHistorie={verbrauchHistorie} refreshKey={lagerRefreshKey} />
@@ -855,7 +935,14 @@ export default function LagerPage() {
                         placeholder="z. B. Vollmilch 3,5 %"
                         className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 py-2 px-2.5 text-sm font-semibold text-slate-100 outline-none focus:ring-2 focus:ring-emerald-500/45"
                         value={name}
-                        onChange={(e) => setName(e.target.value)}
+                        onChange={(e) => {
+                          const v = e.target.value
+                          setName(v)
+                          if (neuKategorie === 'Sonstiges') {
+                            const k = lagerKategorieAusArtikel(v)
+                            if (k !== 'Sonstiges') setNeuKategorie(k)
+                          }
+                        }}
                         disabled={formularLaden}
                       />
                     </label>
@@ -993,6 +1080,33 @@ export default function LagerPage() {
               onChange={(e) => setArtikelSuche(e.target.value)}
               className="mt-2.5 w-full rounded-xl border border-slate-700/90 bg-slate-950/90 px-3.5 py-3 text-sm text-slate-100 shadow-inner outline-none ring-emerald-500/0 transition placeholder:text-slate-600 focus:border-emerald-600/50 focus:ring-2 focus:ring-emerald-500/25 sm:text-[15px]"
             />
+            <div className="mt-4 min-w-0">
+              <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500">Schnellfilter</p>
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {(
+                  [
+                    ['', 'Alle'],
+                    ['ablauf', 'Ablauf'],
+                    ['nachkaufen', 'Nachkaufen'],
+                    ['leer', 'Leer'],
+                    ['ohne_mhd', 'Ohne MHD'],
+                  ] as const
+                ).map(([key, label]) => (
+                  <button
+                    key={key || 'alle'}
+                    type="button"
+                    onClick={() => setBestandFilter(key)}
+                    className={`rounded-lg border px-2.5 py-1.5 text-[12px] font-semibold transition sm:text-[13px] ${
+                      bestandFilter === key
+                        ? 'border-emerald-600/60 bg-emerald-950/40 text-emerald-100'
+                        : 'border-slate-700/80 bg-slate-900/80 text-slate-400 hover:border-slate-600 hover:text-slate-200'
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
             <div className="mt-4 min-w-0">
               <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500">Warengruppe</p>
               <div className="mt-2 flex max-h-[11rem] flex-wrap gap-1.5 overflow-y-auto pr-0.5 sm:max-h-none sm:overflow-visible">
@@ -1197,6 +1311,11 @@ export default function LagerPage() {
                               nachkaufen
                             </span>
                           ) : null}
+                          {p.immer_da ? (
+                            <span className="inline-flex shrink-0 items-center rounded border border-teal-700/50 bg-teal-900/30 px-1 text-[9px] font-bold text-teal-200">
+                              ★
+                            </span>
+                          ) : null}
                         </div>
                       </td>
                       <td className="min-w-0 px-1 py-2 text-right align-middle sm:px-1.5">
@@ -1224,6 +1343,19 @@ export default function LagerPage() {
                           </div>
                           <div className="truncate text-sky-100/85" title={formatEurJeBasiseinheit(p.letzterEinkaufspreis ?? null, basis)}>
                             {formatEurJeBasiseinheit(p.letzterEinkaufspreis ?? null, basis)}
+                            {(() => {
+                              const pct = preisAenderungProzent(p.letzterEinkaufspreis ?? null, p.vorletzterEinkaufspreis ?? null)
+                              const lbl = preisAenderungLabel(pct)
+                              if (!lbl) return null
+                              const up = (pct ?? 0) > 0
+                              return (
+                                <span
+                                  className={`ml-0.5 inline-block rounded px-0.5 text-[9px] font-bold ${up ? 'text-rose-300' : 'text-emerald-300'}`}
+                                >
+                                  {lbl}
+                                </span>
+                              )
+                            })()}
                           </div>
                         </div>
                       </td>

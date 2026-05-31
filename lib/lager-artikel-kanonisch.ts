@@ -79,6 +79,12 @@ const SAMMEL_REGELN: Regel[] = [
   { re: /waschmittel/i, sammelname: 'Waschmittel' },
   { re: /oliven[oö]l/i, sammelname: 'Olivenöl' },
   { re: /club[-\s]?mate/i, sammelname: 'Club Mate' },
+  /** Biermarken/-sorten → eine Lagerposition „Bier“ (nicht „Hacklberger Urhell“ einzeln). */
+  {
+    re: /\b(hacklberger|urhell|pils|weizen|radler|stiegl|goesser|gauder|zipfer|puntigamer|murauer|egger|schwechat|ottakringer|villacher|krombacher|bitburger|warsteiner|becks|augustiner|paulaner|erdinger|spaten|holsten|veltins|jever|einbecker|desperados|corona|heineken)\b/i,
+    sammelname: 'Bier',
+  },
+  { re: /\b(bier|bräu|braeu|brew|lager)\b/i, sammelname: 'Bier' },
   { re: /pecorino/i, sammelname: 'Pecorino' },
   { re: /curryw[uü]rst/i, sammelname: 'Currywürste' },
   { re: /zucchini/i, sammelname: 'Zucchini' },
@@ -115,11 +121,6 @@ export function lagerArtikelSammelname(roh: string): string {
 
   const mitGebinde = ohneGebindeAngabeAmEnde(basis)
   const test = mitGebinde.toLocaleLowerCase('de')
-
-  /** Biermarken/-sorten nicht mit Fleisch-Regeln verwechseln. */
-  if (/\b(hacklberger|urhell|pils|weizen|radler|bier|bräu|brew|lager|stiegl|ötti|goesser|gauder|zipfer|puntigamer)\b/i.test(test)) {
-    return mitGebinde
-  }
 
   for (const { re, sammelname } of SAMMEL_REGELN) {
     if (re.test(test)) return sammelname

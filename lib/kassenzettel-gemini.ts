@@ -137,14 +137,14 @@ export async function extractKassenzettelPositionen(
       '- Sorten/Zucht/Verkaufsform weglassen: z. B. **Tomaten** statt „Rispen-Tomaten“ / „Cocktailtomaten“, **Möhren** statt „EHL Möhren“, **Gurken** statt „Salatgurken“.\n' +
       '- Gebinde-Größe **nicht** im Namen: z. B. Artikel **Club Mate**, Menge **0,5**, Einheit **Liter** — nicht „Club-Mate 0,5l“ als ein einziger Name.\n' +
       '- **Passierte Tomaten** o. Ä. bleibt eigenständig, wenn es keine Frischware ist.\n' +
-      '- **Kein** Fleisch bei **Bier** o. ä.: z. B. „Hacklberger Urhell“ ist **Bier**, **nicht** Hackfleisch — Artikelname exakt vom Bon übernehmen (Markenname erlaubt), Kategorie **Getränke**.\n' +
+      '- **Kein** Fleisch bei **Bier** o. ä.: z. B. „Hacklberger Urhell“ ist **Bier** (Warengruppe **Bier**), **nicht** Hackfleisch — Markenname im Artikel erlaubt.\n' +
       '- **Kasten / Multipack-Getränke** (Bier, Mate, Limo): Steht auf dem Bon z. B. **20x0,5l**, **20 x 0,5 l**, **24x0,33l** (Anzahl Flaschen × Volumen pro Flasche), dann **menge = erste Zahl** (z. B. **20**), **einheit = Stück** (so viele Flaschen), **gesamtpreis** = Zeilensumme für den ganzen Kasten. **Nicht** menge **0,5** und einheit **Liter** — das wäre nur eine Flasche statt 20×0,5 l.\n' +
       '- **Schmand**: Kürzel wie **B.L.Frisch.Sc**, **Frisch.Sc**, **Frisch Sc** auf EDEKA-Bons = **Schmand** (saure Sahne), **nicht** Frischkäse — Artikel **Schmand**, Kategorie **Milchprodukte**.\n' +
       '- **Glühwein**: Marken-/Sorten-Zeilen (Christkindl, Kunzmann, …) als **ein** Artikel **Glühwein** führen — **nicht** „Glühmost“ (Apfel/Punsch), der bleibt eigenständig.\n' +
       '- **Joghurt Gums** / Katjes / Fruchtgummi = **Süßigkeiten** (nicht Milchprodukte); echtes Joghurt = **Milchprodukte**.\n\n' +
       'Feld **kategorie** — für jede Position **genau eine** dieser Warengruppen (deutscher Name):\n' +
       `${LAGER_PRODUKT_KATEGORIEN.join(', ')}.\n` +
-      '- Beispiele: Gurken/Tomaten/Möhren → **Gemüse**; Apfel/Banane → **Obst**; Bier/Mate/Saft → **Getränke**; Toffifee/Schokolade/Fruchtgummi → **Süßigkeiten**; Waschmittel → **Haushalt & Reinigung**; Olivenöl → **Öle & Essig**; Hackfleisch/Wurst → **Fleisch & Wurst**.\n\n' +
+      '- Beispiele: Gurken/Tomaten → **Gemüse**; Bier/Pils/Urhell/Hacklberger → **Bier**; Wein/Glühwein/Sekt → **Wein & Sekt**; Cola/Mate/Saft/Wasser → **Getränke**; Toffifee/Schokolade → **Süßigkeiten**; Waschmittel → **Haushalt & Reinigung**; Hackfleisch/Wurst → **Fleisch & Wurst**.\n\n' +
       'WICHTIG — Mengen und Preise:\n' +
       '- menge: immer die **tatsächlich gekaufte Menge** (z. B. Stückzahl; bei Gewicht **das gewogene kg**, z. B. 0,487 oder 2,350 — niemals 1 nur weil „1 kg“ auf dem Etikett steht, wenn auf dem Bon z. B. „0,487 kg“ steht).\n' +
       '- Bei Gramm auf dem Bon: menge in **kg** umrechnen (350 g → 0,35).\n' +

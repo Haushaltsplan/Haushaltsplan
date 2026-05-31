@@ -9,9 +9,14 @@ import {
   type LagerKaufEinheit,
 } from '@/lib/lager-einheiten'
 import { einkaufsdatumLokalZuIsoMitMittag } from '@/lib/lager-einkaufsdatum'
-import { normalisiereLagerKategorie } from '@/lib/lager-produkt-kategorie'
+import {
+  lagerKategorieAusArtikel,
+  lagerKategorieFuerErfassung,
+  normalisiereLagerKategorie,
+} from '@/lib/lager-produkt-kategorie'
 import { findeProduktIdNachLagerZuordnung } from '@/lib/lager-artikel-kanonisch'
 import { produktAnzeigeNameAusBon } from '@/lib/produkt-name-normalize'
+import { chargeHinzufuegen } from '@/lib/lager-charge'
 import { createSupabaseFuerRequest } from '@/lib/supabase-user'
 
 export const runtime = 'nodejs'
@@ -68,8 +73,9 @@ export async function POST(req: Request) {
         : ''
   const gesamtpreis = Number(body.gesamtpreis)
   const einkaufsdatum = typeof body.einkaufsdatum === 'string' ? body.einkaufsdatum.trim() : ''
-  const kategorie = normalisiereLagerKategorie(
-    typeof body.kategorie === 'string' && body.kategorie.trim() ? body.kategorie : null,
+  const kategorie = lagerKategorieFuerErfassung(
+    name,
+    typeof body.kategorie === 'string' ? body.kategorie : null,
   )
   const mhd =
     typeof body.mhd === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(body.mhd.trim()) ? body.mhd.trim() : null
@@ -78,6 +84,8 @@ export async function POST(req: Request) {
     mindestbestandRaw != null && Number.isFinite(mindestbestandRaw) && mindestbestandRaw > 0
       ? Math.round(mindestbestandRaw * 1000) / 1000
       : null
+  const barcode =
+    typeof body.barcode === 'string' && body.barcode.trim() ? body.barcode.trim().replace(/\D/g, '') : null
 
   if (!name) {
     return NextResponse.json({ error: 'Bezeichnung (name) fehlt.' }, { status: 400 })
@@ -143,18 +151,26 @@ export async function POST(req: Request) {
       )
       if (lbErr) throw new Error(lbErr.message)
 
-      const { error: eErr } = await admin.from('lager_einkauf').insert({
-        produkt_id: produktId,
-        menge: basisRounded,
-        kauf_menge: kaufRounded,
-        kauf_einheit: kaufEinheitFuerDb(kaufEinheit),
-        basis_menge: basisRounded,
-        basis_einheit: basis,
-        gesamtpreis: gRounded,
-        erstellt_am: erstelltAm,
-        quelle: 'manuell',
-      })
+      const { data: eIns, error: eErr } = await admin
+        .from('lager_einkauf')
+        .insert({
+          produkt_id: produktId,
+          menge: basisRounded,
+          kauf_menge: kaufRounded,
+          kauf_einheit: kaufEinheitFuerDb(kaufEinheit),
+          basis_menge: basisRounded,
+          basis_einheit: basis,
+          gesamtpreis: gRounded,
+          erstellt_am: erstelltAm,
+          quelle: 'manuell',
+        })
+        .select('id')
+        .single()
       if (eErr) throw new Error(eErr.message)
+      await chargeHinzufuegen(admin, produktId, basisRounded, {
+        mhd,
+        lagerEinkaufId: eIns?.id as string | undefined,
+      })
 
       if (kategorie !== 'Sonstiges') {
         const { data: prKat } = await admin.from('produkte').select('kategorie').eq('id', produktId).maybeSingle()
@@ -196,6 +212,7 @@ export async function POST(req: Request) {
           kategorie,
           ...(mhd ? { mhd } : {}),
           ...(mindestbestand != null ? { mindestbestand } : {}),
+          ...(barcode ? { barcode } : {}),
         },
       ])
       .select('id')
@@ -210,18 +227,26 @@ export async function POST(req: Request) {
     )
     if (lbErr) throw new Error(lbErr.message)
 
-    const { error: eErr } = await admin.from('lager_einkauf').insert({
-      produkt_id: produktId,
-      menge: basisRoundedNeu,
-      kauf_menge: kaufRounded,
-      kauf_einheit: kaufEinheitFuerDb(kaufEinheit),
-      basis_menge: basisRoundedNeu,
-      basis_einheit: basisNeu,
-      gesamtpreis: gRounded,
-      erstellt_am: erstelltAm,
-      quelle: 'manuell',
-    })
+    const { data: eInsNeu, error: eErr } = await admin
+      .from('lager_einkauf')
+      .insert({
+        produkt_id: produktId,
+        menge: basisRoundedNeu,
+        kauf_menge: kaufRounded,
+        kauf_einheit: kaufEinheitFuerDb(kaufEinheit),
+        basis_menge: basisRoundedNeu,
+        basis_einheit: basisNeu,
+        gesamtpreis: gRounded,
+        erstellt_am: erstelltAm,
+        quelle: 'manuell',
+      })
+      .select('id')
+      .single()
     if (eErr) throw new Error(eErr.message)
+    await chargeHinzufuegen(admin, produktId, basisRoundedNeu, {
+      mhd,
+      lagerEinkaufId: eInsNeu?.id as string | undefined,
+    })
 
     return NextResponse.json({ ok: true, id: produktId, neuerArtikel: true })
   } catch (e) {
@@ -305,6 +330,10 @@ export async function PATCH(req: Request) {
     }
   }
 
+  if ('immer_da' in body) {
+    patch.immer_da = Boolean(body.immer_da)
+  }
+
   if (Object.keys(patch).length === 0) {
     return NextResponse.json(
       { error: 'Keine Felder zum Aktualisieren (name, einheit, kategorie, mhd, mindestbestand, barcode).' },
@@ -313,11 +342,22 @@ export async function PATCH(req: Request) {
   }
 
   try {
+    // Nach Barcode-Zuordnung oder wenn Kategorie noch „Sonstiges“: aus Artikelname ableiten.
+    if (!('kategorie' in patch) && ('barcode' in patch || name !== undefined)) {
+      const { data: alt } = await admin.from('produkte').select('name, kategorie').eq('id', id).maybeSingle()
+      const bez = name ?? String(alt?.name ?? '')
+      const altKat = normalisiereLagerKategorie(alt?.kategorie ?? null)
+      const neuKat = lagerKategorieAusArtikel(bez)
+      if (bez && altKat === 'Sonstiges' && neuKat !== 'Sonstiges') {
+        patch.kategorie = neuKat
+      }
+    }
+
     const { data, error } = await admin
       .from('produkte')
       .update(patch)
       .eq('id', id)
-      .select('id, name, einheit, kategorie, mhd, mindestbestand, barcode')
+      .select('id, name, einheit, kategorie, mhd, mindestbestand, barcode, immer_da')
       .single()
     if (error && /barcode/i.test(error.message) && /unique|duplicate/i.test(error.message)) {
       return NextResponse.json({ error: 'Dieser Barcode ist bereits einem anderen Artikel zugeordnet.' }, { status: 409 })

@@ -19,6 +19,8 @@ export type LagerProduktModalZeile = {
   mhd?: string | null
   /** Mindestvorrat in Basiseinheit oder null. */
   mindestbestand?: number | null
+  /** Immer auf Einkaufsliste wenn unter Mindestbestand. */
+  immer_da?: boolean
 }
 
 type Modus = 'bearbeiten' | 'verbrauch' | null
@@ -45,6 +47,7 @@ function BearbeitenForm({
   const [mindestbestand, setMindestbestand] = useState<string>(
     produkt.mindestbestand != null && produkt.mindestbestand > 0 ? String(produkt.mindestbestand).replace('.', ',') : '',
   )
+  const [immerDa, setImmerDa] = useState(Boolean(produkt.immer_da))
   const [pending, setPending] = useState(false)
   const einheitLabel = basisEinheitFuerPreisanzeige(produkt.basis_einheit)
 
@@ -74,7 +77,14 @@ function BearbeitenForm({
       const res = await fetch('/api/lager/produkt', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: pid, name: n, kategorie: kat, mhd: mhdWert, mindestbestand: minWert }),
+        body: JSON.stringify({
+          id: pid,
+          name: n,
+          kategorie: kat,
+          mhd: mhdWert,
+          mindestbestand: minWert,
+          immer_da: immerDa,
+        }),
       })
       const data = (await res.json()) as { error?: string }
       if (!res.ok && res.status !== 501) {
@@ -84,7 +94,7 @@ function BearbeitenForm({
       if (res.status === 501) {
         const { error } = await supabase
           .from('produkte')
-          .update({ name: n, kategorie: kat, mhd: mhdWert, mindestbestand: minWert })
+          .update({ name: n, kategorie: kat, mhd: mhdWert, mindestbestand: minWert, immer_da: immerDa })
           .eq('id', pid)
         if (error) {
           toast.error(
@@ -152,6 +162,17 @@ function BearbeitenForm({
           />
         </label>
       </div>
+      <label className="mb-4 flex cursor-pointer items-center gap-2.5 rounded-lg border border-teal-800/40 bg-teal-950/20 px-3 py-2.5">
+        <input
+          type="checkbox"
+          checked={immerDa}
+          onChange={(e) => setImmerDa(e.target.checked)}
+          disabled={pending}
+          className="h-4 w-4 rounded border-slate-600"
+        />
+        <span className="text-sm font-semibold text-teal-100">Immer da (Favorit)</span>
+        <span className="text-[11px] text-slate-500">— bleibt auf der Einkaufsliste, wenn leer oder unter Mindestbestand</span>
+      </label>
       <p className="mb-6 rounded-lg border border-slate-800 bg-slate-950/80 px-3 py-2 text-xs text-slate-400">
         Basiseinheit (fest): <span className="font-semibold text-slate-200">{einheitLabel}</span>
         <span className="mt-1 block text-slate-500">
