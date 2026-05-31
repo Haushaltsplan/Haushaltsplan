@@ -57,18 +57,7 @@ function effektiveKategorie(row: KatalogRow, ger: RezeptGericht | null): string 
   return null
 }
 
-/** Mindestens eine Lager-Zutat mit ID; für alle ist der aktuelle Bestand ≥ Rezeptmenge. */
-function gerichtAlleLagerZutatenImBestand(gericht: RezeptGericht | null, artikel: LagerRezeptKatalogArtikelZeile[]): boolean {
-  if (!gericht) return false
-  const lagerZ = (gericht.zutaten || []).filter((z) => z.aus_lager && z.produkt_id)
-  if (lagerZ.length === 0) return false
-  for (const z of lagerZ) {
-    const pid = String(z.produkt_id).trim()
-    const vor = artikel.find((a) => a.id === pid)?.menge ?? 0
-    if (z.menge > vor + 1e-6) return false
-  }
-  return true
-}
+import { gerichtAlleZutatenImBestand } from '@/lib/rezept-lager-abgleich'
 
 export function LagerRezeptKatalog({ artikel, refreshKey }: Props) {
   const [offen, setOffen] = useState(true)
@@ -153,7 +142,7 @@ export function LagerRezeptKatalog({ artikel, refreshKey }: Props) {
         if (!Number.isFinite(min) || row.bewertung == null || row.bewertung < min) return false
       }
 
-      if (nurAlleLagerZutatenDa && !gerichtAlleLagerZutatenImBestand(ger, artikel)) return false
+      if (nurAlleLagerZutatenDa && !gerichtAlleZutatenImBestand(ger, artikel)) return false
 
       return true
     })
@@ -294,7 +283,7 @@ export function LagerRezeptKatalog({ artikel, refreshKey }: Props) {
                   onChange={(e) => setNurAlleLagerZutatenDa(e.target.checked)}
                 />
                 <span className="text-[11px] font-semibold leading-snug text-slate-300">
-                  Nur Rezepte, bei denen alle <span className="text-teal-200/90">Vorrat-</span>Zutaten aktuell reichen
+                  Nur Rezepte, bei denen alle Zutaten aktuell im Lager sind
                 </span>
               </label>
             </div>

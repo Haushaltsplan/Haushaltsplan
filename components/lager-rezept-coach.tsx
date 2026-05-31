@@ -23,6 +23,8 @@ import {
   type RezeptCoachAntwort,
   type RezeptGericht,
 } from '@/lib/rezept-coach-types'
+import { fehlendeFuerEinkauf, zutatenZumAusbuchen, zutatLagerStatus } from '@/lib/rezept-lager-abgleich'
+import { merkeFuerEinkauf, merkeNameFuerEinkauf } from '@/lib/einkaufsliste-merker'
 
 export type LagerRezeptArtikelZeile = { id?: string; name: string; menge: number; einheit: string }
 
@@ -56,11 +58,6 @@ type Props = {
 }
 
 const MD_STRONG = 'font-semibold text-slate-100'
-
-function bestandFuerProdukt(artikel: LagerRezeptArtikelZeile[], produktId: string | null | undefined): number {
-  if (!produktId) return 0
-  return artikel.find((a) => a.id === produktId)?.menge ?? 0
-}
 
 function toDatetimeLocalValue(d = new Date()) {
   const pad = (n: number) => String(n).padStart(2, '0')
@@ -107,12 +104,14 @@ export function RezeptStructuredCards({
         const basisPortionen = Number.isFinite(g.portionen) && g.portionen >= 0.5 ? g.portionen : 1
         const zielPortionen = portionenZiel[actionKey] ?? basisPortionen
         const anzeige = skaliereRezeptAufPortionen(g, basisPortionen, zielPortionen)
-        const lagerZeilen = (anzeige.zutaten || []).filter((z) => z.aus_lager && z.produkt_id)
-        const kannBuchen = lagerZeilen.length > 0
+        const ausbuchZeilen = zutatenZumAusbuchen(anzeige, artikel)
+        const fehlend = fehlendeFuerEinkauf(anzeige, artikel)
+        const fehlendAnzahl = fehlend.produktIds.length + fehlend.namen.length
+        const kannBuchen = ausbuchZeilen.length > 0
         let bestandOk = true
-        for (const z of lagerZeilen) {
-          const vorr = bestandFuerProdukt(artikel, z.produkt_id)
-          if (z.menge > vorr + 1e-6) bestandOk = false
+        for (const z of anzeige.zutaten || []) {
+          const st = zutatLagerStatus(z, artikel)
+          if (st.gematcht && !st.ausreichend) bestandOk = false
         }
         const buchenDisabled = kiBusy || !kannBuchen || !bestandOk || buchungKey !== null
         const kcalGes = normalisiereKcalGesamt(anzeige.geschaetzte_kcal_gesamt)
@@ -145,7 +144,22 @@ export function RezeptStructuredCards({
                 ) : null}
               </div>
               {anzeigeNur ? (
-                <div className="flex shrink-0 flex-wrap justify-end">
+                <div className="flex shrink-0 flex-wrap justify-end gap-2">
+                  {fehlendAnzahl > 0 ? (
+                    <button
+                      type="button"
+                      className="rounded-lg border border-amber-600/55 bg-amber-950/40 px-2.5 py-1.5 text-[11px] font-bold text-amber-100 hover:bg-amber-900/35"
+                      onClick={() => {
+                        for (const id of fehlend.produktIds) merkeFuerEinkauf(id)
+                        for (const n of fehlend.namen) merkeNameFuerEinkauf(n)
+                        toast.success(
+                          `${fehlendAnzahl} fehlende Zutat${fehlendAnzahl === 1 ? '' : 'en'} auf die Einkaufsliste gesetzt.`,
+                        )
+                      }}
+                    >
+                      Fehlende auf Einkaufsliste ({fehlendAnzahl})
+                    </button>
+                  ) : null}
                   <button
                     type="button"
                     className="rounded-lg border border-slate-600 bg-slate-800/80 px-2.5 py-1.5 text-[11px] font-bold text-slate-200 hover:bg-slate-700"
@@ -164,6 +178,21 @@ export function RezeptStructuredCards({
                 </div>
               ) : (
                 <div className="flex shrink-0 flex-wrap justify-end gap-2">
+                  {fehlendAnzahl > 0 ? (
+                    <button
+                      type="button"
+                      className="rounded-lg border border-amber-600/55 bg-amber-950/40 px-2.5 py-1.5 text-[11px] font-bold text-amber-100 hover:bg-amber-900/35"
+                      onClick={() => {
+                        for (const id of fehlend.produktIds) merkeFuerEinkauf(id)
+                        for (const n of fehlend.namen) merkeNameFuerEinkauf(n)
+                        toast.success(
+                          `${fehlendAnzahl} fehlende Zutat${fehlendAnzahl === 1 ? '' : 'en'} auf die Einkaufsliste gesetzt.`,
+                        )
+                      }}
+                    >
+                      Fehlende auf Einkaufsliste ({fehlendAnzahl})
+                    </button>
+                  ) : null}
                   <button
                     type="button"
                     disabled={buchenDisabled}
@@ -221,23 +250,39 @@ export function RezeptStructuredCards({
               ) : null}
             </div>
             <p className="mt-2 text-[10px] font-bold uppercase tracking-wider text-slate-500">Zutaten (Mengen)</p>
-            <ul className="mt-1.5 list-outside list-disc space-y-1 pl-4 text-[13px] leading-snug text-slate-300">
+            <ul className="mt-1.5 list-none space-y-1.5 text-[13px] leading-snug text-slate-300">
               {(anzeige.zutaten || []).map((z, zi) => {
-                const vorr = z.produkt_id ? bestandFuerProdukt(artikel, z.produkt_id) : null
-                const warn = z.aus_lager && z.produkt_id && z.menge > (vorr ?? 0) + 1e-6
+                const st = zutatLagerStatus(z, artikel)
                 return (
-                  <li key={zi} className="pl-1">
-                    <span className="font-semibold text-slate-100">
-                      {z.menge} {z.einheit}
-                    </span>{' '}
-                    {z.name}
-                    {z.aus_lager ? (
-                      <span className="text-slate-500">
-                        {' '}
-                        (Bestand{vorr != null ? `: ${vorr} ${z.einheit}` : ''})
-                        {warn ? <span className="text-rose-400"> — Bestand reicht nicht</span> : null}
-                      </span>
-                    ) : null}
+                  <li key={zi} className="flex items-start gap-2 pl-0.5">
+                    <span
+                      className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[11px] font-black ${
+                        st.ausreichend
+                          ? 'bg-emerald-900/50 text-emerald-300 ring-1 ring-emerald-600/45'
+                          : 'bg-slate-800/80 text-slate-600 ring-1 ring-slate-700/80'
+                      }`}
+                      aria-hidden
+                      title={st.ausreichend ? 'Im Lager vorhanden' : 'Nicht oder nicht ausreichend im Lager'}
+                    >
+                      {st.ausreichend ? '✓' : ''}
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="font-semibold text-slate-100">
+                        {z.menge} {z.einheit}
+                      </span>{' '}
+                      {z.name}
+                      {st.gematcht && !st.ausreichend ? (
+                        <span className="text-rose-400">
+                          {' '}
+                          — im Lager: {st.bestand} {st.einheit}, benötigt {st.benoetigt}
+                        </span>
+                      ) : null}
+                      {!st.gematcht ? (
+                        <span className="text-slate-500"> — nicht im Lager</span>
+                      ) : st.ausreichend && st.produktName ? (
+                        <span className="text-emerald-400/80"> — {st.produktName}</span>
+                      ) : null}
+                    </span>
                   </li>
                 )
               })}
@@ -331,23 +376,10 @@ export function LagerRezeptCoach({ artikel, onLagerAktualisiert, onKatalogGeaend
   }, [mahlzeitDialog, buchungKey])
 
   const oeffneMahlzeitDialog = useCallback((gericht: RezeptGericht, actionKey: string) => {
-    const lines = (gericht.zutaten || []).filter((z) => z.aus_lager && z.produkt_id)
+    const lines = zutatenZumAusbuchen(gericht, artikel)
     if (!lines.length) {
-      toast.error('Keine Bestandszutaten mit Produkt-ID zum Ausbuchen.')
+      toast.error('Keine Zutaten mit ausreichendem Bestand zum Ausbuchen.')
       return
-    }
-    for (const z of lines) {
-      const pid = String(z.produkt_id ?? '').trim()
-      if (!pid) continue
-      if (!artikel.some((a) => a.id === pid)) {
-        toast.error(`„${z.name}“ ist nicht in der aktuellen Speisekammer-Liste — bitte Seite neu laden.`)
-        return
-      }
-      const vorr = bestandFuerProdukt(artikel, pid)
-      if (z.menge > vorr + 1e-6) {
-        toast.error(`Zu wenig Bestand für „${z.name}“ (${z.menge} ${z.einheit} nötig, ${vorr} vorhanden).`)
-        return
-      }
     }
     setMahlzeitDialog({ gericht, actionKey })
     setGekochtAmInput(toDatetimeLocalValue())
@@ -356,7 +388,7 @@ export function LagerRezeptCoach({ artikel, onLagerAktualisiert, onKatalogGeaend
   const bestaetigeMahlzeitBuchung = useCallback(async () => {
     if (!mahlzeitDialog) return
     const { gericht, actionKey } = mahlzeitDialog
-    const lines = (gericht.zutaten || []).filter((z) => z.aus_lager && z.produkt_id)
+    const lines = zutatenZumAusbuchen(gericht, artikel)
     if (!lines.length) {
       toast.error('Keine Lager-Zutaten zum Ausbuchen.')
       return

@@ -10,7 +10,7 @@ import {
 } from '@/lib/lager-einkaufsliste-verbrauch'
 import { basisEinheitFuerPreisanzeige, istLagerBasisEinheit, produktEinheitZuBasis, type LagerBasisEinheit } from '@/lib/lager-einheiten'
 import { istUnterMindestbestand, mhdStatus } from '@/lib/lager-mhd'
-import { abonniereMerker, entferneMerker, gemerkteIds } from '@/lib/einkaufsliste-merker'
+import { abonniereMerker, entferneMerker, entferneNamensMerker, gemerkteIds, gemerkteNamen } from '@/lib/einkaufsliste-merker'
 
 const SESSION_KEY = 'mein-haushalt:einkaufsliste-v1'
 
@@ -106,6 +106,7 @@ export function LagerEinkaufsliste({ produkte, verbrauchHistorie, refreshKey }: 
   const [hidden, setHidden] = useState<string[]>([])
   const [mengen, setMengen] = useState<Record<string, number>>({})
   const [gemerkt, setGemerkt] = useState<string[]>([])
+  const [gemerkteNamenListe, setGemerkteNamenListe] = useState<string[]>([])
   /** Nach `refreshKey`: einmal kein Speichern, damit nicht alte UI-Zustände frisch geladene Session überschreiben. */
   const skipPersistOnce = useRef(false)
 
@@ -126,7 +127,11 @@ export function LagerEinkaufsliste({ produkte, verbrauchHistorie, refreshKey }: 
 
   useEffect(() => {
     setGemerkt(gemerkteIds())
-    return abonniereMerker(() => setGemerkt(gemerkteIds()))
+    setGemerkteNamenListe(gemerkteNamen())
+    return abonniereMerker(() => {
+      setGemerkt(gemerkteIds())
+      setGemerkteNamenListe(gemerkteNamen())
+    })
   }, [refreshKey])
 
   const idsMitBestand = useMemo(() => {
@@ -200,6 +205,12 @@ export function LagerEinkaufsliste({ produkte, verbrauchHistorie, refreshKey }: 
     })
   }, [kandidaten, verbrauchHistorie, mengen])
 
+  const namensZeilen = useMemo(() => {
+    return gemerkteNamenListe.filter((n) => n.trim()).map((name) => ({ name: name.trim() }))
+  }, [gemerkteNamenListe])
+
+  const gesamtAnzahl = zeilen.length + namensZeilen.length
+
   function setMengeFuerId(id: string, wert: number) {
     const n = Number(wert)
     if (!Number.isFinite(n) || n <= 0) {
@@ -218,8 +229,12 @@ export function LagerEinkaufsliste({ produkte, verbrauchHistorie, refreshKey }: 
       delete n[id]
       return n
     })
-    // Manuell gemerkte Artikel auch aus dem Merker nehmen, sonst tauchen sie wieder auf.
     entferneMerker(id)
+  }
+
+  function namensEintragEntfernen(name: string) {
+    entferneNamensMerker(name)
+    setGemerkteNamenListe(gemerkteNamen())
   }
 
   function ausgeblendeteZurueck() {
@@ -243,7 +258,7 @@ export function LagerEinkaufsliste({ produkte, verbrauchHistorie, refreshKey }: 
         </div>
         <div className="flex shrink-0 items-center gap-2.5 sm:gap-3">
           <span className="rounded-md border border-amber-900/50 bg-amber-950/40 px-2 py-0.5 text-[11px] font-bold tabular-nums text-amber-100">
-            {zeilen.length}
+            {gesamtAnzahl}
           </span>
           <CollapsibleRowHeaderEnd open={offen} labels={LABEL_EINKLAPPEN} tone="amber" size="sm" />
         </div>
@@ -261,7 +276,7 @@ export function LagerEinkaufsliste({ produkte, verbrauchHistorie, refreshKey }: 
             </button>
           )}
 
-          {zeilen.length === 0 ? (
+          {zeilen.length === 0 && namensZeilen.length === 0 ? (
             <p className="py-3 text-center text-xs text-slate-500">
               Nichts auf der Liste{hidden.length ? ' (oder ausgeblendet)' : ''}. Hier erscheinen bald ablaufende Artikel,
               leere Bestände, Unter-Mindestbestand, Immer-da-Favoriten und per 🛒 Gemerktes.
@@ -340,6 +355,29 @@ export function LagerEinkaufsliste({ produkte, verbrauchHistorie, refreshKey }: 
                           className="rounded border border-slate-600 px-2 py-0.5 text-[11px] font-bold text-slate-400 hover:bg-slate-800"
                         >
                           Ausblenden
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                  {namensZeilen.map(({ name }) => (
+                    <tr key={`name:${name}`} className="bg-violet-950/20">
+                      <td className="max-w-[14rem] px-2 py-1.5 sm:px-3" colSpan={5}>
+                        <div className="flex min-w-0 items-center gap-1.5">
+                          <span className="truncate font-semibold text-slate-100">{name}</span>
+                          <span className="shrink-0 rounded border border-violet-700/50 bg-violet-900/30 px-1 text-[9px] font-bold text-violet-200">
+                            aus Rezept
+                          </span>
+                        </div>
+                        <div className="truncate text-[10px] text-slate-600">Noch kein Lager-Artikel — beim Einkauf anlegen</div>
+                      </td>
+                      <td className="px-2 py-1.5 text-right text-slate-600 sm:px-3">—</td>
+                      <td className="whitespace-nowrap px-2 py-1.5 text-right sm:px-3">
+                        <button
+                          type="button"
+                          onClick={() => namensEintragEntfernen(name)}
+                          className="rounded border border-slate-600 px-2 py-0.5 text-[11px] font-bold text-slate-400 hover:bg-slate-800"
+                        >
+                          Entfernen
                         </button>
                       </td>
                     </tr>

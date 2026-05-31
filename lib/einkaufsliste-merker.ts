@@ -5,6 +5,7 @@
  */
 
 const KEY = 'mein-haushalt:einkauf-merker-v1'
+const NAMEN_KEY = 'mein-haushalt:einkauf-merker-namen-v1'
 const EVENT = 'einkauf-merker-geaendert'
 
 function lese(): Set<string> {
@@ -17,6 +18,29 @@ function lese(): Set<string> {
     return new Set(arr.filter((x): x is string => typeof x === 'string'))
   } catch {
     return new Set()
+  }
+}
+
+function leseNamen(): Set<string> {
+  if (typeof window === 'undefined') return new Set()
+  try {
+    const raw = sessionStorage.getItem(NAMEN_KEY)
+    if (!raw) return new Set()
+    const arr = JSON.parse(raw) as unknown
+    if (!Array.isArray(arr)) return new Set()
+    return new Set(arr.filter((x): x is string => typeof x === 'string'))
+  } catch {
+    return new Set()
+  }
+}
+
+function schreibeNamen(set: Set<string>) {
+  if (typeof window === 'undefined') return
+  try {
+    sessionStorage.setItem(NAMEN_KEY, JSON.stringify([...set]))
+    window.dispatchEvent(new CustomEvent(EVENT))
+  } catch {
+    /* ignore */
   }
 }
 
@@ -36,6 +60,23 @@ export function gemerkteIds(): string[] {
 
 export function istGemerkt(id: string): boolean {
   return lese().has(id)
+}
+
+export function gemerkteNamen(): string[] {
+  return [...leseNamen()]
+}
+
+export function merkeNameFuerEinkauf(name: string): void {
+  const n = name.trim()
+  if (!n) return
+  const s = leseNamen()
+  s.add(n)
+  schreibeNamen(s)
+}
+
+export function entferneNamensMerker(name: string): void {
+  const s = leseNamen()
+  if (s.delete(name.trim())) schreibeNamen(s)
 }
 
 export function merkeFuerEinkauf(id: string): void {

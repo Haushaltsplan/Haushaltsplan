@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import toast from 'react-hot-toast'
-import { merkeFuerEinkauf } from '@/lib/einkaufsliste-merker'
+import { fehlendeFuerEinkauf, gerichtAlleZutatenImBestand, zutatLagerStatus } from '@/lib/rezept-lager-abgleich'
+import { merkeFuerEinkauf, merkeNameFuerEinkauf } from '@/lib/einkaufsliste-merker'
 import { parseEinzelGericht, type RezeptGericht } from '@/lib/rezept-coach-types'
 import { supabase } from '@/lib/supabase'
 
@@ -24,17 +25,14 @@ type RezeptTreffer = {
 function fehlendeZutaten(gericht: RezeptGericht, artikel: WasKochenArtikel[]): Fehlend[] {
   const out: Fehlend[] = []
   for (const z of gericht.zutaten || []) {
-    if (!z.aus_lager || !z.produkt_id) continue
-    const pid = String(z.produkt_id).trim()
-    const vor = artikel.find((a) => a.id === pid)?.menge ?? 0
-    if (z.menge > vor + 1e-6) {
-      out.push({
-        name: z.name,
-        fehlt: Math.round((z.menge - vor) * 1000) / 1000,
-        einheit: z.einheit,
-        produktId: pid,
-      })
-    }
+    const st = zutatLagerStatus(z, artikel)
+    if (st.ausreichend) continue
+    out.push({
+      name: z.name,
+      fehlt: st.gematcht ? Math.round((z.menge - st.bestand) * 1000) / 1000 : z.menge,
+      einheit: z.einheit,
+      produktId: st.produktId ?? undefined,
+    })
   }
   return out
 }
@@ -63,15 +61,14 @@ export function LagerWasKochen({ artikel, refreshKey }: Props) {
         const ger = parseEinzelGericht(o.gericht_json)
         if (!id || !ger) continue
         const fehlend = fehlendeZutaten(ger, artikel)
-        const lagerZ = (ger.zutaten || []).filter((z) => z.aus_lager && z.produkt_id)
-        if (lagerZ.length === 0) continue
+        if (!ger.zutaten?.length) continue
         rows.push({
           id,
           titel: typeof o.titel === 'string' ? o.titel : ger.titel,
           portionen: Number(o.portionen) || ger.portionen,
           gericht: ger,
           fehlend,
-          machbar: fehlend.length === 0,
+          machbar: gerichtAlleZutatenImBestand(ger, artikel),
         })
       }
       rows.sort((a, b) => {
@@ -92,15 +89,12 @@ export function LagerWasKochen({ artikel, refreshKey }: Props) {
   const fastFertig = useMemo(() => treffer.filter((t) => !t.machbar && t.fehlend.length <= 2), [treffer])
 
   function fehlendeAufListe(t: RezeptTreffer) {
-    let n = 0
-    for (const f of t.fehlend) {
-      if (f.produktId) {
-        merkeFuerEinkauf(f.produktId)
-        n++
-      }
-    }
+    const { produktIds, namen } = fehlendeFuerEinkauf(t.gericht, artikel)
+    for (const id of produktIds) merkeFuerEinkauf(id)
+    for (const n of namen) merkeNameFuerEinkauf(n)
+    const n = produktIds.length + namen.length
     if (n > 0) toast.success(`${n} fehlende Zutat(en) auf die Einkaufsliste gesetzt.`)
-    else toast.error('Keine Lager-Zutaten mit Produkt-ID zum Merken.')
+    else toast.error('Alle Zutaten sind bereits im Lager.')
   }
 
   if (laden && treffer.length === 0) {
