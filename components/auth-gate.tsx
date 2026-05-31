@@ -8,12 +8,23 @@ import toast from 'react-hot-toast'
 
 const APP_URL = (process.env.NEXT_PUBLIC_APP_URL || '').trim()
 
+/** Optionale Dev-Zugangsdaten für automatisches Login auf localhost (nur lokal genutzt). */
+const DEV_EMAIL = (process.env.NEXT_PUBLIC_DEV_EMAIL || '').trim()
+const DEV_PASSWORD = (process.env.NEXT_PUBLIC_DEV_PASSWORD || '').trim()
+
 function loginRedirectUrl(): string {
   if (APP_URL.startsWith('https://') || APP_URL.startsWith('http://')) {
     return APP_URL.replace(/\/+$/, '')
   }
   if (typeof window !== 'undefined') return window.location.origin
   return ''
+}
+
+/** Lokale Entwicklung (kein Login nötig). Die offizielle, deployte App verlangt weiterhin Login. */
+function istLokaleEntwicklung(): boolean {
+  if (typeof window === 'undefined') return false
+  const host = window.location.hostname
+  return host === 'localhost' || host === '127.0.0.1' || host === '::1' || host.endsWith('.local')
 }
 
 export function AuthGate({ children }: { children: ReactNode }) {
@@ -24,11 +35,31 @@ export function AuthGate({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     let mounted = true
-    void supabase.auth.getSession().then(({ data }) => {
+
+    const init = async () => {
+      const { data } = await supabase.auth.getSession()
       if (!mounted) return
+
+      // Auf localhost ohne aktive Session: wenn Dev-Zugangsdaten hinterlegt sind, automatisch anmelden,
+      // damit kein Passwort nötig ist UND die per RLS geschützten Daten (owner_user_id = auth.uid()) geladen werden.
+      // Ohne Dev-Zugangsdaten zeigen wir den Login — sonst bliebe die App leer (RLS blockt unangemeldete Zugriffe).
+      if (!data.session && istLokaleEntwicklung() && DEV_EMAIL && DEV_PASSWORD) {
+        const { error } = await supabase.auth.signInWithPassword({ email: DEV_EMAIL, password: DEV_PASSWORD })
+        if (error) {
+          console.warn('[AuthGate] Dev-Auto-Login fehlgeschlagen:', error.message)
+          if (mounted) setLoading(false)
+          return
+        }
+        // onAuthStateChange setzt die Session; loading endet dort.
+        return
+      }
+
       setSession(data.session ?? null)
       setLoading(false)
-    })
+    }
+
+    void init()
+
     const { data: sub } = supabase.auth.onAuthStateChange((_event, next) => {
       setSession(next ?? null)
       setLoading(false)

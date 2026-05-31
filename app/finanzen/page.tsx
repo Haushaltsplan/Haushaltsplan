@@ -7,6 +7,10 @@ import { KategorieMark } from '@/lib/kategorie-icon'
 import { berechneAusgabenMonatsFeedback } from '@/lib/finanzen-ausgaben-feedback'
 import toast from 'react-hot-toast'
 import { PageChrome, PageSection, PageSectionPanel } from '@/components/page-shell'
+import { AnalyseSection } from '@/components/finanzen/analyse-section'
+import { BudgetSection } from '@/components/finanzen/budget-section'
+import { AboSection } from '@/components/finanzen/abo-section'
+import { SparzieleSection } from '@/components/finanzen/sparziele-section'
 
 /** Monatlich am 1. des Monats (Ausgaben) — Import legt nur fehlende Bezeichnungen an. */
 const VORGABE_DAUERAUFTRAeGE_MONATSANFANG: Array<{
@@ -1002,6 +1006,16 @@ export default function FinanzenPage() {
 
   const finanzListe = useMemo(() => buildFinanzListe(), [einnahmen, ausgaben, dauerauftraege, ansichtMonat])
 
+  /** Noch offene (geplante) Daueraufträge im Ansichtsmonat — für die Cashflow-Prognose. */
+  const geplanteEinnahmen = useMemo(
+    () => finanzListe.filter((r: any) => r.__geplant && r.isIn).reduce((a: number, r: any) => a + Number(r.betrag || 0), 0),
+    [finanzListe],
+  )
+  const geplanteAusgaben = useMemo(
+    () => finanzListe.filter((r: any) => r.__geplant && !r.isIn).reduce((a: number, r: any) => a + Number(r.betrag || 0), 0),
+    [finanzListe],
+  )
+
   const finanzListeAngezeigt = useMemo(() => {
     let rows = [...finanzListe]
     if (finanzListenFilter === 'einnahme') rows = rows.filter((r: any) => Boolean(r.isIn))
@@ -1284,6 +1298,16 @@ export default function FinanzenPage() {
       </div>
         </PageSectionPanel>
       </PageSection>
+
+      <AnalyseSection
+        einnahmen={einnahmen}
+        ausgaben={ausgaben}
+        einnahmenAnsicht={einnahmenAnsicht}
+        ausgabenAnsicht={ausgabenAnsicht}
+        ansichtMonat={ansichtMonat}
+        geplanteEinnahmen={geplanteEinnahmen}
+        geplanteAusgaben={geplanteAusgaben}
+      />
 
       <PageSection titleId="finanzen-buchungen-heading" title="Buchungen" density="compact">
         <PageSectionPanel density="compact">
@@ -1723,6 +1747,10 @@ export default function FinanzenPage() {
         </PageSectionPanel>
       </PageSection>
 
+      <BudgetSection ausgabenAnsicht={ausgabenAnsicht} monatLabel={formatMonatsLabelDe(ansichtMonat)} />
+
+      <AboSection dauerauftraege={dauerauftraege} />
+
       <PageSection titleId="finanzen-dauerauftraege-heading" title="Daueraufträge" density="compact">
         <PageSectionPanel density="compact">
       <div className="overflow-hidden rounded-2xl border border-slate-800/90 bg-gradient-to-b from-slate-900 to-slate-950 p-4 shadow-xl shadow-black/35 sm:p-5">
@@ -1879,6 +1907,8 @@ export default function FinanzenPage() {
       </div>
         </PageSectionPanel>
       </PageSection>
+
+      <SparzieleSection />
 
       {buchungEdit && (
         <div

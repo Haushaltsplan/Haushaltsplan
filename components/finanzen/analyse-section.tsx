@@ -1,0 +1,173 @@
+'use client'
+
+import { useMemo } from 'react'
+import { PageSection, PageSectionPanel } from '@/components/page-shell'
+import { DonutChart } from '@/components/finanzen/donut-chart'
+import { BalkenChart, type MonatsBalken } from '@/components/finanzen/balken-chart'
+import { summiereNachKategorie } from '@/lib/finanz-kategorisierung'
+
+type Buchung = { kategorie?: string | null; beschreibung?: string | null; betrag?: number | string | null; datum?: string | null }
+
+function monatsKey(iso?: string | null): string | null {
+  if (!iso) return null
+  const m = String(iso).slice(0, 10).match(/^(\d{4})-(\d{2})-\d{2}$/)
+  if (m) return `${m[1]}-${m[2]}`
+  const d = new Date(String(iso))
+  if (Number.isNaN(d.getTime())) return null
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+}
+
+function monatLabelKurz(yyyymm: string): string {
+  const [y, mo] = yyyymm.split('-').map((x) => Number.parseInt(x, 10))
+  try {
+    return new Date(y, mo - 1, 1).toLocaleDateString('de-DE', { month: 'short' }).replace('.', '')
+  } catch {
+    return yyyymm
+  }
+}
+
+function monatVerschieben(yyyymm: string, delta: number): string {
+  const [y, mo] = yyyymm.split('-').map((x) => Number.parseInt(x, 10))
+  const d = new Date(y, mo - 1 + delta, 1)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+}
+
+function eur(n: number) {
+  return n.toLocaleString('de-DE', { style: 'currency', currency: 'EUR' })
+}
+
+export function AnalyseSection({
+  einnahmen,
+  ausgaben,
+  einnahmenAnsicht,
+  ausgabenAnsicht,
+  ansichtMonat,
+  geplanteEinnahmen,
+  geplanteAusgaben,
+}: {
+  einnahmen: Buchung[]
+  ausgaben: Buchung[]
+  einnahmenAnsicht: Buchung[]
+  ausgabenAnsicht: Buchung[]
+  ansichtMonat: string
+  geplanteEinnahmen: number
+  geplanteAusgaben: number
+}) {
+  const gesEin = useMemo(
+    () => einnahmenAnsicht.reduce((a, r) => a + (Number.isFinite(Number(r.betrag)) ? Number(r.betrag) : 0), 0),
+    [einnahmenAnsicht],
+  )
+  const gesAus = useMemo(
+    () => ausgabenAnsicht.reduce((a, r) => a + (Number.isFinite(Number(r.betrag)) ? Number(r.betrag) : 0), 0),
+    [ausgabenAnsicht],
+  )
+
+  const ausgabenKategorien = useMemo(() => summiereNachKategorie(ausgabenAnsicht, false), [ausgabenAnsicht])
+
+  const monatsReihe = useMemo<MonatsBalken[]>(() => {
+    const keys: string[] = []
+    for (let i = 11; i >= 0; i--) keys.push(monatVerschieben(ansichtMonat, -i))
+    const einMap: Record<string, number> = {}
+    const ausMap: Record<string, number> = {}
+    for (const r of einnahmen) {
+      const k = monatsKey(r.datum)
+      if (k) einMap[k] = (einMap[k] || 0) + (Number.isFinite(Number(r.betrag)) ? Number(r.betrag) : 0)
+    }
+    for (const r of ausgaben) {
+      const k = monatsKey(r.datum)
+      if (k) ausMap[k] = (ausMap[k] || 0) + (Number.isFinite(Number(r.betrag)) ? Number(r.betrag) : 0)
+    }
+    return keys.map((k) => ({
+      monat: k,
+      label: monatLabelKurz(k),
+      einnahmen: Math.round((einMap[k] || 0) * 100) / 100,
+      ausgaben: Math.round((ausMap[k] || 0) * 100) / 100,
+    }))
+  }, [einnahmen, ausgaben, ansichtMonat])
+
+  const sparquote = gesEin > 0 ? (gesEin - gesAus) / gesEin : 0
+  const groessteKategorie = ausgabenKategorien[0] ?? null
+
+  const erwarteterSaldo = Math.round((gesEin + geplanteEinnahmen - (gesAus + geplanteAusgaben)) * 100) / 100
+  const habenOffenePosten = geplanteEinnahmen > 0 || geplanteAusgaben > 0
+
+  return (
+    <PageSection titleId="finanzen-analyse-heading" title="Analyse" density="compact">
+      <PageSectionPanel density="compact">
+        <div className="grid gap-4 lg:grid-cols-2">
+          {/* Donut: Ausgaben nach Kategorie */}
+          <div className="rounded-2xl border border-slate-800/90 bg-gradient-to-b from-slate-900 to-slate-950 p-4 shadow-xl shadow-black/30 sm:p-5">
+            <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-rose-400/90">Ausgaben nach Kategorie</p>
+            <div className="mt-3 flex flex-col items-center gap-4 sm:flex-row sm:items-center sm:gap-5">
+              <DonutChart segmente={ausgabenKategorien} />
+              <ul className="min-w-0 flex-1 space-y-1.5">
+                {ausgabenKategorien.length === 0 ? (
+                  <li className="text-[12px] text-slate-600">Keine Ausgaben in diesem Monat.</li>
+                ) : (
+                  ausgabenKategorien.map((k) => (
+                    <li key={k.key} className="flex items-center gap-2 text-[12px]">
+                      <span className="h-2.5 w-2.5 shrink-0 rounded-sm" style={{ backgroundColor: k.farbe }} aria-hidden />
+                      <span className="min-w-0 flex-1 truncate text-slate-300">{k.label}</span>
+                      <span className="shrink-0 tabular-nums text-slate-400">{Math.round(k.anteil * 100)}%</span>
+                      <span className="shrink-0 tabular-nums font-semibold text-slate-200">{eur(k.betrag)}</span>
+                    </li>
+                  ))
+                )}
+              </ul>
+            </div>
+          </div>
+
+          {/* Kennzahlen + Prognose */}
+          <div className="flex flex-col gap-3">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="rounded-2xl border border-slate-800/90 bg-slate-950/50 p-4">
+                <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">Sparquote</p>
+                <p className={`mt-1 text-2xl font-bold tabular-nums ${sparquote >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                  {(sparquote * 100).toLocaleString('de-DE', { maximumFractionDigits: 0 })}%
+                </p>
+                <p className="mt-0.5 text-[11px] text-slate-500">Anteil gespart vom Einkommen</p>
+              </div>
+              <div className="rounded-2xl border border-slate-800/90 bg-slate-950/50 p-4">
+                <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">Größter Block</p>
+                <p className="mt-1 truncate text-base font-semibold text-slate-100" title={groessteKategorie?.label}>
+                  {groessteKategorie ? groessteKategorie.label : '—'}
+                </p>
+                <p className="mt-0.5 text-[11px] tabular-nums text-slate-500">
+                  {groessteKategorie ? eur(groessteKategorie.betrag) : 'keine Ausgaben'}
+                </p>
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-sky-800/50 bg-sky-950/20 p-4 shadow-inner">
+              <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-sky-300/90">Prognose Monatsende</p>
+              <p className={`mt-1 text-2xl font-bold tabular-nums ${erwarteterSaldo >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                {eur(erwarteterSaldo)}
+              </p>
+              {habenOffenePosten ? (
+                <p className="mt-1 text-[11px] leading-relaxed text-slate-400">
+                  Inkl. noch ausstehender Daueraufträge: {geplanteEinnahmen > 0 ? `+${eur(geplanteEinnahmen)} ` : ''}
+                  {geplanteAusgaben > 0 ? `−${eur(geplanteAusgaben)}` : ''}
+                </p>
+              ) : (
+                <p className="mt-1 text-[11px] text-slate-500">Alle geplanten Daueraufträge sind bereits gebucht.</p>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* 12-Monats-Verlauf */}
+        <div className="mt-4 rounded-2xl border border-slate-800/90 bg-gradient-to-b from-slate-900 to-slate-950 p-4 shadow-xl shadow-black/30 sm:p-5">
+          <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+            <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-sky-400/90">Verlauf (12 Monate)</p>
+            <div className="flex items-center gap-3 text-[11px] text-slate-400">
+              <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm bg-green-500" />Einnahmen</span>
+              <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm bg-rose-500" />Ausgaben</span>
+              <span className="flex items-center gap-1.5"><span className="h-2.5 w-3 rounded-sm bg-sky-400" />Saldo</span>
+            </div>
+          </div>
+          <BalkenChart daten={monatsReihe} />
+        </div>
+      </PageSectionPanel>
+    </PageSection>
+  )
+}
