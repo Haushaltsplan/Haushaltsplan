@@ -176,6 +176,11 @@ export async function importiereTradeRepublicCsvText(
         'Hinweis: Diese CSV enthält nur Depotpositionen — für Buchungen/Summen Aktivitäts-/Transaktions-CSV oder PDF nutzen.',
       )
     }
+    if (roh.meta.format === 'transaktionen_de') {
+      ergebnis.hinweise.push(
+        'Transaktions-CSV: Kauf/Verkauf/Dividende aus Spalte Typ, Betrag_EUR inkl. Gebühren_EUR, Steuern bei Dividenden abgezogen. ISIN-Wechsel ignoriert.',
+      )
+    }
     if (roh.meta.format === 'tr_transaktionsexport') {
       ergebnis.hinweise.push(
         'TR-Transaktionsexport: Beträge aus „amount“ (negativ = Ausgang), Gebühren aus „fee“. STOCKPERK wird nicht importiert (sonst Doppelung mit Kauf).',

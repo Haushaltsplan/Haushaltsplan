@@ -202,7 +202,7 @@ export function PortfolioAnalysePageClient() {
                 <li>Kein Anschluss an Gemini / OpenAI</li>
                 <li>Keine Speicherung der Originaldatei</li>
                 <li>
-                  CSV: <strong className="text-zinc-400">Transaktionsexport</strong> aus der TR-App (Profil → Dokumente)
+                  CSV: <strong className="text-zinc-400">transaktionen_YYYY.csv</strong> (Datum; Typ; ISIN; Betrag_EUR …) oder TR-Transaktionsexport
                 </li>
                 <li>PDF-Kontoauszug ergänzt Depotpositionen für Allokation & Depotwert</li>
               </ul>
