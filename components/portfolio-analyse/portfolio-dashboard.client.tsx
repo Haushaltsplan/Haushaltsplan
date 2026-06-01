@@ -10,7 +10,7 @@ import {
 } from '@/components/portfolio-analyse/parqet-charts'
 import { PortfolioIsinLogo } from '@/components/portfolio-analyse/isin-logo'
 import { usePortfolioAnalyse } from '@/components/portfolio-analyse/pa-data-provider'
-import { PaBadge, PaCard, PaIconTabs, PaStatRow } from '@/components/portfolio-analyse/pa-ui'
+import { PaBadge, PaCard, PaHeroKpi, PaIconTabs, PaStatRow } from '@/components/portfolio-analyse/pa-ui'
 import { dividendenProMonat } from '@/lib/portfolio-analyse/auswertungen'
 import {
   formatDatumDe,
@@ -95,10 +95,44 @@ export function PortfolioDashboardClient() {
   const irr = report?.performance.irrAnnualizedPercent
   const twr = report?.performance.twrTotalPercent
 
+  const gewinn = k?.gewinnVerlustEur
+  const gewinnPct = k?.gewinnVerlustProzent
+
   return (
-    <div className="space-y-6">
-      <PaCard className="overflow-hidden">
-        <div className="border-b border-zinc-800/60 px-4 pt-4 sm:px-6">
+    <div className="space-y-8">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <PaHeroKpi
+          label="Depotwert"
+          value={k ? formatEur(k.depotwertEur) : '—'}
+          sub={
+            k
+              ? `Netto eingezahlt ${formatEur(k.investiertEur)} · Cash ${formatEur(k.cashEur)}`
+              : undefined
+          }
+          trend={
+            gewinn != null ? (
+              <PaBadge variant={gewinn >= 0 ? 'positive' : 'negative'}>
+                {gewinn >= 0 ? '+' : ''}
+                {formatEur(gewinn)}
+                {gewinnPct != null ? ` (${formatProzent(gewinnPct)})` : ''}
+              </PaBadge>
+            ) : undefined
+          }
+        />
+        <PaHeroKpi
+          label="IZF (annualisiert)"
+          value={irr != null ? formatProzent(irr) : '—'}
+          sub="Interner Zinsfuß auf alle Cashflows"
+        />
+        <PaHeroKpi
+          label="Zeitgewichtete Rendite"
+          value={twr != null ? formatProzent(twr) : '—'}
+          sub={startDatum ? `seit ${startDatum}` : undefined}
+        />
+      </div>
+
+      <PaCard variant="elevated" className="overflow-hidden">
+        <div className="border-b border-white/[0.04] px-4 pt-4 sm:px-6">
           <PaIconTabs tabs={CHART_TABS} active={chartTab} onChange={setChartTab} />
         </div>
         <div className="p-4 sm:p-6">
@@ -146,34 +180,21 @@ export function PortfolioDashboardClient() {
       </PaCard>
 
       <div className="grid gap-6 lg:grid-cols-3">
-        <PaCard className="p-5">
-          <h2 className="text-sm font-semibold text-zinc-100">Rendite</h2>
+        <PaCard variant="elevated" className="p-5">
+          <h2 className="text-sm font-semibold tracking-tight text-zinc-50">Kennzahlen</h2>
           {startDatum ? (
             <p className="mt-0.5 text-[11px] text-zinc-500">seit {startDatum} · in EUR</p>
           ) : null}
-          <div className="mt-4 divide-y divide-zinc-800/60">
-            <PaStatRow label="Portfoliowert" value={k ? formatEur(k.depotwertEur) : '—'} />
-            <PaStatRow label="Investiert" value={k ? formatEur(k.einstandOffenEur) : '—'} />
+          <div className="mt-4 divide-y divide-white/[0.04]">
+            <PaStatRow label="Einstand (offen)" value={k ? formatEur(k.einstandOffenEur) : '—'} />
+            <PaStatRow label="Netto eingezahlt" value={k ? formatEur(k.investiertEur) : '—'} />
             <PaStatRow
-              label="IZF"
-              value={irr != null ? formatProzent(irr) : '—'}
+              label="Gewinn / Verlust"
+              value={gewinn != null ? formatEur(gewinn) : '—'}
               badge={
-                irr != null ? (
-                  <PaBadge variant={irr >= 0 ? 'positive' : 'negative'}>
-                    {irr >= 0 ? '+' : ''}
-                    {irr.toFixed(2)} %
-                  </PaBadge>
-                ) : undefined
-              }
-            />
-            <PaStatRow
-              label="TWR (vereinfacht)"
-              value={twr != null ? formatProzent(twr) : '—'}
-              badge={
-                twr != null ? (
-                  <PaBadge variant={twr >= 0 ? 'positive' : 'negative'}>
-                    {twr >= 0 ? '+' : ''}
-                    {twr.toFixed(2)} %
+                gewinnPct != null ? (
+                  <PaBadge variant={gewinnPct >= 0 ? 'positive' : 'negative'}>
+                    {formatProzent(gewinnPct)}
                   </PaBadge>
                 ) : undefined
               }
@@ -182,7 +203,11 @@ export function PortfolioDashboardClient() {
               label="Dividenden (brutto)"
               value={m ? formatEur(m.totalDividendsGrossEUR) : k ? formatEur(k.dividendenEur) : '—'}
             />
-            <PaStatRow label="Steuern" value={m ? formatEur(m.totalTaxesEUR) : '—'} />
+            <PaStatRow
+              label="Dividenden (netto)"
+              value={m ? formatEur(m.totalDividendsNetEUR) : '—'}
+            />
+            <PaStatRow label="Steuern (gesamt)" value={m ? formatEur(m.totalTaxesEUR) : '—'} />
             <PaStatRow label="Gebühren" value={m ? formatEur(m.totalFeesEUR) : '—'} />
           </div>
           {kursFehler ? (
@@ -190,8 +215,8 @@ export function PortfolioDashboardClient() {
           ) : null}
         </PaCard>
 
-        <PaCard className="flex flex-col">
-          <div className="flex items-center justify-between border-b border-zinc-800/60 px-5 py-3">
+        <PaCard variant="elevated" className="flex flex-col">
+          <div className="flex items-center justify-between border-b border-white/[0.04] px-5 py-3">
             <h2 className="text-sm font-semibold text-zinc-100">Letzte Aktivitäten</h2>
             <Link href="/portfolioanalyse/aktivitaeten" className="text-xs text-teal-400 hover:underline">
               Alle →
@@ -216,8 +241,8 @@ export function PortfolioDashboardClient() {
           </ul>
         </PaCard>
 
-        <PaCard className="flex flex-col">
-          <div className="border-b border-zinc-800/60 px-5 py-3">
+        <PaCard variant="elevated" className="flex flex-col">
+          <div className="border-b border-white/[0.04] px-5 py-3">
             <h2 className="text-sm font-semibold text-zinc-100">Top Mover</h2>
             <p className="text-[11px] text-zinc-500">↑ Gewinner (live)</p>
           </div>

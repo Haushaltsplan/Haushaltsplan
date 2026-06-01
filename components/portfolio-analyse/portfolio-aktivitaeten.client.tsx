@@ -157,7 +157,7 @@ export function PortfolioAktivitaetenClient() {
                     <p className="py-8 text-center text-sm text-zinc-500">Keine Buchungen für diese Filter.</p>
                   ) : (
                     gruppen.map((jahr) => (
-                      <PaCard key={jahr.jahr} className="overflow-hidden">
+                      <PaCard key={jahr.jahr} variant="elevated" className="overflow-hidden">
                         <button
                           type="button"
                           onClick={() => toggleJahr(jahr.jahr)}

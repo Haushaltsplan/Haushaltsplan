@@ -135,7 +135,12 @@ export function PaDataProvider({ children }: { children: ReactNode }) {
   const report = useMemo(() => {
     if (!live || live.positionen.length === 0) return null
     try {
-      return parqetReportAusDepot(buchungen, live.positionen)
+      return parqetReportAusDepot(
+        buchungen,
+        live.positionen,
+        live.kennzahlen.depotwertEur,
+        live.kennzahlen.cashEur,
+      )
     } catch {
       return null
     }

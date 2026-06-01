@@ -1,3 +1,4 @@
+import { baueMonatsVerlauf } from '@/lib/portfolio-analyse/depot-berechnung'
 import { cashSaldoAusBuchungen, positionenFuerBewertung } from '@/lib/portfolio-analyse/bestand'
 import { teileArray } from '@/lib/portfolio-analyse/batch-hilfen'
 import { isinKenntnis } from '@/lib/portfolio-analyse/isin-kenntnisse'
@@ -265,13 +266,13 @@ export function berechneLivePortfolio(
   const kurseQuelle: LivePortfolio['kennzahlen']['kurseQuelle'] =
     liveCount > 0 ? 'live' : snapshot?.depotwert_eur != null ? 'snapshot' : 'einstand'
 
-  const verlauf = verlaufAusBuchungen(buchungen, depotwertEur)
+  const verlauf = baueMonatsVerlauf(buchungen, depotwertEur)
 
   return {
     positionen,
     kennzahlen: {
       depotwertEur,
-      investiertEur: einstandOffenEur,
+      investiertEur: nettoEingezahlt > 0 ? nettoEingezahlt : einstandOffenEur,
       gewinnVerlustEur,
       gewinnVerlustProzent,
       dividendenEur: Math.round(dividendenEur * 100) / 100,
@@ -290,60 +291,3 @@ export function berechneLivePortfolio(
   }
 }
 
-function verlaufAusBuchungen(
-  buchungen: PortfolioBuchung[],
-  depotwertHeute: number,
-): { label: string; wert: number; monat: string }[] {
-  const sortiert = [...buchungen].sort((a, b) => a.datum.localeCompare(b.datum))
-  if (sortiert.length === 0) return []
-
-  const punkte = new Map<string, number>()
-  let cash = 0
-  let wpKosten = 0
-
-  for (const b of sortiert) {
-    switch (b.typ) {
-      case 'einzahlung':
-        cash += b.betragEur
-        break
-      case 'auszahlung':
-        cash -= b.betragEur
-        break
-      case 'kauf':
-        cash -= b.betragEur
-        wpKosten += b.betragEur
-        break
-      case 'verkauf':
-        cash += b.betragEur
-        wpKosten = Math.max(0, wpKosten - b.betragEur)
-        break
-      case 'dividende':
-      case 'zins':
-        cash += b.betragEur
-        break
-      case 'steuer':
-      case 'gebuehr':
-        cash -= b.betragEur
-        break
-      default:
-        break
-    }
-    const k = b.datum.slice(0, 7)
-    punkte.set(k, Math.round((Math.max(0, cash) + wpKosten) * 100) / 100)
-  }
-
-  const keys = [...punkte.keys()].sort()
-  if (keys.length === 0) return []
-  const out = keys.map((k) => {
-    const [y, mo] = k.split('-')
-    const d = new Date(Number(y), Number(mo) - 1, 1)
-    return {
-      label: d.toLocaleDateString('de-DE', { month: 'short', year: '2-digit' }),
-      wert: punkte.get(k)!,
-      monat: k,
-    }
-  })
-  const last = out[out.length - 1]
-  if (last) last.wert = depotwertHeute
-  return out
-}

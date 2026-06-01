@@ -251,15 +251,15 @@ export class ParqetCoreAnalyticsEngine {
   }
 
   /**
-   * IZF-Cashflows: IN negativ, OUT/Dividende/Terminal positiv.
-   * Dividenden sind Erträge (positiv), Einzahlungen Kapitalabfluss (negativ).
+   * IZF-Cashflows (Investor-Perspektive): Käufe/Einzahlungen negativ, Verkäufe/Dividenden positiv.
+   * IN = Zufluss (Verkauf), OUT = Abfluss (Kauf).
    */
   private aggregateCashflowsForIrr(assets: AssetHolding[]): Array<{ date: Date; amount: number }> {
     const out: Array<{ date: Date; amount: number }> = []
     for (const a of assets) {
       for (const cf of a.cashflows) {
-        if (cf.type === 'IN') out.push({ date: cf.timestamp, amount: -Math.abs(cf.amountEUR) })
-        else if (cf.type === 'OUT') out.push({ date: cf.timestamp, amount: Math.abs(cf.amountEUR) })
+        if (cf.type === 'OUT') out.push({ date: cf.timestamp, amount: -Math.abs(cf.amountEUR) })
+        else if (cf.type === 'IN') out.push({ date: cf.timestamp, amount: Math.abs(cf.amountEUR) })
         else if (cf.type === 'DIVIDEND') out.push({ date: cf.timestamp, amount: Math.abs(cf.amountEUR) })
       }
     }

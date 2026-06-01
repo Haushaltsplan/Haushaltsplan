@@ -121,7 +121,11 @@ function geldbetragNetto(
 function zeileUeberspringen(typRaw: string, assettype: string): boolean {
   const t = typRaw.toLowerCase()
   if (!t) return true
-  if (assettype && assettype.toLowerCase() !== 'security') return true
+  const at = assettype.toLowerCase()
+  if (at === 'cash') {
+    return !/deposit|withdrawal|interest|transfer/i.test(t)
+  }
+  if (assettype && at !== 'security') return true
   return false
 }
 

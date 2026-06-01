@@ -1,3 +1,4 @@
+import { steuernAufDividendenMonate } from '@/lib/portfolio-analyse/depot-berechnung'
 import type { PortfolioBuchung } from '@/lib/portfolio-analyse/types'
 
 const MONAT_KURZ = ['Jan.', 'Feb.', 'März', 'Apr.', 'Mai', 'Juni', 'Juli', 'Aug.', 'Sep.', 'Okt.', 'Nov.', 'Dez.'] as const
@@ -59,7 +60,6 @@ export function berechneDividendenKpis(
   investiertEur: number,
 ): DividendenKpis {
   let brutto = 0
-  let steuern = 0
   let minDatum: string | null = null
 
   const divMonate = new Map<string, number>()
@@ -77,8 +77,9 @@ export function berechneDividendenKpis(
       const k = monatsKey(b.datum)
       if (k) divMonate.set(k, (divMonate.get(k) ?? 0) + b.betragEur)
     }
-    if (b.typ === 'steuer') steuern += b.betragEur
   }
+
+  const steuernDiv = steuernAufDividendenMonate(buchungen)
 
   const ttm = ttmKeys.reduce((s, k) => s + (divMonate.get(k) ?? 0), 0)
   const jahreseinkommenTtmEur = round2(ttm)
@@ -89,8 +90,8 @@ export function berechneDividendenKpis(
   return {
     depotwertEur,
     dividendenBruttoEur: round2(brutto),
-    dividendenNettoEur: round2(brutto),
-    steuernAufDivEur: round2(steuern),
+    dividendenNettoEur: round2(Math.max(0, brutto - steuernDiv)),
+    steuernAufDivEur: round2(steuernDiv),
     jahreseinkommenTtmEur,
     monatlichDurchschnittTtmEur,
     persoenlicheRenditeProzent: persRendite,

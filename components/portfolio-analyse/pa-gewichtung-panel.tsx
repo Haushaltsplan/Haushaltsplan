@@ -134,7 +134,7 @@ export function PaGewichtungPanel({
       ) : null}
 
       <div className="grid gap-6 lg:grid-cols-2">
-        <PaCard className="flex flex-col items-center justify-center p-6">
+        <PaCard variant="elevated" className="flex flex-col items-center justify-center p-6">
           <p className="mb-4 self-start text-sm font-medium text-zinc-300">{titel}</p>
           <DonutChart segmente={donut} groesse={220} dicke={28} />
           <p className="mt-3 text-center text-lg font-semibold tabular-nums text-white">
@@ -143,7 +143,7 @@ export function PaGewichtungPanel({
           <p className="text-[11px] text-zinc-500">Gesamt</p>
         </PaCard>
 
-        <PaCard className="max-h-[28rem] overflow-y-auto p-4">
+        <PaCard variant="elevated" className="max-h-[28rem] overflow-y-auto p-4">
           <ul className="space-y-4">
             {eintraege.length === 0 ? (
               <li className="py-8 text-center text-sm text-zinc-500">Keine Positionen.</li>

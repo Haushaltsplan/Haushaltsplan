@@ -97,7 +97,7 @@ export function PortfolioAnalyseMainClient() {
                       </div>
                       <PaQmToggle modus={renditeModus} onChange={setRenditeModus} />
                     </div>
-                    <PaCard className="p-4 sm:p-6">
+                    <PaCard variant="elevated" className="p-4 sm:p-6">
                       <PaRenditeHeatmapGrid heatmap={heatmap} />
                     </PaCard>
                   </div>
@@ -122,7 +122,7 @@ export function PortfolioAnalyseMainClient() {
                         <PaQmToggle modus={kapitalModus} onChange={setKapitalModus} />
                       </div>
                     </div>
-                    <PaCard className="p-4 sm:p-6">
+                    <PaCard variant="elevated" className="p-4 sm:p-6">
                       <PaKapitalflussHeatmapGrid heatmap={kapitalHeatmap} />
                     </PaCard>
                   </div>

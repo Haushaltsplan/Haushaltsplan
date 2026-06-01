@@ -21,7 +21,7 @@ export function bestandAusBuchungen(buchungen: PortfolioBuchung[]): PortfolioPos
     if (b.typ === 'kauf') {
       let stk = b.stueck != null ? Math.abs(b.stueck) : 0
       if (stk <= 0 && b.kursEur != null && b.kursEur > 0) stk = b.betragEur / b.kursEur
-      if (stk <= 0 && b.betragEur > 0) stk = 1
+      if (stk <= 0) continue
       cur.stueck += stk
       cur.kosten += b.betragEur
     } else if (b.typ === 'verkauf') {

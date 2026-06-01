@@ -67,7 +67,7 @@ export function PortfolioDividendenDashboardClient() {
             ) : (
               <div className="space-y-8">
                 <div className="grid gap-4 sm:grid-cols-3">
-                  <PaCard className="p-5">
+                  <PaCard variant="elevated" className="p-5">
                     <p className="text-xs text-zinc-500">Portfoliowert</p>
                     <p className="mt-1 text-2xl font-semibold tabular-nums text-white">
                       {formatEur(kpis.depotwertEur)}
@@ -78,7 +78,7 @@ export function PortfolioDividendenDashboardClient() {
                       </p>
                     ) : null}
                   </PaCard>
-                  <PaCard className="p-5">
+                  <PaCard variant="elevated" className="p-5">
                     <p className="text-xs text-zinc-500">Erhaltene Dividenden</p>
                     <p className="mt-1 text-2xl font-semibold tabular-nums text-emerald-400">
                       {formatEur(kpis.dividendenBruttoEur)}
@@ -88,7 +88,7 @@ export function PortfolioDividendenDashboardClient() {
                       {formatEur(kpis.monatlichDurchschnittTtmEur)}
                     </p>
                   </PaCard>
-                  <PaCard className="p-5">
+                  <PaCard variant="elevated" className="p-5">
                     <p className="text-xs text-zinc-500">Pers. Div-Rendite (TTM)</p>
                     <p className="mt-1 text-2xl font-semibold tabular-nums text-white">
                       {kpis.persoenlicheRenditeProzent != null
@@ -101,7 +101,7 @@ export function PortfolioDividendenDashboardClient() {
                   </PaCard>
                 </div>
 
-                <PaCard className="overflow-hidden">
+                <PaCard variant="elevated" className="overflow-hidden">
                   <div className="border-b border-zinc-800/60 px-4 pt-4">
                     <PaIconTabs
                       tabs={[
@@ -125,7 +125,7 @@ export function PortfolioDividendenDashboardClient() {
                 </PaCard>
 
                 <div className="grid gap-6 lg:grid-cols-3">
-                  <PaCard className="p-5">
+                  <PaCard variant="elevated" className="p-5">
                     <h2 className="text-sm font-semibold text-zinc-100">Rendite</h2>
                     {startLabel ? (
                       <p className="mt-0.5 text-[11px] text-zinc-500">seit {startLabel}</p>
@@ -159,7 +159,7 @@ export function PortfolioDividendenDashboardClient() {
                     </div>
                   </PaCard>
 
-                  <PaCard className="p-5">
+                  <PaCard variant="elevated" className="p-5">
                     <h2 className="text-sm font-semibold text-zinc-100">Angekündigte Dividenden</h2>
                     <p className="mt-4 text-sm leading-relaxed text-zinc-500">
                       Ex-Dates und Prognosen sind ohne externe Dividenden-Daten nicht verfügbar. Nach Import neuer
