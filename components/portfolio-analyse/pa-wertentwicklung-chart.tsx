@@ -4,6 +4,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { formatDatumDe, formatEur } from '@/lib/portfolio-analyse/berechnung'
 import type { WertentwicklungPunkt } from '@/lib/portfolio-analyse/wertentwicklung'
 
+const VIEW_W = 1000
+
 type PlotPt = { x: number; yPortfolio: number; yKapital: number; p: WertentwicklungPunkt }
 
 function stepPath(pts: { x: number; y: number }[]): string {
@@ -70,9 +72,7 @@ function WertentwicklungChartBody({
   const containerRef = useRef<HTMLDivElement>(null)
   const [hoverIndex, setHoverIndex] = useState<number | null>(null)
 
-  const breite = gross
-    ? Math.max(960, punkte.length * 52)
-    : Math.max(480, punkte.length * 40)
+  const breite = VIEW_W
   const padLinks = 12
   const padRechts = 52
   const padOben = gross ? 28 : 24
@@ -133,113 +133,109 @@ function WertentwicklungChartBody({
       const idx = Math.round(rel * Math.max(0, plotPts.length - 1))
       setHoverIndex(Math.min(plotPts.length - 1, Math.max(0, idx)))
     },
-    [breite, padLinks, plotW, plotPts.length],
+    [padLinks, plotW, plotPts.length],
   )
 
   const active = hoverIndex != null ? plotPts[hoverIndex] : null
   const differenz = active ? active.p.portfoliowertEur - active.p.zugefuehrtEur : 0
-  const labelStep = Math.max(1, Math.ceil(punkte.length / (gross ? 12 : 8)))
 
   return (
-    <div ref={containerRef} className="relative h-full w-full min-h-0">
-      <div className="h-full w-full overflow-x-auto overflow-y-hidden">
-        <svg
-          width="100%"
-          viewBox={`0 0 ${breite} ${hoehe}`}
-          preserveAspectRatio="xMidYMid meet"
-          style={{ minWidth: breite, height: hoehe }}
-          role="img"
-          aria-label="Wertentwicklung: Portfoliowert und zugeführtes Kapital"
-          className="select-none"
-        >
-          {yTicks.map((tick) => {
-            const span = maxY - minY || 1
-            const y = padOben + plotH - ((tick - minY) / span) * plotH
-            return (
-              <g key={tick}>
-                <line
-                  x1={padLinks}
-                  y1={y}
-                  x2={breite - padRechts}
-                  y2={y}
-                  stroke="#27272a"
-                  strokeWidth={1}
-                />
-                <text
-                  x={breite - padRechts + 6}
-                  y={y + 3}
-                  textAnchor="start"
-                  className="fill-zinc-500"
-                  style={{ fontSize: gross ? 11 : 10 }}
-                >
-                  {formatYAxis(tick)}
-                </text>
-              </g>
-            )
-          })}
-
-          <text
-            x={breite - padRechts + 6}
-            y={padOben - 8}
-            className="fill-zinc-600"
-            style={{ fontSize: 9 }}
-          >
-            (EUR)
-          </text>
-
-          <path d={kapitalPath} fill="none" stroke="#71717a" strokeWidth={gross ? 2.5 : 2} />
-          <path
-            d={portfolioPath}
-            fill="none"
-            stroke="#f4f4f5"
-            strokeWidth={gross ? 3 : 2.5}
-            strokeLinejoin="round"
-          />
-
-          {active ? (
-            <line
-              x1={active.x}
-              y1={padOben}
-              x2={active.x}
-              y2={padOben + plotH}
-              stroke="#a1a1aa"
-              strokeWidth={1}
-              strokeDasharray="4 3"
-            />
-          ) : null}
-
-          {plotPts.map((pt, i) => (
-            <g key={pt.p.monat}>
-              {i % labelStep === 0 || i === plotPts.length - 1 ? (
-                <text
-                  x={pt.x}
-                  y={hoehe - 10}
-                  textAnchor="middle"
-                  className="fill-zinc-500"
-                  style={{ fontSize: gross ? 10 : 9 }}
-                >
-                  {pt.p.label}
-                </text>
-              ) : null}
+    <div ref={containerRef} className="relative w-full min-w-0">
+      <svg
+        width="100%"
+        height={hoehe}
+        viewBox={`0 0 ${breite} ${hoehe}`}
+        preserveAspectRatio="xMidYMid meet"
+        role="img"
+        aria-label="Wertentwicklung: Portfoliowert und zugeführtes Kapital"
+        className="block w-full select-none"
+      >
+        {yTicks.map((tick) => {
+          const span = maxY - minY || 1
+          const y = padOben + plotH - ((tick - minY) / span) * plotH
+          return (
+            <g key={tick}>
+              <line
+                x1={padLinks}
+                y1={y}
+                x2={breite - padRechts}
+                y2={y}
+                stroke="#27272a"
+                strokeWidth={1}
+              />
+              <text
+                x={breite - padRechts + 6}
+                y={y + 3}
+                textAnchor="start"
+                className="fill-zinc-500"
+                style={{ fontSize: gross ? 11 : 10 }}
+              >
+                {formatYAxis(tick)}
+              </text>
             </g>
-          ))}
+          )
+        })}
 
-          <rect
-            x={padLinks}
-            y={padOben}
-            width={plotW}
-            height={plotH}
-            fill="transparent"
-            onMouseMove={(e) => pickIndex(e.clientX)}
-            onMouseLeave={() => setHoverIndex(null)}
-            onTouchMove={(e) => {
-              const t = e.touches[0]
-              if (t) pickIndex(t.clientX)
-            }}
-            onTouchEnd={() => setHoverIndex(null)}
+        <text
+          x={breite - padRechts + 6}
+          y={padOben - 8}
+          className="fill-zinc-600"
+          style={{ fontSize: 9 }}
+        >
+          (EUR)
+        </text>
+
+        <path d={kapitalPath} fill="none" stroke="#71717a" strokeWidth={gross ? 2.5 : 2} />
+        <path
+          d={portfolioPath}
+          fill="none"
+          stroke="#f4f4f5"
+          strokeWidth={gross ? 3 : 2.5}
+          strokeLinejoin="round"
+        />
+
+        {active ? (
+          <line
+            x1={active.x}
+            y1={padOben}
+            x2={active.x}
+            y2={padOben + plotH}
+            stroke="#a1a1aa"
+            strokeWidth={1}
+            strokeDasharray="4 3"
           />
-        </svg>
-      </div>
+        ) : null}
+
+        {plotPts.map((pt, i) =>
+          pt.p.label ? (
+            <text
+              key={pt.p.datumIso}
+              x={pt.x}
+              y={hoehe - 10}
+              textAnchor="middle"
+              className="fill-zinc-500"
+              style={{ fontSize: gross ? 10 : 9 }}
+            >
+              {pt.p.label}
+            </text>
+          ) : null,
+        )}
+
+        <rect
+          x={padLinks}
+          y={padOben}
+          width={plotW}
+          height={plotH}
+          fill="transparent"
+          onMouseMove={(e) => pickIndex(e.clientX)}
+          onMouseLeave={() => setHoverIndex(null)}
+          onTouchMove={(e) => {
+            const t = e.touches[0]
+            if (t) pickIndex(t.clientX)
+          }}
+          onTouchEnd={() => setHoverIndex(null)}
+        />
+      </svg>
 
       {active ? (
         <div
@@ -249,9 +245,7 @@ function WertentwicklungChartBody({
             top: 8,
           }}
         >
-          <p className="mb-2 font-medium text-zinc-200">
-            {formatDatumDe(active.p.datumIso)} (Monatsende)
-          </p>
+          <p className="mb-2 font-medium text-zinc-200">{formatDatumDe(active.p.datumIso)}</p>
           <div className="space-y-1.5">
             <div className="flex items-center justify-between gap-4">
               <span className="flex items-center gap-2 text-zinc-400">
@@ -295,7 +289,7 @@ function WertentwicklungChartBody({
           <span className="inline-block h-0.5 w-5 rounded bg-zinc-500" />
           Zugeführtes Kapital
         </span>
-        {laden ? <span className="text-zinc-600">· Kurshistorie wird geladen …</span> : null}
+        {laden ? <span className="text-zinc-600">· Tageskurse werden geladen …</span> : null}
       </div>
     </div>
   )
@@ -342,7 +336,7 @@ export function PaWertentwicklungChart({
 
   return (
     <>
-      <div className="relative">
+      <div className="relative min-w-0">
         {expandierbar ? (
           <button
             type="button"

@@ -21,9 +21,11 @@ import {
 } from '@/lib/portfolio-analyse/live-bewertung'
 import {
   baueWertentwicklungMitKursen,
+  baueWertentwicklungTaeglichFallback,
   yahooSymboleFuerHistorie,
 } from '@/lib/portfolio-analyse/wertentwicklung-kurse'
-import { baueWertentwicklung, type WertentwicklungPunkt } from '@/lib/portfolio-analyse/wertentwicklung'
+import { heuteIso } from '@/lib/portfolio-analyse/wertentwicklung-tage'
+import type { WertentwicklungPunkt } from '@/lib/portfolio-analyse/wertentwicklung'
 import { ladeIsinMetadaten } from '@/lib/portfolio-analyse/isin-metadata-client'
 import { PORTFOLIO_MAX_BUCHUNGEN } from '@/lib/portfolio-analyse/limits'
 import { ladePortfolioAnalyseDaten } from '@/lib/portfolio-analyse/portfolio-analyse-db'
@@ -153,7 +155,7 @@ export function PaDataProvider({ children }: { children: ReactNode }) {
     const depotwert = liveSnap.kennzahlen.depotwertEur
     const positionen = liveSnap.positionen
     const fx = liveSnap.fx
-    const basis = baueWertentwicklung(buchungen, depotwert)
+    const basis = baueWertentwicklungTaeglichFallback(buchungen, depotwert)
     setWertentwicklung(basis)
 
     async function run() {
@@ -164,10 +166,9 @@ export function PaDataProvider({ children }: { children: ReactNode }) {
         return
       }
       const sortiert = [...buchungen].sort((a, b) => a.datum.localeCompare(b.datum))
-      const vonMonat = sortiert[0].datum.slice(0, 7)
-      const jetzt = new Date()
-      const bisMonat = `${jetzt.getFullYear()}-${String(jetzt.getMonth() + 1).padStart(2, '0')}`
-      const historie = await ladeHistorischeKurseClient(sym, vonMonat, bisMonat)
+      const vonDatum = sortiert[0].datum
+      const bisDatum = heuteIso()
+      const historie = await ladeHistorischeKurseClient(sym, vonDatum, bisDatum)
       if (cancelled) return
       const mitKursen = baueWertentwicklungMitKursen(buchungen, depotwert, positionen, historie, fx)
       setWertentwicklung(mitKursen)

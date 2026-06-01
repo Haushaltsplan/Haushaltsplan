@@ -124,11 +124,11 @@ export async function ladeLiveKurseClient(symbols: string[]): Promise<LiveKurseP
   return { kurse: map, stand, fx: fxKurseAusYahooMap(map), stooqEur }
 }
 
-/** Monatliche Yahoo-Schlusskurse (Rohwährung der Börse). */
+/** Tägliche Yahoo-Schlusskurse (Rohwährung der Börse). */
 export async function ladeHistorischeKurseClient(
   symbols: string[],
-  vonMonat: string,
-  bisMonat: string,
+  vonDatum: string,
+  bisDatum: string,
 ): Promise<Map<string, Map<string, number>>> {
   const uniq = [...new Set(symbols.map((s) => s.trim().toUpperCase()).filter(Boolean))].filter(
     (s) => !s.startsWith('STOOQ:'),
@@ -138,7 +138,7 @@ export async function ladeHistorischeKurseClient(
   const res = await fetch('/api/portfolio-analyse/kurse/historie', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ symbols: uniq, vonMonat, bisMonat }),
+    body: JSON.stringify({ symbols: uniq, vonDatum, bisDatum }),
   })
   const j = (await res.json()) as {
     ok?: boolean

@@ -161,11 +161,11 @@ export function PortfolioDashboardClient() {
         />
       </div>
 
-      <PaCard variant="elevated" className="overflow-hidden">
+      <PaCard variant="elevated" className="overflow-hidden min-w-0">
         <div className="border-b border-white/[0.04] px-4 pt-4 sm:px-6">
           <PaIconTabs tabs={CHART_TABS} active={chartTab} onChange={setChartTab} />
         </div>
-        <div className="p-4 sm:p-6">
+        <div className="min-w-0 p-4 sm:p-6">
           {chartTab === 'drawdown' && drawdown.maxDrawdownProzent < 0 ? (
             <div className="mb-4 flex flex-wrap justify-end gap-6 text-sm">
               <div>

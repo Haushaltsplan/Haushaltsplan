@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { ladeYahooHistorieBatch } from '@/lib/portfolio-analyse/yahoo-historie-server'
+import { ladeYahooHistorieBatchTaeglich } from '@/lib/portfolio-analyse/yahoo-historie-server'
 
 export const dynamic = 'force-dynamic'
 
@@ -11,13 +11,13 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: false, message: 'Kein gültiges JSON.' }, { status: 400 })
   }
 
-  const raw = (body as { symbols?: unknown; vonMonat?: unknown; bisMonat?: unknown })?.symbols
-  const vonMonat = String((body as { vonMonat?: string })?.vonMonat ?? '').trim()
-  const bisMonat = String((body as { bisMonat?: string })?.bisMonat ?? '').trim()
+  const raw = (body as { symbols?: unknown })?.symbols
+  const vonDatum = String((body as { vonDatum?: string })?.vonDatum ?? '').trim()
+  const bisDatum = String((body as { bisDatum?: string })?.bisDatum ?? '').trim()
 
-  if (!Array.isArray(raw) || !vonMonat || !bisMonat) {
+  if (!Array.isArray(raw) || !vonDatum || !bisDatum) {
     return NextResponse.json(
-      { ok: false, message: 'symbols[], vonMonat und bisMonat erwartet.' },
+      { ok: false, message: 'symbols[], vonDatum und bisDatum erwartet.' },
       { status: 400 },
     )
   }
@@ -28,10 +28,10 @@ export async function POST(req: Request) {
   }
 
   try {
-    const serienMap = await ladeYahooHistorieBatch(symbols, vonMonat, bisMonat)
+    const serienMap = await ladeYahooHistorieBatchTaeglich(symbols, vonDatum, bisDatum)
     const serien: Record<string, Record<string, number>> = {}
-    for (const [sym, monate] of serienMap) {
-      serien[sym] = Object.fromEntries(monate)
+    for (const [sym, tage] of serienMap) {
+      serien[sym] = Object.fromEntries(tage)
     }
 
     return NextResponse.json({

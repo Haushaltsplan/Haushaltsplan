@@ -7,9 +7,11 @@ import { hatExterneDepotEinAus } from '@/lib/portfolio-analyse/parqet-xirr'
 import type { PortfolioBuchung } from '@/lib/portfolio-analyse/types'
 
 export type WertentwicklungPunkt = {
+  /** YYYY-MM – Gruppierung / Legacy-Charts */
   monat: string
+  /** Achsenbeschriftung (nur an markierten Stellen gesetzt) */
   label: string
-  /** ISO-Datum (Monatsende) für Tooltip */
+  /** ISO YYYY-MM-DD (Stichtag) */
   datumIso: string
   portfoliowertEur: number
   zugefuehrtEur: number
@@ -36,6 +38,26 @@ function kapitalDelta(b: PortfolioBuchung, extern: boolean): number {
   if (b.typ === 'kauf') return b.betragEur
   if (b.typ === 'verkauf') return -b.betragEur
   return 0
+}
+
+/** Kumuliertes zugeführtes Kapital je Tag (Treppenkurve, Forward-Fill über `tage`). */
+export function zugefuehrtKumuliertProTag(
+  buchungen: PortfolioBuchung[],
+  tage: string[],
+): number[] {
+  const extern = hatExterneDepotEinAus(buchungen)
+  const sortiert = [...buchungen].sort((a, b) => a.datum.localeCompare(b.datum))
+  const byDay = new Map<string, number>()
+  let sum = 0
+  for (const b of sortiert) {
+    sum += kapitalDelta(b, extern)
+    byDay.set(b.datum, round2(sum))
+  }
+  let stand = 0
+  return tage.map((tag) => {
+    if (byDay.has(tag)) stand = byDay.get(tag)!
+    return stand
+  })
 }
 
 /** Kumuliertes zugeführtes Kapital je Monat (Treppenkurve). */

@@ -192,6 +192,116 @@ export function depotStandBisDatum(buchungen: PortfolioBuchung[], bisDatum: stri
   return { byIsin, cash: Math.round(cash * 100) / 100 }
 }
 
+function wendeBuchungAufStand(
+  map: Map<
+    string,
+    { stueck: number; kosten: number; name: string; assetKlasse: PortfolioPositionSnapshot['assetKlasse'] }
+  >,
+  b: PortfolioBuchung,
+): void {
+  if (!b.isin) return
+  const isin = b.isin.toUpperCase()
+  const cur = map.get(isin) ?? {
+    stueck: 0,
+    kosten: 0,
+    name: b.wertpapierName?.trim() ?? isin,
+    assetKlasse: b.assetKlasse,
+  }
+
+  if (b.typ === 'kauf') {
+    let stk = b.stueck != null ? Math.abs(b.stueck) : 0
+    if (stk <= 0 && b.kursEur != null && b.kursEur > 0) stk = b.betragEur / b.kursEur
+    if (stk <= 0) return
+    cur.stueck += stk
+    cur.kosten += b.betragEur
+  } else if (b.typ === 'verkauf') {
+    let stk = b.stueck != null ? Math.abs(b.stueck) : 0
+    if (stk <= 0 && b.kursEur != null && b.kursEur > 0) stk = b.betragEur / b.kursEur
+    if (cur.stueck > 0 && stk > 0) {
+      const anteil = Math.min(1, stk / cur.stueck)
+      cur.kosten = Math.round(cur.kosten * (1 - anteil) * 100) / 100
+      cur.stueck = Math.max(0, cur.stueck - stk)
+    } else {
+      cur.kosten = Math.max(0, cur.kosten - b.betragEur)
+    }
+  }
+  if (b.wertpapierName?.trim()) cur.name = b.wertpapierName.trim()
+  map.set(isin, cur)
+}
+
+function cashDelta(b: PortfolioBuchung): number {
+  switch (b.typ) {
+    case 'einzahlung':
+      return b.betragEur
+    case 'auszahlung':
+      return -b.betragEur
+    case 'kauf':
+      return -b.betragEur
+    case 'verkauf':
+      return b.betragEur
+    case 'dividende':
+    case 'zins':
+      return b.betragEur
+    case 'steuer':
+    case 'gebuehr':
+      return -b.betragEur
+    default:
+      return 0
+  }
+}
+
+function standAusMap(
+  map: Map<
+    string,
+    { stueck: number; kosten: number; name: string; assetKlasse: PortfolioPositionSnapshot['assetKlasse'] }
+  >,
+  cash: number,
+): DepotStand {
+  const byIsin = new Map<
+    string,
+    { stueck: number; name: string; assetKlasse: PortfolioPositionSnapshot['assetKlasse']; einstandKurs: number }
+  >()
+  for (const [isin, cur] of map) {
+    if (cur.stueck < 1e-8) continue
+    byIsin.set(isin, {
+      stueck: cur.stueck,
+      name: cur.name,
+      assetKlasse: cur.assetKlasse,
+      einstandKurs: cur.stueck > 0 ? cur.kosten / cur.stueck : 0,
+    })
+  }
+  return { byIsin, cash: Math.round(cash * 100) / 100 }
+}
+
+/** Depotstand je Kalendertag (End-of-day nach Buchungen des Tages). */
+export function depotStandProTag(
+  buchungen: PortfolioBuchung[],
+  tage: string[],
+): Map<string, DepotStand> {
+  const byTag = new Map<string, PortfolioBuchung[]>()
+  for (const b of buchungen) {
+    const list = byTag.get(b.datum) ?? []
+    list.push(b)
+    byTag.set(b.datum, list)
+  }
+
+  const map = new Map<
+    string,
+    { stueck: number; kosten: number; name: string; assetKlasse: PortfolioPositionSnapshot['assetKlasse'] }
+  >()
+  let cash = 0
+  const out = new Map<string, DepotStand>()
+
+  for (const tag of tage) {
+    for (const b of byTag.get(tag) ?? []) {
+      wendeBuchungAufStand(map, b)
+      cash += cashDelta(b)
+    }
+    out.set(tag, standAusMap(map, cash))
+  }
+  return out
+}
+
 export function cashSaldoAusBuchungen(buchungen: PortfolioBuchung[]): number {
   let cash = 0
   for (const b of buchungen) {
