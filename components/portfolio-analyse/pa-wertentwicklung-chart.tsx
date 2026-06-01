@@ -123,33 +123,49 @@ function WertentwicklungChartBody({
     }
   }, [punkte, plotW, plotH, padLinks, padOben, gross])
 
-  const pickIndex = useCallback(
-    (clientX: number) => {
-      const el = containerRef.current
-      if (!el || plotPts.length === 0) return
-      const rect = el.getBoundingClientRect()
-      const svgX = ((clientX - rect.left) / rect.width) * breite
-      const rel = (svgX - padLinks) / plotW
-      const idx = Math.round(rel * Math.max(0, plotPts.length - 1))
-      setHoverIndex(Math.min(plotPts.length - 1, Math.max(0, idx)))
-    },
-    [padLinks, plotW, plotPts.length],
-  )
+  const pickIndex = useCallback((clientX: number) => {
+    const el = containerRef.current
+    if (!el || plotPts.length === 0) return
+    const rect = el.getBoundingClientRect()
+    if (rect.width <= 0) return
+    const rel = Math.min(1, Math.max(0, (clientX - rect.left) / rect.width))
+    const idx = Math.round(rel * Math.max(0, plotPts.length - 1))
+    setHoverIndex(idx)
+  }, [plotPts.length])
 
   const active = hoverIndex != null ? plotPts[hoverIndex] : null
   const differenz = active ? active.p.portfoliowertEur - active.p.zugefuehrtEur : 0
 
+  const tooltipLeftPct =
+    hoverIndex != null && plotPts.length > 1
+      ? (hoverIndex / (plotPts.length - 1)) * 100
+      : hoverIndex === 0
+        ? 0
+        : 50
+
   return (
-    <div ref={containerRef} className="relative w-full min-w-0">
-      <svg
-        width="100%"
-        height={hoehe}
-        viewBox={`0 0 ${breite} ${hoehe}`}
-        preserveAspectRatio="xMidYMid meet"
-        role="img"
-        aria-label="Wertentwicklung: Portfoliowert und zugeführtes Kapital"
-        className="block w-full select-none"
+    <div className="relative w-full min-w-0">
+      <div
+        ref={containerRef}
+        className="relative w-full cursor-crosshair"
+        style={{ height: hoehe }}
+        onMouseMove={(e) => pickIndex(e.clientX)}
+        onMouseLeave={() => setHoverIndex(null)}
+        onTouchMove={(e) => {
+          const t = e.touches[0]
+          if (t) pickIndex(t.clientX)
+        }}
+        onTouchEnd={() => setHoverIndex(null)}
       >
+        <svg
+          width="100%"
+          height={hoehe}
+          viewBox={`0 0 ${breite} ${hoehe}`}
+          preserveAspectRatio="xMidYMid meet"
+          role="img"
+          aria-label="Wertentwicklung: Portfoliowert und zugeführtes Kapital"
+          className="pointer-events-none block w-full select-none"
+        >
         {yTicks.map((tick) => {
           const span = maxY - minY || 1
           const y = padOben + plotH - ((tick - minY) / span) * plotH
@@ -220,28 +236,14 @@ function WertentwicklungChartBody({
             </text>
           ) : null,
         )}
-
-        <rect
-          x={padLinks}
-          y={padOben}
-          width={plotW}
-          height={plotH}
-          fill="transparent"
-          onMouseMove={(e) => pickIndex(e.clientX)}
-          onMouseLeave={() => setHoverIndex(null)}
-          onTouchMove={(e) => {
-            const t = e.touches[0]
-            if (t) pickIndex(t.clientX)
-          }}
-          onTouchEnd={() => setHoverIndex(null)}
-        />
-      </svg>
+        </svg>
+      </div>
 
       {active ? (
         <div
           className="pointer-events-none absolute z-10 min-w-[200px] rounded-lg border border-zinc-700/80 bg-zinc-900/95 px-3 py-2.5 text-xs shadow-xl"
           style={{
-            left: `clamp(8px, ${((active.x / breite) * 100).toFixed(1)}%, calc(100% - 220px))`,
+            left: `clamp(8px, ${tooltipLeftPct.toFixed(1)}%, calc(100% - 220px))`,
             top: 8,
           }}
         >
@@ -336,7 +338,7 @@ export function PaWertentwicklungChart({
 
   return (
     <>
-      <div className="relative min-w-0">
+      <div className="relative min-w-0 pr-10">
         {expandierbar ? (
           <button
             type="button"
