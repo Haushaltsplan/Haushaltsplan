@@ -44,7 +44,7 @@ export type LivePortfolio = {
     kurseQuelle: 'live' | 'einstand' | 'snapshot'
     kurseStand: string | null
   }
-  verlauf: { label: string; wert: number }[]
+  verlauf: { label: string; wert: number; monat: string }[]
 }
 
 /** Symbole für Yahoo-Abfrage (pro Position begrenzt, um API-Limits nicht zu sprengen). */
@@ -290,7 +290,10 @@ export function berechneLivePortfolio(
   }
 }
 
-function verlaufAusBuchungen(buchungen: PortfolioBuchung[], depotwertHeute: number): { label: string; wert: number }[] {
+function verlaufAusBuchungen(
+  buchungen: PortfolioBuchung[],
+  depotwertHeute: number,
+): { label: string; wert: number; monat: string }[] {
   const sortiert = [...buchungen].sort((a, b) => a.datum.localeCompare(b.datum))
   if (sortiert.length === 0) return []
 
@@ -334,7 +337,11 @@ function verlaufAusBuchungen(buchungen: PortfolioBuchung[], depotwertHeute: numb
   const out = keys.map((k) => {
     const [y, mo] = k.split('-')
     const d = new Date(Number(y), Number(mo) - 1, 1)
-    return { label: d.toLocaleDateString('de-DE', { month: 'short', year: '2-digit' }), wert: punkte.get(k)! }
+    return {
+      label: d.toLocaleDateString('de-DE', { month: 'short', year: '2-digit' }),
+      wert: punkte.get(k)!,
+      monat: k,
+    }
   })
   const last = out[out.length - 1]
   if (last) last.wert = depotwertHeute

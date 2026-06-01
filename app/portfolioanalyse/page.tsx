@@ -1,11 +1,11 @@
 import type { Metadata } from 'next'
-import { PortfolioAnalysePageClient } from '@/components/portfolio-analyse-page.client'
+import { redirect } from 'next/navigation'
 
 export const metadata: Metadata = {
   title: 'Portfolioanalyse',
   description: 'Trade Republic Depot — lokal parsen, anonymisiert auswerten',
 }
 
-export default function PortfolioanalysePage() {
-  return <PortfolioAnalysePageClient />
+export default function PortfolioanalyseRootPage() {
+  redirect('/portfolioanalyse/dashboard')
 }
