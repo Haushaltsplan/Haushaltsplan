@@ -1,6 +1,7 @@
 'use client'
 
 import { supabase } from '@/lib/supabase'
+import { normalisiereIsinFuerDb } from '@/lib/portfolio-analyse/parse-hilfen'
 import type {
   PortfolioBuchung,
   PortfolioDbBuchung,
@@ -8,9 +9,26 @@ import type {
   PortfolioPositionSnapshot,
 } from '@/lib/portfolio-analyse/types'
 
-function istSchemaFehltMessage(msg: string): boolean {
+/** Nur echte „Tabelle fehlt / Schema-Cache“-Fälle — nicht Constraint- oder RLS-Fehler. */
+function istSchemaFehltFehler(msg: string, code?: string | null): boolean {
+  const c = (code ?? '').toUpperCase()
+  if (c === 'PGRST205' || c === '42P01') return true
   const m = msg.toLowerCase()
-  return m.includes('portfolio_analyse') && (m.includes('does not exist') || m.includes('relation') || m.includes('schema cache'))
+  if (!m.includes('portfolio_analyse')) return false
+  if (
+    m.includes('violates') ||
+    m.includes('constraint') ||
+    m.includes('permission denied') ||
+    m.includes('row-level security') ||
+    m.includes('jwt')
+  ) {
+    return false
+  }
+  return (
+    m.includes('schema cache') ||
+    m.includes('could not find') ||
+    m.includes('does not exist')
+  )
 }
 
 function mapBuchungRow(row: Record<string, unknown>): PortfolioDbBuchung {
@@ -47,7 +65,7 @@ export async function ladePortfolioAnalyseDaten(): Promise<{
       ok: false,
       buchungen: [],
       snapshot: null,
-      schemaFehlt: istSchemaFehltMessage(buchErr.message),
+      schemaFehlt: istSchemaFehltFehler(buchErr.message, buchErr.code),
       message: buchErr.message,
     }
   }
@@ -59,7 +77,7 @@ export async function ladePortfolioAnalyseDaten(): Promise<{
     .limit(1)
     .maybeSingle()
 
-  if (snapErr && istSchemaFehltMessage(snapErr.message)) {
+  if (snapErr && istSchemaFehltFehler(snapErr.message, snapErr.code)) {
     return {
       ok: false,
       buchungen: [],
@@ -99,7 +117,7 @@ export async function speicherePortfolioImport(
       buchungs_hash: b.buchungsHash,
       datum: b.datum,
       typ: b.typ,
-      isin: b.isin,
+      isin: normalisiereIsinFuerDb(b.isin),
       wertpapier_name: b.wertpapierName,
       stueck: b.stueck,
       kurs_eur: b.kursEur,
@@ -116,7 +134,7 @@ export async function speicherePortfolioImport(
       return {
         ok: false,
         eingefuegt: 0,
-        schemaFehlt: istSchemaFehltMessage(error.message),
+        schemaFehlt: istSchemaFehltFehler(error.message, error.code),
         message: error.message,
       }
     }
@@ -124,15 +142,19 @@ export async function speicherePortfolioImport(
   }
 
   if (positionen.length > 0) {
+    const positionenDb = positionen.map((p) => ({
+      ...p,
+      isin: normalisiereIsinFuerDb(p.isin),
+    }))
     const { error: snapErr } = await supabase.from('portfolio_analyse_snapshot').insert({
       depotwert_eur: depotwertEur,
-      positionen,
+      positionen: positionenDb,
     })
     if (snapErr) {
       return {
         ok: false,
         eingefuegt,
-        schemaFehlt: istSchemaFehltMessage(snapErr.message),
+        schemaFehlt: istSchemaFehltFehler(snapErr.message, snapErr.code),
         message: snapErr.message,
       }
     }

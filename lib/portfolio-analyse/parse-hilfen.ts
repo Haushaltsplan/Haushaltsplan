@@ -115,6 +115,13 @@ export function extrahiereIsin(text: string): string | null {
   return m ? m[1] : null
 }
 
+/** Für Supabase CHECK (ISIN NULL oder 12 Zeichen A–Z/0–9); leere/ungültige Werte → null. */
+export function normalisiereIsinFuerDb(isin: string | null | undefined): string | null {
+  const s = (isin ?? '').trim().toUpperCase()
+  if (!s) return null
+  return ISIN_RE.test(s) ? s : null
+}
+
 export function extrahiereStueck(text: string): number | null {
   const m = STUECK_RE.exec(text)
   if (!m) return null

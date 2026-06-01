@@ -27,6 +27,7 @@ export function PortfolioAnalysePageClient() {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [laden, setLaden] = useState(true)
   const [schemaFehlt, setSchemaFehlt] = useState(false)
+  const [dbFehler, setDbFehler] = useState<string | null>(null)
   const [buchungen, setBuchungen] = useState<PortfolioDbBuchung[]>([])
   const [snapshot, setSnapshot] = useState<Awaited<ReturnType<typeof ladePortfolioAnalyseDaten>>['snapshot']>(null)
 
@@ -44,11 +45,13 @@ export function PortfolioAnalysePageClient() {
     setLaden(true)
     const res = await ladePortfolioAnalyseDaten()
     setSchemaFehlt(res.schemaFehlt)
+    setDbFehler(res.schemaFehlt ? null : res.message ?? null)
     if (res.ok) {
       setBuchungen(res.buchungen)
       setSnapshot(res.snapshot)
+      setDbFehler(null)
     } else if (!res.schemaFehlt) {
-      toast.error('Daten konnten nicht geladen werden.')
+      toast.error(res.message ?? 'Daten konnten nicht geladen werden.')
     }
     setLaden(false)
   }, [])
@@ -121,12 +124,15 @@ export function PortfolioAnalysePageClient() {
       if (!res.ok) {
         if (res.schemaFehlt) {
           setSchemaFehlt(true)
+          setDbFehler(null)
           toast.error('Datenbank-Tabellen fehlen — Migration ausführen (npm run db:portfolio-analyse).')
         } else {
+          setDbFehler(res.message ?? null)
           toast.error(res.message ?? 'Speichern fehlgeschlagen.')
         }
         return
       }
+      setDbFehler(null)
       toast.success(
         res.eingefuegt > 0
           ? `${res.eingefuegt} Buchung(en) gespeichert.`
@@ -176,7 +182,8 @@ export function PortfolioAnalysePageClient() {
         <PageSection titleId="pa-schema-heading" title="Datenbank">
           <PageSectionPanel>
             <p className="text-sm leading-relaxed text-amber-100/90">
-              Tabellen fehlen noch. Migration einspielen:{' '}
+              Tabellen fehlen noch oder der API-Schema-Cache ist veraltet. Migration einspielen (inkl.{' '}
+              <code className="rounded bg-zinc-950 px-1 py-0.5 font-mono text-xs">NOTIFY pgrst</code> am Ende):{' '}
               <code className="rounded bg-zinc-950 px-1.5 py-0.5 font-mono text-xs text-teal-400">
                 npm run db:portfolio-analyse
               </code>{' '}
@@ -184,6 +191,20 @@ export function PortfolioAnalysePageClient() {
               <code className="rounded bg-zinc-950 px-1.5 py-0.5 font-mono text-xs text-zinc-300">
                 supabase/migrations/20260601120000_portfolio_analyse.sql
               </code>
+              . Wenn die Tabellen schon existieren, im SQL-Editor nur ausführen:{' '}
+              <code className="rounded bg-zinc-950 px-1.5 py-0.5 font-mono text-xs text-zinc-300">
+                NOTIFY pgrst, &apos;reload schema&apos;;
+              </code>
+            </p>
+          </PageSectionPanel>
+        </PageSection>
+      ) : null}
+
+      {dbFehler && !schemaFehlt ? (
+        <PageSection titleId="pa-dbfehler-heading" title="Datenbank">
+          <PageSectionPanel>
+            <p className="text-sm leading-relaxed text-red-200/90">
+              Speichern/Laden fehlgeschlagen: <span className="font-mono text-xs">{dbFehler}</span>
             </p>
           </PageSectionPanel>
         </PageSection>

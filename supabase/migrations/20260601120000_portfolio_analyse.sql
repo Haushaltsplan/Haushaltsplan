@@ -80,3 +80,5 @@ CREATE POLICY portfolio_analyse_snapshot_owner_update ON public.portfolio_analys
 DROP POLICY IF EXISTS portfolio_analyse_snapshot_owner_delete ON public.portfolio_analyse_snapshot;
 CREATE POLICY portfolio_analyse_snapshot_owner_delete ON public.portfolio_analyse_snapshot
   FOR DELETE TO authenticated USING (owner_user_id = auth.uid());
+
+NOTIFY pgrst, 'reload schema';

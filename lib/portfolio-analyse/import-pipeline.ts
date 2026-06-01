@@ -10,6 +10,7 @@ import {
   extrahiereStueck,
   extrahiereWertpapierName,
   istCashZeileUeberspringen,
+  normalisiereIsinFuerDb,
   normalisiereTrTyp,
   parseDeDatumZuIso,
   parseEuropeanNumber,
@@ -48,7 +49,7 @@ async function cashZeileZuBuchung(
   const betragEur = Math.round((eingang > 0 ? eingang : ausgang) * 100) / 100
   if (betragEur <= 0 && typ !== 'steuer' && typ !== 'gebuehr') return null
 
-  const isin = isinAusZeile
+  const isin = normalisiereIsinFuerDb(isinAusZeile || extrahiereIsin(beschreibung))
   const wertpapierName = sichererWertpapierName(extrahiereWertpapierName(beschreibung, isin), blocklist)
   let stueck = row.stueck ?? extrahiereStueck(beschreibung)
   if (stueck != null && typ === 'verkauf') stueck = -Math.abs(stueck)
@@ -78,7 +79,7 @@ async function cashZeileZuBuchung(
 
 function positionZuSnapshot(pos: TrRawPosition, blocklist: string[]): PortfolioPositionSnapshot | null {
   if (pos.quantity == null || !Number.isFinite(pos.quantity) || pos.quantity <= 0) return null
-  const isin = pos.isin?.trim() || extrahiereIsin(pos.name)
+  const isin = normalisiereIsinFuerDb(pos.isin?.trim() || extrahiereIsin(pos.name))
   const name = sichererWertpapierName(pos.name.trim(), blocklist)
   if (!name && !isin) return null
   const wertEur = pos.marketValueEUR ?? (pos.pricePerUnit != null ? pos.quantity * pos.pricePerUnit : 0)
