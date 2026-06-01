@@ -23,6 +23,8 @@ export type PortfolioBuchung = {
   stueck: number | null
   kursEur: number | null
   betragEur: number
+  /** Parqet-CSV „realizedgains“ (nur Verkäufe) — sonst FIFO-Berechnung. */
+  realisierterGewinnEur?: number | null
   assetKlasse: AssetKlasse
   quelle: ImportQuelle
 }

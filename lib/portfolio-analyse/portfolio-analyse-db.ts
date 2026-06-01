@@ -48,6 +48,8 @@ function mapBuchungRow(row: Record<string, unknown>): PortfolioDbBuchung {
     stueck: row.stueck != null ? Number(row.stueck) : null,
     kursEur: row.kurs_eur != null ? Number(row.kurs_eur) : null,
     betragEur: Number(row.betrag_eur),
+    realisierterGewinnEur:
+      row.realisierter_gewinn_eur != null ? Number(row.realisierter_gewinn_eur) : null,
     assetKlasse: row.asset_klasse as PortfolioDbBuchung['assetKlasse'],
     quelle: row.quelle as PortfolioDbBuchung['quelle'],
   }
@@ -175,6 +177,7 @@ export async function speicherePortfolioImport(
       stueck: b.stueck,
       kurs_eur: b.kursEur,
       betrag_eur: b.betragEur,
+      realisierter_gewinn_eur: b.realisierterGewinnEur ?? null,
       asset_klasse: b.assetKlasse,
       quelle: b.quelle,
     }))
@@ -183,7 +186,7 @@ export async function speicherePortfolioImport(
       const batch = rows.slice(i, i + PORTFOLIO_UPSERT_BATCH)
       const { data, error } = await supabase
         .from('portfolio_analyse_buchung')
-        .upsert(batch, { onConflict: 'owner_user_id,buchungs_hash', ignoreDuplicates: true })
+        .upsert(batch, { onConflict: 'owner_user_id,buchungs_hash' })
         .select('id')
 
       if (error) {

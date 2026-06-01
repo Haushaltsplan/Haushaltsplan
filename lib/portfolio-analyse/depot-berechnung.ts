@@ -368,10 +368,17 @@ export function realisierterGewinnAusVerkaeufen(buchungen: PortfolioBuchung[]): 
       const restStueck = lots.reduce((s, l) => s + l.stueck, 0)
       let stk = stueckAusBuchung(b, restStueck > 0 ? restStueck : undefined)
       if (stk <= 0 && b.betragEur > 0 && restStueck <= 0) {
-        sum += b.betragEur
+        sum += b.realisierterGewinnEur ?? b.betragEur
         continue
       }
       if (stk <= 0) continue
+
+      if (b.realisierterGewinnEur != null && Number.isFinite(b.realisierterGewinnEur)) {
+        sum += b.realisierterGewinnEur
+        fifoKosten(lots, stk)
+        lotsByIsin.set(isin, lots)
+        continue
+      }
 
       const nVerk = verkaeufeProTag.get(tagKey) ?? 1
       const steuerAnteil = round2((steuerProTag.get(tagKey) ?? 0) / nVerk)

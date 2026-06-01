@@ -13,6 +13,8 @@ export type TrRawCashZeile = {
   stueck?: number | null
   /** Nur CSV (z. B. Parqet): Ausführungskurs pro Stück — für realisierte Gewinne. */
   kursEur?: number | null
+  /** Nur Parqet-Portfolio-CSV: Spalte realizedgains (FIFO laut Parqet). */
+  realisierterGewinnEur?: number | null
 }
 
 export type TrRawPosition = {

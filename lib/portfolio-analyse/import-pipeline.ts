@@ -64,6 +64,15 @@ async function cashZeileZuBuchung(
   const assetKlasse = schaetzeAssetKlasse(wertpapierName, isin, typ)
   const buchungsHash = await berechneBuchungsHash({ datum, typ, isin, stueck, betragEur })
 
+  let realisierterGewinnEur: number | null = null
+  if (
+    typ === 'verkauf' &&
+    row.realisierterGewinnEur != null &&
+    Number.isFinite(row.realisierterGewinnEur)
+  ) {
+    realisierterGewinnEur = Math.round(row.realisierterGewinnEur * 100) / 100
+  }
+
   return {
     buchungsHash,
     datum,
@@ -73,6 +82,7 @@ async function cashZeileZuBuchung(
     stueck,
     kursEur,
     betragEur,
+    realisierterGewinnEur,
     assetKlasse,
     quelle,
   }

@@ -53,6 +53,14 @@ function colIndex(headers: string[], name: string): number {
   return headers.indexOf(name)
 }
 
+function colIndexRealizedGains(headers: string[]): number {
+  const exact = colIndex(headers, 'realizedgains')
+  if (exact >= 0) return exact
+  const underscored = colIndex(headers, 'realized_gains')
+  if (underscored >= 0) return underscored
+  return headers.findIndex((h) => h.replace(/_/g, '') === 'realizedgains')
+}
+
 /** Erkennt Parqet-Export „Aktien Portfolio-…“ (identifier + holdingname + shares + amount). */
 export function istParqetPortfolioCsv(text: string): boolean {
   const raw = text.replace(/^\ufeff/, '')
@@ -181,6 +189,14 @@ function cashZeileAusParqet(
         ? Math.round((Math.abs(amt) / stueck) * 10000) / 10000
         : null
 
+  let realisierterGewinnEur: number | null = null
+  if (idx.realizedgains >= 0 && /^sell$|^transferout$/i.test(typRaw)) {
+    const rg = parseGeldBetrag(cols[idx.realizedgains])
+    if (rg != null && Number.isFinite(rg)) {
+      realisierterGewinnEur = Math.round(rg * 100) / 100
+    }
+  }
+
   return {
     datum,
     typ: typRaw,
@@ -191,6 +207,7 @@ function cashZeileAusParqet(
     isin: isin || undefined,
     stueck,
     kursEur,
+    realisierterGewinnEur,
   }
 }
 
@@ -253,6 +270,7 @@ export function parseParqetPortfolioCsvText(text: string): TrPdfParseErgebnis & 
     amount: colIndex(headers, 'amount'),
     fee: colIndex(headers, 'fee'),
     tax: colIndex(headers, 'tax'),
+    realizedgains: colIndexRealizedGains(headers),
   }
 
   hinweise.push(
@@ -280,6 +298,20 @@ export function parseParqetPortfolioCsvText(text: string): TrPdfParseErgebnis & 
   for (const row of cash) {
     summeEin += parseGeldBetrag(row.zahlungseingang) ?? 0
     summeAus += parseGeldBetrag(row.zahlungsausgang) ?? 0
+  }
+
+  if (idx.realizedgains >= 0) {
+    let summeRealisiert = 0
+    let nMitWert = 0
+    for (const row of cash) {
+      if (row.realisierterGewinnEur != null) {
+        summeRealisiert += row.realisierterGewinnEur
+        nMitWert++
+      }
+    }
+    hinweise.push(
+      `Spalte „realizedgains“: ${nMitWert} Verkäufe, Summe ${summeRealisiert.toLocaleString('de-DE', { style: 'currency', currency: 'EUR' })} (Parqet-Wert für „Realisiert“).`,
+    )
   }
 
   hinweise.push(
