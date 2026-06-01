@@ -3,11 +3,11 @@
 import Link from 'next/link'
 import { useMemo, useState } from 'react'
 import {
-  PaAreaChart,
   PaDrawdownChart,
   PaDividendBarChart,
   PaSignedBarChart,
 } from '@/components/portfolio-analyse/parqet-charts'
+import { PaWertentwicklungChart } from '@/components/portfolio-analyse/pa-wertentwicklung-chart'
 import { PortfolioIsinLogo } from '@/components/portfolio-analyse/isin-logo'
 import { usePortfolioAnalyse } from '@/components/portfolio-analyse/pa-data-provider'
 import { PaBadge, PaCard, PaHeroKpi, PaIconTabs, PaStatRow } from '@/components/portfolio-analyse/pa-ui'
@@ -41,11 +41,26 @@ function badgeVariant(typ: BuchungsTyp): 'buy' | 'sell' | 'dividend' | 'neutral'
 }
 
 export function PortfolioDashboardClient() {
-  const { live, liveLaden, kursFehler, buchungen, meta, report, hatDaten, laden } = usePortfolioAnalyse()
+  const {
+    live,
+    liveLaden,
+    wertentwicklung,
+    wertentwicklungLaden,
+    kursFehler,
+    buchungen,
+    meta,
+    report,
+    hatDaten,
+    laden,
+  } = usePortfolioAnalyse()
   const [chartTab, setChartTab] = useState<ChartTab>('wert')
 
-  const verlauf = live?.verlauf ?? []
   const k = live?.kennzahlen
+  const verlaufBasis = live?.verlauf ?? []
+  const verlauf =
+    wertentwicklung.length > 0
+      ? wertentwicklung.map((p) => ({ label: p.label, wert: p.portfoliowertEur, monat: p.monat }))
+      : verlaufBasis
   const positionen = live?.positionen ?? []
 
   const drawdown = useMemo(() => berechneDrawdown(verlauf), [verlauf])
@@ -176,7 +191,12 @@ export function PortfolioDashboardClient() {
             </div>
           ) : null}
 
-          {chartTab === 'wert' && <PaAreaChart punkte={verlauf} />}
+          {chartTab === 'wert' && (
+            <PaWertentwicklungChart
+              punkte={wertentwicklung}
+              laden={wertentwicklungLaden && wertentwicklung.length > 0}
+            />
+          )}
           {chartTab === 'performance' && <PaSignedBarChart punkte={monatsPerf} yAxisProzent />}
           {chartTab === 'drawdown' && <PaDrawdownChart punkte={drawdown.serie} />}
           {chartTab === 'dividenden' && (

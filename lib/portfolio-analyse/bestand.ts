@@ -97,6 +97,101 @@ export function positionenFuerBewertung(
   return [...merged.values()].sort((a, b) => b.wertEur - a.wertEur)
 }
 
+export type DepotStand = {
+  byIsin: Map<
+    string,
+    { stueck: number; name: string; assetKlasse: PortfolioPositionSnapshot['assetKlasse']; einstandKurs: number }
+  >
+  cash: number
+}
+
+/** Bestand + Cash zum Stichtag (inkl. Datum). */
+export function depotStandBisDatum(buchungen: PortfolioBuchung[], bisDatum: string): DepotStand {
+  const sortiert = [...buchungen]
+    .filter((b) => b.datum <= bisDatum)
+    .sort((a, b) => a.datum.localeCompare(b.datum))
+
+  const map = new Map<
+    string,
+    { stueck: number; kosten: number; name: string; assetKlasse: PortfolioPositionSnapshot['assetKlasse'] }
+  >()
+
+  for (const b of sortiert) {
+    if (!b.isin) continue
+    const isin = b.isin.toUpperCase()
+    const cur = map.get(isin) ?? {
+      stueck: 0,
+      kosten: 0,
+      name: b.wertpapierName?.trim() ?? isin,
+      assetKlasse: b.assetKlasse,
+    }
+
+    if (b.typ === 'kauf') {
+      let stk = b.stueck != null ? Math.abs(b.stueck) : 0
+      if (stk <= 0 && b.kursEur != null && b.kursEur > 0) stk = b.betragEur / b.kursEur
+      if (stk <= 0) continue
+      cur.stueck += stk
+      cur.kosten += b.betragEur
+    } else if (b.typ === 'verkauf') {
+      let stk = b.stueck != null ? Math.abs(b.stueck) : 0
+      if (stk <= 0 && b.kursEur != null && b.kursEur > 0) stk = b.betragEur / b.kursEur
+      if (cur.stueck > 0 && stk > 0) {
+        const anteil = Math.min(1, stk / cur.stueck)
+        cur.kosten = Math.round(cur.kosten * (1 - anteil) * 100) / 100
+        cur.stueck = Math.max(0, cur.stueck - stk)
+      } else {
+        cur.kosten = Math.max(0, cur.kosten - b.betragEur)
+      }
+    }
+    if (b.wertpapierName?.trim()) cur.name = b.wertpapierName.trim()
+    map.set(isin, cur)
+  }
+
+  let cash = 0
+  for (const b of sortiert) {
+    switch (b.typ) {
+      case 'einzahlung':
+        cash += b.betragEur
+        break
+      case 'auszahlung':
+        cash -= b.betragEur
+        break
+      case 'kauf':
+        cash -= b.betragEur
+        break
+      case 'verkauf':
+        cash += b.betragEur
+        break
+      case 'dividende':
+      case 'zins':
+        cash += b.betragEur
+        break
+      case 'steuer':
+      case 'gebuehr':
+        cash -= b.betragEur
+        break
+      default:
+        break
+    }
+  }
+
+  const byIsin = new Map<
+    string,
+    { stueck: number; name: string; assetKlasse: PortfolioPositionSnapshot['assetKlasse']; einstandKurs: number }
+  >()
+  for (const [isin, cur] of map) {
+    if (cur.stueck < 1e-8) continue
+    byIsin.set(isin, {
+      stueck: cur.stueck,
+      name: cur.name,
+      assetKlasse: cur.assetKlasse,
+      einstandKurs: cur.stueck > 0 ? cur.kosten / cur.stueck : 0,
+    })
+  }
+
+  return { byIsin, cash: Math.round(cash * 100) / 100 }
+}
+
 export function cashSaldoAusBuchungen(buchungen: PortfolioBuchung[]): number {
   let cash = 0
   for (const b of buchungen) {

@@ -45,6 +45,7 @@ export type LivePortfolio = {
     kurseQuelle: 'live' | 'einstand' | 'snapshot'
     kurseStand: string | null
   }
+  fx: FxKurse
   verlauf: { label: string; wert: number; monat: string }[]
 }
 
@@ -121,6 +122,35 @@ export async function ladeLiveKurseClient(symbols: string[]): Promise<LiveKurseP
   }
 
   return { kurse: map, stand, fx: fxKurseAusYahooMap(map), stooqEur }
+}
+
+/** Monatliche Yahoo-Schlusskurse (Rohwährung der Börse). */
+export async function ladeHistorischeKurseClient(
+  symbols: string[],
+  vonMonat: string,
+  bisMonat: string,
+): Promise<Map<string, Map<string, number>>> {
+  const uniq = [...new Set(symbols.map((s) => s.trim().toUpperCase()).filter(Boolean))].filter(
+    (s) => !s.startsWith('STOOQ:'),
+  )
+  if (uniq.length === 0) return new Map()
+
+  const res = await fetch('/api/portfolio-analyse/kurse/historie', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ symbols: uniq, vonMonat, bisMonat }),
+  })
+  const j = (await res.json()) as {
+    ok?: boolean
+    serien?: Record<string, Record<string, number>>
+  }
+  if (!j.ok || !j.serien) return new Map()
+
+  const out = new Map<string, Map<string, number>>()
+  for (const [sym, monate] of Object.entries(j.serien)) {
+    out.set(sym.toUpperCase(), new Map(Object.entries(monate)))
+  }
+  return out
 }
 
 function usBasisTickerAusKandidaten(kandidaten: string[]): string | null {
@@ -287,6 +317,7 @@ export function berechneLivePortfolio(
       kurseQuelle,
       kurseStand,
     },
+    fx,
     verlauf,
   }
 }
