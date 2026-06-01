@@ -2,6 +2,7 @@ import { ParqetCoreAnalyticsEngine } from '@/lib/portfolio-analyse/parqet-core'
 import {
   baueMonatsVerlauf,
   irrAusBuchungen,
+  realisierterGewinnAusVerkaeufen,
   steuernAufDividendenMonate,
   summenAusBuchungen,
   twrAusMonatsVerlauf,
@@ -51,7 +52,6 @@ export function portfolioDataAusBuchungen(
     const stk = p.stueck
     const avg = stk > 0 ? p.einstandEur / stk : 0
     const cur = stk > 0 ? p.wertLiveEur / stk : avg
-    einstandMap.set(id, { stueck: stk, kosten: p.einstandEur })
     byIsin.set(id, {
       assetId: id,
       assetName: p.anzeigeName,
@@ -84,7 +84,9 @@ export function portfolioDataAusBuchungen(
     cashflows: [],
   }
 
-  for (const b of buchungen) {
+  const sortiert = [...buchungen].sort((a, b) => a.datum.localeCompare(b.datum))
+
+  for (const b of sortiert) {
     const ts = new Date(`${b.datum}T12:00:00`)
     if (!Number.isFinite(ts.getTime())) continue
 
@@ -133,6 +135,14 @@ export function portfolioDataAusBuchungen(
     } else if (b.typ === 'gebuehr') {
       holding.totalFeesEUR += b.betragEur
     } else if (b.typ === 'kauf') {
+      let stkKauf = b.stueck != null ? Math.abs(b.stueck) : 0
+      if (stkKauf <= 0 && b.kursEur != null && b.kursEur > 0) stkKauf = b.betragEur / b.kursEur
+      if (stkKauf > 0) {
+        const cur = einstandMap.get(isin) ?? { stueck: 0, kosten: 0 }
+        cur.stueck += stkKauf
+        cur.kosten += b.betragEur
+        einstandMap.set(isin, cur)
+      }
       holding.cashflows.push({ timestamp: ts, amountEUR: b.betragEur, type: 'OUT' })
     } else if (b.typ === 'verkauf') {
       const einstand = einstandMap.get(isin)
@@ -198,6 +208,10 @@ export function parqetReportAusDepot(
   report.metrics.totalFeesEUR = summen.gebuehren
   report.taxFees.totalTaxesPaidEUR = summen.steuern
   report.taxFees.totalFeesPaidEUR = summen.gebuehren
+
+  const realisiert = realisierterGewinnAusVerkaeufen(buchungen)
+  report.metrics.realizedGainsEUR = realisiert
+  report.taxFees.realizedGainsEUR = realisiert
 
   return report
 }

@@ -126,7 +126,6 @@ export function PortfolioDashboardClient() {
           }}
           metrics={m}
           irr={irr}
-          wertentwicklung={wertentwicklung}
           startDatumIso={startDatumIso}
         />
       ) : null}

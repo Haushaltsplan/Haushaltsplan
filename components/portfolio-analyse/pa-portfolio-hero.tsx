@@ -9,8 +9,6 @@ import { eintraegeZuDonut, gewichtungNachAsset } from '@/lib/portfolio-analyse/g
 import type { LivePosition } from '@/lib/portfolio-analyse/live-bewertung'
 import type { PortfolioScopeMetrics } from '@/lib/portfolio-analyse/parqet-core/types'
 import { ASSET_KLASSE_LABEL, type AssetKlasse } from '@/lib/portfolio-analyse/types'
-import type { WertentwicklungPunkt } from '@/lib/portfolio-analyse/wertentwicklung'
-
 function formatEurKompakt(n: number): string {
   return `${Math.round(n).toLocaleString('de-DE')}€`
 }
@@ -63,7 +61,6 @@ export function PaPortfolioHero({
   kennzahlen,
   metrics,
   irr,
-  wertentwicklung,
   startDatumIso,
 }: {
   positionen: LivePosition[]
@@ -74,7 +71,6 @@ export function PaPortfolioHero({
   }
   metrics: PortfolioScopeMetrics | null | undefined
   irr: number | null | undefined
-  wertentwicklung: WertentwicklungPunkt[]
   startDatumIso: string | null
 }) {
   const donut = useMemo(() => {
@@ -92,8 +88,8 @@ export function PaPortfolioHero({
   const dividenden = metrics?.totalDividendsGrossEUR ?? 0
   const realisiert = metrics?.realizedGainsEUR ?? 0
 
-  const wertAmStart =
-    wertentwicklung.length > 0 ? wertentwicklung[0].portfoliowertEur : 0
+  /** Depotstart: noch kein Bestand (wie Parqet „Wert am …“ am Eröffnungstag). */
+  const wertAmStart = 0
   const startLabel = startDatumIso ? `Wert am ${formatDatumDe(startDatumIso)}` : 'Wert am Start'
 
   const perfBadge =

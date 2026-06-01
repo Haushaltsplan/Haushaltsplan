@@ -283,3 +283,40 @@ export function summenAusBuchungen(buchungen: PortfolioBuchung[]) {
     verkaeufe: round2(verkaeufe),
   }
 }
+
+/**
+ * Kumulierter realisierter Gewinn/Verlust aus allen Verkäufen (Erlös minus anteiliger Einstand).
+ */
+export function realisierterGewinnAusVerkaeufen(buchungen: PortfolioBuchung[]): number {
+  const sortiert = [...buchungen].sort((a, b) => a.datum.localeCompare(b.datum))
+  const einstand = new Map<string, { stueck: number; kosten: number }>()
+  let sum = 0
+
+  for (const b of sortiert) {
+    if (!b.isin) continue
+    const isin = b.isin.toUpperCase()
+
+    if (b.typ === 'kauf') {
+      let stk = b.stueck != null ? Math.abs(b.stueck) : 0
+      if (stk <= 0 && b.kursEur != null && b.kursEur > 0) stk = b.betragEur / b.kursEur
+      if (stk <= 0) continue
+      const cur = einstand.get(isin) ?? { stueck: 0, kosten: 0 }
+      cur.stueck += stk
+      cur.kosten += b.betragEur
+      einstand.set(isin, cur)
+    } else if (b.typ === 'verkauf') {
+      let stk = b.stueck != null ? Math.abs(b.stueck) : 0
+      if (stk <= 0 && b.kursEur != null && b.kursEur > 0) stk = b.betragEur / b.kursEur
+      const cur = einstand.get(isin)
+      if (!cur || cur.stueck <= 0 || stk <= 0) continue
+      const anteil = Math.min(1, stk / cur.stueck)
+      const kostenAnteil = cur.kosten * anteil
+      sum += b.betragEur - kostenAnteil
+      cur.kosten = round2(cur.kosten * (1 - anteil))
+      cur.stueck = Math.max(0, cur.stueck - stk)
+      einstand.set(isin, cur)
+    }
+  }
+
+  return round2(sum)
+}
