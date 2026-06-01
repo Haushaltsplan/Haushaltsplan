@@ -1,7 +1,11 @@
 /**
- * XIRR-Cashflows wie Parqet (geldgewichtete Rendite / IZF):
- * Nur Geldflüsse über die Portfolio-Grenze — keine internen Käufe/Verkäufe,
- * die nur Cash gegen Wertpapiere tauschen (sonst Doppelzählung mit Einzahlungen).
+ * XIRR / IZF wie Parqet (Hilfe: „Tagesgeldkonto“-Modell):
+ * - Kauf = Einzahlung auf das virtuelle Konto (negativ)
+ * - Verkauf = Auszahlung vom Konto (positiv)
+ * - Dividenden, Zinsen = Erträge (positiv)
+ * - Bank-Einzahlung nur ohne Kauf am selben Tag (sonst Doppelzählung)
+ * - Bank-Auszahlung nur ohne Verkauf am selben Tag
+ * Steuern/Gebühren sind in den Nettobeträgen der Trades bereits enthalten.
  */
 
 import type { PortfolioBuchung } from '@/lib/portfolio-analyse/types'
@@ -13,23 +17,19 @@ function datumAlsDate(iso: string): Date | null {
   return Number.isFinite(d.getTime()) ? d : null
 }
 
-/** Kalendertage mit Einzahlung (für Paarung mit Käufen am selben Tag). */
-function tageMitEinzahlung(buchungen: PortfolioBuchung[]): Set<string> {
+function tageMitTyp(buchungen: PortfolioBuchung[], typ: PortfolioBuchung['typ']): Set<string> {
   const s = new Set<string>()
   for (const b of buchungen) {
-    if (b.typ === 'einzahlung') s.add(b.datum)
+    if (b.typ === typ) s.add(b.datum)
   }
   return s
 }
 
-/**
- * Cashflows für Portfolio-XIRR (Parqet-kompatibel).
- * - Negativ: Einzahlung, Steuern, Gebühren; Käufe nur ohne Einzahlung am selben Tag (z. B. Saveback)
- * - Positiv: Auszahlung, Dividenden, Zinsen (keine Verkäufe — Erlös steckt im Terminalwert)
- */
+/** Cashflows für Portfolio-XIRR (Parqet IZF / geldgewichtete Rendite). */
 export function parqetIrrCashflowsAusBuchungen(buchungen: PortfolioBuchung[]): IrrCashflow[] {
   const sortiert = [...buchungen].sort((a, b) => a.datum.localeCompare(b.datum))
-  const mitEinzahlung = tageMitEinzahlung(sortiert)
+  const tageKauf = tageMitTyp(sortiert, 'kauf')
+  const tageVerkauf = tageMitTyp(sortiert, 'verkauf')
   const flows: IrrCashflow[] = []
 
   for (const b of sortiert) {
@@ -37,22 +37,25 @@ export function parqetIrrCashflowsAusBuchungen(buchungen: PortfolioBuchung[]): I
     if (!d) continue
 
     switch (b.typ) {
-      case 'einzahlung':
-      case 'steuer':
-      case 'gebuehr':
+      case 'kauf':
         flows.push({ date: d, amount: -Math.abs(b.betragEur) })
         break
-      case 'auszahlung':
+      case 'verkauf':
+        flows.push({ date: d, amount: Math.abs(b.betragEur) })
+        break
       case 'dividende':
       case 'zins':
         flows.push({ date: d, amount: Math.abs(b.betragEur) })
         break
-      case 'kauf':
-        if (!mitEinzahlung.has(b.datum)) {
+      case 'einzahlung':
+        if (!tageKauf.has(b.datum)) {
           flows.push({ date: d, amount: -Math.abs(b.betragEur) })
         }
         break
-      case 'verkauf':
+      case 'auszahlung':
+        if (!tageVerkauf.has(b.datum)) {
+          flows.push({ date: d, amount: Math.abs(b.betragEur) })
+        }
         break
       default:
         break

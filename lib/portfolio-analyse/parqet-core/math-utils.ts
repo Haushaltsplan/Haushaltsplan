@@ -46,7 +46,7 @@ export function annualizeReturn(totalReturn: number, days: number): number | nul
 }
 
 export interface Cashflow {
-  amountEUR: number // negativ: Käufe/Einzahlungen; positiv: Verkäufe/Dividenden/Endwert
+  amountEUR: number // negativ: Käufe (Parqet: „Einzahlung“); positiv: Verkäufe, Erträge, Endwert
   timestamp: Date
 }
 
@@ -82,7 +82,9 @@ export function calculateXIRR(cashflows: Cashflow[], guess = 0.1): number {
       break
     }
 
-    const nextR = r - npv / derivativeNPV
+    let nextR = r - npv / derivativeNPV
+    if (!Number.isFinite(nextR)) break
+    nextR = clamp(nextR, -0.9999, 10)
 
     if (Math.abs(nextR - r) < precision) {
       return nextR

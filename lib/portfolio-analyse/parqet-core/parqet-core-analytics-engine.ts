@@ -251,19 +251,37 @@ export class ParqetCoreAnalyticsEngine {
   }
 
   /**
-   * IZF-Cashflows wie Parqet: nur Depot-Grenze (Cash IN/OUT) + Dividenden, keine Wertpapier-Käufe/-Verkäufe.
+   * IZF wie Parqet: Käufe = Einzahlung (OUT), Verkäufe = Auszahlung (IN), Dividenden positiv.
+   * Depot-Cash OUT/IN nur, wenn am selben Tag kein Wertpapier-Kauf/-Verkauf (keine Doppelzählung).
    */
   private aggregateCashflowsForIrr(assets: AssetHolding[]): Array<{ date: Date; amount: number }> {
     const PORTFOLIO_CASH_ID = '__portfolio_cash__'
+    const dayKey = (d: Date) => d.toISOString().slice(0, 10)
+
+    const tageKauf = new Set<string>()
+    const tageVerkauf = new Set<string>()
+    for (const a of assets) {
+      if (a.assetId === PORTFOLIO_CASH_ID) continue
+      for (const cf of a.cashflows) {
+        const k = dayKey(cf.timestamp)
+        if (cf.type === 'OUT') tageKauf.add(k)
+        if (cf.type === 'IN') tageVerkauf.add(k)
+      }
+    }
+
     const out: Array<{ date: Date; amount: number }> = []
     for (const a of assets) {
       const isCash = a.assetId === PORTFOLIO_CASH_ID
       for (const cf of a.cashflows) {
+        const k = dayKey(cf.timestamp)
         if (cf.type === 'DIVIDEND') {
           out.push({ date: cf.timestamp, amount: Math.abs(cf.amountEUR) })
-        } else if (isCash) {
-          if (cf.type === 'OUT') out.push({ date: cf.timestamp, amount: -Math.abs(cf.amountEUR) })
-          else if (cf.type === 'IN') out.push({ date: cf.timestamp, amount: Math.abs(cf.amountEUR) })
+        } else if (cf.type === 'OUT') {
+          if (isCash && tageKauf.has(k)) continue
+          out.push({ date: cf.timestamp, amount: -Math.abs(cf.amountEUR) })
+        } else if (cf.type === 'IN') {
+          if (isCash && tageVerkauf.has(k)) continue
+          out.push({ date: cf.timestamp, amount: Math.abs(cf.amountEUR) })
         }
       }
     }

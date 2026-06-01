@@ -122,7 +122,7 @@ export function PortfolioDashboardClient() {
         <PaHeroKpi
           label="IZF (annualisiert)"
           value={irr != null ? formatProzent(irr) : '—'}
-          sub="Interner Zinsfuß auf alle Cashflows"
+          sub="Geldgewichtete Rendite (Käufe, Verkäufe, Erträge, Depotwert heute)"
         />
         <PaHeroKpi
           label="Zeitgewichtete Rendite"
