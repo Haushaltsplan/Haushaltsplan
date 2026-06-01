@@ -1,21 +1,31 @@
 /**
- * Portfolio-IZF / XIRR wie Parqet (Dashboard, gesamtes Depot):
+ * Portfolio-IZF / XIRR (Parqet „Max“, Dashboard).
  *
- * Parqet-Metapher: Kauf = Einzahlung auf ein „Tagesgeldkonto“, Verkauf würde Auszahlung
- * bedeuten — am Depot bleibt der Erlös aber im Portfoliowert (Cash/Neuinvestition).
- * Daher: Käufe als negative Flows, Dividenden/Zinsen positiv, kein Verkaufs-Cashflow,
- * Terminal = aktueller Depotwert.
+ * Zwei Modi — abhängig vom Import:
  *
- * Bank-Einzahlungen (einzahlung) nur, wenn es keine Käufe gibt (reines Cash) oder wenn
- * noch kein Kauf im Depot war — sonst Doppelzählung (Deposit + Buy aus Parqet-CSV).
+ * 1) Parqet/Depot mit Ein- & Auszahlungen (Deposit/Withdrawal in CSV):
+ *    Nur Geldflüsse über die Depot-Grenze (wie Portfolio Performance).
+ *    Kauf/Verkauf sind intern (Cash ↔ Wertpapier) und werden NICHT gezählt.
+ *    → verhindert Doppelzählung Deposit + Buy.
  *
- * Kauf-Betrag: Handelswert (Stück × Kurs) wie Parqet „amount“, nicht nochmals + Gebühr,
- * wenn Gebühr bereits in der CSV-Zeile enthalten war.
+ * 2) Nur Käufe/Verkäufe (z. B. TR ohne Deposit-Zeilen):
+ *    Kauf = negative Einzahlung, Verkauf = positive Auszahlung (Parqet-Metapher).
  */
 
 import type { PortfolioBuchung } from '@/lib/portfolio-analyse/types'
 
 export type IrrCashflow = { date: Date; amount: number }
+
+export type ParqetIrrModus = 'extern' | 'handel'
+
+export type ParqetIrrDiagnose = {
+  modus: ParqetIrrModus
+  anzahlFlows: number
+  summeNegativEur: number
+  summePositivEur: number
+  ersteBuchung: string | null
+  letzteBuchung: string | null
+}
 
 function round2(n: number): number {
   return Math.round(n * 100) / 100
@@ -26,11 +36,24 @@ function datumAlsDate(iso: string): Date | null {
   return Number.isFinite(d.getTime()) ? d : null
 }
 
-function hatKaeufe(buchungen: PortfolioBuchung[]): boolean {
-  return buchungen.some((b) => b.typ === 'kauf')
+/** Parqet-CSV / Depot mit Bank-Ein- und Auszahlungen. */
+export function hatExterneDepotEinAus(buchungen: PortfolioBuchung[]): boolean {
+  return buchungen.some((b) => b.typ === 'einzahlung' || b.typ === 'auszahlung')
 }
 
-/** Investitionsbetrag für IZF (ohne doppelte Gebühr im Kauf-Flow). */
+function tageMitTyp(buchungen: PortfolioBuchung[], typ: PortfolioBuchung['typ']): Set<string> {
+  const s = new Set<string>()
+  for (const b of buchungen) {
+    if (b.typ === typ) s.add(b.datum)
+  }
+  return s
+}
+
+export function parqetIrrModus(buchungen: PortfolioBuchung[]): ParqetIrrModus {
+  return hatExterneDepotEinAus(buchungen) ? 'extern' : 'handel'
+}
+
+/** Investitionsbetrag bei Handels-Modus: Handelswert (amount), nicht Gebühr doppelt. */
 export function irrBetragFuerKauf(b: PortfolioBuchung): number {
   const stk = b.stueck != null ? Math.abs(b.stueck) : 0
   if (stk > 0 && b.kursEur != null && b.kursEur > 0) {
@@ -40,48 +63,95 @@ export function irrBetragFuerKauf(b: PortfolioBuchung): number {
   return Math.abs(b.betragEur)
 }
 
-/** Cashflows für Portfolio-XIRR (Parqet IZF). */
-export function parqetIrrCashflowsAusBuchungen(buchungen: PortfolioBuchung[]): IrrCashflow[] {
-  const sortiert = [...buchungen].sort((a, b) => a.datum.localeCompare(b.datum))
-  const mitKaeufen = hatKaeufe(sortiert)
+function flowsExtern(sortiert: PortfolioBuchung[]): IrrCashflow[] {
+  const flows: IrrCashflow[] = []
+  for (const b of sortiert) {
+    const d = datumAlsDate(b.datum)
+    if (!d) continue
+    switch (b.typ) {
+      case 'einzahlung':
+        flows.push({ date: d, amount: -Math.abs(b.betragEur) })
+        break
+      case 'auszahlung':
+        flows.push({ date: d, amount: Math.abs(b.betragEur) })
+        break
+      case 'dividende':
+      case 'zins':
+        flows.push({ date: d, amount: Math.abs(b.betragEur) })
+        break
+      default:
+        break
+    }
+  }
+  return flows
+}
+
+function flowsHandel(sortiert: PortfolioBuchung[]): IrrCashflow[] {
+  const tageKauf = tageMitTyp(sortiert, 'kauf')
+  const tageVerkauf = tageMitTyp(sortiert, 'verkauf')
   const flows: IrrCashflow[] = []
 
   for (const b of sortiert) {
     const d = datumAlsDate(b.datum)
     if (!d) continue
-
     switch (b.typ) {
       case 'kauf':
         flows.push({ date: d, amount: -irrBetragFuerKauf(b) })
         break
       case 'verkauf':
-        // Kein Flow — Erlös bleibt im Depot (Terminalwert).
+        flows.push({ date: d, amount: Math.abs(b.betragEur) })
         break
       case 'dividende':
       case 'zins':
         flows.push({ date: d, amount: Math.abs(b.betragEur) })
         break
       case 'einzahlung':
-        if (!mitKaeufen) {
+        if (!tageKauf.has(b.datum)) {
           flows.push({ date: d, amount: -Math.abs(b.betragEur) })
         }
         break
       case 'auszahlung':
-        flows.push({ date: d, amount: Math.abs(b.betragEur) })
-        break
-      case 'steuer':
-      case 'gebuehr':
-        // Bereits in Netto-Kauf/Dividende oder separat in Parqet — nicht doppelt zählen.
+        if (!tageVerkauf.has(b.datum)) {
+          flows.push({ date: d, amount: Math.abs(b.betragEur) })
+        }
         break
       default:
         break
     }
   }
-
-  return aggregiereFlowsNachTag(flows)
+  return flows
 }
 
-/** Gleicher Kalendertag: Beträge summieren (wie Excel/Parqet-Aggregation). */
+/** Cashflows für Portfolio-XIRR (Parqet IZF). */
+export function parqetIrrCashflowsAusBuchungen(buchungen: PortfolioBuchung[]): IrrCashflow[] {
+  const sortiert = [...buchungen].sort((a, b) => a.datum.localeCompare(b.datum))
+  const roh = parqetIrrModus(sortiert) === 'extern' ? flowsExtern(sortiert) : flowsHandel(sortiert)
+  return aggregiereFlowsNachTag(roh)
+}
+
+export function parqetIrrDiagnose(
+  buchungen: PortfolioBuchung[],
+  terminalValueEUR: number,
+): ParqetIrrDiagnose {
+  const flows = parqetIrrCashflowsAusBuchungen(buchungen)
+  let summeNegativEur = 0
+  let summePositivEur = 0
+  for (const f of flows) {
+    if (f.amount < 0) summeNegativEur += f.amount
+    else summePositivEur += f.amount
+  }
+  summePositivEur += Math.max(0, terminalValueEUR)
+  const sortiert = [...buchungen].sort((a, b) => a.datum.localeCompare(b.datum))
+  return {
+    modus: parqetIrrModus(buchungen),
+    anzahlFlows: flows.length + (terminalValueEUR > 0 ? 1 : 0),
+    summeNegativEur: round2(summeNegativEur),
+    summePositivEur: round2(summePositivEur),
+    ersteBuchung: sortiert[0]?.datum ?? null,
+    letzteBuchung: sortiert[sortiert.length - 1]?.datum ?? null,
+  }
+}
+
 function aggregiereFlowsNachTag(flows: IrrCashflow[]): IrrCashflow[] {
   const map = new Map<string, IrrCashflow>()
   for (const f of flows) {

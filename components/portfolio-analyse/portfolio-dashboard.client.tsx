@@ -19,6 +19,8 @@ import {
   sortiereBuchungenNeuesteZuerst,
 } from '@/lib/portfolio-analyse/berechnung'
 import { anzeigeNameFuerIsin } from '@/lib/portfolio-analyse/isin-metadata-client'
+import { irrMindestHistorieTage } from '@/lib/portfolio-analyse/depot-berechnung'
+import { parqetIrrModus } from '@/lib/portfolio-analyse/parqet-xirr'
 import { berechneDrawdown, monatsrenditenProzent } from '@/lib/portfolio-analyse/zeitreihen'
 import { BUCHUNGS_TYP_LABEL, type BuchungsTyp } from '@/lib/portfolio-analyse/types'
 
@@ -73,6 +75,9 @@ export function PortfolioDashboardClient() {
     return min ? formatDatumDe(min) : null
   }, [buchungen])
 
+  const irrModus = useMemo(() => (buchungen.length > 0 ? parqetIrrModus(buchungen) : null), [buchungen])
+  const irrHistorieTage = useMemo(() => irrMindestHistorieTage(buchungen), [buchungen])
+
   if (laden && !live) {
     return <p className="py-16 text-center text-sm text-zinc-500">Portfolio wird geladen …</p>
   }
@@ -122,7 +127,17 @@ export function PortfolioDashboardClient() {
         <PaHeroKpi
           label="IZF (annualisiert)"
           value={irr != null ? formatProzent(irr) : '—'}
-          sub="Geldgewichtete Rendite (Käufe, Verkäufe, Erträge, Depotwert heute)"
+          sub={
+            irrHistorieTage != null && irrHistorieTage < 90
+              ? `Parqet berechnet den IZF erst ab 90 Tagen Historie (${irrHistorieTage} Tage).`
+              : startDatum
+                ? `Gesamte Historie (Parqet „Max“) · ${
+                    irrModus === 'extern'
+                      ? 'Ein-/Auszahlungen + Erträge'
+                      : 'Käufe/Verkäufe + Erträge'
+                  } · seit ${startDatum}`
+                : 'Gesamte Historie (Parqet „Max“)'
+          }
         />
         <PaHeroKpi
           label="Zeitgewichtete Rendite"

@@ -3,7 +3,10 @@
  */
 
 import { berechneIrrAnnualizedPercent } from '@/lib/portfolio-analyse/parqet-core/math-utils'
-import { parqetIrrCashflowsAusBuchungen } from '@/lib/portfolio-analyse/parqet-xirr'
+import {
+  parqetIrrCashflowsAusBuchungen,
+  parqetIrrDiagnose,
+} from '@/lib/portfolio-analyse/parqet-xirr'
 import type { PortfolioBuchung } from '@/lib/portfolio-analyse/types'
 
 export type MonatsPunkt = { label: string; wert: number; monat: string }
@@ -153,18 +156,33 @@ export function baueMonatsVerlauf(
   return filled
 }
 
+/** Parqet: IZF erst ab ca. 90 Tagen Historie — sonst kein sinnvoller Wert. */
+export function irrMindestHistorieTage(buchungen: PortfolioBuchung[], asOf: Date = new Date()): number | null {
+  if (buchungen.length === 0) return null
+  const min = [...buchungen].sort((a, b) => a.datum.localeCompare(b.datum))[0]?.datum
+  if (!min) return null
+  const start = new Date(`${min}T12:00:00`)
+  if (!Number.isFinite(start.getTime())) return null
+  return Math.floor((asOf.getTime() - start.getTime()) / (1000 * 60 * 60 * 24))
+}
+
 /** IZF (XIRR) wie Parqet — siehe parqet-xirr.ts */
 export function irrAusBuchungen(
   buchungen: PortfolioBuchung[],
   terminalValueEUR: number,
   asOf: Date = new Date(),
 ): number | null {
+  const tage = irrMindestHistorieTage(buchungen, asOf)
+  if (tage != null && tage < 90) return null
+
   return berechneIrrAnnualizedPercent(
     parqetIrrCashflowsAusBuchungen(buchungen),
     terminalValueEUR,
     asOf,
   )
 }
+
+export { parqetIrrDiagnose }
 
 /** Zeitgewichtete Rendite aus Monatsverlauf, externe Zuflüsse pro Monat neutralisiert. */
 export function twrAusMonatsVerlauf(

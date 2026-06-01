@@ -251,19 +251,14 @@ export class ParqetCoreAnalyticsEngine {
   }
 
   /**
-   * IZF wie Parqet (Depot): Wertpapier-Käufe (OUT), Dividenden, Cash-Einzahlung nur ohne Käufe,
-   * Auszahlungen (IN), keine Verkaufs-Flows.
+   * IZF-Cashflows: mit Depot-Ein/Aus nur Cash-Konto (extern), sonst Wertpapier-Käufe/-Verkäufe.
    */
   private aggregateCashflowsForIrr(assets: AssetHolding[]): Array<{ date: Date; amount: number }> {
     const PORTFOLIO_CASH_ID = '__portfolio_cash__'
-    let hatSecurityOut = false
-    for (const a of assets) {
-      if (a.assetId === PORTFOLIO_CASH_ID) continue
-      if (a.cashflows.some((cf) => cf.type === 'OUT')) {
-        hatSecurityOut = true
-        break
-      }
-    }
+    const cashAsset = assets.find((a) => a.assetId === PORTFOLIO_CASH_ID)
+    const hatExtern =
+      cashAsset != null &&
+      cashAsset.cashflows.some((cf) => cf.type === 'IN' || cf.type === 'OUT')
 
     const out: Array<{ date: Date; amount: number }> = []
     for (const a of assets) {
@@ -271,12 +266,13 @@ export class ParqetCoreAnalyticsEngine {
       for (const cf of a.cashflows) {
         if (cf.type === 'DIVIDEND') {
           out.push({ date: cf.timestamp, amount: Math.abs(cf.amountEUR) })
-        } else if (cf.type === 'OUT' && !isCash) {
-          out.push({ date: cf.timestamp, amount: -Math.abs(cf.amountEUR) })
-        } else if (cf.type === 'OUT' && isCash && !hatSecurityOut) {
-          out.push({ date: cf.timestamp, amount: -Math.abs(cf.amountEUR) })
-        } else if (cf.type === 'IN' && isCash) {
-          out.push({ date: cf.timestamp, amount: Math.abs(cf.amountEUR) })
+        } else if (hatExtern) {
+          if (!isCash) continue
+          if (cf.type === 'OUT') out.push({ date: cf.timestamp, amount: -Math.abs(cf.amountEUR) })
+          if (cf.type === 'IN') out.push({ date: cf.timestamp, amount: Math.abs(cf.amountEUR) })
+        } else if (!isCash) {
+          if (cf.type === 'OUT') out.push({ date: cf.timestamp, amount: -Math.abs(cf.amountEUR) })
+          if (cf.type === 'IN') out.push({ date: cf.timestamp, amount: Math.abs(cf.amountEUR) })
         }
       }
     }
