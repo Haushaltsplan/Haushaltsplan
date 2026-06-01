@@ -6,6 +6,7 @@ import type {
   PortfolioData,
   SinglePortfolioReport,
 } from '@/lib/portfolio-analyse/parqet-core/types'
+import { isinSektorName } from '@/lib/portfolio-analyse/isin-sektoren'
 import type { LivePosition } from '@/lib/portfolio-analyse/live-bewertung'
 import type { AssetKlasse, PortfolioBuchung, PortfolioDbBuchung } from '@/lib/portfolio-analyse/types'
 
@@ -55,6 +56,7 @@ export function portfolioDataAusBuchungen(
       assetId: id,
       assetName: p.anzeigeName,
       assetType: assetTyp(p.assetKlasse),
+      sectorName: isinSektorName(p.isin),
       quantity: stk,
       averagePrice: Math.round(avg * 10000) / 10000,
       currentPrice: Math.round(cur * 10000) / 10000,
