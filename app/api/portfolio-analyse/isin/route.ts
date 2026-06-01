@@ -24,7 +24,7 @@ export async function POST(req: Request) {
         .map((x) => String(x).trim().toUpperCase())
         .filter((s) => ISIN_RE.test(s)),
     ),
-  ].slice(0, 80)
+  ].slice(0, 120)
 
   if (isins.length === 0) {
     return NextResponse.json({ ok: true, metadaten: [] })

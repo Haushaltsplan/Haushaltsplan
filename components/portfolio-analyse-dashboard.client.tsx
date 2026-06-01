@@ -12,7 +12,7 @@ import {
   ladeLiveKurseClient,
   symboleAusMeta,
 } from '@/lib/portfolio-analyse/live-bewertung'
-import { anzeigeNameFuerIsin, ladeIsinMetadaten } from '@/lib/portfolio-analyse/isin-metadata-client'
+import { anzeigeNameFuerIsin, ladeIsinMetadaten, wknFuerIsin } from '@/lib/portfolio-analyse/isin-metadata-client'
 import type { PortfolioDbBuchung, PortfolioDbSnapshot } from '@/lib/portfolio-analyse/types'
 import { ASSET_KLASSE_FARBE, ASSET_KLASSE_LABEL, BUCHUNGS_TYP_LABEL } from '@/lib/portfolio-analyse/types'
 import type { DonutSegment } from '@/components/finanzen/donut-chart'
@@ -72,10 +72,10 @@ export function PortfolioAnalyseDashboard({
     let cancelled = false
     async function run() {
       const sym = symboleAusMeta(positionenFuerBewertung(buchungen, snapshot), meta)
-      const { kurse, stand, eurUsd } = await ladeLiveKurseClient(sym)
+      const { kurse, stand, fx } = await ladeLiveKurseClient(sym)
       if (cancelled) return
       if (sym.length > 0 && kurse.size === 0) setKursFehler(true)
-      setLive(berechneLivePortfolio(buchungen, snapshot, meta, kurse, stand, eurUsd))
+      setLive(berechneLivePortfolio(buchungen, snapshot, meta, kurse, stand, fx))
     }
     void run()
     const t = setInterval(() => void run(), 5 * 60 * 1000)
@@ -192,6 +192,17 @@ export function PortfolioAnalyseDashboard({
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-sm font-medium text-zinc-100">{p.anzeigeName}</p>
                         <p className="text-[11px] text-zinc-500">
+                          {p.isin ? (
+                            <span className="font-mono text-zinc-600">{p.isin}</span>
+                          ) : null}
+                          {p.wkn ? (
+                            <>
+                              {p.isin ? ' · ' : null}
+                              <span>WKN {p.wkn}</span>
+                            </>
+                          ) : null}
+                        </p>
+                        <p className="text-[11px] text-zinc-500">
                           {p.stueck.toLocaleString('de-DE', { maximumFractionDigits: 4 })} Stk
                           {p.kursLiveEur != null
                             ? ` · ${p.kursLiveEur.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €`
@@ -201,8 +212,16 @@ export function PortfolioAnalyseDashboard({
                       </div>
                       <div className="text-right">
                         <p className="text-sm font-medium tabular-nums text-zinc-100">{formatEur(p.wertLiveEur)}</p>
-                        <p className={`text-xs tabular-nums ${pctClass(p.gewinnVerlustProzent)}`}>
-                          {p.gewinnVerlustProzent != null ? formatProzent(p.gewinnVerlustProzent) : '—'}
+                        <p
+                          className={`text-xs tabular-nums ${
+                            p.hatLiveKurs ? pctClass(p.gewinnVerlustProzent) : 'text-zinc-600'
+                          }`}
+                        >
+                          {p.hatLiveKurs
+                            ? p.gewinnVerlustProzent != null
+                              ? formatProzent(p.gewinnVerlustProzent)
+                              : '—'
+                            : 'Einstand'}
                         </p>
                       </div>
                     </li>
@@ -288,8 +307,14 @@ export function PortfolioAnalyseDashboard({
                   </td>
                   <td className="px-4 py-2 tabular-nums text-zinc-400">{formatDatumDe(b.datum)}</td>
                   <td className="px-4 py-2 text-zinc-300">{BUCHUNGS_TYP_LABEL[b.typ]}</td>
-                  <td className="max-w-[200px] truncate px-4 py-2 text-zinc-200">
-                    {anzeigeNameFuerIsin(b.isin, b.wertpapierName, meta)}
+                  <td className="max-w-[240px] px-4 py-2 text-zinc-200">
+                    <p className="truncate">{anzeigeNameFuerIsin(b.isin, b.wertpapierName, meta)}</p>
+                    {b.isin ? (
+                      <p className="truncate font-mono text-[10px] text-zinc-500">
+                        {b.isin}
+                        {wknFuerIsin(b.isin, meta) ? ` · WKN ${wknFuerIsin(b.isin, meta)}` : ''}
+                      </p>
+                    ) : null}
                   </td>
                   <td className="px-4 py-2 text-right tabular-nums text-zinc-100">{formatEur(b.betragEur)}</td>
                 </tr>

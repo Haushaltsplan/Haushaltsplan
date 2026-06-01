@@ -1,6 +1,14 @@
 import { cashSaldoAusBuchungen, positionenFuerBewertung } from '@/lib/portfolio-analyse/bestand'
+import { teileArray } from '@/lib/portfolio-analyse/batch-hilfen'
+import { anzeigeNameFuerIsin, wknFuerIsin } from '@/lib/portfolio-analyse/isin-metadata-client'
 import type { IsinMetadata } from '@/lib/portfolio-analyse/isin-lookup-server'
-import { kandidatenMitDeFallback, waehleBesterKurs } from '@/lib/portfolio-analyse/kurs-aufloesung'
+import {
+  FX_SYMBOLE,
+  fxKurseAusYahooMap,
+  kandidatenMitDeFallback,
+  type FxKurse,
+  waehleBesterKurs,
+} from '@/lib/portfolio-analyse/kurs-aufloesung'
 import type { YahooKursZeile } from '@/lib/portfolio-analyse/yahoo-kurse-server'
 import type {
   PortfolioAnalyseKennzahlen,
@@ -19,7 +27,11 @@ export type LivePosition = PortfolioPositionSnapshot & {
   aenderungTagProzent: number | null
   gewichtProzent: number
   anzeigeName: string
+  wkn: string | null
+  hatLiveKurs: boolean
 }
+
+const KURSE_BATCH = 80
 
 export type LivePortfolio = {
   positionen: LivePosition[]
@@ -33,6 +45,7 @@ export type LivePortfolio = {
   verlauf: { label: string; wert: number }[]
 }
 
+/** Symbole für Yahoo-Abfrage (pro Position begrenzt, um API-Limits nicht zu sprengen). */
 export function symboleAusMeta(
   positionen: PortfolioPositionSnapshot[],
   meta: Map<string, IsinMetadata>,
@@ -42,9 +55,9 @@ export function symboleAusMeta(
     const isin = p.isin?.toUpperCase()
     if (!isin) continue
     const m = meta.get(isin)
-    const kandidaten =
-      m?.symbolCandidates?.length ? m.symbolCandidates : m?.symbolYahoo ? [m.symbolYahoo] : []
-    for (const sym of kandidatenMitDeFallback(kandidaten)) set.add(sym)
+    const basis =
+      m?.symbolCandidates?.length ? m.symbolCandidates.slice(0, 6) : m?.symbolYahoo ? [m.symbolYahoo] : []
+    for (const sym of kandidatenMitDeFallback(basis)) set.add(sym)
   }
   return [...set]
 }
@@ -52,29 +65,34 @@ export function symboleAusMeta(
 export async function ladeLiveKurseClient(symbols: string[]): Promise<{
   kurse: Map<string, YahooKursZeile>
   stand: string | null
-  eurUsd: number | null
+  fx: FxKurse
 }> {
-  if (symbols.length === 0) return { kurse: new Map(), stand: null, eurUsd: null }
-  const symbole = [...new Set([...symbols, 'EURUSD=X'])]
-  const res = await fetch('/api/portfolio-analyse/kurse', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ symbols: symbole }),
-  })
-  const j = (await res.json()) as {
-    ok?: boolean
-    kurse?: Record<string, YahooKursZeile>
-    stand?: string
+  if (symbols.length === 0) {
+    return { kurse: new Map(), stand: null, fx: fxKurseAusYahooMap(new Map()) }
   }
+  const symbole = [...new Set([...symbols, ...FX_SYMBOLE])]
   const map = new Map<string, YahooKursZeile>()
-  if (j.ok && j.kurse) {
+  let stand: string | null = null
+
+  for (const batch of teileArray(symbole, KURSE_BATCH)) {
+    const res = await fetch('/api/portfolio-analyse/kurse', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ symbols: batch }),
+    })
+    const j = (await res.json()) as {
+      ok?: boolean
+      kurse?: Record<string, YahooKursZeile>
+      stand?: string
+    }
+    if (!j.ok || !j.kurse) continue
+    stand = j.stand ?? stand
     for (const [sym, row] of Object.entries(j.kurse)) {
       map.set(sym.toUpperCase(), row)
     }
   }
-  const fx = map.get('EURUSD=X')?.preis
-  const eurUsd = fx != null && fx > 0 ? fx : null
-  return { kurse: map, stand: j.stand ?? null, eurUsd }
+
+  return { kurse: map, stand, fx: fxKurseAusYahooMap(map) }
 }
 
 function usBasisTickerAusKandidaten(kandidaten: string[]): string | null {
@@ -87,7 +105,7 @@ export function berechneLivePortfolio(
   meta: Map<string, IsinMetadata>,
   yahooKurse: Map<string, YahooKursZeile>,
   kurseStand: string | null,
-  eurUsd: number | null = null,
+  fx: FxKurse = fxKurseAusYahooMap(new Map()),
 ): LivePortfolio {
   const basis = positionenFuerBewertung(buchungen, snapshot)
   let dividendenEur = 0
@@ -121,7 +139,7 @@ export function berechneLivePortfolio(
 
     const kursWahl = waehleBesterKurs(kandidaten, yahooKurse, einstandKurs, p.kursEur ?? null, {
       isin,
-      eurUsd,
+      fx,
       usBasisTicker: isin.startsWith('US') ? usBasisTickerAusKandidaten(kandidaten) : null,
     })
     const sym = kursWahl?.symbol ?? m?.symbolYahoo ?? null
@@ -140,10 +158,13 @@ export function berechneLivePortfolio(
     const gv = Math.round((wertLive - einstandEur) * 100) / 100
     const gvPct = einstandEur > 0 ? Math.round((gv / einstandEur) * 10000) / 100 : null
 
+    const hatLiveKurs = kursWahl != null
+
     return {
       ...p,
-      name: m?.name && m.name !== isin ? m.name : p.name,
-      anzeigeName: m?.name && m.name !== isin ? m.name : p.name,
+      name: anzeigeNameFuerIsin(isin, p.name, meta),
+      anzeigeName: anzeigeNameFuerIsin(isin, p.name, meta),
+      wkn: wknFuerIsin(isin, meta),
       symbolYahoo: sym,
       kursLiveEur: kursLive,
       wertLiveEur: wertLive,
@@ -152,6 +173,7 @@ export function berechneLivePortfolio(
       gewinnVerlustProzent: gvPct,
       aenderungTagProzent: kursZeile?.aenderungTagProzent ?? null,
       gewichtProzent: 0,
+      hatLiveKurs,
     }
   })
 

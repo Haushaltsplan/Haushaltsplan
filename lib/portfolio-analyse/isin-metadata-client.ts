@@ -1,6 +1,9 @@
+import { teileArray } from '@/lib/portfolio-analyse/batch-hilfen'
+import { isinKenntnis } from '@/lib/portfolio-analyse/isin-kenntnisse'
 import type { IsinMetadata } from '@/lib/portfolio-analyse/isin-lookup-server'
 
-const CACHE_KEY = 'mein-haushalt:portfolio-isin-meta-v3'
+const CACHE_KEY = 'mein-haushalt:portfolio-isin-meta-v4'
+const ISIN_BATCH = 80
 const CACHE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000
 
 type CacheEntry = Record<string, IsinMetadata & { cachedAt: number }>
@@ -13,6 +16,20 @@ function ladeCache(): CacheEntry {
     return JSON.parse(raw) as CacheEntry
   } catch {
     return {}
+  }
+}
+
+function normalisiereMeta(m: IsinMetadata & { cachedAt?: number }): IsinMetadata {
+  const k = isinKenntnis(m.isin)
+  return {
+    isin: m.isin,
+    name: k?.name ?? m.name,
+    symbolYahoo: k?.symbolYahoo ?? m.symbolYahoo,
+    symbolCandidates:
+      k?.symbolCandidates ??
+      (m.symbolCandidates?.length ? m.symbolCandidates : m.symbolYahoo ? [m.symbolYahoo] : []),
+    wkn: k?.wkn ?? m.wkn ?? null,
+    assetType: m.assetType,
   }
 }
 
@@ -32,13 +49,7 @@ export function metadatenAusCache(isins: string[]): Map<string, IsinMetadata> {
   for (const isin of isins) {
     const hit = cache[isin]
     if (hit && now - hit.cachedAt < CACHE_MAX_AGE_MS) {
-      out.set(isin, {
-        isin: hit.isin,
-        name: hit.name,
-        symbolYahoo: hit.symbolYahoo,
-        symbolCandidates: hit.symbolCandidates ?? (hit.symbolYahoo ? [hit.symbolYahoo] : []),
-        assetType: hit.assetType,
-      })
+      out.set(isin, normalisiereMeta(hit))
     }
   }
   return out
@@ -54,13 +65,7 @@ export async function ladeIsinMetadaten(isins: string[]): Promise<Map<string, Is
   for (const isin of unique) {
     const hit = cache[isin]
     if (hit && now - hit.cachedAt < CACHE_MAX_AGE_MS) {
-      out.set(isin, {
-        isin: hit.isin,
-        name: hit.name,
-        symbolYahoo: hit.symbolYahoo,
-        symbolCandidates: hit.symbolCandidates ?? (hit.symbolYahoo ? [hit.symbolYahoo] : []),
-        assetType: hit.assetType,
-      })
+      out.set(isin, normalisiereMeta(hit))
     } else {
       fehlend.push(isin)
     }
@@ -68,21 +73,30 @@ export async function ladeIsinMetadaten(isins: string[]): Promise<Map<string, Is
 
   if (fehlend.length === 0) return out
 
-  const res = await fetch('/api/portfolio-analyse/isin', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ isins: fehlend }),
-  })
-  const j = (await res.json()) as { ok?: boolean; metadaten?: IsinMetadata[] }
-  if (!j.ok || !Array.isArray(j.metadaten)) return out
-
-  for (const m of j.metadaten) {
-    const isin = m.isin.toUpperCase()
-    out.set(isin, m)
-    cache[isin] = { ...m, cachedAt: now }
+  for (const batch of teileArray(fehlend, ISIN_BATCH)) {
+    const res = await fetch('/api/portfolio-analyse/isin', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ isins: batch }),
+    })
+    const j = (await res.json()) as { ok?: boolean; metadaten?: IsinMetadata[] }
+    if (!j.ok || !Array.isArray(j.metadaten)) continue
+    for (const raw of j.metadaten) {
+      const m = normalisiereMeta(raw)
+      const isin = m.isin.toUpperCase()
+      out.set(isin, m)
+      cache[isin] = { ...m, cachedAt: now }
+    }
   }
   speichereCache(cache)
   return out
+}
+
+export function wknFuerIsin(isin: string | null | undefined, meta: Map<string, IsinMetadata>): string | null {
+  if (!isin) return null
+  const k = isinKenntnis(isin)
+  if (k?.wkn) return k.wkn
+  return meta.get(isin.toUpperCase())?.wkn ?? null
 }
 
 export function anzeigeNameFuerIsin(
@@ -90,6 +104,8 @@ export function anzeigeNameFuerIsin(
   fallbackName: string | null | undefined,
   meta: Map<string, IsinMetadata>,
 ): string {
+  const k = isin ? isinKenntnis(isin) : null
+  if (k?.name) return k.name
   if (isin) {
     const m = meta.get(isin.toUpperCase())
     if (m?.name && m.name !== isin) return m.name

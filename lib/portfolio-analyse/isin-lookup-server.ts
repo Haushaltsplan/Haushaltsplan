@@ -1,3 +1,6 @@
+import { teileArray } from '@/lib/portfolio-analyse/batch-hilfen'
+import { isinKenntnis } from '@/lib/portfolio-analyse/isin-kenntnisse'
+import { wknAusFigiOderKenntnis } from '@/lib/portfolio-analyse/isin-wkn'
 import { yahooSymbolAbsichern, yahooSymbolAusTicker } from '@/lib/portfolio-analyse/isin-yahoo-symbol'
 
 export type IsinMetadata = {
@@ -6,6 +9,7 @@ export type IsinMetadata = {
   symbolYahoo: string | null
   /** Alle Yahoo-Symbole zum Abruf (DE/PA zuerst). */
   symbolCandidates: string[]
+  wkn: string | null
   assetType: string | null
 }
 
@@ -221,15 +225,14 @@ function nameAusOpenFigi(row: OpenFigiRow): string {
     .join(' ')
 }
 
-/** Öffentliche ISIN-Metadaten (keine Nutzerdaten). */
-export async function lookupIsinMetadaten(isins: string[]): Promise<IsinMetadata[]> {
-  const unique = [...new Set(isins.map(normalisiereIsin).filter((x): x is string => x != null))].slice(0, 80)
+async function lookupIsinBatch(unique: string[]): Promise<IsinMetadata[]> {
   if (unique.length === 0) return []
 
   const figiMap = await openFigiLookup(unique)
   const results: IsinMetadata[] = []
 
   for (const isin of unique) {
+    const kenntnis = isinKenntnis(isin)
     const yahooQuotes = await yahooSearchIsin(isin)
     const yahooPick = waehleYahooQuote(yahooQuotes)
 
@@ -277,8 +280,10 @@ export async function lookupIsinMetadaten(isins: string[]): Promise<IsinMetadata
       seenSym.add(k)
       merged.push(s.trim())
     }
+    for (const s of kenntnis?.symbolCandidates ?? []) addSym(s)
     for (const s of figiSyms) addSym(s)
     for (const s of yahooSyms) addSym(s)
+    addSym(kenntnis?.symbolYahoo)
     addSym(symbolYahoo)
     if (isin.startsWith('US') && symbolYahoo && !symbolYahoo.includes('.')) {
       const base = symbolYahoo.split('.')[0]
@@ -286,16 +291,31 @@ export async function lookupIsinMetadaten(isins: string[]): Promise<IsinMetadata
     }
 
     const symbolCandidates = merged.length > 0 ? merged : symbolYahoo ? [symbolYahoo] : []
-    const primary = primaeresSymbol(isin, symbolCandidates) ?? symbolYahoo
+    const primary = kenntnis?.symbolYahoo ?? primaeresSymbol(isin, symbolCandidates) ?? symbolYahoo
+    if (kenntnis?.name) name = kenntnis.name
+    const wkn = wknAusFigiOderKenntnis(isin, figiRows, kenntnis)
 
     results.push({
       isin,
       name,
       symbolYahoo: primary,
       symbolCandidates,
+      wkn,
       assetType,
     })
   }
 
+  return results
+}
+
+/** Öffentliche ISIN-Metadaten (keine Nutzerdaten). */
+export async function lookupIsinMetadaten(isins: string[]): Promise<IsinMetadata[]> {
+  const unique = [...new Set(isins.map(normalisiereIsin).filter((x): x is string => x != null))]
+  if (unique.length === 0) return []
+
+  const results: IsinMetadata[] = []
+  for (const batch of teileArray(unique, 80)) {
+    results.push(...(await lookupIsinBatch(batch)))
+  }
   return results
 }
