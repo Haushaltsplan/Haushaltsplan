@@ -24,39 +24,45 @@ export function PaCard({
   return <section className={`${base} ${className}`}>{children}</section>
 }
 
+const scrollTabsClass =
+  'max-w-full overflow-x-auto overscroll-x-contain [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden'
+
 export function PaIconTabs<T extends string>({
   tabs,
   active,
   onChange,
   className = '',
 }: {
-  tabs: { id: T; label: string; icon?: ReactNode }[]
+  tabs: { id: T; label: string; shortLabel?: string; icon?: ReactNode }[]
   active: T
   onChange: (id: T) => void
   className?: string
 }) {
   return (
     <nav
-      className={`flex flex-wrap gap-0.5 rounded-xl border border-white/[0.05] bg-zinc-950/60 p-1 ${className}`}
+      className={`${scrollTabsClass} rounded-xl border border-white/[0.05] bg-zinc-950/60 p-1 ${className}`}
     >
-      {tabs.map((t) => {
-        const on = active === t.id
-        return (
-          <button
-            key={t.id}
-            type="button"
-            onClick={() => onChange(t.id)}
-            className={`rounded-lg px-3.5 py-2 text-sm font-medium transition-all ${
-              on
-                ? 'bg-zinc-800/90 text-teal-300 shadow-sm ring-1 ring-white/[0.06]'
-                : 'text-zinc-500 hover:text-zinc-300'
-            }`}
-          >
-            {t.icon}
-            {t.label}
-          </button>
-        )
-      })}
+      <div className="flex w-max min-w-full flex-nowrap gap-0.5 sm:w-full sm:flex-wrap">
+        {tabs.map((t) => {
+          const on = active === t.id
+          return (
+            <button
+              key={t.id}
+              type="button"
+              onClick={() => onChange(t.id)}
+              className={`shrink-0 whitespace-nowrap rounded-lg px-3 py-2 text-xs font-medium transition-all sm:px-3.5 sm:text-sm ${
+                on
+                  ? 'bg-zinc-800/90 text-teal-300 shadow-sm ring-1 ring-white/[0.06]'
+                  : 'text-zinc-500 hover:text-zinc-300'
+              }`}
+            >
+              {t.icon}
+              <span className="sm:hidden">{t.shortLabel ?? t.label}</span>
+              <span className="hidden sm:inline">{t.label}</span>
+            </button>
+          )
+        })}
+      </div>
     </nav>
   )
 }
@@ -72,25 +78,29 @@ const SUB_NAV = [
 export function PaSubNav() {
   const pathname = usePathname()
   return (
-    <nav className="inline-flex flex-wrap gap-1 rounded-2xl border border-white/[0.06] bg-zinc-950/80 p-1.5 shadow-lg shadow-black/30 ring-1 ring-white/[0.04]">
-      {SUB_NAV.map((item) => {
-        const aktiv =
-          pathname === item.href ||
-          (item.href === '/portfolioanalyse/dashboard' && pathname === '/portfolioanalyse')
-        return (
-          <Link
-            key={item.href}
-            href={item.href}
-            className={`rounded-xl px-4 py-2 text-sm font-medium tracking-tight transition-all ${
-              aktiv
-                ? 'bg-gradient-to-b from-teal-500/20 to-teal-600/10 text-teal-300 ring-1 ring-teal-500/25'
-                : 'text-zinc-500 hover:bg-white/[0.03] hover:text-zinc-200'
-            }`}
-          >
-            {item.label}
-          </Link>
-        )
-      })}
+    <nav
+      className={`${scrollTabsClass} w-full max-w-full rounded-2xl border border-white/[0.06] bg-zinc-950/80 p-1 shadow-lg shadow-black/30 ring-1 ring-white/[0.04] sm:p-1.5`}
+    >
+      <div className="flex w-max min-w-full flex-nowrap gap-0.5 sm:w-full sm:flex-wrap sm:gap-1">
+        {SUB_NAV.map((item) => {
+          const aktiv =
+            pathname === item.href ||
+            (item.href === '/portfolioanalyse/dashboard' && pathname === '/portfolioanalyse')
+          return (
+            <Link
+              key={item.href}
+              href={item.href}
+              className={`shrink-0 whitespace-nowrap rounded-xl px-3 py-2 text-xs font-medium tracking-tight transition-all sm:px-4 sm:text-sm ${
+                aktiv
+                  ? 'bg-gradient-to-b from-teal-500/20 to-teal-600/10 text-teal-300 ring-1 ring-teal-500/25'
+                  : 'text-zinc-500 hover:bg-white/[0.03] hover:text-zinc-200'
+              }`}
+            >
+              {item.label}
+            </Link>
+          )
+        })}
+      </div>
     </nav>
   )
 }

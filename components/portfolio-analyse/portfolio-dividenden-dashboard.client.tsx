@@ -8,7 +8,6 @@ import { PortfolioIsinLogo } from '@/components/portfolio-analyse/isin-logo'
 import { usePortfolioAnalyse } from '@/components/portfolio-analyse/pa-data-provider'
 import { PortfolioAnalyseShell } from '@/components/portfolio-analyse/portfolio-analyse-shell.client'
 import { PaBadge, PaCard, PaIconTabs, PaStatRow } from '@/components/portfolio-analyse/pa-ui'
-import { PageSection, PageSectionPanel } from '@/components/page-shell'
 import { dividendenKalender } from '@/lib/portfolio-analyse/auswertungen'
 import { formatDatumDe, formatEur } from '@/lib/portfolio-analyse/berechnung'
 import {
@@ -54,8 +53,7 @@ export function PortfolioDividendenDashboardClient() {
       description="Erhaltene Dividenden, persönliche Dividenden-Rendite und Verlauf."
     >
       {!laden && !hatDaten ? null : (
-        <PageSection titleId="pa-div-heading" title="Dividenden">
-          <PageSectionPanel>
+        <div className="min-w-0 space-y-5 sm:space-y-8">
             {!hatDaten ? (
               <p className="text-sm text-zinc-500">
                 <Link href="/portfolioanalyse/import" className="text-teal-400 hover:underline">
@@ -196,8 +194,7 @@ export function PortfolioDividendenDashboardClient() {
                 </div>
               </div>
             )}
-          </PageSectionPanel>
-        </PageSection>
+        </div>
       )}
     </PortfolioAnalyseShell>
   )

@@ -49,7 +49,7 @@ function MetricPrimary({
         <span className="text-sm text-zinc-500">{label}</span>
         {badge}
       </div>
-      <p className={`mt-1 text-2xl font-semibold tabular-nums tracking-tight sm:text-[1.65rem] ${valueClass}`}>
+      <p className={`mt-1 text-xl font-semibold tabular-nums tracking-tight sm:text-[1.65rem] ${valueClass}`}>
         {value}
       </p>
     </div>
@@ -106,14 +106,24 @@ export function PaPortfolioHero({
 
   return (
     <PaCard variant="elevated" className="overflow-hidden">
-      <div className="flex flex-col gap-8 p-5 sm:p-6 lg:flex-row lg:items-stretch lg:gap-10">
+      <div className="flex flex-col gap-5 p-4 sm:gap-8 sm:p-6 lg:flex-row lg:items-stretch lg:gap-10">
         <div className="flex shrink-0 justify-center lg:justify-start lg:pt-2">
-          <DonutChart
-            segmente={donut}
-            groesse={200}
-            dicke={26}
-            mitte={{ wert: formatEurKompakt(depotwert) }}
-          />
+          <div className="sm:hidden">
+            <DonutChart
+              segmente={donut}
+              groesse={168}
+              dicke={22}
+              mitte={{ wert: formatEurKompakt(depotwert) }}
+            />
+          </div>
+          <div className="hidden sm:block">
+            <DonutChart
+              segmente={donut}
+              groesse={200}
+              dicke={26}
+              mitte={{ wert: formatEurKompakt(depotwert) }}
+            />
+          </div>
         </div>
 
         <div className="min-w-0 flex-1">
@@ -128,10 +138,10 @@ export function PaPortfolioHero({
               </p>
             </div>
 
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
               <Link
                 href="/portfolioanalyse/import"
-                className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm font-medium text-teal-400 transition-colors hover:bg-teal-500/10 hover:text-teal-300"
+                className="inline-flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-sm font-medium text-teal-400 transition-colors hover:bg-teal-500/10 hover:text-teal-300"
               >
                 <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" aria-hidden>
                   <path
@@ -143,45 +153,12 @@ export function PaPortfolioHero({
                 </svg>
                 Verwalten
               </Link>
-              <span className="hidden h-4 w-px bg-zinc-700 sm:block" aria-hidden />
-              <button
-                type="button"
-                disabled
-                title="Demnächst"
-                className="inline-flex cursor-not-allowed items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm font-medium text-zinc-600"
-              >
-                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" aria-hidden>
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    d="M7.217 10.907a2.25 2.25 0 1 0 0 2.186m0-2.186c.18.324.283.696.283 1.093s-.103.77-.283 1.093m0-2.186 9.566-5.314m-9.566 7.5 9.566 5.314m0 0a2.25 2.25 0 1 0 3.935 2.186 2.25 2.25 0 0 0-3.935-2.186Zm0-12.814a2.25 2.25 0 1 0 3.933-2.185 2.25 2.25 0 0 0-3.933 2.185Z"
-                  />
-                </svg>
-                Teilen
-              </button>
-              <span className="hidden h-4 w-px bg-zinc-700 sm:block" aria-hidden />
-              <span className="inline-flex items-center gap-1.5 rounded-lg border border-white/[0.08] bg-zinc-950/60 px-3 py-1.5 text-xs font-medium text-zinc-400">
-                <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" aria-hidden>
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    d="M12 3c2.755 0 5.455.232 8.083.678.533.09.917.556.917 1.096v1.044a2.25 2.25 0 0 1-.659 1.591l-5.432 5.432a2.25 2.25 0 0 0-.659 1.591v2.927a2.25 2.25 0 0 1-1.244 2.013L9.75 21v-6.568a2.25 2.25 0 0 0-.659-1.591L3.659 7.409A2.25 2.25 0 0 1 3 5.818V4.774c0-.54.384-1.006.917-1.096A48.32 48.32 0 0 1 12 3Z"
-                  />
-                </svg>
-                Alle Assetklassen
-              </span>
-              <span className="inline-flex items-center gap-1 rounded-lg border border-white/[0.08] bg-zinc-950/60 px-3 py-1.5 text-xs font-medium text-zinc-400">
-                Seit Kauf
-                <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" aria-hidden>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
-                </svg>
-              </span>
             </div>
           </div>
 
-          <hr className="mt-5 border-white/[0.06]" />
+          <hr className="mt-4 border-white/[0.06] sm:mt-5" />
 
-          <div className="mt-6 grid gap-8 md:grid-cols-2">
+          <div className="mt-4 grid gap-6 sm:mt-6 sm:gap-8 md:grid-cols-2">
             <div>
               <MetricPrimary
                 label="Portfoliowert"

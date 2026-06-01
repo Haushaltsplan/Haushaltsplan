@@ -9,18 +9,17 @@ import { PaPerformanceMap } from '@/components/portfolio-analyse/pa-performance-
 import { usePortfolioAnalyse } from '@/components/portfolio-analyse/pa-data-provider'
 import { PortfolioAnalyseShell } from '@/components/portfolio-analyse/portfolio-analyse-shell.client'
 import { PaCard, PaIconTabs } from '@/components/portfolio-analyse/pa-ui'
-import { PageSection, PageSectionPanel } from '@/components/page-shell'
 import { berechneKapitalflussHeatmap } from '@/lib/portfolio-analyse/kapitalfluss-heatmap'
 import { heatmapAusVerlauf } from '@/lib/portfolio-analyse/rendite-heatmap'
 
 type AnalyseTab = 'gewichtung' | 'rendite' | 'kapital' | 'performance' | 'steuern'
 
-const HAUPT_TABS: { id: AnalyseTab; label: string }[] = [
-  { id: 'gewichtung', label: 'Gewichtung' },
-  { id: 'rendite', label: 'Rendite' },
-  { id: 'kapital', label: 'Kapital' },
-  { id: 'performance', label: 'Performance Map' },
-  { id: 'steuern', label: 'Steuern' },
+const HAUPT_TABS: { id: AnalyseTab; label: string; shortLabel: string }[] = [
+  { id: 'gewichtung', label: 'Gewichtung', shortLabel: 'Gewicht.' },
+  { id: 'rendite', label: 'Rendite', shortLabel: 'Rendite' },
+  { id: 'kapital', label: 'Kapital', shortLabel: 'Kapital' },
+  { id: 'performance', label: 'Performance Map', shortLabel: 'Perf.' },
+  { id: 'steuern', label: 'Steuern', shortLabel: 'Steuern' },
 ]
 
 export function PortfolioAnalyseMainClient() {
@@ -47,8 +46,7 @@ export function PortfolioAnalyseMainClient() {
       description="Gewichtungsanalyse, Rendite-Details und Kapitalfluss — angelehnt an Parqet."
     >
       {!laden && !hatDaten ? null : (
-        <PageSection titleId="pa-analyse-heading" title="Auswertung">
-          <PageSectionPanel>
+        <PaCard variant="elevated" className="min-w-0 overflow-hidden p-4 sm:p-6">
             {!hatDaten ? (
               <p className="text-sm text-zinc-500">
                 <Link href="/portfolioanalyse/import" className="text-teal-400 hover:underline">
@@ -151,8 +149,7 @@ export function PortfolioAnalyseMainClient() {
                 )}
               </div>
             )}
-          </PageSectionPanel>
-        </PageSection>
+        </PaCard>
       )}
     </PortfolioAnalyseShell>
   )

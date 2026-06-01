@@ -25,11 +25,11 @@ import { BUCHUNGS_TYP_LABEL, type BuchungsTyp } from '@/lib/portfolio-analyse/ty
 
 type ChartTab = 'wert' | 'performance' | 'drawdown' | 'dividenden'
 
-const CHART_TABS: { id: ChartTab; label: string }[] = [
-  { id: 'wert', label: 'Wertentwicklung' },
-  { id: 'performance', label: 'Performance' },
-  { id: 'drawdown', label: 'Drawdown' },
-  { id: 'dividenden', label: 'Dividenden' },
+const CHART_TABS: { id: ChartTab; label: string; shortLabel: string }[] = [
+  { id: 'wert', label: 'Wertentwicklung', shortLabel: 'Wert' },
+  { id: 'performance', label: 'Performance', shortLabel: 'Perf.' },
+  { id: 'drawdown', label: 'Drawdown', shortLabel: 'Drawdown' },
+  { id: 'dividenden', label: 'Dividenden', shortLabel: 'Div.' },
 ]
 
 function badgeVariant(typ: BuchungsTyp): 'buy' | 'sell' | 'dividend' | 'neutral' {
@@ -115,7 +115,7 @@ export function PortfolioDashboardClient() {
   const gewinnPct = k?.gewinnVerlustProzent
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-5 sm:space-y-8">
       {k ? (
         <PaPortfolioHero
           positionen={positionen}
@@ -130,11 +130,11 @@ export function PortfolioDashboardClient() {
         />
       ) : null}
 
-      <PaCard variant="elevated" className="overflow-hidden min-w-0">
-        <div className="border-b border-white/[0.04] px-4 pt-4 sm:px-6">
+      <PaCard variant="elevated" className="min-w-0 overflow-hidden">
+        <div className="-mx-1 border-b border-white/[0.04] px-3 pt-3 sm:mx-0 sm:px-6 sm:pt-4">
           <PaIconTabs tabs={CHART_TABS} active={chartTab} onChange={setChartTab} />
         </div>
-        <div className="min-w-0 p-4 sm:p-6">
+        <div className="min-w-0 p-3 sm:p-6">
           {chartTab === 'drawdown' && drawdown.maxDrawdownProzent < 0 ? (
             <div className="mb-4 flex flex-wrap justify-end gap-6 text-sm">
               <div>
@@ -164,6 +164,7 @@ export function PortfolioDashboardClient() {
             <PaWertentwicklungChart
               punkte={wertentwicklung}
               laden={wertentwicklungLaden && wertentwicklung.length > 0}
+              hoehe={220}
             />
           )}
           {chartTab === 'performance' && <PaSignedBarChart punkte={monatsPerf} yAxisProzent />}
@@ -255,17 +256,21 @@ export function PortfolioDashboardClient() {
               <li className="px-5 py-8 text-center text-sm text-zinc-500">Keine Live-Performance.</li>
             ) : (
               topMover.map((p) => (
-                <li key={p.isin ?? p.name} className="flex items-center gap-3 px-4 py-3">
-                  <PortfolioIsinLogo isin={p.isin} fallbackName={p.name} meta={meta} groesse="sm" />
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm text-zinc-200">{p.anzeigeName}</p>
-                    <p className="text-[11px] text-zinc-500">{formatEur(p.wertLiveEur)}</p>
+                <li key={p.isin ?? p.name} className="flex flex-col gap-2 px-4 py-3 sm:flex-row sm:items-center">
+                  <div className="flex min-w-0 flex-1 items-center gap-3">
+                    <PortfolioIsinLogo isin={p.isin} fallbackName={p.name} meta={meta} groesse="sm" />
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm text-zinc-200">{p.anzeigeName}</p>
+                      <p className="text-[11px] text-zinc-500">{formatEur(p.wertLiveEur)}</p>
+                    </div>
                   </div>
-                  <PaBadge variant={(p.gewinnVerlustProzent ?? 0) >= 0 ? 'positive' : 'negative'}>
-                    {p.gewinnVerlustProzent != null ? formatProzent(p.gewinnVerlustProzent) : '—'}{' '}
-                    {p.gewinnVerlustEur >= 0 ? '+' : ''}
-                    {formatEur(p.gewinnVerlustEur)}
-                  </PaBadge>
+                  <div className="shrink-0 self-start sm:self-center">
+                    <PaBadge variant={(p.gewinnVerlustProzent ?? 0) >= 0 ? 'positive' : 'negative'}>
+                      {p.gewinnVerlustProzent != null ? formatProzent(p.gewinnVerlustProzent) : '—'}{' '}
+                      {p.gewinnVerlustEur >= 0 ? '+' : ''}
+                      {formatEur(p.gewinnVerlustEur)}
+                    </PaBadge>
+                  </div>
                 </li>
               ))
             )}

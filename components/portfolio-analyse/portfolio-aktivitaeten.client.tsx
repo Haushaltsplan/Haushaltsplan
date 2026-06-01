@@ -6,7 +6,6 @@ import { PortfolioIsinLogo } from '@/components/portfolio-analyse/isin-logo'
 import { usePortfolioAnalyse } from '@/components/portfolio-analyse/pa-data-provider'
 import { PortfolioAnalyseShell } from '@/components/portfolio-analyse/portfolio-analyse-shell.client'
 import { PaBadge, PaCard } from '@/components/portfolio-analyse/pa-ui'
-import { PageSection, PageSectionPanel } from '@/components/page-shell'
 import {
   aktivitaetenStatistik,
   buchungenZuCsv,
@@ -101,8 +100,7 @@ export function PortfolioAktivitaetenClient() {
       description="Alle Buchungen nach Jahr und Monat — filterbar und als CSV exportierbar."
     >
       {!laden && !hatDaten ? null : (
-        <PageSection titleId="pa-aktivitaeten-heading" title="Transaktionen">
-          <PageSectionPanel>
+        <PaCard variant="elevated" className="min-w-0 overflow-hidden p-4 sm:p-6">
             {!hatDaten ? (
               <p className="text-sm text-zinc-500">
                 <Link href="/portfolioanalyse/import" className="text-teal-400 hover:underline">
@@ -203,8 +201,7 @@ export function PortfolioAktivitaetenClient() {
                 </div>
               </div>
             )}
-          </PageSectionPanel>
-        </PageSection>
+        </PaCard>
       )}
     </PortfolioAnalyseShell>
   )

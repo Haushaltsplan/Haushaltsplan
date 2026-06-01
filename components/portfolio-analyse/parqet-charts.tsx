@@ -45,12 +45,13 @@ export function PaAreaChart({
   const labelStep = Math.max(1, Math.ceil(punkte.length / 8))
 
   return (
-    <div className="w-full overflow-x-auto">
+    <div className="w-full min-w-0 overflow-hidden">
       <svg
         width="100%"
+        height={hoehe}
         viewBox={`0 0 ${breite} ${hoehe}`}
         preserveAspectRatio="xMidYMid meet"
-        style={{ minWidth: breite }}
+        className="block w-full select-none"
         role="img"
         aria-label="Portfolio-Verlauf"
       >
@@ -150,12 +151,13 @@ export function PaDrawdownChart({
   const labelStep = Math.max(1, Math.ceil(punkte.length / 8))
 
   return (
-    <div className="w-full overflow-x-auto">
+    <div className="w-full min-w-0 overflow-hidden">
       <svg
         width="100%"
+        height={hoehe}
         viewBox={`0 0 ${breite} ${hoehe}`}
         preserveAspectRatio="xMidYMid meet"
-        style={{ minWidth: breite }}
+        className="block w-full select-none"
         role="img"
         aria-label="Drawdown-Verlauf"
       >
@@ -255,12 +257,13 @@ export function PaSignedBarChart({
   const labelStep = Math.max(1, Math.ceil(punkte.length / 10))
 
   return (
-    <div className="w-full overflow-x-auto">
+    <div className="w-full min-w-0 overflow-hidden">
       <svg
         width="100%"
+        height={hoehe}
         viewBox={`0 0 ${breite} ${hoehe}`}
         preserveAspectRatio="xMidYMid meet"
-        style={{ minWidth: breite }}
+        className="block w-full select-none"
         role="img"
         aria-label="Performance-Verlauf"
       >
@@ -353,12 +356,13 @@ export function PaDividendBarChart({
   const labelStep = Math.max(1, Math.ceil(punkte.length / 10))
 
   return (
-    <div className="w-full overflow-x-auto">
+    <div className="w-full min-w-0 overflow-hidden">
       <svg
         width="100%"
+        height={hoehe}
         viewBox={`0 0 ${breite} ${hoehe}`}
         preserveAspectRatio="xMidYMid meet"
-        style={{ minWidth: breite }}
+        className="block w-full select-none"
         role="img"
         aria-label="Dividenden pro Monat"
       >

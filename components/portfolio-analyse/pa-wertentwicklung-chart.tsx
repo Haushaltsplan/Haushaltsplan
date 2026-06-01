@@ -71,6 +71,15 @@ function WertentwicklungChartBody({
 }) {
   const containerRef = useRef<HTMLDivElement>(null)
   const [hoverIndex, setHoverIndex] = useState<number | null>(null)
+  const [schmal, setSchmal] = useState(false)
+
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 639px)')
+    const update = () => setSchmal(mq.matches)
+    update()
+    mq.addEventListener('change', update)
+    return () => mq.removeEventListener('change', update)
+  }, [])
 
   const breite = VIEW_W
   const padLinks = 12
@@ -241,11 +250,15 @@ function WertentwicklungChartBody({
 
       {active ? (
         <div
-          className="pointer-events-none absolute z-10 min-w-[200px] rounded-lg border border-zinc-700/80 bg-zinc-900/95 px-3 py-2.5 text-xs shadow-xl"
-          style={{
-            left: `clamp(8px, ${tooltipLeftPct.toFixed(1)}%, calc(100% - 220px))`,
-            top: 8,
-          }}
+          className="pointer-events-none absolute z-10 rounded-lg border border-zinc-700/80 bg-zinc-900/95 px-3 py-2.5 text-xs shadow-xl sm:min-w-[200px]"
+          style={
+            schmal
+              ? { left: 8, right: 8, top: 8 }
+              : {
+                  left: `clamp(8px, ${tooltipLeftPct.toFixed(1)}%, calc(100% - 220px))`,
+                  top: 8,
+                }
+          }
         >
           <p className="mb-2 font-medium text-zinc-200">{formatDatumDe(active.p.datumIso)}</p>
           <div className="space-y-1.5">

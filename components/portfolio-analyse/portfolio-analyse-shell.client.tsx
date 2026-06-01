@@ -19,21 +19,25 @@ export function PortfolioAnalyseShell({
   const { schemaFehlt, dbFehler, buchungenLimit, hatDaten, laden } = usePortfolioAnalyse()
 
   return (
-    <PageChrome>
+    <PageChrome density="compact" className="max-w-full overflow-x-hidden">
       <PageHero
+        density="compact"
         eyebrow="Portfolioanalyse"
         title={title}
         description={
           description ?? (
             <>
-              Analysiere dein Portfolio, deine Aktivitäten und deine persönliche Investment-Strategie — lokal aus
-              Parqet-CSV und Trade-Republic-Daten.
+              <span className="hidden sm:inline">
+                Analysiere dein Portfolio, deine Aktivitäten und deine persönliche Investment-Strategie — lokal aus
+                Parqet-CSV und Trade-Republic-Daten.
+              </span>
+              <span className="sm:hidden">Parqet-CSV &amp; Trade-Republic — lokal im Browser.</span>
             </>
           )
         }
       />
 
-      <div className="mb-8">
+      <div className="mb-4 sm:mb-6">
         <PaSubNav />
       </div>
 
