@@ -45,63 +45,83 @@ export function annualizeReturn(totalReturn: number, days: number): number | nul
   return Number.isFinite(annual) ? annual * 100 : null
 }
 
-/**
- * NPV für IRR: Σ CF_i / (1+r)^t_i  mit t_i in Jahren ab Start.
- * Eingänge (Investition) = negative CF, Ausgänge = positive CF.
- */
-export function npv(cashflows: Array<{ tYears: number; amount: number }>, rate: number): number {
-  return cashflows.reduce((sum, cf) => {
-    const denom = Math.pow(1 + rate, cf.tYears)
-    return sum + safeDiv(cf.amount, denom, 0)
-  }, 0)
+export interface Cashflow {
+  amountEUR: number // negativ: Käufe/Einzahlungen; positiv: Verkäufe/Dividenden/Endwert
+  timestamp: Date
 }
 
 /**
- * IZF (IRR) per Newton-Raphson.
+ * Annualisierter Interner Zinsfuß (IZF / XIRR) per Newton-Raphson mit analytischer Ableitung.
+ * @returns Dezimalzins (z. B. 0.125 für 12,5 %); NaN bei fehlender Konvergenz
+ */
+export function calculateXIRR(cashflows: Cashflow[], guess = 0.1): number {
+  if (cashflows.length < 2) return 0
+
+  const sorted = [...cashflows].sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime())
+
+  const d1 = sorted[0].timestamp.getTime()
+  const maxIterations = 100
+  const precision = 1e-6
+
+  let r = guess
+
+  for (let i = 0; i < maxIterations; i++) {
+    let npv = 0
+    let derivativeNPV = 0
+
+    for (const cf of sorted) {
+      const t = (cf.timestamp.getTime() - d1) / (1000 * 60 * 60 * 24 * 365)
+      const expTerm = Math.pow(1 + r, t)
+      npv += cf.amountEUR / expTerm
+      if (t > 0) {
+        derivativeNPV -= (t * cf.amountEUR) / Math.pow(1 + r, t + 1)
+      }
+    }
+
+    if (Math.abs(derivativeNPV) < 1e-12) {
+      break
+    }
+
+    const nextR = r - npv / derivativeNPV
+
+    if (Math.abs(nextR - r) < precision) {
+      return nextR
+    }
+
+    r = nextR
+  }
+
+  return Number.NaN
+}
+
+/**
+ * IZF als annualisierter Prozentsatz für Reports.
  * cashflows: amount negativ = Kapitalabfluss (Kauf/Einzahlung), positiv = Zufluss.
+ * terminalValueEUR: fiktiver Endverkauf (aktueller Depotwert) am Stichtag.
  */
 export function berechneIrrAnnualizedPercent(
   cashflows: Array<{ date: Date; amount: number }>,
   terminalValueEUR: number,
   terminalDate: Date,
 ): number | null {
-  if (cashflows.length === 0 && terminalValueEUR <= 0) return null
-
-  const start = cashflows.length > 0 ? cashflows[0].date : terminalDate
-  const flows = cashflows.map((cf) => ({
-    tYears: daysBetween(start, cf.date) / 365.25,
-    amount: cf.amount,
+  const cfs: Cashflow[] = cashflows.map((cf) => ({
+    amountEUR: cf.amount,
+    timestamp: cf.date,
   }))
   if (terminalValueEUR > 0) {
-    flows.push({
-      tYears: daysBetween(start, terminalDate) / 365.25,
-      amount: terminalValueEUR,
-    })
+    cfs.push({ amountEUR: terminalValueEUR, timestamp: terminalDate })
   }
 
-  const hasNeg = flows.some((f) => f.amount < 0)
-  const hasPos = flows.some((f) => f.amount > 0)
+  if (cfs.length < 2) return null
+
+  const hasNeg = cfs.some((f) => f.amountEUR < 0)
+  const hasPos = cfs.some((f) => f.amountEUR > 0)
   if (!hasNeg || !hasPos) return null
 
-  let rate = 0.1
-  for (let i = 0; i < 80; i++) {
-    const f = npv(flows, rate)
-    const h = 1e-6
-    const f1 = npv(flows, rate + h)
-    const derivative = safeDiv(f1 - f, h, 0)
-    if (Math.abs(derivative) < 1e-12) break
-    const next = rate - f / derivative
-    if (!Number.isFinite(next)) break
-    if (Math.abs(next - rate) < 1e-9) {
-      rate = next
-      break
-    }
-    rate = clamp(next, -0.9999, 10)
-  }
+  const r = calculateXIRR(cfs, 0.1)
+  if (!Number.isFinite(r) || Number.isNaN(r)) return null
 
-  const finalNpv = npv(flows, rate)
-  if (Math.abs(finalNpv) > 1e-2) return null
-  return round4(rate * 100)
+  return round4(r * 100)
 }
 
 /**
