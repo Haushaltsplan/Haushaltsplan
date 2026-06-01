@@ -2,60 +2,34 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { DonutChart } from '@/components/finanzen/donut-chart'
-import {
-  PaCashflowBalken,
-  PaChartKarte,
-  PaHorizontalBalken,
-  PaLinienChart,
-  PaMonatsBalken,
-} from '@/components/portfolio-analyse/charts'
+import { PaAreaChart } from '@/components/portfolio-analyse/parqet-charts'
 import { PortfolioIsinLogo } from '@/components/portfolio-analyse/isin-logo'
+import { positionenFuerBewertung } from '@/lib/portfolio-analyse/bestand'
+import { dividendenProMonat, sammleIsins } from '@/lib/portfolio-analyse/auswertungen'
+import { formatDatumDe, formatEur, formatProzent, sortiereBuchungenNeuesteZuerst } from '@/lib/portfolio-analyse/berechnung'
 import {
-  assetKlassenDonut,
-  buchungsTypDonut,
-  cashflowProMonat,
-  dividendenKalender,
-  dividendenProMonat,
-  einzahlungenKumuliert,
-  kaeufeVerkaeufeProMonat,
-  konzentrationTop5,
-  personalDividendenRendite,
-  positionenAngereichern,
-  positionenDonutTop10,
-  sammleIsins,
-  vermoegensverlauf,
-} from '@/lib/portfolio-analyse/auswertungen'
-import {
-  berechneKennzahlen,
-  formatDatumDe,
-  formatEur,
-  formatProzent,
-  sortiereBuchungenNeuesteZuerst,
-} from '@/lib/portfolio-analyse/berechnung'
-import type { IsinMetadata } from '@/lib/portfolio-analyse/isin-lookup-server'
+  berechneLivePortfolio,
+  ladeLiveKurseClient,
+  symboleAusMeta,
+} from '@/lib/portfolio-analyse/live-bewertung'
 import { anzeigeNameFuerIsin, ladeIsinMetadaten } from '@/lib/portfolio-analyse/isin-metadata-client'
 import type { PortfolioDbBuchung, PortfolioDbSnapshot } from '@/lib/portfolio-analyse/types'
-import { ASSET_KLASSE_LABEL, BUCHUNGS_TYP_LABEL } from '@/lib/portfolio-analyse/types'
+import { ASSET_KLASSE_FARBE, ASSET_KLASSE_LABEL, BUCHUNGS_TYP_LABEL } from '@/lib/portfolio-analyse/types'
+import type { DonutSegment } from '@/components/finanzen/donut-chart'
 
-type TabId = 'dashboard' | 'performance' | 'cashflow' | 'dividenden' | 'allokation' | 'buchungen'
+type Sektion = 'uebersicht' | 'dividenden' | 'transaktionen'
 
-const TABS: { id: TabId; label: string }[] = [
-  { id: 'dashboard', label: 'Dashboard' },
-  { id: 'performance', label: 'Performance' },
-  { id: 'cashflow', label: 'Cashflow' },
+const SEKTIONEN: { id: Sektion; label: string }[] = [
+  { id: 'uebersicht', label: 'Übersicht' },
   { id: 'dividenden', label: 'Dividenden' },
-  { id: 'allokation', label: 'Allokation' },
-  { id: 'buchungen', label: 'Buchungen' },
+  { id: 'transaktionen', label: 'Transaktionen' },
 ]
 
-function KennzahlKarte({ label, wert, sub }: { label: string; wert: string; sub?: string }) {
-  return (
-    <div className="rounded-xl border border-zinc-800/80 bg-zinc-900/40 px-4 py-3">
-      <p className="text-[11px] font-medium uppercase tracking-wide text-zinc-500">{label}</p>
-      <p className="mt-1 text-lg font-semibold tabular-nums text-white">{wert}</p>
-      {sub ? <p className="mt-0.5 text-xs text-zinc-500">{sub}</p> : null}
-    </div>
-  )
+function pctClass(n: number | null) {
+  if (n == null) return 'text-zinc-500'
+  if (n > 0) return 'text-emerald-400'
+  if (n < 0) return 'text-rose-400'
+  return 'text-zinc-400'
 }
 
 export function PortfolioAnalyseDashboard({
@@ -65,411 +39,261 @@ export function PortfolioAnalyseDashboard({
   buchungen: PortfolioDbBuchung[]
   snapshot: PortfolioDbSnapshot | null
 }) {
-  const [tab, setTab] = useState<TabId>('dashboard')
-  const [meta, setMeta] = useState<Map<string, IsinMetadata>>(new Map())
-  const [metaLaden, setMetaLaden] = useState(false)
+  const [sektion, setSektion] = useState<Sektion>('uebersicht')
+  const [meta, setMeta] = useState<Awaited<ReturnType<typeof ladeIsinMetadaten>>>(new Map())
+  const [laden, setLaden] = useState(true)
+  const [kursFehler, setKursFehler] = useState(false)
 
   const isins = useMemo(() => sammleIsins(buchungen, snapshot), [buchungen, snapshot])
-  const kennzahlen = useMemo(() => berechneKennzahlen(buchungen, snapshot), [buchungen, snapshot])
-  const positionenRaw = snapshot?.positionen ?? []
 
   useEffect(() => {
-    if (isins.length === 0) return
     let cancelled = false
-    setMetaLaden(true)
-    void ladeIsinMetadaten(isins).then((m) => {
-      if (!cancelled) {
-        setMeta(m)
-        setMetaLaden(false)
-      }
-    })
+    async function run() {
+      setLaden(true)
+      setKursFehler(false)
+      const m = isins.length > 0 ? await ladeIsinMetadaten(isins) : new Map()
+      if (cancelled) return
+      setMeta(m)
+      setLaden(false)
+    }
+    void run()
     return () => {
       cancelled = true
     }
   }, [isins.join('|')])
 
-  const positionen = useMemo(
-    () => positionenAngereichern(positionenRaw, buchungen, meta, kennzahlen.depotwertEur),
-    [positionenRaw, buchungen, meta, kennzahlen.depotwertEur],
-  )
+  const [live, setLive] = useState<ReturnType<typeof berechneLivePortfolio> | null>(null)
 
-  const verlauf = useMemo(() => vermoegensverlauf(buchungen, snapshot), [buchungen, snapshot])
-  const cashflowMonat = useMemo(() => cashflowProMonat(buchungen), [buchungen])
-  const dividendenMonat = useMemo(() => dividendenProMonat(buchungen), [buchungen])
-  const handelMonat = useMemo(() => kaeufeVerkaeufeProMonat(buchungen), [buchungen])
-  const einzahlKum = useMemo(() => einzahlungenKumuliert(buchungen), [buchungen])
-  const divKalender = useMemo(() => dividendenKalender(buchungen), [buchungen])
-  const buchungenSortiert = useMemo(() => sortiereBuchungenNeuesteZuerst(buchungen).slice(0, 100), [buchungen])
+  useEffect(() => {
+    if (buchungen.length === 0) {
+      setLive(null)
+      return
+    }
+    let cancelled = false
+    async function run() {
+      const sym = symboleAusMeta(positionenFuerBewertung(buchungen, snapshot), meta)
+      const { kurse, stand } = await ladeLiveKurseClient(sym)
+      if (cancelled) return
+      if (sym.length > 0 && kurse.size === 0) setKursFehler(true)
+      setLive(berechneLivePortfolio(buchungen, snapshot, meta, kurse, stand))
+    }
+    void run()
+    const t = setInterval(() => void run(), 5 * 60 * 1000)
+    return () => {
+      cancelled = true
+      clearInterval(t)
+    }
+  }, [buchungen, snapshot, meta])
 
-  const jahreSpanne = useMemo(() => {
-    if (buchungen.length === 0) return 1
-    const min = buchungen.reduce((a, b) => (a.datum < b.datum ? a : b)).datum
-    const max = buchungen.reduce((a, b) => (a.datum > b.datum ? a : b)).datum
-    const y1 = Number(min.slice(0, 4))
-    const y2 = Number(max.slice(0, 4))
-    return Math.max(1, y2 - y1 + (Number(max.slice(5, 7)) - Number(min.slice(5, 7))) / 12)
-  }, [buchungen])
+  const k = live?.kennzahlen
+  const positionen = live?.positionen ?? []
+  const verlauf = live?.verlauf ?? []
 
-  const divRendite = personalDividendenRendite(
-    kennzahlen.dividendenEur + kennzahlen.zinsenEur,
-    kennzahlen.depotwertEur,
-    jahreSpanne,
-  )
+  const allokation: DonutSegment[] = useMemo(() => {
+    const summen = new Map<string, number>()
+    for (const p of positionen) {
+      summen.set(p.assetKlasse, (summen.get(p.assetKlasse) ?? 0) + p.wertLiveEur)
+    }
+    return [...summen.entries()]
+      .filter(([, v]) => v > 0)
+      .sort((a, b) => b[1] - a[1])
+      .map(([klasse, betrag]) => ({
+        key: klasse,
+        label: ASSET_KLASSE_LABEL[klasse as keyof typeof ASSET_KLASSE_LABEL],
+        farbe: ASSET_KLASSE_FARBE[klasse as keyof typeof ASSET_KLASSE_FARBE],
+        betrag: Math.round(betrag * 100) / 100,
+      }))
+  }, [positionen])
 
-  const vermoegenSerie = useMemo(
-    () => [
-      {
-        key: 'gesamt',
-        label: 'Geschätztes Vermögen',
-        farbe: '#22d3ee',
-        punkte: verlauf.map((p) => ({ label: p.label, wert: p.geschaetztGesamt })),
-      },
-      {
-        key: 'ein',
-        label: 'Netto eingezahlt',
-        farbe: '#6366f1',
-        punkte: einzahlKum.map((p) => ({ label: p.label, wert: p.wert })),
-      },
-    ],
-    [verlauf, einzahlKum],
-  )
+  const divMonat = useMemo(() => dividendenProMonat(buchungen), [buchungen])
+  const buchungenListe = useMemo(() => sortiereBuchungenNeuesteZuerst(buchungen).slice(0, 120), [buchungen])
+
+  if (laden && !live) {
+    return <p className="py-16 text-center text-sm text-zinc-500">Portfolio wird geladen …</p>
+  }
 
   return (
-    <div className="space-y-6">
-      {metaLaden ? (
-        <p className="text-xs text-teal-500/80">Wertpapiernamen und Logos werden geladen …</p>
-      ) : null}
-
-      <div className="flex flex-wrap gap-1 rounded-xl border border-zinc-800/80 bg-zinc-950/50 p-1">
-        {TABS.map((t) => (
+    <div className="space-y-0">
+      <nav className="-mx-1 flex gap-6 border-b border-zinc-800/80 px-1">
+        {SEKTIONEN.map((s) => (
           <button
-            key={t.id}
+            key={s.id}
             type="button"
-            onClick={() => setTab(t.id)}
-            className={`rounded-lg px-3 py-1.5 text-xs font-medium transition ${
-              tab === t.id
-                ? 'bg-teal-950/60 text-teal-100 ring-1 ring-teal-500/30'
-                : 'text-zinc-500 hover:bg-zinc-900 hover:text-zinc-300'
+            onClick={() => setSektion(s.id)}
+            className={`border-b-2 pb-2.5 text-sm font-medium transition ${
+              sektion === s.id
+                ? 'border-emerald-500 text-white'
+                : 'border-transparent text-zinc-500 hover:text-zinc-300'
             }`}
           >
-            {t.label}
+            {s.label}
           </button>
         ))}
-      </div>
+      </nav>
 
-      {tab === 'dashboard' && (
-        <div className="space-y-6">
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-            <KennzahlKarte label="Depotwert" wert={formatEur(kennzahlen.depotwertEur)} />
-            <KennzahlKarte label="Investiert" wert={formatEur(kennzahlen.investiertEur)} />
-            <KennzahlKarte
-              label="Gewinn / Verlust"
-              wert={formatEur(kennzahlen.gewinnVerlustEur)}
-              sub={formatProzent(kennzahlen.gewinnVerlustProzent)}
-            />
-            <KennzahlKarte label="Dividenden + Zinsen" wert={formatEur(kennzahlen.dividendenEur + kennzahlen.zinsenEur)} />
-            <KennzahlKarte label="Einzahlungen" wert={formatEur(kennzahlen.einzahlungenEur)} />
-            <KennzahlKarte label="Auszahlungen" wert={formatEur(kennzahlen.auszahlungenEur)} />
-            <KennzahlKarte label="Positionen" wert={String(kennzahlen.anzahlPositionen)} />
-            <KennzahlKarte
-              label="Div.-Rendite p.a. (geschätzt)"
-              wert={divRendite != null ? formatProzent(divRendite) : '—'}
-              sub="auf Basis erfasster Erträge"
-            />
+      {sektion === 'uebersicht' && (
+        <div className="mt-6 space-y-6">
+          <section className="rounded-2xl border border-zinc-800/60 bg-zinc-900/30 p-6 sm:p-8">
+            <p className="text-sm font-medium text-zinc-400">Gesamtwert</p>
+            <div className="mt-1 flex flex-wrap items-end gap-3">
+              <p className="text-4xl font-semibold tabular-nums tracking-tight text-white sm:text-5xl">
+                {k ? formatEur(k.depotwertEur) : '—'}
+              </p>
+              {k?.gewinnVerlustProzent != null ? (
+                <span
+                  className={`mb-1.5 rounded-full px-2.5 py-0.5 text-sm font-medium tabular-nums ${pctClass(k.gewinnVerlustProzent)} bg-zinc-800/80`}
+                >
+                  {formatProzent(k.gewinnVerlustProzent)}
+                </span>
+              ) : null}
+            </div>
+            <div className="mt-4 flex flex-wrap gap-x-6 gap-y-1 text-sm text-zinc-500">
+              <span>
+                Wertpapiere: <strong className="font-medium text-zinc-300">{k ? formatEur(k.wertpapiereEur) : '—'}</strong>
+              </span>
+              <span>
+                Cash: <strong className="font-medium text-zinc-300">{k ? formatEur(k.cashEur) : '—'}</strong>
+              </span>
+              <span>
+                Einstand offen: <strong className="font-medium text-zinc-300">{k ? formatEur(k.einstandOffenEur) : '—'}</strong>
+              </span>
+            </div>
+            {k?.kurseQuelle === 'live' && k.kurseStand ? (
+              <p className="mt-2 text-[11px] text-zinc-600">
+                Kurse live (Yahoo) · Stand {new Date(k.kurseStand).toLocaleString('de-DE')}
+              </p>
+            ) : kursFehler ? (
+              <p className="mt-2 text-[11px] text-amber-500/90">
+                Live-Kurse nicht verfügbar — Werte aus Einstand/Snapshot (Einstand kann vom Marktwert abweichen).
+              </p>
+            ) : (
+              <p className="mt-2 text-[11px] text-zinc-600">Bewertung aus Buchungs-Einstand (kein Live-Kurs).</p>
+            )}
+          </section>
+
+          <section className="rounded-2xl border border-zinc-800/60 bg-zinc-900/20 p-4 sm:p-6">
+            <h2 className="mb-4 text-sm font-semibold text-zinc-200">Entwicklung</h2>
+            <PaAreaChart punkte={verlauf} />
+          </section>
+
+          <div className="grid gap-6 lg:grid-cols-5">
+            <section className="rounded-2xl border border-zinc-800/60 bg-zinc-900/20 lg:col-span-3">
+              <div className="border-b border-zinc-800/60 px-4 py-3 sm:px-5">
+                <h2 className="text-sm font-semibold text-zinc-200">Bestand</h2>
+                <p className="text-[11px] text-zinc-500">{positionen.length} Positionen</p>
+              </div>
+              <ul className="max-h-[28rem] divide-y divide-zinc-800/50 overflow-y-auto">
+                {positionen.length === 0 ? (
+                  <li className="px-5 py-10 text-center text-sm text-zinc-500">Keine offenen Positionen aus Buchungen.</li>
+                ) : (
+                  positionen.map((p) => (
+                    <li key={p.isin ?? p.name} className="flex items-center gap-3 px-4 py-3 sm:px-5">
+                      <PortfolioIsinLogo isin={p.isin} fallbackName={p.name} meta={meta} groesse="md" />
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-medium text-zinc-100">{p.anzeigeName}</p>
+                        <p className="text-[11px] text-zinc-500">
+                          {p.stueck.toLocaleString('de-DE', { maximumFractionDigits: 4 })} Stk ·{' '}
+                          {p.gewichtProzent.toFixed(1)} %
+                        </p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-sm font-medium tabular-nums text-zinc-100">{formatEur(p.wertLiveEur)}</p>
+                        <p className={`text-xs tabular-nums ${pctClass(p.gewinnVerlustProzent)}`}>
+                          {p.gewinnVerlustProzent != null ? formatProzent(p.gewinnVerlustProzent) : '—'}
+                        </p>
+                      </div>
+                    </li>
+                  ))
+                )}
+              </ul>
+            </section>
+
+            <section className="rounded-2xl border border-zinc-800/60 bg-zinc-900/20 p-5 lg:col-span-2">
+              <h2 className="mb-4 text-sm font-semibold text-zinc-200">Allokation</h2>
+              <div className="flex flex-col items-center gap-4">
+                <DonutChart segmente={allokation} groesse={168} dicke={24} />
+                <ul className="w-full space-y-2 text-xs">
+                  {allokation.map((s) => (
+                    <li key={s.key} className="flex justify-between gap-2">
+                      <span className="flex items-center gap-2 text-zinc-400">
+                        <span className="h-2 w-2 rounded-full" style={{ background: s.farbe }} />
+                        {s.label}
+                      </span>
+                      <span className="tabular-nums text-zinc-300">{formatEur(s.betrag)}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+              <dl className="mt-6 space-y-2 border-t border-zinc-800/60 pt-4 text-sm">
+                <div className="flex justify-between">
+                  <dt className="text-zinc-500">Dividenden</dt>
+                  <dd className="tabular-nums text-zinc-200">{k ? formatEur(k.dividendenEur) : '—'}</dd>
+                </div>
+                <div className="flex justify-between">
+                  <dt className="text-zinc-500">Eingezahlt netto</dt>
+                  <dd className="tabular-nums text-zinc-200">
+                    {k ? formatEur(k.einzahlungenEur - k.auszahlungenEur) : '—'}
+                  </dd>
+                </div>
+              </dl>
+            </section>
           </div>
+        </div>
+      )}
 
-          <div className="grid gap-4 lg:grid-cols-2">
-            <PaChartKarte titel="Vermögensentwicklung" hint="Letzter Punkt = Depotwert aus Import, davor Kostenbasis + Cash">
-              <PaLinienChart serien={vermoegenSerie} />
-            </PaChartKarte>
-            <PaChartKarte titel="Cashflow je Monat">
-              <PaCashflowBalken daten={cashflowMonat} />
-            </PaChartKarte>
+      {sektion === 'dividenden' && (
+        <div className="mt-6 rounded-2xl border border-zinc-800/60 bg-zinc-900/20 p-5">
+          <h2 className="text-sm font-semibold text-zinc-200">Dividenden & Zinsen</h2>
+          <p className="mt-1 text-2xl font-semibold tabular-nums text-white">
+            {k ? formatEur(k.dividendenEur + k.zinsenEur) : '—'}
+          </p>
+          <div className="mt-6 flex flex-wrap gap-2">
+            {divMonat.map((d) => (
+              <div
+                key={d.monat}
+                className="flex min-w-[4.5rem] flex-col items-center rounded-lg bg-zinc-800/40 px-2 py-2"
+                title={formatEur(d.wert)}
+              >
+                <div
+                  className="w-8 rounded-t bg-emerald-500/80"
+                  style={{ height: `${Math.max(4, Math.min(64, (d.wert / Math.max(1, ...divMonat.map((x) => x.wert))) * 64))}px` }}
+                />
+                <span className="mt-1 text-[9px] text-zinc-500">{d.label}</span>
+              </div>
+            ))}
           </div>
-
-          {positionen.length > 0 ? (
-            <PaChartKarte titel="Top-Positionen" hint="Mit Logo und Gewinn/Verlust zum Einstand">
-              <div className="overflow-auto">
-                <table className="w-full min-w-[520px] text-left text-xs">
-                  <thead className="text-zinc-500">
-                    <tr>
-                      <th className="pb-2 pr-2" />
-                      <th className="pb-2 pr-2">Wertpapier</th>
-                      <th className="pb-2 pr-2 text-right">Anteil</th>
-                      <th className="pb-2 pr-2 text-right">Wert</th>
-                      <th className="pb-2 text-right">G/V</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {positionen.slice(0, 12).map((p) => (
-                      <tr key={p.isin ?? p.anzeigeName} className="border-t border-zinc-800/60">
-                        <td className="py-2 pr-2">
-                          <PortfolioIsinLogo isin={p.isin} fallbackName={p.name} meta={meta} groesse="sm" />
-                        </td>
-                        <td className="max-w-[200px] py-2 pr-2">
-                          <p className="truncate font-medium text-zinc-200">{p.anzeigeName}</p>
-                          {p.isin ? <p className="font-mono text-[10px] text-zinc-600">{p.isin}</p> : null}
-                        </td>
-                        <td className="py-2 pr-2 text-right tabular-nums text-zinc-400">{p.gewichtProzent.toFixed(1)} %</td>
-                        <td className="py-2 pr-2 text-right tabular-nums text-zinc-100">{formatEur(p.wertEur)}</td>
-                        <td className="py-2 text-right tabular-nums">
-                          {p.gewinnVerlustEur != null ? (
-                            <span className={p.gewinnVerlustEur >= 0 ? 'text-emerald-400' : 'text-rose-400'}>
-                              {formatEur(p.gewinnVerlustEur)}
-                              {p.gewinnVerlustProzent != null ? ` (${formatProzent(p.gewinnVerlustProzent)})` : ''}
-                            </span>
-                          ) : (
-                            <span className="text-zinc-600">—</span>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </PaChartKarte>
-          ) : null}
         </div>
       )}
 
-      {tab === 'performance' && (
-        <div className="grid gap-4 lg:grid-cols-2">
-          <PaChartKarte titel="Vermögensverlauf" hint="Geschätzt aus Buchungen; Marktwert am Ende wenn Snapshot vorhanden">
-            <PaLinienChart
-              serien={[
-                {
-                  key: 'wp',
-                  label: 'Wertpapiere (Einstand)',
-                  farbe: '#a78bfa',
-                  punkte: verlauf.map((p) => ({ label: p.label, wert: p.wertpapiereKosten })),
-                },
-                {
-                  key: 'cash',
-                  label: 'Cash (Saldo)',
-                  farbe: '#34d399',
-                  punkte: verlauf.map((p) => ({ label: p.label, wert: p.cash })),
-                },
-                {
-                  key: 'ges',
-                  label: 'Gesamt',
-                  farbe: '#22d3ee',
-                  punkte: verlauf.map((p) => ({ label: p.label, wert: p.geschaetztGesamt })),
-                },
-              ]}
-            />
-          </PaChartKarte>
-          <PaChartKarte titel="Käufe vs. Verkäufe je Monat">
-            <PaCashflowBalken
-              daten={handelMonat.map((d) => ({
-                label: d.label,
-                eingang: d.verkaeufe,
-                ausgang: d.kaeufe,
-              }))}
-            />
-          </PaChartKarte>
-          <PaChartKarte titel="Kumulierte Netto-Einzahlungen" className="lg:col-span-2">
-            <PaLinienChart
-              serien={[
-                {
-                  key: 'netto',
-                  label: 'Einzahlungen − Auszahlungen',
-                  farbe: '#6366f1',
-                  punkte: einzahlKum.map((p) => ({ label: p.label, wert: p.wert })),
-                },
-              ]}
-            />
-          </PaChartKarte>
-        </div>
-      )}
-
-      {tab === 'cashflow' && (
-        <div className="grid gap-4 lg:grid-cols-2">
-          <PaChartKarte titel="Geldfluss je Monat" hint="Grün = Eingänge (Einzahlung, Verkauf, Dividende, Zins)">
-            <PaCashflowBalken daten={cashflowMonat} />
-          </PaChartKarte>
-          <PaChartKarte titel="Buchungen nach Typ">
-            <div className="flex flex-col items-center gap-4 sm:flex-row">
-              <DonutChart segmente={buchungsTypDonut(buchungen)} groesse={150} />
-              <ul className="space-y-1 text-xs text-zinc-400">
-                {buchungsTypDonut(buchungen).map((s) => (
-                  <li key={s.key} className="flex items-center gap-2">
-                    <span className="h-2 w-2 rounded-full" style={{ background: s.farbe }} />
-                    {s.label}: {formatEur(s.betrag)}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          </PaChartKarte>
-        </div>
-      )}
-
-      {tab === 'dividenden' && (
-        <div className="grid gap-4 lg:grid-cols-2">
-          <PaChartKarte titel="Dividenden & Zinsen je Monat">
-            <PaMonatsBalken daten={dividendenMonat.map((d) => ({ label: d.label, wert: d.wert }))} farbe="#34d399" />
-          </PaChartKarte>
-          <PaChartKarte titel="Kennzahlen Erträge">
-            <dl className="space-y-3 text-sm">
-              <div className="flex justify-between border-b border-zinc-800/60 pb-2">
-                <dt className="text-zinc-500">Dividenden gesamt</dt>
-                <dd className="tabular-nums text-zinc-100">{formatEur(kennzahlen.dividendenEur)}</dd>
-              </div>
-              <div className="flex justify-between border-b border-zinc-800/60 pb-2">
-                <dt className="text-zinc-500">Zinsen gesamt</dt>
-                <dd className="tabular-nums text-zinc-100">{formatEur(kennzahlen.zinsenEur)}</dd>
-              </div>
-              <div className="flex justify-between">
-                <dt className="text-zinc-500">Geschätzte Rendite p.a.</dt>
-                <dd className="tabular-nums text-teal-300">{divRendite != null ? formatProzent(divRendite) : '—'}</dd>
-              </div>
-            </dl>
-          </PaChartKarte>
-          <PaChartKarte titel="Letzte Dividenden" hint="Aus deinen importierten Buchungen" className="lg:col-span-2">
-            <ul className="divide-y divide-zinc-800/60">
-              {divKalender.length === 0 ? (
-                <li className="py-4 text-center text-xs text-zinc-600">Noch keine Dividenden erfasst.</li>
-              ) : (
-                divKalender.map((d) => (
-                  <li key={`${d.datum}-${d.isin}`} className="flex items-center gap-3 py-2">
-                    <PortfolioIsinLogo isin={d.isin} fallbackName={d.name} meta={meta} groesse="sm" />
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm text-zinc-200">
-                        {anzeigeNameFuerIsin(d.isin, d.name, meta)}
-                      </p>
-                      <p className="text-[10px] text-zinc-500">{formatDatumDe(d.datum)}</p>
-                    </div>
-                    <span className="tabular-nums text-sm text-emerald-400">{formatEur(d.betrag)}</span>
-                  </li>
-                ))
-              )}
-            </ul>
-          </PaChartKarte>
-        </div>
-      )}
-
-      {tab === 'allokation' && (
-        <div className="grid gap-4 lg:grid-cols-2">
-          <PaChartKarte titel="Nach Anlageklasse">
-            <div className="flex flex-col items-center gap-4 sm:flex-row sm:items-start">
-              <DonutChart segmente={assetKlassenDonut(positionenRaw)} groesse={160} />
-              <ul className="space-y-1 text-xs text-zinc-400">
-                {assetKlassenDonut(positionenRaw).map((s) => (
-                  <li key={s.key} className="flex items-center gap-2">
-                    <span className="h-2 w-2 rounded-full" style={{ background: s.farbe }} />
-                    {s.label}: {formatEur(s.betrag)}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          </PaChartKarte>
-          <PaChartKarte titel="Top 10 Positionen">
-            <div className="flex flex-col items-center gap-4 sm:flex-row sm:items-start">
-              <DonutChart segmente={positionenDonutTop10(positionen)} groesse={160} />
-              <ul className="max-h-48 space-y-1 overflow-y-auto text-xs text-zinc-400">
-                {positionenDonutTop10(positionen).map((s) => (
-                  <li key={s.key} className="flex items-center gap-2">
-                    <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: s.farbe }} />
-                    <span className="truncate">{s.label}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          </PaChartKarte>
-          <PaChartKarte titel="Konzentration Top 5" hint="Gewicht am Depotwert" className="lg:col-span-2">
-            <PaHorizontalBalken
-              daten={konzentrationTop5(positionen).map((t) => ({
-                label: t.label,
-                wert: t.wert,
-                farbe: t.farbe,
-              }))}
-            />
-          </PaChartKarte>
-          {positionen.length > 0 ? (
-            <PaChartKarte titel="Alle Positionen" className="lg:col-span-2">
-              <div className="overflow-auto">
-                <table className="w-full min-w-[640px] text-left text-xs">
-                  <thead className="text-zinc-500">
-                    <tr>
-                      <th className="pb-2" />
-                      <th className="pb-2">Name</th>
-                      <th className="pb-2">Klasse</th>
-                      <th className="pb-2 text-right">Stück</th>
-                      <th className="pb-2 text-right">Kurs</th>
-                      <th className="pb-2 text-right">Wert</th>
-                      <th className="pb-2 text-right">Gewicht</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {positionen.map((p) => (
-                      <tr key={p.isin ?? p.anzeigeName} className="border-t border-zinc-800/60">
-                        <td className="py-2 pr-2">
-                          <PortfolioIsinLogo isin={p.isin} fallbackName={p.name} meta={meta} groesse="sm" />
-                        </td>
-                        <td className="max-w-[180px] py-2 pr-2">
-                          <p className="truncate font-medium text-zinc-200">{p.anzeigeName}</p>
-                          <p className="font-mono text-[10px] text-zinc-600">{p.isin ?? '—'}</p>
-                        </td>
-                        <td className="py-2 text-zinc-400">{ASSET_KLASSE_LABEL[p.assetKlasse]}</td>
-                        <td className="py-2 text-right tabular-nums text-zinc-300">
-                          {p.stueck.toLocaleString('de-DE', { maximumFractionDigits: 4 })}
-                        </td>
-                        <td className="py-2 text-right tabular-nums text-zinc-400">
-                          {p.kursEur != null ? formatEur(p.kursEur) : '—'}
-                        </td>
-                        <td className="py-2 text-right tabular-nums font-medium text-zinc-100">{formatEur(p.wertEur)}</td>
-                        <td className="py-2 text-right tabular-nums text-zinc-400">{p.gewichtProzent.toFixed(1)} %</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </PaChartKarte>
-          ) : (
-            <p className="text-sm text-zinc-500 lg:col-span-2">
-              Kein Depot-Snapshot — importiere ein PDF mit Positionen oder nutze die Buchungsauswertung.
-            </p>
-          )}
-        </div>
-      )}
-
-      {tab === 'buchungen' && (
-        <PaChartKarte titel="Transaktionen" hint={`${buchungen.length} Buchungen gesamt, ${buchungenSortiert.length} angezeigt`}>
-          <div className="max-h-[32rem] overflow-auto rounded-xl border border-zinc-800/80">
-            <table className="w-full min-w-[680px] text-left text-xs">
-              <thead className="sticky top-0 bg-zinc-900/95 text-zinc-500">
-                <tr>
-                  <th className="px-3 py-2" />
-                  <th className="px-3 py-2">Datum</th>
-                  <th className="px-3 py-2">Typ</th>
-                  <th className="px-3 py-2">Wertpapier</th>
-                  <th className="px-3 py-2 text-right">Stück</th>
-                  <th className="px-3 py-2 text-right">Betrag</th>
+      {sektion === 'transaktionen' && (
+        <div className="mt-6 overflow-hidden rounded-2xl border border-zinc-800/60 bg-zinc-900/20">
+          <table className="w-full min-w-[640px] text-left text-sm">
+            <thead className="bg-zinc-900/80 text-xs text-zinc-500">
+              <tr>
+                <th className="px-4 py-2.5" />
+                <th className="px-4 py-2.5">Datum</th>
+                <th className="px-4 py-2.5">Typ</th>
+                <th className="px-4 py-2.5">Wertpapier</th>
+                <th className="px-4 py-2.5 text-right">Betrag</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-zinc-800/40">
+              {buchungenListe.map((b) => (
+                <tr key={b.id} className="hover:bg-zinc-800/20">
+                  <td className="px-4 py-2">
+                    <PortfolioIsinLogo isin={b.isin} fallbackName={b.wertpapierName} meta={meta} groesse="sm" />
+                  </td>
+                  <td className="px-4 py-2 tabular-nums text-zinc-400">{formatDatumDe(b.datum)}</td>
+                  <td className="px-4 py-2 text-zinc-300">{BUCHUNGS_TYP_LABEL[b.typ]}</td>
+                  <td className="max-w-[200px] truncate px-4 py-2 text-zinc-200">
+                    {anzeigeNameFuerIsin(b.isin, b.wertpapierName, meta)}
+                  </td>
+                  <td className="px-4 py-2 text-right tabular-nums text-zinc-100">{formatEur(b.betragEur)}</td>
                 </tr>
-              </thead>
-              <tbody>
-                {buchungenSortiert.map((b) => (
-                  <tr key={b.id} className="border-t border-zinc-800/60">
-                    <td className="px-3 py-1.5">
-                      <PortfolioIsinLogo isin={b.isin} fallbackName={b.wertpapierName} meta={meta} groesse="sm" />
-                    </td>
-                    <td className="px-3 py-1.5 tabular-nums text-zinc-400">{formatDatumDe(b.datum)}</td>
-                    <td className="px-3 py-1.5 text-zinc-300">{BUCHUNGS_TYP_LABEL[b.typ]}</td>
-                    <td className="max-w-[200px] px-3 py-1.5">
-                      <p className="truncate text-zinc-200">
-                        {anzeigeNameFuerIsin(b.isin, b.wertpapierName, meta)}
-                      </p>
-                      {b.isin ? <p className="font-mono text-[10px] text-zinc-600">{b.isin}</p> : null}
-                    </td>
-                    <td className="px-3 py-1.5 text-right tabular-nums text-zinc-400">
-                      {b.stueck != null ? b.stueck.toLocaleString('de-DE', { maximumFractionDigits: 6 }) : '—'}
-                    </td>
-                    <td className="px-3 py-1.5 text-right tabular-nums text-zinc-100">{formatEur(b.betragEur)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </PaChartKarte>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
     </div>
   )

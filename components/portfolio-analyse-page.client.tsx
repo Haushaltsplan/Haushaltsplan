@@ -162,7 +162,7 @@ export function PortfolioAnalysePageClient() {
     <PageChrome>
       <PageHero
         eyebrow="Portfolioanalyse"
-        title="Portfolio — wie Parqet, privat & lokal"
+        title="Portfolioanalyse"
         description={
           <>
             Import nur im Browser — ohne KI, ohne Rohdatei-Upload. ISINs werden für Anzeigenamen und Logos öffentlich
