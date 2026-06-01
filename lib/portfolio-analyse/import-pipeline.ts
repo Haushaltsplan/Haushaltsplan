@@ -18,7 +18,7 @@ import {
 } from '@/lib/portfolio-analyse/parse-hilfen'
 import type { TrPdfParseErgebnis, TrRawCashZeile, TrRawPosition } from '@/lib/portfolio-analyse/trade-republic-pdf-parser'
 import { parseTradeRepublicPdfBuffer } from '@/lib/portfolio-analyse/trade-republic-pdf-parser'
-import { parseTradeRepublicCsvText } from '@/lib/portfolio-analyse/trade-republic-csv'
+import { istParqetPortfolioCsv, parseParqetPortfolioCsvText } from '@/lib/portfolio-analyse/parqet-portfolio-csv'
 
 async function cashZeileZuBuchung(
   row: TrRawCashZeile,
@@ -163,35 +163,37 @@ export async function importiereTradeRepublicPdfBuffer(
   return rohZuImportErgebnis(roh, 'pdf', blocklist)
 }
 
-export async function importiereTradeRepublicCsvText(
+/** Parqet-Export „Aktien Portfolio-YYYYMMDD-HHMMSS.csv“ — einziges unterstütztes CSV-Format. */
+export async function importiereParqetPortfolioCsvText(
   text: string,
   blocklist: string[] = [],
 ): Promise<PortfolioImportErgebnis> {
-  const roh = parseTradeRepublicCsvText(text)
+  if (!istParqetPortfolioCsv(text)) {
+    return {
+      buchungen: [],
+      positionen: [],
+      depotwertEur: null,
+      hinweise: [
+        'Diese CSV ist kein Parqet-Portfolio-Export.',
+        'In Parqet: Portfolio → Export → „Aktien Portfolio“ (Spalten: datetime, type, shares, amount, identifier, holdingname).',
+      ],
+      statistik: {
+        cashZeilen: 0,
+        positionen: 0,
+        cryptoPositionen: 0,
+        doppelteHashes: 0,
+      },
+    }
+  }
+
+  const roh = parseParqetPortfolioCsvText(text)
   const ergebnis = await rohZuImportErgebnis(roh, 'csv', blocklist)
   for (const h of roh.meta.hinweise) {
     if (!ergebnis.hinweise.includes(h)) ergebnis.hinweise.push(h)
   }
-    if (roh.meta.format === 'depot_positionen' && roh.cash.length === 0) {
-      ergebnis.hinweise.push(
-        'Hinweis: Diese CSV enthält nur Depotpositionen — für Buchungen/Summen Aktivitäts-/Transaktions-CSV oder PDF nutzen.',
-      )
-    }
-    if (roh.meta.format === 'transaktionen_de') {
-      ergebnis.hinweise.push(
-        'Transaktions-CSV: Kauf/Verkauf/Dividende aus Spalte Typ, Betrag_EUR inkl. Gebühren_EUR, Steuern bei Dividenden abgezogen. ISIN-Wechsel ignoriert.',
-      )
-    }
-    if (roh.meta.format === 'tr_transaktionsexport') {
-      ergebnis.hinweise.push(
-        'TR-Transaktionsexport: Beträge aus „amount“ (negativ = Ausgang), Gebühren aus „fee“. STOCKPERK wird nicht importiert (sonst Doppelung mit Kauf).',
-      )
-    }
-    if (roh.meta.format === 'tr_aktivitaet') {
-      ergebnis.hinweise.push(
-        'TR-Aktivitäts-CSV: Beträge aus Spalten Debit (Ausgang) und Credit (Eingang), Typ aus Spalte „Type“.',
-      )
-    }
+  if (roh.cash.length === 0) {
+    ergebnis.hinweise.push('Keine Buchungen erkannt — Datei prüfen oder erneut aus Parqet exportieren.')
+  }
   return ergebnis
 }
 

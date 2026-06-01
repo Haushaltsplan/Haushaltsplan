@@ -5,7 +5,11 @@ import toast from 'react-hot-toast'
 import { PortfolioAnalyseDashboard } from '@/components/portfolio-analyse-dashboard.client'
 import { PageChrome, PageHero, PageSection, PageSectionPanel } from '@/components/page-shell'
 import { ladePiiBlockliste, speicherePiiBlockliste } from '@/lib/portfolio-analyse/anonymisierung'
-import { dedupliziereGegenBestehend, importiereTradeRepublicCsvText, importiereTradeRepublicPdfBuffer } from '@/lib/portfolio-analyse/import-pipeline'
+import {
+  dedupliziereGegenBestehend,
+  importiereParqetPortfolioCsvText,
+  importiereTradeRepublicPdfBuffer,
+} from '@/lib/portfolio-analyse/import-pipeline'
 import { PortfolioAnalyseImportVorschau } from '@/components/portfolio-analyse-import-vorschau'
 import {
   ladePortfolioAnalyseDaten,
@@ -24,7 +28,8 @@ function istCsvDatei(file: File): boolean {
 }
 
 export function PortfolioAnalysePageClient() {
-  const fileInputRef = useRef<HTMLInputElement>(null)
+  const pdfInputRef = useRef<HTMLInputElement>(null)
+  const csvInputRef = useRef<HTMLInputElement>(null)
   const [laden, setLaden] = useState(true)
   const [schemaFehlt, setSchemaFehlt] = useState(false)
   const [dbFehler, setDbFehler] = useState<string | null>(null)
@@ -62,7 +67,29 @@ export function PortfolioAnalysePageClient() {
 
   const hatDaten = buchungen.length > 0 || (snapshot?.positionen.length ?? 0) > 0
 
-  async function verarbeiteDatei(file: File) {
+  async function importAbschliessen(file: File, ergebnis: PortfolioImportErgebnis) {
+    const bestehend = new Set(buchungen.map((b) => b.buchungsHash))
+    const { neu, uebersprungen } = await dedupliziereGegenBestehend(ergebnis.buchungen, bestehend)
+    ergebnis = { ...ergebnis, buchungen: neu }
+    if (uebersprungen > 0) {
+      ergebnis.hinweise.push(`${uebersprungen} Buchung(en) bereits gespeichert — werden übersprungen.`)
+    }
+
+    setVorschauDateiname(file.name)
+    setVorschau(ergebnis)
+
+    if (neu.length === 0 && ergebnis.positionen.length === 0) {
+      toast.error(ergebnis.hinweise[0] ?? 'Keine neuen Daten erkannt.')
+    } else {
+      toast.success('Vorschau bereit — bitte prüfen und übernehmen.')
+    }
+  }
+
+  async function verarbeitePdf(file: File) {
+    if (!istPdfDatei(file)) {
+      toast.error('Bitte eine PDF-Datei wählen.')
+      return
+    }
     setImportBusy(true)
     setVorschau(null)
     try {
@@ -71,40 +98,40 @@ export function PortfolioAnalysePageClient() {
         .map((s) => s.trim())
         .filter((s) => s.length >= 2)
       speicherePiiBlockliste(blocklist)
-
-      let ergebnis: PortfolioImportErgebnis
-      if (istPdfDatei(file)) {
-        const buffer = await file.arrayBuffer()
-        ergebnis = await importiereTradeRepublicPdfBuffer(buffer, blocklist)
-      } else if (istCsvDatei(file)) {
-        const text = await file.text()
-        ergebnis = await importiereTradeRepublicCsvText(text, blocklist)
-      } else {
-        toast.error('Nur PDF oder CSV (Trade Republic).')
-        return
-      }
-
-      const bestehend = new Set(buchungen.map((b) => b.buchungsHash))
-      const { neu, uebersprungen } = await dedupliziereGegenBestehend(ergebnis.buchungen, bestehend)
-      ergebnis = { ...ergebnis, buchungen: neu }
-      if (uebersprungen > 0) {
-        ergebnis.hinweise.push(`${uebersprungen} Buchung(en) bereits gespeichert — werden übersprungen.`)
-      }
-
-      setVorschauDateiname(file.name)
-      setVorschau(ergebnis)
-
-      if (neu.length === 0 && ergebnis.positionen.length === 0) {
-        toast.error('Keine neuen Daten erkannt.')
-      } else {
-        toast.success('Vorschau bereit — bitte prüfen und übernehmen.')
-      }
+      const buffer = await file.arrayBuffer()
+      const ergebnis = await importiereTradeRepublicPdfBuffer(buffer, blocklist)
+      await importAbschliessen(file, ergebnis)
     } catch (e) {
       console.error(e)
-      toast.error('Import fehlgeschlagen — ist das ein Trade-Republic-Dokument?')
+      toast.error('PDF-Import fehlgeschlagen — Trade-Republic-Kontoauszug?')
     } finally {
       setImportBusy(false)
-      if (fileInputRef.current) fileInputRef.current.value = ''
+      if (pdfInputRef.current) pdfInputRef.current.value = ''
+    }
+  }
+
+  async function verarbeiteCsv(file: File) {
+    if (!istCsvDatei(file)) {
+      toast.error('Bitte eine CSV-Datei wählen.')
+      return
+    }
+    setImportBusy(true)
+    setVorschau(null)
+    try {
+      const blocklist = blocklistText
+        .split(/[,;\n]+/)
+        .map((s) => s.trim())
+        .filter((s) => s.length >= 2)
+      speicherePiiBlockliste(blocklist)
+      const text = await file.text()
+      const ergebnis = await importiereParqetPortfolioCsvText(text, blocklist)
+      await importAbschliessen(file, ergebnis)
+    } catch (e) {
+      console.error(e)
+      toast.error('CSV-Import fehlgeschlagen.')
+    } finally {
+      setImportBusy(false)
+      if (csvInputRef.current) csvInputRef.current.value = ''
     }
   }
 
@@ -171,9 +198,9 @@ export function PortfolioAnalysePageClient() {
         title="Portfolioanalyse"
         description={
           <>
-            Import nur im Browser — ohne KI, ohne Rohdatei-Upload. ISINs werden für Anzeigenamen und Logos öffentlich
-            aufgelöst (OpenFIGI/Yahoo). Auswertung mit Kennzahlen, Vermögensverlauf, Cashflow, Dividenden und
-            Allokation — gespeichert werden nur anonymisierte Buchungsdaten.
+            Buchungen aus dem Parqet-CSV-Export (<strong className="font-normal text-zinc-300">Aktien Portfolio</strong>
+            ), optional Depot-Snapshot per Trade-Republic-PDF. Alles nur im Browser — ohne KI, ohne Rohdatei-Upload.
+            ISINs werden für Namen und Logos öffentlich aufgelöst (OpenFIGI/Yahoo).
           </>
         }
       />
@@ -212,49 +239,74 @@ export function PortfolioAnalysePageClient() {
 
       <PageSection titleId="pa-import-heading" title="Import">
         <PageSectionPanel>
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-            <div className="space-y-2 text-sm text-zinc-400">
-              <p>
-                Trade-Republic-Kontoauszug als <strong className="text-zinc-300">PDF</strong> oder konvertiertes{' '}
-                <strong className="text-zinc-300">CSV</strong> wählen. Die Datei verlässt deinen Rechner nicht — Parsing
-                per pdf.js im Tab.
-              </p>
-              <ul className="list-inside list-disc space-y-1 text-xs text-zinc-500">
-                <li>Kein Anschluss an Gemini / OpenAI</li>
-                <li>Keine Speicherung der Originaldatei</li>
-                <li>
-                  CSV: <strong className="text-zinc-400">transaktionen_YYYY.csv</strong> (Datum; Typ; ISIN; Betrag_EUR …) oder TR-Transaktionsexport
-                </li>
-                <li>PDF-Kontoauszug ergänzt Depotpositionen für Allokation & Depotwert</li>
-              </ul>
+          <div className="space-y-8">
+          {(buchungen.length > 0 || (snapshot?.positionen.length ?? 0) > 0) && !schemaFehlt ? (
+            <div className="flex justify-end">
+              <button
+                type="button"
+                onClick={() => void alleDatenLoeschen()}
+                className="rounded-lg border border-rose-900/45 bg-rose-950/15 px-4 py-2 text-xs text-rose-200 hover:bg-rose-950/35"
+              >
+                Gespeicherte Daten löschen ({buchungen.length} Buchungen)
+              </button>
             </div>
-            <div className="flex shrink-0 flex-col gap-2">
-              {(buchungen.length > 0 || (snapshot?.positionen.length ?? 0) > 0) && !schemaFehlt ? (
-                <button
-                  type="button"
-                  onClick={() => void alleDatenLoeschen()}
-                  className="rounded-lg border border-rose-900/45 bg-rose-950/15 px-4 py-2 text-xs text-rose-200 hover:bg-rose-950/35"
-                >
-                  Gespeicherte Daten löschen ({buchungen.length} Buchungen)
-                </button>
-              ) : null}
+          ) : null}
+
+          <div className="grid gap-6 lg:grid-cols-2">
+            <div className="rounded-xl border border-zinc-800/80 bg-zinc-950/40 p-4">
+              <h3 className="text-sm font-medium text-zinc-200">CSV — Parqet Portfolio</h3>
+              <p className="mt-2 text-sm leading-relaxed text-zinc-400">
+                Export aus Parqet: <strong className="text-zinc-300">Aktien Portfolio-YYYYMMDD-HHMMSS.csv</strong> mit
+                Spalten <code className="text-xs text-teal-400/90">datetime, type, shares, amount, identifier, holdingname</code>.
+                Alle Buchungen (Kauf, Verkauf, Dividende, Depot-Transfers) werden vollständig eingelesen.
+              </p>
               <input
-                ref={fileInputRef}
+                ref={csvInputRef}
                 type="file"
-                accept=".pdf,.csv,.txt,application/pdf,text/csv"
+                accept=".csv,text/csv"
                 className="hidden"
                 onChange={(e) => {
                   const f = e.target.files?.[0]
-                  if (f) void verarbeiteDatei(f)
+                  if (f) void verarbeiteCsv(f)
                 }}
               />
               <button
                 type="button"
                 disabled={importBusy || schemaFehlt}
-                onClick={() => fileInputRef.current?.click()}
-                className="rounded-full border border-teal-500/40 bg-teal-950/30 px-5 py-2.5 text-sm font-medium text-teal-100 transition hover:bg-teal-950/50 disabled:opacity-50"
+                onClick={() => csvInputRef.current?.click()}
+                className="mt-4 rounded-full border border-teal-500/40 bg-teal-950/30 px-5 py-2.5 text-sm font-medium text-teal-100 transition hover:bg-teal-950/50 disabled:opacity-50"
               >
-                {importBusy ? 'Wird gelesen …' : 'PDF / CSV wählen'}
+                {importBusy ? 'Wird gelesen …' : 'Parqet-CSV wählen'}
+              </button>
+            </div>
+
+            <div className="rounded-xl border border-zinc-800/80 bg-zinc-950/40 p-4">
+              <h3 className="text-sm font-medium text-zinc-200">PDF — Trade Republic Kontoauszug</h3>
+              <p className="mt-2 text-sm leading-relaxed text-zinc-400">
+                Optional: TR-Kontoauszug als PDF für Depot-Snapshot (Positionen & Depotwert). Parsing nur im Browser
+                (pdf.js), ohne KI und ohne Upload der Rohdatei.
+              </p>
+              <ul className="mt-2 list-inside list-disc space-y-1 text-xs text-zinc-500">
+                <li>Nur für PDF — nicht für CSV</li>
+                <li>Ergänzt Allokation, wenn kein Parqet-Export der Positionen vorliegt</li>
+              </ul>
+              <input
+                ref={pdfInputRef}
+                type="file"
+                accept=".pdf,application/pdf"
+                className="hidden"
+                onChange={(e) => {
+                  const f = e.target.files?.[0]
+                  if (f) void verarbeitePdf(f)
+                }}
+              />
+              <button
+                type="button"
+                disabled={importBusy || schemaFehlt}
+                onClick={() => pdfInputRef.current?.click()}
+                className="mt-4 rounded-full border border-zinc-700/60 bg-zinc-900/50 px-5 py-2.5 text-sm font-medium text-zinc-200 transition hover:bg-zinc-800/60 disabled:opacity-50"
+              >
+                {importBusy ? 'Wird gelesen …' : 'TR-PDF wählen'}
               </button>
             </div>
           </div>
@@ -273,6 +325,7 @@ export function PortfolioAnalysePageClient() {
               onUebernehmen={(payload) => void vorschauUebernehmen(payload)}
             />
           ) : null}
+          </div>
         </PageSectionPanel>
       </PageSection>
 
