@@ -15,12 +15,74 @@ export function bereinigeFreitext(raw: string): string {
     .trim()
 }
 
+const MONAT: Record<string, string> = {
+  jan: '01',
+  januar: '01',
+  feb: '02',
+  februar: '02',
+  mar: '03',
+  mär: '03',
+  maerz: '03',
+  märz: '03',
+  apr: '04',
+  april: '04',
+  mai: '05',
+  may: '05',
+  jun: '06',
+  juni: '06',
+  jul: '07',
+  juli: '07',
+  aug: '08',
+  august: '08',
+  sep: '09',
+  sept: '09',
+  september: '09',
+  okt: '10',
+  oct: '10',
+  oktober: '10',
+  nov: '11',
+  november: '11',
+  dez: '12',
+  dec: '12',
+  dezember: '12',
+}
+
 export function parseDeDatumZuIso(raw: string): string | null {
   const t = raw.trim()
+  if (!t) return null
+
   const m = t.match(/^(\d{2})\.(\d{2})\.(\d{4})$/)
   if (m) return `${m[3]}-${m[2]}-${m[1]}`
-  const iso = t.match(/^(\d{4})-(\d{2})-(\d{2})$/)
+
+  const mKurz = t.match(/^(\d{2})\.(\d{2})\.(\d{2})$/)
+  if (mKurz) {
+    const jj = Number(mKurz[3])
+    const jahr = jj >= 70 ? 1900 + jj : 2000 + jj
+    return `${jahr}-${mKurz[2]}-${mKurz[1]}`
+  }
+
+  const iso = t.match(/^(\d{4})-(\d{2})-(\d{2})/)
   if (iso) return `${iso[1]}-${iso[2]}-${iso[3]}`
+
+  const dmy = t.match(/^(\d{1,2})[./](\d{1,2})[./](\d{4})$/)
+  if (dmy) {
+    const tag = dmy[1].padStart(2, '0')
+    const mon = dmy[2].padStart(2, '0')
+    return `${dmy[3]}-${mon}-${tag}`
+  }
+
+  const monText = t.match(/^(\d{1,2})\s+([A-Za-zäöüÄÖÜß.]+)\.?\s+(\d{2,4})/)
+  if (monText) {
+    const tag = monText[1].padStart(2, '0')
+    const monKey = monText[2].toLowerCase().replace(/\./g, '')
+    const mm = MONAT[monKey]
+    if (mm) {
+      let jahr = Number(monText[3])
+      if (jahr < 100) jahr = jahr >= 70 ? 1900 + jahr : 2000 + jahr
+      return `${jahr}-${mm}-${tag}`
+    }
+  }
+
   return null
 }
 
@@ -46,12 +108,13 @@ export function extrahiereStueck(text: string): number | null {
 
 export function normalisiereTrTyp(raw: string): BuchungsTyp {
   const t = raw.toLowerCase().trim()
+  if (t.includes('saveback') || t.includes('round up') || t.includes('roundup')) return 'kauf'
   if (t.includes('kauf') || t.includes('purchase') || t.includes('buy')) return 'kauf'
   if (t.includes('verkauf') || t.includes('sale') || t.includes('sell')) return 'verkauf'
   if (t.includes('dividend')) return 'dividende'
-  if (t.includes('zins') || t.includes('interest')) return 'zins'
+  if (t.includes('interest') || t.includes('zins')) return 'zins'
   if (t.includes('einzahl') || t.includes('deposit') || t.includes('überweisung eingang')) return 'einzahlung'
-  if (t.includes('auszahl') || t.includes('withdraw') || t.includes('überweisung ausgang')) return 'auszahlung'
+  if (t.includes('auszahl') || t.includes('withdrawal') || t.includes('withdraw')) return 'auszahlung'
   if (t.includes('steuer') || t.includes('tax') || t.includes('kapitalertrag')) return 'steuer'
   if (t.includes('gebühr') || t.includes('fee') || t.includes('entgelt')) return 'gebuehr'
   return 'sonstiges'

@@ -228,7 +228,11 @@ export function PortfolioAnalysePageClient() {
               <ul className="list-inside list-disc space-y-1 text-xs text-zinc-500">
                 <li>Kein Anschluss an Gemini / OpenAI</li>
                 <li>Keine Speicherung der Originaldatei</li>
-                <li>Getrennt von Besitz- und Rechnungs-Import</li>
+                <li>
+                  CSV: am zuverlässigsten der Export aus Tab <strong className="text-zinc-400">Cash-Transaktionen</strong>{' '}
+                  (z. B. kontoauszug.jonathanpagel.com) — nicht Portfolio-/Depot-Tab
+                </li>
+                <li>Für vollständige Daten oft besser: <strong className="text-zinc-400">PDF</strong> direkt</li>
               </ul>
             </div>
             <div className="flex shrink-0 flex-col gap-2">

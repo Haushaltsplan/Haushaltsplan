@@ -3,6 +3,7 @@ import {
   beschreibungZuPersonenbezogen,
   sichererWertpapierName,
 } from '@/lib/portfolio-analyse/anonymisierung'
+import { positiverGeldbetrag } from '@/lib/portfolio-analyse/parse-geld-betrag'
 import {
   berechneBuchungsHash,
   extrahiereIsin,
@@ -31,9 +32,10 @@ async function cashZeileZuBuchung(
   const datum = parseDeDatumZuIso(row.datum.trim())
   if (!datum) return null
 
-  const typ = normalisiereTrTyp(typRaw)
-  const eingang = parseEuropeanNumber(row.zahlungseingang) ?? 0
-  const ausgang = parseEuropeanNumber(row.zahlungsausgang) ?? 0
+  const typ = normalisiereTrTyp(typRaw || beschreibung)
+  const eingang = positiverGeldbetrag(row.zahlungseingang) ?? 0
+  const ausgang = positiverGeldbetrag(row.zahlungsausgang) ?? 0
+  if (eingang <= 0 && ausgang <= 0) return null
   const betragEur = Math.round((eingang > 0 ? eingang : ausgang) * 100) / 100
   if (betragEur <= 0 && typ !== 'steuer' && typ !== 'gebuehr') return null
 
@@ -156,7 +158,21 @@ export async function importiereTradeRepublicCsvText(
   blocklist: string[] = [],
 ): Promise<PortfolioImportErgebnis> {
   const roh = parseTradeRepublicCsvText(text)
-  return rohZuImportErgebnis(roh, 'csv', blocklist)
+  const ergebnis = await rohZuImportErgebnis(roh, 'csv', blocklist)
+  for (const h of roh.meta.hinweise) {
+    if (!ergebnis.hinweise.includes(h)) ergebnis.hinweise.push(h)
+  }
+    if (roh.meta.format === 'depot_positionen' && roh.cash.length === 0) {
+      ergebnis.hinweise.push(
+        'Hinweis: Diese CSV enthält nur Depotpositionen — für Buchungen/Summen Aktivitäts-/Transaktions-CSV oder PDF nutzen.',
+      )
+    }
+    if (roh.meta.format === 'tr_aktivitaet') {
+      ergebnis.hinweise.push(
+        'TR-Aktivitäts-CSV: Beträge aus Spalten Debit (Ausgang) und Credit (Eingang), Typ aus Spalte „Type“.',
+      )
+    }
+  return ergebnis
 }
 
 export async function dedupliziereGegenBestehend(
