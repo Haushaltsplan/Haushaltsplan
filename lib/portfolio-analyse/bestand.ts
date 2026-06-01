@@ -274,6 +274,15 @@ function standAusMap(
 }
 
 /** Depotstand je Kalendertag (End-of-day nach Buchungen des Tages). */
+/** Summe der Einstandswerte offener Wertpapier-Positionen (ohne Cash). */
+export function einstandWertpapiereEur(stand: DepotStand): number {
+  let s = 0
+  for (const h of stand.byIsin.values()) {
+    s += h.stueck * h.einstandKurs
+  }
+  return Math.round(s * 100) / 100
+}
+
 export function depotStandProTag(
   buchungen: PortfolioBuchung[],
   tage: string[],
