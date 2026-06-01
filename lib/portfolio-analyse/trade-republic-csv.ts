@@ -50,7 +50,7 @@ function splitCsvLine(line: string, delimiter: string): string[] {
     }
     cur += ch
   }
-  out.push(cur.trim())
+  out.push(cur.trim().replace(/^\ufeff/, ''))
   return out
 }
 
@@ -166,35 +166,29 @@ function mappeSpalten(headers: string[]): SpaltenMap {
     saldo: findeSpalteExakt(headers, ['saldo', 'balance', 'kontostand']),
     isin: findeSpalteExakt(headers, ['isin', 'instrument', 'wertpapierkennnummer']),
     symbol: findeSpalteExakt(headers, ['symbol', 'ticker', 'kuerzel']),
-    fee: findeSpalteExakt(headers, ['fee', 'gebuehr', 'gebuehren', 'gebuehren_eur', 'commission', 'entgelt']),
+    fee: findeSpalteExakt(headers, ['fee', 'gebuehr', 'gebuhren', 'gebuehren', 'gebuehren_eur', 'commission', 'entgelt']),
     tax: findeSpalteExakt(headers, ['steuern', 'steuern_eur', 'steuer', 'tax', 'taxes']),
     name: findeSpalteExakt(headers, ['name', 'wertpapier', 'security', 'security_description', 'instrument_name']),
     stueck: findeSpalteExakt(headers, ['stuck', 'stueck', 'anteile', 'shares', 'quantity', 'stk', 'nominal', 'menge']),
-    kurs: findeSpalteExakt(headers, ['kurs', 'preis_eur', 'rate', 'price', 'price_per_unit', 'kurs_pro_stuck']),
+    kurs: findeSpalteExakt(headers, ['kurs', 'preis', 'preis_eur', 'rate', 'price', 'price_per_unit', 'kurs_pro_stuck']),
     wert: findeSpalteExakt(headers, ['kurswert_in_eur', 'market_value', 'marketvalueeur', 'market_value_eur']),
   }
 }
 
+/** Parqet/manuell: Datum;… oder Jahr;Datum_Uhrzeit;… + ISIN + Betrag */
+function istTransaktionenDeLayout(headers: string[], map: SpaltenMap): boolean {
+  if (!headers.includes('isin')) return false
+  if (map.typ == null || map.betrag == null) return false
+  if (map.stueck == null && !headers.includes('anteile') && !headers.includes('quantity')) return false
+  const hatDatum =
+    headers.includes('datum') || headers.includes('datum_uhrzeit') || headers.includes('date')
+  const hatJahr = headers.includes('jahr') || headers.includes('year')
+  if (!hatDatum && !hatJahr) return false
+  return headers.includes('wertpapier') || headers.includes('name') || map.name != null
+}
+
 function erkenneFormat(headers: string[], map: SpaltenMap): CsvErkanntesFormat {
-  const hatTransaktionenDeKlassisch =
-    headers.includes('datum') &&
-    !headers.includes('datum_uhrzeit') &&
-    map.typ != null &&
-    headers.includes('isin') &&
-    map.betrag != null &&
-    (headers.includes('wertpapier') || map.name != null) &&
-    (headers.includes('anteile') || map.stueck != null)
-
-  const hatTransaktionenDeParqet =
-    headers.includes('datum_uhrzeit') &&
-    headers.includes('jahr') &&
-    map.typ != null &&
-    headers.includes('isin') &&
-    map.betrag != null &&
-    (headers.includes('name') || map.name != null) &&
-    (headers.includes('anteile') || map.stueck != null)
-
-  const hatTransaktionenDe = hatTransaktionenDeKlassisch || hatTransaktionenDeParqet
+  if (istTransaktionenDeLayout(headers, map)) return 'transaktionen_de'
 
   const hatTrTransaktionsexport =
     headers.includes('datetime') &&
@@ -210,7 +204,7 @@ function erkenneFormat(headers: string[], map: SpaltenMap): CsvErkanntesFormat {
     (headers.includes('instrument') || headers.includes('id'))
 
   const hatWertpapierOrder =
-    !hatTransaktionenDe &&
+    !headers.includes('isin') &&
     !hatTrTransaktionsexport &&
     map.datum != null &&
     map.typ != null &&
@@ -220,19 +214,20 @@ function erkenneFormat(headers: string[], map: SpaltenMap): CsvErkanntesFormat {
     map.ausgang == null
 
   const hatKontoauszug =
+    !headers.includes('isin') &&
     map.datum != null &&
-    (map.eingang != null || map.ausgang != null || map.betrag != null) &&
+    (map.eingang != null || map.ausgang != null) &&
     (map.beschreibung != null || map.title != null || map.typ != null) &&
     !hatTrAktivitaet
 
   const hatDepot =
+    !headers.includes('isin') &&
     (map.stueck != null || headers.includes('quantity')) &&
     (map.wert != null || map.kurs != null) &&
     (map.name != null || map.isin != null) &&
     map.datum == null &&
     !hatTrAktivitaet
 
-  if (hatTransaktionenDe) return 'transaktionen_de'
   if (hatTrTransaktionsexport) return 'tr_transaktionsexport'
   if (hatTrAktivitaet) return 'tr_aktivitaet'
   if (hatWertpapierOrder) return 'tr_wertpapier_order'
@@ -324,10 +319,10 @@ function parseAnteileRaw(raw: string): number | null {
   return parseGeldBetrag(s)
 }
 
-function datumAusZeile(cols: string[], map: SpaltenMap, format: CsvErkanntesFormat): string | null {
-  const datumRaw = map.datum != null ? cols[map.datum]?.trim() ?? '' : ''
+function datumAusZeile(cols: string[], map: SpaltenMap, _format: CsvErkanntesFormat): string | null {
+  const datumRaw = map.datum != null ? cols[map.datum]?.trim().replace(/^\ufeff/, '') ?? '' : ''
   if (!datumRaw) return null
-  if (format === 'transaktionen_de' && map.jahr != null && /^\d{1,2}\.\d{1,2}\./.test(datumRaw)) {
+  if (map.jahr != null && /^\d{1,2}\.\d{1,2}\./.test(datumRaw)) {
     const jahr = cols[map.jahr]?.trim() ?? ''
     return parseDatumUhrzeitMitJahr(datumRaw, jahr)
   }
@@ -550,20 +545,32 @@ export function parseTradeRepublicCsvText(text: string): TrPdfParseErgebnis & { 
   const delimiter = detectDelimiter(lines[headerIndex])
   const headers = splitCsvLine(lines[headerIndex], delimiter).map(normalizeHeader)
   const map = mappeSpalten(headers)
-  const format = erkenneFormat(headers, map)
+  let format = erkenneFormat(headers, map)
 
   hinweise.push(FORMAT_HINWEISE[format])
   hinweise.push(`Spalten: ${headers.join(', ')}`)
 
   if (format === 'unbekannt') {
-    hinweise.push(
-      'Erste Zeile deiner Datei sollte u. a. „Type“ oder „Typ“ und „Debit“/„Credit“ oder „Amount“ enthalten. Sonst PDF importieren.',
-    )
-    return { cash: [], portfolio: [], crypto: [], meta: { format, delimiter, spalten: headers, hinweise } }
+    if (istTransaktionenDeLayout(headers, map)) {
+      format = 'transaktionen_de'
+      hinweise[hinweise.length - 1] = FORMAT_HINWEISE.transaktionen_de
+      hinweise.push('Format anhand ISIN/Typ/Betrag erkannt (Transaktions-CSV).')
+    } else {
+      hinweise.push(
+        'Unbekanntes Layout. Erwartet z. B. „Datum;Typ;ISIN;Betrag“ oder TR-Export mit „date“ und „amount“. Erkannte Spalten siehe oben.',
+      )
+      return { cash: [], portfolio: [], crypto: [], meta: { format, delimiter, spalten: headers, hinweise } }
+    }
   }
 
   const dataLines = lines.slice(headerIndex)
-  const ergebnis = parseDatenzeilen(dataLines, delimiter, map, format)
+  let ergebnis = parseDatenzeilen(dataLines, delimiter, map, format)
+
+  if (ergebnis.cash.length === 0 && istTransaktionenDeLayout(headers, map) && format !== 'transaktionen_de') {
+    format = 'transaktionen_de'
+    ergebnis = parseDatenzeilen(dataLines, delimiter, map, format)
+    hinweise.push('Zweiter Lauf als Transaktions-CSV (Datum_Uhrzeit + Jahr).')
+  }
 
   if (
     format === 'transaktionen_de' ||
