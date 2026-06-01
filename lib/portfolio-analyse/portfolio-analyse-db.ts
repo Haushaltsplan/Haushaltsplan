@@ -1,6 +1,11 @@
 'use client'
 
 import { supabase } from '@/lib/supabase'
+import {
+  PORTFOLIO_DB_SEITEN_GROESSE,
+  PORTFOLIO_MAX_BUCHUNGEN,
+  PORTFOLIO_UPSERT_BATCH,
+} from '@/lib/portfolio-analyse/limits'
 import { normalisiereIsinFuerDb } from '@/lib/portfolio-analyse/parse-hilfen'
 import type {
   PortfolioBuchung,
@@ -48,17 +53,51 @@ function mapBuchungRow(row: Record<string, unknown>): PortfolioDbBuchung {
   }
 }
 
+async function ladeAlleBuchungen(): Promise<{
+  buchungen: PortfolioDbBuchung[]
+  error: { message: string; code?: string } | null
+  limitErreicht: boolean
+}> {
+  const buchungen: PortfolioDbBuchung[] = []
+  let offset = 0
+
+  while (buchungen.length < PORTFOLIO_MAX_BUCHUNGEN) {
+    const bis = Math.min(offset + PORTFOLIO_DB_SEITEN_GROESSE - 1, PORTFOLIO_MAX_BUCHUNGEN - 1)
+    const { data, error } = await supabase
+      .from('portfolio_analyse_buchung')
+      .select('*')
+      .order('datum', { ascending: false })
+      .range(offset, bis)
+
+    if (error) {
+      return { buchungen: [], error, limitErreicht: false }
+    }
+
+    const seite = (data ?? []).map((r) => mapBuchungRow(r as Record<string, unknown>))
+    buchungen.push(...seite)
+
+    if (seite.length < PORTFOLIO_DB_SEITEN_GROESSE) {
+      return { buchungen, error: null, limitErreicht: false }
+    }
+
+    offset += PORTFOLIO_DB_SEITEN_GROESSE
+    if (buchungen.length >= PORTFOLIO_MAX_BUCHUNGEN) {
+      return { buchungen, error: null, limitErreicht: true }
+    }
+  }
+
+  return { buchungen, error: null, limitErreicht: true }
+}
+
 export async function ladePortfolioAnalyseDaten(): Promise<{
   ok: boolean
   buchungen: PortfolioDbBuchung[]
   snapshot: PortfolioDbSnapshot | null
   schemaFehlt: boolean
   message?: string
+  limitErreicht?: boolean
 }> {
-  const { data: buchungenRaw, error: buchErr } = await supabase
-    .from('portfolio_analyse_buchung')
-    .select('*')
-    .order('datum', { ascending: false })
+  const { buchungen: buchungenRaw, error: buchErr, limitErreicht } = await ladeAlleBuchungen()
 
   if (buchErr) {
     return {
@@ -87,7 +126,7 @@ export async function ladePortfolioAnalyseDaten(): Promise<{
     }
   }
 
-  const buchungen = (buchungenRaw ?? []).map((r) => mapBuchungRow(r as Record<string, unknown>))
+  const buchungen = buchungenRaw
   let snapshot: PortfolioDbSnapshot | null = null
   if (snapRaw) {
     const s = snapRaw as Record<string, unknown>
@@ -99,7 +138,13 @@ export async function ladePortfolioAnalyseDaten(): Promise<{
     }
   }
 
-  return { ok: true, buchungen, snapshot, schemaFehlt: false }
+  return {
+    ok: true,
+    buchungen,
+    snapshot,
+    schemaFehlt: false,
+    limitErreicht: limitErreicht || undefined,
+  }
 }
 
 export async function speicherePortfolioImport(
@@ -109,6 +154,14 @@ export async function speicherePortfolioImport(
 ): Promise<{ ok: boolean; eingefuegt: number; message?: string; schemaFehlt?: boolean }> {
   if (buchungen.length === 0 && positionen.length === 0) {
     return { ok: false, eingefuegt: 0, message: 'Nichts zum Speichern.' }
+  }
+
+  if (buchungen.length > PORTFOLIO_MAX_BUCHUNGEN) {
+    return {
+      ok: false,
+      eingefuegt: 0,
+      message: `Maximal ${PORTFOLIO_MAX_BUCHUNGEN.toLocaleString('de-DE')} Buchungen pro Speichervorgang.`,
+    }
   }
 
   let eingefuegt = 0
@@ -125,20 +178,24 @@ export async function speicherePortfolioImport(
       asset_klasse: b.assetKlasse,
       quelle: b.quelle,
     }))
-    const { data, error } = await supabase
-      .from('portfolio_analyse_buchung')
-      .upsert(rows, { onConflict: 'owner_user_id,buchungs_hash', ignoreDuplicates: true })
-      .select('id')
 
-    if (error) {
-      return {
-        ok: false,
-        eingefuegt: 0,
-        schemaFehlt: istSchemaFehltFehler(error.message, error.code),
-        message: error.message,
+    for (let i = 0; i < rows.length; i += PORTFOLIO_UPSERT_BATCH) {
+      const batch = rows.slice(i, i + PORTFOLIO_UPSERT_BATCH)
+      const { data, error } = await supabase
+        .from('portfolio_analyse_buchung')
+        .upsert(batch, { onConflict: 'owner_user_id,buchungs_hash', ignoreDuplicates: true })
+        .select('id')
+
+      if (error) {
+        return {
+          ok: false,
+          eingefuegt,
+          schemaFehlt: istSchemaFehltFehler(error.message, error.code),
+          message: error.message,
+        }
       }
+      eingefuegt += data?.length ?? 0
     }
-    eingefuegt = data?.length ?? 0
   }
 
   if (positionen.length > 0) {

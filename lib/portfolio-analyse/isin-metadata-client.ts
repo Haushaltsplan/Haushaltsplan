@@ -1,6 +1,6 @@
 import type { IsinMetadata } from '@/lib/portfolio-analyse/isin-lookup-server'
 
-const CACHE_KEY = 'mein-haushalt:portfolio-isin-meta'
+const CACHE_KEY = 'mein-haushalt:portfolio-isin-meta-v2'
 const CACHE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000
 
 type CacheEntry = Record<string, IsinMetadata & { cachedAt: number }>

@@ -10,6 +10,8 @@ export function yahooSymbolAusTicker(ticker: string, exchCode: string): string {
   const suffixMap: Record<string, string> = {
     GY: 'DE',
     GB: 'DE',
+    GR: 'DE',
+    GT: 'DE',
     GF: 'F',
     GD: 'F',
     GS: 'SG',
@@ -36,4 +38,17 @@ export function yahooSymbolAusTicker(ticker: string, exchCode: string): string {
   if (suffix) return `${t}.${suffix}`
   if (ex.length === 2) return `${t}.${ex}`
   return t
+}
+
+/** US-Ticker ohne Börsen-Suffix kollidieren oft (z. B. CYBR ≠ CYBR.L). */
+export function yahooSymbolAbsichern(ticker: string, exchCode: string): string {
+  const sym = yahooSymbolAusTicker(ticker, exchCode)
+  const t = ticker.trim().toUpperCase()
+  if (t === 'CYBR' && (exchCode === 'LN' || sym.endsWith('.L'))) return 'CYBR.L'
+  if (sym === t && /^(LN|L|GY|GR|GT|GF|GD|GS|GM)$/.test(exchCode.trim().toUpperCase())) {
+    const ex = exchCode.trim().toUpperCase()
+    const suffix = ex === 'LN' || ex === 'L' ? 'L' : 'DE'
+    return `${t}.${suffix}`
+  }
+  return sym
 }

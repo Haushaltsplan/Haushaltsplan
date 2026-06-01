@@ -11,6 +11,7 @@ import {
   importiereTradeRepublicPdfBuffer,
 } from '@/lib/portfolio-analyse/import-pipeline'
 import { PortfolioAnalyseImportVorschau } from '@/components/portfolio-analyse-import-vorschau'
+import { PORTFOLIO_MAX_BUCHUNGEN } from '@/lib/portfolio-analyse/limits'
 import {
   ladePortfolioAnalyseDaten,
   loescheAllePortfolioAnalyseDaten,
@@ -33,6 +34,7 @@ export function PortfolioAnalysePageClient() {
   const [laden, setLaden] = useState(true)
   const [schemaFehlt, setSchemaFehlt] = useState(false)
   const [dbFehler, setDbFehler] = useState<string | null>(null)
+  const [buchungenLimit, setBuchungenLimit] = useState(false)
   const [buchungen, setBuchungen] = useState<PortfolioDbBuchung[]>([])
   const [snapshot, setSnapshot] = useState<Awaited<ReturnType<typeof ladePortfolioAnalyseDaten>>['snapshot']>(null)
 
@@ -51,10 +53,17 @@ export function PortfolioAnalysePageClient() {
     const res = await ladePortfolioAnalyseDaten()
     setSchemaFehlt(res.schemaFehlt)
     setDbFehler(res.schemaFehlt ? null : res.message ?? null)
+    setBuchungenLimit(Boolean(res.limitErreicht))
     if (res.ok) {
       setBuchungen(res.buchungen)
       setSnapshot(res.snapshot)
       setDbFehler(null)
+      if (res.limitErreicht) {
+        toast(
+          `Es werden maximal ${PORTFOLIO_MAX_BUCHUNGEN.toLocaleString('de-DE')} Buchungen geladen — ältere Einträge sind in der Datenbank, werden hier aber nicht angezeigt.`,
+          { duration: 8000 },
+        )
+      }
     } else if (!res.schemaFehlt) {
       toast.error(res.message ?? 'Daten konnten nicht geladen werden.')
     }
@@ -232,6 +241,18 @@ export function PortfolioAnalysePageClient() {
           <PageSectionPanel>
             <p className="text-sm leading-relaxed text-red-200/90">
               Speichern/Laden fehlgeschlagen: <span className="font-mono text-xs">{dbFehler}</span>
+            </p>
+          </PageSectionPanel>
+        </PageSection>
+      ) : null}
+
+      {buchungenLimit && !schemaFehlt ? (
+        <PageSection titleId="pa-limit-heading" title="Hinweis">
+          <PageSectionPanel>
+            <p className="text-sm leading-relaxed text-amber-100/90">
+              Angezeigt werden höchstens{' '}
+              <strong>{PORTFOLIO_MAX_BUCHUNGEN.toLocaleString('de-DE')}</strong> Buchungen (neueste zuerst). Liegen
+              mehr in der Datenbank, fehlen ältere Einträge in der Auswertung.
             </p>
           </PageSectionPanel>
         </PageSection>

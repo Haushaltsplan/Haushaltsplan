@@ -192,8 +192,11 @@ export function PortfolioAnalyseDashboard({
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-sm font-medium text-zinc-100">{p.anzeigeName}</p>
                         <p className="text-[11px] text-zinc-500">
-                          {p.stueck.toLocaleString('de-DE', { maximumFractionDigits: 4 })} Stk ·{' '}
-                          {p.gewichtProzent.toFixed(1)} %
+                          {p.stueck.toLocaleString('de-DE', { maximumFractionDigits: 4 })} Stk
+                          {p.kursLiveEur != null
+                            ? ` · ${p.kursLiveEur.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €`
+                            : ''}{' '}
+                          · {p.gewichtProzent.toFixed(1)} %
                         </p>
                       </div>
                       <div className="text-right">

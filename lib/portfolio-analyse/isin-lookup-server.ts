@@ -1,4 +1,4 @@
-import { yahooSymbolAusTicker } from '@/lib/portfolio-analyse/isin-yahoo-symbol'
+import { yahooSymbolAbsichern, yahooSymbolAusTicker } from '@/lib/portfolio-analyse/isin-yahoo-symbol'
 
 export type IsinMetadata = {
   isin: string
@@ -16,6 +16,9 @@ const YAHOO_HEADERS = {
   Accept: 'application/json',
 } as const
 
+const DE_EXCH = new Set(['GY', 'GR', 'GT', 'GF', 'GD', 'GS', 'GM', 'DE', 'XETRA', 'XETR'])
+const LN_EXCH = new Set(['LN', 'L'])
+
 function normalisiereIsin(isin: string): string | null {
   const s = isin.trim().toUpperCase()
   return ISIN_RE.test(s) ? s : null
@@ -27,10 +30,11 @@ type OpenFigiRow = {
   exchCode?: string
   securityType?: string
   marketSector?: string
+  securityType2?: string
 }
 
-async function openFigiLookup(isins: string[]): Promise<Map<string, OpenFigiRow>> {
-  const out = new Map<string, OpenFigiRow>()
+async function openFigiLookup(isins: string[]): Promise<Map<string, OpenFigiRow[]>> {
+  const out = new Map<string, OpenFigiRow[]>()
   if (isins.length === 0) return out
 
   const body = isins.map((idValue) => ({ idType: 'ID_ISIN', idValue }))
@@ -44,45 +48,84 @@ async function openFigiLookup(isins: string[]): Promise<Map<string, OpenFigiRow>
 
   const rows = (await res.json()) as Array<{ data?: OpenFigiRow[] | null; error?: string }>
   for (let i = 0; i < isins.length; i++) {
-    const hit = rows[i]?.data?.[0]
-    if (hit?.ticker) out.set(isins[i], hit)
+    const data = rows[i]?.data?.filter((r) => r.ticker && r.exchCode) ?? []
+    if (data.length > 0) out.set(isins[i], data)
   }
   return out
 }
 
-async function yahooSearchIsin(isin: string): Promise<{ name: string; symbolYahoo: string } | null> {
+function istEtfZeile(row: OpenFigiRow): boolean {
+  const t = `${row.securityType ?? ''} ${row.securityType2 ?? ''} ${row.marketSector ?? ''}`.toLowerCase()
+  return t.includes('etf') || t.includes('etp') || t.includes('fund')
+}
+
+function waehleOpenFigiZeile(rows: OpenFigiRow[]): OpenFigiRow | null {
+  if (rows.length === 0) return null
+  const etfs = rows.filter(istEtfZeile)
+  const pool = etfs.length > 0 ? etfs : rows
+
+  for (const ex of DE_EXCH) {
+    const hit = pool.find((r) => r.exchCode?.toUpperCase() === ex)
+    if (hit) return hit
+  }
+  for (const ex of LN_EXCH) {
+    const hit = pool.find((r) => r.exchCode?.toUpperCase() === ex)
+    if (hit) return hit
+  }
+  return pool[0] ?? null
+}
+
+type YahooQuote = {
+  symbol?: string
+  longname?: string
+  shortname?: string
+  quoteType?: string
+  exchange?: string
+}
+
+async function yahooSearchIsin(isin: string): Promise<YahooQuote[]> {
   const u = new URL('https://query1.finance.yahoo.com/v1/finance/search')
   u.searchParams.set('q', isin)
-  u.searchParams.set('quotesCount', '6')
+  u.searchParams.set('quotesCount', '12')
   u.searchParams.set('newsCount', '0')
   const res = await fetch(u.toString(), { headers: YAHOO_HEADERS, next: { revalidate: 86400 } })
-  if (!res.ok) return null
-  const j = (await res.json()) as {
-    quotes?: Array<{ symbol?: string; longname?: string; shortname?: string; quoteType?: string }>
-  }
-  for (const q of j.quotes ?? []) {
-    const sym = q.symbol?.trim()
-    if (!sym) continue
-    const name = (q.longname ?? q.shortname ?? sym).trim()
-    if (q.quoteType === 'EQUITY' || q.quoteType === 'ETF' || q.quoteType === 'MUTUALFUND') {
-      return { name, symbolYahoo: sym }
-    }
-  }
-  const first = j.quotes?.[0]
-  if (first?.symbol) {
-    return {
-      name: (first.longname ?? first.shortname ?? first.symbol).trim(),
-      symbolYahoo: first.symbol.trim(),
-    }
-  }
-  return null
+  if (!res.ok) return []
+  const j = (await res.json()) as { quotes?: YahooQuote[] }
+  return j.quotes ?? []
+}
+
+function symbolAusYahooQuote(q: YahooQuote): string | null {
+  const sym = q.symbol?.trim()
+  if (!sym) return null
+  const typ = (q.quoteType ?? '').toUpperCase()
+  if (typ && typ !== 'ETF' && typ !== 'MUTUALFUND' && typ !== 'EQUITY') return null
+  return sym
+}
+
+function waehleYahooQuote(quotes: YahooQuote[]): YahooQuote | null {
+  const etfQuotes = quotes
+    .map((q) => ({ q, sym: symbolAusYahooQuote(q) }))
+    .filter((x): x is { q: YahooQuote; sym: string } => x.sym != null)
+    .filter(({ q }) => {
+      const typ = (q.quoteType ?? '').toUpperCase()
+      return typ === 'ETF' || typ === 'MUTUALFUND'
+    })
+
+  const pool = etfQuotes.length > 0 ? etfQuotes : quotes.map((q) => ({ q, sym: symbolAusYahooQuote(q) })).filter((x): x is { q: YahooQuote; sym: string } => x.sym != null)
+
+  const de = pool.find(({ sym }) => sym.endsWith('.DE') || sym.endsWith('.F') || sym.endsWith('.PA'))
+  if (de) return de.q
+
+  const london = pool.find(({ sym }) => sym.endsWith('.L'))
+  if (london) return london.q
+
+  return pool[0]?.q ?? null
 }
 
 function nameAusOpenFigi(row: OpenFigiRow): string {
   const raw = (row.name ?? row.ticker ?? '').trim()
   if (!raw) return ''
   return raw
-    .replace(/\s+(INC|CORP|LTD|PLC|AG|SE|SA|NV|GROUP)\.?$/i, (m) => m)
     .split(/\s+/)
     .map((w) => w.charAt(0) + w.slice(1).toLowerCase())
     .join(' ')
@@ -97,35 +140,48 @@ export async function lookupIsinMetadaten(isins: string[]): Promise<IsinMetadata
   const results: IsinMetadata[] = []
 
   for (const isin of unique) {
-    const figi = figiMap.get(isin)
+    const yahooQuotes = await yahooSearchIsin(isin)
+    const yahooPick = waehleYahooQuote(yahooQuotes)
+
+    const figiRows = figiMap.get(isin) ?? []
+    const figi = waehleOpenFigiZeile(figiRows)
+
+    let symbolYahoo: string | null = null
+    let name = isin
+    let assetType: string | null = null
+
     if (figi?.ticker && figi.exchCode) {
-      const symbolYahoo = yahooSymbolAusTicker(figi.ticker, figi.exchCode)
-      const name = nameAusOpenFigi(figi) || figi.ticker
-      results.push({
-        isin,
-        name,
-        symbolYahoo: symbolYahoo || null,
-        assetType: figi.securityType ?? figi.marketSector ?? null,
-      })
-      continue
+      symbolYahoo = yahooSymbolAbsichern(figi.ticker, figi.exchCode)
+      name = nameAusOpenFigi(figi) || figi.ticker
+      assetType = figi.securityType ?? figi.securityType2 ?? null
     }
 
-    const yahoo = await yahooSearchIsin(isin)
-    if (yahoo) {
-      results.push({
-        isin,
-        name: yahoo.name,
-        symbolYahoo: yahoo.symbolYahoo,
-        assetType: null,
-      })
-    } else {
-      results.push({
-        isin,
-        name: isin,
-        symbolYahoo: null,
-        assetType: null,
-      })
+    if (yahooPick) {
+      const ySym = symbolAusYahooQuote(yahooPick)
+      const yName = (yahooPick.longname ?? yahooPick.shortname ?? ySym ?? '').trim()
+      if (ySym) {
+        const yIsDe = ySym.endsWith('.DE') || ySym.endsWith('.F')
+        const curIsBareUs =
+          symbolYahoo != null && !symbolYahoo.includes('.') && isin.startsWith('IE')
+        if (!symbolYahoo || yIsDe || curIsBareUs) {
+          symbolYahoo = ySym
+        }
+      }
+      if (yName.length > 2) name = yName
     }
+
+    if (symbolYahoo === 'CYBR') symbolYahoo = 'CYBR.L'
+    if (symbolYahoo === 'CYBP.L') {
+      const alt = figi?.ticker && figi.exchCode ? yahooSymbolAbsichern(figi.ticker, figi.exchCode) : 'CYBR.L'
+      symbolYahoo = alt === 'CYBP.L' ? 'RCRS.DE' : alt
+    }
+
+    results.push({
+      isin,
+      name,
+      symbolYahoo: symbolYahoo || null,
+      assetType,
+    })
   }
 
   return results

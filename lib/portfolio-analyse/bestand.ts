@@ -73,12 +73,19 @@ export function positionenFuerBewertung(
     const isin = p.isin?.toUpperCase() ?? ''
     if (!isin) continue
     const b = buchMap.get(isin)
+    let stueck = p.stueck
+    if (b && b.stueck > 0 && stueck > 0) {
+      const ratio = stueck / b.stueck
+      if (ratio > 8 || ratio < 0.125) stueck = b.stueck
+    }
+    if (stueck <= 0) stueck = b?.stueck ?? stueck
+    const wertEur = b?.wertEur ?? p.wertEur
     merged.set(isin, {
       ...p,
-      stueck: p.stueck > 0 ? p.stueck : (b?.stueck ?? p.stueck),
+      stueck,
       name: p.name || b?.name || isin,
       kursEur: b?.kursEur ?? p.kursEur,
-      wertEur: p.wertEur,
+      wertEur,
       assetKlasse: p.assetKlasse,
     })
   }

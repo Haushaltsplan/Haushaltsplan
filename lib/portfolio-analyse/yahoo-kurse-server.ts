@@ -19,15 +19,13 @@ function teileArray<T>(arr: T[], n: number): T[][] {
 }
 
 function trefferKey(map: Map<string, YahooKursZeile>, symbol: string): YahooKursZeile | undefined {
-  const kandidaten = [
-    symbol.trim().toUpperCase(),
-    symbol.replace(/\./g, '-').toUpperCase(),
-    symbol.replace(/-/g, '.').toUpperCase(),
-  ]
+  const s = symbol.trim().toUpperCase()
+  const kandidaten = [s, s.replace(/\./g, '-'), s.replace(/-/g, '.')]
   for (const k of kandidaten) {
     const hit = map.get(k)
     if (hit) return hit
   }
+  if (s.includes('.')) return undefined
   return undefined
 }
 
@@ -50,20 +48,25 @@ export async function ladeYahooKurse(symbole: string[]): Promise<Map<string, Yah
         }>
       }
     }
-    for (const zeile of j.spark?.result ?? []) {
-      const ySym = zeile.symbol?.trim().toUpperCase()
-      const meta = zeile.response?.[0]?.meta
-      if (!ySym || !meta) continue
+    const results = j.spark?.result ?? []
+    for (let i = 0; i < batch.length; i++) {
+      const angefragt = batch[i].trim().toUpperCase()
+      const zeile = results[i]
+      const meta = zeile?.response?.[0]?.meta
+      if (!meta) continue
       const preis = meta.regularMarketPrice
       const vor = meta.previousClose ?? meta.chartPreviousClose
       let pct: number | null = null
       if (preis != null && vor != null && vor !== 0) {
         pct = Math.round(((Number(preis) - Number(vor)) / Number(vor)) * 10_000) / 100
       }
-      out.set(ySym, {
+      const row: YahooKursZeile = {
         preis: preis != null && Number.isFinite(Number(preis)) ? Number(preis) : null,
         aenderungTagProzent: pct,
-      })
+      }
+      out.set(angefragt, row)
+      const ySym = zeile?.symbol?.trim().toUpperCase()
+      if (ySym && ySym !== angefragt) out.set(ySym, row)
     }
   }
   return out

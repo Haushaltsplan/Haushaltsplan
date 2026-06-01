@@ -1,5 +1,6 @@
-import type { PortfolioBuchung, PortfolioPositionSnapshot } from '@/lib/portfolio-analyse/types'
+import { PORTFOLIO_MAX_BUCHUNGEN } from '@/lib/portfolio-analyse/limits'
 import { bereinigeFreitext } from '@/lib/portfolio-analyse/parse-hilfen'
+import type { PortfolioBuchung, PortfolioPositionSnapshot } from '@/lib/portfolio-analyse/types'
 
 export const PII_BLOCKLIST_STORAGE_KEY = 'mein-haushalt:portfolio-pii-blocklist'
 
@@ -165,6 +166,12 @@ export function validiereSpeicherPayload(
   positionen: PortfolioPositionSnapshot[],
   blocklist: string[],
 ): { ok: true } | { ok: false; grund: string } {
+  if (buchungen.length > PORTFOLIO_MAX_BUCHUNGEN) {
+    return {
+      ok: false,
+      grund: `Maximal ${PORTFOLIO_MAX_BUCHUNGEN.toLocaleString('de-DE')} Buchungen auf einmal — bitte in mehreren Schritten importieren.`,
+    }
+  }
   for (const b of buchungen) {
     if (b.wertpapierName && enthaeltPersonenbezogeneDaten(b.wertpapierName, blocklist)) {
       return { ok: false, grund: 'Eine Buchung enthält noch personenbezogene Texte im Namen.' }

@@ -99,15 +99,28 @@ export function berechneLivePortfolio(
     const isin = p.isin?.toUpperCase() ?? ''
     const m = isin ? meta.get(isin) : undefined
     const sym = m?.symbolYahoo ?? null
-    const yahoo = sym ? kursFuerSymbol(yahooKurse, sym) : null
     const einstandEur = p.wertEur
     einstandOffenEur += einstandEur
+    const einstandKurs = p.stueck > 0 ? einstandEur / p.stueck : (p.kursEur ?? 0)
 
-    let kursLive = yahoo?.preis ?? null
+    const kursZeile =
+      (sym ? kursFuerSymbol(yahooKurse, sym) : null) ??
+      (sym?.includes('.') ? kursFuerSymbol(yahooKurse, `${sym.split('.')[0]}.DE`) : null)
+    let kursLive = kursZeile?.preis ?? null
+    if (kursLive != null && einstandKurs > 0) {
+      const ratio = kursLive / einstandKurs
+      if (ratio > 4 || ratio < 0.2) {
+        kursLive = null
+      }
+    }
     if (kursLive == null && p.kursEur != null && p.kursEur > 0) kursLive = p.kursEur
-    if (yahoo?.preis != null) liveCount++
+    if (kursZeile?.preis != null) liveCount++
 
-    const wertLive = kursLive != null ? Math.round(p.stueck * kursLive * 100) / 100 : einstandEur
+    let wertLive = kursLive != null ? Math.round(p.stueck * kursLive * 100) / 100 : einstandEur
+    if (einstandEur > 0 && wertLive / einstandEur > 8) {
+      wertLive = einstandEur
+      kursLive = p.stueck > 0 ? Math.round((einstandEur / p.stueck) * 10000) / 10000 : kursLive
+    }
     wertpapiereEur += wertLive
 
     const gv = Math.round((wertLive - einstandEur) * 100) / 100
@@ -123,7 +136,7 @@ export function berechneLivePortfolio(
       einstandEur,
       gewinnVerlustEur: gv,
       gewinnVerlustProzent: gvPct,
-      aenderungTagProzent: yahoo?.aenderungTagProzent ?? null,
+      aenderungTagProzent: kursZeile?.aenderungTagProzent ?? null,
       gewichtProzent: 0,
     }
   })
