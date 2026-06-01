@@ -3,11 +3,22 @@ import { parseGeldBetrag, positiverGeldbetrag } from '@/lib/portfolio-analyse/pa
 import { parseDeDatumZuIso } from '@/lib/portfolio-analyse/parse-hilfen'
 
 export type CsvErkanntesFormat =
+  | 'tr_transaktionsexport'
   | 'tr_aktivitaet'
   | 'tr_wertpapier_order'
   | 'kontoauszug_cash'
   | 'depot_positionen'
   | 'unbekannt'
+
+const ISIN_IN_SYMBOL = /^[A-Z]{2}[A-Z0-9]{10}$/
+
+/** TR-App-Export: keine echte Geldbewegung / Doppelung mit Folge-Kauf. */
+const CSV_TYP_UEBERSPRINGEN = new Set([
+  'free_receipt',
+  'stockperk',
+  'cancelled',
+  'canceled',
+])
 
 export type CsvParseMeta = {
   format: CsvErkanntesFormat
@@ -82,6 +93,9 @@ type SpaltenMap = {
   stueck?: number
   kurs?: number
   wert?: number
+  fee?: number
+  description?: number
+  category?: number
 }
 
 function findeSpalteExakt(headers: string[], aliases: string[]): number | undefined {
@@ -92,8 +106,9 @@ function findeSpalteExakt(headers: string[], aliases: string[]): number | undefi
 function mappeSpalten(headers: string[]): SpaltenMap {
   return {
     datum: findeSpalteExakt(headers, [
-      'datum',
       'date',
+      'datum',
+      'datetime',
       'timestamp',
       'buchungsdatum',
       'valutadatum',
@@ -108,14 +123,16 @@ function mappeSpalten(headers: string[]): SpaltenMap {
       'transaktionstyp',
     ]),
     beschreibung: findeSpalteExakt(headers, [
-      'beschreibung',
       'description',
+      'beschreibung',
       'text',
       'verwendungszweck',
       'referenz',
       'details',
       'info',
     ]),
+    description: findeSpalteExakt(headers, ['description', 'beschreibung']),
+    category: findeSpalteExakt(headers, ['category', 'kategorie']),
     title: findeSpalteExakt(headers, ['title', 'titel']),
     subtitle: findeSpalteExakt(headers, ['subtitle', 'untertitel']),
     eingang: findeSpalteExakt(headers, [
@@ -144,6 +161,7 @@ function mappeSpalten(headers: string[]): SpaltenMap {
     saldo: findeSpalteExakt(headers, ['saldo', 'balance', 'kontostand']),
     isin: findeSpalteExakt(headers, ['isin', 'instrument', 'wertpapierkennnummer']),
     symbol: findeSpalteExakt(headers, ['symbol', 'ticker', 'kuerzel']),
+    fee: findeSpalteExakt(headers, ['fee', 'gebuehr', 'commission', 'entgelt']),
     name: findeSpalteExakt(headers, ['name', 'wertpapier', 'security', 'security_description', 'instrument_name']),
     stueck: findeSpalteExakt(headers, ['stuck', 'stueck', 'shares', 'quantity', 'stk', 'nominal', 'menge']),
     kurs: findeSpalteExakt(headers, ['kurs', 'rate', 'price', 'price_per_unit', 'kurs_pro_stuck']),
@@ -152,6 +170,13 @@ function mappeSpalten(headers: string[]): SpaltenMap {
 }
 
 function erkenneFormat(headers: string[], map: SpaltenMap): CsvErkanntesFormat {
+  const hatTrTransaktionsexport =
+    headers.includes('datetime') &&
+    headers.includes('date') &&
+    map.typ != null &&
+    map.betrag != null &&
+    (headers.includes('category') || headers.includes('transaction_id'))
+
   const hatTrAktivitaet =
     headers.includes('timestamp') &&
     map.typ != null &&
@@ -159,6 +184,7 @@ function erkenneFormat(headers: string[], map: SpaltenMap): CsvErkanntesFormat {
     (headers.includes('instrument') || headers.includes('id'))
 
   const hatWertpapierOrder =
+    !hatTrTransaktionsexport &&
     map.datum != null &&
     map.typ != null &&
     map.betrag != null &&
@@ -179,6 +205,7 @@ function erkenneFormat(headers: string[], map: SpaltenMap): CsvErkanntesFormat {
     map.datum == null &&
     !hatTrAktivitaet
 
+  if (hatTrTransaktionsexport) return 'tr_transaktionsexport'
   if (hatTrAktivitaet) return 'tr_aktivitaet'
   if (hatWertpapierOrder) return 'tr_wertpapier_order'
   if (hatDepot) return 'depot_positionen'
@@ -191,14 +218,16 @@ function geldRichtungAusTyp(typ: string): 'eingang' | 'ausgang' | null {
   const t = typ.toLowerCase().trim()
   if (!t || t === 'executed' || t === 'cancelled') return null
   if (
-    /purchase|kauf|buy|saveback|round\s*up|withdrawal|auszahlung|fee|gebühr|commission|steuer|tax/i.test(
+    /purchase|kauf|buy|saveback|round\s*up|withdrawal|auszahlung|outbound|fee|gebühr|commission|steuer|tax/i.test(
       t,
     )
   ) {
     return 'ausgang'
   }
   if (
-    /sale|verkauf|sell|dividend|interest|zins|deposit|einzahlung|gutschrift|payout/i.test(t)
+    /sale|verkauf|sell|dividend|interest|zins|deposit|einzahlung|customer_inbound|inbound|gutschrift|payout/i.test(
+      t,
+    )
   ) {
     return 'eingang'
   }
@@ -248,6 +277,11 @@ function betraegeAusSpalten(cols: string[], map: SpaltenMap, typRaw: string): { 
   return { eingang: eingang.trim(), ausgang: ausgang.trim() }
 }
 
+function isinAusSymbolSpalte(symbolRaw: string): string {
+  const s = symbolRaw.trim().toUpperCase()
+  return ISIN_IN_SYMBOL.test(s) ? s : ''
+}
+
 function cashZeileAusCols(cols: string[], map: SpaltenMap, format: CsvErkanntesFormat): TrRawCashZeile | null {
   if (zeileIstKopfOderSumme(cols, map)) return null
 
@@ -255,28 +289,69 @@ function cashZeileAusCols(cols: string[], map: SpaltenMap, format: CsvErkanntesF
   if (!datumRaw || !parseDeDatumZuIso(datumRaw)) return null
 
   const typ = map.typ != null ? cols[map.typ]?.trim() ?? '' : ''
-  if (typ.toLowerCase() === 'executed' || typ.toLowerCase() === 'cancelled') return null
+  const typNorm = typ.toLowerCase()
+  if (typNorm === 'executed' || typNorm === 'cancelled' || typNorm === 'canceled') return null
+  if (CSV_TYP_UEBERSPRINGEN.has(typNorm)) return null
+
+  const symbolRaw = map.symbol != null ? cols[map.symbol]?.trim() ?? '' : ''
+  const name = map.name != null ? cols[map.name]?.trim() ?? '' : ''
+  let isin =
+    map.isin != null ? cols[map.isin]?.trim().replace(/^ISIN:?\s*/i, '').toUpperCase() ?? '' : ''
+  if (!isin) isin = isinAusSymbolSpalte(symbolRaw)
 
   let beschreibung = ''
-  if (map.beschreibung != null) beschreibung = cols[map.beschreibung]?.trim() ?? ''
+  if (map.description != null) beschreibung = cols[map.description]?.trim() ?? ''
+  if (!beschreibung && map.beschreibung != null) beschreibung = cols[map.beschreibung]?.trim() ?? ''
   const title = map.title != null ? cols[map.title]?.trim() ?? '' : ''
   const subtitle = map.subtitle != null ? cols[map.subtitle]?.trim() ?? '' : ''
   if (!beschreibung && (title || subtitle)) {
     beschreibung = [title, subtitle].filter(Boolean).join(' — ')
   }
-  const symbol = map.symbol != null ? cols[map.symbol]?.trim() ?? '' : ''
-  const name = map.name != null ? cols[map.name]?.trim() ?? '' : ''
-  const isin = map.isin != null ? cols[map.isin]?.trim().replace(/^ISIN:?\s*/i, '') ?? '' : ''
-  if (!beschreibung) {
-    beschreibung = [name, symbol, isin ? `ISIN ${isin}` : ''].filter(Boolean).join(' ')
+  if (!beschreibung && format === 'tr_transaktionsexport') {
+    const teile = [name, isin ? `ISIN ${isin}` : symbolRaw].filter(Boolean)
+    beschreibung = teile.join(' ')
+  } else if (!beschreibung) {
+    beschreibung = [name, symbolRaw, isin ? `ISIN ${isin}` : ''].filter(Boolean).join(' ')
   }
 
-  const { eingang, ausgang } = betraegeAusSpalten(cols, map, typ)
+  let stueck: number | null = null
+  if (map.stueck != null) {
+    const rawStueck = cols[map.stueck]?.trim() ?? ''
+    if (rawStueck) {
+      const n = parseGeldBetrag(rawStueck)
+      if (n != null && n !== 0) stueck = Math.abs(n)
+    }
+  }
+  if (stueck != null && !/\bStk\b/i.test(beschreibung)) {
+    beschreibung = `${beschreibung} ${stueck} Stk`.trim()
+  }
+
+  let { eingang, ausgang } = betraegeAusSpalten(cols, map, typ)
+
+  const feeBetrag =
+    map.fee != null ? parseGeldBetrag(cols[map.fee]) : null
+  if (feeBetrag != null && feeBetrag !== 0) {
+    const feeAbs = Math.abs(feeBetrag)
+    const feeStr = String(feeAbs).replace('.', ',')
+    if (ausgang) {
+      const bisher = positiverGeldbetrag(ausgang) ?? 0
+      ausgang = String(bisher + feeAbs).replace('.', ',')
+    } else if (eingang && /sell|verkauf|sale/i.test(typ)) {
+      const bisher = positiverGeldbetrag(eingang) ?? 0
+      eingang = String(Math.max(0, bisher - feeAbs)).replace('.', ',')
+    } else if (!eingang && !ausgang) {
+      ausgang = feeStr
+    } else {
+      const bisher = positiverGeldbetrag(ausgang) ?? 0
+      ausgang = String(bisher + feeAbs).replace('.', ',')
+    }
+  }
+
   const saldo = map.saldo != null ? cols[map.saldo]?.trim() ?? '' : ''
 
   if (!eingang && !ausgang) return null
 
-  if (format === 'tr_wertpapier_order' && !typ) return null
+  if ((format === 'tr_wertpapier_order' || format === 'tr_transaktionsexport') && !typ) return null
 
   return {
     datum: datumRaw,
@@ -285,6 +360,8 @@ function cashZeileAusCols(cols: string[], map: SpaltenMap, format: CsvErkanntesF
     zahlungseingang: eingang,
     zahlungsausgang: ausgang,
     saldo,
+    isin: isin || undefined,
+    stueck,
   }
 }
 
@@ -336,6 +413,8 @@ function parseDatenzeilen(
 }
 
 const FORMAT_HINWEISE: Record<CsvErkanntesFormat, string> = {
+  tr_transaktionsexport:
+    'Trade-Republic-Transaktionsexport (datetime, type, amount): Vorzeichen in „amount“, Gebühren aus „fee“. STOCKPERK/FREE_RECEIPT werden übersprungen.',
   tr_aktivitaet:
     'Trade-Republic-Aktivitäts-CSV (z. B. Portfolio-Performance-Export): Spalten Type, Debit, Credit — nicht „Status“.',
   tr_wertpapier_order:
@@ -361,7 +440,7 @@ export function parseTradeRepublicCsvText(text: string): TrPdfParseErgebnis & { 
   }
 
   hinweise.push(
-    'Hinweis: Trade Republic bietet in der App keinen offiziellen CSV-Export — die Datei stammt meist von einem Dritttool (Parqet, Portfolio Performance, Kontoauszug-Konverter).',
+    'CSV-Formate: TR-Transaktionsexport (App), Aktivitäts-CSV (Dritttools) oder Kontoauszug-Konverter.',
   )
 
   let headerIndex = 0
@@ -369,7 +448,9 @@ export function parseTradeRepublicCsvText(text: string): TrPdfParseErgebnis & { 
     const probe = splitCsvLine(lines[i], detectDelimiter(lines[i])).map(normalizeHeader)
     if (
       probe.some((h) =>
-        ['datum', 'date', 'timestamp', 'type', 'typ', 'instrument', 'symbol', 'amount', 'debit'].includes(h),
+        ['datum', 'date', 'datetime', 'timestamp', 'type', 'typ', 'instrument', 'symbol', 'amount', 'debit', 'category'].includes(
+          h,
+        ),
       )
     ) {
       headerIndex = i
@@ -395,7 +476,12 @@ export function parseTradeRepublicCsvText(text: string): TrPdfParseErgebnis & { 
   const dataLines = lines.slice(headerIndex)
   const ergebnis = parseDatenzeilen(dataLines, delimiter, map, format)
 
-  if (format === 'tr_aktivitaet' || format === 'kontoauszug_cash' || format === 'tr_wertpapier_order') {
+  if (
+    format === 'tr_transaktionsexport' ||
+    format === 'tr_aktivitaet' ||
+    format === 'kontoauszug_cash' ||
+    format === 'tr_wertpapier_order'
+  ) {
     let summeEin = 0
     let summeAus = 0
     let kaeufe = 0

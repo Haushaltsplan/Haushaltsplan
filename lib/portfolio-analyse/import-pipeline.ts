@@ -27,21 +27,30 @@ async function cashZeileZuBuchung(
   const typRaw = row.typ.trim()
   const beschreibung = row.beschreibung.trim()
   if (istCashZeileUeberspringen(typRaw, beschreibung)) return null
-  if (beschreibungZuPersonenbezogen(beschreibung, blocklist) && !extrahiereIsin(beschreibung)) return null
 
   const datum = parseDeDatumZuIso(row.datum.trim())
   if (!datum) return null
 
   const typ = normalisiereTrTyp(typRaw || beschreibung)
+  const isinAusZeile = row.isin?.trim() || extrahiereIsin(beschreibung)
+  if (
+    beschreibungZuPersonenbezogen(beschreibung, blocklist) &&
+    !isinAusZeile &&
+    typ !== 'einzahlung' &&
+    typ !== 'auszahlung'
+  ) {
+    return null
+  }
+
   const eingang = positiverGeldbetrag(row.zahlungseingang) ?? 0
   const ausgang = positiverGeldbetrag(row.zahlungsausgang) ?? 0
   if (eingang <= 0 && ausgang <= 0) return null
   const betragEur = Math.round((eingang > 0 ? eingang : ausgang) * 100) / 100
   if (betragEur <= 0 && typ !== 'steuer' && typ !== 'gebuehr') return null
 
-  const isin = extrahiereIsin(beschreibung)
+  const isin = isinAusZeile
   const wertpapierName = sichererWertpapierName(extrahiereWertpapierName(beschreibung, isin), blocklist)
-  let stueck = extrahiereStueck(beschreibung)
+  let stueck = row.stueck ?? extrahiereStueck(beschreibung)
   if (stueck != null && typ === 'verkauf') stueck = -Math.abs(stueck)
   if (stueck != null && typ === 'kauf') stueck = Math.abs(stueck)
 
@@ -165,6 +174,11 @@ export async function importiereTradeRepublicCsvText(
     if (roh.meta.format === 'depot_positionen' && roh.cash.length === 0) {
       ergebnis.hinweise.push(
         'Hinweis: Diese CSV enthält nur Depotpositionen — für Buchungen/Summen Aktivitäts-/Transaktions-CSV oder PDF nutzen.',
+      )
+    }
+    if (roh.meta.format === 'tr_transaktionsexport') {
+      ergebnis.hinweise.push(
+        'TR-Transaktionsexport: Beträge aus „amount“ (negativ = Ausgang), Gebühren aus „fee“. STOCKPERK wird nicht importiert (sonst Doppelung mit Kauf).',
       )
     }
     if (roh.meta.format === 'tr_aktivitaet') {

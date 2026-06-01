@@ -109,12 +109,22 @@ export function extrahiereStueck(text: string): number | null {
 export function normalisiereTrTyp(raw: string): BuchungsTyp {
   const t = raw.toLowerCase().trim()
   if (t.includes('saveback') || t.includes('round up') || t.includes('roundup')) return 'kauf'
-  if (t.includes('kauf') || t.includes('purchase') || t.includes('buy')) return 'kauf'
-  if (t.includes('verkauf') || t.includes('sale') || t.includes('sell')) return 'verkauf'
+  if (t.includes('kauf') || t.includes('purchase') || t === 'buy') return 'kauf'
+  if (t.includes('verkauf') || t.includes('sale') || t === 'sell') return 'verkauf'
   if (t.includes('dividend')) return 'dividende'
-  if (t.includes('interest') || t.includes('zins')) return 'zins'
-  if (t.includes('einzahl') || t.includes('deposit') || t.includes('überweisung eingang')) return 'einzahlung'
-  if (t.includes('auszahl') || t.includes('withdrawal') || t.includes('withdraw')) return 'auszahlung'
+  if (t.includes('interest') || t.includes('zins') || t.includes('interest_payment')) return 'zins'
+  if (
+    t.includes('einzahl') ||
+    t.includes('deposit') ||
+    t.includes('überweisung eingang') ||
+    t.includes('customer_inbound') ||
+    t.includes('inbound')
+  ) {
+    return 'einzahlung'
+  }
+  if (t.includes('auszahl') || t.includes('withdrawal') || t.includes('withdraw') || t.includes('outbound')) {
+    return 'auszahlung'
+  }
   if (t.includes('steuer') || t.includes('tax') || t.includes('kapitalertrag')) return 'steuer'
   if (t.includes('gebühr') || t.includes('fee') || t.includes('entgelt')) return 'gebuehr'
   return 'sonstiges'

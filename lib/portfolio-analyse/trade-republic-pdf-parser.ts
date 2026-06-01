@@ -7,6 +7,10 @@ export type TrRawCashZeile = {
   zahlungseingang: string
   zahlungsausgang: string
   saldo: string
+  /** Nur CSV (TR Transaktionsexport): ISIN steht oft in Spalte „symbol“. */
+  isin?: string
+  /** Nur CSV: Stückzahl für Kurs-Schätzung. */
+  stueck?: number | null
 }
 
 export type TrRawPosition = {
@@ -163,10 +167,11 @@ function extractCashTransactions(items: PdfTextItem[], boundaries: CashColumnBou
       if (item.x < boundaries.zahlungseingang.end) transaction.zahlungseingang += ' ' + item.text
       else if (item.x < boundaries.zahlungsausgang.end) transaction.zahlungsausgang += ' ' + item.text
     }
-    for (const key of Object.keys(transaction) as (keyof TrRawCashZeile)[]) {
+    const textKeys = ['datum', 'typ', 'beschreibung', 'zahlungseingang', 'zahlungsausgang', 'saldo'] as const
+    for (const key of textKeys) {
       transaction[key] = transaction[key].trim().replace(/\s+/g, ' ')
     }
-    if (Object.values(transaction).some((v) => v !== '')) transactions.push(transaction)
+    if (textKeys.some((k) => transaction[k] !== '')) transactions.push(transaction)
   }
   return transactions
 }
