@@ -55,8 +55,9 @@ async function cashZeileZuBuchung(
   if (stueck != null && typ === 'verkauf') stueck = -Math.abs(stueck)
   if (stueck != null && typ === 'kauf') stueck = Math.abs(stueck)
 
-  let kursEur: number | null = null
-  if (stueck != null && stueck !== 0 && betragEur > 0) {
+  let kursEur: number | null =
+    row.kursEur != null && row.kursEur > 0 ? Math.round(row.kursEur * 10000) / 10000 : null
+  if (kursEur == null && stueck != null && stueck !== 0 && betragEur > 0) {
     kursEur = Math.round((betragEur / Math.abs(stueck)) * 10000) / 10000
   }
 

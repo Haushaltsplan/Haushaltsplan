@@ -284,37 +284,101 @@ export function summenAusBuchungen(buchungen: PortfolioBuchung[]) {
   }
 }
 
+type EinstandLot = { stueck: number; kosten: number }
+
+function stueckAusBuchung(b: PortfolioBuchung, fallbackStueck?: number): number {
+  let stk = b.stueck != null ? Math.abs(b.stueck) : 0
+  if (stk <= 0 && b.kursEur != null && b.kursEur > 0 && b.betragEur > 0) {
+    stk = b.betragEur / b.kursEur
+  }
+  if (stk <= 0 && fallbackStueck != null && fallbackStueck > 0) stk = fallbackStueck
+  return stk
+}
+
 /**
- * Kumulierter realisierter Gewinn/Verlust aus allen Verkäufen (Erlös minus anteiliger Einstand).
+ * Verkaufserlös wie Parqet: Stück × Kurs (Brutto „amount“), sonst Netto-Zufluss + Steuer am selben Tag.
+ */
+function verkaufErloesEur(
+  b: PortfolioBuchung,
+  stk: number,
+  steuerZurueckEur: number,
+): number {
+  if (stk > 0 && b.kursEur != null && b.kursEur > 0) {
+    const brutto = round2(stk * b.kursEur)
+    if (brutto > b.betragEur * 1.001) return brutto
+  }
+  return round2(b.betragEur + steuerZurueckEur)
+}
+
+function fifoKosten(lots: EinstandLot[], stkVerk: number): number {
+  let rest = stkVerk
+  let kosten = 0
+  while (rest > 1e-8 && lots.length > 0) {
+    const lot = lots[0]
+    const take = Math.min(rest, lot.stueck)
+    if (lot.stueck <= 0) {
+      lots.shift()
+      continue
+    }
+    const anteil = take / lot.stueck
+    kosten += lot.kosten * anteil
+    lot.kosten = round2(lot.kosten * (1 - anteil))
+    lot.stueck = Math.max(0, lot.stueck - take)
+    rest -= take
+    if (lot.stueck < 1e-8) lots.shift()
+  }
+  return round2(kosten)
+}
+
+/**
+ * Kumulierter realisierter Gewinn/Verlust aus allen Verkäufen (Parqet: FIFO-Einstand, Erlös vor Verkaufssteuer).
  */
 export function realisierterGewinnAusVerkaeufen(buchungen: PortfolioBuchung[]): number {
   const sortiert = [...buchungen].sort((a, b) => a.datum.localeCompare(b.datum))
-  const einstand = new Map<string, { stueck: number; kosten: number }>()
+
+  const steuerProTag = new Map<string, number>()
+  const verkaeufeProTag = new Map<string, number>()
+  for (const b of sortiert) {
+    if (!b.isin) continue
+    const key = `${b.datum}|${b.isin.toUpperCase()}`
+    if (b.typ === 'steuer') {
+      steuerProTag.set(key, round2((steuerProTag.get(key) ?? 0) + b.betragEur))
+    }
+    if (b.typ === 'verkauf') {
+      verkaeufeProTag.set(key, (verkaeufeProTag.get(key) ?? 0) + 1)
+    }
+  }
+
+  const lotsByIsin = new Map<string, EinstandLot[]>()
   let sum = 0
 
   for (const b of sortiert) {
     if (!b.isin) continue
     const isin = b.isin.toUpperCase()
+    const tagKey = `${b.datum}|${isin}`
 
     if (b.typ === 'kauf') {
-      let stk = b.stueck != null ? Math.abs(b.stueck) : 0
-      if (stk <= 0 && b.kursEur != null && b.kursEur > 0) stk = b.betragEur / b.kursEur
+      const stk = stueckAusBuchung(b)
       if (stk <= 0) continue
-      const cur = einstand.get(isin) ?? { stueck: 0, kosten: 0 }
-      cur.stueck += stk
-      cur.kosten += b.betragEur
-      einstand.set(isin, cur)
+      const lots = lotsByIsin.get(isin) ?? []
+      lots.push({ stueck: stk, kosten: b.betragEur })
+      lotsByIsin.set(isin, lots)
     } else if (b.typ === 'verkauf') {
-      let stk = b.stueck != null ? Math.abs(b.stueck) : 0
-      if (stk <= 0 && b.kursEur != null && b.kursEur > 0) stk = b.betragEur / b.kursEur
-      const cur = einstand.get(isin)
-      if (!cur || cur.stueck <= 0 || stk <= 0) continue
-      const anteil = Math.min(1, stk / cur.stueck)
-      const kostenAnteil = cur.kosten * anteil
-      sum += b.betragEur - kostenAnteil
-      cur.kosten = round2(cur.kosten * (1 - anteil))
-      cur.stueck = Math.max(0, cur.stueck - stk)
-      einstand.set(isin, cur)
+      const lots = lotsByIsin.get(isin) ?? []
+      const restStueck = lots.reduce((s, l) => s + l.stueck, 0)
+      let stk = stueckAusBuchung(b, restStueck > 0 ? restStueck : undefined)
+      if (stk <= 0 && b.betragEur > 0 && restStueck <= 0) {
+        sum += b.betragEur
+        continue
+      }
+      if (stk <= 0) continue
+
+      const nVerk = verkaeufeProTag.get(tagKey) ?? 1
+      const steuerAnteil = round2((steuerProTag.get(tagKey) ?? 0) / nVerk)
+      const erloes = verkaufErloesEur(b, stk, steuerAnteil)
+      const kosten = fifoKosten(lots, stk)
+      sum += erloes - kosten
+      lotsByIsin.set(isin, lots)
     }
   }
 

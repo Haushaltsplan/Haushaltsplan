@@ -174,6 +174,13 @@ function cashZeileAusParqet(
   let beschreibung = teile.join(' ')
   if (stueck != null) beschreibung = `${beschreibung} ${stueck} Stk`.trim()
 
+  const kursEur =
+    price != null && price > 0
+      ? Math.round(price * 10000) / 10000
+      : stueck != null && stueck > 0 && amt > 0
+        ? Math.round((Math.abs(amt) / stueck) * 10000) / 10000
+        : null
+
   return {
     datum,
     typ: typRaw,
@@ -183,6 +190,7 @@ function cashZeileAusParqet(
     saldo: '',
     isin: isin || undefined,
     stueck,
+    kursEur,
   }
 }
 

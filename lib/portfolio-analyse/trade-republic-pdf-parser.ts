@@ -11,6 +11,8 @@ export type TrRawCashZeile = {
   isin?: string
   /** Nur CSV: Stückzahl für Kurs-Schätzung. */
   stueck?: number | null
+  /** Nur CSV (z. B. Parqet): Ausführungskurs pro Stück — für realisierte Gewinne. */
+  kursEur?: number | null
 }
 
 export type TrRawPosition = {
