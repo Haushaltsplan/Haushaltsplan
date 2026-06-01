@@ -1,6 +1,6 @@
 import type { IsinMetadata } from '@/lib/portfolio-analyse/isin-lookup-server'
 
-const CACHE_KEY = 'mein-haushalt:portfolio-isin-meta-v2'
+const CACHE_KEY = 'mein-haushalt:portfolio-isin-meta-v3'
 const CACHE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000
 
 type CacheEntry = Record<string, IsinMetadata & { cachedAt: number }>
@@ -32,7 +32,13 @@ export function metadatenAusCache(isins: string[]): Map<string, IsinMetadata> {
   for (const isin of isins) {
     const hit = cache[isin]
     if (hit && now - hit.cachedAt < CACHE_MAX_AGE_MS) {
-      out.set(isin, { isin: hit.isin, name: hit.name, symbolYahoo: hit.symbolYahoo, assetType: hit.assetType })
+      out.set(isin, {
+        isin: hit.isin,
+        name: hit.name,
+        symbolYahoo: hit.symbolYahoo,
+        symbolCandidates: hit.symbolCandidates ?? (hit.symbolYahoo ? [hit.symbolYahoo] : []),
+        assetType: hit.assetType,
+      })
     }
   }
   return out
@@ -48,7 +54,13 @@ export async function ladeIsinMetadaten(isins: string[]): Promise<Map<string, Is
   for (const isin of unique) {
     const hit = cache[isin]
     if (hit && now - hit.cachedAt < CACHE_MAX_AGE_MS) {
-      out.set(isin, { isin: hit.isin, name: hit.name, symbolYahoo: hit.symbolYahoo, assetType: hit.assetType })
+      out.set(isin, {
+        isin: hit.isin,
+        name: hit.name,
+        symbolYahoo: hit.symbolYahoo,
+        symbolCandidates: hit.symbolCandidates ?? (hit.symbolYahoo ? [hit.symbolYahoo] : []),
+        assetType: hit.assetType,
+      })
     } else {
       fehlend.push(isin)
     }

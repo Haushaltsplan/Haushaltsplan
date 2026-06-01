@@ -72,10 +72,10 @@ export function PortfolioAnalyseDashboard({
     let cancelled = false
     async function run() {
       const sym = symboleAusMeta(positionenFuerBewertung(buchungen, snapshot), meta)
-      const { kurse, stand } = await ladeLiveKurseClient(sym)
+      const { kurse, stand, eurUsd } = await ladeLiveKurseClient(sym)
       if (cancelled) return
       if (sym.length > 0 && kurse.size === 0) setKursFehler(true)
-      setLive(berechneLivePortfolio(buchungen, snapshot, meta, kurse, stand))
+      setLive(berechneLivePortfolio(buchungen, snapshot, meta, kurse, stand, eurUsd))
     }
     void run()
     const t = setInterval(() => void run(), 5 * 60 * 1000)

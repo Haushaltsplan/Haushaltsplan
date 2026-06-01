@@ -1,6 +1,7 @@
 import { cashSaldoAusBuchungen, positionenFuerBewertung } from '@/lib/portfolio-analyse/bestand'
 import type { IsinMetadata } from '@/lib/portfolio-analyse/isin-lookup-server'
-import { kursFuerSymbol, type YahooKursZeile } from '@/lib/portfolio-analyse/yahoo-kurse-server'
+import { kandidatenMitDeFallback, waehleBesterKurs } from '@/lib/portfolio-analyse/kurs-aufloesung'
+import type { YahooKursZeile } from '@/lib/portfolio-analyse/yahoo-kurse-server'
 import type {
   PortfolioAnalyseKennzahlen,
   PortfolioBuchung,
@@ -40,8 +41,10 @@ export function symboleAusMeta(
   for (const p of positionen) {
     const isin = p.isin?.toUpperCase()
     if (!isin) continue
-    const sym = meta.get(isin)?.symbolYahoo
-    if (sym) set.add(sym)
+    const m = meta.get(isin)
+    const kandidaten =
+      m?.symbolCandidates?.length ? m.symbolCandidates : m?.symbolYahoo ? [m.symbolYahoo] : []
+    for (const sym of kandidatenMitDeFallback(kandidaten)) set.add(sym)
   }
   return [...set]
 }
@@ -49,12 +52,14 @@ export function symboleAusMeta(
 export async function ladeLiveKurseClient(symbols: string[]): Promise<{
   kurse: Map<string, YahooKursZeile>
   stand: string | null
+  eurUsd: number | null
 }> {
-  if (symbols.length === 0) return { kurse: new Map(), stand: null }
+  if (symbols.length === 0) return { kurse: new Map(), stand: null, eurUsd: null }
+  const symbole = [...new Set([...symbols, 'EURUSD=X'])]
   const res = await fetch('/api/portfolio-analyse/kurse', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ symbols }),
+    body: JSON.stringify({ symbols: symbole }),
   })
   const j = (await res.json()) as {
     ok?: boolean
@@ -67,7 +72,13 @@ export async function ladeLiveKurseClient(symbols: string[]): Promise<{
       map.set(sym.toUpperCase(), row)
     }
   }
-  return { kurse: map, stand: j.stand ?? null }
+  const fx = map.get('EURUSD=X')?.preis
+  const eurUsd = fx != null && fx > 0 ? fx : null
+  return { kurse: map, stand: j.stand ?? null, eurUsd }
+}
+
+function usBasisTickerAusKandidaten(kandidaten: string[]): string | null {
+  return kandidaten.find((s) => !s.includes('.') && s.length <= 6)?.split('.')[0].toUpperCase() ?? null
 }
 
 export function berechneLivePortfolio(
@@ -76,6 +87,7 @@ export function berechneLivePortfolio(
   meta: Map<string, IsinMetadata>,
   yahooKurse: Map<string, YahooKursZeile>,
   kurseStand: string | null,
+  eurUsd: number | null = null,
 ): LivePortfolio {
   const basis = positionenFuerBewertung(buchungen, snapshot)
   let dividendenEur = 0
@@ -98,23 +110,25 @@ export function berechneLivePortfolio(
   const positionen: LivePosition[] = basis.map((p) => {
     const isin = p.isin?.toUpperCase() ?? ''
     const m = isin ? meta.get(isin) : undefined
-    const sym = m?.symbolYahoo ?? null
+    const kandidaten = m
+      ? kandidatenMitDeFallback(
+          m.symbolCandidates?.length ? m.symbolCandidates : m.symbolYahoo ? [m.symbolYahoo] : [],
+        )
+      : []
     const einstandEur = p.wertEur
     einstandOffenEur += einstandEur
     const einstandKurs = p.stueck > 0 ? einstandEur / p.stueck : (p.kursEur ?? 0)
 
-    const kursZeile =
-      (sym ? kursFuerSymbol(yahooKurse, sym) : null) ??
-      (sym?.includes('.') ? kursFuerSymbol(yahooKurse, `${sym.split('.')[0]}.DE`) : null)
-    let kursLive = kursZeile?.preis ?? null
-    if (kursLive != null && einstandKurs > 0) {
-      const ratio = kursLive / einstandKurs
-      if (ratio > 4 || ratio < 0.2) {
-        kursLive = null
-      }
-    }
+    const kursWahl = waehleBesterKurs(kandidaten, yahooKurse, einstandKurs, p.kursEur ?? null, {
+      isin,
+      eurUsd,
+      usBasisTicker: isin.startsWith('US') ? usBasisTickerAusKandidaten(kandidaten) : null,
+    })
+    const sym = kursWahl?.symbol ?? m?.symbolYahoo ?? null
+    const kursZeile = kursWahl?.zeile ?? null
+    let kursLive = kursWahl?.kurs ?? null
     if (kursLive == null && p.kursEur != null && p.kursEur > 0) kursLive = p.kursEur
-    if (kursZeile?.preis != null) liveCount++
+    if (kursWahl != null) liveCount++
 
     let wertLive = kursLive != null ? Math.round(p.stueck * kursLive * 100) / 100 : einstandEur
     if (einstandEur > 0 && wertLive / einstandEur > 8) {

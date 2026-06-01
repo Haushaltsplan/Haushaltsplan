@@ -49,9 +49,9 @@ export async function ladeYahooKurse(symbole: string[]): Promise<Map<string, Yah
       }
     }
     const results = j.spark?.result ?? []
-    for (let i = 0; i < batch.length; i++) {
-      const angefragt = batch[i].trim().toUpperCase()
-      const zeile = results[i]
+    for (const zeile of results) {
+      const ySym = zeile?.symbol?.trim().toUpperCase()
+      if (!ySym) continue
       const meta = zeile?.response?.[0]?.meta
       if (!meta) continue
       const preis = meta.regularMarketPrice
@@ -64,9 +64,7 @@ export async function ladeYahooKurse(symbole: string[]): Promise<Map<string, Yah
         preis: preis != null && Number.isFinite(Number(preis)) ? Number(preis) : null,
         aenderungTagProzent: pct,
       }
-      out.set(angefragt, row)
-      const ySym = zeile?.symbol?.trim().toUpperCase()
-      if (ySym && ySym !== angefragt) out.set(ySym, row)
+      out.set(ySym, row)
     }
   }
   return out

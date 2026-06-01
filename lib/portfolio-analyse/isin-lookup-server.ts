@@ -4,6 +4,8 @@ export type IsinMetadata = {
   isin: string
   name: string
   symbolYahoo: string | null
+  /** Alle Yahoo-Symbole zum Abruf (DE/PA zuerst). */
+  symbolCandidates: string[]
   assetType: string | null
 }
 
@@ -73,6 +75,94 @@ function waehleOpenFigiZeile(rows: OpenFigiRow[]): OpenFigiRow | null {
     if (hit) return hit
   }
   return pool[0] ?? null
+}
+
+function symboleAusOpenFigiRows(rows: OpenFigiRow[], isin: string): string[] {
+  const etfs = rows.filter(istEtfZeile)
+  const pool = etfs.length > 0 ? etfs : rows
+  const usTickers = new Set(
+    pool
+      .filter((r) => r.ticker && ['US', 'UW', 'UN', 'UA', 'UQ', 'UR'].includes((r.exchCode ?? '').toUpperCase()))
+      .map((r) => r.ticker!.trim().toUpperCase()),
+  )
+  const scored: { sym: string; prio: number }[] = []
+
+  for (const row of pool) {
+    if (!row.ticker || !row.exchCode) continue
+    const sym = yahooSymbolAbsichern(row.ticker, row.exchCode)
+    if (!sym) continue
+    const ex = row.exchCode.toUpperCase()
+    const ticker = row.ticker.trim().toUpperCase()
+    let prio = 10
+    if (DE_EXCH.has(ex)) {
+      prio = 100
+      if (usTickers.size > 0 && !usTickers.has(ticker)) prio = 25
+      else if (usTickers.has(ticker)) prio = 110
+    } else if (ex === 'FP' || ex === 'PM') prio = 90
+    else if (LN_EXCH.has(ex)) prio = isin.startsWith('IE') ? 20 : 50
+    else if (['US', 'UW', 'UN', 'UA'].includes(ex)) prio = isin.startsWith('US') ? 30 : 5
+    scored.push({ sym, prio })
+  }
+
+  scored.sort((a, b) => b.prio - a.prio)
+  const out: string[] = []
+  const seen = new Set<string>()
+  for (const { sym } of scored) {
+    const k = sym.toUpperCase()
+    if (seen.has(k)) continue
+    seen.add(k)
+    out.push(sym)
+    if (!sym.includes('.') && isin.startsWith('US')) {
+      const de = `${sym.split('.')[0]}.DE`
+      if (!seen.has(de)) {
+        seen.add(de)
+        out.push(de)
+      }
+    }
+  }
+  return out.slice(0, 12)
+}
+
+function symboleAusYahooQuotes(quotes: YahooQuote[]): string[] {
+  const out: string[] = []
+  const seen = new Set<string>()
+  const ranked = quotes
+    .map((q) => ({ q, sym: symbolAusYahooQuote(q) }))
+    .filter((x): x is { q: YahooQuote; sym: string } => x.sym != null)
+    .sort((a, b) => {
+      const score = (sym: string) => {
+        if (sym.endsWith('.DE') || sym.endsWith('.F')) return 3
+        if (sym.endsWith('.PA')) return 2
+        if (sym.endsWith('.L')) return 1
+        return 0
+      }
+      return score(b.sym) - score(a.sym)
+    })
+  for (const { sym } of ranked) {
+    const k = sym.toUpperCase()
+    if (seen.has(k)) continue
+    seen.add(k)
+    out.push(sym)
+  }
+  return out.slice(0, 8)
+}
+
+function primaeresSymbol(isin: string, kandidaten: string[]): string | null {
+  if (kandidaten.length === 0) return null
+  const bareUs = kandidaten.find((s) => !s.includes('.') && s.length <= 6)
+  if (isin.startsWith('US') && bareUs) {
+    const deMatch = kandidaten.find((s) => {
+      const b = s.includes('.') ? s.split('.')[0] : s
+      return b.toUpperCase() === bareUs.toUpperCase() && (s.endsWith('.DE') || s.endsWith('.F'))
+    })
+    if (deMatch) return deMatch
+  }
+  const eurDepot = isin.startsWith('US') || isin.startsWith('FR') || isin.startsWith('IE') || isin.startsWith('NL')
+  if (eurDepot) {
+    const de = kandidaten.find((s) => s.endsWith('.DE') || s.endsWith('.F') || s.endsWith('.PA'))
+    if (de) return de
+  }
+  return kandidaten[0] ?? null
 }
 
 type YahooQuote = {
@@ -176,10 +266,33 @@ export async function lookupIsinMetadaten(isins: string[]): Promise<IsinMetadata
       symbolYahoo = alt === 'CYBP.L' ? 'RCRS.DE' : alt
     }
 
+    const figiSyms = symboleAusOpenFigiRows(figiRows, isin)
+    const yahooSyms = symboleAusYahooQuotes(yahooQuotes)
+    const merged: string[] = []
+    const seenSym = new Set<string>()
+    const addSym = (s: string | null | undefined) => {
+      if (!s) return
+      const k = s.trim().toUpperCase()
+      if (!k || seenSym.has(k)) return
+      seenSym.add(k)
+      merged.push(s.trim())
+    }
+    for (const s of figiSyms) addSym(s)
+    for (const s of yahooSyms) addSym(s)
+    addSym(symbolYahoo)
+    if (isin.startsWith('US') && symbolYahoo && !symbolYahoo.includes('.')) {
+      const base = symbolYahoo.split('.')[0]
+      addSym(`${base}.DE`)
+    }
+
+    const symbolCandidates = merged.length > 0 ? merged : symbolYahoo ? [symbolYahoo] : []
+    const primary = primaeresSymbol(isin, symbolCandidates) ?? symbolYahoo
+
     results.push({
       isin,
       name,
-      symbolYahoo: symbolYahoo || null,
+      symbolYahoo: primary,
+      symbolCandidates,
       assetType,
     })
   }
