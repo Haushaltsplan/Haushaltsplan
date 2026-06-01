@@ -251,16 +251,20 @@ export class ParqetCoreAnalyticsEngine {
   }
 
   /**
-   * IZF-Cashflows (Investor-Perspektive): Käufe/Einzahlungen negativ, Verkäufe/Dividenden positiv.
-   * IN = Zufluss (Verkauf), OUT = Abfluss (Kauf).
+   * IZF-Cashflows wie Parqet: nur Depot-Grenze (Cash IN/OUT) + Dividenden, keine Wertpapier-Käufe/-Verkäufe.
    */
   private aggregateCashflowsForIrr(assets: AssetHolding[]): Array<{ date: Date; amount: number }> {
+    const PORTFOLIO_CASH_ID = '__portfolio_cash__'
     const out: Array<{ date: Date; amount: number }> = []
     for (const a of assets) {
+      const isCash = a.assetId === PORTFOLIO_CASH_ID
       for (const cf of a.cashflows) {
-        if (cf.type === 'OUT') out.push({ date: cf.timestamp, amount: -Math.abs(cf.amountEUR) })
-        else if (cf.type === 'IN') out.push({ date: cf.timestamp, amount: Math.abs(cf.amountEUR) })
-        else if (cf.type === 'DIVIDEND') out.push({ date: cf.timestamp, amount: Math.abs(cf.amountEUR) })
+        if (cf.type === 'DIVIDEND') {
+          out.push({ date: cf.timestamp, amount: Math.abs(cf.amountEUR) })
+        } else if (isCash) {
+          if (cf.type === 'OUT') out.push({ date: cf.timestamp, amount: -Math.abs(cf.amountEUR) })
+          else if (cf.type === 'IN') out.push({ date: cf.timestamp, amount: Math.abs(cf.amountEUR) })
+        }
       }
     }
     return out.sort((a, b) => a.date.getTime() - b.date.getTime())

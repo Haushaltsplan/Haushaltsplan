@@ -3,6 +3,7 @@
  */
 
 import { berechneIrrAnnualizedPercent } from '@/lib/portfolio-analyse/parqet-core/math-utils'
+import { parqetIrrCashflowsAusBuchungen } from '@/lib/portfolio-analyse/parqet-xirr'
 import type { PortfolioBuchung } from '@/lib/portfolio-analyse/types'
 
 export type MonatsPunkt = { label: string; wert: number; monat: string }
@@ -152,35 +153,17 @@ export function baueMonatsVerlauf(
   return filled
 }
 
-/** IZF aus Buchungen (Investor-Perspektive: Einzahlung/Kauf negativ, Verkauf/Dividende positiv). */
+/** IZF (XIRR) wie Parqet — siehe parqet-xirr.ts */
 export function irrAusBuchungen(
   buchungen: PortfolioBuchung[],
   terminalValueEUR: number,
   asOf: Date = new Date(),
 ): number | null {
-  const flows: Array<{ date: Date; amount: number }> = []
-  const sortiert = [...buchungen].sort((a, b) => a.datum.localeCompare(b.datum))
-
-  for (const b of sortiert) {
-    const d = new Date(`${b.datum}T12:00:00`)
-    if (!Number.isFinite(d.getTime())) continue
-    switch (b.typ) {
-      case 'einzahlung':
-      case 'kauf':
-        flows.push({ date: d, amount: -Math.abs(b.betragEur) })
-        break
-      case 'auszahlung':
-      case 'verkauf':
-      case 'dividende':
-      case 'zins':
-        flows.push({ date: d, amount: Math.abs(b.betragEur) })
-        break
-      default:
-        break
-    }
-  }
-
-  return berechneIrrAnnualizedPercent(flows, terminalValueEUR, asOf)
+  return berechneIrrAnnualizedPercent(
+    parqetIrrCashflowsAusBuchungen(buchungen),
+    terminalValueEUR,
+    asOf,
+  )
 }
 
 /** Zeitgewichtete Rendite aus Monatsverlauf, externe Zuflüsse pro Monat neutralisiert. */

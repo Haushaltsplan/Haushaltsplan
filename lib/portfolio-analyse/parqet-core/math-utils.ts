@@ -118,10 +118,15 @@ export function berechneIrrAnnualizedPercent(
   const hasPos = cfs.some((f) => f.amountEUR > 0)
   if (!hasNeg || !hasPos) return null
 
-  const r = calculateXIRR(cfs, 0.1)
-  if (!Number.isFinite(r) || Number.isNaN(r)) return null
+  const guesses = [0.1, 0.05, 0.15, 0.01, -0.05, 0.25, -0.1]
+  for (const g of guesses) {
+    const r = calculateXIRR(cfs, g)
+    if (Number.isFinite(r) && !Number.isNaN(r)) {
+      return round4(r * 100)
+    }
+  }
 
-  return round4(r * 100)
+  return null
 }
 
 /**
