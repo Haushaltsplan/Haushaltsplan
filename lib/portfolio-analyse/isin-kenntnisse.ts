@@ -6,8 +6,18 @@ export type IsinKenntnis = {
   wkn?: string
   symbolYahoo?: string
   symbolCandidates?: string[]
+  /** Finnhub-Logo-Slug (oft ≠ Kursticker, z. B. HLMA statt H11.MU). */
+  logoSymbol?: string
   /** Abweichende Währung pro Yahoo-Symbol (z. B. XDEW.L in USD). */
   symbolWaehrung?: Record<string, BoersenWaehrung>
+  /** Nur dieses Yahoo-Symbol für den Live-Kurs (kein RCRS/CYBR o. Ä.). */
+  kursNurSymbol?: string
+  /** Yahoo-Symbole ignorieren (z. B. OSP2.HM statt USU). */
+  verboteneSymbole?: string[]
+  /** Stooq-Symbol (z. B. usu.de) wenn Yahoo fehlt oder falsch. */
+  stooqSymbol?: string
+  /** Fester EUR-Kurs, wenn Yahoo für kursNurSymbol keinen Treffer liefert. */
+  kursFallbackEur?: number
 }
 
 export const ISIN_KENNTNISSE: Record<string, IsinKenntnis> = {
@@ -21,22 +31,26 @@ export const ISIN_KENNTNISSE: Record<string, IsinKenntnis> = {
     name: 'Upstart Holdings',
     symbolYahoo: 'UPST',
     symbolCandidates: ['UPST'],
+    logoSymbol: 'UPST',
   },
   GB0004052071: {
     name: 'Halma',
     symbolYahoo: 'H11.MU',
     symbolCandidates: ['H11.MU'],
+    logoSymbol: 'HLMA',
   },
   CA15135U1093: {
     name: 'Alimentation Couche-Tard',
     symbolYahoo: 'ATD.TO',
     symbolCandidates: ['ATD.TO'],
+    logoSymbol: 'ATD',
   },
   /** Alias falls andere Anteilsklasse/ISIN im Depot */
   CA015DM1098: {
     name: 'Alimentation Couche-Tard',
     symbolYahoo: 'ATD.TO',
     symbolCandidates: ['ATD.TO'],
+    logoSymbol: 'ATD',
   },
   IE00BLNMYC90: {
     name: 'Xtrackers S&P 500 Equal Weight UCITS ETF 1C',
@@ -48,6 +62,18 @@ export const ISIN_KENNTNISSE: Record<string, IsinKenntnis> = {
     name: 'Rize Cybersecurity and Data Privacy UCITS ETF',
     symbolYahoo: 'IE00BJXRZJ40.SG',
     symbolCandidates: ['IE00BJXRZJ40.SG'],
+    kursNurSymbol: 'IE00BJXRZJ40.SG',
+    symbolWaehrung: { 'IE00BJXRZJ40.SG': 'EUR' },
+  },
+  DE000A0BVU28: {
+    name: 'USU Software',
+    wkn: 'A0BVU2',
+    symbolYahoo: 'OSP2.HM',
+    symbolCandidates: ['OSP2.HM'],
+    kursNurSymbol: 'OSP2.HM',
+    symbolWaehrung: { 'OSP2.HM': 'EUR' },
+    kursFallbackEur: 9.1,
+    logoSymbol: 'USU',
   },
 }
 

@@ -249,10 +249,12 @@ async function lookupIsinBatch(unique: string[]): Promise<IsinMetadata[]> {
       assetType = figi.securityType ?? figi.securityType2 ?? null
     }
 
+    const verboten = new Set((kenntnis?.verboteneSymbole ?? []).map((s) => s.toUpperCase()))
     if (yahooPick) {
       const ySym = symbolAusYahooQuote(yahooPick)
       const yName = (yahooPick.longname ?? yahooPick.shortname ?? ySym ?? '').trim()
-      if (ySym) {
+      const yBlocked = ySym != null && verboten.has(ySym.toUpperCase())
+      if (ySym && !yBlocked) {
         const yIsDe = ySym.endsWith('.DE') || ySym.endsWith('.F')
         const curIsBareUs =
           symbolYahoo != null && !symbolYahoo.includes('.') && isin.startsWith('IE')
@@ -260,7 +262,7 @@ async function lookupIsinBatch(unique: string[]): Promise<IsinMetadata[]> {
           symbolYahoo = ySym
         }
       }
-      if (yName.length > 2) name = yName
+      if (yName.length > 2 && !yBlocked) name = yName
     }
 
     if (symbolYahoo === 'CYBR') symbolYahoo = 'CYBR.L'
@@ -276,22 +278,33 @@ async function lookupIsinBatch(unique: string[]): Promise<IsinMetadata[]> {
     const addSym = (s: string | null | undefined) => {
       if (!s) return
       const k = s.trim().toUpperCase()
-      if (!k || seenSym.has(k)) return
+      if (!k || seenSym.has(k) || verboten.has(k)) return
       seenSym.add(k)
       merged.push(s.trim())
     }
     for (const s of kenntnis?.symbolCandidates ?? []) addSym(s)
-    for (const s of figiSyms) addSym(s)
-    for (const s of yahooSyms) addSym(s)
+    if (!kenntnis?.kursNurSymbol) {
+      for (const s of figiSyms) addSym(s)
+      for (const s of yahooSyms) addSym(s)
+      addSym(symbolYahoo)
+    }
     addSym(kenntnis?.symbolYahoo)
-    addSym(symbolYahoo)
+    addSym(kenntnis?.kursNurSymbol)
     if (isin.startsWith('US') && symbolYahoo && !symbolYahoo.includes('.')) {
       const base = symbolYahoo.split('.')[0]
       addSym(`${base}.DE`)
     }
 
-    const symbolCandidates = merged.length > 0 ? merged : symbolYahoo ? [symbolYahoo] : []
-    const primary = kenntnis?.symbolYahoo ?? primaeresSymbol(isin, symbolCandidates) ?? symbolYahoo
+    let symbolCandidates = merged.length > 0 ? merged : symbolYahoo ? [symbolYahoo] : []
+    if (kenntnis?.kursNurSymbol) {
+      symbolCandidates = [kenntnis.kursNurSymbol]
+      symbolYahoo = kenntnis.kursNurSymbol
+    }
+    const primary =
+      kenntnis?.kursNurSymbol ??
+      kenntnis?.symbolYahoo ??
+      primaeresSymbol(isin, symbolCandidates) ??
+      symbolYahoo
     if (kenntnis?.name) name = kenntnis.name
     const wkn = wknAusFigiOderKenntnis(isin, figiRows, kenntnis)
 

@@ -7,6 +7,7 @@ import {
   FX_SYMBOLE,
   fxKurseAusYahooMap,
   kandidatenMitDeFallback,
+  kursAusErzwungenemSymbol,
   type FxKurse,
   waehleBesterKurs,
 } from '@/lib/portfolio-analyse/kurs-aufloesung'
@@ -57,6 +58,8 @@ export function symboleAusMeta(
     if (!isin) continue
     const m = meta.get(isin)
     const k = isinKenntnis(isin)
+    if (k?.kursNurSymbol) set.add(k.kursNurSymbol)
+    if (k?.stooqSymbol) set.add(`stooq:${k.stooqSymbol}`)
     const basis = k?.symbolCandidates?.length
       ? k.symbolCandidates
       : m?.symbolCandidates?.length
@@ -64,19 +67,30 @@ export function symboleAusMeta(
         : m?.symbolYahoo
           ? [m.symbolYahoo]
           : []
-    const mitFallback = k?.symbolCandidates?.length ? basis : kandidatenMitDeFallback(basis)
-    for (const sym of mitFallback) set.add(sym)
+    const mitFallback =
+      k?.kursNurSymbol || k?.symbolCandidates?.length === 0
+        ? basis
+        : kandidatenMitDeFallback(basis)
+    for (const sym of mitFallback) {
+      const key = sym.toUpperCase()
+      if (k?.verboteneSymbole?.some((v) => v.toUpperCase() === key)) continue
+      set.add(sym)
+    }
   }
   return [...set]
 }
 
-export async function ladeLiveKurseClient(symbols: string[]): Promise<{
+export type LiveKursePaket = {
   kurse: Map<string, YahooKursZeile>
   stand: string | null
   fx: FxKurse
-}> {
+  stooqEur: Map<string, number>
+}
+
+export async function ladeLiveKurseClient(symbols: string[]): Promise<LiveKursePaket> {
+  const stooqEur = new Map<string, number>()
   if (symbols.length === 0) {
-    return { kurse: new Map(), stand: null, fx: fxKurseAusYahooMap(new Map()) }
+    return { kurse: new Map(), stand: null, fx: fxKurseAusYahooMap(new Map()), stooqEur }
   }
   const symbole = [...new Set([...symbols, ...FX_SYMBOLE])]
   const map = new Map<string, YahooKursZeile>()
@@ -96,11 +110,16 @@ export async function ladeLiveKurseClient(symbols: string[]): Promise<{
     if (!j.ok || !j.kurse) continue
     stand = j.stand ?? stand
     for (const [sym, row] of Object.entries(j.kurse)) {
-      map.set(sym.toUpperCase(), row)
+      const key = sym.toUpperCase()
+      if (key.startsWith('STOOQ:')) {
+        if (row.preis != null) stooqEur.set(key, row.preis)
+      } else {
+        map.set(key, row)
+      }
     }
   }
 
-  return { kurse: map, stand, fx: fxKurseAusYahooMap(map) }
+  return { kurse: map, stand, fx: fxKurseAusYahooMap(map), stooqEur }
 }
 
 function usBasisTickerAusKandidaten(kandidaten: string[]): string | null {
@@ -114,6 +133,7 @@ export function berechneLivePortfolio(
   yahooKurse: Map<string, YahooKursZeile>,
   kurseStand: string | null,
   fx: FxKurse = fxKurseAusYahooMap(new Map()),
+  stooqEur: Map<string, number> = new Map(),
 ): LivePortfolio {
   const basis = positionenFuerBewertung(buchungen, snapshot)
   let dividendenEur = 0
@@ -151,12 +171,48 @@ export function berechneLivePortfolio(
     einstandOffenEur += einstandEur
     const einstandKurs = p.stueck > 0 ? einstandEur / p.stueck : (p.kursEur ?? 0)
 
-    const kursWahl = waehleBesterKurs(kandidaten, yahooKurse, einstandKurs, p.kursEur ?? null, {
-      isin,
-      fx,
-      usBasisTicker: isin.startsWith('US') ? usBasisTickerAusKandidaten(kandidaten) : null,
-      symbolWaehrung: kenntnis?.symbolWaehrung,
-    })
+    let kursWahl =
+      kenntnis?.kursNurSymbol != null
+        ? kursAusErzwungenemSymbol(
+            kenntnis.kursNurSymbol,
+            yahooKurse,
+            fx,
+            kenntnis.symbolWaehrung,
+          )
+        : null
+
+    if (kursWahl == null) {
+      kursWahl = waehleBesterKurs(kandidaten, yahooKurse, einstandKurs, p.kursEur ?? null, {
+        isin,
+        fx,
+        usBasisTicker: isin.startsWith('US') ? usBasisTickerAusKandidaten(kandidaten) : null,
+        symbolWaehrung: kenntnis?.symbolWaehrung,
+        verboteneSymbole: kenntnis?.verboteneSymbole,
+      })
+    }
+
+    if (kursWahl == null && kenntnis?.kursFallbackEur != null && kenntnis.kursFallbackEur > 0) {
+      const fb = kenntnis.kursFallbackEur
+      const symFb = kenntnis.kursNurSymbol ?? kenntnis.symbolYahoo ?? 'fallback'
+      kursWahl = {
+        symbol: symFb,
+        kurs: fb,
+        direktEur: true,
+        zeile: { preis: fb, aenderungTagProzent: null },
+      }
+    }
+
+    if (kursWahl == null && kenntnis?.stooqSymbol) {
+      const stooqPreis = stooqEur.get(`STOOQ:${kenntnis.stooqSymbol}`.toUpperCase())
+      if (stooqPreis != null && stooqPreis > 0) {
+        kursWahl = {
+          symbol: `stooq:${kenntnis.stooqSymbol}`,
+          kurs: stooqPreis,
+          direktEur: true,
+          zeile: { preis: stooqPreis, aenderungTagProzent: null },
+        }
+      }
+    }
     const sym = kursWahl?.symbol ?? m?.symbolYahoo ?? null
     const kursZeile = kursWahl?.zeile ?? null
     let kursLive = kursWahl?.kurs ?? null

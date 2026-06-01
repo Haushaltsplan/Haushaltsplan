@@ -4,6 +4,7 @@ import { StockLogo } from '@/components/stock-logo'
 import { logoInitialen } from '@/lib/stock-logo-urls'
 import type { IsinMetadata } from '@/lib/portfolio-analyse/isin-lookup-server'
 import { anzeigeNameFuerIsin } from '@/lib/portfolio-analyse/isin-metadata-client'
+import { portfolioLogoQuellen } from '@/lib/portfolio-analyse/portfolio-logos'
 
 export function PortfolioIsinLogo({
   isin,
@@ -21,11 +22,19 @@ export function PortfolioIsinLogo({
   const m = isin ? meta.get(isin.toUpperCase()) : undefined
   const symbol = m?.symbolYahoo
   const name = anzeigeNameFuerIsin(isin, fallbackName ?? null, meta)
+  const logo = portfolioLogoQuellen(isin, symbol ?? null, name)
   const dim = groesse === 'sm' ? 'h-7 w-7' : 'h-9 w-9'
   const imgClass = `${dim} shrink-0 rounded-lg border border-zinc-800 bg-zinc-950 p-0.5 object-contain`
 
-  if (symbol) {
-    return <StockLogo symbol={symbol} className={className ?? imgClass} />
+  if (symbol || logo.finnhubSlug || (logo.clearbitDomains?.length ?? 0) > 0) {
+    return (
+      <StockLogo
+        symbol={symbol ?? logo.finnhubSlug ?? name}
+        finnhubSlug={logo.finnhubSlug}
+        clearbitDomains={logo.clearbitDomains}
+        className={className ?? imgClass}
+      />
+    )
   }
 
   const initials = logoInitialen(name.replace(/\s+/g, '').slice(0, 4) || isin || '?')

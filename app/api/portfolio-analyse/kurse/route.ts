@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { teileArray } from '@/lib/portfolio-analyse/batch-hilfen'
+import { ladeStooqSchlusskurs } from '@/lib/portfolio-analyse/stooq-kurs'
 import { kursFuerSymbol, ladeYahooKurse, type YahooKursZeile } from '@/lib/portfolio-analyse/yahoo-kurse-server'
 
 export const dynamic = 'force-dynamic'
@@ -17,18 +18,26 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: false, message: 'symbols[] erwartet.' }, { status: 400 })
   }
 
-  const symbols = [...new Set(raw.map((s) => String(s).trim()).filter(Boolean))].slice(0, 200)
-  if (symbols.length === 0) {
+  const alle = [...new Set(raw.map((s) => String(s).trim()).filter(Boolean))].slice(0, 200)
+  const stooqKeys = alle.filter((s) => s.toLowerCase().startsWith('stooq:'))
+  const symbols = alle.filter((s) => !s.toLowerCase().startsWith('stooq:'))
+  if (alle.length === 0) {
     return NextResponse.json({ ok: true, kurse: {}, stand: new Date().toISOString() })
   }
 
   try {
+    const kurse: Record<string, { preis: number | null; aenderungTagProzent: number | null }> = {}
+    for (const key of stooqKeys) {
+      const stooqSym = key.slice(key.indexOf(':') + 1)
+      const preis = await ladeStooqSchlusskurs(stooqSym)
+      if (preis != null) kurse[key.toUpperCase()] = { preis, aenderungTagProzent: null }
+    }
+
     const map = new Map<string, YahooKursZeile>()
     for (const batch of teileArray(symbols, 80)) {
       const part = await ladeYahooKurse(batch)
       for (const [k, v] of part) map.set(k, v)
     }
-    const kurse: Record<string, { preis: number | null; aenderungTagProzent: number | null }> = {}
     for (const sym of symbols) {
       const hit = kursFuerSymbol(map, sym)
       if (hit) kurse[sym] = hit

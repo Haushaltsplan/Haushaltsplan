@@ -58,7 +58,8 @@ export function boersenWaehrung(
     s.endsWith('.HE') ||
     s.endsWith('.BR') ||
     s.endsWith('.MC') ||
-    s.endsWith('.MU')
+    s.endsWith('.MU') ||
+    s.endsWith('.HM')
   ) {
     return 'EUR'
   }
@@ -119,6 +120,7 @@ export function waehleBesterKurs(
     fx?: FxKurse
     usBasisTicker?: string | null
     symbolWaehrung?: Record<string, BoersenWaehrung>
+    verboteneSymbole?: string[]
   },
 ): KursWahl | null {
   const isin = opts?.isin?.toUpperCase() ?? ''
@@ -132,8 +134,13 @@ export function waehleBesterKurs(
       eurSgd: FALLBACK_EUR_SGD,
     } satisfies FxKurse)
   const symbolWaehrung = opts?.symbolWaehrung ?? {}
+  const verboten = new Set(
+    (opts?.verboteneSymbole ?? []).map((s) => s.trim().toUpperCase()).filter(Boolean),
+  )
   const usBasis = opts?.usBasisTicker?.toUpperCase() ?? null
-  const uniq = [...new Set(kandidaten.map((s) => s.trim().toUpperCase()).filter(Boolean))]
+  const uniq = [...new Set(kandidaten.map((s) => s.trim().toUpperCase()).filter(Boolean))].filter(
+    (s) => !verboten.has(s),
+  )
   if (uniq.length === 0) return null
 
   const hits: KursWahl[] = []
@@ -199,6 +206,32 @@ export function waehleBesterKurs(
 
   pool.sort((a, b) => score(b) - score(a))
   return pool[0] ?? null
+}
+
+/** Exakt ein Symbol — ohne Auswahl anderer Kandidaten. */
+export function kursAusErzwungenemSymbol(
+  symbol: string,
+  kurse: Map<string, YahooKursZeile>,
+  fx: FxKurse,
+  symbolWaehrung?: Record<string, BoersenWaehrung>,
+): KursWahl | null {
+  const sym = symbol.trim().toUpperCase()
+  const zeile = kursFuerSymbol(kurse, sym)
+  if (!zeile) return null
+  const preis = zeile.preis
+  if (preis == null || !Number.isFinite(preis) || preis <= 0) return null
+  const waehrungOverride = symbolWaehrung?.[sym] ?? symbolWaehrung?.[symbol] ?? null
+  const kursEur = preisInEur(preis, sym, fx, waehrungOverride)
+  if (kursEur == null) return null
+  return {
+    symbol: sym,
+    kurs: kursEur,
+    direktEur: boersenWaehrung(sym, waehrungOverride) === 'EUR',
+    zeile: {
+      preis: kursEur,
+      aenderungTagProzent: zeile.aenderungTagProzent ?? null,
+    },
+  }
 }
 
 export function kandidatenMitDeFallback(symbole: string[]): string[] {

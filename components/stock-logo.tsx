@@ -1,16 +1,24 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import { finnhubLogoUrls, logoInitialen } from '@/lib/stock-logo-urls'
+import { alleLogoUrls, logoInitialen } from '@/lib/stock-logo-urls'
 
 export function StockLogo({
   symbol,
   className,
+  finnhubSlug,
+  clearbitDomains,
 }: {
   symbol: string
   className?: string
+  /** Abweichender Finnhub-Slug (z. B. HLMA statt H11.MU). */
+  finnhubSlug?: string
+  clearbitDomains?: string[]
 }) {
-  const urls = useMemo(() => finnhubLogoUrls(symbol), [symbol])
+  const urls = useMemo(
+    () => alleLogoUrls(symbol, { finnhubSlug, clearbitDomains }),
+    [symbol, finnhubSlug, clearbitDomains?.join('|')],
+  )
   const [step, setStep] = useState(0)
   const initials = logoInitialen(symbol)
 
