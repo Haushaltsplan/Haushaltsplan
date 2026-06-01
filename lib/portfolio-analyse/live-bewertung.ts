@@ -1,5 +1,6 @@
 import { cashSaldoAusBuchungen, positionenFuerBewertung } from '@/lib/portfolio-analyse/bestand'
 import { teileArray } from '@/lib/portfolio-analyse/batch-hilfen'
+import { isinKenntnis } from '@/lib/portfolio-analyse/isin-kenntnisse'
 import { anzeigeNameFuerIsin, wknFuerIsin } from '@/lib/portfolio-analyse/isin-metadata-client'
 import type { IsinMetadata } from '@/lib/portfolio-analyse/isin-lookup-server'
 import {
@@ -55,9 +56,16 @@ export function symboleAusMeta(
     const isin = p.isin?.toUpperCase()
     if (!isin) continue
     const m = meta.get(isin)
-    const basis =
-      m?.symbolCandidates?.length ? m.symbolCandidates.slice(0, 6) : m?.symbolYahoo ? [m.symbolYahoo] : []
-    for (const sym of kandidatenMitDeFallback(basis)) set.add(sym)
+    const k = isinKenntnis(isin)
+    const basis = k?.symbolCandidates?.length
+      ? k.symbolCandidates
+      : m?.symbolCandidates?.length
+        ? m.symbolCandidates.slice(0, 6)
+        : m?.symbolYahoo
+          ? [m.symbolYahoo]
+          : []
+    const mitFallback = k?.symbolCandidates?.length ? basis : kandidatenMitDeFallback(basis)
+    for (const sym of mitFallback) set.add(sym)
   }
   return [...set]
 }
@@ -128,11 +136,17 @@ export function berechneLivePortfolio(
   const positionen: LivePosition[] = basis.map((p) => {
     const isin = p.isin?.toUpperCase() ?? ''
     const m = isin ? meta.get(isin) : undefined
-    const kandidaten = m
-      ? kandidatenMitDeFallback(
-          m.symbolCandidates?.length ? m.symbolCandidates : m.symbolYahoo ? [m.symbolYahoo] : [],
-        )
-      : []
+    const kenntnis = isin ? isinKenntnis(isin) : null
+    const kandidatenBasis = kenntnis?.symbolCandidates?.length
+      ? kenntnis.symbolCandidates
+      : m?.symbolCandidates?.length
+        ? m.symbolCandidates
+        : m?.symbolYahoo
+          ? [m.symbolYahoo]
+          : []
+    const kandidaten = kenntnis?.symbolCandidates?.length
+      ? kandidatenBasis
+      : kandidatenMitDeFallback(kandidatenBasis)
     const einstandEur = p.wertEur
     einstandOffenEur += einstandEur
     const einstandKurs = p.stueck > 0 ? einstandEur / p.stueck : (p.kursEur ?? 0)
@@ -141,6 +155,7 @@ export function berechneLivePortfolio(
       isin,
       fx,
       usBasisTicker: isin.startsWith('US') ? usBasisTickerAusKandidaten(kandidaten) : null,
+      symbolWaehrung: kenntnis?.symbolWaehrung,
     })
     const sym = kursWahl?.symbol ?? m?.symbolYahoo ?? null
     const kursZeile = kursWahl?.zeile ?? null
