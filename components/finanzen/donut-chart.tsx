@@ -17,10 +17,13 @@ export function DonutChart({
   segmente,
   groesse = 168,
   dicke = 22,
+  mitte,
 }: {
   segmente: DonutSegment[]
   groesse?: number
   dicke?: number
+  /** Mitteltext; Standard: „GESAMT“ + Summe. Nur `wert` = eine Zeile (z. B. Parqet-Depot). */
+  mitte?: { wert: string; label?: string }
 }) {
   const { gesamt, anteile } = useMemo(() => {
     const positiv = segmente.filter((s) => Number(s.betrag) > 0)
@@ -78,23 +81,35 @@ export function DonutChart({
           </circle>
         ))}
       </g>
+      {mitte?.label ? (
+        <text
+          x={center}
+          y={center - 6}
+          textAnchor="middle"
+          className="fill-slate-500"
+          style={{ fontSize: 10, fontWeight: 600, letterSpacing: '0.08em' }}
+        >
+          {mitte.label}
+        </text>
+      ) : !mitte ? (
+        <text
+          x={center}
+          y={center - 6}
+          textAnchor="middle"
+          className="fill-slate-500"
+          style={{ fontSize: 10, fontWeight: 600, letterSpacing: '0.08em' }}
+        >
+          GESAMT
+        </text>
+      ) : null}
       <text
         x={center}
-        y={center - 6}
-        textAnchor="middle"
-        className="fill-slate-500"
-        style={{ fontSize: 10, fontWeight: 600, letterSpacing: '0.08em' }}
-      >
-        GESAMT
-      </text>
-      <text
-        x={center}
-        y={center + 14}
+        y={mitte?.label || !mitte ? center + 14 : center + 5}
         textAnchor="middle"
         className="fill-slate-100"
-        style={{ fontSize: 17, fontWeight: 700 }}
+        style={{ fontSize: mitte && !mitte.label ? 20 : 17, fontWeight: 700 }}
       >
-        {gesamt.toLocaleString('de-DE', { maximumFractionDigits: 0 })} €
+        {mitte?.wert ?? `${gesamt.toLocaleString('de-DE', { maximumFractionDigits: 0 })} €`}
       </text>
     </svg>
   )

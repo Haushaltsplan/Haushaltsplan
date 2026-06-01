@@ -10,7 +10,8 @@ import {
 import { PaWertentwicklungChart } from '@/components/portfolio-analyse/pa-wertentwicklung-chart'
 import { PortfolioIsinLogo } from '@/components/portfolio-analyse/isin-logo'
 import { usePortfolioAnalyse } from '@/components/portfolio-analyse/pa-data-provider'
-import { PaBadge, PaCard, PaHeroKpi, PaIconTabs, PaStatRow } from '@/components/portfolio-analyse/pa-ui'
+import { PaPortfolioHero } from '@/components/portfolio-analyse/pa-portfolio-hero'
+import { PaBadge, PaCard, PaIconTabs, PaStatRow } from '@/components/portfolio-analyse/pa-ui'
 import { dividendenProMonat } from '@/lib/portfolio-analyse/auswertungen'
 import {
   formatDatumDe,
@@ -19,8 +20,6 @@ import {
   sortiereBuchungenNeuesteZuerst,
 } from '@/lib/portfolio-analyse/berechnung'
 import { anzeigeNameFuerIsin } from '@/lib/portfolio-analyse/isin-metadata-client'
-import { irrMindestHistorieTage } from '@/lib/portfolio-analyse/depot-berechnung'
-import { parqetIrrModus } from '@/lib/portfolio-analyse/parqet-xirr'
 import { berechneDrawdown, monatsrenditenProzent } from '@/lib/portfolio-analyse/zeitreihen'
 import { BUCHUNGS_TYP_LABEL, type BuchungsTyp } from '@/lib/portfolio-analyse/types'
 
@@ -84,14 +83,12 @@ export function PortfolioDashboardClient() {
     [positionen],
   )
 
-  const startDatum = useMemo(() => {
+  const startDatumIso = useMemo(() => {
     if (buchungen.length === 0) return null
-    const min = [...buchungen].sort((a, b) => a.datum.localeCompare(b.datum))[0]?.datum
-    return min ? formatDatumDe(min) : null
+    return [...buchungen].sort((a, b) => a.datum.localeCompare(b.datum))[0]?.datum ?? null
   }, [buchungen])
 
-  const irrModus = useMemo(() => (buchungen.length > 0 ? parqetIrrModus(buchungen) : null), [buchungen])
-  const irrHistorieTage = useMemo(() => irrMindestHistorieTage(buchungen), [buchungen])
+  const startDatum = startDatumIso ? formatDatumDe(startDatumIso) : null
 
   if (laden && !live) {
     return <p className="py-16 text-center text-sm text-zinc-500">Portfolio wird geladen …</p>
@@ -113,53 +110,26 @@ export function PortfolioDashboardClient() {
 
   const m = report?.metrics
   const irr = report?.performance.irrAnnualizedPercent
-  const twr = report?.performance.twrTotalPercent
 
   const gewinn = k?.gewinnVerlustEur
   const gewinnPct = k?.gewinnVerlustProzent
 
   return (
     <div className="space-y-8">
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        <PaHeroKpi
-          label="Depotwert"
-          value={k ? formatEur(k.depotwertEur) : '—'}
-          sub={
-            k
-              ? `Netto eingezahlt ${formatEur(k.investiertEur)} · Cash ${formatEur(k.cashEur)}`
-              : undefined
-          }
-          trend={
-            gewinn != null ? (
-              <PaBadge variant={gewinn >= 0 ? 'positive' : 'negative'}>
-                {gewinn >= 0 ? '+' : ''}
-                {formatEur(gewinn)}
-                {gewinnPct != null ? ` (${formatProzent(gewinnPct)})` : ''}
-              </PaBadge>
-            ) : undefined
-          }
+      {k ? (
+        <PaPortfolioHero
+          positionen={positionen}
+          kennzahlen={{
+            depotwertEur: k.depotwertEur,
+            investiertEur: k.investiertEur,
+            gewinnVerlustProzent: k.gewinnVerlustProzent,
+          }}
+          metrics={m}
+          irr={irr}
+          wertentwicklung={wertentwicklung}
+          startDatumIso={startDatumIso}
         />
-        <PaHeroKpi
-          label="IZF (annualisiert)"
-          value={irr != null ? formatProzent(irr) : '—'}
-          sub={
-            irrHistorieTage != null && irrHistorieTage < 90
-              ? `Parqet berechnet den IZF erst ab 90 Tagen Historie (${irrHistorieTage} Tage).`
-              : startDatum
-                ? `Gesamte Historie (Parqet „Max“) · ${
-                    irrModus === 'extern'
-                      ? 'Ein-/Auszahlungen + Erträge'
-                      : 'Käufe/Verkäufe + Erträge'
-                  } · seit ${startDatum}`
-                : 'Gesamte Historie (Parqet „Max“)'
-          }
-        />
-        <PaHeroKpi
-          label="Zeitgewichtete Rendite"
-          value={twr != null ? formatProzent(twr) : '—'}
-          sub={startDatum ? `seit ${startDatum}` : undefined}
-        />
-      </div>
+      ) : null}
 
       <PaCard variant="elevated" className="overflow-hidden min-w-0">
         <div className="border-b border-white/[0.04] px-4 pt-4 sm:px-6">
