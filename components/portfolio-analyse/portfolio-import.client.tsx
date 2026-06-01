@@ -60,7 +60,7 @@ export function PortfolioImportClient() {
     }
     setVorschauDateiname(file.name)
     setVorschau(ergebnis)
-    if (neu.length === 0 && ergebnis.positionen.length === 0) {
+    if (ergebnis.buchungen.length === 0 && ergebnis.positionen.length === 0) {
       toast.error(ergebnis.hinweise[0] ?? 'Keine neuen Daten erkannt.')
     } else {
       toast.success('Vorschau bereit — bitte prüfen und übernehmen.')

@@ -50,6 +50,7 @@ function mapBuchungRow(row: Record<string, unknown>): PortfolioDbBuchung {
     betragEur: Number(row.betrag_eur),
     realisierterGewinnEur:
       row.realisierter_gewinn_eur != null ? Number(row.realisierter_gewinn_eur) : null,
+    parqetTyp: row.parqet_typ != null ? String(row.parqet_typ) : null,
     assetKlasse: row.asset_klasse as PortfolioDbBuchung['assetKlasse'],
     quelle: row.quelle as PortfolioDbBuchung['quelle'],
   }
@@ -178,6 +179,7 @@ export async function speicherePortfolioImport(
       kurs_eur: b.kursEur,
       betrag_eur: b.betragEur,
       realisierter_gewinn_eur: b.realisierterGewinnEur ?? null,
+      parqet_typ: b.parqetTyp ?? null,
       asset_klasse: b.assetKlasse,
       quelle: b.quelle,
     }))

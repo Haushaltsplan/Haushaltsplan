@@ -7,6 +7,7 @@ import {
   parqetIrrCashflowsAusBuchungen,
   parqetIrrDiagnose,
 } from '@/lib/portfolio-analyse/parqet-xirr'
+import { summeParqetRealisiertAusBuchungen } from '@/lib/portfolio-analyse/parqet-realisiert'
 import type { PortfolioBuchung } from '@/lib/portfolio-analyse/types'
 
 export type MonatsPunkt = { label: string; wert: number; monat: string }
@@ -336,15 +337,8 @@ function fifoKosten(lots: EinstandLot[], stkVerk: number): number {
  * Sonst: FIFO aus Buchungen (PDF / ältere Imports).
  */
 export function realisierterGewinnAusVerkaeufen(buchungen: PortfolioBuchung[]): number {
-  const parqetZeilen = buchungen.filter(
-    (b) =>
-      b.typ === 'verkauf' &&
-      b.realisierterGewinnEur != null &&
-      Number.isFinite(b.realisierterGewinnEur),
-  )
-  if (parqetZeilen.length > 0) {
-    return round2(parqetZeilen.reduce((s, b) => s + (b.realisierterGewinnEur ?? 0), 0))
-  }
+  const parqetSumme = summeParqetRealisiertAusBuchungen(buchungen)
+  if (parqetSumme != null) return parqetSumme
 
   const sortiert = [...buchungen].sort((a, b) => a.datum.localeCompare(b.datum))
 
