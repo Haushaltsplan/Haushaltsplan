@@ -41,12 +41,22 @@ export function PortfolioImportClient() {
     setBlocklistText(ladePiiBlockliste().join(', '))
   }, [])
 
-  async function importAbschliessen(file: File, ergebnis: PortfolioImportErgebnis) {
-    const bestehend = new Set(buchungen.map((b) => b.buchungsHash))
-    const { neu, uebersprungen } = await dedupliziereGegenBestehend(ergebnis.buchungen, bestehend)
-    ergebnis = { ...ergebnis, buchungen: neu }
-    if (uebersprungen > 0) {
-      ergebnis.hinweise.push(`${uebersprungen} Buchung(en) bereits gespeichert — werden übersprungen.`)
+  async function importAbschliessen(
+    file: File,
+    ergebnis: PortfolioImportErgebnis,
+    opts?: { csvVollstaendigAktualisieren?: boolean },
+  ) {
+    if (opts?.csvVollstaendigAktualisieren) {
+      ergebnis.hinweise.push(
+        'Alle Buchungen aus der CSV werden gespeichert bzw. aktualisiert (z. B. realisierte Gewinne aus Parqet).',
+      )
+    } else {
+      const bestehend = new Set(buchungen.map((b) => b.buchungsHash))
+      const { neu, uebersprungen } = await dedupliziereGegenBestehend(ergebnis.buchungen, bestehend)
+      ergebnis = { ...ergebnis, buchungen: neu }
+      if (uebersprungen > 0) {
+        ergebnis.hinweise.push(`${uebersprungen} Buchung(en) bereits gespeichert — werden übersprungen.`)
+      }
     }
     setVorschauDateiname(file.name)
     setVorschau(ergebnis)
@@ -97,7 +107,7 @@ export function PortfolioImportClient() {
       speicherePiiBlockliste(blocklist)
       const text = await file.text()
       const ergebnis = await importiereParqetPortfolioCsvText(text, blocklist)
-      await importAbschliessen(file, ergebnis)
+      await importAbschliessen(file, ergebnis, { csvVollstaendigAktualisieren: true })
     } catch (e) {
       console.error(e)
       toast.error('CSV-Import fehlgeschlagen.')

@@ -189,8 +189,9 @@ function cashZeileAusParqet(
         ? Math.round((Math.abs(amt) / stueck) * 10000) / 10000
         : null
 
+  /** Parqet „Realisiert“ nur aus Sell — TransferOut hat eigene realizedgains, zählt dort nicht mit. */
   let realisierterGewinnEur: number | null = null
-  if (idx.realizedgains >= 0 && /^sell$|^transferout$/i.test(typRaw)) {
+  if (idx.realizedgains >= 0 && /^sell$/i.test(typRaw)) {
     const rg = parseGeldBetrag(cols[idx.realizedgains])
     if (rg != null && Number.isFinite(rg)) {
       realisierterGewinnEur = Math.round(rg * 100) / 100
@@ -310,7 +311,7 @@ export function parseParqetPortfolioCsvText(text: string): TrPdfParseErgebnis & 
       }
     }
     hinweise.push(
-      `Spalte „realizedgains“: ${nMitWert} Verkäufe, Summe ${summeRealisiert.toLocaleString('de-DE', { style: 'currency', currency: 'EUR' })} (Parqet-Wert für „Realisiert“).`,
+      `Spalte „realizedgains“ (nur Sell): ${nMitWert} Verkäufe, Summe ${summeRealisiert.toLocaleString('de-DE', { style: 'currency', currency: 'EUR' })} — entspricht Parqet „Realisiert“.`,
     )
   }
 

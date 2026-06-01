@@ -331,9 +331,21 @@ function fifoKosten(lots: EinstandLot[], stkVerk: number): number {
 }
 
 /**
- * Kumulierter realisierter Gewinn/Verlust aus allen Verkäufen (Parqet: FIFO-Einstand, Erlös vor Verkaufssteuer).
+ * Kumulierter realisierter Gewinn/Verlust.
+ * Parqet-CSV: Summe der importierten `realizedgains` (nur Sell-Zeilen).
+ * Sonst: FIFO aus Buchungen (PDF / ältere Imports).
  */
 export function realisierterGewinnAusVerkaeufen(buchungen: PortfolioBuchung[]): number {
+  const parqetZeilen = buchungen.filter(
+    (b) =>
+      b.typ === 'verkauf' &&
+      b.realisierterGewinnEur != null &&
+      Number.isFinite(b.realisierterGewinnEur),
+  )
+  if (parqetZeilen.length > 0) {
+    return round2(parqetZeilen.reduce((s, b) => s + (b.realisierterGewinnEur ?? 0), 0))
+  }
+
   const sortiert = [...buchungen].sort((a, b) => a.datum.localeCompare(b.datum))
 
   const steuerProTag = new Map<string, number>()
@@ -368,17 +380,10 @@ export function realisierterGewinnAusVerkaeufen(buchungen: PortfolioBuchung[]): 
       const restStueck = lots.reduce((s, l) => s + l.stueck, 0)
       let stk = stueckAusBuchung(b, restStueck > 0 ? restStueck : undefined)
       if (stk <= 0 && b.betragEur > 0 && restStueck <= 0) {
-        sum += b.realisierterGewinnEur ?? b.betragEur
+        sum += b.betragEur
         continue
       }
       if (stk <= 0) continue
-
-      if (b.realisierterGewinnEur != null && Number.isFinite(b.realisierterGewinnEur)) {
-        sum += b.realisierterGewinnEur
-        fifoKosten(lots, stk)
-        lotsByIsin.set(isin, lots)
-        continue
-      }
 
       const nVerk = verkaeufeProTag.get(tagKey) ?? 1
       const steuerAnteil = round2((steuerProTag.get(tagKey) ?? 0) / nVerk)
