@@ -13,7 +13,9 @@ import {
   sortiereBuchungenNeuesteZuerst,
   sortierePositionenNachWert,
 } from '@/lib/portfolio-analyse/berechnung'
+import { ladePiiBlockliste, speicherePiiBlockliste } from '@/lib/portfolio-analyse/anonymisierung'
 import { dedupliziereGegenBestehend, importiereTradeRepublicCsvText, importiereTradeRepublicPdfBuffer } from '@/lib/portfolio-analyse/import-pipeline'
+import { PortfolioAnalyseImportVorschau } from '@/components/portfolio-analyse-import-vorschau'
 import {
   ladePortfolioAnalyseDaten,
   loescheAllePortfolioAnalyseDaten,
@@ -52,6 +54,11 @@ export function PortfolioAnalysePageClient() {
   const [speichernBusy, setSpeichernBusy] = useState(false)
   const [vorschau, setVorschau] = useState<PortfolioImportErgebnis | null>(null)
   const [vorschauDateiname, setVorschauDateiname] = useState('')
+  const [blocklistText, setBlocklistText] = useState('')
+
+  useEffect(() => {
+    setBlocklistText(ladePiiBlockliste().join(', '))
+  }, [])
 
   const datenNeuLaden = useCallback(async () => {
     setLaden(true)
@@ -82,13 +89,19 @@ export function PortfolioAnalysePageClient() {
     setImportBusy(true)
     setVorschau(null)
     try {
+      const blocklist = blocklistText
+        .split(/[,;\n]+/)
+        .map((s) => s.trim())
+        .filter((s) => s.length >= 2)
+      speicherePiiBlockliste(blocklist)
+
       let ergebnis: PortfolioImportErgebnis
       if (istPdfDatei(file)) {
         const buffer = await file.arrayBuffer()
-        ergebnis = await importiereTradeRepublicPdfBuffer(buffer)
+        ergebnis = await importiereTradeRepublicPdfBuffer(buffer, blocklist)
       } else if (istCsvDatei(file)) {
         const text = await file.text()
-        ergebnis = await importiereTradeRepublicCsvText(text)
+        ergebnis = await importiereTradeRepublicCsvText(text, blocklist)
       } else {
         toast.error('Nur PDF oder CSV (Trade Republic).')
         return
@@ -118,14 +131,18 @@ export function PortfolioAnalysePageClient() {
     }
   }
 
-  async function vorschauUebernehmen() {
-    if (!vorschau) return
+  async function vorschauUebernehmen(payload: {
+    buchungen: PortfolioImportErgebnis['buchungen']
+    positionen: PortfolioImportErgebnis['positionen']
+    depotwertEur: number | null
+    snapshotUebernehmen: boolean
+  }) {
     setSpeichernBusy(true)
     try {
       const res = await speicherePortfolioImport(
-        vorschau.buchungen,
-        vorschau.positionen,
-        vorschau.depotwertEur,
+        payload.buchungen,
+        payload.snapshotUebernehmen ? payload.positionen : [],
+        payload.snapshotUebernehmen ? payload.depotwertEur : null,
       )
       if (!res.ok) {
         if (res.schemaFehlt) {
@@ -175,8 +192,9 @@ export function PortfolioAnalysePageClient() {
         description={
           <>
             Import läuft <strong className="font-medium text-zinc-200">nur in deinem Browser</strong> — ohne KI, ohne
-            Server-Upload der Rohdatei. Es werden ausschließlich anonymisierte Buchungsfelder gespeichert (ISIN, Datum,
-            Betrag — kein Name, kein IBAN, kein Saldo).
+            Server-Upload der Rohdatei. Vor dem Speichern wählst du Zeilen aus und kannst personenbezogene Einträge
+            entfernen — gespeichert werden nur ISIN, Datum, Betrag und geprüfte Wertpapiernamen (kein IBAN, kein Saldo,
+            kein Depotinhaber).
           </>
         }
       />
@@ -214,6 +232,15 @@ export function PortfolioAnalysePageClient() {
               </ul>
             </div>
             <div className="flex shrink-0 flex-col gap-2">
+              {(buchungen.length > 0 || (snapshot?.positionen.length ?? 0) > 0) && !schemaFehlt ? (
+                <button
+                  type="button"
+                  onClick={() => void alleDatenLoeschen()}
+                  className="rounded-lg border border-rose-900/45 bg-rose-950/15 px-4 py-2 text-xs text-rose-200 hover:bg-rose-950/35"
+                >
+                  Gespeicherte Daten löschen ({buchungen.length} Buchungen)
+                </button>
+              ) : null}
               <input
                 ref={fileInputRef}
                 type="file"
@@ -236,72 +263,18 @@ export function PortfolioAnalysePageClient() {
           </div>
 
           {vorschau ? (
-            <div className="mt-5 space-y-4 rounded-xl border border-zinc-700/50 bg-zinc-950/40 p-4">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <p className="text-sm font-medium text-white">
-                  Vorschau{' '}
-                  <span className="font-normal text-zinc-500">({vorschauDateiname} — wird nicht gespeichert)</span>
-                </p>
-                <div className="flex gap-2">
-                  <button
-                    type="button"
-                    className="rounded-lg border border-zinc-700 px-3 py-1.5 text-xs text-zinc-400 hover:text-white"
-                    onClick={() => {
-                      setVorschau(null)
-                      setVorschauDateiname('')
-                    }}
-                  >
-                    Verwerfen
-                  </button>
-                  <button
-                    type="button"
-                    disabled={speichernBusy}
-                    onClick={() => void vorschauUebernehmen()}
-                    className="rounded-lg border border-emerald-600/50 bg-emerald-950/40 px-3 py-1.5 text-xs font-medium text-emerald-100 hover:bg-emerald-950/60 disabled:opacity-50"
-                  >
-                    {speichernBusy ? 'Speichert …' : 'Anonymisiert übernehmen'}
-                  </button>
-                </div>
-              </div>
-
-              {vorschau.hinweise.map((h) => (
-                <p key={h} className="text-xs text-zinc-500">
-                  {h}
-                </p>
-              ))}
-
-              <p className="text-xs text-zinc-500">
-                {vorschau.buchungen.length} neue Buchung(en) · {vorschau.positionen.length} Position(en) ·{' '}
-                {vorschau.statistik.cashZeilen} Rohzeilen Umsatz
-              </p>
-
-              {vorschau.buchungen.length > 0 ? (
-                <div className="max-h-48 overflow-auto rounded-lg border border-zinc-800/80">
-                  <table className="w-full min-w-[520px] text-left text-xs">
-                    <thead className="sticky top-0 bg-zinc-900/95 text-zinc-500">
-                      <tr>
-                        <th className="px-3 py-2">Datum</th>
-                        <th className="px-3 py-2">Typ</th>
-                        <th className="px-3 py-2">Wertpapier</th>
-                        <th className="px-3 py-2 text-right">Betrag</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {vorschau.buchungen.slice(0, 25).map((b) => (
-                        <tr key={b.buchungsHash} className="border-t border-zinc-800/60">
-                          <td className="px-3 py-1.5 tabular-nums text-zinc-400">{formatDatumDe(b.datum)}</td>
-                          <td className="px-3 py-1.5 text-zinc-300">{BUCHUNGS_TYP_LABEL[b.typ]}</td>
-                          <td className="max-w-[200px] truncate px-3 py-1.5 text-zinc-300">
-                            {b.wertpapierName ?? b.isin ?? '—'}
-                          </td>
-                          <td className="px-3 py-1.5 text-right tabular-nums text-zinc-200">{formatEur(b.betragEur)}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              ) : null}
-            </div>
+            <PortfolioAnalyseImportVorschau
+              ergebnis={vorschau}
+              dateiname={vorschauDateiname}
+              blocklistText={blocklistText}
+              onBlocklistChange={setBlocklistText}
+              speichernBusy={speichernBusy}
+              onVerwerfen={() => {
+                setVorschau(null)
+                setVorschauDateiname('')
+              }}
+              onUebernehmen={(payload) => void vorschauUebernehmen(payload)}
+            />
           ) : null}
         </PageSectionPanel>
       </PageSection>

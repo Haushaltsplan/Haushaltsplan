@@ -1,6 +1,9 @@
 import type { ImportQuelle, PortfolioBuchung, PortfolioImportErgebnis, PortfolioPositionSnapshot } from '@/lib/portfolio-analyse/types'
 import {
-  anonymisiereWertpapierName,
+  beschreibungZuPersonenbezogen,
+  sichererWertpapierName,
+} from '@/lib/portfolio-analyse/anonymisierung'
+import {
   berechneBuchungsHash,
   extrahiereIsin,
   extrahiereStueck,
@@ -18,10 +21,12 @@ import { parseTradeRepublicCsvText } from '@/lib/portfolio-analyse/trade-republi
 async function cashZeileZuBuchung(
   row: TrRawCashZeile,
   quelle: ImportQuelle,
+  blocklist: string[],
 ): Promise<PortfolioBuchung | null> {
   const typRaw = row.typ.trim()
   const beschreibung = row.beschreibung.trim()
   if (istCashZeileUeberspringen(typRaw, beschreibung)) return null
+  if (beschreibungZuPersonenbezogen(beschreibung, blocklist) && !extrahiereIsin(beschreibung)) return null
 
   const datum = parseDeDatumZuIso(row.datum.trim())
   if (!datum) return null
@@ -33,7 +38,7 @@ async function cashZeileZuBuchung(
   if (betragEur <= 0 && typ !== 'steuer' && typ !== 'gebuehr') return null
 
   const isin = extrahiereIsin(beschreibung)
-  const wertpapierName = anonymisiereWertpapierName(extrahiereWertpapierName(beschreibung, isin))
+  const wertpapierName = sichererWertpapierName(extrahiereWertpapierName(beschreibung, isin), blocklist)
   let stueck = extrahiereStueck(beschreibung)
   if (stueck != null && typ === 'verkauf') stueck = -Math.abs(stueck)
   if (stueck != null && typ === 'kauf') stueck = Math.abs(stueck)
@@ -60,17 +65,17 @@ async function cashZeileZuBuchung(
   }
 }
 
-function positionZuSnapshot(pos: TrRawPosition): PortfolioPositionSnapshot | null {
+function positionZuSnapshot(pos: TrRawPosition, blocklist: string[]): PortfolioPositionSnapshot | null {
   if (pos.quantity == null || !Number.isFinite(pos.quantity) || pos.quantity <= 0) return null
   const isin = pos.isin?.trim() || extrahiereIsin(pos.name)
-  const name = anonymisiereWertpapierName(pos.name.trim())
-  if (!name) return null
+  const name = sichererWertpapierName(pos.name.trim(), blocklist)
+  if (!name && !isin) return null
   const wertEur = pos.marketValueEUR ?? (pos.pricePerUnit != null ? pos.quantity * pos.pricePerUnit : 0)
   if (!Number.isFinite(wertEur) || wertEur <= 0) return null
   const assetKlasse = schaetzeAssetKlasse(name, isin, 'sonstiges')
   return {
     isin,
-    name,
+    name: name ?? (isin ? `Wertpapier ${isin}` : 'Wertpapier'),
     stueck: pos.quantity,
     kursEur: pos.pricePerUnit,
     wertEur: Math.round(wertEur * 100) / 100,
@@ -81,17 +86,18 @@ function positionZuSnapshot(pos: TrRawPosition): PortfolioPositionSnapshot | nul
 async function rohZuImportErgebnis(
   roh: TrPdfParseErgebnis,
   quelle: ImportQuelle,
+  blocklist: string[],
 ): Promise<PortfolioImportErgebnis> {
   const hinweise: string[] = []
   const buchungen: PortfolioBuchung[] = []
   for (const row of roh.cash) {
-    const b = await cashZeileZuBuchung(row, quelle)
+    const b = await cashZeileZuBuchung(row, quelle, blocklist)
     if (b) buchungen.push(b)
   }
 
   const positionen: PortfolioPositionSnapshot[] = []
   for (const pos of [...roh.portfolio, ...roh.crypto]) {
-    const snap = positionZuSnapshot(pos)
+    const snap = positionZuSnapshot(pos, blocklist)
     if (snap) positionen.push(snap)
   }
 
@@ -119,6 +125,9 @@ async function rohZuImportErgebnis(
     hinweise.push('Umsatzübersicht gefunden, aber keine anonymisierbaren Buchungen extrahiert.')
   }
   hinweise.push('Rohdatei wurde nicht gespeichert — nur anonymisierte Felder.')
+  if (blocklist.length > 0) {
+    hinweise.push(`Persönliche Blockliste aktiv (${blocklist.length} Eintrag/Einträge).`)
+  }
 
   return {
     buchungen: dedup,
@@ -134,14 +143,20 @@ async function rohZuImportErgebnis(
   }
 }
 
-export async function importiereTradeRepublicPdfBuffer(buffer: ArrayBuffer): Promise<PortfolioImportErgebnis> {
+export async function importiereTradeRepublicPdfBuffer(
+  buffer: ArrayBuffer,
+  blocklist: string[] = [],
+): Promise<PortfolioImportErgebnis> {
   const roh = await parseTradeRepublicPdfBuffer(buffer)
-  return rohZuImportErgebnis(roh, 'pdf')
+  return rohZuImportErgebnis(roh, 'pdf', blocklist)
 }
 
-export async function importiereTradeRepublicCsvText(text: string): Promise<PortfolioImportErgebnis> {
+export async function importiereTradeRepublicCsvText(
+  text: string,
+  blocklist: string[] = [],
+): Promise<PortfolioImportErgebnis> {
   const roh = parseTradeRepublicCsvText(text)
-  return rohZuImportErgebnis(roh, 'csv')
+  return rohZuImportErgebnis(roh, 'csv', blocklist)
 }
 
 export async function dedupliziereGegenBestehend(
