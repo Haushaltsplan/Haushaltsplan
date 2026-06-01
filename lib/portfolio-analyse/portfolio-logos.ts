@@ -45,6 +45,7 @@ const LOGO_NACH_NAME: Array<{ re: RegExp; quelle: PortfolioLogoQuelle }> = [
   { re: /mensch\s+und\s+maschine/i, quelle: { finnhubSlug: 'MUM', clearbitDomains: ['mum.de'] } },
   { re: /\bhalma\b/i, quelle: { finnhubSlug: 'HLMA', clearbitDomains: ['halma.com'] } },
   { re: /\bupstart\b/i, quelle: { finnhubSlug: 'UPST', clearbitDomains: ['upstart.com'] } },
+  { re: /\bdatadog\b/i, quelle: { finnhubSlug: 'DDOG', clearbitDomains: ['datadoghq.com'] } },
 ]
 
 function mergeQuellen(...teile: (PortfolioLogoQuelle | null | undefined)[]): PortfolioLogoQuelle {

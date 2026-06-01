@@ -75,6 +75,14 @@ export const ISIN_KENNTNISSE: Record<string, IsinKenntnis> = {
     kursFallbackEur: 9.1,
     logoSymbol: 'USU',
   },
+  /** Datadog Inc. Class A (Trade Republic / Parqet) */
+  US23804L1035: {
+    name: 'Datadog',
+    symbolYahoo: 'DDOG',
+    symbolCandidates: ['DDOG'],
+    kursNurSymbol: 'DDOG',
+    logoSymbol: 'DDOG',
+  },
 }
 
 export function isinKenntnis(isin: string | null | undefined): IsinKenntnis | null {
