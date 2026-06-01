@@ -1,5 +1,5 @@
 /**
- * Wendet supabase/migrations/20260601120000_portfolio_analyse.sql an.
+ * Wendet alle portfolio_analyse-Migrationen in supabase/migrations/ an.
  *
  * Automatisch: DATABASE_URL / SUPABASE_DB_URL / DIRECT_URL in .env.local
  */
@@ -10,7 +10,15 @@ const os = require('os')
 const { execSync, spawn } = require('child_process')
 
 const root = path.join(__dirname, '..')
-const sqlPath = path.join(root, 'supabase', 'migrations', '20260601120000_portfolio_analyse.sql')
+const migrationsDir = path.join(root, 'supabase', 'migrations')
+
+function portfolioAnalyseSqlDateien() {
+  return fs
+    .readdirSync(migrationsDir)
+    .filter((f) => f.includes('portfolio_analyse') && f.endsWith('.sql'))
+    .sort()
+    .map((f) => path.join(migrationsDir, f))
+}
 
 function loadEnvLocal() {
   const envPath = path.join(root, '.env.local')
@@ -61,11 +69,12 @@ function copySqlToClipboard(sql) {
 
 async function main() {
   const env = { ...process.env, ...loadEnvLocal() }
-  if (!fs.existsSync(sqlPath)) {
-    console.error('SQL fehlt:', sqlPath)
+  const sqlPaths = portfolioAnalyseSqlDateien()
+  if (sqlPaths.length === 0) {
+    console.error('Keine portfolio_analyse-Migrationen in', migrationsDir)
     process.exit(1)
   }
-  const sql = fs.readFileSync(sqlPath, 'utf8')
+  const sql = sqlPaths.map((p) => `-- ${path.basename(p)}\n${fs.readFileSync(p, 'utf8')}`).join('\n\n')
   const dbUrl = env.DATABASE_URL || env.SUPABASE_DB_URL || env.DIRECT_URL
 
   if (dbUrl) {
@@ -77,11 +86,14 @@ async function main() {
       process.exit(1)
     }
     const client = new Client({ connectionString: dbUrl, ssl: { rejectUnauthorized: false } })
-    console.log('Verbinde mit Datenbank und führe portfolio_analyse-Migration aus …')
+    console.log('Verbinde mit Datenbank und führe portfolio_analyse-Migrationen aus …')
     await client.connect()
-    await client.query(sql)
+    for (const p of sqlPaths) {
+      console.log('  →', path.basename(p))
+      await client.query(fs.readFileSync(p, 'utf8'))
+    }
     await client.end()
-    console.log('Fertig — portfolio_analyse_buchung und portfolio_analyse_snapshot sind angelegt.')
+    console.log('Fertig —', sqlPaths.length, 'Migration(en) angewendet.')
     return
   }
 
@@ -89,7 +101,7 @@ async function main() {
   const dash = ref ? `https://supabase.com/dashboard/project/${ref}/sql/new` : 'https://supabase.com/dashboard'
 
   console.log('\n=== Kein DATABASE_URL in .env.local ===\n')
-  console.log('Datei:', sqlPath)
+  console.log('Dateien:', sqlPaths.map((p) => path.basename(p)).join(', '))
   if (copySqlToClipboard(sql)) {
     console.log('\n→ SQL wurde in die Zwischenablage kopiert.\n')
   } else {

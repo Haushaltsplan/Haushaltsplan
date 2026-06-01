@@ -134,6 +134,9 @@ export function PortfolioImportClient() {
         toast.error(res.message ?? 'Speichern fehlgeschlagen.')
         return
       }
+      if (res.hinweis) {
+        toast.error(res.hinweis, { duration: 12000 })
+      }
       toast.success(
         res.eingefuegt > 0
           ? `${res.eingefuegt} Buchung(en) gespeichert.`

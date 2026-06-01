@@ -14,6 +14,37 @@ import type {
   PortfolioPositionSnapshot,
 } from '@/lib/portfolio-analyse/types'
 
+type BuchungDbSpalten = {
+  realisierterGewinn: boolean
+  parqetTyp: boolean
+}
+
+function fehlendePortfolioSpalte(message: string): keyof BuchungDbSpalten | null {
+  const m = /could not find the '([^']+)' column/i.exec(message)
+  if (!m) return null
+  if (m[1] === 'realisierter_gewinn_eur') return 'realisierterGewinn'
+  if (m[1] === 'parqet_typ') return 'parqetTyp'
+  return null
+}
+
+function buchungZuDbRow(b: PortfolioBuchung, spalten: BuchungDbSpalten): Record<string, unknown> {
+  const row: Record<string, unknown> = {
+    buchungs_hash: b.buchungsHash,
+    datum: b.datum,
+    typ: b.typ,
+    isin: normalisiereIsinFuerDb(b.isin),
+    wertpapier_name: b.wertpapierName,
+    stueck: b.stueck,
+    kurs_eur: b.kursEur,
+    betrag_eur: b.betragEur,
+    asset_klasse: b.assetKlasse,
+    quelle: b.quelle,
+  }
+  if (spalten.realisierterGewinn) row.realisierter_gewinn_eur = b.realisierterGewinnEur ?? null
+  if (spalten.parqetTyp) row.parqet_typ = b.parqetTyp ?? null
+  return row
+}
+
 /** Nur echte „Tabelle fehlt / Schema-Cache“-Fälle — nicht Constraint- oder RLS-Fehler. */
 function istSchemaFehltFehler(msg: string, code?: string | null): boolean {
   const c = (code ?? '').toUpperCase()
@@ -154,7 +185,14 @@ export async function speicherePortfolioImport(
   buchungen: PortfolioBuchung[],
   positionen: PortfolioPositionSnapshot[],
   depotwertEur: number | null,
-): Promise<{ ok: boolean; eingefuegt: number; message?: string; schemaFehlt?: boolean }> {
+): Promise<{
+  ok: boolean
+  eingefuegt: number
+  message?: string
+  schemaFehlt?: boolean
+  /** z. B. fehlende Migration — Import ging trotzdem durch. */
+  hinweis?: string
+}> {
   if (buchungen.length === 0 && positionen.length === 0) {
     return { ok: false, eingefuegt: 0, message: 'Nichts zum Speichern.' }
   }
@@ -168,30 +206,29 @@ export async function speicherePortfolioImport(
   }
 
   let eingefuegt = 0
-  if (buchungen.length > 0) {
-    const rows = buchungen.map((b) => ({
-      buchungs_hash: b.buchungsHash,
-      datum: b.datum,
-      typ: b.typ,
-      isin: normalisiereIsinFuerDb(b.isin),
-      wertpapier_name: b.wertpapierName,
-      stueck: b.stueck,
-      kurs_eur: b.kursEur,
-      betrag_eur: b.betragEur,
-      realisierter_gewinn_eur: b.realisierterGewinnEur ?? null,
-      parqet_typ: b.parqetTyp ?? null,
-      asset_klasse: b.assetKlasse,
-      quelle: b.quelle,
-    }))
+  let dbSpalten: BuchungDbSpalten = { realisierterGewinn: true, parqetTyp: true }
+  const fehlendeSpalten = new Set<keyof BuchungDbSpalten>()
+  let hinweis: string | undefined
 
-    for (let i = 0; i < rows.length; i += PORTFOLIO_UPSERT_BATCH) {
-      const batch = rows.slice(i, i + PORTFOLIO_UPSERT_BATCH)
+  if (buchungen.length > 0) {
+    for (let i = 0; i < buchungen.length; i += PORTFOLIO_UPSERT_BATCH) {
+      const batch = buchungen
+        .slice(i, i + PORTFOLIO_UPSERT_BATCH)
+        .map((b) => buchungZuDbRow(b, dbSpalten))
+
       const { data, error } = await supabase
         .from('portfolio_analyse_buchung')
         .upsert(batch, { onConflict: 'owner_user_id,buchungs_hash' })
         .select('id')
 
       if (error) {
+        const fehlend = fehlendePortfolioSpalte(error.message)
+        if (fehlend && dbSpalten[fehlend]) {
+          dbSpalten = { ...dbSpalten, [fehlend]: false }
+          fehlendeSpalten.add(fehlend)
+          i -= PORTFOLIO_UPSERT_BATCH
+          continue
+        }
         return {
           ok: false,
           eingefuegt,
@@ -200,6 +237,14 @@ export async function speicherePortfolioImport(
         }
       }
       eingefuegt += data?.length ?? 0
+    }
+
+    if (fehlendeSpalten.size > 0) {
+      hinweis =
+        'Datenbank-Migration fehlt noch (Spalten realisierter_gewinn_eur / parqet_typ). ' +
+        'Buchungen wurden ohne Parqet-„Realisiert“ gespeichert. ' +
+        'Im Supabase SQL-Editor ausführen: supabase/migrations/20260601130000_portfolio_analyse_realisierter_gewinn.sql ' +
+        'oder npm run db:portfolio-analyse — danach CSV erneut importieren.'
     }
   }
 
@@ -222,7 +267,7 @@ export async function speicherePortfolioImport(
     }
   }
 
-  return { ok: true, eingefuegt }
+  return { ok: true, eingefuegt, hinweis }
 }
 
 export async function loescheAllePortfolioAnalyseDaten(): Promise<{ ok: boolean; message?: string }> {

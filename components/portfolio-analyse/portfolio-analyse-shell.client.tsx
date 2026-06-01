@@ -41,10 +41,13 @@ export function PortfolioAnalyseShell({
         <PageSection titleId="pa-schema-heading" title="Datenbank">
           <PageSectionPanel>
             <p className="text-sm leading-relaxed text-amber-100/90">
-              Tabellen fehlen — Migration:{' '}
+              Tabellen oder Spalten fehlen — Migration im Supabase SQL-Editor oder{' '}
               <code className="rounded bg-zinc-950 px-1.5 py-0.5 font-mono text-xs text-teal-400">
                 npm run db:portfolio-analyse
               </code>
+              {' '}
+              (Dateien unter <code className="font-mono text-xs text-zinc-400">supabase/migrations/</code>
+              ).
             </p>
           </PageSectionPanel>
         </PageSection>
