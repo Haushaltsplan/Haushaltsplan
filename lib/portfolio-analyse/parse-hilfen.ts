@@ -86,6 +86,21 @@ export function parseDeDatumZuIso(raw: string): string | null {
   return null
 }
 
+/** Datum aus „15.12. - 09:15 Uhr“ + Jahr-Spalte (z. B. transaktionen_2022.csv). */
+export function parseDatumUhrzeitMitJahr(raw: string, jahrRaw: string | null | undefined): string | null {
+  const t = raw.trim()
+  if (!t) return null
+  const m = t.match(/^(\d{1,2})\.(\d{1,2})\./)
+  if (!m) return parseDeDatumZuIso(t)
+  const tag = m[1].padStart(2, '0')
+  const mon = m[2].padStart(2, '0')
+  let jahr = jahrRaw != null ? Number(String(jahrRaw).trim()) : NaN
+  if (!Number.isFinite(jahr) || jahr < 1970 || jahr > 2100) {
+    jahr = new Date().getFullYear()
+  }
+  return `${jahr}-${mon}-${tag}`
+}
+
 export function parseEuropeanNumber(raw: string | null | undefined): number | null {
   if (raw == null) return null
   const s = String(raw).replace(/€|\u202f|\s/g, '').trim()

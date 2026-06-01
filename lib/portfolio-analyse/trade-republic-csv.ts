@@ -1,6 +1,6 @@
 import type { TrPdfParseErgebnis, TrRawCashZeile, TrRawPosition } from '@/lib/portfolio-analyse/trade-republic-pdf-parser'
 import { parseGeldBetrag, positiverGeldbetrag } from '@/lib/portfolio-analyse/parse-geld-betrag'
-import { parseDeDatumZuIso } from '@/lib/portfolio-analyse/parse-hilfen'
+import { parseDatumUhrzeitMitJahr, parseDeDatumZuIso } from '@/lib/portfolio-analyse/parse-hilfen'
 
 export type CsvErkanntesFormat =
   | 'transaktionen_de'
@@ -96,6 +96,7 @@ type SpaltenMap = {
   wert?: number
   fee?: number
   tax?: number
+  jahr?: number
   description?: number
   category?: number
 }
@@ -110,6 +111,7 @@ function mappeSpalten(headers: string[]): SpaltenMap {
     datum: findeSpalteExakt(headers, [
       'date',
       'datum',
+      'datum_uhrzeit',
       'datetime',
       'timestamp',
       'buchungsdatum',
@@ -117,6 +119,7 @@ function mappeSpalten(headers: string[]): SpaltenMap {
       'zeit',
       'time',
     ]),
+    jahr: findeSpalteExakt(headers, ['jahr', 'year']),
     typ: findeSpalteExakt(headers, [
       'type',
       'typ',
@@ -159,12 +162,12 @@ function mappeSpalten(headers: string[]): SpaltenMap {
       'lastschrift',
       'soll',
     ]),
-    betrag: findeSpalteExakt(headers, ['betrag', 'betrag_eur', 'amount', 'summe']),
+    betrag: findeSpalteExakt(headers, ['betrag', 'betrag_eur', 'amount', 'summe', 'betrageur']),
     saldo: findeSpalteExakt(headers, ['saldo', 'balance', 'kontostand']),
     isin: findeSpalteExakt(headers, ['isin', 'instrument', 'wertpapierkennnummer']),
     symbol: findeSpalteExakt(headers, ['symbol', 'ticker', 'kuerzel']),
-    fee: findeSpalteExakt(headers, ['fee', 'gebuehr', 'gebuehren_eur', 'commission', 'entgelt']),
-    tax: findeSpalteExakt(headers, ['steuern_eur', 'steuer', 'tax', 'taxes']),
+    fee: findeSpalteExakt(headers, ['fee', 'gebuehr', 'gebuehren', 'gebuehren_eur', 'commission', 'entgelt']),
+    tax: findeSpalteExakt(headers, ['steuern', 'steuern_eur', 'steuer', 'tax', 'taxes']),
     name: findeSpalteExakt(headers, ['name', 'wertpapier', 'security', 'security_description', 'instrument_name']),
     stueck: findeSpalteExakt(headers, ['stuck', 'stueck', 'anteile', 'shares', 'quantity', 'stk', 'nominal', 'menge']),
     kurs: findeSpalteExakt(headers, ['kurs', 'preis_eur', 'rate', 'price', 'price_per_unit', 'kurs_pro_stuck']),
@@ -173,13 +176,25 @@ function mappeSpalten(headers: string[]): SpaltenMap {
 }
 
 function erkenneFormat(headers: string[], map: SpaltenMap): CsvErkanntesFormat {
-  const hatTransaktionenDe =
+  const hatTransaktionenDeKlassisch =
     headers.includes('datum') &&
+    !headers.includes('datum_uhrzeit') &&
     map.typ != null &&
     headers.includes('isin') &&
     map.betrag != null &&
     (headers.includes('wertpapier') || map.name != null) &&
     (headers.includes('anteile') || map.stueck != null)
+
+  const hatTransaktionenDeParqet =
+    headers.includes('datum_uhrzeit') &&
+    headers.includes('jahr') &&
+    map.typ != null &&
+    headers.includes('isin') &&
+    map.betrag != null &&
+    (headers.includes('name') || map.name != null) &&
+    (headers.includes('anteile') || map.stueck != null)
+
+  const hatTransaktionenDe = hatTransaktionenDeKlassisch || hatTransaktionenDeParqet
 
   const hatTrTransaktionsexport =
     headers.includes('datetime') &&
@@ -303,11 +318,28 @@ function isinAusSymbolSpalte(symbolRaw: string): string {
   return ISIN_IN_SYMBOL.test(s) ? s : ''
 }
 
+function parseAnteileRaw(raw: string): number | null {
+  const s = raw.trim().replace(/x\s*$/i, '').trim()
+  if (!s) return null
+  return parseGeldBetrag(s)
+}
+
+function datumAusZeile(cols: string[], map: SpaltenMap, format: CsvErkanntesFormat): string | null {
+  const datumRaw = map.datum != null ? cols[map.datum]?.trim() ?? '' : ''
+  if (!datumRaw) return null
+  if (format === 'transaktionen_de' && map.jahr != null && /^\d{1,2}\.\d{1,2}\./.test(datumRaw)) {
+    const jahr = cols[map.jahr]?.trim() ?? ''
+    return parseDatumUhrzeitMitJahr(datumRaw, jahr)
+  }
+  return parseDeDatumZuIso(datumRaw)
+}
+
 function cashZeileAusCols(cols: string[], map: SpaltenMap, format: CsvErkanntesFormat): TrRawCashZeile | null {
   if (zeileIstKopfOderSumme(cols, map)) return null
 
   const datumRaw = map.datum != null ? cols[map.datum]?.trim() ?? '' : ''
-  if (!datumRaw || !parseDeDatumZuIso(datumRaw)) return null
+  const datumIso = datumAusZeile(cols, map, format)
+  if (!datumRaw || !datumIso) return null
 
   const typ = map.typ != null ? cols[map.typ]?.trim() ?? '' : ''
   const typNorm = typ.toLowerCase()
@@ -339,7 +371,7 @@ function cashZeileAusCols(cols: string[], map: SpaltenMap, format: CsvErkanntesF
   if (map.stueck != null) {
     const rawStueck = cols[map.stueck]?.trim() ?? ''
     if (rawStueck) {
-      const n = parseGeldBetrag(rawStueck)
+      const n = parseAnteileRaw(rawStueck)
       if (n != null && n !== 0) stueck = Math.abs(n)
     }
   }
@@ -393,7 +425,7 @@ function cashZeileAusCols(cols: string[], map: SpaltenMap, format: CsvErkanntesF
   }
 
   return {
-    datum: datumRaw,
+    datum: datumIso,
     typ,
     beschreibung,
     zahlungseingang: eingang,
@@ -453,7 +485,7 @@ function parseDatenzeilen(
 
 const FORMAT_HINWEISE: Record<CsvErkanntesFormat, string> = {
   transaktionen_de:
-    'Transaktions-CSV (Datum; Typ; Wertpapier; ISIN; Anteile; Betrag_EUR; Gebühren_EUR; Steuern_EUR). ISIN-Wechsel werden übersprungen.',
+    'Transaktions-CSV (Datum oder Jahr+Datum_Uhrzeit; Typ; Name/Wertpapier; ISIN; Anteile; Betrag; Gebühren; Steuern). ISIN-Wechsel werden übersprungen.',
   tr_transaktionsexport:
     'Trade-Republic-Transaktionsexport (datetime, type, amount): Vorzeichen in „amount“, Gebühren aus „fee“. STOCKPERK/FREE_RECEIPT werden übersprungen.',
   tr_aktivitaet:
@@ -503,6 +535,10 @@ export function parseTradeRepublicCsvText(text: string): TrPdfParseErgebnis & { 
           'debit',
           'category',
           'wertpapier',
+          'datum_uhrzeit',
+          'jahr',
+          'name',
+          'betrag',
         ].includes(h),
       )
     ) {
