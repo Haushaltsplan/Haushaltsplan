@@ -78,6 +78,32 @@ export function PaPortfolioHero({
     return eintraegeZuDonut(eintraege, 24)
   }, [positionen])
 
+  const tagesKurs = useMemo(() => {
+    let prevSum = 0
+    let delta = 0
+
+    // `aenderungTagProzent` basiert auf (regularMarketPrice - previousClose) / previousClose
+    // → daraus rekonstruieren wir den vorherigen Wert je Position:
+    //   prev = wertLive / (1 + pct/100)
+    // und aggregieren delta = wertLive - prev.
+    for (const p of positionen) {
+      if (!p.hatLiveKurs) continue
+      if (p.aenderungTagProzent == null || !Number.isFinite(p.aenderungTagProzent)) continue
+      if (!Number.isFinite(p.wertLiveEur) || p.wertLiveEur <= 0) continue
+
+      const factor = 1 + p.aenderungTagProzent / 100
+      if (!Number.isFinite(factor) || factor <= 0) continue
+
+      const prev = p.wertLiveEur / factor
+      prevSum += prev
+      delta += p.wertLiveEur - prev
+    }
+
+    const deltaEur = Math.round(delta * 100) / 100
+    const pct = prevSum > 0 ? Math.round((deltaEur / prevSum) * 10000) / 100 : null
+    return { deltaEur, pct }
+  }, [positionen])
+
   const assetklassen = useMemo(() => new Set(positionen.map((p) => p.assetKlasse)).size, [positionen])
   const holdings = positionen.filter((p) => p.wertLiveEur > 0).length
 
@@ -176,6 +202,21 @@ export function PaPortfolioHero({
                 label="Kursgewinn"
                 value={formatEur(kursgewinn)}
                 valueClass={kursgewinn >= 0 ? 'text-emerald-400' : 'text-rose-400'}
+              />
+              <MetricPrimary
+                label="Tageskurs"
+                value={tagesKurs.pct != null ? formatEur(tagesKurs.deltaEur) : '—'}
+                valueClass={
+                  tagesKurs.pct == null ? 'text-zinc-50' : tagesKurs.deltaEur >= 0 ? 'text-emerald-400' : 'text-rose-400'
+                }
+                badge={
+                  tagesKurs.pct != null ? (
+                    <PaBadge variant={tagesKurs.pct >= 0 ? 'positive' : 'negative'}>
+                      {tagesKurs.pct >= 0 ? '↑' : '↓'}{' '}
+                      {Math.abs(tagesKurs.pct).toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%
+                    </PaBadge>
+                  ) : undefined
+                }
               />
               <MetricPrimary
                 label="IZF"
