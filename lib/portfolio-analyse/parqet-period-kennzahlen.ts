@@ -125,6 +125,27 @@ function wertAmStichtag(
 }
 
 /**
+ * Tagesstartwert (vor Börsenbeginn) für "Heute":
+ * zeigt Datum = heute, nimmt aber den letzten verfügbaren EOD-Wert < heute.
+ */
+function wertZumTagesstart(
+  wertentwicklung: WertentwicklungPunkt[],
+  heute: string,
+): number {
+  if (wertentwicklung.length === 0) return 0
+
+  let letzterVorHeute: WertentwicklungPunkt | null = null
+  for (const p of wertentwicklung) {
+    if (p.datumIso < heute) letzterVorHeute = p
+    else break
+  }
+  if (letzterVorHeute) return letzterVorHeute.portfoliowertEur
+
+  const erster = wertentwicklung[0]
+  return erster?.portfoliowertEur ?? 0
+}
+
+/**
  * Parqet „Investiert“ / „zugeführtes Kapital“ am Stichtag (End-of-day):
  * Einstand offener Positionen + Bargeld – nicht Brutto-Einzahlungen und nicht Käufe+Deposits doppelt.
  */
@@ -188,11 +209,16 @@ export function berechneParqetPeriodKennzahlen(
   ersteBuchungIso: string | null,
 ): ParqetPeriodKennzahlen {
   const heute = heuteIso()
-  const startDatumSoll = periodenStartIso(periodKey, heute, ersteBuchungIso)
+  const startDatumSoll = periodKey === '1T' ? heute : periodenStartIso(periodKey, heute, ersteBuchungIso)
   const startWert = periodKey === 'MAX' ? null : wertAmStichtag(wertentwicklung, startDatumSoll)
-  const startDatumIso = startWert?.datumIso ?? startDatumSoll
+  const startDatumIso = periodKey === '1T' ? heute : (startWert?.datumIso ?? startDatumSoll)
   // Parqet „Seit Kauf“: Depotstart mit 0 €; sonst Portfoliowert am Periodenanfang.
-  const wertAmPeriodenstart = periodKey === 'MAX' ? 0 : round2(startWert?.portfoliowertEur ?? 0)
+  const wertAmPeriodenstart =
+    periodKey === 'MAX'
+      ? 0
+      : periodKey === '1T'
+        ? round2(wertZumTagesstart(wertentwicklung, heute))
+        : round2(startWert?.portfoliowertEur ?? 0)
   const zuflussAb =
     periodKey === 'MAX' && ersteBuchungIso
       ? isoFromDate(new Date(new Date(`${ersteBuchungIso}T12:00:00`).getTime() - 86400000))
