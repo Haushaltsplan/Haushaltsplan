@@ -360,7 +360,7 @@ export class ParqetCoreAnalyticsEngine {
   }
 
   private periodReturnsFromCurve(curve: TimeSeriesPoint[], currentValue: number): PeriodPerformance[] {
-    const periods: PeriodPerformance['periodKey'][] = ['1T', '1W', '1M', '3M', '6M', 'YTD', '1J', '3J', '5J', 'MAX']
+    const periods: PeriodPerformance['periodKey'][] = ['1T', '1W', '1M', '3M', '6M', 'MTD', 'YTD', '1J', '3J', '5J', 'MAX']
     const now = this.asOf
     const msDay = 86400000
 
@@ -370,6 +370,7 @@ export class ParqetCoreAnalyticsEngine {
       '1M': 30,
       '3M': 91,
       '6M': 182,
+      'MTD': daysBetween(new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)), now),
       'YTD': daysBetween(new Date(Date.UTC(now.getUTCFullYear(), 0, 1)), now),
       '1J': 365,
       '3J': 365 * 3,
@@ -651,7 +652,7 @@ export class ParqetCoreAnalyticsEngine {
       520,
     )
 
-    const periodKeys: PeriodPerformance['periodKey'][] = ['1T', '1W', '1M', '3M', '6M', 'YTD', '1J', '3J', '5J', 'MAX']
+    const periodKeys: PeriodPerformance['periodKey'][] = ['1T', '1W', '1M', '3M', '6M', 'MTD', 'YTD', '1J', '3J', '5J', 'MAX']
     const byPeriod = {} as TimeSeriesBlock['byPeriod']
     for (const key of periodKeys) {
       const daysMap: Record<PeriodPerformance['periodKey'], number> = {
@@ -660,6 +661,7 @@ export class ParqetCoreAnalyticsEngine {
         '1M': 30,
         '3M': 91,
         '6M': 182,
+        MTD: daysBetween(new Date(Date.UTC(this.asOf.getUTCFullYear(), this.asOf.getUTCMonth(), 1)), this.asOf),
         YTD: daysBetween(new Date(Date.UTC(this.asOf.getUTCFullYear(), 0, 1)), this.asOf),
         '1J': 365,
         '3J': 365 * 3,

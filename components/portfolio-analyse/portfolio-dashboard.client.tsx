@@ -22,6 +22,7 @@ import {
 import { anzeigeNameFuerIsin } from '@/lib/portfolio-analyse/isin-metadata-client'
 import { berechneDrawdown, monatsrenditenProzent } from '@/lib/portfolio-analyse/zeitreihen'
 import { BUCHUNGS_TYP_LABEL, type BuchungsTyp } from '@/lib/portfolio-analyse/types'
+import type { PeriodPerformance } from '@/lib/portfolio-analyse/parqet-core/types'
 
 type ChartTab = 'wert' | 'performance' | 'drawdown' | 'dividenden'
 
@@ -53,6 +54,7 @@ export function PortfolioDashboardClient() {
     laden,
   } = usePortfolioAnalyse()
   const [chartTab, setChartTab] = useState<ChartTab>('wert')
+  const [periodKey, setPeriodKey] = useState<PeriodPerformance['periodKey']>('1T')
 
   const k = live?.kennzahlen
   const verlaufBasis = live?.verlauf ?? []
@@ -110,6 +112,7 @@ export function PortfolioDashboardClient() {
 
   const m = report?.metrics
   const irr = report?.performance.irrAnnualizedPercent
+  const periodReturn = report?.performance.periodReturns?.find((p) => p.periodKey === periodKey) ?? null
 
   const gewinn = k?.gewinnVerlustEur
   const gewinnPct = k?.gewinnVerlustProzent
@@ -127,6 +130,9 @@ export function PortfolioDashboardClient() {
           metrics={m}
           irr={irr}
           startDatumIso={startDatumIso}
+          ausgewLeiteterPeriodKey={periodKey}
+          periodReturn={periodReturn}
+          onPeriodKeyChange={setPeriodKey}
         />
       ) : null}
 

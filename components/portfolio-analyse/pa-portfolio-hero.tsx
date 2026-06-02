@@ -8,9 +8,39 @@ import { formatDatumDe, formatEur, formatProzent } from '@/lib/portfolio-analyse
 import { eintraegeZuDonut, gewichtungNachAsset } from '@/lib/portfolio-analyse/gewichtung'
 import type { LivePosition } from '@/lib/portfolio-analyse/live-bewertung'
 import type { PortfolioScopeMetrics } from '@/lib/portfolio-analyse/parqet-core/types'
+import type { PeriodPerformance } from '@/lib/portfolio-analyse/parqet-core/types'
 import { ASSET_KLASSE_LABEL, type AssetKlasse } from '@/lib/portfolio-analyse/types'
 function formatEurKompakt(n: number): string {
   return `${Math.round(n).toLocaleString('de-DE')}€`
+}
+
+function labelFuerPeriodKey(key: PeriodPerformance['periodKey']): string {
+  switch (key) {
+    case '1T':
+      return 'Heute'
+    case '1W':
+      return '7 Tage'
+    case '1M':
+      return '30 Tage'
+    case '3M':
+      return '3 Monate'
+    case '6M':
+      return '6 Monate'
+    case 'MTD':
+      return 'MTD'
+    case 'YTD':
+      return 'YTD'
+    case '1J':
+      return '1 Jahr'
+    case '3J':
+      return '3 Jahre'
+    case '5J':
+      return '5 Jahre'
+    case 'MAX':
+      return 'Seit Kauf'
+    default:
+      return 'Heute'
+  }
 }
 
 function portfolioTitel(positionen: LivePosition[]): string {
@@ -62,6 +92,9 @@ export function PaPortfolioHero({
   metrics,
   irr,
   startDatumIso,
+  ausgewLeiteterPeriodKey,
+  periodReturn,
+  onPeriodKeyChange,
 }: {
   positionen: LivePosition[]
   kennzahlen: {
@@ -72,36 +105,13 @@ export function PaPortfolioHero({
   metrics: PortfolioScopeMetrics | null | undefined
   irr: number | null | undefined
   startDatumIso: string | null
+  ausgewLeiteterPeriodKey: PeriodPerformance['periodKey']
+  periodReturn: PeriodPerformance | null
+  onPeriodKeyChange: (key: PeriodPerformance['periodKey']) => void
 }) {
   const donut = useMemo(() => {
     const eintraege = gewichtungNachAsset(positionen)
     return eintraegeZuDonut(eintraege, 24)
-  }, [positionen])
-
-  const tagesKurs = useMemo(() => {
-    let prevSum = 0
-    let delta = 0
-
-    // `aenderungTagProzent` basiert auf (regularMarketPrice - previousClose) / previousClose
-    // → daraus rekonstruieren wir den vorherigen Wert je Position:
-    //   prev = wertLive / (1 + pct/100)
-    // und aggregieren delta = wertLive - prev.
-    for (const p of positionen) {
-      if (!p.hatLiveKurs) continue
-      if (p.aenderungTagProzent == null || !Number.isFinite(p.aenderungTagProzent)) continue
-      if (!Number.isFinite(p.wertLiveEur) || p.wertLiveEur <= 0) continue
-
-      const factor = 1 + p.aenderungTagProzent / 100
-      if (!Number.isFinite(factor) || factor <= 0) continue
-
-      const prev = p.wertLiveEur / factor
-      prevSum += prev
-      delta += p.wertLiveEur - prev
-    }
-
-    const deltaEur = Math.round(delta * 100) / 100
-    const pct = prevSum > 0 ? Math.round((deltaEur / prevSum) * 10000) / 100 : null
-    return { deltaEur, pct }
   }, [positionen])
 
   const assetklassen = useMemo(() => new Set(positionen.map((p) => p.assetKlasse)).size, [positionen])
@@ -109,8 +119,11 @@ export function PaPortfolioHero({
 
   const depotwert = kennzahlen.depotwertEur
   const investiert = metrics?.costBasisEUR ?? kennzahlen.investiertEur
-  const perfPct = metrics?.unrealizedGainPercent ?? kennzahlen.gewinnVerlustProzent
-  const kursgewinn = metrics?.unrealizedGainEUR ?? positionen.reduce((s, p) => s + p.gewinnVerlustEur, 0)
+  const kursgewinn =
+    periodReturn?.valueChangeEUR ?? metrics?.unrealizedGainEUR ?? positionen.reduce((s, p) => s + p.gewinnVerlustEur, 0)
+  const kursgewinnPct =
+    periodReturn?.valueChangePercent ?? metrics?.unrealizedGainPercent ?? kennzahlen.gewinnVerlustProzent ?? null
+  const perfPct = kursgewinnPct ?? kennzahlen.gewinnVerlustProzent
   const dividenden = metrics?.totalDividendsGrossEUR ?? 0
   const realisiert = metrics?.realizedGainsEUR ?? 0
 
@@ -165,6 +178,20 @@ export function PaPortfolioHero({
             </div>
 
             <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
+              <select
+                value={ausgewLeiteterPeriodKey}
+                onChange={(e) => onPeriodKeyChange(e.target.value as PeriodPerformance['periodKey'])}
+                className="rounded-lg border border-white/[0.06] bg-slate-950/30 px-3 py-1.5 text-sm text-zinc-200 outline-none transition hover:border-white/[0.12] focus:ring-2 focus:ring-cyan-500/40"
+                aria-label="Zeitraum wählen"
+              >
+                {(
+                  ['1T', '1W', '1M', '3M', '6M', '1J', '3J', '5J', 'MTD', 'YTD', 'MAX'] as const
+                ).map((k) => (
+                  <option key={k} value={k}>
+                    {labelFuerPeriodKey(k)}
+                  </option>
+                ))}
+              </select>
               <Link
                 href="/portfolioanalyse/import"
                 className="inline-flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-sm font-medium text-teal-400 transition-colors hover:bg-teal-500/10 hover:text-teal-300"
@@ -202,21 +229,6 @@ export function PaPortfolioHero({
                 label="Kursgewinn"
                 value={formatEur(kursgewinn)}
                 valueClass={kursgewinn >= 0 ? 'text-emerald-400' : 'text-rose-400'}
-              />
-              <MetricPrimary
-                label="Tageskurs"
-                value={tagesKurs.pct != null ? formatEur(tagesKurs.deltaEur) : '—'}
-                valueClass={
-                  tagesKurs.pct == null ? 'text-zinc-50' : tagesKurs.deltaEur >= 0 ? 'text-emerald-400' : 'text-rose-400'
-                }
-                badge={
-                  tagesKurs.pct != null ? (
-                    <PaBadge variant={tagesKurs.pct >= 0 ? 'positive' : 'negative'}>
-                      {tagesKurs.pct >= 0 ? '↑' : '↓'}{' '}
-                      {Math.abs(tagesKurs.pct).toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%
-                    </PaBadge>
-                  ) : undefined
-                }
               />
               <MetricPrimary
                 label="IZF"

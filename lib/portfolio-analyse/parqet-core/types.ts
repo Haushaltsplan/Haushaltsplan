@@ -75,7 +75,7 @@ export interface TimeSeriesPoint {
 }
 
 export interface PeriodPerformance {
-  periodKey: '1T' | '1W' | '1M' | '3M' | '6M' | 'YTD' | '1J' | '3J' | '5J' | 'MAX'
+  periodKey: '1T' | '1W' | '1M' | '3M' | '6M' | 'MTD' | 'YTD' | '1J' | '3J' | '5J' | 'MAX'
   twrPercent: number | null
   valueChangeEUR: number
   valueChangePercent: number | null
