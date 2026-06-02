@@ -7,9 +7,11 @@ import { PaBadge, PaCard } from '@/components/portfolio-analyse/pa-ui'
 import { formatDatumDe, formatEur, formatProzent } from '@/lib/portfolio-analyse/berechnung'
 import { eintraegeZuDonut, gewichtungNachAsset } from '@/lib/portfolio-analyse/gewichtung'
 import type { LivePosition } from '@/lib/portfolio-analyse/live-bewertung'
+import type { ParqetPeriodKennzahlen } from '@/lib/portfolio-analyse/parqet-period-kennzahlen'
 import type { PortfolioScopeMetrics } from '@/lib/portfolio-analyse/parqet-core/types'
 import type { PeriodPerformance } from '@/lib/portfolio-analyse/parqet-core/types'
 import { ASSET_KLASSE_LABEL, type AssetKlasse } from '@/lib/portfolio-analyse/types'
+
 function formatEurKompakt(n: number): string {
   return `${Math.round(n).toLocaleString('de-DE')}€`
 }
@@ -91,9 +93,7 @@ export function PaPortfolioHero({
   kennzahlen,
   metrics,
   irr,
-  startDatumIso,
-  ausgewLeiteterPeriodKey,
-  periodReturn,
+  periodKennzahlen,
   onPeriodKeyChange,
 }: {
   positionen: LivePosition[]
@@ -104,9 +104,7 @@ export function PaPortfolioHero({
   }
   metrics: PortfolioScopeMetrics | null | undefined
   irr: number | null | undefined
-  startDatumIso: string | null
-  ausgewLeiteterPeriodKey: PeriodPerformance['periodKey']
-  periodReturn: PeriodPerformance | null
+  periodKennzahlen: ParqetPeriodKennzahlen
   onPeriodKeyChange: (key: PeriodPerformance['periodKey']) => void
 }) {
   const donut = useMemo(() => {
@@ -118,18 +116,13 @@ export function PaPortfolioHero({
   const holdings = positionen.filter((p) => p.wertLiveEur > 0).length
 
   const depotwert = kennzahlen.depotwertEur
-  const investiert = metrics?.costBasisEUR ?? kennzahlen.investiertEur
-  const kursgewinn =
-    periodReturn?.valueChangeEUR ?? metrics?.unrealizedGainEUR ?? positionen.reduce((s, p) => s + p.gewinnVerlustEur, 0)
-  const kursgewinnPct =
-    periodReturn?.valueChangePercent ?? metrics?.unrealizedGainPercent ?? kennzahlen.gewinnVerlustProzent ?? null
-  const perfPct = kursgewinnPct ?? kennzahlen.gewinnVerlustProzent
-  const dividenden = metrics?.totalDividendsGrossEUR ?? 0
-  const realisiert = metrics?.realizedGainsEUR ?? 0
-
-  /** Depotstart: noch kein Bestand (wie Parqet „Wert am …“ am Eröffnungstag). */
-  const wertAmStart = 0
-  const startLabel = startDatumIso ? `Wert am ${formatDatumDe(startDatumIso)}` : 'Wert am Start'
+  const wertAmLabel = `Wert am ${formatDatumDe(periodKennzahlen.periodStartDatumIso)}`
+  const wertAmPeriodenstart = periodKennzahlen.wertAmPeriodenstart
+  const investiertImZeitraum = periodKennzahlen.investiertImZeitraum
+  const kursgewinn = periodKennzahlen.kursgewinn
+  const perfPct = periodKennzahlen.performanceProzent
+  const dividenden = periodKennzahlen.dividendenImZeitraum
+  const realisiert = periodKennzahlen.realisiertImZeitraum
 
   const perfBadge =
     perfPct != null ? (
@@ -179,7 +172,7 @@ export function PaPortfolioHero({
 
             <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
               <select
-                value={ausgewLeiteterPeriodKey}
+                value={periodKennzahlen.periodKey}
                 onChange={(e) => onPeriodKeyChange(e.target.value as PeriodPerformance['periodKey'])}
                 className="rounded-lg border border-white/[0.06] bg-slate-950/30 px-3 py-1.5 text-sm text-zinc-200 outline-none transition hover:border-white/[0.12] focus:ring-2 focus:ring-cyan-500/40"
                 aria-label="Zeitraum wählen"
@@ -213,14 +206,10 @@ export function PaPortfolioHero({
 
           <div className="mt-4 grid gap-6 sm:mt-6 sm:gap-8 md:grid-cols-2">
             <div>
-              <MetricPrimary
-                label="Portfoliowert"
-                value={formatEur(depotwert)}
-                badge={perfBadge}
-              />
+              <MetricPrimary label="Portfoliowert" value={formatEur(depotwert)} badge={perfBadge} />
               <div className="mt-4">
-                <MetricSecondary label={startLabel} value={formatEur(wertAmStart)} />
-                <MetricSecondary label="Investiert" value={formatEur(investiert)} />
+                <MetricSecondary label={wertAmLabel} value={formatEur(wertAmPeriodenstart)} />
+                <MetricSecondary label="Investiert" value={formatEur(investiertImZeitraum)} />
               </div>
             </div>
 
