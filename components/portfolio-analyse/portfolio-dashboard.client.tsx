@@ -19,7 +19,9 @@ import {
   formatProzent,
   sortiereBuchungenNeuesteZuerst,
 } from '@/lib/portfolio-analyse/berechnung'
+import { depotStandBisDatum, einstandWertpapiereEur } from '@/lib/portfolio-analyse/bestand'
 import { anzeigeNameFuerIsin } from '@/lib/portfolio-analyse/isin-metadata-client'
+import { heuteIso } from '@/lib/portfolio-analyse/wertentwicklung-tage'
 import { berechneDrawdown, monatsrenditenProzent } from '@/lib/portfolio-analyse/zeitreihen'
 import { BUCHUNGS_TYP_LABEL, type BuchungsTyp } from '@/lib/portfolio-analyse/types'
 import type { PeriodPerformance } from '@/lib/portfolio-analyse/parqet-core/types'
@@ -112,7 +114,79 @@ export function PortfolioDashboardClient() {
 
   const m = report?.metrics
   const irr = report?.performance.irrAnnualizedPercent
-  const periodReturn = report?.performance.periodReturns?.find((p) => p.periodKey === periodKey) ?? null
+  const periodReturn = useMemo<PeriodPerformance | null>(() => {
+    if (!k) return null
+    if (buchungen.length === 0) return null
+
+    const isoFromDate = (d: Date): string => {
+      const y = d.getFullYear()
+      const m = String(d.getMonth() + 1).padStart(2, '0')
+      const da = String(d.getDate()).padStart(2, '0')
+      return `${y}-${m}-${da}`
+    }
+
+    const today = heuteIso()
+    const now = new Date(`${today}T12:00:00`)
+    const msDay = 86400000
+
+    const cutoffIso = (() => {
+      switch (periodKey) {
+        case '1T':
+          return isoFromDate(new Date(now.getTime() - 1 * msDay))
+        case '1W':
+          return isoFromDate(new Date(now.getTime() - 7 * msDay))
+        case '1M':
+          return isoFromDate(new Date(now.getTime() - 30 * msDay))
+        case '3M':
+          return isoFromDate(new Date(now.getTime() - 91 * msDay))
+        case '6M':
+          return isoFromDate(new Date(now.getTime() - 182 * msDay))
+        case 'MTD':
+          return isoFromDate(new Date(now.getFullYear(), now.getMonth(), 1, 12, 0, 0))
+        case 'YTD':
+          return isoFromDate(new Date(now.getFullYear(), 0, 1, 12, 0, 0))
+        case '1J':
+          return isoFromDate(new Date(now.getTime() - 365 * msDay))
+        case '3J':
+          return isoFromDate(new Date(now.getTime() - 365 * 3 * msDay))
+        case '5J':
+          return isoFromDate(new Date(now.getTime() - 365 * 5 * msDay))
+        case 'MAX':
+          return startDatumIso ?? buchungen[0]?.datum ?? today
+        default:
+          return isoFromDate(new Date(now.getTime() - 1 * msDay))
+      }
+    })()
+
+    const startPunkt =
+      wertentwicklung.find((p) => p.datumIso >= cutoffIso) ??
+      wertentwicklung[0] ??
+      null
+
+    const startDatum = startPunkt?.datumIso ?? (startDatumIso ?? buchungen[0]?.datum ?? today)
+    const startPortfoliowert = startPunkt?.portfoliowertEur ?? k.depotwertEur
+    const startInvestiert = einstandWertpapiereEur(depotStandBisDatum(buchungen, startDatum))
+
+    const currentPortfoliowert = k.depotwertEur
+    const currentInvestiert = (m?.costBasisEUR ?? k.investiertEur) || 0
+
+    // „Kursgewinn“ nach deiner Definition: Portfoliowert - Investiert
+    // Zeitraum: Differenz dieser Größe zwischen heute und Stichtag.
+    const startGewinn = startPortfoliowert - startInvestiert
+    const currentGewinn = currentPortfoliowert - currentInvestiert
+    const deltaEur = Math.round((currentGewinn - startGewinn) * 100) / 100
+    const pct =
+      startInvestiert > 0
+        ? Math.round(((deltaEur / startInvestiert) * 100) * 100) / 100
+        : null
+
+    return {
+      periodKey,
+      twrPercent: null,
+      valueChangeEUR: deltaEur,
+      valueChangePercent: pct,
+    }
+  }, [buchungen, k, m?.costBasisEUR, periodKey, startDatumIso, wertentwicklung])
 
   const gewinn = k?.gewinnVerlustEur
   const gewinnPct = k?.gewinnVerlustProzent
