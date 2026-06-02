@@ -2,11 +2,8 @@
 
 import Link from 'next/link'
 import { useMemo, useState } from 'react'
-import {
-  PaDrawdownChart,
-  PaDividendBarChart,
-  PaSignedBarChart,
-} from '@/components/portfolio-analyse/parqet-charts'
+import { PaDrawdownChart, PaDividendBarChart } from '@/components/portfolio-analyse/parqet-charts'
+import { PaPerformanceChart } from '@/components/portfolio-analyse/pa-performance-chart'
 import { PaWertentwicklungChart } from '@/components/portfolio-analyse/pa-wertentwicklung-chart'
 import { PortfolioIsinLogo } from '@/components/portfolio-analyse/isin-logo'
 import { usePortfolioAnalyse } from '@/components/portfolio-analyse/pa-data-provider'
@@ -23,7 +20,8 @@ import { anzeigeNameFuerIsin } from '@/lib/portfolio-analyse/isin-metadata-clien
 import { depotwertVorBoersenbeginn } from '@/lib/portfolio-analyse/live-bewertung'
 import { berechneParqetPeriodKennzahlen } from '@/lib/portfolio-analyse/parqet-period-kennzahlen'
 import { heuteIso } from '@/lib/portfolio-analyse/wertentwicklung-tage'
-import { berechneDrawdown, monatsrenditenProzent } from '@/lib/portfolio-analyse/zeitreihen'
+import { berechnePerformanceZeitreihe } from '@/lib/portfolio-analyse/performance-zeitreihe'
+import { berechneDrawdown } from '@/lib/portfolio-analyse/zeitreihen'
 import { BUCHUNGS_TYP_LABEL, type BuchungsTyp } from '@/lib/portfolio-analyse/types'
 import type { PeriodPerformance } from '@/lib/portfolio-analyse/parqet-core/types'
 
@@ -31,7 +29,7 @@ type ChartTab = 'wert' | 'performance' | 'drawdown' | 'dividenden'
 
 const CHART_TABS: { id: ChartTab; label: string; shortLabel: string }[] = [
   { id: 'wert', label: 'Wertentwicklung', shortLabel: 'Wert' },
-  { id: 'performance', label: 'Performance', shortLabel: 'Perf.' },
+  { id: 'performance', label: '% Performance', shortLabel: 'Perf.' },
   { id: 'drawdown', label: 'Drawdown', shortLabel: 'Drawdown' },
   { id: 'dividenden', label: 'Dividenden', shortLabel: 'Div.' },
 ]
@@ -58,6 +56,7 @@ export function PortfolioDashboardClient() {
   } = usePortfolioAnalyse()
   const [chartTab, setChartTab] = useState<ChartTab>('wert')
   const [periodKey, setPeriodKey] = useState<PeriodPerformance['periodKey']>('1T')
+  const [perfMitDivRealisiert, setPerfMitDivRealisiert] = useState(true)
 
   const k = live?.kennzahlen
   const verlaufBasis = live?.verlauf ?? []
@@ -68,10 +67,15 @@ export function PortfolioDashboardClient() {
   const positionen = live?.positionen ?? []
 
   const drawdown = useMemo(() => berechneDrawdown(verlauf), [verlauf])
-  const monatsPerf = useMemo(
-    () => monatsrenditenProzent(verlauf).map((p) => ({ label: p.label, wert: p.prozent })),
-    [verlauf],
+  const performanceZeitreihe = useMemo(
+    () => berechnePerformanceZeitreihe(wertentwicklung, buchungen, perfMitDivRealisiert),
+    [buchungen, perfMitDivRealisiert, wertentwicklung],
   )
+  const portfolioChartName = useMemo(() => {
+    const klassen = new Set(positionen.map((p) => p.assetKlasse))
+    if (klassen.size === 1 && klassen.has('aktie')) return 'Aktien Portfolio'
+    return 'Portfolio'
+  }, [positionen])
   const divMonat = useMemo(() => dividendenProMonat(buchungen, 24), [buchungen])
 
   const letzteAktivitaeten = useMemo(
@@ -191,7 +195,15 @@ export function PortfolioDashboardClient() {
               hoehe={220}
             />
           )}
-          {chartTab === 'performance' && <PaSignedBarChart punkte={monatsPerf} yAxisProzent />}
+          {chartTab === 'performance' && (
+            <PaPerformanceChart
+              punkte={performanceZeitreihe}
+              portfolioName={portfolioChartName}
+              laden={wertentwicklungLaden && wertentwicklung.length > 0}
+              mitDivRealisiert={perfMitDivRealisiert}
+              onMitDivRealisiertChange={setPerfMitDivRealisiert}
+            />
+          )}
           {chartTab === 'drawdown' && <PaDrawdownChart punkte={drawdown.serie} />}
           {chartTab === 'dividenden' && (
             <>
