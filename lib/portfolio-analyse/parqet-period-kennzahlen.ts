@@ -207,6 +207,8 @@ export function berechneParqetPeriodKennzahlen(
   wertentwicklung: WertentwicklungPunkt[],
   portfoliowertHeute: number,
   ersteBuchungIso: string | null,
+  /** Live: Schlusskurs Vortag × Bestand Vortag (Parqet „Heute“). */
+  portfoliowertTagesstart?: number | null,
 ): ParqetPeriodKennzahlen {
   const heute = heuteIso()
   const startDatumSoll = periodKey === '1T' ? heute : periodenStartIso(periodKey, heute, ersteBuchungIso)
@@ -217,7 +219,11 @@ export function berechneParqetPeriodKennzahlen(
     periodKey === 'MAX'
       ? 0
       : periodKey === '1T'
-        ? round2(wertZumTagesstart(wertentwicklung, heute))
+        ? round2(
+            portfoliowertTagesstart != null && portfoliowertTagesstart > 0
+              ? portfoliowertTagesstart
+              : wertZumTagesstart(wertentwicklung, heute),
+          )
         : round2(startWert?.portfoliowertEur ?? 0)
   const zuflussAb =
     periodKey === 'MAX' && ersteBuchungIso

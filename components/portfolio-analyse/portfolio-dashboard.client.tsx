@@ -20,7 +20,9 @@ import {
   sortiereBuchungenNeuesteZuerst,
 } from '@/lib/portfolio-analyse/berechnung'
 import { anzeigeNameFuerIsin } from '@/lib/portfolio-analyse/isin-metadata-client'
+import { depotwertVorBoersenbeginn } from '@/lib/portfolio-analyse/live-bewertung'
 import { berechneParqetPeriodKennzahlen } from '@/lib/portfolio-analyse/parqet-period-kennzahlen'
+import { heuteIso } from '@/lib/portfolio-analyse/wertentwicklung-tage'
 import { berechneDrawdown, monatsrenditenProzent } from '@/lib/portfolio-analyse/zeitreihen'
 import { BUCHUNGS_TYP_LABEL, type BuchungsTyp } from '@/lib/portfolio-analyse/types'
 import type { PeriodPerformance } from '@/lib/portfolio-analyse/parqet-core/types'
@@ -95,14 +97,19 @@ export function PortfolioDashboardClient() {
     if (!k || buchungen.length === 0) {
       return berechneParqetPeriodKennzahlen(periodKey, [], [], 0, startDatumIso)
     }
+    const tagesstart =
+      periodKey === '1T' && live?.positionen
+        ? depotwertVorBoersenbeginn(buchungen, live.positionen, heuteIso())
+        : null
     return berechneParqetPeriodKennzahlen(
       periodKey,
       buchungen,
       wertentwicklung,
       k.depotwertEur,
       startDatumIso,
+      tagesstart,
     )
-  }, [buchungen, k, periodKey, startDatumIso, wertentwicklung])
+  }, [buchungen, k, live?.positionen, periodKey, startDatumIso, wertentwicklung])
 
   const startDatum = startDatumIso ? formatDatumDe(startDatumIso) : null
 

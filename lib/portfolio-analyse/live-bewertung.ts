@@ -1,5 +1,9 @@
 import { baueMonatsVerlauf } from '@/lib/portfolio-analyse/depot-berechnung'
-import { cashSaldoAusBuchungen, positionenFuerBewertung } from '@/lib/portfolio-analyse/bestand'
+import {
+  cashSaldoAusBuchungen,
+  depotStandBisDatum,
+  positionenFuerBewertung,
+} from '@/lib/portfolio-analyse/bestand'
 import { teileArray } from '@/lib/portfolio-analyse/batch-hilfen'
 import { isinKenntnis } from '@/lib/portfolio-analyse/isin-kenntnisse'
 import { anzeigeNameFuerIsin, wknFuerIsin } from '@/lib/portfolio-analyse/isin-metadata-client'
@@ -320,5 +324,62 @@ export function berechneLivePortfolio(
     fx,
     verlauf,
   }
+}
+
+function vortagIso(heute: string): string {
+  const d = new Date(`${heute}T12:00:00`)
+  d.setDate(d.getDate() - 1)
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const da = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${da}`
+}
+
+function round2(n: number): number {
+  return Math.round(n * 100) / 100
+}
+
+/**
+ * Portfoliowert vor Börsenbeginn heute (Parqet „Wert am [heute]“ bei Filter „Heute“):
+ * Bestand vom Vortag × Yahoo-Schlusskurs (previous close) je Position.
+ */
+export function depotwertVorBoersenbeginn(
+  buchungen: PortfolioBuchung[],
+  positionen: LivePosition[],
+  heuteIso: string,
+): number | null {
+  if (positionen.length === 0) return null
+
+  const stand = depotStandBisDatum(buchungen, vortagIso(heuteIso))
+  const posByIsin = new Map(positionen.map((p) => [p.isin?.toUpperCase() ?? '', p]))
+  let wert = Math.max(0, stand.cash)
+  let hatKursdaten = false
+
+  for (const [isin, h] of stand.byIsin) {
+    if (h.stueck <= 0) continue
+    const pos = posByIsin.get(isin)
+    if (
+      pos?.hatLiveKurs &&
+      pos.kursLiveEur != null &&
+      pos.kursLiveEur > 0 &&
+      pos.aenderungTagProzent != null
+    ) {
+      const faktor = 1 + pos.aenderungTagProzent / 100
+      const kursVortag = faktor > 0.0001 ? pos.kursLiveEur / faktor : null
+      if (kursVortag != null && kursVortag > 0) {
+        wert += h.stueck * kursVortag
+        hatKursdaten = true
+        continue
+      }
+    }
+    if (pos?.kursLiveEur != null && pos.kursLiveEur > 0) {
+      wert += h.stueck * pos.kursLiveEur
+      hatKursdaten = true
+    } else if (h.einstandKurs > 0) {
+      wert += h.stueck * h.einstandKurs
+    }
+  }
+
+  return hatKursdaten ? round2(wert) : null
 }
 
