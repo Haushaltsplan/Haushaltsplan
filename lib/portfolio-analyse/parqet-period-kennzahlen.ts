@@ -2,14 +2,16 @@
  * Parqet-Dashboard Hero: Kennzahlen je gewähltem Zeitraum.
  *
  * - „Wert am …“ = Portfoliowert am Periodenanfang (aus Wertentwicklung)
- * - „Investiert“ = Netto-Zufluss im Zeitraum (Einzahlungen − Auszahlungen, sonst Käufe − Verkäufe)
+ * - „Investiert“ = eingesetztes Kapital (Einstand + Cash) am Stichtag – wie Parqet „zugeführt“
+ * - Seit Kauf (MAX): Investiert = Kapital heute (Startwert 0 €)
+ * - Alle anderen Zeiträume: Investiert = Kapital(heute) − Kapital(Periodenstart)
  * - „Kursgewinn“ = Portfoliowert_heute − Wert_am_Start − Investiert_im_Zeitraum
  * - Performance-% ≈ Kursgewinn / (Wert_am_Start + Investiert_im_Zeitraum)
  */
 
 import type { PeriodPerformance } from '@/lib/portfolio-analyse/parqet-core/types'
-import { hatExterneDepotEinAus, irrBetragFuerKauf } from '@/lib/portfolio-analyse/parqet-xirr'
 import { buchungZaehltFuerParqetRealisiert } from '@/lib/portfolio-analyse/parqet-realisiert'
+import { depotStandBisDatum, einstandWertpapiereEur } from '@/lib/portfolio-analyse/bestand'
 import type { PortfolioBuchung } from '@/lib/portfolio-analyse/types'
 import type { WertentwicklungPunkt } from '@/lib/portfolio-analyse/wertentwicklung'
 import { heuteIso } from '@/lib/portfolio-analyse/wertentwicklung-tage'
@@ -101,29 +103,31 @@ function wertAmStichtag(wertentwicklung: WertentwicklungPunkt[], stichtagIso: st
   return wertentwicklung[0]?.portfoliowertEur ?? 0
 }
 
-/** Netto-Zufluss im offenen Intervall (start, end]. */
-function nettoZuflussImZeitraum(
+/**
+ * Parqet „Investiert“ / „zugeführtes Kapital“ am Stichtag (End-of-day):
+ * Einstand offener Positionen + Bargeld – nicht Brutto-Einzahlungen und nicht Käufe+Deposits doppelt.
+ */
+export function parqetInvestiertAmStichtag(
   buchungen: PortfolioBuchung[],
-  startDatumIso: string,
-  endDatumIso: string,
+  stichtagIso: string,
 ): number {
-  const extern = hatExterneDepotEinAus(buchungen)
-  let sum = 0
+  const stand = depotStandBisDatum(buchungen, stichtagIso)
+  const einstand = einstandWertpapiereEur(stand)
+  const cash = Math.max(0, stand.cash)
+  return round2(einstand + cash)
+}
 
-  for (const b of buchungen) {
-    if (b.datum <= startDatumIso) continue
-    if (b.datum > endDatumIso) continue
-
-    if (extern) {
-      if (b.typ === 'einzahlung') sum += b.betragEur
-      else if (b.typ === 'auszahlung') sum -= b.betragEur
-    } else {
-      if (b.typ === 'kauf') sum += irrBetragFuerKauf(b)
-      else if (b.typ === 'verkauf') sum -= b.betragEur
-    }
-  }
-
-  return round2(sum)
+/** Zusätzliches Kapital im Zeitraum = Differenz der Parqet-Investiert-Kurve. */
+function investiertImZeitraumParqet(
+  buchungen: PortfolioBuchung[],
+  periodKey: PeriodPerformance['periodKey'],
+  startDatumIso: string,
+  heute: string,
+): number {
+  const heuteKapital = parqetInvestiertAmStichtag(buchungen, heute)
+  if (periodKey === 'MAX') return heuteKapital
+  const startKapital = parqetInvestiertAmStichtag(buchungen, startDatumIso)
+  return round2(heuteKapital - startKapital)
 }
 
 function dividendenImZeitraum(
@@ -171,7 +175,12 @@ export function berechneParqetPeriodKennzahlen(
     periodKey === 'MAX' && ersteBuchungIso
       ? isoFromDate(new Date(new Date(`${ersteBuchungIso}T12:00:00`).getTime() - 86400000))
       : startDatumIso
-  const investiertImZeitraum = nettoZuflussImZeitraum(buchungen, zuflussAb, heute)
+  const investiertImZeitraum = investiertImZeitraumParqet(
+    buchungen,
+    periodKey,
+    startDatumIso,
+    heute,
+  )
 
   const kursgewinn = round2(portfoliowertHeute - wertAmPeriodenstart - investiertImZeitraum)
 
