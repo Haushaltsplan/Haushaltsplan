@@ -140,20 +140,23 @@ export async function ladeHistorischeKurseClient(
   )
   if (uniq.length === 0) return new Map()
 
-  const res = await fetch('/api/portfolio-analyse/kurse/historie', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ symbols: uniq, vonDatum, bisDatum }),
-  })
-  const j = (await res.json()) as {
-    ok?: boolean
-    serien?: Record<string, Record<string, number>>
-  }
-  if (!j.ok || !j.serien) return new Map()
-
   const out = new Map<string, Map<string, number>>()
-  for (const [sym, monate] of Object.entries(j.serien)) {
-    out.set(sym.toUpperCase(), new Map(Object.entries(monate)))
+  const BATCH = 60
+  for (let i = 0; i < uniq.length; i += BATCH) {
+    const batch = uniq.slice(i, i + BATCH)
+    const res = await fetch('/api/portfolio-analyse/kurse/historie', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ symbols: batch, vonDatum, bisDatum }),
+    })
+    const j = (await res.json()) as {
+      ok?: boolean
+      serien?: Record<string, Record<string, number>>
+    }
+    if (!j.ok || !j.serien) continue
+    for (const [sym, tage] of Object.entries(j.serien)) {
+      out.set(sym.toUpperCase(), new Map(Object.entries(tage)))
+    }
   }
   return out
 }

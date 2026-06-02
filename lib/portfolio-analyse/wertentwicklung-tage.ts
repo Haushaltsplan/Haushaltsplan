@@ -72,3 +72,14 @@ export function forwardFillKurse(serie: Map<string, number>, tage: string[]): nu
   }
   return out
 }
+
+/** Forward- und Backward-Fill für lückenhafte Yahoo-Serien (ganzer Zeitraum ab erstem Kurs). */
+export function forwardFillKurseBidirektional(serie: Map<string, number>, tage: string[]): number[] {
+  const roh = forwardFillKurse(serie, tage)
+  let naechster = NaN
+  for (let i = roh.length - 1; i >= 0; i--) {
+    if (Number.isFinite(roh[i]) && roh[i] > 0) naechster = roh[i]
+    else if (Number.isFinite(naechster)) roh[i] = naechster
+  }
+  return roh
+}
