@@ -91,16 +91,37 @@ export function periodenStartIso(
   }
 }
 
-function wertAmStichtag(wertentwicklung: WertentwicklungPunkt[], stichtagIso: string): number {
-  if (wertentwicklung.length === 0) return 0
+type StichtagWert = {
+  datumIso: string
+  portfoliowertEur: number
+}
 
-  const exakt = wertentwicklung.find((p) => p.datumIso === stichtagIso)
-  if (exakt) return exakt.portfoliowertEur
+/**
+ * Parqet-artig: Wert zum Periodenstart als letzter verfügbarer Börsentag <= Stichtag.
+ * Fallback nur wenn keine frühere Reihe existiert: erster Punkt nach Stichtag.
+ */
+function wertAmStichtag(
+  wertentwicklung: WertentwicklungPunkt[],
+  stichtagIso: string,
+): StichtagWert {
+  if (wertentwicklung.length === 0) {
+    return { datumIso: stichtagIso, portfoliowertEur: 0 }
+  }
 
-  const ersterAb = wertentwicklung.find((p) => p.datumIso >= stichtagIso)
-  if (ersterAb) return ersterAb.portfoliowertEur
+  let letzterBisStichtag: WertentwicklungPunkt | null = null
+  for (const p of wertentwicklung) {
+    if (p.datumIso <= stichtagIso) letzterBisStichtag = p
+    else break
+  }
+  if (letzterBisStichtag) {
+    return {
+      datumIso: letzterBisStichtag.datumIso,
+      portfoliowertEur: letzterBisStichtag.portfoliowertEur,
+    }
+  }
 
-  return wertentwicklung[0]?.portfoliowertEur ?? 0
+  const ersterDanach = wertentwicklung.find((p) => p.datumIso > stichtagIso) ?? wertentwicklung[0]
+  return { datumIso: ersterDanach.datumIso, portfoliowertEur: ersterDanach.portfoliowertEur }
 }
 
 /**
@@ -167,10 +188,11 @@ export function berechneParqetPeriodKennzahlen(
   ersteBuchungIso: string | null,
 ): ParqetPeriodKennzahlen {
   const heute = heuteIso()
-  const startDatumIso = periodenStartIso(periodKey, heute, ersteBuchungIso)
+  const startDatumSoll = periodenStartIso(periodKey, heute, ersteBuchungIso)
+  const startWert = periodKey === 'MAX' ? null : wertAmStichtag(wertentwicklung, startDatumSoll)
+  const startDatumIso = startWert?.datumIso ?? startDatumSoll
   // Parqet „Seit Kauf“: Depotstart mit 0 €; sonst Portfoliowert am Periodenanfang.
-  const wertAmPeriodenstart =
-    periodKey === 'MAX' ? 0 : round2(wertAmStichtag(wertentwicklung, startDatumIso))
+  const wertAmPeriodenstart = periodKey === 'MAX' ? 0 : round2(startWert?.portfoliowertEur ?? 0)
   const zuflussAb =
     periodKey === 'MAX' && ersteBuchungIso
       ? isoFromDate(new Date(new Date(`${ersteBuchungIso}T12:00:00`).getTime() - 86400000))
