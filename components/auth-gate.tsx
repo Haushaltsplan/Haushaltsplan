@@ -8,10 +8,6 @@ import toast from 'react-hot-toast'
 
 const APP_URL = (process.env.NEXT_PUBLIC_APP_URL || '').trim()
 
-/** Optionale Dev-Zugangsdaten für automatisches Login auf localhost (nur lokal genutzt). */
-const DEV_EMAIL = (process.env.NEXT_PUBLIC_DEV_EMAIL || '').trim()
-const DEV_PASSWORD = (process.env.NEXT_PUBLIC_DEV_PASSWORD || '').trim()
-
 /** Erlaubte E-Mail(s) — nur diese Konten dürfen die App nutzen (leer = keine zusätzliche Einschränkung). */
 const ALLOWED_EMAILS = (process.env.NEXT_PUBLIC_ALLOWED_EMAILS || '')
   .split(/[,;\s]+/)
@@ -31,13 +27,6 @@ function loginRedirectUrl(): string {
   return ''
 }
 
-/** Lokale Entwicklung (kein Login nötig). Die offizielle, deployte App verlangt weiterhin Login. */
-function istLokaleEntwicklung(): boolean {
-  if (typeof window === 'undefined') return false
-  const host = window.location.hostname
-  return host === 'localhost' || host === '127.0.0.1' || host === '::1' || host.endsWith('.local')
-}
-
 export function AuthGate({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null)
   const [loading, setLoading] = useState(true)
@@ -45,7 +34,6 @@ export function AuthGate({ children }: { children: ReactNode }) {
   const [sending, setSending] = useState(false)
   const [verweigert, setVerweigert] = useState(false)
 
-  // Setzt Session nur, wenn die E-Mail erlaubt ist; sonst sofort abmelden.
   const uebernehmeSession = (next: Session | null) => {
     if (next && !emailErlaubt(next.user?.email)) {
       setVerweigert(true)
@@ -63,21 +51,6 @@ export function AuthGate({ children }: { children: ReactNode }) {
     const init = async () => {
       const { data } = await supabase.auth.getSession()
       if (!mounted) return
-
-      // Auf localhost ohne aktive Session: wenn Dev-Zugangsdaten hinterlegt sind, automatisch anmelden,
-      // damit kein Passwort nötig ist UND die per RLS geschützten Daten (owner_user_id = auth.uid()) geladen werden.
-      // Ohne Dev-Zugangsdaten zeigen wir den Login — sonst bliebe die App leer (RLS blockt unangemeldete Zugriffe).
-      if (!data.session && istLokaleEntwicklung() && DEV_EMAIL && DEV_PASSWORD) {
-        const { error } = await supabase.auth.signInWithPassword({ email: DEV_EMAIL, password: DEV_PASSWORD })
-        if (error) {
-          console.warn('[AuthGate] Dev-Auto-Login fehlgeschlagen:', error.message)
-          if (mounted) setLoading(false)
-          return
-        }
-        // onAuthStateChange setzt die Session; loading endet dort.
-        return
-      }
-
       uebernehmeSession(data.session ?? null)
       setLoading(false)
     }
@@ -108,7 +81,6 @@ export function AuthGate({ children }: { children: ReactNode }) {
     try {
       const { error } = await supabase.auth.signInWithOtp({
         email: clean,
-        // Keine neuen Konten über die App anlegen — nur bestehende (du) dürfen sich anmelden.
         options: { emailRedirectTo: loginRedirectUrl(), shouldCreateUser: false },
       })
       if (error) {
