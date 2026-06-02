@@ -55,7 +55,7 @@ export function PortfolioDashboardClient() {
     laden,
   } = usePortfolioAnalyse()
   const [chartTab, setChartTab] = useState<ChartTab>('wert')
-  const [periodKey, setPeriodKey] = useState<PeriodPerformance['periodKey']>('1T')
+  const [periodKey, setPeriodKey] = useState<PeriodPerformance['periodKey']>('MAX')
   const [perfMitDivRealisiert, setPerfMitDivRealisiert] = useState(true)
 
   const k = live?.kennzahlen

@@ -1,14 +1,12 @@
 /**
- * Parqet „% Performance“-Kurve: Rendite auf eingesetztes Kapital je Stichtag.
+ * Parqet „% Performance“ / „Rendite“: kumulierte zeitgewichtete Rendite (TWR).
  *
- * Basis (wie Parqet-Chart „Rendite“):
- *   Performance % = (Portfoliowert − zugeführt) / zugeführt × 100
- * mit zugeführt = Einstand + Cash (siehe Wertentwicklung).
- *
- * Toggle „Dividenden und realisierte Gewinne inkludieren“:
- *   Zusätzlich kumulierte Dividenden/Zinsen + realisierte Gewinne im Zähler.
+ * - Start bei 0 %, Verlauf wie Parqet (Ein-/Auszahlungen neutralisiert)
+ * - Toggle AUS: Kursperformance ohne Dividenden/Zinsen/realisierte Gewinne am Zahltag
+ * - Toggle AN: Gesamtrendite inkl. Erträge (in Portfoliowert enthalten)
  */
 
+import { hatExterneDepotEinAus } from '@/lib/portfolio-analyse/parqet-xirr'
 import { buchungZaehltFuerParqetRealisiert } from '@/lib/portfolio-analyse/parqet-realisiert'
 import type { PortfolioBuchung } from '@/lib/portfolio-analyse/types'
 import type { WertentwicklungPunkt } from '@/lib/portfolio-analyse/wertentwicklung'
@@ -17,7 +15,7 @@ import { tagLabel } from '@/lib/portfolio-analyse/wertentwicklung-tage'
 export type PerformanceZeitPunkt = {
   datumIso: string
   label: string
-  /** Rendite auf eingesetztes Kapital in % (0 % = Break-even). */
+  /** Kumulierte TWR seit erstem Punkt in % (0 % am Start). */
   performanceProzent: number
 }
 
@@ -25,16 +23,24 @@ function round2(n: number): number {
   return Math.round(n * 100) / 100
 }
 
-function ertraegeProTagMap(buchungen: PortfolioBuchung[]): Map<string, number> {
-  const byDay = new Map<string, number>()
+function externerZuflussAmTag(buchungen: PortfolioBuchung[], datumIso: string): number {
+  let sum = 0
   for (const b of buchungen) {
-    let delta = 0
-    if (b.typ === 'dividende' || b.typ === 'zins') delta = b.betragEur
-    else if (buchungZaehltFuerParqetRealisiert(b)) delta = b.realisierterGewinnEur ?? 0
-    else continue
-    byDay.set(b.datum, round2((byDay.get(b.datum) ?? 0) + delta))
+    if (b.datum !== datumIso) continue
+    if (b.typ === 'einzahlung') sum += b.betragEur
+    else if (b.typ === 'auszahlung') sum -= b.betragEur
   }
-  return byDay
+  return sum
+}
+
+function ertraegeAmTag(buchungen: PortfolioBuchung[], datumIso: string): number {
+  let sum = 0
+  for (const b of buchungen) {
+    if (b.datum !== datumIso) continue
+    if (b.typ === 'dividende' || b.typ === 'zins') sum += b.betragEur
+    else if (buchungZaehltFuerParqetRealisiert(b)) sum += b.realisierterGewinnEur ?? 0
+  }
+  return sum
 }
 
 export function berechnePerformanceZeitreihe(
@@ -44,21 +50,42 @@ export function berechnePerformanceZeitreihe(
 ): PerformanceZeitPunkt[] {
   if (wertentwicklung.length === 0) return []
 
-  const ertraegeTag = ertraegeProTagMap(buchungen)
-  let kumErtraege = 0
+  const extern = hatExterneDepotEinAus(buchungen)
+  let twrIndex = 100
 
-  return wertentwicklung.map((p) => {
-    kumErtraege += ertraegeTag.get(p.datumIso) ?? 0
-    kumErtraege = round2(kumErtraege)
+  const out: PerformanceZeitPunkt[] = [
+    {
+      datumIso: wertentwicklung[0].datumIso,
+      label: wertentwicklung[0].label || tagLabel(wertentwicklung[0].datumIso),
+      performanceProzent: 0,
+    },
+  ]
 
-    const z = p.zugefuehrtEur
-    const v = p.portfoliowertEur + (mitDivUndRealisiert ? kumErtraege : 0)
-    const performanceProzent = z > 0 ? round2(((v - z) / z) * 100) : 0
+  for (let i = 1; i < wertentwicklung.length; i++) {
+    const prev = wertentwicklung[i - 1]
+    const cur = wertentwicklung[i]
+    const v0 = prev.portfoliowertEur
+    const v1 = cur.portfoliowertEur
 
-    return {
-      datumIso: p.datumIso,
-      label: p.label || tagLabel(p.datumIso),
-      performanceProzent,
+    const cf = extern
+      ? externerZuflussAmTag(buchungen, cur.datumIso)
+      : cur.zugefuehrtEur - prev.zugefuehrtEur
+
+    let gain = v1 - v0 - cf
+
+    if (!mitDivUndRealisiert) {
+      gain -= ertraegeAmTag(buchungen, cur.datumIso)
     }
-  })
+
+    const r = v0 > 0 ? gain / v0 : 0
+    twrIndex *= 1 + r
+
+    out.push({
+      datumIso: cur.datumIso,
+      label: cur.label || tagLabel(cur.datumIso),
+      performanceProzent: round2(twrIndex - 100),
+    })
+  }
+
+  return out
 }
