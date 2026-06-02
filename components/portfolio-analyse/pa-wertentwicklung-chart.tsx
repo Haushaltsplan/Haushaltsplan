@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { chartHoverFromClientX } from '@/components/portfolio-analyse/chart-hover'
 import { formatDatumDe, formatEur } from '@/lib/portfolio-analyse/berechnung'
 import type { WertentwicklungPunkt } from '@/lib/portfolio-analyse/wertentwicklung'
 
@@ -71,6 +72,7 @@ function WertentwicklungChartBody({
 }) {
   const containerRef = useRef<HTMLDivElement>(null)
   const [hoverIndex, setHoverIndex] = useState<number | null>(null)
+  const [tooltipLeftPct, setTooltipLeftPct] = useState(50)
   const [schmal, setSchmal] = useState(false)
 
   useEffect(() => {
@@ -132,25 +134,29 @@ function WertentwicklungChartBody({
     }
   }, [punkte, plotW, plotH, padLinks, padOben, gross])
 
-  const pickIndex = useCallback((clientX: number) => {
-    const el = containerRef.current
-    if (!el || plotPts.length === 0) return
-    const rect = el.getBoundingClientRect()
-    if (rect.width <= 0) return
-    const rel = Math.min(1, Math.max(0, (clientX - rect.left) / rect.width))
-    const idx = Math.round(rel * Math.max(0, plotPts.length - 1))
-    setHoverIndex(idx)
-  }, [plotPts.length])
+  const pickIndex = useCallback(
+    (clientX: number) => {
+      const el = containerRef.current
+      if (!el || plotPts.length === 0) return
+      const rect = el.getBoundingClientRect()
+      const hit = chartHoverFromClientX(
+        clientX,
+        rect,
+        breite,
+        hoehe,
+        padLinks,
+        padRechts,
+        plotPts.length,
+      )
+      if (!hit) return
+      setHoverIndex(hit.index)
+      setTooltipLeftPct(hit.tooltipLeftPct)
+    },
+    [breite, hoehe, padLinks, padRechts, plotPts.length],
+  )
 
   const active = hoverIndex != null ? plotPts[hoverIndex] : null
   const differenz = active ? active.p.portfoliowertEur - active.p.zugefuehrtEur : 0
-
-  const tooltipLeftPct =
-    hoverIndex != null && plotPts.length > 1
-      ? (hoverIndex / (plotPts.length - 1)) * 100
-      : hoverIndex === 0
-        ? 0
-        : 50
 
   return (
     <div className="relative w-full min-w-0">

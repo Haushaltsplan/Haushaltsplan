@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
+import { chartHoverFromClientX } from '@/components/portfolio-analyse/chart-hover'
 import { formatDatumDe, formatProzent } from '@/lib/portfolio-analyse/berechnung'
 import type { PerformanceZeitPunkt } from '@/lib/portfolio-analyse/performance-zeitreihe'
 
@@ -115,24 +116,30 @@ function PerformanceChartBody({
     }
   }, [punkte, plotW, plotH, padLinks, padOben])
 
+  const [tooltipLeftPct, setTooltipLeftPct] = useState(50)
+
   const pickIndex = useCallback(
     (clientX: number) => {
       const el = containerRef.current
       if (!el || plotPts.length === 0) return
       const rect = el.getBoundingClientRect()
-      if (rect.width <= 0) return
-      const rel = Math.min(1, Math.max(0, (clientX - rect.left) / rect.width))
-      const idx = Math.round(rel * Math.max(0, plotPts.length - 1))
-      setHoverIndex(idx)
+      const hit = chartHoverFromClientX(
+        clientX,
+        rect,
+        breite,
+        hoehe,
+        padLinks,
+        padRechts,
+        plotPts.length,
+      )
+      if (!hit) return
+      setHoverIndex(hit.index)
+      setTooltipLeftPct(hit.tooltipLeftPct)
     },
-    [plotPts.length],
+    [breite, hoehe, padLinks, padRechts, plotPts.length],
   )
 
   const active = hoverIndex != null ? plotPts[hoverIndex] : null
-  const tooltipLeftPct =
-    hoverIndex != null && plotPts.length > 1
-      ? (hoverIndex / (plotPts.length - 1)) * 100
-      : 50
 
   return (
     <div className="relative w-full min-w-0">

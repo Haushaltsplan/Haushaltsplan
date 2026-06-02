@@ -1,8 +1,14 @@
 /**
- * Kumulierte Portfolio-Performance (TWR) für Parqet-% Chart.
+ * Parqet „% Performance“-Kurve: Rendite auf eingesetztes Kapital je Stichtag.
+ *
+ * Basis (wie Parqet-Chart „Rendite“):
+ *   Performance % = (Portfoliowert − zugeführt) / zugeführt × 100
+ * mit zugeführt = Einstand + Cash (siehe Wertentwicklung).
+ *
+ * Toggle „Dividenden und realisierte Gewinne inkludieren“:
+ *   Zusätzlich kumulierte Dividenden/Zinsen + realisierte Gewinne im Zähler.
  */
 
-import { hatExterneDepotEinAus } from '@/lib/portfolio-analyse/parqet-xirr'
 import { buchungZaehltFuerParqetRealisiert } from '@/lib/portfolio-analyse/parqet-realisiert'
 import type { PortfolioBuchung } from '@/lib/portfolio-analyse/types'
 import type { WertentwicklungPunkt } from '@/lib/portfolio-analyse/wertentwicklung'
@@ -11,7 +17,7 @@ import { tagLabel } from '@/lib/portfolio-analyse/wertentwicklung-tage'
 export type PerformanceZeitPunkt = {
   datumIso: string
   label: string
-  /** Kumulierte TWR seit Start in % (0 = Start). */
+  /** Rendite auf eingesetztes Kapital in % (0 % = Break-even). */
   performanceProzent: number
 }
 
@@ -19,75 +25,40 @@ function round2(n: number): number {
   return Math.round(n * 100) / 100
 }
 
-function externerZuflussAmTag(buchungen: PortfolioBuchung[], datumIso: string): number {
-  let sum = 0
+function ertraegeProTagMap(buchungen: PortfolioBuchung[]): Map<string, number> {
+  const byDay = new Map<string, number>()
   for (const b of buchungen) {
-    if (b.datum !== datumIso) continue
-    if (b.typ === 'einzahlung') sum += b.betragEur
-    else if (b.typ === 'auszahlung') sum -= b.betragEur
+    let delta = 0
+    if (b.typ === 'dividende' || b.typ === 'zins') delta = b.betragEur
+    else if (buchungZaehltFuerParqetRealisiert(b)) delta = b.realisierterGewinnEur ?? 0
+    else continue
+    byDay.set(b.datum, round2((byDay.get(b.datum) ?? 0) + delta))
   }
-  return sum
+  return byDay
 }
 
-function ertraegeAmTag(buchungen: PortfolioBuchung[], datumIso: string): number {
-  let sum = 0
-  for (const b of buchungen) {
-    if (b.datum !== datumIso) continue
-    if (b.typ === 'dividende' || b.typ === 'zins') sum += b.betragEur
-    else if (buchungZaehltFuerParqetRealisiert(b)) sum += b.realisierterGewinnEur ?? 0
-  }
-  return sum
-}
-
-/**
- * Tägliche kumulierte Rendite (TWR-Index ab 100).
- * Kapitalzuflüsse werden neutralisiert (Depot-Ein/Aus oder Δ „zugeführt“).
- */
 export function berechnePerformanceZeitreihe(
   wertentwicklung: WertentwicklungPunkt[],
   buchungen: PortfolioBuchung[],
   mitDivUndRealisiert: boolean,
 ): PerformanceZeitPunkt[] {
-  if (wertentwicklung.length < 2) return []
+  if (wertentwicklung.length === 0) return []
 
-  const extern = hatExterneDepotEinAus(buchungen)
-  let twrIndex = 100
+  const ertraegeTag = ertraegeProTagMap(buchungen)
+  let kumErtraege = 0
 
-  const out: PerformanceZeitPunkt[] = [
-    {
-      datumIso: wertentwicklung[0].datumIso,
-      label: wertentwicklung[0].label || tagLabel(wertentwicklung[0].datumIso),
-      performanceProzent: 0,
-    },
-  ]
+  return wertentwicklung.map((p) => {
+    kumErtraege += ertraegeTag.get(p.datumIso) ?? 0
+    kumErtraege = round2(kumErtraege)
 
-  for (let i = 1; i < wertentwicklung.length; i++) {
-    const prev = wertentwicklung[i - 1]
-    const cur = wertentwicklung[i]
-    const v0 = prev.portfoliowertEur
-    const v1 = cur.portfoliowertEur
+    const z = p.zugefuehrtEur
+    const v = p.portfoliowertEur + (mitDivUndRealisiert ? kumErtraege : 0)
+    const performanceProzent = z > 0 ? round2(((v - z) / z) * 100) : 0
 
-    let cf = 0
-    if (extern) {
-      cf = externerZuflussAmTag(buchungen, cur.datumIso)
-    } else {
-      cf = cur.zugefuehrtEur - prev.zugefuehrtEur
+    return {
+      datumIso: p.datumIso,
+      label: p.label || tagLabel(p.datumIso),
+      performanceProzent,
     }
-
-    let gain = v1 - v0 - cf
-    if (mitDivUndRealisiert) {
-      gain += ertraegeAmTag(buchungen, cur.datumIso)
-    }
-
-    const r = v0 > 0 ? gain / v0 : 0
-    twrIndex *= 1 + r
-
-    out.push({
-      datumIso: cur.datumIso,
-      label: cur.label || tagLabel(cur.datumIso),
-      performanceProzent: round2(twrIndex - 100),
-    })
-  }
-
-  return out
+  })
 }
