@@ -9,6 +9,8 @@ const BATCH = 20
 
 export type YahooKursZeile = {
   preis: number | null
+  /** previousClose/chartPreviousClose (gleiche Währung wie `preis`). */
+  vortagPreis?: number | null
   aenderungTagProzent: number | null
 }
 
@@ -62,6 +64,7 @@ export async function ladeYahooKurse(symbole: string[]): Promise<Map<string, Yah
       }
       const row: YahooKursZeile = {
         preis: preis != null && Number.isFinite(Number(preis)) ? Number(preis) : null,
+        vortagPreis: vor != null && Number.isFinite(Number(vor)) ? Number(vor) : null,
         aenderungTagProzent: pct,
       }
       out.set(ySym, row)

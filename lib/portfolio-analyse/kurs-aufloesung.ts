@@ -157,7 +157,14 @@ export function waehleBesterKurs(
       symbol,
       kurs: kursEur,
       direktEur,
-      zeile: { ...zeile, preis: kursEur },
+      zeile: {
+        ...zeile,
+        preis: kursEur,
+        vortagPreis:
+          zeile.vortagPreis != null && Number.isFinite(zeile.vortagPreis)
+            ? preisInEur(zeile.vortagPreis, symbol, fx, waehrungOverride)
+            : null,
+      },
     })
   }
   if (hits.length === 0) return null
@@ -229,6 +236,10 @@ export function kursAusErzwungenemSymbol(
     direktEur: boersenWaehrung(sym, waehrungOverride) === 'EUR',
     zeile: {
       preis: kursEur,
+      vortagPreis:
+        zeile.vortagPreis != null && Number.isFinite(zeile.vortagPreis)
+          ? preisInEur(zeile.vortagPreis, sym, fx, waehrungOverride)
+          : null,
       aenderungTagProzent: zeile.aenderungTagProzent ?? null,
     },
   }

@@ -27,6 +27,7 @@ import type {
 export type LivePosition = PortfolioPositionSnapshot & {
   symbolYahoo: string | null
   kursLiveEur: number | null
+  kursVortagEur: number | null
   wertLiveEur: number
   einstandEur: number
   gewinnVerlustEur: number
@@ -273,6 +274,7 @@ export function berechneLivePortfolio(
       wkn: wknFuerIsin(isin, meta),
       symbolYahoo: sym,
       kursLiveEur: kursLive,
+      kursVortagEur: kursZeile?.vortagPreis ?? null,
       wertLiveEur: wertLive,
       einstandEur,
       gewinnVerlustEur: gv,
@@ -358,19 +360,10 @@ export function depotwertVorBoersenbeginn(
   for (const [isin, h] of stand.byIsin) {
     if (h.stueck <= 0) continue
     const pos = posByIsin.get(isin)
-    if (
-      pos?.hatLiveKurs &&
-      pos.kursLiveEur != null &&
-      pos.kursLiveEur > 0 &&
-      pos.aenderungTagProzent != null
-    ) {
-      const faktor = 1 + pos.aenderungTagProzent / 100
-      const kursVortag = faktor > 0.0001 ? pos.kursLiveEur / faktor : null
-      if (kursVortag != null && kursVortag > 0) {
-        wert += h.stueck * kursVortag
-        hatKursdaten = true
-        continue
-      }
+    if (pos?.kursVortagEur != null && pos.kursVortagEur > 0) {
+      wert += h.stueck * pos.kursVortagEur
+      hatKursdaten = true
+      continue
     }
     if (pos?.kursLiveEur != null && pos.kursLiveEur > 0) {
       wert += h.stueck * pos.kursLiveEur
