@@ -139,20 +139,28 @@ export function PaPortfolioHero({
   return (
     <PaCard variant="elevated" className="overflow-hidden">
       <div className="flex flex-col gap-5 p-4 sm:gap-8 sm:p-6 lg:flex-row lg:items-stretch lg:gap-10">
-        <div className="flex shrink-0 justify-center lg:justify-start lg:pt-2">
+        <div className="flex shrink-0 justify-center lg:w-[min(42%,280px)] lg:justify-start lg:pt-1">
           <div className="sm:hidden">
-            <DonutChart
-              segmente={donut}
-              groesse={168}
-              dicke={22}
-              mitte={{ wert: formatEurKompakt(depotwert) }}
-            />
-          </div>
-          <div className="hidden sm:block">
             <DonutChart
               segmente={donut}
               groesse={200}
               dicke={26}
+              mitte={{ wert: formatEurKompakt(depotwert) }}
+            />
+          </div>
+          <div className="hidden sm:block lg:hidden">
+            <DonutChart
+              segmente={donut}
+              groesse={240}
+              dicke={28}
+              mitte={{ wert: formatEurKompakt(depotwert) }}
+            />
+          </div>
+          <div className="hidden lg:block">
+            <DonutChart
+              segmente={donut}
+              groesse={280}
+              dicke={32}
               mitte={{ wert: formatEurKompakt(depotwert) }}
             />
           </div>

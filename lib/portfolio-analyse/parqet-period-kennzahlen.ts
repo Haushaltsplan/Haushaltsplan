@@ -12,7 +12,7 @@
 import type { PeriodPerformance } from '@/lib/portfolio-analyse/parqet-core/types'
 import { buchungZaehltFuerParqetRealisiert } from '@/lib/portfolio-analyse/parqet-realisiert'
 import { depotStandBisDatum, einstandWertpapiereEur } from '@/lib/portfolio-analyse/bestand'
-import { dividendenZuflussEur, istKlassischeDividende } from '@/lib/portfolio-analyse/dividenden-buchung'
+import { gezahlteDividendeEur } from '@/lib/portfolio-analyse/dividenden-buchung'
 import type { PortfolioBuchung } from '@/lib/portfolio-analyse/types'
 import type { WertentwicklungPunkt } from '@/lib/portfolio-analyse/wertentwicklung'
 import { heuteIso } from '@/lib/portfolio-analyse/wertentwicklung-tage'
@@ -173,26 +173,17 @@ function investiertImZeitraumParqet(
   return round2(heuteKapital - startKapital)
 }
 
+/** Nur gezahlte Bardividenden im Zeitraum (exkl. Zinsen, Aktiendividende als Kauf). */
 function dividendenImZeitraum(
   buchungen: PortfolioBuchung[],
   startDatumIso: string,
   endDatumIso: string,
 ): number {
-  const klassischAmTag = new Set<string>()
-  for (const b of buchungen) {
-    if (b.datum <= startDatumIso || b.datum > endDatumIso) continue
-    if (!b.isin || !istKlassischeDividende(b)) continue
-    klassischAmTag.add(`${b.isin.toUpperCase()}|${b.datum}`)
-  }
-
+  const heute = heuteIso()
   let sum = 0
   for (const b of buchungen) {
-    if (b.datum <= startDatumIso || b.datum > endDatumIso) continue
-    const zufluss = dividendenZuflussEur(b)
-    if (zufluss <= 0) continue
-    if (!b.isin) continue
-    if (!istKlassischeDividende(b) && klassischAmTag.has(`${b.isin.toUpperCase()}|${b.datum}`)) continue
-    sum += zufluss
+    if (b.datum <= startDatumIso || b.datum > endDatumIso || b.datum > heute) continue
+    sum += gezahlteDividendeEur(b)
   }
   return round2(sum)
 }

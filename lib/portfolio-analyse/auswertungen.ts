@@ -3,6 +3,7 @@ import type { IsinMetadata } from '@/lib/portfolio-analyse/isin-lookup-server'
 import { anzeigeNameFuerIsin } from '@/lib/portfolio-analyse/isin-metadata-client'
 import {
   dividendenZuflussEur,
+  gezahlteDividendeEur,
   istKlassischeDividende,
   zaehltAlsKaufVolumen,
 } from '@/lib/portfolio-analyse/dividenden-buchung'
@@ -188,22 +189,15 @@ export function buchungsTypDonut(buchungen: PortfolioBuchung[]): DonutSegment[] 
     }))
 }
 
-/** Kumulierte Dividenden je ISIN (inkl. Wahldividende / Aktiendividende). */
+/** Kumulierte gezahlte Bardividenden je ISIN. */
 export function dividendenJeIsin(buchungen: PortfolioBuchung[]): Map<string, number> {
-  const klassischAmTag = new Set<string>()
-  for (const b of buchungen) {
-    if (!b.isin || !istKlassischeDividende(b)) continue
-    klassischAmTag.add(`${b.isin.toUpperCase()}|${b.datum}`)
-  }
-
   const map = new Map<string, number>()
   for (const b of buchungen) {
     if (!b.isin) continue
+    const zahlung = gezahlteDividendeEur(b)
+    if (zahlung <= 0) continue
     const key = b.isin.toUpperCase()
-    const zufluss = dividendenZuflussEur(b)
-    if (zufluss <= 0) continue
-    if (!istKlassischeDividende(b) && klassischAmTag.has(`${key}|${b.datum}`)) continue
-    map.set(key, Math.round(((map.get(key) ?? 0) + zufluss) * 100) / 100)
+    map.set(key, Math.round(((map.get(key) ?? 0) + zahlung) * 100) / 100)
   }
   return map
 }

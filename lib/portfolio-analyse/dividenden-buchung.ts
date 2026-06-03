@@ -57,6 +57,21 @@ export function gezahlteDividendeEur(b: PortfolioBuchung): number {
   return round2(b.betragEur)
 }
 
+/** Summe aller gezahlten Bardividenden (optional Zeitraum, ohne Zukunft). */
+export function summeGezahlteDividenden(
+  buchungen: PortfolioBuchung[],
+  vonDatumIso?: string,
+  bisDatumIso?: string,
+): number {
+  let sum = 0
+  for (const b of buchungen) {
+    if (vonDatumIso && b.datum <= vonDatumIso) continue
+    if (bisDatumIso && b.datum > bisDatumIso) continue
+    sum += gezahlteDividendeEur(b)
+  }
+  return round2(sum)
+}
+
 /**
  * Aktien-/Wahldividende: Zufluss über Kauf/TransferIn (Stück + Gegenwert), nicht typ dividende.
  */

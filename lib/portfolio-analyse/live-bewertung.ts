@@ -5,6 +5,7 @@ import {
   positionenFuerBewertung,
 } from '@/lib/portfolio-analyse/bestand'
 import { teileArray } from '@/lib/portfolio-analyse/batch-hilfen'
+import { gezahlteDividendeEur } from '@/lib/portfolio-analyse/dividenden-buchung'
 import { isinKenntnis } from '@/lib/portfolio-analyse/isin-kenntnisse'
 import { anzeigeNameFuerIsin, wknFuerIsin } from '@/lib/portfolio-analyse/isin-metadata-client'
 import type { IsinMetadata } from '@/lib/portfolio-analyse/isin-lookup-server'
@@ -197,7 +198,7 @@ export function berechneLivePortfolio(
   let auszahlungenEur = 0
 
   for (const b of buchungen) {
-    if (b.typ === 'dividende') dividendenEur += b.betragEur
+    dividendenEur += gezahlteDividendeEur(b)
     if (b.typ === 'zins') zinsenEur += b.betragEur
     if (b.typ === 'einzahlung') einzahlungenEur += b.betragEur
     if (b.typ === 'auszahlung') auszahlungenEur += b.betragEur
