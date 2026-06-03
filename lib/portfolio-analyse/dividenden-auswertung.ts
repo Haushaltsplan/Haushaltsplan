@@ -1,4 +1,5 @@
-import { dividendenZuflussEur } from '@/lib/portfolio-analyse/dividenden-buchung'
+import { gezahlteDividendeEur } from '@/lib/portfolio-analyse/dividenden-buchung'
+import { heuteIso } from '@/lib/portfolio-analyse/wertentwicklung-tage'
 import { steuernAufDividendenMonate } from '@/lib/portfolio-analyse/depot-berechnung'
 import { anzeigeNameFuerIsin } from '@/lib/portfolio-analyse/isin-metadata-client'
 import { isinKenntnis } from '@/lib/portfolio-analyse/isin-kenntnisse'
@@ -85,13 +86,15 @@ export function berechneDividendenKpis(
     ttmKeys.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`)
   }
 
+  const heute = heuteIso()
   for (const b of buchungen) {
     if (!minDatum || b.datum < minDatum) minDatum = b.datum
-    if (b.typ === 'dividende' || b.typ === 'zins') {
-      brutto += b.betragEur
-      const k = monatsKey(b.datum)
-      if (k) divMonate.set(k, (divMonate.get(k) ?? 0) + b.betragEur)
-    }
+    if (b.datum > heute) continue
+    const zahlung = gezahlteDividendeEur(b)
+    if (zahlung <= 0) continue
+    brutto += zahlung
+    const k = monatsKey(b.datum)
+    if (k) divMonate.set(k, (divMonate.get(k) ?? 0) + zahlung)
   }
 
   const steuernDiv = steuernAufDividendenMonate(buchungen)
@@ -178,15 +181,20 @@ export function dividendenGestapeltProMonat(
   const byMonat = new Map<string, Map<string, number>>()
   const namen = new Map<string, string>()
 
+  const heute = heuteIso()
   for (const b of buchungen) {
-    const zufluss = dividendenZuflussEur(b)
+    if (b.datum > heute) continue
+    const zufluss = gezahlteDividendeEur(b)
     if (zufluss <= 0) continue
     const k = monatsKey(b.datum)
     if (!k) continue
-    const isin = b.isin?.toUpperCase()
-    if (!isin) continue
+    const isin = b.isin?.toUpperCase() ?? 'SONSTIGE'
 
-    if (!namen.has(isin)) namen.set(isin, dividendenAnzeigeName(isin, buchungen, meta))
+    if (isin === 'SONSTIGE') {
+      if (!namen.has(isin)) namen.set(isin, 'Sonstige')
+    } else if (!namen.has(isin)) {
+      namen.set(isin, dividendenAnzeigeName(isin, buchungen, meta))
+    }
 
     const mon = byMonat.get(k) ?? new Map()
     mon.set(isin, (mon.get(isin) ?? 0) + zufluss)
@@ -243,11 +251,14 @@ function segmentsSumme(segmente: { wert: number }[]): number {
 
 export function berechneDividendenHeatmap(buchungen: PortfolioBuchung[]): DividendenHeatmap {
   const map = new Map<string, number>()
+  const heute = heuteIso()
   for (const b of buchungen) {
-    if (b.typ !== 'dividende' && b.typ !== 'zins') continue
+    if (b.datum > heute) continue
+    const zahlung = gezahlteDividendeEur(b)
+    if (zahlung <= 0) continue
     const k = monatsKey(b.datum)
     if (!k) continue
-    map.set(k, round2((map.get(k) ?? 0) + b.betragEur))
+    map.set(k, round2((map.get(k) ?? 0) + zahlung))
   }
 
   const jahre = [...new Set([...map.keys()].map((k) => Number(k.slice(0, 4))))].sort((a, b) => b - a)
@@ -300,11 +311,14 @@ export function berechneDividendenHeatmap(buchungen: PortfolioBuchung[]): Divide
 
 export function dividendenProJahrMitVergleich(buchungen: PortfolioBuchung[]): DividendenJahrVergleich[] {
   const byYear = new Map<number, number>()
+  const heute = heuteIso()
   for (const b of buchungen) {
-    if (b.typ !== 'dividende' && b.typ !== 'zins') continue
+    if (b.datum > heute) continue
+    const zahlung = gezahlteDividendeEur(b)
+    if (zahlung <= 0) continue
     const y = Number(b.datum.slice(0, 4))
     if (!Number.isFinite(y)) continue
-    byYear.set(y, round2((byYear.get(y) ?? 0) + b.betragEur))
+    byYear.set(y, round2((byYear.get(y) ?? 0) + zahlung))
   }
   const jahre = [...byYear.keys()].sort((a, b) => b - a)
   return jahre.map((jahr, i) => {

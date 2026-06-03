@@ -38,6 +38,26 @@ export function istKlassischeDividende(b: PortfolioBuchung): boolean {
 }
 
 /**
+ * Nur gezahlte Bardividende (Geld auf dem Konto) — für Dividenden-Charts.
+ * Kein Zins, keine Aktiendividende/Wiederanlage als Kauf/Transfer, Betrag > 0.
+ */
+export function istGezahlteBardividende(b: PortfolioBuchung): boolean {
+  if (b.typ === 'zins') return false
+  if (b.betragEur <= 0) return false
+  if (b.typ === 'kauf' || b.typ === 'verkauf') return false
+  if (istAktiendividendeAlsKauf(b)) return false
+  if (b.typ === 'dividende') return true
+  if (istParqetDividendTyp(b)) return true
+  return false
+}
+
+/** EUR-Zufluss nur für gezahlte Bardividende. */
+export function gezahlteDividendeEur(b: PortfolioBuchung): number {
+  if (!istGezahlteBardividende(b)) return 0
+  return round2(b.betragEur)
+}
+
+/**
  * Aktien-/Wahldividende: Zufluss über Kauf/TransferIn (Stück + Gegenwert), nicht typ dividende.
  */
 export function istAktiendividendeAlsKauf(b: PortfolioBuchung): boolean {
