@@ -296,12 +296,15 @@ export function baueWertentwicklungMitKursen(
       if (kursEur != null && kursEur > 0) wert += h.stueck * kursEur
     }
 
+    const portfoliowertEur = round2(wert)
+    const zugefuehrtEur = kapital[i]
     punkte.push({
       monat: datumIso.slice(0, 7),
       datumIso,
       label: labelIdx.has(i) ? tagLabel(datumIso) : '',
-      portfoliowertEur: round2(wert),
-      zugefuehrtEur: kapital[i],
+      portfoliowertEur,
+      zugefuehrtEur,
+      differenzEur: round2(portfoliowertEur - zugefuehrtEur),
     })
   }
 

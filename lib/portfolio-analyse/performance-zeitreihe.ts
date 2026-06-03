@@ -77,7 +77,8 @@ export function berechnePerformanceZeitreihe(
       gain -= ertraegeAmTag(buchungen, cur.datumIso)
     }
 
-    const r = v0 > 0 ? gain / v0 : 0
+    const basis = v0 > 0 ? v0 : prev.zugefuehrtEur > 0 ? prev.zugefuehrtEur : 0
+    const r = basis > 0 ? gain / basis : 0
     twrIndex *= 1 + r
 
     out.push({

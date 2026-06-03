@@ -112,10 +112,7 @@ export function PortfolioDividendenDashboardClient() {
                   </div>
                   <div className="p-4 sm:p-6">
                     {chartTab === 'monatlich' ? (
-                      <PaGestapelteDividendenChart
-                        daten={gestapelt}
-                        ttmLinie={kpis.monatlichDurchschnittTtmEur}
-                      />
+                      <PaGestapelteDividendenChart daten={gestapelt} />
                     ) : (
                       <PaDividendenHeatmapGrid heatmap={heatmap} />
                     )}

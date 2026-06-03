@@ -11,6 +11,7 @@ import {
 import { baueMonatsVerlauf } from '@/lib/portfolio-analyse/depot-berechnung'
 import type { PortfolioBuchung } from '@/lib/portfolio-analyse/types'
 
+/** Datenpunkt Wertentwicklung (Parqet-Dashboard). */
 export type WertentwicklungPunkt = {
   /** YYYY-MM – Gruppierung / Legacy-Charts */
   monat: string
@@ -19,7 +20,10 @@ export type WertentwicklungPunkt = {
   /** ISO YYYY-MM-DD (Stichtag) */
   datumIso: string
   portfoliowertEur: number
+  /** Treppenfunktion: Einstand offener Titel + Cash (springt nur an Buchungstagen). */
   zugefuehrtEur: number
+  /** portfoliowertEur − zugefuehrtEur */
+  differenzEur: number
 }
 
 function round2(n: number): number {
@@ -71,12 +75,15 @@ export function baueWertentwicklung(
 
   return verlauf.map((p) => {
     if (kapitalMap.has(p.monat)) kapitalStand = kapitalMap.get(p.monat)!
+    const portfoliowertEur = p.wert
+    const zugefuehrtEur = kapitalStand
     return {
       monat: p.monat,
       label: p.label,
       datumIso: monatsEndeIso(p.monat),
-      portfoliowertEur: p.wert,
-      zugefuehrtEur: kapitalStand,
+      portfoliowertEur,
+      zugefuehrtEur,
+      differenzEur: round2(portfoliowertEur - zugefuehrtEur),
     }
   })
 }

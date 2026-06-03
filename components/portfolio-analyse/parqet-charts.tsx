@@ -126,8 +126,9 @@ export function PaDrawdownChart({
     const n = punkte.length
     const pts = punkte.map((p, i) => {
       const x = padLinks + (plotW * i) / Math.max(1, n - 1)
-      const y = padOben + ((0 - p.drawdownProzent) / span) * plotH
-      return { x, y, ...p }
+      const dd = Math.min(0, p.drawdownProzent)
+      const y = padOben + ((0 - dd) / span) * plotH
+      return { x, y, ...p, drawdownProzent: dd }
     })
     const linePath = pts.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(' ')
     const topY = padOben

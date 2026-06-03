@@ -60,8 +60,7 @@ function PerformanceChartBody({
   hoehe: number
   gross: boolean
 }) {
-  const clipPosId = useId()
-  const clipNegId = useId()
+  const areaGradId = useId()
   const containerRef = useRef<HTMLDivElement>(null)
   const [hoverIndex, setHoverIndex] = useState<number | null>(null)
   const [schmal, setSchmal] = useState(false)
@@ -82,9 +81,16 @@ function PerformanceChartBody({
   const plotH = hoehe - padOben - padUnten
   const plotW = breite - padLinks - padRechts
 
-  const { plotPts, zeroY, yTicks, areaPath, linePath } = useMemo(() => {
+  const { plotPts, zeroY, yTicks, areaPath, linePath, gradZeroOffset } = useMemo(() => {
     if (punkte.length === 0) {
-      return { plotPts: [] as PlotPt[], zeroY: 0, yTicks: [0], areaPath: '', linePath: '' }
+      return {
+        plotPts: [] as PlotPt[],
+        zeroY: 0,
+        yTicks: [0],
+        areaPath: '',
+        linePath: '',
+        gradZeroOffset: 50,
+      }
     }
 
     const { yMin, yMax } = ySkala(punkte)
@@ -98,6 +104,7 @@ function PerformanceChartBody({
     })
 
     const zeroY = padOben + ((yMax - 0) / span) * plotH
+    const gradZeroOffset = Math.max(0, Math.min(100, ((zeroY - padOben) / plotH) * 100))
 
     const ticks: number[] = []
     const step = span <= 30 ? 10 : span <= 60 ? 10 : 20
@@ -113,6 +120,7 @@ function PerformanceChartBody({
       yTicks: ticks,
       areaPath: areaZuNullLinie(pts, zeroY),
       linePath: line,
+      gradZeroOffset,
     }
   }, [punkte, plotW, plotH, padLinks, padOben])
 
@@ -165,12 +173,19 @@ function PerformanceChartBody({
           className="pointer-events-none block w-full select-none"
         >
           <defs>
-            <clipPath id={clipPosId}>
-              <rect x={padLinks} y={padOben} width={plotW} height={Math.max(0, zeroY - padOben)} />
-            </clipPath>
-            <clipPath id={clipNegId}>
-              <rect x={padLinks} y={zeroY} width={plotW} height={Math.max(0, padOben + plotH - zeroY)} />
-            </clipPath>
+            <linearGradient
+              id={areaGradId}
+              gradientUnits="userSpaceOnUse"
+              x1={padLinks}
+              y1={padOben}
+              x2={padLinks}
+              y2={padOben + plotH}
+            >
+              <stop offset="0%" stopColor="#10b981" stopOpacity={0.2} />
+              <stop offset={`${gradZeroOffset}%`} stopColor="#10b981" stopOpacity={0.15} />
+              <stop offset={`${gradZeroOffset}%`} stopColor="#ef4444" stopOpacity={0.2} />
+              <stop offset="100%" stopColor="#ef4444" stopOpacity={0.45} />
+            </linearGradient>
           </defs>
 
           {yTicks.map((tick) => {
@@ -201,8 +216,7 @@ function PerformanceChartBody({
             )
           })}
 
-          <path d={areaPath} fill="#34d399" fillOpacity={0.45} clipPath={`url(#${clipPosId})`} />
-          <path d={areaPath} fill="#f87171" fillOpacity={0.5} clipPath={`url(#${clipNegId})`} />
+          <path d={areaPath} fill={`url(#${areaGradId})`} />
           <path d={linePath} fill="none" stroke="#a1a1aa" strokeWidth={gross ? 2 : 1.5} strokeLinejoin="round" />
 
           {active ? (

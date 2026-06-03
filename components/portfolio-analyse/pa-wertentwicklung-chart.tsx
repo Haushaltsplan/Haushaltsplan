@@ -156,7 +156,7 @@ function WertentwicklungChartBody({
   )
 
   const active = hoverIndex != null ? plotPts[hoverIndex] : null
-  const differenz = active ? active.p.portfoliowertEur - active.p.zugefuehrtEur : 0
+  const differenz = active ? active.p.differenzEur : 0
 
   return (
     <div className="relative w-full min-w-0">
@@ -290,7 +290,7 @@ function WertentwicklungChartBody({
               <span className="text-zinc-500">Differenz</span>
               <span
                 className={`tabular-nums font-semibold ${
-                  differenz >= 0 ? 'text-emerald-400' : 'text-rose-400'
+                  differenz >= 0 ? 'text-emerald-500' : 'text-red-500'
                 }`}
               >
                 {differenz >= 0 ? '+' : ''}

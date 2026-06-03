@@ -1,3 +1,4 @@
+import { dividendenZuflussEur } from '@/lib/portfolio-analyse/dividenden-buchung'
 import { steuernAufDividendenMonate } from '@/lib/portfolio-analyse/depot-berechnung'
 import type { PortfolioBuchung } from '@/lib/portfolio-analyse/types'
 
@@ -46,6 +47,8 @@ export type GestapelterDivMonat = {
   label: string
   gesamt: number
   segmente: { key: string; label: string; wert: number; farbe: string }[]
+  /** Gleitender Ø der Monatssummen (M−11 … M); null = Linie ausblenden */
+  ttmMonatlichEur: number | null
 }
 
 export type DividendenJahrVergleich = {
@@ -100,28 +103,46 @@ export function berechneDividendenKpis(
   }
 }
 
+/** TTM = Ø der Monatssummen im Fenster (M−11 … M); bei &lt;12 Monaten Ø über vorhandene Monate. */
+export function ttmMonatlichJeIndex(monatsSummen: number[]): (number | null)[] {
+  return monatsSummen.map((_, i) => {
+    const von = Math.max(0, i - 11)
+    const slice = monatsSummen.slice(von, i + 1)
+    if (slice.length === 0) return null
+    const sum = slice.reduce((a, b) => a + b, 0)
+    return round2(sum / slice.length)
+  })
+}
+
 export function dividendenGestapeltProMonat(
   buchungen: PortfolioBuchung[],
   maxIsins = 6,
   monate = 24,
 ): GestapelterDivMonat[] {
-  const divs = buchungen.filter((b) => b.typ === 'dividende' || b.typ === 'zins')
   const byMonat = new Map<string, Map<string, { label: string; wert: number }>>()
 
-  for (const b of divs) {
+  for (const b of buchungen) {
+    const zufluss = dividendenZuflussEur(b)
+    if (zufluss <= 0) continue
     const k = monatsKey(b.datum)
     if (!k) continue
     const isin = b.isin?.toUpperCase() ?? 'sonst'
     const label = b.wertpapierName ?? isin
     const mon = byMonat.get(k) ?? new Map()
     const cur = mon.get(isin) ?? { label, wert: 0 }
-    cur.wert += b.betragEur
+    cur.wert += zufluss
     mon.set(isin, cur)
     byMonat.set(k, mon)
   }
 
   const keys = [...byMonat.keys()].sort().slice(-monate)
-  return keys.map((monat) => {
+  const monatsSummen = keys.map((monat) => {
+    const map = byMonat.get(monat)!
+    return [...map.values()].reduce((s, v) => s + v.wert, 0)
+  })
+  const ttmListe = ttmMonatlichJeIndex(monatsSummen)
+
+  return keys.map((monat, idx) => {
     const map = byMonat.get(monat)!
     const sorted = [...map.entries()].sort((a, b) => b[1].wert - a[1].wert)
     const top = sorted.slice(0, maxIsins)
@@ -135,16 +156,22 @@ export function dividendenGestapeltProMonat(
     if (rest > 0.01) {
       segmente.push({ key: 'rest', label: 'Weitere', wert: round2(rest), farbe: '#64748b' })
     }
-    const gesamt = segmente.reduce((s, x) => s + x.wert, 0)
+    const gesamt = round2(segmentsSumme(segmente))
     const [y, mo] = monat.split('-')
     const d = new Date(Number(y), Number(mo) - 1, 1)
+    const ttm = ttmListe[idx]
     return {
       monat,
       label: d.toLocaleDateString('de-DE', { month: 'short', year: '2-digit' }),
-      gesamt: round2(gesamt),
+      gesamt,
       segmente,
+      ttmMonatlichEur: ttm != null && ttm > 0 ? ttm : null,
     }
   })
+}
+
+function segmentsSumme(segmente: { wert: number }[]): number {
+  return segmente.reduce((s, x) => s + x.wert, 0)
 }
 
 export function berechneDividendenHeatmap(buchungen: PortfolioBuchung[]): DividendenHeatmap {

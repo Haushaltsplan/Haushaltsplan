@@ -2,7 +2,8 @@
 
 import Link from 'next/link'
 import { useMemo, useState } from 'react'
-import { PaDrawdownChart, PaDividendBarChart } from '@/components/portfolio-analyse/parqet-charts'
+import { PaDrawdownChart } from '@/components/portfolio-analyse/parqet-charts'
+import { PaGestapelteDividendenChart } from '@/components/portfolio-analyse/pa-dividenden-chart'
 import { PaPerformanceChart } from '@/components/portfolio-analyse/pa-performance-chart'
 import { PaWertentwicklungChart } from '@/components/portfolio-analyse/pa-wertentwicklung-chart'
 import { PortfolioIsinLogo } from '@/components/portfolio-analyse/isin-logo'
@@ -10,7 +11,7 @@ import { usePortfolioAnalyse } from '@/components/portfolio-analyse/pa-data-prov
 import { PaPortfolioHero } from '@/components/portfolio-analyse/pa-portfolio-hero'
 import { PaWertpapiereListe } from '@/components/portfolio-analyse/pa-wertpapiere-liste'
 import { PaBadge, PaCard, PaIconTabs, PaStatRow } from '@/components/portfolio-analyse/pa-ui'
-import { dividendenProMonat } from '@/lib/portfolio-analyse/auswertungen'
+import { dividendenGestapeltProMonat } from '@/lib/portfolio-analyse/dividenden-auswertung'
 import {
   formatDatumDe,
   formatEur,
@@ -63,7 +64,12 @@ export function PortfolioDashboardClient() {
   const verlaufBasis = live?.verlauf ?? []
   const verlauf =
     wertentwicklung.length > 0
-      ? wertentwicklung.map((p) => ({ label: p.label, wert: p.portfoliowertEur, monat: p.monat }))
+      ? wertentwicklung.map((p) => ({
+          label: p.label,
+          wert: p.portfoliowertEur,
+          monat: p.monat,
+          datumIso: p.datumIso,
+        }))
       : verlaufBasis
   const positionen = live?.positionen ?? []
 
@@ -77,7 +83,7 @@ export function PortfolioDashboardClient() {
     if (klassen.size === 1 && klassen.has('aktie')) return 'Aktien Portfolio'
     return 'Portfolio'
   }, [positionen])
-  const divMonat = useMemo(() => dividendenProMonat(buchungen, 24), [buchungen])
+  const divGestapelt = useMemo(() => dividendenGestapeltProMonat(buchungen, 8, 24), [buchungen])
 
   const letzteAktivitaeten = useMemo(
     () => sortiereBuchungenNeuesteZuerst(buchungen).slice(0, 8),
@@ -208,7 +214,7 @@ export function PortfolioDashboardClient() {
           {chartTab === 'drawdown' && <PaDrawdownChart punkte={drawdown.serie} />}
           {chartTab === 'dividenden' && (
             <>
-              <PaDividendBarChart punkte={divMonat.map((d) => ({ label: d.label, wert: d.wert }))} />
+              <PaGestapelteDividendenChart daten={divGestapelt} hoehe={220} />
               <p className="mt-3 text-right text-xs text-zinc-500">
                 Umfassendere Auswertungen auf dem{' '}
                 <Link href="/portfolioanalyse/dividenden" className="text-teal-400 hover:underline">
