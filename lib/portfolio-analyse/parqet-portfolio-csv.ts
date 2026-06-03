@@ -126,9 +126,14 @@ function geldbetragNetto(
   return { eingang: '', ausgang: '' }
 }
 
+function istStockSplitTyp(typRaw: string): boolean {
+  return /stocksplit|stock[\s_-]?split|^split$/i.test(typRaw.trim())
+}
+
 function zeileUeberspringen(typRaw: string, assettype: string): boolean {
   const t = typRaw.toLowerCase()
   if (!t) return true
+  if (istStockSplitTyp(typRaw)) return true
   const at = assettype.toLowerCase()
   if (at === 'cash') {
     return !/deposit|withdrawal|interest|transfer/i.test(t)
@@ -292,6 +297,12 @@ export function parseParqetPortfolioCsvText(text: string): TrPdfParseErgebnis & 
       uebersprungen++
       if (typRaw) typUebersprungen.set(typRaw, (typUebersprungen.get(typRaw) ?? 0) + 1)
     }
+  }
+
+  if ([...typUebersprungen.keys()].some((k) => istStockSplitTyp(k))) {
+    hinweise.push(
+      'StockSplit-Zeilen in der CSV werden nicht als Buchung importiert — Splits werden wie bei Parqet beim Bestand angewendet (siehe aktien-splits.ts).',
+    )
   }
 
   let summeEin = 0

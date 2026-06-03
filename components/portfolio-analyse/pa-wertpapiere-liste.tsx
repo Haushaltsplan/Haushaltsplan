@@ -187,16 +187,19 @@ export function PaWertpapiereListe({
 
   const divMap = useMemo(() => dividendenJeIsin(buchungen), [buchungen])
 
+  /** Seit Kauf: Kursgewinn + erhaltene Dividenden (wie Parqet „im Plus/Minus“). */
   const { gewinner, verlierer } = useMemo(() => {
     let g = 0
     let v = 0
     for (const p of positionen) {
-      if (p.gewinnVerlustProzent == null) continue
-      if (p.gewinnVerlustProzent >= 0) g++
+      if (p.stueck <= 0) continue
+      const div = p.isin ? (divMap.get(p.isin.toUpperCase()) ?? 0) : 0
+      const gesamt = p.gewinnVerlustEur + div
+      if (gesamt >= 0) g++
       else v++
     }
     return { gewinner: g, verlierer: v }
-  }, [positionen])
+  }, [positionen, divMap])
 
   if (positionen.length === 0) {
     return (

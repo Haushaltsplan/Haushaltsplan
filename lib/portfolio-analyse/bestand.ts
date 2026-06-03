@@ -1,59 +1,34 @@
+import { wendeAktienSplitsAufMap } from '@/lib/portfolio-analyse/aktien-splits'
+import { alleKalendertage } from '@/lib/portfolio-analyse/wertentwicklung-tage'
 import type { PortfolioBuchung, PortfolioDbSnapshot, PortfolioPositionSnapshot } from '@/lib/portfolio-analyse/types'
 
-/** Offene Stücke + Einstand je ISIN aus Buchungshistorie. */
-export function bestandAusBuchungen(buchungen: PortfolioBuchung[]): PortfolioPositionSnapshot[] {
-  const sortiert = [...buchungen].sort((a, b) => a.datum.localeCompare(b.datum))
-  const map = new Map<
-    string,
-    { stueck: number; kosten: number; name: string; assetKlasse: PortfolioPositionSnapshot['assetKlasse'] }
-  >()
-
-  for (const b of sortiert) {
-    if (!b.isin) continue
-    const isin = b.isin.toUpperCase()
-    const cur = map.get(isin) ?? {
-      stueck: 0,
-      kosten: 0,
-      name: b.wertpapierName?.trim() ?? isin,
-      assetKlasse: b.assetKlasse,
-    }
-
-    if (b.typ === 'kauf') {
-      let stk = b.stueck != null ? Math.abs(b.stueck) : 0
-      if (stk <= 0 && b.kursEur != null && b.kursEur > 0) stk = b.betragEur / b.kursEur
-      if (stk <= 0) continue
-      cur.stueck += stk
-      cur.kosten += b.betragEur
-    } else if (b.typ === 'verkauf') {
-      let stk = b.stueck != null ? Math.abs(b.stueck) : 0
-      if (stk <= 0 && b.kursEur != null && b.kursEur > 0) stk = b.betragEur / b.kursEur
-      if (cur.stueck > 0 && stk > 0) {
-        const anteil = Math.min(1, stk / cur.stueck)
-        cur.kosten = Math.round(cur.kosten * (1 - anteil) * 100) / 100
-        cur.stueck = Math.max(0, cur.stueck - stk)
-      } else {
-        cur.kosten = Math.max(0, cur.kosten - b.betragEur)
-      }
-    }
-
-    if (b.wertpapierName?.trim()) cur.name = b.wertpapierName.trim()
-    map.set(isin, cur)
-  }
-
+function standZuPositionen(stand: DepotStand): PortfolioPositionSnapshot[] {
   const out: PortfolioPositionSnapshot[] = []
-  for (const [isin, cur] of map) {
-    if (cur.stueck < 1e-8) continue
-    const einstandKurs = cur.kosten / cur.stueck
+  for (const [isin, h] of stand.byIsin) {
+    if (h.stueck < 1e-8) continue
+    const wertEur = Math.round(h.stueck * h.einstandKurs * 100) / 100
     out.push({
       isin,
-      name: cur.name,
-      stueck: Math.round(cur.stueck * 1e6) / 1e6,
-      kursEur: Math.round(einstandKurs * 10000) / 10000,
-      wertEur: Math.round(cur.kosten * 100) / 100,
-      assetKlasse: cur.assetKlasse,
+      name: h.name,
+      stueck: Math.round(h.stueck * 1e6) / 1e6,
+      kursEur: Math.round(h.einstandKurs * 10000) / 10000,
+      wertEur,
+      assetKlasse: h.assetKlasse,
     })
   }
   return out.sort((a, b) => b.wertEur - a.wertEur)
+}
+
+/** Offene Stücke + Einstand je ISIN (inkl. Aktiensplits). */
+export function bestandAusBuchungen(buchungen: PortfolioBuchung[]): PortfolioPositionSnapshot[] {
+  if (buchungen.length === 0) return []
+  const sortiert = [...buchungen].sort((a, b) => a.datum.localeCompare(b.datum))
+  const von = sortiert[0].datum
+  const bis = sortiert[sortiert.length - 1].datum
+  const tage = alleKalendertage(von, bis)
+  const stand = depotStandProTag(buchungen, tage).get(bis)
+  if (!stand) return []
+  return standZuPositionen(stand)
 }
 
 /** Snapshot-Stückzahlen mit Buchungs-Einstand kombinieren. */
@@ -105,91 +80,14 @@ export type DepotStand = {
   cash: number
 }
 
-/** Bestand + Cash zum Stichtag (inkl. Datum). */
+/** Bestand + Cash zum Stichtag (inkl. Datum, inkl. Aktiensplits). */
 export function depotStandBisDatum(buchungen: PortfolioBuchung[], bisDatum: string): DepotStand {
-  const sortiert = [...buchungen]
-    .filter((b) => b.datum <= bisDatum)
-    .sort((a, b) => a.datum.localeCompare(b.datum))
-
-  const map = new Map<
-    string,
-    { stueck: number; kosten: number; name: string; assetKlasse: PortfolioPositionSnapshot['assetKlasse'] }
-  >()
-
-  for (const b of sortiert) {
-    if (!b.isin) continue
-    const isin = b.isin.toUpperCase()
-    const cur = map.get(isin) ?? {
-      stueck: 0,
-      kosten: 0,
-      name: b.wertpapierName?.trim() ?? isin,
-      assetKlasse: b.assetKlasse,
-    }
-
-    if (b.typ === 'kauf') {
-      let stk = b.stueck != null ? Math.abs(b.stueck) : 0
-      if (stk <= 0 && b.kursEur != null && b.kursEur > 0) stk = b.betragEur / b.kursEur
-      if (stk <= 0) continue
-      cur.stueck += stk
-      cur.kosten += b.betragEur
-    } else if (b.typ === 'verkauf') {
-      let stk = b.stueck != null ? Math.abs(b.stueck) : 0
-      if (stk <= 0 && b.kursEur != null && b.kursEur > 0) stk = b.betragEur / b.kursEur
-      if (cur.stueck > 0 && stk > 0) {
-        const anteil = Math.min(1, stk / cur.stueck)
-        cur.kosten = Math.round(cur.kosten * (1 - anteil) * 100) / 100
-        cur.stueck = Math.max(0, cur.stueck - stk)
-      } else {
-        cur.kosten = Math.max(0, cur.kosten - b.betragEur)
-      }
-    }
-    if (b.wertpapierName?.trim()) cur.name = b.wertpapierName.trim()
-    map.set(isin, cur)
-  }
-
-  let cash = 0
-  for (const b of sortiert) {
-    switch (b.typ) {
-      case 'einzahlung':
-        cash += b.betragEur
-        break
-      case 'auszahlung':
-        cash -= b.betragEur
-        break
-      case 'kauf':
-        cash -= b.betragEur
-        break
-      case 'verkauf':
-        cash += b.betragEur
-        break
-      case 'dividende':
-      case 'zins':
-        cash += b.betragEur
-        break
-      case 'steuer':
-      case 'gebuehr':
-        cash -= b.betragEur
-        break
-      default:
-        break
-    }
-  }
-
-  const byIsin = new Map<
-    string,
-    { stueck: number; name: string; assetKlasse: PortfolioPositionSnapshot['assetKlasse']; einstandKurs: number }
-  >()
-  for (const [isin, cur] of map) {
-    if (cur.stueck < 1e-8) continue
-    byIsin.set(isin, {
-      stueck: cur.stueck,
-      name: cur.name,
-      assetKlasse: cur.assetKlasse,
-      einstandKurs: cur.stueck > 0 ? cur.kosten / cur.stueck : 0,
-    })
-  }
-
-  return { byIsin, cash: Math.round(cash * 100) / 100 }
+  const relevant = buchungen.filter((b) => b.datum <= bisDatum)
+  if (relevant.length === 0) return { byIsin: new Map(), cash: 0 }
+  const sortiert = [...relevant].sort((a, b) => a.datum.localeCompare(b.datum))
+  const von = sortiert[0].datum
+  const tage = alleKalendertage(von, bisDatum)
+  return depotStandProTag(relevant, tage).get(bisDatum) ?? { byIsin: new Map(), cash: 0 }
 }
 
 function wendeBuchungAufStand(
@@ -306,6 +204,7 @@ export function depotStandProTag(
       wendeBuchungAufStand(map, b)
       cash += cashDelta(b)
     }
+    wendeAktienSplitsAufMap(map, tag)
     out.set(tag, standAusMap(map, cash))
   }
   return out
