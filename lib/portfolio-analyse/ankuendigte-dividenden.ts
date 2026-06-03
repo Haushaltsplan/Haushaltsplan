@@ -5,7 +5,11 @@ import {
   finnhubDividendenVerfuegbar,
   ladeFinnhubAnkuendigteDividende,
 } from '@/lib/portfolio-analyse/finnhub-ankuendigte-dividenden-server'
-import { ladeDivvydiaryAnkuendigteDividende } from '@/lib/portfolio-analyse/divvydiary-ankuendigte-dividenden-server'
+import { istEuEwrIsin } from '@/lib/portfolio-analyse/dividend-isin-region'
+import {
+  ladeDivvydiaryAnkuendigteDividende,
+  vorladeDivvydiaryEu,
+} from '@/lib/portfolio-analyse/divvydiary-ankuendigte-dividenden-server'
 import { ladeYahooAnkuendigteDividende } from '@/lib/portfolio-analyse/yahoo-ankuendigte-dividenden-server'
 
 export type DepotPositionAnfrage = {
@@ -128,6 +132,10 @@ async function ladeFuerPosition(pos: DepotPositionAnfrage): Promise<RohTreffer |
     }
   }
 
+  if (isin && istEuEwrIsin(isin)) {
+    return null
+  }
+
   return ladeFuerSymbole(symbole, symbolAnzeige)
 }
 
@@ -151,7 +159,7 @@ async function ladeFuerSymbole(symbole: string[], symbolAnzeige: string): Promis
   }
 
   for (const sym of uniq) {
-    const y = await ladeYahooAnkuendigteDividende(sym)
+    const y = await ladeYahooAnkuendigteDividende(sym, { erlaubeExSchaetzung: true })
     if (y) {
       return {
         zahlungsdatumIso: y.zahlungsdatumIso,
@@ -217,7 +225,14 @@ export async function berechneAnkuendigteDividendenDepot(
   const symboleGesamt = aktiv.reduce((s, p) => s + symboleFuerPosition(p).length, 0)
   const stat = { divvydiary: 0, finnhub: 0, yahoo: 0, ohneTreffer: 0 }
 
-  const roh = await mapPool(aktiv, 3, async (pos) => {
+  await vorladeDivvydiaryEu(
+    aktiv.map((p) => ({
+      isin: isinFuerPosition(p),
+      name: isinKenntnis(isinFuerPosition(p))?.name ?? p.name,
+    })),
+  )
+
+  const roh = await mapPool(aktiv, 2, async (pos) => {
     const hit = await ladeFuerPosition(pos)
     if (!hit) {
       stat.ohneTreffer++
@@ -264,7 +279,7 @@ export async function berechneAnkuendigteDividendenDepot(
   }
 
   hinweise.push(
-    'Zahltage: DivvyDiary (ISIN), sonst Finnhub/Yahoo. Nur voraus, max. 1 Jahr.',
+    'EU-Zahltage nur DivvyDiary (exakte Termine). US: DivvyDiary oder Yahoo. Max. 1 Jahr voraus.',
   )
   if (finnhubDividendKalenderGesperrt()) {
     hinweise.push('Finnhub-Kalender im Free-Tier nicht verfügbar (403).')

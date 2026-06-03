@@ -97,6 +97,7 @@ async function ladeQuoteSummaryKalender(
   symbol: string,
   heute: string,
   bis: string,
+  erlaubeExSchaetzung: boolean,
 ): Promise<{
   exDatumIso: string | null
   zahlungsdatumIso: string | null
@@ -151,7 +152,13 @@ async function ladeQuoteSummaryKalender(
     if (payRoh && payRoh >= heute && payRoh <= bis) zahlungsdatumIso = payRoh
     if (exRoh && exRoh >= heute && exRoh <= bis) exDatumIso = exRoh
 
-    if (!zahlungsdatumIso && exRoh && exRoh >= exLookbackAb && exRoh < heute) {
+    if (
+      erlaubeExSchaetzung &&
+      !zahlungsdatumIso &&
+      exRoh &&
+      exRoh >= exLookbackAb &&
+      exRoh < heute
+    ) {
       const schaetz = schaetzeZahlungsdatumNachEx(exRoh, sym)
       if (schaetz >= heute && schaetz <= bis) {
         zahlungsdatumIso = schaetz
@@ -168,15 +175,20 @@ async function ladeQuoteSummaryKalender(
 }
 
 /** Nächste angekündigte Dividende — nur Termine ab heute, max. +1 Jahr. */
-export async function ladeYahooAnkuendigteDividende(symbol: string): Promise<YahooAnkuendigteDividende | null> {
+export async function ladeYahooAnkuendigteDividende(
+  symbol: string,
+  opts?: { erlaubeExSchaetzung?: boolean },
+): Promise<YahooAnkuendigteDividende | null> {
   const sym = symbol.trim().toUpperCase()
   if (!sym) return null
 
   const heute = heuteIsoUtc()
   const bis = isoInJahren(HORIZONT_JAHRE)
 
+  const erlaubeExSchaetzung = opts?.erlaubeExSchaetzung !== false
+
   const [kalender, events] = await Promise.all([
-    ladeQuoteSummaryKalender(sym, heute, bis),
+    ladeQuoteSummaryKalender(sym, heute, bis, erlaubeExSchaetzung),
     ladeChartDividendenZukunft(sym, heute, bis),
   ])
 
