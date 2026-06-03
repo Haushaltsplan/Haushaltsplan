@@ -1,4 +1,12 @@
+import {
+  addDaysIso,
+  brokerSymbolKandidaten,
+  heuteIsoUtc,
+  isoInJahren,
+} from '@/lib/portfolio-analyse/dividenden-datum-hilfen'
+
 const CACHE_REVALIDATE = 86400
+const HORIZONT_JAHRE = 1
 
 export type FinnhubAnkuendigteDividende = {
   symbol: string
@@ -12,72 +20,97 @@ function finnhubKey(): string | null {
   return k.length > 0 ? k : null
 }
 
-function heuteIso(): string {
-  const d = new Date()
-  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`
+type DividendRow = {
+  date?: string
+  amount?: number
+  payDate?: string
+  adjustedAmount?: number
 }
 
-function inEinJahrIso(): string {
-  const d = new Date()
-  d.setUTCFullYear(d.getUTCFullYear() + 1)
-  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`
+function parseRow(
+  r: DividendRow,
+  heute: string,
+  bis: string,
+): {
+  zahlungsdatumIso: string
+  exDatumIso: string | null
+  dividendeProStueckEur: number
+} | null {
+  const ex = (r.date ?? '').slice(0, 10)
+  const pay = (r.payDate ?? '').slice(0, 10)
+  const amount = r.adjustedAmount ?? r.amount
+  if (amount == null || !Number.isFinite(amount) || amount <= 0) return null
+
+  if (pay && pay >= heute && pay <= bis) {
+    return {
+      zahlungsdatumIso: pay,
+      exDatumIso: ex && ex.length === 10 && ex <= bis ? ex : null,
+      dividendeProStueckEur: amount,
+    }
+  }
+  if (ex && ex >= heute && ex <= bis) {
+    const zahlung = pay && pay.length === 10 && pay >= heute && pay <= bis ? pay : addDaysIso(ex, 14)
+    if (zahlung > bis) return null
+    return {
+      zahlungsdatumIso: zahlung,
+      exDatumIso: ex,
+      dividendeProStueckEur: amount,
+    }
+  }
+  return null
 }
 
-/** Fallback: nur wenn FINNHUB_API_KEY gesetzt — ein Symbol, kein Markt-Kalender. */
-export async function ladeFinnhubAnkuendigteDividende(
-  symbol: string,
-): Promise<FinnhubAnkuendigteDividende | null> {
+async function ladeDividendenZeitraum(symbol: string, von: string, bis: string): Promise<DividendRow[]> {
   const key = finnhubKey()
-  const sym = symbol.trim().toUpperCase()
-  if (!key || !sym) return null
+  if (!key) return []
 
-  const von = heuteIso()
-  const bis = inEinJahrIso()
   const u = new URL('https://finnhub.io/api/v1/stock/dividend')
-  u.searchParams.set('symbol', sym)
+  u.searchParams.set('symbol', symbol)
   u.searchParams.set('from', von)
   u.searchParams.set('to', bis)
   u.searchParams.set('token', key)
 
-  try {
-    const res = await fetch(u.toString(), { next: { revalidate: CACHE_REVALIDATE } })
-    if (!res.ok) return null
-    const rows = (await res.json()) as Array<{
-      date?: string
-      amount?: number
-      payDate?: string
-      adjustedAmount?: number
-    }>
-    if (!Array.isArray(rows) || rows.length === 0) return null
+  const res = await fetch(u.toString(), { next: { revalidate: CACHE_REVALIDATE } })
+  if (!res.ok) return []
+  const rows = await res.json()
+  if (!Array.isArray(rows)) return []
+  return rows as DividendRow[]
+}
 
-    const heute = von
-    const zukunft = rows
-      .map((r) => {
-        const pay = (r.payDate ?? r.date ?? '').slice(0, 10)
-        const ex = (r.date ?? '').slice(0, 10)
-        const amount = r.adjustedAmount ?? r.amount
-        if (!pay || pay < heute || amount == null || !Number.isFinite(amount) || amount <= 0) return null
-        return {
-          zahlungsdatumIso: pay,
-          exDatumIso: ex && ex >= heute ? ex : null,
-          dividendeProStueckEur: amount,
-        }
-      })
-      .filter((x): x is NonNullable<typeof x> => x != null)
-      .sort((a, b) => a.zahlungsdatumIso.localeCompare(b.zahlungsdatumIso))
+/** Ein Symbol — nur Dividenden von heute bis +1 Jahr. */
+export async function ladeFinnhubAnkuendigteDividende(
+  symbol: string,
+): Promise<FinnhubAnkuendigteDividende | null> {
+  const key = finnhubKey()
+  if (!key) return null
 
-    const hit = zukunft[0]
-    if (!hit) return null
+  const heute = heuteIsoUtc()
+  const bis = isoInJahren(HORIZONT_JAHRE)
 
-    return {
-      symbol: sym,
-      zahlungsdatumIso: hit.zahlungsdatumIso,
-      exDatumIso: hit.exDatumIso,
-      dividendeProStueckEur: Math.round(hit.dividendeProStueckEur * 10000) / 10000,
+  for (const sym of brokerSymbolKandidaten(symbol)) {
+    try {
+      const rows = await ladeDividendenZeitraum(sym, heute, bis)
+      if (rows.length === 0) continue
+
+      const zukunft = rows
+        .map((r) => parseRow(r, heute, bis))
+        .filter((x): x is NonNullable<typeof x> => x != null)
+        .sort((a, b) => a.zahlungsdatumIso.localeCompare(b.zahlungsdatumIso))
+
+      const hit = zukunft[0]
+      if (!hit) continue
+
+      return {
+        symbol: sym,
+        zahlungsdatumIso: hit.zahlungsdatumIso,
+        exDatumIso: hit.exDatumIso,
+        dividendeProStueckEur: Math.round(hit.dividendeProStueckEur * 10000) / 10000,
+      }
+    } catch {
+      continue
     }
-  } catch {
-    return null
   }
+  return null
 }
 
 export function finnhubDividendenVerfuegbar(): boolean {

@@ -69,7 +69,10 @@ export function PaAnkuendigteDividenden({
                 <PortfolioIsinLogo isin={e.isin} fallbackName={e.name} meta={meta} groesse="sm" />
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-medium text-zinc-100">{e.name}</p>
-                  <p className="text-[11px] text-zinc-500">{formatDatumDe(e.zahlungsdatumIso)}</p>
+                  <p className="text-[11px] text-zinc-500">
+                    {formatDatumDe(e.zahlungsdatumIso)}
+                    {e.quelle === 'finnhub' ? ' · Finnhub' : ''}
+                  </p>
                 </div>
                 <div className="shrink-0 text-right">
                   <p className="text-sm font-semibold tabular-nums text-zinc-50">{formatEur(e.gesamtEur)}</p>
@@ -88,8 +91,8 @@ export function PaAnkuendigteDividenden({
         </section>
       ))}
       <p className="border-t border-white/[0.04] pt-3 text-[10px] leading-relaxed text-zinc-600">
-        Schätzung aus Marktdaten (Yahoo{daten.hinweise.some((h) => h.includes('Finnhub')) ? ', ggf. Finnhub' : ''}) —
-        keine Zusage der Auszahlung. Nur Symbole aus deinem Depot.
+        Nur angekündigte Termine ab heute (max. 1 Jahr). Finnhub → Yahoo. Keine Zusage der Auszahlung; Beträge
+        können in USD vorliegen.
       </p>
     </div>
   )

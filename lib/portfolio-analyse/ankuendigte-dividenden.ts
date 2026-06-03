@@ -1,4 +1,8 @@
-import { finnhubDividendenVerfuegbar, ladeFinnhubAnkuendigteDividende } from '@/lib/portfolio-analyse/finnhub-ankuendigte-dividenden-server'
+import { brokerSymbolKandidaten } from '@/lib/portfolio-analyse/dividenden-datum-hilfen'
+import {
+  finnhubDividendenVerfuegbar,
+  ladeFinnhubAnkuendigteDividende,
+} from '@/lib/portfolio-analyse/finnhub-ankuendigte-dividenden-server'
 import { ladeYahooAnkuendigteDividende } from '@/lib/portfolio-analyse/yahoo-ankuendigte-dividenden-server'
 
 export type DepotPositionAnfrage = {
@@ -9,6 +13,8 @@ export type DepotPositionAnfrage = {
   symbolCandidates?: string[]
 }
 
+export type AnkuendigteDividendeQuelle = 'yahoo' | 'finnhub'
+
 export type AnkuendigteDividendeEintrag = {
   isin: string | null
   name: string
@@ -18,7 +24,7 @@ export type AnkuendigteDividendeEintrag = {
   dividendeProStueckEur: number
   gesamtEur: number
   symbol: string
-  quelle: 'yahoo' | 'finnhub'
+  quelle: AnkuendigteDividendeQuelle
 }
 
 export type AnkuendigterDivMonat = {
@@ -34,6 +40,11 @@ export type AnkuendigteDividendenErgebnis = {
   hinweise: string[]
   abgefragteSymbole: number
   treffer: number
+  statistik: {
+    finnhub: number
+    yahoo: number
+    ohneTreffer: number
+  }
 }
 
 const MONAT_LABEL = [
@@ -59,22 +70,42 @@ function monatLabel(monatKey: string): string {
 function symboleFuerPosition(pos: DepotPositionAnfrage): string[] {
   const out: string[] = []
   const add = (s: string | null | undefined) => {
-    const t = s?.trim().toUpperCase()
-    if (t && !out.includes(t)) out.push(t)
+    for (const t of brokerSymbolKandidaten(s ?? '')) {
+      if (!out.includes(t)) out.push(t)
+    }
   }
   add(pos.symbolYahoo)
   for (const c of pos.symbolCandidates ?? []) add(c)
   return out
 }
 
-async function ladeFuerSymbole(symbole: string[]): Promise<{
+type RohTreffer = {
   zahlungsdatumIso: string
   exDatumIso: string | null
   dividendeProStueckEur: number
   symbol: string
-  quelle: 'yahoo' | 'finnhub'
-} | null> {
-  for (const sym of symbole) {
+  quelle: AnkuendigteDividendeQuelle
+}
+
+async function ladeFuerSymbole(symbole: string[]): Promise<RohTreffer | null> {
+  const uniq = [...new Set(symbole)]
+
+  if (finnhubDividendenVerfuegbar()) {
+    for (const sym of uniq) {
+      const f = await ladeFinnhubAnkuendigteDividende(sym)
+      if (f) {
+        return {
+          zahlungsdatumIso: f.zahlungsdatumIso,
+          exDatumIso: f.exDatumIso,
+          dividendeProStueckEur: f.dividendeProStueckEur,
+          symbol: f.symbol,
+          quelle: 'finnhub',
+        }
+      }
+    }
+  }
+
+  for (const sym of uniq) {
     const y = await ladeYahooAnkuendigteDividende(sym)
     if (y) {
       return {
@@ -86,19 +117,7 @@ async function ladeFuerSymbole(symbole: string[]): Promise<{
       }
     }
   }
-  if (!finnhubDividendenVerfuegbar()) return null
-  for (const sym of symbole) {
-    const f = await ladeFinnhubAnkuendigteDividende(sym)
-    if (f) {
-      return {
-        zahlungsdatumIso: f.zahlungsdatumIso,
-        exDatumIso: f.exDatumIso,
-        dividendeProStueckEur: f.dividendeProStueckEur,
-        symbol: f.symbol,
-        quelle: 'finnhub',
-      }
-    }
-  }
+
   return null
 }
 
@@ -142,20 +161,29 @@ export function gruppiereAnkuendigteNachMonat(eintraege: AnkuendigteDividendeEin
     })
 }
 
-/** Nur Depot-Positionen — pro Position höchstens ein Symbol-Treffer. */
+/** Nur Depot-Positionen — nur angekündigte Termine heute … +1 Jahr. */
 export async function berechneAnkuendigteDividendenDepot(
   positionen: DepotPositionAnfrage[],
 ): Promise<AnkuendigteDividendenErgebnis> {
   const hinweise: string[] = []
   const aktiv = positionen.filter((p) => p.stueck > 0 && symboleFuerPosition(p).length > 0)
   const symboleGesamt = aktiv.reduce((s, p) => s + symboleFuerPosition(p).length, 0)
+  const stat = { finnhub: 0, yahoo: 0, ohneTreffer: 0 }
 
   const roh = await mapPool(aktiv, 6, async (pos) => {
     const symbole = symboleFuerPosition(pos)
     const hit = await ladeFuerSymbole(symbole)
-    if (!hit) return null
+    if (!hit) {
+      stat.ohneTreffer++
+      return null
+    }
+    stat[hit.quelle]++
     const gesamtEur = Math.round(pos.stueck * hit.dividendeProStueckEur * 100) / 100
-    if (gesamtEur <= 0) return null
+    if (gesamtEur <= 0) {
+      stat.ohneTreffer++
+      stat[hit.quelle]--
+      return null
+    }
     return {
       isin: pos.isin,
       name: pos.name,
@@ -174,18 +202,24 @@ export async function berechneAnkuendigteDividendenDepot(
     .sort((a, b) => a.zahlungsdatumIso.localeCompare(b.zahlungsdatumIso))
 
   if (aktiv.length === 0) {
-    hinweise.push('Keine offenen Positionen mit Yahoo-Symbol — ISIN-Metadaten ggf. noch laden.')
+    hinweise.push('Keine offenen Positionen mit Börsen-Symbol — ISIN-Metadaten ggf. noch laden.')
   } else if (eintraege.length === 0) {
     hinweise.push(
-      'Für keine Depot-Position wurde eine künftige Dividende gefunden (ETFs, thesaurierend oder ohne Termin).',
+      'Keine angekündigten Dividenden im Zeitraum heute bis +1 Jahr (ETFs/thesaurierend oder ohne Termin).',
     )
   } else {
+    const teile: string[] = []
+    if (stat.finnhub > 0) teile.push(`${stat.finnhub} Finnhub`)
+    if (stat.yahoo > 0) teile.push(`${stat.yahoo} Yahoo`)
     hinweise.push(
-      `Daten für ${eintraege.length} von ${aktiv.length} Position(en) — nur Depot-Symbole, Cache 24 h.`,
+      `${eintraege.length} von ${aktiv.length} Position(en): ${teile.join(', ')}. Nur voraus, max. 1 Jahr.`,
     )
   }
+
   if (finnhubDividendenVerfuegbar()) {
-    hinweise.push('Fallback Finnhub aktiv (FINNHUB_API_KEY).')
+    hinweise.push('Finnhub zuerst, dann Yahoo — jeweils nur Depot-Symbole.')
+  } else {
+    hinweise.push('Nur Yahoo — Termine ab heute, höchstens +1 Jahr.')
   }
 
   return {
@@ -194,5 +228,6 @@ export async function berechneAnkuendigteDividendenDepot(
     hinweise,
     abgefragteSymbole: symboleGesamt,
     treffer: eintraege.length,
+    statistik: stat,
   }
 }
