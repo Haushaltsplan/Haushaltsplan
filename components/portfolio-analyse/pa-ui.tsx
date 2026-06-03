@@ -104,6 +104,19 @@ export function PaSubNav() {
   )
 }
 
+/** Geschätzte / prognostizierte Dividende (nicht offiziell angekündigt). */
+export function PaDividendEstimateBadge({ title = 'Geschätzte Dividende' }: { title?: string }) {
+  return (
+    <span
+      title={title}
+      className="inline-flex h-[18px] min-w-[18px] shrink-0 items-center justify-center rounded px-1 text-[10px] font-bold leading-none text-amber-100/95 ring-1 ring-amber-700/50 bg-amber-950/75"
+      aria-label={title}
+    >
+      E
+    </span>
+  )
+}
+
 export function PaBadge({
   children,
   variant = 'neutral',

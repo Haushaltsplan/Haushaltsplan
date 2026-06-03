@@ -8,7 +8,7 @@ import {
 import { istEuEwrIsin } from '@/lib/portfolio-analyse/dividend-isin-region'
 import {
   ladeDivvydiaryAnkuendigteDividende,
-  vorladeDivvydiaryEu,
+  vorladeDivvydiary,
 } from '@/lib/portfolio-analyse/divvydiary-ankuendigte-dividenden-server'
 import { ladeYahooAnkuendigteDividende } from '@/lib/portfolio-analyse/yahoo-ankuendigte-dividenden-server'
 
@@ -20,7 +20,7 @@ export type DepotPositionAnfrage = {
   symbolCandidates?: string[]
 }
 
-export type AnkuendigteDividendeQuelle = 'divvydiary' | 'yahoo' | 'finnhub'
+export type AnkuendigteDividendeQuelle = 'divvydiary' | 'divvydiary-prognose' | 'yahoo' | 'finnhub'
 
 export type AnkuendigteDividendeEintrag = {
   isin: string | null
@@ -32,6 +32,7 @@ export type AnkuendigteDividendeEintrag = {
   gesamtEur: number
   symbol: string
   quelle: AnkuendigteDividendeQuelle
+  bestaetigt: boolean
 }
 
 export type AnkuendigterDivMonat = {
@@ -49,6 +50,7 @@ export type AnkuendigteDividendenErgebnis = {
   treffer: number
   statistik: {
     divvydiary: number
+    prognose: number
     finnhub: number
     yahoo: number
     ohneTreffer: number
@@ -96,6 +98,7 @@ type RohTreffer = {
   dividendeProStueckEur: number
   symbol: string
   quelle: AnkuendigteDividendeQuelle
+  bestaetigt: boolean
 }
 
 function positionHatIsin(pos: DepotPositionAnfrage): boolean {
@@ -127,7 +130,8 @@ async function ladeFuerPosition(pos: DepotPositionAnfrage): Promise<RohTreffer |
         exDatumIso: d.exDatumIso,
         dividendeProStueckEur: d.dividendeProStueckEur,
         symbol: symbolAnzeige,
-        quelle: 'divvydiary',
+        quelle: d.bestaetigt ? 'divvydiary' : 'divvydiary-prognose',
+        bestaetigt: d.bestaetigt,
       }
     }
   }
@@ -153,6 +157,7 @@ async function ladeFuerSymbole(symbole: string[], symbolAnzeige: string): Promis
           dividendeProStueckEur: f.dividendeProStueckEur,
           symbol: f.symbol,
           quelle: 'finnhub',
+          bestaetigt: true,
         }
       }
     }
@@ -167,6 +172,7 @@ async function ladeFuerSymbole(symbole: string[], symbolAnzeige: string): Promis
         dividendeProStueckEur: y.dividendeProStueckEur,
         symbol: y.symbol,
         quelle: 'yahoo',
+        bestaetigt: true,
       }
     }
   }
@@ -223,9 +229,9 @@ export async function berechneAnkuendigteDividendenDepot(
     (p) => p.stueck > 0 && (symboleFuerPosition(p).length > 0 || positionHatIsin(p)),
   )
   const symboleGesamt = aktiv.reduce((s, p) => s + symboleFuerPosition(p).length, 0)
-  const stat = { divvydiary: 0, finnhub: 0, yahoo: 0, ohneTreffer: 0 }
+  const stat = { divvydiary: 0, prognose: 0, finnhub: 0, yahoo: 0, ohneTreffer: 0 }
 
-  await vorladeDivvydiaryEu(
+  await vorladeDivvydiary(
     aktiv.map((p) => ({
       isin: isinFuerPosition(p),
       name: isinKenntnis(isinFuerPosition(p))?.name ?? p.name,
@@ -238,11 +244,14 @@ export async function berechneAnkuendigteDividendenDepot(
       stat.ohneTreffer++
       return null
     }
-    stat[hit.quelle]++
+    if (hit.quelle === 'divvydiary-prognose') stat.prognose++
+    else stat[hit.quelle === 'divvydiary' ? 'divvydiary' : hit.quelle]++
     const gesamtEur = Math.round(pos.stueck * hit.dividendeProStueckEur * 100) / 100
     if (gesamtEur <= 0) {
       stat.ohneTreffer++
-      stat[hit.quelle]--
+      if (hit.quelle === 'divvydiary-prognose') stat.prognose--
+      else if (hit.quelle === 'divvydiary') stat.divvydiary--
+      else stat[hit.quelle]--
       return null
     }
     return {
@@ -255,6 +264,7 @@ export async function berechneAnkuendigteDividendenDepot(
       gesamtEur,
       symbol: hit.symbol,
       quelle: hit.quelle,
+      bestaetigt: hit.bestaetigt,
     } satisfies AnkuendigteDividendeEintrag
   })
 
@@ -270,7 +280,8 @@ export async function berechneAnkuendigteDividendenDepot(
     )
   } else {
     const teile: string[] = []
-    if (stat.divvydiary > 0) teile.push(`${stat.divvydiary} DivvyDiary`)
+    if (stat.divvydiary > 0) teile.push(`${stat.divvydiary} angekündigt`)
+    if (stat.prognose > 0) teile.push(`${stat.prognose} Prognose`)
     if (stat.finnhub > 0) teile.push(`${stat.finnhub} Finnhub`)
     if (stat.yahoo > 0) teile.push(`${stat.yahoo} Yahoo`)
     hinweise.push(
@@ -279,7 +290,7 @@ export async function berechneAnkuendigteDividendenDepot(
   }
 
   hinweise.push(
-    'EU-Zahltage nur DivvyDiary (exakte Termine). US: DivvyDiary oder Yahoo. Max. 1 Jahr voraus.',
+    'Angekündigte Termine von DivvyDiary; ohne Termin Prognose aus Historie + Wachstum (wird ersetzt sobald offiziell).',
   )
   if (finnhubDividendKalenderGesperrt()) {
     hinweise.push('Finnhub-Kalender im Free-Tier nicht verfügbar (403).')

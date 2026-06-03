@@ -41,7 +41,7 @@ export async function ladeAnkuendigteDividendenDepot(
       hinweise: ['Keine offenen Positionen im Depot.'],
       abgefragteSymbole: 0,
       treffer: 0,
-      statistik: { divvydiary: 0, finnhub: 0, yahoo: 0, ohneTreffer: 0 },
+      statistik: { divvydiary: 0, prognose: 0, finnhub: 0, yahoo: 0, ohneTreffer: 0 },
     }
   }
 
@@ -63,6 +63,6 @@ export async function ladeAnkuendigteDividendenDepot(
     hinweise: j.hinweise ?? [],
     abgefragteSymbole: j.abgefragteSymbole ?? 0,
     treffer: j.treffer ?? 0,
-      statistik: j.statistik ?? { divvydiary: 0, finnhub: 0, yahoo: 0, ohneTreffer: 0 },
+      statistik: j.statistik ?? { divvydiary: 0, prognose: 0, finnhub: 0, yahoo: 0, ohneTreffer: 0 },
   }
 }

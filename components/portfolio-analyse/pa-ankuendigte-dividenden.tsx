@@ -1,6 +1,7 @@
 'use client'
 
 import { PortfolioIsinLogo } from '@/components/portfolio-analyse/isin-logo'
+import { PaDividendEstimateBadge } from '@/components/portfolio-analyse/pa-ui'
 import { formatDatumDe, formatEur } from '@/lib/portfolio-analyse/berechnung'
 import type { AnkuendigteDividendenErgebnis } from '@/lib/portfolio-analyse/ankuendigte-dividenden'
 import type { IsinMetadata } from '@/lib/portfolio-analyse/isin-lookup-server'
@@ -65,21 +66,26 @@ export function PaAnkuendigteDividenden({
           </div>
           <ul className="space-y-3">
             {monat.eintraege.map((e) => (
-              <li key={`${e.isin ?? e.symbol}-${e.zahlungsdatumIso}`} className="flex items-start gap-3">
+              <li key={`${e.isin ?? e.symbol}-${e.zahlungsdatumIso}`} className="flex items-center gap-3">
                 <PortfolioIsinLogo isin={e.isin} fallbackName={e.name} meta={meta} groesse="sm" />
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-medium text-zinc-100">{e.name}</p>
                   <p className="text-[11px] text-zinc-500">
                     {formatDatumDe(e.zahlungsdatumIso)}
-                    {e.quelle === 'divvydiary'
-                      ? ' · DivvyDiary'
+                    {e.bestaetigt
+                      ? ' · angekündigt'
                       : e.quelle === 'finnhub'
                         ? ' · Finnhub'
-                        : ''}
+                        : e.quelle === 'yahoo'
+                          ? ' · Yahoo'
+                          : null}
                   </p>
                 </div>
                 <div className="shrink-0 text-right">
-                  <p className="text-sm font-semibold tabular-nums text-zinc-50">{formatEur(e.gesamtEur)}</p>
+                  <div className="flex items-center justify-end gap-1.5">
+                    <p className="text-sm font-semibold tabular-nums text-zinc-50">{formatEur(e.gesamtEur)}</p>
+                    {!e.bestaetigt ? <PaDividendEstimateBadge /> : null}
+                  </div>
                   <div className="mt-1 flex flex-wrap items-center justify-end gap-1.5">
                     <span className="rounded-md bg-zinc-800/80 px-1.5 py-0.5 text-[10px] tabular-nums text-zinc-400 ring-1 ring-white/[0.04]">
                       {formatStueckTag(e.stueck)}
@@ -95,8 +101,11 @@ export function PaAnkuendigteDividenden({
         </section>
       ))}
       <p className="border-t border-white/[0.04] pt-3 text-[10px] leading-relaxed text-zinc-600">
-        Angekündigte Termine ab heute (max. 1 Jahr). EU-Zahltage über DivvyDiary (ISIN), US oft Yahoo.
-        Keine Zusage der Auszahlung; Beträge können in USD vorliegen.
+        <span className="inline-flex items-center gap-1">
+          <PaDividendEstimateBadge title="Geschätzt" />
+          <span>= Prognose aus Historie und Wachstum (ersetzt bei offiziellem Termin).</span>
+        </span>{' '}
+        Angekündigte Termine ohne E. Max. 1 Jahr voraus.
       </p>
     </div>
   )
