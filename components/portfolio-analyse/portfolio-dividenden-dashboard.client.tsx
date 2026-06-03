@@ -1,13 +1,14 @@
 'use client'
 
 import Link from 'next/link'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { PaAnkuendigteDividenden } from '@/components/portfolio-analyse/pa-ankuendigte-dividenden'
 import { PaGestapelteDividendenChart } from '@/components/portfolio-analyse/pa-dividenden-chart'
 import { PaDividendenHeatmapGrid } from '@/components/portfolio-analyse/pa-dividenden-heatmap'
 import { PortfolioIsinLogo } from '@/components/portfolio-analyse/isin-logo'
 import { usePortfolioAnalyse } from '@/components/portfolio-analyse/pa-data-provider'
 import { PortfolioAnalyseShell } from '@/components/portfolio-analyse/portfolio-analyse-shell.client'
-import { PaBadge, PaCard, PaIconTabs, PaStatRow } from '@/components/portfolio-analyse/pa-ui'
+import { PaBadge, PaCard, PaStatRow } from '@/components/portfolio-analyse/pa-ui'
 import { dividendenKalender } from '@/lib/portfolio-analyse/auswertungen'
 import { formatDatumDe, formatEur } from '@/lib/portfolio-analyse/berechnung'
 import {
@@ -17,14 +18,57 @@ import {
   dividendenProJahrMitVergleich,
 } from '@/lib/portfolio-analyse/dividenden-auswertung'
 import { anzeigeNameFuerIsin } from '@/lib/portfolio-analyse/isin-metadata-client'
-
-type DivChartTab = 'monatlich' | 'heatmap'
+import { ladeAnkuendigteDividendenDepot } from '@/lib/portfolio-analyse/ankuendigte-dividenden-client'
+import type { AnkuendigteDividendenErgebnis } from '@/lib/portfolio-analyse/ankuendigte-dividenden'
 
 export function PortfolioDividendenDashboardClient() {
   const { buchungen, live, report, meta, hatDaten, laden } = usePortfolioAnalyse()
-  const [chartTab, setChartTab] = useState<DivChartTab>('monatlich')
+  const [ankuendig, setAnkuendig] = useState<AnkuendigteDividendenErgebnis | null>(null)
+  const [ankuendigLaden, setAnkuendigLaden] = useState(false)
+  const [ankuendigFehler, setAnkuendigFehler] = useState<string | null>(null)
 
   const k = live?.kennzahlen
+  const positionen = live?.positionen ?? []
+
+  const depotKey = useMemo(
+    () =>
+      positionen
+        .filter((p) => p.stueck > 0)
+        .map((p) => `${p.isin ?? ''}:${p.symbolYahoo ?? ''}:${p.stueck}`)
+        .join('|'),
+    [positionen],
+  )
+
+  const metaKey = useMemo(() => [...meta.keys()].sort().join('|'), [meta])
+
+  useEffect(() => {
+    const pos = live?.positionen ?? []
+    if (!hatDaten || pos.length === 0) {
+      setAnkuendig(null)
+      setAnkuendigFehler(null)
+      return
+    }
+    let cancelled = false
+    async function run() {
+      setAnkuendigLaden(true)
+      setAnkuendigFehler(null)
+      try {
+        const res = await ladeAnkuendigteDividendenDepot(pos, meta)
+        if (!cancelled) setAnkuendig(res)
+      } catch (e) {
+        if (!cancelled) {
+          setAnkuendig(null)
+          setAnkuendigFehler(e instanceof Error ? e.message : 'Abruf fehlgeschlagen')
+        }
+      } finally {
+        if (!cancelled) setAnkuendigLaden(false)
+      }
+    }
+    void run()
+    return () => {
+      cancelled = true
+    }
+  }, [depotKey, metaKey, hatDaten, live, meta])
   const kpis = useMemo(() => {
     if (!k) return null
     const base = berechneDividendenKpis(buchungen, k.depotwertEur, k.einstandOffenEur)
@@ -99,32 +143,23 @@ export function PortfolioDividendenDashboardClient() {
                   </PaCard>
                 </div>
 
-                <PaCard
-                  variant="elevated"
-                  className={chartTab === 'monatlich' ? 'overflow-visible' : 'overflow-hidden'}
-                >
-                  <div className="border-b border-zinc-800/60 px-4 pt-4">
-                    <PaIconTabs
-                      tabs={[
-                        { id: 'monatlich' as const, label: 'Monatlich' },
-                        { id: 'heatmap' as const, label: 'Heatmap' },
-                      ]}
-                      active={chartTab}
-                      onChange={setChartTab}
+                <PaCard variant="elevated" className="overflow-visible">
+                  <div className="border-b border-zinc-800/60 px-4 py-3 sm:px-6">
+                    <h2 className="text-sm font-semibold text-zinc-100">Monatlich</h2>
+                  </div>
+                  <div className="overflow-visible p-4 sm:p-6">
+                    <PaGestapelteDividendenChart
+                      daten={divSerie.monate}
+                      durchschnittIntervallEur={divSerie.durchschnittIntervallEur}
+                      hoehe={280}
                     />
                   </div>
-                  <div
-                    className={`p-4 sm:p-6 ${chartTab === 'monatlich' ? 'overflow-visible' : ''}`}
-                  >
-                    {chartTab === 'monatlich' ? (
-                      <PaGestapelteDividendenChart
-                        daten={divSerie.monate}
-                        durchschnittIntervallEur={divSerie.durchschnittIntervallEur}
-                        hoehe={280}
-                      />
-                    ) : (
-                      <PaDividendenHeatmapGrid heatmap={heatmap} />
-                    )}
+                  <div className="border-t border-zinc-800/60 px-4 py-3 sm:px-6">
+                    <h2 className="text-sm font-semibold text-zinc-100">Heatmap</h2>
+                    <p className="mt-0.5 text-[11px] text-zinc-500">Dividenden pro Jahr und Monat (EUR)</p>
+                  </div>
+                  <div className="p-4 pt-0 sm:p-6 sm:pt-0">
+                    <PaDividendenHeatmapGrid heatmap={heatmap} />
                   </div>
                 </PaCard>
 
@@ -163,12 +198,16 @@ export function PortfolioDividendenDashboardClient() {
                     </div>
                   </PaCard>
 
-                  <PaCard variant="elevated" className="p-5">
+                  <PaCard variant="elevated" className="flex flex-col p-5">
                     <h2 className="text-sm font-semibold text-zinc-100">Angekündigte Dividenden</h2>
-                    <p className="mt-4 text-sm leading-relaxed text-zinc-500">
-                      Ex-Dates und Prognosen sind ohne externe Dividenden-Daten nicht verfügbar. Nach Import neuer
-                      Buchungen erscheinen gezahlte Beträge unter „Letzte Auszahlungen“.
-                    </p>
+                    <div className="mt-3 min-h-0 flex-1">
+                      <PaAnkuendigteDividenden
+                        daten={ankuendig}
+                        meta={meta}
+                        laden={ankuendigLaden}
+                        fehler={ankuendigFehler}
+                      />
+                    </div>
                   </PaCard>
 
                   <PaCard className="flex flex-col">

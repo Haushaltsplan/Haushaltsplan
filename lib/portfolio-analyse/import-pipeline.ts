@@ -19,6 +19,10 @@ import {
 import type { TrPdfParseErgebnis, TrRawCashZeile, TrRawPosition } from '@/lib/portfolio-analyse/trade-republic-pdf-parser'
 import { parseTradeRepublicPdfBuffer } from '@/lib/portfolio-analyse/trade-republic-pdf-parser'
 import { istParqetPortfolioCsv, parseParqetPortfolioCsvText } from '@/lib/portfolio-analyse/parqet-portfolio-csv'
+import {
+  istTradeRepublicCsv,
+  parseTradeRepublicCsvText,
+} from '@/lib/portfolio-analyse/trade-republic-csv'
 
 async function cashZeileZuBuchung(
   row: TrRawCashZeile,
@@ -176,38 +180,62 @@ export async function importiereTradeRepublicPdfBuffer(
   return rohZuImportErgebnis(roh, 'pdf', blocklist)
 }
 
-/** Parqet-Export „Aktien Portfolio-YYYYMMDD-HHMMSS.csv“ — einziges unterstütztes CSV-Format. */
+/** Parqet-Portfolio-CSV oder Trade-Republic-CSV (Transaktionsexport / Aktivität). */
+export async function importierePortfolioCsvText(
+  text: string,
+  blocklist: string[] = [],
+): Promise<PortfolioImportErgebnis> {
+  if (istParqetPortfolioCsv(text)) {
+    const roh = parseParqetPortfolioCsvText(text)
+    const ergebnis = await rohZuImportErgebnis(roh, 'csv', blocklist)
+    for (const h of roh.meta.hinweise) {
+      if (!ergebnis.hinweise.includes(h)) ergebnis.hinweise.push(h)
+    }
+    if (roh.cash.length === 0) {
+      ergebnis.hinweise.push('Keine Buchungen erkannt — Datei prüfen oder erneut aus Parqet exportieren.')
+    }
+    return ergebnis
+  }
+
+  if (istTradeRepublicCsv(text)) {
+    const roh = parseTradeRepublicCsvText(text)
+    const ergebnis = await rohZuImportErgebnis(roh, 'csv', blocklist)
+    for (const h of roh.meta.hinweise) {
+      if (!ergebnis.hinweise.includes(h)) ergebnis.hinweise.push(h)
+    }
+    if (roh.cash.length === 0 && roh.portfolio.length === 0) {
+      ergebnis.hinweise.push(
+        'Trade-Republic-CSV erkannt, aber keine Buchungen extrahiert — Datumsspalte (Timestamp/datetime) und Beträge prüfen.',
+      )
+    }
+    return ergebnis
+  }
+
+  return {
+    buchungen: [],
+    positionen: [],
+    depotwertEur: null,
+    hinweise: [
+      'Unbekanntes CSV-Format.',
+      'Parqet: Portfolio → Export → „Aktien Portfolio“ (datetime, type, shares, amount, identifier, holdingname).',
+      'Trade Republic: Profil → Dokumente → Transaktionsexport oder Aktivitäts-CSV (Spalten u. a. Timestamp, Type, Debit/Credit oder amount).',
+      'Optional: Kontoauszug als PDF (TR-PDF-Import).',
+    ],
+    statistik: {
+      cashZeilen: 0,
+      positionen: 0,
+      cryptoPositionen: 0,
+      doppelteHashes: 0,
+    },
+  }
+}
+
+/** @deprecated Nutze importierePortfolioCsvText — behält Parqet-only-Fehlertext bei Nicht-Parqet. */
 export async function importiereParqetPortfolioCsvText(
   text: string,
   blocklist: string[] = [],
 ): Promise<PortfolioImportErgebnis> {
-  if (!istParqetPortfolioCsv(text)) {
-    return {
-      buchungen: [],
-      positionen: [],
-      depotwertEur: null,
-      hinweise: [
-        'Diese CSV ist kein Parqet-Portfolio-Export.',
-        'In Parqet: Portfolio → Export → „Aktien Portfolio“ (Spalten: datetime, type, shares, amount, identifier, holdingname).',
-      ],
-      statistik: {
-        cashZeilen: 0,
-        positionen: 0,
-        cryptoPositionen: 0,
-        doppelteHashes: 0,
-      },
-    }
-  }
-
-  const roh = parseParqetPortfolioCsvText(text)
-  const ergebnis = await rohZuImportErgebnis(roh, 'csv', blocklist)
-  for (const h of roh.meta.hinweise) {
-    if (!ergebnis.hinweise.includes(h)) ergebnis.hinweise.push(h)
-  }
-  if (roh.cash.length === 0) {
-    ergebnis.hinweise.push('Keine Buchungen erkannt — Datei prüfen oder erneut aus Parqet exportieren.')
-  }
-  return ergebnis
+  return importierePortfolioCsvText(text, blocklist)
 }
 
 export async function dedupliziereGegenBestehend(

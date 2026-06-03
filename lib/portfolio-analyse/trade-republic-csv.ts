@@ -190,18 +190,31 @@ function istTransaktionenDeLayout(headers: string[], map: SpaltenMap): boolean {
 function erkenneFormat(headers: string[], map: SpaltenMap): CsvErkanntesFormat {
   if (istTransaktionenDeLayout(headers, map)) return 'transaktionen_de'
 
+  const hatParqetPortfolio =
+    headers.includes('identifier') &&
+    headers.includes('holdingname') &&
+    headers.includes('shares')
+
   const hatTrTransaktionsexport =
-    headers.includes('datetime') &&
-    headers.includes('date') &&
+    !hatParqetPortfolio &&
+    (headers.includes('datetime') || headers.includes('timestamp') || headers.includes('date')) &&
     map.typ != null &&
     map.betrag != null &&
-    (headers.includes('category') || headers.includes('transaction_id'))
+    (headers.includes('category') ||
+      headers.includes('transaction_id') ||
+      headers.includes('symbol') ||
+      headers.includes('fee') ||
+      headers.includes('commission'))
 
   const hatTrAktivitaet =
-    headers.includes('timestamp') &&
+    !hatParqetPortfolio &&
+    (headers.includes('timestamp') || headers.includes('datetime')) &&
     map.typ != null &&
     (map.eingang != null || map.ausgang != null) &&
-    (headers.includes('instrument') || headers.includes('id'))
+    (headers.includes('instrument') ||
+      headers.includes('id') ||
+      headers.includes('debit') ||
+      headers.includes('credit'))
 
   const hatWertpapierOrder =
     !headers.includes('isin') &&
@@ -490,6 +503,38 @@ const FORMAT_HINWEISE: Record<CsvErkanntesFormat, string> = {
   kontoauszug_cash: 'Kontoauszug-CSV (Datum, Eingang, Ausgang, Beschreibung).',
   depot_positionen: 'Nur Depotpositionen — keine Kontobewegungen.',
   unbekannt: 'Unbekanntes Layout.',
+}
+
+/** Erkennt TR-CSV (Transaktionsexport, Aktivität, Kontoauszug …), nicht Parqet-Portfolio. */
+export function istTradeRepublicCsv(text: string): boolean {
+  const raw = text.replace(/^\ufeff/, '')
+  const lines = raw.split(/\r?\n/).map((l) => l.trim()).filter(Boolean)
+  if (lines.length < 2) return false
+
+  let headerIndex = 0
+  for (let i = 0; i < Math.min(lines.length, 12); i++) {
+    const probe = splitCsvLine(lines[i], detectDelimiter(lines[i])).map(normalizeHeader)
+    if (
+      probe.some((h) =>
+        ['datum', 'date', 'datetime', 'timestamp', 'type', 'typ', 'debit', 'credit', 'amount'].includes(h),
+      )
+    ) {
+      headerIndex = i
+      break
+    }
+  }
+
+  const delimiter = detectDelimiter(lines[headerIndex])
+  const headers = splitCsvLine(lines[headerIndex], delimiter).map(normalizeHeader)
+  if (
+    headers.includes('identifier') &&
+    headers.includes('holdingname') &&
+    headers.includes('shares')
+  ) {
+    return false
+  }
+  const map = mappeSpalten(headers)
+  return erkenneFormat(headers, map) !== 'unbekannt'
 }
 
 /** CSV — nur Text, kein Server. */

@@ -64,6 +64,22 @@ export function parseDeDatumZuIso(raw: string): string | null {
   const iso = t.match(/^(\d{4})-(\d{2})-(\d{2})/)
   if (iso) return `${iso[1]}-${iso[2]}-${iso[3]}`
 
+  /** Trade-Republic-Export: „30 Nov 23 10:22 +0000“ */
+  const trStamp = t.match(/^(\d{1,2})\s+([A-Za-zäöüÄÖÜß]{3,12})\.?\s+(\d{2,4})\b/i)
+  if (trStamp) {
+    const tag = trStamp[1].padStart(2, '0')
+    const monKey = trStamp[2].toLowerCase().replace(/\./g, '').slice(0, 3)
+    const mm =
+      MONAT[monKey] ??
+      MONAT[trStamp[2].toLowerCase().replace(/\./g, '')] ??
+      Object.entries(MONAT).find(([k]) => k.startsWith(monKey) || monKey.startsWith(k.slice(0, 3)))?.[1]
+    if (mm) {
+      let jahr = Number(trStamp[3])
+      if (jahr < 100) jahr = jahr >= 70 ? 1900 + jahr : 2000 + jahr
+      return `${jahr}-${mm}-${tag}`
+    }
+  }
+
   const dmy = t.match(/^(\d{1,2})[./](\d{1,2})[./](\d{4})$/)
   if (dmy) {
     const tag = dmy[1].padStart(2, '0')

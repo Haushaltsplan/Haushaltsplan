@@ -9,9 +9,11 @@ import { PageSection, PageSectionPanel } from '@/components/page-shell'
 import { ladePiiBlockliste, speicherePiiBlockliste } from '@/lib/portfolio-analyse/anonymisierung'
 import {
   dedupliziereGegenBestehend,
-  importiereParqetPortfolioCsvText,
+  importierePortfolioCsvText,
   importiereTradeRepublicPdfBuffer,
 } from '@/lib/portfolio-analyse/import-pipeline'
+import { istParqetPortfolioCsv } from '@/lib/portfolio-analyse/parqet-portfolio-csv'
+import { istTradeRepublicCsv } from '@/lib/portfolio-analyse/trade-republic-csv'
 import {
   loescheAllePortfolioAnalyseDaten,
   speicherePortfolioImport,
@@ -85,7 +87,10 @@ export function PortfolioImportClient() {
       await importAbschliessen(file, ergebnis)
     } catch (e) {
       console.error(e)
-      toast.error('PDF-Import fehlgeschlagen — Trade-Republic-Kontoauszug?')
+      toast.error(
+        e instanceof Error ? e.message : 'PDF-Import fehlgeschlagen — Trade-Republic-Kontoauszug?',
+        { duration: 8000 },
+      )
     } finally {
       setImportBusy(false)
       if (pdfInputRef.current) pdfInputRef.current.value = ''
@@ -106,11 +111,13 @@ export function PortfolioImportClient() {
         .filter((s) => s.length >= 2)
       speicherePiiBlockliste(blocklist)
       const text = await file.text()
-      const ergebnis = await importiereParqetPortfolioCsvText(text, blocklist)
-      await importAbschliessen(file, ergebnis, { csvVollstaendigAktualisieren: true })
+      const ergebnis = await importierePortfolioCsvText(text, blocklist)
+      const csvVoll =
+        istParqetPortfolioCsv(text) || istTradeRepublicCsv(text)
+      await importAbschliessen(file, ergebnis, { csvVollstaendigAktualisieren: csvVoll })
     } catch (e) {
       console.error(e)
-      toast.error('CSV-Import fehlgeschlagen.')
+      toast.error(e instanceof Error ? e.message : 'CSV-Import fehlgeschlagen.')
     } finally {
       setImportBusy(false)
       if (csvInputRef.current) csvInputRef.current.value = ''
@@ -173,8 +180,8 @@ export function PortfolioImportClient() {
       title="Import"
       description={
         <>
-          Parqet-CSV (<strong className="font-normal text-zinc-300">Aktien Portfolio</strong>) oder optional
-          Trade-Republic-PDF — alles nur im Browser, ohne Rohdatei-Upload.
+          Parqet-CSV, Trade-Republic-CSV (Transaktionsexport) oder optional TR-Kontoauszug-PDF — alles nur im
+          Browser, ohne Rohdatei-Upload.
         </>
       }
     >
@@ -195,13 +202,15 @@ export function PortfolioImportClient() {
 
             <div className="grid gap-6 lg:grid-cols-2">
               <div className="rounded-xl border border-zinc-800/80 bg-zinc-950/40 p-4">
-                <h3 className="text-sm font-medium text-zinc-200">CSV — Parqet Portfolio</h3>
+                <h3 className="text-sm font-medium text-zinc-200">CSV — Parqet oder Trade Republic</h3>
                 <p className="mt-2 text-sm leading-relaxed text-zinc-400">
-                  Export aus Parqet mit Spalten{' '}
+                  Parqet: Export „Aktien Portfolio“ (
                   <code className="text-xs text-teal-400/90">
                     datetime, type, shares, amount, identifier, holdingname
                   </code>
-                  .
+                  ). Trade Republic: Profil → Dokumente → Transaktionsexport oder Aktivitäts-CSV (
+                  <code className="text-xs text-teal-400/90">Timestamp, Type, Debit, Credit</code> bzw.{' '}
+                  <code className="text-xs text-teal-400/90">amount</code>).
                 </p>
                 <input
                   ref={csvInputRef}
@@ -219,7 +228,7 @@ export function PortfolioImportClient() {
                   onClick={() => csvInputRef.current?.click()}
                   className="mt-4 rounded-full border border-teal-500/40 bg-teal-950/30 px-5 py-2.5 text-sm font-medium text-teal-100 transition hover:bg-teal-950/50 disabled:opacity-50"
                 >
-                  {importBusy ? 'Wird gelesen …' : 'Parqet-CSV wählen'}
+                  {importBusy ? 'Wird gelesen …' : 'CSV wählen'}
                 </button>
               </div>
 

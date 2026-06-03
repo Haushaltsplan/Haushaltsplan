@@ -354,11 +354,21 @@ async function parsePdfDocument(pdf: import('pdfjs-dist').PDFDocumentProxy): Pro
 
 export async function parseTradeRepublicPdfBuffer(buffer: ArrayBuffer): Promise<TrPdfParseErgebnis> {
   const pdfjs = await import('pdfjs-dist')
-  if (typeof window !== 'undefined') {
-    pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`
+  if (typeof window !== 'undefined' && !pdfjs.GlobalWorkerOptions.workerSrc) {
+    pdfjs.GlobalWorkerOptions.workerSrc = `https://cdn.jsdelivr.net/npm/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`
   }
-  const loadingTask = pdfjs.getDocument({ data: new Uint8Array(buffer) })
-  const pdf = await loadingTask.promise
+  let pdf: import('pdfjs-dist').PDFDocumentProxy
+  try {
+    const loadingTask = pdfjs.getDocument({ data: new Uint8Array(buffer) })
+    pdf = await loadingTask.promise
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e)
+    throw new Error(
+      msg.includes('worker') || msg.includes('fetch')
+        ? `PDF konnte nicht gelesen werden (${msg}). Netzwerk für pdf.js-Worker prüfen oder erneut versuchen.`
+        : `PDF konnte nicht gelesen werden: ${msg}`,
+    )
+  }
   try {
     return await parsePdfDocument(pdf)
   } finally {
