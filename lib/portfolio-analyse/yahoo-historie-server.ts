@@ -79,19 +79,48 @@ async function ladeYahooChartSerie(
   }
 }
 
-/** Tägliche Schlusskurse (Rohwährung) via Yahoo Chart API. */
+const YAHOO_CHUNK_TAGE = 730
+
+function datumChunks(vonIso: string, bisIso: string, maxTage: number): { von: string; bis: string }[] {
+  const alle: string[] = []
+  const [y0, m0, d0] = vonIso.split('-').map(Number)
+  const [y1, m1, d1] = bisIso.split('-').map(Number)
+  const cur = new Date(y0, m0 - 1, d0)
+  const end = new Date(y1, m1 - 1, d1)
+  while (cur <= end) {
+    const y = cur.getFullYear()
+    const m = String(cur.getMonth() + 1).padStart(2, '0')
+    const d = String(cur.getDate()).padStart(2, '0')
+    alle.push(`${y}-${m}-${d}`)
+    cur.setDate(cur.getDate() + 1)
+  }
+  if (alle.length <= maxTage) return [{ von: vonIso, bis: bisIso }]
+  const chunks: { von: string; bis: string }[] = []
+  for (let i = 0; i < alle.length; i += maxTage) {
+    const slice = alle.slice(i, i + maxTage)
+    chunks.push({ von: slice[0], bis: slice[slice.length - 1] })
+  }
+  return chunks
+}
+
+/** Tägliche Schlusskurse (Rohwährung) via Yahoo Chart API — in Zeitfenstern (Truncation-Schutz). */
 export async function ladeYahooHistorieTaeglich(
   symbol: string,
   vonDatum: string,
   bisDatum: string,
 ): Promise<Map<string, number>> {
-  return ladeYahooChartSerie(
-    symbol,
-    '1d',
-    unixTagStart(vonDatum),
-    unixTagEnde(bisDatum),
-    tagAusUnix,
-  )
+  const merged = new Map<string, number>()
+  for (const chunk of datumChunks(vonDatum, bisDatum, YAHOO_CHUNK_TAGE)) {
+    const part = await ladeYahooChartSerie(
+      symbol,
+      '1d',
+      unixTagStart(chunk.von),
+      unixTagEnde(chunk.bis),
+      tagAusUnix,
+    )
+    for (const [tag, kurs] of part) merged.set(tag, kurs)
+  }
+  return merged
 }
 
 export async function ladeYahooHistorieBatchTaeglich(

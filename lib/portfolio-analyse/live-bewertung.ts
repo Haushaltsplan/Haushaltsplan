@@ -134,20 +134,36 @@ export async function ladeHistorischeKurseClient(
   symbols: string[],
   vonDatum: string,
   bisDatum: string,
+  stooqSymbols: string[] = [],
 ): Promise<Map<string, Map<string, number>>> {
   const uniq = [...new Set(symbols.map((s) => s.trim().toUpperCase()).filter(Boolean))].filter(
     (s) => !s.startsWith('STOOQ:'),
   )
-  if (uniq.length === 0) return new Map()
+  const stooq = [...new Set(stooqSymbols.map((s) => s.trim().toLowerCase()).filter(Boolean))]
+  if (uniq.length === 0 && stooq.length === 0) return new Map()
 
   const out = new Map<string, Map<string, number>>()
   const BATCH = 60
-  for (let i = 0; i < uniq.length; i += BATCH) {
-    const batch = uniq.slice(i, i + BATCH)
+  const STOOQ_BATCH = 40
+  const batches: { yahoo: string[]; stooq: string[] }[] = []
+  const n = Math.max(Math.ceil(uniq.length / BATCH), Math.ceil(stooq.length / STOOQ_BATCH), 1)
+  for (let i = 0; i < n; i++) {
+    batches.push({
+      yahoo: uniq.slice(i * BATCH, (i + 1) * BATCH),
+      stooq: stooq.slice(i * STOOQ_BATCH, (i + 1) * STOOQ_BATCH),
+    })
+  }
+  for (const batch of batches) {
+    if (batch.yahoo.length === 0 && batch.stooq.length === 0) continue
     const res = await fetch('/api/portfolio-analyse/kurse/historie', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ symbols: batch, vonDatum, bisDatum }),
+      body: JSON.stringify({
+        symbols: batch.yahoo,
+        stooqSymbols: batch.stooq,
+        vonDatum,
+        bisDatum,
+      }),
     })
     const j = (await res.json()) as {
       ok?: boolean

@@ -21,6 +21,7 @@ import {
 } from '@/lib/portfolio-analyse/live-bewertung'
 import {
   baueWertentwicklungMitKursen,
+  stooqSymboleFuerHistorie,
   yahooSymboleFuerHistorie,
 } from '@/lib/portfolio-analyse/wertentwicklung-kurse'
 import { heuteIso } from '@/lib/portfolio-analyse/wertentwicklung-tage'
@@ -162,10 +163,8 @@ export function PaDataProvider({ children }: { children: ReactNode }) {
       const vonDatum = sortiert[0].datum
       const bisDatum = heuteIso()
       const sym = yahooSymboleFuerHistorie(buchungen, positionen, meta)
-      const historie =
-        sym.length > 0
-          ? await ladeHistorischeKurseClient(sym, vonDatum, bisDatum)
-          : new Map<string, Map<string, number>>()
+      const stooqSym = stooqSymboleFuerHistorie(buchungen, positionen, meta)
+      const historie = await ladeHistorischeKurseClient(sym, vonDatum, bisDatum, stooqSym)
       if (cancelled) return
       const mitKursen = baueWertentwicklungMitKursen(
         buchungen,
