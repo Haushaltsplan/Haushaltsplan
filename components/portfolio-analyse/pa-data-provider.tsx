@@ -158,15 +158,14 @@ export function PaDataProvider({ children }: { children: ReactNode }) {
     setWertentwicklungLaden(true)
 
     async function run() {
-      const sym = yahooSymboleFuerHistorie(buchungen, positionen, meta)
-      if (sym.length === 0) {
-        if (!cancelled) setWertentwicklungLaden(false)
-        return
-      }
       const sortiert = [...buchungen].sort((a, b) => a.datum.localeCompare(b.datum))
       const vonDatum = sortiert[0].datum
       const bisDatum = heuteIso()
-      const historie = await ladeHistorischeKurseClient(sym, vonDatum, bisDatum)
+      const sym = yahooSymboleFuerHistorie(buchungen, positionen, meta)
+      const historie =
+        sym.length > 0
+          ? await ladeHistorischeKurseClient(sym, vonDatum, bisDatum)
+          : new Map<string, Map<string, number>>()
       if (cancelled) return
       const mitKursen = baueWertentwicklungMitKursen(
         buchungen,

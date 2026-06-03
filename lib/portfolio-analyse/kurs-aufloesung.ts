@@ -54,6 +54,9 @@ export function boersenWaehrung(
     s.endsWith('.F') ||
     s.endsWith('.PA') ||
     s.endsWith('.AS') ||
+    s.endsWith('.BE') ||
+    s.endsWith('.VI') ||
+    s.endsWith('.WA') ||
     s.endsWith('.MI') ||
     s.endsWith('.HE') ||
     s.endsWith('.BR') ||

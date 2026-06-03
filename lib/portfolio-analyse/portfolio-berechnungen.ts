@@ -29,15 +29,16 @@ export type PortfolioDashboardBerechnungen = {
 }
 
 const MIN_KAPITAL_EUR = 0.01
-const MIN_PORTFOLIO_EUR = 1
+const MIN_PORTFOLIO_EUR = 0.01
+/** Ein-Tages-Einbruch > 95 % bei gleichbleibendem Kapital → API-Lücke (LOCF). */
+const CLIFF_RATIO = 0.05
 
 function round2(n: number): number {
   return Math.round(n * 100) / 100
 }
 
 /**
- * Glättet offensichtliche API-Ausreißer (Portfoliowert ≈ 0 bei positivem Kapital).
- * LOCF auf Portfoliowert, wenn zugeführt deutlich höher ist.
+ * LOCF auf Portfoliowert bei 0-/Klippen-Ausreißern (API-Lücken), ohne echte Verluste zu verfälschen.
  */
 export function sanitiereWertentwicklungTimeline(
   punkte: WertentwicklungPunkt[],
@@ -45,21 +46,26 @@ export function sanitiereWertentwicklungTimeline(
   if (punkte.length === 0) return []
 
   const out: WertentwicklungPunkt[] = []
-  let lastPlausible = 0
+  let lastOk = 0
 
   for (const p of punkte) {
     const kapital = p.zugefuehrtEur
     let portfoliowert = Math.max(0, p.portfoliowertEur)
-
     const hatKapital = kapital > MIN_KAPITAL_EUR
-    const plausibel =
-      portfoliowert >= MIN_PORTFOLIO_EUR &&
-      (!hatKapital || portfoliowert >= kapital * 0.02)
 
-    if (plausibel) {
-      lastPlausible = portfoliowert
-    } else if (lastPlausible > 0 && hatKapital) {
-      portfoliowert = lastPlausible
+    if (hatKapital && portfoliowert < MIN_PORTFOLIO_EUR && lastOk > MIN_PORTFOLIO_EUR) {
+      portfoliowert = lastOk
+    } else if (
+      lastOk > MIN_PORTFOLIO_EUR &&
+      portfoliowert > MIN_PORTFOLIO_EUR &&
+      portfoliowert < lastOk * CLIFF_RATIO &&
+      kapital >= lastOk * 0.5
+    ) {
+      portfoliowert = lastOk
+    }
+
+    if (portfoliowert >= MIN_PORTFOLIO_EUR) {
+      lastOk = portfoliowert
     }
 
     out.push({

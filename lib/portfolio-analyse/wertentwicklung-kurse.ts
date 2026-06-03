@@ -3,7 +3,7 @@
  * Chronologisch: Bestand je Tag × LOCF-Kurs — kein Null-Klippen bei Datenlücken.
  */
 
-import { depotStandProTag, type DepotStand } from '@/lib/portfolio-analyse/bestand'
+import { depotStandProTag, einstandWertpapiereEur, type DepotStand } from '@/lib/portfolio-analyse/bestand'
 import { isinKenntnis } from '@/lib/portfolio-analyse/isin-kenntnisse'
 import type { IsinMetadata } from '@/lib/portfolio-analyse/isin-lookup-server'
 import {
@@ -31,8 +31,9 @@ import {
 } from '@/lib/portfolio-analyse/wertentwicklung'
 import type { PortfolioBuchung } from '@/lib/portfolio-analyse/types'
 
-const PLAUSIBEL_MIN = 0.15
-const PLAUSIBEL_MAX = 5
+const PLAUSIBEL_MIN = 0.08
+const PLAUSIBEL_MAX = 12
+const MIN_KURS_EUR = 1e-8
 
 function round2(n: number): number {
   return Math.round(n * 100) / 100
@@ -217,8 +218,39 @@ function symbolMitBesteAbdeckung(
   return hits[0].sym
 }
 
+function waehleKursEurFuerTag(
+  kandidatenEur: number[],
+  einstand: number,
+): number | null {
+  if (kandidatenEur.length === 0) {
+    return einstand > MIN_KURS_EUR ? einstand : null
+  }
+  if (einstand <= MIN_KURS_EUR) {
+    return kandidatenEur[0]
+  }
+
+  const inBand = kandidatenEur.filter((c) => {
+    const r = c / einstand
+    return r >= PLAUSIBEL_MIN && r <= PLAUSIBEL_MAX
+  })
+  if (inBand.length === 0) {
+    return einstand
+  }
+  const pool = inBand
+  let best = pool[0]
+  let bestDiff = Math.abs(best - einstand)
+  for (let j = 1; j < pool.length; j++) {
+    const d = Math.abs(pool[j] - einstand)
+    if (d < bestDiff) {
+      bestDiff = d
+      best = pool[j]
+    }
+  }
+  return best
+}
+
 /**
- * EUR-Schlusskurs je Tag für eine ISIN: mehrere Symbole, Einstand-Fallback, LOCF.
+ * EUR-Schlusskurs je Tag für eine ISIN: beste Symbolwahl, Einstand-Fallback, LOCF.
  */
 function baueEurKursSerieProIsin(
   isin: string,
@@ -238,25 +270,20 @@ function baueEurKursSerieProIsin(
 
   const roh: number[] = new Array(n)
   for (let i = 0; i < n; i++) {
-    let kursEur: number | null = null
     const fx = fxTage[i]
+    const einstand = einstandJeTag[i]
+    const kandidatenEur: number[] = []
 
     for (const sym of symbole) {
       const fills = nativeJeSym.get(sym)
       const native = fills?.[i]
       if (native == null || !Number.isFinite(native) || native <= 0) continue
       const eur = kursEurAusNative(native, sym, isin, fx)
-      if (eur != null && eur > 0) {
-        kursEur = eur
-        break
-      }
+      if (eur != null && eur > MIN_KURS_EUR) kandidatenEur.push(eur)
     }
 
-    if (kursEur == null && einstandJeTag[i] > 0) {
-      kursEur = einstandJeTag[i]
-    }
-
-    roh[i] = kursEur != null && kursEur > 0 ? kursEur : NaN
+    const kursEur = waehleKursEurFuerTag(kandidatenEur, einstand)
+    roh[i] = kursEur != null && kursEur > MIN_KURS_EUR ? kursEur : NaN
   }
 
   return loecfWerte(roh)
@@ -271,6 +298,13 @@ function einstandSerieProIsin(
     const h = standProTag.get(tag)?.byIsin.get(isin)
     return h && h.einstandKurs > 0 ? h.einstandKurs : 0
   })
+}
+
+function hatOffenePositionen(stand: DepotStand): boolean {
+  for (const h of stand.byIsin.values()) {
+    if (h.stueck > 1e-8) return true
+  }
+  return false
 }
 
 function portfoliowertAmTag(
@@ -291,23 +325,28 @@ function portfoliowertAmTag(
 
     if (datumIso === bis) {
       const live = liveByIsin.get(isin)
-      if (live?.kursLiveEur != null && live.kursLiveEur > 0) {
+      if (live?.kursLiveEur != null && live.kursLiveEur > MIN_KURS_EUR) {
         kursEur = live.kursLiveEur
       }
     }
 
     if (kursEur == null && serie) {
       const k = serie[tagIndex]
-      if (Number.isFinite(k) && k > 0) kursEur = k
+      if (Number.isFinite(k) && k > MIN_KURS_EUR) kursEur = k
     }
 
-    if (kursEur == null && h.einstandKurs > 0) {
+    if (kursEur == null && h.einstandKurs > MIN_KURS_EUR) {
       kursEur = h.einstandKurs
     }
 
-    if (kursEur != null && kursEur > 0) {
+    if (kursEur != null && kursEur > MIN_KURS_EUR) {
       wert += h.stueck * kursEur
     }
+  }
+
+  const einstandBasis = einstandWertpapiereEur(stand) + Math.max(0, stand.cash)
+  if (hatOffenePositionen(stand) && wert < 1 && einstandBasis >= 1) {
+    return einstandBasis
   }
 
   return wert
@@ -336,7 +375,7 @@ export function baueWertentwicklungMitKursen(
   fxHeute: FxKurse,
   meta: Map<string, IsinMetadata> = new Map(),
 ): WertentwicklungPunkt[] {
-  if (buchungen.length === 0 || historie.size === 0) return []
+  if (buchungen.length === 0) return []
 
   const sortiert = [...buchungen].sort((a, b) => a.datum.localeCompare(b.datum))
   const von = sortiert[0].datum
@@ -383,13 +422,21 @@ export function baueWertentwicklungMitKursen(
   const labelIdx = achsenLabelIndizes(tage)
   const punkte: WertentwicklungPunkt[] = []
 
+  let lastPortfoliowert = 0
   for (let i = 0; i < n; i++) {
     const datumIso = tage[i]
     const stand = standProTag.get(datumIso)!
-    const portfoliowertEur = round2(
-      portfoliowertAmTag(stand, datumIso, bis, kursEurJeIsin, i, liveByIsin),
-    )
+    let portfoliowertEur = portfoliowertAmTag(stand, datumIso, bis, kursEurJeIsin, i, liveByIsin)
     const zugefuehrtEur = kapital[i]
+
+    if (zugefuehrtEur > 1 && portfoliowertEur < 1 && lastPortfoliowert > 1) {
+      portfoliowertEur = lastPortfoliowert
+    }
+    if (portfoliowertEur >= 1) {
+      lastPortfoliowert = portfoliowertEur
+    }
+
+    portfoliowertEur = round2(portfoliowertEur)
 
     punkte.push({
       monat: datumIso.slice(0, 7),
@@ -403,8 +450,7 @@ export function baueWertentwicklungMitKursen(
 
   if (n > 0 && depotwertHeute > 0) {
     const last = punkte[n - 1]
-    const diff = Math.abs(last.portfoliowertEur - depotwertHeute) / depotwertHeute
-    if (diff > 0.02) {
+    if (last.portfoliowertEur < depotwertHeute * 0.5) {
       last.portfoliowertEur = round2(depotwertHeute)
       last.differenzEur = round2(last.portfoliowertEur - last.zugefuehrtEur)
     }
