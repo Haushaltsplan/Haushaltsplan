@@ -477,13 +477,18 @@ export function baueWertentwicklungMitKursen(
       (!Number.isFinite(portfoliowertEur) || portfoliowertEur < untergrenze * MIN_PORTFOLIO_ZU_EINSTAND)
 
     if (kollabiert) {
+      /** Einstand wächst mit Käufen — nicht auf altem LOCF-Wert „einfrieren“. */
       portfoliowertEur =
-        lastGoodPortfolio >= untergrenze * MIN_PORTFOLIO_ZU_EINSTAND
-          ? lastGoodPortfolio
+        lastGoodPortfolio > untergrenze * MIN_PORTFOLIO_ZU_EINSTAND
+          ? Math.max(untergrenze, lastGoodPortfolio)
           : untergrenze
     }
 
-    if (offen && portfoliowertEur >= untergrenze * MIN_PORTFOLIO_ZU_EINSTAND) {
+    if (
+      offen &&
+      Number.isFinite(portfoliowertEur) &&
+      portfoliowertEur >= untergrenze * MIN_PORTFOLIO_ZU_EINSTAND
+    ) {
       lastGoodPortfolio = portfoliowertEur
     }
 
@@ -498,10 +503,15 @@ export function baueWertentwicklungMitKursen(
   }
 
   if (n > 0 && depotwertHeute > 0) {
-    const last = punkte[n - 1]
+    const lastIdx = n - 1
+    const last = punkte[lastIdx]
     if (last.portfoliowertEur < depotwertHeute * 0.85) {
-      last.portfoliowertEur = round2(depotwertHeute)
-      last.differenzEur = round2(last.portfoliowertEur - last.zugefuehrtEur)
+      const ab = Math.max(0, lastIdx - 6)
+      for (let i = ab; i <= lastIdx; i++) {
+        if (punkte[i].portfoliowertEur >= depotwertHeute * 0.85) continue
+        punkte[i].portfoliowertEur = round2(depotwertHeute)
+        punkte[i].differenzEur = round2(punkte[i].portfoliowertEur - punkte[i].zugefuehrtEur)
+      }
     }
   }
 
