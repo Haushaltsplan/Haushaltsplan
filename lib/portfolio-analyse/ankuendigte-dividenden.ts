@@ -7,10 +7,10 @@ import {
 } from '@/lib/portfolio-analyse/finnhub-ankuendigte-dividenden-server'
 import { istEuEwrIsin } from '@/lib/portfolio-analyse/dividend-isin-region'
 import {
-  ladeDivvydiaryAnkuendigteDividende,
+  ladeDivvydiaryAnkuendigteDividenden,
   vorladeDivvydiary,
 } from '@/lib/portfolio-analyse/divvydiary-ankuendigte-dividenden-server'
-import { ladeYahooAnkuendigteDividende } from '@/lib/portfolio-analyse/yahoo-ankuendigte-dividenden-server'
+import { ladeYahooAnkuendigteDividenden } from '@/lib/portfolio-analyse/yahoo-ankuendigte-dividenden-server'
 
 export type DepotPositionAnfrage = {
   isin: string | null
@@ -115,7 +115,21 @@ function isinFuerPosition(pos: DepotPositionAnfrage): string {
   return ''
 }
 
-async function ladeFuerPosition(pos: DepotPositionAnfrage): Promise<RohTreffer | null> {
+function mergeRohTreffer(primary: RohTreffer[], extra: RohTreffer[]): RohTreffer[] {
+  const byPay = new Map<string, RohTreffer>()
+  for (const t of primary) byPay.set(t.zahlungsdatumIso, t)
+  for (const t of extra) {
+    const prev = byPay.get(t.zahlungsdatumIso)
+    if (!prev) {
+      byPay.set(t.zahlungsdatumIso, t)
+      continue
+    }
+    if (!prev.bestaetigt && t.bestaetigt) byPay.set(t.zahlungsdatumIso, t)
+  }
+  return [...byPay.values()].sort((a, b) => a.zahlungsdatumIso.localeCompare(b.zahlungsdatumIso))
+}
+
+async function ladeFuerPosition(pos: DepotPositionAnfrage): Promise<RohTreffer[]> {
   const symbole = symboleFuerPosition(pos)
   const symbolAnzeige = symbole[0] ?? pos.isin ?? '—'
   const isin = isinFuerPosition(pos)
@@ -123,61 +137,76 @@ async function ladeFuerPosition(pos: DepotPositionAnfrage): Promise<RohTreffer |
   const name = k?.name ?? pos.name
 
   if (isin) {
-    const d = await ladeDivvydiaryAnkuendigteDividende(isin, name)
-    if (d) {
-      return {
-        zahlungsdatumIso: d.zahlungsdatumIso,
-        exDatumIso: d.exDatumIso,
-        dividendeProStueckEur: d.dividendeProStueckEur,
-        symbol: symbolAnzeige,
-        quelle: d.bestaetigt ? 'divvydiary' : 'divvydiary-prognose',
-        bestaetigt: d.bestaetigt,
-      }
+    let termine = await ladeDivvydiaryAnkuendigteDividenden(isin, name)
+    let roh: RohTreffer[] = termine.map((t) => ({
+      zahlungsdatumIso: t.zahlungsdatumIso,
+      exDatumIso: t.exDatumIso,
+      dividendeProStueckEur: t.dividendeProStueckEur,
+      symbol: symbolAnzeige,
+      quelle: t.bestaetigt ? 'divvydiary' : 'divvydiary-prognose',
+      bestaetigt: t.bestaetigt,
+    }))
+
+    if (!istEuEwrIsin(isin) && symbole.length > 0) {
+      const yahoo = await ladeYahooAnkuendigteDividenden(symbole[0], { erlaubeExSchaetzung: true })
+      const yRoh = yahoo.map((t) => ({
+        zahlungsdatumIso: t.zahlungsdatumIso,
+        exDatumIso: t.exDatumIso,
+        dividendeProStueckEur: t.dividendeProStueckEur,
+        symbol: t.symbol,
+        quelle: (t.bestaetigt ? 'yahoo' : 'divvydiary-prognose') as AnkuendigteDividendeQuelle,
+        bestaetigt: t.bestaetigt,
+      }))
+      roh = mergeRohTreffer(roh, yRoh)
     }
+
+    if (roh.length > 0) return roh
   }
 
   if (isin && istEuEwrIsin(isin)) {
-    return null
+    return []
   }
 
   return ladeFuerSymbole(symbole, symbolAnzeige)
 }
 
-async function ladeFuerSymbole(symbole: string[], symbolAnzeige: string): Promise<RohTreffer | null> {
+async function ladeFuerSymbole(symbole: string[], symbolAnzeige: string): Promise<RohTreffer[]> {
   const uniq = [...new Set(symbole)]
-  if (uniq.length === 0) return null
+  if (uniq.length === 0) return []
 
   if (finnhubDividendenVerfuegbar()) {
     for (const sym of uniq) {
       const f = await ladeFinnhubAnkuendigteDividende(sym)
       if (f) {
-        return {
-          zahlungsdatumIso: f.zahlungsdatumIso,
-          exDatumIso: f.exDatumIso,
-          dividendeProStueckEur: f.dividendeProStueckEur,
-          symbol: f.symbol,
-          quelle: 'finnhub',
-          bestaetigt: true,
-        }
+        return [
+          {
+            zahlungsdatumIso: f.zahlungsdatumIso,
+            exDatumIso: f.exDatumIso,
+            dividendeProStueckEur: f.dividendeProStueckEur,
+            symbol: f.symbol,
+            quelle: 'finnhub',
+            bestaetigt: true,
+          },
+        ]
       }
     }
   }
 
   for (const sym of uniq) {
-    const y = await ladeYahooAnkuendigteDividende(sym, { erlaubeExSchaetzung: true })
-    if (y) {
-      return {
-        zahlungsdatumIso: y.zahlungsdatumIso,
-        exDatumIso: y.exDatumIso,
-        dividendeProStueckEur: y.dividendeProStueckEur,
-        symbol: y.symbol,
-        quelle: 'yahoo',
-        bestaetigt: true,
-      }
+    const y = await ladeYahooAnkuendigteDividenden(sym, { erlaubeExSchaetzung: true })
+    if (y.length > 0) {
+      return y.map((t) => ({
+        zahlungsdatumIso: t.zahlungsdatumIso,
+        exDatumIso: t.exDatumIso,
+        dividendeProStueckEur: t.dividendeProStueckEur,
+        symbol: t.symbol,
+        quelle: (t.bestaetigt ? 'yahoo' : 'divvydiary-prognose') as AnkuendigteDividendeQuelle,
+        bestaetigt: t.bestaetigt,
+      }))
     }
   }
 
-  return null
+  return []
 }
 
 async function mapPool<T, R>(
@@ -238,38 +267,44 @@ export async function berechneAnkuendigteDividendenDepot(
     })),
   )
 
-  const roh = await mapPool(aktiv, 2, async (pos) => {
-    const hit = await ladeFuerPosition(pos)
-    if (!hit) {
+  const rohNested = await mapPool(aktiv, 2, async (pos) => {
+    const hits = await ladeFuerPosition(pos)
+    if (hits.length === 0) {
       stat.ohneTreffer++
-      return null
+      return [] as AnkuendigteDividendeEintrag[]
     }
-    if (hit.quelle === 'divvydiary-prognose') stat.prognose++
-    else stat[hit.quelle === 'divvydiary' ? 'divvydiary' : hit.quelle]++
-    const gesamtEur = Math.round(pos.stueck * hit.dividendeProStueckEur * 100) / 100
-    if (gesamtEur <= 0) {
-      stat.ohneTreffer++
-      if (hit.quelle === 'divvydiary-prognose') stat.prognose--
-      else if (hit.quelle === 'divvydiary') stat.divvydiary--
-      else stat[hit.quelle]--
-      return null
+    const eintraegePos: AnkuendigteDividendeEintrag[] = []
+    let positionHatTreffer = false
+    for (const hit of hits) {
+      if (hit.quelle === 'divvydiary-prognose') stat.prognose++
+      else stat[hit.quelle === 'divvydiary' ? 'divvydiary' : hit.quelle]++
+      const gesamtEur = Math.round(pos.stueck * hit.dividendeProStueckEur * 100) / 100
+      if (gesamtEur <= 0) {
+        if (hit.quelle === 'divvydiary-prognose') stat.prognose--
+        else if (hit.quelle === 'divvydiary') stat.divvydiary--
+        else stat[hit.quelle]--
+        continue
+      }
+      positionHatTreffer = true
+      eintraegePos.push({
+        isin: pos.isin,
+        name: pos.name,
+        stueck: pos.stueck,
+        zahlungsdatumIso: hit.zahlungsdatumIso,
+        exDatumIso: hit.exDatumIso,
+        dividendeProStueckEur: hit.dividendeProStueckEur,
+        gesamtEur,
+        symbol: hit.symbol,
+        quelle: hit.quelle,
+        bestaetigt: hit.bestaetigt,
+      })
     }
-    return {
-      isin: pos.isin,
-      name: pos.name,
-      stueck: pos.stueck,
-      zahlungsdatumIso: hit.zahlungsdatumIso,
-      exDatumIso: hit.exDatumIso,
-      dividendeProStueckEur: hit.dividendeProStueckEur,
-      gesamtEur,
-      symbol: hit.symbol,
-      quelle: hit.quelle,
-      bestaetigt: hit.bestaetigt,
-    } satisfies AnkuendigteDividendeEintrag
+    if (!positionHatTreffer) stat.ohneTreffer++
+    return eintraegePos
   })
 
-  const eintraege = roh
-    .filter((x): x is AnkuendigteDividendeEintrag => x != null)
+  const eintraege = rohNested
+    .flat()
     .sort((a, b) => a.zahlungsdatumIso.localeCompare(b.zahlungsdatumIso))
 
   if (aktiv.length === 0) {
@@ -284,8 +319,9 @@ export async function berechneAnkuendigteDividendenDepot(
     if (stat.prognose > 0) teile.push(`${stat.prognose} Prognose`)
     if (stat.finnhub > 0) teile.push(`${stat.finnhub} Finnhub`)
     if (stat.yahoo > 0) teile.push(`${stat.yahoo} Yahoo`)
+    const positionenMitTermin = new Set(eintraege.map((e) => e.isin ?? e.symbol)).size
     hinweise.push(
-      `${eintraege.length} von ${aktiv.length} Position(en): ${teile.join(', ')}. Nur voraus, max. 1 Jahr.`,
+      `${eintraege.length} Termin(e) für ${positionenMitTermin} von ${aktiv.length} Position(en): ${teile.join(', ')}. Max. 1 Jahr.`,
     )
   }
 

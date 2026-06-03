@@ -1,7 +1,10 @@
+import { listeDividendenTermine } from '@/lib/portfolio-analyse/dividenden-prognose'
+import type { DivvydiaryRohZeile } from '@/lib/portfolio-analyse/divvydiary-scraper-server'
 import {
   addDaysIso,
   heuteIsoUtc,
   isoInJahren,
+  isoVorJahren,
   schaetzeZahlungsdatumNachEx,
 } from '@/lib/portfolio-analyse/dividenden-datum-hilfen'
 import {
@@ -42,6 +45,69 @@ function rawNumber(v: unknown): number | null {
 }
 
 type DivEvent = { amount: number; datumIso: string; unix: number }
+
+export type YahooAnkuendigteDividendeEintrag = YahooAnkuendigteDividende & { bestaetigt: boolean }
+
+/** Vergangene Dividenden-Termine (Chart-API) für Prognose-Muster. */
+async function ladeChartDividendenHistorie(symbol: string, heute: string): Promise<DivEvent[]> {
+  const sym = symbol.trim().toUpperCase()
+  if (!sym) return []
+
+  const von = isoVorJahren(12)
+  const start = Math.floor(
+    Date.UTC(Number(von.slice(0, 4)), Number(von.slice(5, 7)) - 1, Number(von.slice(8, 10))) / 1000,
+  )
+  const end = Math.floor(
+    Date.UTC(Number(heute.slice(0, 4)), Number(heute.slice(5, 7)) - 1, Number(heute.slice(8, 10))) / 1000,
+  )
+
+  const u = new URL(`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(sym)}`)
+  u.searchParams.set('interval', '1d')
+  u.searchParams.set('period1', String(start))
+  u.searchParams.set('period2', String(end))
+  u.searchParams.set('events', 'div')
+
+  try {
+    const res = await fetch(u.toString(), {
+      headers: YAHOO_FINANCE_FETCH_HEADERS,
+      next: { revalidate: CACHE_REVALIDATE },
+    })
+    if (!res.ok) return []
+    const j = (await res.json()) as {
+      chart?: {
+        result?: Array<{
+          events?: {
+            dividends?: Record<string, { amount?: number; date?: number }>
+          }
+        }>
+      }
+    }
+    const divs = j.chart?.result?.[0]?.events?.dividends ?? {}
+    const out: DivEvent[] = []
+    for (const entry of Object.values(divs)) {
+      const unix = entry?.date
+      const amount = entry?.amount
+      if (unix == null || amount == null || !Number.isFinite(amount) || amount <= 0) continue
+      const datumIso = tagAusUnix(unix)
+      if (!datumIso || datumIso >= heute) continue
+      out.push({ amount, datumIso, unix })
+    }
+    out.sort((a, b) => a.unix - b.unix)
+    return out
+  } catch {
+    return []
+  }
+}
+
+function chartZuRohZeilen(events: DivEvent[], symbol: string): DivvydiaryRohZeile[] {
+  const sym = symbol.trim().toUpperCase()
+  return events.map((e) => ({
+    exDate: e.datumIso,
+    payDate: schaetzeZahlungsdatumNachEx(e.datumIso, sym),
+    amount: e.amount,
+    forecast: false,
+  }))
+}
 
 /** Nur Dividenden-Termine ab heute, höchstens +1 Jahr. */
 async function ladeChartDividendenZukunft(symbol: string, heute: string, bis: string): Promise<DivEvent[]> {
@@ -174,58 +240,69 @@ async function ladeQuoteSummaryKalender(
   }
 }
 
+/** Alle Termine: Kalender/Chart-Zukunft + Prognose aus Yahoo-Historie. */
+export async function ladeYahooAnkuendigteDividenden(
+  symbol: string,
+  opts?: { erlaubeExSchaetzung?: boolean },
+): Promise<YahooAnkuendigteDividendeEintrag[]> {
+  const sym = symbol.trim().toUpperCase()
+  if (!sym) return []
+
+  const heute = heuteIsoUtc()
+  const bis = isoInJahren(HORIZONT_JAHRE)
+  const erlaubeExSchaetzung = opts?.erlaubeExSchaetzung !== false
+
+  const [kalender, events, historie] = await Promise.all([
+    ladeQuoteSummaryKalender(sym, heute, bis, erlaubeExSchaetzung),
+    ladeChartDividendenZukunft(sym, heute, bis),
+    ladeChartDividendenHistorie(sym, heute),
+  ])
+
+  const rows: DivvydiaryRohZeile[] = chartZuRohZeilen(historie, sym)
+
+  if (kalender.zahlungsdatumIso) {
+    const amt =
+      kalender.letzteDividendeProStueck ??
+      events.find((e) => e.datumIso === kalender.zahlungsdatumIso)?.amount ??
+      historie[historie.length - 1]?.amount ??
+      0
+    if (amt > 0) {
+      rows.push({
+        exDate: kalender.exDatumIso ?? kalender.zahlungsdatumIso,
+        payDate: kalender.zahlungsdatumIso,
+        amount: amt,
+        forecast: false,
+      })
+    }
+  }
+
+  for (const e of events) {
+    rows.push({
+      exDate: e.datumIso,
+      payDate: e.datumIso,
+      amount: e.amount,
+      forecast: false,
+    })
+  }
+
+  const termine = listeDividendenTermine(rows, heute, bis)
+  return termine.map((t) => ({
+    symbol: sym,
+    zahlungsdatumIso: t.payDate,
+    exDatumIso: t.exDate,
+    dividendeProStueckEur: t.amount,
+    bestaetigt: t.bestaetigt,
+  }))
+}
+
 /** Nächste angekündigte Dividende — nur Termine ab heute, max. +1 Jahr. */
 export async function ladeYahooAnkuendigteDividende(
   symbol: string,
   opts?: { erlaubeExSchaetzung?: boolean },
 ): Promise<YahooAnkuendigteDividende | null> {
-  const sym = symbol.trim().toUpperCase()
-  if (!sym) return null
-
-  const heute = heuteIsoUtc()
-  const bis = isoInJahren(HORIZONT_JAHRE)
-
-  const erlaubeExSchaetzung = opts?.erlaubeExSchaetzung !== false
-
-  const [kalender, events] = await Promise.all([
-    ladeQuoteSummaryKalender(sym, heute, bis, erlaubeExSchaetzung),
-    ladeChartDividendenZukunft(sym, heute, bis),
-  ])
-
-  const naechstesEvent = events[0] ?? null
-
-  let zahlungsdatumIso = kalender.zahlungsdatumIso
-  let exDatumIso = kalender.exDatumIso
-
-  if (!zahlungsdatumIso && exDatumIso) {
-    zahlungsdatumIso = exDatumIso
-  }
-  if (!zahlungsdatumIso && naechstesEvent) {
-    zahlungsdatumIso = naechstesEvent.datumIso
-    exDatumIso = exDatumIso ?? naechstesEvent.datumIso
-  }
-
-  if (!zahlungsdatumIso || zahlungsdatumIso < heute || zahlungsdatumIso > bis) return null
-
-  let dividendeProStueckEur: number | null = null
-  if (naechstesEvent) {
-    if (naechstesEvent.datumIso === zahlungsdatumIso || naechstesEvent.datumIso === exDatumIso) {
-      dividendeProStueckEur = naechstesEvent.amount
-    }
-  }
-  if (dividendeProStueckEur == null && naechstesEvent) {
-    dividendeProStueckEur = naechstesEvent.amount
-  }
-  if (dividendeProStueckEur == null && kalender.letzteDividendeProStueck != null) {
-    dividendeProStueckEur = kalender.letzteDividendeProStueck
-  }
-
-  if (dividendeProStueckEur == null || dividendeProStueckEur <= 0) return null
-
-  return {
-    symbol: sym,
-    zahlungsdatumIso,
-    exDatumIso,
-    dividendeProStueckEur: Math.round(dividendeProStueckEur * 10000) / 10000,
-  }
+  const alle = await ladeYahooAnkuendigteDividenden(symbol, opts)
+  const first = alle[0]
+  if (!first) return null
+  const { bestaetigt: _b, ...rest } = first
+  return rest
 }

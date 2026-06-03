@@ -70,7 +70,7 @@ export const ISIN_KENNTNISSE: Record<string, IsinKenntnis> = {
   LU1681048804: direkt('500.PA', 'Amundi Index Solutions S&P 500 UCITS ETF EUR ACC'),
   IE00BLNMYC90: usd('XDEW.L', 'Xtrackers S&P 500 Equal Weight UCITS ETF 1C'),
   IE00BJXRZJ40: direkt('IE00BJXRZJ40.SG', 'Rize Cybersecurity and Data Privacy UCITS ETF'),
-  FR0000052292: direkt('RMS.PA', 'Hermès'),
+  FR0000052292: direkt('RMS.PA', 'Hermès', { divvydiarySlug: 'hermes-international-aktie' }),
   FR0000121014: direkt('MC.PA', 'LVMH', { divvydiarySlug: 'lvmh-aktie' }),
   NL0010273215: direkt('ASML.AS', 'ASML Holding'),
   NL0000395903: direkt('WKL.AS', 'Wolters Kluwer', { divvydiarySlug: 'wolters-kluwer-aktie' }),

@@ -75,7 +75,7 @@ export function parseDivvydiaryHtml(html: string): DivvydiaryRohZeile[] {
   }
 
   const blockStart = html.indexOf('"dividends":')
-  if (blockStart >= 0) {
+  if (blockStart >= 0 && rows.length === 0) {
     const block = html.slice(blockStart, blockStart + 80_000)
     const dates: string[] = []
     const dtRe = /dateTime="(\d{4}-\d{2}-\d{2})"/g
@@ -90,7 +90,7 @@ export function parseDivvydiaryHtml(html: string): DivvydiaryRohZeile[] {
         block.indexOf(pay) + 120,
       ).match(/"amount":([\d.]+)/)
       const amount = amtMatch ? Number(amtMatch[1]) : 0
-      if (amount > 0) push(ex, pay, amount, false)
+      if (amount > 0) push(ex, pay, amount, true)
     }
   }
 
