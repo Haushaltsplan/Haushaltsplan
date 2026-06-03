@@ -2,16 +2,11 @@
 
 import Link from 'next/link'
 import { useMemo, useState } from 'react'
-import { PaDrawdownChart } from '@/components/portfolio-analyse/parqet-charts'
-import { PaGestapelteDividendenChart } from '@/components/portfolio-analyse/pa-dividenden-chart'
-import { PaPerformanceChart } from '@/components/portfolio-analyse/pa-performance-chart'
-import { PaWertentwicklungChart } from '@/components/portfolio-analyse/pa-wertentwicklung-chart'
 import { PortfolioIsinLogo } from '@/components/portfolio-analyse/isin-logo'
 import { usePortfolioAnalyse } from '@/components/portfolio-analyse/pa-data-provider'
 import { PaPortfolioHero } from '@/components/portfolio-analyse/pa-portfolio-hero'
 import { PaWertpapiereListe } from '@/components/portfolio-analyse/pa-wertpapiere-liste'
-import { PaBadge, PaCard, PaIconTabs, PaStatRow } from '@/components/portfolio-analyse/pa-ui'
-import { dividendenGestapeltProMonat } from '@/lib/portfolio-analyse/dividenden-auswertung'
+import { PaBadge, PaCard, PaStatRow } from '@/components/portfolio-analyse/pa-ui'
 import {
   formatDatumDe,
   formatEur,
@@ -22,19 +17,9 @@ import { anzeigeNameFuerIsin } from '@/lib/portfolio-analyse/isin-metadata-clien
 import { depotwertVorBoersenbeginn } from '@/lib/portfolio-analyse/live-bewertung'
 import { berechneParqetPeriodKennzahlen } from '@/lib/portfolio-analyse/parqet-period-kennzahlen'
 import { heuteIso } from '@/lib/portfolio-analyse/wertentwicklung-tage'
-import { PortfolioMetric } from '@/lib/portfolio-analyse/portfolio-metric'
-import { usePortfolioBerechnungen } from '@/components/portfolio-analyse/use-portfolio-berechnungen'
+import { baueWertentwicklung } from '@/lib/portfolio-analyse/wertentwicklung'
 import { BUCHUNGS_TYP_LABEL, type BuchungsTyp } from '@/lib/portfolio-analyse/types'
 import type { PeriodPerformance } from '@/lib/portfolio-analyse/parqet-core/types'
-
-type ChartTab = 'wert' | 'performance' | 'drawdown' | 'dividenden'
-
-const CHART_TABS: { id: ChartTab; label: string; shortLabel: string }[] = [
-  { id: 'wert', label: 'Wertentwicklung', shortLabel: 'Wert' },
-  { id: 'performance', label: '% Performance', shortLabel: 'Perf.' },
-  { id: 'drawdown', label: 'Drawdown', shortLabel: 'Drawdown' },
-  { id: 'dividenden', label: 'Dividenden', shortLabel: 'Div.' },
-]
 
 function badgeVariant(typ: BuchungsTyp): 'buy' | 'sell' | 'dividend' | 'neutral' {
   if (typ === 'kauf') return 'buy'
@@ -44,37 +29,17 @@ function badgeVariant(typ: BuchungsTyp): 'buy' | 'sell' | 'dividend' | 'neutral'
 }
 
 export function PortfolioDashboardClient() {
-  const {
-    live,
-    liveLaden,
-    wertentwicklung,
-    wertentwicklungLaden,
-    kursFehler,
-    buchungen,
-    meta,
-    report,
-    hatDaten,
-    laden,
-  } = usePortfolioAnalyse()
-  const [chartTab, setChartTab] = useState<ChartTab>('wert')
+  const { live, liveLaden, kursFehler, buchungen, meta, report, hatDaten, laden } =
+    usePortfolioAnalyse()
   const [periodKey, setPeriodKey] = useState<PeriodPerformance['periodKey']>('MAX')
-  const [perfMitDivRealisiert, setPerfMitDivRealisiert] = useState(true)
-  const [portfolioMetric, setPortfolioMetric] = useState(PortfolioMetric.TTWROR)
 
   const k = live?.kennzahlen
   const positionen = live?.positionen ?? []
 
-  const { wertentwicklung: wertTimeline, performance: performanceZeitreihe, drawdown } =
-    usePortfolioBerechnungen(wertentwicklung, buchungen, {
-      mitDivUndRealisiert: perfMitDivRealisiert,
-      portfolioMetric,
-    })
-  const portfolioChartName = useMemo(() => {
-    const klassen = new Set(positionen.map((p) => p.assetKlasse))
-    if (klassen.size === 1 && klassen.has('aktie')) return 'Aktien Portfolio'
-    return 'Portfolio'
-  }, [positionen])
-  const divSerie = useMemo(() => dividendenGestapeltProMonat(buchungen, meta), [buchungen, meta])
+  const wertFuerPeriode = useMemo(() => {
+    if (!k || buchungen.length === 0) return []
+    return baueWertentwicklung(buchungen, k.depotwertEur)
+  }, [buchungen, k])
 
   const letzteAktivitaeten = useMemo(
     () => sortiereBuchungenNeuesteZuerst(buchungen).slice(0, 8),
@@ -106,12 +71,12 @@ export function PortfolioDashboardClient() {
     return berechneParqetPeriodKennzahlen(
       periodKey,
       buchungen,
-      wertTimeline,
+      wertFuerPeriode,
       k.depotwertEur,
       startDatumIso,
       tagesstart,
     )
-  }, [buchungen, k, live?.positionen, periodKey, startDatumIso, wertTimeline])
+  }, [buchungen, k, live?.positionen, periodKey, startDatumIso, wertFuerPeriode])
 
   const startDatum = startDatumIso ? formatDatumDe(startDatumIso) : null
 
@@ -155,79 +120,6 @@ export function PortfolioDashboardClient() {
           onPeriodKeyChange={setPeriodKey}
         />
       ) : null}
-
-      <PaCard
-        variant="elevated"
-        className={`min-w-0 ${chartTab === 'dividenden' ? 'overflow-visible' : 'overflow-hidden'}`}
-      >
-        <div className="-mx-1 border-b border-white/[0.04] px-3 pt-3 sm:mx-0 sm:px-6 sm:pt-4">
-          <PaIconTabs tabs={CHART_TABS} active={chartTab} onChange={setChartTab} />
-        </div>
-        <div
-          className={`min-w-0 p-3 sm:p-6 ${chartTab === 'dividenden' ? 'overflow-visible' : ''}`}
-        >
-          {chartTab === 'drawdown' && drawdown.maxDrawdownProzent < 0 ? (
-            <div className="mb-4 flex flex-wrap justify-end gap-6 text-sm">
-              <div>
-                <p className="text-[11px] text-zinc-500">Maximaler Drawdown</p>
-                <p className="font-semibold tabular-nums text-white">
-                  {formatProzent(drawdown.maxDrawdownProzent)}
-                </p>
-              </div>
-              {drawdown.maxDrawdownTage != null ? (
-                <div>
-                  <p className="text-[11px] text-zinc-500">Dauer</p>
-                  <p className="font-semibold text-white">{drawdown.maxDrawdownTage} Tage</p>
-                </div>
-              ) : null}
-              {drawdown.maxDrawdownPeriode ? (
-                <div>
-                  <p className="text-[11px] text-zinc-500">Periode</p>
-                  <p className="font-semibold text-white">
-                    {drawdown.maxDrawdownPeriode.vonLabel} – {drawdown.maxDrawdownPeriode.bisLabel}
-                  </p>
-                </div>
-              ) : null}
-            </div>
-          ) : null}
-
-          {chartTab === 'wert' && (
-            <PaWertentwicklungChart
-              punkte={wertTimeline}
-              laden={wertentwicklungLaden && wertentwicklung.length > 0}
-              hoehe={220}
-            />
-          )}
-          {chartTab === 'performance' && (
-            <PaPerformanceChart
-              punkte={performanceZeitreihe}
-              portfolioName={portfolioChartName}
-              portfolioMetric={portfolioMetric}
-              onPortfolioMetricChange={setPortfolioMetric}
-              laden={wertentwicklungLaden && wertentwicklung.length > 0}
-              mitDivRealisiert={perfMitDivRealisiert}
-              onMitDivRealisiertChange={setPerfMitDivRealisiert}
-            />
-          )}
-          {chartTab === 'drawdown' && <PaDrawdownChart punkte={drawdown.serie} />}
-          {chartTab === 'dividenden' && (
-            <>
-              <PaGestapelteDividendenChart
-                daten={divSerie.monate}
-                durchschnittIntervallEur={divSerie.durchschnittIntervallEur}
-                hoehe={240}
-              />
-              <p className="mt-3 text-right text-xs text-zinc-500">
-                Umfassendere Auswertungen auf dem{' '}
-                <Link href="/portfolioanalyse/dividenden" className="text-teal-400 hover:underline">
-                  Dividenden-Dashboard
-                </Link>
-                .
-              </p>
-            </>
-          )}
-        </div>
-      </PaCard>
 
       <div className="grid gap-6 lg:grid-cols-3">
         <PaCard variant="elevated" className="p-5">

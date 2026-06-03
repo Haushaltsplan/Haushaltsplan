@@ -69,9 +69,8 @@ export function PaIconTabs<T extends string>({
 
 const SUB_NAV = [
   { href: '/portfolioanalyse/dashboard', label: 'Dashboard' },
-  { href: '/portfolioanalyse/analyse', label: 'Analyse' },
-  { href: '/portfolioanalyse/aktivitaeten', label: 'Aktivitäten' },
   { href: '/portfolioanalyse/dividenden', label: 'Dividenden' },
+  { href: '/portfolioanalyse/analyse', label: 'Analyse' },
   { href: '/portfolioanalyse/import', label: 'Import' },
 ] as const
 

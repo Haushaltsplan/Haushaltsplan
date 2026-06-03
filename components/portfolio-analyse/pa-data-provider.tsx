@@ -14,18 +14,10 @@ import { positionenFuerBewertung } from '@/lib/portfolio-analyse/bestand'
 import { sammleIsins } from '@/lib/portfolio-analyse/auswertungen'
 import {
   berechneLivePortfolio,
-  ladeHistorischeKurseClient,
   ladeLiveKurseClient,
   symboleAusMeta,
   type LivePortfolio,
 } from '@/lib/portfolio-analyse/live-bewertung'
-import {
-  baueWertentwicklungMitKursen,
-  stooqSymboleFuerHistorie,
-  yahooSymboleFuerHistorie,
-} from '@/lib/portfolio-analyse/wertentwicklung-kurse'
-import { heuteIso } from '@/lib/portfolio-analyse/wertentwicklung-tage'
-import type { WertentwicklungPunkt } from '@/lib/portfolio-analyse/wertentwicklung'
 import { ladeIsinMetadaten } from '@/lib/portfolio-analyse/isin-metadata-client'
 import { PORTFOLIO_MAX_BUCHUNGEN } from '@/lib/portfolio-analyse/limits'
 import { ladePortfolioAnalyseDaten } from '@/lib/portfolio-analyse/portfolio-analyse-db'
@@ -44,8 +36,6 @@ type PaContextValue = {
   meta: Map<string, IsinMetadata>
   live: LivePortfolio | null
   liveLaden: boolean
-  wertentwicklung: WertentwicklungPunkt[]
-  wertentwicklungLaden: boolean
   kursFehler: boolean
   report: SinglePortfolioReport | null
   hatDaten: boolean
@@ -71,8 +61,6 @@ export function PaDataProvider({ children }: { children: ReactNode }) {
   const [metaLaden, setMetaLaden] = useState(true)
   const [live, setLive] = useState<LivePortfolio | null>(null)
   const [liveLaden, setLiveLaden] = useState(false)
-  const [wertentwicklung, setWertentwicklung] = useState<WertentwicklungPunkt[]>([])
-  const [wertentwicklungLaden, setWertentwicklungLaden] = useState(false)
   const [kursFehler, setKursFehler] = useState(false)
 
   const neuLaden = useCallback(async () => {
@@ -144,45 +132,6 @@ export function PaDataProvider({ children }: { children: ReactNode }) {
     }
   }, [buchungen, snapshot, meta])
 
-  useEffect(() => {
-    const liveSnap = live
-    if (!liveSnap || buchungen.length === 0) {
-      setWertentwicklung([])
-      setWertentwicklungLaden(false)
-      return
-    }
-    let cancelled = false
-    const depotwert = liveSnap.kennzahlen.depotwertEur
-    const positionen = liveSnap.positionen
-    const fx = liveSnap.fx
-    setWertentwicklung([])
-    setWertentwicklungLaden(true)
-
-    async function run() {
-      const sortiert = [...buchungen].sort((a, b) => a.datum.localeCompare(b.datum))
-      const vonDatum = sortiert[0].datum
-      const bisDatum = heuteIso()
-      const sym = yahooSymboleFuerHistorie(buchungen, positionen, meta)
-      const stooqSym = stooqSymboleFuerHistorie(buchungen, positionen, meta)
-      const historie = await ladeHistorischeKurseClient(sym, vonDatum, bisDatum, stooqSym)
-      if (cancelled) return
-      const mitKursen = baueWertentwicklungMitKursen(
-        buchungen,
-        depotwert,
-        positionen,
-        historie,
-        fx,
-        meta,
-      )
-      if (mitKursen.length > 0) setWertentwicklung(mitKursen)
-      setWertentwicklungLaden(false)
-    }
-    void run()
-    return () => {
-      cancelled = true
-    }
-  }, [buchungen, live, meta])
-
   const report = useMemo(() => {
     if (!live || live.positionen.length === 0) return null
     try {
@@ -209,8 +158,6 @@ export function PaDataProvider({ children }: { children: ReactNode }) {
     meta,
     live,
     liveLaden,
-    wertentwicklung,
-    wertentwicklungLaden,
     kursFehler,
     report,
     hatDaten,
