@@ -1,6 +1,6 @@
 /**
- * Wertentwicklung mit echten Kursen (Yahoo-Historie, täglich).
- * Chronologisch: Bestand je Tag × LOCF-Kurs — kein Null-Klippen bei Datenlücken.
+ * Wertentwicklung: tägliche Timeline, Bestand × LOCF-Kurs (Yahoo + Stooq).
+ * Portfoliowert darf bei offenen Positionen nicht auf 0 kollabieren.
  */
 
 import { depotStandProTag, einstandWertpapiereEur, type DepotStand } from '@/lib/portfolio-analyse/bestand'
@@ -26,7 +26,6 @@ import {
   alleKalendertage,
   forwardFillKurse,
   heuteIso,
-  loecfWerte,
   tagLabel,
 } from '@/lib/portfolio-analyse/wertentwicklung-tage'
 import {
@@ -35,12 +34,13 @@ import {
 } from '@/lib/portfolio-analyse/wertentwicklung'
 import type { PortfolioBuchung } from '@/lib/portfolio-analyse/types'
 
-const PLAUSIBEL_MIN = 0.08
-const PLAUSIBEL_MAX = 12
+const PLAUSIBEL_MIN = 0.12
+const PLAUSIBEL_MAX = 8
 const MIN_KURS_EUR = 1e-8
-/** Tageskurs < 15 % des Einstands → falsches Yahoo-Symbol, Einstand nutzen. */
-const MIN_KURS_ZU_EINSTAND = 0.15
+const MIN_KURS_ZU_EINSTAND = 0.12
 const MAX_KURS_ZU_EINSTAND = 8
+/** Portfoliowert < 25 % Einstand bei offenen Positionen → Datenfehler. */
+const MIN_PORTFOLIO_ZU_EINSTAND = 0.25
 
 function round2(n: number): number {
   return Math.round(n * 100) / 100
@@ -53,10 +53,11 @@ function kursEurAusNative(
   fx: FxKurse,
 ): number | null {
   if (!Number.isFinite(native) || native <= 0) return null
-  if (sym.toUpperCase().startsWith('STOOQ:')) {
+  if (sym.toUpperCase().startsWith('STOOQ:')) return native
+  const kenntnis = isinKenntnis(isin)
+  if (kenntnis?.kursNurSymbol && sym.toUpperCase() === kenntnis.kursNurSymbol.toUpperCase()) {
     return native
   }
-  const kenntnis = isinKenntnis(isin)
   return preisInEur(native, sym, fx, kenntnis?.symbolWaehrung?.[sym])
 }
 
@@ -110,7 +111,6 @@ function kandidatenFuerIsin(
   return [...new Set(mitDe.map((s) => s.trim().toUpperCase()).filter((s) => s && !verboten.has(s)))]
 }
 
-/** Alle ISINs, die jemals im Depot waren (Kauf/Verkauf). */
 function alleIsinsAusBuchungen(buchungen: PortfolioBuchung[]): Set<string> {
   const isins = new Set<string>()
   for (const b of buchungen) {
@@ -120,7 +120,6 @@ function alleIsinsAusBuchungen(buchungen: PortfolioBuchung[]): Set<string> {
   return isins
 }
 
-/** Alle ISINs mit Kauf/Verkauf — auch verkaufte (für historischen Verlauf). */
 function positionenFuerKurshistorie(
   buchungen: PortfolioBuchung[],
   livePositionen: LivePosition[],
@@ -152,7 +151,6 @@ function positionenFuerKurshistorie(
   return out
 }
 
-/** FX-Kurse je Tag aus Yahoo-Historie (Forward-Fill). */
 function fxProTag(
   historie: Map<string, Map<string, number>>,
   tage: string[],
@@ -173,6 +171,10 @@ function fxProTag(
   }))
 }
 
+function abdeckungTage(nativeFilled: number[]): number {
+  return nativeFilled.filter((v) => Number.isFinite(v) && v > 0).length
+}
+
 function letzterNativeKurs(serie: Map<string, number>): number | null {
   const keys = [...serie.keys()].sort()
   for (let i = keys.length - 1; i >= 0; i--) {
@@ -182,11 +184,6 @@ function letzterNativeKurs(serie: Map<string, number>): number | null {
   return null
 }
 
-function abdeckungTage(nativeFilled: number[]): number {
-  return nativeFilled.filter((v) => Number.isFinite(v) && v > 0).length
-}
-
-/** Symbol mit maximaler LOCF-Abdeckung über den Chart-Zeitraum. */
 function symbolMitBesteAbdeckung(
   isin: string,
   live: LivePosition | undefined,
@@ -202,7 +199,6 @@ function symbolMitBesteAbdeckung(
     const sym = k.kursNurSymbol.toUpperCase()
     if (historie.get(sym)?.size) return sym
   }
-
   if (live?.symbolYahoo) {
     const sym = live.symbolYahoo.toUpperCase()
     if (historie.get(sym)?.size) return sym
@@ -210,33 +206,27 @@ function symbolMitBesteAbdeckung(
 
   const kandidaten = kandidatenFuerIsin(isin, live ?? pos, meta).filter((s) => !s.startsWith('STOOQ:'))
   const ref = referenzKurs > 0 ? referenzKurs : null
-
   type Hit = { sym: string; coverage: number; score: number }
   const hits: Hit[] = []
 
   for (const sym of kandidaten) {
     const serie = historie.get(sym)
     if (!serie?.size) continue
-    const nativeFilled = forwardFillKurse(serie, tage)
-    const coverage = abdeckungTage(nativeFilled)
+    const coverage = abdeckungTage(forwardFillKurse(serie, tage))
     if (coverage === 0) continue
-
     const native = letzterNativeKurs(serie)
     if (native == null) continue
     const eur = kursEurAusNative(native, sym, isin, fx)
     if (eur == null) continue
-
     if (ref != null) {
       const ratio = eur / ref
       if (ratio < PLAUSIBEL_MIN || ratio > PLAUSIBEL_MAX) continue
     }
-
     let score = coverage
     const w = boersenWaehrung(sym, k?.symbolWaehrung?.[sym])
     if (w === 'EUR') score += 1000
     else if (w === 'USD' && !sym.includes('.')) score += 100
     if (sym.endsWith('.DE') || sym.endsWith('.F')) score += 50
-
     hits.push({ sym, coverage, score })
   }
 
@@ -248,120 +238,112 @@ function symbolMitBesteAbdeckung(
     }
     return best?.sym ?? null
   }
-
   hits.sort((a, b) => b.score - a.score || b.coverage - a.coverage)
   return hits[0].sym
 }
 
-function waehleKursEurFuerTag(
-  kandidatenEur: number[],
-  einstand: number,
-): number | null {
-  if (kandidatenEur.length === 0) {
-    return einstand > MIN_KURS_EUR ? einstand : null
-  }
-  if (einstand <= MIN_KURS_EUR) {
-    return kandidatenEur[0]
-  }
-
-  const inBand = kandidatenEur.filter((c) => {
-    const r = c / einstand
-    return r >= PLAUSIBEL_MIN && r <= PLAUSIBEL_MAX
-  })
-  if (inBand.length === 0) {
-    return einstand
-  }
-  const pool = inBand
-  let best = pool[0]
-  let bestDiff = Math.abs(best - einstand)
-  for (let j = 1; j < pool.length; j++) {
-    const d = Math.abs(pool[j] - einstand)
-    if (d < bestDiff) {
-      bestDiff = d
-      best = pool[j]
-    }
-  }
-  return best
+function kursPlausibel(kurs: number, einstand: number): boolean {
+  if (einstand <= MIN_KURS_EUR) return true
+  const r = kurs / einstand
+  return r >= MIN_KURS_ZU_EINSTAND && r <= MAX_KURS_ZU_EINSTAND
 }
 
-/**
- * EUR-Schlusskurs je Tag für eine ISIN: beste Symbolwahl, Einstand-Fallback, LOCF.
- */
-function baueEurKursSerieProIsin(
+function waehleTageskursEur(kandidaten: number[], einstand: number, lastGood: number): number {
+  const gueltig = kandidaten.filter((c) => c > MIN_KURS_EUR && kursPlausibel(c, einstand))
+  if (gueltig.length > 0) {
+    if (einstand <= MIN_KURS_EUR) return gueltig[0]
+    let best = gueltig[0]
+    let diff = Math.abs(best - einstand)
+    for (let i = 1; i < gueltig.length; i++) {
+      const d = Math.abs(gueltig[i] - einstand)
+      if (d < diff) {
+        diff = d
+        best = gueltig[i]
+      }
+    }
+    return best
+  }
+  if (lastGood > MIN_KURS_EUR && kursPlausibel(lastGood, einstand)) return lastGood
+  if (einstand > MIN_KURS_EUR) return einstand
+  return lastGood > MIN_KURS_EUR ? lastGood : 0
+}
+
+type IsinKursLauf = {
+  symbole: string[]
+  filledJeSym: Map<string, number[]>
+  lastGoodEur: number
+}
+
+function symboleFuerIsinHistorie(
   isin: string,
-  symbole: string[],
+  live: LivePosition | undefined,
+  pos: PortfolioPositionSnapshot | undefined,
+  meta: Map<string, IsinMetadata>,
   historie: Map<string, Map<string, number>>,
   tage: string[],
-  fxTage: FxKurse[],
-  einstandJeTag: number[],
-): number[] {
-  const n = tage.length
-  const nativeJeSym = new Map<string, number[]>()
+  ref: number,
+  fxHeute: FxKurse,
+): string[] {
+  const hauptSym = symbolMitBesteAbdeckung(isin, live, pos, meta, historie, tage, ref, fxHeute)
+  const yahoo = kandidatenFuerIsin(isin, live ?? pos, meta).filter((s) => !s.startsWith('STOOQ:'))
+  const stooq = stooqSymboleFuerIsin(isin, live, pos, meta).map((s) => stooqHistorieKey(s))
+  const merged = [...new Set([hauptSym, ...yahoo, ...stooq].filter((s): s is string => Boolean(s)))]
+  const mitDaten = merged.filter((s) => (historie.get(s)?.size ?? 0) > 0)
+  return mitDaten.length > 0 ? mitDaten : merged
+}
 
-  for (const sym of symbole) {
-    const serie = historie.get(sym)
-    if (serie?.size) nativeJeSym.set(sym, forwardFillKurse(serie, tage))
-  }
-
-  const roh: number[] = new Array(n)
-  for (let i = 0; i < n; i++) {
-    const fx = fxTage[i]
-    const einstand = einstandJeTag[i]
-    const kandidatenEur: number[] = []
-
+function baueIsinKursLaeufe(
+  isins: Set<string>,
+  liveByIsin: Map<string, LivePosition>,
+  posByIsin: Map<string, PortfolioPositionSnapshot>,
+  meta: Map<string, IsinMetadata>,
+  historie: Map<string, Map<string, number>>,
+  tage: string[],
+  fxHeute: FxKurse,
+): Map<string, IsinKursLauf> {
+  const out = new Map<string, IsinKursLauf>()
+  for (const isin of isins) {
+    const live = liveByIsin.get(isin)
+    const pos = posByIsin.get(isin)
+    const ref =
+      live && live.stueck > 0 ? live.einstandEur / live.stueck : (pos?.kursEur ?? 0)
+    const symbole = symboleFuerIsinHistorie(isin, live, pos, meta, historie, tage, ref, fxHeute)
+    const filledJeSym = new Map<string, number[]>()
     for (const sym of symbole) {
-      const fills = nativeJeSym.get(sym)
-      const native = fills?.[i]
-      if (native == null || !Number.isFinite(native) || native <= 0) continue
-      const eur = kursEurAusNative(native, sym, isin, fx)
-      if (eur != null && eur > MIN_KURS_EUR) kandidatenEur.push(eur)
+      const serie = historie.get(sym)
+      if (serie?.size) filledJeSym.set(sym, forwardFillKurse(serie, tage))
     }
-
-    const kursEur = waehleKursEurFuerTag(kandidatenEur, einstand)
-    roh[i] = kursEur != null && kursEur > MIN_KURS_EUR ? kursEur : NaN
+    out.set(isin, { symbole, filledJeSym, lastGoodEur: ref > MIN_KURS_EUR ? ref : 0 })
   }
-
-  return loecfWerte(roh)
+  return out
 }
 
-/** Yahoo + Stooq: pro Tag den plausibelsten EUR-Kurs wählen. */
-function baueBesteEurKursSerieProIsin(
+function kursEurAnTag(
   isin: string,
-  symbole: string[],
-  historie: Map<string, Map<string, number>>,
-  tage: string[],
-  fxTage: FxKurse[],
-  einstandJeTag: number[],
-): number[] {
-  const serien: number[][] = []
-  for (const sym of symbole) {
-    if (!historie.get(sym)?.size) continue
-    serien.push(baueEurKursSerieProIsin(isin, [sym], historie, tage, fxTage, einstandJeTag))
-  }
-  if (serien.length === 0) {
-    return loecfWerte(einstandJeTag.map((e) => (e > 0 ? e : NaN)))
+  lauf: IsinKursLauf,
+  tagIndex: number,
+  fx: FxKurse,
+  einstand: number,
+  liveKurs: number | null,
+): number {
+  if (liveKurs != null && liveKurs > MIN_KURS_EUR && kursPlausibel(liveKurs, einstand)) {
+    lauf.lastGoodEur = liveKurs
+    return liveKurs
   }
 
-  const roh = tage.map((_, i) => {
-    const einstand = einstandJeTag[i]
-    const kandidaten = serien
-      .map((s) => s[i])
-      .filter((v) => Number.isFinite(v) && v > MIN_KURS_EUR)
-    const k = waehleKursEurFuerTag(kandidaten, einstand)
-    return k != null && k > MIN_KURS_EUR ? k : NaN
-  })
-  return loecfWerte(roh)
-}
+  const kandidaten: number[] = []
+  for (const sym of lauf.symbole) {
+    const native = lauf.filledJeSym.get(sym)?.[tagIndex]
+    if (native == null || !Number.isFinite(native) || native <= 0) continue
+    const eur = kursEurAusNative(native, sym, isin, fx)
+    if (eur != null && eur > MIN_KURS_EUR) kandidaten.push(eur)
+  }
 
-function einstandSerieProIsin(
-  isin: string,
-  tage: string[],
-  standProTag: Map<string, DepotStand>,
-): number[] {
-  return tage.map((tag) => {
-    const h = standProTag.get(tag)?.byIsin.get(isin)
-    return h && h.einstandKurs > 0 ? h.einstandKurs : 0
-  })
+  const k = waehleTageskursEur(kandidaten, einstand, lauf.lastGoodEur)
+  if (k > MIN_KURS_EUR && kursPlausibel(k, einstand)) {
+    lauf.lastGoodEur = k
+  }
+  return k > MIN_KURS_EUR ? k : einstand > MIN_KURS_EUR ? einstand : lauf.lastGoodEur
 }
 
 function hatOffenePositionen(stand: DepotStand): boolean {
@@ -371,70 +353,39 @@ function hatOffenePositionen(stand: DepotStand): boolean {
   return false
 }
 
-function kursPlausibelFuerPosition(kursEur: number, einstandKurs: number): boolean {
-  if (einstandKurs <= MIN_KURS_EUR) return true
-  const r = kursEur / einstandKurs
-  return r >= MIN_KURS_ZU_EINSTAND && r <= MAX_KURS_ZU_EINSTAND
-}
-
-function portfoliowertAmTag(
+function portfoliowertAusStand(
   stand: DepotStand,
   datumIso: string,
   bis: string,
-  kursEurJeIsin: Map<string, number[]>,
   tagIndex: number,
+  fxTage: FxKurse[],
+  laeufe: Map<string, IsinKursLauf>,
   liveByIsin: Map<string, LivePosition>,
 ): number {
-  const einstandWp = einstandWertpapiereEur(stand)
-  const cashPos = Math.max(0, stand.cash)
+  const fx = fxTage[tagIndex]
   let wertWp = 0
 
   for (const [isin, h] of stand.byIsin) {
     if (h.stueck <= 1e-8) continue
-
-    let kursEur: number | null = null
-    const serie = kursEurJeIsin.get(isin)
-
+    const lauf = laeufe.get(isin)
+    if (!lauf) {
+      wertWp += h.stueck * h.einstandKurs
+      continue
+    }
+    let liveKurs: number | null = null
     if (datumIso === bis) {
       const live = liveByIsin.get(isin)
       if (live?.kursLiveEur != null && live.kursLiveEur > MIN_KURS_EUR) {
-        kursEur = live.kursLiveEur
+        liveKurs = live.kursLiveEur
       }
     }
-
-    if (kursEur == null && serie) {
-      const k = serie[tagIndex]
-      if (Number.isFinite(k) && k > MIN_KURS_EUR) kursEur = k
-    }
-
-    if (kursEur == null && h.einstandKurs > MIN_KURS_EUR) {
-      kursEur = h.einstandKurs
-    } else if (
-      kursEur != null &&
-      h.einstandKurs > MIN_KURS_EUR &&
-      !kursPlausibelFuerPosition(kursEur, h.einstandKurs)
-    ) {
-      kursEur = h.einstandKurs
-    }
-
-    if (kursEur != null && kursEur > MIN_KURS_EUR) {
-      wertWp += h.stueck * kursEur
-    }
+    const kurs = kursEurAnTag(isin, lauf, tagIndex, fx, h.einstandKurs, liveKurs)
+    wertWp += h.stueck * (kurs > MIN_KURS_EUR ? kurs : h.einstandKurs)
   }
 
-  let markt = wertWp + stand.cash
-  const minPlausibel = einstandWp + cashPos
-
-  if (hatOffenePositionen(stand) && einstandWp >= 1) {
-    if (!Number.isFinite(markt) || markt < 1 || markt < minPlausibel * 0.12) {
-      markt = minPlausibel
-    }
-  }
-
-  return markt
+  return wertWp + stand.cash
 }
 
-/** Alle Yahoo-Symbole für Historien-API (inkl. verkaufter Titel + FX). */
 export function yahooSymboleFuerHistorie(
   buchungen: PortfolioBuchung[],
   livePositionen: LivePosition[],
@@ -445,7 +396,6 @@ export function yahooSymboleFuerHistorie(
   return [...new Set([...wp, ...FX_SYMBOLE])]
 }
 
-/** Stooq-Symbole für Historien-Fallback (kostenlos, oft stabilere EU-Historie). */
 export function stooqSymboleFuerHistorie(
   buchungen: PortfolioBuchung[],
   livePositionen: LivePosition[],
@@ -457,42 +407,16 @@ export function stooqSymboleFuerHistorie(
   const alle = positionenFuerKurshistorie(buchungen, livePositionen)
   const posByIsin = new Map(alle.filter((p) => p.isin).map((p) => [p.isin!.toUpperCase(), p]))
   const syms = new Set<string>()
-
   for (const isin of alleIsinsAusBuchungen(buchungen)) {
-    for (const s of stooqSymboleFuerIsin(
-      isin,
-      liveByIsin.get(isin),
-      posByIsin.get(isin),
-      meta,
-    )) {
+    for (const s of stooqSymboleFuerIsin(isin, liveByIsin.get(isin), posByIsin.get(isin), meta)) {
       syms.add(s)
     }
   }
   return [...syms]
 }
 
-function symboleMitStooqFuerIsin(
-  isin: string,
-  live: LivePosition | undefined,
-  pos: PortfolioPositionSnapshot | undefined,
-  meta: Map<string, IsinMetadata>,
-  yahooSymbole: string[],
-  historie: Map<string, Map<string, number>>,
-  tage: string[],
-): string[] {
-  const stooqKeys = stooqSymboleFuerIsin(isin, live, pos, meta).map((s) => stooqHistorieKey(s))
-  const merged = [...new Set([...yahooSymbole, ...stooqKeys])]
-  const mitDaten: string[] = []
-  for (const sym of merged) {
-    const serie = historie.get(sym)
-    if (serie?.size) mitDaten.push(sym)
-  }
-  return mitDaten.length > 0 ? mitDaten : merged
-}
-
 /**
- * Tägliche MTM-Wertentwicklung (Parqet „Portfoliowert“-Linie).
- * Lückenlose Timeline, Bestand je Tag, Kurse mit LOCF — kein Null-Klippen.
+ * Tägliche Wertentwicklung — eine chronologische Pipeline (Bestand → Kurs-LOCF → Portfoliowert).
  */
 export function baueWertentwicklungMitKursen(
   buchungen: PortfolioBuchung[],
@@ -512,77 +436,62 @@ export function baueWertentwicklungMitKursen(
 
   const standProTag = depotStandProTag(buchungen, tage)
   const kapital = zugefuehrtKumuliertProTag(buchungen, tage)
-  const allePositionen = positionenFuerKurshistorie(buchungen, positionen)
+  const isins = alleIsinsAusBuchungen(buchungen)
   const liveByIsin = new Map(
     positionen.filter((p) => p.isin).map((p) => [p.isin!.toUpperCase(), p] as const),
   )
-  const posByIsin = new Map(allePositionen.filter((p) => p.isin).map((p) => [p.isin!.toUpperCase(), p]))
+  const posByIsin = new Map(
+    positionenFuerKurshistorie(buchungen, positionen)
+      .filter((p) => p.isin)
+      .map((p) => [p.isin!.toUpperCase(), p]),
+  )
 
   const fxTage = fxProTag(historie, tage)
-
-  const kursEurJeIsin = new Map<string, number[]>()
-  const isins = alleIsinsAusBuchungen(buchungen)
-
-  for (const isin of isins) {
-    const live = liveByIsin.get(isin)
-    const pos = posByIsin.get(isin)
-    const ref =
-      live && live.stueck > 0
-        ? live.einstandEur / live.stueck
-        : (pos?.kursEur ?? 0)
-
-    const hauptSym = symbolMitBesteAbdeckung(isin, live, pos, meta, historie, tage, ref, fxHeute)
-    const kandidaten = kandidatenFuerIsin(isin, live ?? pos, meta).filter((s) => !s.startsWith('STOOQ:'))
-    const yahooListe = [
-      ...new Set([hauptSym, ...kandidaten].filter((s): s is string => Boolean(s))),
-    ]
-    const symbole = symboleMitStooqFuerIsin(isin, live, pos, meta, yahooListe, historie, tage)
-
-    const einstandJeTag = einstandSerieProIsin(isin, tage, standProTag)
-    kursEurJeIsin.set(
-      isin,
-      baueBesteEurKursSerieProIsin(isin, symbole, historie, tage, fxTage, einstandJeTag),
-    )
-  }
+  const laeufe = baueIsinKursLaeufe(isins, liveByIsin, posByIsin, meta, historie, tage, fxHeute)
 
   const labelIdx = achsenLabelIndizes(tage)
   const punkte: WertentwicklungPunkt[] = []
+  let lastGoodPortfolio = 0
 
-  let lastGoodMtm = 0
   for (let i = 0; i < n; i++) {
     const datumIso = tage[i]
     const stand = standProTag.get(datumIso)!
     const zugefuehrtEur = kapital[i]
     const einstandWp = einstandWertpapiereEur(stand)
-    let portfoliowertEur = portfoliowertAmTag(stand, datumIso, bis, kursEurJeIsin, i, liveByIsin)
+    const untergrenze = einstandWp + Math.max(0, stand.cash)
 
+    let portfoliowertEur = portfoliowertAusStand(
+      stand,
+      datumIso,
+      bis,
+      i,
+      fxTage,
+      laeufe,
+      liveByIsin,
+    )
+
+    const offen = hatOffenePositionen(stand)
     const kollabiert =
-      hatOffenePositionen(stand) &&
+      offen &&
       einstandWp >= 1 &&
-      (!Number.isFinite(portfoliowertEur) ||
-        portfoliowertEur < 1 ||
-        portfoliowertEur < einstandWp * 0.12)
+      (!Number.isFinite(portfoliowertEur) || portfoliowertEur < untergrenze * MIN_PORTFOLIO_ZU_EINSTAND)
 
-    if (kollabiert && lastGoodMtm > einstandWp * 0.12) {
-      portfoliowertEur = lastGoodMtm
-    } else if (kollabiert) {
-      portfoliowertEur = einstandWp + Math.max(0, stand.cash)
+    if (kollabiert) {
+      portfoliowertEur =
+        lastGoodPortfolio >= untergrenze * MIN_PORTFOLIO_ZU_EINSTAND
+          ? lastGoodPortfolio
+          : untergrenze
     }
 
-    if (
-      portfoliowertEur >= 1 &&
-      (!hatOffenePositionen(stand) || portfoliowertEur >= einstandWp * 0.12)
-    ) {
-      lastGoodMtm = portfoliowertEur
+    if (offen && portfoliowertEur >= untergrenze * MIN_PORTFOLIO_ZU_EINSTAND) {
+      lastGoodPortfolio = portfoliowertEur
     }
-
-    portfoliowertEur = round2(Math.max(0, portfoliowertEur))
 
     punkte.push({
       monat: datumIso.slice(0, 7),
       datumIso,
       label: labelIdx.has(i) ? tagLabel(datumIso) : '',
-      portfoliowertEur,
+      portfoliowertEur: round2(portfoliowertEur),
       zugefuehrtEur,
       differenzEur: round2(portfoliowertEur - zugefuehrtEur),
     })
@@ -590,7 +499,7 @@ export function baueWertentwicklungMitKursen(
 
   if (n > 0 && depotwertHeute > 0) {
     const last = punkte[n - 1]
-    if (last.portfoliowertEur < depotwertHeute * 0.5) {
+    if (last.portfoliowertEur < depotwertHeute * 0.85) {
       last.portfoliowertEur = round2(depotwertHeute)
       last.differenzEur = round2(last.portfoliowertEur - last.zugefuehrtEur)
     }

@@ -50,22 +50,23 @@ export function sanitiereWertentwicklungTimeline(
 
   for (const p of punkte) {
     const kapital = p.zugefuehrtEur
-    let portfoliowert = Math.max(0, p.portfoliowertEur)
+    let portfoliowert = p.portfoliowertEur
     const hatKapital = kapital > MIN_KAPITAL_EUR
 
-    if (hatKapital && portfoliowert < MIN_PORTFOLIO_EUR && lastOk > MIN_PORTFOLIO_EUR) {
+    if (hatKapital && portfoliowert < MIN_PORTFOLIO_EUR && lastOk > kapital * 0.15) {
       portfoliowert = lastOk
     } else if (
-      lastOk > MIN_PORTFOLIO_EUR &&
+      hatKapital &&
+      lastOk > kapital * 0.15 &&
       portfoliowert > MIN_PORTFOLIO_EUR &&
       portfoliowert < lastOk * CLIFF_RATIO &&
-      kapital >= lastOk * 0.5
+      kapital >= lastOk * 0.4
     ) {
       portfoliowert = lastOk
     }
 
-    if (portfoliowert >= MIN_PORTFOLIO_EUR) {
-      lastOk = portfoliowert
+    if (portfoliowert >= kapital * 0.15 || portfoliowert >= lastOk * 0.5) {
+      lastOk = Math.max(lastOk, portfoliowert)
     }
 
     out.push({
@@ -86,7 +87,10 @@ export function berechnePortfolioDashboardBerechnungen(
   buchungen: PortfolioBuchung[],
   optionen: PortfolioBerechnungenOptionen = {},
 ): PortfolioDashboardBerechnungen {
-  const wertentwicklung = sanitiereWertentwicklungTimeline(wertentwicklungRoh)
+  const wertentwicklung =
+    wertentwicklungRoh.length > 0
+      ? sanitiereWertentwicklungTimeline(wertentwicklungRoh)
+      : []
 
   if (wertentwicklung.length === 0) {
     return {
