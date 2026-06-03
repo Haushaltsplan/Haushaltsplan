@@ -36,6 +36,31 @@ export function median(values: number[]): number {
   return s.length % 2 === 0 ? (s[mid - 1] + s[mid]) / 2 : s[mid]
 }
 
+/** Typische Tage Ex-Datum → Zahltag (EU oft ohne Zahltag bei Yahoo). */
+const EU_BOERSEN_SUFFIXE = new Set([
+  'DE',
+  'F',
+  'PA',
+  'AS',
+  'L',
+  'SW',
+  'MI',
+  'MC',
+  'ST',
+  'HM',
+  'SG',
+  'BE',
+  'HE',
+  'DU',
+])
+
+export function schaetzeZahlungsdatumNachEx(exIso: string, symbol: string): string {
+  const m = /\.([A-Z]{1,3})$/i.exec(symbol.trim())
+  const suffix = m?.[1]?.toUpperCase() ?? ''
+  const tage = EU_BOERSEN_SUFFIXE.has(suffix) ? 21 : 14
+  return addDaysIso(exIso, tage)
+}
+
 /** Finnhub/Yahoo: US-Ticker und Xetra-Variante probieren. */
 export function brokerSymbolKandidaten(sym: string): string[] {
   const s = sym.trim().toUpperCase()

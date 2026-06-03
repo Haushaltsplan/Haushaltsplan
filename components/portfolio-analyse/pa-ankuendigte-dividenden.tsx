@@ -71,7 +71,11 @@ export function PaAnkuendigteDividenden({
                   <p className="truncate text-sm font-medium text-zinc-100">{e.name}</p>
                   <p className="text-[11px] text-zinc-500">
                     {formatDatumDe(e.zahlungsdatumIso)}
-                    {e.quelle === 'finnhub' ? ' · Finnhub' : ''}
+                    {e.quelle === 'divvydiary'
+                      ? ' · DivvyDiary'
+                      : e.quelle === 'finnhub'
+                        ? ' · Finnhub'
+                        : ''}
                   </p>
                 </div>
                 <div className="shrink-0 text-right">
@@ -91,8 +95,8 @@ export function PaAnkuendigteDividenden({
         </section>
       ))}
       <p className="border-t border-white/[0.04] pt-3 text-[10px] leading-relaxed text-zinc-600">
-        Nur angekündigte Termine ab heute (max. 1 Jahr), Quelle Yahoo-Kalender. Keine Zusage der Auszahlung;
-        Beträge können in USD vorliegen.
+        Angekündigte Termine ab heute (max. 1 Jahr). EU-Zahltage über DivvyDiary (ISIN), US oft Yahoo.
+        Keine Zusage der Auszahlung; Beträge können in USD vorliegen.
       </p>
     </div>
   )

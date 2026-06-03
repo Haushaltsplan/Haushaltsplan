@@ -1,6 +1,7 @@
 'use client'
 
 import type { LivePosition } from '@/lib/portfolio-analyse/live-bewertung'
+import { isinKenntnis } from '@/lib/portfolio-analyse/isin-kenntnisse'
 import type { IsinMetadata } from '@/lib/portfolio-analyse/isin-lookup-server'
 import type { AnkuendigteDividendenErgebnis } from '@/lib/portfolio-analyse/ankuendigte-dividenden'
 
@@ -11,13 +12,15 @@ export async function ladeAnkuendigteDividendenDepot(
   const payload = positionen
     .filter((p) => p.stueck > 0)
     .map((p) => {
-      const m = p.isin ? meta.get(p.isin) : undefined
+      const isin = p.isin?.toUpperCase() ?? ''
+      const m = isin ? meta.get(isin) : undefined
+      const k = isin ? isinKenntnis(isin) : null
       return {
-        isin: p.isin,
+        isin: isin || p.isin,
         name: p.anzeigeName ?? p.name,
         stueck: p.stueck,
-        symbolYahoo: p.symbolYahoo ?? m?.symbolYahoo ?? null,
-        symbolCandidates: m?.symbolCandidates,
+        symbolYahoo: p.symbolYahoo ?? k?.symbolYahoo ?? m?.symbolYahoo ?? null,
+        symbolCandidates: k?.symbolCandidates ?? m?.symbolCandidates,
       }
     })
 
@@ -28,7 +31,7 @@ export async function ladeAnkuendigteDividendenDepot(
       hinweise: ['Keine offenen Positionen im Depot.'],
       abgefragteSymbole: 0,
       treffer: 0,
-      statistik: { finnhub: 0, yahoo: 0, ohneTreffer: 0 },
+      statistik: { divvydiary: 0, finnhub: 0, yahoo: 0, ohneTreffer: 0 },
     }
   }
 
@@ -50,6 +53,6 @@ export async function ladeAnkuendigteDividendenDepot(
     hinweise: j.hinweise ?? [],
     abgefragteSymbole: j.abgefragteSymbole ?? 0,
     treffer: j.treffer ?? 0,
-      statistik: j.statistik ?? { finnhub: 0, yahoo: 0, ohneTreffer: 0 },
+      statistik: j.statistik ?? { divvydiary: 0, finnhub: 0, yahoo: 0, ohneTreffer: 0 },
   }
 }

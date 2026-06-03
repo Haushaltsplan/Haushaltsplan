@@ -1,9 +1,11 @@
 import { brokerSymbolKandidaten } from '@/lib/portfolio-analyse/dividenden-datum-hilfen'
+import { isinKenntnis } from '@/lib/portfolio-analyse/isin-kenntnisse'
 import {
   finnhubDividendKalenderGesperrt,
   finnhubDividendenVerfuegbar,
   ladeFinnhubAnkuendigteDividende,
 } from '@/lib/portfolio-analyse/finnhub-ankuendigte-dividenden-server'
+import { ladeDivvydiaryAnkuendigteDividende } from '@/lib/portfolio-analyse/divvydiary-ankuendigte-dividenden-server'
 import { ladeYahooAnkuendigteDividende } from '@/lib/portfolio-analyse/yahoo-ankuendigte-dividenden-server'
 
 export type DepotPositionAnfrage = {
@@ -14,7 +16,7 @@ export type DepotPositionAnfrage = {
   symbolCandidates?: string[]
 }
 
-export type AnkuendigteDividendeQuelle = 'yahoo' | 'finnhub'
+export type AnkuendigteDividendeQuelle = 'divvydiary' | 'yahoo' | 'finnhub'
 
 export type AnkuendigteDividendeEintrag = {
   isin: string | null
@@ -42,6 +44,7 @@ export type AnkuendigteDividendenErgebnis = {
   abgefragteSymbole: number
   treffer: number
   statistik: {
+    divvydiary: number
     finnhub: number
     yahoo: number
     ohneTreffer: number
@@ -77,6 +80,9 @@ function symboleFuerPosition(pos: DepotPositionAnfrage): string[] {
   }
   add(pos.symbolYahoo)
   for (const c of pos.symbolCandidates ?? []) add(c)
+  const k = pos.isin ? isinKenntnis(pos.isin) : null
+  add(k?.symbolYahoo)
+  for (const c of k?.symbolCandidates ?? []) add(c)
   return out
 }
 
@@ -88,8 +94,35 @@ type RohTreffer = {
   quelle: AnkuendigteDividendeQuelle
 }
 
-async function ladeFuerSymbole(symbole: string[]): Promise<RohTreffer | null> {
+function positionHatIsin(pos: DepotPositionAnfrage): boolean {
+  const isin = pos.isin?.trim().toUpperCase() ?? ''
+  return isin.length >= 10
+}
+
+async function ladeFuerPosition(pos: DepotPositionAnfrage): Promise<RohTreffer | null> {
+  const symbole = symboleFuerPosition(pos)
+  const symbolAnzeige = symbole[0] ?? pos.isin ?? '—'
+  const isin = pos.isin?.trim().toUpperCase() ?? ''
+
+  if (isin) {
+    const d = await ladeDivvydiaryAnkuendigteDividende(isin, pos.name)
+    if (d) {
+      return {
+        zahlungsdatumIso: d.zahlungsdatumIso,
+        exDatumIso: d.exDatumIso,
+        dividendeProStueckEur: d.dividendeProStueckEur,
+        symbol: symbolAnzeige,
+        quelle: 'divvydiary',
+      }
+    }
+  }
+
+  return ladeFuerSymbole(symbole, symbolAnzeige)
+}
+
+async function ladeFuerSymbole(symbole: string[], symbolAnzeige: string): Promise<RohTreffer | null> {
   const uniq = [...new Set(symbole)]
+  if (uniq.length === 0) return null
 
   if (finnhubDividendenVerfuegbar()) {
     for (const sym of uniq) {
@@ -167,13 +200,14 @@ export async function berechneAnkuendigteDividendenDepot(
   positionen: DepotPositionAnfrage[],
 ): Promise<AnkuendigteDividendenErgebnis> {
   const hinweise: string[] = []
-  const aktiv = positionen.filter((p) => p.stueck > 0 && symboleFuerPosition(p).length > 0)
+  const aktiv = positionen.filter(
+    (p) => p.stueck > 0 && (symboleFuerPosition(p).length > 0 || positionHatIsin(p)),
+  )
   const symboleGesamt = aktiv.reduce((s, p) => s + symboleFuerPosition(p).length, 0)
-  const stat = { finnhub: 0, yahoo: 0, ohneTreffer: 0 }
+  const stat = { divvydiary: 0, finnhub: 0, yahoo: 0, ohneTreffer: 0 }
 
   const roh = await mapPool(aktiv, 6, async (pos) => {
-    const symbole = symboleFuerPosition(pos)
-    const hit = await ladeFuerSymbole(symbole)
+    const hit = await ladeFuerPosition(pos)
     if (!hit) {
       stat.ohneTreffer++
       return null
@@ -210,6 +244,7 @@ export async function berechneAnkuendigteDividendenDepot(
     )
   } else {
     const teile: string[] = []
+    if (stat.divvydiary > 0) teile.push(`${stat.divvydiary} DivvyDiary`)
     if (stat.finnhub > 0) teile.push(`${stat.finnhub} Finnhub`)
     if (stat.yahoo > 0) teile.push(`${stat.yahoo} Yahoo`)
     hinweise.push(
@@ -217,14 +252,11 @@ export async function berechneAnkuendigteDividendenDepot(
     )
   }
 
-  if (finnhubDividendenVerfuegbar()) {
-    hinweise.push('Finnhub zuerst, dann Yahoo — jeweils nur Depot-Symbole.')
-  } else if (finnhubDividendKalenderGesperrt()) {
-    hinweise.push(
-      'Finnhub-Kalender nicht im Free-Tier (403) — nur Yahoo. Termine ab heute, max. 1 Jahr.',
-    )
-  } else {
-    hinweise.push('Yahoo-Kalender — Termine ab heute, höchstens +1 Jahr.')
+  hinweise.push(
+    'Zahltage: DivvyDiary (ISIN), sonst Finnhub/Yahoo. Nur voraus, max. 1 Jahr.',
+  )
+  if (finnhubDividendKalenderGesperrt()) {
+    hinweise.push('Finnhub-Kalender im Free-Tier nicht verfügbar (403).')
   }
 
   return {
