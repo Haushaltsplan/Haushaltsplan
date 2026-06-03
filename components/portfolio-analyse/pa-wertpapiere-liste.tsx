@@ -3,7 +3,11 @@
 import { useMemo, useState } from 'react'
 import { PortfolioIsinLogo } from '@/components/portfolio-analyse/isin-logo'
 import { PaCard } from '@/components/portfolio-analyse/pa-ui'
-import { dividendenJeIsin } from '@/lib/portfolio-analyse/auswertungen'
+import {
+  dividendenJeIsin,
+  dividendenRenditeProzentParqet,
+  kaufVolumenJeIsin,
+} from '@/lib/portfolio-analyse/auswertungen'
 import { formatEur, formatProzent } from '@/lib/portfolio-analyse/berechnung'
 import type { LivePosition } from '@/lib/portfolio-analyse/live-bewertung'
 import type { IsinMetadata } from '@/lib/portfolio-analyse/isin-lookup-server'
@@ -68,10 +72,12 @@ function WertpapierZeile({
   p,
   meta,
   dividendenEur,
+  kaufVolumenEur,
 }: {
   p: LivePosition
   meta: Map<string, IsinMetadata>
   dividendenEur: number
+  kaufVolumenEur: number
 }) {
   const isin = p.isin?.toUpperCase() ?? ''
   const kurs = p.kursLiveEur ?? p.kursEur
@@ -79,7 +85,7 @@ function WertpapierZeile({
   const gvPct = p.gewinnVerlustProzent
   const positiv = gv >= 0
   const divPositiv = dividendenEur > 0
-  const divPct = p.einstandEur > 0 && dividendenEur > 0 ? (dividendenEur / p.einstandEur) * 100 : null
+  const divPct = dividendenRenditeProzentParqet(dividendenEur, kaufVolumenEur, p.einstandEur)
 
   return (
     <tr className="border-b border-white/[0.04] last:border-0 hover:bg-white/[0.02]">
@@ -186,6 +192,7 @@ export function PaWertpapiereListe({
   )
 
   const divMap = useMemo(() => dividendenJeIsin(buchungen), [buchungen])
+  const kaufVolMap = useMemo(() => kaufVolumenJeIsin(buchungen), [buchungen])
 
   /** Seit Kauf: Kursgewinn + erhaltene Dividenden (wie Parqet „im Plus/Minus“). */
   const { gewinner, verlierer } = useMemo(() => {
@@ -253,6 +260,7 @@ export function PaWertpapiereListe({
                   p={p}
                   meta={meta}
                   dividendenEur={p.isin ? (divMap.get(p.isin.toUpperCase()) ?? 0) : 0}
+                  kaufVolumenEur={p.isin ? (kaufVolMap.get(p.isin.toUpperCase()) ?? 0) : 0}
                 />
               ))}
             </tbody>

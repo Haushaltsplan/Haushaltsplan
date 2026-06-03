@@ -195,6 +195,31 @@ export function dividendenJeIsin(buchungen: PortfolioBuchung[]): Map<string, num
   return map
 }
 
+/** Summe aller Käufe je ISIN (Parqet-Basis für Dividenden-%, nicht reduzierter Einstand). */
+export function kaufVolumenJeIsin(buchungen: PortfolioBuchung[]): Map<string, number> {
+  const map = new Map<string, number>()
+  for (const b of buchungen) {
+    if (b.typ !== 'kauf' || !b.isin) continue
+    const key = b.isin.toUpperCase()
+    map.set(key, Math.round(((map.get(key) ?? 0) + b.betragEur) * 100) / 100)
+  }
+  return map
+}
+
+/**
+ * Parqet „Dividenden / in %“: erhaltene Dividenden ÷ Summe aller Käufe (Yield on Cost auf Kaufvolumen).
+ */
+export function dividendenRenditeProzentParqet(
+  dividendenEur: number,
+  kaufVolumenEur: number,
+  fallbackEinstandEur = 0,
+): number | null {
+  if (dividendenEur <= 0) return null
+  const basis = kaufVolumenEur > 0 ? kaufVolumenEur : fallbackEinstandEur > 0 ? fallbackEinstandEur : 0
+  if (basis <= 0) return null
+  return Math.round((dividendenEur / basis) * 10000) / 100
+}
+
 export function dividendenProMonat(buchungen: PortfolioBuchung[], monate = 18): MonatsWert[] {
   const keys = letzteMonateKeys(monate)
   const summen = new Map<string, number>()
