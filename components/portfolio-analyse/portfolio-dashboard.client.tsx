@@ -156,11 +156,16 @@ export function PortfolioDashboardClient() {
         />
       ) : null}
 
-      <PaCard variant="elevated" className="min-w-0 overflow-hidden">
+      <PaCard
+        variant="elevated"
+        className={`min-w-0 ${chartTab === 'dividenden' ? 'overflow-visible' : 'overflow-hidden'}`}
+      >
         <div className="-mx-1 border-b border-white/[0.04] px-3 pt-3 sm:mx-0 sm:px-6 sm:pt-4">
           <PaIconTabs tabs={CHART_TABS} active={chartTab} onChange={setChartTab} />
         </div>
-        <div className="min-w-0 p-3 sm:p-6">
+        <div
+          className={`min-w-0 p-3 sm:p-6 ${chartTab === 'dividenden' ? 'overflow-visible' : ''}`}
+        >
           {chartTab === 'drawdown' && drawdown.maxDrawdownProzent < 0 ? (
             <div className="mb-4 flex flex-wrap justify-end gap-6 text-sm">
               <div>

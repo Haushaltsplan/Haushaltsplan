@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { chartHoverFromClientX } from '@/components/portfolio-analyse/chart-hover'
 import { formatEur } from '@/lib/portfolio-analyse/berechnung'
 import type { GestapelterDivMonat } from '@/lib/portfolio-analyse/dividenden-auswertung'
@@ -16,9 +16,21 @@ export function PaGestapelteDividendenChart({
   durchschnittIntervallEur?: number
   hoehe?: number
 }) {
+  const outerRef = useRef<HTMLDivElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
+  const lastClientX = useRef<number | null>(null)
   const [hoverIndex, setHoverIndex] = useState<number | null>(null)
-  const [tooltipLeftPct, setTooltipLeftPct] = useState(50)
+  const [tooltipX, setTooltipX] = useState(0)
+  const [outerWidth, setOuterWidth] = useState(0)
+
+  useEffect(() => {
+    const el = outerRef.current
+    if (!el) return
+    const ro = new ResizeObserver(() => setOuterWidth(el.clientWidth))
+    ro.observe(el)
+    setOuterWidth(el.clientWidth)
+    return () => ro.disconnect()
+  }, [])
 
   const breite = Math.max(MIN_BREITE, 56 + daten.length * 14)
   const padLinks = 48
@@ -95,30 +107,54 @@ export function PaGestapelteDividendenChart({
         padLinks,
         padRechts,
         bars.length,
+        { align: 'start', scrollLeft: el.scrollLeft },
       )
       if (!hit) return
+      const bar = bars[hit.index]
+      const sichtbarX = hit.offsetX + bar.cx * hit.scale - el.scrollLeft
       setHoverIndex(hit.index)
-      setTooltipLeftPct(hit.tooltipLeftPct)
+      setTooltipX(sichtbarX)
     },
-    [bars.length, breite, hoehe, padLinks, padRechts],
+    [bars, breite, hoehe, padLinks, padRechts],
   )
+
+  const labelStep = Math.max(1, Math.ceil(daten.length / 14))
+  const active = hoverIndex != null && bars.length > 0 ? bars[hoverIndex] : null
+  const activeDaten = hoverIndex != null ? daten[hoverIndex] : null
+  const tooltipLeft = useMemo(() => {
+    const half = 150
+    if (outerWidth <= 0) return tooltipX
+    return Math.min(outerWidth - half, Math.max(half, tooltipX))
+  }, [outerWidth, tooltipX])
 
   if (daten.length < 2) {
     return <p className="py-12 text-center text-sm text-zinc-500">Noch zu wenig Dividenden-Daten.</p>
   }
 
-  const labelStep = Math.max(1, Math.ceil(daten.length / 14))
-  const active = hoverIndex != null ? bars[hoverIndex] : null
-  const activeDaten = hoverIndex != null ? daten[hoverIndex] : null
+  const tooltipExtraPad =
+    activeDaten != null ? Math.min(480, 64 + activeDaten.segmente.length * 28) : 0
 
   return (
-    <div className="relative w-full min-w-0">
+    <div
+      ref={outerRef}
+      className="relative w-full min-w-0"
+      style={{ paddingBottom: tooltipExtraPad }}
+    >
       <div
         ref={containerRef}
         className="relative w-full cursor-crosshair overflow-x-auto"
         style={{ height: hoehe }}
-        onMouseMove={(e) => pickIndex(e.clientX)}
-        onMouseLeave={() => setHoverIndex(null)}
+        onMouseMove={(e) => {
+          lastClientX.current = e.clientX
+          pickIndex(e.clientX)
+        }}
+        onScroll={() => {
+          if (lastClientX.current != null) pickIndex(lastClientX.current)
+        }}
+        onMouseLeave={() => {
+          lastClientX.current = null
+          setHoverIndex(null)
+        }}
         onTouchMove={(e) => {
           const t = e.touches[0]
           if (t) pickIndex(t.clientX)
@@ -212,13 +248,14 @@ export function PaGestapelteDividendenChart({
 
       {active && activeDaten ? (
         <div
-          className="pointer-events-none absolute z-10 rounded-lg border border-zinc-700/80 bg-zinc-900/95 px-3 py-2.5 text-xs shadow-xl sm:min-w-[240px]"
+          className="pointer-events-none absolute z-20 w-max max-w-[min(100%,320px)] rounded-lg border border-zinc-700/80 bg-zinc-900/95 px-3 py-2.5 text-xs shadow-xl sm:min-w-[260px]"
           style={{
-            left: `clamp(8px, ${tooltipLeftPct.toFixed(1)}%, calc(100% - 280px))`,
-            top: 8,
+            left: tooltipLeft,
+            top: hoehe + 6,
+            transform: 'translateX(-50%)',
           }}
         >
-          <div className="mb-2 flex items-baseline justify-between gap-4">
+          <div className="mb-2 flex items-baseline justify-between gap-4 border-b border-zinc-800 pb-2">
             <span className="font-medium text-zinc-200">{activeDaten.tooltipTitel}</span>
             <span className="tabular-nums font-semibold text-zinc-100">{formatEur(active.gesamt)}</span>
           </div>
@@ -237,15 +274,15 @@ export function PaGestapelteDividendenChart({
             ) : null}
           </div>
           {activeDaten.segmente.length > 0 ? (
-            <ul className="mt-2 max-h-48 space-y-1 overflow-y-auto border-t border-zinc-800 pt-2">
+            <ul className="mt-2 space-y-1.5 border-t border-zinc-800 pt-2">
               {activeDaten.segmente.map((s) => (
-                <li key={s.key} className="flex items-center justify-between gap-3">
-                  <span className="flex min-w-0 items-center gap-2 text-zinc-400">
+                <li key={s.key} className="flex items-start justify-between gap-3">
+                  <span className="flex min-w-0 flex-1 items-center gap-2 text-zinc-400">
                     <span
-                      className="inline-block h-2.5 w-2.5 shrink-0 rounded-sm"
+                      className="mt-0.5 inline-block h-2.5 w-2.5 shrink-0 rounded-sm"
                       style={{ backgroundColor: s.farbe }}
                     />
-                    <span className="truncate">{s.label}</span>
+                    <span className="leading-snug break-words">{s.label}</span>
                   </span>
                   <span className="shrink-0 tabular-nums text-zinc-200">{formatEur(s.wert)}</span>
                 </li>

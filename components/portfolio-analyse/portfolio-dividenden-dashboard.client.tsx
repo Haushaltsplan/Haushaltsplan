@@ -99,7 +99,10 @@ export function PortfolioDividendenDashboardClient() {
                   </PaCard>
                 </div>
 
-                <PaCard variant="elevated" className="overflow-hidden">
+                <PaCard
+                  variant="elevated"
+                  className={chartTab === 'monatlich' ? 'overflow-visible' : 'overflow-hidden'}
+                >
                   <div className="border-b border-zinc-800/60 px-4 pt-4">
                     <PaIconTabs
                       tabs={[
@@ -110,7 +113,9 @@ export function PortfolioDividendenDashboardClient() {
                       onChange={setChartTab}
                     />
                   </div>
-                  <div className="p-4 sm:p-6">
+                  <div
+                    className={`p-4 sm:p-6 ${chartTab === 'monatlich' ? 'overflow-visible' : ''}`}
+                  >
                     {chartTab === 'monatlich' ? (
                       <PaGestapelteDividendenChart
                         daten={divSerie.monate}
