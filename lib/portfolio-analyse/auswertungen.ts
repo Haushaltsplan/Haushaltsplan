@@ -1,6 +1,11 @@
 import type { DonutSegment } from '@/components/finanzen/donut-chart'
 import type { IsinMetadata } from '@/lib/portfolio-analyse/isin-lookup-server'
 import { anzeigeNameFuerIsin } from '@/lib/portfolio-analyse/isin-metadata-client'
+import {
+  dividendenZuflussEur,
+  istKlassischeDividende,
+  zaehltAlsKaufVolumen,
+} from '@/lib/portfolio-analyse/dividenden-buchung'
 import type {
   AssetKlasse,
   BuchungsTyp,
@@ -183,24 +188,32 @@ export function buchungsTypDonut(buchungen: PortfolioBuchung[]): DonutSegment[] 
     }))
 }
 
-/** Kumulierte Dividenden/Zinsen je ISIN (für Wertpapiere-Tabelle). */
+/** Kumulierte Dividenden je ISIN (inkl. Wahldividende / Aktiendividende). */
 export function dividendenJeIsin(buchungen: PortfolioBuchung[]): Map<string, number> {
+  const klassischAmTag = new Set<string>()
+  for (const b of buchungen) {
+    if (!b.isin || !istKlassischeDividende(b)) continue
+    klassischAmTag.add(`${b.isin.toUpperCase()}|${b.datum}`)
+  }
+
   const map = new Map<string, number>()
   for (const b of buchungen) {
-    if (b.typ !== 'dividende' && b.typ !== 'zins') continue
     if (!b.isin) continue
     const key = b.isin.toUpperCase()
-    map.set(key, Math.round(((map.get(key) ?? 0) + b.betragEur) * 100) / 100)
+    const zufluss = dividendenZuflussEur(b)
+    if (zufluss <= 0) continue
+    if (!istKlassischeDividende(b) && klassischAmTag.has(`${key}|${b.datum}`)) continue
+    map.set(key, Math.round(((map.get(key) ?? 0) + zufluss) * 100) / 100)
   }
   return map
 }
 
-/** Summe aller Käufe je ISIN (Parqet-Basis für Dividenden-%, nicht reduzierter Einstand). */
+/** Summe aller Käufe je ISIN (ohne Aktiendividende-Wiederanlage). */
 export function kaufVolumenJeIsin(buchungen: PortfolioBuchung[]): Map<string, number> {
   const map = new Map<string, number>()
   for (const b of buchungen) {
-    if (b.typ !== 'kauf' || !b.isin) continue
-    const key = b.isin.toUpperCase()
+    if (!zaehltAlsKaufVolumen(b)) continue
+    const key = b.isin!.toUpperCase()
     map.set(key, Math.round(((map.get(key) ?? 0) + b.betragEur) * 100) / 100)
   }
   return map
@@ -224,10 +237,11 @@ export function dividendenProMonat(buchungen: PortfolioBuchung[], monate = 18): 
   const keys = letzteMonateKeys(monate)
   const summen = new Map<string, number>()
   for (const b of buchungen) {
-    if (b.typ !== 'dividende' && b.typ !== 'zins') continue
+    const zufluss = dividendenZuflussEur(b)
+    if (zufluss <= 0) continue
     const k = monatsKey(b.datum)
     if (!k) continue
-    summen.set(k, (summen.get(k) ?? 0) + b.betragEur)
+    summen.set(k, (summen.get(k) ?? 0) + zufluss)
   }
   return keys.map((monat) => ({
     monat,

@@ -12,6 +12,7 @@
 import type { PeriodPerformance } from '@/lib/portfolio-analyse/parqet-core/types'
 import { buchungZaehltFuerParqetRealisiert } from '@/lib/portfolio-analyse/parqet-realisiert'
 import { depotStandBisDatum, einstandWertpapiereEur } from '@/lib/portfolio-analyse/bestand'
+import { dividendenZuflussEur, istKlassischeDividende } from '@/lib/portfolio-analyse/dividenden-buchung'
 import type { PortfolioBuchung } from '@/lib/portfolio-analyse/types'
 import type { WertentwicklungPunkt } from '@/lib/portfolio-analyse/wertentwicklung'
 import { heuteIso } from '@/lib/portfolio-analyse/wertentwicklung-tage'
@@ -177,10 +178,21 @@ function dividendenImZeitraum(
   startDatumIso: string,
   endDatumIso: string,
 ): number {
+  const klassischAmTag = new Set<string>()
+  for (const b of buchungen) {
+    if (b.datum <= startDatumIso || b.datum > endDatumIso) continue
+    if (!b.isin || !istKlassischeDividende(b)) continue
+    klassischAmTag.add(`${b.isin.toUpperCase()}|${b.datum}`)
+  }
+
   let sum = 0
   for (const b of buchungen) {
     if (b.datum <= startDatumIso || b.datum > endDatumIso) continue
-    if (b.typ === 'dividende' || b.typ === 'zins') sum += b.betragEur
+    const zufluss = dividendenZuflussEur(b)
+    if (zufluss <= 0) continue
+    if (!b.isin) continue
+    if (!istKlassischeDividende(b) && klassischAmTag.has(`${b.isin.toUpperCase()}|${b.datum}`)) continue
+    sum += zufluss
   }
   return round2(sum)
 }
