@@ -70,7 +70,111 @@ export function slotsAusHistorie(past: DivvydiaryRohZeile[]): ZahlungsSlot[] {
     })
   }
 
-  return slots.sort((a, b) => a.monat - b.monat)
+  let sorted = entferneBenachbarteSchwaechereSlots(slots, byMonat).sort((a, b) => a.monat - b.monat)
+
+  const zahlungenProJahr = jahreGesamt > 0 ? past.length / jahreGesamt : past.length
+  if (zahlungenProJahr <= 1.5 && sorted.length > 1) {
+    let bestMonat = sorted[0].monat
+    let bestJahre = 0
+    for (const [monat, list] of byMonat) {
+      const jahre = new Set(list.map((r) => r.payDate.slice(0, 4))).size
+      if (jahre > bestJahre) {
+        bestJahre = jahre
+        bestMonat = monat
+      }
+    }
+    sorted = sorted.filter((s) => s.monat === bestMonat)
+  }
+
+  return sorted
+}
+
+/** Mindestabstand Prognose nach letztem bestätigtem Termin (~1 Quartal). */
+export const MIN_TAGE_PROGNOSE_NACH_BESTAETIGT = 75
+
+function jahreMitZahlungInMonat(past: DivvydiaryRohZeile[], monat: number): number {
+  return new Set(
+    past.filter((r) => Number(r.payDate.slice(5, 7)) === monat).map((r) => r.payDate.slice(0, 4)),
+  ).size
+}
+
+function monatAbstand(a: number, b: number): number {
+  const d = (b - a + 12) % 12
+  return d === 0 ? 12 : d
+}
+
+/** Juli+August o. ä. — nur den Monat mit mehr Jahren Historie behalten. */
+function entferneBenachbarteSchwaechereSlots(
+  slots: ZahlungsSlot[],
+  byMonat: Map<number, DivvydiaryRohZeile[]>,
+): ZahlungsSlot[] {
+  if (slots.length <= 1) return slots
+  const jahre = (m: number) =>
+    new Set((byMonat.get(m) ?? []).map((r) => r.payDate.slice(0, 4))).size
+
+  let s = [...slots]
+  let changed = true
+  while (changed && s.length > 1) {
+    changed = false
+    const sorted = [...s].sort((a, b) => a.monat - b.monat)
+    const drop = new Set<number>()
+    for (let i = 0; i < sorted.length; i++) {
+      const a = sorted[i]
+      const b = sorted[(i + 1) % sorted.length]
+      if (monatAbstand(a.monat, b.monat) !== 1) continue
+      const ja = jahre(a.monat)
+      const jb = jahre(b.monat)
+      if (ja < jb) {
+        drop.add(a.monat)
+        changed = true
+      } else if (jb < ja) {
+        drop.add(b.monat)
+        changed = true
+      }
+    }
+    s = s.filter((x) => !drop.has(x.monat))
+  }
+  return s
+}
+
+function scorePrognoseMonat(payDate: string, slots: ZahlungsSlot[], past: DivvydiaryRohZeile[]): number {
+  const m = Number(payDate.slice(5, 7))
+  const tag = Number(payDate.slice(8, 10))
+  const jahre = jahreMitZahlungInMonat(past, m)
+  const slot = slots.find((s) => s.monat === m)
+  const tagDiff = slot ? Math.abs(slot.payTag - tag) : 50
+  const slotBonus = slot ? 500 : 0
+  return jahre * 1000 + slotBonus - tagDiff
+}
+
+/** Max. eine Prognose pro ~Quartal; bei Kollision gewinnt der historisch passendere Monat. */
+export function dedupePrognosenImQuartalsabstand(
+  termini: DividendenPrognoseTreffer[],
+  slots: ZahlungsSlot[],
+  past: DivvydiaryRohZeile[],
+): DividendenPrognoseTreffer[] {
+  const bestaetigt = termini.filter((t) => t.bestaetigt)
+  const prognosen = termini.filter((t) => !t.bestaetigt).sort((a, b) => a.payDate.localeCompare(b.payDate))
+  const kept: DividendenPrognoseTreffer[] = []
+
+  for (const p of prognosen) {
+    const clashIdx = kept.findIndex(
+      (k) => Math.abs(tageZwischenIso(k.payDate, p.payDate)) < MIN_TAGE_PROGNOSE_NACH_BESTAETIGT,
+    )
+    if (clashIdx < 0) {
+      kept.push(p)
+      continue
+    }
+    const sp = scorePrognoseMonat(p.payDate, slots, past)
+    const sk = scorePrognoseMonat(kept[clashIdx].payDate, slots, past)
+    if (sp > sk) {
+      kept[clashIdx] = p
+    } else if (sp === sk && Number(p.payDate.slice(5, 7)) > Number(kept[clashIdx].payDate.slice(5, 7))) {
+      kept[clashIdx] = p
+    }
+  }
+
+  return [...bestaetigt, ...kept].sort((a, b) => a.payDate.localeCompare(b.payDate))
 }
 
 export function payMonatPasstZuSlots(payDate: string, slots: ZahlungsSlot[]): boolean {
@@ -186,10 +290,20 @@ export function listeDividendenTermine(
     }
   }
 
+  const bestaetigtePay = out.filter((t) => t.bestaetigt).map((t) => t.payDate)
+
+  const prognoseErlaubt = (pay: string): boolean => {
+    if (bestaetigtePay.length === 0) return true
+    return !bestaetigtePay.some(
+      (b) => Math.abs(tageZwischenIso(b, pay)) < MIN_TAGE_PROGNOSE_NACH_BESTAETIGT,
+    )
+  }
+
   for (const r of zukunft) {
     if (!r.forecast) continue
     if (!passtOderKeinMuster(r.payDate)) continue
     if (usedPay.has(r.payDate)) continue
+    if (!prognoseErlaubt(r.payDate)) continue
     out.push({
       exDate: r.exDate,
       payDate: r.payDate,
@@ -203,12 +317,13 @@ export function listeDividendenTermine(
     for (const p of alleSlotTermine(slots, past, heute, bis, wachstum)) {
       const naheBekannt = [...usedPay].some((d) => Math.abs(tageZwischenIso(d, p.payDate)) <= 7)
       if (naheBekannt) continue
+      if (!prognoseErlaubt(p.payDate)) continue
       out.push(p)
       usedPay.add(p.payDate)
     }
   }
 
-  return dedupeNaheTermine(out)
+  return dedupePrognosenImQuartalsabstand(dedupeNaheTermine(out), slots, past)
 }
 
 /** Nächster Termin (Kompatibilität). */

@@ -1,4 +1,13 @@
-import { brokerSymbolKandidaten } from '@/lib/portfolio-analyse/dividenden-datum-hilfen'
+import {
+  dedupePrognosenImQuartalsabstand,
+  MIN_TAGE_PROGNOSE_NACH_BESTAETIGT,
+} from '@/lib/portfolio-analyse/dividenden-prognose'
+import type { DividendenPrognoseTreffer } from '@/lib/portfolio-analyse/dividenden-prognose'
+import {
+  brokerSymbolKandidaten,
+  heuteIsoUtc,
+  tageZwischenIso,
+} from '@/lib/portfolio-analyse/dividenden-datum-hilfen'
 import { isinAusYahooSymbol, isinKenntnis } from '@/lib/portfolio-analyse/isin-kenntnisse'
 import {
   finnhubDividendKalenderGesperrt,
@@ -115,18 +124,89 @@ function isinFuerPosition(pos: DepotPositionAnfrage): string {
   return ''
 }
 
+function rohZuPrognose(t: RohTreffer): DividendenPrognoseTreffer {
+  return {
+    payDate: t.zahlungsdatumIso,
+    exDate: t.exDatumIso ?? t.zahlungsdatumIso,
+    amount: t.dividendeProStueckEur,
+    bestaetigt: t.bestaetigt,
+  }
+}
+
+function prognoseZuRoh(t: DividendenPrognoseTreffer, vorlage: RohTreffer): RohTreffer {
+  return {
+    ...vorlage,
+    zahlungsdatumIso: t.payDate,
+    exDatumIso: t.exDate,
+    dividendeProStueckEur: t.amount,
+    bestaetigt: t.bestaetigt,
+    quelle: t.bestaetigt ? vorlage.quelle : 'divvydiary-prognose',
+  }
+}
+
+/** Keine doppelten Schätzungen im Quartalsfenster (z. B. Jul + Aug → nur Aug). */
+function bereinigeTrefferProPosition(treffer: RohTreffer[]): RohTreffer[] {
+  if (treffer.length <= 1) return treffer
+  const termini = treffer.map(rohZuPrognose)
+  const slots: { monat: number; payTag: number; exTag: number }[] = []
+  const past: { payDate: string; exDate: string; amount: number; forecast: boolean }[] = []
+
+  const heute = heuteIsoUtc()
+  const byMonat = new Map<number, Set<string>>()
+  for (const t of treffer) {
+    if (!t.bestaetigt && t.zahlungsdatumIso >= heute) continue
+    const m = Number(t.zahlungsdatumIso.slice(5, 7))
+    const j = t.zahlungsdatumIso.slice(0, 4)
+    const set = byMonat.get(m) ?? new Set()
+    set.add(j)
+    byMonat.set(m, set)
+    past.push({
+      payDate: t.zahlungsdatumIso,
+      exDate: t.exDatumIso ?? t.zahlungsdatumIso,
+      amount: t.dividendeProStueckEur,
+      forecast: false,
+    })
+  }
+  for (const [monat, jahre] of byMonat) {
+    const probe = treffer.find((t) => Number(t.zahlungsdatumIso.slice(5, 7)) === monat)
+    if (!probe) continue
+    slots.push({
+      monat,
+      payTag: Number(probe.zahlungsdatumIso.slice(8, 10)),
+      exTag: Number((probe.exDatumIso ?? probe.zahlungsdatumIso).slice(8, 10)),
+    })
+    void jahre
+  }
+
+  const bereinigt = dedupePrognosenImQuartalsabstand(termini, slots, past)
+  const byPay = new Map(treffer.map((t) => [t.zahlungsdatumIso, t]))
+  return bereinigt.map((t) => {
+    const vorlage = byPay.get(t.payDate) ?? treffer[0]
+    return prognoseZuRoh(t, vorlage)
+  })
+}
+
 function mergeRohTreffer(primary: RohTreffer[], extra: RohTreffer[]): RohTreffer[] {
-  const byPay = new Map<string, RohTreffer>()
-  for (const t of primary) byPay.set(t.zahlungsdatumIso, t)
+  const merged = [...primary]
   for (const t of extra) {
-    const prev = byPay.get(t.zahlungsdatumIso)
-    if (!prev) {
-      byPay.set(t.zahlungsdatumIso, t)
+    const clashIdx = merged.findIndex(
+      (m) =>
+        Math.abs(tageZwischenIso(m.zahlungsdatumIso, t.zahlungsdatumIso)) <
+        MIN_TAGE_PROGNOSE_NACH_BESTAETIGT,
+    )
+    if (clashIdx >= 0) {
+      const prev = merged[clashIdx]
+      if (!prev.bestaetigt && t.bestaetigt) {
+        merged[clashIdx] = t
+        continue
+      }
+      if (prev.bestaetigt) continue
+      if (!t.bestaetigt) continue
       continue
     }
-    if (!prev.bestaetigt && t.bestaetigt) byPay.set(t.zahlungsdatumIso, t)
+    merged.push(t)
   }
-  return [...byPay.values()].sort((a, b) => a.zahlungsdatumIso.localeCompare(b.zahlungsdatumIso))
+  return bereinigeTrefferProPosition(merged)
 }
 
 async function ladeFuerPosition(pos: DepotPositionAnfrage): Promise<RohTreffer[]> {
@@ -160,14 +240,14 @@ async function ladeFuerPosition(pos: DepotPositionAnfrage): Promise<RohTreffer[]
       roh = mergeRohTreffer(roh, yRoh)
     }
 
-    if (roh.length > 0) return roh
+    if (roh.length > 0) return bereinigeTrefferProPosition(roh)
   }
 
   if (isin && istEuEwrIsin(isin)) {
     return []
   }
 
-  return ladeFuerSymbole(symbole, symbolAnzeige)
+  return bereinigeTrefferProPosition(await ladeFuerSymbole(symbole, symbolAnzeige))
 }
 
 async function ladeFuerSymbole(symbole: string[], symbolAnzeige: string): Promise<RohTreffer[]> {
