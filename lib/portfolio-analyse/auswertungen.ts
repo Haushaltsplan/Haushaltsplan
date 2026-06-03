@@ -183,6 +183,18 @@ export function buchungsTypDonut(buchungen: PortfolioBuchung[]): DonutSegment[] 
     }))
 }
 
+/** Kumulierte Dividenden/Zinsen je ISIN (für Wertpapiere-Tabelle). */
+export function dividendenJeIsin(buchungen: PortfolioBuchung[]): Map<string, number> {
+  const map = new Map<string, number>()
+  for (const b of buchungen) {
+    if (b.typ !== 'dividende' && b.typ !== 'zins') continue
+    if (!b.isin) continue
+    const key = b.isin.toUpperCase()
+    map.set(key, Math.round(((map.get(key) ?? 0) + b.betragEur) * 100) / 100)
+  }
+  return map
+}
+
 export function dividendenProMonat(buchungen: PortfolioBuchung[], monate = 18): MonatsWert[] {
   const keys = letzteMonateKeys(monate)
   const summen = new Map<string, number>()

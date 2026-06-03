@@ -8,6 +8,7 @@ import { PaWertentwicklungChart } from '@/components/portfolio-analyse/pa-werten
 import { PortfolioIsinLogo } from '@/components/portfolio-analyse/isin-logo'
 import { usePortfolioAnalyse } from '@/components/portfolio-analyse/pa-data-provider'
 import { PaPortfolioHero } from '@/components/portfolio-analyse/pa-portfolio-hero'
+import { PaWertpapiereListe } from '@/components/portfolio-analyse/pa-wertpapiere-liste'
 import { PaBadge, PaCard, PaIconTabs, PaStatRow } from '@/components/portfolio-analyse/pa-ui'
 import { dividendenProMonat } from '@/lib/portfolio-analyse/auswertungen'
 import {
@@ -313,6 +314,13 @@ export function PortfolioDashboardClient() {
           </ul>
         </PaCard>
       </div>
+
+      <PaWertpapiereListe
+        positionen={positionen}
+        buchungen={buchungen}
+        meta={meta}
+        laden={liveLaden}
+      />
 
       {liveLaden ? (
         <p className="text-center text-[11px] text-zinc-600">Kurse werden aktualisiert …</p>
