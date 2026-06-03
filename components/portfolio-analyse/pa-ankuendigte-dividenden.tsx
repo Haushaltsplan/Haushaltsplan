@@ -1,5 +1,6 @@
 'use client'
 
+import Link from 'next/link'
 import { PortfolioIsinLogo } from '@/components/portfolio-analyse/isin-logo'
 import { PaDividendEstimateBadge } from '@/components/portfolio-analyse/pa-ui'
 import { formatDatumDe, formatEur } from '@/lib/portfolio-analyse/berechnung'
@@ -107,6 +108,12 @@ export function PaAnkuendigteDividenden({
         </span>{' '}
         Angekündigte Termine ohne E. Max. 1 Jahr voraus.
       </p>
+      <Link
+        href="/portfolioanalyse/dividenden/kalender"
+        className="block pt-2 text-sm font-medium text-teal-400 transition hover:text-teal-300"
+      >
+        Dividendenkalender ansehen →
+      </Link>
     </div>
   )
 }
