@@ -1,5 +1,5 @@
 import { brokerSymbolKandidaten } from '@/lib/portfolio-analyse/dividenden-datum-hilfen'
-import { isinKenntnis } from '@/lib/portfolio-analyse/isin-kenntnisse'
+import { isinAusYahooSymbol, isinKenntnis } from '@/lib/portfolio-analyse/isin-kenntnisse'
 import {
   finnhubDividendKalenderGesperrt,
   finnhubDividendenVerfuegbar,
@@ -80,7 +80,7 @@ function symboleFuerPosition(pos: DepotPositionAnfrage): string[] {
   }
   add(pos.symbolYahoo)
   for (const c of pos.symbolCandidates ?? []) add(c)
-  const k = pos.isin ? isinKenntnis(pos.isin) : null
+  const k = isinKenntnis(isinFuerPosition(pos))
   add(k?.symbolYahoo)
   for (const c of k?.symbolCandidates ?? []) add(c)
   return out
@@ -95,17 +95,28 @@ type RohTreffer = {
 }
 
 function positionHatIsin(pos: DepotPositionAnfrage): boolean {
-  const isin = pos.isin?.trim().toUpperCase() ?? ''
-  return isin.length >= 10
+  return isinFuerPosition(pos).length >= 10
+}
+
+function isinFuerPosition(pos: DepotPositionAnfrage): string {
+  const direkt = pos.isin?.trim().toUpperCase() ?? ''
+  if (direkt.length >= 10) return direkt
+  for (const sym of [pos.symbolYahoo, ...(pos.symbolCandidates ?? [])]) {
+    const ausSym = isinAusYahooSymbol(sym)
+    if (ausSym) return ausSym
+  }
+  return ''
 }
 
 async function ladeFuerPosition(pos: DepotPositionAnfrage): Promise<RohTreffer | null> {
   const symbole = symboleFuerPosition(pos)
   const symbolAnzeige = symbole[0] ?? pos.isin ?? '—'
-  const isin = pos.isin?.trim().toUpperCase() ?? ''
+  const isin = isinFuerPosition(pos)
+  const k = isin ? isinKenntnis(isin) : null
+  const name = k?.name ?? pos.name
 
   if (isin) {
-    const d = await ladeDivvydiaryAnkuendigteDividende(isin, pos.name)
+    const d = await ladeDivvydiaryAnkuendigteDividende(isin, name)
     if (d) {
       return {
         zahlungsdatumIso: d.zahlungsdatumIso,

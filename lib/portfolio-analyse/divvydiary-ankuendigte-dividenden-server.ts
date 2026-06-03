@@ -1,4 +1,5 @@
 import { heuteIsoUtc, isoInJahren } from '@/lib/portfolio-analyse/dividenden-datum-hilfen'
+import { isinKenntnis } from '@/lib/portfolio-analyse/isin-kenntnisse'
 
 const CACHE_REVALIDATE = 86400
 const HORIZONT_JAHRE = 1
@@ -20,7 +21,7 @@ function slugAusName(name: string): string {
   return name
     .toLowerCase()
     .normalize('NFD')
-    .replace(/\p{M}/gu, '')
+    .replace(/[\u0300-\u036f]/g, '')
     .replace(/ä/g, 'ae')
     .replace(/ö/g, 'oe')
     .replace(/ü/g, 'ue')
@@ -30,34 +31,51 @@ function slugAusName(name: string): string {
 }
 
 function urlKandidaten(isin: string, name: string): string[] {
-  const s = slugAusName(name)
+  const isinNorm = isin.trim().toUpperCase()
+  const k = isinKenntnis(isinNorm)
   const out: string[] = []
   const add = (path: string) => {
     if (!out.includes(path)) out.push(path)
   }
-  if (s) {
-    add(`${s}-aktie-${isin}`)
-    add(`${s}-software-aktie-${isin}`)
-    add(`${s}-${isin}`)
+
+  if (k?.divvydiarySlug) {
+    add(`${k.divvydiarySlug}-${isinNorm}`)
+    add(k.divvydiarySlug)
   }
-  add(`aktie-${isin}`)
+
+  const s = slugAusName(k?.name ?? name)
+  if (s) {
+    add(`${s}-aktie-${isinNorm}`)
+    add(`${s}-software-aktie-${isinNorm}`)
+    add(`${s}-${isinNorm}`)
+  }
+  add(`aktie-${isinNorm}`)
   return out
 }
 
 function parseZeilen(html: string): DivvydiaryZeile[] {
-  const re =
-    /\\"exDate\\":\\"(\d{4}-\d{2}-\d{2})\\",\\"payDate\\":\\"(\d{4}-\d{2}-\d{2})\\",\\"amount\\":([\d.]+),\\"currency\\":\\"([^"]+)\\",\\"forecast\\":(true|false)/g
+  const patterns = [
+    /\\"exDate\\":\\"(\d{4}-\d{2}-\d{2})\\",\\"payDate\\":\\"(\d{4}-\d{2}-\d{2})\\",\\"amount\\":([\d.]+),\\"currency\\":\\"([^"]+)\\",\\"forecast\\":(true|false)/g,
+    /"exDate":"(\d{4}-\d{2}-\d{2})","payDate":"(\d{4}-\d{2}-\d{2})","amount":([\d.]+),"currency":"([^"]+)","forecast":(true|false)/g,
+  ]
+  const seen = new Set<string>()
   const rows: DivvydiaryZeile[] = []
-  let m: RegExpExecArray | null
-  while ((m = re.exec(html)) !== null) {
-    const amount = Number(m[3])
-    if (!Number.isFinite(amount) || amount <= 0) continue
-    rows.push({
-      exDate: m[1],
-      payDate: m[2],
-      amount,
-      forecast: m[5] === 'true',
-    })
+
+  for (const re of patterns) {
+    let m: RegExpExecArray | null
+    while ((m = re.exec(html)) !== null) {
+      const key = `${m[1]}|${m[2]}|${m[3]}`
+      if (seen.has(key)) continue
+      seen.add(key)
+      const amount = Number(m[3])
+      if (!Number.isFinite(amount) || amount <= 0) continue
+      rows.push({
+        exDate: m[1],
+        payDate: m[2],
+        amount,
+        forecast: m[5] === 'true',
+      })
+    }
   }
   return rows
 }
@@ -73,8 +91,7 @@ function naechsteImHorizont(rows: DivvydiaryZeile[], heute: string, bis: string)
 }
 
 /**
- * DivvyDiary (öffentliche Aktien-Seiten): Ex- und Zahltag je ISIN.
- * Kein API-Key; Daten aus eingebettetem JSON der Wertpapier-Seite.
+ * DivvyDiary: Ex- und Zahltag je ISIN (eingebettetes JSON auf der Aktien-Seite).
  */
 export async function ladeDivvydiaryAnkuendigteDividende(
   isin: string,
@@ -85,13 +102,13 @@ export async function ladeDivvydiaryAnkuendigteDividende(
 
   const heute = heuteIsoUtc()
   const bis = isoInJahren(HORIZONT_JAHRE)
+  const anzeigeName = isinKenntnis(isinNorm)?.name ?? name
 
-  for (const path of urlKandidaten(isinNorm, name)) {
+  for (const path of urlKandidaten(isinNorm, anzeigeName)) {
     try {
       const res = await fetch(`https://divvydiary.com/de/${path}`, {
         headers: {
-          'User-Agent':
-            'Mozilla/5.0 (compatible; mein-haushalt/1.0; portfolio dividend calendar)',
+          'User-Agent': 'Mozilla/5.0 (compatible; mein-haushalt/1.0)',
           Accept: 'text/html',
         },
         next: { revalidate: CACHE_REVALIDATE },

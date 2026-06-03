@@ -19,6 +19,8 @@ export type IsinKenntnis = {
   verboteneSymbole?: string[]
   stooqSymbol?: string
   kursFallbackEur?: number
+  /** DivvyDiary-URL-Slug ohne ISIN-Suffix (z. B. mensch-und-maschine-software-aktie). */
+  divvydiarySlug?: string
 }
 
 function eintrag(
@@ -69,10 +71,12 @@ export const ISIN_KENNTNISSE: Record<string, IsinKenntnis> = {
   IE00BLNMYC90: usd('XDEW.L', 'Xtrackers S&P 500 Equal Weight UCITS ETF 1C'),
   IE00BJXRZJ40: direkt('IE00BJXRZJ40.SG', 'Rize Cybersecurity and Data Privacy UCITS ETF'),
   FR0000052292: direkt('RMS.PA', 'Hermès'),
-  FR0000121014: direkt('MC.PA', 'LVMH'),
+  FR0000121014: direkt('MC.PA', 'LVMH', { divvydiarySlug: 'lvmh-aktie' }),
   NL0010273215: direkt('ASML.AS', 'ASML Holding'),
-  NL0000395903: direkt('WKL.AS', 'Wolters Kluwer'),
-  DE0006580806: direkt('MUM.DE', 'Mensch und Maschine'),
+  NL0000395903: direkt('WKL.AS', 'Wolters Kluwer', { divvydiarySlug: 'wolters-kluwer-aktie' }),
+  DE0006580806: direkt('MUM.DE', 'Mensch und Maschine', {
+    divvydiarySlug: 'mensch-und-maschine-software-aktie',
+  }),
   DE000A0BVU28: direkt('OSP2.HM', 'USU Software', {
     wkn: 'A0BVU2',
     logoSymbol: 'USU',
@@ -120,6 +124,18 @@ export const ISIN_KENNTNISSE: Record<string, IsinKenntnis> = {
 export function isinKenntnis(isin: string | null | undefined): IsinKenntnis | null {
   if (!isin) return null
   return ISIN_KENNTNISSE[isin.trim().toUpperCase()] ?? null
+}
+
+/** ISIN aus Yahoo/Xetra-Symbol (manuelle Kenntnisse). */
+export function isinAusYahooSymbol(symbol: string | null | undefined): string | null {
+  const s = symbol?.trim().toUpperCase()
+  if (!s) return null
+  for (const [isin, k] of Object.entries(ISIN_KENNTNISSE)) {
+    if (k.symbolYahoo?.toUpperCase() === s) return isin
+    if (k.kursNurSymbol?.toUpperCase() === s) return isin
+    if (k.symbolCandidates?.some((c) => c.toUpperCase() === s)) return isin
+  }
+  return null
 }
 
 export function nameAusKenntnis(isin: string, fallback: string): string {

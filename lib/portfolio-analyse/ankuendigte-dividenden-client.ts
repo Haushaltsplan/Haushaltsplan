@@ -1,7 +1,7 @@
 'use client'
 
 import type { LivePosition } from '@/lib/portfolio-analyse/live-bewertung'
-import { isinKenntnis } from '@/lib/portfolio-analyse/isin-kenntnisse'
+import { isinAusYahooSymbol, isinKenntnis } from '@/lib/portfolio-analyse/isin-kenntnisse'
 import type { IsinMetadata } from '@/lib/portfolio-analyse/isin-lookup-server'
 import type { AnkuendigteDividendenErgebnis } from '@/lib/portfolio-analyse/ankuendigte-dividenden'
 
@@ -12,11 +12,21 @@ export async function ladeAnkuendigteDividendenDepot(
   const payload = positionen
     .filter((p) => p.stueck > 0)
     .map((p) => {
-      const isin = p.isin?.toUpperCase() ?? ''
-      const m = isin ? meta.get(isin) : undefined
-      const k = isin ? isinKenntnis(isin) : null
+      let isin = p.isin?.trim().toUpperCase() ?? ''
+      if (isin.length < 10) isin = isinAusYahooSymbol(p.symbolYahoo) ?? ''
+      if (isin.length < 10 && p.symbolYahoo) {
+        const sym = p.symbolYahoo.toUpperCase()
+        for (const [metaIsin, metaRow] of meta) {
+          if (metaRow.symbolYahoo?.toUpperCase() === sym) {
+            isin = metaIsin
+            break
+          }
+        }
+      }
+      const m = isin.length >= 10 ? meta.get(isin) : undefined
+      const k = isin.length >= 10 ? isinKenntnis(isin) : null
       return {
-        isin: isin || p.isin,
+        isin: isin.length >= 10 ? isin : p.isin,
         name: p.anzeigeName ?? p.name,
         stueck: p.stueck,
         symbolYahoo: p.symbolYahoo ?? k?.symbolYahoo ?? m?.symbolYahoo ?? null,

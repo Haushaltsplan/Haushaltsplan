@@ -61,15 +61,25 @@ export function schaetzeZahlungsdatumNachEx(exIso: string, symbol: string): stri
   return addDaysIso(exIso, tage)
 }
 
-/** Finnhub/Yahoo: US-Ticker und Xetra-Variante probieren. */
+const BOERSEN_SUFFIXE =
+  /^([A-Z0-9-]+)\.(DE|F|PA|AS|L|SW|MI|MC|ST|HM|SG|BE|HE|DU|HK|T|TO|AX|NZ|US)$/i
+
+/**
+ * Yahoo/Finnhub-Symbole — ohne „Basis-Ticker“ bei EU-Notierungen.
+ * MC.PA → nicht MC (US-Moelis), sonst falscher Dividenden-Kalender.
+ */
 export function brokerSymbolKandidaten(sym: string): string[] {
   const s = sym.trim().toUpperCase()
   if (!s) return []
   const out = [s]
-  const m = /^([A-Z0-9-]+)\.(DE|F|PA|AS|L|SW|MI|MC|ST|HK|T|TO|AX|NZ|US)$/i.exec(s)
+  const m = BOERSEN_SUFFIXE.exec(s)
   if (m) {
-    const base = m[1]
-    if (!out.includes(base)) out.push(base)
+    const suffix = m[2].toUpperCase()
+    if (suffix === 'US') {
+      const base = m[1]
+      if (!out.includes(base)) out.push(base)
+    }
+    return out
   }
   if (!s.includes('.') && s.length <= 6) {
     if (!out.includes(`${s}.DE`)) out.push(`${s}.DE`)
