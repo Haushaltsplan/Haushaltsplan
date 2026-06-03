@@ -93,7 +93,7 @@ export const ISIN_KENNTNISSE: Record<string, IsinKenntnis> = {
   US78409V1044: usd('SPGI', 'S&P Global'),
   US5949181045: usd('MSFT', 'Microsoft'),
   US55354G1004: usd('MSCI', 'MSCI'),
-  US91324P1021: usd('UNH', 'UnitedHealth'),
+  US91324P1021: usd('UNH', 'UnitedHealth', { divvydiarySlug: 'unitedhealth-aktie' }),
   US8835561023: usd('TMO', 'Thermo Fisher Scientific'),
   US92826C8394: usd('V', 'Visa'),
   US81762P1021: usd('NOW', 'ServiceNow'),

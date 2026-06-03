@@ -1,7 +1,11 @@
-import { heuteIsoUtc, isoInJahren } from '@/lib/portfolio-analyse/dividenden-datum-hilfen'
+import {
+  heuteIsoUtc,
+  isoInJahren,
+  tageZwischenIso,
+} from '@/lib/portfolio-analyse/dividenden-datum-hilfen'
 import { isinKenntnis } from '@/lib/portfolio-analyse/isin-kenntnisse'
 
-const CACHE_REVALIDATE = 86400
+const CACHE_MS = 6 * 60 * 60 * 1000
 const HORIZONT_JAHRE = 1
 
 export type DivvydiaryAnkuendigteDividende = {
@@ -16,6 +20,8 @@ type DivvydiaryZeile = {
   amount: number
   forecast: boolean
 }
+
+const fetchCache = new Map<string, { at: number; hit: DivvydiaryAnkuendigteDividende | null }>()
 
 function slugAusName(name: string): string {
   return name
@@ -40,13 +46,14 @@ function urlKandidaten(isin: string, name: string): string[] {
 
   if (k?.divvydiarySlug) {
     add(`${k.divvydiarySlug}-${isinNorm}`)
-    add(k.divvydiarySlug)
+    add(`${k.divvydiarySlug}`)
   }
 
   const s = slugAusName(k?.name ?? name)
   if (s) {
     add(`${s}-aktie-${isinNorm}`)
     add(`${s}-software-aktie-${isinNorm}`)
+    add(`${s}-group-aktie-${isinNorm}`)
     add(`${s}-${isinNorm}`)
   }
   add(`aktie-${isinNorm}`)
@@ -91,6 +98,72 @@ function naechsteImHorizont(rows: DivvydiaryZeile[], heute: string, bis: string)
 }
 
 /**
+ * US-Quartalsaktien: Termin noch nicht in DivvyDiary, aber historisch gleicher Monat
+ * (z. B. UNH Juni nach März-Zahlung).
+ */
+function erwarteteUsQuartalszahlung(
+  rows: DivvydiaryZeile[],
+  heute: string,
+  bis: string,
+): DivvydiaryZeile | null {
+  const direkt = naechsteImHorizont(rows, heute, bis)
+  if (direkt) return direkt
+
+  const monat = Number(heute.slice(5, 7))
+  const jahr = heute.slice(0, 4)
+  const refRows = rows.filter(
+    (r) => Number(r.payDate.slice(5, 7)) === monat && r.payDate < heute,
+  )
+  if (refRows.length === 0) return null
+
+  const letzte = rows
+    .filter((r) => r.payDate < heute)
+    .sort((a, b) => b.payDate.localeCompare(a.payDate))[0]
+  if (!letzte || tageZwischenIso(letzte.payDate, heute) < 55) return null
+
+  const ref = refRows.sort((a, b) => b.payDate.localeCompare(a.payDate))[0]
+  const payProj = `${jahr}-${ref.payDate.slice(5)}`
+  const exProj = `${jahr}-${ref.exDate.slice(5)}`
+  if (payProj < heute || payProj > bis) return null
+
+  const jahrAmount =
+    rows.find((r) => r.exDate.startsWith(jahr) && !r.forecast)?.amount ?? ref.amount
+
+  return {
+    exDate: exProj,
+    payDate: payProj,
+    amount: jahrAmount,
+    forecast: true,
+  }
+}
+
+function waehleZeile(
+  rows: DivvydiaryZeile[],
+  isinNorm: string,
+  heute: string,
+  bis: string,
+): DivvydiaryZeile | null {
+  if (isinNorm.startsWith('US')) {
+    return erwarteteUsQuartalszahlung(rows, heute, bis)
+  }
+  return naechsteImHorizont(rows, heute, bis)
+}
+
+async function ladeHtml(path: string): Promise<string | null> {
+  const res = await fetch(`https://divvydiary.com/de/${path}`, {
+    headers: {
+      'User-Agent':
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
+      Accept: 'text/html,application/xhtml+xml',
+      'Accept-Language': 'de-DE,de;q=0.9,en;q=0.8',
+    },
+    cache: 'no-store',
+  })
+  if (!res.ok) return null
+  return res.text()
+}
+
+/**
  * DivvyDiary: Ex- und Zahltag je ISIN (eingebettetes JSON auf der Aktien-Seite).
  */
 export async function ladeDivvydiaryAnkuendigteDividende(
@@ -100,35 +173,40 @@ export async function ladeDivvydiaryAnkuendigteDividende(
   const isinNorm = isin.trim().toUpperCase()
   if (!isinNorm || isinNorm.length < 10) return null
 
+  const cached = fetchCache.get(isinNorm)
+  if (cached && Date.now() - cached.at < CACHE_MS) return cached.hit
+
   const heute = heuteIsoUtc()
   const bis = isoInJahren(HORIZONT_JAHRE)
   const anzeigeName = isinKenntnis(isinNorm)?.name ?? name
 
+  let result: DivvydiaryAnkuendigteDividende | null = null
+
   for (const path of urlKandidaten(isinNorm, anzeigeName)) {
     try {
-      const res = await fetch(`https://divvydiary.com/de/${path}`, {
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (compatible; mein-haushalt/1.0)',
-          Accept: 'text/html',
-        },
-        next: { revalidate: CACHE_REVALIDATE },
-      })
-      if (!res.ok) continue
-      const html = await res.text()
-      if (!html.includes(isinNorm)) continue
+      const html = await ladeHtml(path)
+      if (!html) continue
 
-      const hit = naechsteImHorizont(parseZeilen(html), heute, bis)
+      const rows = parseZeilen(html)
+      if (rows.length === 0) continue
+      if (!html.includes(isinNorm) && rows.length < 3) continue
+
+      const hit = waehleZeile(rows, isinNorm, heute, bis)
       if (!hit) continue
 
-      return {
+      result = {
         zahlungsdatumIso: hit.payDate,
         exDatumIso: hit.exDate <= bis ? hit.exDate : null,
         dividendeProStueckEur: Math.round(hit.amount * 10000) / 10000,
       }
+      break
     } catch {
       continue
     }
   }
 
-  return null
+  if (result) {
+    fetchCache.set(isinNorm, { at: Date.now(), hit: result })
+  }
+  return result
 }

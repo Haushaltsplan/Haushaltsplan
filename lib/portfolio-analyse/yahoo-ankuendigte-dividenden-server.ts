@@ -1,4 +1,9 @@
-import { heuteIsoUtc, isoInJahren } from '@/lib/portfolio-analyse/dividenden-datum-hilfen'
+import {
+  addDaysIso,
+  heuteIsoUtc,
+  isoInJahren,
+  schaetzeZahlungsdatumNachEx,
+} from '@/lib/portfolio-analyse/dividenden-datum-hilfen'
 import {
   holeYahooFinanceAuth,
   YAHOO_FINANCE_FETCH_HEADERS,
@@ -6,6 +11,9 @@ import {
 
 const CACHE_REVALIDATE = 86400
 const HORIZONT_JAHRE = 1
+/** Ex vor kurzem, Zahltag fehlt bei Yahoo (EU) — nur wenn DivvyDiary nicht greift. */
+const EX_LOOKBACK_TAGE = 120
+
 export type YahooAnkuendigteDividende = {
   symbol: string
   zahlungsdatumIso: string
@@ -133,12 +141,22 @@ async function ladeQuoteSummaryKalender(
     const exUnix = rawUnix(cal?.exDividendDate)
     const payUnix = rawUnix(cal?.dividendDate)
 
-    let exDatumIso = exUnix != null ? tagAusUnix(exUnix) : null
-    let zahlungsdatumIso = payUnix != null ? tagAusUnix(payUnix) : null
+    const exRoh = exUnix != null ? tagAusUnix(exUnix) : null
+    const payRoh = payUnix != null ? tagAusUnix(payUnix) : null
+    const exLookbackAb = addDaysIso(heute, -EX_LOOKBACK_TAGE)
 
-    if (exDatumIso && (exDatumIso < heute || exDatumIso > bis)) exDatumIso = null
-    if (zahlungsdatumIso && (zahlungsdatumIso < heute || zahlungsdatumIso > bis)) {
-      zahlungsdatumIso = null
+    let exDatumIso: string | null = null
+    let zahlungsdatumIso: string | null = null
+
+    if (payRoh && payRoh >= heute && payRoh <= bis) zahlungsdatumIso = payRoh
+    if (exRoh && exRoh >= heute && exRoh <= bis) exDatumIso = exRoh
+
+    if (!zahlungsdatumIso && exRoh && exRoh >= exLookbackAb && exRoh < heute) {
+      const schaetz = schaetzeZahlungsdatumNachEx(exRoh, sym)
+      if (schaetz >= heute && schaetz <= bis) {
+        zahlungsdatumIso = schaetz
+        exDatumIso = exRoh
+      }
     }
 
     const letzteDividendeProStueck = rawNumber(row?.defaultKeyStatistics?.lastDividendValue)

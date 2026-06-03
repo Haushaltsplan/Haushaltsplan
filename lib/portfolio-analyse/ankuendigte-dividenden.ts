@@ -217,7 +217,7 @@ export async function berechneAnkuendigteDividendenDepot(
   const symboleGesamt = aktiv.reduce((s, p) => s + symboleFuerPosition(p).length, 0)
   const stat = { divvydiary: 0, finnhub: 0, yahoo: 0, ohneTreffer: 0 }
 
-  const roh = await mapPool(aktiv, 6, async (pos) => {
+  const roh = await mapPool(aktiv, 3, async (pos) => {
     const hit = await ladeFuerPosition(pos)
     if (!hit) {
       stat.ohneTreffer++
