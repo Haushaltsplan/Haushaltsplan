@@ -71,10 +71,25 @@ async function ladeDividendenZeitraum(symbol: string, von: string, bis: string):
   u.searchParams.set('token', key)
 
   const res = await fetch(u.toString(), { next: { revalidate: CACHE_REVALIDATE } })
-  if (!res.ok) return []
+  if (!res.ok) {
+    if (res.status === 403) finnhubKalender403 = true
+    return []
+  }
   const rows = await res.json()
-  if (!Array.isArray(rows)) return []
+  if (!Array.isArray(rows)) {
+    if (rows && typeof rows === 'object' && 'error' in (rows as object)) {
+      finnhubKalender403 = true
+    }
+    return []
+  }
   return rows as DividendRow[]
+}
+
+/** Finnhub Free-Tier: /stock/dividend oft 403 — dann nur Yahoo. */
+let finnhubKalender403 = false
+
+export function finnhubDividendKalenderGesperrt(): boolean {
+  return finnhubKalender403
 }
 
 /** Ein Symbol — nur Dividenden von heute bis +1 Jahr. */
@@ -114,5 +129,5 @@ export async function ladeFinnhubAnkuendigteDividende(
 }
 
 export function finnhubDividendenVerfuegbar(): boolean {
-  return finnhubKey() != null
+  return finnhubKey() != null && !finnhubKalender403
 }

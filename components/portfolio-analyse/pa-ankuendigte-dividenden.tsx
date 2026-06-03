@@ -91,8 +91,8 @@ export function PaAnkuendigteDividenden({
         </section>
       ))}
       <p className="border-t border-white/[0.04] pt-3 text-[10px] leading-relaxed text-zinc-600">
-        Nur angekündigte Termine ab heute (max. 1 Jahr). Finnhub → Yahoo. Keine Zusage der Auszahlung; Beträge
-        können in USD vorliegen.
+        Nur angekündigte Termine ab heute (max. 1 Jahr), Quelle Yahoo-Kalender. Keine Zusage der Auszahlung;
+        Beträge können in USD vorliegen.
       </p>
     </div>
   )

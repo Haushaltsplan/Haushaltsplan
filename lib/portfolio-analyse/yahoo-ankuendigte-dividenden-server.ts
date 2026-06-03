@@ -1,11 +1,8 @@
 import { heuteIsoUtc, isoInJahren } from '@/lib/portfolio-analyse/dividenden-datum-hilfen'
-
-const YAHOO_FETCH_HEADERS = {
-  'User-Agent':
-    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
-  Referer: 'https://finance.yahoo.com/',
-  Accept: 'application/json',
-} as const
+import {
+  holeYahooFinanceAuth,
+  YAHOO_FINANCE_FETCH_HEADERS,
+} from '@/lib/portfolio-analyse/yahoo-finance-auth-server'
 
 const CACHE_REVALIDATE = 86400
 const HORIZONT_JAHRE = 1
@@ -30,6 +27,13 @@ function rawUnix(v: unknown): number | null {
   return raw != null && Number.isFinite(raw) ? raw : null
 }
 
+function rawNumber(v: unknown): number | null {
+  const n = rawUnix(v)
+  if (n != null && n > 0) return n
+  if (typeof v === 'number' && Number.isFinite(v) && v > 0) return v
+  return null
+}
+
 type DivEvent = { amount: number; datumIso: string; unix: number }
 
 /** Nur Dividenden-Termine ab heute, höchstens +1 Jahr. */
@@ -52,7 +56,7 @@ async function ladeChartDividendenZukunft(symbol: string, heute: string, bis: st
 
   try {
     const res = await fetch(u.toString(), {
-      headers: YAHOO_FETCH_HEADERS,
+      headers: YAHOO_FINANCE_FETCH_HEADERS,
       next: { revalidate: CACHE_REVALIDATE },
     })
     if (!res.ok) return []
@@ -82,24 +86,36 @@ async function ladeChartDividendenZukunft(symbol: string, heute: string, bis: st
   }
 }
 
-async function ladeQuoteSummaryKalender(symbol: string, heute: string, bis: string): Promise<{
+async function ladeQuoteSummaryKalender(
+  symbol: string,
+  heute: string,
+  bis: string,
+): Promise<{
   exDatumIso: string | null
   zahlungsdatumIso: string | null
+  letzteDividendeProStueck: number | null
 }> {
   const sym = symbol.trim().toUpperCase()
-  if (!sym) return { exDatumIso: null, zahlungsdatumIso: null }
+  if (!sym) return { exDatumIso: null, zahlungsdatumIso: null, letzteDividendeProStueck: null }
+
+  const auth = await holeYahooFinanceAuth()
+  if (!auth) return { exDatumIso: null, zahlungsdatumIso: null, letzteDividendeProStueck: null }
 
   const u = new URL(
     `https://query2.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(sym)}`,
   )
-  u.searchParams.set('modules', 'calendarEvents')
+  u.searchParams.set('modules', 'calendarEvents,defaultKeyStatistics')
+  u.searchParams.set('crumb', auth.crumb)
 
   try {
     const res = await fetch(u.toString(), {
-      headers: YAHOO_FETCH_HEADERS,
+      headers: {
+        ...YAHOO_FINANCE_FETCH_HEADERS,
+        Cookie: auth.cookie,
+      },
       next: { revalidate: CACHE_REVALIDATE },
     })
-    if (!res.ok) return { exDatumIso: null, zahlungsdatumIso: null }
+    if (!res.ok) return { exDatumIso: null, zahlungsdatumIso: null, letzteDividendeProStueck: null }
     const j = (await res.json()) as {
       quoteSummary?: {
         result?: Array<{
@@ -107,10 +123,14 @@ async function ladeQuoteSummaryKalender(symbol: string, heute: string, bis: stri
             exDividendDate?: unknown
             dividendDate?: unknown
           }
+          defaultKeyStatistics?: {
+            lastDividendValue?: unknown
+          }
         }>
       }
     }
-    const cal = j.quoteSummary?.result?.[0]?.calendarEvents
+    const row = j.quoteSummary?.result?.[0]
+    const cal = row?.calendarEvents
     const exUnix = rawUnix(cal?.exDividendDate)
     const payUnix = rawUnix(cal?.dividendDate)
 
@@ -122,9 +142,11 @@ async function ladeQuoteSummaryKalender(symbol: string, heute: string, bis: stri
       zahlungsdatumIso = null
     }
 
-    return { exDatumIso, zahlungsdatumIso }
+    const letzteDividendeProStueck = rawNumber(row?.defaultKeyStatistics?.lastDividendValue)
+
+    return { exDatumIso, zahlungsdatumIso, letzteDividendeProStueck }
   } catch {
-    return { exDatumIso: null, zahlungsdatumIso: null }
+    return { exDatumIso: null, zahlungsdatumIso: null, letzteDividendeProStueck: null }
   }
 }
 
@@ -164,6 +186,9 @@ export async function ladeYahooAnkuendigteDividende(symbol: string): Promise<Yah
   }
   if (dividendeProStueckEur == null && naechstesEvent) {
     dividendeProStueckEur = naechstesEvent.amount
+  }
+  if (dividendeProStueckEur == null && kalender.letzteDividendeProStueck != null) {
+    dividendeProStueckEur = kalender.letzteDividendeProStueck
   }
 
   if (dividendeProStueckEur == null || dividendeProStueckEur <= 0) return null

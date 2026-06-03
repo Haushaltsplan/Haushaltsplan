@@ -1,5 +1,6 @@
 import { brokerSymbolKandidaten } from '@/lib/portfolio-analyse/dividenden-datum-hilfen'
 import {
+  finnhubDividendKalenderGesperrt,
   finnhubDividendenVerfuegbar,
   ladeFinnhubAnkuendigteDividende,
 } from '@/lib/portfolio-analyse/finnhub-ankuendigte-dividenden-server'
@@ -218,8 +219,12 @@ export async function berechneAnkuendigteDividendenDepot(
 
   if (finnhubDividendenVerfuegbar()) {
     hinweise.push('Finnhub zuerst, dann Yahoo — jeweils nur Depot-Symbole.')
+  } else if (finnhubDividendKalenderGesperrt()) {
+    hinweise.push(
+      'Finnhub-Kalender nicht im Free-Tier (403) — nur Yahoo. Termine ab heute, max. 1 Jahr.',
+    )
   } else {
-    hinweise.push('Nur Yahoo — Termine ab heute, höchstens +1 Jahr.')
+    hinweise.push('Yahoo-Kalender — Termine ab heute, höchstens +1 Jahr.')
   }
 
   return {
