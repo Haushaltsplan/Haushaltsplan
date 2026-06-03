@@ -1,88 +1,122 @@
 import type { BoersenWaehrung } from '@/lib/portfolio-analyse/kurs-aufloesung'
 
-/** Manuelle Korrekturen, wenn ISIN-Lookup keinen Namen/Ticker liefert. */
+/**
+ * Manuelle Yahoo-Ticker je ISIN (Nutzerliste).
+ *
+ * - Ohne Klammer-Hinweis: Yahoo-Preis 1:1 als EUR (keine FX-Umrechnung).
+ * - Mit „umrechnen von X in Euro“: nur dann symbolWaehrung → FX nach EUR.
+ */
+
 export type IsinKenntnis = {
   name?: string
   wkn?: string
   symbolYahoo?: string
   symbolCandidates?: string[]
-  /** Finnhub-Logo-Slug (oft ≠ Kursticker, z. B. HLMA statt H11.MU). */
   logoSymbol?: string
-  /** Abweichende Währung pro Yahoo-Symbol (z. B. XDEW.L in USD). */
+  /** Nur gesetzt, wenn Nutzer explizit Umrechnung verlangt hat. */
   symbolWaehrung?: Record<string, BoersenWaehrung>
-  /** Nur dieses Yahoo-Symbol für den Live-Kurs (kein RCRS/CYBR o. Ä.). */
   kursNurSymbol?: string
-  /** Yahoo-Symbole ignorieren (z. B. OSP2.HM statt USU). */
   verboteneSymbole?: string[]
-  /** Stooq-Symbol (z. B. usu.de) wenn Yahoo fehlt oder falsch. */
   stooqSymbol?: string
-  /** Fester EUR-Kurs, wenn Yahoo für kursNurSymbol keinen Treffer liefert. */
   kursFallbackEur?: number
 }
 
+function eintrag(
+  sym: string,
+  name: string,
+  umrechnenVon?: BoersenWaehrung,
+  extra?: Partial<IsinKenntnis>,
+): IsinKenntnis {
+  const s = sym.trim().toUpperCase()
+  const base: IsinKenntnis = {
+    name,
+    symbolYahoo: s,
+    symbolCandidates: [s],
+    kursNurSymbol: s,
+    ...extra,
+  }
+  if (extra?.symbolWaehrung) {
+    base.symbolWaehrung = { ...extra.symbolWaehrung }
+  }
+  if (umrechnenVon) {
+    base.symbolWaehrung = { ...base.symbolWaehrung, [s]: umrechnenVon }
+  }
+  return base
+}
+
+/** Yahoo-Preis direkt (keine Umrechnung). */
+function direkt(sym: string, name: string, extra?: Partial<IsinKenntnis>): IsinKenntnis {
+  return eintrag(sym, name, undefined, extra)
+}
+
+/** Yahoo-Preis in Fremdwährung → EUR (laut Nutzerliste in Klammern). */
+function usd(sym: string, name: string, extra?: Partial<IsinKenntnis>): IsinKenntnis {
+  return eintrag(sym, name, 'USD', extra)
+}
+
+function chf(sym: string, name: string, extra?: Partial<IsinKenntnis>): IsinKenntnis {
+  return eintrag(sym, name, 'CHF', extra)
+}
+
+function cad(sym: string, name: string, extra?: Partial<IsinKenntnis>): IsinKenntnis {
+  return eintrag(sym, name, 'CAD', extra)
+}
+
 export const ISIN_KENNTNISSE: Record<string, IsinKenntnis> = {
-  US0404132054: {
-    name: 'Arista Networks',
-    wkn: 'A1J4UL',
-    symbolYahoo: 'ANET',
-    symbolCandidates: ['ANET', 'ANET.DE'],
-  },
-  US91680M1071: {
-    name: 'Upstart Holdings',
-    symbolYahoo: 'UPST',
-    symbolCandidates: ['UPST'],
-    logoSymbol: 'UPST',
-  },
-  GB0004052071: {
-    name: 'Halma',
-    symbolYahoo: 'H11.MU',
-    symbolCandidates: ['H11.MU'],
-    logoSymbol: 'HLMA',
-  },
-  CA15135U1093: {
-    name: 'Alimentation Couche-Tard',
-    symbolYahoo: 'ATD.TO',
-    symbolCandidates: ['ATD.TO'],
-    logoSymbol: 'ATD',
-  },
-  /** Alias falls andere Anteilsklasse/ISIN im Depot */
-  CA015DM1098: {
-    name: 'Alimentation Couche-Tard',
-    symbolYahoo: 'ATD.TO',
-    symbolCandidates: ['ATD.TO'],
-    logoSymbol: 'ATD',
-  },
-  IE00BLNMYC90: {
-    name: 'Xtrackers S&P 500 Equal Weight UCITS ETF 1C',
-    symbolYahoo: 'XDEW.L',
-    symbolCandidates: ['XDEW.L'],
-    symbolWaehrung: { 'XDEW.L': 'USD' },
-  },
-  IE00BJXRZJ40: {
-    name: 'Rize Cybersecurity and Data Privacy UCITS ETF',
-    symbolYahoo: 'IE00BJXRZJ40.SG',
-    symbolCandidates: ['IE00BJXRZJ40.SG'],
-    kursNurSymbol: 'IE00BJXRZJ40.SG',
-    symbolWaehrung: { 'IE00BJXRZJ40.SG': 'EUR' },
-  },
-  DE000A0BVU28: {
-    name: 'USU Software',
+  // --- ohne Klammern: Preis 1:1 ---
+  LU1681038243: direkt('ANX.PA', 'Amundi NASDAQ-100 SWAP UCITS ETF EUR ACC'),
+  LU1681048804: direkt('500.PA', 'Amundi Index Solutions S&P 500 UCITS ETF EUR ACC'),
+  IE00BLNMYC90: direkt('XDEW.L', 'Xtrackers S&P 500 Equal Weight UCITS ETF 1C', {
+    symbolWaehrung: { 'XDEW.L': 'EUR' },
+  }),
+  IE00BJXRZJ40: direkt('IE00BJXRZJ40.SG', 'Rize Cybersecurity and Data Privacy UCITS ETF'),
+  FR0000052292: direkt('RMS.PA', 'Hermès'),
+  FR0000121014: direkt('MC.PA', 'LVMH'),
+  NL0010273215: direkt('ASML.AS', 'ASML Holding'),
+  NL0000395903: direkt('WKL.AS', 'Wolters Kluwer'),
+  DE0006580806: direkt('MUM.DE', 'Mensch und Maschine'),
+  DE000A0BVU28: direkt('OSP2.HM', 'USU Software', {
     wkn: 'A0BVU2',
-    symbolYahoo: 'OSP2.HM',
-    symbolCandidates: ['OSP2.HM'],
-    kursNurSymbol: 'OSP2.HM',
-    symbolWaehrung: { 'OSP2.HM': 'EUR' },
-    kursFallbackEur: 9.1,
     logoSymbol: 'USU',
-  },
-  /** Datadog Inc. Class A (Trade Republic / Parqet) */
-  US23804L1035: {
-    name: 'Datadog',
-    symbolYahoo: 'DDOG',
-    symbolCandidates: ['DDOG'],
-    kursNurSymbol: 'DDOG',
-    logoSymbol: 'DDOG',
-  },
+    kursFallbackEur: 9.1,
+  }),
+  GB0004052071: direkt('H11.SG', 'Halma', {
+    logoSymbol: 'HLMA',
+    verboteneSymbole: ['H11.MU', 'HLMA.L'],
+  }),
+
+  // --- mit Klammern: Umrechnung ---
+  US02079K1079: usd('GOOG', "Alphabet 'C'"),
+  US57636Q1040: usd('MA', 'Mastercard'),
+  US78409V1044: usd('SPGI', 'S&P Global'),
+  US5949181045: usd('MSFT', 'Microsoft'),
+  US55354G1004: usd('MSCI', 'MSCI'),
+  US91324P1021: usd('UNH', 'UnitedHealth'),
+  US8835561023: usd('TMO', 'Thermo Fisher Scientific'),
+  US92826C8394: usd('V', 'Visa'),
+  US81762P1021: usd('NOW', 'ServiceNow'),
+  US7611521078: usd('RMD', 'Resmed'),
+  US6795801009: usd('ODFL', 'Old Dominion Freight Line'),
+  US94106L1098: usd('WM', 'Waste Management'),
+  US9078181081: usd('UNP', 'Union Pacific'),
+  US98978V1035: usd('ZTS', 'Zoetis'),
+  US5801351017: usd('MCD', "McDonald's"),
+  US23804L1035: usd('DDOG', 'Datadog', { logoSymbol: 'DDOG' }),
+  US0576652004: usd('BCPC', 'Balchem'),
+  IE000S9YS762: usd('LIN', 'Linde'),
+  CH1175448666: chf('STMN.SW', 'Straumann Holding'),
+  CH0418792922: chf('SIKA.SW', 'Sika'),
+  US9224751084: usd('VEEV', 'Veeva Systems'),
+  US49714P1084: usd('KNSL', 'Kinsale Capital'),
+  US4370761029: usd('HD', 'The Home Depot'),
+  US3841091040: usd('GGG', 'Graco'),
+  US0404132054: usd('ANET', 'Arista Networks', { wkn: 'A1J4UL' }),
+  CA01626P1484: cad('ATD.TO', 'Alimentation Couche-Tard', { logoSymbol: 'ATD' }),
+  CA15135U1093: cad('ATD.TO', 'Alimentation Couche-Tard', { logoSymbol: 'ATD' }),
+  CA015DM1098: cad('ATD.TO', 'Alimentation Couche-Tard', { logoSymbol: 'ATD' }),
+  US7757111049: usd('ROL', 'Rollins'),
+  US1729081059: usd('CTAS', 'Cintas'),
+  US91680M1071: usd('UPST', 'Upstart Holdings', { logoSymbol: 'UPST' }),
 }
 
 export function isinKenntnis(isin: string | null | undefined): IsinKenntnis | null {

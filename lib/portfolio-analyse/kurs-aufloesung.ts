@@ -65,7 +65,8 @@ export function boersenWaehrung(
   }
   if (s.endsWith('.SW')) return 'CHF'
   if (s.endsWith('.TO')) return 'CAD'
-  if (s.endsWith('.SG')) return 'SGD'
+  /** Yahoo: .SG = Stuttgart (Gettex), nicht Singapur */
+  if (s.endsWith('.SG')) return 'EUR'
   if (s.endsWith('.L') || s.endsWith('.IL')) return 'GBP'
   if (!s.includes('.') || s.endsWith('.O') || s.endsWith('.N')) return 'USD'
   return 'SONST'
