@@ -1,9 +1,10 @@
 /**
- * Parqet „% Performance“ / „Rendite“: kumulierte zeitgewichtete Rendite (TWR).
+ * Parqet „% Performance“: Time-Weighted Rate of Return (TTWROR).
  *
- * - Start bei 0 %, Verlauf wie Parqet (Ein-/Auszahlungen neutralisiert)
- * - Toggle AUS: Kursperformance ohne Dividenden/Zinsen/realisierte Gewinne am Zahltag
- * - Toggle AN: Gesamtrendite inkl. Erträge (in Portfoliowert enthalten)
+ * r_t = V_t / (V_{t-1} + CF_t) − 1
+ * Performance_T = (∏(1 + r_t) − 1) × 100
+ *
+ * CF_t = externer Kapitalzufluss am Tag t (Einzahlung/Auszahlung oder Δ zugeführt).
  */
 
 import { hatExterneDepotEinAus } from '@/lib/portfolio-analyse/parqet-xirr'
@@ -15,15 +16,26 @@ import { tagLabel } from '@/lib/portfolio-analyse/wertentwicklung-tage'
 export type PerformanceZeitPunkt = {
   datumIso: string
   label: string
-  /** Kumulierte TWR seit erstem Punkt in % (0 % am Start). */
+  /** Kumulierte TTWROR seit erstem Kapitaltag in % (0 % am Start). */
   performanceProzent: number
 }
+
+const MIN_DENOMINATOR_EUR = 0.01
+const MAX_ABS_DAILY_RETURN = 0.99
 
 function round2(n: number): number {
   return Math.round(n * 100) / 100
 }
 
-function externerZuflussAmTag(buchungen: PortfolioBuchung[], datumIso: string): number {
+function clampDailyReturn(r: number): number {
+  if (!Number.isFinite(r)) return 0
+  if (r < -MAX_ABS_DAILY_RETURN) return 0
+  if (r > 10) return 0
+  return r
+}
+
+/** Externe Ein-/Auszahlungen über die Depotgrenze (Parqet Deposit/Withdrawal). */
+function externerCashflowAmTag(buchungen: PortfolioBuchung[], datumIso: string): number {
   let sum = 0
   for (const b of buchungen) {
     if (b.datum !== datumIso) continue
@@ -43,6 +55,20 @@ function ertraegeAmTag(buchungen: PortfolioBuchung[], datumIso: string): number 
   return sum
 }
 
+/**
+ * Netto-Kapitalzufluss am Tag t (positiv = Kauf/Einzahlung).
+ * Im Handels-Modus: Δ zugeführtes Kapital (Käufe/Verkäufe neutralisieren die Tagesrendite).
+ */
+function cashflowAmTag(
+  buchungen: PortfolioBuchung[],
+  prev: WertentwicklungPunkt,
+  cur: WertentwicklungPunkt,
+  extern: boolean,
+): number {
+  if (extern) return externerCashflowAmTag(buchungen, cur.datumIso)
+  return cur.zugefuehrtEur - prev.zugefuehrtEur
+}
+
 export function berechnePerformanceZeitreihe(
   wertentwicklung: WertentwicklungPunkt[],
   buchungen: PortfolioBuchung[],
@@ -51,40 +77,44 @@ export function berechnePerformanceZeitreihe(
   if (wertentwicklung.length === 0) return []
 
   const extern = hatExterneDepotEinAus(buchungen)
-  let twrIndex = 100
+  const out: PerformanceZeitPunkt[] = []
+  let cumulativeMultiplier = 1
+  let hasStarted = false
 
-  const out: PerformanceZeitPunkt[] = [
-    {
-      datumIso: wertentwicklung[0].datumIso,
-      label: wertentwicklung[0].label || tagLabel(wertentwicklung[0].datumIso),
-      performanceProzent: 0,
-    },
-  ]
-
-  for (let i = 1; i < wertentwicklung.length; i++) {
-    const prev = wertentwicklung[i - 1]
+  for (let i = 0; i < wertentwicklung.length; i++) {
     const cur = wertentwicklung[i]
-    const v0 = prev.portfoliowertEur
-    const v1 = cur.portfoliowertEur
+    const label = cur.label || tagLabel(cur.datumIso)
 
-    const cf = extern
-      ? externerZuflussAmTag(buchungen, cur.datumIso)
-      : cur.zugefuehrtEur - prev.zugefuehrtEur
-
-    let gain = v1 - v0 - cf
-
-    if (!mitDivUndRealisiert) {
-      gain -= ertraegeAmTag(buchungen, cur.datumIso)
+    if (!hasStarted) {
+      out.push({ datumIso: cur.datumIso, label, performanceProzent: 0 })
+      if (cur.zugefuehrtEur > MIN_DENOMINATOR_EUR) {
+        hasStarted = true
+      }
+      continue
     }
 
-    const basis = v0 > 0 ? v0 : prev.zugefuehrtEur > 0 ? prev.zugefuehrtEur : 0
-    const r = basis > 0 ? gain / basis : 0
-    twrIndex *= 1 + r
+    const prev = wertentwicklung[i - 1]
+    const cf = cashflowAmTag(buchungen, prev, cur, extern)
+
+    let endValue = cur.portfoliowertEur
+    if (!mitDivUndRealisiert) {
+      endValue -= ertraegeAmTag(buchungen, cur.datumIso)
+    }
+
+    const denominator = prev.portfoliowertEur + cf
+
+    let dailyReturn = 0
+    if (denominator > MIN_DENOMINATOR_EUR && endValue >= 0) {
+      dailyReturn = endValue / denominator - 1
+    }
+
+    dailyReturn = clampDailyReturn(dailyReturn)
+    cumulativeMultiplier *= 1 + dailyReturn
 
     out.push({
       datumIso: cur.datumIso,
-      label: cur.label || tagLabel(cur.datumIso),
-      performanceProzent: round2(twrIndex - 100),
+      label,
+      performanceProzent: round2((cumulativeMultiplier - 1) * 100),
     })
   }
 

@@ -1,16 +1,22 @@
 /** Zeitreihen-Hilfen für Dashboard-Charts (Drawdown, Monatsrendite). */
 
 import { formatDatumDe } from '@/lib/portfolio-analyse/berechnung'
+import type { WertentwicklungPunkt } from '@/lib/portfolio-analyse/wertentwicklung'
+import { tagLabel } from '@/lib/portfolio-analyse/wertentwicklung-tage'
 
 export type WertPunkt = {
   label: string
   wert: number
   monat?: string
-  /** YYYY-MM-DD für tägliche Dauer-Berechnung */
   datumIso?: string
 }
 
-export type DrawdownPunkt = { label: string; drawdownProzent: number; monat?: string; datumIso?: string }
+export type DrawdownPunkt = {
+  label: string
+  drawdownProzent: number
+  monat?: string
+  datumIso?: string
+}
 
 export type DrawdownStatistik = {
   serie: DrawdownPunkt[]
@@ -18,6 +24,9 @@ export type DrawdownStatistik = {
   maxDrawdownTage: number | null
   maxDrawdownPeriode: { vonLabel: string; bisLabel: string } | null
 }
+
+const MIN_PEAK_EUR = 0.01
+const MAX_DRAWDOWN_PCT = -100
 
 function labelFuerPunkt(p: WertPunkt): string {
   if (p.label.trim()) return p.label
@@ -36,16 +45,34 @@ function schliesseStreak(
   return best
 }
 
+function wertPunkteAusWertentwicklung(wertentwicklung: WertentwicklungPunkt[]): WertPunkt[] {
+  return wertentwicklung.map((p) => ({
+    label: p.label || tagLabel(p.datumIso),
+    wert: p.portfoliowertEur,
+    monat: p.monat,
+    datumIso: p.datumIso,
+  }))
+}
+
 /**
- * Drawdown aus Portfoliowert: Peak-Tracking, Werte nur ≤ 0 %.
- * Dauer = längste Folge aufeinanderfolgender Tage mit Drawdown &lt; 0 %.
+ * Drawdown nur vom Portfoliowert-Allzeithoch (nicht vom investierten Kapital).
+ * Werte in [−100 %, 0 %].
  */
-export function berechneDrawdown(punkte: WertPunkt[]): DrawdownStatistik {
+export function berechneDrawdown(punkte: WertPunkt[]): DrawdownStatistik
+export function berechneDrawdown(wertentwicklung: WertentwicklungPunkt[]): DrawdownStatistik
+export function berechneDrawdown(
+  input: WertPunkt[] | WertentwicklungPunkt[],
+): DrawdownStatistik {
+  const punkte: WertPunkt[] =
+    input.length > 0 && 'portfoliowertEur' in input[0]
+      ? wertPunkteAusWertentwicklung(input as WertentwicklungPunkt[])
+      : (input as WertPunkt[])
+
   if (punkte.length === 0) {
     return { serie: [], maxDrawdownProzent: 0, maxDrawdownTage: null, maxDrawdownPeriode: null }
   }
 
-  let peak = punkte[0].wert
+  let currentPeak = 0
   let maxDd = 0
 
   let streakStart = -1
@@ -55,10 +82,17 @@ export function berechneDrawdown(punkte: WertPunkt[]): DrawdownStatistik {
 
   for (let i = 0; i < punkte.length; i++) {
     const p = punkte[i]
-    if (p.wert > peak) peak = p.wert
+    const v = Number.isFinite(p.wert) ? Math.max(0, p.wert) : 0
 
-    const raw = peak > 0 ? ((p.wert - peak) / peak) * 100 : 0
-    const drawdownProzent = Math.min(0, Math.round(raw * 100) / 100)
+    if (v > currentPeak) currentPeak = v
+
+    let drawdownProzent = 0
+    if (v >= currentPeak - 1e-6) {
+      drawdownProzent = 0
+    } else if (currentPeak > MIN_PEAK_EUR) {
+      const raw = ((v - currentPeak) / currentPeak) * 100
+      drawdownProzent = Math.max(MAX_DRAWDOWN_PCT, Math.min(0, Math.round(raw * 100) / 100))
+    }
 
     if (drawdownProzent < maxDd) maxDd = drawdownProzent
 
@@ -94,7 +128,7 @@ export function berechneDrawdown(punkte: WertPunkt[]): DrawdownStatistik {
 
   return {
     serie,
-    maxDrawdownProzent: maxDd,
+    maxDrawdownProzent: Math.max(MAX_DRAWDOWN_PCT, maxDd),
     maxDrawdownTage,
     maxDrawdownPeriode,
   }

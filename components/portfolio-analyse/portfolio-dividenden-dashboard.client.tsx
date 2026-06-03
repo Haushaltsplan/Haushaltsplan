@@ -40,7 +40,7 @@ export function PortfolioDividendenDashboardClient() {
     return base
   }, [buchungen, k, report])
 
-  const gestapelt = useMemo(() => dividendenGestapeltProMonat(buchungen), [buchungen])
+  const divSerie = useMemo(() => dividendenGestapeltProMonat(buchungen, meta), [buchungen, meta])
   const heatmap = useMemo(() => berechneDividendenHeatmap(buchungen), [buchungen])
   const jahresVergleich = useMemo(() => dividendenProJahrMitVergleich(buchungen), [buchungen])
   const letzteDivs = useMemo(() => dividendenKalender(buchungen).slice(0, 10), [buchungen])
@@ -112,7 +112,11 @@ export function PortfolioDividendenDashboardClient() {
                   </div>
                   <div className="p-4 sm:p-6">
                     {chartTab === 'monatlich' ? (
-                      <PaGestapelteDividendenChart daten={gestapelt} />
+                      <PaGestapelteDividendenChart
+                        daten={divSerie.monate}
+                        durchschnittIntervallEur={divSerie.durchschnittIntervallEur}
+                        hoehe={280}
+                      />
                     ) : (
                       <PaDividendenHeatmapGrid heatmap={heatmap} />
                     )}

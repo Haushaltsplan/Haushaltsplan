@@ -2,20 +2,46 @@
 
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import { chartHoverFromClientX } from '@/components/portfolio-analyse/chart-hover'
-import { formatDatumDe, formatProzent } from '@/lib/portfolio-analyse/berechnung'
-import type { PerformanceZeitPunkt } from '@/lib/portfolio-analyse/performance-zeitreihe'
+import { formatDatumDe, formatEur, formatProzent } from '@/lib/portfolio-analyse/berechnung'
+import type { MetrikZeitPunkt } from '@/lib/portfolio-analyse/portfolio-metrik-zeitreihe'
+import {
+  metrikNutztDivRealisiertToggle,
+  PORTFOLIO_METRIC_OPTIONS,
+  PortfolioMetric,
+} from '@/lib/portfolio-analyse/portfolio-metric'
 
 const VIEW_W = 1000
 
-type PlotPt = { x: number; y: number; p: PerformanceZeitPunkt }
+type PlotPt = { x: number; y: number; p: MetrikZeitPunkt }
 
-function ySkala(punkte: PerformanceZeitPunkt[]): { yMin: number; yMax: number } {
-  const vals = punkte.map((p) => p.performanceProzent)
+function ySkalaProzent(vals: number[]): { yMin: number; yMax: number } {
   const minV = Math.min(0, ...vals)
   const maxV = Math.max(0, ...vals)
   const yMin = Math.floor(Math.min(minV, -10) / 10) * 10
   const yMax = Math.ceil(Math.max(maxV, 10) / 10) * 10
   return { yMin: yMin === yMax ? -10 : yMin, yMax: yMax === yMin ? 10 : yMax }
+}
+
+function ySkalaEur(vals: number[]): { yMin: number; yMax: number } {
+  const minV = Math.min(0, ...vals)
+  const maxV = Math.max(0, ...vals)
+  const pad = Math.max(100, (maxV - minV) * 0.08)
+  return { yMin: minV - pad * 0.2, yMax: maxV + pad }
+}
+
+function niceEurStep(span: number): number {
+  if (span <= 500) return 100
+  if (span <= 2000) return 500
+  if (span <= 10000) return 1000
+  if (span <= 50000) return 5000
+  return 10000
+}
+
+function formatYAxisEur(eur: number): string {
+  const abs = Math.abs(eur)
+  if (abs >= 1_000_000) return `${(eur / 1_000_000).toFixed(1)}M`
+  if (abs >= 1000) return `${Math.round(eur / 1000)}k`
+  return String(Math.round(eur))
 }
 
 function areaZuNullLinie(pts: PlotPt[], zeroY: number): string {
@@ -27,6 +53,10 @@ function areaZuNullLinie(pts: PlotPt[], zeroY: number): string {
   d += ` L ${pts[pts.length - 1].x.toFixed(1)} ${zeroY.toFixed(1)}`
   d += ` L ${pts[0].x.toFixed(1)} ${zeroY.toFixed(1)} Z`
   return d
+}
+
+function formatWert(p: MetrikZeitPunkt): string {
+  return p.einheit === 'prozent' ? formatProzent(p.wert) : formatEur(p.wert)
 }
 
 function IconExpand({ className }: { className?: string }) {
@@ -52,11 +82,13 @@ function IconClose({ className }: { className?: string }) {
 function PerformanceChartBody({
   punkte,
   portfolioName,
+  metrikLabel,
   hoehe,
   gross,
 }: {
-  punkte: PerformanceZeitPunkt[]
+  punkte: MetrikZeitPunkt[]
   portfolioName: string
+  metrikLabel: string
   hoehe: number
   gross: boolean
 }) {
@@ -64,6 +96,7 @@ function PerformanceChartBody({
   const containerRef = useRef<HTMLDivElement>(null)
   const [hoverIndex, setHoverIndex] = useState<number | null>(null)
   const [schmal, setSchmal] = useState(false)
+  const istProzent = punkte[0]?.einheit === 'prozent'
 
   useEffect(() => {
     const mq = window.matchMedia('(max-width: 639px)')
@@ -75,13 +108,13 @@ function PerformanceChartBody({
 
   const breite = VIEW_W
   const padLinks = 12
-  const padRechts = 48
+  const padRechts = istProzent ? 48 : 52
   const padOben = gross ? 28 : 24
   const padUnten = gross ? 48 : 44
   const plotH = hoehe - padOben - padUnten
   const plotW = breite - padLinks - padRechts
 
-  const { plotPts, zeroY, yTicks, areaPath, linePath, gradZeroOffset } = useMemo(() => {
+  const { plotPts, zeroY, yTicks, areaPath, linePath, gradZeroOffset, yMin, yMax } = useMemo(() => {
     if (punkte.length === 0) {
       return {
         plotPts: [] as PlotPt[],
@@ -90,27 +123,44 @@ function PerformanceChartBody({
         areaPath: '',
         linePath: '',
         gradZeroOffset: 50,
+        yMin: 0,
+        yMax: 1,
       }
     }
 
-    const { yMin, yMax } = ySkala(punkte)
+    const vals = punkte.map((p) => p.wert)
+    const skala = istProzent ? ySkalaProzent(vals) : ySkalaEur(vals)
+    const yMin = skala.yMin
+    const yMax = skala.yMax
     const span = yMax - yMin || 1
     const n = punkte.length
 
     const pts: PlotPt[] = punkte.map((p, i) => {
       const x = padLinks + (plotW * i) / Math.max(1, n - 1)
-      const y = padOben + ((yMax - p.performanceProzent) / span) * plotH
+      const y = padOben + ((yMax - p.wert) / span) * plotH
       return { x, y, p }
     })
 
     const zeroY = padOben + ((yMax - 0) / span) * plotH
-    const gradZeroOffset = Math.max(0, Math.min(100, ((zeroY - padOben) / plotH) * 100))
+    /** 0 %-Linie im Gradient: Anteil von yMax (oben) zu yMin (unten). */
+    const gradZeroOffset = Math.max(
+      0,
+      Math.min(100, span > 0 ? ((yMax - 0) / span) * 100 : 50),
+    )
 
     const ticks: number[] = []
-    const step = span <= 30 ? 10 : span <= 60 ? 10 : 20
-    for (let t = yMin; t <= yMax; t += step) ticks.push(t)
-    if (!ticks.includes(0)) ticks.push(0)
-    ticks.sort((a, b) => b - a)
+    if (istProzent) {
+      const step = span <= 30 ? 10 : span <= 60 ? 10 : 20
+      for (let t = yMin; t <= yMax; t += step) ticks.push(t)
+      if (!ticks.includes(0)) ticks.push(0)
+      ticks.sort((a, b) => b - a)
+    } else {
+      const step = niceEurStep(span)
+      const start = Math.floor(yMin / step) * step
+      for (let t = start; t <= yMax + step * 0.01; t += step) ticks.push(t)
+      if (!ticks.some((t) => Math.abs(t) < step * 0.01)) ticks.push(0)
+      ticks.sort((a, b) => b - a)
+    }
 
     const line = pts.map((pt, i) => `${i === 0 ? 'M' : 'L'} ${pt.x.toFixed(1)} ${pt.y.toFixed(1)}`).join(' ')
 
@@ -121,8 +171,10 @@ function PerformanceChartBody({
       areaPath: areaZuNullLinie(pts, zeroY),
       linePath: line,
       gradZeroOffset,
+      yMin,
+      yMax,
     }
-  }, [punkte, plotW, plotH, padLinks, padOben])
+  }, [punkte, plotW, plotH, padLinks, padOben, istProzent])
 
   const [tooltipLeftPct, setTooltipLeftPct] = useState(50)
 
@@ -169,7 +221,7 @@ function PerformanceChartBody({
           viewBox={`0 0 ${breite} ${hoehe}`}
           preserveAspectRatio="xMidYMid meet"
           role="img"
-          aria-label="Performance in Prozent"
+          aria-label={`${metrikLabel} Verlauf`}
           className="pointer-events-none block w-full select-none"
         >
           <defs>
@@ -189,9 +241,9 @@ function PerformanceChartBody({
           </defs>
 
           {yTicks.map((tick) => {
-            const { yMin, yMax } = ySkala(punkte)
             const span = yMax - yMin || 1
             const y = padOben + ((yMax - tick) / span) * plotH
+            const isZero = Math.abs(tick) < (istProzent ? 0.01 : 1)
             return (
               <g key={tick}>
                 <line
@@ -199,8 +251,8 @@ function PerformanceChartBody({
                   y1={y}
                   x2={breite - padRechts}
                   y2={y}
-                  stroke={tick === 0 ? '#52525b' : '#27272a'}
-                  strokeWidth={tick === 0 ? 1.25 : 1}
+                  stroke={isZero ? '#52525b' : '#27272a'}
+                  strokeWidth={isZero ? 1.25 : 1}
                 />
                 <text
                   x={breite - padRechts + 6}
@@ -209,12 +261,19 @@ function PerformanceChartBody({
                   className="fill-zinc-500"
                   style={{ fontSize: gross ? 11 : 10 }}
                 >
-                  {tick > 0 ? '+' : ''}
-                  {tick}%
+                  {istProzent
+                    ? `${tick > 0 ? '+' : ''}${Math.round(tick)}%`
+                    : formatYAxisEur(tick)}
                 </text>
               </g>
             )
           })}
+
+          {!istProzent ? (
+            <text x={breite - padRechts + 6} y={padOben - 8} className="fill-zinc-600" style={{ fontSize: 9 }}>
+              (EUR)
+            </text>
+          ) : null}
 
           <path d={areaPath} fill={`url(#${areaGradId})`} />
           <path d={linePath} fill="none" stroke="#a1a1aa" strokeWidth={gross ? 2 : 1.5} strokeLinejoin="round" />
@@ -269,13 +328,14 @@ function PerformanceChartBody({
             </span>
             <span
               className={`tabular-nums font-semibold ${
-                active.p.performanceProzent >= 0 ? 'text-emerald-400' : 'text-rose-400'
+                active.p.wert >= 0 ? 'text-emerald-400' : 'text-rose-400'
               }`}
             >
-              {active.p.performanceProzent >= 0 ? '' : ''}
-              {formatProzent(active.p.performanceProzent)}
+              {active.p.wert >= 0 && active.p.einheit === 'eur' ? '+' : ''}
+              {formatWert(active.p)}
             </span>
           </div>
+          <p className="mt-1 text-[10px] text-zinc-600">{metrikLabel}</p>
         </div>
       ) : null}
     </div>
@@ -285,14 +345,18 @@ function PerformanceChartBody({
 export function PaPerformanceChart({
   punkte,
   portfolioName = 'Portfolio',
+  portfolioMetric,
+  onPortfolioMetricChange,
   hoehe = 280,
   laden = false,
   mitDivRealisiert,
   onMitDivRealisiertChange,
   expandierbar = true,
 }: {
-  punkte: PerformanceZeitPunkt[]
+  punkte: MetrikZeitPunkt[]
   portfolioName?: string
+  portfolioMetric: PortfolioMetric
+  onPortfolioMetricChange: (m: PortfolioMetric) => void
   hoehe?: number
   laden?: boolean
   mitDivRealisiert: boolean
@@ -300,6 +364,9 @@ export function PaPerformanceChart({
   expandierbar?: boolean
 }) {
   const [vollbild, setVollbild] = useState(false)
+  const metrikLabel =
+    PORTFOLIO_METRIC_OPTIONS.find((o) => o.value === portfolioMetric)?.label ?? 'Rendite'
+  const zeigeDivToggle = metrikNutztDivRealisiertToggle(portfolioMetric)
 
   if (punkte.length < 2) {
     return (
@@ -311,30 +378,42 @@ export function PaPerformanceChart({
 
   const toolbar = (
     <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-      <label className="flex cursor-pointer items-center gap-2.5 text-sm text-zinc-400">
-        <button
-          type="button"
-          role="switch"
-          aria-checked={mitDivRealisiert}
-          onClick={() => onMitDivRealisiertChange(!mitDivRealisiert)}
-          className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${
-            mitDivRealisiert ? 'bg-teal-600' : 'bg-zinc-700'
-          }`}
-        >
-          <span
-            className={`absolute top-0.5 left-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform ${
-              mitDivRealisiert ? 'translate-x-5' : ''
+      {zeigeDivToggle ? (
+        <label className="flex cursor-pointer items-center gap-2.5 text-sm text-zinc-400">
+          <button
+            type="button"
+            role="switch"
+            aria-checked={mitDivRealisiert}
+            onClick={() => onMitDivRealisiertChange(!mitDivRealisiert)}
+            className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${
+              mitDivRealisiert ? 'bg-teal-600' : 'bg-zinc-700'
             }`}
-          />
-        </button>
-        Dividenden und realisierte Gewinne inkludieren
-      </label>
+          >
+            <span
+              className={`absolute top-0.5 left-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform ${
+                mitDivRealisiert ? 'translate-x-5' : ''
+              }`}
+            />
+          </button>
+          Dividenden und realisierte Gewinne inkludieren
+        </label>
+      ) : (
+        <p className="text-xs text-zinc-600">
+          Metrik: {metrikLabel}
+          {punkte[0]?.einheit === 'eur' ? ' · Werte in EUR' : ' · Werte in %'}
+        </p>
+      )}
       <select
         className="rounded-lg border border-white/[0.06] bg-slate-950/40 px-3 py-1.5 text-sm text-zinc-200 outline-none focus:ring-2 focus:ring-teal-500/40"
-        defaultValue="rendite"
-        aria-label="Performance-Ansicht"
+        value={portfolioMetric}
+        onChange={(e) => onPortfolioMetricChange(e.target.value as PortfolioMetric)}
+        aria-label="Portfolio-Metrik"
       >
-        <option value="rendite">Rendite</option>
+        {PORTFOLIO_METRIC_OPTIONS.map((o) => (
+          <option key={o.value} value={o.value}>
+            {o.label}
+          </option>
+        ))}
       </select>
     </div>
   )
@@ -342,7 +421,13 @@ export function PaPerformanceChart({
   const body = (
     <>
       {toolbar}
-      <PerformanceChartBody punkte={punkte} portfolioName={portfolioName} hoehe={hoehe} gross={vollbild} />
+      <PerformanceChartBody
+        punkte={punkte}
+        portfolioName={portfolioName}
+        metrikLabel={metrikLabel}
+        hoehe={hoehe}
+        gross={vollbild}
+      />
       {laden ? (
         <p className="mt-2 text-center text-[11px] text-zinc-600">Tageskurse werden geladen …</p>
       ) : null}
@@ -384,6 +469,7 @@ export function PaPerformanceChart({
             <PerformanceChartBody
               punkte={punkte}
               portfolioName={portfolioName}
+              metrikLabel={metrikLabel}
               hoehe={Math.min(560, typeof window !== 'undefined' ? window.innerHeight - 160 : 560)}
               gross
             />

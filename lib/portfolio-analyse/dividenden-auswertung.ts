@@ -1,5 +1,8 @@
 import { dividendenZuflussEur } from '@/lib/portfolio-analyse/dividenden-buchung'
 import { steuernAufDividendenMonate } from '@/lib/portfolio-analyse/depot-berechnung'
+import { anzeigeNameFuerIsin } from '@/lib/portfolio-analyse/isin-metadata-client'
+import { isinKenntnis } from '@/lib/portfolio-analyse/isin-kenntnisse'
+import type { IsinMetadata } from '@/lib/portfolio-analyse/isin-lookup-server'
 import type { PortfolioBuchung } from '@/lib/portfolio-analyse/types'
 
 const MONAT_KURZ = ['Jan.', 'Feb.', 'März', 'Apr.', 'Mai', 'Juni', 'Juli', 'Aug.', 'Sep.', 'Okt.', 'Nov.', 'Dez.'] as const
@@ -44,11 +47,20 @@ export type DividendenHeatmap = {
 
 export type GestapelterDivMonat = {
   monat: string
+  /** Achse (z. B. „Nov. 23“) */
   label: string
+  /** Tooltip-Kopf (z. B. „November 2023“) */
+  tooltipTitel: string
   gesamt: number
   segmente: { key: string; label: string; wert: number; farbe: string }[]
   /** Gleitender Ø der Monatssummen (M−11 … M); null = Linie ausblenden */
   ttmMonatlichEur: number | null
+}
+
+export type GestapelteDividendenSerie = {
+  monate: GestapelterDivMonat[]
+  /** Ø Monatssumme über alle Monate mit Dividende im Chart-Intervall */
+  durchschnittIntervallEur: number
 }
 
 export type DividendenJahrVergleich = {
@@ -103,6 +115,50 @@ export function berechneDividendenKpis(
   }
 }
 
+const ISIN_RE = /^[A-Z]{2}[A-Z0-9]{9}\d$/i
+const BROKER_RE =
+  /trade\s*republic|smart\s*broker|smartbroker|scalable\s*capital|justtrade|finanzen\.net|comdirect|consorsbank|flatex|lynx|onvista|ing\s*di\s*ba|baader\s*bank/i
+
+function istIsinText(text: string): boolean {
+  const t = text.trim().toUpperCase()
+  return ISIN_RE.test(t)
+}
+
+function istBrokerOderDepotName(text: string): boolean {
+  const t = text.trim()
+  if (t.length < 2) return true
+  if (BROKER_RE.test(t)) return true
+  if (/^(trade republic|smartbroker|depot|broker)$/i.test(t)) return true
+  return false
+}
+
+/** Anzeigename für Dividenden-Chart: Kenntnis/Meta, kein Broker, keine ISIN. */
+export function dividendenAnzeigeName(
+  isin: string,
+  buchungen: PortfolioBuchung[],
+  meta: Map<string, IsinMetadata>,
+): string {
+  const key = isin.toUpperCase()
+  const k = isinKenntnis(key)
+  if (k?.name && !istBrokerOderDepotName(k.name)) return k.name
+
+  let bestBuchung: string | null = null
+  for (const b of buchungen) {
+    if (b.isin?.toUpperCase() !== key) continue
+    const n = b.wertpapierName?.trim()
+    if (!n || istBrokerOderDepotName(n) || istIsinText(n)) continue
+    if (!bestBuchung || n.length > bestBuchung.length) bestBuchung = n
+  }
+
+  const metaName = anzeigeNameFuerIsin(key, bestBuchung, meta)
+  if (!istBrokerOderDepotName(metaName) && !istIsinText(metaName)) return metaName
+  if (bestBuchung) return bestBuchung
+
+  const m = meta.get(key)
+  if (m?.name && !istIsinText(m.name) && !istBrokerOderDepotName(m.name)) return m.name
+  return k?.name ?? bestBuchung ?? 'Wertpapier'
+}
+
 /** TTM = Ø der Monatssummen im Fenster (M−11 … M); bei &lt;12 Monaten Ø über vorhandene Monate. */
 export function ttmMonatlichJeIndex(monatsSummen: number[]): (number | null)[] {
   return monatsSummen.map((_, i) => {
@@ -114,48 +170,56 @@ export function ttmMonatlichJeIndex(monatsSummen: number[]): (number | null)[] {
   })
 }
 
+/** Gestapelte Monatsdividenden: volle Historie, alle Titel, stabile Farben je ISIN. */
 export function dividendenGestapeltProMonat(
   buchungen: PortfolioBuchung[],
-  maxIsins = 6,
-  monate = 24,
-): GestapelterDivMonat[] {
-  const byMonat = new Map<string, Map<string, { label: string; wert: number }>>()
+  meta: Map<string, IsinMetadata> = new Map(),
+): GestapelteDividendenSerie {
+  const byMonat = new Map<string, Map<string, number>>()
+  const namen = new Map<string, string>()
 
   for (const b of buchungen) {
     const zufluss = dividendenZuflussEur(b)
     if (zufluss <= 0) continue
     const k = monatsKey(b.datum)
     if (!k) continue
-    const isin = b.isin?.toUpperCase() ?? 'sonst'
-    const label = b.wertpapierName ?? isin
+    const isin = b.isin?.toUpperCase()
+    if (!isin) continue
+
+    if (!namen.has(isin)) namen.set(isin, dividendenAnzeigeName(isin, buchungen, meta))
+
     const mon = byMonat.get(k) ?? new Map()
-    const cur = mon.get(isin) ?? { label, wert: 0 }
-    cur.wert += zufluss
-    mon.set(isin, cur)
+    mon.set(isin, (mon.get(isin) ?? 0) + zufluss)
     byMonat.set(k, mon)
   }
 
-  const keys = [...byMonat.keys()].sort().slice(-monate)
+  const keys = [...byMonat.keys()].sort()
+  if (keys.length === 0) {
+    return { monate: [], durchschnittIntervallEur: 0 }
+  }
+
+  const alleIsins = [...namen.keys()].sort()
+  const farbeByIsin = new Map(alleIsins.map((isin, i) => [isin, PALETTE[i % PALETTE.length]] as const))
+
   const monatsSummen = keys.map((monat) => {
     const map = byMonat.get(monat)!
-    return [...map.values()].reduce((s, v) => s + v.wert, 0)
+    return [...map.values()].reduce((s, v) => s + v, 0)
   })
   const ttmListe = ttmMonatlichJeIndex(monatsSummen)
+  const durchschnittIntervallEur = round2(
+    monatsSummen.reduce((a, b) => a + b, 0) / monatsSummen.length,
+  )
 
-  return keys.map((monat, idx) => {
+  const monate = keys.map((monat, idx) => {
     const map = byMonat.get(monat)!
-    const sorted = [...map.entries()].sort((a, b) => b[1].wert - a[1].wert)
-    const top = sorted.slice(0, maxIsins)
-    const rest = sorted.slice(maxIsins).reduce((s, [, v]) => s + v.wert, 0)
-    const segmente = top.map(([key, v], i) => ({
-      key,
-      label: v.label,
-      wert: round2(v.wert),
-      farbe: PALETTE[i % PALETTE.length],
-    }))
-    if (rest > 0.01) {
-      segmente.push({ key: 'rest', label: 'Weitere', wert: round2(rest), farbe: '#64748b' })
-    }
+    const segmente = [...map.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .map(([isin, wert]) => ({
+        key: isin,
+        label: namen.get(isin) ?? isin,
+        wert: round2(wert),
+        farbe: farbeByIsin.get(isin) ?? PALETTE[0],
+      }))
     const gesamt = round2(segmentsSumme(segmente))
     const [y, mo] = monat.split('-')
     const d = new Date(Number(y), Number(mo) - 1, 1)
@@ -163,11 +227,14 @@ export function dividendenGestapeltProMonat(
     return {
       monat,
       label: d.toLocaleDateString('de-DE', { month: 'short', year: '2-digit' }),
+      tooltipTitel: d.toLocaleDateString('de-DE', { month: 'long', year: 'numeric' }),
       gesamt,
       segmente,
       ttmMonatlichEur: ttm != null && ttm > 0 ? ttm : null,
     }
   })
+
+  return { monate, durchschnittIntervallEur }
 }
 
 function segmentsSumme(segmente: { wert: number }[]): number {

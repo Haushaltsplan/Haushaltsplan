@@ -5,24 +5,26 @@ import { chartHoverFromClientX } from '@/components/portfolio-analyse/chart-hove
 import { formatEur } from '@/lib/portfolio-analyse/berechnung'
 import type { GestapelterDivMonat } from '@/lib/portfolio-analyse/dividenden-auswertung'
 
-const VIEW_W = 1000
+const MIN_BREITE = 1000
 
 export function PaGestapelteDividendenChart({
   daten,
+  durchschnittIntervallEur = 0,
   hoehe = 220,
 }: {
   daten: GestapelterDivMonat[]
+  durchschnittIntervallEur?: number
   hoehe?: number
 }) {
   const containerRef = useRef<HTMLDivElement>(null)
   const [hoverIndex, setHoverIndex] = useState<number | null>(null)
   const [tooltipLeftPct, setTooltipLeftPct] = useState(50)
 
-  const breite = VIEW_W
+  const breite = Math.max(MIN_BREITE, 56 + daten.length * 14)
   const padLinks = 48
   const padRechts = 16
   const padOben = 24
-  const padUnten = 32
+  const padUnten = 36
   const plotH = hoehe - padOben - padUnten
   const plotW = breite - padLinks - padRechts
 
@@ -36,15 +38,17 @@ export function PaGestapelteDividendenChart({
     ttmY: number | null
   }
 
-  const { bars, yMax, ttmPath } = useMemo(() => {
+  const { bars, yMax, ttmPath, intervallY } = useMemo(() => {
     if (daten.length === 0) {
-      return { bars: [] as BarRow[], yMax: 1, ttmPath: '' }
+      return { bars: [] as BarRow[], yMax: 1, ttmPath: '', intervallY: null as number | null }
     }
 
-    const yMax = Math.max(1, ...daten.map((d) => Math.max(d.gesamt, d.ttmMonatlichEur ?? 0))) * 1.1
+    const yMax =
+      Math.max(1, ...daten.map((d) => Math.max(d.gesamt, d.ttmMonatlichEur ?? 0)), durchschnittIntervallEur) *
+      1.08
     const baseY = padOben + plotH
     const n = daten.length
-    const barW = Math.max(6, (plotW / n) * 0.7)
+    const barW = Math.max(3, Math.min(10, (plotW / n) * 0.72))
 
     const bars = daten.map((d, i) => {
       const x = padLinks + (plotW * (i + 0.5)) / n - barW / 2
@@ -70,8 +74,13 @@ export function PaGestapelteDividendenChart({
         .join(' ')
     }
 
-    return { bars, yMax, ttmPath }
-  }, [daten, plotH, plotW, padLinks, padOben])
+    const intervallY =
+      durchschnittIntervallEur > 0
+        ? padOben + plotH - (durchschnittIntervallEur / yMax) * plotH
+        : null
+
+    return { bars, yMax, ttmPath, intervallY }
+  }, [daten, plotH, plotW, padLinks, padOben, durchschnittIntervallEur])
 
   const pickIndex = useCallback(
     (clientX: number) => {
@@ -98,7 +107,7 @@ export function PaGestapelteDividendenChart({
     return <p className="py-12 text-center text-sm text-zinc-500">Noch zu wenig Dividenden-Daten.</p>
   }
 
-  const labelStep = Math.max(1, Math.ceil(daten.length / 10))
+  const labelStep = Math.max(1, Math.ceil(daten.length / 14))
   const active = hoverIndex != null ? bars[hoverIndex] : null
   const activeDaten = hoverIndex != null ? daten[hoverIndex] : null
 
@@ -106,7 +115,7 @@ export function PaGestapelteDividendenChart({
     <div className="relative w-full min-w-0">
       <div
         ref={containerRef}
-        className="relative w-full cursor-crosshair"
+        className="relative w-full cursor-crosshair overflow-x-auto"
         style={{ height: hoehe }}
         onMouseMove={(e) => pickIndex(e.clientX)}
         onMouseLeave={() => setHoverIndex(null)}
@@ -117,35 +126,55 @@ export function PaGestapelteDividendenChart({
         onTouchEnd={() => setHoverIndex(null)}
       >
         <svg
-          width="100%"
+          width={breite}
           height={hoehe}
           viewBox={`0 0 ${breite} ${hoehe}`}
-          preserveAspectRatio="xMidYMid meet"
+          preserveAspectRatio="xMinYMid meet"
           role="img"
           aria-label="Dividenden pro Monat mit TTM-Trend"
-          className="pointer-events-none block w-full select-none"
+          className="pointer-events-none block min-w-full select-none"
         >
-          <line
-            x1={padLinks}
-            y1={padOben + plotH}
-            x2={breite - padRechts}
-            y2={padOben + plotH}
-            stroke="#27272a"
-            strokeWidth={1}
-          />
-          <text x={padLinks - 4} y={padOben + 4} textAnchor="end" className="fill-zinc-600" style={{ fontSize: 9 }}>
-            {formatEur(yMax)}
-          </text>
+          {[0, 0.25, 0.5, 0.75, 1].map((f) => {
+            const y = padOben + plotH * (1 - f)
+            const tick = yMax * f
+            return (
+              <g key={f}>
+                <line
+                  x1={padLinks}
+                  y1={y}
+                  x2={breite - padRechts}
+                  y2={y}
+                  stroke="#27272a"
+                  strokeWidth={1}
+                />
+                <text x={padLinks - 4} y={y + 3} textAnchor="end" className="fill-zinc-600" style={{ fontSize: 9 }}>
+                  {formatEur(tick)}
+                </text>
+              </g>
+            )
+          })}
+
+          {intervallY != null ? (
+            <line
+              x1={padLinks}
+              y1={intervallY}
+              x2={breite - padRechts}
+              y2={intervallY}
+              stroke="#71717a"
+              strokeWidth={1}
+              strokeDasharray="5 4"
+            />
+          ) : null}
 
           {bars.map((b, i) => (
             <g key={i}>
               {b.segs.map((s) => (
                 <rect key={s.key} x={s.x} y={s.y} width={s.w} height={Math.max(1, s.h)} fill={s.farbe} />
               ))}
-              {i % labelStep === 0 ? (
+              {i % labelStep === 0 || i === bars.length - 1 ? (
                 <text
                   x={b.cx}
-                  y={hoehe - 6}
+                  y={hoehe - 8}
                   textAnchor="middle"
                   className="fill-zinc-500"
                   style={{ fontSize: 8 }}
@@ -160,7 +189,7 @@ export function PaGestapelteDividendenChart({
             <path
               d={ttmPath}
               fill="none"
-              stroke="#e4e4e7"
+              stroke="#d4d4d8"
               strokeWidth={2}
               strokeLinejoin="round"
               strokeLinecap="round"
@@ -183,47 +212,63 @@ export function PaGestapelteDividendenChart({
 
       {active && activeDaten ? (
         <div
-          className="pointer-events-none absolute z-10 rounded-lg border border-zinc-700/80 bg-zinc-900/95 px-3 py-2.5 text-xs shadow-xl sm:min-w-[200px]"
+          className="pointer-events-none absolute z-10 rounded-lg border border-zinc-700/80 bg-zinc-900/95 px-3 py-2.5 text-xs shadow-xl sm:min-w-[240px]"
           style={{
-            left: `clamp(8px, ${tooltipLeftPct.toFixed(1)}%, calc(100% - 240px))`,
+            left: `clamp(8px, ${tooltipLeftPct.toFixed(1)}%, calc(100% - 280px))`,
             top: 8,
           }}
         >
-          <p className="mb-2 font-medium text-zinc-200">{activeDaten.label}</p>
-          <div className="space-y-1">
-            <div className="flex justify-between gap-4">
-              <span className="text-zinc-500">Gesamt</span>
-              <span className="tabular-nums font-medium text-zinc-100">{formatEur(active.gesamt)}</span>
-            </div>
-            {active.ttm != null ? (
+          <div className="mb-2 flex items-baseline justify-between gap-4">
+            <span className="font-medium text-zinc-200">{activeDaten.tooltipTitel}</span>
+            <span className="tabular-nums font-semibold text-zinc-100">{formatEur(active.gesamt)}</span>
+          </div>
+          <div className="space-y-1.5">
+            {durchschnittIntervallEur > 0 ? (
               <div className="flex justify-between gap-4">
-                <span className="text-zinc-500">TTM (Ø/Monat)</span>
-                <span className="tabular-nums font-medium text-zinc-300">{formatEur(active.ttm)}</span>
+                <span className="text-zinc-500">Ø Dividende im Intervall</span>
+                <span className="tabular-nums text-zinc-300">{formatEur(durchschnittIntervallEur)}</span>
               </div>
             ) : null}
-            {activeDaten.segmente.length > 0 ? (
-              <ul className="mt-2 space-y-1 border-t border-zinc-800 pt-2">
-                {activeDaten.segmente.map((s) => (
-                  <li key={s.key} className="flex items-center justify-between gap-3">
-                    <span className="flex items-center gap-2 text-zinc-400">
-                      <span className="inline-block h-2 w-2 rounded-sm" style={{ backgroundColor: s.farbe }} />
-                      {s.label}
-                    </span>
-                    <span className="tabular-nums text-zinc-200">{formatEur(s.wert)}</span>
-                  </li>
-                ))}
-              </ul>
+            {active.ttm != null ? (
+              <div className="flex justify-between gap-4">
+                <span className="text-zinc-500">Ø monatl. Einkommen (TTM)</span>
+                <span className="tabular-nums text-zinc-300">{formatEur(active.ttm)}</span>
+              </div>
             ) : null}
           </div>
+          {activeDaten.segmente.length > 0 ? (
+            <ul className="mt-2 max-h-48 space-y-1 overflow-y-auto border-t border-zinc-800 pt-2">
+              {activeDaten.segmente.map((s) => (
+                <li key={s.key} className="flex items-center justify-between gap-3">
+                  <span className="flex min-w-0 items-center gap-2 text-zinc-400">
+                    <span
+                      className="inline-block h-2.5 w-2.5 shrink-0 rounded-sm"
+                      style={{ backgroundColor: s.farbe }}
+                    />
+                    <span className="truncate">{s.label}</span>
+                  </span>
+                  <span className="shrink-0 tabular-nums text-zinc-200">{formatEur(s.wert)}</span>
+                </li>
+              ))}
+            </ul>
+          ) : null}
         </div>
       ) : null}
 
-      {ttmPath ? (
-        <p className="mt-2 flex items-center gap-2 text-[11px] text-zinc-500">
-          <span className="inline-block h-0.5 w-6 bg-zinc-300" />
-          TTM (gleitender Ø der letzten bis zu 12 Monate)
-        </p>
-      ) : null}
+      <div className="mt-2 flex flex-wrap items-center gap-4 text-[11px] text-zinc-500">
+        {ttmPath ? (
+          <span className="flex items-center gap-2">
+            <span className="inline-block h-0.5 w-6 bg-zinc-300" />
+            Ø monatl. Einkommen (TTM)
+          </span>
+        ) : null}
+        {durchschnittIntervallEur > 0 ? (
+          <span className="flex items-center gap-2">
+            <span className="inline-block w-6 border-t border-dashed border-zinc-500" />
+            Ø Dividende im Intervall
+          </span>
+        ) : null}
+      </div>
     </div>
   )
 }

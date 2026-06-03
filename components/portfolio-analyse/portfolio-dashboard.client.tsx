@@ -22,8 +22,8 @@ import { anzeigeNameFuerIsin } from '@/lib/portfolio-analyse/isin-metadata-clien
 import { depotwertVorBoersenbeginn } from '@/lib/portfolio-analyse/live-bewertung'
 import { berechneParqetPeriodKennzahlen } from '@/lib/portfolio-analyse/parqet-period-kennzahlen'
 import { heuteIso } from '@/lib/portfolio-analyse/wertentwicklung-tage'
-import { berechnePerformanceZeitreihe } from '@/lib/portfolio-analyse/performance-zeitreihe'
-import { berechneDrawdown } from '@/lib/portfolio-analyse/zeitreihen'
+import { PortfolioMetric } from '@/lib/portfolio-analyse/portfolio-metric'
+import { usePortfolioBerechnungen } from '@/components/portfolio-analyse/use-portfolio-berechnungen'
 import { BUCHUNGS_TYP_LABEL, type BuchungsTyp } from '@/lib/portfolio-analyse/types'
 import type { PeriodPerformance } from '@/lib/portfolio-analyse/parqet-core/types'
 
@@ -59,31 +59,22 @@ export function PortfolioDashboardClient() {
   const [chartTab, setChartTab] = useState<ChartTab>('wert')
   const [periodKey, setPeriodKey] = useState<PeriodPerformance['periodKey']>('MAX')
   const [perfMitDivRealisiert, setPerfMitDivRealisiert] = useState(true)
+  const [portfolioMetric, setPortfolioMetric] = useState(PortfolioMetric.TTWROR)
 
   const k = live?.kennzahlen
-  const verlaufBasis = live?.verlauf ?? []
-  const verlauf =
-    wertentwicklung.length > 0
-      ? wertentwicklung.map((p) => ({
-          label: p.label,
-          wert: p.portfoliowertEur,
-          monat: p.monat,
-          datumIso: p.datumIso,
-        }))
-      : verlaufBasis
   const positionen = live?.positionen ?? []
 
-  const drawdown = useMemo(() => berechneDrawdown(verlauf), [verlauf])
-  const performanceZeitreihe = useMemo(
-    () => berechnePerformanceZeitreihe(wertentwicklung, buchungen, perfMitDivRealisiert),
-    [buchungen, perfMitDivRealisiert, wertentwicklung],
-  )
+  const { wertentwicklung: wertTimeline, performance: performanceZeitreihe, drawdown } =
+    usePortfolioBerechnungen(wertentwicklung, buchungen, {
+      mitDivUndRealisiert: perfMitDivRealisiert,
+      portfolioMetric,
+    })
   const portfolioChartName = useMemo(() => {
     const klassen = new Set(positionen.map((p) => p.assetKlasse))
     if (klassen.size === 1 && klassen.has('aktie')) return 'Aktien Portfolio'
     return 'Portfolio'
   }, [positionen])
-  const divGestapelt = useMemo(() => dividendenGestapeltProMonat(buchungen, 8, 24), [buchungen])
+  const divSerie = useMemo(() => dividendenGestapeltProMonat(buchungen, meta), [buchungen, meta])
 
   const letzteAktivitaeten = useMemo(
     () => sortiereBuchungenNeuesteZuerst(buchungen).slice(0, 8),
@@ -115,12 +106,12 @@ export function PortfolioDashboardClient() {
     return berechneParqetPeriodKennzahlen(
       periodKey,
       buchungen,
-      wertentwicklung,
+      wertTimeline,
       k.depotwertEur,
       startDatumIso,
       tagesstart,
     )
-  }, [buchungen, k, live?.positionen, periodKey, startDatumIso, wertentwicklung])
+  }, [buchungen, k, live?.positionen, periodKey, startDatumIso, wertTimeline])
 
   const startDatum = startDatumIso ? formatDatumDe(startDatumIso) : null
 
@@ -197,7 +188,7 @@ export function PortfolioDashboardClient() {
 
           {chartTab === 'wert' && (
             <PaWertentwicklungChart
-              punkte={wertentwicklung}
+              punkte={wertTimeline}
               laden={wertentwicklungLaden && wertentwicklung.length > 0}
               hoehe={220}
             />
@@ -206,6 +197,8 @@ export function PortfolioDashboardClient() {
             <PaPerformanceChart
               punkte={performanceZeitreihe}
               portfolioName={portfolioChartName}
+              portfolioMetric={portfolioMetric}
+              onPortfolioMetricChange={setPortfolioMetric}
               laden={wertentwicklungLaden && wertentwicklung.length > 0}
               mitDivRealisiert={perfMitDivRealisiert}
               onMitDivRealisiertChange={setPerfMitDivRealisiert}
@@ -214,7 +207,11 @@ export function PortfolioDashboardClient() {
           {chartTab === 'drawdown' && <PaDrawdownChart punkte={drawdown.serie} />}
           {chartTab === 'dividenden' && (
             <>
-              <PaGestapelteDividendenChart daten={divGestapelt} hoehe={220} />
+              <PaGestapelteDividendenChart
+                daten={divSerie.monate}
+                durchschnittIntervallEur={divSerie.durchschnittIntervallEur}
+                hoehe={240}
+              />
               <p className="mt-3 text-right text-xs text-zinc-500">
                 Umfassendere Auswertungen auf dem{' '}
                 <Link href="/portfolioanalyse/dividenden" className="text-teal-400 hover:underline">

@@ -53,7 +53,7 @@ export function achsenLabelIndizes(daten: string[], maxLabels = 10): Set<number>
   return set
 }
 
-/** Forward-Fill: letzter bekannten Schlusskurs je Tag. */
+/** Forward-Fill: letzter Schlusskurs mit Datum ≤ Tag (LOCF, kein Backward-Fill aus der Zukunft). */
 export function forwardFillKurse(serie: Map<string, number>, tage: string[]): number[] {
   const keys = [...serie.keys()].sort()
   if (keys.length === 0) return tage.map(() => NaN)
@@ -65,10 +65,26 @@ export function forwardFillKurse(serie: Map<string, number>, tage: string[]): nu
   for (const tag of tage) {
     while (j < keys.length && keys[j] <= tag) {
       const v = serie.get(keys[j])
-      if (v != null && v > 0) last = v
+      if (v != null && Number.isFinite(v) && v > 0) last = v
       j++
     }
     out.push(last)
+  }
+  return out
+}
+
+/** Trägt den letzten gültigen Wert nach vorne (Schutz vor API-Lücken / Wochenenden). */
+export function loecfWerte(werte: number[]): number[] {
+  const out = [...werte]
+  let last = NaN
+  for (let i = 0; i < out.length; i++) {
+    const v = out[i]
+    if (Number.isFinite(v) && v > 0) {
+      last = v
+      out[i] = v
+    } else if (Number.isFinite(last) && last > 0) {
+      out[i] = last
+    }
   }
   return out
 }
