@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import type { DepotPositionAnfrage } from '@/lib/portfolio-analyse/ankuendigte-dividenden'
-import { berechneAnkuendigteEarningsDepot } from '@/lib/portfolio-analyse/ankuendigte-earnings'
+import { berechneAnkuendigteEarningsDepot } from '@/lib/portfolio-analyse/ankuendigte-earnings-server'
 
 export const dynamic = 'force-dynamic'
 /** DivvyDiary-Scrape: seriell, ~3–5 s pro ISIN. */
