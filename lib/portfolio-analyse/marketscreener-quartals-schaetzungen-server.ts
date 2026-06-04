@@ -1,3 +1,4 @@
+import { zeileMitIst } from '@/lib/portfolio-analyse/finnhub-earnings-ist-server'
 import {
   bauePrognoseZeile,
   type EarningsQuartalsPrognose,
@@ -226,13 +227,86 @@ async function fetchFinancesHtml(slug: string): Promise<string | null> {
   return null
 }
 
+function quartalLabelZuMsHeader(quartalLabel: string): string | null {
+  const m = /^Q(\d)\s+(\d{4})$/i.exec(quartalLabel.trim())
+  if (!m) return null
+  return `${m[2]} Q${m[1]}`
+}
+
+function parseIstAusTabelle(
+  html: string,
+  quartalLabel: string,
+): Partial<Record<QuartalsPrognoseMetrik, number>> | null {
+  const msHeader = quartalLabelZuMsHeader(quartalLabel)
+  if (!msHeader) return null
+
+  const idx = html.indexOf('income-statement-quarterly')
+  if (idx < 0) return null
+  const block = html.slice(idx, idx + 400_000)
+  const tableMatch = [...block.matchAll(/<table[\s\S]*?<\/table>/gi)].find((t) =>
+    /\d{4} Q\d/.test(t[0]),
+  )
+  if (!tableMatch) return null
+  const table = tableMatch[0]
+
+  const qHeaders: string[] = []
+  for (const m of table.matchAll(/<th[^>]*>([\s\S]*?)<\/th>/gi)) {
+    const label = m[1].replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim()
+    if (/\d{4} Q\d/.test(label)) qHeaders.push(label)
+  }
+  const colIdx = qHeaders.indexOf(msHeader)
+  if (colIdx < 0) return null
+
+  const metrikFuerLabel = (label: string): QuartalsPrognoseMetrik | null => {
+    const l = label.trim()
+    if (/^Net sales/i.test(l)) return 'umsatz'
+    if (/^EBITDA/i.test(l)) return 'ebitda'
+    if (/^EBIT$/i.test(l)) return 'ebit'
+    if (/^CAPEX$/i.test(l)) return 'capex'
+    return null
+  }
+
+  const out: Partial<Record<QuartalsPrognoseMetrik, number>> = {}
+
+  for (const tr of table.matchAll(/<tr[^>]*>([\s\S]*?)<\/tr>/gi)) {
+    const row = tr[1]
+    if (!row.startsWith('<td')) continue
+    const tds = [...row.matchAll(/<td[^>]*class="([^"]*)"[^>]*>([\s\S]*?)<\/td>/gi)]
+    const rowLabel = zellenLabel(tds[0]?.[2] ?? '')
+    const metrik = metrikFuerLabel(rowLabel)
+    if (!metrik) continue
+    const td = tds[colIdx + 1]
+    if (!td) continue
+    if (istSchaetzungsZelle(td[1], td[2])) continue
+    const val = parseMioZahl(td[2].replace(/<[^>]+>/g, '').trim())
+    if (val != null) out[metrik] = val
+  }
+
+  return Object.keys(out).length > 0 ? out : null
+}
+
+export function prognoseMitMarketscreenerIst(
+  prognose: EarningsQuartalsPrognose,
+  html: string,
+): EarningsQuartalsPrognose {
+  const ist = parseIstAusTabelle(html, prognose.quartalLabel)
+  if (!ist) return prognose
+  return {
+    ...prognose,
+    zeilen: prognose.zeilen.map((z) => {
+      const v = ist[z.metrik]
+      return v != null ? zeileMitIst(z, v) : z
+    }),
+  }
+}
+
 /** Konsens-Schätzungen aus Marketscreener (Quartalstabelle mit italic/estimate-Spalten). */
 export async function ladeMarketscreenerQuartalsPrognose(
   isin: string,
   name: string,
   symbolYahoo?: string | null,
   terminDatumIso?: string,
-): Promise<EarningsQuartalsPrognose | null> {
+): Promise<{ prognose: EarningsQuartalsPrognose; html: string } | null> {
   const termin = terminDatumIso?.slice(0, 10) ?? null
 
   for (const slug of marketscreenerSlugKandidaten(isin, name, symbolYahoo)) {
@@ -241,7 +315,7 @@ export async function ladeMarketscreenerQuartalsPrognose(
     const parsed = parseQuartalsTabelle(html)
     if (!parsed) continue
     const prognose = zuPrognose(parsed, termin)
-    if (prognose) return prognose
+    if (prognose) return { prognose, html }
   }
   return null
 }

@@ -13,6 +13,12 @@ export type QuartalsPrognoseZeile = {
   vorjahrAnzeige: string | null
   wachstumProzent: number | null
   wachstumAnzeige: string | null
+  /** Veröffentlichtes Ergebnis (nach Earnings). */
+  istWert?: number | null
+  istAnzeige?: string | null
+  /** Abweichung Ist vs. Schätzung in %. */
+  beatMissProzent?: number | null
+  beatMissAnzeige?: string | null
 }
 
 export type EarningsQuartalsPrognose = {
