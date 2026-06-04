@@ -1,7 +1,13 @@
-import type { Berichtszeit } from '@/lib/portfolio-analyse/earnings-berichtszeit'
+import {
+  berichtszeitAusKalenderListe,
+  type Berichtszeit,
+} from '@/lib/portfolio-analyse/earnings-berichtszeit'
 import { naechsterEarningsTermin } from '@/lib/portfolio-analyse/earnings-prognose'
 import type { DivvydiaryEarningsRoh } from '@/lib/portfolio-analyse/divvydiary-scraper-server'
-import { ladeFinnhubEarningsKalenderTerminKandidaten } from '@/lib/portfolio-analyse/finnhub-earnings-kalender-server'
+import {
+  ladeFinnhubEarningsKalenderAlle,
+  type FinnhubEarningsKalenderTermin,
+} from '@/lib/portfolio-analyse/finnhub-earnings-kalender-server'
 import { ladeYahooEarningsKalenderTerminKandidaten } from '@/lib/portfolio-analyse/yahoo-earnings-schaetzungen-server'
 
 export type EarningsTerminQuelle = 'yahoo' | 'finnhub' | 'divvydiary' | 'divvydiary-prognose'
@@ -18,7 +24,7 @@ function imHorizont(datum: string, heute: string, bis: string): boolean {
 }
 
 function kandidatAusYahoo(
-  hit: { terminDatumIso: string; bestaetigt: boolean } | null,
+  hit: { terminDatumIso: string; bestaetigt: boolean; berichtszeit: Berichtszeit | null } | null,
   heute: string,
   bis: string,
 ): EarningsTerminKandidat | null {
@@ -27,12 +33,12 @@ function kandidatAusYahoo(
     terminDatumIso: hit.terminDatumIso,
     bestaetigt: hit.bestaetigt,
     quelle: 'yahoo',
-    berichtszeit: null,
+    berichtszeit: hit.berichtszeit,
   }
 }
 
 function kandidatAusFinnhub(
-  hit: { terminDatumIso: string; berichtszeit: Berichtszeit | null } | null,
+  hit: FinnhubEarningsKalenderTermin | null,
   heute: string,
   bis: string,
 ): EarningsTerminKandidat | null {
@@ -68,6 +74,16 @@ const QUELLEN_PRIO: Record<EarningsTerminQuelle, number> = {
   'divvydiary-prognose': 3,
 }
 
+function ergaenzeBerichtszeit(
+  treffer: EarningsTerminKandidat,
+  finnhubKalender: FinnhubEarningsKalenderTermin[],
+): EarningsTerminKandidat {
+  if (treffer.berichtszeit) return treffer
+  const ausFinnhub = berichtszeitAusKalenderListe(finnhubKalender, treffer.terminDatumIso)
+  if (!ausFinnhub) return treffer
+  return { ...treffer, berichtszeit: ausFinnhub }
+}
+
 /** Bestätigte Termine (Yahoo/Finnhub/DivvyDiary) vor Frequenz-Schätzung. */
 export function waehleBesterEarningsTermin(
   kandidaten: EarningsTerminKandidat[],
@@ -90,16 +106,20 @@ export async function ladeEarningsTerminFuerSymbole(
   heute: string,
   bis: string,
 ): Promise<EarningsTerminKandidat | null> {
-  const [yahoo, finnhub] = await Promise.all([
+  const [yahoo, finnhubKalender] = await Promise.all([
     symbole.length > 0 ? ladeYahooEarningsKalenderTerminKandidaten(symbole) : null,
-    symbole.length > 0 ? ladeFinnhubEarningsKalenderTerminKandidaten(symbole) : null,
+    symbole.length > 0 ? ladeFinnhubEarningsKalenderAlle(symbole) : [],
   ])
 
+  const finnhubErster = finnhubKalender[0] ?? null
+
   const kandidaten = [
-    kandidatAusFinnhub(finnhub, heute, bis),
+    kandidatAusFinnhub(finnhubErster, heute, bis),
     kandidatAusYahoo(yahoo, heute, bis),
     kandidatAusDivvydiary(divvydiaryRoh, heute, bis),
   ].filter((k): k is EarningsTerminKandidat => k != null)
 
-  return waehleBesterEarningsTermin(kandidaten)
+  const gewinner = waehleBesterEarningsTermin(kandidaten)
+  if (!gewinner) return null
+  return ergaenzeBerichtszeit(gewinner, finnhubKalender)
 }

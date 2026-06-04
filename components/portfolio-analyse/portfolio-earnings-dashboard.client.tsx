@@ -82,7 +82,7 @@ export function PortfolioEarningsDashboardClient() {
   return (
     <PortfolioAnalyseShell
       title="Quartalszahlen"
-      description="Nächste Earnings-Termine deiner Depot-Aktien (DivvyDiary)."
+      description="Earnings-Kalender im Quartr-Stil — Termine, Berichtszeit (vor/nach Börse) und Konsens."
     >
       {!paLaden && !hatDaten ? null : (
         <div className="min-w-0 space-y-6">
@@ -99,9 +99,14 @@ export function PortfolioEarningsDashboardClient() {
           </div>
 
           <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(280px,340px)] lg:items-start">
-            <PaCard variant="elevated" className="flex flex-col p-5">
-              <h2 className="text-sm font-semibold text-zinc-100">Anstehende Termine</h2>
-              <p className="mt-0.5 text-[11px] text-zinc-500">Klicken für Konsens-Prognosen (EPS, Umsatz)</p>
+            <PaCard
+              variant="elevated"
+              className="flex flex-col border-[#eef0f1]/[0.08] bg-[#0c0c0d] p-5"
+            >
+              <h2 className="text-sm font-semibold tracking-tight text-[#eef0f1]">Anstehende Termine</h2>
+              <p className="mt-0.5 text-[11px] text-zinc-500">
+                Vor Börsenöffnung oder nach Handelsschluss · Klick für Konsens
+              </p>
               <div className="mt-3 min-h-0 flex-1">
                 <PaAnkuendigteEarnings
                   daten={daten}

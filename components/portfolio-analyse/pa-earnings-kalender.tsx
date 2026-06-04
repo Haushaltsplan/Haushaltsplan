@@ -2,11 +2,12 @@
 
 import Link from 'next/link'
 import { useEffect, useMemo, useState } from 'react'
-import { PortfolioIsinLogo } from '@/components/portfolio-analyse/isin-logo'
+import {
+  PaEarningsBerichtszeitBadge,
+  PaEarningsTerminRow,
+} from '@/components/portfolio-analyse/pa-earnings-termin-ui'
 import { PaDividendEstimateBadge } from '@/components/portfolio-analyse/pa-ui'
-import { formatDatumDe } from '@/lib/portfolio-analyse/berechnung'
 import type { AnkuendigteEarningsErgebnis, AnkuendigtesEarningsEintrag } from '@/lib/portfolio-analyse/ankuendigte-earnings'
-import { earningsTerminUnterzeile } from '@/lib/portfolio-analyse/ankuendigte-earnings'
 import { heuteIsoUtc } from '@/lib/portfolio-analyse/dividenden-datum-hilfen'
 import {
   KALENDER_WOCHENTAGE,
@@ -27,12 +28,10 @@ function earningsEintragKey(e: AnkuendigtesEarningsEintrag): string {
 
 function KalenderTagZeile({
   e,
-  meta,
   aktiv,
   onSelect,
 }: {
   e: AnkuendigtesEarningsEintrag
-  meta: Map<string, IsinMetadata>
   aktiv: boolean
   onSelect: () => void
 }) {
@@ -40,13 +39,17 @@ function KalenderTagZeile({
     <button
       type="button"
       onClick={onSelect}
-      className={`flex w-full min-w-0 items-center gap-1.5 rounded-md px-1 py-0.5 text-left transition ${
-        aktiv ? 'bg-violet-500/20 ring-1 ring-violet-500/35' : 'hover:bg-white/[0.06]'
+      className={`flex w-full min-w-0 flex-col gap-1 rounded-lg border px-1.5 py-1.5 text-left transition ${
+        aktiv
+          ? 'border-[#eef0f1]/20 bg-[#121214]'
+          : 'border-transparent hover:border-[#eef0f1]/10 hover:bg-[#0c0c0d]/80'
       }`}
     >
-      <PortfolioIsinLogo isin={e.isin} fallbackName={e.name} meta={meta} groesse="sm" />
-      <span className="min-w-0 flex-1 truncate text-[11px] text-zinc-200">{e.name}</span>
-      {!e.bestaetigt ? <PaDividendEstimateBadge title="Geschätzt" /> : null}
+      <span className="truncate text-[11px] font-medium text-[#eef0f1]">{e.name}</span>
+      <div className="flex flex-wrap items-center gap-1">
+        <PaEarningsBerichtszeitBadge zeit={e.berichtszeit} size="mini" />
+        {!e.bestaetigt ? <PaDividendEstimateBadge title="Geschätzt" /> : null}
+      </div>
     </button>
   )
 }
@@ -72,26 +75,19 @@ function ListenAnsicht({
               {monat.anzahl} {monat.anzahl === 1 ? 'Termin' : 'Termine'}
             </p>
           </div>
-          <ul className="space-y-3">
+          <ul className="space-y-2">
             {monat.eintraege.map((e) => {
               const key = earningsEintragKey(e)
               const aktiv = selectedKey === key
               return (
                 <li key={key}>
-                  <button
-                    type="button"
+                  <PaEarningsTerminRow
+                    e={e}
+                    meta={meta}
+                    aktiv={aktiv}
                     onClick={() => onSelect(e)}
-                    className={`flex w-full items-center gap-3 rounded-lg px-2 py-2 text-left transition ${
-                      aktiv ? 'bg-violet-500/15 ring-1 ring-violet-500/30' : 'hover:bg-white/[0.04]'
-                    }`}
-                  >
-                    <PortfolioIsinLogo isin={e.isin} fallbackName={e.name} meta={meta} groesse="sm" />
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-medium text-zinc-100">{e.name}</p>
-                      <p className="text-[11px] text-zinc-500">{earningsTerminUnterzeile(e)}</p>
-                    </div>
-                    {!e.bestaetigt ? <PaDividendEstimateBadge title="Geschätzt" /> : null}
-                  </button>
+                    variant="liste"
+                  />
                 </li>
               )
             })}
@@ -197,7 +193,7 @@ export function PaEarningsKalender({
           </button>
         </div>
 
-        <div className="flex rounded-lg border border-white/[0.06] bg-zinc-950/80 p-0.5">
+        <div className="flex rounded-lg border border-[#eef0f1]/[0.08] bg-[#0c0c0d] p-0.5">
           {(['monat', 'jahr'] as const).map((id) => (
             <button
               key={id}
@@ -205,7 +201,7 @@ export function PaEarningsKalender({
               onClick={() => setAnsicht(id)}
               className={`rounded-md px-3 py-1.5 text-xs font-medium capitalize transition ${
                 ansicht === id
-                  ? 'bg-teal-500/20 text-teal-300 ring-1 ring-teal-500/25'
+                  ? 'bg-[#eef0f1]/10 text-[#eef0f1] ring-1 ring-[#eef0f1]/15'
                   : 'text-zinc-500 hover:text-zinc-300'
               }`}
             >
@@ -214,7 +210,7 @@ export function PaEarningsKalender({
           ))}
         </div>
 
-        <div className="flex rounded-lg border border-white/[0.06] bg-zinc-950/80 p-0.5">
+        <div className="flex rounded-lg border border-[#eef0f1]/[0.08] bg-[#0c0c0d] p-0.5">
           {(
             [
               { id: 'kalender' as const, label: 'Kalender' },
@@ -293,7 +289,7 @@ export function PaEarningsKalender({
             </h2>
           </div>
 
-          <div className="overflow-x-auto rounded-xl border border-white/[0.06]">
+          <div className="overflow-x-auto rounded-xl border border-[#eef0f1]/[0.08] bg-[#0a0a0b]/50">
             <div className="min-w-[640px]">
               <div className="grid grid-cols-7 border-b border-white/[0.06] bg-zinc-900/50">
                 {KALENDER_WOCHENTAGE.map((w) => (
@@ -334,7 +330,6 @@ export function PaEarningsKalender({
                             <KalenderTagZeile
                               key={earningsEintragKey(e)}
                               e={e}
-                              meta={meta}
                               aktiv={selectedKey === earningsEintragKey(e)}
                               onSelect={() => setSelected(e)}
                             />

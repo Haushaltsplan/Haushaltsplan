@@ -32,53 +32,69 @@ type FinnhubEarningsRow = {
   year?: number
 }
 
-export async function ladeFinnhubEarningsKalenderTermin(
-  symbol: string,
-): Promise<FinnhubEarningsKalenderTermin | null> {
-  const key = finnhubKey()
-  if (!key) return null
+function parseKalenderRows(rows: FinnhubEarningsRow[], heute: string): FinnhubEarningsKalenderTermin[] {
+  return rows
+    .filter((r) => r.date && r.date >= heute)
+    .sort((a, b) => (a.date ?? '').localeCompare(b.date ?? ''))
+    .map((row) => ({
+      terminDatumIso: row.date!,
+      berichtszeit: berichtszeitAusFinnhubHour(row.hour),
+      quartal: row.quarter ?? null,
+      jahr: row.year ?? null,
+    }))
+}
 
+async function fetchFinnhubKalender(sym: string, heute: string, bis: string): Promise<FinnhubEarningsKalenderTermin[]> {
+  const key = finnhubKey()
+  if (!key) return []
+
+  const u = new URL('https://finnhub.io/api/v1/calendar/earnings')
+  u.searchParams.set('from', heute)
+  u.searchParams.set('to', bis)
+  u.searchParams.set('symbol', sym)
+  u.searchParams.set('token', key)
+
+  const res = await fetch(u.toString(), { next: { revalidate: CACHE_REVALIDATE } })
+  if (!res.ok) return []
+  const data = (await res.json()) as { earningsCalendar?: FinnhubEarningsRow[] }
+  return parseKalenderRows(data.earningsCalendar ?? [], heute)
+}
+
+export async function ladeFinnhubEarningsKalenderTermine(symbol: string): Promise<FinnhubEarningsKalenderTermin[]> {
   const heute = heuteIsoUtc()
   const bis = isoInJahren(1)
-
   for (const sym of finnhubSymbole(symbol)) {
-    const u = new URL('https://finnhub.io/api/v1/calendar/earnings')
-    u.searchParams.set('from', heute)
-    u.searchParams.set('to', bis)
-    u.searchParams.set('symbol', sym)
-    u.searchParams.set('token', key)
-
     try {
-      const res = await fetch(u.toString(), { next: { revalidate: CACHE_REVALIDATE } })
-      if (!res.ok) continue
-      const rows = (await res.json()) as { earningsCalendar?: FinnhubEarningsRow[] }
-      const cal = (rows.earningsCalendar ?? []).filter((r) => r.date && r.date >= heute)
-      if (cal.length === 0) continue
-
-      cal.sort((a, b) => (a.date ?? '').localeCompare(b.date ?? ''))
-      const row = cal[0]
-      if (!row.date) continue
-
-      return {
-        terminDatumIso: row.date,
-        berichtszeit: berichtszeitAusFinnhubHour(row.hour),
-        quartal: row.quarter ?? null,
-        jahr: row.year ?? null,
-      }
+      const termine = await fetchFinnhubKalender(sym, heute, bis)
+      if (termine.length > 0) return termine
     } catch {
       continue
     }
   }
-  return null
+  return []
+}
+
+export async function ladeFinnhubEarningsKalenderTermin(
+  symbol: string,
+): Promise<FinnhubEarningsKalenderTermin | null> {
+  const termine = await ladeFinnhubEarningsKalenderTermine(symbol)
+  return termine[0] ?? null
 }
 
 export async function ladeFinnhubEarningsKalenderTerminKandidaten(
   symbole: string[],
 ): Promise<FinnhubEarningsKalenderTermin | null> {
+  const alle = await ladeFinnhubEarningsKalenderAlle(symbole)
+  return alle[0] ?? null
+}
+
+export async function ladeFinnhubEarningsKalenderAlle(
+  symbole: string[],
+): Promise<FinnhubEarningsKalenderTermin[]> {
   const uniq = [...new Set(symbole.flatMap((s) => finnhubSymbole(s)).filter(Boolean))]
   for (const sym of uniq) {
-    const hit = await ladeFinnhubEarningsKalenderTermin(sym)
-    if (hit) return hit
+    const termine = await ladeFinnhubEarningsKalenderTermine(sym)
+    if (termine.length > 0) return termine
   }
-  return null
+  return []
 }

@@ -5,6 +5,7 @@ import { PortfolioIsinLogo } from '@/components/portfolio-analyse/isin-logo'
 import { PaDividendEstimateBadge } from '@/components/portfolio-analyse/pa-ui'
 import { formatDatumDe } from '@/lib/portfolio-analyse/berechnung'
 import type { AnkuendigtesEarningsEintrag } from '@/lib/portfolio-analyse/ankuendigte-earnings'
+import { PaEarningsBerichtszeitBadge } from '@/components/portfolio-analyse/pa-earnings-termin-ui'
 import { berichtszeitLabel } from '@/lib/portfolio-analyse/earnings-berichtszeit'
 import type { EarningsSchaetzungen } from '@/lib/portfolio-analyse/earnings-schaetzungen'
 import { ladeEarningsSchaetzungenFuerEintrag } from '@/lib/portfolio-analyse/earnings-schaetzungen-client'
@@ -104,21 +105,17 @@ export function PaEarningsPrognosePanel({
   const umsatz = daten ? formatUmsatz(daten) : null
 
   return (
-    <div className="flex h-full min-h-[16rem] flex-col rounded-xl border border-white/[0.08] bg-zinc-950/60">
-      <div className="border-b border-white/[0.06] px-4 py-3">
-        <div className="flex items-center gap-3">
+    <div className="flex h-full min-h-[16rem] flex-col rounded-xl border border-[#eef0f1]/[0.08] bg-[#0c0c0d]">
+      <div className="border-b border-[#eef0f1]/[0.06] px-4 py-3">
+        <div className="flex items-start gap-3">
           <PortfolioIsinLogo isin={eintrag.isin} fallbackName={eintrag.name} meta={meta} groesse="md" />
           <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-semibold text-zinc-100">{eintrag.name}</p>
-            <p className="text-[11px] text-zinc-500">
-              Termin {formatDatumDe(eintrag.terminDatumIso)}
-              {eintrag.berichtszeitAnzeige ? ` · ${eintrag.berichtszeitAnzeige}` : ''}
-              {!eintrag.bestaetigt ? (
-                <span className="ml-1.5 inline-flex align-middle">
-                  <PaDividendEstimateBadge title="Geschätzter Termin" />
-                </span>
-              ) : null}
-            </p>
+            <p className="truncate text-sm font-semibold text-[#eef0f1]">{eintrag.name}</p>
+            <p className="mt-0.5 text-[11px] text-zinc-500">Termin {formatDatumDe(eintrag.terminDatumIso)}</p>
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <PaEarningsBerichtszeitBadge zeit={eintrag.berichtszeit} />
+              {!eintrag.bestaetigt ? <PaDividendEstimateBadge title="Geschätzter Termin" /> : null}
+            </div>
           </div>
         </div>
       </div>
