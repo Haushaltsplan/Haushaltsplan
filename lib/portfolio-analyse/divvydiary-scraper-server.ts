@@ -1,4 +1,4 @@
-import { heuteIsoUtc } from '@/lib/portfolio-analyse/dividenden-datum-hilfen'
+import { addDaysIso, heuteIsoUtc } from '@/lib/portfolio-analyse/dividenden-datum-hilfen'
 import { isinKenntnis } from '@/lib/portfolio-analyse/isin-kenntnisse'
 
 const BASE = 'https://divvydiary.com/de'
@@ -84,6 +84,8 @@ export function divvydiaryPfade(isin: string, name: string): string[] {
   return out
 }
 
+const QUARTAL_TAGE = 91
+
 /** „Earnings Date29.7.2026“ im sichtbaren HTML (Fallback wenn JSON fehlt). */
 export function parseEarningsDatumKlartext(
   html: string,
@@ -101,6 +103,68 @@ export function parseEarningsDatumKlartext(
   if (!/^\d{4}-\d{2}-\d{2}$/.test(iso)) return null
 
   return { terminDatumIso: iso, bestaetigt: true }
+}
+
+/** Nächstes Quartal ab letztem auf DD genannten Bericht (wenn nur Vergangenheitsdatum). */
+export function projiziereNaechstesEarnings(
+  letztesBerichtIso: string,
+  heuteIso: string,
+  bisIso: string,
+): string | null {
+  let d = letztesBerichtIso.slice(0, 10)
+  for (let i = 0; i < 8 && d < heuteIso; i++) {
+    d = addDaysIso(d, QUARTAL_TAGE)
+  }
+  if (d < heuteIso || d > bisIso) return null
+  return d
+}
+
+/**
+ * Nächster Earnings-Termin: zukünftig aus JSON/Klartext, sonst +1 Quartal nach letztem DD-Datum.
+ */
+export function naechstesEarningsTerminAusHtml(
+  html: string,
+  isinNorm: string,
+  heuteIso: string,
+  bisIso: string,
+): DivvydiaryEarningsTerminKurz[] {
+  const isin = isinNorm.trim().toUpperCase()
+  if (!isin || isin.length < 10) return []
+
+  const imHorizont = alleDivvydiaryEarningsImZeitraum(html, isin, heuteIso, bisIso)
+  if (imHorizont.length > 0) return imHorizont
+
+  const treffer = sammleDivvydiaryEarningsTreffer(html, isin)
+  const maxScore = treffer.length > 0 ? Math.max(...treffer.map((t) => t.score)) : 0
+  const primaer = treffer.filter((t) => t.score >= maxScore)
+  const byDate = new Map<string, boolean>()
+  for (const t of primaer) {
+    const prev = byDate.get(t.earningsDate)
+    byDate.set(
+      t.earningsDate,
+      prev === undefined ? !t.earningsDateEstimated : prev && !t.earningsDateEstimated,
+    )
+  }
+
+  const zukunft = [...byDate.entries()]
+    .filter(([d]) => d >= heuteIso && d <= bisIso)
+    .sort(([a], [b]) => a.localeCompare(b))
+  if (zukunft.length > 0) {
+    const [d, bestaetigt] = zukunft[0]
+    return [{ terminDatumIso: d, bestaetigt }]
+  }
+
+  const vergangen = [...byDate.keys(), parseEarningsDatumKlartext(html, isin)?.terminDatumIso]
+    .filter((d): d is string => Boolean(d))
+    .filter((d) => d <= heuteIso)
+    .sort()
+  const letztes = vergangen.at(-1)
+  if (!letztes) return []
+
+  const geschaetzt = projiziereNaechstesEarnings(letztes, heuteIso, bisIso)
+  if (!geschaetzt) return []
+
+  return [{ terminDatumIso: geschaetzt, bestaetigt: false }]
 }
 
 export type DivvydiaryRohZeile = {
@@ -502,6 +566,7 @@ async function ladeDivvydiaryHtml(
       if (!best || score > best.score) {
         best = { html, path, rows, earnings, score }
       }
+      if (html.includes(isinNorm) && (earnings || klartext) && rows.length >= 2) break
     }
 
     if (!best) return null
@@ -533,7 +598,8 @@ export async function ladeDivvydiaryEarningsTermine(
   const hit = await ladeDivvydiaryHtml(isinNorm, anzeigeName, heuteIsoUtc())
   if (!hit) return []
 
-  const termine = alleDivvydiaryEarningsImZeitraum(hit.html, isinNorm, vonIso, bisIso)
+  const heute = heuteIsoUtc()
+  const termine = naechstesEarningsTerminAusHtml(hit.html, isinNorm, heute, bisIso)
   scrapeCache.set(isinNorm, {
     at: Date.now(),
     path: hit.path,

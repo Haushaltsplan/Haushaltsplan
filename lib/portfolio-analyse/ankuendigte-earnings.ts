@@ -92,7 +92,7 @@ export function gruppiereEarningsNachMonat(eintraege: AnkuendigtesEarningsEintra
 export function earningsTerminUnterzeile(e: AnkuendigtesEarningsEintrag): string {
   const teile = [formatDatumDeInline(e.terminDatumIso)]
   const quelle = e.quelle === 'divvydiary' || e.quelle === 'divvydiary-prognose' ? e.quelle : 'divvydiary'
-  teile.push(e.bestaetigt ? QUELLE_LABEL[quelle] : 'geschätzt')
+  teile.push(e.bestaetigt ? QUELLE_LABEL[quelle] : 'geschätzt (DD)')
   return teile.join(' · ')
 }
 

@@ -1,10 +1,21 @@
 import { addDaysIso, heuteIsoUtc } from '@/lib/portfolio-analyse/dividenden-datum-hilfen'
+import { isinKenntnis } from '@/lib/portfolio-analyse/isin-kenntnisse'
 import { ladeDivvydiaryEarningsTermine } from '@/lib/portfolio-analyse/divvydiary-scraper-server'
 import { fiskalQuartalSchluessel } from '@/lib/portfolio-analyse/earnings-quartal-termin'
 import type { EarningsTerminKandidat } from '@/lib/portfolio-analyse/earnings-termine'
 
 /** Nur das nächste Quartal im Voraus (~100 Tage). */
 const HORIZONT_TAGE = 100
+
+/** DivvyDiary-Seite fehlt oder ISIN kollidiert — gleiche Aktie, andere Zertifikate. */
+const DIVVYDIARY_ISIN_LOOKUP: Record<string, string> = {
+  CA15135U1093: 'CA01626P1484',
+  CA015DM1098: 'CA01626P1484',
+}
+
+function isinFuerDivvydiaryLookup(isinNorm: string): string {
+  return DIVVYDIARY_ISIN_LOOKUP[isinNorm] ?? isinNorm
+}
 
 export function earningsZeitraum(): { von: string; bis: string; heute: string } {
   const heute = heuteIsoUtc()
@@ -58,7 +69,10 @@ export async function ladeAlleEarningsTermineFuerIsin(
   const bisIso = bis ?? zr.bis
   const heute = zr.heute
 
-  const roh = await ladeDivvydiaryEarningsTermine(isinNorm, name, vonIso, bisIso)
+  const lookupIsin = isinFuerDivvydiaryLookup(isinNorm)
+  const lookupName =
+    lookupIsin !== isinNorm ? (isinKenntnis(lookupIsin)?.name ?? name) : name
+  const roh = await ladeDivvydiaryEarningsTermine(lookupIsin, lookupName, vonIso, bisIso)
   const kandidaten = roh
     .filter((t) => t.terminDatumIso >= heute)
     .map((t) => zuKandidat(t.terminDatumIso, t.bestaetigt))

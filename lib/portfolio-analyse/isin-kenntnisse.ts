@@ -97,7 +97,7 @@ export const ISIN_KENNTNISSE: Record<string, IsinKenntnis> = {
   US8835561023: usd('TMO', 'Thermo Fisher Scientific'),
   US92826C8394: usd('V', 'Visa'),
   US81762P1021: usd('NOW', 'ServiceNow'),
-  US7611521078: usd('RMD', 'Resmed'),
+  US7611521078: usd('RMD', 'Resmed', { divvydiarySlug: 'resmed-aktie' }),
   US6795801009: usd('ODFL', 'Old Dominion Freight Line'),
   US94106L1098: usd('WM', 'Waste Management'),
   US9078181081: usd('UNP', 'Union Pacific'),
@@ -106,19 +106,28 @@ export const ISIN_KENNTNISSE: Record<string, IsinKenntnis> = {
   US23804L1035: usd('DDOG', 'Datadog', { logoSymbol: 'DDOG' }),
   US0576652004: usd('BCPC', 'Balchem'),
   IE000S9YS762: usd('LIN', 'Linde'),
-  CH1175448666: chf('STMN.SW', 'Straumann Holding'),
+  CH1175448666: chf('STMN.SW', 'Straumann Holding', { divvydiarySlug: 'straumann-holding-aktie' }),
   CH0418792922: chf('SIKA.SW', 'Sika'),
   US9224751084: usd('VEEV', 'Veeva Systems'),
   US49714P1084: usd('KNSL', 'Kinsale Capital'),
   US4370761029: usd('HD', 'The Home Depot'),
   US3841091040: usd('GGG', 'Graco'),
   US0404132054: usd('ANET', 'Arista Networks', { wkn: 'A1J4UL' }),
-  CA01626P1484: cad('ATD.TO', 'Alimentation Couche-Tard', { logoSymbol: 'ATD' }),
+  CA01626P1484: cad('ATD.TO', 'Alimentation Couche-Tard', {
+    logoSymbol: 'ATD',
+    divvydiarySlug: 'alimentation-couche-tard-aktie',
+  }),
   CA15135U1093: cad('ATD.TO', 'Alimentation Couche-Tard', { logoSymbol: 'ATD' }),
-  CA015DM1098: cad('ATD.TO', 'Alimentation Couche-Tard', { logoSymbol: 'ATD' }),
-  US7757111049: usd('ROL', 'Rollins'),
-  US1729081059: usd('CTAS', 'Cintas'),
-  US91680M1071: usd('UPST', 'Upstart Holdings', { logoSymbol: 'UPST' }),
+  CA015DM1098: cad('ATD.TO', 'Alimentation Couche-Tard', {
+    logoSymbol: 'ATD',
+    divvydiarySlug: 'alimentation-couche-tard-aktie',
+  }),
+  US7757111049: usd('ROL', 'Rollins', { divvydiarySlug: 'rollins-aktie' }),
+  US1729081059: usd('CTAS', 'Cintas', { divvydiarySlug: 'cintas-aktie' }),
+  US91680M1071: usd('UPST', 'Upstart Holdings', {
+    logoSymbol: 'UPST',
+    divvydiarySlug: 'upstart-holdings-aktie',
+  }),
 }
 
 export function isinKenntnis(isin: string | null | undefined): IsinKenntnis | null {
