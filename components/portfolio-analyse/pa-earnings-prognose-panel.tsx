@@ -242,7 +242,7 @@ export function PaEarningsPrognosePanel({
     return (
       <div className="flex h-full min-h-[18rem] flex-col items-center justify-center rounded-2xl border border-dashed border-[#eef0f1]/10 bg-[#0c0c0d] px-6 text-center">
         <p className="text-sm text-zinc-400">Klicke auf einen Termin.</p>
-        <p className="mt-2 text-[11px] text-zinc-600">±1 Jahr · Konsens & veröffentlichte Zahlen</p>
+        <p className="mt-2 text-[11px] text-zinc-600">Vorheriges Quartal & Konsens</p>
       </div>
     )
   }

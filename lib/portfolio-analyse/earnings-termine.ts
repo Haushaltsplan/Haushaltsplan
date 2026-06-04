@@ -11,7 +11,12 @@ import {
 } from '@/lib/portfolio-analyse/finnhub-earnings-kalender-server'
 import { ladeYahooEarningsKalenderTerminKandidaten } from '@/lib/portfolio-analyse/yahoo-earnings-schaetzungen-server'
 
-export type EarningsTerminQuelle = 'yahoo' | 'finnhub' | 'divvydiary' | 'divvydiary-prognose'
+export type EarningsTerminQuelle =
+  | 'yahoo'
+  | 'finnhub'
+  | 'divvydiary'
+  | 'divvydiary-prognose'
+  | 'wallstreet'
 
 export type EarningsTerminKandidat = {
   terminDatumIso: string

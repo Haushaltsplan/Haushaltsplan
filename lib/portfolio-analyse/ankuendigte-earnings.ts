@@ -46,6 +46,7 @@ export type AnkuendigteEarningsErgebnis = {
     yahoo: number
     finnhub: number
     divvydiary: number
+    wallstreet: number
     prognose: number
     ohneTreffer: number
   }
@@ -71,6 +72,7 @@ const QUELLE_LABEL: Record<AnkuendigtesEarningsQuelle, string> = {
   finnhub: 'Finnhub',
   divvydiary: 'DivvyDiary',
   'divvydiary-prognose': 'geschätzt',
+  wallstreet: 'Wallstreet Online',
 }
 
 function monatLabel(monatKey: string): string {
@@ -182,33 +184,40 @@ export async function berechneAnkuendigteEarningsDepot(
 ): Promise<AnkuendigteEarningsErgebnis> {
   const hinweise: string[] = []
   const aktiv = positionen.filter((p) => p.stueck > 0 && positionHatIsin(p))
-  const stat = { yahoo: 0, finnhub: 0, divvydiary: 0, prognose: 0, ohneTreffer: 0 }
+  const stat = { yahoo: 0, finnhub: 0, divvydiary: 0, wallstreet: 0, prognose: 0, ohneTreffer: 0 }
 
   const { von, bis } = earningsZeitraum()
   const depotKey = depotKeyAusPositionen(aktiv)
   const finnhubCache = new Map<string, FinnhubEarningsKalenderTermin[]>()
 
-  const eintraegeNested = await mapPool(aktiv, 2, async (pos) => {
+  const eintraegeNested = await mapPool(aktiv, 3, async (pos) => {
     const isin = isinFuerPosition(pos)
     const k = isinKenntnis(isin)
     const name = k?.name ?? pos.name
     const symbole = symboleFuerPosition(pos, isin)
     const symbol = symbolAnzeige(pos)
-    const lokalStat = { yahoo: 0, finnhub: 0, divvydiary: 0, prognose: 0 }
+    const lokalStat = { yahoo: 0, finnhub: 0, divvydiary: 0, wallstreet: 0, prognose: 0 }
 
     const cached = await ladeEarningsIsinAusDepotCache(isin, von, bis)
     let merged = cached?.termine ?? []
 
     if (merged.length === 0) {
-      const ddRoh = await ladeDivvydiaryEarningsRohdaten(isin, name)
-      merged = await ladeAlleEarningsTermineFuerSymbole(
-        symbole,
-        ddRoh?.earnings ?? null,
-        isin,
-        von,
-        bis,
-        finnhubCache,
-      )
+      const [ddRoh, termine] = await Promise.all([
+        ladeDivvydiaryEarningsRohdaten(isin, name),
+        ladeAlleEarningsTermineFuerSymbole(symbole, null, isin, name, von, bis, finnhubCache),
+      ])
+      merged =
+        termine.length > 0
+          ? termine
+          : await ladeAlleEarningsTermineFuerSymbole(
+              symbole,
+              ddRoh?.earnings ?? null,
+              isin,
+              name,
+              von,
+              bis,
+              finnhubCache,
+            )
 
       if (merged.length > 0) {
         await speichereEarningsIsinImDepotCache(depotKey, von, bis, isin, {
@@ -229,6 +238,7 @@ export async function berechneAnkuendigteEarningsDepot(
       if (hit.quelle === 'yahoo') lokalStat.yahoo++
       else if (hit.quelle === 'finnhub') lokalStat.finnhub++
       else if (hit.quelle === 'divvydiary') lokalStat.divvydiary++
+      else if (hit.quelle === 'wallstreet') lokalStat.wallstreet++
       else lokalStat.prognose++
 
       return {
@@ -247,6 +257,7 @@ export async function berechneAnkuendigteEarningsDepot(
     stat.yahoo += lokalStat.yahoo
     stat.finnhub += lokalStat.finnhub
     stat.divvydiary += lokalStat.divvydiary
+    stat.wallstreet += lokalStat.wallstreet
     stat.prognose += lokalStat.prognose
     return rows
   })
@@ -261,8 +272,8 @@ export async function berechneAnkuendigteEarningsDepot(
     hinweise.push(`Keine Quartalstermine im Zeitraum ${von} bis ${bis} gefunden.`)
   } else {
     const teile: string[] = []
-    if (stat.yahoo + stat.finnhub + stat.divvydiary > 0) {
-      teile.push(`${stat.yahoo + stat.finnhub + stat.divvydiary} bestätigt`)
+    if (stat.yahoo + stat.finnhub + stat.divvydiary + stat.wallstreet > 0) {
+      teile.push(`${stat.yahoo + stat.finnhub + stat.divvydiary + stat.wallstreet} bestätigt`)
     }
     if (stat.prognose > 0) teile.push(`${stat.prognose} geschätzt`)
     const positionenMitTermin = new Set(
@@ -274,7 +285,7 @@ export async function berechneAnkuendigteEarningsDepot(
   }
 
   hinweise.push(
-    `Zeitraum: ${von} bis ${bis} (±1 Jahr). Termine: Yahoo/DivvyDiary + Finnhub (ein Datum pro Quartal). Cache: data/portfolio-earnings-kalender.json (6 h).`,
+    `Zeitraum: vorheriges Quartal + nächste Quartale. Quellen: Yahoo, DivvyDiary, Finnhub, Wallstreet (1 Termin/Quartal). Cache: data/portfolio-earnings-kalender.json.`,
   )
 
   return {

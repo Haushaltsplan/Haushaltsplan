@@ -109,7 +109,7 @@ export function PaAnkuendigteEarnings({
         <span className="inline-flex flex-wrap items-center gap-2">
           <PaDividendEstimateBadge title="Geschätzt" />
           <span>= Termin geschätzt.</span>
-          <span className="text-zinc-500">±1 Jahr · vergangene Termine abgedunkelt · Berichtszeit von Finnhub.</span>
+          <span className="text-zinc-500">Vorheriges Quartal + nächste Termine · 1× pro Quartal · Berichtszeit von Finnhub.</span>
         </span>
       </p>
       <Link

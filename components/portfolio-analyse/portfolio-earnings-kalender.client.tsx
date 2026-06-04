@@ -67,7 +67,7 @@ export function PortfolioEarningsKalenderClient() {
       title={`Earnings-Kalender ${jahr}`}
       description={
         <>
-          Quartalstermine deines Depots (±1 Jahr) —{' '}
+          Quartalstermine deines Depots —{' '}
           <Link href="/portfolioanalyse/earnings" className="text-teal-400 hover:underline">
             Zurück zum Dashboard
           </Link>

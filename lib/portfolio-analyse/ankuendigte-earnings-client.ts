@@ -5,7 +5,7 @@ import { isinAusYahooSymbol, isinKenntnis } from '@/lib/portfolio-analyse/isin-k
 import type { IsinMetadata } from '@/lib/portfolio-analyse/isin-lookup-server'
 import type { AnkuendigteEarningsErgebnis } from '@/lib/portfolio-analyse/ankuendigte-earnings'
 
-const LS_KEY = 'pa-earnings-kalender-v1'
+const LS_KEY = 'pa-earnings-kalender-v3'
 const LS_MAX_AGE_MS = 6 * 60 * 60 * 1000
 
 function depotKeyAusPayload(
@@ -93,7 +93,7 @@ export async function ladeAnkuendigteEarningsDepot(
       hinweise: ['Keine offenen Positionen im Depot.'],
       abgefragtePositionen: 0,
       treffer: 0,
-      statistik: { yahoo: 0, finnhub: 0, divvydiary: 0, prognose: 0, ohneTreffer: 0 },
+      statistik: { yahoo: 0, finnhub: 0, divvydiary: 0, wallstreet: 0, prognose: 0, ohneTreffer: 0 },
     }
   }
 

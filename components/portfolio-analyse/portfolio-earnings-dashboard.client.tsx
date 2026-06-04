@@ -110,9 +110,9 @@ export function PortfolioEarningsDashboardClient() {
               variant="elevated"
               className="flex flex-col border-[#eef0f1]/[0.08] bg-[#0c0c0d] p-5"
             >
-              <h2 className="text-sm font-semibold tracking-tight text-[#eef0f1]">Termine (±1 Jahr)</h2>
+              <h2 className="text-sm font-semibold tracking-tight text-[#eef0f1]">Quartalstermine</h2>
               <p className="mt-0.5 text-[11px] text-zinc-500">
-                Vergangene und kommende Quartale · Klick für Konsens & Ist-Zahlen
+                Vorheriges Quartal + nächste Berichte · Klick für Konsens & Ist-Zahlen
               </p>
               <div className="mt-3 min-h-0 flex-1">
                 <PaAnkuendigteEarnings

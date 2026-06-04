@@ -7,7 +7,7 @@ import type { EarningsTerminKandidat } from '@/lib/portfolio-analyse/earnings-te
 import type { DepotPositionAnfrage } from '@/lib/portfolio-analyse/ankuendigte-dividenden'
 
 const DATEIPFAD = path.join(process.cwd(), 'data', 'portfolio-earnings-kalender.json')
-const CACHE_VERSION = 1
+const CACHE_VERSION = 3
 
 /** Gültigkeit pro ISIN — danach erneut laden. */
 export const EARNINGS_ISIN_CACHE_MS = 6 * 60 * 60 * 1000

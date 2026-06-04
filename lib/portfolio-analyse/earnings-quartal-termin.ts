@@ -12,6 +12,33 @@ export function quartalLabelAusTermin(terminIso: string): string {
   return kalenderQuartalAusPeriodEnd(periodEndAusEarningsTermin(terminIso)).label
 }
 
+/**
+ * Eindeutiger Schlüssel pro Geschäftsquartal (1 Termin pro Q).
+ * Nur aus dem Berichtsdatum abgeleitet — Finnhub-Q-Labels können bei mehreren
+ * Juli-Terminen (z. B. Alphabet) auf verschiedene Q zeigen und Doppel erzeugen.
+ */
+export function fiskalQuartalSchluessel(
+  terminIso: string,
+  _jahr?: number | null,
+  _quartal?: number | null,
+): string {
+  const derived = kalenderQuartalAusPeriodEnd(periodEndAusEarningsTermin(terminIso))
+  return `${derived.jahr}-Q${derived.quartal}`
+}
+
+export function vorherigesFiskalQuartal(heuteIso?: string): { jahr: number; quartal: number; key: string } {
+  const { quartal, jahr } = kalenderQuartalAusPeriodEnd(
+    periodEndAusEarningsTermin(heuteIso ?? heuteIsoUtc()),
+  )
+  let q = quartal - 1
+  let y = jahr
+  if (q < 1) {
+    q = 4
+    y -= 1
+  }
+  return { jahr: y, quartal: q, key: `${y}-Q${q}` }
+}
+
 export function msHeaderAusQuartalLabel(quartalLabel: string): string | null {
   const m = /^Q(\d)\s+(\d{4})$/i.exec(quartalLabel.trim())
   if (!m) return null

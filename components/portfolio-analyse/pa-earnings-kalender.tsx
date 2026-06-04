@@ -357,7 +357,7 @@ export function PaEarningsKalender({
 
       <p className="flex flex-wrap items-center gap-2 border-t border-white/[0.04] pt-4 text-[11px] text-zinc-600">
         <PaDividendEstimateBadge title="Geschätzt" />
-        <span>±1 Jahr · Finnhub & DivvyDiary · nur Depot-Positionen</span>
+        <span>Vorheriges + nächste Quartale · Yahoo/Finnhub/Wallstreet · Depot</span>
         <Link
           href="/portfolioanalyse/earnings"
           className="ml-auto text-teal-400/90 hover:text-teal-300"
