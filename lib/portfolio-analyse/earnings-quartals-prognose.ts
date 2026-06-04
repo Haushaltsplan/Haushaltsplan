@@ -1,7 +1,7 @@
 import type { Berichtszeit } from '@/lib/portfolio-analyse/earnings-berichtszeit'
 import { formatWachstumProzent, wachstumProzent } from '@/lib/portfolio-analyse/earnings-kennzahlen'
 
-export type QuartalsPrognoseMetrik = 'umsatz' | 'ebitda' | 'ebit' | 'eps'
+export type QuartalsPrognoseMetrik = 'umsatz' | 'ebitda' | 'ebit' | 'eps' | 'capex'
 
 export type QuartalsPrognoseZeile = {
   metrik: QuartalsPrognoseMetrik
@@ -89,4 +89,5 @@ export const QUARTALS_METRIK_REIHENFOLGE: QuartalsPrognoseMetrik[] = [
   'ebitda',
   'ebit',
   'eps',
+  'capex',
 ]

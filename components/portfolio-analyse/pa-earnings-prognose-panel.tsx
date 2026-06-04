@@ -132,7 +132,7 @@ export function PaEarningsPrognosePanel({
           <p className="py-8 text-sm text-amber-400/90">{fehler}</p>
         ) : !q || q.zeilen.length === 0 ? (
           <p className="py-8 text-sm text-zinc-500">
-            Keine Quartals-Konsensdaten für diese Aktie (Yahoo earningsTrend).
+            Keine Konsens-Schätzungen für diese Aktie verfügbar.
           </p>
         ) : (
           <table className="w-full border-collapse text-left">
@@ -166,7 +166,7 @@ export function PaEarningsPrognosePanel({
 
       <p className="border-t border-[#eef0f1]/[0.06] px-4 py-2.5 text-[10px] leading-relaxed text-zinc-600">
         {daten
-          ? `Quartals-Konsens: Yahoo Finance (yearAgoRevenue/EPS). Termin: ${eintrag.quelle}. EBITDA/EBIT folgen, sobald eine Quelle verfügbar ist.`
+          ? `Konsens (${daten.quelle}): Yahoo, Marketscreener, Wallstreet, Finnhub — je nach Verfügbarkeit. Termin: ${eintrag.quelle}.`
           : 'Daten werden beim Klick nachgeladen.'}
       </p>
     </div>

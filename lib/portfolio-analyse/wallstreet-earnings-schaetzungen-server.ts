@@ -5,6 +5,11 @@ import {
 } from '@/lib/portfolio-analyse/earnings-kennzahlen'
 import type { EarningsKennzahlPrognose, EarningsKennzahlSchluessel } from '@/lib/portfolio-analyse/earnings-kennzahlen'
 import { isinKenntnis } from '@/lib/portfolio-analyse/isin-kenntnisse'
+import {
+  bauePrognoseZeile,
+  type EarningsQuartalsPrognose,
+  type QuartalsPrognoseMetrik,
+} from '@/lib/portfolio-analyse/earnings-quartals-prognose'
 import type { EarningsSchaetzungen } from '@/lib/portfolio-analyse/earnings-schaetzungen'
 
 const BASE = 'https://www.wallstreet-online.de/aktien'
@@ -258,6 +263,68 @@ function zuEarningsSchaetzungen(
     weitereKennzahlen: tabelle.kennzahlen.filter(
       (k) => k.schluessel !== 'eps' && k.schluessel !== 'umsatz' && k.schluessel !== 'umsatz_je_aktie',
     ),
+  }
+}
+
+function metrikAusSchluessel(s: EarningsKennzahlSchluessel): QuartalsPrognoseMetrik | null {
+  if (s === 'eps') return 'eps'
+  if (s === 'umsatz' || s === 'umsatz_je_aktie') return 'umsatz'
+  if (s === 'ebitda') return 'ebitda'
+  if (s === 'ebit') return 'ebit'
+  return null
+}
+
+/** Jahres-Konsens (Wallstreet) als Prognose-Tabelle für das Detail-Panel. */
+export function wallstreetZuQuartalsPrognose(
+  ws: EarningsSchaetzungen,
+  terminDatumIso: string | null,
+): EarningsQuartalsPrognose | null {
+  const jahr = ws.jahr ?? ws.prognosePeriode?.match(/20\d{2}/)?.[0] ?? null
+  const basisMatch = ws.kennzahlen
+    .map((k) => k.vergleichLabel?.match(/20\d{2}/)?.[0])
+    .find(Boolean)
+  const quartalLabel = jahr ? `Geschäftsjahr ${jahr} (Schätzung)` : (ws.prognosePeriode ?? 'Geschäftsjahr (Schätzung)')
+  const vorjahrQuartalLabel = basisMatch ? `Geschäftsjahr ${basisMatch}` : 'Vorjahr'
+  const waehrung = 'EUR'
+
+  const zeilen = []
+  if (ws.umsatz.average != null) {
+    const u = ws.kennzahlen.find((k) => k.schluessel === 'umsatz')
+    const row = bauePrognoseZeile(
+      'umsatz',
+      'Umsatz',
+      waehrung,
+      ws.umsatz.average,
+      u?.vorjahrWert ?? null,
+      u?.wachstumProzent ?? null,
+    )
+    if (row) zeilen.push(row)
+  }
+
+  for (const k of ws.kennzahlen) {
+    const metrik = metrikAusSchluessel(k.schluessel)
+    if (!metrik || metrik === 'umsatz') continue
+    const row = bauePrognoseZeile(
+      metrik,
+      k.label,
+      waehrung,
+      k.spanne.average,
+      k.vorjahrWert,
+      k.wachstumProzent,
+    )
+    if (row) zeilen.push(row)
+  }
+
+  if (zeilen.length === 0) return null
+
+  return {
+    quartalLabel,
+    vorjahrQuartalLabel,
+    periodEndIso: null,
+    terminDatumIso,
+    berichtszeit: null,
+    berichtszeitLabel: null,
+    zeilen,
   }
 }
 

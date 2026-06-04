@@ -3,10 +3,20 @@ import type { Berichtszeit } from '@/lib/portfolio-analyse/earnings-berichtszeit
 import type { EarningsKennzahlPrognose } from '@/lib/portfolio-analyse/earnings-kennzahlen'
 import { kennzahlAusSpanne } from '@/lib/portfolio-analyse/earnings-kennzahlen'
 import type { EarningsQuartalsPrognose } from '@/lib/portfolio-analyse/earnings-quartals-prognose'
+import {
+  QUARTALS_METRIK_REIHENFOLGE,
+  type QuartalsPrognoseZeile,
+} from '@/lib/portfolio-analyse/earnings-quartals-prognose'
 import { brokerSymbolKandidaten } from '@/lib/portfolio-analyse/dividenden-datum-hilfen'
 import { ladeFinnhubQuartalsEpsVergleich } from '@/lib/portfolio-analyse/finnhub-earnings-vergleich-server'
+import { ladeFinnhubEarningsSchaetzungenKandidaten } from '@/lib/portfolio-analyse/finnhub-earnings-schaetzungen-server'
 import { isinKenntnis } from '@/lib/portfolio-analyse/isin-kenntnisse'
+import { ladeMarketscreenerQuartalsPrognose } from '@/lib/portfolio-analyse/marketscreener-quartals-schaetzungen-server'
 import { portfolioLogoQuellen } from '@/lib/portfolio-analyse/portfolio-logos'
+import {
+  ladeWallstreetEarningsSchaetzungen,
+  wallstreetZuQuartalsPrognose,
+} from '@/lib/portfolio-analyse/wallstreet-earnings-schaetzungen-server'
 import {
   ladeYahooEarningsTrend,
   ladeYahooQuartalsPrognose,
@@ -20,7 +30,7 @@ export type EarningsSchaetzungSpanne = {
 }
 
 export type EarningsSchaetzungen = {
-  quelle: 'yahoo' | 'finnhub' | 'wallstreet' | 'kombiniert'
+  quelle: 'yahoo' | 'finnhub' | 'wallstreet' | 'marketscreener' | 'kombiniert'
   terminDatumIso: string | null
   isEarningsDateEstimate: boolean
   earningsCallDateIso: string | null
@@ -69,9 +79,47 @@ function symboleFuerAnfrage(req: EarningsSchaetzungenAnfrage): string[] {
   return out
 }
 
+function mergeZeilen(
+  primary: QuartalsPrognoseZeile[],
+  extra: QuartalsPrognoseZeile[],
+): QuartalsPrognoseZeile[] {
+  const out = [...primary]
+  for (const z of extra) {
+    const i = out.findIndex((r) => r.metrik === z.metrik)
+    if (i < 0) {
+      out.push(z)
+      continue
+    }
+    const cur = out[i]
+    out[i] = {
+      ...cur,
+      schaetzung: cur.schaetzung ?? z.schaetzung,
+      schaetzungAnzeige: cur.schaetzungAnzeige ?? z.schaetzungAnzeige,
+      vorjahr: cur.vorjahr ?? z.vorjahr,
+      vorjahrAnzeige: cur.vorjahrAnzeige ?? z.vorjahrAnzeige,
+      wachstumProzent: cur.wachstumProzent ?? z.wachstumProzent,
+      wachstumAnzeige: cur.wachstumAnzeige ?? z.wachstumAnzeige,
+      waehrung: cur.waehrung || z.waehrung,
+    }
+  }
+  out.sort(
+    (a, b) =>
+      QUARTALS_METRIK_REIHENFOLGE.indexOf(a.metrik) - QUARTALS_METRIK_REIHENFOLGE.indexOf(b.metrik),
+  )
+  return out
+}
+
+function hatKernDaten(q: EarningsQuartalsPrognose | null): boolean {
+  if (!q || q.zeilen.length === 0) return false
+  const u = q.zeilen.find((z) => z.metrik === 'umsatz')
+  const e = q.zeilen.find((z) => z.metrik === 'eps')
+  return (u?.schaetzung != null && u.schaetzung > 0) || (e?.schaetzung != null && e.schaetzung !== 0)
+}
+
 function ausQuartalsPrognose(
   q: EarningsQuartalsPrognose,
   berichtszeitExtern: Berichtszeit | null,
+  quelle: EarningsSchaetzungen['quelle'],
 ): EarningsSchaetzungen {
   const umsatzZ = q.zeilen.find((z) => z.metrik === 'umsatz')
   const epsZ = q.zeilen.find((z) => z.metrik === 'eps')
@@ -98,19 +146,30 @@ function ausQuartalsPrognose(
       average: z.schaetzung,
       averageAnzeige: z.schaetzungAnzeige,
     }
-    const schluessel = z.metrik === 'eps' ? 'eps' : z.metrik === 'umsatz' ? 'umsatz' : 'sonstiges'
+    const schluessel =
+      z.metrik === 'eps'
+        ? 'eps'
+        : z.metrik === 'umsatz'
+          ? 'umsatz'
+          : z.metrik === 'ebitda'
+            ? 'ebitda'
+            : z.metrik === 'ebit'
+              ? 'ebit'
+              : 'sonstiges'
     const k = kennzahlAusSpanne(schluessel, z.label, spanne, {
       vorjahrWert: z.vorjahr,
       vorjahrAnzeige: z.vorjahrAnzeige,
       wachstumProzent: z.wachstumProzent,
-      vergleichArt: 'vorjahr_quartal',
+      vergleichArt: q.quartalLabel.includes('Geschäftsjahr')
+        ? 'vorjahr_geschaeftsjahr'
+        : 'vorjahr_quartal',
       vergleichLabel: `vs. ${q.vorjahrQuartalLabel}`,
     })
     if (k) kennzahlen.push(k)
   }
 
   return {
-    quelle: 'yahoo',
+    quelle,
     terminDatumIso: q.terminDatumIso,
     isEarningsDateEstimate: false,
     earningsCallDateIso: null,
@@ -124,7 +183,9 @@ function ausQuartalsPrognose(
       berichtszeitLabel: berichtszeitLabel(berichtszeit) ?? q.berichtszeitLabel,
     },
     kennzahlen,
-    weitereKennzahlen: [],
+    weitereKennzahlen: kennzahlen.filter(
+      (k) => k.schluessel !== 'eps' && k.schluessel !== 'umsatz',
+    ),
   }
 }
 
@@ -134,16 +195,111 @@ export async function ladeEarningsSchaetzungen(
   const symbole = symboleFuerAnfrage(req)
   const primaerSymbol = symbole[0] ?? ''
   const termin = req.terminDatumIso?.slice(0, 10)
+  const isin = req.isin?.trim().toUpperCase() ?? ''
+  const name = req.name ?? ''
 
-  if (!primaerSymbol) return null
+  const [yahooQ, trend, finnhubVergleich, marketscreenerQ, finnhubKalender, wallstreet] =
+    await Promise.all([
+      primaerSymbol ? ladeYahooQuartalsPrognose(primaerSymbol, termin) : null,
+      primaerSymbol ? ladeYahooEarningsTrend(primaerSymbol, termin) : null,
+      primaerSymbol ? ladeFinnhubQuartalsEpsVergleich(primaerSymbol, termin) : null,
+      isin.length >= 10
+        ? ladeMarketscreenerQuartalsPrognose(isin, name, primaerSymbol, termin)
+        : null,
+      symbole.length > 0 ? ladeFinnhubEarningsSchaetzungenKandidaten(symbole, termin) : null,
+      isin.length >= 10 ? ladeWallstreetEarningsSchaetzungen(isin, name) : null,
+    ])
 
-  const [quartals, trend, finnhubVergleich] = await Promise.all([
-    ladeYahooQuartalsPrognose(primaerSymbol, termin),
-    ladeYahooEarningsTrend(primaerSymbol, termin),
-    ladeFinnhubQuartalsEpsVergleich(primaerSymbol, termin),
-  ])
+  let prognose: EarningsQuartalsPrognose | null = null
+  const quellen: string[] = []
 
-  let prognose = quartals
+  if (yahooQ && hatKernDaten(yahooQ)) {
+    prognose = { ...yahooQ }
+    quellen.push('yahoo')
+  } else if (yahooQ) {
+    prognose = { ...yahooQ }
+  }
+
+  if (marketscreenerQ) {
+    if (prognose) {
+      prognose = {
+        ...prognose,
+        zeilen: mergeZeilen(prognose.zeilen, marketscreenerQ.zeilen),
+        quartalLabel: prognose.quartalLabel || marketscreenerQ.quartalLabel,
+        vorjahrQuartalLabel:
+          prognose.vorjahrQuartalLabel || marketscreenerQ.vorjahrQuartalLabel,
+      }
+      quellen.push('marketscreener')
+    } else if (hatKernDaten(marketscreenerQ) || marketscreenerQ.zeilen.length > 0) {
+      prognose = marketscreenerQ
+      quellen.push('marketscreener')
+    }
+  }
+
+  if (!hatKernDaten(prognose) && finnhubKalender) {
+    const umsatzZ = finnhubKalender.umsatz.average
+    const epsZ = finnhubKalender.eps.average
+    const zeilen: QuartalsPrognoseZeile[] = []
+    if (umsatzZ != null) {
+      const row = prognose?.zeilen.find((z) => z.metrik === 'umsatz')
+      if (!row?.schaetzung) {
+        zeilen.push({
+          metrik: 'umsatz',
+          label: 'Revenue',
+          waehrung: 'USD',
+          schaetzung: umsatzZ,
+          schaetzungAnzeige: finnhubKalender.umsatz.averageAnzeige,
+          vorjahr: null,
+          vorjahrAnzeige: null,
+          wachstumProzent: null,
+          wachstumAnzeige: null,
+        })
+      }
+    }
+    if (epsZ != null) {
+      const row = prognose?.zeilen.find((z) => z.metrik === 'eps')
+      if (!row?.schaetzung) {
+        zeilen.push({
+          metrik: 'eps',
+          label: 'EPS',
+          waehrung: 'USD',
+          schaetzung: epsZ,
+          schaetzungAnzeige: finnhubKalender.eps.averageAnzeige,
+          vorjahr: null,
+          vorjahrAnzeige: null,
+          wachstumProzent: null,
+          wachstumAnzeige: null,
+        })
+      }
+    }
+    if (zeilen.length > 0) {
+      prognose = prognose
+        ? { ...prognose, zeilen: mergeZeilen(prognose.zeilen, zeilen) }
+        : {
+            quartalLabel: finnhubKalender.prognosePeriode ?? 'Quartal',
+            vorjahrQuartalLabel: 'Vorjahr',
+            periodEndIso: null,
+            terminDatumIso: finnhubKalender.terminDatumIso ?? termin ?? null,
+            berichtszeit: req.berichtszeit ?? null,
+            berichtszeitLabel: finnhubKalender.berichtszeit ?? null,
+            zeilen,
+          }
+      quellen.push('finnhub')
+    }
+  }
+
+  if (!hatKernDaten(prognose) && wallstreet) {
+    const wsQ = wallstreetZuQuartalsPrognose(wallstreet, termin ?? null)
+    if (wsQ) {
+      prognose = {
+        ...wsQ,
+        zeilen: mergeZeilen(wsQ.zeilen, prognose?.zeilen ?? []),
+        terminDatumIso: prognose?.terminDatumIso ?? wsQ.terminDatumIso,
+      }
+      quellen.push('wallstreet')
+    }
+  }
+
   if (prognose && finnhubVergleich) {
     const epsIdx = prognose.zeilen.findIndex((z) => z.metrik === 'eps')
     if (epsIdx >= 0) {
@@ -203,13 +359,17 @@ export async function ladeEarningsSchaetzungen(
           : []),
       ],
     }
+    quellen.push('yahoo')
   }
 
-  if (!prognose) return null
+  if (!prognose || prognose.zeilen.length === 0) return null
 
   if (termin && !prognose.terminDatumIso) {
     prognose = { ...prognose, terminDatumIso: termin }
   }
 
-  return ausQuartalsPrognose(prognose, req.berichtszeit ?? prognose.berichtszeit)
+  const quelle: EarningsSchaetzungen['quelle'] =
+    quellen.length > 1 ? 'kombiniert' : (quellen[0] as EarningsSchaetzungen['quelle']) ?? 'yahoo'
+
+  return ausQuartalsPrognose(prognose, req.berichtszeit ?? prognose.berichtszeit, quelle)
 }
