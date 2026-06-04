@@ -72,7 +72,7 @@ export const ISIN_KENNTNISSE: Record<string, IsinKenntnis> = {
   IE00BJXRZJ40: direkt('IE00BJXRZJ40.SG', 'Rize Cybersecurity and Data Privacy UCITS ETF'),
   FR0000052292: direkt('RMS.PA', 'Hermès', { divvydiarySlug: 'hermes-aktie' }),
   FR0000121014: direkt('MC.PA', 'LVMH', { divvydiarySlug: 'lvmh-aktie' }),
-  NL0010273215: direkt('ASML.AS', 'ASML Holding'),
+  NL0010273215: direkt('ASML.AS', 'ASML Holding', { divvydiarySlug: 'asml-aktie' }),
   NL0000395903: direkt('WKL.AS', 'Wolters Kluwer', { divvydiarySlug: 'wolters-kluwer-aktie' }),
   DE0006580806: direkt('MUM.DE', 'Mensch und Maschine', {
     divvydiarySlug: 'mensch-und-maschine-software-aktie',
@@ -88,10 +88,10 @@ export const ISIN_KENNTNISSE: Record<string, IsinKenntnis> = {
   }),
 
   // --- mit Klammern: Umrechnung ---
-  US02079K1079: usd('GOOG', "Alphabet 'C'"),
-  US57636Q1040: usd('MA', 'Mastercard'),
-  US78409V1044: usd('SPGI', 'S&P Global'),
-  US5949181045: usd('MSFT', 'Microsoft'),
+  US02079K1079: usd('GOOG', "Alphabet 'C'", { divvydiarySlug: 'alphabet-aktie' }),
+  US57636Q1040: usd('MA', 'Mastercard', { divvydiarySlug: 'mastercard-aktie' }),
+  US78409V1044: usd('SPGI', 'S&P Global', { divvydiarySlug: 'sp-global-aktie' }),
+  US5949181045: usd('MSFT', 'Microsoft', { divvydiarySlug: 'microsoft-aktie' }),
   US55354G1004: usd('MSCI', 'MSCI'),
   US91324P1021: usd('UNH', 'UnitedHealth', { divvydiarySlug: 'unitedhealth-aktie' }),
   US8835561023: usd('TMO', 'Thermo Fisher Scientific'),

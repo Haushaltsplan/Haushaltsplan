@@ -43,6 +43,27 @@ function slugAusName(name: string): string {
     .replace(/^-|-$/g, '')
 }
 
+/** Mehrere Slugs — z. B. „Alphabet 'C'“ → alphabet, nicht alphabet-c. */
+function slugKandidatenAusName(name: string): string[] {
+  const out = new Set<string>()
+  const roh = name.trim()
+  const varianten = [
+    roh,
+    roh.replace(/\s+Class\s+[A-Z]\s*$/i, '').trim(),
+    roh.replace(/'[^']*'/g, '').trim(),
+    roh.replace(/\b(Inc\.?|Corp\.?|Co\.?|PLC|Ltd\.?|Holding|Holdings|Scientific|Systems)\b/gi, '').trim(),
+    roh.replace(/^The\s+/i, '').trim(),
+  ]
+  for (const v of varianten) {
+    if (!v) continue
+    const s = slugAusName(v)
+    if (s.length >= 3) out.add(s)
+    const first = slugAusName(v.split(/\s+/)[0] ?? '')
+    if (first.length >= 3) out.add(first)
+  }
+  return [...out]
+}
+
 export function divvydiaryPfade(isin: string, name: string): string[] {
   const isinNorm = isin.trim().toUpperCase()
   const k = isinKenntnis(isinNorm)
@@ -55,13 +76,31 @@ export function divvydiaryPfade(isin: string, name: string): string[] {
     add(`${k.divvydiarySlug}-${isinNorm}`)
   }
 
-  const s = slugAusName(k?.name ?? name)
-  if (s) {
+  for (const s of slugKandidatenAusName(k?.name ?? name)) {
     add(`${s}-aktie-${isinNorm}`)
     add(`${s}-software-aktie-${isinNorm}`)
     add(`${s}-${isinNorm}`)
   }
   return out
+}
+
+/** „Earnings Date29.7.2026“ im sichtbaren HTML (Fallback wenn JSON fehlt). */
+export function parseEarningsDatumKlartext(
+  html: string,
+  isinNorm: string,
+): DivvydiaryEarningsTerminKurz | null {
+  const isin = isinNorm.trim().toUpperCase()
+  if (!isin || !html.includes(isin)) return null
+
+  const m =
+    html.match(/Earnings\s*Date\s*(\d{1,2})\.(\d{1,2})\.(\d{4})/i) ??
+    html.match(/Earnings-Datum\s*(\d{1,2})\.(\d{1,2})\.(\d{4})/i)
+  if (!m) return null
+
+  const iso = `${m[3]}-${String(Number(m[2])).padStart(2, '0')}-${String(Number(m[1])).padStart(2, '0')}`
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(iso)) return null
+
+  return { terminDatumIso: iso, bestaetigt: true }
 }
 
 export type DivvydiaryRohZeile = {
@@ -145,7 +184,7 @@ function sammleDivvydiaryEarningsTreffer(html: string, isin: string): Divvydiary
   for (const needle of needles) {
     let i = 0
     while ((i = html.indexOf(needle, i)) >= 0) {
-      const win = html.slice(Math.max(0, i - 500), i + 1400)
+      const win = html.slice(Math.max(0, i - 1200), i + 4500)
       const names = [
         ...win.matchAll(/\\"name\\":\\"([^"]+)\\"/g),
         ...win.matchAll(/"name":"([^"]+)"/g),
@@ -213,6 +252,13 @@ export function alleDivvydiaryEarningsImZeitraum(
       bestaetigt: !t.earningsDateEstimated,
     })
   }
+  const klartext = parseEarningsDatumKlartext(html, isin)
+  if (klartext) {
+    if (klartext.terminDatumIso >= von && klartext.terminDatumIso <= bis && !seen.has(klartext.terminDatumIso)) {
+      out.push(klartext)
+    }
+  }
+
   return out.sort((a, b) => a.terminDatumIso.localeCompare(b.terminDatumIso))
 }
 
@@ -222,7 +268,16 @@ export function parseDivvydiaryEarningsHtml(html: string, isinNorm: string): Div
   if (!isin || isin.length < 10) return null
 
   const treffer = sammleDivvydiaryEarningsTreffer(html, isin)
-  if (treffer.length === 0) return null
+  if (treffer.length === 0) {
+    const kt = parseEarningsDatumKlartext(html, isin)
+    if (!kt) return null
+    return {
+      securityName: '',
+      earningsDate: kt.terminDatumIso,
+      earningsDateEstimated: !kt.bestaetigt,
+      dividendFrequency: null,
+    }
+  }
 
   const heute = new Date()
   const heuteIso = `${heute.getUTCFullYear()}-${String(heute.getUTCMonth() + 1).padStart(2, '0')}-${String(heute.getUTCDate()).padStart(2, '0')}`
@@ -438,10 +493,12 @@ async function ladeDivvydiaryHtml(
       if (!html) continue
       const rows = parseDivvydiaryHtml(html)
       const earnings = parseDivvydiaryEarningsHtml(html, isinNorm)
-      if (rows.length === 0 && !earnings) continue
+      const klartext = parseEarningsDatumKlartext(html, isinNorm)
+      if (rows.length === 0 && !earnings && !klartext) continue
       if (rows.length > 0 && !seitePasstZuIsin(html, isinNorm, rows)) continue
+      if (!html.includes(isinNorm) && rows.length === 0) continue
 
-      const score = scoreSeite(isinNorm, rows, html, heute) + (earnings ? 50 : 0)
+      const score = scoreSeite(isinNorm, rows, html, heute) + (earnings || klartext ? 50 : 0)
       if (!best || score > best.score) {
         best = { html, path, rows, earnings, score }
       }

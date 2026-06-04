@@ -28,6 +28,12 @@ function positionHatIsin(pos: DepotPositionAnfrage): boolean {
   return isinFuerPosition(pos).length >= 10
 }
 
+function istEtfOderFonds(isin: string, name: string): boolean {
+  const k = isinKenntnis(isin)
+  const label = `${k?.name ?? name} ${isin}`
+  return /\b(ETF|UCITS|Index\s+Solutions|Fonds)\b/i.test(label)
+}
+
 function symbolAnzeige(pos: DepotPositionAnfrage): string {
   return pos.symbolYahoo?.trim() || isinFuerPosition(pos) || '—'
 }
@@ -54,7 +60,12 @@ export async function berechneAnkuendigteEarningsDepot(
   positionen: DepotPositionAnfrage[],
 ): Promise<AnkuendigteEarningsErgebnis> {
   const hinweise: string[] = []
-  const aktiv = positionen.filter((p) => p.stueck > 0 && positionHatIsin(p))
+  const aktiv = positionen.filter((p) => {
+    if (p.stueck <= 0 || !positionHatIsin(p)) return false
+    const isin = isinFuerPosition(p)
+    const k = isinKenntnis(isin)
+    return !istEtfOderFonds(isin, k?.name ?? p.name)
+  })
   const stat = { divvydiary: 0, prognose: 0, ohneTreffer: 0 }
 
   const { von, bis, heute } = earningsZeitraum()
@@ -100,8 +111,18 @@ export async function berechneAnkuendigteEarningsDepot(
     .filter((e) => e.terminDatumIso >= heute)
     .sort((a, b) => a.terminDatumIso.localeCompare(b.terminDatumIso))
 
+  const etfUebersprungen = positionen.filter((p) => {
+    if (p.stueck <= 0 || !positionHatIsin(p)) return false
+    const isin = isinFuerPosition(p)
+    const k = isinKenntnis(isin)
+    return istEtfOderFonds(isin, k?.name ?? p.name)
+  }).length
+  if (etfUebersprungen > 0) {
+    hinweise.push(`${etfUebersprungen} ETF/Fonds-Position(en) ohne Earnings-Termin (nicht relevant).`)
+  }
+
   if (aktiv.length === 0) {
-    hinweise.push('Keine offenen Positionen mit ISIN — Quartalstermine brauchen eine ISIN.')
+    hinweise.push('Keine offenen Aktien-Positionen mit ISIN — Quartalstermine brauchen eine ISIN.')
   } else if (eintraege.length === 0) {
     hinweise.push(`Keine kommenden Quartalstermine bis ${bis} gefunden (DivvyDiary).`)
   } else {
