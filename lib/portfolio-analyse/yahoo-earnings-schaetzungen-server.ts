@@ -61,6 +61,8 @@ function parseEarningsBlock(earnings: Record<string, unknown> | undefined): Earn
     earningsCallDateIso,
     eps,
     umsatz,
+    kennzahlen: [],
+    weitereKennzahlen: [],
   }
 }
 

@@ -1,3 +1,9 @@
+import {
+  formatWachstumProzent,
+  kennzahlAusSpanne,
+  wachstumProzent,
+} from '@/lib/portfolio-analyse/earnings-kennzahlen'
+import type { EarningsKennzahlPrognose, EarningsKennzahlSchluessel } from '@/lib/portfolio-analyse/earnings-kennzahlen'
 import { isinKenntnis } from '@/lib/portfolio-analyse/isin-kenntnisse'
 import type { EarningsSchaetzungen } from '@/lib/portfolio-analyse/earnings-schaetzungen'
 
@@ -8,6 +14,17 @@ const MIN_ABSTAND_MS = 280
 let letzterAbruf = 0
 
 const pageCache = new Map<string, { at: number; html: string | null }>()
+
+const ZEILEN_MAP: { match: RegExp; schluessel: EarningsKennzahlSchluessel; label: string }[] = [
+  { match: /gewinn je aktie|^eps$/i, schluessel: 'eps', label: 'Gewinn je Aktie (EPS)' },
+  { match: /umsatz je aktie/i, schluessel: 'umsatz_je_aktie', label: 'Umsatz je Aktie' },
+  { match: /^kgv$|kursgewinn/i, schluessel: 'kgv', label: 'KGV' },
+  { match: /dividende je aktie/i, schluessel: 'dividende', label: 'Dividende je Aktie' },
+  { match: /dividendenrendite/i, schluessel: 'sonstiges', label: 'Dividendenrendite' },
+  { match: /ebitda/i, schluessel: 'ebitda', label: 'EBITDA' },
+  { match: /^ebit(?!da)/i, schluessel: 'ebit', label: 'EBIT' },
+  { match: /free cash|fcf/i, schluessel: 'free_cashflow', label: 'Free Cashflow' },
+]
 
 function slugAusName(name: string): string {
   return name
@@ -69,43 +86,96 @@ function zellenAusZeile(trHtml: string): string[] {
   )
 }
 
-function parseSchaetzungsTabelle(html: string): {
-  eps: number | null
-  umsatzJeAktie: number | null
-  jahr: string | null
-} | null {
+type WallstreetJahresTabelle = {
+  jahrSchaetzung: string | null
+  jahrBasis: string | null
+  kennzahlen: EarningsKennzahlPrognose[]
+}
+
+function schluesselFuerLabel(label: string): { schluessel: EarningsKennzahlSchluessel; label: string } | null {
+  const l = label.trim().toLowerCase()
+  for (const m of ZEILEN_MAP) {
+    if (m.match.test(l)) return { schluessel: m.schluessel, label: m.label }
+  }
+  return null
+}
+
+function parseJahresPrognoseTabelle(html: string): WallstreetJahresTabelle | null {
   const tables = [...html.matchAll(/<table class="t-data[\s\S]*?<\/table>/gi)]
   for (const t of tables) {
     const block = t[0]
-    if (!/2026e|2025e|2027e/i.test(block)) continue
+    if (!/202\d+e/i.test(block)) continue
 
     const headerRow = block.match(/<thead>[\s\S]*?<\/thead>/i)?.[0] ?? ''
     const headers = zellenAusZeile(headerRow.match(/<tr[^>]*>[\s\S]*?<\/tr>/i)?.[0] ?? '')
     const estIdx = headers.findIndex((h) => /202\d+e/i.test(h))
     if (estIdx < 0) continue
 
-    const jahr = headers[estIdx]?.match(/20\d{2}/)?.[0] ?? null
-    let eps: number | null = null
-    let umsatzJeAktie: number | null = null
+    const basisIdx = estIdx > 0 ? estIdx - 1 : -1
 
-    for (const row of block.matchAll(/<tbody>[\s\S]*?<\/tbody>/gi)) {
-      for (const tr of row[0].matchAll(/<tr[^>]*>([\s\S]*?)<\/tr>/gi)) {
+    const jahrSchaetzung = headers[estIdx]?.match(/20\d{2}/)?.[0] ?? null
+    const jahrBasis = basisIdx >= 0 ? headers[basisIdx]?.match(/20\d{2}/)?.[0] ?? null : null
+
+    const kennzahlen: EarningsKennzahlPrognose[] = []
+
+    for (const tbody of block.matchAll(/<tbody>[\s\S]*?<\/tbody>/gi)) {
+      for (const tr of tbody[0].matchAll(/<tr[^>]*>([\s\S]*?)<\/tr>/gi)) {
         const cells = zellenAusZeile(tr[1])
         if (cells.length <= estIdx) continue
-        const label = cells[0]?.toLowerCase() ?? ''
-        const val = parseDeZahl(cells[estIdx] ?? '')
-        if (val == null) continue
-        if (label.includes('gewinn je aktie') || label === 'eps') eps = val
-        if (label.includes('umsatz je aktie')) umsatzJeAktie = val
+        const meta = schluesselFuerLabel(cells[0] ?? '')
+        if (!meta) continue
+
+        const konsens = parseDeZahl(cells[estIdx] ?? '')
+        const vorjahr =
+          basisIdx >= 0 && cells.length > basisIdx ? parseDeZahl(cells[basisIdx] ?? '') : null
+        if (konsens == null && vorjahr == null) continue
+
+        const w = wachstumProzent(konsens, vorjahr)
+        const spanne = {
+          low: null,
+          high: null,
+          average: konsens,
+          averageAnzeige:
+            konsens != null
+              ? meta.schluessel === 'sonstiges' && (cells[estIdx] ?? '').includes('%')
+                ? `${konsens.toLocaleString('de-DE', { maximumFractionDigits: 2 })} %`
+                : konsens.toLocaleString('de-DE', {
+                    minimumFractionDigits: meta.schluessel === 'eps' ? 2 : 0,
+                    maximumFractionDigits: meta.schluessel === 'eps' ? 2 : 2,
+                  })
+              : null,
+        }
+
+        const k = kennzahlAusSpanne(meta.schluessel, meta.label, spanne, {
+          vorjahrWert: vorjahr,
+          vorjahrAnzeige:
+            vorjahr != null
+              ? meta.schluessel === 'sonstiges'
+                ? `${vorjahr.toLocaleString('de-DE', { maximumFractionDigits: 2 })} %`
+                : vorjahr.toLocaleString('de-DE', { maximumFractionDigits: 2 })
+              : null,
+          wachstumProzent: w,
+          vergleichArt: 'vorjahr_geschaeftsjahr',
+          vergleichLabel:
+            jahrBasis && jahrSchaetzung
+              ? `vs. Geschäftsjahr ${jahrBasis} (${jahrSchaetzung}e)`
+              : 'vs. Vorjahr',
+        })
+        if (k && k.wachstumAnzeige == null) {
+          k.wachstumAnzeige = formatWachstumProzent(w)
+        }
+        if (k) kennzahlen.push(k)
       }
     }
 
-    if (eps != null || umsatzJeAktie != null) return { eps, umsatzJeAktie, jahr }
+    if (kennzahlen.length > 0) {
+      return { jahrSchaetzung, jahrBasis: jahrBasis ?? null, kennzahlen }
+    }
   }
   return null
 }
 
-/** Umsatz gesamt (Mio.) aus Kennzahlen-Tabelle ohne „e“-Spalte — letzte Spalte oft aktuell. */
+/** Umsatz gesamt (Mio.) aus Kennzahlen-Tabelle ohne „e“-Spalte. */
 function parseUmsatzMio(html: string): number | null {
   const m = html.match(
     /<th[^>]*>\s*Umsatz\s*<\/th>[\s\S]*?<td[^>]*class="text-end"[^>]*>\s*<\/td>[\s\S]*?<td[^>]*class="text-end"[^>]*>([\d.,]+)/i,
@@ -151,39 +221,42 @@ async function fetchWallstreetSeite(slug: string): Promise<string | null> {
 }
 
 function zuEarningsSchaetzungen(
-  parsed: { eps: number | null; umsatzJeAktie: number | null; jahr: string | null },
+  tabelle: WallstreetJahresTabelle,
   umsatzMio: number | null,
 ): EarningsSchaetzungen | null {
-  if (parsed.eps == null && parsed.umsatzJeAktie == null && umsatzMio == null) return null
+  const epsK = tabelle.kennzahlen.find((k) => k.schluessel === 'eps')
+  const umsatzJeAktieK = tabelle.kennzahlen.find((k) => k.schluessel === 'umsatz_je_aktie')
 
-  const jahrLabel = parsed.jahr ? `${parsed.jahr}e` : 'Schätzung'
+  if (!epsK && !umsatzJeAktieK && umsatzMio == null) return null
+
+  const jahrLabel = tabelle.jahrSchaetzung ? `${tabelle.jahrSchaetzung}e` : 'Schätzung'
+
+  const umsatzSpanne = {
+    low: null,
+    high: null,
+    average: umsatzMio,
+    averageAnzeige:
+      umsatzMio != null
+        ? `${(umsatzMio / 1e9).toLocaleString('de-DE', { maximumFractionDigits: 2 })} Mrd.`
+        : umsatzJeAktieK?.spanne.averageAnzeige ?? null,
+  }
+
   return {
     quelle: 'wallstreet',
     terminDatumIso: null,
     isEarningsDateEstimate: true,
     earningsCallDateIso: null,
-    jahr: parsed.jahr ? Number(parsed.jahr) : null,
+    jahr: tabelle.jahrSchaetzung ? Number(tabelle.jahrSchaetzung) : null,
     berichtszeit: `Wallstreet ${jahrLabel}`,
-    eps: {
-      low: null,
-      high: null,
-      average: parsed.eps,
-      averageAnzeige:
-        parsed.eps != null
-          ? parsed.eps.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-          : null,
-    },
-    umsatz: {
-      low: null,
-      high: null,
-      average: umsatzMio,
-      averageAnzeige:
-        umsatzMio != null
-          ? `${(umsatzMio / 1e9).toLocaleString('de-DE', { maximumFractionDigits: 2 })} Mrd.`
-          : parsed.umsatzJeAktie != null
-            ? `${parsed.umsatzJeAktie.toLocaleString('de-DE', { maximumFractionDigits: 2 })} €/Aktie`
-            : null,
-    },
+    eps: epsK?.spanne ?? { low: null, high: null, average: null, averageAnzeige: null },
+    umsatz: umsatzSpanne,
+    prognosePeriode: tabelle.jahrSchaetzung
+      ? `Geschäftsjahr ${tabelle.jahrSchaetzung} (Schätzung)`
+      : null,
+    kennzahlen: tabelle.kennzahlen,
+    weitereKennzahlen: tabelle.kennzahlen.filter(
+      (k) => k.schluessel !== 'eps' && k.schluessel !== 'umsatz' && k.schluessel !== 'umsatz_je_aktie',
+    ),
   }
 }
 
@@ -197,9 +270,9 @@ export async function ladeWallstreetEarningsSchaetzungen(
   for (const slug of wallstreetSlugKandidaten(isinNorm, name)) {
     const html = await fetchWallstreetSeite(slug)
     if (!html) continue
-    const parsed = parseSchaetzungsTabelle(html)
-    if (!parsed) continue
-    const hit = zuEarningsSchaetzungen(parsed, parseUmsatzMio(html))
+    const tabelle = parseJahresPrognoseTabelle(html)
+    if (!tabelle) continue
+    const hit = zuEarningsSchaetzungen(tabelle, parseUmsatzMio(html))
     if (hit) return hit
   }
   return null

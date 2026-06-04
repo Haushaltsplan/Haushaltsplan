@@ -2,51 +2,110 @@
 
 import { useEffect, useState } from 'react'
 import { PortfolioIsinLogo } from '@/components/portfolio-analyse/isin-logo'
+import { PaEarningsBerichtszeitBadge } from '@/components/portfolio-analyse/pa-earnings-termin-ui'
 import { PaDividendEstimateBadge } from '@/components/portfolio-analyse/pa-ui'
 import { formatDatumDe } from '@/lib/portfolio-analyse/berechnung'
 import type { AnkuendigtesEarningsEintrag } from '@/lib/portfolio-analyse/ankuendigte-earnings'
-import { PaEarningsBerichtszeitBadge } from '@/components/portfolio-analyse/pa-earnings-termin-ui'
-import { berichtszeitLabel } from '@/lib/portfolio-analyse/earnings-berichtszeit'
+import type { EarningsKennzahlPrognose } from '@/lib/portfolio-analyse/earnings-kennzahlen'
 import type { EarningsSchaetzungen } from '@/lib/portfolio-analyse/earnings-schaetzungen'
 import { ladeEarningsSchaetzungenFuerEintrag } from '@/lib/portfolio-analyse/earnings-schaetzungen-client'
 import type { IsinMetadata } from '@/lib/portfolio-analyse/isin-lookup-server'
 
-function zeile(label: string, wert: string, spanne?: string | null) {
+function quelleLabel(quelle: EarningsSchaetzungen['quelle']): string {
+  switch (quelle) {
+    case 'yahoo':
+      return 'Yahoo Finance'
+    case 'wallstreet':
+      return 'Wallstreet-online'
+    case 'finnhub':
+      return 'Finnhub'
+    default:
+      return 'Kombiniert'
+  }
+}
+
+function WachstumChip({ k }: { k: EarningsKennzahlPrognose }) {
+  const w = k.wachstumProzent
+  if (w == null) {
+    return (
+      <span className="rounded-full border border-dashed border-zinc-600/70 px-2 py-0.5 text-[10px] text-zinc-500">
+        Vergleich n/a
+      </span>
+    )
+  }
+  const positiv = w >= 0
   return (
-    <div className="flex items-start justify-between gap-3 py-2.5">
-      <span className="text-xs text-zinc-500">{label}</span>
-      <div className="text-right">
-        <p className="text-sm font-semibold tabular-nums text-zinc-100">{wert}</p>
-        {spanne ? <p className="text-[10px] tabular-nums text-zinc-500">{spanne}</p> : null}
-      </div>
-    </div>
+    <span
+      className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold tabular-nums ${
+        positiv
+          ? 'bg-emerald-500/15 text-emerald-300 ring-1 ring-emerald-500/25'
+          : 'bg-red-500/15 text-red-300 ring-1 ring-red-500/25'
+      }`}
+      title={k.vergleichLabel ?? undefined}
+    >
+      <span aria-hidden>{positiv ? '▲' : '▼'}</span>
+      {k.wachstumAnzeige ?? `${w.toFixed(1)} %`}
+    </span>
   )
 }
 
-function formatSpanne(low: number | null, high: number | null, anzeige: string | null): string | null {
-  if (low == null && high == null) return null
-  const a = anzeige ?? (low != null && high != null ? `${low} – ${high}` : null)
-  return a ? `Spanne ${a}` : null
-}
-
-function formatEps(s: EarningsSchaetzungen): { haupt: string; spanne: string | null } {
-  const { eps } = s
-  const haupt = eps.averageAnzeige ?? (eps.average != null ? eps.average.toLocaleString('de-DE', { maximumFractionDigits: 4 }) : '—')
-  return { haupt, spanne: formatSpanne(eps.low, eps.high, null) }
-}
-
-function formatUmsatz(s: EarningsSchaetzungen): { haupt: string; spanne: string | null } {
-  const { umsatz } = s
-  const haupt = umsatz.averageAnzeige ?? (umsatz.average != null ? umsatz.average.toLocaleString('de-DE') : '—')
+function KennzahlHero({
+  k,
+  gross = false,
+}: {
+  k: EarningsKennzahlPrognose
+  gross?: boolean
+}) {
   const spanne =
-    umsatz.low != null && umsatz.high != null
-      ? formatSpanne(
-          umsatz.low >= 1e9 ? umsatz.low / 1e9 : umsatz.low,
-          umsatz.high >= 1e9 ? umsatz.high / 1e9 : umsatz.high,
-          null,
-        )
+    k.spanne.low != null && k.spanne.high != null
+      ? `${k.spanne.low.toLocaleString('de-DE', { maximumFractionDigits: 2 })} – ${k.spanne.high.toLocaleString('de-DE', { maximumFractionDigits: 2 })}`
       : null
-  return { haupt, spanne }
+
+  return (
+    <article
+      className={`rounded-xl border border-[#eef0f1]/[0.08] bg-[#0a0a0b] p-3.5 ${
+        gross ? 'sm:col-span-1' : ''
+      }`}
+    >
+      <div className="flex items-start justify-between gap-2">
+        <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-zinc-500">{k.label}</p>
+        <WachstumChip k={k} />
+      </div>
+      <p
+        className={`mt-2 font-semibold tabular-nums tracking-tight text-[#eef0f1] ${
+          gross ? 'text-2xl' : 'text-xl'
+        }`}
+      >
+        {k.spanne.averageAnzeige ?? '—'}
+      </p>
+      {k.vorjahrAnzeige != null ? (
+        <p className="mt-1 text-[11px] text-zinc-500">
+          Vorjahr: <span className="tabular-nums text-zinc-400">{k.vorjahrAnzeige}</span>
+          {k.vergleichLabel ? <span className="text-zinc-600"> · {k.vergleichLabel}</span> : null}
+        </p>
+      ) : k.vergleichLabel ? (
+        <p className="mt-1 text-[11px] text-zinc-600">{k.vergleichLabel}</p>
+      ) : null}
+      {spanne ? <p className="mt-1 text-[10px] tabular-nums text-zinc-600">Spanne {spanne}</p> : null}
+    </article>
+  )
+}
+
+function KennzahlKlein({ k }: { k: EarningsKennzahlPrognose }) {
+  return (
+    <div className="rounded-lg border border-[#eef0f1]/[0.06] bg-[#0a0a0b]/80 px-3 py-2.5">
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-[10px] font-medium text-zinc-500">{k.label}</p>
+        <WachstumChip k={k} />
+      </div>
+      <p className="mt-1 text-sm font-semibold tabular-nums text-zinc-100">
+        {k.spanne.averageAnzeige ?? '—'}
+      </p>
+      {k.vorjahrAnzeige ? (
+        <p className="text-[10px] text-zinc-600">Vorjahr {k.vorjahrAnzeige}</p>
+      ) : null}
+    </div>
+  )
 }
 
 export function PaEarningsPrognosePanel({
@@ -94,15 +153,18 @@ export function PaEarningsPrognosePanel({
 
   if (!eintrag) {
     return (
-      <div className="flex h-full min-h-[16rem] flex-col items-center justify-center rounded-xl border border-dashed border-white/[0.08] bg-zinc-950/40 px-6 text-center">
-        <p className="text-sm text-zinc-500">Klicke auf einen Termin oder eine Aktie, um Konsens-Prognosen zu sehen.</p>
-        <p className="mt-2 text-[11px] text-zinc-600">Wallstreet-online, Yahoo Finance, Finnhub</p>
+      <div className="flex h-full min-h-[16rem] flex-col items-center justify-center rounded-xl border border-dashed border-[#eef0f1]/10 bg-[#0c0c0d] px-6 text-center">
+        <p className="text-sm text-zinc-400">Klicke auf einen Termin für Konsens-Prognosen.</p>
+        <p className="mt-2 text-[11px] text-zinc-600">
+          Wachstum vs. Vorjahresquartal (Yahoo/Finnhub) · weitere Kennzahlen (Wallstreet)
+        </p>
       </div>
     )
   }
 
-  const eps = daten ? formatEps(daten) : null
-  const umsatz = daten ? formatUmsatz(daten) : null
+  const haupt = daten?.kennzahlen ?? []
+  const weitere = daten?.weitereKennzahlen ?? []
+  const hatWachstum = [...haupt, ...weitere].some((k) => k.wachstumProzent != null)
 
   return (
     <div className="flex h-full min-h-[16rem] flex-col rounded-xl border border-[#eef0f1]/[0.08] bg-[#0c0c0d]">
@@ -112,6 +174,9 @@ export function PaEarningsPrognosePanel({
           <div className="min-w-0 flex-1">
             <p className="truncate text-sm font-semibold text-[#eef0f1]">{eintrag.name}</p>
             <p className="mt-0.5 text-[11px] text-zinc-500">Termin {formatDatumDe(eintrag.terminDatumIso)}</p>
+            {daten?.prognosePeriode ? (
+              <p className="mt-0.5 text-[11px] font-medium text-zinc-400">{daten.prognosePeriode}</p>
+            ) : null}
             <div className="mt-2 flex flex-wrap items-center gap-2">
               <PaEarningsBerichtszeitBadge zeit={eintrag.berichtszeit} />
               {!eintrag.bestaetigt ? <PaDividendEstimateBadge title="Geschätzter Termin" /> : null}
@@ -120,48 +185,60 @@ export function PaEarningsPrognosePanel({
         </div>
       </div>
 
-      <div className="flex-1 px-4 py-2">
+      <div className="flex-1 overflow-y-auto px-4 py-3">
         {laden ? (
           <p className="py-8 text-center text-sm text-zinc-500">Prognosen werden geladen …</p>
         ) : fehler ? (
           <p className="py-6 text-sm text-amber-400/90">{fehler}</p>
         ) : !daten ? (
           <p className="py-6 text-sm text-zinc-500">
-            Für diese Aktie sind keine Konsens-Schätzungen verfügbar (häufig bei kleinen EU-Titeln).
+            Keine Konsens-Daten verfügbar. Für EU-Titel oft nur über Wallstreet (Jahresschätzung).
           </p>
         ) : (
-          <div className="divide-y divide-zinc-800/60">
-            {zeile('EPS (Konsens)', eps!.haupt, eps!.spanne)}
-            {zeile('Umsatz (Konsens)', umsatz!.haupt, umsatz!.spanne)}
-            {eintrag.berichtszeit
-              ? zeile('Veröffentlichung', berichtszeitLabel(eintrag.berichtszeit) ?? '—')
-              : daten.berichtszeit
-                ? zeile('Veröffentlichung', daten.berichtszeit)
-                : null}
-            {daten.quartal != null && daten.jahr != null
-              ? zeile('Quartal', `Q${daten.quartal} ${daten.jahr}`)
-              : null}
-            {daten.earningsCallDateIso
-              ? zeile('Earnings Call', formatDatumDe(daten.earningsCallDateIso))
-              : null}
-            {daten.terminDatumIso && daten.terminDatumIso !== eintrag.terminDatumIso
-              ? zeile('Yahoo-Termin', formatDatumDe(daten.terminDatumIso))
-              : null}
+          <div className="space-y-4">
+            {hatWachstum ? (
+              <p className="text-[10px] leading-relaxed text-zinc-600">
+                Erwartetes Wachstum laut Konsens gegenüber dem Vorjahresquartal bzw. Geschäftsjahr — ähnlich
+                wie bei Quartr.
+              </p>
+            ) : (
+              <p className="text-[10px] leading-relaxed text-amber-500/80">
+                Für diese Aktie liegt kein Quartals-Vergleich vor; unten ggf. Jahres-Kennzahlen (Wallstreet).
+              </p>
+            )}
+
+            {haupt.length > 0 ? (
+              <div className="grid gap-2 sm:grid-cols-2">
+                {haupt.map((k) => (
+                  <KennzahlHero key={k.schluessel} k={k} gross={k.schluessel === 'eps' || k.schluessel === 'umsatz'} />
+                ))}
+              </div>
+            ) : null}
+
+            {weitere.length > 0 ? (
+              <section>
+                <h3 className="mb-2 text-[10px] font-semibold uppercase tracking-[0.2em] text-zinc-500">
+                  Weitere Kennzahlen
+                </h3>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {weitere.map((k) => (
+                    <KennzahlKlein key={`${k.schluessel}-${k.label}`} k={k} />
+                  ))}
+                </div>
+              </section>
+            ) : null}
+
+            <p className="text-[10px] text-zinc-600">
+              Segment-Prognosen sind in kostenlosen APIs kaum verfügbar; dafür wäre ein eigener Scraper
+              (z. B. IR-Seiten, Factset-Alternativen) nötig.
+            </p>
           </div>
         )}
       </div>
 
-      <p className="border-t border-white/[0.04] px-4 py-2.5 text-[10px] leading-relaxed text-zinc-600">
+      <p className="border-t border-[#eef0f1]/[0.06] px-4 py-2.5 text-[10px] leading-relaxed text-zinc-600">
         {daten
-          ? `Quelle: ${
-              daten.quelle === 'yahoo'
-                ? 'Yahoo Finance'
-                : daten.quelle === 'wallstreet'
-                  ? 'Wallstreet-online (Scrape)'
-                  : daten.quelle === 'finnhub'
-                    ? 'Finnhub'
-                    : 'Kombiniert (mehrere Quellen)'
-            }. Termine weiterhin von DivvyDiary.`
+          ? `Quellen: ${quelleLabel(daten.quelle)} · EPS/Umsatz-Trend Yahoo · Quartalsvergleich Finnhub · Kennzahlen Wallstreet-Scrape`
           : 'Daten werden beim Klick nachgeladen.'}
       </p>
     </div>
