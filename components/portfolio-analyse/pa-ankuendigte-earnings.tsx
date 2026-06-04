@@ -4,11 +4,18 @@ import Link from 'next/link'
 import { PortfolioIsinLogo } from '@/components/portfolio-analyse/isin-logo'
 import { PaDividendEstimateBadge } from '@/components/portfolio-analyse/pa-ui'
 import { formatDatumDe } from '@/lib/portfolio-analyse/berechnung'
-import type { AnkuendigteEarningsErgebnis } from '@/lib/portfolio-analyse/ankuendigte-earnings'
+import type {
+  AnkuendigteEarningsErgebnis,
+  AnkuendigtesEarningsEintrag,
+} from '@/lib/portfolio-analyse/ankuendigte-earnings'
 import type { IsinMetadata } from '@/lib/portfolio-analyse/isin-lookup-server'
 
 function formatStueckTag(stueck: number): string {
   return `${stueck.toLocaleString('de-DE', { maximumFractionDigits: 4 })}x`
+}
+
+function eintragKey(e: { isin: string | null; symbol: string; terminDatumIso: string }): string {
+  return `${e.isin ?? e.symbol}:${e.terminDatumIso}`
 }
 
 export function PaAnkuendigteEarnings({
@@ -16,11 +23,15 @@ export function PaAnkuendigteEarnings({
   meta,
   laden,
   fehler,
+  selectedKey,
+  onSelect,
 }: {
   daten: AnkuendigteEarningsErgebnis | null
   meta: Map<string, IsinMetadata>
   laden: boolean
   fehler: string | null
+  selectedKey?: string | null
+  onSelect?: (e: AnkuendigtesEarningsEintrag) => void
 }) {
   if (laden) {
     return (
@@ -65,26 +76,48 @@ export function PaAnkuendigteEarnings({
             </p>
           </div>
           <ul className="space-y-3">
-            {monat.eintraege.map((e) => (
-              <li key={`${e.isin ?? e.symbol}-${e.terminDatumIso}`} className="flex items-center gap-3">
-                <PortfolioIsinLogo isin={e.isin} fallbackName={e.name} meta={meta} groesse="sm" />
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium text-zinc-100">{e.name}</p>
-                  <p className="text-[11px] text-zinc-500">
-                    {formatDatumDe(e.terminDatumIso)}
-                    {e.bestaetigt ? ' · DivvyDiary' : ' · geschätzt'}
-                  </p>
-                </div>
-                <div className="shrink-0 text-right">
-                  <div className="flex items-center justify-end gap-1.5">
-                    {!e.bestaetigt ? <PaDividendEstimateBadge title="Geschätzter Termin" /> : null}
-                    <span className="rounded-md bg-zinc-800/80 px-1.5 py-0.5 text-[10px] tabular-nums text-zinc-400 ring-1 ring-white/[0.04]">
-                      {formatStueckTag(e.stueck)}
-                    </span>
+            {monat.eintraege.map((e) => {
+              const key = eintragKey(e)
+              const klickbar = Boolean(onSelect)
+              const aktiv = selectedKey === key
+              const inhalt = (
+                <>
+                  <PortfolioIsinLogo isin={e.isin} fallbackName={e.name} meta={meta} groesse="sm" />
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-medium text-zinc-100">{e.name}</p>
+                    <p className="text-[11px] text-zinc-500">
+                      {formatDatumDe(e.terminDatumIso)}
+                      {e.bestaetigt ? ' · DivvyDiary' : ' · geschätzt'}
+                    </p>
                   </div>
-                </div>
-              </li>
-            ))}
+                  <div className="shrink-0 text-right">
+                    <div className="flex items-center justify-end gap-1.5">
+                      {!e.bestaetigt ? <PaDividendEstimateBadge title="Geschätzter Termin" /> : null}
+                      <span className="rounded-md bg-zinc-800/80 px-1.5 py-0.5 text-[10px] tabular-nums text-zinc-400 ring-1 ring-white/[0.04]">
+                        {formatStueckTag(e.stueck)}
+                      </span>
+                    </div>
+                  </div>
+                </>
+              )
+              return (
+                <li key={key}>
+                  {klickbar ? (
+                    <button
+                      type="button"
+                      onClick={() => onSelect!(e)}
+                      className={`flex w-full items-center gap-3 rounded-lg px-1 py-1 text-left transition ${
+                        aktiv ? 'bg-violet-500/15 ring-1 ring-violet-500/30' : 'hover:bg-white/[0.04]'
+                      }`}
+                    >
+                      {inhalt}
+                    </button>
+                  ) : (
+                    <div className="flex items-center gap-3">{inhalt}</div>
+                  )}
+                </li>
+              )
+            })}
           </ul>
         </section>
       ))}

@@ -14,33 +14,52 @@ import {
   defaultEarningsMonatKey,
   verschiebeMonat,
 } from '@/lib/portfolio-analyse/earnings-kalender-grid'
+import { PaEarningsPrognosePanel } from '@/components/portfolio-analyse/pa-earnings-prognose-panel'
 import type { IsinMetadata } from '@/lib/portfolio-analyse/isin-lookup-server'
 
 type Ansicht = 'monat' | 'jahr'
 type Layout = 'kalender' | 'liste'
 
+function earningsEintragKey(e: AnkuendigtesEarningsEintrag): string {
+  return `${e.isin ?? e.symbol}:${e.terminDatumIso}`
+}
+
 function KalenderTagZeile({
   e,
   meta,
+  aktiv,
+  onSelect,
 }: {
   e: AnkuendigtesEarningsEintrag
   meta: Map<string, IsinMetadata>
+  aktiv: boolean
+  onSelect: () => void
 }) {
   return (
-    <div className="flex min-w-0 items-center gap-1.5 py-0.5">
+    <button
+      type="button"
+      onClick={onSelect}
+      className={`flex w-full min-w-0 items-center gap-1.5 rounded-md px-1 py-0.5 text-left transition ${
+        aktiv ? 'bg-violet-500/20 ring-1 ring-violet-500/35' : 'hover:bg-white/[0.06]'
+      }`}
+    >
       <PortfolioIsinLogo isin={e.isin} fallbackName={e.name} meta={meta} groesse="sm" />
       <span className="min-w-0 flex-1 truncate text-[11px] text-zinc-200">{e.name}</span>
       {!e.bestaetigt ? <PaDividendEstimateBadge title="Geschätzt" /> : null}
-    </div>
+    </button>
   )
 }
 
 function ListenAnsicht({
   daten,
   meta,
+  selectedKey,
+  onSelect,
 }: {
   daten: AnkuendigteEarningsErgebnis
   meta: Map<string, IsinMetadata>
+  selectedKey: string | null
+  onSelect: (e: AnkuendigtesEarningsEintrag) => void
 }) {
   return (
     <div className="space-y-6">
@@ -53,16 +72,28 @@ function ListenAnsicht({
             </p>
           </div>
           <ul className="space-y-3">
-            {monat.eintraege.map((e) => (
-              <li key={`${e.isin ?? e.symbol}-${e.terminDatumIso}`} className="flex items-center gap-3">
-                <PortfolioIsinLogo isin={e.isin} fallbackName={e.name} meta={meta} groesse="sm" />
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium text-zinc-100">{e.name}</p>
-                  <p className="text-[11px] text-zinc-500">{formatDatumDe(e.terminDatumIso)}</p>
-                </div>
-                {!e.bestaetigt ? <PaDividendEstimateBadge title="Geschätzt" /> : null}
-              </li>
-            ))}
+            {monat.eintraege.map((e) => {
+              const key = earningsEintragKey(e)
+              const aktiv = selectedKey === key
+              return (
+                <li key={key}>
+                  <button
+                    type="button"
+                    onClick={() => onSelect(e)}
+                    className={`flex w-full items-center gap-3 rounded-lg px-2 py-2 text-left transition ${
+                      aktiv ? 'bg-violet-500/15 ring-1 ring-violet-500/30' : 'hover:bg-white/[0.04]'
+                    }`}
+                  >
+                    <PortfolioIsinLogo isin={e.isin} fallbackName={e.name} meta={meta} groesse="sm" />
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-medium text-zinc-100">{e.name}</p>
+                      <p className="text-[11px] text-zinc-500">{formatDatumDe(e.terminDatumIso)}</p>
+                    </div>
+                    {!e.bestaetigt ? <PaDividendEstimateBadge title="Geschätzt" /> : null}
+                  </button>
+                </li>
+              )
+            })}
           </ul>
         </section>
       ))}
@@ -85,6 +116,7 @@ export function PaEarningsKalender({
   const [monatKey, setMonatKey] = useState(heute.slice(0, 7))
   const [ansicht, setAnsicht] = useState<Ansicht>('monat')
   const [layout, setLayout] = useState<Layout>('kalender')
+  const [selected, setSelected] = useState<AnkuendigtesEarningsEintrag | null>(null)
 
   const eintraege = daten?.eintraege ?? []
   const eintragKey = useMemo(
@@ -100,6 +132,18 @@ export function PaEarningsKalender({
     })
   }, [eintragKey, heute, eintraege])
 
+  useEffect(() => {
+    if (eintraege.length === 0) {
+      setSelected(null)
+      return
+    }
+    setSelected((prev) => {
+      if (prev && eintraege.some((e) => earningsEintragKey(e) === earningsEintragKey(prev))) return prev
+      return eintraege[0]
+    })
+  }, [eintragKey, eintraege])
+
+  const selectedKey = selected ? earningsEintragKey(selected) : null
   const jahr = Number(monatKey.slice(0, 4))
   const kalenderMonat = useMemo(() => baueEarningsKalenderMonat(monatKey, eintraege), [monatKey, eintraege])
   const kalenderJahr = useMemo(() => baueEarningsKalenderJahr(jahr, eintraege), [jahr, eintraege])
@@ -192,8 +236,15 @@ export function PaEarningsKalender({
         </div>
       </div>
 
+      <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(280px,340px)] lg:items-start">
+        <div className="min-w-0 space-y-5">
       {layout === 'liste' ? (
-        <ListenAnsicht daten={daten} meta={meta} />
+        <ListenAnsicht
+          daten={daten}
+          meta={meta}
+          selectedKey={selectedKey}
+          onSelect={setSelected}
+        />
       ) : ansicht === 'jahr' ? (
         <div>
           <div className="mb-4 flex flex-wrap items-baseline justify-between gap-2">
@@ -280,9 +331,11 @@ export function PaEarningsKalender({
                         <div className="min-h-0 flex-1 space-y-0.5 overflow-y-auto">
                           {tag.eintraege.map((e) => (
                             <KalenderTagZeile
-                              key={`${e.isin}-${e.terminDatumIso}`}
+                              key={earningsEintragKey(e)}
                               e={e}
                               meta={meta}
+                              aktiv={selectedKey === earningsEintragKey(e)}
+                              onSelect={() => setSelected(e)}
                             />
                           ))}
                         </div>
@@ -295,6 +348,12 @@ export function PaEarningsKalender({
           </div>
         </div>
       )}
+        </div>
+
+        <div className="lg:sticky lg:top-4">
+          <PaEarningsPrognosePanel eintrag={selected} meta={meta} />
+        </div>
+      </div>
 
       <p className="flex flex-wrap items-center gap-2 border-t border-white/[0.04] pt-4 text-[11px] text-zinc-600">
         <PaDividendEstimateBadge title="Geschätzt" />
