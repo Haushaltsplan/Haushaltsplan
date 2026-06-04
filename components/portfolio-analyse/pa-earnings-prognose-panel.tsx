@@ -2,109 +2,50 @@
 
 import { useEffect, useState } from 'react'
 import { PortfolioIsinLogo } from '@/components/portfolio-analyse/isin-logo'
-import { PaEarningsBerichtszeitBadge } from '@/components/portfolio-analyse/pa-earnings-termin-ui'
 import { PaDividendEstimateBadge } from '@/components/portfolio-analyse/pa-ui'
-import { formatDatumDe } from '@/lib/portfolio-analyse/berechnung'
 import type { AnkuendigtesEarningsEintrag } from '@/lib/portfolio-analyse/ankuendigte-earnings'
-import type { EarningsKennzahlPrognose } from '@/lib/portfolio-analyse/earnings-kennzahlen'
+import { berichtszeitKurz } from '@/lib/portfolio-analyse/earnings-berichtszeit'
 import type { EarningsSchaetzungen } from '@/lib/portfolio-analyse/earnings-schaetzungen'
 import { ladeEarningsSchaetzungenFuerEintrag } from '@/lib/portfolio-analyse/earnings-schaetzungen-client'
 import type { IsinMetadata } from '@/lib/portfolio-analyse/isin-lookup-server'
 
-function quelleLabel(quelle: EarningsSchaetzungen['quelle']): string {
-  switch (quelle) {
-    case 'yahoo':
-      return 'Yahoo Finance'
-    case 'wallstreet':
-      return 'Wallstreet-online'
-    case 'finnhub':
-      return 'Finnhub'
-    default:
-      return 'Kombiniert'
-  }
+const MONATE_KURZ = [
+  'Januar',
+  'Februar',
+  'März',
+  'April',
+  'Mai',
+  'Juni',
+  'Juli',
+  'August',
+  'September',
+  'Oktober',
+  'November',
+  'Dezember',
+] as const
+
+function formatEventDatum(iso: string): string {
+  const m = Number(iso.slice(5, 7))
+  const d = Number(iso.slice(8, 10))
+  return `${d}. ${MONATE_KURZ[m - 1] ?? iso}`
 }
 
-function WachstumChip({ k }: { k: EarningsKennzahlPrognose }) {
-  const w = k.wachstumProzent
-  if (w == null) {
-    return (
-      <span className="rounded-full border border-dashed border-zinc-600/70 px-2 py-0.5 text-[10px] text-zinc-500">
-        Vergleich n/a
-      </span>
-    )
+function liveBadge(eintrag: AnkuendigtesEarningsEintrag, daten: EarningsSchaetzungen | null): string {
+  const kurz = berichtszeitKurz(eintrag.berichtszeit)
+  if (kurz === 'Vor Börse') return 'Before open'
+  if (kurz === 'Nach Schluss') return 'After close'
+  if (daten?.quartalsPrognose?.berichtszeitLabel) return daten.quartalsPrognose.berichtszeitLabel
+  return 'Earnings'
+}
+
+function ChangePill({ wachstumAnzeige }: { wachstumAnzeige: string | null }) {
+  if (!wachstumAnzeige) {
+    return <span className="text-[11px] text-zinc-600">—</span>
   }
-  const positiv = w >= 0
   return (
-    <span
-      className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold tabular-nums ${
-        positiv
-          ? 'bg-emerald-500/15 text-emerald-300 ring-1 ring-emerald-500/25'
-          : 'bg-red-500/15 text-red-300 ring-1 ring-red-500/25'
-      }`}
-      title={k.vergleichLabel ?? undefined}
-    >
-      <span aria-hidden>{positiv ? '▲' : '▼'}</span>
-      {k.wachstumAnzeige ?? `${w.toFixed(1)} %`}
+    <span className="inline-block rounded-md bg-zinc-800/90 px-2 py-1 text-[11px] font-medium tabular-nums text-zinc-200 ring-1 ring-white/[0.06]">
+      {wachstumAnzeige}
     </span>
-  )
-}
-
-function KennzahlHero({
-  k,
-  gross = false,
-}: {
-  k: EarningsKennzahlPrognose
-  gross?: boolean
-}) {
-  const spanne =
-    k.spanne.low != null && k.spanne.high != null
-      ? `${k.spanne.low.toLocaleString('de-DE', { maximumFractionDigits: 2 })} – ${k.spanne.high.toLocaleString('de-DE', { maximumFractionDigits: 2 })}`
-      : null
-
-  return (
-    <article
-      className={`rounded-xl border border-[#eef0f1]/[0.08] bg-[#0a0a0b] p-3.5 ${
-        gross ? 'sm:col-span-1' : ''
-      }`}
-    >
-      <div className="flex items-start justify-between gap-2">
-        <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-zinc-500">{k.label}</p>
-        <WachstumChip k={k} />
-      </div>
-      <p
-        className={`mt-2 font-semibold tabular-nums tracking-tight text-[#eef0f1] ${
-          gross ? 'text-2xl' : 'text-xl'
-        }`}
-      >
-        {k.spanne.averageAnzeige ?? '—'}
-      </p>
-      {k.vorjahrAnzeige != null ? (
-        <p className="mt-1 text-[11px] text-zinc-500">
-          Vorjahr: <span className="tabular-nums text-zinc-400">{k.vorjahrAnzeige}</span>
-          {k.vergleichLabel ? <span className="text-zinc-600"> · {k.vergleichLabel}</span> : null}
-        </p>
-      ) : k.vergleichLabel ? (
-        <p className="mt-1 text-[11px] text-zinc-600">{k.vergleichLabel}</p>
-      ) : null}
-      {spanne ? <p className="mt-1 text-[10px] tabular-nums text-zinc-600">Spanne {spanne}</p> : null}
-    </article>
-  )
-}
-
-function KennzahlKlein({ k }: { k: EarningsKennzahlPrognose }) {
-  return (
-    <div className="rounded-lg border border-[#eef0f1]/[0.06] bg-[#0a0a0b]/80 px-3 py-2.5">
-      <div className="flex items-center justify-between gap-2">
-        <p className="text-[10px] font-medium text-zinc-500">{k.label}</p>
-        <WachstumChip k={k} />
-      </div>
-      <p className="mt-1 text-sm font-semibold tabular-nums text-zinc-100">
-        {k.spanne.averageAnzeige ?? '—'}
-      </p>
-      {k.vorjahrAnzeige ? (
-        <p className="text-[10px] text-zinc-600">Vorjahr {k.vorjahrAnzeige}</p>
-      ) : null}
-    </div>
   )
 }
 
@@ -153,92 +94,79 @@ export function PaEarningsPrognosePanel({
 
   if (!eintrag) {
     return (
-      <div className="flex h-full min-h-[16rem] flex-col items-center justify-center rounded-xl border border-dashed border-[#eef0f1]/10 bg-[#0c0c0d] px-6 text-center">
-        <p className="text-sm text-zinc-400">Klicke auf einen Termin für Konsens-Prognosen.</p>
-        <p className="mt-2 text-[11px] text-zinc-600">
-          Wachstum vs. Vorjahresquartal (Yahoo/Finnhub) · weitere Kennzahlen (Wallstreet)
-        </p>
+      <div className="flex h-full min-h-[18rem] flex-col items-center justify-center rounded-2xl border border-dashed border-[#eef0f1]/10 bg-[#0c0c0d] px-6 text-center">
+        <p className="text-sm text-zinc-400">Klicke auf einen Quartalstermin.</p>
+        <p className="mt-2 text-[11px] text-zinc-600">Konsens vs. Vorjahresquartal — wie bei Quartr.</p>
       </div>
     )
   }
 
-  const haupt = daten?.kennzahlen ?? []
-  const weitere = daten?.weitereKennzahlen ?? []
-  const hatWachstum = [...haupt, ...weitere].some((k) => k.wachstumProzent != null)
+  const q = daten?.quartalsPrognose
+  const waehrung = q?.zeilen[0]?.waehrung ?? 'USD'
 
   return (
-    <div className="flex h-full min-h-[16rem] flex-col rounded-xl border border-[#eef0f1]/[0.08] bg-[#0c0c0d]">
-      <div className="border-b border-[#eef0f1]/[0.06] px-4 py-3">
+    <div className="flex h-full min-h-[18rem] flex-col overflow-hidden rounded-2xl border border-[#eef0f1]/[0.08] bg-[#0c0c0d]">
+      <div className="border-b border-[#eef0f1]/[0.06] px-4 py-4">
         <div className="flex items-start gap-3">
           <PortfolioIsinLogo isin={eintrag.isin} fallbackName={eintrag.name} meta={meta} groesse="md" />
           <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-semibold text-[#eef0f1]">{eintrag.name}</p>
-            <p className="mt-0.5 text-[11px] text-zinc-500">Termin {formatDatumDe(eintrag.terminDatumIso)}</p>
-            {daten?.prognosePeriode ? (
-              <p className="mt-0.5 text-[11px] font-medium text-zinc-400">{daten.prognosePeriode}</p>
-            ) : null}
+            <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-zinc-500">Next event</p>
+            <p className="mt-1 text-lg font-semibold tracking-tight text-[#eef0f1]">
+              {q?.quartalLabel ?? daten?.prognosePeriode ?? 'Quartalszahlen'}
+            </p>
             <div className="mt-2 flex flex-wrap items-center gap-2">
-              <PaEarningsBerichtszeitBadge zeit={eintrag.berichtszeit} />
+              <span className="rounded-md bg-zinc-800/90 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-zinc-300 ring-1 ring-white/[0.06]">
+                {liveBadge(eintrag, daten)}
+              </span>
+              <span className="text-[12px] text-zinc-400">{formatEventDatum(eintrag.terminDatumIso)}</span>
               {!eintrag.bestaetigt ? <PaDividendEstimateBadge title="Geschätzter Termin" /> : null}
             </div>
           </div>
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-4 py-3">
+      <div className="flex-1 overflow-y-auto px-4 py-2">
         {laden ? (
-          <p className="py-8 text-center text-sm text-zinc-500">Prognosen werden geladen …</p>
+          <p className="py-10 text-center text-sm text-zinc-500">Quartalsprognosen werden geladen …</p>
         ) : fehler ? (
-          <p className="py-6 text-sm text-amber-400/90">{fehler}</p>
-        ) : !daten ? (
-          <p className="py-6 text-sm text-zinc-500">
-            Keine Konsens-Daten verfügbar. Für EU-Titel oft nur über Wallstreet (Jahresschätzung).
+          <p className="py-8 text-sm text-amber-400/90">{fehler}</p>
+        ) : !q || q.zeilen.length === 0 ? (
+          <p className="py-8 text-sm text-zinc-500">
+            Keine Quartals-Konsensdaten für diese Aktie (Yahoo earningsTrend).
           </p>
         ) : (
-          <div className="space-y-4">
-            {hatWachstum ? (
-              <p className="text-[10px] leading-relaxed text-zinc-600">
-                Erwartetes Wachstum laut Konsens gegenüber dem Vorjahresquartal bzw. Geschäftsjahr — ähnlich
-                wie bei Quartr.
-              </p>
-            ) : (
-              <p className="text-[10px] leading-relaxed text-amber-500/80">
-                Für diese Aktie liegt kein Quartals-Vergleich vor; unten ggf. Jahres-Kennzahlen (Wallstreet).
-              </p>
-            )}
-
-            {haupt.length > 0 ? (
-              <div className="grid gap-2 sm:grid-cols-2">
-                {haupt.map((k) => (
-                  <KennzahlHero key={k.schluessel} k={k} gross={k.schluessel === 'eps' || k.schluessel === 'umsatz'} />
-                ))}
-              </div>
-            ) : null}
-
-            {weitere.length > 0 ? (
-              <section>
-                <h3 className="mb-2 text-[10px] font-semibold uppercase tracking-[0.2em] text-zinc-500">
-                  Weitere Kennzahlen
-                </h3>
-                <div className="grid gap-2 sm:grid-cols-2">
-                  {weitere.map((k) => (
-                    <KennzahlKlein key={`${k.schluessel}-${k.label}`} k={k} />
-                  ))}
-                </div>
-              </section>
-            ) : null}
-
-            <p className="text-[10px] text-zinc-600">
-              Segment-Prognosen sind in kostenlosen APIs kaum verfügbar; dafür wäre ein eigener Scraper
-              (z. B. IR-Seiten, Factset-Alternativen) nötig.
-            </p>
-          </div>
+          <table className="w-full border-collapse text-left">
+            <thead>
+              <tr className="text-[10px] font-medium uppercase tracking-[0.12em] text-zinc-500">
+                <th className="pb-2 pr-2 font-medium">{waehrung}</th>
+                <th className="pb-2 pr-2 text-right font-medium">Estimate</th>
+                <th className="pb-2 pr-2 text-right font-medium">{q.vorjahrQuartalLabel}</th>
+                <th className="pb-2 text-right font-medium">Change</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-[#eef0f1]/[0.06]">
+              {q.zeilen.map((z) => (
+                <tr key={z.metrik}>
+                  <td className="py-3 pr-2 text-sm text-zinc-300">{z.label}</td>
+                  <td className="py-3 pr-2 text-right text-sm font-semibold tabular-nums text-[#eef0f1]">
+                    {z.schaetzungAnzeige ?? '—'}
+                  </td>
+                  <td className="py-3 pr-2 text-right text-sm tabular-nums text-zinc-500">
+                    {z.vorjahrAnzeige ?? '—'}
+                  </td>
+                  <td className="py-3 text-right">
+                    <ChangePill wachstumAnzeige={z.wachstumAnzeige} />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         )}
       </div>
 
       <p className="border-t border-[#eef0f1]/[0.06] px-4 py-2.5 text-[10px] leading-relaxed text-zinc-600">
         {daten
-          ? `Quellen: ${quelleLabel(daten.quelle)} · EPS/Umsatz-Trend Yahoo · Quartalsvergleich Finnhub · Kennzahlen Wallstreet-Scrape`
+          ? `Quartals-Konsens: Yahoo Finance (yearAgoRevenue/EPS). Termin: ${eintrag.quelle}. EBITDA/EBIT folgen, sobald eine Quelle verfügbar ist.`
           : 'Daten werden beim Klick nachgeladen.'}
       </p>
     </div>

@@ -22,6 +22,7 @@ export async function ladeEarningsSchaetzungenFuerEintrag(
       symbolYahoo: eintrag.symbol ?? k?.symbolYahoo ?? m?.symbolYahoo ?? null,
       symbolCandidates: k?.symbolCandidates ?? m?.symbolCandidates,
       terminDatumIso: eintrag.terminDatumIso,
+      berichtszeit: eintrag.berichtszeit,
     }),
     signal: AbortSignal.timeout(25_000),
   })

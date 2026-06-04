@@ -63,6 +63,7 @@ function parseEarningsBlock(earnings: Record<string, unknown> | undefined): Earn
     umsatz,
     kennzahlen: [],
     weitereKennzahlen: [],
+    quartalsPrognose: null,
   }
 }
 

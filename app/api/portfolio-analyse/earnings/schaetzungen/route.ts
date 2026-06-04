@@ -25,6 +25,10 @@ export async function POST(req: Request) {
       : undefined,
     terminDatumIso:
       row.terminDatumIso != null ? String(row.terminDatumIso).slice(0, 10) : undefined,
+    berichtszeit:
+      row.berichtszeit === 'vor_boersenoeffnung' || row.berichtszeit === 'nach_handelsschluss'
+        ? row.berichtszeit
+        : undefined,
   }
 
   try {

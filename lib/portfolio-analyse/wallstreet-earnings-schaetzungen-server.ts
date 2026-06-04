@@ -253,6 +253,7 @@ function zuEarningsSchaetzungen(
     prognosePeriode: tabelle.jahrSchaetzung
       ? `Geschäftsjahr ${tabelle.jahrSchaetzung} (Schätzung)`
       : null,
+    quartalsPrognose: null,
     kennzahlen: tabelle.kennzahlen,
     weitereKennzahlen: tabelle.kennzahlen.filter(
       (k) => k.schluessel !== 'eps' && k.schluessel !== 'umsatz' && k.schluessel !== 'umsatz_je_aktie',

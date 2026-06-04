@@ -2,6 +2,7 @@ import {
   berichtszeitAusKalenderListe,
   type Berichtszeit,
 } from '@/lib/portfolio-analyse/earnings-berichtszeit'
+import { tageZwischenIso } from '@/lib/portfolio-analyse/dividenden-datum-hilfen'
 import { naechsterEarningsTermin } from '@/lib/portfolio-analyse/earnings-prognose'
 import type { DivvydiaryEarningsRoh } from '@/lib/portfolio-analyse/divvydiary-scraper-server'
 import {
@@ -67,37 +68,68 @@ function kandidatAusDivvydiary(
   }
 }
 
-const QUELLEN_PRIO: Record<EarningsTerminQuelle, number> = {
-  finnhub: 0,
-  yahoo: 1,
-  divvydiary: 2,
-  'divvydiary-prognose': 3,
+function finnhubTerminNaechst(
+  kalender: FinnhubEarningsKalenderTermin[],
+  zielDatum: string,
+): FinnhubEarningsKalenderTermin | null {
+  if (kalender.length === 0) return null
+  let best = kalender[0]
+  let bestDiff = Math.abs(tageZwischenIso(best.terminDatumIso, zielDatum))
+  for (const t of kalender) {
+    const d = Math.abs(tageZwischenIso(t.terminDatumIso, zielDatum))
+    if (d < bestDiff) {
+      best = t
+      bestDiff = d
+    }
+  }
+  return bestDiff <= 10 ? best : kalender[0]
 }
 
-function ergaenzeBerichtszeit(
-  treffer: EarningsTerminKandidat,
-  finnhubKalender: FinnhubEarningsKalenderTermin[],
-): EarningsTerminKandidat {
-  if (treffer.berichtszeit) return treffer
-  const ausFinnhub = berichtszeitAusKalenderListe(finnhubKalender, treffer.terminDatumIso)
-  if (!ausFinnhub) return treffer
-  return { ...treffer, berichtszeit: ausFinnhub }
-}
-
-/** Bestätigte Termine (Yahoo/Finnhub/DivvyDiary) vor Frequenz-Schätzung. */
-export function waehleBesterEarningsTermin(
+/** Termin-Datum: Yahoo/DivvyDiary vor Finnhub (bessere Report-Tage bei US-Titeln). */
+function mergeTerminKandidaten(
   kandidaten: EarningsTerminKandidat[],
+  finnhubKalender: FinnhubEarningsKalenderTermin[],
 ): EarningsTerminKandidat | null {
   if (kandidaten.length === 0) return null
 
-  const bestaetigt = kandidaten.filter((k) => k.bestaetigt)
-  const pool = bestaetigt.length > 0 ? bestaetigt : kandidaten
+  const yahoo = kandidaten.find((k) => k.quelle === 'yahoo')
+  const dd = kandidaten.find((k) => k.quelle === 'divvydiary')
+  const ddProg = kandidaten.find((k) => k.quelle === 'divvydiary-prognose')
 
-  return [...pool].sort((a, b) => {
-    const d = a.terminDatumIso.localeCompare(b.terminDatumIso)
-    if (d !== 0) return d
-    return QUELLEN_PRIO[a.quelle] - QUELLEN_PRIO[b.quelle]
-  })[0]
+  const datum =
+    (yahoo?.bestaetigt !== false ? yahoo?.terminDatumIso : null) ??
+    dd?.terminDatumIso ??
+    yahoo?.terminDatumIso ??
+    ddProg?.terminDatumIso ??
+    kandidaten.find((k) => k.quelle === 'finnhub')?.terminDatumIso
+
+  if (!datum) return null
+
+  const finnhubPassend = finnhubTerminNaechst(finnhubKalender, datum)
+  const berichtszeit =
+    finnhubPassend?.berichtszeit ??
+    berichtszeitAusKalenderListe(finnhubKalender, datum) ??
+    yahoo?.berichtszeit ??
+    null
+
+  const quelle: EarningsTerminQuelle = yahoo
+    ? 'yahoo'
+    : dd
+      ? 'divvydiary'
+      : ddProg
+        ? 'divvydiary-prognose'
+        : 'finnhub'
+
+  const bestaetigt = Boolean(
+    yahoo?.bestaetigt ?? dd?.bestaetigt ?? kandidaten.some((k) => k.bestaetigt),
+  )
+
+  return {
+    terminDatumIso: datum,
+    bestaetigt,
+    quelle,
+    berichtszeit,
+  }
 }
 
 export async function ladeEarningsTerminFuerSymbole(
@@ -111,15 +143,11 @@ export async function ladeEarningsTerminFuerSymbole(
     symbole.length > 0 ? ladeFinnhubEarningsKalenderAlle(symbole) : [],
   ])
 
-  const finnhubErster = finnhubKalender[0] ?? null
-
   const kandidaten = [
-    kandidatAusFinnhub(finnhubErster, heute, bis),
     kandidatAusYahoo(yahoo, heute, bis),
+    kandidatAusFinnhub(finnhubKalender[0] ?? null, heute, bis),
     kandidatAusDivvydiary(divvydiaryRoh, heute, bis),
   ].filter((k): k is EarningsTerminKandidat => k != null)
 
-  const gewinner = waehleBesterEarningsTermin(kandidaten)
-  if (!gewinner) return null
-  return ergaenzeBerichtszeit(gewinner, finnhubKalender)
+  return mergeTerminKandidaten(kandidaten, finnhubKalender)
 }

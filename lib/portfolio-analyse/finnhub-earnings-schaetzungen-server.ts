@@ -74,6 +74,7 @@ export async function ladeFinnhubEarningsSchaetzungen(
         berichtszeit: row.hour === 'bmo' ? 'vor Börsenöffnung' : row.hour === 'amc' ? 'nach Handelsschluss' : null,
         kennzahlen: [],
         weitereKennzahlen: [],
+        quartalsPrognose: null,
         eps: {
           low: null,
           high: null,
