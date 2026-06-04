@@ -70,6 +70,7 @@ export function PaIconTabs<T extends string>({
 const SUB_NAV = [
   { href: '/portfolioanalyse/dashboard', label: 'Dashboard' },
   { href: '/portfolioanalyse/dividenden', label: 'Dividenden' },
+  { href: '/portfolioanalyse/earnings', label: 'Quartalszahlen' },
   { href: '/portfolioanalyse/analyse', label: 'Analyse' },
   { href: '/portfolioanalyse/import', label: 'Import' },
 ] as const
@@ -84,6 +85,7 @@ export function PaSubNav() {
         {SUB_NAV.map((item) => {
           const aktiv =
             pathname === item.href ||
+            pathname.startsWith(`${item.href}/`) ||
             (item.href === '/portfolioanalyse/dashboard' && pathname === '/portfolioanalyse')
           return (
             <Link

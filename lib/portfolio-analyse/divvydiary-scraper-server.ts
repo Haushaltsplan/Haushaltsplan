@@ -10,10 +10,18 @@ const FEHLER_CACHE_MS = 3 * 60 * 1000
 let letzterAbruf = 0
 let warteschlange: Promise<void> = Promise.resolve()
 
+export type DivvydiaryEarningsRoh = {
+  securityName: string
+  earningsDate: string
+  earningsDateEstimated: boolean
+  dividendFrequency: string | null
+}
+
 type ScrapeCacheEintrag = {
   at: number
   path: string
   rows: DivvydiaryRohZeile[]
+  earnings: DivvydiaryEarningsRoh | null
   fehler?: boolean
 }
 
@@ -109,6 +117,44 @@ export function parseDivvydiaryHtml(html: string): DivvydiaryRohZeile[] {
   return rows.sort((a, b) => a.payDate.localeCompare(b.payDate))
 }
 
+/** Earnings-Termin aus eingebettetem DivvyDiary-JSON (React-Query-State). */
+export function parseDivvydiaryEarningsHtml(html: string, isinNorm: string): DivvydiaryEarningsRoh | null {
+  const isin = isinNorm.trim().toUpperCase()
+  if (!isin || isin.length < 10) return null
+
+  const needle = `\\"isin\\":\\"${isin}\\"`
+  let best: DivvydiaryEarningsRoh | null = null
+  let bestScore = -1
+  let i = 0
+
+  while ((i = html.indexOf(needle, i)) >= 0) {
+    const win = html.slice(Math.max(0, i - 500), i + 1200)
+    const names = [...win.matchAll(/\\"name\\":\\"([^"]+)\\"/g)]
+    const nameM = names.at(-1)
+    const em = win.match(
+      /\\"earningsDate\\":\\"(\d{4}-\d{2}-\d{2})\\",\\"earningsDateEstimated\\":(true|false)/,
+    )
+    const freqM = win.match(/\\"dividendFrequency\\":\\"([^"]+)\\"/)
+    if (em && nameM) {
+      let score = 0
+      if (win.includes('\\"dividends\\":[')) score += 100
+      if (win.includes('\\"securityType\\":\\"EQUITY\\"')) score += 50
+      if (score > bestScore) {
+        bestScore = score
+        best = {
+          securityName: nameM[1],
+          earningsDate: em[1],
+          earningsDateEstimated: em[2] === 'true',
+          dividendFrequency: freqM?.[1] ?? null,
+        }
+      }
+    }
+    i += needle.length
+  }
+
+  return best
+}
+
 function seitePasstZuIsin(html: string, isinNorm: string, rows: DivvydiaryRohZeile[]): boolean {
   if (html.includes(isinNorm)) return true
   if (rows.length >= 4) return true
@@ -191,7 +237,7 @@ export async function ladeDivvydiaryRohdaten(
   isin: string,
   name: string,
   heute: string,
-): Promise<{ rows: DivvydiaryRohZeile[]; path: string } | null> {
+): Promise<{ rows: DivvydiaryRohZeile[]; path: string; earnings: DivvydiaryEarningsRoh | null } | null> {
   const isinNorm = isin.trim().toUpperCase()
   if (!isinNorm || isinNorm.length < 10) return null
 
@@ -199,45 +245,70 @@ export async function ladeDivvydiaryRohdaten(
   if (cached) {
     const ttl = cached.fehler ? FEHLER_CACHE_MS : CACHE_MS
     if (Date.now() - cached.at < ttl) {
-      return cached.fehler ? null : { rows: cached.rows, path: cached.path }
+      return cached.fehler
+        ? null
+        : { rows: cached.rows, path: cached.path, earnings: cached.earnings }
     }
   }
 
   const hit = await ladeDivvydiaryHtml(isinNorm, name, heute)
   if (!hit) {
-    scrapeCache.set(isinNorm, { at: Date.now(), path: '', rows: [], fehler: true })
+    scrapeCache.set(isinNorm, { at: Date.now(), path: '', rows: [], earnings: null, fehler: true })
     return null
   }
 
-  scrapeCache.set(isinNorm, { at: Date.now(), path: hit.path, rows: hit.rows })
-  return { rows: hit.rows, path: hit.path }
+  scrapeCache.set(isinNorm, {
+    at: Date.now(),
+    path: hit.path,
+    rows: hit.rows,
+    earnings: hit.earnings,
+  })
+  return { rows: hit.rows, path: hit.path, earnings: hit.earnings }
+}
+
+/** Gecachte Earnings-Rohdaten (gleicher Scrape wie Dividenden). */
+export async function ladeDivvydiaryEarningsRohdaten(
+  isin: string,
+  name: string,
+): Promise<{ earnings: DivvydiaryEarningsRoh | null; path: string } | null> {
+  const heute = new Date().toISOString().slice(0, 10)
+  const hit = await ladeDivvydiaryRohdaten(isin, name, heute)
+  if (!hit) return null
+  return { earnings: hit.earnings, path: hit.path }
 }
 
 async function ladeDivvydiaryHtml(
   isinNorm: string,
   name: string,
   heute: string,
-): Promise<{ html: string; path: string; rows: DivvydiaryRohZeile[] } | null> {
+): Promise<{ html: string; path: string; rows: DivvydiaryRohZeile[]; earnings: DivvydiaryEarningsRoh | null } | null> {
   const pfade = divvydiaryPfade(isinNorm, name)
 
   return divvydiaryFetchInWarteschlange(async () => {
-    let best: { html: string; path: string; rows: DivvydiaryRohZeile[]; score: number } | null = null
+    let best: {
+      html: string
+      path: string
+      rows: DivvydiaryRohZeile[]
+      earnings: DivvydiaryEarningsRoh | null
+      score: number
+    } | null = null
 
     for (const path of pfade) {
       const html = await fetchSeite(path, 1)
       if (!html) continue
       const rows = parseDivvydiaryHtml(html)
-      if (rows.length === 0) continue
-      if (!seitePasstZuIsin(html, isinNorm, rows)) continue
+      const earnings = parseDivvydiaryEarningsHtml(html, isinNorm)
+      if (rows.length === 0 && !earnings) continue
+      if (rows.length > 0 && !seitePasstZuIsin(html, isinNorm, rows)) continue
 
-      const score = scoreSeite(isinNorm, rows, html, heute)
+      const score = scoreSeite(isinNorm, rows, html, heute) + (earnings ? 50 : 0)
       if (!best || score > best.score) {
-        best = { html, path, rows, score }
+        best = { html, path, rows, earnings, score }
       }
     }
 
     if (!best) return null
-    return { html: best.html, path: best.path, rows: best.rows }
+    return { html: best.html, path: best.path, rows: best.rows, earnings: best.earnings }
   })
 }
 
