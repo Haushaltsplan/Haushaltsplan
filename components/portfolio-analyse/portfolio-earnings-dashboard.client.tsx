@@ -8,9 +8,10 @@ import { usePortfolioAnalyse } from '@/components/portfolio-analyse/pa-data-prov
 import { PortfolioAnalyseShell } from '@/components/portfolio-analyse/portfolio-analyse-shell.client'
 import { PaCard } from '@/components/portfolio-analyse/pa-ui'
 import { ladeAnkuendigteEarningsDepot } from '@/lib/portfolio-analyse/ankuendigte-earnings-client'
-import type {
-  AnkuendigteEarningsErgebnis,
-  AnkuendigtesEarningsEintrag,
+import {
+  bevorzugterEarningsEintrag,
+  type AnkuendigteEarningsErgebnis,
+  type AnkuendigtesEarningsEintrag,
 } from '@/lib/portfolio-analyse/ankuendigte-earnings'
 
 export function PortfolioEarningsDashboardClient() {
@@ -46,7 +47,7 @@ export function PortfolioEarningsDashboardClient() {
       if (prev && eintraege.some((e) => `${e.isin ?? e.symbol}:${e.terminDatumIso}` === `${prev.isin ?? prev.symbol}:${prev.terminDatumIso}`)) {
         return prev
       }
-      return eintraege[0]
+      return bevorzugterEarningsEintrag(eintraege)
     })
   }, [eintragKey, eintraege])
 
@@ -98,14 +99,14 @@ export function PortfolioEarningsDashboardClient() {
             </Link>
           </div>
 
-          <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(280px,340px)] lg:items-start">
+          <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(300px,380px)] lg:items-stretch">
             <PaCard
               variant="elevated"
               className="flex flex-col border-[#eef0f1]/[0.08] bg-[#0c0c0d] p-5"
             >
-              <h2 className="text-sm font-semibold tracking-tight text-[#eef0f1]">Anstehende Termine</h2>
+              <h2 className="text-sm font-semibold tracking-tight text-[#eef0f1]">Termine (±1 Jahr)</h2>
               <p className="mt-0.5 text-[11px] text-zinc-500">
-                Vor Börsenöffnung oder nach Handelsschluss · Klick für Konsens
+                Vergangene und kommende Quartale · Klick für Konsens & Ist-Zahlen
               </p>
               <div className="mt-3 min-h-0 flex-1">
                 <PaAnkuendigteEarnings

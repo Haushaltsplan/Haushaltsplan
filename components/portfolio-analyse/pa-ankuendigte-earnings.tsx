@@ -1,7 +1,9 @@
 'use client'
 
 import Link from 'next/link'
+import { useEffect, useRef } from 'react'
 import { PaEarningsTerminRow } from '@/components/portfolio-analyse/pa-earnings-termin-ui'
+import { heuteIsoUtc } from '@/lib/portfolio-analyse/dividenden-datum-hilfen'
 import { PaDividendEstimateBadge } from '@/components/portfolio-analyse/pa-ui'
 import type {
   AnkuendigteEarningsErgebnis,
@@ -28,6 +30,19 @@ export function PaAnkuendigteEarnings({
   selectedKey?: string | null
   onSelect?: (e: AnkuendigtesEarningsEintrag) => void
 }) {
+  const scrollRef = useRef<HTMLDivElement>(null)
+  const heuteMonat = heuteIsoUtc().slice(0, 7)
+
+  useEffect(() => {
+    if (!daten?.monate.length || !scrollRef.current) return
+    const ziel =
+      daten.monate.find((m) => m.monatKey >= heuteMonat)?.monatKey ??
+      daten.monate[daten.monate.length - 1]?.monatKey
+    if (!ziel) return
+    const el = scrollRef.current.querySelector(`[data-monat="${ziel}"]`)
+    el?.scrollIntoView({ block: 'start', behavior: 'smooth' })
+  }, [daten?.monate, heuteMonat])
+
   if (laden) {
     return (
       <p className="py-8 text-center text-sm text-zinc-500">
@@ -59,9 +74,9 @@ export function PaAnkuendigteEarnings({
   }
 
   return (
-    <div className="max-h-[28rem] space-y-6 overflow-y-auto pr-1">
+    <div ref={scrollRef} className="max-h-[32rem] space-y-6 overflow-y-auto pr-1 scroll-smooth">
       {daten.monate.map((monat) => (
-        <section key={monat.monatKey}>
+        <section key={monat.monatKey} data-monat={monat.monatKey}>
           <div className="mb-3 flex items-baseline justify-between gap-3">
             <h3 className="text-[11px] font-semibold uppercase tracking-[0.22em] text-zinc-500">
               {monat.monatLabel}
@@ -94,7 +109,7 @@ export function PaAnkuendigteEarnings({
         <span className="inline-flex flex-wrap items-center gap-2">
           <PaDividendEstimateBadge title="Geschätzt" />
           <span>= Termin geschätzt.</span>
-          <span className="text-zinc-500">Vor/Nach Börse von Finnhub · max. 1 Jahr voraus.</span>
+          <span className="text-zinc-500">±1 Jahr · vergangene Termine abgedunkelt · Berichtszeit von Finnhub.</span>
         </span>
       </p>
       <Link

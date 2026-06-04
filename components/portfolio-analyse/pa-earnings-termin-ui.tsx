@@ -5,6 +5,7 @@ import { PortfolioIsinLogo } from '@/components/portfolio-analyse/isin-logo'
 import { PaDividendEstimateBadge } from '@/components/portfolio-analyse/pa-ui'
 import { formatDatumDe } from '@/lib/portfolio-analyse/berechnung'
 import type { AnkuendigtesEarningsEintrag } from '@/lib/portfolio-analyse/ankuendigte-earnings'
+import { heuteIsoUtc } from '@/lib/portfolio-analyse/dividenden-datum-hilfen'
 import {
   berichtszeitBadgeTitel,
   berichtszeitLabel,
@@ -90,12 +91,25 @@ export function PaEarningsTerminRow({
 }) {
   const { tag, monat, jahr } = datumSpalte(e.terminDatumIso)
   const zeitLabel = berichtszeitLabel(e.berichtszeit)
+  const vergangen = e.terminDatumIso < heuteIsoUtc()
 
   const inner = (
     <>
       {variant === 'liste' ? (
-        <div className="flex w-[3.25rem] shrink-0 flex-col items-center justify-center rounded-lg border border-[#eef0f1]/[0.07] bg-[#0a0a0b] py-2">
-          <span className="text-xl font-semibold tabular-nums leading-none text-[#eef0f1]">{tag}</span>
+        <div
+          className={`flex w-[3.25rem] shrink-0 flex-col items-center justify-center rounded-lg border py-2 ${
+            vergangen
+              ? 'border-[#eef0f1]/[0.04] bg-zinc-950/80'
+              : 'border-[#eef0f1]/[0.07] bg-[#0a0a0b]'
+          }`}
+        >
+          <span
+            className={`text-xl font-semibold tabular-nums leading-none ${
+              vergangen ? 'text-zinc-500' : 'text-[#eef0f1]'
+            }`}
+          >
+            {tag}
+          </span>
           <span className="mt-0.5 text-[9px] font-semibold uppercase tracking-[0.2em] text-zinc-500">{monat}</span>
           <span className="mt-0.5 text-[9px] tabular-nums text-zinc-600">{jahr}</span>
         </div>
@@ -109,7 +123,13 @@ export function PaEarningsTerminRow({
       />
 
       <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-semibold tracking-tight text-[#eef0f1]">{e.name}</p>
+        <p
+          className={`truncate text-sm font-semibold tracking-tight ${
+            vergangen ? 'text-zinc-400' : 'text-[#eef0f1]'
+          }`}
+        >
+          {e.name}
+        </p>
         <p className="mt-0.5 text-[11px] text-zinc-500">
           {variant === 'kompakt' ? formatDatumDe(e.terminDatumIso) : formatDatumDe(e.terminDatumIso)}
           {zeitLabel ? (
@@ -136,7 +156,9 @@ export function PaEarningsTerminRow({
   const klasse = `flex w-full items-center gap-3 rounded-xl border px-3 py-3 text-left transition ${
     aktiv
       ? 'border-[#eef0f1]/20 bg-[#121214] shadow-[0_0_0_1px_rgba(238,240,241,0.06)]'
-      : 'border-[#eef0f1]/[0.06] bg-[#0c0c0d]/90 hover:border-[#eef0f1]/12 hover:bg-[#101012]'
+      : vergangen
+        ? 'border-[#eef0f1]/[0.04] bg-zinc-950/50 opacity-90 hover:border-[#eef0f1]/10 hover:bg-zinc-900/60'
+        : 'border-[#eef0f1]/[0.06] bg-[#0c0c0d]/90 hover:border-[#eef0f1]/12 hover:bg-[#101012]'
   }`
 
   if (onClick) {

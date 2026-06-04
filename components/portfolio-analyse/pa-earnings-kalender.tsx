@@ -7,7 +7,11 @@ import {
   PaEarningsTerminRow,
 } from '@/components/portfolio-analyse/pa-earnings-termin-ui'
 import { PaDividendEstimateBadge } from '@/components/portfolio-analyse/pa-ui'
-import type { AnkuendigteEarningsErgebnis, AnkuendigtesEarningsEintrag } from '@/lib/portfolio-analyse/ankuendigte-earnings'
+import {
+  bevorzugterEarningsEintrag,
+  type AnkuendigteEarningsErgebnis,
+  type AnkuendigtesEarningsEintrag,
+} from '@/lib/portfolio-analyse/ankuendigte-earnings'
 import { heuteIsoUtc } from '@/lib/portfolio-analyse/dividenden-datum-hilfen'
 import {
   KALENDER_WOCHENTAGE,
@@ -136,9 +140,9 @@ export function PaEarningsKalender({
     }
     setSelected((prev) => {
       if (prev && eintraege.some((e) => earningsEintragKey(e) === earningsEintragKey(prev))) return prev
-      return eintraege[0]
+      return bevorzugterEarningsEintrag(eintraege, heute)
     })
-  }, [eintragKey, eintraege])
+  }, [eintragKey, eintraege, heute])
 
   const selectedKey = selected ? earningsEintragKey(selected) : null
   const jahr = Number(monatKey.slice(0, 4))
@@ -353,7 +357,7 @@ export function PaEarningsKalender({
 
       <p className="flex flex-wrap items-center gap-2 border-t border-white/[0.04] pt-4 text-[11px] text-zinc-600">
         <PaDividendEstimateBadge title="Geschätzt" />
-        <span>DivvyDiary-Scrape · max. 1 Jahr voraus · nur Depot-Positionen</span>
+        <span>±1 Jahr · Finnhub & DivvyDiary · nur Depot-Positionen</span>
         <Link
           href="/portfolioanalyse/earnings"
           className="ml-auto text-teal-400/90 hover:text-teal-300"

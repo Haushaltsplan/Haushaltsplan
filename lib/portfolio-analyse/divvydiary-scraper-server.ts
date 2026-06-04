@@ -1,3 +1,4 @@
+import { heuteIsoUtc } from '@/lib/portfolio-analyse/dividenden-datum-hilfen'
 import { isinKenntnis } from '@/lib/portfolio-analyse/isin-kenntnisse'
 
 const BASE = 'https://divvydiary.com/de'
@@ -153,6 +154,38 @@ function sammleDivvydiaryEarningsTreffer(html: string, isin: string): Divvydiary
   }
 
   return treffer
+}
+
+export type DivvydiaryEarningsTerminKurz = {
+  terminDatumIso: string
+  bestaetigt: boolean
+}
+
+/** Alle Earnings-Termine im Zeitraum (aus eingebettetem JSON). */
+export function alleDivvydiaryEarningsImZeitraum(
+  html: string,
+  isinNorm: string,
+  von: string,
+  bis: string,
+): DivvydiaryEarningsTerminKurz[] {
+  const isin = isinNorm.trim().toUpperCase()
+  if (!isin || isin.length < 10) return []
+
+  const treffer = sammleDivvydiaryEarningsTreffer(html, isin)
+  const seen = new Set<string>()
+  const out: DivvydiaryEarningsTerminKurz[] = []
+
+  const sortiert = [...treffer].sort((a, b) => b.score - a.score || a.earningsDate.localeCompare(b.earningsDate))
+  for (const t of sortiert) {
+    if (t.earningsDate < von || t.earningsDate > bis) continue
+    if (seen.has(t.earningsDate)) continue
+    seen.add(t.earningsDate)
+    out.push({
+      terminDatumIso: t.earningsDate,
+      bestaetigt: !t.earningsDateEstimated,
+    })
+  }
+  return out.sort((a, b) => a.terminDatumIso.localeCompare(b.terminDatumIso))
 }
 
 /** Earnings-Termin aus DivvyDiary — bevorzugt nächsten zukünftigen, bestätigten Termin. */
@@ -380,6 +413,14 @@ async function ladeDivvydiaryHtml(
     if (!best) return null
     return { html: best.html, path: best.path, rows: best.rows, earnings: best.earnings }
   })
+}
+
+/** HTML der Aktienseite (für alle Earnings-Termine im JSON). */
+export async function ladeDivvydiaryAktienSeiteHtml(isin: string, name: string): Promise<string | null> {
+  const isinNorm = isin.trim().toUpperCase()
+  if (isinNorm.length < 10) return null
+  const hit = await ladeDivvydiaryHtml(isinNorm, isinKenntnis(isinNorm)?.name ?? name, heuteIsoUtc())
+  return hit?.html ?? null
 }
 
 /** @deprecated Direkt-HTML — bevorzugt ladeDivvydiaryRohdaten. */

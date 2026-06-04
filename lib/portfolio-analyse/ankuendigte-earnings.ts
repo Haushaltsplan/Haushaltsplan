@@ -1,6 +1,10 @@
 import { berichtszeitKurz, berichtszeitLabel } from '@/lib/portfolio-analyse/earnings-berichtszeit'
-import { ladeAnkuendigtesEarningsTermin } from '@/lib/portfolio-analyse/divvydiary-ankuendigte-earnings-server'
+import { heuteIsoUtc } from '@/lib/portfolio-analyse/dividenden-datum-hilfen'
+import { ladeDivvydiaryAktienSeiteHtml } from '@/lib/portfolio-analyse/divvydiary-scraper-server'
+import { ladeAlleEarningsTermineFuerSymbole, earningsZeitraum } from '@/lib/portfolio-analyse/earnings-termine-alle'
 import type { EarningsTerminQuelle } from '@/lib/portfolio-analyse/earnings-termine'
+import { brokerSymbolKandidaten } from '@/lib/portfolio-analyse/dividenden-datum-hilfen'
+import { portfolioLogoQuellen } from '@/lib/portfolio-analyse/portfolio-logos'
 import { isinAusYahooSymbol, isinKenntnis } from '@/lib/portfolio-analyse/isin-kenntnisse'
 import type { DepotPositionAnfrage } from '@/lib/portfolio-analyse/ankuendigte-dividenden'
 import type { Berichtszeit } from '@/lib/portfolio-analyse/earnings-berichtszeit'
@@ -86,6 +90,26 @@ function symbolAnzeige(pos: DepotPositionAnfrage): string {
   return pos.symbolYahoo?.trim() || isinFuerPosition(pos) || '—'
 }
 
+function symboleFuerPosition(pos: DepotPositionAnfrage, isin: string): string[] {
+  const out: string[] = []
+  const add = (s: string | null | undefined) => {
+    for (const t of brokerSymbolKandidaten(s ?? '')) {
+      if (t && !out.includes(t)) out.push(t)
+    }
+  }
+  add(pos.symbolYahoo)
+  for (const c of pos.symbolCandidates ?? []) add(c)
+  const k = isinKenntnis(isin)
+  add(k?.symbolYahoo)
+  for (const c of k?.symbolCandidates ?? []) add(c)
+  const logo = portfolioLogoQuellen(isin, k?.symbolYahoo, k?.name ?? pos.name)
+  if (logo.finnhubSlug) {
+    const slug = logo.finnhubSlug.trim().toUpperCase()
+    if (slug && !out.includes(slug)) out.push(slug)
+  }
+  return out
+}
+
 async function mapPool<T, R>(
   items: T[],
   concurrency: number,
@@ -102,6 +126,16 @@ async function mapPool<T, R>(
   const n = Math.max(1, Math.min(concurrency, items.length))
   await Promise.all(Array.from({ length: n }, () => worker()))
   return results
+}
+
+/** Nächster Termin ab heute, sonst der jüngste vergangene. */
+export function bevorzugterEarningsEintrag(
+  eintraege: AnkuendigtesEarningsEintrag[],
+  heuteIso: string = heuteIsoUtc(),
+): AnkuendigtesEarningsEintrag | null {
+  if (eintraege.length === 0) return null
+  const zukunft = eintraege.find((e) => e.terminDatumIso >= heuteIso)
+  return zukunft ?? eintraege[eintraege.length - 1]
 }
 
 export function gruppiereEarningsNachMonat(eintraege: AnkuendigtesEarningsEintrag[]): AnkuendigterEarningsMonat[] {
@@ -144,29 +178,30 @@ export async function berechneAnkuendigteEarningsDepot(
   const aktiv = positionen.filter((p) => p.stueck > 0 && positionHatIsin(p))
   const stat = { yahoo: 0, finnhub: 0, divvydiary: 0, prognose: 0, ohneTreffer: 0 }
 
-  const eintraege = (
-    await mapPool(aktiv, 1, async (pos) => {
-      const isin = isinFuerPosition(pos)
-      const k = isinKenntnis(isin)
-      const hit = await ladeAnkuendigtesEarningsTermin(
-        isin,
-        k?.name ?? pos.name,
-        pos.symbolYahoo,
-        pos.symbolCandidates,
-      )
-      if (!hit) {
-        stat.ohneTreffer++
-        return null
-      }
+  const { von, bis, heute } = earningsZeitraum()
 
+  const eintraegeNested = await mapPool(aktiv, 1, async (pos) => {
+    const isin = isinFuerPosition(pos)
+    const k = isinKenntnis(isin)
+    const name = k?.name ?? pos.name
+    const symbole = symboleFuerPosition(pos, isin)
+    const ddHtml = await ladeDivvydiaryAktienSeiteHtml(isin, name)
+    const termine = await ladeAlleEarningsTermineFuerSymbole(symbole, ddHtml, isin, von, bis)
+
+    if (termine.length === 0) {
+      stat.ohneTreffer++
+      return []
+    }
+
+    return termine.map((hit) => {
       if (hit.quelle === 'yahoo') stat.yahoo++
       else if (hit.quelle === 'finnhub') stat.finnhub++
       else if (hit.quelle === 'divvydiary') stat.divvydiary++
       else stat.prognose++
 
-      const eintrag: AnkuendigtesEarningsEintrag = {
+      return {
         isin: pos.isin ?? isin,
-        name: k?.name ?? pos.name,
+        name,
         stueck: pos.stueck,
         terminDatumIso: hit.terminDatumIso,
         symbol: symbolAnzeige(pos),
@@ -174,17 +209,18 @@ export async function berechneAnkuendigteEarningsDepot(
         bestaetigt: hit.bestaetigt,
         berichtszeit: hit.berichtszeit,
         berichtszeitAnzeige: berichtszeitKurz(hit.berichtszeit) ?? berichtszeitLabel(hit.berichtszeit),
-      }
-      return eintrag
+      } satisfies AnkuendigtesEarningsEintrag
     })
-  )
-    .filter((e) => e != null)
+  })
+
+  const eintraege = eintraegeNested
+    .flat()
     .sort((a, b) => a.terminDatumIso.localeCompare(b.terminDatumIso))
 
   if (aktiv.length === 0) {
     hinweise.push('Keine offenen Positionen mit ISIN — Quartalstermine brauchen eine ISIN.')
   } else if (eintraege.length === 0) {
-    hinweise.push('Keine Quartalstermine im Zeitraum heute bis +1 Jahr gefunden.')
+    hinweise.push(`Keine Quartalstermine im Zeitraum ${von} bis ${bis} gefunden.`)
   } else {
     const teile: string[] = []
     if (stat.yahoo + stat.finnhub + stat.divvydiary > 0) {
@@ -197,7 +233,7 @@ export async function berechneAnkuendigteEarningsDepot(
   }
 
   hinweise.push(
-    'Termine: Finnhub- und Yahoo-Kalender (bestätigt), DivvyDiary (Scrape). Berichtszeit (vor/nach Börse) von Finnhub. Geschätzte Termine nur wenn keine Quelle einen künftigen Termin liefert.',
+    `Zeitraum: ${von} bis ${bis} (±1 Jahr). Quellen: Finnhub-Kalender, DivvyDiary. Berichtszeit von Finnhub.`,
   )
 
   return {

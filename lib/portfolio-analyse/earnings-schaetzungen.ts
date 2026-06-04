@@ -18,10 +18,8 @@ import { brokerSymbolKandidaten } from '@/lib/portfolio-analyse/dividenden-datum
 import { ladeFinnhubQuartalsEpsVergleich } from '@/lib/portfolio-analyse/finnhub-earnings-vergleich-server'
 import { ladeFinnhubEarningsSchaetzungenKandidaten } from '@/lib/portfolio-analyse/finnhub-earnings-schaetzungen-server'
 import { ladeInvestorRelationsUrl } from '@/lib/portfolio-analyse/investor-relations-url'
-import {
-  jahresSchaetzungAusWallstreet,
-  type JahresEarningsSchaetzung,
-} from '@/lib/portfolio-analyse/jahres-earnings-schaetzung'
+import type { JahresEarningsSchaetzung } from '@/lib/portfolio-analyse/jahres-earnings-schaetzung'
+import { ladeJahresSchaetzungKombiniert } from '@/lib/portfolio-analyse/marketscreener-jahres-consensus-server'
 import { isinKenntnis } from '@/lib/portfolio-analyse/isin-kenntnisse'
 import {
   ladeMarketscreenerQuartalsPrognose,
@@ -307,7 +305,12 @@ export async function ladeEarningsSchaetzungen(
 
   const marketscreenerQ = marketscreenerPaket?.prognose ?? null
   const marketscreenerHtml = marketscreenerPaket?.html ?? null
-  const jahresSchaetzung = jahresSchaetzungAusWallstreet(wallstreet)
+  const jahresSchaetzung = await ladeJahresSchaetzungKombiniert(
+    isin,
+    name,
+    primaerSymbol,
+    wallstreet,
+  )
 
   let prognose: EarningsQuartalsPrognose | null = null
   const quellen: string[] = []
