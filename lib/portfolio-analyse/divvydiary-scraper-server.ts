@@ -2,7 +2,7 @@ import { heuteIsoUtc } from '@/lib/portfolio-analyse/dividenden-datum-hilfen'
 import { isinKenntnis } from '@/lib/portfolio-analyse/isin-kenntnisse'
 
 const BASE = 'https://divvydiary.com/de'
-const MIN_ABSTAND_MS = 320
+const MIN_ABSTAND_MS = 140
 const MAX_VERSUCHE = 4
 const RETRY_PAUSE_MS = 700
 const CACHE_MS = 6 * 60 * 60 * 1000

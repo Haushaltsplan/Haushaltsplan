@@ -250,8 +250,9 @@ export function PaEarningsPrognosePanel({
   const q = daten?.quartalsPrognose
   const waehrung = q?.zeilen[0]?.waehrung ?? 'USD'
   const zeilen = q?.zeilen ?? []
-  const hatIst = Boolean(daten?.berichtVeroeffentlicht && zeilen.some((z) => z.istAnzeige != null))
   const istVergangen = Boolean(daten?.berichtVeroeffentlicht)
+  const hatIstDaten = zeilen.some((z) => z.istAnzeige != null)
+  const mitIstSpalten = istVergangen
   const jahresOk =
     daten?.jahresSchaetzung &&
     ((daten.jahresSchaetzung.umsatz.schaetzung != null && daten.jahresSchaetzung.umsatz.schaetzung >= 1e8) ||
@@ -277,9 +278,9 @@ export function PaEarningsPrognosePanel({
                 {formatEventDatum(eintrag.terminDatumIso)}
               </span>
               {!eintrag.bestaetigt ? <PaDividendEstimateBadge title="Geschätzter Termin" /> : null}
-              {hatIst ? (
+              {istVergangen ? (
                 <Pill className="bg-emerald-950/40 text-[10px] text-emerald-300/90 ring-emerald-500/20">
-                  Veröffentlicht
+                  {hatIstDaten ? 'Veröffentlicht · Ist vs. Schätzung' : 'Veröffentlicht'}
                 </Pill>
               ) : null}
             </div>
@@ -311,13 +312,13 @@ export function PaEarningsPrognosePanel({
           <>
             {jahresOk && daten?.jahresSchaetzung ? <JahresBlock j={daten.jahresSchaetzung} /> : null}
             <p className="mb-2 text-[10px] font-medium uppercase tracking-[0.12em] text-zinc-500">
-              Quartals-Konsens
+              {istVergangen ? 'Quartalszahlen · Schätzung vs. Ist' : 'Quartals-Konsens'}
             </p>
             <MetrikTabelle
               zeilen={zeilen}
               vorjahrLabel={q?.vorjahrQuartalLabel ?? 'Vorjahr'}
               waehrung={waehrung}
-              mitIst={hatIst}
+              mitIst={mitIstSpalten}
             />
           </>
         )}

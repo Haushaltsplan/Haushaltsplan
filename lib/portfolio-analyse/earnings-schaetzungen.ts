@@ -1,6 +1,10 @@
 import { berichtszeitLabel } from '@/lib/portfolio-analyse/earnings-berichtszeit'
 import type { Berichtszeit } from '@/lib/portfolio-analyse/earnings-berichtszeit'
-import { heuteIsoUtc } from '@/lib/portfolio-analyse/dividenden-datum-hilfen'
+import {
+  quartalLabelAusTermin,
+  quartalLabelKandidatenAusTermin,
+  terminIstVergangen,
+} from '@/lib/portfolio-analyse/earnings-quartal-termin'
 import type { EarningsKennzahlPrognose, EarningsKennzahlSchluessel } from '@/lib/portfolio-analyse/earnings-kennzahlen'
 import { kennzahlAusSpanne } from '@/lib/portfolio-analyse/earnings-kennzahlen'
 import {
@@ -31,8 +35,8 @@ import {
   wallstreetZuQuartalsPrognose,
 } from '@/lib/portfolio-analyse/wallstreet-earnings-schaetzungen-server'
 import {
-  ladeYahooEarningsHistoryIst,
-  prognoseZeilenMitYahooIst,
+  ladeYahooEarningsHistoryZeile,
+  prognoseZeilenMitYahooHistory,
 } from '@/lib/portfolio-analyse/yahoo-earnings-history-server'
 import {
   ladeYahooEarningsTrend,
@@ -173,11 +177,6 @@ function ergaenzeZeilenAusKennzahlen(
   return out
 }
 
-function terminIstVergangen(termin: string | undefined): boolean {
-  if (!termin) return false
-  return termin.slice(0, 10) <= heuteIsoUtc()
-}
-
 function ausQuartalsPrognose(
   q: EarningsQuartalsPrognose,
   berichtszeitExtern: Berichtszeit | null,
@@ -278,6 +277,10 @@ export async function ladeEarningsSchaetzungen(
   const name = req.name ?? ''
 
   const berichtVeroeffentlicht = terminIstVergangen(termin)
+  const historyKandidaten =
+    termin && berichtVeroeffentlicht
+      ? [...new Set([quartalLabelAusTermin(termin), ...quartalLabelKandidatenAusTermin(termin)])]
+      : []
 
   const [
     yahooQ,
@@ -288,6 +291,7 @@ export async function ladeEarningsSchaetzungen(
     wallstreet,
     investorRelationsUrl,
     finnhubEpsIst,
+    yahooHistory,
   ] = await Promise.all([
     primaerSymbol ? ladeYahooQuartalsPrognose(primaerSymbol, termin) : null,
     primaerSymbol ? ladeYahooEarningsTrend(primaerSymbol, termin) : null,
@@ -301,16 +305,17 @@ export async function ladeEarningsSchaetzungen(
     primaerSymbol && berichtVeroeffentlicht
       ? ladeFinnhubEpsIst(primaerSymbol, termin)
       : null,
+    primaerSymbol && historyKandidaten.length > 0
+      ? ladeYahooEarningsHistoryZeile(primaerSymbol, historyKandidaten)
+      : null,
   ])
 
   const marketscreenerQ = marketscreenerPaket?.prognose ?? null
   const marketscreenerHtml = marketscreenerPaket?.html ?? null
-  const jahresSchaetzung = await ladeJahresSchaetzungKombiniert(
-    isin,
-    name,
-    primaerSymbol,
-    wallstreet,
-  )
+  const jahresPromise =
+    isin.length >= 10 && !berichtVeroeffentlicht
+      ? ladeJahresSchaetzungKombiniert(isin, name, primaerSymbol, wallstreet)
+      : null
 
   let prognose: EarningsQuartalsPrognose | null = null
   const quellen: string[] = []
@@ -336,10 +341,6 @@ export async function ladeEarningsSchaetzungen(
       prognose = marketscreenerQ
       quellen.push('marketscreener')
     }
-  }
-
-  if (prognose && marketscreenerHtml && berichtVeroeffentlicht) {
-    prognose = prognoseMitMarketscreenerIst(prognose, marketscreenerHtml)
   }
 
   if (!hatKernDaten(prognose) && finnhubKalender) {
@@ -474,14 +475,26 @@ export async function ladeEarningsSchaetzungen(
     prognose = { ...prognose, terminDatumIso: termin }
   }
 
-  if (berichtVeroeffentlicht && primaerSymbol) {
-    const yahooHistoryIst = await ladeYahooEarningsHistoryIst(
-      primaerSymbol,
+  if (berichtVeroeffentlicht && prognose) {
+    const histKandidaten = [
       prognose.quartalLabel,
-    )
-    if (yahooHistoryIst) {
-      prognose = { ...prognose, zeilen: prognoseZeilenMitYahooIst(prognose.zeilen, yahooHistoryIst) }
+      ...(termin ? [quartalLabelAusTermin(termin), ...quartalLabelKandidatenAusTermin(termin)] : []),
+      ...(yahooHistory?.quartalLabel ? [yahooHistory.quartalLabel] : []),
+    ]
+    const hist =
+      yahooHistory ??
+      (primaerSymbol
+        ? await ladeYahooEarningsHistoryZeile(primaerSymbol, [...new Set(histKandidaten)])
+        : null)
+
+    if (hist) {
+      prognose = {
+        ...prognose,
+        quartalLabel: hist.quartalLabel || prognose.quartalLabel,
+        zeilen: prognoseZeilenMitYahooHistory(prognose.zeilen, hist),
+      }
     }
+
     if (finnhubEpsIst) {
       const epsIdx = prognose.zeilen.findIndex((z) => z.metrik === 'eps')
       if (epsIdx >= 0) {
@@ -499,10 +512,19 @@ export async function ladeEarningsSchaetzungen(
         }
       }
     }
+
+    if (marketscreenerHtml) {
+      prognose = prognoseMitMarketscreenerIst(prognose, marketscreenerHtml, [
+        ...(termin ? quartalLabelKandidatenAusTermin(termin) : []),
+        quartalLabelAusTermin(termin ?? ''),
+      ])
+    }
   }
 
   const quelle: EarningsSchaetzungen['quelle'] =
     quellen.length > 1 ? 'kombiniert' : (quellen[0] as EarningsSchaetzungen['quelle']) ?? 'yahoo'
+
+  const jahresSchaetzung = jahresPromise ? await jahresPromise : null
 
   return ausQuartalsPrognose(prognose, req.berichtszeit ?? prognose.berichtszeit, quelle, {
     jahresSchaetzung,

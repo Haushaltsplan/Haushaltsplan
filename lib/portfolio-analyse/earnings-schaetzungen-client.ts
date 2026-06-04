@@ -24,7 +24,7 @@ export async function ladeEarningsSchaetzungenFuerEintrag(
       terminDatumIso: eintrag.terminDatumIso,
       berichtszeit: eintrag.berichtszeit,
     }),
-    signal: AbortSignal.timeout(45_000),
+    signal: AbortSignal.timeout(55_000),
   })
 
   const j = (await res.json()) as { ok?: boolean; schaetzungen?: EarningsSchaetzungen | null; message?: string }

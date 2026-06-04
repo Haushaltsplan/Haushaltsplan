@@ -5,7 +5,9 @@ import {
   formatIstWert,
 } from '@/lib/portfolio-analyse/earnings-beat-miss'
 import type { QuartalsPrognoseMetrik, QuartalsPrognoseZeile } from '@/lib/portfolio-analyse/earnings-quartals-prognose'
-import { heuteIsoUtc } from '@/lib/portfolio-analyse/dividenden-datum-hilfen'
+import { heuteIsoUtc, tageZwischenIso } from '@/lib/portfolio-analyse/dividenden-datum-hilfen'
+import { periodEndAusEarningsTermin } from '@/lib/portfolio-analyse/earnings-quartal-termin'
+import { kalenderQuartalAusPeriodEnd } from '@/lib/portfolio-analyse/earnings-quartals-prognose'
 
 const CACHE_REVALIDATE = 1800
 
@@ -43,20 +45,32 @@ function waehleBerichtsZeile(
   terminDatumIso: string,
 ): FinnhubEarningsRow | null {
   const termin = terminDatumIso.slice(0, 10)
-  const mitActual = rows.filter((r) => r.actual != null && r.period)
+  const mitActual = rows.filter((r) => r.actual != null)
   if (mitActual.length === 0) return null
 
-  const periodMatch = mitActual.find((r) => {
-    const p = r.period?.slice(0, 10) ?? ''
-    return p >= termin.slice(0, 7) && p <= termin
-  })
-  if (periodMatch) return periodMatch
+  const { quartal: zielQ, jahr: zielJ } = kalenderQuartalAusPeriodEnd(
+    periodEndAusEarningsTermin(termin),
+  )
+
+  const quartalTreffer = mitActual.find(
+    (r) => r.quarter === zielQ && r.year === zielJ,
+  )
+  if (quartalTreffer) return quartalTreffer
+
+  let best: { row: FinnhubEarningsRow; diff: number } | null = null
+  for (const r of mitActual) {
+    const p = r.period?.slice(0, 10)
+    if (!p) continue
+    const diff = Math.abs(tageZwischenIso(p, termin))
+    if (diff > 120) continue
+    if (!best || diff < best.diff) best = { row: r, diff }
+  }
+  if (best) return best.row
 
   const sortiert = [...mitActual].sort((a, b) =>
     (b.period ?? '').localeCompare(a.period ?? ''),
   )
-  const vorTermin = sortiert.find((r) => (r.period ?? '') <= termin)
-  return vorTermin ?? sortiert[0] ?? null
+  return sortiert.find((r) => (r.period ?? '').slice(0, 10) <= termin) ?? sortiert[0] ?? null
 }
 
 export type FinnhubEpsIst = {

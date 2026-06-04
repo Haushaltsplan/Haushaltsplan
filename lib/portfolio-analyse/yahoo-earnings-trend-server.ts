@@ -8,6 +8,7 @@ import {
   vorjahrQuartalLabel,
 } from '@/lib/portfolio-analyse/earnings-quartals-prognose'
 import { tageZwischenIso } from '@/lib/portfolio-analyse/dividenden-datum-hilfen'
+import { terminIstVergangen } from '@/lib/portfolio-analyse/earnings-quartal-termin'
 import type { EarningsKennzahlPrognose } from '@/lib/portfolio-analyse/earnings-kennzahlen'
 import { kennzahlAusSpanne, formatGrosserBetrag } from '@/lib/portfolio-analyse/earnings-kennzahlen'
 import type { EarningsSchaetzungSpanne } from '@/lib/portfolio-analyse/earnings-schaetzungen'
@@ -75,12 +76,15 @@ function waehleTrendZeile(trend: TrendZeile[], terminDatumIso?: string): TrendZe
   if (quartale.length === 0) return null
 
   if (terminDatumIso) {
+    const vergangen = terminIstVergangen(terminDatumIso)
+    const fensterVor = vergangen ? -220 : -120
+    const fensterNach = vergangen ? 90 : 45
     let best: { row: TrendZeile; diff: number } | null = null
     for (const row of quartale) {
       const end = periodEndIso(row)
       if (!end) continue
       const diff = tageZwischenIso(end, terminDatumIso)
-      if (diff >= -120 && diff <= 45) {
+      if (diff >= fensterVor && diff <= fensterNach) {
         const score = Math.abs(diff)
         if (!best || score < best.diff) best = { row, diff: score }
       }

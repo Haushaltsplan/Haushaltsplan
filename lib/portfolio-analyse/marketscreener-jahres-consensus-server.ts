@@ -5,7 +5,7 @@ import { wachstumProzent, formatWachstumProzent } from '@/lib/portfolio-analyse/
 
 const BASE = 'https://www.marketscreener.com/quote/stock'
 const CACHE_MS = 6 * 60 * 60 * 1000
-const MIN_ABSTAND_MS = 320
+const MIN_ABSTAND_MS = 140
 
 let letzterAbruf = 0
 const pageCache = new Map<string, { at: number; html: string | null }>()

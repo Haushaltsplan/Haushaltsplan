@@ -14,7 +14,7 @@ import type { EarningsSchaetzungen } from '@/lib/portfolio-analyse/earnings-scha
 
 const BASE = 'https://www.wallstreet-online.de/aktien'
 const CACHE_MS = 6 * 60 * 60 * 1000
-const MIN_ABSTAND_MS = 280
+const MIN_ABSTAND_MS = 140
 
 let letzterAbruf = 0
 

@@ -5,7 +5,7 @@ import {
 } from '@/lib/portfolio-analyse/earnings-schaetzungen'
 
 export const dynamic = 'force-dynamic'
-export const maxDuration = 30
+export const maxDuration = 60
 
 export async function POST(req: Request) {
   let body: unknown

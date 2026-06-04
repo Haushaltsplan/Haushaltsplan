@@ -180,7 +180,7 @@ export async function berechneAnkuendigteEarningsDepot(
 
   const { von, bis, heute } = earningsZeitraum()
 
-  const eintraegeNested = await mapPool(aktiv, 1, async (pos) => {
+  const eintraegeNested = await mapPool(aktiv, 2, async (pos) => {
     const isin = isinFuerPosition(pos)
     const k = isinKenntnis(isin)
     const name = k?.name ?? pos.name

@@ -6,11 +6,15 @@ import {
   type QuartalsPrognoseZeile,
   QUARTALS_METRIK_REIHENFOLGE,
 } from '@/lib/portfolio-analyse/earnings-quartals-prognose'
+import {
+  terminIstVergangen,
+  waehleMsQuartalFuerTermin,
+} from '@/lib/portfolio-analyse/earnings-quartal-termin'
 import { marketscreenerSlugKandidaten } from '@/lib/portfolio-analyse/marketscreener-slug'
 
 const BASE = 'https://www.marketscreener.com/quote/stock'
 const CACHE_MS = 6 * 60 * 60 * 1000
-const MIN_ABSTAND_MS = 320
+const MIN_ABSTAND_MS = 140
 
 let letzterAbruf = 0
 const pageCache = new Map<string, { at: number; html: string | null }>()
@@ -47,7 +51,10 @@ function istSchaetzungsZelle(classAttr: string, cellHtml: string): boolean {
   )
 }
 
-function parseQuartalsTabelle(html: string): {
+function parseQuartalsTabelle(
+  html: string,
+  terminIso?: string | null,
+): {
   naechstesQuartal: string | null
   vorjahrQuartal: string | null
   waehrung: string
@@ -70,21 +77,6 @@ function parseQuartalsTabelle(html: string): {
   }
   if (qHeaders.length === 0) return null
 
-  let naechstesQuartal: string | null = null
-  let vorjahrQuartal: string | null = null
-
-  const zeilen: ZeilenMap = {}
-
-  const metrikFuerLabel = (label: string): (QuartalsPrognoseMetrik | 'capex') | null => {
-    const l = label.trim()
-    if (/^Net sales/i.test(l)) return 'umsatz'
-    if (/^EBITDA/i.test(l)) return 'ebitda'
-    if (/^EBIT$/i.test(l)) return 'ebit'
-    if (/^Net income/i.test(l)) return null
-    if (/^CAPEX$/i.test(l)) return 'capex'
-    return null
-  }
-
   const vorjahrLabel = (q: string): string | null => {
     const m = /^(\d{4}) Q(\d)$/.exec(q)
     if (!m) return null
@@ -96,6 +88,24 @@ function parseQuartalsTabelle(html: string): {
       y -= 1
     }
     return `${y} Q${n}`
+  }
+
+  const headerLabels = qHeaders.map((h) => h.label)
+  const termin = terminIso?.slice(0, 10)
+  let naechstesQuartal: string | null =
+    termin && terminIstVergangen(termin) ? waehleMsQuartalFuerTermin(headerLabels, termin) : null
+  let vorjahrQuartal: string | null = naechstesQuartal ? vorjahrLabel(naechstesQuartal) : null
+
+  const zeilen: ZeilenMap = {}
+
+  const metrikFuerLabel = (label: string): (QuartalsPrognoseMetrik | 'capex') | null => {
+    const l = label.trim()
+    if (/^Net sales/i.test(l)) return 'umsatz'
+    if (/^EBITDA/i.test(l)) return 'ebitda'
+    if (/^EBIT$/i.test(l)) return 'ebit'
+    if (/^Net income/i.test(l)) return null
+    if (/^CAPEX$/i.test(l)) return 'capex'
+    return null
   }
 
   for (const tr of table.matchAll(/<tr[^>]*>([\s\S]*?)<\/tr>/gi)) {
@@ -288,8 +298,14 @@ function parseIstAusTabelle(
 export function prognoseMitMarketscreenerIst(
   prognose: EarningsQuartalsPrognose,
   html: string,
+  zusaetzlicheQuartalLabels: string[] = [],
 ): EarningsQuartalsPrognose {
-  const ist = parseIstAusTabelle(html, prognose.quartalLabel)
+  const labels = [...new Set([prognose.quartalLabel, ...zusaetzlicheQuartalLabels].filter(Boolean))]
+  let ist: Partial<Record<QuartalsPrognoseMetrik, number>> | null = null
+  for (const label of labels) {
+    ist = parseIstAusTabelle(html, label)
+    if (ist) break
+  }
   if (!ist) return prognose
   return {
     ...prognose,
@@ -312,7 +328,7 @@ export async function ladeMarketscreenerQuartalsPrognose(
   for (const slug of marketscreenerSlugKandidaten(isin, name, symbolYahoo)) {
     const html = await fetchFinancesHtml(slug)
     if (!html) continue
-    const parsed = parseQuartalsTabelle(html)
+    const parsed = parseQuartalsTabelle(html, termin)
     if (!parsed) continue
     const prognose = zuPrognose(parsed, termin)
     if (prognose) return { prognose, html }
