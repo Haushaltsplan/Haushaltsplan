@@ -1,9 +1,6 @@
 import { heuteIsoUtc, isoInJahren } from '@/lib/portfolio-analyse/dividenden-datum-hilfen'
 import { naechsterEarningsTermin } from '@/lib/portfolio-analyse/earnings-prognose'
-import {
-  divvydiaryFetchInWarteschlange,
-  ladeDivvydiaryEarningsRohdaten,
-} from '@/lib/portfolio-analyse/divvydiary-scraper-server'
+import { ladeDivvydiaryEarningsRohdaten } from '@/lib/portfolio-analyse/divvydiary-scraper-server'
 import { isinKenntnis } from '@/lib/portfolio-analyse/isin-kenntnisse'
 
 const CACHE_MS = 6 * 60 * 60 * 1000
@@ -48,20 +45,4 @@ export async function ladeDivvydiaryAnkuendigtesEarnings(
 
   termineCache.set(isinNorm, { at: Date.now(), hit })
   return hit
-}
-
-/** Depot-ISINs seriell vorladen (gleiche Warteschlange wie Dividenden-Scrape). */
-export async function vorladeDivvydiaryEarnings(
-  positionen: Array<{ isin: string; name: string }>,
-): Promise<void> {
-  const uniq = new Map<string, string>()
-  for (const p of positionen) {
-    const isin = p.isin.trim().toUpperCase()
-    if (isin.length < 10 || uniq.has(isin)) continue
-    uniq.set(isin, p.name)
-  }
-
-  for (const [isin, name] of uniq) {
-    await divvydiaryFetchInWarteschlange(() => ladeDivvydiaryAnkuendigtesEarnings(isin, name))
-  }
 }

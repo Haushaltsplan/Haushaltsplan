@@ -49,6 +49,7 @@ export async function ladeAnkuendigteEarningsDepot(
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ positionen: payload }),
+    signal: AbortSignal.timeout(280_000),
   })
   const j = (await res.json()) as AnkuendigteEarningsErgebnis & {
     ok?: boolean

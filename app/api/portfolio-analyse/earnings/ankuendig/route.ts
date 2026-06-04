@@ -3,6 +3,8 @@ import type { DepotPositionAnfrage } from '@/lib/portfolio-analyse/ankuendigte-d
 import { berechneAnkuendigteEarningsDepot } from '@/lib/portfolio-analyse/ankuendigte-earnings'
 
 export const dynamic = 'force-dynamic'
+/** DivvyDiary-Scrape: seriell, ~3–5 s pro ISIN. */
+export const maxDuration = 300
 
 const MAX_POSITIONEN = 80
 

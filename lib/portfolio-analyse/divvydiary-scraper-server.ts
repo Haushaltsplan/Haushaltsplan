@@ -172,7 +172,7 @@ function pause(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms))
 }
 
-async function fetchSeite(path: string, versuch: number): Promise<string | null> {
+async function fetchSeite(path: string, versuch: number, timeoutMs = 22_000): Promise<string | null> {
   const now = Date.now()
   const warten = Math.max(0, MIN_ABSTAND_MS - (now - letzterAbruf))
   if (warten > 0) await pause(warten)
@@ -195,13 +195,13 @@ async function fetchSeite(path: string, versuch: number): Promise<string | null>
         Pragma: 'no-cache',
       },
       cache: 'no-store',
-      signal: AbortSignal.timeout(22_000),
+      signal: AbortSignal.timeout(timeoutMs),
     })
 
     if (res.status === 429 || res.status === 503) {
       if (versuch < MAX_VERSUCHE) {
         await pause(RETRY_PAUSE_MS * versuch)
-        return fetchSeite(path, versuch + 1)
+        return fetchSeite(path, versuch + 1, timeoutMs)
       }
       return null
     }
@@ -211,7 +211,7 @@ async function fetchSeite(path: string, versuch: number): Promise<string | null>
   } catch {
     if (versuch < MAX_VERSUCHE) {
       await pause(RETRY_PAUSE_MS * versuch)
-      return fetchSeite(path, versuch + 1)
+      return fetchSeite(path, versuch + 1, timeoutMs)
     }
     return null
   }
@@ -266,15 +266,56 @@ export async function ladeDivvydiaryRohdaten(
   return { rows: hit.rows, path: hit.path, earnings: hit.earnings }
 }
 
-/** Gecachte Earnings-Rohdaten (gleicher Scrape wie Dividenden). */
+const EARNINGS_MAX_PFADE = 2
+const EARNINGS_FETCH_TIMEOUT_MS = 14_000
+
+/**
+ * Nur Earnings-Termin — ein bis zwei DivvyDiary-URLs, Stopp beim ersten Treffer.
+ * Nutzt den Scrape-Cache; kein vollständiger Dividenden-Parse wie bei ladeDivvydiaryRohdaten.
+ */
 export async function ladeDivvydiaryEarningsRohdaten(
   isin: string,
   name: string,
 ): Promise<{ earnings: DivvydiaryEarningsRoh | null; path: string } | null> {
-  const heute = new Date().toISOString().slice(0, 10)
-  const hit = await ladeDivvydiaryRohdaten(isin, name, heute)
-  if (!hit) return null
-  return { earnings: hit.earnings, path: hit.path }
+  const isinNorm = isin.trim().toUpperCase()
+  if (!isinNorm || isinNorm.length < 10) return null
+
+  const cached = scrapeCache.get(isinNorm)
+  if (cached) {
+    const ttl = cached.fehler ? FEHLER_CACHE_MS : CACHE_MS
+    if (Date.now() - cached.at < ttl) {
+      return cached.fehler ? null : { earnings: cached.earnings, path: cached.path }
+    }
+  }
+
+  const anzeigeName = isinKenntnis(isinNorm)?.name ?? name
+  const pfade = divvydiaryPfade(isinNorm, anzeigeName).slice(0, EARNINGS_MAX_PFADE)
+
+  return divvydiaryFetchInWarteschlange(async () => {
+    for (const path of pfade) {
+      const html = await fetchSeite(path, 1, EARNINGS_FETCH_TIMEOUT_MS)
+      if (!html) continue
+      const earnings = parseDivvydiaryEarningsHtml(html, isinNorm)
+      if (!earnings) continue
+
+      const prev = scrapeCache.get(isinNorm)
+      scrapeCache.set(isinNorm, {
+        at: Date.now(),
+        path,
+        rows: prev?.rows ?? [],
+        earnings,
+      })
+      return { earnings, path }
+    }
+
+    const prev = scrapeCache.get(isinNorm)
+    if (prev && !prev.fehler) {
+      scrapeCache.set(isinNorm, { ...prev, at: Date.now(), earnings: null })
+      return { earnings: null, path: prev.path }
+    }
+    scrapeCache.set(isinNorm, { at: Date.now(), path: '', rows: [], earnings: null, fehler: true })
+    return null
+  })
 }
 
 async function ladeDivvydiaryHtml(

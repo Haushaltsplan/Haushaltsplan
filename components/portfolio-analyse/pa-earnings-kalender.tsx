@@ -105,7 +105,14 @@ export function PaEarningsKalender({
   const kalenderJahr = useMemo(() => baueEarningsKalenderJahr(jahr, eintraege), [jahr, eintraege])
 
   if (laden) {
-    return <p className="py-16 text-center text-sm text-zinc-500">Kalender wird geladen …</p>
+    return (
+      <p className="py-16 text-center text-sm text-zinc-500">
+        Kalender wird geladen …
+        <span className="mt-2 block text-[11px] text-zinc-600">
+          DivvyDiary-Abruf läuft (ca. 3–5 s pro Aktie).
+        </span>
+      </p>
+    )
   }
 
   if (fehler) {

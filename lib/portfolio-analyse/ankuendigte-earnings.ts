@@ -1,8 +1,5 @@
 import { heuteIsoUtc } from '@/lib/portfolio-analyse/dividenden-datum-hilfen'
-import {
-  ladeDivvydiaryAnkuendigtesEarnings,
-  vorladeDivvydiaryEarnings,
-} from '@/lib/portfolio-analyse/divvydiary-ankuendigte-earnings-server'
+import { ladeDivvydiaryAnkuendigtesEarnings } from '@/lib/portfolio-analyse/divvydiary-ankuendigte-earnings-server'
 import { isinAusYahooSymbol, isinKenntnis } from '@/lib/portfolio-analyse/isin-kenntnisse'
 import type { DepotPositionAnfrage } from '@/lib/portfolio-analyse/ankuendigte-dividenden'
 
@@ -122,15 +119,8 @@ export async function berechneAnkuendigteEarningsDepot(
   const aktiv = positionen.filter((p) => p.stueck > 0 && positionHatIsin(p))
   const stat = { divvydiary: 0, prognose: 0, ohneTreffer: 0 }
 
-  await vorladeDivvydiaryEarnings(
-    aktiv.map((p) => {
-      const isin = isinFuerPosition(p)
-      return { isin, name: isinKenntnis(isin)?.name ?? p.name }
-    }),
-  )
-
   const eintraege = (
-    await mapPool(aktiv, 2, async (pos) => {
+    await mapPool(aktiv, 1, async (pos) => {
       const isin = isinFuerPosition(pos)
       const k = isinKenntnis(isin)
       const hit = await ladeDivvydiaryAnkuendigtesEarnings(isin, k?.name ?? pos.name)
@@ -170,7 +160,9 @@ export async function berechneAnkuendigteEarningsDepot(
     )
   }
 
-  hinweise.push('Daten von DivvyDiary (Scrape). Geschätzte Termine aus letztem Bekannt + Melde-Rhythmus.')
+  hinweise.push(
+    'Daten von DivvyDiary (Scrape). Geschätzte Termine aus letztem Bekannt + Melde-Rhythmus. Erster Abruf: grob 3–5 s pro Aktie (seriell).',
+  )
 
   return {
     monate: gruppiereEarningsNachMonat(eintraege),

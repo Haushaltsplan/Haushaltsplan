@@ -23,7 +23,14 @@ export function PaAnkuendigteEarnings({
   fehler: string | null
 }) {
   if (laden) {
-    return <p className="py-8 text-center text-sm text-zinc-500">Quartalstermine werden geladen …</p>
+    return (
+      <p className="py-8 text-center text-sm text-zinc-500">
+        Quartalstermine werden von DivvyDiary geladen …
+        <span className="mt-2 block text-[11px] text-zinc-600">
+          Erster Abruf: ca. 3–5 Sekunden pro Aktie (nacheinander).
+        </span>
+      </p>
+    )
   }
 
   if (fehler) {
