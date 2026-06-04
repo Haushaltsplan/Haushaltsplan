@@ -112,7 +112,7 @@ export function PortfolioEarningsDashboardClient() {
             >
               <h2 className="text-sm font-semibold tracking-tight text-[#eef0f1]">Quartalstermine</h2>
               <p className="mt-0.5 text-[11px] text-zinc-500">
-                Nur kommende Termine · DivvyDiary · Klick für Konsens
+                Nächstes Quartal · DivvyDiary · Klick für Konsens
               </p>
               <div className="mt-3 min-h-0 flex-1">
                 <PaAnkuendigteEarnings

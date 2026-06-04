@@ -3,13 +3,15 @@ import { ladeDivvydiaryEarningsTermine } from '@/lib/portfolio-analyse/divvydiar
 import { fiskalQuartalSchluessel } from '@/lib/portfolio-analyse/earnings-quartal-termin'
 import type { EarningsTerminKandidat } from '@/lib/portfolio-analyse/earnings-termine'
 
-/** Nur kommende Termine (DivvyDiary). */
+/** Nur das nächste Quartal im Voraus (~100 Tage). */
+const HORIZONT_TAGE = 100
+
 export function earningsZeitraum(): { von: string; bis: string; heute: string } {
   const heute = heuteIsoUtc()
   return {
     heute,
     von: heute,
-    bis: addDaysIso(heute, 400),
+    bis: addDaysIso(heute, HORIZONT_TAGE),
   }
 }
 
@@ -37,8 +39,13 @@ function einTerminProFiskalquartal(termine: EarningsTerminKandidat[]): EarningsT
   return [...map.values()].sort((a, b) => a.terminDatumIso.localeCompare(b.terminDatumIso))
 }
 
+/** Nur der nächste bekannte Berichtstermin (ein Quartal voraus). */
+function nurNaechsterTermin(termine: EarningsTerminKandidat[]): EarningsTerminKandidat[] {
+  return termine.length > 0 ? [termine[0]] : []
+}
+
 /**
- * Earnings-Termine ausschließlich von DivvyDiary (alle im JSON, sanftes Scraping).
+ * Earnings-Termine ausschließlich von DivvyDiary — max. ein Termin (nächstes Quartal).
  */
 export async function ladeAlleEarningsTermineFuerIsin(
   isinNorm: string,
@@ -56,5 +63,5 @@ export async function ladeAlleEarningsTermineFuerIsin(
     .filter((t) => t.terminDatumIso >= heute)
     .map((t) => zuKandidat(t.terminDatumIso, t.bestaetigt))
 
-  return einTerminProFiskalquartal(kandidaten)
+  return nurNaechsterTermin(einTerminProFiskalquartal(kandidaten))
 }

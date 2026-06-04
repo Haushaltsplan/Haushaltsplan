@@ -109,7 +109,7 @@ export function PaAnkuendigteEarnings({
         <span className="inline-flex flex-wrap items-center gap-2">
           <PaDividendEstimateBadge title="Geschätzt" />
           <span>= Termin geschätzt.</span>
-          <span className="text-zinc-500">Nur kommende Termine · DivvyDiary · 1× pro Quartal.</span>
+          <span className="text-zinc-500">Nächster Quartalstermin · DivvyDiary.</span>
         </span>
       </p>
       <Link

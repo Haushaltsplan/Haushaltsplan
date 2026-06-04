@@ -211,7 +211,7 @@ export async function berechneAnkuendigteEarningsDepot(
   }
 
   hinweise.push(
-    'Termine nur von DivvyDiary (1× pro Quartal, nur Zukunft). Konsens-Schätzungen separat beim Klick.',
+    'Termine nur von DivvyDiary — jeweils der nächste Quartalsbericht (~1 Quartal voraus). Konsens beim Klick.',
   )
 
   return {

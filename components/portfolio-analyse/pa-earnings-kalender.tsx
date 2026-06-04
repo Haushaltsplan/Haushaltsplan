@@ -357,7 +357,7 @@ export function PaEarningsKalender({
 
       <p className="flex flex-wrap items-center gap-2 border-t border-white/[0.04] pt-4 text-[11px] text-zinc-600">
         <PaDividendEstimateBadge title="Geschätzt" />
-        <span>Kommende Quartale · DivvyDiary · Depot</span>
+        <span>Nächstes Quartal · DivvyDiary · Depot</span>
         <Link
           href="/portfolioanalyse/earnings"
           className="ml-auto text-teal-400/90 hover:text-teal-300"
