@@ -6,7 +6,7 @@ import { tageZwischenIso } from '@/lib/portfolio-analyse/dividenden-datum-hilfen
 import { naechsterEarningsTermin } from '@/lib/portfolio-analyse/earnings-prognose'
 import type { DivvydiaryEarningsRoh } from '@/lib/portfolio-analyse/divvydiary-scraper-server'
 import {
-  ladeFinnhubEarningsKalenderAlle,
+  ladeFinnhubEarningsKalenderAlleImZeitraum,
   type FinnhubEarningsKalenderTermin,
 } from '@/lib/portfolio-analyse/finnhub-earnings-kalender-server'
 import { ladeYahooEarningsKalenderTerminKandidaten } from '@/lib/portfolio-analyse/yahoo-earnings-schaetzungen-server'
@@ -20,16 +20,16 @@ export type EarningsTerminKandidat = {
   berichtszeit: Berichtszeit | null
 }
 
-function imHorizont(datum: string, heute: string, bis: string): boolean {
-  return datum >= heute && datum <= bis
+function imHorizont(datum: string, von: string, bis: string): boolean {
+  return datum >= von && datum <= bis
 }
 
 function kandidatAusYahoo(
   hit: { terminDatumIso: string; bestaetigt: boolean; berichtszeit: Berichtszeit | null } | null,
-  heute: string,
+  von: string,
   bis: string,
 ): EarningsTerminKandidat | null {
-  if (!hit || !imHorizont(hit.terminDatumIso, heute, bis)) return null
+  if (!hit || !imHorizont(hit.terminDatumIso, von, bis)) return null
   return {
     terminDatumIso: hit.terminDatumIso,
     bestaetigt: hit.bestaetigt,
@@ -40,10 +40,10 @@ function kandidatAusYahoo(
 
 function kandidatAusFinnhub(
   hit: FinnhubEarningsKalenderTermin | null,
-  heute: string,
+  von: string,
   bis: string,
 ): EarningsTerminKandidat | null {
-  if (!hit || !imHorizont(hit.terminDatumIso, heute, bis)) return null
+  if (!hit || !imHorizont(hit.terminDatumIso, von, bis)) return null
   return {
     terminDatumIso: hit.terminDatumIso,
     bestaetigt: true,
@@ -54,11 +54,11 @@ function kandidatAusFinnhub(
 
 function kandidatAusDivvydiary(
   roh: DivvydiaryEarningsRoh | null,
-  heute: string,
+  von: string,
   bis: string,
 ): EarningsTerminKandidat | null {
   if (!roh) return null
-  const treffer = naechsterEarningsTermin(roh, heute, bis)
+  const treffer = naechsterEarningsTermin(roh, von, bis)
   if (!treffer) return null
   return {
     terminDatumIso: treffer.terminDatumIso,
@@ -86,7 +86,7 @@ function finnhubTerminNaechst(
 }
 
 /** Termin-Datum: Yahoo/DivvyDiary vor Finnhub (bessere Report-Tage bei US-Titeln). */
-function mergeTerminKandidaten(
+export function mergeEarningsTerminKandidaten(
   kandidaten: EarningsTerminKandidat[],
   finnhubKalender: FinnhubEarningsKalenderTermin[],
 ): EarningsTerminKandidat | null {
@@ -135,19 +135,19 @@ function mergeTerminKandidaten(
 export async function ladeEarningsTerminFuerSymbole(
   symbole: string[],
   divvydiaryRoh: DivvydiaryEarningsRoh | null,
-  heute: string,
+  von: string,
   bis: string,
 ): Promise<EarningsTerminKandidat | null> {
   const [yahoo, finnhubKalender] = await Promise.all([
     symbole.length > 0 ? ladeYahooEarningsKalenderTerminKandidaten(symbole) : null,
-    symbole.length > 0 ? ladeFinnhubEarningsKalenderAlle(symbole) : [],
+    symbole.length > 0 ? ladeFinnhubEarningsKalenderAlleImZeitraum(symbole, von, bis) : [],
   ])
 
   const kandidaten = [
-    kandidatAusYahoo(yahoo, heute, bis),
-    kandidatAusFinnhub(finnhubKalender[0] ?? null, heute, bis),
-    kandidatAusDivvydiary(divvydiaryRoh, heute, bis),
+    kandidatAusYahoo(yahoo, von, bis),
+    kandidatAusFinnhub(finnhubKalender[0] ?? null, von, bis),
+    kandidatAusDivvydiary(divvydiaryRoh, von, bis),
   ].filter((k): k is EarningsTerminKandidat => k != null)
 
-  return mergeTerminKandidaten(kandidaten, finnhubKalender)
+  return mergeEarningsTerminKandidaten(kandidaten, finnhubKalender)
 }

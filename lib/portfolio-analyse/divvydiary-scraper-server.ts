@@ -2,7 +2,8 @@ import { heuteIsoUtc } from '@/lib/portfolio-analyse/dividenden-datum-hilfen'
 import { isinKenntnis } from '@/lib/portfolio-analyse/isin-kenntnisse'
 
 const BASE = 'https://divvydiary.com/de'
-const MIN_ABSTAND_MS = 140
+const MIN_ABSTAND_MS = 220
+const JITTER_MS_MAX = 120
 const MAX_VERSUCHE = 4
 const RETRY_PAUSE_MS = 700
 const CACHE_MS = 6 * 60 * 60 * 1000
@@ -234,9 +235,15 @@ function pause(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms))
 }
 
+function scrapePauseMs(): number {
+  const basis = MIN_ABSTAND_MS
+  const jitter = Math.floor(Math.random() * JITTER_MS_MAX)
+  return basis + jitter
+}
+
 async function fetchSeite(path: string, versuch: number, timeoutMs = 22_000): Promise<string | null> {
   const now = Date.now()
-  const warten = Math.max(0, MIN_ABSTAND_MS - (now - letzterAbruf))
+  const warten = Math.max(0, scrapePauseMs() - (now - letzterAbruf))
   if (warten > 0) await pause(warten)
   letzterAbruf = Date.now()
 
@@ -247,14 +254,17 @@ async function fetchSeite(path: string, versuch: number, timeoutMs = 22_000): Pr
         'User-Agent':
           'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
         Accept:
-          'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+          'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
         'Accept-Language': 'de-DE,de;q=0.9,en-US;q=0.8,en;q=0.7',
+        'Accept-Encoding': 'gzip, deflate, br',
         Referer: `${BASE}/`,
         'Sec-Fetch-Dest': 'document',
         'Sec-Fetch-Mode': 'navigate',
         'Sec-Fetch-Site': 'same-origin',
-        'Cache-Control': 'no-cache',
-        Pragma: 'no-cache',
+        'Sec-Fetch-User': '?1',
+        'Upgrade-Insecure-Requests': '1',
+        DNT: '1',
+        Connection: 'keep-alive',
       },
       cache: 'no-store',
       signal: AbortSignal.timeout(timeoutMs),

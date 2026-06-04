@@ -5,7 +5,10 @@ import { useEffect, useMemo, useState } from 'react'
 import { PaEarningsKalender } from '@/components/portfolio-analyse/pa-earnings-kalender'
 import { usePortfolioAnalyse } from '@/components/portfolio-analyse/pa-data-provider'
 import { PortfolioAnalyseShell } from '@/components/portfolio-analyse/portfolio-analyse-shell.client'
-import { ladeAnkuendigteEarningsDepot } from '@/lib/portfolio-analyse/ankuendigte-earnings-client'
+import {
+  ladeAnkuendigteEarningsDepot,
+  ladeAnkuendigteEarningsDepotAusLocalCache,
+} from '@/lib/portfolio-analyse/ankuendigte-earnings-client'
 import type { AnkuendigteEarningsErgebnis } from '@/lib/portfolio-analyse/ankuendigte-earnings'
 
 export function PortfolioEarningsKalenderClient() {
@@ -32,9 +35,12 @@ export function PortfolioEarningsKalenderClient() {
       setFehler(null)
       return
     }
+    const cached = ladeAnkuendigteEarningsDepotAusLocalCache(pos, meta)
+    if (cached?.eintraege.length) setDaten(cached)
+
     let cancelled = false
     async function run() {
-      setLaden(true)
+      setLaden(!cached?.eintraege.length)
       setFehler(null)
       try {
         const res = await ladeAnkuendigteEarningsDepot(pos, meta)

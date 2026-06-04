@@ -7,7 +7,10 @@ import { PaEarningsPrognosePanel } from '@/components/portfolio-analyse/pa-earni
 import { usePortfolioAnalyse } from '@/components/portfolio-analyse/pa-data-provider'
 import { PortfolioAnalyseShell } from '@/components/portfolio-analyse/portfolio-analyse-shell.client'
 import { PaCard } from '@/components/portfolio-analyse/pa-ui'
-import { ladeAnkuendigteEarningsDepot } from '@/lib/portfolio-analyse/ankuendigte-earnings-client'
+import {
+  ladeAnkuendigteEarningsDepot,
+  ladeAnkuendigteEarningsDepotAusLocalCache,
+} from '@/lib/portfolio-analyse/ankuendigte-earnings-client'
 import {
   bevorzugterEarningsEintrag,
   type AnkuendigteEarningsErgebnis,
@@ -58,9 +61,12 @@ export function PortfolioEarningsDashboardClient() {
       setFehler(null)
       return
     }
+    const cached = ladeAnkuendigteEarningsDepotAusLocalCache(pos, meta)
+    if (cached?.eintraege.length) setDaten(cached)
+
     let cancelled = false
     async function run() {
-      setEarningsLaden(true)
+      setEarningsLaden(!cached?.eintraege.length)
       setFehler(null)
       try {
         const res = await ladeAnkuendigteEarningsDepot(pos, meta)

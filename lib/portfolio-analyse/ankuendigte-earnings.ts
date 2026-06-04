@@ -1,6 +1,12 @@
 import { berichtszeitKurz, berichtszeitLabel } from '@/lib/portfolio-analyse/earnings-berichtszeit'
 import { heuteIsoUtc } from '@/lib/portfolio-analyse/dividenden-datum-hilfen'
-import { ladeDivvydiaryAktienSeiteHtml } from '@/lib/portfolio-analyse/divvydiary-scraper-server'
+import { ladeDivvydiaryEarningsRohdaten } from '@/lib/portfolio-analyse/divvydiary-scraper-server'
+import {
+  depotKeyAusPositionen,
+  ladeEarningsIsinAusDepotCache,
+  speichereEarningsIsinImDepotCache,
+} from '@/lib/portfolio-analyse/earnings-depot-cache-server'
+import type { FinnhubEarningsKalenderTermin } from '@/lib/portfolio-analyse/finnhub-earnings-kalender-server'
 import { ladeAlleEarningsTermineFuerSymbole, earningsZeitraum } from '@/lib/portfolio-analyse/earnings-termine-alle'
 import type { EarningsTerminQuelle } from '@/lib/portfolio-analyse/earnings-termine'
 import { brokerSymbolKandidaten } from '@/lib/portfolio-analyse/dividenden-datum-hilfen'
@@ -178,39 +184,71 @@ export async function berechneAnkuendigteEarningsDepot(
   const aktiv = positionen.filter((p) => p.stueck > 0 && positionHatIsin(p))
   const stat = { yahoo: 0, finnhub: 0, divvydiary: 0, prognose: 0, ohneTreffer: 0 }
 
-  const { von, bis, heute } = earningsZeitraum()
+  const { von, bis } = earningsZeitraum()
+  const depotKey = depotKeyAusPositionen(aktiv)
+  const finnhubCache = new Map<string, FinnhubEarningsKalenderTermin[]>()
 
   const eintraegeNested = await mapPool(aktiv, 2, async (pos) => {
     const isin = isinFuerPosition(pos)
     const k = isinKenntnis(isin)
     const name = k?.name ?? pos.name
     const symbole = symboleFuerPosition(pos, isin)
-    const ddHtml = await ladeDivvydiaryAktienSeiteHtml(isin, name)
-    const termine = await ladeAlleEarningsTermineFuerSymbole(symbole, ddHtml, isin, von, bis)
+    const symbol = symbolAnzeige(pos)
+    const lokalStat = { yahoo: 0, finnhub: 0, divvydiary: 0, prognose: 0 }
 
-    if (termine.length === 0) {
+    const cached = await ladeEarningsIsinAusDepotCache(isin, von, bis)
+    let merged = cached?.termine ?? []
+
+    if (merged.length === 0) {
+      const ddRoh = await ladeDivvydiaryEarningsRohdaten(isin, name)
+      merged = await ladeAlleEarningsTermineFuerSymbole(
+        symbole,
+        ddRoh?.earnings ?? null,
+        isin,
+        von,
+        bis,
+        finnhubCache,
+      )
+
+      if (merged.length > 0) {
+        await speichereEarningsIsinImDepotCache(depotKey, von, bis, isin, {
+          name,
+          symbol,
+          stueck: pos.stueck,
+          termine: merged,
+        })
+      }
+    }
+
+    if (merged.length === 0) {
       stat.ohneTreffer++
       return []
     }
 
-    return termine.map((hit) => {
-      if (hit.quelle === 'yahoo') stat.yahoo++
-      else if (hit.quelle === 'finnhub') stat.finnhub++
-      else if (hit.quelle === 'divvydiary') stat.divvydiary++
-      else stat.prognose++
+    const rows = merged.map((hit) => {
+      if (hit.quelle === 'yahoo') lokalStat.yahoo++
+      else if (hit.quelle === 'finnhub') lokalStat.finnhub++
+      else if (hit.quelle === 'divvydiary') lokalStat.divvydiary++
+      else lokalStat.prognose++
 
       return {
         isin: pos.isin ?? isin,
         name,
         stueck: pos.stueck,
         terminDatumIso: hit.terminDatumIso,
-        symbol: symbolAnzeige(pos),
+        symbol,
         quelle: hit.quelle,
         bestaetigt: hit.bestaetigt,
         berichtszeit: hit.berichtszeit,
         berichtszeitAnzeige: berichtszeitKurz(hit.berichtszeit) ?? berichtszeitLabel(hit.berichtszeit),
       } satisfies AnkuendigtesEarningsEintrag
     })
+
+    stat.yahoo += lokalStat.yahoo
+    stat.finnhub += lokalStat.finnhub
+    stat.divvydiary += lokalStat.divvydiary
+    stat.prognose += lokalStat.prognose
+    return rows
   })
 
   const eintraege = eintraegeNested
@@ -227,13 +265,16 @@ export async function berechneAnkuendigteEarningsDepot(
       teile.push(`${stat.yahoo + stat.finnhub + stat.divvydiary} bestätigt`)
     }
     if (stat.prognose > 0) teile.push(`${stat.prognose} geschätzt`)
+    const positionenMitTermin = new Set(
+      eintraege.map((e) => (e.isin ?? e.symbol).toUpperCase()),
+    ).size
     hinweise.push(
-      `${eintraege.length} Termin(e) für ${eintraege.length} von ${aktiv.length} Position(en): ${teile.join(', ')}.`,
+      `${eintraege.length} Termin(e) für ${positionenMitTermin} von ${aktiv.length} Position(en): ${teile.join(', ')}.`,
     )
   }
 
   hinweise.push(
-    `Zeitraum: ${von} bis ${bis} (±1 Jahr). Quellen: Finnhub-Kalender, DivvyDiary. Berichtszeit von Finnhub.`,
+    `Zeitraum: ${von} bis ${bis} (±1 Jahr). Termine: Yahoo/DivvyDiary + Finnhub (ein Datum pro Quartal). Cache: data/portfolio-earnings-kalender.json (6 h).`,
   )
 
   return {

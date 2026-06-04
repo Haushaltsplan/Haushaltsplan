@@ -16,7 +16,7 @@ function finnhubKey(): string | null {
   return k.length > 0 ? k : null
 }
 
-function finnhubSymbole(sym: string): string[] {
+export function finnhubSymbole(sym: string): string[] {
   const s = sym.trim().toUpperCase()
   if (!s) return []
   const out = [s]
