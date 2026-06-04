@@ -73,6 +73,7 @@ export async function ladeYahooEarningsSchaetzungen(symbol: string): Promise<Ear
     `https://query2.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(sym)}`,
   )
   u.searchParams.set('modules', 'calendarEvents')
+  u.searchParams.set('crumb', auth.crumb)
 
   try {
     const res = await fetch(u.toString(), {

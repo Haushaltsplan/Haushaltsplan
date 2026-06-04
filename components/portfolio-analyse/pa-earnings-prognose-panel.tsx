@@ -94,7 +94,7 @@ export function PaEarningsPrognosePanel({
     return (
       <div className="flex h-full min-h-[16rem] flex-col items-center justify-center rounded-xl border border-dashed border-white/[0.08] bg-zinc-950/40 px-6 text-center">
         <p className="text-sm text-zinc-500">Klicke auf einen Termin oder eine Aktie, um Konsens-Prognosen zu sehen.</p>
-        <p className="mt-2 text-[11px] text-zinc-600">EPS & Umsatz (Yahoo Finance, ggf. Finnhub)</p>
+        <p className="mt-2 text-[11px] text-zinc-600">Wallstreet-online, Yahoo Finance, Finnhub</p>
       </div>
     )
   }
@@ -150,7 +150,15 @@ export function PaEarningsPrognosePanel({
 
       <p className="border-t border-white/[0.04] px-4 py-2.5 text-[10px] leading-relaxed text-zinc-600">
         {daten
-          ? `Quelle: ${daten.quelle === 'yahoo' ? 'Yahoo Finance' : 'Finnhub'} (Analystenkonsens). DivvyDiary liefert hier keine EPS/Umsatz-Prognosen.`
+          ? `Quelle: ${
+              daten.quelle === 'yahoo'
+                ? 'Yahoo Finance'
+                : daten.quelle === 'wallstreet'
+                  ? 'Wallstreet-online (Scrape)'
+                  : daten.quelle === 'finnhub'
+                    ? 'Finnhub'
+                    : 'Kombiniert (mehrere Quellen)'
+            }. Termine weiterhin von DivvyDiary.`
           : 'Daten werden beim Klick nachgeladen.'}
       </p>
     </div>

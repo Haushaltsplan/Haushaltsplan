@@ -2,6 +2,7 @@ import { brokerSymbolKandidaten } from '@/lib/portfolio-analyse/dividenden-datum
 import { ladeFinnhubEarningsSchaetzungenKandidaten } from '@/lib/portfolio-analyse/finnhub-earnings-schaetzungen-server'
 import { isinKenntnis } from '@/lib/portfolio-analyse/isin-kenntnisse'
 import { portfolioLogoQuellen } from '@/lib/portfolio-analyse/portfolio-logos'
+import { ladeWallstreetEarningsSchaetzungen } from '@/lib/portfolio-analyse/wallstreet-earnings-schaetzungen-server'
 import { ladeYahooEarningsSchaetzungenKandidaten } from '@/lib/portfolio-analyse/yahoo-earnings-schaetzungen-server'
 
 export type EarningsSchaetzungSpanne = {
@@ -12,7 +13,7 @@ export type EarningsSchaetzungSpanne = {
 }
 
 export type EarningsSchaetzungen = {
-  quelle: 'yahoo' | 'finnhub'
+  quelle: 'yahoo' | 'finnhub' | 'wallstreet' | 'kombiniert'
   terminDatumIso: string | null
   isEarningsDateEstimate: boolean
   earningsCallDateIso: string | null
@@ -55,14 +56,56 @@ function symboleFuerAnfrage(req: EarningsSchaetzungenAnfrage): string[] {
   return out
 }
 
+function mergeSchaetzungen(
+  primaer: EarningsSchaetzungen,
+  ergaenzung: EarningsSchaetzungen,
+): EarningsSchaetzungen {
+  const eps =
+    primaer.eps.average != null
+      ? primaer.eps
+      : ergaenzung.eps.average != null
+        ? ergaenzung.eps
+        : primaer.eps
+  const umsatz =
+    primaer.umsatz.average != null
+      ? primaer.umsatz
+      : ergaenzung.umsatz.average != null
+        ? ergaenzung.umsatz
+        : primaer.umsatz
+
+  const kombiniert = primaer.quelle !== ergaenzung.quelle
+  return {
+    ...primaer,
+    quelle: kombiniert ? 'kombiniert' : primaer.quelle,
+    eps,
+    umsatz,
+    berichtszeit: kombiniert
+      ? `${primaer.quelle} + ${ergaenzung.quelle}`
+      : primaer.berichtszeit,
+  }
+}
+
 export async function ladeEarningsSchaetzungen(
   req: EarningsSchaetzungenAnfrage,
 ): Promise<EarningsSchaetzungen | null> {
   const symbole = symboleFuerAnfrage(req)
-  if (symbole.length === 0) return null
+  const isin = req.isin?.trim().toUpperCase() ?? ''
 
-  const yahoo = await ladeYahooEarningsSchaetzungenKandidaten(symbole)
-  if (yahoo) return yahoo
+  const [yahoo, wallstreet, finnhub] = await Promise.all([
+    symbole.length > 0 ? ladeYahooEarningsSchaetzungenKandidaten(symbole) : null,
+    isin.length >= 10 ? ladeWallstreetEarningsSchaetzungen(isin, req.name ?? '') : null,
+    symbole.length > 0
+      ? ladeFinnhubEarningsSchaetzungenKandidaten(symbole, req.terminDatumIso)
+      : null,
+  ])
 
-  return ladeFinnhubEarningsSchaetzungenKandidaten(symbole, req.terminDatumIso)
+  if (yahoo && wallstreet) return mergeSchaetzungen(yahoo, wallstreet)
+  if (yahoo && finnhub && (yahoo.eps.average == null || yahoo.umsatz.average == null)) {
+    return mergeSchaetzungen(yahoo, finnhub)
+  }
+  if (wallstreet && finnhub && wallstreet.umsatz.average == null) {
+    return mergeSchaetzungen(wallstreet, finnhub)
+  }
+
+  return yahoo ?? wallstreet ?? finnhub
 }
