@@ -242,7 +242,7 @@ export function PaEarningsPrognosePanel({
     return (
       <div className="flex h-full min-h-[18rem] flex-col items-center justify-center rounded-2xl border border-dashed border-[#eef0f1]/10 bg-[#0c0c0d] px-6 text-center">
         <p className="text-sm text-zinc-400">Klicke auf einen Termin.</p>
-        <p className="mt-2 text-[11px] text-zinc-600">Vorheriges Quartal & Konsens</p>
+        <p className="mt-2 text-[11px] text-zinc-600">Konsens-Schätzungen</p>
       </div>
     )
   }
@@ -250,9 +250,7 @@ export function PaEarningsPrognosePanel({
   const q = daten?.quartalsPrognose
   const waehrung = q?.zeilen[0]?.waehrung ?? 'USD'
   const zeilen = q?.zeilen ?? []
-  const istVergangen = Boolean(daten?.berichtVeroeffentlicht)
-  const hatIstDaten = zeilen.some((z) => z.istAnzeige != null)
-  const mitIstSpalten = istVergangen
+  const mitIstSpalten = false
   const jahresOk =
     daten?.jahresSchaetzung &&
     ((daten.jahresSchaetzung.umsatz.schaetzung != null && daten.jahresSchaetzung.umsatz.schaetzung >= 1e8) ||
@@ -265,7 +263,7 @@ export function PaEarningsPrognosePanel({
           <PortfolioIsinLogo isin={eintrag.isin} fallbackName={eintrag.name} meta={meta} groesse="md" />
           <div className="min-w-0 flex-1">
             <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-zinc-500">
-              {istVergangen ? 'Quartalsbericht' : 'Nächster Termin'}
+              Nächster Termin
             </p>
             <p className="mt-1 text-lg font-semibold leading-tight tracking-tight text-[#eef0f1]">
               {q?.quartalLabel ?? daten?.prognosePeriode ?? 'Quartalszahlen'}
@@ -278,11 +276,6 @@ export function PaEarningsPrognosePanel({
                 {formatEventDatum(eintrag.terminDatumIso)}
               </span>
               {!eintrag.bestaetigt ? <PaDividendEstimateBadge title="Geschätzter Termin" /> : null}
-              {istVergangen ? (
-                <Pill className="bg-emerald-950/40 text-[10px] text-emerald-300/90 ring-emerald-500/20">
-                  {hatIstDaten ? 'Veröffentlicht · Ist vs. Schätzung' : 'Veröffentlicht'}
-                </Pill>
-              ) : null}
             </div>
             {daten?.investorRelationsUrl ? (
               <a
@@ -312,7 +305,7 @@ export function PaEarningsPrognosePanel({
           <>
             {jahresOk && daten?.jahresSchaetzung ? <JahresBlock j={daten.jahresSchaetzung} /> : null}
             <p className="mb-2 text-[10px] font-medium uppercase tracking-[0.12em] text-zinc-500">
-              {istVergangen ? 'Quartalszahlen · Schätzung vs. Ist' : 'Quartals-Konsens'}
+              Quartals-Konsens
             </p>
             <MetrikTabelle
               zeilen={zeilen}

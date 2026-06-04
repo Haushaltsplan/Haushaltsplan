@@ -2,8 +2,8 @@ import { heuteIsoUtc } from '@/lib/portfolio-analyse/dividenden-datum-hilfen'
 import { isinKenntnis } from '@/lib/portfolio-analyse/isin-kenntnisse'
 
 const BASE = 'https://divvydiary.com/de'
-const MIN_ABSTAND_MS = 220
-const JITTER_MS_MAX = 120
+const MIN_ABSTAND_MS = 300
+const JITTER_MS_MAX = 150
 const MAX_VERSUCHE = 4
 const RETRY_PAUSE_MS = 700
 const CACHE_MS = 6 * 60 * 60 * 1000
@@ -24,6 +24,7 @@ type ScrapeCacheEintrag = {
   path: string
   rows: DivvydiaryRohZeile[]
   earnings: DivvydiaryEarningsRoh | null
+  earningsTermine?: DivvydiaryEarningsTerminKurz[]
   fehler?: boolean
 }
 
@@ -121,37 +122,57 @@ export function parseDivvydiaryHtml(html: string): DivvydiaryRohZeile[] {
 
 type DivvydiaryEarningsTreffer = DivvydiaryEarningsRoh & { score: number }
 
+function earningsDatesAusFenster(win: string): { date: string; estimated: boolean }[] {
+  const out: { date: string; estimated: boolean }[] = []
+  const patterns = [
+    /\\"earningsDate\\":\\"(\d{4}-\d{2}-\d{2})\\",\\"earningsDateEstimated\\":(true|false)/g,
+    /"earningsDate":"(\d{4}-\d{2}-\d{2})","earningsDateEstimated":(true|false)/g,
+  ]
+  for (const re of patterns) {
+    let m: RegExpExecArray | null
+    while ((m = re.exec(win)) !== null) {
+      out.push({ date: m[1], estimated: m[2] === 'true' })
+    }
+  }
+  return out
+}
+
 /** Alle Earnings-Termine aus eingebettetem DivvyDiary-JSON (React-Query-State). */
 function sammleDivvydiaryEarningsTreffer(html: string, isin: string): DivvydiaryEarningsTreffer[] {
-  const needle = `\\"isin\\":\\"${isin}\\"`
+  const needles = [`\\"isin\\":\\"${isin}\\"`, `"isin":"${isin}"`]
   const treffer: DivvydiaryEarningsTreffer[] = []
-  let i = 0
 
-  while ((i = html.indexOf(needle, i)) >= 0) {
-    const win = html.slice(Math.max(0, i - 500), i + 1200)
-    const names = [...win.matchAll(/\\"name\\":\\"([^"]+)\\"/g)]
-    const nameM = names.at(-1)
-    const freqM = win.match(/\\"dividendFrequency\\":\\"([^"]+)\\"/)
-    const dates = [
-      ...win.matchAll(
-        /\\"earningsDate\\":\\"(\d{4}-\d{2}-\d{2})\\",\\"earningsDateEstimated\\":(true|false)/g,
-      ),
-    ]
-    if (nameM && dates.length > 0) {
-      let score = 0
-      if (win.includes('\\"dividends\\":[')) score += 100
-      if (win.includes('\\"securityType\\":\\"EQUITY\\"')) score += 50
-      for (const em of dates) {
-        treffer.push({
-          securityName: nameM[1],
-          earningsDate: em[1],
-          earningsDateEstimated: em[2] === 'true',
-          dividendFrequency: freqM?.[1] ?? null,
-          score,
-        })
+  for (const needle of needles) {
+    let i = 0
+    while ((i = html.indexOf(needle, i)) >= 0) {
+      const win = html.slice(Math.max(0, i - 500), i + 1400)
+      const names = [
+        ...win.matchAll(/\\"name\\":\\"([^"]+)\\"/g),
+        ...win.matchAll(/"name":"([^"]+)"/g),
+      ]
+      const nameM = names.at(-1)
+      const freqM =
+        win.match(/\\"dividendFrequency\\":\\"([^"]+)\\"/) ??
+        win.match(/"dividendFrequency":"([^"]+)"/)
+      const dates = earningsDatesAusFenster(win)
+      if (nameM && dates.length > 0) {
+        let score = 0
+        if (win.includes('\\"dividends\\":[') || win.includes('"dividends":[')) score += 100
+        if (win.includes('\\"securityType\\":\\"EQUITY\\"') || win.includes('"securityType":"EQUITY"'))
+          score += 50
+        if (win.includes(isin)) score += 30
+        for (const em of dates) {
+          treffer.push({
+            securityName: nameM[1],
+            earningsDate: em.date,
+            earningsDateEstimated: em.estimated,
+            dividendFrequency: freqM?.[1] ?? null,
+            score,
+          })
+        }
       }
+      i += needle.length
     }
-    i += needle.length
   }
 
   return treffer
@@ -173,10 +194,16 @@ export function alleDivvydiaryEarningsImZeitraum(
   if (!isin || isin.length < 10) return []
 
   const treffer = sammleDivvydiaryEarningsTreffer(html, isin)
+  if (treffer.length === 0) return []
+
+  const maxScore = Math.max(...treffer.map((t) => t.score))
+  const primaer = treffer.filter((t) => t.score >= maxScore)
   const seen = new Set<string>()
   const out: DivvydiaryEarningsTerminKurz[] = []
 
-  const sortiert = [...treffer].sort((a, b) => b.score - a.score || a.earningsDate.localeCompare(b.earningsDate))
+  const sortiert = [...primaer].sort(
+    (a, b) => b.score - a.score || a.earningsDate.localeCompare(b.earningsDate),
+  )
   for (const t of sortiert) {
     if (t.earningsDate < von || t.earningsDate > bis) continue
     if (seen.has(t.earningsDate)) continue
@@ -423,6 +450,42 @@ async function ladeDivvydiaryHtml(
     if (!best) return null
     return { html: best.html, path: best.path, rows: best.rows, earnings: best.earnings }
   })
+}
+
+/** Alle Earnings-Termine einer Aktie — eine DivvyDiary-Seite, Warteschlange + Cache. */
+export async function ladeDivvydiaryEarningsTermine(
+  isin: string,
+  name: string,
+  vonIso: string,
+  bisIso: string,
+): Promise<DivvydiaryEarningsTerminKurz[]> {
+  const isinNorm = isin.trim().toUpperCase()
+  if (isinNorm.length < 10) return []
+
+  const cached = scrapeCache.get(isinNorm)
+  if (cached?.earningsTermine && !cached.fehler) {
+    const ttl = CACHE_MS
+    if (Date.now() - cached.at < ttl) {
+      return cached.earningsTermine.filter(
+        (t) => t.terminDatumIso >= vonIso && t.terminDatumIso <= bisIso,
+      )
+    }
+  }
+
+  const anzeigeName = isinKenntnis(isinNorm)?.name ?? name
+  const hit = await ladeDivvydiaryHtml(isinNorm, anzeigeName, heuteIsoUtc())
+  if (!hit) return []
+
+  const termine = alleDivvydiaryEarningsImZeitraum(hit.html, isinNorm, vonIso, bisIso)
+  scrapeCache.set(isinNorm, {
+    at: Date.now(),
+    path: hit.path,
+    rows: hit.rows,
+    earnings: hit.earnings,
+    earningsTermine: termine,
+  })
+
+  return termine
 }
 
 /** HTML der Aktienseite (für alle Earnings-Termine im JSON). */

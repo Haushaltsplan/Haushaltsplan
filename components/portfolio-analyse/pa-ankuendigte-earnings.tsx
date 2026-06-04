@@ -48,7 +48,7 @@ export function PaAnkuendigteEarnings({
       <p className="py-8 text-center text-sm text-zinc-500">
         Quartalstermine werden geladen …
         <span className="mt-2 block text-[11px] text-zinc-600">
-          Kalender- und Kursdaten pro Aktie (Yahoo, Finnhub, DivvyDiary).
+          DivvyDiary — eine Aktie nach der anderen (ca. 3–5 s pro Position).
         </span>
       </p>
     )
@@ -109,7 +109,7 @@ export function PaAnkuendigteEarnings({
         <span className="inline-flex flex-wrap items-center gap-2">
           <PaDividendEstimateBadge title="Geschätzt" />
           <span>= Termin geschätzt.</span>
-          <span className="text-zinc-500">Vorheriges Quartal + nächste Termine · 1× pro Quartal · Berichtszeit von Finnhub.</span>
+          <span className="text-zinc-500">Nur kommende Termine · DivvyDiary · 1× pro Quartal.</span>
         </span>
       </p>
       <Link

@@ -7,7 +7,7 @@ import type { EarningsTerminKandidat } from '@/lib/portfolio-analyse/earnings-te
 import type { DepotPositionAnfrage } from '@/lib/portfolio-analyse/ankuendigte-dividenden'
 
 const DATEIPFAD = path.join(process.cwd(), 'data', 'portfolio-earnings-kalender.json')
-const CACHE_VERSION = 3
+const CACHE_VERSION = 10
 
 /** Gültigkeit pro ISIN — danach erneut laden. */
 export const EARNINGS_ISIN_CACHE_MS = 6 * 60 * 60 * 1000
@@ -104,4 +104,14 @@ export async function speichereEarningsIsinImDepotCache(
     ...eintrag,
   }
   await schreibeCacheDatei(datei)
+}
+
+/** Alte Multi-Quellen-Caches entfernen. */
+export async function loescheEarningsDepotCacheDatei(): Promise<void> {
+  try {
+    await fs.unlink(DATEIPFAD)
+  } catch (e: unknown) {
+    const code = e && typeof e === 'object' && 'code' in e ? (e as NodeJS.ErrnoException).code : ''
+    if (code !== 'ENOENT') console.error('Earnings-Depot-Cache: Löschen', e)
+  }
 }

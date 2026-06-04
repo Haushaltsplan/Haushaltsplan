@@ -89,7 +89,7 @@ export function PortfolioEarningsDashboardClient() {
   return (
     <PortfolioAnalyseShell
       title="Quartalszahlen"
-      description="Earnings-Kalender im Quartr-Stil — Termine, Berichtszeit (vor/nach Börse) und Konsens."
+      description="Kommende Quartalstermine (DivvyDiary) und Konsens-Schätzungen."
     >
       {!paLaden && !hatDaten ? null : (
         <div className="min-w-0 space-y-6">
@@ -112,7 +112,7 @@ export function PortfolioEarningsDashboardClient() {
             >
               <h2 className="text-sm font-semibold tracking-tight text-[#eef0f1]">Quartalstermine</h2>
               <p className="mt-0.5 text-[11px] text-zinc-500">
-                Vorheriges Quartal + nächste Berichte · Klick für Konsens & Ist-Zahlen
+                Nur kommende Termine · DivvyDiary · Klick für Konsens
               </p>
               <div className="mt-3 min-h-0 flex-1">
                 <PaAnkuendigteEarnings
