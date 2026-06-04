@@ -341,10 +341,14 @@ export async function berechneAnkuendigteDividendenDepot(
   const stat = { divvydiary: 0, prognose: 0, finnhub: 0, yahoo: 0, ohneTreffer: 0 }
 
   await vorladeDivvydiary(
-    aktiv.map((p) => ({
-      isin: isinFuerPosition(p),
-      name: isinKenntnis(isinFuerPosition(p))?.name ?? p.name,
-    })),
+    aktiv
+      .map((p) => {
+        const isin = isinFuerPosition(p)
+        return isin.length >= 10
+          ? { isin, name: isinKenntnis(isin)?.name ?? p.name }
+          : null
+      })
+      .filter((x): x is { isin: string; name: string } => x != null),
   )
 
   const rohNested = await mapPool(aktiv, 2, async (pos) => {

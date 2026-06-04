@@ -38,31 +38,46 @@ function medianTag(tags: number[]): number {
   return Math.round(median(tags))
 }
 
+/** Nur aktuelle Historie für Zahlungsmuster (alte Juni-Termine bei Hermès o. ä. ignorieren). */
+const MUSTER_LOOKBACK_JAHRE = 8
+const MUSTER_MIN_JAHR_RECENT = 4
+
+function historieFuerMuster(past: DivvydiaryRohZeile[], heute: string): DivvydiaryRohZeile[] {
+  const cut = `${Number(heute.slice(0, 4)) - MUSTER_LOOKBACK_JAHRE}-01-01`
+  const recent = past.filter((r) => r.payDate >= cut)
+  return recent.length >= 2 ? recent : past
+}
+
 /**
- * Nur wiederkehrende Zahlungsmonate (≥2 verschiedene Jahre mit Zahlung in diesem Monat).
- * Einmalige Ausreißer (z. B. falscher Juni-Eintrag) fallen raus.
+ * Wiederkehrende Zahlungsmonate aus **aktueller** Historie (≥2 Jahre im Fenster).
  */
-export function slotsAusHistorie(past: DivvydiaryRohZeile[]): ZahlungsSlot[] {
+export function slotsAusHistorie(past: DivvydiaryRohZeile[], heute: string): ZahlungsSlot[] {
+  const basis = historieFuerMuster(past, heute)
+  const recentAb = `${Number(heute.slice(0, 4)) - MUSTER_MIN_JAHR_RECENT}-01-01`
+
   const byMonat = new Map<number, DivvydiaryRohZeile[]>()
-  for (const r of past) {
+  for (const r of basis) {
     const m = Number(r.payDate.slice(5, 7))
     const list = byMonat.get(m) ?? []
     list.push(r)
     byMonat.set(m, list)
   }
 
-  const jahreGesamt = new Set(past.map((r) => r.payDate.slice(0, 4))).size
+  const jahreGesamt = new Set(basis.map((r) => r.payDate.slice(0, 4))).size
   const slots: ZahlungsSlot[] = []
 
   for (const [monat, list] of byMonat) {
-    const jahreInMonat = new Set(list.map((r) => r.payDate.slice(0, 4))).size
+    const recentList = list.filter((r) => r.payDate >= recentAb)
+    if (recentList.length === 0) continue
+
+    const jahreInMonat = new Set(recentList.map((r) => r.payDate.slice(0, 4))).size
     const einzigerMonatImDatensatz = byMonat.size === 1
 
     if (!einzigerMonatImDatensatz && jahreInMonat < 2) continue
     if (jahreGesamt >= 4 && jahreInMonat < Math.max(2, Math.ceil(jahreGesamt * 0.25))) continue
 
-    const payTags = list.map((r) => Number(r.payDate.slice(8, 10)))
-    const exTags = list.map((r) => Number(r.exDate.slice(8, 10)))
+    const payTags = recentList.map((r) => Number(r.payDate.slice(8, 10)))
+    const exTags = recentList.map((r) => Number(r.exDate.slice(8, 10)))
     slots.push({
       monat,
       payTag: medianTag(payTags),
@@ -72,12 +87,14 @@ export function slotsAusHistorie(past: DivvydiaryRohZeile[]): ZahlungsSlot[] {
 
   let sorted = entferneBenachbarteSchwaechereSlots(slots, byMonat).sort((a, b) => a.monat - b.monat)
 
-  const zahlungenProJahr = jahreGesamt > 0 ? past.length / jahreGesamt : past.length
+  const zahlungenProJahr = jahreGesamt > 0 ? basis.length / jahreGesamt : basis.length
   if (zahlungenProJahr <= 1.5 && sorted.length > 1) {
     let bestMonat = sorted[0].monat
     let bestJahre = 0
     for (const [monat, list] of byMonat) {
-      const jahre = new Set(list.map((r) => r.payDate.slice(0, 4))).size
+      const jahre = new Set(
+        list.filter((r) => r.payDate >= recentAb).map((r) => r.payDate.slice(0, 4)),
+      ).size
       if (jahre > bestJahre) {
         bestJahre = jahre
         bestMonat = monat
@@ -264,7 +281,7 @@ export function listeDividendenTermine(
   bis: string,
 ): DividendenPrognoseTreffer[] {
   const past = nurVergangenheit(rows, heute)
-  const slots = slotsAusHistorie(past)
+  const slots = slotsAusHistorie(past, heute)
   const wachstum = berechneZahlungswachstum(past)
   const hatMuster = past.length >= 2 && slots.length > 0
 
