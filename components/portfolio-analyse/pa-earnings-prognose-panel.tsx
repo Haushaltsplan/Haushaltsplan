@@ -5,6 +5,7 @@ import { PortfolioIsinLogo } from '@/components/portfolio-analyse/isin-logo'
 import { PaDividendEstimateBadge } from '@/components/portfolio-analyse/pa-ui'
 import { formatDatumDe } from '@/lib/portfolio-analyse/berechnung'
 import type { AnkuendigtesEarningsEintrag } from '@/lib/portfolio-analyse/ankuendigte-earnings'
+import { berichtszeitLabel } from '@/lib/portfolio-analyse/earnings-berichtszeit'
 import type { EarningsSchaetzungen } from '@/lib/portfolio-analyse/earnings-schaetzungen'
 import { ladeEarningsSchaetzungenFuerEintrag } from '@/lib/portfolio-analyse/earnings-schaetzungen-client'
 import type { IsinMetadata } from '@/lib/portfolio-analyse/isin-lookup-server'
@@ -111,6 +112,7 @@ export function PaEarningsPrognosePanel({
             <p className="truncate text-sm font-semibold text-zinc-100">{eintrag.name}</p>
             <p className="text-[11px] text-zinc-500">
               Termin {formatDatumDe(eintrag.terminDatumIso)}
+              {eintrag.berichtszeitAnzeige ? ` · ${eintrag.berichtszeitAnzeige}` : ''}
               {!eintrag.bestaetigt ? (
                 <span className="ml-1.5 inline-flex align-middle">
                   <PaDividendEstimateBadge title="Geschätzter Termin" />
@@ -134,7 +136,11 @@ export function PaEarningsPrognosePanel({
           <div className="divide-y divide-zinc-800/60">
             {zeile('EPS (Konsens)', eps!.haupt, eps!.spanne)}
             {zeile('Umsatz (Konsens)', umsatz!.haupt, umsatz!.spanne)}
-            {daten.berichtszeit ? zeile('Veröffentlichung', daten.berichtszeit) : null}
+            {eintrag.berichtszeit
+              ? zeile('Veröffentlichung', berichtszeitLabel(eintrag.berichtszeit) ?? '—')
+              : daten.berichtszeit
+                ? zeile('Veröffentlichung', daten.berichtszeit)
+                : null}
             {daten.quartal != null && daten.jahr != null
               ? zeile('Quartal', `Q${daten.quartal} ${daten.jahr}`)
               : null}

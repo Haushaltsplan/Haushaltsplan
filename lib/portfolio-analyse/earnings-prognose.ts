@@ -1,4 +1,3 @@
-import { addDaysIso } from '@/lib/portfolio-analyse/dividenden-datum-hilfen'
 import type { DivvydiaryEarningsRoh } from '@/lib/portfolio-analyse/divvydiary-scraper-server'
 
 export type EarningsTerminTreffer = {
@@ -54,20 +53,6 @@ export function naechsterEarningsTermin(
   }
 
   if (datum > bis) return null
-
-  guard = 0
-  while (datum <= bis && guard < 6) {
-    const next = addMonateIso(datum, schrittMonate)
-    if (next > bis) break
-    if (next >= heute) return { terminDatumIso: next, bestaetigt: false }
-    datum = next
-    guard++
-  }
-
-  const fallback = addDaysIso(heute, 90)
-  if (fallback <= bis) {
-    return { terminDatumIso: fallback, bestaetigt: false }
-  }
 
   return null
 }

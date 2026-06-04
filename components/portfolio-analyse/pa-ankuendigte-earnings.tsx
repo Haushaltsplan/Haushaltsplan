@@ -8,6 +8,7 @@ import type {
   AnkuendigteEarningsErgebnis,
   AnkuendigtesEarningsEintrag,
 } from '@/lib/portfolio-analyse/ankuendigte-earnings'
+import { earningsTerminUnterzeile } from '@/lib/portfolio-analyse/ankuendigte-earnings'
 import type { IsinMetadata } from '@/lib/portfolio-analyse/isin-lookup-server'
 
 function formatStueckTag(stueck: number): string {
@@ -36,7 +37,7 @@ export function PaAnkuendigteEarnings({
   if (laden) {
     return (
       <p className="py-8 text-center text-sm text-zinc-500">
-        Quartalstermine werden von DivvyDiary geladen …
+        Quartalstermine werden geladen …
         <span className="mt-2 block text-[11px] text-zinc-600">
           Erster Abruf: ca. 3–5 Sekunden pro Aktie (nacheinander).
         </span>
@@ -85,10 +86,7 @@ export function PaAnkuendigteEarnings({
                   <PortfolioIsinLogo isin={e.isin} fallbackName={e.name} meta={meta} groesse="sm" />
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-medium text-zinc-100">{e.name}</p>
-                    <p className="text-[11px] text-zinc-500">
-                      {formatDatumDe(e.terminDatumIso)}
-                      {e.bestaetigt ? ' · DivvyDiary' : ' · geschätzt'}
-                    </p>
+                    <p className="text-[11px] text-zinc-500">{earningsTerminUnterzeile(e)}</p>
                   </div>
                   <div className="shrink-0 text-right">
                     <div className="flex items-center justify-end gap-1.5">

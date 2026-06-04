@@ -108,3 +108,19 @@ export async function ladeYahooEarningsSchaetzungenKandidaten(symbole: string[])
   }
   return null
 }
+
+export type YahooEarningsKalenderTermin = {
+  terminDatumIso: string
+  bestaetigt: boolean
+}
+
+export async function ladeYahooEarningsKalenderTerminKandidaten(
+  symbole: string[],
+): Promise<YahooEarningsKalenderTermin | null> {
+  const hit = await ladeYahooEarningsSchaetzungenKandidaten(symbole)
+  if (!hit?.terminDatumIso) return null
+  return {
+    terminDatumIso: hit.terminDatumIso,
+    bestaetigt: !hit.isEarningsDateEstimate,
+  }
+}

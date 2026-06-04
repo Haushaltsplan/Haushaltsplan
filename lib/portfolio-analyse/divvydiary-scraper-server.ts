@@ -117,42 +117,71 @@ export function parseDivvydiaryHtml(html: string): DivvydiaryRohZeile[] {
   return rows.sort((a, b) => a.payDate.localeCompare(b.payDate))
 }
 
-/** Earnings-Termin aus eingebettetem DivvyDiary-JSON (React-Query-State). */
-export function parseDivvydiaryEarningsHtml(html: string, isinNorm: string): DivvydiaryEarningsRoh | null {
-  const isin = isinNorm.trim().toUpperCase()
-  if (!isin || isin.length < 10) return null
+type DivvydiaryEarningsTreffer = DivvydiaryEarningsRoh & { score: number }
 
+/** Alle Earnings-Termine aus eingebettetem DivvyDiary-JSON (React-Query-State). */
+function sammleDivvydiaryEarningsTreffer(html: string, isin: string): DivvydiaryEarningsTreffer[] {
   const needle = `\\"isin\\":\\"${isin}\\"`
-  let best: DivvydiaryEarningsRoh | null = null
-  let bestScore = -1
+  const treffer: DivvydiaryEarningsTreffer[] = []
   let i = 0
 
   while ((i = html.indexOf(needle, i)) >= 0) {
     const win = html.slice(Math.max(0, i - 500), i + 1200)
     const names = [...win.matchAll(/\\"name\\":\\"([^"]+)\\"/g)]
     const nameM = names.at(-1)
-    const em = win.match(
-      /\\"earningsDate\\":\\"(\d{4}-\d{2}-\d{2})\\",\\"earningsDateEstimated\\":(true|false)/,
-    )
     const freqM = win.match(/\\"dividendFrequency\\":\\"([^"]+)\\"/)
-    if (em && nameM) {
+    const dates = [
+      ...win.matchAll(
+        /\\"earningsDate\\":\\"(\d{4}-\d{2}-\d{2})\\",\\"earningsDateEstimated\\":(true|false)/g,
+      ),
+    ]
+    if (nameM && dates.length > 0) {
       let score = 0
       if (win.includes('\\"dividends\\":[')) score += 100
       if (win.includes('\\"securityType\\":\\"EQUITY\\"')) score += 50
-      if (score > bestScore) {
-        bestScore = score
-        best = {
+      for (const em of dates) {
+        treffer.push({
           securityName: nameM[1],
           earningsDate: em[1],
           earningsDateEstimated: em[2] === 'true',
           dividendFrequency: freqM?.[1] ?? null,
-        }
+          score,
+        })
       }
     }
     i += needle.length
   }
 
-  return best
+  return treffer
+}
+
+/** Earnings-Termin aus DivvyDiary — bevorzugt nächsten zukünftigen, bestätigten Termin. */
+export function parseDivvydiaryEarningsHtml(html: string, isinNorm: string): DivvydiaryEarningsRoh | null {
+  const isin = isinNorm.trim().toUpperCase()
+  if (!isin || isin.length < 10) return null
+
+  const treffer = sammleDivvydiaryEarningsTreffer(html, isin)
+  if (treffer.length === 0) return null
+
+  const heute = new Date()
+  const heuteIso = `${heute.getUTCFullYear()}-${String(heute.getUTCMonth() + 1).padStart(2, '0')}-${String(heute.getUTCDate()).padStart(2, '0')}`
+
+  const sortiert = [...treffer].sort((a, b) => {
+    if (b.score !== a.score) return b.score - a.score
+    return a.earningsDate.localeCompare(b.earningsDate)
+  })
+
+  const zukunft = sortiert.filter((t) => t.earningsDate >= heuteIso)
+  const pool = zukunft.length > 0 ? zukunft : sortiert
+  const bestaetigt = pool.filter((t) => !t.earningsDateEstimated)
+  const pick = (bestaetigt.length > 0 ? bestaetigt : pool)[0]
+
+  return {
+    securityName: pick.securityName,
+    earningsDate: pick.earningsDate,
+    earningsDateEstimated: pick.earningsDateEstimated,
+    dividendFrequency: pick.dividendFrequency,
+  }
 }
 
 function seitePasstZuIsin(html: string, isinNorm: string, rows: DivvydiaryRohZeile[]): boolean {

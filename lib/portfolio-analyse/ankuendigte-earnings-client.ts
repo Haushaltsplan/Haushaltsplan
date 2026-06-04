@@ -41,7 +41,7 @@ export async function ladeAnkuendigteEarningsDepot(
       hinweise: ['Keine offenen Positionen im Depot.'],
       abgefragtePositionen: 0,
       treffer: 0,
-      statistik: { divvydiary: 0, prognose: 0, ohneTreffer: 0 },
+      statistik: { yahoo: 0, finnhub: 0, divvydiary: 0, prognose: 0, ohneTreffer: 0 },
     }
   }
 
@@ -64,6 +64,6 @@ export async function ladeAnkuendigteEarningsDepot(
     hinweise: j.hinweise ?? [],
     abgefragtePositionen: j.abgefragtePositionen ?? 0,
     treffer: j.treffer ?? 0,
-    statistik: j.statistik ?? { divvydiary: 0, prognose: 0, ohneTreffer: 0 },
+    statistik: j.statistik ?? { yahoo: 0, finnhub: 0, divvydiary: 0, prognose: 0, ohneTreffer: 0 },
   }
 }

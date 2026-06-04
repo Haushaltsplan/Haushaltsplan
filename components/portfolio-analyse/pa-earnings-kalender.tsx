@@ -6,6 +6,7 @@ import { PortfolioIsinLogo } from '@/components/portfolio-analyse/isin-logo'
 import { PaDividendEstimateBadge } from '@/components/portfolio-analyse/pa-ui'
 import { formatDatumDe } from '@/lib/portfolio-analyse/berechnung'
 import type { AnkuendigteEarningsErgebnis, AnkuendigtesEarningsEintrag } from '@/lib/portfolio-analyse/ankuendigte-earnings'
+import { earningsTerminUnterzeile } from '@/lib/portfolio-analyse/ankuendigte-earnings'
 import { heuteIsoUtc } from '@/lib/portfolio-analyse/dividenden-datum-hilfen'
 import {
   KALENDER_WOCHENTAGE,
@@ -87,7 +88,7 @@ function ListenAnsicht({
                     <PortfolioIsinLogo isin={e.isin} fallbackName={e.name} meta={meta} groesse="sm" />
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-sm font-medium text-zinc-100">{e.name}</p>
-                      <p className="text-[11px] text-zinc-500">{formatDatumDe(e.terminDatumIso)}</p>
+                      <p className="text-[11px] text-zinc-500">{earningsTerminUnterzeile(e)}</p>
                     </div>
                     {!e.bestaetigt ? <PaDividendEstimateBadge title="Geschätzt" /> : null}
                   </button>

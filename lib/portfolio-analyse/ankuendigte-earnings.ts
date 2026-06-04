@@ -1,9 +1,11 @@
-import { heuteIsoUtc } from '@/lib/portfolio-analyse/dividenden-datum-hilfen'
-import { ladeDivvydiaryAnkuendigtesEarnings } from '@/lib/portfolio-analyse/divvydiary-ankuendigte-earnings-server'
+import { berichtszeitKurz, berichtszeitLabel } from '@/lib/portfolio-analyse/earnings-berichtszeit'
+import { ladeAnkuendigtesEarningsTermin } from '@/lib/portfolio-analyse/divvydiary-ankuendigte-earnings-server'
+import type { EarningsTerminQuelle } from '@/lib/portfolio-analyse/earnings-termine'
 import { isinAusYahooSymbol, isinKenntnis } from '@/lib/portfolio-analyse/isin-kenntnisse'
 import type { DepotPositionAnfrage } from '@/lib/portfolio-analyse/ankuendigte-dividenden'
+import type { Berichtszeit } from '@/lib/portfolio-analyse/earnings-berichtszeit'
 
-export type AnkuendigtesEarningsQuelle = 'divvydiary' | 'divvydiary-prognose'
+export type AnkuendigtesEarningsQuelle = EarningsTerminQuelle
 
 export type AnkuendigtesEarningsEintrag = {
   isin: string | null
@@ -13,6 +15,8 @@ export type AnkuendigtesEarningsEintrag = {
   symbol: string
   quelle: AnkuendigtesEarningsQuelle
   bestaetigt: boolean
+  berichtszeit: Berichtszeit | null
+  berichtszeitAnzeige: string | null
 }
 
 export type AnkuendigterEarningsMonat = {
@@ -29,6 +33,8 @@ export type AnkuendigteEarningsErgebnis = {
   abgefragtePositionen: number
   treffer: number
   statistik: {
+    yahoo: number
+    finnhub: number
     divvydiary: number
     prognose: number
     ohneTreffer: number
@@ -49,6 +55,13 @@ const MONAT_LABEL = [
   'NOVEMBER',
   'DEZEMBER',
 ] as const
+
+const QUELLE_LABEL: Record<AnkuendigtesEarningsQuelle, string> = {
+  yahoo: 'Yahoo Finance',
+  finnhub: 'Finnhub',
+  divvydiary: 'DivvyDiary',
+  'divvydiary-prognose': 'geschätzt',
+}
 
 function monatLabel(monatKey: string): string {
   const m = Number(monatKey.slice(5, 7))
@@ -112,25 +125,44 @@ export function gruppiereEarningsNachMonat(eintraege: AnkuendigtesEarningsEintra
     })
 }
 
+export function earningsTerminUnterzeile(e: AnkuendigtesEarningsEintrag): string {
+  const teile = [formatDatumDeInline(e.terminDatumIso)]
+  if (e.berichtszeitAnzeige) teile.push(e.berichtszeitAnzeige)
+  teile.push(e.bestaetigt ? QUELLE_LABEL[e.quelle] : 'geschätzt')
+  return teile.join(' · ')
+}
+
+function formatDatumDeInline(iso: string): string {
+  const [y, m, d] = iso.split('-')
+  return `${d}.${m}.${y}`
+}
+
 export async function berechneAnkuendigteEarningsDepot(
   positionen: DepotPositionAnfrage[],
 ): Promise<AnkuendigteEarningsErgebnis> {
   const hinweise: string[] = []
   const aktiv = positionen.filter((p) => p.stueck > 0 && positionHatIsin(p))
-  const stat = { divvydiary: 0, prognose: 0, ohneTreffer: 0 }
+  const stat = { yahoo: 0, finnhub: 0, divvydiary: 0, prognose: 0, ohneTreffer: 0 }
 
   const eintraege = (
     await mapPool(aktiv, 1, async (pos) => {
       const isin = isinFuerPosition(pos)
       const k = isinKenntnis(isin)
-      const hit = await ladeDivvydiaryAnkuendigtesEarnings(isin, k?.name ?? pos.name)
+      const hit = await ladeAnkuendigtesEarningsTermin(
+        isin,
+        k?.name ?? pos.name,
+        pos.symbolYahoo,
+        pos.symbolCandidates,
+      )
       if (!hit) {
         stat.ohneTreffer++
         return null
       }
-      const quelle: AnkuendigtesEarningsQuelle = hit.bestaetigt ? 'divvydiary' : 'divvydiary-prognose'
-      if (quelle === 'divvydiary-prognose') stat.prognose++
-      else stat.divvydiary++
+
+      if (hit.quelle === 'yahoo') stat.yahoo++
+      else if (hit.quelle === 'finnhub') stat.finnhub++
+      else if (hit.quelle === 'divvydiary') stat.divvydiary++
+      else stat.prognose++
 
       const eintrag: AnkuendigtesEarningsEintrag = {
         isin: pos.isin ?? isin,
@@ -138,8 +170,10 @@ export async function berechneAnkuendigteEarningsDepot(
         stueck: pos.stueck,
         terminDatumIso: hit.terminDatumIso,
         symbol: symbolAnzeige(pos),
-        quelle,
+        quelle: hit.quelle,
         bestaetigt: hit.bestaetigt,
+        berichtszeit: hit.berichtszeit,
+        berichtszeitAnzeige: berichtszeitKurz(hit.berichtszeit) ?? berichtszeitLabel(hit.berichtszeit),
       }
       return eintrag
     })
@@ -148,12 +182,14 @@ export async function berechneAnkuendigteEarningsDepot(
     .sort((a, b) => a.terminDatumIso.localeCompare(b.terminDatumIso))
 
   if (aktiv.length === 0) {
-    hinweise.push('Keine offenen Positionen mit ISIN — Earnings nur über DivvyDiary (ISIN nötig).')
+    hinweise.push('Keine offenen Positionen mit ISIN — Quartalstermine brauchen eine ISIN.')
   } else if (eintraege.length === 0) {
     hinweise.push('Keine Quartalstermine im Zeitraum heute bis +1 Jahr gefunden.')
   } else {
     const teile: string[] = []
-    if (stat.divvydiary > 0) teile.push(`${stat.divvydiary} angekündigt`)
+    if (stat.yahoo + stat.finnhub + stat.divvydiary > 0) {
+      teile.push(`${stat.yahoo + stat.finnhub + stat.divvydiary} bestätigt`)
+    }
     if (stat.prognose > 0) teile.push(`${stat.prognose} geschätzt`)
     hinweise.push(
       `${eintraege.length} Termin(e) für ${eintraege.length} von ${aktiv.length} Position(en): ${teile.join(', ')}.`,
@@ -161,7 +197,7 @@ export async function berechneAnkuendigteEarningsDepot(
   }
 
   hinweise.push(
-    'Daten von DivvyDiary (Scrape). Geschätzte Termine aus letztem Bekannt + Melde-Rhythmus. Erster Abruf: grob 3–5 s pro Aktie (seriell).',
+    'Termine: Finnhub- und Yahoo-Kalender (bestätigt), DivvyDiary (Scrape). Berichtszeit (vor/nach Börse) von Finnhub. Geschätzte Termine nur wenn keine Quelle einen künftigen Termin liefert.',
   )
 
   return {
