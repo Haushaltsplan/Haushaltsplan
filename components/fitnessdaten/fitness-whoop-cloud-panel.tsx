@@ -2,6 +2,7 @@
 
 import { ladeWhoopCloudMeta, syncWhoopCloudVomServer } from '@/lib/fitnessdaten/whoop-cloud-merge'
 import type { WhoopCloudSyncResult } from '@/lib/fitnessdaten/whoop-cloud-types'
+import { supabase } from '@/lib/supabase'
 import { useCallback, useEffect, useState } from 'react'
 import toast from 'react-hot-toast'
 
@@ -14,22 +15,45 @@ type Status = { configured: boolean; connected: boolean }
 
 export function FitnessWhoopCloudPanel({ onSyncComplete, embedded = false }: Props) {
   const [status, setStatus] = useState<Status>({ configured: false, connected: false })
+  const [statusLoading, setStatusLoading] = useState(true)
+  const [statusError, setStatusError] = useState<string | null>(null)
   const [meta, setMeta] = useState(() => ladeWhoopCloudMeta())
   const [busy, setBusy] = useState(false)
   const [ergebnis, setErgebnis] = useState<WhoopCloudSyncResult | null>(null)
 
   const ladeStatus = useCallback(async () => {
+    setStatusLoading(true)
+    setStatusError(null)
     try {
-      const res = await fetch('/api/fitnessdaten/whoop/status', { credentials: 'include' })
-      if (res.ok) setStatus((await res.json()) as Status)
+      const { data } = await supabase.auth.getSession()
+      const token = data.session?.access_token
+      if (!token) {
+        setStatusError('Login-Token fehlt — bitte Seite neu laden.')
+        return
+      }
+      const res = await fetch('/api/fitnessdaten/whoop/status', {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      if (!res.ok) {
+        const body = (await res.json().catch(() => null)) as { error?: string } | null
+        setStatusError(body?.error ?? `Server-Antwort ${res.status}`)
+        return
+      }
+      setStatus((await res.json()) as Status)
     } catch {
-      setStatus({ configured: false, connected: false })
+      setStatusError('WHOOP-Status konnte nicht geladen werden.')
+    } finally {
+      setStatusLoading(false)
     }
   }, [])
 
   useEffect(() => {
     void ladeStatus()
     setMeta(ladeWhoopCloudMeta())
+    const { data: sub } = supabase.auth.onAuthStateChange(() => {
+      void ladeStatus()
+    })
+    return () => sub.subscription.unsubscribe()
   }, [ladeStatus])
 
   useEffect(() => {
@@ -88,10 +112,19 @@ export function FitnessWhoopCloudPanel({ onSyncComplete, embedded = false }: Pro
         nicht. ECG/AFib ebenfalls nur in der App.
       </p>
 
-      {!status.configured ? (
+      {!statusLoading && statusError ? (
+        <p className="mt-3 rounded-xl border border-red-900/40 bg-red-950/20 p-3 text-xs text-red-100/90">
+          {statusError}
+        </p>
+      ) : null}
+
+      {!statusLoading && !statusError && !status.configured ? (
         <p className="mt-3 rounded-xl border border-amber-900/40 bg-amber-950/20 p-3 text-xs text-amber-100/90">
-          Server: <code className="text-amber-200">WHOOP_CLIENT_ID</code> und{' '}
-          <code className="text-amber-200">WHOOP_CLIENT_SECRET</code> in .env.local (Developer Dashboard).
+          Server sieht keine WHOOP-Keys. In <code className="text-amber-200">.env.local</code> (lokal) bzw.
+          Vercel Environment Variables (online):{' '}
+          <code className="text-amber-200">WHOOP_CLIENT_ID</code> und{' '}
+          <code className="text-amber-200">WHOOP_CLIENT_SECRET</code> — danach Dev-Server neu starten bzw.
+          redeployen.
         </p>
       ) : null}
 
@@ -117,7 +150,7 @@ export function FitnessWhoopCloudPanel({ onSyncComplete, embedded = false }: Pro
         ) : (
           <button
             type="button"
-            disabled={!status.configured}
+            disabled={!status.configured || statusLoading}
             onClick={verbinden}
             className="w-full rounded-xl border border-violet-500/40 bg-violet-950/40 py-3 text-sm font-semibold text-violet-100 transition hover:bg-violet-950/60 disabled:opacity-40"
           >
