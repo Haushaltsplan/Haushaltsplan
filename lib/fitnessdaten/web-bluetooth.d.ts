@@ -19,9 +19,18 @@ interface BluetoothRemoteGATTService {
   getCharacteristics(): Promise<BluetoothRemoteGATTCharacteristic[]>
 }
 
+interface BluetoothCharacteristicProperties {
+  read: boolean
+  write: boolean
+  writeWithoutResponse: boolean
+  notify: boolean
+  indicate: boolean
+}
+
 interface BluetoothRemoteGATTCharacteristic extends EventTarget {
   readonly uuid: string
   readonly value?: DataView | null
+  readonly properties: BluetoothCharacteristicProperties
   readValue(): Promise<DataView>
   writeValue(data: BufferSource): Promise<void>
   startNotifications(): Promise<BluetoothRemoteGATTCharacteristic>

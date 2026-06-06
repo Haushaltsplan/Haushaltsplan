@@ -115,16 +115,23 @@ export function FitnessWhoopBlePanel({ onSnapshot }: Props) {
         </p>
       ) : (
         <div className="mt-3 space-y-2 text-xs leading-relaxed text-zinc-500">
+          <ol className="list-decimal space-y-2 rounded-lg border border-orange-800/40 bg-orange-950/20 px-4 py-3 text-orange-100/90 marker:text-orange-400">
+            <li>
+              <strong>WHOOP-App öffnen</strong> → Gerät-Symbol oben rechts →{' '}
+              <strong>„HR Broadcast“ / „Puls senden“ einschalten</strong> (pro Session nötig).
+            </li>
+            <li>Band fest am Handgelenk (grüner Sensor auf Haut).</li>
+            <li>
+              Hier in Omnia <strong>„WHOOP verbinden“</strong> — 10–30 s warten. WHOOP-App danach schließen
+              (Broadcast bleibt meist aktiv).
+            </li>
+          </ol>
           {!mobile ? (
             <p className="rounded-lg border border-sky-800/40 bg-sky-950/25 px-3 py-2 text-sky-100/90">
-              <strong>Tipp für WHOOP 5.0:</strong> Am PC verbindet sich Omnia oft, liefert aber keinen Puls. Öffne
-              dieselbe Seite in <strong>Chrome auf deinem Android-Handy</strong> (WHOOP in Reichweite) — das ist der
+              Am PC verbindet sich Omnia oft, liefert aber keinen Puls. Chrome auf dem Android-Handy ist der
               zuverlässigere Weg.
             </p>
           ) : null}
-          <p>
-            Band am Handgelenk, geladen, Bluetooth an. Offizielle WHOOP-App während des Tests schließen. 10–30 s warten.
-          </p>
         </div>
       )}
 
@@ -150,8 +157,11 @@ export function FitnessWhoopBlePanel({ onSnapshot }: Props) {
           </p>
           <ul className="mt-2 space-y-1 font-mono">
             <li>BLE-Signale (HR): {debug.notifyCount}</li>
+            <li>Notify aktiv: {debug.notifyStarted ? 'ja' : 'nein'}</li>
             {debug.batteryPercent != null ? <li>Akku (GATT-Test): {debug.batteryPercent} %</li> : null}
             {debug.hrCharUuid ? <li>HR-Char: {debug.hrCharUuid.slice(0, 13)}…</li> : null}
+            {debug.hrCharProps ? <li>Eigenschaften: {debug.hrCharProps}</li> : null}
+            {debug.readErrors > 0 ? <li>Read-Fehler: {debug.readErrors}</li> : null}
             {debug.lastRawHex ? <li>Letzte Bytes: {debug.lastRawHex}</li> : null}
             {debug.enableLog.map((line) => (
               <li key={line}>{line}</li>
@@ -160,10 +170,10 @@ export function FitnessWhoopBlePanel({ onSnapshot }: Props) {
               <li className="break-all">Services: {debug.services.map((u) => u.slice(0, 8)).join(', ')}</li>
             ) : null}
           </ul>
-          {phase === 'waiting_hr' && debug.notifyCount === 0 && !mobile ? (
-            <p className="mt-2 text-sky-200/85">
-              Am PC ist „verbunden“ oft nur die GATT-Verbindung — der Puls kommt zuverlässiger über Chrome auf dem
-              Android-Handy.
+          {phase === 'waiting_hr' && debug.notifyCount === 0 ? (
+            <p className="mt-2 text-amber-200/90">
+              Wenn „BLE-Signale“ bei 0 bleibt: zuerst <strong>HR Broadcast in der WHOOP-App</strong> einschalten,
+              dann hier neu verbinden.
             </p>
           ) : null}
         </div>

@@ -4,6 +4,10 @@ import {
   CMD_TOGGLE_BROADCAST_HR,
   CMD_TOGGLE_REALTIME_HR,
 } from '@/lib/fitnessdaten/whoop-gen4-packet'
+import {
+  buildGen5WhoopPacket,
+  GEN5_CMD_TOGGLE_BROADCAST_HR,
+} from '@/lib/fitnessdaten/whoop-gen5-packet'
 import type { FitnessLiveSample, FitnessSnapshot } from '@/lib/fitnessdaten/types'
 
 const HR_SERVICE_ALIASES = [
@@ -18,19 +22,15 @@ const HR_CHAR_ALIASES = [
   0x2a37,
 ] as const
 
-const WHOOP_CMD_SERVICES = [
-  'fd4b0001-cce1-4033-93ce-002d5875f58a',
-  '61080001-8d6d-82b8-614a-1c8cb0f8dcc6',
-] as const
-
-const WHOOP_CMD_CHARS = [
-  'fd4b0002-cce1-4033-93ce-002d5875f58a',
-  '61080002-8d6d-82b8-614a-1c8cb0f8dcc6',
-] as const
+const WHOOP_GEN5_SERVICE = 'fd4b0001-cce1-4033-93ce-002d5875f58a'
+const WHOOP_GEN5_CMD_CHAR = 'fd4b0002-cce1-4033-93ce-002d5875f58a'
+const WHOOP_GEN4_SERVICE = '61080001-8d6d-82b8-614a-1c8cb0f8dcc6'
+const WHOOP_GEN4_CMD_CHAR = '61080002-8d6d-82b8-614a-1c8cb0f8dcc6'
 
 const OPTIONAL_SERVICES = [
   ...HR_SERVICE_ALIASES,
-  ...WHOOP_CMD_SERVICES,
+  WHOOP_GEN5_SERVICE,
+  WHOOP_GEN4_SERVICE,
   'battery_service',
   'device_information',
 ] as const
@@ -44,7 +44,11 @@ export type WhoopWebBleDebug = {
   enableLog: string[]
   batteryPercent: number | null
   hrCharUuid: string | null
+  hrCharProps: string | null
+  notifyStarted: boolean
+  readErrors: number
   stuckSinceMs: number | null
+  istGen5: boolean
 }
 
 export function webBluetoothVerfuegbar(): boolean {
@@ -72,12 +76,28 @@ function uuidKurz(uuid: string): string {
   return u.slice(4, 8)
 }
 
+function kopiereDataView(data: DataView): DataView {
+  const copy = new Uint8Array(data.byteLength)
+  for (let i = 0; i < data.byteLength; i++) copy[i] = data.getUint8(i)
+  return new DataView(copy.buffer)
+}
+
 function bytesToHex(data: DataView): string {
   const p: string[] = []
   for (let i = 0; i < Math.min(data.byteLength, 24); i++) {
     p.push(data.getUint8(i).toString(16).padStart(2, '0'))
   }
   return p.join(' ')
+}
+
+function charProps(char: BluetoothRemoteGATTCharacteristic): string {
+  const p: string[] = []
+  if (char.properties.read) p.push('read')
+  if (char.properties.write) p.push('write')
+  if (char.properties.writeWithoutResponse) p.push('writeWoResp')
+  if (char.properties.notify) p.push('notify')
+  if (char.properties.indicate) p.push('indicate')
+  return p.join(',') || '?'
 }
 
 async function leseBatteryProzent(gatt: BluetoothRemoteGATTServer): Promise<number | null> {
@@ -99,6 +119,10 @@ async function listeServices(gatt: BluetoothRemoteGATTServer): Promise<string[]>
   } catch {
     return []
   }
+}
+
+function istGen5Whoop(services: string[]): boolean {
+  return services.some((u) => u.toLowerCase().includes('fd4b0001'))
 }
 
 async function findeHeartRateCharacteristic(
@@ -124,43 +148,53 @@ async function findeHeartRateCharacteristic(
       continue
     }
     for (const c of chars) {
-      const kurz = uuidKurz(c.uuid)
-      if (kurz === '2a37') return c
+      if (uuidKurz(c.uuid) === '2a37') return c
     }
   }
 
   throw new Error('Heart-Rate-Service (0x180D) nicht am WHOOP gefunden.')
 }
 
-async function versucheWhoopStreamingAktivieren(
+async function schreibeCmd(
   gatt: BluetoothRemoteGATTServer,
+  serviceUuid: string,
+  charUuid: string,
+  packet: Uint8Array,
+  label: string,
+): Promise<string> {
+  try {
+    const svc = await gatt.getPrimaryService(serviceUuid)
+    const chr = await svc.getCharacteristic(charUuid)
+    await chr.writeValue(new Uint8Array(packet))
+    return `${label}: OK (${uuidKurz(serviceUuid)})`
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e)
+    if (msg.includes('Authentication') || msg.includes('Not permitted') || msg.includes('Insufficient')) {
+      return `${label}: Auth/Bond nötig (${uuidKurz(serviceUuid)})`
+    }
+    return `${label}: ${msg.slice(0, 60)}`
+  }
+}
+
+/** Versucht Broadcast-HR per Kommando (0x0e) — wie Schalter in der WHOOP-App. */
+async function versucheBroadcastHrAktivieren(
+  gatt: BluetoothRemoteGATTServer,
+  gen5: boolean,
 ): Promise<string[]> {
   const log: string[] = []
   let seq = 0
 
-  const schreibe = async (cmd: number, payload: number[], label: string) => {
-    const packet = buildGen4WhoopPacket(seq++, cmd, payload)
-    for (const svcUuid of WHOOP_CMD_SERVICES) {
-      for (const chrUuid of WHOOP_CMD_CHARS) {
-        try {
-          const svc = await gatt.getPrimaryService(svcUuid)
-          const chr = await svc.getCharacteristic(chrUuid)
-          await chr.writeValue(new Uint8Array(packet))
-          log.push(`${label}: OK (${uuidKurz(svcUuid)})`)
-          return
-        } catch (e) {
-          const msg = e instanceof Error ? e.message : String(e)
-          if (msg.includes('Authentication') || msg.includes('Not permitted')) {
-            log.push(`${label}: Auth nötig (${uuidKurz(svcUuid)})`)
-          }
-        }
-      }
-    }
-    log.push(`${label}: nicht geschrieben`)
+  if (gen5) {
+    const gen5Pkt = buildGen5WhoopPacket(seq++, GEN5_CMD_TOGGLE_BROADCAST_HR, 0x01, [0x01])
+    log.push(await schreibeCmd(gatt, WHOOP_GEN5_SERVICE, WHOOP_GEN5_CMD_CHAR, gen5Pkt, 'Gen5 Broadcast-HR'))
   }
 
-  await schreibe(CMD_TOGGLE_REALTIME_HR, [0x01], 'Realtime-HR')
-  await schreibe(CMD_TOGGLE_BROADCAST_HR, [0x01], 'Broadcast-HR')
+  const gen4Pkt = buildGen4WhoopPacket(seq, CMD_TOGGLE_BROADCAST_HR, [0x01])
+  log.push(await schreibeCmd(gatt, WHOOP_GEN5_SERVICE, WHOOP_GEN5_CMD_CHAR, gen4Pkt, 'Gen4-Frame Broadcast (fd4b)'))
+  log.push(await schreibeCmd(gatt, WHOOP_GEN4_SERVICE, WHOOP_GEN4_CMD_CHAR, gen4Pkt, 'Gen4-Frame Broadcast (6108)'))
+
+  const realtimePkt = buildGen4WhoopPacket(seq + 1, CMD_TOGGLE_REALTIME_HR, [0x01])
+  log.push(await schreibeCmd(gatt, WHOOP_GEN5_SERVICE, WHOOP_GEN5_CMD_CHAR, realtimePkt, 'Gen4 Realtime-HR (fd4b)'))
 
   return log
 }
@@ -198,11 +232,37 @@ export async function verbindeWhoopStandardHr(
     enableLog: [],
     batteryPercent: null,
     hrCharUuid: null,
+    hrCharProps: null,
+    notifyStarted: false,
+    readErrors: 0,
     stuckSinceMs: null,
+    istGen5: false,
   }
 
+  let letzterPhase: WhoopWebBlePhase = 'idle'
+  let letzterDeviceName: string | null = null
+  let letzterSnapshot: FitnessSnapshot | null = null
+  let letzterFehler: string | null = null
+  let letzterHint: string | null = null
+
   const emit = (partial: Omit<WhoopWebBleSession, 'disconnect' | 'debug'>) => {
+    letzterPhase = partial.phase
+    letzterDeviceName = partial.deviceName
+    letzterSnapshot = partial.snapshot
+    letzterFehler = partial.error
+    letzterHint = partial.statusHint
     onUpdate({ ...partial, debug: { ...debug } })
+  }
+
+  const emitDebug = () => {
+    onUpdate({
+      phase: letzterPhase,
+      deviceName: letzterDeviceName,
+      snapshot: letzterSnapshot,
+      error: letzterFehler,
+      statusHint: letzterHint,
+      debug: { ...debug },
+    })
   }
 
   if (!webBluetoothVerfuegbar()) {
@@ -236,16 +296,16 @@ export async function verbindeWhoopStandardHr(
   const maxRr = 120
   let letzteHrZeit = 0
   let pollTimer: ReturnType<typeof setInterval> | null = null
+  let debugTimer: ReturnType<typeof setInterval> | null = null
 
   const gatt = await device.gatt!.connect()
   debug.services = await listeServices(gatt)
+  debug.istGen5 = istGen5Whoop(debug.services)
   debug.batteryPercent = await leseBatteryProzent(gatt)
-
-  debug.enableLog = await versucheWhoopStreamingAktivieren(gatt)
-  await new Promise((r) => setTimeout(r, 400))
 
   const char = await findeHeartRateCharacteristic(gatt)
   debug.hrCharUuid = char.uuid
+  debug.hrCharProps = charProps(char)
 
   const verbindungsStart = Date.now()
   debug.stuckSinceMs = verbindungsStart
@@ -254,6 +314,7 @@ export async function verbindeWhoopStandardHr(
     if (!data || data.byteLength === 0) return
     debug.notifyCount++
     debug.lastRawHex = bytesToHex(data)
+    emitDebug()
     const parsed = parseStandardHeartRateMeasurement(data)
     if (!parsed) return
     if (parsed.heartRateBpm <= 0) {
@@ -263,7 +324,7 @@ export async function verbindeWhoopStandardHr(
         snapshot: null,
         error: null,
         statusHint:
-          'Signal da, aber Puls = 0 — Band fest am Handgelenk halten (optischer Sensor braucht Kontakt).',
+          'BLE-Signal empfangen, Puls = 0 — Band fest am Handgelenk (grüner Sensor braucht Hautkontakt).',
       })
       return
     }
@@ -285,53 +346,63 @@ export async function verbindeWhoopStandardHr(
 
   const onHr = (event: Event) => {
     const target = event.target as BluetoothRemoteGATTCharacteristic
-    verarbeiteHrBytes(target.value)
+    const value = target.value
+    if (!value) return
+    verarbeiteHrBytes(kopiereDataView(value))
   }
 
   char.addEventListener('characteristicvaluechanged', onHr)
   await char.startNotifications()
+  debug.notifyStarted = true
+  emitDebug()
 
   try {
-    verarbeiteHrBytes(await char.readValue())
+    verarbeiteHrBytes(kopiereDataView(await char.readValue()))
   } catch {
     /* notify-only ok */
   }
 
+  debug.enableLog = await versucheBroadcastHrAktivieren(gatt, debug.istGen5)
+  emitDebug()
+
   pollTimer = setInterval(() => {
     const alterMs = Date.now() - verbindungsStart
-    if (debug.notifyCount === 0 && alterMs > 18_000) {
+    if (debug.notifyCount === 0 && alterMs > 15_000) {
       emit({
         phase: 'waiting_hr',
         deviceName: device.name ?? 'WHOOP',
         snapshot: null,
         error: null,
-        statusHint: diagnoseKeinPuls(device.name ?? 'WHOOP', debug.batteryPercent),
+        statusHint: diagnoseKeinPuls(debug),
       })
     }
-    if (Date.now() - letzteHrZeit < 2500) return
+    if (Date.now() - letzteHrZeit < 2000 && letzteHrZeit > 0) return
     void char
       .readValue()
-      .then(verarbeiteHrBytes)
+      .then((v) => verarbeiteHrBytes(kopiereDataView(v)))
       .catch(() => {
-        /* notify-only ok */
+        debug.readErrors++
+        emitDebug()
       })
-  }, 1500)
+  }, 1200)
 
-  const hint = !istMobileBrowser()
-    ? 'Am PC verbunden — WHOOP streamt oft zuverlässiger über Chrome auf dem Android-Handy (gleiche Omnia-URL).'
-    : 'Verbunden — warte auf ersten Pulswert (10–30 s am Handgelenk).'
+  debugTimer = setInterval(() => {
+    if (letzterPhase === 'waiting_hr' || letzterPhase === 'live') emitDebug()
+  }, 2000)
 
   emit({
     phase: 'waiting_hr',
     deviceName: device.name ?? 'WHOOP',
     snapshot: null,
     error: null,
-    statusHint: hint,
+    statusHint: initialHint(),
   })
 
   const disconnect = () => {
     if (pollTimer) clearInterval(pollTimer)
+    if (debugTimer) clearInterval(debugTimer)
     pollTimer = null
+    debugTimer = null
     try {
       char.removeEventListener('characteristicvaluechanged', onHr)
       void char.stopNotifications()
@@ -348,6 +419,7 @@ export async function verbindeWhoopStandardHr(
 
   device.addEventListener('gattserverdisconnected', () => {
     if (pollTimer) clearInterval(pollTimer)
+    if (debugTimer) clearInterval(debugTimer)
     emit({
       phase: 'idle',
       deviceName: device.name ?? null,
@@ -368,19 +440,33 @@ export async function verbindeWhoopStandardHr(
   }
 }
 
-function diagnoseKeinPuls(deviceName: string, batteryPercent: number | null): string {
-  const batt =
-    batteryPercent != null
-      ? ` BLE-Verbindung OK (Akku ${batteryPercent} %), aber kein Puls.`
-      : ' Verbunden, aber kein Pulssignal.'
-  if (!istMobileBrowser()) {
-    return (
-      `${deviceName}:${batt} Am Windows-PC liefert WHOOP 5.0 den Standard-Puls (0x180D) oft nicht — das ist eine bekannte Web-Bluetooth-Grenze. ` +
-      `Öffne dieselbe Omnia-Seite in Chrome auf deinem Android-Handy, Band am Handgelenk, WHOOP-App geschlossen.`
-    )
-  }
+function initialHint(): string {
   return (
-    `${deviceName}:${batt} Band fest am Handgelenk (grüner Sensor auf Haut), WHOOP-App beenden, 30 s warten. ` +
-    `Wenn „BLE-Signale“ in den Technischen Details bei 0 bleibt: Trennen und neu verbinden.`
+    'Schritt 1: In der WHOOP-App „HR Broadcast“ / „Puls senden“ einschalten (Gerät oben rechts). ' +
+    'Schritt 2: Band am Handgelenk — dann hier warten (10–30 s).'
   )
+}
+
+function diagnoseKeinPuls(debug: WhoopWebBleDebug): string {
+  const batt =
+    debug.batteryPercent != null
+      ? ` GATT OK (Akku ${debug.batteryPercent} %),`
+      : ''
+  const authNoetig = debug.enableLog.some((l) => l.includes('Auth/Bond'))
+
+  if (debug.notifyCount === 0) {
+    let msg =
+      `Kein Pulssignal.${batt} HR-Notify: ${debug.notifyStarted ? 'an' : 'aus'}. ` +
+      `Wahrscheinlich fehlt „HR Broadcast“ in der WHOOP-App — dort einschalten, Band am Handgelenk, dann Trennen und neu verbinden.`
+    if (authNoetig) {
+      msg +=
+        ' Broadcast per Kommando scheiterte (Bond nötig) — deshalb unbedingt in der WHOOP-App aktivieren, nicht nur in Omnia verbinden.'
+    }
+    if (!istMobileBrowser()) {
+      msg += ' Am PC streamt WHOOP oft gar nicht; Android-Chrome ist zuverlässiger.'
+    }
+    return msg
+  }
+
+  return 'Signal empfangen, aber kein gültiger Puls — Band am Handgelenk halten.'
 }
