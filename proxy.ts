@@ -25,7 +25,20 @@ function jsonError(message: string, status: number) {
   return NextResponse.json({ error: message }, { status })
 }
 
+/** WHOOP OAuth & Konfig-Check — Browser-Redirects ohne Bearer-Token. */
+function whoopOeffentlicheApi(pathname: string): boolean {
+  return (
+    pathname === '/api/fitnessdaten/whoop/auth' ||
+    pathname === '/api/fitnessdaten/whoop/callback' ||
+    pathname === '/api/fitnessdaten/whoop/ping'
+  )
+}
+
 export async function proxy(req: NextRequest) {
+  if (whoopOeffentlicheApi(req.nextUrl.pathname)) {
+    return NextResponse.next()
+  }
+
   // Ohne Supabase-Konfiguration kann nicht geprüft werden — App ist dann ohnehin
   // funktionslos; nicht künstlich aussperren.
   if (!SUPABASE_URL || !SUPABASE_ANON) return NextResponse.next()

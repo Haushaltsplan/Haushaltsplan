@@ -20,26 +20,35 @@ export function FitnessWhoopCloudPanel({ onSyncComplete, embedded = false }: Pro
   const [meta, setMeta] = useState(() => ladeWhoopCloudMeta())
   const [busy, setBusy] = useState(false)
   const [ergebnis, setErgebnis] = useState<WhoopCloudSyncResult | null>(null)
+  const [hostname, setHostname] = useState<string | null>(null)
+
+  useEffect(() => {
+    setHostname(window.location.hostname)
+  }, [])
 
   const ladeStatus = useCallback(async () => {
     setStatusLoading(true)
     setStatusError(null)
     try {
+      const pingRes = await fetch('/api/fitnessdaten/whoop/ping', { cache: 'no-store' })
+      const ping = pingRes.ok
+        ? ((await pingRes.json()) as { configured?: boolean })
+        : { configured: false }
+      const configured = Boolean(ping.configured)
+
+      let connected = false
       const { data } = await supabase.auth.getSession()
       const token = data.session?.access_token
-      if (!token) {
-        setStatusError('Login-Token fehlt — bitte Seite neu laden.')
-        return
+      if (token) {
+        const res = await fetch('/api/fitnessdaten/whoop/status', {
+          headers: { Authorization: `Bearer ${token}` },
+        })
+        if (res.ok) {
+          connected = Boolean(((await res.json()) as Status).connected)
+        }
       }
-      const res = await fetch('/api/fitnessdaten/whoop/status', {
-        headers: { Authorization: `Bearer ${token}` },
-      })
-      if (!res.ok) {
-        const body = (await res.json().catch(() => null)) as { error?: string } | null
-        setStatusError(body?.error ?? `Server-Antwort ${res.status}`)
-        return
-      }
-      setStatus((await res.json()) as Status)
+
+      setStatus({ configured, connected })
     } catch {
       setStatusError('WHOOP-Status konnte nicht geladen werden.')
     } finally {
@@ -120,11 +129,23 @@ export function FitnessWhoopCloudPanel({ onSyncComplete, embedded = false }: Pro
 
       {!statusLoading && !statusError && !status.configured ? (
         <p className="mt-3 rounded-xl border border-amber-900/40 bg-amber-950/20 p-3 text-xs text-amber-100/90">
-          Server sieht keine WHOOP-Keys. In <code className="text-amber-200">.env.local</code> (lokal) bzw.
-          Vercel Environment Variables (online):{' '}
-          <code className="text-amber-200">WHOOP_CLIENT_ID</code> und{' '}
-          <code className="text-amber-200">WHOOP_CLIENT_SECRET</code> — danach Dev-Server neu starten bzw.
-          redeployen.
+          {hostname && hostname !== 'localhost' && hostname !== '127.0.0.1' ? (
+            <>
+              Du nutzt <strong className="text-amber-100">{hostname}</strong> — dort kennt der Server deine
+              Keys aus <code className="text-amber-200">.env.local</code> nicht. In{' '}
+              <strong className="text-amber-100">Vercel → Environment Variables</strong>{' '}
+              <code className="text-amber-200">WHOOP_CLIENT_ID</code> und{' '}
+              <code className="text-amber-200">WHOOP_CLIENT_SECRET</code> setzen und redeployen.
+            </>
+          ) : (
+            <>
+              Server sieht keine WHOOP-Keys. In <code className="text-amber-200">.env.local</code>:{' '}
+              <code className="text-amber-200">WHOOP_CLIENT_ID</code> und{' '}
+              <code className="text-amber-200">WHOOP_CLIENT_SECRET</code> — danach Dev-Server komplett neu
+              starten (<code className="text-amber-200">Ctrl+C</code>, dann{' '}
+              <code className="text-amber-200">npm run dev</code>).
+            </>
+          )}
         </p>
       ) : null}
 
