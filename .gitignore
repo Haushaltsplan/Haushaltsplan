@@ -43,6 +43,9 @@ yarn-error.log*
 # vercel
 .vercel
 
+# Flutter WHOOP-App (eigenes Git-Repo, nicht ins Haushalt-Repo)
+/whoop-app/
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts
