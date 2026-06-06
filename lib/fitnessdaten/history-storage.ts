@@ -1,4 +1,6 @@
 import { registriereMotion, aktualisiereSchlafSchaetzung } from '@/lib/fitnessdaten/sleep-estimate'
+import { loescheDailyStore } from '@/lib/fitnessdaten/daily-records'
+import { loescheSyncDaten } from '@/lib/fitnessdaten/offline-sync'
 import {
   avgHr,
   heuteIsoLocal,
@@ -196,6 +198,8 @@ export function loescheFitnessDaten(): void {
   window.localStorage.removeItem(FITNESS_SNAPSHOT_STORAGE_KEY)
   window.localStorage.removeItem(FITNESS_HISTORY_STORAGE_KEY)
   letzterHrTick = 0
+  loescheDailyStore()
+  loescheSyncDaten()
 }
 
 export function formatZoneAnteil(zoneMinutes: Record<HrZoneKey, number>): { key: HrZoneKey; pct: number }[] {

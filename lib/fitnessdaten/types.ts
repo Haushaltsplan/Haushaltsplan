@@ -76,6 +76,8 @@ export type FitnessSnapshot = {
   hrHistory?: FitnessHrPoint[]
   sessionStartedAt?: string | null
   gen5?: Gen5StreamStatus | null
+  /** Historische Backfill-Samples bereits in mergeHistoricalR22 verarbeitet. */
+  syncBackfill?: boolean
 }
 
 /** Persistierte Historie für Baselines & Tageswerte. */

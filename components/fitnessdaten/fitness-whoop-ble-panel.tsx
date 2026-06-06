@@ -66,7 +66,9 @@ export function FitnessWhoopBlePanel({ onSnapshot, onPhaseChange, embedded = fal
           setStatusHint(hint)
           setDebug(d)
           const snap = snapshot ? { ...snapshot, gen5: g5 ?? snapshot.gen5 } : null
-          if (snap?.live?.heartRateBpm != null && snap.live.heartRateBpm > 0) {
+          if (snap?.syncBackfill) {
+            onSnapshot(snap)
+          } else if (snap?.live?.heartRateBpm != null && snap.live.heartRateBpm > 0) {
             onSnapshot(mergeLiveSnapshot(snap, snap.deviceInfo))
           } else if (snap && (snap.live?.accel || snap.live?.skinTempC != null || snap.gen5)) {
             onSnapshot(mergeLiveSnapshot(snap, snap.deviceInfo))

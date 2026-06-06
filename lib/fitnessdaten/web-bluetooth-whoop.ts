@@ -1,3 +1,14 @@
+import {
+  markiereGetrennt,
+  markiereHistoriePaket,
+  markiereSyncFertig,
+  markiereSyncStart,
+  markiereVerbunden,
+  mergeHistoricalEvent,
+  mergeHistoricalR22,
+  r22ZuTimestampMs,
+  verarbeiteSyncPuffer,
+} from '@/lib/fitnessdaten/offline-sync'
 import { berechneRmssd, parseStandardHeartRateMeasurement } from '@/lib/fitnessdaten/standard-hr-parse'
 import {
   buildGen4WhoopPacket,
@@ -396,9 +407,11 @@ export async function verbindeWhoopStandardHr(
   let debugTimer: ReturnType<typeof setInterval> | null = null
 
   const gatt = await device.gatt!.connect()
+  markiereVerbunden()
   debug.services = await listeServices(gatt)
   debug.istGen5 = istGen5Whoop(debug.services)
   deviceInfo = await leseWhoopDeviceInfo(gatt)
+  verarbeiteSyncPuffer(device.name ?? 'WHOOP', deviceInfo)
   debug.batteryPercent = await leseBatteryProzent(gatt)
   if (debug.batteryPercent != null) {
     deviceInfo = { ...deviceInfo, batteryPercent: debug.batteryPercent }
@@ -498,6 +511,24 @@ export async function verbindeWhoopStandardHr(
   emitDebug()
 
   const anwendeGen5R22 = (sample: R22Sample) => {
+    const t = r22ZuTimestampMs(sample.tsSec)
+    const isHistorical =
+      gen5Status?.phase === 'historical' || Math.abs(Date.now() - t) > 90_000
+    if (isHistorical && sample.heartRateBpm > 0) {
+      if (gen5Status?.phase === 'historical') markiereHistoriePaket()
+      else markiereSyncStart()
+      const merged = mergeHistoricalR22(sample, device.name ?? 'WHOOP', deviceInfo)
+      if (merged) {
+        emit({
+          phase: 'live',
+          deviceName: device.name ?? 'WHOOP',
+          snapshot: { ...merged, syncBackfill: true, gen5: gen5Status },
+          error: null,
+          statusHint: 'Synchronisiere gespeicherte Band-Daten …',
+        })
+      }
+      return
+    }
     if (!letzterSnapshot?.live) return
     const live: FitnessLiveSample = {
       ...letzterSnapshot.live,
@@ -520,31 +551,27 @@ export async function verbindeWhoopStandardHr(
   }
 
   const anwendeGen5Event = (ev: Gen5EventSample) => {
-    if (ev.skinTempC != null && letzterSnapshot?.live) {
-      emit({
-        phase: letzterPhase === 'idle' ? 'live' : letzterPhase,
-        deviceName: device.name ?? 'WHOOP',
-        snapshot: {
-          ...(letzterSnapshot ?? {}),
-          updatedAt: new Date().toISOString(),
-          live: { ...letzterSnapshot!.live!, skinTempC: ev.skinTempC, recordedAt: new Date().toISOString() },
-          deviceInfo: {
-            ...(letzterSnapshot?.deviceInfo ?? {}),
-            batteryPercent: ev.batteryPercent ?? letzterSnapshot?.deviceInfo?.batteryPercent,
-          },
-          gen5: gen5Status,
-        },
-        error: null,
-        statusHint: letzterHint,
-      })
-    }
+    if (!letzterSnapshot) return
+    const merged = mergeHistoricalEvent(ev, letzterSnapshot)
+    emit({
+      phase: letzterPhase === 'idle' ? 'live' : letzterPhase,
+      deviceName: device.name ?? 'WHOOP',
+      snapshot: { ...merged, gen5: gen5Status },
+      error: null,
+      statusHint: letzterHint,
+    })
   }
 
   if (debug.istGen5) {
     gen5Cleanup = await startGen5CustomSession(gatt, {
       onState: (s) => {
+        const prev = gen5Status?.phase
         gen5Status = gen5ToStatus(s)
         debug.gen5 = gen5Status
+        if (prev === 'historical' && s.phase === 'streaming') {
+          markiereSyncFertig()
+        }
+        if (s.phase === 'historical') markiereSyncStart()
         emitDebug()
       },
       onR22: anwendeGen5R22,
@@ -611,6 +638,7 @@ export async function verbindeWhoopStandardHr(
   device.addEventListener('gattserverdisconnected', () => {
     if (pollTimer) clearInterval(pollTimer)
     if (debugTimer) clearInterval(debugTimer)
+    markiereGetrennt()
     emit({
       phase: 'idle',
       deviceName: device.name ?? null,

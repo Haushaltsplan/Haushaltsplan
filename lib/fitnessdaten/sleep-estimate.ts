@@ -1,6 +1,7 @@
 /** Schlaf-Schätzung aus IMU-Ruhe + Nachtfenster (ohne WHOOP-Cloud). */
 
 import type { FitnessHistoryState } from '@/lib/fitnessdaten/types'
+import { registriereSchlafFenster } from '@/lib/fitnessdaten/sleep-detail'
 
 type MotionSample = { t: number; magnitude: number }
 
@@ -38,7 +39,9 @@ export function aktualisiereSchlafSchaetzung(): { sleepMinutes: number; sleepSco
       sleepMinutesAccum += Math.min(2, (now - lastSleepTick) / 60_000)
     }
     lastSleepTick = now
+    registriereSchlafFenster(true, now)
   } else {
+    if (lastSleepTick > 0) registriereSchlafFenster(false, now)
     lastSleepTick = 0
   }
 

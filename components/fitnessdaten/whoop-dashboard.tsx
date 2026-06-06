@@ -1,19 +1,46 @@
 'use client'
 
+import { formatUhrzeit } from '@/lib/fitnessdaten/activity-detect'
 import { WhoopHrChart } from '@/components/fitnessdaten/whoop-hr-chart'
 import { FitnessWhoopBlePanel } from '@/components/fitnessdaten/fitness-whoop-ble-panel'
+import { WhoopBigRing } from '@/components/fitnessdaten/whoop-big-ring'
+import {
+  WHOOP_ZONE_13,
+  WHOOP_ZONE_45,
+  WhoopDualLineChart,
+  WhoopRestorativeChart,
+  WhoopStackedZoneChart,
+  WhoopTimeInBedChart,
+  WhoopWeeklyBarChart,
+  WhoopWeeklyLineChart,
+} from '@/components/fitnessdaten/whoop-charts'
+import { WhoopCoachBar, WhoopInfoModal, WhoopSyncBanner } from '@/components/fitnessdaten/whoop-info-modal'
+import {
+  WhoopAgeOrb,
+  WhoopAgeTrendChart,
+  WhoopAgingScale,
+  WhoopAgingTrendChart,
+  WhoopHealthspanBar,
+  WhoopLiveHrMonitor,
+} from '@/components/fitnessdaten/whoop-healthspan'
+import { WhoopHealthTile, WhoopInsightCard, WhoopMetricRow } from '@/components/fitnessdaten/whoop-metric-row'
 import {
   recoveryColor,
   recoveryLabelDe,
   WhoopRing,
 } from '@/components/fitnessdaten/whoop-ring'
-import { formatZoneAnteil, ladeFitnessHistory } from '@/lib/fitnessdaten/history-storage'
+import { getMetricInfo, type MetricInfo, type MetricInfoId } from '@/lib/fitnessdaten/metric-explanations'
+import { baueWhoopDashboard } from '@/lib/fitnessdaten/metrics-engine'
+import { zoneSegmenteAusTag } from '@/lib/fitnessdaten/healthspan-engine'
+import { formatStundenMin } from '@/lib/fitnessdaten/sleep-detail'
+import type { WhoopDayRecord } from '@/lib/fitnessdaten/daily-records'
+import { formatZoneAnteil } from '@/lib/fitnessdaten/history-storage'
 import type { FitnessSnapshot } from '@/lib/fitnessdaten/types'
 import { HR_ZONE_COLORS, HR_ZONE_LABELS } from '@/lib/fitnessdaten/types'
 import type { WhoopWebBlePhase } from '@/lib/fitnessdaten/web-bluetooth-whoop'
 import { useMemo, useState } from 'react'
 
-type Tab = 'home' | 'strain' | 'recovery' | 'health' | 'connect'
+type Tab = 'home' | 'sleep' | 'recovery' | 'strain' | 'health' | 'connect'
 
 type Props = {
   snapshot: FitnessSnapshot | null
@@ -30,62 +57,97 @@ function formatDatum() {
   })
 }
 
-function MetricTile({
-  label,
-  value,
-  unit,
-  accent,
-  hint,
-}: {
-  label: string
-  value: string
-  unit?: string
-  accent?: string
-  hint?: string
-}) {
-  return (
-    <div className="rounded-2xl border border-white/[0.06] bg-white/[0.03] px-4 py-3.5">
-      <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-zinc-500">{label}</p>
-      <p className="mt-1.5 text-2xl font-bold tabular-nums text-white">
-        {value}
-        {unit ? <span className="ml-1 text-sm font-semibold text-zinc-500">{unit}</span> : null}
-      </p>
-      {hint ? <p className="mt-1 text-[11px] leading-snug text-zinc-600">{hint}</p> : null}
-      {accent ? (
-        <div className="mt-2 h-0.5 w-8 rounded-full" style={{ backgroundColor: accent }} />
-      ) : null}
-    </div>
-  )
+function tagLabel(iso: string): string {
+  return new Date(iso + 'T12:00:00').toLocaleDateString('de-DE', {
+    weekday: 'short',
+    day: 'numeric',
+  })
+}
+
+function wochePunkte(woche: WhoopDayRecord[], field: keyof WhoopDayRecord): { label: string; value: number; highlight?: boolean }[] {
+  return woche.map((d, i) => ({
+    label: tagLabel(d.date),
+    value: typeof d[field] === 'number' ? (d[field] as number) : 0,
+    highlight: i === woche.length - 1,
+  }))
+}
+
+function formatMinuten(m: number): string {
+  const h = Math.floor(m / 60)
+  const min = Math.round(m % 60)
+  return `${h}:${String(min).padStart(2, '0')}`
+}
+
+function schlafstressSegmente(d: WhoopDayRecord) {
+  const total = d.sleepMinutes ?? 0
+  if (total <= 0) {
+    return [
+      { key: 'high', min: 0, color: '#f39c12' },
+      { key: 'med', min: 0, color: '#2ecc71' },
+      { key: 'low', min: 0, color: '#5eb3d6' },
+    ]
+  }
+  const score = d.sleepScore ?? 70
+  const high = Math.round((total * Math.max(0, 55 - score)) / 100)
+  const med = Math.round(total * 0.2)
+  const low = Math.max(0, total - high - med)
+  return [
+    { key: 'high', min: high, color: '#f39c12' },
+    { key: 'med', min: med, color: '#2ecc71' },
+    { key: 'low', min: low, color: '#5eb3d6' },
+  ]
 }
 
 export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange }: Props) {
   const [tab, setTab] = useState<Tab>('home')
+  const [info, setInfo] = useState<MetricInfo | null>(null)
+  const [expandedHealthMetric, setExpandedHealthMetric] = useState<string | null>(null)
+  const [coachExpanded, setCoachExpanded] = useState(false)
+  const showInfo = (id: MetricInfoId) => setInfo(getMetricInfo(id))
   const live = snapshot?.live
   const scores = snapshot?.scores
   const deviceInfo = snapshot?.deviceInfo
-  const history = useMemo(() => ladeFitnessHistory(), [snapshot?.updatedAt])
+  const model = useMemo(() => baueWhoopDashboard(snapshot), [snapshot])
   const isLive = phase === 'live'
   const zoneAnteil = scores?.zoneMinutes ? formatZoneAnteil(scores.zoneMinutes) : []
+  const { heute, woche, metriken, aktivitaeten, schlafdefizit } = model
 
   const tabs: { id: Tab; label: string; icon: string }[] = [
     { id: 'home', label: 'Home', icon: '◉' },
+    { id: 'sleep', label: 'Schlaf', icon: '☾' },
+    { id: 'recovery', label: 'Erholung', icon: '◐' },
     { id: 'strain', label: 'Belastung', icon: '◎' },
-    { id: 'recovery', label: 'Recovery', icon: '◐' },
-    { id: 'health', label: 'Health', icon: '♡' },
+    { id: 'health', label: 'Gesundheit', icon: '♡' },
     { id: 'connect', label: 'Gerät', icon: '⬡' },
   ]
 
+  const zone13Points = woche.map((d, i) => {
+    const seg = zoneSegmenteAusTag(d)
+    return {
+      label: tagLabel(d.date),
+      highlight: i === woche.length - 1,
+      segments: seg.z13,
+    }
+  })
+
+  const zone45Points = woche.map((d, i) => {
+    const seg = zoneSegmenteAusTag(d)
+    return {
+      label: tagLabel(d.date),
+      highlight: i === woche.length - 1,
+      segments: seg.z45,
+    }
+  })
+
   return (
     <div className="relative min-h-[calc(100dvh-4rem)] overflow-hidden rounded-3xl border border-white/[0.06] bg-[#050505] text-white shadow-2xl shadow-black/60">
-      {/* Ambient glow */}
       <div
         className="pointer-events-none absolute -left-32 -top-32 h-64 w-64 rounded-full opacity-30 blur-3xl"
-        style={{ background: recoveryColor(scores?.recoveryPercent) }}
+        style={{ background: recoveryColor(heute.recoveryPercent) }}
       />
       <div className="pointer-events-none absolute -right-24 top-1/3 h-48 w-48 rounded-full bg-[#009dff]/10 blur-3xl" />
 
-      <div className="relative px-4 pb-28 pt-5 sm:px-6 sm:pt-6">
-        {/* Header */}
+      <div className="relative max-h-[calc(100dvh-4rem)] overflow-y-auto px-4 pb-28 pt-5 sm:px-6 sm:pt-6">
         <header className="flex items-start justify-between gap-3">
           <div>
             <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-zinc-500">Omnia · WHOOP</p>
@@ -104,304 +166,570 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange }: P
                   : 'border-zinc-700/60 bg-zinc-900/80 text-zinc-400'
             }`}
           >
-            <span
-              className={`h-2 w-2 rounded-full ${isLive ? 'animate-pulse bg-emerald-400' : 'bg-zinc-600'}`}
-            />
+            <span className={`h-2 w-2 rounded-full ${isLive ? 'animate-pulse bg-emerald-400' : 'bg-zinc-600'}`} />
             {isLive ? 'Live' : phase === 'waiting_hr' ? 'Warte …' : phase === 'connecting' ? 'Verbinde' : 'Offline'}
           </div>
         </header>
 
-        {/* Rings — WHOOP classic triad */}
-        {(tab === 'home' || tab === 'recovery' || tab === 'strain') && (
-          <div className="mt-8 flex items-start justify-around gap-2 sm:gap-4">
-            <WhoopRing
-              value={scores?.recoveryPercent ?? 0}
-              label="Recovery"
-              sublabel={recoveryLabelDe(scores?.recoveryLabel)}
-              color={recoveryColor(scores?.recoveryPercent)}
-              unavailable={scores?.recoveryPercent == null}
-            />
-            <WhoopRing
-              value={scores?.dayStrain ?? scores?.strain ?? 0}
-              max={21}
-              label="Strain"
-              sublabel="Heute"
-              color="#009dff"
-              unavailable={(scores?.dayStrain ?? scores?.strain) == null}
-            />
-            <WhoopRing
-              value={scores?.sleepScore ?? 0}
-              label="Schlaf"
-              sublabel={
-                scores?.sleepMinutes
-                  ? `${Math.floor(scores.sleepMinutes / 60)}h ${scores.sleepMinutes % 60}m`
-                  : 'IMU / Nacht'
-              }
-              color="#7b61ff"
-              unavailable={scores?.sleepScore == null}
-            />
-          </div>
-        )}
+        <WhoopSyncBanner
+          status={model.sync.status}
+          message={model.sync.message}
+          lastSyncedAt={model.sync.lastSyncedAt}
+          historicalCount={model.sync.historicalPacketsTotal}
+          onInfo={() => showInfo('sync')}
+        />
 
         {tab === 'home' && (
-          <section className="mt-8 space-y-5">
-            <div>
-              <div className="mb-3 flex items-end justify-between">
-                <div>
-                  <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">
-                    Herzfrequenz
-                  </p>
-                  <p className="mt-1 text-5xl font-bold tabular-nums tracking-tighter text-white">
-                    {live?.heartRateBpm ?? '—'}
-                    <span className="ml-2 text-xl font-semibold text-zinc-500">bpm</span>
-                  </p>
-                </div>
-                {live?.sensorContact != null ? (
-                  <span
-                    className={`rounded-lg px-2 py-1 text-[10px] font-semibold ${
-                      live.sensorContact
-                        ? 'bg-emerald-500/15 text-emerald-300'
-                        : 'bg-amber-500/15 text-amber-200'
-                    }`}
-                  >
-                    {live.sensorContact ? 'Sensor OK' : 'Kein Kontakt'}
-                  </span>
-                ) : null}
-              </div>
-              <WhoopHrChart points={snapshot?.hrHistory ?? []} live={isLive} />
-            </div>
-
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-              <MetricTile
-                label="HRV (RMSSD)"
-                value={scores?.hrvRmssdMs != null ? scores.hrvRmssdMs.toFixed(0) : '—'}
-                unit="ms"
-                accent="#00ff87"
-                hint={`Baseline ~${history.baselines.hrvRmssdMs.toFixed(0)} ms`}
+          <>
+            <div className="mt-6 flex items-start justify-around gap-2">
+              <WhoopRing
+                value={heute.recoveryPercent ?? 0}
+                label="Erholung"
+                sublabel={recoveryLabelDe(scores?.recoveryLabel)}
+                color={recoveryColor(heute.recoveryPercent)}
+                unavailable={heute.recoveryPercent == null}
               />
-              <MetricTile
-                label="Ruhepuls"
-                value={scores?.restingHrBpm != null ? String(scores.restingHrBpm) : '—'}
-                unit="bpm"
-                accent="#a78bfa"
-                hint={`Baseline ~${history.baselines.restingHrBpm} bpm`}
+              <WhoopRing
+                value={heute.strain ?? 0}
+                max={21}
+                label="Belastung"
+                sublabel="Heute"
+                color="#009dff"
+                unavailable={heute.strain == null}
               />
-              <MetricTile
-                label="Kalorien"
-                value={scores?.caloriesKcal != null ? String(scores.caloriesKcal) : '—'}
-                unit="kcal"
-                accent="#f97316"
-                hint="Geschätzt aus HF heute"
-              />
-              <MetricTile
-                label="Max HF"
-                value={scores?.maxHrToday != null ? String(scores.maxHrToday) : '—'}
-                unit="bpm"
-                accent="#ef4444"
-              />
-              <MetricTile
-                label="Hauttemp."
-                value={live?.skinTempC != null ? live.skinTempC.toFixed(1) : '—'}
-                unit="°C"
-                accent="#7b61ff"
-                hint="Gen5-Events (fd4b)"
-              />
-              <MetricTile
-                label="IMU (g)"
-                value={
-                  live?.accel
-                    ? `${live.accel.x.toFixed(2)}, ${live.accel.y.toFixed(2)}, ${live.accel.z.toFixed(2)}`
-                    : '—'
+              <WhoopRing
+                value={heute.sleepScore ?? 0}
+                label="Schlaf"
+                sublabel={
+                  heute.sleepMinutes ? `${Math.floor(heute.sleepMinutes / 60)}h ${heute.sleepMinutes % 60}m` : 'Nacht'
                 }
-                hint="r22-Stream · Band am Handgelenk"
+                color="#7b61ff"
+                unavailable={heute.sleepScore == null}
               />
             </div>
 
-            {live?.rrIntervalsMs && live.rrIntervalsMs.length > 0 ? (
-              <div className="rounded-2xl border border-white/[0.06] bg-white/[0.02] px-4 py-3">
-                <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-zinc-500">
-                  RR-Intervalle (letzte)
-                </p>
-                <p className="mt-2 font-mono text-xs leading-relaxed text-zinc-400">
-                  {live.rrIntervalsMs
-                    .slice(-8)
-                    .map((v) => `${Math.round(v)} ms`)
-                    .join(' · ')}
-                </p>
+            <section className="mt-6 space-y-4">
+              <div className="rounded-2xl border border-white/[0.06] bg-[#141618] p-4">
+                <button type="button" onClick={() => showInfo('behavior')} className="w-full text-left">
+                  <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">Verhaltenseinblicke</p>
+                  <p className="mt-2 text-xs leading-relaxed text-zinc-500">
+                    Verhaltenstags (Alkohol, Koffein …) kommen aus der WHOOP-Cloud — lokal nicht verfügbar. Tippe
+                    für Details.
+                  </p>
+                </button>
               </div>
-            ) : null}
-          </section>
+
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">Herzfrequenz live</p>
+                <p className="mt-1 text-5xl font-bold tabular-nums text-white">
+                  {model.liveHr ?? '—'}
+                  <span className="ml-2 text-xl font-semibold text-zinc-500">bpm</span>
+                </p>
+                <WhoopHrChart points={snapshot?.hrHistory ?? []} live={isLive} />
+              </div>
+
+              {model.insightRecovery ? <WhoopInsightCard text={model.insightRecovery} /> : null}
+            </section>
+          </>
         )}
 
-        {tab === 'strain' && (
-          <section className="mt-8 space-y-5">
-            <MetricTile
-              label="Tages-Strain"
-              value={(scores?.dayStrain ?? scores?.strain)?.toFixed(1) ?? '—'}
-              unit="/ 21"
-              accent="#009dff"
-              hint="Lokal aus HF-Zonen berechnet — WHOOP-Algorithmus approximiert"
+        {tab === 'sleep' && (
+          <section className="mt-6 space-y-4">
+            <button type="button" onClick={() => showInfo('sleep_score')} className="w-full">
+              <WhoopBigRing
+                value={heute.sleepScore}
+                label="Schlafleistung"
+                sublabel={
+                  heute.sleepMinutes ? `${Math.floor(heute.sleepMinutes / 60)}h ${heute.sleepMinutes % 60}m` : undefined
+                }
+                color="#7b61ff"
+              />
+            </button>
+
+            <WhoopDualLineChart
+              title="Stunden vs. Bedarf (Stunden)"
+              labelA="Geschlafene Stunden"
+              labelB="Schlafbedarf"
+              seriesA={woche.map((d, i) => ({
+                label: tagLabel(d.date),
+                value: d.sleepMinutes ?? 0,
+                highlight: i === woche.length - 1,
+              }))}
+              seriesB={woche.map((d, i) => ({
+                label: tagLabel(d.date),
+                value: d.sleepNeedMinutes ?? 480,
+                highlight: i === woche.length - 1,
+              }))}
+              formatValue={(v) => formatStundenMin(v)}
+              onInfo={() => showInfo('sleep_hours')}
             />
-            <div className="rounded-2xl border border-white/[0.06] bg-white/[0.03] p-4">
-              <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-zinc-500">
-                Zonenverteilung heute
-              </p>
-              {zoneAnteil.length === 0 ? (
-                <p className="mt-3 text-sm text-zinc-600">Noch keine Zonendaten — Band tragen & verbinden.</p>
-              ) : (
-                <ul className="mt-4 space-y-3">
-                  {zoneAnteil.map(({ key, pct }) => (
-                    <li key={key}>
-                      <div className="mb-1 flex justify-between text-xs">
-                        <span style={{ color: HR_ZONE_COLORS[key] }}>{HR_ZONE_LABELS[key]}</span>
-                        <span className="tabular-nums text-zinc-500">{pct}%</span>
-                      </div>
-                      <div className="h-2 overflow-hidden rounded-full bg-zinc-900">
-                        <div
-                          className="h-full rounded-full transition-all duration-500"
-                          style={{ width: `${pct}%`, backgroundColor: HR_ZONE_COLORS[key] }}
-                        />
-                      </div>
-                      <p className="mt-0.5 text-[10px] text-zinc-600">
-                        {scores?.zoneMinutes?.[key]?.toFixed(1) ?? 0} min
-                      </p>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
-            <MetricTile
-              label="Ø Herzfrequenz Session"
-              value={scores?.avgHrSession != null ? String(scores.avgHrSession) : '—'}
-              unit="bpm"
+
+            <WhoopWeeklyBarChart
+              title="Stunden vs. Bedarf (%)"
+              points={woche.map((d, i) => ({
+                label: tagLabel(d.date),
+                value:
+                  d.sleepMinutes != null && d.sleepNeedMinutes
+                    ? Math.round((d.sleepMinutes / d.sleepNeedMinutes) * 100)
+                    : d.sleepScore ?? 0,
+                highlight: i === woche.length - 1,
+              }))}
+              max={100}
+              formatValue={(v) => `${v}%`}
+              onInfo={() => showInfo('sleep_need')}
             />
+
+            <WhoopRestorativeChart
+              title="Erholsamer Schlaf (Stunden)"
+              points={woche.map((d, i) => ({
+                label: tagLabel(d.date),
+                remMin: d.remMinutes ?? 0,
+                deepMin: d.deepMinutes ?? 0,
+                highlight: i === woche.length - 1,
+              }))}
+              onInfo={() => showInfo('restorative_sleep')}
+            />
+
+            <WhoopWeeklyBarChart
+              title="Schlafregelmäßigkeit"
+              points={wochePunkte(woche, 'sleepConsistency')}
+              max={100}
+              formatValue={(v) => `${v}%`}
+              onInfo={() => showInfo('sleep_consistency')}
+            />
+
+            <WhoopTimeInBedChart
+              title="Zeit im Bett"
+              points={woche.map((d, i) => ({
+                label: tagLabel(d.date),
+                bedMs: d.bedTimeMs,
+                wakeMs: d.wakeTimeMs,
+                highlight: i === woche.length - 1,
+              }))}
+              onInfo={() => showInfo('time_in_bed')}
+            />
+
+            <WhoopWeeklyLineChart
+              title="Schlafeffizienz"
+              points={wochePunkte(woche, 'sleepEfficiency')}
+              onInfo={() => showInfo('sleep_efficiency')}
+            />
+
+            <WhoopWeeklyBarChart
+              title="Schlafdefizit"
+              points={schlafdefizit.map((s, i) => ({
+                label: s.label,
+                value: s.defizitMin,
+                highlight: i === schlafdefizit.length - 1,
+              }))}
+              formatValue={(v) => formatMinuten(v)}
+              color="#5eb3d6"
+              onInfo={() => showInfo('sleep_debt')}
+            />
+
+            <WhoopStackedZoneChart
+              title="Schlafstress"
+              zones={[
+                { key: 'high', label: 'Hoch', color: '#f39c12' },
+                { key: 'med', label: 'Mittel', color: '#2ecc71' },
+                { key: 'low', label: 'Niedrig', color: '#5eb3d6' },
+              ]}
+              points={woche.map((d, i) => ({
+                label: tagLabel(d.date),
+                highlight: i === woche.length - 1,
+                segments: schlafstressSegmente(d),
+              }))}
+              onInfo={() => showInfo('sleep_stress')}
+            />
+
+            <WhoopWeeklyBarChart
+              title="Schlafleistung"
+              points={wochePunkte(woche, 'sleepScore')}
+              max={100}
+              formatValue={(v) => `${v}%`}
+              color="#7b61ff"
+              onInfo={() => showInfo('sleep_score')}
+            />
+
+            {model.insightSchlaf ? <WhoopInsightCard text={model.insightSchlaf} /> : null}
           </section>
         )}
 
         {tab === 'recovery' && (
-          <section className="mt-8 space-y-5">
-            <div className="rounded-2xl border border-white/[0.06] bg-gradient-to-br from-white/[0.04] to-transparent p-5">
-              <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-zinc-500">Recovery Score</p>
-              <p
-                className="mt-2 text-6xl font-bold tabular-nums"
-                style={{ color: recoveryColor(scores?.recoveryPercent) }}
+          <section className="mt-4 space-y-4">
+            <WhoopBigRing
+              value={heute.recoveryPercent}
+              label="Erholung"
+              color={recoveryColor(heute.recoveryPercent)}
+            />
+
+            <div className="rounded-2xl border border-white/[0.06] bg-[#141618] px-4">
+              <WhoopMetricRow icon="〰" label="Herzfrequenzvariabilität" m={metriken.hrv} unit="ms" onInfo={() => showInfo('hrv')} />
+              <WhoopMetricRow icon="♥" label="Ruheherzfrequenz" m={metriken.rhr} onInfo={() => showInfo('rhr')} />
+              <WhoopMetricRow icon="◎" label="Atemfrequenz" m={metriken.respiratory} decimals={1} onInfo={() => showInfo('respiratory')} />
+              <WhoopMetricRow icon="☾" label="Schlafleistung" m={metriken.sleepPerformance} unit="%" onInfo={() => showInfo('sleep_performance')} />
+              <p className="border-t border-white/[0.06] py-2 text-[9px] text-zinc-600">
+                ▲ ▼ Heute im Vergleich zu den letzten 30 Tagen
+              </p>
+            </div>
+
+            {model.insightRecovery ? (
+              <WhoopInsightCard text={model.insightRecovery} link="Erkunde deine Erholungsdaten" />
+            ) : null}
+
+            <WhoopWeeklyBarChart
+              title="Erholung"
+              points={wochePunkte(woche, 'recoveryPercent')}
+              max={100}
+              formatValue={(v) => `${v}%`}
+              color={recoveryColor(heute.recoveryPercent ?? 50)}
+              onInfo={() => showInfo('recovery')}
+            />
+
+            <WhoopWeeklyLineChart title="Herzfrequenzvariabilität" points={wochePunkte(woche, 'hrvRmssd')} onInfo={() => showInfo('hrv')} />
+            <WhoopWeeklyLineChart title="Ruheherzfrequenz" points={wochePunkte(woche, 'restingHr')} color="#a78bfa" onInfo={() => showInfo('rhr')} />
+            <WhoopWeeklyLineChart
+              title="Atemfrequenz"
+              points={wochePunkte(woche, 'respiratoryRate')}
+              color="#5eb3d6"
+              onInfo={() => showInfo('respiratory')}
+            />
+            <WhoopWeeklyBarChart
+              title="Schlafleistung"
+              points={wochePunkte(woche, 'sleepScore')}
+              max={100}
+              formatValue={(v) => `${v}%`}
+              color="#7b61ff"
+              onInfo={() => showInfo('sleep_score')}
+            />
+          </section>
+        )}
+
+        {tab === 'strain' && (
+          <section className="mt-4 space-y-4">
+            <WhoopBigRing value={heute.strain} max={21} label="Belastung" color="#009dff" />
+
+            <div className="rounded-2xl border border-white/[0.06] bg-[#141618] px-4">
+              <WhoopMetricRow
+                icon="♥"
+                label="Herzfrequenzzonen 1–3"
+                m={{
+                  heute: heute.zoneMin13,
+                  baseline30: model.baselines.strain != null ? heute.zoneMin13 * 0.8 : null,
+                  trend: 'up',
+                }}
+                unit="min"
+                onInfo={() => showInfo('zones_13')}
+              />
+              <WhoopMetricRow
+                icon="♥"
+                label="Herzfrequenzzonen 4–5"
+                m={{ heute: heute.zoneMin45, baseline30: null, trend: 'neutral' }}
+                unit="min"
+                onInfo={() => showInfo('zones_45')}
+              />
+              <WhoopMetricRow
+                icon="🏋"
+                label="Kraftaktivitätszeit"
+                m={{ heute: heute.strengthMin, baseline30: null, trend: 'neutral' }}
+                unit="min"
+                onInfo={() => showInfo('strength')}
+              />
+              <WhoopMetricRow
+                icon="👟"
+                label="Schritte"
+                m={{
+                  heute: heute.steps,
+                  baseline30: baselineSchritte(woche),
+                  trend: trendSteps(heute.steps, baselineSchritte(woche)),
+                }}
+                onInfo={() => showInfo('steps')}
+              />
+              <p className="border-t border-white/[0.06] py-2 text-[9px] text-zinc-600">
+                ▲ ▼ Heute im Vergleich zu den letzten 30 Tagen · Schritte geschätzt
+              </p>
+            </div>
+
+            {model.insightStrain ? (
+              <WhoopInsightCard text={model.insightStrain} link="Erkunde deine Belastungsdaten" />
+            ) : null}
+
+            {aktivitaeten.length > 0 ? (
+              <button
+                type="button"
+                onClick={() => showInfo('activities')}
+                className="w-full rounded-2xl border border-white/[0.06] bg-[#141618] p-4 text-left"
               >
-                {scores?.recoveryPercent != null ? `${scores.recoveryPercent}%` : '—'}
-              </p>
-              <p className="mt-2 text-sm text-zinc-400">
-                {scores?.recoveryPercent != null
-                  ? `Einschätzung: ${recoveryLabelDe(scores.recoveryLabel)} — berechnet aus HRV (RMSSD) und Ruhepuls vs. deine Baseline.`
-                  : 'Mindestens ~30 RR-Intervalle für stabile HRV nötig.'}
-              </p>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <MetricTile
-                label="HRV RMSSD"
-                value={scores?.hrvRmssdMs?.toFixed(1) ?? '—'}
-                unit="ms"
-                accent="#00ff87"
-              />
-              <MetricTile
-                label="Ruhepuls"
-                value={scores?.restingHrBpm != null ? String(scores.restingHrBpm) : '—'}
-                unit="bpm"
-                accent="#a78bfa"
-              />
-            </div>
-            <p className="rounded-xl border border-violet-900/30 bg-violet-950/20 px-4 py-3 text-xs leading-relaxed text-violet-200/80">
-              <strong>Schlaf</strong> wird aus IMU-Ruhe nachts geschätzt (Gen5 r22). Für exakte WHOOP-Schlafphasen
-              braucht es den vollen Historie-Sync — läuft automatisch, wenn Custom-BLE (fd4b) verbunden ist.
-            </p>
-            {scores?.sleepMinutes != null && scores.sleepMinutes > 0 ? (
-              <div className="grid grid-cols-2 gap-3">
-                <MetricTile
-                  label="Schlafdauer"
-                  value={String(Math.floor(scores.sleepMinutes / 60))}
-                  unit="h"
-                  accent="#7b61ff"
-                />
-                <MetricTile
-                  label="Effizienz"
-                  value={scores.sleepEfficiency != null ? String(scores.sleepEfficiency) : '—'}
-                  unit="%"
-                  accent="#a78bfa"
-                />
+                <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-zinc-300">Aktivitäten heute</p>
+                <ul className="mt-3 space-y-2">
+                  {aktivitaeten.map((a) => (
+                    <li
+                      key={a.id}
+                      className="flex items-center gap-3 rounded-xl border border-white/[0.04] bg-black/30 px-3 py-2.5"
+                    >
+                      <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-[#009dff]/20 text-sm font-bold text-[#009dff]">
+                        {a.strain.toFixed(1)}
+                      </span>
+                      <span className="flex-1 text-xs font-bold uppercase tracking-wide">{a.label}</span>
+                      <span className="text-[11px] tabular-nums text-zinc-500">
+                        {formatUhrzeit(a.startMs)} – {formatUhrzeit(a.endMs)}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </button>
+            ) : null}
+
+            <WhoopWeeklyBarChart
+              title="Belastung"
+              points={wochePunkte(woche, 'strain')}
+              max={21}
+              formatValue={(v) => v.toFixed(1)}
+              onInfo={() => showInfo('strain')}
+            />
+            <WhoopStackedZoneChart title="HF-Zonen 1–3" zones={WHOOP_ZONE_13} points={zone13Points} onInfo={() => showInfo('zones_13')} />
+            <WhoopStackedZoneChart title="HF-Zonen 4–5" zones={WHOOP_ZONE_45} points={zone45Points} onInfo={() => showInfo('zones_45')} />
+            <WhoopWeeklyBarChart
+              title="Schritte"
+              points={wochePunkte(woche, 'steps')}
+              formatValue={(v) => v.toLocaleString('de-DE')}
+              onInfo={() => showInfo('steps')}
+            />
+            <WhoopWeeklyBarChart
+              title="Kalorien"
+              points={wochePunkte(woche, 'calories')}
+              formatValue={(v) => v.toLocaleString('de-DE')}
+              onInfo={() => showInfo('calories')}
+            />
+            <WhoopWeeklyBarChart
+              title="Kraftaktivitätszeit"
+              points={wochePunkte(woche, 'strengthMin')}
+              formatValue={(v) => formatMinuten(v)}
+              onInfo={() => showInfo('strength')}
+            />
+
+            {zoneAnteil.length > 0 ? (
+              <div className="rounded-2xl border border-white/[0.06] bg-[#141618] p-4">
+                <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-zinc-500">Zonen heute</p>
+                <ul className="mt-3 space-y-2">
+                  {zoneAnteil.map(({ key, pct }) => (
+                    <li key={key}>
+                      <div className="mb-1 flex justify-between text-xs">
+                        <span style={{ color: HR_ZONE_COLORS[key] }}>{HR_ZONE_LABELS[key]}</span>
+                        <span className="text-zinc-500">{pct}%</span>
+                      </div>
+                      <div className="h-1.5 overflow-hidden rounded-full bg-zinc-900">
+                        <div
+                          className="h-full rounded-full"
+                          style={{ width: `${pct}%`, backgroundColor: HR_ZONE_COLORS[key] }}
+                        />
+                      </div>
+                    </li>
+                  ))}
+                </ul>
               </div>
             ) : null}
           </section>
         )}
 
         {tab === 'health' && (
-          <section className="mt-8 space-y-4">
-            <div className="grid grid-cols-2 gap-3">
-              <MetricTile label="Modell" value={deviceInfo?.model ?? '—'} />
-              <MetricTile label="Hardware" value={deviceInfo?.hardwareRevision ?? '—'} />
-              <MetricTile label="Firmware" value={deviceInfo?.firmwareRevision ?? '—'} />
-              <MetricTile
-                label="Akku"
-                value={deviceInfo?.batteryPercent != null ? String(deviceInfo.batteryPercent) : '—'}
-                unit="%"
-              />
-              <MetricTile label="Hersteller" value={deviceInfo?.manufacturer ?? 'WHOOP'} />
-              <MetricTile
-                label="Energie (Band)"
-                value={live?.energyExpendedKj != null ? live.energyExpendedKj.toFixed(1) : '—'}
-                unit="kJ"
-                hint="Falls vom Standard-HR-Profil geliefert"
-              />
+          <section className="mt-6 space-y-4">
+            <p className="text-center text-[10px] font-bold uppercase tracking-[0.2em] text-zinc-500">Gesundheit</p>
+
+            <WhoopAgeOrb
+              whoopAge={model.healthspan.whoopAge}
+              yearsYounger={model.healthspan.yearsYounger}
+              agingProcess={model.healthspan.agingProcess}
+              onInfo={() => showInfo('healthspan')}
+            />
+
+            <WhoopAgingScale
+              value={model.healthspan.agingProcess}
+              trend={model.healthspan.agingTrend}
+              onInfo={() => showInfo('aging_process')}
+            />
+
+            <div className="rounded-2xl border border-white/[0.06] bg-[#141618] px-4">
+              <p className="border-b border-white/[0.06] py-3 text-[11px] font-bold uppercase tracking-[0.14em] text-zinc-300">
+                Schlaf
+              </p>
+              {model.healthspan.metrics
+                .filter((m) => m.id === 'sleep_consistency' || m.id === 'sleep_hours')
+                .map((m) => (
+                  <WhoopHealthspanBar
+                    key={m.id}
+                    metric={m}
+                    expanded={expandedHealthMetric === m.id}
+                    onToggle={() => setExpandedHealthMetric(expandedHealthMetric === m.id ? null : m.id)}
+                    onInfo={() => showInfo(m.id === 'sleep_consistency' ? 'sleep_consistency' : 'sleep_hours')}
+                  />
+                ))}
             </div>
-            <div className="rounded-2xl border border-white/[0.06] bg-white/[0.02] p-4 text-xs text-zinc-500">
-              <p className="font-semibold text-zinc-400">Gen5 Custom-BLE (fd4b0001)</p>
-              {snapshot?.gen5 ? (
-                <ul className="mt-2 space-y-1 font-mono text-[11px]">
-                  <li>Phase: {snapshot.gen5.phase}</li>
-                  <li>r22-Pakete: {snapshot.gen5.r22Count}</li>
-                  <li>Historie: {snapshot.gen5.historyPackets} Chunks</li>
-                  {snapshot.gen5.lastError ? (
-                    <li className="text-amber-300">{snapshot.gen5.lastError}</li>
-                  ) : null}
-                </ul>
-              ) : (
-                <p className="mt-2 leading-relaxed">
-                  Noch nicht aktiv. WHOOP-App einmal koppeln (Android-Bond), dann fd4b-Handshake automatisch.
-                </p>
-              )}
-              {snapshot?.gen5?.phase === 'bond_required' ? (
-                <p className="mt-2 text-amber-200/90">
-                  Bond fehlt: WHOOP-App öffnen → Strap verbinden → erneut in Omnia verbinden.
-                </p>
-              ) : null}
+
+            <div className="rounded-2xl border border-white/[0.06] bg-[#141618] px-4">
+              <p className="border-b border-white/[0.06] py-3 text-[11px] font-bold uppercase tracking-[0.14em] text-zinc-300">
+                Belastung
+              </p>
+              {model.healthspan.metrics
+                .filter((m) => m.id.startsWith('zones_') || m.id === 'strength')
+                .map((m) => (
+                  <WhoopHealthspanBar
+                    key={m.id}
+                    metric={m}
+                    expanded={expandedHealthMetric === m.id}
+                    onToggle={() => setExpandedHealthMetric(expandedHealthMetric === m.id ? null : m.id)}
+                    onInfo={() =>
+                      showInfo(
+                        m.id === 'zones_13_weekly'
+                          ? 'zones_13'
+                          : m.id === 'zones_45_weekly'
+                            ? 'zones_45'
+                            : 'strength',
+                      )
+                    }
+                  />
+                ))}
             </div>
-            <div className="rounded-2xl border border-white/[0.06] bg-white/[0.02] p-4 text-xs text-zinc-500">
-              <p className="font-semibold text-zinc-400">Noch nicht per Web-BLE</p>
-              <ul className="mt-2 list-inside list-disc space-y-1 leading-relaxed">
-                <li>PPG-Rohsignal (optisch)</li>
-                <li>Exakte WHOOP Recovery/Strain-Modelle (Cloud)</li>
-              </ul>
+
+            <div className="rounded-2xl border border-white/[0.06] bg-[#141618] px-4">
+              <p className="border-b border-white/[0.06] py-3 text-[11px] font-bold uppercase tracking-[0.14em] text-zinc-300">
+                Fitness
+              </p>
+              {model.healthspan.metrics
+                .filter((m) => m.id === 'steps' || m.id === 'vo2max' || m.id === 'rhr')
+                .map((m) => (
+                  <WhoopHealthspanBar
+                    key={m.id}
+                    metric={m}
+                    expanded={expandedHealthMetric === m.id}
+                    onToggle={() => setExpandedHealthMetric(expandedHealthMetric === m.id ? null : m.id)}
+                    onInfo={() =>
+                      showInfo(m.id === 'vo2max' ? 'vo2max' : m.id === 'rhr' ? 'rhr' : 'steps')
+                    }
+                  />
+                ))}
             </div>
+
+            <WhoopAgeTrendChart model={model.healthspan} />
+            <WhoopAgingTrendChart model={model.healthspan} />
+
+            <WhoopLiveHrMonitor
+              bpm={model.liveHr}
+              zone={model.hrZone}
+              history={snapshot?.hrHistory ?? []}
+              onInfo={() => showInfo('health_monitor')}
+            />
+
+            <div className="rounded-2xl border border-white/[0.06] bg-[#141618] p-4">
+              <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-zinc-300">Gesundheitsmonitor</p>
+              <div className="mt-3 grid grid-cols-2 gap-2">
+                <WhoopHealthTile
+                  icon="◎"
+                  label="Atemfrequenz"
+                  value={
+                    heute.respiratoryRate != null ? heute.respiratoryRate.toFixed(1).replace('.', ',') : '—'
+                  }
+                  unit="AZ/min"
+                  status={
+                    heute.respiratoryRate != null && heute.respiratoryRate > 15.6 ? '! erhöht > 15,6' : undefined
+                  }
+                  statusTone={heute.respiratoryRate != null && heute.respiratoryRate > 15.6 ? 'warn' : 'ok'}
+                />
+                <WhoopHealthTile
+                  icon="💧"
+                  label="SpO₂"
+                  value="—"
+                  unit="%"
+                  status="Nicht per BLE"
+                  statusTone="warn"
+                />
+                <WhoopHealthTile
+                  icon="♥"
+                  label="RHF"
+                  value={heute.restingHr != null ? String(heute.restingHr) : '—'}
+                  unit="S/min"
+                  status={heute.restingHr != null && heute.restingHr > 58 ? '! stark erhöht > 58' : undefined}
+                  statusTone={heute.restingHr != null && heute.restingHr > 58 ? 'bad' : 'ok'}
+                />
+                <WhoopHealthTile
+                  icon="〰"
+                  label="HFV"
+                  value={heute.hrvRmssd != null ? String(Math.round(heute.hrvRmssd)) : '—'}
+                  unit="ms"
+                  status={heute.hrvRmssd != null && heute.hrvRmssd < 85 ? '! sehr niedrig < 85' : undefined}
+                  statusTone={heute.hrvRmssd != null && heute.hrvRmssd < 85 ? 'bad' : 'ok'}
+                />
+                <WhoopHealthTile
+                  icon="🌡"
+                  label="Hauttemp."
+                  value={
+                    heute.skinTempDelta != null
+                      ? `${heute.skinTempDelta >= 0 ? '+' : ''}${heute.skinTempDelta.toFixed(1).replace('.', ',')}`
+                      : '—'
+                  }
+                  unit="°C Δ"
+                  status={
+                    heute.skinTempDelta != null &&
+                    heute.skinTempDelta >= -0.4 &&
+                    heute.skinTempDelta <= 0.5
+                      ? '✓ in der Nähe von -0,4 bis +0,5'
+                      : heute.skinTempC != null
+                        ? '! außerhalb Bereich'
+                        : 'Bond + fd4b nötig'
+                  }
+                  statusTone={
+                    heute.skinTempDelta != null &&
+                    heute.skinTempDelta >= -0.4 &&
+                    heute.skinTempDelta <= 0.5
+                      ? 'ok'
+                      : 'warn'
+                  }
+                />
+              </div>
+            </div>
+
+            <button
+              type="button"
+              className="flex w-full items-center justify-center gap-2 rounded-2xl border border-white/[0.08] bg-[#141618] py-3.5 text-[11px] font-bold uppercase tracking-wider text-zinc-300"
+              onClick={() => {
+                const text = [
+                  'Omnia Gesundheitsbericht',
+                  `Omnia Age: ${model.healthspan.whoopAge ?? '—'}`,
+                  `HFV: ${heute.hrvRmssd ?? '—'} ms`,
+                  `RHF: ${heute.restingHr ?? '—'} bpm`,
+                  `Recovery: ${heute.recoveryPercent ?? '—'} %`,
+                ].join('\n')
+                void navigator.clipboard?.writeText(text)
+              }}
+            >
+              ↗ Teile deinen Gesundheitsbericht
+            </button>
+
+            {snapshot?.gen5 ? (
+              <div className="rounded-2xl border border-white/[0.06] bg-[#141618] p-4 font-mono text-[11px] text-zinc-500">
+                <p className="font-sans text-[10px] font-bold uppercase text-zinc-400">Gen5 fd4b</p>
+                <p className="mt-1">Phase: {snapshot.gen5.phase}</p>
+                <p>r22: {snapshot.gen5.r22Count} · Historie: {snapshot.gen5.historyPackets}</p>
+              </div>
+            ) : null}
           </section>
         )}
 
         {tab === 'connect' && (
           <section className="mt-6">
-            <FitnessWhoopBlePanel
-              onSnapshot={onSnapshot}
-              onPhaseChange={onPhaseChange}
-              embedded
-            />
+            <FitnessWhoopBlePanel onSnapshot={onSnapshot} onPhaseChange={onPhaseChange} embedded />
           </section>
         )}
       </div>
 
-      {/* Bottom nav — WHOOP style */}
-      <nav className="absolute bottom-0 left-0 right-0 border-t border-white/[0.06] bg-[#050505]/95 px-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-2 backdrop-blur-xl">
+      <nav className="absolute bottom-0 left-0 right-0 border-t border-white/[0.06] bg-[#050505]/95 px-1 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-2 backdrop-blur-xl">
         <ul className="flex justify-around">
           {tabs.map((t) => (
             <li key={t.id}>
               <button
                 type="button"
                 onClick={() => setTab(t.id)}
-                className={`flex flex-col items-center gap-0.5 rounded-xl px-3 py-2 text-[10px] font-semibold transition ${
+                className={`flex flex-col items-center gap-0.5 rounded-xl px-2 py-2 text-[9px] font-semibold transition sm:px-3 sm:text-[10px] ${
                   tab === t.id ? 'text-white' : 'text-zinc-600 hover:text-zinc-400'
                 }`}
               >
@@ -412,6 +740,31 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange }: P
           ))}
         </ul>
       </nav>
+
+      <WhoopInfoModal info={info} onClose={() => setInfo(null)} />
+
+      {model.coachSchlaf && (tab === 'sleep' || tab === 'recovery') ? (
+        <WhoopCoachBar
+          text={coachExpanded ? model.coachSchlaf : `${model.coachSchlaf.slice(0, 72)}…`}
+          onExpand={() => {
+            if (coachExpanded) showInfo('sleep_score')
+            else setCoachExpanded(true)
+          }}
+        />
+      ) : null}
     </div>
   )
+}
+
+function baselineSchritte(woche: WhoopDayRecord[]): number | null {
+  const vals = woche.slice(0, -1).map((d) => d.steps).filter((v): v is number => v != null && v > 0)
+  if (!vals.length) return null
+  return Math.round(vals.reduce((a, b) => a + b, 0) / vals.length)
+}
+
+function trendSteps(heute: number | null, base: number | null): 'up' | 'down' | 'neutral' {
+  if (heute == null || base == null) return 'neutral'
+  if (heute > base * 1.05) return 'up'
+  if (heute < base * 0.95) return 'down'
+  return 'neutral'
 }
