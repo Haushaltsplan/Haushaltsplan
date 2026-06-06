@@ -1,6 +1,6 @@
 /** Tages-Aggregate für WHOOP-ähnliche Trends (7 / 30 Tage). */
 
-import { heuteIsoLocal } from '@/lib/fitnessdaten/scores'
+import { heuteIsoLocal, istMorgenFenster, mergeTagesStrain } from '@/lib/fitnessdaten/scores'
 import { ergaenzeSchlafDetails } from '@/lib/fitnessdaten/sleep-detail'
 import { speichereZonenImTag } from '@/lib/fitnessdaten/healthspan-engine'
 import type { FitnessHistoryState, FitnessScores, FitnessSnapshot, HrZoneMinutes } from '@/lib/fitnessdaten/types'
@@ -38,6 +38,8 @@ export type WhoopDayRecord = {
   zoneMin45: number
   strengthMin: number
   zoneMinutes?: HrZoneMinutes | null
+  /** true = Erholung für heute fest (WHOOP Cloud oder Morgen-Messung) */
+  recoveryLocked?: boolean
 }
 
 export type WhoopActivity = {
@@ -231,13 +233,31 @@ export function aktualisiereHeuteAusSnapshot(
 
   const z = scores?.zoneMinutes
   const prevHeute = store.days.find((d) => d.date === heute) ?? createEmptyDayRecord(heute)
+
+  const liveRecovery = scores?.recoveryPercent ?? null
+  let recoveryPercent = prevHeute.recoveryPercent
+  let recoveryLocked = prevHeute.recoveryLocked ?? false
+  if (recoveryLocked && prevHeute.recoveryPercent != null) {
+    recoveryPercent = prevHeute.recoveryPercent
+  } else if (liveRecovery != null && liveRecovery > 0 && istMorgenFenster()) {
+    recoveryPercent = Math.round(liveRecovery)
+    recoveryLocked = true
+  } else if (liveRecovery != null && prevHeute.recoveryPercent == null && istMorgenFenster()) {
+    recoveryPercent = Math.round(liveRecovery)
+    recoveryLocked = true
+  }
+
+  const liveStrain = scores?.dayStrain ?? scores?.strain ?? null
+  const strain = mergeTagesStrain(liveStrain, prevHeute.strain)
+
   const record: WhoopDayRecord = speichereZonenImTag(
     ergaenzeSchlafDetails(
       {
         ...prevHeute,
         date: heute,
-        recoveryPercent: scores?.recoveryPercent ?? prevHeute.recoveryPercent,
-        strain: scores?.dayStrain ?? scores?.strain ?? prevHeute.strain,
+        recoveryPercent,
+        recoveryLocked,
+        strain,
         sleepScore: scores?.sleepScore ?? prevHeute.sleepScore,
         sleepMinutes: scores?.sleepMinutes ?? prevHeute.sleepMinutes,
         sleepEfficiency: scores?.sleepEfficiency ?? prevHeute.sleepEfficiency,
@@ -256,7 +276,7 @@ export function aktualisiereHeuteAusSnapshot(
         strengthMin: schaetzeKraftzeit(z),
         zoneMinutes: z ? { ...z } : prevHeute.zoneMinutes,
       },
-      scores?.dayStrain ?? scores?.strain ?? prevHeute.strain,
+      strain,
     ),
     z,
   )

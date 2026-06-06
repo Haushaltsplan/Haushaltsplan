@@ -1,93 +1,17 @@
 'use client'
 
-import { mergeLiveSnapshot } from '@/lib/fitnessdaten/history-storage'
-import type { FitnessSnapshot } from '@/lib/fitnessdaten/types'
-import {
-  istMobileBrowser,
-  verbindeWhoopStandardHr,
-  webBluetoothVerfuegbar,
-  WHOOP_WIEDERHERSTELLUNG,
-  type WhoopDeviceAuswahl,
-  type WhoopWebBleDebug,
-  type WhoopWebBlePhase,
-} from '@/lib/fitnessdaten/web-bluetooth-whoop'
-import { useCallback, useEffect, useRef, useState } from 'react'
-import toast from 'react-hot-toast'
+import { useWhoopBle } from '@/components/fitnessdaten/whoop-ble-provider'
+import { istMobileBrowser, WHOOP_WIEDERHERSTELLUNG } from '@/lib/fitnessdaten/web-bluetooth-whoop'
 
 type Props = {
-  onSnapshot: (s: FitnessSnapshot | null) => void
-  onPhaseChange?: (p: WhoopWebBlePhase) => void
   embedded?: boolean
 }
 
-export function FitnessWhoopBlePanel({ onSnapshot, onPhaseChange, embedded = false }: Props) {
-  const [phase, setPhase] = useState<WhoopWebBlePhase>('idle')
-  const [deviceName, setDeviceName] = useState<string | null>(null)
-  const [fehler, setFehler] = useState<string | null>(null)
-  const [statusHint, setStatusHint] = useState<string | null>(null)
-  const [debug, setDebug] = useState<WhoopWebBleDebug | null>(null)
-  const [bleOk] = useState(() => webBluetoothVerfuegbar())
-  const [mobile] = useState(() => istMobileBrowser())
-  const disconnectRef = useRef<(() => void) | null>(null)
+export function FitnessWhoopBlePanel({ embedded = false }: Props) {
+  const { phase, deviceName, fehler, statusHint, debug, bleOk, verbinden, trennen } = useWhoopBle()
+  const mobile = istMobileBrowser()
 
-  useEffect(() => {
-    return () => disconnectRef.current?.()
-  }, [])
-
-  const setPhaseBoth = useCallback(
-    (p: WhoopWebBlePhase) => {
-      setPhase(p)
-      onPhaseChange?.(p)
-    },
-    [onPhaseChange],
-  )
-
-  const trennen = useCallback(() => {
-    disconnectRef.current?.()
-    disconnectRef.current = null
-    setPhaseBoth('idle')
-    setDeviceName(null)
-    setFehler(null)
-    setStatusHint(null)
-    setDebug(null)
-  }, [setPhaseBoth])
-
-  const verbinden = useCallback(
-    async (auswahl: WhoopDeviceAuswahl = 'whoop') => {
-      setFehler(null)
-      setStatusHint(null)
-      setDebug(null)
-      try {
-        const session = await verbindeWhoopStandardHr(
-        ({ phase: p, deviceName: n, snapshot, error, statusHint: hint, debug: d, gen5: g5 }) => {
-          setPhaseBoth(p)
-          setDeviceName(n)
-          setFehler(error)
-          setStatusHint(hint)
-          setDebug(d)
-          const snap = snapshot ? { ...snapshot, gen5: g5 ?? snapshot.gen5 } : null
-          if (snap?.syncBackfill) {
-            onSnapshot(snap)
-          } else if (snap?.live?.heartRateBpm != null && snap.live.heartRateBpm > 0) {
-            onSnapshot(mergeLiveSnapshot(snap, snap.deviceInfo))
-          } else if (snap && (snap.live?.accel || snap.live?.skinTempC != null || snap.gen5)) {
-            onSnapshot(mergeLiveSnapshot(snap, snap.deviceInfo))
-          } else if (snap?.gen5) {
-            onSnapshot(snap)
-          }
-        },
-          auswahl,
-        )
-        disconnectRef.current = session.disconnect
-        toast.success('WHOOP verbunden')
-      } catch {
-        /* Fehler bereits in onUpdate */
-      }
-    },
-    [onSnapshot, setPhaseBoth],
-  )
-
-  const phaseLabel: Record<WhoopWebBlePhase, string> = {
+  const phaseLabel: Record<typeof phase, string> = {
     idle: 'Nicht verbunden',
     connecting: 'Verbinde …',
     live: 'Live',
@@ -111,6 +35,9 @@ export function FitnessWhoopBlePanel({ onSnapshot, onPhaseChange, embedded = fal
           <p className="mt-1 text-sm text-zinc-400">
             <span className="font-medium text-zinc-200">{phaseLabel[phase]}</span>
             {deviceName ? ` · ${deviceName}` : null}
+          </p>
+          <p className="mt-1 text-[10px] text-zinc-600">
+            Bleibt verbunden über Tabs & App-Sperre — bei Reichweitenverlust automatischer Sync.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -152,7 +79,7 @@ export function FitnessWhoopBlePanel({ onSnapshot, onPhaseChange, embedded = fal
       ) : (
         <ol className="mt-3 list-decimal space-y-1.5 rounded-lg border border-white/[0.06] bg-black/30 px-4 py-3 text-xs text-zinc-400 marker:text-orange-500">
           <li>WHOOP-App → Gerät → <strong className="text-zinc-200">HR Broadcast</strong> an</li>
-          <li>Band am Handgelenk, hier verbinden</li>
+          <li>Band am Handgelenk — Verbindung hält über App-Sperre{mobile ? '' : ' (Handy zuverlässiger als PC)'}</li>
         </ol>
       )}
 

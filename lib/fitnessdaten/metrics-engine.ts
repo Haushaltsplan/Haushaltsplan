@@ -121,12 +121,12 @@ export function baueWhoopDashboard(snapshot: FitnessSnapshot | null): WhoopDashb
     }
   }
 
-  const strain = heuteRecord.strain ?? 0
+  const strain = heuteRecord.strain
   let insightStrain: string | null = null
-  if (strain > 14) {
+  if (strain != null && strain > 14) {
     insightStrain =
       'Hohe Belastung heute. Denk daran, morgen Erholung Priorität zu geben, damit dein Körper regenerieren kann.'
-  } else if (strain > 8 && strain <= 14) {
+  } else if (strain != null && strain > 8 && strain <= 14) {
     insightStrain = 'Du liegst im intensiven Belastungsbereich — gut für Fitness, achte auf Schlaf heute Nacht.'
   }
 

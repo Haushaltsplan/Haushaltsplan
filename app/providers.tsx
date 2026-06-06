@@ -1,6 +1,7 @@
 'use client'
 
 import { KalenderCloudBootstrap } from '@/components/kalender-cloud-bootstrap'
+import { WhoopCloudAutoSyncRunner } from '@/components/fitnessdaten/whoop-cloud-auto-sync'
 import { PwaServiceWorkerRegister } from '@/components/pwa-service-worker-register'
 import { TerminMorgenReminderRunner } from '@/components/termin-morgen-reminder'
 import { AuthGate } from '@/components/auth-gate'
@@ -25,6 +26,7 @@ export function Providers({ children }: { children: ReactNode }) {
       </AuthGate>
       <PwaServiceWorkerRegister />
       <KalenderCloudBootstrap />
+      <WhoopCloudAutoSyncRunner />
       <TerminMorgenReminderRunner />
     </>
   )

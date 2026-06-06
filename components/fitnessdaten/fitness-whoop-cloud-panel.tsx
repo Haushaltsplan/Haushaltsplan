@@ -1,6 +1,7 @@
 'use client'
 
 import { ladeWhoopCloudMeta, syncWhoopCloudVomServer } from '@/lib/fitnessdaten/whoop-cloud-merge'
+import { versucheWhoopCloudAutoSync } from '@/lib/fitnessdaten/whoop-cloud-auto-sync'
 import type { WhoopCloudSyncResult } from '@/lib/fitnessdaten/whoop-cloud-types'
 import { whoopRedirectUri } from '@/lib/fitnessdaten/whoop-cloud-types'
 import { supabase } from '@/lib/supabase'
@@ -71,8 +72,14 @@ export function FitnessWhoopCloudPanel({ onSyncComplete, embedded = false }: Pro
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
     if (params.get('whoop') === 'connected') {
-      toast.success('WHOOP-Konto verbunden — jetzt Cloud-Sync ausführen.')
+      toast.success('WHOOP-Konto verbunden — Daten werden automatisch synchronisiert.')
       void ladeStatus()
+      void versucheWhoopCloudAutoSync(true).then((ok) => {
+        if (ok) {
+          setMeta(ladeWhoopCloudMeta())
+          onSyncComplete?.()
+        }
+      })
       window.history.replaceState({}, '', window.location.pathname)
     }
     const err = params.get('whoop_error')
@@ -80,7 +87,7 @@ export function FitnessWhoopCloudPanel({ onSyncComplete, embedded = false }: Pro
       toast.error(`WHOOP-Verbindung: ${decodeURIComponent(err)}`)
       window.history.replaceState({}, '', window.location.pathname)
     }
-  }, [ladeStatus])
+  }, [ladeStatus, onSyncComplete])
 
   const verbinden = useCallback(() => {
     window.location.href = '/api/fitnessdaten/whoop/auth'
@@ -116,12 +123,12 @@ export function FitnessWhoopCloudPanel({ onSyncComplete, embedded = false }: Pro
     >
       <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-violet-200">WHOOP Cloud</p>
       <p className="mt-2 text-xs leading-relaxed text-zinc-500">
-        Vollsync: Recovery (SpO₂), Schlaf (Stufen, Regelmäßigkeit, Bedarf), Zyklen (Strain), Workouts,
-        Körpermaße → Profil. OAuth mit aktivem WHOOP-Abo.
+        Recovery (SpO₂, Hauttemp.), Schlaf, Strain, Workouts — automatisch alle ~15 Min, sobald WHOOP
+        verbunden ist. Manueller Sync unten optional.
       </p>
       <p className="mt-2 text-[10px] leading-relaxed text-zinc-600">
-        Blutdruck-Insights (Life/MG) sind in der WHOOP-App — die öffentliche WHOOP-API liefert sie noch
-        nicht. ECG/AFib ebenfalls nur in der App.
+        Blutdruck (WHOOP Life/MG) liefert die öffentliche WHOOP-API nicht — Werte im Tab Gerät unter
+        Vitalwerte eintragen.
       </p>
 
       {!statusLoading && statusError ? (
@@ -171,7 +178,7 @@ export function FitnessWhoopCloudPanel({ onSyncComplete, embedded = false }: Pro
               onClick={() => void sync()}
               className="w-full rounded-xl border border-violet-500/40 bg-violet-950/40 py-3 text-sm font-semibold text-violet-100 transition hover:bg-violet-950/60 disabled:opacity-50"
             >
-              {busy ? 'Synchronisiere …' : 'WHOOP Cloud-Sync (alles)'}
+              {busy ? 'Synchronisiere …' : 'Jetzt synchronisieren'}
             </button>
             <button
               type="button"

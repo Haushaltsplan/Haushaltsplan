@@ -1,6 +1,10 @@
 import { registriereMotion, aktualisiereSchlafSchaetzung } from '@/lib/fitnessdaten/sleep-estimate'
-import { loescheDailyStore } from '@/lib/fitnessdaten/daily-records'
 import { loescheSyncDaten } from '@/lib/fitnessdaten/offline-sync'
+import {
+  createEmptyDayRecord,
+  ladeDailyStore,
+  loescheDailyStore,
+} from '@/lib/fitnessdaten/daily-records'
 import {
   ladeFitnessProfil,
   profilAlter,
@@ -12,10 +16,13 @@ import {
 import {
   avgHr,
   heuteIsoLocal,
+  istMorgenFenster,
   kalorienDelta,
   leereZonen,
   maxHr,
+  mergeTagesStrain,
   recoveryAusBaseline,
+  recoveryLabelAusProzent,
   ruhepulsSchaetzung,
   sekundenZuMinuten,
   strainAusZonen,
@@ -110,7 +117,8 @@ export function mergeLiveSnapshot(
   const heute = heuteIsoLocal()
   if (history.dayStrainDate !== heute) {
     history.dayStrainDate = heute
-    history.dayStrain = 0
+    const cloudStrain = ladeDailyStore().days.find((d) => d.date === heute)?.strain
+    history.dayStrain = cloudStrain ?? 0
     history.zoneSecondsToday = leereZonen()
     history.caloriesToday = 0
   }
@@ -166,12 +174,26 @@ export function mergeLiveSnapshot(
   const sessionHistory = hrHistory
   const rmssd = partial.scores?.hrvRmssdMs ?? null
   const restingHr = ruhepulsSchaetzung(sessionHistory) ?? history.baselines.restingHrBpm
-  const recovery = recoveryAusBaseline(
-    rmssd,
-    restingHr,
-    history.baselines.hrvRmssdMs,
-    history.baselines.restingHrBpm,
-  )
+
+  const prevHeute = ladeDailyStore().days.find((d) => d.date === heute) ?? createEmptyDayRecord(heute)
+  const recoveryLocked = Boolean(prevHeute.recoveryLocked && prevHeute.recoveryPercent != null)
+
+  let recoveryPercent: number | null = prevHeute.recoveryPercent
+  let recoveryLabel =
+    recoveryPercent != null ? recoveryLabelAusProzent(recoveryPercent) : null
+
+  if (!recoveryLocked && istMorgenFenster()) {
+    const recovery = recoveryAusBaseline(
+      rmssd,
+      restingHr,
+      history.baselines.hrvRmssdMs,
+      history.baselines.restingHrBpm,
+    )
+    if (recovery) {
+      recoveryPercent = recovery.percent
+      recoveryLabel = recovery.label
+    }
+  }
 
   if (partial.live?.accel) {
     registriereMotion(now, partial.live.accel)
@@ -179,16 +201,17 @@ export function mergeLiveSnapshot(
   const schlaf = aktualisiereSchlafSchaetzung()
 
   const sessionStrain = strainAusZonen(history.zoneSecondsToday)
-  history.dayStrain = sessionStrain
+  const dayStrain = mergeTagesStrain(sessionStrain, prevHeute.strain)
+  history.dayStrain = dayStrain ?? sessionStrain
 
   const scores = {
     ...partial.scores,
     hrvRmssdMs: rmssd,
     restingHrBpm: restingHr,
-    recoveryPercent: recovery?.percent ?? null,
-    recoveryLabel: recovery?.label ?? null,
-    strain: sessionStrain,
-    dayStrain: sessionStrain,
+    recoveryPercent,
+    recoveryLabel,
+    strain: dayStrain,
+    dayStrain,
     sleepScore: schlaf.sleepMinutes > 0 ? schlaf.sleepScore : null,
     sleepMinutes: schlaf.sleepMinutes > 0 ? schlaf.sleepMinutes : null,
     sleepEfficiency: schlaf.sleepMinutes > 0 ? schlaf.efficiency : null,

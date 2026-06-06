@@ -181,9 +181,10 @@ export const METRIC_INFO: Record<MetricInfoId, MetricInfo> = {
     source: 'Recovery vs. 30-Tage-Baseline',
   },
   vo2max: {
-    title: 'VO₂ Max',
-    body: 'Maximale Sauerstoffaufnahme — Maß für Ausdauer. WHOOP schätzt das aus Ruhepuls und Max-HF. Omnia nutzt eine vereinfachte Formel aus deinen HF-Daten.',
-    source: 'Geschätzt aus RHF + Max-HF',
+    title: 'VO₂ Max (Omnia-Schätzung)',
+    body:
+      'WHOOP zeigt VO₂ Max in der offiziellen App — die öffentliche WHOOP-API und CSV-Export liefern diesen Wert nicht. Omnia schätzt VO₂ Max lokal aus Ruhepuls, Max-HF und Alter (Uth-Smith-Näherung). Nach Cloud-Sync und BLE-Historie wird die Schätzung genauer.',
+    source: 'Lokal geschätzt — nicht WHOOP-Laborwert',
   },
   health_monitor: {
     title: 'Gesundheitsmonitor',

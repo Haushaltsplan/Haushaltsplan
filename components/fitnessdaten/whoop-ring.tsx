@@ -9,6 +9,7 @@ type Props = {
   size?: number
   stroke?: number
   unavailable?: boolean
+  onPress?: () => void
 }
 
 export function WhoopRing({
@@ -20,6 +21,7 @@ export function WhoopRing({
   size = 96,
   stroke = 7,
   unavailable = false,
+  onPress,
 }: Props) {
   const r = (size - stroke) / 2
   const circ = 2 * Math.PI * r
@@ -27,8 +29,8 @@ export function WhoopRing({
   const offset = circ * (1 - pct)
   const display = unavailable ? '—' : max === 100 ? `${Math.round(value)}%` : value.toFixed(1)
 
-  return (
-    <div className="flex flex-col items-center gap-2">
+  const content = (
+    <>
       <div className="relative" style={{ width: size, height: size }}>
         <svg width={size} height={size} className="block">
           <circle
@@ -72,8 +74,23 @@ export function WhoopRing({
         </p>
         {sublabel ? <p className="mt-0.5 text-[10px] text-zinc-500">{sublabel}</p> : null}
       </div>
-    </div>
+    </>
   )
+
+  if (onPress) {
+    return (
+      <button
+        type="button"
+        onClick={onPress}
+        className="flex flex-col items-center gap-2 rounded-2xl outline-none transition hover:opacity-90 focus-visible:ring-2 focus-visible:ring-white/20 active:scale-[0.98]"
+        aria-label={`${label} — Details öffnen`}
+      >
+        {content}
+      </button>
+    )
+  }
+
+  return <div className="flex flex-col items-center gap-2">{content}</div>
 }
 
 export function recoveryColor(percent: number | null | undefined): string {

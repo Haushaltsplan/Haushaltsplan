@@ -104,3 +104,27 @@ export function maxHr(history: FitnessHrPoint[]): number | null {
 export function heuteIsoLocal(): string {
   return new Date().toISOString().slice(0, 10)
 }
+
+/** Erholung nur morgens (nach Aufstehen) — WHOOP-ähnlich 5–14 Uhr. */
+export function istMorgenFenster(now = new Date()): boolean {
+  const h = now.getHours()
+  return h >= 5 && h < 14
+}
+
+/** Cloud-/Tages-Strain nicht durch 0 aus BLE-Session überschreiben. */
+export function mergeTagesStrain(
+  live: number | null | undefined,
+  prev: number | null | undefined,
+): number | null {
+  const p = prev ?? null
+  const l = live ?? null
+  if (p != null && p > 0 && (l == null || l === 0)) return p
+  if (l != null && l > 0) return p != null ? Math.max(p, l) : l
+  return p
+}
+
+export function recoveryLabelAusProzent(percent: number): FitnessScores['recoveryLabel'] {
+  if (percent >= 67) return 'optimal'
+  if (percent >= 34) return 'ausreichend'
+  return 'niedrig'
+}

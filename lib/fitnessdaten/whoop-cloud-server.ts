@@ -69,6 +69,7 @@ type SleepRec = {
 
 type CycleRec = {
   start?: string
+  end?: string | null
   score_state?: string
   score?: {
     strain?: number
@@ -323,11 +324,19 @@ function parseSleepRow(rec: SleepRec): WhoopCloudSleepRow | null {
   }
 }
 
+function heuteIsoServer(): string {
+  return new Date().toISOString().slice(0, 10)
+}
+
 function parseCycleRow(rec: CycleRec): WhoopCloudCycleRow | null {
-  if (rec.score_state !== 'SCORED' || !rec.score || !rec.start) return null
+  if (!rec.score || !rec.start) return null
+  if (rec.score_state === 'UNSCORABLE') return null
   const s = rec.score
+  if (s.strain == null && s.kilojoule == null) return null
+  // Laufender Zyklus (noch kein end) → Strain dem heutigen Tag zuordnen
+  const date = rec.end ? datumAusIso(rec.start) : heuteIsoServer()
   return {
-    date: datumAusIso(rec.start),
+    date,
     strain: s.strain != null ? Math.round(s.strain * 10) / 10 : null,
     avgHr: s.average_heart_rate != null ? Math.round(s.average_heart_rate) : null,
     maxHr: s.max_heart_rate != null ? Math.round(s.max_heart_rate) : null,

@@ -10,6 +10,7 @@ import {
 } from '@/lib/fitnessdaten/daily-records'
 import { ladeFitnessHistory, ladeFitnessSnapshot, mergeLiveSnapshot, speichereFitnessHistory, speichereFitnessSnapshot } from '@/lib/fitnessdaten/history-storage'
 import { heuteIsoLocal, maxHr, ruhepulsSchaetzung } from '@/lib/fitnessdaten/scores'
+import { berechneSkinTempDelta } from '@/lib/fitnessdaten/skin-temp'
 import type { FitnessSnapshot } from '@/lib/fitnessdaten/types'
 import type { Gen5EventSample, R22Sample } from '@/lib/fitnessdaten/whoop-gen5-protocol'
 
@@ -220,7 +221,16 @@ function aktualisiereTagAusHistorie(
     rec = leeresTag(isoDate)
     store.days.push(rec)
   }
-  Object.assign(rec, partial)
+
+  if (partial.skinTempC != null) {
+    const skin = berechneSkinTempDelta(partial.skinTempC, store.skinTempBaseline, store.days, isoDate)
+    rec.skinTempC = skin.skinTempC
+    rec.skinTempDelta = skin.skinTempDelta
+    if (skin.skinTempBaseline != null) store.skinTempBaseline = skin.skinTempBaseline
+  }
+
+  const { skinTempC: _s, skinTempDelta: _d, ...rest } = partial
+  Object.assign(rec, rest)
   store.days.sort((a, b) => a.date.localeCompare(b.date))
   if (store.days.length > 35) store.days = store.days.slice(-35)
   speichereDailyStore(store)

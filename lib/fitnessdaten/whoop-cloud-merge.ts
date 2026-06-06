@@ -7,6 +7,8 @@ import {
   type WhoopActivity,
   type WhoopDayRecord,
 } from '@/lib/fitnessdaten/daily-records'
+import { heuteIsoLocal, mergeTagesStrain, recoveryLabelAusProzent } from '@/lib/fitnessdaten/scores'
+import { berechneSkinTempDelta } from '@/lib/fitnessdaten/skin-temp'
 import { ladeSyncState, speichereSyncState } from '@/lib/fitnessdaten/offline-sync'
 import type { WhoopCloudSyncPayload, WhoopCloudSyncResult } from '@/lib/fitnessdaten/whoop-cloud-types'
 import {
@@ -14,9 +16,10 @@ import {
   speichereFitnessProfil,
   wendeProfilAufHistory,
 } from '@/lib/fitnessdaten/user-profile'
-import { ladeFitnessHistory, speichereFitnessHistory } from '@/lib/fitnessdaten/history-storage'
+import { ladeFitnessHistory, ladeFitnessSnapshot, speichereFitnessHistory, speichereFitnessSnapshot } from '@/lib/fitnessdaten/history-storage'
 
 export const WHOOP_CLOUD_META_KEY = 'mein-haushalt:fitnessdaten-whoop-cloud'
+export const WHOOP_CLOUD_SYNC_EVENT = 'mein-haushalt:whoop-cloud-sync'
 
 export type WhoopCloudMeta = {
   lastSyncedAt: string | null
@@ -52,17 +55,37 @@ function pick<T>(cloud: T | null | undefined, prev: T | null | undefined): T | n
   return prev ?? null
 }
 
-function mergeDay(prev: WhoopDayRecord, payload: WhoopCloudSyncPayload, date: string): WhoopDayRecord {
+function mergeDay(
+  prev: WhoopDayRecord,
+  payload: WhoopCloudSyncPayload,
+  date: string,
+  skinCtx: { baseline: number | null; days: WhoopDayRecord[] },
+): WhoopDayRecord {
   const rec = payload.recoveries.find((r) => r.date === date)
   const sleep = payload.sleeps.find((s) => s.date === date)
   const cycle = payload.cycles.find((c) => c.date === date)
+  const cloudRecovery = rec?.recoveryPercent ?? null
+  const recoveryLocked =
+    cloudRecovery != null ? true : Boolean(prev.recoveryLocked && prev.recoveryPercent != null)
+
+  let skinTempC = prev.skinTempC
+  let skinTempDelta = prev.skinTempDelta
+  if (rec?.skinTempC != null) {
+    const skin = berechneSkinTempDelta(rec.skinTempC, skinCtx.baseline, skinCtx.days, date)
+    skinTempC = skin.skinTempC
+    skinTempDelta = skin.skinTempDelta
+    if (skin.skinTempBaseline != null) skinCtx.baseline = skin.skinTempBaseline
+  }
+
   return {
     ...prev,
-    recoveryPercent: pick(rec?.recoveryPercent, prev.recoveryPercent),
+    recoveryPercent: cloudRecovery ?? prev.recoveryPercent,
+    recoveryLocked,
     hrvRmssd: pick(rec?.hrvRmssd, prev.hrvRmssd),
     restingHr: pick(rec?.restingHr, prev.restingHr),
     spo2Percent: pick(rec?.spo2Percent, prev.spo2Percent),
-    skinTempC: pick(rec?.skinTempC, prev.skinTempC),
+    skinTempC,
+    skinTempDelta,
     sleepScore: pick(sleep?.sleepScore, prev.sleepScore),
     sleepEfficiency: pick(sleep?.sleepEfficiency, prev.sleepEfficiency),
     sleepConsistency: pick(sleep?.sleepConsistency, prev.sleepConsistency),
@@ -75,7 +98,7 @@ function mergeDay(prev: WhoopDayRecord, payload: WhoopCloudSyncPayload, date: st
     respiratoryRate: pick(sleep?.respiratoryRate, prev.respiratoryRate) ?? pick(rec ? null : null, prev.respiratoryRate),
     bedTimeMs: pick(sleep?.bedTimeMs, prev.bedTimeMs),
     wakeTimeMs: pick(sleep?.wakeTimeMs, prev.wakeTimeMs),
-    strain: pick(cycle?.strain, prev.strain),
+    strain: mergeTagesStrain(cycle?.strain, prev.strain),
     avgHr: pick(cycle?.avgHr, prev.avgHr),
     maxHr: pick(cycle?.maxHr, prev.maxHr) ?? prev.maxHr,
     calories: pick(cycle?.calories, prev.calories),
@@ -124,10 +147,12 @@ export function mergeCloudPayload(payload: WhoopCloudSyncPayload): WhoopCloudSyn
 
   const store = ladeDailyStore()
   const byDate = new Map(store.days.map((d) => [d.date, d]))
+  const skinCtx = { baseline: store.skinTempBaseline, days: store.days }
   for (const date of dates) {
     const prev = byDate.get(date) ?? createEmptyDayRecord(date)
-    byDate.set(date, mergeDay(prev, payload, date))
+    byDate.set(date, mergeDay(prev, payload, date, skinCtx))
   }
+  store.skinTempBaseline = skinCtx.baseline
   store.days = [...byDate.values()].sort((a, b) => a.date.localeCompare(b.date)).slice(-365)
 
   const workoutActivities: WhoopActivity[] = payload.workouts.map((w) => ({
@@ -147,9 +172,47 @@ export function mergeCloudPayload(payload: WhoopCloudSyncPayload): WhoopCloudSyn
   store.activities = [...byId.values()].sort((a, b) => a.startMs - b.startMs).slice(-500)
 
   speichereDailyStore(store)
+
+  const heute = heuteIsoLocal()
+  const heuteRecord = store.days.find((d) => d.date === heute)
+  if (heuteRecord?.strain != null && heuteRecord.strain > 0) {
+    const history = ladeFitnessHistory()
+    history.dayStrain = heuteRecord.strain
+    history.dayStrainDate = heute
+    speichereFitnessHistory(history)
+  }
+
+  const snapshot = ladeFitnessSnapshot()
+  if (snapshot && heuteRecord) {
+    const scores = { ...snapshot.scores }
+    if (heuteRecord.strain != null) {
+      scores.strain = heuteRecord.strain
+      scores.dayStrain = heuteRecord.strain
+    }
+    if (heuteRecord.recoveryPercent != null) {
+      scores.recoveryPercent = heuteRecord.recoveryPercent
+      scores.recoveryLabel = recoveryLabelAusProzent(heuteRecord.recoveryPercent)
+    }
+    speichereFitnessSnapshot({
+      ...snapshot,
+      scores,
+      live: snapshot.live
+        ? {
+            ...snapshot.live,
+            skinTempC: heuteRecord.skinTempC ?? snapshot.live.skinTempC,
+          }
+        : snapshot.live,
+    })
+  }
+
   wendeBodyMeasurementsAn(payload.body)
 
   const syncedAt = new Date().toISOString()
+
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent(WHOOP_CLOUD_SYNC_EVENT, { detail: { syncedAt } }))
+  }
+
   const neuesteRec = payload.recoveries[payload.recoveries.length - 1]
   const mitSpo2 = payload.recoveries.filter((r) => r.spo2Percent != null).length
 

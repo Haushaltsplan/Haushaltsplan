@@ -115,6 +115,40 @@ export function webBluetoothVerfuegbar(): boolean {
   return typeof navigator !== 'undefined' && 'bluetooth' in navigator
 }
 
+export const WHOOP_BLE_DEVICE_ID_KEY = 'mein-haushalt:whoop-ble-device-id'
+
+export type WhoopConnectOptions = {
+  /** Reconnect ohne Geräteliste (getDevices / vorherige Session). */
+  existingDevice?: BluetoothDevice
+  /** Band hat Verbindung verloren — Provider kann Auto-Reconnect starten. */
+  onRemoteDisconnect?: (device: BluetoothDevice) => void
+}
+
+export async function findeGespeichertesWhoopDevice(): Promise<BluetoothDevice | null> {
+  if (!webBluetoothVerfuegbar()) return null
+  const bluetooth = navigator.bluetooth!
+  if (!bluetooth.getDevices) return null
+  try {
+    const savedId = window.localStorage.getItem(WHOOP_BLE_DEVICE_ID_KEY)
+    const devices = await bluetooth.getDevices()
+    if (savedId) {
+      const match = devices.find((d) => d.id === savedId && istWhoopName(d.name))
+      if (match) return match
+    }
+    return devices.find((d) => istWhoopName(d.name)) ?? null
+  } catch {
+    return null
+  }
+}
+
+function merkeWhoopDevice(device: BluetoothDevice): void {
+  try {
+    window.localStorage.setItem(WHOOP_BLE_DEVICE_ID_KEY, device.id)
+  } catch {
+    /* ignore */
+  }
+}
+
 export function istMobileBrowser(): boolean {
   if (typeof navigator === 'undefined') return false
   return /Android|iPhone|iPad|Mobile/i.test(navigator.userAgent)
@@ -296,6 +330,7 @@ function snapshotAusHr(
 export async function verbindeWhoopStandardHr(
   onUpdate: (session: Omit<WhoopWebBleSession, 'disconnect'>) => void,
   auswahl: WhoopDeviceAuswahl = 'whoop',
+  options?: WhoopConnectOptions,
 ): Promise<WhoopWebBleSession> {
   let gen5Status: Gen5StreamStatus | null = null
 
@@ -370,7 +405,12 @@ export async function verbindeWhoopStandardHr(
   const bluetooth = navigator.bluetooth!
   let device: BluetoothDevice
   try {
-    device = await waehleWhoopDevice(bluetooth, auswahl)
+    if (options?.existingDevice) {
+      device = options.existingDevice
+    } else {
+      device = await waehleWhoopDevice(bluetooth, auswahl)
+    }
+    merkeWhoopDevice(device)
     if (auswahl === 'alle' && !istWhoopName(device.name)) {
       emit({
         phase: 'error',
@@ -551,8 +591,24 @@ export async function verbindeWhoopStandardHr(
   }
 
   const anwendeGen5Event = (ev: Gen5EventSample) => {
-    if (!letzterSnapshot) return
-    const merged = mergeHistoricalEvent(ev, letzterSnapshot)
+    const basis =
+      letzterSnapshot ??
+      ({
+        updatedAt: new Date().toISOString(),
+        connectionState: 'live',
+        deviceName: device.name ?? 'WHOOP',
+        live: {
+          heartRateBpm: null,
+          rrIntervalsMs: [],
+          skinTempC: null,
+          accel: null,
+          recordedAt: new Date().toISOString(),
+        },
+        hrHistory: [],
+        sessionStartedAt,
+        deviceInfo,
+      } satisfies FitnessSnapshot)
+    const merged = mergeHistoricalEvent(ev, basis)
     emit({
       phase: letzterPhase === 'idle' ? 'live' : letzterPhase,
       deviceName: device.name ?? 'WHOOP',
@@ -638,14 +694,17 @@ export async function verbindeWhoopStandardHr(
   device.addEventListener('gattserverdisconnected', () => {
     if (pollTimer) clearInterval(pollTimer)
     if (debugTimer) clearInterval(debugTimer)
+    pollTimer = null
+    debugTimer = null
     markiereGetrennt()
     emit({
       phase: 'idle',
       deviceName: device.name ?? null,
-      snapshot: null,
-      error: 'Verbindung getrennt.',
-      statusHint: null,
+      snapshot: letzterSnapshot,
+      error: null,
+      statusHint: 'Verbindung verloren — stelle automatisch wieder her …',
     })
+    options?.onRemoteDisconnect?.(device)
   })
 
   return {

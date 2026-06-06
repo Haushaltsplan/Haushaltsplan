@@ -1,6 +1,7 @@
 /** Minimale Web-Bluetooth-Typen für Fitnessdaten (WHOOP Standard-HR). */
 
 interface BluetoothDevice extends EventTarget {
+  readonly id: string
   readonly name?: string
   readonly gatt?: BluetoothRemoteGATTServer
   addEventListener(type: 'gattserverdisconnected', listener: () => void): void

@@ -42,7 +42,8 @@ import { formatZoneAnteil } from '@/lib/fitnessdaten/history-storage'
 import type { FitnessSnapshot } from '@/lib/fitnessdaten/types'
 import { HR_ZONE_COLORS, HR_ZONE_LABELS } from '@/lib/fitnessdaten/types'
 import type { WhoopWebBlePhase } from '@/lib/fitnessdaten/web-bluetooth-whoop'
-import { useMemo, useState } from 'react'
+import { useMemo, useState, useEffect } from 'react'
+import { WHOOP_CLOUD_SYNC_EVENT } from '@/lib/fitnessdaten/whoop-cloud-merge'
 
 type Tab = 'home' | 'sleep' | 'recovery' | 'strain' | 'health' | 'connect'
 
@@ -113,6 +114,13 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange }: P
   const scores = snapshot?.scores
   const deviceInfo = snapshot?.deviceInfo
   const model = useMemo(() => baueWhoopDashboard(snapshot), [snapshot, dataRevision])
+
+  useEffect(() => {
+    const onSync = () => setDataRevision((r) => r + 1)
+    window.addEventListener(WHOOP_CLOUD_SYNC_EVENT, onSync)
+    return () => window.removeEventListener(WHOOP_CLOUD_SYNC_EVENT, onSync)
+  }, [])
+
   const isLive = phase === 'live'
   const zoneAnteil = scores?.zoneMinutes ? formatZoneAnteil(scores.zoneMinutes) : []
   const { heute, woche, metriken, aktivitaeten, journal, schlafdefizit } = model
@@ -193,6 +201,7 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange }: P
                 sublabel={recoveryLabelDe(scores?.recoveryLabel)}
                 color={recoveryColor(heute.recoveryPercent)}
                 unavailable={heute.recoveryPercent == null}
+                onPress={() => setTab('recovery')}
               />
               <WhoopRing
                 value={heute.strain ?? 0}
@@ -201,6 +210,7 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange }: P
                 sublabel="Heute"
                 color="#009dff"
                 unavailable={heute.strain == null}
+                onPress={() => setTab('strain')}
               />
               <WhoopRing
                 value={heute.sleepScore ?? 0}
@@ -210,6 +220,7 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange }: P
                 }
                 color="#7b61ff"
                 unavailable={heute.sleepScore == null}
+                onPress={() => setTab('sleep')}
               />
             </div>
 
@@ -649,7 +660,7 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange }: P
                       : '—'
                   }
                   unit="mmHg"
-                  status={heute.bpSystolic == null ? 'Manuell im Tab Gerät' : '✓ erfasst'}
+                  status={heute.bpSystolic == null ? 'Nicht in WHOOP-API — Tab Gerät' : '✓ erfasst'}
                   statusTone={heute.bpSystolic != null ? 'ok' : 'warn'}
                 />
                 <WhoopHealthTile
@@ -663,8 +674,8 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange }: P
                     heute.spo2Percent != null
                       ? heute.spo2Percent < 95
                         ? '! unter 95 %'
-                        : '✓ WHOOP Cloud'
-                      : 'Cloud-Sync im Tab Gerät'
+                        : '✓ automatisch'
+                      : 'WHOOP Cloud (auto)'
                   }
                   statusTone={
                     heute.spo2Percent != null ? (heute.spo2Percent < 95 ? 'bad' : 'ok') : 'warn'
@@ -700,9 +711,9 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange }: P
                     heute.skinTempDelta >= -0.4 &&
                     heute.skinTempDelta <= 0.5
                       ? '✓ in der Nähe von -0,4 bis +0,5'
-                      : heute.skinTempC != null
+                      : heute.skinTempC != null || heute.skinTempDelta != null
                         ? '! außerhalb Bereich'
-                        : 'Bond + fd4b nötig'
+                        : 'Cloud / BLE (auto)'
                   }
                   statusTone={
                     heute.skinTempDelta != null &&
@@ -761,7 +772,7 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange }: P
             <FitnessUserProfilePanel embedded onSaved={() => setDataRevision((r) => r + 1)} />
             <FitnessWhoopCloudPanel embedded onSyncComplete={() => setDataRevision((r) => r + 1)} />
             <FitnessVitalsPanel embedded onSaved={() => setDataRevision((r) => r + 1)} />
-            <FitnessWhoopBlePanel onSnapshot={onSnapshot} onPhaseChange={onPhaseChange} embedded />
+            <FitnessWhoopBlePanel embedded />
             <FitnessWhoopImportPanel embedded onImportComplete={() => setDataRevision((r) => r + 1)} />
           </section>
         )}
