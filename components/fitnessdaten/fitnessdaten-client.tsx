@@ -14,32 +14,34 @@ import {
   speichereFitnessSnapshot,
 } from '@/lib/fitnessdaten/snapshot-storage'
 import type { FitnessSnapshot } from '@/lib/fitnessdaten/types'
+import { FitnessWhoopBlePanel } from '@/components/fitnessdaten/fitness-whoop-ble-panel'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import toast from 'react-hot-toast'
 
-const WHOOP_PROTOCOL_URL = 'https://github.com/project-whoopsie/whoopsie-protocol/blob/main/WHOOP_BLE_PROTOCOL.md'
+const WHOOP5_PROTO_URL = 'https://judes.club/writing/cracking-the-whoop-5-bluetooth-protocol/'
 const WHOOP_APP_URL = 'https://github.com/project-whoopsie/whoopsie'
 
 const ROADMAP = [
   {
     step: 1,
-    title: 'BLE Verbindung & Parsing',
-    detail: 'Scanner (Name „WHOOP*“), Pairing, NOTIFY auf 61080003–61080007, Frame-Parser (0xAA, CRC8/CRC32).',
+    title: 'Standard-Puls (WHOOP 5.0)',
+    detail:
+      'BLE Heart Rate Service 0x180D — Puls + RR ohne Custom-Bond. Erster Meilenstein für dein 5.0.',
   },
   {
     step: 2,
-    title: 'Live-Daten-Stream',
-    detail: 'HR, RR-Intervalle, Hauttemperatur, IMU aus R10/R21-Payloads in Echtzeit anzeigen.',
+    title: 'Bond + Custom-Service fd4b0001',
+    detail: 'Android-Pairing, NOTIFY auf fd4b0003–0007. Basis für IMU, Historie, r22-Stream.',
   },
   {
     step: 3,
-    title: 'Historical Sync & ACK',
-    detail: '5-Paket-Handshake, ~1244-Byte-Blöcke puffern, Batch-ACK rechtzeitig zurücksenden.',
+    title: 'Gen5-Handshake & Historical Sync',
+    detail: 'SET_CONFIG-Flags, GET_DATA_RANGE, Cursor-ACK 0x17 — nicht die 4.0-Init-Pakete.',
   },
   {
     step: 4,
     title: 'Lokale Scores',
-    detail: 'RMSSD (HRV), Schlaf aus IMU+HF, Strain 0–21 aus HF-Zonen — alles ohne Cloud.',
+    detail: 'RMSSD aus RR, Schlaf aus IMU+HF, Strain aus HF-Zonen — ohne WHOOP-Cloud.',
   },
 ] as const
 
@@ -126,19 +128,19 @@ export function FitnessdatenClient() {
         title="Fitnessdaten"
         description={
           <>
-            WHOOP-Daten per eigener Android-App (Flutter + BLE) auslesen und hier visualisieren. BLE läuft nicht im
-            Browser — die Flutter-App synchronisiert Snapshots (später per API oder JSON-Export).
+            WHOOP 5.0 direkt in <strong className="text-orange-200">Omnia</strong> — wie Finanzen oder Kalender. Puls und
+            HRV-Basis per Web Bluetooth im Browser; alles bleibt lokal in deinem Browser (kein WHOOP-Abo).
           </>
         }
         actions={
           <div className="flex flex-wrap gap-2">
             <a
-              href={WHOOP_PROTOCOL_URL}
+              href={WHOOP5_PROTO_URL}
               target="_blank"
               rel="noopener noreferrer"
               className="rounded-xl border border-orange-500/40 bg-orange-950/30 px-4 py-2.5 text-xs font-semibold text-orange-100 transition hover:bg-orange-900/40"
             >
-              WHOOP_BLE_PROTOCOL.md
+              WHOOP 5.0 Protokoll
             </a>
             <a
               href={WHOOP_APP_URL}
@@ -151,6 +153,12 @@ export function FitnessdatenClient() {
           </div>
         }
       />
+
+      <PageSection titleId="fitness-whoop-ble" title="WHOOP verbinden">
+        <PageSectionPanel>
+          <FitnessWhoopBlePanel onSnapshot={setSnapshot} />
+        </PageSectionPanel>
+      </PageSection>
 
       <PageSection titleId="fitness-live" title="Aktueller Stand">
         <PageSectionPanel>
@@ -180,7 +188,7 @@ export function FitnessdatenClient() {
                   label="Herzfrequenz"
                   value={live?.heartRateBpm != null ? String(live.heartRateBpm) : '—'}
                   unit="bpm"
-                  hint="Live aus R10-Paket (Byte 21)"
+                  hint="Live · Standard-BLE 0x180D (WHOOP 5.0)"
                 />
                 <MetricCard
                   label="RR-Intervalle"
@@ -223,8 +231,7 @@ export function FitnessdatenClient() {
             <div className="rounded-xl border border-dashed border-zinc-700/70 bg-zinc-950/40 px-5 py-10 text-center">
               <p className="text-sm font-medium text-zinc-300">Noch keine Fitnessdaten in diesem Browser.</p>
               <p className="mx-auto mt-2 max-w-xl text-sm leading-relaxed text-zinc-500">
-                Verbinde zuerst dein WHOOP in der Flutter-App. Sobald dort Live-Daten ankommen, kannst du einen Snapshot
-                hier importieren — oder wir schließen später eine Sync-API an.
+                Oben <strong className="text-zinc-300">WHOOP verbinden</strong> — oder Test-Daten per JSON importieren.
               </p>
               <button
                 type="button"
@@ -263,20 +270,17 @@ export function FitnessdatenClient() {
           <div className="grid gap-4 lg:grid-cols-2">
             <div className={pageSectionShellClass}>
               <div className="border-b border-zinc-800/70 px-5 py-4">
-                <h3 className={pageSectionTitleClass}>Zwei Teile</h3>
+                <h3 className={pageSectionTitleClass}>Alles in Omnia</h3>
               </div>
               <div className="space-y-3 px-5 py-5 text-sm leading-relaxed text-zinc-400">
                 <p>
-                  <strong className="text-zinc-200">Flutter-App (Android):</strong> BLE-Scan, Pairing, Protokoll-Parser,
-                  lokale SQLite/Hive, Score-Berechnung. Basis:{' '}
-                  <a href={WHOOP_APP_URL} className="text-orange-300 hover:underline" target="_blank" rel="noopener noreferrer">
-                    project-whoopsie/whoopsie
-                  </a>
-                  .
+                  <strong className="text-zinc-200">Web-App (diese Seite):</strong> Dashboard + Web Bluetooth für Puls/RR
+                  am WHOOP 5.0. Daten in <code className="text-xs">localStorage</code> — wie andere Omnia-Bereiche lokal
+                  oder später Supabase.
                 </p>
                 <p>
-                  <strong className="text-zinc-200">Diese Seite (mein-haushalt):</strong> Dashboard wie Kalender oder
-                  Finanzen — zeigt importierte oder per API synchronisierte Snapshots.
+                  <strong className="text-zinc-200">Optional Flutter-App:</strong> Nur für erweiterte Custom-Daten (IMU,
+                  Historie fd4b) — nicht nötig für den Einstieg.
                 </p>
               </div>
             </div>
@@ -323,10 +327,11 @@ export function FitnessdatenClient() {
               </li>
             ))}
           </ol>
-          <p className="mt-5 text-sm leading-relaxed text-amber-200/90">
-            Hinweis WHOOP 5.0: Die Protokoll-Doku ist für Gen4 (Harvard / 4.0) reverse-engineered. Am Band testen, ob
-            Service-UUID <code className="rounded bg-zinc-900 px-1 text-xs">61080001</code> und die Charakteristiken
-            identisch sind.
+          <p className="mt-5 rounded-xl border border-orange-800/50 bg-orange-950/20 px-4 py-3 text-sm leading-relaxed text-orange-100/90">
+            <strong>WHOOP 5.0:</strong> Custom-Service <code className="text-xs">fd4b0001-…</code>, starkes Pairing
+            nötig. Sofort nutzbar: Standard-Herzfrequenz <code className="text-xs">0x180D</code> (Puls + RR für HRV).
+            Vollständige Sensor-/Historie-Daten folgen in Phase 1b–3 — siehe{' '}
+            <code className="text-xs">whoop-app/SCHRITTE.md</code>.
           </p>
         </PageSectionPanel>
       </PageSection>
