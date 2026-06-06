@@ -2,9 +2,13 @@
 
 import { supabase } from '@/lib/supabase'
 import type { Session } from '@supabase/supabase-js'
+import { usePathname } from 'next/navigation'
 import type { ReactNode } from 'react'
 import { useEffect, useState } from 'react'
 import toast from 'react-hot-toast'
+
+/** Öffentlich erreichbar (z. B. WHOOP OAuth verlangt Privacy-Policy-URL). */
+const PUBLIC_PATHS = ['/datenschutz']
 
 const APP_URL = (process.env.NEXT_PUBLIC_APP_URL || '').trim()
 
@@ -28,6 +32,8 @@ function loginRedirectUrl(): string {
 }
 
 export function AuthGate({ children }: { children: ReactNode }) {
+  const pathname = usePathname()
+  const oeffentlich = PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`))
   const [session, setSession] = useState<Session | null>(null)
   const [loading, setLoading] = useState(true)
   const [email, setEmail] = useState('')
@@ -66,6 +72,8 @@ export function AuthGate({ children }: { children: ReactNode }) {
       sub.subscription.unsubscribe()
     }
   }, [])
+
+  if (oeffentlich) return <>{children}</>
 
   const sendMagicLink = async () => {
     const clean = email.trim()
