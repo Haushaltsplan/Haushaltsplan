@@ -41,15 +41,18 @@ interface BluetoothRemoteGATTCharacteristic extends EventTarget {
 
 interface BluetoothRequestDeviceFilter {
   namePrefix?: string
+  services?: Array<number | string>
 }
 
 interface RequestDeviceOptions {
   filters?: BluetoothRequestDeviceFilter[]
   optionalServices?: Array<number | string>
+  acceptAllDevices?: boolean
 }
 
 interface Bluetooth {
   requestDevice(options?: RequestDeviceOptions): Promise<BluetoothDevice>
+  getDevices?(): Promise<BluetoothDevice[]>
 }
 
 interface Navigator {

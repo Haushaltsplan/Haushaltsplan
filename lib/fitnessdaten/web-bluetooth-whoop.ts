@@ -51,6 +51,47 @@ export type WhoopWebBleDebug = {
   istGen5: boolean
 }
 
+export type WhoopDeviceAuswahl = 'whoop' | 'alle' | 'gespeichert'
+
+/** Schritte wenn WHOOP in der Geräteliste fehlt oder nicht koppelt. */
+export const WHOOP_WIEDERHERSTELLUNG = [
+  'WHOOP-App öffnen und warten, bis der Strap oben wieder „verbunden“ ist (nicht zuerst Omnia).',
+  'Band an Ladeclip oder Handgelenk — 30–60 s warten (grünes Licht / Vibration).',
+  'Handy: Bluetooth aus → 10 Sekunden → wieder an.',
+  'Android: Einstellungen → Verbundene Geräte → WHOOP → „Verbindung trennen“ / „Entfernen“ (OS-Kopplung, kein Account).',
+  'Alle Omnia-/Chrome-Tabs schließen; Chrome aus den letzten Apps wischen.',
+  'Falls am PC verbunden war: dort Bluetooth → WHOOP entfernen.',
+  '2–3 Minuten warten, WHOOP-App erneut öffnen, dann hier „WHOOP verbinden“ oder „Alle Geräte scannen“.',
+] as const
+
+export const WHOOP_NICHT_GEFUNDEN_HINT =
+  'WHOOP erscheint nicht in der Liste? Zuerst WHOOP-App öffnen (Strap verbinden), dann unten „Wiederherstellung“ durchgehen.'
+
+function istWhoopName(name: string | undefined): boolean {
+  if (!name) return false
+  return name.toUpperCase().includes('WHOOP')
+}
+
+async function waehleWhoopDevice(bluetooth: Bluetooth, auswahl: WhoopDeviceAuswahl): Promise<BluetoothDevice> {
+  if (auswahl === 'gespeichert' && bluetooth.getDevices) {
+    const devices = await bluetooth.getDevices()
+    const whoop = devices.find((d) => istWhoopName(d.name))
+    if (whoop) return whoop
+  }
+
+  if (auswahl === 'alle') {
+    return bluetooth.requestDevice({
+      acceptAllDevices: true,
+      optionalServices: [...OPTIONAL_SERVICES],
+    })
+  }
+
+  return bluetooth.requestDevice({
+    filters: [{ namePrefix: 'WHOOP' }],
+    optionalServices: [...OPTIONAL_SERVICES],
+  })
+}
+
 export function webBluetoothVerfuegbar(): boolean {
   return typeof navigator !== 'undefined' && 'bluetooth' in navigator
 }
@@ -224,6 +265,7 @@ function snapshotAusHr(
 /** WHOOP 5.0: Standard-HR (0x180D) im Browser. */
 export async function verbindeWhoopStandardHr(
   onUpdate: (session: Omit<WhoopWebBleSession, 'disconnect'>) => void,
+  auswahl: WhoopDeviceAuswahl = 'whoop',
 ): Promise<WhoopWebBleSession> {
   const debug: WhoopWebBleDebug = {
     services: [],
@@ -282,13 +324,28 @@ export async function verbindeWhoopStandardHr(
   const bluetooth = navigator.bluetooth!
   let device: BluetoothDevice
   try {
-    device = await bluetooth.requestDevice({
-      filters: [{ namePrefix: 'WHOOP' }],
-      optionalServices: [...OPTIONAL_SERVICES],
-    })
+    device = await waehleWhoopDevice(bluetooth, auswahl)
+    if (auswahl === 'alle' && !istWhoopName(device.name)) {
+      emit({
+        phase: 'error',
+        deviceName: device.name ?? null,
+        snapshot: null,
+        error: `„${device.name ?? 'Gerät'}“ ist kein WHOOP — bitte WHOOP in der Liste wählen.`,
+        statusHint: WHOOP_NICHT_GEFUNDEN_HINT,
+      })
+      throw new Error('Kein WHOOP gewählt')
+    }
   } catch (e) {
-    const msg = e instanceof Error && e.name === 'NotFoundError' ? 'Kein WHOOP ausgewählt.' : 'Verbindung abgebrochen.'
-    emit({ phase: 'error', deviceName: null, snapshot: null, error: msg, statusHint: null })
+    if (e instanceof Error && e.message === 'Kein WHOOP gewählt') throw e
+    const notFound = e instanceof Error && e.name === 'NotFoundError'
+    const msg = notFound ? 'Kein Gerät ausgewählt oder WHOOP nicht in der Liste.' : 'Verbindung abgebrochen.'
+    emit({
+      phase: 'error',
+      deviceName: null,
+      snapshot: null,
+      error: msg,
+      statusHint: notFound ? WHOOP_NICHT_GEFUNDEN_HINT : null,
+    })
     throw e
   }
 

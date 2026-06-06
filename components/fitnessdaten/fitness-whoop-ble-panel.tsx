@@ -6,6 +6,8 @@ import {
   istMobileBrowser,
   verbindeWhoopStandardHr,
   webBluetoothVerfuegbar,
+  WHOOP_WIEDERHERSTELLUNG,
+  type WhoopDeviceAuswahl,
   type WhoopWebBleDebug,
   type WhoopWebBlePhase,
 } from '@/lib/fitnessdaten/web-bluetooth-whoop'
@@ -40,30 +42,34 @@ export function FitnessWhoopBlePanel({ onSnapshot }: Props) {
     setDebug(null)
   }, [])
 
-  const verbinden = useCallback(async () => {
-    setFehler(null)
-    setStatusHint(null)
-    setDebug(null)
-    try {
-      const session = await verbindeWhoopStandardHr(
-        ({ phase: p, deviceName: n, snapshot, error, statusHint: hint, debug: d }) => {
-          setPhase(p)
-          setDeviceName(n)
-          setFehler(error)
-          setStatusHint(hint)
-          setDebug(d)
-          if (snapshot?.live?.heartRateBpm != null && snapshot.live.heartRateBpm > 0) {
-            speichereFitnessSnapshot(snapshot)
-            onSnapshot(snapshot)
-          }
-        },
-      )
-      disconnectRef.current = session.disconnect
-      toast.success('WHOOP verbunden — warte auf Puls …')
-    } catch {
-      /* Fehler bereits in onUpdate */
-    }
-  }, [onSnapshot])
+  const verbinden = useCallback(
+    async (auswahl: WhoopDeviceAuswahl = 'whoop') => {
+      setFehler(null)
+      setStatusHint(null)
+      setDebug(null)
+      try {
+        const session = await verbindeWhoopStandardHr(
+          ({ phase: p, deviceName: n, snapshot, error, statusHint: hint, debug: d }) => {
+            setPhase(p)
+            setDeviceName(n)
+            setFehler(error)
+            setStatusHint(hint)
+            setDebug(d)
+            if (snapshot?.live?.heartRateBpm != null && snapshot.live.heartRateBpm > 0) {
+              speichereFitnessSnapshot(snapshot)
+              onSnapshot(snapshot)
+            }
+          },
+          auswahl,
+        )
+        disconnectRef.current = session.disconnect
+        toast.success('WHOOP verbunden — warte auf Puls …')
+      } catch {
+        /* Fehler bereits in onUpdate */
+      }
+    },
+    [onSnapshot],
+  )
 
   const phaseLabel: Record<WhoopWebBlePhase, string> = {
     idle: 'Nicht verbunden',
@@ -96,14 +102,25 @@ export function FitnessWhoopBlePanel({ onSnapshot }: Props) {
               Trennen
             </button>
           ) : (
-            <button
-              type="button"
-              disabled={!bleOk}
-              onClick={() => void verbinden()}
-              className="rounded-xl bg-orange-600 px-4 py-2.5 text-xs font-bold text-white shadow-md shadow-orange-950/30 transition hover:bg-orange-500 disabled:opacity-40"
-            >
-              WHOOP verbinden
-            </button>
+            <>
+              <button
+                type="button"
+                disabled={!bleOk}
+                onClick={() => void verbinden('whoop')}
+                className="rounded-xl bg-orange-600 px-4 py-2.5 text-xs font-bold text-white shadow-md shadow-orange-950/30 transition hover:bg-orange-500 disabled:opacity-40"
+              >
+                WHOOP verbinden
+              </button>
+              <button
+                type="button"
+                disabled={!bleOk}
+                onClick={() => void verbinden('alle')}
+                className="rounded-xl border border-zinc-600 bg-zinc-900 px-3 py-2.5 text-xs font-semibold text-zinc-300 transition hover:bg-zinc-800 disabled:opacity-40"
+                title="Falls WHOOP nicht in der Liste erscheint"
+              >
+                Alle Geräte scannen
+              </button>
+            </>
           )}
         </div>
       </div>
@@ -134,6 +151,21 @@ export function FitnessWhoopBlePanel({ onSnapshot }: Props) {
           ) : null}
         </div>
       )}
+
+      <details className="mt-3 rounded-lg border border-zinc-700/60 bg-zinc-950/40 px-3 py-2 text-xs text-zinc-400">
+        <summary className="cursor-pointer font-semibold text-zinc-300">
+          WHOOP wird nicht gefunden? — Wiederherstellung
+        </summary>
+        <ol className="mt-2 list-decimal space-y-1.5 pl-4 leading-relaxed">
+          {WHOOP_WIEDERHERSTELLUNG.map((schritt) => (
+            <li key={schritt}>{schritt}</li>
+          ))}
+        </ol>
+        <p className="mt-2 text-zinc-500">
+          Omnia hat keinen dauerhaften Zugriff auf WHOOP — wenn die Liste leer bleibt, blockiert meist noch die
+          WHOOP-App oder eine alte PC-Verbindung den Strap.
+        </p>
+      </details>
 
       {statusHint ? (
         <p className="mt-3 rounded-lg border border-amber-800/45 bg-amber-950/25 px-3 py-2 text-sm text-amber-100/90">
