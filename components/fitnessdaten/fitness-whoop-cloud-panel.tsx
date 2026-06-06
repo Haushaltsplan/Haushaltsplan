@@ -2,6 +2,7 @@
 
 import { ladeWhoopCloudMeta, syncWhoopCloudVomServer } from '@/lib/fitnessdaten/whoop-cloud-merge'
 import type { WhoopCloudSyncResult } from '@/lib/fitnessdaten/whoop-cloud-types'
+import { whoopRedirectUri } from '@/lib/fitnessdaten/whoop-cloud-types'
 import { supabase } from '@/lib/supabase'
 import { useCallback, useEffect, useState } from 'react'
 import toast from 'react-hot-toast'
@@ -21,9 +22,11 @@ export function FitnessWhoopCloudPanel({ onSyncComplete, embedded = false }: Pro
   const [busy, setBusy] = useState(false)
   const [ergebnis, setErgebnis] = useState<WhoopCloudSyncResult | null>(null)
   const [hostname, setHostname] = useState<string | null>(null)
+  const [redirectUri, setRedirectUri] = useState<string | null>(null)
 
   useEffect(() => {
     setHostname(window.location.hostname)
+    setRedirectUri(whoopRedirectUri(window.location.origin))
   }, [])
 
   const ladeStatus = useCallback(async () => {
@@ -146,6 +149,16 @@ export function FitnessWhoopCloudPanel({ onSyncComplete, embedded = false }: Pro
               <code className="text-amber-200">npm run dev</code>).
             </>
           )}
+        </p>
+      ) : null}
+
+      {!statusLoading && status.configured && redirectUri ? (
+        <p className="mt-3 rounded-xl border border-zinc-800 bg-zinc-900/40 p-3 text-[11px] leading-relaxed text-zinc-500">
+          <span className="font-medium text-zinc-400">Redirect-URI im WHOOP Developer Dashboard</span>{' '}
+          (Zeichen für Zeichen, ohne Slash am Ende):
+          <code className="mt-2 block break-all rounded-lg bg-black/30 px-2 py-1.5 text-[10px] text-violet-200">
+            {redirectUri}
+          </code>
         </p>
       ) : null}
 
