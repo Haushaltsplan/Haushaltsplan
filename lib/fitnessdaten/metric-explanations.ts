@@ -152,8 +152,8 @@ export const METRIC_INFO: Record<MetricInfoId, MetricInfo> = {
   },
   spo2: {
     title: 'Sauerstoffsättigung (SpO₂)',
-    body: 'Anteil des sauerstoffgesättigten Blutes. WHOOP 4/5 können das messen; über Standard-Web-BLE in Omnia nicht verfügbar.',
-    source: 'Nicht per Web-BLE',
+    body: 'Anteil des sauerstoffgesättigten Blutes. WHOOP misst das nachts/am Morgen — der fertige Wert kommt aus der WHOOP-Cloud (Recovery), nicht aus dem Live-BLE-Stream. In Omnia: WHOOP-Konto verbinden und Cloud-Sync.',
+    source: 'WHOOP Cloud Recovery (OAuth)',
   },
   skin_temp: {
     title: 'Hauttemperatur',

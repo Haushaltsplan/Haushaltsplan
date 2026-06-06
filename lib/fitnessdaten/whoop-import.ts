@@ -5,7 +5,10 @@
 import {
   ladeDailyStore,
   speichereDailyStore,
+  createEmptyDayRecord,
+  type WhoopActivity,
   type WhoopDayRecord,
+  type WhoopJournalEntry,
 } from '@/lib/fitnessdaten/daily-records'
 import {
   ladeFitnessHistory,
@@ -159,6 +162,7 @@ function parsePhysiologicalCycles(rows: Record<string, string>[], map: TagMap): 
       restingHr: zahlAusZeile(row, 'resting_heart_rate', 'resting_hr') ?? prev.restingHr ?? null,
       respiratoryRate: zahlAusZeile(row, 'respiratory_rate') ?? prev.respiratoryRate ?? null,
       skinTempC: zahlAusZeile(row, 'skin_temp', 'skin_temperature') ?? prev.skinTempC ?? null,
+      avgHr: zahlAusZeile(row, 'average_heart_rate', 'avg_heart_rate') ?? prev.avgHr ?? null,
       calories:
         calDirect != null
           ? Math.round(calDirect)
@@ -182,6 +186,7 @@ function parseSleeps(rows: Record<string, string>[], map: TagMap): number {
     const light = zahlAusZeile(row, 'light_sleep_duration', 'light_sleep') ?? 0
     const deep = zahlAusZeile(row, 'deep_sws_duration', 'slow_wave', 'deep') ?? 0
     const rem = zahlAusZeile(row, 'rem_duration', 'rem_sleep') ?? 0
+    const awake = zahlAusZeile(row, 'awake_duration', 'awake') ?? 0
     const total = zahlAusZeile(row, 'total_sleep_duration', 'time_asleep') ?? light + deep + rem
 
     const prev = map.get(date) ?? { date }
@@ -190,9 +195,13 @@ function parseSleeps(rows: Record<string, string>[], map: TagMap): number {
       date,
       sleepScore: zahlAusZeile(row, 'sleep_performance') ?? prev.sleepScore ?? null,
       sleepEfficiency: zahlAusZeile(row, 'sleep_efficiency') ?? prev.sleepEfficiency ?? null,
+      sleepConsistency: zahlAusZeile(row, 'sleep_consistency') ?? prev.sleepConsistency ?? null,
+      respiratoryRate: zahlAusZeile(row, 'respiratory_rate') ?? prev.respiratoryRate ?? null,
       sleepMinutes: total > 0 ? Math.round(total) : prev.sleepMinutes ?? null,
       remMinutes: rem > 0 ? Math.round(rem) : prev.remMinutes ?? null,
       deepMinutes: deep > 0 ? Math.round(deep) : prev.deepMinutes ?? null,
+      lightMinutes: light > 0 ? Math.round(light) : prev.lightMinutes ?? null,
+      awakeMinutes: awake > 0 ? Math.round(awake) : prev.awakeMinutes ?? null,
       bedTimeMs: msAusDatetime(textAusZeile(row, 'sleep_onset')) ?? prev.bedTimeMs ?? null,
       wakeTimeMs: msAusDatetime(textAusZeile(row, 'wake_onset')) ?? prev.wakeTimeMs ?? null,
     })
@@ -201,24 +210,61 @@ function parseSleeps(rows: Record<string, string>[], map: TagMap): number {
   return n
 }
 
-function parseWorkouts(rows: Record<string, string>[], map: TagMap): number {
+function parseWorkouts(rows: Record<string, string>[], map: TagMap): WhoopActivity[] {
   const calByDay = new Map<string, number>()
-  let n = 0
+  const activities: WhoopActivity[] = []
   for (const row of rows) {
     const date =
       datumAusCycleStart(row) ??
-      textAusZeile(row, 'workout_start_time')?.match(/^(\d{4}-\d{2}-\d{2})/)?.[1] ??
+      textAusZeile(row, 'workout_start_time', 'workout_start')?.match(/^(\d{4}-\d{2}-\d{2})/)?.[1] ??
       null
     if (!date) continue
     const cal = zahlAusZeile(row, 'energy_burned', 'calories')
     if (cal != null) calByDay.set(date, (calByDay.get(date) ?? 0) + cal)
-    n++
+
+    const startRaw = textAusZeile(row, 'workout_start_time', 'workout_start')
+    const endRaw = textAusZeile(row, 'workout_end_time', 'workout_end')
+    const startMs = startRaw ? Date.parse(startRaw.replace(' ', 'T')) : Date.parse(`${date}T12:00:00`)
+    const endMs = endRaw ? Date.parse(endRaw.replace(' ', 'T')) : startMs + 3600_000
+    const sport = textAusZeile(row, 'activity_name', 'sport', 'workout_activity_name') ?? 'Workout'
+    const strain = zahlAusZeile(row, 'activity_strain', 'workout_strain', 'strain') ?? 0
+    activities.push({
+      id: `csv-${date}-${startMs}-${sport}`,
+      label: sport,
+      strain,
+      startMs,
+      endMs,
+      date,
+      sport,
+      avgHr: zahlAusZeile(row, 'average_heart_rate', 'avg_heart_rate'),
+      maxHr: zahlAusZeile(row, 'max_heart_rate', 'max_hr'),
+      calories: cal != null ? Math.round(cal) : null,
+    })
   }
   for (const [date, cal] of calByDay) {
     const prev = map.get(date) ?? { date }
     if (prev.calories == null) map.set(date, { ...prev, date, calories: Math.round(cal) })
   }
-  return n
+  return activities
+}
+
+function parseJournal(rows: Record<string, string>[]): WhoopJournalEntry[] {
+  const entries: WhoopJournalEntry[] = []
+  if (rows.length === 0) return entries
+  const headers = Object.keys(rows[0] ?? {})
+  const dateHeader =
+    headers.find((h) => normKey(h).includes('cycle_start')) ?? headers[0] ?? 'Cycle start time'
+
+  for (const row of rows) {
+    const dateRaw = row[dateHeader] ?? Object.values(row)[0]
+    const date = dateRaw?.match(/^(\d{4}-\d{2}-\d{2})/)?.[1]
+    if (!date) continue
+    for (const [header, val] of Object.entries(row)) {
+      if (header === dateHeader || !val?.trim()) continue
+      entries.push({ date, question: header.trim(), answer: val.trim() })
+    }
+  }
+  return entries
 }
 
 function erkenneCsvTyp(name: string, headers: string[]): string {
@@ -226,56 +272,39 @@ function erkenneCsvTyp(name: string, headers: string[]): string {
   if (n.includes('physiological') || n.includes('cycles')) return 'cycles'
   if (n.includes('sleep')) return 'sleeps'
   if (n.includes('workout')) return 'workouts'
+  if (n.includes('journal')) return 'journal'
   const h = headers.map(normKey).join(' ')
   if (h.includes('recovery') && h.includes('strain')) return 'cycles'
   if (h.includes('sleep_onset')) return 'sleeps'
   if (h.includes('workout_start')) return 'workouts'
+  if (h.includes('journal') || h.includes('question')) return 'journal'
   return 'unknown'
 }
 
-export function parseWhoopCsvDatei(name: string, text: string): { map: TagMap; typ: string; zeilen: number } {
+export function parseWhoopCsvDatei(
+  name: string,
+  text: string,
+): { map: TagMap; typ: string; zeilen: number; activities: WhoopActivity[]; journal: WhoopJournalEntry[] } {
   const { headers, rows } = parseWhoopCsv(text)
   const typ = erkenneCsvTyp(name, headers)
   const map: TagMap = new Map()
+  let activities: WhoopActivity[] = []
+  let journal: WhoopJournalEntry[] = []
 
   if (typ === 'cycles') parsePhysiologicalCycles(rows, map)
   else if (typ === 'sleeps') parseSleeps(rows, map)
-  else if (typ === 'workouts') parseWorkouts(rows, map)
+  else if (typ === 'workouts') activities = parseWorkouts(rows, map)
+  else if (typ === 'journal') journal = parseJournal(rows)
   else if (rows.length > 0) {
     parsePhysiologicalCycles(rows, map)
     if (map.size === 0) parseSleeps(rows, map)
   }
 
-  return { map, typ, zeilen: rows.length }
+  return { map, typ, zeilen: rows.length, activities, journal }
 }
 
 function leeresTag(date: string): WhoopDayRecord {
-  return {
-    date,
-    recoveryPercent: null,
-    strain: null,
-    sleepScore: null,
-    sleepMinutes: null,
-    sleepEfficiency: null,
-    sleepNeedMinutes: null,
-    bedTimeMs: null,
-    wakeTimeMs: null,
-    remMinutes: null,
-    deepMinutes: null,
-    sleepConsistency: null,
-    hrvRmssd: null,
-    restingHr: null,
-    respiratoryRate: null,
-    skinTempC: null,
-    skinTempDelta: null,
-    calories: null,
-    steps: null,
-    maxHr: null,
-    zoneMin13: 0,
-    zoneMin45: 0,
-    strengthMin: 0,
-    zoneMinutes: null,
-  }
+  return createEmptyDayRecord(date)
 }
 
 function mapZuRecords(map: TagMap): WhoopDayRecord[] {
@@ -298,14 +327,19 @@ function mergeTag(a: WhoopDayRecord, b: WhoopDayRecord): WhoopDayRecord {
       sleepScore: pick('sleepScore'),
       sleepMinutes: pick('sleepMinutes'),
       sleepEfficiency: pick('sleepEfficiency'),
+      sleepConsistency: pick('sleepConsistency'),
       hrvRmssd: pick('hrvRmssd'),
       restingHr: pick('restingHr'),
       respiratoryRate: pick('respiratoryRate'),
+      avgHr: pick('avgHr'),
       skinTempC: pick('skinTempC'),
+      spo2Percent: pick('spo2Percent'),
       calories: pick('calories'),
       maxHr: pick('maxHr'),
       remMinutes: pick('remMinutes'),
       deepMinutes: pick('deepMinutes'),
+      lightMinutes: pick('lightMinutes'),
+      awakeMinutes: pick('awakeMinutes'),
       bedTimeMs: pick('bedTimeMs'),
       wakeTimeMs: pick('wakeTimeMs'),
     },
@@ -370,15 +404,17 @@ export function importiereWhoopCsvDateien(dateien: { name: string; text: string 
   const fehler: string[] = []
   const quellen: string[] = []
   const gesamtMap: TagMap = new Map()
+  const allActivities: WhoopActivity[] = []
+  const allJournal: WhoopJournalEntry[] = []
 
   for (const f of dateien) {
     try {
-      const { map, typ, zeilen } = parseWhoopCsvDatei(f.name, f.text)
+      const { map, typ, zeilen, activities, journal } = parseWhoopCsvDatei(f.name, f.text)
       if (zeilen === 0) {
         fehler.push(`${f.name}: keine Datenzeilen`)
         continue
       }
-      if (typ === 'unknown' && map.size === 0) {
+      if (typ === 'unknown' && map.size === 0 && journal.length === 0) {
         fehler.push(`${f.name}: Format nicht erkannt`)
         continue
       }
@@ -386,12 +422,14 @@ export function importiereWhoopCsvDateien(dateien: { name: string; text: string 
       for (const [date, partial] of map) {
         gesamtMap.set(date, { ...gesamtMap.get(date), ...partial, date })
       }
+      allActivities.push(...activities)
+      allJournal.push(...journal)
     } catch (e) {
       fehler.push(`${f.name}: ${e instanceof Error ? e.message : 'Fehler'}`)
     }
   }
 
-  if (gesamtMap.size === 0) {
+  if (gesamtMap.size === 0 && allJournal.length === 0) {
     return {
       ok: false,
       tageImportiert: 0,
@@ -409,6 +447,24 @@ export function importiereWhoopCsvDateien(dateien: { name: string; text: string 
   const store = ladeDailyStore()
   const { merged, neu, aktualisiert } = mergeRecords(store.days, imported)
   store.days = merged
+  if (allActivities.length > 0) {
+    const byId = new Map(store.activities.map((a) => [a.id, a]))
+    for (const a of allActivities) byId.set(a.id, a)
+    store.activities = [...byId.values()].sort((a, b) => a.startMs - b.startMs).slice(-500)
+  }
+  if (allJournal.length > 0) {
+    const key = (j: WhoopJournalEntry) => `${j.date}|${j.question}|${j.answer}`
+    const seen = new Set(store.journal.map(key))
+    for (const j of allJournal) {
+      const k = key(j)
+      if (!seen.has(k)) {
+        store.journal.push(j)
+        seen.add(k)
+      }
+    }
+    store.journal.sort((a, b) => b.date.localeCompare(a.date))
+    if (store.journal.length > 1000) store.journal = store.journal.slice(0, 1000)
+  }
   speichereDailyStore(store)
   speichereFitnessHistory(historyAusImport(merged))
 

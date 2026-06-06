@@ -90,7 +90,8 @@ export function FitnessWhoopImportPanel({ onImportComplete, embedded = false }: 
         hochladen. Unterstützt{' '}
         <code className="text-zinc-400">physiological_cycles.csv</code>,{' '}
         <code className="text-zinc-400">sleeps.csv</code>,{' '}
-        <code className="text-zinc-400">workouts.csv</code>.
+        <code className="text-zinc-400">workouts.csv</code>,{' '}
+        <code className="text-zinc-400">journal_entries.csv</code>.
       </p>
 
       <div className="mt-4 space-y-3">

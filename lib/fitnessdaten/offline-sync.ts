@@ -2,7 +2,12 @@
  * Offline-Sync: Band speichert bei fehlender Verbindung — Gen5-Historie + lokaler Puffer.
  */
 
-import { ladeDailyStore, speichereDailyStore, type WhoopDayRecord } from '@/lib/fitnessdaten/daily-records'
+import {
+  createEmptyDayRecord,
+  ladeDailyStore,
+  speichereDailyStore,
+  type WhoopDayRecord,
+} from '@/lib/fitnessdaten/daily-records'
 import { ladeFitnessHistory, ladeFitnessSnapshot, mergeLiveSnapshot, speichereFitnessHistory, speichereFitnessSnapshot } from '@/lib/fitnessdaten/history-storage'
 import { heuteIsoLocal, maxHr, ruhepulsSchaetzung } from '@/lib/fitnessdaten/scores'
 import type { FitnessSnapshot } from '@/lib/fitnessdaten/types'
@@ -222,31 +227,7 @@ function aktualisiereTagAusHistorie(
 }
 
 function leeresTag(date: string): WhoopDayRecord {
-  return {
-    date,
-    recoveryPercent: null,
-    strain: null,
-    sleepScore: null,
-    sleepMinutes: null,
-    sleepEfficiency: null,
-    sleepNeedMinutes: null,
-    bedTimeMs: null,
-    wakeTimeMs: null,
-    remMinutes: null,
-    deepMinutes: null,
-    sleepConsistency: null,
-    hrvRmssd: null,
-    restingHr: null,
-    respiratoryRate: null,
-    skinTempC: null,
-    skinTempDelta: null,
-    calories: null,
-    steps: null,
-    maxHr: null,
-    zoneMin13: 0,
-    zoneMin45: 0,
-    strengthMin: 0,
-  }
+  return createEmptyDayRecord(date)
 }
 
 /** Puffer für Samples, die während kurzer Disconnects nicht gemergt wurden. */

@@ -5,6 +5,8 @@ import { WhoopHrChart } from '@/components/fitnessdaten/whoop-hr-chart'
 import { FitnessWhoopBlePanel } from '@/components/fitnessdaten/fitness-whoop-ble-panel'
 import { FitnessWhoopImportPanel } from '@/components/fitnessdaten/fitness-whoop-import-panel'
 import { FitnessUserProfilePanel } from '@/components/fitnessdaten/fitness-user-profile-panel'
+import { FitnessWhoopCloudPanel } from '@/components/fitnessdaten/fitness-whoop-cloud-panel'
+import { FitnessVitalsPanel } from '@/components/fitnessdaten/fitness-vitals-panel'
 import { WhoopBigRing } from '@/components/fitnessdaten/whoop-big-ring'
 import {
   WHOOP_ZONE_13,
@@ -113,7 +115,7 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange }: P
   const model = useMemo(() => baueWhoopDashboard(snapshot), [snapshot, dataRevision])
   const isLive = phase === 'live'
   const zoneAnteil = scores?.zoneMinutes ? formatZoneAnteil(scores.zoneMinutes) : []
-  const { heute, woche, metriken, aktivitaeten, schlafdefizit } = model
+  const { heute, woche, metriken, aktivitaeten, journal, schlafdefizit } = model
 
   const tabs: { id: Tab; label: string; icon: string }[] = [
     { id: 'home', label: 'Home', icon: '◉' },
@@ -639,12 +641,34 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange }: P
                   statusTone={heute.respiratoryRate != null && heute.respiratoryRate > 15.6 ? 'warn' : 'ok'}
                 />
                 <WhoopHealthTile
+                  icon="🩺"
+                  label="Blutdruck"
+                  value={
+                    heute.bpSystolic != null && heute.bpDiastolic != null
+                      ? `${heute.bpSystolic}/${heute.bpDiastolic}`
+                      : '—'
+                  }
+                  unit="mmHg"
+                  status={heute.bpSystolic == null ? 'Manuell im Tab Gerät' : '✓ erfasst'}
+                  statusTone={heute.bpSystolic != null ? 'ok' : 'warn'}
+                />
+                <WhoopHealthTile
                   icon="💧"
                   label="SpO₂"
-                  value="—"
+                  value={
+                    heute.spo2Percent != null ? heute.spo2Percent.toFixed(1).replace('.', ',') : '—'
+                  }
                   unit="%"
-                  status="Nicht per BLE"
-                  statusTone="warn"
+                  status={
+                    heute.spo2Percent != null
+                      ? heute.spo2Percent < 95
+                        ? '! unter 95 %'
+                        : '✓ WHOOP Cloud'
+                      : 'Cloud-Sync im Tab Gerät'
+                  }
+                  statusTone={
+                    heute.spo2Percent != null ? (heute.spo2Percent < 95 ? 'bad' : 'ok') : 'warn'
+                  }
                 />
                 <WhoopHealthTile
                   icon="♥"
@@ -691,6 +715,20 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange }: P
               </div>
             </div>
 
+            {journal.length > 0 ? (
+              <div className="rounded-2xl border border-white/[0.06] bg-[#141618] p-4">
+                <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-zinc-300">Journal heute</p>
+                <ul className="mt-3 space-y-2">
+                  {journal.slice(0, 8).map((j) => (
+                    <li key={`${j.question}-${j.answer}`} className="text-xs text-zinc-400">
+                      <span className="text-zinc-300">{j.question.replace(/\([^)]*\)/g, '').trim()}</span>
+                      <span className="ml-2 font-semibold text-zinc-200">{j.answer}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+
             <button
               type="button"
               className="flex w-full items-center justify-center gap-2 rounded-2xl border border-white/[0.08] bg-[#141618] py-3.5 text-[11px] font-bold uppercase tracking-wider text-zinc-300"
@@ -721,6 +759,8 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange }: P
         {tab === 'connect' && (
           <section className="mt-6 space-y-4">
             <FitnessUserProfilePanel embedded onSaved={() => setDataRevision((r) => r + 1)} />
+            <FitnessWhoopCloudPanel embedded onSyncComplete={() => setDataRevision((r) => r + 1)} />
+            <FitnessVitalsPanel embedded onSaved={() => setDataRevision((r) => r + 1)} />
             <FitnessWhoopBlePanel onSnapshot={onSnapshot} onPhaseChange={onPhaseChange} embedded />
             <FitnessWhoopImportPanel embedded onImportComplete={() => setDataRevision((r) => r + 1)} />
           </section>

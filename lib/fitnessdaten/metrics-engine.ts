@@ -5,14 +5,19 @@ import { baueHealthspanModel, type HealthspanModel } from '@/lib/fitnessdaten/he
 import { ladeSyncState, type SyncState } from '@/lib/fitnessdaten/offline-sync'
 import {
   aktualisiereHeuteAusSnapshot,
+  aktivitaetenFuerDatum,
   baseline30,
+  createEmptyDayRecord,
+  journalFuerDatum,
   letzte7Tage,
   ladeDailyStore,
   schlafdefizit7Tage,
   type WhoopActivity,
   type WhoopDayRecord,
+  type WhoopJournalEntry,
 } from '@/lib/fitnessdaten/daily-records'
 import { ladeFitnessHistory } from '@/lib/fitnessdaten/history-storage'
+import { heuteIsoLocal } from '@/lib/fitnessdaten/scores'
 import type { FitnessSnapshot } from '@/lib/fitnessdaten/types'
 
 export type TrendRichtung = 'up' | 'down' | 'neutral'
@@ -44,6 +49,7 @@ export type WhoopDashboardModel = {
     recovery: MetricMitBaseline
   }
   schlafdefizit: { date: string; defizitMin: number; label: string }[]
+  journal: WhoopJournalEntry[]
   aktivitaeten: WhoopActivity[]
   insightRecovery: string | null
   insightStrain: string | null
@@ -88,10 +94,20 @@ export function baueWhoopDashboard(snapshot: FitnessSnapshot | null): WhoopDashb
     respiratory: baseline30('respiratoryRate', ladeDailyStore().days),
   }
 
-  const aktivitaeten = erkenneAktivitaeten(
+  const store = ladeDailyStore()
+  const heuteIso = heuteRecord.date
+  const cloudActs = aktivitaetenFuerDatum(heuteIso, store)
+  const detected = erkenneAktivitaeten(
     history.hrSeries,
     heuteRecord.restingHr ?? history.baselines.restingHrBpm,
   )
+  const aktivitaeten =
+    cloudActs.length > 0
+      ? cloudActs
+      : detected.length > 0
+        ? detected
+        : store.activitiesToday
+  const journal = journalFuerDatum(heuteIso, store)
 
   const hrvHeute = heuteRecord.hrvRmssd
   const hrvBase = baselines.hrv ?? history.baselines.hrvRmssdMs
@@ -148,6 +164,7 @@ export function baueWhoopDashboard(snapshot: FitnessSnapshot | null): WhoopDashb
       recovery: metric(heuteRecord.recoveryPercent, baselines.recovery),
     },
     schlafdefizit,
+    journal,
     aktivitaeten,
     insightRecovery,
     insightStrain,
@@ -166,30 +183,5 @@ export function baueWhoopDashboard(snapshot: FitnessSnapshot | null): WhoopDashb
 }
 
 function leereHeute(): WhoopDayRecord {
-  const d = new Date().toISOString().slice(0, 10)
-  return {
-    date: d,
-    recoveryPercent: null,
-    strain: null,
-    sleepScore: null,
-    sleepMinutes: null,
-    sleepEfficiency: null,
-    sleepNeedMinutes: null,
-    bedTimeMs: null,
-    wakeTimeMs: null,
-    remMinutes: null,
-    deepMinutes: null,
-    sleepConsistency: null,
-    hrvRmssd: null,
-    restingHr: null,
-    respiratoryRate: null,
-    skinTempC: null,
-    skinTempDelta: null,
-    calories: null,
-    steps: null,
-    maxHr: null,
-    zoneMin13: 0,
-    zoneMin45: 0,
-    strengthMin: 0,
-  }
+  return createEmptyDayRecord(heuteIsoLocal())
 }

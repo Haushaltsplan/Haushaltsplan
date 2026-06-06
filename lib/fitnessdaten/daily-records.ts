@@ -19,12 +19,18 @@ export type WhoopDayRecord = {
   wakeTimeMs: number | null
   remMinutes: number | null
   deepMinutes: number | null
+  lightMinutes: number | null
+  awakeMinutes: number | null
   sleepConsistency: number | null
   hrvRmssd: number | null
   restingHr: number | null
+  avgHr: number | null
   respiratoryRate: number | null
   skinTempC: number | null
   skinTempDelta: number | null
+  spo2Percent: number | null
+  bpSystolic: number | null
+  bpDiastolic: number | null
   calories: number | null
   steps: number | null
   maxHr: number | null
@@ -40,17 +46,111 @@ export type WhoopActivity = {
   strain: number
   startMs: number
   endMs: number
+  date?: string
+  sport?: string | null
+  avgHr?: number | null
+  maxHr?: number | null
+  calories?: number | null
+}
+
+export type WhoopJournalEntry = {
+  date: string
+  question: string
+  answer: string
+}
+
+export type VitalLogEntry = {
+  id: string
+  date: string
+  recordedAt: string
+  bpSystolic: number | null
+  bpDiastolic: number | null
+  spo2Manual: number | null
+  note: string | null
 }
 
 export type WhoopDailyStore = {
-  version: 1
+  version: 2
   days: WhoopDayRecord[]
+  /** Legacy — BLE-erkannte Aktivitäten heute */
   activitiesToday: WhoopActivity[]
+  /** Workouts aus Cloud/CSV */
+  activities: WhoopActivity[]
+  journal: WhoopJournalEntry[]
+  vitals: VitalLogEntry[]
   skinTempBaseline: number | null
 }
 
+export function createEmptyDayRecord(date: string): WhoopDayRecord {
+  return {
+    date,
+    recoveryPercent: null,
+    strain: null,
+    sleepScore: null,
+    sleepMinutes: null,
+    sleepEfficiency: null,
+    sleepNeedMinutes: null,
+    bedTimeMs: null,
+    wakeTimeMs: null,
+    remMinutes: null,
+    deepMinutes: null,
+    lightMinutes: null,
+    awakeMinutes: null,
+    sleepConsistency: null,
+    hrvRmssd: null,
+    restingHr: null,
+    avgHr: null,
+    respiratoryRate: null,
+    skinTempC: null,
+    skinTempDelta: null,
+    spo2Percent: null,
+    bpSystolic: null,
+    bpDiastolic: null,
+    calories: null,
+    steps: null,
+    maxHr: null,
+    zoneMin13: 0,
+    zoneMin45: 0,
+    strengthMin: 0,
+    zoneMinutes: null,
+  }
+}
+
 function defaultStore(): WhoopDailyStore {
-  return { version: 1, days: [], activitiesToday: [], skinTempBaseline: null }
+  return { version: 2, days: [], activitiesToday: [], activities: [], journal: [], vitals: [], skinTempBaseline: null }
+}
+
+function normalizeDay(d: WhoopDayRecord): WhoopDayRecord {
+  return { ...createEmptyDayRecord(d.date), ...d, date: d.date }
+}
+
+function migrateStore(raw: unknown): WhoopDailyStore {
+  if (!raw || typeof raw !== 'object') return defaultStore()
+  const o = raw as Record<string, unknown>
+  if (o.version === 2) {
+    const s = o as WhoopDailyStore
+    return {
+      version: 2,
+      days: (s.days ?? []).map(normalizeDay),
+      activitiesToday: s.activitiesToday ?? [],
+      activities: s.activities ?? [],
+      journal: s.journal ?? [],
+      vitals: s.vitals ?? [],
+      skinTempBaseline: s.skinTempBaseline ?? null,
+    }
+  }
+  if (o.version === 1) {
+    return {
+      version: 2,
+      days: ((o.days as WhoopDayRecord[]) ?? []).map(normalizeDay),
+      activitiesToday: (o.activitiesToday as WhoopActivity[]) ?? [],
+      activities: [],
+      journal: [],
+      vitals: [],
+      skinTempBaseline: (o.skinTempBaseline as number | null) ?? null,
+    }
+  }
+  return defaultStore()
 }
 
 export function ladeDailyStore(): WhoopDailyStore {
@@ -58,8 +158,7 @@ export function ladeDailyStore(): WhoopDailyStore {
   try {
     const raw = window.localStorage.getItem(FITNESS_DAILY_STORAGE_KEY)
     if (!raw) return defaultStore()
-    const p = JSON.parse(raw) as WhoopDailyStore
-    return p.version === 1 ? p : defaultStore()
+    return migrateStore(JSON.parse(raw))
   } catch {
     return defaultStore()
   }
@@ -67,7 +166,7 @@ export function ladeDailyStore(): WhoopDailyStore {
 
 export function speichereDailyStore(store: WhoopDailyStore): void {
   if (typeof window === 'undefined') return
-  window.localStorage.setItem(FITNESS_DAILY_STORAGE_KEY, JSON.stringify(store))
+  window.localStorage.setItem(FITNESS_DAILY_STORAGE_KEY, JSON.stringify({ ...store, version: 2 }))
 }
 
 function zoneMin13(z: HrZoneMinutes | null | undefined): number {
@@ -95,6 +194,23 @@ function schaetzeKraftzeit(z: HrZoneMinutes | null | undefined): number {
   return Math.round((z.z4 ?? 0) * 0.3 + (z.z5 ?? 0) * 0.5)
 }
 
+export function aktivitaetenFuerDatum(date: string, store = ladeDailyStore()): WhoopActivity[] {
+  return store.activities.filter((a) => (a.date ?? isoAusMs(a.startMs)) === date)
+}
+
+export function journalFuerDatum(date: string, store = ladeDailyStore()): WhoopJournalEntry[] {
+  return store.journal.filter((j) => j.date === date)
+}
+
+export function vitalFuerDatum(date: string, store = ladeDailyStore()): VitalLogEntry[] {
+  return store.vitals.filter((v) => v.date === date)
+}
+
+export function isoAusMs(ms: number): string {
+  const d = new Date(ms)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
 export function aktualisiereHeuteAusSnapshot(
   snapshot: FitnessSnapshot,
   history: FitnessHistoryState,
@@ -114,35 +230,33 @@ export function aktualisiereHeuteAusSnapshot(
       : null
 
   const z = scores?.zoneMinutes
+  const prevHeute = store.days.find((d) => d.date === heute) ?? createEmptyDayRecord(heute)
   const record: WhoopDayRecord = speichereZonenImTag(
     ergaenzeSchlafDetails(
       {
+        ...prevHeute,
         date: heute,
-        recoveryPercent: scores?.recoveryPercent ?? null,
-        strain: scores?.dayStrain ?? scores?.strain ?? null,
-        sleepScore: scores?.sleepScore ?? null,
-        sleepMinutes: scores?.sleepMinutes ?? null,
-        sleepEfficiency: scores?.sleepEfficiency ?? null,
-        sleepNeedMinutes: null,
-        bedTimeMs: null,
-        wakeTimeMs: null,
-        remMinutes: null,
-        deepMinutes: null,
-        sleepConsistency: null,
-        hrvRmssd: scores?.hrvRmssdMs ?? null,
-        restingHr: scores?.restingHrBpm ?? null,
-        respiratoryRate: schaetzeAtemfrequenz(scores?.restingHrBpm ?? null, history.baselines.restingHrBpm),
-        skinTempC: snapshot.live?.skinTempC ?? null,
-        skinTempDelta: skinDelta,
-        calories: scores?.caloriesKcal ?? null,
-        steps: schaetzeSchritte(scores?.caloriesKcal ?? 0, zoneMin13(z)),
-        maxHr: scores?.maxHrToday ?? null,
+        recoveryPercent: scores?.recoveryPercent ?? prevHeute.recoveryPercent,
+        strain: scores?.dayStrain ?? scores?.strain ?? prevHeute.strain,
+        sleepScore: scores?.sleepScore ?? prevHeute.sleepScore,
+        sleepMinutes: scores?.sleepMinutes ?? prevHeute.sleepMinutes,
+        sleepEfficiency: scores?.sleepEfficiency ?? prevHeute.sleepEfficiency,
+        hrvRmssd: scores?.hrvRmssdMs ?? prevHeute.hrvRmssd,
+        restingHr: scores?.restingHrBpm ?? prevHeute.restingHr,
+        respiratoryRate:
+          prevHeute.respiratoryRate ??
+          schaetzeAtemfrequenz(scores?.restingHrBpm ?? null, history.baselines.restingHrBpm),
+        skinTempC: snapshot.live?.skinTempC ?? prevHeute.skinTempC,
+        skinTempDelta: skinDelta ?? prevHeute.skinTempDelta,
+        calories: scores?.caloriesKcal ?? prevHeute.calories,
+        steps: prevHeute.steps ?? schaetzeSchritte(scores?.caloriesKcal ?? 0, zoneMin13(z)),
+        maxHr: scores?.maxHrToday ?? prevHeute.maxHr,
         zoneMin13: zoneMin13(z),
         zoneMin45: zoneMin45(z),
         strengthMin: schaetzeKraftzeit(z),
-        zoneMinutes: z ? { ...z } : null,
+        zoneMinutes: z ? { ...z } : prevHeute.zoneMinutes,
       },
-      scores?.dayStrain ?? scores?.strain ?? null,
+      scores?.dayStrain ?? scores?.strain ?? prevHeute.strain,
     ),
     z,
   )
@@ -152,15 +266,14 @@ export function aktualisiereHeuteAusSnapshot(
   else store.days.push(record)
 
   store.days.sort((a, b) => a.date.localeCompare(b.date))
-  if (store.days.length > 35) store.days = store.days.slice(-35)
+  if (store.days.length > 365) store.days = store.days.slice(-365)
 
   speichereDailyStore(store)
   return record
 }
 
 export function letzte7Tage(): WhoopDayRecord[] {
-  const store = ladeDailyStore()
-  return store.days.slice(-7)
+  return ladeDailyStore().days.slice(-7)
 }
 
 export function baseline30(field: keyof WhoopDayRecord, days = ladeDailyStore().days): number | null {
@@ -176,7 +289,7 @@ export function schlafdefizit7Tage(): { date: string; defizitMin: number }[] {
   const ziel = 480
   return letzte7Tage().map((d) => ({
     date: d.date,
-    defizitMin: Math.max(0, ziel - (d.sleepMinutes ?? 0)),
+    defizitMin: Math.max(0, (d.sleepNeedMinutes ?? ziel) - (d.sleepMinutes ?? 0)),
   }))
 }
 
