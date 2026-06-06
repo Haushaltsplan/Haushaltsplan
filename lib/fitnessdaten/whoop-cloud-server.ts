@@ -17,7 +17,8 @@ import { cookies } from 'next/headers'
 
 const TOKEN_URL = 'https://api.prod.whoop.com/oauth/oauth2/token'
 const AUTH_URL = 'https://api.prod.whoop.com/oauth/oauth2/auth'
-const API_BASE = 'https://api.prod.whoop.com'
+/** WHOOP Developer API — ohne /developer liefert die API 404 „default backend“. */
+const API_BASE = 'https://api.prod.whoop.com/developer'
 
 type StoredTokens = {
   accessToken: string
