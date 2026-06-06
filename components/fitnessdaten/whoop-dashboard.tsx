@@ -19,6 +19,7 @@ import {
   WhoopWeeklyLineChart,
 } from '@/components/fitnessdaten/whoop-charts'
 import { WhoopCoachBar, WhoopInfoModal, WhoopSyncBanner } from '@/components/fitnessdaten/whoop-info-modal'
+import { appModalScrollHiddenClassName } from '@/lib/app-modal-overlay'
 import {
   WhoopAgeOrb,
   WhoopAgeTrendChart,
@@ -160,7 +161,9 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange }: P
       />
       <div className="pointer-events-none absolute -right-24 top-1/3 h-48 w-48 rounded-full bg-[#009dff]/10 blur-3xl" />
 
-      <div className="relative max-h-[calc(100dvh-4rem)] overflow-y-auto px-4 pb-28 pt-5 sm:px-6 sm:pt-6">
+      <div
+        className={`relative max-h-[calc(100dvh-4rem)] px-4 pb-28 pt-5 sm:px-6 sm:pt-6 ${appModalScrollHiddenClassName}`}
+      >
         <header className="flex items-start justify-between gap-3">
           <div>
             <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-zinc-500">Omnia · WHOOP</p>

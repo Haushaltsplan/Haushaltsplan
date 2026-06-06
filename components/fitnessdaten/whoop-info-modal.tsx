@@ -1,6 +1,12 @@
 'use client'
 
+import {
+  appModalScrollHiddenClassName,
+  whoopModalBackdropClassName,
+  whoopModalPanelClassName,
+} from '@/lib/app-modal-overlay'
 import type { MetricInfo } from '@/lib/fitnessdaten/metric-explanations'
+import { useEffect } from 'react'
 
 export function WhoopInfoModal({
   info,
@@ -9,46 +15,91 @@ export function WhoopInfoModal({
   info: MetricInfo | null
   onClose: () => void
 }) {
+  useEffect(() => {
+    if (!info) return
+    const prevOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => {
+      document.body.style.overflow = prevOverflow
+      window.removeEventListener('keydown', onKey)
+    }
+  }, [info, onClose])
+
   if (!info) return null
 
   return (
     <div
-      className="fixed inset-0 z-[100] flex items-end justify-center bg-black/70 p-4 sm:items-center"
+      className={whoopModalBackdropClassName}
       role="dialog"
       aria-modal
       aria-labelledby="whoop-info-title"
-      onClick={onClose}
     >
+      <button
+        type="button"
+        className="absolute inset-0 bg-black/70 backdrop-blur-[8px] transition-opacity"
+        aria-label="Schließen"
+        onClick={onClose}
+      />
+
       <div
-        className="w-full max-w-md rounded-2xl border border-white/10 bg-[#141618] p-5 shadow-2xl"
+        className={`${whoopModalPanelClassName} animate-in fade-in slide-in-from-bottom-4 duration-300 sm:zoom-in-95 sm:slide-in-from-bottom-0`}
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-start justify-between gap-3">
-          <h2 id="whoop-info-title" className="text-base font-bold text-white">
-            {info.title}
-          </h2>
+        <div className="pointer-events-none absolute inset-x-8 top-0 h-px bg-gradient-to-r from-transparent via-white/20 to-transparent" />
+
+        <div className="flex shrink-0 justify-center pt-3 sm:hidden" aria-hidden>
+          <div className="h-1 w-9 rounded-full bg-white/20" />
+        </div>
+
+        <div className="flex shrink-0 items-start gap-3 border-b border-white/[0.06] px-5 pb-4 pt-3 sm:pt-5">
+          <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white/[0.06] text-sm text-zinc-300 ring-1 ring-white/[0.08]">
+            ⓘ
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-zinc-500">Erklärung</p>
+            <h2 id="whoop-info-title" className="mt-1 text-base font-semibold leading-snug text-white">
+              {info.title}
+            </h2>
+          </div>
           <button
             type="button"
             onClick={onClose}
-            className="rounded-lg px-2 py-1 text-zinc-500 hover:bg-white/5 hover:text-white"
+            className="shrink-0 rounded-xl p-2 text-zinc-500 transition hover:bg-white/[0.06] hover:text-white"
             aria-label="Schließen"
           >
-            ✕
+            <span className="text-lg leading-none">×</span>
           </button>
         </div>
-        <p className="mt-3 text-sm leading-relaxed text-zinc-300">{info.body}</p>
-        {info.source ? (
-          <p className="mt-3 text-[11px] text-zinc-500">
-            <span className="font-semibold text-zinc-400">Quelle in Omnia:</span> {info.source}
-          </p>
-        ) : null}
-        <button
-          type="button"
-          onClick={onClose}
-          className="mt-5 w-full rounded-xl bg-white/10 py-2.5 text-sm font-semibold text-white hover:bg-white/15"
-        >
-          Verstanden
-        </button>
+
+        <div className="relative min-h-0 flex-1">
+          <div className={`${appModalScrollHiddenClassName} px-5 py-4`}>
+            <p className="text-[15px] leading-[1.65] text-zinc-300">{info.body}</p>
+            {info.source ? (
+              <p className="mt-4 rounded-xl border border-white/[0.06] bg-white/[0.03] px-3 py-2.5 text-[11px] leading-relaxed text-zinc-500">
+                <span className="font-semibold text-zinc-400">Quelle in Omnia</span>
+                <span className="mt-1 block text-zinc-500">{info.source}</span>
+              </p>
+            ) : null}
+          </div>
+          <div
+            className="pointer-events-none absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-[#0a0b0d] via-[#0a0b0d]/80 to-transparent"
+            aria-hidden
+          />
+        </div>
+
+        <div className="shrink-0 border-t border-white/[0.06] bg-[#0a0b0d]/90 px-5 py-4 backdrop-blur-md">
+          <button
+            type="button"
+            onClick={onClose}
+            className="w-full rounded-xl bg-white/[0.08] py-3 text-sm font-semibold text-white ring-1 ring-white/[0.08] transition hover:bg-white/[0.12] active:scale-[0.99]"
+          >
+            Verstanden
+          </button>
+        </div>
       </div>
     </div>
   )
