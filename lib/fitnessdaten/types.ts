@@ -55,6 +55,15 @@ export type FitnessScores = {
   zoneMinutes?: HrZoneMinutes | null
 }
 
+/** Gen5 Custom-BLE (fd4b) Status. */
+export type Gen5StreamStatus = {
+  phase: string
+  r22Count: number
+  historyPackets: number
+  lastError: string | null
+  log: string[]
+}
+
 /** Gespeicherter Stand für die Web-Ansicht. */
 export type FitnessSnapshot = {
   updatedAt: string
@@ -66,6 +75,7 @@ export type FitnessSnapshot = {
   /** Letzte ~120 HR-Punkte für Live-Chart. */
   hrHistory?: FitnessHrPoint[]
   sessionStartedAt?: string | null
+  gen5?: Gen5StreamStatus | null
 }
 
 /** Persistierte Historie für Baselines & Tageswerte. */

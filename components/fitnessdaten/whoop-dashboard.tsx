@@ -130,11 +130,15 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange }: P
               unavailable={(scores?.dayStrain ?? scores?.strain) == null}
             />
             <WhoopRing
-              value={0}
+              value={scores?.sleepScore ?? 0}
               label="Schlaf"
-              sublabel="Historie nötig"
+              sublabel={
+                scores?.sleepMinutes
+                  ? `${Math.floor(scores.sleepMinutes / 60)}h ${scores.sleepMinutes % 60}m`
+                  : 'IMU / Nacht'
+              }
               color="#7b61ff"
-              unavailable
+              unavailable={scores?.sleepScore == null}
             />
           </div>
         )}
@@ -194,6 +198,22 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange }: P
                 value={scores?.maxHrToday != null ? String(scores.maxHrToday) : '—'}
                 unit="bpm"
                 accent="#ef4444"
+              />
+              <MetricTile
+                label="Hauttemp."
+                value={live?.skinTempC != null ? live.skinTempC.toFixed(1) : '—'}
+                unit="°C"
+                accent="#7b61ff"
+                hint="Gen5-Events (fd4b)"
+              />
+              <MetricTile
+                label="IMU (g)"
+                value={
+                  live?.accel
+                    ? `${live.accel.x.toFixed(2)}, ${live.accel.y.toFixed(2)}, ${live.accel.z.toFixed(2)}`
+                    : '—'
+                }
+                hint="r22-Stream · Band am Handgelenk"
               />
             </div>
 
@@ -289,9 +309,25 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange }: P
               />
             </div>
             <p className="rounded-xl border border-violet-900/30 bg-violet-950/20 px-4 py-3 text-xs leading-relaxed text-violet-200/80">
-              <strong>Schlaf-Recovery</strong> (WHOOP „Sleep Performance“) braucht IMU + historischen Sync
-              (Custom-Service fd4b) — folgt in Phase 2. Aktuell: HRV-basierte Recovery aus Live-BLE.
+              <strong>Schlaf</strong> wird aus IMU-Ruhe nachts geschätzt (Gen5 r22). Für exakte WHOOP-Schlafphasen
+              braucht es den vollen Historie-Sync — läuft automatisch, wenn Custom-BLE (fd4b) verbunden ist.
             </p>
+            {scores?.sleepMinutes != null && scores.sleepMinutes > 0 ? (
+              <div className="grid grid-cols-2 gap-3">
+                <MetricTile
+                  label="Schlafdauer"
+                  value={String(Math.floor(scores.sleepMinutes / 60))}
+                  unit="h"
+                  accent="#7b61ff"
+                />
+                <MetricTile
+                  label="Effizienz"
+                  value={scores.sleepEfficiency != null ? String(scores.sleepEfficiency) : '—'}
+                  unit="%"
+                  accent="#a78bfa"
+                />
+              </div>
+            ) : null}
           </section>
         )}
 
@@ -315,12 +351,32 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange }: P
               />
             </div>
             <div className="rounded-2xl border border-white/[0.06] bg-white/[0.02] p-4 text-xs text-zinc-500">
+              <p className="font-semibold text-zinc-400">Gen5 Custom-BLE (fd4b0001)</p>
+              {snapshot?.gen5 ? (
+                <ul className="mt-2 space-y-1 font-mono text-[11px]">
+                  <li>Phase: {snapshot.gen5.phase}</li>
+                  <li>r22-Pakete: {snapshot.gen5.r22Count}</li>
+                  <li>Historie: {snapshot.gen5.historyPackets} Chunks</li>
+                  {snapshot.gen5.lastError ? (
+                    <li className="text-amber-300">{snapshot.gen5.lastError}</li>
+                  ) : null}
+                </ul>
+              ) : (
+                <p className="mt-2 leading-relaxed">
+                  Noch nicht aktiv. WHOOP-App einmal koppeln (Android-Bond), dann fd4b-Handshake automatisch.
+                </p>
+              )}
+              {snapshot?.gen5?.phase === 'bond_required' ? (
+                <p className="mt-2 text-amber-200/90">
+                  Bond fehlt: WHOOP-App öffnen → Strap verbinden → erneut in Omnia verbinden.
+                </p>
+              ) : null}
+            </div>
+            <div className="rounded-2xl border border-white/[0.06] bg-white/[0.02] p-4 text-xs text-zinc-500">
               <p className="font-semibold text-zinc-400">Noch nicht per Web-BLE</p>
               <ul className="mt-2 list-inside list-disc space-y-1 leading-relaxed">
-                <li>Hauttemperatur (Custom r22 / fd4b)</li>
-                <li>Beschleunigung / IMU (Custom r22)</li>
-                <li>Schlafphasen & 14-Tage-Historie (Gen5-Sync)</li>
-                <li>Blutoxygen (WHOOP hat kein Standard-SpO₂)</li>
+                <li>PPG-Rohsignal (optisch)</li>
+                <li>Exakte WHOOP Recovery/Strain-Modelle (Cloud)</li>
               </ul>
             </div>
           </section>

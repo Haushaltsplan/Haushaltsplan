@@ -9,7 +9,9 @@ import {
   GEN5_CMD_TOGGLE_BROADCAST_HR,
 } from '@/lib/fitnessdaten/whoop-gen5-packet'
 import { abonniereBatteryUpdates, leseWhoopDeviceInfo } from '@/lib/fitnessdaten/device-info'
-import type { FitnessHrPoint, FitnessLiveSample, FitnessSnapshot, WhoopDeviceInfo } from '@/lib/fitnessdaten/types'
+import type { FitnessHrPoint, FitnessLiveSample, FitnessSnapshot, Gen5StreamStatus, WhoopDeviceInfo } from '@/lib/fitnessdaten/types'
+import { startGen5CustomSession, type Gen5SessionState } from '@/lib/fitnessdaten/whoop-gen5-session'
+import type { Gen5EventSample, R22Sample } from '@/lib/fitnessdaten/whoop-gen5-protocol'
 
 const HR_SERVICE_ALIASES = [
   'heart_rate',
@@ -32,6 +34,10 @@ const OPTIONAL_SERVICES = [
   ...HR_SERVICE_ALIASES,
   WHOOP_GEN5_SERVICE,
   WHOOP_GEN4_SERVICE,
+  'fd4b0003-cce1-4033-93ce-002d5875f58a',
+  'fd4b0004-cce1-4033-93ce-002d5875f58a',
+  'fd4b0005-cce1-4033-93ce-002d5875f58a',
+  'fd4b0007-cce1-4033-93ce-002d5875f58a',
   'battery_service',
   'device_information',
 ] as const
@@ -50,6 +56,7 @@ export type WhoopWebBleDebug = {
   readErrors: number
   stuckSinceMs: number | null
   istGen5: boolean
+  gen5: Gen5StreamStatus | null
 }
 
 export type WhoopDeviceAuswahl = 'whoop' | 'alle' | 'gespeichert'
@@ -109,6 +116,7 @@ export type WhoopWebBleSession = {
   error: string | null
   statusHint: string | null
   debug: WhoopWebBleDebug
+  gen5: Gen5StreamStatus | null
   disconnect: () => void
 }
 
@@ -278,6 +286,8 @@ export async function verbindeWhoopStandardHr(
   onUpdate: (session: Omit<WhoopWebBleSession, 'disconnect'>) => void,
   auswahl: WhoopDeviceAuswahl = 'whoop',
 ): Promise<WhoopWebBleSession> {
+  let gen5Status: Gen5StreamStatus | null = null
+
   const debug: WhoopWebBleDebug = {
     services: [],
     notifyCount: 0,
@@ -290,6 +300,7 @@ export async function verbindeWhoopStandardHr(
     readErrors: 0,
     stuckSinceMs: null,
     istGen5: false,
+    gen5: null,
   }
 
   let letzterPhase: WhoopWebBlePhase = 'idle'
@@ -298,16 +309,20 @@ export async function verbindeWhoopStandardHr(
   let letzterFehler: string | null = null
   let letzterHint: string | null = null
 
-  const emit = (partial: Omit<WhoopWebBleSession, 'disconnect' | 'debug'>) => {
+  const emit = (partial: Omit<WhoopWebBleSession, 'disconnect' | 'debug' | 'gen5'>) => {
     letzterPhase = partial.phase
     letzterDeviceName = partial.deviceName
     letzterSnapshot = partial.snapshot
     letzterFehler = partial.error
     letzterHint = partial.statusHint
-    onUpdate({ ...partial, debug: { ...debug } })
+    debug.gen5 = gen5Status
+    onUpdate({ ...partial, debug: { ...debug }, gen5: gen5Status })
   }
 
   const emitDebug = () => {
+    if (letzterSnapshot) {
+      letzterSnapshot = { ...letzterSnapshot, gen5: gen5Status }
+    }
     onUpdate({
       phase: letzterPhase,
       deviceName: letzterDeviceName,
@@ -315,8 +330,17 @@ export async function verbindeWhoopStandardHr(
       error: letzterFehler,
       statusHint: letzterHint,
       debug: { ...debug },
+      gen5: gen5Status,
     })
   }
+
+  const gen5ToStatus = (s: Gen5SessionState): Gen5StreamStatus => ({
+    phase: s.phase,
+    r22Count: s.r22Count,
+    historyPackets: s.historyPackets,
+    lastError: s.lastError,
+    log: s.log,
+  })
 
   if (!webBluetoothVerfuegbar()) {
     const err = 'Web Bluetooth wird hier nicht unterstützt (Chrome/Edge auf HTTPS nötig).'
@@ -366,6 +390,7 @@ export async function verbindeWhoopStandardHr(
   const sessionStartedAt = new Date().toISOString()
   let deviceInfo: WhoopDeviceInfo | null = null
   let batteryCleanup: (() => void) | null = null
+  let gen5Cleanup: (() => void) | null = null
   let letzteHrZeit = 0
   let pollTimer: ReturnType<typeof setInterval> | null = null
   let debugTimer: ReturnType<typeof setInterval> | null = null
@@ -472,6 +497,61 @@ export async function verbindeWhoopStandardHr(
   debug.enableLog = await versucheBroadcastHrAktivieren(gatt, debug.istGen5)
   emitDebug()
 
+  const anwendeGen5R22 = (sample: R22Sample) => {
+    if (!letzterSnapshot?.live) return
+    const live: FitnessLiveSample = {
+      ...letzterSnapshot.live,
+      heartRateBpm: sample.heartRateBpm > 0 ? sample.heartRateBpm : letzterSnapshot.live.heartRateBpm,
+      accel: sample.accel ?? letzterSnapshot.live.accel,
+      recordedAt: new Date().toISOString(),
+    }
+    emit({
+      phase: 'live',
+      deviceName: device.name ?? 'WHOOP',
+      snapshot: {
+        ...letzterSnapshot,
+        updatedAt: new Date().toISOString(),
+        live,
+        gen5: gen5Status,
+      },
+      error: null,
+      statusHint: null,
+    })
+  }
+
+  const anwendeGen5Event = (ev: Gen5EventSample) => {
+    if (ev.skinTempC != null && letzterSnapshot?.live) {
+      emit({
+        phase: letzterPhase === 'idle' ? 'live' : letzterPhase,
+        deviceName: device.name ?? 'WHOOP',
+        snapshot: {
+          ...(letzterSnapshot ?? {}),
+          updatedAt: new Date().toISOString(),
+          live: { ...letzterSnapshot!.live!, skinTempC: ev.skinTempC, recordedAt: new Date().toISOString() },
+          deviceInfo: {
+            ...(letzterSnapshot?.deviceInfo ?? {}),
+            batteryPercent: ev.batteryPercent ?? letzterSnapshot?.deviceInfo?.batteryPercent,
+          },
+          gen5: gen5Status,
+        },
+        error: null,
+        statusHint: letzterHint,
+      })
+    }
+  }
+
+  if (debug.istGen5) {
+    gen5Cleanup = await startGen5CustomSession(gatt, {
+      onState: (s) => {
+        gen5Status = gen5ToStatus(s)
+        debug.gen5 = gen5Status
+        emitDebug()
+      },
+      onR22: anwendeGen5R22,
+      onEvent: anwendeGen5Event,
+    })
+  }
+
   pollTimer = setInterval(() => {
     const alterMs = Date.now() - verbindungsStart
     if (debug.notifyCount === 0 && alterMs > 15_000) {
@@ -512,6 +592,8 @@ export async function verbindeWhoopStandardHr(
     debugTimer = null
     batteryCleanup?.()
     batteryCleanup = null
+    gen5Cleanup?.()
+    gen5Cleanup = null
     try {
       char.removeEventListener('characteristicvaluechanged', onHr)
       void char.stopNotifications()
@@ -545,6 +627,7 @@ export async function verbindeWhoopStandardHr(
     error: null,
     statusHint: null,
     debug,
+    gen5: gen5Status,
     disconnect,
   }
 }

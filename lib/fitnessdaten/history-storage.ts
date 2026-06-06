@@ -1,3 +1,4 @@
+import { registriereMotion, aktualisiereSchlafSchaetzung } from '@/lib/fitnessdaten/sleep-estimate'
 import {
   avgHr,
   heuteIsoLocal,
@@ -153,6 +154,11 @@ export function mergeLiveSnapshot(
     history.baselines.restingHrBpm,
   )
 
+  if (partial.live?.accel) {
+    registriereMotion(now, partial.live.accel)
+  }
+  const schlaf = aktualisiereSchlafSchaetzung()
+
   const sessionStrain = strainAusZonen(history.zoneSecondsToday)
   history.dayStrain = sessionStrain
 
@@ -164,9 +170,9 @@ export function mergeLiveSnapshot(
     recoveryLabel: recovery?.label ?? null,
     strain: sessionStrain,
     dayStrain: sessionStrain,
-    sleepScore: null,
-    sleepMinutes: null,
-    sleepEfficiency: null,
+    sleepScore: schlaf.sleepMinutes > 0 ? schlaf.sleepScore : null,
+    sleepMinutes: schlaf.sleepMinutes > 0 ? schlaf.sleepMinutes : null,
+    sleepEfficiency: schlaf.sleepMinutes > 0 ? schlaf.efficiency : null,
     caloriesKcal: Math.round(history.caloriesToday),
     maxHrToday: maxHr(history.hrSeries.filter((p) => new Date(p.t).toISOString().slice(0, 10) === heute)),
     avgHrSession: avgHr(sessionHistory),

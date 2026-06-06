@@ -59,17 +59,21 @@ export function FitnessWhoopBlePanel({ onSnapshot, onPhaseChange, embedded = fal
       setDebug(null)
       try {
         const session = await verbindeWhoopStandardHr(
-          ({ phase: p, deviceName: n, snapshot, error, statusHint: hint, debug: d }) => {
-            setPhaseBoth(p)
-            setDeviceName(n)
-            setFehler(error)
-            setStatusHint(hint)
-            setDebug(d)
-            if (snapshot?.live?.heartRateBpm != null && snapshot.live.heartRateBpm > 0) {
-              const enriched = mergeLiveSnapshot(snapshot, snapshot.deviceInfo)
-              onSnapshot(enriched)
-            }
-          },
+        ({ phase: p, deviceName: n, snapshot, error, statusHint: hint, debug: d, gen5: g5 }) => {
+          setPhaseBoth(p)
+          setDeviceName(n)
+          setFehler(error)
+          setStatusHint(hint)
+          setDebug(d)
+          const snap = snapshot ? { ...snapshot, gen5: g5 ?? snapshot.gen5 } : null
+          if (snap?.live?.heartRateBpm != null && snap.live.heartRateBpm > 0) {
+            onSnapshot(mergeLiveSnapshot(snap, snap.deviceInfo))
+          } else if (snap && (snap.live?.accel || snap.live?.skinTempC != null || snap.gen5)) {
+            onSnapshot(mergeLiveSnapshot(snap, snap.deviceInfo))
+          } else if (snap?.gen5) {
+            onSnapshot(snap)
+          }
+        },
           auswahl,
         )
         disconnectRef.current = session.disconnect
