@@ -8,7 +8,8 @@ import {
   buildGen5WhoopPacket,
   GEN5_CMD_TOGGLE_BROADCAST_HR,
 } from '@/lib/fitnessdaten/whoop-gen5-packet'
-import type { FitnessLiveSample, FitnessSnapshot } from '@/lib/fitnessdaten/types'
+import { abonniereBatteryUpdates, leseWhoopDeviceInfo } from '@/lib/fitnessdaten/device-info'
+import type { FitnessHrPoint, FitnessLiveSample, FitnessSnapshot, WhoopDeviceInfo } from '@/lib/fitnessdaten/types'
 
 const HR_SERVICE_ALIASES = [
   'heart_rate',
@@ -245,12 +246,19 @@ function snapshotAusHr(
   heartRateBpm: number,
   rrRing: number[],
   rmssd: number | null,
+  hrHistory: FitnessHrPoint[],
+  deviceInfo: WhoopDeviceInfo | null,
+  sensorContact: boolean | null,
+  energyExpendedKj: number | null,
+  sessionStartedAt: string,
 ): FitnessSnapshot {
   const live: FitnessLiveSample = {
     heartRateBpm,
     rrIntervalsMs: [...rrRing],
     skinTempC: null,
     accel: null,
+    sensorContact,
+    energyExpendedKj,
     recordedAt: new Date().toISOString(),
   }
   return {
@@ -259,6 +267,9 @@ function snapshotAusHr(
     connectionState: 'live',
     live,
     scores: rmssd != null ? { hrvRmssdMs: rmssd } : null,
+    deviceInfo,
+    hrHistory: [...hrHistory],
+    sessionStartedAt,
   }
 }
 
@@ -351,6 +362,10 @@ export async function verbindeWhoopStandardHr(
 
   const rrRing: number[] = []
   const maxRr = 120
+  const hrHistory: FitnessHrPoint[] = []
+  const sessionStartedAt = new Date().toISOString()
+  let deviceInfo: WhoopDeviceInfo | null = null
+  let batteryCleanup: (() => void) | null = null
   let letzteHrZeit = 0
   let pollTimer: ReturnType<typeof setInterval> | null = null
   let debugTimer: ReturnType<typeof setInterval> | null = null
@@ -358,7 +373,30 @@ export async function verbindeWhoopStandardHr(
   const gatt = await device.gatt!.connect()
   debug.services = await listeServices(gatt)
   debug.istGen5 = istGen5Whoop(debug.services)
+  deviceInfo = await leseWhoopDeviceInfo(gatt)
   debug.batteryPercent = await leseBatteryProzent(gatt)
+  if (debug.batteryPercent != null) {
+    deviceInfo = { ...deviceInfo, batteryPercent: debug.batteryPercent }
+  }
+  batteryCleanup = await abonniereBatteryUpdates(gatt, (pct) => {
+    debug.batteryPercent = pct
+    deviceInfo = { ...(deviceInfo ?? {}), batteryPercent: pct }
+    if (letzterSnapshot?.live?.heartRateBpm) {
+      emit({
+        phase: letzterPhase === 'idle' ? 'live' : letzterPhase,
+        deviceName: device.name ?? 'WHOOP',
+        snapshot: {
+          ...letzterSnapshot,
+          deviceInfo,
+          updatedAt: new Date().toISOString(),
+        },
+        error: null,
+        statusHint: letzterHint,
+      })
+    } else {
+      emitDebug()
+    }
+  })
 
   const char = await findeHeartRateCharacteristic(gatt)
   debug.hrCharUuid = char.uuid
@@ -392,10 +430,22 @@ export async function verbindeWhoopStandardHr(
       if (rrRing.length > maxRr) rrRing.shift()
     }
     const rmssd = berechneRmssd(rrRing)
+    hrHistory.push({ t: Date.now(), bpm: parsed.heartRateBpm })
+    if (hrHistory.length > 120) hrHistory.shift()
     emit({
       phase: 'live',
       deviceName: device.name ?? 'WHOOP',
-      snapshot: snapshotAusHr(device, parsed.heartRateBpm, rrRing, rmssd),
+      snapshot: snapshotAusHr(
+        device,
+        parsed.heartRateBpm,
+        rrRing,
+        rmssd,
+        hrHistory,
+        deviceInfo,
+        parsed.sensorContact,
+        parsed.energyExpendedKj,
+        sessionStartedAt,
+      ),
       error: null,
       statusHint: null,
     })
@@ -460,6 +510,8 @@ export async function verbindeWhoopStandardHr(
     if (debugTimer) clearInterval(debugTimer)
     pollTimer = null
     debugTimer = null
+    batteryCleanup?.()
+    batteryCleanup = null
     try {
       char.removeEventListener('characteristicvaluechanged', onHr)
       void char.stopNotifications()

@@ -1,7 +1,7 @@
 'use client'
 
+import { mergeLiveSnapshot } from '@/lib/fitnessdaten/history-storage'
 import type { FitnessSnapshot } from '@/lib/fitnessdaten/types'
-import { speichereFitnessSnapshot } from '@/lib/fitnessdaten/snapshot-storage'
 import {
   istMobileBrowser,
   verbindeWhoopStandardHr,
@@ -16,9 +16,11 @@ import toast from 'react-hot-toast'
 
 type Props = {
   onSnapshot: (s: FitnessSnapshot | null) => void
+  onPhaseChange?: (p: WhoopWebBlePhase) => void
+  embedded?: boolean
 }
 
-export function FitnessWhoopBlePanel({ onSnapshot }: Props) {
+export function FitnessWhoopBlePanel({ onSnapshot, onPhaseChange, embedded = false }: Props) {
   const [phase, setPhase] = useState<WhoopWebBlePhase>('idle')
   const [deviceName, setDeviceName] = useState<string | null>(null)
   const [fehler, setFehler] = useState<string | null>(null)
@@ -32,15 +34,23 @@ export function FitnessWhoopBlePanel({ onSnapshot }: Props) {
     return () => disconnectRef.current?.()
   }, [])
 
+  const setPhaseBoth = useCallback(
+    (p: WhoopWebBlePhase) => {
+      setPhase(p)
+      onPhaseChange?.(p)
+    },
+    [onPhaseChange],
+  )
+
   const trennen = useCallback(() => {
     disconnectRef.current?.()
     disconnectRef.current = null
-    setPhase('idle')
+    setPhaseBoth('idle')
     setDeviceName(null)
     setFehler(null)
     setStatusHint(null)
     setDebug(null)
-  }, [])
+  }, [setPhaseBoth])
 
   const verbinden = useCallback(
     async (auswahl: WhoopDeviceAuswahl = 'whoop') => {
@@ -50,25 +60,25 @@ export function FitnessWhoopBlePanel({ onSnapshot }: Props) {
       try {
         const session = await verbindeWhoopStandardHr(
           ({ phase: p, deviceName: n, snapshot, error, statusHint: hint, debug: d }) => {
-            setPhase(p)
+            setPhaseBoth(p)
             setDeviceName(n)
             setFehler(error)
             setStatusHint(hint)
             setDebug(d)
             if (snapshot?.live?.heartRateBpm != null && snapshot.live.heartRateBpm > 0) {
-              speichereFitnessSnapshot(snapshot)
-              onSnapshot(snapshot)
+              const enriched = mergeLiveSnapshot(snapshot, snapshot.deviceInfo)
+              onSnapshot(enriched)
             }
           },
           auswahl,
         )
         disconnectRef.current = session.disconnect
-        toast.success('WHOOP verbunden — warte auf Puls …')
+        toast.success('WHOOP verbunden')
       } catch {
         /* Fehler bereits in onUpdate */
       }
     },
-    [onSnapshot],
+    [onSnapshot, setPhaseBoth],
   )
 
   const phaseLabel: Record<WhoopWebBlePhase, string> = {
@@ -79,15 +89,20 @@ export function FitnessWhoopBlePanel({ onSnapshot }: Props) {
     error: 'Fehler',
   }
 
+  const shell = embedded
+    ? 'rounded-2xl border border-white/[0.06] bg-white/[0.02] p-4'
+    : 'rounded-xl border border-orange-800/45 bg-gradient-to-b from-orange-950/25 to-zinc-950/50 p-4 sm:p-5'
+
   return (
-    <div className="rounded-xl border border-orange-800/45 bg-gradient-to-b from-orange-950/25 to-zinc-950/50 p-4 sm:p-5">
+    <div className={shell}>
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-orange-300/90">
-            Direkt in Omnia · Web Bluetooth
+          <p
+            className={`text-[11px] font-bold uppercase tracking-[0.16em] ${embedded ? 'text-zinc-500' : 'text-orange-300/90'}`}
+          >
+            Web Bluetooth · WHOOP 5.0
           </p>
           <p className="mt-1 text-sm text-zinc-400">
-            WHOOP 5.0: Puls + RR über Standard-BLE —{' '}
             <span className="font-medium text-zinc-200">{phaseLabel[phase]}</span>
             {deviceName ? ` · ${deviceName}` : null}
           </p>
@@ -109,16 +124,15 @@ export function FitnessWhoopBlePanel({ onSnapshot }: Props) {
                 onClick={() => void verbinden('whoop')}
                 className="rounded-xl bg-orange-600 px-4 py-2.5 text-xs font-bold text-white shadow-md shadow-orange-950/30 transition hover:bg-orange-500 disabled:opacity-40"
               >
-                WHOOP verbinden
+                Verbinden
               </button>
               <button
                 type="button"
                 disabled={!bleOk}
                 onClick={() => void verbinden('alle')}
                 className="rounded-xl border border-zinc-600 bg-zinc-900 px-3 py-2.5 text-xs font-semibold text-zinc-300 transition hover:bg-zinc-800 disabled:opacity-40"
-                title="Falls WHOOP nicht in der Liste erscheint"
               >
-                Alle Geräte scannen
+                Alle scannen
               </button>
             </>
           )}
@@ -127,52 +141,31 @@ export function FitnessWhoopBlePanel({ onSnapshot }: Props) {
 
       {!bleOk ? (
         <p className="mt-3 text-sm leading-relaxed text-amber-200/90">
-          Web Bluetooth fehlt hier. Nutze <strong>Chrome oder Edge</strong> auf dem Gerät mit Bluetooth (Handy oder PC).
-          Auf dem iPhone funktioniert es in Safari nicht — dort Android oder Desktop.
+          Web Bluetooth fehlt. Chrome/Edge auf HTTPS — auf dem iPhone nicht in Safari.
         </p>
       ) : (
-        <div className="mt-3 space-y-2 text-xs leading-relaxed text-zinc-500">
-          <ol className="list-decimal space-y-2 rounded-lg border border-orange-800/40 bg-orange-950/20 px-4 py-3 text-orange-100/90 marker:text-orange-400">
-            <li>
-              <strong>WHOOP-App öffnen</strong> → Gerät-Symbol oben rechts →{' '}
-              <strong>„HR Broadcast“ / „Puls senden“ einschalten</strong> (pro Session nötig).
-            </li>
-            <li>Band fest am Handgelenk (grüner Sensor auf Haut).</li>
-            <li>
-              Hier in Omnia <strong>„WHOOP verbinden“</strong> — 10–30 s warten. WHOOP-App danach schließen
-              (Broadcast bleibt meist aktiv).
-            </li>
-          </ol>
-          {!mobile ? (
-            <p className="rounded-lg border border-sky-800/40 bg-sky-950/25 px-3 py-2 text-sky-100/90">
-              Am PC verbindet sich Omnia oft, liefert aber keinen Puls. Chrome auf dem Android-Handy ist der
-              zuverlässigere Weg.
-            </p>
-          ) : null}
-        </div>
+        <ol className="mt-3 list-decimal space-y-1.5 rounded-lg border border-white/[0.06] bg-black/30 px-4 py-3 text-xs text-zinc-400 marker:text-orange-500">
+          <li>WHOOP-App → Gerät → <strong className="text-zinc-200">HR Broadcast</strong> an</li>
+          <li>Band am Handgelenk, hier verbinden</li>
+        </ol>
       )}
 
-      <details className="mt-3 rounded-lg border border-zinc-700/60 bg-zinc-950/40 px-3 py-2 text-xs text-zinc-400">
-        <summary className="cursor-pointer font-semibold text-zinc-300">
-          WHOOP wird nicht gefunden? — Wiederherstellung
-        </summary>
-        <ol className="mt-2 list-decimal space-y-1.5 pl-4 leading-relaxed">
-          {WHOOP_WIEDERHERSTELLUNG.map((schritt) => (
-            <li key={schritt}>{schritt}</li>
-          ))}
-        </ol>
-        <p className="mt-2 text-zinc-500">
-          Omnia hat keinen dauerhaften Zugriff auf WHOOP — wenn die Liste leer bleibt, blockiert meist noch die
-          WHOOP-App oder eine alte PC-Verbindung den Strap.
-        </p>
-      </details>
+      {!embedded ? (
+        <details className="mt-3 rounded-lg border border-zinc-700/60 bg-zinc-950/40 px-3 py-2 text-xs text-zinc-400">
+          <summary className="cursor-pointer font-semibold text-zinc-300">WHOOP nicht gefunden?</summary>
+          <ol className="mt-2 list-decimal space-y-1 pl-4">
+            {WHOOP_WIEDERHERSTELLUNG.map((s) => (
+              <li key={s}>{s}</li>
+            ))}
+          </ol>
+        </details>
+      ) : null}
 
       {statusHint ? (
         <p className="mt-3 rounded-lg border border-amber-800/45 bg-amber-950/25 px-3 py-2 text-sm text-amber-100/90">
           {statusHint}
         </p>
       ) : null}
-
       {fehler ? (
         <p className="mt-3 rounded-lg border border-rose-800/50 bg-rose-950/30 px-3 py-2 text-sm text-rose-200">
           {fehler}
@@ -180,35 +173,15 @@ export function FitnessWhoopBlePanel({ onSnapshot }: Props) {
       ) : null}
 
       {debug && (phase === 'waiting_hr' || phase === 'live') ? (
-        <div className="mt-3 rounded-lg border border-zinc-800/80 bg-zinc-950/60 px-3 py-2 text-xs text-zinc-500">
-          <p className="font-semibold text-zinc-400">
-            Diagnose
-            {phase === 'waiting_hr' && debug.notifyCount === 0 ? (
-              <span className="ml-2 font-normal text-amber-300/90">— noch kein Pulssignal</span>
-            ) : null}
-          </p>
+        <details className="mt-3 rounded-lg border border-zinc-800/80 bg-zinc-950/60 px-3 py-2 text-xs text-zinc-500">
+          <summary className="cursor-pointer font-semibold text-zinc-400">Technische Diagnose</summary>
           <ul className="mt-2 space-y-1 font-mono">
-            <li>BLE-Signale (HR): {debug.notifyCount}</li>
-            <li>Notify aktiv: {debug.notifyStarted ? 'ja' : 'nein'}</li>
-            {debug.batteryPercent != null ? <li>Akku (GATT-Test): {debug.batteryPercent} %</li> : null}
-            {debug.hrCharUuid ? <li>HR-Char: {debug.hrCharUuid.slice(0, 13)}…</li> : null}
-            {debug.hrCharProps ? <li>Eigenschaften: {debug.hrCharProps}</li> : null}
-            {debug.readErrors > 0 ? <li>Read-Fehler: {debug.readErrors}</li> : null}
-            {debug.lastRawHex ? <li>Letzte Bytes: {debug.lastRawHex}</li> : null}
-            {debug.enableLog.map((line) => (
-              <li key={line}>{line}</li>
-            ))}
-            {debug.services.length > 0 ? (
-              <li className="break-all">Services: {debug.services.map((u) => u.slice(0, 8)).join(', ')}</li>
-            ) : null}
+            <li>BLE-Signale: {debug.notifyCount}</li>
+            <li>Notify: {debug.notifyStarted ? 'ja' : 'nein'}</li>
+            {debug.batteryPercent != null ? <li>Akku: {debug.batteryPercent}%</li> : null}
+            {debug.lastRawHex ? <li>Bytes: {debug.lastRawHex}</li> : null}
           </ul>
-          {phase === 'waiting_hr' && debug.notifyCount === 0 ? (
-            <p className="mt-2 text-amber-200/90">
-              Wenn „BLE-Signale“ bei 0 bleibt: zuerst <strong>HR Broadcast in der WHOOP-App</strong> einschalten,
-              dann hier neu verbinden.
-            </p>
-          ) : null}
-        </div>
+        </details>
       ) : null}
     </div>
   )

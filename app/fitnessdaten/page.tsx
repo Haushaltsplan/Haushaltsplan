@@ -2,9 +2,8 @@ import { FitnessdatenClient } from '@/components/fitnessdaten/fitnessdaten-clien
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = {
-  title: 'Fitnessdaten',
-  description:
-    'WHOOP-Wearable-Daten lokal auslesen und visualisieren — abofrei über BLE (Flutter-App) und Dashboard in mein-haushalt.',
+  title: 'Fitnessdaten · WHOOP',
+  description: 'WHOOP 5.0 lokal in Omnia — Recovery, Strain, Live-Puls und HRV ohne Abo.',
 }
 
 export default function FitnessdatenPage() {

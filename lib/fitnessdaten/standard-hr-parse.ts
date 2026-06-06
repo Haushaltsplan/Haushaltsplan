@@ -3,6 +3,8 @@
 export function parseStandardHeartRateMeasurement(data: DataView): {
   heartRateBpm: number
   rrIntervalsMs: number[]
+  sensorContact: boolean | null
+  energyExpendedKj: number | null
 } | null {
   if (data.byteLength < 2) return null
   const flags = data.getUint8(0)
@@ -16,6 +18,20 @@ export function parseStandardHeartRateMeasurement(data: DataView): {
     heartRateBpm = data.getUint8(offset)
     offset += 1
   }
+
+  let sensorContact: boolean | null = null
+  if (flags & 0x04) {
+    sensorContact = (flags & 0x02) !== 0
+  }
+
+  let energyExpendedKj: number | null = null
+  if (flags & 0x08) {
+    if (data.byteLength >= offset + 2) {
+      energyExpendedKj = Math.round((data.getUint16(offset, true) / 10) * 10) / 10
+      offset += 2
+    }
+  }
+
   const rrIntervalsMs: number[] = []
   if (flags & 0x10) {
     while (offset + 1 < data.byteLength) {
@@ -24,7 +40,7 @@ export function parseStandardHeartRateMeasurement(data: DataView): {
       offset += 2
     }
   }
-  return { heartRateBpm, rrIntervalsMs }
+  return { heartRateBpm, rrIntervalsMs, sensorContact, energyExpendedKj }
 }
 
 export function berechneRmssd(rrMs: number[]): number | null {
