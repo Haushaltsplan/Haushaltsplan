@@ -114,7 +114,15 @@ export function SiteSidebar() {
         })}
       </nav>
 
-      <div className="shrink-0 border-t border-zinc-800/80 px-4 py-3 font-mono text-[10px] text-zinc-600">v1.1.0</div>
+      <div className="shrink-0 space-y-2 border-t border-zinc-800/80 px-4 py-3">
+        <Link
+          href="/datenschutz"
+          className="block text-[11px] text-zinc-500 transition hover:text-zinc-300"
+        >
+          Datenschutz
+        </Link>
+        <p className="font-mono text-[10px] text-zinc-600">v1.1.0</p>
+      </div>
     </aside>
   )
 }

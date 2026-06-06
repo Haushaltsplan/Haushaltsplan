@@ -1,7 +1,9 @@
 'use client'
 
+import { istOeffentlicheRoute } from '@/lib/public-routes'
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
+import { usePathname } from 'next/navigation'
 import {
   APP_LOCK_CHANGED_EVENT,
   appLockAktiv,
@@ -15,6 +17,7 @@ import {
 const SPERRE_NACH_MS = 15000
 
 export function AppLockGate({ children }: { children: ReactNode }) {
+  const pathname = usePathname()
   const [mounted, setMounted] = useState(false)
   const [aktiv, setAktiv] = useState(false)
   const [gesperrt, setGesperrt] = useState(false)
@@ -97,7 +100,7 @@ export function AppLockGate({ children }: { children: ReactNode }) {
   const hatPin = mounted && appLockHatPin()
 
   const overlay =
-    mounted && aktiv && gesperrt
+    mounted && aktiv && gesperrt && !istOeffentlicheRoute(pathname)
       ? createPortal(
           <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-[#0b0d13] px-5 pt-[env(safe-area-inset-top,0px)] pb-[env(safe-area-inset-bottom,0px)]">
             <div className="w-full max-w-sm text-center">
