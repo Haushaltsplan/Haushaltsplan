@@ -5,6 +5,13 @@ export const NAV_LINK_DEFS = [
   { href: '/kalender', label: 'Kalender', emoji: '📅', color: 'text-teal-400', ring: 'focus-visible:ring-teal-500/50' },
   { href: '/natur', label: 'Natur', emoji: '🌿', color: 'text-lime-400', ring: 'focus-visible:ring-lime-500/50' },
   { href: '/rennrad', label: 'Rennrad', emoji: '🚴', color: 'text-rose-400', ring: 'focus-visible:ring-rose-500/50' },
+  {
+    href: '/fitnessdaten',
+    label: 'Fitnessdaten',
+    emoji: '💪',
+    color: 'text-orange-400',
+    ring: 'focus-visible:ring-orange-500/50',
+  },
   { href: '/besitz', label: 'Besitz', emoji: '👜', color: 'text-amber-400', ring: 'focus-visible:ring-amber-500/50' },
   {
     href: '/portfolioanalyse',
