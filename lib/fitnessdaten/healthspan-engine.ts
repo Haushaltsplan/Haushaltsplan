@@ -2,6 +2,7 @@
 
 import { baseline30, letzte7Tage, type WhoopDayRecord } from '@/lib/fitnessdaten/daily-records'
 import { ladeFitnessHistory } from '@/lib/fitnessdaten/history-storage'
+import { ladeFitnessProfil, profilAlter } from '@/lib/fitnessdaten/user-profile'
 import type { HrZoneMinutes } from '@/lib/fitnessdaten/types'
 
 export type HealthspanMetricId =
@@ -75,7 +76,7 @@ function schaetzeVo2Max(rhr: number | null, maxHr: number | null, age: number): 
 
 export function baueHealthspanModel(heute: WhoopDayRecord): HealthspanModel {
   const history = ladeFitnessHistory()
-  const age = history.userAge
+  const age = profilAlter(ladeFitnessProfil())
   const woche = letzte7Tage()
 
   const consistency = heute.sleepConsistency ?? baseline30('sleepConsistency') ?? 70

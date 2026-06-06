@@ -2,12 +2,19 @@ import { registriereMotion, aktualisiereSchlafSchaetzung } from '@/lib/fitnessda
 import { loescheDailyStore } from '@/lib/fitnessdaten/daily-records'
 import { loescheSyncDaten } from '@/lib/fitnessdaten/offline-sync'
 import {
+  ladeFitnessProfil,
+  profilAlter,
+  profilGewichtKg,
+  profilMaennlich,
+  profilMaxHr,
+  wendeProfilAufHistory,
+} from '@/lib/fitnessdaten/user-profile'
+import {
   avgHr,
   heuteIsoLocal,
   kalorienDelta,
   leereZonen,
   maxHr,
-  maxHrSchaetzung,
   recoveryAusBaseline,
   ruhepulsSchaetzung,
   sekundenZuMinuten,
@@ -31,8 +38,9 @@ const MAX_CHART_POINTS = 120
 const MAX_HRV_SAMPLES = 200
 
 function defaultHistory(): FitnessHistoryState {
-  const age = 30
-  return {
+  const profile = ladeFitnessProfil()
+  const age = profilAlter(profile)
+  const history: FitnessHistoryState = {
     version: 1,
     hrSeries: [],
     hrvSamples: [],
@@ -42,9 +50,10 @@ function defaultHistory(): FitnessHistoryState {
     zoneSecondsToday: leereZonen(),
     caloriesToday: 0,
     baselines: { hrvRmssdMs: 45, restingHrBpm: 58 },
-    maxHrEstimate: maxHrSchaetzung(age),
+    maxHrEstimate: profilMaxHr(profile),
     userAge: age,
   }
+  return history
 }
 
 export function ladeFitnessHistory(): FitnessHistoryState {
@@ -54,6 +63,7 @@ export function ladeFitnessHistory(): FitnessHistoryState {
     if (!raw) return defaultHistory()
     const parsed = JSON.parse(raw) as FitnessHistoryState
     if (parsed.version !== 1) return defaultHistory()
+    wendeProfilAufHistory(parsed)
     return parsed
   } catch {
     return defaultHistory()
@@ -123,7 +133,14 @@ export function mergeLiveSnapshot(
     const rhr = history.baselines.restingHrBpm
     const zone = zoneFuerBpm(bpm, history.maxHrEstimate, rhr)
     history.zoneSecondsToday[zone] += dtSec
-    history.caloriesToday += kalorienDelta(bpm, dtSec, 75, history.userAge)
+    const profile = ladeFitnessProfil()
+    history.caloriesToday += kalorienDelta(
+      bpm,
+      dtSec,
+      profilGewichtKg(profile),
+      history.userAge,
+      profilMaennlich(profile),
+    )
 
     const rmssd = partial.scores?.hrvRmssdMs
     if (rmssd != null && rmssd > 0) {

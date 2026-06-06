@@ -3,6 +3,8 @@
 import { formatUhrzeit } from '@/lib/fitnessdaten/activity-detect'
 import { WhoopHrChart } from '@/components/fitnessdaten/whoop-hr-chart'
 import { FitnessWhoopBlePanel } from '@/components/fitnessdaten/fitness-whoop-ble-panel'
+import { FitnessWhoopImportPanel } from '@/components/fitnessdaten/fitness-whoop-import-panel'
+import { FitnessUserProfilePanel } from '@/components/fitnessdaten/fitness-user-profile-panel'
 import { WhoopBigRing } from '@/components/fitnessdaten/whoop-big-ring'
 import {
   WHOOP_ZONE_13,
@@ -103,11 +105,12 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange }: P
   const [info, setInfo] = useState<MetricInfo | null>(null)
   const [expandedHealthMetric, setExpandedHealthMetric] = useState<string | null>(null)
   const [coachExpanded, setCoachExpanded] = useState(false)
+  const [dataRevision, setDataRevision] = useState(0)
   const showInfo = (id: MetricInfoId) => setInfo(getMetricInfo(id))
   const live = snapshot?.live
   const scores = snapshot?.scores
   const deviceInfo = snapshot?.deviceInfo
-  const model = useMemo(() => baueWhoopDashboard(snapshot), [snapshot])
+  const model = useMemo(() => baueWhoopDashboard(snapshot), [snapshot, dataRevision])
   const isLive = phase === 'live'
   const zoneAnteil = scores?.zoneMinutes ? formatZoneAnteil(scores.zoneMinutes) : []
   const { heute, woche, metriken, aktivitaeten, schlafdefizit } = model
@@ -716,8 +719,10 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange }: P
         )}
 
         {tab === 'connect' && (
-          <section className="mt-6">
+          <section className="mt-6 space-y-4">
+            <FitnessUserProfilePanel embedded onSaved={() => setDataRevision((r) => r + 1)} />
             <FitnessWhoopBlePanel onSnapshot={onSnapshot} onPhaseChange={onPhaseChange} embedded />
+            <FitnessWhoopImportPanel embedded onImportComplete={() => setDataRevision((r) => r + 1)} />
           </section>
         )}
       </div>
