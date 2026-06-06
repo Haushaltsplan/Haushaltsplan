@@ -162,8 +162,14 @@ export function FitnessdatenClient() {
 
       <PageSection titleId="fitness-live" title="Aktueller Stand">
         <PageSectionPanel>
-          {snapshot ? (
+          {snapshot && (live?.heartRateBpm != null || snapshot.deviceName) ? (
             <div className="space-y-4">
+              {live?.heartRateBpm == null ? (
+                <p className="rounded-lg border border-amber-800/40 bg-amber-950/20 px-3 py-2 text-sm text-amber-100/90">
+                  Gespeicherter Verbindungsstand ohne Pulswerte. Bitte oben erneut verbinden — Band fest am
+                  Handgelenk, 10–30 s warten.
+                </p>
+              ) : null}
               <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                 <p className="text-sm text-zinc-400">
                   Zuletzt aktualisiert:{' '}

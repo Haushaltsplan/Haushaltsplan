@@ -10,14 +10,19 @@ interface BluetoothRemoteGATTServer {
   connect(): Promise<BluetoothRemoteGATTServer>
   disconnect(): void
   getPrimaryService(service: number | string): Promise<BluetoothRemoteGATTService>
+  getPrimaryServices(): Promise<BluetoothRemoteGATTService[]>
 }
 
 interface BluetoothRemoteGATTService {
+  readonly uuid: string
   getCharacteristic(characteristic: number | string): Promise<BluetoothRemoteGATTCharacteristic>
+  getCharacteristics(): Promise<BluetoothRemoteGATTCharacteristic[]>
 }
 
 interface BluetoothRemoteGATTCharacteristic extends EventTarget {
+  readonly uuid: string
   readonly value?: DataView | null
+  readValue(): Promise<DataView>
   startNotifications(): Promise<BluetoothRemoteGATTCharacteristic>
   stopNotifications(): Promise<BluetoothRemoteGATTCharacteristic>
   addEventListener(type: 'characteristicvaluechanged', listener: (ev: Event) => void): void

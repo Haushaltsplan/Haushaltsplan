@@ -1,10 +1,7 @@
 'use client'
 
-import {
-  ladeFitnessSnapshot,
-  speichereFitnessSnapshot,
-} from '@/lib/fitnessdaten/snapshot-storage'
 import type { FitnessSnapshot } from '@/lib/fitnessdaten/types'
+import { speichereFitnessSnapshot } from '@/lib/fitnessdaten/snapshot-storage'
 import {
   verbindeWhoopStandardHr,
   webBluetoothVerfuegbar,
@@ -21,6 +18,7 @@ export function FitnessWhoopBlePanel({ onSnapshot }: Props) {
   const [phase, setPhase] = useState<WhoopWebBlePhase>('idle')
   const [deviceName, setDeviceName] = useState<string | null>(null)
   const [fehler, setFehler] = useState<string | null>(null)
+  const [statusHint, setStatusHint] = useState<string | null>(null)
   const [bleOk] = useState(() => webBluetoothVerfuegbar())
   const disconnectRef = useRef<(() => void) | null>(null)
 
@@ -34,16 +32,19 @@ export function FitnessWhoopBlePanel({ onSnapshot }: Props) {
     setPhase('idle')
     setDeviceName(null)
     setFehler(null)
+    setStatusHint(null)
   }, [])
 
   const verbinden = useCallback(async () => {
     setFehler(null)
+    setStatusHint(null)
     try {
-      const session = await verbindeWhoopStandardHr(({ phase: p, deviceName: n, snapshot, error }) => {
+      const session = await verbindeWhoopStandardHr(({ phase: p, deviceName: n, snapshot, error, statusHint: hint }) => {
         setPhase(p)
         setDeviceName(n)
         setFehler(error)
-        if (snapshot) {
+        setStatusHint(hint)
+        if (snapshot?.live?.heartRateBpm != null && snapshot.live.heartRateBpm > 0) {
           speichereFitnessSnapshot(snapshot)
           onSnapshot(snapshot)
         }
@@ -59,6 +60,7 @@ export function FitnessWhoopBlePanel({ onSnapshot }: Props) {
     idle: 'Nicht verbunden',
     connecting: 'Verbinde …',
     live: 'Live',
+    waiting_hr: 'Warte auf Puls',
     error: 'Fehler',
   }
 
@@ -76,7 +78,7 @@ export function FitnessWhoopBlePanel({ onSnapshot }: Props) {
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          {phase === 'live' || phase === 'connecting' ? (
+          {phase === 'live' || phase === 'connecting' || phase === 'waiting_hr' ? (
             <button
               type="button"
               onClick={trennen}
@@ -108,6 +110,12 @@ export function FitnessWhoopBlePanel({ onSnapshot }: Props) {
           Historie (Custom fd4b) folgen später; Puls + HRV-Basis laufen schon in der Web-App.
         </p>
       )}
+
+      {statusHint ? (
+        <p className="mt-3 rounded-lg border border-amber-800/45 bg-amber-950/25 px-3 py-2 text-sm text-amber-100/90">
+          {statusHint}
+        </p>
+      ) : null}
 
       {fehler ? (
         <p className="mt-3 rounded-lg border border-rose-800/50 bg-rose-950/30 px-3 py-2 text-sm text-rose-200">
