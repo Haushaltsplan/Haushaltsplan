@@ -1,8 +1,10 @@
 'use client'
 
 import { useMemo, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { PaCard } from '@/components/portfolio-analyse/pa-ui'
 import { formatProzent } from '@/lib/portfolio-analyse/berechnung'
+import { fundamentaldatenHref } from '@/lib/portfolio-analyse/fundamentaldaten-navigation'
 import {
   bauePerformanceMap,
   performanceFarbe,
@@ -15,6 +17,7 @@ export function PaPerformanceMap({
 }: {
   positionen: LivePosition[]
 }) {
+  const router = useRouter()
   const [groesse, setGroesse] = useState<PerformanceGroesse>('markt')
   const sektoren = useMemo(() => bauePerformanceMap(positionen, groesse), [positionen, groesse])
 
@@ -67,12 +70,29 @@ export function PaPerformanceMap({
               <div className="flex min-h-0 flex-1">
                 {sek.tiles.map((tile) => {
                   const { background, color } = performanceFarbe(tile.performanceProzent)
+                  const fundamentalHref =
+                    tile.assetKlasse === 'aktie' && tile.isin
+                      ? fundamentaldatenHref({ isin: tile.isin })
+                      : null
                   return (
                     <div
                       key={tile.id}
-                      className="relative flex min-w-[4rem] flex-col items-center justify-center overflow-hidden border border-zinc-950/60 p-1 text-center"
+                      className={`relative flex min-w-[4rem] flex-col items-center justify-center overflow-hidden border border-zinc-950/60 p-1 text-center ${fundamentalHref ? 'cursor-pointer hover:ring-1 hover:ring-white/20' : ''}`}
                       style={{ flex: tile.wertEur, background, color }}
-                      title={`${tile.label}: ${formatProzent(tile.performanceProzent)} · ${tile.gewichtProzent.toFixed(1)} %`}
+                      title={`${tile.label}: ${formatProzent(tile.performanceProzent)} · ${tile.gewichtProzent.toFixed(1)} %${fundamentalHref ? ' · Klick für Fundamentaldaten' : ''}`}
+                      onClick={fundamentalHref ? () => router.push(fundamentalHref) : undefined}
+                      onKeyDown={
+                        fundamentalHref
+                          ? (e) => {
+                              if (e.key === 'Enter' || e.key === ' ') {
+                                e.preventDefault()
+                                router.push(fundamentalHref)
+                              }
+                            }
+                          : undefined
+                      }
+                      tabIndex={fundamentalHref ? 0 : undefined}
+                      role={fundamentalHref ? 'link' : undefined}
                     >
                       <span className="line-clamp-2 text-[10px] font-medium leading-tight">{tile.label}</span>
                       {tile.performanceProzent != null ? (

@@ -1,10 +1,12 @@
 import type { LivePosition } from '@/lib/portfolio-analyse/live-bewertung'
+import type { AssetKlasse } from '@/lib/portfolio-analyse/types'
 import { sektorFuerPosition } from '@/lib/portfolio-analyse/isin-sektoren'
 
 export type PerformanceMapTile = {
   id: string
   label: string
   isin: string | null
+  assetKlasse: AssetKlasse
   wertEur: number
   gewichtProzent: number
   performanceProzent: number | null
@@ -59,6 +61,7 @@ export function bauePerformanceMap(
       id: p.isin ?? p.anzeigeName,
       label: p.anzeigeName,
       isin: p.isin,
+      assetKlasse: p.assetKlasse,
       wertEur: Math.round(wert * 100) / 100,
       gewichtProzent: Math.round((wert / summe) * 10000) / 100,
       performanceProzent: perf,

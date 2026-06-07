@@ -1,9 +1,12 @@
 'use client'
 
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { PortfolioIsinLogo } from '@/components/portfolio-analyse/isin-logo'
+import { PaFundamentalQuickLink } from '@/components/portfolio-analyse/pa-fundamental-quick-link'
 import { PaDividendEstimateBadge } from '@/components/portfolio-analyse/pa-ui'
 import { formatDatumDe, formatEur } from '@/lib/portfolio-analyse/berechnung'
+import { fundamentaldatenHref } from '@/lib/portfolio-analyse/fundamentaldaten-navigation'
 import type { AnkuendigteDividendenErgebnis } from '@/lib/portfolio-analyse/ankuendigte-dividenden'
 import type { IsinMetadata } from '@/lib/portfolio-analyse/isin-lookup-server'
 
@@ -32,6 +35,7 @@ export function PaAnkuendigteDividenden({
   laden: boolean
   fehler: string | null
 }) {
+  const router = useRouter()
   if (laden) {
     return <p className="py-8 text-center text-sm text-zinc-500">Ankündigungen werden geladen …</p>
   }
@@ -66,8 +70,14 @@ export function PaAnkuendigteDividenden({
             <p className="text-sm font-semibold tabular-nums text-zinc-100">{formatEur(monat.summeEur)}</p>
           </div>
           <ul className="space-y-3">
-            {monat.eintraege.map((e) => (
-              <li key={`${e.isin ?? e.symbol}-${e.zahlungsdatumIso}`} className="flex items-center gap-3">
+            {monat.eintraege.map((e) => {
+              const href = e.isin ? fundamentaldatenHref({ isin: e.isin }) : null
+              return (
+              <li
+                key={`${e.isin ?? e.symbol}-${e.zahlungsdatumIso}`}
+                className={`flex items-center gap-3 ${href ? 'cursor-pointer rounded-lg px-1 -mx-1 hover:bg-white/[0.02]' : ''}`}
+                onClick={href ? () => router.push(href) : undefined}
+              >
                 <PortfolioIsinLogo isin={e.isin} fallbackName={e.name} meta={meta} groesse="sm" />
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-medium text-zinc-100">{e.name}</p>
@@ -86,6 +96,7 @@ export function PaAnkuendigteDividenden({
                   <div className="flex items-center justify-end gap-1.5">
                     <p className="text-sm font-semibold tabular-nums text-zinc-50">{formatEur(e.gesamtEur)}</p>
                     {!e.bestaetigt ? <PaDividendEstimateBadge /> : null}
+                    <PaFundamentalQuickLink isin={e.isin} />
                   </div>
                   <div className="mt-1 flex flex-wrap items-center justify-end gap-1.5">
                     <span className="rounded-md bg-zinc-800/80 px-1.5 py-0.5 text-[10px] tabular-nums text-zinc-400 ring-1 ring-white/[0.04]">
@@ -97,7 +108,7 @@ export function PaAnkuendigteDividenden({
                   </div>
                 </div>
               </li>
-            ))}
+            )})}
           </ul>
         </section>
       ))}

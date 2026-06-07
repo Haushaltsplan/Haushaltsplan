@@ -19,6 +19,8 @@ import { hatXrayLookthrough } from '@/lib/portfolio-analyse/performance-map'
 import type { SinglePortfolioReport } from '@/lib/portfolio-analyse/parqet-core/types'
 import { gewichtungMitXray, xrayLaender, xraySektoren } from '@/lib/portfolio-analyse/xray-gewichtung'
 import { useMemo, useState } from 'react'
+import { useRouter } from 'next/navigation'
+import { fundamentaldatenHref } from '@/lib/portfolio-analyse/fundamentaldaten-navigation'
 
 const DIMENSION_TABS: { id: GewichtungDimension; label: string }[] = [
   { id: 'asset', label: 'Asset' },
@@ -83,8 +85,18 @@ export function PaGewichtungPanel({
   report: SinglePortfolioReport | null
   meta: Map<string, IsinMetadata>
 }) {
+  const router = useRouter()
   const [dimension, setDimension] = useState<GewichtungDimension>('asset')
   const [xrayAn, setXrayAn] = useState(false)
+
+  const posByIsin = useMemo(() => {
+    const m = new Map<string, LivePosition>()
+    for (const p of positionen) {
+      const isin = p.isin?.trim().toUpperCase()
+      if (isin) m.set(isin, p)
+    }
+    return m
+  }, [positionen])
 
   const lookthroughMoeglich = hatXrayLookthrough(report)
 
@@ -148,9 +160,33 @@ export function PaGewichtungPanel({
             {eintraege.length === 0 ? (
               <li className="py-8 text-center text-sm text-zinc-500">Keine Positionen.</li>
             ) : (
-              eintraege.map((e) => (
+              eintraege.map((e) => {
+                const pos =
+                  dimension === 'asset' && !xrayAn && e.key.length >= 12
+                    ? posByIsin.get(e.key.toUpperCase())
+                    : undefined
+                const fundamentalHref =
+                  pos?.assetKlasse === 'aktie' && pos.isin
+                    ? fundamentaldatenHref({ isin: pos.isin })
+                    : null
+                return (
                 <li key={e.key}>
-                  <div className="flex items-center gap-2">
+                  <div
+                    className={`flex items-center gap-2 ${fundamentalHref ? 'cursor-pointer rounded-lg px-1 -mx-1 hover:bg-white/[0.03]' : ''}`}
+                    onClick={fundamentalHref ? () => router.push(fundamentalHref) : undefined}
+                    onKeyDown={
+                      fundamentalHref
+                        ? (ev) => {
+                            if (ev.key === 'Enter' || ev.key === ' ') {
+                              ev.preventDefault()
+                              router.push(fundamentalHref)
+                            }
+                          }
+                        : undefined
+                    }
+                    tabIndex={fundamentalHref ? 0 : undefined}
+                    role={fundamentalHref ? 'link' : undefined}
+                  >
                     {dimension === 'asset' && !xrayAn ? (
                       <PortfolioIsinLogo
                         isin={e.key.length >= 12 ? e.key : null}
@@ -185,7 +221,7 @@ export function PaGewichtungPanel({
                     />
                   </div>
                 </li>
-              ))
+              )})
             )}
           </ul>
         </PaCard>

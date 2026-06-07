@@ -77,6 +77,7 @@ const SUB_NAV = [
   { href: '/portfolioanalyse/earnings', label: 'Quartalszahlen' },
   { href: '/portfolioanalyse/fundamentaldaten', label: 'Fundamentaldaten' },
   { href: '/portfolioanalyse/analyse', label: 'Analyse' },
+  { href: '/portfolioanalyse/watchlist', label: 'Watchlist' },
   { href: '/portfolioanalyse/import', label: 'Import' },
 ] as const
 

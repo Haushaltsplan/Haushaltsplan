@@ -168,8 +168,15 @@ export function PortfolioDashboardClient() {
             </Link>
           </div>
           <ul className="max-h-80 flex-1 divide-y divide-zinc-800/50 overflow-y-auto">
-            {letzteAktivitaeten.map((b) => (
-              <li key={b.id} className="flex items-center gap-3 px-4 py-3">
+            {letzteAktivitaeten.map((b) => {
+              const href =
+                b.assetKlasse === 'aktie' && b.isin ? fundamentaldatenHref({ isin: b.isin }) : null
+              return (
+              <li
+                key={b.id}
+                className={`flex items-center gap-3 px-4 py-3 ${href ? 'cursor-pointer hover:bg-white/[0.03]' : ''}`}
+                onClick={href ? () => router.push(href) : undefined}
+              >
                 <PortfolioIsinLogo isin={b.isin} fallbackName={b.wertpapierName} meta={meta} groesse="sm" />
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm text-zinc-200">
@@ -182,7 +189,7 @@ export function PortfolioDashboardClient() {
                   <p className="mt-1 text-sm tabular-nums text-zinc-100">{formatEur(b.betragEur)}</p>
                 </div>
               </li>
-            ))}
+            )})}
           </ul>
         </PaCard>
 

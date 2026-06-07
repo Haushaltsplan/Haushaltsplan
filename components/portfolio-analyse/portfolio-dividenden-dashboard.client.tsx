@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import { useEffect, useMemo, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { PaAnkuendigteDividenden } from '@/components/portfolio-analyse/pa-ankuendigte-dividenden'
 import { PaGestapelteDividendenChart } from '@/components/portfolio-analyse/pa-dividenden-chart'
 import { PaDividendenHeatmapGrid } from '@/components/portfolio-analyse/pa-dividenden-heatmap'
@@ -18,10 +19,12 @@ import {
   dividendenProJahrMitVergleich,
 } from '@/lib/portfolio-analyse/dividenden-auswertung'
 import { anzeigeNameFuerIsin } from '@/lib/portfolio-analyse/isin-metadata-client'
+import { fundamentaldatenHref } from '@/lib/portfolio-analyse/fundamentaldaten-navigation'
 import { ladeAnkuendigteDividendenDepot } from '@/lib/portfolio-analyse/ankuendigte-dividenden-client'
 import type { AnkuendigteDividendenErgebnis } from '@/lib/portfolio-analyse/ankuendigte-dividenden'
 
 export function PortfolioDividendenDashboardClient() {
+  const router = useRouter()
   const { buchungen, live, report, meta, hatDaten, laden } = usePortfolioAnalyse()
   const [ankuendig, setAnkuendig] = useState<AnkuendigteDividendenErgebnis | null>(null)
   const [ankuendigLaden, setAnkuendigLaden] = useState(false)
@@ -218,8 +221,14 @@ export function PortfolioDividendenDashboardClient() {
                       {letzteDivs.length === 0 ? (
                         <li className="px-5 py-8 text-center text-sm text-zinc-500">Keine Dividenden.</li>
                       ) : (
-                        letzteDivs.map((d, i) => (
-                          <li key={`${d.datum}-${d.isin}-${i}`} className="flex items-center gap-3 px-4 py-3">
+                        letzteDivs.map((d, i) => {
+                          const href = d.isin ? fundamentaldatenHref({ isin: d.isin }) : null
+                          return (
+                          <li
+                            key={`${d.datum}-${d.isin}-${i}`}
+                            className={`flex items-center gap-3 px-4 py-3 ${href ? 'cursor-pointer hover:bg-white/[0.03]' : ''}`}
+                            onClick={href ? () => router.push(href) : undefined}
+                          >
                             <PortfolioIsinLogo isin={d.isin} fallbackName={d.name} meta={meta} groesse="sm" />
                             <div className="min-w-0 flex-1">
                               <p className="truncate text-sm text-zinc-200">
@@ -232,7 +241,7 @@ export function PortfolioDividendenDashboardClient() {
                               <p className="mt-1 text-sm tabular-nums text-zinc-100">{formatEur(d.betrag)}</p>
                             </div>
                           </li>
-                        ))
+                        )})
                       )}
                     </ul>
                   </PaCard>

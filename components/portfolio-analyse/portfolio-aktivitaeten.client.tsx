@@ -1,6 +1,7 @@
 'use client'
 
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { useEffect, useMemo, useState } from 'react'
 import { PortfolioIsinLogo } from '@/components/portfolio-analyse/isin-logo'
 import { usePortfolioAnalyse } from '@/components/portfolio-analyse/pa-data-provider'
@@ -14,6 +15,7 @@ import {
 } from '@/lib/portfolio-analyse/aktivitaeten-gruppe'
 import { formatDatumDe, formatEur } from '@/lib/portfolio-analyse/berechnung'
 import { anzeigeNameFuerIsin, wknFuerIsin } from '@/lib/portfolio-analyse/isin-metadata-client'
+import { fundamentaldatenHref } from '@/lib/portfolio-analyse/fundamentaldaten-navigation'
 import {
   ASSET_KLASSE_LABEL,
   BUCHUNGS_TYP_LABEL,
@@ -214,11 +216,17 @@ function AktivitaetenZeile({
   b: PortfolioDbBuchung
   meta: ReturnType<typeof usePortfolioAnalyse>['meta']
 }) {
+  const router = useRouter()
   const name = anzeigeNameFuerIsin(b.isin, b.wertpapierName, meta)
   const wkn = b.isin ? wknFuerIsin(b.isin, meta) : null
+  const href =
+    b.assetKlasse === 'aktie' && b.isin ? fundamentaldatenHref({ isin: b.isin }) : null
 
   return (
-    <li className="flex flex-wrap items-center gap-3 px-5 py-3 sm:flex-nowrap">
+    <li
+      className={`flex flex-wrap items-center gap-3 px-5 py-3 sm:flex-nowrap ${href ? 'cursor-pointer hover:bg-white/[0.02]' : ''}`}
+      onClick={href ? () => router.push(href) : undefined}
+    >
       <div className="flex min-w-[7rem] items-center gap-2">
         <PaBadge variant={badgeVariant(b.typ)}>{BUCHUNGS_TYP_LABEL[b.typ]}</PaBadge>
         <span className="text-xs tabular-nums text-zinc-500">{formatDatumZeit(b.datum)}</span>

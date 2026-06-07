@@ -1,4 +1,13 @@
 export const FUNDAMENTALDATEN_PFAD = '/portfolioanalyse/fundamentaldaten'
+export const WATCHLIST_PFAD = '/portfolioanalyse/watchlist'
+
+export type FundamentalKandidat = {
+  isin: string | null
+  name: string
+  symbolYahoo: string | null
+  symbolCandidates: string[]
+  quelle: 'depot' | 'watchlist'
+}
 
 export function fundamentaldatenHref(opts: {
   isin?: string | null
@@ -13,6 +22,12 @@ export function fundamentaldatenHref(opts: {
   }
   const q = params.toString()
   return q ? `${FUNDAMENTALDATEN_PFAD}?${q}` : FUNDAMENTALDATEN_PFAD
+}
+
+export function watchlistHref(opts: { isin?: string | null } = {}): string {
+  const isin = opts.isin?.trim().toUpperCase()
+  if (!isin) return WATCHLIST_PFAD
+  return `${WATCHLIST_PFAD}?isin=${encodeURIComponent(isin)}`
 }
 
 export function findeFundamentalPositionIdx(
