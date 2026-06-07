@@ -5,6 +5,7 @@ import {
   baueKeyMetrics,
   type YahooFundamentalKennzahlen,
 } from '@/lib/portfolio-analyse/fundamentaldaten-key-metrics'
+import { baueMantraAudit } from '@/lib/portfolio-analyse/fundamentaldaten-mantra'
 import { ladeFundamentalNews } from '@/lib/portfolio-analyse/fundamentaldaten-news-server'
 import { ladeFundamentalSchaetzungen } from '@/lib/portfolio-analyse/fundamentaldaten-schaetzungen-server'
 import {
@@ -220,6 +221,7 @@ function leeresPaket(partial: Partial<FundamentaldatenPaket> & Pick<Fundamentald
     perioden: [],
     zeilen: [],
     keyMetrics: [],
+    mantra: baueMantraAudit(null, null, null, null, { perioden: [], zeilen: [] }),
     news: [],
     symbolYahoo: null,
     geladenAm: new Date().toISOString(),
@@ -274,6 +276,7 @@ export async function ladeFundamentaldaten(anfrage: FundamentaldatenAnfrage): Pr
       website: yahooExt?.website ?? null,
       beschreibung: beschreibungDe,
       keyMetrics: baueKeyMetrics(yahooExt, null, schaetzungen),
+      mantra: baueMantraAudit(brancheMeta.sektor, brancheMeta.branche, yahooExt, null, schaetzungen),
       news,
       symbolYahoo,
       fehler: 'Macrotrends-Daten konnten nicht geladen werden.',
@@ -281,19 +284,22 @@ export async function ladeFundamentaldaten(anfrage: FundamentaldatenAnfrage): Pr
   }
 
   const merged = mergePeriodenUndZeilen(roh, schaetzungen)
+  const sektorFinal = brancheMeta.sektor
+  const brancheFinal = brancheMeta.branche ?? roh.branche
 
   return leeresPaket({
     ok: true,
     ticker: ident.ticker,
     slug: ident.slug,
     firmenname: ident.firmenname,
-    branche: brancheMeta.branche ?? roh.branche,
-    sektor: brancheMeta.sektor,
+    branche: brancheFinal,
+    sektor: sektorFinal,
     website: yahooExt?.website ?? null,
     beschreibung: beschreibungDe,
     perioden: merged.perioden,
     zeilen: merged.zeilen,
     keyMetrics: baueKeyMetrics(yahooExt, roh, schaetzungen),
+    mantra: baueMantraAudit(sektorFinal, brancheFinal, yahooExt, roh, schaetzungen),
     news,
     symbolYahoo,
   })

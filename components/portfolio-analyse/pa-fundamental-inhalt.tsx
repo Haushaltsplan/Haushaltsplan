@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { PaFundamentalMantra } from '@/components/portfolio-analyse/pa-fundamental-mantra'
 import { PaFundamentalNews } from '@/components/portfolio-analyse/pa-fundamental-news'
 import { PaFundamentalUebersicht } from '@/components/portfolio-analyse/pa-fundamental-uebersicht'
 import { PaFundamentalUnternehmenHeader } from '@/components/portfolio-analyse/pa-fundamental-unternehmen-header'
@@ -18,6 +19,7 @@ import type {
 
 const UNTER_TABS = [
   { id: 'uebersicht' as const, label: 'Übersicht' },
+  { id: 'mantra' as const, label: 'Mantra' },
   { id: 'finanzdaten' as const, label: 'Finanzdaten' },
   { id: 'schaetzungen' as const, label: 'Schätzungen' },
   { id: 'bewertung' as const, label: 'Bewertung' },
@@ -170,9 +172,11 @@ export function PaFundamentalInhalt({
             />
           ) : null}
 
+          {unterTab === 'mantra' && daten.mantra ? <PaFundamentalMantra audit={daten.mantra} /> : null}
+
           {unterTab === 'news' ? <PaFundamentalNews artikel={daten.news} /> : null}
 
-          {unterTab !== 'uebersicht' && unterTab !== 'news' ? (
+          {unterTab !== 'uebersicht' && unterTab !== 'news' && unterTab !== 'mantra' ? (
             <div className="space-y-4">
               <PaFundamentalMetrikChart
                 perioden={daten.perioden}

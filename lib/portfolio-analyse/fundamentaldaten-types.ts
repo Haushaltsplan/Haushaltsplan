@@ -62,6 +62,33 @@ export type FundamentalNewsArtikel = {
   zusammenfassung: string | null
 }
 
+export type MantraAuditStatus = 'erfuellt' | 'nicht_erfuellt' | 'keine_daten' | 'qualitativ'
+
+export type MantraAuditErgebnis = {
+  kategorie: string
+  kennzahl: string
+  zielwert: string
+  funktion: string
+  istWert: string | null
+  status: MantraAuditStatus
+  hinweis?: string
+}
+
+export type FundamentalMantraAudit = {
+  sektorMantraId: string | null
+  sektorMantraTitel: string | null
+  sektorMantraIntro: string | null
+  standard: MantraAuditErgebnis[]
+  sektor: MantraAuditErgebnis[]
+  zusammenfassung: {
+    erfuellt: number
+    nichtErfuellt: number
+    keineDaten: number
+    qualitativ: number
+    bewertbar: number
+  }
+}
+
 export type FundamentaldatenPaket = {
   ok: boolean
   ticker: string
@@ -76,6 +103,7 @@ export type FundamentaldatenPaket = {
   perioden: FundamentalPeriode[]
   zeilen: FundamentalMetrikZeile[]
   keyMetrics: FundamentalKeyMetric[]
+  mantra: FundamentalMantraAudit
   news: FundamentalNewsArtikel[]
   symbolYahoo: string | null
   geladenAm: string
