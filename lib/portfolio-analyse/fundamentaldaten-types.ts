@@ -48,6 +48,14 @@ export type FundamentalKeyMetric = {
   gruppe: 'marktdaten' | 'kapitalstruktur' | 'effizienz' | 'wachstum' | 'bewertung'
 }
 
+export type FundamentalNewsArtikel = {
+  titel: string
+  link: string
+  quelle: string | null
+  veroeffentlicht: string | null
+  zusammenfassung: string | null
+}
+
 export type FundamentaldatenPaket = {
   ok: boolean
   ticker: string
@@ -62,6 +70,7 @@ export type FundamentaldatenPaket = {
   perioden: FundamentalPeriode[]
   zeilen: FundamentalMetrikZeile[]
   keyMetrics: FundamentalKeyMetric[]
+  news: FundamentalNewsArtikel[]
   symbolYahoo: string | null
   geladenAm: string
   quelle: 'macrotrends'

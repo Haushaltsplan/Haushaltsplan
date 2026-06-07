@@ -400,6 +400,16 @@ export async function ladeMacrotrendsFundamentaldaten(
     })
   }
 
+  const lastFy = periodenIso[periodenIso.length - 1]
+  if (lastFy) {
+    for (const z of zeilen) {
+      if (z.macrotrendsStatement === 'price-ratios') continue
+      if (z.werte[FUNDAMENTAL_TTM_KEY] == null && z.werte[lastFy] != null) {
+        z.werte[FUNDAMENTAL_TTM_KEY] = z.werte[lastFy]
+      }
+    }
+  }
+
   const ratiosUrl = `${BASE}/stocks/charts/${ident.ticker}/${ident.slug}/financial-ratios`
   const ratiosHtml = await ladeSeite(ratiosUrl)
   const metaMatch = ratiosHtml?.match(/<meta name="description" content="([^"]+)"/)

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { PaFundamentalKeyMetrics } from '@/components/portfolio-analyse/pa-fundamental-key-metrics'
+import { PaFundamentalNews } from '@/components/portfolio-analyse/pa-fundamental-news'
 import { PaFundamentalUnternehmenHeader } from '@/components/portfolio-analyse/pa-fundamental-unternehmen-header'
 import { PaFundamentalKursChart } from '@/components/portfolio-analyse/pa-fundamental-kurs-chart'
 import { PaFundamentalMetrikChart } from '@/components/portfolio-analyse/pa-fundamental-metrik-chart'
@@ -198,18 +199,23 @@ export function PortfolioFundamentaldatenClient() {
                 tabs={UNTER_TABS}
                 activeTab={unterTab}
                 onTabChange={setUnterTab}
+                profilAufUebersicht={unterTab === 'uebersicht'}
               />
 
               {unterTab === 'uebersicht' ? (
-                <div className="grid gap-4 xl:grid-cols-[1.15fr_1fr]">
+                <div className="grid gap-4 xl:grid-cols-[1.12fr_0.88fr]">
                   <PaFundamentalKursChart
                     symbolYahoo={daten.symbolYahoo}
                     ticker={daten.ticker}
                     firmenname={daten.firmenname}
                   />
-                  <PaFundamentalKeyMetrics metriken={daten.keyMetrics} />
+                  <div className="min-h-0">
+                    <PaFundamentalKeyMetrics metriken={daten.keyMetrics} />
+                  </div>
                 </div>
               ) : null}
+
+              {unterTab === 'news' ? <PaFundamentalNews artikel={daten.news} /> : null}
 
               {unterTab !== 'uebersicht' && unterTab !== 'news' ? (
                 <div className="space-y-4">
@@ -272,11 +278,7 @@ export function PortfolioFundamentaldatenClient() {
                     />
                   ) : null}
                 </div>
-              ) : (
-                <PaCard className="p-8 text-center text-sm text-zinc-500">
-                  Dieser Bereich wird in einer späteren Version befüllt.
-                </PaCard>
-              )}
+              ) : null}
 
               <p className="text-[10px] text-zinc-600">
                 Quellen: Macrotrends.net · Yahoo Finance (Schätzungen) · Stand{' '}

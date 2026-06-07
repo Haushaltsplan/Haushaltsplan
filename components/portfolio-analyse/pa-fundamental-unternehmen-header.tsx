@@ -15,6 +15,8 @@ type Props<T extends string> = {
   tabs: Tab<T>[]
   activeTab: T
   onTabChange: (id: T) => void
+  /** Auf der Übersichtsseite Profil direkt anzeigen */
+  profilAufUebersicht?: boolean
 }
 
 function MetaChip({ children }: { children: ReactNode }) {
@@ -35,13 +37,15 @@ export function PaFundamentalUnternehmenHeader<T extends string>({
   tabs,
   activeTab,
   onTabChange,
+  profilAufUebersicht = false,
 }: Props<T>) {
-  const [beschreibungOffen, setBeschreibungOffen] = useState(false)
+  const [beschreibungOffen, setBeschreibungOffen] = useState(profilAufUebersicht && Boolean(beschreibung))
   const websiteUrl = website ? (website.startsWith('http') ? website : `https://${website}`) : null
+  const zeigeProfil = beschreibung && (profilAufUebersicht || beschreibungOffen)
 
   return (
     <PaCard variant="elevated" className="overflow-hidden">
-      <div className="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-5">
+      <div className="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-start sm:justify-between sm:px-5 sm:py-4">
         <div className="min-w-0 space-y-1.5">
           <div className="flex flex-wrap items-center gap-2">
             <h2 className="text-lg font-semibold tracking-tight text-zinc-50">{firmenname}</h2>
@@ -62,22 +66,28 @@ export function PaFundamentalUnternehmenHeader<T extends string>({
                 Website ↗
               </a>
             ) : null}
-            {beschreibung ? (
-              <button
-                type="button"
-                onClick={() => setBeschreibungOffen((v) => !v)}
-                className="text-[11px] font-medium text-zinc-500 transition hover:text-teal-400/90"
-              >
-                {beschreibungOffen ? 'Profil ausblenden' : 'Unternehmensprofil'}
-              </button>
-            ) : null}
           </div>
         </div>
         <PaIconTabs tabs={tabs} active={activeTab} onChange={onTabChange} className="shrink-0 sm:max-w-[34rem]" />
       </div>
 
-      {beschreibung && beschreibungOffen ? (
-        <div className="border-t border-white/[0.04] bg-zinc-950/40 px-4 py-3 sm:px-5">
+      {beschreibung && !profilAufUebersicht ? (
+        <div className="border-t border-white/[0.04] px-4 py-2 sm:px-5">
+          <button
+            type="button"
+            onClick={() => setBeschreibungOffen((v) => !v)}
+            className="text-xs font-medium text-teal-400/90 transition hover:text-teal-300"
+          >
+            {beschreibungOffen ? '▾ Über das Unternehmen ausblenden' : '▸ Über das Unternehmen anzeigen'}
+          </button>
+        </div>
+      ) : null}
+
+      {zeigeProfil ? (
+        <div className="border-t border-white/[0.04] bg-zinc-950/40 px-4 py-4 sm:px-5">
+          <h3 className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-zinc-500">
+            Über das Unternehmen
+          </h3>
           <p className="text-sm leading-relaxed text-zinc-300">{beschreibung}</p>
         </div>
       ) : null}
