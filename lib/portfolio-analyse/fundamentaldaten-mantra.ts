@@ -15,11 +15,13 @@ import type {
 } from '@/lib/portfolio-analyse/fundamentaldaten-types'
 import { FUNDAMENTAL_TTM_KEY } from '@/lib/portfolio-analyse/fundamentaldaten-types'
 import type { MacrotrendsFundamentalRoh } from '@/lib/portfolio-analyse/macrotrends-scraper-server'
+import type { MantraYahooTrailing } from '@/lib/portfolio-analyse/yahoo-fundamentals-timeseries-server'
 
 type MantraKontext = {
   yahoo: YahooFundamentalKennzahlen | null
   roh: MacrotrendsFundamentalRoh | null
   schaetzungen: FundamentalSchaetzungenRoh
+  yahooTrailing: MantraYahooTrailing | null
 }
 
 function wertAnPeriode(z: FundamentalMetrikZeile | undefined, key: string): number | null {
@@ -98,12 +100,41 @@ function baueKontextWerte(ctx: MantraKontext) {
   const roeZeile = zeile('roe')
   const kapitalumschlagZeile = zeile('kapitalumschlag')
   const aktienZeile = zeile('aktien')
+  const sbcZeile = zeile('sbc')
+  const rdZeile = zeile('rd')
+  const sgaZeile = zeile('sga')
+  const dsoZeile = zeile('dso')
+  const yt = ctx.yahooTrailing
 
   const umsatzMio = letzterGeschaeftsjahresWert(umsatzZeile, perioden)
   const fcfMio = letzterGeschaeftsjahresWert(fcfZeile, perioden)
   const nettoMio = letzterGeschaeftsjahresWert(nettoZeile, perioden)
   const capexMio = letzterGeschaeftsjahresWert(capexZeile, perioden)
   const ebitdaMio = letzterGeschaeftsjahresWert(ebitdaZeile, perioden)
+  const ebitMio = letzterGeschaeftsjahresWert(ebitZeile, perioden)
+
+  const revenueUsd = yt?.revenueUsd ?? (umsatzMio != null ? umsatzMio * 1_000_000 : null)
+  const fcfUsd = yt?.freeCashFlowUsd ?? (fcfMio != null ? fcfMio * 1_000_000 : null)
+  const netIncomeUsd = yt?.netIncomeUsd ?? (nettoMio != null ? nettoMio * 1_000_000 : null)
+  const sbcUsd =
+    yt?.stockBasedCompensationUsd ??
+    (letzterGeschaeftsjahresWert(sbcZeile, perioden) != null
+      ? letzterGeschaeftsjahresWert(sbcZeile, perioden)! * 1_000_000
+      : null)
+  const interestUsd = yt?.interestExpenseUsd ?? null
+  const opIncomeUsd = yt?.operatingIncomeUsd ?? (ebitMio != null ? ebitMio * 1_000_000 : null)
+  const rdUsd =
+    yt?.researchDevelopmentUsd ??
+    (letzterGeschaeftsjahresWert(rdZeile, perioden) != null
+      ? letzterGeschaeftsjahresWert(rdZeile, perioden)! * 1_000_000
+      : null)
+  const sgaUsd =
+    yt?.sgaUsd ??
+    (letzterGeschaeftsjahresWert(sgaZeile, perioden) != null
+      ? letzterGeschaeftsjahresWert(sgaZeile, perioden)! * 1_000_000
+      : null)
+
+  const sbcAdjFcfUsd = fcfUsd != null && sbcUsd != null ? fcfUsd - sbcUsd : null
 
   const bruttoMarge =
     letzterGeschaeftsjahresWert(bruttoMargeZeile, perioden) ??
@@ -120,7 +151,26 @@ function baueKontextWerte(ctx: MantraKontext) {
     berechneMargePct(ebitdaMio, umsatzMio) ??
     (ctx.yahoo?.ebitdaMargins != null ? ctx.yahoo.ebitdaMargins * 100 : null)
 
-  const fcfMarge = berechneMargePct(fcfMio, umsatzMio)
+  const fcfMarge =
+    revenueUsd != null && fcfUsd != null && revenueUsd > 0
+      ? (fcfUsd / revenueUsd) * 100
+      : berechneMargePct(fcfMio, umsatzMio)
+  const sbcAdjFcfMargin =
+    revenueUsd != null && sbcAdjFcfUsd != null && revenueUsd > 0
+      ? (sbcAdjFcfUsd / revenueUsd) * 100
+      : null
+  const sbcFcfRatio =
+    fcfUsd != null && sbcUsd != null && fcfUsd > 0 ? (sbcUsd / fcfUsd) * 100 : null
+  const sbcAdjFcfConversion =
+    netIncomeUsd != null && sbcAdjFcfUsd != null && netIncomeUsd > 0
+      ? (sbcAdjFcfUsd / netIncomeUsd) * 100
+      : null
+  const interestCoverage =
+    opIncomeUsd != null && interestUsd != null && interestUsd > 0 ? opIncomeUsd / interestUsd : null
+  const rdSales = revenueUsd != null && rdUsd != null && revenueUsd > 0 ? (rdUsd / revenueUsd) * 100 : null
+  const sgaSales = revenueUsd != null && sgaUsd != null && revenueUsd > 0 ? (sgaUsd / revenueUsd) * 100 : null
+  const dsoHist = historischeWerte(dsoZeile, perioden)
+  const dsoAktuell = letzterGeschaeftsjahresWert(dsoZeile, perioden)
   const capexSales =
     umsatzMio != null && capexMio != null && umsatzMio > 0 ? (Math.abs(capexMio) / umsatzMio) * 100 : null
   const fcfConversion =
@@ -182,6 +232,15 @@ function baueKontextWerte(ctx: MantraKontext) {
     aktienSinkend,
     ebitMargeHist,
     bruttoMargeHist: historischeWerte(bruttoMargeZeile, perioden),
+    sbcAdjFcfMargin,
+    sbcFcfRatio,
+    sbcAdjFcfConversion,
+    interestCoverage,
+    interestUsd,
+    rdSales,
+    sgaSales,
+    dsoHist,
+    dsoAktuell,
   }
 }
 
@@ -246,10 +305,10 @@ function evaluiereZeile(zeile: MantraZeile, ctx: MantraKontext, w: ReturnType<ty
   }
 
   if (k.includes('sbc-adj') && k.includes('fcf margin')) {
-    if (w.fcfMarge == null) return keineDaten()
-    return w.fcfMarge >= 10
-      ? erfuellt(pct(w.fcfMarge), w.fcfMarge, 'FCF-Marge ohne SBC-Korrektur (Proxy)')
-      : nichtErfuellt(pct(w.fcfMarge), w.fcfMarge, 'FCF-Marge ohne SBC-Korrektur (Proxy)')
+    if (w.sbcAdjFcfMargin == null) return keineDaten()
+    return w.sbcAdjFcfMargin >= 10
+      ? erfuellt(pct(w.sbcAdjFcfMargin), w.sbcAdjFcfMargin, 'Yahoo TTM / Macrotrends.')
+      : nichtErfuellt(pct(w.sbcAdjFcfMargin), w.sbcAdjFcfMargin, 'Yahoo TTM / Macrotrends.')
   }
 
   if (k.includes('organic rev') || k.includes('organisches umsatz')) {
@@ -270,16 +329,32 @@ function evaluiereZeile(zeile: MantraZeile, ctx: MantraKontext, w: ReturnType<ty
   }
 
   if (k.includes('cash conversion cycle')) {
-    return keineDaten('Cash Conversion Cycle ist in Macrotrends/Yahoo nicht enthalten.')
+    if (w.dsoHist.length < 3) return keineDaten('Forderungslaufzeit (DSO) aus Macrotrends — kein voller CCC.')
+    const sinkend = w.dsoHist[w.dsoHist.length - 1]! <= w.dsoHist[0]!
+    const spanne = Math.max(...w.dsoHist) - Math.min(...w.dsoHist)
+    const stabil = spanne <= 5
+    const nurSinkend = zeile.zielwert.toLowerCase() === 'sinkend'
+    const ok = nurSinkend ? sinkend : sinkend || stabil
+    return qualitativ(
+      w.dsoAktuell != null ? `${w.dsoAktuell.toLocaleString('de-DE')} Tage DSO` : null,
+      ok ? 'erfuellt' : 'qualitativ',
+      'Proxy: Forderungslaufzeit (DSO), nicht voller Cash Conversion Cycle.',
+    )
   }
 
   if (k.includes('fcf conversion')) {
+    if (zeile.zielwert.toLowerCase().includes('sbc')) {
+      if (w.sbcAdjFcfConversion == null) return keineDaten()
+      const min = 80
+      return w.sbcAdjFcfConversion >= min
+        ? erfuellt(pct(w.sbcAdjFcfConversion), w.sbcAdjFcfConversion, 'SBC-adjustiert · Yahoo TTM.')
+        : nichtErfuellt(pct(w.sbcAdjFcfConversion), w.sbcAdjFcfConversion, 'SBC-adjustiert · Yahoo TTM.')
+    }
     if (w.fcfConversion == null) return keineDaten()
-    const min = zeile.zielwert.includes('80') ? 80 : 90
-    const proxy = zeile.zielwert.includes('sbc') ? ' Net Income/FCF ohne SBC-Korrektur (Proxy).' : undefined
+    const min = 90
     return w.fcfConversion >= min
-      ? erfuellt(pct(w.fcfConversion), w.fcfConversion, proxy)
-      : nichtErfuellt(pct(w.fcfConversion), w.fcfConversion, proxy)
+      ? erfuellt(pct(w.fcfConversion), w.fcfConversion)
+      : nichtErfuellt(pct(w.fcfConversion), w.fcfConversion)
   }
 
   if (k.includes('capex') && k.includes('sales')) {
@@ -292,7 +367,11 @@ function evaluiereZeile(zeile: MantraZeile, ctx: MantraKontext, w: ReturnType<ty
   }
 
   if (k.includes('sbc') && k.includes('fcf')) {
-    return keineDaten('Stock-Based Compensation ist in den Fundamentaldaten nicht enthalten.')
+    if (w.sbcFcfRatio == null) return keineDaten()
+    const max = zeile.zielwert.includes('20') ? 20 : 15
+    return w.sbcFcfRatio < max
+      ? erfuellt(pct(w.sbcFcfRatio), w.sbcFcfRatio, 'Yahoo TTM / Macrotrends.')
+      : nichtErfuellt(pct(w.sbcFcfRatio), w.sbcFcfRatio, 'Yahoo TTM / Macrotrends.')
   }
 
   if (k.includes('net debt') && k.includes('ebitda')) {
@@ -304,7 +383,14 @@ function evaluiereZeile(zeile: MantraZeile, ctx: MantraKontext, w: ReturnType<ty
   }
 
   if (k.includes('interest coverage')) {
-    return keineDaten('Interest Coverage ist in den Fundamentaldaten nicht enthalten.')
+    if (w.interestUsd != null && w.interestUsd <= 0) {
+      return erfuellt('Keine Zinslast', null, 'Interest Expense ≤ 0 (Yahoo TTM).')
+    }
+    if (w.interestCoverage == null) return keineDaten()
+    const min = zeile.zielwert.includes('8') && !zeile.zielwert.includes('10') ? 8 : 10
+    return w.interestCoverage > min
+      ? erfuellt(mult(w.interestCoverage), w.interestCoverage, 'EBIT / Zinsaufwand · Yahoo TTM.')
+      : nichtErfuellt(mult(w.interestCoverage), w.interestCoverage, 'EBIT / Zinsaufwand · Yahoo TTM.')
   }
 
   if (k.includes('buyback yield')) {
@@ -404,8 +490,23 @@ function evaluiereZeile(zeile: MantraZeile, ctx: MantraKontext, w: ReturnType<ty
     return w.ebitdaMarge > 30 ? erfuellt(pct(w.ebitdaMarge), w.ebitdaMarge) : nichtErfuellt(pct(w.ebitdaMarge), w.ebitdaMarge)
   }
 
-  if (k.includes('r&d / sales') || k.includes('pipeline replacement') || k.includes('sg&a / sales')) {
-    return keineDaten('Pharma-spezifische Kennzahl — nur im Geschäftsbericht verfügbar.')
+  if (k.includes('r&d / sales')) {
+    if (w.rdSales == null) return keineDaten()
+    const inRange = w.rdSales >= 15 && w.rdSales <= 25
+    return inRange
+      ? erfuellt(pct(w.rdSales), w.rdSales, 'Yahoo TTM / Macrotrends.')
+      : nichtErfuellt(pct(w.rdSales), w.rdSales, 'Yahoo TTM / Macrotrends.')
+  }
+
+  if (k.includes('sg&a / sales')) {
+    if (w.sgaSales == null) return keineDaten()
+    return w.sgaSales < 25
+      ? erfuellt(pct(w.sgaSales), w.sgaSales, 'Yahoo TTM / Macrotrends.')
+      : nichtErfuellt(pct(w.sgaSales), w.sgaSales, 'Yahoo TTM / Macrotrends.')
+  }
+
+  if (k.includes('pipeline replacement')) {
+    return keineDaten('Pipeline Replacement Ratio — nur im Geschäftsbericht verfügbar.')
   }
 
   if (k.includes('fcf marge')) {
@@ -458,8 +559,9 @@ export function baueMantraAudit(
   yahoo: YahooFundamentalKennzahlen | null,
   roh: MacrotrendsFundamentalRoh | null,
   schaetzungen: FundamentalSchaetzungenRoh,
+  yahooTrailing: MantraYahooTrailing | null = null,
 ): FundamentalMantraAudit {
-  const ctx: MantraKontext = { yahoo, roh, schaetzungen }
+  const ctx: MantraKontext = { yahoo, roh, schaetzungen, yahooTrailing }
   const sektorMantraId = waehleSektorMantraId(sektor, branche)
   const sektorBlock = sektorMantraId ? SEKTOR_MANTRAS.find((b) => b.id === sektorMantraId) ?? null : null
 

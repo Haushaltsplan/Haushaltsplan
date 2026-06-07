@@ -75,6 +75,22 @@ const INCOME_STATEMENT_METRIKEN: MetrikDef[] = [
     statement: 'income-statement',
     aliases: ['eps-basic-net-earnings-per-share'],
   },
+  {
+    slug: 'research-development-expenses',
+    id: 'rd',
+    label: 'Forschung & Entwicklung (R&D)',
+    gruppe: 'finanzdaten',
+    einheit: 'waehrung_usd_mio',
+    statement: 'income-statement',
+  },
+  {
+    slug: 'selling-general-administrative-expenses',
+    id: 'sga',
+    label: 'SG&A (Vertrieb & Verwaltung)',
+    gruppe: 'finanzdaten',
+    einheit: 'waehrung_usd_mio',
+    statement: 'income-statement',
+  },
   { slug: 'shares-outstanding', id: 'aktien', label: 'Ausstehende Aktien', gruppe: 'finanzdaten', einheit: 'aktien_mio', statement: 'income-statement' },
 ]
 
@@ -95,6 +111,14 @@ const CASH_FLOW_METRIKEN: MetrikDef[] = [
     einheit: 'waehrung_usd_mio',
     statement: 'cash-flow-statement',
   },
+  {
+    slug: 'stock-based-compensation',
+    id: 'sbc',
+    label: 'Stock-Based Compensation (SBC)',
+    gruppe: 'cashflow',
+    einheit: 'waehrung_usd_mio',
+    statement: 'cash-flow-statement',
+  },
 ]
 
 const FINANCIAL_RATIOS_METRIKEN: MetrikDef[] = [
@@ -108,6 +132,14 @@ const FINANCIAL_RATIOS_METRIKEN: MetrikDef[] = [
   { slug: 'asset-turnover', id: 'kapitalumschlag', label: 'Kapitalumschlaghäufigkeit', gruppe: 'umschlag', einheit: 'ratio', statement: 'financial-ratios' },
   { slug: 'inventory-turnover', id: 'anlagenumschlag', label: 'Lagerumschlag', gruppe: 'umschlag', einheit: 'ratio', statement: 'financial-ratios' },
   { slug: 'receiveable-turnover', id: 'forderungsumschlag', label: 'Forderungsumschlag', gruppe: 'umschlag', einheit: 'ratio', statement: 'financial-ratios' },
+  {
+    slug: 'days-sales-in-receivables',
+    id: 'dso',
+    label: 'Forderungslaufzeit (DSO, Tage)',
+    gruppe: 'umschlag',
+    einheit: 'zahl',
+    statement: 'financial-ratios',
+  },
 ]
 
 const BEWERTUNG_METRIKEN: Array<

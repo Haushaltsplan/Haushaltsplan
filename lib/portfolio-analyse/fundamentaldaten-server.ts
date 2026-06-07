@@ -6,6 +6,7 @@ import {
   type YahooFundamentalKennzahlen,
 } from '@/lib/portfolio-analyse/fundamentaldaten-key-metrics'
 import { baueMantraAudit } from '@/lib/portfolio-analyse/fundamentaldaten-mantra'
+import { ladeYahooMantraTrailing } from '@/lib/portfolio-analyse/yahoo-fundamentals-timeseries-server'
 import { ladeFundamentalNews } from '@/lib/portfolio-analyse/fundamentaldaten-news-server'
 import { ladeFundamentalSchaetzungen } from '@/lib/portfolio-analyse/fundamentaldaten-schaetzungen-server'
 import {
@@ -244,11 +245,12 @@ export async function ladeFundamentaldaten(anfrage: FundamentaldatenAnfrage): Pr
     })
   }
 
-  const [roh, yahooRaw, schaetzungen, news] = await Promise.all([
+  const [roh, yahooRaw, schaetzungen, news, yahooTrailing] = await Promise.all([
     ladeMacrotrendsFundamentaldaten(ident),
     symbolYahoo ? ladeYahooFundamentalKennzahlen(symbolYahoo) : Promise.resolve(null),
     symbolYahoo ? ladeFundamentalSchaetzungen(symbolYahoo) : Promise.resolve({ perioden: [], zeilen: [] }),
     symbolYahoo ? ladeFundamentalNews(symbolYahoo, ident.firmenname) : Promise.resolve([]),
+    symbolYahoo ? ladeYahooMantraTrailing(symbolYahoo) : Promise.resolve(null),
   ])
 
   const yahooExt = yahooRaw as (YahooFundamentalKennzahlen & {
@@ -276,7 +278,7 @@ export async function ladeFundamentaldaten(anfrage: FundamentaldatenAnfrage): Pr
       website: yahooExt?.website ?? null,
       beschreibung: beschreibungDe,
       keyMetrics: baueKeyMetrics(yahooExt, null, schaetzungen),
-      mantra: baueMantraAudit(brancheMeta.sektor, brancheMeta.branche, yahooExt, null, schaetzungen),
+      mantra: baueMantraAudit(brancheMeta.sektor, brancheMeta.branche, yahooExt, null, schaetzungen, yahooTrailing),
       news,
       symbolYahoo,
       fehler: 'Macrotrends-Daten konnten nicht geladen werden.',
@@ -299,7 +301,7 @@ export async function ladeFundamentaldaten(anfrage: FundamentaldatenAnfrage): Pr
     perioden: merged.perioden,
     zeilen: merged.zeilen,
     keyMetrics: baueKeyMetrics(yahooExt, roh, schaetzungen),
-    mantra: baueMantraAudit(sektorFinal, brancheFinal, yahooExt, roh, schaetzungen),
+    mantra: baueMantraAudit(sektorFinal, brancheFinal, yahooExt, roh, schaetzungen, yahooTrailing),
     news,
     symbolYahoo,
   })

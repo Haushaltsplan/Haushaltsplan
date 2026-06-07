@@ -156,7 +156,8 @@ export function PaFundamentalMantra({ audit }: { audit: FundamentalMantraAudit }
       <div>
         <p className="text-xs font-semibold uppercase tracking-wide text-zinc-400">Mantra-Check</p>
         <p className="mt-1 text-sm leading-relaxed text-zinc-400">
-          Abgleich der Investment-Mantra-Vorgaben mit den verfügbaren LTM-Fundamentaldaten (Macrotrends · Yahoo).
+          Abgleich der Investment-Mantra-Vorgaben mit LTM-Daten aus Macrotrends, Yahoo Finance (Time Series) und
+          berechneten Kennzahlen.
         </p>
       </div>
 
