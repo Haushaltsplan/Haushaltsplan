@@ -1,10 +1,9 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { PaFundamentalKeyMetrics } from '@/components/portfolio-analyse/pa-fundamental-key-metrics'
 import { PaFundamentalNews } from '@/components/portfolio-analyse/pa-fundamental-news'
+import { PaFundamentalUebersicht } from '@/components/portfolio-analyse/pa-fundamental-uebersicht'
 import { PaFundamentalUnternehmenHeader } from '@/components/portfolio-analyse/pa-fundamental-unternehmen-header'
-import { PaFundamentalKursChart } from '@/components/portfolio-analyse/pa-fundamental-kurs-chart'
 import { PaFundamentalMetrikChart } from '@/components/portfolio-analyse/pa-fundamental-metrik-chart'
 import { PaFundamentalMetrikTabelle } from '@/components/portfolio-analyse/pa-fundamental-metrik-tabelle'
 import { usePortfolioAnalyse } from '@/components/portfolio-analyse/pa-data-provider'
@@ -192,27 +191,23 @@ export function PortfolioFundamentaldatenClient() {
               <PaFundamentalUnternehmenHeader
                 firmenname={daten.firmenname}
                 ticker={daten.ticker}
-                branche={daten.branche}
-                sektor={daten.sektor}
-                website={daten.website}
+                branche={unterTab === 'uebersicht' ? null : daten.branche}
+                sektor={unterTab === 'uebersicht' ? null : daten.sektor}
+                website={unterTab === 'uebersicht' ? null : daten.website}
                 beschreibung={daten.beschreibung}
                 tabs={UNTER_TABS}
                 activeTab={unterTab}
                 onTabChange={setUnterTab}
-                profilAufUebersicht={unterTab === 'uebersicht'}
+                kompakt={unterTab === 'uebersicht'}
               />
 
               {unterTab === 'uebersicht' ? (
-                <div className="grid gap-4 xl:grid-cols-[1.12fr_0.88fr]">
-                  <PaFundamentalKursChart
-                    symbolYahoo={daten.symbolYahoo}
-                    ticker={daten.ticker}
-                    firmenname={daten.firmenname}
-                  />
-                  <div className="min-h-0">
-                    <PaFundamentalKeyMetrics metriken={daten.keyMetrics} />
-                  </div>
-                </div>
+                <PaFundamentalUebersicht
+                  symbolYahoo={daten.symbolYahoo}
+                  ticker={daten.ticker}
+                  firmenname={daten.firmenname}
+                  metriken={daten.keyMetrics}
+                />
               ) : null}
 
               {unterTab === 'news' ? <PaFundamentalNews artikel={daten.news} /> : null}
@@ -281,7 +276,7 @@ export function PortfolioFundamentaldatenClient() {
               ) : null}
 
               <p className="text-[10px] text-zinc-600">
-                Quellen: Macrotrends.net · Yahoo Finance (Schätzungen) · Stand{' '}
+                Quellen: Macrotrends.net · Yahoo Finance · Stand{' '}
                 {new Date(daten.geladenAm).toLocaleString('de-DE')} · Cache 24h
               </p>
             </>

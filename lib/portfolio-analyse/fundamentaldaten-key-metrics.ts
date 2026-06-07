@@ -8,7 +8,7 @@ import type {
   FundamentalMetrikZeile,
   FundamentalPeriode,
 } from '@/lib/portfolio-analyse/fundamentaldaten-types'
-import { FUNDAMENTAL_FY0E_KEY, FUNDAMENTAL_TTM_KEY } from '@/lib/portfolio-analyse/fundamentaldaten-types'
+import { FUNDAMENTAL_TTM_KEY } from '@/lib/portfolio-analyse/fundamentaldaten-types'
 import type { MacrotrendsFundamentalRoh } from '@/lib/portfolio-analyse/macrotrends-scraper-server'
 
 export type YahooFundamentalKennzahlen = {
@@ -17,10 +17,12 @@ export type YahooFundamentalKennzahlen = {
   beta?: number
   marketCap?: number
   sharesOutstanding?: number
+  floatShares?: number
   enterpriseValue?: number
   trailingPE?: number
   forwardPE?: number
   dividendYield?: number
+  payoutRatio?: number
   returnOnEquity?: number
   returnOnAssets?: number
   revenueGrowth?: number
@@ -28,15 +30,20 @@ export type YahooFundamentalKennzahlen = {
   grossMargins?: number
   operatingMargins?: number
   ebitdaMargins?: number
-  profitMargins?: number
   currentPrice?: number
+  targetMeanPrice?: number
   priceToBook?: number
   enterpriseToRevenue?: number
   enterpriseToEbitda?: number
   totalDebt?: number
   totalCash?: number
-  /** Berechnet: Kurs / erwartetes EPS (FY0-Schätzung) */
+  averageVolume?: number
   ntmEpsSchaetzung?: number
+  ntmRevenueUsd?: number
+  ntmEbitdaUsd?: number
+  fy1RevenueUsd?: number
+  fy1EbitdaUsd?: number
+  fy1Eps?: number
 }
 
 function wertAnPeriode(z: FundamentalMetrikZeile | undefined, key: string): number | null {
@@ -57,6 +64,14 @@ function letzterGeschaeftsjahresWert(
   if (ttm != null) return ttm
   const lastKey = letzterGeschaeftsjahresKey(perioden)
   return lastKey ? wertAnPeriode(zeile, lastKey) : null
+}
+
+function historischeWerte(
+  zeile: FundamentalMetrikZeile | undefined,
+  perioden: FundamentalPeriode[] | undefined,
+): number[] {
+  const keys = perioden?.filter((p) => !p.istLtm && !p.istSchaetzung).map((p) => p.iso) ?? []
+  return keys.map((k) => zeile?.werte[k]).filter((v): v is number => v != null)
 }
 
 function berechneMargePct(zaehler: number | null, nenner: number | null): number | null {
@@ -82,6 +97,24 @@ function ttmOderBerechnet(
   return null
 }
 
+function multiple(v: number | null | undefined): string {
+  return v != null && Number.isFinite(v) ? formatFundamentalWert(v, 'multiple') : '–'
+}
+
+function pctRaw(v: number | null | undefined): string {
+  return v != null && Number.isFinite(v) ? formatFundamentalWert(v, 'prozent') : '–'
+}
+
+function zahl(v: number | null | undefined, suffix = ''): string {
+  return v != null && Number.isFinite(v) ? `${v.toLocaleString('de-DE', { maximumFractionDigits: 2 })}${suffix}` : '–'
+}
+
+function waehrungNegativ(v: number | null | undefined): string {
+  if (v == null || !Number.isFinite(v)) return '–'
+  const s = formatFundamentalWert(Math.abs(v), 'waehrung_usd')
+  return v < 0 ? `(${s})` : s
+}
+
 export function baueKeyMetrics(
   yahoo: YahooFundamentalKennzahlen | null,
   roh: MacrotrendsFundamentalRoh | null,
@@ -89,29 +122,29 @@ export function baueKeyMetrics(
 ): FundamentalKeyMetric[] {
   const out: FundamentalKeyMetric[] = []
   const perioden = roh?.perioden
-  const zahl = (v?: number | null, suffix = '') =>
-    v != null && Number.isFinite(v) ? `${v.toLocaleString('de-DE', { maximumFractionDigits: 2 })}${suffix}` : '–'
-  const pctDezimal = (v?: number | null) => {
-    if (v == null || !Number.isFinite(v)) return '–'
-    return `${(v * 100).toLocaleString('de-DE', { maximumFractionDigits: 2 })} %`
-  }
-  const pctRaw = (v?: number | null) =>
-    v != null && Number.isFinite(v) ? formatFundamentalWert(v, 'prozent') : '–'
+
+  const floatPct =
+    yahoo?.floatShares != null && yahoo?.sharesOutstanding != null && yahoo.sharesOutstanding > 0
+      ? (yahoo.floatShares / yahoo.sharesOutstanding) * 100
+      : null
+
+  const volMio = yahoo?.averageVolume != null ? yahoo.averageVolume / 1_000_000 : null
 
   out.push(
     { id: '52w_hoch', label: '52-Wochen-Hoch', wert: zahl(yahoo?.fiftyTwoWeekHigh, ' $'), gruppe: 'marktdaten' },
     { id: '52w_tief', label: '52-Wochen-Tief', wert: zahl(yahoo?.fiftyTwoWeekLow, ' $'), gruppe: 'marktdaten' },
+    { id: 'vol_3m', label: 'Ø Volumen (3M)', wert: volMio != null ? `${zahl(volMio)} Mio.` : '–', gruppe: 'marktdaten' },
     { id: 'beta', label: '5-Jahres-Beta', wert: zahl(yahoo?.beta), gruppe: 'marktdaten' },
-    {
-      id: 'kurs',
-      label: 'Aktueller Kurs',
-      wert: zahl(yahoo?.currentPrice, ' $'),
-      gruppe: 'marktdaten',
-    },
+    { id: 'float', label: 'Free Float', wert: pctRaw(floatPct), gruppe: 'marktdaten' },
   )
 
   const netDebt =
     yahoo?.totalDebt != null && yahoo?.totalCash != null ? yahoo.totalDebt - yahoo.totalCash : null
+
+  const ebitdaGuV = roh?.zeilen.find((z) => z.id === 'ebitda')
+  const ebitdaMio = letzterGeschaeftsjahresWert(ebitdaGuV, perioden)
+  const netDebtEbitda =
+    netDebt != null && ebitdaMio != null && ebitdaMio > 0 ? netDebt / (ebitdaMio * 1_000_000) : null
 
   out.push(
     {
@@ -122,20 +155,29 @@ export function baueKeyMetrics(
     },
     {
       id: 'enterprise_value',
-      label: 'Enterprise Value (EV)',
+      label: 'Enterprise Value',
       wert: formatFundamentalWert(yahoo?.enterpriseValue ?? null, 'waehrung_usd'),
-      gruppe: 'kapitalstruktur',
-    },
-    {
-      id: 'net_debt',
-      label: 'Nettoverschuldung (LTM)',
-      wert: formatFundamentalWert(netDebt, 'waehrung_usd'),
       gruppe: 'kapitalstruktur',
     },
     {
       id: 'shares_out',
       label: 'Ausstehende Aktien',
-      wert: yahoo?.sharesOutstanding != null ? yahoo.sharesOutstanding.toLocaleString('de-DE') : '–',
+      wert:
+        yahoo?.sharesOutstanding != null
+          ? `${(yahoo.sharesOutstanding / 1_000_000).toLocaleString('de-DE', { maximumFractionDigits: 2 })} Mio.`
+          : '–',
+      gruppe: 'kapitalstruktur',
+    },
+    {
+      id: 'net_debt',
+      label: 'Nettoverschuldung (LTM)',
+      wert: waehrungNegativ(netDebt),
+      gruppe: 'kapitalstruktur',
+    },
+    {
+      id: 'net_debt_ebitda',
+      label: 'Net Debt / EBITDA (LTM)',
+      wert: netDebtEbitda != null ? (netDebtEbitda < 0 ? `(${multiple(Math.abs(netDebtEbitda))})` : multiple(netDebtEbitda)) : '–',
       gruppe: 'kapitalstruktur',
     },
   )
@@ -148,33 +190,26 @@ export function baueKeyMetrics(
   const roiZeile = roh?.zeilen.find((z) => z.id === 'roi')
   const umsatzZeile = roh?.zeilen.find((z) => z.id === 'umsatz')
   const bruttoGewinnZeile = roh?.zeilen.find((z) => z.id === 'bruttogewinn')
-  const ebitdaGuV = roh?.zeilen.find((z) => z.id === 'ebitda')
   const ebitGuV = roh?.zeilen.find((z) => z.id === 'ebit')
+  const epsZeile = roh?.zeilen.find((z) => z.id === 'eps')
+  const fcfZeile = roh?.zeilen.find((z) => z.id === 'fcf')
 
   out.push(
     {
       id: 'ltm_brutto',
-      label: 'TTM Bruttomarge',
-      wert: pctRaw(
-        ttmOderBerechnet(bruttoZeile, bruttoGewinnZeile, umsatzZeile, perioden, yahoo?.grossMargins),
-      ),
+      label: 'LTM Bruttomarge',
+      wert: pctRaw(ttmOderBerechnet(bruttoZeile, bruttoGewinnZeile, umsatzZeile, perioden, yahoo?.grossMargins)),
       gruppe: 'effizienz',
     },
     {
       id: 'ltm_ebit',
-      label: 'TTM EBIT-Marge',
+      label: 'LTM EBIT-Marge',
       wert: pctRaw(ttmOderBerechnet(ebitZeile, ebitGuV, umsatzZeile, perioden, yahoo?.operatingMargins)),
       gruppe: 'effizienz',
     },
     {
-      id: 'ltm_ebitda',
-      label: 'TTM EBITDA-Marge',
-      wert: pctRaw(ttmOderBerechnet(ebitdaZeile, ebitdaGuV, umsatzZeile, perioden, yahoo?.ebitdaMargins)),
-      gruppe: 'effizienz',
-    },
-    {
       id: 'ltm_roa',
-      label: 'TTM ROA',
+      label: 'LTM ROA',
       wert: pctRaw(
         letzterGeschaeftsjahresWert(roaZeile, perioden) ??
           (yahoo?.returnOnAssets != null ? yahoo.returnOnAssets * 100 : null),
@@ -183,7 +218,7 @@ export function baueKeyMetrics(
     },
     {
       id: 'ltm_roe',
-      label: 'TTM ROE',
+      label: 'LTM ROE',
       wert: pctRaw(
         letzterGeschaeftsjahresWert(roeZeile, perioden) ??
           (yahoo?.returnOnEquity != null ? yahoo.returnOnEquity * 100 : null),
@@ -191,76 +226,73 @@ export function baueKeyMetrics(
       gruppe: 'effizienz',
     },
     {
-      id: 'ltm_roi',
-      label: 'TTM ROI',
+      id: 'ltm_roic',
+      label: 'LTM ROIC',
+      wert: pctRaw(letzterGeschaeftsjahresWert(roiZeile, perioden)),
+      gruppe: 'effizienz',
+    },
+    {
+      id: 'ltm_roce',
+      label: 'LTM ROCE',
       wert: pctRaw(letzterGeschaeftsjahresWert(roiZeile, perioden)),
       gruppe: 'effizienz',
     },
   )
 
-  const epsSchaetz0 = schaetzungen.zeilen.find((z) => z.id === 'eps_schaetzung')
   const umsatzSchaetz0 = schaetzungen.zeilen.find((z) => z.id === 'umsatz_schaetzung')
-  const umsatzWachstum0 = schaetzungen.zeilen.find((z) => z.id === 'umsatz_wachstum_schaetzung')
-  const epsWachstum0 = schaetzungen.zeilen.find((z) => z.id === 'eps_wachstum_schaetzung')
+  const epsSchaetz0 = schaetzungen.zeilen.find((z) => z.id === 'eps_schaetzung')
   const fy0Key = schaetzungen.perioden[0]?.iso
   const fy1Key = schaetzungen.perioden[1]?.iso
 
-  const fyKeys = perioden?.filter((p) => !p.istLtm && !p.istSchaetzung).map((p) => p.iso) ?? []
-  const umsatzHistorie = fyKeys.map((k) => umsatzZeile?.werte[k]).filter((v): v is number => v != null)
-  const umsatzCagr3 = umsatzHistorie.length >= 2 ? cagrProzent(umsatzHistorie.slice(-4), 3) : null
+  const umsatzHist = historischeWerte(umsatzZeile, perioden)
+  const ebitdaHist = historischeWerte(ebitdaGuV, perioden)
+  const epsHist = historischeWerte(epsZeile, perioden)
+
+  const revCagr2 =
+    fy0Key && fy1Key && umsatzSchaetz0
+      ? cagrProzent(
+          [wertAnPeriode(umsatzSchaetz0, fy0Key), wertAnPeriode(umsatzSchaetz0, fy1Key)].filter(
+            (v): v is number => v != null && v > 0,
+          ),
+          1,
+        )
+      : null
+
+  const epsCagr2 =
+    fy0Key && fy1Key && epsSchaetz0
+      ? cagrProzent(
+          [wertAnPeriode(epsSchaetz0, fy0Key), wertAnPeriode(epsSchaetz0, fy1Key)].filter(
+            (v): v is number => v != null && v > 0,
+          ),
+          1,
+        )
+      : null
+
+  const ebitdaCagr2 =
+    yahoo?.ntmEbitdaUsd != null && yahoo?.fy1EbitdaUsd != null && yahoo.ntmEbitdaUsd > 0 && yahoo.fy1EbitdaUsd > 0
+      ? cagrProzent([yahoo.ntmEbitdaUsd, yahoo.fy1EbitdaUsd], 1)
+      : null
 
   out.push(
+    { id: 'fwd_rev_cagr_2y', label: 'Erw. Umsatz-CAGR (2J)', wert: pctRaw(revCagr2), gruppe: 'wachstum' },
+    { id: 'fwd_ebitda_cagr_2y', label: 'Erw. EBITDA-CAGR (2J)', wert: pctRaw(ebitdaCagr2), gruppe: 'wachstum' },
+    { id: 'fwd_eps_cagr_2y', label: 'Erw. EPS-CAGR (2J)', wert: pctRaw(epsCagr2), gruppe: 'wachstum' },
     {
-      id: 'fwd_umsatz',
-      label: 'Erw. Umsatz (FY)',
-      wert: fy0Key
-        ? formatFundamentalWert(wertAnPeriode(umsatzSchaetz0, fy0Key), 'waehrung_usd_mio')
-        : '–',
+      id: 'rev_cagr_3y',
+      label: 'Umsatz-CAGR (3J)',
+      wert: pctRaw(umsatzHist.length >= 2 ? cagrProzent(umsatzHist.slice(-4), 3) : null),
       gruppe: 'wachstum',
     },
     {
-      id: 'fwd_eps',
-      label: 'Erw. EPS (FY)',
-      wert: fy0Key ? formatFundamentalWert(wertAnPeriode(epsSchaetz0, fy0Key), 'waehrung_usd_aktie') : '–',
+      id: 'ebitda_cagr_3y',
+      label: 'EBITDA-CAGR (3J)',
+      wert: pctRaw(ebitdaHist.length >= 2 ? cagrProzent(ebitdaHist.slice(-4), 3) : null),
       gruppe: 'wachstum',
     },
     {
-      id: 'fwd_umsatz_wachstum',
-      label: 'Erw. Umsatz-Wachstum',
-      wert: pctRaw(
-        wertAnPeriode(umsatzWachstum0, FUNDAMENTAL_FY0E_KEY) ??
-          (yahoo?.revenueGrowth != null ? yahoo.revenueGrowth * 100 : null),
-      ),
-      gruppe: 'wachstum',
-    },
-    {
-      id: 'fwd_eps_wachstum',
-      label: 'Erw. EPS-Wachstum',
-      wert: pctRaw(
-        wertAnPeriode(epsWachstum0, FUNDAMENTAL_FY0E_KEY) ??
-          (yahoo?.earningsGrowth != null ? yahoo.earningsGrowth * 100 : null),
-      ),
-      gruppe: 'wachstum',
-    },
-    {
-      id: 'fwd_umsatz_cagr',
-      label: 'Erw. Umsatz-CAGR (2J)',
-      wert:
-        fy0Key && fy1Key && umsatzSchaetz0
-          ? (() => {
-              const u0 = wertAnPeriode(umsatzSchaetz0, fy0Key)
-              const u1 = wertAnPeriode(umsatzSchaetz0, fy1Key)
-              if (u0 == null || u1 == null || u0 <= 0) return '–'
-              const c = cagrProzent([u0, u1], 1)
-              return c != null ? formatFundamentalWert(c, 'prozent') : '–'
-            })()
-          : '–',
-      gruppe: 'wachstum',
-    },
-    {
-      id: 'umsatz_cagr_3j',
-      label: 'Umsatz-CAGR (3 Jahre)',
-      wert: umsatzCagr3 != null ? formatFundamentalWert(umsatzCagr3, 'prozent') : '–',
+      id: 'eps_cagr_3y',
+      label: 'EPS-CAGR (3J)',
+      wert: pctRaw(epsHist.length >= 2 ? cagrProzent(epsHist.slice(-4), 3) : null),
       gruppe: 'wachstum',
     },
   )
@@ -270,67 +302,86 @@ export function baueKeyMetrics(
   const pbZeile = roh?.zeilen.find((z) => z.id === 'pb')
   const pfcfZeile = roh?.zeilen.find((z) => z.id === 'pfcf')
 
-  const ntmKgvBerechnet =
-    yahoo?.currentPrice != null && yahoo?.ntmEpsSchaetzung != null && yahoo.ntmEpsSchaetzung > 0
-      ? yahoo.currentPrice / yahoo.ntmEpsSchaetzung
+  const ltmUmsatzUsd =
+    letzterGeschaeftsjahresWert(umsatzZeile, perioden) != null
+      ? letzterGeschaeftsjahresWert(umsatzZeile, perioden)! * 1_000_000
       : null
+  const ltmEvRevenue =
+    yahoo?.enterpriseValue != null && ltmUmsatzUsd != null && ltmUmsatzUsd > 0
+      ? yahoo.enterpriseValue / ltmUmsatzUsd
+      : null
+
+  const ntmKgv =
+    yahoo?.forwardPE ??
+    (yahoo?.currentPrice != null && yahoo?.ntmEpsSchaetzung != null && yahoo.ntmEpsSchaetzung > 0
+      ? yahoo.currentPrice / yahoo.ntmEpsSchaetzung
+      : null)
+
+  const ltmFcfUsd =
+    letzterGeschaeftsjahresWert(fcfZeile, perioden) != null
+      ? letzterGeschaeftsjahresWert(fcfZeile, perioden)! * 1_000_000
+      : null
+  const ntmFcfUsd =
+    ltmFcfUsd != null && yahoo?.revenueGrowth != null ? ltmFcfUsd * (1 + yahoo.revenueGrowth) : ltmFcfUsd
+  const ntmMcFcf =
+    yahoo?.marketCap != null && ntmFcfUsd != null && ntmFcfUsd > 0 ? yahoo.marketCap / ntmFcfUsd : null
+
+  const ntmEvRevenue =
+    yahoo?.enterpriseToRevenue ??
+    (yahoo?.enterpriseValue != null && yahoo?.ntmRevenueUsd != null && yahoo.ntmRevenueUsd > 0
+      ? yahoo.enterpriseValue / yahoo.ntmRevenueUsd
+      : null)
+  const ntmEvEbitda =
+    yahoo?.enterpriseToEbitda ??
+    (yahoo?.enterpriseValue != null && yahoo?.ntmEbitdaUsd != null && yahoo.ntmEbitdaUsd > 0
+      ? yahoo.enterpriseValue / yahoo.ntmEbitdaUsd
+      : null)
 
   out.push(
     {
-      id: 'fwd_kgv_ntm',
-      label: 'KGV Forward (NTM)',
-      wert: zahl(yahoo?.forwardPE ?? ntmKgvBerechnet, 'x'),
-      gruppe: 'bewertung',
+      id: 'target_price',
+      label: 'Kursziel (Konsens)',
+      wert: zahl(yahoo?.targetMeanPrice, ' $'),
+      gruppe: 'bewertung_ntm',
     },
+    { id: 'ntm_ev_rev', label: 'NTM EV / Umsatz', wert: multiple(ntmEvRevenue), gruppe: 'bewertung_ntm' },
+    { id: 'ntm_ev_ebitda', label: 'NTM EV / EBITDA', wert: multiple(ntmEvEbitda), gruppe: 'bewertung_ntm' },
+    { id: 'ntm_pe', label: 'NTM KGV (P/E)', wert: multiple(ntmKgv), gruppe: 'bewertung_ntm' },
+    { id: 'ntm_mc_fcf', label: 'NTM MC / FCF', wert: multiple(ntmMcFcf), gruppe: 'bewertung_ntm' },
+    { id: 'ltm_ev_rev', label: 'LTM EV / Umsatz', wert: multiple(ltmEvRevenue), gruppe: 'bewertung_ltm' },
     {
-      id: 'ntm_kgv_berechnet',
-      label: 'KGV NTM (Kurs / Erw. EPS)',
-      wert: zahl(ntmKgvBerechnet ?? yahoo?.forwardPE, 'x'),
-      gruppe: 'bewertung',
-    },
-    {
-      id: 'trailing_kgv',
-      label: 'KGV Trailing (TTM)',
-      wert: zahl(
-        yahoo?.trailingPE ?? letzterGeschaeftsjahresWert(kgvZeile, perioden),
-        'x',
-      ),
-      gruppe: 'bewertung',
-    },
-    {
-      id: 'ltm_ps',
-      label: 'KUV (P/S, TTM)',
-      wert: formatFundamentalWert(letzterGeschaeftsjahresWert(psZeile, perioden), 'multiple'),
-      gruppe: 'bewertung',
+      id: 'ltm_pe',
+      label: 'LTM KGV (P/E)',
+      wert: multiple(yahoo?.trailingPE ?? letzterGeschaeftsjahresWert(kgvZeile, perioden)),
+      gruppe: 'bewertung_ltm',
     },
     {
       id: 'ltm_pb',
-      label: 'KBV (P/B, TTM)',
-      wert: formatFundamentalWert(
-        letzterGeschaeftsjahresWert(pbZeile, perioden) ?? yahoo?.priceToBook ?? null,
-        'multiple',
-      ),
-      gruppe: 'bewertung',
+      label: 'LTM KBV (P/B)',
+      wert: multiple(letzterGeschaeftsjahresWert(pbZeile, perioden) ?? yahoo?.priceToBook),
+      gruppe: 'bewertung_ltm',
+    },
+    {
+      id: 'ltm_ps',
+      label: 'LTM KUV (P/S)',
+      wert: multiple(letzterGeschaeftsjahresWert(psZeile, perioden)),
+      gruppe: 'bewertung_ltm',
     },
     {
       id: 'ltm_pfcf',
-      label: 'Kurs/FCF (TTM)',
-      wert: formatFundamentalWert(letzterGeschaeftsjahresWert(pfcfZeile, perioden), 'multiple'),
-      gruppe: 'bewertung',
+      label: 'LTM MC / FCF',
+      wert: multiple(
+        yahoo?.marketCap != null && ltmFcfUsd != null && ltmFcfUsd > 0 ? yahoo.marketCap / ltmFcfUsd : letzterGeschaeftsjahresWert(pfcfZeile, perioden),
+      ),
+      gruppe: 'bewertung_ltm',
     },
+    { id: 'div_yield', label: 'Dividendenrendite', wert: yahoo?.dividendYield != null ? pctRaw(yahoo.dividendYield * 100) : '–', gruppe: 'bewertung_ltm' },
     {
-      id: 'ev_revenue',
-      label: 'EV / Umsatz (NTM)',
-      wert: zahl(yahoo?.enterpriseToRevenue, 'x'),
-      gruppe: 'bewertung',
+      id: 'payout',
+      label: 'Ausschüttungsquote',
+      wert: yahoo?.payoutRatio != null ? pctRaw(yahoo.payoutRatio * 100) : '–',
+      gruppe: 'bewertung_ltm',
     },
-    {
-      id: 'ev_ebitda',
-      label: 'EV / EBITDA (NTM)',
-      wert: zahl(yahoo?.enterpriseToEbitda, 'x'),
-      gruppe: 'bewertung',
-    },
-    { id: 'div_yield', label: 'Dividendenrendite', wert: pctDezimal(yahoo?.dividendYield), gruppe: 'bewertung' },
   )
 
   return out

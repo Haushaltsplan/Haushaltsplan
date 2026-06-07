@@ -65,10 +65,12 @@ export function PaFundamentalKursChart({
   symbolYahoo,
   ticker,
   firmenname,
+  kompakt = false,
 }: {
   symbolYahoo: string | null
   ticker: string
   firmenname: string
+  kompakt?: boolean
 }) {
   const [zeitraum, setZeitraum] = useState<KursZeitraum>('1yr')
   const [punkte, setPunkte] = useState<KursPunkt[]>([])
@@ -124,7 +126,7 @@ export function PaFundamentalKursChart({
 
   const rendite = useMemo(() => kursrenditePct(gefiltert.length >= 2 ? gefiltert : punkte), [gefiltert, punkte])
 
-  const hoehe = 320
+  const hoehe = kompakt ? 220 : 320
   const padLinks = 52
   const padRechts = 16
   const padOben = 24
@@ -181,8 +183,8 @@ export function PaFundamentalKursChart({
   const zeitraumLabel = ZEITRAUM_OPTIONS.find((z) => z.id === zeitraum)?.label ?? zeitraum
 
   return (
-    <div className="flex min-h-[420px] flex-col overflow-hidden rounded-xl border border-zinc-800/80 bg-zinc-950/70 ring-1 ring-white/[0.03]">
-      <div className="border-b border-zinc-800/60 px-4 py-3">
+    <div className={kompakt ? 'flex h-full flex-col' : 'flex min-h-[420px] flex-col overflow-hidden rounded-xl border border-zinc-800/80 bg-zinc-950/70 ring-1 ring-white/[0.03]'}>
+      <div className={`border-b border-zinc-800/60 ${kompakt ? 'px-3 py-2' : 'px-4 py-3'}`}>
         <div className="flex flex-wrap items-start justify-between gap-2">
           <div>
             <div className="flex flex-wrap items-center gap-2">
@@ -254,7 +256,7 @@ export function PaFundamentalKursChart({
         )}
       </div>
 
-      {punkte.length > 4 ? (
+      {punkte.length > 4 && !kompakt ? (
         <div className="border-t border-zinc-800/50 px-4 py-2">
           <input
             type="range"
@@ -277,6 +279,7 @@ export function PaFundamentalKursChart({
         </div>
       ) : null}
 
+      {!kompakt ? (
       <div className="flex flex-wrap items-center gap-3 border-t border-zinc-800/50 px-4 py-2 text-[10px] text-zinc-500">
         <label className="flex cursor-pointer items-center gap-1.5">
           <input type="checkbox" checked={linie} onChange={(e) => setLinie(e.target.checked)} className="accent-amber-500" />
@@ -288,6 +291,11 @@ export function PaFundamentalKursChart({
           </span>
         ) : null}
       </div>
+      ) : hover ? (
+        <div className="border-t border-zinc-800/50 px-3 py-1 text-[10px] text-zinc-500">
+          {formatDatumDe(hover.p.datum)} · {hover.p.kurs.toLocaleString('de-DE', { maximumFractionDigits: 2 })} $
+        </div>
+      ) : null}
     </div>
   )
 }

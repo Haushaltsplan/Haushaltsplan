@@ -45,7 +45,13 @@ export type FundamentalKeyMetric = {
   id: string
   label: string
   wert: string
-  gruppe: 'marktdaten' | 'kapitalstruktur' | 'effizienz' | 'wachstum' | 'bewertung'
+  gruppe:
+    | 'marktdaten'
+    | 'kapitalstruktur'
+    | 'effizienz'
+    | 'wachstum'
+    | 'bewertung_ntm'
+    | 'bewertung_ltm'
 }
 
 export type FundamentalNewsArtikel = {

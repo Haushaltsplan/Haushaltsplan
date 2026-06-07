@@ -112,8 +112,17 @@ async function ladeYahooFundamentalKennzahlen(symbol: string): Promise<YahooFund
   const fd = row.financialData
   const ap = row.assetProfile as Record<string, unknown> | undefined
   const fy0 = row.earningsTrend?.trend?.find((t) => t.period === '0y')
+  const fy1 = row.earningsTrend?.trend?.find((t) => t.period === '+1y')
   const epsEst0 = fy0?.earningsEstimate as Record<string, unknown> | undefined
-  const ntmEpsRaw = epsEst0?.avg as { raw?: number } | undefined
+  const revEst0 = fy0?.revenueEstimate as Record<string, unknown> | undefined
+  const revEst1 = fy1?.revenueEstimate as Record<string, unknown> | undefined
+  const ebitdaEst0 = fy0?.ebitdaEstimate as Record<string, unknown> | undefined
+  const ebitdaEst1 = fy1?.ebitdaEstimate as Record<string, unknown> | undefined
+  const epsEst1 = fy1?.earningsEstimate as Record<string, unknown> | undefined
+  const rawObj = (o: Record<string, unknown> | undefined, k: string) => {
+    const v = o?.[k] as { raw?: number } | undefined
+    return v?.raw != null && Number.isFinite(v.raw) ? v.raw : undefined
+  }
 
   return {
     fiftyTwoWeekHigh: rawNum(sd, 'fiftyTwoWeekHigh'),
@@ -121,10 +130,12 @@ async function ladeYahooFundamentalKennzahlen(symbol: string): Promise<YahooFund
     beta: rawNum(dks, 'beta'),
     marketCap: rawNum(sd, 'marketCap'),
     sharesOutstanding: rawNum(dks, 'sharesOutstanding'),
+    floatShares: rawNum(dks, 'floatShares'),
     enterpriseValue: rawNum(dks, 'enterpriseValue'),
     trailingPE: rawNum(sd, 'trailingPE'),
     forwardPE: rawNum(sd, 'forwardPE'),
     dividendYield: rawNum(sd, 'dividendYield'),
+    payoutRatio: rawNum(dks, 'payoutRatio'),
     returnOnEquity: rawNum(fd, 'returnOnEquity'),
     returnOnAssets: rawNum(fd, 'returnOnAssets'),
     revenueGrowth: rawNum(fd, 'revenueGrowth'),
@@ -134,12 +145,19 @@ async function ladeYahooFundamentalKennzahlen(symbol: string): Promise<YahooFund
     ebitdaMargins: rawNum(fd, 'ebitdaMargins'),
     profitMargins: rawNum(fd, 'profitMargins'),
     currentPrice: rawNum(sd, 'regularMarketPrice'),
+    targetMeanPrice: rawNum(fd, 'targetMeanPrice'),
     priceToBook: rawNum(dks, 'priceToBook'),
     enterpriseToRevenue: rawNum(dks, 'enterpriseToRevenue'),
     enterpriseToEbitda: rawNum(dks, 'enterpriseToEbitda'),
     totalDebt: rawNum(fd, 'totalDebt'),
     totalCash: rawNum(fd, 'totalCash'),
-    ntmEpsSchaetzung: ntmEpsRaw?.raw,
+    averageVolume: rawNum(sd, 'averageDailyVolume3Month') ?? rawNum(sd, 'averageVolume10days'),
+    ntmEpsSchaetzung: rawObj(epsEst0, 'avg'),
+    ntmRevenueUsd: rawObj(revEst0, 'avg'),
+    ntmEbitdaUsd: rawObj(ebitdaEst0, 'avg'),
+    fy1RevenueUsd: rawObj(revEst1, 'avg'),
+    fy1EbitdaUsd: rawObj(ebitdaEst1, 'avg'),
+    fy1Eps: rawObj(epsEst1, 'avg'),
     sector: typeof ap?.sector === 'string' ? ap.sector : undefined,
     industry: typeof ap?.industry === 'string' ? ap.industry : undefined,
     website: typeof ap?.website === 'string' ? ap.website : undefined,
