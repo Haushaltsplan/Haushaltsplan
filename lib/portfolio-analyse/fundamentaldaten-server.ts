@@ -6,7 +6,7 @@ import {
   type YahooFundamentalKennzahlen,
 } from '@/lib/portfolio-analyse/fundamentaldaten-key-metrics'
 import { baueMantraAudit } from '@/lib/portfolio-analyse/fundamentaldaten-mantra'
-import { ladeYahooMantraTrailing } from '@/lib/portfolio-analyse/yahoo-fundamentals-timeseries-server'
+import { ladeYahooMantraFinanzdaten } from '@/lib/portfolio-analyse/yahoo-fundamentals-timeseries-server'
 import { ladeFundamentalNews } from '@/lib/portfolio-analyse/fundamentaldaten-news-server'
 import { ladeFundamentalSchaetzungen } from '@/lib/portfolio-analyse/fundamentaldaten-schaetzungen-server'
 import {
@@ -185,6 +185,25 @@ async function ladeYahooFundamentalKennzahlen(symbol: string): Promise<YahooFund
   }
 }
 
+function baueMantraMeta(
+  yahooExt: (YahooFundamentalKennzahlen & { sector?: string; industry?: string }) | null,
+  yahooFinanz: Awaited<ReturnType<typeof ladeYahooMantraFinanzdaten>>,
+) {
+  return {
+    beta: yahooExt?.beta ?? null,
+    marketCapUsd: yahooExt?.marketCap ?? null,
+    totalDebtUsd: yahooExt?.totalDebt ?? null,
+    totalCashUsd: yahooExt?.totalCash ?? null,
+    yahooFinanz: yahooFinanz ?? null,
+  }
+}
+
+function rohFuerMantra(
+  roh: { perioden: FundamentalPeriode[]; zeilen: FundamentalMetrikZeile[] } | null,
+): { perioden: FundamentalPeriode[]; zeilen: FundamentalMetrikZeile[] } | null {
+  if (!roh) return null
+  return { perioden: roh.perioden, zeilen: roh.zeilen }
+}
 function mergePeriodenUndZeilen(
   historisch: { perioden: FundamentalPeriode[]; zeilen: FundamentalMetrikZeile[] },
   schaetzungen: { perioden: FundamentalPeriode[]; zeilen: FundamentalMetrikZeile[] },
@@ -223,6 +242,7 @@ function leeresPaket(partial: Partial<FundamentaldatenPaket> & Pick<Fundamentald
     zeilen: [],
     keyMetrics: [],
     mantra: baueMantraAudit(null, null, null, null, { perioden: [], zeilen: [] }),
+    mantraMeta: null,
     news: [],
     symbolYahoo: null,
     geladenAm: new Date().toISOString(),
@@ -245,12 +265,12 @@ export async function ladeFundamentaldaten(anfrage: FundamentaldatenAnfrage): Pr
     })
   }
 
-  const [roh, yahooRaw, schaetzungen, news, yahooTrailing] = await Promise.all([
+  const [roh, yahooRaw, schaetzungen, news, yahooFinanz] = await Promise.all([
     ladeMacrotrendsFundamentaldaten(ident),
     symbolYahoo ? ladeYahooFundamentalKennzahlen(symbolYahoo) : Promise.resolve(null),
     symbolYahoo ? ladeFundamentalSchaetzungen(symbolYahoo) : Promise.resolve({ perioden: [], zeilen: [] }),
     symbolYahoo ? ladeFundamentalNews(symbolYahoo, ident.firmenname) : Promise.resolve([]),
-    symbolYahoo ? ladeYahooMantraTrailing(symbolYahoo) : Promise.resolve(null),
+    symbolYahoo ? ladeYahooMantraFinanzdaten(symbolYahoo) : Promise.resolve(null),
   ])
 
   const yahooExt = yahooRaw as (YahooFundamentalKennzahlen & {
@@ -267,6 +287,8 @@ export async function ladeFundamentaldaten(anfrage: FundamentaldatenAnfrage): Pr
     fallbackEn: yahooExt?.longBusinessSummary ?? roh?.beschreibung,
   })
 
+  const mantraMeta = baueMantraMeta(yahooExt, yahooFinanz)
+
   if (!roh) {
     return leeresPaket({
       ok: false,
@@ -278,7 +300,8 @@ export async function ladeFundamentaldaten(anfrage: FundamentaldatenAnfrage): Pr
       website: yahooExt?.website ?? null,
       beschreibung: beschreibungDe,
       keyMetrics: baueKeyMetrics(yahooExt, null, schaetzungen),
-      mantra: baueMantraAudit(brancheMeta.sektor, brancheMeta.branche, yahooExt, null, schaetzungen, yahooTrailing),
+      mantra: baueMantraAudit(brancheMeta.sektor, brancheMeta.branche, yahooExt, null, schaetzungen, yahooFinanz),
+      mantraMeta,
       news,
       symbolYahoo,
       fehler: 'Macrotrends-Daten konnten nicht geladen werden.',
@@ -301,7 +324,8 @@ export async function ladeFundamentaldaten(anfrage: FundamentaldatenAnfrage): Pr
     perioden: merged.perioden,
     zeilen: merged.zeilen,
     keyMetrics: baueKeyMetrics(yahooExt, roh, schaetzungen),
-    mantra: baueMantraAudit(sektorFinal, brancheFinal, yahooExt, roh, schaetzungen, yahooTrailing),
+    mantra: baueMantraAudit(sektorFinal, brancheFinal, yahooExt, rohFuerMantra(merged), schaetzungen, yahooFinanz),
+    mantraMeta,
     news,
     symbolYahoo,
   })

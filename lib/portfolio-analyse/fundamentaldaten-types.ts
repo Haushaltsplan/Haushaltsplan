@@ -74,6 +74,14 @@ export type MantraAuditErgebnis = {
   hinweis?: string
 }
 
+export type FundamentalMantraMeta = {
+  beta: number | null
+  marketCapUsd: number | null
+  totalDebtUsd: number | null
+  totalCashUsd: number | null
+  yahooFinanz: import('@/lib/portfolio-analyse/yahoo-fundamentals-timeseries-server').MantraYahooFinanzdaten | null
+}
+
 export type FundamentalMantraAudit = {
   sektorMantraId: string | null
   sektorMantraTitel: string | null
@@ -104,6 +112,7 @@ export type FundamentaldatenPaket = {
   zeilen: FundamentalMetrikZeile[]
   keyMetrics: FundamentalKeyMetric[]
   mantra: FundamentalMantraAudit
+  mantraMeta: FundamentalMantraMeta | null
   news: FundamentalNewsArtikel[]
   symbolYahoo: string | null
   geladenAm: string

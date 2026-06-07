@@ -12,6 +12,7 @@ import {
   ladeFundamentaldatenAusLocalCache,
   ladeFundamentaldatenClient,
 } from '@/lib/portfolio-analyse/fundamentaldaten-client'
+import { baueMantraAudit } from '@/lib/portfolio-analyse/fundamentaldaten-mantra'
 import type {
   FundamentaldatenAnfrage,
   FundamentaldatenPaket,
@@ -90,6 +91,27 @@ export function PaFundamentalInhalt({
       cancelled = true
     }
   }, [effektiveAnfrage])
+
+  const mantraAudit = useMemo(() => {
+    if (!daten?.ok) return null
+    const meta = daten.mantraMeta
+    if (meta && daten.zeilen.length > 0) {
+      return baueMantraAudit(
+        daten.sektor,
+        daten.branche,
+        {
+          beta: meta.beta ?? undefined,
+          marketCap: meta.marketCapUsd ?? undefined,
+          totalDebt: meta.totalDebtUsd ?? undefined,
+          totalCash: meta.totalCashUsd ?? undefined,
+        },
+        { perioden: daten.perioden, zeilen: daten.zeilen },
+        { perioden: [], zeilen: [] },
+        meta.yahooFinanz,
+      )
+    }
+    return daten.mantra
+  }, [daten])
 
   const toggleChartZeile = useCallback((id: string) => {
     setChartAktiv((prev) => {
@@ -172,7 +194,7 @@ export function PaFundamentalInhalt({
             />
           ) : null}
 
-          {unterTab === 'mantra' && daten.mantra ? <PaFundamentalMantra audit={daten.mantra} /> : null}
+          {unterTab === 'mantra' && mantraAudit ? <PaFundamentalMantra audit={mantraAudit} /> : null}
 
           {unterTab === 'news' ? <PaFundamentalNews artikel={daten.news} /> : null}
 
