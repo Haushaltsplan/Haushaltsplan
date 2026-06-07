@@ -1,5 +1,6 @@
 'use client'
 
+import { PA_SCROLL_ELEGANT } from '@/components/portfolio-analyse/pa-ui'
 import { formatFundamentalWert } from '@/lib/portfolio-analyse/fundamentaldaten-format'
 import type {
   FundamentalMetrikZeile,
@@ -32,7 +33,7 @@ export function PaFundamentalMetrikTabelle({
       <div className="border-b border-zinc-800 px-4 py-2.5">
         <h3 className="text-sm font-semibold text-zinc-100">{titel}</h3>
       </div>
-      <div className="overflow-x-auto">
+      <div className={`${PA_SCROLL_ELEGANT} max-w-full`}>
         <table className="w-max min-w-full border-collapse text-xs">
           <thead>
             <tr className="bg-zinc-900/90 text-zinc-400">

@@ -200,12 +200,18 @@ export function PortfolioFundamentaldatenClient() {
                 onTabChange={setUnterTab}
               />
 
-              <div className="grid gap-4 xl:grid-cols-[1.2fr_1fr]">
-                <PaFundamentalKursChart symbolYahoo={daten.symbolYahoo} ticker={daten.ticker} />
-                <PaFundamentalKeyMetrics metriken={daten.keyMetrics} />
-              </div>
+              {unterTab === 'uebersicht' ? (
+                <div className="grid gap-4 xl:grid-cols-[1.15fr_1fr]">
+                  <PaFundamentalKursChart
+                    symbolYahoo={daten.symbolYahoo}
+                    ticker={daten.ticker}
+                    firmenname={daten.firmenname}
+                  />
+                  <PaFundamentalKeyMetrics metriken={daten.keyMetrics} />
+                </div>
+              ) : null}
 
-              {unterTab === 'uebersicht' || unterTab === 'finanzdaten' || unterTab === 'bewertung' || unterTab === 'schaetzungen' ? (
+              {unterTab !== 'uebersicht' && unterTab !== 'news' ? (
                 <div className="space-y-4">
                   <PaFundamentalMetrikChart
                     perioden={daten.perioden}
@@ -216,7 +222,7 @@ export function PortfolioFundamentaldatenClient() {
                     onToggleLabels={() => setLabelsAnzeigen((v) => !v)}
                   />
 
-                  {(unterTab === 'uebersicht' || unterTab === 'finanzdaten') && finanzdaten.length > 0 ? (
+                  {(unterTab === 'finanzdaten') && finanzdaten.length > 0 ? (
                     <PaFundamentalMetrikTabelle
                       titel="GuV / Finanzdaten (Mio. USD)"
                       perioden={daten.perioden}
@@ -226,7 +232,7 @@ export function PortfolioFundamentaldatenClient() {
                     />
                   ) : null}
 
-                  {(unterTab === 'uebersicht' || unterTab === 'finanzdaten') && cashflow.length > 0 ? (
+                  {(unterTab === 'finanzdaten') && cashflow.length > 0 ? (
                     <PaFundamentalMetrikTabelle
                       titel="Cashflow (Mio. USD)"
                       perioden={daten.perioden}
@@ -236,7 +242,7 @@ export function PortfolioFundamentaldatenClient() {
                     />
                   ) : null}
 
-                  {(unterTab === 'uebersicht' || unterTab === 'finanzdaten') && rentabilitaet.length + margen.length + umschlag.length > 0 ? (
+                  {(unterTab === 'finanzdaten') && rentabilitaet.length + margen.length + umschlag.length > 0 ? (
                     <PaFundamentalMetrikTabelle
                       titel="Rentabilitätskennzahlen & Margenanalyse"
                       perioden={daten.perioden}
@@ -246,7 +252,7 @@ export function PortfolioFundamentaldatenClient() {
                     />
                   ) : null}
 
-                  {(unterTab === 'uebersicht' || unterTab === 'bewertung') && bewertung.length > 0 ? (
+                  {(unterTab === 'bewertung') && bewertung.length > 0 ? (
                     <PaFundamentalMetrikTabelle
                       titel="Bewertungskennzahlen / Multiples"
                       perioden={daten.perioden}
@@ -256,7 +262,7 @@ export function PortfolioFundamentaldatenClient() {
                     />
                   ) : null}
 
-                  {(unterTab === 'uebersicht' || unterTab === 'schaetzungen') && schaetzungen.length > 0 ? (
+                  {(unterTab === 'schaetzungen') && schaetzungen.length > 0 ? (
                     <PaFundamentalMetrikTabelle
                       titel="Schätzungen (Konsens · Yahoo Finance)"
                       perioden={daten.perioden}

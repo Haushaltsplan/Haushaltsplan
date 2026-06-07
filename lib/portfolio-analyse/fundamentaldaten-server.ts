@@ -200,6 +200,9 @@ function baueKeyMetrics(
   const ebitdaZeile = roh?.zeilen.find((z) => z.id === 'ebitda_marge')
   const ebitZeile = roh?.zeilen.find((z) => z.id === 'ebit_marge')
   const kgvZeile = roh?.zeilen.find((z) => z.id === 'kgv')
+  const psZeile = roh?.zeilen.find((z) => z.id === 'ps')
+  const pbZeile = roh?.zeilen.find((z) => z.id === 'pb')
+  const pfcfZeile = roh?.zeilen.find((z) => z.id === 'pfcf')
 
   const ttm = (z: FundamentalMetrikZeile | undefined) => wertAnPeriode(z, ttmKey)
 
@@ -280,13 +283,31 @@ function baueKeyMetrics(
     {
       id: 'fwd_kgv',
       label: 'Forward KGV (NTM)',
-      wert: zahl(yahoo?.forwardPE ?? ttm(kgvZeile) ?? undefined, 'x'),
+      wert: zahl(yahoo?.forwardPE ?? undefined, 'x'),
       gruppe: 'bewertung',
     },
     {
       id: 'trailing_kgv',
       label: 'Trailing KGV (TTM)',
       wert: zahl(yahoo?.trailingPE ?? ttm(kgvZeile) ?? undefined, 'x'),
+      gruppe: 'bewertung',
+    },
+    {
+      id: 'ltm_ps',
+      label: 'KUV (P/S, TTM)',
+      wert: formatFundamentalWert(ttm(psZeile), 'multiple'),
+      gruppe: 'bewertung',
+    },
+    {
+      id: 'ltm_pb',
+      label: 'KBV (P/B, TTM)',
+      wert: formatFundamentalWert(ttm(pbZeile), 'multiple'),
+      gruppe: 'bewertung',
+    },
+    {
+      id: 'ltm_pfcf',
+      label: 'Kurs/FCF (TTM)',
+      wert: formatFundamentalWert(ttm(pfcfZeile), 'multiple'),
       gruppe: 'bewertung',
     },
     { id: 'div_yield', label: 'Dividendenrendite', wert: pctDezimal(yahoo?.dividendYield), gruppe: 'bewertung' },

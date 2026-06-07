@@ -38,60 +38,47 @@ export function PaFundamentalUnternehmenHeader<T extends string>({
 }: Props<T>) {
   const [beschreibungOffen, setBeschreibungOffen] = useState(false)
   const websiteUrl = website ? (website.startsWith('http') ? website : `https://${website}`) : null
-  const kurzText =
-    beschreibung && beschreibung.length > 320 && !beschreibungOffen
-      ? `${beschreibung.slice(0, 317).trim()}…`
-      : beschreibung
 
   return (
     <PaCard variant="elevated" className="overflow-hidden">
-      <div className="border-b border-white/[0.05] bg-gradient-to-br from-zinc-900/95 via-zinc-950 to-zinc-950 px-4 py-4 sm:px-5 sm:py-5">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-          <div className="min-w-0 flex-1 space-y-3">
-            <div className="flex flex-wrap items-center gap-2.5">
-              <h2 className="text-xl font-semibold tracking-tight text-zinc-50 sm:text-2xl">{firmenname}</h2>
-              <span className="rounded-md bg-teal-500/10 px-2 py-0.5 text-xs font-semibold tabular-nums tracking-wide text-teal-300 ring-1 ring-teal-400/20">
-                {ticker}
-              </span>
-            </div>
-
-            {(branche || sektor || websiteUrl) && (
-              <div className="flex flex-wrap gap-1.5">
-                {sektor ? <MetaChip>{sektor}</MetaChip> : null}
-                {branche ? <MetaChip>{branche}</MetaChip> : null}
-                {websiteUrl ? (
-                  <a
-                    href={websiteUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center rounded-md border border-amber-500/20 bg-amber-500/[0.07] px-2 py-0.5 text-[11px] text-amber-300/90 ring-1 ring-amber-500/10 transition hover:bg-amber-500/15 hover:text-amber-200"
-                  >
-                    Website ↗
-                  </a>
-                ) : null}
-              </div>
-            )}
+      <div className="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-5">
+        <div className="min-w-0 space-y-1.5">
+          <div className="flex flex-wrap items-center gap-2">
+            <h2 className="text-lg font-semibold tracking-tight text-zinc-50">{firmenname}</h2>
+            <span className="rounded-md bg-teal-500/10 px-2 py-0.5 text-xs font-semibold tabular-nums text-teal-300 ring-1 ring-teal-400/20">
+              {ticker}
+            </span>
           </div>
-
-          <PaIconTabs tabs={tabs} active={activeTab} onChange={onTabChange} className="shrink-0 lg:max-w-[34rem]" />
+          <div className="flex flex-wrap items-center gap-1.5">
+            {sektor ? <MetaChip>{sektor}</MetaChip> : null}
+            {branche ? <MetaChip>{branche}</MetaChip> : null}
+            {websiteUrl ? (
+              <a
+                href={websiteUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center rounded-md border border-amber-500/20 bg-amber-500/[0.07] px-2 py-0.5 text-[11px] text-amber-300/90 ring-1 ring-amber-500/10 transition hover:bg-amber-500/15 hover:text-amber-200"
+              >
+                Website ↗
+              </a>
+            ) : null}
+            {beschreibung ? (
+              <button
+                type="button"
+                onClick={() => setBeschreibungOffen((v) => !v)}
+                className="text-[11px] font-medium text-zinc-500 transition hover:text-teal-400/90"
+              >
+                {beschreibungOffen ? 'Profil ausblenden' : 'Unternehmensprofil'}
+              </button>
+            ) : null}
+          </div>
         </div>
+        <PaIconTabs tabs={tabs} active={activeTab} onChange={onTabChange} className="shrink-0 sm:max-w-[34rem]" />
       </div>
 
-      {beschreibung ? (
-        <div className="border-b border-white/[0.04] px-4 py-4 sm:px-5">
-          <h3 className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-zinc-500">
-            Über das Unternehmen
-          </h3>
-          <p className="text-sm leading-relaxed text-zinc-300">{kurzText}</p>
-          {beschreibung.length > 320 ? (
-            <button
-              type="button"
-              onClick={() => setBeschreibungOffen((v) => !v)}
-              className="mt-2 text-xs font-medium text-teal-400/90 transition hover:text-teal-300"
-            >
-              {beschreibungOffen ? 'Weniger anzeigen' : 'Mehr anzeigen'}
-            </button>
-          ) : null}
+      {beschreibung && beschreibungOffen ? (
+        <div className="border-t border-white/[0.04] bg-zinc-950/40 px-4 py-3 sm:px-5">
+          <p className="text-sm leading-relaxed text-zinc-300">{beschreibung}</p>
         </div>
       ) : null}
     </PaCard>

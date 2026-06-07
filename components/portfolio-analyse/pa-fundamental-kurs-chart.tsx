@@ -22,7 +22,6 @@ const ZEITRAUM_OPTIONS: { id: KursZeitraum; label: string }[] = [
 
 function vonDatumFuerZeitraum(z: KursZeitraum): string {
   const heute = new Date()
-  const bis = heute.toISOString().slice(0, 10)
   const d = new Date(heute)
   switch (z) {
     case '3m':
@@ -54,12 +53,22 @@ function vonDatumFuerZeitraum(z: KursZeitraum): string {
 
 type KursPunkt = { datum: string; kurs: number }
 
+function kursrenditePct(punkte: KursPunkt[]): number | null {
+  if (punkte.length < 2) return null
+  const start = punkte[0].kurs
+  const end = punkte[punkte.length - 1].kurs
+  if (start <= 0) return null
+  return ((end - start) / start) * 100
+}
+
 export function PaFundamentalKursChart({
   symbolYahoo,
   ticker,
+  firmenname,
 }: {
   symbolYahoo: string | null
   ticker: string
+  firmenname: string
 }) {
   const [zeitraum, setZeitraum] = useState<KursZeitraum>('1yr')
   const [punkte, setPunkte] = useState<KursPunkt[]>([])
@@ -112,6 +121,8 @@ export function PaFundamentalKursChart({
     const endIdx = Math.ceil((range[1] / 100) * (punkte.length - 1))
     return punkte.slice(startIdx, endIdx + 1)
   }, [punkte, range])
+
+  const rendite = useMemo(() => kursrenditePct(gefiltert.length >= 2 ? gefiltert : punkte), [gefiltert, punkte])
 
   const hoehe = 320
   const padLinks = 52
@@ -167,34 +178,46 @@ export function PaFundamentalKursChart({
   )
 
   const hover = hoverIndex != null ? plotPts[hoverIndex] : null
+  const zeitraumLabel = ZEITRAUM_OPTIONS.find((z) => z.id === zeitraum)?.label ?? zeitraum
 
   return (
-    <div className="min-w-0 rounded-xl border border-zinc-800/80 bg-zinc-950/60 p-4">
-      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-        <h3 className="text-sm font-semibold text-zinc-100">
-          {ticker} · Kursverlauf
-        </h3>
-        <div className="flex flex-wrap gap-1">
-          {ZEITRAUM_OPTIONS.map((z) => (
-            <button
-              key={z.id}
-              type="button"
-              onClick={() => setZeitraum(z.id)}
-              className={`rounded px-2 py-1 text-[11px] font-medium transition ${
-                zeitraum === z.id
-                  ? 'bg-amber-500/20 text-amber-300 ring-1 ring-amber-500/30'
-                  : 'text-zinc-500 hover:text-zinc-300'
-              }`}
-            >
-              {z.label}
-            </button>
-          ))}
+    <div className="flex min-h-[420px] flex-col overflow-hidden rounded-xl border border-zinc-800/80 bg-zinc-950/70 ring-1 ring-white/[0.03]">
+      <div className="border-b border-zinc-800/60 px-4 py-3">
+        <div className="flex flex-wrap items-start justify-between gap-2">
+          <div>
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-sm font-bold tabular-nums text-zinc-100">{ticker}</span>
+              <span className="text-sm text-zinc-400">{firmenname}</span>
+            </div>
+            {rendite != null ? (
+              <p className={`mt-1 text-xs font-medium ${rendite >= 0 ? 'text-emerald-400/90' : 'text-rose-400/90'}`}>
+                {rendite >= 0 ? '+' : ''}
+                {rendite.toLocaleString('de-DE', { maximumFractionDigits: 1 })} % Kursrendite · {zeitraumLabel}
+              </p>
+            ) : null}
+          </div>
+          <div className="flex flex-wrap gap-0.5">
+            {ZEITRAUM_OPTIONS.map((z) => (
+              <button
+                key={z.id}
+                type="button"
+                onClick={() => setZeitraum(z.id)}
+                className={`rounded px-2 py-1 text-[10px] font-medium transition ${
+                  zeitraum === z.id
+                    ? 'bg-amber-500/20 text-amber-300 ring-1 ring-amber-500/30'
+                    : 'text-zinc-500 hover:bg-zinc-800/60 hover:text-zinc-300'
+                }`}
+              >
+                {z.label}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
       <div
         ref={containerRef}
-        className="relative w-full overflow-hidden"
+        className="relative flex-1 w-full overflow-hidden px-2"
         onMouseMove={(e) => onMove(e.clientX)}
         onMouseLeave={() => setHoverIndex(null)}
       >
@@ -232,14 +255,14 @@ export function PaFundamentalKursChart({
       </div>
 
       {punkte.length > 4 ? (
-        <div className="mt-3 px-1">
+        <div className="border-t border-zinc-800/50 px-4 py-2">
           <input
             type="range"
             min={0}
             max={100}
             value={range[0]}
             onChange={(e) => setRange([Math.min(Number(e.target.value), range[1] - 5), range[1]])}
-            className="w-full accent-amber-500"
+            className="h-1 w-full cursor-pointer appearance-none rounded-full bg-zinc-800 accent-amber-500 [&::-webkit-slider-thumb]:h-2.5 [&::-webkit-slider-thumb]:w-2.5 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-amber-500"
             aria-label="Chart-Bereich Start"
           />
           <input
@@ -248,20 +271,20 @@ export function PaFundamentalKursChart({
             max={100}
             value={range[1]}
             onChange={(e) => setRange([range[0], Math.max(Number(e.target.value), range[0] + 5)])}
-            className="mt-1 w-full accent-amber-500"
+            className="mt-1.5 h-1 w-full cursor-pointer appearance-none rounded-full bg-zinc-800 accent-amber-500 [&::-webkit-slider-thumb]:h-2.5 [&::-webkit-slider-thumb]:w-2.5 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-amber-500"
             aria-label="Chart-Bereich Ende"
           />
         </div>
       ) : null}
 
-      <div className="mt-3 flex flex-wrap items-center gap-3 text-[11px] text-zinc-500">
+      <div className="flex flex-wrap items-center gap-3 border-t border-zinc-800/50 px-4 py-2 text-[10px] text-zinc-500">
         <label className="flex cursor-pointer items-center gap-1.5">
           <input type="checkbox" checked={linie} onChange={(e) => setLinie(e.target.checked)} className="accent-amber-500" />
           Linienchart
         </label>
         {hover ? (
           <span>
-            {formatDatumDe(hover.p.datum)} · {hover.p.kurs.toLocaleString('de-DE', { maximumFractionDigits: 2 })}
+            {formatDatumDe(hover.p.datum)} · {hover.p.kurs.toLocaleString('de-DE', { maximumFractionDigits: 2 })} $
           </span>
         ) : null}
       </div>
