@@ -1,6 +1,13 @@
 'use client'
 
 import { BESITZ_KATEGORIEN, normalisiereBesitzKategorie } from '@/lib/besitz-kategorien'
+import {
+  besitzArtGruppenFuerKategorie,
+  besitzArtLabel,
+  besitzHatFeinart,
+  normalisiereBesitzKleidungsart,
+} from '@/lib/besitz-kleidungsarten'
+import { besitzFotoSignedUrl, loescheBesitzFoto, uploadBesitzFoto } from '@/lib/besitz-foto'
 import type { BesitzPdfPosition } from '@/lib/besitz-pdf-import'
 import { supabase } from '@/lib/supabase'
 import {
@@ -18,17 +25,11 @@ import {
   BesitzGebrauchtpreisKiRoot,
   BesitzGebrauchtpreisKiToggle,
 } from '@/components/besitz-gebrauchtpreis-ki'
+import { BesitzFotoUpload } from '@/components/besitz-foto-upload'
+import { BesitzKleiderschrank, type BesitzKleiderschrankRow } from '@/components/besitz-kleiderschrank'
 import { KiBrandChip } from '@/components/ki-brand'
 
-type BesitzRow = {
-  id: string
-  name: string
-  kategorie: string
-  einkaufspreis_eur: number
-  einkaufsdatum: string | null
-  haendler: string | null
-  hersteller: string | null
-  notiz: string | null
+type BesitzRow = BesitzKleiderschrankRow & {
   erstellt_am: string
 }
 
@@ -84,10 +85,18 @@ export default function BesitzPage() {
   const [haendler, setHaendler] = useState('')
   const [hersteller, setHersteller] = useState('')
   const [notiz, setNotiz] = useState('')
+  const [kleidungsart, setKleidungsart] = useState('')
+  const [groesse, setGroesse] = useState('')
+  const [farbe, setFarbe] = useState('')
+  const [fotoDatei, setFotoDatei] = useState<File | null>(null)
+  const [fotoVorschau, setFotoVorschau] = useState<string | null>(null)
+  const [bestehendBildPfad, setBestehendBildPfad] = useState<string | null>(null)
+  const [fotoEntfernen, setFotoEntfernen] = useState(false)
 
   const [filterKat, setFilterKat] = useState<string>('')
   const [suche, setSuche] = useState('')
   const [sort, setSort] = useState<'name' | 'preis' | 'datum'>('name')
+  const [ansicht, setAnsicht] = useState<'liste' | 'kleiderschrank'>('kleiderschrank')
 
   const [pdfLaden, setPdfLaden] = useState(false)
   const [pdfUebernehmenBusy, setPdfUebernehmenBusy] = useState(false)
@@ -107,6 +116,16 @@ export default function BesitzPage() {
     setHaendler('')
     setHersteller('')
     setNotiz('')
+    setKleidungsart('')
+    setGroesse('')
+    setFarbe('')
+    setFotoDatei(null)
+    setFotoVorschau((prev) => {
+      if (prev?.startsWith('blob:')) URL.revokeObjectURL(prev)
+      return null
+    })
+    setBestehendBildPfad(null)
+    setFotoEntfernen(false)
   }, [])
 
   const lade = useCallback(async () => {
@@ -115,7 +134,9 @@ export default function BesitzPage() {
     try {
       const { data, error } = await supabase
         .from('besitz_gegenstand')
-        .select('id, name, kategorie, einkaufspreis_eur, einkaufsdatum, haendler, hersteller, notiz, erstellt_am')
+        .select(
+          'id, name, kategorie, kleidungsart, groesse, farbe, bild_pfad, einkaufspreis_eur, einkaufsdatum, haendler, hersteller, notiz, erstellt_am',
+        )
         .order('erstellt_am', { ascending: false })
       if (error) {
         const msg = error.message || ''
@@ -164,6 +185,18 @@ export default function BesitzPage() {
     return r
   }, [zeilen, filterKat, suche, sort])
 
+  const kleiderschrankZeilen = useMemo(() => {
+    let r = zeilen.filter((z) => ['Kleidung', 'Schuhe'].includes(normalisiereBesitzKategorie(z.kategorie)))
+    const q = suche.trim().toLowerCase()
+    if (q) {
+      r = r.filter((z) => {
+        const blob = `${z.name} ${z.kleidungsart ?? ''} ${z.groesse ?? ''} ${z.farbe ?? ''} ${z.hersteller ?? ''} ${z.haendler ?? ''}`.toLowerCase()
+        return blob.includes(q)
+      })
+    }
+    return r
+  }, [zeilen, suche])
+
   const summeGefiltert = useMemo(
     () => Math.round(gefiltert.reduce((s, z) => s + Number(z.einkaufspreis_eur || 0), 0) * 100) / 100,
     [gefiltert],
@@ -174,7 +207,28 @@ export default function BesitzPage() {
     [zeilen],
   )
 
-  function starteBearbeiten(z: BesitzRow) {
+  const katNorm = useMemo(() => normalisiereBesitzKategorie(kategorie), [kategorie])
+  const artGruppen = useMemo(() => besitzArtGruppenFuerKategorie(katNorm), [katNorm])
+
+  function waehleFoto(file: File) {
+    setFotoDatei(file)
+    setFotoEntfernen(false)
+    setFotoVorschau((prev) => {
+      if (prev?.startsWith('blob:')) URL.revokeObjectURL(prev)
+      return URL.createObjectURL(file)
+    })
+  }
+
+  function entferneFoto() {
+    setFotoDatei(null)
+    setFotoEntfernen(true)
+    setFotoVorschau((prev) => {
+      if (prev?.startsWith('blob:')) URL.revokeObjectURL(prev)
+      return null
+    })
+  }
+
+  function starteBearbeiten(z: BesitzKleiderschrankRow) {
     setBearbeitenId(z.id)
     setName(z.name)
     setKategorie(normalisiereBesitzKategorie(z.kategorie))
@@ -183,6 +237,21 @@ export default function BesitzPage() {
     setHaendler(z.haendler ?? '')
     setHersteller(z.hersteller ?? '')
     setNotiz(z.notiz ?? '')
+    setKleidungsart(z.kleidungsart ?? '')
+    setGroesse(z.groesse ?? '')
+    setFarbe(z.farbe ?? '')
+    setFotoDatei(null)
+    setFotoEntfernen(false)
+    setBestehendBildPfad(z.bild_pfad)
+    setFotoVorschau((prev) => {
+      if (prev?.startsWith('blob:')) URL.revokeObjectURL(prev)
+      return null
+    })
+    if (z.bild_pfad) {
+      void besitzFotoSignedUrl(z.bild_pfad).then((url) => {
+        if (url) setFotoVorschau(url)
+      })
+    }
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
@@ -202,42 +271,71 @@ export default function BesitzPage() {
     const h = haendler.trim() || null
     const marke = hersteller.trim() || null
     const nz = notiz.trim() || null
+    const art = normalisiereBesitzKleidungsart(kleidungsart, kat)
+    const groesseVal = groesse.trim() || null
+    const farbeVal = farbe.trim() || null
 
     setSpeichernBusy(true)
     try {
+      let rowId = bearbeitenId
+      const basis = {
+        name: n,
+        kategorie: kat,
+        kleidungsart: art,
+        groesse: groesseVal,
+        farbe: farbeVal,
+        einkaufspreis_eur: Math.round(preis * 100) / 100,
+        einkaufsdatum: datum,
+        haendler: h,
+        hersteller: marke,
+        notiz: nz,
+      }
+
       if (bearbeitenId) {
-        const { error } = await supabase
-          .from('besitz_gegenstand')
-          .update({
-            name: n,
-            kategorie: kat,
-            einkaufspreis_eur: Math.round(preis * 100) / 100,
-            einkaufsdatum: datum,
-            haendler: h,
-            hersteller: marke,
-            notiz: nz,
-          })
-          .eq('id', bearbeitenId)
+        const { error } = await supabase.from('besitz_gegenstand').update(basis).eq('id', bearbeitenId)
         if (error) {
           toast.error(error.message || 'Speichern fehlgeschlagen.')
           return
         }
         toast.success('Eintrag aktualisiert.')
       } else {
-        const { error } = await supabase.from('besitz_gegenstand').insert({
-          name: n,
-          kategorie: kat,
-          einkaufspreis_eur: Math.round(preis * 100) / 100,
-          einkaufsdatum: datum,
-          haendler: h,
-          hersteller: marke,
-          notiz: nz,
-        })
+        const { data, error } = await supabase.from('besitz_gegenstand').insert(basis).select('id').single()
         if (error) {
           toast.error(error.message || 'Anlegen fehlgeschlagen.')
           return
         }
+        rowId = data?.id ?? null
         toast.success('Gegenstand gespeichert.')
+      }
+
+      if (!rowId) {
+        toast.error('Eintrag-ID fehlt — Foto konnte nicht verknüpft werden.')
+        return
+      }
+
+      let neuerBildPfad = fotoEntfernen ? null : bestehendBildPfad
+
+      if (fotoDatei) {
+        try {
+          neuerBildPfad = await uploadBesitzFoto(rowId, fotoDatei)
+        } catch (e) {
+          toast.error(e instanceof Error ? e.message : 'Foto-Upload fehlgeschlagen.')
+          await lade()
+          return
+        }
+      } else if (fotoEntfernen && bestehendBildPfad) {
+        await loescheBesitzFoto(bestehendBildPfad)
+        neuerBildPfad = null
+      }
+
+      if (neuerBildPfad !== bestehendBildPfad || fotoEntfernen) {
+        const { error: bildErr } = await supabase
+          .from('besitz_gegenstand')
+          .update({ bild_pfad: neuerBildPfad })
+          .eq('id', rowId)
+        if (bildErr) {
+          toast.error(bildErr.message || 'Foto-Pfad konnte nicht gespeichert werden.')
+        }
       }
       leereFormular()
       await lade()
@@ -248,11 +346,13 @@ export default function BesitzPage() {
 
   async function loeschen(id: string) {
     if (!window.confirm('Diesen Eintrag wirklich löschen?')) return
+    const row = zeilen.find((z) => z.id === id)
     const { error } = await supabase.from('besitz_gegenstand').delete().eq('id', id)
     if (error) {
       toast.error(error.message || 'Löschen fehlgeschlagen.')
       return
     }
+    if (row?.bild_pfad) await loescheBesitzFoto(row.bild_pfad)
     toast.success('Gelöscht.')
     if (bearbeitenId === id) leereFormular()
     await lade()
@@ -358,8 +458,8 @@ export default function BesitzPage() {
         description={
           <>
             <p>
-              Manuell eintragen oder <strong className="font-medium text-zinc-300">Beleg-PDF</strong> importieren
-              (Vorschau prüfen).
+              Kleiderschrank mit Fotos und feinen Kategorien (T-Shirt, Jeans …) — oder manuell / per{' '}
+              <strong className="font-medium text-zinc-300">Beleg-PDF</strong> importieren.
             </p>
             {!laden && !schemaFehlt && zeilen.length > 0 ? (
               <p className="mt-3 text-sm text-zinc-400">
@@ -380,6 +480,10 @@ export default function BesitzPage() {
             Migration in Supabase:{' '}
             <code className="rounded bg-slate-950 px-1.5 py-0.5 text-[11px] text-slate-300">
               supabase/migrations/20260426120000_besitz_gegenstand.sql
+            </code>
+            {' '}und für Kleiderschrank/Fotos:{' '}
+            <code className="rounded bg-slate-950 px-1.5 py-0.5 text-[11px] text-slate-300">
+              supabase/migrations/20260607120000_besitz_kleiderschrank.sql
             </code>
           </p>
         </div>
@@ -407,7 +511,10 @@ export default function BesitzPage() {
                 <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-slate-500">Kategorie</label>
                 <select
                   value={kategorie}
-                  onChange={(e) => setKategorie(e.target.value)}
+                  onChange={(e) => {
+                    setKategorie(e.target.value)
+                    setKleidungsart('')
+                  }}
                   className="w-full rounded-xl border border-slate-700/90 bg-slate-950/90 px-4 py-3 text-sm text-slate-100 outline-none focus:border-amber-600/50 focus:ring-2 focus:ring-amber-500/25"
                 >
                   {BESITZ_KATEGORIEN.map((k) => (
@@ -417,6 +524,57 @@ export default function BesitzPage() {
                   ))}
                 </select>
               </div>
+              {besitzHatFeinart(katNorm) ? (
+                <div>
+                  <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                    {besitzArtLabel(katNorm)}
+                  </label>
+                  <select
+                    value={kleidungsart}
+                    onChange={(e) => setKleidungsart(e.target.value)}
+                    className="w-full rounded-xl border border-slate-700/90 bg-slate-950/90 px-4 py-3 text-sm text-slate-100 outline-none focus:border-amber-600/50 focus:ring-2 focus:ring-amber-500/25"
+                  >
+                    <option value="">— Art wählen —</option>
+                    {artGruppen.map((g) => (
+                      <optgroup key={g.label} label={g.label}>
+                        {g.arten.map((a) => (
+                          <option key={a} value={a}>
+                            {a}
+                          </option>
+                        ))}
+                      </optgroup>
+                    ))}
+                  </select>
+                </div>
+              ) : null}
+              {besitzHatFeinart(katNorm) ? (
+                <>
+                  <div>
+                    <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                      Größe (optional)
+                    </label>
+                    <input
+                      type="text"
+                      value={groesse}
+                      onChange={(e) => setGroesse(e.target.value)}
+                      placeholder="z. B. M, 32/32, 42"
+                      className="w-full rounded-xl border border-slate-700/90 bg-slate-950/90 px-4 py-3 text-sm text-slate-100 outline-none focus:border-amber-600/50 focus:ring-2 focus:ring-amber-500/25"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                      Farbe (optional)
+                    </label>
+                    <input
+                      type="text"
+                      value={farbe}
+                      onChange={(e) => setFarbe(e.target.value)}
+                      placeholder="z. B. Navy, Schwarz"
+                      className="w-full rounded-xl border border-slate-700/90 bg-slate-950/90 px-4 py-3 text-sm text-slate-100 outline-none focus:border-amber-600/50 focus:ring-2 focus:ring-amber-500/25"
+                    />
+                  </div>
+                </>
+              ) : null}
               <div>
                 <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-slate-500">Einkaufspreis (EUR)</label>
                 <input
@@ -456,6 +614,14 @@ export default function BesitzPage() {
                   onChange={(e) => setHersteller(e.target.value)}
                   placeholder="Marke (optional)"
                   className="w-full rounded-xl border border-slate-700/90 bg-slate-950/90 px-4 py-3 text-sm text-slate-100 outline-none focus:border-amber-600/50 focus:ring-2 focus:ring-amber-500/25"
+                />
+              </div>
+              <div className="sm:col-span-2">
+                <BesitzFotoUpload
+                  previewUrl={fotoVorschau}
+                  busy={speichernBusy}
+                  onPick={waehleFoto}
+                  onRemove={entferneFoto}
                 />
               </div>
               <div className="sm:col-span-2">
@@ -601,10 +767,38 @@ export default function BesitzPage() {
             <div className={pageSectionHeaderClass}>
             <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
               <div className="min-w-0 flex-1">
-                <h2 className={pageSectionTitleClass}>Liste</h2>
-                <p className="mt-1 text-[12px] text-zinc-400">{laden ? 'Lade …' : `${gefiltert.length} von ${zeilen.length} Einträgen`}</p>
+                <h2 className={pageSectionTitleClass}>{ansicht === 'kleiderschrank' ? 'Kleiderschrank' : 'Liste'}</h2>
+                <p className="mt-1 text-[12px] text-zinc-400">
+                  {laden
+                    ? 'Lade …'
+                    : ansicht === 'kleiderschrank'
+                      ? `${kleiderschrankZeilen.length} Teile`
+                      : `${gefiltert.length} von ${zeilen.length} Einträgen`}
+                </p>
               </div>
               <div className="flex flex-wrap items-center gap-2">
+                <div className="flex rounded-xl border border-slate-700/90 bg-slate-950 p-0.5">
+                  <button
+                    type="button"
+                    onClick={() => setAnsicht('kleiderschrank')}
+                    className={`rounded-lg px-3 py-2 text-xs font-bold transition ${
+                      ansicht === 'kleiderschrank' ? 'bg-amber-600 text-white' : 'text-slate-400 hover:text-slate-200'
+                    }`}
+                  >
+                    Kleiderschrank
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setAnsicht('liste')}
+                    className={`rounded-lg px-3 py-2 text-xs font-bold transition ${
+                      ansicht === 'liste' ? 'bg-amber-600 text-white' : 'text-slate-400 hover:text-slate-200'
+                    }`}
+                  >
+                    Liste
+                  </button>
+                </div>
+                {ansicht === 'liste' ? (
+                  <>
                 <select
                   value={filterKat}
                   onChange={(e) => setFilterKat(e.target.value)}
@@ -626,20 +820,32 @@ export default function BesitzPage() {
                   <option value="preis">Sortierung: Preis (hoch)</option>
                   <option value="datum">Sortierung: Datum</option>
                 </select>
+                  </>
+                ) : null}
               </div>
             </div>
             </div>
             <div className={pageSectionPanelClass}>
-            <div className="mt-0">
+            <div className="mb-6">
               <input
                 type="search"
                 value={suche}
                 onChange={(e) => setSuche(e.target.value)}
-                placeholder="Suchen …"
+                placeholder={ansicht === 'kleiderschrank' ? 'Im Kleiderschrank suchen …' : 'Suchen …'}
                 className="w-full rounded-xl border border-slate-700/90 bg-slate-950/90 px-4 py-3 text-sm text-slate-100 outline-none focus:border-amber-600/50 focus:ring-2 focus:ring-amber-500/25"
               />
             </div>
-
+            {ansicht === 'kleiderschrank' ? (
+              <BesitzKleiderschrank
+                zeilen={kleiderschrankZeilen}
+                laden={laden}
+                onBearbeiten={starteBearbeiten}
+                onLoeschen={(id) => void loeschen(id)}
+                formatEur={formatEur}
+                formatDatumDe={formatDatumDe}
+              />
+            ) : (
+              <>
             {laden ? (
               <p className="mt-10 py-12 text-center text-slate-500">Lade Einträge …</p>
             ) : zeilen.length === 0 ? (
@@ -657,9 +863,19 @@ export default function BesitzPage() {
                             <span className="rounded-lg border border-amber-800/50 bg-amber-950/40 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-200/95">
                               {normalisiereBesitzKategorie(z.kategorie)}
                             </span>
+                            {z.kleidungsart ? (
+                              <span className="rounded-lg border border-slate-700/80 bg-slate-900/60 px-2 py-0.5 text-[10px] font-semibold text-slate-300">
+                                {z.kleidungsart}
+                              </span>
+                            ) : null}
                             <span className="text-[11px] tabular-nums text-slate-500">{formatDatumDe(z.einkaufsdatum)}</span>
                           </div>
                           <p className="mt-1.5 text-base font-semibold text-slate-100">{z.name}</p>
+                          {(z.groesse || z.farbe) ? (
+                            <p className="mt-0.5 text-xs text-slate-400">
+                              {[z.groesse, z.farbe].filter(Boolean).join(' · ')}
+                            </p>
+                          ) : null}
                           {z.hersteller ? (
                             <p className="mt-0.5 text-sm text-slate-300">
                               <span className="text-slate-500">Hersteller:</span> {z.hersteller}
@@ -696,6 +912,8 @@ export default function BesitzPage() {
                   </li>
                 ))}
               </ul>
+            )}
+              </>
             )}
             </div>
           </section>
