@@ -2,12 +2,13 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { PaFundamentalKeyMetrics } from '@/components/portfolio-analyse/pa-fundamental-key-metrics'
+import { PaFundamentalUnternehmenHeader } from '@/components/portfolio-analyse/pa-fundamental-unternehmen-header'
 import { PaFundamentalKursChart } from '@/components/portfolio-analyse/pa-fundamental-kurs-chart'
 import { PaFundamentalMetrikChart } from '@/components/portfolio-analyse/pa-fundamental-metrik-chart'
 import { PaFundamentalMetrikTabelle } from '@/components/portfolio-analyse/pa-fundamental-metrik-tabelle'
 import { usePortfolioAnalyse } from '@/components/portfolio-analyse/pa-data-provider'
 import { PortfolioAnalyseShell } from '@/components/portfolio-analyse/portfolio-analyse-shell.client'
-import { PaCard, PaIconTabs } from '@/components/portfolio-analyse/pa-ui'
+import { PaCard } from '@/components/portfolio-analyse/pa-ui'
 import {
   ladeFundamentaldatenAusLocalCache,
   ladeFundamentaldatenClient,
@@ -25,9 +26,10 @@ type DepotPosition = {
 
 const UNTER_TABS = [
   { id: 'uebersicht' as const, label: 'Übersicht' },
-  { id: 'news' as const, label: 'News' },
   { id: 'finanzdaten' as const, label: 'Finanzdaten' },
+  { id: 'schaetzungen' as const, label: 'Schätzungen' },
   { id: 'bewertung' as const, label: 'Bewertung' },
+  { id: 'news' as const, label: 'News' },
 ]
 
 export function PortfolioFundamentaldatenClient() {
@@ -120,7 +122,10 @@ export function PortfolioFundamentaldatenClient() {
   const rentabilitaet = daten?.zeilen.filter((z) => z.gruppe === 'rentabilitaet') ?? []
   const margen = daten?.zeilen.filter((z) => z.gruppe === 'margen') ?? []
   const umschlag = daten?.zeilen.filter((z) => z.gruppe === 'umschlag') ?? []
+  const finanzdaten = daten?.zeilen.filter((z) => z.gruppe === 'finanzdaten') ?? []
+  const cashflow = daten?.zeilen.filter((z) => z.gruppe === 'cashflow') ?? []
   const bewertung = daten?.zeilen.filter((z) => z.gruppe.startsWith('bewertung')) ?? []
+  const schaetzungen = daten?.zeilen.filter((z) => z.gruppe === 'schaetzungen') ?? []
 
   return (
     <PortfolioAnalyseShell
@@ -183,42 +188,24 @@ export function PortfolioFundamentaldatenClient() {
 
           {daten?.ok ? (
             <>
+              <PaFundamentalUnternehmenHeader
+                firmenname={daten.firmenname}
+                ticker={daten.ticker}
+                branche={daten.branche}
+                sektor={daten.sektor}
+                website={daten.website}
+                beschreibung={daten.beschreibung}
+                tabs={UNTER_TABS}
+                activeTab={unterTab}
+                onTabChange={setUnterTab}
+              />
+
               <div className="grid gap-4 xl:grid-cols-[1.2fr_1fr]">
                 <PaFundamentalKursChart symbolYahoo={daten.symbolYahoo} ticker={daten.ticker} />
                 <PaFundamentalKeyMetrics metriken={daten.keyMetrics} />
               </div>
 
-              <div className="space-y-3">
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div>
-                    <h2 className="text-lg font-semibold text-zinc-100">{daten.firmenname}</h2>
-                    <p className="text-xs text-zinc-500">
-                      {daten.ticker}
-                      {daten.branche ? ` · ${daten.branche}` : ''}
-                      {daten.website ? (
-                        <>
-                          {' · '}
-                          <a
-                            href={daten.website.startsWith('http') ? daten.website : `https://${daten.website}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-amber-400/90 hover:underline"
-                          >
-                            Website
-                          </a>
-                        </>
-                      ) : null}
-                    </p>
-                  </div>
-                  <PaIconTabs tabs={UNTER_TABS} active={unterTab} onChange={setUnterTab} />
-                </div>
-
-                {daten.beschreibung ? (
-                  <p className="line-clamp-3 text-xs leading-relaxed text-zinc-400">{daten.beschreibung}</p>
-                ) : null}
-              </div>
-
-              {unterTab === 'uebersicht' || unterTab === 'finanzdaten' || unterTab === 'bewertung' ? (
+              {unterTab === 'uebersicht' || unterTab === 'finanzdaten' || unterTab === 'bewertung' || unterTab === 'schaetzungen' ? (
                 <div className="space-y-4">
                   <PaFundamentalMetrikChart
                     perioden={daten.perioden}
@@ -228,6 +215,26 @@ export function PortfolioFundamentaldatenClient() {
                     onClear={() => setChartAktiv(new Set())}
                     onToggleLabels={() => setLabelsAnzeigen((v) => !v)}
                   />
+
+                  {(unterTab === 'uebersicht' || unterTab === 'finanzdaten') && finanzdaten.length > 0 ? (
+                    <PaFundamentalMetrikTabelle
+                      titel="GuV / Finanzdaten (Mio. USD)"
+                      perioden={daten.perioden}
+                      zeilen={finanzdaten}
+                      aktivIds={chartAktiv}
+                      onToggleZeile={toggleChartZeile}
+                    />
+                  ) : null}
+
+                  {(unterTab === 'uebersicht' || unterTab === 'finanzdaten') && cashflow.length > 0 ? (
+                    <PaFundamentalMetrikTabelle
+                      titel="Cashflow (Mio. USD)"
+                      perioden={daten.perioden}
+                      zeilen={cashflow}
+                      aktivIds={chartAktiv}
+                      onToggleZeile={toggleChartZeile}
+                    />
+                  ) : null}
 
                   {(unterTab === 'uebersicht' || unterTab === 'finanzdaten') && rentabilitaet.length + margen.length + umschlag.length > 0 ? (
                     <PaFundamentalMetrikTabelle
@@ -248,6 +255,16 @@ export function PortfolioFundamentaldatenClient() {
                       onToggleZeile={toggleChartZeile}
                     />
                   ) : null}
+
+                  {(unterTab === 'uebersicht' || unterTab === 'schaetzungen') && schaetzungen.length > 0 ? (
+                    <PaFundamentalMetrikTabelle
+                      titel="Schätzungen (Konsens · Yahoo Finance)"
+                      perioden={daten.perioden}
+                      zeilen={schaetzungen}
+                      aktivIds={chartAktiv}
+                      onToggleZeile={toggleChartZeile}
+                    />
+                  ) : null}
                 </div>
               ) : (
                 <PaCard className="p-8 text-center text-sm text-zinc-500">
@@ -256,7 +273,8 @@ export function PortfolioFundamentaldatenClient() {
               )}
 
               <p className="text-[10px] text-zinc-600">
-                Quelle: Macrotrends.net · Stand {new Date(daten.geladenAm).toLocaleString('de-DE')} · Cache 24h
+                Quellen: Macrotrends.net · Yahoo Finance (Schätzungen) · Stand{' '}
+                {new Date(daten.geladenAm).toLocaleString('de-DE')} · Cache 24h
               </p>
             </>
           ) : null}

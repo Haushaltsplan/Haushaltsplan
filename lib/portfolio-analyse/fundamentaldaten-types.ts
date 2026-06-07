@@ -1,25 +1,44 @@
 /** Einheit für Zahlenformatierung in der UI. */
-export type FundamentalEinheit = 'prozent' | 'multiple' | 'zahl' | 'waehrung_usd' | 'ratio'
+export type FundamentalEinheit =
+  | 'prozent'
+  | 'multiple'
+  | 'zahl'
+  | 'ratio'
+  /** Macrotrends GuV/Cashflow: Wert in Millionen USD */
+  | 'waehrung_usd_mio'
+  /** USD je Aktie */
+  | 'waehrung_usd_aktie'
+  /** Ausstehende Aktien in Millionen */
+  | 'aktien_mio'
+  /** Absoluter USD-Betrag (Yahoo Marktkapitalisierung etc.) */
+  | 'waehrung_usd'
 
 export type FundamentalPeriode = {
-  /** ISO-Datum (Geschäftsjahresende), z. B. 2025-09-30 */
+  /** ISO-Datum, Geschäftsjahresende, Schätzungs-Ende oder __ttm__ / __fy0e__ / __fy1e__ */
   iso: string
-  /** Anzeige z. B. 30.09.25 */
   label: string
-  /** true = LTM/TTM-Spalte */
   istLtm?: boolean
+  istSchaetzung?: boolean
 }
 
 export type FundamentalMetrikZeile = {
   id: string
   label: string
-  gruppe: 'rentabilitaet' | 'margen' | 'umschlag' | 'bewertung_forward' | 'bewertung_trailing'
+  gruppe:
+    | 'finanzdaten'
+    | 'cashflow'
+    | 'rentabilitaet'
+    | 'margen'
+    | 'umschlag'
+    | 'bewertung_forward'
+    | 'bewertung_trailing'
+    | 'schaetzungen'
   einheit: FundamentalEinheit
-  /** periodenIso → Wert (null = fehlend) */
   werte: Record<string, number | null>
-  /** Macrotrends-Metrik-Slug für Chart-Abruf */
   macrotrendsSlug?: string
-  macrotrendsStatement?: 'financial-ratios' | 'price-ratios'
+  macrotrendsStatement?: 'financial-ratios' | 'price-ratios' | 'income-statement' | 'cash-flow-statement'
+  /** Schätzung vs. historisch */
+  istSchaetzung?: boolean
 }
 
 export type FundamentalKeyMetric = {
@@ -35,7 +54,9 @@ export type FundamentaldatenPaket = {
   slug: string
   firmenname: string
   branche: string | null
+  sektor: string | null
   website: string | null
+  /** Firmenbeschreibung auf Deutsch */
   beschreibung: string | null
   waehrung: string
   perioden: FundamentalPeriode[]
@@ -52,6 +73,10 @@ export type FundamentaldatenAnfrage = {
   name?: string
   symbolYahoo?: string | null
   symbolCandidates?: string[]
-  /** Manueller Macrotrends-Ticker (z. B. AAPL) bei fehlender Auflösung */
   tickerOverride?: string | null
 }
+
+/** Spezial-Schlüssel für TTM- und Schätzungs-Spalten */
+export const FUNDAMENTAL_TTM_KEY = '__ttm__'
+export const FUNDAMENTAL_FY0E_KEY = '__fy0e__'
+export const FUNDAMENTAL_FY1E_KEY = '__fy1e__'

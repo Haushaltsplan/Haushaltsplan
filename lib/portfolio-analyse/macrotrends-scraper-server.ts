@@ -1,8 +1,9 @@
 import 'server-only'
 
-import type {
-  FundamentalMetrikZeile,
-  FundamentalPeriode,
+import {
+  FUNDAMENTAL_TTM_KEY,
+  type FundamentalMetrikZeile,
+  type FundamentalPeriode,
 } from '@/lib/portfolio-analyse/fundamentaldaten-types'
 import { formatFundamentalPeriodeLabel } from '@/lib/portfolio-analyse/fundamentaldaten-format'
 
@@ -29,6 +30,12 @@ export type MacrotrendsIdent = {
 
 type RohZeile = Record<string, string | number> & { field_name: string }
 
+type StatementSeite =
+  | 'financial-ratios'
+  | 'income-statement'
+  | 'cash-flow-statement'
+  | 'price-ratios'
+
 type MetrikDef = {
   slug: string
   id: string
@@ -36,29 +43,66 @@ type MetrikDef = {
   gruppe: FundamentalMetrikZeile['gruppe']
   einheit: FundamentalMetrikZeile['einheit']
   aliases?: string[]
+  statement: StatementSeite
 }
 
+const INCOME_STATEMENT_METRIKEN: MetrikDef[] = [
+  { slug: 'revenue', id: 'umsatz', label: 'Umsatz', gruppe: 'finanzdaten', einheit: 'waehrung_usd_mio', statement: 'income-statement' },
+  { slug: 'gross-profit', id: 'bruttogewinn', label: 'Bruttogewinn', gruppe: 'finanzdaten', einheit: 'waehrung_usd_mio', statement: 'income-statement' },
+  { slug: 'ebitda', id: 'ebitda', label: 'EBITDA', gruppe: 'finanzdaten', einheit: 'waehrung_usd_mio', statement: 'income-statement' },
+  { slug: 'operating-income', id: 'ebit', label: 'EBIT', gruppe: 'finanzdaten', einheit: 'waehrung_usd_mio', statement: 'income-statement' },
+  { slug: 'net-income', id: 'nettogewinn', label: 'Nettogewinn', gruppe: 'finanzdaten', einheit: 'waehrung_usd_mio', statement: 'income-statement' },
+  {
+    slug: 'eps-earnings-per-share-diluted',
+    id: 'eps',
+    label: 'EPS (verwässert)',
+    gruppe: 'finanzdaten',
+    einheit: 'waehrung_usd_aktie',
+    statement: 'income-statement',
+    aliases: ['eps-basic-net-earnings-per-share'],
+  },
+  { slug: 'shares-outstanding', id: 'aktien', label: 'Ausstehende Aktien', gruppe: 'finanzdaten', einheit: 'aktien_mio', statement: 'income-statement' },
+]
+
+const CASH_FLOW_METRIKEN: MetrikDef[] = [
+  {
+    slug: 'cash-flow-from-operating-activities',
+    id: 'ocf',
+    label: 'Operativer Cashflow',
+    gruppe: 'cashflow',
+    einheit: 'waehrung_usd_mio',
+    statement: 'cash-flow-statement',
+  },
+  {
+    slug: 'net-change-in-property-plant-equipment',
+    id: 'capex',
+    label: 'CapEx (Investitionen)',
+    gruppe: 'cashflow',
+    einheit: 'waehrung_usd_mio',
+    statement: 'cash-flow-statement',
+  },
+]
+
 const FINANCIAL_RATIOS_METRIKEN: MetrikDef[] = [
-  { slug: 'roa', id: 'roa', label: 'Gesamtkapitalrendite (ROA %)', gruppe: 'rentabilitaet', einheit: 'prozent' },
-  { slug: 'roi', id: 'roic', label: 'Investiertes Kapitalrendite (ROIC %)', gruppe: 'rentabilitaet', einheit: 'prozent', aliases: ['roi'] },
-  { slug: 'roe', id: 'roe', label: 'Eigenkapitalrendite (ROE %)', gruppe: 'rentabilitaet', einheit: 'prozent' },
-  { slug: 'gross-margin', id: 'bruttomarge', label: 'Bruttomarge %', gruppe: 'margen', einheit: 'prozent' },
-  { slug: 'ebitda-margin', id: 'ebitda_marge', label: 'EBITDA-Marge %', gruppe: 'margen', einheit: 'prozent' },
-  { slug: 'ebit-margin', id: 'ebit_marge', label: 'EBIT-Marge %', gruppe: 'margen', einheit: 'prozent' },
-  { slug: 'net-profit-margin', id: 'nettomarge', label: 'Nettomarge %', gruppe: 'margen', einheit: 'prozent' },
-  { slug: 'asset-turnover', id: 'kapitalumschlag', label: 'Kapitalumschlaghäufigkeit', gruppe: 'umschlag', einheit: 'ratio' },
-  { slug: 'inventory-turnover', id: 'anlagenumschlag', label: 'Anlagenumschlag', gruppe: 'umschlag', einheit: 'ratio' },
-  { slug: 'receiveable-turnover', id: 'forderungsumschlag', label: 'Forderungsumschlag', gruppe: 'umschlag', einheit: 'ratio' },
+  { slug: 'roa', id: 'roa', label: 'Gesamtkapitalrendite (ROA %)', gruppe: 'rentabilitaet', einheit: 'prozent', statement: 'financial-ratios' },
+  { slug: 'roi', id: 'roi', label: 'Kapitalrendite (ROI %)', gruppe: 'rentabilitaet', einheit: 'prozent', statement: 'financial-ratios', aliases: ['roi'] },
+  { slug: 'roe', id: 'roe', label: 'Eigenkapitalrendite (ROE %)', gruppe: 'rentabilitaet', einheit: 'prozent', statement: 'financial-ratios' },
+  { slug: 'gross-margin', id: 'bruttomarge', label: 'Bruttomarge %', gruppe: 'margen', einheit: 'prozent', statement: 'financial-ratios' },
+  { slug: 'ebitda-margin', id: 'ebitda_marge', label: 'EBITDA-Marge %', gruppe: 'margen', einheit: 'prozent', statement: 'financial-ratios' },
+  { slug: 'ebit-margin', id: 'ebit_marge', label: 'EBIT-Marge %', gruppe: 'margen', einheit: 'prozent', statement: 'financial-ratios' },
+  { slug: 'net-profit-margin', id: 'nettomarge', label: 'Nettomarge %', gruppe: 'margen', einheit: 'prozent', statement: 'financial-ratios' },
+  { slug: 'asset-turnover', id: 'kapitalumschlag', label: 'Kapitalumschlaghäufigkeit', gruppe: 'umschlag', einheit: 'ratio', statement: 'financial-ratios' },
+  { slug: 'inventory-turnover', id: 'anlagenumschlag', label: 'Lagerumschlag', gruppe: 'umschlag', einheit: 'ratio', statement: 'financial-ratios' },
+  { slug: 'receiveable-turnover', id: 'forderungsumschlag', label: 'Forderungsumschlag', gruppe: 'umschlag', einheit: 'ratio', statement: 'financial-ratios' },
 ]
 
 const BEWERTUNG_METRIKEN: Array<
-  MetrikDef & { statement: 'price-ratios'; wertFeld: 'v3' | 'v1' | 'value' }
+  MetrikDef & { wertFeld: 'v3' | 'v1' | 'value'; ttmFeld?: 'v3' | 'v1' }
 > = [
-  { slug: 'pe-ratio', id: 'kgv_ltm', label: 'LTM KGV (P/E)', gruppe: 'bewertung_trailing', einheit: 'multiple', statement: 'price-ratios', wertFeld: 'v3' },
-  { slug: 'price-sales', id: 'ev_umsatz_ltm', label: 'LTM KGV/Umsatz (P/S)', gruppe: 'bewertung_trailing', einheit: 'multiple', statement: 'price-ratios', wertFeld: 'v3' },
-  { slug: 'price-book', id: 'kbv_ltm', label: 'LTM KBV (P/B)', gruppe: 'bewertung_trailing', einheit: 'multiple', statement: 'price-ratios', wertFeld: 'v3' },
-  { slug: 'price-fcf', id: 'kgv_fcf_ltm', label: 'LTM Kurs/FCF', gruppe: 'bewertung_trailing', einheit: 'multiple', statement: 'price-ratios', wertFeld: 'v3' },
-  { slug: 'dividend-yield-history', id: 'dividendenrendite_ltm', label: 'LTM Dividendenrendite', gruppe: 'bewertung_trailing', einheit: 'prozent', statement: 'price-ratios', wertFeld: 'v3' },
+  { slug: 'pe-ratio', id: 'kgv', label: 'KGV (P/E)', gruppe: 'bewertung_trailing', einheit: 'multiple', statement: 'price-ratios', wertFeld: 'v3', ttmFeld: 'v3' },
+  { slug: 'price-sales', id: 'ps', label: 'KGV/Umsatz (P/S)', gruppe: 'bewertung_trailing', einheit: 'multiple', statement: 'price-ratios', wertFeld: 'v3', ttmFeld: 'v3' },
+  { slug: 'price-book', id: 'pb', label: 'KBV (P/B)', gruppe: 'bewertung_trailing', einheit: 'multiple', statement: 'price-ratios', wertFeld: 'v3', ttmFeld: 'v3' },
+  { slug: 'price-fcf', id: 'pfcf', label: 'Kurs/FCF', gruppe: 'bewertung_trailing', einheit: 'multiple', statement: 'price-ratios', wertFeld: 'v3', ttmFeld: 'v3' },
 ]
 
 function pause(ms: number): Promise<void> {
@@ -168,24 +212,28 @@ function zeileFuerSlug(zeilen: RohZeile[], slug: string, aliases: string[] = [])
   )
 }
 
-function bauePerioden(isoListe: string[], ltmIso: string | null): FundamentalPeriode[] {
+function bauePerioden(isoListe: string[], mitTtm: boolean): FundamentalPeriode[] {
   const perioden: FundamentalPeriode[] = isoListe.map((iso) => ({
     iso,
     label: formatFundamentalPeriodeLabel(iso),
   }))
-  if (ltmIso) {
-    const idx = perioden.findIndex((p) => p.iso === ltmIso)
-    if (idx >= 0) {
-      perioden[idx] = { ...perioden[idx], label: 'LTM', istLtm: true }
-    }
+  if (mitTtm) {
+    perioden.push({ iso: FUNDAMENTAL_TTM_KEY, label: 'TTM', istLtm: true })
   }
   return perioden
 }
 
-function werteAusRoh(zeile: RohZeile | null, perioden: string[]): Record<string, number | null> {
+function werteAusRoh(
+  zeile: RohZeile | null,
+  perioden: string[],
+  ttmWert?: number | null,
+): Record<string, number | null> {
   const out: Record<string, number | null> = {}
   for (const p of perioden) {
     out[p] = zeile ? parseZahl(zeile[p]) : null
+  }
+  if (ttmWert !== undefined) {
+    out[FUNDAMENTAL_TTM_KEY] = ttmWert ?? null
   }
   return out
 }
@@ -201,7 +249,8 @@ function wertAusChartPunkt(p: ChartPunkt, feld: 'v3' | 'v1' | 'value'): number |
   return parseZahl(v)
 }
 
-function werteAusChart(
+/** Nur exakte Geschäftsjahres-Enddaten — kein Fuzzy-Matching. */
+function werteAusChartExakt(
   chart: ChartPunkt[],
   perioden: string[],
   feld: 'v3' | 'v1' | 'value',
@@ -209,24 +258,34 @@ function werteAusChart(
   const byDate = new Map(chart.map((p) => [p.date, p]))
   const out: Record<string, number | null> = {}
   for (const iso of perioden) {
-    const exakt = byDate.get(iso)
-    if (exakt) {
-      out[iso] = wertAusChartPunkt(exakt, feld)
-      continue
+    const punkt = byDate.get(iso)
+    out[iso] = punkt ? wertAusChartPunkt(punkt, feld) : null
+  }
+  const latest = chart.length > 0 ? chart[chart.length - 1] : null
+  out[FUNDAMENTAL_TTM_KEY] = latest ? wertAusChartPunkt(latest, feld) : null
+  return out
+}
+
+function berechneFcf(ocf: Record<string, number | null>, capex: Record<string, number | null>): Record<string, number | null> {
+  const keys = new Set([...Object.keys(ocf), ...Object.keys(capex)])
+  const out: Record<string, number | null> = {}
+  for (const k of keys) {
+    const o = ocf[k]
+    const c = capex[k]
+    if (o == null && c == null) {
+      out[k] = null
+    } else {
+      out[k] = (o ?? 0) + (c ?? 0)
     }
-    const ziel = new Date(`${iso}T12:00:00Z`).getTime()
-    let best: ChartPunkt | null = null
-    let bestDiff = Infinity
-    for (const p of chart) {
-      const diff = Math.abs(new Date(`${p.date}T12:00:00Z`).getTime() - ziel)
-      if (diff < bestDiff && diff <= 45 * 86_400_000) {
-        bestDiff = diff
-        best = p
-      }
-    }
-    out[iso] = best ? wertAusChartPunkt(best, feld) : null
   }
   return out
+}
+
+async function ladeStatementRoh(ident: MacrotrendsIdent, statement: StatementSeite): Promise<RohZeile[] | null> {
+  const url = `${BASE}/stocks/charts/${ident.ticker}/${ident.slug}/${statement}`
+  const html = await ladeSeite(url)
+  if (!html || html.includes('Oops!')) return null
+  return parseOriginalData(html)
 }
 
 export async function loeseMacrotrendsIdent(
@@ -270,37 +329,62 @@ export type MacrotrendsFundamentalRoh = {
 export async function ladeMacrotrendsFundamentaldaten(
   ident: MacrotrendsIdent,
 ): Promise<MacrotrendsFundamentalRoh | null> {
-  const ratiosUrl = `${BASE}/stocks/charts/${ident.ticker}/${ident.slug}/financial-ratios`
-  const ratiosHtml = await ladeSeite(ratiosUrl)
-  if (!ratiosHtml || ratiosHtml.includes('Oops!')) return null
+  const ratiosRoh = await ladeStatementRoh(ident, 'financial-ratios')
+  if (!ratiosRoh?.length) return null
 
-  const roh = parseOriginalData(ratiosHtml)
-  if (!roh?.length) return null
-
-  const periodenIso = periodenAusRoh(roh)
+  const periodenIso = periodenAusRoh(ratiosRoh)
   if (periodenIso.length === 0) return null
 
-  const ltmIso = periodenIso[periodenIso.length - 1] ?? null
-  const perioden = bauePerioden(periodenIso, ltmIso)
-
+  const perioden = bauePerioden(periodenIso, true)
   const zeilen: FundamentalMetrikZeile[] = []
 
-  for (const def of FINANCIAL_RATIOS_METRIKEN) {
-    const row = zeileFuerSlug(roh, def.slug, def.aliases)
-    if (!row) continue
+  const incomeRoh = (await ladeStatementRoh(ident, 'income-statement')) ?? []
+  const cfRoh = (await ladeStatementRoh(ident, 'cash-flow-statement')) ?? []
+
+  const rohCache = new Map<StatementSeite, RohZeile[]>([
+    ['financial-ratios', ratiosRoh],
+    ['income-statement', incomeRoh],
+    ['cash-flow-statement', cfRoh],
+  ])
+
+  function metrikenAusDefs(defs: MetrikDef[]) {
+    for (const def of defs) {
+      const roh = rohCache.get(def.statement) ?? []
+      const row = zeileFuerSlug(roh, def.slug, def.aliases)
+      if (!row) continue
+      zeilen.push({
+        id: def.id,
+        label: def.label,
+        gruppe: def.gruppe,
+        einheit: def.einheit,
+        werte: werteAusRoh(row, periodenIso),
+        macrotrendsSlug: def.slug,
+        macrotrendsStatement: def.statement === 'price-ratios' ? 'price-ratios' : def.statement,
+      })
+    }
+  }
+
+  metrikenAusDefs(INCOME_STATEMENT_METRIKEN)
+  metrikenAusDefs(CASH_FLOW_METRIKEN)
+  metrikenAusDefs(FINANCIAL_RATIOS_METRIKEN)
+
+  const ocfRow = zeileFuerSlug(cfRoh, 'cash-flow-from-operating-activities')
+  const capexRow = zeileFuerSlug(cfRoh, 'net-change-in-property-plant-equipment')
+  if (ocfRow || capexRow) {
+    const ocfWerte = werteAusRoh(ocfRow, periodenIso)
+    const capexWerte = werteAusRoh(capexRow, periodenIso)
     zeilen.push({
-      id: def.id,
-      label: def.label,
-      gruppe: def.gruppe,
-      einheit: def.einheit,
-      werte: werteAusRoh(row, periodenIso),
-      macrotrendsSlug: def.slug,
-      macrotrendsStatement: 'financial-ratios',
+      id: 'fcf',
+      label: 'Free Cashflow (FCF)',
+      gruppe: 'cashflow',
+      einheit: 'waehrung_usd_mio',
+      werte: berechneFcf(ocfWerte, capexWerte),
+      macrotrendsStatement: 'cash-flow-statement',
     })
   }
 
   for (const def of BEWERTUNG_METRIKEN) {
-    const iframeUrl = `${IFRAME_BASE}?t=${encodeURIComponent(ident.ticker)}&type=${encodeURIComponent(def.slug)}&statement=${def.statement}&freq=A&sub=&yb=15`
+    const iframeUrl = `${IFRAME_BASE}?t=${encodeURIComponent(ident.ticker)}&type=${encodeURIComponent(def.slug)}&statement=price-ratios&freq=A&sub=&yb=15`
     const iframeHtml = await ladeSeite(iframeUrl)
     const chart = iframeHtml ? parseChartData(iframeHtml) : null
     zeilen.push({
@@ -309,14 +393,16 @@ export async function ladeMacrotrendsFundamentaldaten(
       gruppe: def.gruppe,
       einheit: def.einheit,
       werte: chart
-        ? werteAusChart(chart, periodenIso, def.wertFeld)
-        : Object.fromEntries(periodenIso.map((p) => [p, null])),
+        ? werteAusChartExakt(chart, periodenIso, def.wertFeld)
+        : Object.fromEntries([...periodenIso, FUNDAMENTAL_TTM_KEY].map((p) => [p, null])),
       macrotrendsSlug: def.slug,
       macrotrendsStatement: 'price-ratios',
     })
   }
 
-  const metaMatch = ratiosHtml.match(/<meta name="description" content="([^"]+)"/)
+  const ratiosUrl = `${BASE}/stocks/charts/${ident.ticker}/${ident.slug}/financial-ratios`
+  const ratiosHtml = await ladeSeite(ratiosUrl)
+  const metaMatch = ratiosHtml?.match(/<meta name="description" content="([^"]+)"/)
   const beschreibung =
     metaMatch?.[1]?.replace(/&lt;[^&]+&gt;/g, '').replace(/&[^;]+;/g, ' ').trim() ?? null
 
@@ -332,30 +418,28 @@ export async function ladeMacrotrendsFundamentaldaten(
 export async function ladeMacrotrendsChartSerie(
   ident: MacrotrendsIdent,
   slug: string,
-  statement: 'financial-ratios' | 'price-ratios',
+  statement: 'financial-ratios' | 'price-ratios' | 'income-statement' | 'cash-flow-statement',
 ): Promise<Array<{ datum: string; wert: number }>> {
-  const iframeUrl = `${IFRAME_BASE}?t=${encodeURIComponent(ident.ticker)}&type=${encodeURIComponent(slug)}&statement=${statement}&freq=A&sub=&yb=15`
-  const iframeHtml = await ladeSeite(iframeUrl)
-  const chart = iframeHtml ? parseChartData(iframeHtml) : null
-  if (chart?.length) {
-    return chart
-      .map((p) => ({
-        datum: p.date,
-        wert: wertAusChartPunkt(p, 'v3') ?? wertAusChartPunkt(p, 'v1') ?? 0,
-      }))
-      .filter((p) => Number.isFinite(p.wert))
+  if (statement === 'price-ratios') {
+    const iframeUrl = `${IFRAME_BASE}?t=${encodeURIComponent(ident.ticker)}&type=${encodeURIComponent(slug)}&statement=price-ratios&freq=A&sub=&yb=15`
+    const iframeHtml = await ladeSeite(iframeUrl)
+    const chart = iframeHtml ? parseChartData(iframeHtml) : null
+    if (chart?.length) {
+      return chart
+        .map((p) => ({
+          datum: p.date,
+          wert: wertAusChartPunkt(p, 'v3') ?? wertAusChartPunkt(p, 'v1') ?? 0,
+        }))
+        .filter((p) => Number.isFinite(p.wert))
+    }
   }
 
-  if (statement === 'financial-ratios') {
-    const url = `${BASE}/stocks/charts/${ident.ticker}/${ident.slug}/financial-ratios`
-    const html = await ladeSeite(url)
-    const roh = html ? parseOriginalData(html) : null
-    const row = roh ? zeileFuerSlug(roh, slug) : null
-    if (row) {
-      return periodenAusRoh([row])
-        .map((iso) => ({ datum: iso, wert: parseZahl(row[iso]) ?? 0 }))
-        .filter((p) => p.wert !== 0)
-    }
+  const roh = await ladeStatementRoh(ident, statement)
+  const row = roh ? zeileFuerSlug(roh, slug) : null
+  if (row) {
+    return periodenAusRoh([row])
+      .map((iso) => ({ datum: iso, wert: parseZahl(row[iso]) ?? 0 }))
+      .filter((p) => p.wert !== 0)
   }
 
   return []

@@ -18,9 +18,26 @@ export function formatFundamentalWert(
       return `${wert.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}x`
     case 'ratio':
       return wert.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+    case 'waehrung_usd_mio': {
+      const usd = wert * 1_000_000
+      if (Math.abs(usd) >= 1e12) {
+        return `${(usd / 1e12).toLocaleString('de-DE', { maximumFractionDigits: 2 })} Mrd. $`
+      }
+      if (Math.abs(usd) >= 1e9) {
+        return `${(usd / 1e9).toLocaleString('de-DE', { maximumFractionDigits: 2 })} Mrd. $`
+      }
+      if (Math.abs(usd) >= 1e6) {
+        return `${(usd / 1e6).toLocaleString('de-DE', { maximumFractionDigits: 2 })} Mio. $`
+      }
+      return `${usd.toLocaleString('de-DE', { maximumFractionDigits: 0 })} $`
+    }
+    case 'waehrung_usd_aktie':
+      return `${wert.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} $`
+    case 'aktien_mio':
+      return `${wert.toLocaleString('de-DE', { maximumFractionDigits: 2 })} Mio.`
     case 'waehrung_usd':
       if (Math.abs(wert) >= 1e12) {
-        return `${(wert / 1e12).toLocaleString('de-DE', { maximumFractionDigits: 2 })} Bio. $`
+        return `${(wert / 1e12).toLocaleString('de-DE', { maximumFractionDigits: 2 })} Mrd. $`
       }
       if (Math.abs(wert) >= 1e9) {
         return `${(wert / 1e9).toLocaleString('de-DE', { maximumFractionDigits: 2 })} Mrd. $`
@@ -41,4 +58,9 @@ export function cagrProzent(werte: number[], jahre: number): number | null {
   if (start == null || end == null || start <= 0 || end <= 0) return null
   const cagr = (Math.pow(end / start, 1 / jahre) - 1) * 100
   return Number.isFinite(cagr) ? cagr : null
+}
+
+export function formatYahooUmsatzUsd(wert: number | null | undefined): string {
+  if (wert == null || !Number.isFinite(wert)) return '–'
+  return formatFundamentalWert(wert, 'waehrung_usd')
 }

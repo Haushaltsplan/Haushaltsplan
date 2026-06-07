@@ -5,11 +5,19 @@ import {
   cagrProzent,
   formatFundamentalWert,
 } from '@/lib/portfolio-analyse/fundamentaldaten-format'
+import { ladeFundamentalSchaetzungen } from '@/lib/portfolio-analyse/fundamentaldaten-schaetzungen-server'
+import {
+  formatiereBrancheDe,
+  ladeUnternehmensbeschreibungDe,
+} from '@/lib/portfolio-analyse/fundamentaldaten-unternehmen-de'
 import type {
   FundamentaldatenAnfrage,
   FundamentaldatenPaket,
   FundamentalKeyMetric,
+  FundamentalMetrikZeile,
+  FundamentalPeriode,
 } from '@/lib/portfolio-analyse/fundamentaldaten-types'
+import { FUNDAMENTAL_TTM_KEY } from '@/lib/portfolio-analyse/fundamentaldaten-types'
 import { isinKenntnis } from '@/lib/portfolio-analyse/isin-kenntnisse'
 import {
   ladeMacrotrendsFundamentaldaten,
@@ -83,6 +91,8 @@ type YahooKeyStats = {
   longBusinessSummary?: string
   returnOnEquity?: number
   returnOnAssets?: number
+  revenueGrowth?: number
+  earningsGrowth?: number
 }
 
 async function ladeYahooKeyStats(symbol: string): Promise<YahooKeyStats | null> {
@@ -129,6 +139,8 @@ async function ladeYahooKeyStats(symbol: string): Promise<YahooKeyStats | null> 
     dividendYield: raw(sd, 'dividendYield'),
     returnOnEquity: raw(fd, 'returnOnEquity'),
     returnOnAssets: raw(fd, 'returnOnAssets'),
+    revenueGrowth: raw(fd, 'revenueGrowth'),
+    earningsGrowth: raw(fd, 'earningsGrowth'),
     sector: typeof ap?.sector === 'string' ? ap.sector : undefined,
     industry: typeof ap?.industry === 'string' ? ap.industry : undefined,
     website: typeof ap?.website === 'string' ? ap.website : undefined,
@@ -136,17 +148,21 @@ async function ladeYahooKeyStats(symbol: string): Promise<YahooKeyStats | null> 
   }
 }
 
+function wertAnPeriode(z: FundamentalMetrikZeile | undefined, key: string): number | null {
+  return z?.werte[key] ?? null
+}
+
 function baueKeyMetrics(
   yahoo: YahooKeyStats | null,
   roh: Awaited<ReturnType<typeof ladeMacrotrendsFundamentaldaten>>,
+  schaetzungen: Awaited<ReturnType<typeof ladeFundamentalSchaetzungen>>,
 ): FundamentalKeyMetric[] {
   const out: FundamentalKeyMetric[] = []
   const zahl = (v?: number, suffix = '') =>
     v != null ? `${v.toLocaleString('de-DE', { maximumFractionDigits: 2 })}${suffix}` : '–'
-  const pctRaw = (v?: number) => {
+  const pctDezimal = (v?: number) => {
     if (v == null) return '–'
-    const p = Math.abs(v) <= 1 ? v * 100 : v
-    return `${p.toLocaleString('de-DE', { maximumFractionDigits: 1 })} %`
+    return `${(v * 100).toLocaleString('de-DE', { maximumFractionDigits: 2 })} %`
   }
 
   out.push(
@@ -176,59 +192,133 @@ function baueKeyMetrics(
     },
   )
 
+  const ttmKey = FUNDAMENTAL_TTM_KEY
   const roeZeile = roh?.zeilen.find((z) => z.id === 'roe')
   const roaZeile = roh?.zeilen.find((z) => z.id === 'roa')
-  const roicZeile = roh?.zeilen.find((z) => z.id === 'roic')
+  const roiZeile = roh?.zeilen.find((z) => z.id === 'roi')
   const bruttoZeile = roh?.zeilen.find((z) => z.id === 'bruttomarge')
   const ebitdaZeile = roh?.zeilen.find((z) => z.id === 'ebitda_marge')
   const ebitZeile = roh?.zeilen.find((z) => z.id === 'ebit_marge')
+  const kgvZeile = roh?.zeilen.find((z) => z.id === 'kgv')
 
-  const ltmKey = roh?.perioden.find((p) => p.istLtm)?.iso ?? roh?.perioden[roh.perioden.length - 1]?.iso
-  const ltm = (z: typeof roeZeile) => (ltmKey && z ? z.werte[ltmKey] : null)
+  const ttm = (z: FundamentalMetrikZeile | undefined) => wertAnPeriode(z, ttmKey)
 
   out.push(
-    { id: 'ltm_brutto', label: 'LTM Bruttomarge', wert: formatFundamentalWert(ltm(bruttoZeile), 'prozent'), gruppe: 'effizienz' },
-    { id: 'ltm_ebit', label: 'LTM EBIT-Marge', wert: formatFundamentalWert(ltm(ebitZeile), 'prozent'), gruppe: 'effizienz' },
+    { id: 'ltm_brutto', label: 'TTM Bruttomarge', wert: formatFundamentalWert(ttm(bruttoZeile), 'prozent'), gruppe: 'effizienz' },
+    { id: 'ltm_ebit', label: 'TTM EBIT-Marge', wert: formatFundamentalWert(ttm(ebitZeile), 'prozent'), gruppe: 'effizienz' },
     {
       id: 'ltm_roa',
-      label: 'LTM ROA',
+      label: 'TTM ROA',
       wert: formatFundamentalWert(
-        ltm(roaZeile) ?? (yahoo?.returnOnAssets != null ? yahoo.returnOnAssets * 100 : null),
+        ttm(roaZeile) ?? (yahoo?.returnOnAssets != null ? yahoo.returnOnAssets * 100 : null),
         'prozent',
       ),
       gruppe: 'effizienz',
     },
     {
       id: 'ltm_roe',
-      label: 'LTM ROE',
+      label: 'TTM ROE',
       wert: formatFundamentalWert(
-        ltm(roeZeile) ?? (yahoo?.returnOnEquity != null ? yahoo.returnOnEquity * 100 : null),
+        ttm(roeZeile) ?? (yahoo?.returnOnEquity != null ? yahoo.returnOnEquity * 100 : null),
         'prozent',
       ),
       gruppe: 'effizienz',
     },
-    { id: 'ltm_roic', label: 'LTM ROIC', wert: formatFundamentalWert(ltm(roicZeile), 'prozent'), gruppe: 'effizienz' },
-    { id: 'ltm_ebitda', label: 'LTM EBITDA-Marge', wert: formatFundamentalWert(ltm(ebitdaZeile), 'prozent'), gruppe: 'effizienz' },
+    { id: 'ltm_roi', label: 'TTM ROI', wert: formatFundamentalWert(ttm(roiZeile), 'prozent'), gruppe: 'effizienz' },
+    { id: 'ltm_ebitda', label: 'TTM EBITDA-Marge', wert: formatFundamentalWert(ttm(ebitdaZeile), 'prozent'), gruppe: 'effizienz' },
   )
 
-  const perioden = roh?.perioden.filter((p) => !p.istLtm).map((p) => p.iso) ?? []
-  const letzte3 = perioden.slice(-4)
-  const roeWerte = letzte3.map((p) => roeZeile?.werte[p]).filter((v): v is number => v != null)
-  const roeCagr = roeWerte.length >= 2 ? cagrProzent(roeWerte, 3) : null
+  const umsatzZeile = roh?.zeilen.find((z) => z.id === 'umsatz')
+  const fyKeys = roh?.perioden.filter((p) => !p.istLtm && !p.istSchaetzung).map((p) => p.iso) ?? []
+  const umsatzHistorie = fyKeys.map((k) => umsatzZeile?.werte[k]).filter((v): v is number => v != null)
+  const umsatzCagr3 = umsatzHistorie.length >= 2 ? cagrProzent(umsatzHistorie.slice(-4), 3) : null
+
+  const epsSchaetz0 = schaetzungen.zeilen.find((z) => z.id === 'eps_schaetzung')
+  const umsatzSchaetz0 = schaetzungen.zeilen.find((z) => z.id === 'umsatz_schaetzung')
+  const fy0Key = schaetzungen.perioden[0]?.iso
+  const fy1Key = schaetzungen.perioden[1]?.iso
 
   out.push(
-    { id: 'fwd_kgv', label: 'Forward KGV (NTM)', wert: zahl(yahoo?.forwardPE, 'x'), gruppe: 'bewertung' },
-    { id: 'trailing_kgv', label: 'Trailing KGV (LTM)', wert: zahl(yahoo?.trailingPE, 'x'), gruppe: 'bewertung' },
-    { id: 'div_yield', label: 'Dividendenrendite', wert: pctRaw(yahoo?.dividendYield), gruppe: 'bewertung' },
     {
-      id: 'roe_cagr_3j',
-      label: 'ROE-CAGR (3 Jahre)',
-      wert: roeCagr != null ? formatFundamentalWert(roeCagr, 'prozent') : '–',
+      id: 'fwd_umsatz',
+      label: 'Erw. Umsatz (FY)',
+      wert: fy0Key
+        ? formatFundamentalWert(wertAnPeriode(umsatzSchaetz0, fy0Key), 'waehrung_usd_mio')
+        : '–',
+      gruppe: 'wachstum',
+    },
+    {
+      id: 'fwd_eps',
+      label: 'Erw. EPS (FY)',
+      wert: fy0Key ? formatFundamentalWert(wertAnPeriode(epsSchaetz0, fy0Key), 'waehrung_usd_aktie') : '–',
+      gruppe: 'wachstum',
+    },
+    {
+      id: 'fwd_umsatz_cagr',
+      label: 'Erw. Umsatz-CAGR (2J)',
+      wert:
+        fy0Key && fy1Key && umsatzSchaetz0
+          ? (() => {
+              const u0 = wertAnPeriode(umsatzSchaetz0, fy0Key)
+              const u1 = wertAnPeriode(umsatzSchaetz0, fy1Key)
+              if (u0 == null || u1 == null || u0 <= 0) return '–'
+              const c = cagrProzent([u0, u1], 1)
+              return c != null ? formatFundamentalWert(c, 'prozent') : '–'
+            })()
+          : '–',
+      gruppe: 'wachstum',
+    },
+    {
+      id: 'umsatz_cagr_3j',
+      label: 'Umsatz-CAGR (3 Jahre)',
+      wert: umsatzCagr3 != null ? formatFundamentalWert(umsatzCagr3, 'prozent') : '–',
       gruppe: 'wachstum',
     },
   )
 
+  out.push(
+    {
+      id: 'fwd_kgv',
+      label: 'Forward KGV (NTM)',
+      wert: zahl(yahoo?.forwardPE ?? ttm(kgvZeile) ?? undefined, 'x'),
+      gruppe: 'bewertung',
+    },
+    {
+      id: 'trailing_kgv',
+      label: 'Trailing KGV (TTM)',
+      wert: zahl(yahoo?.trailingPE ?? ttm(kgvZeile) ?? undefined, 'x'),
+      gruppe: 'bewertung',
+    },
+    { id: 'div_yield', label: 'Dividendenrendite', wert: pctDezimal(yahoo?.dividendYield), gruppe: 'bewertung' },
+  )
+
   return out
+}
+
+function mergePeriodenUndZeilen(
+  historisch: { perioden: FundamentalPeriode[]; zeilen: FundamentalMetrikZeile[] },
+  schaetzungen: { perioden: FundamentalPeriode[]; zeilen: FundamentalMetrikZeile[] },
+): { perioden: FundamentalPeriode[]; zeilen: FundamentalMetrikZeile[] } {
+  if (schaetzungen.perioden.length === 0) return historisch
+
+  const perioden = [...historisch.perioden, ...schaetzungen.perioden]
+  const zeilen = [...historisch.zeilen]
+
+  for (const sz of schaetzungen.zeilen) {
+    const werte = { ...sz.werte }
+    for (const p of historisch.perioden) {
+      if (!(p.iso in werte)) werte[p.iso] = null
+    }
+    zeilen.push({ ...sz, werte })
+  }
+
+  for (const hz of historisch.zeilen) {
+    for (const sp of schaetzungen.perioden) {
+      if (!(sp.iso in hz.werte)) hz.werte[sp.iso] = null
+    }
+  }
+
+  return { perioden, zeilen }
 }
 
 export async function ladeFundamentaldaten(anfrage: FundamentaldatenAnfrage): Promise<FundamentaldatenPaket> {
@@ -241,6 +331,7 @@ export async function ladeFundamentaldaten(anfrage: FundamentaldatenAnfrage): Pr
       slug: '',
       firmenname: anfrage.name ?? 'Unbekannt',
       branche: null,
+      sektor: null,
       website: null,
       beschreibung: null,
       waehrung: 'USD',
@@ -254,10 +345,18 @@ export async function ladeFundamentaldaten(anfrage: FundamentaldatenAnfrage): Pr
     }
   }
 
-  const [roh, yahoo] = await Promise.all([
+  const [roh, yahoo, schaetzungen] = await Promise.all([
     ladeMacrotrendsFundamentaldaten(ident),
     symbolYahoo ? ladeYahooKeyStats(symbolYahoo) : Promise.resolve(null),
+    symbolYahoo ? ladeFundamentalSchaetzungen(symbolYahoo) : Promise.resolve({ perioden: [], zeilen: [] }),
   ])
+
+  const brancheMeta = formatiereBrancheDe({ industry: yahoo?.industry, sector: yahoo?.sector })
+  const beschreibungDe = await ladeUnternehmensbeschreibungDe({
+    firmenname: ident.firmenname,
+    ticker: ident.ticker,
+    fallbackEn: yahoo?.longBusinessSummary ?? roh?.beschreibung,
+  })
 
   if (!roh) {
     return {
@@ -265,13 +364,14 @@ export async function ladeFundamentaldaten(anfrage: FundamentaldatenAnfrage): Pr
       ticker: ident.ticker,
       slug: ident.slug,
       firmenname: ident.firmenname,
-      branche: yahoo?.industry ?? null,
+      branche: brancheMeta.branche,
+      sektor: brancheMeta.sektor,
       website: yahoo?.website ?? null,
-      beschreibung: yahoo?.longBusinessSummary ?? null,
+      beschreibung: beschreibungDe,
       waehrung: 'USD',
       perioden: [],
       zeilen: [],
-      keyMetrics: baueKeyMetrics(yahoo, null),
+      keyMetrics: baueKeyMetrics(yahoo, null, schaetzungen),
       symbolYahoo,
       geladenAm: new Date().toISOString(),
       quelle: 'macrotrends',
@@ -279,18 +379,21 @@ export async function ladeFundamentaldaten(anfrage: FundamentaldatenAnfrage): Pr
     }
   }
 
+  const merged = mergePeriodenUndZeilen(roh, schaetzungen)
+
   return {
     ok: true,
     ticker: ident.ticker,
     slug: ident.slug,
     firmenname: ident.firmenname,
-    branche: yahoo?.industry ?? roh.branche,
+    branche: brancheMeta.branche ?? roh.branche,
+    sektor: brancheMeta.sektor,
     website: yahoo?.website ?? null,
-    beschreibung: yahoo?.longBusinessSummary ?? roh.beschreibung,
+    beschreibung: beschreibungDe,
     waehrung: 'USD',
-    perioden: roh.perioden,
-    zeilen: roh.zeilen,
-    keyMetrics: baueKeyMetrics(yahoo, roh),
+    perioden: merged.perioden,
+    zeilen: merged.zeilen,
+    keyMetrics: baueKeyMetrics(yahoo, roh, schaetzungen),
     symbolYahoo,
     geladenAm: new Date().toISOString(),
     quelle: 'macrotrends',
