@@ -1,0 +1,44 @@
+import type { FundamentalEinheit } from '@/lib/portfolio-analyse/fundamentaldaten-types'
+
+export function formatFundamentalPeriodeLabel(iso: string): string {
+  const m = iso.match(/^(\d{4})-(\d{2})-(\d{2})$/)
+  if (!m) return iso
+  return `${m[3]}.${m[2]}.${m[1].slice(2)}`
+}
+
+export function formatFundamentalWert(
+  wert: number | null | undefined,
+  einheit: FundamentalEinheit,
+): string {
+  if (wert == null || !Number.isFinite(wert)) return '–'
+  switch (einheit) {
+    case 'prozent':
+      return `${wert.toLocaleString('de-DE', { minimumFractionDigits: 1, maximumFractionDigits: 2 })} %`
+    case 'multiple':
+      return `${wert.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}x`
+    case 'ratio':
+      return wert.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+    case 'waehrung_usd':
+      if (Math.abs(wert) >= 1e12) {
+        return `${(wert / 1e12).toLocaleString('de-DE', { maximumFractionDigits: 2 })} Bio. $`
+      }
+      if (Math.abs(wert) >= 1e9) {
+        return `${(wert / 1e9).toLocaleString('de-DE', { maximumFractionDigits: 2 })} Mrd. $`
+      }
+      if (Math.abs(wert) >= 1e6) {
+        return `${(wert / 1e6).toLocaleString('de-DE', { maximumFractionDigits: 2 })} Mio. $`
+      }
+      return `${wert.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} $`
+    default:
+      return wert.toLocaleString('de-DE', { maximumFractionDigits: 2 })
+  }
+}
+
+export function cagrProzent(werte: number[], jahre: number): number | null {
+  if (werte.length < 2 || jahre <= 0) return null
+  const start = werte[0]
+  const end = werte[werte.length - 1]
+  if (start == null || end == null || start <= 0 || end <= 0) return null
+  const cagr = (Math.pow(end / start, 1 / jahre) - 1) * 100
+  return Number.isFinite(cagr) ? cagr : null
+}
