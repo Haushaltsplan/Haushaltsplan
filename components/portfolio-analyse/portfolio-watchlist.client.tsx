@@ -2,19 +2,20 @@
 
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { PaAktienSucheInput } from '@/components/portfolio-analyse/pa-aktien-suche-input'
 import { PortfolioIsinLogo } from '@/components/portfolio-analyse/isin-logo'
 import { PaFundamentalInhalt } from '@/components/portfolio-analyse/pa-fundamental-inhalt'
 import { usePortfolioAnalyse } from '@/components/portfolio-analyse/pa-data-provider'
 import { PortfolioAnalyseShell } from '@/components/portfolio-analyse/portfolio-analyse-shell.client'
 import { PaCard } from '@/components/portfolio-analyse/pa-ui'
 import { watchlistHref } from '@/lib/portfolio-analyse/fundamentaldaten-navigation'
-import { ladeIsinMetadaten } from '@/lib/portfolio-analyse/isin-metadata-client'
 import {
   entferneAusWatchlist,
   findeWatchlistIdx,
   fuegeZurWatchlistHinzu,
-  istGueltigeIsin,
   ladeWatchlist,
+  watchlistEintragAusMeta,
+  watchlistSchluessel,
   type WatchlistEintrag,
 } from '@/lib/portfolio-analyse/watchlist-client'
 
@@ -22,10 +23,10 @@ export function PortfolioWatchlistClient() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const isinParam = searchParams.get('isin')
+  const symbolParam = searchParams.get('symbol')
   const { meta } = usePortfolioAnalyse()
   const [eintraege, setEintraege] = useState<WatchlistEintrag[]>([])
   const [selectedIdx, setSelectedIdx] = useState(0)
-  const [isinInput, setIsinInput] = useState('')
   const [hinzufuegenLaden, setHinzufuegenLaden] = useState(false)
   const [hinzufuegenFehler, setHinzufuegenFehler] = useState<string | null>(null)
 
@@ -38,10 +39,10 @@ export function PortfolioWatchlistClient() {
   }, [refresh])
 
   useEffect(() => {
-    if (eintraege.length === 0 || !isinParam) return
-    const idx = findeWatchlistIdx(eintraege, { isin: isinParam })
+    if (eintraege.length === 0 || (!isinParam && !symbolParam)) return
+    const idx = findeWatchlistIdx(eintraege, { isin: isinParam, symbol: symbolParam })
     if (idx >= 0) setSelectedIdx(idx)
-  }, [eintraege, isinParam])
+  }, [eintraege, isinParam, symbolParam])
 
   const selected = eintraege[selectedIdx] ?? null
 
@@ -49,7 +50,7 @@ export function PortfolioWatchlistClient() {
     (idx: number) => {
       setSelectedIdx(idx)
       const e = eintraege[idx]
-      if (e) router.replace(watchlistHref({ isin: e.isin }), { scroll: false })
+      if (e) router.replace(watchlistHref({ isin: e.isin, symbol: e.symbolYahoo }), { scroll: false })
     },
     [eintraege, router],
   )
@@ -68,52 +69,29 @@ export function PortfolioWatchlistClient() {
     [selected],
   )
 
-  async function onHinzufuegen(e: React.FormEvent) {
-    e.preventDefault()
-    const isin = isinInput.trim().toUpperCase()
-    setHinzufuegenFehler(null)
-    if (!istGueltigeIsin(isin)) {
-      setHinzufuegenFehler('Bitte eine gültige ISIN eingeben (12 Zeichen).')
-      return
-    }
-    if (findeWatchlistIdx(eintraege, { isin }) >= 0) {
-      setHinzufuegenFehler('Diese ISIN ist bereits auf der Watchlist.')
-      return
-    }
-    setHinzufuegenLaden(true)
-    try {
-      const map = await ladeIsinMetadaten([isin])
-      const metaEintrag = map.get(isin)
-      if (!metaEintrag?.symbolYahoo && !metaEintrag?.name) {
-        setHinzufuegenFehler('ISIN nicht gefunden — prüfe die Eingabe.')
+  const hinzufuegen = useCallback(
+    async (auswahl: { meta: Parameters<typeof watchlistEintragAusMeta>[0]; isin: string | null }) => {
+      setHinzufuegenFehler(null)
+      const neu = watchlistEintragAusMeta(auswahl.meta, auswahl.isin)
+      if (findeWatchlistIdx(eintraege, { isin: neu.isin, symbol: neu.symbolYahoo }) >= 0) {
+        setHinzufuegenFehler('Diese Aktie ist bereits auf der Watchlist.')
         return
       }
-      const assetType = metaEintrag.assetType?.toLowerCase() ?? ''
-      if (assetType.includes('etf') || assetType.includes('fund')) {
-        setHinzufuegenFehler('ETFs/Fonds eignen sich nicht für Macrotrends-Fundamentaldaten.')
-        return
+      setHinzufuegenLaden(true)
+      try {
+        const next = fuegeZurWatchlistHinzu(neu)
+        setEintraege(next)
+        setSelectedIdx(0)
+        router.replace(watchlistHref({ isin: neu.isin, symbol: neu.symbolYahoo }), { scroll: false })
+      } finally {
+        setHinzufuegenLaden(false)
       }
-      const neu: WatchlistEintrag = {
-        isin,
-        name: metaEintrag.name,
-        symbolYahoo: metaEintrag.symbolYahoo,
-        symbolCandidates: metaEintrag.symbolCandidates,
-        hinzugefuegtAm: new Date().toISOString(),
-      }
-      const next = fuegeZurWatchlistHinzu(neu)
-      setEintraege(next)
-      setIsinInput('')
-      setSelectedIdx(0)
-      router.replace(watchlistHref({ isin }), { scroll: false })
-    } catch {
-      setHinzufuegenFehler('Abfrage fehlgeschlagen — später erneut versuchen.')
-    } finally {
-      setHinzufuegenLaden(false)
-    }
-  }
+    },
+    [eintraege, router],
+  )
 
-  function onEntfernen(isin: string) {
-    const next = entferneAusWatchlist(isin)
+  function onEntfernen(e: WatchlistEintrag) {
+    const next = entferneAusWatchlist(watchlistSchluessel(e))
     setEintraege(next)
     if (selectedIdx >= next.length) {
       setSelectedIdx(Math.max(0, next.length - 1))
@@ -133,32 +111,14 @@ export function PortfolioWatchlistClient() {
             <p className="mt-0.5 text-[11px] text-zinc-500">{eintraege.length} Eintrag(e)</p>
           </div>
 
-          <form onSubmit={(ev) => void onHinzufuegen(ev)} className="border-b border-white/[0.04] p-4">
-            <label className="mb-1 block text-[11px] font-medium uppercase tracking-wide text-zinc-500">
-              ISIN hinzufügen
-            </label>
-            <div className="flex gap-2">
-              <input
-                value={isinInput}
-                onChange={(ev) => setIsinInput(ev.target.value.toUpperCase())}
-                placeholder="US0378331005"
-                maxLength={12}
-                className="min-w-0 flex-1 rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 font-mono text-sm text-zinc-100"
-              />
-              <button
-                type="submit"
-                disabled={hinzufuegenLaden}
-                className="shrink-0 rounded-lg bg-teal-600/90 px-3 py-2 text-sm font-medium text-white hover:bg-teal-500 disabled:opacity-50"
-              >
-                +
-              </button>
-            </div>
-            {hinzufuegenFehler ? (
-              <p className="mt-2 text-[11px] text-amber-400/90">{hinzufuegenFehler}</p>
-            ) : (
-              <p className="mt-2 text-[10px] text-zinc-600">Nur Einzelaktien · Daten lokal gespeichert</p>
-            )}
-          </form>
+          <div className="border-b border-white/[0.04] p-4">
+            <PaAktienSucheInput
+              onAuswahl={hinzufuegen}
+              laden={hinzufuegenLaden}
+              fehler={hinzufuegenFehler}
+              onFehler={setHinzufuegenFehler}
+            />
+          </div>
 
           {eintraege.length === 0 ? (
             <p className="px-4 py-8 text-center text-sm text-zinc-500">
@@ -167,7 +127,7 @@ export function PortfolioWatchlistClient() {
           ) : (
             <ul className="max-h-[28rem] divide-y divide-white/[0.04] overflow-y-auto">
               {eintraege.map((e, i) => (
-                <li key={e.isin}>
+                <li key={watchlistSchluessel(e)}>
                   <div
                     className={`flex items-center gap-2 px-3 py-2.5 ${selectedIdx === i ? 'bg-teal-500/10' : 'hover:bg-white/[0.02]'}`}
                   >
@@ -179,13 +139,15 @@ export function PortfolioWatchlistClient() {
                       <PortfolioIsinLogo isin={e.isin} fallbackName={e.name} meta={meta} groesse="sm" />
                       <div className="min-w-0">
                         <p className="truncate text-sm font-medium text-zinc-100">{e.name}</p>
-                        <p className="font-mono text-[10px] text-zinc-500">{e.isin}</p>
+                        <p className="truncate text-[10px] text-zinc-500">
+                          {e.isin ?? e.symbolYahoo ?? '—'}
+                        </p>
                       </div>
                     </button>
                     <button
                       type="button"
                       title="Entfernen"
-                      onClick={() => onEntfernen(e.isin)}
+                      onClick={() => onEntfernen(e)}
                       className="shrink-0 rounded p-1.5 text-zinc-600 hover:bg-rose-500/10 hover:text-rose-400"
                     >
                       <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
@@ -199,7 +161,10 @@ export function PortfolioWatchlistClient() {
           )}
         </PaCard>
 
-        <PaFundamentalInhalt anfrage={anfrage} selectionKey={selected?.isin} />
+        <PaFundamentalInhalt
+          anfrage={anfrage}
+          selectionKey={selected ? watchlistSchluessel(selected) : undefined}
+        />
       </div>
     </PortfolioAnalyseShell>
   )

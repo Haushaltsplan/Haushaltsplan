@@ -52,7 +52,7 @@ export function PortfolioFundamentaldatenClient() {
       })
 
     const watchlist: FundamentalKandidat[] = ladeWatchlist()
-      .filter((w) => !depotIsins.has(w.isin))
+      .filter((w) => !w.isin || !depotIsins.has(w.isin.toUpperCase()))
       .map((w) => ({
         isin: w.isin,
         name: w.name,
@@ -154,7 +154,7 @@ export function PortfolioFundamentaldatenClient() {
                     .map((p, i) => ({ p, i }))
                     .filter(({ p }) => p.quelle === 'watchlist')
                     .map(({ p, i }) => (
-                      <option key={`watch-${p.isin}-${i}`} value={i}>
+                      <option key={`watch-${p.isin ?? p.symbolYahoo ?? p.name}-${i}`} value={i}>
                         {p.name}
                         {p.symbolYahoo ? ` (${p.symbolYahoo})` : ''}
                       </option>

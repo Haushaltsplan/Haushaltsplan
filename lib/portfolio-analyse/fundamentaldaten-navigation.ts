@@ -24,10 +24,12 @@ export function fundamentaldatenHref(opts: {
   return q ? `${FUNDAMENTALDATEN_PFAD}?${q}` : FUNDAMENTALDATEN_PFAD
 }
 
-export function watchlistHref(opts: { isin?: string | null } = {}): string {
+export function watchlistHref(opts: { isin?: string | null; symbol?: string | null } = {}): string {
   const isin = opts.isin?.trim().toUpperCase()
-  if (!isin) return WATCHLIST_PFAD
-  return `${WATCHLIST_PFAD}?isin=${encodeURIComponent(isin)}`
+  if (isin) return `${WATCHLIST_PFAD}?isin=${encodeURIComponent(isin)}`
+  const symbol = opts.symbol?.trim()
+  if (symbol) return `${WATCHLIST_PFAD}?symbol=${encodeURIComponent(symbol)}`
+  return WATCHLIST_PFAD
 }
 
 export function findeFundamentalPositionIdx(
