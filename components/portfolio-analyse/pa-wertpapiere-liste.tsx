@@ -1,5 +1,6 @@
 'use client'
 
+import { useRouter } from 'next/navigation'
 import { useMemo, useState } from 'react'
 import { PortfolioIsinLogo } from '@/components/portfolio-analyse/isin-logo'
 import { PaCard } from '@/components/portfolio-analyse/pa-ui'
@@ -11,6 +12,7 @@ import {
 import { formatEur, formatProzent } from '@/lib/portfolio-analyse/berechnung'
 import type { LivePosition } from '@/lib/portfolio-analyse/live-bewertung'
 import type { IsinMetadata } from '@/lib/portfolio-analyse/isin-lookup-server'
+import { fundamentaldatenHref } from '@/lib/portfolio-analyse/fundamentaldaten-navigation'
 import type { AssetKlasse, PortfolioBuchung } from '@/lib/portfolio-analyse/types'
 
 function assetZeileLabel(klasse: AssetKlasse): string {
@@ -47,7 +49,8 @@ function CopyIsinButton({ isin }: { isin: string }) {
     <button
       type="button"
       title="ISIN kopieren"
-      onClick={() => {
+      onClick={(e) => {
+        e.stopPropagation()
         void navigator.clipboard.writeText(isin).then(() => {
           setOk(true)
           setTimeout(() => setOk(false), 1500)
@@ -73,11 +76,13 @@ function WertpapierZeile({
   meta,
   dividendenEur,
   kaufVolumenEur,
+  onOeffnen,
 }: {
   p: LivePosition
   meta: Map<string, IsinMetadata>
   dividendenEur: number
   kaufVolumenEur: number
+  onOeffnen?: () => void
 }) {
   const isin = p.isin?.toUpperCase() ?? ''
   const kurs = p.kursLiveEur ?? p.kursEur
@@ -88,7 +93,23 @@ function WertpapierZeile({
   const divPct = dividendenRenditeProzentParqet(dividendenEur, kaufVolumenEur, p.einstandEur)
 
   return (
-    <tr className="border-b border-white/[0.04] last:border-0 hover:bg-white/[0.02]">
+    <tr
+      className={`border-b border-white/[0.04] last:border-0 ${onOeffnen ? 'cursor-pointer hover:bg-white/[0.04]' : 'hover:bg-white/[0.02]'}`}
+      onClick={onOeffnen}
+      onKeyDown={
+        onOeffnen
+          ? (e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault()
+                onOeffnen()
+              }
+            }
+          : undefined
+      }
+      tabIndex={onOeffnen ? 0 : undefined}
+      role={onOeffnen ? 'link' : undefined}
+      aria-label={onOeffnen ? `${p.anzeigeName} — Fundamentaldaten öffnen` : undefined}
+    >
       <td className="py-4 pl-4 pr-3 sm:pl-5">
         <div className="flex gap-3">
           <PortfolioIsinLogo isin={p.isin} fallbackName={p.name} meta={meta} groesse="md" />
@@ -184,6 +205,7 @@ export function PaWertpapiereListe({
   meta: Map<string, IsinMetadata>
   laden?: boolean
 }) {
+  const router = useRouter()
   const [offen, setOffen] = useState(true)
 
   const sortiert = useMemo(
@@ -254,15 +276,22 @@ export function PaWertpapiereListe({
               </tr>
             </thead>
             <tbody>
-              {sortiert.map((p) => (
-                <WertpapierZeile
-                  key={p.isin ?? p.name}
-                  p={p}
-                  meta={meta}
-                  dividendenEur={p.isin ? (divMap.get(p.isin.toUpperCase()) ?? 0) : 0}
-                  kaufVolumenEur={p.isin ? (kaufVolMap.get(p.isin.toUpperCase()) ?? 0) : 0}
-                />
-              ))}
+              {sortiert.map((p) => {
+                const fundamentalHref =
+                  p.assetKlasse === 'aktie' && p.isin
+                    ? fundamentaldatenHref({ isin: p.isin })
+                    : null
+                return (
+                  <WertpapierZeile
+                    key={p.isin ?? p.name}
+                    p={p}
+                    meta={meta}
+                    dividendenEur={p.isin ? (divMap.get(p.isin.toUpperCase()) ?? 0) : 0}
+                    kaufVolumenEur={p.isin ? (kaufVolMap.get(p.isin.toUpperCase()) ?? 0) : 0}
+                    onOeffnen={fundamentalHref ? () => router.push(fundamentalHref) : undefined}
+                  />
+                )
+              })}
             </tbody>
           </table>
         </div>

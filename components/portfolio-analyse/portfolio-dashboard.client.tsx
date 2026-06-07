@@ -1,6 +1,7 @@
 'use client'
 
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { useMemo, useState } from 'react'
 import { PortfolioIsinLogo } from '@/components/portfolio-analyse/isin-logo'
 import { usePortfolioAnalyse } from '@/components/portfolio-analyse/pa-data-provider'
@@ -14,6 +15,7 @@ import {
   sortiereBuchungenNeuesteZuerst,
 } from '@/lib/portfolio-analyse/berechnung'
 import { anzeigeNameFuerIsin } from '@/lib/portfolio-analyse/isin-metadata-client'
+import { fundamentaldatenHref } from '@/lib/portfolio-analyse/fundamentaldaten-navigation'
 import { depotwertVorBoersenbeginn } from '@/lib/portfolio-analyse/live-bewertung'
 import { berechneParqetPeriodKennzahlen } from '@/lib/portfolio-analyse/parqet-period-kennzahlen'
 import { heuteIso } from '@/lib/portfolio-analyse/wertentwicklung-tage'
@@ -29,6 +31,7 @@ function badgeVariant(typ: BuchungsTyp): 'buy' | 'sell' | 'dividend' | 'neutral'
 }
 
 export function PortfolioDashboardClient() {
+  const router = useRouter()
   const { live, liveLaden, kursFehler, buchungen, meta, report, hatDaten, laden } =
     usePortfolioAnalyse()
   const [periodKey, setPeriodKey] = useState<PeriodPerformance['periodKey']>('MAX')
@@ -192,8 +195,28 @@ export function PortfolioDashboardClient() {
             {topMover.length === 0 ? (
               <li className="px-5 py-8 text-center text-sm text-zinc-500">Keine Live-Performance.</li>
             ) : (
-              topMover.map((p) => (
-                <li key={p.isin ?? p.name} className="flex flex-col gap-2 px-4 py-3 sm:flex-row sm:items-center">
+              topMover.map((p) => {
+                const fundamentalHref =
+                  p.assetKlasse === 'aktie' && p.isin ? fundamentaldatenHref({ isin: p.isin }) : null
+                return (
+                <li
+                  key={p.isin ?? p.name}
+                  className={`flex flex-col gap-2 px-4 py-3 sm:flex-row sm:items-center ${fundamentalHref ? 'cursor-pointer hover:bg-white/[0.03]' : ''}`}
+                  onClick={fundamentalHref ? () => router.push(fundamentalHref) : undefined}
+                  onKeyDown={
+                    fundamentalHref
+                      ? (e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault()
+                            router.push(fundamentalHref)
+                          }
+                        }
+                      : undefined
+                  }
+                  tabIndex={fundamentalHref ? 0 : undefined}
+                  role={fundamentalHref ? 'link' : undefined}
+                  aria-label={fundamentalHref ? `${p.anzeigeName} — Fundamentaldaten` : undefined}
+                >
                   <div className="flex min-w-0 flex-1 items-center gap-3">
                     <PortfolioIsinLogo isin={p.isin} fallbackName={p.name} meta={meta} groesse="sm" />
                     <div className="min-w-0 flex-1">
@@ -209,7 +232,7 @@ export function PortfolioDashboardClient() {
                     </PaBadge>
                   </div>
                 </li>
-              ))
+              )})
             )}
           </ul>
         </PaCard>

@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import { chartHoverFromClientX } from '@/components/portfolio-analyse/chart-hover'
 import { formatDatumDe } from '@/lib/portfolio-analyse/berechnung'
 
@@ -61,6 +61,37 @@ function kursrenditePct(punkte: KursPunkt[]): number | null {
   return ((end - start) / start) * 100
 }
 
+function nicePriceStep(span: number): number {
+  if (span <= 4) return 1
+  if (span <= 12) return 2
+  if (span <= 30) return 5
+  if (span <= 80) return 10
+  if (span <= 200) return 25
+  if (span <= 500) return 50
+  if (span <= 1200) return 100
+  return 250
+}
+
+function formatYAxisUsd(price: number): string {
+  const abs = Math.abs(price)
+  if (abs >= 1000) return `$${(price / 1000).toLocaleString('de-DE', { maximumFractionDigits: 1 })}k`
+  if (abs >= 100) return `$${Math.round(price)}`
+  return `$${price.toLocaleString('de-DE', { maximumFractionDigits: abs >= 10 ? 1 : 2 })}`
+}
+
+function formatXAxisDatum(datum: string): string {
+  const d = new Date(`${datum}T12:00:00`)
+  return d.toLocaleDateString('de-DE', { month: 'short', year: '2-digit' })
+}
+
+function ySkalaKurs(werte: number[]): { yMin: number; yMax: number } {
+  const minV = Math.min(...werte)
+  const maxV = Math.max(...werte)
+  const span = maxV - minV || maxV * 0.05 || 1
+  const pad = Math.max(span * 0.06, maxV * 0.01)
+  return { yMin: minV - pad, yMax: maxV + pad }
+}
+
 export function PaFundamentalKursChart({
   symbolYahoo,
   ticker,
@@ -72,10 +103,10 @@ export function PaFundamentalKursChart({
   firmenname: string
   kompakt?: boolean
 }) {
+  const areaGradId = useId()
   const [zeitraum, setZeitraum] = useState<KursZeitraum>('1yr')
   const [punkte, setPunkte] = useState<KursPunkt[]>([])
   const [laden, setLaden] = useState(false)
-  const [linie, setLinie] = useState(true)
   const [range, setRange] = useState<[number, number]>([0, 100])
   const containerRef = useRef<HTMLDivElement>(null)
   const [hoverIndex, setHoverIndex] = useState<number | null>(null)
@@ -126,40 +157,73 @@ export function PaFundamentalKursChart({
 
   const rendite = useMemo(() => kursrenditePct(gefiltert.length >= 2 ? gefiltert : punkte), [gefiltert, punkte])
 
-  const hoehe = kompakt ? 220 : 320
-  const padLinks = 52
-  const padRechts = 16
-  const padOben = 24
-  const padUnten = 36
+  const hoehe = kompakt ? 268 : 360
+  const padLinks = 12
+  const padRechts = 54
+  const padOben = kompakt ? 16 : 24
+  const padUnten = kompakt ? 40 : 44
   const plotW = VIEW_W - padLinks - padRechts
   const plotH = hoehe - padOben - padUnten
 
-  const { path, minY, maxY, plotPts } = useMemo(() => {
+  const { linePath, areaPath, yTicks, xLabels, plotPts, yMin, yMax, letzterKurs } = useMemo(() => {
     if (gefiltert.length === 0) {
-      return { path: '', minY: 0, maxY: 1, plotPts: [] as { x: number; y: number; p: KursPunkt }[] }
+      return {
+        linePath: '',
+        areaPath: '',
+        yTicks: [] as number[],
+        xLabels: [] as { x: number; label: string }[],
+        plotPts: [] as { x: number; y: number; p: KursPunkt }[],
+        yMin: 0,
+        yMax: 1,
+        letzterKurs: null as number | null,
+      }
     }
+
     const werte = gefiltert.map((p) => p.kurs)
-    const minV = Math.min(...werte)
-    const maxV = Math.max(...werte)
-    const span = maxV - minV || 1
+    const skala = ySkalaKurs(werte)
+    const yMin = skala.yMin
+    const yMax = skala.yMax
+    const span = yMax - yMin || 1
+    const n = gefiltert.length
+
     const pts = gefiltert.map((p, i) => {
-      const x = padLinks + (plotW * i) / Math.max(1, gefiltert.length - 1)
-      const y = padOben + plotH - ((p.kurs - minV) / span) * plotH
+      const x = padLinks + (plotW * i) / Math.max(1, n - 1)
+      const y = padOben + ((yMax - p.kurs) / span) * plotH
       return { x, y, p }
     })
-    const d = linie
-      ? pts.map((pt, i) => `${i === 0 ? 'M' : 'L'} ${pt.x.toFixed(1)} ${pt.y.toFixed(1)}`).join(' ')
-      : pts
-          .map((pt, i) => {
-            const prev = pts[i - 1]
-            if (!prev) return `M ${pt.x.toFixed(1)} ${pt.y.toFixed(1)}`
-            const body = Math.abs(pt.y - prev.y) * 0.35
-            const top = Math.min(pt.y, prev.y)
-            return `M ${prev.x.toFixed(1)} ${prev.y.toFixed(1)} L ${pt.x.toFixed(1)} ${prev.y.toFixed(1)} L ${pt.x.toFixed(1)} ${pt.y.toFixed(1)} M ${pt.x.toFixed(1)} ${top.toFixed(1)} v ${body.toFixed(1)}`
-          })
-          .join(' ')
-    return { path: d, minY: minV, maxY: maxV, plotPts: pts }
-  }, [gefiltert, linie, padLinks, plotH, plotW, padOben])
+
+    const line = pts.map((pt, i) => `${i === 0 ? 'M' : 'L'} ${pt.x.toFixed(1)} ${pt.y.toFixed(1)}`).join(' ')
+    const baseY = padOben + plotH
+    const area = `${line} L ${pts[pts.length - 1].x.toFixed(1)} ${baseY.toFixed(1)} L ${pts[0].x.toFixed(1)} ${baseY.toFixed(1)} Z`
+
+    const step = nicePriceStep(span)
+    const ticks: number[] = []
+    const start = Math.floor(yMin / step) * step
+    for (let t = start; t <= yMax + step * 0.01; t += step) ticks.push(t)
+    ticks.sort((a, b) => b - a)
+
+    const labelCount = kompakt ? 5 : 6
+    const labelStep = Math.max(1, Math.ceil(n / labelCount))
+    const labels: { x: number; label: string }[] = []
+    for (let i = 0; i < n; i += labelStep) {
+      labels.push({ x: pts[i].x, label: formatXAxisDatum(gefiltert[i].datum) })
+    }
+    const lastIdx = n - 1
+    if (lastIdx % labelStep !== 0) {
+      labels.push({ x: pts[lastIdx].x, label: formatXAxisDatum(gefiltert[lastIdx].datum) })
+    }
+
+    return {
+      linePath: line,
+      areaPath: area,
+      yTicks: ticks,
+      xLabels: labels,
+      plotPts: pts,
+      yMin,
+      yMax,
+      letzterKurs: gefiltert[gefiltert.length - 1]?.kurs ?? null,
+    }
+  }, [gefiltert, kompakt, padLinks, padOben, plotH, plotW])
 
   const onMove = useCallback(
     (clientX: number) => {
@@ -181,22 +245,47 @@ export function PaFundamentalKursChart({
 
   const hover = hoverIndex != null ? plotPts[hoverIndex] : null
   const zeitraumLabel = ZEITRAUM_OPTIONS.find((z) => z.id === zeitraum)?.label ?? zeitraum
+  const angezeigterKurs = hover?.p.kurs ?? letzterKurs
 
   return (
-    <div className={kompakt ? 'flex h-full flex-col' : 'flex min-h-[420px] flex-col overflow-hidden rounded-xl border border-zinc-800/80 bg-zinc-950/70 ring-1 ring-white/[0.03]'}>
-      <div className={`border-b border-zinc-800/60 ${kompakt ? 'px-3 py-2' : 'px-4 py-3'}`}>
+    <div
+      className={
+        kompakt
+          ? 'flex h-full min-h-[320px] flex-col'
+          : 'flex min-h-[420px] flex-col overflow-hidden rounded-xl border border-zinc-800/80 bg-zinc-950/70 ring-1 ring-white/[0.03]'
+      }
+    >
+      <div className={`border-b border-zinc-800/60 ${kompakt ? 'px-3 py-2.5' : 'px-4 py-3'}`}>
         <div className="flex flex-wrap items-start justify-between gap-2">
-          <div>
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="text-sm font-bold tabular-nums text-zinc-100">{ticker}</span>
-              <span className="text-sm text-zinc-400">{firmenname}</span>
-            </div>
-            {rendite != null ? (
-              <p className={`mt-1 text-xs font-medium ${rendite >= 0 ? 'text-emerald-400/90' : 'text-rose-400/90'}`}>
-                {rendite >= 0 ? '+' : ''}
-                {rendite.toLocaleString('de-DE', { maximumFractionDigits: 1 })} % Kursrendite · {zeitraumLabel}
-              </p>
-            ) : null}
+          <div className="min-w-0">
+            {kompakt ? (
+              <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+                {angezeigterKurs != null ? (
+                  <span className="text-lg font-semibold tabular-nums text-zinc-50">
+                    {angezeigterKurs.toLocaleString('de-DE', { maximumFractionDigits: 2 })} $
+                  </span>
+                ) : null}
+                {rendite != null ? (
+                  <span className={`text-xs font-medium ${rendite >= 0 ? 'text-emerald-400/90' : 'text-rose-400/90'}`}>
+                    {rendite >= 0 ? '+' : ''}
+                    {rendite.toLocaleString('de-DE', { maximumFractionDigits: 1 })} % · {zeitraumLabel}
+                  </span>
+                ) : null}
+              </div>
+            ) : (
+              <>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-sm font-bold tabular-nums text-zinc-100">{ticker}</span>
+                  <span className="text-sm text-zinc-400">{firmenname}</span>
+                </div>
+                {rendite != null ? (
+                  <p className={`mt-1 text-xs font-medium ${rendite >= 0 ? 'text-emerald-400/90' : 'text-rose-400/90'}`}>
+                    {rendite >= 0 ? '+' : ''}
+                    {rendite.toLocaleString('de-DE', { maximumFractionDigits: 1 })} % Kursrendite · {zeitraumLabel}
+                  </p>
+                ) : null}
+              </>
+            )}
           </div>
           <div className="flex flex-wrap gap-0.5">
             {ZEITRAUM_OPTIONS.map((z) => (
@@ -219,7 +308,7 @@ export function PaFundamentalKursChart({
 
       <div
         ref={containerRef}
-        className="relative flex-1 w-full overflow-hidden px-2"
+        className="relative min-h-0 flex-1 w-full cursor-crosshair overflow-hidden px-1"
         onMouseMove={(e) => onMove(e.clientX)}
         onMouseLeave={() => setHoverIndex(null)}
       >
@@ -228,30 +317,86 @@ export function PaFundamentalKursChart({
         ) : gefiltert.length === 0 ? (
           <p className="py-16 text-center text-xs text-zinc-500">Kein Kursverlauf verfügbar.</p>
         ) : (
-          <svg viewBox={`0 0 ${VIEW_W} ${hoehe}`} className="w-full" role="img">
-            <line x1={padLinks} y1={padOben + plotH} x2={VIEW_W - padRechts} y2={padOben + plotH} stroke="#3f3f46" />
-            <text x={padLinks - 6} y={padOben + 4} textAnchor="end" fill="#71717a" style={{ fontSize: 10 }}>
-              {maxY.toLocaleString('de-DE', { maximumFractionDigits: 0 })}
-            </text>
-            <text x={padLinks - 6} y={padOben + plotH} textAnchor="end" fill="#71717a" style={{ fontSize: 10 }}>
-              {minY.toLocaleString('de-DE', { maximumFractionDigits: 0 })}
-            </text>
-            {linie ? (
-              <path d={path} fill="none" stroke={TIKR_ACCENT} strokeWidth={2} strokeLinejoin="round" />
-            ) : (
-              <path d={path} fill="none" stroke={TIKR_ACCENT} strokeWidth={1.5} />
-            )}
-            {plotPts.map((pt, i) => (
-              <circle key={i} cx={pt.x} cy={pt.y} r={hoverIndex === i ? 4 : 0} fill={TIKR_ACCENT} />
-            ))}
+          <svg
+            width="100%"
+            height={hoehe}
+            viewBox={`0 0 ${VIEW_W} ${hoehe}`}
+            preserveAspectRatio="xMidYMid meet"
+            className="block w-full select-none"
+            role="img"
+            aria-label={`Kursverlauf ${ticker}`}
+          >
+            <defs>
+              <linearGradient id={areaGradId} x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor={TIKR_ACCENT} stopOpacity={0.28} />
+                <stop offset="100%" stopColor={TIKR_ACCENT} stopOpacity={0} />
+              </linearGradient>
+            </defs>
+
+            {yTicks.map((tick) => {
+              const span = yMax - yMin || 1
+              const y = padOben + ((yMax - tick) / span) * plotH
+              return (
+                <g key={tick}>
+                  <line
+                    x1={padLinks}
+                    y1={y}
+                    x2={VIEW_W - padRechts}
+                    y2={y}
+                    stroke="#27272a"
+                    strokeWidth={1}
+                  />
+                  <text
+                    x={VIEW_W - padRechts + 6}
+                    y={y + 3}
+                    textAnchor="start"
+                    className="fill-zinc-500"
+                    style={{ fontSize: kompakt ? 9 : 10 }}
+                  >
+                    {formatYAxisUsd(tick)}
+                  </text>
+                </g>
+              )
+            })}
+
+            <line
+              x1={padLinks}
+              y1={padOben + plotH}
+              x2={VIEW_W - padRechts}
+              y2={padOben + plotH}
+              stroke="#3f3f46"
+              strokeWidth={1}
+            />
+
+            <path d={areaPath} fill={`url(#${areaGradId})`} />
+            <path d={linePath} fill="none" stroke={TIKR_ACCENT} strokeWidth={2.25} strokeLinejoin="round" />
+
             {hover ? (
               <>
-                <line x1={hover.x} y1={padOben} x2={hover.x} y2={padOben + plotH} stroke="#52525b" strokeDasharray="4 3" />
-                <text x={hover.x} y={padOben - 6} textAnchor="middle" fill="#fbbf24" style={{ fontSize: 10 }}>
-                  {hover.p.kurs.toLocaleString('de-DE', { maximumFractionDigits: 2 })}
-                </text>
+                <line
+                  x1={hover.x}
+                  y1={padOben}
+                  x2={hover.x}
+                  y2={padOben + plotH}
+                  stroke="#52525b"
+                  strokeDasharray="4 3"
+                />
+                <circle cx={hover.x} cy={hover.y} r={4} fill={TIKR_ACCENT} stroke="#18181b" strokeWidth={1.5} />
               </>
             ) : null}
+
+            {xLabels.map((l, i) => (
+              <text
+                key={`${l.label}-${i}`}
+                x={l.x}
+                y={hoehe - 8}
+                textAnchor="middle"
+                className="fill-zinc-500"
+                style={{ fontSize: kompakt ? 9 : 10 }}
+              >
+                {l.label}
+              </text>
+            ))}
           </svg>
         )}
       </div>
@@ -279,22 +424,12 @@ export function PaFundamentalKursChart({
         </div>
       ) : null}
 
-      {!kompakt ? (
-      <div className="flex flex-wrap items-center gap-3 border-t border-zinc-800/50 px-4 py-2 text-[10px] text-zinc-500">
-        <label className="flex cursor-pointer items-center gap-1.5">
-          <input type="checkbox" checked={linie} onChange={(e) => setLinie(e.target.checked)} className="accent-amber-500" />
-          Linienchart
-        </label>
-        {hover ? (
-          <span>
-            {formatDatumDe(hover.p.datum)} · {hover.p.kurs.toLocaleString('de-DE', { maximumFractionDigits: 2 })} $
-          </span>
-        ) : null}
-      </div>
-      ) : hover ? (
-        <div className="border-t border-zinc-800/50 px-3 py-1 text-[10px] text-zinc-500">
+      {hover ? (
+        <div className={`border-t border-zinc-800/50 text-[10px] text-zinc-500 ${kompakt ? 'px-3 py-1.5' : 'px-4 py-2'}`}>
           {formatDatumDe(hover.p.datum)} · {hover.p.kurs.toLocaleString('de-DE', { maximumFractionDigits: 2 })} $
         </div>
+      ) : kompakt ? (
+        <div className="border-t border-zinc-800/50 px-3 py-1.5 text-[10px] text-zinc-600">USD · Yahoo Finance</div>
       ) : null}
     </div>
   )

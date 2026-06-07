@@ -23,6 +23,7 @@ import {
   loeseMacrotrendsIdent,
   macrotrendsTickerAusSymbol,
   type MacrotrendsIdent,
+  type MacrotrendsIdentOpts,
 } from '@/lib/portfolio-analyse/macrotrends-scraper-server'
 import { holeYahooFinanceAuth } from '@/lib/portfolio-analyse/yahoo-finance-auth-server'
 
@@ -45,29 +46,41 @@ function symboleAusAnfrage(anfrage: FundamentaldatenAnfrage): string[] {
   return [...out]
 }
 
+function macrotrendsOptsAusAnfrage(
+  anfrage: FundamentaldatenAnfrage,
+  erwarteterTicker: string,
+): MacrotrendsIdentOpts {
+  const k = isinKenntnis(anfrage.isin?.trim().toUpperCase())
+  return {
+    erwarteterTicker: erwarteterTicker.trim().toUpperCase(),
+    firmenname: anfrage.name?.trim() || k?.name?.trim(),
+    slug: k?.macrotrendsSlug,
+  }
+}
+
 async function loeseIdent(anfrage: FundamentaldatenAnfrage): Promise<{
   ident: MacrotrendsIdent | null
   symbolYahoo: string | null
 }> {
   const symbole = symboleAusAnfrage(anfrage)
   const symbolYahoo = symbole[0] ?? anfrage.symbolYahoo ?? null
+  const k = isinKenntnis(anfrage.isin?.trim().toUpperCase())
+  const firmenname = anfrage.name?.trim() || k?.name?.trim()
 
   if (anfrage.tickerOverride?.trim()) {
     const t = anfrage.tickerOverride.trim().toUpperCase()
-    const ident =
-      (await loeseMacrotrendsIdent(t, anfrage.name)) ??
-      ({ ticker: t, slug: t.toLowerCase(), firmenname: anfrage.name ?? t } satisfies MacrotrendsIdent)
+    const ident = await loeseMacrotrendsIdent(t, macrotrendsOptsAusAnfrage(anfrage, t))
     return { ident, symbolYahoo }
   }
 
   for (const sym of symbole) {
     const ticker = macrotrendsTickerAusSymbol(sym)
-    const ident = await loeseMacrotrendsIdent(ticker, anfrage.name)
+    const ident = await loeseMacrotrendsIdent(ticker, macrotrendsOptsAusAnfrage(anfrage, ticker))
     if (ident) return { ident, symbolYahoo: sym }
   }
 
-  if (anfrage.name?.trim()) {
-    const ident = await loeseMacrotrendsIdent(anfrage.name.trim())
+  if (firmenname) {
+    const ident = await loeseMacrotrendsIdent(firmenname, { firmenname })
     if (ident) return { ident, symbolYahoo }
   }
 

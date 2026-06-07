@@ -1,5 +1,6 @@
 'use client'
 
+import { useRouter, useSearchParams } from 'next/navigation'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { PaFundamentalNews } from '@/components/portfolio-analyse/pa-fundamental-news'
 import { PaFundamentalUebersicht } from '@/components/portfolio-analyse/pa-fundamental-uebersicht'
@@ -14,6 +15,10 @@ import {
   ladeFundamentaldatenClient,
 } from '@/lib/portfolio-analyse/fundamentaldaten-client'
 import type { FundamentaldatenPaket } from '@/lib/portfolio-analyse/fundamentaldaten-types'
+import {
+  findeFundamentalPositionIdx,
+  fundamentaldatenHref,
+} from '@/lib/portfolio-analyse/fundamentaldaten-navigation'
 import { isinKenntnis } from '@/lib/portfolio-analyse/isin-kenntnisse'
 
 type DepotPosition = {
@@ -33,6 +38,10 @@ const UNTER_TABS = [
 ]
 
 export function PortfolioFundamentaldatenClient() {
+  const router = useRouter()
+  const searchParams = useSearchParams()
+  const isinParam = searchParams.get('isin')
+  const symbolParam = searchParams.get('symbol')
   const { live, meta, hatDaten, laden: paLaden } = usePortfolioAnalyse()
   const [unterTab, setUnterTab] = useState<(typeof UNTER_TABS)[number]['id']>('uebersicht')
   const [selectedIdx, setSelectedIdx] = useState(0)
@@ -61,6 +70,22 @@ export function PortfolioFundamentaldatenClient() {
   }, [live?.positionen, meta])
 
   const selected = positionen[selectedIdx] ?? null
+
+  useEffect(() => {
+    if (positionen.length === 0 || (!isinParam && !symbolParam)) return
+    const idx = findeFundamentalPositionIdx(positionen, { isin: isinParam, symbol: symbolParam })
+    if (idx >= 0) setSelectedIdx(idx)
+  }, [positionen, isinParam, symbolParam])
+
+  const waehlePosition = useCallback(
+    (idx: number) => {
+      setSelectedIdx(idx)
+      const p = positionen[idx]
+      if (!p) return
+      router.replace(fundamentaldatenHref({ isin: p.isin, symbol: p.symbolYahoo }), { scroll: false })
+    },
+    [positionen, router],
+  )
 
   const anfrage = useMemo(
     () =>
@@ -144,7 +169,7 @@ export function PortfolioFundamentaldatenClient() {
             </label>
             <select
               value={selectedIdx}
-              onChange={(e) => setSelectedIdx(Number(e.target.value))}
+              onChange={(e) => waehlePosition(Number(e.target.value))}
               className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100"
             >
               {positionen.map((p, i) => (

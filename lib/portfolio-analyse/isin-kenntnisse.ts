@@ -21,6 +21,8 @@ export type IsinKenntnis = {
   kursFallbackEur?: number
   /** DivvyDiary-URL-Slug ohne ISIN-Suffix (z. B. mensch-und-maschine-software-aktie). */
   divvydiarySlug?: string
+  /** Macrotrends-URL-Slug (z. B. mastercard) — wichtig bei kurzen Tickern (MA, V). */
+  macrotrendsSlug?: string
 }
 
 function eintrag(
@@ -89,17 +91,17 @@ export const ISIN_KENNTNISSE: Record<string, IsinKenntnis> = {
 
   // --- mit Klammern: Umrechnung ---
   US02079K1079: usd('GOOG', "Alphabet 'C'", { divvydiarySlug: 'alphabet-aktie' }),
-  US57636Q1040: usd('MA', 'Mastercard', { divvydiarySlug: 'mastercard-aktie' }),
+  US57636Q1040: usd('MA', 'Mastercard', { divvydiarySlug: 'mastercard-aktie', macrotrendsSlug: 'mastercard' }),
   US78409V1044: usd('SPGI', 'S&P Global', { divvydiarySlug: 'sp-global-aktie' }),
   US5949181045: usd('MSFT', 'Microsoft', { divvydiarySlug: 'microsoft-aktie' }),
   US55354G1004: usd('MSCI', 'MSCI'),
   US91324P1021: usd('UNH', 'UnitedHealth', { divvydiarySlug: 'unitedhealth-aktie' }),
   US8835561023: usd('TMO', 'Thermo Fisher Scientific'),
-  US92826C8394: usd('V', 'Visa'),
+  US92826C8394: usd('V', 'Visa', { macrotrendsSlug: 'visa' }),
   US81762P1021: usd('NOW', 'ServiceNow'),
   US7611521078: usd('RMD', 'Resmed', { divvydiarySlug: 'resmed-aktie' }),
   US6795801009: usd('ODFL', 'Old Dominion Freight Line'),
-  US94106L1098: usd('WM', 'Waste Management'),
+  US94106L1098: usd('WM', 'Waste Management', { macrotrendsSlug: 'waste-management' }),
   US9078181081: usd('UNP', 'Union Pacific'),
   US98978V1035: usd('ZTS', 'Zoetis'),
   US5801351017: usd('MCD', "McDonald's"),
@@ -110,7 +112,7 @@ export const ISIN_KENNTNISSE: Record<string, IsinKenntnis> = {
   CH0418792922: chf('SIKA.SW', 'Sika'),
   US9224751084: usd('VEEV', 'Veeva Systems'),
   US49714P1084: usd('KNSL', 'Kinsale Capital'),
-  US4370761029: usd('HD', 'The Home Depot'),
+  US4370761029: usd('HD', 'The Home Depot', { macrotrendsSlug: 'home-depot' }),
   US3841091040: usd('GGG', 'Graco'),
   US0404132054: usd('ANET', 'Arista Networks', { wkn: 'A1J4UL' }),
   CA01626P1484: cad('ATD.TO', 'Alimentation Couche-Tard', {

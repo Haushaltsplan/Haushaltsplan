@@ -28,6 +28,20 @@ export type MacrotrendsIdent = {
   firmenname: string
 }
 
+export type MacrotrendsIdentOpts = {
+  erwarteterTicker?: string
+  firmenname?: string
+  slug?: string
+}
+
+/** Kurz-Ticker: Macrotrends-Textsuche liefert oft falsche Treffer (MA→MAAS, V→VFC, HD→HDB). */
+const BEKANNTE_MACROTRENDS_SLUGS: Record<string, { slug: string; firmenname: string }> = {
+  MA: { slug: 'mastercard', firmenname: 'Mastercard' },
+  V: { slug: 'visa', firmenname: 'Visa' },
+  WM: { slug: 'waste-management', firmenname: 'Waste Management' },
+  HD: { slug: 'home-depot', firmenname: 'Home Depot' },
+}
+
 type RohZeile = Record<string, string | number> & { field_name: string }
 
 type StatementSeite =
@@ -290,25 +304,124 @@ async function ladeStatementRoh(ident: MacrotrendsIdent, statement: StatementSei
 
 export async function loeseMacrotrendsIdent(
   suchbegriff: string,
-  name?: string,
+  nameOrOpts?: string | MacrotrendsIdentOpts,
 ): Promise<MacrotrendsIdent | null> {
-  const q = suchbegriff.trim() || name?.trim() || ''
-  if (!q) return null
-  const html = await ladeSeite(`${BASE}/assets/php/all_pages_query.php?q=${encodeURIComponent(q)}`)
-  if (!html) return null
-  let items: Array<{ name?: string; url?: string }>
+  const opts: MacrotrendsIdentOpts =
+    typeof nameOrOpts === 'string' ? { firmenname: nameOrOpts } : (nameOrOpts ?? {})
+  const q = suchbegriff.trim()
+  const firmenname = opts.firmenname?.trim()
+  const erwartet = opts.erwarteterTicker?.trim().toUpperCase()
+
+  if (erwartet) {
+    const ausSlug = identAusBekanntemSlug(erwartet, opts.slug, firmenname)
+    if (ausSlug) return ausSlug
+  }
+
+  const suchbegriffe: string[] = []
+  if (firmenname) suchbegriffe.push(firmenname)
+  if (q && !suchbegriffe.includes(q)) suchbegriffe.push(q)
+
+  for (const s of suchbegriffe) {
+    const items = await ladeMacrotrendsSuchergebnisse(s)
+    const ident = waehleMacrotrendsIdent(items, { erwarteterTicker: erwartet, firmenname })
+    if (ident) return ident
+  }
+
+  return null
+}
+
+async function ladeMacrotrendsSuchergebnisse(q: string): Promise<Array<{ name?: string; url?: string }>> {
+  if (!q.trim()) return []
+  const html = await ladeSeite(`${BASE}/assets/php/all_pages_query.php?q=${encodeURIComponent(q.trim())}`)
+  if (!html) return []
   try {
-    items = JSON.parse(html) as Array<{ name?: string; url?: string }>
+    const items = JSON.parse(html) as Array<{ name?: string; url?: string }>
+    return Array.isArray(items) ? items : []
   } catch {
+    return []
+  }
+}
+
+function firmennameAusSuchtitel(name: string): string {
+  return name
+    .replace(/\s*\([^)]*\)\s*-\s*.*$/i, '')
+    .replace(/\s*-\s*.*$/i, '')
+    .trim()
+}
+
+function identsAusSuchergebnis(items: Array<{ name?: string; url?: string }>): MacrotrendsIdent[] {
+  const seen = new Set<string>()
+  const out: MacrotrendsIdent[] = []
+  for (const item of items) {
+    const url = item.url ?? ''
+    if (!url.includes('/stocks/charts/')) continue
+    const m = url.match(/\/stocks\/charts\/([^/]+)\/([^/]+)\//)
+    if (!m) continue
+    const key = `${m[1].toUpperCase()}|${m[2].toLowerCase()}`
+    if (seen.has(key)) continue
+    seen.add(key)
+    const titel = item.name?.trim() ?? ''
+    out.push({
+      ticker: m[1].toUpperCase(),
+      slug: m[2],
+      firmenname: firmennameAusSuchtitel(titel) || m[2].replace(/-/g, ' '),
+    })
+  }
+  return out
+}
+
+function normalisiereName(s: string): string {
+  return s
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/\p{M}/gu, '')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim()
+}
+
+function namePasstZuIdent(firmenname: string, ident: MacrotrendsIdent): boolean {
+  const n = normalisiereName(firmenname)
+  const f = normalisiereName(ident.firmenname)
+  if (!n || !f) return false
+  return f.includes(n) || n.includes(f) || n.split(' ').filter((w) => w.length > 3).every((w) => f.includes(w))
+}
+
+function waehleMacrotrendsIdent(
+  items: Array<{ name?: string; url?: string }>,
+  opts: { erwarteterTicker?: string; firmenname?: string },
+): MacrotrendsIdent | null {
+  const kandidaten = identsAusSuchergebnis(items)
+  if (kandidaten.length === 0) return null
+
+  const erwartet = opts.erwarteterTicker?.toUpperCase()
+  if (erwartet) {
+    const exakt = kandidaten.find((k) => k.ticker.toUpperCase() === erwartet)
+    if (exakt) return exakt
     return null
   }
-  if (!Array.isArray(items) || items.length === 0) return null
-  const stock = items.find((i) => i.url?.includes('/stocks/charts/')) ?? items[0]
-  const url = stock.url ?? ''
-  const m = url.match(/\/stocks\/charts\/([^/]+)\/([^/]+)\//)
-  if (!m) return null
-  const firmenname = (stock.name ?? name ?? m[1]).replace(/\s*\([^)]*\).*$/, '').trim()
-  return { ticker: m[1], slug: m[2], firmenname }
+
+  if (opts.firmenname) {
+    const perName = kandidaten.find((k) => namePasstZuIdent(opts.firmenname!, k))
+    if (perName) return perName
+  }
+
+  return kandidaten[0] ?? null
+}
+
+function identAusBekanntemSlug(
+  ticker: string,
+  slugOverride?: string,
+  firmenname?: string,
+): MacrotrendsIdent | null {
+  const t = ticker.toUpperCase()
+  const slug = slugOverride?.trim() || BEKANNTE_MACROTRENDS_SLUGS[t]?.slug
+  if (!slug) return null
+  const basis = BEKANNTE_MACROTRENDS_SLUGS[t]
+  return {
+    ticker: t,
+    slug,
+    firmenname: firmenname?.trim() || basis?.firmenname || t,
+  }
 }
 
 export function macrotrendsTickerAusSymbol(symbol: string): string {
