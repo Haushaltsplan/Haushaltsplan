@@ -5,6 +5,9 @@ const RISIKOFREIER_ZINS = 0.045
 const MARKTPRAEMIE = 0.055
 const DEFAULT_STEUERSATZ = 0.21
 
+/** Jahre für Incremental ROIC (Investment-Mantra / Research-Prompts). */
+export const INCREMENTAL_ROIC_JAHRE = 3
+
 export function letzterVerfuegbarerWert(
   zeile: FundamentalMetrikZeile | undefined,
   perioden: FundamentalPeriode[] | undefined,
@@ -104,24 +107,67 @@ export type YahooJahresSnapshot = {
   totalDebtUsd: number | null
   stockholdersEquityUsd: number | null
   netIncomeUsd: number | null
+  capitalExpenditureUsd: number | null
+  changeInWorkingCapitalUsd: number | null
+  purchaseOfBusinessUsd: number | null
 }
 
+export type IncrementalRoicErgebnis = {
+  pct: number
+  deltaNopatUsd: number
+  reinvestitionUsd: number
+  vonJahr: string
+  bisJahr: string
+  investJahre: number
+}
+
+/**
+ * Cash-Reinvestition eines Geschäftsjahres (Yahoo CF-Vorzeichen):
+ * CapEx + gebundenes Working Capital + Akquisitionen.
+ */
+export function jaehrlicheReinvestitionUsd(jahr: YahooJahresSnapshot): number {
+  const capex = jahr.capitalExpenditureUsd != null ? Math.abs(jahr.capitalExpenditureUsd) : 0
+  const wc =
+    jahr.changeInWorkingCapitalUsd != null && jahr.changeInWorkingCapitalUsd < 0
+      ? Math.abs(jahr.changeInWorkingCapitalUsd)
+      : 0
+  const mna =
+    jahr.purchaseOfBusinessUsd != null && jahr.purchaseOfBusinessUsd < 0
+      ? Math.abs(jahr.purchaseOfBusinessUsd)
+      : 0
+  return capex + wc + mna
+}
+
+/**
+ * Incremental ROIC = ΔNOPAT über N Jahre / Summe der Reinvestitionen in denselben N Jahren.
+ * Nicht Δ(Debt+Equity) — das verfälscht durch Buybacks, Dividenden und Bilanz-Umklassierungen.
+ */
 export function berechneIncrementalRoicPct(
-  aelter: YahooJahresSnapshot | null,
-  juenger: YahooJahresSnapshot | null,
-): number | null {
-  if (!aelter || !juenger) return null
+  historie: readonly YahooJahresSnapshot[],
+  jahre: number = INCREMENTAL_ROIC_JAHRE,
+): IncrementalRoicErgebnis | null {
+  const sortiert = [...historie].filter((j) => j.datum).sort((a, b) => a.datum.localeCompare(b.datum))
+  if (sortiert.length < jahre + 1) return null
 
-  const nopatAlt = nopatUsd(aelter.operatingIncomeUsd, aelter.pretaxIncomeUsd, aelter.taxProvisionUsd)
-  const nopatNeu = nopatUsd(juenger.operatingIncomeUsd, juenger.pretaxIncomeUsd, juenger.taxProvisionUsd)
-  const icAlt = investedCapitalUsd(aelter.totalDebtUsd, aelter.stockholdersEquityUsd)
-  const icNeu = investedCapitalUsd(juenger.totalDebtUsd, juenger.stockholdersEquityUsd)
+  const start = sortiert[sortiert.length - 1 - jahre]!
+  const ende = sortiert[sortiert.length - 1]!
 
-  if (nopatAlt == null || nopatNeu == null || icAlt == null || icNeu == null) return null
+  const nopatStart = nopatUsd(start.operatingIncomeUsd, start.pretaxIncomeUsd, start.taxProvisionUsd)
+  const nopatEnde = nopatUsd(ende.operatingIncomeUsd, ende.pretaxIncomeUsd, ende.taxProvisionUsd)
+  if (nopatStart == null || nopatEnde == null) return null
 
-  const deltaNopat = nopatNeu - nopatAlt
-  const deltaIc = icNeu - icAlt
-  if (Math.abs(deltaIc) < 1_000_000) return null
+  const deltaNopat = nopatEnde - nopatStart
+  const investJahre = sortiert.slice(-jahre)
+  const reinvestition = investJahre.reduce((sum, j) => sum + jaehrlicheReinvestitionUsd(j), 0)
 
-  return (deltaNopat / deltaIc) * 100
+  if (reinvestition < 1_000_000) return null
+
+  return {
+    pct: (deltaNopat / reinvestition) * 100,
+    deltaNopatUsd: deltaNopat,
+    reinvestitionUsd: reinvestition,
+    vonJahr: start.datum.slice(0, 4),
+    bisJahr: ende.datum.slice(0, 4),
+    investJahre: jahre,
+  }
 }

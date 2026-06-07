@@ -26,6 +26,9 @@ const ANNUAL_TYPES = [
   'annualTotalDebt',
   'annualStockholdersEquity',
   'annualNetIncome',
+  'annualCapitalExpenditure',
+  'annualChangeInWorkingCapital',
+  'annualPurchaseOfBusiness',
 ] as const
 
 export type MantraYahooTrailing = {
@@ -42,8 +45,8 @@ export type MantraYahooTrailing = {
 }
 
 export type MantraYahooFinanzdaten = MantraYahooTrailing & {
-  /** Die zwei jüngsten Geschäftsjahre (älter → jünger). */
-  annualPaare: [YahooJahresSnapshot | null, YahooJahresSnapshot | null]
+  /** Chronologisch sortierte Geschäftsjahre (ältestes zuerst). */
+  annualHistorie: YahooJahresSnapshot[]
 }
 
 type TimeseriesBlock = {
@@ -54,6 +57,18 @@ type TimeseriesBlock = {
 type TimeseriesPunkt = {
   asOfDate?: string
   reportedValue?: { raw?: number }
+}
+
+const ANNUAL_FELDER: Record<keyof Omit<YahooJahresSnapshot, 'datum'>, string> = {
+  operatingIncomeUsd: 'annualOperatingIncome',
+  pretaxIncomeUsd: 'annualPretaxIncome',
+  taxProvisionUsd: 'annualTaxProvision',
+  totalDebtUsd: 'annualTotalDebt',
+  stockholdersEquityUsd: 'annualStockholdersEquity',
+  netIncomeUsd: 'annualNetIncome',
+  capitalExpenditureUsd: 'annualCapitalExpenditure',
+  changeInWorkingCapitalUsd: 'annualChangeInWorkingCapital',
+  purchaseOfBusinessUsd: 'annualPurchaseOfBusiness',
 }
 
 function letzterWert(block: TimeseriesBlock | undefined): number | null {
@@ -71,31 +86,21 @@ function blockFuerTyp(result: TimeseriesBlock[], typ: string): TimeseriesBlock |
   return result.find((b) => b.meta?.type?.[0] === typ)
 }
 
-function letzteJahresSnapshots(result: TimeseriesBlock[]): [YahooJahresSnapshot | null, YahooJahresSnapshot | null] {
-  const typMap: Record<keyof Omit<YahooJahresSnapshot, 'datum'>, string> = {
-    operatingIncomeUsd: 'annualOperatingIncome',
-    pretaxIncomeUsd: 'annualPretaxIncome',
-    taxProvisionUsd: 'annualTaxProvision',
-    totalDebtUsd: 'annualTotalDebt',
-    stockholdersEquityUsd: 'annualStockholdersEquity',
-    netIncomeUsd: 'annualNetIncome',
-  }
-
+function baueAnnualHistorie(result: TimeseriesBlock[]): YahooJahresSnapshot[] {
   const datenProTyp = new Map<string, TimeseriesPunkt[]>()
-  for (const [feld, typ] of Object.entries(typMap)) {
+  for (const [feld, typ] of Object.entries(ANNUAL_FELDER)) {
     const block = blockFuerTyp(result, typ)
     const t = block?.meta?.type?.[0]
     const arr = t && Array.isArray(block?.[t]) ? (block[t] as TimeseriesPunkt[]) : []
     datenProTyp.set(feld, arr)
   }
 
-  const daten = datenProTyp.get('operatingIncomeUsd') ?? []
-  if (daten.length < 2) return [null, null]
+  const referenz = datenProTyp.get('operatingIncomeUsd') ?? []
+  const out: YahooJahresSnapshot[] = []
 
-  function snapshotAnIdx(idx: number): YahooJahresSnapshot | null {
-    const punkt = daten[idx]
-    const datum = punkt?.asOfDate
-    if (!datum) return null
+  for (let i = 0; i < referenz.length; i++) {
+    const datum = referenz[i]?.asOfDate
+    if (!datum) continue
     const snap: YahooJahresSnapshot = {
       datum,
       operatingIncomeUsd: null,
@@ -104,23 +109,25 @@ function letzteJahresSnapshots(result: TimeseriesBlock[]): [YahooJahresSnapshot 
       totalDebtUsd: null,
       stockholdersEquityUsd: null,
       netIncomeUsd: null,
+      capitalExpenditureUsd: null,
+      changeInWorkingCapitalUsd: null,
+      purchaseOfBusinessUsd: null,
     }
     for (const [feld, typArr] of datenProTyp.entries()) {
-      const p = typArr[idx]
-      const raw = p?.reportedValue?.raw
+      const raw = typArr[i]?.reportedValue?.raw
       ;(snap as Record<string, unknown>)[feld] = raw != null && Number.isFinite(raw) ? raw : null
     }
-    return snap
+    out.push(snap)
   }
 
-  return [snapshotAnIdx(daten.length - 2), snapshotAnIdx(daten.length - 1)]
+  return out.sort((a, b) => a.datum.localeCompare(b.datum))
 }
 
 async function ladeTimeseriesResult(symbol: string, types: readonly string[]): Promise<TimeseriesBlock[]> {
   const auth = await holeYahooFinanceAuth()
   if (!auth) return []
 
-  const period1 = Math.floor(new Date('2018-01-01').getTime() / 1000)
+  const period1 = Math.floor(new Date('2015-01-01').getTime() / 1000)
   const period2 = Math.floor(Date.now() / 1000)
   const u = new URL(
     `https://query1.finance.yahoo.com/ws/fundamentals-timeseries/v1/finance/timeseries/${encodeURIComponent(symbol)}`,
@@ -166,7 +173,7 @@ export async function ladeYahooMantraFinanzdaten(symbol: string): Promise<Mantra
       netIncomeUsd: letzterWert(blockFuerTyp(result, 'trailingNetIncome')),
       pretaxIncomeUsd: letzterWert(blockFuerTyp(result, 'trailingPretaxIncome')),
       taxProvisionUsd: letzterWert(blockFuerTyp(result, 'trailingTaxProvision')),
-      annualPaare: letzteJahresSnapshots(result),
+      annualHistorie: baueAnnualHistorie(result),
     }
 
     cache.set(sym, { at: Date.now(), daten })

@@ -178,10 +178,10 @@ function baueKontextWerte(ctx: MantraKontext) {
 
   const roicMt = letzterWert(roiZeile, perioden)
   const nopatTrailing = nopatUsd(yt?.operatingIncomeUsd, yt?.pretaxIncomeUsd, yt?.taxProvisionUsd)
-  const juengstesJahr = yt?.annualPaare?.[1]
+  const juengstesJahr = yt?.annualHistorie?.[yt.annualHistorie.length - 1]
   const icTrailing = investedCapitalUsd(
     ctx.yahoo?.totalDebt ?? juengstesJahr?.totalDebtUsd,
-    ctx.yahoo?.marketCap ?? juengstesJahr?.stockholdersEquityUsd,
+    juengstesJahr?.stockholdersEquityUsd,
     ctx.yahoo?.totalCash,
   )
   const roicBerechnet = roicPctAusNopat(nopatTrailing, icTrailing)
@@ -199,8 +199,8 @@ function baueKontextWerte(ctx: MantraKontext) {
   })
 
   const valueSpread = roic != null && wacc != null ? roic - wacc : null
-  const [annualAlt, annualNeu] = yt?.annualPaare ?? [null, null]
-  const incrementalRoic = berechneIncrementalRoicPct(annualAlt, annualNeu)
+  const incrementalRoicErgebnis = berechneIncrementalRoicPct(yt?.annualHistorie ?? [])
+  const incrementalRoic = incrementalRoicErgebnis?.pct ?? null
 
   const roe =
     letzterWert(roeZeile, perioden) ??
@@ -248,6 +248,7 @@ function baueKontextWerte(ctx: MantraKontext) {
     wacc,
     valueSpread,
     incrementalRoic,
+    incrementalRoicErgebnis,
     roe,
     netDebt,
     netDebtEbitda,
@@ -332,12 +333,9 @@ function evaluiereZeile(zeile: MantraZeile, ctx: MantraKontext, w: ReturnType<ty
   }
 
   if (k.includes('incremental roic')) {
-    if (w.incrementalRoic == null) return keineDaten()
-    const jahre = ctx.yahooFinanz?.annualPaare
-    const hinweis =
-      jahre?.[0]?.datum && jahre?.[1]?.datum
-        ? `ΔNOPAT/ΔIC · ${jahre[0].datum.slice(0, 4)}→${jahre[1].datum.slice(0, 4)} (Yahoo).`
-        : 'ΔNOPAT/ΔIC (Yahoo Annual).'
+    const ergebnis = w.incrementalRoicErgebnis
+    if (w.incrementalRoic == null || !ergebnis) return keineDaten()
+    const hinweis = `ΔNOPAT ${formatFundamentalWert(ergebnis.deltaNopatUsd / 1_000_000, 'waehrung_usd_mio')} ÷ Reinvestition ${formatFundamentalWert(ergebnis.reinvestitionUsd / 1_000_000, 'waehrung_usd_mio')} (CapEx+WC+M&A, ${ergebnis.investJahre}J) · ${ergebnis.vonJahr}→${ergebnis.bisJahr}.`
     return w.incrementalRoic >= 15
       ? erfuellt(pct(w.incrementalRoic), w.incrementalRoic, hinweis)
       : nichtErfuellt(pct(w.incrementalRoic), w.incrementalRoic, hinweis)
