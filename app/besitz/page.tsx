@@ -25,6 +25,8 @@ import {
   BesitzGebrauchtpreisKiRoot,
   BesitzGebrauchtpreisKiToggle,
 } from '@/components/besitz-gebrauchtpreis-ki'
+import { errateBesitzArtRegeln } from '@/lib/besitz-art-erkennung'
+import { BesitzAnreichernRunner } from '@/components/besitz-anreichern-runner'
 import { BesitzFotoUpload } from '@/components/besitz-foto-upload'
 import { BesitzKleiderschrank, type BesitzKleiderschrankRow } from '@/components/besitz-kleiderschrank'
 import { KiBrandChip } from '@/components/ki-brand'
@@ -428,15 +430,28 @@ export default function BesitzPage() {
     setPdfUebernehmenBusy(true)
     try {
       const { error } = await supabase.from('besitz_gegenstand').insert(
-        rows.map((p) => ({
-          name: p.name,
-          kategorie: p.kategorie,
-          einkaufspreis_eur: p.einkaufspreis_eur,
-          einkaufsdatum: p.einkaufsdatum,
-          haendler: p.haendler,
-          hersteller: p.hersteller,
-          notiz: p.notiz,
-        })),
+        rows.map((p) => {
+          const kat = normalisiereBesitzKategorie(p.kategorie)
+          const erraten = errateBesitzArtRegeln({
+            kategorie: kat,
+            name: p.name,
+            hersteller: p.hersteller,
+            notiz: p.notiz,
+            haendler: p.haendler,
+          })
+          return {
+            name: p.name,
+            kategorie: kat,
+            kleidungsart: erraten.kleidungsart,
+            groesse: erraten.groesse,
+            farbe: erraten.farbe,
+            einkaufspreis_eur: p.einkaufspreis_eur,
+            einkaufsdatum: p.einkaufsdatum,
+            haendler: p.haendler,
+            hersteller: p.hersteller,
+            notiz: p.notiz,
+          }
+        }),
       )
       if (error) {
         toast.error(error.message || 'Speichern fehlgeschlagen.')
@@ -836,6 +851,13 @@ export default function BesitzPage() {
               />
             </div>
             {ansicht === 'kleiderschrank' ? (
+              <>
+              <BesitzAnreichernRunner
+                zeilen={zeilen}
+                laden={laden}
+                autoStart={ansicht === 'kleiderschrank'}
+                onFertig={lade}
+              />
               <BesitzKleiderschrank
                 zeilen={kleiderschrankZeilen}
                 laden={laden}
@@ -844,6 +866,7 @@ export default function BesitzPage() {
                 formatEur={formatEur}
                 formatDatumDe={formatDatumDe}
               />
+              </>
             ) : (
               <>
             {laden ? (
