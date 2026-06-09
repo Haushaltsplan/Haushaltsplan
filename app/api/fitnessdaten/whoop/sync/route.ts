@@ -1,12 +1,14 @@
 import { holeGueltigenAccessToken, ladeVollstaendigerCloudSync } from '@/lib/fitnessdaten/whoop-cloud-server'
+import { createSupabaseFuerRequest } from '@/lib/supabase-user'
 import { NextResponse } from 'next/server'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
-export async function POST() {
+export async function POST(req: Request) {
   try {
-    const token = await holeGueltigenAccessToken()
+    const sb = createSupabaseFuerRequest(req)
+    const token = await holeGueltigenAccessToken(sb)
     if (!token) {
       return NextResponse.json(
         { ok: false, message: 'Nicht verbunden', fehler: 'WHOOP-Konto nicht verbunden.' },

@@ -4,6 +4,7 @@ import {
   tauscheAuthCode,
   whoopApiKonfiguriert,
 } from '@/lib/fitnessdaten/whoop-cloud-server'
+import { loeseWhoopPending } from '@/lib/fitnessdaten/whoop-oauth-store'
 import { NextResponse } from 'next/server'
 
 export const runtime = 'nodejs'
@@ -25,14 +26,17 @@ export async function GET(req: Request) {
     return NextResponse.redirect(`${redirectBase}?whoop_error=invalid_callback`)
   }
 
-  const saved = await leseOAuthState()
-  await loescheOAuthState()
-  if (!saved || saved !== state) {
-    return NextResponse.redirect(`${redirectBase}?whoop_error=state_mismatch`)
+  const ownerUserId = await loeseWhoopPending(state)
+  if (!ownerUserId) {
+    const saved = await leseOAuthState()
+    await loescheOAuthState()
+    if (!saved || saved !== state) {
+      return NextResponse.redirect(`${redirectBase}?whoop_error=state_mismatch`)
+    }
   }
 
   try {
-    await tauscheAuthCode(code, origin)
+    await tauscheAuthCode(code, origin, ownerUserId)
     return NextResponse.redirect(`${redirectBase}?whoop=connected`)
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'token_exchange_failed'

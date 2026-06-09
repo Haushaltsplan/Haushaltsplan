@@ -92,8 +92,33 @@ export function FitnessWhoopCloudPanel({ onSyncComplete, embedded = false }: Pro
     }
   }, [ladeStatus, onSyncComplete])
 
-  const verbinden = useCallback(() => {
-    window.location.href = '/api/fitnessdaten/whoop/auth'
+  const verbinden = useCallback(async () => {
+    const { data } = await supabase.auth.getSession()
+    const bearer = data.session?.access_token
+    if (!bearer) {
+      toast.error('Bitte zuerst in Omnia einloggen.')
+      return
+    }
+    try {
+      const res = await fetch('/api/fitnessdaten/whoop/auth/start', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${bearer}` },
+        credentials: 'include',
+      })
+      if (!res.ok) {
+        const body = (await res.json().catch(() => ({}))) as { error?: string }
+        toast.error(body.error ?? 'WHOOP-Verbindung konnte nicht gestartet werden.')
+        return
+      }
+      const { url } = (await res.json()) as { url?: string }
+      if (!url) {
+        toast.error('Keine WHOOP-Anmelde-URL erhalten.')
+        return
+      }
+      window.location.href = url
+    } catch {
+      toast.error('WHOOP-Verbindung konnte nicht gestartet werden.')
+    }
   }, [])
 
   const trennen = useCallback(async () => {
@@ -131,9 +156,8 @@ export function FitnessWhoopCloudPanel({ onSyncComplete, embedded = false }: Pro
       </p>
       {nativeApp ? (
         <p className="mt-2 rounded-lg border border-violet-900/30 bg-violet-950/15 px-3 py-2 text-[11px] leading-relaxed text-violet-200/80">
-          Omnia-App: WHOOP-Anmeldung läuft in der App. Nach dem Login solltest du wieder auf Fitnessdaten
-          landen. Wenn nichts passiert: zuerst mit E-Mail+Passwort in Omnia eingeloggt sein und in Vercel die
-          WHOOP-Keys gesetzt haben.
+          Omnia-App: WHOOP-Login kann im Browser öffnen — das ist OK. Tokens werden an dein Konto gebunden.
+          Danach Omnia-App öffnen → „Jetzt synchronisieren“ oder kurz warten (Auto-Sync).
         </p>
       ) : null}
       <p className="mt-2 text-[10px] leading-relaxed text-zinc-600">

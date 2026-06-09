@@ -14,6 +14,14 @@ import {
   whoopRedirectUri,
 } from '@/lib/fitnessdaten/whoop-cloud-types'
 import { ladeWhoopBffSync } from '@/lib/fitnessdaten/whoop-bff-server'
+import {
+  leseWhoopTokensDb,
+  loescheWhoopTokensDb,
+  speichereWhoopTokensAdmin,
+  speichereWhoopTokensDb,
+  type WhoopStoredTokens,
+} from '@/lib/fitnessdaten/whoop-oauth-store'
+import type { SupabaseClient } from '@supabase/supabase-js'
 import { cookies } from 'next/headers'
 
 const TOKEN_URL = 'https://api.prod.whoop.com/oauth/oauth2/token'
@@ -21,11 +29,7 @@ const AUTH_URL = 'https://api.prod.whoop.com/oauth/oauth2/auth'
 /** WHOOP Developer API — ohne /developer liefert die API 404 „default backend“. */
 const API_BASE = 'https://api.prod.whoop.com/developer'
 
-type StoredTokens = {
-  accessToken: string
-  refreshToken: string
-  expiresAtMs: number
-}
+type StoredTokens = WhoopStoredTokens
 
 type WhoopRecoveryScore = {
   recovery_score?: number
@@ -208,21 +212,49 @@ async function refreshTokens(refreshToken: string): Promise<StoredTokens> {
   }
 }
 
-export async function tauscheAuthCode(code: string, origin: string): Promise<void> {
+export async function tauscheAuthCode(
+  code: string,
+  origin: string,
+  ownerUserId?: string | null,
+): Promise<void> {
   const tokens = await tauscheCode(code, whoopRedirectUri(origin))
+  if (ownerUserId) {
+    await speichereWhoopTokensAdmin(ownerUserId, tokens)
+  }
   await speichereTokens(tokens)
 }
 
-export async function holeGueltigenAccessToken(): Promise<string | null> {
-  let tokens = await leseTokens()
+async function persistTokens(
+  sb: SupabaseClient | null,
+  tokens: StoredTokens,
+): Promise<void> {
+  if (sb) {
+    try {
+      await speichereWhoopTokensDb(sb, tokens)
+      return
+    } catch {
+      /* Cookie-Fallback */
+    }
+  }
+  await speichereTokens(tokens)
+}
+
+async function clearAllTokens(sb: SupabaseClient | null): Promise<void> {
+  if (sb) await loescheWhoopTokensDb(sb)
+  await loescheTokens()
+}
+
+export async function holeGueltigenAccessToken(sb: SupabaseClient | null = null): Promise<string | null> {
+  let tokens = sb ? await leseWhoopTokensDb(sb) : null
+  if (!tokens) tokens = await leseTokens()
   if (!tokens) return null
   if (Date.now() < tokens.expiresAtMs) return tokens.accessToken
   try {
     tokens = await refreshTokens(tokens.refreshToken)
-    await speichereTokens(tokens)
+    await persistTokens(sb, tokens)
     return tokens.accessToken
   } catch {
-    await loescheTokens()
+    await clearAllTokens(sb)
     return null
   }
 }
@@ -420,10 +452,16 @@ export async function ladeVollstaendigerCloudSync(accessToken: string, tage = 35
   }
 }
 
-export async function whoopCloudStatus(): Promise<{ configured: boolean; connected: boolean }> {
+export async function whoopCloudStatus(
+  sb: SupabaseClient | null = null,
+): Promise<{ configured: boolean; connected: boolean }> {
   const configured = whoopApiKonfiguriert()
-  const token = configured ? await holeGueltigenAccessToken() : null
+  const token = configured ? await holeGueltigenAccessToken(sb) : null
   return { configured, connected: Boolean(token) }
+}
+
+export async function whoopCloudTrennen(sb: SupabaseClient | null = null): Promise<void> {
+  await clearAllTokens(sb)
 }
 
 export { whoopApiKonfiguriert }

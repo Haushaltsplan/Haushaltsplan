@@ -37,26 +37,14 @@ export function whoopBleHinweis(): string | null {
 
 async function startNativeForegroundService(): Promise<void> {
   if (!istOmniaNativeApp()) return
-  try {
-    const { BluetoothLowEnergy } = await import('@capgo/capacitor-bluetooth-low-energy')
-    await BluetoothLowEnergy.startForegroundService({
-      title: 'Omnia',
-      body: 'WHOOP verbunden — Live-Daten aktiv',
-      smallIcon: 'ic_launcher_foreground',
-    })
-  } catch {
-    /* optional */
-  }
+  const { starteOmniaBleKeepalive } = await import('@/lib/fitnessdaten/omnia-ble-keepalive-native')
+  await starteOmniaBleKeepalive()
 }
 
 async function stopNativeForegroundService(): Promise<void> {
   if (!istOmniaNativeApp()) return
-  try {
-    const { BluetoothLowEnergy } = await import('@capgo/capacitor-bluetooth-low-energy')
-    await BluetoothLowEnergy.stopForegroundService()
-  } catch {
-    /* optional */
-  }
+  const { stoppeOmniaBleKeepalive } = await import('@/lib/fitnessdaten/omnia-ble-keepalive-native')
+  await stoppeOmniaBleKeepalive()
 }
 
 export async function verbindeWhoopBle(

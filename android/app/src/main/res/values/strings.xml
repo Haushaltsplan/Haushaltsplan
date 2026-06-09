@@ -4,4 +4,8 @@
     <string name="title_activity_main">Omnia</string>
     <string name="package_name">de.omnia.haushalt</string>
     <string name="custom_url_scheme">de.omnia.haushalt</string>
+    <string name="whoop_fg_channel">WHOOP Bluetooth</string>
+    <string name="whoop_fg_channel_desc">Hält die Verbindung zum WHOOP-Strap bei geschlossener App aktiv.</string>
+    <string name="whoop_fg_title">Omnia</string>
+    <string name="whoop_fg_body">WHOOP verbunden — Live-Daten aktiv</string>
 </resources>

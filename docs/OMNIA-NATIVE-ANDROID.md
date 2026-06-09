@@ -80,7 +80,7 @@ Oder APK bauen: **Build → Build Bundle(s) / APK(s) → APK**.
 4. Android: **Akku → Uneingeschränkt** für Omnia empfohlen
 5. Bluetooth-Berechtigungen bei Aufforderung erlauben (Android 12+)
 
-Dauer-Benachrichtigung „Omnia · WHOOP verbunden“ ist **gewollt** — so darf Android BLE im Hintergrund laufen.
+Dauer-Benachrichtigung „Omnia · WHOOP verbunden“ ist **gewollt** — der native Foreground Service (`WhoopBleForegroundService`) hält BLE aktiv. Das Capgo-Plugin liefert hierfür nur einen leeren Stub; Omnia nutzt ein eigenes Android-Plugin (`OmniaBleKeepalive`).
 
 ## WHOOP-App
 
