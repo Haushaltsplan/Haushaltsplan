@@ -14,7 +14,7 @@ import { useCallback, useEffect, useState } from 'react'
 import toast from 'react-hot-toast'
 
 export function FitnessdatenClient() {
-  const { phase, snapshot: bleSnapshot, verbinden } = useWhoopBle()
+  const { phase, snapshot: bleSnapshot } = useWhoopBle()
   const [snapshot, setSnapshot] = useState<FitnessSnapshot | null>(null)
 
   useEffect(() => {
@@ -50,16 +50,6 @@ export function FitnessdatenClient() {
         onSnapshot={setSnapshot}
         onPhaseChange={() => {}}
       />
-
-      {phase === 'idle' ? (
-        <button
-          type="button"
-          onClick={() => void verbinden('whoop')}
-          className="mt-4 w-full rounded-2xl border border-orange-500/30 bg-orange-950/20 py-3 text-sm font-semibold text-orange-200 transition hover:bg-orange-950/40"
-        >
-          WHOOP verbinden
-        </button>
-      ) : null}
 
       <div className="mt-6 flex justify-center gap-4 text-[11px] text-zinc-600">
         <button type="button" onClick={loescheDaten} className="underline-offset-2 hover:text-zinc-400 hover:underline">

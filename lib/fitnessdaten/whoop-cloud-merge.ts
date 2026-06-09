@@ -19,6 +19,7 @@ import {
   wendeProfilAufHistory,
 } from '@/lib/fitnessdaten/user-profile'
 import { ladeFitnessHistory, ladeFitnessSnapshot, speichereFitnessHistory, speichereFitnessSnapshot } from '@/lib/fitnessdaten/history-storage'
+import { supabase } from '@/lib/supabase'
 
 export const WHOOP_CLOUD_META_KEY = 'mein-haushalt:fitnessdaten-whoop-cloud'
 export const WHOOP_CLOUD_SYNC_EVENT = 'mein-haushalt:whoop-cloud-sync'
@@ -292,7 +293,15 @@ export function mergeCloudPayload(payload: WhoopCloudSyncPayload): WhoopCloudSyn
 }
 
 export async function syncWhoopCloudVomServer(): Promise<WhoopCloudSyncResult> {
-  const res = await fetch('/api/fitnessdaten/whoop/sync', { method: 'POST', credentials: 'include' })
+  const headers: Record<string, string> = {}
+  const { data } = await supabase.auth.getSession()
+  const token = data.session?.access_token
+  if (token) headers.Authorization = `Bearer ${token}`
+  const res = await fetch('/api/fitnessdaten/whoop/sync', {
+    method: 'POST',
+    credentials: 'include',
+    headers,
+  })
   const data = (await res.json()) as WhoopCloudSyncResult & { payload?: WhoopCloudSyncPayload }
   if (!res.ok || !data.ok || !data.payload) {
     return {

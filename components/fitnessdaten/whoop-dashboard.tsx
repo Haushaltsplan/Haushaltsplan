@@ -54,8 +54,11 @@ import { formatZoneAnteil } from '@/lib/fitnessdaten/history-storage'
 import type { FitnessSnapshot } from '@/lib/fitnessdaten/types'
 import { HR_ZONE_COLORS, HR_ZONE_LABELS } from '@/lib/fitnessdaten/types'
 import type { WhoopWebBlePhase } from '@/lib/fitnessdaten/web-bluetooth-whoop'
-import { useMemo, useState, useEffect } from 'react'
-import { WHOOP_CLOUD_SYNC_EVENT } from '@/lib/fitnessdaten/whoop-cloud-merge'
+import { useMemo, useState, useEffect, useCallback } from 'react'
+import toast from 'react-hot-toast'
+import { useWhoopBle } from '@/components/fitnessdaten/whoop-ble-provider'
+import { setzeWhoopBleAlwaysOn } from '@/lib/fitnessdaten/whoop-ble-keepalive'
+import { syncWhoopCloudVomServer, WHOOP_CLOUD_SYNC_EVENT } from '@/lib/fitnessdaten/whoop-cloud-merge'
 
 type Tab = 'home' | 'sleep' | 'recovery' | 'strain' | 'health' | 'connect'
 
@@ -116,6 +119,7 @@ function schlafstressSegmente(d: WhoopDayRecord) {
 }
 
 export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange }: Props) {
+  const { verbinden, bleOk } = useWhoopBle()
   const [tab, setTab] = useState<Tab>('home')
   const [info, setInfo] = useState<MetricInfo | null>(null)
   const [expandedHealthMetric, setExpandedHealthMetric] = useState<string | null>(null)
@@ -123,6 +127,7 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange }: P
   const [dataRevision, setDataRevision] = useState(0)
   const [trendMetric, setTrendMetric] = useState<HomeMetricId | null>(null)
   const [selectedActivity, setSelectedActivity] = useState<WhoopActivity | null>(null)
+  const [statusBusy, setStatusBusy] = useState(false)
   const showInfo = (id: MetricInfoId) => setInfo(getMetricInfo(id))
   const live = snapshot?.live
   const scores = snapshot?.scores
@@ -136,6 +141,54 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange }: P
   }, [])
 
   const isLive = phase === 'live'
+  const isConnecting = phase === 'connecting' || phase === 'waiting_hr'
+
+  const cloudSync = useCallback(async (mitToast = false): Promise<boolean> => {
+    const res = await syncWhoopCloudVomServer()
+    if (res.ok) {
+      setDataRevision((r) => r + 1)
+      if (mitToast) toast.success(res.message)
+      return true
+    }
+    const fehler = res.fehler ?? res.message ?? ''
+    if (mitToast && fehler && !/nicht verbunden/i.test(fehler)) {
+      toast.error(fehler)
+    }
+    return false
+  }, [])
+
+  const onStatusTap = useCallback(async () => {
+    if (statusBusy || isConnecting) return
+    setStatusBusy(true)
+    try {
+      if (isLive) {
+        await cloudSync(true)
+        return
+      }
+      setzeWhoopBleAlwaysOn(true)
+      if (!bleOk) {
+        toast.error('Bluetooth nicht verfügbar — nur Cloud-Sync wird versucht.')
+        await cloudSync(true)
+        return
+      }
+      await Promise.all([verbinden('whoop'), cloudSync(false)])
+    } finally {
+      setStatusBusy(false)
+    }
+  }, [bleOk, cloudSync, isConnecting, isLive, statusBusy, verbinden])
+
+  const statusLabel = statusBusy
+    ? isLive
+      ? 'Sync …'
+      : 'Starte …'
+    : isLive
+      ? 'Live'
+      : isConnecting
+        ? phase === 'waiting_hr'
+          ? 'Warte …'
+          : 'Verbinde'
+        : 'Offline'
+
   const zoneAnteil = scores?.zoneMinutes ? formatZoneAnteil(scores.zoneMinutes) : []
   const { heute, woche, metriken, aktivitaeten, aktivitaetenHistorie, journal, schlafdefizit } = model
 
@@ -186,18 +239,36 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange }: P
               {deviceInfo?.batteryPercent != null ? ` · ${deviceInfo.batteryPercent}% Akku` : ''}
             </p>
           </div>
-          <div
-            className={`flex items-center gap-2 rounded-full border px-3 py-1.5 text-[11px] font-semibold ${
+          <button
+            type="button"
+            onClick={() => void onStatusTap()}
+            disabled={statusBusy || isConnecting}
+            title={
               isLive
-                ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-300'
-                : phase === 'waiting_hr' || phase === 'connecting'
+                ? 'Daten synchronisieren'
+                : isConnecting
+                  ? 'Verbindung läuft …'
+                  : 'Verbinden & synchronisieren'
+            }
+            className={`flex items-center gap-2 rounded-full border px-3 py-1.5 text-[11px] font-semibold transition active:scale-[0.97] disabled:cursor-default disabled:opacity-70 ${
+              isLive
+                ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/20'
+                : isConnecting
                   ? 'border-amber-500/30 bg-amber-500/10 text-amber-200'
-                  : 'border-zinc-700/60 bg-zinc-900/80 text-zinc-400'
+                  : 'border-zinc-700/60 bg-zinc-900/80 text-zinc-400 hover:border-zinc-600 hover:bg-zinc-800/90 hover:text-zinc-200'
             }`}
           >
-            <span className={`h-2 w-2 rounded-full ${isLive ? 'animate-pulse bg-emerald-400' : 'bg-zinc-600'}`} />
-            {isLive ? 'Live' : phase === 'waiting_hr' ? 'Warte …' : phase === 'connecting' ? 'Verbinde' : 'Offline'}
-          </div>
+            <span
+              className={`h-2 w-2 rounded-full ${
+                isLive || statusBusy
+                  ? 'animate-pulse bg-emerald-400'
+                  : isConnecting
+                    ? 'animate-pulse bg-amber-400'
+                    : 'bg-zinc-600'
+              }`}
+            />
+            {statusLabel}
+          </button>
         </header>
 
         <WhoopSyncBanner
