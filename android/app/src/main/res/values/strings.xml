@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Omnia</string>
+    <string name="title_activity_main">Omnia</string>
+    <string name="package_name">de.omnia.haushalt</string>
+    <string name="custom_url_scheme">de.omnia.haushalt</string>
+</resources>

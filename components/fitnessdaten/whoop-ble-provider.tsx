@@ -11,15 +11,16 @@ import {
   WHOOP_BLE_RECONNECT_FAST_MS,
   WHOOP_SW_MESSAGE,
 } from '@/lib/fitnessdaten/whoop-ble-keepalive'
+import { istOmniaNativeApp } from '@/lib/fitnessdaten/omnia-native'
 import {
   findeGespeichertesWhoopDevice,
   startWhoopNaeheWatcher,
-  verbindeWhoopStandardHr,
-  webBluetoothVerfuegbar,
+  verbindeWhoopBle,
+  whoopBleVerfuegbar,
   type WhoopDeviceAuswahl,
   type WhoopWebBleDebug,
   type WhoopWebBlePhase,
-} from '@/lib/fitnessdaten/web-bluetooth-whoop'
+} from '@/lib/fitnessdaten/whoop-ble-connect'
 import {
   createContext,
   useCallback,
@@ -79,7 +80,7 @@ export function WhoopBleProvider({ children }: Props) {
   const [statusHint, setStatusHint] = useState<string | null>(null)
   const [debug, setDebug] = useState<WhoopWebBleDebug | null>(null)
   const [snapshot, setSnapshot] = useState<FitnessSnapshot | null>(null)
-  const [bleOk] = useState(() => webBluetoothVerfuegbar())
+  const [bleOk] = useState(() => whoopBleVerfuegbar())
 
   const disconnectRef = useRef<(() => void) | null>(null)
   const autoReconnectRef = useRef(true)
@@ -184,7 +185,7 @@ export function WhoopBleProvider({ children }: Props) {
           return
         }
 
-        const session = await verbindeWhoopStandardHr(
+        const session = await verbindeWhoopBle(
           (u) => handleSessionUpdate(u),
           device ? 'gespeichert' : auswahl,
           {
@@ -296,9 +297,9 @@ export function WhoopBleProvider({ children }: Props) {
     }
   }, [])
 
-  /** Bildschirm wach halten, solange BLE live — reduziert Standby-Abbrüche (Android PWA). */
+  /** Bildschirm wach halten (nur PWA — native App nutzt Foreground Service). */
   useEffect(() => {
-    if (!istWhoopBleAlwaysOn() || phase !== 'live') {
+    if (istOmniaNativeApp() || !istWhoopBleAlwaysOn() || phase !== 'live') {
       void wakeLockRef.current?.release().catch(() => {})
       wakeLockRef.current = null
       return

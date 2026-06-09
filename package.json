@@ -12,9 +12,15 @@
     "check:ki": "node scripts/verify-ki.mjs",
     "db:lager": "node scripts/apply-lager-schema.cjs",
     "db:investment-portfolio": "node scripts/apply-investment-portfolio-schema.cjs",
-    "db:portfolio-analyse": "node scripts/apply-portfolio-analyse-schema.cjs"
+    "db:portfolio-analyse": "node scripts/apply-portfolio-analyse-schema.cjs",
+    "cap:sync": "cap sync android",
+    "cap:open": "cap open android",
+    "omnia:android": "cap sync android && cap open android"
   },
   "dependencies": {
+    "@capacitor/android": "^8.0.0",
+    "@capacitor/core": "^8.0.0",
+    "@capgo/capacitor-bluetooth-low-energy": "^8.1.3",
     "@dnd-kit/core": "^6.3.1",
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "^3.2.2",
@@ -34,6 +40,7 @@
     "server-only": "^0.0.1"
   },
   "devDependencies": {
+    "@capacitor/cli": "^8.0.0",
     "@tailwindcss/postcss": "^4.2.2",
     "@types/jsdom": "^28.0.1",
     "@types/leaflet": "^1.9.21",

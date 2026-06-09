@@ -1,6 +1,7 @@
 'use client'
 
 import { useWhoopBle } from '@/components/fitnessdaten/whoop-ble-provider'
+import { istOmniaNativeApp } from '@/lib/fitnessdaten/omnia-native'
 import { istWhoopBleAlwaysOn, setzeWhoopBleAlwaysOn } from '@/lib/fitnessdaten/whoop-ble-keepalive'
 import { istMobileBrowser, WHOOP_WIEDERHERSTELLUNG } from '@/lib/fitnessdaten/web-bluetooth-whoop'
 import { useEffect, useState } from 'react'
@@ -12,6 +13,7 @@ type Props = {
 export function FitnessWhoopBlePanel({ embedded = false }: Props) {
   const { phase, deviceName, fehler, statusHint, debug, bleOk, verbinden, trennen } = useWhoopBle()
   const mobile = istMobileBrowser()
+  const native = istOmniaNativeApp()
   const [alwaysOn, setAlwaysOn] = useState(true)
 
   useEffect(() => {
@@ -37,15 +39,16 @@ export function FitnessWhoopBlePanel({ embedded = false }: Props) {
           <p
             className={`text-[11px] font-bold uppercase tracking-[0.16em] ${embedded ? 'text-zinc-500' : 'text-orange-300/90'}`}
           >
-            Web Bluetooth · WHOOP 5.0
+            {native ? 'Omnia Native · BLE' : 'Web Bluetooth · WHOOP 5.0'}
           </p>
           <p className="mt-1 text-sm text-zinc-400">
             <span className="font-medium text-zinc-200">{phaseLabel[phase]}</span>
             {deviceName ? ` · ${deviceName}` : null}
           </p>
           <p className="mt-1 text-[10px] text-zinc-600">
-            Läuft app-weit im Hintergrund — Reconnect alle 12 s, Nähe-Erkennung (Android), Cloud-Sync per
-            Service Worker.
+            {native
+              ? 'Foreground Service — BLE bleibt bei gesperrtem Display verbunden (wie WHOOP-App).'
+              : 'PWA: Reconnect alle 12 s. Für Standby-BLE die native Omnia-App nutzen (siehe docs/OMNIA-NATIVE-ANDROID.md).'}
           </p>
         </div>
         <div className="flex flex-wrap gap-2">

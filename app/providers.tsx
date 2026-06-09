@@ -1,6 +1,7 @@
 'use client'
 
 import { KalenderCloudBootstrap } from '@/components/kalender-cloud-bootstrap'
+import { OmniaNativeBoot } from '@/components/omnia-native-boot'
 import { WhoopBleProvider } from '@/components/fitnessdaten/whoop-ble-provider'
 import { WhoopCloudAutoSyncRunner } from '@/components/fitnessdaten/whoop-cloud-auto-sync'
 import { WhoopBleBackgroundSyncRegister } from '@/components/fitnessdaten/whoop-ble-background-sync'
@@ -23,6 +24,7 @@ export function Providers({ children }: { children: ReactNode }) {
 
   return (
     <WhoopBleProvider>
+      <OmniaNativeBoot />
       <AuthGate>
         <AppLockGate>{children}</AppLockGate>
       </AuthGate>
