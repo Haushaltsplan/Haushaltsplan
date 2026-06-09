@@ -92,14 +92,32 @@ function tagLabel(iso: string, zeitraum: TrendZeitraum, index: number, total: nu
 export function trendPunkte(
   metricId: HomeMetricId,
   zeitraum: TrendZeitraum,
-): { label: string; value: number; highlight?: boolean }[] {
-  if (metricId === 'vo2max') return trendPunkteVo2(zeitraum)
+): { label: string; value: number; date: string; highlight?: boolean }[] {
+  if (metricId === 'vo2max') {
+    return trendPunkteVo2(zeitraum).map((p) => ({ ...p, date: p.label }))
+  }
   const tage = tageFuerZeitraum(zeitraum)
   return tage.map((d, i) => ({
     label: tagLabel(d.date, zeitraum, i, tage.length),
+    date: d.date,
     value: wertFuerMetrik(d, metricId),
     highlight: i === tage.length - 1,
   }))
+}
+
+export function trendInsight(
+  metricId: HomeMetricId,
+  heuteVal: number | null,
+  monatsAvg: number | null,
+): string | null {
+  if (heuteVal == null || monatsAvg == null || monatsAvg <= 0) return null
+  const diff = Math.round(((heuteVal - monatsAvg) / monatsAvg) * 100)
+  const name = HOME_METRICS.find((m) => m.id === metricId)?.label ?? 'Wert'
+  if (Math.abs(diff) < 3) {
+    return `Dein ${name} liegt heute nahe am Monatsdurchschnitt (${monatsAvg}).`
+  }
+  const richtung = diff > 0 ? 'über' : 'unter'
+  return `Dein ${name} heute (${Math.round(heuteVal)}) liegt ${Math.abs(diff)}% ${richtung} dem Monats-Ø von ${monatsAvg}.`
 }
 
 export function heuteWert(metricId: HomeMetricId, heute: WhoopDayRecord): number | null {

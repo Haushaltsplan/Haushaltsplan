@@ -110,6 +110,34 @@ export function FitnessWhoopBlePanel({ embedded = false }: Props) {
         </ol>
       )}
 
+      <details className="mt-3 rounded-lg border border-zinc-700/60 bg-zinc-950/40 px-3 py-2 text-xs text-zinc-400">
+        <summary className="cursor-pointer font-semibold text-zinc-300">Standby &amp; Timeout — deine Optionen</summary>
+        <ul className="mt-2 list-disc space-y-1.5 pl-4 leading-relaxed">
+          <li>
+            <strong className="text-zinc-300">WHOOP-Cloud-Sync</strong> (empfohlen für Schritte/Kalorien): Läuft
+            auch bei gesperrtem Handy über den Service Worker — kein BLE nötig. Einmal unter Whoop → Cloud
+            verbinden.
+          </li>
+          <li>
+            <strong className="text-zinc-300">Bildschirm an</strong>: Bei aktiver BLE-Verbindung hält Omnia den
+            Bildschirm wach (Wake Lock). Für Standby-Betrieb reicht das nicht — Android beendet Web Bluetooth im
+            Hintergrund.
+          </li>
+          <li>
+            <strong className="text-zinc-300">Akku-Optimierung aus</strong>: Android → Einstellungen → Apps → Chrome
+            (oder Omnia PWA) → Akku → „Uneingeschränkt“.
+          </li>
+          <li>
+            <strong className="text-zinc-300">PWA installiert lassen</strong>: Nicht „Beenden erzwingen“. App nur
+            minimieren — beim Entsperren reconnectet BLE automatisch.
+          </li>
+          <li>
+            <strong className="text-zinc-300">Live-HF nur mit BLE</strong>: Puls live braucht offene/minimierte App.
+            Recovery, Schlaf, Schritte kommen zuverlässig aus der Cloud.
+          </li>
+        </ul>
+      </details>
+
       {!embedded ? (
         <details className="mt-3 rounded-lg border border-zinc-700/60 bg-zinc-950/40 px-3 py-2 text-xs text-zinc-400">
           <summary className="cursor-pointer font-semibold text-zinc-300">WHOOP nicht gefunden?</summary>

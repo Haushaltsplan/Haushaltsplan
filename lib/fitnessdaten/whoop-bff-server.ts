@@ -24,21 +24,34 @@ const MONTHS: Record<string, number> = {
   JAN: 0,
   FEB: 1,
   MAR: 2,
+  MÄR: 2,
   APR: 3,
+  MAI: 4,
   MAY: 4,
   JUN: 5,
   JUL: 6,
   AUG: 7,
   SEP: 8,
+  OKT: 9,
   OCT: 9,
   NOV: 10,
+  DEZ: 11,
   DEC: 11,
 }
 
 export function parseWhoopNumber(label: string | null | undefined): number | null {
   if (!label) return null
-  const s = label.replace(/%/g, '').replace(/,/g, '').trim()
+  let s = label.replace(/%/g, '').trim()
   if (/^\d+:\d{2}$/.test(s)) return null
+  if (/^\d{1,3}(\.\d{3})+(,\d+)?$/.test(s)) {
+    s = s.replace(/\./g, '').replace(',', '.')
+  } else if (/^\d{1,3}(,\d{3})+(\.\d+)?$/.test(s)) {
+    s = s.replace(/,/g, '')
+  } else if (s.includes(',') && !s.includes('.')) {
+    s = s.replace(',', '.')
+  } else {
+    s = s.replace(/,/g, '')
+  }
   const n = parseFloat(s)
   return Number.isFinite(n) ? n : null
 }
@@ -48,12 +61,34 @@ function heuteIso(): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
+function isoVorTagen(tage: number): string {
+  const d = new Date()
+  d.setDate(d.getDate() - tage)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
 function parseContextDate(display: string, refIso: string): string | null {
   if (!display) return null
-  const match = display.match(/([A-Z]{3,9})\s+(\d{1,2})/i)
-  if (!match) return null
-  const monKey = match[1].slice(0, 3).toUpperCase()
-  const day = parseInt(match[2], 10)
+
+  const deMatch = display.match(/(\d{1,2})\.\s*([A-ZÄÖÜ]{3,4})\.?/i)
+  if (deMatch) {
+    const day = parseInt(deMatch[1], 10)
+    const monKey = deMatch[2].slice(0, 3).toUpperCase().replace('Ä', 'A')
+    const month = MONTHS[monKey]
+    if (month != null && Number.isFinite(day)) {
+      const ref = new Date(refIso + 'T12:00:00')
+      let year = ref.getFullYear()
+      const refMonth = ref.getMonth()
+      if (month > refMonth + 2) year -= 1
+      if (month < refMonth - 10) year += 1
+      return `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+    }
+  }
+
+  const enMatch = display.match(/([A-Z]{3,9})\s+(\d{1,2})/i)
+  if (!enMatch) return null
+  const monKey = enMatch[1].slice(0, 3).toUpperCase()
+  const day = parseInt(enMatch[2], 10)
   const month = MONTHS[monKey]
   if (month == null || !Number.isFinite(day)) return null
   const ref = new Date(refIso + 'T12:00:00')
@@ -102,11 +137,15 @@ function extrahiereGraphPunkte(segment: unknown, endDate: string): { date: strin
         top_label?: { label?: string }
         position_x?: number
         data_scrubber_details?: { primary_contextual_display?: string }
+        bottom_label?: { label?: string }
       }
       const val = parseWhoopNumber(b.top_label?.label)
       if (val == null) continue
       raw.push({
-        date: parseContextDate(b.data_scrubber_details?.primary_contextual_display ?? '', endDate),
+        date: parseContextDate(
+          b.data_scrubber_details?.primary_contextual_display ?? b.bottom_label?.label ?? '',
+          endDate,
+        ),
         value: val,
         x: b.position_x ?? raw.length,
       })
@@ -134,16 +173,19 @@ function segmentAvg(segment: unknown): number | null {
   return v != null && Number.isFinite(v) ? Math.round(v * 10) / 10 : null
 }
 
-async function fetchBffJson(accessToken: string, path: string): Promise<unknown | null> {
+async function fetchBffJson(accessToken: string, path: string): Promise<{ data: unknown | null; status: number }> {
   const res = await fetch(`${BFF_BASE}${path}`, {
-    headers: { Authorization: `Bearer ${accessToken}`, Accept: 'application/json' },
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      Accept: 'application/json',
+      'Accept-Language': 'de-DE',
+    },
   })
-  if (res.status === 401 || res.status === 403) return null
-  if (!res.ok) return null
+  if (!res.ok) return { data: null, status: res.status }
   try {
-    return await res.json()
+    return { data: await res.json(), status: res.status }
   } catch {
-    return null
+    return { data: null, status: res.status }
   }
 }
 
@@ -151,40 +193,68 @@ async function ladeTrend(
   accessToken: string,
   metric: TrendMetric,
   endDate: string,
-): Promise<{ daily: { date: string; value: number }[]; monthlyAvg: number | null }> {
-  const data = await fetchBffJson(
+): Promise<{ daily: { date: string; value: number }[]; monthlyAvg: number | null; ok: boolean }> {
+  const { data, status } = await fetchBffJson(
     accessToken,
     `/progression-service/v3/trends/${metric}?endDate=${endDate}`,
   )
-  if (!data || typeof data !== 'object') return { daily: [], monthlyAvg: null }
+  if (!data || typeof data !== 'object') return { daily: [], monthlyAvg: null, ok: status === 200 }
 
-  const monthSeg =
-    (data as { month_time_segment?: unknown }).month_time_segment ??
-    (data as { week_time_segment?: unknown }).week_time_segment
+  const d = data as {
+    month_time_segment?: unknown
+    week_time_segment?: unknown
+    six_month_time_segment?: unknown
+  }
+  const monthSeg = d.month_time_segment ?? d.week_time_segment
+  const daily = extrahiereGraphPunkte(monthSeg, endDate)
 
   return {
-    daily: extrahiereGraphPunkte(monthSeg, endDate),
+    daily,
     monthlyAvg: segmentAvg(monthSeg),
+    ok: status === 200 && (daily.length > 0 || segmentAvg(monthSeg) != null),
   }
 }
 
-function findeContributorsTile(sections: unknown[], tileId: string): unknown | null {
-  for (const section of sections) {
-    const items = (section as { items?: unknown[] })?.items ?? []
-    for (const item of items) {
-      const content = (item as { content?: { id?: string } })?.content
-      if (content?.id === tileId) return content
+/** Rekursiv im WHOOP-BFF-Baum nach `content.id` suchen. */
+function findeKnotenMitId(root: unknown, id: string): Record<string, unknown> | null {
+  if (!root || typeof root !== 'object') return null
+  const o = root as Record<string, unknown>
+
+  if (o.id === id) return o
+
+  const content = o.content
+  if (content && typeof content === 'object' && (content as { id?: string }).id === id) {
+    return content as Record<string, unknown>
+  }
+
+  for (const key of ['sections', 'items', 'sub_items', 'subsections', 'pillars']) {
+    const child = o[key]
+    if (Array.isArray(child)) {
+      for (const c of child) {
+        const found = findeKnotenMitId(c, id)
+        if (found) return found
+      }
+    } else if (child && typeof child === 'object') {
+      const found = findeKnotenMitId(child, id)
+      if (found) return found
     }
   }
+
+  for (const v of Object.values(o)) {
+    if (v && typeof v === 'object' && !Array.isArray(v)) {
+      const found = findeKnotenMitId(v, id)
+      if (found) return found
+    }
+  }
+
   return null
 }
 
 function parseContributorMetric(
-  tile: unknown,
+  tile: Record<string, unknown> | null,
   metricId: string,
 ): { status: number | null; baseline: number | null } {
-  const metrics = (tile as { metrics?: { id?: string; status?: string; status_subtitle?: string }[] })
-    ?.metrics
+  const metrics = tile?.metrics as { id?: string; status?: string; status_subtitle?: string }[] | undefined
   const m = metrics?.find((x) => x.id === metricId)
   if (!m) return { status: null, baseline: null }
   return {
@@ -197,13 +267,9 @@ async function ladeStrainDeepDive(
   accessToken: string,
   date: string,
 ): Promise<{ steps: number | null }> {
-  const data = await fetchBffJson(
-    accessToken,
-    `/home-service/v1/deep-dive/strain?date=${date}`,
-  )
+  const { data } = await fetchBffJson(accessToken, `/home-service/v1/deep-dive/strain?date=${date}`)
   if (!data || typeof data !== 'object') return { steps: null }
-  const sections = (data as { sections?: unknown[] }).sections ?? []
-  const tile = findeContributorsTile(sections, 'STRAIN_CONTRIBUTORS_TILE')
+  const tile = findeKnotenMitId(data, 'STRAIN_CONTRIBUTORS_TILE')
   const steps = parseContributorMetric(tile, 'CONTRIBUTORS_TILE_STEPS').status
   return { steps: steps != null ? Math.round(steps) : null }
 }
@@ -219,10 +285,7 @@ async function ladeRecoveryDeepDive(
   hrvBaseline: number | null
   respiratoryBaseline: number | null
 }> {
-  const data = await fetchBffJson(
-    accessToken,
-    `/home-service/v1/deep-dive/recovery?date=${date}`,
-  )
+  const { data } = await fetchBffJson(accessToken, `/home-service/v1/deep-dive/recovery?date=${date}`)
   if (!data || typeof data !== 'object') {
     return {
       rhr: null,
@@ -233,8 +296,7 @@ async function ladeRecoveryDeepDive(
       respiratoryBaseline: null,
     }
   }
-  const sections = (data as { sections?: unknown[] }).sections ?? []
-  const tile = findeContributorsTile(sections, 'RECOVERY_CONTRIBUTORS_TILE')
+  const tile = findeKnotenMitId(data, 'RECOVERY_CONTRIBUTORS_TILE')
   const hrv = parseContributorMetric(tile, 'CONTRIBUTORS_TILE_HRV')
   const rhr = parseContributorMetric(tile, 'CONTRIBUTORS_TILE_RHR')
   const resp = parseContributorMetric(tile, 'CONTRIBUTORS_TILE_RESPIRATORY_RATE')
@@ -248,10 +310,27 @@ async function ladeRecoveryDeepDive(
   }
 }
 
+async function ladeSchritteHistorie(
+  accessToken: string,
+  tage = 35,
+): Promise<{ date: string; steps: number }[]> {
+  const out: { date: string; steps: number }[] = []
+  for (let offset = 0; offset < tage; offset += 6) {
+    const batch = Array.from({ length: Math.min(6, tage - offset) }, (_, i) => isoVorTagen(offset + i))
+    const results = await Promise.all(batch.map((date) => ladeStrainDeepDive(accessToken, date)))
+    batch.forEach((date, j) => {
+      const steps = results[j]?.steps
+      if (steps != null && steps > 0) out.push({ date, steps })
+    })
+  }
+  return out.sort((a, b) => a.date.localeCompare(b.date))
+}
+
 function mergeDailyRows(
   trends: Partial<Record<TrendMetric, { daily: { date: string; value: number }[] }>>,
+  strainHistorie: { date: string; steps: number }[],
   strainToday: { steps: number | null },
-  recoveryToday: ReturnType<typeof ladeRecoveryDeepDive> extends Promise<infer T> ? T : never,
+  recoveryToday: Awaited<ReturnType<typeof ladeRecoveryDeepDive>>,
 ): WhoopBffDailyRow[] {
   const byDate = new Map<string, WhoopBffDailyRow>()
 
@@ -288,10 +367,12 @@ function mergeDailyRows(
     }
   }
 
-  const heute = heuteIso()
-  if (strainToday.steps != null) {
-    set(heute, { steps: strainToday.steps })
+  for (const { date, steps } of strainHistorie) {
+    set(date, { steps })
   }
+
+  const heute = heuteIso()
+  if (strainToday.steps != null) set(heute, { steps: strainToday.steps })
   if (recoveryToday.rhr != null) set(heute, { restingHr: Math.round(recoveryToday.rhr) })
   if (recoveryToday.hrv != null) set(heute, { hrvRmssd: Math.round(recoveryToday.hrv * 10) / 10 })
   if (recoveryToday.respiratory != null) {
@@ -312,13 +393,17 @@ export async function ladeWhoopBffSync(accessToken: string): Promise<WhoopBffSyn
       }),
     )
 
-    const anyData = trendResults.some(([, r]) => r.daily.length > 0 || r.monthlyAvg != null)
-    if (!anyData) return null
-
-    const [strainToday, recoveryToday] = await Promise.all([
+    const [strainHistorie, strainToday, recoveryToday] = await Promise.all([
+      ladeSchritteHistorie(accessToken, 35),
       ladeStrainDeepDive(accessToken, endDate),
       ladeRecoveryDeepDive(accessToken, endDate),
     ])
+
+    const trendsOk = trendResults.filter(([, r]) => r.ok).length
+    const hatSchritte = strainHistorie.length > 0 || strainToday.steps != null
+    const hatTrendDaten = trendResults.some(([, r]) => r.daily.length > 0)
+
+    if (!hatSchritte && !hatTrendDaten && trendsOk === 0) return null
 
     const trends: Partial<
       Record<TrendMetric, { daily: { date: string; value: number }[]; monthlyAvg: number | null }>
@@ -368,9 +453,18 @@ export async function ladeWhoopBffSync(accessToken: string): Promise<WhoopBffSyn
       monthlyAvgs.respiratory = Math.round(recoveryToday.respiratoryBaseline * 10) / 10
     }
 
-    const daily = mergeDailyRows(trends, strainToday, recoveryToday)
+    const daily = mergeDailyRows(trends, strainHistorie, strainToday, recoveryToday)
 
-    return { daily, monthlyAvgs, syncedAt: new Date().toISOString() }
+    return {
+      daily,
+      monthlyAvgs,
+      syncedAt: new Date().toISOString(),
+      debug: {
+        trendsOk,
+        strainDays: strainHistorie.length,
+        dailyRows: daily.length,
+      },
+    }
   } catch {
     return null
   }

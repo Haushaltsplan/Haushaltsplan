@@ -73,6 +73,7 @@ export function verarbeiteAccelSchritt(
     rec = createEmptyDayRecord(isoDate)
     store.days.push(rec)
   }
+  if (rec.bffMetrics) return true
   rec.steps = (rec.steps ?? 0) + 1
   store.days.sort((a, b) => a.date.localeCompare(b.date))
   if (store.days.length > 365) store.days = store.days.slice(-365)

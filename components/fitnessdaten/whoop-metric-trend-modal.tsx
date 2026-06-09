@@ -1,9 +1,6 @@
 'use client'
 
-import {
-  WhoopWeeklyBarChart,
-  WhoopWeeklyLineChart,
-} from '@/components/fitnessdaten/whoop-charts'
+import { WhoopTrendChart } from '@/components/fitnessdaten/whoop-trend-chart'
 import {
   appModalScrollHiddenClassName,
   whoopModalBackdropClassName,
@@ -15,6 +12,7 @@ import {
   baselineFuerMetrik,
   formatMetricWert,
   heuteWert,
+  trendInsight,
   trendPunkte,
   type HomeMetricId,
   type TrendZeitraum,
@@ -23,9 +21,9 @@ import type { WhoopDayRecord } from '@/lib/fitnessdaten/daily-records'
 import { useEffect, useMemo, useState } from 'react'
 
 const ZEITRAEUME: { id: TrendZeitraum; label: string }[] = [
-  { id: 'woche', label: '7 Tage' },
-  { id: 'monat', label: '30 Tage' },
-  { id: '6monate', label: '6 Monate' },
+  { id: 'woche', label: 'W' },
+  { id: 'monat', label: 'M' },
+  { id: '6monate', label: '6M' },
 ]
 
 type Props = {
@@ -35,7 +33,7 @@ type Props = {
 }
 
 export function WhoopMetricTrendModal({ metricId, heute, onClose }: Props) {
-  const [zeitraum, setZeitraum] = useState<TrendZeitraum>('woche')
+  const [zeitraum, setZeitraum] = useState<TrendZeitraum>('monat')
   const meta = HOME_METRICS.find((m) => m.id === metricId)
   const info = metricId ? getMetricInfo(meta?.infoId ?? 'hrv') : null
 
@@ -44,9 +42,27 @@ export function WhoopMetricTrendModal({ metricId, heute, onClose }: Props) {
     [metricId, zeitraum],
   )
 
+  const chartPoints = useMemo(
+    () =>
+      points.map((p) => ({
+        date: p.date,
+        label: p.label || new Date(p.date + 'T12:00:00').toLocaleDateString('de-DE', {
+          day: 'numeric',
+          month: 'short',
+        }),
+        value: p.value,
+      })),
+    [points],
+  )
+
   const heuteVal = metricId ? heuteWert(metricId, heute) : null
   const monatsAvg = metricId ? baselineFuerMetrik(metricId) : null
-  const useLine = metricId === 'hrv' || metricId === 'rhr' || metricId === 'respiratory' || metricId === 'vo2max'
+  const useLine =
+    metricId === 'hrv' ||
+    metricId === 'rhr' ||
+    metricId === 'respiratory' ||
+    metricId === 'vo2max' ||
+    metricId === 'avg_hr'
 
   useEffect(() => {
     if (!metricId) return
@@ -65,35 +81,24 @@ export function WhoopMetricTrendModal({ metricId, heute, onClose }: Props) {
   if (!metricId || !meta || !info) return null
 
   const formatVal = (v: number) => formatMetricWert(metricId, v, meta.decimals ?? 0)
+  const insight = trendInsight(metricId, heuteVal, monatsAvg)
 
   return (
     <div className={whoopModalBackdropClassName} role="dialog" aria-modal>
       <button
         type="button"
-        className="absolute inset-0 bg-black/70 backdrop-blur-[8px]"
+        className="absolute inset-0 bg-black/75 backdrop-blur-[8px]"
         aria-label="Schließen"
         onClick={onClose}
       />
       <div
-        className={`${whoopModalPanelClassName} max-h-[90dvh]`}
+        className={`${whoopModalPanelClassName} max-h-[92dvh] bg-[#0a0b0c]`}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex shrink-0 items-start justify-between border-b border-white/[0.06] px-5 py-4">
           <div>
-            <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-zinc-500">Verlauf</p>
-            <h2 className="mt-1 text-lg font-semibold text-white">{meta.label}</h2>
-            <p className="mt-1 text-2xl font-bold tabular-nums text-[#5eb3d6]">
-              {formatMetricWert(metricId, heuteVal, meta.decimals ?? 0)}
-              {meta.unit ? (
-                <span className="ml-2 text-sm font-medium text-zinc-500">{meta.unit}</span>
-              ) : null}
-            </p>
-            {monatsAvg != null ? (
-              <p className="mt-1 text-xs text-zinc-500">
-                Monats-Ø: {formatMetricWert(metricId, monatsAvg, meta.decimals ?? 0)}
-                {meta.unit ? ` ${meta.unit}` : ''}
-              </p>
-            ) : null}
+            <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-zinc-500">Trendanzeige</p>
+            <h2 className="mt-1 text-base font-semibold uppercase tracking-wide text-white">{meta.label}</h2>
           </div>
           <button
             type="button"
@@ -105,15 +110,15 @@ export function WhoopMetricTrendModal({ metricId, heute, onClose }: Props) {
           </button>
         </div>
 
-        <div className="flex shrink-0 gap-1 border-b border-white/[0.06] px-4 py-2">
+        <div className="flex shrink-0 justify-end gap-1 border-b border-white/[0.06] px-4 py-2">
           {ZEITRAEUME.map((z) => (
             <button
               key={z.id}
               type="button"
               onClick={() => setZeitraum(z.id)}
-              className={`flex-1 rounded-lg py-2 text-[11px] font-semibold transition ${
+              className={`min-w-[2.5rem] rounded-lg py-2 text-[11px] font-bold transition ${
                 zeitraum === z.id
-                  ? 'bg-white/[0.1] text-white'
+                  ? 'bg-white/[0.12] text-white'
                   : 'text-zinc-500 hover:text-zinc-300'
               }`}
             >
@@ -123,15 +128,15 @@ export function WhoopMetricTrendModal({ metricId, heute, onClose }: Props) {
         </div>
 
         <div className={`${appModalScrollHiddenClassName} px-4 py-4`}>
-          {useLine ? (
-            <WhoopWeeklyLineChart title={meta.label} points={points} />
-          ) : (
-            <WhoopWeeklyBarChart
-              title={meta.label}
-              points={points}
-              formatValue={formatVal}
-            />
-          )}
+          <WhoopTrendChart
+            title={meta.label}
+            unit={meta.unit}
+            points={chartPoints}
+            monthlyAvg={monatsAvg}
+            variant={useLine ? 'line' : 'bar'}
+            formatValue={formatVal}
+            insight={insight}
+          />
 
           <div className="mt-4 rounded-xl border border-white/[0.06] bg-white/[0.03] px-4 py-3">
             <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">Was ist das?</p>

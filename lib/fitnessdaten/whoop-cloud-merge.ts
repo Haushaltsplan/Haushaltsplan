@@ -120,8 +120,10 @@ function mergeDay(
     strain: mergeTagesStrain(cycle?.strain, prev.strain),
     avgHr: pickBff(bffRow?.avgHr, cycle?.avgHr, prev.avgHr),
     maxHr: pick(cycle?.maxHr, prev.maxHr) ?? prev.maxHr,
-    calories: pickBff(bffRow?.calories, cycle?.calories, prev.calories),
-    steps: pickBff(bffRow?.steps, null, prev.steps),
+    calories:
+      bffRow?.calories ??
+      (cycle?.calories != null && cycle.calories > 0 ? cycle.calories : prev.calories),
+    steps: bffRow?.steps ?? (prev.bffMetrics ? prev.steps : null),
     vo2Max: pickBff(bffRow?.vo2Max, null, prev.vo2Max),
   }
 }
@@ -270,11 +272,15 @@ export function mergeCloudPayload(payload: WhoopCloudSyncPayload): WhoopCloudSyn
   sync.message = `WHOOP Cloud: ${dates.size} Tage, ${payload.workouts.length} Workouts`
   speichereSyncState(sync)
 
+  const bffInfo = payload.bff?.debug
+    ? ` · BFF: ${payload.bff.debug.strainDays} Schritt-Tage, ${payload.bff.debug.trendsOk}/7 Trends`
+    : ''
+
   return {
     ok: true,
     payload,
     syncedAt,
-    message: `${dates.size} Tage · ${payload.sleeps.length} Schlaf · ${payload.workouts.length} Workouts · ${mitSpo2} mit SpO₂`,
+    message: `${dates.size} Tage · ${payload.sleeps.length} Schlaf · ${payload.workouts.length} Workouts · ${mitSpo2} mit SpO₂${bffInfo}`,
     stats: {
       recoveries: payload.recoveries.length,
       sleeps: payload.sleeps.length,

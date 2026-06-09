@@ -87,6 +87,7 @@ export function WhoopBleProvider({ children }: Props) {
   const connectingRef = useRef(false)
   const phaseRef = useRef<WhoopWebBlePhase>('idle')
   const reconnectVersucheRef = useRef(0)
+  const wakeLockRef = useRef<WakeLockSentinel | null>(null)
   const verbindenInternRef = useRef<
     (auswahl: WhoopDeviceAuswahl, existingDevice?: BluetoothDevice) => Promise<void>
   >(async () => {})
@@ -294,6 +295,39 @@ export function WhoopBleProvider({ children }: Props) {
       if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current)
     }
   }, [])
+
+  /** Bildschirm wach halten, solange BLE live — reduziert Standby-Abbrüche (Android PWA). */
+  useEffect(() => {
+    if (!istWhoopBleAlwaysOn() || phase !== 'live') {
+      void wakeLockRef.current?.release().catch(() => {})
+      wakeLockRef.current = null
+      return
+    }
+    if (!('wakeLock' in navigator)) return
+    let cancelled = false
+    const acquire = async () => {
+      try {
+        if (cancelled || document.visibilityState !== 'visible') return
+        wakeLockRef.current = await navigator.wakeLock.request('screen')
+        wakeLockRef.current.addEventListener('release', () => {
+          if (!cancelled && phaseRef.current === 'live') void acquire()
+        })
+      } catch {
+        /* Batterie-Einstellungen oder Tab im Hintergrund */
+      }
+    }
+    void acquire()
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') void acquire()
+    }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => {
+      cancelled = true
+      document.removeEventListener('visibilitychange', onVisible)
+      void wakeLockRef.current?.release().catch(() => {})
+      wakeLockRef.current = null
+    }
+  }, [phase])
 
   return (
     <WhoopBleContext.Provider

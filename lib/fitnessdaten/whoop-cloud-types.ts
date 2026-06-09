@@ -77,6 +77,11 @@ export type WhoopBffSyncPayload = {
   daily: WhoopBffDailyRow[]
   monthlyAvgs: WhoopBffMonthlyAvgs
   syncedAt: string
+  debug?: {
+    trendsOk: number
+    strainDays: number
+    dailyRows: number
+  }
 }
 
 export type WhoopCloudSyncPayload = {
