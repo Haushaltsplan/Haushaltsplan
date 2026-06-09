@@ -2,11 +2,13 @@
 
 import {
   createEmptyDayRecord,
+  ergaenzeZonenUndVitals,
   ladeDailyStore,
   speichereDailyStore,
   type WhoopActivity,
   type WhoopDayRecord,
 } from '@/lib/fitnessdaten/daily-records'
+import { schaetzeSchritte } from '@/lib/fitnessdaten/steps-tracker'
 import { heuteIsoLocal, mergeTagesStrain, recoveryLabelAusProzent } from '@/lib/fitnessdaten/scores'
 import { berechneSkinTempDelta } from '@/lib/fitnessdaten/skin-temp'
 import { ladeSyncState, speichereSyncState } from '@/lib/fitnessdaten/offline-sync'
@@ -95,13 +97,23 @@ function mergeDay(
     deepMinutes: pick(sleep?.deepMinutes, prev.deepMinutes),
     lightMinutes: pick(sleep?.lightMinutes, prev.lightMinutes),
     awakeMinutes: pick(sleep?.awakeMinutes, prev.awakeMinutes),
-    respiratoryRate: pick(sleep?.respiratoryRate, prev.respiratoryRate) ?? pick(rec ? null : null, prev.respiratoryRate),
+    respiratoryRate: pick(sleep?.respiratoryRate, prev.respiratoryRate),
     bedTimeMs: pick(sleep?.bedTimeMs, prev.bedTimeMs),
     wakeTimeMs: pick(sleep?.wakeTimeMs, prev.wakeTimeMs),
     strain: mergeTagesStrain(cycle?.strain, prev.strain),
     avgHr: pick(cycle?.avgHr, prev.avgHr),
     maxHr: pick(cycle?.maxHr, prev.maxHr) ?? prev.maxHr,
     calories: pick(cycle?.calories, prev.calories),
+    steps: (() => {
+      const geschaetzt =
+        cycle?.calories != null && cycle.calories > 0
+          ? schaetzeSchritte(cycle.calories, prev.zoneMin13)
+          : 0
+      const kandidaten = [prev.steps, geschaetzt > 0 ? geschaetzt : null].filter(
+        (v): v is number => v != null && v > 0,
+      )
+      return kandidaten.length > 0 ? Math.round(Math.max(...kandidaten)) : prev.steps
+    })(),
   }
 }
 
@@ -153,7 +165,11 @@ export function mergeCloudPayload(payload: WhoopCloudSyncPayload): WhoopCloudSyn
     byDate.set(date, mergeDay(prev, payload, date, skinCtx))
   }
   store.skinTempBaseline = skinCtx.baseline
-  store.days = [...byDate.values()].sort((a, b) => a.date.localeCompare(b.date)).slice(-365)
+  const history = ladeFitnessHistory()
+  store.days = [...byDate.values()]
+    .map((d) => ergaenzeZonenUndVitals(d, history, store))
+    .sort((a, b) => a.date.localeCompare(b.date))
+    .slice(-365)
 
   const workoutActivities: WhoopActivity[] = payload.workouts.map((w) => ({
     id: w.id,
@@ -193,6 +209,8 @@ export function mergeCloudPayload(payload: WhoopCloudSyncPayload): WhoopCloudSyn
       scores.recoveryPercent = heuteRecord.recoveryPercent
       scores.recoveryLabel = recoveryLabelAusProzent(heuteRecord.recoveryPercent)
     }
+    if (heuteRecord.calories != null) scores.caloriesKcal = heuteRecord.calories
+    if (heuteRecord.zoneMinutes) scores.zoneMinutes = heuteRecord.zoneMinutes
     speichereFitnessSnapshot({
       ...snapshot,
       scores,

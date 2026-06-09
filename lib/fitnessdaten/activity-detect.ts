@@ -10,9 +10,9 @@ export function erkenneAktivitaeten(
   hrSeries: FitnessHrPoint[],
   restingHr: number,
   minDauerSec = 180,
+  datum = heuteIsoLocal(),
 ): WhoopActivity[] {
-  const heute = heuteIsoLocal()
-  const heuteSeries = hrSeries.filter((p) => new Date(p.t).toISOString().slice(0, 10) === heute)
+  const heuteSeries = hrSeries.filter((p) => new Date(p.t).toISOString().slice(0, 10) === datum)
   if (heuteSeries.length < 5) return []
 
   const schwelle = restingHr + 25
@@ -35,6 +35,9 @@ export function erkenneAktivitaeten(
       strain: Math.max(0.5, strain),
       startMs: start,
       endMs,
+      date: datum,
+      avgHr: Math.round(avg),
+      maxHr: peak,
     })
     start = null
     peak = 0

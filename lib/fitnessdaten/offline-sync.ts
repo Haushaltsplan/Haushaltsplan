@@ -4,12 +4,14 @@
 
 import {
   createEmptyDayRecord,
+  ergaenzeZonenUndVitals,
   ladeDailyStore,
   speichereDailyStore,
   type WhoopDayRecord,
 } from '@/lib/fitnessdaten/daily-records'
 import { ladeFitnessHistory, ladeFitnessSnapshot, mergeLiveSnapshot, speichereFitnessHistory, speichereFitnessSnapshot } from '@/lib/fitnessdaten/history-storage'
-import { heuteIsoLocal, maxHr, ruhepulsSchaetzung } from '@/lib/fitnessdaten/scores'
+import { heuteIsoLocal, maxHr, ruhepulsSchaetzung, zoneFuerBpm } from '@/lib/fitnessdaten/scores'
+import { profilMaxHr, ladeFitnessProfil } from '@/lib/fitnessdaten/user-profile'
 import { berechneSkinTempDelta } from '@/lib/fitnessdaten/skin-temp'
 import type { FitnessSnapshot } from '@/lib/fitnessdaten/types'
 import type { Gen5EventSample, R22Sample } from '@/lib/fitnessdaten/whoop-gen5-protocol'
@@ -148,12 +150,25 @@ export function mergeHistoricalR22(
 
   history.hrSeries.push({ t, bpm: sample.heartRateBpm })
   if (history.hrSeries.length > 600) history.hrSeries = history.hrSeries.slice(-600)
+
+  const tagPoints = history.hrSeries.filter((p) => new Date(p.t).toISOString().slice(0, 10) === isoDate)
+  const rhr = ruhepulsSchaetzung(tagPoints) ?? history.baselines.restingHrBpm
+  const mhr = profilMaxHr(ladeFitnessProfil())
+  if (tagPoints.length >= 2) {
+    const prev = tagPoints[tagPoints.length - 2]!
+    const dt = Math.min(300, Math.max(1, (t - prev.t) / 1000))
+    const zone = zoneFuerBpm(sample.heartRateBpm, mhr, rhr)
+    if (isoDate === heuteIsoLocal()) {
+      history.zoneSecondsToday[zone] += dt
+    }
+  }
+
   speichereFitnessHistory(history)
 
   aktualisiereTagAusHistorie(isoDate, {
-    restingHr: ruhepulsSchaetzung(history.hrSeries.filter((p) => new Date(p.t).toISOString().slice(0, 10) === isoDate)),
-    maxHr: maxHr(history.hrSeries.filter((p) => new Date(p.t).toISOString().slice(0, 10) === isoDate)),
-  })
+    restingHr: rhr,
+    maxHr: maxHr(tagPoints),
+  }, history)
 
   const partial: FitnessSnapshot = {
     updatedAt: new Date().toISOString(),
@@ -214,6 +229,7 @@ export function mergeHistoricalEvent(
 function aktualisiereTagAusHistorie(
   isoDate: string,
   partial: Partial<WhoopDayRecord>,
+  history = ladeFitnessHistory(),
 ): void {
   const store = ladeDailyStore()
   let rec = store.days.find((d) => d.date === isoDate)
@@ -231,8 +247,10 @@ function aktualisiereTagAusHistorie(
 
   const { skinTempC: _s, skinTempDelta: _d, ...rest } = partial
   Object.assign(rec, rest)
+  const idx = store.days.findIndex((d) => d.date === isoDate)
+  store.days[idx >= 0 ? idx : store.days.length - 1] = ergaenzeZonenUndVitals(rec, history, store)
   store.days.sort((a, b) => a.date.localeCompare(b.date))
-  if (store.days.length > 35) store.days = store.days.slice(-35)
+  if (store.days.length > 365) store.days = store.days.slice(-365)
   speichereDailyStore(store)
 }
 

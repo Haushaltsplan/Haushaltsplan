@@ -7,8 +7,8 @@ export const NAV_LINK_DEFS = [
   { href: '/rennrad', label: 'Rennrad', emoji: '🚴', color: 'text-rose-400', ring: 'focus-visible:ring-rose-500/50' },
   {
     href: '/fitnessdaten',
-    label: 'Fitnessdaten',
-    emoji: '💪',
+    label: 'Whoop',
+    emoji: '⬡',
     color: 'text-orange-400',
     ring: 'focus-visible:ring-orange-500/50',
   },

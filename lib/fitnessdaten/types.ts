@@ -90,6 +90,8 @@ export type FitnessHistoryState = {
   dayStrainDate: string
   zoneSecondsToday: HrZoneMinutes
   caloriesToday: number
+  stepsToday: number
+  stepsDate: string
   baselines: {
     hrvRmssdMs: number
     restingHrBpm: number

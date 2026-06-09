@@ -3,7 +3,16 @@
 import { heuteIsoLocal, istMorgenFenster, mergeTagesStrain } from '@/lib/fitnessdaten/scores'
 import { ergaenzeSchlafDetails } from '@/lib/fitnessdaten/sleep-detail'
 import { speichereZonenImTag } from '@/lib/fitnessdaten/healthspan-engine'
+import { schaetzeSchritte } from '@/lib/fitnessdaten/steps-tracker'
+import { schaetzeVo2Max } from '@/lib/fitnessdaten/vo2max'
+import {
+  mergeZonen,
+  zonenAusHrPunkten,
+  zonenAusWorkouts,
+  zonenAusZyklus,
+} from '@/lib/fitnessdaten/zone-aggregator'
 import type { FitnessHistoryState, FitnessScores, FitnessSnapshot, HrZoneMinutes } from '@/lib/fitnessdaten/types'
+import { profilAlter, ladeFitnessProfil, profilMaxHr } from '@/lib/fitnessdaten/user-profile'
 
 export const FITNESS_DAILY_STORAGE_KEY = 'mein-haushalt:fitnessdaten-daily'
 
@@ -33,6 +42,7 @@ export type WhoopDayRecord = {
   bpDiastolic: number | null
   calories: number | null
   steps: number | null
+  vo2Max: number | null
   maxHr: number | null
   zoneMin13: number
   zoneMin45: number
@@ -110,6 +120,7 @@ export function createEmptyDayRecord(date: string): WhoopDayRecord {
     bpDiastolic: null,
     calories: null,
     steps: null,
+    vo2Max: null,
     maxHr: null,
     zoneMin13: 0,
     zoneMin45: 0,
@@ -187,10 +198,6 @@ function schaetzeAtemfrequenz(rhr: number | null, baselineRhr: number): number |
   return Math.round(Math.min(20, Math.max(12, v)) * 10) / 10
 }
 
-function schaetzeSchritte(calories: number, zoneMin13Val: number): number {
-  return Math.round(calories * 6 + zoneMin13Val * 80)
-}
-
 function schaetzeKraftzeit(z: HrZoneMinutes | null | undefined): number {
   if (!z) return 0
   return Math.round((z.z4 ?? 0) * 0.3 + (z.z5 ?? 0) * 0.5)
@@ -211,6 +218,71 @@ export function vitalFuerDatum(date: string, store = ladeDailyStore()): VitalLog
 export function isoAusMs(ms: number): string {
   const d = new Date(ms)
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+function mergeKalorien(
+  live: number | null | undefined,
+  prev: number | null,
+  historyToday: number,
+): number | null {
+  const kandidaten = [prev, live, historyToday > 0 ? historyToday : null].filter(
+    (v): v is number => v != null && v > 0,
+  )
+  if (kandidaten.length === 0) return prev
+  return Math.round(Math.max(...kandidaten))
+}
+
+function mergeSchritte(
+  prev: number | null,
+  ble: number,
+  calories: number | null,
+  zoneMin13Val: number,
+): number | null {
+  const geschaetzt = schaetzeSchritte(calories ?? 0, zoneMin13Val)
+  const kandidaten = [prev, ble > 0 ? ble : null, geschaetzt > 0 ? geschaetzt : null].filter(
+    (v): v is number => v != null && v > 0,
+  )
+  if (kandidaten.length === 0) return prev
+  return Math.round(Math.max(...kandidaten))
+}
+
+export function ergaenzeZonenUndVitals(
+  record: WhoopDayRecord,
+  history: FitnessHistoryState,
+  store = ladeDailyStore(),
+): WhoopDayRecord {
+  const rhr = record.restingHr ?? history.baselines.restingHrBpm
+  const maxHr = record.maxHr ?? profilMaxHr(ladeFitnessProfil())
+  const hrPoints = history.hrSeries.filter(
+    (p) => new Date(p.t).toISOString().slice(0, 10) === record.date,
+  )
+  const acts = store.activities.filter((a) => (a.date ?? isoAusMs(a.startMs)) === record.date)
+  const zBle = hrPoints.length >= 5 ? zonenAusHrPunkten(hrPoints, maxHr, rhr) : null
+  const zWork = acts.length > 0 ? zonenAusWorkouts(acts, rhr, maxHr) : null
+  const zCloud =
+    record.zoneMin13 <= 0 && record.avgHr != null
+      ? zonenAusZyklus(record.avgHr, record.strain, rhr, maxHr)
+      : null
+  const z = mergeZonen(record.zoneMinutes ?? undefined, zBle, zWork, zCloud)
+  const age = profilAlter(ladeFitnessProfil())
+  const vo2 = schaetzeVo2Max(rhr, maxHr, age)
+  const avgHr =
+    record.avgHr ??
+    (hrPoints.length >= 3
+      ? Math.round(hrPoints.reduce((a, p) => a + p.bpm, 0) / hrPoints.length)
+      : null)
+  return speichereZonenImTag(
+    {
+      ...record,
+      avgHr,
+      vo2Max: vo2 ?? record.vo2Max,
+      zoneMinutes: z,
+      zoneMin13: (z.z1 ?? 0) + (z.z2 ?? 0) + (z.z3 ?? 0),
+      zoneMin45: (z.z4 ?? 0) + (z.z5 ?? 0),
+      strengthMin: schaetzeKraftzeit(z),
+    },
+    z,
+  )
 }
 
 export function aktualisiereHeuteAusSnapshot(
@@ -268,9 +340,15 @@ export function aktualisiereHeuteAusSnapshot(
           schaetzeAtemfrequenz(scores?.restingHrBpm ?? null, history.baselines.restingHrBpm),
         skinTempC: snapshot.live?.skinTempC ?? prevHeute.skinTempC,
         skinTempDelta: skinDelta ?? prevHeute.skinTempDelta,
-        calories: scores?.caloriesKcal ?? prevHeute.calories,
-        steps: prevHeute.steps ?? schaetzeSchritte(scores?.caloriesKcal ?? 0, zoneMin13(z)),
+        calories: mergeKalorien(scores?.caloriesKcal, prevHeute.calories, history.caloriesToday),
+        steps: mergeSchritte(
+          prevHeute.steps,
+          history.stepsToday ?? 0,
+          mergeKalorien(scores?.caloriesKcal, prevHeute.calories, history.caloriesToday),
+          zoneMin13(z),
+        ),
         maxHr: scores?.maxHrToday ?? prevHeute.maxHr,
+        avgHr: scores?.avgHrSession ?? prevHeute.avgHr,
         zoneMin13: zoneMin13(z),
         zoneMin45: zoneMin45(z),
         strengthMin: schaetzeKraftzeit(z),
@@ -281,15 +359,27 @@ export function aktualisiereHeuteAusSnapshot(
     z,
   )
 
+  const recordFinal = ergaenzeZonenUndVitals(record, history, store)
+
   const idx = store.days.findIndex((d) => d.date === heute)
-  if (idx >= 0) store.days[idx] = record
-  else store.days.push(record)
+  if (idx >= 0) store.days[idx] = recordFinal
+  else store.days.push(recordFinal)
 
   store.days.sort((a, b) => a.date.localeCompare(b.date))
   if (store.days.length > 365) store.days = store.days.slice(-365)
 
   speichereDailyStore(store)
-  return record
+  return recordFinal
+}
+
+export function aktivitaetenLetzteTage(tage = 14, store = ladeDailyStore()): WhoopActivity[] {
+  const cutoff = new Date()
+  cutoff.setDate(cutoff.getDate() - tage)
+  const cutoffMs = cutoff.getTime()
+  return [...store.activities, ...store.activitiesToday]
+    .filter((a) => a.startMs >= cutoffMs)
+    .sort((a, b) => b.startMs - a.startMs)
+    .slice(0, 40)
 }
 
 export function letzte7Tage(): WhoopDayRecord[] {

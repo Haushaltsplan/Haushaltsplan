@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import { Suspense } from 'react'
 import { PageChrome, PageSection, PageSectionPanel } from '@/components/page-shell'
 import { parseWetterOrtId, REGION_HAARBACH } from '@/lib/region-haarbach'
+import { StartWhoopPanel } from '@/components/start-whoop-panel'
 import {
   StartNewsPortfolioPanel,
   StartNewsRennradPanel,
@@ -47,6 +48,10 @@ export default async function StartUebersichtPage({ searchParams }: StartPagePro
       <Suspense fallback={<StartRegionSkeleton />}>
         <StartRegionBlock ortId={ortId} />
       </Suspense>
+
+      <PageSection titleId="start-whoop-heading" title="Whoop" density="compact">
+        <StartWhoopPanel />
+      </PageSection>
 
       <PageSection titleId="start-news-heading" title="News & Sport" density="compact">
         <Suspense fallback={<StartNewsPanelSkeleton />}>

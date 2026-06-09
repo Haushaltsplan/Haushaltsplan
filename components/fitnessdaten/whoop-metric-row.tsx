@@ -20,6 +20,7 @@ export function WhoopMetricRow({
   m,
   unit = '',
   decimals = 0,
+  onPress,
   onInfo,
 }: {
   icon: string
@@ -27,13 +28,14 @@ export function WhoopMetricRow({
   m: MetricMitBaseline
   unit?: string
   decimals?: number
+  onPress?: () => void
   onInfo?: () => void
 }) {
   return (
     <button
       type="button"
-      onClick={onInfo}
-      className={`flex w-full items-center gap-3 border-b border-white/[0.06] py-3.5 text-left last:border-0 ${onInfo ? 'hover:bg-white/[0.02]' : ''}`}
+      onClick={onPress ?? onInfo}
+      className={`flex w-full items-center gap-3 border-b border-white/[0.06] py-3.5 text-left last:border-0 ${onPress || onInfo ? 'hover:bg-white/[0.02]' : ''}`}
     >
       <span className="w-6 text-center text-lg opacity-80">{icon}</span>
       <div className="min-w-0 flex-1">

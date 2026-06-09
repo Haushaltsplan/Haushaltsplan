@@ -6,6 +6,7 @@ import { ladeSyncState, type SyncState } from '@/lib/fitnessdaten/offline-sync'
 import {
   aktualisiereHeuteAusSnapshot,
   aktivitaetenFuerDatum,
+  aktivitaetenLetzteTage,
   baseline30,
   createEmptyDayRecord,
   journalFuerDatum,
@@ -17,7 +18,8 @@ import {
   type WhoopJournalEntry,
 } from '@/lib/fitnessdaten/daily-records'
 import { ladeFitnessHistory } from '@/lib/fitnessdaten/history-storage'
-import { heuteIsoLocal } from '@/lib/fitnessdaten/scores'
+import { heuteIsoLocal, zoneFuerBpm } from '@/lib/fitnessdaten/scores'
+import { profilMaxHr, ladeFitnessProfil } from '@/lib/fitnessdaten/user-profile'
 import type { FitnessSnapshot } from '@/lib/fitnessdaten/types'
 
 export type TrendRichtung = 'up' | 'down' | 'neutral'
@@ -51,6 +53,7 @@ export type WhoopDashboardModel = {
   schlafdefizit: { date: string; defizitMin: number; label: string }[]
   journal: WhoopJournalEntry[]
   aktivitaeten: WhoopActivity[]
+  aktivitaetenHistorie: WhoopActivity[]
   insightRecovery: string | null
   insightStrain: string | null
   insightSchlaf: string | null
@@ -136,14 +139,14 @@ export function baueWhoopDashboard(snapshot: FitnessSnapshot | null): WhoopDashb
   }))
 
   const liveHr = snapshot?.live?.heartRateBpm ?? null
+  const rhrLive = heuteRecord.restingHr ?? history.baselines.restingHrBpm
+  const maxHrLive = heuteRecord.maxHr ?? profilMaxHr(ladeFitnessProfil())
+  const zoneKey =
+    liveHr != null && liveHr > 0 ? zoneFuerBpm(liveHr, maxHrLive, rhrLive) : 'rest'
   const hrZone =
-    liveHr != null && heuteRecord.restingHr != null
-      ? liveHr < heuteRecord.restingHr + 10
-        ? 0
-        : liveHr < heuteRecord.restingHr + 30
-          ? 1
-          : 2
-      : 0
+    zoneKey === 'rest' ? 0 : zoneKey === 'z1' || zoneKey === 'z2' ? 1 : zoneKey === 'z3' ? 2 : 3
+
+  const aktivitaetenHistorie = aktivitaetenLetzteTage(21, store)
 
   const coachSchlaf =
     heuteRecord.sleepScore != null && heuteRecord.sleepScore < 60
@@ -166,6 +169,7 @@ export function baueWhoopDashboard(snapshot: FitnessSnapshot | null): WhoopDashb
     schlafdefizit,
     journal,
     aktivitaeten,
+    aktivitaetenHistorie,
     insightRecovery,
     insightStrain,
     insightSchlaf:

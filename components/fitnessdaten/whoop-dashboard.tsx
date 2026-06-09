@@ -34,8 +34,19 @@ import {
   recoveryLabelDe,
   WhoopRing,
 } from '@/components/fitnessdaten/whoop-ring'
+import { WhoopActivityModal } from '@/components/fitnessdaten/whoop-activity-modal'
+import { WhoopMetricTrendModal } from '@/components/fitnessdaten/whoop-metric-trend-modal'
 import { getMetricInfo, type MetricInfo, type MetricInfoId } from '@/lib/fitnessdaten/metric-explanations'
 import { baueWhoopDashboard } from '@/lib/fitnessdaten/metrics-engine'
+import {
+  HOME_METRICS,
+  baselineFuerMetrik,
+  formatMetricWert,
+  heuteWert,
+  type HomeMetricId,
+} from '@/lib/fitnessdaten/trend-data'
+import type { WhoopActivity } from '@/lib/fitnessdaten/daily-records'
+import { baseline30 } from '@/lib/fitnessdaten/daily-records'
 import { zoneSegmenteAusTag } from '@/lib/fitnessdaten/healthspan-engine'
 import { formatStundenMin } from '@/lib/fitnessdaten/sleep-detail'
 import type { WhoopDayRecord } from '@/lib/fitnessdaten/daily-records'
@@ -110,6 +121,8 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange }: P
   const [expandedHealthMetric, setExpandedHealthMetric] = useState<string | null>(null)
   const [coachExpanded, setCoachExpanded] = useState(false)
   const [dataRevision, setDataRevision] = useState(0)
+  const [trendMetric, setTrendMetric] = useState<HomeMetricId | null>(null)
+  const [selectedActivity, setSelectedActivity] = useState<WhoopActivity | null>(null)
   const showInfo = (id: MetricInfoId) => setInfo(getMetricInfo(id))
   const live = snapshot?.live
   const scores = snapshot?.scores
@@ -124,7 +137,7 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange }: P
 
   const isLive = phase === 'live'
   const zoneAnteil = scores?.zoneMinutes ? formatZoneAnteil(scores.zoneMinutes) : []
-  const { heute, woche, metriken, aktivitaeten, journal, schlafdefizit } = model
+  const { heute, woche, metriken, aktivitaeten, aktivitaetenHistorie, journal, schlafdefizit } = model
 
   const tabs: { id: Tab; label: string; icon: string }[] = [
     { id: 'home', label: 'Home', icon: '◉' },
@@ -166,7 +179,7 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange }: P
       >
         <header className="flex items-start justify-between gap-3">
           <div>
-            <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-zinc-500">Omnia · WHOOP</p>
+            <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-zinc-500">WHOOP</p>
             <h1 className="mt-1 text-lg font-semibold capitalize text-white sm:text-xl">{formatDatum()}</h1>
             <p className="mt-0.5 text-xs text-zinc-500">
               {snapshot?.deviceName ?? 'Nicht verbunden'}
@@ -246,6 +259,68 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange }: P
                 </p>
                 <WhoopHrChart points={snapshot?.hrHistory ?? []} live={isLive} />
               </div>
+
+              <div className="rounded-2xl border border-white/[0.06] bg-[#141618] p-4">
+                <p className="mb-3 text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">
+                  Vitalwerte — tippe für Verlauf
+                </p>
+                <ul className="grid grid-cols-2 gap-2">
+                  {HOME_METRICS.map((m) => {
+                    const val = heuteWert(m.id, heute)
+                    return (
+                      <li key={m.id}>
+                        <button
+                          type="button"
+                          onClick={() => setTrendMetric(m.id)}
+                          className="w-full rounded-xl border border-white/[0.04] bg-black/25 px-3 py-2.5 text-left transition hover:border-[#009dff]/30"
+                        >
+                          <span className="text-[9px] font-bold uppercase text-zinc-500">{m.label}</span>
+                          <p className="mt-1 text-base font-bold tabular-nums text-white">
+                            {formatMetricWert(m.id, val, m.decimals ?? 0)}
+                            {m.unit && val != null ? (
+                              <span className="ml-1 text-[10px] font-normal text-zinc-500">{m.unit}</span>
+                            ) : null}
+                          </p>
+                        </button>
+                      </li>
+                    )
+                  })}
+                </ul>
+              </div>
+
+              {aktivitaetenHistorie.length > 0 ? (
+                <div className="rounded-2xl border border-white/[0.06] bg-[#141618] p-4">
+                  <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">
+                    Letzte Aktivitäten
+                  </p>
+                  <ul className="mt-3 space-y-2">
+                    {aktivitaetenHistorie.slice(0, 6).map((a) => (
+                      <li key={a.id}>
+                        <button
+                          type="button"
+                          onClick={() => setSelectedActivity(a)}
+                          className="flex w-full items-center gap-3 rounded-xl border border-white/[0.04] bg-black/30 px-3 py-2.5 text-left transition hover:border-[#009dff]/25"
+                        >
+                          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#009dff]/20 text-xs font-bold text-[#009dff]">
+                            {a.strain.toFixed(1)}
+                          </span>
+                          <span className="min-w-0 flex-1">
+                            <span className="block truncate text-xs font-bold uppercase">{a.label}</span>
+                            <span className="text-[10px] text-zinc-500">
+                              {new Date(a.startMs).toLocaleDateString('de-DE', {
+                                weekday: 'short',
+                                day: 'numeric',
+                              })}{' '}
+                              · {formatUhrzeit(a.startMs)}
+                            </span>
+                          </span>
+                          <span className="text-zinc-600">›</span>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
 
               {model.insightRecovery ? <WhoopInsightCard text={model.insightRecovery} /> : null}
             </section>
@@ -383,9 +458,9 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange }: P
             />
 
             <div className="rounded-2xl border border-white/[0.06] bg-[#141618] px-4">
-              <WhoopMetricRow icon="〰" label="Herzfrequenzvariabilität" m={metriken.hrv} unit="ms" onInfo={() => showInfo('hrv')} />
-              <WhoopMetricRow icon="♥" label="Ruheherzfrequenz" m={metriken.rhr} onInfo={() => showInfo('rhr')} />
-              <WhoopMetricRow icon="◎" label="Atemfrequenz" m={metriken.respiratory} decimals={1} onInfo={() => showInfo('respiratory')} />
+              <WhoopMetricRow icon="〰" label="Herzfrequenzvariabilität" m={metriken.hrv} unit="ms" onPress={() => setTrendMetric('hrv')} onInfo={() => showInfo('hrv')} />
+              <WhoopMetricRow icon="♥" label="Ruheherzfrequenz" m={metriken.rhr} onPress={() => setTrendMetric('rhr')} onInfo={() => showInfo('rhr')} />
+              <WhoopMetricRow icon="◎" label="Atemfrequenz" m={metriken.respiratory} decimals={1} onPress={() => setTrendMetric('respiratory')} onInfo={() => showInfo('respiratory')} />
               <WhoopMetricRow icon="☾" label="Schlafleistung" m={metriken.sleepPerformance} unit="%" onInfo={() => showInfo('sleep_performance')} />
               <p className="border-t border-white/[0.06] py-2 text-[9px] text-zinc-600">
                 ▲ ▼ Heute im Vergleich zu den letzten 30 Tagen
@@ -434,16 +509,21 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange }: P
                 label="Herzfrequenzzonen 1–3"
                 m={{
                   heute: heute.zoneMin13,
-                  baseline30: model.baselines.strain != null ? heute.zoneMin13 * 0.8 : null,
-                  trend: 'up',
+                  baseline30: baseline30('zoneMin13'),
+                  trend: trendMetricRow(heute.zoneMin13, baseline30('zoneMin13')),
                 }}
                 unit="min"
+                onPress={() => setTrendMetric('avg_hr')}
                 onInfo={() => showInfo('zones_13')}
               />
               <WhoopMetricRow
                 icon="♥"
                 label="Herzfrequenzzonen 4–5"
-                m={{ heute: heute.zoneMin45, baseline30: null, trend: 'neutral' }}
+                m={{
+                  heute: heute.zoneMin45,
+                  baseline30: baseline30('zoneMin45'),
+                  trend: trendMetricRow(heute.zoneMin45, baseline30('zoneMin45')),
+                }}
                 unit="min"
                 onInfo={() => showInfo('zones_45')}
               />
@@ -459,10 +539,23 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange }: P
                 label="Schritte"
                 m={{
                   heute: heute.steps,
-                  baseline30: baselineSchritte(woche),
-                  trend: trendSteps(heute.steps, baselineSchritte(woche)),
+                  baseline30: baselineFuerMetrik('steps'),
+                  trend: trendSteps(heute.steps, baselineFuerMetrik('steps')),
                 }}
+                onPress={() => setTrendMetric('steps')}
                 onInfo={() => showInfo('steps')}
+              />
+              <WhoopMetricRow
+                icon="🔥"
+                label="Kalorien"
+                m={{
+                  heute: heute.calories,
+                  baseline30: baselineFuerMetrik('calories'),
+                  trend: trendSteps(heute.calories, baselineFuerMetrik('calories')),
+                }}
+                unit="kcal"
+                onPress={() => setTrendMetric('calories')}
+                onInfo={() => showInfo('calories')}
               />
               <p className="border-t border-white/[0.06] py-2 text-[9px] text-zinc-600">
                 ▲ ▼ Heute im Vergleich zu den letzten 30 Tagen · Schritte geschätzt
@@ -474,29 +567,63 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange }: P
             ) : null}
 
             {aktivitaeten.length > 0 ? (
-              <button
-                type="button"
-                onClick={() => showInfo('activities')}
-                className="w-full rounded-2xl border border-white/[0.06] bg-[#141618] p-4 text-left"
-              >
+              <div className="rounded-2xl border border-white/[0.06] bg-[#141618] p-4">
                 <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-zinc-300">Aktivitäten heute</p>
                 <ul className="mt-3 space-y-2">
                   {aktivitaeten.map((a) => (
-                    <li
-                      key={a.id}
-                      className="flex items-center gap-3 rounded-xl border border-white/[0.04] bg-black/30 px-3 py-2.5"
-                    >
-                      <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-[#009dff]/20 text-sm font-bold text-[#009dff]">
-                        {a.strain.toFixed(1)}
-                      </span>
-                      <span className="flex-1 text-xs font-bold uppercase tracking-wide">{a.label}</span>
-                      <span className="text-[11px] tabular-nums text-zinc-500">
-                        {formatUhrzeit(a.startMs)} – {formatUhrzeit(a.endMs)}
-                      </span>
+                    <li key={a.id}>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedActivity(a)}
+                        className="flex w-full items-center gap-3 rounded-xl border border-white/[0.04] bg-black/30 px-3 py-2.5 text-left transition hover:border-[#009dff]/25"
+                      >
+                        <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-[#009dff]/20 text-sm font-bold text-[#009dff]">
+                          {a.strain.toFixed(1)}
+                        </span>
+                        <span className="flex-1 text-xs font-bold uppercase tracking-wide">{a.label}</span>
+                        <span className="text-[11px] tabular-nums text-zinc-500">
+                          {formatUhrzeit(a.startMs)} – {formatUhrzeit(a.endMs)}
+                        </span>
+                      </button>
                     </li>
                   ))}
                 </ul>
-              </button>
+              </div>
+            ) : null}
+
+            {aktivitaetenHistorie.filter((a) => !aktivitaeten.some((t) => t.id === a.id)).length > 0 ? (
+              <div className="rounded-2xl border border-white/[0.06] bg-[#141618] p-4">
+                <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-zinc-300">Vorangegangene Aktivitäten</p>
+                <ul className="mt-3 space-y-2">
+                  {aktivitaetenHistorie
+                    .filter((a) => !aktivitaeten.some((t) => t.id === a.id))
+                    .slice(0, 10)
+                    .map((a) => (
+                      <li key={`hist-${a.id}`}>
+                        <button
+                          type="button"
+                          onClick={() => setSelectedActivity(a)}
+                          className="flex w-full items-center gap-3 rounded-xl border border-white/[0.04] bg-black/30 px-3 py-2.5 text-left transition hover:border-[#009dff]/25"
+                        >
+                          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-zinc-800 text-xs font-bold text-zinc-300">
+                            {a.strain.toFixed(1)}
+                          </span>
+                          <span className="min-w-0 flex-1">
+                            <span className="block truncate text-xs font-bold uppercase">{a.label}</span>
+                            <span className="text-[10px] text-zinc-500">
+                              {new Date(a.startMs).toLocaleDateString('de-DE', {
+                                day: 'numeric',
+                                month: 'short',
+                              })}{' '}
+                              · {formatUhrzeit(a.startMs)}
+                            </span>
+                          </span>
+                          <span className="text-zinc-600">›</span>
+                        </button>
+                      </li>
+                    ))}
+                </ul>
+              </div>
             ) : null}
 
             <WhoopWeeklyBarChart
@@ -801,6 +928,8 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange }: P
       </nav>
 
       <WhoopInfoModal info={info} onClose={() => setInfo(null)} />
+      <WhoopMetricTrendModal metricId={trendMetric} heute={heute} onClose={() => setTrendMetric(null)} />
+      <WhoopActivityModal activity={selectedActivity} onClose={() => setSelectedActivity(null)} />
 
       {model.coachSchlaf && (tab === 'sleep' || tab === 'recovery') ? (
         <WhoopCoachBar
@@ -815,10 +944,11 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange }: P
   )
 }
 
-function baselineSchritte(woche: WhoopDayRecord[]): number | null {
-  const vals = woche.slice(0, -1).map((d) => d.steps).filter((v): v is number => v != null && v > 0)
-  if (!vals.length) return null
-  return Math.round(vals.reduce((a, b) => a + b, 0) / vals.length)
+function trendMetricRow(heute: number | null, base: number | null): 'up' | 'down' | 'neutral' {
+  if (heute == null || base == null || base <= 0) return 'neutral'
+  if (heute > base * 1.05) return 'up'
+  if (heute < base * 0.95) return 'down'
+  return 'neutral'
 }
 
 function trendSteps(heute: number | null, base: number | null): 'up' | 'down' | 'neutral' {

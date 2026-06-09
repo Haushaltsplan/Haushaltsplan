@@ -2,8 +2,8 @@ import { FitnessdatenClient } from '@/components/fitnessdaten/fitnessdaten-clien
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = {
-  title: 'Fitnessdaten · WHOOP',
-  description: 'WHOOP 5.0 lokal in Omnia — Recovery, Strain, Live-Puls und HRV ohne Abo.',
+  title: 'Whoop',
+  description: 'WHOOP 5.0 in Omnia — Recovery, Strain, Vitalwerte, Verläufe und Live-Puls.',
 }
 
 export default function FitnessdatenPage() {

@@ -14,6 +14,7 @@ export type MetricInfoId =
   | 'sleep_efficiency'
   | 'hrv'
   | 'rhr'
+  | 'avg_hr'
   | 'respiratory'
   | 'sleep_performance'
   | 'behavior'
@@ -105,6 +106,11 @@ export const METRIC_INFO: Record<MetricInfoId, MetricInfo> = {
     body: 'Dein Puls in Ruhe. Niedriger ist meist besser. Steigt bei Erschöpfung, Dehydrierung oder Infekt.',
     source: 'Niedrigste HF-Werte der Session',
   },
+  avg_hr: {
+    title: 'Durchschnittliche Herzfrequenz',
+    body: 'Der mittlere Puls über den Tag bzw. Zyklus. WHOOP berechnet das aus allen Messungen — höhere Werte deuten auf mehr körperliche Aktivität hin.',
+    source: 'WHOOP Cloud Zyklus oder BLE-Verlauf',
+  },
   respiratory: {
     title: 'Atemfrequenz',
     body: 'Atemzüge pro Minute während des Schlafs. WHOOP nutzt optische Sensoren; hier geschätzt aus Ruhepuls-Abweichung zur Baseline.',
@@ -137,13 +143,13 @@ export const METRIC_INFO: Record<MetricInfoId, MetricInfo> = {
   },
   steps: {
     title: 'Schritte',
-    body: 'WHOOP zählt Schritte am Handgelenk. Omnia schätzt sie aus Kalorien und Zone-1–3-Zeit — nur Richtwert.',
-    source: 'Geschätzt',
+    body: 'WHOOP zählt Schritte am Handgelenk über Beschleunigungssensoren. Omnia übernimmt Cloud-Kalorien-Schätzungen, zählt Schritte live per BLE-IMU und ergänzt aus Aktivitätsdaten.',
+    source: 'BLE-IMU + Cloud/CSV',
   },
   calories: {
     title: 'Kalorien',
-    body: 'Geschätzter Energieverbrauch aus Herzfrequenz und Dauer in den Zonen. Kein exakter Kalorienzähler.',
-    source: 'HR-basierte Formel',
+    body: 'Geschätzter Energieverbrauch — WHOOP liefert Kilojoule aus dem Zyklus (Cloud), Omnia ergänzt live per Herzfrequenz-Formel.',
+    source: 'WHOOP Cloud + HR-Formel',
   },
   activities: {
     title: 'Aktivitäten heute',
@@ -181,10 +187,10 @@ export const METRIC_INFO: Record<MetricInfoId, MetricInfo> = {
     source: 'Recovery vs. 30-Tage-Baseline',
   },
   vo2max: {
-    title: 'VO₂ Max (Omnia-Schätzung)',
+    title: 'VO₂ Max',
     body:
-      'WHOOP zeigt VO₂ Max in der offiziellen App — die öffentliche WHOOP-API und CSV-Export liefern diesen Wert nicht. Omnia schätzt VO₂ Max lokal aus Ruhepuls, Max-HF und Alter (Uth-Smith-Näherung). Nach Cloud-Sync und BLE-Historie wird die Schätzung genauer.',
-    source: 'Lokal geschätzt — nicht WHOOP-Laborwert',
+      'Maximale Sauerstoffaufnahme — Indikator für Ausdauerfitness. WHOOP schätzt den Wert aus Ruhepuls und Maximalherzfrequenz (Uth-Formel: 15,3 × MHR/RHR). Omnia nutzt dieselbe Näherung mit deinen Cloud-/BLE-Werten.',
+    source: 'Uth-Formel aus RHR + Max-HF',
   },
   health_monitor: {
     title: 'Gesundheitsmonitor',

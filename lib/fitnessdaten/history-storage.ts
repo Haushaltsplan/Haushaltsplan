@@ -13,6 +13,7 @@ import {
   profilMaxHr,
   wendeProfilAufHistory,
 } from '@/lib/fitnessdaten/user-profile'
+import { zaehleSchrittAusAccel } from '@/lib/fitnessdaten/steps-tracker'
 import {
   avgHr,
   heuteIsoLocal,
@@ -56,6 +57,8 @@ function defaultHistory(): FitnessHistoryState {
     dayStrainDate: heuteIsoLocal(),
     zoneSecondsToday: leereZonen(),
     caloriesToday: 0,
+    stepsToday: 0,
+    stepsDate: heuteIsoLocal(),
     baselines: { hrvRmssdMs: 45, restingHrBpm: 58 },
     maxHrEstimate: profilMaxHr(profile),
     userAge: age,
@@ -70,6 +73,8 @@ export function ladeFitnessHistory(): FitnessHistoryState {
     if (!raw) return defaultHistory()
     const parsed = JSON.parse(raw) as FitnessHistoryState
     if (parsed.version !== 1) return defaultHistory()
+    if (parsed.stepsToday == null) parsed.stepsToday = 0
+    if (!parsed.stepsDate) parsed.stepsDate = heuteIsoLocal()
     wendeProfilAufHistory(parsed)
     return parsed
   } catch {
@@ -121,6 +126,10 @@ export function mergeLiveSnapshot(
     history.dayStrain = cloudStrain ?? 0
     history.zoneSecondsToday = leereZonen()
     history.caloriesToday = 0
+  }
+  if (history.stepsDate !== heute) {
+    history.stepsDate = heute
+    history.stepsToday = 0
   }
 
   const bpm = partial.live?.heartRateBpm
@@ -197,6 +206,9 @@ export function mergeLiveSnapshot(
 
   if (partial.live?.accel) {
     registriereMotion(now, partial.live.accel)
+    if (zaehleSchrittAusAccel(partial.live.accel, now)) {
+      history.stepsToday++
+    }
   }
   const schlaf = aktualisiereSchlafSchaetzung()
 

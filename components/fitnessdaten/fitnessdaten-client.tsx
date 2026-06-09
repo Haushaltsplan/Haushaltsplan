@@ -20,7 +20,7 @@ function FitnessdatenInhalt({ snapshot, phase, onSnapshot, onPhaseChange }: Inne
   const { verbinden } = useWhoopBle()
 
   const loescheDaten = useCallback(() => {
-    if (!window.confirm('Alle Fitnessdaten in diesem Browser löschen?')) return
+    if (!window.confirm('Alle WHOOP-Daten in diesem Browser löschen?')) return
     loescheFitnessDaten()
     onSnapshot(null)
     toast.success('Daten gelöscht.')

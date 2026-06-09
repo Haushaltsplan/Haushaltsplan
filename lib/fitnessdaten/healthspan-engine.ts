@@ -3,6 +3,7 @@
 import { baseline30, letzte7Tage, type WhoopDayRecord } from '@/lib/fitnessdaten/daily-records'
 import { ladeFitnessHistory } from '@/lib/fitnessdaten/history-storage'
 import { ladeFitnessProfil, profilAlter } from '@/lib/fitnessdaten/user-profile'
+import { schaetzeVo2Max } from '@/lib/fitnessdaten/vo2max'
 import type { HrZoneMinutes } from '@/lib/fitnessdaten/types'
 
 export type HealthspanMetricId =
@@ -67,13 +68,6 @@ function wochenSumme(field: keyof WhoopDayRecord, woche = letzte7Tage()): number
   }, 0)
 }
 
-function schaetzeVo2Max(rhr: number | null, maxHr: number | null, age: number): number | null {
-  if (rhr == null) return null
-  const max = maxHr ?? Math.round(220 - age)
-  const reserve = max - rhr
-  return Math.round(Math.min(70, Math.max(15, 22 + reserve * 0.35)))
-}
-
 export function baueHealthspanModel(heute: WhoopDayRecord): HealthspanModel {
   const history = ladeFitnessHistory()
   const age = profilAlter(ladeFitnessProfil())
@@ -86,7 +80,7 @@ export function baueHealthspanModel(heute: WhoopDayRecord): HealthspanModel {
   const stepsAvg = baseline30('steps', woche) ?? heute.steps ?? 0
   const strengthWeek = wochenSumme('strengthMin', woche)
   const rhr = heute.restingHr ?? history.baselines.restingHrBpm
-  const vo2 = schaetzeVo2Max(rhr, heute.maxHr, age)
+  const vo2 = heute.vo2Max ?? schaetzeVo2Max(rhr, heute.maxHr, age)
 
   const metrics: HealthspanMetric[] = [
     {

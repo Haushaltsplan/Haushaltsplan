@@ -169,6 +169,7 @@ function parsePhysiologicalCycles(rows: Record<string, string>[], map: TagMap): 
           : kj != null
             ? Math.round(kj / 4.184)
             : prev.calories ?? null,
+      steps: zahlAusZeile(row, 'steps', 'step_count', 'daily_steps') ?? prev.steps ?? null,
       maxHr: zahlAusZeile(row, 'max_heart_rate', 'max_hr') ?? prev.maxHr ?? null,
     })
     n++
@@ -335,6 +336,7 @@ function mergeTag(a: WhoopDayRecord, b: WhoopDayRecord): WhoopDayRecord {
       skinTempC: pick('skinTempC'),
       spo2Percent: pick('spo2Percent'),
       calories: pick('calories'),
+      steps: pick('steps'),
       maxHr: pick('maxHr'),
       remMinutes: pick('remMinutes'),
       deepMinutes: pick('deepMinutes'),
