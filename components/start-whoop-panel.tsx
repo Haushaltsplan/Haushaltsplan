@@ -84,9 +84,10 @@ export function StartWhoopPanel() {
                         <span className="ml-1 text-[10px] font-medium text-zinc-500">{m.unit}</span>
                       ) : null}
                     </span>
-                    {base != null && val != null ? (
+                    {base != null ? (
                       <span className="mt-0.5 text-[10px] text-zinc-600">
-                        Ø30: {formatMetricWert(m.id, base, m.decimals ?? 0)}
+                        Monats-Ø: {formatMetricWert(m.id, base, m.decimals ?? 0)}
+                        {m.unit ? ` ${m.unit}` : ''}
                       </span>
                     ) : null}
                   </button>

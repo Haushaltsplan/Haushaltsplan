@@ -5,6 +5,17 @@ import { HR_ZONE_COLORS } from '@/lib/fitnessdaten/types'
 
 type BarPoint = { label: string; value: number; highlight?: boolean }
 
+function chartBreite(punkte: number): number {
+  return Math.max(360, punkte * 28)
+}
+
+function labelSchritt(anzahl: number): number {
+  if (anzahl <= 10) return 1
+  if (anzahl <= 30) return 2
+  if (anzahl <= 60) return 5
+  return 14
+}
+
 export function WhoopWeeklyBarChart({
   title,
   points,
@@ -20,51 +31,67 @@ export function WhoopWeeklyBarChart({
   color?: string
   onInfo?: () => void
 }) {
-  const peak = max ?? Math.max(...points.map((p) => p.value), 1)
-  const h = 140
+  const sichtbar = points.filter((p) => p.value > 0)
+  const peak = max ?? Math.max(...sichtbar.map((p) => p.value), 1)
+  const h = 160
+  const w = chartBreite(sichtbar.length || points.length)
+  const n = sichtbar.length || 1
+  const schritt = labelSchritt(n)
+  const werteAnzeigen = n <= 12
 
   return (
     <div className="rounded-2xl border border-white/[0.06] bg-[#141618] p-4">
       <WhoopChartHeader title={title} onInfo={onInfo} />
-      <svg viewBox={`0 0 360 ${h}`} className="w-full" preserveAspectRatio="xMidYMid meet">
-        {[0.25, 0.5, 0.75, 1].map((f) => (
-          <line
-            key={f}
-            x1={0}
-            y1={h - 24 - f * (h - 40)}
-            x2={360}
-            y2={h - 24 - f * (h - 40)}
-            stroke="rgba(255,255,255,0.06)"
-            strokeWidth={1}
-          />
-        ))}
-        {points.map((p, i) => {
-          const barW = 360 / points.length - 8
-          const x = i * (360 / points.length) + 4
-          const barH = peak > 0 ? (p.value / peak) * (h - 48) : 0
-          return (
-            <g key={p.label}>
-              {p.highlight ? (
-                <rect x={x - 2} y={8} width={barW + 4} height={h - 16} rx={6} fill="rgba(255,255,255,0.04)" />
-              ) : null}
-              <text x={x + barW / 2} y={14} textAnchor="middle" fill={color} fontSize="10" fontWeight="600">
-                {formatValue(p.value)}
-              </text>
-              <rect
-                x={x}
-                y={h - 24 - barH}
-                width={barW}
-                height={Math.max(barH, p.value > 0 ? 4 : 0)}
-                rx={3}
-                fill={color}
-              />
-              <text x={x + barW / 2} y={h - 4} textAnchor="middle" fill="#71717a" fontSize="9">
-                {p.label}
-              </text>
-            </g>
-          )
-        })}
-      </svg>
+      <div className="overflow-x-auto">
+        <svg
+          viewBox={`0 0 ${w} ${h}`}
+          style={{ minWidth: w, width: '100%', height: h }}
+          preserveAspectRatio="xMinYMid meet"
+        >
+          {[0.25, 0.5, 0.75, 1].map((f) => (
+            <line
+              key={f}
+              x1={0}
+              y1={h - 28 - f * (h - 52)}
+              x2={w}
+              y2={h - 28 - f * (h - 52)}
+              stroke="rgba(255,255,255,0.06)"
+              strokeWidth={1}
+            />
+          ))}
+          {(sichtbar.length > 0 ? sichtbar : points).map((p, i) => {
+            const barW = Math.max(12, w / n - 6)
+            const x = i * (w / n) + 3
+            const barH = peak > 0 ? (p.value / peak) * (h - 56) : 0
+            const labelZeigen = p.label && (i % schritt === 0 || i === n - 1)
+            return (
+              <g key={`${p.label}-${i}`}>
+                {p.highlight ? (
+                  <rect x={x - 2} y={10} width={barW + 4} height={h - 20} rx={6} fill="rgba(255,255,255,0.04)" />
+                ) : null}
+                {werteAnzeigen && p.value > 0 ? (
+                  <text x={x + barW / 2} y={18} textAnchor="middle" fill={color} fontSize="9" fontWeight="600">
+                    {formatValue(p.value)}
+                  </text>
+                ) : null}
+                <rect
+                  x={x}
+                  y={h - 28 - barH}
+                  width={barW}
+                  height={Math.max(barH, p.value > 0 ? 3 : 0)}
+                  rx={3}
+                  fill={color}
+                />
+                {labelZeigen ? (
+                  <text x={x + barW / 2} y={h - 6} textAnchor="middle" fill="#71717a" fontSize="8">
+                    {p.label}
+                  </text>
+                ) : null}
+              </g>
+            )
+          })}
+        </svg>
+      </div>
     </div>
   )
 }
@@ -80,38 +107,59 @@ export function WhoopWeeklyLineChart({
   color?: string
   onInfo?: () => void
 }) {
-  const h = 120
-  const vals = points.map((p) => p.value).filter((v) => v > 0)
-  const min = vals.length ? Math.min(...vals) * 0.85 : 0
-  const max = vals.length ? Math.max(...vals) * 1.1 : 1
+  const sichtbar = points.filter((p) => p.value > 0)
+  const h = 160
+  const w = chartBreite(sichtbar.length || points.length)
+  const n = sichtbar.length
+  const schritt = labelSchritt(n)
+  const werteAnzeigen = n <= 10
+  const vals = sichtbar.map((p) => p.value)
+  const min = vals.length ? Math.min(...vals) * 0.92 : 0
+  const max = vals.length ? Math.max(...vals) * 1.08 : 1
   const range = max - min || 1
+  const padX = 16
+  const chartW = w - padX * 2
 
-  const coords = points.map((p, i) => {
-    const x = 20 + (i / Math.max(points.length - 1, 1)) * 320
-    const y = 16 + (1 - (p.value - min) / range) * (h - 36)
-    return { x, y, ...p }
+  const coords = sichtbar.map((p, i) => {
+    const x = padX + (i / Math.max(n - 1, 1)) * chartW
+    const y = 24 + (1 - (p.value - min) / range) * (h - 52)
+    return { x, y, ...p, i }
   })
 
   const poly = coords.map((c) => `${c.x},${c.y}`).join(' ')
-  const last = coords[coords.length - 1]
 
   return (
     <div className="rounded-2xl border border-white/[0.06] bg-[#141618] p-4">
       <WhoopChartHeader title={title} onInfo={onInfo} />
-      <svg viewBox={`0 0 360 ${h}`} className="w-full">
-        <polyline points={poly} fill="none" stroke={color} strokeWidth="2" strokeLinejoin="round" />
-        {coords.map((c) => (
-          <g key={c.label}>
-            <circle cx={c.x} cy={c.y} r={4} fill={color} />
-            <text x={c.x} y={c.y - 8} textAnchor="middle" fill={color} fontSize="9">
-              {c.value}
-            </text>
-            <text x={c.x} y={h - 4} textAnchor="middle" fill="#71717a" fontSize="8">
-              {c.label}
-            </text>
-          </g>
-        ))}
-      </svg>
+      <div className="overflow-x-auto">
+        <svg
+          viewBox={`0 0 ${w} ${h}`}
+          style={{ minWidth: w, width: '100%', height: h }}
+          preserveAspectRatio="xMinYMid meet"
+        >
+          {coords.length >= 2 ? (
+            <polyline points={poly} fill="none" stroke={color} strokeWidth="2" strokeLinejoin="round" />
+          ) : null}
+          {coords.map((c) => {
+            const labelZeigen = c.label && (c.i % schritt === 0 || c.i === n - 1)
+            return (
+              <g key={`${c.label}-${c.i}`}>
+                <circle cx={c.x} cy={c.y} r={3.5} fill={color} />
+                {werteAnzeigen ? (
+                  <text x={c.x} y={c.y - 10} textAnchor="middle" fill={color} fontSize="8">
+                    {c.value}
+                  </text>
+                ) : null}
+                {labelZeigen ? (
+                  <text x={c.x} y={h - 6} textAnchor="middle" fill="#71717a" fontSize="8">
+                    {c.label}
+                  </text>
+                ) : null}
+              </g>
+            )
+          })}
+        </svg>
+      </div>
     </div>
   )
 }

@@ -267,6 +267,7 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange }: P
                 <ul className="grid grid-cols-2 gap-2">
                   {HOME_METRICS.map((m) => {
                     const val = heuteWert(m.id, heute)
+                    const base = baselineFuerMetrik(m.id)
                     return (
                       <li key={m.id}>
                         <button
@@ -281,6 +282,12 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange }: P
                               <span className="ml-1 text-[10px] font-normal text-zinc-500">{m.unit}</span>
                             ) : null}
                           </p>
+                          {base != null ? (
+                            <p className="mt-0.5 text-[9px] text-zinc-600">
+                              Monats-Ø: {formatMetricWert(m.id, base, m.decimals ?? 0)}
+                              {m.unit ? ` ${m.unit}` : ''}
+                            </p>
+                          ) : null}
                         </button>
                       </li>
                     )

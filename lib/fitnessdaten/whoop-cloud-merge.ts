@@ -8,8 +8,7 @@ import {
   type WhoopActivity,
   type WhoopDayRecord,
 } from '@/lib/fitnessdaten/daily-records'
-import { schaetzeSchritteAusStrain } from '@/lib/fitnessdaten/steps-engine'
-import { aktualisiereVo2MaxWennFaellig } from '@/lib/fitnessdaten/vo2max-engine'
+import { aktualisiereVo2MaxWennFaellig, speichereVo2Trends, ladeVo2Trends } from '@/lib/fitnessdaten/vo2max-engine'
 import { heuteIsoLocal, mergeTagesStrain, recoveryLabelAusProzent } from '@/lib/fitnessdaten/scores'
 import { berechneSkinTempDelta } from '@/lib/fitnessdaten/skin-temp'
 import { ladeSyncState, speichereSyncState } from '@/lib/fitnessdaten/offline-sync'
@@ -58,11 +57,17 @@ function pick<T>(cloud: T | null | undefined, prev: T | null | undefined): T | n
   return prev ?? null
 }
 
+function pickBff<T>(bff: T | null | undefined, cloud: T | null | undefined, prev: T | null | undefined): T | null {
+  if (bff != null && bff !== 0) return bff as T
+  return pick(cloud, prev)
+}
+
 function mergeDay(
   prev: WhoopDayRecord,
   payload: WhoopCloudSyncPayload,
   date: string,
   skinCtx: { baseline: number | null; days: WhoopDayRecord[] },
+  bffRow?: import('@/lib/fitnessdaten/whoop-cloud-types').WhoopBffDailyRow,
 ): WhoopDayRecord {
   const rec = payload.recoveries.find((r) => r.date === date)
   const sleep = payload.sleeps.find((s) => s.date === date)
@@ -70,6 +75,16 @@ function mergeDay(
   const cloudRecovery = rec?.recoveryPercent ?? null
   const recoveryLocked =
     cloudRecovery != null ? true : Boolean(prev.recoveryLocked && prev.recoveryPercent != null)
+  const hatBff = Boolean(
+    bffRow &&
+      (bffRow.steps != null ||
+        bffRow.calories != null ||
+        bffRow.restingHr != null ||
+        bffRow.hrvRmssd != null ||
+        bffRow.respiratoryRate != null ||
+        bffRow.avgHr != null ||
+        bffRow.vo2Max != null),
+  )
 
   let skinTempC = prev.skinTempC
   let skinTempDelta = prev.skinTempDelta
@@ -84,8 +99,9 @@ function mergeDay(
     ...prev,
     recoveryPercent: cloudRecovery ?? prev.recoveryPercent,
     recoveryLocked,
-    hrvRmssd: pick(rec?.hrvRmssd, prev.hrvRmssd),
-    restingHr: pick(rec?.restingHr, prev.restingHr),
+    bffMetrics: hatBff ? true : prev.bffMetrics,
+    hrvRmssd: pickBff(bffRow?.hrvRmssd, rec?.hrvRmssd, prev.hrvRmssd),
+    restingHr: pickBff(bffRow?.restingHr, rec?.restingHr, prev.restingHr),
     spo2Percent: pick(rec?.spo2Percent, prev.spo2Percent),
     skinTempC,
     skinTempDelta,
@@ -98,26 +114,15 @@ function mergeDay(
     deepMinutes: pick(sleep?.deepMinutes, prev.deepMinutes),
     lightMinutes: pick(sleep?.lightMinutes, prev.lightMinutes),
     awakeMinutes: pick(sleep?.awakeMinutes, prev.awakeMinutes),
-    respiratoryRate: pick(sleep?.respiratoryRate, prev.respiratoryRate),
+    respiratoryRate: pickBff(bffRow?.respiratoryRate, sleep?.respiratoryRate, prev.respiratoryRate),
     bedTimeMs: pick(sleep?.bedTimeMs, prev.bedTimeMs),
     wakeTimeMs: pick(sleep?.wakeTimeMs, prev.wakeTimeMs),
     strain: mergeTagesStrain(cycle?.strain, prev.strain),
-    avgHr: pick(cycle?.avgHr, prev.avgHr),
+    avgHr: pickBff(bffRow?.avgHr, cycle?.avgHr, prev.avgHr),
     maxHr: pick(cycle?.maxHr, prev.maxHr) ?? prev.maxHr,
-    calories: pick(cycle?.calories, prev.calories),
-    steps: (() => {
-      const rhr = pick(rec?.restingHr, prev.restingHr) ?? 58
-      const geschaetzt = schaetzeSchritteAusStrain(
-        mergeTagesStrain(cycle?.strain, prev.strain),
-        prev.zoneMin13,
-        pick(cycle?.avgHr, prev.avgHr),
-        rhr,
-      )
-      if (prev.steps != null && prev.steps > 0 && geschaetzt > 0) {
-        return Math.round(Math.max(prev.steps, Math.min(geschaetzt * 1.1, geschaetzt + 600)))
-      }
-      return geschaetzt > 0 ? geschaetzt : prev.steps
-    })(),
+    calories: pickBff(bffRow?.calories, cycle?.calories, prev.calories),
+    steps: pickBff(bffRow?.steps, null, prev.steps),
+    vo2Max: pickBff(bffRow?.vo2Max, null, prev.vo2Max),
   }
 }
 
@@ -151,6 +156,9 @@ export function mergeCloudPayload(payload: WhoopCloudSyncPayload): WhoopCloudSyn
   for (const s of payload.sleeps) dates.add(s.date)
   for (const c of payload.cycles) dates.add(c.date)
   for (const w of payload.workouts) dates.add(w.date)
+  for (const b of payload.bff?.daily ?? []) dates.add(b.date)
+
+  const bffByDate = new Map((payload.bff?.daily ?? []).map((b) => [b.date, b]))
 
   if (dates.size === 0 && payload.workouts.length === 0 && !payload.body) {
     return {
@@ -166,9 +174,12 @@ export function mergeCloudPayload(payload: WhoopCloudSyncPayload): WhoopCloudSyn
   const skinCtx = { baseline: store.skinTempBaseline, days: store.days }
   for (const date of dates) {
     const prev = byDate.get(date) ?? createEmptyDayRecord(date)
-    byDate.set(date, mergeDay(prev, payload, date, skinCtx))
+    byDate.set(date, mergeDay(prev, payload, date, skinCtx, bffByDate.get(date)))
   }
   store.skinTempBaseline = skinCtx.baseline
+  if (payload.bff?.monthlyAvgs) {
+    store.bffMonthlyAvgs = payload.bff.monthlyAvgs
+  }
   const history = ladeFitnessHistory()
   store.days = [...byDate.values()]
     .map((d) => ergaenzeZonenUndVitals(d, history, store))
@@ -192,7 +203,15 @@ export function mergeCloudPayload(payload: WhoopCloudSyncPayload): WhoopCloudSyn
   store.activities = [...byId.values()].sort((a, b) => a.startMs - b.startMs).slice(-500)
 
   speichereDailyStore(store)
-  aktualisiereVo2MaxWennFaellig()
+
+  if (payload.bff?.monthlyAvgs.vo2Max != null) {
+    const vo2 = ladeVo2Trends()
+    vo2.vo2Max = payload.bff.monthlyAvgs.vo2Max
+    vo2.manuell = payload.bff.monthlyAvgs.vo2Max
+    speichereVo2Trends(vo2)
+  } else {
+    aktualisiereVo2MaxWennFaellig()
+  }
 
   const heute = heuteIsoLocal()
   const heuteRecord = store.days.find((d) => d.date === heute)
@@ -282,5 +301,5 @@ export async function syncWhoopCloudVomServer(): Promise<WhoopCloudSyncResult> {
 
 /** @deprecated — nutze mergeCloudPayload */
 export function mergeCloudRecoveries(rows: WhoopCloudSyncPayload['recoveries']): WhoopCloudSyncResult {
-  return mergeCloudPayload({ recoveries: rows, sleeps: [], cycles: [], workouts: [], body: null })
+  return mergeCloudPayload({ recoveries: rows, sleeps: [], cycles: [], workouts: [], body: null, bff: null })
 }

@@ -12,6 +12,7 @@ import {
 import { getMetricInfo } from '@/lib/fitnessdaten/metric-explanations'
 import {
   HOME_METRICS,
+  baselineFuerMetrik,
   formatMetricWert,
   heuteWert,
   trendPunkte,
@@ -44,6 +45,7 @@ export function WhoopMetricTrendModal({ metricId, heute, onClose }: Props) {
   )
 
   const heuteVal = metricId ? heuteWert(metricId, heute) : null
+  const monatsAvg = metricId ? baselineFuerMetrik(metricId) : null
   const useLine = metricId === 'hrv' || metricId === 'rhr' || metricId === 'respiratory' || metricId === 'vo2max'
 
   useEffect(() => {
@@ -86,6 +88,12 @@ export function WhoopMetricTrendModal({ metricId, heute, onClose }: Props) {
                 <span className="ml-2 text-sm font-medium text-zinc-500">{meta.unit}</span>
               ) : null}
             </p>
+            {monatsAvg != null ? (
+              <p className="mt-1 text-xs text-zinc-500">
+                Monats-Ø: {formatMetricWert(metricId, monatsAvg, meta.decimals ?? 0)}
+                {meta.unit ? ` ${meta.unit}` : ''}
+              </p>
+            ) : null}
           </div>
           <button
             type="button"

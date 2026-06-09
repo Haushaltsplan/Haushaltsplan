@@ -13,6 +13,7 @@ import {
   whoopApiKonfiguriert,
   whoopRedirectUri,
 } from '@/lib/fitnessdaten/whoop-cloud-types'
+import { ladeWhoopBffSync } from '@/lib/fitnessdaten/whoop-bff-server'
 import { cookies } from 'next/headers'
 
 const TOKEN_URL = 'https://api.prod.whoop.com/oauth/oauth2/token'
@@ -395,12 +396,13 @@ export async function ladeVollstaendigerCloudSync(accessToken: string, tage = 35
   start.setDate(start.getDate() - tage)
   const startIso = start.toISOString()
 
-  const [recoveryRaw, sleepRaw, cycleRaw, workoutRaw, body] = await Promise.all([
+  const [recoveryRaw, sleepRaw, cycleRaw, workoutRaw, body, bff] = await Promise.all([
     fetchPaginated<WhoopRecoveryRecord>(accessToken, '/v2/recovery', startIso),
     fetchPaginated<SleepRec>(accessToken, '/v2/activity/sleep', startIso),
     fetchPaginated<CycleRec>(accessToken, '/v2/cycle', startIso),
     fetchPaginated<WorkoutRec>(accessToken, '/v2/activity/workout', startIso),
     ladeBodyMeasurements(accessToken),
+    ladeWhoopBffSync(accessToken),
   ])
 
   const workoutMap = new Map<string, WhoopCloudWorkoutRow>()
@@ -414,6 +416,7 @@ export async function ladeVollstaendigerCloudSync(accessToken: string, tage = 35
     cycles: dedupeByDate(cycleRaw.map(parseCycleRow)),
     workouts: [...workoutMap.values()].sort((a, b) => a.startMs - b.startMs),
     body,
+    bff,
   }
 }
 

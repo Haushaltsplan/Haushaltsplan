@@ -50,6 +50,8 @@ export type WhoopDayRecord = {
   zoneMinutes?: HrZoneMinutes | null
   /** true = Erholung für heute fest (WHOOP Cloud oder Morgen-Messung) */
   recoveryLocked?: boolean
+  /** true = Schritte/Kalorien/Vitals aus WHOOP-App-BFF (nicht überschreiben) */
+  bffMetrics?: boolean
 }
 
 export type WhoopActivity = {
@@ -81,6 +83,16 @@ export type VitalLogEntry = {
   note: string | null
 }
 
+export type WhoopBffMonthlyAvgs = {
+  steps: number | null
+  calories: number | null
+  rhr: number | null
+  avgHr: number | null
+  hrv: number | null
+  respiratory: number | null
+  vo2Max: number | null
+}
+
 export type WhoopDailyStore = {
   version: 2
   days: WhoopDayRecord[]
@@ -91,6 +103,8 @@ export type WhoopDailyStore = {
   journal: WhoopJournalEntry[]
   vitals: VitalLogEntry[]
   skinTempBaseline: number | null
+  /** Monatsdurchschnitte aus WHOOP-App-BFF */
+  bffMonthlyAvgs?: WhoopBffMonthlyAvgs | null
 }
 
 export function createEmptyDayRecord(date: string): WhoopDayRecord {
@@ -256,19 +270,29 @@ export function ergaenzeZonenUndVitals(
     (hrPoints.length >= 3
       ? Math.round(hrPoints.reduce((a, p) => a + p.bpm, 0) / hrPoints.length)
       : null)
+  const steps =
+    record.bffMetrics && record.steps != null
+      ? record.steps
+      : mergeTagesSchritte(
+          record.steps,
+          record.date === heuteIsoLocal() ? schritteHeuteAusDaily() : 0,
+          record.strain,
+          (z.z1 ?? 0) + (z.z2 ?? 0) + (z.z3 ?? 0),
+          record.avgHr,
+          rhr,
+        )
+
+  const vo2Max =
+    record.bffMetrics && record.vo2Max != null
+      ? record.vo2Max
+      : vo2Trends.manuell ?? vo2Trends.vo2Max ?? record.vo2Max
+
   return speichereZonenImTag(
     {
       ...record,
       avgHr,
-      vo2Max: vo2Trends.manuell ?? vo2Trends.vo2Max ?? record.vo2Max,
-      steps: mergeTagesSchritte(
-        record.steps,
-        record.date === heuteIsoLocal() ? schritteHeuteAusDaily() : 0,
-        record.strain,
-        (z.z1 ?? 0) + (z.z2 ?? 0) + (z.z3 ?? 0),
-        record.avgHr,
-        rhr,
-      ),
+      vo2Max,
+      steps,
       zoneMinutes: z,
       zoneMin13: (z.z1 ?? 0) + (z.z2 ?? 0) + (z.z3 ?? 0),
       zoneMin45: (z.z4 ?? 0) + (z.z5 ?? 0),
@@ -326,24 +350,43 @@ export function aktualisiereHeuteAusSnapshot(
         sleepScore: scores?.sleepScore ?? prevHeute.sleepScore,
         sleepMinutes: scores?.sleepMinutes ?? prevHeute.sleepMinutes,
         sleepEfficiency: scores?.sleepEfficiency ?? prevHeute.sleepEfficiency,
-        hrvRmssd: scores?.hrvRmssdMs ?? prevHeute.hrvRmssd,
-        restingHr: scores?.restingHrBpm ?? prevHeute.restingHr,
+        hrvRmssd:
+          prevHeute.bffMetrics && prevHeute.hrvRmssd != null
+            ? prevHeute.hrvRmssd
+            : (scores?.hrvRmssdMs ?? prevHeute.hrvRmssd),
+        restingHr:
+          prevHeute.bffMetrics && prevHeute.restingHr != null
+            ? prevHeute.restingHr
+            : recoveryLocked && prevHeute.restingHr != null
+              ? prevHeute.restingHr
+              : (scores?.restingHrBpm ?? prevHeute.restingHr),
         respiratoryRate:
-          prevHeute.respiratoryRate ??
-          schaetzeAtemfrequenz(scores?.restingHrBpm ?? null, history.baselines.restingHrBpm),
+          prevHeute.bffMetrics && prevHeute.respiratoryRate != null
+            ? prevHeute.respiratoryRate
+            : prevHeute.respiratoryRate ??
+              schaetzeAtemfrequenz(scores?.restingHrBpm ?? null, history.baselines.restingHrBpm),
         skinTempC: snapshot.live?.skinTempC ?? prevHeute.skinTempC,
         skinTempDelta: skinDelta ?? prevHeute.skinTempDelta,
-        calories: mergeKalorien(scores?.caloriesKcal, prevHeute.calories, history.caloriesToday),
-        steps: mergeTagesSchritte(
-          prevHeute.steps,
-          Math.max(history.stepsToday ?? 0, schritteHeuteAusDaily()),
-          strain,
-          zoneMin13(z),
-          scores?.avgHrSession ?? prevHeute.avgHr,
-          scores?.restingHrBpm ?? prevHeute.restingHr ?? history.baselines.restingHrBpm,
-        ),
+        calories:
+          prevHeute.bffMetrics && prevHeute.calories != null
+            ? prevHeute.calories
+            : mergeKalorien(scores?.caloriesKcal, prevHeute.calories, history.caloriesToday),
+        steps:
+          prevHeute.bffMetrics && prevHeute.steps != null
+            ? prevHeute.steps
+            : mergeTagesSchritte(
+                prevHeute.steps,
+                Math.max(history.stepsToday ?? 0, schritteHeuteAusDaily()),
+                strain,
+                zoneMin13(z),
+                scores?.avgHrSession ?? prevHeute.avgHr,
+                scores?.restingHrBpm ?? prevHeute.restingHr ?? history.baselines.restingHrBpm,
+              ),
         maxHr: scores?.maxHrToday ?? prevHeute.maxHr,
-        avgHr: scores?.avgHrSession ?? prevHeute.avgHr,
+        avgHr:
+          prevHeute.bffMetrics && prevHeute.avgHr != null
+            ? prevHeute.avgHr
+            : (scores?.avgHrSession ?? prevHeute.avgHr),
         zoneMin13: zoneMin13(z),
         zoneMin45: zoneMin45(z),
         strengthMin: schaetzeKraftzeit(z),

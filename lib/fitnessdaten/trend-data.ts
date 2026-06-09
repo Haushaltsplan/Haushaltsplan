@@ -104,6 +104,7 @@ export function trendPunkte(
 
 export function heuteWert(metricId: HomeMetricId, heute: WhoopDayRecord): number | null {
   if (metricId === 'vo2max') {
+    if (heute.vo2Max != null && heute.vo2Max > 0) return heute.vo2Max
     const v = aktuellesVo2Max()
     return v != null && v > 0 ? v : null
   }
@@ -125,6 +126,22 @@ export function formatMetricWert(
 }
 
 export function baselineFuerMetrik(metricId: HomeMetricId): number | null {
+  const store = ladeDailyStore()
+  const bff = store.bffMonthlyAvgs
+  if (bff) {
+    const bffMap: Record<HomeMetricId, number | null | undefined> = {
+      avg_hr: bff.avgHr,
+      rhr: bff.rhr,
+      respiratory: bff.respiratory,
+      hrv: bff.hrv,
+      vo2max: bff.vo2Max,
+      steps: bff.steps,
+      calories: bff.calories,
+    }
+    const v = bffMap[metricId]
+    if (v != null && v > 0) return v
+  }
+
   const map: Record<HomeMetricId, keyof WhoopDayRecord> = {
     avg_hr: 'avgHr',
     rhr: 'restingHr',
@@ -134,5 +151,5 @@ export function baselineFuerMetrik(metricId: HomeMetricId): number | null {
     steps: 'steps',
     calories: 'calories',
   }
-  return baseline30(map[metricId])
+  return baseline30(map[metricId], store.days)
 }

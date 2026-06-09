@@ -52,12 +52,40 @@ export type WhoopCloudBodyMeasurements = {
   maxHr: number | null
 }
 
+export type WhoopBffDailyRow = {
+  date: string
+  steps?: number | null
+  calories?: number | null
+  avgHr?: number | null
+  restingHr?: number | null
+  hrvRmssd?: number | null
+  respiratoryRate?: number | null
+  vo2Max?: number | null
+}
+
+export type WhoopBffMonthlyAvgs = {
+  steps: number | null
+  calories: number | null
+  rhr: number | null
+  avgHr: number | null
+  hrv: number | null
+  respiratory: number | null
+  vo2Max: number | null
+}
+
+export type WhoopBffSyncPayload = {
+  daily: WhoopBffDailyRow[]
+  monthlyAvgs: WhoopBffMonthlyAvgs
+  syncedAt: string
+}
+
 export type WhoopCloudSyncPayload = {
   recoveries: WhoopCloudRecoveryRow[]
   sleeps: WhoopCloudSleepRow[]
   cycles: WhoopCloudCycleRow[]
   workouts: WhoopCloudWorkoutRow[]
   body: WhoopCloudBodyMeasurements | null
+  bff?: WhoopBffSyncPayload | null
 }
 
 export type WhoopCloudSyncResult = {
