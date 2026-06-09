@@ -1,38 +1,54 @@
 'use client'
 
 import { WhoopDashboard } from '@/components/fitnessdaten/whoop-dashboard'
-import { WhoopBleProvider, useWhoopBle } from '@/components/fitnessdaten/whoop-ble-provider'
+import { useWhoopBle } from '@/components/fitnessdaten/whoop-ble-provider'
 import { ladeFitnessSnapshot, loescheFitnessDaten } from '@/lib/fitnessdaten/history-storage'
+import {
+  WHOOP_BLE_PHASE_EVENT,
+  WHOOP_BLE_SNAPSHOT_EVENT,
+} from '@/lib/fitnessdaten/whoop-ble-keepalive'
 import { WHOOP_CLOUD_SYNC_EVENT } from '@/lib/fitnessdaten/whoop-cloud-merge'
 import type { FitnessSnapshot } from '@/lib/fitnessdaten/types'
 import type { WhoopWebBlePhase } from '@/lib/fitnessdaten/web-bluetooth-whoop'
 import { useCallback, useEffect, useState } from 'react'
 import toast from 'react-hot-toast'
 
-type InnerProps = {
-  snapshot: FitnessSnapshot | null
-  phase: WhoopWebBlePhase
-  onSnapshot: (s: FitnessSnapshot | null) => void
-  onPhaseChange: (p: WhoopWebBlePhase) => void
-}
+export function FitnessdatenClient() {
+  const { phase, snapshot: bleSnapshot, verbinden } = useWhoopBle()
+  const [snapshot, setSnapshot] = useState<FitnessSnapshot | null>(null)
 
-function FitnessdatenInhalt({ snapshot, phase, onSnapshot, onPhaseChange }: InnerProps) {
-  const { verbinden } = useWhoopBle()
+  useEffect(() => {
+    setSnapshot(bleSnapshot ?? ladeFitnessSnapshot())
+  }, [bleSnapshot])
+
+  useEffect(() => {
+    const onSnap = (ev: Event) => {
+      const detail = (ev as CustomEvent<FitnessSnapshot>).detail
+      if (detail) setSnapshot(detail)
+    }
+    const onCloud = () => setSnapshot(ladeFitnessSnapshot())
+    window.addEventListener(WHOOP_BLE_SNAPSHOT_EVENT, onSnap)
+    window.addEventListener(WHOOP_CLOUD_SYNC_EVENT, onCloud)
+    return () => {
+      window.removeEventListener(WHOOP_BLE_SNAPSHOT_EVENT, onSnap)
+      window.removeEventListener(WHOOP_CLOUD_SYNC_EVENT, onCloud)
+    }
+  }, [])
 
   const loescheDaten = useCallback(() => {
     if (!window.confirm('Alle WHOOP-Daten in diesem Browser löschen?')) return
     loescheFitnessDaten()
-    onSnapshot(null)
+    setSnapshot(null)
     toast.success('Daten gelöscht.')
-  }, [onSnapshot])
+  }, [])
 
   return (
     <div className="mx-auto max-w-lg px-3 py-4 sm:max-w-xl sm:px-4 sm:py-6 lg:max-w-2xl">
       <WhoopDashboard
         snapshot={snapshot}
         phase={phase}
-        onSnapshot={onSnapshot}
-        onPhaseChange={onPhaseChange}
+        onSnapshot={setSnapshot}
+        onPhaseChange={() => {}}
       />
 
       {phase === 'idle' ? (
@@ -53,28 +69,5 @@ function FitnessdatenInhalt({ snapshot, phase, onSnapshot, onPhaseChange }: Inne
         <span>Lokal · abofrei · Omnia</span>
       </div>
     </div>
-  )
-}
-
-export function FitnessdatenClient() {
-  const [snapshot, setSnapshot] = useState<FitnessSnapshot | null>(null)
-  const [phase, setPhase] = useState<WhoopWebBlePhase>('idle')
-
-  useEffect(() => {
-    setSnapshot(ladeFitnessSnapshot())
-    const onSync = () => setSnapshot(ladeFitnessSnapshot())
-    window.addEventListener(WHOOP_CLOUD_SYNC_EVENT, onSync)
-    return () => window.removeEventListener(WHOOP_CLOUD_SYNC_EVENT, onSync)
-  }, [])
-
-  return (
-    <WhoopBleProvider onSnapshot={setSnapshot} onPhaseChange={setPhase}>
-      <FitnessdatenInhalt
-        snapshot={snapshot}
-        phase={phase}
-        onSnapshot={setSnapshot}
-        onPhaseChange={setPhase}
-      />
-    </WhoopBleProvider>
   )
 }

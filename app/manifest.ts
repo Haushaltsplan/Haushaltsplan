@@ -12,6 +12,8 @@ export default function manifest(): MetadataRoute.Manifest {
     theme_color: '#0f172a',
     lang: 'de',
     orientation: 'portrait-primary',
+    prefer_related_applications: false,
+    categories: ['health', 'fitness', 'lifestyle'],
     // Pixel-Icons: Chrome/Edge fordern 192+512 (bitmap) für „App installieren“; SVG reicht allein oft nicht
     icons: [
       { src: '/omnia-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },

@@ -1,9 +1,19 @@
 'use client'
 
-import { mergeLiveSnapshot } from '@/lib/fitnessdaten/history-storage'
+import { mergeLiveSnapshot, ladeFitnessSnapshot } from '@/lib/fitnessdaten/history-storage'
 import type { FitnessSnapshot } from '@/lib/fitnessdaten/types'
 import {
+  dispatchWhoopBlePhase,
+  dispatchWhoopBleSnapshot,
+  istWhoopBleAlwaysOn,
+  naechstesReconnectDelayMs,
+  WHOOP_BLE_RECONNECT_INTERVAL_MS,
+  WHOOP_BLE_RECONNECT_FAST_MS,
+  WHOOP_SW_MESSAGE,
+} from '@/lib/fitnessdaten/whoop-ble-keepalive'
+import {
   findeGespeichertesWhoopDevice,
+  startWhoopNaeheWatcher,
   verbindeWhoopStandardHr,
   webBluetoothVerfuegbar,
   type WhoopDeviceAuswahl,
@@ -28,6 +38,7 @@ type WhoopBleContextValue = {
   statusHint: string | null
   debug: WhoopWebBleDebug | null
   bleOk: boolean
+  snapshot: FitnessSnapshot | null
   verbinden: (auswahl?: WhoopDeviceAuswahl) => Promise<void>
   trennen: () => void
 }
@@ -42,8 +53,6 @@ export function useWhoopBle(): WhoopBleContextValue {
 
 type Props = {
   children: ReactNode
-  onSnapshot: (s: FitnessSnapshot | null) => void
-  onPhaseChange?: (p: WhoopWebBlePhase) => void
 }
 
 function snapshotAusSession(
@@ -63,12 +72,13 @@ function snapshotAusSession(
   return null
 }
 
-export function WhoopBleProvider({ children, onSnapshot, onPhaseChange }: Props) {
+export function WhoopBleProvider({ children }: Props) {
   const [phase, setPhase] = useState<WhoopWebBlePhase>('idle')
   const [deviceName, setDeviceName] = useState<string | null>(null)
   const [fehler, setFehler] = useState<string | null>(null)
   const [statusHint, setStatusHint] = useState<string | null>(null)
   const [debug, setDebug] = useState<WhoopWebBleDebug | null>(null)
+  const [snapshot, setSnapshot] = useState<FitnessSnapshot | null>(null)
   const [bleOk] = useState(() => webBluetoothVerfuegbar())
 
   const disconnectRef = useRef<(() => void) | null>(null)
@@ -76,15 +86,33 @@ export function WhoopBleProvider({ children, onSnapshot, onPhaseChange }: Props)
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const connectingRef = useRef(false)
   const phaseRef = useRef<WhoopWebBlePhase>('idle')
+  const reconnectVersucheRef = useRef(0)
+  const verbindenInternRef = useRef<
+    (auswahl: WhoopDeviceAuswahl, existingDevice?: BluetoothDevice) => Promise<void>
+  >(async () => {})
 
-  const setPhaseBoth = useCallback(
-    (p: WhoopWebBlePhase) => {
-      phaseRef.current = p
-      setPhase(p)
-      onPhaseChange?.(p)
-    },
-    [onPhaseChange],
-  )
+  const setPhaseBoth = useCallback((p: WhoopWebBlePhase) => {
+    phaseRef.current = p
+    setPhase(p)
+    dispatchWhoopBlePhase(p)
+  }, [])
+
+  const publishSnapshot = useCallback((merged: FitnessSnapshot | null) => {
+    if (!merged) return
+    setSnapshot(merged)
+    dispatchWhoopBleSnapshot(merged)
+  }, [])
+
+  const scheduleReconnect = useCallback((device?: BluetoothDevice, fast = false) => {
+    if (!istWhoopBleAlwaysOn() || !autoReconnectRef.current) return
+    if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current)
+    const delay = fast
+      ? WHOOP_BLE_RECONNECT_FAST_MS
+      : naechstesReconnectDelayMs(reconnectVersucheRef.current)
+    reconnectTimerRef.current = setTimeout(() => {
+      void verbindenInternRef.current('gespeichert', device)
+    }, delay)
+  }, [])
 
   const handleSessionUpdate = useCallback(
     (u: {
@@ -102,9 +130,10 @@ export function WhoopBleProvider({ children, onSnapshot, onPhaseChange }: Props)
       setStatusHint(u.statusHint)
       setDebug(u.debug)
       const merged = snapshotAusSession(u.snapshot, u.gen5 ?? u.snapshot?.gen5)
-      if (merged) onSnapshot(merged)
+      if (merged) publishSnapshot(merged)
+      if (u.phase === 'live') reconnectVersucheRef.current = 0
     },
-    [onSnapshot, setPhaseBoth],
+    [publishSnapshot, setPhaseBoth],
   )
 
   const trennen = useCallback(() => {
@@ -125,45 +154,74 @@ export function WhoopBleProvider({ children, onSnapshot, onPhaseChange }: Props)
     async (auswahl: WhoopDeviceAuswahl, existingDevice?: BluetoothDevice) => {
       if (connectingRef.current) return
       if (!bleOk) return
+      if (!istWhoopBleAlwaysOn() && !autoReconnectRef.current && auswahl === 'gespeichert' && !existingDevice) {
+        return
+      }
+
+      if (
+        phaseRef.current === 'live' ||
+        phaseRef.current === 'connecting' ||
+        phaseRef.current === 'waiting_hr'
+      ) {
+        return
+      }
+
       connectingRef.current = true
       setFehler(null)
       if (!existingDevice) setStatusHint(null)
       setDebug(null)
 
       try {
-        const session = await verbindeWhoopStandardHr((u) => handleSessionUpdate(u), existingDevice ? 'gespeichert' : auswahl, {
-            existingDevice,
-            onRemoteDisconnect: (device) => {
-              if (!autoReconnectRef.current) return
-              if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current)
-              reconnectTimerRef.current = setTimeout(() => {
-                void verbindenIntern('gespeichert', device)
-              }, 2000)
+        const manuell = auswahl === 'whoop' || auswahl === 'alle'
+        let device = existingDevice
+        if (!manuell && !device) {
+          device = (await findeGespeichertesWhoopDevice()) ?? undefined
+        }
+        if (!manuell && !device) {
+          reconnectVersucheRef.current++
+          scheduleReconnect(undefined, false)
+          return
+        }
+
+        const session = await verbindeWhoopStandardHr(
+          (u) => handleSessionUpdate(u),
+          device ? 'gespeichert' : auswahl,
+          {
+            existingDevice: device,
+            onRemoteDisconnect: (d) => {
+              disconnectRef.current = null
+              reconnectVersucheRef.current = 0
+              scheduleReconnect(d, true)
             },
           },
         )
         disconnectRef.current = session.disconnect
         autoReconnectRef.current = true
-        if (!existingDevice) toast.success('WHOOP verbunden')
+        reconnectVersucheRef.current = 0
+        if (manuell) toast.success('WHOOP verbunden')
       } catch {
-        /* Fehler in onUpdate */
+        reconnectVersucheRef.current++
+        scheduleReconnect(existingDevice, false)
       } finally {
         connectingRef.current = false
       }
     },
-    [bleOk, handleSessionUpdate],
+    [bleOk, handleSessionUpdate, scheduleReconnect],
   )
+
+  verbindenInternRef.current = verbindenIntern
 
   const verbinden = useCallback(
     async (auswahl: WhoopDeviceAuswahl = 'whoop') => {
       autoReconnectRef.current = true
+      reconnectVersucheRef.current = 0
       await verbindenIntern(auswahl)
     },
     [verbindenIntern],
   )
 
   const versucheAutoReconnect = useCallback(async () => {
-    if (!autoReconnectRef.current || !bleOk) return
+    if (!istWhoopBleAlwaysOn() || !autoReconnectRef.current || !bleOk) return
     if (phaseRef.current === 'live' || phaseRef.current === 'connecting' || phaseRef.current === 'waiting_hr') {
       return
     }
@@ -174,19 +232,61 @@ export function WhoopBleProvider({ children, onSnapshot, onPhaseChange }: Props)
   }, [bleOk, verbindenIntern])
 
   useEffect(() => {
-    const onVisibility = () => {
+    setSnapshot(ladeFitnessSnapshot())
+    autoReconnectRef.current = istWhoopBleAlwaysOn()
+  }, [])
+
+  useEffect(() => {
+    const onVisible = () => {
       if (document.visibilityState === 'visible') void versucheAutoReconnect()
     }
-    document.addEventListener('visibilitychange', onVisibility)
-    window.addEventListener('focus', onVisibility)
+    document.addEventListener('visibilitychange', onVisible)
+    window.addEventListener('focus', onVisible)
+    window.addEventListener('pageshow', onVisible)
+    document.addEventListener('resume', onVisible)
     return () => {
-      document.removeEventListener('visibilitychange', onVisibility)
-      window.removeEventListener('focus', onVisibility)
+      document.removeEventListener('visibilitychange', onVisible)
+      window.removeEventListener('focus', onVisible)
+      window.removeEventListener('pageshow', onVisible)
+      document.removeEventListener('resume', onVisible)
     }
   }, [versucheAutoReconnect])
 
   useEffect(() => {
     void versucheAutoReconnect()
+  }, [versucheAutoReconnect])
+
+  /** Reconnect auch im Hintergrund-Tab (solange PWA-Prozess läuft). */
+  useEffect(() => {
+    if (!bleOk || !istWhoopBleAlwaysOn()) return
+    const id = window.setInterval(() => {
+      void versucheAutoReconnect()
+    }, WHOOP_BLE_RECONNECT_INTERVAL_MS)
+    return () => window.clearInterval(id)
+  }, [bleOk, versucheAutoReconnect])
+
+  /** Nähe-Watcher: Android erkennt WHOOP-Werbung → sofort verbinden. */
+  useEffect(() => {
+    if (!bleOk || !istWhoopBleAlwaysOn()) return
+    let stop: (() => void) | null = null
+    void startWhoopNaeheWatcher((device) => {
+      if (phaseRef.current === 'live') return
+      scheduleReconnect(device, true)
+    }).then((cleanup) => {
+      stop = cleanup
+    })
+    return () => stop?.()
+  }, [bleOk, scheduleReconnect])
+
+  /** Service Worker: Cloud-Sync im Hintergrund → Client reconnectet BLE. */
+  useEffect(() => {
+    if (!('serviceWorker' in navigator)) return
+    const onMessage = (ev: MessageEvent) => {
+      const data = ev.data as { type?: string } | null
+      if (data?.type === WHOOP_SW_MESSAGE) void versucheAutoReconnect()
+    }
+    navigator.serviceWorker.addEventListener('message', onMessage)
+    return () => navigator.serviceWorker.removeEventListener('message', onMessage)
   }, [versucheAutoReconnect])
 
   useEffect(() => {
@@ -204,6 +304,7 @@ export function WhoopBleProvider({ children, onSnapshot, onPhaseChange }: Props)
         statusHint,
         debug,
         bleOk,
+        snapshot,
         verbinden,
         trennen,
       }}

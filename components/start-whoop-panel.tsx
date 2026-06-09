@@ -4,6 +4,7 @@ import { WhoopMetricTrendModal } from '@/components/fitnessdaten/whoop-metric-tr
 import { PageSectionPanel } from '@/components/page-shell'
 import { baueWhoopDashboard } from '@/lib/fitnessdaten/metrics-engine'
 import { ladeFitnessSnapshot } from '@/lib/fitnessdaten/history-storage'
+import { WHOOP_BLE_SNAPSHOT_EVENT } from '@/lib/fitnessdaten/whoop-ble-keepalive'
 import { WHOOP_CLOUD_SYNC_EVENT } from '@/lib/fitnessdaten/whoop-cloud-merge'
 import {
   HOME_METRICS,
@@ -22,7 +23,11 @@ export function StartWhoopPanel() {
   useEffect(() => {
     const bump = () => setRevision((r) => r + 1)
     window.addEventListener(WHOOP_CLOUD_SYNC_EVENT, bump)
-    return () => window.removeEventListener(WHOOP_CLOUD_SYNC_EVENT, bump)
+    window.addEventListener(WHOOP_BLE_SNAPSHOT_EVENT, bump)
+    return () => {
+      window.removeEventListener(WHOOP_CLOUD_SYNC_EVENT, bump)
+      window.removeEventListener(WHOOP_BLE_SNAPSHOT_EVENT, bump)
+    }
   }, [])
 
   const model = useMemo(() => baueWhoopDashboard(ladeFitnessSnapshot()), [revision])

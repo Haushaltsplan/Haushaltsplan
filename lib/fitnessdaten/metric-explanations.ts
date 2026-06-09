@@ -143,8 +143,8 @@ export const METRIC_INFO: Record<MetricInfoId, MetricInfo> = {
   },
   steps: {
     title: 'Schritte',
-    body: 'WHOOP zählt Schritte am Handgelenk über Beschleunigungssensoren. Omnia übernimmt Cloud-Kalorien-Schätzungen, zählt Schritte live per BLE-IMU und ergänzt aus Aktivitätsdaten.',
-    source: 'BLE-IMU + Cloud/CSV',
+    body: 'WHOOP zählt Schritte am Handgelenk über Beschleunigungssensoren. Omnia zählt primär per BLE/Gen5-IMU; ohne Band-Daten wird aus Strain und Herzfrequenz-Zonen geschätzt — nicht aus Gesamt-Kalorien.',
+    source: 'BLE-IMU · Strain-Schätzung · CSV',
   },
   calories: {
     title: 'Kalorien',
@@ -189,8 +189,8 @@ export const METRIC_INFO: Record<MetricInfoId, MetricInfo> = {
   vo2max: {
     title: 'VO₂ Max',
     body:
-      'Maximale Sauerstoffaufnahme — Indikator für Ausdauerfitness. WHOOP schätzt den Wert aus Ruhepuls und Maximalherzfrequenz (Uth-Formel: 15,3 × MHR/RHR). Omnia nutzt dieselbe Näherung mit deinen Cloud-/BLE-Werten.',
-    source: 'Uth-Formel aus RHR + Max-HF',
+      'Maximale Sauerstoffaufnahme — langsam veränderliche Fitnessmetrik. WHOOP aktualisiert wöchentlich aus 30 Tagen Recovery, Workout-Max-HF, HFV und Profil. Omnia berechnet einmal pro Woche (nicht täglich) mit derselben Logik.',
+    source: 'Wöchentlich · 30-Tage-Baseline',
   },
   health_monitor: {
     title: 'Gesundheitsmonitor',

@@ -475,7 +475,7 @@ export function importiereWhoopCsvDateien(dateien: { name: string; text: string 
   sync.message = `WHOOP-Import: ${imported.length} Tage`
   speichereSyncState(sync)
 
-  hinweise.push('Schritte/HF-Zonen fehlen im WHOOP-Export — BLE ergänzt live.')
+  hinweise.push('Schritte/HF-Zonen fehlen oft im WHOOP-Export — BLE-IMU oder Strain-Schätzung ergänzt.')
 
   return {
     ok: true,

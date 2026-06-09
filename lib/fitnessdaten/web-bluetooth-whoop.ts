@@ -141,6 +141,47 @@ export async function findeGespeichertesWhoopDevice(): Promise<BluetoothDevice |
   }
 }
 
+/** Android-Chrome: Werbung abhören → Reconnect sobald WHOOP in Reichweite. */
+export async function startWhoopNaeheWatcher(
+  onInRange: (device: BluetoothDevice) => void,
+): Promise<() => void> {
+  if (!webBluetoothVerfuegbar()) return () => {}
+  const device = await findeGespeichertesWhoopDevice()
+  if (!device?.watchAdvertisements) return () => {}
+
+  let zuletzt = 0
+  const handler = () => {
+    const jetzt = Date.now()
+    if (jetzt - zuletzt < 4000) return
+    zuletzt = jetzt
+    onInRange(device)
+  }
+
+  device.addEventListener('advertisementreceived', handler)
+  try {
+    await device.watchAdvertisements()
+  } catch {
+    device.removeEventListener('advertisementreceived', handler)
+    return () => {}
+  }
+
+  return () => {
+    try {
+      device.removeEventListener('advertisementreceived', handler)
+      device.unwatchAdvertisements?.()
+    } catch {
+      /* ignore */
+    }
+  }
+}
+
+export async function verbindeGattWennNoetig(device: BluetoothDevice): Promise<BluetoothRemoteGATTServer> {
+  const gatt = device.gatt
+  if (!gatt) throw new Error('GATT nicht verfügbar')
+  if (gatt.connected) return gatt
+  return gatt.connect()
+}
+
 function merkeWhoopDevice(device: BluetoothDevice): void {
   try {
     window.localStorage.setItem(WHOOP_BLE_DEVICE_ID_KEY, device.id)
@@ -446,7 +487,7 @@ export async function verbindeWhoopStandardHr(
   let pollTimer: ReturnType<typeof setInterval> | null = null
   let debugTimer: ReturnType<typeof setInterval> | null = null
 
-  const gatt = await device.gatt!.connect()
+  const gatt = await verbindeGattWennNoetig(device)
   markiereVerbunden()
   debug.services = await listeServices(gatt)
   debug.istGen5 = istGen5Whoop(debug.services)

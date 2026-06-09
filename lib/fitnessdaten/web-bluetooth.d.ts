@@ -1,13 +1,24 @@
 /** Minimale Web-Bluetooth-Typen für Fitnessdaten (WHOOP Standard-HR). */
 
+interface BluetoothAdvertisingEvent extends Event {
+  readonly device: BluetoothDevice
+  readonly rssi?: number
+  readonly txPower?: number
+}
+
 interface BluetoothDevice extends EventTarget {
   readonly id: string
   readonly name?: string
   readonly gatt?: BluetoothRemoteGATTServer
   addEventListener(type: 'gattserverdisconnected', listener: () => void): void
+  addEventListener(type: 'advertisementreceived', listener: (ev: BluetoothAdvertisingEvent) => void): void
+  removeEventListener(type: 'advertisementreceived', listener: (ev: BluetoothAdvertisingEvent) => void): void
+  watchAdvertisements?(options?: { signal?: AbortSignal }): Promise<void>
+  unwatchAdvertisements?(): void
 }
 
 interface BluetoothRemoteGATTServer {
+  readonly connected: boolean
   connect(): Promise<BluetoothRemoteGATTServer>
   disconnect(): void
   getPrimaryService(service: number | string): Promise<BluetoothRemoteGATTService>

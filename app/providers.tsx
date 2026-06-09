@@ -1,7 +1,9 @@
 'use client'
 
 import { KalenderCloudBootstrap } from '@/components/kalender-cloud-bootstrap'
+import { WhoopBleProvider } from '@/components/fitnessdaten/whoop-ble-provider'
 import { WhoopCloudAutoSyncRunner } from '@/components/fitnessdaten/whoop-cloud-auto-sync'
+import { WhoopBleBackgroundSyncRegister } from '@/components/fitnessdaten/whoop-ble-background-sync'
 import { PwaServiceWorkerRegister } from '@/components/pwa-service-worker-register'
 import { TerminMorgenReminderRunner } from '@/components/termin-morgen-reminder'
 import { AuthGate } from '@/components/auth-gate'
@@ -20,14 +22,15 @@ export function Providers({ children }: { children: ReactNode }) {
   }, [])
 
   return (
-    <>
+    <WhoopBleProvider>
       <AuthGate>
         <AppLockGate>{children}</AppLockGate>
       </AuthGate>
       <PwaServiceWorkerRegister />
+      <WhoopBleBackgroundSyncRegister />
       <KalenderCloudBootstrap />
       <WhoopCloudAutoSyncRunner />
       <TerminMorgenReminderRunner />
-    </>
+    </WhoopBleProvider>
   )
 }

@@ -9,6 +9,7 @@ import {
   speichereDailyStore,
   type WhoopDayRecord,
 } from '@/lib/fitnessdaten/daily-records'
+import { verarbeiteAccelSchritt } from '@/lib/fitnessdaten/steps-engine'
 import { ladeFitnessHistory, ladeFitnessSnapshot, mergeLiveSnapshot, speichereFitnessHistory, speichereFitnessSnapshot } from '@/lib/fitnessdaten/history-storage'
 import { heuteIsoLocal, maxHr, ruhepulsSchaetzung, zoneFuerBpm } from '@/lib/fitnessdaten/scores'
 import { profilMaxHr, ladeFitnessProfil } from '@/lib/fitnessdaten/user-profile'
@@ -147,6 +148,11 @@ export function mergeHistoricalR22(
   const t = r22ZuTimestampMs(sample.tsSec)
   const history = ladeFitnessHistory()
   const isoDate = new Date(t).toISOString().slice(0, 10)
+
+  if (sample.accel) {
+    verarbeiteAccelSchritt(sample.accel, t, isoDate)
+    if (isoDate === heuteIsoLocal()) history.stepsToday++
+  }
 
   history.hrSeries.push({ t, bpm: sample.heartRateBpm })
   if (history.hrSeries.length > 600) history.hrSeries = history.hrSeries.slice(-600)

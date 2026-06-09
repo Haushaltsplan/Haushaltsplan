@@ -3,8 +3,8 @@
 import { heuteIsoLocal, istMorgenFenster, mergeTagesStrain } from '@/lib/fitnessdaten/scores'
 import { ergaenzeSchlafDetails } from '@/lib/fitnessdaten/sleep-detail'
 import { speichereZonenImTag } from '@/lib/fitnessdaten/healthspan-engine'
-import { schaetzeSchritte } from '@/lib/fitnessdaten/steps-tracker'
-import { schaetzeVo2Max } from '@/lib/fitnessdaten/vo2max'
+import { mergeTagesSchritte, schritteHeuteAusDaily } from '@/lib/fitnessdaten/steps-engine'
+import { aktualisiereVo2MaxWennFaellig } from '@/lib/fitnessdaten/vo2max-engine'
 import {
   mergeZonen,
   zonenAusHrPunkten,
@@ -232,20 +232,6 @@ function mergeKalorien(
   return Math.round(Math.max(...kandidaten))
 }
 
-function mergeSchritte(
-  prev: number | null,
-  ble: number,
-  calories: number | null,
-  zoneMin13Val: number,
-): number | null {
-  const geschaetzt = schaetzeSchritte(calories ?? 0, zoneMin13Val)
-  const kandidaten = [prev, ble > 0 ? ble : null, geschaetzt > 0 ? geschaetzt : null].filter(
-    (v): v is number => v != null && v > 0,
-  )
-  if (kandidaten.length === 0) return prev
-  return Math.round(Math.max(...kandidaten))
-}
-
 export function ergaenzeZonenUndVitals(
   record: WhoopDayRecord,
   history: FitnessHistoryState,
@@ -264,8 +250,7 @@ export function ergaenzeZonenUndVitals(
       ? zonenAusZyklus(record.avgHr, record.strain, rhr, maxHr)
       : null
   const z = mergeZonen(record.zoneMinutes ?? undefined, zBle, zWork, zCloud)
-  const age = profilAlter(ladeFitnessProfil())
-  const vo2 = schaetzeVo2Max(rhr, maxHr, age)
+  const vo2Trends = aktualisiereVo2MaxWennFaellig()
   const avgHr =
     record.avgHr ??
     (hrPoints.length >= 3
@@ -275,7 +260,15 @@ export function ergaenzeZonenUndVitals(
     {
       ...record,
       avgHr,
-      vo2Max: vo2 ?? record.vo2Max,
+      vo2Max: vo2Trends.manuell ?? vo2Trends.vo2Max ?? record.vo2Max,
+      steps: mergeTagesSchritte(
+        record.steps,
+        record.date === heuteIsoLocal() ? schritteHeuteAusDaily() : 0,
+        record.strain,
+        (z.z1 ?? 0) + (z.z2 ?? 0) + (z.z3 ?? 0),
+        record.avgHr,
+        rhr,
+      ),
       zoneMinutes: z,
       zoneMin13: (z.z1 ?? 0) + (z.z2 ?? 0) + (z.z3 ?? 0),
       zoneMin45: (z.z4 ?? 0) + (z.z5 ?? 0),
@@ -341,11 +334,13 @@ export function aktualisiereHeuteAusSnapshot(
         skinTempC: snapshot.live?.skinTempC ?? prevHeute.skinTempC,
         skinTempDelta: skinDelta ?? prevHeute.skinTempDelta,
         calories: mergeKalorien(scores?.caloriesKcal, prevHeute.calories, history.caloriesToday),
-        steps: mergeSchritte(
+        steps: mergeTagesSchritte(
           prevHeute.steps,
-          history.stepsToday ?? 0,
-          mergeKalorien(scores?.caloriesKcal, prevHeute.calories, history.caloriesToday),
+          Math.max(history.stepsToday ?? 0, schritteHeuteAusDaily()),
+          strain,
           zoneMin13(z),
+          scores?.avgHrSession ?? prevHeute.avgHr,
+          scores?.restingHrBpm ?? prevHeute.restingHr ?? history.baselines.restingHrBpm,
         ),
         maxHr: scores?.maxHrToday ?? prevHeute.maxHr,
         avgHr: scores?.avgHrSession ?? prevHeute.avgHr,

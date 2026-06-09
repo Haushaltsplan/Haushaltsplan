@@ -1,7 +1,9 @@
 'use client'
 
 import { useWhoopBle } from '@/components/fitnessdaten/whoop-ble-provider'
+import { istWhoopBleAlwaysOn, setzeWhoopBleAlwaysOn } from '@/lib/fitnessdaten/whoop-ble-keepalive'
 import { istMobileBrowser, WHOOP_WIEDERHERSTELLUNG } from '@/lib/fitnessdaten/web-bluetooth-whoop'
+import { useEffect, useState } from 'react'
 
 type Props = {
   embedded?: boolean
@@ -10,6 +12,11 @@ type Props = {
 export function FitnessWhoopBlePanel({ embedded = false }: Props) {
   const { phase, deviceName, fehler, statusHint, debug, bleOk, verbinden, trennen } = useWhoopBle()
   const mobile = istMobileBrowser()
+  const [alwaysOn, setAlwaysOn] = useState(true)
+
+  useEffect(() => {
+    setAlwaysOn(istWhoopBleAlwaysOn())
+  }, [])
 
   const phaseLabel: Record<typeof phase, string> = {
     idle: 'Nicht verbunden',
@@ -37,7 +44,8 @@ export function FitnessWhoopBlePanel({ embedded = false }: Props) {
             {deviceName ? ` · ${deviceName}` : null}
           </p>
           <p className="mt-1 text-[10px] text-zinc-600">
-            Bleibt verbunden über Tabs & App-Sperre — bei Reichweitenverlust automatischer Sync.
+            Läuft app-weit im Hintergrund — Reconnect alle 12 s, Nähe-Erkennung (Android), Cloud-Sync per
+            Service Worker.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -71,6 +79,25 @@ export function FitnessWhoopBlePanel({ embedded = false }: Props) {
           )}
         </div>
       </div>
+
+      <label className="mt-3 flex cursor-pointer items-start gap-3 rounded-lg border border-white/[0.06] bg-black/25 px-3 py-2.5">
+        <input
+          type="checkbox"
+          checked={alwaysOn}
+          onChange={(e) => {
+            const an = e.target.checked
+            setAlwaysOn(an)
+            setzeWhoopBleAlwaysOn(an)
+          }}
+          className="mt-0.5 h-4 w-4 rounded border-zinc-600 bg-zinc-900 text-orange-500"
+        />
+        <span className="text-xs leading-relaxed text-zinc-400">
+          <strong className="text-zinc-200">Dauerhaft verbunden</strong> — Omnia verbindet WHOOP automatisch
+          neu (auch bei minimierter App). Omnia als PWA installieren und nicht „Beenden erzwingen“. Wenn die
+          App komplett beendet ist, holt der Hintergrund-Sync WHOOP-Cloud-Daten; BLE startet beim nächsten
+          Öffnen sofort.
+        </span>
+      </label>
 
       {!bleOk ? (
         <p className="mt-3 text-sm leading-relaxed text-amber-200/90">

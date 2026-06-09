@@ -13,7 +13,7 @@ import {
   profilMaxHr,
   wendeProfilAufHistory,
 } from '@/lib/fitnessdaten/user-profile'
-import { zaehleSchrittAusAccel } from '@/lib/fitnessdaten/steps-tracker'
+import { schritteHeuteAusDaily, verarbeiteAccelSchritt } from '@/lib/fitnessdaten/steps-engine'
 import {
   avgHr,
   heuteIsoLocal,
@@ -131,6 +131,8 @@ export function mergeLiveSnapshot(
     history.stepsDate = heute
     history.stepsToday = 0
   }
+  const dailySteps = schritteHeuteAusDaily()
+  if (dailySteps > history.stepsToday) history.stepsToday = dailySteps
 
   const bpm = partial.live?.heartRateBpm
   const now = Date.now()
@@ -206,8 +208,8 @@ export function mergeLiveSnapshot(
 
   if (partial.live?.accel) {
     registriereMotion(now, partial.live.accel)
-    if (zaehleSchrittAusAccel(partial.live.accel, now)) {
-      history.stepsToday++
+    if (verarbeiteAccelSchritt(partial.live.accel, now, heute)) {
+      history.stepsToday = Math.max(history.stepsToday + 1, 0)
     }
   }
   const schlaf = aktualisiereSchlafSchaetzung()

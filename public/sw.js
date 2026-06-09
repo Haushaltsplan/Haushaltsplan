@@ -1,10 +1,53 @@
-/* Minimal: ermöglicht „App installieren“ in Chrome/Edge, wenn https + Web App Manifest. */
+/* PWA + WHOOP-Hintergrund-Cloud-Sync (kein BLE im SW — Browser-Limit). */
+const WHOOP_SYNC_TAG = 'whoop-cloud-sync'
+
 self.addEventListener('install', (event) => {
   self.skipWaiting()
 })
+
 self.addEventListener('activate', (event) => {
   event.waitUntil(self.clients.claim())
 })
+
 self.addEventListener('fetch', (event) => {
   event.respondWith(fetch(event.request))
+})
+
+async function whoopCloudSyncAusSw() {
+  try {
+    const res = await fetch('/api/fitnessdaten/whoop/sync', {
+      method: 'POST',
+      credentials: 'include',
+    })
+    if (!res.ok) return false
+    const data = await res.json()
+    return Boolean(data?.ok)
+  } catch {
+    return false
+  }
+}
+
+async function benachrichtigeClients() {
+  const clients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true })
+  for (const client of clients) {
+    client.postMessage({ type: 'whoop-background-sync', ok: true })
+  }
+}
+
+self.addEventListener('sync', (event) => {
+  if (event.tag !== WHOOP_SYNC_TAG) return
+  event.waitUntil(
+    whoopCloudSyncAusSw().then((ok) => {
+      if (ok) return benachrichtigeClients()
+    }),
+  )
+})
+
+self.addEventListener('periodicsync', (event) => {
+  if (event.tag !== WHOOP_SYNC_TAG) return
+  event.waitUntil(
+    whoopCloudSyncAusSw().then((ok) => {
+      if (ok) return benachrichtigeClients()
+    }),
+  )
 })

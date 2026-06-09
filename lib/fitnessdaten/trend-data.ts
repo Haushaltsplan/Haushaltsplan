@@ -5,8 +5,7 @@ import {
   ladeDailyStore,
   type WhoopDayRecord,
 } from '@/lib/fitnessdaten/daily-records'
-import { schaetzeVo2Max } from '@/lib/fitnessdaten/vo2max'
-import { profilAlter, ladeFitnessProfil } from '@/lib/fitnessdaten/user-profile'
+import { aktuellesVo2Max, ladeVo2Trends } from '@/lib/fitnessdaten/vo2max-engine'
 import type { MetricInfoId } from '@/lib/fitnessdaten/metric-explanations'
 
 export type TrendZeitraum = 'woche' | 'monat' | '6monate'
@@ -41,7 +40,7 @@ export function tageFuerZeitraum(zeitraum: TrendZeitraum): WhoopDayRecord[] {
   return ladeDailyStore().days.slice(-n)
 }
 
-function wertFuerMetrik(d: WhoopDayRecord, id: HomeMetricId, age: number): number {
+function wertFuerMetrik(d: WhoopDayRecord, id: HomeMetricId): number {
   switch (id) {
     case 'avg_hr':
       return d.avgHr ?? 0
@@ -52,7 +51,7 @@ function wertFuerMetrik(d: WhoopDayRecord, id: HomeMetricId, age: number): numbe
     case 'hrv':
       return d.hrvRmssd ?? 0
     case 'vo2max':
-      return d.vo2Max ?? schaetzeVo2Max(d.restingHr, d.maxHr, age) ?? 0
+      return d.vo2Max ?? 0
     case 'steps':
       return d.steps ?? 0
     case 'calories':
@@ -60,6 +59,22 @@ function wertFuerMetrik(d: WhoopDayRecord, id: HomeMetricId, age: number): numbe
     default:
       return 0
   }
+}
+
+function trendPunkteVo2(zeitraum: TrendZeitraum): { label: string; value: number; highlight?: boolean }[] {
+  const historie = ladeVo2Trends().historie
+  const n = zeitraum === 'woche' ? 2 : zeitraum === 'monat' ? 5 : 26
+  const slice = historie.slice(-n)
+  if (slice.length === 0) {
+    const aktuell = aktuellesVo2Max()
+    if (aktuell == null) return []
+    return [{ label: 'Aktuell', value: aktuell, highlight: true }]
+  }
+  return slice.map((h, i) => ({
+    label: h.woche.replace('-W', ' KW'),
+    value: h.wert,
+    highlight: i === slice.length - 1,
+  }))
 }
 
 function tagLabel(iso: string, zeitraum: TrendZeitraum, index: number, total: number): string {
@@ -78,18 +93,21 @@ export function trendPunkte(
   metricId: HomeMetricId,
   zeitraum: TrendZeitraum,
 ): { label: string; value: number; highlight?: boolean }[] {
-  const age = profilAlter(ladeFitnessProfil())
+  if (metricId === 'vo2max') return trendPunkteVo2(zeitraum)
   const tage = tageFuerZeitraum(zeitraum)
   return tage.map((d, i) => ({
     label: tagLabel(d.date, zeitraum, i, tage.length),
-    value: wertFuerMetrik(d, metricId, age),
+    value: wertFuerMetrik(d, metricId),
     highlight: i === tage.length - 1,
   }))
 }
 
 export function heuteWert(metricId: HomeMetricId, heute: WhoopDayRecord): number | null {
-  const age = profilAlter(ladeFitnessProfil())
-  const v = wertFuerMetrik(heute, metricId, age)
+  if (metricId === 'vo2max') {
+    const v = aktuellesVo2Max()
+    return v != null && v > 0 ? v : null
+  }
+  const v = wertFuerMetrik(heute, metricId)
   return v > 0 ? v : null
 }
 

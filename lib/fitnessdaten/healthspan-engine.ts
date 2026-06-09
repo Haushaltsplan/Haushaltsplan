@@ -3,7 +3,7 @@
 import { baseline30, letzte7Tage, type WhoopDayRecord } from '@/lib/fitnessdaten/daily-records'
 import { ladeFitnessHistory } from '@/lib/fitnessdaten/history-storage'
 import { ladeFitnessProfil, profilAlter } from '@/lib/fitnessdaten/user-profile'
-import { schaetzeVo2Max } from '@/lib/fitnessdaten/vo2max'
+import { aktuellesVo2Max } from '@/lib/fitnessdaten/vo2max-engine'
 import type { HrZoneMinutes } from '@/lib/fitnessdaten/types'
 
 export type HealthspanMetricId =
@@ -80,7 +80,7 @@ export function baueHealthspanModel(heute: WhoopDayRecord): HealthspanModel {
   const stepsAvg = baseline30('steps', woche) ?? heute.steps ?? 0
   const strengthWeek = wochenSumme('strengthMin', woche)
   const rhr = heute.restingHr ?? history.baselines.restingHrBpm
-  const vo2 = heute.vo2Max ?? schaetzeVo2Max(rhr, heute.maxHr, age)
+  const vo2 = aktuellesVo2Max() ?? heute.vo2Max
 
   const metrics: HealthspanMetric[] = [
     {

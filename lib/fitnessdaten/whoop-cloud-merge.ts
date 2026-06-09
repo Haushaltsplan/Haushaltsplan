@@ -8,7 +8,8 @@ import {
   type WhoopActivity,
   type WhoopDayRecord,
 } from '@/lib/fitnessdaten/daily-records'
-import { schaetzeSchritte } from '@/lib/fitnessdaten/steps-tracker'
+import { schaetzeSchritteAusStrain } from '@/lib/fitnessdaten/steps-engine'
+import { aktualisiereVo2MaxWennFaellig } from '@/lib/fitnessdaten/vo2max-engine'
 import { heuteIsoLocal, mergeTagesStrain, recoveryLabelAusProzent } from '@/lib/fitnessdaten/scores'
 import { berechneSkinTempDelta } from '@/lib/fitnessdaten/skin-temp'
 import { ladeSyncState, speichereSyncState } from '@/lib/fitnessdaten/offline-sync'
@@ -105,14 +106,17 @@ function mergeDay(
     maxHr: pick(cycle?.maxHr, prev.maxHr) ?? prev.maxHr,
     calories: pick(cycle?.calories, prev.calories),
     steps: (() => {
-      const geschaetzt =
-        cycle?.calories != null && cycle.calories > 0
-          ? schaetzeSchritte(cycle.calories, prev.zoneMin13)
-          : 0
-      const kandidaten = [prev.steps, geschaetzt > 0 ? geschaetzt : null].filter(
-        (v): v is number => v != null && v > 0,
+      const rhr = pick(rec?.restingHr, prev.restingHr) ?? 58
+      const geschaetzt = schaetzeSchritteAusStrain(
+        mergeTagesStrain(cycle?.strain, prev.strain),
+        prev.zoneMin13,
+        pick(cycle?.avgHr, prev.avgHr),
+        rhr,
       )
-      return kandidaten.length > 0 ? Math.round(Math.max(...kandidaten)) : prev.steps
+      if (prev.steps != null && prev.steps > 0 && geschaetzt > 0) {
+        return Math.round(Math.max(prev.steps, Math.min(geschaetzt * 1.1, geschaetzt + 600)))
+      }
+      return geschaetzt > 0 ? geschaetzt : prev.steps
     })(),
   }
 }
@@ -188,6 +192,7 @@ export function mergeCloudPayload(payload: WhoopCloudSyncPayload): WhoopCloudSyn
   store.activities = [...byId.values()].sort((a, b) => a.startMs - b.startMs).slice(-500)
 
   speichereDailyStore(store)
+  aktualisiereVo2MaxWennFaellig()
 
   const heute = heuteIsoLocal()
   const heuteRecord = store.days.find((d) => d.date === heute)
