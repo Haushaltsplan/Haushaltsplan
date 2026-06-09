@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "icon:raster": "node scripts/rasterize-omnia-icon.mjs",
+    "icon:android": "node scripts/generate-android-icons.mjs",
     "prebuild": "node scripts/rasterize-omnia-icon.mjs",
     "dev": "next dev",
     "build": "next build",
