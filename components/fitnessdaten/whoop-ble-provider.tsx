@@ -12,10 +12,12 @@ import {
   WHOOP_SW_MESSAGE,
 } from '@/lib/fitnessdaten/whoop-ble-keepalive'
 import { istOmniaNativeApp } from '@/lib/fitnessdaten/omnia-native'
+import { warteAufOmniaNativeBereit } from '@/lib/fitnessdaten/omnia-native-ready'
 import {
   findeGespeichertesWhoopDevice,
   startWhoopNaeheWatcher,
   verbindeWhoopBle,
+  whoopBleHinweis,
   whoopBleVerfuegbar,
   type WhoopDeviceAuswahl,
   type WhoopWebBleDebug,
@@ -80,7 +82,7 @@ export function WhoopBleProvider({ children }: Props) {
   const [statusHint, setStatusHint] = useState<string | null>(null)
   const [debug, setDebug] = useState<WhoopWebBleDebug | null>(null)
   const [snapshot, setSnapshot] = useState<FitnessSnapshot | null>(null)
-  const [bleOk] = useState(() => whoopBleVerfuegbar())
+  const [bleOk, setBleOk] = useState(() => whoopBleVerfuegbar())
 
   const disconnectRef = useRef<(() => void) | null>(null)
   const autoReconnectRef = useRef(true)
@@ -201,7 +203,10 @@ export function WhoopBleProvider({ children }: Props) {
         autoReconnectRef.current = true
         reconnectVersucheRef.current = 0
         if (manuell) toast.success('WHOOP verbunden')
-      } catch {
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : 'WHOOP-Verbindung fehlgeschlagen.'
+        setFehler(msg)
+        if (auswahl === 'whoop' || auswahl === 'alle') toast.error(msg)
         reconnectVersucheRef.current++
         scheduleReconnect(existingDevice, false)
       } finally {
@@ -236,6 +241,17 @@ export function WhoopBleProvider({ children }: Props) {
   useEffect(() => {
     setSnapshot(ladeFitnessSnapshot())
     autoReconnectRef.current = istWhoopBleAlwaysOn()
+  }, [])
+
+  useEffect(() => {
+    if (!istOmniaNativeApp()) return
+    void warteAufOmniaNativeBereit().then((ok) => {
+      setBleOk(ok && whoopBleVerfuegbar())
+      if (!ok) {
+        const hint = whoopBleHinweis()
+        if (hint) setFehler(hint)
+      }
+    })
   }, [])
 
   useEffect(() => {

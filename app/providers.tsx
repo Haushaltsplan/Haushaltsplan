@@ -23,8 +23,9 @@ export function Providers({ children }: { children: ReactNode }) {
   }, [])
 
   return (
-    <WhoopBleProvider>
+    <>
       <OmniaNativeBoot />
+      <WhoopBleProvider>
       <AuthGate>
         <AppLockGate>{children}</AppLockGate>
       </AuthGate>
@@ -33,6 +34,7 @@ export function Providers({ children }: { children: ReactNode }) {
       <KalenderCloudBootstrap />
       <WhoopCloudAutoSyncRunner />
       <TerminMorgenReminderRunner />
-    </WhoopBleProvider>
+      </WhoopBleProvider>
+    </>
   )
 }

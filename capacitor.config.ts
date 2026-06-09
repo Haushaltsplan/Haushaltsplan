@@ -41,6 +41,8 @@ const config: CapacitorConfig = {
   webDir: 'capacitor-www',
   android: {
     allowMixedContent: Boolean(serverUrl?.startsWith('http://')),
+    /** WHOOP-OAuth: „; wv)“ vermeiden, Capacitor-Bridge bleibt erhalten (nicht overrideUserAgent). */
+    appendUserAgent: ' OmniaCapacitor/1.0',
   },
   plugins: {},
   ...(serverUrl

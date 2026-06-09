@@ -1,5 +1,6 @@
 'use client'
 
+import { istOmniaNativeApp } from '@/lib/fitnessdaten/omnia-native'
 import { useEffect } from 'react'
 
 /**
@@ -8,6 +9,7 @@ import { useEffect } from 'react'
  */
 export function PwaServiceWorkerRegister() {
   useEffect(() => {
+    if (istOmniaNativeApp()) return
     if (typeof window === 'undefined' || !('serviceWorker' in navigator)) return
     const { protocol, hostname } = window.location
     const sicher = protocol === 'https:' || hostname === 'localhost' || hostname === '127.0.0.1'

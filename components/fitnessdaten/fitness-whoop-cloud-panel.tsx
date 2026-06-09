@@ -1,5 +1,6 @@
 'use client'
 
+import { istOmniaNativeApp } from '@/lib/fitnessdaten/omnia-native'
 import { ladeWhoopCloudMeta, syncWhoopCloudVomServer } from '@/lib/fitnessdaten/whoop-cloud-merge'
 import { versucheWhoopCloudAutoSync } from '@/lib/fitnessdaten/whoop-cloud-auto-sync'
 import type { WhoopCloudSyncResult } from '@/lib/fitnessdaten/whoop-cloud-types'
@@ -24,6 +25,7 @@ export function FitnessWhoopCloudPanel({ onSyncComplete, embedded = false }: Pro
   const [ergebnis, setErgebnis] = useState<WhoopCloudSyncResult | null>(null)
   const [hostname, setHostname] = useState<string | null>(null)
   const [redirectUri, setRedirectUri] = useState<string | null>(null)
+  const [nativeApp] = useState(() => istOmniaNativeApp())
 
   useEffect(() => {
     setHostname(window.location.hostname)
@@ -34,7 +36,7 @@ export function FitnessWhoopCloudPanel({ onSyncComplete, embedded = false }: Pro
     setStatusLoading(true)
     setStatusError(null)
     try {
-      const pingRes = await fetch('/api/fitnessdaten/whoop/ping', { cache: 'no-store' })
+      const pingRes = await fetch('/api/fitnessdaten/whoop/ping', { cache: 'no-store', credentials: 'include' })
       const ping = pingRes.ok
         ? ((await pingRes.json()) as { configured?: boolean })
         : { configured: false }
@@ -46,6 +48,7 @@ export function FitnessWhoopCloudPanel({ onSyncComplete, embedded = false }: Pro
       if (token) {
         const res = await fetch('/api/fitnessdaten/whoop/status', {
           headers: { Authorization: `Bearer ${token}` },
+          credentials: 'include',
         })
         if (res.ok) {
           connected = Boolean(((await res.json()) as Status).connected)
@@ -126,6 +129,13 @@ export function FitnessWhoopCloudPanel({ onSyncComplete, embedded = false }: Pro
         Recovery (SpO₂, Hauttemp.), Schlaf, Strain, Workouts — automatisch alle ~15 Min, sobald WHOOP
         verbunden ist. Manueller Sync unten optional.
       </p>
+      {nativeApp ? (
+        <p className="mt-2 rounded-lg border border-violet-900/30 bg-violet-950/15 px-3 py-2 text-[11px] leading-relaxed text-violet-200/80">
+          Omnia-App: WHOOP-Anmeldung läuft in der App. Nach dem Login solltest du wieder auf Fitnessdaten
+          landen. Wenn nichts passiert: zuerst mit E-Mail+Passwort in Omnia eingeloggt sein und in Vercel die
+          WHOOP-Keys gesetzt haben.
+        </p>
+      ) : null}
       <p className="mt-2 text-[10px] leading-relaxed text-zinc-600">
         Blutdruck (WHOOP Life/MG) liefert die öffentliche WHOOP-API nicht — Werte im Tab Gerät unter
         Vitalwerte eintragen.

@@ -10,6 +10,7 @@ import {
   verarbeiteSyncPuffer,
 } from '@/lib/fitnessdaten/offline-sync'
 import { berechneRmssd, parseStandardHeartRateMeasurement } from '@/lib/fitnessdaten/standard-hr-parse'
+import { istOmniaNativeApp } from '@/lib/fitnessdaten/omnia-native'
 import {
   buildGen4WhoopPacket,
   CMD_TOGGLE_BROADCAST_HR,
@@ -430,7 +431,9 @@ export async function verbindeWhoopStandardHr(
   })
 
   if (!webBluetoothVerfuegbar()) {
-    const err = 'Web Bluetooth wird hier nicht unterstützt (Chrome/Edge auf HTTPS nötig).'
+    const err = istOmniaNativeApp()
+      ? 'Bluetooth in der Omnia-App ist noch nicht bereit — App schließen und neu öffnen. Bei erneutem Fehler: Omnia neu installieren (Android Studio → Run) und Bluetooth-Berechtigungen erlauben.'
+      : 'Web Bluetooth wird hier nicht unterstützt (Chrome/Edge auf HTTPS nötig).'
     emit({ phase: 'error', deviceName: null, snapshot: null, error: err, statusHint: null })
     throw new Error(err)
   }

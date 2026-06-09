@@ -3,6 +3,7 @@
  */
 
 import { istOmniaNativeApp } from '@/lib/fitnessdaten/omnia-native'
+import { ladeOmniaNativeFehler, warteAufOmniaNativeBereit } from '@/lib/fitnessdaten/omnia-native-ready'
 import {
   findeGespeichertesWhoopDevice,
   startWhoopNaeheWatcher,
@@ -26,7 +27,12 @@ export type {
 export { WHOOP_BLE_DEVICE_ID_KEY, findeGespeichertesWhoopDevice, startWhoopNaeheWatcher }
 
 export function whoopBleVerfuegbar(): boolean {
-  return istOmniaNativeApp() || webBluetoothVerfuegbar()
+  return webBluetoothVerfuegbar()
+}
+
+export function whoopBleHinweis(): string | null {
+  if (!istOmniaNativeApp()) return null
+  return ladeOmniaNativeFehler()
 }
 
 async function startNativeForegroundService(): Promise<void> {
@@ -58,6 +64,13 @@ export async function verbindeWhoopBle(
   auswahl: WhoopDeviceAuswahl = 'whoop',
   options?: WhoopConnectOptions,
 ): Promise<WhoopWebBleSession> {
+  if (istOmniaNativeApp()) {
+    const ok = await warteAufOmniaNativeBereit()
+    if (!ok || !webBluetoothVerfuegbar()) {
+      const err = ladeOmniaNativeFehler() ?? 'Bluetooth in der Omnia-App ist noch nicht bereit.'
+      throw new Error(err)
+    }
+  }
   const session = await verbindeWhoopStandardHr(onUpdate, auswahl, options)
 
   if (istOmniaNativeApp()) {
