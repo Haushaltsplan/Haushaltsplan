@@ -15,7 +15,13 @@ const supabaseAnonKey =
   keyRaw ||
   'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJpYXQiOjE2NDI3NjA2NTIsImV4cCI6MTk1ODMzNjY1Mn0.build-placeholder-key'
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey)
+export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+  auth: {
+    persistSession: true,
+    autoRefreshToken: true,
+    detectSessionInUrl: true,
+  },
+})
 
 /** `true`, wenn in .env / Vercel echte Supabase-Keys hinterlegt sind. */
 export function istSupabaseClientKonfiguriert(): boolean {

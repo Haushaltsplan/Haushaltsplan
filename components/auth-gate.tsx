@@ -1,6 +1,7 @@
 'use client'
 
 import { istOeffentlicheRoute } from '@/lib/public-routes'
+import { istOmniaNativeApp } from '@/lib/fitnessdaten/omnia-native'
 import { supabase } from '@/lib/supabase'
 import type { Session } from '@supabase/supabase-js'
 import { usePathname } from 'next/navigation'
@@ -35,7 +36,12 @@ export function AuthGate({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null)
   const [loading, setLoading] = useState(true)
   const [email, setEmail] = useState('')
+  const [passwort, setPasswort] = useState('')
   const [sending, setSending] = useState(false)
+  const [nativeApp] = useState(() => istOmniaNativeApp())
+  const [loginModus, setLoginModus] = useState<'passwort' | 'magic'>(() =>
+    istOmniaNativeApp() ? 'passwort' : 'magic',
+  )
   const [verweigert, setVerweigert] = useState(false)
 
   const uebernehmeSession = (next: Session | null) => {
@@ -73,6 +79,32 @@ export function AuthGate({ children }: { children: ReactNode }) {
 
   if (oeffentlich) return <>{children}</>
 
+  const loginMitPasswort = async () => {
+    const clean = email.trim()
+    if (!clean || !passwort) {
+      toast.error('E-Mail und Passwort eingeben.')
+      return
+    }
+    if (!emailErlaubt(clean)) {
+      toast.error('Diese E-Mail ist für diese App nicht freigeschaltet.')
+      return
+    }
+    setSending(true)
+    try {
+      const { error } = await supabase.auth.signInWithPassword({
+        email: clean,
+        password: passwort,
+      })
+      if (error) {
+        toast.error(error.message || 'Anmeldung fehlgeschlagen.')
+        return
+      }
+      toast.success('Angemeldet.')
+    } finally {
+      setSending(false)
+    }
+  }
+
   const sendMagicLink = async () => {
     const clean = email.trim()
     if (!clean) {
@@ -108,11 +140,20 @@ export function AuthGate({ children }: { children: ReactNode }) {
       <div className="mx-auto mt-8 max-w-md rounded-2xl border border-slate-800 bg-slate-900/80 p-5 shadow-xl shadow-black/30">
         <h2 className="text-lg font-bold text-slate-100">Anmeldung erforderlich</h2>
         <p className="mt-2 text-sm text-slate-400">
-          Für Datenschutz: Zugriff nur nach Login. Auf dem Handy reicht das normalerweise einmal pro Gerät.
+          Für Datenschutz: Zugriff nur nach Login.
+          {nativeApp
+            ? ' In der Omnia-App bitte mit Passwort anmelden — der E-Mail-Link öffnet sich sonst in Chrome und bleibt nicht in der App gespeichert.'
+            : ' Auf dem Handy reicht das normalerweise einmal pro Gerät.'}
         </p>
         {verweigert && (
           <p className="mt-3 rounded-lg border border-rose-700/50 bg-rose-950/30 px-3 py-2 text-[13px] text-rose-200">
             Dieses Konto hat keinen Zugriff auf diese App.
+          </p>
+        )}
+        {nativeApp && loginModus === 'passwort' && (
+          <p className="mt-3 rounded-lg border border-amber-700/40 bg-amber-950/20 px-3 py-2 text-[13px] text-amber-100/90">
+            Einmalig in Supabase ein Passwort setzen: Dashboard → Authentication → Users → dein
+            Konto → Passwort vergeben. Danach hier anmelden — bleibt auf dem Handy gespeichert.
           </p>
         )}
         <input
@@ -120,19 +161,45 @@ export function AuthGate({ children }: { children: ReactNode }) {
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           onKeyDown={(e) => {
-            if (e.key === 'Enter') void sendMagicLink()
+            if (e.key === 'Enter') {
+              if (loginModus === 'passwort') void loginMitPasswort()
+              else void sendMagicLink()
+            }
           }}
           placeholder="deine@email.de"
+          autoComplete="email"
           className="mt-4 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2.5 text-sm text-slate-100 outline-none focus:ring-2 focus:ring-cyan-500/40"
         />
+        {loginModus === 'passwort' && (
+          <input
+            type="password"
+            value={passwort}
+            onChange={(e) => setPasswort(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') void loginMitPasswort()
+            }}
+            placeholder="Passwort"
+            autoComplete="current-password"
+            className="mt-3 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2.5 text-sm text-slate-100 outline-none focus:ring-2 focus:ring-cyan-500/40"
+          />
+        )}
         <button
           type="button"
           disabled={sending}
-          onClick={() => void sendMagicLink()}
+          onClick={() => void (loginModus === 'passwort' ? loginMitPasswort() : sendMagicLink())}
           className="mt-3 w-full rounded-xl bg-cyan-600 py-2.5 text-sm font-bold text-white hover:bg-cyan-500 disabled:opacity-40"
         >
-          {sending ? 'Sende …' : 'Login-Link senden'}
+          {sending ? 'Bitte warten …' : loginModus === 'passwort' ? 'Anmelden' : 'Login-Link senden'}
         </button>
+        {nativeApp && (
+          <button
+            type="button"
+            onClick={() => setLoginModus((m) => (m === 'passwort' ? 'magic' : 'passwort'))}
+            className="mt-3 w-full text-center text-[13px] text-slate-500 hover:text-slate-300"
+          >
+            {loginModus === 'passwort' ? 'Stattdessen Login-Link per E-Mail' : 'Stattdessen mit Passwort anmelden'}
+          </button>
+        )}
       </div>
     )
   }
