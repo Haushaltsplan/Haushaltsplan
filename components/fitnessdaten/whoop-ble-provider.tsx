@@ -11,6 +11,10 @@ import {
   WHOOP_BLE_RECONNECT_FAST_MS,
   WHOOP_SW_MESSAGE,
 } from '@/lib/fitnessdaten/whoop-ble-keepalive'
+import {
+  nativeHintergrundHandoff,
+  nativeVordergrundUebernahme,
+} from '@/lib/fitnessdaten/omnia-ble-background-handoff'
 import { istOmniaNativeApp } from '@/lib/fitnessdaten/omnia-native'
 import { warteAufOmniaNativeBereit } from '@/lib/fitnessdaten/omnia-native-ready'
 import {
@@ -256,16 +260,40 @@ export function WhoopBleProvider({ children }: Props) {
 
   useEffect(() => {
     const onVisible = () => {
-      if (document.visibilityState === 'visible') void versucheAutoReconnect()
+      if (document.visibilityState === 'visible') {
+        if (istOmniaNativeApp()) {
+          void nativeVordergrundUebernahme(versucheAutoReconnect)
+        } else {
+          void versucheAutoReconnect()
+        }
+        return
+      }
+      if (istOmniaNativeApp() && istWhoopBleAlwaysOn()) {
+        void nativeHintergrundHandoff(
+          phaseRef.current === 'live' ||
+            phaseRef.current === 'waiting_hr' ||
+            phaseRef.current === 'connecting',
+        )
+      }
+    }
+    const onHide = () => {
+      if (!istOmniaNativeApp() || !istWhoopBleAlwaysOn()) return
+      void nativeHintergrundHandoff(
+        phaseRef.current === 'live' ||
+          phaseRef.current === 'waiting_hr' ||
+          phaseRef.current === 'connecting',
+      )
     }
     document.addEventListener('visibilitychange', onVisible)
     window.addEventListener('focus', onVisible)
     window.addEventListener('pageshow', onVisible)
+    window.addEventListener('pagehide', onHide)
     document.addEventListener('resume', onVisible)
     return () => {
       document.removeEventListener('visibilitychange', onVisible)
       window.removeEventListener('focus', onVisible)
       window.removeEventListener('pageshow', onVisible)
+      window.removeEventListener('pagehide', onHide)
       document.removeEventListener('resume', onVisible)
     }
   }, [versucheAutoReconnect])

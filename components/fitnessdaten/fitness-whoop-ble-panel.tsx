@@ -47,7 +47,7 @@ export function FitnessWhoopBlePanel({ embedded = false }: Props) {
           </p>
           <p className="mt-1 text-[10px] text-zinc-600">
             {native
-              ? 'Nach „Verbinden“ erscheint eine Dauer-Benachrichtigung — die muss sichtbar bleiben (Hintergrund-BLE). App nur minimieren, nicht „Beenden erzwingen“.'
+              ? 'Dauer-Benachrichtigung = WHOOP bleibt verbunden, auch wenn du Omnia schließt. Akku → Omnia → Uneingeschränkt. Nicht „Beenden erzwingen“ in den Einstellungen.'
               : 'PWA: Reconnect alle 12 s. Für Standby-BLE die native Omnia-App nutzen (siehe docs/OMNIA-NATIVE-ANDROID.md).'}
           </p>
         </div>

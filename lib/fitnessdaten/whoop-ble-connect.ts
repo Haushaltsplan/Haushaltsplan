@@ -35,10 +35,14 @@ export function whoopBleHinweis(): string | null {
   return ladeOmniaNativeFehler()
 }
 
-async function startNativeForegroundService(): Promise<void> {
+async function startNativeForegroundService(deviceId?: string): Promise<void> {
   if (!istOmniaNativeApp()) return
+  const id =
+    deviceId ||
+    (typeof window !== 'undefined' ? window.localStorage.getItem(WHOOP_BLE_DEVICE_ID_KEY) : null) ||
+    undefined
   const { starteOmniaBleKeepalive } = await import('@/lib/fitnessdaten/omnia-ble-keepalive-native')
-  await starteOmniaBleKeepalive()
+  await starteOmniaBleKeepalive(id ?? undefined)
 }
 
 async function stopNativeForegroundService(): Promise<void> {
@@ -64,9 +68,14 @@ export async function verbindeWhoopBle(
   if (istOmniaNativeApp()) {
     await startNativeForegroundService()
     const origDisconnect = session.disconnect
+    const { registriereCapgoDisconnect, entferneCapgoDisconnect } = await import(
+      '@/lib/fitnessdaten/omnia-ble-background-handoff'
+    )
+    registriereCapgoDisconnect(origDisconnect)
     return {
       ...session,
       disconnect: () => {
+        entferneCapgoDisconnect()
         void stopNativeForegroundService()
         origDisconnect()
       },
