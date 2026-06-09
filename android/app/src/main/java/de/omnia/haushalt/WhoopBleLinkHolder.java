@@ -114,7 +114,7 @@ public class WhoopBleLinkHolder {
             @Override
             public void onConnectionStateChange(BluetoothGatt g, int status, int newState) {
                 if (newState == BluetoothProfile.STATE_CONNECTED) {
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.21) {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
                         try {
                             g.requestConnectionPriority(BluetoothGatt.CONNECTION_PRIORITY_HIGH);
                         } catch (Exception ignored) {}

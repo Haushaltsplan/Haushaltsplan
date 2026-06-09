@@ -15,13 +15,13 @@ public class MainActivity extends BridgeActivity {
     }
 
     @Override
-    protected void onResume() {
+    public void onResume() {
         super.onResume();
         notifyAppForeground();
     }
 
     @Override
-    protected void onStop() {
+    public void onStop() {
         if (!isChangingConfigurations() && WhoopBleForegroundService.isKeepaliveActive(this)) {
             notifyAppBackground();
         }
