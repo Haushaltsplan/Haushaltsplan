@@ -19,10 +19,12 @@ export async function POST(req: Request) {
       )
     }
     const result = await synchronisiereStravaAktivitaeten(sb, token)
+    const streamHint =
+      result.streamsAnalysiert > 0 ? `, ${result.streamsAnalysiert} Leistungs-Streams analysiert` : ''
     return NextResponse.json({
       ok: true,
       syncedAt: new Date().toISOString(),
-      message: `${result.imported} Aktivitäten aktualisiert — ${result.total} gespeichert`,
+      message: `${result.imported} Aktivitäten aktualisiert — ${result.total} gespeichert${streamHint}`,
       stats: result,
     })
   } catch (e) {

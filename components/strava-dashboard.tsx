@@ -3,11 +3,25 @@
 import { WhoopWeeklyBarChart } from '@/components/fitnessdaten/whoop-charts'
 import { PageChrome, PageHero, PageSection, PageSectionPanel } from '@/components/page-shell'
 import { istOmniaNativeApp } from '@/lib/fitnessdaten/omnia-native'
-import { formatDate, formatHm, formatHours, formatKm, leistungWatts, wattProKg } from '@/lib/strava/strava-auswertung'
+import {
+  aktivitaetKcal,
+  formatDate,
+  formatHm,
+  formatHours,
+  formatKcal,
+  formatKm,
+  leistungWatts,
+  wattProKg,
+} from '@/lib/strava/strava-auswertung'
 import { stravaApiFetch } from '@/lib/strava/strava-api-fetch'
 import { oeffneStravaOAuthUrl } from '@/lib/strava/strava-oauth-open'
 import { stravaRedirectUri } from '@/lib/strava/strava-types'
-import type { StravaAthleteProfile, StravaAuswertung } from '@/lib/strava/strava-types'
+import type {
+  StravaAthleteProfile,
+  StravaAuswertung,
+  StravaPersoenlicheBestleistung,
+  StravaPrKategorie,
+} from '@/lib/strava/strava-types'
 import { supabase } from '@/lib/supabase'
 import { useCallback, useEffect, useState } from 'react'
 import toast from 'react-hot-toast'
@@ -22,6 +36,17 @@ type Status = {
 }
 
 const STRAVA_ORANGE = '#FC4C02'
+
+const PR_KATEGORIE_TITEL: Record<StravaPrKategorie, string> = {
+  distanz: 'Distanz & Tempo',
+  hoehe: 'Höhe & Steigung',
+  leistung: 'Leistung & W/kg',
+  kalorien: 'Kalorien',
+  puls: 'Herzfrequenz',
+  jahr: 'Jahresrekorde',
+}
+
+const PR_REIHENFOLGE: StravaPrKategorie[] = ['distanz', 'hoehe', 'leistung', 'kalorien', 'puls', 'jahr']
 
 function StatKarte({ label, value, sub }: { label: string; value: string; sub?: string }) {
   return (
@@ -44,6 +69,8 @@ export function StravaDashboard() {
   const [redirectUri, setRedirectUri] = useState<string | null>(null)
   const [callbackDomain, setCallbackDomain] = useState<string | null>(null)
   const [nativeApp] = useState(() => istOmniaNativeApp())
+  const [gewichtInput, setGewichtInput] = useState('')
+  const [gewichtSpeichern, setGewichtSpeichern] = useState(false)
 
   useEffect(() => {
     void fetch('/api/strava/ping', { cache: 'no-store' })
@@ -91,7 +118,11 @@ export function StravaDashboard() {
       if (!res.ok) return
       const body = (await res.json()) as { auswertung?: StravaAuswertung; athlete?: StravaAthleteProfile | null }
       if (body.auswertung) setAuswertung(body.auswertung)
-      if (body.athlete) setAthlete(body.athlete)
+      if (body.athlete) {
+        setAthlete(body.athlete)
+        const kg = body.athlete.omnia_weight_kg
+        setGewichtInput(kg != null ? String(kg) : '')
+      }
     } catch {
       toast.error('Strava-Auswertung konnte nicht geladen werden.')
     } finally {
@@ -187,6 +218,33 @@ export function StravaDashboard() {
     }
   }, [nativeApp])
 
+  const speichereGewicht = useCallback(async () => {
+    const parsed = Number.parseFloat(gewichtInput.replace(',', '.'))
+    if (!Number.isFinite(parsed) || parsed <= 0 || parsed > 300) {
+      toast.error('Bitte ein gültiges Gewicht in kg eingeben (1–300).')
+      return
+    }
+    setGewichtSpeichern(true)
+    try {
+      const res = await stravaApiFetch('/api/strava/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ omnia_weight_kg: parsed }),
+      })
+      if (!res.ok) {
+        const err = (await res.json().catch(() => ({}))) as { error?: string }
+        toast.error(err.error ?? 'Gewicht konnte nicht gespeichert werden.')
+        return
+      }
+      const body = (await res.json()) as { athlete?: StravaAthleteProfile | null }
+      if (body.athlete) setAthlete(body.athlete)
+      toast.success('Gewicht gespeichert — W/kg wird neu berechnet.')
+      await ladeDaten()
+    } finally {
+      setGewichtSpeichern(false)
+    }
+  }, [gewichtInput, ladeDaten])
+
   const trennen = useCallback(async () => {
     await stravaApiFetch('/api/strava/disconnect', { method: 'POST' })
     setStatus((s) => ({ ...s, connected: false, activityCount: 0 }))
@@ -194,7 +252,13 @@ export function StravaDashboard() {
     toast.success('Strava getrennt.')
   }, [])
 
-  const weightKg = athlete?.weight_kg ?? null
+  const weightKg = athlete?.omnia_weight_kg ?? null
+
+  const prGruppen = PR_REIHENFOLGE.map((kat) => ({
+    kat,
+    titel: PR_KATEGORIE_TITEL[kat],
+    items: (auswertung?.bestleistungen ?? []).filter((b) => b.kategorie === kat),
+  })).filter((g) => g.items.length > 0)
   const tabs: { id: Tab; label: string }[] = [
     { id: 'uebersicht', label: 'Übersicht' },
     { id: 'entwicklung', label: 'Entwicklung' },
@@ -210,11 +274,10 @@ export function StravaDashboard() {
         title="Strava Auswertung"
         description={
           <>
-            Deine Rad-Aktivitäten aus Strava: Jahrestrends, persönliche Rekorde und Watt pro Kilogramm.
-            {weightKg ? (
+            Deine Rad-Aktivitäten aus Strava: Jahrestrends, persönliche Rekorde, Kalorien und Watt pro Kilogramm.
+            {athlete?.ftp ? (
               <span className="mt-1 block text-zinc-500">
-                Gewicht aus Strava: <strong className="text-zinc-400">{weightKg.toFixed(1)} kg</strong>
-                {athlete?.ftp ? ` · FTP ${athlete.ftp} W` : ''}
+                Strava FTP: <strong className="text-zinc-400">{athlete.ftp} W</strong>
               </span>
             ) : null}
           </>
@@ -295,6 +358,43 @@ STRAVA_CLIENT_SECRET=dein_client_secret`}
         </PageSectionPanel>
       </PageSection>
 
+      {status.connected ? (
+        <PageSection titleId="strava-gewicht" title="Gewicht für W/kg">
+          <PageSectionPanel>
+            <p className="mb-3 text-xs text-zinc-500">
+              W/kg wird mit deinem Omnia-Gewicht berechnet (nicht Strava). Für Leistungs-Peaks (1 min, 5 min, 20 min …)
+              werden beim Sync Watt-Streams von Strava geladen (max. 25 Fahrten pro Sync).
+            </p>
+            <div className="flex flex-wrap items-end gap-3">
+              <label className="block">
+                <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">Körpergewicht (kg)</span>
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  value={gewichtInput}
+                  onChange={(e) => setGewichtInput(e.target.value)}
+                  placeholder="z. B. 72,5"
+                  className="mt-1.5 w-32 rounded-xl border border-white/10 bg-zinc-950 px-3 py-2 text-sm text-zinc-100"
+                />
+              </label>
+              <button
+                type="button"
+                disabled={gewichtSpeichern}
+                onClick={() => void speichereGewicht()}
+                className="rounded-xl bg-[#FC4C02] px-4 py-2 text-sm font-semibold text-white hover:bg-[#e04400] disabled:opacity-50"
+              >
+                {gewichtSpeichern ? 'Speichern…' : 'Gewicht speichern'}
+              </button>
+              {weightKg ? (
+                <span className="text-xs text-emerald-400/90">Aktiv: {weightKg.toFixed(1)} kg</span>
+              ) : (
+                <span className="text-xs text-amber-400/90">Noch kein Gewicht — W/kg fehlt</span>
+              )}
+            </div>
+          </PageSectionPanel>
+        </PageSection>
+      ) : null}
+
       {status.connected && auswertung ? (
         <>
           <div className="mb-4 flex flex-wrap gap-2">
@@ -318,7 +418,7 @@ STRAVA_CLIENT_SECRET=dein_client_secret`}
             <p className="text-sm text-zinc-500">Auswertung wird geladen…</p>
           ) : tab === 'uebersicht' ? (
             <div className="space-y-6">
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
                 <StatKarte label="Fahrten" value={String(auswertung.totalRides)} />
                 <StatKarte
                   label="Gesamt"
@@ -326,6 +426,10 @@ STRAVA_CLIENT_SECRET=dein_client_secret`}
                   sub={formatHours(auswertung.totalHours * 3600)}
                 />
                 <StatKarte label="Höhenmeter" value={formatHm(auswertung.totalHm)} />
+                <StatKarte
+                  label="Kalorien gesamt"
+                  value={auswertung.totalKcal > 0 ? formatKcal(auswertung.totalKcal) : '—'}
+                />
                 <StatKarte
                   label="Ø W/kg (Jahre mit Leistung)"
                   value={
@@ -336,7 +440,7 @@ STRAVA_CLIENT_SECRET=dein_client_secret`}
                         ).toFixed(2)} W/kg`
                       : weightKg
                         ? 'Keine Leistungsdaten'
-                        : 'Gewicht in Strava setzen'
+                        : 'Gewicht oben setzen'
                   }
                 />
               </div>
@@ -389,6 +493,7 @@ STRAVA_CLIENT_SECRET=dein_client_secret`}
                       <th className="px-4 py-3">Fahrten</th>
                       <th className="px-4 py-3">km</th>
                       <th className="px-4 py-3">hm</th>
+                      <th className="px-4 py-3">kcal</th>
                       <th className="px-4 py-3">Ø W</th>
                       <th className="px-4 py-3">Ø W/kg</th>
                     </tr>
@@ -402,6 +507,9 @@ STRAVA_CLIENT_SECRET=dein_client_secret`}
                           {j.km.toLocaleString('de-DE', { maximumFractionDigits: 0 })}
                         </td>
                         <td className="px-4 py-2.5 tabular-nums">{Math.round(j.hm).toLocaleString('de-DE')}</td>
+                        <td className="px-4 py-2.5 tabular-nums text-xs">
+                          {j.kcal > 0 ? Math.round(j.kcal).toLocaleString('de-DE') : '—'}
+                        </td>
                         <td className="px-4 py-2.5 tabular-nums">{j.avgWatts ? `${Math.round(j.avgWatts)} W` : '—'}</td>
                         <td className="px-4 py-2.5 tabular-nums">
                           {j.avgWkg ? `${j.avgWkg.toFixed(2)} W/kg` : '—'}
@@ -413,26 +521,37 @@ STRAVA_CLIENT_SECRET=dein_client_secret`}
               </div>
             </div>
           ) : tab === 'prs' ? (
-            <div className="grid gap-3 sm:grid-cols-2">
-              {auswertung.bestleistungen.map((b) => (
-                <div
-                  key={b.key}
-                  className="rounded-2xl border border-orange-500/15 bg-gradient-to-br from-[#FC4C02]/8 to-transparent p-4"
-                >
-                  <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-orange-300/80">{b.label}</p>
-                  <p className="mt-2 text-xl font-semibold text-zinc-100">{b.value}</p>
-                  {b.detail ? <p className="mt-1 text-sm text-zinc-400">{b.detail}</p> : null}
-                  {b.date ? <p className="mt-1 text-xs text-zinc-500">{b.date}</p> : null}
-                  {b.activityId ? (
-                    <a
-                      href={`https://www.strava.com/activities/${b.activityId}`}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="mt-2 inline-block text-xs text-orange-400 hover:underline"
-                    >
-                      Auf Strava öffnen →
-                    </a>
-                  ) : null}
+            <div className="space-y-8">
+              {prGruppen.map((gruppe) => (
+                <div key={gruppe.kat}>
+                  <h3 className="mb-3 text-xs font-bold uppercase tracking-[0.16em] text-orange-300/90">
+                    {gruppe.titel}
+                  </h3>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    {gruppe.items.map((b: StravaPersoenlicheBestleistung) => (
+                      <div
+                        key={b.key}
+                        className="rounded-2xl border border-orange-500/15 bg-gradient-to-br from-[#FC4C02]/8 to-transparent p-4"
+                      >
+                        <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-orange-300/80">
+                          {b.label}
+                        </p>
+                        <p className="mt-2 text-xl font-semibold text-zinc-100">{b.value}</p>
+                        {b.detail ? <p className="mt-1 text-sm text-zinc-400">{b.detail}</p> : null}
+                        {b.date ? <p className="mt-1 text-xs text-zinc-500">{b.date}</p> : null}
+                        {b.activityId ? (
+                          <a
+                            href={`https://www.strava.com/activities/${b.activityId}`}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="mt-2 inline-block text-xs text-orange-400 hover:underline"
+                          >
+                            Auf Strava öffnen →
+                          </a>
+                        ) : null}
+                      </div>
+                    ))}
+                  </div>
                 </div>
               ))}
             </div>
@@ -446,6 +565,7 @@ STRAVA_CLIENT_SECRET=dein_client_secret`}
                     <th className="px-4 py-3">Distanz</th>
                     <th className="px-4 py-3">Zeit</th>
                     <th className="px-4 py-3">hm</th>
+                    <th className="px-4 py-3">kcal</th>
                     <th className="px-4 py-3">W</th>
                     <th className="px-4 py-3">W/kg</th>
                   </tr>
@@ -472,6 +592,9 @@ STRAVA_CLIENT_SECRET=dein_client_secret`}
                         <td className="px-4 py-2.5 tabular-nums">{formatKm(a.distance_m)}</td>
                         <td className="px-4 py-2.5 tabular-nums text-xs">{formatHours(a.moving_time_s)}</td>
                         <td className="px-4 py-2.5 tabular-nums text-xs">{formatHm(a.elevation_gain_m)}</td>
+                        <td className="px-4 py-2.5 tabular-nums text-xs">
+                          {formatKcal(aktivitaetKcal(a))}
+                        </td>
                         <td className="px-4 py-2.5 tabular-nums text-xs">{w ? `${Math.round(w)}` : '—'}</td>
                         <td className="px-4 py-2.5 tabular-nums text-xs">
                           {wkg ? wkg.toFixed(2) : '—'}

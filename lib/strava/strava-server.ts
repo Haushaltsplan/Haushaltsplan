@@ -1,6 +1,12 @@
 /** Strava — Token, API & Sync (nur Server). */
 
 import {
+  berechnePowerPeaksAusStream,
+  geschwindigkeitKmh,
+  kilojoulesZuKcal,
+  parsePowerPeaks,
+} from '@/lib/strava/strava-power'
+import {
   leseStravaTokensDb,
   loescheStravaTokensDb,
   speichereStravaTokensAdmin,
@@ -15,6 +21,9 @@ import {
   type StravaStoredTokens,
 } from '@/lib/strava/strava-types'
 import type { SupabaseClient } from '@supabase/supabase-js'
+
+const STREAM_PAUSE_MS = 280
+const MAX_STREAMS_PRO_SYNC = 25
 
 const AUTH_URL = 'https://www.strava.com/oauth/authorize'
 const TOKEN_URL = 'https://www.strava.com/oauth/token'
@@ -36,6 +45,9 @@ type StravaApiActivity = {
   average_heartrate?: number
   max_heartrate?: number
   kilojoules?: number
+  average_speed?: number
+  device_watts?: boolean
+  calories?: number
 }
 
 type StravaApiAthlete = {
@@ -173,14 +185,20 @@ async function stravaGet<T>(token: string, path: string, params?: Record<string,
 }
 
 function mapActivity(a: StravaApiActivity): StravaActivityRow {
+  const distance_m = Number(a.distance) || 0
+  const moving_time_s = Number(a.moving_time) || 0
+  const kj = a.kilojoules != null ? Number(a.kilojoules) : null
+  const kcalFromApi = a.calories != null && a.calories > 0 ? Number(a.calories) : null
+  const speedFromApi =
+    a.average_speed != null && a.average_speed > 0 ? Number(a.average_speed) * 3.6 : null
   return {
     strava_id: a.id,
     name: a.name?.trim() || 'Fahrt',
     sport_type: a.sport_type || a.type || 'Ride',
     type: a.type ?? null,
     start_date: a.start_date,
-    distance_m: Number(a.distance) || 0,
-    moving_time_s: Number(a.moving_time) || 0,
+    distance_m,
+    moving_time_s,
     elapsed_time_s: a.elapsed_time != null ? Number(a.elapsed_time) : null,
     elevation_gain_m: a.total_elevation_gain != null ? Number(a.total_elevation_gain) : null,
     average_watts: a.average_watts != null ? Number(a.average_watts) : null,
@@ -188,15 +206,24 @@ function mapActivity(a: StravaApiActivity): StravaActivityRow {
     max_watts: a.max_watts != null ? Number(a.max_watts) : null,
     average_heartrate: a.average_heartrate != null ? Number(a.average_heartrate) : null,
     max_heartrate: a.max_heartrate != null ? Number(a.max_heartrate) : null,
-    kilojoules: a.kilojoules != null ? Number(a.kilojoules) : null,
+    kilojoules: kj,
+    calories_kcal: kcalFromApi ?? kilojoulesZuKcal(kj),
+    average_speed_kmh: speedFromApi ?? geschwindigkeitKmh(distance_m, moving_time_s),
+    device_watts: a.device_watts ?? null,
+    power_peaks: null,
   }
 }
 
-export async function ladeStravaAthlete(token: string): Promise<StravaAthleteProfile & { athleteId?: number }> {
+async function ladeStravaAthleteMeta(token: string): Promise<{
+  athleteId?: number
+  ftp: number | null
+  max_hr: number | null
+  firstname: string | null
+  lastname: string | null
+}> {
   const a = await stravaGet<StravaApiAthlete>(token, '/athlete')
   return {
     athleteId: a.id,
-    weight_kg: a.weight != null && a.weight > 0 ? a.weight : null,
     ftp: a.ftp != null && a.ftp > 0 ? a.ftp : null,
     max_hr: a.max_heartrate != null && a.max_heartrate > 0 ? Math.round(a.max_heartrate) : null,
     firstname: a.firstname?.trim() || null,
@@ -204,20 +231,32 @@ export async function ladeStravaAthlete(token: string): Promise<StravaAthletePro
   }
 }
 
-async function speichereAthleteProfil(sb: SupabaseClient, profil: StravaAthleteProfile): Promise<void> {
+/** Strava-Metadaten — überschreibt niemals omnia_weight_kg. */
+async function aktualisiereAthleteMetaVonStrava(
+  sb: SupabaseClient,
+  meta: Awaited<ReturnType<typeof ladeStravaAthleteMeta>>,
+): Promise<void> {
   const {
     data: { user },
   } = await sb.auth.getUser()
   if (!user?.id) return
-  await sb.from('strava_athlete_profile').upsert({
-    owner_user_id: user.id,
-    weight_kg: profil.weight_kg,
-    ftp: profil.ftp,
-    max_hr: profil.max_hr,
-    firstname: profil.firstname,
-    lastname: profil.lastname,
+  const payload = {
+    ftp: meta.ftp,
+    max_hr: meta.max_hr,
+    firstname: meta.firstname,
+    lastname: meta.lastname,
     updated_at: new Date().toISOString(),
-  })
+  }
+  const { data: existing } = await sb
+    .from('strava_athlete_profile')
+    .select('owner_user_id')
+    .eq('owner_user_id', user.id)
+    .maybeSingle()
+  if (existing) {
+    await sb.from('strava_athlete_profile').update(payload).eq('owner_user_id', user.id)
+  } else {
+    await sb.from('strava_athlete_profile').insert({ owner_user_id: user.id, ...payload })
+  }
 }
 
 export async function leseAthleteProfilDb(sb: SupabaseClient): Promise<StravaAthleteProfile | null> {
@@ -227,17 +266,119 @@ export async function leseAthleteProfilDb(sb: SupabaseClient): Promise<StravaAth
   if (!user?.id) return null
   const { data } = await sb
     .from('strava_athlete_profile')
-    .select('weight_kg, ftp, max_hr, firstname, lastname')
+    .select('omnia_weight_kg, weight_kg, ftp, max_hr, firstname, lastname')
     .eq('owner_user_id', user.id)
     .maybeSingle()
   if (!data) return null
+  const omnia =
+    data.omnia_weight_kg != null
+      ? Number(data.omnia_weight_kg)
+      : data.weight_kg != null
+        ? Number(data.weight_kg)
+        : null
   return {
-    weight_kg: data.weight_kg != null ? Number(data.weight_kg) : null,
+    omnia_weight_kg: omnia != null && omnia > 0 ? omnia : null,
     ftp: data.ftp != null ? Number(data.ftp) : null,
     max_hr: data.max_hr != null ? Number(data.max_hr) : null,
     firstname: data.firstname,
     lastname: data.lastname,
   }
+}
+
+export async function speichereOmniaGewicht(sb: SupabaseClient, kg: number | null): Promise<void> {
+  const {
+    data: { user },
+  } = await sb.auth.getUser()
+  if (!user?.id) throw new Error('Nicht angemeldet.')
+  const weight = kg != null && kg > 0 && kg < 300 ? kg : null
+  const { data: existing } = await sb
+    .from('strava_athlete_profile')
+    .select('owner_user_id')
+    .eq('owner_user_id', user.id)
+    .maybeSingle()
+  if (existing) {
+    const { error } = await sb
+      .from('strava_athlete_profile')
+      .update({ omnia_weight_kg: weight, updated_at: new Date().toISOString() })
+      .eq('owner_user_id', user.id)
+    if (error) throw new Error(`Gewicht speichern: ${error.message}`)
+  } else {
+    const { error } = await sb.from('strava_athlete_profile').insert({
+      owner_user_id: user.id,
+      omnia_weight_kg: weight,
+      updated_at: new Date().toISOString(),
+    })
+    if (error) throw new Error(`Gewicht speichern: ${error.message}`)
+  }
+}
+
+export function effektivesGewichtKg(profil: StravaAthleteProfile | null): number | null {
+  return profil?.omnia_weight_kg ?? null
+}
+
+type WattStreamBundle = {
+  watts?: { data?: number[] }
+  time?: { data?: number[] }
+}
+
+async function ladeWattStream(token: string, stravaId: number): Promise<WattStreamBundle | null> {
+  try {
+    return await stravaGet<WattStreamBundle>(token, `/activities/${stravaId}/streams`, {
+      keys: 'watts,time',
+      key_by_type: 'true',
+    })
+  } catch {
+    return null
+  }
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((r) => setTimeout(r, ms))
+}
+
+async function synchronisierePowerStreams(
+  sb: SupabaseClient,
+  token: string,
+  ownerUserId: string,
+): Promise<number> {
+  const { data: kandidaten } = await sb
+    .from('strava_activities')
+    .select('strava_id')
+    .eq('owner_user_id', ownerUserId)
+    .is('power_peaks', null)
+    .or('device_watts.eq.true,max_watts.gt.0,weighted_avg_watts.gt.0,average_watts.gt.0')
+    .order('start_date', { ascending: false })
+    .limit(MAX_STREAMS_PRO_SYNC)
+
+  if (!kandidaten?.length) return 0
+
+  let count = 0
+  for (const row of kandidaten) {
+    const stravaId = Number(row.strava_id)
+    const stream = await ladeWattStream(token, stravaId)
+    await sleep(STREAM_PAUSE_MS)
+
+    const watts = stream?.watts?.data ?? []
+    const time = stream?.time?.data ?? []
+    let peaks = watts.length > 0 && time.length === watts.length ? berechnePowerPeaksAusStream(watts, time) : null
+
+    if (!peaks || !Object.values(peaks).some((v) => v != null)) {
+      await sb
+        .from('strava_activities')
+        .update({ power_peaks: {} })
+        .eq('owner_user_id', ownerUserId)
+        .eq('strava_id', stravaId)
+      continue
+    }
+
+    const { error } = await sb
+      .from('strava_activities')
+      .update({ power_peaks: peaks })
+      .eq('owner_user_id', ownerUserId)
+      .eq('strava_id', stravaId)
+    if (!error) count += 1
+  }
+  return count
 }
 
 async function neuestesAktivitaetsDatum(sb: SupabaseClient): Promise<number | null> {
@@ -260,9 +401,9 @@ export async function synchronisiereStravaAktivitaeten(
   sb: SupabaseClient,
   token: string,
   maxPages = 60,
-): Promise<{ imported: number; total: number }> {
-  const athlete = await ladeStravaAthlete(token)
-  await speichereAthleteProfil(sb, athlete)
+): Promise<{ imported: number; total: number; streamsAnalysiert: number }> {
+  const meta = await ladeStravaAthleteMeta(token)
+  await aktualisiereAthleteMetaVonStrava(sb, meta)
 
   const after = await neuestesAktivitaetsDatum(sb)
   const all: StravaActivityRow[] = []
@@ -303,6 +444,9 @@ export async function synchronisiereStravaAktivitaeten(
       average_heartrate: a.average_heartrate,
       max_heartrate: a.max_heartrate,
       kilojoules: a.kilojoules,
+      calories_kcal: a.calories_kcal,
+      average_speed_kmh: a.average_speed_kmh,
+      device_watts: a.device_watts,
       synced_at: new Date().toISOString(),
     }))
     const { error } = await sb.from('strava_activities').upsert(rows, {
@@ -311,12 +455,14 @@ export async function synchronisiereStravaAktivitaeten(
     if (error) throw new Error(`Strava-Aktivitäten speichern: ${error.message}`)
   }
 
+  const streamsAnalysiert = await synchronisierePowerStreams(sb, token, user.id)
+
   const { count } = await sb
     .from('strava_activities')
     .select('*', { count: 'exact', head: true })
     .eq('owner_user_id', user.id)
 
-  return { imported: all.length, total: count ?? 0 }
+  return { imported: all.length, total: count ?? 0, streamsAnalysiert }
 }
 
 export async function ladeGespeicherteAktivitaeten(sb: SupabaseClient): Promise<StravaActivityRow[]> {
@@ -327,7 +473,7 @@ export async function ladeGespeicherteAktivitaeten(sb: SupabaseClient): Promise<
   const { data, error } = await sb
     .from('strava_activities')
     .select(
-      'strava_id, name, sport_type, type, start_date, distance_m, moving_time_s, elapsed_time_s, elevation_gain_m, average_watts, weighted_avg_watts, max_watts, average_heartrate, max_heartrate, kilojoules',
+      'strava_id, name, sport_type, type, start_date, distance_m, moving_time_s, elapsed_time_s, elevation_gain_m, average_watts, weighted_avg_watts, max_watts, average_heartrate, max_heartrate, kilojoules, calories_kcal, average_speed_kmh, device_watts, power_peaks',
     )
     .eq('owner_user_id', user.id)
     .order('start_date', { ascending: false })
@@ -348,6 +494,10 @@ export async function ladeGespeicherteAktivitaeten(sb: SupabaseClient): Promise<
     average_heartrate: r.average_heartrate != null ? Number(r.average_heartrate) : null,
     max_heartrate: r.max_heartrate != null ? Number(r.max_heartrate) : null,
     kilojoules: r.kilojoules != null ? Number(r.kilojoules) : null,
+    calories_kcal: r.calories_kcal != null ? Number(r.calories_kcal) : null,
+    average_speed_kmh: r.average_speed_kmh != null ? Number(r.average_speed_kmh) : null,
+    device_watts: r.device_watts != null ? Boolean(r.device_watts) : null,
+    power_peaks: parsePowerPeaks(r.power_peaks),
   }))
 }
 

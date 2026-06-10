@@ -1,5 +1,7 @@
 /** Strava — Typen & Hilfskonstanten. */
 
+import type { StravaPowerPeaks } from '@/lib/strava/strava-power'
+
 export const STRAVA_SCOPES = 'read,activity:read_all'
 
 export const STRAVA_RAD_SPORT_TYPES = new Set([
@@ -36,10 +38,14 @@ export type StravaActivityRow = {
   average_heartrate: number | null
   max_heartrate: number | null
   kilojoules: number | null
+  calories_kcal: number | null
+  average_speed_kmh: number | null
+  device_watts: boolean | null
+  power_peaks: StravaPowerPeaks | null
 }
 
 export type StravaAthleteProfile = {
-  weight_kg: number | null
+  omnia_weight_kg: number | null
   ftp: number | null
   max_hr: number | null
   firstname: string | null
@@ -52,12 +58,16 @@ export type StravaJahresStat = {
   km: number
   hours: number
   hm: number
+  kcal: number
   avgWatts: number | null
   avgWkg: number | null
 }
 
+export type StravaPrKategorie = 'distanz' | 'hoehe' | 'leistung' | 'kalorien' | 'puls' | 'jahr'
+
 export type StravaPersoenlicheBestleistung = {
   key: string
+  kategorie: StravaPrKategorie
   label: string
   value: string
   detail?: string
@@ -70,6 +80,7 @@ export type StravaAuswertung = {
   totalKm: number
   totalHours: number
   totalHm: number
+  totalKcal: number
   jahre: StravaJahresStat[]
   bestleistungen: StravaPersoenlicheBestleistung[]
   wkgMonat: { label: string; wkg: number; rides: number }[]
@@ -102,7 +113,6 @@ export function stravaRedirectUri(requestOrigin?: string): string {
   return `${basis}/api/strava/callback`
 }
 
-/** Nur Hostname — exakt so in Strava „Authorization Callback Domain“ eintragen. */
 export function stravaCallbackDomain(requestOrigin?: string): string {
   try {
     return new URL(stravaRedirectUri(requestOrigin)).hostname

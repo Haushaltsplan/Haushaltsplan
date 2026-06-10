@@ -1,5 +1,5 @@
 import { berechneAuswertung } from '@/lib/strava/strava-auswertung'
-import { ladeGespeicherteAktivitaeten, leseAthleteProfilDb } from '@/lib/strava/strava-server'
+import { effektivesGewichtKg, ladeGespeicherteAktivitaeten, leseAthleteProfilDb } from '@/lib/strava/strava-server'
 import { createSupabaseFuerRequest } from '@/lib/supabase-user'
 import { NextResponse } from 'next/server'
 
@@ -16,12 +16,13 @@ export async function GET(req: Request) {
     ladeGespeicherteAktivitaeten(sb),
     leseAthleteProfilDb(sb),
   ])
-  const weightKg = athlete?.weight_kg ?? null
+  const weightKg = effektivesGewichtKg(athlete)
   const auswertung = berechneAuswertung(activities, weightKg)
 
   return NextResponse.json({
     activities,
     athlete,
+    omnia_weight_kg: weightKg,
     auswertung,
   })
 }
