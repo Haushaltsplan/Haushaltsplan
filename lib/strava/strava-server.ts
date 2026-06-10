@@ -77,6 +77,7 @@ async function tauscheCode(code: string, redirectUri: string): Promise<StravaSto
     client_secret: clientSecret,
     code,
     grant_type: 'authorization_code',
+    redirect_uri: redirectUri,
   })
   const res = await fetch(TOKEN_URL, {
     method: 'POST',

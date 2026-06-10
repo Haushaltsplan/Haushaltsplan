@@ -42,10 +42,17 @@ export function StravaDashboard() {
   const [busy, setBusy] = useState(false)
   const [dataLoading, setDataLoading] = useState(false)
   const [redirectUri, setRedirectUri] = useState<string | null>(null)
+  const [callbackDomain, setCallbackDomain] = useState<string | null>(null)
   const [nativeApp] = useState(() => istOmniaNativeApp())
 
   useEffect(() => {
-    setRedirectUri(stravaRedirectUri(window.location.origin))
+    void fetch('/api/strava/ping', { cache: 'no-store' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((p: { redirectUri?: string; callbackDomain?: string } | null) => {
+        setRedirectUri(p?.redirectUri ?? stravaRedirectUri(window.location.origin))
+        setCallbackDomain(p?.callbackDomain ?? null)
+      })
+      .catch(() => setRedirectUri(stravaRedirectUri(window.location.origin)))
   }, [])
 
   const ladeStatus = useCallback(async () => {
@@ -235,10 +242,19 @@ export function StravaDashboard() {
 STRAVA_CLIENT_SECRET=dein_client_secret`}
               </pre>
               {redirectUri ? (
-                <p className="text-xs text-zinc-500">
-                  Authorization Callback Domain: deine Domain · Redirect URI:{' '}
-                  <code className="text-orange-300">{redirectUri}</code>
-                </p>
+                <div className="space-y-1 text-xs text-zinc-500">
+                  <p>
+                    In Strava unter <strong className="text-zinc-400">Authorization Callback Domain</strong> nur den
+                    Hostnamen eintragen (ohne https://, ohne Pfad):
+                  </p>
+                  {callbackDomain ? (
+                    <code className="block rounded bg-zinc-950 px-2 py-1 text-orange-300">{callbackDomain}</code>
+                  ) : null}
+                  <p className="pt-1">
+                    Redirect URI (wird von der App gesendet):{' '}
+                    <code className="text-orange-300">{redirectUri}</code>
+                  </p>
+                </div>
               ) : null}
             </div>
           ) : statusLoading ? (

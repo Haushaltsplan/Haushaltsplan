@@ -76,8 +76,39 @@ export type StravaAuswertung = {
   recent: StravaActivityRow[]
 }
 
-export function stravaRedirectUri(origin: string): string {
-  return `${origin.replace(/\/$/, '')}/api/strava/callback`
+/** Basis-URL für OAuth — feste Env hat Vorrang vor Request-Origin (Vercel/Native). */
+export function stravaOAuthBasisUrl(requestOrigin?: string): string {
+  const explicit = process.env.STRAVA_REDIRECT_URI?.trim()
+  if (explicit) {
+    try {
+      return new URL(explicit).origin
+    } catch {
+      /* fallthrough */
+    }
+  }
+  return (
+    process.env.NEXT_PUBLIC_APP_URL?.trim() ||
+    process.env.OMNIA_CAPACITOR_SERVER_URL?.trim() ||
+    requestOrigin?.trim() ||
+    ''
+  ).replace(/\/+$/, '')
+}
+
+export function stravaRedirectUri(requestOrigin?: string): string {
+  const explicit = process.env.STRAVA_REDIRECT_URI?.trim()
+  if (explicit) return explicit.replace(/\/+$/, '')
+  const basis = stravaOAuthBasisUrl(requestOrigin)
+  if (!basis) throw new Error('Strava Redirect-URI: keine Basis-URL (NEXT_PUBLIC_APP_URL oder Request-Origin).')
+  return `${basis}/api/strava/callback`
+}
+
+/** Nur Hostname — exakt so in Strava „Authorization Callback Domain“ eintragen. */
+export function stravaCallbackDomain(requestOrigin?: string): string {
+  try {
+    return new URL(stravaRedirectUri(requestOrigin)).hostname
+  } catch {
+    return ''
+  }
 }
 
 export function stravaApiKonfiguriert(): boolean {
