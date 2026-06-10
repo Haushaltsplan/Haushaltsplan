@@ -51,7 +51,13 @@ const config: CapacitorConfig = {
           url: serverUrl,
           cleartext: serverUrl.startsWith('http://'),
           /** WHOOP-OAuth in der WebView (Fallback, wenn Browser-Plugin fehlt). */
-          allowNavigation: ['api.prod.whoop.com', '*.whoop.com', 'whoop.com'],
+          allowNavigation: [
+            'api.prod.whoop.com',
+            '*.whoop.com',
+            'whoop.com',
+            'www.strava.com',
+            'strava.com',
+          ],
         },
       }
     : {}),

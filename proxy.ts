@@ -25,18 +25,21 @@ function jsonError(message: string, status: number) {
   return NextResponse.json({ error: message }, { status })
 }
 
-/** WHOOP OAuth & Konfig-Check — Browser-Redirects ohne Bearer-Token. */
-function whoopOeffentlicheApi(pathname: string): boolean {
+/** OAuth-Callbacks & Konfig-Checks — Browser-Redirects ohne Bearer-Token. */
+function oeffentlicheApi(pathname: string): boolean {
   return (
     pathname === '/api/fitnessdaten/whoop/auth' ||
     pathname === '/api/fitnessdaten/whoop/auth/start' ||
     pathname === '/api/fitnessdaten/whoop/callback' ||
-    pathname === '/api/fitnessdaten/whoop/ping'
+    pathname === '/api/fitnessdaten/whoop/ping' ||
+    pathname === '/api/strava/auth/start' ||
+    pathname === '/api/strava/callback' ||
+    pathname === '/api/strava/ping'
   )
 }
 
 export async function proxy(req: NextRequest) {
-  if (whoopOeffentlicheApi(req.nextUrl.pathname)) {
+  if (oeffentlicheApi(req.nextUrl.pathname)) {
     return NextResponse.next()
   }
 

@@ -1,12 +1,11 @@
 import type { Metadata } from 'next'
-import { RennradRoutenClient } from '@/components/rennrad-routen-client'
+import { StravaDashboard } from '@/components/strava-dashboard'
 
 export const metadata: Metadata = {
   title: 'Rennrad',
-  description:
-    'Routen für Rennrad planen: GPX für Garmin Connect (OpenStreetMap). Hinweise zu Climbfinder und Import.',
+  description: 'Strava-Radaktivitäten: Jahrestrends, persönliche Bestleistungen und Watt pro Kilogramm.',
 }
 
 export default function RennradPage() {
-  return <RennradRoutenClient />
+  return <StravaDashboard />
 }
