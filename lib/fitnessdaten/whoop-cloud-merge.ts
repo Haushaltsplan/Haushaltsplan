@@ -19,7 +19,7 @@ import {
   wendeProfilAufHistory,
 } from '@/lib/fitnessdaten/user-profile'
 import { ladeFitnessHistory, ladeFitnessSnapshot, speichereFitnessHistory, speichereFitnessSnapshot } from '@/lib/fitnessdaten/history-storage'
-import { supabase } from '@/lib/supabase'
+import { whoopApiFetch } from '@/lib/fitnessdaten/whoop-api-fetch'
 
 export const WHOOP_CLOUD_META_KEY = 'mein-haushalt:fitnessdaten-whoop-cloud'
 export const WHOOP_CLOUD_SYNC_EVENT = 'mein-haushalt:whoop-cloud-sync'
@@ -205,6 +205,13 @@ export function mergeCloudPayload(payload: WhoopCloudSyncPayload): WhoopCloudSyn
   for (const a of workoutActivities) byId.set(a.id, a)
   store.activities = [...byId.values()].sort((a, b) => a.startMs - b.startMs).slice(-500)
 
+  const heuteActs = workoutActivities.filter((a) => a.date === heuteIsoLocal())
+  if (heuteActs.length > 0) {
+    const todayById = new Map(store.activitiesToday.map((a) => [a.id, a]))
+    for (const a of heuteActs) todayById.set(a.id, a)
+    store.activitiesToday = [...todayById.values()].sort((a, b) => a.startMs - b.startMs)
+  }
+
   speichereDailyStore(store)
 
   if (payload.bff?.monthlyAvgs.vo2Max != null) {
@@ -293,15 +300,7 @@ export function mergeCloudPayload(payload: WhoopCloudSyncPayload): WhoopCloudSyn
 }
 
 export async function syncWhoopCloudVomServer(): Promise<WhoopCloudSyncResult> {
-  const headers: Record<string, string> = {}
-  const { data } = await supabase.auth.getSession()
-  const token = data.session?.access_token
-  if (token) headers.Authorization = `Bearer ${token}`
-  const res = await fetch('/api/fitnessdaten/whoop/sync', {
-    method: 'POST',
-    credentials: 'include',
-    headers,
-  })
+  const res = await whoopApiFetch('/api/fitnessdaten/whoop/sync', { method: 'POST' })
   const data = (await res.json()) as WhoopCloudSyncResult & { payload?: WhoopCloudSyncPayload }
   if (!res.ok || !data.ok || !data.payload) {
     return {

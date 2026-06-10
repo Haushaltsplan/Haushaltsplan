@@ -378,7 +378,15 @@ function parseCycleRow(rec: CycleRec): WhoopCloudCycleRow | null {
 }
 
 function parseWorkoutRow(rec: WorkoutRec): WhoopCloudWorkoutRow | null {
-  if (rec.score_state !== 'SCORED' || !rec.score || !rec.start) return null
+  if (!rec.start || !rec.score) return null
+  if (rec.score_state === 'UNSCORABLE') return null
+  if (
+    rec.score_state &&
+    rec.score_state !== 'SCORED' &&
+    rec.score_state !== 'PENDING_SCORE'
+  ) {
+    return null
+  }
   const startMs = msAusIso(rec.start)
   const endMs = msAusIso(rec.end) ?? startMs
   if (startMs == null) return null
@@ -432,7 +440,7 @@ export async function ladeVollstaendigerCloudSync(accessToken: string, tage = 35
     fetchPaginated<WhoopRecoveryRecord>(accessToken, '/v2/recovery', startIso),
     fetchPaginated<SleepRec>(accessToken, '/v2/activity/sleep', startIso),
     fetchPaginated<CycleRec>(accessToken, '/v2/cycle', startIso),
-    fetchPaginated<WorkoutRec>(accessToken, '/v2/activity/workout', startIso),
+    fetchPaginated<WorkoutRec>(accessToken, '/v2/activity/workout', startIso, 20),
     ladeBodyMeasurements(accessToken),
     ladeWhoopBffSync(accessToken),
   ])

@@ -1,6 +1,7 @@
 'use client'
 
 import { istOmniaNativeApp } from '@/lib/fitnessdaten/omnia-native'
+import { whoopApiFetch } from '@/lib/fitnessdaten/whoop-api-fetch'
 import { ladeWhoopCloudMeta, syncWhoopCloudVomServer } from '@/lib/fitnessdaten/whoop-cloud-merge'
 import { versucheWhoopCloudAutoSync } from '@/lib/fitnessdaten/whoop-cloud-auto-sync'
 import type { WhoopCloudSyncResult } from '@/lib/fitnessdaten/whoop-cloud-types'
@@ -44,12 +45,8 @@ export function FitnessWhoopCloudPanel({ onSyncComplete, embedded = false }: Pro
 
       let connected = false
       const { data } = await supabase.auth.getSession()
-      const token = data.session?.access_token
-      if (token) {
-        const res = await fetch('/api/fitnessdaten/whoop/status', {
-          headers: { Authorization: `Bearer ${token}` },
-          credentials: 'include',
-        })
+      if (data.session?.access_token) {
+        const res = await whoopApiFetch('/api/fitnessdaten/whoop/status')
         if (res.ok) {
           connected = Boolean(((await res.json()) as Status).connected)
         }
@@ -92,19 +89,40 @@ export function FitnessWhoopCloudPanel({ onSyncComplete, embedded = false }: Pro
     }
   }, [ladeStatus, onSyncComplete])
 
+  /** Native: OAuth kann im Browser enden — nach Rückkehr Status + Sync aktualisieren. */
+  useEffect(() => {
+    if (!nativeApp) return
+    const onResume = () => {
+      void ladeStatus().then(() =>
+        versucheWhoopCloudAutoSync(true).then((ok) => {
+          if (ok) {
+            setMeta(ladeWhoopCloudMeta())
+            onSyncComplete?.()
+          }
+        }),
+      )
+    }
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') onResume()
+    }
+    document.addEventListener('resume', onResume)
+    document.addEventListener('visibilitychange', onVisible)
+    window.addEventListener('focus', onResume)
+    return () => {
+      document.removeEventListener('resume', onResume)
+      document.removeEventListener('visibilitychange', onVisible)
+      window.removeEventListener('focus', onResume)
+    }
+  }, [ladeStatus, nativeApp, onSyncComplete])
+
   const verbinden = useCallback(async () => {
     const { data } = await supabase.auth.getSession()
-    const bearer = data.session?.access_token
-    if (!bearer) {
+    if (!data.session?.access_token) {
       toast.error('Bitte zuerst in Omnia einloggen.')
       return
     }
     try {
-      const res = await fetch('/api/fitnessdaten/whoop/auth/start', {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${bearer}` },
-        credentials: 'include',
-      })
+      const res = await whoopApiFetch('/api/fitnessdaten/whoop/auth/start', { method: 'POST' })
       if (!res.ok) {
         const body = (await res.json().catch(() => ({}))) as { error?: string }
         toast.error(body.error ?? 'WHOOP-Verbindung konnte nicht gestartet werden.')
@@ -122,7 +140,7 @@ export function FitnessWhoopCloudPanel({ onSyncComplete, embedded = false }: Pro
   }, [])
 
   const trennen = useCallback(async () => {
-    await fetch('/api/fitnessdaten/whoop/disconnect', { method: 'POST', credentials: 'include' })
+    await whoopApiFetch('/api/fitnessdaten/whoop/disconnect', { method: 'POST' })
     setStatus((s) => ({ ...s, connected: false }))
     toast.success('WHOOP-Konto getrennt.')
   }, [])

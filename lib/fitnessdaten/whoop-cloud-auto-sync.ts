@@ -1,5 +1,6 @@
 /** Automatischer WHOOP-Cloud-Sync — Hintergrund, gedrosselt. */
 
+import { whoopApiFetch } from '@/lib/fitnessdaten/whoop-api-fetch'
 import {
   WHOOP_CLOUD_META_KEY,
   syncWhoopCloudVomServer,
@@ -46,7 +47,7 @@ export async function versucheWhoopCloudAutoSync(force = false): Promise<boolean
 
   laufend = true
   try {
-    const statusRes = await fetch('/api/fitnessdaten/whoop/status', { credentials: 'include' })
+    const statusRes = await whoopApiFetch('/api/fitnessdaten/whoop/status')
     if (!statusRes.ok) return false
     const status = (await statusRes.json()) as { connected?: boolean; configured?: boolean }
     if (!status.configured || !status.connected) return false
