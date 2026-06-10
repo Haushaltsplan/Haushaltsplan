@@ -1,5 +1,5 @@
 import { DetailsDisclosureTriggerEnd } from '@/components/collapsible-ui'
-import { PageSection, PageSectionPanel } from '@/components/page-shell'
+import { StartSektion } from '@/components/start-home-ui'
 import { RegionWetterAnzeige } from '@/components/region-wetter-anzeige'
 import { WetterHimmelIcon, iconKategorieAnzeige } from '@/components/wetter-zeichen'
 import {
@@ -27,19 +27,9 @@ function formatUhr(iso: string) {
   }
 }
 
-function ortKopfzeile(ortId: WetterOrtId) {
-  if (ortId === 'leogang') {
-    return (
-      <span className="font-semibold text-zinc-300">
-        {REGION_LEOGANG.name} · {REGION_LEOGANG.bezirk}
-      </span>
-    )
-  }
-  return (
-    <span className="font-semibold text-zinc-300">
-      {REGION_HAARBACH.name} · {REGION_HAARBACH.kreis}
-    </span>
-  )
+function ortLabel(ortId: WetterOrtId) {
+  if (ortId === 'leogang') return `${REGION_LEOGANG.name} · ${REGION_LEOGANG.bezirk}`
+  return `${REGION_HAARBACH.name} · ${REGION_HAARBACH.kreis}`
 }
 
 export async function StartWetterKompakt({ ortId }: { ortId: WetterOrtId }) {
@@ -60,38 +50,43 @@ export async function StartWetterKompakt({ ortId }: { ortId: WetterOrtId }) {
   const kat = iconKategorieAnzeige(wetter.wmoCode, nachtJetzt)
 
   return (
-    <PageSection titleId="start-wetter-heading" title="Wetter" density="compact">
-      <PageSectionPanel density="compact">
-        {wetter.fehler ? (
-          <p className="text-sm text-amber-200/90">{wetter.fehler}</p>
-        ) : (
-          <details className="app-disclosure group">
-            <summary className="flex cursor-pointer list-none select-none items-center justify-between gap-3 rounded-xl border border-zinc-800/70 bg-zinc-950/50 px-4 py-3 outline-offset-2 transition-colors hover:bg-zinc-800/30 focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-500/50">
-              <div className="flex min-w-0 flex-1 items-center gap-3">
-                <WetterHimmelIcon kategorie={kat} pixel={48} className="shrink-0" />
-                <div className="min-w-0">
-                  <p className="text-3xl font-black tabular-nums leading-none text-zinc-50">
-                    {wetter.tempC}°
-                  </p>
-                  <p className="mt-1 truncate text-sm text-zinc-300">
-                    {wetter.zustandDe} · {ortWetter.name}
-                  </p>
-                  <p className="mt-0.5 text-[11px] text-zinc-500">{ortKopfzeile(ortId)}</p>
-                </div>
-              </div>
-              <DetailsDisclosureTriggerEnd tone="sky" />
-            </summary>
-            <div className="mt-3">
-              <RegionWetterAnzeige
-                wetter={wetter}
-                aktualisiertAnzeige={formatUhr(wetter.aktualisiert)}
-                ortId={ortId}
-                ortName={ortWetter.name}
+    <StartSektion titel="Wetter" icon="☀" href={`/?ort=${ortId}`} akzent="sky">
+      {wetter.fehler ? (
+        <p className="text-sm text-amber-200/90">{wetter.fehler}</p>
+      ) : (
+        <details className="app-disclosure group -mx-1">
+          <summary className="flex cursor-pointer list-none select-none items-center justify-between gap-3 rounded-xl border border-sky-500/10 bg-sky-950/20 px-3 py-3 outline-offset-2 transition-colors hover:bg-sky-950/35 focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-500/50">
+            <div className="flex min-w-0 flex-1 items-center gap-4">
+              <WetterHimmelIcon
+                kategorie={kat}
+                pixel={56}
+                className="shrink-0 drop-shadow-[0_0_20px_rgba(56,189,248,0.2)]"
               />
+              <div className="min-w-0">
+                <p className="text-4xl font-black tabular-nums leading-none tracking-tight text-zinc-50">
+                  {wetter.tempC}°
+                </p>
+                <p className="mt-1.5 text-sm font-medium text-zinc-200">{wetter.zustandDe}</p>
+                <p className="mt-0.5 text-[11px] text-zinc-500">
+                  {ortWetter.name} · {ortLabel(ortId)}
+                </p>
+                {wetter.feelsLikeC != null ? (
+                  <p className="mt-1 text-[11px] text-sky-200/70">Gefühlt {wetter.feelsLikeC}°</p>
+                ) : null}
+              </div>
             </div>
-          </details>
-        )}
-      </PageSectionPanel>
-    </PageSection>
+            <DetailsDisclosureTriggerEnd tone="sky" />
+          </summary>
+          <div className="mt-4 overflow-hidden rounded-xl border border-zinc-800/60">
+            <RegionWetterAnzeige
+              wetter={wetter}
+              aktualisiertAnzeige={formatUhr(wetter.aktualisiert)}
+              ortId={ortId}
+              ortName={ortWetter.name}
+            />
+          </div>
+        </details>
+      )}
+    </StartSektion>
   )
 }

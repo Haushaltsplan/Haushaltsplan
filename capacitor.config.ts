@@ -50,6 +50,8 @@ const config: CapacitorConfig = {
         server: {
           url: serverUrl,
           cleartext: serverUrl.startsWith('http://'),
+          /** WHOOP-OAuth in der WebView (Fallback, wenn Browser-Plugin fehlt). */
+          allowNavigation: ['api.prod.whoop.com', '*.whoop.com', 'whoop.com'],
         },
       }
     : {}),

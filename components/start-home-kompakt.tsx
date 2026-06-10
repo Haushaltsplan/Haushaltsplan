@@ -1,8 +1,12 @@
 'use client'
 
 import { DonutChart } from '@/components/finanzen/donut-chart'
-import { DetailsDisclosureTriggerEnd } from '@/components/collapsible-ui'
-import { PageSectionPanel } from '@/components/page-shell'
+import {
+  StartLeer,
+  StartMiniKachel,
+  StartSektion,
+  StartSkeleton,
+} from '@/components/start-home-ui'
 import { WhoopRing, recoveryColor } from '@/components/fitnessdaten/whoop-ring'
 import { baueWhoopDashboard } from '@/lib/fitnessdaten/metrics-engine'
 import { ladeFitnessSnapshot } from '@/lib/fitnessdaten/history-storage'
@@ -31,29 +35,7 @@ import { ladePortfolioAnalyseDaten } from '@/lib/portfolio-analyse/portfolio-ana
 import { sammleIsins } from '@/lib/portfolio-analyse/auswertungen'
 import { supabase } from '@/lib/supabase'
 import Link from 'next/link'
-import { useEffect, useMemo, useState, type ReactNode } from 'react'
-
-function StartLink({ href, label }: { href: string; label?: string }) {
-  return (
-    <Link
-      href={href}
-      className="shrink-0 rounded-lg border border-white/10 bg-white/[0.04] px-2.5 py-1 text-[11px] font-semibold text-zinc-300 transition hover:bg-white/[0.08]"
-    >
-      {label ?? 'Öffnen →'}
-    </Link>
-  )
-}
-
-function StartKarte({ href, children }: { href: string; children: ReactNode }) {
-  return (
-    <PageSectionPanel density="compact">
-      <div className="flex justify-end">
-        <StartLink href={href} />
-      </div>
-      <div className="mt-2">{children}</div>
-    </PageSectionPanel>
-  )
-}
+import { useEffect, useMemo, useState } from 'react'
 
 export function StartKalenderKompakt() {
   const [eintraege, setEintraege] = useState<KalenderEintrag[]>([])
@@ -93,26 +75,27 @@ export function StartKalenderKompakt() {
   const heuteListe = filterEintraegeFuerTag(eintraege, heute).sort(
     sortiereEintraegeNachUhrzeitDannTitel,
   )
+  const liste = heuteListe.length > 0 ? heuteListe : kommende
 
   return (
-    <StartKarte href="/kalender">
+    <StartSektion titel="Kalender" icon="📅" href="/kalender" akzent="rose">
       {laden ? (
-        <p className="text-xs text-zinc-500">Lade Termine …</p>
-      ) : heuteListe.length === 0 && kommende.length === 0 ? (
-        <p className="text-xs text-zinc-500">Keine Termine in den nächsten 7 Tagen.</p>
+        <StartSkeleton zeilen={3} />
+      ) : liste.length === 0 ? (
+        <StartLeer text="Keine Termine in den nächsten 7 Tagen." />
       ) : (
         <ul className="space-y-2">
-          {(heuteListe.length > 0 ? heuteListe : kommende).map((ev) => {
+          {liste.map((ev) => {
             const kat = kalenderKategorieMeta(ev.kategorie)
             return (
               <li
                 key={ev.id}
-                className="flex items-start gap-2 rounded-xl border border-white/[0.06] bg-zinc-950/40 px-3 py-2"
+                className={`flex items-start gap-3 rounded-xl border px-3 py-2.5 ${kat.listBorder} ${kat.listBg}`}
               >
-                <span className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${kat.dot}`} />
+                <span className={`mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full ${kat.dot}`} />
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-medium text-zinc-100">{ev.titel || 'Termin'}</p>
-                  <p className="text-[11px] text-zinc-500">
+                  <p className="mt-0.5 text-[11px] text-zinc-500">
                     {ev.datum === heute ? 'Heute' : ev.datum}
                     {ev.uhrzeit ? ` · ${ev.uhrzeit}` : ''}
                   </p>
@@ -122,7 +105,7 @@ export function StartKalenderKompakt() {
           })}
         </ul>
       )}
-    </StartKarte>
+    </StartSektion>
   )
 }
 
@@ -144,19 +127,23 @@ export function StartWhoopKompakt() {
     heute.sleepScore != null || heute.recoveryPercent != null || heute.strain != null
 
   return (
-    <StartKarte href="/fitnessdaten">
+    <StartSektion
+      titel="WHOOP"
+      icon="◉"
+      href="/fitnessdaten"
+      akzent="whoop"
+      innerClassName={hasData ? 'bg-[#050505]/80' : undefined}
+    >
       {!hasData ? (
-        <p className="text-xs leading-relaxed text-zinc-500">
-          Noch keine Daten — WHOOP verbinden oder Cloud-Sync starten.
-        </p>
+        <StartLeer text="Noch keine Daten — WHOOP verbinden oder Cloud-Sync starten." />
       ) : (
-        <div className="flex items-end justify-center gap-4 sm:gap-6">
+        <div className="flex items-end justify-center gap-3 py-1 sm:gap-6">
           <WhoopRing
             value={heute.sleepScore ?? 0}
             label="Schlaf"
             color="#7b61ff"
-            size={76}
-            stroke={5}
+            size={80}
+            stroke={6}
             unavailable={heute.sleepScore == null}
             onPress={() => {}}
           />
@@ -164,8 +151,8 @@ export function StartWhoopKompakt() {
             value={heute.recoveryPercent ?? 0}
             label="Erholung"
             color={recoveryColor(heute.recoveryPercent)}
-            size={96}
-            stroke={7}
+            size={100}
+            stroke={8}
             unavailable={heute.recoveryPercent == null}
             onPress={() => {}}
           />
@@ -174,14 +161,14 @@ export function StartWhoopKompakt() {
             max={21}
             label="Belastung"
             color="#009dff"
-            size={76}
-            stroke={5}
+            size={80}
+            stroke={6}
             unavailable={heute.strain == null}
             onPress={() => {}}
           />
         </div>
       )}
-    </StartKarte>
+    </StartSektion>
   )
 }
 
@@ -246,61 +233,67 @@ export function StartPortfolioKompakt() {
   }, [])
 
   return (
-    <StartKarte href="/portfolioanalyse">
+    <StartSektion titel="Portfolio" icon="◎" href="/portfolioanalyse" akzent="violet">
       {laden ? (
-        <p className="text-xs text-zinc-500">Lade Depot …</p>
+        <StartSkeleton zeilen={2} />
       ) : fehler ? (
         <p className="text-xs text-amber-300/90">{fehler}</p>
       ) : depotwert == null ? (
-        <p className="text-xs text-zinc-500">Noch keine Buchungen — Portfolio importieren.</p>
+        <StartLeer text="Noch keine Buchungen — Portfolio importieren." />
       ) : (
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
-          <div className="flex shrink-0 items-center gap-3">
+        <div className="flex flex-col gap-5 sm:flex-row sm:items-center">
+          <div className="flex shrink-0 items-center justify-center gap-4">
             {donut.length > 0 ? (
               <DonutChart
                 segmente={donut}
-                groesse={120}
-                dicke={18}
+                groesse={128}
+                dicke={20}
                 mitte={{ label: 'Depot', wert: formatEur(depotwert) }}
                 interaktiv={false}
               />
             ) : null}
-            <div>
-              <p className="text-[10px] font-bold uppercase tracking-wide text-zinc-500">Depotwert</p>
-              <p className="text-2xl font-bold tabular-nums text-white">{formatEur(depotwert)}</p>
-            </div>
           </div>
-          <div className="min-w-0 flex-1">
-            <p className="text-[10px] font-bold uppercase tracking-wide text-zinc-500">
-              Nächste Dividenden
-            </p>
-            {dividenden.length === 0 ? (
-              <p className="mt-1 text-xs text-zinc-600">Keine angekündigt.</p>
-            ) : (
-              <ul className="mt-2 space-y-1.5">
-                {dividenden.map((d) => (
-                  <li
-                    key={`${d.label}-${d.datum}`}
-                    className="flex items-baseline justify-between gap-2 text-xs"
-                  >
-                    <span className="truncate text-zinc-300">{d.label}</span>
-                    <span className="shrink-0 tabular-nums text-zinc-500">
-                      {d.datum.slice(8, 10)}.{d.datum.slice(5, 7)}. · {d.betrag}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            )}
-            <Link
-              href="/portfolioanalyse/dividenden"
-              className="mt-2 inline-block text-[11px] text-violet-300/90 underline-offset-2 hover:underline"
-            >
-              Dividendenkalender →
-            </Link>
+          <div className="min-w-0 flex-1 space-y-3">
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">
+                Depotwert
+              </p>
+              <p className="mt-1 text-2xl font-bold tabular-nums tracking-tight text-white">
+                {formatEur(depotwert)}
+              </p>
+            </div>
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">
+                Nächste Dividenden
+              </p>
+              {dividenden.length === 0 ? (
+                <p className="mt-1 text-xs text-zinc-600">Keine angekündigt.</p>
+              ) : (
+                <ul className="mt-2 space-y-2">
+                  {dividenden.map((d) => (
+                    <li
+                      key={`${d.label}-${d.datum}`}
+                      className="flex items-center justify-between gap-2 rounded-lg bg-violet-500/5 px-2.5 py-1.5 text-xs"
+                    >
+                      <span className="truncate font-medium text-zinc-200">{d.label}</span>
+                      <span className="shrink-0 tabular-nums text-zinc-500">
+                        {d.datum.slice(8, 10)}.{d.datum.slice(5, 7)}. · {d.betrag}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              <Link
+                href="/portfolioanalyse/dividenden"
+                className="mt-2 inline-block text-[11px] font-medium text-violet-300/90 underline-offset-2 hover:underline"
+              >
+                Dividendenkalender →
+              </Link>
+            </div>
           </div>
         </div>
       )}
-    </StartKarte>
+    </StartSektion>
   )
 }
 
@@ -327,10 +320,8 @@ export function StartFinanzenKompakt() {
       if (cancelled) return
       const filterMonat = (rows: Array<{ betrag?: number; datum?: string }> | null) =>
         (rows ?? []).filter((r) => (r.datum ?? '').slice(0, 7) === monat)
-      const einRows = filterMonat(einnahmen)
-      const ausRows = filterMonat(ausgaben)
-      const gesEin = einRows.reduce((s, r) => s + Number(r.betrag || 0), 0)
-      const gesAus = ausRows.reduce((s, r) => s + Number(r.betrag || 0), 0)
+      const gesEin = filterMonat(einnahmen).reduce((s, r) => s + Number(r.betrag || 0), 0)
+      const gesAus = filterMonat(ausgaben).reduce((s, r) => s + Number(r.betrag || 0), 0)
       setEin(gesEin)
       setAus(gesAus)
       setSaldo(gesEin - gesAus)
@@ -348,36 +339,31 @@ export function StartFinanzenKompakt() {
   })
 
   return (
-    <StartKarte href="/finanzen">
+    <StartSektion titel="Finanzen" icon="€" href="/finanzen" akzent="teal">
       {laden ? (
-        <p className="text-xs text-zinc-500">Lade Buchungen …</p>
+        <StartSkeleton />
       ) : (
         <>
-          <p className="text-[11px] text-zinc-500">{monatLabel}</p>
-          <div className="mt-3 grid grid-cols-3 gap-2">
-            <div className="rounded-xl border border-white/[0.06] bg-zinc-950/40 px-3 py-2.5">
-              <p className="text-[9px] font-bold uppercase tracking-wide text-zinc-500">Saldo</p>
-              <p
-                className={`mt-1 text-lg font-bold tabular-nums ${saldo >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}
-              >
-                {saldo.toLocaleString('de-DE', { style: 'currency', currency: 'EUR' })}
-              </p>
-            </div>
-            <div className="rounded-xl border border-white/[0.06] bg-zinc-950/40 px-3 py-2.5">
-              <p className="text-[9px] font-bold uppercase tracking-wide text-zinc-500">Einnahmen</p>
-              <p className="mt-1 text-lg font-bold tabular-nums text-emerald-300/90">
-                {ein.toLocaleString('de-DE', { style: 'currency', currency: 'EUR' })}
-              </p>
-            </div>
-            <div className="rounded-xl border border-white/[0.06] bg-zinc-950/40 px-3 py-2.5">
-              <p className="text-[9px] font-bold uppercase tracking-wide text-zinc-500">Ausgaben</p>
-              <p className="mt-1 text-lg font-bold tabular-nums text-rose-300/90">
-                {aus.toLocaleString('de-DE', { style: 'currency', currency: 'EUR' })}
-              </p>
-            </div>
+          <p className="mb-3 text-xs font-medium text-zinc-500">{monatLabel}</p>
+          <div className="grid grid-cols-3 gap-2.5">
+            <StartMiniKachel
+              label="Saldo"
+              value={saldo.toLocaleString('de-DE', { style: 'currency', currency: 'EUR' })}
+              tone={saldo >= 0 ? 'positive' : 'negative'}
+            />
+            <StartMiniKachel
+              label="Einnahmen"
+              value={ein.toLocaleString('de-DE', { style: 'currency', currency: 'EUR' })}
+              tone="positive"
+            />
+            <StartMiniKachel
+              label="Ausgaben"
+              value={aus.toLocaleString('de-DE', { style: 'currency', currency: 'EUR' })}
+              tone="negative"
+            />
           </div>
         </>
       )}
-    </StartKarte>
+    </StartSektion>
   )
 }

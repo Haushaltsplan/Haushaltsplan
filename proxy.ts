@@ -29,6 +29,7 @@ function jsonError(message: string, status: number) {
 function whoopOeffentlicheApi(pathname: string): boolean {
   return (
     pathname === '/api/fitnessdaten/whoop/auth' ||
+    pathname === '/api/fitnessdaten/whoop/auth/start' ||
     pathname === '/api/fitnessdaten/whoop/callback' ||
     pathname === '/api/fitnessdaten/whoop/ping'
   )

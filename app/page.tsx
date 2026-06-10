@@ -1,12 +1,13 @@
 import type { Metadata } from 'next'
 import { Suspense } from 'react'
-import { PageChrome, PageSection } from '@/components/page-shell'
+import { PageChrome } from '@/components/page-shell'
 import {
   StartFinanzenKompakt,
   StartKalenderKompakt,
   StartPortfolioKompakt,
   StartWhoopKompakt,
 } from '@/components/start-home-kompakt'
+import { StartHero } from '@/components/start-home-ui'
 import { StartWetterKompakt } from '@/components/start-wetter-kompakt'
 import { parseWetterOrtId, REGION_HAARBACH } from '@/lib/region-haarbach'
 
@@ -19,10 +20,7 @@ export const metadata: Metadata = {
 
 function StartBlockSkeleton() {
   return (
-    <div className="rounded-2xl border border-zinc-800/70 bg-zinc-950/40 px-4 py-6">
-      <div className="h-4 w-32 animate-pulse rounded bg-zinc-800/80" />
-      <div className="mt-4 h-16 animate-pulse rounded-xl bg-zinc-900/60" />
-    </div>
+    <div className="h-40 animate-pulse rounded-2xl border border-zinc-800/50 bg-zinc-950/40" />
   )
 }
 
@@ -33,28 +31,21 @@ export default async function StartUebersichtPage({ searchParams }: StartPagePro
   const ortId = parseWetterOrtId(sp.ort)
 
   return (
-    <PageChrome density="compact">
+    <PageChrome density="compact" className="max-w-2xl mx-auto space-y-4">
+      <StartHero />
+
       <Suspense fallback={<StartBlockSkeleton />}>
         <StartWetterKompakt ortId={ortId} />
       </Suspense>
 
-      <PageSection titleId="start-kalender-heading" title="Kalender" density="compact">
-        <StartKalenderKompakt />
-      </PageSection>
+      <StartKalenderKompakt />
+      <StartWhoopKompakt />
 
-      <PageSection titleId="start-whoop-heading" title="WHOOP" density="compact">
-        <StartWhoopKompakt />
-      </PageSection>
+      <Suspense fallback={<StartBlockSkeleton />}>
+        <StartPortfolioKompakt />
+      </Suspense>
 
-      <PageSection titleId="start-portfolio-heading" title="Portfolio" density="compact">
-        <Suspense fallback={<StartBlockSkeleton />}>
-          <StartPortfolioKompakt />
-        </Suspense>
-      </PageSection>
-
-      <PageSection titleId="start-finanzen-heading" title="Finanzen" density="compact">
-        <StartFinanzenKompakt />
-      </PageSection>
+      <StartFinanzenKompakt />
     </PageChrome>
   )
 }

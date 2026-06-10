@@ -61,6 +61,9 @@ Dann auf dem PC: `npm run dev` (Firewall Port 3000 erlauben).
 ## Build & Installieren
 
 ```bash
+# Einmalig: festes Debug-Keystore (gleiche Signatur bei jedem Build)
+npm run omnia:keystore
+
 # Native Projekt synchronisieren
 npm run cap:sync
 
@@ -69,6 +72,16 @@ npm run cap:open
 ```
 
 In Android Studio: **Run** auf dein Handy (USB-Debugging an).
+
+**Ohne Deinstallieren:** Ab dem ersten `npm run omnia:keystore` nutzt jedes Debug-Build dieselbe Signatur (`android/omnia-debug.keystore`). Jeder Build bekommt automatisch eine höhere `versionCode` — Android Studio **Run** überschreibt die alte App.
+
+Alternativ per USB (ohne Android Studio UI):
+
+```bash
+npm run omnia:install
+```
+
+**Nur einmal deinstallieren**, wenn du vorher eine Omnia-APK mit **anderer Signatur** hattest (z. B. altes Android-Studio-Standard-Keystore oder manuell installierte APK). Danach reicht immer **Run** oder `npm run omnia:install`.
 
 Oder APK bauen: **Build → Build Bundle(s) / APK(s) → APK**.
 

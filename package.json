@@ -16,10 +16,13 @@
     "db:portfolio-analyse": "node scripts/apply-portfolio-analyse-schema.cjs",
     "cap:sync": "cap sync android",
     "cap:open": "cap open android",
-    "omnia:android": "cap sync android && cap open android"
+    "omnia:keystore": "node scripts/ensure-omnia-keystore.mjs",
+    "omnia:install": "node scripts/ensure-omnia-keystore.mjs && cd android && gradlew.bat installDebug",
+    "omnia:android": "node scripts/ensure-omnia-keystore.mjs && cap sync android && cap open android"
   },
   "dependencies": {
     "@capacitor/android": "^8.0.0",
+    "@capacitor/browser": "^8.0.3",
     "@capacitor/core": "^8.0.0",
     "@capgo/capacitor-bluetooth-low-energy": "^8.1.3",
     "@dnd-kit/core": "^6.3.1",

@@ -2,6 +2,7 @@
 
 import { istOmniaNativeApp } from '@/lib/fitnessdaten/omnia-native'
 import { whoopApiFetch } from '@/lib/fitnessdaten/whoop-api-fetch'
+import { oeffneWhoopOAuthUrl } from '@/lib/fitnessdaten/whoop-oauth-open'
 import { ladeWhoopCloudMeta, syncWhoopCloudVomServer } from '@/lib/fitnessdaten/whoop-cloud-merge'
 import { versucheWhoopCloudAutoSync } from '@/lib/fitnessdaten/whoop-cloud-auto-sync'
 import type { WhoopCloudSyncResult } from '@/lib/fitnessdaten/whoop-cloud-types'
@@ -133,7 +134,13 @@ export function FitnessWhoopCloudPanel({ onSyncComplete, embedded = false }: Pro
         toast.error('Keine WHOOP-Anmelde-URL erhalten.')
         return
       }
-      window.location.href = url
+      await oeffneWhoopOAuthUrl(url)
+      if (nativeApp) {
+        toast(
+          'WHOOP-Anmeldung öffnet sich im Browser. Nach dem Login Omnia-App wieder öffnen — Verbindung wird automatisch erkannt.',
+          { duration: 9000 },
+        )
+      }
     } catch {
       toast.error('WHOOP-Verbindung konnte nicht gestartet werden.')
     }
@@ -174,8 +181,9 @@ export function FitnessWhoopCloudPanel({ onSyncComplete, embedded = false }: Pro
       </p>
       {nativeApp ? (
         <p className="mt-2 rounded-lg border border-violet-900/30 bg-violet-950/15 px-3 py-2 text-[11px] leading-relaxed text-violet-200/80">
-          Omnia-App: WHOOP-Login kann im Browser öffnen — das ist OK. Tokens werden an dein Konto gebunden.
-          Danach Omnia-App öffnen → „Jetzt synchronisieren“ oder kurz warten (Auto-Sync).
+          Omnia-App: „WHOOP-Konto verbinden“ öffnet die offizielle WHOOP-Anmeldung im Browser (nicht die
+          Omnia-Seite). Nach dem Login zurück zur App wechseln — die Verbindung wird dann automatisch
+          übernommen.
         </p>
       ) : null}
       <p className="mt-2 text-[10px] leading-relaxed text-zinc-600">
