@@ -1,70 +1,192 @@
-/** Earnings Call — Scrape (Seeking Alpha) + KI-Zusammenfassung. */
+/** Earnings Call — SEC + IR-Scrape + KI, nach Quartalen. */
 
 import 'server-only'
 
+import {
+  gruppiereNachJahr,
+  parseQuartalAusText,
+  sortiereQuartale,
+} from '@/lib/portfolio-analyse/earnings-call-quartal'
 import { EARNINGS_CALL_SYSTEM_PROMPT } from '@/lib/portfolio-analyse/earnings-call-prompt'
-import type { EarningsCallAnfrage, EarningsCallPaket } from '@/lib/portfolio-analyse/earnings-call-types'
-import { scrapeSeekingAlphaLetztesTranskript } from '@/lib/portfolio-analyse/seeking-alpha-playwright'
+import type {
+  EarningsCallAnfrage,
+  EarningsCallPaket,
+  EarningsCallQuartalEintrag,
+  EarningsCallQuelle,
+} from '@/lib/portfolio-analyse/earnings-call-types'
+import { ladeFinnhubLetztesTranskript } from '@/lib/portfolio-analyse/finnhub-earnings-transcript-server'
+import { ladeIrTranskriptHistorie } from '@/lib/portfolio-analyse/ir-earnings-playwright'
+import { ladeInvestorRelationsUrl } from '@/lib/portfolio-analyse/investor-relations-url'
+import { ladeSecEdgarTranskriptHistorie } from '@/lib/portfolio-analyse/sec-edgar-earnings-transcript-server'
 import { resolveCoachProvider, runCoachCompletion, type CoachMessage } from '@/lib/ki-coach-backend'
 
 const MAX_TRANSCRIPT_CHARS = 100_000
 const CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000
+const MAX_QUARTALE = 8
 
-type CacheEntry = EarningsCallPaket & { expiresAt: number }
+type RohesTranskript = {
+  titel: string
+  url: string
+  callDatum: string | null
+  text: string
+  quelle: EarningsCallQuelle
+}
 
-const serverCache = new Map<string, CacheEntry>()
+type DiscoveryCache = {
+  expiresAt: number
+  roh: RohesTranskript[]
+  summaries: Map<string, string>
+}
 
-function cacheKey(ticker: string): string {
+const discoveryCache = new Map<string, DiscoveryCache>()
+
+function tickerKey(ticker: string): string {
   return ticker.trim().toUpperCase()
 }
 
-function ausCache(ticker: string, force?: boolean): EarningsCallPaket | null {
-  if (force) return null
-  const hit = serverCache.get(cacheKey(ticker))
+function getDiscovery(ticker: string, force?: boolean): DiscoveryCache | null {
+  const hit = discoveryCache.get(tickerKey(ticker))
   if (!hit || hit.expiresAt < Date.now()) {
-    if (hit) serverCache.delete(cacheKey(ticker))
+    if (hit) discoveryCache.delete(tickerKey(ticker))
     return null
   }
-  return { ...hit, ausCache: true }
+  if (force) return null
+  return hit
 }
 
-function schreibeCache(paket: EarningsCallPaket): void {
-  serverCache.set(cacheKey(paket.ticker), {
-    ...paket,
+function setDiscovery(ticker: string, roh: RohesTranskript[], prev?: DiscoveryCache): void {
+  discoveryCache.set(tickerKey(ticker), {
     expiresAt: Date.now() + CACHE_TTL_MS,
+    roh,
+    summaries: prev?.summaries ?? new Map(),
   })
+}
+
+async function entdeckeTranskripte(
+  anfrage: EarningsCallAnfrage,
+  irUrl: string | null,
+): Promise<RohesTranskript[]> {
+  const ticker = tickerKey(anfrage.ticker)
+
+  const sec = await ladeSecEdgarTranskriptHistorie(ticker, MAX_QUARTALE)
+  if (sec.length > 0) {
+    return sec.map((s) => ({
+      titel: s.titel,
+      url: s.url,
+      callDatum: s.callDatum,
+      text: s.text,
+      quelle: 'sec_edgar' as const,
+    }))
+  }
+
+  if (anfrage.isin?.trim()) {
+    try {
+      const ir = await ladeIrTranskriptHistorie(anfrage.isin, irUrl, MAX_QUARTALE)
+      if (ir.length > 0) {
+        return ir.map((s) => ({
+          titel: s.titel,
+          url: s.url,
+          callDatum: s.callDatum,
+          text: s.text,
+          quelle: 'ir_scrape' as const,
+        }))
+      }
+    } catch (irErr) {
+      const finnhub = await ladeFinnhubLetztesTranskript(ticker)
+      if (finnhub) {
+        return [
+          {
+            titel: finnhub.titel,
+            url: finnhub.url,
+            callDatum: finnhub.callDatum,
+            text: finnhub.text,
+            quelle: 'finnhub',
+          },
+        ]
+      }
+      throw irErr
+    }
+  }
+
+  const finnhub = await ladeFinnhubLetztesTranskript(ticker)
+  if (finnhub) {
+    return [
+      {
+        titel: finnhub.titel,
+        url: finnhub.url,
+        callDatum: finnhub.callDatum,
+        text: finnhub.text,
+        quelle: 'finnhub',
+      },
+    ]
+  }
+
+  throw new Error(
+    'Keine Transkripte gefunden — weder SEC noch IR-Seite. ISIN in IR-Konfiguration ergänzen oder Finnhub Professional nutzen.',
+  )
+}
+
+function rohZuQuartale(roh: RohesTranskript[]): EarningsCallQuartalEintrag[] {
+  const eintraege: EarningsCallQuartalEintrag[] = []
+  const usedIds = new Set<string>()
+
+  for (const r of roh) {
+    const q = parseQuartalAusText(r.titel, r.callDatum)
+    let id = q?.id ?? `unknown-${r.url.slice(-12)}`
+    let jahr = q?.jahr ?? (r.callDatum ? new Date(r.callDatum).getFullYear() : new Date().getFullYear())
+    let quartal = q?.quartal ?? (1 as const)
+    let label = q?.label ?? r.titel.slice(0, 40)
+
+    if (usedIds.has(id)) {
+      id = `${id}-${eintraege.length}`
+    }
+    usedIds.add(id)
+
+    eintraege.push({
+      id,
+      jahr,
+      quartal,
+      label,
+      titel: r.titel,
+      callDatum: r.callDatum,
+      transcriptUrl: r.url,
+      quelle: r.quelle,
+      transcriptZeichen: r.text.length,
+      zusammenfassung: null,
+    })
+  }
+
+  return sortiereQuartale(eintraege)
 }
 
 async function zusammenfasseTranscript(
   transcript: string,
-  meta: { ticker: string; titel: string; firmenname?: string | null },
+  meta: { ticker: string; titel: string; label: string; firmenname?: string | null },
 ): Promise<string> {
   const provider = resolveCoachProvider()
   if (!provider) {
-    throw new Error(
-      'KI nicht konfiguriert — GEMINI_API_KEY oder OPENAI_API_KEY in .env.local (wie Finanz-Coach).',
-    )
+    throw new Error('KI nicht konfiguriert — GEMINI_API_KEY oder OPENAI_API_KEY.')
   }
 
   const clipped =
     transcript.length > MAX_TRANSCRIPT_CHARS
-      ? `${transcript.slice(0, MAX_TRANSCRIPT_CHARS)}\n\n[… Transkript gekürzt für KI-Kontext …]`
+      ? `${transcript.slice(0, MAX_TRANSCRIPT_CHARS)}\n\n[… gekürzt …]`
       : transcript
 
   const userText = [
     `Unternehmen: ${meta.firmenname?.trim() || meta.ticker} (${meta.ticker})`,
-    `Transkript-Titel: ${meta.titel}`,
+    `Quartal: ${meta.label}`,
+    `Titel: ${meta.titel}`,
     '',
     '--- TRANSKRIPT ---',
     clipped,
   ].join('\n')
 
-  const messages: CoachMessage[] = [{ role: 'user', content: userText }]
   const result = await runCoachCompletion(
     provider.provider,
     provider.apiKey,
     EARNINGS_CALL_SYSTEM_PROMPT,
-    messages,
+    [{ role: 'user', content: userText }],
     { temperature: 0.35, skipMessageTrim: true },
   )
 
@@ -72,67 +194,120 @@ async function zusammenfasseTranscript(
   return result.reply
 }
 
+function findeRohFuerQuartal(cache: DiscoveryCache, quartalId: string): RohesTranskript | null {
+  const quartale = rohZuQuartale(cache.roh)
+  const meta = quartale.find((q) => q.id === quartalId)
+  if (!meta) return null
+  return cache.roh.find((r) => r.url === meta.transcriptUrl) ?? null
+}
+
+function bauePaket(
+  ticker: string,
+  cache: DiscoveryCache,
+  irUrl: string | null,
+  aktivesQuartalId: string | null,
+  ausCache: boolean,
+  hinweis?: string | null,
+): EarningsCallPaket {
+  const quartale = rohZuQuartale(cache.roh).map((q) => ({
+    ...q,
+    zusammenfassung: cache.summaries.get(q.id) ?? null,
+  }))
+
+  return {
+    ok: quartale.length > 0,
+    ticker,
+    quartale,
+    aktivesQuartalId: aktivesQuartalId ?? quartale[0]?.id ?? null,
+    geladenAm: new Date().toISOString(),
+    ausCache,
+    hinweis,
+    investorRelationsUrl: irUrl,
+  }
+}
+
 export async function ladeEarningsCallZusammenfassung(anfrage: EarningsCallAnfrage): Promise<EarningsCallPaket> {
-  const ticker = anfrage.ticker.trim().toUpperCase()
+  const ticker = tickerKey(anfrage.ticker)
+  const irUrl = anfrage.isin?.trim()
+    ? await ladeInvestorRelationsUrl(anfrage.isin, anfrage.firmenname ?? '', ticker).catch(() => null)
+    : null
+
   if (!ticker) {
     return {
       ok: false,
       ticker: '',
-      titel: null,
-      transcriptUrl: null,
-      callDatum: null,
-      transcriptZeichen: 0,
-      zusammenfassung: null,
+      quartale: [],
+      aktivesQuartalId: null,
       geladenAm: new Date().toISOString(),
       ausCache: false,
-      quelle: 'seeking_alpha',
       fehler: 'Ticker fehlt.',
+      investorRelationsUrl: irUrl,
     }
   }
 
-  const cached = ausCache(ticker, anfrage.force)
-  if (cached) return cached
+  let cache = getDiscovery(ticker, anfrage.force)
+  const prev = cache ?? undefined
 
-  try {
-    const scraped = await scrapeSeekingAlphaLetztesTranskript(ticker)
-    const zusammenfassung = await zusammenfasseTranscript(scraped.text, {
-      ticker,
-      titel: scraped.titel,
-      firmenname: anfrage.firmenname,
-    })
-
-    const paket: EarningsCallPaket = {
-      ok: true,
-      ticker,
-      titel: scraped.titel,
-      transcriptUrl: scraped.url,
-      callDatum: scraped.callDatum,
-      transcriptZeichen: scraped.text.length,
-      zusammenfassung,
-      geladenAm: new Date().toISOString(),
-      ausCache: false,
-      quelle: 'seeking_alpha',
-      hinweis:
-        process.env.VERCEL === '1'
-          ? 'Auf Vercel kann Playwright/Chromium fehlen — lokal oder mit installiertem Chromium deployen.'
-          : null,
-    }
-    schreibeCache(paket)
-    return paket
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : 'Earnings Call fehlgeschlagen'
-    return {
-      ok: false,
-      ticker,
-      titel: null,
-      transcriptUrl: null,
-      callDatum: null,
-      transcriptZeichen: 0,
-      zusammenfassung: null,
-      geladenAm: new Date().toISOString(),
-      ausCache: false,
-      quelle: 'seeking_alpha',
-      fehler: msg,
+  if (!cache) {
+    try {
+      const roh = await entdeckeTranskripte(anfrage, irUrl)
+      setDiscovery(ticker, roh, prev)
+      cache = discoveryCache.get(ticker)!
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Earnings Call fehlgeschlagen'
+      return {
+        ok: false,
+        ticker,
+        quartale: [],
+        aktivesQuartalId: null,
+        geladenAm: new Date().toISOString(),
+        ausCache: false,
+        fehler: msg,
+        hinweis: 'US: SEC EDGAR · EU: IR-Seite (Playwright) · optional Finnhub Professional',
+        investorRelationsUrl: irUrl,
+      }
     }
   }
+
+  const quartale = rohZuQuartale(cache.roh)
+  const zielId = anfrage.quartalId?.trim() || quartale[0]?.id
+  if (!zielId) {
+    return bauePaket(ticker, cache, irUrl, null, Boolean(prev), null)
+  }
+
+  if (!cache.summaries.has(zielId)) {
+    const roh = findeRohFuerQuartal(cache, zielId)
+    const meta = quartale.find((q) => q.id === zielId)
+    if (roh && meta) {
+      try {
+        const summary = await zusammenfasseTranscript(roh.text, {
+          ticker,
+          titel: roh.titel,
+          label: meta.label,
+          firmenname: anfrage.firmenname,
+        })
+        cache.summaries.set(zielId, summary)
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : 'KI-Zusammenfassung fehlgeschlagen'
+        return {
+          ...bauePaket(ticker, cache, irUrl, zielId, Boolean(prev), null),
+          ok: true,
+          fehler: msg,
+        }
+      }
+    }
+  }
+
+  const quelle = cache.roh[0]?.quelle
+  const hinweis =
+    quelle === 'ir_scrape'
+      ? 'Transkripte von der Investor-Relations-Seite (Playwright).'
+      : quelle === 'sec_edgar'
+        ? 'Offizielle SEC-8-K-Transkripte (US).'
+        : null
+
+  return bauePaket(ticker, cache, irUrl, zielId, Boolean(prev && !anfrage.force), hinweis)
 }
+
+/** Für UI-Gruppierung */
+export { gruppiereNachJahr }

@@ -1,23 +1,37 @@
-/** Earnings Call — Transkript & KI-Zusammenfassung (Seeking Alpha). */
+/** Earnings Call — Quartale, Transkripte & KI-Zusammenfassungen. */
+
+export type EarningsCallQuelle = 'sec_edgar' | 'finnhub' | 'ir_scrape'
 
 export type EarningsCallAnfrage = {
   ticker: string
   firmenname?: string | null
-  /** Cache umgehen und neu scrapen + zusammenfassen */
+  isin?: string | null
   force?: boolean
+  /** Nur Zusammenfassung für dieses Quartal nachladen (z. B. 2024-Q1) */
+  quartalId?: string | null
+}
+
+export type EarningsCallQuartalEintrag = {
+  id: string
+  jahr: number
+  quartal: 1 | 2 | 3 | 4
+  label: string
+  titel: string
+  callDatum: string | null
+  transcriptUrl: string
+  quelle: EarningsCallQuelle
+  transcriptZeichen: number
+  zusammenfassung: string | null
 }
 
 export type EarningsCallPaket = {
   ok: boolean
   ticker: string
-  titel: string | null
-  transcriptUrl: string | null
-  callDatum: string | null
-  transcriptZeichen: number
-  zusammenfassung: string | null
+  quartale: EarningsCallQuartalEintrag[]
+  aktivesQuartalId: string | null
   geladenAm: string
   ausCache: boolean
-  quelle: 'seeking_alpha'
   fehler?: string | null
   hinweis?: string | null
+  investorRelationsUrl?: string | null
 }

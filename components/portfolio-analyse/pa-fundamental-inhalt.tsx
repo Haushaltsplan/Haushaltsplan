@@ -199,7 +199,11 @@ export function PaFundamentalInhalt({
           {unterTab === 'mantra' && mantraAudit ? <PaFundamentalMantra audit={mantraAudit} /> : null}
 
           {unterTab === 'earnings_call' ? (
-            <PaFundamentalEarningsCall ticker={daten.ticker} firmenname={daten.firmenname} />
+            <PaFundamentalEarningsCall
+              ticker={daten.ticker}
+              firmenname={daten.firmenname}
+              isin={anfrage.isin ?? null}
+            />
           ) : null}
 
           {unterTab === 'news' ? <PaFundamentalNews artikel={daten.news} /> : null}

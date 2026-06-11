@@ -4,7 +4,7 @@ import { NextResponse } from 'next/server'
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 /** Playwright-Scrape + KI-Zusammenfassung kann mehrere Minuten dauern. */
-export const maxDuration = 300
+export const maxDuration = 180
 
 export async function POST(req: Request) {
   let body: unknown
@@ -23,10 +23,12 @@ export async function POST(req: Request) {
   const paket = await ladeEarningsCallZusammenfassung({
     ticker,
     firmenname: row.firmenname != null ? String(row.firmenname) : null,
+    isin: row.isin != null ? String(row.isin).trim() || null : null,
     force: Boolean(row.force),
+    quartalId: row.quartalId != null ? String(row.quartalId).trim() || null : null,
   })
 
-  if (!paket.ok) {
+  if (!paket.ok && paket.quartale.length === 0) {
     return NextResponse.json(paket, { status: 502 })
   }
   return NextResponse.json(paket)
