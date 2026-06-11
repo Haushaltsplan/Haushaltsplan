@@ -1,30 +1,28 @@
-/** EU/Global — Earnings-Transkripte von Investor-Relations-Seiten (Fetch, ohne jsdom/playwright). */
+/** IR — Earnings-Call-Transkripte (Q4-API, Website-Crawl, Playwright). */
 
 import 'server-only'
 
 import { htmlZuFliesstext, linksAusHtml } from '@/lib/html/text-aus-html'
+import {
+  istEarningsCallTranskript,
+  istPresseMitteilung,
+} from '@/lib/portfolio-analyse/earnings-call-transcript-heuristik'
+import { crawlIrTranskripte } from '@/lib/portfolio-analyse/ir-earnings-crawler'
+import { ladeQ4TranskriptHistorie } from '@/lib/portfolio-analyse/ir-q4-transcript-server'
 import {
   irEarningsQuelleFuerIsin,
   istTranskriptLink,
   scoreTranskriptLink,
   type IrEarningsQuelle,
 } from '@/lib/portfolio-analyse/ir-earnings-sources'
-import {
-  istEarningsCallTranskript,
-  istPresseMitteilung,
-} from '@/lib/portfolio-analyse/earnings-call-transcript-heuristik'
 
-export type IrRohesTranskript = {
-  titel: string
-  url: string
-  callDatum: string | null
-  text: string
-}
+export type { IrRohesTranskript } from '@/lib/portfolio-analyse/ir-earnings-types'
+import type { IrRohesTranskript } from '@/lib/portfolio-analyse/ir-earnings-types'
 
 const USER_AGENT =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'
 
-const MAX_LINKS = 10
+const MAX_LINKS = 12
 const MAX_FETCH = 8
 
 type LinkKandidat = { href: string; text: string; score: number }
@@ -39,7 +37,7 @@ async function pdfZuText(buffer: Buffer): Promise<string> {
   }
 }
 
-async function ladeDokumentText(url: string): Promise<string> {
+export async function ladeDokumentText(url: string): Promise<string> {
   if (/\.pdf(\?|$)/i.test(url)) {
     const res = await fetch(url, { headers: { 'User-Agent': USER_AGENT }, cache: 'no-store' })
     if (!res.ok) return ''
@@ -66,7 +64,24 @@ function kandidatenAusHtml(html: string, listenUrl: string): LinkKandidat[] {
     .map((l) => ({ href: l.href, text: l.text, score: scoreTranskriptLink(l.text, l.href) }))
 }
 
-async function sammleKandidaten(quelle: IrEarningsQuelle): Promise<LinkKandidat[]> {
+async function transkripteAusLinks(kandidaten: LinkKandidat[], max: number): Promise<IrRohesTranskript[]> {
+  const out: IrRohesTranskript[] = []
+  for (const k of kandidaten.slice(0, MAX_LINKS)) {
+    if (out.length >= max) break
+    const text = await ladeDokumentText(k.href)
+    if (text.length < 800) continue
+    if (!istEarningsCallTranskript(text) || istPresseMitteilung(text)) continue
+    out.push({
+      titel: k.text,
+      url: k.href,
+      callDatum: parseDatumAusText(`${k.text} ${k.href}`),
+      text,
+    })
+  }
+  return out
+}
+
+async function sammleDirekteLinks(quelle: IrEarningsQuelle): Promise<LinkKandidat[]> {
   const kandidaten: LinkKandidat[] = []
   const seen = new Set<string>()
 
@@ -91,29 +106,11 @@ async function sammleKandidaten(quelle: IrEarningsQuelle): Promise<LinkKandidat[
   return kandidaten
 }
 
-async function transkripteAusLinks(kandidaten: LinkKandidat[], max: number): Promise<IrRohesTranskript[]> {
-  const out: IrRohesTranskript[] = []
-  for (const k of kandidaten.slice(0, MAX_LINKS)) {
-    if (out.length >= max) break
-    const text = await ladeDokumentText(k.href)
-    if (text.length < 350) continue
-    if (!istEarningsCallTranskript(text) || istPresseMitteilung(text)) continue
-    out.push({
-      titel: k.text,
-      url: k.href,
-      callDatum: parseDatumAusText(`${k.text} ${k.href}`),
-      text,
-    })
-  }
-  return out
-}
-
-function normalisiereIrFehler(e: unknown): string {
-  const msg = e instanceof Error ? e.message : String(e)
-  if (/playwright|browser|executable/i.test(msg)) {
-    return 'Browser-Scraper nicht verfügbar. Fetch-Fallback hat keine Transkripte gefunden.'
-  }
-  return msg
+function baueQuelle(isin: string, fallbackIrUrl: string | null): IrEarningsQuelle {
+  const hard = irEarningsQuelleFuerIsin(isin)
+  if (hard) return hard
+  if (fallbackIrUrl) return { listenUrls: [fallbackIrUrl] }
+  return { listenUrls: [] }
 }
 
 export async function ladeIrTranskriptHistorie(
@@ -121,35 +118,43 @@ export async function ladeIrTranskriptHistorie(
   fallbackIrUrl: string | null,
   max = MAX_FETCH,
 ): Promise<IrRohesTranskript[]> {
-  const quelle: IrEarningsQuelle | null =
-    irEarningsQuelleFuerIsin(isin) ?? (fallbackIrUrl ? { listenUrls: [fallbackIrUrl] } : null)
-
-  if (!quelle?.listenUrls.length) {
+  const quelle = baueQuelle(isin, fallbackIrUrl)
+  if (!quelle.listenUrls.length) {
     throw new Error('Keine IR-Earnings-Seite für dieses Unternehmen konfiguriert.')
   }
 
-  let fetchOut: IrRohesTranskript[] = []
+  const q4 = await ladeQ4TranskriptHistorie(quelle.listenUrls, quelle.q4BasisUrls ?? [], max)
+  if (q4.length > 0) return q4
+
   try {
-    const kandidaten = await sammleKandidaten(quelle)
-    fetchOut = await transkripteAusLinks(kandidaten, max)
+    const direkt = await transkripteAusLinks(await sammleDirekteLinks(quelle), max)
+    if (direkt.length > 0) return direkt
   } catch {
-    /* Playwright-Fallback unten (nur lokal) */
+    /* weiter */
   }
-  if (fetchOut.length > 0) return fetchOut
+
+  try {
+    const crawled = await crawlIrTranskripte(quelle.listenUrls, max)
+    if (crawled.length > 0) return crawled
+  } catch {
+    /* weiter */
+  }
 
   if (!process.env.VERCEL) {
     try {
       const { ladeIrViaPlaywrightBrowser } = await import('@/lib/portfolio-analyse/ir-earnings-browser')
       const pwOut = await ladeIrViaPlaywrightBrowser(quelle, max, ladeDokumentText, parseDatumAusText)
-      if (pwOut.length > 0) return pwOut
-    } catch (e) {
-      throw new Error(normalisiereIrFehler(e))
+      const valid = pwOut.filter(
+        (t) => t.text.length >= 800 && istEarningsCallTranskript(t.text) && !istPresseMitteilung(t.text),
+      )
+      if (valid.length > 0) return valid
+    } catch {
+      /* unten */
     }
   }
 
   throw new Error(
-    process.env.VERCEL
-      ? 'Kein Earnings-Call-Transkript (mit Q&A) per Fetch gefunden — IR-Seiten laden Links oft per JavaScript.'
-      : 'Kein Conference-Call-Transkript auf der IR-Seite gefunden (nur Präsentation/Pressemitteilung?).',
+    'Kein Earnings-Call-Transkript (Conference Call inkl. Q&A) auf der IR-Website gefunden. ' +
+      'Nicht jede Firma veröffentlicht das volle Transkript online (z. B. Mastercard oft nur Webcast).',
   )
 }

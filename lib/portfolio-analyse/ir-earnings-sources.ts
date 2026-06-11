@@ -3,9 +3,9 @@
 import { istTranskriptLinkStreng } from '@/lib/portfolio-analyse/earnings-call-transcript-heuristik'
 
 export type IrEarningsQuelle = {
-  /** Eine oder mehrere Listen-Seiten mit Transkript-Links */
   listenUrls: string[]
-  /** Zusätzliche Keywords für Link-Matching (optional) */
+  /** Q4-Plattform: Basis-URL für /feed/Event.svc (z. B. https://abc.xyz) */
+  q4BasisUrls?: string[]
   keywords?: string[]
 }
 
@@ -49,18 +49,22 @@ export const IR_EARNINGS_NACH_ISIN: Record<string, IrEarningsQuelle> = {
   },
   US02079K1079: {
     listenUrls: ['https://abc.xyz/investor/earnings/'],
+    q4BasisUrls: ['https://abc.xyz'],
   },
   US02079K3059: {
     listenUrls: ['https://abc.xyz/investor/earnings/'],
+    q4BasisUrls: ['https://abc.xyz'],
   },
   US57636Q1040: {
     listenUrls: [
-      'https://investor.mastercard.com/financials-and-reporting/quarterly-results/default.aspx',
       'https://investor.mastercard.com/events-and-presentations/default.aspx',
+      'https://investor.mastercard.com/financials-and-sec-filings/quarterly-results/default.aspx',
     ],
+    q4BasisUrls: ['https://investor.mastercard.com'],
   },
   US5949181045: {
     listenUrls: ['https://www.microsoft.com/en-us/investor/earnings'],
+    q4BasisUrls: ['https://microsoft.com', 'https://www.microsoft.com'],
   },
   US81762P1021: {
     listenUrls: ['https://investors.servicenow.com/financial-information/quarterly-results'],

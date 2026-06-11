@@ -4,11 +4,15 @@ import 'server-only'
 
 import { htmlZuFliesstext, linksAusHtml as parseLinks } from '@/lib/html/text-aus-html'
 import {
+  istEarningsCallTranskript,
+  istPresseMitteilung,
+} from '@/lib/portfolio-analyse/earnings-call-transcript-heuristik'
+import {
   istTranskriptLink,
   scoreTranskriptLink,
   type IrEarningsQuelle,
 } from '@/lib/portfolio-analyse/ir-earnings-sources'
-import type { IrRohesTranskript } from '@/lib/portfolio-analyse/ir-earnings-scraper'
+import type { IrRohesTranskript } from '@/lib/portfolio-analyse/ir-earnings-types'
 
 const USER_AGENT =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'
@@ -73,7 +77,8 @@ export async function ladeIrViaPlaywrightBrowser(
       } catch {
         text = await ladeDokument(k.href)
       }
-      if (text.length < 350) continue
+      if (text.length < 800) continue
+      if (!istEarningsCallTranskript(text) || istPresseMitteilung(text)) continue
       out.push({
         titel: k.text,
         url: k.href,

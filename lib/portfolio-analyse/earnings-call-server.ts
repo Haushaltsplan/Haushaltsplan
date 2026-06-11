@@ -67,28 +67,12 @@ async function entdeckeTranskripte(
   irUrl: string | null,
 ): Promise<RohesTranskript[]> {
   const ticker = tickerKey(anfrage.ticker)
-
-  let sec: Awaited<ReturnType<typeof ladeSecEdgarTranskriptHistorie>> = []
-  try {
-    sec = await ladeSecEdgarTranskriptHistorie(ticker, MAX_QUARTALE)
-  } catch {
-    /* EU-Ticker / SEC-HTML-Fehler — IR-Fallback */
-  }
-  if (sec.length > 0) {
-    return sec.map((s) => ({
-      titel: s.titel,
-      url: s.url,
-      callDatum: s.callDatum,
-      text: s.text,
-      quelle: 'sec_edgar' as const,
-    }))
-  }
-
   const isUsIsin = Boolean(anfrage.isin?.trim().toUpperCase().startsWith('US'))
 
-  if (anfrage.isin?.trim()) {
+  // 1) IR-Website / Q4-API — volle Call-Transkripte (Priorität)
+  if (anfrage.isin?.trim() || irUrl) {
     try {
-      const ir = await ladeIrTranskriptHistorie(anfrage.isin, irUrl, MAX_QUARTALE)
+      const ir = await ladeIrTranskriptHistorie(anfrage.isin ?? '', irUrl, MAX_QUARTALE)
       if (ir.length > 0) {
         return ir.map((s) => ({
           titel: s.titel,
@@ -114,8 +98,24 @@ async function entdeckeTranskripte(
         }
         throw irErr
       }
-      /* US: IR optional — weiter zu Finnhub / SEC-Fehler */
     }
+  }
+
+  // 2) SEC — nur echte Call-Transkripte (Ex. 99.2)
+  let sec: Awaited<ReturnType<typeof ladeSecEdgarTranskriptHistorie>> = []
+  try {
+    sec = await ladeSecEdgarTranskriptHistorie(ticker, MAX_QUARTALE)
+  } catch {
+    /* IR-Fallback oben */
+  }
+  if (sec.length > 0) {
+    return sec.map((s) => ({
+      titel: s.titel,
+      url: s.url,
+      callDatum: s.callDatum,
+      text: s.text,
+      quelle: 'sec_edgar' as const,
+    }))
   }
 
   const finnhub = await ladeFinnhubLetztesTranskript(ticker)
