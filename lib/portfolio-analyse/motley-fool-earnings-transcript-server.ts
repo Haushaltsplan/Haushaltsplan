@@ -2,7 +2,7 @@
 
 import 'server-only'
 
-import { heuteIsoUtc } from '@/lib/portfolio-analyse/dividenden-datum-hilfen'
+import { isoInJahren, isoVorJahren } from '@/lib/portfolio-analyse/dividenden-datum-hilfen'
 import {
   istEarningsCallTranskript,
   istPresseMitteilung,
@@ -26,8 +26,9 @@ const USER_AGENT =
 
 const ARCHIVE_PAGE_DELAY_MS = 350
 const ARTICLE_DELAY_MS = 200
-const MAX_ARCHIVE_PAGES = 40
-const MAX_URL_KANDIDATEN = 24
+const MAX_ARCHIVE_PAGES = 80
+const MAX_URL_KANDIDATEN = 32
+const MAX_QUARTALS_RASTER = 8
 
 /** Bekannte Slug-Präfixe, falls Firmenname fehlt oder abweicht. */
 const BEKANNTE_FOOL_SLUGS: Record<string, string[]> = {
@@ -66,7 +67,7 @@ const BEKANNTE_FOOL_SLUGS: Record<string, string[]> = {
   PG: ['procter-gamble'],
   TMO: ['thermo-fisher'],
   TSLA: ['tesla'],
-  UNH: ['unitedhealth', 'unitedhealth-group'],
+  UNH: ['unitedhealth', 'unitedhealth-group', 'united-health'],
   V: ['visa'],
   WMT: ['walmart'],
   XOM: ['exxon', 'exxon-mobil'],
@@ -107,8 +108,55 @@ function slugPasstZuTicker(slug: string, tickers: string[]): boolean {
   const s = slug.toLowerCase()
   return tickers.some((t) => {
     const tl = t.toLowerCase().replace(/\./g, '-')
-    return s.includes(`-${tl}-q`) || s.includes(`-${tl}-`)
+    return (
+      s.includes(`-${tl}-q`) ||
+      s.includes(`-${tl}-`) ||
+      s.endsWith(`-${tl}`) ||
+      new RegExp(`-${tl}-earnings`, 'i').test(s)
+    )
   })
+}
+
+/** Typische Earnings-Call-Monate je Quartal (US-Konvention). */
+function callMonatFuerQuartal(quartal: number, jahr: number): { jahr: number; monat: number } {
+  switch (quartal) {
+    case 1:
+      return { jahr, monat: 4 }
+    case 2:
+      return { jahr, monat: 7 }
+    case 3:
+      return { jahr, monat: 10 }
+    default:
+      return { jahr: jahr + 1, monat: 1 }
+  }
+}
+
+function letzteBerichtsQuartale(max: number): Array<{ quartal: number; jahr: number }> {
+  const now = new Date()
+  let jahr = now.getUTCFullYear()
+  let quartal = Math.ceil((now.getUTCMonth() + 1) / 3)
+  const out: Array<{ quartal: number; jahr: number }> = []
+  for (let i = 0; i < max; i++) {
+    out.push({ quartal, jahr })
+    quartal--
+    if (quartal === 0) {
+      quartal = 4
+      jahr--
+    }
+  }
+  return out
+}
+
+function datumPfadeMonat(jahr: number, monat: number): string[] {
+  const out: string[] = []
+  for (let day = 8; day <= 31; day++) {
+    out.push(`${jahr}/${String(monat).padStart(2, '0')}/${String(day).padStart(2, '0')}`)
+  }
+  const prev = monat === 1 ? { jahr: jahr - 1, monat: 12 } : { jahr, monat: monat - 1 }
+  for (let day = 25; day <= 31; day++) {
+    out.push(`${prev.jahr}/${String(prev.monat).padStart(2, '0')}/${String(day).padStart(2, '0')}`)
+  }
+  return [...new Set(out)]
 }
 
 function datumAusFoolUrl(url: string): string | null {
@@ -152,12 +200,28 @@ async function foolUrlExistiert(url: string): Promise<boolean> {
   return ok && status !== 404
 }
 
-function slugVarianten(firmSlug: string, ticker: string, quartal: number, jahr: number): string[] {
+function slugVarianten(firmSlug: string, ticker: string, quartal?: number, jahr?: number): string[] {
   const t = ticker.toLowerCase()
-  const bases = [`${firmSlug}-${t}-q${quartal}-${jahr}`]
-  if (firmSlug !== t) bases.push(`${t}-q${quartal}-${jahr}`)
-  const suffixes = ['-earnings-transcript', '-earnings-call-transcript']
-  return bases.flatMap((b) => suffixes.map((s) => b + s))
+  const out = new Set<string>()
+  const suffixes = ['-earnings-transcript', '-earnings-call-transcript', '-earnings-call-trans']
+
+  const addBase = (base: string) => {
+    for (const s of suffixes) out.add(base + s)
+  }
+
+  if (quartal != null && jahr != null) {
+    addBase(`${firmSlug}-${t}-q${quartal}-${jahr}`)
+    if (firmSlug.includes('unitedhealth')) {
+      addBase(`unitedhealth-group-${t}-q${quartal}-${jahr}`)
+    }
+  }
+
+  addBase(`${firmSlug}-${t}`)
+  if (firmSlug.includes('unitedhealth')) {
+    addBase(`unitedhealth-group-${t}`)
+  }
+
+  return [...out]
 }
 
 function datumPfade(isoDate: string): string[] {
@@ -188,26 +252,40 @@ function firmSlugsFuerTicker(ticker: string, firmenname: string | null): string[
 }
 
 async function kandidatenViaBing(ticker: string, firmenname: string | null): Promise<string[]> {
-  const q = firmenname?.trim()
-    ? `site:fool.com earnings call transcript ${firmenname} ${ticker}`
-    : `site:fool.com earnings call transcript ${ticker}`
-  try {
-    const res = await fetch(`https://www.bing.com/search?q=${encodeURIComponent(q)}`, {
-      headers: { 'User-Agent': USER_AGENT },
-      cache: 'no-store',
-    })
-    if (!res.ok) return []
-    const html = await res.text()
-    return [
-      ...new Set(
-        [...html.matchAll(/https:\/\/www\.fool\.com\/earnings\/call-transcripts\/[^"&]+/g)]
+  const queries = suchQueriesFuerTicker(ticker, firmenname)
+  const urls: string[] = []
+  for (const q of queries) {
+    try {
+      const res = await fetch(`https://www.bing.com/search?q=${encodeURIComponent(q)}`, {
+        headers: { 'User-Agent': USER_AGENT },
+        cache: 'no-store',
+      })
+      if (!res.ok) continue
+      const html = await res.text()
+      urls.push(
+        ...[...html.matchAll(/https:\/\/www\.fool\.com\/earnings\/call-transcripts\/[^"&]+/g)]
           .map((m) => m[0].replace(/&amp;/g, '&').split('&')[0])
           .filter((u) => u.includes('/earnings/call-transcripts/')),
-      ),
-    ]
-  } catch {
-    return []
+      )
+    } catch {
+      continue
+    }
   }
+  return [...new Set(urls)]
+}
+
+function suchQueriesFuerTicker(ticker: string, firmenname: string | null): string[] {
+  const t = ticker.trim().toUpperCase()
+  const name = firmenname?.trim()
+  const out = [
+    `site:fool.com/earnings/call-transcripts ${t}`,
+    `site:fool.com/earnings/call-transcripts ${name ?? t}`,
+    `site:fool.com ${name ?? t} earnings call transcript`,
+  ]
+  if (name && name.toLowerCase() !== t.toLowerCase()) {
+    out.push(`site:fool.com ${name} ${t} transcript`)
+  }
+  return [...new Set(out.filter(Boolean))]
 }
 
 type YahooHistoryRow = {
@@ -281,8 +359,8 @@ async function kandidatenViaFinnhubKalender(
   if (!key || firmSlugs.length === 0) return []
 
   const u = new URL('https://finnhub.io/api/v1/calendar/earnings')
-  u.searchParams.set('from', heuteIsoUtc())
-  u.searchParams.set('to', '2030-12-31')
+  u.searchParams.set('from', isoVorJahren(2))
+  u.searchParams.set('to', isoInJahren(1))
   u.searchParams.set('symbol', tickers[0])
   u.searchParams.set('token', key)
 
@@ -296,7 +374,7 @@ async function kandidatenViaFinnhubKalender(
   }
 
   const urls: string[] = []
-  for (const row of rows.slice(0, 4)) {
+  for (const row of rows.slice(0, 12)) {
     if (!row.date || !row.quarter || !row.year) continue
     for (const firmSlug of firmSlugs) {
       for (const slug of slugVarianten(firmSlug, tickers[0], row.quarter, row.year)) {
@@ -309,27 +387,48 @@ async function kandidatenViaFinnhubKalender(
   return [...new Set(urls)]
 }
 
+async function kandidatenViaQuartalsRaster(
+  tickers: string[],
+  firmSlugs: string[],
+): Promise<string[]> {
+  if (firmSlugs.length === 0 || tickers.length === 0) return []
+  const sym = tickers[0]
+  const urls: string[] = []
+
+  for (const { quartal, jahr } of letzteBerichtsQuartale(MAX_QUARTALS_RASTER)) {
+    const { jahr: cj, monat } = callMonatFuerQuartal(quartal, jahr)
+    for (const firmSlug of firmSlugs) {
+      for (const slug of slugVarianten(firmSlug, sym, quartal, jahr)) {
+        for (const pfad of datumPfadeMonat(cj, monat)) {
+          urls.push(`${FOOL_ORIGIN}/earnings/call-transcripts/${pfad}/${slug}/`)
+        }
+      }
+    }
+  }
+
+  return [...new Set(urls)]
+}
+
 async function kandidatenViaDuckDuckGo(ticker: string, firmenname: string | null): Promise<string[]> {
-  const q = firmenname?.trim()
-    ? `site:fool.com earnings call transcript ${firmenname} ${ticker}`
-    : `site:fool.com earnings call transcript ${ticker}`
-  try {
-    const res = await fetch(`https://html.duckduckgo.com/html/?q=${encodeURIComponent(q)}`, {
-      headers: { 'User-Agent': USER_AGENT },
-      cache: 'no-store',
-    })
-    if (!res.ok) return []
-    const html = await res.text()
-    return [
-      ...new Set(
-        [...html.matchAll(/uddg=([^&"]+)/g)]
+  const urls: string[] = []
+  for (const q of suchQueriesFuerTicker(ticker, firmenname)) {
+    try {
+      const res = await fetch(`https://html.duckduckgo.com/html/?q=${encodeURIComponent(q)}`, {
+        headers: { 'User-Agent': USER_AGENT },
+        cache: 'no-store',
+      })
+      if (!res.ok) continue
+      const html = await res.text()
+      urls.push(
+        ...[...html.matchAll(/uddg=([^&"]+)/g)]
           .map((m) => decodeURIComponent(m[1]))
           .filter((u) => u.includes('fool.com/earnings/call-transcripts')),
-      ),
-    ]
-  } catch {
-    return []
+      )
+    } catch {
+      continue
+    }
   }
+  return [...new Set(urls)]
 }
 
 async function kandidatenViaArchiv(tickers: string[], maxLinks: number): Promise<string[]> {
@@ -415,17 +514,19 @@ export async function ladeMotleyFoolTranskriptHistorie(
 
   const firmSlugs = firmSlugsFuerTicker(ticker, firmenname ?? null)
 
-  const [ddg, bing, yahoo, finnhub] = await Promise.all([
+  const [ddg, bing, yahoo, finnhub, raster] = await Promise.all([
     kandidatenViaDuckDuckGo(ticker, firmenname ?? null),
     kandidatenViaBing(ticker, firmenname ?? null),
     kandidatenViaYahoo(tickers, firmSlugs),
     kandidatenViaFinnhubKalender(ticker, firmSlugs, tickers),
+    kandidatenViaQuartalsRaster(tickers, firmSlugs),
   ])
 
   let kandidaten = [...new Set([...ddg, ...bing, ...yahoo, ...finnhub])]
 
-  if (kandidaten.length < max && yahoo.length + finnhub.length > 0) {
-    const existierend = await filterExistierendeUrls([...yahoo, ...finnhub], tickers)
+  const zuPruefen = [...new Set([...yahoo, ...finnhub, ...raster])]
+  if (kandidaten.length < max || zuPruefen.length > 0) {
+    const existierend = await filterExistierendeUrls(zuPruefen, tickers)
     kandidaten = [...new Set([...kandidaten, ...existierend])]
   }
 

@@ -203,6 +203,7 @@ export function PaFundamentalInhalt({
               ticker={daten.ticker}
               firmenname={daten.firmenname}
               isin={anfrage.isin ?? null}
+              selectionKey={selectionKey}
             />
           ) : null}
 

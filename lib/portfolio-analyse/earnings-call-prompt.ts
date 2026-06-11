@@ -28,4 +28,13 @@ Analyse-Struktur (alle Abschnitte ausführlich, mit konkreten Zahlen und Zitaten
 - KPIs zum Beobachten in den nächsten Monaten
 - Bull-Case vs. Bear-Case
 
-Sprache: Deutsch. Stil: analytisch, sachlich, präzise. Nutze Markdown-Überschriften (##) für die Hauptabschnitte und Aufzählungen für Details.`
+Sprache: Deutsch. Stil: analytisch, sachlich, präzise.
+
+Format: Verwende exakt diese fünf Markdown-Hauptüberschriften (##), ohne Nummerierung:
+## Executive Summary
+## Finanzielle Performance & Guidance
+## Qualitative Analyse
+## Deep Dive: Q&A
+## Fazit & Kritische Würdigung
+
+Unterpunkte als Aufzählungen (-). Keine weiteren ##-Überschriften.`

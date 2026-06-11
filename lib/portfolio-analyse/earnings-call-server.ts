@@ -11,9 +11,11 @@ import { EARNINGS_CALL_SYSTEM_PROMPT } from '@/lib/portfolio-analyse/earnings-ca
 import {
   ladeEarningsCallKiCacheEintrag,
   ladeEarningsCallKiCacheFuerTicker,
+  ladeUnternehmenCache,
   loescheEarningsCallKiCacheEintrag,
   speichereEarningsCallKiCache,
-} from '@/lib/portfolio-analyse/earnings-call-ki-cache-server'
+  speichereUnternehmenTranskripte,
+} from '@/lib/portfolio-analyse/earnings-call-unternehmen-cache-server'
 import type {
   EarningsCallAnfrage,
   EarningsCallPaket,
@@ -22,6 +24,7 @@ import type {
 } from '@/lib/portfolio-analyse/earnings-call-types'
 import { ladeFinnhubLetztesTranskript } from '@/lib/portfolio-analyse/finnhub-earnings-transcript-server'
 import { ladeIrTranskriptHistorie } from '@/lib/portfolio-analyse/ir-earnings-scraper'
+import { irEarningsQuelleFuerIsin } from '@/lib/portfolio-analyse/ir-earnings-sources'
 import { ladeMotleyFoolTranskriptHistorie } from '@/lib/portfolio-analyse/motley-fool-earnings-transcript-server'
 import { ladeInvestorRelationsUrl } from '@/lib/portfolio-analyse/investor-relations-url'
 import { ladeSecEdgarTranskriptHistorie } from '@/lib/portfolio-analyse/sec-edgar-earnings-transcript-server'
@@ -101,8 +104,10 @@ async function entdeckeTranskripte(
   const ticker = tickerKey(anfrage.ticker)
   const isUsIsin = Boolean(anfrage.isin?.trim().toUpperCase().startsWith('US'))
 
-  // 1) IR-Website / Q4-API — volle Call-Transkripte (Priorität)
-  if (anfrage.isin?.trim() || irUrl) {
+  // 1) IR-Website / Q4-API — nur bei konfigurierter Quelle (EU oder explizit hinterlegte US-IR)
+  const irHard = irEarningsQuelleFuerIsin(anfrage.isin ?? '')
+  const irVersuchen = Boolean(anfrage.isin?.trim() || irUrl) && (!isUsIsin || irHard)
+  if (irVersuchen) {
     try {
       const ir = await ladeIrTranskriptHistorie(anfrage.isin ?? '', irUrl, MAX_QUARTALE)
       if (ir.length > 0) {
@@ -315,13 +320,40 @@ export async function ladeEarningsCallZusammenfassung(anfrage: EarningsCallAnfra
 
   let cache = getDiscovery(ticker, anfrage.force)
   const hadMemoryCache = Boolean(cache)
+  let fromFileCache = false
   const staleHit = discoveryCache.get(ticker)
+
+  if (!cache && !anfrage.force) {
+    const persisted = await ladeUnternehmenCache(ticker)
+    if (persisted?.roh.length) {
+      const summaries = new Map<string, string>()
+      for (const [quartalId, row] of Object.entries(persisted.summaries)) {
+        summaries.set(quartalId, row.zusammenfassung)
+      }
+      cache = {
+        expiresAt: Date.now() + CACHE_TTL_MS,
+        roh: persisted.roh,
+        summaries,
+      }
+      discoveryCache.set(ticker, cache)
+      fromFileCache = true
+    }
+  }
 
   if (!cache) {
     try {
       const roh = await entdeckeTranskripte(anfrage, irUrl)
       setDiscovery(ticker, roh, anfrage.force ? staleHit : undefined)
       cache = discoveryCache.get(ticker)!
+      await speichereUnternehmenTranskripte(
+        ticker,
+        {
+          isin: anfrage.isin,
+          firmenname: anfrage.firmenname,
+          investorRelationsUrl: irUrl,
+        },
+        roh,
+      )
     } catch (e) {
       const raw = e instanceof Error ? e.message : 'Earnings Call fehlgeschlagen'
       const msg = /doctype|not valid json|unexpected token/i.test(raw)
@@ -343,11 +375,12 @@ export async function ladeEarningsCallZusammenfassung(anfrage: EarningsCallAnfra
 
   await ladePersistenteSummaries(ticker, cache)
 
+  const ausCache = hadMemoryCache || fromFileCache
   const quartale = rohZuQuartale(cache.roh)
   const zielId = anfrage.quartalId?.trim() || null
 
   if (!zielId) {
-    return bauePaket(ticker, cache, irUrl, null, hadMemoryCache, null)
+    return bauePaket(ticker, cache, irUrl, null, ausCache, null)
   }
 
   const roh = findeRohFuerQuartal(cache, zielId)
@@ -375,7 +408,7 @@ export async function ladeEarningsCallZusammenfassung(anfrage: EarningsCallAnfra
       } catch (e) {
         const msg = e instanceof Error ? e.message : 'KI-Zusammenfassung fehlgeschlagen'
         return {
-          ...bauePaket(ticker, cache, irUrl, zielId, hadMemoryCache, null),
+          ...bauePaket(ticker, cache, irUrl, zielId, ausCache, null),
           ok: true,
           fehler: msg,
         }
@@ -393,7 +426,7 @@ export async function ladeEarningsCallZusammenfassung(anfrage: EarningsCallAnfra
           ? 'Offizielle SEC-8-K-Transkripte (US).'
           : null
 
-  return bauePaket(ticker, cache, irUrl, zielId, hadMemoryCache && !anfrage.force, hinweis)
+  return bauePaket(ticker, cache, irUrl, zielId, ausCache && !anfrage.force, hinweis)
 }
 
 /** Für UI-Gruppierung */
