@@ -1,12 +1,16 @@
 'use client'
 
-import { useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { formatFundamentalWert } from '@/lib/portfolio-analyse/fundamentaldaten-format'
 import {
-  berechneHistorischenSchnitt,
+  anzahlWerteImZeitraum,
+  berechneZeitraumSchnitt,
+  chartPeriodeKurzlabel,
+  chartZeitraumLabel,
+  filterChartPeriodenZeitraum,
   historischeChartPerioden,
   jahrAusPeriode,
-  jahreImSchnitt,
+  letzteNChartPerioden,
   prozentAbweichung,
 } from '@/lib/portfolio-analyse/fundamentaldaten-chart-hilfen'
 import {
@@ -62,6 +66,7 @@ function formatAchse(wert: number, einheit: FundamentalMetrikZeile['einheit']): 
 
 function SchnittBadge({
   label,
+  zeitraum,
   schnitt,
   aktuell,
   abweichungPct,
@@ -69,6 +74,7 @@ function SchnittBadge({
   einheit,
 }: {
   label: string
+  zeitraum: string
   schnitt: number | null
   aktuell: number | null
   abweichungPct: number | null
@@ -83,8 +89,9 @@ function SchnittBadge({
       <p className="truncate text-[10px] font-medium text-zinc-400">{label}</p>
       <div className="mt-1 flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
         <span className="text-[11px] text-zinc-500">
-          {jahre}J-Schnitt{' '}
+          Schnitt {zeitraum ? `(${zeitraum})` : ''}{' '}
           <span className="font-semibold text-zinc-300">{formatFundamentalWert(schnitt, einheit)}</span>
+          {jahre > 0 ? <span className="text-zinc-600"> · {jahre} Werte</span> : null}
         </span>
         {aktuell != null ? (
           <>
@@ -111,6 +118,93 @@ function SchnittBadge({
   )
 }
 
+function ChartZeitraumWahl({
+  allePerioden,
+  vonIso,
+  bisIso,
+  onVonChange,
+  onBisChange,
+  onPreset,
+}: {
+  allePerioden: FundamentalPeriode[]
+  vonIso: string
+  bisIso: string
+  onVonChange: (iso: string) => void
+  onBisChange: (iso: string) => void
+  onPreset: (von: string, bis: string) => void
+}) {
+  if (allePerioden.length < 2) return null
+
+  const bisOptionen = allePerioden.filter((p) => p.iso >= vonIso)
+  const letzte10 = letzteNChartPerioden(allePerioden, 10)
+  const letzte5 = letzteNChartPerioden(allePerioden, 5)
+
+  return (
+    <div className="mt-3 flex flex-wrap items-end gap-3 border-t border-white/[0.04] pt-3">
+      <div className="flex flex-wrap items-end gap-2">
+        <label className="block">
+          <span className="mb-1 block text-[10px] font-medium uppercase tracking-wide text-zinc-500">Von</span>
+          <select
+            value={vonIso}
+            onChange={(e) => {
+              const neu = e.target.value
+              onVonChange(neu)
+              if (bisIso < neu) onBisChange(neu)
+            }}
+            className="rounded-lg border border-zinc-700/70 bg-zinc-900/80 px-2.5 py-1.5 text-xs text-zinc-200 outline-none focus:border-amber-500/50"
+          >
+            {allePerioden.map((p) => (
+              <option key={p.iso} value={p.iso}>
+                {chartPeriodeKurzlabel(p)}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="block">
+          <span className="mb-1 block text-[10px] font-medium uppercase tracking-wide text-zinc-500">Bis</span>
+          <select
+            value={bisIso}
+            onChange={(e) => onBisChange(e.target.value)}
+            className="rounded-lg border border-zinc-700/70 bg-zinc-900/80 px-2.5 py-1.5 text-xs text-zinc-200 outline-none focus:border-amber-500/50"
+          >
+            {bisOptionen.map((p) => (
+              <option key={p.iso} value={p.iso}>
+                {chartPeriodeKurzlabel(p)}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+      <div className="flex flex-wrap gap-1.5">
+        {[
+          { label: '5 Jahre', von: letzte5[0]?.iso, bis: letzte5[letzte5.length - 1]?.iso },
+          { label: '10 Jahre', von: letzte10[0]?.iso, bis: letzte10[letzte10.length - 1]?.iso },
+          {
+            label: 'Gesamt',
+            von: allePerioden[0]?.iso,
+            bis: allePerioden[allePerioden.length - 1]?.iso,
+          },
+        ].map((preset) =>
+          preset.von && preset.bis ? (
+            <button
+              key={preset.label}
+              type="button"
+              onClick={() => onPreset(preset.von!, preset.bis!)}
+              className={`rounded-lg border px-2.5 py-1.5 text-[11px] transition ${
+                vonIso === preset.von && bisIso === preset.bis
+                  ? 'border-amber-500/40 bg-amber-500/10 text-amber-200'
+                  : 'border-zinc-700/60 bg-zinc-900/50 text-zinc-400 hover:border-zinc-600 hover:text-zinc-200'
+              }`}
+            >
+              {preset.label}
+            </button>
+          ) : null,
+        )}
+      </div>
+    </div>
+  )
+}
+
 export function PaFundamentalMetrikChart({
   perioden,
   zeilen,
@@ -128,17 +222,45 @@ export function PaFundamentalMetrikChart({
   onToggleLabels: () => void
   variant?: 'standard' | 'bewertung'
 }) {
-  const histPerioden = useMemo(() => historischeChartPerioden(perioden), [perioden])
+  const alleHistPerioden = useMemo(() => historischeChartPerioden(perioden), [perioden])
+  const [vonIso, setVonIso] = useState('')
+  const [bisIso, setBisIso] = useState('')
+
+  useEffect(() => {
+    if (alleHistPerioden.length === 0) {
+      setVonIso('')
+      setBisIso('')
+      return
+    }
+    const letzte10 = letzteNChartPerioden(alleHistPerioden, 10)
+    setVonIso(letzte10[0]!.iso)
+    setBisIso(letzte10[letzte10.length - 1]!.iso)
+  }, [alleHistPerioden])
+
+  const gefiltertePerioden = useMemo(
+    () => filterChartPeriodenZeitraum(alleHistPerioden, vonIso, bisIso),
+    [alleHistPerioden, vonIso, bisIso],
+  )
+
+  const zeitraumLabel = useMemo(
+    () =>
+      chartZeitraumLabel(
+        alleHistPerioden.find((p) => p.iso === vonIso),
+        alleHistPerioden.find((p) => p.iso === bisIso),
+      ),
+    [alleHistPerioden, vonIso, bisIso],
+  )
+
   const plotW = VIEW_W - PAD_LINKS - PAD_RECHTS
   const plotH = HOEHE - PAD_OBEN - PAD_UNTEN
 
   const serien = useMemo((): ChartSerie[] => {
     const ausgewaehlt = zeilen.filter((z) => aktivIds.has(z.id))
-    if (ausgewaehlt.length === 0) return []
+    if (ausgewaehlt.length === 0 || gefiltertePerioden.length === 0) return []
 
     const roh = ausgewaehlt.map((z, i) => {
       const aktKey = aktuellerKeyFuerZeile(z, variant)
-      const histWerte = histPerioden
+      const histWerte = gefiltertePerioden
         .map((p) => ({ label: jahrAusPeriode(p.iso), wert: z.werte[p.iso] }))
         .filter((pt): pt is { label: string; wert: number } => pt.wert != null && Number.isFinite(pt.wert))
 
@@ -148,8 +270,8 @@ export function PaFundamentalMetrikChart({
           ? { label: aktKey === FUNDAMENTAL_NTM_KEY ? 'NTM' : 'TTM', wert: aktWert }
           : null
 
-      const schnitt = variant === 'bewertung' ? berechneHistorischenSchnitt(histWerte.map((p) => p.wert)) : null
-      const jahreSchnitt = variant === 'bewertung' ? jahreImSchnitt(histWerte.map((p) => p.wert)) : 0
+      const schnitt = variant === 'bewertung' ? berechneZeitraumSchnitt(histWerte.map((p) => p.wert)) : null
+      const jahreSchnitt = variant === 'bewertung' ? anzahlWerteImZeitraum(histWerte.map((p) => p.wert)) : 0
       const abweichungPct =
         variant === 'bewertung' && aktuell && schnitt != null
           ? prozentAbweichung(aktuell.wert, schnitt)
@@ -219,7 +341,7 @@ export function PaFundamentalMetrikChart({
         areaD,
       }
     })
-  }, [zeilen, aktivIds, histPerioden, variant, plotW, plotH])
+  }, [zeilen, aktivIds, gefiltertePerioden, variant, plotW, plotH])
 
   const { minY, maxY, yTicks } = useMemo(() => {
     const alle = serien.flatMap((s) => [
@@ -242,7 +364,7 @@ export function PaFundamentalMetrikChart({
   const xLabels = useMemo(() => {
     if (serien.length === 0) return []
     const ref = serien[0]!
-    const labels = ref.historisch.map((p) => jahrAusPeriode(p.label))
+    const labels = ref.historisch.map((p) => p.label)
     if (ref.aktuell) labels.push(ref.aktuell.label)
     const n = labels.length
     return labels.map((label, i) => ({
@@ -251,14 +373,24 @@ export function PaFundamentalMetrikChart({
     }))
   }, [serien, plotW])
 
-  if (serien.length === 0) {
+  const hatAktiveSerien = zeilen.some((z) => aktivIds.has(z.id))
+
+  if (!hatAktiveSerien) {
     return (
       <div className="rounded-2xl border border-dashed border-zinc-800/80 bg-gradient-to-b from-zinc-950/80 to-zinc-900/30 px-4 py-12 text-center">
         <p className="text-sm text-zinc-500">
           {variant === 'bewertung'
-            ? 'Klicke auf eine Bewertungskennzahl, um den Verlauf mit 10-Jahres-Schnitt anzuzeigen.'
+            ? 'Klicke auf eine Bewertungskennzahl, um den Verlauf mit Zeitraum-Schnitt anzuzeigen.'
             : 'Klicke auf eine Kennzahl in der Tabelle, um den Verlauf anzuzeigen.'}
         </p>
+      </div>
+    )
+  }
+
+  if (serien.length === 0) {
+    return (
+      <div className="rounded-2xl border border-zinc-800/70 bg-zinc-950/60 px-4 py-8 text-center">
+        <p className="text-sm text-zinc-500">Keine Daten im gewählten Zeitraum.</p>
       </div>
     )
   }
@@ -273,11 +405,11 @@ export function PaFundamentalMetrikChart({
             <p className="text-sm font-medium text-zinc-200">
               {variant === 'bewertung' ? 'Bewertungsverlauf' : 'Historischer Kennzahlenverlauf'}
             </p>
-            {variant === 'bewertung' ? (
-              <p className="mt-0.5 text-[11px] text-zinc-500">
-                Gestrichelt = Schnitt der letzten 10 Jahre (oder kürzere Historie) · Punkt = aktuell (TTM/NTM)
-              </p>
-            ) : null}
+            <p className="mt-0.5 text-[11px] text-zinc-500">
+              {variant === 'bewertung'
+                ? 'Zeitraum wählen · Schnitt nur im gewählten Intervall · Punkt = aktuell (TTM/NTM)'
+                : 'Zeitraum wählen · nur ausgewählter Verlauf wird angezeigt'}
+            </p>
           </div>
           <div className="flex gap-2">
             <button
@@ -297,12 +429,25 @@ export function PaFundamentalMetrikChart({
           </div>
         </div>
 
+        <ChartZeitraumWahl
+          allePerioden={alleHistPerioden}
+          vonIso={vonIso}
+          bisIso={bisIso}
+          onVonChange={setVonIso}
+          onBisChange={setBisIso}
+          onPreset={(von, bis) => {
+            setVonIso(von)
+            setBisIso(bis)
+          }}
+        />
+
         {variant === 'bewertung' ? (
           <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
             {serien.map((s) => (
               <SchnittBadge
                 key={s.id}
                 label={s.label}
+                zeitraum={zeitraumLabel}
                 schnitt={s.schnitt}
                 aktuell={s.aktuell?.wert ?? null}
                 abweichungPct={s.abweichungPct}
@@ -353,21 +498,23 @@ export function PaFundamentalMetrikChart({
             strokeWidth={1.2}
           />
 
-          {serien.map((s) =>
-            s.schnitt != null ? (
-              <line
-                key={`avg-${s.id}`}
-                x1={PAD_LINKS}
-                y1={yAusWert(s.schnitt, minY, spanY, plotH)}
-                x2={VIEW_W - PAD_RECHTS}
-                y2={yAusWert(s.schnitt, minY, spanY, plotH)}
-                stroke={s.farbe}
-                strokeWidth={1.5}
-                strokeDasharray="8 6"
-                opacity={0.55}
-              />
-            ) : null,
-          )}
+          {variant === 'bewertung'
+            ? serien.map((s) =>
+                s.schnitt != null ? (
+                  <line
+                    key={`avg-${s.id}`}
+                    x1={PAD_LINKS}
+                    y1={yAusWert(s.schnitt, minY, spanY, plotH)}
+                    x2={VIEW_W - PAD_RECHTS}
+                    y2={yAusWert(s.schnitt, minY, spanY, plotH)}
+                    stroke={s.farbe}
+                    strokeWidth={1.5}
+                    strokeDasharray="8 6"
+                    opacity={0.55}
+                  />
+                ) : null,
+              )
+            : null}
 
           {serien.map((s) => (
             <g key={s.id}>
@@ -425,7 +572,7 @@ export function PaFundamentalMetrikChart({
                 fill={xl.label === 'TTM' || xl.label === 'NTM' ? '#a1a1aa' : '#52525b'}
                 style={{ fontSize: 10, fontWeight: xl.label === 'TTM' || xl.label === 'NTM' ? 600 : 400 }}
               >
-                {xl.label.length > 6 ? jahrAusPeriode(xl.label) : xl.label}
+                {xl.label}
               </text>
             ) : null,
           )}
@@ -438,7 +585,7 @@ export function PaFundamentalMetrikChart({
               <span className="text-zinc-400">{s.label}</span>
               {variant === 'bewertung' && s.schnitt != null ? (
                 <span className="text-zinc-600">
-                  · Schnitt {formatFundamentalWert(s.schnitt, s.einheit)}
+                  · Schnitt {zeitraumLabel} {formatFundamentalWert(s.schnitt, s.einheit)}
                 </span>
               ) : null}
             </li>
@@ -446,7 +593,7 @@ export function PaFundamentalMetrikChart({
           {variant === 'bewertung' ? (
             <li className="flex items-center gap-1.5 text-zinc-600">
               <span className="h-0 w-4 border-t border-dashed border-zinc-500" />
-              10-Jahres-Schnitt
+              Zeitraum-Schnitt
             </li>
           ) : null}
         </ul>

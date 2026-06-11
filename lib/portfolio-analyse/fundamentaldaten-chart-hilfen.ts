@@ -26,6 +26,29 @@ export function historischeChartPerioden(perioden: FundamentalPeriode[]): Fundam
   return perioden.filter(istHistorischeChartPeriode)
 }
 
+export function filterChartPeriodenZeitraum(
+  perioden: FundamentalPeriode[],
+  vonIso: string,
+  bisIso: string,
+): FundamentalPeriode[] {
+  if (!vonIso || !bisIso) return perioden
+  const von = vonIso <= bisIso ? vonIso : bisIso
+  const bis = vonIso <= bisIso ? bisIso : vonIso
+  return perioden.filter((p) => p.iso >= von && p.iso <= bis)
+}
+
+export function letzteNChartPerioden(perioden: FundamentalPeriode[], n: number): FundamentalPeriode[] {
+  if (perioden.length <= n) return perioden
+  return perioden.slice(-n)
+}
+
+/** Mittel aller gültigen Werte im (bereits gefilterten) Zeitraum. */
+export function berechneZeitraumSchnitt(werte: number[]): number | null {
+  const gueltig = werte.filter((v) => Number.isFinite(v))
+  if (gueltig.length === 0) return null
+  return gueltig.reduce((a, b) => a + b, 0) / gueltig.length
+}
+
 /** Mittel der letzten `maxJahre` gültigen Werte (oder weniger, wenn Historie kürzer). */
 export function berechneHistorischenSchnitt(werte: number[], maxJahre = 10): number | null {
   const gueltig = werte.filter((v) => Number.isFinite(v))
@@ -34,9 +57,25 @@ export function berechneHistorischenSchnitt(werte: number[], maxJahre = 10): num
   return slice.reduce((a, b) => a + b, 0) / slice.length
 }
 
+export function anzahlWerteImZeitraum(werte: number[]): number {
+  return werte.filter((v) => Number.isFinite(v)).length
+}
+
 export function jahreImSchnitt(werte: number[], maxJahre = 10): number {
   const gueltig = werte.filter((v) => Number.isFinite(v))
   return Math.min(maxJahre, gueltig.length)
+}
+
+export function chartPeriodeKurzlabel(p: FundamentalPeriode): string {
+  const jahr = jahrAusPeriode(p.iso)
+  return jahr.length === 4 ? jahr : p.label
+}
+
+export function chartZeitraumLabel(von: FundamentalPeriode | undefined, bis: FundamentalPeriode | undefined): string {
+  if (!von || !bis) return ''
+  const a = chartPeriodeKurzlabel(von)
+  const b = chartPeriodeKurzlabel(bis)
+  return a === b ? a : `${a}–${b}`
 }
 
 export function prozentAbweichung(aktuell: number, schnitt: number): number | null {

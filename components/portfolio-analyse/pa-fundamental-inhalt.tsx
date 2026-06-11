@@ -6,6 +6,7 @@ import { PaFundamentalMantra } from '@/components/portfolio-analyse/pa-fundament
 import { PaFundamentalNews } from '@/components/portfolio-analyse/pa-fundamental-news'
 import { PaFundamentalUebersicht } from '@/components/portfolio-analyse/pa-fundamental-uebersicht'
 import { PaFundamentalUnternehmenHeader } from '@/components/portfolio-analyse/pa-fundamental-unternehmen-header'
+import { PaFundamentalDcf } from '@/components/portfolio-analyse/pa-fundamental-dcf'
 import { PaFundamentalMetrikChart } from '@/components/portfolio-analyse/pa-fundamental-metrik-chart'
 import { PaFundamentalMetrikTabelle } from '@/components/portfolio-analyse/pa-fundamental-metrik-tabelle'
 import { PaCard } from '@/components/portfolio-analyse/pa-ui'
@@ -25,6 +26,7 @@ const UNTER_TABS = [
   { id: 'finanzdaten' as const, label: 'Finanzdaten' },
   { id: 'schaetzungen' as const, label: 'Schätzungen' },
   { id: 'bewertung' as const, label: 'Bewertung' },
+  { id: 'dcf' as const, label: 'DCF' },
   { id: 'earnings_call' as const, label: 'Earnings Call' },
   { id: 'news' as const, label: 'News' },
 ]
@@ -199,6 +201,14 @@ export function PaFundamentalInhalt({
 
           {unterTab === 'mantra' && mantraAudit ? <PaFundamentalMantra audit={mantraAudit} /> : null}
 
+          {unterTab === 'dcf' ? (
+            <PaFundamentalDcf
+              kontext={daten.dcfKontext ?? null}
+              ticker={daten.ticker}
+              selectionKey={selectionKey}
+            />
+          ) : null}
+
           {unterTab === 'earnings_call' ? (
             <PaFundamentalEarningsCall
               ticker={daten.ticker}
@@ -213,7 +223,8 @@ export function PaFundamentalInhalt({
           {unterTab !== 'uebersicht' &&
           unterTab !== 'news' &&
           unterTab !== 'mantra' &&
-          unterTab !== 'earnings_call' ? (
+          unterTab !== 'earnings_call' &&
+          unterTab !== 'dcf' ? (
             <div className="space-y-4">
               <PaFundamentalMetrikChart
                 perioden={daten.perioden}

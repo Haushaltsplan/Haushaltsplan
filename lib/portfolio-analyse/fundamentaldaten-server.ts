@@ -8,6 +8,7 @@ import {
 import { baueMantraAudit } from '@/lib/portfolio-analyse/fundamentaldaten-mantra'
 import { ladeYahooMantraFinanzdaten } from '@/lib/portfolio-analyse/yahoo-fundamentals-timeseries-server'
 import { ladeFundamentalNews } from '@/lib/portfolio-analyse/fundamentaldaten-news-server'
+import { baueDcfKontext } from '@/lib/portfolio-analyse/fundamentaldaten-dcf'
 import { baueNtmBewertungsZeilen } from '@/lib/portfolio-analyse/fundamentaldaten-ntm-bewertung-server'
 import { ladeFundamentalSchaetzungen } from '@/lib/portfolio-analyse/fundamentaldaten-schaetzungen-server'
 import {
@@ -243,6 +244,7 @@ function leeresPaket(partial: Partial<FundamentaldatenPaket> & Pick<Fundamentald
     perioden: [],
     zeilen: [],
     keyMetrics: [],
+    dcfKontext: null,
     mantra: baueMantraAudit(null, null, null, null, { perioden: [], zeilen: [] }),
     mantraMeta: null,
     news: [],
@@ -325,6 +327,7 @@ export async function ladeFundamentaldaten(anfrage: FundamentaldatenAnfrage): Pr
   }
   const sektorFinal = brancheMeta.sektor
   const brancheFinal = brancheMeta.branche ?? roh.branche
+  const dcfKontext = baueDcfKontext(yahooExt, merged.zeilen, merged.perioden)
 
   return leeresPaket({
     ok: true,
@@ -338,6 +341,7 @@ export async function ladeFundamentaldaten(anfrage: FundamentaldatenAnfrage): Pr
     perioden: merged.perioden,
     zeilen: merged.zeilen,
     keyMetrics: baueKeyMetrics(yahooExt, roh, schaetzungen),
+    dcfKontext,
     mantra: baueMantraAudit(sektorFinal, brancheFinal, yahooExt, rohFuerMantra(merged), schaetzungen, yahooFinanz),
     mantraMeta,
     news,

@@ -98,6 +98,24 @@ export type FundamentalMantraAudit = {
   }
 }
 
+export type FundamentalDcfKontext = {
+  basisFcfUsd: number | null
+  basisFcfQuelle: 'TTM' | 'Letztes GJ' | null
+  aktienAnzahl: number | null
+  nettoverschuldungUsd: number | null
+  aktuellerKursUsd: number | null
+  beta: number | null
+  fcfCagr3yPct: number | null
+  fcfCagr5yPct: number | null
+  umsatzwachstumPct: number | null
+  waccVorschlagPct: number
+  wachstumVorschlagPct: number
+  terminalWachstumVorschlagPct: number
+  prognoseJahreVorschlag: number
+  risikofreierZinsPct: number
+  marktrisikopraemiePct: number
+}
+
 export type FundamentaldatenPaket = {
   ok: boolean
   ticker: string
@@ -112,6 +130,7 @@ export type FundamentaldatenPaket = {
   perioden: FundamentalPeriode[]
   zeilen: FundamentalMetrikZeile[]
   keyMetrics: FundamentalKeyMetric[]
+  dcfKontext: FundamentalDcfKontext | null
   mantra: FundamentalMantraAudit
   mantraMeta: FundamentalMantraMeta | null
   news: FundamentalNewsArtikel[]
