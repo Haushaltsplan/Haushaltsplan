@@ -24,11 +24,13 @@ const FOOL_ORIGIN = 'https://www.fool.com'
 const USER_AGENT =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'
 
-const ARCHIVE_PAGE_DELAY_MS = 350
-const ARTICLE_DELAY_MS = 200
-const MAX_ARCHIVE_PAGES = 80
-const MAX_URL_KANDIDATEN = 32
-const MAX_QUARTALS_RASTER = 8
+const ARCHIVE_PAGE_DELAY_MS = 200
+const ARTICLE_DELAY_MS = 120
+const FETCH_TIMEOUT_MS = 12_000
+const DISCOVERY_BUDGET_MS = 50_000
+const MAX_ARCHIVE_PAGES = 12
+const MAX_URL_KANDIDATEN = 10
+const MAX_QUARTALS_RASTER = 4
 
 /** Bekannte Slug-Präfixe, falls Firmenname fehlt oder abweicht. */
 const BEKANNTE_FOOL_SLUGS: Record<string, string[]> = {
@@ -182,22 +184,34 @@ function titelAusSlug(slug: string): string {
 
 async function foolFetch(url: string): Promise<{ ok: boolean; html: string; status: number }> {
   const abs = url.startsWith('http') ? url : `${FOOL_ORIGIN}${url}`
-  const res = await fetch(abs, {
-    headers: { 'User-Agent': USER_AGENT, Accept: 'text/html,application/xhtml+xml' },
-    cache: 'no-store',
-  })
-  return { ok: res.ok, html: await res.text(), status: res.status }
+  try {
+    const res = await fetch(abs, {
+      headers: { 'User-Agent': USER_AGENT, Accept: 'text/html,application/xhtml+xml' },
+      cache: 'no-store',
+      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+    })
+    return { ok: res.ok, html: await res.text(), status: res.status }
+  } catch {
+    return { ok: false, html: '', status: 0 }
+  }
 }
 
 async function foolUrlExistiert(url: string): Promise<boolean> {
   try {
-    const head = await fetch(url, { method: 'HEAD', headers: { 'User-Agent': USER_AGENT }, cache: 'no-store' })
+    const head = await fetch(url, {
+      method: 'HEAD',
+      headers: { 'User-Agent': USER_AGENT },
+      cache: 'no-store',
+      signal: AbortSignal.timeout(6000),
+    })
     if (head.ok) return true
+    if (head.status === 404 || head.status === 410) return false
   } catch {
     /* GET-Fallback */
   }
-  const { ok, status } = await foolFetch(url)
-  return ok && status !== 404
+  const { ok, status, html } = await foolFetch(url)
+  if (!ok || status === 404) return false
+  return html.length > 500
 }
 
 function slugVarianten(firmSlug: string, ticker: string, quartal?: number, jahr?: number): string[] {
@@ -499,9 +513,13 @@ async function filterExistierendeUrls(urls: string[], tickers: string[]): Promis
     const slug = url.split('/').filter(Boolean).pop() ?? ''
     if (!slugPasstZuTicker(slug, tickers)) continue
     if (await foolUrlExistiert(url)) valid.push(url.split('?')[0])
-    await sleep(80)
+    await sleep(50)
   }
   return [...new Set(valid)]
+}
+
+function budgetAbgelaufen(start: number): boolean {
+  return Date.now() - start > DISCOVERY_BUDGET_MS
 }
 
 export async function ladeMotleyFoolTranskriptHistorie(
@@ -509,29 +527,30 @@ export async function ladeMotleyFoolTranskriptHistorie(
   firmenname?: string | null,
   max = 8,
 ): Promise<FoolTranscript[]> {
+  const start = Date.now()
   const tickers = normalisiereFoolTicker(ticker)
   if (tickers.length === 0) return []
 
   const firmSlugs = firmSlugsFuerTicker(ticker, firmenname ?? null)
 
-  const [ddg, bing, yahoo, finnhub, raster] = await Promise.all([
+  const [ddg, bing, yahoo, finnhub] = await Promise.all([
     kandidatenViaDuckDuckGo(ticker, firmenname ?? null),
     kandidatenViaBing(ticker, firmenname ?? null),
     kandidatenViaYahoo(tickers, firmSlugs),
     kandidatenViaFinnhubKalender(ticker, firmSlugs, tickers),
-    kandidatenViaQuartalsRaster(tickers, firmSlugs),
   ])
 
   let kandidaten = [...new Set([...ddg, ...bing, ...yahoo, ...finnhub])]
 
-  const zuPruefen = [...new Set([...yahoo, ...finnhub, ...raster])]
-  if (kandidaten.length < max || zuPruefen.length > 0) {
+  if (kandidaten.length < max && !budgetAbgelaufen(start)) {
+    const raster = await kandidatenViaQuartalsRaster(tickers, firmSlugs)
+    const zuPruefen = [...new Set([...yahoo, ...finnhub, ...raster])].slice(0, MAX_URL_KANDIDATEN * 2)
     const existierend = await filterExistierendeUrls(zuPruefen, tickers)
     kandidaten = [...new Set([...kandidaten, ...existierend])]
   }
 
-  if (kandidaten.length < max) {
-    const archiv = await kandidatenViaArchiv(tickers, max + 4)
+  if (kandidaten.length < max && !budgetAbgelaufen(start)) {
+    const archiv = await kandidatenViaArchiv(tickers, max + 2)
     kandidaten = [...new Set([...kandidaten, ...archiv])]
   }
 
@@ -539,7 +558,7 @@ export async function ladeMotleyFoolTranskriptHistorie(
   const seen = new Set<string>()
 
   for (const url of kandidaten) {
-    if (out.length >= max) break
+    if (out.length >= max || budgetAbgelaufen(start)) break
     const key = url.split('?')[0]
     if (seen.has(key)) continue
     seen.add(key)

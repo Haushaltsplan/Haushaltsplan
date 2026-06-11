@@ -227,7 +227,7 @@ export function PaFundamentalEarningsCall({
         <PaCard variant="glass" className="p-10 text-center">
           <div className="mx-auto mb-3 h-7 w-7 animate-spin rounded-full border-2 border-zinc-700 border-t-teal-400" />
           <p className="text-sm text-zinc-400">Transkripte werden gesucht …</p>
-          <p className="mt-1 text-xs text-zinc-600">Motley Fool · IR · SEC</p>
+          <p className="mt-1 text-xs text-zinc-600">SEC · Motley Fool · Finnhub · parallel</p>
         </PaCard>
       ) : null}
 

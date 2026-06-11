@@ -155,7 +155,9 @@ export async function ladeEarningsCallClient(
 ): Promise<EarningsCallPaket> {
   const prevOk = prev && gleichesUnternehmen(prev, anfrage) ? prev : null
 
-  const res = await fetch('/api/portfolio-analyse/earnings-call', {
+  let res: Response
+  try {
+    res = await fetch('/api/portfolio-analyse/earnings-call', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -166,7 +168,14 @@ export async function ladeEarningsCallClient(
       quartalId: anfrage.quartalId,
       forceKi: anfrage.forceKi,
     }),
-  })
+    signal: AbortSignal.timeout(120_000),
+    })
+  } catch (e) {
+    if (e instanceof Error && e.name === 'TimeoutError') {
+      throw new Error('Zeitüberschreitung — Transkript-Suche dauert zu lange. Bitte erneut versuchen.')
+    }
+    throw e
+  }
   const j = await parseApiAntwort(res)
   if (!j.ticker && !j.quartale?.length && (j.fehler || !res.ok)) {
     throw new Error(j.fehler ?? j.message ?? 'Earnings Call konnte nicht geladen werden.')

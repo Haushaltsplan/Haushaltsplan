@@ -97,6 +97,79 @@ async function summaryAusPersistenz(
   return hit.zusammenfassung
 }
 
+function mappeRohe(
+  liste: Array<{ titel: string; url: string; callDatum: string | null; text: string }>,
+  quelle: EarningsCallQuelle,
+): RohesTranskript[] {
+  return liste.map((s) => ({
+    titel: s.titel,
+    url: s.url,
+    callDatum: s.callDatum,
+    text: s.text,
+    quelle,
+  }))
+}
+
+function quellePrioritaet(q: EarningsCallQuelle): number {
+  switch (q) {
+    case 'motley_fool':
+      return 3
+    case 'sec_edgar':
+      return 2
+    case 'ir_scrape':
+      return 4
+    case 'finnhub':
+      return 1
+    default:
+      return 0
+  }
+}
+
+function waehleBesteQuelle(kandidaten: RohesTranskript[][]): RohesTranskript[] {
+  const nichtLeer = kandidaten.filter((k) => k.length > 0)
+  if (nichtLeer.length === 0) return []
+  return nichtLeer.sort((a, b) => {
+    if (b.length !== a.length) return b.length - a.length
+    return quellePrioritaet(b[0]!.quelle) - quellePrioritaet(a[0]!.quelle)
+  })[0]!
+}
+
+async function mitZeitlimit<T>(promise: Promise<T>, ms: number, fallback: T): Promise<T> {
+  return Promise.race([
+    promise.catch(() => fallback),
+    new Promise<T>((resolve) => setTimeout(() => resolve(fallback), ms)),
+  ])
+}
+
+async function entdeckeParalleleQuellen(
+  ticker: string,
+  firmenname: string | null | undefined,
+): Promise<RohesTranskript[]> {
+  const [fool, sec, finnhub] = await Promise.all([
+    mitZeitlimit(
+      ladeMotleyFoolTranskriptHistorie(ticker, firmenname, MAX_QUARTALE).then((r) =>
+        mappeRohe(r, 'motley_fool'),
+      ),
+      55_000,
+      [],
+    ),
+    mitZeitlimit(
+      ladeSecEdgarTranskriptHistorie(ticker, MAX_QUARTALE).then((r) => mappeRohe(r, 'sec_edgar')),
+      45_000,
+      [],
+    ),
+    mitZeitlimit(
+      ladeFinnhubLetztesTranskript(ticker).then((r) =>
+        r ? mappeRohe([r], 'finnhub') : [],
+      ),
+      12_000,
+      [],
+    ),
+  ])
+
+  return waehleBesteQuelle([fool, sec, finnhub])
+}
+
 async function entdeckeTranskripte(
   anfrage: EarningsCallAnfrage,
   irUrl: string | null,
@@ -111,82 +184,26 @@ async function entdeckeTranskripte(
     try {
       const ir = await ladeIrTranskriptHistorie(anfrage.isin ?? '', irUrl, MAX_QUARTALE)
       if (ir.length > 0) {
-        return ir.map((s) => ({
-          titel: s.titel,
-          url: s.url,
-          callDatum: s.callDatum,
-          text: s.text,
-          quelle: 'ir_scrape' as const,
-        }))
+        return mappeRohe(ir, 'ir_scrape')
       }
     } catch (irErr) {
       if (!isUsIsin) {
         const finnhub = await ladeFinnhubLetztesTranskript(ticker)
         if (finnhub) {
-          return [
-            {
-              titel: finnhub.titel,
-              url: finnhub.url,
-              callDatum: finnhub.callDatum,
-              text: finnhub.text,
-              quelle: 'finnhub',
-            },
-          ]
+          return mappeRohe([finnhub], 'finnhub')
         }
         throw irErr
       }
     }
   }
 
-  // 2) Motley Fool — kostenlose Call-Transkripte (US & große internationale Titel)
-  try {
-    const fool = await ladeMotleyFoolTranskriptHistorie(ticker, anfrage.firmenname, MAX_QUARTALE)
-    if (fool.length > 0) {
-      return fool.map((s) => ({
-        titel: s.titel,
-        url: s.url,
-        callDatum: s.callDatum,
-        text: s.text,
-        quelle: 'motley_fool' as const,
-      }))
-    }
-  } catch {
-    /* SEC / Finnhub */
-  }
-
-  // 3) SEC — nur echte Call-Transkripte (Ex. 99.2)
-  let sec: Awaited<ReturnType<typeof ladeSecEdgarTranskriptHistorie>> = []
-  try {
-    sec = await ladeSecEdgarTranskriptHistorie(ticker, MAX_QUARTALE)
-  } catch {
-    /* Finnhub */
-  }
-  if (sec.length > 0) {
-    return sec.map((s) => ({
-      titel: s.titel,
-      url: s.url,
-      callDatum: s.callDatum,
-      text: s.text,
-      quelle: 'sec_edgar' as const,
-    }))
-  }
-
-  const finnhub = await ladeFinnhubLetztesTranskript(ticker)
-  if (finnhub) {
-    return [
-      {
-        titel: finnhub.titel,
-        url: finnhub.url,
-        callDatum: finnhub.callDatum,
-        text: finnhub.text,
-        quelle: 'finnhub',
-      },
-    ]
-  }
+  // 2) Motley Fool · SEC · Finnhub parallel (nicht nacheinander — spart Minuten)
+  const parallel = await entdeckeParalleleQuellen(ticker, anfrage.firmenname)
+  if (parallel.length > 0) return parallel
 
   if (isUsIsin) {
     throw new Error(
-      `Kein Earnings-Call-Transkript (Conference Call inkl. Q&A) für ${ticker} gefunden. Motley Fool, SEC und IR-Seite wurden geprüft.`,
+      `Kein Earnings-Call-Transkript (Conference Call inkl. Q&A) für ${ticker} gefunden. Motley Fool, SEC und Finnhub wurden geprüft.`,
     )
   }
 
@@ -301,9 +318,6 @@ function bauePaket(
 
 export async function ladeEarningsCallZusammenfassung(anfrage: EarningsCallAnfrage): Promise<EarningsCallPaket> {
   const ticker = tickerKey(anfrage.ticker)
-  const irUrl = anfrage.isin?.trim()
-    ? await ladeInvestorRelationsUrl(anfrage.isin, anfrage.firmenname ?? '', ticker).catch(() => null)
-    : null
 
   if (!ticker) {
     return {
@@ -314,18 +328,20 @@ export async function ladeEarningsCallZusammenfassung(anfrage: EarningsCallAnfra
       geladenAm: new Date().toISOString(),
       ausCache: false,
       fehler: 'Ticker fehlt.',
-      investorRelationsUrl: irUrl,
+      investorRelationsUrl: null,
     }
   }
 
   let cache = getDiscovery(ticker, anfrage.force)
   const hadMemoryCache = Boolean(cache)
   let fromFileCache = false
+  let persistedIrUrl: string | null = null
   const staleHit = discoveryCache.get(ticker)
 
   if (!cache && !anfrage.force) {
     const persisted = await ladeUnternehmenCache(ticker)
     if (persisted?.roh.length) {
+      persistedIrUrl = persisted.investorRelationsUrl
       const summaries = new Map<string, string>()
       for (const [quartalId, row] of Object.entries(persisted.summaries)) {
         summaries.set(quartalId, row.zusammenfassung)
@@ -338,6 +354,14 @@ export async function ladeEarningsCallZusammenfassung(anfrage: EarningsCallAnfra
       discoveryCache.set(ticker, cache)
       fromFileCache = true
     }
+  }
+
+  let irUrl = persistedIrUrl
+  const brauchtIrLookup = !cache || anfrage.force
+  if (brauchtIrLookup && anfrage.isin?.trim()) {
+    irUrl = await ladeInvestorRelationsUrl(anfrage.isin, anfrage.firmenname ?? '', ticker).catch(
+      () => persistedIrUrl,
+    )
   }
 
   if (!cache) {
