@@ -73,6 +73,33 @@ const BEKANNTE_FOOL_SLUGS: Record<string, string[]> = {
   V: ['visa'],
   WMT: ['walmart'],
   XOM: ['exxon', 'exxon-mobil'],
+  SPGI: ['sp-global', 's-p-global'],
+  MSCI: ['msci'],
+  RMD: ['resmed'],
+  ODFL: ['old-dominion', 'old-dominion-freight-line'],
+  WM: ['waste-management'],
+  UNP: ['union-pacific'],
+  ZTS: ['zoetis'],
+  NOW: ['servicenow'],
+  MCD: ['mcdonalds', 'mcdonald'],
+  BCPC: ['balchem'],
+  LIN: ['linde'],
+  DDOG: ['datadog'],
+  VEEV: ['veeva', 'veeva-systems'],
+  KNSL: ['kinsale', 'kinsale-capital'],
+  GGG: ['graco'],
+  ANET: ['arista', 'arista-networks'],
+  ATD: ['alimentation-couche-tard', 'couche-tard'],
+  ROL: ['rollins'],
+  CTAS: ['cintas'],
+  ASML: ['asml', 'asml-holding', 'asml-holding-nv'],
+  MC: ['lvmh'],
+  RMS: ['hermes'],
+  WKL: ['wolters-kluwer'],
+  STMN: ['straumann', 'straumann-holding'],
+  SIKA: ['sika'],
+  HLMA: ['halma'],
+  MUM: ['mensch-und-maschine', 'mensch-und-maschine-software'],
 }
 
 function sleep(ms: number): Promise<void> {
@@ -82,10 +109,9 @@ function sleep(ms: number): Promise<void> {
 function normalisiereFoolTicker(ticker: string): string[] {
   const t = ticker.trim().toUpperCase().replace(/[^A-Z0-9.-]/g, '')
   if (!t) return []
-  const variants = [t]
-  if (t.includes('.')) variants.push(t.split('.')[0])
-  if (t === 'GOOG') variants.push('GOOGL')
-  if (t === 'GOOGL') variants.push('GOOG')
+  const base = t.includes('.') ? t.split('.')[0] : t
+  const variants = [base, t]
+  if (base === 'GOOG' || base === 'GOOGL') variants.push('GOOG', 'GOOGL')
   return [...new Set(variants.filter(Boolean))]
 }
 
@@ -201,7 +227,10 @@ function titelAusSlug(slug: string): string {
     .replace(/\bq([1-4])\b/i, 'Q$1')
 }
 
-async function foolFetch(url: string): Promise<{ ok: boolean; html: string; status: number }> {
+async function foolFetch(
+  url: string,
+  onBlockiert?: () => void,
+): Promise<{ ok: boolean; html: string; status: number }> {
   const abs = url.startsWith('http') ? url : `${FOOL_ORIGIN}${url}`
   try {
     const res = await fetch(abs, {
@@ -209,7 +238,12 @@ async function foolFetch(url: string): Promise<{ ok: boolean; html: string; stat
       cache: 'no-store',
       signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
     })
-    return { ok: res.ok, html: await res.text(), status: res.status }
+    if (res.status === 429) meldeFoolBlockiert(onBlockiert)
+    const html = await res.text()
+    if (res.status === 429 || /captcha|access denied|please verify/i.test(html.slice(0, 5000))) {
+      meldeFoolBlockiert(onBlockiert)
+    }
+    return { ok: res.ok, html, status: res.status }
   } catch {
     return { ok: false, html: '', status: 0 }
   }
@@ -272,16 +306,32 @@ function datumPfade(isoDate: string): string[] {
   return [...new Set(out)]
 }
 
-function firmSlugsFuerTicker(ticker: string, firmenname: string | null): string[] {
+function firmSlugsFuerTicker(
+  ticker: string,
+  firmenname: string | null,
+  extraSlugs: string[] = [],
+): string[] {
   const tickers = normalisiereFoolTicker(ticker)
   const slugs = new Set<string>()
   for (const t of tickers) {
     for (const s of BEKANNTE_FOOL_SLUGS[t] ?? []) slugs.add(s)
   }
+  for (const s of extraSlugs) {
+    if (s.trim()) slugs.add(s.trim().toLowerCase())
+  }
   if (firmenname?.trim()) {
     for (const s of firmennameZuSlug(firmenname)) slugs.add(s)
   }
   return [...slugs]
+}
+
+let foolRateLimitErkannt = false
+
+function meldeFoolBlockiert(onBlockiert?: () => void): void {
+  if (!foolRateLimitErkannt) {
+    foolRateLimitErkannt = true
+    onBlockiert?.()
+  }
 }
 
 async function kandidatenViaBing(ticker: string, firmenname: string | null): Promise<string[]> {
@@ -468,17 +518,18 @@ async function kandidatenViaArchiv(
   tickers: string[],
   firmSlugs: string[],
   maxLinks: number,
+  onBlockiert?: () => void,
 ): Promise<string[]> {
   const gefunden: string[] = []
 
   for (let seite = 1; seite <= MAX_ARCHIVE_PAGES; seite++) {
-    if (gefunden.length >= maxLinks) break
+    if (gefunden.length >= maxLinks || foolRateLimitErkannt) break
     if (seite > 1) await sleep(ARCHIVE_PAGE_DELAY_MS)
 
     const pfad =
       seite === 1 ? '/earnings-call-transcripts/' : `/earnings-call-transcripts/page/${seite}/`
-    const { ok, html, status } = await foolFetch(pfad)
-    if (status === 429 || !ok) break
+    const { ok, html, status } = await foolFetch(pfad, onBlockiert)
+    if (status === 429 || foolRateLimitErkannt || !ok) break
 
     const links = extrahiereArchiveLinks(html)
     if (links.length === 0) break
@@ -500,6 +551,7 @@ async function ladeDirektAusQuartalsRaster(
   firmSlugs: string[],
   max: number,
   start: number,
+  onBlockiert?: () => void,
 ): Promise<FoolTranscript[]> {
   if (firmSlugs.length === 0 || tickers.length === 0) return []
   const sym = tickers[0]!
@@ -519,11 +571,12 @@ async function ladeDirektAusQuartalsRaster(
           const key = url.split('?')[0]
           if (seen.has(key)) continue
           seen.add(key)
-          const art = await ladeFoolArtikel(key)
+          const art = await ladeFoolArtikel(key, onBlockiert)
           if (art) {
             out.push(art)
             break
           }
+          if (foolRateLimitErkannt) return out
         }
       }
     }
@@ -558,10 +611,11 @@ function parseFoolArtikel(html: string, url: string): { titel: string; callDatum
   return { titel, callDatum, text }
 }
 
-async function ladeFoolArtikel(url: string): Promise<FoolTranscript | null> {
+async function ladeFoolArtikel(url: string, onBlockiert?: () => void): Promise<FoolTranscript | null> {
+  if (foolRateLimitErkannt) return null
   await sleep(ARTICLE_DELAY_MS)
-  const { ok, html, status } = await foolFetch(url)
-  if (!ok || status === 429) return null
+  const { ok, html, status } = await foolFetch(url, onBlockiert)
+  if (!ok || status === 429 || foolRateLimitErkannt) return null
   const parsed = parseFoolArtikel(html, url)
   if (!parsed) return null
   return { url, ...parsed }
@@ -587,16 +641,24 @@ function budgetAbgelaufen(start: number): boolean {
   return Date.now() - start > DISCOVERY_BUDGET_MS
 }
 
+export type FoolLadeOpts = {
+  extraSlugs?: string[]
+  onBlockiert?: () => void
+}
+
 export async function ladeMotleyFoolTranskriptHistorie(
   ticker: string,
   firmenname?: string | null,
   max = 8,
+  opts?: FoolLadeOpts,
 ): Promise<FoolTranscript[]> {
+  foolRateLimitErkannt = false
   const start = Date.now()
   const tickers = normalisiereFoolTicker(ticker)
   if (tickers.length === 0) return []
 
-  const firmSlugs = firmSlugsFuerTicker(ticker, firmenname ?? null)
+  const firmSlugs = firmSlugsFuerTicker(ticker, firmenname ?? null, opts?.extraSlugs ?? [])
+  const onBlockiert = opts?.onBlockiert
 
   const out: FoolTranscript[] = []
   const seen = new Set<string>()
@@ -610,10 +672,10 @@ export async function ladeMotleyFoolTranskriptHistorie(
   }
 
   // Phase A: Direkt-URLs (Mastercard, Apple, … — typisches Fool-Schema)
-  for (const art of await ladeDirektAusQuartalsRaster(tickers, firmSlugs, max, start)) {
+  for (const art of await ladeDirektAusQuartalsRaster(tickers, firmSlugs, max, start, onBlockiert)) {
     push(art)
   }
-  if (out.length >= max) {
+  if (out.length >= max || foolRateLimitErkannt) {
     out.sort((a, b) => (b.callDatum ?? '').localeCompare(a.callDatum ?? ''))
     return out.slice(0, max)
   }
@@ -628,29 +690,29 @@ export async function ladeMotleyFoolTranskriptHistorie(
   let kandidaten = [...new Set([...ddg, ...bing, ...yahoo, ...finnhub])]
 
   for (const url of kandidaten) {
-    if (out.length >= max || budgetAbgelaufen(start)) break
-    push(await ladeFoolArtikel(url.split('?')[0]))
+    if (out.length >= max || budgetAbgelaufen(start) || foolRateLimitErkannt) break
+    push(await ladeFoolArtikel(url.split('?')[0], onBlockiert))
   }
-  if (out.length >= max) {
+  if (out.length >= max || foolRateLimitErkannt) {
     out.sort((a, b) => (b.callDatum ?? '').localeCompare(a.callDatum ?? ''))
     return out.slice(0, max)
   }
 
-  if (!budgetAbgelaufen(start)) {
+  if (!budgetAbgelaufen(start) && !foolRateLimitErkannt) {
     const raster = await kandidatenViaQuartalsRaster(tickers, firmSlugs)
     const zuPruefen = [...new Set([...yahoo, ...finnhub, ...raster])].slice(0, MAX_URL_KANDIDATEN * 2)
     const existierend = await filterExistierendeUrls(zuPruefen, tickers, firmSlugs)
     kandidaten = [...new Set([...kandidaten, ...existierend])]
   }
 
-  if (out.length < max && !budgetAbgelaufen(start)) {
-    const archiv = await kandidatenViaArchiv(tickers, firmSlugs, max + 4)
+  if (out.length < max && !budgetAbgelaufen(start) && !foolRateLimitErkannt) {
+    const archiv = await kandidatenViaArchiv(tickers, firmSlugs, max + 4, onBlockiert)
     kandidaten = [...new Set([...kandidaten, ...archiv])]
   }
 
   for (const url of kandidaten) {
-    if (out.length >= max || budgetAbgelaufen(start)) break
-    push(await ladeFoolArtikel(url.split('?')[0]))
+    if (out.length >= max || budgetAbgelaufen(start) || foolRateLimitErkannt) break
+    push(await ladeFoolArtikel(url.split('?')[0], onBlockiert))
   }
 
   out.sort((a, b) => (b.callDatum ?? '').localeCompare(a.callDatum ?? ''))

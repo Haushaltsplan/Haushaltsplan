@@ -10,30 +10,30 @@ export const pageChromeCompactClass =
 
 /** Obere Titelzeile / Hero (gläserner Zinc-Kasten). */
 export const pageHeroClass =
-  'flex flex-col gap-4 rounded-2xl border border-zinc-700/35 bg-zinc-950/55 px-5 py-4 shadow-xl shadow-black/20 ring-1 ring-white/[0.04] backdrop-blur-xl sm:flex-row sm:items-center sm:justify-between sm:gap-8'
+  'flex flex-col gap-4 rounded-2xl border border-[var(--app-border-strong)] bg-[var(--app-surface)] px-5 py-4 shadow-xl shadow-[var(--app-shadow)] ring-1 ring-[var(--app-ring)] backdrop-blur-xl sm:flex-row sm:items-center sm:justify-between sm:gap-8'
 
 export const pageHeroCompactClass =
-  'flex flex-col gap-2 rounded-2xl border border-zinc-700/35 bg-zinc-950/55 px-4 py-3 shadow-xl shadow-black/20 ring-1 ring-white/[0.04] backdrop-blur-xl sm:flex-row sm:items-center sm:justify-between sm:gap-4'
+  'flex flex-col gap-2 rounded-2xl border border-[var(--app-border-strong)] bg-[var(--app-surface)] px-4 py-3 shadow-xl shadow-[var(--app-shadow)] ring-1 ring-[var(--app-ring)] backdrop-blur-xl sm:flex-row sm:items-center sm:justify-between sm:gap-4'
 
 /** Sektionskarte mit optionalem Kopf-Streifen (Investments „Markt“ / „Research“). */
 export const pageSectionShellClass =
-  'overflow-hidden rounded-2xl border border-zinc-700/35 bg-zinc-950/50 shadow-xl shadow-black/25 ring-1 ring-white/[0.04] backdrop-blur-xl'
+  'overflow-hidden rounded-2xl border border-[var(--app-border-strong)] bg-[var(--app-surface)] shadow-xl shadow-[var(--app-shadow)] ring-1 ring-[var(--app-ring)] backdrop-blur-xl'
 
-export const pageSectionHeaderClass = 'border-b border-zinc-800/70 px-5 py-4 sm:px-6'
+export const pageSectionHeaderClass = 'border-b border-[var(--app-border)] px-5 py-4 sm:px-6'
 
-export const pageSectionHeaderCompactClass = 'border-b border-zinc-800/70 px-4 py-2 sm:px-5'
+export const pageSectionHeaderCompactClass = 'border-b border-[var(--app-border)] px-4 py-2 sm:px-5'
 
-export const pageSectionTitleClass = 'text-lg font-semibold tracking-tight text-white'
+export const pageSectionTitleClass = 'text-lg font-semibold tracking-tight text-[var(--app-text)]'
 
-export const pageSectionTitleCompactClass = 'text-base font-semibold tracking-tight text-white'
+export const pageSectionTitleCompactClass = 'text-base font-semibold tracking-tight text-[var(--app-text)]'
 
 export const pageSectionPanelClass = 'px-5 py-5 sm:px-6'
 
 export const pageSectionPanelCompactClass = 'px-4 py-3 sm:px-5 sm:py-4'
 
-export const pageEyebrowClass = 'text-xs font-medium uppercase tracking-wide text-zinc-400'
+export const pageEyebrowClass = 'text-xs font-medium uppercase tracking-wide text-[var(--app-text-muted)]'
 
-export const pageTitleClass = 'text-xl font-semibold tracking-tight text-white sm:text-2xl'
+export const pageTitleClass = 'text-xl font-semibold tracking-tight text-[var(--app-text)] sm:text-2xl'
 
 export function PageChrome({
   children,
@@ -65,13 +65,22 @@ export function PageHero({
   const hero = density === 'compact' ? pageHeroCompactClass : pageHeroClass
   const titleClass =
     density === 'compact'
-      ? 'mt-0.5 text-lg font-semibold tracking-tight text-white sm:text-xl'
-      : 'mt-1 text-xl font-semibold tracking-tight text-white sm:text-2xl'
-  const descClass = density === 'compact' ? 'mt-1 text-xs leading-snug text-zinc-400' : 'mt-2 text-sm leading-relaxed text-zinc-400'
+      ? 'mt-0.5 text-lg font-semibold tracking-tight text-[var(--app-text)] sm:text-xl'
+      : 'mt-1 text-xl font-semibold tracking-tight text-[var(--app-text)] sm:text-2xl'
+  const descClass =
+    density === 'compact'
+      ? 'mt-1 text-xs leading-snug text-[var(--app-text-muted)]'
+      : 'mt-2 text-sm leading-relaxed text-[var(--app-text-muted)]'
   return (
     <header className={hero}>
       <div className="min-w-0">
-        <p className={density === 'compact' ? 'text-[11px] font-medium uppercase tracking-wide text-zinc-500' : pageEyebrowClass}>
+        <p
+          className={
+            density === 'compact'
+              ? 'text-[11px] font-medium uppercase tracking-wide text-[var(--app-text-muted)]'
+              : pageEyebrowClass
+          }
+        >
           {eyebrow}
         </p>
         <div className={titleClass}>{title}</div>
@@ -102,7 +111,7 @@ export function PageSection({
           {title}
         </h2>
       </div>
-      <div className="divide-y divide-zinc-800/70">{children}</div>
+      <div className="divide-y divide-[var(--app-border)]">{children}</div>
     </section>
   )
 }

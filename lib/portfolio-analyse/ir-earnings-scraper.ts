@@ -120,7 +120,7 @@ export async function ladeIrTranskriptHistorie(
 ): Promise<IrRohesTranskript[]> {
   const quelle = baueQuelle(isin, fallbackIrUrl)
   if (!quelle.listenUrls.length) {
-    throw new Error('Keine IR-Earnings-Seite für dieses Unternehmen konfiguriert.')
+    return []
   }
 
   const q4 = await ladeQ4TranskriptHistorie(quelle.listenUrls, quelle.q4BasisUrls ?? [], max)
@@ -153,8 +153,5 @@ export async function ladeIrTranskriptHistorie(
     }
   }
 
-  throw new Error(
-    'Kein Earnings-Call-Transkript (Conference Call inkl. Q&A) auf der IR-Website gefunden. ' +
-      'Nicht jede Firma veröffentlicht das volle Transkript online (z. B. Mastercard oft nur Webcast).',
-  )
+  return []
 }

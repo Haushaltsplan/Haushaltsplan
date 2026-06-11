@@ -1,6 +1,7 @@
 /** IR-Seiten für Earnings-Call-Transkripte (Conference Call + Q&A). */
 
 import { istTranskriptLinkStreng } from '@/lib/portfolio-analyse/earnings-call-transcript-heuristik'
+import { earningsCallKenntnis } from '@/lib/portfolio-analyse/earnings-call-kenntnisse'
 
 export type IrEarningsQuelle = {
   listenUrls: string[]
@@ -28,7 +29,7 @@ export const IR_EARNINGS_NACH_ISIN: Record<string, IrEarningsQuelle> = {
   CH0418792922: {
     listenUrls: ['https://www.sika.com/en/investors/financial-reports.html'],
   },
-  CH0012221716: {
+  CH1175448666: {
     listenUrls: ['https://www.straumann.com/group/en/investors/results-and-presentations.html'],
   },
   GB0004052071: {
@@ -43,6 +44,9 @@ export const IR_EARNINGS_NACH_ISIN: Record<string, IrEarningsQuelle> = {
   DE000A0BVU28: {
     listenUrls: ['https://www.usu.com/de/unternehmen/investor-relations/publikationen'],
   },
+  CA01626P1484: {
+    listenUrls: ['https://corpo.couche-tard.com/en/financial-reports'],
+  },
   CA15135U1093: {
     listenUrls: ['https://corpo.couche-tard.com/en/financial-reports'],
   },
@@ -50,10 +54,6 @@ export const IR_EARNINGS_NACH_ISIN: Record<string, IrEarningsQuelle> = {
     listenUrls: ['https://corpo.couche-tard.com/en/financial-reports'],
   },
   US02079K1079: {
-    listenUrls: ['https://abc.xyz/investor/earnings/'],
-    q4BasisUrls: ['https://abc.xyz'],
-  },
-  US02079K3059: {
     listenUrls: ['https://abc.xyz/investor/earnings/'],
     q4BasisUrls: ['https://abc.xyz'],
   },
@@ -65,6 +65,11 @@ export const IR_EARNINGS_NACH_ISIN: Record<string, IrEarningsQuelle> = {
     q4BasisUrls: ['https://investor.mastercard.com'],
     erwarteVollesTranskript: false,
   },
+  US92826C8394: {
+    listenUrls: ['https://investor.visa.com/financial-information/quarterly-earnings/default.aspx'],
+    q4BasisUrls: ['https://investor.visa.com'],
+    erwarteVollesTranskript: false,
+  },
   US5949181045: {
     listenUrls: ['https://www.microsoft.com/en-us/investor/earnings'],
     q4BasisUrls: ['https://microsoft.com', 'https://www.microsoft.com'],
@@ -72,11 +77,82 @@ export const IR_EARNINGS_NACH_ISIN: Record<string, IrEarningsQuelle> = {
   US81762P1021: {
     listenUrls: ['https://investors.servicenow.com/financial-information/quarterly-results'],
   },
+  US78409V1044: {
+    listenUrls: ['https://investor.spglobal.com/financial-reports/quarterly-earnings'],
+  },
+  US91324P1021: {
+    listenUrls: ['https://www.unitedhealthgroup.com/investors/financial-reports.html'],
+  },
+  US8835561023: {
+    listenUrls: ['https://ir.thermofisher.com/financials/quarterly-results/default.aspx'],
+  },
+  US55354G1004: {
+    listenUrls: ['https://ir.msci.com/financials/quarterly-results'],
+  },
+  US7611521078: {
+    listenUrls: ['https://investor.resmed.com/financial-information/quarterly-results'],
+  },
+  US6795801009: {
+    listenUrls: ['https://ir.odfl.com/financial-information/quarterly-results'],
+  },
+  US94106L1098: {
+    listenUrls: ['https://investors.wm.com/financial-information/quarterly-results'],
+  },
+  US9078181081: {
+    listenUrls: ['https://investor.unionpacific.com/financial-information/quarterly-results'],
+  },
+  US98978V1035: {
+    listenUrls: ['https://investor.zoetis.com/financials/quarterly-results'],
+  },
+  US5801351017: {
+    listenUrls: ['https://corporate.mcdonalds.com/corpmcd/investors/financial-information.html'],
+  },
+  US0576652004: {
+    listenUrls: ['https://ir.balchem.com/financial-information/quarterly-results'],
+  },
+  IE000S9YS762: {
+    listenUrls: ['https://www.linde.com/investors/financial-reports'],
+  },
+  US23804L1035: {
+    listenUrls: ['https://investors.datadoghq.com/financial-information/quarterly-results'],
+  },
+  US49714P1084: {
+    listenUrls: ['https://investors.kinsalecapitalgroup.com/financial-information/quarterly-results'],
+  },
+  US4370761029: {
+    listenUrls: ['https://ir.homedepot.com/financial-reports/quarterly-earnings'],
+  },
+  US9224751084: {
+    listenUrls: ['https://ir.veeva.com/financial-information/quarterly-results'],
+  },
+  US3841091040: {
+    listenUrls: ['https://investors.graco.com/financial-information/quarterly-results'],
+  },
+  US0404132054: {
+    listenUrls: ['https://investors.arista.com/financial-information/quarterly-results'],
+  },
+  US7757111049: {
+    listenUrls: ['https://investors.rollins.com/financial-information/quarterly-results'],
+  },
+  US1729081059: {
+    listenUrls: ['https://investors.cintas.com/financial-information/quarterly-results'],
+  },
+  US91680M1071: {
+    listenUrls: ['https://investors.upstart.com/financial-information/quarterly-results'],
+  },
 }
 
 export function irEarningsQuelleFuerIsin(isin: string | null | undefined): IrEarningsQuelle | null {
   if (!isin?.trim()) return null
-  return IR_EARNINGS_NACH_ISIN[isin.trim().toUpperCase()] ?? null
+  const key = isin.trim().toUpperCase()
+  const hard = IR_EARNINGS_NACH_ISIN[key]
+  if (hard) return hard
+
+  const meta = earningsCallKenntnis(key)
+  if (meta?.irNurWebcast) {
+    return { listenUrls: [], erwarteVollesTranskript: false }
+  }
+  return null
 }
 
 export function istTranskriptLink(text: string, href: string): boolean {

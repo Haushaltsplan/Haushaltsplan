@@ -17,10 +17,10 @@ export function PaCard({
 }) {
   const base =
     variant === 'elevated'
-      ? 'rounded-2xl border border-white/[0.06] bg-gradient-to-b from-zinc-900/90 to-zinc-950/95 shadow-2xl shadow-black/40 ring-1 ring-white/[0.04]'
+      ? 'rounded-2xl border border-[var(--app-border)] bg-[var(--app-surface)] shadow-2xl shadow-[var(--app-shadow)] ring-1 ring-[var(--app-ring)]'
       : variant === 'glass'
-        ? 'rounded-2xl border border-white/[0.05] bg-zinc-900/40 backdrop-blur-md ring-1 ring-white/[0.03]'
-        : 'rounded-2xl border border-white/[0.06] bg-zinc-900/50 ring-1 ring-white/[0.03]'
+        ? 'rounded-2xl border border-[var(--app-border)] bg-[var(--app-surface-muted)] backdrop-blur-md ring-1 ring-[var(--app-ring)]'
+        : 'rounded-2xl border border-[var(--app-border)] bg-[var(--app-surface)] ring-1 ring-[var(--app-ring)]'
   return <section className={`${base} ${className}`}>{children}</section>
 }
 
@@ -44,7 +44,7 @@ export function PaIconTabs<T extends string>({
 }) {
   return (
     <nav
-      className={`${scrollTabsClass} rounded-xl border border-white/[0.05] bg-zinc-950/60 p-1 ${className}`}
+      className={`${scrollTabsClass} rounded-xl border border-[var(--app-border)] bg-[var(--app-surface-muted)] p-1 ${className}`}
     >
       <div className="flex w-max min-w-full flex-nowrap gap-0.5 sm:w-full sm:flex-wrap">
         {tabs.map((t) => {
@@ -56,8 +56,8 @@ export function PaIconTabs<T extends string>({
               onClick={() => onChange(t.id)}
               className={`shrink-0 whitespace-nowrap rounded-lg px-3 py-2 text-xs font-medium transition-all sm:px-3.5 sm:text-sm ${
                 on
-                  ? 'bg-zinc-800/90 text-teal-300 shadow-sm ring-1 ring-white/[0.06]'
-                  : 'text-zinc-500 hover:text-zinc-300'
+                  ? 'bg-[var(--app-surface-hover)] text-teal-600 shadow-sm ring-1 ring-[var(--app-ring)] dark:text-teal-300'
+                  : 'text-[var(--app-text-muted)] hover:text-[var(--app-text)]'
               }`}
             >
               {t.icon}

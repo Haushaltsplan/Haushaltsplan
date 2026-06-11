@@ -1,11 +1,44 @@
 @import "tailwindcss";
 
+@custom-variant dark (&:where(.dark, .dark *));
+
 :root {
+  color-scheme: light;
+  --foreground-rgb: 30, 41, 59;
+  --background-start-rgb: 244, 245, 247;
+  --background-end-rgb: 255, 255, 255;
+  --app-nav-offset: calc(env(safe-area-inset-top, 0px) + 4rem);
+
+  --app-bg: #f4f5f7;
+  --app-sidebar: #ffffff;
+  --app-surface: rgb(255 255 255 / 0.92);
+  --app-surface-muted: rgb(248 250 252 / 0.95);
+  --app-surface-hover: rgb(241 245 249);
+  --app-border: rgb(15 23 42 / 0.08);
+  --app-border-strong: rgb(15 23 42 / 0.12);
+  --app-text: #1e293b;
+  --app-text-muted: #64748b;
+  --app-shadow: rgb(15 23 42 / 0.06);
+  --app-ring: rgb(15 23 42 / 0.04);
+}
+
+.dark {
+  color-scheme: dark;
   --foreground-rgb: 226, 232, 240;
   --background-start-rgb: 2, 6, 23;
   --background-end-rgb: 15, 23, 42;
-  /* Oben: Safe-Area + fixe Nav-Höhe (4rem) — für mobiles Menü-Panel */
-  --app-nav-offset: calc(env(safe-area-inset-top, 0px) + 4rem);
+
+  --app-bg: #12141c;
+  --app-sidebar: #0c0e14;
+  --app-surface: rgb(9 9 11 / 0.55);
+  --app-surface-muted: rgb(24 24 27 / 0.5);
+  --app-surface-hover: rgb(39 39 42 / 0.6);
+  --app-border: rgb(255 255 255 / 0.08);
+  --app-border-strong: rgb(63 63 70 / 0.35);
+  --app-text: #f8fafc;
+  --app-text-muted: #a1a1aa;
+  --app-shadow: rgb(0 0 0 / 0.25);
+  --app-ring: rgb(255 255 255 / 0.04);
 }
 
 html {
@@ -19,12 +52,90 @@ body {
   margin: 0;
   padding: 0;
   overflow-x: clip;
-  /* Seiten sicher — verhindert „Überstehen“ unter Punch-Hole / Home-Indikator */
   padding-left: env(safe-area-inset-left, 0px);
   padding-right: env(safe-area-inset-right, 0px);
 }
 
-/* <details> mit eigenem Pfeil (chevron) im summary */
+/* Helle Oberflächen für häufige Dark-Only-Klassen */
+html:not(.dark) .text-white {
+  color: var(--app-text);
+}
+
+html:not(.dark) .text-zinc-300,
+html:not(.dark) .text-zinc-400,
+html:not(.dark) .text-slate-300,
+html:not(.dark) .text-slate-400 {
+  color: var(--app-text-muted);
+}
+
+html:not(.dark) .text-zinc-500,
+html:not(.dark) .text-zinc-600,
+html:not(.dark) .text-slate-500 {
+  color: #94a3b8;
+}
+
+html:not(.dark) .border-zinc-700\/35,
+html:not(.dark) .border-zinc-700\/40,
+html:not(.dark) .border-zinc-800\/50,
+html:not(.dark) .border-zinc-800\/70,
+html:not(.dark) .border-zinc-800\/80,
+html:not(.dark) .border-zinc-800\/90,
+html:not(.dark) .border-slate-700\/90,
+html:not(.dark) .border-slate-800\/90 {
+  border-color: var(--app-border-strong);
+}
+
+html:not(.dark) .divide-zinc-800\/70 > :not([hidden]) ~ :not([hidden]) {
+  border-color: var(--app-border);
+}
+
+html:not(.dark) .bg-zinc-950\/55,
+html:not(.dark) .bg-zinc-950\/50,
+html:not(.dark) .bg-zinc-950\/40,
+html:not(.dark) .bg-zinc-950\/60,
+html:not(.dark) .bg-zinc-950\/90,
+html:not(.dark) .bg-zinc-900\/30,
+html:not(.dark) .bg-zinc-900\/40,
+html:not(.dark) .bg-zinc-900\/50,
+html:not(.dark) .bg-zinc-900\/60,
+html:not(.dark) .bg-zinc-900\/90,
+html:not(.dark) .bg-zinc-800\/50,
+html:not(.dark) .bg-zinc-800\/90,
+html:not(.dark) .bg-zinc-800\/95,
+html:not(.dark) .bg-slate-800\/80,
+html:not(.dark) .bg-slate-800\/90,
+html:not(.dark) .bg-slate-900\/60 {
+  background-color: var(--app-surface);
+}
+
+html:not(.dark) .bg-black\/20 {
+  background-color: rgb(15 23 42 / 0.04);
+}
+
+html:not(.dark) .shadow-black\/20,
+html:not(.dark) .shadow-black\/25,
+html:not(.dark) .shadow-black\/40 {
+  --tw-shadow-color: var(--app-shadow);
+}
+
+html:not(.dark) .ring-white\/\[0\.03\],
+html:not(.dark) .ring-white\/\[0\.04\],
+html:not(.dark) .ring-white\/\[0\.05\],
+html:not(.dark) .ring-white\/\[0\.06\] {
+  --tw-ring-color: var(--app-ring);
+}
+
+html:not(.dark) .border-white\/\[0\.05\],
+html:not(.dark) .border-white\/\[0\.06\],
+html:not(.dark) .border-white\/10,
+html:not(.dark) .border-white\/\[0\.08\] {
+  border-color: var(--app-border);
+}
+
+html:not(.dark) .bg-white\/\[0\.04\] {
+  background-color: rgb(15 23 42 / 0.03);
+}
+
 details.app-disclosure > summary {
   list-style: none;
 }

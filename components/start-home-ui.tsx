@@ -61,12 +61,12 @@ export function StartHero() {
   const gruß = stunde < 11 ? 'Guten Morgen' : stunde < 18 ? 'Guten Tag' : 'Guten Abend'
 
   return (
-    <header className="relative overflow-hidden rounded-2xl border border-zinc-700/40 bg-gradient-to-br from-zinc-950/90 via-zinc-950/70 to-zinc-900/50 px-5 py-5 shadow-xl shadow-black/25 ring-1 ring-white/[0.05]">
+    <header className="relative overflow-hidden rounded-2xl border border-[var(--app-border-strong)] bg-[var(--app-surface)] px-5 py-5 shadow-xl shadow-[var(--app-shadow)] ring-1 ring-[var(--app-ring)]">
       <div className="pointer-events-none absolute -right-8 -top-10 h-32 w-32 rounded-full bg-teal-500/10 blur-3xl" />
       <div className="pointer-events-none absolute -left-6 bottom-0 h-24 w-24 rounded-full bg-violet-500/10 blur-2xl" />
-      <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-zinc-500">Omnia</p>
-      <h1 className="mt-1 text-xl font-semibold tracking-tight text-white sm:text-2xl">{gruß}</h1>
-      <p className="mt-1 text-sm capitalize text-zinc-400">{heute}</p>
+      <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-[var(--app-text-muted)]">Omnia</p>
+      <h1 className="mt-1 text-xl font-semibold tracking-tight text-[var(--app-text)] sm:text-2xl">{gruß}</h1>
+      <p className="mt-1 text-sm capitalize text-[var(--app-text-muted)]">{heute}</p>
     </header>
   )
 }
@@ -89,7 +89,7 @@ export function StartSektion({
   const a = AKZENT[akzent]
   return (
     <section
-      className={`relative overflow-hidden rounded-2xl border bg-zinc-950/55 shadow-lg shadow-black/20 ring-1 ${a.ring} ${a.border}`}
+      className={`relative overflow-hidden rounded-2xl border bg-[var(--app-surface)] shadow-lg shadow-[var(--app-shadow)] ring-1 ${a.ring} ${a.border}`}
     >
       <div className={`pointer-events-none absolute inset-0 bg-gradient-to-br ${a.glow}`} />
       <div className="relative border-b border-white/[0.05] px-4 py-3 sm:px-5">
@@ -101,7 +101,7 @@ export function StartSektion({
             >
               {icon}
             </span>
-            <h2 className="truncate text-base font-semibold tracking-tight text-white">{titel}</h2>
+            <h2 className="truncate text-base font-semibold tracking-tight text-[var(--app-text)]">{titel}</h2>
           </div>
           <Link
             href={href}

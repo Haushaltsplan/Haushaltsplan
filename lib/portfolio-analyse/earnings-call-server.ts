@@ -24,6 +24,7 @@ import type {
 } from '@/lib/portfolio-analyse/earnings-call-types'
 import { ladeFinnhubLetztesTranskript } from '@/lib/portfolio-analyse/finnhub-earnings-transcript-server'
 import { ladeIrTranskriptHistorie } from '@/lib/portfolio-analyse/ir-earnings-scraper'
+import { aufloeseEarningsCallKontext } from '@/lib/portfolio-analyse/earnings-call-kenntnisse'
 import { irEarningsQuelleFuerIsin } from '@/lib/portfolio-analyse/ir-earnings-sources'
 import { ladeMotleyFoolTranskriptHistorie } from '@/lib/portfolio-analyse/motley-fool-earnings-transcript-server'
 import { ladeInvestorRelationsUrl } from '@/lib/portfolio-analyse/investor-relations-url'
@@ -121,39 +122,44 @@ async function entdeckeTranskripte(
   anfrage: EarningsCallAnfrage,
   irUrl: string | null,
 ): Promise<RohesTranskript[]> {
-  const ticker = tickerKey(anfrage.ticker)
-  const isUsIsin = Boolean(anfrage.isin?.trim().toUpperCase().startsWith('US'))
+  const kontext = aufloeseEarningsCallKontext(anfrage)
+  const ticker = tickerKey(kontext.foolTicker || anfrage.ticker)
+  const firmenname = kontext.firmenname ?? anfrage.firmenname
+
+  if (kontext.istEtf) {
+    throw new Error(
+      `${firmenname ?? ticker}: ETFs veröffentlichen keine klassischen Earnings Calls — Quelle nicht verfügbar.`,
+    )
+  }
+
+  const isUsSec = kontext.isUsSec
 
   // 1) Offizielle IR-Website — nur wenn dort echte Transkripte erwartet werden
   const irHard = irEarningsQuelleFuerIsin(anfrage.isin ?? '')
-  const irErwarteTranskript = irHard?.erwarteVollesTranskript !== false
+  const irErwarteTranskript = !kontext.irNurWebcast && irHard?.erwarteVollesTranskript !== false
   const irVersuchen =
-    irErwarteTranskript && Boolean(anfrage.isin?.trim() || irUrl) && (!isUsIsin || irHard)
+    irErwarteTranskript && Boolean(anfrage.isin?.trim() || irUrl) && (!isUsSec || Boolean(irHard?.listenUrls.length))
   if (irVersuchen) {
-    try {
-      const ir = await mitZeitlimit(
-        ladeIrTranskriptHistorie(anfrage.isin ?? '', irUrl, MAX_QUARTALE),
-        25_000,
-        [],
-      )
-      if (ir.length > 0) {
-        return mappeRohe(ir, 'ir_scrape')
-      }
-    } catch (irErr) {
-      if (!isUsIsin) {
-        const finnhub = await ladeFinnhubLetztesTranskript(ticker)
-        if (finnhub) {
-          return mappeRohe([finnhub], 'finnhub')
-        }
-        throw irErr
-      }
+    const ir = await mitZeitlimit(
+      ladeIrTranskriptHistorie(anfrage.isin ?? '', irUrl, MAX_QUARTALE).catch(() => []),
+      25_000,
+      [],
+    )
+    if (ir.length > 0) {
+      return mappeRohe(ir, 'ir_scrape')
     }
   }
 
   // 2) Motley Fool — Primärquelle (meiste vollständigen Call-Transkripte)
+  let foolBlockiert = false
   try {
     const fool = await mitZeitlimit(
-      ladeMotleyFoolTranskriptHistorie(ticker, anfrage.firmenname, MAX_QUARTALE),
+      ladeMotleyFoolTranskriptHistorie(ticker, firmenname, MAX_QUARTALE, {
+        extraSlugs: kontext.foolSlugs,
+        onBlockiert: () => {
+          foolBlockiert = true
+        },
+      }),
       95_000,
       [],
     )
@@ -164,14 +170,16 @@ async function entdeckeTranskripte(
     /* SEC / Finnhub */
   }
 
-  // 3) SEC — Fallback (US, oft weniger Quartale)
-  try {
-    const sec = await mitZeitlimit(ladeSecEdgarTranskriptHistorie(ticker, MAX_QUARTALE), 45_000, [])
-    if (sec.length > 0) {
-      return mappeRohe(sec, 'sec_edgar')
+  // 3) SEC — Fallback (US/CA, oft weniger Quartale)
+  if (isUsSec) {
+    try {
+      const sec = await mitZeitlimit(ladeSecEdgarTranskriptHistorie(ticker, MAX_QUARTALE), 45_000, [])
+      if (sec.length > 0) {
+        return mappeRohe(sec, 'sec_edgar')
+      }
+    } catch {
+      /* Finnhub */
     }
-  } catch {
-    /* Finnhub */
   }
 
   const finnhub = await ladeFinnhubLetztesTranskript(ticker)
@@ -179,14 +187,14 @@ async function entdeckeTranskripte(
     return mappeRohe([finnhub], 'finnhub')
   }
 
-  if (isUsIsin) {
-    throw new Error(
-      `Kein Earnings-Call-Transkript (Conference Call inkl. Q&A) für ${ticker} gefunden. Motley Fool (Primär), SEC und Finnhub wurden geprüft.`,
-    )
-  }
+  const quellen = isUsSec
+    ? foolBlockiert
+      ? 'Motley Fool (Rate-Limit), SEC und Finnhub'
+      : 'Motley Fool, SEC und Finnhub'
+    : 'IR, Motley Fool und Finnhub'
 
   throw new Error(
-    'Kein Earnings-Call-Transkript gefunden. Gesucht wird das Conference-Call-Transkript mit Q&A — nicht Präsentation oder Pressemitteilung.',
+    `Kein Earnings-Call-Transkript (Conference Call inkl. Q&A) für ${firmenname ?? ticker} (${ticker}) gefunden. Geprüft: ${quellen}.`,
   )
 }
 
@@ -295,7 +303,8 @@ function bauePaket(
 }
 
 export async function ladeEarningsCallZusammenfassung(anfrage: EarningsCallAnfrage): Promise<EarningsCallPaket> {
-  const ticker = tickerKey(anfrage.ticker)
+  const kontext = aufloeseEarningsCallKontext(anfrage)
+  const ticker = tickerKey(kontext.foolTicker || anfrage.ticker)
 
   if (!ticker) {
     return {
