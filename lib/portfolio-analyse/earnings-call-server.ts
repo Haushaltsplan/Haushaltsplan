@@ -22,7 +22,7 @@ import type {
   EarningsCallQuartalEintrag,
   EarningsCallQuelle,
 } from '@/lib/portfolio-analyse/earnings-call-types'
-import { ladeFinnhubLetztesTranskript } from '@/lib/portfolio-analyse/finnhub-earnings-transcript-server'
+import { ladeMarketbeatTranskriptHistorie } from '@/lib/portfolio-analyse/marketbeat-earnings-transcript-server'
 import { ladeIrTranskriptHistorie } from '@/lib/portfolio-analyse/ir-earnings-scraper'
 import { aufloeseEarningsCallKontext } from '@/lib/portfolio-analyse/earnings-call-kenntnisse'
 import { irEarningsQuelleFuerIsin } from '@/lib/portfolio-analyse/ir-earnings-sources'
@@ -150,7 +150,19 @@ async function entdeckeTranskripte(
     }
   }
 
-  // 2) Motley Fool — Primärquelle (meiste vollständigen Call-Transkripte)
+  // 2) MarketBeat (Quartr) — zuverlässig für US-Titel ohne SEC-Transkript (z. B. Mastercard)
+  if (isUsSec) {
+    try {
+      const mb = await mitZeitlimit(ladeMarketbeatTranskriptHistorie(ticker, firmenname, MAX_QUARTALE), 60_000, [])
+      if (mb.length > 0) {
+        return mappeRohe(mb, 'marketbeat')
+      }
+    } catch {
+      /* Fool / SEC */
+    }
+  }
+
+  // 3) Motley Fool
   let foolBlockiert = false
   try {
     const fool = await mitZeitlimit(
@@ -167,10 +179,22 @@ async function entdeckeTranskripte(
       return mappeRohe(fool, 'motley_fool')
     }
   } catch {
-    /* SEC / Finnhub */
+    /* SEC */
   }
 
-  // 3) SEC — Fallback (US/CA, oft weniger Quartale)
+  // 4) MarketBeat auch für nicht-US (große internationale Titel)
+  if (!isUsSec) {
+    try {
+      const mb = await mitZeitlimit(ladeMarketbeatTranskriptHistorie(ticker, firmenname, MAX_QUARTALE), 45_000, [])
+      if (mb.length > 0) {
+        return mappeRohe(mb, 'marketbeat')
+      }
+    } catch {
+      /* unten */
+    }
+  }
+
+  // 5) SEC — nur US/CA; viele Firmen haben nur EX-99.1 Pressemitteilung, kein Transkript
   if (isUsSec) {
     try {
       const sec = await mitZeitlimit(ladeSecEdgarTranskriptHistorie(ticker, MAX_QUARTALE), 45_000, [])
@@ -178,20 +202,15 @@ async function entdeckeTranskripte(
         return mappeRohe(sec, 'sec_edgar')
       }
     } catch {
-      /* Finnhub */
+      /* Ende */
     }
-  }
-
-  const finnhub = await ladeFinnhubLetztesTranskript(ticker)
-  if (finnhub) {
-    return mappeRohe([finnhub], 'finnhub')
   }
 
   const quellen = isUsSec
     ? foolBlockiert
-      ? 'Motley Fool (Rate-Limit), SEC und Finnhub'
-      : 'Motley Fool, SEC und Finnhub'
-    : 'IR, Motley Fool und Finnhub'
+      ? 'MarketBeat, Motley Fool (Rate-Limit) und SEC'
+      : 'MarketBeat, Motley Fool und SEC'
+    : 'IR, MarketBeat und Motley Fool'
 
   throw new Error(
     `Kein Earnings-Call-Transkript (Conference Call inkl. Q&A) für ${firmenname ?? ticker} (${ticker}) gefunden. Geprüft: ${quellen}.`,
@@ -378,7 +397,7 @@ export async function ladeEarningsCallZusammenfassung(anfrage: EarningsCallAnfra
         geladenAm: new Date().toISOString(),
         ausCache: false,
         fehler: msg,
-        hinweis: 'Quellen: IR · Motley Fool · SEC · Finnhub',
+        hinweis: 'Quellen: IR · MarketBeat · Motley Fool · SEC',
         investorRelationsUrl: irUrl,
       }
     }
@@ -431,11 +450,13 @@ export async function ladeEarningsCallZusammenfassung(anfrage: EarningsCallAnfra
   const hinweis =
     quelle === 'ir_scrape'
       ? 'Transkripte von der Investor-Relations-Seite.'
-      : quelle === 'motley_fool'
-        ? 'Transkripte von The Motley Fool (Conference Call inkl. Q&A).'
-        : quelle === 'sec_edgar'
-          ? 'Offizielle SEC-8-K-Transkripte (US).'
-          : null
+      : quelle === 'marketbeat'
+        ? 'Transkripte von MarketBeat (Quartr, Conference Call inkl. Q&A).'
+        : quelle === 'motley_fool'
+          ? 'Transkripte von The Motley Fool (Conference Call inkl. Q&A).'
+          : quelle === 'sec_edgar'
+            ? 'Offizielle SEC-8-K-Transkripte (US).'
+            : null
 
   return bauePaket(ticker, cache, irUrl, zielId, ausCache && !anfrage.force, hinweis)
 }

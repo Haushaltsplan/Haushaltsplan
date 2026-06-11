@@ -20,6 +20,7 @@ const QUELLE_LABEL: Record<EarningsCallQuelle, string> = {
   finnhub: 'Finnhub',
   ir_scrape: 'Investor Relations',
   motley_fool: 'Motley Fool',
+  marketbeat: 'MarketBeat',
 }
 
 function gruppiereNachJahr(list: EarningsCallQuartalEintrag[]): { jahr: number; eintraege: EarningsCallQuartalEintrag[] }[] {
