@@ -84,6 +84,8 @@ async function entdeckeTranskripte(
     }))
   }
 
+  const isUsIsin = Boolean(anfrage.isin?.trim().toUpperCase().startsWith('US'))
+
   if (anfrage.isin?.trim()) {
     try {
       const ir = await ladeIrTranskriptHistorie(anfrage.isin, irUrl, MAX_QUARTALE)
@@ -97,19 +99,22 @@ async function entdeckeTranskripte(
         }))
       }
     } catch (irErr) {
-      const finnhub = await ladeFinnhubLetztesTranskript(ticker)
-      if (finnhub) {
-        return [
-          {
-            titel: finnhub.titel,
-            url: finnhub.url,
-            callDatum: finnhub.callDatum,
-            text: finnhub.text,
-            quelle: 'finnhub',
-          },
-        ]
+      if (!isUsIsin) {
+        const finnhub = await ladeFinnhubLetztesTranskript(ticker)
+        if (finnhub) {
+          return [
+            {
+              titel: finnhub.titel,
+              url: finnhub.url,
+              callDatum: finnhub.callDatum,
+              text: finnhub.text,
+              quelle: 'finnhub',
+            },
+          ]
+        }
+        throw irErr
       }
-      throw irErr
+      /* US: IR optional — weiter zu Finnhub / SEC-Fehler */
     }
   }
 
@@ -124,6 +129,12 @@ async function entdeckeTranskripte(
         quelle: 'finnhub',
       },
     ]
+  }
+
+  if (isUsIsin) {
+    throw new Error(
+      `Kein SEC-Earnings-Dokument für ${ticker} gefunden. US-Aktien werden über SEC EDGAR (8-K) geladen — bitte erneut versuchen.`,
+    )
   }
 
   throw new Error(

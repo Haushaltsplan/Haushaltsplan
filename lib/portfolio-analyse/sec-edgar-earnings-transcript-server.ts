@@ -1,8 +1,8 @@
-/** SEC EDGAR — Earnings-Call-Transkripte aus 8-K Exhibit 99.2 (kostenlos, US-Börsen). */
+/** SEC EDGAR — Earnings aus 8-K Exhibit 99.1/99.2 (kostenlos, US-Börsen). */
 
 import 'server-only'
 
-import { htmlZuFliesstext } from '@/lib/html/text-aus-html'
+import { htmlZuFliesstext, linksAusHtml } from '@/lib/html/text-aus-html'
 import { jsonParseFehlerNachricht, leseAlsJson } from '@/lib/http/safe-json-response'
 
 export type EdgarTranscript = {
@@ -48,7 +48,31 @@ function normalisiereUsTicker(ticker: string): string[] {
   if (!t) return []
   const variants = [t]
   if (t.includes('.')) variants.push(t.split('.')[0])
+  /** Alphabet: Portfolio oft GOOG, SEC oft GOOGL */
+  if (t === 'GOOG') variants.push('GOOGL')
+  if (t === 'GOOGL') variants.push('GOOG')
   return [...new Set(variants.filter(Boolean))]
+}
+
+function cikAusAccession(accession: string): number {
+  return parseInt(accession.split('-')[0], 10)
+}
+
+function accessionOhneBindestriche(accession: string): string {
+  return accession.replace(/-/g, '')
+}
+
+function dateinameAusHref(href: string): string {
+  const clean = href.split('#')[0]
+  const parts = clean.split('/')
+  return parts[parts.length - 1] || clean
+}
+
+function exhibitUrl(filingCik: number, accession: string, hrefOrName: string): string {
+  if (/^https?:\/\//i.test(hrefOrName)) return hrefOrName
+  if (hrefOrName.startsWith('/')) return `https://www.sec.gov${hrefOrName}`
+  const accPath = accessionOhneBindestriche(accession)
+  return `https://www.sec.gov/Archives/edgar/data/${filingCik}/${accPath}/${hrefOrName}`
 }
 
 async function secFetch(url: string): Promise<Response> {
@@ -91,10 +115,6 @@ function padCik(cik: number): string {
   return String(cik).padStart(10, '0')
 }
 
-function accessionOhneBindestriche(accession: string): string {
-  return accession.replace(/-/g, '')
-}
-
 function htmlZuTranskriptText(html: string): string {
   const text = htmlZuFliesstext(html)
   if (!text) return ''
@@ -110,39 +130,93 @@ function indexItems(index: EdgarIndex): EdgarIndexItem[] {
   return Array.isArray(item) ? item : [item]
 }
 
+function itemsAusIndexHtml(html: string, accession: string): EdgarIndexItem[] {
+  const base = `https://www.sec.gov/Archives/edgar/data/${cikAusAccession(accession)}/${accessionOhneBindestriche(accession)}/`
+  const items: EdgarIndexItem[] = []
+  const rowRe = /<tr[^>]*>([\s\S]*?)<\/tr>/gi
+  let row: RegExpExecArray | null
+  while ((row = rowRe.exec(html)) !== null) {
+    const cells = [...row[1].matchAll(/<td[^>]*>([\s\S]*?)<\/td>/gi)].map((c) =>
+      c[1].replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim(),
+    )
+    const links = linksAusHtml(row[1], base)
+    const docLink = links.find((l) => /\.(htm|html|txt)$/i.test(l.href) && !/-index\.htm/i.test(l.href))
+    if (!docLink) continue
+    const type = cells.find((c) => /^EX-/i.test(c)) ?? cells[3] ?? ''
+    const desc = cells[1] ?? docLink.text
+    items.push({
+      name: docLink.href.startsWith('http') ? docLink.href : dateinameAusHref(docLink.href),
+      type,
+      description: desc,
+    })
+  }
+
+  if (items.length > 0) return items
+
+  for (const link of linksAusHtml(html, base)) {
+    if (!/\.(htm|html|txt)$/i.test(link.href) || /-index\.htm/i.test(link.href)) continue
+    if (!/exhibit|ex99|99\.1|99\.2|earnings|transcript|press/i.test(`${link.text} ${link.href}`)) continue
+    items.push({
+      name: link.href.startsWith('http') ? link.href : dateinameAusHref(link.href),
+      description: link.text,
+      type: '',
+    })
+  }
+  return items
+}
+
+async function ladeFilingIndexItems(accession: string): Promise<EdgarIndexItem[]> {
+  const filingCik = cikAusAccession(accession)
+  const accPath = accessionOhneBindestriche(accession)
+  const jsonUrl = `https://www.sec.gov/Archives/edgar/data/${filingCik}/${accPath}/${accession}-index.json`
+  const jsonRes = await secFetch(jsonUrl)
+  if (jsonRes.ok) {
+    const idx = await leseAlsJson<EdgarIndex>(jsonRes)
+    if (idx) return indexItems(idx)
+  }
+
+  const htmUrl = `https://www.sec.gov/Archives/edgar/data/${filingCik}/${accPath}/${accession}-index.htm`
+  const htmRes = await secFetch(htmUrl)
+  if (!htmRes.ok) return []
+  return itemsAusIndexHtml(await htmRes.text(), accession)
+}
+
 function waehleExhibit(items: EdgarIndexItem[]): { item: EdgarIndexItem; typ: 'EX-99.2' | 'EX-99.1' } | null {
-  const norm = (s: string) => s.toLowerCase()
+  const meta = (i: EdgarIndexItem) =>
+    `${i.type || ''} ${i.description || ''} ${i.name || ''}`.toLowerCase()
+
   const ex992 = items.filter((i) => {
-    const type = norm(i.type || '')
-    const desc = norm(i.description || '')
-    const name = norm(i.name || '')
+    const m = meta(i)
     return (
-      type.includes('99.2') ||
-      desc.includes('transcript') ||
-      name.includes('ex99.2') ||
-      name.includes('ex-99.2')
+      /99\.2|ex-99\.2|ex99\.2|exx992/.test(m) ||
+      m.includes('transcript') ||
+      (m.includes('exhibit') && m.includes('99') && m.includes('2'))
     )
   })
   if (ex992[0]?.name) return { item: ex992[0], typ: 'EX-99.2' }
 
   const ex991 = items.filter((i) => {
-    const type = norm(i.type || '')
-    const desc = norm(i.description || '')
-    return type.includes('99.1') || desc.includes('press release') || desc.includes('earnings')
+    const m = meta(i)
+    return (
+      /99\.1|ex-99\.1|ex99\.1|exx991|exhibit991|exhibit99/.test(m) ||
+      m.includes('press release') ||
+      m.includes('earnings release') ||
+      (m.includes('earnings') && /exhibit|ex99|991/.test(m))
+    )
   })
   if (ex991[0]?.name) return { item: ex991[0], typ: 'EX-99.1' }
 
   return null
 }
 
-async function ladeExhibitText(
-  cik: number,
-  accession: string,
-  filename: string,
-): Promise<string> {
-  const cikNum = cik
-  const accPath = accessionOhneBindestriche(accession)
-  const url = `https://www.sec.gov/Archives/edgar/data/${cikNum}/${accPath}/${filename}`
+function istEarningsAchtK(items?: string): boolean {
+  if (!items) return false
+  return /2\.02/.test(items) || /7\.01/.test(items)
+}
+
+async function ladeExhibitText(accession: string, hrefOrName: string): Promise<string> {
+  const filingCik = cikAusAccession(accession)
+  const url = exhibitUrl(filingCik, accession, hrefOrName)
   const res = await secFetch(url)
   if (!res.ok) throw new Error(`SEC Exhibit (${res.status})`)
   const html = await res.text()
@@ -169,30 +243,42 @@ export async function ladeSecEdgarTranskriptHistorie(tickerRaw: string, max = 8)
   const firmenname = sub.name?.trim() || tickerRaw.toUpperCase()
   const forms = recent.form
   const maxScan = Math.min(forms.length, 120)
+
+  const kandidaten: { i: number; earnings: boolean }[] = []
+  for (let i = 0; i < maxScan; i++) {
+    if (forms[i] !== '8-K') continue
+    kandidaten.push({ i, earnings: istEarningsAchtK(recent.items?.[i]) })
+  }
+  kandidaten.sort((a, b) => Number(b.earnings) - Number(a.earnings))
+
   const out: EdgarTranscript[] = []
   const seenAcc = new Set<string>()
 
-  for (let i = 0; i < maxScan && out.length < max; i++) {
-    if (forms[i] !== '8-K') continue
+  for (const { i } of kandidaten) {
+    if (out.length >= max) break
     const accession = recent.accessionNumber?.[i]
     const filingDate = recent.filingDate?.[i]
     if (!accession || seenAcc.has(accession)) continue
     seenAcc.add(accession)
 
-    await sleep(120)
-    const indexUrl = `https://www.sec.gov/Archives/edgar/data/${cik}/${accessionOhneBindestriche(accession)}/${accession}-index.json`
-    const idxRes = await secFetch(indexUrl)
-    if (!idxRes.ok) continue
-    const idx = await leseAlsJson<EdgarIndex>(idxRes)
-    if (!idx) continue
-    const picked = waehleExhibit(indexItems(idx))
+    await sleep(150)
+    const indexItemsList = await ladeFilingIndexItems(accession)
+    if (!indexItemsList.length) continue
+
+    const picked = waehleExhibit(indexItemsList)
     if (!picked?.item.name) continue
 
-    const text = await ladeExhibitText(cik, accession, picked.item.name)
+    let text = ''
+    try {
+      text = await ladeExhibitText(accession, picked.item.name)
+    } catch {
+      continue
+    }
     if (text.length < 400) continue
 
     const exhibitLabel = picked.typ === 'EX-99.2' ? 'Earnings Call Transcript' : 'Earnings Press Release'
-    const docUrl = `https://www.sec.gov/Archives/edgar/data/${cik}/${accessionOhneBindestriche(accession)}/${picked.item.name}`
+    const filingCik = cikAusAccession(accession)
+    const docUrl = exhibitUrl(filingCik, accession, picked.item.name)
 
     out.push({
       titel: `${firmenname} — ${exhibitLabel} (8-K ${filingDate ?? ''})`,
@@ -211,7 +297,7 @@ export async function ladeSecEdgarLetztesTranskript(tickerRaw: string): Promise<
   const list = await ladeSecEdgarTranskriptHistorie(tickerRaw, 1)
   if (!list[0]) {
     throw new Error(
-      `${tickerRaw}: Kein SEC-Transkript gefunden (nur US-SEC-Melder). Für EU-Aktien wird die IR-Seite per Playwright durchsucht.`,
+      `${tickerRaw}: Kein SEC-Transkript gefunden (nur US-SEC-Melder). Für EU-Aktien wird die IR-Seite durchsucht.`,
     )
   }
   return list[0]

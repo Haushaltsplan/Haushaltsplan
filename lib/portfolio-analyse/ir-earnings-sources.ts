@@ -45,6 +45,18 @@ export const IR_EARNINGS_NACH_ISIN: Record<string, IrEarningsQuelle> = {
   CA015DM1098: {
     listenUrls: ['https://corpo.couche-tard.com/en/financial-reports'],
   },
+  US02079K1079: {
+    listenUrls: ['https://abc.xyz/investor/earnings/'],
+  },
+  US02079K3059: {
+    listenUrls: ['https://abc.xyz/investor/earnings/'],
+  },
+  US57636Q1040: {
+    listenUrls: [
+      'https://investor.mastercard.com/financials-and-reporting/quarterly-results/default.aspx',
+      'https://investor.mastercard.com/events-and-presentations/default.aspx',
+    ],
+  },
   US5949181045: {
     listenUrls: ['https://www.microsoft.com/en-us/investor/earnings'],
   },
@@ -63,6 +75,9 @@ const TRANSCRIPT_KEYWORDS = [
   'teleconference',
   'analyst call',
   'conference-call',
+  'earnings webcast',
+  'webcast',
+  'prepared remarks',
 ]
 
 export function irEarningsQuelleFuerIsin(isin: string | null | undefined): IrEarningsQuelle | null {
@@ -73,7 +88,9 @@ export function irEarningsQuelleFuerIsin(isin: string | null | undefined): IrEar
 export function istTranskriptLink(text: string, href: string): boolean {
   const combined = `${text} ${href}`.toLowerCase()
   if (TRANSCRIPT_KEYWORDS.some((k) => combined.includes(k))) return true
-  if (/\.pdf$/i.test(href) && /q[1-4]|quarter|earnings|results|call/i.test(combined)) return true
+  if (/\.pdf(\?|$)/i.test(href) && /q[1-4]|quarter|earnings|results|call|webcast|transcript/i.test(combined))
+    return true
+  if (/\.(htm|html)(\?|$)/i.test(href) && /ex99|ex-99|exhibit.?99|earnings.?release/i.test(combined)) return true
   return false
 }
 
