@@ -9,6 +9,10 @@ import {
   scoreTranskriptLink,
   type IrEarningsQuelle,
 } from '@/lib/portfolio-analyse/ir-earnings-sources'
+import {
+  istEarningsCallTranskript,
+  istPresseMitteilung,
+} from '@/lib/portfolio-analyse/earnings-call-transcript-heuristik'
 
 export type IrRohesTranskript = {
   titel: string
@@ -93,6 +97,7 @@ async function transkripteAusLinks(kandidaten: LinkKandidat[], max: number): Pro
     if (out.length >= max) break
     const text = await ladeDokumentText(k.href)
     if (text.length < 350) continue
+    if (!istEarningsCallTranskript(text) || istPresseMitteilung(text)) continue
     out.push({
       titel: k.text,
       url: k.href,
@@ -144,7 +149,7 @@ export async function ladeIrTranskriptHistorie(
 
   throw new Error(
     process.env.VERCEL
-      ? 'Keine IR-Transkripte per Fetch gefunden. Viele EU-Seiten laden Links per JavaScript — lokal testen.'
-      : 'Auf der IR-Seite wurden keine Transkript-Links gefunden.',
+      ? 'Kein Earnings-Call-Transkript (mit Q&A) per Fetch gefunden — IR-Seiten laden Links oft per JavaScript.'
+      : 'Kein Conference-Call-Transkript auf der IR-Seite gefunden (nur Präsentation/Pressemitteilung?).',
   )
 }

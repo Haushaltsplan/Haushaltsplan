@@ -133,12 +133,12 @@ async function entdeckeTranskripte(
 
   if (isUsIsin) {
     throw new Error(
-      `Kein SEC-Earnings-Dokument für ${ticker} gefunden. US-Aktien werden über SEC EDGAR (8-K) geladen — bitte erneut versuchen.`,
+      `Kein Earnings-Call-Transkript (Conference Call inkl. Q&A) für ${ticker} gefunden. Bei vielen US-Aktien (z. B. MA, GOOGL) liegt bei der SEC nur die Pressemitteilung vor — das volle Transkript steht meist auf der Investor-Relations-Seite.`,
     )
   }
 
   throw new Error(
-    'Keine Transkripte gefunden — weder SEC noch IR-Seite. ISIN in IR-Konfiguration ergänzen oder Finnhub Professional nutzen.',
+    'Kein Earnings-Call-Transkript gefunden. Gesucht wird das Conference-Call-Transkript mit Q&A — nicht Präsentation oder Pressemitteilung.',
   )
 }
 

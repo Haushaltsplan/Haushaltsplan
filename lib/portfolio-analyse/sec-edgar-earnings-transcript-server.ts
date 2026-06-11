@@ -1,7 +1,11 @@
-/** SEC EDGAR — Earnings aus 8-K Exhibit 99.1/99.2 (kostenlos, US-Börsen). */
+/** SEC EDGAR — Earnings-Call-Transkripte aus 8-K Exhibit 99.2 (kostenlos, US-Börsen). */
 
 import 'server-only'
 
+import {
+  istEarningsCallTranskript,
+  istPresseMitteilung,
+} from '@/lib/portfolio-analyse/earnings-call-transcript-heuristik'
 import { htmlZuFliesstext, linksAusHtml } from '@/lib/html/text-aus-html'
 import { jsonParseFehlerNachricht, leseAlsJson } from '@/lib/http/safe-json-response'
 
@@ -10,7 +14,7 @@ export type EdgarTranscript = {
   url: string
   callDatum: string | null
   text: string
-  exhibitTyp: 'EX-99.2' | 'EX-99.1'
+  exhibitTyp: 'EX-99.2'
   accession: string
 }
 
@@ -181,7 +185,7 @@ async function ladeFilingIndexItems(accession: string): Promise<EdgarIndexItem[]
   return itemsAusIndexHtml(await htmRes.text(), accession)
 }
 
-function waehleExhibit(items: EdgarIndexItem[]): { item: EdgarIndexItem; typ: 'EX-99.2' | 'EX-99.1' } | null {
+function waehleExhibit(items: EdgarIndexItem[]): { item: EdgarIndexItem; typ: 'EX-99.2' } | null {
   const meta = (i: EdgarIndexItem) =>
     `${i.type || ''} ${i.description || ''} ${i.name || ''}`.toLowerCase()
 
@@ -190,21 +194,10 @@ function waehleExhibit(items: EdgarIndexItem[]): { item: EdgarIndexItem; typ: 'E
     return (
       /99\.2|ex-99\.2|ex99\.2|exx992/.test(m) ||
       m.includes('transcript') ||
-      (m.includes('exhibit') && m.includes('99') && m.includes('2'))
+      (m.includes('conference call') && !m.includes('press release'))
     )
   })
   if (ex992[0]?.name) return { item: ex992[0], typ: 'EX-99.2' }
-
-  const ex991 = items.filter((i) => {
-    const m = meta(i)
-    return (
-      /99\.1|ex-99\.1|ex99\.1|exx991|exhibit991|exhibit99/.test(m) ||
-      m.includes('press release') ||
-      m.includes('earnings release') ||
-      (m.includes('earnings') && /exhibit|ex99|991/.test(m))
-    )
-  })
-  if (ex991[0]?.name) return { item: ex991[0], typ: 'EX-99.1' }
 
   return null
 }
@@ -275,13 +268,13 @@ export async function ladeSecEdgarTranskriptHistorie(tickerRaw: string, max = 8)
       continue
     }
     if (text.length < 400) continue
+    if (!istEarningsCallTranskript(text) || istPresseMitteilung(text)) continue
 
-    const exhibitLabel = picked.typ === 'EX-99.2' ? 'Earnings Call Transcript' : 'Earnings Press Release'
     const filingCik = cikAusAccession(accession)
     const docUrl = exhibitUrl(filingCik, accession, picked.item.name)
 
     out.push({
-      titel: `${firmenname} — ${exhibitLabel} (8-K ${filingDate ?? ''})`,
+      titel: `${firmenname} — Earnings Call Transcript (8-K ${filingDate ?? ''})`,
       url: docUrl,
       callDatum: filingDate ?? null,
       text,

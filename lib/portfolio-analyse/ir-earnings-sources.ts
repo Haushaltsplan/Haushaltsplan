@@ -1,4 +1,6 @@
-/** IR-Seiten für Earnings / Financial Results (EU & global). */
+/** IR-Seiten für Earnings-Call-Transkripte (Conference Call + Q&A). */
+
+import { istTranskriptLinkStreng } from '@/lib/portfolio-analyse/earnings-call-transcript-heuristik'
 
 export type IrEarningsQuelle = {
   /** Eine oder mehrere Listen-Seiten mit Transkript-Links */
@@ -65,33 +67,13 @@ export const IR_EARNINGS_NACH_ISIN: Record<string, IrEarningsQuelle> = {
   },
 }
 
-const TRANSCRIPT_KEYWORDS = [
-  'transcript',
-  'conference call',
-  'earnings call',
-  'results call',
-  'webcast transcript',
-  'call transcript',
-  'teleconference',
-  'analyst call',
-  'conference-call',
-  'earnings webcast',
-  'webcast',
-  'prepared remarks',
-]
-
 export function irEarningsQuelleFuerIsin(isin: string | null | undefined): IrEarningsQuelle | null {
   if (!isin?.trim()) return null
   return IR_EARNINGS_NACH_ISIN[isin.trim().toUpperCase()] ?? null
 }
 
 export function istTranskriptLink(text: string, href: string): boolean {
-  const combined = `${text} ${href}`.toLowerCase()
-  if (TRANSCRIPT_KEYWORDS.some((k) => combined.includes(k))) return true
-  if (/\.pdf(\?|$)/i.test(href) && /q[1-4]|quarter|earnings|results|call|webcast|transcript/i.test(combined))
-    return true
-  if (/\.(htm|html)(\?|$)/i.test(href) && /ex99|ex-99|exhibit.?99|earnings.?release/i.test(combined)) return true
-  return false
+  return istTranskriptLinkStreng(text, href)
 }
 
 export function scoreTranskriptLink(text: string, href: string): number {
@@ -102,6 +84,7 @@ export function scoreTranskriptLink(text: string, href: string): number {
   if (combined.includes('webcast')) score += 4
   if (/q[1-4]\s*20\d{2}|20\d{2}.*q[1-4]/i.test(combined)) score += 6
   if (/\.pdf$/i.test(href)) score += 2
-  if (combined.includes('presentation') && !combined.includes('transcript')) score -= 3
+  if (combined.includes('presentation') && !combined.includes('transcript')) score -= 8
+  if (/press release|earnings release/i.test(combined) && !combined.includes('transcript')) score -= 10
   return score
 }

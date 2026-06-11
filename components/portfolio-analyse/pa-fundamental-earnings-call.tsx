@@ -231,7 +231,7 @@ export function PaFundamentalEarningsCall({
               Quartals-Transkripte & KI-Analyse
             </h2>
             <p className="mt-2 max-w-xl text-sm leading-relaxed text-zinc-500">
-              US: SEC EDGAR · EU/CH: Investor Relations (Scrape) · Zusammenfassung durch Finanz-Coach
+              Conference-Call-Transkripte mit Q&A — keine Präsentationen oder Pressemitteilungen · US: SEC · EU: IR
             </p>
           </div>
           <button
