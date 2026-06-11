@@ -43,7 +43,7 @@ function htmlZuText(html: string): string {
 
 async function pdfZuText(buffer: Buffer): Promise<string> {
   try {
-    const pdfParse = (await import('pdf-parse')).default as (b: Buffer) => Promise<{ text?: string }>
+    const pdfParse = (await import('pdf-parse/lib/pdf-parse.js')).default
     const data = await pdfParse(buffer)
     return (data.text || '').replace(/\s+/g, ' ').trim()
   } catch {
