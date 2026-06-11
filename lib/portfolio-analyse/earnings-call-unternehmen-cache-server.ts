@@ -2,11 +2,12 @@
 
 import 'server-only'
 
+import { dateiCachePfad } from '@/lib/datei-cache-pfad'
 import type { EarningsCallQuelle } from '@/lib/portfolio-analyse/earnings-call-types'
 import { promises as fs } from 'fs'
 import path from 'path'
 
-const DATEIPFAD = path.join(process.cwd(), 'data', 'portfolio-earnings-call-unternehmen.json')
+const DATEIPFAD = dateiCachePfad('portfolio-earnings-call-unternehmen.json')
 const LEGACY_KI_PFAD = path.join(process.cwd(), 'data', 'portfolio-earnings-call-ki.json')
 const CACHE_VERSION = 1
 
@@ -39,15 +40,31 @@ type CacheDatei = {
   byTicker: Record<string, UnternehmenCacheEintrag>
 }
 
+let memoryCache: CacheDatei | null = null
+let schreibenMoeglich: boolean | null = null
+
 function tickerNorm(ticker: string): string {
   return ticker.trim().toUpperCase()
 }
 
+async function stelleSchreibenSicher(): Promise<boolean> {
+  if (schreibenMoeglich !== null) return schreibenMoeglich
+  try {
+    await fs.mkdir(path.dirname(DATEIPFAD), { recursive: true })
+    schreibenMoeglich = true
+  } catch {
+    schreibenMoeglich = false
+  }
+  return schreibenMoeglich
+}
+
 async function leseDatei(): Promise<CacheDatei | null> {
+  if (memoryCache) return memoryCache
   try {
     const raw = await fs.readFile(DATEIPFAD, 'utf8')
     const j = JSON.parse(raw) as CacheDatei
     if (j.version !== CACHE_VERSION || !j.byTicker || typeof j.byTicker !== 'object') return null
+    memoryCache = j
     return j
   } catch (e: unknown) {
     const code = e && typeof e === 'object' && 'code' in e ? (e as NodeJS.ErrnoException).code : ''
@@ -58,8 +75,14 @@ async function leseDatei(): Promise<CacheDatei | null> {
 }
 
 async function schreibeDatei(data: CacheDatei): Promise<void> {
-  await fs.mkdir(path.dirname(DATEIPFAD), { recursive: true })
-  await fs.writeFile(DATEIPFAD, `${JSON.stringify(data, null, 2)}\n`, 'utf8')
+  memoryCache = data
+  if (!(await stelleSchreibenSicher())) return
+  try {
+    await fs.writeFile(DATEIPFAD, `${JSON.stringify(data, null, 2)}\n`, 'utf8')
+  } catch (e) {
+    schreibenMoeglich = false
+    console.warn('Earnings-Call-Unternehmen-Cache: Schreiben übersprungen (nur RAM)', e)
+  }
 }
 
 async function migriereLegacyKi(datei: CacheDatei): Promise<CacheDatei> {

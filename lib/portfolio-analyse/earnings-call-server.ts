@@ -375,15 +375,19 @@ export async function ladeEarningsCallZusammenfassung(anfrage: EarningsCallAnfra
       const roh = await entdeckeTranskripte(anfrage, irUrl)
       setDiscovery(ticker, roh, anfrage.force ? staleHit : undefined)
       cache = discoveryCache.get(ticker)!
-      await speichereUnternehmenTranskripte(
-        ticker,
-        {
-          isin: anfrage.isin,
-          firmenname: anfrage.firmenname,
-          investorRelationsUrl: irUrl,
-        },
-        roh,
-      )
+      try {
+        await speichereUnternehmenTranskripte(
+          ticker,
+          {
+            isin: anfrage.isin,
+            firmenname: anfrage.firmenname,
+            investorRelationsUrl: irUrl,
+          },
+          roh,
+        )
+      } catch (persistErr) {
+        console.warn('Earnings-Call: Server-Cache nicht schreibbar', persistErr)
+      }
     } catch (e) {
       const raw = e instanceof Error ? e.message : 'Earnings Call fehlgeschlagen'
       const msg = /doctype|not valid json|unexpected token/i.test(raw)
@@ -429,12 +433,16 @@ export async function ladeEarningsCallZusammenfassung(anfrage: EarningsCallAnfra
           firmenname: anfrage.firmenname,
         })
         cache.summaries.set(zielId, summary)
-        await speichereEarningsCallKiCache({
-          ticker,
-          quartalId: zielId,
-          transcriptUrl: roh.url,
-          zusammenfassung: summary,
-        })
+        try {
+          await speichereEarningsCallKiCache({
+            ticker,
+            quartalId: zielId,
+            transcriptUrl: roh.url,
+            zusammenfassung: summary,
+          })
+        } catch (persistErr) {
+          console.warn('Earnings-Call KI-Cache nicht schreibbar', persistErr)
+        }
       } catch (e) {
         const msg = e instanceof Error ? e.message : 'KI-Zusammenfassung fehlgeschlagen'
         return {
