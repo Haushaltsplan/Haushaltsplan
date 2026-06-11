@@ -137,7 +137,8 @@ export function PaFundamentalInhalt({
   const umschlag = daten?.zeilen.filter((z) => z.gruppe === 'umschlag') ?? []
   const finanzdaten = daten?.zeilen.filter((z) => z.gruppe === 'finanzdaten') ?? []
   const cashflow = daten?.zeilen.filter((z) => z.gruppe === 'cashflow') ?? []
-  const bewertung = daten?.zeilen.filter((z) => z.gruppe.startsWith('bewertung')) ?? []
+  const bewertungLtm = daten?.zeilen.filter((z) => z.gruppe === 'bewertung_trailing') ?? []
+  const bewertungNtm = daten?.zeilen.filter((z) => z.gruppe === 'bewertung_forward') ?? []
   const schaetzungen = daten?.zeilen.filter((z) => z.gruppe === 'schaetzungen') ?? []
 
   return (
@@ -216,9 +217,14 @@ export function PaFundamentalInhalt({
             <div className="space-y-4">
               <PaFundamentalMetrikChart
                 perioden={daten.perioden}
-                zeilen={daten.zeilen}
+                zeilen={
+                  unterTab === 'bewertung'
+                    ? [...bewertungLtm, ...bewertungNtm]
+                    : daten.zeilen
+                }
                 aktivIds={chartAktiv}
                 labelsAnzeigen={labelsAnzeigen}
+                variant={unterTab === 'bewertung' ? 'bewertung' : 'standard'}
                 onClear={() => setChartAktiv(new Set())}
                 onToggleLabels={() => setLabelsAnzeigen((v) => !v)}
               />
@@ -253,11 +259,21 @@ export function PaFundamentalInhalt({
                 />
               ) : null}
 
-              {unterTab === 'bewertung' && bewertung.length > 0 ? (
+              {unterTab === 'bewertung' && bewertungLtm.length > 0 ? (
                 <PaFundamentalMetrikTabelle
-                  titel="Bewertungskennzahlen / Multiples"
+                  titel="Bewertung LTM (Trailing) · TTM = aktuell"
                   perioden={daten.perioden}
-                  zeilen={bewertung}
+                  zeilen={bewertungLtm}
+                  aktivIds={chartAktiv}
+                  onToggleZeile={toggleChartZeile}
+                />
+              ) : null}
+
+              {unterTab === 'bewertung' && bewertungNtm.length > 0 ? (
+                <PaFundamentalMetrikTabelle
+                  titel="Bewertung NTM (Forward) · NTM = aktuell"
+                  perioden={daten.perioden}
+                  zeilen={bewertungNtm}
                   aktivIds={chartAktiv}
                   onToggleZeile={toggleChartZeile}
                 />

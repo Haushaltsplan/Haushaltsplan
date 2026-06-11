@@ -44,7 +44,13 @@ export function PaFundamentalMetrikTabelle({
                 <th
                   key={p.iso}
                   className={`min-w-[88px] whitespace-nowrap px-3 py-2 text-right font-medium ${
-                    p.istLtm ? 'text-amber-400/90' : p.istSchaetzung ? 'text-sky-400/90' : ''
+                    p.istLtm
+                      ? 'text-amber-400/90'
+                      : p.istNtm
+                        ? 'text-violet-400/90'
+                        : p.istSchaetzung
+                          ? 'text-sky-400/90'
+                          : ''
                   }`}
                 >
                   {p.label}
@@ -73,7 +79,13 @@ export function PaFundamentalMetrikTabelle({
                     <td
                       key={p.iso}
                       className={`whitespace-nowrap px-3 py-2 text-right tabular-nums text-zinc-300 ${
-                        p.istLtm ? 'font-medium text-amber-100/90' : p.istSchaetzung ? 'font-medium text-sky-100/90' : ''
+                        p.istLtm
+                          ? 'font-medium text-amber-100/90'
+                          : p.istNtm
+                            ? 'font-medium text-violet-100/90'
+                            : p.istSchaetzung
+                              ? 'font-medium text-sky-100/90'
+                              : ''
                       }`}
                     >
                       {formatFundamentalWert(z.werte[p.iso], z.einheit)}

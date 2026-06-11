@@ -8,6 +8,7 @@ import {
 import { baueMantraAudit } from '@/lib/portfolio-analyse/fundamentaldaten-mantra'
 import { ladeYahooMantraFinanzdaten } from '@/lib/portfolio-analyse/yahoo-fundamentals-timeseries-server'
 import { ladeFundamentalNews } from '@/lib/portfolio-analyse/fundamentaldaten-news-server'
+import { baueNtmBewertungsZeilen } from '@/lib/portfolio-analyse/fundamentaldaten-ntm-bewertung-server'
 import { ladeFundamentalSchaetzungen } from '@/lib/portfolio-analyse/fundamentaldaten-schaetzungen-server'
 import {
   formatiereBrancheDe,
@@ -19,6 +20,7 @@ import type {
   FundamentalMetrikZeile,
   FundamentalPeriode,
 } from '@/lib/portfolio-analyse/fundamentaldaten-types'
+import { FUNDAMENTAL_NTM_KEY } from '@/lib/portfolio-analyse/fundamentaldaten-types'
 import { isinKenntnis } from '@/lib/portfolio-analyse/isin-kenntnisse'
 import {
   ladeMacrotrendsFundamentaldaten,
@@ -309,6 +311,18 @@ export async function ladeFundamentaldaten(anfrage: FundamentaldatenAnfrage): Pr
   }
 
   const merged = mergePeriodenUndZeilen(roh, schaetzungen)
+  const ntm = await baueNtmBewertungsZeilen(symbolYahoo, merged.perioden, merged.zeilen, yahooExt)
+  if (ntm.zeilen.length > 0) {
+    if (ntm.periodenPatch && !merged.perioden.some((p) => p.iso === FUNDAMENTAL_NTM_KEY)) {
+      const schaetzIdx = merged.perioden.findIndex((p) => p.istSchaetzung)
+      if (schaetzIdx >= 0) merged.perioden.splice(schaetzIdx, 0, ntm.periodenPatch)
+      else merged.perioden.push(ntm.periodenPatch)
+    }
+    for (const z of merged.zeilen) {
+      if (!(FUNDAMENTAL_NTM_KEY in z.werte)) z.werte[FUNDAMENTAL_NTM_KEY] = null
+    }
+    merged.zeilen.push(...ntm.zeilen)
+  }
   const sektorFinal = brancheMeta.sektor
   const brancheFinal = brancheMeta.branche ?? roh.branche
 

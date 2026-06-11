@@ -18,6 +18,7 @@ export type FundamentalPeriode = {
   iso: string
   label: string
   istLtm?: boolean
+  istNtm?: boolean
   istSchaetzung?: boolean
 }
 
@@ -130,5 +131,6 @@ export type FundamentaldatenAnfrage = {
 
 /** Spezial-Schlüssel für TTM- und Schätzungs-Spalten */
 export const FUNDAMENTAL_TTM_KEY = '__ttm__'
+export const FUNDAMENTAL_NTM_KEY = '__ntm__'
 export const FUNDAMENTAL_FY0E_KEY = '__fy0e__'
 export const FUNDAMENTAL_FY1E_KEY = '__fy1e__'
