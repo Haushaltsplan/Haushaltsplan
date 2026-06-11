@@ -252,17 +252,28 @@ export type CoachJsonResponseConfig = {
 }
 
 /** Primärmodell + Fallbacks (ohne Duplikate). Reihenfolge: ENV primär, GEMINI_MODEL_FALLBACKS, dann sinnvolle Defaults. */
-function geminiModelKandidaten(): string[] {
-  const primaryRaw =
-    process.env.FINANCE_COACH_GEMINI_MODEL?.trim() || process.env.GEMINI_MODEL?.trim() || 'gemini-2.5-flash'
-  const primary = primaryRaw || 'gemini-2.5-flash'
-  const ausEnv = (process.env.GEMINI_MODEL_FALLBACKS || '')
+function buildGeminiModelChain(opts: {
+  primaryEnvKeys: string[]
+  fallbackEnvKey: string
+  defaultPrimary: string
+  defaultFallbacks: string[]
+}): string[] {
+  let primary = ''
+  for (const key of opts.primaryEnvKeys) {
+    const v = process.env[key]?.trim()
+    if (v) {
+      primary = v
+      break
+    }
+  }
+  if (!primary) primary = process.env.GEMINI_MODEL?.trim() || opts.defaultPrimary
+
+  const ausEnv = (process.env[opts.fallbackEnvKey] || process.env.GEMINI_MODEL_FALLBACKS || '')
     .split(/[,;\s]+/)
     .map((s) => s.trim())
     .filter(Boolean)
-  /** Wenn das Free-Tier-Limit eines Modells erreicht ist, zählt Google oft **pro Modell** — nächstes Modell = neues Kontingent. */
-  const defaults = ['gemini-2.0-flash', 'gemini-2.5-flash-lite', 'gemini-flash-latest', 'gemini-3-flash-preview']
-  const chain = [primary, ...ausEnv, ...defaults]
+
+  const chain = [primary, ...ausEnv, ...opts.defaultFallbacks]
   const seen = new Set<string>()
   const out: string[] = []
   for (const m of chain) {
@@ -272,6 +283,38 @@ function geminiModelKandidaten(): string[] {
     out.push(id)
   }
   return out
+}
+
+function geminiModelKandidaten(): string[] {
+  return buildGeminiModelChain({
+    primaryEnvKeys: ['FINANCE_COACH_GEMINI_MODEL'],
+    fallbackEnvKey: 'GEMINI_MODEL_FALLBACKS',
+    defaultPrimary: 'gemini-3.5-flash',
+    /** Quota oft pro Modell — nächstes Modell = neues Kontingent. Kein 2.0 (EOL 2026). */
+    defaultFallbacks: [
+      'gemini-flash-latest',
+      'gemini-2.5-flash',
+      'gemini-3.1-flash-lite',
+      'gemini-2.5-flash-lite',
+      'gemini-3-flash-preview',
+    ],
+  })
+}
+
+/** Earnings Call — lange Transkripte, bevorzugt neuestes Flash mit Quota-Fallbacks. */
+export function earningsCallGeminiModelKandidaten(): string[] {
+  return buildGeminiModelChain({
+    primaryEnvKeys: ['EARNINGS_CALL_GEMINI_MODEL', 'FINANCE_COACH_GEMINI_MODEL'],
+    fallbackEnvKey: 'EARNINGS_CALL_GEMINI_MODEL_FALLBACKS',
+    defaultPrimary: 'gemini-3.5-flash',
+    defaultFallbacks: [
+      'gemini-flash-latest',
+      'gemini-2.5-flash',
+      'gemini-3.1-flash-lite',
+      'gemini-2.5-flash-lite',
+      'gemini-3-flash-preview',
+    ],
+  })
 }
 
 function parseGeminiFehlerBody(raw: string): { message: string; apiStatus?: string } {
@@ -383,8 +426,9 @@ async function callGemini(
   systemText: string,
   userMessages: CoachMessage[],
   callOpts: CallGeminiEinModellOptions,
+  modelChain?: string[],
 ): Promise<{ ok: true; reply: string } | { ok: false; status: number; hint: string }> {
-  const models = geminiModelKandidaten()
+  const models = modelChain?.length ? modelChain : geminiModelKandidaten()
   if (!models.length) {
     return { ok: false, status: 501, hint: 'Kein Gemini-Modell konfiguriert (GEMINI_MODEL / FINANCE_COACH_GEMINI_MODEL).' }
   }
@@ -436,6 +480,8 @@ export type RunCoachCompletionOptions = {
   geminiGoogleSearch?: boolean
   /** Voller User-Text ohne COACH_MAX_CONTENT-Kürzung (z. B. Earnings-Transkript). */
   skipMessageTrim?: boolean
+  /** Nur Gemini: eigene Modell-Kette (Primär + Fallbacks bei Quota/429). */
+  geminiModels?: string[]
 }
 
 export async function runCoachCompletion(
@@ -452,7 +498,7 @@ export async function runCoachCompletion(
       temperature: t,
       jsonResponse: options?.jsonResponse,
       geminiGoogleSearch: options?.geminiGoogleSearch,
-    })
+    }, options?.geminiModels)
   }
   return callOpenAI(apiKey, systemText, messages, t, Boolean(options?.jsonResponse))
 }

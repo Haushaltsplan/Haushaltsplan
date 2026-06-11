@@ -25,7 +25,7 @@ import { ladeIrTranskriptHistorie } from '@/lib/portfolio-analyse/ir-earnings-sc
 import { ladeMotleyFoolTranskriptHistorie } from '@/lib/portfolio-analyse/motley-fool-earnings-transcript-server'
 import { ladeInvestorRelationsUrl } from '@/lib/portfolio-analyse/investor-relations-url'
 import { ladeSecEdgarTranskriptHistorie } from '@/lib/portfolio-analyse/sec-edgar-earnings-transcript-server'
-import { resolveCoachProvider, runCoachCompletion } from '@/lib/ki-coach-backend'
+import { resolveCoachProviderFromMode, runCoachCompletion, earningsCallGeminiModelKandidaten } from '@/lib/ki-coach-backend'
 
 const MAX_TRANSCRIPT_CHARS = 100_000
 const CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000
@@ -227,9 +227,9 @@ async function zusammenfasseTranscript(
   transcript: string,
   meta: { ticker: string; titel: string; label: string; firmenname?: string | null },
 ): Promise<string> {
-  const provider = resolveCoachProvider()
+  const provider = resolveCoachProviderFromMode('gemini')
   if (!provider) {
-    throw new Error('KI nicht konfiguriert — GEMINI_API_KEY oder OPENAI_API_KEY.')
+    throw new Error('KI nicht konfiguriert — GEMINI_API_KEY in .env.local setzen.')
   }
 
   const clipped =
@@ -251,7 +251,11 @@ async function zusammenfasseTranscript(
     provider.apiKey,
     EARNINGS_CALL_SYSTEM_PROMPT,
     [{ role: 'user', content: userText }],
-    { temperature: 0.35, skipMessageTrim: true },
+    {
+      temperature: 0.35,
+      skipMessageTrim: true,
+      geminiModels: earningsCallGeminiModelKandidaten(),
+    },
   )
 
   if (!result.ok) throw new Error(result.hint)
