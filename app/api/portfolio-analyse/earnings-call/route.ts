@@ -43,6 +43,7 @@ export async function POST(req: Request) {
       isin: row.isin != null ? String(row.isin).trim() || null : null,
       force: Boolean(row.force),
       quartalId: row.quartalId != null ? String(row.quartalId).trim() || null : null,
+      forceKi: Boolean(row.forceKi),
     })
 
     return NextResponse.json(paket)

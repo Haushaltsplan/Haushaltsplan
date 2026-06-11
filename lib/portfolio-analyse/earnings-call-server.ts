@@ -8,6 +8,12 @@ import {
   sortiereQuartale,
 } from '@/lib/portfolio-analyse/earnings-call-quartal'
 import { EARNINGS_CALL_SYSTEM_PROMPT } from '@/lib/portfolio-analyse/earnings-call-prompt'
+import {
+  ladeEarningsCallKiCacheEintrag,
+  ladeEarningsCallKiCacheFuerTicker,
+  loescheEarningsCallKiCacheEintrag,
+  speichereEarningsCallKiCache,
+} from '@/lib/portfolio-analyse/earnings-call-ki-cache-server'
 import type {
   EarningsCallAnfrage,
   EarningsCallPaket,
@@ -16,6 +22,7 @@ import type {
 } from '@/lib/portfolio-analyse/earnings-call-types'
 import { ladeFinnhubLetztesTranskript } from '@/lib/portfolio-analyse/finnhub-earnings-transcript-server'
 import { ladeIrTranskriptHistorie } from '@/lib/portfolio-analyse/ir-earnings-scraper'
+import { ladeMotleyFoolTranskriptHistorie } from '@/lib/portfolio-analyse/motley-fool-earnings-transcript-server'
 import { ladeInvestorRelationsUrl } from '@/lib/portfolio-analyse/investor-relations-url'
 import { ladeSecEdgarTranskriptHistorie } from '@/lib/portfolio-analyse/sec-edgar-earnings-transcript-server'
 import { resolveCoachProvider, runCoachCompletion } from '@/lib/ki-coach-backend'
@@ -62,6 +69,31 @@ function setDiscovery(ticker: string, roh: RohesTranskript[], prev?: DiscoveryCa
   })
 }
 
+async function ladePersistenteSummaries(ticker: string, cache: DiscoveryCache): Promise<void> {
+  const gespeichert = await ladeEarningsCallKiCacheFuerTicker(ticker)
+  for (const [quartalId, eintrag] of gespeichert) {
+    if (!cache.summaries.has(quartalId)) {
+      cache.summaries.set(quartalId, eintrag.zusammenfassung)
+    }
+  }
+}
+
+async function summaryAusPersistenz(
+  ticker: string,
+  quartalId: string,
+  transcriptUrl: string,
+  forceKi?: boolean,
+): Promise<string | null> {
+  if (forceKi) return null
+  const hit = await ladeEarningsCallKiCacheEintrag(ticker, quartalId)
+  if (!hit) return null
+  if (hit.transcriptUrl && hit.transcriptUrl !== transcriptUrl) {
+    await loescheEarningsCallKiCacheEintrag(ticker, quartalId)
+    return null
+  }
+  return hit.zusammenfassung
+}
+
 async function entdeckeTranskripte(
   anfrage: EarningsCallAnfrage,
   irUrl: string | null,
@@ -101,12 +133,28 @@ async function entdeckeTranskripte(
     }
   }
 
-  // 2) SEC — nur echte Call-Transkripte (Ex. 99.2)
+  // 2) Motley Fool — kostenlose Call-Transkripte (US & große internationale Titel)
+  try {
+    const fool = await ladeMotleyFoolTranskriptHistorie(ticker, anfrage.firmenname, MAX_QUARTALE)
+    if (fool.length > 0) {
+      return fool.map((s) => ({
+        titel: s.titel,
+        url: s.url,
+        callDatum: s.callDatum,
+        text: s.text,
+        quelle: 'motley_fool' as const,
+      }))
+    }
+  } catch {
+    /* SEC / Finnhub */
+  }
+
+  // 3) SEC — nur echte Call-Transkripte (Ex. 99.2)
   let sec: Awaited<ReturnType<typeof ladeSecEdgarTranskriptHistorie>> = []
   try {
     sec = await ladeSecEdgarTranskriptHistorie(ticker, MAX_QUARTALE)
   } catch {
-    /* IR-Fallback oben */
+    /* Finnhub */
   }
   if (sec.length > 0) {
     return sec.map((s) => ({
@@ -133,7 +181,7 @@ async function entdeckeTranskripte(
 
   if (isUsIsin) {
     throw new Error(
-      `Kein Earnings-Call-Transkript (Conference Call inkl. Q&A) für ${ticker} gefunden. Bei vielen US-Aktien (z. B. MA, GOOGL) liegt bei der SEC nur die Pressemitteilung vor — das volle Transkript steht meist auf der Investor-Relations-Seite.`,
+      `Kein Earnings-Call-Transkript (Conference Call inkl. Q&A) für ${ticker} gefunden. Motley Fool, SEC und IR-Seite wurden geprüft.`,
     )
   }
 
@@ -234,7 +282,7 @@ function bauePaket(
     ok: quartale.length > 0,
     ticker,
     quartale,
-    aktivesQuartalId: aktivesQuartalId ?? quartale[0]?.id ?? null,
+    aktivesQuartalId: aktivesQuartalId ?? null,
     geladenAm: new Date().toISOString(),
     ausCache,
     hinweis,
@@ -262,12 +310,13 @@ export async function ladeEarningsCallZusammenfassung(anfrage: EarningsCallAnfra
   }
 
   let cache = getDiscovery(ticker, anfrage.force)
-  const prev = cache ?? undefined
+  const hadMemoryCache = Boolean(cache)
+  const staleHit = discoveryCache.get(ticker)
 
   if (!cache) {
     try {
       const roh = await entdeckeTranskripte(anfrage, irUrl)
-      setDiscovery(ticker, roh, prev)
+      setDiscovery(ticker, roh, anfrage.force ? staleHit : undefined)
       cache = discoveryCache.get(ticker)!
     } catch (e) {
       const raw = e instanceof Error ? e.message : 'Earnings Call fehlgeschlagen'
@@ -282,22 +331,29 @@ export async function ladeEarningsCallZusammenfassung(anfrage: EarningsCallAnfra
         geladenAm: new Date().toISOString(),
         ausCache: false,
         fehler: msg,
-        hinweis: 'US: SEC EDGAR · EU: IR-Seite (Playwright) · optional Finnhub Professional',
+        hinweis: 'Quellen: IR · Motley Fool · SEC · Finnhub',
         investorRelationsUrl: irUrl,
       }
     }
   }
 
+  await ladePersistenteSummaries(ticker, cache)
+
   const quartale = rohZuQuartale(cache.roh)
-  const zielId = anfrage.quartalId?.trim() || quartale[0]?.id
+  const zielId = anfrage.quartalId?.trim() || null
+
   if (!zielId) {
-    return bauePaket(ticker, cache, irUrl, null, Boolean(prev), null)
+    return bauePaket(ticker, cache, irUrl, null, hadMemoryCache, null)
   }
 
-  if (!cache.summaries.has(zielId)) {
-    const roh = findeRohFuerQuartal(cache, zielId)
-    const meta = quartale.find((q) => q.id === zielId)
-    if (roh && meta) {
+  const roh = findeRohFuerQuartal(cache, zielId)
+  const meta = quartale.find((q) => q.id === zielId)
+
+  if (roh && meta && (!cache.summaries.has(zielId) || anfrage.forceKi)) {
+    const cached = await summaryAusPersistenz(ticker, zielId, roh.url, anfrage.forceKi)
+    if (cached) {
+      cache.summaries.set(zielId, cached)
+    } else {
       try {
         const summary = await zusammenfasseTranscript(roh.text, {
           ticker,
@@ -306,10 +362,16 @@ export async function ladeEarningsCallZusammenfassung(anfrage: EarningsCallAnfra
           firmenname: anfrage.firmenname,
         })
         cache.summaries.set(zielId, summary)
+        await speichereEarningsCallKiCache({
+          ticker,
+          quartalId: zielId,
+          transcriptUrl: roh.url,
+          zusammenfassung: summary,
+        })
       } catch (e) {
         const msg = e instanceof Error ? e.message : 'KI-Zusammenfassung fehlgeschlagen'
         return {
-          ...bauePaket(ticker, cache, irUrl, zielId, Boolean(prev), null),
+          ...bauePaket(ticker, cache, irUrl, zielId, hadMemoryCache, null),
           ok: true,
           fehler: msg,
         }
@@ -320,12 +382,14 @@ export async function ladeEarningsCallZusammenfassung(anfrage: EarningsCallAnfra
   const quelle = cache.roh[0]?.quelle
   const hinweis =
     quelle === 'ir_scrape'
-      ? 'Transkripte von der Investor-Relations-Seite (Playwright).'
-      : quelle === 'sec_edgar'
-        ? 'Offizielle SEC-8-K-Transkripte (US).'
-        : null
+      ? 'Transkripte von der Investor-Relations-Seite.'
+      : quelle === 'motley_fool'
+        ? 'Transkripte von The Motley Fool (Conference Call inkl. Q&A).'
+        : quelle === 'sec_edgar'
+          ? 'Offizielle SEC-8-K-Transkripte (US).'
+          : null
 
-  return bauePaket(ticker, cache, irUrl, zielId, Boolean(prev && !anfrage.force), hinweis)
+  return bauePaket(ticker, cache, irUrl, zielId, hadMemoryCache && !anfrage.force, hinweis)
 }
 
 /** Für UI-Gruppierung */

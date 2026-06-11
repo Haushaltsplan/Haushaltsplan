@@ -1,0 +1,452 @@
+/** Motley Fool — kostenlose Earnings-Call-Transkripte (US & große internationale Titel). */
+
+import 'server-only'
+
+import { heuteIsoUtc } from '@/lib/portfolio-analyse/dividenden-datum-hilfen'
+import {
+  istEarningsCallTranskript,
+  istPresseMitteilung,
+} from '@/lib/portfolio-analyse/earnings-call-transcript-heuristik'
+import { htmlZuFliesstext } from '@/lib/html/text-aus-html'
+import {
+  holeYahooFinanceAuth,
+  YAHOO_FINANCE_FETCH_HEADERS,
+} from '@/lib/portfolio-analyse/yahoo-finance-auth-server'
+
+export type FoolTranscript = {
+  titel: string
+  url: string
+  callDatum: string | null
+  text: string
+}
+
+const FOOL_ORIGIN = 'https://www.fool.com'
+const USER_AGENT =
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'
+
+const ARCHIVE_PAGE_DELAY_MS = 350
+const ARTICLE_DELAY_MS = 200
+const MAX_ARCHIVE_PAGES = 40
+const MAX_URL_KANDIDATEN = 24
+
+/** Bekannte Slug-Präfixe, falls Firmenname fehlt oder abweicht. */
+const BEKANNTE_FOOL_SLUGS: Record<string, string[]> = {
+  AAPL: ['apple'],
+  ABBV: ['abbvie'],
+  ABT: ['abbott'],
+  ADBE: ['adobe'],
+  AMGN: ['amgen'],
+  AMZN: ['amazon'],
+  AVGO: ['broadcom'],
+  BAC: ['bank-of-america'],
+  BRK: ['berkshire-hathaway'],
+  'BRK.B': ['berkshire-hathaway'],
+  COST: ['costco'],
+  CRM: ['salesforce'],
+  CSCO: ['cisco'],
+  CVX: ['chevron'],
+  DIS: ['walt-disney', 'disney'],
+  GOOG: ['alphabet'],
+  GOOGL: ['alphabet'],
+  HD: ['home-depot'],
+  INTC: ['intel'],
+  JNJ: ['johnson-johnson'],
+  JPM: ['jpmorgan', 'jp-morgan'],
+  KO: ['coca-cola'],
+  LLY: ['eli-lilly', 'lilly'],
+  MA: ['mastercard'],
+  META: ['meta-platforms', 'meta'],
+  MRK: ['merck'],
+  MSFT: ['microsoft'],
+  NFLX: ['netflix'],
+  NVDA: ['nvidia'],
+  ORCL: ['oracle'],
+  PEP: ['pepsico'],
+  PFE: ['pfizer'],
+  PG: ['procter-gamble'],
+  TMO: ['thermo-fisher'],
+  TSLA: ['tesla'],
+  UNH: ['unitedhealth', 'unitedhealth-group'],
+  V: ['visa'],
+  WMT: ['walmart'],
+  XOM: ['exxon', 'exxon-mobil'],
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+function normalisiereFoolTicker(ticker: string): string[] {
+  const t = ticker.trim().toUpperCase().replace(/[^A-Z0-9.-]/g, '')
+  if (!t) return []
+  const variants = [t]
+  if (t.includes('.')) variants.push(t.split('.')[0])
+  if (t === 'GOOG') variants.push('GOOGL')
+  if (t === 'GOOGL') variants.push('GOOG')
+  return [...new Set(variants.filter(Boolean))]
+}
+
+function firmennameZuSlug(name: string): string[] {
+  const cleaned = name
+    .replace(/\b(inc\.?|corp\.?|corporation|ltd\.?|limited|llc|plc|ag|se|sa|nv|n\.v\.|co\.?|group|holding[s]?)\b/gi, ' ')
+    .trim()
+  const base = cleaned
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '')
+  const out = new Set<string>()
+  if (base) out.add(base)
+  const first = base.split('-').filter(Boolean)[0]
+  if (first) out.add(first)
+  return [...out]
+}
+
+function slugPasstZuTicker(slug: string, tickers: string[]): boolean {
+  const s = slug.toLowerCase()
+  return tickers.some((t) => {
+    const tl = t.toLowerCase().replace(/\./g, '-')
+    return s.includes(`-${tl}-q`) || s.includes(`-${tl}-`)
+  })
+}
+
+function datumAusFoolUrl(url: string): string | null {
+  const m = url.match(/\/earnings\/call-transcripts\/(\d{4})\/(\d{2})\/(\d{2})\//)
+  return m ? `${m[1]}-${m[2]}-${m[3]}` : null
+}
+
+function extrahiereArchiveLinks(html: string): string[] {
+  return [
+    ...new Set(
+      [...html.matchAll(/\/earnings\/call-transcripts\/20\d{2}\/\d{2}\/\d{2}\/[^"'\s\\]+/g)].map((m) => m[0]),
+    ),
+  ]
+}
+
+function titelAusSlug(slug: string): string {
+  return slug
+    .replace(/-earnings-call-transcript$/i, '')
+    .replace(/-earnings-transcript$/i, '')
+    .replace(/-/g, ' ')
+    .replace(/\bq([1-4])\b/i, 'Q$1')
+}
+
+async function foolFetch(url: string): Promise<{ ok: boolean; html: string; status: number }> {
+  const abs = url.startsWith('http') ? url : `${FOOL_ORIGIN}${url}`
+  const res = await fetch(abs, {
+    headers: { 'User-Agent': USER_AGENT, Accept: 'text/html,application/xhtml+xml' },
+    cache: 'no-store',
+  })
+  return { ok: res.ok, html: await res.text(), status: res.status }
+}
+
+async function foolUrlExistiert(url: string): Promise<boolean> {
+  try {
+    const head = await fetch(url, { method: 'HEAD', headers: { 'User-Agent': USER_AGENT }, cache: 'no-store' })
+    if (head.ok) return true
+  } catch {
+    /* GET-Fallback */
+  }
+  const { ok, status } = await foolFetch(url)
+  return ok && status !== 404
+}
+
+function slugVarianten(firmSlug: string, ticker: string, quartal: number, jahr: number): string[] {
+  const t = ticker.toLowerCase()
+  const bases = [`${firmSlug}-${t}-q${quartal}-${jahr}`]
+  if (firmSlug !== t) bases.push(`${t}-q${quartal}-${jahr}`)
+  const suffixes = ['-earnings-transcript', '-earnings-call-transcript']
+  return bases.flatMap((b) => suffixes.map((s) => b + s))
+}
+
+function datumPfade(isoDate: string): string[] {
+  const basis = new Date(`${isoDate}T12:00:00Z`)
+  if (Number.isNaN(basis.getTime())) return []
+  const out: string[] = []
+  for (let delta = -4; delta <= 4; delta++) {
+    const d = new Date(basis)
+    d.setUTCDate(d.getUTCDate() + delta)
+    const y = d.getUTCFullYear()
+    const m = String(d.getUTCMonth() + 1).padStart(2, '0')
+    const day = String(d.getUTCDate()).padStart(2, '0')
+    out.push(`${y}/${m}/${day}`)
+  }
+  return [...new Set(out)]
+}
+
+function firmSlugsFuerTicker(ticker: string, firmenname: string | null): string[] {
+  const tickers = normalisiereFoolTicker(ticker)
+  const slugs = new Set<string>()
+  for (const t of tickers) {
+    for (const s of BEKANNTE_FOOL_SLUGS[t] ?? []) slugs.add(s)
+  }
+  if (firmenname?.trim()) {
+    for (const s of firmennameZuSlug(firmenname)) slugs.add(s)
+  }
+  return [...slugs]
+}
+
+async function kandidatenViaBing(ticker: string, firmenname: string | null): Promise<string[]> {
+  const q = firmenname?.trim()
+    ? `site:fool.com earnings call transcript ${firmenname} ${ticker}`
+    : `site:fool.com earnings call transcript ${ticker}`
+  try {
+    const res = await fetch(`https://www.bing.com/search?q=${encodeURIComponent(q)}`, {
+      headers: { 'User-Agent': USER_AGENT },
+      cache: 'no-store',
+    })
+    if (!res.ok) return []
+    const html = await res.text()
+    return [
+      ...new Set(
+        [...html.matchAll(/https:\/\/www\.fool\.com\/earnings\/call-transcripts\/[^"&]+/g)]
+          .map((m) => m[0].replace(/&amp;/g, '&').split('&')[0])
+          .filter((u) => u.includes('/earnings/call-transcripts/')),
+      ),
+    ]
+  } catch {
+    return []
+  }
+}
+
+type YahooHistoryRow = {
+  quarter?: { raw?: number }
+  period?: string
+}
+
+async function kandidatenViaYahoo(
+  tickers: string[],
+  firmSlugs: string[],
+): Promise<string[]> {
+  if (firmSlugs.length === 0 || tickers.length === 0) return []
+
+  const auth = await holeYahooFinanceAuth()
+  if (!auth) return []
+
+  const sym = tickers[0]
+  const u = new URL(`https://query2.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(sym)}`)
+  u.searchParams.set('modules', 'earningsHistory')
+  u.searchParams.set('crumb', auth.crumb)
+
+  let history: YahooHistoryRow[] = []
+  try {
+    const res = await fetch(u.toString(), {
+      headers: { ...YAHOO_FINANCE_FETCH_HEADERS, Cookie: auth.cookie },
+      cache: 'no-store',
+    })
+    if (!res.ok) return []
+    history =
+      (await res.json()).quoteSummary?.result?.[0]?.earningsHistory?.history ?? []
+  } catch {
+    return []
+  }
+
+  const urls: string[] = []
+  for (const row of history.slice(0, 12)) {
+    const quartal = row.quarter?.raw
+    const period = row.period?.trim()
+    if (quartal == null || quartal < 1 || quartal > 4 || !period) continue
+
+    const end = new Date(`${period}T12:00:00Z`)
+    if (Number.isNaN(end.getTime())) continue
+
+    const callEst = new Date(end)
+    callEst.setUTCDate(callEst.getUTCDate() + 30)
+    const callIso = callEst.toISOString().slice(0, 10)
+
+    const basisJahr = end.getUTCFullYear()
+    const jahre = [basisJahr, basisJahr + 1, basisJahr - 1]
+
+    for (const firmSlug of firmSlugs) {
+      for (const jahr of jahre) {
+        for (const slug of slugVarianten(firmSlug, sym, quartal, jahr)) {
+          for (const pfad of datumPfade(callIso)) {
+            urls.push(`${FOOL_ORIGIN}/earnings/call-transcripts/${pfad}/${slug}/`)
+          }
+        }
+      }
+    }
+  }
+
+  return [...new Set(urls)]
+}
+
+async function kandidatenViaFinnhubKalender(
+  ticker: string,
+  firmSlugs: string[],
+  tickers: string[],
+): Promise<string[]> {
+  const key = (process.env.FINNHUB_API_KEY ?? '').trim()
+  if (!key || firmSlugs.length === 0) return []
+
+  const u = new URL('https://finnhub.io/api/v1/calendar/earnings')
+  u.searchParams.set('from', heuteIsoUtc())
+  u.searchParams.set('to', '2030-12-31')
+  u.searchParams.set('symbol', tickers[0])
+  u.searchParams.set('token', key)
+
+  let rows: Array<{ date?: string; quarter?: number; year?: number }> = []
+  try {
+    const res = await fetch(u.toString(), { cache: 'no-store' })
+    if (!res.ok) return []
+    rows = (await res.json()).earningsCalendar ?? []
+  } catch {
+    return []
+  }
+
+  const urls: string[] = []
+  for (const row of rows.slice(0, 4)) {
+    if (!row.date || !row.quarter || !row.year) continue
+    for (const firmSlug of firmSlugs) {
+      for (const slug of slugVarianten(firmSlug, tickers[0], row.quarter, row.year)) {
+        for (const pfad of datumPfade(row.date)) {
+          urls.push(`${FOOL_ORIGIN}/earnings/call-transcripts/${pfad}/${slug}/`)
+        }
+      }
+    }
+  }
+  return [...new Set(urls)]
+}
+
+async function kandidatenViaDuckDuckGo(ticker: string, firmenname: string | null): Promise<string[]> {
+  const q = firmenname?.trim()
+    ? `site:fool.com earnings call transcript ${firmenname} ${ticker}`
+    : `site:fool.com earnings call transcript ${ticker}`
+  try {
+    const res = await fetch(`https://html.duckduckgo.com/html/?q=${encodeURIComponent(q)}`, {
+      headers: { 'User-Agent': USER_AGENT },
+      cache: 'no-store',
+    })
+    if (!res.ok) return []
+    const html = await res.text()
+    return [
+      ...new Set(
+        [...html.matchAll(/uddg=([^&"]+)/g)]
+          .map((m) => decodeURIComponent(m[1]))
+          .filter((u) => u.includes('fool.com/earnings/call-transcripts')),
+      ),
+    ]
+  } catch {
+    return []
+  }
+}
+
+async function kandidatenViaArchiv(tickers: string[], maxLinks: number): Promise<string[]> {
+  const gefunden: string[] = []
+
+  for (let seite = 1; seite <= MAX_ARCHIVE_PAGES; seite++) {
+    if (gefunden.length >= maxLinks) break
+    if (seite > 1) await sleep(ARCHIVE_PAGE_DELAY_MS)
+
+    const pfad =
+      seite === 1 ? '/earnings-call-transcripts/' : `/earnings-call-transcripts/page/${seite}/`
+    const { ok, html, status } = await foolFetch(pfad)
+    if (status === 429 || !ok) break
+
+    const links = extrahiereArchiveLinks(html)
+    if (links.length === 0) break
+
+    for (const rel of links) {
+      const slug = rel.split('/').filter(Boolean).pop()?.replace(/\/$/, '') ?? ''
+      if (!slugPasstZuTicker(slug, tickers)) continue
+      gefunden.push(`${FOOL_ORIGIN}${rel}`)
+      if (gefunden.length >= maxLinks) break
+    }
+  }
+
+  return [...new Set(gefunden)]
+}
+
+function parseFoolArtikel(html: string, url: string): { titel: string; callDatum: string | null; text: string } | null {
+  if (html.length < 3000) return null
+  if (/captcha|access denied|please verify/i.test(html.slice(0, 5000))) return null
+
+  const ogTitle = html.match(/property="og:title" content="([^"]+)"/i)?.[1]?.trim()
+  if (ogTitle === 'The Motley Fool' && html.length < 20_000) return null
+
+  const slug = url.split('/').filter(Boolean).pop() ?? ''
+  let titel =
+    ogTitle ??
+    html.match(/<h1[^>]*>([\s\S]*?)<\/h1>/i)?.[1]?.replace(/<[^>]+>/g, '').trim() ??
+    titelAusSlug(slug)
+  if (titel === 'The Motley Fool') titel = titelAusSlug(slug)
+
+  const callDatum =
+    html.match(/property="article:published_time" content="([^"]+)"/i)?.[1]?.slice(0, 10) ??
+    datumAusFoolUrl(url)
+
+  const articleHtml = html.match(/<article[\s\S]*?<\/article>/i)?.[0] ?? html
+  const text = htmlZuFliesstext(articleHtml)
+  if (text.length < 800) return null
+  if (!istEarningsCallTranskript(text) || istPresseMitteilung(text)) return null
+
+  return { titel, callDatum, text }
+}
+
+async function ladeFoolArtikel(url: string): Promise<FoolTranscript | null> {
+  await sleep(ARTICLE_DELAY_MS)
+  const { ok, html, status } = await foolFetch(url)
+  if (!ok || status === 429) return null
+  const parsed = parseFoolArtikel(html, url)
+  if (!parsed) return null
+  return { url, ...parsed }
+}
+
+async function filterExistierendeUrls(urls: string[], tickers: string[]): Promise<string[]> {
+  const valid: string[] = []
+  for (const url of urls) {
+    if (valid.length >= MAX_URL_KANDIDATEN) break
+    const slug = url.split('/').filter(Boolean).pop() ?? ''
+    if (!slugPasstZuTicker(slug, tickers)) continue
+    if (await foolUrlExistiert(url)) valid.push(url.split('?')[0])
+    await sleep(80)
+  }
+  return [...new Set(valid)]
+}
+
+export async function ladeMotleyFoolTranskriptHistorie(
+  ticker: string,
+  firmenname?: string | null,
+  max = 8,
+): Promise<FoolTranscript[]> {
+  const tickers = normalisiereFoolTicker(ticker)
+  if (tickers.length === 0) return []
+
+  const firmSlugs = firmSlugsFuerTicker(ticker, firmenname ?? null)
+
+  const [ddg, bing, yahoo, finnhub] = await Promise.all([
+    kandidatenViaDuckDuckGo(ticker, firmenname ?? null),
+    kandidatenViaBing(ticker, firmenname ?? null),
+    kandidatenViaYahoo(tickers, firmSlugs),
+    kandidatenViaFinnhubKalender(ticker, firmSlugs, tickers),
+  ])
+
+  let kandidaten = [...new Set([...ddg, ...bing, ...yahoo, ...finnhub])]
+
+  if (kandidaten.length < max && yahoo.length + finnhub.length > 0) {
+    const existierend = await filterExistierendeUrls([...yahoo, ...finnhub], tickers)
+    kandidaten = [...new Set([...kandidaten, ...existierend])]
+  }
+
+  if (kandidaten.length < max) {
+    const archiv = await kandidatenViaArchiv(tickers, max + 4)
+    kandidaten = [...new Set([...kandidaten, ...archiv])]
+  }
+
+  const out: FoolTranscript[] = []
+  const seen = new Set<string>()
+
+  for (const url of kandidaten) {
+    if (out.length >= max) break
+    const key = url.split('?')[0]
+    if (seen.has(key)) continue
+    seen.add(key)
+
+    const art = await ladeFoolArtikel(key)
+    if (art) out.push(art)
+  }
+
+  out.sort((a, b) => (b.callDatum ?? '').localeCompare(a.callDatum ?? ''))
+  return out.slice(0, max)
+}
