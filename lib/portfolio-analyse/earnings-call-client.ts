@@ -96,7 +96,7 @@ export async function ladeEarningsCallClient(
     }),
   })
   const j = await parseApiAntwort(res)
-  if (!res.ok && !j.ticker && !j.quartale?.length) {
+  if (!j.ticker && !j.quartale?.length && (j.fehler || !res.ok)) {
     throw new Error(j.fehler ?? j.message ?? 'Earnings Call konnte nicht geladen werden.')
   }
   const merged = mergePakete(prev ?? null, j)

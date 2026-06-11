@@ -15,10 +15,10 @@ import type {
   EarningsCallQuelle,
 } from '@/lib/portfolio-analyse/earnings-call-types'
 import { ladeFinnhubLetztesTranskript } from '@/lib/portfolio-analyse/finnhub-earnings-transcript-server'
-import { ladeIrTranskriptHistorie } from '@/lib/portfolio-analyse/ir-earnings-playwright'
+import { ladeIrTranskriptHistorie } from '@/lib/portfolio-analyse/ir-earnings-scraper'
 import { ladeInvestorRelationsUrl } from '@/lib/portfolio-analyse/investor-relations-url'
 import { ladeSecEdgarTranskriptHistorie } from '@/lib/portfolio-analyse/sec-edgar-earnings-transcript-server'
-import { resolveCoachProvider, runCoachCompletion, type CoachMessage } from '@/lib/ki-coach-backend'
+import { resolveCoachProvider, runCoachCompletion } from '@/lib/ki-coach-backend'
 
 const MAX_TRANSCRIPT_CHARS = 100_000
 const CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000

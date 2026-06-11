@@ -16,6 +16,9 @@ const securityHeaders = [
 
 const nextConfig: NextConfig = {
   serverExternalPackages: ['jsdom', 'playwright', 'pdf-parse'],
+  outputFileTracingExcludes: {
+    '*': ['node_modules/playwright/**', 'node_modules/playwright-core/**'],
+  },
   async headers() {
     return [{ source: "/:path*", headers: securityHeaders }];
   },

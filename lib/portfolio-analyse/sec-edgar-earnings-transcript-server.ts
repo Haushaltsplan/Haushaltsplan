@@ -2,7 +2,7 @@
 
 import 'server-only'
 
-import { JSDOM } from 'jsdom'
+import { htmlZuFliesstext } from '@/lib/html/text-aus-html'
 import { jsonParseFehlerNachricht, leseAlsJson } from '@/lib/http/safe-json-response'
 
 export type EdgarTranscript = {
@@ -96,30 +96,12 @@ function accessionOhneBindestriche(accession: string): string {
 }
 
 function htmlZuTranskriptText(html: string): string {
-  const dom = new JSDOM(html)
-  const body = dom.window.document.body
-  if (!body) return ''
-
-  const parts: string[] = []
-  for (const el of body.querySelectorAll('p, div, td, li, span')) {
-    const t = (el.textContent || '').replace(/\s+/g, ' ').trim()
-    if (t.length < 25) continue
-    if (/^table of contents$/i.test(t)) continue
-    parts.push(t)
-  }
-
-  const deduped: string[] = []
-  const seen = new Set<string>()
-  for (const p of parts) {
-    const key = p.slice(0, 80)
-    if (seen.has(key)) continue
-    seen.add(key)
-    deduped.push(p)
-  }
-
-  const joined = deduped.join('\n\n')
-  if (joined.length > 800) return joined
-  return (body.textContent || '').replace(/\n{3,}/g, '\n\n').trim()
+  const text = htmlZuFliesstext(html)
+  if (!text) return ''
+  return text
+    .split('\n\n')
+    .filter((p) => !/^table of contents$/i.test(p.trim()))
+    .join('\n\n')
 }
 
 function indexItems(index: EdgarIndex): EdgarIndexItem[] {
