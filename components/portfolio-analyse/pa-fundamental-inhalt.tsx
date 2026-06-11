@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { PaFundamentalEarningsCall } from '@/components/portfolio-analyse/pa-fundamental-earnings-call'
 import { PaFundamentalMantra } from '@/components/portfolio-analyse/pa-fundamental-mantra'
 import { PaFundamentalNews } from '@/components/portfolio-analyse/pa-fundamental-news'
 import { PaFundamentalUebersicht } from '@/components/portfolio-analyse/pa-fundamental-uebersicht'
@@ -24,6 +25,7 @@ const UNTER_TABS = [
   { id: 'finanzdaten' as const, label: 'Finanzdaten' },
   { id: 'schaetzungen' as const, label: 'Schätzungen' },
   { id: 'bewertung' as const, label: 'Bewertung' },
+  { id: 'earnings_call' as const, label: 'Earnings Call' },
   { id: 'news' as const, label: 'News' },
 ]
 
@@ -196,9 +198,16 @@ export function PaFundamentalInhalt({
 
           {unterTab === 'mantra' && mantraAudit ? <PaFundamentalMantra audit={mantraAudit} /> : null}
 
+          {unterTab === 'earnings_call' ? (
+            <PaFundamentalEarningsCall ticker={daten.ticker} firmenname={daten.firmenname} />
+          ) : null}
+
           {unterTab === 'news' ? <PaFundamentalNews artikel={daten.news} /> : null}
 
-          {unterTab !== 'uebersicht' && unterTab !== 'news' && unterTab !== 'mantra' ? (
+          {unterTab !== 'uebersicht' &&
+          unterTab !== 'news' &&
+          unterTab !== 'mantra' &&
+          unterTab !== 'earnings_call' ? (
             <div className="space-y-4">
               <PaFundamentalMetrikChart
                 perioden={daten.perioden}

@@ -434,6 +434,8 @@ export type RunCoachCompletionOptions = {
    * Doku: https://ai.google.dev/gemini-api/docs/google-search
    */
   geminiGoogleSearch?: boolean
+  /** Voller User-Text ohne COACH_MAX_CONTENT-Kürzung (z. B. Earnings-Transkript). */
+  skipMessageTrim?: boolean
 }
 
 export async function runCoachCompletion(
@@ -444,12 +446,13 @@ export async function runCoachCompletion(
   options?: RunCoachCompletionOptions,
 ): Promise<{ ok: true; reply: string } | { ok: false; status: number; hint: string }> {
   const t = options?.temperature ?? 0.55
+  const messages = options?.skipMessageTrim ? userMessages : prepareCoachMessages(userMessages)
   if (provider === 'gemini') {
-    return callGemini(apiKey, systemText, userMessages, {
+    return callGemini(apiKey, systemText, messages, {
       temperature: t,
       jsonResponse: options?.jsonResponse,
       geminiGoogleSearch: options?.geminiGoogleSearch,
     })
   }
-  return callOpenAI(apiKey, systemText, userMessages, t, Boolean(options?.jsonResponse))
+  return callOpenAI(apiKey, systemText, messages, t, Boolean(options?.jsonResponse))
 }

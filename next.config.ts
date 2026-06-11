@@ -15,7 +15,7 @@ const securityHeaders = [
 ];
 
 const nextConfig: NextConfig = {
-  serverExternalPackages: ["jsdom"],
+  serverExternalPackages: ['jsdom', 'playwright'],
   async headers() {
     return [{ source: "/:path*", headers: securityHeaders }];
   },
