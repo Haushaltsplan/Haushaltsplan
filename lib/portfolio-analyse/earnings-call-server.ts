@@ -110,64 +110,11 @@ function mappeRohe(
   }))
 }
 
-function quellePrioritaet(q: EarningsCallQuelle): number {
-  switch (q) {
-    case 'motley_fool':
-      return 3
-    case 'sec_edgar':
-      return 2
-    case 'ir_scrape':
-      return 4
-    case 'finnhub':
-      return 1
-    default:
-      return 0
-  }
-}
-
-function waehleBesteQuelle(kandidaten: RohesTranskript[][]): RohesTranskript[] {
-  const nichtLeer = kandidaten.filter((k) => k.length > 0)
-  if (nichtLeer.length === 0) return []
-  return nichtLeer.sort((a, b) => {
-    if (b.length !== a.length) return b.length - a.length
-    return quellePrioritaet(b[0]!.quelle) - quellePrioritaet(a[0]!.quelle)
-  })[0]!
-}
-
 async function mitZeitlimit<T>(promise: Promise<T>, ms: number, fallback: T): Promise<T> {
   return Promise.race([
     promise.catch(() => fallback),
     new Promise<T>((resolve) => setTimeout(() => resolve(fallback), ms)),
   ])
-}
-
-async function entdeckeParalleleQuellen(
-  ticker: string,
-  firmenname: string | null | undefined,
-): Promise<RohesTranskript[]> {
-  const [fool, sec, finnhub] = await Promise.all([
-    mitZeitlimit(
-      ladeMotleyFoolTranskriptHistorie(ticker, firmenname, MAX_QUARTALE).then((r) =>
-        mappeRohe(r, 'motley_fool'),
-      ),
-      55_000,
-      [],
-    ),
-    mitZeitlimit(
-      ladeSecEdgarTranskriptHistorie(ticker, MAX_QUARTALE).then((r) => mappeRohe(r, 'sec_edgar')),
-      45_000,
-      [],
-    ),
-    mitZeitlimit(
-      ladeFinnhubLetztesTranskript(ticker).then((r) =>
-        r ? mappeRohe([r], 'finnhub') : [],
-      ),
-      12_000,
-      [],
-    ),
-  ])
-
-  return waehleBesteQuelle([fool, sec, finnhub])
 }
 
 async function entdeckeTranskripte(
@@ -177,12 +124,18 @@ async function entdeckeTranskripte(
   const ticker = tickerKey(anfrage.ticker)
   const isUsIsin = Boolean(anfrage.isin?.trim().toUpperCase().startsWith('US'))
 
-  // 1) IR-Website / Q4-API — nur bei konfigurierter Quelle (EU oder explizit hinterlegte US-IR)
+  // 1) Offizielle IR-Website — nur wenn dort echte Transkripte erwartet werden
   const irHard = irEarningsQuelleFuerIsin(anfrage.isin ?? '')
-  const irVersuchen = Boolean(anfrage.isin?.trim() || irUrl) && (!isUsIsin || irHard)
+  const irErwarteTranskript = irHard?.erwarteVollesTranskript !== false
+  const irVersuchen =
+    irErwarteTranskript && Boolean(anfrage.isin?.trim() || irUrl) && (!isUsIsin || irHard)
   if (irVersuchen) {
     try {
-      const ir = await ladeIrTranskriptHistorie(anfrage.isin ?? '', irUrl, MAX_QUARTALE)
+      const ir = await mitZeitlimit(
+        ladeIrTranskriptHistorie(anfrage.isin ?? '', irUrl, MAX_QUARTALE),
+        25_000,
+        [],
+      )
       if (ir.length > 0) {
         return mappeRohe(ir, 'ir_scrape')
       }
@@ -197,13 +150,38 @@ async function entdeckeTranskripte(
     }
   }
 
-  // 2) Motley Fool · SEC · Finnhub parallel (nicht nacheinander — spart Minuten)
-  const parallel = await entdeckeParalleleQuellen(ticker, anfrage.firmenname)
-  if (parallel.length > 0) return parallel
+  // 2) Motley Fool — Primärquelle (meiste vollständigen Call-Transkripte)
+  try {
+    const fool = await mitZeitlimit(
+      ladeMotleyFoolTranskriptHistorie(ticker, anfrage.firmenname, MAX_QUARTALE),
+      95_000,
+      [],
+    )
+    if (fool.length > 0) {
+      return mappeRohe(fool, 'motley_fool')
+    }
+  } catch {
+    /* SEC / Finnhub */
+  }
+
+  // 3) SEC — Fallback (US, oft weniger Quartale)
+  try {
+    const sec = await mitZeitlimit(ladeSecEdgarTranskriptHistorie(ticker, MAX_QUARTALE), 45_000, [])
+    if (sec.length > 0) {
+      return mappeRohe(sec, 'sec_edgar')
+    }
+  } catch {
+    /* Finnhub */
+  }
+
+  const finnhub = await ladeFinnhubLetztesTranskript(ticker)
+  if (finnhub) {
+    return mappeRohe([finnhub], 'finnhub')
+  }
 
   if (isUsIsin) {
     throw new Error(
-      `Kein Earnings-Call-Transkript (Conference Call inkl. Q&A) für ${ticker} gefunden. Motley Fool, SEC und Finnhub wurden geprüft.`,
+      `Kein Earnings-Call-Transkript (Conference Call inkl. Q&A) für ${ticker} gefunden. Motley Fool (Primär), SEC und Finnhub wurden geprüft.`,
     )
   }
 

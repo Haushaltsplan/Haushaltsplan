@@ -24,13 +24,13 @@ const FOOL_ORIGIN = 'https://www.fool.com'
 const USER_AGENT =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'
 
-const ARCHIVE_PAGE_DELAY_MS = 200
-const ARTICLE_DELAY_MS = 120
-const FETCH_TIMEOUT_MS = 12_000
-const DISCOVERY_BUDGET_MS = 50_000
-const MAX_ARCHIVE_PAGES = 12
-const MAX_URL_KANDIDATEN = 10
-const MAX_QUARTALS_RASTER = 4
+const ARCHIVE_PAGE_DELAY_MS = 180
+const ARTICLE_DELAY_MS = 100
+const FETCH_TIMEOUT_MS = 14_000
+const DISCOVERY_BUDGET_MS = 88_000
+const MAX_ARCHIVE_PAGES = 24
+const MAX_URL_KANDIDATEN = 18
+const MAX_QUARTALS_RASTER = 8
 
 /** Bekannte Slug-Präfixe, falls Firmenname fehlt oder abweicht. */
 const BEKANNTE_FOOL_SLUGS: Record<string, string[]> = {
@@ -106,15 +106,34 @@ function firmennameZuSlug(name: string): string[] {
   return [...out]
 }
 
-function slugPasstZuTicker(slug: string, tickers: string[]): boolean {
+function slugPasstZuTicker(slug: string, tickers: string[], firmSlugs: string[] = []): boolean {
   const s = slug.toLowerCase()
-  return tickers.some((t) => {
+  const tickerMatch = tickers.some((t) => {
     const tl = t.toLowerCase().replace(/\./g, '-')
+    if (tl.length <= 2) {
+      return (
+        new RegExp(`-${tl}-q\\d`, 'i').test(s) ||
+        new RegExp(`-${tl}-\\d{4}`, 'i').test(s) ||
+        new RegExp(`-${tl}-earnings`, 'i').test(s)
+      )
+    }
     return (
       s.includes(`-${tl}-q`) ||
       s.includes(`-${tl}-`) ||
       s.endsWith(`-${tl}`) ||
       new RegExp(`-${tl}-earnings`, 'i').test(s)
+    )
+  })
+  if (tickerMatch) return true
+
+  const sym = tickers[0]?.toLowerCase()
+  return firmSlugs.some((fs) => {
+    const f = fs.toLowerCase()
+    if (!f || !sym) return false
+    return (
+      s.startsWith(`${f}-${sym}`) ||
+      s.includes(`${f}-${sym}-q`) ||
+      (s.startsWith(`${f}-`) && s.includes(`-${sym}-`))
     )
   })
 }
@@ -445,7 +464,11 @@ async function kandidatenViaDuckDuckGo(ticker: string, firmenname: string | null
   return [...new Set(urls)]
 }
 
-async function kandidatenViaArchiv(tickers: string[], maxLinks: number): Promise<string[]> {
+async function kandidatenViaArchiv(
+  tickers: string[],
+  firmSlugs: string[],
+  maxLinks: number,
+): Promise<string[]> {
   const gefunden: string[] = []
 
   for (let seite = 1; seite <= MAX_ARCHIVE_PAGES; seite++) {
@@ -462,13 +485,51 @@ async function kandidatenViaArchiv(tickers: string[], maxLinks: number): Promise
 
     for (const rel of links) {
       const slug = rel.split('/').filter(Boolean).pop()?.replace(/\/$/, '') ?? ''
-      if (!slugPasstZuTicker(slug, tickers)) continue
+      if (!slugPasstZuTicker(slug, tickers, firmSlugs)) continue
       gefunden.push(`${FOOL_ORIGIN}${rel}`)
       if (gefunden.length >= maxLinks) break
     }
   }
 
   return [...new Set(gefunden)]
+}
+
+/** Schnellster Pfad: typische Fool-URLs pro Quartal direkt laden (z. B. mastercard-ma-q4-2025). */
+async function ladeDirektAusQuartalsRaster(
+  tickers: string[],
+  firmSlugs: string[],
+  max: number,
+  start: number,
+): Promise<FoolTranscript[]> {
+  if (firmSlugs.length === 0 || tickers.length === 0) return []
+  const sym = tickers[0]!
+  const out: FoolTranscript[] = []
+  const seen = new Set<string>()
+
+  for (const { quartal, jahr } of letzteBerichtsQuartale(max)) {
+    if (budgetAbgelaufen(start) || out.length >= max) break
+    const { jahr: cj, monat } = callMonatFuerQuartal(quartal, jahr)
+
+    for (const firmSlug of firmSlugs) {
+      if (out.length >= max || budgetAbgelaufen(start)) break
+      for (const slug of slugVarianten(firmSlug, sym, quartal, jahr)) {
+        if (out.length >= max || budgetAbgelaufen(start)) break
+        for (const day of [30, 29, 28, 31, 27]) {
+          const url = `${FOOL_ORIGIN}/earnings/call-transcripts/${cj}/${String(monat).padStart(2, '0')}/${String(day).padStart(2, '0')}/${slug}/`
+          const key = url.split('?')[0]
+          if (seen.has(key)) continue
+          seen.add(key)
+          const art = await ladeFoolArtikel(key)
+          if (art) {
+            out.push(art)
+            break
+          }
+        }
+      }
+    }
+  }
+
+  return out
 }
 
 function parseFoolArtikel(html: string, url: string): { titel: string; callDatum: string | null; text: string } | null {
@@ -506,14 +567,18 @@ async function ladeFoolArtikel(url: string): Promise<FoolTranscript | null> {
   return { url, ...parsed }
 }
 
-async function filterExistierendeUrls(urls: string[], tickers: string[]): Promise<string[]> {
+async function filterExistierendeUrls(
+  urls: string[],
+  tickers: string[],
+  firmSlugs: string[],
+): Promise<string[]> {
   const valid: string[] = []
   for (const url of urls) {
     if (valid.length >= MAX_URL_KANDIDATEN) break
     const slug = url.split('/').filter(Boolean).pop() ?? ''
-    if (!slugPasstZuTicker(slug, tickers)) continue
+    if (!slugPasstZuTicker(slug, tickers, firmSlugs)) continue
     if (await foolUrlExistiert(url)) valid.push(url.split('?')[0])
-    await sleep(50)
+    await sleep(40)
   }
   return [...new Set(valid)]
 }
@@ -533,6 +598,26 @@ export async function ladeMotleyFoolTranskriptHistorie(
 
   const firmSlugs = firmSlugsFuerTicker(ticker, firmenname ?? null)
 
+  const out: FoolTranscript[] = []
+  const seen = new Set<string>()
+
+  const push = (art: FoolTranscript | null) => {
+    if (!art) return
+    const key = art.url.split('?')[0]
+    if (seen.has(key)) return
+    seen.add(key)
+    out.push(art)
+  }
+
+  // Phase A: Direkt-URLs (Mastercard, Apple, … — typisches Fool-Schema)
+  for (const art of await ladeDirektAusQuartalsRaster(tickers, firmSlugs, max, start)) {
+    push(art)
+  }
+  if (out.length >= max) {
+    out.sort((a, b) => (b.callDatum ?? '').localeCompare(a.callDatum ?? ''))
+    return out.slice(0, max)
+  }
+
   const [ddg, bing, yahoo, finnhub] = await Promise.all([
     kandidatenViaDuckDuckGo(ticker, firmenname ?? null),
     kandidatenViaBing(ticker, firmenname ?? null),
@@ -542,29 +627,30 @@ export async function ladeMotleyFoolTranskriptHistorie(
 
   let kandidaten = [...new Set([...ddg, ...bing, ...yahoo, ...finnhub])]
 
-  if (kandidaten.length < max && !budgetAbgelaufen(start)) {
+  for (const url of kandidaten) {
+    if (out.length >= max || budgetAbgelaufen(start)) break
+    push(await ladeFoolArtikel(url.split('?')[0]))
+  }
+  if (out.length >= max) {
+    out.sort((a, b) => (b.callDatum ?? '').localeCompare(a.callDatum ?? ''))
+    return out.slice(0, max)
+  }
+
+  if (!budgetAbgelaufen(start)) {
     const raster = await kandidatenViaQuartalsRaster(tickers, firmSlugs)
     const zuPruefen = [...new Set([...yahoo, ...finnhub, ...raster])].slice(0, MAX_URL_KANDIDATEN * 2)
-    const existierend = await filterExistierendeUrls(zuPruefen, tickers)
+    const existierend = await filterExistierendeUrls(zuPruefen, tickers, firmSlugs)
     kandidaten = [...new Set([...kandidaten, ...existierend])]
   }
 
-  if (kandidaten.length < max && !budgetAbgelaufen(start)) {
-    const archiv = await kandidatenViaArchiv(tickers, max + 2)
+  if (out.length < max && !budgetAbgelaufen(start)) {
+    const archiv = await kandidatenViaArchiv(tickers, firmSlugs, max + 4)
     kandidaten = [...new Set([...kandidaten, ...archiv])]
   }
 
-  const out: FoolTranscript[] = []
-  const seen = new Set<string>()
-
   for (const url of kandidaten) {
     if (out.length >= max || budgetAbgelaufen(start)) break
-    const key = url.split('?')[0]
-    if (seen.has(key)) continue
-    seen.add(key)
-
-    const art = await ladeFoolArtikel(key)
-    if (art) out.push(art)
+    push(await ladeFoolArtikel(url.split('?')[0]))
   }
 
   out.sort((a, b) => (b.callDatum ?? '').localeCompare(a.callDatum ?? ''))

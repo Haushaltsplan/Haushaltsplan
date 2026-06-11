@@ -7,6 +7,8 @@ export type IrEarningsQuelle = {
   /** Q4-Plattform: Basis-URL für /feed/Event.svc (z. B. https://abc.xyz) */
   q4BasisUrls?: string[]
   keywords?: string[]
+  /** false = nur Webcast/Slides, kein volles Transkript — dann Motley Fool primär */
+  erwarteVollesTranskript?: boolean
 }
 
 /** ISIN → IR-Earnings-Seiten (Portfolio + häufige Fälle). */
@@ -61,6 +63,7 @@ export const IR_EARNINGS_NACH_ISIN: Record<string, IrEarningsQuelle> = {
       'https://investor.mastercard.com/financials-and-sec-filings/quarterly-results/default.aspx',
     ],
     q4BasisUrls: ['https://investor.mastercard.com'],
+    erwarteVollesTranskript: false,
   },
   US5949181045: {
     listenUrls: ['https://www.microsoft.com/en-us/investor/earnings'],
