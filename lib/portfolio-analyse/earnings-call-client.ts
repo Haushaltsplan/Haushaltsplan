@@ -57,6 +57,29 @@ function schreibeLocalCache(anfrage: EarningsCallAnfrage, daten: EarningsCallPak
   }
 }
 
+function istHtmlAntwort(text: string): boolean {
+  const s = text.trimStart().slice(0, 32).toLowerCase()
+  return s.startsWith('<!doctype') || s.startsWith('<html')
+}
+
+async function parseApiAntwort(res: Response): Promise<EarningsCallPaket & { message?: string }> {
+  const text = await res.text()
+  if (istHtmlAntwort(text)) {
+    if (res.status === 504 || res.status === 502) {
+      throw new Error('Server-Timeout — Earnings Call dauert zu lange. Bitte „Aktualisieren“ erneut versuchen.')
+    }
+    if (res.status === 401 || res.status === 403) {
+      throw new Error('Anmeldung erforderlich — bitte neu einloggen.')
+    }
+    throw new Error(`Serverfehler (${res.status}) — keine gültige Antwort.`)
+  }
+  try {
+    return JSON.parse(text) as EarningsCallPaket & { message?: string }
+  } catch {
+    throw new Error('Ungültige Server-Antwort (kein JSON).')
+  }
+}
+
 export async function ladeEarningsCallClient(
   anfrage: EarningsCallAnfrage & { isin?: string | null },
   prev?: EarningsCallPaket | null,
@@ -72,7 +95,7 @@ export async function ladeEarningsCallClient(
       quartalId: anfrage.quartalId,
     }),
   })
-  const j = (await res.json()) as EarningsCallPaket & { message?: string }
+  const j = await parseApiAntwort(res)
   if (!res.ok && !j.ticker && !j.quartale?.length) {
     throw new Error(j.fehler ?? j.message ?? 'Earnings Call konnte nicht geladen werden.')
   }

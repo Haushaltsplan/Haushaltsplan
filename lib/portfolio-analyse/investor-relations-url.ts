@@ -1,5 +1,6 @@
 import { isinKenntnis } from '@/lib/portfolio-analyse/isin-kenntnisse'
 import { portfolioLogoQuellen } from '@/lib/portfolio-analyse/portfolio-logos'
+import { leseAlsJson } from '@/lib/http/safe-json-response'
 
 /** Manuelle IR-Startseiten (Investor Relations). */
 const IR_NACH_ISIN: Record<string, string> = {
@@ -77,7 +78,8 @@ export async function ladeInvestorRelationsUrl(
       u.searchParams.set('token', key)
       const res = await fetch(u.toString(), { next: { revalidate: 86400 } })
       if (!res.ok) continue
-      const p = (await res.json()) as { weburl?: string }
+      const p = await leseAlsJson<{ weburl?: string }>(res)
+      if (!p) continue
       const web = p.weburl?.trim()
       if (!web) continue
       try {

@@ -68,7 +68,12 @@ async function entdeckeTranskripte(
 ): Promise<RohesTranskript[]> {
   const ticker = tickerKey(anfrage.ticker)
 
-  const sec = await ladeSecEdgarTranskriptHistorie(ticker, MAX_QUARTALE)
+  let sec: Awaited<ReturnType<typeof ladeSecEdgarTranskriptHistorie>> = []
+  try {
+    sec = await ladeSecEdgarTranskriptHistorie(ticker, MAX_QUARTALE)
+  } catch {
+    /* EU-Ticker / SEC-HTML-Fehler — IR-Fallback */
+  }
   if (sec.length > 0) {
     return sec.map((s) => ({
       titel: s.titel,
@@ -254,7 +259,10 @@ export async function ladeEarningsCallZusammenfassung(anfrage: EarningsCallAnfra
       setDiscovery(ticker, roh, prev)
       cache = discoveryCache.get(ticker)!
     } catch (e) {
-      const msg = e instanceof Error ? e.message : 'Earnings Call fehlgeschlagen'
+      const raw = e instanceof Error ? e.message : 'Earnings Call fehlgeschlagen'
+      const msg = /doctype|not valid json|unexpected token/i.test(raw)
+        ? 'Datenquelle lieferte HTML statt JSON — bitte erneut versuchen.'
+        : raw
       return {
         ok: false,
         ticker,

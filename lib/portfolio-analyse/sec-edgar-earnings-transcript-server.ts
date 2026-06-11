@@ -3,6 +3,7 @@
 import 'server-only'
 
 import { JSDOM } from 'jsdom'
+import { jsonParseFehlerNachricht, leseAlsJson } from '@/lib/http/safe-json-response'
 
 export type EdgarTranscript = {
   titel: string
@@ -66,7 +67,8 @@ async function ladeTickerCikMap(): Promise<Map<string, number>> {
   }
   const res = await secFetch('https://www.sec.gov/files/company_tickers.json')
   if (!res.ok) throw new Error(`SEC Ticker-Liste (${res.status})`)
-  const raw = (await res.json()) as Record<string, { cik_str?: number; ticker?: string }>
+  const raw = await leseAlsJson<Record<string, { cik_str?: number; ticker?: string }>>(res)
+  if (!raw) throw new Error(jsonParseFehlerNachricht('SEC Ticker-Liste'))
   const map = new Map<string, number>()
   for (const row of Object.values(raw)) {
     if (row.ticker && row.cik_str) map.set(row.ticker.toUpperCase(), row.cik_str)
@@ -177,7 +179,8 @@ export async function ladeSecEdgarTranskriptHistorie(tickerRaw: string, max = 8)
   const subUrl = `https://data.sec.gov/submissions/CIK${padCik(cik)}.json`
   const subRes = await secFetch(subUrl)
   if (!subRes.ok) return []
-  const sub = (await subRes.json()) as { name?: string; filings?: { recent?: SubmissionsRecent } }
+  const sub = await leseAlsJson<{ name?: string; filings?: { recent?: SubmissionsRecent } }>(subRes)
+  if (!sub) return []
   const recent = sub.filings?.recent
   if (!recent?.form?.length) return []
 
@@ -198,7 +201,8 @@ export async function ladeSecEdgarTranskriptHistorie(tickerRaw: string, max = 8)
     const indexUrl = `https://www.sec.gov/Archives/edgar/data/${cik}/${accessionOhneBindestriche(accession)}/${accession}-index.json`
     const idxRes = await secFetch(indexUrl)
     if (!idxRes.ok) continue
-    const idx = (await idxRes.json()) as EdgarIndex
+    const idx = await leseAlsJson<EdgarIndex>(idxRes)
+    if (!idx) continue
     const picked = waehleExhibit(indexItems(idx))
     if (!picked?.item.name) continue
 

@@ -1,4 +1,4 @@
-/** EU/Global — Earnings-Transkripte von Investor-Relations-Seiten (Playwright). */
+/** EU/Global — Earnings-Transkripte von Investor-Relations-Seiten. */
 
 import 'server-only'
 
@@ -23,10 +23,7 @@ const USER_AGENT =
 const MAX_LINKS = 10
 const MAX_FETCH = 8
 
-async function ladePlaywright() {
-  const pw = await import('playwright')
-  return pw.chromium
-}
+type LinkKandidat = { href: string; text: string; score: number }
 
 function htmlZuText(html: string): string {
   const dom = new JSDOM(html)
@@ -63,8 +60,7 @@ async function ladeDokumentText(url: string, page?: import('playwright').Page): 
     try {
       await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60_000 })
       await page.waitForTimeout(800)
-      const html = await page.content()
-      return htmlZuText(html)
+      return htmlZuText(await page.content())
     } catch {
       return ''
     }
@@ -84,22 +80,95 @@ function parseDatumAusText(text: string): string | null {
   return `${m[3]}-${String(m[2]).padStart(2, '0')}-${String(m[1]).padStart(2, '0')}`
 }
 
-type LinkKandidat = { href: string; text: string; score: number }
+function linksAusHtml(html: string, listenUrl: string): LinkKandidat[] {
+  const dom = new JSDOM(html, { url: listenUrl })
+  const out: LinkKandidat[] = []
+  for (const a of dom.window.document.querySelectorAll<HTMLAnchorElement>('a[href]')) {
+    const href = a.href?.split('#')[0]
+    const text = (a.textContent || '').replace(/\s+/g, ' ').trim()
+    if (!href || !istTranskriptLink(text, href)) continue
+    out.push({ href, text: text || href, score: scoreTranskriptLink(text, href) })
+  }
+  return out
+}
 
-export async function ladeIrTranskriptHistorie(
-  isin: string,
-  fallbackIrUrl: string | null,
-  max = MAX_FETCH,
-): Promise<IrRohesTranskript[]> {
-  const quelle: IrEarningsQuelle | null =
-    irEarningsQuelleFuerIsin(isin) ??
-    (fallbackIrUrl ? { listenUrls: [fallbackIrUrl] } : null)
+async function sammleKandidaten(
+  quelle: IrEarningsQuelle,
+  page?: import('playwright').Page,
+): Promise<LinkKandidat[]> {
+  const kandidaten: LinkKandidat[] = []
+  const seen = new Set<string>()
 
-  if (!quelle?.listenUrls.length) {
-    throw new Error('Keine IR-Earnings-Seite für dieses Unternehmen konfiguriert.')
+  for (const listenUrl of quelle.listenUrls) {
+    try {
+      let links: LinkKandidat[] = []
+
+      if (page) {
+        await page.goto(listenUrl, { waitUntil: 'domcontentloaded', timeout: 90_000 })
+        await page.waitForTimeout(1500)
+        const raw = await page.evaluate(() =>
+          Array.from(document.querySelectorAll<HTMLAnchorElement>('a[href]')).map((a) => ({
+            href: a.href,
+            text: (a.textContent || '').replace(/\s+/g, ' ').trim(),
+          })),
+        )
+        links = raw
+          .filter((l) => istTranskriptLink(l.text, l.href))
+          .map((l) => ({
+            href: l.href.split('#')[0],
+            text: l.text || l.href,
+            score: scoreTranskriptLink(l.text, l.href),
+          }))
+      } else {
+        const res = await fetch(listenUrl, {
+          headers: { 'User-Agent': USER_AGENT, Accept: 'text/html,application/xhtml+xml' },
+          cache: 'no-store',
+        })
+        if (!res.ok) continue
+        links = linksAusHtml(await res.text(), listenUrl)
+      }
+
+      for (const l of links) {
+        if (!l.href || seen.has(l.href)) continue
+        seen.add(l.href)
+        kandidaten.push(l)
+      }
+    } catch {
+      continue
+    }
   }
 
-  const chromium = await ladePlaywright()
+  kandidaten.sort((a, b) => b.score - a.score)
+  return kandidaten
+}
+
+async function transkripteAusLinks(
+  kandidaten: LinkKandidat[],
+  max: number,
+  page?: import('playwright').Page,
+): Promise<IrRohesTranskript[]> {
+  const out: IrRohesTranskript[] = []
+  for (const k of kandidaten.slice(0, MAX_LINKS)) {
+    if (out.length >= max) break
+    const text = await ladeDokumentText(k.href, page)
+    if (text.length < 350) continue
+    out.push({
+      titel: k.text,
+      url: k.href,
+      callDatum: parseDatumAusText(`${k.text} ${k.href}`),
+      text,
+    })
+  }
+  return out
+}
+
+async function ladeIrViaFetch(quelle: IrEarningsQuelle, max: number): Promise<IrRohesTranskript[]> {
+  const kandidaten = await sammleKandidaten(quelle)
+  return transkripteAusLinks(kandidaten, max)
+}
+
+async function ladeIrViaPlaywright(quelle: IrEarningsQuelle, max: number): Promise<IrRohesTranskript[]> {
+  const chromium = (await import('playwright')).chromium
   const browser = await chromium.launch({
     headless: true,
     args: ['--no-sandbox', '--disable-setuid-sandbox'],
@@ -108,58 +177,58 @@ export async function ladeIrTranskriptHistorie(
   try {
     const context = await browser.newContext({ userAgent: USER_AGENT, locale: 'en-US' })
     const page = await context.newPage()
-
-    const kandidaten: LinkKandidat[] = []
-    const seen = new Set<string>()
-
-    for (const listenUrl of quelle.listenUrls) {
-      try {
-        await page.goto(listenUrl, { waitUntil: 'domcontentloaded', timeout: 90_000 })
-        await page.waitForTimeout(1500)
-
-        const links = await page.evaluate(() => {
-          return Array.from(document.querySelectorAll<HTMLAnchorElement>('a[href]')).map((a) => ({
-            href: a.href,
-            text: (a.textContent || '').replace(/\s+/g, ' ').trim(),
-          }))
-        })
-
-        for (const l of links) {
-          const href = l.href?.split('#')[0]
-          if (!href || seen.has(href)) continue
-          if (!istTranskriptLink(l.text, href)) continue
-          seen.add(href)
-          kandidaten.push({ href, text: l.text || href, score: scoreTranskriptLink(l.text, href) })
-        }
-      } catch {
-        continue
-      }
-    }
-
-    kandidaten.sort((a, b) => b.score - a.score)
-    const top = kandidaten.slice(0, MAX_LINKS)
-
-    const out: IrRohesTranskript[] = []
-    for (const k of top) {
-      if (out.length >= max) break
-      const text = await ladeDokumentText(k.href, page)
-      if (text.length < 350) continue
-      out.push({
-        titel: k.text,
-        url: k.href,
-        callDatum: parseDatumAusText(`${k.text} ${k.href}`),
-        text,
-      })
-    }
-
-    if (out.length === 0) {
-      throw new Error(
-        'Auf der IR-Seite wurden keine Transkript-Links gefunden. Seite ggf. per Playwright blockiert oder Layout geändert.',
-      )
-    }
-
-    return out
+    const kandidaten = await sammleKandidaten(quelle, page)
+    return transkripteAusLinks(kandidaten, max, page)
   } finally {
     await browser.close()
   }
+}
+
+function normalisiereIrFehler(e: unknown): string {
+  const msg = e instanceof Error ? e.message : String(e)
+  if (/doctype|not valid json|unexpected token/i.test(msg)) {
+    return 'IR-Seite lieferte HTML statt Transkript — bitte erneut versuchen oder IR-Link manuell öffnen.'
+  }
+  if (/playwright|browser|executable/i.test(msg)) {
+    return 'Browser-Scraper nicht verfügbar (typisch auf Vercel). Fetch-Fallback hat keine Transkripte gefunden.'
+  }
+  return msg
+}
+
+export async function ladeIrTranskriptHistorie(
+  isin: string,
+  fallbackIrUrl: string | null,
+  max = MAX_FETCH,
+): Promise<IrRohesTranskript[]> {
+  const quelle: IrEarningsQuelle | null =
+    irEarningsQuelleFuerIsin(isin) ?? (fallbackIrUrl ? { listenUrls: [fallbackIrUrl] } : null)
+
+  if (!quelle?.listenUrls.length) {
+    throw new Error('Keine IR-Earnings-Seite für dieses Unternehmen konfiguriert.')
+  }
+
+  let fetchOut: IrRohesTranskript[] = []
+  try {
+    fetchOut = await ladeIrViaFetch(quelle, max)
+  } catch {
+    /* Playwright-Fallback unten */
+  }
+  if (fetchOut.length > 0) return fetchOut
+
+  if (process.env.VERCEL) {
+    throw new Error(
+      'Keine IR-Transkripte per Fetch gefunden. Viele EU-Seiten laden Links per JavaScript — lokal mit Playwright testen.',
+    )
+  }
+
+  try {
+    const pwOut = await ladeIrViaPlaywright(quelle, max)
+    if (pwOut.length > 0) return pwOut
+  } catch (e) {
+    throw new Error(normalisiereIrFehler(e))
+  }
+
+  throw new Error(
+    'Auf der IR-Seite wurden keine Transkript-Links gefunden. Layout geändert oder Seite blockiert den Zugriff.',
+  )
 }
