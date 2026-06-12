@@ -567,11 +567,17 @@ function horizontAusTeil(
   }
 }
 
-export function berechneChartanalyse(bars: KursBar[]): ChartanalyseErgebnis | null {
+export function berechneChartanalyse(
+  bars: KursBar[],
+  opts?: { anzeigeAbDatum?: string },
+): ChartanalyseErgebnis | null {
   if (bars.length < 30) return null
 
   const closes = bars.map((b) => b.close)
   const preis = closes[closes.length - 1]!
+  const anzeigeBars = opts?.anzeigeAbDatum
+    ? bars.filter((b) => b.datum >= opts.anzeigeAbDatum!)
+    : bars
   const schwung = findeSchwungInFenster(closes, 4)
   const aufwaerts = schwung.hochIdx > schwung.tiefIdx
   const fib = fibonacciVomSchwung(schwung.hoch, schwung.tief, aufwaerts)
@@ -582,8 +588,14 @@ export function berechneChartanalyse(bars: KursBar[]): ChartanalyseErgebnis | nu
   const bodenUrteil = bodenGesamtUrteil(bodenMuster)
   const struktur = erkenneMarktstruktur(closes)
   const dds = berechneDrawdowns(closes)
+  const anzeigeCloses = anzeigeBars.map((b) => b.close)
+  const renditeStart = anzeigeCloses[0]
   const rendite =
-    closes.length >= 2 ? ((preis - closes[0]!) / closes[0]!) * 100 : null
+    renditeStart != null && anzeigeCloses.length >= 2
+      ? ((preis - renditeStart) / renditeStart) * 100
+      : closes.length >= 2
+        ? ((preis - closes[0]!) / closes[0]!) * 100
+        : null
 
   const kurzBars = bars.slice(-66)
   const langBars = bars

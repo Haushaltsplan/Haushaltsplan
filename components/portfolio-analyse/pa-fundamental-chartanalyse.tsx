@@ -2,6 +2,7 @@
 
 import { useEffect, useId, useMemo, useState } from 'react'
 import { PaCard } from '@/components/portfolio-analyse/pa-ui'
+import { berechneLangfristEinstiegsplan } from '@/lib/portfolio-analyse/chartanalyse-einstieg'
 import { generiereChartanalyseBericht } from '@/lib/portfolio-analyse/chartanalyse-bericht'
 import {
   berechneChartanalyse,
@@ -9,29 +10,17 @@ import {
   type HandelsSignal,
   type KursBar,
 } from '@/lib/portfolio-analyse/chartanalyse-engine'
+import {
+  CHARTANALYSE_ZEITRAEUME,
+  vonDatumFuerAbruf,
+  vonDatumFuerZeitraum,
+  zeitraumLabel,
+  type ChartanalyseZeitraumId,
+} from '@/lib/portfolio-analyse/chartanalyse-zeitraum'
 
 const VIEW_W = 1000
 const ACHSE_FONT = 12
-const ZEITRAEUME = [
-  { id: '6m' as const, label: '6M', monate: 6 },
-  { id: '1y' as const, label: '1J', monate: 12 },
-  { id: '3y' as const, label: '3J', jahre: 3 },
-  { id: '5y' as const, label: '5J', jahre: 5 },
-]
-
 const WICHTIGE_FIB = new Set([38.2, 50, 61.8])
-
-function vonDatum(id: (typeof ZEITRAEUME)[number]['id']): string {
-  const d = new Date()
-  const opt = ZEITRAEUME.find((z) => z.id === id)!
-  if ('monate' in opt && opt.monate) d.setMonth(d.getMonth() - opt.monate)
-  else if ('jahre' in opt && opt.jahre) d.setFullYear(d.getFullYear() - opt.jahre)
-  return d.toISOString().slice(0, 10)
-}
-
-function zeitraumLabel(id: (typeof ZEITRAEUME)[number]['id']): string {
-  return ZEITRAEUME.find((z) => z.id === id)?.label ?? id
-}
 
 function nicePriceStep(span: number): number {
   if (span <= 4) return 1
@@ -184,13 +173,14 @@ export function PaFundamentalChartanalyse({
 }) {
   const gradId = useId()
   const bodenGradId = useId()
-  const [zeitraum, setZeitraum] = useState<(typeof ZEITRAEUME)[number]['id']>('1y')
+  const [zeitraum, setZeitraum] = useState<ChartanalyseZeitraumId>('1y')
   const [bars, setBars] = useState<KursBar[]>([])
   const [laden, setLaden] = useState(false)
   const [showFib, setShowFib] = useState(true)
   const [showBb, setShowBb] = useState(false)
   const [showEma, setShowEma] = useState(true)
   const [showBoden, setShowBoden] = useState(true)
+  const [showEinstieg, setShowEinstieg] = useState(true)
 
   useEffect(() => {
     if (!symbolYahoo) {
@@ -202,7 +192,7 @@ export function PaFundamentalChartanalyse({
     async function run() {
       setLaden(true)
       try {
-        const von = vonDatum(zeitraum)
+        const von = vonDatumFuerAbruf(zeitraum)
         const bis = new Date().toISOString().slice(0, 10)
         const res = await fetch('/api/portfolio-analyse/kurse/historie', {
           method: 'POST',
@@ -228,7 +218,23 @@ export function PaFundamentalChartanalyse({
     }
   }, [symbolYahoo, zeitraum])
 
-  const analyse = useMemo(() => berechneChartanalyse(bars), [bars])
+  const anzeigeAb = useMemo(() => vonDatumFuerZeitraum(zeitraum), [zeitraum])
+
+  const barsAnzeige = useMemo(() => {
+    if (bars.length === 0) return []
+    const idx = bars.findIndex((b) => b.datum >= anzeigeAb)
+    const gefiltert = idx >= 0 ? bars.slice(idx) : bars
+    if (gefiltert.length >= 2) return gefiltert
+    // Tagesdaten: 1T/1W liefern oft nur 1–2 Punkte — letzte Handelstage als Fallback
+    if (zeitraum === '1d') return bars.slice(-Math.min(5, bars.length))
+    if (zeitraum === '1w') return bars.slice(-Math.min(10, bars.length))
+    return gefiltert
+  }, [bars, anzeigeAb, zeitraum])
+
+  const analyse = useMemo(
+    () => berechneChartanalyse(bars, { anzeigeAbDatum: anzeigeAb }),
+    [bars, anzeigeAb],
+  )
 
   const bericht = useMemo(() => {
     if (!analyse) return null
@@ -241,7 +247,10 @@ export function PaFundamentalChartanalyse({
   }, [analyse, firmenname, ticker, zeitraum])
 
   const chartLayout = useMemo(() => {
-    if (!analyse || bars.length < 2) return null
+    if (!analyse || barsAnzeige.length < 2) return null
+
+    const offset = bars.length - barsAnzeige.length
+    const slice = <T,>(arr: T[]) => (offset > 0 ? arr.slice(offset) : arr)
 
     const padL = 58
     const padR = 12
@@ -253,10 +262,18 @@ export function PaFundamentalChartanalyse({
     const gap = 12
     const totalH = padT + hMain + gap + hRsi + gap + hMacd + padB
     const plotW = VIEW_W - padL - padR
-    const n = bars.length
-    const closes = bars.map((b) => b.close)
+    const n = barsAnzeige.length
+    const closes = barsAnzeige.map((b) => b.close)
+    const ema20S = slice(analyse.ema20)
+    const ema50S = slice(analyse.ema50)
+    const ema200S = slice(analyse.ema200)
+    const bbUpperS = slice(analyse.bollinger.upper)
+    const bbLowerS = slice(analyse.bollinger.lower)
+    const rsiS = slice(analyse.rsi)
+    const macdHistS = slice(analyse.macdHist)
 
     const bodenMuster = analyse.bodenMuster[0]
+    const einstiegsplan = berechneLangfristEinstiegsplan(analyse, analyse.bodenMuster)
     const bodenZone =
       showBoden && bodenMuster?.zonenUnter != null
         ? { unter: bodenMuster.zonenUnter, ober: bodenMuster.zonenOber ?? bodenMuster.zonenUnter * 1.04 }
@@ -266,9 +283,11 @@ export function PaFundamentalChartanalyse({
       ...closes,
       ...(bodenZone ? [bodenZone.unter, bodenZone.ober] : []),
       ...(showFib ? analyse.fibonacci.filter((f) => WICHTIGE_FIB.has(f.pct)).map((f) => f.preis) : []),
-      ...(showBb ? analyse.bollinger.upper.filter((v): v is number => v != null) : []),
-      ...(showBb ? analyse.bollinger.lower.filter((v): v is number => v != null) : []),
-      ...(showEma ? analyse.ema200.filter((v): v is number => v != null) : []),
+      ...(showBb ? bbUpperS.filter((v): v is number => v != null) : []),
+      ...(showBb ? bbLowerS.filter((v): v is number => v != null) : []),
+      ...(showEma ? ema200S.filter((v): v is number => v != null) : []),
+      ...(showEinstieg ? einstiegsplan.tranchen.map((t) => t.kurs) : []),
+      ...(showEinstieg && einstiegsplan.stopLoss != null ? [einstiegsplan.stopLoss] : []),
     ]
     const rawMin = Math.min(...allY)
     const rawMax = Math.max(...allY)
@@ -290,15 +309,15 @@ export function PaFundamentalChartanalyse({
     const xTickCount = Math.min(6, n)
     const xTicks = Array.from({ length: xTickCount }, (_, k) => {
       const idx = Math.round((k / Math.max(1, xTickCount - 1)) * (n - 1))
-      return { idx, label: formatXAxis(bars[idx]!.datum), x: xAt(idx) }
+      return { idx, label: formatXAxis(barsAnzeige[idx]!.datum), x: xAt(idx) }
     })
 
     const kursPath = pfadAusSerie(closes, yMap, xAt)
-    const ema20Path = showEma ? pfadAusSerie(analyse.ema20, yMap, xAt) : ''
-    const ema50Path = showEma ? pfadAusSerie(analyse.ema50, yMap, xAt) : ''
-    const ema200Path = showEma ? pfadAusSerie(analyse.ema200, yMap, xAt) : ''
-    const bbUpPath = showBb ? pfadAusSerie(analyse.bollinger.upper, yMap, xAt) : ''
-    const bbLoPath = showBb ? pfadAusSerie(analyse.bollinger.lower, yMap, xAt) : ''
+    const ema20Path = showEma ? pfadAusSerie(ema20S, yMap, xAt) : ''
+    const ema50Path = showEma ? pfadAusSerie(ema50S, yMap, xAt) : ''
+    const ema200Path = showEma ? pfadAusSerie(ema200S, yMap, xAt) : ''
+    const bbUpPath = showBb ? pfadAusSerie(bbUpperS, yMap, xAt) : ''
+    const bbLoPath = showBb ? pfadAusSerie(bbLowerS, yMap, xAt) : ''
 
     const fibLines = showFib
       ? analyse.fibonacci
@@ -308,24 +327,37 @@ export function PaFundamentalChartanalyse({
 
     const rsiTop = mainBottom + gap
     const rsiH = hRsi - 16
-    const rsiPath = pfadAusSerie(analyse.rsi, (v) => rsiTop + ((100 - v) / 100) * rsiH, xAt)
+    const rsiPath = pfadAusSerie(rsiS, (v) => rsiTop + ((100 - v) / 100) * rsiH, xAt)
     const rsi30 = rsiTop + 0.7 * rsiH
     const rsi70 = rsiTop + 0.3 * rsiH
 
     const macdTop = rsiTop + hRsi + gap
     const macdMid = macdTop + hMacd / 2
-    const macdVals = analyse.macdHist.filter((v): v is number => v != null)
+    const macdVals = macdHistS.filter((v): v is number => v != null)
     const macdMax = Math.max(...macdVals.map(Math.abs), 0.01)
-    const macdBars = analyse.macdHist.map((v, i) => {
+    const macdBars = macdHistS.map((v, i) => {
       if (v == null) return null
       const h = (v / macdMax) * (hMacd / 2 - 10)
       return { x: xAt(i), h, pos: v >= 0 }
     })
     const macdLinePath = pfadAusSerie(
-      analyse.macdHist,
+      macdHistS,
       (v) => macdMid - (v / macdMax) * (hMacd / 2 - 10),
       xAt,
     )
+
+    const einstiegLinien = showEinstieg
+      ? einstiegsplan.tranchen.map((t, i) => ({
+          kurs: t.kurs,
+          y: yMap(t.kurs),
+          label: `T${i + 1} ${t.kurs.toLocaleString('de-DE', { maximumFractionDigits: 2 })}`,
+          typ: t.typ,
+        }))
+      : []
+    const stopLinie =
+      showEinstieg && einstiegsplan.stopLoss != null
+        ? { kurs: einstiegsplan.stopLoss, y: yMap(einstiegsplan.stopLoss) }
+        : null
 
     const bodenRect =
       bodenZone != null
@@ -339,7 +371,10 @@ export function PaFundamentalChartanalyse({
 
     const musterMarkierung =
       showBoden && bodenMuster
-        ? { von: xAt(bodenMuster.vonIdx), bis: xAt(bodenMuster.bisIdx) }
+        ? {
+            von: xAt(Math.max(0, Math.min(n - 1, bodenMuster.vonIdx - offset))),
+            bis: xAt(Math.max(0, Math.min(n - 1, bodenMuster.bisIdx - offset))),
+          }
         : null
 
     return {
@@ -373,8 +408,10 @@ export function PaFundamentalChartanalyse({
       bodenRect,
       musterMarkierung,
       bodenMuster,
+      einstiegLinien,
+      stopLinie,
     }
-  }, [analyse, bars, showBb, showBoden, showEma, showFib])
+  }, [analyse, bars.length, barsAnzeige, showBb, showBoden, showEinstieg, showEma, showFib])
 
   if (!symbolYahoo) {
     return (
@@ -396,7 +433,7 @@ export function PaFundamentalChartanalyse({
               </p>
             </div>
             <div className="flex flex-wrap gap-1.5">
-              {ZEITRAEUME.map((z) => (
+              {CHARTANALYSE_ZEITRAEUME.map((z) => (
                 <button
                   key={z.id}
                   type="button"
@@ -418,6 +455,7 @@ export function PaFundamentalChartanalyse({
               { id: 'bb', label: 'Bollinger', on: showBb, set: setShowBb },
               { id: 'ema', label: 'EMA 20/50/200', on: showEma, set: setShowEma },
               { id: 'boden', label: 'Boden-Zone', on: showBoden, set: setShowBoden },
+              { id: 'einstieg', label: 'Einstiegs-Limits', on: showEinstieg, set: setShowEinstieg },
             ].map((t) => (
               <button
                 key={t.id}
@@ -588,6 +626,41 @@ export function PaFundamentalChartanalyse({
                 <path d={chartLayout.ema20Path} fill="none" stroke="#2dd4bf" strokeWidth={1} strokeOpacity={0.9} />
               ) : null}
 
+              {chartLayout.einstiegLinien.map((l) => (
+                <g key={l.label}>
+                  <line
+                    x1={chartLayout.padL}
+                    x2={VIEW_W - chartLayout.padR}
+                    y1={l.y}
+                    y2={l.y}
+                    stroke={l.typ === 'market' ? '#34d399' : '#2dd4bf'}
+                    strokeWidth={1.5}
+                    strokeDasharray={l.typ === 'market' ? undefined : '6 4'}
+                    strokeOpacity={0.85}
+                  />
+                  <text x={chartLayout.padL + 4} y={l.y - 4} fill="#2dd4bf" style={{ fontSize: 10 }}>
+                    {l.label}
+                  </text>
+                </g>
+              ))}
+              {chartLayout.stopLinie ? (
+                <g>
+                  <line
+                    x1={chartLayout.padL}
+                    x2={VIEW_W - chartLayout.padR}
+                    y1={chartLayout.stopLinie.y}
+                    y2={chartLayout.stopLinie.y}
+                    stroke="#f87171"
+                    strokeWidth={1.2}
+                    strokeDasharray="4 3"
+                    strokeOpacity={0.8}
+                  />
+                  <text x={VIEW_W - chartLayout.padR - 4} y={chartLayout.stopLinie.y - 4} textAnchor="end" fill="#f87171" style={{ fontSize: 10 }}>
+                    Stop {chartLayout.stopLinie.kurs.toLocaleString('de-DE', { maximumFractionDigits: 2 })}
+                  </text>
+                </g>
+              ) : null}
+
               <path d={`${chartLayout.kursPath} L ${VIEW_W - chartLayout.padR} ${chartLayout.mainBottom} L ${chartLayout.padL} ${chartLayout.mainBottom} Z`} fill={`url(#${gradId})`} />
               <path d={chartLayout.kursPath} fill="none" stroke="#d97706" strokeWidth={2.2} />
 
@@ -668,7 +741,7 @@ export function PaFundamentalChartanalyse({
               />
               {chartLayout.macdBars.map((b, i) => {
                 if (!b) return null
-                const barW = Math.max(1.5, chartLayout.plotW / Math.max(bars.length, 1) * 0.6)
+                const barW = Math.max(1.5, (chartLayout.plotW / Math.max(barsAnzeige.length, 1)) * 0.6)
                 return (
                   <rect
                     key={i}
@@ -702,6 +775,9 @@ export function PaFundamentalChartanalyse({
               </li>
               <li className="flex items-center gap-1.5">
                 <span className="h-2 w-4 rounded-sm bg-emerald-500/30 ring-1 ring-emerald-500/40" /> Boden-Zone
+              </li>
+              <li className="flex items-center gap-1.5">
+                <span className="h-0.5 w-4 border-t border-dashed border-teal-400" /> Einstiegs-Limits
               </li>
             </ul>
           </div>

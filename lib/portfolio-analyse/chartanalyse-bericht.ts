@@ -1,11 +1,16 @@
 /** Fließtext-Bericht aus Chartanalyse-Ergebnissen. */
 
 import type { BodenMuster } from '@/lib/portfolio-analyse/chartanalyse-boden'
+import {
+  berechneLangfristEinstiegsplan,
+  type LangfristEinstiegsplan,
+} from '@/lib/portfolio-analyse/chartanalyse-einstieg'
 import type { ChartanalyseErgebnis } from '@/lib/portfolio-analyse/chartanalyse-engine'
 
 export type ChartanalyseBericht = {
   zusammenfassung: string
   abschnitte: { titel: string; text: string }[]
+  einstiegsplan: LangfristEinstiegsplan
 }
 
 function fmt(n: number, digits = 2): string {
@@ -156,6 +161,13 @@ export function generiereChartanalyseBericht(
     if (s.typ === 'gewinnmitnahme' && !verkauf.includes(s.titel)) verkauf.push(s.titel)
   }
 
+  const einstiegsplan = berechneLangfristEinstiegsplan(analyse, bodenMuster)
+
+  abschnitte.push({
+    titel: 'Langfrist-Investition: konkreter Einstiegsplan',
+    text: einstiegsplan.fließtext,
+  })
+
   abschnitte.push({
     titel: 'Handlungshinweise (technisch)',
     text: [
@@ -166,21 +178,13 @@ export function generiereChartanalyseBericht(
       k.rsi != null && k.rsi < 35
         ? 'Überverkaufter RSI kann für antizyklische Trades genutzt werden — Stop unter letztem Tief.'
         : '',
-      '',
-      '**Langfristig (Investieren):**',
-      l.trend === 'aufwaerts' && l.preisVsEma200 === 'darueber'
-        ? 'Trendfolge-Setup intakt: Rücksetzer in Richtung EMA 50/200 oder Fib 38–61 % als Einstiegszonen.'
-        : 'Erst Rückeroberung der EMA 200 und höhere Tiefs abwarten, bevor langfristig aufgestockt wird.',
-      bodenUrteil.status === 'wahrscheinlich'
-        ? 'Bodenmuster unterstützen einen antizyklischen Einstieg — Positionsaufbau in Tranchen empfohlen.'
-        : '',
       verkauf.length
-        ? `\n**Gewinnmitnahme / Risiko:** ${verkauf.slice(0, 3).join(', ')}.`
+        ? `**Gewinnmitnahme / Risiko:** ${verkauf.slice(0, 3).join(', ')}.`
         : '',
     ]
       .filter((x) => x !== '')
       .join('\n'),
   })
 
-  return { zusammenfassung, abschnitte }
+  return { zusammenfassung, abschnitte, einstiegsplan }
 }
