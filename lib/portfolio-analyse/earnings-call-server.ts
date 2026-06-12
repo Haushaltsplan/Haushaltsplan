@@ -137,23 +137,11 @@ async function entdeckeTranskripte(
   const isUsSec = kontext.isUsSec
   const symbolYahoo = kontext.symbolYahoo
 
-  // 1) Offizielle IR-Website — nur wenn dort echte Transkripte erwartet werden
   const irHard = irEarningsQuelleFuerIsin(anfrage.isin ?? '')
   const irErwarteTranskript = !kontext.irNurWebcast && irHard?.erwarteVollesTranskript !== false
   const irVersuchen =
     irErwarteTranskript && Boolean(anfrage.isin?.trim() || irUrl) && (!isUsSec || Boolean(irHard?.listenUrls.length))
-  if (irVersuchen) {
-    const ir = await mitZeitlimit(
-      ladeIrTranskriptHistorie(anfrage.isin ?? '', irUrl, MAX_QUARTALE).catch(() => []),
-      45_000,
-      [],
-    )
-    if (ir.length > 0) {
-      return mappeRohe(ir, 'ir_scrape')
-    }
-  }
 
-  // 2) MarketBeat (Quartr) — US sofort; EU nach IR (lokale Börsen z. B. AMS, EPA, FRA, LON)
   const marketbeatVersuchen = async (budgetMs: number) => {
     const mb = await mitZeitlimit(
       ladeMarketbeatTranskriptHistorie(ticker, firmenname, MAX_QUARTALE, symbolYahoo),
@@ -164,19 +152,46 @@ async function entdeckeTranskripte(
     return null
   }
 
+  const irVersuchenUndLaden = async (budgetMs: number) => {
+    if (!irVersuchen) return null
+    const ir = await mitZeitlimit(
+      ladeIrTranskriptHistorie(anfrage.isin ?? '', irUrl, MAX_QUARTALE).catch(() => []),
+      budgetMs,
+      [],
+    )
+    if (ir.length > 0) return mappeRohe(ir, 'ir_scrape')
+    return null
+  }
+
   if (isUsSec) {
+    // US: MarketBeat zuerst (Quartr) — war zuverlässigste Quelle
     try {
       const hit = await marketbeatVersuchen(60_000)
       if (hit) return hit
     } catch {
-      /* Fool / SEC */
+      /* IR / Fool */
+    }
+
+    try {
+      const ir = await irVersuchenUndLaden(20_000)
+      if (ir) return ir
+    } catch {
+      /* Fool */
     }
   } else {
+    // EU: IR zuerst, dann MarketBeat
+    try {
+      const ir = await irVersuchenUndLaden(45_000)
+      if (ir) return ir
+    } catch {
+      /* MarketBeat */
+    }
+
     try {
       const hit = await marketbeatVersuchen(50_000)
       if (hit) return hit
     } catch {
-      /* Finnhub / Fool */
+      /* Investing / Finnhub */
     }
   }
 

@@ -122,7 +122,6 @@ function passtReportZuTicker(url: string, ticker: string, firmSlug: string | nul
   const t = ticker.toLowerCase()
   if (slug.includes(`-${t}-`) || slug.endsWith(`-${t}-stock`) || slug.includes(`${t}-stock`)) return true
   if (firmSlug && slug.includes(firmSlug)) return true
-  if (t.length >= 3 && slug.includes(t)) return true
   return false
 }
 
@@ -137,8 +136,10 @@ async function kandidatenViaEarningsSeite(
   for (const boerse of marketbeatBoersenKandidaten(symbolYahoo, ticker)) {
     const { ok, html, status } = await mbFetch(`/stocks/${boerse}/${sym}/earnings/`)
     if (status === 404 || !ok) continue
-    const urls = reportUrlsAusHtml(html).filter((u) => passtReportZuTicker(u, sym, firmSlug))
+    // Eigene /stocks/{Börse}/{Ticker}/earnings/-Seite — alle Report-Links gehören zum Titel
+    const urls = reportUrlsAusHtml(html)
     gefunden.push(...urls)
+    if (urls.length > 0) break
   }
 
   return sortiereReportUrls(gefunden)
@@ -209,12 +210,7 @@ function htmlZuTranskriptText(html: string): { titel: string; text: string } | n
   }
 
   const text = parts.join('\n\n')
-  if (text.length < 800) {
-    if (text.length >= 500 && /speaker \d+|results video|investor call/i.test(text)) {
-      return { titel, text }
-    }
-    return null
-  }
+  if (text.length < 800) return null
   if (!istEarningsCallTranskript(text) || istPresseMitteilung(text)) return null
 
   return { titel, text }
@@ -258,7 +254,12 @@ export async function ladeMarketbeatTranskriptHistorie(
     kandidatenViaBing(sym, firmenname ?? null),
   ])
 
-  const kandidaten = sortiereReportUrls([...new Set([...direkt, ...bing])])
+  const kandidaten = sortiereReportUrls([
+    ...new Set([
+      ...direkt,
+      ...bing.filter((u) => passtReportZuTicker(u, sym, firmSlug)),
+    ]),
+  ])
   const out: MarketbeatTranscript[] = []
   const seen = new Set<string>()
 
