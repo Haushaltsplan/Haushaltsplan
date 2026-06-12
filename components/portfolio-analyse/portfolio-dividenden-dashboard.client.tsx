@@ -20,7 +20,10 @@ import {
 } from '@/lib/portfolio-analyse/dividenden-auswertung'
 import { anzeigeNameFuerIsin } from '@/lib/portfolio-analyse/isin-metadata-client'
 import { fundamentaldatenHref } from '@/lib/portfolio-analyse/fundamentaldaten-navigation'
-import { ladeAnkuendigteDividendenDepot } from '@/lib/portfolio-analyse/ankuendigte-dividenden-client'
+import {
+  ladeAnkuendigteDividendenDepot,
+  ladeAnkuendigteDividendenDepotAusLocalCache,
+} from '@/lib/portfolio-analyse/ankuendigte-dividenden-client'
 import type { AnkuendigteDividendenErgebnis } from '@/lib/portfolio-analyse/ankuendigte-dividenden'
 
 export function PortfolioDividendenDashboardClient() {
@@ -51,9 +54,12 @@ export function PortfolioDividendenDashboardClient() {
       setAnkuendigFehler(null)
       return
     }
+    const cached = ladeAnkuendigteDividendenDepotAusLocalCache(pos, meta)
+    if (cached) setAnkuendig(cached)
+
     let cancelled = false
     async function run() {
-      setAnkuendigLaden(true)
+      setAnkuendigLaden(!cached)
       setAnkuendigFehler(null)
       try {
         const res = await ladeAnkuendigteDividendenDepot(pos, meta)

@@ -19,6 +19,11 @@ import {
   ladeDivvydiaryAnkuendigteDividenden,
   vorladeDivvydiary,
 } from '@/lib/portfolio-analyse/divvydiary-ankuendigte-dividenden-server'
+import {
+  ladeDividendenIsinAusCache,
+  speichereDividendenIsinImCache,
+  type DividendenIsinCacheTreffer,
+} from '@/lib/portfolio-analyse/dividenden-isin-cache-server'
 import { ladeYahooAnkuendigteDividenden } from '@/lib/portfolio-analyse/yahoo-ankuendigte-dividenden-server'
 
 export type DepotPositionAnfrage = {
@@ -209,6 +214,28 @@ function mergeRohTreffer(primary: RohTreffer[], extra: RohTreffer[]): RohTreffer
   return bereinigeTrefferProPosition(merged)
 }
 
+function rohAusCacheTreffer(t: DividendenIsinCacheTreffer): RohTreffer {
+  return {
+    zahlungsdatumIso: t.zahlungsdatumIso,
+    exDatumIso: t.exDatumIso,
+    dividendeProStueckEur: t.dividendeProStueckEur,
+    symbol: t.symbol,
+    quelle: t.quelle as AnkuendigteDividendeQuelle,
+    bestaetigt: t.bestaetigt,
+  }
+}
+
+function cacheTrefferAusRoh(treffer: RohTreffer[]): DividendenIsinCacheTreffer[] {
+  return treffer.map((t) => ({
+    zahlungsdatumIso: t.zahlungsdatumIso,
+    exDatumIso: t.exDatumIso,
+    dividendeProStueckEur: t.dividendeProStueckEur,
+    symbol: t.symbol,
+    quelle: t.quelle,
+    bestaetigt: t.bestaetigt,
+  }))
+}
+
 async function ladeFuerPosition(pos: DepotPositionAnfrage): Promise<RohTreffer[]> {
   const symbole = symboleFuerPosition(pos)
   const symbolAnzeige = symbole[0] ?? pos.isin ?? '—'
@@ -217,6 +244,11 @@ async function ladeFuerPosition(pos: DepotPositionAnfrage): Promise<RohTreffer[]
   const name = k?.name ?? pos.name
 
   if (isin) {
+    const cached = await ladeDividendenIsinAusCache(isin)
+    if (cached && cached.length > 0) {
+      return bereinigeTrefferProPosition(cached.map(rohAusCacheTreffer))
+    }
+
     let termine = await ladeDivvydiaryAnkuendigteDividenden(isin, name)
     let roh: RohTreffer[] = termine.map((t) => ({
       zahlungsdatumIso: t.zahlungsdatumIso,
@@ -240,14 +272,24 @@ async function ladeFuerPosition(pos: DepotPositionAnfrage): Promise<RohTreffer[]
       roh = mergeRohTreffer(roh, yRoh)
     }
 
-    if (roh.length > 0) return bereinigeTrefferProPosition(roh)
+    if (roh.length > 0) {
+      const bereinigt = bereinigeTrefferProPosition(roh)
+      if (bereinigt.some((t) => t.bestaetigt)) {
+        await speichereDividendenIsinImCache(isin, cacheTrefferAusRoh(bereinigt))
+      }
+      return bereinigt
+    }
   }
 
   if (isin && istEuEwrIsin(isin)) {
     return []
   }
 
-  return bereinigeTrefferProPosition(await ladeFuerSymbole(symbole, symbolAnzeige))
+  const symRoh = bereinigeTrefferProPosition(await ladeFuerSymbole(symbole, symbolAnzeige))
+  if (isin && symRoh.some((t) => t.bestaetigt)) {
+    await speichereDividendenIsinImCache(isin, cacheTrefferAusRoh(symRoh))
+  }
+  return symRoh
 }
 
 async function ladeFuerSymbole(symbole: string[], symbolAnzeige: string): Promise<RohTreffer[]> {
@@ -412,6 +454,7 @@ export async function berechneAnkuendigteDividendenDepot(
   hinweise.push(
     'Angekündigte Termine von DivvyDiary; ohne Termin Prognose aus Historie + Wachstum (wird ersetzt sobald offiziell).',
   )
+  hinweise.push('Fest angekündigte Termine werden server- und browserseitig gecacht (schnellere Wiederholung).')
   if (finnhubDividendKalenderGesperrt()) {
     hinweise.push('Finnhub-Kalender im Free-Tier nicht verfügbar (403).')
   }

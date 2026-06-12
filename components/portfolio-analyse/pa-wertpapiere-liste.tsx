@@ -13,6 +13,9 @@ import { formatEur, formatProzent } from '@/lib/portfolio-analyse/berechnung'
 import type { LivePosition } from '@/lib/portfolio-analyse/live-bewertung'
 import type { IsinMetadata } from '@/lib/portfolio-analyse/isin-lookup-server'
 import { fundamentaldatenHref } from '@/lib/portfolio-analyse/fundamentaldaten-navigation'
+import type { PositionPeriodPerf } from '@/lib/portfolio-analyse/position-period-performance'
+import { spaltenLabelKursgewinn } from '@/lib/portfolio-analyse/position-period-performance'
+import type { PeriodPerformance } from '@/lib/portfolio-analyse/parqet-core/types'
 import type { AssetKlasse, PortfolioBuchung } from '@/lib/portfolio-analyse/types'
 
 function assetZeileLabel(klasse: AssetKlasse): string {
@@ -76,18 +79,20 @@ function WertpapierZeile({
   meta,
   dividendenEur,
   kaufVolumenEur,
+  perf,
   onOeffnen,
 }: {
   p: LivePosition
   meta: Map<string, IsinMetadata>
   dividendenEur: number
   kaufVolumenEur: number
+  perf: PositionPeriodPerf
   onOeffnen?: () => void
 }) {
   const isin = p.isin?.toUpperCase() ?? ''
   const kurs = p.kursLiveEur ?? p.kursEur
-  const gv = p.gewinnVerlustEur
-  const gvPct = p.gewinnVerlustProzent
+  const gv = perf.gewinnVerlustEur
+  const gvPct = perf.gewinnVerlustProzent
   const positiv = gv >= 0
   const divPositiv = dividendenEur > 0
   const divPct = dividendenRenditeProzentParqet(dividendenEur, kaufVolumenEur, p.einstandEur)
@@ -199,11 +204,15 @@ export function PaWertpapiereListe({
   buchungen,
   meta,
   laden,
+  periodKey = 'MAX',
+  positionPerfMap,
 }: {
   positionen: LivePosition[]
   buchungen: PortfolioBuchung[]
   meta: Map<string, IsinMetadata>
   laden?: boolean
+  periodKey?: PeriodPerformance['periodKey']
+  positionPerfMap?: Map<string, PositionPeriodPerf>
 }) {
   const router = useRouter()
   const [offen, setOffen] = useState(true)
@@ -222,13 +231,21 @@ export function PaWertpapiereListe({
     let v = 0
     for (const p of positionen) {
       if (p.stueck <= 0) continue
-      const div = p.isin ? (divMap.get(p.isin.toUpperCase()) ?? 0) : 0
-      const gesamt = p.gewinnVerlustEur + div
-      if (gesamt >= 0) g++
+      const key = p.isin?.toUpperCase() ?? p.name
+      const perf = positionPerfMap?.get(key)
+      const kursPerf = perf?.gewinnVerlustEur ?? p.gewinnVerlustEur
+      if (periodKey === 'MAX') {
+        const div = p.isin ? (divMap.get(p.isin.toUpperCase()) ?? 0) : 0
+        if (kursPerf + div >= 0) g++
+        else v++
+      } else if (perf?.gewinnVerlustProzent != null) {
+        if (perf.gewinnVerlustProzent >= 0) g++
+        else v++
+      } else if (kursPerf >= 0) g++
       else v++
     }
     return { gewinner: g, verlierer: v }
-  }, [positionen, divMap])
+  }, [positionen, divMap, positionPerfMap, periodKey])
 
   if (positionen.length === 0) {
     return (
@@ -269,7 +286,9 @@ export function PaWertpapiereListe({
               <tr className="border-b border-white/[0.04] text-[10px] font-medium uppercase tracking-wider text-zinc-500">
                 <th className="py-3 pl-4 pr-3 font-medium sm:pl-5">Name</th>
                 <th className="hidden py-3 pr-4 text-right font-medium sm:table-cell">Position / Kurs</th>
-                <th className="hidden py-3 pr-4 text-right font-medium md:table-cell">Kursgewinn / in %</th>
+                <th className="hidden py-3 pr-4 text-right font-medium md:table-cell">
+                  {spaltenLabelKursgewinn(periodKey)}
+                </th>
                 <th className="hidden py-3 pr-4 text-right font-medium lg:table-cell">Dividenden / in %</th>
                 <th className="hidden py-3 pr-4 text-right font-medium xl:table-cell">Allokation</th>
                 <th className="py-3 pr-3 sm:hidden" aria-hidden />
@@ -281,11 +300,17 @@ export function PaWertpapiereListe({
                   p.assetKlasse === 'aktie' && p.isin
                     ? fundamentaldatenHref({ isin: p.isin })
                     : null
+                const perfKey = p.isin?.toUpperCase() ?? p.name
+                const perf = positionPerfMap?.get(perfKey) ?? {
+                  gewinnVerlustEur: p.gewinnVerlustEur,
+                  gewinnVerlustProzent: p.gewinnVerlustProzent,
+                }
                 return (
                   <WertpapierZeile
                     key={p.isin ?? p.name}
                     p={p}
                     meta={meta}
+                    perf={perf}
                     dividendenEur={p.isin ? (divMap.get(p.isin.toUpperCase()) ?? 0) : 0}
                     kaufVolumenEur={p.isin ? (kaufVolMap.get(p.isin.toUpperCase()) ?? 0) : 0}
                     onOeffnen={fundamentalHref ? () => router.push(fundamentalHref) : undefined}

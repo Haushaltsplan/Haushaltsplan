@@ -5,11 +5,42 @@ import { isinAusYahooSymbol, isinKenntnis } from '@/lib/portfolio-analyse/isin-k
 import type { IsinMetadata } from '@/lib/portfolio-analyse/isin-lookup-server'
 import type { AnkuendigteDividendenErgebnis } from '@/lib/portfolio-analyse/ankuendigte-dividenden'
 
-export async function ladeAnkuendigteDividendenDepot(
-  positionen: LivePosition[],
-  meta: Map<string, IsinMetadata>,
-): Promise<AnkuendigteDividendenErgebnis | null> {
-  const payload = positionen
+const LS_KEY = 'pa-dividenden-ankuendig-v1'
+const LS_MAX_AGE_MS = 6 * 60 * 60 * 1000
+
+function depotKeyAusPayload(
+  payload: { isin: string | null; stueck: number }[],
+): string {
+  return payload
+    .map((p) => `${(p.isin ?? '').toUpperCase()}:${p.stueck}`)
+    .sort()
+    .join('|')
+}
+
+function leseLocalCache(depotKey: string): AnkuendigteDividendenErgebnis | null {
+  if (typeof window === 'undefined') return null
+  try {
+    const raw = localStorage.getItem(LS_KEY)
+    if (!raw) return null
+    const j = JSON.parse(raw) as AnkuendigteDividendenErgebnis & { depotKey?: string; cachedAt?: number }
+    if (j.depotKey !== depotKey || !j.cachedAt || Date.now() - j.cachedAt > LS_MAX_AGE_MS) return null
+    return j
+  } catch {
+    return null
+  }
+}
+
+function schreibeLocalCache(depotKey: string, daten: AnkuendigteDividendenErgebnis): void {
+  if (typeof window === 'undefined') return
+  try {
+    localStorage.setItem(LS_KEY, JSON.stringify({ ...daten, depotKey, cachedAt: Date.now() }))
+  } catch {
+    /* Speicher voll */
+  }
+}
+
+function bauePayload(positionen: LivePosition[], meta: Map<string, IsinMetadata>) {
+  return positionen
     .filter((p) => p.stueck > 0)
     .map((p) => {
       let isin = p.isin?.trim().toUpperCase() ?? ''
@@ -33,6 +64,23 @@ export async function ladeAnkuendigteDividendenDepot(
         symbolCandidates: k?.symbolCandidates ?? m?.symbolCandidates,
       }
     })
+}
+
+/** Sofort aus Browser-Cache (Anzeige), danach API-Aktualisierung. */
+export function ladeAnkuendigteDividendenDepotAusLocalCache(
+  positionen: LivePosition[],
+  meta: Map<string, IsinMetadata>,
+): AnkuendigteDividendenErgebnis | null {
+  const payload = bauePayload(positionen, meta)
+  return leseLocalCache(depotKeyAusPayload(payload))
+}
+
+export async function ladeAnkuendigteDividendenDepot(
+  positionen: LivePosition[],
+  meta: Map<string, IsinMetadata>,
+): Promise<AnkuendigteDividendenErgebnis | null> {
+  const payload = bauePayload(positionen, meta)
+  const depotKey = depotKeyAusPayload(payload)
 
   if (payload.length === 0) {
     return {
@@ -57,12 +105,14 @@ export async function ladeAnkuendigteDividendenDepot(
   if (!res.ok || j.ok === false) {
     throw new Error(j.message ?? 'Abruf fehlgeschlagen')
   }
-  return {
+  const ergebnis: AnkuendigteDividendenErgebnis = {
     monate: j.monate ?? [],
     eintraege: j.eintraege ?? [],
     hinweise: j.hinweise ?? [],
     abgefragteSymbole: j.abgefragteSymbole ?? 0,
     treffer: j.treffer ?? 0,
-      statistik: j.statistik ?? { divvydiary: 0, prognose: 0, finnhub: 0, yahoo: 0, ohneTreffer: 0 },
+    statistik: j.statistik ?? { divvydiary: 0, prognose: 0, finnhub: 0, yahoo: 0, ohneTreffer: 0 },
   }
+  schreibeLocalCache(depotKey, ergebnis)
+  return ergebnis
 }

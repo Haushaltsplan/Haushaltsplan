@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { PortfolioIsinLogo } from '@/components/portfolio-analyse/isin-logo'
 import { usePortfolioAnalyse } from '@/components/portfolio-analyse/pa-data-provider'
 import { PaPortfolioHero } from '@/components/portfolio-analyse/pa-portfolio-hero'
@@ -16,8 +16,14 @@ import {
 } from '@/lib/portfolio-analyse/berechnung'
 import { anzeigeNameFuerIsin } from '@/lib/portfolio-analyse/isin-metadata-client'
 import { fundamentaldatenHref } from '@/lib/portfolio-analyse/fundamentaldaten-navigation'
-import { depotwertVorBoersenbeginn } from '@/lib/portfolio-analyse/live-bewertung'
+import { depotwertVorBoersenbeginn, ladeHistorischeKurseClient } from '@/lib/portfolio-analyse/live-bewertung'
+import { isinKenntnis } from '@/lib/portfolio-analyse/isin-kenntnisse'
 import { berechneParqetPeriodKennzahlen } from '@/lib/portfolio-analyse/parqet-period-kennzahlen'
+import {
+  bauePositionPerfMap,
+  berechnePositionPerfFuerPeriode,
+  topMoverUntertitel,
+} from '@/lib/portfolio-analyse/position-period-performance'
 import { heuteIso } from '@/lib/portfolio-analyse/wertentwicklung-tage'
 import { baueWertentwicklung } from '@/lib/portfolio-analyse/wertentwicklung'
 import { BUCHUNGS_TYP_LABEL, type BuchungsTyp } from '@/lib/portfolio-analyse/types'
@@ -35,6 +41,7 @@ export function PortfolioDashboardClient() {
   const { live, liveLaden, kursFehler, buchungen, meta, report, hatDaten, laden } =
     usePortfolioAnalyse()
   const [periodKey, setPeriodKey] = useState<PeriodPerformance['periodKey']>('MAX')
+  const [kursHistorie, setKursHistorie] = useState<Map<string, Map<string, number>>>(new Map())
 
   const k = live?.kennzahlen
   const positionen = live?.positionen ?? []
@@ -47,15 +54,6 @@ export function PortfolioDashboardClient() {
   const letzteAktivitaeten = useMemo(
     () => sortiereBuchungenNeuesteZuerst(buchungen).slice(0, 8),
     [buchungen],
-  )
-
-  const topMover = useMemo(
-    () =>
-      [...positionen]
-        .filter((p) => p.gewinnVerlustProzent != null && p.hatLiveKurs)
-        .sort((a, b) => (b.gewinnVerlustProzent ?? 0) - (a.gewinnVerlustProzent ?? 0))
-        .slice(0, 6),
-    [positionen],
   )
 
   const startDatumIso = useMemo(() => {
@@ -80,6 +78,57 @@ export function PortfolioDashboardClient() {
       tagesstart,
     )
   }, [buchungen, k, live?.positionen, periodKey, startDatumIso, wertFuerPeriode])
+
+  useEffect(() => {
+    if (positionen.length === 0 || periodKey === '1T' || periodKey === 'MAX') {
+      setKursHistorie(new Map())
+      return
+    }
+    let cancelled = false
+    const heute = heuteIso()
+    const von = berechneParqetPeriodKennzahlen(
+      periodKey,
+      buchungen,
+      wertFuerPeriode,
+      k?.depotwertEur ?? 0,
+      startDatumIso,
+    ).periodStartDatumIso
+
+    const yahoo = new Set<string>()
+    const stooq: string[] = []
+    for (const p of positionen) {
+      if (p.symbolYahoo) yahoo.add(p.symbolYahoo)
+      const kn = p.isin ? isinKenntnis(p.isin) : null
+      for (const s of kn?.symbolCandidates ?? []) yahoo.add(s)
+      if (kn?.stooqSymbol) stooq.push(kn.stooqSymbol)
+    }
+
+    void ladeHistorischeKurseClient([...yahoo], von, heute, stooq).then((hist) => {
+      if (!cancelled) setKursHistorie(hist)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [positionen, periodKey, buchungen, wertFuerPeriode, k?.depotwertEur, startDatumIso])
+
+  const positionPerfMap = useMemo(
+    () => bauePositionPerfMap(positionen, periodKey, kursHistorie, startDatumIso),
+    [positionen, periodKey, kursHistorie, startDatumIso],
+  )
+
+  const topMover = useMemo(
+    () =>
+      [...positionen]
+        .map((p) => {
+          const key = p.isin?.toUpperCase() ?? p.name
+          const perf = positionPerfMap.get(key) ?? berechnePositionPerfFuerPeriode(p, periodKey, kursHistorie, startDatumIso)
+          return { p, perf }
+        })
+        .filter(({ p, perf }) => p.hatLiveKurs && perf.gewinnVerlustProzent != null)
+        .sort((a, b) => (b.perf.gewinnVerlustProzent ?? 0) - (a.perf.gewinnVerlustProzent ?? 0))
+        .slice(0, 6),
+    [positionen, positionPerfMap, periodKey, kursHistorie, startDatumIso],
+  )
 
   const startDatum = startDatumIso ? formatDatumDe(startDatumIso) : null
 
@@ -196,13 +245,13 @@ export function PortfolioDashboardClient() {
         <PaCard variant="elevated" className="flex flex-col">
           <div className="border-b border-white/[0.04] px-5 py-3">
             <h2 className="text-sm font-semibold text-zinc-100">Top Mover</h2>
-            <p className="text-[11px] text-zinc-500">↑ Gewinner (live)</p>
+            <p className="text-[11px] text-zinc-500">{topMoverUntertitel(periodKey)}</p>
           </div>
           <ul className="max-h-80 flex-1 divide-y divide-zinc-800/50 overflow-y-auto">
             {topMover.length === 0 ? (
               <li className="px-5 py-8 text-center text-sm text-zinc-500">Keine Live-Performance.</li>
             ) : (
-              topMover.map((p) => {
+              topMover.map(({ p, perf }) => {
                 const fundamentalHref =
                   p.assetKlasse === 'aktie' && p.isin ? fundamentaldatenHref({ isin: p.isin }) : null
                 return (
@@ -232,10 +281,10 @@ export function PortfolioDashboardClient() {
                     </div>
                   </div>
                   <div className="shrink-0 self-start sm:self-center">
-                    <PaBadge variant={(p.gewinnVerlustProzent ?? 0) >= 0 ? 'positive' : 'negative'}>
-                      {p.gewinnVerlustProzent != null ? formatProzent(p.gewinnVerlustProzent) : '—'}{' '}
-                      {p.gewinnVerlustEur >= 0 ? '+' : ''}
-                      {formatEur(p.gewinnVerlustEur)}
+                    <PaBadge variant={(perf.gewinnVerlustProzent ?? 0) >= 0 ? 'positive' : 'negative'}>
+                      {perf.gewinnVerlustProzent != null ? formatProzent(perf.gewinnVerlustProzent) : '—'}{' '}
+                      {perf.gewinnVerlustEur >= 0 ? '+' : ''}
+                      {formatEur(perf.gewinnVerlustEur)}
                     </PaBadge>
                   </div>
                 </li>
@@ -250,6 +299,8 @@ export function PortfolioDashboardClient() {
         buchungen={buchungen}
         meta={meta}
         laden={liveLaden}
+        periodKey={periodKey}
+        positionPerfMap={positionPerfMap}
       />
 
       {liveLaden ? (

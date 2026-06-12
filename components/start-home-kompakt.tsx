@@ -21,7 +21,10 @@ import {
   sortiereEintraegeNachUhrzeitDannTitel,
   type KalenderEintrag,
 } from '@/lib/haushalt-kalender'
-import { ladeAnkuendigteDividendenDepot } from '@/lib/portfolio-analyse/ankuendigte-dividenden-client'
+import {
+  ladeAnkuendigteDividendenDepot,
+  ladeAnkuendigteDividendenDepotAusLocalCache,
+} from '@/lib/portfolio-analyse/ankuendigte-dividenden-client'
 import { positionenFuerBewertung } from '@/lib/portfolio-analyse/bestand'
 import { formatEur } from '@/lib/portfolio-analyse/berechnung'
 import { eintraegeZuDonut, gewichtungNachAsset } from '@/lib/portfolio-analyse/gewichtung'
@@ -205,20 +208,22 @@ export function StartPortfolioKompakt() {
         if (cancelled) return
         setDepotwert(live.kennzahlen.depotwertEur)
         setDonut(eintraegeZuDonut(gewichtungNachAsset(live.positionen), 8))
+        const divCached = ladeAnkuendigteDividendenDepotAusLocalCache(live.positionen, meta)
+        const mapDivRows = (div: NonNullable<typeof divCached>) =>
+          div.eintraege
+            .sort((a, b) => a.zahlungsdatumIso.localeCompare(b.zahlungsdatumIso))
+            .slice(0, 4)
+            .map((e) => ({
+              label: e.name,
+              datum: e.zahlungsdatumIso,
+              betrag: formatEur(e.gesamtEur),
+            }))
+        if (divCached && !cancelled) setDividenden(mapDivRows(divCached))
         try {
           const div = await ladeAnkuendigteDividendenDepot(live.positionen, meta)
-          const rows =
-            div?.eintraege
-              .sort((a, b) => a.zahlungsdatumIso.localeCompare(b.zahlungsdatumIso))
-              .slice(0, 4)
-              .map((e) => ({
-                label: e.name,
-                datum: e.zahlungsdatumIso,
-                betrag: formatEur(e.gesamtEur),
-              })) ?? []
-          if (!cancelled) setDividenden(rows)
+          if (!cancelled) setDividenden(div ? mapDivRows(div) : [])
         } catch {
-          if (!cancelled) setDividenden([])
+          if (!cancelled && !divCached) setDividenden([])
         }
       } catch (e) {
         if (!cancelled) setFehler(e instanceof Error ? e.message : 'Portfolio nicht geladen')

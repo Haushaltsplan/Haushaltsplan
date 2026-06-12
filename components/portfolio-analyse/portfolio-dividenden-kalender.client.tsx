@@ -5,7 +5,10 @@ import { useEffect, useMemo, useState } from 'react'
 import { PaDividendenKalender } from '@/components/portfolio-analyse/pa-dividenden-kalender'
 import { usePortfolioAnalyse } from '@/components/portfolio-analyse/pa-data-provider'
 import { PortfolioAnalyseShell } from '@/components/portfolio-analyse/portfolio-analyse-shell.client'
-import { ladeAnkuendigteDividendenDepot } from '@/lib/portfolio-analyse/ankuendigte-dividenden-client'
+import {
+  ladeAnkuendigteDividendenDepot,
+  ladeAnkuendigteDividendenDepotAusLocalCache,
+} from '@/lib/portfolio-analyse/ankuendigte-dividenden-client'
 import type { AnkuendigteDividendenErgebnis } from '@/lib/portfolio-analyse/ankuendigte-dividenden'
 
 export function PortfolioDividendenKalenderClient() {
@@ -32,9 +35,12 @@ export function PortfolioDividendenKalenderClient() {
       setFehler(null)
       return
     }
+    const cached = ladeAnkuendigteDividendenDepotAusLocalCache(pos, meta)
+    if (cached) setDaten(cached)
+
     let cancelled = false
     async function run() {
-      setLaden(true)
+      setLaden(!cached)
       setFehler(null)
       try {
         const res = await ladeAnkuendigteDividendenDepot(pos, meta)
