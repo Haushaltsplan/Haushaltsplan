@@ -1,5 +1,11 @@
 /** Technische Chartanalyse — Indikatoren & Signale (Kurz- / Langfrist). */
 
+import {
+  bodenGesamtUrteil,
+  erkenneAlleBodenMuster,
+  type BodenMuster,
+} from '@/lib/portfolio-analyse/chartanalyse-boden'
+
 export type KursBar = { datum: string; close: number }
 
 export type FibLevel = {
@@ -33,7 +39,17 @@ export type ChartanalyseHorizont = {
 export type ChartanalyseErgebnis = {
   aktuellerKurs: number
   swingHoch: number
+  swingHochIdx: number
   swingTief: number
+  swingTiefIdx: number
+  renditeZeitraum: number | null
+  maxDrawdown: number | null
+  drawdownAktuell: number | null
+  hoehereHochs: boolean
+  hoehereTiefs: boolean
+  tiefereHochs: boolean
+  tiefereTiefs: boolean
+  macdKreuzung: 'bullish' | 'bearish' | null
   fibonacci: FibLevel[]
   ema20: (number | null)[]
   ema50: (number | null)[]
@@ -45,6 +61,8 @@ export type ChartanalyseErgebnis = {
   macdHist: (number | null)[]
   unterstuetzungen: number[]
   widerstaende: number[]
+  bodenMuster: BodenMuster[]
+  bodenUrteil: ReturnType<typeof bodenGesamtUrteil>
   kurzfristig: ChartanalyseHorizont
   langfristig: ChartanalyseHorizont
 }
@@ -260,23 +278,60 @@ function erkenneTrend(werte: number[]): 'aufwaerts' | 'abwaerts' | 'seitwaerts' 
   return 'seitwaerts'
 }
 
-function erkenneDoppelboden(werte: number[], toleranz = 0.025): string | null {
-  if (werte.length < 40) return null
-  const tail = werte.slice(-60)
-  const min = Math.min(...tail)
-  const tiefpunkte: number[] = []
-  for (let i = 2; i < tail.length - 2; i++) {
-    const v = tail[i]!
-    if (v <= tail[i - 1]! && v <= tail[i - 2]! && v <= tail[i + 1]! && v <= tail[i + 2]!) {
-      if (Math.abs(v - min) / min <= toleranz * 2) tiefpunkte.push(i)
+function erkenneMarktstruktur(closes: number[]): {
+  hoehereHochs: boolean
+  hoehereTiefs: boolean
+  tiefereHochs: boolean
+  tiefereTiefs: boolean
+} {
+  const hochs: number[] = []
+  const tiefs: number[] = []
+  for (let i = 4; i < closes.length - 4; i++) {
+    let istH = true
+    let istT = true
+    for (let j = i - 4; j <= i + 4; j++) {
+      if (j === i) continue
+      if (closes[j]! >= closes[i]!) istH = false
+      if (closes[j]! <= closes[i]!) istT = false
     }
+    if (istH) hochs.push(closes[i]!)
+    if (istT) tiefs.push(closes[i]!)
   }
-  if (tiefpunkte.length >= 2) {
-    const a = tiefpunkte[tiefpunkte.length - 2]!
-    const b = tiefpunkte[tiefpunkte.length - 1]!
-    if (b - a >= 8 && Math.abs(tail[a]! - tail[b]!) / tail[a]! <= toleranz) {
-      return 'Mögliche Doppelboden-Formation im Verlauf der letzten Monate.'
-    }
+  const last2H = hochs.slice(-2)
+  const last2T = tiefs.slice(-2)
+  return {
+    hoehereHochs: last2H.length === 2 && last2H[1]! > last2H[0]!,
+    hoehereTiefs: last2T.length === 2 && last2T[1]! > last2T[0]!,
+    tiefereHochs: last2H.length === 2 && last2H[1]! < last2H[0]!,
+    tiefereTiefs: last2T.length === 2 && last2T[1]! < last2T[0]!,
+  }
+}
+
+function berechneDrawdowns(closes: number[]): { max: number; aktuell: number } {
+  let peak = -Infinity
+  let maxDd = 0
+  for (const c of closes) {
+    peak = Math.max(peak, c)
+    const dd = peak > 0 ? ((c - peak) / peak) * 100 : 0
+    maxDd = Math.min(maxDd, dd)
+  }
+  const aktuell = closes[closes.length - 1]!
+  let peak2 = -Infinity
+  for (const c of closes) {
+    peak2 = Math.max(peak2, c)
+    if (c === aktuell) break
+  }
+  const ddAkt = peak2 > 0 ? ((aktuell - peak2) / peak2) * 100 : 0
+  return { max: maxDd, aktuell: Math.min(0, ddAkt) }
+}
+
+function macdKreuzung(hist: (number | null)[]): 'bullish' | 'bearish' | null {
+  for (let i = hist.length - 1; i >= Math.max(1, hist.length - 8); i--) {
+    const a = hist[i - 1]
+    const b = hist[i]
+    if (a == null || b == null) continue
+    if (a < 0 && b > 0) return 'bullish'
+    if (a > 0 && b < 0) return 'bearish'
   }
   return null
 }
@@ -455,6 +510,7 @@ function horizontAusTeil(
   zeitraumLabel: string,
   kurz: boolean,
   globalFib: FibLevel[],
+  bodenText: string | null,
 ): ChartanalyseHorizont {
   const closes = bars.map((b) => b.close)
   const preis = closes[closes.length - 1] ?? 0
@@ -490,7 +546,7 @@ function horizontAusTeil(
     deathCross: kreuz === 'death',
     fibNaechsteUnterstuetzung: naechstesFibUnter(preis, globalFib),
     fibNaechsterWiderstand: naechstesFibUeber(preis, globalFib),
-    bodenbildung: erkenneDoppelboden(closes),
+    bodenbildung: bodenText,
     signale: baueSignale({
       preis,
       rsiVal,
@@ -503,7 +559,7 @@ function horizontAusTeil(
       ema50: ema50Val,
       fibSupport: naechstesFibUnter(preis, globalFib),
       fibResist: naechstesFibUeber(preis, globalFib),
-      boden: erkenneDoppelboden(closes),
+      boden: bodenText,
       golden: kreuz === 'golden',
       death: kreuz === 'death',
       kurz,
@@ -520,27 +576,47 @@ export function berechneChartanalyse(bars: KursBar[]): ChartanalyseErgebnis | nu
   const aufwaerts = schwung.hochIdx > schwung.tiefIdx
   const fib = fibonacciVomSchwung(schwung.hoch, schwung.tief, aufwaerts)
   const pivots = pivotLevels(closes)
+  const rsiSerie = rsi(closes)
+  const macdRes = macd(closes)
+  const bodenMuster = erkenneAlleBodenMuster(bars, rsiSerie)
+  const bodenUrteil = bodenGesamtUrteil(bodenMuster)
+  const struktur = erkenneMarktstruktur(closes)
+  const dds = berechneDrawdowns(closes)
+  const rendite =
+    closes.length >= 2 ? ((preis - closes[0]!) / closes[0]!) * 100 : null
 
   const kurzBars = bars.slice(-66)
   const langBars = bars
-  const macdRes = macd(closes)
+
+  const bodenText = bodenMuster[0]?.beschreibung ?? null
+  const kurz = horizontAusTeil(kurzBars, '~3 Monate', true, fib, bodenText)
+  const lang = horizontAusTeil(langBars, 'Gesamter Zeitraum', false, fib, bodenText)
 
   return {
     aktuellerKurs: preis,
     swingHoch: schwung.hoch,
+    swingHochIdx: schwung.hochIdx,
     swingTief: schwung.tief,
+    swingTiefIdx: schwung.tiefIdx,
+    renditeZeitraum: rendite,
+    maxDrawdown: dds.max,
+    drawdownAktuell: dds.aktuell,
+    ...struktur,
+    macdKreuzung: macdKreuzung(macdRes.hist),
     fibonacci: fib,
     ema20: ema(closes, 20),
     ema50: ema(closes, 50),
     ema200: ema(closes, 200),
     bollinger: bollinger(closes),
-    rsi: rsi(closes),
+    rsi: rsiSerie,
     macdLinie: macdRes.linie,
     macdSignal: macdRes.signal,
     macdHist: macdRes.hist,
     unterstuetzungen: pivots.unterstuetzungen,
     widerstaende: pivots.widerstaende,
-    kurzfristig: horizontAusTeil(kurzBars, '~3 Monate', true, fib),
-    langfristig: horizontAusTeil(langBars, 'Gesamter Zeitraum', false, fib),
+    bodenMuster,
+    bodenUrteil,
+    kurzfristig: kurz,
+    langfristig: lang,
   }
 }
