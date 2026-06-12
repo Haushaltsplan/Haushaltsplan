@@ -4,12 +4,14 @@ import { useEffect, useMemo, useState } from 'react'
 import { PaCard } from '@/components/portfolio-analyse/pa-ui'
 import {
   berechneDcf,
+  berechneDcfSzenarien,
   berechneSensitivitaet,
   defaultDcfEingaben,
   formatDcfKurs,
   formatDcfUsd,
   schaetzeWaccAusCapm,
   type DcfEingaben,
+  type DcfSzenarioId,
 } from '@/lib/portfolio-analyse/fundamentaldaten-dcf'
 import type { FundamentalDcfKontext } from '@/lib/portfolio-analyse/fundamentaldaten-types'
 
@@ -250,10 +252,20 @@ export function PaFundamentalDcf({
   }, [selectionKey, basisEingaben, kontext])
 
   const ergebnis = useMemo(() => (eingaben ? berechneDcf(eingaben) : null), [eingaben])
+  const szenarien = useMemo(
+    () => (eingaben && ergebnis?.ok ? berechneDcfSzenarien(eingaben) : []),
+    [eingaben, ergebnis?.ok],
+  )
   const sensitivitaet = useMemo(
     () => (eingaben && ergebnis?.ok ? berechneSensitivitaet(eingaben) : []),
     [eingaben, ergebnis?.ok],
   )
+
+  const wendeSzenarioAn = (id: DcfSzenarioId) => {
+    const hit = szenarien.find((s) => s.id === id)
+    if (!hit?.ergebnis.ok) return
+    setEingaben(hit.eingaben)
+  }
 
   if (!kontext) {
     return (
@@ -297,6 +309,59 @@ export function PaFundamentalDcf({
 
   return (
     <div className="space-y-4">
+      {szenarien.length === 3 ? (
+        <div className="grid gap-3 sm:grid-cols-3">
+          {szenarien.map((s) => {
+            const fv = s.ergebnis.ok ? s.ergebnis.fairValueProAktieUsd : null
+            const upside = s.ergebnis.ok ? s.ergebnis.upsidePct : null
+            const istAktiv =
+              eingaben.waccPct === s.eingaben.waccPct &&
+              eingaben.wachstumExplizitPct === s.eingaben.wachstumExplizitPct &&
+              eingaben.terminalWachstumPct === s.eingaben.terminalWachstumPct
+            const accent =
+              s.id === 'bear'
+                ? 'border-rose-500/25 hover:bg-rose-500/[0.06]'
+                : s.id === 'bull'
+                  ? 'border-emerald-500/25 hover:bg-emerald-500/[0.06]'
+                  : 'border-teal-500/25 hover:bg-teal-500/[0.06]'
+            const aktivRing =
+              s.id === 'bear'
+                ? 'ring-rose-500/35 bg-rose-500/[0.08]'
+                : s.id === 'bull'
+                  ? 'ring-emerald-500/35 bg-emerald-500/[0.08]'
+                  : 'ring-teal-500/35 bg-teal-500/[0.08]'
+            return (
+              <button
+                key={s.id}
+                type="button"
+                onClick={() => wendeSzenarioAn(s.id)}
+                title={s.beschreibung}
+                className={`rounded-xl border p-4 text-left transition ${
+                  istAktiv ? `ring-1 ${aktivRing}` : `bg-zinc-950/40 ${accent}`
+                }`}
+              >
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">{s.label}</p>
+                <p className="mt-1 text-xl font-semibold tabular-nums text-zinc-100">{formatDcfKurs(fv)}</p>
+                <p className="mt-1 text-[11px] text-zinc-500">
+                  WACC {s.eingaben.waccPct.toFixed(1)}% · FCF {s.eingaben.wachstumExplizitPct.toFixed(1)}% · g∞{' '}
+                  {s.eingaben.terminalWachstumPct.toFixed(1)}%
+                </p>
+                {upside != null ? (
+                  <p
+                    className={`mt-2 text-xs font-medium tabular-nums ${
+                      upside > 5 ? 'text-emerald-300' : upside < -5 ? 'text-rose-300' : 'text-zinc-400'
+                    }`}
+                  >
+                    {upside > 0 ? '+' : ''}
+                    {upside.toFixed(1)}% vs. Kurs
+                  </p>
+                ) : null}
+              </button>
+            )
+          })}
+        </div>
+      ) : null}
+
       {/* Hero */}
       <div className="grid gap-3 lg:grid-cols-3">
         <PaCard

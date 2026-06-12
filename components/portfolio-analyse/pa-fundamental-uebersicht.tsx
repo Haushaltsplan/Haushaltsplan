@@ -9,11 +9,13 @@ export function PaFundamentalUebersicht({
   ticker,
   firmenname,
   metriken,
+  onMetricClick,
 }: {
   symbolYahoo: string | null
   ticker: string
   firmenname: string
   metriken: FundamentalKeyMetric[]
+  onMetricClick?: (metricId: string) => void
 }) {
   return (
     <div className="overflow-hidden rounded-xl border border-zinc-800/80 bg-zinc-950/80 ring-1 ring-white/[0.03]">
@@ -26,7 +28,7 @@ export function PaFundamentalUebersicht({
             kompakt
           />
         </div>
-        <PaFundamentalKeyMetrics metriken={metriken} />
+        <PaFundamentalKeyMetrics metriken={metriken} onMetricClick={onMetricClick} />
       </div>
     </div>
   )

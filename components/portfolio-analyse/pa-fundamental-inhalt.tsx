@@ -15,6 +15,7 @@ import {
   ladeFundamentaldatenClient,
 } from '@/lib/portfolio-analyse/fundamentaldaten-client'
 import { baueMantraAudit } from '@/lib/portfolio-analyse/fundamentaldaten-mantra'
+import { keyMetricNavZiel } from '@/lib/portfolio-analyse/fundamentaldaten-key-metric-nav'
 import type {
   FundamentaldatenAnfrage,
   FundamentaldatenPaket,
@@ -24,7 +25,6 @@ const UNTER_TABS = [
   { id: 'uebersicht' as const, label: 'Übersicht' },
   { id: 'mantra' as const, label: 'Mantra' },
   { id: 'finanzdaten' as const, label: 'Finanzdaten' },
-  { id: 'schaetzungen' as const, label: 'Schätzungen' },
   { id: 'bewertung' as const, label: 'Bewertung' },
   { id: 'dcf' as const, label: 'DCF' },
   { id: 'earnings_call' as const, label: 'Earnings Call' },
@@ -126,6 +126,16 @@ export function PaFundamentalInhalt({
     })
   }, [])
 
+  const navigiereZuMetrik = useCallback((metricId: string) => {
+    const ziel = keyMetricNavZiel(metricId)
+    if (!ziel) return
+    setUnterTab(ziel.tab)
+    setChartAktiv(new Set([ziel.zeileId]))
+    requestAnimationFrame(() => {
+      document.getElementById('fundamental-metrik-chart')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    })
+  }, [])
+
   if (!anfrage) {
     return (
       <PaCard className="p-8 text-center text-sm text-zinc-500">
@@ -141,8 +151,6 @@ export function PaFundamentalInhalt({
   const cashflow = daten?.zeilen.filter((z) => z.gruppe === 'cashflow') ?? []
   const bewertungLtm = daten?.zeilen.filter((z) => z.gruppe === 'bewertung_trailing') ?? []
   const bewertungNtm = daten?.zeilen.filter((z) => z.gruppe === 'bewertung_forward') ?? []
-  const schaetzungen = daten?.zeilen.filter((z) => z.gruppe === 'schaetzungen') ?? []
-
   return (
     <div className="space-y-4">
       {laden && !daten?.ok ? (
@@ -196,6 +204,7 @@ export function PaFundamentalInhalt({
               ticker={daten.ticker}
               firmenname={daten.firmenname}
               metriken={daten.keyMetrics}
+              onMetricClick={navigiereZuMetrik}
             />
           ) : null}
 
@@ -290,15 +299,6 @@ export function PaFundamentalInhalt({
                 />
               ) : null}
 
-              {unterTab === 'schaetzungen' && schaetzungen.length > 0 ? (
-                <PaFundamentalMetrikTabelle
-                  titel="Schätzungen (Konsens · Yahoo Finance)"
-                  perioden={daten.perioden}
-                  zeilen={schaetzungen}
-                  aktivIds={chartAktiv}
-                  onToggleZeile={toggleChartZeile}
-                />
-              ) : null}
             </div>
           ) : null}
 

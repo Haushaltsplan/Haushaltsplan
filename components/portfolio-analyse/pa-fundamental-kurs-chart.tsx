@@ -5,6 +5,8 @@ import { chartHoverFromClientX } from '@/components/portfolio-analyse/chart-hove
 import { formatDatumDe } from '@/lib/portfolio-analyse/berechnung'
 
 const TIKR_ACCENT = '#d97706'
+const DRAWDOWN_ACCENT = '#f04438'
+const ACHSE_FONT = 13
 const VIEW_W = 1000
 
 export type KursZeitraum = '3m' | '6m' | 'ytd' | '1yr' | '3yr' | '5yr' | '10yr' | 'all'
@@ -52,6 +54,9 @@ function vonDatumFuerZeitraum(z: KursZeitraum): string {
 }
 
 type KursPunkt = { datum: string; kurs: number }
+type PlotPunkt = { x: number; y: number; p: KursPunkt; dd?: number }
+
+type KursChartModus = 'kurs' | 'drawdown'
 
 function kursrenditePct(punkte: KursPunkt[]): number | null {
   if (punkte.length < 2) return null
@@ -59,6 +64,15 @@ function kursrenditePct(punkte: KursPunkt[]): number | null {
   const end = punkte[punkte.length - 1].kurs
   if (start <= 0) return null
   return ((end - start) / start) * 100
+}
+
+function berechneDrawdown(punkte: KursPunkt[]): { datum: string; kurs: number; drawdownProzent: number }[] {
+  let peak = -Infinity
+  return punkte.map((p) => {
+    peak = Math.max(peak, p.kurs)
+    const dd = peak > 0 ? ((p.kurs - peak) / peak) * 100 : 0
+    return { ...p, drawdownProzent: Math.min(0, dd) }
+  })
 }
 
 function nicePriceStep(span: number): number {
@@ -104,6 +118,8 @@ export function PaFundamentalKursChart({
   kompakt?: boolean
 }) {
   const areaGradId = useId()
+  const ddGradId = useId()
+  const [modus, setModus] = useState<KursChartModus>('kurs')
   const [zeitraum, setZeitraum] = useState<KursZeitraum>('1yr')
   const [punkte, setPunkte] = useState<KursPunkt[]>([])
   const [laden, setLaden] = useState(false)
@@ -156,6 +172,11 @@ export function PaFundamentalKursChart({
   }, [punkte, range])
 
   const rendite = useMemo(() => kursrenditePct(gefiltert.length >= 2 ? gefiltert : punkte), [gefiltert, punkte])
+  const drawdownSerie = useMemo(() => berechneDrawdown(gefiltert), [gefiltert])
+  const maxDrawdown = useMemo(() => {
+    if (drawdownSerie.length === 0) return null
+    return Math.min(...drawdownSerie.map((p) => p.drawdownProzent))
+  }, [drawdownSerie])
 
   const hoehe = kompakt ? 268 : 360
   const padLinks = 12
@@ -165,17 +186,76 @@ export function PaFundamentalKursChart({
   const plotW = VIEW_W - padLinks - padRechts
   const plotH = hoehe - padOben - padUnten
 
-  const { linePath, areaPath, yTicks, xLabels, plotPts, yMin, yMax, letzterKurs } = useMemo(() => {
+  const { linePath, areaPath, yTicks, xLabels, plotPts, yMin, yMax, letzterKurs, istDrawdown } = useMemo((): {
+    linePath: string
+    areaPath: string
+    yTicks: number[]
+    xLabels: { x: number; label: string }[]
+    plotPts: PlotPunkt[]
+    yMin: number
+    yMax: number
+    letzterKurs: number | null
+    istDrawdown: boolean
+  } => {
     if (gefiltert.length === 0) {
       return {
         linePath: '',
         areaPath: '',
         yTicks: [] as number[],
         xLabels: [] as { x: number; label: string }[],
-        plotPts: [] as { x: number; y: number; p: KursPunkt }[],
+        plotPts: [] as PlotPunkt[],
         yMin: 0,
         yMax: 1,
         letzterKurs: null as number | null,
+        istDrawdown: false,
+      }
+    }
+
+    const n = gefiltert.length
+    const istDrawdown = modus === 'drawdown'
+
+    if (istDrawdown) {
+      const dd = drawdownSerie
+      const minDd = Math.min(0, ...dd.map((p) => p.drawdownProzent))
+      const floor = Math.floor(minDd / 10) * 10 - 10
+      const span = 0 - floor || 10
+      const yMin = floor
+      const yMax = 0
+
+      const pts = dd.map((p, i) => {
+        const x = padLinks + (plotW * i) / Math.max(1, n - 1)
+        const y = padOben + ((0 - p.drawdownProzent) / span) * plotH
+        return { x, y, p, dd: p.drawdownProzent }
+      })
+
+      const line = pts.map((pt, i) => `${i === 0 ? 'M' : 'L'} ${pt.x.toFixed(1)} ${pt.y.toFixed(1)}`).join(' ')
+      const topY = padOben
+      const area = `${line} L ${pts[pts.length - 1].x.toFixed(1)} ${topY} L ${pts[0].x.toFixed(1)} ${topY} Z`
+
+      const ticks: number[] = [0]
+      for (let t = -10; t >= floor; t -= 10) ticks.push(t)
+
+      const labelCount = kompakt ? 5 : 6
+      const labelStep = Math.max(1, Math.ceil(n / labelCount))
+      const labels: { x: number; label: string }[] = []
+      for (let i = 0; i < n; i += labelStep) {
+        labels.push({ x: pts[i].x, label: formatXAxisDatum(gefiltert[i].datum) })
+      }
+      const lastIdx = n - 1
+      if (lastIdx % labelStep !== 0) {
+        labels.push({ x: pts[lastIdx].x, label: formatXAxisDatum(gefiltert[lastIdx].datum) })
+      }
+
+      return {
+        linePath: line,
+        areaPath: area,
+        yTicks: ticks,
+        xLabels: labels,
+        plotPts: pts,
+        yMin,
+        yMax,
+        letzterKurs: dd[dd.length - 1]?.drawdownProzent ?? null,
+        istDrawdown: true,
       }
     }
 
@@ -184,7 +264,6 @@ export function PaFundamentalKursChart({
     const yMin = skala.yMin
     const yMax = skala.yMax
     const span = yMax - yMin || 1
-    const n = gefiltert.length
 
     const pts = gefiltert.map((p, i) => {
       const x = padLinks + (plotW * i) / Math.max(1, n - 1)
@@ -222,8 +301,9 @@ export function PaFundamentalKursChart({
       yMin,
       yMax,
       letzterKurs: gefiltert[gefiltert.length - 1]?.kurs ?? null,
+      istDrawdown: false,
     }
-  }, [gefiltert, kompakt, padLinks, padOben, plotH, plotW])
+  }, [gefiltert, drawdownSerie, modus, kompakt, padLinks, padOben, plotH, plotW])
 
   const onMove = useCallback(
     (clientX: number) => {
@@ -245,7 +325,10 @@ export function PaFundamentalKursChart({
 
   const hover = hoverIndex != null ? plotPts[hoverIndex] : null
   const zeitraumLabel = ZEITRAUM_OPTIONS.find((z) => z.id === zeitraum)?.label ?? zeitraum
-  const angezeigterKurs = hover?.p.kurs ?? letzterKurs
+  const angezeigterKurs = istDrawdown
+    ? (hover?.dd ?? letzterKurs)
+    : (hover?.p.kurs ?? letzterKurs)
+  const chartFarbe = istDrawdown ? DRAWDOWN_ACCENT : TIKR_ACCENT
 
   return (
     <div
@@ -262,10 +345,16 @@ export function PaFundamentalKursChart({
               <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
                 {angezeigterKurs != null ? (
                   <span className="text-lg font-semibold tabular-nums text-zinc-50">
-                    {angezeigterKurs.toLocaleString('de-DE', { maximumFractionDigits: 2 })} $
+                    {istDrawdown
+                      ? `${angezeigterKurs.toLocaleString('de-DE', { maximumFractionDigits: 1 })} %`
+                      : `${angezeigterKurs.toLocaleString('de-DE', { maximumFractionDigits: 2 })} $`}
                   </span>
                 ) : null}
-                {rendite != null ? (
+                {istDrawdown && maxDrawdown != null ? (
+                  <span className="text-xs font-medium text-rose-400/90">
+                    Max. Drawdown {maxDrawdown.toLocaleString('de-DE', { maximumFractionDigits: 1 })} % · {zeitraumLabel}
+                  </span>
+                ) : rendite != null ? (
                   <span className={`text-xs font-medium ${rendite >= 0 ? 'text-emerald-400/90' : 'text-rose-400/90'}`}>
                     {rendite >= 0 ? '+' : ''}
                     {rendite.toLocaleString('de-DE', { maximumFractionDigits: 1 })} % · {zeitraumLabel}
@@ -287,7 +376,25 @@ export function PaFundamentalKursChart({
               </>
             )}
           </div>
-          <div className="flex flex-wrap gap-0.5">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <div className="flex rounded-lg border border-zinc-700/60 bg-zinc-900/60 p-0.5">
+              {(['kurs', 'drawdown'] as const).map((m) => (
+                <button
+                  key={m}
+                  type="button"
+                  onClick={() => setModus(m)}
+                  className={`rounded-md px-2 py-1 text-[10px] font-medium transition ${
+                    modus === m
+                      ? m === 'drawdown'
+                        ? 'bg-rose-500/20 text-rose-200'
+                        : 'bg-amber-500/20 text-amber-200'
+                      : 'text-zinc-500 hover:text-zinc-300'
+                  }`}
+                >
+                  {m === 'kurs' ? 'Kurs' : 'Drawdown'}
+                </button>
+              ))}
+            </div>
             {ZEITRAUM_OPTIONS.map((z) => (
               <button
                 key={z.id}
@@ -331,11 +438,17 @@ export function PaFundamentalKursChart({
                 <stop offset="0%" stopColor={TIKR_ACCENT} stopOpacity={0.28} />
                 <stop offset="100%" stopColor={TIKR_ACCENT} stopOpacity={0} />
               </linearGradient>
+              <linearGradient id={ddGradId} x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor={DRAWDOWN_ACCENT} stopOpacity={0.15} />
+                <stop offset="100%" stopColor={DRAWDOWN_ACCENT} stopOpacity={0.85} />
+              </linearGradient>
             </defs>
 
             {yTicks.map((tick) => {
               const span = yMax - yMin || 1
-              const y = padOben + ((yMax - tick) / span) * plotH
+              const y = istDrawdown
+                ? padOben + ((0 - tick) / span) * plotH
+                : padOben + ((yMax - tick) / span) * plotH
               return (
                 <g key={tick}>
                   <line
@@ -348,12 +461,14 @@ export function PaFundamentalKursChart({
                   />
                   <text
                     x={VIEW_W - padRechts + 6}
-                    y={y + 3}
+                    y={y + 4}
                     textAnchor="start"
                     className="fill-zinc-500"
-                    style={{ fontSize: kompakt ? 9 : 10 }}
+                    style={{ fontSize: ACHSE_FONT, fontWeight: 500 }}
                   >
-                    {formatYAxisUsd(tick)}
+                    {istDrawdown
+                      ? `${tick.toLocaleString('de-DE', { maximumFractionDigits: 0 })} %`
+                      : formatYAxisUsd(tick)}
                   </text>
                 </g>
               )
@@ -368,8 +483,8 @@ export function PaFundamentalKursChart({
               strokeWidth={1}
             />
 
-            <path d={areaPath} fill={`url(#${areaGradId})`} />
-            <path d={linePath} fill="none" stroke={TIKR_ACCENT} strokeWidth={2.25} strokeLinejoin="round" />
+            <path d={areaPath} fill={istDrawdown ? `url(#${ddGradId})` : `url(#${areaGradId})`} />
+            <path d={linePath} fill="none" stroke={chartFarbe} strokeWidth={2.25} strokeLinejoin="round" />
 
             {hover ? (
               <>
@@ -381,7 +496,7 @@ export function PaFundamentalKursChart({
                   stroke="#52525b"
                   strokeDasharray="4 3"
                 />
-                <circle cx={hover.x} cy={hover.y} r={4} fill={TIKR_ACCENT} stroke="#18181b" strokeWidth={1.5} />
+                <circle cx={hover.x} cy={hover.y} r={4} fill={chartFarbe} stroke="#18181b" strokeWidth={1.5} />
               </>
             ) : null}
 
@@ -389,10 +504,10 @@ export function PaFundamentalKursChart({
               <text
                 key={`${l.label}-${i}`}
                 x={l.x}
-                y={hoehe - 8}
+                y={hoehe - 10}
                 textAnchor="middle"
                 className="fill-zinc-500"
-                style={{ fontSize: kompakt ? 9 : 10 }}
+                style={{ fontSize: ACHSE_FONT, fontWeight: 500 }}
               >
                 {l.label}
               </text>
@@ -426,7 +541,10 @@ export function PaFundamentalKursChart({
 
       {hover ? (
         <div className={`border-t border-zinc-800/50 text-[10px] text-zinc-500 ${kompakt ? 'px-3 py-1.5' : 'px-4 py-2'}`}>
-          {formatDatumDe(hover.p.datum)} · {hover.p.kurs.toLocaleString('de-DE', { maximumFractionDigits: 2 })} $
+          {formatDatumDe(hover.p.datum)} ·{' '}
+          {istDrawdown
+            ? `${(hover.dd ?? 0).toLocaleString('de-DE', { maximumFractionDigits: 2 })} % Drawdown`
+            : `${hover.p.kurs.toLocaleString('de-DE', { maximumFractionDigits: 2 })} $`}
         </div>
       ) : kompakt ? (
         <div className="border-t border-zinc-800/50 px-3 py-1.5 text-[10px] text-zinc-600">USD · Yahoo Finance</div>

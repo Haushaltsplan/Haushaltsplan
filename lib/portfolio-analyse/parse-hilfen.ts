@@ -164,7 +164,9 @@ export function normalisiereTrTyp(raw: string): BuchungsTyp {
     return 'auszahlung'
   }
   if (t.includes('steuer') || t.includes('tax') || t.includes('kapitalertrag')) return 'steuer'
-  if (t.includes('gebühr') || t.includes('fee') || t.includes('entgelt')) return 'gebuehr'
+  if (t.includes('gebühr') || t.includes('fee') || t.includes('entgelt') || t.includes('zuschlag') || t.includes('fremdkost')) {
+    return 'gebuehr'
+  }
   return 'sonstiges'
 }
 

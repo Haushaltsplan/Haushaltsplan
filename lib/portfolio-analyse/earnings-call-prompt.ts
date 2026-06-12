@@ -37,4 +37,6 @@ Format: Verwende exakt diese fünf Markdown-Hauptüberschriften (##), ohne Numme
 ## Deep Dive: Q&A
 ## Fazit & Kritische Würdigung
 
-Unterpunkte als Aufzählungen (-). Keine weiteren ##-Überschriften.`
+Unterpunkte als Aufzählungen (-). Keine weiteren ##-Überschriften.
+
+Formatierung: Kein Markdown (keine **, keine *, keine # außer den fünf ##-Überschriften). Betonungen nur über klare Formulierung, nicht über Sternchen.`

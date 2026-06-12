@@ -58,6 +58,34 @@ function parseAnalyseAbschnitte(text: string): AnalyseAbschnitt[] {
   return out
 }
 
+function formatInlineMarkdown(text: string): ReactNode[] {
+  const parts: ReactNode[] = []
+  const re = /(\*\*[^*]+\*\*|\*[^*]+\*)/g
+  let last = 0
+  let m: RegExpExecArray | null
+  let key = 0
+  while ((m = re.exec(text)) !== null) {
+    if (m.index > last) parts.push(text.slice(last, m.index))
+    const token = m[0]
+    if (token.startsWith('**')) {
+      parts.push(
+        <strong key={key++} className="font-semibold text-zinc-100">
+          {token.slice(2, -2)}
+        </strong>,
+      )
+    } else {
+      parts.push(
+        <em key={key++} className="text-zinc-200">
+          {token.slice(1, -1)}
+        </em>,
+      )
+    }
+    last = m.index + token.length
+  }
+  if (last < text.length) parts.push(text.slice(last))
+  return parts.length ? parts : [text]
+}
+
 function AbschnittInhalt(body: string): ReactNode {
   return (
     <div className="space-y-3 text-[13px] leading-relaxed text-zinc-300">
@@ -69,7 +97,7 @@ function AbschnittInhalt(body: string): ReactNode {
               {items.map((item, k) => (
                 <li key={k} className="flex gap-2.5 text-zinc-400">
                   <span className="mt-2 h-1 w-1 shrink-0 rounded-full bg-zinc-500" />
-                  <span>{item.replace(/^[-*•]\s*/, '')}</span>
+                  <span>{formatInlineMarkdown(item.replace(/^[-*•]\s*/, ''))}</span>
                 </li>
               ))}
             </ul>
@@ -80,14 +108,14 @@ function AbschnittInhalt(body: string): ReactNode {
           return (
             <ol key={j} className="list-decimal space-y-2 pl-5 text-zinc-400">
               {items.map((item, k) => (
-                <li key={k}>{item.replace(/^\d+\.\s*/, '')}</li>
+                <li key={k}>{formatInlineMarkdown(item.replace(/^\d+\.\s*/, ''))}</li>
               ))}
             </ol>
           )
         }
         return (
           <p key={j} className="text-zinc-300">
-            {para}
+            {formatInlineMarkdown(para)}
           </p>
         )
       })}
@@ -97,13 +125,22 @@ function AbschnittInhalt(body: string): ReactNode {
 
 export function EarningsCallAnalyseDarstellung({ text }: { text: string }) {
   const abschnitte = useMemo(() => parseAnalyseAbschnitte(text), [text])
-  const summary = abschnitte.find((a) => normalisiereTitel(a.titel).includes('executive summary'))
-  const rest = abschnitte.filter((a) => a.id !== summary?.id)
+  const summary = useMemo(
+    () => abschnitte.find((a) => normalisiereTitel(a.titel).includes('executive summary')),
+    [abschnitte],
+  )
+  const rest = useMemo(
+    () => abschnitte.filter((a) => a.id !== summary?.id),
+    [abschnitte, summary?.id],
+  )
   const [aktivId, setAktivId] = useState(() => rest[0]?.id ?? abschnitte[0]?.id ?? '')
 
   useEffect(() => {
-    setAktivId(rest[0]?.id ?? abschnitte[0]?.id ?? '')
-  }, [text, rest, abschnitte])
+    const parsed = parseAnalyseAbschnitte(text)
+    const sum = parsed.find((a) => normalisiereTitel(a.titel).includes('executive summary'))
+    const r = parsed.filter((a) => a.id !== sum?.id)
+    setAktivId(r[0]?.id ?? parsed[0]?.id ?? '')
+  }, [text])
 
   const aktiv = abschnitte.find((a) => a.id === aktivId) ?? rest[0] ?? abschnitte[0]
 

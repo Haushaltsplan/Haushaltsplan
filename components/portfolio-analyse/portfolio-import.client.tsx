@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import toast from 'react-hot-toast'
 import { usePortfolioAnalyse } from '@/components/portfolio-analyse/pa-data-provider'
 import { PortfolioAnalyseShell } from '@/components/portfolio-analyse/portfolio-analyse-shell.client'
@@ -11,6 +11,7 @@ import {
   dedupliziereGegenBestehend,
   importierePortfolioCsvText,
   importiereTradeRepublicPdfBuffer,
+  mergeImportErgebnisse,
 } from '@/lib/portfolio-analyse/import-pipeline'
 import { istParqetPortfolioCsv } from '@/lib/portfolio-analyse/parqet-portfolio-csv'
 import { istTradeRepublicCsv } from '@/lib/portfolio-analyse/trade-republic-csv'
@@ -29,28 +30,42 @@ function istCsvDatei(file: File): boolean {
   return file.type === 'text/csv' || n.endsWith('.csv') || n.endsWith('.txt')
 }
 
+function istImportDatei(file: File): boolean {
+  return istPdfDatei(file) || istCsvDatei(file)
+}
+
 export function PortfolioImportClient() {
   const { buchungen, schemaFehlt, neuLaden } = usePortfolioAnalyse()
-  const pdfInputRef = useRef<HTMLInputElement>(null)
-  const csvInputRef = useRef<HTMLInputElement>(null)
+  const dateiInputRef = useRef<HTMLInputElement>(null)
   const [importBusy, setImportBusy] = useState(false)
+  const [importFortschritt, setImportFortschritt] = useState<string | null>(null)
   const [speichernBusy, setSpeichernBusy] = useState(false)
   const [vorschau, setVorschau] = useState<PortfolioImportErgebnis | null>(null)
   const [vorschauDateiname, setVorschauDateiname] = useState('')
   const [blocklistText, setBlocklistText] = useState('')
+  const [dragAktiv, setDragAktiv] = useState(false)
 
   useEffect(() => {
     setBlocklistText(ladePiiBlockliste().join(', '))
   }, [])
 
+  const blocklistAusText = useCallback(
+    () =>
+      blocklistText
+        .split(/[,;\n]+/)
+        .map((s) => s.trim())
+        .filter((s) => s.length >= 2),
+    [blocklistText],
+  )
+
   async function importAbschliessen(
-    file: File,
+    label: string,
     ergebnis: PortfolioImportErgebnis,
     opts?: { csvVollstaendigAktualisieren?: boolean },
   ) {
     if (opts?.csvVollstaendigAktualisieren) {
       ergebnis.hinweise.push(
-        'Alle Buchungen aus der CSV werden gespeichert bzw. aktualisiert (z. B. realisierte Gewinne aus Parqet).',
+        'Alle Buchungen aus der CSV werden gespeichert bzw. aktualisiert (z. B. realisierte Gewinne aus Parqet).',
       )
     } else {
       const bestehend = new Set(buchungen.map((b) => b.buchungsHash))
@@ -60,7 +75,7 @@ export function PortfolioImportClient() {
         ergebnis.hinweise.push(`${uebersprungen} Buchung(en) bereits gespeichert — werden übersprungen.`)
       }
     }
-    setVorschauDateiname(file.name)
+    setVorschauDateiname(label)
     setVorschau(ergebnis)
     if (ergebnis.buchungen.length === 0 && ergebnis.positionen.length === 0) {
       toast.error(ergebnis.hinweise[0] ?? 'Keine neuen Daten erkannt.')
@@ -69,60 +84,95 @@ export function PortfolioImportClient() {
     }
   }
 
-  async function verarbeitePdf(file: File) {
-    if (!istPdfDatei(file)) {
-      toast.error('Bitte eine PDF-Datei wählen.')
+  async function verarbeitePdf(file: File, blocklist: string[]): Promise<PortfolioImportErgebnis> {
+    const buffer = await file.arrayBuffer()
+    return importiereTradeRepublicPdfBuffer(buffer, blocklist)
+  }
+
+  async function verarbeiteCsv(file: File, blocklist: string[]): Promise<{
+    ergebnis: PortfolioImportErgebnis
+    csvVollstaendig: boolean
+  }> {
+    const text = await file.text()
+    const ergebnis = await importierePortfolioCsvText(text, blocklist)
+    const csvVoll = istParqetPortfolioCsv(text) || istTradeRepublicCsv(text)
+    return { ergebnis, csvVollstaendig: csvVoll }
+  }
+
+  async function verarbeiteDateien(files: File[]) {
+    const gueltig = files.filter(istImportDatei)
+    if (gueltig.length === 0) {
+      toast.error('Bitte PDF- oder CSV-Dateien wählen.')
       return
     }
+    if (gueltig.length < files.length) {
+      toast.error(`${files.length - gueltig.length} Datei(en) übersprungen — nur PDF/CSV.`)
+    }
+
     setImportBusy(true)
     setVorschau(null)
+    setImportFortschritt(null)
     try {
-      const blocklist = blocklistText
-        .split(/[,;\n]+/)
-        .map((s) => s.trim())
-        .filter((s) => s.length >= 2)
+      const blocklist = blocklistAusText()
       speicherePiiBlockliste(blocklist)
-      const buffer = await file.arrayBuffer()
-      const ergebnis = await importiereTradeRepublicPdfBuffer(buffer, blocklist)
-      await importAbschliessen(file, ergebnis)
-    } catch (e) {
-      console.error(e)
-      toast.error(
-        e instanceof Error ? e.message : 'PDF-Import fehlgeschlagen — Trade-Republic-Kontoauszug?',
-        { duration: 8000 },
-      )
+
+      const teilErgebnisse: PortfolioImportErgebnis[] = []
+      let csvVollstaendig = false
+      const fehler: string[] = []
+
+      for (let i = 0; i < gueltig.length; i++) {
+        const file = gueltig[i]!
+        setImportFortschritt(`${i + 1}/${gueltig.length}: ${file.name}`)
+        try {
+          if (istPdfDatei(file)) {
+            teilErgebnisse.push(await verarbeitePdf(file, blocklist))
+          } else {
+            const { ergebnis, csvVollstaendig: voll } = await verarbeiteCsv(file, blocklist)
+            teilErgebnisse.push(ergebnis)
+            csvVollstaendig = csvVollstaendig || voll
+          }
+        } catch (e) {
+          console.error(file.name, e)
+          fehler.push(`${file.name}: ${e instanceof Error ? e.message : 'Fehler'}`)
+        }
+      }
+
+      if (teilErgebnisse.length === 0) {
+        toast.error(fehler[0] ?? 'Import fehlgeschlagen.')
+        return
+      }
+
+      const zusammen = mergeImportErgebnisse(teilErgebnisse)
+      if (fehler.length > 0) {
+        zusammen.hinweise.push(`${fehler.length} Datei(en) fehlgeschlagen: ${fehler.join(' · ')}`)
+      }
+
+      const label =
+        gueltig.length === 1
+          ? gueltig[0]!.name
+          : `${gueltig.length} Dateien (${gueltig.map((f) => f.name).join(', ')})`
+
+      await importAbschliessen(label, zusammen, {
+        csvVollstaendigAktualisieren: csvVollstaendig && gueltig.every((f) => istCsvDatei(f)),
+      })
     } finally {
       setImportBusy(false)
-      if (pdfInputRef.current) pdfInputRef.current.value = ''
+      setImportFortschritt(null)
+      if (dateiInputRef.current) dateiInputRef.current.value = ''
     }
   }
 
-  async function verarbeiteCsv(file: File) {
-    if (!istCsvDatei(file)) {
-      toast.error('Bitte eine CSV-Datei wählen.')
-      return
-    }
-    setImportBusy(true)
-    setVorschau(null)
-    try {
-      const blocklist = blocklistText
-        .split(/[,;\n]+/)
-        .map((s) => s.trim())
-        .filter((s) => s.length >= 2)
-      speicherePiiBlockliste(blocklist)
-      const text = await file.text()
-      const ergebnis = await importierePortfolioCsvText(text, blocklist)
-      const csvVoll =
-        istParqetPortfolioCsv(text) || istTradeRepublicCsv(text)
-      await importAbschliessen(file, ergebnis, { csvVollstaendigAktualisieren: csvVoll })
-    } catch (e) {
-      console.error(e)
-      toast.error(e instanceof Error ? e.message : 'CSV-Import fehlgeschlagen.')
-    } finally {
-      setImportBusy(false)
-      if (csvInputRef.current) csvInputRef.current.value = ''
-    }
-  }
+  const onDrop = useCallback(
+    (e: React.DragEvent) => {
+      e.preventDefault()
+      setDragAktiv(false)
+      if (importBusy || schemaFehlt) return
+      const files = [...e.dataTransfer.files]
+      if (files.length > 0) void verarbeiteDateien(files)
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- verarbeiteDateien stabil genug über State
+    [importBusy, schemaFehlt, blocklistText, buchungen],
+  )
 
   async function vorschauUebernehmen(payload: {
     buchungen: PortfolioImportErgebnis['buchungen']
@@ -180,8 +230,8 @@ export function PortfolioImportClient() {
       title="Import"
       description={
         <>
-          Parqet-CSV, Trade-Republic-CSV (Transaktionsexport) oder optional TR-Kontoauszug-PDF — alles nur im
-          Browser, ohne Rohdatei-Upload.
+          Parqet- oder Trade-Republic-CSV, Kontoauszug-PDF oder Wertpapierabrechnungen — mehrere Dateien per
+          Drag &amp; Drop, alles nur im Browser.
         </>
       }
     >
@@ -200,61 +250,67 @@ export function PortfolioImportClient() {
               </div>
             ) : null}
 
-            <div className="grid gap-6 lg:grid-cols-2">
-              <div className="rounded-xl border border-zinc-800/80 bg-zinc-950/40 p-4">
-                <h3 className="text-sm font-medium text-zinc-200">CSV — Parqet oder Trade Republic</h3>
-                <p className="mt-2 text-sm leading-relaxed text-zinc-400">
-                  Parqet: Export „Aktien Portfolio“ (
-                  <code className="text-xs text-teal-400/90">
-                    datetime, type, shares, amount, identifier, holdingname
-                  </code>
-                  ). Trade Republic: Profil → Dokumente → Transaktionsexport oder Aktivitäts-CSV (
-                  <code className="text-xs text-teal-400/90">Timestamp, Type, Debit, Credit</code> bzw.{' '}
-                  <code className="text-xs text-teal-400/90">amount</code>).
-                </p>
-                <input
-                  ref={csvInputRef}
-                  type="file"
-                  accept=".csv,text/csv"
-                  className="hidden"
-                  onChange={(e) => {
-                    const f = e.target.files?.[0]
-                    if (f) void verarbeiteCsv(f)
-                  }}
-                />
-                <button
-                  type="button"
-                  disabled={importBusy || schemaFehlt}
-                  onClick={() => csvInputRef.current?.click()}
-                  className="mt-4 rounded-full border border-teal-500/40 bg-teal-950/30 px-5 py-2.5 text-sm font-medium text-teal-100 transition hover:bg-teal-950/50 disabled:opacity-50"
-                >
-                  {importBusy ? 'Wird gelesen …' : 'CSV wählen'}
-                </button>
-              </div>
+            <input
+              ref={dateiInputRef}
+              type="file"
+              accept=".pdf,application/pdf,.csv,text/csv,.txt"
+              multiple
+              className="hidden"
+              onChange={(e) => {
+                const files = [...(e.target.files ?? [])]
+                if (files.length > 0) void verarbeiteDateien(files)
+              }}
+            />
 
-              <div className="rounded-xl border border-zinc-800/80 bg-zinc-950/40 p-4">
-                <h3 className="text-sm font-medium text-zinc-200">PDF — Trade Republic</h3>
-                <p className="mt-2 text-sm leading-relaxed text-zinc-400">
-                  Optional: Kontoauszug für Depot-Snapshot (Positionen & Depotwert).
+            <div
+              role="button"
+              tabIndex={0}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') dateiInputRef.current?.click()
+              }}
+              onDragOver={(e) => {
+                e.preventDefault()
+                if (!importBusy && !schemaFehlt) setDragAktiv(true)
+              }}
+              onDragLeave={() => setDragAktiv(false)}
+              onDrop={onDrop}
+              onClick={() => {
+                if (!importBusy && !schemaFehlt) dateiInputRef.current?.click()
+              }}
+              className={`cursor-pointer rounded-2xl border-2 border-dashed px-6 py-12 text-center transition ${
+                dragAktiv
+                  ? 'border-teal-400/60 bg-teal-950/25'
+                  : 'border-zinc-700/70 bg-zinc-950/40 hover:border-zinc-600 hover:bg-zinc-900/40'
+              } ${importBusy || schemaFehlt ? 'pointer-events-none opacity-50' : ''}`}
+            >
+              <p className="text-base font-medium text-zinc-200">
+                {importBusy ? 'Dateien werden gelesen …' : 'PDFs & CSVs hierher ziehen'}
+              </p>
+              <p className="mt-2 text-sm text-zinc-500">oder klicken zum Auswählen · mehrere Dateien gleichzeitig</p>
+              {importFortschritt ? (
+                <p className="mt-3 text-xs text-teal-300/90">{importFortschritt}</p>
+              ) : (
+                <p className="mt-4 text-xs leading-relaxed text-zinc-600">
+                  Trade Republic: Transaktionsexport-CSV, Kontoauszug-PDF oder einzelne Wertpapierabrechnungen (Kauf/
+                  Verkauf). Parqet: Portfolio-CSV.
                 </p>
-                <input
-                  ref={pdfInputRef}
-                  type="file"
-                  accept=".pdf,application/pdf"
-                  className="hidden"
-                  onChange={(e) => {
-                    const f = e.target.files?.[0]
-                    if (f) void verarbeitePdf(f)
-                  }}
-                />
-                <button
-                  type="button"
-                  disabled={importBusy || schemaFehlt}
-                  onClick={() => pdfInputRef.current?.click()}
-                  className="mt-4 rounded-full border border-zinc-700/60 bg-zinc-900/50 px-5 py-2.5 text-sm font-medium text-zinc-200 transition hover:bg-zinc-800/60 disabled:opacity-50"
-                >
-                  {importBusy ? 'Wird gelesen …' : 'TR-PDF wählen'}
-                </button>
+              )}
+            </div>
+
+            <div className="grid gap-4 text-sm text-zinc-500 sm:grid-cols-2">
+              <div className="rounded-xl border border-zinc-800/60 bg-zinc-950/30 p-4">
+                <h3 className="text-xs font-semibold uppercase tracking-wide text-zinc-400">CSV</h3>
+                <p className="mt-2 leading-relaxed">
+                  TR: Profil → Dokumente → Transaktionsexport (
+                  <code className="text-teal-400/90">Timestamp, Type, amount</code>). Parqet: Aktien-Portfolio-Export.
+                </p>
+              </div>
+              <div className="rounded-xl border border-zinc-800/60 bg-zinc-950/30 p-4">
+                <h3 className="text-xs font-semibold uppercase tracking-wide text-zinc-400">PDF</h3>
+                <p className="mt-2 leading-relaxed">
+                  Kontoauszug mit Umsatzübersicht oder einzelne Wertpapierabrechnungen pro Trade — ideal für
+                  Massenimport per Drag &amp; Drop.
+                </p>
               </div>
             </div>
 

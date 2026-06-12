@@ -207,6 +207,11 @@ function rohFuerMantra(
   if (!roh) return null
   return { perioden: roh.perioden, zeilen: roh.zeilen }
 }
+const SCHÄTZUNG_ZU_HISTORISCH_ZEILE: Record<string, string> = {
+  umsatz_schaetzung: 'umsatz',
+  eps_schaetzung: 'eps',
+}
+
 function mergePeriodenUndZeilen(
   historisch: { perioden: FundamentalPeriode[]; zeilen: FundamentalMetrikZeile[] },
   schaetzungen: { perioden: FundamentalPeriode[]; zeilen: FundamentalMetrikZeile[] },
@@ -214,19 +219,24 @@ function mergePeriodenUndZeilen(
   if (schaetzungen.perioden.length === 0) return historisch
 
   const perioden = [...historisch.perioden, ...schaetzungen.perioden]
-  const zeilen = [...historisch.zeilen]
+  const zeilen = historisch.zeilen.map((z) => ({ ...z, werte: { ...z.werte } }))
 
-  for (const sz of schaetzungen.zeilen) {
-    const werte = { ...sz.werte }
-    for (const p of historisch.perioden) {
-      if (!(p.iso in werte)) werte[p.iso] = null
-    }
-    zeilen.push({ ...sz, werte })
-  }
-
-  for (const hz of historisch.zeilen) {
+  for (const hz of zeilen) {
     for (const sp of schaetzungen.perioden) {
       if (!(sp.iso in hz.werte)) hz.werte[sp.iso] = null
+    }
+  }
+
+  for (const sz of schaetzungen.zeilen) {
+    const histId = SCHÄTZUNG_ZU_HISTORISCH_ZEILE[sz.id]
+    if (histId) {
+      const hz = zeilen.find((z) => z.id === histId)
+      if (hz) {
+        for (const sp of schaetzungen.perioden) {
+          const v = sz.werte[sp.iso]
+          if (v != null && Number.isFinite(v)) hz.werte[sp.iso] = v
+        }
+      }
     }
   }
 

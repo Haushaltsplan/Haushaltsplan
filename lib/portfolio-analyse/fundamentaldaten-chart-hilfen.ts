@@ -26,6 +26,25 @@ export function historischeChartPerioden(perioden: FundamentalPeriode[]): Fundam
   return perioden.filter(istHistorischeChartPeriode)
 }
 
+export function schaetzungsChartPerioden(perioden: FundamentalPeriode[]): FundamentalPeriode[] {
+  return perioden.filter((p) => p.istSchaetzung)
+}
+
+/** Historische FY-Perioden plus Schätzungs-Spalten am Ende (für Finanzdaten-Charts). */
+export function finanzdatenChartPerioden(perioden: FundamentalPeriode[]): FundamentalPeriode[] {
+  return [...historischeChartPerioden(perioden), ...schaetzungsChartPerioden(perioden)]
+}
+
+export function einheitSkalaGruppe(einheit: string): string {
+  if (einheit === 'aktien_mio') return 'aktien_mio'
+  if (einheit === 'waehrung_usd_aktie') return 'waehrung_usd_aktie'
+  if (einheit === 'prozent') return 'prozent'
+  if (einheit === 'multiple') return 'multiple'
+  if (einheit === 'ratio') return 'ratio'
+  if (einheit.startsWith('waehrung')) return 'waehrung_betrag'
+  return einheit
+}
+
 export function filterChartPeriodenZeitraum(
   perioden: FundamentalPeriode[],
   vonIso: string,

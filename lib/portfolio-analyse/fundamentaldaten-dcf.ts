@@ -203,6 +203,58 @@ export function berechneDcf(e: DcfEingaben): DcfErgebnis {
   }
 }
 
+export type DcfSzenarioId = 'bear' | 'base' | 'bull'
+
+export type DcfSzenario = {
+  id: DcfSzenarioId
+  label: string
+  beschreibung: string
+  eingaben: DcfEingaben
+  ergebnis: DcfErgebnis
+}
+
+/** Bear / Base / Bull aus aktuellen Annahmen — typische Bandbreite für Sensitivität. */
+export function berechneDcfSzenarien(basis: DcfEingaben): DcfSzenario[] {
+  const bearEingaben: DcfEingaben = {
+    ...basis,
+    wachstumExplizitPct: clamp(basis.wachstumExplizitPct - 4, -10, 30),
+    waccPct: clamp(basis.waccPct + 1.5, 5, 18),
+    terminalWachstumPct: clamp(basis.terminalWachstumPct - 0.5, 0, 5),
+  }
+  const bullEingaben: DcfEingaben = {
+    ...basis,
+    wachstumExplizitPct: clamp(basis.wachstumExplizitPct + 3, -10, 30),
+    waccPct: clamp(basis.waccPct - 1, 5, 18),
+    terminalWachstumPct: clamp(basis.terminalWachstumPct + 0.5, 0, 5),
+  }
+
+  const defs: Array<{ id: DcfSzenarioId; label: string; beschreibung: string; eingaben: DcfEingaben }> = [
+    {
+      id: 'bear',
+      label: 'Bear',
+      beschreibung: 'Höherer WACC, schwächeres FCF-Wachstum, niedrigeres g∞',
+      eingaben: bearEingaben,
+    },
+    {
+      id: 'base',
+      label: 'Base',
+      beschreibung: 'Deine aktuellen Annahmen',
+      eingaben: basis,
+    },
+    {
+      id: 'bull',
+      label: 'Bull',
+      beschreibung: 'Niedrigerer WACC, stärkeres FCF-Wachstum, höheres g∞',
+      eingaben: bullEingaben,
+    },
+  ]
+
+  return defs.map((d) => ({
+    ...d,
+    ergebnis: berechneDcf(d.eingaben),
+  }))
+}
+
 export function berechneSensitivitaet(
   basis: DcfEingaben,
   waccDelta: number[] = [-1, 0, 1],

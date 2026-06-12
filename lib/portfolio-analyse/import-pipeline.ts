@@ -148,7 +148,9 @@ async function rohZuImportErgebnis(
       : null
 
   if (buchungen.length === 0 && positionen.length === 0) {
-    hinweise.push('Keine brauchbaren Buchungen oder Positionen erkannt — ist das ein Trade-Republic-Kontoauszug?')
+    hinweise.push(
+      'Keine brauchbaren Buchungen oder Positionen erkannt — Trade-Republic-Kontoauszug, Wertpapierabrechnung oder CSV erwartet.',
+    )
   }
   if (roh.cash.length > 0 && dedup.length === 0) {
     hinweise.push('Umsatzübersicht gefunden, aber keine anonymisierbaren Buchungen extrahiert.')
@@ -236,6 +238,63 @@ export async function importiereParqetPortfolioCsvText(
   blocklist: string[] = [],
 ): Promise<PortfolioImportErgebnis> {
   return importierePortfolioCsvText(text, blocklist)
+}
+
+export function mergeImportErgebnisse(ergebnisse: PortfolioImportErgebnis[]): PortfolioImportErgebnis {
+  if (ergebnisse.length === 0) {
+    return {
+      buchungen: [],
+      positionen: [],
+      depotwertEur: null,
+      hinweise: [],
+      statistik: { cashZeilen: 0, positionen: 0, cryptoPositionen: 0, doppelteHashes: 0 },
+    }
+  }
+  if (ergebnisse.length === 1) return ergebnisse[0]!
+
+  const hinweise: string[] = []
+  const hashSet = new Set<string>()
+  const buchungen: PortfolioBuchung[] = []
+  let doppelteHashes = 0
+  let cashZeilen = 0
+  let positionenCount = 0
+  let cryptoPositionen = 0
+
+  for (const e of ergebnisse) {
+    for (const h of e.hinweise) {
+      if (!hinweise.includes(h)) hinweise.push(h)
+    }
+    cashZeilen += e.statistik.cashZeilen
+    positionenCount += e.statistik.positionen
+    cryptoPositionen += e.statistik.cryptoPositionen
+    for (const b of e.buchungen) {
+      if (hashSet.has(b.buchungsHash)) {
+        doppelteHashes++
+        continue
+      }
+      hashSet.add(b.buchungsHash)
+      buchungen.push(b)
+    }
+  }
+
+  const letzteMitSnapshot = [...ergebnisse].reverse().find((e) => e.positionen.length > 0)
+  const positionen = letzteMitSnapshot?.positionen ?? []
+  const depotwertEur = letzteMitSnapshot?.depotwertEur ?? null
+
+  hinweise.unshift(`${ergebnisse.length} Datei(en) zusammengeführt — ${buchungen.length} Buchung(en).`)
+
+  return {
+    buchungen,
+    positionen,
+    depotwertEur,
+    hinweise,
+    statistik: {
+      cashZeilen,
+      positionen: positionenCount,
+      cryptoPositionen,
+      doppelteHashes,
+    },
+  }
 }
 
 export async function dedupliziereGegenBestehend(

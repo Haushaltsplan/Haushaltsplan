@@ -1,4 +1,4 @@
-import { parseEuropeanNumber } from '@/lib/portfolio-analyse/parse-hilfen'
+import { parseDeDatumZuIso, parseEuropeanNumber } from '@/lib/portfolio-analyse/parse-hilfen'
 
 export type TrRawCashZeile = {
   datum: string
@@ -289,6 +289,95 @@ function extractPortfolioPositions(items: PdfTextItem[], boundaries: PortfolioCo
   }))
 }
 
+function formatEuroBetrag(n: number): string {
+  return n.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+}
+
+/** Einzel-PDF „Wertpapierabrechnung“ (Kauf/Verkauf) — nicht Kontoauszug. */
+function parseWertpapierabrechnung(items: PdfTextItem[]): TrRawCashZeile[] {
+  const lines = groupItemsIntoLines(items.filter((it) => it.y > FOOTER_BOTTOM_BAND), 3)
+  const texts = lines.map((l) => l.text)
+  const joined = texts.join('\n')
+  if (!/WERTPAPIERABRECHNUNG/i.test(joined)) return []
+
+  const wertstellungIso = joined.match(/WERTSTELLUNG[\s\S]{0,120}?(\d{4}-\d{2}-\d{2})/)?.[1] ?? null
+  const docDatum = joined.match(/DATUM\s+(\d{2}\.\d{2}\.\d{4})/)?.[1] ?? null
+  const tradeDatum =
+    joined.match(/(?:Market-Order\s+)?(?:Kauf|Verkauf)\s+am\s+(\d{2}\.\d{2}\.\d{4})/i)?.[1] ?? null
+  const datum =
+    wertstellungIso ??
+    (tradeDatum ? parseDeDatumZuIso(tradeDatum) : null) ??
+    (docDatum ? parseDeDatumZuIso(docDatum) : null)
+  if (!datum) return []
+
+  const isVerkauf = /Market-Order\s+Verkauf/i.test(joined)
+  const isin = joined.match(/ISIN:\s*([A-Z]{2}[A-Z0-9]{10})/)?.[1] ?? undefined
+
+  const stkLine = texts.find((t) => /\d+\s*Stk\.?/i.test(t) && /EUR/i.test(t))
+  const stkMatch = stkLine?.match(/(\d+(?:[.,]\d+)?)\s*Stk\.?/i)
+  const stueck = stkMatch ? parseEuropeanNumber(stkMatch[1]) : null
+
+  let name = ''
+  const isinLineIdx = texts.findIndex((t) => /ISIN:/i.test(t))
+  if (isinLineIdx > 0) {
+    const prev = texts[isinLineIdx - 1] ?? ''
+    if (prev && !/^(POSITION|ANZAHL|PREIS|BETRAG|ÜBERSICHT|ABRECHNUNG)/i.test(prev.trim())) {
+      name = prev.split(/\d+\s*Stk\.?/i)[0]?.trim() ?? ''
+    }
+  }
+  if (!name && stkLine) name = stkLine.split(/\d+\s*Stk\.?/i)[0]?.trim() ?? ''
+
+  const eurBetraege =
+    stkLine?.match(/-?\d{1,3}(?:\.\d{3})*,\d{2}\s*EUR/gi)?.map((s) => parseEuropeanNumber(s)) ?? []
+  const positive = eurBetraege.filter((n): n is number => n != null && n > 0)
+  const kursEur = positive[0] ?? null
+  const handelsBetrag = positive[1] ?? positive[0] ?? null
+
+  const out: TrRawCashZeile[] = []
+
+  if (handelsBetrag != null && handelsBetrag > 0) {
+    out.push({
+      datum,
+      typ: isVerkauf ? 'Verkauf' : 'Kauf',
+      beschreibung: [name, isin ? `ISIN: ${isin}` : '', stueck != null ? `${stueck} Stk.` : '']
+        .filter(Boolean)
+        .join(' '),
+      zahlungseingang: isVerkauf ? formatEuroBetrag(handelsBetrag) : '',
+      zahlungsausgang: isVerkauf ? '' : formatEuroBetrag(handelsBetrag),
+      saldo: '',
+      isin,
+      stueck: stueck ?? undefined,
+      kursEur: kursEur ?? undefined,
+    })
+  }
+
+  const abrechnungIdx = texts.findIndex((t) => t.trim() === 'ABRECHNUNG')
+  const buchungIdx = texts.findIndex((t) => t.trim() === 'BUCHUNG')
+  if (abrechnungIdx >= 0) {
+    const end = buchungIdx >= 0 ? buchungIdx : texts.length
+    for (const line of texts.slice(abrechnungIdx + 1, end)) {
+      const trimmed = line.trim()
+      if (!trimmed || /^POSITION$/i.test(trimmed) || /^GESAMT/i.test(trimmed)) continue
+      const feeMatch = trimmed.match(/^(.+?)\s+(-?\d{1,3}(?:\.\d{3})*,\d{2})\s*EUR\s*$/i)
+      if (!feeMatch) continue
+      const feeName = feeMatch[1].trim()
+      const feeAmt = Math.abs(parseEuropeanNumber(feeMatch[2]) ?? 0)
+      if (feeAmt <= 0) continue
+      out.push({
+        datum,
+        typ: /steuer/i.test(feeName) ? 'Steuer' : /gebühr|entgelt|zuschlag/i.test(feeName) ? 'Gebühr' : feeName,
+        beschreibung: [feeName, name].filter(Boolean).join(' '),
+        zahlungseingang: '',
+        zahlungsausgang: formatEuroBetrag(feeAmt),
+        saldo: '',
+        isin,
+      })
+    }
+  }
+
+  return out
+}
+
 async function parsePdfDocument(pdf: import('pdfjs-dist').PDFDocumentProxy): Promise<TrPdfParseErgebnis> {
   let allCash: TrRawCashZeile[] = []
   let allPortfolio: TrRawPosition[] = []
@@ -347,6 +436,11 @@ async function parsePdfDocument(pdf: import('pdfjs-dist').PDFDocumentProxy): Pro
       }
     }
     isParsingPortfolio = portfolioEnd ? false : shouldProcessPortfolio
+
+    const abrechnungDoc = pageItems.some((i) => i.text.includes('WERTPAPIERABRECHNUNG'))
+    if (abrechnungDoc) {
+      allCash = allCash.concat(parseWertpapierabrechnung(pageItems))
+    }
   }
 
   return { cash: allCash, portfolio: allPortfolio, crypto: [] }
