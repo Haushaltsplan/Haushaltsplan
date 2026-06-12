@@ -7,6 +7,7 @@ import { PaFundamentalNews } from '@/components/portfolio-analyse/pa-fundamental
 import { PaFundamentalUebersicht } from '@/components/portfolio-analyse/pa-fundamental-uebersicht'
 import { PaFundamentalUnternehmenHeader } from '@/components/portfolio-analyse/pa-fundamental-unternehmen-header'
 import { PaFundamentalDcf } from '@/components/portfolio-analyse/pa-fundamental-dcf'
+import { PaFundamentalChartanalyse } from '@/components/portfolio-analyse/pa-fundamental-chartanalyse'
 import { PaFundamentalMetrikChart } from '@/components/portfolio-analyse/pa-fundamental-metrik-chart'
 import { PaFundamentalMetrikTabelle } from '@/components/portfolio-analyse/pa-fundamental-metrik-tabelle'
 import { PaCard } from '@/components/portfolio-analyse/pa-ui'
@@ -26,6 +27,7 @@ const UNTER_TABS = [
   { id: 'mantra' as const, label: 'Mantra' },
   { id: 'finanzdaten' as const, label: 'Finanzdaten' },
   { id: 'bewertung' as const, label: 'Bewertung' },
+  { id: 'chartanalyse' as const, label: 'Chartanalyse' },
   { id: 'dcf' as const, label: 'DCF' },
   { id: 'earnings_call' as const, label: 'Earnings Call' },
   { id: 'news' as const, label: 'News' },
@@ -210,6 +212,14 @@ export function PaFundamentalInhalt({
 
           {unterTab === 'mantra' && mantraAudit ? <PaFundamentalMantra audit={mantraAudit} /> : null}
 
+          {unterTab === 'chartanalyse' ? (
+            <PaFundamentalChartanalyse
+              symbolYahoo={daten.symbolYahoo}
+              ticker={daten.ticker}
+              firmenname={daten.firmenname}
+            />
+          ) : null}
+
           {unterTab === 'dcf' ? (
             <PaFundamentalDcf
               kontext={daten.dcfKontext ?? null}
@@ -233,6 +243,7 @@ export function PaFundamentalInhalt({
           unterTab !== 'news' &&
           unterTab !== 'mantra' &&
           unterTab !== 'earnings_call' &&
+          unterTab !== 'chartanalyse' &&
           unterTab !== 'dcf' ? (
             <div className="space-y-4">
               <PaFundamentalMetrikChart

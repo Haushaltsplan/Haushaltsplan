@@ -24,6 +24,48 @@ const ARTICLE_DELAY_MS = 120
 
 const US_BOERSEN = ['NYSE', 'NASDAQ', 'AMEX'] as const
 
+/** Yahoo-Suffix → MarketBeat-Börsencode (EU & weitere internationale Listings). */
+const YAHOO_SUFFIX_ZU_MB: Record<string, string> = {
+  PA: 'EPA',
+  AS: 'AMS',
+  DE: 'FRA',
+  F: 'FRA',
+  BE: 'EBR',
+  BR: 'EBR',
+  SW: 'SWX',
+  L: 'LON',
+  ST: 'STO',
+  HE: 'HEL',
+  CO: 'CPH',
+  OL: 'OSL',
+  MI: 'BIT',
+  MC: 'BME',
+  VI: 'VIE',
+  PR: 'PRA',
+  WA: 'WSE',
+  TO: 'TSE',
+  V: 'CVE',
+  AX: 'ASX',
+  HK: 'HKG',
+  T: 'TYO',
+}
+
+function marketbeatBoersenKandidaten(symbolYahoo: string | null | undefined, ticker: string): string[] {
+  const sym = (symbolYahoo ?? ticker).trim().toUpperCase()
+  const base = sym.includes('.') ? sym.split('.')[0]! : sym
+  const out: string[] = []
+
+  if (sym.includes('.')) {
+    const suffix = sym.split('.').pop()!
+    const mb = YAHOO_SUFFIX_ZU_MB[suffix]
+    if (mb) out.push(mb)
+  }
+
+  for (const b of US_BOERSEN) out.push(b)
+  if (out.length === 0) return [...US_BOERSEN]
+  return [...new Set(out)]
+}
+
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
@@ -80,11 +122,15 @@ function passtReportZuTicker(url: string, ticker: string, firmSlug: string | nul
   return false
 }
 
-async function kandidatenViaEarningsSeite(ticker: string, firmSlug: string | null): Promise<string[]> {
+async function kandidatenViaEarningsSeite(
+  ticker: string,
+  firmSlug: string | null,
+  symbolYahoo?: string | null,
+): Promise<string[]> {
   const sym = normalisiereTicker(ticker)
   const gefunden: string[] = []
 
-  for (const boerse of US_BOERSEN) {
+  for (const boerse of marketbeatBoersenKandidaten(symbolYahoo, ticker)) {
     const { ok, html, status } = await mbFetch(`/stocks/${boerse}/${sym}/earnings/`)
     if (status === 404 || !ok) continue
     const urls = reportUrlsAusHtml(html).filter((u) => passtReportZuTicker(u, sym, firmSlug))
@@ -101,7 +147,9 @@ async function kandidatenViaBing(ticker: string, firmenname: string | null): Pro
   const queries = [
     `site:marketbeat.com/earnings/reports ${sym} transcript`,
     firmenname ? `site:marketbeat.com/earnings/reports ${firmenname} earnings call transcript` : '',
+    firmenname ? `site:marketbeat.com/earnings/reports ${firmenname} conference call transcript` : '',
     slug ? `site:marketbeat.com/earnings/reports ${slug}` : '',
+    slug ? `site:marketbeat.com/earnings/reports ${slug}-stock transcript` : '',
   ].filter(Boolean)
 
   const urls: string[] = []
@@ -189,6 +237,7 @@ export async function ladeMarketbeatTranskriptHistorie(
   ticker: string,
   firmenname?: string | null,
   max = 8,
+  symbolYahoo?: string | null,
 ): Promise<MarketbeatTranscript[]> {
   const start = Date.now()
   const sym = normalisiereTicker(ticker)
@@ -197,7 +246,7 @@ export async function ladeMarketbeatTranskriptHistorie(
   const firmSlug = firmenname?.trim() ? firmennameZuSlug(firmenname) : null
 
   const [direkt, bing] = await Promise.all([
-    kandidatenViaEarningsSeite(sym, firmSlug),
+    kandidatenViaEarningsSeite(sym, firmSlug, symbolYahoo ?? ticker),
     kandidatenViaBing(sym, firmenname ?? null),
   ])
 

@@ -12,6 +12,13 @@ const CALL_SIGNALS = [
   /\boperator:\s/i,
   /\bAnalyst\b.*\?/i,
   /\bChief Financial Officer\b.*\n.*\?/i,
+  /\bfragen und antworten\b/i,
+  /\bkonferenzgespräch\b/i,
+  /\bkonferenzgespraech\b/i,
+  /\bquartalsgespräch\b/i,
+  /\bquartalsgespraech\b/i,
+  /\bconférence téléphonique\b/i,
+  /\bquestions?[- ]r[eé]ponses?\b/i,
 ]
 
 /** Link-Text/URL — explizites Transkript, keine reine Pressemitteilung. */
@@ -23,7 +30,11 @@ export function istTranskriptLinkStreng(text: string, href: string): boolean {
   if (PRESS_ONLY.test(combined) && !/transcript|conference call|earnings call|webcast transcript/i.test(combined)) {
     return false
   }
-  if (/transcript|conference call|earnings call|webcast transcript|call transcript|prepared remarks/i.test(combined)) {
+  if (
+    /transcript|transkript|conference call|earnings call|webcast transcript|call transcript|prepared remarks|konferenz|quartalsgespr/i.test(
+      combined,
+    )
+  ) {
     return true
   }
   return false

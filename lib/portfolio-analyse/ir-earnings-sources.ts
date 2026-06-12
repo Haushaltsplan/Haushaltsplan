@@ -2,6 +2,7 @@
 
 import { istTranskriptLinkStreng } from '@/lib/portfolio-analyse/earnings-call-transcript-heuristik'
 import { earningsCallKenntnis } from '@/lib/portfolio-analyse/earnings-call-kenntnisse'
+import { IR_NACH_ISIN } from '@/lib/portfolio-analyse/investor-relations-url'
 
 export type IrEarningsQuelle = {
   listenUrls: string[]
@@ -30,6 +31,9 @@ export const IR_EARNINGS_NACH_ISIN: Record<string, IrEarningsQuelle> = {
     listenUrls: ['https://www.sika.com/en/investors/financial-reports.html'],
   },
   CH1175448666: {
+    listenUrls: ['https://www.straumann.com/group/en/investors/results-and-presentations.html'],
+  },
+  CH0012221716: {
     listenUrls: ['https://www.straumann.com/group/en/investors/results-and-presentations.html'],
   },
   GB0004052071: {
@@ -152,6 +156,12 @@ export function irEarningsQuelleFuerIsin(isin: string | null | undefined): IrEar
   if (meta?.irNurWebcast) {
     return { listenUrls: [], erwarteVollesTranskript: false }
   }
+
+  const irHome = IR_NACH_ISIN[key]
+  if (irHome) {
+    return { listenUrls: [irHome] }
+  }
+
   return null
 }
 
@@ -162,9 +172,18 @@ export function istTranskriptLink(text: string, href: string): boolean {
 export function scoreTranskriptLink(text: string, href: string): number {
   const combined = `${text} ${href}`.toLowerCase()
   let score = 0
-  if (combined.includes('transcript')) score += 12
-  if (combined.includes('conference call') || combined.includes('earnings call')) score += 10
-  if (combined.includes('webcast')) score += 4
+  if (combined.includes('transcript') || combined.includes('transkript')) score += 12
+  if (
+    combined.includes('conference call') ||
+    combined.includes('earnings call') ||
+    combined.includes('konferenz') ||
+    combined.includes('quartalsgespräch') ||
+    combined.includes('quartalsgespraech') ||
+    combined.includes('results call')
+  ) {
+    score += 10
+  }
+  if (combined.includes('webcast') || combined.includes('replay')) score += 4
   if (/q[1-4]\s*20\d{2}|20\d{2}.*q[1-4]/i.test(combined)) score += 6
   if (/\.pdf$/i.test(href)) score += 2
   if (combined.includes('presentation') && !combined.includes('transcript')) score -= 8

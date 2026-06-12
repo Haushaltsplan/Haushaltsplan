@@ -3,7 +3,7 @@ import { portfolioLogoQuellen } from '@/lib/portfolio-analyse/portfolio-logos'
 import { leseAlsJson } from '@/lib/http/safe-json-response'
 
 /** Manuelle IR-Startseiten (Investor Relations). */
-const IR_NACH_ISIN: Record<string, string> = {
+export const IR_NACH_ISIN: Record<string, string> = {
   US5949181045: 'https://www.microsoft.com/en-us/investor',
   US02079K1079: 'https://abc.xyz/investor/',
   US02079K3059: 'https://abc.xyz/investor/',

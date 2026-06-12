@@ -22,6 +22,7 @@ import type {
   EarningsCallQuartalEintrag,
   EarningsCallQuelle,
 } from '@/lib/portfolio-analyse/earnings-call-types'
+import { ladeFinnhubTranskriptHistorie } from '@/lib/portfolio-analyse/finnhub-earnings-transcript-server'
 import { ladeMarketbeatTranskriptHistorie } from '@/lib/portfolio-analyse/marketbeat-earnings-transcript-server'
 import { ladeIrTranskriptHistorie } from '@/lib/portfolio-analyse/ir-earnings-scraper'
 import { aufloeseEarningsCallKontext } from '@/lib/portfolio-analyse/earnings-call-kenntnisse'
@@ -133,6 +134,7 @@ async function entdeckeTranskripte(
   }
 
   const isUsSec = kontext.isUsSec
+  const symbolYahoo = kontext.symbolYahoo
 
   // 1) Offizielle IR-Website — nur wenn dort echte Transkripte erwartet werden
   const irHard = irEarningsQuelleFuerIsin(anfrage.isin ?? '')
@@ -150,19 +152,46 @@ async function entdeckeTranskripte(
     }
   }
 
-  // 2) MarketBeat (Quartr) — zuverlässig für US-Titel ohne SEC-Transkript (z. B. Mastercard)
+  // 2) MarketBeat (Quartr) — US sofort; EU nach IR (lokale Börsen z. B. AMS, EPA, FRA, LON)
+  const marketbeatVersuchen = async (budgetMs: number) => {
+    const mb = await mitZeitlimit(
+      ladeMarketbeatTranskriptHistorie(ticker, firmenname, MAX_QUARTALE, symbolYahoo),
+      budgetMs,
+      [],
+    )
+    if (mb.length > 0) return mappeRohe(mb, 'marketbeat')
+    return null
+  }
+
   if (isUsSec) {
     try {
-      const mb = await mitZeitlimit(ladeMarketbeatTranskriptHistorie(ticker, firmenname, MAX_QUARTALE), 60_000, [])
-      if (mb.length > 0) {
-        return mappeRohe(mb, 'marketbeat')
-      }
+      const hit = await marketbeatVersuchen(60_000)
+      if (hit) return hit
     } catch {
       /* Fool / SEC */
     }
+  } else {
+    try {
+      const hit = await marketbeatVersuchen(50_000)
+      if (hit) return hit
+    } catch {
+      /* Finnhub / Fool */
+    }
   }
 
-  // 3) Motley Fool
+  // 3) Finnhub — optional (Paid-Plan); oft internationale ADRs und EU-Listings
+  if (!isUsSec) {
+    try {
+      const fh = await mitZeitlimit(ladeFinnhubTranskriptHistorie(ticker, symbolYahoo, MAX_QUARTALE), 35_000, [])
+      if (fh.length > 0) {
+        return mappeRohe(fh, 'finnhub')
+      }
+    } catch {
+      /* Fool */
+    }
+  }
+
+  // 4) Motley Fool
   let foolBlockiert = false
   try {
     const fool = await mitZeitlimit(
@@ -179,19 +208,7 @@ async function entdeckeTranskripte(
       return mappeRohe(fool, 'motley_fool')
     }
   } catch {
-    /* SEC */
-  }
-
-  // 4) MarketBeat auch für nicht-US (große internationale Titel)
-  if (!isUsSec) {
-    try {
-      const mb = await mitZeitlimit(ladeMarketbeatTranskriptHistorie(ticker, firmenname, MAX_QUARTALE), 45_000, [])
-      if (mb.length > 0) {
-        return mappeRohe(mb, 'marketbeat')
-      }
-    } catch {
-      /* unten */
-    }
+    /* SEC / Ende */
   }
 
   // 5) SEC — nur US/CA; viele Firmen haben nur EX-99.1 Pressemitteilung, kein Transkript
@@ -210,7 +227,7 @@ async function entdeckeTranskripte(
     ? foolBlockiert
       ? 'MarketBeat, Motley Fool (Rate-Limit) und SEC'
       : 'MarketBeat, Motley Fool und SEC'
-    : 'IR, MarketBeat und Motley Fool'
+    : 'IR, MarketBeat (EU/US-Börsen), Finnhub, Motley Fool'
 
   throw new Error(
     `Kein Earnings-Call-Transkript (Conference Call inkl. Q&A) für ${firmenname ?? ticker} (${ticker}) gefunden. Geprüft: ${quellen}.`,
@@ -365,9 +382,11 @@ export async function ladeEarningsCallZusammenfassung(anfrage: EarningsCallAnfra
   let irUrl = persistedIrUrl
   const brauchtIrLookup = !cache || anfrage.force
   if (brauchtIrLookup && anfrage.isin?.trim()) {
-    irUrl = await ladeInvestorRelationsUrl(anfrage.isin, anfrage.firmenname ?? '', ticker).catch(
-      () => persistedIrUrl,
-    )
+    irUrl = await ladeInvestorRelationsUrl(
+      anfrage.isin,
+      kontext.firmenname ?? anfrage.firmenname ?? '',
+      kontext.symbolYahoo ?? ticker,
+    ).catch(() => persistedIrUrl)
   }
 
   if (!cache) {
@@ -463,7 +482,9 @@ export async function ladeEarningsCallZusammenfassung(anfrage: EarningsCallAnfra
         : quelle === 'motley_fool'
           ? 'Transkripte von The Motley Fool (Conference Call inkl. Q&A).'
           : quelle === 'sec_edgar'
-            ? 'Offizielle SEC-8-K-Transkripte (US).'
+          ? 'Offizielle SEC-8-K-Transkripte (US).'
+          : quelle === 'finnhub'
+            ? 'Transkripte von Finnhub (Earnings-Call-API).'
             : null
 
   return bauePaket(ticker, cache, irUrl, zielId, ausCache && !anfrage.force, hinweis)

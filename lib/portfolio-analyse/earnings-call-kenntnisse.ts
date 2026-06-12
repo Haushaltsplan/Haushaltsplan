@@ -271,6 +271,7 @@ export function aufloeseEarningsCallKontext(anfrage: {
   isin?: string | null
 }): {
   foolTicker: string
+  symbolYahoo: string | null
   firmenname: string | null
   foolSlugs: string[]
   isUsSec: boolean
@@ -300,6 +301,7 @@ export function aufloeseEarningsCallKontext(anfrage: {
     isin.startsWith('CA')
   const irNurWebcast = hard?.irNurWebcast === true
   const istEtf = hard?.land === 'ETF' || isin.startsWith('IE00BJXR')
+  const symbolYahoo = (k?.symbolYahoo ?? anfrage.ticker).trim().toUpperCase() || null
 
-  return { foolTicker, firmenname, foolSlugs, isUsSec, irNurWebcast, istEtf }
+  return { foolTicker, symbolYahoo, firmenname, foolSlugs, isUsSec, irNurWebcast, istEtf }
 }
