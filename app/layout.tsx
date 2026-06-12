@@ -1,8 +1,6 @@
 import type { Metadata, Viewport } from "next";
-import Image from "next/image";
-import Link from "next/link";
 import { Inter } from "next/font/google";
-import { SiteNav } from "@/components/site-nav";
+import { SiteMobileChrome } from "@/components/site-mobile-chrome";
 import { SiteSidebar } from "@/components/site-sidebar";
 import { MobileSwipePageNav } from "@/components/mobile-swipe-page-nav";
 import { ThemeProvider } from "@/components/theme-provider";
@@ -66,36 +64,14 @@ export default function RootLayout({
             <SiteSidebar />
 
             <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-[var(--app-bg)]">
-              <nav className="sticky top-0 z-50 border-b border-[var(--app-border-strong)] bg-[var(--app-bg)]/95 pt-[env(safe-area-inset-top,0px)] backdrop-blur-md md:hidden">
-                <div className="flex h-[3.75rem] min-w-0 items-center justify-between gap-2 px-3">
-                  <div className="flex min-w-0 flex-1 items-center gap-2">
-                    <Link
-                      href="/"
-                      className="relative shrink-0 p-0 transition hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500/40"
-                      aria-label="Omnia – Startseite"
-                    >
-                      <Image
-                        src="/icon.svg"
-                        alt=""
-                        width={96}
-                        height={96}
-                        unoptimized
-                        className="h-10 w-10 object-contain"
-                        priority
-                      />
-                    </Link>
-                    <SiteNav />
-                  </div>
-                  <ThemeToggle />
-                </div>
-              </nav>
+              <SiteMobileChrome />
 
               <header className="sticky top-0 z-40 hidden h-12 shrink-0 items-center justify-end border-b border-[var(--app-border)] bg-[var(--app-bg)]/90 px-6 backdrop-blur-md md:flex">
                 <ThemeToggle />
               </header>
 
               <Providers>
-                <main className="min-h-0 w-full min-w-0 flex-1 overflow-y-auto px-3 py-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] sm:px-6 sm:py-6 md:px-8 md:py-8">
+                <main className="min-h-0 w-full min-w-0 flex-1 overflow-y-auto px-3 py-4 pb-[max(5.25rem,calc(env(safe-area-inset-bottom)+4.5rem))] sm:px-6 sm:py-6 md:px-8 md:py-8 md:pb-[max(1.25rem,env(safe-area-inset-bottom))]">
                   <MobileSwipePageNav>{children}</MobileSwipePageNav>
                 </main>
               </Providers>

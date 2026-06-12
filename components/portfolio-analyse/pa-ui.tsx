@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { usePathname } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
 import type { ReactNode } from 'react'
 
 export const PA_ACCENT = 'rgb(45, 212, 191)'
@@ -81,34 +81,71 @@ const SUB_NAV = [
   { href: '/portfolioanalyse/import', label: 'Import' },
 ] as const
 
+function paSubNavAktiv(pathname: string, href: string) {
+  return (
+    pathname === href ||
+    pathname.startsWith(`${href}/`) ||
+    (href === '/portfolioanalyse/dashboard' && pathname === '/portfolioanalyse')
+  )
+}
+
 export function PaSubNav() {
   const pathname = usePathname()
+  const router = useRouter()
+  const aktivHref =
+    SUB_NAV.find((item) => paSubNavAktiv(pathname, item.href))?.href ?? '/portfolioanalyse/dashboard'
+
   return (
-    <nav
-      className={`${scrollTabsClass} w-full max-w-full rounded-2xl border border-white/[0.06] bg-zinc-950/80 p-1 shadow-lg shadow-black/30 ring-1 ring-white/[0.04] sm:p-1.5`}
-    >
-      <div className="flex w-max min-w-full flex-nowrap gap-0.5 sm:w-full sm:flex-wrap sm:gap-1">
-        {SUB_NAV.map((item) => {
-          const aktiv =
-            pathname === item.href ||
-            pathname.startsWith(`${item.href}/`) ||
-            (item.href === '/portfolioanalyse/dashboard' && pathname === '/portfolioanalyse')
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              className={`shrink-0 whitespace-nowrap rounded-xl px-3 py-2 text-xs font-medium tracking-tight transition-all sm:px-4 sm:text-sm ${
-                aktiv
-                  ? 'bg-gradient-to-b from-teal-500/20 to-teal-600/10 text-teal-300 ring-1 ring-teal-500/25'
-                  : 'text-zinc-500 hover:bg-white/[0.03] hover:text-zinc-200'
-              }`}
-            >
-              {item.label}
-            </Link>
-          )
-        })}
+    <>
+      <div className="sm:hidden">
+        <label htmlFor="pa-subnav-select" className="sr-only">
+          Portfolio-Bereich
+        </label>
+        <div className="relative">
+          <select
+            id="pa-subnav-select"
+            value={aktivHref}
+            onChange={(e) => router.push(e.target.value)}
+            className="w-full appearance-none rounded-2xl border border-[var(--app-border-strong)] bg-[var(--app-surface)] py-3.5 pl-4 pr-10 text-sm font-medium text-[var(--app-text)] shadow-sm outline-none focus-visible:ring-2 focus-visible:ring-teal-500/40"
+          >
+            {SUB_NAV.map((item) => (
+              <option key={item.href} value={item.href}>
+                {item.label}
+              </option>
+            ))}
+          </select>
+          <span
+            className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[var(--app-text-muted)]"
+            aria-hidden
+          >
+            ▾
+          </span>
+        </div>
       </div>
-    </nav>
+
+      <nav
+        className={`${scrollTabsClass} hidden w-full max-w-full rounded-2xl border border-white/[0.06] bg-zinc-950/80 p-1 shadow-lg shadow-black/30 ring-1 ring-white/[0.04] sm:block sm:p-1.5`}
+      >
+        <div className="flex w-max min-w-full flex-nowrap gap-0.5 sm:w-full sm:flex-wrap sm:gap-1">
+          {SUB_NAV.map((item) => {
+            const aktiv = paSubNavAktiv(pathname, item.href)
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                className={`shrink-0 whitespace-nowrap rounded-xl px-3 py-2 text-xs font-medium tracking-tight transition-all sm:px-4 sm:text-sm ${
+                  aktiv
+                    ? 'bg-gradient-to-b from-teal-500/20 to-teal-600/10 text-teal-300 ring-1 ring-teal-500/25'
+                    : 'text-zinc-500 hover:bg-white/[0.03] hover:text-zinc-200'
+                }`}
+              >
+                {item.label}
+              </Link>
+            )
+          })}
+        </div>
+      </nav>
+    </>
   )
 }
 

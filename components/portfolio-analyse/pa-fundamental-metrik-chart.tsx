@@ -103,6 +103,41 @@ function berechneSkala(werte: number[]): { minY: number; maxY: number; span: num
   return { minY, maxY, span, ticks }
 }
 
+function ChartSerieChip({
+  label,
+  farbe,
+  dualAxis,
+  yAxis,
+  onRemove,
+}: {
+  label: string
+  farbe: string
+  dualAxis: boolean
+  yAxis: 0 | 1
+  onRemove: () => void
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onRemove}
+      className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-zinc-700/60 bg-zinc-900/80 py-1 pl-2 pr-1 text-[11px] text-zinc-300 transition hover:border-zinc-600 hover:bg-zinc-800/90"
+      title={`${label} aus Chart entfernen`}
+    >
+      <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: farbe }} aria-hidden />
+      <span className="truncate">
+        {label}
+        {dualAxis ? (yAxis === 1 ? ' (rechts)' : ' (links)') : ''}
+      </span>
+      <span
+        className="ml-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-[13px] leading-none text-zinc-500"
+        aria-hidden
+      >
+        ×
+      </span>
+    </button>
+  )
+}
+
 function SchnittBadge({
   label,
   zeitraum,
@@ -111,6 +146,7 @@ function SchnittBadge({
   abweichungPct,
   jahre,
   einheit,
+  onRemove,
 }: {
   label: string
   zeitraum: string
@@ -119,12 +155,24 @@ function SchnittBadge({
   abweichungPct: number | null
   jahre: number
   einheit: FundamentalMetrikZeile['einheit']
+  onRemove?: () => void
 }) {
   if (schnitt == null) return null
   const ueber = abweichungPct != null && abweichungPct > 0
   const unter = abweichungPct != null && abweichungPct < 0
   return (
-    <div className="rounded-lg border border-white/[0.06] bg-zinc-900/70 px-3 py-2">
+    <div className="relative rounded-lg border border-white/[0.06] bg-zinc-900/70 px-3 py-2 pr-8">
+      {onRemove ? (
+        <button
+          type="button"
+          onClick={onRemove}
+          className="absolute right-1.5 top-1.5 flex h-5 w-5 items-center justify-center rounded-md text-zinc-500 transition hover:bg-zinc-800 hover:text-zinc-200"
+          title={`${label} aus Chart entfernen`}
+          aria-label={`${label} aus Chart entfernen`}
+        >
+          ×
+        </button>
+      ) : null}
       <p className="truncate text-[10px] font-medium text-zinc-400">{label}</p>
       <div className="mt-1 flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
         <span className="text-[11px] text-zinc-500">
@@ -253,6 +301,7 @@ export function PaFundamentalMetrikChart({
   aktivIds,
   labelsAnzeigen,
   onClear,
+  onToggleSerie,
   onToggleLabels,
   variant = 'standard',
 }: {
@@ -261,6 +310,7 @@ export function PaFundamentalMetrikChart({
   aktivIds: Set<string>
   labelsAnzeigen: boolean
   onClear: () => void
+  onToggleSerie: (id: string) => void
   onToggleLabels: () => void
   variant?: 'standard' | 'bewertung'
 }) {
@@ -566,6 +616,22 @@ export function PaFundamentalMetrikChart({
           }}
         />
 
+        {variant === 'standard' && serien.length > 0 ? (
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <span className="text-[10px] font-medium uppercase tracking-wide text-zinc-600">Im Chart</span>
+            {serien.map((s) => (
+              <ChartSerieChip
+                key={s.id}
+                label={s.label}
+                farbe={s.farbe}
+                dualAxis={dualAxis}
+                yAxis={s.yAxis}
+                onRemove={() => onToggleSerie(s.id)}
+              />
+            ))}
+          </div>
+        ) : null}
+
         {variant === 'bewertung' ? (
           <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
             {serien.map((s) => (
@@ -578,6 +644,7 @@ export function PaFundamentalMetrikChart({
                 abweichungPct={s.abweichungPct}
                 jahre={s.jahreSchnitt}
                 einheit={s.einheit}
+                onRemove={() => onToggleSerie(s.id)}
               />
             ))}
           </div>
@@ -754,19 +821,29 @@ export function PaFundamentalMetrikChart({
           )}
         </svg>
 
-        <ul className="mt-1 flex flex-wrap gap-x-4 gap-y-1 px-1 text-[10px] text-zinc-500">
+        <ul className="mt-1 flex flex-wrap gap-x-3 gap-y-1.5 px-1 text-[10px] text-zinc-500">
           {serien.map((s) => (
-            <li key={s.id} className="flex items-center gap-1.5">
-              <span className="h-2 w-4 rounded-full" style={{ background: s.farbe }} />
-              <span className="text-zinc-400">
-                {s.label}
-                {dualAxis ? (s.yAxis === 1 ? ' (rechts)' : ' (links)') : ''}
-              </span>
-              {variant === 'bewertung' && s.schnitt != null ? (
-                <span className="text-zinc-600">
-                  · Schnitt {zeitraumLabel} {formatFundamentalWert(s.schnitt, s.einheit)}
+            <li key={s.id}>
+              <button
+                type="button"
+                onClick={() => onToggleSerie(s.id)}
+                className="flex max-w-full items-center gap-1.5 rounded-md px-1 py-0.5 text-left transition hover:bg-zinc-800/60"
+                title={`${s.label} aus Chart entfernen`}
+              >
+                <span className="h-2 w-4 shrink-0 rounded-full" style={{ background: s.farbe }} aria-hidden />
+                <span className="text-zinc-400">
+                  {s.label}
+                  {dualAxis ? (s.yAxis === 1 ? ' (rechts)' : ' (links)') : ''}
                 </span>
-              ) : null}
+                {variant === 'bewertung' && s.schnitt != null ? (
+                  <span className="text-zinc-600">
+                    · Schnitt {zeitraumLabel} {formatFundamentalWert(s.schnitt, s.einheit)}
+                  </span>
+                ) : null}
+                <span className="text-zinc-600" aria-hidden>
+                  ×
+                </span>
+              </button>
             </li>
           ))}
           {variant === 'standard' ? (

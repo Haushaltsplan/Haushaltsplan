@@ -182,7 +182,7 @@ export function FinanceCoachProvider({ children }: { children: ReactNode }) {
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="fixed z-[60] flex h-14 w-14 items-center justify-center rounded-2xl border border-violet-500/50 bg-violet-600 text-white shadow-xl shadow-violet-950/50 transition-transform hover:scale-105 hover:bg-violet-500 active:scale-95 bottom-[max(1.25rem,env(safe-area-inset-bottom))] right-[max(1.25rem,env(safe-area-inset-right))] md:bottom-8 md:right-8"
+        className="fixed z-[60] flex h-14 w-14 items-center justify-center rounded-2xl border border-violet-500/50 bg-violet-600 text-white shadow-xl shadow-violet-950/50 transition-transform hover:scale-105 hover:bg-violet-500 active:scale-95 bottom-[max(5.25rem,calc(env(safe-area-inset-bottom)+4.5rem))] right-[max(1rem,env(safe-area-inset-right))] md:bottom-8 md:right-8"
         title="Finanz-Coach: Fragen zu Einnahmen, Ausgaben und Saldo"
         aria-label="Finanz-Coach öffnen"
       >

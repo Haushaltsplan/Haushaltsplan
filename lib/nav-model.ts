@@ -1,27 +1,29 @@
 export const NAV_LINK_DEFS = [
-  { href: '/', label: 'Start', emoji: '🏡', color: 'text-cyan-400', ring: 'focus-visible:ring-cyan-500/50' },
-  { href: '/finanzen', label: 'Finanzen', emoji: '💰', color: 'text-emerald-400', ring: 'focus-visible:ring-emerald-500/50' },
-  { href: '/speisekammer', label: 'Speisekammer', emoji: '🍳', color: 'text-sky-400', ring: 'focus-visible:ring-sky-500/50' },
-  { href: '/kalender', label: 'Kalender', emoji: '📅', color: 'text-teal-400', ring: 'focus-visible:ring-teal-500/50' },
-  { href: '/natur', label: 'Natur', emoji: '🌿', color: 'text-lime-400', ring: 'focus-visible:ring-lime-500/50' },
-  { href: '/rennrad', label: 'Rennrad', emoji: '🚴', color: 'text-rose-400', ring: 'focus-visible:ring-rose-500/50' },
+  { href: '/', label: 'Start', shortLabel: 'Start', emoji: '🏡', color: 'text-cyan-400', ring: 'focus-visible:ring-cyan-500/50' },
+  { href: '/finanzen', label: 'Finanzen', shortLabel: 'Finanzen', emoji: '💰', color: 'text-emerald-400', ring: 'focus-visible:ring-emerald-500/50' },
+  { href: '/speisekammer', label: 'Speisekammer', shortLabel: 'Küche', emoji: '🍳', color: 'text-sky-400', ring: 'focus-visible:ring-sky-500/50' },
+  { href: '/kalender', label: 'Kalender', shortLabel: 'Kalender', emoji: '📅', color: 'text-teal-400', ring: 'focus-visible:ring-teal-500/50' },
+  { href: '/natur', label: 'Natur', shortLabel: 'Natur', emoji: '🌿', color: 'text-lime-400', ring: 'focus-visible:ring-lime-500/50' },
+  { href: '/rennrad', label: 'Rennrad', shortLabel: 'Rennrad', emoji: '🚴', color: 'text-rose-400', ring: 'focus-visible:ring-rose-500/50' },
   {
     href: '/fitnessdaten',
     label: 'Whoop',
+    shortLabel: 'Whoop',
     emoji: '⬡',
     color: 'text-orange-400',
     ring: 'focus-visible:ring-orange-500/50',
   },
-  { href: '/besitz', label: 'Besitz', emoji: '👜', color: 'text-amber-400', ring: 'focus-visible:ring-amber-500/50' },
+  { href: '/besitz', label: 'Besitz', shortLabel: 'Besitz', emoji: '👜', color: 'text-amber-400', ring: 'focus-visible:ring-amber-500/50' },
   {
     href: '/portfolioanalyse',
     label: 'Portfolioanalyse',
+    shortLabel: 'Portfolio',
     emoji: '📊',
     color: 'text-indigo-400',
     ring: 'focus-visible:ring-indigo-500/50',
   },
-  { href: '/investments', label: 'Investments', emoji: '📈', color: 'text-violet-400', ring: 'focus-visible:ring-violet-500/50' },
-  { href: '/einstellungen', label: 'Einstellungen', emoji: '⚙️', color: 'text-slate-300', ring: 'focus-visible:ring-slate-500/50' },
+  { href: '/investments', label: 'Investments', shortLabel: 'Invest', emoji: '📈', color: 'text-violet-400', ring: 'focus-visible:ring-violet-500/50' },
+  { href: '/einstellungen', label: 'Einstellungen', shortLabel: 'Einst.', emoji: '⚙️', color: 'text-slate-300', ring: 'focus-visible:ring-slate-500/50' },
 ] as const
 
 export type NavItem = (typeof NAV_LINK_DEFS)[number]

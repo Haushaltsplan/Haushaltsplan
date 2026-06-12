@@ -246,6 +246,7 @@ export function PaFundamentalInhalt({
                 labelsAnzeigen={labelsAnzeigen}
                 variant={unterTab === 'bewertung' ? 'bewertung' : 'standard'}
                 onClear={() => setChartAktiv(new Set())}
+                onToggleSerie={toggleChartZeile}
                 onToggleLabels={() => setLabelsAnzeigen((v) => !v)}
               />
 
