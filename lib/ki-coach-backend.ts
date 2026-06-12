@@ -328,17 +328,46 @@ function parseGeminiFehlerBody(raw: string): { message: string; apiStatus?: stri
   }
 }
 
-/** Quota / RPS / Free-Tier — nächstes Modell versuchen. */
+function sleepMs(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+/** Quota / RPS / Überlastung — nächstes Modell oder Kurz-Wartezeit. */
 function istGeminiQuotaOderRateLimit(httpStatus: number, message: string, apiStatus?: string): boolean {
   if (httpStatus === 429) return true
-  if (apiStatus === 'RESOURCE_EXHAUSTED') return true
+  if (httpStatus === 503) return true
+  if (apiStatus === 'RESOURCE_EXHAUSTED' || apiStatus === 'UNAVAILABLE') return true
   const m = message.toLowerCase()
   if (m.includes('resource_exhausted')) return true
   if (m.includes('quota') && (m.includes('exceed') || m.includes('exceeded') || m.includes('limit'))) return true
   if (m.includes('rate limit') || m.includes('too many requests')) return true
   if (m.includes('free_tier') && m.includes('limit')) return true
-  if (httpStatus === 503 && (m.includes('overload') || m.includes('unavailable') || m.includes('quota'))) return true
+  if (m.includes('high demand') || m.includes('try again later')) return true
+  if (m.includes('overload') || m.includes('overloaded') || m.includes('unavailable')) return true
+  if (m.includes('temporarily') && (m.includes('unavailable') || m.includes('busy'))) return true
   return false
+}
+
+/** Nutzerfreundliche deutsche Meldung für typische Gemini-Ausfälle. */
+export function formatCoachFehlerHint(hint: string, modelsVersucht = 1): string {
+  const m = hint.toLowerCase()
+  if (m.includes('high demand') || m.includes('try again later') || m.includes('overload')) {
+    const mehr =
+      modelsVersucht > 1
+        ? ` Es wurden bereits ${modelsVersucht} Gemini-Modelle probiert.`
+        : ''
+    return (
+      `Die KI ist gerade stark ausgelastet (Google Gemini). Bitte in 1–2 Minuten erneut versuchen.${mehr} ` +
+      'Das ist meist nur kurzzeitig — kein Fehler in deiner App.'
+    )
+  }
+  if (m.includes('quota') || m.includes('rate limit') || m.includes('resource_exhausted')) {
+    return (
+      'Das Gemini-Kontingent für dieses Modell ist gerade erschöpft. ' +
+      'Kurz warten oder in .env.local ein anderes Modell setzen (GEMINI_MODEL / GEMINI_MODEL_FALLBACKS).'
+    )
+  }
+  return hint
 }
 
 type CallGeminiEinModellOptions = {
@@ -438,7 +467,15 @@ async function callGemini(
 
   for (let i = 0; i < models.length; i++) {
     const model = models[i]!
-    const r = await callGeminiEinModell(apiKey, model, systemText, userMessages, callOpts)
+    let r = await callGeminiEinModell(apiKey, model, systemText, userMessages, callOpts)
+
+    // Einmal kurz warten und dasselbe Modell bei temporärer Überlastung wiederholen
+    if (!r.ok && r.quotaOderRateLimit && (r.httpStatus === 503 || r.httpStatus === 429)) {
+      console.warn(`[ki-coach] Gemini „${model}“ (${r.httpStatus}): kurze Pause, ein Retry …`)
+      await sleepMs(2000)
+      r = await callGeminiEinModell(apiKey, model, systemText, userMessages, callOpts)
+    }
+
     if (r.ok) {
       if (i > 0) {
         console.warn(`[ki-coach] Gemini: automatisch auf Modell „${model}“ gewechselt (${i} vorherige(r) Modell(e): Quota, Rate-Limit, 404 oder ähnlich).`)
@@ -449,24 +486,26 @@ async function callGemini(
     lastHttp = r.httpStatus
 
     const naechstes = models[i + 1]
-    /** 404: Modell-ID unbekannt — nächstes aus der Kette probieren. Quota/Rate-Limit: nächstes Modell = oft eigenes Free-Tier-Kontingent. */
-    const naechstesModellMoeglich = Boolean(naechstes) && (r.quotaOderRateLimit || r.httpStatus === 404)
+    /** 404 / Quota / 503 / High demand — nächstes Modell (eigenes Kontingent). */
+    const naechstesModellMoeglich =
+      Boolean(naechstes) && (r.quotaOderRateLimit || r.httpStatus === 404 || r.httpStatus === 503)
     if (naechstesModellMoeglich) {
       console.warn(`[ki-coach] Gemini „${model}“ (${r.httpStatus}): ${r.hint.slice(0, 220)} — versuche „${naechstes}“.`)
+      if (r.quotaOderRateLimit || r.httpStatus === 503) await sleepMs(800)
       continue
     }
-    const suffixAlleDurch =
-      i === models.length - 1 && models.length > 1 && (r.quotaOderRateLimit || r.httpStatus === 404)
-        ? ` (Alle ${models.length} Modelle der Fallback-Kette wurden durchprobiert.)`
-        : ''
     return {
       ok: false,
       status: lastHttp >= 400 && lastHttp < 600 ? lastHttp : 502,
-      hint: lastHint + suffixAlleDurch,
+      hint: formatCoachFehlerHint(lastHint, i + 1),
     }
   }
 
-  return { ok: false, status: lastHttp >= 400 && lastHttp < 600 ? lastHttp : 502, hint: lastHint }
+  return {
+    ok: false,
+    status: lastHttp >= 400 && lastHttp < 600 ? lastHttp : 502,
+    hint: formatCoachFehlerHint(lastHint, models.length),
+  }
 }
 
 export type RunCoachCompletionOptions = {
@@ -494,11 +533,32 @@ export async function runCoachCompletion(
   const t = options?.temperature ?? 0.55
   const messages = options?.skipMessageTrim ? userMessages : prepareCoachMessages(userMessages)
   if (provider === 'gemini') {
-    return callGemini(apiKey, systemText, messages, {
-      temperature: t,
-      jsonResponse: options?.jsonResponse,
-      geminiGoogleSearch: options?.geminiGoogleSearch,
-    }, options?.geminiModels)
+    const gemini = await callGemini(
+      apiKey,
+      systemText,
+      messages,
+      {
+        temperature: t,
+        jsonResponse: options?.jsonResponse,
+        geminiGoogleSearch: options?.geminiGoogleSearch,
+      },
+      options?.geminiModels,
+    )
+    if (gemini.ok) return gemini
+
+    const oKey = openAiApiKey()
+    const kannOpenAiFallback =
+      oKey &&
+      !options?.jsonResponse &&
+      !options?.geminiGoogleSearch &&
+      !messages.some((m) => m.images?.length)
+    if (kannOpenAiFallback) {
+      console.warn('[ki-coach] Gemini fehlgeschlagen — Fallback auf OpenAI.')
+      const openAi = await callOpenAI(oKey, systemText, messages, t, false)
+      if (openAi.ok) return openAi
+    }
+
+    return gemini
   }
   return callOpenAI(apiKey, systemText, messages, t, Boolean(options?.jsonResponse))
 }
