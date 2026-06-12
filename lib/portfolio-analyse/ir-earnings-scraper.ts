@@ -15,9 +15,10 @@ import {
   scoreTranskriptLink,
   type IrEarningsQuelle,
 } from '@/lib/portfolio-analyse/ir-earnings-sources'
+import { ladeIrQuartalsTranskriptHistorie } from '@/lib/portfolio-analyse/ir-quarter-transcript-server'
+import type { IrRohesTranskript } from '@/lib/portfolio-analyse/ir-earnings-types'
 
 export type { IrRohesTranskript } from '@/lib/portfolio-analyse/ir-earnings-types'
-import type { IrRohesTranskript } from '@/lib/portfolio-analyse/ir-earnings-types'
 
 const USER_AGENT =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'
@@ -69,7 +70,7 @@ async function transkripteAusLinks(kandidaten: LinkKandidat[], max: number): Pro
   for (const k of kandidaten.slice(0, MAX_LINKS)) {
     if (out.length >= max) break
     const text = await ladeDokumentText(k.href)
-    if (text.length < 800) continue
+    if (text.length < 600) continue
     if (!istEarningsCallTranskript(text) || istPresseMitteilung(text)) continue
     out.push({
       titel: k.text,
@@ -125,6 +126,13 @@ export async function ladeIrTranskriptHistorie(
 
   const q4 = await ladeQ4TranskriptHistorie(quelle.listenUrls, quelle.q4BasisUrls ?? [], max)
   if (q4.length > 0) return q4
+
+  try {
+    const quartals = await ladeIrQuartalsTranskriptHistorie(quelle.listenUrls, max)
+    if (quartals.length > 0) return quartals
+  } catch {
+    /* direkte Links */
+  }
 
   try {
     const direkt = await transkripteAusLinks(await sammleDirekteLinks(quelle), max)

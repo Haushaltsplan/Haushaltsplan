@@ -24,6 +24,7 @@ import type {
 } from '@/lib/portfolio-analyse/earnings-call-types'
 import { ladeFinnhubTranskriptHistorie } from '@/lib/portfolio-analyse/finnhub-earnings-transcript-server'
 import { ladeMarketbeatTranskriptHistorie } from '@/lib/portfolio-analyse/marketbeat-earnings-transcript-server'
+import { ladeInvestingTranskriptHistorie } from '@/lib/portfolio-analyse/investing-earnings-transcript-server'
 import { ladeIrTranskriptHistorie } from '@/lib/portfolio-analyse/ir-earnings-scraper'
 import { aufloeseEarningsCallKontext } from '@/lib/portfolio-analyse/earnings-call-kenntnisse'
 import { irEarningsQuelleFuerIsin } from '@/lib/portfolio-analyse/ir-earnings-sources'
@@ -144,7 +145,7 @@ async function entdeckeTranskripte(
   if (irVersuchen) {
     const ir = await mitZeitlimit(
       ladeIrTranskriptHistorie(anfrage.isin ?? '', irUrl, MAX_QUARTALE).catch(() => []),
-      25_000,
+      45_000,
       [],
     )
     if (ir.length > 0) {
@@ -179,7 +180,23 @@ async function entdeckeTranskripte(
     }
   }
 
-  // 3) Finnhub — optional (Paid-Plan); oft internationale ADRs und EU-Listings
+  // 3) Investing.com — EU/internationale Transkripte (z. B. LVMH, ASML)
+  if (!isUsSec) {
+    try {
+      const inv = await mitZeitlimit(
+        ladeInvestingTranskriptHistorie(ticker, firmenname, MAX_QUARTALE),
+        40_000,
+        [],
+      )
+      if (inv.length > 0) {
+        return mappeRohe(inv, 'investing_com')
+      }
+    } catch {
+      /* Finnhub */
+    }
+  }
+
+  // 4) Finnhub — optional (Paid-Plan); oft internationale ADRs und EU-Listings
   if (!isUsSec) {
     try {
       const fh = await mitZeitlimit(ladeFinnhubTranskriptHistorie(ticker, symbolYahoo, MAX_QUARTALE), 35_000, [])
@@ -191,7 +208,7 @@ async function entdeckeTranskripte(
     }
   }
 
-  // 4) Motley Fool
+  // 5) Motley Fool
   let foolBlockiert = false
   try {
     const fool = await mitZeitlimit(
@@ -211,7 +228,7 @@ async function entdeckeTranskripte(
     /* SEC / Ende */
   }
 
-  // 5) SEC — nur US/CA; viele Firmen haben nur EX-99.1 Pressemitteilung, kein Transkript
+  // 6) SEC — nur US/CA; viele Firmen haben nur EX-99.1 Pressemitteilung, kein Transkript
   if (isUsSec) {
     try {
       const sec = await mitZeitlimit(ladeSecEdgarTranskriptHistorie(ticker, MAX_QUARTALE), 45_000, [])
@@ -227,7 +244,7 @@ async function entdeckeTranskripte(
     ? foolBlockiert
       ? 'MarketBeat, Motley Fool (Rate-Limit) und SEC'
       : 'MarketBeat, Motley Fool und SEC'
-    : 'IR, MarketBeat (EU/US-Börsen), Finnhub, Motley Fool'
+    : 'IR, MarketBeat, Investing.com, Finnhub, Motley Fool'
 
   throw new Error(
     `Kein Earnings-Call-Transkript (Conference Call inkl. Q&A) für ${firmenname ?? ticker} (${ticker}) gefunden. Geprüft: ${quellen}.`,
@@ -485,7 +502,9 @@ export async function ladeEarningsCallZusammenfassung(anfrage: EarningsCallAnfra
           ? 'Offizielle SEC-8-K-Transkripte (US).'
           : quelle === 'finnhub'
             ? 'Transkripte von Finnhub (Earnings-Call-API).'
-            : null
+            : quelle === 'investing_com'
+              ? 'Transkripte von Investing.com (Earnings Call inkl. Q&A).'
+              : null
 
   return bauePaket(ticker, cache, irUrl, zielId, ausCache && !anfrage.force, hinweis)
 }

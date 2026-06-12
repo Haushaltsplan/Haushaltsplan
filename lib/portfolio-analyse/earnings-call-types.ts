@@ -1,6 +1,6 @@
 /** Earnings Call — Quartale, Transkripte & KI-Zusammenfassungen. */
 
-export type EarningsCallQuelle = 'sec_edgar' | 'finnhub' | 'ir_scrape' | 'motley_fool' | 'marketbeat'
+export type EarningsCallQuelle = 'sec_edgar' | 'finnhub' | 'ir_scrape' | 'motley_fool' | 'marketbeat' | 'investing_com'
 
 export type EarningsCallAnfrage = {
   ticker: string

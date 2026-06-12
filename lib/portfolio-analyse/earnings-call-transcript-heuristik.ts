@@ -19,6 +19,11 @@ const CALL_SIGNALS = [
   /\bquartalsgespraech\b/i,
   /\bconférence téléphonique\b/i,
   /\bquestions?[- ]r[eé]ponses?\b/i,
+  /\bpublic transcript\b/i,
+  /\binvestor call\b/i,
+  /\bresults conference call\b/i,
+  /\bresults video\b/i,
+  /\bspeaker \d+:/i,
 ]
 
 /** Link-Text/URL — explizites Transkript, keine reine Pressemitteilung. */
@@ -31,10 +36,13 @@ export function istTranskriptLinkStreng(text: string, href: string): boolean {
     return false
   }
   if (
-    /transcript|transkript|conference call|earnings call|webcast transcript|call transcript|prepared remarks|konferenz|quartalsgespr/i.test(
+    /transcript|transkript|conference call|earnings call|webcast transcript|call transcript|prepared remarks|konferenz|quartalsgespr|investor call|investor-call/i.test(
       combined,
     )
   ) {
+    return true
+  }
+  if (/\.pdf(\?|$)/i.test(href) && /transcript|investor-call|results-video-transcript/i.test(combined)) {
     return true
   }
   return false

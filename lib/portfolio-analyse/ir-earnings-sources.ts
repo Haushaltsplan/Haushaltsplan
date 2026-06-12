@@ -19,7 +19,10 @@ export const IR_EARNINGS_NACH_ISIN: Record<string, IrEarningsQuelle> = {
     listenUrls: ['https://www.asml.com/en/investors/financial-results'],
   },
   FR0000121014: {
-    listenUrls: ['https://www.lvmh.com/investors/publications'],
+    listenUrls: [
+      'https://www.lvmh.com/en/investors',
+      'https://www.lvmh.com/en/financial-calendar',
+    ],
   },
   FR0000052292: {
     listenUrls: ['https://finance.hermes.com/en/publications/'],
@@ -173,6 +176,7 @@ export function scoreTranskriptLink(text: string, href: string): number {
   const combined = `${text} ${href}`.toLowerCase()
   let score = 0
   if (combined.includes('transcript') || combined.includes('transkript')) score += 12
+  if (/investor-call|investor call|results-video-transcript/i.test(combined)) score += 14
   if (
     combined.includes('conference call') ||
     combined.includes('earnings call') ||
