@@ -361,7 +361,7 @@ export async function ladeFundamentaldaten(anfrage: FundamentaldatenAnfrage): Pr
     beschreibung: beschreibungDe,
     perioden: merged.perioden,
     zeilen: merged.zeilen,
-    keyMetrics: baueKeyMetrics(yahooExt, rohFuerMantra(merged), schaetzungen),
+    keyMetrics: baueKeyMetrics(yahooExt, { ...roh, perioden: merged.perioden, zeilen: merged.zeilen }, schaetzungen),
     dcfKontext,
     mantra: baueMantraAudit(sektorFinal, brancheFinal, yahooExt, rohFuerMantra(merged), schaetzungen, yahooFinanz),
     mantraMeta,
