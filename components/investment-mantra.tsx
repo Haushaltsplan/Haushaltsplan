@@ -2,7 +2,17 @@
 
 import { useState } from 'react'
 import { CollapsibleAnimatedBody, CollapsiblePillButton, LABEL_ZUKLAPPEN } from '@/components/collapsible-ui'
-import { INVESTMENT_MANTRA, SEKTOR_MANTRAS, type MantraZeile } from '@/lib/investment-mantra-data'
+import {
+  INVESTMENT_MANTRA,
+  MOAT_CHECK,
+  MOAT_CHECK_PLATTFORM_ZUSATZ,
+  QUALITY_INVESTING_ANKER,
+  QUALITY_INVESTING_FRAMEWORK_TITEL,
+  QUALITY_INVESTING_FRAMEWORK_UNTERTITEL,
+  SELL_TRIGGERS,
+  SELL_TRIGGERS_HINWEIS,
+  type MantraZeile,
+} from '@/lib/investment-mantra-data'
 
 function MantraTabellenBlock({
   zeilen,
@@ -19,15 +29,20 @@ function MantraTabellenBlock({
             <tr className="text-xs uppercase tracking-wide text-zinc-400">
               <th className="px-3 py-2 font-semibold">Kategorie</th>
               <th className="px-3 py-2 font-semibold">Kennzahl</th>
-              <th className="px-3 py-2 font-semibold">Ziel</th>
-              <th className="px-3 py-2 font-semibold">Erklärung</th>
+              <th className="px-3 py-2 font-semibold">Benchmark</th>
+              <th className="px-3 py-2 font-semibold">Rationale</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-zinc-800/70">
             {zeilen.map((item, i) => (
               <tr key={`${rowKeyPrefix}-${i}-${item.kennzahl}`} className="align-top">
                 <td className="px-3 py-2.5 text-xs font-medium text-zinc-400">{item.kategorie}</td>
-                <td className="px-3 py-2.5 font-medium text-white">{item.kennzahl}</td>
+                <td className="px-3 py-2.5">
+                  <p className="font-medium text-white">{item.kennzahl}</p>
+                  {item.definition ? (
+                    <p className="mt-1 text-[11px] leading-snug text-zinc-500">{item.definition}</p>
+                  ) : null}
+                </td>
                 <td className="whitespace-nowrap px-3 py-2.5 font-semibold text-teal-400">{item.zielwert}</td>
                 <td className="max-w-xl px-3 py-2.5 leading-relaxed text-zinc-300">{item.funktion}</td>
               </tr>
@@ -44,6 +59,7 @@ function MantraTabellenBlock({
           >
             <p className="text-xs font-semibold uppercase tracking-wide text-zinc-400">{item.kategorie}</p>
             <p className="mt-1 text-sm font-medium text-white">{item.kennzahl}</p>
+            {item.definition ? <p className="mt-1 text-[11px] text-zinc-500">{item.definition}</p> : null}
             <p className="mt-1 text-sm font-semibold text-teal-400">{item.zielwert}</p>
             <p className="mt-2 text-sm leading-relaxed text-zinc-300">{item.funktion}</p>
           </article>
@@ -64,8 +80,9 @@ export function InvestmentMantra({ embedded = false }: { embedded?: boolean }) {
         <div className="min-w-0">
           <p className="text-xs font-semibold uppercase tracking-wide text-zinc-400">Mantra</p>
           <h2 className={`font-semibold tracking-tight text-white ${embedded ? 'text-base' : 'text-lg'}`}>
-            Kennzahlen-Check
+            {QUALITY_INVESTING_FRAMEWORK_TITEL}
           </h2>
+          <p className="mt-0.5 text-xs text-zinc-500">{QUALITY_INVESTING_FRAMEWORK_UNTERTITEL}</p>
         </div>
         <CollapsiblePillButton
           open={open}
@@ -79,24 +96,59 @@ export function InvestmentMantra({ embedded = false }: { embedded?: boolean }) {
       <CollapsibleAnimatedBody open={open} className="mt-3">
         <div className="space-y-10">
           <div>
-            <h3 className="text-sm font-semibold tracking-tight text-white">Standard-Mantra (Quality Compounding)</h3>
+            <h3 className="text-sm font-semibold tracking-tight text-white">1. Der psychologische Anker</h3>
+            <p className="mt-3 text-sm leading-relaxed text-zinc-300">{QUALITY_INVESTING_ANKER}</p>
+          </div>
+
+          <div>
+            <h3 className="text-sm font-semibold tracking-tight text-white">
+              2. Quantitatives Dashboard (dynamische Kriterien)
+            </h3>
             <p className="mt-1 text-sm leading-relaxed text-zinc-400">
-              Universelle Benchmarks für langfristige Qualitäts-Investments — unabhängig von der Branche.
+              Branchenunabhängige Benchmarks — etablierte Compounder und junge Plattformen mit unterschiedlichen
+              Schwellen.
             </p>
             <div className="mt-4">
-              <MantraTabellenBlock zeilen={INVESTMENT_MANTRA} rowKeyPrefix="standard" />
+              <MantraTabellenBlock zeilen={INVESTMENT_MANTRA} rowKeyPrefix="dashboard" />
             </div>
           </div>
 
-          {SEKTOR_MANTRAS.map((block) => (
-            <div key={block.id}>
-              <h3 className="text-sm font-semibold tracking-tight text-white">{block.title}</h3>
-              <p className="mt-1 text-sm leading-relaxed text-zinc-400">{block.intro}</p>
-              <div className="mt-4">
-                <MantraTabellenBlock zeilen={block.zeilen} rowKeyPrefix={block.id} />
-              </div>
+          <div>
+            <h3 className="text-sm font-semibold tracking-tight text-white">
+              3. Moat-Check (qualitative Burggräben)
+            </h3>
+            <div className="mt-4 space-y-4">
+              {MOAT_CHECK.map((p) => (
+                <article
+                  key={p.id}
+                  className="rounded-xl border border-zinc-800/90 bg-zinc-950/40 px-4 py-3"
+                >
+                  <p className="text-sm font-medium text-white">{p.titel}</p>
+                  <p className="mt-2 text-sm leading-relaxed text-zinc-400">{p.beschreibung}</p>
+                  <p className="mt-3 text-sm font-medium text-amber-200/90">
+                    Killer-Frage: <span className="font-normal text-zinc-300">{p.killerFrage}</span>
+                  </p>
+                </article>
+              ))}
+              <p className="rounded-xl border border-teal-500/20 bg-teal-500/5 px-4 py-3 text-sm leading-relaxed text-zinc-300">
+                <span className="font-medium text-teal-300">Junge Plattformen: </span>
+                {MOAT_CHECK_PLATTFORM_ZUSATZ}
+              </p>
             </div>
-          ))}
+          </div>
+
+          <div>
+            <h3 className="text-sm font-semibold tracking-tight text-white">4. Sell-Triggers (Exit-Disziplin)</h3>
+            <p className="mt-1 text-sm leading-relaxed text-zinc-400">{SELL_TRIGGERS_HINWEIS}</p>
+            <ol className="mt-4 list-decimal space-y-3 pl-5 text-sm leading-relaxed text-zinc-300">
+              {SELL_TRIGGERS.map((t) => (
+                <li key={t.id}>
+                  <span className="font-medium text-white">{t.titel}: </span>
+                  {t.beschreibung}
+                </li>
+              ))}
+            </ol>
+          </div>
         </div>
       </CollapsibleAnimatedBody>
     </section>

@@ -15,7 +15,7 @@ type PromptStep = {
   text: string
 }
 
-const STORAGE_KEY = 'mein-haushalt.investments.research-prompts.v2'
+const STORAGE_KEY = 'mein-haushalt.investments.research-prompts.v3'
 /** Ältere Installationen ohne strukturierte Liste */
 const STORAGE_KEY_LEGACY = 'mein-haushalt.investments.research-prompts.v1'
 
@@ -42,26 +42,18 @@ Primärquellen: (10-K, 10-Q, Earnings Transcripts, Shareholder Letters).
 Sekundärquellen: Nur für Branchenvergleiche oder Marktanteile.
 
 Analyse-Auftrag:
-Erstelle eine detaillierte Analyse des Geschäftsmodells von [UNTERNEHMEN] und prüfe die strukturelle Nachfrage gegen das Investmentmantra:
-1. Das "Was": Produkte, Dienstleistungen & Margen-Qualität
-Segmente: Wie wird das Geld verdient? (Breakdown nach Segmenten).
-Einnahmequalität: Wie hoch ist der Anteil an wiederkehrenden Umsätzen?
-Mantra-Audit (Profitabilität):
-Liegt die Gross Margin >= 40%?
-Liegt die Net Margin (LTM) bei >= 15%?
-Kapitalintensität: Ist das Modell „Asset-Light“? (Mantra: Capex / Sales < 5%).
+Erstelle eine detaillierte Analyse des Geschäftsmodells von [UNTERNEHMEN] gegen das Quality Investing Framework (branchenunabhängig):
+1. Das "Was": Produkte, Dienstleistungen & Unit Economics
+Segmente: Wie wird das Geld verdient?
+Einnahmequalität: Wiederkehrende Umsätze, ARR/NRR falls SaaS.
+Mantra-Check: LTV/CAC >4×? Bruttomarge auf Kohortenbasis stabil/expandierend?
 
 2. Das "An Wen": Kunden & Marktposition
-Zielgruppe: Wer sind die Kunden? Besteht ein Klumpenrisiko durch Großkunden?
-Mantra-Audit (Wachstum):
-Bietet der Markt einen strukturellen Rückenwind?
-Ist eine Revenue CAGR (3J) von >= 7% historisch belegt?
-Preissetzungsmacht: Welche konkreten Belege (Textstellen im Bericht) gibt es für Preissetzungsmacht?
+Zielgruppe, Klumpenrisiken, struktureller Rückenwind.
+Mission-Critical Status: Ist das Produkt für den Kunden operativ unverzichtbar?
 
-3. Das "Wo" & "Zahn der Zeit" (Update 2026)
-Geografie: Wo wird der operative Gewinn erzielt? Geopolitische Risiken (z. B. China/Taiwan)?
-KI-Check: Wird KI im Bericht als Bedrohung oder als Effizienz-Hebel für die Margen beschrieben?
-Optionalität: Belege für erfolgreiche Expansionen in neue Geschäftsfelder.
+3. Das "Wo" & Skalierung
+Geografie, KI als Hebel oder Bedrohung, Skaleneffekte (inkrementelle Op.-Marge >20 % bei Wachstum).
 
 Ablauf-Anweisung:
 Frage mich zuerst nach dem Namen des Unternehmens. Analysiere erst dann, wenn ich den Namen bestätigt und ggf. Dokumente hochgeladen habe.`,
@@ -82,23 +74,21 @@ Primärquellen: (10-K, 10-Q, Earnings Transcripts, Investoren-Präsentationen).
 Sekundärquellen: Branchen-Analysen und Wettbewerbsvergleiche.
 
 Analyse-Auftrag:
-Identifiziere und bewerte den Burggraben von [UNTERNEHMEN] anhand der folgenden vier Säulen und deines Mantras:
-1. Immaterielle Werte (Marke, Patente, Lizenzen)
-Analyse: Besitzt das Unternehmen Patente, staatliche Lizenzen oder eine Marke, die einen Preisaufschlag (Premium Pricing) ermöglicht?
-Mantra-Beweis: Spiegelt sich dieser Vorteil in einer Gross Margin >= 40% wider? Ist die Marge über 5 Jahre stabil oder steigend?
+Bewerte den Burggraben von [UNTERNEHMEN] anhand des Moat-Checks (vier Killer-Fragen):
+1. Immaterielle Preissetzungsmacht (Mission-Critical)
+Könnte das Unternehmen die Preise morgen um 10 % erhöhen, ohne messbare Kundenabwanderung?
 
-2. Wechselkosten (Switching Costs)
-Analyse: Wie tief ist das Produkt in die Prozesse des Kunden integriert? (z. B. Software, technische Standards).
-Beweisführung: Gibt es in den Berichten Hinweise auf hohe Kundenbindungsraten (Retention Rates) oder langfristige Verträge? Wäre ein Wechsel für den Kunden riskant oder teuer?
+2. Strukturelle Replikationsbarriere
+Müsste ein Konkurrent bei Duplizierung über Jahre Verluste in Kauf nehmen, die das Überleben gefährden?
 
-3. Netzwerkeffekte & Skalenvorteile
-Analyse: Wird das Produkt wertvoller, je mehr Menschen es nutzen?
-Effizienz-Check (Mantra): Führen die Skalenvorteile dazu, dass der Vertrieb hocheffizient ist? (Mantra: SG&A / Gross Profit < 40%).
-Kostenvorteile: Hat das Unternehmen Zugang zu Ressourcen oder Prozessen, die Konkurrenten nicht replizieren können?
+3. Asymmetrische Wechselkosten
+Ist der Aufwand für einen Anbieterwechsel höher als die potenzielle Ersparnis?
+(Junge Plattformen: NRR >110 %?)
 
-4. Der "Moderne Moat" (KI & Datenhoheit)
-KI-Check: Besitzt das Unternehmen proprietäre Datensätze, die durch KI einen uneinholbaren Vorsprung bei der Produktqualität oder Kosteneffizienz schaffen?
-Erosions-Check: Finden sich in den "Risk Factors" des 10-K Berichts Hinweise darauf, dass neue Technologien (z. B. generative KI) den bestehenden Burggraben bedrohen?`,
+4. Monopolistische Marktdichte
+Gibt es strukturelle Konzentration, die Newcomern Skalenerträge verwehrt?
+
+Erosions-Check: Risk Factors zu KI, Substitution, Margendruck.`,
   },
   {
     id: 'schritt-3',
@@ -124,9 +114,8 @@ Integrität & Kommunikation: Wirkt die Kommunikation in den Shareholder Letters 
 
 2. Kapitalallokation (Der „Litmus-Test“)
 Reinvestition: Wie viel vom Cashflow wird in das eigene Geschäft reinvestiert?
-Mantra-Check (Incremental ROIC): Erzielt das Management auf das neu investierte Kapital (Incremental ROIC) eine Rendite von >= 15%?
-Dividenden & Rückkäufe: Werden Dividenden aus dem echten Cashflow gezahlt?
-Mantra-Check (Share Count): Bleibt die Anzahl der ausstehenden Aktien stabil oder ist sie sinkend?
+Mantra-Check (Kapitalallokation): Ökonomischer ROIC (adjustiert) >15 % oder steigende Kurve bei Wachstumsfirmen?
+Verwässerung: Jährliche SBC-Verwässerung <2 % des Share Counts? Buybacks neutralisieren Verwässerung?
 M&A-Track-Record: Werden Übernahmen getätigt? Wenn ja: Sind sie strategisch sinnvoll oder führen sie zu hohen Goodwill-Abschreibungen?
 
 3. Anreize (Skin in the Game)
@@ -150,30 +139,23 @@ Primärquellen: (10-K, 10-Q, Cashflow-Statement, Balance Sheet, Income Statement
 Sekundärquellen: Nur zur Einordnung historischer 5- bis 10-Jahres-Durchschnitte.
 
 Analyse-Auftrag:
-Führe ein vollständiges quantitatives Audit von [UNTERNEHMEN] durch. Erstelle eine Tabelle, in der du die aktuellen Werte (LTM – Last Twelve Months) sowie den 3-Jahres-Schnitt gegen die Benchmarks meines Investmentmantras prüfst:
-1. Rentabilität & Kapitaleffizienz
-ROIC (LTM): Liegt die Gesamtkapitalrendite bei >= 15%?
-Value Spread: Ist der ROIC mindestens 5% höher als die Kapitalkosten (WACC)?
-Incremental ROIC: Wie hoch ist die Rendite auf die Reinvestitionen der letzten 3 Jahre? (Ziel: >= 15%).
+Quantitatives Audit gegen das Quality Investing Dashboard (LTM + 3-Jahres-Trend). Tabelle mit Ist vs. Benchmark:
 
-2. Margen & operative Stärke
-Gross Margin: Liegt die Bruttomarge bei >= 40%? (Beweis für Preissetzungsmacht).
-Net Margin: Bleibt eine Nettogewinnmarge von >= 15%?
+1. Ökonomischer ROIC (Adjustiert)
+ROICadj = NOPATadj ÷ IC (OCF − Erhaltungs-CapEx; IC ohne Goodwill).
+Benchmark: >15 % über 10 Jahre ODER steigende Kurve (Wachstumsfirma).
 
-3. Wachstum & Skalierbarkeit
-Revenue CAGR (3J): Liegt das durchschnittliche Umsatzwachstum bei >= 7%?
-EPS CAGR (3J): Wächst der Gewinn pro Aktie mit >= 10% (Anzeichen für operative Hebelwirkung)?
+2. Unit Economics (LTV/CAC)
+Benchmark: >4× über 3 Jahre; Kohorten-Bruttomarge stabil/expandierend.
 
-4. Cashflow-Qualität & Effizienz
-FCF Margin: Ist die Free-Cash-Flow-Marge >= 10%?
-FCF Conversion: Liegt das Verhältnis von FCF zu Nettogewinn bei > 90%? (Prüfung der Buchhaltungsqualität).
-Capex / Sales: Ist das Geschäft „Asset-Light“ (Investitionsbedarf < 5%)?
-SG&A / Gross Profit: Arbeitet der Vertrieb effizient (Kosten < 40% des Rohertrags)?
+3. Margen-Struktur & Skaleneffekte
+Inkrementelle operative Marge >20 % bei Umsatzwachstum; SG&A/Umsatz degressiv.
 
-5. Sicherheit & Kapitalpolitik
-Net Debt / EBITDA: Ist die Verschuldung moderat (< 2.5x)?
-Interest Coverage: Können Zinsen sicher gedeckt werden (> 10x)?
-Share Count: Wie hat sich die Aktienanzahl in den letzten 5 Jahren entwickelt? (Ziel: Stabil oder sinkend).`,
+4. FCF-Konvertierung & Rule of 40
+Etabliert: FCF/Nettogewinn >90 %. Wachstum: Rule of 40 >40 %.
+
+5. Verschuldung & Verwässerung
+Net Debt/EBITDA <2×; jährliche Verwässerung durch SBC <2 % p.a.`,
   },
   {
     id: 'schritt-5',
@@ -194,17 +176,18 @@ Analyse-Auftrag:
 Ermittle den fairen Wert von [UNTERNEHMEN] und vergleiche ihn mit dem aktuellen Kurs unter Berücksichtigung deines Mantras:
 1. Relative Bewertung (Multiples im historischen Kontext)
 KGV (P/E Ratio): Wo steht das aktuelle KGV im Vergleich zum 5- und 10-Jahres-Durchschnitt?
-FCF-Rendite (Free Cash Flow Yield): Wie hoch ist die FCF-Rendite basierend auf dem aktuellen Marktwert? (Mantra-Check: Bietet die FCF-Marge >= 10% eine attraktive Rendite im Vergleich zu risikolosen Staatsanleihen?)
+FCF-Rendite (Free Cash Flow Yield): Wie hoch ist die FCF-Rendite basierend auf dem aktuellen Marktwert? (Mantra-Check: FCF/Nettogewinn >90 % oder Rule of 40 >40 % bei Wachstumsfirmen?)
 Peer-Vergleich: Wie ist das Unternehmen im Vergleich zu direkten Wettbewerbern bewertet? Ist ein Aufschlag durch höhere Qualität (höherer ROIC) gerechtfertigt?
 
-2. Wachstumsbereinigte Bewertung (PEG-Ratio)
-Mantra-Check (EPS Growth): Setze das aktuelle KGV ins Verhältnis zum erwarteten EPS-Wachstum (Mantra: >= 10%).
-PEG-Analyse: Ist das PEG-Ratio unter 1,5 oder 2? (Ein Qualitätsunternehmen mit 15% Wachstum darf ein höheres KGV haben als ein stagnierendes Unternehmen).
+2. Wachstumsbereinigte Bewertung (Quality vs. Preis)
+Mantra-Check (ROIC adjustiert): Rechtfertigt die aktuelle Bewertung die erwartete Cash-Rendite auf investiertes Kapital (>15 % oder steigende Kurve)?
+Wachstums-Qualität: Wächst Umsatz/FCF pro Aktie organisch — oder nur durch Buybacks, SBC und Bilanzkosmetik?
+Rule of 40: Bei Wachstumsfirmen — Umsatzwachstum + FCF-Marge >40 %?
 
-3. Absolute Bewertung & Renditepotenzial (Szenario 2026-2031)
-Fair Value Schätzung: Was wäre ein konservativer "Fairer Wert" basierend auf einem realistischen Exit-Multiple in 5 Jahren?
-Rendite-Erwartung: Welche jährliche Gesamtrendite (IRR) ist zu erwarten, wenn das Unternehmen sein EPS-Wachstum von >= 10% beibehält und die Bewertung stabil bleibt?
-Sicherheitsmarge: Wie stark darf das Multiple sinken („Multiple Contraction“), bevor die jährliche Rendite unter 7% fällt?`,
+3. Absolute Bewertung & Renditepotenzial (Szenario 5 Jahre)
+Fair Value Schätzung: Konservativer Fair Value basierend auf realistischem Exit-Multiple und FCF-Konvertierung (>90 % bei etablierten Firmen).
+Rendite-Erwartung: Welche jährliche Gesamtrendite (IRR) ist realistisch, wenn ROIC und FCF-Konvertierung stabil bleiben?
+Sicherheitsmarge: Wie stark darf das Multiple sinken („Multiple Contraction“), bevor die erwartete Rendite unter deinem Mindestziel fällt?`,
   },
   {
     id: 'schritt-6',
@@ -223,26 +206,13 @@ Datenquellen-Hierarchie:
 Earnings Call Transcripts: Achte auf kritische Fragen von Analysten zu Margendruck oder Wettbewerb.
 
 Analyse-Auftrag:
-Analysiere die Risiken von [UNTERNEHMEN] und prüfe, welche Faktoren das Investmentmantra gefährden könnten:
-1. Erosion des Burggrabens & Margendruck
-Konkurrenz: Gibt es neue Wettbewerber oder Technologien (generative KI), die die Gross Margin dauerhaft unter 40% drücken könnten?
-Substitutionsgefahr: Könnte das Kernprodukt durch eine günstigere oder effizientere Lösung ersetzt werden?
+Prüfe Sell-Trigger-Kandidaten (nur bei irreversibler Hypothesen-Zerstörung — hohes KGV/Rezession sind KEIN Verkaufsgrund):
 
-2. Finanzielle & bilanzielle Risiken
-Mantra-Check (Verschuldung): Besteht das Risiko, dass die Net Debt / EBITDA über 2.5x steigt (z. B. durch geplante Übernahmen oder sinkende Gewinne)?
-Zinsrisiko: Wie empfindlich reagiert die Interest Coverage (> 10x) auf steigende Refinanzierungskosten? Prüfe die Fälligkeitsstruktur der Schulden.
+1. Struktureller Verfall der Renditen: ROIC adjustiert 3 Jahre fallend + LTV/CAC <3×?
+2. Erosion des Burggrabens: 24 Monate Marktanteilsverlust, sinkende NRR, Margenkompression?
+3. Künstliches Wachstum: Organisches Wachstum stagniert, EPS nur durch Buybacks/SBC/Bilanzkosmetik?
 
-3. Verwässerung & Fehlallokation (SBC-Check)
-SBC-Risiko: Wie hoch ist die aktienbasierte Vergütung als Prozentsatz des FCF? Droht eine schleichende Entwertung für Altaktionäre, die nicht durch Rückkäufe kompensiert wird?
-M&A-Risiko: Gibt es Anzeichen für „Diworsification“ (wertvernichtende Zukäufe in fremden Branchen)?
-
-4. Abhängigkeiten & Geopolitik
-Klumpenrisiken: Besteht eine Abhängigkeit von einzelnen Großkunden oder Lieferanten (z. B. TSMC für Chips)?
-Geopolitische Exposure: Wie verwundbar ist das operative Geschäft durch Spannungen (z. B. USA/China)? Könnten regulatorische Eingriffe die Net Margin (>= 15%) belasten?
-
-5. Operative Schwachstellen
-Schlüsselpersonen: Ist das Unternehmen zu stark von einer einzelnen Person (z. B. dem Gründer) abhängig?
-ESG-Risiken: Gibt es regulatorische Daumenschrauben (z. B. neue CO2-Steuern oder Datenschutzgesetze), die das Geschäftsmodell verteuern?`,
+Zusätzlich klassische Killer-Risiken aus 10-K Risk Factors.`,
   },
   {
     id: 'schritt-7',
@@ -264,8 +234,8 @@ Analyse-Auftrag:
 Bewerte die externe Widerstandsfähigkeit von [UNTERNEHMEN] basierend auf deinem Mantra:
 1. Makroökonomischer Wellengang (Zinsen & Inflation)
 Zinssensitivität: Wie ist die Schuldenstruktur? (Fest- vs. variabel verzinst).
-Mantra-Check (Sicherheit): Bleibt die Interest Coverage (> 10x) auch bei einer Refinanzierung zu deutlich höheren Marktzinsen stabil?
-Inflationsschutz: Besitzt das Unternehmen die Preissetzungsmacht (siehe Schritt 2), um steigende Inputkosten (Löhne, Rohstoffe) ohne Zeitverzug an die Kunden weiterzugeben und so die Net Margin (>= 15%) zu schützen?
+Mantra-Check (Sicherheit): Bleibt Net Debt/EBITDA unter 2× auch bei Refinanzierung zu deutlich höheren Marktzinsen stabil?
+Inflationsschutz: Besitzt das Unternehmen Preissetzungsmacht (Moat-Check), um steigende Inputkosten ohne Margenverfall weiterzugeben — und bleiben inkrementelle Op.-Margen bei Wachstum >20 %?
 
 2. Geopolitik & Supply Chain Resilienz
 Geografie des Gewinns: Besteht eine kritische Abhängigkeit von politisch instabilen Regionen oder Handelskonflikten (z. B. Taiwan/China-Exposure)?
@@ -318,7 +288,9 @@ Marktstellung: Signalisiert der Chart ein „Flucht in Qualität“-Verhalten de
     title: 'Prompt für Earningsanalyse',
     text: `Rolle: Agiere als Senior Equity Analyst mit einem Fokus auf fundamentale Analyse und Quality Compounders. Deine Arbeitsweise ist chirurgisch: Du dringst tiefer in die Materie ein als der Rest des Marktes. Dein Ziel ist es, das Narrativ des Managements zu dekonstruieren.
 
-Aufgabe: Analysiere die mitgesendeten Dokumente (Earnings Release PDF und Investor Presentation). Zerlege den Bericht bis ins kleinste Detail. Schau genau dorthin, wo es „weh tut“ – in die trockenen, langweiligen und komplexen Bereiche, die andere Analysten gerne übersehen.
+Aufgabe: Analysiere die mitgesendeten Dokumente (10-Q/10-K, Earnings Release, Investor Presentation). Zerlege den Bericht bis ins kleinste Detail. Schau genau dorthin, wo es „weh tut“ – in die trockenen, langweiligen und komplexen Bereiche, die andere Analysten gerne übersehen.
+
+Quality-Dashboard-Check: Ordne die Kennzahlen dem Framework zu (ROIC adjustiert, LTV/CAC, inkrementelle Op.-Marge, FCF-Konvertierung/Rule of 40, Net Debt/EBITDA, SBC-Verwässerung).
 
 WICHTIGE VORGABEN:
 
@@ -368,7 +340,7 @@ Detaillierte Aufschlüsselung des Ausblicks (Guidance) für das nächste Quartal
 Analyse der Kapitalallokation (Dividenden, Aktienrückkäufe, M&A, Reinvestitionen).
 
 3. Qualitative Analyse (Quality Check)
-Untersuche das Transkript auf Hinweise zu folgenden Punkten:
+Untersuche das Transkript auf Hinweise zu folgenden Punkten — abgeglichen mit 10-Q/10-K und dem Quality Investing Dashboard:
 
 Wettbewerbsvorteil (Moat): Gibt es Anzeichen für eine Stärkung oder Schwächung der Preismacht oder der Marktposition?
 
@@ -400,7 +372,7 @@ Stil: Analytisch, sachlich, präzise und professionell.`,
 
 for (const s of DEFAULT_STEPS) DEFAULT_BY_ID.set(s.id, s)
 
-type PersistFileV2 = { v: 2; steps: PromptStep[] }
+type PersistFileV2 = { v: 2 | 3; steps: PromptStep[] }
 
 function migrateLegacyPromptArray(parsed: unknown[]): PromptStep[] {
   const byId = new Map(
@@ -488,7 +460,7 @@ function loadStepsFromStorage(): PromptStep[] {
       parsed &&
       typeof parsed === 'object' &&
       !Array.isArray(parsed) &&
-      (parsed as PersistFileV2).v === 2 &&
+      (parsed as PersistFileV2).v >= 2 &&
       Array.isArray((parsed as PersistFileV2).steps)
     ) {
       return normalizeV2Steps((parsed as PersistFileV2).steps)
@@ -501,7 +473,7 @@ function loadStepsFromStorage(): PromptStep[] {
 }
 
 function persistSteps(steps: PromptStep[]) {
-  window.localStorage.setItem(STORAGE_KEY, JSON.stringify({ v: 2, steps } satisfies PersistFileV2))
+  window.localStorage.setItem(STORAGE_KEY, JSON.stringify({ v: 3, steps } satisfies PersistFileV2))
 }
 
 export function InvestmentResearchPrompts({ embedded = false }: { embedded?: boolean }) {

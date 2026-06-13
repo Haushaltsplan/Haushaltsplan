@@ -170,6 +170,9 @@ export function baueKontextWerte(ctx: FundamentalKontextInput) {
   const ebitdaHist = historischeWerte(ebitdaZeile, perioden)
   const ebitMargeHist = historischeWerte(ebitMargeZeile, perioden)
   const aktienHist = historischeWerte(aktienZeile, perioden)
+  const roicHist = historischeWerte(roiZeile, perioden)
+  const ebitHist = historischeWerte(ebitZeile, perioden)
+  const sgaHist = historischeWerte(sgaZeile, perioden)
 
   const umsatzCagr3 =
     umsatzHist.length >= 2 ? cagrProzent(umsatzHist.slice(-4), Math.min(3, umsatzHist.length - 1)) : null
@@ -190,6 +193,47 @@ export function baueKontextWerte(ctx: FundamentalKontextInput) {
 
   const aktienSinkend =
     aktienHist.length >= 2 ? aktienHist[aktienHist.length - 1]! < aktienHist[0]! : null
+
+  /** Junge/Wachstumsfirma: niedrige Profitabilität bei hohem Wachstum. */
+  const istWachstumsfirma =
+    (ebitMarge != null && ebitMarge < 15) ||
+    (nettoMio != null && nettoMio < 0) ||
+    (fcfMarge != null && fcfMarge < 10 && revGrowthPct != null && revGrowthPct > 12)
+
+  const roicSteigend =
+    roicHist.length >= 3 && roicHist[roicHist.length - 1]! > roicHist[0]! + 2
+  const roicKonstantHoch =
+    roicHist.length >= 5 && roicHist.filter((r) => r >= 15).length >= Math.ceil(roicHist.length * 0.7)
+
+  let inkrementelleOpMarge: number | null = null
+  if (ebitHist.length >= 2 && umsatzHist.length >= 2) {
+    const n = Math.min(ebitHist.length, umsatzHist.length)
+    const e0 = ebitHist[n - 2]!
+    const e1 = ebitHist[n - 1]!
+    const u0 = umsatzHist[n - 2]!
+    const u1 = umsatzHist[n - 1]!
+    const deltaU = u1 - u0
+    if (deltaU > 0) inkrementelleOpMarge = ((e1 - e0) / deltaU) * 100
+  }
+
+  const sgaRatioHist: number[] = []
+  for (let i = 0; i < Math.min(sgaHist.length, umsatzHist.length); i++) {
+    const u = umsatzHist[i]!
+    const s = sgaHist[i]!
+    if (u > 0 && s >= 0) sgaRatioHist.push((s / u) * 100)
+  }
+  const sgaDegressiv =
+    sgaRatioHist.length >= 3 && sgaRatioHist[sgaRatioHist.length - 1]! < sgaRatioHist[0]! - 0.5
+
+  let aktienVerwaesserungJaehrlichPct: number | null = null
+  if (aktienHist.length >= 2) {
+    const a0 = aktienHist[0]!
+    const a1 = aktienHist[aktienHist.length - 1]!
+    const jahre = aktienHist.length - 1
+    if (a0 > 0 && jahre > 0) {
+      aktienVerwaesserungJaehrlichPct = (Math.pow(a1 / a0, 1 / jahre) - 1) * 100
+    }
+  }
 
   return {
     bruttoMarge,
@@ -217,6 +261,14 @@ export function baueKontextWerte(ctx: FundamentalKontextInput) {
     payoutPct,
     pb,
     aktienSinkend,
+    roicHist,
+    roicSteigend,
+    roicKonstantHoch,
+    istWachstumsfirma,
+    inkrementelleOpMarge,
+    sgaRatioHist,
+    sgaDegressiv,
+    aktienVerwaesserungJaehrlichPct,
     ebitMargeHist,
     bruttoMargeHist: historischeWerte(bruttoMargeZeile, perioden),
     sbcAdjFcfMargin,

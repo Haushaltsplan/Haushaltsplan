@@ -55,10 +55,10 @@ function MantraAuditTabelle({
           <thead className="bg-zinc-900/60">
             <tr className="text-xs uppercase tracking-wide text-zinc-400">
               <th className="px-3 py-2.5 font-semibold">Kennzahl</th>
-              <th className="px-3 py-2.5 font-semibold">Ziel</th>
+              <th className="px-3 py-2.5 font-semibold">Benchmark</th>
               <th className="px-3 py-2.5 font-semibold">Ist (LTM)</th>
               <th className="px-3 py-2.5 font-semibold">Status</th>
-              <th className="px-3 py-2.5 font-semibold">Erklärung</th>
+              <th className="px-3 py-2.5 font-semibold">Rationale</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-zinc-800/70">
@@ -98,7 +98,7 @@ function MantraAuditTabelle({
             <p className="mt-1 text-sm font-medium text-white">{item.kennzahl}</p>
             <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm">
               <span>
-                <span className="text-zinc-500">Ziel: </span>
+                <span className="text-zinc-500">Benchmark: </span>
                 <span className="font-semibold text-teal-400">{item.zielwert}</span>
               </span>
               <span>
@@ -139,13 +139,11 @@ function ZusammenfassungLeiste({ audit }: { audit: FundamentalMantraAudit }) {
           {z.keineDaten} ohne Daten
         </span>
       ) : null}
-      {audit.sektorMantraTitel ? (
-        <span className="ml-auto text-xs text-zinc-500">
-          Sektor: <span className="text-zinc-300">{audit.sektorMantraTitel}</span>
+      {z.qualitativ > 0 ? (
+        <span className="rounded-full bg-amber-500/10 px-2.5 py-0.5 text-xs font-medium text-amber-200">
+          {z.qualitativ} qualitativ
         </span>
-      ) : (
-        <span className="ml-auto text-xs text-zinc-500">Nur Standard-Mantra (kein Sektor-Match)</span>
-      )}
+      ) : null}
     </div>
   )
 }
@@ -155,29 +153,68 @@ export function PaFundamentalMantra({ audit }: { audit: FundamentalMantraAudit }
     <div className="space-y-6 overflow-hidden rounded-xl border border-zinc-800/80 bg-zinc-950/80 p-4 ring-1 ring-white/[0.03] sm:p-5">
       <div>
         <p className="text-xs font-semibold uppercase tracking-wide text-zinc-400">Mantra-Check</p>
-        <p className="mt-1 text-sm leading-relaxed text-zinc-400">
-          Abgleich der Investment-Mantra-Vorgaben mit LTM-Daten aus Macrotrends, Yahoo Finance (Time Series) und
-          berechneten Kennzahlen.
+        <h2 className="mt-1 text-base font-semibold text-white">{audit.frameworkTitel}</h2>
+        <p className="mt-1 text-xs text-zinc-500">{audit.frameworkUntertitel}</p>
+        <p className="mt-3 text-sm leading-relaxed text-zinc-400">
+          Abgleich des quantitativen Dashboards mit LTM-Daten aus Macrotrends, Yahoo Finance und berechneten
+          Kennzahlen. Moat-Check und Sell-Triggers sind qualitative Referenz für Deep Research.
         </p>
       </div>
+
+      <blockquote className="rounded-xl border border-zinc-800/80 bg-zinc-900/40 px-4 py-3 text-sm italic leading-relaxed text-zinc-300">
+        {audit.anker}
+      </blockquote>
 
       <ZusammenfassungLeiste audit={audit} />
 
       <MantraAuditTabelle
-        titel="Standard-Mantra (Quality Compounding)"
-        intro="Universelle Benchmarks für langfristige Qualitäts-Investments — unabhängig von der Branche."
+        titel="2. Quantitatives Dashboard"
+        intro="Dynamische Kriterien — etablierte Compounder vs. junge Wachstumsfirmen."
         zeilen={audit.standard}
-        rowKeyPrefix="standard"
+        rowKeyPrefix="dashboard"
       />
 
-      {audit.sektor.length > 0 ? (
-        <MantraAuditTabelle
-          titel={audit.sektorMantraTitel ?? 'Sektor-Mantra'}
-          intro={audit.sektorMantraIntro}
-          zeilen={audit.sektor}
-          rowKeyPrefix="sektor"
-        />
-      ) : null}
+      <section className="space-y-3">
+        <div>
+          <h3 className="text-sm font-semibold tracking-tight text-white">3. Moat-Check (qualitativ)</h3>
+          <p className="mt-1 text-sm text-zinc-400">
+            Nicht automatisch bewertbar — in Earnings Calls, Quartalsreports und Deep Research prüfen.
+          </p>
+        </div>
+        <div className="space-y-3">
+          {audit.moatCheck.map((p) => (
+            <article
+              key={p.id}
+              className="rounded-xl border border-zinc-800/90 bg-zinc-950/40 px-4 py-3"
+            >
+              <p className="text-sm font-medium text-white">{p.titel}</p>
+              <p className="mt-2 text-sm leading-relaxed text-zinc-400">{p.beschreibung}</p>
+              <p className="mt-2 text-sm text-amber-200/90">
+                Killer-Frage: <span className="text-zinc-300">{p.killerFrage}</span>
+              </p>
+            </article>
+          ))}
+          <p className="rounded-xl border border-teal-500/20 bg-teal-500/5 px-4 py-3 text-sm text-zinc-300">
+            <span className="font-medium text-teal-300">Junge Plattformen: </span>
+            {audit.moatPlattformZusatz}
+          </p>
+        </div>
+      </section>
+
+      <section className="space-y-3">
+        <div>
+          <h3 className="text-sm font-semibold tracking-tight text-white">4. Sell-Triggers</h3>
+          <p className="mt-1 text-sm text-zinc-400">{audit.sellTriggersHinweis}</p>
+        </div>
+        <ol className="list-decimal space-y-3 pl-5 text-sm leading-relaxed text-zinc-300">
+          {audit.sellTriggers.map((t) => (
+            <li key={t.id}>
+              <span className="font-medium text-white">{t.titel}: </span>
+              {t.beschreibung}
+            </li>
+          ))}
+        </ol>
+      </section>
     </div>
   )
 }

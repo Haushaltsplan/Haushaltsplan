@@ -83,6 +83,19 @@ export type FundamentalMantraMeta = {
   yahooFinanz: import('@/lib/portfolio-analyse/yahoo-fundamentals-timeseries-server').MantraYahooFinanzdaten | null
 }
 
+export type MoatPfeilerRef = {
+  id: string
+  titel: string
+  beschreibung: string
+  killerFrage: string
+}
+
+export type SellTriggerRef = {
+  id: string
+  titel: string
+  beschreibung: string
+}
+
 export type FundamentalMantraAudit = {
   sektorMantraId: string | null
   sektorMantraTitel: string | null
@@ -96,6 +109,16 @@ export type FundamentalMantraAudit = {
     qualitativ: number
     bewertbar: number
   }
+  /** Quality Investing Framework — Abschnitt 1 */
+  anker: string
+  frameworkTitel: string
+  frameworkUntertitel: string
+  /** Abschnitt 3 — qualitative Burggräben */
+  moatCheck: readonly MoatPfeilerRef[]
+  moatPlattformZusatz: string
+  /** Abschnitt 4 — Exit-Disziplin */
+  sellTriggers: readonly SellTriggerRef[]
+  sellTriggersHinweis: string
 }
 
 export type FundamentalDcfKontext = {
