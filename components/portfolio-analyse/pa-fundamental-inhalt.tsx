@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { PaFundamentalEarningsCall } from '@/components/portfolio-analyse/pa-fundamental-earnings-call'
+import { PaFundamentalQuartalszahlen } from '@/components/portfolio-analyse/pa-fundamental-quartalszahlen'
 import { PaFundamentalMantra } from '@/components/portfolio-analyse/pa-fundamental-mantra'
 import { PaFundamentalNews } from '@/components/portfolio-analyse/pa-fundamental-news'
 import { PaFundamentalUebersicht } from '@/components/portfolio-analyse/pa-fundamental-uebersicht'
@@ -29,7 +29,7 @@ const UNTER_TABS = [
   { id: 'bewertung' as const, label: 'Bewertung' },
   { id: 'chartanalyse' as const, label: 'Chartanalyse' },
   { id: 'dcf' as const, label: 'DCF' },
-  { id: 'earnings_call' as const, label: 'Earnings Call' },
+  { id: 'quartalszahlen' as const, label: 'Quartalszahlen' },
   { id: 'news' as const, label: 'News' },
 ]
 
@@ -228,8 +228,8 @@ export function PaFundamentalInhalt({
             />
           ) : null}
 
-          {unterTab === 'earnings_call' ? (
-            <PaFundamentalEarningsCall
+          {unterTab === 'quartalszahlen' ? (
+            <PaFundamentalQuartalszahlen
               ticker={daten.ticker}
               firmenname={daten.firmenname}
               isin={anfrage.isin ?? null}
@@ -242,7 +242,7 @@ export function PaFundamentalInhalt({
           {unterTab !== 'uebersicht' &&
           unterTab !== 'news' &&
           unterTab !== 'mantra' &&
-          unterTab !== 'earnings_call' &&
+          unterTab !== 'quartalszahlen' &&
           unterTab !== 'chartanalyse' &&
           unterTab !== 'dcf' ? (
             <div className="space-y-4">

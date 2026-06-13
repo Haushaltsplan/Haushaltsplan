@@ -88,8 +88,41 @@ function evaluiereRoicAdjustiert(w: FundamentalKontextWerte) {
   return keineDaten(proxyHinweis)
 }
 
-function evaluiereLtvCac() {
-  return keineDaten('LTV/CAC nur im Geschäftsbericht oder Investor Relations — nicht automatisierbar.')
+function evaluiereLtvCac(w: FundamentalKontextWerte) {
+  const quelleLabel =
+    w.ltvCacQuelle === 'earnings_call'
+      ? 'Earnings Call'
+      : w.ltvCacQuelle === 'sec_10q'
+        ? 'SEC 10-Q'
+        : w.ltvCacQuelle === 'sec_10k'
+          ? 'SEC 10-K'
+          : null
+
+  if (w.ltvCac != null) {
+    const basis = quelleLabel ? `${quelleLabel}${w.ltvCacPeriode ? ` (${w.ltvCacPeriode})` : ''}` : 'Primärquelle'
+    const hinweis = [w.ltvCacHinweis, basis].filter(Boolean).join(' · ')
+    const ist = `${w.ltvCac.toLocaleString('de-DE', { maximumFractionDigits: 1 })}×`
+    return w.ltvCac >= 4
+      ? erfuellt(ist, w.ltvCac, hinweis || undefined)
+      : nichtErfuellt(ist, w.ltvCac, hinweis || 'Unter Benchmark 4×.')
+  }
+
+  if (w.nrrPct != null && w.nrrPct >= 110) {
+    const hinweis = [
+      w.ltvCacHinweis,
+      quelleLabel,
+      'LTV/CAC nicht genannt — NRR als Plattform-Proxy (>110 %).',
+    ]
+      .filter(Boolean)
+      .join(' · ')
+    return qualitativ(`${w.nrrPct.toLocaleString('de-DE', { maximumFractionDigits: 1 })} % NRR`, 'qualitativ', hinweis)
+  }
+
+  const suchHinweis =
+    w.ltvCacHinweis ??
+    'LTV/CAC wird von den meisten Börsen-APIs nicht geliefert. Nur wenn Management es in 10-Q/10-K oder Earnings Call nennt — oder manuell im Bericht prüfen. Für Nicht-SaaS oft nicht anwendbar.'
+
+  return keineDaten(suchHinweis)
 }
 
 function evaluiereMargenSkalierung(w: FundamentalKontextWerte) {
@@ -181,7 +214,7 @@ function evaluiereZeile(zeile: MantraZeile, _ctx: MantraKontext, w: FundamentalK
   const k = zeile.kennzahl.toLowerCase()
 
   if (k.includes('roic') && k.includes('adjust')) return evaluiereRoicAdjustiert(w)
-  if (k.includes('ltv') || k.includes('cac')) return evaluiereLtvCac()
+  if (k.includes('ltv') || k.includes('cac')) return evaluiereLtvCac(w)
   if (k.includes('margen-struktur') || k.includes('skaleneffekte')) return evaluiereMargenSkalierung(w)
   if (k.includes('fcf-konvertierung') || k.includes('rule of 40')) return evaluiereFcfRuleOf40(w)
   if (k.includes('verschuldung') || k.includes('verwässerung')) return evaluiereVerschuldungVerwaesserung(w)

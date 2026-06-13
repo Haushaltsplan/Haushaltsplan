@@ -11,6 +11,7 @@ import {
 } from '@/lib/portfolio-analyse/fundamentaldaten-roic-hilfen'
 import type { MacrotrendsFundamentalRoh } from '@/lib/portfolio-analyse/macrotrends-scraper-server'
 import type { MantraYahooFinanzdaten } from '@/lib/portfolio-analyse/yahoo-fundamentals-timeseries-server'
+import type { UnitEconomicsTreffer } from '@/lib/portfolio-analyse/unit-economics-extraktion'
 
 export type FundamentalKontextInput = {
   yahoo: YahooFundamentalKennzahlen | null
@@ -19,6 +20,8 @@ export type FundamentalKontextInput = {
   yahooFinanz: MantraYahooFinanzdaten | null
   /** StockAnalysis ROIIC; sonst Fallback aus Macrotrends EBIT+ROIC. */
   roiic?: RoiicErgebnis | null
+  /** LTV/CAC, NRR — aus SEC/Earnings Call extrahiert (falls genannt). */
+  unitEconomics?: UnitEconomicsTreffer | null
 }
 
 function historischeWerte(
@@ -280,6 +283,13 @@ export function baueKontextWerte(ctx: FundamentalKontextInput) {
     sgaSales,
     dsoHist,
     dsoAktuell,
+    ltvCac: ctx.unitEconomics?.ltvCac ?? null,
+    nrrPct: ctx.unitEconomics?.nrrPct ?? null,
+    grossRetentionPct: ctx.unitEconomics?.grossRetentionPct ?? null,
+    ltvCacQuelle: ctx.unitEconomics?.quelle ?? null,
+    ltvCacPeriode: ctx.unitEconomics?.periode ?? null,
+    ltvCacHinweis: ctx.unitEconomics?.hinweis ?? null,
+    ltvCacSnippet: ctx.unitEconomics?.snippet ?? null,
   }
 }
 

@@ -1,9 +1,8 @@
 'use client'
 
 import { PaFundamentalEarningsCallSpalte } from '@/components/portfolio-analyse/pa-fundamental-earnings-call-spalte'
-import { PaFundamentalSecBerichte } from '@/components/portfolio-analyse/pa-fundamental-sec-berichte'
 
-/** Earnings Call (links) + Quartalsberichte SEC (rechts). */
+/** Earnings Call — eigenes Unter-Tab in den Fundamentaldaten. */
 export function PaFundamentalEarningsCall({
   ticker,
   firmenname,
@@ -16,19 +15,11 @@ export function PaFundamentalEarningsCall({
   selectionKey?: string
 }) {
   return (
-    <div className="grid gap-4 xl:grid-cols-2 xl:items-start">
-      <PaFundamentalEarningsCallSpalte
-        ticker={ticker}
-        firmenname={firmenname}
-        isin={isin}
-        selectionKey={selectionKey}
-      />
-      <PaFundamentalSecBerichte
-        ticker={ticker}
-        firmenname={firmenname}
-        isin={isin}
-        selectionKey={selectionKey}
-      />
-    </div>
+    <PaFundamentalEarningsCallSpalte
+      ticker={ticker}
+      firmenname={firmenname}
+      isin={isin}
+      selectionKey={selectionKey}
+    />
   )
 }

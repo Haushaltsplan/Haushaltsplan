@@ -33,6 +33,7 @@ import {
   type MacrotrendsIdent,
   type MacrotrendsIdentOpts,
 } from '@/lib/portfolio-analyse/macrotrends-scraper-server'
+import { ladeUnitEconomics } from '@/lib/portfolio-analyse/unit-economics-server'
 import { holeYahooFinanceAuth } from '@/lib/portfolio-analyse/yahoo-finance-auth-server'
 
 const YAHOO_UA =
@@ -282,12 +283,13 @@ export async function ladeFundamentaldaten(anfrage: FundamentaldatenAnfrage): Pr
     })
   }
 
-  const [roh, yahooRaw, schaetzungen, news, yahooFinanz] = await Promise.all([
+  const [roh, yahooRaw, schaetzungen, news, yahooFinanz, unitEconomics] = await Promise.all([
     ladeMacrotrendsFundamentaldaten(ident),
     symbolYahoo ? ladeYahooFundamentalKennzahlen(symbolYahoo) : Promise.resolve(null),
     symbolYahoo ? ladeFundamentalSchaetzungen(symbolYahoo) : Promise.resolve({ perioden: [], zeilen: [] }),
     symbolYahoo ? ladeFundamentalNews(symbolYahoo, ident.firmenname) : Promise.resolve([]),
     symbolYahoo ? ladeYahooMantraFinanzdaten(symbolYahoo) : Promise.resolve(null),
+    ladeUnitEconomics(ident.ticker).catch(() => null),
   ])
 
   const yahooExt = yahooRaw as (YahooFundamentalKennzahlen & {
@@ -367,6 +369,7 @@ export async function ladeFundamentaldaten(anfrage: FundamentaldatenAnfrage): Pr
     schaetzungen,
     yahooFinanz,
     roiic: roiicDaten,
+    unitEconomics,
   })
   const dcfKontext = baueDcfKontext(yahooExt, merged.zeilen, merged.perioden)
 
