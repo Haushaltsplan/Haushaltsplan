@@ -1,6 +1,7 @@
 import type { FundamentalMetrikZeile, FundamentalPeriode } from '@/lib/portfolio-analyse/fundamentaldaten-types'
 import { FUNDAMENTAL_TTM_KEY } from '@/lib/portfolio-analyse/fundamentaldaten-types'
-import type { StockanalysisRoicDaten } from '@/lib/portfolio-analyse/stockanalysis-roic-server'
+import { baueRoiicWerteAusMacrotrendsZeilen } from '@/lib/portfolio-analyse/fundamentaldaten-roic-hilfen'
+import type { StockanalysisRoicDaten, StockanalysisRoiicDaten } from '@/lib/portfolio-analyse/stockanalysis-roic-server'
 
 function findePeriodenIso(
   perioden: FundamentalPeriode[],
@@ -75,6 +76,45 @@ export function ergaenzeRoicZeile(
     }
   }
   return ergaenzt
+}
+
+/** Baut die ROIIC-Zeile (YoY ΔNOPAT / ΔIC) für die Rentabilitätstabelle. */
+export function ergaenzeRoiicZeile(
+  zeilen: FundamentalMetrikZeile[],
+  perioden: FundamentalPeriode[],
+  ebitZeile: FundamentalMetrikZeile | undefined,
+  roiZeile: FundamentalMetrikZeile | undefined,
+  roiicDaten: StockanalysisRoiicDaten | null,
+): boolean {
+  const werte: Record<string, number> = {
+    ...baueRoiicWerteAusMacrotrendsZeilen(perioden, ebitZeile, roiZeile),
+  }
+
+  if (roiicDaten?.werte && Object.keys(roiicDaten.werte).length > 0) {
+    const gemappt = mappeAufMacrotrendsPerioden(roiicDaten.werte, perioden)
+    for (const [iso, v] of Object.entries(gemappt)) {
+      werte[iso] = v
+    }
+  }
+
+  if (Object.keys(werte).length === 0) return false
+
+  const roiicZeile: FundamentalMetrikZeile = {
+    id: 'roiic',
+    label: 'Inkrementelle Kapitalrendite (ROIIC %)',
+    gruppe: 'rentabilitaet',
+    einheit: 'prozent',
+    werte,
+  }
+
+  const existingIdx = zeilen.findIndex((z) => z.id === 'roiic')
+  if (existingIdx >= 0) zeilen.splice(existingIdx, 1)
+
+  const roiIdx = zeilen.findIndex((z) => z.id === 'roi')
+  if (roiIdx >= 0) zeilen.splice(roiIdx + 1, 0, roiicZeile)
+  else zeilen.push(roiicZeile)
+
+  return true
 }
 
 export function roiZeileBrauchtFallback(

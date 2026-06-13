@@ -175,18 +175,13 @@ export function berechneRoiicYoY(
   }
 }
 
-/** Fallback: IC aus ROIC-Identität (IC = NOPAT / ROIC), wenn keine Bilanz verfügbar. */
-export function berechneRoiicAusMacrotrendsZeilen(
-  perioden: FundamentalPeriode[] | undefined,
+/** YoY-ROIIC für ein Geschäftsjahrespaar (IC ≈ NOPAT / ROIC aus Macrotrends). */
+export function berechneRoiicFuerGeschaeftsjahresPaar(
   ebitZeile: FundamentalMetrikZeile | undefined,
   roiZeile: FundamentalMetrikZeile | undefined,
+  priorKey: string,
+  latestKey: string,
 ): RoiicErgebnis | null {
-  const fyKeys = perioden?.filter((p) => !p.istLtm && !p.istSchaetzung).map((p) => p.iso) ?? []
-  if (fyKeys.length < 2) return null
-
-  const priorKey = fyKeys[fyKeys.length - 2]!
-  const latestKey = fyKeys[fyKeys.length - 1]!
-
   const ebitPriorMio = ebitZeile?.werte[priorKey]
   const ebitLatestMio = ebitZeile?.werte[latestKey]
   const roicPrior = roiZeile?.werte[priorKey]
@@ -216,6 +211,50 @@ export function berechneRoiicAusMacrotrendsZeilen(
     priorKey.slice(0, 4),
     latestKey.slice(0, 4),
     'macrotrends',
+  )
+}
+
+/** Historische ROIIC-Werte pro Geschäftsjahr (jeweils YoY zum Vorjahr). */
+export function baueRoiicWerteAusMacrotrendsZeilen(
+  perioden: FundamentalPeriode[] | undefined,
+  ebitZeile: FundamentalMetrikZeile | undefined,
+  roiZeile: FundamentalMetrikZeile | undefined,
+): Record<string, number> {
+  const fyKeys = perioden?.filter((p) => !p.istLtm && !p.istSchaetzung).map((p) => p.iso) ?? []
+  const werte: Record<string, number> = {}
+
+  for (let i = 1; i < fyKeys.length; i++) {
+    const ergebnis = berechneRoiicFuerGeschaeftsjahresPaar(
+      ebitZeile,
+      roiZeile,
+      fyKeys[i - 1]!,
+      fyKeys[i]!,
+    )
+    if (ergebnis) werte[fyKeys[i]!] = ergebnis.pct
+  }
+
+  const lastFy = fyKeys[fyKeys.length - 1]
+  if (lastFy && werte[lastFy] != null) {
+    werte[FUNDAMENTAL_TTM_KEY] = werte[lastFy]
+  }
+
+  return werte
+}
+
+/** Fallback: IC aus ROIC-Identität (IC = NOPAT / ROIC), wenn keine Bilanz verfügbar. */
+export function berechneRoiicAusMacrotrendsZeilen(
+  perioden: FundamentalPeriode[] | undefined,
+  ebitZeile: FundamentalMetrikZeile | undefined,
+  roiZeile: FundamentalMetrikZeile | undefined,
+): RoiicErgebnis | null {
+  const fyKeys = perioden?.filter((p) => !p.istLtm && !p.istSchaetzung).map((p) => p.iso) ?? []
+  if (fyKeys.length < 2) return null
+
+  return berechneRoiicFuerGeschaeftsjahresPaar(
+    ebitZeile,
+    roiZeile,
+    fyKeys[fyKeys.length - 2]!,
+    fyKeys[fyKeys.length - 1]!,
   )
 }
 

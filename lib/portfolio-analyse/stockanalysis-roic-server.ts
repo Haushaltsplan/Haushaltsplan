@@ -45,7 +45,7 @@ export type StockanalysisRoicDaten = {
   url: string
 }
 
-export type StockanalysisRoiicDaten = RoiicErgebnis & { url: string }
+export type StockanalysisRoiicDaten = RoiicErgebnis & { url: string; werte: Record<string, number> }
 
 let letzterAbruf = 0
 const roicCache = new Map<string, { at: number; daten: StockanalysisRoicDaten | null }>()
@@ -120,10 +120,10 @@ function parseRoicAusHtml(html: string): Record<string, number> | null {
   return Object.keys(werte).length > 0 ? werte : null
 }
 
-function berechneRoiicAusStockanalysisSeiten(
+function berechneRoiicStockanalysisDaten(
   incomeHtml: string,
   balanceHtml: string,
-): RoiicErgebnis | null {
+): { ergebnis: RoiicErgebnis | null; werte: Record<string, number> } {
   const jahre = parseGeschaeftsjahre(balanceHtml) ?? parseGeschaeftsjahre(incomeHtml)
   const opInc = parseZahlenFeld(incomeHtml, 'operatingIncome')
   const pretax = parseZahlenFeld(incomeHtml, 'pretax')
@@ -132,34 +132,39 @@ function berechneRoiicAusStockanalysisSeiten(
   const currAssets = parseZahlenFeld(balanceHtml, 'assetsc')
   const currLiab = parseZahlenFeld(balanceHtml, 'liabilitiesc')
 
-  if (!jahre || jahre.length < 2 || !opInc || !ppAndE || !currAssets || !currLiab) return null
+  if (!jahre || jahre.length < 2 || !opInc || !ppAndE || !currAssets || !currLiab) {
+    return { ergebnis: null, werte: {} }
+  }
 
-  const idxJuenger = 1
-  const idxAelter = 2
-  if (opInc.length <= idxAelter || ppAndE.length <= idxAelter) return null
+  const werte: Record<string, number> = {}
+  let ergebnis: RoiicErgebnis | null = null
 
-  const nopatAelter = nopatUsd(opInc[idxAelter], pretax?.[idxAelter], tax?.[idxAelter])
-  const nopatJuenger = nopatUsd(opInc[idxJuenger], pretax?.[idxJuenger], tax?.[idxJuenger])
-  const icAelter = investedCapitalAnlageUndWcUsd(
-    ppAndE[idxAelter],
-    currAssets[idxAelter],
-    currLiab[idxAelter],
-  )
-  const icJuenger = investedCapitalAnlageUndWcUsd(
-    ppAndE[idxJuenger],
-    currAssets[idxJuenger],
-    currLiab[idxJuenger],
-  )
+  for (let j = 0; j < jahre.length - 1; j++) {
+    const idxJuenger = j + 1
+    const idxAelter = j + 2
+    if (opInc.length <= idxAelter || ppAndE.length <= idxAelter) break
 
-  return berechneRoiicYoY(
-    nopatAelter,
-    nopatJuenger,
-    icAelter,
-    icJuenger,
-    jahre[idxAelter - 1]!.slice(0, 4),
-    jahre[idxJuenger - 1]!.slice(0, 4),
-    'stockanalysis',
-  )
+    const paar = berechneRoiicYoY(
+      nopatUsd(opInc[idxAelter], pretax?.[idxAelter], tax?.[idxAelter]),
+      nopatUsd(opInc[idxJuenger], pretax?.[idxJuenger], tax?.[idxJuenger]),
+      investedCapitalAnlageUndWcUsd(ppAndE[idxAelter], currAssets[idxAelter], currLiab[idxAelter]),
+      investedCapitalAnlageUndWcUsd(ppAndE[idxJuenger], currAssets[idxJuenger], currLiab[idxJuenger]),
+      jahre[j + 1]!.slice(0, 4),
+      jahre[j]!.slice(0, 4),
+      'stockanalysis',
+    )
+    if (!paar) continue
+
+    werte[jahre[j]!] = paar.pct
+    if (j === 0) ergebnis = paar
+  }
+
+  const latestFy = jahre[0]
+  if (latestFy && werte[latestFy] != null) {
+    werte[FUNDAMENTAL_TTM_KEY] = werte[latestFy]
+  }
+
+  return { ergebnis, werte }
 }
 
 function ratiosPfadAusHit(hit: SearchHit): string | null {
@@ -281,9 +286,25 @@ async function ladeRoiicVonBasisPfad(basis: string): Promise<StockanalysisRoiicD
     fetchHtml(`${basis}balance-sheet/`),
   ])
   if (!incomeHtml || !balanceHtml) return null
-  const ergebnis = berechneRoiicAusStockanalysisSeiten(incomeHtml, balanceHtml)
-  if (!ergebnis) return null
-  return { ...ergebnis, url: `${BASE}${basis}` }
+  const { ergebnis, werte } = berechneRoiicStockanalysisDaten(incomeHtml, balanceHtml)
+  if (!ergebnis && Object.keys(werte).length === 0) return null
+  if (!ergebnis) {
+    const jahre = parseGeschaeftsjahre(balanceHtml) ?? parseGeschaeftsjahre(incomeHtml)
+    const latestFy = jahre?.[0]
+    const pct = latestFy ? werte[latestFy] : undefined
+    if (pct == null) return null
+    return {
+      pct,
+      deltaNopatUsd: 0,
+      deltaIcUsd: 0,
+      vonJahr: jahre?.[1]?.slice(0, 4) ?? '',
+      bisJahr: latestFy?.slice(0, 4) ?? '',
+      quelle: 'stockanalysis' as const,
+      werte,
+      url: `${BASE}${basis}`,
+    }
+  }
+  return { ...ergebnis, werte, url: `${BASE}${basis}` }
 }
 
 async function ladeRoicVonPfad(pfad: string): Promise<StockanalysisRoicDaten | null> {

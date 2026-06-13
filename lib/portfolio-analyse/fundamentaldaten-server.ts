@@ -7,7 +7,7 @@ import {
 } from '@/lib/portfolio-analyse/fundamentaldaten-key-metrics'
 import { baueMantraAudit } from '@/lib/portfolio-analyse/fundamentaldaten-mantra'
 import { baueKontextWerte } from '@/lib/portfolio-analyse/fundamentaldaten-kontext-werte'
-import { ergaenzeRoicZeile, roiZeileBrauchtFallback } from '@/lib/portfolio-analyse/fundamentaldaten-roic-fallback'
+import { ergaenzeRoicZeile, ergaenzeRoiicZeile, roiZeileBrauchtFallback } from '@/lib/portfolio-analyse/fundamentaldaten-roic-fallback'
 import { ladeStockanalysisRoic, ladeStockanalysisRoiic } from '@/lib/portfolio-analyse/stockanalysis-roic-server'
 import { ladeYahooMantraFinanzdaten } from '@/lib/portfolio-analyse/yahoo-fundamentals-timeseries-server'
 import { ladeFundamentalNews } from '@/lib/portfolio-analyse/fundamentaldaten-news-server'
@@ -339,6 +339,13 @@ export async function ladeFundamentaldaten(anfrage: FundamentaldatenAnfrage): Pr
     ladeStockanalysisRoiic(stockanalysisOpts),
   ])
   if (roicDaten) ergaenzeRoicZeile(merged.zeilen, merged.perioden, roicDaten)
+  ergaenzeRoiicZeile(
+    merged.zeilen,
+    merged.perioden,
+    merged.zeilen.find((z) => z.id === 'ebit'),
+    merged.zeilen.find((z) => z.id === 'roi'),
+    roiicDaten,
+  )
   const ntm = await baueNtmBewertungsZeilen(symbolYahoo, merged.perioden, merged.zeilen, yahooExt)
   if (ntm.zeilen.length > 0) {
     if (ntm.periodenPatch && !merged.perioden.some((p) => p.iso === FUNDAMENTAL_NTM_KEY)) {

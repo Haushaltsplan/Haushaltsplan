@@ -145,9 +145,10 @@ export function baueKontextWerte(ctx: FundamentalKontextInput) {
 
   const valueSpread = roic != null && wacc != null ? roic - wacc : null
 
+  const roiicZeile = zeile('roiic')
   const roiicErgebnis =
     ctx.roiic ?? berechneRoiicAusMacrotrendsZeilen(perioden, ebitZeile, roiZeile)
-  const roiic = roiicErgebnis?.pct ?? null
+  const roiic = letzterWert(roiicZeile, perioden) ?? roiicErgebnis?.pct ?? null
 
   const roe =
     letzterWert(roeZeile, perioden) ??
