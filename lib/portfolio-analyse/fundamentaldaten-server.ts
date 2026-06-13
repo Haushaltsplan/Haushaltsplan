@@ -6,6 +6,7 @@ import {
   type YahooFundamentalKennzahlen,
 } from '@/lib/portfolio-analyse/fundamentaldaten-key-metrics'
 import { baueMantraAudit } from '@/lib/portfolio-analyse/fundamentaldaten-mantra'
+import { baueKontextWerte } from '@/lib/portfolio-analyse/fundamentaldaten-kontext-werte'
 import { ergaenzeRoicZeile, roiZeileBrauchtFallback } from '@/lib/portfolio-analyse/fundamentaldaten-roic-fallback'
 import { ladeStockanalysisRoic, ladeStockanalysisRoiic } from '@/lib/portfolio-analyse/stockanalysis-roic-server'
 import { ladeYahooMantraFinanzdaten } from '@/lib/portfolio-analyse/yahoo-fundamentals-timeseries-server'
@@ -315,7 +316,7 @@ export async function ladeFundamentaldaten(anfrage: FundamentaldatenAnfrage): Pr
       sektor: brancheMeta.sektor,
       website: yahooExt?.website ?? null,
       beschreibung: beschreibungDe,
-      keyMetrics: baueKeyMetrics(yahooExt, null, schaetzungen),
+      keyMetrics: baueKeyMetrics(yahooExt, null, schaetzungen, null),
       mantra: baueMantraAudit(brancheMeta.sektor, brancheMeta.branche, yahooExt, null, schaetzungen, yahooFinanz),
       mantraMeta,
       news,
@@ -352,6 +353,14 @@ export async function ladeFundamentaldaten(anfrage: FundamentaldatenAnfrage): Pr
   }
   const sektorFinal = brancheMeta.sektor
   const brancheFinal = brancheMeta.branche ?? roh.branche
+  const mergedRoh = { ...roh, perioden: merged.perioden, zeilen: merged.zeilen }
+  const kontextWerte = baueKontextWerte({
+    yahoo: yahooExt,
+    roh: rohFuerMantra(merged),
+    schaetzungen,
+    yahooFinanz,
+    roiic: roiicDaten,
+  })
   const dcfKontext = baueDcfKontext(yahooExt, merged.zeilen, merged.perioden)
 
   return leeresPaket({
@@ -365,14 +374,17 @@ export async function ladeFundamentaldaten(anfrage: FundamentaldatenAnfrage): Pr
     beschreibung: beschreibungDe,
     perioden: merged.perioden,
     zeilen: merged.zeilen,
-    keyMetrics: baueKeyMetrics(
-      yahooExt,
-      { ...roh, perioden: merged.perioden, zeilen: merged.zeilen },
-      schaetzungen,
-      { roiic: roiicDaten },
-    ),
+    keyMetrics: baueKeyMetrics(yahooExt, mergedRoh, schaetzungen, kontextWerte),
     dcfKontext,
-    mantra: baueMantraAudit(sektorFinal, brancheFinal, yahooExt, rohFuerMantra(merged), schaetzungen, yahooFinanz),
+    mantra: baueMantraAudit(
+      sektorFinal,
+      brancheFinal,
+      yahooExt,
+      rohFuerMantra(merged),
+      schaetzungen,
+      yahooFinanz,
+      kontextWerte,
+    ),
     mantraMeta,
     news,
     symbolYahoo,

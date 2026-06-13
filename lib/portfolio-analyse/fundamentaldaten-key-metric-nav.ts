@@ -14,6 +14,7 @@ const NAV: Record<string, KeyMetricNavZiel> = {
   ltm_roic: { tab: 'finanzdaten', zeileId: 'roi' },
   ltm_roce: { tab: 'finanzdaten', zeileId: 'roi' },
   ltm_roiic: { tab: 'finanzdaten', zeileId: 'ebit' },
+  ltm_value_spread: { tab: 'finanzdaten', zeileId: 'roi' },
   rev_cagr_3y: { tab: 'finanzdaten', zeileId: 'umsatz' },
   ebitda_cagr_3y: { tab: 'finanzdaten', zeileId: 'ebitda' },
   eps_cagr_3y: { tab: 'finanzdaten', zeileId: 'eps' },

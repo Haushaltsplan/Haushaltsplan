@@ -9,9 +9,8 @@ import type {
   FundamentalPeriode,
 } from '@/lib/portfolio-analyse/fundamentaldaten-types'
 import { FUNDAMENTAL_TTM_KEY } from '@/lib/portfolio-analyse/fundamentaldaten-types'
+import type { FundamentalKontextWerte } from '@/lib/portfolio-analyse/fundamentaldaten-kontext-werte'
 import type { MacrotrendsFundamentalRoh } from '@/lib/portfolio-analyse/macrotrends-scraper-server'
-import type { RoiicErgebnis } from '@/lib/portfolio-analyse/fundamentaldaten-roic-hilfen'
-import { berechneRoiicAusMacrotrendsZeilen } from '@/lib/portfolio-analyse/fundamentaldaten-roic-hilfen'
 
 export type YahooFundamentalKennzahlen = {
   fiftyTwoWeekHigh?: number
@@ -68,37 +67,6 @@ function letzterGeschaeftsjahresWert(
   return lastKey ? wertAnPeriode(zeile, lastKey) : null
 }
 
-function historischeWerte(
-  zeile: FundamentalMetrikZeile | undefined,
-  perioden: FundamentalPeriode[] | undefined,
-): number[] {
-  const keys = perioden?.filter((p) => !p.istLtm && !p.istSchaetzung).map((p) => p.iso) ?? []
-  return keys.map((k) => zeile?.werte[k]).filter((v): v is number => v != null)
-}
-
-function berechneMargePct(zaehler: number | null, nenner: number | null): number | null {
-  if (zaehler == null || nenner == null || nenner === 0) return null
-  return (zaehler / nenner) * 100
-}
-
-function ttmOderBerechnet(
-  ratioZeile: FundamentalMetrikZeile | undefined,
-  zaehlerZeile: FundamentalMetrikZeile | undefined,
-  nennerZeile: FundamentalMetrikZeile | undefined,
-  perioden: FundamentalPeriode[] | undefined,
-  yahooDezimal?: number,
-): number | null {
-  const ausRatio = letzterGeschaeftsjahresWert(ratioZeile, perioden)
-  if (ausRatio != null) return ausRatio
-  const marge = berechneMargePct(
-    letzterGeschaeftsjahresWert(zaehlerZeile, perioden),
-    letzterGeschaeftsjahresWert(nennerZeile, perioden),
-  )
-  if (marge != null) return marge
-  if (yahooDezimal != null) return yahooDezimal * 100
-  return null
-}
-
 function multiple(v: number | null | undefined): string {
   return v != null && Number.isFinite(v) ? formatFundamentalWert(v, 'multiple') : '–'
 }
@@ -117,14 +85,21 @@ function waehrungNegativ(v: number | null | undefined): string {
   return v < 0 ? `(${s})` : s
 }
 
+function pctSigned(v: number | null | undefined): string {
+  if (v == null || !Number.isFinite(v)) return '–'
+  if (v < 0) return `(${formatFundamentalWert(Math.abs(v), 'prozent')})`
+  return formatFundamentalWert(v, 'prozent')
+}
+
 export function baueKeyMetrics(
   yahoo: YahooFundamentalKennzahlen | null,
   roh: MacrotrendsFundamentalRoh | null,
   schaetzungen: FundamentalSchaetzungenRoh,
-  extras?: { roiic?: RoiicErgebnis | null },
+  kontextWerte: FundamentalKontextWerte | null,
 ): FundamentalKeyMetric[] {
   const out: FundamentalKeyMetric[] = []
   const perioden = roh?.perioden
+  const w = kontextWerte
 
   const floatPct =
     yahoo?.floatShares != null && yahoo?.sharesOutstanding != null && yahoo.sharesOutstanding > 0
@@ -141,13 +116,9 @@ export function baueKeyMetrics(
     { id: 'float', label: 'Free Float', wert: pctRaw(floatPct), gruppe: 'marktdaten' },
   )
 
-  const netDebt =
-    yahoo?.totalDebt != null && yahoo?.totalCash != null ? yahoo.totalDebt - yahoo.totalCash : null
-
+  const netDebt = w?.netDebt ?? null
   const ebitdaGuV = roh?.zeilen.find((z) => z.id === 'ebitda')
-  const ebitdaMio = letzterGeschaeftsjahresWert(ebitdaGuV, perioden)
-  const netDebtEbitda =
-    netDebt != null && ebitdaMio != null && ebitdaMio > 0 ? netDebt / (ebitdaMio * 1_000_000) : null
+  const netDebtEbitda = w?.netDebtEbitda ?? null
 
   out.push(
     {
@@ -185,69 +156,56 @@ export function baueKeyMetrics(
     },
   )
 
-  const bruttoZeile = roh?.zeilen.find((z) => z.id === 'bruttomarge')
-  const ebitdaZeile = roh?.zeilen.find((z) => z.id === 'ebitda_marge')
-  const ebitZeile = roh?.zeilen.find((z) => z.id === 'ebit_marge')
-  const roeZeile = roh?.zeilen.find((z) => z.id === 'roe')
-  const roaZeile = roh?.zeilen.find((z) => z.id === 'roa')
-  const roiZeile = roh?.zeilen.find((z) => z.id === 'roi')
-  const umsatzZeile = roh?.zeilen.find((z) => z.id === 'umsatz')
-  const bruttoGewinnZeile = roh?.zeilen.find((z) => z.id === 'bruttogewinn')
-  const ebitGuV = roh?.zeilen.find((z) => z.id === 'ebit')
-  const epsZeile = roh?.zeilen.find((z) => z.id === 'eps')
   const fcfZeile = roh?.zeilen.find((z) => z.id === 'fcf')
-
-  const roiic =
-    extras?.roiic ??
-    berechneRoiicAusMacrotrendsZeilen(perioden, ebitGuV, roiZeile)
+  const umsatzZeile = roh?.zeilen.find((z) => z.id === 'umsatz')
 
   out.push(
     {
       id: 'ltm_brutto',
       label: 'LTM Bruttomarge',
-      wert: pctRaw(ttmOderBerechnet(bruttoZeile, bruttoGewinnZeile, umsatzZeile, perioden, yahoo?.grossMargins)),
+      wert: pctRaw(w?.bruttoMarge),
       gruppe: 'effizienz',
     },
     {
       id: 'ltm_ebit',
       label: 'LTM EBIT-Marge',
-      wert: pctRaw(ttmOderBerechnet(ebitZeile, ebitGuV, umsatzZeile, perioden, yahoo?.operatingMargins)),
+      wert: pctRaw(w?.ebitMarge),
       gruppe: 'effizienz',
     },
     {
       id: 'ltm_roa',
       label: 'LTM ROA',
-      wert: pctRaw(
-        letzterGeschaeftsjahresWert(roaZeile, perioden) ??
-          (yahoo?.returnOnAssets != null ? yahoo.returnOnAssets * 100 : null),
-      ),
+      wert: pctRaw(w?.roa),
       gruppe: 'effizienz',
     },
     {
       id: 'ltm_roe',
       label: 'LTM ROE',
-      wert: pctRaw(
-        letzterGeschaeftsjahresWert(roeZeile, perioden) ??
-          (yahoo?.returnOnEquity != null ? yahoo.returnOnEquity * 100 : null),
-      ),
+      wert: pctRaw(w?.roe),
       gruppe: 'effizienz',
     },
     {
       id: 'ltm_roic',
       label: 'LTM ROIC',
-      wert: pctRaw(letzterGeschaeftsjahresWert(roiZeile, perioden)),
+      wert: pctRaw(w?.roic),
       gruppe: 'effizienz',
     },
     {
       id: 'ltm_roce',
       label: 'LTM ROCE',
-      wert: pctRaw(letzterGeschaeftsjahresWert(roiZeile, perioden)),
+      wert: pctRaw(w?.roic),
       gruppe: 'effizienz',
     },
     {
       id: 'ltm_roiic',
       label: 'LTM ROIIC',
-      wert: pctRaw(roiic?.pct),
+      wert: pctRaw(w?.roiic),
+      gruppe: 'effizienz',
+    },
+    {
+      id: 'ltm_value_spread',
+      label: 'Value Spread (ROIC − WACC)',
+      wert: pctSigned(w?.valueSpread),
       gruppe: 'effizienz',
     },
   )
@@ -256,10 +214,6 @@ export function baueKeyMetrics(
   const epsSchaetz0 = schaetzungen.zeilen.find((z) => z.id === 'eps_schaetzung')
   const fy0Key = schaetzungen.perioden[0]?.iso
   const fy1Key = schaetzungen.perioden[1]?.iso
-
-  const umsatzHist = historischeWerte(umsatzZeile, perioden)
-  const ebitdaHist = historischeWerte(ebitdaGuV, perioden)
-  const epsHist = historischeWerte(epsZeile, perioden)
 
   const revCagr2 =
     fy0Key && fy1Key && umsatzSchaetz0
@@ -293,19 +247,19 @@ export function baueKeyMetrics(
     {
       id: 'rev_cagr_3y',
       label: 'Umsatz-CAGR (3J)',
-      wert: pctRaw(umsatzHist.length >= 2 ? cagrProzent(umsatzHist.slice(-4), 3) : null),
+      wert: pctRaw(w?.umsatzCagr3),
       gruppe: 'wachstum',
     },
     {
       id: 'ebitda_cagr_3y',
       label: 'EBITDA-CAGR (3J)',
-      wert: pctRaw(ebitdaHist.length >= 2 ? cagrProzent(ebitdaHist.slice(-4), 3) : null),
+      wert: pctRaw(w?.ebitdaCagr3),
       gruppe: 'wachstum',
     },
     {
       id: 'eps_cagr_3y',
       label: 'EPS-CAGR (3J)',
-      wert: pctRaw(epsHist.length >= 2 ? cagrProzent(epsHist.slice(-4), 3) : null),
+      wert: pctRaw(w?.epsCagr3),
       gruppe: 'wachstum',
     },
   )
@@ -371,7 +325,7 @@ export function baueKeyMetrics(
     {
       id: 'ltm_pb',
       label: 'LTM KBV (P/B)',
-      wert: multiple(letzterGeschaeftsjahresWert(pbZeile, perioden) ?? yahoo?.priceToBook),
+      wert: multiple(letzterGeschaeftsjahresWert(pbZeile, perioden) ?? w?.pb),
       gruppe: 'bewertung_ltm',
     },
     {
@@ -392,7 +346,7 @@ export function baueKeyMetrics(
     {
       id: 'payout',
       label: 'Ausschüttungsquote',
-      wert: yahoo?.payoutRatio != null ? pctRaw(yahoo.payoutRatio * 100) : '–',
+      wert: pctRaw(w?.payoutPct),
       gruppe: 'bewertung_ltm',
     },
   )

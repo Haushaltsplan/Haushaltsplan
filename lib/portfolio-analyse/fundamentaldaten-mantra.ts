@@ -3,19 +3,16 @@ import {
   SEKTOR_MANTRAS,
   type MantraZeile,
 } from '@/lib/investment-mantra-data'
-import { cagrProzent, formatFundamentalWert } from '@/lib/portfolio-analyse/fundamentaldaten-format'
+import { formatFundamentalWert } from '@/lib/portfolio-analyse/fundamentaldaten-format'
 import {
-  berechneIncrementalRoicPct,
-  historischeWerteAusZeile,
-  letzterVerfuegbarerWert,
-  schaetzeWaccPct,
-} from '@/lib/portfolio-analyse/fundamentaldaten-roic-hilfen'
+  baueKontextWerte,
+  type FundamentalKontextInput,
+  type FundamentalKontextWerte,
+} from '@/lib/portfolio-analyse/fundamentaldaten-kontext-werte'
 import type { YahooFundamentalKennzahlen } from '@/lib/portfolio-analyse/fundamentaldaten-key-metrics'
 import type { FundamentalSchaetzungenRoh } from '@/lib/portfolio-analyse/fundamentaldaten-schaetzungen-server'
 import type {
   FundamentalMantraAudit,
-  FundamentalMetrikZeile,
-  FundamentalPeriode,
   MantraAuditErgebnis,
   MantraAuditStatus,
 } from '@/lib/portfolio-analyse/fundamentaldaten-types'
@@ -24,35 +21,7 @@ import type { MantraYahooFinanzdaten } from '@/lib/portfolio-analyse/yahoo-funda
 
 type MantraRohdaten = Pick<MacrotrendsFundamentalRoh, 'perioden' | 'zeilen'> | null
 
-type MantraKontext = {
-  yahoo: YahooFundamentalKennzahlen | null
-  roh: MantraRohdaten
-  schaetzungen: FundamentalSchaetzungenRoh
-  yahooFinanz: MantraYahooFinanzdaten | null
-}
-
-function wertAnPeriode(z: FundamentalMetrikZeile | undefined, key: string): number | null {
-  return z?.werte[key] ?? null
-}
-
-function historischeWerte(
-  zeile: FundamentalMetrikZeile | undefined,
-  perioden: FundamentalPeriode[] | undefined,
-): number[] {
-  return historischeWerteAusZeile(zeile, perioden)
-}
-
-function letzterWert(
-  zeile: FundamentalMetrikZeile | undefined,
-  perioden: FundamentalPeriode[] | undefined,
-): number | null {
-  return letzterVerfuegbarerWert(zeile, perioden)
-}
-
-function berechneMargePct(zaehler: number | null, nenner: number | null): number | null {
-  if (zaehler == null || nenner == null || nenner === 0) return null
-  return (zaehler / nenner) * 100
-}
+type MantraKontext = FundamentalKontextInput
 
 function pct(v: number | null | undefined): string {
   return v != null && Number.isFinite(v) ? formatFundamentalWert(v, 'prozent') : '–'
@@ -76,189 +45,6 @@ function nichtErfuellt(istWert: string, numerisch?: number | null, hinweis?: str
 
 function qualitativ(istWert: string | null, status: MantraAuditStatus, hinweis?: string) {
   return { istWert, status, hinweis }
-}
-
-function baueKontextWerte(ctx: MantraKontext) {
-  const perioden = ctx.roh?.perioden
-  const zeile = (id: string) => ctx.roh?.zeilen.find((z) => z.id === id)
-
-  const umsatzZeile = zeile('umsatz')
-  const bruttoGewinnZeile = zeile('bruttogewinn')
-  const bruttoMargeZeile = zeile('bruttomarge')
-  const ebitZeile = zeile('ebit')
-  const ebitMargeZeile = zeile('ebit_marge')
-  const ebitdaZeile = zeile('ebitda')
-  const ebitdaMargeZeile = zeile('ebitda_marge')
-  const nettoZeile = zeile('nettogewinn')
-  const epsZeile = zeile('eps')
-  const fcfZeile = zeile('fcf')
-  const capexZeile = zeile('capex')
-  const roiZeile = zeile('roi')
-  const roeZeile = zeile('roe')
-  const kapitalumschlagZeile = zeile('kapitalumschlag')
-  const aktienZeile = zeile('aktien')
-  const sbcZeile = zeile('sbc')
-  const rdZeile = zeile('rd')
-  const sgaZeile = zeile('sga')
-  const dsoZeile = zeile('dso')
-  const yt = ctx.yahooFinanz
-
-  const umsatzMio = letzterWert(umsatzZeile, perioden)
-  const fcfMio = letzterWert(fcfZeile, perioden)
-  const nettoMio = letzterWert(nettoZeile, perioden)
-  const capexMio = letzterWert(capexZeile, perioden)
-  const ebitdaMio = letzterWert(ebitdaZeile, perioden)
-  const ebitMio = letzterWert(ebitZeile, perioden)
-
-  const revenueUsd = yt?.revenueUsd ?? (umsatzMio != null ? umsatzMio * 1_000_000 : null)
-  const fcfUsd = yt?.freeCashFlowUsd ?? (fcfMio != null ? fcfMio * 1_000_000 : null)
-  const netIncomeUsd = yt?.netIncomeUsd ?? (nettoMio != null ? nettoMio * 1_000_000 : null)
-  const sbcUsd =
-    yt?.stockBasedCompensationUsd ??
-    (letzterWert(sbcZeile, perioden) != null
-      ? letzterWert(sbcZeile, perioden)! * 1_000_000
-      : null)
-  const interestUsd = yt?.interestExpenseUsd ?? null
-  const opIncomeUsd = yt?.operatingIncomeUsd ?? (ebitMio != null ? ebitMio * 1_000_000 : null)
-  const rdUsd =
-    yt?.researchDevelopmentUsd ??
-    (letzterWert(rdZeile, perioden) != null
-      ? letzterWert(rdZeile, perioden)! * 1_000_000
-      : null)
-  const sgaUsd =
-    yt?.sgaUsd ??
-    (letzterWert(sgaZeile, perioden) != null
-      ? letzterWert(sgaZeile, perioden)! * 1_000_000
-      : null)
-
-  const sbcAdjFcfUsd = fcfUsd != null && sbcUsd != null ? fcfUsd - sbcUsd : null
-
-  const bruttoMarge =
-    letzterWert(bruttoMargeZeile, perioden) ??
-    berechneMargePct(letzterWert(bruttoGewinnZeile, perioden), umsatzMio) ??
-    (ctx.yahoo?.grossMargins != null ? ctx.yahoo.grossMargins * 100 : null)
-
-  const ebitMarge =
-    letzterWert(ebitMargeZeile, perioden) ??
-    berechneMargePct(letzterWert(ebitZeile, perioden), umsatzMio) ??
-    (ctx.yahoo?.operatingMargins != null ? ctx.yahoo.operatingMargins * 100 : null)
-
-  const ebitdaMarge =
-    letzterWert(ebitdaMargeZeile, perioden) ??
-    berechneMargePct(ebitdaMio, umsatzMio) ??
-    (ctx.yahoo?.ebitdaMargins != null ? ctx.yahoo.ebitdaMargins * 100 : null)
-
-  const fcfMarge =
-    revenueUsd != null && fcfUsd != null && revenueUsd > 0
-      ? (fcfUsd / revenueUsd) * 100
-      : berechneMargePct(fcfMio, umsatzMio)
-  const sbcAdjFcfMargin =
-    revenueUsd != null && sbcAdjFcfUsd != null && revenueUsd > 0
-      ? (sbcAdjFcfUsd / revenueUsd) * 100
-      : null
-  const sbcFcfRatio =
-    fcfUsd != null && sbcUsd != null && fcfUsd > 0 ? (sbcUsd / fcfUsd) * 100 : null
-  const sbcAdjFcfConversion =
-    netIncomeUsd != null && sbcAdjFcfUsd != null && netIncomeUsd > 0
-      ? (sbcAdjFcfUsd / netIncomeUsd) * 100
-      : null
-  const interestCoverage =
-    opIncomeUsd != null && interestUsd != null && interestUsd > 0 ? opIncomeUsd / interestUsd : null
-  const rdSales = revenueUsd != null && rdUsd != null && revenueUsd > 0 ? (rdUsd / revenueUsd) * 100 : null
-  const sgaSales = revenueUsd != null && sgaUsd != null && revenueUsd > 0 ? (sgaUsd / revenueUsd) * 100 : null
-  const dsoHist = historischeWerte(dsoZeile, perioden)
-  const dsoAktuell = letzterWert(dsoZeile, perioden)
-  const capexSales =
-    umsatzMio != null && capexMio != null && umsatzMio > 0 ? (Math.abs(capexMio) / umsatzMio) * 100 : null
-  const fcfConversion =
-    nettoMio != null && fcfMio != null && nettoMio > 0 ? (fcfMio / nettoMio) * 100 : null
-
-  const roic = letzterWert(roiZeile, perioden)
-  const roicQuelle = roic != null ? 'ROIC (Macrotrends / StockAnalysis)' : undefined
-
-  const wacc = schaetzeWaccPct({
-    beta: ctx.yahoo?.beta,
-    marketCapUsd: ctx.yahoo?.marketCap,
-    totalDebtUsd: ctx.yahoo?.totalDebt,
-    interestExpenseUsd: yt?.interestExpenseUsd,
-    pretaxIncomeUsd: yt?.pretaxIncomeUsd,
-    taxProvisionUsd: yt?.taxProvisionUsd,
-  })
-
-  const valueSpread = roic != null && wacc != null ? roic - wacc : null
-  const incrementalRoicErgebnis = berechneIncrementalRoicPct(yt?.annualHistorie ?? [])
-  const incrementalRoic = incrementalRoicErgebnis?.pct ?? null
-
-  const roe =
-    letzterWert(roeZeile, perioden) ??
-    (ctx.yahoo?.returnOnEquity != null ? ctx.yahoo.returnOnEquity * 100 : null)
-
-  const netDebt =
-    ctx.yahoo?.totalDebt != null && ctx.yahoo?.totalCash != null
-      ? ctx.yahoo.totalDebt - ctx.yahoo.totalCash
-      : null
-  const netDebtEbitda =
-    netDebt != null && ebitdaMio != null && ebitdaMio > 0 ? netDebt / (ebitdaMio * 1_000_000) : null
-
-  const umsatzHist = historischeWerte(umsatzZeile, perioden)
-  const epsHist = historischeWerte(epsZeile, perioden)
-  const ebitMargeHist = historischeWerte(ebitMargeZeile, perioden)
-  const aktienHist = historischeWerte(aktienZeile, perioden)
-
-  const umsatzCagr3 =
-    umsatzHist.length >= 2 ? cagrProzent(umsatzHist.slice(-4), Math.min(3, umsatzHist.length - 1)) : null
-  const epsCagr3 = epsHist.length >= 2 ? cagrProzent(epsHist.slice(-4), Math.min(3, epsHist.length - 1)) : null
-
-  const revGrowthPct =
-    ctx.yahoo?.revenueGrowth != null ? ctx.yahoo.revenueGrowth * 100 : umsatzCagr3
-
-  const ruleOf40 =
-    revGrowthPct != null && fcfMarge != null ? revGrowthPct + fcfMarge : null
-
-  const assetTurnover = letzterWert(kapitalumschlagZeile, perioden)
-
-  const payoutPct = ctx.yahoo?.payoutRatio != null ? ctx.yahoo.payoutRatio * 100 : null
-  const pb = ctx.yahoo?.priceToBook ?? null
-
-  const aktienSinkend =
-    aktienHist.length >= 2 ? aktienHist[aktienHist.length - 1]! < aktienHist[0]! : null
-
-  return {
-    bruttoMarge,
-    ebitMarge,
-    ebitdaMarge,
-    fcfMarge,
-    capexSales,
-    fcfConversion,
-    roic,
-    roicQuelle,
-    wacc,
-    valueSpread,
-    incrementalRoic,
-    incrementalRoicErgebnis,
-    roe,
-    netDebt,
-    netDebtEbitda,
-    umsatzCagr3,
-    epsCagr3,
-    revGrowthPct,
-    ruleOf40,
-    assetTurnover,
-    payoutPct,
-    pb,
-    aktienSinkend,
-    ebitMargeHist,
-    bruttoMargeHist: historischeWerte(bruttoMargeZeile, perioden),
-    sbcAdjFcfMargin,
-    sbcFcfRatio,
-    sbcAdjFcfConversion,
-    interestCoverage,
-    interestUsd,
-    rdSales,
-    sgaSales,
-    dsoHist,
-    dsoAktuell,
-  }
 }
 
 export function waehleSektorMantraId(sektor: string | null, branche: string | null): string | null {
@@ -297,7 +83,7 @@ export function waehleSektorMantraId(sektor: string | null, branche: string | nu
   return null
 }
 
-function evaluiereZeile(zeile: MantraZeile, ctx: MantraKontext, w: ReturnType<typeof baueKontextWerte>): {
+function evaluiereZeile(zeile: MantraZeile, ctx: MantraKontext, w: FundamentalKontextWerte): {
   istWert: string | null
   status: MantraAuditStatus
   hinweis?: string
@@ -320,12 +106,12 @@ function evaluiereZeile(zeile: MantraZeile, ctx: MantraKontext, w: ReturnType<ty
   }
 
   if (k.includes('incremental roic')) {
-    const ergebnis = w.incrementalRoicErgebnis
-    if (w.incrementalRoic == null || !ergebnis) return keineDaten()
-    const hinweis = `ΔNOPAT ${formatFundamentalWert(ergebnis.deltaNopatUsd / 1_000_000, 'waehrung_usd_mio')} ÷ Reinvestition ${formatFundamentalWert(ergebnis.reinvestitionUsd / 1_000_000, 'waehrung_usd_mio')} (CapEx+WC+M&A, ${ergebnis.investJahre}J) · ${ergebnis.vonJahr}→${ergebnis.bisJahr}.`
-    return w.incrementalRoic >= 15
-      ? erfuellt(pct(w.incrementalRoic), w.incrementalRoic, hinweis)
-      : nichtErfuellt(pct(w.incrementalRoic), w.incrementalRoic, hinweis)
+    const ergebnis = w.roiicErgebnis
+    if (w.roiic == null || !ergebnis) return keineDaten()
+    const hinweis = `ΔNOPAT ${formatFundamentalWert(ergebnis.deltaNopatUsd / 1_000_000, 'waehrung_usd_mio')} ÷ ΔIC ${formatFundamentalWert(ergebnis.deltaIcUsd / 1_000_000, 'waehrung_usd_mio')} · ${ergebnis.vonJahr}→${ergebnis.bisJahr} · ${ergebnis.quelle}.`
+    return w.roiic >= 15
+      ? erfuellt(pct(w.roiic), w.roiic, hinweis)
+      : nichtErfuellt(pct(w.roiic), w.roiic, hinweis)
   }
 
   if (k.includes('gross margin')) {
@@ -559,8 +345,11 @@ function evaluiereZeile(zeile: MantraZeile, ctx: MantraKontext, w: ReturnType<ty
   return keineDaten('Keine Zuordnung zu verfügbaren Fundamentaldaten.')
 }
 
-function auditZeilen(zeilen: readonly MantraZeile[], ctx: MantraKontext): MantraAuditErgebnis[] {
-  const w = baueKontextWerte(ctx)
+function auditZeilen(
+  zeilen: readonly MantraZeile[],
+  ctx: MantraKontext,
+  w: FundamentalKontextWerte,
+): MantraAuditErgebnis[] {
   return zeilen.map((z) => {
     const { istWert, status, hinweis } = evaluiereZeile(z, ctx, w)
     return {
@@ -592,13 +381,15 @@ export function baueMantraAudit(
   roh: MantraRohdaten,
   schaetzungen: FundamentalSchaetzungenRoh,
   yahooFinanz: MantraYahooFinanzdaten | null = null,
+  kontextWerte?: FundamentalKontextWerte | null,
 ): FundamentalMantraAudit {
   const ctx: MantraKontext = { yahoo, roh, schaetzungen, yahooFinanz }
+  const w = kontextWerte ?? baueKontextWerte(ctx)
   const sektorMantraId = waehleSektorMantraId(sektor, branche)
   const sektorBlock = sektorMantraId ? SEKTOR_MANTRAS.find((b) => b.id === sektorMantraId) ?? null : null
 
-  const standard = auditZeilen(INVESTMENT_MANTRA, ctx)
-  const sektorZeilen = sektorBlock ? auditZeilen(sektorBlock.zeilen, ctx) : []
+  const standard = auditZeilen(INVESTMENT_MANTRA, ctx, w)
+  const sektorZeilen = sektorBlock ? auditZeilen(sektorBlock.zeilen, ctx, w) : []
 
   const alle = [...standard, ...sektorZeilen]
   const sum = zusammenfassung(alle)
