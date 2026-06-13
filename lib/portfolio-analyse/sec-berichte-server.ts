@@ -5,17 +5,34 @@ import {
   ladeSecEdgarBerichteHistorie,
   ladeSecEdgarBerichtVolltext,
 } from '@/lib/portfolio-analyse/sec-edgar-filings-server'
-import type { SecBerichtAnfrage, SecBerichtePaket } from '@/lib/portfolio-analyse/sec-berichte-types'
+import {
+  ladeSecBerichtKiCacheEintrag,
+  ladeSecBerichtKiCacheFuerTicker,
+  loescheSecBerichtKiCacheEintrag,
+  speichereSecBerichtKiCache,
+} from '@/lib/portfolio-analyse/sec-berichte-ki-cache-server'
+import { SEC_BERICHTE_SYSTEM_PROMPT } from '@/lib/portfolio-analyse/sec-berichte-prompt'
+import type { SecBerichtAnfrage, SecBerichtEintrag, SecBerichtePaket } from '@/lib/portfolio-analyse/sec-berichte-types'
+import { resolveCoachProviderFromMode, runCoachCompletion, earningsCallGeminiModelKandidaten } from '@/lib/ki-coach-backend'
 
+const MAX_REPORT_CHARS = 120_000
 const serverCache = new Map<string, { at: number; paket: SecBerichtePaket }>()
 const CACHE_MS = 12 * 60 * 60 * 1000
 
+type ListCache = {
+  expiresAt: number
+  berichte: SecBerichtEintrag[]
+  summaries: Map<string, string>
+}
+
+const listCache = new Map<string, ListCache>()
+
+function tickerKey(ticker: string): string {
+  return ticker.trim().toUpperCase()
+}
+
 function cacheKey(anfrage: SecBerichtAnfrage): string {
-  return [
-    anfrage.ticker.trim().toUpperCase(),
-    anfrage.isin?.trim().toUpperCase() ?? '',
-    anfrage.accession?.trim() ?? '',
-  ].join('|')
+  return [tickerKey(anfrage.ticker), anfrage.isin?.trim().toUpperCase() ?? ''].join('|')
 }
 
 function leerPaket(ticker: string, fehler?: string): SecBerichtePaket {
@@ -23,6 +40,7 @@ function leerPaket(ticker: string, fehler?: string): SecBerichtePaket {
     ok: false,
     ticker,
     berichte: [],
+    aktiverBerichtId: null,
     geladenAm: new Date().toISOString(),
     ausCache: false,
     fehler: fehler ?? null,
@@ -30,17 +48,138 @@ function leerPaket(ticker: string, fehler?: string): SecBerichtePaket {
   }
 }
 
+function bauePaket(
+  ticker: string,
+  berichte: SecBerichtEintrag[],
+  summaries: Map<string, string>,
+  opts: {
+    aktiverBerichtId?: string | null
+    ausCache?: boolean
+    fehler?: string | null
+    hinweis?: string | null
+  },
+): SecBerichtePaket {
+  const merged = berichte.map((b) => ({
+    ...b,
+    zusammenfassung: summaries.get(b.id) ?? b.zusammenfassung ?? null,
+  }))
+  return {
+    ok: merged.length > 0,
+    ticker,
+    berichte: merged,
+    aktiverBerichtId: opts.aktiverBerichtId ?? null,
+    geladenAm: new Date().toISOString(),
+    ausCache: opts.ausCache ?? false,
+    fehler: opts.fehler ?? null,
+    hinweis: opts.hinweis ?? null,
+  }
+}
+
+async function ladePersistenteSummaries(ticker: string, cache: ListCache): Promise<void> {
+  const gespeichert = await ladeSecBerichtKiCacheFuerTicker(ticker)
+  for (const [berichtId, eintrag] of gespeichert) {
+    if (!cache.summaries.has(berichtId)) {
+      cache.summaries.set(berichtId, eintrag.zusammenfassung)
+    }
+  }
+}
+
+async function summaryAusPersistenz(
+  ticker: string,
+  berichtId: string,
+  accession: string,
+  forceKi?: boolean,
+): Promise<string | null> {
+  if (forceKi) return null
+  const hit = await ladeSecBerichtKiCacheEintrag(ticker, berichtId)
+  if (!hit) return null
+  if (hit.accession && hit.accession !== accession) {
+    await loescheSecBerichtKiCacheEintrag(ticker, berichtId)
+    return null
+  }
+  return hit.zusammenfassung
+}
+
+async function ladeBerichteListe(ticker: string, force?: boolean): Promise<ListCache> {
+  const key = tickerKey(ticker)
+  const hit = listCache.get(key)
+  if (hit && hit.expiresAt > Date.now() && !force) {
+    await ladePersistenteSummaries(ticker, hit)
+    return hit
+  }
+
+  const { cik, berichte, texte } = await ladeSecEdgarBerichteHistorie(ticker)
+  if (cik === 0) {
+    throw new Error('Kein SEC-CIK — vermutlich kein US-Melder.')
+  }
+
+  const eintraege = berichte.map((f) => {
+    const text = texte.get(f.accession)
+    return baueSecBerichtEintrag(f, cik, text, false)
+  })
+
+  const cache: ListCache = {
+    expiresAt: Date.now() + CACHE_MS,
+    berichte: eintraege,
+    summaries: hit?.summaries ?? new Map(),
+  }
+  await ladePersistenteSummaries(ticker, cache)
+  listCache.set(key, cache)
+  return cache
+}
+
+async function zusammenfasseBericht(
+  text: string,
+  meta: { ticker: string; label: string; formular: string; firmenname?: string | null },
+): Promise<string> {
+  const provider = resolveCoachProviderFromMode('gemini')
+  if (!provider) {
+    throw new Error('KI nicht konfiguriert — GEMINI_API_KEY in .env.local setzen.')
+  }
+
+  const clipped =
+    text.length > MAX_REPORT_CHARS
+      ? `${text.slice(0, MAX_REPORT_CHARS)}\n\n[… Bericht gekürzt …]`
+      : text
+
+  const userText = [
+    `Unternehmen: ${meta.firmenname?.trim() || meta.ticker} (${meta.ticker})`,
+    `Bericht: ${meta.label} (${meta.formular})`,
+    '',
+    '--- SEC-BERICHT ---',
+    clipped,
+  ].join('\n')
+
+  const result = await runCoachCompletion(
+    provider.provider,
+    provider.apiKey,
+    SEC_BERICHTE_SYSTEM_PROMPT,
+    [{ role: 'user', content: userText }],
+    {
+      temperature: 0.35,
+      skipMessageTrim: true,
+      geminiModels: earningsCallGeminiModelKandidaten(),
+    },
+  )
+
+  if (!result.ok) throw new Error(result.hint)
+  return result.reply
+}
+
 export async function ladeSecBerichte(anfrage: SecBerichtAnfrage): Promise<SecBerichtePaket> {
   const ticker = anfrage.ticker?.trim() ?? ''
   if (!ticker) return leerPaket('', 'Ticker fehlt.')
 
-  if (anfrage.accession?.trim()) {
+  const berichtId = anfrage.berichtId?.trim() || null
+
+  if (anfrage.accession?.trim() && !berichtId) {
     const hit = await ladeSecEdgarBerichtVolltext(ticker, anfrage.accession.trim())
     if (!hit) return leerPaket(ticker, 'Bericht nicht gefunden.')
     return {
       ok: true,
       ticker,
-      berichte: [{ ...hit.eintrag, textAuszug: hit.text.slice(0, 12_000), textZeichen: hit.text.length, textVollstaendig: true }],
+      berichte: [{ ...hit.eintrag, textAuszug: hit.text.slice(0, 12_000), textZeichen: hit.text.length, textVollstaendig: true, zusammenfassung: null }],
+      aktiverBerichtId: hit.eintrag.id,
       geladenAm: new Date().toISOString(),
       ausCache: false,
       hinweis: null,
@@ -48,7 +187,7 @@ export async function ladeSecBerichte(anfrage: SecBerichtAnfrage): Promise<SecBe
   }
 
   const key = cacheKey(anfrage)
-  if (!anfrage.force) {
+  if (!berichtId && !anfrage.force) {
     const cached = serverCache.get(key)
     if (cached && Date.now() - cached.at < CACHE_MS) {
       return { ...cached.paket, ausCache: true }
@@ -56,33 +195,99 @@ export async function ladeSecBerichte(anfrage: SecBerichtAnfrage): Promise<SecBe
   }
 
   try {
-    const { cik, berichte, texte } = await ladeSecEdgarBerichteHistorie(ticker)
-    if (cik === 0) {
+    const cache = await ladeBerichteListe(ticker, anfrage.force)
+    const ausCache = !anfrage.force && listCache.has(tickerKey(ticker))
+
+    if (!berichtId) {
+      const paket = bauePaket(ticker, cache.berichte, cache.summaries, {
+        ausCache,
+        fehler: cache.berichte.length === 0 ? 'Keine 10-Q/10-K bei SEC gefunden.' : null,
+        hinweis:
+          cache.berichte.length > 0
+            ? 'SEC EDGAR · KI-Analyse beim Öffnen eines Berichts'
+            : 'Für EU-Aktien Quartalsberichte auf der Investor-Relations-Seite.',
+      })
+      serverCache.set(key, { at: Date.now(), paket })
+      return paket
+    }
+
+    const meta = cache.berichte.find((b) => b.id === berichtId)
+    if (!meta) return leerPaket(ticker, 'Bericht nicht in der Liste.')
+
+    const hit = await ladeSecEdgarBerichtVolltext(ticker, meta.accession)
+    if (!hit || hit.text.length < 200) {
       return {
-        ...leerPaket(ticker, 'Kein SEC-CIK — vermutlich kein US-Melder.'),
-        hinweis: 'Für EU-Aktien Quartalsberichte auf der Investor-Relations-Seite.',
+        ...bauePaket(ticker, cache.berichte, cache.summaries, { aktiverBerichtId: berichtId, ausCache }),
+        fehler: 'Volltext konnte nicht geladen werden.',
       }
     }
 
-    const eintraege = berichte.map((f) => {
-      const text = texte.get(f.accession)
-      return baueSecBerichtEintrag(f, cik, text, false)
-    })
+    cache.berichte = cache.berichte.map((b) =>
+      b.id === berichtId
+        ? {
+            ...b,
+            ...hit.eintrag,
+            textAuszug: hit.text.slice(0, 12_000),
+            textZeichen: hit.text.length,
+            textVollstaendig: true,
+            zusammenfassung: cache.summaries.get(berichtId) ?? b.zusammenfassung,
+          }
+        : b,
+    )
 
-    const paket: SecBerichtePaket = {
-      ok: eintraege.length > 0,
-      ticker,
-      berichte: eintraege,
-      geladenAm: new Date().toISOString(),
-      ausCache: false,
-      fehler: eintraege.length === 0 ? 'Keine 10-Q/10-K bei SEC gefunden.' : null,
-      hinweis: eintraege.length > 0 ? 'SEC EDGAR · Volltext beim Öffnen eines Berichts' : null,
+    if (!cache.summaries.has(berichtId) || anfrage.forceKi) {
+      const cached = await summaryAusPersistenz(ticker, berichtId, meta.accession, anfrage.forceKi)
+      if (cached) {
+        cache.summaries.set(berichtId, cached)
+      } else {
+        try {
+          const summary = await zusammenfasseBericht(hit.text, {
+            ticker,
+            label: meta.label,
+            formular: meta.formular,
+            firmenname: anfrage.firmenname,
+          })
+          cache.summaries.set(berichtId, summary)
+          try {
+            await speichereSecBerichtKiCache({
+              ticker,
+              berichtId,
+              accession: meta.accession,
+              zusammenfassung: summary,
+            })
+          } catch (persistErr) {
+            console.warn('SEC-Berichte KI-Cache nicht schreibbar', persistErr)
+          }
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : 'KI-Zusammenfassung fehlgeschlagen'
+          return {
+            ...bauePaket(ticker, cache.berichte, cache.summaries, {
+              aktiverBerichtId: berichtId,
+              ausCache,
+              hinweis: 'SEC EDGAR · KI-Analyse beim Öffnen eines Berichts',
+            }),
+            ok: true,
+            fehler: msg,
+          }
+        }
+      }
     }
 
+    const paket = bauePaket(ticker, cache.berichte, cache.summaries, {
+      aktiverBerichtId: berichtId,
+      ausCache,
+      hinweis: 'SEC EDGAR · KI-Analyse (Gemini)',
+    })
     serverCache.set(key, { at: Date.now(), paket })
     return paket
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'SEC-Abruf fehlgeschlagen'
+    if (msg.includes('Kein SEC-CIK')) {
+      return {
+        ...leerPaket(ticker, msg),
+        hinweis: 'Für EU-Aktien Quartalsberichte auf der Investor-Relations-Seite.',
+      }
+    }
     return leerPaket(ticker, msg)
   }
 }

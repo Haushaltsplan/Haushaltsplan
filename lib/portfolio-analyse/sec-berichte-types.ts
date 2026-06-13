@@ -11,6 +11,10 @@ export type SecBerichtAnfrage = {
   force?: boolean
   /** Volltext eines Eintrags nachladen */
   accession?: string | null
+  /** KI-Zusammenfassung für diesen Bericht (id = accession-formular) */
+  berichtId?: string | null
+  /** Gespeicherte KI-Zusammenfassung erneut erzeugen */
+  forceKi?: boolean
 }
 
 export type SecBerichtEintrag = {
@@ -26,12 +30,14 @@ export type SecBerichtEintrag = {
   textAuszug: string
   textZeichen: number
   textVollstaendig: boolean
+  zusammenfassung: string | null
 }
 
 export type SecBerichtePaket = {
   ok: boolean
   ticker: string
   berichte: SecBerichtEintrag[]
+  aktiverBerichtId: string | null
   geladenAm: string
   ausCache: boolean
   fehler?: string | null

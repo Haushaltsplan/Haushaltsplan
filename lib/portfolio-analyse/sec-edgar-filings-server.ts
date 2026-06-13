@@ -214,6 +214,7 @@ export function baueSecBerichtEintrag(
     textAuszug: auszug,
     textZeichen: voll.length,
     textVollstaendig: vollstaendig && voll.length > AUSZUG_ZEICHEN,
+    zusammenfassung: null,
   }
 }
 

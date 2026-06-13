@@ -400,10 +400,10 @@ export function PaFundamentalMetrikChart({
         variant === 'bewertung' && aktuell && schnitt != null ? prozentAbweichung(aktuell.wert, schnitt) : null
 
       return {
-        id: z.id,
-        label: z.label,
+          id: z.id,
+          label: z.label,
         farbe: FARBEN[i % FARBEN.length]!,
-        einheit: z.einheit,
+          einheit: z.einheit,
         yAxis: achse,
         histWerte,
         aktuell,
@@ -587,20 +587,20 @@ export function PaFundamentalMetrikChart({
                 ))}
               </div>
             ) : null}
-            <button
-              type="button"
-              onClick={onToggleLabels}
+          <button
+            type="button"
+            onClick={onToggleLabels}
               className="rounded-lg border border-zinc-700/60 bg-zinc-900/60 px-2.5 py-1 text-[11px] text-zinc-400 transition hover:border-zinc-600 hover:text-zinc-200"
-            >
+          >
               {labelsAnzeigen ? 'Labels aus' : 'Labels an'}
-            </button>
-            <button
-              type="button"
-              onClick={onClear}
+          </button>
+          <button
+            type="button"
+            onClick={onClear}
               className="rounded-lg border border-zinc-700/60 bg-zinc-900/60 px-2.5 py-1 text-[11px] text-zinc-400 transition hover:border-zinc-600 hover:text-zinc-200"
-            >
+          >
               Leeren
-            </button>
+          </button>
           </div>
         </div>
 
@@ -790,11 +790,11 @@ export function PaFundamentalMetrikChart({
                     >
                       {formatFundamentalWert(pt.wert, s.einheit)}
                       {pt.istSchaetzung ? ' · Schätz.' : ''}
-                    </text>
-                  ))
-                : null}
-            </g>
-          ))}
+                  </text>
+                ))
+              : null}
+          </g>
+        ))}
 
           {xLabels.map((xl, i) =>
             i % Math.max(1, Math.floor(xLabels.length / 8)) === 0 || i === xLabels.length - 1 ? (
@@ -819,7 +819,7 @@ export function PaFundamentalMetrikChart({
               </text>
             ) : null,
           )}
-        </svg>
+      </svg>
 
         <ul className="mt-1 flex flex-wrap gap-x-3 gap-y-1.5 px-1 text-[10px] text-zinc-500">
           {serien.map((s) => (
@@ -832,7 +832,7 @@ export function PaFundamentalMetrikChart({
               >
                 <span className="h-2 w-4 shrink-0 rounded-full" style={{ background: s.farbe }} aria-hidden />
                 <span className="text-zinc-400">
-                  {s.label}
+            {s.label}
                   {dualAxis ? (s.yAxis === 1 ? ' (rechts)' : ' (links)') : ''}
                 </span>
                 {variant === 'bewertung' && s.schnitt != null ? (
@@ -844,8 +844,8 @@ export function PaFundamentalMetrikChart({
                   ×
                 </span>
               </button>
-            </li>
-          ))}
+          </li>
+        ))}
           {variant === 'standard' ? (
             <li className="flex items-center gap-1.5 text-sky-400/80">
               <span className="h-0 w-4 border-t border-dashed border-sky-400" />
@@ -858,7 +858,7 @@ export function PaFundamentalMetrikChart({
               Zeitraum-Schnitt
             </li>
           ) : null}
-        </ul>
+      </ul>
       </div>
     </div>
   )

@@ -2,7 +2,7 @@
 
 import type { SecBerichtAnfrage, SecBerichtePaket } from '@/lib/portfolio-analyse/sec-berichte-types'
 
-const LS_STORE_KEY = 'pa-sec-berichte-unternehmen-v1'
+const LS_STORE_KEY = 'pa-sec-berichte-unternehmen-v2'
 
 type UnternehmenStore = Record<
   string,
@@ -23,12 +23,35 @@ function ladeStore(): UnternehmenStore {
   if (typeof window === 'undefined') return {}
   try {
     const raw = localStorage.getItem(LS_STORE_KEY)
-    if (!raw) return {}
-    const j = JSON.parse(raw) as UnternehmenStore
-    return j && typeof j === 'object' ? j : {}
+    if (raw) {
+      const j = JSON.parse(raw) as UnternehmenStore
+      if (j && typeof j === 'object') return j
+    }
+    return migriereLegacyStore()
   } catch {
     return {}
   }
+}
+
+function migriereLegacyStore(): UnternehmenStore {
+  const store: UnternehmenStore = {}
+  try {
+    const raw = localStorage.getItem('pa-sec-berichte-unternehmen-v1')
+    if (!raw) return store
+    const legacy = JSON.parse(raw) as UnternehmenStore
+    for (const [key, hit] of Object.entries(legacy)) {
+      if (!hit?.berichte?.length) continue
+      store[key] = {
+        ...hit,
+        berichte: hit.berichte.map((b) => ({ ...b, zusammenfassung: b.zusammenfassung ?? null })),
+        aktiverBerichtId: hit.aktiverBerichtId ?? null,
+      }
+    }
+    if (Object.keys(store).length) schreibeStore(store)
+  } catch {
+    /* ignore */
+  }
+  return store
 }
 
 function schreibeStore(store: UnternehmenStore): void {
@@ -38,6 +61,33 @@ function schreibeStore(store: UnternehmenStore): void {
   } catch {
     /* voll */
   }
+}
+
+function gleichesUnternehmen(a: SecBerichtePaket | null | undefined, anfrage: SecBerichtAnfrage): boolean {
+  if (!a) return false
+  return a.ticker.trim().toUpperCase() === anfrage.ticker.trim().toUpperCase()
+}
+
+function mergePakete(
+  prev: SecBerichtePaket | null,
+  next: SecBerichtePaket,
+  anfrage: SecBerichtAnfrage,
+): SecBerichtePaket {
+  if (!prev || !gleichesUnternehmen(prev, anfrage)) return next
+
+  const mergedBerichte = next.berichte.map((b) => {
+    const alt = prev.berichte.find((p) => p.id === b.id)
+    return {
+      ...alt,
+      ...b,
+      zusammenfassung: b.zusammenfassung ?? alt?.zusammenfassung ?? null,
+      textAuszug: b.textVollstaendig ? b.textAuszug : (alt?.textVollstaendig ? alt.textAuszug : b.textAuszug),
+      textVollstaendig: b.textVollstaendig || Boolean(alt?.textVollstaendig),
+      textZeichen: Math.max(b.textZeichen, alt?.textZeichen ?? 0),
+    }
+  })
+
+  return { ...next, berichte: mergedBerichte }
 }
 
 export function ladeSecBerichteAusLocalCache(
@@ -56,32 +106,78 @@ function speicherePaket(anfrage: SecBerichtAnfrage, paket: SecBerichtePaket): vo
   schreibeStore(store)
 }
 
+async function parseApiAntwort(res: Response): Promise<SecBerichtePaket & { fehler?: string }> {
+  const text = await res.text()
+  const s = text.trimStart().slice(0, 32).toLowerCase()
+  if (s.startsWith('<!doctype') || s.startsWith('<html')) {
+    if (res.status === 504 || res.status === 502) {
+      throw new Error('Server-Timeout — SEC-Bericht dauert zu lange. Bitte erneut versuchen.')
+    }
+    throw new Error(`Serverfehler (${res.status}) — keine gültige Antwort.`)
+  }
+  try {
+    return JSON.parse(text) as SecBerichtePaket & { fehler?: string }
+  } catch {
+    throw new Error('Ungültige Server-Antwort (kein JSON).')
+  }
+}
+
+async function ladeSecBerichteClient(
+  anfrage: SecBerichtAnfrage,
+  prev: SecBerichtePaket | null,
+): Promise<SecBerichtePaket> {
+  const prevOk = prev && gleichesUnternehmen(prev, anfrage) ? prev : null
+  const timeoutMs = anfrage.berichtId ? 180_000 : 90_000
+
+  let res: Response
+  try {
+    res = await fetch('/api/portfolio-analyse/sec-berichte', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(anfrage),
+      signal: AbortSignal.timeout(timeoutMs),
+    })
+  } catch (e) {
+    if (e instanceof Error && e.name === 'TimeoutError') {
+      throw new Error('Zeitüberschreitung — bitte erneut versuchen.')
+    }
+    throw e
+  }
+
+  const data = await parseApiAntwort(res)
+  if (!data.ticker && !data.berichte?.length && (data.fehler || !res.ok)) {
+    throw new Error(data.fehler ?? 'Abruf fehlgeschlagen')
+  }
+
+  const merged = mergePakete(prevOk, data, anfrage)
+  if (merged.berichte.length) speicherePaket(anfrage, merged)
+  return merged
+}
+
 export async function ladeSecBerichte(
   anfrage: SecBerichtAnfrage,
   prev: SecBerichtePaket | null,
 ): Promise<SecBerichtePaket> {
-  const res = await fetch('/api/portfolio-analyse/sec-berichte', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(anfrage),
-  })
-  const data = (await res.json().catch(() => ({}))) as SecBerichtePaket & { fehler?: string }
-  if (!res.ok && !data.ticker) {
-    throw new Error(typeof data.fehler === 'string' ? data.fehler : 'Abruf fehlgeschlagen')
-  }
+  return ladeSecBerichteClient(anfrage, prev)
+}
 
-  if (anfrage.accession && prev) {
-    const neu = data.berichte[0]
-    const merged: SecBerichtePaket = {
-      ...prev,
-      berichte: prev.berichte.map((b) =>
-        neu && b.accession === anfrage.accession ? { ...b, ...neu } : b,
-      ),
-    }
-    speicherePaket(anfrage, merged)
-    return merged
-  }
+export async function ladeSecBerichteListe(
+  anfrage: Omit<SecBerichtAnfrage, 'accession' | 'berichtId' | 'forceKi'>,
+  prev?: SecBerichtePaket | null,
+): Promise<SecBerichtePaket> {
+  return ladeSecBerichteClient({ ...anfrage, accession: null, berichtId: null, forceKi: false }, prev ?? null)
+}
 
-  speicherePaket(anfrage, data)
-  return data
+export async function ladeSecBerichteKiFuerBericht(
+  anfrage: SecBerichtAnfrage & { berichtId: string },
+  prev?: SecBerichtePaket | null,
+): Promise<SecBerichtePaket> {
+  return ladeSecBerichteClient({ ...anfrage, force: false, forceKi: false }, prev ?? null)
+}
+
+export async function erneuereSecBerichteKi(
+  anfrage: SecBerichtAnfrage & { berichtId: string },
+  prev?: SecBerichtePaket | null,
+): Promise<SecBerichtePaket> {
+  return ladeSecBerichteClient({ ...anfrage, force: false, forceKi: true }, prev ?? null)
 }

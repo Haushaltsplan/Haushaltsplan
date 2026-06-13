@@ -3,13 +3,14 @@ import { NextResponse } from 'next/server'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
-export const maxDuration = 120
+export const maxDuration = 180
 
 function leerPaket(ticker: string, fehler: string): SecBerichtePaket {
   return {
     ok: false,
     ticker,
     berichte: [],
+    aktiverBerichtId: null,
     geladenAm: new Date().toISOString(),
     ausCache: false,
     fehler,
@@ -40,6 +41,8 @@ export async function POST(req: Request) {
       isin: row.isin != null ? String(row.isin).trim() || null : null,
       force: Boolean(row.force),
       accession: row.accession != null ? String(row.accession).trim() || null : null,
+      berichtId: row.berichtId != null ? String(row.berichtId).trim() || null : null,
+      forceKi: Boolean(row.forceKi),
     })
 
     return NextResponse.json(paket)

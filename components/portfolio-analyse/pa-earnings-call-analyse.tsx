@@ -14,6 +14,10 @@ const ABSCHNITT_META: Record<string, { kurz: string; icon: string; accent: strin
   'finanzielle performance': { kurz: 'Zahlen', icon: '€', accent: 'border-sky-400/25 bg-sky-500/[0.06]' },
   'qualitative analyse': { kurz: 'Quality', icon: '◎', accent: 'border-violet-400/25 bg-violet-500/[0.06]' },
   'deep dive': { kurz: 'Q&A', icon: '?', accent: 'border-orange-400/25 bg-orange-500/[0.06]' },
+  'quality dashboard': { kurz: 'Dashboard', icon: '▣', accent: 'border-emerald-400/25 bg-emerald-500/[0.06]' },
+  'geschäftsmodell': { kurz: 'Moat', icon: '◎', accent: 'border-violet-400/25 bg-violet-500/[0.06]' },
+  risiken: { kurz: 'Risiken', icon: '!', accent: 'border-rose-400/25 bg-rose-500/[0.06]' },
+  nachkauf: { kurz: 'Radar', icon: '→', accent: 'border-teal-400/30 bg-teal-500/[0.07]' },
   fazit: { kurz: 'Fazit', icon: '→', accent: 'border-teal-400/30 bg-teal-500/[0.07]' },
 }
 
