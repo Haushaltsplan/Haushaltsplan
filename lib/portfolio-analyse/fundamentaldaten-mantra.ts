@@ -7,10 +7,7 @@ import { cagrProzent, formatFundamentalWert } from '@/lib/portfolio-analyse/fund
 import {
   berechneIncrementalRoicPct,
   historischeWerteAusZeile,
-  investedCapitalUsd,
   letzterVerfuegbarerWert,
-  nopatUsd,
-  roicPctAusNopat,
   schaetzeWaccPct,
 } from '@/lib/portfolio-analyse/fundamentaldaten-roic-hilfen'
 import type { YahooFundamentalKennzahlen } from '@/lib/portfolio-analyse/fundamentaldaten-key-metrics'
@@ -176,18 +173,8 @@ function baueKontextWerte(ctx: MantraKontext) {
   const fcfConversion =
     nettoMio != null && fcfMio != null && nettoMio > 0 ? (fcfMio / nettoMio) * 100 : null
 
-  const roicMt = letzterWert(roiZeile, perioden)
-  const nopatTrailing = nopatUsd(yt?.operatingIncomeUsd, yt?.pretaxIncomeUsd, yt?.taxProvisionUsd)
-  const juengstesJahr = yt?.annualHistorie?.[yt.annualHistorie.length - 1]
-  const icTrailing = investedCapitalUsd(
-    ctx.yahoo?.totalDebt ?? juengstesJahr?.totalDebtUsd,
-    juengstesJahr?.stockholdersEquityUsd,
-    ctx.yahoo?.totalCash,
-  )
-  const roicBerechnet = roicPctAusNopat(nopatTrailing, icTrailing)
-  const roic = roicMt ?? roicBerechnet
-  const roicQuelle =
-    roicMt != null ? 'Macrotrends ROI (LTM)' : roicBerechnet != null ? 'Berechnet: NOPAT / Invested Capital' : undefined
+  const roic = letzterWert(roiZeile, perioden)
+  const roicQuelle = roic != null ? 'ROIC (Macrotrends / StockAnalysis)' : undefined
 
   const wacc = schaetzeWaccPct({
     beta: ctx.yahoo?.beta,
