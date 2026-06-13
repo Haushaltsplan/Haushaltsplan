@@ -121,6 +121,104 @@ export type IncrementalRoicErgebnis = {
   investJahre: number
 }
 
+/** ROIIC = Δ NOPAT / Δ Investiertes Kapital (YoY). */
+export type RoiicErgebnis = {
+  pct: number
+  deltaNopatUsd: number
+  deltaIcUsd: number
+  vonJahr: string
+  bisJahr: string
+  quelle: 'stockanalysis' | 'macrotrends'
+}
+
+export function investedCapitalAnlageUndWcUsd(
+  ppAndEUsd: number | null | undefined,
+  currentAssetsUsd: number | null | undefined,
+  currentLiabilitiesUsd: number | null | undefined,
+): number | null {
+  if (
+    ppAndEUsd == null ||
+    currentAssetsUsd == null ||
+    currentLiabilitiesUsd == null ||
+    !Number.isFinite(ppAndEUsd) ||
+    !Number.isFinite(currentAssetsUsd) ||
+    !Number.isFinite(currentLiabilitiesUsd)
+  ) {
+    return null
+  }
+  return ppAndEUsd + (currentAssetsUsd - currentLiabilitiesUsd)
+}
+
+export function berechneRoiicYoY(
+  nopatAelterUsd: number | null,
+  nopatJuengerUsd: number | null,
+  icAelterUsd: number | null,
+  icJuengerUsd: number | null,
+  vonJahr: string,
+  bisJahr: string,
+  quelle: RoiicErgebnis['quelle'],
+): RoiicErgebnis | null {
+  if (nopatAelterUsd == null || nopatJuengerUsd == null || icAelterUsd == null || icJuengerUsd == null) {
+    return null
+  }
+  const deltaNopat = nopatJuengerUsd - nopatAelterUsd
+  const deltaIc = icJuengerUsd - icAelterUsd
+  if (!Number.isFinite(deltaIc) || Math.abs(deltaIc) < 1_000_000) return null
+
+  return {
+    pct: (deltaNopat / deltaIc) * 100,
+    deltaNopatUsd: deltaNopat,
+    deltaIcUsd: deltaIc,
+    vonJahr,
+    bisJahr,
+    quelle,
+  }
+}
+
+/** Fallback: IC aus ROIC-Identität (IC = NOPAT / ROIC), wenn keine Bilanz verfügbar. */
+export function berechneRoiicAusMacrotrendsZeilen(
+  perioden: FundamentalPeriode[] | undefined,
+  ebitZeile: FundamentalMetrikZeile | undefined,
+  roiZeile: FundamentalMetrikZeile | undefined,
+): RoiicErgebnis | null {
+  const fyKeys = perioden?.filter((p) => !p.istLtm && !p.istSchaetzung).map((p) => p.iso) ?? []
+  if (fyKeys.length < 2) return null
+
+  const priorKey = fyKeys[fyKeys.length - 2]!
+  const latestKey = fyKeys[fyKeys.length - 1]!
+
+  const ebitPriorMio = ebitZeile?.werte[priorKey]
+  const ebitLatestMio = ebitZeile?.werte[latestKey]
+  const roicPrior = roiZeile?.werte[priorKey]
+  const roicLatest = roiZeile?.werte[latestKey]
+
+  if (
+    ebitPriorMio == null ||
+    ebitLatestMio == null ||
+    roicPrior == null ||
+    roicLatest == null ||
+    roicPrior === 0 ||
+    roicLatest === 0
+  ) {
+    return null
+  }
+
+  const nopatPrior = nopatUsd(ebitPriorMio * 1_000_000)
+  const nopatLatest = nopatUsd(ebitLatestMio * 1_000_000)
+  const icPrior = nopatPrior != null ? nopatPrior / (roicPrior / 100) : null
+  const icLatest = nopatLatest != null ? nopatLatest / (roicLatest / 100) : null
+
+  return berechneRoiicYoY(
+    nopatPrior,
+    nopatLatest,
+    icPrior,
+    icLatest,
+    priorKey.slice(0, 4),
+    latestKey.slice(0, 4),
+    'macrotrends',
+  )
+}
+
 /**
  * Cash-Reinvestition eines Geschäftsjahres (Yahoo CF-Vorzeichen):
  * CapEx + gebundenes Working Capital + Akquisitionen.

@@ -1,5 +1,11 @@
 import 'server-only'
 
+import type { RoiicErgebnis } from '@/lib/portfolio-analyse/fundamentaldaten-roic-hilfen'
+import {
+  berechneRoiicYoY,
+  investedCapitalAnlageUndWcUsd,
+  nopatUsd,
+} from '@/lib/portfolio-analyse/fundamentaldaten-roic-hilfen'
 import { FUNDAMENTAL_TTM_KEY } from '@/lib/portfolio-analyse/fundamentaldaten-types'
 import { isinKenntnis } from '@/lib/portfolio-analyse/isin-kenntnisse'
 
@@ -39,8 +45,11 @@ export type StockanalysisRoicDaten = {
   url: string
 }
 
+export type StockanalysisRoiicDaten = RoiicErgebnis & { url: string }
+
 let letzterAbruf = 0
-const cache = new Map<string, { at: number; daten: StockanalysisRoicDaten | null }>()
+const roicCache = new Map<string, { at: number; daten: StockanalysisRoicDaten | null }>()
+const roiicCache = new Map<string, { at: number; daten: StockanalysisRoiicDaten | null }>()
 
 function pause(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms))
@@ -71,28 +80,86 @@ async function fetchHtml(path: string): Promise<string | null> {
   }
 }
 
-function parseRoicAusHtml(html: string): Record<string, number> | null {
-  const m = html.match(/financialData:\{datekey:\[([^\]]+)\][\s\S]*?roic:\[([^\]]+)\]/)
+function parseZahlenFeld(html: string, feld: string): number[] | null {
+  const m = html.match(new RegExp(`${feld}:\\[([^\\]]+)\\]`))
   if (!m) return null
-
-  const datekeys = m[1]
-    .split(',')
-    .map((s) => s.replace(/"/g, '').trim())
-    .filter(Boolean)
-  const roicRaw = m[2]
+  const vals = m[1]
     .split(',')
     .map((s) => Number(s.trim()))
     .filter((n) => Number.isFinite(n))
+  return vals.length > 0 ? vals : null
+}
 
-  if (datekeys.length === 0 || roicRaw.length === 0) return null
+function parseGeschaeftsjahre(html: string): string[] | null {
+  const m = html.match(/datekey:\[([^\]]+)\]/)
+  if (!m) return null
+  return m[1]
+    .split(',')
+    .map((s) => s.replace(/"/g, '').trim())
+    .filter((d) => d && d !== 'TTM')
+}
+
+function parseRoicAusHtml(html: string): Record<string, number> | null {
+  const datekeys = html.match(/datekey:\[([^\]]+)\]/)?.[1]
+  const roicRaw = parseZahlenFeld(html, 'roic')
+  if (!datekeys || !roicRaw) return null
+
+  const keys = datekeys
+    .split(',')
+    .map((s) => s.replace(/"/g, '').trim())
+    .filter(Boolean)
+
+  if (keys.length === 0) return null
 
   const werte: Record<string, number> = {}
-  const len = Math.min(datekeys.length, roicRaw.length)
+  const len = Math.min(keys.length, roicRaw.length)
   for (let i = 0; i < len; i++) {
-    const key = datekeys[i] === 'TTM' ? FUNDAMENTAL_TTM_KEY : datekeys[i]!
+    const key = keys[i] === 'TTM' ? FUNDAMENTAL_TTM_KEY : keys[i]!
     werte[key] = roicRaw[i]! * 100
   }
   return Object.keys(werte).length > 0 ? werte : null
+}
+
+function berechneRoiicAusStockanalysisSeiten(
+  incomeHtml: string,
+  balanceHtml: string,
+): RoiicErgebnis | null {
+  const jahre = parseGeschaeftsjahre(balanceHtml) ?? parseGeschaeftsjahre(incomeHtml)
+  const opInc = parseZahlenFeld(incomeHtml, 'operatingIncome')
+  const pretax = parseZahlenFeld(incomeHtml, 'pretax')
+  const tax = parseZahlenFeld(incomeHtml, 'income_statement_provision_for_income_taxes')
+  const ppAndE = parseZahlenFeld(balanceHtml, 'balance_sheet_net_property_plant_and_equipment')
+  const currAssets = parseZahlenFeld(balanceHtml, 'assetsc')
+  const currLiab = parseZahlenFeld(balanceHtml, 'liabilitiesc')
+
+  if (!jahre || jahre.length < 2 || !opInc || !ppAndE || !currAssets || !currLiab) return null
+
+  const idxJuenger = 1
+  const idxAelter = 2
+  if (opInc.length <= idxAelter || ppAndE.length <= idxAelter) return null
+
+  const nopatAelter = nopatUsd(opInc[idxAelter], pretax?.[idxAelter], tax?.[idxAelter])
+  const nopatJuenger = nopatUsd(opInc[idxJuenger], pretax?.[idxJuenger], tax?.[idxJuenger])
+  const icAelter = investedCapitalAnlageUndWcUsd(
+    ppAndE[idxAelter],
+    currAssets[idxAelter],
+    currLiab[idxAelter],
+  )
+  const icJuenger = investedCapitalAnlageUndWcUsd(
+    ppAndE[idxJuenger],
+    currAssets[idxJuenger],
+    currLiab[idxJuenger],
+  )
+
+  return berechneRoiicYoY(
+    nopatAelter,
+    nopatJuenger,
+    icAelter,
+    icJuenger,
+    jahre[idxAelter - 1]!.slice(0, 4),
+    jahre[idxJuenger - 1]!.slice(0, 4),
+    'stockanalysis',
+  )
 }
 
 function ratiosPfadAusHit(hit: SearchHit): string | null {
@@ -154,7 +221,7 @@ async function sucheStockanalysisHits(query: string): Promise<SearchHit[]> {
   }
 }
 
-function kandidatenPfade(opts: {
+function kandidatenBasisPfade(opts: {
   symbolYahoo?: string | null
   ticker?: string | null
   firmenname: string
@@ -169,14 +236,14 @@ function kandidatenPfade(opts: {
   if (sym.includes('.')) {
     const [base, suf] = sym.split('.')
     const ex = YAHOO_SUFFIX_TO_EXCHANGE[suf ?? '']
-    if (ex && base) add(`/quote/${ex}/${base}/financials/ratios/`)
+    if (ex && base) add(`/quote/${ex}/${base}/financials/`)
   } else if (sym) {
-    add(`/stocks/${sym.toLowerCase()}/financials/ratios/`)
+    add(`/stocks/${sym.toLowerCase()}/financials/`)
   }
 
   const ticker = opts.ticker?.trim().toUpperCase()
   if (ticker && ticker !== sym) {
-    add(`/stocks/${ticker.toLowerCase()}/financials/ratios/`)
+    add(`/stocks/${ticker.toLowerCase()}/financials/`)
   }
 
   const k = isinKenntnis(opts.isin?.trim().toUpperCase() ?? '')
@@ -185,13 +252,38 @@ function kandidatenPfade(opts: {
     if (ks.includes('.')) {
       const [base, suf] = ks.split('.')
       const ex = YAHOO_SUFFIX_TO_EXCHANGE[suf ?? '']
-      if (ex && base) add(`/quote/${ex}/${base}/financials/ratios/`)
+      if (ex && base) add(`/quote/${ex}/${base}/financials/`)
     } else {
-      add(`/stocks/${ks.toLowerCase()}/financials/ratios/`)
+      add(`/stocks/${ks.toLowerCase()}/financials/`)
     }
   }
 
   return out
+}
+
+function kandidatenPfade(opts: {
+  symbolYahoo?: string | null
+  ticker?: string | null
+  firmenname: string
+  isin?: string | null
+}): string[] {
+  return kandidatenBasisPfade(opts).map((b) => `${b}ratios/`)
+}
+
+function basisPfadAusRatiosPfad(ratiosPfad: string): string | null {
+  if (ratiosPfad.endsWith('ratios/')) return ratiosPfad.slice(0, -'ratios/'.length)
+  return null
+}
+
+async function ladeRoiicVonBasisPfad(basis: string): Promise<StockanalysisRoiicDaten | null> {
+  const [incomeHtml, balanceHtml] = await Promise.all([
+    fetchHtml(`${basis}`),
+    fetchHtml(`${basis}balance-sheet/`),
+  ])
+  if (!incomeHtml || !balanceHtml) return null
+  const ergebnis = berechneRoiicAusStockanalysisSeiten(incomeHtml, balanceHtml)
+  if (!ergebnis) return null
+  return { ...ergebnis, url: `${BASE}${basis}` }
 }
 
 async function ladeRoicVonPfad(pfad: string): Promise<StockanalysisRoicDaten | null> {
@@ -219,13 +311,13 @@ export async function ladeStockanalysisRoic(opts: {
     opts.firmenname.trim(),
   ].join('|')
 
-  const cached = cache.get(cacheKey)
+  const cached = roicCache.get(cacheKey)
   if (cached && Date.now() - cached.at < CACHE_MS) return cached.daten
 
   for (const pfad of kandidatenPfade(opts)) {
     const hit = await ladeRoicVonPfad(pfad)
     if (hit) {
-      cache.set(cacheKey, { at: Date.now(), daten: hit })
+      roicCache.set(cacheKey, { at: Date.now(), daten: hit })
       return hit
     }
   }
@@ -250,11 +342,67 @@ export async function ladeStockanalysisRoic(opts: {
 
     const daten = await ladeRoicVonPfad(pfad)
     if (daten) {
-      cache.set(cacheKey, { at: Date.now(), daten })
+      roicCache.set(cacheKey, { at: Date.now(), daten })
       return daten
     }
   }
 
-  cache.set(cacheKey, { at: Date.now(), daten: null })
+  roicCache.set(cacheKey, { at: Date.now(), daten: null })
+  return null
+}
+
+/** ROIIC = Δ NOPAT / Δ (Anlagevermögen + Working Capital), Quelle StockAnalysis. */
+export async function ladeStockanalysisRoiic(opts: {
+  symbolYahoo?: string | null
+  ticker?: string | null
+  firmenname: string
+  isin?: string | null
+}): Promise<StockanalysisRoiicDaten | null> {
+  const cacheKey = [
+    'roiic',
+    opts.isin?.trim().toUpperCase() ?? '',
+    opts.symbolYahoo?.trim().toUpperCase() ?? '',
+    opts.ticker?.trim().toUpperCase() ?? '',
+    opts.firmenname.trim(),
+  ].join('|')
+
+  const cached = roiicCache.get(cacheKey)
+  if (cached && Date.now() - cached.at < CACHE_MS) return cached.daten
+
+  for (const basis of kandidatenBasisPfade(opts)) {
+    const hit = await ladeRoiicVonBasisPfad(basis)
+    if (hit) {
+      roiicCache.set(cacheKey, { at: Date.now(), daten: hit })
+      return hit
+    }
+  }
+
+  const suchQueries = [
+    opts.firmenname.trim(),
+    opts.symbolYahoo?.split('.')[0]?.trim() ?? '',
+    opts.ticker?.trim() ?? '',
+  ].filter((q) => q.length >= 2)
+
+  const seen = new Set<string>()
+  for (const q of suchQueries) {
+    const ql = q.toLowerCase()
+    if (seen.has(ql)) continue
+    seen.add(ql)
+
+    const hits = await sucheStockanalysisHits(q)
+    const hit = waehleSearchHit(hits, opts.symbolYahoo ?? null, opts.firmenname)
+    const ratiosPfad = hit ? ratiosPfadAusHit(hit) : null
+    const basis = ratiosPfad ? basisPfadAusRatiosPfad(ratiosPfad) : null
+    if (!basis || seen.has(basis)) continue
+    seen.add(basis)
+
+    const daten = await ladeRoiicVonBasisPfad(basis)
+    if (daten) {
+      roiicCache.set(cacheKey, { at: Date.now(), daten })
+      return daten
+    }
+  }
+
+  roiicCache.set(cacheKey, { at: Date.now(), daten: null })
   return null
 }

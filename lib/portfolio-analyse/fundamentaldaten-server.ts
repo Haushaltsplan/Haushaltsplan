@@ -7,7 +7,7 @@ import {
 } from '@/lib/portfolio-analyse/fundamentaldaten-key-metrics'
 import { baueMantraAudit } from '@/lib/portfolio-analyse/fundamentaldaten-mantra'
 import { ergaenzeRoicZeile, roiZeileBrauchtFallback } from '@/lib/portfolio-analyse/fundamentaldaten-roic-fallback'
-import { ladeStockanalysisRoic } from '@/lib/portfolio-analyse/stockanalysis-roic-server'
+import { ladeStockanalysisRoic, ladeStockanalysisRoiic } from '@/lib/portfolio-analyse/stockanalysis-roic-server'
 import { ladeYahooMantraFinanzdaten } from '@/lib/portfolio-analyse/yahoo-fundamentals-timeseries-server'
 import { ladeFundamentalNews } from '@/lib/portfolio-analyse/fundamentaldaten-news-server'
 import { baueDcfKontext } from '@/lib/portfolio-analyse/fundamentaldaten-dcf'
@@ -325,15 +325,19 @@ export async function ladeFundamentaldaten(anfrage: FundamentaldatenAnfrage): Pr
   }
 
   const merged = mergePeriodenUndZeilen(roh, schaetzungen)
-  if (roiZeileBrauchtFallback(merged.zeilen, merged.perioden)) {
-    const roicDaten = await ladeStockanalysisRoic({
-      symbolYahoo,
-      ticker: ident.ticker,
-      firmenname: ident.firmenname,
-      isin: anfrage.isin,
-    })
-    ergaenzeRoicZeile(merged.zeilen, merged.perioden, roicDaten)
+  const stockanalysisOpts = {
+    symbolYahoo,
+    ticker: ident.ticker,
+    firmenname: ident.firmenname,
+    isin: anfrage.isin,
   }
+  const [roicDaten, roiicDaten] = await Promise.all([
+    roiZeileBrauchtFallback(merged.zeilen, merged.perioden)
+      ? ladeStockanalysisRoic(stockanalysisOpts)
+      : Promise.resolve(null),
+    ladeStockanalysisRoiic(stockanalysisOpts),
+  ])
+  if (roicDaten) ergaenzeRoicZeile(merged.zeilen, merged.perioden, roicDaten)
   const ntm = await baueNtmBewertungsZeilen(symbolYahoo, merged.perioden, merged.zeilen, yahooExt)
   if (ntm.zeilen.length > 0) {
     if (ntm.periodenPatch && !merged.perioden.some((p) => p.iso === FUNDAMENTAL_NTM_KEY)) {
@@ -361,7 +365,12 @@ export async function ladeFundamentaldaten(anfrage: FundamentaldatenAnfrage): Pr
     beschreibung: beschreibungDe,
     perioden: merged.perioden,
     zeilen: merged.zeilen,
-    keyMetrics: baueKeyMetrics(yahooExt, { ...roh, perioden: merged.perioden, zeilen: merged.zeilen }, schaetzungen),
+    keyMetrics: baueKeyMetrics(
+      yahooExt,
+      { ...roh, perioden: merged.perioden, zeilen: merged.zeilen },
+      schaetzungen,
+      { roiic: roiicDaten },
+    ),
     dcfKontext,
     mantra: baueMantraAudit(sektorFinal, brancheFinal, yahooExt, rohFuerMantra(merged), schaetzungen, yahooFinanz),
     mantraMeta,

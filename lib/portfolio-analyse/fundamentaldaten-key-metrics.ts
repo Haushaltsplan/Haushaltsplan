@@ -10,6 +10,8 @@ import type {
 } from '@/lib/portfolio-analyse/fundamentaldaten-types'
 import { FUNDAMENTAL_TTM_KEY } from '@/lib/portfolio-analyse/fundamentaldaten-types'
 import type { MacrotrendsFundamentalRoh } from '@/lib/portfolio-analyse/macrotrends-scraper-server'
+import type { RoiicErgebnis } from '@/lib/portfolio-analyse/fundamentaldaten-roic-hilfen'
+import { berechneRoiicAusMacrotrendsZeilen } from '@/lib/portfolio-analyse/fundamentaldaten-roic-hilfen'
 
 export type YahooFundamentalKennzahlen = {
   fiftyTwoWeekHigh?: number
@@ -119,6 +121,7 @@ export function baueKeyMetrics(
   yahoo: YahooFundamentalKennzahlen | null,
   roh: MacrotrendsFundamentalRoh | null,
   schaetzungen: FundamentalSchaetzungenRoh,
+  extras?: { roiic?: RoiicErgebnis | null },
 ): FundamentalKeyMetric[] {
   const out: FundamentalKeyMetric[] = []
   const perioden = roh?.perioden
@@ -194,6 +197,10 @@ export function baueKeyMetrics(
   const epsZeile = roh?.zeilen.find((z) => z.id === 'eps')
   const fcfZeile = roh?.zeilen.find((z) => z.id === 'fcf')
 
+  const roiic =
+    extras?.roiic ??
+    berechneRoiicAusMacrotrendsZeilen(perioden, ebitGuV, roiZeile)
+
   out.push(
     {
       id: 'ltm_brutto',
@@ -235,6 +242,12 @@ export function baueKeyMetrics(
       id: 'ltm_roce',
       label: 'LTM ROCE',
       wert: pctRaw(letzterGeschaeftsjahresWert(roiZeile, perioden)),
+      gruppe: 'effizienz',
+    },
+    {
+      id: 'ltm_roiic',
+      label: 'LTM ROIIC',
+      wert: pctRaw(roiic?.pct),
       gruppe: 'effizienz',
     },
   )
