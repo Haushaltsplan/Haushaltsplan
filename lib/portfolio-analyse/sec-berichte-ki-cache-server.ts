@@ -3,6 +3,11 @@
 import 'server-only'
 
 import { dateiCachePfad } from '@/lib/datei-cache-pfad'
+import {
+  ladeSecBerichtKiAusCloud,
+  loescheSecBerichtKiCloudEintrag,
+  speichereSecBerichtKiInCloud,
+} from '@/lib/portfolio-analyse/portfolio-ki-cache-cloud-server'
 import { promises as fs } from 'fs'
 import path from 'path'
 
@@ -73,17 +78,33 @@ async function ladeDatei(): Promise<CacheDatei> {
 export async function ladeSecBerichtKiCacheFuerTicker(
   ticker: string,
 ): Promise<Map<string, SecBerichtKiZeile>> {
+  const t = tickerNorm(ticker)
+  const cloud = await ladeSecBerichtKiAusCloud(t)
   const datei = await ladeDatei()
-  const rows = datei.byTicker[tickerNorm(ticker)] ?? {}
-  return new Map(Object.entries(rows))
+  const rows = datei.byTicker[t] ?? {}
+  const merged = new Map<string, SecBerichtKiZeile>()
+  for (const [berichtId, row] of Object.entries(rows)) {
+    merged.set(berichtId, row)
+  }
+  for (const [berichtId, row] of cloud) {
+    const prev = merged.get(berichtId)
+    if (!prev || row.aktualisiertAm >= prev.aktualisiertAm) {
+      merged.set(berichtId, {
+        zusammenfassung: row.zusammenfassung,
+        accession: row.accession,
+        aktualisiertAm: row.aktualisiertAm,
+      })
+    }
+  }
+  return merged
 }
 
 export async function ladeSecBerichtKiCacheEintrag(
   ticker: string,
   berichtId: string,
 ): Promise<SecBerichtKiZeile | null> {
-  const datei = await ladeDatei()
-  return datei.byTicker[tickerNorm(ticker)]?.[berichtId.trim()] ?? null
+  const map = await ladeSecBerichtKiCacheFuerTicker(ticker)
+  return map.get(berichtId.trim()) ?? null
 }
 
 export async function speichereSecBerichtKiCache(eintrag: {
@@ -95,12 +116,14 @@ export async function speichereSecBerichtKiCache(eintrag: {
   const t = tickerNorm(eintrag.ticker)
   const datei = await ladeDatei()
   if (!datei.byTicker[t]) datei.byTicker[t] = {}
-  datei.byTicker[t][eintrag.berichtId.trim()] = {
+  const zeile: SecBerichtKiZeile = {
     zusammenfassung: eintrag.zusammenfassung,
     accession: eintrag.accession,
     aktualisiertAm: new Date().toISOString(),
   }
+  datei.byTicker[t][eintrag.berichtId.trim()] = zeile
   await schreibeDatei(datei)
+  await speichereSecBerichtKiInCloud(eintrag)
 }
 
 export async function loescheSecBerichtKiCacheEintrag(ticker: string, berichtId: string): Promise<void> {
@@ -109,4 +132,5 @@ export async function loescheSecBerichtKiCacheEintrag(ticker: string, berichtId:
   if (!datei.byTicker[t]) return
   delete datei.byTicker[t][berichtId.trim()]
   await schreibeDatei(datei)
+  await loescheSecBerichtKiCloudEintrag(ticker, berichtId)
 }

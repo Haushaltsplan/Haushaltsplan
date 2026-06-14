@@ -1,6 +1,7 @@
 'use client'
 
 import type { SecBerichtAnfrage, SecBerichtePaket } from '@/lib/portfolio-analyse/sec-berichte-types'
+import { syncSecBerichteKiAusLocal } from '@/lib/portfolio-analyse/portfolio-ki-cache-sync-client'
 
 const LS_STORE_KEY = 'pa-sec-berichte-unternehmen-v2'
 
@@ -96,6 +97,7 @@ export function ladeSecBerichteAusLocalCache(
   const key = secBerichteUnternehmenKey(anfrage)
   const hit = ladeStore()[key]
   if (!hit?.berichte?.length) return null
+  syncSecBerichteKiAusLocal(hit)
   return hit
 }
 
@@ -104,6 +106,7 @@ function speicherePaket(anfrage: SecBerichtAnfrage, paket: SecBerichtePaket): vo
   const store = ladeStore()
   store[key] = { ...paket, cacheKey: key, cachedAt: Date.now() }
   schreibeStore(store)
+  syncSecBerichteKiAusLocal(paket)
 }
 
 async function parseApiAntwort(res: Response): Promise<SecBerichtePaket & { fehler?: string }> {

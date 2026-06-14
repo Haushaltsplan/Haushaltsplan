@@ -1,6 +1,7 @@
 'use client'
 
 import type { EarningsCallAnfrage, EarningsCallPaket } from '@/lib/portfolio-analyse/earnings-call-types'
+import { syncEarningsCallKiAusLocal } from '@/lib/portfolio-analyse/portfolio-ki-cache-sync-client'
 
 /** Pro Unternehmen (ISIN|Ticker|Name) — wie Fundamentaldaten, ohne Überschreiben anderer Titel. */
 const LS_STORE_KEY = 'pa-earnings-call-unternehmen-v1'
@@ -108,7 +109,9 @@ export function ladeEarningsCallAusLocalCache(anfrage: EarningsCallAnfrage): Ear
   const hit = ladeStore()[key]
   if (!hit?.quartale?.length) return null
   if (hit.ticker.trim().toUpperCase() !== anfrage.ticker.trim().toUpperCase()) return null
-  return { ...hit, ok: true, ausCache: true }
+  const paket = { ...hit, ok: true, ausCache: true }
+  syncEarningsCallKiAusLocal(paket)
+  return paket
 }
 
 function schreibeUnternehmenCache(anfrage: EarningsCallAnfrage, daten: EarningsCallPaket): void {
@@ -124,6 +127,7 @@ function schreibeUnternehmenCache(anfrage: EarningsCallAnfrage, daten: EarningsC
     cachedAt: Date.now(),
   }
   schreibeStore(store)
+  syncEarningsCallKiAusLocal(daten)
 }
 
 function istHtmlAntwort(text: string): boolean {

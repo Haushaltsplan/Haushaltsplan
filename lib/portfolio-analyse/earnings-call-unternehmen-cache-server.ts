@@ -3,6 +3,11 @@
 import 'server-only'
 
 import { dateiCachePfad } from '@/lib/datei-cache-pfad'
+import {
+  ladeEarningsCallKiAusCloud,
+  loescheEarningsCallKiCloudEintrag,
+  speichereEarningsCallKiInCloud,
+} from '@/lib/portfolio-analyse/portfolio-ki-cache-cloud-server'
 import type { EarningsCallQuelle } from '@/lib/portfolio-analyse/earnings-call-types'
 import { promises as fs } from 'fs'
 import path from 'path'
@@ -169,11 +174,21 @@ export async function speichereUnternehmenTranskripte(
 export async function ladeEarningsCallKiCacheFuerTicker(
   ticker: string,
 ): Promise<Map<string, { zusammenfassung: string; transcriptUrl: string }>> {
+  const t = tickerNorm(ticker)
+  const cloud = await ladeEarningsCallKiAusCloud(t)
   const hit = await ladeUnternehmenCache(ticker)
   const out = new Map<string, { zusammenfassung: string; transcriptUrl: string }>()
-  if (!hit) return out
-  for (const [quartalId, row] of Object.entries(hit.summaries)) {
-    out.set(quartalId, { zusammenfassung: row.zusammenfassung, transcriptUrl: row.transcriptUrl })
+  if (hit) {
+    for (const [quartalId, row] of Object.entries(hit.summaries)) {
+      out.set(quartalId, { zusammenfassung: row.zusammenfassung, transcriptUrl: row.transcriptUrl })
+    }
+  }
+  for (const [quartalId, row] of cloud) {
+    const prev = out.get(quartalId)
+    const fileRow = hit?.summaries[quartalId]
+    if (!prev || row.aktualisiertAm >= (fileRow?.aktualisiertAm ?? '')) {
+      out.set(quartalId, { zusammenfassung: row.zusammenfassung, transcriptUrl: row.transcriptUrl })
+    }
   }
   return out
 }
@@ -182,10 +197,8 @@ export async function ladeEarningsCallKiCacheEintrag(
   ticker: string,
   quartalId: string,
 ): Promise<{ zusammenfassung: string; transcriptUrl: string } | null> {
-  const hit = await ladeUnternehmenCache(ticker)
-  const row = hit?.summaries[quartalId.trim()]
-  if (!row) return null
-  return { zusammenfassung: row.zusammenfassung, transcriptUrl: row.transcriptUrl }
+  const map = await ladeEarningsCallKiCacheFuerTicker(ticker)
+  return map.get(quartalId.trim()) ?? null
 }
 
 export async function speichereEarningsCallKiCache(eintrag: {
@@ -215,6 +228,7 @@ export async function speichereEarningsCallKiCache(eintrag: {
 
   datei.byTicker[t] = prev
   await schreibeDatei(datei)
+  await speichereEarningsCallKiInCloud(eintrag)
 }
 
 export async function loescheEarningsCallKiCacheEintrag(ticker: string, quartalId: string): Promise<void> {
@@ -224,4 +238,5 @@ export async function loescheEarningsCallKiCacheEintrag(ticker: string, quartalI
   if (!prev) return
   delete prev.summaries[quartalId.trim()]
   await schreibeDatei(datei)
+  await loescheEarningsCallKiCloudEintrag(ticker, quartalId)
 }

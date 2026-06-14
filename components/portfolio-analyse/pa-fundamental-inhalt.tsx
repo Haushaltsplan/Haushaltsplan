@@ -6,8 +6,6 @@ import { PaFundamentalMantra } from '@/components/portfolio-analyse/pa-fundament
 import { PaFundamentalNews } from '@/components/portfolio-analyse/pa-fundamental-news'
 import { PaFundamentalUebersicht } from '@/components/portfolio-analyse/pa-fundamental-uebersicht'
 import { PaFundamentalUnternehmenHeader } from '@/components/portfolio-analyse/pa-fundamental-unternehmen-header'
-import { PaFundamentalDcf } from '@/components/portfolio-analyse/pa-fundamental-dcf'
-import { PaFundamentalChartanalyse } from '@/components/portfolio-analyse/pa-fundamental-chartanalyse'
 import { PaFundamentalMetrikChart } from '@/components/portfolio-analyse/pa-fundamental-metrik-chart'
 import { PaFundamentalMetrikTabelle } from '@/components/portfolio-analyse/pa-fundamental-metrik-tabelle'
 import { PaCard } from '@/components/portfolio-analyse/pa-ui'
@@ -27,8 +25,6 @@ const UNTER_TABS = [
   { id: 'mantra' as const, label: 'Mantra' },
   { id: 'finanzdaten' as const, label: 'Finanzdaten' },
   { id: 'bewertung' as const, label: 'Bewertung' },
-  { id: 'chartanalyse' as const, label: 'Chartanalyse' },
-  { id: 'dcf' as const, label: 'DCF' },
   { id: 'quartalszahlen' as const, label: 'Quartalszahlen' },
   { id: 'news' as const, label: 'News' },
 ]
@@ -212,22 +208,6 @@ export function PaFundamentalInhalt({
 
           {unterTab === 'mantra' && mantraAudit ? <PaFundamentalMantra audit={mantraAudit} /> : null}
 
-          {unterTab === 'chartanalyse' ? (
-            <PaFundamentalChartanalyse
-              symbolYahoo={daten.symbolYahoo}
-              ticker={daten.ticker}
-              firmenname={daten.firmenname}
-            />
-          ) : null}
-
-          {unterTab === 'dcf' ? (
-            <PaFundamentalDcf
-              kontext={daten.dcfKontext ?? null}
-              ticker={daten.ticker}
-              selectionKey={selectionKey}
-            />
-          ) : null}
-
           {unterTab === 'quartalszahlen' ? (
             <PaFundamentalQuartalszahlen
               ticker={daten.ticker}
@@ -242,9 +222,7 @@ export function PaFundamentalInhalt({
           {unterTab !== 'uebersicht' &&
           unterTab !== 'news' &&
           unterTab !== 'mantra' &&
-          unterTab !== 'quartalszahlen' &&
-          unterTab !== 'chartanalyse' &&
-          unterTab !== 'dcf' ? (
+          unterTab !== 'quartalszahlen' ? (
             <div className="space-y-4">
               <PaFundamentalMetrikChart
                 perioden={daten.perioden}
