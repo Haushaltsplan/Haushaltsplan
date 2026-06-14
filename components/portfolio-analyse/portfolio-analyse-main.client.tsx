@@ -86,7 +86,7 @@ export function PortfolioAnalyseMainClient() {
                       <div>
                         <h2 className="text-base font-semibold text-zinc-100">Kapitalfluss</h2>
                         <p className="mt-1 text-xs text-zinc-500">
-                          Monatlicher Kapitalzu- und -abfluss durch Käufe und Verkäufe (Verkauf − Kauf).
+                          Monatlicher Kapitalzu- und -abfluss durch Käufe und Verkäufe (Kauf − Verkauf).
                         </p>
                       </div>
                       <div className="flex flex-col items-end gap-2">

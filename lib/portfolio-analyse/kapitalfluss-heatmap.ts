@@ -1,5 +1,6 @@
-/** Kapitalfluss-Heatmap: Netto aus Verkäufen (− Käufe) pro Monat/Quartal. */
+/** Kapitalfluss-Heatmap: Netto aus Käufen (− Verkäufe) pro Monat/Quartal — wie Parqet. */
 
+import { irrBetragFuerKauf } from '@/lib/portfolio-analyse/parqet-xirr'
 import type { PortfolioBuchung } from '@/lib/portfolio-analyse/types'
 
 const MONAT_KURZ = ['Jan.', 'Feb.', 'März', 'Apr.', 'Mai', 'Juni', 'Juli', 'Aug.', 'Sep.', 'Okt.', 'Nov.', 'Dez.'] as const
@@ -34,20 +35,28 @@ function round2(n: number): number {
   return Math.round(n * 100) / 100
 }
 
-/** Netto-Kapitalfluss: Verkäufe minus Käufe (Zufluss positiv). */
+function kapitalflussBetrag(b: PortfolioBuchung): number {
+  if (b.typ === 'kauf') return irrBetragFuerKauf(b)
+  if (b.typ === 'verkauf') return Math.abs(b.betragEur)
+  return 0
+}
+
+/** Netto-Kapitalfluss: Käufe minus Verkäufe (Kapitalzufluss positiv, wie Parqet). */
 export function kapitalflussNettoMap(buchungen: PortfolioBuchung[]): Map<string, number> {
   const kauf = new Map<string, number>()
   const verkauf = new Map<string, number>()
   for (const b of buchungen) {
     const k = monatsKey(b.datum)
     if (!k) continue
-    if (b.typ === 'kauf') kauf.set(k, (kauf.get(k) ?? 0) + b.betragEur)
-    if (b.typ === 'verkauf') verkauf.set(k, (verkauf.get(k) ?? 0) + b.betragEur)
+    const betrag = kapitalflussBetrag(b)
+    if (betrag <= 0) continue
+    if (b.typ === 'kauf') kauf.set(k, (kauf.get(k) ?? 0) + betrag)
+    if (b.typ === 'verkauf') verkauf.set(k, (verkauf.get(k) ?? 0) + betrag)
   }
   const keys = new Set([...kauf.keys(), ...verkauf.keys()])
   const out = new Map<string, number>()
   for (const key of keys) {
-    out.set(key, round2((verkauf.get(key) ?? 0) - (kauf.get(key) ?? 0)))
+    out.set(key, round2((kauf.get(key) ?? 0) - (verkauf.get(key) ?? 0)))
   }
   return out
 }
