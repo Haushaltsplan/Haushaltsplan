@@ -20,6 +20,27 @@ type BuchungDbSpalten = {
   steuerEur: boolean
 }
 
+const SPALTEN_META: Record<
+  keyof BuchungDbSpalten,
+  { db: string; migration: string; label: string }
+> = {
+  realisierterGewinn: {
+    db: 'realisierter_gewinn_eur',
+    migration: '20260601130000_portfolio_analyse_realisierter_gewinn.sql',
+    label: 'Realisiert (Parqet)',
+  },
+  parqetTyp: {
+    db: 'parqet_typ',
+    migration: '20260601130000_portfolio_analyse_realisierter_gewinn.sql',
+    label: 'Parqet-Typ',
+  },
+  steuerEur: {
+    db: 'steuer_eur',
+    migration: '20260614140000_portfolio_analyse_steuer_eur.sql',
+    label: 'Steuer',
+  },
+}
+
 function fehlendePortfolioSpalte(message: string): keyof BuchungDbSpalten | null {
   const m = /could not find the '([^']+)' column/i.exec(message)
   if (!m) return null
@@ -244,11 +265,15 @@ export async function speicherePortfolioImport(
     }
 
     if (fehlendeSpalten.size > 0) {
+      const migrations = [
+        ...new Set([...fehlendeSpalten].map((k) => SPALTEN_META[k].migration)),
+      ]
+      const spalten = [...fehlendeSpalten].map((k) => SPALTEN_META[k].db).join(', ')
       hinweis =
-        'Datenbank-Migration fehlt noch (Spalten realisierter_gewinn_eur / parqet_typ / steuer_eur). ' +
-        'Buchungen wurden ohne Parqet-Steuer/Realisiert gespeichert. ' +
-        'Im Supabase SQL-Editor ausführen: supabase/migrations/20260601130000_portfolio_analyse_realisierter_gewinn.sql ' +
-        'und 20260614140000_portfolio_analyse_steuer_eur.sql — danach CSV erneut importieren.'
+        `Datenbank-Migration fehlt noch (Spalte${fehlendeSpalten.size > 1 ? 'n' : ''}: ${spalten}). ` +
+        'Buchungen wurden ohne diese Felder gespeichert. ' +
+        `Im Supabase SQL-Editor ausführen: supabase/migrations/${migrations.join(' und ')} ` +
+        '— danach CSV erneut importieren (Upsert aktualisiert bestehende Zeilen).'
     }
   }
 

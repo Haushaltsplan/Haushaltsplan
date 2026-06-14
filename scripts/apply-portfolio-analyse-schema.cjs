@@ -49,6 +49,21 @@ function projectRefFromUrl(url) {
   }
 }
 
+/** Supabase → Settings → Database → Database password + Connection pooler (Session). */
+function resolveDbUrl(env) {
+  const direct = env.DATABASE_URL || env.SUPABASE_DB_URL || env.DIRECT_URL
+  if (direct) return direct
+  const ref = projectRefFromUrl(env.NEXT_PUBLIC_SUPABASE_URL || '')
+  const pw = env.SUPABASE_DB_PASSWORD || env.POSTGRES_PASSWORD
+  if (!ref || !pw) return null
+  const host =
+    env.SUPABASE_DB_HOST ||
+    `aws-0-${env.SUPABASE_REGION || 'eu-central-1'}.pooler.supabase.com`
+  const port = env.SUPABASE_DB_PORT || '6543'
+  const user = env.SUPABASE_DB_USER || `postgres.${ref}`
+  return `postgresql://${encodeURIComponent(user)}:${encodeURIComponent(pw)}@${host}:${port}/postgres`
+}
+
 function copySqlToClipboard(sql) {
   if (process.platform === 'win32') {
     const tmp = path.join(os.tmpdir(), `portfolio-analyse-schema-${Date.now()}.sql`)
@@ -75,7 +90,7 @@ async function main() {
     process.exit(1)
   }
   const sql = sqlPaths.map((p) => `-- ${path.basename(p)}\n${fs.readFileSync(p, 'utf8')}`).join('\n\n')
-  const dbUrl = env.DATABASE_URL || env.SUPABASE_DB_URL || env.DIRECT_URL
+  const dbUrl = resolveDbUrl(env)
 
   if (dbUrl) {
     let Client
@@ -100,7 +115,7 @@ async function main() {
   const ref = projectRefFromUrl(env.NEXT_PUBLIC_SUPABASE_URL || '')
   const dash = ref ? `https://supabase.com/dashboard/project/${ref}/sql/new` : 'https://supabase.com/dashboard'
 
-  console.log('\n=== Kein DATABASE_URL in .env.local ===\n')
+  console.log('\n=== Kein DATABASE_URL / SUPABASE_DB_PASSWORD in .env.local ===\n')
   console.log('Dateien:', sqlPaths.map((p) => path.basename(p)).join(', '))
   if (copySqlToClipboard(sql)) {
     console.log('\n→ SQL wurde in die Zwischenablage kopiert.\n')
@@ -109,7 +124,9 @@ async function main() {
   }
   console.log('1) Browser öffnet sich — sonst:', dash)
   console.log('2) Strg+V einfügen, dann „Run“.')
-  console.log('\nAutomatisch beim nächsten Mal: DATABASE_URL in .env.local → npm run db:portfolio-analyse\n')
+  console.log(
+    '\nAutomatisch beim nächsten Mal: DATABASE_URL oder SUPABASE_DB_PASSWORD in .env.local → npm run db:portfolio-analyse\n',
+  )
 
   if (process.platform === 'win32') {
     spawn('cmd', ['/c', 'start', '', dash], { detached: true, stdio: 'ignore' }).unref()
