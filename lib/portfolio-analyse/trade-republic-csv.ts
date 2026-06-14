@@ -408,6 +408,8 @@ function cashZeileAusCols(cols: string[], map: SpaltenMap, format: CsvErkanntesF
   }
 
   const taxBetrag = map.tax != null ? parseGeldBetrag(cols[map.tax]) : null
+  let steuerEur: number | null =
+    taxBetrag != null && taxBetrag !== 0 ? Math.round(Math.abs(taxBetrag) * 100) / 100 : null
   if (taxBetrag != null && taxBetrag !== 0) {
     const taxAbs = Math.abs(taxBetrag)
     if (eingang && /dividend|dividende|zins/i.test(typ)) {
@@ -441,6 +443,7 @@ function cashZeileAusCols(cols: string[], map: SpaltenMap, format: CsvErkanntesF
     saldo,
     isin: isin || undefined,
     stueck,
+    steuerEur,
   }
 }
 

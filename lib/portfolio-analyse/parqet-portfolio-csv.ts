@@ -169,6 +169,9 @@ function cashZeileAusParqet(
 
   let { eingang, ausgang } = geldbetragNetto(typRaw, amt, fee, tax)
 
+  const steuerEur =
+    tax !== 0 && Number.isFinite(tax) ? Math.round(Math.abs(tax) * 100) / 100 : null
+
   // Buchwert-Umbuchung ohne amount: price × shares
   if (!eingang && !ausgang && stueck != null && price != null && price > 0) {
     const wert = Math.round(stueck * price * 100) / 100
@@ -214,6 +217,7 @@ function cashZeileAusParqet(
     stueck,
     kursEur,
     realisierterGewinnEur,
+    steuerEur,
   }
 }
 

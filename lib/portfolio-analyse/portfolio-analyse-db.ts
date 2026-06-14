@@ -17,6 +17,7 @@ import type {
 type BuchungDbSpalten = {
   realisierterGewinn: boolean
   parqetTyp: boolean
+  steuerEur: boolean
 }
 
 function fehlendePortfolioSpalte(message: string): keyof BuchungDbSpalten | null {
@@ -24,6 +25,7 @@ function fehlendePortfolioSpalte(message: string): keyof BuchungDbSpalten | null
   if (!m) return null
   if (m[1] === 'realisierter_gewinn_eur') return 'realisierterGewinn'
   if (m[1] === 'parqet_typ') return 'parqetTyp'
+  if (m[1] === 'steuer_eur') return 'steuerEur'
   return null
 }
 
@@ -42,6 +44,7 @@ function buchungZuDbRow(b: PortfolioBuchung, spalten: BuchungDbSpalten): Record<
   }
   if (spalten.realisierterGewinn) row.realisierter_gewinn_eur = b.realisierterGewinnEur ?? null
   if (spalten.parqetTyp) row.parqet_typ = b.parqetTyp ?? null
+  if (spalten.steuerEur) row.steuer_eur = b.steuerEur ?? null
   return row
 }
 
@@ -82,6 +85,7 @@ function mapBuchungRow(row: Record<string, unknown>): PortfolioDbBuchung {
     realisierterGewinnEur:
       row.realisierter_gewinn_eur != null ? Number(row.realisierter_gewinn_eur) : null,
     parqetTyp: row.parqet_typ != null ? String(row.parqet_typ) : null,
+    steuerEur: row.steuer_eur != null ? Number(row.steuer_eur) : null,
     assetKlasse: row.asset_klasse as PortfolioDbBuchung['assetKlasse'],
     quelle: row.quelle as PortfolioDbBuchung['quelle'],
   }
@@ -206,7 +210,7 @@ export async function speicherePortfolioImport(
   }
 
   let eingefuegt = 0
-  let dbSpalten: BuchungDbSpalten = { realisierterGewinn: true, parqetTyp: true }
+  let dbSpalten: BuchungDbSpalten = { realisierterGewinn: true, parqetTyp: true, steuerEur: true }
   const fehlendeSpalten = new Set<keyof BuchungDbSpalten>()
   let hinweis: string | undefined
 
@@ -241,10 +245,10 @@ export async function speicherePortfolioImport(
 
     if (fehlendeSpalten.size > 0) {
       hinweis =
-        'Datenbank-Migration fehlt noch (Spalten realisierter_gewinn_eur / parqet_typ). ' +
-        'Buchungen wurden ohne Parqet-„Realisiert“ gespeichert. ' +
+        'Datenbank-Migration fehlt noch (Spalten realisierter_gewinn_eur / parqet_typ / steuer_eur). ' +
+        'Buchungen wurden ohne Parqet-Steuer/Realisiert gespeichert. ' +
         'Im Supabase SQL-Editor ausführen: supabase/migrations/20260601130000_portfolio_analyse_realisierter_gewinn.sql ' +
-        'oder npm run db:portfolio-analyse — danach CSV erneut importieren.'
+        'und 20260614140000_portfolio_analyse_steuer_eur.sql — danach CSV erneut importieren.'
     }
   }
 

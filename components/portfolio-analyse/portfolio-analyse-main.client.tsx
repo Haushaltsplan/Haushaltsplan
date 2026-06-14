@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { useMemo, useState } from 'react'
 import { PaGewichtungPanel } from '@/components/portfolio-analyse/pa-gewichtung-panel'
 import { PaKapitalflussHeatmapGrid } from '@/components/portfolio-analyse/pa-kapitalfluss-grid'
+import { PaSteuernPanel } from '@/components/portfolio-analyse/pa-steuern-panel'
 import { PaPerformanceMap } from '@/components/portfolio-analyse/pa-performance-map'
 import { usePortfolioAnalyse } from '@/components/portfolio-analyse/pa-data-provider'
 import { PortfolioAnalyseShell } from '@/components/portfolio-analyse/portfolio-analyse-shell.client'
@@ -117,15 +118,7 @@ export function PortfolioAnalyseMainClient() {
                   </div>
                 )}
 
-                {tab === 'steuern' && (
-                  <PaCard className="p-6">
-                    <h2 className="text-base font-semibold text-zinc-100">Steuern pro Jahr</h2>
-                    <p className="mt-1 mb-4 text-[11px] text-zinc-600">
-                      Daten nur zur Information — für die Steuererklärung bitte an die Depotbank wenden.
-                    </p>
-                    <SteuernTabelle buchungen={buchungen} />
-                  </PaCard>
-                )}
+                {tab === 'steuern' && <PaSteuernPanel buchungen={buchungen} />}
               </div>
             )}
         </PaCard>
@@ -164,42 +157,4 @@ function liveLadenOhneDaten(
   laden: boolean,
 ): boolean {
   return laden && !live
-}
-
-function SteuernTabelle({ buchungen }: { buchungen: ReturnType<typeof usePortfolioAnalyse>['buchungen'] }) {
-  const byYear = useMemo(() => {
-    const map = new Map<number, number>()
-    for (const b of buchungen) {
-      if (b.typ !== 'steuer') continue
-      const y = Number(b.datum.slice(0, 4))
-      if (!Number.isFinite(y)) continue
-      map.set(y, (map.get(y) ?? 0) + b.betragEur)
-    }
-    return [...map.entries()].sort((a, b) => b[0] - a[0])
-  }, [buchungen])
-
-  if (byYear.length === 0) {
-    return <p className="text-sm text-zinc-500">Keine Steuer-Buchungen erfasst.</p>
-  }
-
-  return (
-    <table className="w-full text-sm">
-      <thead>
-        <tr className="border-b border-zinc-800 text-left text-xs text-zinc-500">
-          <th className="py-2 pr-4">Jahr</th>
-          <th className="py-2 text-right">Summe</th>
-        </tr>
-      </thead>
-      <tbody>
-        {byYear.map(([jahr, summe]) => (
-          <tr key={jahr} className="border-b border-zinc-800/40">
-            <td className="py-2.5 text-zinc-200">{jahr}</td>
-            <td className="py-2.5 text-right tabular-nums text-zinc-100">
-              {summe.toLocaleString('de-DE', { style: 'currency', currency: 'EUR' })}
-            </td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
-  )
 }

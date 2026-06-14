@@ -27,6 +27,8 @@ export type PortfolioBuchung = {
   realisierterGewinnEur?: number | null
   /** Parqet-CSV Original-Spalte „type“ (Sell, Buy, TransferOut, …). */
   parqetTyp?: string | null
+  /** Steueranteil laut Import (Parqet/TR „tax“-Spalte), falls vorhanden. */
+  steuerEur?: number | null
   assetKlasse: AssetKlasse
   quelle: ImportQuelle
 }

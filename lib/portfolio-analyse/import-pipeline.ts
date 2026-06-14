@@ -78,6 +78,11 @@ async function cashZeileZuBuchung(
     realisierterGewinnEur = Math.round(row.realisierterGewinnEur * 100) / 100
   }
 
+  let steuerEur: number | null = null
+  if (row.steuerEur != null && row.steuerEur > 0) {
+    steuerEur = Math.round(row.steuerEur * 100) / 100
+  }
+
   return {
     buchungsHash,
     datum,
@@ -89,6 +94,7 @@ async function cashZeileZuBuchung(
     betragEur,
     realisierterGewinnEur,
     parqetTyp,
+    steuerEur,
     assetKlasse,
     quelle,
   }
