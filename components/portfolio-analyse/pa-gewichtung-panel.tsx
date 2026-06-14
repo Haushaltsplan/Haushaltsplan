@@ -17,7 +17,13 @@ import type { LivePosition } from '@/lib/portfolio-analyse/live-bewertung'
 import type { IsinMetadata } from '@/lib/portfolio-analyse/isin-lookup-server'
 import { hatXrayLookthrough } from '@/lib/portfolio-analyse/performance-map'
 import type { SinglePortfolioReport } from '@/lib/portfolio-analyse/parqet-core/types'
-import { gewichtungMitXray, xrayLaender, xraySektoren, etfOhneBreakdown } from '@/lib/portfolio-analyse/xray-gewichtung'
+import {
+  baueXrayRegionAnsicht,
+  baueXraySektorAnsicht,
+  etfOhneBreakdown,
+  gewichtungMitXray,
+  type XrayGliederungEintrag,
+} from '@/lib/portfolio-analyse/xray-gewichtung'
 import type { EtfBreakdown } from '@/lib/portfolio-analyse/parqet-core/types'
 import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
@@ -33,29 +39,11 @@ const DIMENSION_TABS: { id: GewichtungDimension; label: string }[] = [
   { id: 'typ', label: 'Typ' },
 ]
 
-function eintraegeFuerDimension(
+function eintraegeOhneXray(
   dimension: GewichtungDimension,
   positionen: LivePosition[],
   report: SinglePortfolioReport | null,
-  xrayAn: boolean,
-  etfBreakdownLaden: boolean,
 ): GewichtungEintrag[] {
-  if (xrayAn && report) {
-    if (dimension === 'asset') {
-      const { eintraege } = gewichtungMitXray(report, true)
-      if (eintraege.length > 0) return eintraege
-      if (etfBreakdownLaden) return []
-    }
-    if (dimension === 'sektor') {
-      const s = xraySektoren(report, true)
-      if (s.length > 0) return s
-    }
-    if (dimension === 'region') {
-      const c = xrayLaender(report, true)
-      if (c.length > 0) return c
-    }
-  }
-
   switch (dimension) {
     case 'asset':
       return gewichtungNachAsset(positionen)
@@ -85,22 +73,28 @@ function wertEurAusEintrag(e: GewichtungEintrag, depotwertEur: number): number {
 }
 
 function assetLogoKontext(
-  e: GewichtungEintrag,
+  e: GewichtungEintrag | XrayGliederungEintrag,
   posByIsin: Map<string, LivePosition>,
   symbolZuIsin: Map<string, string>,
   meta: Map<string, IsinMetadata>,
 ): { isin: string | null; symbol: string | null } {
+  const isinKey = 'isin' in e && e.isin ? e.isin.trim().toUpperCase() : null
+  if (isinKey && ISIN_RE.test(isinKey)) {
+    return { isin: isinKey, symbol: meta.get(isinKey)?.symbolYahoo ?? posByIsin.get(isinKey)?.symbolYahoo ?? null }
+  }
+
   const key = e.key.trim().toUpperCase()
   if (ISIN_RE.test(key)) {
     return { isin: key, symbol: meta.get(key)?.symbolYahoo ?? posByIsin.get(key)?.symbolYahoo ?? null }
   }
 
-  const isin = symbolZuIsin.get(key) ?? null
+  const sym = ('symbol' in e && e.symbol) || key
+  const isin = symbolZuIsin.get(sym) ?? symbolZuIsin.get(sym.split('.')[0]!)
   if (isin) {
-    return { isin, symbol: meta.get(isin)?.symbolYahoo ?? posByIsin.get(isin)?.symbolYahoo ?? key }
+    return { isin, symbol: meta.get(isin)?.symbolYahoo ?? posByIsin.get(isin)?.symbolYahoo ?? sym }
   }
 
-  return { isin: null, symbol: key }
+  return { isin: null, symbol: sym }
 }
 
 export function PaGewichtungPanel({
@@ -122,9 +116,11 @@ export function PaGewichtungPanel({
   const [dimension, setDimension] = useState<GewichtungDimension>('asset')
   const [xrayAn, setXrayAn] = useState(false)
   const [euroKey, setEuroKey] = useState<string | null>(null)
+  const [expandedGruppe, setExpandedGruppe] = useState<string | null>(null)
 
   useEffect(() => {
     setEuroKey(null)
+    setExpandedGruppe(null)
   }, [dimension, xrayAn])
 
   const posByIsin = useMemo(() => {
@@ -144,8 +140,7 @@ export function PaGewichtungPanel({
       const sym = (p.symbolYahoo ?? meta.get(isin)?.symbolYahoo)?.trim().toUpperCase()
       if (!sym) continue
       m.set(sym, isin)
-      const basis = sym.split('.')[0]
-      if (basis) m.set(basis, isin)
+      m.set(sym.split('.')[0]!, isin)
     }
     return m
   }, [positionen, meta])
@@ -156,10 +151,54 @@ export function PaGewichtungPanel({
     [xrayAn, positionen, etfBreakdowns],
   )
 
-  const eintraege = useMemo(
-    () => eintraegeFuerDimension(dimension, positionen, report, xrayAn, etfBreakdownLaden),
-    [dimension, positionen, report, xrayAn, etfBreakdownLaden],
+  const xraySektor = useMemo(
+    () =>
+      xrayAn && report
+        ? baueXraySektorAnsicht(report, positionen, meta, etfBreakdowns, depotwertEur, fehlendeEtf)
+        : null,
+    [xrayAn, report, positionen, meta, etfBreakdowns, depotwertEur, fehlendeEtf],
   )
+
+  const xrayRegion = useMemo(
+    () =>
+      xrayAn && report
+        ? baueXrayRegionAnsicht(report, positionen, meta, etfBreakdowns, depotwertEur, fehlendeEtf)
+        : null,
+    [xrayAn, report, positionen, meta, etfBreakdowns, depotwertEur, fehlendeEtf],
+  )
+
+  const eintraege = useMemo((): GewichtungEintrag[] => {
+    if (xrayAn && report) {
+      if (dimension === 'asset') {
+        const { eintraege: xs } = gewichtungMitXray(report, true)
+        if (xs.length > 0) return xs
+        if (etfBreakdownLaden) return []
+      }
+      if (dimension === 'sektor') {
+        if (xraySektor) return xraySektor.eintraege
+        if (etfBreakdownLaden) return []
+      }
+      if (dimension === 'region') {
+        if (xrayRegion) return xrayRegion.eintraege
+        if (etfBreakdownLaden) return []
+      }
+    }
+    if (xrayAn && (dimension === 'sektor' || dimension === 'region')) return []
+    return eintraegeOhneXray(dimension, positionen, report)
+  }, [dimension, positionen, report, xrayAn, etfBreakdownLaden, xraySektor, xrayRegion])
+
+  const gliederung = useMemo((): Map<string, XrayGliederungEintrag[]> | null => {
+    if (!xrayAn) return null
+    if (dimension === 'sektor') return xraySektor?.gliederung ?? null
+    if (dimension === 'region') return xrayRegion?.gliederung ?? null
+    return null
+  }, [xrayAn, dimension, xraySektor, xrayRegion])
+
+  const summeProzent = useMemo(() => {
+    if (dimension === 'sektor') return xraySektor?.summeProzent
+    if (dimension === 'region') return xrayRegion?.summeProzent
+    return eintraege.reduce((s, e) => s + e.gewichtProzent, 0)
+  }, [dimension, xraySektor, xrayRegion, eintraege])
 
   const donut = useMemo(() => eintraegeZuDonut(eintraege), [eintraege])
   const stats = gewichtungStatistik(eintraege, dimension)
@@ -173,6 +212,8 @@ export function PaGewichtungPanel({
           : dimension === 'typ'
             ? 'Nach Typ'
             : 'Nach Assetklasse'
+
+  const drilldownAktiv = xrayAn && (dimension === 'sektor' || dimension === 'region') && gliederung != null
 
   return (
     <div className="space-y-4">
@@ -198,8 +239,8 @@ export function PaGewichtungPanel({
       ) : null}
       {xrayAn && !etfBreakdownLaden && fehlendeEtf.length > 0 ? (
         <p className="text-[11px] leading-relaxed text-amber-200/80">
-          Ohne Holdings-Daten ausgeblendet: {fehlendeEtf.map((p) => p.anzeigeName).join(', ')} — Gewichte summieren
-          ggf. nicht zu 100&nbsp;%.
+          {fehlendeEtf.map((p) => p.anzeigeName).join(', ')} ohne Holdings-Daten → erscheint unter „Nicht
+          aufgelöst“.
         </p>
       ) : null}
       {xrayAn && !lookthroughMoeglich && !etfBreakdownLaden ? (
@@ -211,15 +252,29 @@ export function PaGewichtungPanel({
       <div className="grid gap-6 lg:grid-cols-2">
         <PaCard variant="elevated" className="flex flex-col items-center justify-center p-6">
           <p className="mb-4 self-start text-sm font-medium text-zinc-300">{titel}</p>
-          <DonutChart segmente={donut} groesse={220} dicke={28} />
+          <DonutChart
+            segmente={donut}
+            groesse={220}
+            dicke={28}
+            mitte={{ wert: formatEur(depotwertEur) }}
+          />
           <p className="mt-3 text-center text-lg font-semibold tabular-nums text-white">
             {formatEur(depotwertEur)}
           </p>
           <p className="text-[11px] text-zinc-500">Gesamt</p>
+          {summeProzent != null ? (
+            <p className="mt-1 text-[11px] tabular-nums text-zinc-500">
+              Summe sichtbar: {summeProzent.toLocaleString('de-DE', { maximumFractionDigits: 2 })} %
+            </p>
+          ) : null}
         </PaCard>
 
         <PaCard variant="elevated" className="max-h-[28rem] overflow-y-auto p-4">
-          <p className="mb-3 text-[11px] text-zinc-600">Antippen für Depotwert in Euro</p>
+          <p className="mb-3 text-[11px] text-zinc-600">
+            {drilldownAktiv
+              ? 'Sektor/Region antippen → enthaltene Firmen anzeigen · erneut antippen für Euro'
+              : 'Antippen für Depotwert in Euro'}
+          </p>
           <ul className="space-y-4">
             {eintraege.length === 0 ? (
               <li className="py-8 text-center text-sm text-zinc-500">
@@ -229,55 +284,62 @@ export function PaGewichtungPanel({
               eintraege.map((e) => {
                 const wertEur = wertEurAusEintrag(e, depotwertEur)
                 const zeigeEuro = euroKey === e.key
-                const logoCtx =
-                  dimension === 'asset'
-                    ? assetLogoKontext(e, posByIsin, symbolZuIsin, meta)
-                    : { isin: null, symbol: null }
-                const pos = logoCtx.isin ? posByIsin.get(logoCtx.isin) : undefined
-                const fundamentalHref =
-                  pos?.assetKlasse === 'aktie' && pos.isin
-                    ? fundamentaldatenHref({ isin: pos.isin })
-                    : null
+                const expanded = expandedGruppe === e.key
+                const firmen = gliederung?.get(e.key) ?? []
+
+                const onRowClick = () => {
+                  if (drilldownAktiv && firmen.length > 0) {
+                    setExpandedGruppe((k) => (k === e.key ? null : e.key))
+                    setEuroKey(null)
+                    return
+                  }
+                  setEuroKey((k) => (k === e.key ? null : e.key))
+                }
 
                 return (
                   <li key={e.key}>
                     <div
-                      className="flex cursor-pointer items-center gap-2 rounded-lg px-1 -mx-1 hover:bg-white/[0.03]"
-                      onClick={() => setEuroKey((k) => (k === e.key ? null : e.key))}
+                      className={`flex cursor-pointer items-center gap-2 rounded-lg px-1 -mx-1 hover:bg-white/[0.03] ${expanded ? 'bg-white/[0.02]' : ''}`}
+                      onClick={onRowClick}
                       onKeyDown={(ev) => {
                         if (ev.key === 'Enter' || ev.key === ' ') {
                           ev.preventDefault()
-                          setEuroKey((k) => (k === e.key ? null : e.key))
+                          onRowClick()
                         }
                       }}
                       tabIndex={0}
                       role="button"
-                      aria-pressed={zeigeEuro}
-                      aria-label={
-                        zeigeEuro
-                          ? `${e.label}: ${formatEur(wertEur)} vom Depot`
-                          : `${e.label}: ${e.gewichtProzent.toFixed(2)} Prozent — tippen für Euro`
-                      }
+                      aria-expanded={expanded}
                     >
                       {dimension === 'asset' ? (
-                        <button
-                          type="button"
-                          className="shrink-0 rounded-lg focus:outline-none focus-visible:ring-1 focus-visible:ring-teal-500/60"
-                          title={fundamentalHref ? 'Fundamentaldaten öffnen' : e.label}
-                          onClick={(ev) => {
-                            ev.stopPropagation()
-                            if (fundamentalHref) router.push(fundamentalHref)
-                            else setEuroKey((k) => (k === e.key ? null : e.key))
-                          }}
-                        >
-                          <GewichtungAssetLogo
-                            isin={logoCtx.isin}
-                            symbol={logoCtx.symbol}
-                            label={e.label}
-                            meta={meta}
-                            groesse="sm"
-                          />
-                        </button>
+                        (() => {
+                          const logoCtx = assetLogoKontext(e, posByIsin, symbolZuIsin, meta)
+                          const pos = logoCtx.isin ? posByIsin.get(logoCtx.isin) : undefined
+                          const fundamentalHref =
+                            pos?.assetKlasse === 'aktie' && pos.isin
+                              ? fundamentaldatenHref({ isin: pos.isin })
+                              : null
+                          return (
+                            <button
+                              type="button"
+                              className="shrink-0 rounded-lg focus:outline-none focus-visible:ring-1 focus-visible:ring-teal-500/60"
+                              title={fundamentalHref ? 'Fundamentaldaten öffnen' : e.label}
+                              onClick={(ev) => {
+                                ev.stopPropagation()
+                                if (fundamentalHref) router.push(fundamentalHref)
+                                else setEuroKey((k) => (k === e.key ? null : e.key))
+                              }}
+                            >
+                              <GewichtungAssetLogo
+                                isin={logoCtx.isin}
+                                symbol={logoCtx.symbol}
+                                label={e.label}
+                                meta={meta}
+                                groesse="sm"
+                              />
+                            </button>
+                          )
+                        })()
                       ) : (
                         <span
                           className="h-2.5 w-2.5 shrink-0 rounded-full"
@@ -286,8 +348,11 @@ export function PaGewichtungPanel({
                       )}
                       <span className="min-w-0 flex-1 truncate text-sm text-zinc-200">
                         {e.label}
-                        {e.anzahl > 1 || dimension !== 'asset' ? (
-                          <span className="text-zinc-500"> ({e.anzahl})</span>
+                        <span className="text-zinc-500"> ({e.anzahl})</span>
+                        {drilldownAktiv && firmen.length > 0 ? (
+                          <span className="ml-1 text-[10px] text-zinc-600">
+                            {expanded ? '▾' : '▸'}
+                          </span>
                         ) : null}
                       </span>
                       <span
@@ -307,6 +372,42 @@ export function PaGewichtungPanel({
                         style={{ width: `${Math.min(100, e.gewichtProzent)}%` }}
                       />
                     </div>
+
+                    {expanded && firmen.length > 0 ? (
+                      <ul className="mt-2 space-y-2 border-l border-zinc-800 pl-3 ml-1">
+                        {firmen.slice(0, 25).map((f) => {
+                          const logoCtx = assetLogoKontext(f, posByIsin, symbolZuIsin, meta)
+                          const pos = logoCtx.isin ? posByIsin.get(logoCtx.isin) : undefined
+                          const fEuro = euroKey === f.key
+                          return (
+                            <li key={f.key} className="flex items-center gap-2">
+                              <GewichtungAssetLogo
+                                isin={logoCtx.isin}
+                                symbol={logoCtx.symbol ?? f.symbol}
+                                label={f.label}
+                                meta={meta}
+                                groesse="sm"
+                              />
+                              <span className="min-w-0 flex-1 truncate text-xs text-zinc-400">{f.label}</span>
+                              <button
+                                type="button"
+                                className="shrink-0 text-xs tabular-nums text-zinc-300 hover:text-teal-300"
+                                onClick={() => setEuroKey((k) => (k === f.key ? null : f.key))}
+                              >
+                                {fEuro
+                                  ? formatEur(f.wertEur)
+                                  : `${f.gewichtProzent.toLocaleString('de-DE', { maximumFractionDigits: 2 })} %`}
+                              </button>
+                            </li>
+                          )
+                        })}
+                        {firmen.length > 25 ? (
+                          <li className="text-[11px] text-zinc-600">
+                            + {firmen.length - 25} weitere Positionen
+                          </li>
+                        ) : null}
+                      </ul>
+                    ) : null}
                   </li>
                 )
               })

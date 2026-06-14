@@ -160,11 +160,12 @@ export function bucketsToAllocationSlices(
     .filter((e) => e.weight > 1e-8)
     .sort((a, b) => b.weight - a.weight)
 
-  const sumW = entries.reduce((s, e) => s + e.weight, 0)
+  // Gewichte sind bereits Portfolio-Anteile in % (Summe ≈ 100). Nicht auf sumW normieren —
+  // sonst würden fehlende Buckets (z. B. ETF ohne Breakdown) unsichtbar hochskaliert.
   return entries.map((e) => ({
     key: e.key,
     label: e.label,
-    weightPercent: round2(safeDiv(e.weight * 100, sumW, 0)),
-    valueEUR: round2(safeDiv(e.weight * totalEUR, sumW, 0)),
+    weightPercent: round2(e.weight),
+    valueEUR: round2(safeDiv(e.weight * totalEUR, 100, 0)),
   }))
 }

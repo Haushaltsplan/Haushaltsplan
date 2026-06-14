@@ -1,6 +1,7 @@
 import 'server-only'
 
 import type { EtfBreakdown } from '@/lib/portfolio-analyse/parqet-core/types'
+import { reichereHoldingsMitSektor } from '@/lib/portfolio-analyse/etf-scraper/yahoo-sector-enrichment-server'
 import {
   holeYahooFinanceAuth,
   YAHOO_FINANCE_FETCH_HEADERS,
@@ -100,5 +101,7 @@ export async function ladeNasdaq100Breakdown(): Promise<EtfBreakdown | null> {
 
   if (topHoldings.length < 80) return null
 
-  return { topHoldings, sectors: [], countries: [] }
+  const enriched = await reichereHoldingsMitSektor(topHoldings, 120)
+
+  return { topHoldings: enriched, sectors: [], countries: [] }
 }

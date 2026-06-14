@@ -1,6 +1,7 @@
 import 'server-only'
 
 import type { EtfBreakdown } from '@/lib/portfolio-analyse/parqet-core/types'
+import { normalisiereSektor } from '@/lib/portfolio-analyse/sektor-normalisierung'
 
 const AMUNDI_PRODUCT_API = 'https://www.amundietf.de/mapi/ProductAPI/getProductsData'
 
@@ -88,9 +89,14 @@ function parseTopHoldings(rows: AmundiBreakDownRow[]): EtfBreakdown['topHoldings
       const pct = pctFromRow(row)
       const name = row.aggregationName?.trim()
       if (!name || pct == null) return null
-      const out: { name: string; symbol?: string; percentage: number } = { name, percentage: pct }
+      const out: { name: string; symbol?: string; percentage: number; sectorName?: string } = {
+        name,
+        percentage: pct,
+      }
       const symbol = symbolAusBbg(row.additionalProperties?.bbg)
       if (symbol) out.symbol = symbol
+      const sector = row.additionalProperties?.sector?.trim()
+      if (sector) out.sectorName = normalisiereSektor(sector)
       return out
     })
     .filter((x): x is { name: string; symbol?: string; percentage: number } => x != null)

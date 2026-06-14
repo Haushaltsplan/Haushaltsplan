@@ -20,7 +20,7 @@ export interface EtfBreakdownSlice {
 }
 
 export interface EtfBreakdown {
-  topHoldings: Array<{ name: string; symbol?: string; percentage: number }>
+  topHoldings: Array<{ name: string; symbol?: string; percentage: number; sectorName?: string }>
   countries: Array<{ countryCode: string; percentage: number }>
   sectors: Array<{ sectorName: string; percentage: number }>
 }

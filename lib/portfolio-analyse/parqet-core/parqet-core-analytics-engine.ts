@@ -27,6 +27,8 @@ import type {
   UltimateParqetReport,
   XRayBlock,
 } from '@/lib/portfolio-analyse/parqet-core/types'
+import { normalisiereRegion } from '@/lib/portfolio-analyse/region-normalisierung'
+import { normalisiereSektor } from '@/lib/portfolio-analyse/sektor-normalisierung'
 
 const ASSET_CLASS_COLORS: Record<string, string> = {
   Aktie: '#6366f1',
@@ -441,29 +443,58 @@ export class ParqetCoreAnalyticsEngine {
         mergeWeightedBuckets(
           countriesMap,
           a.etfBreakdown.countries.map((c) => ({
-            key: c.countryCode,
-            label: c.countryCode,
+            key: normalisiereRegion(c.countryCode),
+            label: normalisiereRegion(c.countryCode),
             percentage: c.percentage,
           })),
           weightPercent,
         )
+        const mitSektor = a.etfBreakdown.topHoldings.filter((h) => h.sectorName)
+        if (mitSektor.length > 0) {
+          mergeWeightedBuckets(
+            sectorsMap,
+            mitSektor.map((h) => ({
+              key: normalisiereSektor(h.sectorName),
+              label: normalisiereSektor(h.sectorName),
+              percentage: h.percentage,
+            })),
+            weightPercent,
+          )
+        } else if (a.etfBreakdown.sectors.length > 0) {
+          mergeWeightedBuckets(
+            sectorsMap,
+            a.etfBreakdown.sectors.map((s) => ({
+              key: normalisiereSektor(s.sectorName),
+              label: normalisiereSektor(s.sectorName),
+              percentage: s.percentage,
+            })),
+            weightPercent,
+          )
+        }
+      } else if (a.assetType === 'ETF') {
         mergeWeightedBuckets(
-          sectorsMap,
-          a.etfBreakdown.sectors.map((s) => ({
-            key: s.sectorName,
-            label: s.sectorName,
-            percentage: s.percentage,
-          })),
+          holdingsMap,
+          [{ key: a.assetId, label: a.assetName, percentage: 100 }],
           weightPercent,
         )
-      } else if (a.assetType !== 'ETF') {
+        mergeWeightedBuckets(
+          sectorsMap,
+          [{ key: 'Nicht aufgelöst', label: 'Nicht aufgelöst', percentage: 100 }],
+          weightPercent,
+        )
+        mergeWeightedBuckets(
+          countriesMap,
+          [{ key: 'Nicht aufgelöst', label: 'Nicht aufgelöst', percentage: 100 }],
+          weightPercent,
+        )
+      } else {
         mergeWeightedBuckets(
           holdingsMap,
           [{ key: holdingKey(a.yahooSymbol, a.assetName, a.assetId), label: a.assetName, percentage: 100 }],
           weightPercent,
         )
-        const country = a.countryCode?.trim() || 'Unbekannt'
-        const sector = a.sectorName?.trim() || 'Unbekannt'
+        const country = normalisiereRegion(a.countryCode?.trim() || 'Unbekannt')
+        const sector = normalisiereSektor(a.sectorName?.trim() || 'Unbekannt')
         mergeWeightedBuckets(countriesMap, [{ key: country, label: country, percentage: 100 }], weightPercent)
         mergeWeightedBuckets(sectorsMap, [{ key: sector, label: sector, percentage: 100 }], weightPercent)
       }

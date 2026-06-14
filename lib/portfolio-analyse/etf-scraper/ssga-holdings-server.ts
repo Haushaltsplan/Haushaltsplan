@@ -3,6 +3,7 @@ import 'server-only'
 import { unzipSync } from 'fflate'
 
 import type { EtfBreakdown } from '@/lib/portfolio-analyse/parqet-core/types'
+import { reichereHoldingsMitSektor } from '@/lib/portfolio-analyse/etf-scraper/yahoo-sector-enrichment-server'
 
 const SPY_XLSX_URL =
   'https://www.ssga.com/library-content/products/fund-data/etfs/us/holdings-daily-us-en-spy.xlsx'
@@ -82,11 +83,14 @@ export async function ladeSp500CapBreakdown(): Promise<EtfBreakdown | null> {
   const factor = sum > 0 ? 100 / sum : 1
 
   return {
-    topHoldings: rows.map((r) => ({
-      name: r.name,
-      symbol: r.symbol,
-      percentage: r.weight * factor,
-    })),
+    topHoldings: await reichereHoldingsMitSektor(
+      rows.map((r) => ({
+        name: r.name,
+        symbol: r.symbol,
+        percentage: r.weight * factor,
+      })),
+      200,
+    ),
     sectors: [],
     countries: [],
   }
@@ -98,11 +102,14 @@ export async function ladeSp500EqualBreakdown(): Promise<EtfBreakdown | null> {
   if (rows.length < 400) return null
   const pct = 100 / rows.length
   return {
-    topHoldings: rows.map((r) => ({
-      name: r.name,
-      symbol: r.symbol,
-      percentage: pct,
-    })),
+    topHoldings: await reichereHoldingsMitSektor(
+      rows.map((r) => ({
+        name: r.name,
+        symbol: r.symbol,
+        percentage: pct,
+      })),
+      200,
+    ),
     sectors: [],
     countries: [],
   }
