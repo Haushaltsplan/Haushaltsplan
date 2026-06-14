@@ -186,7 +186,6 @@ export function schaetzeAssetKlasse(name: string | null, isin: string | null, ty
   if (/etf|index|ucits|ishares|vanguard|xtrackers|amundi|lyxor|spdr/i.test(n)) return 'etf'
   if (/anleihe|bond|obligation|emission/i.test(n)) return 'anleihe'
   if (typ === 'zins') return 'geldmarkt'
-  if (isin && isin.startsWith('DE')) return 'etf'
   return 'aktie'
 }
 

@@ -159,7 +159,7 @@ export function PaGewichtungPanel({
       ) : null}
       {xrayAn && !lookthroughMoeglich && !etfBreakdownLaden ? (
         <p className="text-[11px] leading-relaxed text-zinc-600">
-          X-Ray benötigt Holdings-Daten der ETFs (Amundi-API oder Yahoo). Nicht unterstützte ETFs bleiben ausgeblendet.
+          X-Ray benötigt Holdings-Daten der ETFs. Für Index-ETFs werden alle Konstituenten geladen; sonst Amundi/Yahoo.
         </p>
       ) : null}
 

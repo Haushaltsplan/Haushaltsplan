@@ -7,6 +7,7 @@ import {
 import { teileArray } from '@/lib/portfolio-analyse/batch-hilfen'
 import { gezahlteDividendeEur } from '@/lib/portfolio-analyse/dividenden-buchung'
 import { isinKenntnis } from '@/lib/portfolio-analyse/isin-kenntnisse'
+import { korrigiereAssetKlasse } from '@/lib/portfolio-analyse/isin-asset-klasse'
 import { anzeigeNameFuerIsin, wknFuerIsin } from '@/lib/portfolio-analyse/isin-metadata-client'
 import type { IsinMetadata } from '@/lib/portfolio-analyse/isin-lookup-server'
 import {
@@ -289,6 +290,7 @@ export function berechneLivePortfolio(
 
     return {
       ...p,
+      assetKlasse: korrigiereAssetKlasse(isin, p.name, p.assetKlasse),
       name: anzeigeNameFuerIsin(isin, p.name, meta),
       anzeigeName: anzeigeNameFuerIsin(isin, p.name, meta),
       wkn: wknFuerIsin(isin, meta),

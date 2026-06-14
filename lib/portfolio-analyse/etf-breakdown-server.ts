@@ -2,6 +2,7 @@ import 'server-only'
 
 import type { EtfBreakdown } from '@/lib/portfolio-analyse/parqet-core/types'
 import { ladeAmundiEtfBreakdown } from '@/lib/portfolio-analyse/etf-scraper/amundi-breakdown-server'
+import { ladeIndexEtfBreakdown } from '@/lib/portfolio-analyse/etf-scraper/index-holdings-server'
 import {
   holeYahooFinanceAuth,
   YAHOO_FINANCE_FETCH_HEADERS,
@@ -134,7 +135,8 @@ export async function ladeEtfBreakdownFuerIsin(
   const hit = cache.get(key)
   if (hit && Date.now() - hit.at < CACHE_MS) return hit.data
 
-  let data = await ladeAmundiEtfBreakdown(key)
+  let data = await ladeIndexEtfBreakdown(key)
+  if (!data) data = await ladeAmundiEtfBreakdown(key)
   if (!data && symbolYahoo) {
     data = await ladeYahooEtfBreakdown(symbolYahoo)
   }
