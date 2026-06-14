@@ -30,7 +30,7 @@ function round2(n: number): number {
 
 /**
  * Monatliche TTWROR-Renditen aus der Performance-Zeitreihe (wie Parqet Rendite-Details).
- * Inkl. unrealisiert/realisiert + Dividenden (mitDivUndRealisiert = true).
+ * Tagesrenditen werden pro Kalendermonat aufgezinst.
  */
 export function twrMonatsrenditenMap(
   wertentwicklung: WertentwicklungPunkt[],
@@ -40,12 +40,18 @@ export function twrMonatsrenditenMap(
   const map = new Map<string, number>()
   if (performance.length < 2) return map
 
+  const monatsProd = new Map<string, number>()
+
   for (let i = 1; i < performance.length; i++) {
     const startMult = 1 + performance[i - 1].performanceProzent / 100
     const endMult = 1 + performance[i].performanceProzent / 100
+    if (startMult <= 0) continue
     const month = performance[i].datumIso.slice(0, 7)
-    if (!month || startMult <= 0) continue
-    map.set(month, round2((endMult / startMult - 1) * 100))
+    monatsProd.set(month, (monatsProd.get(month) ?? 1) * (endMult / startMult))
+  }
+
+  for (const [month, prod] of monatsProd) {
+    map.set(month, round2((prod - 1) * 100))
   }
   return map
 }

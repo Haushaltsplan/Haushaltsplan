@@ -55,6 +55,16 @@ function ertraegeAmTag(buchungen: PortfolioBuchung[], datumIso: string): number 
   return sum
 }
 
+/** Dividenden/Zinsen erhöhen zugeführtes Kapital (Cash) — für TTWROR mit Erträgen aus CF herausrechnen. */
+function dividendenZinsCashflowNeutralisierung(buchungen: PortfolioBuchung[], datumIso: string): number {
+  let sum = 0
+  for (const b of buchungen) {
+    if (b.datum !== datumIso) continue
+    if (b.typ === 'dividende' || b.typ === 'zins') sum += b.betragEur
+  }
+  return sum
+}
+
 /**
  * Netto-Kapitalzufluss am Tag t (positiv = Kauf/Einzahlung).
  * Im Handels-Modus: Δ zugeführtes Kapital (Käufe/Verkäufe neutralisieren die Tagesrendite).
@@ -64,9 +74,14 @@ function cashflowAmTag(
   prev: WertentwicklungPunkt,
   cur: WertentwicklungPunkt,
   extern: boolean,
+  mitDivUndRealisiert: boolean,
 ): number {
   if (extern) return externerCashflowAmTag(buchungen, cur.datumIso)
-  return cur.zugefuehrtEur - prev.zugefuehrtEur
+  let cf = cur.zugefuehrtEur - prev.zugefuehrtEur
+  if (mitDivUndRealisiert) {
+    cf -= dividendenZinsCashflowNeutralisierung(buchungen, cur.datumIso)
+  }
+  return cf
 }
 
 export function berechnePerformanceZeitreihe(
@@ -94,7 +109,7 @@ export function berechnePerformanceZeitreihe(
     }
 
     const prev = wertentwicklung[i - 1]
-    const cf = cashflowAmTag(buchungen, prev, cur, extern)
+    const cf = cashflowAmTag(buchungen, prev, cur, extern, mitDivUndRealisiert)
 
     let endValue = cur.portfoliowertEur
     if (!mitDivUndRealisiert) {

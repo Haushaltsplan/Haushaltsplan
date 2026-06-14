@@ -7,11 +7,11 @@ import { PaRenditeHeatmapGrid } from '@/components/portfolio-analyse/pa-heatmap-
 import { PaKapitalflussHeatmapGrid } from '@/components/portfolio-analyse/pa-kapitalfluss-grid'
 import { PaPerformanceMap } from '@/components/portfolio-analyse/pa-performance-map'
 import { usePortfolioAnalyse } from '@/components/portfolio-analyse/pa-data-provider'
+import { usePaWertentwicklungTimeline } from '@/components/portfolio-analyse/use-pa-wertentwicklung'
 import { PortfolioAnalyseShell } from '@/components/portfolio-analyse/portfolio-analyse-shell.client'
 import { PaCard, PaIconTabs } from '@/components/portfolio-analyse/pa-ui'
 import { berechneKapitalflussHeatmap } from '@/lib/portfolio-analyse/kapitalfluss-heatmap'
 import { heatmapAusWertentwicklung } from '@/lib/portfolio-analyse/rendite-heatmap'
-import { baueWertentwicklung } from '@/lib/portfolio-analyse/wertentwicklung'
 
 type AnalyseTab = 'gewichtung' | 'rendite' | 'kapital' | 'performance' | 'steuern'
 
@@ -30,10 +30,14 @@ export function PortfolioAnalyseMainClient() {
   const [renditeModus, setRenditeModus] = useState<'M' | 'Q'>('M')
   const [kapitalModus, setKapitalModus] = useState<'M' | 'Q'>('M')
 
-  const wertentwicklung = useMemo(() => {
-    if (!live || buchungen.length === 0) return []
-    return baueWertentwicklung(buchungen, live.kennzahlen.depotwertEur)
-  }, [buchungen, live])
+  const renditeDatenAktiv = Boolean(live && buchungen.length > 0)
+  const { timeline: wertentwicklung, laden: renditeTimelineLaden } = usePaWertentwicklungTimeline(
+    buchungen,
+    live?.positionen ?? [],
+    meta,
+    live?.kennzahlen.depotwertEur ?? 0,
+    renditeDatenAktiv,
+  )
 
   const heatmap = useMemo(
     () => heatmapAusWertentwicklung(wertentwicklung, buchungen, renditeModus),
@@ -107,7 +111,15 @@ export function PortfolioAnalyseMainClient() {
                       <PaQmToggle modus={renditeModus} onChange={setRenditeModus} />
                     </div>
                     <PaCard variant="elevated" className="p-4 sm:p-6">
-                      <PaRenditeHeatmapGrid heatmap={heatmap} />
+                      {renditeTimelineLaden || wertentwicklung.length === 0 ? (
+                        <p className="py-12 text-center text-sm text-zinc-500">
+                          {renditeTimelineLaden
+                            ? 'Historische Kurse werden geladen …'
+                            : 'Historische Kurse für die Rendite-Berechnung nicht verfügbar.'}
+                        </p>
+                      ) : (
+                        <PaRenditeHeatmapGrid heatmap={heatmap} />
+                      )}
                     </PaCard>
                   </div>
                 )}
