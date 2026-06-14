@@ -21,9 +21,11 @@ const LOGO_NACH_ISIN: Record<string, PortfolioLogoQuelle> = {
   CH0418792922: { finnhubSlug: 'SIKA', clearbitDomains: ['sika.com'] },
   FR0000121014: { finnhubSlug: 'MC', clearbitDomains: ['lvmh.com'] },
   NL0000395903: { finnhubSlug: 'WKL', clearbitDomains: ['wolterskluwer.com'] },
+  DE0006580806: { finnhubSlug: 'MUM', clearbitDomains: ['mum.de'] },
   DE0005785802: { finnhubSlug: 'MUM', clearbitDomains: ['mum.de'] },
   DE000A0BVU28: { finnhubSlug: 'USU', clearbitDomains: ['usu.com', 'usu.de'] },
   /** Amundi S&P 500 UCITS (häufige TR/Parqet-ISINs) */
+  LU1681038243: { clearbitDomains: ['amundi.com', 'amundietf.com'] },
   LU1681048804: { clearbitDomains: ['amundi.com', 'amundietf.com'] },
   LU1681043599: { clearbitDomains: ['amundi.com', 'amundietf.com'] },
   FR0010754120: { clearbitDomains: ['amundi.com', 'amundietf.com'] },

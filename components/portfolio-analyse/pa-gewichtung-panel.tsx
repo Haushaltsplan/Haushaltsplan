@@ -1,7 +1,7 @@
 'use client'
 
 import { DonutChart } from '@/components/finanzen/donut-chart'
-import { PortfolioIsinLogo } from '@/components/portfolio-analyse/isin-logo'
+import { GewichtungAssetLogo } from '@/components/portfolio-analyse/isin-logo'
 import { PaCard, PaIconTabs } from '@/components/portfolio-analyse/pa-ui'
 import { formatEur } from '@/lib/portfolio-analyse/berechnung'
 import {
@@ -19,9 +19,11 @@ import { hatXrayLookthrough } from '@/lib/portfolio-analyse/performance-map'
 import type { SinglePortfolioReport } from '@/lib/portfolio-analyse/parqet-core/types'
 import { gewichtungMitXray, xrayLaender, xraySektoren, etfOhneBreakdown } from '@/lib/portfolio-analyse/xray-gewichtung'
 import type { EtfBreakdown } from '@/lib/portfolio-analyse/parqet-core/types'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { fundamentaldatenHref } from '@/lib/portfolio-analyse/fundamentaldaten-navigation'
+
+const ISIN_RE = /^[A-Z]{2}[A-Z0-9]{10}$/
 
 const DIMENSION_TABS: { id: GewichtungDimension; label: string }[] = [
   { id: 'asset', label: 'Asset' },
@@ -77,6 +79,30 @@ function eintraegeFuerDimension(
   }
 }
 
+function wertEurAusEintrag(e: GewichtungEintrag, depotwertEur: number): number {
+  if (e.wertEur > 0) return e.wertEur
+  return Math.round(((depotwertEur * e.gewichtProzent) / 100) * 100) / 100
+}
+
+function assetLogoKontext(
+  e: GewichtungEintrag,
+  posByIsin: Map<string, LivePosition>,
+  symbolZuIsin: Map<string, string>,
+  meta: Map<string, IsinMetadata>,
+): { isin: string | null; symbol: string | null } {
+  const key = e.key.trim().toUpperCase()
+  if (ISIN_RE.test(key)) {
+    return { isin: key, symbol: meta.get(key)?.symbolYahoo ?? posByIsin.get(key)?.symbolYahoo ?? null }
+  }
+
+  const isin = symbolZuIsin.get(key) ?? null
+  if (isin) {
+    return { isin, symbol: meta.get(isin)?.symbolYahoo ?? posByIsin.get(isin)?.symbolYahoo ?? key }
+  }
+
+  return { isin: null, symbol: key }
+}
+
 export function PaGewichtungPanel({
   positionen,
   depotwertEur,
@@ -95,6 +121,11 @@ export function PaGewichtungPanel({
   const router = useRouter()
   const [dimension, setDimension] = useState<GewichtungDimension>('asset')
   const [xrayAn, setXrayAn] = useState(false)
+  const [euroKey, setEuroKey] = useState<string | null>(null)
+
+  useEffect(() => {
+    setEuroKey(null)
+  }, [dimension, xrayAn])
 
   const posByIsin = useMemo(() => {
     const m = new Map<string, LivePosition>()
@@ -104,6 +135,20 @@ export function PaGewichtungPanel({
     }
     return m
   }, [positionen])
+
+  const symbolZuIsin = useMemo(() => {
+    const m = new Map<string, string>()
+    for (const p of positionen) {
+      const isin = p.isin?.trim().toUpperCase()
+      if (!isin) continue
+      const sym = (p.symbolYahoo ?? meta.get(isin)?.symbolYahoo)?.trim().toUpperCase()
+      if (!sym) continue
+      m.set(sym, isin)
+      const basis = sym.split('.')[0]
+      if (basis) m.set(basis, isin)
+    }
+    return m
+  }, [positionen, meta])
 
   const lookthroughMoeglich = hatXrayLookthrough(report, etfBreakdowns)
   const fehlendeEtf = useMemo(
@@ -174,6 +219,7 @@ export function PaGewichtungPanel({
         </PaCard>
 
         <PaCard variant="elevated" className="max-h-[28rem] overflow-y-auto p-4">
+          <p className="mb-3 text-[11px] text-zinc-600">Antippen für Depotwert in Euro</p>
           <ul className="space-y-4">
             {eintraege.length === 0 ? (
               <li className="py-8 text-center text-sm text-zinc-500">
@@ -181,67 +227,89 @@ export function PaGewichtungPanel({
               </li>
             ) : (
               eintraege.map((e) => {
-                const pos =
-                  dimension === 'asset' && e.key.length >= 12
-                    ? posByIsin.get(e.key.toUpperCase())
-                    : undefined
+                const wertEur = wertEurAusEintrag(e, depotwertEur)
+                const zeigeEuro = euroKey === e.key
+                const logoCtx =
+                  dimension === 'asset'
+                    ? assetLogoKontext(e, posByIsin, symbolZuIsin, meta)
+                    : { isin: null, symbol: null }
+                const pos = logoCtx.isin ? posByIsin.get(logoCtx.isin) : undefined
                 const fundamentalHref =
                   pos?.assetKlasse === 'aktie' && pos.isin
                     ? fundamentaldatenHref({ isin: pos.isin })
                     : null
+
                 return (
-                <li key={e.key}>
-                  <div
-                    className={`flex items-center gap-2 ${fundamentalHref ? 'cursor-pointer rounded-lg px-1 -mx-1 hover:bg-white/[0.03]' : ''}`}
-                    onClick={fundamentalHref ? () => router.push(fundamentalHref) : undefined}
-                    onKeyDown={
-                      fundamentalHref
-                        ? (ev) => {
-                            if (ev.key === 'Enter' || ev.key === ' ') {
-                              ev.preventDefault()
-                              router.push(fundamentalHref)
-                            }
-                          }
-                        : undefined
-                    }
-                    tabIndex={fundamentalHref ? 0 : undefined}
-                    role={fundamentalHref ? 'link' : undefined}
-                  >
-                    {dimension === 'asset' && e.key.length >= 12 ? (
-                      <PortfolioIsinLogo
-                        isin={e.key}
-                        fallbackName={e.label}
-                        meta={meta}
-                        groesse="sm"
-                      />
-                    ) : (
-                      <span
-                        className="h-2.5 w-2.5 shrink-0 rounded-full"
-                        style={{ background: e.farbe }}
-                      />
-                    )}
-                    <span className="min-w-0 flex-1 truncate text-sm text-zinc-200">
-                      {e.label}
-                      {e.anzahl > 1 || dimension !== 'asset' ? (
-                        <span className="text-zinc-500"> ({e.anzahl})</span>
-                      ) : null}
-                    </span>
-                    <span className="shrink-0 text-sm tabular-nums text-zinc-100">
-                      {e.gewichtProzent.toLocaleString('de-DE', {
-                        minimumFractionDigits: 2,
-                        maximumFractionDigits: 2,
-                      })}
-                      %
-                    </span>
-                  </div>
-                  <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-zinc-800">
+                  <li key={e.key}>
                     <div
-                      className="h-full rounded-full bg-teal-500"
-                      style={{ width: `${Math.min(100, e.gewichtProzent)}%` }}
-                    />
-                  </div>
-                </li>
-              )})
+                      className="flex cursor-pointer items-center gap-2 rounded-lg px-1 -mx-1 hover:bg-white/[0.03]"
+                      onClick={() => setEuroKey((k) => (k === e.key ? null : e.key))}
+                      onKeyDown={(ev) => {
+                        if (ev.key === 'Enter' || ev.key === ' ') {
+                          ev.preventDefault()
+                          setEuroKey((k) => (k === e.key ? null : e.key))
+                        }
+                      }}
+                      tabIndex={0}
+                      role="button"
+                      aria-pressed={zeigeEuro}
+                      aria-label={
+                        zeigeEuro
+                          ? `${e.label}: ${formatEur(wertEur)} vom Depot`
+                          : `${e.label}: ${e.gewichtProzent.toFixed(2)} Prozent — tippen für Euro`
+                      }
+                    >
+                      {dimension === 'asset' ? (
+                        <button
+                          type="button"
+                          className="shrink-0 rounded-lg focus:outline-none focus-visible:ring-1 focus-visible:ring-teal-500/60"
+                          title={fundamentalHref ? 'Fundamentaldaten öffnen' : e.label}
+                          onClick={(ev) => {
+                            ev.stopPropagation()
+                            if (fundamentalHref) router.push(fundamentalHref)
+                            else setEuroKey((k) => (k === e.key ? null : e.key))
+                          }}
+                        >
+                          <GewichtungAssetLogo
+                            isin={logoCtx.isin}
+                            symbol={logoCtx.symbol}
+                            label={e.label}
+                            meta={meta}
+                            groesse="sm"
+                          />
+                        </button>
+                      ) : (
+                        <span
+                          className="h-2.5 w-2.5 shrink-0 rounded-full"
+                          style={{ background: e.farbe }}
+                        />
+                      )}
+                      <span className="min-w-0 flex-1 truncate text-sm text-zinc-200">
+                        {e.label}
+                        {e.anzahl > 1 || dimension !== 'asset' ? (
+                          <span className="text-zinc-500"> ({e.anzahl})</span>
+                        ) : null}
+                      </span>
+                      <span
+                        className={`shrink-0 text-sm tabular-nums ${zeigeEuro ? 'font-semibold text-teal-300' : 'text-zinc-100'}`}
+                      >
+                        {zeigeEuro
+                          ? formatEur(wertEur)
+                          : `${e.gewichtProzent.toLocaleString('de-DE', {
+                              minimumFractionDigits: 2,
+                              maximumFractionDigits: 2,
+                            })} %`}
+                      </span>
+                    </div>
+                    <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-zinc-800">
+                      <div
+                        className="h-full rounded-full bg-teal-500"
+                        style={{ width: `${Math.min(100, e.gewichtProzent)}%` }}
+                      />
+                    </div>
+                  </li>
+                )
+              })
             )}
           </ul>
         </PaCard>
