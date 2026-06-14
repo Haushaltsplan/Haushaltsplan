@@ -29,10 +29,6 @@ export async function ladeEtfBreakdownsFuerPositionen(
     }
     const m = meta.get(isin)
     const symbolYahoo = m?.symbolYahoo ?? m?.symbolCandidates?.[0] ?? null
-    if (!symbolYahoo) {
-      clientCache.set(isin, null)
-      continue
-    }
     fehlend.push({ isin, symbolYahoo })
   }
 

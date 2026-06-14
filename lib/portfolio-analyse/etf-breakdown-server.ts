@@ -1,6 +1,7 @@
 import 'server-only'
 
 import type { EtfBreakdown } from '@/lib/portfolio-analyse/parqet-core/types'
+import { ladeAmundiEtfBreakdown } from '@/lib/portfolio-analyse/etf-scraper/amundi-breakdown-server'
 import {
   holeYahooFinanceAuth,
   YAHOO_FINANCE_FETCH_HEADERS,
@@ -21,7 +22,7 @@ function rawPct(v: unknown): number | null {
   return null
 }
 
-function parseSectors(row: Record<string, unknown>): EtfBreakdown['sectors'] {
+function parseYahooSectors(row: Record<string, unknown>): EtfBreakdown['sectors'] {
   const sw = row.sectorWeightings as { sectors?: Array<Record<string, unknown>> } | undefined
   if (sw?.sectors?.length) {
     const out: EtfBreakdown['sectors'] = []
@@ -49,7 +50,7 @@ function parseSectors(row: Record<string, unknown>): EtfBreakdown['sectors'] {
   return []
 }
 
-function parseCountries(row: Record<string, unknown>): EtfBreakdown['countries'] {
+function parseYahooCountries(row: Record<string, unknown>): EtfBreakdown['countries'] {
   const cw = row.fundProfile as { countryWeightings?: Array<{ country?: string; weight?: unknown }> } | undefined
   if (cw?.countryWeightings?.length) {
     return cw.countryWeightings
@@ -64,7 +65,7 @@ function parseCountries(row: Record<string, unknown>): EtfBreakdown['countries']
   return []
 }
 
-function parseTopHoldings(row: Record<string, unknown>): EtfBreakdown['topHoldings'] {
+function parseYahooTopHoldings(row: Record<string, unknown>): EtfBreakdown['topHoldings'] {
   const th = row.topHoldings as
     | {
         holdings?: Array<{
@@ -81,26 +82,19 @@ function parseTopHoldings(row: Record<string, unknown>): EtfBreakdown['topHoldin
       const pct = rawPct(h.holdingPercent)
       const name = (h.holdingName ?? h.symbol ?? '').trim()
       if (!name || pct == null || pct <= 0) return null
-      const row: { name: string; symbol?: string; percentage: number } = { name, percentage: pct }
-      if (h.symbol?.trim()) row.symbol = h.symbol.trim()
-      return row
+      const out: { name: string; symbol?: string; percentage: number } = { name, percentage: pct }
+      if (h.symbol?.trim()) out.symbol = h.symbol.trim()
+      return out
     })
     .filter((x): x is { name: string; symbol?: string; percentage: number } => x != null)
 }
 
-/** Top-Holdings & Sektor-/Ländergewichte eines ETFs (Yahoo Finance). */
-export async function ladeEtfBreakdown(symbol: string): Promise<EtfBreakdown | null> {
+async function ladeYahooEtfBreakdown(symbol: string): Promise<EtfBreakdown | null> {
   const sym = symbol.trim()
   if (!sym) return null
 
-  const hit = cache.get(sym.toUpperCase())
-  if (hit && Date.now() - hit.at < CACHE_MS) return hit.data
-
   const auth = await holeYahooFinanceAuth()
-  if (!auth) {
-    cache.set(sym.toUpperCase(), { at: Date.now(), data: null })
-    return null
-  }
+  if (!auth) return null
 
   const u = new URL(`https://query2.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(sym)}`)
   u.searchParams.set('modules', 'topHoldings,fundSectorWeightings,fundProfile,sectorWeightings')
@@ -111,51 +105,58 @@ export async function ladeEtfBreakdown(symbol: string): Promise<EtfBreakdown | n
       headers: { ...YAHOO_FINANCE_FETCH_HEADERS, Cookie: auth.cookie },
       cache: 'no-store',
     })
-    if (!res.ok) {
-      cache.set(sym.toUpperCase(), { at: Date.now(), data: null })
-      return null
-    }
+    if (!res.ok) return null
     const j = (await res.json()) as { quoteSummary?: { result?: Array<Record<string, unknown>> } }
     const row = j.quoteSummary?.result?.[0]
-    if (!row) {
-      cache.set(sym.toUpperCase(), { at: Date.now(), data: null })
-      return null
-    }
+    if (!row) return null
 
-    const topHoldings = parseTopHoldings(row)
-    if (topHoldings.length === 0) {
-      cache.set(sym.toUpperCase(), { at: Date.now(), data: null })
-      return null
-    }
+    const topHoldings = parseYahooTopHoldings(row)
+    if (topHoldings.length === 0) return null
 
-    const data: EtfBreakdown = {
+    return {
       topHoldings,
-      sectors: parseSectors(row),
-      countries: parseCountries(row),
+      sectors: parseYahooSectors(row),
+      countries: parseYahooCountries(row),
     }
-    cache.set(sym.toUpperCase(), { at: Date.now(), data })
-    return data
   } catch {
-    cache.set(sym.toUpperCase(), { at: Date.now(), data: null })
     return null
   }
+}
+
+/** ETF-Zusammensetzung: Amundi-Scraper → Yahoo-Fallback. */
+export async function ladeEtfBreakdownFuerIsin(
+  isin: string,
+  symbolYahoo: string | null,
+): Promise<EtfBreakdown | null> {
+  const key = isin.trim().toUpperCase()
+  if (!key) return null
+
+  const hit = cache.get(key)
+  if (hit && Date.now() - hit.at < CACHE_MS) return hit.data
+
+  let data = await ladeAmundiEtfBreakdown(key)
+  if (!data && symbolYahoo) {
+    data = await ladeYahooEtfBreakdown(symbolYahoo)
+  }
+
+  cache.set(key, { at: Date.now(), data })
+  return data
 }
 
 export async function ladeEtfBreakdownsBatch(
   anfragen: Array<{ isin: string; symbolYahoo: string | null }>,
 ): Promise<Record<string, EtfBreakdown>> {
   const out: Record<string, EtfBreakdown> = {}
-  const uniq = new Map<string, string>()
+  const uniq = new Map<string, string | null>()
   for (const a of anfragen) {
     const isin = a.isin.trim().toUpperCase()
-    const sym = a.symbolYahoo?.trim()
-    if (!isin || !sym || uniq.has(isin)) continue
-    uniq.set(isin, sym)
+    if (!isin || uniq.has(isin)) continue
+    uniq.set(isin, a.symbolYahoo?.trim() || null)
   }
 
   await Promise.all(
     [...uniq.entries()].map(async ([isin, sym]) => {
-      const bd = await ladeEtfBreakdown(sym)
+      const bd = await ladeEtfBreakdownFuerIsin(isin, sym)
       if (bd) out[isin] = bd
     }),
   )
