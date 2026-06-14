@@ -22,7 +22,7 @@ export const NAV_LINK_DEFS = [
     color: 'text-indigo-400',
     ring: 'focus-visible:ring-indigo-500/50',
   },
-  { href: '/investments', label: 'Investments', shortLabel: 'Invest', emoji: '📈', color: 'text-violet-400', ring: 'focus-visible:ring-violet-500/50' },
+  { href: '/investments', label: 'Markt & Prompts', shortLabel: 'Markt', emoji: '📈', color: 'text-violet-400', ring: 'focus-visible:ring-violet-500/50' },
   { href: '/einstellungen', label: 'Einstellungen', shortLabel: 'Einst.', emoji: '⚙️', color: 'text-slate-300', ring: 'focus-visible:ring-slate-500/50' },
 ] as const
 

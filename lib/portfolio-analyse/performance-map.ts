@@ -84,10 +84,15 @@ export function bauePerformanceMap(
     .sort((a, b) => b.wertEur - a.wertEur)
 }
 
-export function hatXrayLookthrough(report: {
-  xRay: { topHoldings: { key: string; label: string; weightPercent: number }[] }
-  holdings: { assetId: string }[]
-} | null): boolean {
+export function hatXrayLookthrough(
+  report: {
+    xRay: { topHoldings: { key: string; label: string; weightPercent: number }[] }
+    holdings: { assetId: string; assetType?: string }[]
+  } | null,
+  etfBreakdowns?: Map<string, unknown>,
+): boolean {
   if (!report) return false
-  return report.xRay.topHoldings.length > report.holdings.length
+  if (etfBreakdowns && etfBreakdowns.size > 0) return true
+  const direkt = report.holdings.filter((h) => h.assetType !== 'ETF').length
+  return report.xRay.topHoldings.length > direkt
 }

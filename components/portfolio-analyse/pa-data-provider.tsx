@@ -23,6 +23,8 @@ import { ladeIsinMetadaten } from '@/lib/portfolio-analyse/isin-metadata-client'
 import { PORTFOLIO_MAX_BUCHUNGEN } from '@/lib/portfolio-analyse/limits'
 import { ladePortfolioAnalyseDaten } from '@/lib/portfolio-analyse/portfolio-analyse-db'
 import { parqetReportAusDepot } from '@/lib/portfolio-analyse/parqet-adapter'
+import { ladeEtfBreakdownsFuerPositionen } from '@/lib/portfolio-analyse/etf-breakdown-client'
+import type { EtfBreakdown } from '@/lib/portfolio-analyse/parqet-core/types'
 import type { SinglePortfolioReport } from '@/lib/portfolio-analyse/parqet-core/types'
 import type { IsinMetadata } from '@/lib/portfolio-analyse/isin-lookup-server'
 import type { PortfolioDbBuchung, PortfolioDbSnapshot } from '@/lib/portfolio-analyse/types'
@@ -39,6 +41,8 @@ type PaContextValue = {
   liveLaden: boolean
   kursFehler: boolean
   report: SinglePortfolioReport | null
+  etfBreakdowns: Map<string, EtfBreakdown>
+  etfBreakdownLaden: boolean
   hatDaten: boolean
   neuLaden: () => Promise<void>
 }
@@ -63,6 +67,8 @@ export function PaDataProvider({ children }: { children: ReactNode }) {
   const [live, setLive] = useState<LivePortfolio | null>(null)
   const [liveLaden, setLiveLaden] = useState(false)
   const [kursFehler, setKursFehler] = useState(false)
+  const [etfBreakdowns, setEtfBreakdowns] = useState<Map<string, EtfBreakdown>>(new Map())
+  const [etfBreakdownLaden, setEtfBreakdownLaden] = useState(false)
 
   const neuLaden = useCallback(async () => {
     setLaden(true)
@@ -137,6 +143,34 @@ export function PaDataProvider({ children }: { children: ReactNode }) {
     }
   }, [buchungen, snapshot, meta])
 
+  const etfIsinKey = useMemo(() => {
+    if (!live?.positionen.length) return ''
+    return live.positionen
+      .filter((p) => p.assetKlasse === 'etf' && p.isin)
+      .map((p) => p.isin!.trim().toUpperCase())
+      .sort()
+      .join('|')
+  }, [live?.positionen])
+
+  useEffect(() => {
+    if (!etfIsinKey) {
+      setEtfBreakdowns(new Map())
+      setEtfBreakdownLaden(false)
+      return
+    }
+    let cancelled = false
+    setEtfBreakdownLaden(true)
+    void ladeEtfBreakdownsFuerPositionen(live!.positionen, meta).then((m) => {
+      if (!cancelled) {
+        setEtfBreakdowns(m)
+        setEtfBreakdownLaden(false)
+      }
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [etfIsinKey, live, meta])
+
   const report = useMemo(() => {
     if (!live || live.positionen.length === 0) return null
     try {
@@ -145,11 +179,12 @@ export function PaDataProvider({ children }: { children: ReactNode }) {
         live.positionen,
         live.kennzahlen.depotwertEur,
         live.kennzahlen.cashEur,
+        { etfBreakdowns, meta },
       )
     } catch {
       return null
     }
-  }, [buchungen, live])
+  }, [buchungen, live, etfBreakdowns, meta])
 
   const hatDaten = buchungen.length > 0 || (snapshot?.positionen.length ?? 0) > 0
 
@@ -165,6 +200,8 @@ export function PaDataProvider({ children }: { children: ReactNode }) {
     liveLaden,
     kursFehler,
     report,
+    etfBreakdowns,
+    etfBreakdownLaden,
     hatDaten,
     neuLaden,
   }

@@ -159,7 +159,7 @@ export async function StartNewsPortfolioPanel() {
     return (
       <PageSectionPanel density="compact">
         <div className="rounded-lg border border-violet-900/40 bg-violet-950/20 px-3 py-3 sm:px-4">
-          <p className="text-[11px] font-black uppercase tracking-widest text-violet-200/75">News zu meinen Investments</p>
+          <p className="text-[11px] font-black uppercase tracking-widest text-violet-200/75">Markt-News</p>
           <p className="mt-2 text-sm leading-relaxed text-zinc-400">
             Während der Aktienpause (bis einschließlich {investmentsSperreLetzterTagDisplayDE()}) sind hier keine
             Schlagzeilen geladen — bewusst ruhig. Ab {investmentsSperreFreischaltungKurzDE()} erscheint die Liste wieder.
@@ -175,7 +175,7 @@ export async function StartNewsPortfolioPanel() {
       <details className="app-disclosure group bg-zinc-950/20">
         <summary className="flex cursor-pointer list-none select-none items-center justify-between gap-3 rounded-lg px-3 py-2.5 text-left outline-offset-2 transition-colors hover:bg-zinc-800/35 focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-500/50 sm:px-4">
           <p className="min-w-0 pr-1 text-[11px] font-black uppercase tracking-widest text-emerald-200/80">
-            News zu meinen Investments
+            Markt-News
           </p>
           <DetailsDisclosureTriggerEnd tone="emerald" />
         </summary>

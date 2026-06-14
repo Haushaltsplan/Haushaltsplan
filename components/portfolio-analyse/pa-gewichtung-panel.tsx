@@ -17,7 +17,8 @@ import type { LivePosition } from '@/lib/portfolio-analyse/live-bewertung'
 import type { IsinMetadata } from '@/lib/portfolio-analyse/isin-lookup-server'
 import { hatXrayLookthrough } from '@/lib/portfolio-analyse/performance-map'
 import type { SinglePortfolioReport } from '@/lib/portfolio-analyse/parqet-core/types'
-import { gewichtungMitXray, xrayLaender, xraySektoren } from '@/lib/portfolio-analyse/xray-gewichtung'
+import { gewichtungMitXray, xrayLaender, xraySektoren, etfOhneBreakdown } from '@/lib/portfolio-analyse/xray-gewichtung'
+import type { EtfBreakdown } from '@/lib/portfolio-analyse/parqet-core/types'
 import { useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { fundamentaldatenHref } from '@/lib/portfolio-analyse/fundamentaldaten-navigation'
@@ -35,11 +36,13 @@ function eintraegeFuerDimension(
   positionen: LivePosition[],
   report: SinglePortfolioReport | null,
   xrayAn: boolean,
+  etfBreakdownLaden: boolean,
 ): GewichtungEintrag[] {
   if (xrayAn && report) {
     if (dimension === 'asset') {
       const { eintraege } = gewichtungMitXray(report, true)
       if (eintraege.length > 0) return eintraege
+      if (etfBreakdownLaden) return []
     }
     if (dimension === 'sektor') {
       const s = xraySektoren(report, true)
@@ -79,11 +82,15 @@ export function PaGewichtungPanel({
   depotwertEur,
   report,
   meta,
+  etfBreakdowns,
+  etfBreakdownLaden,
 }: {
   positionen: LivePosition[]
   depotwertEur: number
   report: SinglePortfolioReport | null
   meta: Map<string, IsinMetadata>
+  etfBreakdowns: Map<string, EtfBreakdown>
+  etfBreakdownLaden: boolean
 }) {
   const router = useRouter()
   const [dimension, setDimension] = useState<GewichtungDimension>('asset')
@@ -98,11 +105,15 @@ export function PaGewichtungPanel({
     return m
   }, [positionen])
 
-  const lookthroughMoeglich = hatXrayLookthrough(report)
+  const lookthroughMoeglich = hatXrayLookthrough(report, etfBreakdowns)
+  const fehlendeEtf = useMemo(
+    () => (xrayAn ? etfOhneBreakdown(positionen, etfBreakdowns) : []),
+    [xrayAn, positionen, etfBreakdowns],
+  )
 
   const eintraege = useMemo(
-    () => eintraegeFuerDimension(dimension, positionen, report, xrayAn),
-    [dimension, positionen, report, xrayAn],
+    () => eintraegeFuerDimension(dimension, positionen, report, xrayAn, etfBreakdownLaden),
+    [dimension, positionen, report, xrayAn, etfBreakdownLaden],
   )
 
   const donut = useMemo(() => eintraegeZuDonut(eintraege), [eintraege])
@@ -137,11 +148,18 @@ export function PaGewichtungPanel({
       </div>
 
       <p className="text-xs text-zinc-500">{stats}</p>
-      {xrayAn && !lookthroughMoeglich ? (
+      {xrayAn && etfBreakdownLaden ? (
+        <p className="text-[11px] leading-relaxed text-zinc-500">ETF-Zusammensetzungen werden geladen …</p>
+      ) : null}
+      {xrayAn && !etfBreakdownLaden && fehlendeEtf.length > 0 ? (
+        <p className="text-[11px] leading-relaxed text-amber-200/80">
+          Ohne Holdings-Daten ausgeblendet: {fehlendeEtf.map((p) => p.anzeigeName).join(', ')} — Gewichte summieren
+          ggf. nicht zu 100&nbsp;%.
+        </p>
+      ) : null}
+      {xrayAn && !lookthroughMoeglich && !etfBreakdownLaden ? (
         <p className="text-[11px] leading-relaxed text-zinc-600">
-          X-Ray nutzt verfügbare Engine-Daten. ETF-Look-through (Unterpositionen) erscheint, sobald{' '}
-          <code className="text-teal-500/90">etfBreakdown</code> in den Holdings hinterlegt ist — bis dahin
-          Einzelpositionen und manuelle Sektoren.
+          X-Ray benötigt Yahoo-Top-Holdings der ETFs im Depot. Prüfe die Yahoo-Symbole in den Positionsdaten.
         </p>
       ) : null}
 
@@ -158,11 +176,13 @@ export function PaGewichtungPanel({
         <PaCard variant="elevated" className="max-h-[28rem] overflow-y-auto p-4">
           <ul className="space-y-4">
             {eintraege.length === 0 ? (
-              <li className="py-8 text-center text-sm text-zinc-500">Keine Positionen.</li>
+              <li className="py-8 text-center text-sm text-zinc-500">
+                {xrayAn && etfBreakdownLaden ? 'X-Ray wird vorbereitet …' : 'Keine Positionen.'}
+              </li>
             ) : (
               eintraege.map((e) => {
                 const pos =
-                  dimension === 'asset' && !xrayAn && e.key.length >= 12
+                  dimension === 'asset' && e.key.length >= 12
                     ? posByIsin.get(e.key.toUpperCase())
                     : undefined
                 const fundamentalHref =
@@ -187,9 +207,9 @@ export function PaGewichtungPanel({
                     tabIndex={fundamentalHref ? 0 : undefined}
                     role={fundamentalHref ? 'link' : undefined}
                   >
-                    {dimension === 'asset' && !xrayAn ? (
+                    {dimension === 'asset' && e.key.length >= 12 ? (
                       <PortfolioIsinLogo
-                        isin={e.key.length >= 12 ? e.key : null}
+                        isin={e.key}
                         fallbackName={e.label}
                         meta={meta}
                         groesse="sm"

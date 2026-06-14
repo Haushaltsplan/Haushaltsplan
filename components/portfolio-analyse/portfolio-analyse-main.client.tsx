@@ -23,7 +23,8 @@ const HAUPT_TABS: { id: AnalyseTab; label: string; shortLabel: string }[] = [
 ]
 
 export function PortfolioAnalyseMainClient() {
-  const { live, report, meta, hatDaten, laden, buchungen } = usePortfolioAnalyse()
+  const { live, report, meta, hatDaten, laden, buchungen, etfBreakdowns, etfBreakdownLaden } =
+    usePortfolioAnalyse()
   const [tab, setTab] = useState<AnalyseTab>('gewichtung')
   const [renditeModus, setRenditeModus] = useState<'M' | 'Q'>('M')
   const [kapitalModus, setKapitalModus] = useState<'M' | 'Q'>('M')
@@ -79,6 +80,8 @@ export function PortfolioAnalyseMainClient() {
                       depotwertEur={live!.kennzahlen.depotwertEur}
                       report={report}
                       meta={meta}
+                      etfBreakdowns={etfBreakdowns}
+                      etfBreakdownLaden={etfBreakdownLaden}
                     />
                   </div>
                 )}

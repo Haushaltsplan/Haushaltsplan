@@ -20,7 +20,7 @@ export interface EtfBreakdownSlice {
 }
 
 export interface EtfBreakdown {
-  topHoldings: Array<{ name: string; percentage: number }>
+  topHoldings: Array<{ name: string; symbol?: string; percentage: number }>
   countries: Array<{ countryCode: string; percentage: number }>
   sectors: Array<{ sectorName: string; percentage: number }>
 }
@@ -41,6 +41,8 @@ export interface AssetHolding {
   /** Optional für X-Ray bei Einzelaktien (nicht im ETF-Breakdown). */
   countryCode?: string
   sectorName?: string
+  /** Yahoo-Symbol — für X-Ray-Zusammenführung (ETF-Holding ↔ Direktposition). */
+  yahooSymbol?: string
   etfBreakdown?: EtfBreakdown
 }
 

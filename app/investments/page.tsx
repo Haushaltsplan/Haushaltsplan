@@ -23,8 +23,8 @@ export const revalidate = 120
 export const maxDuration = 120
 
 export const metadata: Metadata = {
-  title: 'Investments',
-  description: 'Portfolio in Parqet verfolgen',
+  title: 'Markt & Prompts',
+  description: 'Marktübersicht, Portfolio-News und Analyse-Prompts',
 }
 
 function MarktPanelSkeleton() {
@@ -44,13 +44,13 @@ export default function InvestmentsPage() {
     return (
       <PageChrome>
         <PageHero
-          eyebrow="Investments"
+          eyebrow="Markt & Prompts"
           title="Aktienpause"
           description={
             <>
               Dieser Bereich ist absichtlich bis einschließlich{' '}
               <span className="font-medium text-zinc-200">{investmentsSperreLetzterTagDisplayDE()}</span>{' '}
-              ausgeblendet — inklusive Parqet-Link, Kursen und Research, damit keine Kursschau in Versuchung führt.
+              ausgeblendet — inklusive Parqet-Link, Kursen und Prompts, damit keine Kursschau in Versuchung führt.
               Ab dem <span className="font-medium text-zinc-200">{investmentsSperreFreischaltungKurzDE()}</span> ist
               hier wieder alles wie gewohnt erreichbar.
             </>
@@ -79,7 +79,7 @@ export default function InvestmentsPage() {
       <InvestmentsMinuteRefresh />
 
       <PageHero
-        eyebrow="Investments"
+        eyebrow="Markt & Prompts"
         title="Portfolio in Parqet"
         actions={
           konfiguriert ? (
@@ -120,7 +120,7 @@ export default function InvestmentsPage() {
         </Suspense>
       </PageSection>
 
-      <PageSection titleId="investments-research-heading" title="Research">
+      <PageSection titleId="investments-research-heading" title="Prompts">
         <PageSectionPanel>
           <InvestmentMantra embedded />
         </PageSectionPanel>

@@ -7,9 +7,11 @@ import {
   summenAusBuchungen,
   twrAusMonatsVerlauf,
 } from '@/lib/portfolio-analyse/depot-berechnung'
+import type { IsinMetadata } from '@/lib/portfolio-analyse/isin-lookup-server'
 import type {
   AssetCashflow,
   AssetHolding,
+  EtfBreakdown,
   ParqetAssetType,
   PortfolioData,
   SinglePortfolioReport,
@@ -43,12 +45,19 @@ export function portfolioDataAusBuchungen(
   positionen: LivePosition[],
   depotwertEur = 0,
   cashEur = 0,
+  opts?: {
+    etfBreakdowns?: Map<string, EtfBreakdown>
+    meta?: Map<string, IsinMetadata>
+  },
 ): PortfolioData {
   const byIsin = new Map<string, AssetHolding>()
   const einstandMap = new Map<string, { stueck: number; kosten: number }>()
 
   for (const p of positionen) {
     const id = p.isin?.toUpperCase() ?? p.anzeigeName
+    const isin = p.isin?.trim().toUpperCase()
+    const m = isin ? opts?.meta?.get(isin) : undefined
+    const yahooSymbol = m?.symbolYahoo ?? m?.symbolCandidates?.[0] ?? undefined
     const stk = p.stueck
     const avg = stk > 0 ? p.einstandEur / stk : 0
     const cur = stk > 0 ? p.wertLiveEur / stk : avg
@@ -57,6 +66,8 @@ export function portfolioDataAusBuchungen(
       assetName: p.anzeigeName,
       assetType: assetTyp(p.assetKlasse),
       sectorName: isinSektorName(p.isin),
+      yahooSymbol,
+      etfBreakdown: isin && p.assetKlasse === 'etf' ? opts?.etfBreakdowns?.get(isin) : undefined,
       quantity: stk,
       averagePrice: round2(avg),
       currentPrice: round2(cur),
@@ -182,9 +193,13 @@ export function parqetReportAusDepot(
   positionen: LivePosition[],
   depotwertEur?: number,
   cashEur = 0,
+  opts?: {
+    etfBreakdowns?: Map<string, EtfBreakdown>
+    meta?: Map<string, IsinMetadata>
+  },
 ): SinglePortfolioReport {
   const terminal = depotwertEur ?? positionen.reduce((s, p) => s + p.wertLiveEur, 0) + cashEur
-  const data = portfolioDataAusBuchungen(buchungen, positionen, terminal, cashEur)
+  const data = portfolioDataAusBuchungen(buchungen, positionen, terminal, cashEur, opts)
   const engine = new ParqetCoreAnalyticsEngine(data)
   const report = engine.generateUltimateReport().consolidated
 

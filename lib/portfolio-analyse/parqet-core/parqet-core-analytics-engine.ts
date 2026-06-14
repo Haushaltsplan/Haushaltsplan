@@ -404,6 +404,25 @@ export class ParqetCoreAnalyticsEngine {
     const countriesMap = new Map<string, { label: string; weight: number }>()
     const sectorsMap = new Map<string, { label: string; weight: number }>()
 
+    const symbolToAssetId = new Map<string, string>()
+    for (const a of assets) {
+      if (a.assetType === 'Cash') continue
+      symbolToAssetId.set(a.assetId.toUpperCase(), a.assetId)
+      if (a.yahooSymbol) {
+        const sym = a.yahooSymbol.toUpperCase()
+        symbolToAssetId.set(sym, a.assetId)
+        symbolToAssetId.set(sym.split('.')[0]!, a.assetId)
+      }
+    }
+
+    const holdingKey = (symbol: string | undefined, name: string, fallbackId?: string): string => {
+      const sym = symbol?.trim().toUpperCase()
+      if (sym && symbolToAssetId.has(sym)) return symbolToAssetId.get(sym)!
+      if (sym && symbolToAssetId.has(sym.split('.')[0]!)) return symbolToAssetId.get(sym.split('.')[0]!)!
+      if (fallbackId) return fallbackId
+      return name.trim() || sym || 'Unbekannt'
+    }
+
     for (const a of assets) {
       const mv = this.marketValue(a)
       if (mv <= 0) continue
@@ -412,7 +431,11 @@ export class ParqetCoreAnalyticsEngine {
       if (a.assetType === 'ETF' && a.etfBreakdown) {
         mergeWeightedBuckets(
           holdingsMap,
-          a.etfBreakdown.topHoldings.map((h) => ({ key: h.name, label: h.name, percentage: h.percentage })),
+          a.etfBreakdown.topHoldings.map((h) => ({
+            key: holdingKey(h.symbol, h.name),
+            label: h.name,
+            percentage: h.percentage,
+          })),
           weightPercent,
         )
         mergeWeightedBuckets(
@@ -433,10 +456,10 @@ export class ParqetCoreAnalyticsEngine {
           })),
           weightPercent,
         )
-      } else {
+      } else if (a.assetType !== 'ETF') {
         mergeWeightedBuckets(
           holdingsMap,
-          [{ key: a.assetId, label: a.assetName, percentage: 100 }],
+          [{ key: holdingKey(a.yahooSymbol, a.assetName, a.assetId), label: a.assetName, percentage: 100 }],
           weightPercent,
         )
         const country = a.countryCode?.trim() || 'Unbekannt'
