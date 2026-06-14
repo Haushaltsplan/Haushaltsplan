@@ -1,5 +1,6 @@
 /** Kapitalfluss-Heatmap: Netto aus Käufen (− Verkäufe) pro Monat/Quartal — wie Parqet. */
 
+import { istAktiendividendeAlsKauf } from '@/lib/portfolio-analyse/dividenden-buchung'
 import { irrBetragFuerKauf } from '@/lib/portfolio-analyse/parqet-xirr'
 import type { PortfolioBuchung } from '@/lib/portfolio-analyse/types'
 
@@ -35,6 +36,15 @@ function round2(n: number): number {
   return Math.round(n * 100) / 100
 }
 
+/** Parqet: nur echte Käufe/Verkäufe — keine Depot-Umbuchungen (TransferIn/Out) oder Aktiendividenden. */
+export function zaehltFuerKapitalfluss(b: PortfolioBuchung): boolean {
+  if (b.typ !== 'kauf' && b.typ !== 'verkauf') return false
+  const pt = (b.parqetTyp ?? '').trim().toLowerCase()
+  if (/^transferin$|^transferout$/i.test(pt)) return false
+  if (istAktiendividendeAlsKauf(b)) return false
+  return true
+}
+
 function kapitalflussBetrag(b: PortfolioBuchung): number {
   if (b.typ === 'kauf') return irrBetragFuerKauf(b)
   if (b.typ === 'verkauf') return Math.abs(b.betragEur)
@@ -46,6 +56,7 @@ export function kapitalflussNettoMap(buchungen: PortfolioBuchung[]): Map<string,
   const kauf = new Map<string, number>()
   const verkauf = new Map<string, number>()
   for (const b of buchungen) {
+    if (!zaehltFuerKapitalfluss(b)) continue
     const k = monatsKey(b.datum)
     if (!k) continue
     const betrag = kapitalflussBetrag(b)
