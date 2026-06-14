@@ -22,12 +22,16 @@ import {
   baueSektorAnsicht,
   etfOhneBreakdown,
   gewichtungMitXray,
-  sonstigeSymbole,
   type XrayGliederungEintrag,
 } from '@/lib/portfolio-analyse/xray-gewichtung'
-import { ladeSektorenNach } from '@/lib/portfolio-analyse/sektor-nachladen-client'
+import {
+  LEERER_SEKTOR_LOOKUP,
+  ladeFundamentalSektoren,
+  sammleSektorAnfragen,
+  type FundamentalSektorLookup,
+} from '@/lib/portfolio-analyse/sektor-fundamental-client'
 import type { EtfBreakdown } from '@/lib/portfolio-analyse/parqet-core/types'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { fundamentaldatenHref } from '@/lib/portfolio-analyse/fundamentaldaten-navigation'
 
@@ -119,9 +123,39 @@ export function PaGewichtungPanel({
   const [xrayAn, setXrayAn] = useState(false)
   const [euroKey, setEuroKey] = useState<string | null>(null)
   const [expandedGruppe, setExpandedGruppe] = useState<string | null>(null)
-  const [extraSektoren, setExtraSektoren] = useState<Map<string, string>>(new Map())
+  const [fundamentalSektoren, setFundamentalSektoren] = useState<FundamentalSektorLookup>(
+    LEERER_SEKTOR_LOOKUP,
+  )
   const [sektorNachladen, setSektorNachladen] = useState(false)
-  const sektorFetchVersucht = useRef(new Set<string>())
+
+  const sektorAnfragen = useMemo(
+    () => sammleSektorAnfragen(positionen, meta, report, xrayAn),
+    [positionen, meta, report, xrayAn],
+  )
+  const sektorAnfragenKey = sektorAnfragen
+    .map((a) => `${a.isin ?? ''}|${a.symbolYahoo ?? ''}`)
+    .join(';')
+
+  useEffect(() => {
+    if (sektorAnfragen.length === 0) {
+      setFundamentalSektoren(LEERER_SEKTOR_LOOKUP)
+      return
+    }
+
+    let cancelled = false
+    setSektorNachladen(true)
+    void ladeFundamentalSektoren(sektorAnfragen)
+      .then((lookup) => {
+        if (!cancelled) setFundamentalSektoren(lookup)
+      })
+      .finally(() => {
+        if (!cancelled) setSektorNachladen(false)
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [sektorAnfragenKey, sektorAnfragen.length])
 
   useEffect(() => {
     setEuroKey(null)
@@ -143,9 +177,9 @@ export function PaGewichtungPanel({
         depotwertEur,
         fehlendeEtf,
         xrayAn,
-        extraSektoren,
+        fundamentalSektoren,
       ),
-    [report, positionen, meta, etfBreakdowns, depotwertEur, fehlendeEtf, xrayAn, extraSektoren],
+    [report, positionen, meta, etfBreakdowns, depotwertEur, fehlendeEtf, xrayAn, fundamentalSektoren],
   )
 
   const regionAnsicht = useMemo(
@@ -153,38 +187,6 @@ export function PaGewichtungPanel({
       baueRegionAnsicht(report, positionen, meta, etfBreakdowns, depotwertEur, fehlendeEtf, xrayAn),
     [report, positionen, meta, etfBreakdowns, depotwertEur, fehlendeEtf, xrayAn],
   )
-
-  useEffect(() => {
-    if (dimension !== 'sektor') return
-    const symbole = sonstigeSymbole(sektorAnsicht).filter((s) => {
-      const base = s.trim().toUpperCase().split('.')[0]!
-      return !extraSektoren.has(base) && !sektorFetchVersucht.current.has(base)
-    })
-    if (symbole.length === 0) return
-
-    for (const s of symbole) {
-      sektorFetchVersucht.current.add(s.trim().toUpperCase().split('.')[0]!)
-    }
-
-    let cancelled = false
-    setSektorNachladen(true)
-    void ladeSektorenNach(symbole)
-      .then((m) => {
-        if (cancelled || m.size === 0) return
-        setExtraSektoren((prev) => {
-          const next = new Map(prev)
-          for (const [k, v] of m) next.set(k, v)
-          return next
-        })
-      })
-      .finally(() => {
-        if (!cancelled) setSektorNachladen(false)
-      })
-
-    return () => {
-      cancelled = true
-    }
-  }, [dimension, sektorAnsicht, extraSektoren])
 
   const posByIsin = useMemo(() => {
     const m = new Map<string, LivePosition>()
@@ -288,8 +290,10 @@ export function PaGewichtungPanel({
           X-Ray benötigt Holdings-Daten der ETFs. Für Index-ETFs werden alle Konstituenten geladen; sonst Amundi/Yahoo.
         </p>
       ) : null}
-      {dimension === 'sektor' && sektorNachladen ? (
-        <p className="text-[11px] leading-relaxed text-zinc-500">Sektoren für Einzelwerte werden nachgeladen …</p>
+      {sektorNachladen ? (
+        <p className="text-[11px] leading-relaxed text-zinc-500">
+          Sektoren aus Fundamentaldaten werden geladen …
+        </p>
       ) : null}
 
       <div className="grid gap-6 lg:grid-cols-2">

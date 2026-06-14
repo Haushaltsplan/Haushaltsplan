@@ -3,13 +3,13 @@ import { ASSET_KLASSE_LABEL, type AssetKlasse } from '@/lib/portfolio-analyse/ty
 
 /** Manuelle Sektor-Zuordnung (GICS-ähnlich) — erweiterbar. */
 const ISIN_SEKTOR: Record<string, string> = {
-  US23804L1035: 'Informationstechnologie',
-  US0404132054: 'Informationstechnologie',
-  US91680M1071: 'Finanzunternehmen',
-  GB0004052071: 'Industrieunternehmen',
+  US23804L1035: 'Technologie',
+  US0404132054: 'Technologie',
+  US91680M1071: 'Finanzdienstleistungen',
+  GB0004052071: 'Industrie',
   IE00BLNMYC90: 'ETF & Fonds',
   IE00BJXRZJ40: 'ETF & Fonds',
-  DE000A0BVU28: 'Informationstechnologie',
+  DE000A0BVU28: 'Technologie',
 }
 
 const KLASSE_FALLBACK: Record<AssetKlasse, string> = {
