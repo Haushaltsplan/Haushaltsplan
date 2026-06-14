@@ -240,3 +240,26 @@ export async function loescheEarningsCallKiCacheEintrag(ticker: string, quartalI
   await schreibeDatei(datei)
   await loescheEarningsCallKiCloudEintrag(ticker, quartalId)
 }
+
+let dateiNachCloudMigriert = false
+
+/** Bestehende Datei-Caches (Laptop/Dev-Server) einmalig nach Supabase hochladen. */
+export async function migriereEarningsCallKiDateiNachCloud(): Promise<number> {
+  if (dateiNachCloudMigriert) return 0
+  dateiNachCloudMigriert = true
+  const datei = await ladeDateiMitMigration()
+  let hochgeladen = 0
+  for (const [ticker, hit] of Object.entries(datei.byTicker)) {
+    for (const [quartalId, row] of Object.entries(hit.summaries ?? {})) {
+      if (!row.zusammenfassung?.trim()) continue
+      await speichereEarningsCallKiInCloud({
+        ticker,
+        quartalId,
+        transcriptUrl: row.transcriptUrl,
+        zusammenfassung: row.zusammenfassung,
+      })
+      hochgeladen += 1
+    }
+  }
+  return hochgeladen
+}

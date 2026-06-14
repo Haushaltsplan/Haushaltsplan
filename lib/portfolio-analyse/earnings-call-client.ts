@@ -213,3 +213,10 @@ export async function erneuereEarningsCallKi(
   const prevOk = prev && gleichesUnternehmen(prev, anfrage) ? prev : null
   return ladeEarningsCallClient({ ...anfrage, force: false, forceKi: true }, prevOk)
 }
+
+/** Alle lokal gespeicherten Pakete mit mindestens einer KI-Zusammenfassung. */
+export function listeEarningsCallPaketeMitKiAusLocal(): EarningsCallPaket[] {
+  return Object.values(ladeStore()).filter((p) =>
+    Boolean(p?.ticker && p.quartale?.some((q) => q.zusammenfassung?.trim())),
+  )
+}

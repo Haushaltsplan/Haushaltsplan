@@ -10,6 +10,7 @@ import {
   type ReactNode,
 } from 'react'
 import toast from 'react-hot-toast'
+import { syncAlleKiZusammenfassungenAusLocalStorage } from '@/lib/portfolio-analyse/portfolio-ki-cache-sync-client'
 import { positionenFuerBewertung } from '@/lib/portfolio-analyse/bestand'
 import { sammleIsins } from '@/lib/portfolio-analyse/auswertungen'
 import {
@@ -88,6 +89,10 @@ export function PaDataProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     void neuLaden()
   }, [neuLaden])
+
+  useEffect(() => {
+    syncAlleKiZusammenfassungenAusLocalStorage()
+  }, [])
 
   const isins = useMemo(() => sammleIsins(buchungen, snapshot), [buchungen, snapshot])
   const isinKey = isins.join('|')

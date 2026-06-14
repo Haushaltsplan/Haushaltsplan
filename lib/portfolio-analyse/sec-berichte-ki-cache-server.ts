@@ -134,3 +134,27 @@ export async function loescheSecBerichtKiCacheEintrag(ticker: string, berichtId:
   await schreibeDatei(datei)
   await loescheSecBerichtKiCloudEintrag(ticker, berichtId)
 }
+
+let dateiNachCloudMigriert = false
+
+/** Bestehende Datei-Caches (Laptop/Dev-Server) einmalig nach Supabase hochladen. */
+export async function migriereSecBerichtKiDateiNachCloud(): Promise<number> {
+  if (dateiNachCloudMigriert) return 0
+  dateiNachCloudMigriert = true
+  const datei = await leseDatei()
+  if (!datei?.byTicker) return 0
+  let hochgeladen = 0
+  for (const [ticker, rows] of Object.entries(datei.byTicker)) {
+    for (const [berichtId, row] of Object.entries(rows)) {
+      if (!row.zusammenfassung?.trim()) continue
+      await speichereSecBerichtKiInCloud({
+        ticker,
+        berichtId,
+        accession: row.accession,
+        zusammenfassung: row.zusammenfassung,
+      })
+      hochgeladen += 1
+    }
+  }
+  return hochgeladen
+}

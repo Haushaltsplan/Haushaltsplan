@@ -184,3 +184,10 @@ export async function erneuereSecBerichteKi(
 ): Promise<SecBerichtePaket> {
   return ladeSecBerichteClient({ ...anfrage, force: false, forceKi: true }, prev ?? null)
 }
+
+/** Alle lokal gespeicherten Pakete mit mindestens einer KI-Zusammenfassung. */
+export function listeSecBerichtePaketeMitKiAusLocal(): SecBerichtePaket[] {
+  return Object.values(ladeStore()).filter((p) =>
+    Boolean(p?.ticker && p.berichte?.some((b) => b.zusammenfassung?.trim())),
+  )
+}
