@@ -36,6 +36,7 @@ export function PortfolioAnalyseMainClient() {
     live?.positionen ?? [],
     meta,
     live?.kennzahlen.depotwertEur ?? 0,
+    live?.fx ?? { eurUsd: 1.08, eurGbp: 0.86, eurChf: 0.95, eurCad: 1.47, eurSgd: 1.45 },
     renditeDatenAktiv,
   )
 

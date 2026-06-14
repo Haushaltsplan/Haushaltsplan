@@ -46,6 +46,18 @@ function round2(n: number): number {
   return Math.round(n * 100) / 100
 }
 
+function stooqPseudoYahoo(stooqSym: string): string {
+  const s = stooqSym.trim().toLowerCase()
+  if (s.endsWith('.de')) return 'DUMMY.DE'
+  if (s.endsWith('.uk')) return 'DUMMY.L'
+  if (s.endsWith('.us')) return 'DUMMY'
+  if (s.endsWith('.ch')) return 'DUMMY.SW'
+  if (s.endsWith('.ca')) return 'DUMMY.TO'
+  if (s.endsWith('.pa')) return 'DUMMY.PA'
+  if (s.endsWith('.as')) return 'DUMMY.AS'
+  return 'DUMMY.DE'
+}
+
 function kursEurAusNative(
   native: number,
   sym: string,
@@ -53,8 +65,11 @@ function kursEurAusNative(
   fx: FxKurse,
 ): number | null {
   if (!Number.isFinite(native) || native <= 0) return null
-  if (sym.toUpperCase().startsWith('STOOQ:')) return native
   const kenntnis = isinKenntnis(isin)
+  if (sym.toUpperCase().startsWith('STOOQ:')) {
+    const pseudo = stooqPseudoYahoo(sym.slice(6))
+    return preisInEur(native, pseudo, fx, kenntnis?.symbolWaehrung?.[sym])
+  }
   if (kenntnis?.kursNurSymbol && sym.toUpperCase() === kenntnis.kursNurSymbol.toUpperCase()) {
     return native
   }
@@ -245,7 +260,8 @@ function symbolMitBesteAbdeckung(
 function kursPlausibel(kurs: number, einstand: number): boolean {
   if (einstand <= MIN_KURS_EUR) return true
   const r = kurs / einstand
-  return r >= MIN_KURS_ZU_EINSTAND && r <= MAX_KURS_ZU_EINSTAND
+  /** Nur zu niedrige Kurse verwerfen (falsches Symbol) — starke Gewinner nicht kappen. */
+  return r >= MIN_KURS_ZU_EINSTAND
 }
 
 function waehleTageskursEur(kandidaten: number[], einstand: number, lastGood: number): number {
@@ -263,6 +279,8 @@ function waehleTageskursEur(kandidaten: number[], einstand: number, lastGood: nu
     }
     return best
   }
+  const roh = kandidaten.filter((c) => c > MIN_KURS_EUR)
+  if (roh.length > 0) return roh[0]
   if (lastGood > MIN_KURS_EUR && kursPlausibel(lastGood, einstand)) return lastGood
   if (einstand > MIN_KURS_EUR) return einstand
   return lastGood > MIN_KURS_EUR ? lastGood : 0
@@ -500,19 +518,6 @@ export function baueWertentwicklungMitKursen(
       zugefuehrtEur,
       differenzEur: round2(portfoliowertEur - zugefuehrtEur),
     })
-  }
-
-  if (n > 0 && depotwertHeute > 0) {
-    const lastIdx = n - 1
-    const last = punkte[lastIdx]
-    if (last.portfoliowertEur < depotwertHeute * 0.85) {
-      const ab = Math.max(0, lastIdx - 6)
-      for (let i = ab; i <= lastIdx; i++) {
-        if (punkte[i].portfoliowertEur >= depotwertHeute * 0.85) continue
-        punkte[i].portfoliowertEur = round2(depotwertHeute)
-        punkte[i].differenzEur = round2(punkte[i].portfoliowertEur - punkte[i].zugefuehrtEur)
-      }
-    }
   }
 
   return punkte
