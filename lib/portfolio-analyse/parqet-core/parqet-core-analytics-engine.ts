@@ -421,8 +421,10 @@ export class ParqetCoreAnalyticsEngine {
       const sym = symbol?.trim().toUpperCase()
       if (sym && symbolToAssetId.has(sym)) return symbolToAssetId.get(sym)!
       if (sym && symbolToAssetId.has(sym.split('.')[0]!)) return symbolToAssetId.get(sym.split('.')[0]!)!
+      // Look-through-Konstituenten: Ticker als Key (Sektor-Lookup), nicht Firmenname
+      if (sym) return sym
       if (fallbackId) return fallbackId
-      return name.trim() || sym || 'Unbekannt'
+      return name.trim() || 'Unbekannt'
     }
 
     for (const a of assets) {

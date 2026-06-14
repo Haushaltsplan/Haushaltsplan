@@ -46,6 +46,28 @@ async function yahooSektorFuerSymbol(symbol: string): Promise<string | null> {
   }
 }
 
+/** Batch-Sektor-Lookup für Symbole (API/Client-Nachladen). */
+export async function holeSektorenFuerSymbole(symbols: string[]): Promise<Record<string, string>> {
+  const out: Record<string, string> = {}
+  const unique = [
+    ...new Set(
+      symbols
+        .map((s) => s.trim().toUpperCase().split('.')[0]!)
+        .filter(Boolean),
+    ),
+  ]
+  for (let i = 0; i < unique.length; i += 15) {
+    const chunk = unique.slice(i, i + 15)
+    await Promise.all(
+      chunk.map(async (sym) => {
+        const sector = await yahooSektorFuerSymbol(sym)
+        if (sector) out[sym] = sector
+      }),
+    )
+  }
+  return out
+}
+
 /** Reichert Holdings ohne Sektor per Yahoo assetProfile an (gecacht). */
 export async function reichereHoldingsMitSektor<
   T extends { symbol?: string; sectorName?: string },

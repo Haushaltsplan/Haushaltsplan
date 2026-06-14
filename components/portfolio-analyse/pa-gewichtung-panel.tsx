@@ -18,14 +18,16 @@ import type { IsinMetadata } from '@/lib/portfolio-analyse/isin-lookup-server'
 import { hatXrayLookthrough } from '@/lib/portfolio-analyse/performance-map'
 import type { SinglePortfolioReport } from '@/lib/portfolio-analyse/parqet-core/types'
 import {
-  baueXrayRegionAnsicht,
-  baueXraySektorAnsicht,
+  baueRegionAnsicht,
+  baueSektorAnsicht,
   etfOhneBreakdown,
   gewichtungMitXray,
+  sonstigeSymbole,
   type XrayGliederungEintrag,
 } from '@/lib/portfolio-analyse/xray-gewichtung'
+import { ladeSektorenNach } from '@/lib/portfolio-analyse/sektor-nachladen-client'
 import type { EtfBreakdown } from '@/lib/portfolio-analyse/parqet-core/types'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { fundamentaldatenHref } from '@/lib/portfolio-analyse/fundamentaldaten-navigation'
 
@@ -117,11 +119,72 @@ export function PaGewichtungPanel({
   const [xrayAn, setXrayAn] = useState(false)
   const [euroKey, setEuroKey] = useState<string | null>(null)
   const [expandedGruppe, setExpandedGruppe] = useState<string | null>(null)
+  const [extraSektoren, setExtraSektoren] = useState<Map<string, string>>(new Map())
+  const [sektorNachladen, setSektorNachladen] = useState(false)
+  const sektorFetchVersucht = useRef(new Set<string>())
 
   useEffect(() => {
     setEuroKey(null)
     setExpandedGruppe(null)
   }, [dimension, xrayAn])
+
+  const fehlendeEtf = useMemo(
+    () => (xrayAn ? etfOhneBreakdown(positionen, etfBreakdowns) : []),
+    [xrayAn, positionen, etfBreakdowns],
+  )
+
+  const sektorAnsicht = useMemo(
+    () =>
+      baueSektorAnsicht(
+        report,
+        positionen,
+        meta,
+        etfBreakdowns,
+        depotwertEur,
+        fehlendeEtf,
+        xrayAn,
+        extraSektoren,
+      ),
+    [report, positionen, meta, etfBreakdowns, depotwertEur, fehlendeEtf, xrayAn, extraSektoren],
+  )
+
+  const regionAnsicht = useMemo(
+    () =>
+      baueRegionAnsicht(report, positionen, meta, etfBreakdowns, depotwertEur, fehlendeEtf, xrayAn),
+    [report, positionen, meta, etfBreakdowns, depotwertEur, fehlendeEtf, xrayAn],
+  )
+
+  useEffect(() => {
+    if (dimension !== 'sektor') return
+    const symbole = sonstigeSymbole(sektorAnsicht).filter((s) => {
+      const base = s.trim().toUpperCase().split('.')[0]!
+      return !extraSektoren.has(base) && !sektorFetchVersucht.current.has(base)
+    })
+    if (symbole.length === 0) return
+
+    for (const s of symbole) {
+      sektorFetchVersucht.current.add(s.trim().toUpperCase().split('.')[0]!)
+    }
+
+    let cancelled = false
+    setSektorNachladen(true)
+    void ladeSektorenNach(symbole)
+      .then((m) => {
+        if (cancelled || m.size === 0) return
+        setExtraSektoren((prev) => {
+          const next = new Map(prev)
+          for (const [k, v] of m) next.set(k, v)
+          return next
+        })
+      })
+      .finally(() => {
+        if (!cancelled) setSektorNachladen(false)
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [dimension, sektorAnsicht, extraSektoren])
 
   const posByIsin = useMemo(() => {
     const m = new Map<string, LivePosition>()
@@ -146,59 +209,35 @@ export function PaGewichtungPanel({
   }, [positionen, meta])
 
   const lookthroughMoeglich = hatXrayLookthrough(report, etfBreakdowns)
-  const fehlendeEtf = useMemo(
-    () => (xrayAn ? etfOhneBreakdown(positionen, etfBreakdowns) : []),
-    [xrayAn, positionen, etfBreakdowns],
-  )
-
-  const xraySektor = useMemo(
-    () =>
-      xrayAn && report
-        ? baueXraySektorAnsicht(report, positionen, meta, etfBreakdowns, depotwertEur, fehlendeEtf)
-        : null,
-    [xrayAn, report, positionen, meta, etfBreakdowns, depotwertEur, fehlendeEtf],
-  )
-
-  const xrayRegion = useMemo(
-    () =>
-      xrayAn && report
-        ? baueXrayRegionAnsicht(report, positionen, meta, etfBreakdowns, depotwertEur, fehlendeEtf)
-        : null,
-    [xrayAn, report, positionen, meta, etfBreakdowns, depotwertEur, fehlendeEtf],
-  )
 
   const eintraege = useMemo((): GewichtungEintrag[] => {
-    if (xrayAn && report) {
-      if (dimension === 'asset') {
-        const { eintraege: xs } = gewichtungMitXray(report, true)
-        if (xs.length > 0) return xs
-        if (etfBreakdownLaden) return []
-      }
-      if (dimension === 'sektor') {
-        if (xraySektor) return xraySektor.eintraege
-        if (etfBreakdownLaden) return []
-      }
-      if (dimension === 'region') {
-        if (xrayRegion) return xrayRegion.eintraege
-        if (etfBreakdownLaden) return []
-      }
+    if (dimension === 'sektor') {
+      if (xrayAn && etfBreakdownLaden && !sektorAnsicht) return []
+      return sektorAnsicht?.eintraege ?? []
     }
-    if (xrayAn && (dimension === 'sektor' || dimension === 'region')) return []
+    if (dimension === 'region') {
+      if (xrayAn && etfBreakdownLaden && !regionAnsicht) return []
+      return regionAnsicht?.eintraege ?? []
+    }
+    if (xrayAn && report && dimension === 'asset') {
+      const { eintraege: xs } = gewichtungMitXray(report, true)
+      if (xs.length > 0) return xs
+      if (etfBreakdownLaden) return []
+    }
     return eintraegeOhneXray(dimension, positionen, report)
-  }, [dimension, positionen, report, xrayAn, etfBreakdownLaden, xraySektor, xrayRegion])
+  }, [dimension, positionen, report, xrayAn, etfBreakdownLaden, sektorAnsicht, regionAnsicht])
 
   const gliederung = useMemo((): Map<string, XrayGliederungEintrag[]> | null => {
-    if (!xrayAn) return null
-    if (dimension === 'sektor') return xraySektor?.gliederung ?? null
-    if (dimension === 'region') return xrayRegion?.gliederung ?? null
+    if (dimension === 'sektor') return sektorAnsicht?.gliederung ?? null
+    if (dimension === 'region') return regionAnsicht?.gliederung ?? null
     return null
-  }, [xrayAn, dimension, xraySektor, xrayRegion])
+  }, [dimension, sektorAnsicht, regionAnsicht])
 
   const summeProzent = useMemo(() => {
-    if (dimension === 'sektor') return xraySektor?.summeProzent
-    if (dimension === 'region') return xrayRegion?.summeProzent
+    if (dimension === 'sektor') return sektorAnsicht?.summeProzent
+    if (dimension === 'region') return regionAnsicht?.summeProzent
     return eintraege.reduce((s, e) => s + e.gewichtProzent, 0)
-  }, [dimension, xraySektor, xrayRegion, eintraege])
+  }, [dimension, sektorAnsicht, regionAnsicht, eintraege])
 
   const donut = useMemo(() => eintraegeZuDonut(eintraege), [eintraege])
   const stats = gewichtungStatistik(eintraege, dimension)
@@ -213,7 +252,8 @@ export function PaGewichtungPanel({
             ? 'Nach Typ'
             : 'Nach Assetklasse'
 
-  const drilldownAktiv = xrayAn && (dimension === 'sektor' || dimension === 'region') && gliederung != null
+  const drilldownAktiv =
+    (dimension === 'sektor' || dimension === 'region') && gliederung != null && eintraege.length > 0
 
   return (
     <div className="space-y-4">
@@ -248,6 +288,9 @@ export function PaGewichtungPanel({
           X-Ray benötigt Holdings-Daten der ETFs. Für Index-ETFs werden alle Konstituenten geladen; sonst Amundi/Yahoo.
         </p>
       ) : null}
+      {dimension === 'sektor' && sektorNachladen ? (
+        <p className="text-[11px] leading-relaxed text-zinc-500">Sektoren für Einzelwerte werden nachgeladen …</p>
+      ) : null}
 
       <div className="grid gap-6 lg:grid-cols-2">
         <PaCard variant="elevated" className="flex flex-col items-center justify-center p-6">
@@ -272,7 +315,7 @@ export function PaGewichtungPanel({
         <PaCard variant="elevated" className="max-h-[28rem] overflow-y-auto p-4">
           <p className="mb-3 text-[11px] text-zinc-600">
             {drilldownAktiv
-              ? 'Sektor/Region antippen → enthaltene Firmen anzeigen · erneut antippen für Euro'
+              ? 'Sektor antippen → Firmen darunter · Firmenzeile antippen für Euro'
               : 'Antippen für Depotwert in Euro'}
           </p>
           <ul className="space-y-4">
@@ -285,10 +328,10 @@ export function PaGewichtungPanel({
                 const wertEur = wertEurAusEintrag(e, depotwertEur)
                 const zeigeEuro = euroKey === e.key
                 const expanded = expandedGruppe === e.key
-                const firmen = gliederung?.get(e.key) ?? []
+                const firmen = gliederung?.get(e.key) ?? gliederung?.get(e.label) ?? []
 
                 const onRowClick = () => {
-                  if (drilldownAktiv && firmen.length > 0) {
+                  if (drilldownAktiv) {
                     setExpandedGruppe((k) => (k === e.key ? null : e.key))
                     setEuroKey(null)
                     return
@@ -349,7 +392,7 @@ export function PaGewichtungPanel({
                       <span className="min-w-0 flex-1 truncate text-sm text-zinc-200">
                         {e.label}
                         <span className="text-zinc-500"> ({e.anzahl})</span>
-                        {drilldownAktiv && firmen.length > 0 ? (
+                        {drilldownAktiv ? (
                           <span className="ml-1 text-[10px] text-zinc-600">
                             {expanded ? '▾' : '▸'}
                           </span>
@@ -373,9 +416,10 @@ export function PaGewichtungPanel({
                       />
                     </div>
 
-                    {expanded && firmen.length > 0 ? (
-                      <ul className="mt-2 space-y-2 border-l border-zinc-800 pl-3 ml-1">
-                        {firmen.slice(0, 25).map((f) => {
+                    {expanded ? (
+                      firmen.length > 0 ? (
+                      <ul className="mt-2 max-h-64 space-y-2 overflow-y-auto border-l border-zinc-800 pl-3 ml-1">
+                        {firmen.map((f) => {
                           const logoCtx = assetLogoKontext(f, posByIsin, symbolZuIsin, meta)
                           const pos = logoCtx.isin ? posByIsin.get(logoCtx.isin) : undefined
                           const fEuro = euroKey === f.key
@@ -401,12 +445,10 @@ export function PaGewichtungPanel({
                             </li>
                           )
                         })}
-                        {firmen.length > 25 ? (
-                          <li className="text-[11px] text-zinc-600">
-                            + {firmen.length - 25} weitere Positionen
-                          </li>
-                        ) : null}
                       </ul>
+                      ) : (
+                        <p className="mt-2 pl-3 text-[11px] text-zinc-600">Keine Detailpositionen in dieser Gruppe.</p>
+                      )
                     ) : null}
                   </li>
                 )

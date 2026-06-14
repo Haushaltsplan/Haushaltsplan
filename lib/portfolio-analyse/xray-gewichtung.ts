@@ -1,5 +1,5 @@
 import { gewichtungAusSlices, type GewichtungEintrag } from '@/lib/portfolio-analyse/gewichtung'
-import { isinSektorName } from '@/lib/portfolio-analyse/isin-sektoren'
+import { isinSektorName, sektorFuerPosition } from '@/lib/portfolio-analyse/isin-sektoren'
 import type { LivePosition } from '@/lib/portfolio-analyse/live-bewertung'
 import type { IsinMetadata } from '@/lib/portfolio-analyse/isin-lookup-server'
 import { normalisiereRegion } from '@/lib/portfolio-analyse/region-normalisierung'
@@ -27,36 +27,86 @@ export type XrayGruppenAnsicht = {
   nichtAufgeloestEur: number
 }
 
-function symbolSektorMap(etfBreakdowns: Map<string, EtfBreakdown>): Map<string, string> {
-  const m = new Map<string, string>()
+type SektorMaps = {
+  symbol: Map<string, string>
+  name: Map<string, string>
+}
+
+function baueSektorMaps(etfBreakdowns: Map<string, EtfBreakdown>, extra: Map<string, string>): SektorMaps {
+  const symbol = new Map<string, string>()
+  const name = new Map<string, string>()
+
   for (const bd of etfBreakdowns.values()) {
     for (const h of bd.topHoldings) {
-      if (!h.sectorName || !h.symbol) continue
-      const sym = h.symbol.trim().toUpperCase()
+      if (!h.sectorName) continue
       const sec = normalisiereSektor(h.sectorName)
-      m.set(sym, sec)
-      m.set(sym.split('.')[0]!, sec)
+      if (h.symbol) {
+        const sym = h.symbol.trim().toUpperCase()
+        symbol.set(sym, sec)
+        symbol.set(sym.split('.')[0]!, sec)
+      }
+      if (h.name) {
+        name.set(h.name.trim().toLowerCase(), sec)
+      }
     }
   }
-  return m
+
+  for (const [sym, sec] of extra.entries()) {
+    const s = sym.trim().toUpperCase()
+    symbol.set(s, normalisiereSektor(sec))
+    symbol.set(s.split('.')[0]!, normalisiereSektor(sec))
+  }
+
+  return { symbol, name }
+}
+
+function sektorAusMaps(
+  key: string,
+  label: string,
+  symbol: string | null,
+  maps: SektorMaps,
+): string | null {
+  const k = key.trim().toUpperCase()
+  const kBase = k.split('.')[0]!
+  const sym = symbol?.trim().toUpperCase()
+  const symBase = sym?.split('.')[0]
+
+  const hit =
+    maps.symbol.get(k) ??
+    maps.symbol.get(kBase) ??
+    (sym ? (maps.symbol.get(sym) ?? maps.symbol.get(symBase!)) : null) ??
+    maps.name.get(label.trim().toLowerCase())
+  return hit ?? null
 }
 
 function sektorFuerSlice(
   slice: AllocationSlice,
   posByIsin: Map<string, LivePosition>,
   symbolZuIsin: Map<string, string>,
-  symbolSektor: Map<string, string>,
+  maps: SektorMaps,
   fehlendeIsins: Set<string>,
 ): string {
   const key = slice.key.trim().toUpperCase()
+  const keyBase = key.split('.')[0]!
+  const sliceSymbol = ISIN_RE.test(key) ? null : key
+
   if (ISIN_RE.test(key)) {
     if (fehlendeIsins.has(key)) return 'Nicht aufgelöst'
-    return normalisiereSektor(isinSektorName(key) ?? (posByIsin.get(key)?.assetKlasse === 'etf' ? 'ETF & Fonds' : undefined))
+    const manuell = isinSektorName(key)
+    if (manuell) return normalisiereSektor(manuell)
+    if (posByIsin.get(key)?.assetKlasse === 'etf') return 'ETF & Fonds'
+    return 'Sonstige'
   }
-  const isin = symbolZuIsin.get(key) ?? symbolZuIsin.get(key.split('.')[0]!)
-  if (isin) return normalisiereSektor(isinSektorName(isin))
-  const symSec = symbolSektor.get(key) ?? symbolSektor.get(key.split('.')[0]!)
-  if (symSec) return symSec
+
+  const isin = symbolZuIsin.get(key) ?? symbolZuIsin.get(keyBase)
+  if (isin) {
+    const manuell = isinSektorName(isin)
+    if (manuell) return normalisiereSektor(manuell)
+  }
+
+  const mapped = sektorAusMaps(key, slice.label, sliceSymbol, maps)
+  if (mapped) return mapped
+
   return 'Sonstige'
 }
 
@@ -87,11 +137,21 @@ function regionFuerSlice(
   return normalisiereRegion(key)
 }
 
+function sliceAusPosition(p: LivePosition, depotwertEur: number): AllocationSlice {
+  const basis = depotwertEur > 0 ? depotwertEur : 1
+  return {
+    key: p.isin?.trim().toUpperCase() ?? p.anzeigeName,
+    label: p.anzeigeName,
+    weightPercent: Math.round((p.wertLiveEur / basis) * 10000) / 100,
+    valueEUR: Math.round(p.wertLiveEur * 100) / 100,
+  }
+}
+
 function baueGruppenAnsicht(
   slices: AllocationSlice[],
   posByIsin: Map<string, LivePosition>,
   symbolZuIsin: Map<string, string>,
-  symbolSektor: Map<string, string>,
+  maps: SektorMaps,
   depotwertEur: number,
   fehlendeEtf: LivePosition[],
   gruppeFn: (slice: AllocationSlice) => string,
@@ -173,6 +233,26 @@ function lookupMaps(positionen: LivePosition[], meta: Map<string, IsinMetadata>)
   return { posByIsin, symbolZuIsin }
 }
 
+function fehlendeIsins(fehlendeEtf: LivePosition[]): Set<string> {
+  return new Set(
+    fehlendeEtf.map((p) => p.isin?.trim().toUpperCase()).filter((x): x is string => Boolean(x)),
+  )
+}
+
+/** Symbole aus „Sonstige“-Bucket für Nachladen via Yahoo. */
+export function sonstigeSymbole(ansicht: XrayGruppenAnsicht | null): string[] {
+  const holdings = ansicht?.gliederung.get('Sonstige') ?? []
+  const out: string[] = []
+  for (const h of holdings) {
+    if (h.symbol) out.push(h.symbol)
+    else if (h.key && !ISIN_RE.test(h.key.toUpperCase())) out.push(h.key)
+    else if (h.isin) {
+      // ISIN-only: kein Ticker bekannt
+    }
+  }
+  return out
+}
+
 /** X-Ray: Look-through — ETFs verschwinden, Einzelwerte werden zusammengeführt. */
 export function gewichtungMitXray(
   report: SinglePortfolioReport | null,
@@ -195,6 +275,55 @@ export function gewichtungMitXray(
   }
 }
 
+export function baueSektorAnsichtAusPositionen(
+  positionen: LivePosition[],
+  meta: Map<string, IsinMetadata>,
+  etfBreakdowns: Map<string, EtfBreakdown>,
+  depotwertEur: number,
+  extraSektor: Map<string, string> = new Map(),
+): XrayGruppenAnsicht {
+  const slices = positionen.filter((p) => p.wertLiveEur > 0).map((p) => sliceAusPosition(p, depotwertEur))
+  const { posByIsin, symbolZuIsin } = lookupMaps(positionen, meta)
+  const maps = baueSektorMaps(etfBreakdowns, extraSektor)
+
+  return baueGruppenAnsicht(
+    slices,
+    posByIsin,
+    symbolZuIsin,
+    maps,
+    depotwertEur,
+    [],
+    (slice) => {
+      const key = slice.key.trim().toUpperCase()
+      if (ISIN_RE.test(key)) {
+        const pos = posByIsin.get(key)
+        if (pos) return normalisiereSektor(sektorFuerPosition(pos))
+      }
+      return sektorFuerSlice(slice, posByIsin, symbolZuIsin, maps, new Set())
+    },
+  )
+}
+
+export function baueRegionAnsichtAusPositionen(
+  positionen: LivePosition[],
+  meta: Map<string, IsinMetadata>,
+  depotwertEur: number,
+): XrayGruppenAnsicht {
+  const slices = positionen.filter((p) => p.wertLiveEur > 0).map((p) => sliceAusPosition(p, depotwertEur))
+  const { posByIsin, symbolZuIsin } = lookupMaps(positionen, meta)
+  const maps = baueSektorMaps(new Map(), new Map())
+
+  return baueGruppenAnsicht(
+    slices,
+    posByIsin,
+    symbolZuIsin,
+    maps,
+    depotwertEur,
+    [],
+    (slice) => regionFuerSlice(slice, posByIsin, symbolZuIsin, new Set()),
+  )
+}
+
 export function baueXraySektorAnsicht(
   report: SinglePortfolioReport | null,
   positionen: LivePosition[],
@@ -202,25 +331,23 @@ export function baueXraySektorAnsicht(
   etfBreakdowns: Map<string, EtfBreakdown>,
   depotwertEur: number,
   fehlendeEtf: LivePosition[],
+  extraSektor: Map<string, string> = new Map(),
 ): XrayGruppenAnsicht | null {
   if (!report) return null
   const slices = report.xRay.topHoldings.filter((h) => h.valueEUR > 0 || h.weightPercent > 0)
   if (!slices.length && !fehlendeEtf.length) return null
 
   const { posByIsin, symbolZuIsin } = lookupMaps(positionen, meta)
-  const symbolSektor = symbolSektorMap(etfBreakdowns)
-  const fehlendeIsins = new Set(
-    fehlendeEtf.map((p) => p.isin?.trim().toUpperCase()).filter((x): x is string => Boolean(x)),
-  )
+  const maps = baueSektorMaps(etfBreakdowns, extraSektor)
 
   return baueGruppenAnsicht(
     slices,
     posByIsin,
     symbolZuIsin,
-    symbolSektor,
+    maps,
     depotwertEur,
     fehlendeEtf,
-    (slice) => sektorFuerSlice(slice, posByIsin, symbolZuIsin, symbolSektor, fehlendeIsins),
+    (slice) => sektorFuerSlice(slice, posByIsin, symbolZuIsin, maps, fehlendeIsins(fehlendeEtf)),
   )
 }
 
@@ -237,20 +364,56 @@ export function baueXrayRegionAnsicht(
   if (!slices.length && !fehlendeEtf.length) return null
 
   const { posByIsin, symbolZuIsin } = lookupMaps(positionen, meta)
-  const symbolSektor = symbolSektorMap(etfBreakdowns)
-  const fehlendeIsins = new Set(
-    fehlendeEtf.map((p) => p.isin?.trim().toUpperCase()).filter((x): x is string => Boolean(x)),
-  )
+  const maps = baueSektorMaps(etfBreakdowns, new Map())
 
   return baueGruppenAnsicht(
     slices,
     posByIsin,
     symbolZuIsin,
-    symbolSektor,
+    maps,
     depotwertEur,
     fehlendeEtf,
-    (slice) => regionFuerSlice(slice, posByIsin, symbolZuIsin, fehlendeIsins),
+    (slice) => regionFuerSlice(slice, posByIsin, symbolZuIsin, fehlendeIsins(fehlendeEtf)),
   )
+}
+
+export function baueSektorAnsicht(
+  report: SinglePortfolioReport | null,
+  positionen: LivePosition[],
+  meta: Map<string, IsinMetadata>,
+  etfBreakdowns: Map<string, EtfBreakdown>,
+  depotwertEur: number,
+  fehlendeEtf: LivePosition[],
+  xrayAn: boolean,
+  extraSektor: Map<string, string> = new Map(),
+): XrayGruppenAnsicht | null {
+  if (xrayAn && report) {
+    return baueXraySektorAnsicht(
+      report,
+      positionen,
+      meta,
+      etfBreakdowns,
+      depotwertEur,
+      fehlendeEtf,
+      extraSektor,
+    )
+  }
+  return baueSektorAnsichtAusPositionen(positionen, meta, etfBreakdowns, depotwertEur, extraSektor)
+}
+
+export function baueRegionAnsicht(
+  report: SinglePortfolioReport | null,
+  positionen: LivePosition[],
+  meta: Map<string, IsinMetadata>,
+  etfBreakdowns: Map<string, EtfBreakdown>,
+  depotwertEur: number,
+  fehlendeEtf: LivePosition[],
+  xrayAn: boolean,
+): XrayGruppenAnsicht | null {
+  if (xrayAn && report) {
+    return baueXrayRegionAnsicht(report, positionen, meta, etfBreakdowns, depotwertEur, fehlendeEtf)
+  }
+  return baueRegionAnsichtAusPositionen(positionen, meta, depotwertEur)
 }
 
 export function etfOhneBreakdown(
