@@ -10,7 +10,8 @@ import { usePortfolioAnalyse } from '@/components/portfolio-analyse/pa-data-prov
 import { PortfolioAnalyseShell } from '@/components/portfolio-analyse/portfolio-analyse-shell.client'
 import { PaCard, PaIconTabs } from '@/components/portfolio-analyse/pa-ui'
 import { berechneKapitalflussHeatmap } from '@/lib/portfolio-analyse/kapitalfluss-heatmap'
-import { heatmapAusVerlauf } from '@/lib/portfolio-analyse/rendite-heatmap'
+import { heatmapAusWertentwicklung } from '@/lib/portfolio-analyse/rendite-heatmap'
+import { baueWertentwicklung } from '@/lib/portfolio-analyse/wertentwicklung'
 
 type AnalyseTab = 'gewichtung' | 'rendite' | 'kapital' | 'performance' | 'steuern'
 
@@ -29,8 +30,15 @@ export function PortfolioAnalyseMainClient() {
   const [renditeModus, setRenditeModus] = useState<'M' | 'Q'>('M')
   const [kapitalModus, setKapitalModus] = useState<'M' | 'Q'>('M')
 
-  const verlauf = live?.verlauf ?? []
-  const heatmap = useMemo(() => heatmapAusVerlauf(verlauf, renditeModus), [verlauf, renditeModus])
+  const wertentwicklung = useMemo(() => {
+    if (!live || buchungen.length === 0) return []
+    return baueWertentwicklung(buchungen, live.kennzahlen.depotwertEur)
+  }, [buchungen, live])
+
+  const heatmap = useMemo(
+    () => heatmapAusWertentwicklung(wertentwicklung, buchungen, renditeModus),
+    [wertentwicklung, buchungen, renditeModus],
+  )
   const kapitalHeatmap = useMemo(
     () => berechneKapitalflussHeatmap(buchungen, kapitalModus),
     [buchungen, kapitalModus],
@@ -92,8 +100,8 @@ export function PortfolioAnalyseMainClient() {
                       <div>
                         <h2 className="text-base font-semibold text-zinc-100">Rendite Details</h2>
                         <p className="mt-1 text-xs text-zinc-500">
-                          Monatliche Rendite aus dem geschätzten Depotverlauf (Kostenbasis + aktueller
-                          Marktwert).
+                          Monatliche, quartalsweise und jährliche Rendite aller Gewinne (unrealisiert,
+                          realisiert, Dividenden) — zeitgewichtet (TTWROR) wie in Parqet.
                         </p>
                       </div>
                       <PaQmToggle modus={renditeModus} onChange={setRenditeModus} />

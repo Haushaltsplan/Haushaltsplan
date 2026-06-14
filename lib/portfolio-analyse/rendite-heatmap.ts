@@ -1,4 +1,8 @@
-/** Monatliche Rendite-Heatmap (Jahre × Monate), Parqet-ähnlich. */
+/** Monatliche Rendite-Heatmap (Jahre × Monate), Parqet „Rendite Details“. */
+
+import { berechnePerformanceZeitreihe } from '@/lib/portfolio-analyse/performance-zeitreihe'
+import type { PortfolioBuchung } from '@/lib/portfolio-analyse/types'
+import type { WertentwicklungPunkt } from '@/lib/portfolio-analyse/wertentwicklung'
 
 const MONAT_KURZ = ['Jan.', 'Feb.', 'März', 'Apr.', 'Mai', 'Juni', 'Juli', 'Aug.', 'Sep.', 'Okt.', 'Nov.', 'Dez.'] as const
 
@@ -20,15 +24,28 @@ export type RenditeHeatmap = {
   maxProzent: number
 }
 
-/** Monatsrenditen aus aufeinanderfolgenden Depotwerten (monatlich). */
-export function monatsrenditenMap(verlauf: { monat: string; wert: number }[]): Map<string, number> {
+function round2(n: number): number {
+  return Math.round(n * 100) / 100
+}
+
+/**
+ * Monatliche TTWROR-Renditen aus der Performance-Zeitreihe (wie Parqet Rendite-Details).
+ * Inkl. unrealisiert/realisiert + Dividenden (mitDivUndRealisiert = true).
+ */
+export function twrMonatsrenditenMap(
+  wertentwicklung: WertentwicklungPunkt[],
+  buchungen: PortfolioBuchung[],
+): Map<string, number> {
+  const performance = berechnePerformanceZeitreihe(wertentwicklung, buchungen, true)
   const map = new Map<string, number>()
-  for (let i = 1; i < verlauf.length; i++) {
-    const prev = verlauf[i - 1].wert
-    const cur = verlauf[i].wert
-    const key = verlauf[i].monat
-    if (!key || prev <= 0) continue
-    map.set(key, Math.round(((cur - prev) / prev) * 10000) / 100)
+  if (performance.length < 2) return map
+
+  for (let i = 1; i < performance.length; i++) {
+    const startMult = 1 + performance[i - 1].performanceProzent / 100
+    const endMult = 1 + performance[i].performanceProzent / 100
+    const month = performance[i].datumIso.slice(0, 7)
+    if (!month || startMult <= 0) continue
+    map.set(month, round2((endMult / startMult - 1) * 100))
   }
   return map
 }
@@ -38,27 +55,48 @@ function jahresGesamt(monate: (number | null)[]): number | null {
   if (vals.length === 0) return null
   let prod = 1
   for (const r of vals) prod *= 1 + r / 100
-  return Math.round((prod - 1) * 10000) / 100
+  return round2((prod - 1) * 100)
+}
+
+function jahreSpanne(wertentwicklung: WertentwicklungPunkt[], buchungen: PortfolioBuchung[]): number[] {
+  const jahreSet = new Set<number>()
+  for (const p of wertentwicklung) {
+    const y = Number(p.monat.slice(0, 4))
+    if (Number.isFinite(y)) jahreSet.add(y)
+  }
+  for (const b of buchungen) {
+    const y = Number(b.datum.slice(0, 4))
+    if (Number.isFinite(y)) jahreSet.add(y)
+  }
+  const jetzt = new Date().getFullYear()
+  jahreSet.add(jetzt)
+  if (jahreSet.size === 0) return []
+  const min = Math.min(...jahreSet)
+  const max = Math.max(jetzt, ...jahreSet)
+  const out: number[] = []
+  for (let y = max; y >= min; y--) out.push(y)
+  return out
+}
+
+function ersterMonatMitDaten(renditen: Map<string, number>, wertentwicklung: WertentwicklungPunkt[]): string | null {
+  const keys = [
+    ...renditen.keys(),
+    ...wertentwicklung.map((p) => p.monat),
+  ].sort()
+  return keys[0] ?? null
 }
 
 export function berechneRenditeHeatmap(
-  verlauf: { monat: string; wert: number }[],
-  bisJahr?: number,
+  wertentwicklung: WertentwicklungPunkt[],
+  buchungen: PortfolioBuchung[],
+  renditen: Map<string, number>,
+  modus: 'M' | 'Q' = 'M',
 ): RenditeHeatmap {
-  const renditen = monatsrenditenMap(verlauf)
-  const jahreSet = new Set<number>()
-  for (const k of renditen.keys()) {
-    const y = Number(k.slice(0, 4))
-    if (Number.isFinite(y)) jahreSet.add(y)
-  }
-  if (verlauf.length > 0) {
-    const last = verlauf[verlauf.length - 1].monat
-    const y = Number(last.slice(0, 4))
-    if (Number.isFinite(y)) jahreSet.add(y)
-  }
+  const jahre = jahreSpanne(wertentwicklung, buchungen)
+  const erster = ersterMonatMitDaten(renditen, wertentwicklung)
+  const jetzt = new Date().getFullYear()
+  const aktuellerMonat = new Date().getMonth()
 
-  const jetzt = bisJahr ?? new Date().getFullYear()
-  const jahre = [...jahreSet].filter((y) => y <= jetzt).sort((a, b) => b - a)
   if (jahre.length === 0) {
     return { spalten: ['Gesamt', ...MONAT_KURZ], zeilen: [], minProzent: 0, maxProzent: 0 }
   }
@@ -68,22 +106,47 @@ export function berechneRenditeHeatmap(
 
   const zeilen: RenditeHeatmapZeile[] = jahre.map((jahr) => {
     const monate: (number | null)[] = []
-    const aktuellerMonat =
-      jahr === jetzt ? new Date().getMonth() : 11
 
-    for (let mo = 0; mo < 12; mo++) {
-      const key = `${jahr}-${String(mo + 1).padStart(2, '0')}`
-      if (jahr === jetzt && mo > aktuellerMonat) {
-        monate.push(null)
-        continue
+    if (modus === 'M') {
+      for (let mo = 0; mo < 12; mo++) {
+        const key = `${jahr}-${String(mo + 1).padStart(2, '0')}`
+        if (jahr === jetzt && mo > aktuellerMonat) {
+          monate.push(null)
+          continue
+        }
+        if (erster && key < erster) {
+          monate.push(null)
+          continue
+        }
+        const v = renditen.get(key) ?? null
+        monate.push(v)
+        if (v != null) {
+          minProzent = Math.min(minProzent, v)
+          maxProzent = Math.max(maxProzent, v)
+        }
       }
-      const v = renditen.get(key) ?? null
-      monate.push(v)
-      if (v != null) {
-        minProzent = Math.min(minProzent, v)
-        maxProzent = Math.max(maxProzent, v)
+    } else {
+      for (let q = 1; q <= 4; q++) {
+        let prod = 1
+        let hatDaten = false
+        for (let mo = (q - 1) * 3; mo < q * 3; mo++) {
+          const key = `${jahr}-${String(mo + 1).padStart(2, '0')}`
+          if (erster && key < erster) continue
+          if (jahr === jetzt && mo > aktuellerMonat) continue
+          const v = renditen.get(key)
+          if (v == null) continue
+          prod *= 1 + v / 100
+          hatDaten = true
+        }
+        const qVal = hatDaten ? round2((prod - 1) * 100) : null
+        monate.push(qVal)
+        if (qVal != null) {
+          minProzent = Math.min(minProzent, qVal)
+          maxProzent = Math.max(maxProzent, qVal)
+        }
       }
     }
+
     const gesamt = jahresGesamt(monate)
     if (gesamt != null) {
       minProzent = Math.min(minProzent, gesamt)
@@ -93,56 +156,35 @@ export function berechneRenditeHeatmap(
   })
 
   return {
-    spalten: ['Gesamt', ...MONAT_KURZ],
+    spalten: modus === 'Q' ? (['Gesamt', 'Q1', 'Q2', 'Q3', 'Q4'] as const) : (['Gesamt', ...MONAT_KURZ] as const),
     zeilen,
     minProzent,
     maxProzent,
   }
 }
 
-/** Quartalsaggregation (Q/M-Umschalter). */
-export function renditeHeatmapQuartalsweise(monatsMap: Map<string, number>): RenditeHeatmap {
-  const quartalMap = new Map<string, number>()
-  for (const [key, pct] of monatsMap) {
-    const [y, mo] = key.split('-').map(Number)
-    const q = Math.ceil(mo / 3)
-    const qKey = `${y}-Q${q}`
-    const prev = quartalMap.get(qKey)
-    if (prev == null) quartalMap.set(qKey, pct)
-    else quartalMap.set(qKey, Math.round(((1 + prev / 100) * (1 + pct / 100) - 1) * 10000) / 100)
-  }
-
-  const jahre = [...new Set([...quartalMap.keys()].map((k) => Number(k.slice(0, 4))))].sort((a, b) => b - a)
-  const spalten = ['Gesamt', 'Q1', 'Q2', 'Q3', 'Q4'] as const
-  let minProzent = 0
-  let maxProzent = 0
-
-  const zeilen = jahre.map((jahr) => {
-    const monate: (number | null)[] = []
-    for (let q = 1; q <= 4; q++) {
-      const v = quartalMap.get(`${jahr}-Q${q}`) ?? null
-      monate.push(v)
-      if (v != null) {
-        minProzent = Math.min(minProzent, v)
-        maxProzent = Math.max(maxProzent, v)
-      }
-    }
-    const gesamt = jahresGesamt(monate)
-    if (gesamt != null) {
-      minProzent = Math.min(minProzent, gesamt)
-      maxProzent = Math.max(maxProzent, gesamt)
-    }
-    return { jahr, gesamtProzent: gesamt, monate }
-  })
-
-  return { spalten: [...spalten], zeilen, minProzent, maxProzent }
+/** Parqet Rendite-Details: TTWROR aus Wertentwicklung + Buchungen. */
+export function heatmapAusWertentwicklung(
+  wertentwicklung: WertentwicklungPunkt[],
+  buchungen: PortfolioBuchung[],
+  modus: 'M' | 'Q' = 'M',
+): RenditeHeatmap {
+  const renditen = twrMonatsrenditenMap(wertentwicklung, buchungen)
+  return berechneRenditeHeatmap(wertentwicklung, buchungen, renditen, modus)
 }
 
+/** @deprecated Nutze heatmapAusWertentwicklung — reine Wertänderung ohne TTWROR. */
 export function heatmapAusVerlauf(
   verlauf: { monat: string; wert: number }[],
   modus: 'M' | 'Q',
 ): RenditeHeatmap {
-  const monatsMap = monatsrenditenMap(verlauf)
-  if (modus === 'Q') return renditeHeatmapQuartalsweise(monatsMap)
-  return berechneRenditeHeatmap(verlauf)
+  const wertentwicklung: WertentwicklungPunkt[] = verlauf.map((p) => ({
+    monat: p.monat,
+    label: p.monat,
+    datumIso: `${p.monat}-28`,
+    portfoliowertEur: p.wert,
+    zugefuehrtEur: p.wert,
+    differenzEur: 0,
+  }))
+  return heatmapAusWertentwicklung(wertentwicklung, [], modus)
 }
