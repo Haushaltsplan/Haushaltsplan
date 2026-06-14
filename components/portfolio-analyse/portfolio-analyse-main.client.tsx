@@ -3,21 +3,17 @@
 import Link from 'next/link'
 import { useMemo, useState } from 'react'
 import { PaGewichtungPanel } from '@/components/portfolio-analyse/pa-gewichtung-panel'
-import { PaRenditeHeatmapGrid } from '@/components/portfolio-analyse/pa-heatmap-grid'
 import { PaKapitalflussHeatmapGrid } from '@/components/portfolio-analyse/pa-kapitalfluss-grid'
 import { PaPerformanceMap } from '@/components/portfolio-analyse/pa-performance-map'
 import { usePortfolioAnalyse } from '@/components/portfolio-analyse/pa-data-provider'
-import { usePaWertentwicklungTimeline } from '@/components/portfolio-analyse/use-pa-wertentwicklung'
 import { PortfolioAnalyseShell } from '@/components/portfolio-analyse/portfolio-analyse-shell.client'
 import { PaCard, PaIconTabs } from '@/components/portfolio-analyse/pa-ui'
 import { berechneKapitalflussHeatmap } from '@/lib/portfolio-analyse/kapitalfluss-heatmap'
-import { heatmapAusWertentwicklung } from '@/lib/portfolio-analyse/rendite-heatmap'
 
-type AnalyseTab = 'gewichtung' | 'rendite' | 'kapital' | 'performance' | 'steuern'
+type AnalyseTab = 'gewichtung' | 'kapital' | 'performance' | 'steuern'
 
 const HAUPT_TABS: { id: AnalyseTab; label: string; shortLabel: string }[] = [
   { id: 'gewichtung', label: 'Gewichtung', shortLabel: 'Gewicht.' },
-  { id: 'rendite', label: 'Rendite', shortLabel: 'Rendite' },
   { id: 'kapital', label: 'Kapital', shortLabel: 'Kapital' },
   { id: 'performance', label: 'Performance Map', shortLabel: 'Perf.' },
   { id: 'steuern', label: 'Steuern', shortLabel: 'Steuern' },
@@ -27,23 +23,8 @@ export function PortfolioAnalyseMainClient() {
   const { live, report, meta, hatDaten, laden, buchungen, etfBreakdowns, etfBreakdownLaden } =
     usePortfolioAnalyse()
   const [tab, setTab] = useState<AnalyseTab>('gewichtung')
-  const [renditeModus, setRenditeModus] = useState<'M' | 'Q'>('M')
   const [kapitalModus, setKapitalModus] = useState<'M' | 'Q'>('M')
 
-  const renditeDatenAktiv = Boolean(live && buchungen.length > 0)
-  const { timeline: wertentwicklung, laden: renditeTimelineLaden } = usePaWertentwicklungTimeline(
-    buchungen,
-    live?.positionen ?? [],
-    meta,
-    live?.kennzahlen.depotwertEur ?? 0,
-    live?.fx ?? { eurUsd: 1.08, eurGbp: 0.86, eurChf: 0.95, eurCad: 1.47, eurSgd: 1.45 },
-    renditeDatenAktiv,
-  )
-
-  const heatmap = useMemo(
-    () => heatmapAusWertentwicklung(wertentwicklung, buchungen, renditeModus),
-    [wertentwicklung, buchungen, renditeModus],
-  )
   const kapitalHeatmap = useMemo(
     () => berechneKapitalflussHeatmap(buchungen, kapitalModus),
     [buchungen, kapitalModus],
@@ -57,7 +38,7 @@ export function PortfolioAnalyseMainClient() {
   return (
     <PortfolioAnalyseShell
       title="Portfolioanalyse"
-      description="Gewichtungsanalyse, Rendite-Details und Kapitalfluss — angelehnt an Parqet."
+      description="Gewichtungsanalyse, Kapitalfluss und Performance — angelehnt an Parqet."
     >
       {!laden && !hatDaten ? null : (
         <PaCard variant="elevated" className="min-w-0 overflow-hidden p-4 sm:p-6">
@@ -96,32 +77,6 @@ export function PortfolioAnalyseMainClient() {
                       etfBreakdowns={etfBreakdowns}
                       etfBreakdownLaden={etfBreakdownLaden}
                     />
-                  </div>
-                )}
-
-                {tab === 'rendite' && (
-                  <div className="space-y-4">
-                    <div className="flex flex-wrap items-end justify-between gap-4">
-                      <div>
-                        <h2 className="text-base font-semibold text-zinc-100">Rendite Details</h2>
-                        <p className="mt-1 text-xs text-zinc-500">
-                          Monatliche, quartalsweise und jährliche Rendite aller Gewinne (unrealisiert,
-                          realisiert, Dividenden) — zeitgewichtet (TTWROR) wie in Parqet.
-                        </p>
-                      </div>
-                      <PaQmToggle modus={renditeModus} onChange={setRenditeModus} />
-                    </div>
-                    <PaCard variant="elevated" className="p-4 sm:p-6">
-                      {renditeTimelineLaden || wertentwicklung.length === 0 ? (
-                        <p className="py-12 text-center text-sm text-zinc-500">
-                          {renditeTimelineLaden
-                            ? 'Historische Kurse werden geladen …'
-                            : 'Historische Kurse für die Rendite-Berechnung nicht verfügbar.'}
-                        </p>
-                      ) : (
-                        <PaRenditeHeatmapGrid heatmap={heatmap} />
-                      )}
-                    </PaCard>
                   </div>
                 )}
 
