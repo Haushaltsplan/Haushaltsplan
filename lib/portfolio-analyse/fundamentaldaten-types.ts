@@ -22,6 +22,8 @@ export type FundamentalPeriode = {
   istSchaetzung?: boolean
 }
 
+export type FundamentalFrequenz = 'jahr' | 'quartal'
+
 export type FundamentalMetrikZeile = {
   id: string
   label: string
@@ -36,8 +38,10 @@ export type FundamentalMetrikZeile = {
     | 'schaetzungen'
   einheit: FundamentalEinheit
   werte: Record<string, number | null>
+  /** Tikr ROIC: Nenner ≤ 0 oder ROIC < −300 % */
+  nmWerte?: Record<string, true>
   macrotrendsSlug?: string
-  macrotrendsStatement?: 'financial-ratios' | 'price-ratios' | 'income-statement' | 'cash-flow-statement'
+  macrotrendsStatement?: 'financial-ratios' | 'price-ratios' | 'income-statement' | 'cash-flow-statement' | 'balance-sheet'
   /** Schätzung vs. historisch */
   istSchaetzung?: boolean
 }
@@ -160,6 +164,7 @@ export type FundamentaldatenPaket = {
   symbolYahoo: string | null
   geladenAm: string
   quelle: 'macrotrends'
+  frequenz?: FundamentalFrequenz
   fehler?: string | null
 }
 
@@ -169,6 +174,7 @@ export type FundamentaldatenAnfrage = {
   symbolYahoo?: string | null
   symbolCandidates?: string[]
   tickerOverride?: string | null
+  frequenz?: FundamentalFrequenz
 }
 
 /** Spezial-Schlüssel für TTM- und Schätzungs-Spalten */

@@ -2,6 +2,7 @@ import 'server-only'
 
 import {
   FUNDAMENTAL_TTM_KEY,
+  type FundamentalFrequenz,
   type FundamentalMetrikZeile,
   type FundamentalPeriode,
 } from '@/lib/portfolio-analyse/fundamentaldaten-types'
@@ -85,6 +86,7 @@ type StatementSeite =
   | 'income-statement'
   | 'cash-flow-statement'
   | 'price-ratios'
+  | 'balance-sheet'
 
 type MetrikDef = {
   slug: string
@@ -159,7 +161,6 @@ const CASH_FLOW_METRIKEN: MetrikDef[] = [
 
 const FINANCIAL_RATIOS_METRIKEN: MetrikDef[] = [
   { slug: 'roa', id: 'roa', label: 'Gesamtkapitalrendite (ROA %)', gruppe: 'rentabilitaet', einheit: 'prozent', statement: 'financial-ratios' },
-  { slug: 'roi', id: 'roi', label: 'Kapitalrendite (ROI %)', gruppe: 'rentabilitaet', einheit: 'prozent', statement: 'financial-ratios', aliases: ['roi'] },
   { slug: 'roe', id: 'roe', label: 'Eigenkapitalrendite (ROE %)', gruppe: 'rentabilitaet', einheit: 'prozent', statement: 'financial-ratios' },
   { slug: 'gross-margin', id: 'bruttomarge', label: 'Bruttomarge %', gruppe: 'margen', einheit: 'prozent', statement: 'financial-ratios' },
   { slug: 'ebitda-margin', id: 'ebitda_marge', label: 'EBITDA-Marge %', gruppe: 'margen', einheit: 'prozent', statement: 'financial-ratios' },
@@ -294,10 +295,10 @@ function zeileFuerSlug(zeilen: RohZeile[], slug: string, aliases: string[] = [])
   )
 }
 
-function bauePerioden(isoListe: string[], mitTtm: boolean): FundamentalPeriode[] {
+function bauePerioden(isoListe: string[], mitTtm: boolean, frequenz?: FundamentalFrequenz): FundamentalPeriode[] {
   const perioden: FundamentalPeriode[] = isoListe.map((iso) => ({
     iso,
-    label: formatFundamentalPeriodeLabel(iso),
+    label: formatFundamentalPeriodeLabel(iso, frequenz),
   }))
   if (mitTtm) {
     perioden.push({ iso: FUNDAMENTAL_TTM_KEY, label: 'TTM', istLtm: true })
@@ -336,6 +337,7 @@ function werteAusChartExakt(
   chart: ChartPunkt[],
   perioden: string[],
   feld: 'v3' | 'v1' | 'value',
+  mitTtm = true,
 ): Record<string, number | null> {
   const byDate = new Map(chart.map((p) => [p.date, p]))
   const out: Record<string, number | null> = {}
@@ -343,8 +345,10 @@ function werteAusChartExakt(
     const punkt = byDate.get(iso)
     out[iso] = punkt ? wertAusChartPunkt(punkt, feld) : null
   }
-  const latest = chart.length > 0 ? chart[chart.length - 1] : null
-  out[FUNDAMENTAL_TTM_KEY] = latest ? wertAusChartPunkt(latest, feld) : null
+  if (mitTtm) {
+    const latest = chart.length > 0 ? chart[chart.length - 1] : null
+    out[FUNDAMENTAL_TTM_KEY] = latest ? wertAusChartPunkt(latest, feld) : null
+  }
   return out
 }
 
@@ -363,8 +367,13 @@ function berechneFcf(ocf: Record<string, number | null>, capex: Record<string, n
   return out
 }
 
-async function ladeStatementRoh(ident: MacrotrendsIdent, statement: StatementSeite): Promise<RohZeile[] | null> {
-  const url = `${BASE}/stocks/charts/${ident.ticker}/${ident.slug}/${statement}`
+async function ladeStatementRoh(
+  ident: MacrotrendsIdent,
+  statement: StatementSeite,
+  frequenz: FundamentalFrequenz = 'jahr',
+): Promise<RohZeile[] | null> {
+  const freqParam = frequenz === 'quartal' ? '?freq=Q' : ''
+  const url = `${BASE}/stocks/charts/${ident.ticker}/${ident.slug}/${statement}${freqParam}`
   const html = await ladeSeite(url)
   if (!html || html.includes('Oops!')) return null
   return parseOriginalData(html)
@@ -512,18 +521,20 @@ export type MacrotrendsFundamentalRoh = {
 
 export async function ladeMacrotrendsFundamentaldaten(
   ident: MacrotrendsIdent,
+  frequenz: FundamentalFrequenz = 'jahr',
 ): Promise<MacrotrendsFundamentalRoh | null> {
-  const ratiosRoh = await ladeStatementRoh(ident, 'financial-ratios')
+  const ratiosRoh = await ladeStatementRoh(ident, 'financial-ratios', frequenz)
   if (!ratiosRoh?.length) return null
 
   const periodenIso = periodenAusRoh(ratiosRoh)
   if (periodenIso.length === 0) return null
 
-  const perioden = bauePerioden(periodenIso, true)
+  const mitTtm = frequenz === 'jahr'
+  const perioden = bauePerioden(periodenIso, mitTtm, frequenz)
   const zeilen: FundamentalMetrikZeile[] = []
 
-  const incomeRoh = (await ladeStatementRoh(ident, 'income-statement')) ?? []
-  const cfRoh = (await ladeStatementRoh(ident, 'cash-flow-statement')) ?? []
+  const incomeRoh = (await ladeStatementRoh(ident, 'income-statement', frequenz)) ?? []
+  const cfRoh = (await ladeStatementRoh(ident, 'cash-flow-statement', frequenz)) ?? []
 
   const rohCache = new Map<StatementSeite, RohZeile[]>([
     ['financial-ratios', ratiosRoh],
@@ -568,7 +579,8 @@ export async function ladeMacrotrendsFundamentaldaten(
   }
 
   for (const def of BEWERTUNG_METRIKEN) {
-    const iframeUrl = `${IFRAME_BASE}?t=${encodeURIComponent(ident.ticker)}&type=${encodeURIComponent(def.slug)}&statement=price-ratios&freq=A&sub=&yb=15`
+    const freqCode = frequenz === 'quartal' ? 'Q' : 'A'
+    const iframeUrl = `${IFRAME_BASE}?t=${encodeURIComponent(ident.ticker)}&type=${encodeURIComponent(def.slug)}&statement=price-ratios&freq=${freqCode}&sub=&yb=15`
     const iframeHtml = await ladeSeite(iframeUrl)
     const chart = iframeHtml ? parseChartData(iframeHtml) : null
     zeilen.push({
@@ -577,15 +589,15 @@ export async function ladeMacrotrendsFundamentaldaten(
       gruppe: def.gruppe,
       einheit: def.einheit,
       werte: chart
-        ? werteAusChartExakt(chart, periodenIso, def.wertFeld)
-        : Object.fromEntries([...periodenIso, FUNDAMENTAL_TTM_KEY].map((p) => [p, null])),
+        ? werteAusChartExakt(chart, periodenIso, def.wertFeld, mitTtm)
+        : Object.fromEntries([...periodenIso, ...(mitTtm ? [FUNDAMENTAL_TTM_KEY] : [])].map((p) => [p, null])),
       macrotrendsSlug: def.slug,
       macrotrendsStatement: 'price-ratios',
     })
   }
 
   const lastFy = periodenIso[periodenIso.length - 1]
-  if (lastFy) {
+  if (lastFy && mitTtm) {
     for (const z of zeilen) {
       if (z.macrotrendsStatement === 'price-ratios') continue
       if (z.werte[FUNDAMENTAL_TTM_KEY] == null && z.werte[lastFy] != null) {
@@ -612,7 +624,8 @@ export async function ladeMacrotrendsFundamentaldaten(
 export async function ladeMacrotrendsChartSerie(
   ident: MacrotrendsIdent,
   slug: string,
-  statement: 'financial-ratios' | 'price-ratios' | 'income-statement' | 'cash-flow-statement',
+  statement: 'financial-ratios' | 'price-ratios' | 'income-statement' | 'cash-flow-statement' | 'balance-sheet',
+  frequenz: FundamentalFrequenz = 'jahr',
 ): Promise<Array<{ datum: string; wert: number }>> {
   if (statement === 'price-ratios') {
     const iframeUrl = `${IFRAME_BASE}?t=${encodeURIComponent(ident.ticker)}&type=${encodeURIComponent(slug)}&statement=price-ratios&freq=A&sub=&yb=15`
@@ -628,7 +641,7 @@ export async function ladeMacrotrendsChartSerie(
     }
   }
 
-  const roh = await ladeStatementRoh(ident, statement)
+  const roh = await ladeStatementRoh(ident, statement, frequenz)
   const row = roh ? zeileFuerSlug(roh, slug) : null
   if (row) {
     return periodenAusRoh([row])

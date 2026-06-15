@@ -7,8 +7,7 @@ import {
 } from '@/lib/portfolio-analyse/fundamentaldaten-key-metrics'
 import { baueMantraAudit } from '@/lib/portfolio-analyse/fundamentaldaten-mantra'
 import { baueKontextWerte } from '@/lib/portfolio-analyse/fundamentaldaten-kontext-werte'
-import { ergaenzeRoicZeile, ergaenzeRoiicZeile, roiZeileBrauchtFallback } from '@/lib/portfolio-analyse/fundamentaldaten-roic-fallback'
-import { ladeStockanalysisRoic, ladeStockanalysisRoiic } from '@/lib/portfolio-analyse/stockanalysis-roic-server'
+import { ergaenzeTikrRoicZeile } from '@/lib/portfolio-analyse/fundamentaldaten-tikr-roic-server'
 import { ladeYahooMantraFinanzdaten } from '@/lib/portfolio-analyse/yahoo-fundamentals-timeseries-server'
 import { ladeFundamentalNews } from '@/lib/portfolio-analyse/fundamentaldaten-news-server'
 import { baueNtmBewertungsZeilen } from '@/lib/portfolio-analyse/fundamentaldaten-ntm-bewertung-server'
@@ -270,6 +269,7 @@ function leeresPaket(partial: Partial<FundamentaldatenPaket> & Pick<Fundamentald
 }
 
 export async function ladeFundamentaldaten(anfrage: FundamentaldatenAnfrage): Promise<FundamentaldatenPaket> {
+  const frequenz = anfrage.frequenz === 'quartal' ? 'quartal' : 'jahr'
   const { ident, symbolYahoo } = await loeseIdent(anfrage)
 
   if (!ident) {
@@ -283,9 +283,11 @@ export async function ladeFundamentaldaten(anfrage: FundamentaldatenAnfrage): Pr
   }
 
   const [roh, yahooRaw, schaetzungen, news, yahooFinanz, unitEconomics] = await Promise.all([
-    ladeMacrotrendsFundamentaldaten(ident),
+    ladeMacrotrendsFundamentaldaten(ident, frequenz),
     symbolYahoo ? ladeYahooFundamentalKennzahlen(symbolYahoo) : Promise.resolve(null),
-    symbolYahoo ? ladeFundamentalSchaetzungen(symbolYahoo) : Promise.resolve({ perioden: [], zeilen: [] }),
+    frequenz === 'jahr' && symbolYahoo
+      ? ladeFundamentalSchaetzungen(symbolYahoo)
+      : Promise.resolve({ perioden: [], zeilen: [] }),
     symbolYahoo ? ladeFundamentalNews(symbolYahoo, ident.firmenname) : Promise.resolve([]),
     symbolYahoo ? ladeYahooMantraFinanzdaten(symbolYahoo) : Promise.resolve(null),
     ladeUnitEconomics(ident.ticker).catch(() => null),
@@ -326,28 +328,21 @@ export async function ladeFundamentaldaten(anfrage: FundamentaldatenAnfrage): Pr
     })
   }
 
-  const merged = mergePeriodenUndZeilen(roh, schaetzungen)
-  const stockanalysisOpts = {
+  const merged =
+    frequenz === 'jahr' ? mergePeriodenUndZeilen(roh, schaetzungen) : { perioden: roh.perioden, zeilen: roh.zeilen }
+
+  await ergaenzeTikrRoicZeile({
+    zeilen: merged.zeilen,
+    perioden: merged.perioden,
     symbolYahoo,
-    ticker: ident.ticker,
-    firmenname: ident.firmenname,
-    isin: anfrage.isin,
-  }
-  const [roicDaten, roiicDaten] = await Promise.all([
-    roiZeileBrauchtFallback(merged.zeilen, merged.perioden)
-      ? ladeStockanalysisRoic(stockanalysisOpts)
-      : Promise.resolve(null),
-    ladeStockanalysisRoiic(stockanalysisOpts),
-  ])
-  if (roicDaten) ergaenzeRoicZeile(merged.zeilen, merged.perioden, roicDaten)
-  ergaenzeRoiicZeile(
-    merged.zeilen,
-    merged.perioden,
-    merged.zeilen.find((z) => z.id === 'ebit'),
-    merged.zeilen.find((z) => z.id === 'roi'),
-    roiicDaten,
-  )
-  const ntm = await baueNtmBewertungsZeilen(symbolYahoo, merged.perioden, merged.zeilen, yahooExt)
+    macrotrendsIdent: ident,
+    frequenz,
+  })
+
+  const ntm =
+    frequenz === 'jahr'
+      ? await baueNtmBewertungsZeilen(symbolYahoo, merged.perioden, merged.zeilen, yahooExt)
+      : { zeilen: [] as FundamentalMetrikZeile[], periodenPatch: undefined }
   if (ntm.zeilen.length > 0) {
     if (ntm.periodenPatch && !merged.perioden.some((p) => p.iso === FUNDAMENTAL_NTM_KEY)) {
       const schaetzIdx = merged.perioden.findIndex((p) => p.istSchaetzung)
@@ -367,7 +362,6 @@ export async function ladeFundamentaldaten(anfrage: FundamentaldatenAnfrage): Pr
     roh: rohFuerMantra(merged),
     schaetzungen,
     yahooFinanz,
-    roiic: roiicDaten,
     unitEconomics,
   })
   return leeresPaket({
@@ -394,5 +388,6 @@ export async function ladeFundamentaldaten(anfrage: FundamentaldatenAnfrage): Pr
     mantraMeta,
     news,
     symbolYahoo,
+    frequenz,
   })
 }

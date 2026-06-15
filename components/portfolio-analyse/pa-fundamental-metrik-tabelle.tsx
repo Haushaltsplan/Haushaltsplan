@@ -88,7 +88,9 @@ export function PaFundamentalMetrikTabelle({
                               : ''
                       }`}
                     >
-                      {formatFundamentalWert(z.werte[p.iso], z.einheit)}
+                      {formatFundamentalWert(z.werte[p.iso], z.einheit, {
+                        nm: z.nmWerte?.[p.iso],
+                      })}
                     </td>
                   ))}
                 </tr>

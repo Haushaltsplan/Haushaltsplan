@@ -44,6 +44,7 @@ export function PaFundamentalInhalt({
   const [laden, setLaden] = useState(false)
   const [fehler, setFehler] = useState<string | null>(null)
   const [tickerOverride, setTickerOverride] = useState('')
+  const [frequenz, setFrequenz] = useState<'jahr' | 'quartal'>('jahr')
   const [chartAktiv, setChartAktiv] = useState<Set<string>>(new Set())
   const [labelsAnzeigen, setLabelsAnzeigen] = useState(true)
 
@@ -53,14 +54,16 @@ export function PaFundamentalInhalt({
         ? {
             ...anfrage,
             tickerOverride: tickerOverride.trim() || anfrage.tickerOverride || null,
+            frequenz,
           }
         : null,
-    [anfrage, tickerOverride],
+    [anfrage, tickerOverride, frequenz],
   )
 
   useEffect(() => {
     setUnterTab('uebersicht')
     setTickerOverride('')
+    setFrequenz('jahr')
   }, [selectionKey])
 
   useEffect(() => {
@@ -234,6 +237,39 @@ export function PaFundamentalInhalt({
           unterTab !== 'mantra' &&
           unterTab !== 'quartalszahlen' ? (
             <div className="space-y-4">
+              {(unterTab === 'finanzdaten' || unterTab === 'bewertung') && (
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-zinc-500">Periode:</span>
+                  <div className="inline-flex rounded-lg border border-zinc-700 bg-zinc-900/80 p-0.5">
+                    <button
+                      type="button"
+                      onClick={() => setFrequenz('jahr')}
+                      className={`rounded-md px-3 py-1.5 text-xs font-medium transition ${
+                        frequenz === 'jahr'
+                          ? 'bg-amber-600/90 text-white'
+                          : 'text-zinc-400 hover:text-zinc-200'
+                      }`}
+                    >
+                      Jahr
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setFrequenz('quartal')}
+                      className={`rounded-md px-3 py-1.5 text-xs font-medium transition ${
+                        frequenz === 'quartal'
+                          ? 'bg-amber-600/90 text-white'
+                          : 'text-zinc-400 hover:text-zinc-200'
+                      }`}
+                    >
+                      Quartal
+                    </button>
+                  </div>
+                  {laden && daten?.frequenz !== frequenz ? (
+                    <span className="text-xs text-zinc-500">Lade {frequenz === 'quartal' ? 'Quartals' : 'Jahres'}daten …</span>
+                  ) : null}
+                </div>
+              )}
+
               <PaFundamentalMetrikChart
                 perioden={daten.perioden}
                 zeilen={
@@ -303,7 +339,8 @@ export function PaFundamentalInhalt({
           ) : null}
 
           <p className="text-[10px] text-zinc-600">
-            Quellen: Macrotrends.net · Yahoo Finance · Stand{' '}
+            Quellen: Macrotrends.net · Yahoo Finance ·{' '}
+            {daten.frequenz === 'quartal' ? 'Quartalsdaten' : 'Jahresdaten'} · Stand{' '}
             {new Date(daten.geladenAm).toLocaleString('de-DE')} · Cache 24h
           </p>
         </>

@@ -1,15 +1,22 @@
-import type { FundamentalEinheit } from '@/lib/portfolio-analyse/fundamentaldaten-types'
+import type { FundamentalEinheit, FundamentalFrequenz } from '@/lib/portfolio-analyse/fundamentaldaten-types'
 
-export function formatFundamentalPeriodeLabel(iso: string): string {
+export function formatFundamentalPeriodeLabel(iso: string, frequenz?: FundamentalFrequenz): string {
   const m = iso.match(/^(\d{4})-(\d{2})-(\d{2})$/)
   if (!m) return iso
+  if (frequenz === 'quartal') {
+    const month = Number(m[2])
+    const q = month <= 3 ? 1 : month <= 6 ? 2 : month <= 9 ? 3 : 4
+    return `Q${q} ${m[1].slice(2)}`
+  }
   return `${m[3]}.${m[2]}.${m[1].slice(2)}`
 }
 
 export function formatFundamentalWert(
   wert: number | null | undefined,
   einheit: FundamentalEinheit,
+  opts?: { nm?: boolean },
 ): string {
+  if (opts?.nm) return 'NM'
   if (wert == null || !Number.isFinite(wert)) return '–'
   switch (einheit) {
     case 'prozent':

@@ -22,6 +22,7 @@ export async function POST(req: Request) {
       ? row.symbolCandidates.map((s) => String(s).trim()).filter(Boolean)
       : undefined,
     tickerOverride: row.tickerOverride != null ? String(row.tickerOverride).trim() || null : null,
+    frequenz: row.frequenz === 'quartal' ? 'quartal' : 'jahr',
   }
 
   try {

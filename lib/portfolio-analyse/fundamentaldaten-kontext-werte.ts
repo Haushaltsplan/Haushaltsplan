@@ -4,11 +4,9 @@ import type { FundamentalSchaetzungenRoh } from '@/lib/portfolio-analyse/fundame
 import type { FundamentalMetrikZeile, FundamentalPeriode } from '@/lib/portfolio-analyse/fundamentaldaten-types'
 import {
   berechneRoicAdjustiert,
-  berechneRoiicAusMacrotrendsZeilen,
   historischeWerteAusZeile,
   letzterVerfuegbarerWert,
   schaetzeWaccPct,
-  type RoiicErgebnis,
 } from '@/lib/portfolio-analyse/fundamentaldaten-roic-hilfen'
 import type { MacrotrendsFundamentalRoh } from '@/lib/portfolio-analyse/macrotrends-scraper-server'
 import type { MantraYahooFinanzdaten } from '@/lib/portfolio-analyse/yahoo-fundamentals-timeseries-server'
@@ -19,8 +17,6 @@ export type FundamentalKontextInput = {
   roh: Pick<MacrotrendsFundamentalRoh, 'perioden' | 'zeilen'> | null
   schaetzungen: FundamentalSchaetzungenRoh
   yahooFinanz: MantraYahooFinanzdaten | null
-  /** StockAnalysis ROIIC; sonst Fallback aus Macrotrends EBIT+ROIC. */
-  roiic?: RoiicErgebnis | null
   /** LTV/CAC, NRR — aus SEC/Earnings Call extrahiert (falls genannt). */
   unitEconomics?: UnitEconomicsTreffer | null
 }
@@ -137,7 +133,7 @@ export function baueKontextWerte(ctx: FundamentalKontextInput) {
     nettoMio != null && fcfMio != null && nettoMio > 0 ? (fcfMio / nettoMio) * 100 : null
 
   const roic = letzterWert(roiZeile, perioden)
-  const roicQuelle = roic != null ? 'ROIC (Macrotrends / StockAnalysis)' : undefined
+  const roicQuelle = roic != null ? 'ROIC (Tikr)' : undefined
 
   const roicAdjustiertErgebnis = berechneRoicAdjustiert({
     perioden,
@@ -166,11 +162,6 @@ export function baueKontextWerte(ctx: FundamentalKontextInput) {
   })
 
   const valueSpread = roic != null && wacc != null ? roic - wacc : null
-
-  const roiicZeile = zeile('roiic')
-  const roiicErgebnis =
-    ctx.roiic ?? berechneRoiicAusMacrotrendsZeilen(perioden, ebitZeile, roiZeile)
-  const roiic = letzterWert(roiicZeile, perioden) ?? roiicErgebnis?.pct ?? null
 
   const roe =
     letzterWert(roeZeile, perioden) ??
@@ -274,8 +265,6 @@ export function baueKontextWerte(ctx: FundamentalKontextInput) {
     roicAdjustiertErgebnis,
     wacc,
     valueSpread,
-    roiic,
-    roiicErgebnis,
     roe,
     roa,
     netDebt,
