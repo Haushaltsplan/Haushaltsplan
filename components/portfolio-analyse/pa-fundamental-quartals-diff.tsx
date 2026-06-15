@@ -3,6 +3,10 @@
 import { useCallback, useEffect, useState } from 'react'
 import { EarningsCallAnalyseDarstellung } from '@/components/portfolio-analyse/pa-earnings-call-analyse'
 import { PaCard } from '@/components/portfolio-analyse/pa-ui'
+import {
+  ladeQuartalsKiDiffAusLocalCache,
+  speichereQuartalsKiDiffLocal,
+} from '@/lib/portfolio-analyse/quartals-ki-diff-client'
 import type { QuartalsKiDiffPaket, QuartalsKiDiffTyp } from '@/lib/portfolio-analyse/quartals-ki-diff-types'
 
 export function PaFundamentalQuartalsDiff({
@@ -28,6 +32,22 @@ export function PaFundamentalQuartalsDiff({
 
   const lade = useCallback(
     async (force?: boolean) => {
+      if (!force) {
+        const hit = ladeQuartalsKiDiffAusLocalCache({
+          ticker,
+          typ,
+          aktuellId,
+          vorherId,
+          aktuellLabel,
+          vorherLabel,
+        })
+        if (hit?.diff) {
+          setDaten(hit)
+          setFehler(null)
+          return
+        }
+      }
+
       setLaden(true)
       setFehler(null)
       try {
@@ -45,15 +65,27 @@ export function PaFundamentalQuartalsDiff({
           signal: AbortSignal.timeout(120_000),
         })
         const j = (await res.json()) as QuartalsKiDiffPaket & { fehler?: string }
-        if (!j.ok && j.fehler) setFehler(j.fehler)
-        else setDaten(j)
+        if (!j.ok && j.fehler) {
+          setFehler(j.fehler)
+          return
+        }
+
+        const paket: QuartalsKiDiffPaket = {
+          ...j,
+          aktuellLabel: aktuellLabel,
+          vorherLabel: vorherLabel,
+        }
+        if (paket.diff?.trim()) {
+          speichereQuartalsKiDiffLocal(paket)
+        }
+        setDaten(paket)
       } catch (e) {
         setFehler(e instanceof Error ? e.message : 'Diff fehlgeschlagen')
       } finally {
         setLaden(false)
       }
     },
-    [ticker, firmenname, typ, aktuellId, vorherId],
+    [ticker, firmenname, typ, aktuellId, vorherId, aktuellLabel, vorherLabel],
   )
 
   useEffect(() => {
@@ -89,7 +121,9 @@ export function PaFundamentalQuartalsDiff({
       ) : null}
 
       {daten?.ausCache ? (
-        <p className="text-[10px] text-zinc-600">Aus Cache (dauerhaft gespeichert)</p>
+        <p className="text-[10px] text-zinc-600">Lokal gespeichert · Sync zur Cloud</p>
+      ) : daten?.diff ? (
+        <p className="text-[10px] text-zinc-600">Neu berechnet · lokal gespeichert</p>
       ) : null}
     </PaCard>
   )

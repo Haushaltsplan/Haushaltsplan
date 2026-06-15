@@ -17,19 +17,30 @@ type EarningsSyncEintrag = {
 
 type BulkTickerSec = { ticker: string; eintraege: SecSyncEintrag[] }
 type BulkTickerEarnings = { ticker: string; eintraege: EarningsSyncEintrag[] }
+type DiffSyncEintrag = {
+  typ: 'earnings_call' | 'sec_bericht'
+  aktuellId: string
+  vorherId: string
+  diff: string
+}
+type BulkTickerDiff = { ticker: string; eintraege: DiffSyncEintrag[] }
 
-async function migriereServerDateiCaches(): Promise<{ sec: number; earnings: number }> {
+async function migriereServerDateiCaches(): Promise<{ sec: number; earnings: number; diffs: number }> {
   const { migriereSecBerichtKiDateiNachCloud } = await import(
     '@/lib/portfolio-analyse/sec-berichte-ki-cache-server'
   )
   const { migriereEarningsCallKiDateiNachCloud } = await import(
     '@/lib/portfolio-analyse/earnings-call-unternehmen-cache-server'
   )
-  const [sec, earnings] = await Promise.all([
+  const { migriereQuartalsKiDiffDateiNachCloud } = await import(
+    '@/lib/portfolio-analyse/quartals-ki-diff-cache-server'
+  )
+  const [sec, earnings, diffs] = await Promise.all([
     migriereSecBerichtKiDateiNachCloud(),
     migriereEarningsCallKiDateiNachCloud(),
+    migriereQuartalsKiDiffDateiNachCloud(),
   ])
-  return { sec, earnings }
+  return { sec, earnings, diffs }
 }
 
 async function speichereSecBulk(eintraege: BulkTickerSec[]): Promise<number> {
@@ -78,6 +89,27 @@ async function speichereEarningsBulk(eintraege: BulkTickerEarnings[]): Promise<n
   return hochgeladen
 }
 
+async function speichereDiffBulk(eintraege: BulkTickerDiff[]): Promise<number> {
+  const { speichereQuartalsKiDiffCache } = await import(
+    '@/lib/portfolio-analyse/quartals-ki-diff-cache-server'
+  )
+  let hochgeladen = 0
+  for (const block of eintraege) {
+    const ticker = block.ticker?.trim()
+    if (!ticker || !Array.isArray(block.eintraege)) continue
+    for (const e of block.eintraege) {
+      const aktuellId = e?.aktuellId != null ? String(e.aktuellId).trim() : ''
+      const vorherId = e?.vorherId != null ? String(e.vorherId).trim() : ''
+      const diff = e?.diff != null ? String(e.diff).trim() : ''
+      const typ = e?.typ === 'sec_bericht' ? 'sec_bericht' : 'earnings_call'
+      if (!aktuellId || !vorherId || !diff) continue
+      await speichereQuartalsKiDiffCache({ ticker, typ, aktuellId, vorherId, diff })
+      hochgeladen += 1
+    }
+  }
+  return hochgeladen
+}
+
 /** Lädt KI-Zusammenfassungen aus localStorage und Server-Dateien in Supabase (Laptop → Handy). */
 export async function POST(req: Request) {
   try {
@@ -96,26 +128,45 @@ export async function POST(req: Request) {
       const earningsClient = await speichereEarningsBulk(
         Array.isArray(row.earnings) ? (row.earnings as BulkTickerEarnings[]) : [],
       )
+      const diffsClient = await speichereDiffBulk(Array.isArray(row.diffs) ? (row.diffs as BulkTickerDiff[]) : [])
       return NextResponse.json({
         ok: true,
         hochgeladen: {
           secClient,
           earningsClient,
+          diffsClient,
           secServer: server.sec,
           earningsServer: server.earnings,
+          diffsServer: server.diffs,
         },
       })
     }
 
-    const typ = row.typ === 'earnings' ? 'earnings' : row.typ === 'sec' ? 'sec' : null
+    const typ =
+      row.typ === 'earnings'
+        ? 'earnings'
+        : row.typ === 'sec'
+          ? 'sec'
+          : row.typ === 'diff'
+            ? 'diff'
+            : null
     const ticker = row.ticker != null ? String(row.ticker).trim() : ''
     if (!typ || !ticker) {
-      return NextResponse.json({ ok: false, fehler: 'typ (sec|earnings) und ticker erforderlich.' }, { status: 400 })
+      return NextResponse.json(
+        { ok: false, fehler: 'typ (sec|earnings|diff) und ticker erforderlich.' },
+        { status: 400 },
+      )
     }
 
     if (typ === 'sec') {
       const eintraege = Array.isArray(row.eintraege) ? (row.eintraege as SecSyncEintrag[]) : []
       const hochgeladen = await speichereSecBulk([{ ticker, eintraege }])
+      return NextResponse.json({ ok: true, hochgeladen })
+    }
+
+    if (typ === 'diff') {
+      const eintraege = Array.isArray(row.eintraege) ? (row.eintraege as DiffSyncEintrag[]) : []
+      const hochgeladen = await speichereDiffBulk([{ ticker, eintraege }])
       return NextResponse.json({ ok: true, hochgeladen })
     }
 

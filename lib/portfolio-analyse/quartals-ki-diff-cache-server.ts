@@ -79,6 +79,25 @@ export async function ladeQuartalsKiDiffCache(
   return datei.byKey[key]?.diff ?? null
 }
 
+let dateiNachCloudMigriert = false
+
+/** Bestehende Datei-Caches einmalig nach Supabase hochladen. */
+export async function migriereQuartalsKiDiffDateiNachCloud(): Promise<number> {
+  if (dateiNachCloudMigriert) return 0
+  dateiNachCloudMigriert = true
+  const datei = await leseDatei()
+  let hochgeladen = 0
+  for (const [key, row] of Object.entries(datei.byKey)) {
+    if (!row.diff?.trim()) continue
+    const parts = key.split('|')
+    if (parts.length < 4) continue
+    const [ticker, typ, aktuellId, vorherId] = parts
+    await speichereQuartalsKiDiffCache({ ticker, typ, aktuellId, vorherId, diff: row.diff })
+    hochgeladen += 1
+  }
+  return hochgeladen
+}
+
 export async function speichereQuartalsKiDiffCache(opts: {
   ticker: string
   typ: string
