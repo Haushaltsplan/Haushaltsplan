@@ -114,7 +114,7 @@ Integrität & Kommunikation: Wirkt die Kommunikation in den Shareholder Letters 
 
 2. Kapitalallokation (Der „Litmus-Test“)
 Reinvestition: Wie viel vom Cashflow wird in das eigene Geschäft reinvestiert?
-Mantra-Check (Kapitalallokation): Ökonomischer ROIC (adjustiert) >15 % oder steigende Kurve bei Wachstumsfirmen?
+Mantra-Check (Kapitalallokation): ROIC >15 % oder steigende Kurve bei Wachstumsfirmen?
 Verwässerung: Jährliche SBC-Verwässerung <2 % des Share Counts? Buybacks neutralisieren Verwässerung?
 M&A-Track-Record: Werden Übernahmen getätigt? Wenn ja: Sind sie strategisch sinnvoll oder führen sie zu hohen Goodwill-Abschreibungen?
 
@@ -141,7 +141,7 @@ Sekundärquellen: Nur zur Einordnung historischer 5- bis 10-Jahres-Durchschnitte
 Analyse-Auftrag:
 Quantitatives Audit gegen das Quality Investing Dashboard (LTM + 3-Jahres-Trend). Tabelle mit Ist vs. Benchmark:
 
-1. Ökonomischer ROIC (Adjustiert)
+1. ROIC
 ROICadj = NOPATadj ÷ IC (OCF − Erhaltungs-CapEx; IC ohne Goodwill).
 Benchmark: >15 % über 10 Jahre ODER steigende Kurve (Wachstumsfirma).
 
@@ -180,7 +180,7 @@ FCF-Rendite (Free Cash Flow Yield): Wie hoch ist die FCF-Rendite basierend auf d
 Peer-Vergleich: Wie ist das Unternehmen im Vergleich zu direkten Wettbewerbern bewertet? Ist ein Aufschlag durch höhere Qualität (höherer ROIC) gerechtfertigt?
 
 2. Wachstumsbereinigte Bewertung (Quality vs. Preis)
-Mantra-Check (ROIC adjustiert): Rechtfertigt die aktuelle Bewertung die erwartete Cash-Rendite auf investiertes Kapital (>15 % oder steigende Kurve)?
+Mantra-Check (ROIC): Rechtfertigt die aktuelle Bewertung die erwartete Rendite auf investiertes Kapital (>15 % oder steigende Kurve)?
 Wachstums-Qualität: Wächst Umsatz/FCF pro Aktie organisch — oder nur durch Buybacks, SBC und Bilanzkosmetik?
 Rule of 40: Bei Wachstumsfirmen — Umsatzwachstum + FCF-Marge >40 %?
 
@@ -208,7 +208,7 @@ Earnings Call Transcripts: Achte auf kritische Fragen von Analysten zu Margendru
 Analyse-Auftrag:
 Prüfe Sell-Trigger-Kandidaten (nur bei irreversibler Hypothesen-Zerstörung — hohes KGV/Rezession sind KEIN Verkaufsgrund):
 
-1. Struktureller Verfall der Renditen: ROIC adjustiert 3 Jahre fallend + LTV/CAC <3×?
+1. Struktureller Verfall der Renditen: ROIC 3 Jahre fallend + LTV/CAC <3×?
 2. Erosion des Burggrabens: 24 Monate Marktanteilsverlust, sinkende NRR, Margenkompression?
 3. Künstliches Wachstum: Organisches Wachstum stagniert, EPS nur durch Buybacks/SBC/Bilanzkosmetik?
 
@@ -290,7 +290,7 @@ Marktstellung: Signalisiert der Chart ein „Flucht in Qualität“-Verhalten de
 
 Aufgabe: Analysiere die mitgesendeten Dokumente (10-Q/10-K, Earnings Release, Investor Presentation). Zerlege den Bericht bis ins kleinste Detail. Schau genau dorthin, wo es „weh tut“ – in die trockenen, langweiligen und komplexen Bereiche, die andere Analysten gerne übersehen.
 
-Quality-Dashboard-Check: Ordne die Kennzahlen dem Framework zu (ROIC adjustiert, LTV/CAC, inkrementelle Op.-Marge, FCF-Konvertierung/Rule of 40, Net Debt/EBITDA, SBC-Verwässerung).
+Quality-Dashboard-Check: Ordne die Kennzahlen dem Framework zu (ROIC, LTV/CAC, inkrementelle Op.-Marge, FCF-Konvertierung/Rule of 40, Net Debt/EBITDA, SBC-Verwässerung).
 
 WICHTIGE VORGABEN:
 

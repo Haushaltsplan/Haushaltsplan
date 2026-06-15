@@ -62,44 +62,36 @@ export function waehleSektorMantraId(_sektor: string | null, _branche: string | 
   return null
 }
 
-function evaluiereRoicAdjustiert(w: FundamentalKontextWerte) {
-  const roic = w.roicAdjustiert ?? w.roic
-  const hist = w.roicAdjustiertHist.length > 0 ? w.roicAdjustiertHist : w.roicHist
-  const quelle =
-    w.roicAdjustiertQuelle ??
-    (w.roicAdjustiert == null && w.roic != null ? 'Fallback: unadjustierter ROIC (Macrotrends)' : null)
-  const quelleSuffix = quelle ? ` ${quelle}.` : ''
-
-  const steigend = w.roicAdjustiertSteigend ?? w.roicSteigend
-  const konstantHoch = w.roicAdjustiertKonstantHoch ?? w.roicKonstantHoch
+function evaluiereRoic(w: FundamentalKontextWerte) {
+  const roic = w.roic
+  const hist = w.roicHist
+  const quelleSuffix = w.roicQuelle ? ` ${w.roicQuelle}.` : ''
 
   if (roic == null && hist.length === 0) {
-    return keineDaten(
-      'ROIC adjustiert: OCF/CapEx (Macrotrends) und Bilanz (Yahoo) werden benötigt.',
-    )
+    return keineDaten('ROIC (Macrotrends financial-ratios) nicht verfügbar.')
   }
 
-  if (konstantHoch || (roic != null && roic >= 15)) {
+  if (w.roicKonstantHoch || (roic != null && roic >= 15)) {
     return erfuellt(
       roic != null ? pct(roic) : 'Historisch >15 %',
       roic,
-      `Adjustierter ROIC (OCF − Erhaltungs-CapEx, IC ex Goodwill).${quelleSuffix} Etabliert: konstant hoch.`,
+      `ROIC aus Macrotrends.${quelleSuffix} Etabliert: konstant hoch.`,
     )
   }
 
-  if (w.istWachstumsfirma && steigend && roic != null) {
+  if (w.istWachstumsfirma && w.roicSteigend && roic != null) {
     return qualitativ(
       pct(roic),
       'erfuellt',
-      `Adjustierter ROIC.${quelleSuffix} Wachstumsfirma: steigende Kurve.`,
+      `ROIC (Macrotrends).${quelleSuffix} Wachstumsfirma: steigende Kurve.`,
     )
   }
 
   if (roic != null) {
-    return nichtErfuellt(pct(roic), roic, `Adjustierter ROIC.${quelleSuffix}`)
+    return nichtErfuellt(pct(roic), roic, `ROIC (Macrotrends).${quelleSuffix}`)
   }
 
-  return keineDaten(`Adjustierter ROIC nicht berechenbar.${quelleSuffix}`)
+  return keineDaten(`ROIC nicht verfügbar.${quelleSuffix}`)
 }
 
 function evaluiereLtvCac(w: FundamentalKontextWerte) {
@@ -221,7 +213,7 @@ function evaluiereVerschuldungVerwaesserung(w: FundamentalKontextWerte) {
 }
 
 function evaluiereSellTriggers(w: FundamentalKontextWerte): SellTriggerWatch[] {
-  const hist = w.roicAdjustiertHist.length > 0 ? w.roicAdjustiertHist : w.roicHist
+  const hist = w.roicHist
 
   let renditeStatus: SellTriggerWatchStatus = 'keine_daten'
   let renditeBegr = 'ROIC-Zeitreihe nicht verfügbar.'
@@ -231,10 +223,10 @@ function evaluiereSellTriggers(w: FundamentalKontextWerte): SellTriggerWatch[] {
     const ltvSchwach = w.ltvCac != null && w.ltvCac < 3
     if (fallend && ltvSchwach) {
       renditeStatus = 'warnung'
-      renditeBegr = `ROIC adjustiert fällt 3 Jahre (${last3.map((v) => pct(v)).join(' → ')}); LTV/CAC ${w.ltvCac!.toFixed(1)}× <3×.`
+      renditeBegr = `ROIC fällt 3 Jahre (${last3.map((v) => pct(v)).join(' → ')}); LTV/CAC ${w.ltvCac!.toFixed(1)}× <3×.`
     } else if (fallend) {
       renditeStatus = 'beobachten'
-      renditeBegr = `ROIC adjustiert fällt über 3 Jahre (${last3.map((v) => pct(v)).join(' → ')}).`
+      renditeBegr = `ROIC fällt über 3 Jahre (${last3.map((v) => pct(v)).join(' → ')}).`
     } else if (ltvSchwach) {
       renditeStatus = 'beobachten'
       renditeBegr = `LTV/CAC ${w.ltvCac!.toFixed(1)}× unter 3× — Unit Economics prüfen.`
@@ -336,7 +328,7 @@ function evaluiereZeile(zeile: MantraZeile, _ctx: MantraKontext, w: FundamentalK
 } {
   const k = zeile.kennzahl.toLowerCase()
 
-  if (k.includes('roic') && k.includes('adjust')) return evaluiereRoicAdjustiert(w)
+  if (k.includes('roic')) return evaluiereRoic(w)
   if (k.includes('ltv') || k.includes('cac')) return evaluiereLtvCac(w)
   if (k.includes('margen-struktur') || k.includes('skaleneffekte')) return evaluiereMargenSkalierung(w)
   if (k.includes('fcf-konvertierung') || k.includes('rule of 40')) return evaluiereFcfRuleOf40(w)

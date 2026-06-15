@@ -18,7 +18,7 @@ export async function POST(req: Request) {
     const subject = body.subject as
       | {
           ticker: string
-          roicAdjustiert: number | null
+          roic: number | null
           fcfMarge: number | null
           ruleOf40: number | null
           netDebtEbitda: number | null

@@ -119,7 +119,7 @@ export function PaFundamentalPeerVergleich({
             </tr>
           </thead>
           <tbody className="divide-y divide-zinc-800/70">
-            <Zeile label="ROIC (adjustiert)" subject={daten.subject.roicAdjustiert} median={m.roicAdjustiert} />
+            <Zeile label="ROIC" subject={daten.subject.roic} median={m.roic} />
             <Zeile label="FCF-Marge" subject={daten.subject.fcfMarge} median={m.fcfMarge} />
             <Zeile label="Rule of 40" subject={daten.subject.ruleOf40} median={m.ruleOf40} />
             <Zeile

@@ -15,7 +15,7 @@ Analyse-Struktur (alle Abschnitte ausführlich, mit konkreten Zahlen wo im Text 
 
 2. Quality Dashboard (Kennzahlen-Audit)
 Prüfe gegen das Quality Investing Framework (nur wenn im Bericht ableitbar):
-- Ökonomischer ROIC (adjustiert): >15 % über Zeit oder steigende Kurve?
+- ROIC (Macrotrends): >15 % über Zeit oder steigende Kurve?
 - Unit Economics (LTV/CAC >4×) — bei SaaS/Plattformen
 - Inkrementelle operative Marge >20 % bei Wachstum; SG&A degressiv?
 - FCF-Konvertierung (FCF/Nettogewinn >90 %) oder Rule of 40 >40 % bei Wachstumsfirmen

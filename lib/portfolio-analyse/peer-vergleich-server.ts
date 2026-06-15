@@ -15,7 +15,7 @@ const cache = new Map<string, { at: number; data: PeerVergleichPaket }>()
 
 export type PeerKennzahlen = {
   ticker: string
-  roicAdjustiert: number | null
+  roic: number | null
   fcfMarge: number | null
   ruleOf40: number | null
   netDebtEbitda: number | null
@@ -80,7 +80,7 @@ async function ladePeerKennzahlen(ticker: string): Promise<PeerKennzahlen> {
   })
   return {
     ticker: t,
-    roicAdjustiert: w.roicAdjustiert ?? w.roic,
+    roic: w.roic,
     fcfMarge: w.fcfMarge,
     ruleOf40: w.ruleOf40,
     netDebtEbitda: w.netDebtEbitda,
@@ -97,7 +97,7 @@ function median(values: (number | null)[]): number | null {
 function medianRow(ticker: string, rows: PeerKennzahlen[]): PeerKennzahlen {
   return {
     ticker: `${ticker} (Median Peers)`,
-    roicAdjustiert: median(rows.map((r) => r.roicAdjustiert)),
+    roic: median(rows.map((r) => r.roic)),
     fcfMarge: median(rows.map((r) => r.fcfMarge)),
     ruleOf40: median(rows.map((r) => r.ruleOf40)),
     netDebtEbitda: median(rows.map((r) => r.netDebtEbitda)),
@@ -142,9 +142,9 @@ export async function ladePeerVergleich(opts: {
     return {
       ok: false,
       ticker,
-      subject: { ticker, roicAdjustiert: null, fcfMarge: null, ruleOf40: null, netDebtEbitda: null },
+      subject: { ticker, roic: null, fcfMarge: null, ruleOf40: null, netDebtEbitda: null },
       peers: [],
-      median: { ticker: 'Median', roicAdjustiert: null, fcfMarge: null, ruleOf40: null, netDebtEbitda: null },
+      median: { ticker: 'Median', roic: null, fcfMarge: null, ruleOf40: null, netDebtEbitda: null },
       geladenAm: new Date().toISOString(),
       fehler: e instanceof Error ? e.message : 'Peer-Vergleich fehlgeschlagen',
     }

@@ -163,6 +163,15 @@ const CASH_FLOW_METRIKEN: MetrikDef[] = [
 const FINANCIAL_RATIOS_METRIKEN: MetrikDef[] = [
   { slug: 'roa', id: 'roa', label: 'Gesamtkapitalrendite (ROA %)', gruppe: 'rentabilitaet', einheit: 'prozent', statement: 'financial-ratios' },
   { slug: 'roe', id: 'roe', label: 'Eigenkapitalrendite (ROE %)', gruppe: 'rentabilitaet', einheit: 'prozent', statement: 'financial-ratios' },
+  {
+    slug: 'roi',
+    id: 'roi',
+    label: 'ROIC %',
+    gruppe: 'rentabilitaet',
+    einheit: 'prozent',
+    statement: 'financial-ratios',
+    aliases: ['return-on-invested-capital'],
+  },
   { slug: 'gross-margin', id: 'bruttomarge', label: 'Bruttomarge %', gruppe: 'margen', einheit: 'prozent', statement: 'financial-ratios' },
   { slug: 'ebitda-margin', id: 'ebitda_marge', label: 'EBITDA-Marge %', gruppe: 'margen', einheit: 'prozent', statement: 'financial-ratios' },
   { slug: 'ebit-margin', id: 'ebit_marge', label: 'EBIT-Marge %', gruppe: 'margen', einheit: 'prozent', statement: 'financial-ratios' },

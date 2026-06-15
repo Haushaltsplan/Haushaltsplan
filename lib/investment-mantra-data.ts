@@ -32,12 +32,12 @@ export const QUALITY_INVESTING_FRAMEWORK_UNTERTITEL =
 export const INVESTMENT_MANTRA: readonly MantraZeile[] = [
   {
     kategorie: 'Rentabilität',
-    kennzahl: 'Ökonomischer ROIC (Adjustiert)',
+    kennzahl: 'ROIC',
     definition:
-      'ROICadj = NOPATadj ÷ Investiertes Kapital. Zähler: operativer Cashflow abzüglich Erhaltungs-CapEx. Nenner exkl. Goodwill.',
+      'Return on Invested Capital (Macrotrends ROI) — Kapitalrendite auf investiertes Kapital.',
     zielwert: '>15 % (10 J.) oder steigende Kurve',
     funktion:
-      'Konstant hoch (>15 %) über 10 Jahre — oder bei jungen Plattformen eine steile Aufwärtskurve, die binnen 5 Jahren die Gewinnschwelle durchbricht. Eliminiert buchhalterische Verzerrungen und zeigt die reale Cash-Rendite.',
+      'Konstant hoch (>15 %) über 10 Jahre — oder bei jungen Plattformen eine steile Aufwärtskurve, die binnen 5 Jahren die Gewinnschwelle durchbricht. Zeigt die reale Rendite auf investiertes Kapital.',
   },
   {
     kategorie: 'Unit Economics',
@@ -122,7 +122,7 @@ export const SELL_TRIGGERS: readonly SellTrigger[] = [
     id: 'rendite-verfall',
     titel: 'Struktureller Verfall der fundamentalen Renditen',
     beschreibung:
-      'Der adjustierte ROIC fällt über drei aufeinanderfolgende Geschäftsjahre strukturell ab und die Unit Economics brechen ein (z. B. LTV/CAC dauerhaft unter 3×), weil Kapital in unrentable Projekte fließt oder die Neukundenakquisition irreversibel verloren geht.',
+      'Der ROIC fällt über drei aufeinanderfolgende Geschäftsjahre strukturell ab und die Unit Economics brechen ein (z. B. LTV/CAC dauerhaft unter 3×), weil Kapital in unrentable Projekte fließt oder die Neukundenakquisition irreversibel verloren geht.',
   },
   {
     id: 'burggraben-erosion',

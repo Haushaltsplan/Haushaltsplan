@@ -38,7 +38,7 @@ export type FundamentalMetrikZeile = {
     | 'schaetzungen'
   einheit: FundamentalEinheit
   werte: Record<string, number | null>
-  /** Tikr ROIC: Nenner ≤ 0 oder ROIC < −300 % */
+  /** ROIC ungültig: Nenner ≤ 0 oder ROIC < −300 % */
   nmWerte?: Record<string, true>
   macrotrendsSlug?: string
   macrotrendsStatement?: 'financial-ratios' | 'price-ratios' | 'income-statement' | 'cash-flow-statement' | 'balance-sheet'

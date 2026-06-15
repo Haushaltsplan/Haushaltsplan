@@ -3,7 +3,6 @@ import type { YahooFundamentalKennzahlen } from '@/lib/portfolio-analyse/fundame
 import type { FundamentalSchaetzungenRoh } from '@/lib/portfolio-analyse/fundamentaldaten-schaetzungen-server'
 import type { FundamentalMetrikZeile, FundamentalPeriode } from '@/lib/portfolio-analyse/fundamentaldaten-types'
 import {
-  berechneRoicAdjustiert,
   historischeWerteAusZeile,
   letzterVerfuegbarerWert,
   schaetzeWaccPct,
@@ -133,24 +132,7 @@ export function baueKontextWerte(ctx: FundamentalKontextInput) {
     nettoMio != null && fcfMio != null && nettoMio > 0 ? (fcfMio / nettoMio) * 100 : null
 
   const roic = letzterWert(roiZeile, perioden)
-  const roicQuelle = roic != null ? 'ROIC (Tikr)' : undefined
-
-  const roicAdjustiertErgebnis = berechneRoicAdjustiert({
-    perioden,
-    ocfZeile,
-    capexZeile,
-    yahooFinanz: ctx.yahooFinanz,
-    yahooKennzahlen: ctx.yahoo,
-  })
-  const roicAdjustiert = roicAdjustiertErgebnis.pct
-  const roicAdjustiertHist = roicAdjustiertErgebnis.hist
-  const roicAdjustiertQuelle = roicAdjustiertErgebnis.quelle
-  const roicAdjustiertSteigend =
-    roicAdjustiertHist.length >= 3 &&
-    roicAdjustiertHist[roicAdjustiertHist.length - 1]! > roicAdjustiertHist[0]! + 2
-  const roicAdjustiertKonstantHoch =
-    roicAdjustiertHist.length >= 5 &&
-    roicAdjustiertHist.filter((r) => r >= 15).length >= Math.ceil(roicAdjustiertHist.length * 0.7)
+  const roicQuelle = roic != null ? 'ROIC (Macrotrends)' : undefined
 
   const wacc = schaetzeWaccPct({
     beta: ctx.yahoo?.beta,
@@ -163,13 +145,9 @@ export function baueKontextWerte(ctx: FundamentalKontextInput) {
 
   const valueSpread = roic != null && wacc != null ? roic - wacc : null
 
-  const roe =
-    letzterWert(roeZeile, perioden) ??
-    (ctx.yahoo?.returnOnEquity != null ? ctx.yahoo.returnOnEquity * 100 : null)
+  const roe = letzterWert(roeZeile, perioden)
 
-  const roa =
-    letzterWert(roaZeile, perioden) ??
-    (ctx.yahoo?.returnOnAssets != null ? ctx.yahoo.returnOnAssets * 100 : null)
+  const roa = letzterWert(roaZeile, perioden)
 
   const netDebt =
     ctx.yahoo?.totalDebt != null && ctx.yahoo?.totalCash != null
@@ -257,12 +235,6 @@ export function baueKontextWerte(ctx: FundamentalKontextInput) {
     fcfConversion,
     roic,
     roicQuelle,
-    roicAdjustiert,
-    roicAdjustiertQuelle,
-    roicAdjustiertHist,
-    roicAdjustiertSteigend,
-    roicAdjustiertKonstantHoch,
-    roicAdjustiertErgebnis,
     wacc,
     valueSpread,
     roe,

@@ -7,7 +7,6 @@ import {
 } from '@/lib/portfolio-analyse/fundamentaldaten-key-metrics'
 import { baueMantraAudit } from '@/lib/portfolio-analyse/fundamentaldaten-mantra'
 import { baueKontextWerte } from '@/lib/portfolio-analyse/fundamentaldaten-kontext-werte'
-import { ergaenzeTikrRoicZeile } from '@/lib/portfolio-analyse/fundamentaldaten-tikr-roic-server'
 import { ladeYahooMantraFinanzdaten } from '@/lib/portfolio-analyse/yahoo-fundamentals-timeseries-server'
 import { ladeFundamentalNews } from '@/lib/portfolio-analyse/fundamentaldaten-news-server'
 import { baueNtmBewertungsZeilen } from '@/lib/portfolio-analyse/fundamentaldaten-ntm-bewertung-server'
@@ -339,14 +338,6 @@ export async function ladeFundamentaldaten(anfrage: FundamentaldatenAnfrage): Pr
 
   const merged =
     frequenz === 'jahr' ? mergePeriodenUndZeilen(roh, schaetzungen) : { perioden: roh.perioden, zeilen: roh.zeilen }
-
-  await ergaenzeTikrRoicZeile({
-    zeilen: merged.zeilen,
-    perioden: merged.perioden,
-    symbolYahoo,
-    macrotrendsIdent: ident,
-    frequenz,
-  })
 
   const ntm =
     frequenz === 'jahr'
