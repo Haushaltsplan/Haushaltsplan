@@ -10,7 +10,7 @@ import { baueKontextWerte } from '@/lib/portfolio-analyse/fundamentaldaten-konte
 import { ladeYahooMantraFinanzdaten } from '@/lib/portfolio-analyse/yahoo-fundamentals-timeseries-server'
 import { ladeFundamentalNews } from '@/lib/portfolio-analyse/fundamentaldaten-news-server'
 import { baueNtmBewertungsZeilen } from '@/lib/portfolio-analyse/fundamentaldaten-ntm-bewertung-server'
-import { ladeFundamentalSchaetzungen } from '@/lib/portfolio-analyse/fundamentaldaten-schaetzungen-server'
+import { ladeFundamentalSchaetzungen, filterSchaetzungenGegenHistorisch } from '@/lib/portfolio-analyse/fundamentaldaten-schaetzungen-server'
 import {
   formatiereBrancheDe,
   ladeUnternehmensbeschreibungDe,
@@ -336,8 +336,14 @@ export async function ladeFundamentaldaten(anfrage: FundamentaldatenAnfrage): Pr
     })
   }
 
+  const schaetzungenGefiltert = roh
+    ? filterSchaetzungenGegenHistorisch(schaetzungen, roh)
+    : schaetzungen
+
   const merged =
-    frequenz === 'jahr' ? mergePeriodenUndZeilen(roh, schaetzungen) : { perioden: roh.perioden, zeilen: roh.zeilen }
+    frequenz === 'jahr'
+      ? mergePeriodenUndZeilen(roh, schaetzungenGefiltert)
+      : { perioden: roh.perioden, zeilen: roh.zeilen }
 
   const ntm =
     frequenz === 'jahr'
@@ -360,7 +366,7 @@ export async function ladeFundamentaldaten(anfrage: FundamentaldatenAnfrage): Pr
   const kontextWerte = baueKontextWerte({
     yahoo: yahooExt,
     roh: rohFuerMantra(merged),
-    schaetzungen,
+    schaetzungen: schaetzungenGefiltert,
     yahooFinanz,
     unitEconomics,
   })
@@ -375,13 +381,13 @@ export async function ladeFundamentaldaten(anfrage: FundamentaldatenAnfrage): Pr
     beschreibung: beschreibungDe,
     perioden: merged.perioden,
     zeilen: merged.zeilen,
-    keyMetrics: baueKeyMetrics(yahooExt, mergedRoh, schaetzungen, kontextWerte),
+    keyMetrics: baueKeyMetrics(yahooExt, mergedRoh, schaetzungenGefiltert, kontextWerte),
     mantra: baueMantraAudit(
       sektorFinal,
       brancheFinal,
       yahooExt,
       rohFuerMantra(merged),
-      schaetzungen,
+      schaetzungenGefiltert,
       yahooFinanz,
       kontextWerte,
     ),

@@ -535,23 +535,42 @@ export async function ladeMacrotrendsFundamentaldaten(
   ident: MacrotrendsIdent,
   frequenz: FundamentalFrequenz = 'jahr',
 ): Promise<MacrotrendsFundamentalRoh | null> {
-  const ratiosRoh = await ladeStatementRoh(ident, 'financial-ratios', frequenz)
-  if (!ratiosRoh?.length) return null
+  const [ratiosRoh, incomeRoh, cfRoh, bsRoh] = await Promise.all([
+    ladeStatementRoh(ident, 'financial-ratios', frequenz),
+    ladeStatementRoh(ident, 'income-statement', frequenz),
+    ladeStatementRoh(ident, 'cash-flow-statement', frequenz),
+    ladeStatementRoh(ident, 'balance-sheet', frequenz),
+  ])
 
-  const periodenIso = periodenAusRoh(ratiosRoh)
+  const ratios = ratiosRoh ?? []
+  const income = incomeRoh ?? []
+  const cf = cfRoh ?? []
+  const bs = bsRoh ?? []
+
+  if (ratios.length === 0 && income.length === 0 && cf.length === 0 && bs.length === 0) {
+    return null
+  }
+
+  /** Union aller Statements — financial-ratios hinkt oft hinter GuV/CF (z. B. ASML FY2025). */
+  const periodenIso = [
+    ...new Set([
+      ...periodenAusRoh(ratios),
+      ...periodenAusRoh(income),
+      ...periodenAusRoh(cf),
+      ...periodenAusRoh(bs),
+    ]),
+  ].sort()
   if (periodenIso.length === 0) return null
 
   const mitTtm = frequenz === 'jahr'
   const perioden = bauePerioden(periodenIso, mitTtm, frequenz)
   const zeilen: FundamentalMetrikZeile[] = []
 
-  const incomeRoh = (await ladeStatementRoh(ident, 'income-statement', frequenz)) ?? []
-  const cfRoh = (await ladeStatementRoh(ident, 'cash-flow-statement', frequenz)) ?? []
-
   const rohCache = new Map<StatementSeite, RohZeile[]>([
-    ['financial-ratios', ratiosRoh],
-    ['income-statement', incomeRoh],
-    ['cash-flow-statement', cfRoh],
+    ['financial-ratios', ratios],
+    ['income-statement', income],
+    ['cash-flow-statement', cf],
+    ['balance-sheet', bs],
   ])
 
   function metrikenAusDefs(defs: MetrikDef[]) {
@@ -575,8 +594,8 @@ export async function ladeMacrotrendsFundamentaldaten(
   metrikenAusDefs(CASH_FLOW_METRIKEN)
   metrikenAusDefs(FINANCIAL_RATIOS_METRIKEN)
 
-  const ocfRow = zeileFuerSlug(cfRoh, 'cash-flow-from-operating-activities')
-  const capexRow = zeileFuerSlug(cfRoh, 'net-change-in-property-plant-equipment')
+  const ocfRow = zeileFuerSlug(cf, 'cash-flow-from-operating-activities')
+  const capexRow = zeileFuerSlug(cf, 'net-change-in-property-plant-equipment')
   if (ocfRow || capexRow) {
     const ocfWerte = werteAusRoh(ocfRow, periodenIso)
     const capexWerte = werteAusRoh(capexRow, periodenIso)
@@ -608,7 +627,14 @@ export async function ladeMacrotrendsFundamentaldaten(
     })
   }
 
-  const lastFy = periodenIso[periodenIso.length - 1]
+  const lastFy = [...periodenIso].reverse().find((iso) => {
+    for (const z of zeilen) {
+      if (z.macrotrendsStatement === 'price-ratios') continue
+      const v = z.werte[iso]
+      if (v != null && Number.isFinite(v)) return true
+    }
+    return false
+  })
   if (lastFy && mitTtm) {
     for (const z of zeilen) {
       if (z.macrotrendsStatement === 'price-ratios') continue

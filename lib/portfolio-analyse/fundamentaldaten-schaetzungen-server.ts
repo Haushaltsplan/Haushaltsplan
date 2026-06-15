@@ -218,6 +218,77 @@ function mergeJahresSchaetzungen(opts: {
   return reihe
 }
 
+function jahrAusSchaetzungsLabel(label: string): number | null {
+  const m = label.match(/FY(\d{2})E/i)
+  return m ? 2000 + Number(m[1]) : null
+}
+
+function jahrAusSchaetzungIso(iso: string): number | null {
+  const m = iso.match(/^__fy(\d{4})e__$/)
+  return m ? Number(m[1]) : null
+}
+
+/** Kalenderjahre mit mindestens einem Ist-Wert in den Macrotrends-Zeilen. */
+export function historischeJahreMitDaten(
+  historisch: Pick<{ perioden: FundamentalPeriode[]; zeilen: FundamentalMetrikZeile[] }, 'perioden' | 'zeilen'>,
+): Set<number> {
+  const jahre = new Set<number>()
+  for (const p of historisch.perioden) {
+    if (p.istLtm || p.istSchaetzung || p.istNtm) continue
+    const m = p.iso.match(/^(\d{4})-\d{2}-\d{2}$/)
+    if (!m) continue
+    const jahr = Number(m[1])
+    const hatDaten = historisch.zeilen.some((z) => {
+      if (z.istSchaetzung || z.gruppe === 'schaetzungen') return false
+      const v = z.werte[p.iso]
+      return v != null && Number.isFinite(v)
+    })
+    if (hatDaten) jahre.add(jahr)
+  }
+  return jahre
+}
+
+/**
+ * Entfernt Schätzungs-Spalten für Jahre, die bereits als Ist-Daten in Macrotrends vorkommen
+ * (z. B. FY25E wenn 2025-12-31 in GuV/CF schon befüllt ist).
+ */
+export function filterSchaetzungenGegenHistorisch(
+  schaetzungen: FundamentalSchaetzungenRoh,
+  historisch: Pick<{ perioden: FundamentalPeriode[]; zeilen: FundamentalMetrikZeile[] }, 'perioden' | 'zeilen'>,
+): FundamentalSchaetzungenRoh {
+  if (schaetzungen.perioden.length === 0) return schaetzungen
+
+  const histJahre = historischeJahreMitDaten(historisch)
+  if (histJahre.size === 0) return schaetzungen
+
+  const behalten: Array<{ jahr: number; altIso: string }> = []
+  for (const p of schaetzungen.perioden) {
+    const jahr = jahrAusSchaetzungsLabel(p.label) ?? jahrAusSchaetzungIso(p.iso)
+    if (jahr != null && histJahre.has(jahr)) continue
+    if (jahr != null) behalten.push({ jahr, altIso: p.iso })
+  }
+
+  if (behalten.length === schaetzungen.perioden.length) return schaetzungen
+  if (behalten.length === 0) return { perioden: [], zeilen: [], quelle: schaetzungen.quelle }
+
+  const perioden: FundamentalPeriode[] = behalten.map(({ jahr }, i) => ({
+    iso: fundamentalSchaetzungIso(jahr, i),
+    label: periodEndLabel(jahr, `FY${i}E`),
+    istSchaetzung: true,
+  }))
+
+  const isoMap = new Map(behalten.map((b, i) => [b.altIso, perioden[i]!.iso]))
+  const zeilen = schaetzungen.zeilen.map((z) => {
+    const werte: Record<string, number | null> = {}
+    for (const [altIso, neuIso] of isoMap) {
+      werte[neuIso] = z.werte[altIso] ?? null
+    }
+    return { ...z, werte }
+  })
+
+  return { perioden, zeilen, quelle: schaetzungen.quelle }
+}
+
 function baueRohAusJahresreihe(
   eintraege: StockanalysisJahresForecastEintrag[],
   quelle: FundamentalSchaetzungenRoh['quelle'],
