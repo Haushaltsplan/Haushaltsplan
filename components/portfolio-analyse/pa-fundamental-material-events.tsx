@@ -88,7 +88,7 @@ export function PaFundamentalMaterialEvents({
       <div className="flex items-center justify-between gap-2">
         <div>
           <h3 className="text-sm font-semibold text-white">Material Events</h3>
-          <p className="text-xs text-zinc-500">SEC 8-K (US) · Ad-hoc / Pflichtmitteilungen (EU IR)</p>
+          <p className="text-xs text-zinc-500">SEC 8-K (US) · Ad-hoc / Pflichtmitteilungen (EU IR, DGAP/eQS, MAR)</p>
         </div>
         <button
           type="button"

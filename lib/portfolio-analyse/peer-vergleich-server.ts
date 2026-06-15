@@ -1,7 +1,7 @@
 import 'server-only'
 
 import { baueKontextWerte } from '@/lib/portfolio-analyse/fundamentaldaten-kontext-werte'
-import { peersFuerTicker } from '@/lib/portfolio-analyse/peer-vergleich-data'
+import { loesePeerDatenTicker, peersFuerTicker } from '@/lib/portfolio-analyse/peer-vergleich-data'
 import {
   ladeMacrotrendsFundamentaldaten,
   loeseMacrotrendsIdent,
@@ -115,7 +115,9 @@ export async function ladePeerVergleich(opts: {
   if (hit && hit.at + CACHE_MS > Date.now() && !opts.force) return hit.data
 
   try {
-    const subject = await ladePeerKennzahlen(ticker)
+    const subjectTicker = loesePeerDatenTicker(ticker, opts.isin)
+    const subject = await ladePeerKennzahlen(subjectTicker)
+    subject.ticker = ticker
     const peerTickers = peersFuerTicker(ticker, opts.isin)
     const peers: PeerKennzahlen[] = []
     for (const p of peerTickers) {

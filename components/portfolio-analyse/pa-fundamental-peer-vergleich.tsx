@@ -105,7 +105,7 @@ export function PaFundamentalPeerVergleich({
       <div>
         <h3 className="text-sm font-semibold text-white">Peer-Vergleich (Sektor-Benchmark)</h3>
         <p className="text-xs text-zinc-500">
-          vs. Median: {daten.peers.map((p) => p.ticker).join(', ') || '–'}
+          vs. Median ({daten.peers.length} Peers): {daten.peers.map((p) => p.ticker).join(', ') || '–'}
         </p>
       </div>
 

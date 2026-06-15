@@ -1,8 +1,12 @@
-/** EU — Ad-hoc / Pflichtmitteilungen über Investor Relations. */
+/** EU — Ad-hoc / Pflichtmitteilungen über Investor Relations + börsenspezifische Listen. */
 
 import 'server-only'
 
 import { linksAusHtml } from '@/lib/html/text-aus-html'
+import {
+  adhocPfadeFuerIsin,
+  euAdhocQuelleFuerIsin,
+} from '@/lib/portfolio-analyse/eu-adhoc-sources'
 import { ladeInvestorRelationsUrl } from '@/lib/portfolio-analyse/investor-relations-url'
 import { ladeDokumentText } from '@/lib/portfolio-analyse/ir-earnings-scraper'
 import type { MaterialEventEintrag, MaterialEventKategorie } from '@/lib/portfolio-analyse/material-events-types'
@@ -14,29 +18,38 @@ const MAX_EVENTS = 12
 const AUSZUG = 2_000
 
 const ADHOC_MUSTER =
-  /\b(ad[- ]?hoc|inside information|insider information|regulatory news|mar notification|pflichtmitteilung|material event|disclosure|press release.*(guidance|ceo|acquisition|results))\b/i
+  /\b(ad[- ]?hoc|inside information|insider information|regulatory news|mar notification|pflichtmitteilung|material event|disclosure|directors.?deal|directors.?dealings|stimmrechtsmitteilung|delisting|takeover|profit warning|gewinnwarnung|information[s]? r[eé]glement|communiqu[eé]|press release.*(guidance|ceo|acquisition|results|chief executive))\b/i
 
-const SKIP_MUSTER = /\b(cookie|privacy|career|sustainability report|annual report 20\d{2})\b/i
+const SKIP_MUSTER =
+  /\b(cookie|privacy|career|job|sustainability report|annual report 20\d{2}|geschäftsbericht 20\d{2}|corporate governance report|remuneration report)\b/i
 
 const IR_ADHOC_PFADE = [
   '/regulatory-news',
+  '/regulatory-announcements',
+  '/regulated-information',
   '/ad-hoc',
+  '/ad-hoc-mitteilungen',
   '/news',
   '/press-releases',
   '/investors/news',
   '/investors/press-releases',
   '/investor-relations/news',
   '/en/investors/news',
+  '/en/investors/regulatory-news',
+  '/de/unternehmen/investor-relations/ad-hoc-mitteilungen',
 ]
+
+const URL_ADHOC_MUSTER =
+  /ad[-_]?hoc|regulated[-_]information|regulatory[-_]?(news|announcements)|inside[-_]information|dgap|eqs|mar[-_]notification|informations[-_]reglement/i
 
 function kategorieAusText(text: string): MaterialEventKategorie {
   const t = text.toLowerCase()
-  if (/guidance|outlook|forecast|prognose|ausblick/i.test(t)) return 'guidance'
-  if (/ceo|cfo|chief executive|vorstand|director|management change/i.test(t)) return 'management'
-  if (/acquisition|übernahme|merger|acquire|kauf/i.test(t)) return 'm_a'
+  if (/guidance|outlook|forecast|prognose|ausblick|profit warning|gewinnwarnung/i.test(t)) return 'guidance'
+  if (/ceo|cfo|chief executive|vorstand|director|management change|geschäftsleiter/i.test(t)) return 'management'
+  if (/acquisition|übernahme|merger|acquire|kauf|takeover|delisting/i.test(t)) return 'm_a'
   if (/restructur|reorganisation|layoff|stellenabbau/i.test(t)) return 'restrukturierung'
-  if (/quarter|quartal|results|ergebnis|umsatz|profit/i.test(t)) return 'finanzergebnis'
-  if (/regulatory|investigation|litigation|behörde/i.test(t)) return 'regulatorisch'
+  if (/quarter|quartal|results|ergebnis|umsatz|profit|half[- ]year|halbjahr/i.test(t)) return 'finanzergebnis'
+  if (/regulatory|investigation|litigation|behörde|sanction/i.test(t)) return 'regulatorisch'
   return 'sonstiges'
 }
 
@@ -50,15 +63,71 @@ function parseDatum(text: string): string | null {
   return null
 }
 
-function scoreLink(text: string, href: string): number {
+function scoreLink(text: string, href: string, extraKeywords: string[] = []): number {
   const kombi = `${text} ${href}`
   if (SKIP_MUSTER.test(kombi)) return -1
-  if (!ADHOC_MUSTER.test(kombi)) return 0
-  let s = 5
-  if (/ad[- ]?hoc|inside information|pflichtmitteilung/i.test(kombi)) s += 4
-  if (/guidance|ceo|acquisition|results|quarter/i.test(kombi)) s += 2
+
+  let s = 0
+  if (ADHOC_MUSTER.test(kombi)) s += 5
+  if (URL_ADHOC_MUSTER.test(href)) s += 4
+  if (/ad[- ]?hoc|inside information|pflichtmitteilung|dgap|eqs/i.test(kombi)) s += 4
+  if (/guidance|ceo|acquisition|results|quarter|chief executive|gewinnwarnung/i.test(kombi)) s += 2
+  if (extraKeywords.some((k) => kombi.toLowerCase().includes(k.toLowerCase()))) s += 2
   if (/\b20\d{2}\b/.test(kombi)) s += 1
+  if (/\.pdf(\?|$)/i.test(href) && s > 0) s += 1
+
   return s
+}
+
+async function sammleLinksVonUrl(
+  listenUrl: string,
+  extraKeywords: string[],
+  seen: Set<string>,
+  kandidaten: { href: string; text: string; score: number }[],
+): Promise<void> {
+  try {
+    const res = await fetch(listenUrl, {
+      headers: { 'User-Agent': USER_AGENT, Accept: 'text/html' },
+      cache: 'no-store',
+    })
+    if (!res.ok) return
+    for (const l of linksAusHtml(await res.text(), listenUrl)) {
+      const score = scoreLink(l.text, l.href, extraKeywords)
+      if (score <= 0 || !l.href || seen.has(l.href)) continue
+      seen.add(l.href)
+      kandidaten.push({ href: l.href, text: l.text, score })
+    }
+  } catch {
+    /* skip */
+  }
+}
+
+function baueListenUrls(irUrl: string, isin: string): string[] {
+  const isinNorm = isin.trim().toUpperCase()
+  const hard = euAdhocQuelleFuerIsin(isinNorm)
+  const urls = new Set<string>()
+
+  if (hard) {
+    for (const u of hard.listenUrls) urls.add(u)
+    for (const p of hard.pfadSuffixe ?? []) {
+      try {
+        urls.add(new URL(p, irUrl).toString())
+      } catch {
+        /* skip */
+      }
+    }
+  }
+
+  urls.add(irUrl)
+  for (const p of [...IR_ADHOC_PFADE, ...adhocPfadeFuerIsin(isinNorm)]) {
+    try {
+      urls.add(new URL(p, irUrl).toString())
+    } catch {
+      continue
+    }
+  }
+
+  return [...urls]
 }
 
 export async function ladeEuAdhocEvents(opts: {
@@ -72,27 +141,13 @@ export async function ladeEuAdhocEvents(opts: {
     : null
   if (!irUrl) return []
 
+  const hard = euAdhocQuelleFuerIsin(isin)
+  const extraKeywords = hard?.keywords ?? []
   const kandidaten: { href: string; text: string; score: number }[] = []
   const seen = new Set<string>()
-  const urls = [irUrl, ...IR_ADHOC_PFADE.map((p) => new URL(p, irUrl).toString())]
+  const listenUrls = baueListenUrls(irUrl, isin)
 
-  for (const listenUrl of urls) {
-    try {
-      const res = await fetch(listenUrl, {
-        headers: { 'User-Agent': USER_AGENT, Accept: 'text/html' },
-        cache: 'no-store',
-      })
-      if (!res.ok) continue
-      for (const l of linksAusHtml(await res.text(), listenUrl)) {
-        const score = scoreLink(l.text, l.href)
-        if (score <= 0 || !l.href || seen.has(l.href)) continue
-        seen.add(l.href)
-        kandidaten.push({ href: l.href, text: l.text, score })
-      }
-    } catch {
-      continue
-    }
-  }
+  await Promise.all(listenUrls.map((u) => sammleLinksVonUrl(u, extraKeywords, seen, kandidaten)))
 
   kandidaten.sort((a, b) => b.score - a.score)
   const out: MaterialEventEintrag[] = []

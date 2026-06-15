@@ -1,53 +1,144 @@
 /** Peer-Gruppen für Sektor-Benchmark (Portfolio + typische Wettbewerber). */
 
-export type PeerGruppe = {
-  label: string
-  /** Yahoo/Macrotrends-Ticker */
-  ticker: string[]
+import { isinKenntnis } from '@/lib/portfolio-analyse/isin-kenntnisse'
+
+const BOERSEN_SUFFIX = /\.(PA|AS|DE|SW|L|TO|HM|SG|MU|BR|MI|MC|HE|VI|ST|CO|OL|STU|F|BE|HA|DU|PR|WA)$/i
+
+/** Yahoo/Macrotrends-Ticker ohne Börsensuffix für Map-Lookup. */
+export function peerLookupKey(ticker: string): string {
+  return ticker.trim().toUpperCase().replace(BOERSEN_SUFFIX, '')
 }
 
-/** Kuratierte Peer-Listen je US/EU-Ticker. */
+/**
+ * Symbol für Datenabruf (Macrotrends/Yahoo) — berücksichtigt ISIN-Kenntnisse.
+ */
+export function loesePeerDatenTicker(ticker: string, isin?: string | null): string {
+  const t = ticker.trim().toUpperCase()
+  const k = isin ? isinKenntnis(isin.trim().toUpperCase()) : null
+  if (k?.macrotrendsTicker) return k.macrotrendsTicker.trim().toUpperCase()
+  if (k?.logoSymbol) return k.logoSymbol.trim().toUpperCase()
+  if (k?.symbolYahoo) return k.symbolYahoo.trim().toUpperCase()
+
+  const key = peerLookupKey(t)
+  const alias: Record<string, string> = {
+    H11: 'HLMA',
+    MC: 'LVMUY',
+    RMS: 'HESAY',
+    WKL: 'WTKWY',
+    STMN: 'SAUHY',
+    SIKA: 'SXYAY',
+    OSP2: 'USU',
+  }
+  return alias[key] ?? t
+}
+
+/** Kuratierte Peer-Listen je Lookup-Key (ohne Börsensuffix). */
 export const PEER_NACH_TICKER: Record<string, string[]> = {
+  // --- Cloud / Software ---
   MSFT: ['GOOG', 'ORCL', 'CRM', 'ADBE'],
   GOOG: ['MSFT', 'META', 'AMZN', 'AAPL'],
-  MA: ['V', 'AXP', 'PYPL', 'FIS'],
-  V: ['MA', 'AXP', 'PYPL', 'FIS'],
+  NOW: ['CRM', 'WDAY', 'TEAM', 'SNOW'],
+  DDOG: ['SNOW', 'MDB', 'NET', 'CRWD'],
+  VEEV: ['CRM', 'HUBS', 'WDAY', 'HOLX'],
+
+  // --- Payments ---
+  MA: ['V', 'AXP', 'FI', 'GPN'],
+  V: ['MA', 'AXP', 'FI', 'GPN'],
+
+  // --- Data / Ratings / Exchanges ---
   SPGI: ['MSCI', 'MCO', 'ICE', 'CME'],
   MSCI: ['SPGI', 'MCO', 'ICE', 'NDAQ'],
+
+  // --- Healthcare ---
   UNH: ['ELV', 'CI', 'HUM', 'CNC'],
   TMO: ['DHR', 'ABT', 'WAT', 'IQV'],
-  NOW: ['CRM', 'WDAY', 'TEAM', 'SNOW'],
-  RMD: ['PHG', 'FPH', 'NVST', 'DXCM'],
+  RMD: ['PHG', 'NVST', 'DXCM', 'PODD'],
+  ZTS: ['IDXX', 'ELAN', 'MRK', 'PFE'],
+
+  // --- Industrials / Logistics ---
   ODFL: ['JBHT', 'KNX', 'XPO', 'SAIA'],
   WM: ['RSG', 'WCN', 'CWST', 'CLH'],
   UNP: ['CSX', 'NSC', 'CP', 'CNI'],
-  ZTS: ['IDXX', 'ELAN', 'MRK', 'BMY'],
-  MCD: ['YUM', 'CMG', 'QSR', 'SBUX'],
-  DDOG: ['SNOW', 'MDB', 'NET', 'CRWD'],
-  BCPC: ['LIN', 'APD', 'ECL', 'PPG'],
-  LIN: ['APD', 'ECL', 'SHW', 'DD'],
-  VEEV: ['CRM', 'HUBS', 'WDAY', 'DOCU'],
-  KNSL: ['PGR', 'TRV', 'ALL', 'CB'],
-  HD: ['LOW', 'TSCO', 'WSM', 'FND'],
   GGG: ['ITW', 'ROP', 'IEX', 'DHR'],
-  ANET: ['CSCO', 'MSFT', 'HPE', 'JNPR'],
-  ROL: ['ECL', 'ABM', 'CLH', 'RSG'],
-  CTAS: ['UNF', 'ABM', 'ECL', 'RSG'],
+  ANET: ['CSCO', 'HPE', 'DELL', 'JNPR'],
+  ROL: ['ECL', 'ABM', 'CHE', 'BRC'],
+  CTAS: ['UNF', 'ABM', 'FAST', 'RSG'],
+
+  // --- Consumer ---
+  MCD: ['YUM', 'CMG', 'QSR', 'SBUX'],
+  HD: ['LOW', 'TSCO', 'WSM', 'FND'],
+  ATD: ['MUSA', 'CASY', 'PSX', 'L'],
+
+  // --- Chemicals / Materials ---
+  BCPC: ['ECL', 'RPM', 'PPG', 'IFF'],
+  LIN: ['APD', 'ECL', 'SHW', 'DD'],
+  SIKA: ['PPG', 'SHW', 'RPM', 'ECL'],
+
+  // --- Insurance ---
+  KNSL: ['PGR', 'TRV', 'ALL', 'CB'],
+
+  // --- Fintech ---
   UPST: ['SOFI', 'LC', 'AFRM', 'PYPL'],
-  ATD: ['MUSA', 'ARCO', 'CASY', 'PSX'],
-  MC: ['RMS', 'KER', 'CFR', 'MONC'],
-  RMS: ['MC', 'KER', 'CFR', 'TPR'],
+
+  // --- Luxury (EU) ---
+  MC: ['HESAY', 'PPRUY', 'CFRUY', 'MONC'],
+  RMS: ['LVMUY', 'PPRUY', 'CFRUY', 'MONC'],
+  LVMUY: ['HESAY', 'PPRUY', 'CFRUY', 'TPR'],
+  HESAY: ['LVMUY', 'PPRUY', 'CFRUY', 'MONC'],
+
+  // --- Semiconductors / Equipment ---
   ASML: ['AMAT', 'LRCX', 'KLAC', 'TSM'],
+
+  // --- Professional Information ---
   WKL: ['RELX', 'TRI', 'MSCI', 'SPGI'],
-  MUM: ['SAP', 'ADYEN', 'SOW', 'NEM'],
+  WTKWY: ['RELX', 'TRI', 'MSCI', 'SPGI'],
+
+  // --- CAD / Enterprise Software (DE) ---
+  MUM: ['NEM.DE', 'SAP', 'ADSK', 'DASTY'],
+  USU: ['SAP', 'NEM.DE', 'SPS.SW', 'ORCL'],
+  OSP2: ['SAP', 'NEM.DE', 'SPS.SW', 'ORCL'],
+
+  // --- MedTech / Dental ---
+  STMN: ['ALGN', 'XRAY', 'NVST', 'ISRG'],
+  SAUHY: ['ALGN', 'XRAY', 'NVST', 'ISRG'],
   HLMA: ['ROP', 'ITW', 'DHR', 'IEX'],
-  STMN: ['ALGN', 'XRAY', 'NVST', 'DHR'],
-  SIKA: ['PPG', 'SHW', 'RPM', 'BCPC'],
+  H11: ['ROP', 'ITW', 'DHR', 'IEX'],
 }
 
-export function peersFuerTicker(ticker: string, _isin?: string | null): string[] {
-  const t = ticker.trim().toUpperCase().replace(/\.(PA|AS|DE|SW|L|TO|HM|SG|MU)$/i, '')
-  const basis = ticker.trim().toUpperCase()
-  const ausMap = PEER_NACH_TICKER[t] ?? PEER_NACH_TICKER[basis] ?? []
-  return [...new Set(ausMap.map((p) => p.toUpperCase()))].slice(0, 5)
+/** ISIN → Peer-Override (z. B. wenn Ticker mehrdeutig). */
+export const PEER_NACH_ISIN: Record<string, string[]> = {
+  FR0000121014: ['HESAY', 'PPRUY', 'CFRUY', 'MONC'],
+  FR0000052292: ['LVMUY', 'PPRUY', 'CFRUY', 'MONC'],
+  NL0010273215: ['AMAT', 'LRCX', 'KLAC', 'TSM'],
+  NL0000395903: ['RELX', 'TRI', 'MSCI', 'SPGI'],
+  DE0006580806: ['NEM.DE', 'SAP', 'ADSK', 'DASTY'],
+  DE000A0BVU28: ['SAP', 'NEM.DE', 'SPS.SW', 'ORCL'],
+  GB0004052071: ['ROP', 'ITW', 'DHR', 'IEX'],
+  CH1175448666: ['ALGN', 'XRAY', 'NVST', 'ISRG'],
+  CH0418792922: ['PPG', 'SHW', 'RPM', 'ECL'],
+  CA01626P1484: ['MUSA', 'CASY', 'PSX', 'L'],
+}
+
+export function peersFuerTicker(ticker: string, isin?: string | null): string[] {
+  const isinNorm = isin?.trim().toUpperCase() ?? ''
+  if (isinNorm && PEER_NACH_ISIN[isinNorm]?.length) {
+    return [...new Set(PEER_NACH_ISIN[isinNorm].map((p) => p.toUpperCase()))].slice(0, 5)
+  }
+
+  const datenTicker = loesePeerDatenTicker(ticker, isin)
+  const keys = [
+    peerLookupKey(datenTicker),
+    peerLookupKey(ticker),
+    datenTicker,
+    ticker.trim().toUpperCase(),
+  ]
+
+  for (const key of keys) {
+    const peers = PEER_NACH_TICKER[key]
+    if (peers?.length) {
+      return [...new Set(peers.map((p) => p.toUpperCase()))].slice(0, 5)
+    }
+  }
+
+  return []
 }
