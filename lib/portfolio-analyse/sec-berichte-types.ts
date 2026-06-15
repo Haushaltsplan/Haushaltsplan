@@ -1,8 +1,8 @@
 /** SEC Quartals- & Jahresberichte (10-Q / 10-K). */
 
-export type SecBerichtFormular = '10-Q' | '10-K'
+export type SecBerichtFormular = '10-Q' | '10-K' | 'IR-Q' | 'IR-HY' | 'IR-FY' | 'IR-AR'
 
-export type SecBerichtQuelle = 'sec_edgar'
+export type SecBerichtQuelle = 'sec_edgar' | 'ir_pdf'
 
 export type SecBerichtAnfrage = {
   ticker: string

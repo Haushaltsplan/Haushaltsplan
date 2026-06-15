@@ -3,6 +3,7 @@ import type { YahooFundamentalKennzahlen } from '@/lib/portfolio-analyse/fundame
 import type { FundamentalSchaetzungenRoh } from '@/lib/portfolio-analyse/fundamentaldaten-schaetzungen-server'
 import type { FundamentalMetrikZeile, FundamentalPeriode } from '@/lib/portfolio-analyse/fundamentaldaten-types'
 import {
+  berechneRoicAdjustiert,
   berechneRoiicAusMacrotrendsZeilen,
   historischeWerteAusZeile,
   letzterVerfuegbarerWert,
@@ -59,6 +60,7 @@ export function baueKontextWerte(ctx: FundamentalKontextInput) {
   const epsZeile = zeile('eps')
   const fcfZeile = zeile('fcf')
   const capexZeile = zeile('capex')
+  const ocfZeile = zeile('ocf')
   const roiZeile = zeile('roi')
   const roeZeile = zeile('roe')
   const roaZeile = zeile('roa')
@@ -136,6 +138,23 @@ export function baueKontextWerte(ctx: FundamentalKontextInput) {
 
   const roic = letzterWert(roiZeile, perioden)
   const roicQuelle = roic != null ? 'ROIC (Macrotrends / StockAnalysis)' : undefined
+
+  const roicAdjustiertErgebnis = berechneRoicAdjustiert({
+    perioden,
+    ocfZeile,
+    capexZeile,
+    yahooFinanz: ctx.yahooFinanz,
+    yahooKennzahlen: ctx.yahoo,
+  })
+  const roicAdjustiert = roicAdjustiertErgebnis.pct
+  const roicAdjustiertHist = roicAdjustiertErgebnis.hist
+  const roicAdjustiertQuelle = roicAdjustiertErgebnis.quelle
+  const roicAdjustiertSteigend =
+    roicAdjustiertHist.length >= 3 &&
+    roicAdjustiertHist[roicAdjustiertHist.length - 1]! > roicAdjustiertHist[0]! + 2
+  const roicAdjustiertKonstantHoch =
+    roicAdjustiertHist.length >= 5 &&
+    roicAdjustiertHist.filter((r) => r >= 15).length >= Math.ceil(roicAdjustiertHist.length * 0.7)
 
   const wacc = schaetzeWaccPct({
     beta: ctx.yahoo?.beta,
@@ -247,6 +266,12 @@ export function baueKontextWerte(ctx: FundamentalKontextInput) {
     fcfConversion,
     roic,
     roicQuelle,
+    roicAdjustiert,
+    roicAdjustiertQuelle,
+    roicAdjustiertHist,
+    roicAdjustiertSteigend,
+    roicAdjustiertKonstantHoch,
+    roicAdjustiertErgebnis,
     wacc,
     valueSpread,
     roiic,

@@ -60,32 +60,43 @@ export function waehleSektorMantraId(_sektor: string | null, _branche: string | 
 }
 
 function evaluiereRoicAdjustiert(w: FundamentalKontextWerte) {
-  const proxyHinweis =
-    'Proxy: Macrotrends/StockAnalysis-ROIC. Voll adjustiert (OCF − Erhaltungs-CapEx, IC ohne Goodwill) folgt später.'
+  const roic = w.roicAdjustiert ?? w.roic
+  const hist = w.roicAdjustiertHist.length > 0 ? w.roicAdjustiertHist : w.roicHist
+  const quelle =
+    w.roicAdjustiertQuelle ??
+    (w.roicAdjustiert == null && w.roic != null ? 'Fallback: unadjustierter ROIC (Macrotrends)' : null)
+  const quelleSuffix = quelle ? ` ${quelle}.` : ''
 
-  if (w.roic == null && w.roicHist.length === 0) return keineDaten(proxyHinweis)
+  const steigend = w.roicAdjustiertSteigend ?? w.roicSteigend
+  const konstantHoch = w.roicAdjustiertKonstantHoch ?? w.roicKonstantHoch
 
-  if (w.roicKonstantHoch || (w.roic != null && w.roic >= 15)) {
+  if (roic == null && hist.length === 0) {
+    return keineDaten(
+      'ROIC adjustiert: OCF/CapEx (Macrotrends) und Bilanz (Yahoo) werden benötigt.',
+    )
+  }
+
+  if (konstantHoch || (roic != null && roic >= 15)) {
     return erfuellt(
-      w.roic != null ? pct(w.roic) : 'Historisch >15 %',
-      w.roic,
-      `${proxyHinweis} Etabliert: konstant hoch.`,
+      roic != null ? pct(roic) : 'Historisch >15 %',
+      roic,
+      `Adjustierter ROIC (OCF − Erhaltungs-CapEx, IC ex Goodwill).${quelleSuffix} Etabliert: konstant hoch.`,
     )
   }
 
-  if (w.istWachstumsfirma && w.roicSteigend && w.roic != null) {
+  if (w.istWachstumsfirma && steigend && roic != null) {
     return qualitativ(
-      pct(w.roic),
+      pct(roic),
       'erfuellt',
-      `${proxyHinweis} Wachstumsfirma: steigende ROIC-Kurve.`,
+      `Adjustierter ROIC.${quelleSuffix} Wachstumsfirma: steigende Kurve.`,
     )
   }
 
-  if (w.roic != null) {
-    return nichtErfuellt(pct(w.roic), w.roic, proxyHinweis)
+  if (roic != null) {
+    return nichtErfuellt(pct(roic), roic, `Adjustierter ROIC.${quelleSuffix}`)
   }
 
-  return keineDaten(proxyHinweis)
+  return keineDaten(`Adjustierter ROIC nicht berechenbar.${quelleSuffix}`)
 }
 
 function evaluiereLtvCac(w: FundamentalKontextWerte) {

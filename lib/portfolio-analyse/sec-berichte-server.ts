@@ -6,6 +6,11 @@ import {
   ladeSecEdgarBerichtVolltext,
 } from '@/lib/portfolio-analyse/sec-edgar-filings-server'
 import {
+  ladeIrFinanzberichteHistorie,
+  ladeIrFinanzberichtVolltext,
+} from '@/lib/portfolio-analyse/ir-financial-reports-server'
+import { zusammenfassungMitMarktkontext } from '@/lib/portfolio-analyse/marktkontext-ki-server'
+import {
   ladeSecBerichtKiCacheEintrag,
   ladeSecBerichtKiCacheFuerTicker,
   loescheSecBerichtKiCacheEintrag,
@@ -23,6 +28,8 @@ type ListCache = {
   expiresAt: number
   berichte: SecBerichtEintrag[]
   summaries: Map<string, string>
+  quelle: 'sec_edgar' | 'ir_pdf'
+  texte: Map<string, string>
 }
 
 const listCache = new Map<string, ListCache>()
@@ -100,28 +107,46 @@ async function summaryAusPersistenz(
   return hit.zusammenfassung
 }
 
-async function ladeBerichteListe(ticker: string, force?: boolean): Promise<ListCache> {
+async function ladeBerichteListe(
+  ticker: string,
+  opts: { force?: boolean; isin?: string | null; firmenname?: string | null },
+): Promise<ListCache> {
   const key = tickerKey(ticker)
   const hit = listCache.get(key)
-  if (hit && hit.expiresAt > Date.now() && !force) {
+  if (hit && hit.expiresAt > Date.now() && !opts.force) {
     await ladePersistenteSummaries(ticker, hit)
     return hit
   }
 
   const { cik, berichte, texte } = await ladeSecEdgarBerichteHistorie(ticker)
-  if (cik === 0) {
-    throw new Error('Kein SEC-CIK — vermutlich kein US-Melder.')
+  if (cik !== 0) {
+    const eintraege = berichte.map((f) => {
+      const text = texte.get(f.accession)
+      return baueSecBerichtEintrag(f, cik, text, false)
+    })
+    const cache: ListCache = {
+      expiresAt: Date.now() + CACHE_MS,
+      berichte: eintraege,
+      summaries: hit?.summaries ?? new Map(),
+      quelle: 'sec_edgar',
+      texte,
+    }
+    await ladePersistenteSummaries(ticker, cache)
+    listCache.set(key, cache)
+    return cache
   }
 
-  const eintraege = berichte.map((f) => {
-    const text = texte.get(f.accession)
-    return baueSecBerichtEintrag(f, cik, text, false)
+  const ir = await ladeIrFinanzberichteHistorie({
+    ticker,
+    isin: opts.isin,
+    firmenname: opts.firmenname,
   })
-
   const cache: ListCache = {
     expiresAt: Date.now() + CACHE_MS,
-    berichte: eintraege,
+    berichte: ir.berichte,
     summaries: hit?.summaries ?? new Map(),
+    quelle: 'ir_pdf',
+    texte: ir.texte,
   }
   await ladePersistenteSummaries(ticker, cache)
   listCache.set(key, cache)
@@ -163,7 +188,12 @@ async function zusammenfasseBericht(
   )
 
   if (!result.ok) throw new Error(result.hint)
-  return result.reply
+  const basis = result.reply
+  return zusammenfassungMitMarktkontext(basis, {
+    ticker: meta.ticker,
+    firmenname: meta.firmenname,
+    berichtLabel: `${meta.label} (${meta.formular})`,
+  })
 }
 
 export async function ladeSecBerichte(anfrage: SecBerichtAnfrage): Promise<SecBerichtePaket> {
@@ -195,17 +225,27 @@ export async function ladeSecBerichte(anfrage: SecBerichtAnfrage): Promise<SecBe
   }
 
   try {
-    const cache = await ladeBerichteListe(ticker, anfrage.force)
+    const cache = await ladeBerichteListe(ticker, {
+      force: anfrage.force,
+      isin: anfrage.isin,
+      firmenname: anfrage.firmenname,
+    })
     const ausCache = !anfrage.force && listCache.has(tickerKey(ticker))
+    const quelleLabel = cache.quelle === 'ir_pdf' ? 'Investor Relations (PDF)' : 'SEC EDGAR'
 
     if (!berichtId) {
       const paket = bauePaket(ticker, cache.berichte, cache.summaries, {
         ausCache,
-        fehler: cache.berichte.length === 0 ? 'Keine 10-Q/10-K bei SEC gefunden.' : null,
+        fehler:
+          cache.berichte.length === 0
+            ? cache.quelle === 'ir_pdf'
+              ? 'Keine Finanzberichte auf der IR-Seite gefunden.'
+              : 'Keine 10-Q/10-K bei SEC gefunden.'
+            : null,
         hinweis:
           cache.berichte.length > 0
-            ? 'SEC EDGAR · KI-Analyse beim Öffnen eines Berichts'
-            : 'Für EU-Aktien Quartalsberichte auf der Investor-Relations-Seite.',
+            ? `${quelleLabel} · KI-Analyse beim Öffnen eines Berichts`
+            : 'Quartalsberichte ggf. manuell auf der Investor-Relations-Seite.',
       })
       serverCache.set(key, { at: Date.now(), paket })
       return paket
@@ -214,8 +254,27 @@ export async function ladeSecBerichte(anfrage: SecBerichtAnfrage): Promise<SecBe
     const meta = cache.berichte.find((b) => b.id === berichtId)
     if (!meta) return leerPaket(ticker, 'Bericht nicht in der Liste.')
 
-    const hit = await ladeSecEdgarBerichtVolltext(ticker, meta.accession)
-    if (!hit || hit.text.length < 200) {
+    let hitText: string | null = cache.texte.get(meta.accession) ?? null
+    let hitEintrag = meta
+
+    if (!hitText || hitText.length < 200) {
+      if (cache.quelle === 'sec_edgar') {
+        const hit = await ladeSecEdgarBerichtVolltext(ticker, meta.accession)
+        if (hit && hit.text.length >= 200) {
+          hitText = hit.text
+          hitEintrag = { ...meta, ...hit.eintrag }
+        }
+      } else {
+        const hit = await ladeIrFinanzberichtVolltext(meta.accession, meta.url)
+        if (hit && hit.text.length >= 200) {
+          hitText = hit.text
+          hitEintrag = { ...meta, ...hit.eintrag }
+          cache.texte.set(meta.accession, hit.text)
+        }
+      }
+    }
+
+    if (!hitText || hitText.length < 200) {
       return {
         ...bauePaket(ticker, cache.berichte, cache.summaries, { aktiverBerichtId: berichtId, ausCache }),
         fehler: 'Volltext konnte nicht geladen werden.',
@@ -226,9 +285,9 @@ export async function ladeSecBerichte(anfrage: SecBerichtAnfrage): Promise<SecBe
       b.id === berichtId
         ? {
             ...b,
-            ...hit.eintrag,
-            textAuszug: hit.text.slice(0, 12_000),
-            textZeichen: hit.text.length,
+            ...hitEintrag,
+            textAuszug: hitText!.slice(0, 12_000),
+            textZeichen: hitText!.length,
             textVollstaendig: true,
             zusammenfassung: cache.summaries.get(berichtId) ?? b.zusammenfassung,
           }
@@ -241,7 +300,7 @@ export async function ladeSecBerichte(anfrage: SecBerichtAnfrage): Promise<SecBe
         cache.summaries.set(berichtId, cached)
       } else {
         try {
-          const summary = await zusammenfasseBericht(hit.text, {
+          const summary = await zusammenfasseBericht(hitText, {
             ticker,
             label: meta.label,
             formular: meta.formular,
@@ -264,7 +323,7 @@ export async function ladeSecBerichte(anfrage: SecBerichtAnfrage): Promise<SecBe
             ...bauePaket(ticker, cache.berichte, cache.summaries, {
               aktiverBerichtId: berichtId,
               ausCache,
-              hinweis: 'SEC EDGAR · KI-Analyse beim Öffnen eines Berichts',
+              hinweis: `${quelleLabel} · KI-Analyse beim Öffnen eines Berichts`,
             }),
             ok: true,
             fehler: msg,
@@ -276,18 +335,12 @@ export async function ladeSecBerichte(anfrage: SecBerichtAnfrage): Promise<SecBe
     const paket = bauePaket(ticker, cache.berichte, cache.summaries, {
       aktiverBerichtId: berichtId,
       ausCache,
-      hinweis: 'SEC EDGAR · KI-Analyse (Gemini)',
+      hinweis: `${quelleLabel} · KI-Analyse (Gemini)`,
     })
     serverCache.set(key, { at: Date.now(), paket })
     return paket
   } catch (e) {
-    const msg = e instanceof Error ? e.message : 'SEC-Abruf fehlgeschlagen'
-    if (msg.includes('Kein SEC-CIK')) {
-      return {
-        ...leerPaket(ticker, msg),
-        hinweis: 'Für EU-Aktien Quartalsberichte auf der Investor-Relations-Seite.',
-      }
-    }
+    const msg = e instanceof Error ? e.message : 'Bericht-Abruf fehlgeschlagen'
     return leerPaket(ticker, msg)
   }
 }

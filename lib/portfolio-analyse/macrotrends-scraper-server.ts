@@ -32,14 +32,50 @@ export type MacrotrendsIdentOpts = {
   erwarteterTicker?: string
   firmenname?: string
   slug?: string
+  /** Macrotrends-Chart-Ticker wenn ≠ Börsensymbol (z. B. MC → LVMUY). */
+  macrotrendsTicker?: string
 }
 
-/** Kurz-Ticker: Macrotrends-Textsuche liefert oft falsche Treffer (MA→MAAS, V→VFC, HD→HDB). */
-const BEKANNTE_MACROTRENDS_SLUGS: Record<string, { slug: string; firmenname: string }> = {
+/** Kurz-Ticker / EU-Listings: Macrotrends nutzt oft ADR-Ticker oder eigene Slugs. */
+const BEKANNTE_MACROTRENDS_SLUGS: Record<
+  string,
+  { slug: string; firmenname: string; macrotrendsTicker?: string }
+> = {
   MA: { slug: 'mastercard', firmenname: 'Mastercard' },
   V: { slug: 'visa', firmenname: 'Visa' },
   WM: { slug: 'waste-management', firmenname: 'Waste Management' },
   HD: { slug: 'home-depot', firmenname: 'Home Depot' },
+  MC: { slug: 'louis-vuitton', firmenname: 'LVMH', macrotrendsTicker: 'LVMUY' },
+  RMS: { slug: 'hermes-international', firmenname: 'Hermès', macrotrendsTicker: 'HESAY' },
+  ASML: { slug: 'asml-holding', firmenname: 'ASML Holding' },
+  WKL: { slug: 'wolters-kluwer', firmenname: 'Wolters Kluwer', macrotrendsTicker: 'WTKWY' },
+  MUM: { slug: 'mensch-und-maschine', firmenname: 'Mensch und Maschine' },
+  HLMA: { slug: 'halma', firmenname: 'Halma' },
+  STMN: { slug: 'straumann-holding', firmenname: 'Straumann Holding', macrotrendsTicker: 'SAUHY' },
+  SIKA: { slug: 'sika', firmenname: 'Sika', macrotrendsTicker: 'SXYAY' },
+  ATD: { slug: 'alimentation-couche-tard', firmenname: 'Alimentation Couche-Tard' },
+  GOOG: { slug: 'alphabet', firmenname: 'Alphabet' },
+  MSFT: { slug: 'microsoft', firmenname: 'Microsoft' },
+  SPGI: { slug: 's-p-global', firmenname: 'S&P Global' },
+  UNH: { slug: 'unitedhealth-group', firmenname: 'UnitedHealth' },
+  TMO: { slug: 'thermo-fisher-scientific', firmenname: 'Thermo Fisher Scientific' },
+  NOW: { slug: 'servicenow', firmenname: 'ServiceNow' },
+  RMD: { slug: 'resmed', firmenname: 'Resmed' },
+  ODFL: { slug: 'old-dominion-freight-line', firmenname: 'Old Dominion Freight Line' },
+  UNP: { slug: 'union-pacific', firmenname: 'Union Pacific' },
+  ZTS: { slug: 'zoetis', firmenname: 'Zoetis' },
+  MCD: { slug: 'mcdonalds', firmenname: "McDonald's" },
+  DDOG: { slug: 'datadog', firmenname: 'Datadog' },
+  BCPC: { slug: 'balchem', firmenname: 'Balchem' },
+  LIN: { slug: 'linde', firmenname: 'Linde' },
+  VEEV: { slug: 'veeva-systems', firmenname: 'Veeva Systems' },
+  KNSL: { slug: 'kinsale-capital', firmenname: 'Kinsale Capital' },
+  GGG: { slug: 'graco', firmenname: 'Graco' },
+  ANET: { slug: 'arista-networks', firmenname: 'Arista Networks' },
+  ROL: { slug: 'rollins', firmenname: 'Rollins' },
+  CTAS: { slug: 'cintas', firmenname: 'Cintas' },
+  UPST: { slug: 'upstart-holdings', firmenname: 'Upstart Holdings' },
+  MSCI: { slug: 'msci', firmenname: 'MSCI' },
 }
 
 type RohZeile = Record<string, string | number> & { field_name: string }
@@ -345,7 +381,7 @@ export async function loeseMacrotrendsIdent(
   const erwartet = opts.erwarteterTicker?.trim().toUpperCase()
 
   if (erwartet) {
-    const ausSlug = identAusBekanntemSlug(erwartet, opts.slug, firmenname)
+    const ausSlug = identAusBekanntemSlug(erwartet, opts.slug, firmenname, opts.macrotrendsTicker)
     if (ausSlug) return ausSlug
   }
 
@@ -444,13 +480,16 @@ function identAusBekanntemSlug(
   ticker: string,
   slugOverride?: string,
   firmenname?: string,
+  macrotrendsTickerOverride?: string,
 ): MacrotrendsIdent | null {
   const t = ticker.toUpperCase()
-  const slug = slugOverride?.trim() || BEKANNTE_MACROTRENDS_SLUGS[t]?.slug
-  if (!slug) return null
   const basis = BEKANNTE_MACROTRENDS_SLUGS[t]
+  const slug = slugOverride?.trim() || basis?.slug
+  if (!slug) return null
+  const chartTicker =
+    macrotrendsTickerOverride?.trim().toUpperCase() || basis?.macrotrendsTicker?.toUpperCase() || t
   return {
-    ticker: t,
+    ticker: chartTicker,
     slug,
     firmenname: firmenname?.trim() || basis?.firmenname || t,
   }

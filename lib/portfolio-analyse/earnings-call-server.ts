@@ -32,6 +32,7 @@ import { ladeMotleyFoolTranskriptHistorie } from '@/lib/portfolio-analyse/motley
 import { ladeInvestorRelationsUrl } from '@/lib/portfolio-analyse/investor-relations-url'
 import { ladeSecEdgarTranskriptHistorie } from '@/lib/portfolio-analyse/sec-edgar-earnings-transcript-server'
 import { resolveCoachProviderFromMode, runCoachCompletion, earningsCallGeminiModelKandidaten } from '@/lib/ki-coach-backend'
+import { zusammenfassungMitMarktkontext } from '@/lib/portfolio-analyse/marktkontext-ki-server'
 
 const MAX_TRANSCRIPT_CHARS = 100_000
 const CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000
@@ -335,7 +336,12 @@ async function zusammenfasseTranscript(
   )
 
   if (!result.ok) throw new Error(result.hint)
-  return result.reply
+  const basis = result.reply
+  return zusammenfassungMitMarktkontext(basis, {
+    ticker: meta.ticker,
+    firmenname: meta.firmenname,
+    berichtLabel: `${meta.label} · ${meta.titel}`,
+  })
 }
 
 function findeRohFuerQuartal(cache: DiscoveryCache, quartalId: string): RohesTranskript | null {

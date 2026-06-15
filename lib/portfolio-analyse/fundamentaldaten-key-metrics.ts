@@ -186,7 +186,13 @@ export function baueKeyMetrics(
     },
     {
       id: 'ltm_roic',
-      label: 'LTM ROIC',
+      label: 'LTM ROIC (adjustiert)',
+      wert: pctRaw(w?.roicAdjustiert ?? w?.roic),
+      gruppe: 'effizienz',
+    },
+    {
+      id: 'ltm_roic_roh',
+      label: 'LTM ROIC (unadjustiert)',
       wert: pctRaw(w?.roic),
       gruppe: 'effizienz',
     },

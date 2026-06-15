@@ -17,6 +17,7 @@ const TRAILING_TYPES = [
   'trailingNetIncome',
   'trailingPretaxIncome',
   'trailingTaxProvision',
+  'trailingOperatingCashFlow',
 ] as const
 
 const ANNUAL_TYPES = [
@@ -29,6 +30,10 @@ const ANNUAL_TYPES = [
   'annualCapitalExpenditure',
   'annualChangeInWorkingCapital',
   'annualPurchaseOfBusiness',
+  'annualOperatingCashFlow',
+  'annualGoodwill',
+  'annualDepreciationAmortizationInIncomeStatement',
+  'annualCashAndCashEquivalents',
 ] as const
 
 export type MantraYahooTrailing = {
@@ -42,6 +47,7 @@ export type MantraYahooTrailing = {
   netIncomeUsd: number | null
   pretaxIncomeUsd: number | null
   taxProvisionUsd: number | null
+  operatingCashFlowUsd: number | null
 }
 
 export type MantraYahooFinanzdaten = MantraYahooTrailing & {
@@ -69,6 +75,10 @@ const ANNUAL_FELDER: Record<keyof Omit<YahooJahresSnapshot, 'datum'>, string> = 
   capitalExpenditureUsd: 'annualCapitalExpenditure',
   changeInWorkingCapitalUsd: 'annualChangeInWorkingCapital',
   purchaseOfBusinessUsd: 'annualPurchaseOfBusiness',
+  operatingCashFlowUsd: 'annualOperatingCashFlow',
+  depreciationAmortizationUsd: 'annualDepreciationAmortizationInIncomeStatement',
+  goodwillUsd: 'annualGoodwill',
+  cashAndEquivalentsUsd: 'annualCashAndCashEquivalents',
 }
 
 function letzterWert(block: TimeseriesBlock | undefined): number | null {
@@ -112,6 +122,10 @@ function baueAnnualHistorie(result: TimeseriesBlock[]): YahooJahresSnapshot[] {
       capitalExpenditureUsd: null,
       changeInWorkingCapitalUsd: null,
       purchaseOfBusinessUsd: null,
+      operatingCashFlowUsd: null,
+      depreciationAmortizationUsd: null,
+      goodwillUsd: null,
+      cashAndEquivalentsUsd: null,
     }
     for (const [feld, typArr] of datenProTyp.entries()) {
       const raw = typArr[i]?.reportedValue?.raw
@@ -173,6 +187,7 @@ export async function ladeYahooMantraFinanzdaten(symbol: string): Promise<Mantra
       netIncomeUsd: letzterWert(blockFuerTyp(result, 'trailingNetIncome')),
       pretaxIncomeUsd: letzterWert(blockFuerTyp(result, 'trailingPretaxIncome')),
       taxProvisionUsd: letzterWert(blockFuerTyp(result, 'trailingTaxProvision')),
+      operatingCashFlowUsd: letzterWert(blockFuerTyp(result, 'trailingOperatingCashFlow')),
       annualHistorie: baueAnnualHistorie(result),
     }
 

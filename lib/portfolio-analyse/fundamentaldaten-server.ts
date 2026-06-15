@@ -63,6 +63,7 @@ function macrotrendsOptsAusAnfrage(
     erwarteterTicker: erwarteterTicker.trim().toUpperCase(),
     firmenname: anfrage.name?.trim() || k?.name?.trim(),
     slug: k?.macrotrendsSlug,
+    macrotrendsTicker: k?.macrotrendsTicker,
   }
 }
 

@@ -21,8 +21,10 @@ export type IsinKenntnis = {
   kursFallbackEur?: number
   /** DivvyDiary-URL-Slug ohne ISIN-Suffix (z. B. mensch-und-maschine-software-aktie). */
   divvydiarySlug?: string
-  /** Macrotrends-URL-Slug (z. B. mastercard) — wichtig bei kurzen Tickern (MA, V). */
+  /** Macrotrends-URL-Slug (z. B. louis-vuitton) — wichtig bei kurzen Tickern (MA, V). */
   macrotrendsSlug?: string
+  /** Macrotrends-Chart-Ticker wenn ≠ Yahoo (z. B. MC.PA → LVMUY). */
+  macrotrendsTicker?: string
 }
 
 function eintrag(
@@ -72,12 +74,28 @@ export const ISIN_KENNTNISSE: Record<string, IsinKenntnis> = {
   LU1681048804: direkt('500.PA', 'Amundi Index Solutions S&P 500 UCITS ETF EUR ACC'),
   IE00BLNMYC90: usd('XDEW.L', 'Xtrackers S&P 500 Equal Weight UCITS ETF 1C'),
   IE00BJXRZJ40: direkt('IE00BJXRZJ40.SG', 'Rize Cybersecurity and Data Privacy UCITS ETF'),
-  FR0000052292: direkt('RMS.PA', 'Hermès', { divvydiarySlug: 'hermes-aktie' }),
-  FR0000121014: direkt('MC.PA', 'LVMH', { divvydiarySlug: 'lvmh-aktie' }),
-  NL0010273215: direkt('ASML.AS', 'ASML Holding', { divvydiarySlug: 'asml-aktie' }),
-  NL0000395903: direkt('WKL.AS', 'Wolters Kluwer', { divvydiarySlug: 'wolters-kluwer-aktie' }),
+  FR0000052292: direkt('RMS.PA', 'Hermès', {
+    divvydiarySlug: 'hermes-aktie',
+    macrotrendsTicker: 'HESAY',
+    macrotrendsSlug: 'hermes-international',
+  }),
+  FR0000121014: direkt('MC.PA', 'LVMH', {
+    divvydiarySlug: 'lvmh-aktie',
+    macrotrendsTicker: 'LVMUY',
+    macrotrendsSlug: 'louis-vuitton',
+  }),
+  NL0010273215: direkt('ASML.AS', 'ASML Holding', {
+    divvydiarySlug: 'asml-aktie',
+    macrotrendsSlug: 'asml-holding',
+  }),
+  NL0000395903: direkt('WKL.AS', 'Wolters Kluwer', {
+    divvydiarySlug: 'wolters-kluwer-aktie',
+    macrotrendsTicker: 'WTKWY',
+    macrotrendsSlug: 'wolters-kluwer',
+  }),
   DE0006580806: direkt('MUM.DE', 'Mensch und Maschine', {
     divvydiarySlug: 'mensch-und-maschine-software-aktie',
+    macrotrendsSlug: 'mensch-und-maschine',
   }),
   DE000A0BVU28: direkt('OSP2.HM', 'USU Software', {
     wkn: 'A0BVU2',
@@ -87,6 +105,8 @@ export const ISIN_KENNTNISSE: Record<string, IsinKenntnis> = {
   GB0004052071: direkt('H11.SG', 'Halma', {
     logoSymbol: 'HLMA',
     verboteneSymbole: ['H11.MU', 'HLMA.L'],
+    macrotrendsTicker: 'HLMA',
+    macrotrendsSlug: 'halma',
   }),
 
   // --- mit Klammern: Umrechnung ---
@@ -108,8 +128,15 @@ export const ISIN_KENNTNISSE: Record<string, IsinKenntnis> = {
   US23804L1035: usd('DDOG', 'Datadog', { logoSymbol: 'DDOG' }),
   US0576652004: usd('BCPC', 'Balchem'),
   IE000S9YS762: usd('LIN', 'Linde'),
-  CH1175448666: chf('STMN.SW', 'Straumann Holding', { divvydiarySlug: 'straumann-holding-aktie' }),
-  CH0418792922: chf('SIKA.SW', 'Sika'),
+  CH1175448666: chf('STMN.SW', 'Straumann Holding', {
+    divvydiarySlug: 'straumann-holding-aktie',
+    macrotrendsTicker: 'SAUHY',
+    macrotrendsSlug: 'straumann-holding',
+  }),
+  CH0418792922: chf('SIKA.SW', 'Sika', {
+    macrotrendsTicker: 'SXYAY',
+    macrotrendsSlug: 'sika',
+  }),
   US9224751084: usd('VEEV', 'Veeva Systems'),
   US49714P1084: usd('KNSL', 'Kinsale Capital'),
   US4370761029: usd('HD', 'The Home Depot', { macrotrendsSlug: 'home-depot' }),
@@ -118,6 +145,7 @@ export const ISIN_KENNTNISSE: Record<string, IsinKenntnis> = {
   CA01626P1484: cad('ATD.TO', 'Alimentation Couche-Tard', {
     logoSymbol: 'ATD',
     divvydiarySlug: 'alimentation-couche-tard-aktie',
+    macrotrendsSlug: 'alimentation-couche-tard',
   }),
   CA15135U1093: cad('ATD.TO', 'Alimentation Couche-Tard', { logoSymbol: 'ATD' }),
   CA015DM1098: cad('ATD.TO', 'Alimentation Couche-Tard', {

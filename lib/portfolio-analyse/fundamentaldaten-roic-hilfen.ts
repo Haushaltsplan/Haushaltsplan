@@ -110,6 +110,158 @@ export type YahooJahresSnapshot = {
   capitalExpenditureUsd: number | null
   changeInWorkingCapitalUsd: number | null
   purchaseOfBusinessUsd: number | null
+  operatingCashFlowUsd: number | null
+  depreciationAmortizationUsd: number | null
+  goodwillUsd: number | null
+  cashAndEquivalentsUsd: number | null
+}
+
+export type RoicAdjustiertErgebnis = {
+  pct: number | null
+  hist: number[]
+  quelle: string | null
+  ocfUsd: number | null
+  maintenanceCapexUsd: number | null
+  icExGoodwillUsd: number | null
+}
+
+/** Erhaltungs-CapEx: D&A als Proxy (Standard bei fehlendem CapEx-Split). */
+export function erhaltungsCapexUsd(
+  capexUsd: number | null | undefined,
+  daUsd: number | null | undefined,
+): number | null {
+  const capexAbs = capexUsd != null && Number.isFinite(capexUsd) ? Math.abs(capexUsd) : null
+  const da = daUsd != null && Number.isFinite(daUsd) && daUsd > 0 ? daUsd : null
+  if (da != null && capexAbs != null) return Math.min(capexAbs, da)
+  if (da != null) return da
+  if (capexAbs != null) return capexAbs
+  return null
+}
+
+export function investedCapitalExGoodwillUsd(
+  debtUsd: number | null | undefined,
+  equityUsd: number | null | undefined,
+  cashUsd: number | null | undefined,
+  goodwillUsd: number | null | undefined,
+): number | null {
+  const ic = investedCapitalUsd(debtUsd, equityUsd, cashUsd)
+  if (ic == null) return null
+  const gw = goodwillUsd != null && Number.isFinite(goodwillUsd) ? goodwillUsd : 0
+  const adjusted = ic - gw
+  return adjusted > 0 ? adjusted : null
+}
+
+export function roicAdjustiertPctAusKomponenten(opts: {
+  ocfUsd: number | null | undefined
+  capexUsd: number | null | undefined
+  daUsd: number | null | undefined
+  debtUsd: number | null | undefined
+  equityUsd: number | null | undefined
+  cashUsd: number | null | undefined
+  goodwillUsd: number | null | undefined
+}): number | null {
+  if (opts.ocfUsd == null || !Number.isFinite(opts.ocfUsd)) return null
+  const maint = erhaltungsCapexUsd(opts.capexUsd, opts.daUsd)
+  if (maint == null) return null
+  const ic = investedCapitalExGoodwillUsd(
+    opts.debtUsd,
+    opts.equityUsd,
+    opts.cashUsd,
+    opts.goodwillUsd,
+  )
+  if (ic == null || ic <= 0) return null
+  return ((opts.ocfUsd - maint) / ic) * 100
+}
+
+function jahrAusIso(iso: string): string {
+  return iso.slice(0, 4)
+}
+
+function jahrAusDatum(datum: string): string {
+  return datum.slice(0, 4)
+}
+
+/** ROIC adjustiert aus Macrotrends (OCF/CapEx) + Yahoo-Bilanz (Schulden/EK/Cash/Goodwill/D&A). */
+export function berechneRoicAdjustiert(opts: {
+  perioden: FundamentalPeriode[] | undefined
+  ocfZeile: FundamentalMetrikZeile | undefined
+  capexZeile: FundamentalMetrikZeile | undefined
+  yahooFinanz: {
+    operatingCashFlowUsd?: number | null
+    annualHistorie: YahooJahresSnapshot[]
+  } | null
+  yahooKennzahlen: { totalDebt?: number; totalCash?: number } | null
+}): RoicAdjustiertErgebnis {
+  const hist: number[] = []
+  const fyKeys = opts.perioden?.filter((p) => !p.istLtm && !p.istSchaetzung).map((p) => p.iso) ?? []
+  const yahooByYear = new Map<string, YahooJahresSnapshot>()
+  for (const j of opts.yahooFinanz?.annualHistorie ?? []) {
+    yahooByYear.set(jahrAusDatum(j.datum), j)
+  }
+
+  for (const iso of fyKeys) {
+    const jahr = jahrAusIso(iso)
+    const y = yahooByYear.get(jahr)
+    const ocfMio = opts.ocfZeile?.werte[iso]
+    const capexMio = opts.capexZeile?.werte[iso]
+    if (ocfMio == null || y == null) continue
+    const pct = roicAdjustiertPctAusKomponenten({
+      ocfUsd: ocfMio * 1_000_000,
+      capexUsd: capexMio != null ? capexMio * 1_000_000 : y.capitalExpenditureUsd,
+      daUsd: y.depreciationAmortizationUsd,
+      debtUsd: y.totalDebtUsd,
+      equityUsd: y.stockholdersEquityUsd,
+      cashUsd: y.cashAndEquivalentsUsd,
+      goodwillUsd: y.goodwillUsd,
+    })
+    if (pct != null) hist.push(pct)
+  }
+
+  const latestYahoo = opts.yahooFinanz?.annualHistorie.at(-1)
+  const latestFy = fyKeys[fyKeys.length - 1]
+  const ocfMioLatest = latestFy ? opts.ocfZeile?.werte[latestFy] : null
+  const capexMioLatest = latestFy ? opts.capexZeile?.werte[latestFy] : null
+
+  const pct =
+    roicAdjustiertPctAusKomponenten({
+      ocfUsd:
+        opts.yahooFinanz?.operatingCashFlowUsd ??
+        (ocfMioLatest != null ? ocfMioLatest * 1_000_000 : null),
+      capexUsd:
+        capexMioLatest != null
+          ? capexMioLatest * 1_000_000
+          : latestYahoo?.capitalExpenditureUsd,
+      daUsd: latestYahoo?.depreciationAmortizationUsd,
+      debtUsd: latestYahoo?.totalDebtUsd ?? opts.yahooKennzahlen?.totalDebt,
+      equityUsd: latestYahoo?.stockholdersEquityUsd,
+      cashUsd: latestYahoo?.cashAndEquivalentsUsd ?? opts.yahooKennzahlen?.totalCash,
+      goodwillUsd: latestYahoo?.goodwillUsd,
+    }) ?? (hist.length > 0 ? hist[hist.length - 1]! : null)
+
+  const hatYahoo = Boolean(latestYahoo?.totalDebtUsd != null && latestYahoo?.stockholdersEquityUsd != null)
+  const hatMt = Boolean(opts.ocfZeile && opts.capexZeile)
+  const quelle =
+    pct != null && hatYahoo && hatMt
+      ? 'ROIC adj.: (OCF − Erhaltungs-CapEx) / IC ex Goodwill · OCF/CapEx Macrotrends, Bilanz Yahoo'
+      : pct != null && hatYahoo
+        ? 'ROIC adj.: Yahoo-Bilanz + OCF (teilweise Macrotrends)'
+        : null
+
+  const ocfUsd =
+    opts.yahooFinanz?.operatingCashFlowUsd ??
+    (ocfMioLatest != null ? ocfMioLatest * 1_000_000 : null)
+  const maint = erhaltungsCapexUsd(
+    capexMioLatest != null ? capexMioLatest * 1_000_000 : latestYahoo?.capitalExpenditureUsd,
+    latestYahoo?.depreciationAmortizationUsd,
+  )
+  const ic = investedCapitalExGoodwillUsd(
+    latestYahoo?.totalDebtUsd ?? opts.yahooKennzahlen?.totalDebt,
+    latestYahoo?.stockholdersEquityUsd,
+    latestYahoo?.cashAndEquivalentsUsd ?? opts.yahooKennzahlen?.totalCash,
+    latestYahoo?.goodwillUsd,
+  )
+
+  return { pct, hist, quelle, ocfUsd, maintenanceCapexUsd: maint, icExGoodwillUsd: ic }
 }
 
 export type IncrementalRoicErgebnis = {

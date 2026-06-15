@@ -24,7 +24,11 @@ function gruppiereBerichte(list: SecBerichtEintrag[]): { jahr: string; eintraege
     .map(([jahr, eintraege]) => ({
       jahr,
       eintraege: eintraege.sort((a, b) => {
-        if (a.formular !== b.formular) return a.formular === '10-K' ? -1 : 1
+        const prio = (f: SecBerichtEintrag['formular']) =>
+          f === '10-K' || f === 'IR-FY' ? 0 : f === '10-Q' || f === 'IR-Q' ? 1 : 2
+        const pa = prio(a.formular)
+        const pb = prio(b.formular)
+        if (pa !== pb) return pa - pb
         return (b.filingDatum ?? '').localeCompare(a.filingDatum ?? '')
       }),
     }))
