@@ -96,6 +96,18 @@ export type SellTriggerRef = {
   beschreibung: string
 }
 
+export type SellTriggerWatchStatus = 'warnung' | 'beobachten' | 'ok' | 'keine_daten'
+
+export type SellTriggerWatch = {
+  id: string
+  titel: string
+  beschreibung: string
+  status: SellTriggerWatchStatus
+  begruendung: string
+}
+
+export type MantraAmpel = 'gruen' | 'gelb' | 'rot' | 'grau'
+
 export type FundamentalMantraAudit = {
   sektorMantraId: string | null
   sektorMantraTitel: string | null
@@ -119,6 +131,12 @@ export type FundamentalMantraAudit = {
   /** Abschnitt 4 — Exit-Disziplin */
   sellTriggers: readonly SellTriggerRef[]
   sellTriggersHinweis: string
+  /** Automatisch geprüfte Sell-Trigger */
+  sellTriggerWatch: SellTriggerWatch[]
+  /** Ampel aus Dashboard + Sell-Triggers */
+  ampel: MantraAmpel
+  ampelScorePct: number | null
+  ampelHinweis: string
 }
 
 

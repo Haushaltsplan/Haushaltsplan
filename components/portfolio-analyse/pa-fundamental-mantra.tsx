@@ -4,7 +4,37 @@ import type {
   FundamentalMantraAudit,
   MantraAuditErgebnis,
   MantraAuditStatus,
+  MantraAmpel,
+  SellTriggerWatchStatus,
 } from '@/lib/portfolio-analyse/fundamentaldaten-types'
+
+const AMPEL_CLASS: Record<MantraAmpel, string> = {
+  gruen: 'bg-emerald-500/20 text-emerald-300 ring-emerald-500/40',
+  gelb: 'bg-amber-500/20 text-amber-200 ring-amber-500/40',
+  rot: 'bg-red-500/20 text-red-300 ring-red-500/40',
+  grau: 'bg-zinc-700/40 text-zinc-400 ring-zinc-600/40',
+}
+
+const AMPEL_LABEL: Record<MantraAmpel, string> = {
+  gruen: 'Grün',
+  gelb: 'Gelb',
+  rot: 'Rot',
+  grau: 'Grau',
+}
+
+const WATCH_CLASS: Record<SellTriggerWatchStatus, string> = {
+  warnung: 'bg-red-500/15 text-red-300 ring-red-500/30',
+  beobachten: 'bg-amber-500/15 text-amber-200 ring-amber-500/30',
+  ok: 'bg-emerald-500/15 text-emerald-300 ring-emerald-500/30',
+  keine_daten: 'bg-zinc-700/40 text-zinc-400 ring-zinc-600/40',
+}
+
+const WATCH_LABEL: Record<SellTriggerWatchStatus, string> = {
+  warnung: 'Warnung',
+  beobachten: 'Beobachten',
+  ok: 'OK',
+  keine_daten: 'Keine Daten',
+}
 
 const STATUS_LABEL: Record<MantraAuditStatus, string> = {
   erfuellt: 'Erfüllt',
@@ -115,13 +145,30 @@ function MantraAuditTabelle({
   )
 }
 
+function AmpelBadge({ ampel, scorePct }: { ampel: MantraAmpel; scorePct: number | null }) {
+  return (
+    <span
+      className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-sm font-semibold ring-1 ${AMPEL_CLASS[ampel]}`}
+    >
+      <span className="h-2.5 w-2.5 rounded-full bg-current opacity-80" />
+      {AMPEL_LABEL[ampel]}
+      {scorePct != null ? ` · ${scorePct}% Dashboard` : ''}
+    </span>
+  )
+}
+
 function ZusammenfassungLeiste({ audit }: { audit: FundamentalMantraAudit }) {
   const { zusammenfassung: z } = audit
   const scorePct =
     z.bewertbar > 0 ? Math.round((z.erfuellt / z.bewertbar) * 100) : null
 
   return (
-    <div className="flex flex-wrap items-center gap-2 rounded-xl border border-zinc-800/80 bg-zinc-950/50 px-4 py-3">
+    <div className="space-y-2">
+      <div className="flex flex-wrap items-center gap-2">
+        <AmpelBadge ampel={audit.ampel} scorePct={audit.ampelScorePct} />
+        <span className="text-xs text-zinc-500">{audit.ampelHinweis}</span>
+      </div>
+      <div className="flex flex-wrap items-center gap-2 rounded-xl border border-zinc-800/80 bg-zinc-950/50 px-4 py-3">
       {scorePct != null ? (
         <span className="rounded-full bg-teal-500/15 px-3 py-1 text-sm font-semibold text-teal-300 ring-1 ring-teal-500/25">
           {z.erfuellt}/{z.bewertbar} erfüllt ({scorePct}%)
@@ -144,6 +191,7 @@ function ZusammenfassungLeiste({ audit }: { audit: FundamentalMantraAudit }) {
           {z.qualitativ} qualitativ
         </span>
       ) : null}
+      </div>
     </div>
   )
 }
@@ -203,7 +251,35 @@ export function PaFundamentalMantra({ audit }: { audit: FundamentalMantraAudit }
 
       <section className="space-y-3">
         <div>
-          <h3 className="text-sm font-semibold tracking-tight text-white">4. Sell-Triggers</h3>
+          <h3 className="text-sm font-semibold tracking-tight text-white">4. Sell-Trigger-Watch</h3>
+          <p className="mt-1 text-sm text-zinc-400">
+            Regelbasiert aus LTM-Daten — ohne monatlichen LLM-Scan. Fließt in die Ampel ein.
+          </p>
+        </div>
+        <div className="space-y-2">
+          {audit.sellTriggerWatch.map((w) => (
+            <article
+              key={w.id}
+              className="rounded-xl border border-zinc-800/90 bg-zinc-950/40 px-4 py-3"
+            >
+              <div className="flex flex-wrap items-center gap-2">
+                <p className="text-sm font-medium text-white">{w.titel}</p>
+                <span
+                  className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold ring-1 ${WATCH_CLASS[w.status]}`}
+                >
+                  {WATCH_LABEL[w.status]}
+                </span>
+              </div>
+              <p className="mt-1 text-sm text-zinc-400">{w.beschreibung}</p>
+              <p className="mt-2 text-sm text-zinc-300">{w.begruendung}</p>
+            </article>
+          ))}
+        </div>
+      </section>
+
+      <section className="space-y-3">
+        <div>
+          <h3 className="text-sm font-semibold tracking-tight text-white">5. Sell-Triggers (Referenz)</h3>
           <p className="mt-1 text-sm text-zinc-400">{audit.sellTriggersHinweis}</p>
         </div>
         <ol className="list-decimal space-y-3 pl-5 text-sm leading-relaxed text-zinc-300">

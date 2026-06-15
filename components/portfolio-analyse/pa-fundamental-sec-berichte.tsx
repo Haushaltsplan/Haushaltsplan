@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { EarningsCallAnalyseDarstellung } from '@/components/portfolio-analyse/pa-earnings-call-analyse'
+import { PaFundamentalQuartalsDiff } from '@/components/portfolio-analyse/pa-fundamental-quartals-diff'
 import { PaCard } from '@/components/portfolio-analyse/pa-ui'
 import {
   erneuereSecBerichteKi,
@@ -94,7 +95,7 @@ export function PaFundamentalSecBerichte({
   const [laden, setLaden] = useState(false)
   const [berichtLaden, setBerichtLaden] = useState<string | null>(null)
   const [fehler, setFehler] = useState<string | null>(null)
-  const [detailTab, setDetailTab] = useState<'ki' | 'text'>('ki')
+  const [detailTab, setDetailTab] = useState<'ki' | 'text' | 'diff'>('ki')
   const datenRef = useRef<SecBerichtePaket | null>(null)
   datenRef.current = daten
 
@@ -179,6 +180,18 @@ export function PaFundamentalSecBerichte({
     () => daten?.berichte.find((b) => b.id === offeneId) ?? null,
     [daten, offeneId],
   )
+
+  const vorherBerichtMitKi = useMemo(() => {
+    if (!offenerBericht || !daten?.berichte.length) return null
+    const sorted = [...daten.berichte].sort((a, b) =>
+      (b.filingDatum ?? '').localeCompare(a.filingDatum ?? ''),
+    )
+    const idx = sorted.findIndex((b) => b.id === offenerBericht.id)
+    for (let i = idx + 1; i < sorted.length; i++) {
+      if (sorted[i].zusammenfassung) return sorted[i]
+    }
+    return null
+  }, [offenerBericht, daten?.berichte])
 
   const toggleBericht = (b: SecBerichtEintrag) => {
     if (offeneId === b.id) {
@@ -299,6 +312,19 @@ export function PaFundamentalSecBerichte({
                   >
                     Berichtstext
                   </button>
+                  {offenerBericht.zusammenfassung && vorherBerichtMitKi ? (
+                    <button
+                      type="button"
+                      onClick={() => setDetailTab('diff')}
+                      className={`rounded-md px-2 py-1 text-[10px] font-medium transition ${
+                        detailTab === 'diff'
+                          ? 'bg-violet-500/15 text-violet-200'
+                          : 'text-zinc-500 hover:text-zinc-300'
+                      }`}
+                    >
+                      Quartals-Diff
+                    </button>
+                  ) : null}
                 </div>
 
                 {detailTab === 'ki' ? (
@@ -328,6 +354,24 @@ export function PaFundamentalSecBerichte({
                   ) : (
                     <PaCard variant="glass" className="flex flex-1 items-center justify-center p-6">
                       <p className="text-sm text-zinc-500">Analyse wird vorbereitet …</p>
+                    </PaCard>
+                  )
+                ) : detailTab === 'diff' ? (
+                  offenerBericht.zusammenfassung && vorherBerichtMitKi ? (
+                    <PaFundamentalQuartalsDiff
+                      ticker={anfrageBasis.ticker}
+                      firmenname={firmenname}
+                      typ="sec_bericht"
+                      aktuellId={offenerBericht.id}
+                      vorherId={vorherBerichtMitKi.id}
+                      aktuellLabel={offenerBericht.label}
+                      vorherLabel={vorherBerichtMitKi.label}
+                    />
+                  ) : (
+                    <PaCard variant="glass" className="flex flex-1 items-center justify-center p-6">
+                      <p className="text-sm text-zinc-500">
+                        Quartals-Diff benötigt KI-Summaries für aktuellen und vorherigen Bericht.
+                      </p>
                     </PaCard>
                   )
                 ) : (

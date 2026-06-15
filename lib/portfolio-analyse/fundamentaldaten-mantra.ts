@@ -21,8 +21,11 @@ import type { YahooFundamentalKennzahlen } from '@/lib/portfolio-analyse/fundame
 import type { FundamentalSchaetzungenRoh } from '@/lib/portfolio-analyse/fundamentaldaten-schaetzungen-server'
 import type {
   FundamentalMantraAudit,
+  MantraAmpel,
   MantraAuditErgebnis,
   MantraAuditStatus,
+  SellTriggerWatch,
+  SellTriggerWatchStatus,
 } from '@/lib/portfolio-analyse/fundamentaldaten-types'
 import type { MacrotrendsFundamentalRoh } from '@/lib/portfolio-analyse/macrotrends-scraper-server'
 import type { MantraYahooFinanzdaten } from '@/lib/portfolio-analyse/yahoo-fundamentals-timeseries-server'
@@ -217,6 +220,115 @@ function evaluiereVerschuldungVerwaesserung(w: FundamentalKontextWerte) {
   return qualitativ(istWert, 'qualitativ', 'Teilweise bewertbar.')
 }
 
+function evaluiereSellTriggers(w: FundamentalKontextWerte): SellTriggerWatch[] {
+  const hist = w.roicAdjustiertHist.length > 0 ? w.roicAdjustiertHist : w.roicHist
+
+  let renditeStatus: SellTriggerWatchStatus = 'keine_daten'
+  let renditeBegr = 'ROIC-Zeitreihe nicht verfügbar.'
+  if (hist.length >= 3) {
+    const last3 = hist.slice(-3)
+    const fallend = last3[0]! > last3[1]! && last3[1]! > last3[2]!
+    const ltvSchwach = w.ltvCac != null && w.ltvCac < 3
+    if (fallend && ltvSchwach) {
+      renditeStatus = 'warnung'
+      renditeBegr = `ROIC adjustiert fällt 3 Jahre (${last3.map((v) => pct(v)).join(' → ')}); LTV/CAC ${w.ltvCac!.toFixed(1)}× <3×.`
+    } else if (fallend) {
+      renditeStatus = 'beobachten'
+      renditeBegr = `ROIC adjustiert fällt über 3 Jahre (${last3.map((v) => pct(v)).join(' → ')}).`
+    } else if (ltvSchwach) {
+      renditeStatus = 'beobachten'
+      renditeBegr = `LTV/CAC ${w.ltvCac!.toFixed(1)}× unter 3× — Unit Economics prüfen.`
+    } else {
+      renditeStatus = 'ok'
+      renditeBegr = 'Kein struktureller ROIC-Verfall über 3 Jahre erkennbar.'
+    }
+  }
+
+  let moatStatus: SellTriggerWatchStatus = 'keine_daten'
+  let moatBegr = 'Marktanteils- und Peer-Daten für Moat-Erosion nicht automatisch verfügbar.'
+  const margenDruck =
+    w.ebitMargeHist.length >= 2 &&
+    w.ebitMargeHist[w.ebitMargeHist.length - 1]! < w.ebitMargeHist[0]! - 2
+  const wachstumSchwach = w.revGrowthPct != null && w.revGrowthPct < 3
+  if (margenDruck && wachstumSchwach) {
+    moatStatus = 'beobachten'
+    moatBegr = 'EBIT-Marge unter Druck bei schwachem Umsatzwachstum — Peer-Vergleich und NRR prüfen.'
+  } else if (margenDruck) {
+    moatStatus = 'beobachten'
+    moatBegr = 'EBIT-Marge historisch gesunken — Preissetzungsmacht/Moat im Auge behalten.'
+  } else if (w.revGrowthPct != null) {
+    moatStatus = 'ok'
+    moatBegr = 'Keine automatische Moat-Erosion erkannt (Margendruck + Wachstumsstagnation).'
+  }
+
+  let wachstumStatus: SellTriggerWatchStatus = 'keine_daten'
+  let wachstumBegr = 'Umsatz-/EPS-Zeitreihen unvollständig.'
+  const revStagniert = w.revGrowthPct != null && w.revGrowthPct < 4
+  const epsSteigend = w.epsCagr3 != null && w.epsCagr3 > 5
+  const hoheVerwaesserung =
+    w.aktienVerwaesserungJaehrlichPct != null && w.aktienVerwaesserungJaehrlichPct > 2
+  if (revStagniert && epsSteigend && hoheVerwaesserung) {
+    wachstumStatus = 'warnung'
+    wachstumBegr = `Umsatzwachstum ${pct(w.revGrowthPct)} bei EPS-CAGR ${pct(w.epsCagr3)} und Verwässerung ${pct(w.aktienVerwaesserungJaehrlichPct)} p.a. — kosmetisches Wachstum prüfen.`
+  } else if (revStagniert && epsSteigend) {
+    wachstumStatus = 'beobachten'
+    wachstumBegr = 'EPS wächst bei schwachem Umsatz — Buybacks/Non-GAAP in Berichten prüfen.'
+  } else if (w.revGrowthPct != null) {
+    wachstumStatus = 'ok'
+    wachstumBegr = 'Kein Muster „stagnierender Umsatz + steigendes EPS + hohe Verwässerung“.'
+  }
+
+  return SELL_TRIGGERS.map((t) => {
+    if (t.id === 'rendite-verfall') {
+      return { id: t.id, titel: t.titel, beschreibung: t.beschreibung, status: renditeStatus, begruendung: renditeBegr }
+    }
+    if (t.id === 'burggraben-erosion') {
+      return { id: t.id, titel: t.titel, beschreibung: t.beschreibung, status: moatStatus, begruendung: moatBegr }
+    }
+    return { id: t.id, titel: t.titel, beschreibung: t.beschreibung, status: wachstumStatus, begruendung: wachstumBegr }
+  })
+}
+
+function berechneAmpel(
+  sum: {
+    erfuellt: number
+    nichtErfuellt: number
+    keineDaten: number
+    qualitativ: number
+    bewertbar: number
+  },
+  watch: SellTriggerWatch[],
+): { ampel: MantraAmpel; scorePct: number | null; hinweis: string } {
+  const hatWarnung = watch.some((w) => w.status === 'warnung')
+  const hatBeobachten = watch.some((w) => w.status === 'beobachten')
+  const scorePct = sum.bewertbar > 0 ? Math.round((sum.erfuellt / sum.bewertbar) * 100) : null
+
+  if (hatWarnung) {
+    return {
+      ampel: 'rot',
+      scorePct,
+      hinweis: 'Mindestens ein Sell-Trigger aktiv — Investmenthypothese prüfen.',
+    }
+  }
+  if (sum.bewertbar === 0) {
+    return { ampel: 'grau', scorePct: null, hinweis: 'Zu wenig Daten für Ampel-Bewertung.' }
+  }
+  if (sum.nichtErfuellt > 0 || hatBeobachten || (scorePct != null && scorePct < 60)) {
+    return {
+      ampel: 'gelb',
+      scorePct,
+      hinweis: hatBeobachten
+        ? 'Beobachtungsmodus — Sell-Trigger oder Dashboard offen.'
+        : 'Dashboard teilweise offen — Qualität prüfen.',
+    }
+  }
+  return {
+    ampel: 'gruen',
+    scorePct,
+    hinweis: 'Operative Kennzahlen und Sell-Triggers ohne Warnung.',
+  }
+}
+
 function evaluiereZeile(zeile: MantraZeile, _ctx: MantraKontext, w: FundamentalKontextWerte): {
   istWert: string | null
   status: MantraAuditStatus
@@ -276,6 +388,8 @@ export function baueMantraAudit(
 
   const standard = auditZeilen(INVESTMENT_MANTRA, ctx, w)
   const sum = zusammenfassung(standard)
+  const sellTriggerWatch = evaluiereSellTriggers(w)
+  const ampelInfo = berechneAmpel(sum, sellTriggerWatch)
 
   return {
     sektorMantraId: null,
@@ -291,6 +405,10 @@ export function baueMantraAudit(
     moatPlattformZusatz: MOAT_CHECK_PLATTFORM_ZUSATZ,
     sellTriggers: SELL_TRIGGERS,
     sellTriggersHinweis: SELL_TRIGGERS_HINWEIS,
+    sellTriggerWatch,
+    ampel: ampelInfo.ampel,
+    ampelScorePct: ampelInfo.scorePct,
+    ampelHinweis: ampelInfo.hinweis,
   }
 }
 

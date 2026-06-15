@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { EarningsCallAnalyseDarstellung } from '@/components/portfolio-analyse/pa-earnings-call-analyse'
+import { PaFundamentalQuartalsDiff } from '@/components/portfolio-analyse/pa-fundamental-quartals-diff'
 import { PaCard } from '@/components/portfolio-analyse/pa-ui'
 import {
   erneuereEarningsCallKi,
@@ -184,6 +185,19 @@ export function PaFundamentalEarningsCallSpalte({
     [daten, offenesQuartalId],
   )
 
+  const vorherQuartalMitKi = useMemo(() => {
+    if (!offenesQuartal || !daten?.quartale.length) return null
+    const sorted = [...daten.quartale].sort((a, b) => {
+      if (a.jahr !== b.jahr) return b.jahr - a.jahr
+      return b.quartal - a.quartal
+    })
+    const idx = sorted.findIndex((q) => q.id === offenesQuartal.id)
+    for (let i = idx + 1; i < sorted.length; i++) {
+      if (sorted[i].zusammenfassung) return sorted[i]
+    }
+    return null
+  }, [offenesQuartal, daten?.quartale])
+
   const toggleQuartal = (id: string) => {
     if (offenesQuartalId === id) {
       setOffenesQuartalId(null)
@@ -305,6 +319,18 @@ export function PaFundamentalEarningsCallSpalte({
                     </div>
                     <EarningsCallAnalyseDarstellung text={offenesQuartal.zusammenfassung} />
                   </PaCard>
+                ) : null}
+
+                {offenesQuartal.zusammenfassung && vorherQuartalMitKi ? (
+                  <PaFundamentalQuartalsDiff
+                    ticker={anfrageBasis.ticker}
+                    firmenname={firmenname}
+                    typ="earnings_call"
+                    aktuellId={offenesQuartal.id}
+                    vorherId={vorherQuartalMitKi.id}
+                    aktuellLabel={offenesQuartal.label}
+                    vorherLabel={vorherQuartalMitKi.label}
+                  />
                 ) : null}
               </div>
             )}

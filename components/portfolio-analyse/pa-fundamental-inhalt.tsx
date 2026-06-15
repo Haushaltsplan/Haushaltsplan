@@ -3,7 +3,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { PaFundamentalQuartalszahlen } from '@/components/portfolio-analyse/pa-fundamental-quartalszahlen'
 import { PaFundamentalMantra } from '@/components/portfolio-analyse/pa-fundamental-mantra'
+import { PaFundamentalMaterialEvents } from '@/components/portfolio-analyse/pa-fundamental-material-events'
 import { PaFundamentalNews } from '@/components/portfolio-analyse/pa-fundamental-news'
+import { PaFundamentalPeerVergleich } from '@/components/portfolio-analyse/pa-fundamental-peer-vergleich'
 import { PaFundamentalUebersicht } from '@/components/portfolio-analyse/pa-fundamental-uebersicht'
 import { PaFundamentalUnternehmenHeader } from '@/components/portfolio-analyse/pa-fundamental-unternehmen-header'
 import { PaFundamentalMetrikChart } from '@/components/portfolio-analyse/pa-fundamental-metrik-chart'
@@ -13,7 +15,6 @@ import {
   ladeFundamentaldatenAusLocalCache,
   ladeFundamentaldatenClient,
 } from '@/lib/portfolio-analyse/fundamentaldaten-client'
-import { baueMantraAudit } from '@/lib/portfolio-analyse/fundamentaldaten-mantra'
 import { keyMetricNavZiel } from '@/lib/portfolio-analyse/fundamentaldaten-key-metric-nav'
 import type {
   FundamentaldatenAnfrage,
@@ -93,27 +94,6 @@ export function PaFundamentalInhalt({
       cancelled = true
     }
   }, [effektiveAnfrage])
-
-  const mantraAudit = useMemo(() => {
-    if (!daten?.ok) return null
-    const meta = daten.mantraMeta
-    if (meta && daten.zeilen.length > 0) {
-      return baueMantraAudit(
-        daten.sektor,
-        daten.branche,
-        {
-          beta: meta.beta ?? undefined,
-          marketCap: meta.marketCapUsd ?? undefined,
-          totalDebt: meta.totalDebtUsd ?? undefined,
-          totalCash: meta.totalCashUsd ?? undefined,
-        },
-        { perioden: daten.perioden, zeilen: daten.zeilen },
-        { perioden: [], zeilen: [] },
-        meta.yahooFinanz,
-      )
-    }
-    return daten.mantra
-  }, [daten])
 
   const toggleChartZeile = useCallback((id: string) => {
     setChartAktiv((prev) => {
@@ -206,7 +186,12 @@ export function PaFundamentalInhalt({
             />
           ) : null}
 
-          {unterTab === 'mantra' && mantraAudit ? <PaFundamentalMantra audit={mantraAudit} /> : null}
+          {unterTab === 'mantra' && daten.mantra ? (
+            <div className="space-y-4">
+              <PaFundamentalMantra audit={daten.mantra} />
+              <PaFundamentalPeerVergleich ticker={daten.ticker} isin={anfrage.isin ?? null} />
+            </div>
+          ) : null}
 
           {unterTab === 'quartalszahlen' ? (
             <PaFundamentalQuartalszahlen
@@ -217,7 +202,17 @@ export function PaFundamentalInhalt({
             />
           ) : null}
 
-          {unterTab === 'news' ? <PaFundamentalNews artikel={daten.news} /> : null}
+          {unterTab === 'news' ? (
+            <div className="space-y-4">
+              <PaFundamentalMaterialEvents
+                ticker={daten.ticker}
+                firmenname={daten.firmenname}
+                isin={anfrage.isin ?? null}
+                selectionKey={selectionKey}
+              />
+              <PaFundamentalNews artikel={daten.news} />
+            </div>
+          ) : null}
 
           {unterTab !== 'uebersicht' &&
           unterTab !== 'news' &&
