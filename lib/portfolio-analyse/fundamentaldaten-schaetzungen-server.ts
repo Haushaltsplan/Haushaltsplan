@@ -1,6 +1,7 @@
 import 'server-only'
 
 import { ladeFinnhubJahresForecast } from '@/lib/portfolio-analyse/finnhub-jahres-schaetzungen-server'
+import type { EarningsSchaetzungen } from '@/lib/portfolio-analyse/earnings-schaetzungen'
 import {
   FUNDAMENTAL_FY0E_KEY,
   FUNDAMENTAL_FY1E_KEY,
@@ -9,8 +10,11 @@ import {
   type FundamentalPeriode,
 } from '@/lib/portfolio-analyse/fundamentaldaten-types'
 import { ladeMarketscreenerJahresForecast } from '@/lib/portfolio-analyse/marketscreener-jahres-consensus-server'
+import type { MarketscreenerJahresForecast } from '@/lib/portfolio-analyse/marketscreener-jahres-consensus-server'
+import type { FinnhubJahresForecast } from '@/lib/portfolio-analyse/finnhub-jahres-schaetzungen-server'
 import {
   ladeStockanalysisJahresForecast,
+  type StockanalysisJahresForecast,
   type StockanalysisJahresForecastEintrag,
 } from '@/lib/portfolio-analyse/stockanalysis-forecast-server'
 import { ladeWallstreetEarningsSchaetzungen } from '@/lib/portfolio-analyse/wallstreet-earnings-schaetzungen-server'
@@ -111,6 +115,116 @@ async function ladeYahooTrend(symbol: string): Promise<{
   }
 
   return { fy0: ausTrend(fy0), fy1: ausTrend(fy1) }
+}
+
+function leererJahresEintrag(jahr: number): StockanalysisJahresForecastEintrag {
+  return {
+    jahr,
+    periodenEnde: `${jahr}-12-31`,
+    umsatzUsd: null,
+    operatingIncomeUsd: null,
+    netIncomeUsd: null,
+    freeCashFlowUsd: null,
+    grossProfitUsd: null,
+    eps: null,
+    adjustedEps: null,
+    grossMarginPct: null,
+    revenueGrowthPct: null,
+    epsGrowthPct: null,
+    istSchätzung: true,
+  }
+}
+
+function hatJahresWert(e: StockanalysisJahresForecastEintrag): boolean {
+  return (
+    e.umsatzUsd != null ||
+    e.operatingIncomeUsd != null ||
+    e.netIncomeUsd != null ||
+    e.freeCashFlowUsd != null ||
+    e.grossProfitUsd != null ||
+    e.eps != null
+  )
+}
+
+function ergaenzeWachstumAusReihe(eintraege: StockanalysisJahresForecastEintrag[]): void {
+  for (let i = 1; i < eintraege.length; i++) {
+    const prev = eintraege[i - 1]!
+    const cur = eintraege[i]!
+    if (cur.revenueGrowthPct == null) {
+      cur.revenueGrowthPct = wachstumPct(cur.umsatzUsd, prev.umsatzUsd)
+    }
+    if (cur.epsGrowthPct == null) {
+      cur.epsGrowthPct = wachstumPct(cur.eps, prev.eps)
+    }
+  }
+}
+
+function wsKennzahlMio(ws: EarningsSchaetzungen | null, schluessel: string): number | null {
+  const v = ws?.kennzahlen.find((k) => k.schluessel === schluessel)?.spanne.average
+  return v != null && Number.isFinite(v) ? v : null
+}
+
+/** StockAnalysis-Basis + Marketscreener/Finnhub/Wallstreet für FY+2 und weiter. */
+function mergeJahresSchaetzungen(opts: {
+  stockanalysis: StockanalysisJahresForecast | null
+  marketscreener: MarketscreenerJahresForecast | null
+  finnhub: FinnhubJahresForecast | null
+  wallstreet: EarningsSchaetzungen | null
+}): StockanalysisJahresForecastEintrag[] {
+  const byJahr = new Map<number, StockanalysisJahresForecastEintrag>()
+
+  for (const e of opts.stockanalysis?.jahresreihe?.filter((x) => x.istSchätzung) ?? []) {
+    byJahr.set(e.jahr, { ...e })
+  }
+
+  for (const ms of opts.marketscreener?.jahresreihe ?? []) {
+    if (ms.jahr <= 2000) continue
+    const cur = byJahr.get(ms.jahr) ?? leererJahresEintrag(ms.jahr)
+    if (cur.umsatzUsd == null && ms.umsatzUsd != null) cur.umsatzUsd = ms.umsatzUsd
+    if (cur.netIncomeUsd == null && ms.netIncomeUsd != null) cur.netIncomeUsd = ms.netIncomeUsd
+    byJahr.set(ms.jahr, cur)
+  }
+
+  for (const fh of opts.finnhub?.jahresreihe ?? []) {
+    const cur = byJahr.get(fh.jahr) ?? leererJahresEintrag(fh.jahr)
+    if (cur.umsatzUsd == null && fh.umsatzUsd != null) cur.umsatzUsd = fh.umsatzUsd
+    if (cur.eps == null && fh.eps != null) cur.eps = fh.eps
+    byJahr.set(fh.jahr, cur)
+  }
+
+  const wsJahr = opts.wallstreet?.jahr
+  if (wsJahr != null && wsJahr > 2000) {
+    const cur = byJahr.get(wsJahr) ?? leererJahresEintrag(wsJahr)
+    if (cur.eps == null) {
+      const eps = wsKennzahlMio(opts.wallstreet, 'eps')
+      if (eps != null) cur.eps = eps
+    }
+    if (cur.operatingIncomeUsd == null) {
+      const ebitMio = wsKennzahlMio(opts.wallstreet, 'ebit')
+      if (ebitMio != null) cur.operatingIncomeUsd = ebitMio * 1_000_000
+    }
+    if (cur.freeCashFlowUsd == null) {
+      const fcfMio = wsKennzahlMio(opts.wallstreet, 'free_cashflow')
+      if (fcfMio != null) cur.freeCashFlowUsd = fcfMio * 1_000_000
+    }
+    if (cur.umsatzUsd == null && opts.wallstreet?.umsatz.average != null) {
+      cur.umsatzUsd = opts.wallstreet.umsatz.average
+    }
+    byJahr.set(wsJahr, cur)
+  }
+
+  const reihe = [...byJahr.values()].filter(hatJahresWert).sort((a, b) => a.jahr - b.jahr)
+  ergaenzeWachstumAusReihe(reihe)
+  return reihe
+}
+
+function baueRohAusJahresreihe(
+  eintraege: StockanalysisJahresForecastEintrag[],
+  quelle: FundamentalSchaetzungenRoh['quelle'],
+): FundamentalSchaetzungenRoh {
+  const schaetz = eintraege.filter((e) => e.istSchätzung)
+  if (schaetz.length === 0) return { perioden: [], zeilen: [] }
+  return { ...baueRohAusStockanalysisReihe(schaetz), quelle }
 }
 
 function baueRohAusStockanalysisReihe(
@@ -385,6 +499,27 @@ export async function ladeFundamentalSchaetzungen(
     /* Yahoo füllt Lücken — zählt als kombiniert */
   }
 
+  const saSchaetz = mergeJahresSchaetzungen({
+    stockanalysis,
+    marketscreener,
+    finnhub,
+    wallstreet,
+  })
+  if (saSchaetz.length > 0) {
+    const quellenUsed: NonNullable<FundamentalSchaetzungenRoh['quelle']>[] = []
+    if (stockanalysis?.jahresreihe?.some((e) => e.istSchätzung)) quellenUsed.push('stockanalysis')
+    if (marketscreener?.jahresreihe?.length) quellenUsed.push('marketscreener')
+    if (finnhub?.jahresreihe?.length) quellenUsed.push('finnhub')
+    if (wallstreet) quellenUsed.push('wallstreet')
+    const mergedQuelle: FundamentalSchaetzungenRoh['quelle'] =
+      quellenUsed.length === 0
+        ? 'kombiniert'
+        : quellenUsed.length === 1
+          ? quellenUsed[0]!
+          : 'kombiniert'
+    return baueRohAusJahresreihe(saSchaetz, mergedQuelle)
+  }
+
   if (
     fy0.umsatzMio == null &&
     fy0.eps == null &&
@@ -402,12 +537,6 @@ export async function ladeFundamentalSchaetzungen(
         : yahoo && !yahooNurFallback
           ? 'kombiniert'
           : 'kombiniert'
-
-  const saSchaetz = stockanalysis?.jahresreihe?.filter((e) => e.istSchätzung) ?? []
-  if (saSchaetz.length > 0) {
-    const roh = baueRohAusStockanalysisReihe(stockanalysis!.jahresreihe)
-    if (roh.perioden.length > 0) return roh
-  }
 
   return baueRohAusMerge(fy0, fy1, quelle)
 }

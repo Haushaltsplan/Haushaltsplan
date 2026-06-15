@@ -24,6 +24,12 @@ type EstimateRow = {
   epsAvg?: number
 }
 
+export type FinnhubJahresForecastEintrag = {
+  jahr: number
+  umsatzUsd: number | null
+  eps: number | null
+}
+
 export type FinnhubJahresForecast = {
   quelle: 'finnhub'
   fy0Jahr: number | null
@@ -32,6 +38,7 @@ export type FinnhubJahresForecast = {
   umsatzUsdFy1: number | null
   epsFy0: number | null
   epsFy1: number | null
+  jahresreihe: FinnhubJahresForecastEintrag[]
 }
 
 async function ladeAnnualEstimates(symbol: string, kind: 'revenue' | 'eps'): Promise<EstimateRow[]> {
@@ -61,6 +68,14 @@ async function ladeAnnualEstimates(symbol: string, kind: 'revenue' | 'eps'): Pro
   return []
 }
 
+function zukuenftigeAnnualZeilen(rows: EstimateRow[], maxJahre = 6): EstimateRow[] {
+  const heuteJahr = new Date().getUTCFullYear()
+  return [...rows]
+    .filter((r) => r.year != null && (r.year ?? 0) >= heuteJahr)
+    .sort((a, b) => (a.year ?? 0) - (b.year ?? 0))
+    .slice(0, maxJahre)
+}
+
 function naechsteAnnualZeilen(rows: EstimateRow[]): EstimateRow[] {
   const heuteJahr = new Date().getUTCFullYear()
   const sorted = [...rows]
@@ -68,6 +83,25 @@ function naechsteAnnualZeilen(rows: EstimateRow[]): EstimateRow[] {
     .sort((a, b) => (a.year ?? 0) - (b.year ?? 0))
   const future = sorted.filter((r) => (r.year ?? 0) >= heuteJahr)
   return (future.length >= 2 ? future.slice(0, 2) : sorted.slice(-2)).slice(0, 2)
+}
+
+function baueJahresreihe(revRows: EstimateRow[], epsRows: EstimateRow[]): FinnhubJahresForecastEintrag[] {
+  const byJahr = new Map<number, FinnhubJahresForecastEintrag>()
+  for (const r of zukuenftigeAnnualZeilen(revRows)) {
+    const jahr = r.year!
+    byJahr.set(jahr, {
+      jahr,
+      umsatzUsd: r.revenueAvg ?? null,
+      eps: byJahr.get(jahr)?.eps ?? null,
+    })
+  }
+  for (const r of zukuenftigeAnnualZeilen(epsRows)) {
+    const jahr = r.year!
+    const cur = byJahr.get(jahr) ?? { jahr, umsatzUsd: null, eps: null }
+    cur.eps = r.epsAvg ?? null
+    byJahr.set(jahr, cur)
+  }
+  return [...byJahr.values()].sort((a, b) => a.jahr - b.jahr)
 }
 
 /** Finnhub Annual Revenue/EPS Estimates (API-Key nötig). */
@@ -80,6 +114,7 @@ export async function ladeFinnhubJahresForecast(symbol: string): Promise<Finnhub
 
   const revFuture = naechsteAnnualZeilen(revRows)
   const epsFuture = naechsteAnnualZeilen(epsRows)
+  const jahresreihe = baueJahresreihe(revRows, epsRows)
 
   return {
     quelle: 'finnhub',
@@ -89,5 +124,6 @@ export async function ladeFinnhubJahresForecast(symbol: string): Promise<Finnhub
     umsatzUsdFy1: revFuture[1]?.revenueAvg ?? null,
     epsFy0: epsFuture[0]?.epsAvg ?? null,
     epsFy1: epsFuture[1]?.epsAvg ?? null,
+    jahresreihe,
   }
 }

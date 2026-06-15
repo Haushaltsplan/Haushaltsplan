@@ -60,6 +60,12 @@ function parseKonsensTabelle(html: string): {
   return { headers, zeilen }
 }
 
+export type MarketscreenerJahresForecastEintrag = {
+  jahr: number
+  umsatzUsd: number | null
+  netIncomeUsd: number | null
+}
+
 export type MarketscreenerJahresForecast = {
   quelle: 'marketscreener'
   fy0Jahr: number | null
@@ -69,6 +75,8 @@ export type MarketscreenerJahresForecast = {
   umsatzBasisUsd: number | null
   umsatzWachstumFy0Pct: number | null
   umsatzWachstumFy1Pct: number | null
+  /** Alle Schätzungs-Spalten der Konsens-Tabelle (oft FY+2 / FY+3). */
+  jahresreihe: MarketscreenerJahresForecastEintrag[]
 }
 
 function parseJahresKonsensVoll(html: string): MarketscreenerJahresForecast | null {
@@ -79,6 +87,7 @@ function parseJahresKonsensVoll(html: string): MarketscreenerJahresForecast | nu
   if (estIdx.length === 0) return null
 
   const umsatz = tab.zeilen['Net sales'] ?? []
+  const netIncome = tab.zeilen['Net income'] ?? []
   const fy0Idx = estIdx[0]!
   const fy1Idx = estIdx[1]
   const umsatzUsdFy0 = umsatz[fy0Idx] ?? null
@@ -88,6 +97,12 @@ function parseJahresKonsensVoll(html: string): MarketscreenerJahresForecast | nu
   const basisIdx = fy0Idx > 0 ? fy0Idx - 1 : -1
   const umsatzBasisUsd = basisIdx >= 0 ? (umsatz[basisIdx] ?? null) : null
   const basisFy1 = fy1Idx != null && fy1Idx > 0 ? (umsatz[fy1Idx - 1] ?? null) : null
+
+  const jahresreihe: MarketscreenerJahresForecastEintrag[] = estIdx.map((i) => ({
+    jahr: tab.headers[i]?.jahr ?? 0,
+    umsatzUsd: umsatz[i] ?? null,
+    netIncomeUsd: netIncome[i] ?? null,
+  })).filter((e) => e.jahr > 2000 && (e.umsatzUsd != null || e.netIncomeUsd != null))
 
   return {
     quelle: 'marketscreener',
@@ -99,6 +114,7 @@ function parseJahresKonsensVoll(html: string): MarketscreenerJahresForecast | nu
     umsatzWachstumFy0Pct: wachstumProzent(umsatzUsdFy0, umsatzBasisUsd),
     umsatzWachstumFy1Pct:
       umsatzUsdFy1 != null && basisFy1 != null ? wachstumProzent(umsatzUsdFy1, umsatzUsdFy0) : null,
+    jahresreihe,
   }
 }
 
