@@ -17,6 +17,7 @@ export async function POST(req: Request) {
     const paket = await ladeEarningsBeatMissHistorie({
       ticker,
       symbolYahoo: body.symbolYahoo != null ? String(body.symbolYahoo).trim() || null : null,
+      isin: body.isin != null ? String(body.isin).trim() || null : null,
       limit: body.limit != null ? Number(body.limit) : 8,
       force: Boolean(body.force),
     })
@@ -27,6 +28,7 @@ export async function POST(req: Request) {
       {
         ok: false,
         ticker: '',
+        quelle: null,
         quartale: [],
         epsBeatRatePct: null,
         umsatzBeatRatePct: null,

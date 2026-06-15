@@ -27,10 +27,12 @@ function BeatMissBadge({ anzeige }: { anzeige: string | null }) {
 export function PaFundamentalBeatMiss({
   ticker,
   symbolYahoo,
+  isin,
   selectionKey,
 }: {
   ticker: string | null
   symbolYahoo?: string | null
+  isin?: string | null
   selectionKey?: string
 }) {
   const [daten, setDaten] = useState<EarningsBeatMissPaket | null>(null)
@@ -43,7 +45,7 @@ export function PaFundamentalBeatMiss({
       const res = await fetch('/api/portfolio-analyse/earnings-beat-miss', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ticker, symbolYahoo, limit: 8 }),
+        body: JSON.stringify({ ticker, symbolYahoo, isin, limit: 8 }),
         signal: AbortSignal.timeout(60_000),
       })
       setDaten((await res.json()) as EarningsBeatMissPaket)
@@ -52,7 +54,7 @@ export function PaFundamentalBeatMiss({
     } finally {
       setLaden(false)
     }
-  }, [ticker, symbolYahoo])
+  }, [ticker, symbolYahoo, isin])
 
   useEffect(() => {
     setDaten(null)
@@ -65,7 +67,10 @@ export function PaFundamentalBeatMiss({
     <PaCard className="space-y-3 overflow-hidden p-4">
       <div>
         <h3 className="text-sm font-semibold text-white">Earnings Beat/Miss-Historie</h3>
-        <p className="text-xs text-zinc-500">Letzte 8 Quartale · EPS & Umsatz vs. Konsens (Yahoo)</p>
+        <p className="text-xs text-zinc-500">
+          Letzte 8 Quartale · EPS & Umsatz vs. Konsens
+          {daten?.quelle ? ` (${daten.quelle === 'marketbeat' ? 'MarketBeat' : daten.quelle === 'finnhub' ? 'Finnhub' : 'MarketBeat + Finnhub'})` : ''}
+        </p>
       </div>
 
       {laden && !daten ? <p className="text-sm text-zinc-500">Lädt …</p> : null}

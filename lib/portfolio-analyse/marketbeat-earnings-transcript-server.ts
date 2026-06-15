@@ -53,7 +53,7 @@ const YAHOO_SUFFIX_ZU_MB: Record<string, string> = {
   T: 'TYO',
 }
 
-function marketbeatBoersenKandidaten(symbolYahoo: string | null | undefined, ticker: string): string[] {
+export function marketbeatBoersenKandidaten(symbolYahoo: string | null | undefined, ticker: string): string[] {
   const sym = (symbolYahoo ?? ticker).trim().toUpperCase()
   const base = sym.includes('.') ? sym.split('.')[0]! : sym
   const out: string[] = []
@@ -76,6 +76,10 @@ function sleep(ms: number): Promise<void> {
 function normalisiereTicker(ticker: string): string {
   const t = ticker.trim().toUpperCase().replace(/[^A-Z0-9.-]/g, '')
   return t.includes('.') ? t.split('.')[0] : t
+}
+
+export function marketbeatBasisTicker(ticker: string, symbolYahoo?: string | null): string {
+  return normalisiereTicker(symbolYahoo ?? ticker)
 }
 
 function firmennameZuSlug(name: string): string {

@@ -3,15 +3,14 @@
 import 'server-only'
 
 import {
+  beatMissAusSurprisePercent,
   beatMissProzent,
   formatBeatMissProzent,
 } from '@/lib/portfolio-analyse/earnings-beat-miss'
 import type { QuartalsPrognoseMetrik } from '@/lib/portfolio-analyse/earnings-quartals-prognose'
 import { formatEpsUsd, formatKompaktUsd } from '@/lib/portfolio-analyse/earnings-quartals-prognose'
-import {
-  holeYahooFinanceAuth,
-  YAHOO_FINANCE_FETCH_HEADERS,
-} from '@/lib/portfolio-analyse/yahoo-finance-auth-server'
+import { ladeFinnhubBeatMissHistorie } from '@/lib/portfolio-analyse/finnhub-beat-miss-historie-server'
+import { ladeMarketbeatBeatMissHistorie } from '@/lib/portfolio-analyse/marketbeat-beat-miss-historie-server'
 
 const CACHE_MS = 6 * 60 * 60 * 1000
 const cache = new Map<string, { at: number; data: EarningsBeatMissPaket }>()
@@ -30,9 +29,12 @@ export type BeatMissQuartal = {
   umsatz: BeatMissMetrik
 }
 
+export type BeatMissQuelle = 'marketbeat' | 'finnhub' | 'kombiniert'
+
 export type EarningsBeatMissPaket = {
   ok: boolean
   ticker: string
+  quelle: BeatMissQuelle | null
   quartale: BeatMissQuartal[]
   epsBeatRatePct: number | null
   umsatzBeatRatePct: number | null
@@ -45,33 +47,18 @@ export type EarningsBeatMissPaket = {
   fehler?: string | null
 }
 
-type HistoryRow = {
-  epsActual?: { raw?: number }
-  epsEstimate?: { raw?: number }
-  revenueActual?: { raw?: number }
-  revenueEstimate?: { raw?: number }
-  quarter?: { raw?: number }
-  period?: string
-}
-
-function quartalLabel(row: HistoryRow): string | null {
-  const q = row.quarter?.raw
-  const period = row.period
-  if (q != null && period) {
-    const jahr = Number(String(period).slice(0, 4))
-    if (Number.isFinite(jahr)) return `Q${q} ${jahr}`
-  }
-  return null
-}
-
 function metrikZeile(
   metrik: QuartalsPrognoseMetrik,
   ist: number | null | undefined,
   schaetzung: number | null | undefined,
+  surpriseOverride?: number | null,
 ): BeatMissMetrik {
   const istVal = ist != null && Number.isFinite(ist) ? ist : null
   const schVal = schaetzung != null && Number.isFinite(schaetzung) ? schaetzung : null
-  const surprisePct = beatMissProzent(istVal, schVal)
+  const surprisePct =
+    surpriseOverride != null
+      ? beatMissAusSurprisePercent(surpriseOverride) ?? beatMissProzent(istVal, schVal)
+      : beatMissProzent(istVal, schVal)
   return {
     ist: istVal,
     schaetzung: schVal,
@@ -91,7 +78,7 @@ function baueGuidanceHinweis(
   bewertbarUmsatz: number,
 ): string {
   if (bewertbarEps === 0 && bewertbarUmsatz === 0) {
-    return 'Keine vergleichbaren Schätzungen in der Yahoo-Historie.'
+    return 'Keine vergleichbaren Schätzungen gefunden (MarketBeat / Finnhub).'
   }
   const parts: string[] = []
   if (bewertbarEps > 0) {
@@ -107,59 +94,83 @@ function baueGuidanceHinweis(
   return parts.join(' · ')
 }
 
-async function ladeHistoryRows(symbol: string): Promise<HistoryRow[]> {
-  const sym = symbol.trim().toUpperCase()
-  if (!sym) return []
-  const auth = await holeYahooFinanceAuth()
-  if (!auth) return []
-  const u = new URL(`https://query2.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(sym)}`)
-  u.searchParams.set('modules', 'earningsHistory')
-  u.searchParams.set('crumb', auth.crumb)
-  const res = await fetch(u.toString(), {
-    headers: { ...YAHOO_FINANCE_FETCH_HEADERS, Cookie: auth.cookie },
-    cache: 'no-store',
-  })
-  if (!res.ok) return []
-  const history = (await res.json()).quoteSummary?.result?.[0]?.earningsHistory?.history ?? []
-  return Array.isArray(history) ? (history as HistoryRow[]) : []
+function mergeQuartale(
+  mb: Awaited<ReturnType<typeof ladeMarketbeatBeatMissHistorie>>,
+  fh: Awaited<ReturnType<typeof ladeFinnhubBeatMissHistorie>>,
+  limit: number,
+): { quartale: BeatMissQuartal[]; quelle: BeatMissQuelle | null } {
+  const byLabel = new Map<string, BeatMissQuartal>()
+
+  for (const row of mb) {
+    byLabel.set(row.quartalLabel, {
+      quartalLabel: row.quartalLabel,
+      period: row.period,
+      eps: metrikZeile('eps', row.epsIst, row.epsSchaetzung),
+      umsatz: metrikZeile('umsatz', row.umsatzIst, row.umsatzSchaetzung),
+    })
+  }
+
+  for (const row of fh) {
+    const prev = byLabel.get(row.quartalLabel)
+    const eps = metrikZeile('eps', row.epsIst, row.epsSchaetzung, row.surprisePercent)
+    if (prev) {
+      if (prev.eps.ist == null && prev.eps.schaetzung == null) prev.eps = eps
+      else if (prev.eps.schaetzung == null && eps.schaetzung != null) {
+        prev.eps = metrikZeile('eps', prev.eps.ist ?? eps.ist, eps.schaetzung, row.surprisePercent)
+      }
+    } else {
+      byLabel.set(row.quartalLabel, {
+        quartalLabel: row.quartalLabel,
+        period: row.period,
+        eps,
+        umsatz: metrikZeile('umsatz', null, null),
+      })
+    }
+  }
+
+  const quartale = [...byLabel.values()]
+    .sort((a, b) => (b.period ?? b.quartalLabel).localeCompare(a.period ?? a.quartalLabel))
+    .slice(0, limit)
+
+  let quelle: BeatMissQuelle | null = null
+  if (mb.length && fh.length) quelle = 'kombiniert'
+  else if (mb.length) quelle = 'marketbeat'
+  else if (fh.length) quelle = 'finnhub'
+
+  return { quartale, quelle }
 }
 
 export async function ladeEarningsBeatMissHistorie(opts: {
   ticker: string
   symbolYahoo?: string | null
+  isin?: string | null
   limit?: number
   force?: boolean
 }): Promise<EarningsBeatMissPaket> {
   const ticker = opts.ticker.trim().toUpperCase()
-  const sym = (opts.symbolYahoo ?? ticker).trim().toUpperCase()
   const limit = opts.limit ?? 8
-  const key = `${sym}|${limit}`
+  const key = `${ticker}|${opts.symbolYahoo ?? ''}|${opts.isin ?? ''}|${limit}`
   const hit = cache.get(key)
   if (hit && hit.at + CACHE_MS > Date.now() && !opts.force) return hit.data
 
   try {
-    const rows = await ladeHistoryRows(sym)
-    const quartale: BeatMissQuartal[] = []
+    const [mb, fh] = await Promise.all([
+      ladeMarketbeatBeatMissHistorie({ ticker, symbolYahoo: opts.symbolYahoo, limit }),
+      ladeFinnhubBeatMissHistorie({
+        ticker,
+        symbolYahoo: opts.symbolYahoo,
+        isin: opts.isin,
+        limit,
+      }),
+    ])
 
-    for (const row of rows) {
-      const label = quartalLabel(row)
-      if (!label) continue
-      quartale.push({
-        quartalLabel: label,
-        period: row.period ?? null,
-        eps: metrikZeile('eps', row.epsActual?.raw, row.epsEstimate?.raw),
-        umsatz: metrikZeile('umsatz', row.revenueActual?.raw, row.revenueEstimate?.raw),
-      })
-    }
-
-    quartale.sort((a, b) => (b.period ?? '').localeCompare(a.period ?? ''))
-    const trimmed = quartale.slice(0, limit)
+    const { quartale, quelle } = mergeQuartale(mb, fh, limit)
 
     let epsBeats = 0
     let umsatzBeats = 0
     let bewertbarEps = 0
     let bewertbarUmsatz = 0
-    for (const q of trimmed) {
+    for (const q of quartale) {
       if (q.eps.ist != null && q.eps.schaetzung != null) {
         bewertbarEps++
         if (istBeat(q.eps)) epsBeats++
@@ -171,9 +182,10 @@ export async function ladeEarningsBeatMissHistorie(opts: {
     }
 
     const paket: EarningsBeatMissPaket = {
-      ok: trimmed.length > 0,
+      ok: quartale.length > 0,
       ticker,
-      quartale: trimmed,
+      quelle,
+      quartale,
       epsBeatRatePct: bewertbarEps > 0 ? Math.round((epsBeats / bewertbarEps) * 100) : null,
       umsatzBeatRatePct: bewertbarUmsatz > 0 ? Math.round((umsatzBeats / bewertbarUmsatz) * 100) : null,
       epsBeats,
@@ -189,6 +201,7 @@ export async function ladeEarningsBeatMissHistorie(opts: {
     return {
       ok: false,
       ticker,
+      quelle: null,
       quartale: [],
       epsBeatRatePct: null,
       umsatzBeatRatePct: null,

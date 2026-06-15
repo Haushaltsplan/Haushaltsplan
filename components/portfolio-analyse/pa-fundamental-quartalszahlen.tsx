@@ -43,7 +43,7 @@ export function PaFundamentalQuartalszahlen({
           selectionKey={selectionKey}
         />
       ) : unterTab === 'beat_miss' ? (
-        <PaFundamentalBeatMiss ticker={ticker} symbolYahoo={symbolYahoo} selectionKey={selectionKey} />
+        <PaFundamentalBeatMiss ticker={ticker} symbolYahoo={symbolYahoo} isin={isin} selectionKey={selectionKey} />
       ) : (
         <PaFundamentalSecBerichte
           ticker={ticker}
