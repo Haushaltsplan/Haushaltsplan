@@ -114,23 +114,27 @@ export function PaFundamentalEarningsCallSpalte({
   const ladeTranskripte = useCallback(
     async (force?: boolean) => {
       if (!anfrageBasis.ticker) return
+      const hadDaten = Boolean(datenRef.current?.quartale?.length)
       if (!force) {
         const cached = ladeEarningsCallAusLocalCache(anfrageBasis)
         if (cached) {
           setDaten(cached)
           setFehler(null)
-          return
         }
       }
-      setLaden(true)
-      setFehler(null)
+      if (force || !hadDaten) {
+        setLaden(true)
+        setFehler(null)
+      }
       try {
         const res = await ladeEarningsCallTranskripte({ ...anfrageBasis, force }, datenRef.current)
         setDaten(res)
         if (res.fehler) setFehler(res.fehler)
         else if (!res.ok && !res.quartale.length) setFehler(res.fehler ?? 'Abruf fehlgeschlagen')
       } catch (e) {
-        setFehler(e instanceof Error ? e.message : 'Abruf fehlgeschlagen')
+        if (!hadDaten && !datenRef.current?.quartale?.length) {
+          setFehler(e instanceof Error ? e.message : 'Abruf fehlgeschlagen')
+        }
       } finally {
         setLaden(false)
       }
@@ -169,7 +173,6 @@ export function PaFundamentalEarningsCallSpalte({
     if (cached) {
       setDaten(cached)
       datenRef.current = cached
-      return
     }
 
     void ladeTranskripte(false)

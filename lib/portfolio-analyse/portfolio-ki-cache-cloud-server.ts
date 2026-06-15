@@ -31,6 +31,76 @@ function adminClient() {
   return createSupabaseAdmin()
 }
 
+export async function ladeAlleSecBerichtKiAusCloud(): Promise<
+  Map<string, Map<string, SecBerichtKiCloudZeile>>
+> {
+  const out = new Map<string, Map<string, SecBerichtKiCloudZeile>>()
+  if (!istCloudKonfiguriert()) return out
+  try {
+    const { data, error } = await adminClient()
+      .from(TABLE_SEC)
+      .select('ticker, bericht_id, accession, zusammenfassung, aktualisiert_am')
+    if (error) {
+      console.warn('SEC-Berichte-KI-Cloud: Alle laden', error.message)
+      return out
+    }
+    for (const row of data ?? []) {
+      const r = row as {
+        ticker: string
+        bericht_id: string
+        accession: string
+        zusammenfassung: string
+        aktualisiert_am: string
+      }
+      const t = tickerNorm(r.ticker)
+      if (!out.has(t)) out.set(t, new Map())
+      out.get(t)!.set(r.bericht_id, {
+        zusammenfassung: r.zusammenfassung,
+        accession: r.accession ?? '',
+        aktualisiertAm: r.aktualisiert_am,
+      })
+    }
+  } catch (e) {
+    console.warn('SEC-Berichte-KI-Cloud: Alle laden fehlgeschlagen', e)
+  }
+  return out
+}
+
+export async function ladeAlleEarningsCallKiAusCloud(): Promise<
+  Map<string, Map<string, EarningsCallKiCloudZeile>>
+> {
+  const out = new Map<string, Map<string, EarningsCallKiCloudZeile>>()
+  if (!istCloudKonfiguriert()) return out
+  try {
+    const { data, error } = await adminClient()
+      .from(TABLE_EARNINGS)
+      .select('ticker, quartal_id, transcript_url, zusammenfassung, aktualisiert_am')
+    if (error) {
+      console.warn('Earnings-Call-KI-Cloud: Alle laden', error.message)
+      return out
+    }
+    for (const row of data ?? []) {
+      const r = row as {
+        ticker: string
+        quartal_id: string
+        transcript_url: string
+        zusammenfassung: string
+        aktualisiert_am: string
+      }
+      const t = tickerNorm(r.ticker)
+      if (!out.has(t)) out.set(t, new Map())
+      out.get(t)!.set(r.quartal_id, {
+        zusammenfassung: r.zusammenfassung,
+        transcriptUrl: r.transcript_url ?? '',
+        aktualisiertAm: r.aktualisiert_am,
+      })
+    }
+  } catch (e) {
+    console.warn('Earnings-Call-KI-Cloud: Alle laden fehlgeschlagen', e)
+  }
+  return out
+}
+
 export async function ladeSecBerichtKiAusCloud(ticker: string): Promise<Map<string, SecBerichtKiCloudZeile>> {
   const out = new Map<string, SecBerichtKiCloudZeile>()
   if (!istCloudKonfiguriert()) return out

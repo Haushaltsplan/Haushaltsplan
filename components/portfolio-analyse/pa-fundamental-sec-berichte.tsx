@@ -110,22 +110,26 @@ export function PaFundamentalSecBerichte({
   const ladeListe = useCallback(
     async (force?: boolean) => {
       if (!anfrageBasis.ticker) return
+      const hadDaten = Boolean(datenRef.current?.berichte?.length)
       if (!force) {
         const cached = ladeSecBerichteAusLocalCache(anfrageBasis)
         if (cached) {
           setDaten(cached)
           setFehler(null)
-          return
         }
       }
-      setLaden(true)
-      setFehler(null)
+      if (force || !hadDaten) {
+        setLaden(true)
+        setFehler(null)
+      }
       try {
         const res = await ladeSecBerichteListe({ ...anfrageBasis, force }, datenRef.current)
         setDaten(res)
         if (res.fehler) setFehler(res.fehler)
       } catch (e) {
-        setFehler(e instanceof Error ? e.message : 'Abruf fehlgeschlagen')
+        if (!hadDaten && !datenRef.current?.berichte?.length) {
+          setFehler(e instanceof Error ? e.message : 'Abruf fehlgeschlagen')
+        }
       } finally {
         setLaden(false)
       }
@@ -165,7 +169,6 @@ export function PaFundamentalSecBerichte({
     if (cached) {
       setDaten(cached)
       datenRef.current = cached
-      return
     }
 
     void ladeListe(false)
