@@ -100,6 +100,7 @@ export function PaFundamentalEarningsCallSpalte({
   const [laden, setLaden] = useState(false)
   const [quartalLaden, setQuartalLaden] = useState<string | null>(null)
   const [fehler, setFehler] = useState<string | null>(null)
+  const [detailTab, setDetailTab] = useState<'ki' | 'diff'>('ki')
   const datenRef = useRef<EarningsCallPaket | null>(null)
   datenRef.current = daten
 
@@ -168,6 +169,7 @@ export function PaFundamentalEarningsCallSpalte({
     setOffenesQuartalId(null)
     setQuartalLaden(null)
     setFehler(null)
+    setDetailTab('ki')
     if (!anfrageBasis.ticker) return
 
     const cached = ladeEarningsCallAusLocalCache(anfrageBasis)
@@ -204,6 +206,7 @@ export function PaFundamentalEarningsCallSpalte({
       return
     }
     setOffenesQuartalId(id)
+    setDetailTab('ki')
     const q = daten?.quartale.find((x) => x.id === id)
     if (!q?.zusammenfassung) void ladeKiFuerQuartal(id)
   }
@@ -218,9 +221,10 @@ export function PaFundamentalEarningsCallSpalte({
 
   const irUrl = daten?.investorRelationsUrl
   const initialLaden = laden && !daten?.quartale.length
+  const quartalWirdGeladen = offenesQuartal && quartalLaden === offenesQuartal.id
 
   return (
-    <div className="flex min-h-[320px] flex-col space-y-3">
+    <div className="flex h-full min-h-[320px] flex-col space-y-3">
       <div className="flex flex-wrap items-end justify-between gap-2 border-b border-white/[0.06] pb-3">
         <div>
           <h2 className="text-base font-medium text-zinc-100">Earnings Call</h2>
@@ -276,17 +280,19 @@ export function PaFundamentalEarningsCallSpalte({
             </div>
           </div>
 
-          <div className="min-w-0">
+          <div className="min-h-0 min-w-0">
             {!offenesQuartal ? (
               <PaCard variant="glass" className="flex h-full min-h-[200px] items-center justify-center p-6">
                 <p className="text-sm text-zinc-500">Quartal wählen</p>
               </PaCard>
             ) : (
-              <div className="space-y-2">
+              <div className="flex h-full max-h-[420px] flex-col space-y-2">
                 <div className="flex flex-wrap items-start justify-between gap-2 px-0.5">
                   <div>
                     <h3 className="text-sm font-medium text-zinc-100">{offenesQuartal.label}</h3>
-                    <p className="line-clamp-2 text-[11px] text-zinc-500">{offenesQuartal.titel}</p>
+                    <p className="text-[11px] text-zinc-500">
+                      {offenesQuartal.callDatum ?? '—'} · {QUELLE_LABEL[offenesQuartal.quelle]}
+                    </p>
                   </div>
                   <a
                     href={offenesQuartal.transcriptUrl}
@@ -298,30 +304,63 @@ export function PaFundamentalEarningsCallSpalte({
                   </a>
                 </div>
 
-                {quartalLaden === offenesQuartal.id ? (
-                  <PaCard variant="glass" className="p-8 text-center">
-                    <p className="text-sm text-zinc-500">Gemini analysiert …</p>
-                  </PaCard>
-                ) : fehler && !offenesQuartal.zusammenfassung ? (
-                  <PaCard variant="glass" className="p-4 text-sm text-amber-200/90">{fehler}</PaCard>
-                ) : offenesQuartal.zusammenfassung ? (
-                  <PaCard variant="glass" className="max-h-[360px] overflow-y-auto p-3 sm:p-4">
-                    <div className="mb-3 flex items-center justify-between gap-2 border-b border-white/[0.05] pb-2">
-                      <p className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">KI-Analyse</p>
-                      <button
-                        type="button"
-                        disabled={quartalLaden === offenesQuartal.id}
-                        onClick={() => void ladeKiFuerQuartal(offenesQuartal.id, { forceKi: true })}
-                        className="text-[10px] text-zinc-600 hover:text-zinc-400 disabled:opacity-50"
-                      >
-                        Neu
-                      </button>
-                    </div>
-                    <EarningsCallAnalyseDarstellung text={offenesQuartal.zusammenfassung} />
-                  </PaCard>
-                ) : null}
+                <div className="flex gap-1 border-b border-white/[0.05] px-0.5 pb-1">
+                  <button
+                    type="button"
+                    onClick={() => setDetailTab('ki')}
+                    className={`rounded-md px-2 py-1 text-[10px] font-medium transition ${
+                      detailTab === 'ki'
+                        ? 'bg-teal-500/15 text-teal-200'
+                        : 'text-zinc-500 hover:text-zinc-300'
+                    }`}
+                  >
+                    KI-Analyse
+                  </button>
+                  {offenesQuartal.zusammenfassung && vorherQuartalMitKi ? (
+                    <button
+                      type="button"
+                      onClick={() => setDetailTab('diff')}
+                      className={`rounded-md px-2 py-1 text-[10px] font-medium transition ${
+                        detailTab === 'diff'
+                          ? 'bg-violet-500/15 text-violet-200'
+                          : 'text-zinc-500 hover:text-zinc-300'
+                      }`}
+                    >
+                      Quartals-Diff
+                    </button>
+                  ) : null}
+                </div>
 
-                {offenesQuartal.zusammenfassung && vorherQuartalMitKi ? (
+                {detailTab === 'ki' ? (
+                  quartalWirdGeladen ? (
+                    <PaCard variant="glass" className="flex flex-1 items-center justify-center p-8">
+                      <p className="text-sm text-zinc-500">Gemini analysiert Earnings Call …</p>
+                    </PaCard>
+                  ) : fehler && !offenesQuartal.zusammenfassung ? (
+                    <PaCard variant="glass" className="p-4 text-sm text-amber-200/90">{fehler}</PaCard>
+                  ) : offenesQuartal.zusammenfassung ? (
+                    <PaCard variant="glass" className="min-h-0 flex-1 overflow-y-auto p-3 sm:p-4">
+                      <div className="mb-3 flex items-center justify-between gap-2 border-b border-white/[0.05] pb-2">
+                        <p className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
+                          Quality-Analyse
+                        </p>
+                        <button
+                          type="button"
+                          disabled={quartalLaden === offenesQuartal.id}
+                          onClick={() => void ladeKiFuerQuartal(offenesQuartal.id, { forceKi: true })}
+                          className="text-[10px] text-zinc-600 hover:text-zinc-400 disabled:opacity-50"
+                        >
+                          Neu
+                        </button>
+                      </div>
+                      <EarningsCallAnalyseDarstellung text={offenesQuartal.zusammenfassung} />
+                    </PaCard>
+                  ) : (
+                    <PaCard variant="glass" className="flex flex-1 items-center justify-center p-6">
+                      <p className="text-sm text-zinc-500">Analyse wird vorbereitet …</p>
+                    </PaCard>
+                  )
+                ) : offenesQuartal.zusammenfassung && vorherQuartalMitKi ? (
                   <PaFundamentalQuartalsDiff
                     ticker={anfrageBasis.ticker}
                     firmenname={firmenname}
@@ -331,7 +370,13 @@ export function PaFundamentalEarningsCallSpalte({
                     aktuellLabel={offenesQuartal.label}
                     vorherLabel={vorherQuartalMitKi.label}
                   />
-                ) : null}
+                ) : (
+                  <PaCard variant="glass" className="flex flex-1 items-center justify-center p-6">
+                    <p className="text-sm text-zinc-500">
+                      Quartals-Diff benötigt KI-Summaries für aktuelles und vorheriges Quartal.
+                    </p>
+                  </PaCard>
+                )}
               </div>
             )}
           </div>

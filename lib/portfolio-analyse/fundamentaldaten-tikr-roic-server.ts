@@ -47,7 +47,7 @@ function bilanzFuerPeriode(
   let bestDiff = Infinity
   for (const b of bilanz) {
     const diff = Math.abs(new Date(`${b.datum}T12:00:00Z`).getTime() - ziel)
-    if (diff < bestDiff && diff <= 120 * 86400000) {
+    if (diff < bestDiff && diff <= 45 * 86400000) {
       best = b
       bestDiff = diff
     }
@@ -57,17 +57,22 @@ function bilanzFuerPeriode(
 
 type MacrotrendsBilanzFallback = Map<
   string,
-  { equityUsd: number | null; debtUsd: number | null }
+  {
+    equityUsd: number | null
+    debtUsd: number | null
+    dtlProxyUsd: number | null
+  }
 >
 
 async function ladeMacrotrendsBilanzFallback(
   ident: MacrotrendsIdent,
   frequenz: FundamentalFrequenz = 'jahr',
 ): Promise<MacrotrendsBilanzFallback> {
-  const [equitySerie, ltDebtSerie, stDebtSerie] = await Promise.all([
+  const [equitySerie, ltDebtSerie, stDebtSerie, totalLtLiabSerie] = await Promise.all([
     ladeMacrotrendsChartSerie(ident, 'total-share-holder-equity', 'balance-sheet', frequenz),
     ladeMacrotrendsChartSerie(ident, 'long-term-debt', 'balance-sheet', frequenz),
     ladeMacrotrendsChartSerie(ident, 'short-term-debt', 'balance-sheet', frequenz),
+    ladeMacrotrendsChartSerie(ident, 'total-long-term-liabilities', 'balance-sheet', frequenz),
   ])
 
   const out: MacrotrendsBilanzFallback = new Map()
@@ -75,6 +80,7 @@ async function ladeMacrotrendsBilanzFallback(
     ...equitySerie.map((p) => p.datum),
     ...ltDebtSerie.map((p) => p.datum),
     ...stDebtSerie.map((p) => p.datum),
+    ...totalLtLiabSerie.map((p) => p.datum),
   ])
 
   const byDate = (serie: typeof equitySerie) => new Map(serie.map((p) => [p.datum, p.wert]))
@@ -83,10 +89,14 @@ async function ladeMacrotrendsBilanzFallback(
     const eqMio = byDate(equitySerie).get(iso)
     const ltMio = byDate(ltDebtSerie).get(iso)
     const stMio = byDate(stDebtSerie).get(iso)
+    const tltlMio = byDate(totalLtLiabSerie).get(iso)
     const debtMio = ltMio != null || stMio != null ? (ltMio ?? 0) + (stMio ?? 0) : null
+    const dtlProxyMio =
+      tltlMio != null && ltMio != null && tltlMio > ltMio ? tltlMio - ltMio : null
     out.set(iso, {
       equityUsd: eqMio != null ? eqMio * 1_000_000 : null,
       debtUsd: debtMio != null ? debtMio * 1_000_000 : null,
+      dtlProxyUsd: dtlProxyMio != null ? dtlProxyMio * 1_000_000 : null,
     })
   }
   return out
@@ -95,12 +105,12 @@ async function ladeMacrotrendsBilanzFallback(
 function mtBilanzFuerPeriode(
   mt: MacrotrendsBilanzFallback,
   iso: string,
-): { equityUsd: number | null; debtUsd: number | null } | null {
+): { equityUsd: number | null; debtUsd: number | null; dtlProxyUsd: number | null } | null {
   const exact = mt.get(iso)
   if (exact) return exact
 
   const ziel = new Date(`${iso}T12:00:00Z`).getTime()
-  let best: { equityUsd: number | null; debtUsd: number | null } | null = null
+  let best: { equityUsd: number | null; debtUsd: number | null; dtlProxyUsd: number | null } | null = null
   let bestDiff = Infinity
   for (const [datum, snap] of mt) {
     const diff = Math.abs(new Date(`${datum}T12:00:00Z`).getTime() - ziel)
@@ -144,13 +154,18 @@ export async function ergaenzeTikrRoicZeile(opts: {
     const equityUsd = yahoo?.stockholdersEquityUsd ?? mt?.equityUsd ?? null
     const debtUsd = yahoo?.totalDebtUsd ?? mt?.debtUsd ?? null
 
-    const { wert, nm } = berechneTikrRoicPct(
-      ebitUsd,
-      equityUsd,
-      debtUsd,
-      yahoo?.deferredTaxLiabilitiesNonCurrentUsd ?? null,
-      yahoo?.deferredTaxLiabilitiesCurrentUsd ?? null,
-    )
+    const yahooDtlSumme =
+      (yahoo?.deferredTaxLiabilitiesNonCurrentUsd ?? 0) +
+      (yahoo?.deferredTaxLiabilitiesCurrentUsd ?? 0)
+    const dtlProxy = mt?.dtlProxyUsd ?? null
+    const nutzeDtlProxy = dtlProxy != null && dtlProxy > yahooDtlSumme
+
+    const dtlNc = nutzeDtlProxy
+      ? dtlProxy
+      : yahoo?.deferredTaxLiabilitiesNonCurrentUsd ?? dtlProxy
+    const dtlC = nutzeDtlProxy ? null : yahoo?.deferredTaxLiabilitiesCurrentUsd ?? null
+
+    const { wert, nm } = berechneTikrRoicPct(ebitUsd, equityUsd, debtUsd, dtlNc, dtlC)
     werte[p.iso] = wert
     if (nm) nmWerte[p.iso] = true
   }

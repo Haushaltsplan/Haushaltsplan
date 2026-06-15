@@ -213,6 +213,10 @@ function rohFuerMantra(
 const SCHÄTZUNG_ZU_HISTORISCH_ZEILE: Record<string, string> = {
   umsatz_schaetzung: 'umsatz',
   eps_schaetzung: 'eps',
+  ebit_schaetzung: 'ebit',
+  nettogewinn_schaetzung: 'nettogewinn',
+  fcf_schaetzung: 'fcf',
+  bruttogewinn_schaetzung: 'bruttogewinn',
 }
 
 function mergePeriodenUndZeilen(
@@ -286,7 +290,12 @@ export async function ladeFundamentaldaten(anfrage: FundamentaldatenAnfrage): Pr
     ladeMacrotrendsFundamentaldaten(ident, frequenz),
     symbolYahoo ? ladeYahooFundamentalKennzahlen(symbolYahoo) : Promise.resolve(null),
     frequenz === 'jahr' && symbolYahoo
-      ? ladeFundamentalSchaetzungen(symbolYahoo)
+      ? ladeFundamentalSchaetzungen({
+          symbol: symbolYahoo,
+          isin: anfrage.isin,
+          name: anfrage.name ?? ident.firmenname,
+          ticker: ident.ticker,
+        })
       : Promise.resolve({ perioden: [], zeilen: [] }),
     symbolYahoo ? ladeFundamentalNews(symbolYahoo, ident.firmenname) : Promise.resolve([]),
     symbolYahoo ? ladeYahooMantraFinanzdaten(symbolYahoo) : Promise.resolve(null),

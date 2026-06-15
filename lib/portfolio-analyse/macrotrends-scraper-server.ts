@@ -56,6 +56,7 @@ const BEKANNTE_MACROTRENDS_SLUGS: Record<
   SIKA: { slug: 'sika', firmenname: 'Sika', macrotrendsTicker: 'SXYAY' },
   ATD: { slug: 'alimentation-couche-tard', firmenname: 'Alimentation Couche-Tard' },
   GOOG: { slug: 'alphabet', firmenname: 'Alphabet' },
+  GOOGL: { slug: 'alphabet', firmenname: 'Alphabet', macrotrendsTicker: 'GOOG' },
   MSFT: { slug: 'microsoft', firmenname: 'Microsoft' },
   SPGI: { slug: 's-p-global', firmenname: 'S&P Global' },
   UNH: { slug: 'unitedhealth-group', firmenname: 'UnitedHealth' },
@@ -260,7 +261,9 @@ function parseJsonArray<T>(html: string, marker: string): T[] | null {
 }
 
 function slugAusFieldName(fieldName: string): string | null {
-  const m = fieldName.match(/\/stocks\/charts\/[^/]+\/[^/]+\/([^'"]+)/)
+  const href = fieldName.match(/href=['"]\/stocks\/charts\/[^/]+\/[^/]+\/([^'">?]+)/i)
+  if (href?.[1]) return href[1]
+  const m = fieldName.match(/\/stocks\/charts\/[^/]+\/[^/]+\/([^'">\s]+)/)
   return m?.[1] ?? null
 }
 

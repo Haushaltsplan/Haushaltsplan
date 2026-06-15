@@ -35,7 +35,7 @@ export type EarningsSchaetzungSpanne = {
 }
 
 export type EarningsSchaetzungen = {
-  quelle: 'yahoo' | 'finnhub' | 'wallstreet' | 'marketscreener' | 'kombiniert'
+  quelle: 'yahoo' | 'finnhub' | 'wallstreet' | 'marketscreener' | 'stockanalysis' | 'kombiniert'
   terminDatumIso: string | null
   isEarningsDateEstimate: boolean
   earningsCallDateIso: string | null
@@ -289,26 +289,18 @@ export async function ladeEarningsSchaetzungen(
   let prognose: EarningsQuartalsPrognose | null = null
   const quellen: string[] = []
 
-  if (yahooQ && hatKernDaten(yahooQ)) {
-    prognose = { ...yahooQ }
-    quellen.push('yahoo')
-  } else if (yahooQ) {
-    prognose = { ...yahooQ }
+  if (marketscreenerQ && (hatKernDaten(marketscreenerQ) || marketscreenerQ.zeilen.length > 0)) {
+    prognose = { ...marketscreenerQ }
+    quellen.push('marketscreener')
   }
 
-  if (marketscreenerQ) {
-    if (prognose) {
-      prognose = {
-        ...prognose,
-        zeilen: mergeZeilen(prognose.zeilen, marketscreenerQ.zeilen),
-        quartalLabel: prognose.quartalLabel || marketscreenerQ.quartalLabel,
-        vorjahrQuartalLabel:
-          prognose.vorjahrQuartalLabel || marketscreenerQ.vorjahrQuartalLabel,
-      }
-      quellen.push('marketscreener')
-    } else if (hatKernDaten(marketscreenerQ) || marketscreenerQ.zeilen.length > 0) {
-      prognose = marketscreenerQ
-      quellen.push('marketscreener')
+  if (!hatKernDaten(prognose) && wallstreet) {
+    const wsQ = wallstreetZuQuartalsPrognose(wallstreet, termin ?? null)
+    if (wsQ) {
+      prognose = prognose
+        ? { ...prognose, zeilen: mergeZeilen(prognose.zeilen, wsQ.zeilen), terminDatumIso: prognose.terminDatumIso ?? wsQ.terminDatumIso }
+        : wsQ
+      quellen.push('wallstreet')
     }
   }
 
@@ -364,15 +356,19 @@ export async function ladeEarningsSchaetzungen(
     }
   }
 
-  if (!hatKernDaten(prognose) && wallstreet) {
-    const wsQ = wallstreetZuQuartalsPrognose(wallstreet, termin ?? null)
-    if (wsQ) {
+  if (yahooQ) {
+    if (prognose) {
       prognose = {
-        ...wsQ,
-        zeilen: mergeZeilen(wsQ.zeilen, prognose?.zeilen ?? []),
-        terminDatumIso: prognose?.terminDatumIso ?? wsQ.terminDatumIso,
+        ...prognose,
+        zeilen: mergeZeilen(prognose.zeilen, yahooQ.zeilen),
+        quartalLabel: prognose.quartalLabel || yahooQ.quartalLabel,
+        vorjahrQuartalLabel: prognose.vorjahrQuartalLabel || yahooQ.vorjahrQuartalLabel,
+        terminDatumIso: prognose.terminDatumIso ?? yahooQ.terminDatumIso,
       }
-      quellen.push('wallstreet')
+      if (!quellen.includes('yahoo')) quellen.push('yahoo')
+    } else if (hatKernDaten(yahooQ) || yahooQ.zeilen.length > 0) {
+      prognose = { ...yahooQ }
+      quellen.push('yahoo')
     }
   }
 

@@ -13,46 +13,121 @@ export type YahooBilanzSnapshot = {
   deferredTaxLiabilitiesCurrentUsd: number | null
 }
 
-function rawNum(o: Record<string, { raw?: number }> | undefined, k: string): number | null {
-  const v = o?.[k]?.raw
-  return v != null && Number.isFinite(v) ? v : null
+type TimeseriesBlock = {
+  meta?: { type?: string[] }
+  [key: string]: unknown
 }
 
-function isoAusEndDate(raw: number | undefined): string | null {
-  if (raw == null || !Number.isFinite(raw)) return null
-  const d = new Date(raw * 1000)
-  if (Number.isNaN(d.getTime())) return null
-  return d.toISOString().slice(0, 10)
+type TimeseriesPunkt = {
+  asOfDate?: string
+  reportedValue?: { raw?: number }
 }
 
-function parseBalanceRows(rows: Array<Record<string, { raw?: number }>>): YahooBilanzSnapshot[] {
-  const daten: YahooBilanzSnapshot[] = []
-  for (const row of rows) {
-    const datum = isoAusEndDate(row.endDate?.raw)
+const BALANCE_TYPES = [
+  'annualStockholdersEquity',
+  'annualLongTermDebt',
+  'annualCurrentDebt',
+  'annualTotalDebt',
+  'annualNonCurrentDeferredTaxesLiabilities',
+  'annualCurrentDeferredTaxesLiabilities',
+] as const
+
+const BALANCE_FELDER: Record<
+  keyof Omit<YahooBilanzSnapshot, 'datum'>,
+  (typeof BALANCE_TYPES)[number]
+> = {
+  stockholdersEquityUsd: 'annualStockholdersEquity',
+  totalDebtUsd: 'annualTotalDebt',
+  deferredTaxLiabilitiesNonCurrentUsd: 'annualNonCurrentDeferredTaxesLiabilities',
+  deferredTaxLiabilitiesCurrentUsd: 'annualCurrentDeferredTaxesLiabilities',
+}
+
+function blockFuerTyp(result: TimeseriesBlock[], typ: string): TimeseriesBlock | undefined {
+  return result.find((b) => b.meta?.type?.[0] === typ)
+}
+
+function punkteFuerTyp(result: TimeseriesBlock[], typ: string): TimeseriesPunkt[] {
+  const block = blockFuerTyp(result, typ)
+  const t = block?.meta?.type?.[0]
+  if (!t || !Array.isArray(block?.[t])) return []
+  return block[t] as TimeseriesPunkt[]
+}
+
+function rawWert(p: TimeseriesPunkt | undefined): number | null {
+  const raw = p?.reportedValue?.raw
+  return raw != null && Number.isFinite(raw) ? raw : null
+}
+
+function isoAusAsOfDate(asOfDate: string | undefined): string | null {
+  if (!asOfDate) return null
+  const m = asOfDate.match(/^(\d{4}-\d{2}-\d{2})/)
+  return m?.[1] ?? null
+}
+
+function baueSnapshotsAusTimeseries(result: TimeseriesBlock[]): YahooBilanzSnapshot[] {
+  const datenProTyp = new Map<string, TimeseriesPunkt[]>()
+  for (const [feld, typ] of Object.entries(BALANCE_FELDER)) {
+    datenProTyp.set(feld, punkteFuerTyp(result, typ))
+  }
+  datenProTyp.set('longTermDebtUsd', punkteFuerTyp(result, 'annualLongTermDebt'))
+  datenProTyp.set('currentDebtUsd', punkteFuerTyp(result, 'annualCurrentDebt'))
+
+  const referenz = datenProTyp.get('stockholdersEquityUsd') ?? datenProTyp.get('totalDebtUsd') ?? []
+  const out: YahooBilanzSnapshot[] = []
+
+  for (let i = 0; i < referenz.length; i++) {
+    const datum = isoAusAsOfDate(referenz[i]?.asOfDate)
     if (!datum) continue
 
-    const longTerm = rawNum(row, 'longTermDebt')
-    const shortTerm = rawNum(row, 'shortLongTermDebt') ?? rawNum(row, 'shortTermDebt')
+    const equity = rawWert(datenProTyp.get('stockholdersEquityUsd')?.[i])
+    const ltDebt = rawWert(datenProTyp.get('longTermDebtUsd')?.[i])
+    const stDebt = rawWert(datenProTyp.get('currentDebtUsd')?.[i])
+    const totalDebtAnnual = rawWert(datenProTyp.get('totalDebtUsd')?.[i])
     const totalDebt =
-      rawNum(row, 'totalDebt') ??
-      (longTerm != null || shortTerm != null ? (longTerm ?? 0) + (shortTerm ?? 0) : null)
+      ltDebt != null || stDebt != null ? (ltDebt ?? 0) + (stDebt ?? 0) : totalDebtAnnual
 
-    daten.push({
+    out.push({
       datum,
-      stockholdersEquityUsd: rawNum(row, 'totalStockholderEquity') ?? rawNum(row, 'commonStock'),
-      totalDebtUsd: totalDebt,
-      deferredTaxLiabilitiesNonCurrentUsd:
-        rawNum(row, 'deferredLongTermLiabilities') ??
-        rawNum(row, 'deferredTaxLiabilitiesNonCurrent') ??
-        rawNum(row, 'nonCurrentDeferredTaxes'),
-      deferredTaxLiabilitiesCurrentUsd:
-        rawNum(row, 'deferredTaxLiabilitiesCurrent') ?? rawNum(row, 'currentDeferredTaxes'),
+      stockholdersEquityUsd: equity,
+      totalDebtUsd: totalDebt ?? null,
+      deferredTaxLiabilitiesNonCurrentUsd: rawWert(
+        datenProTyp.get('deferredTaxLiabilitiesNonCurrentUsd')?.[i],
+      ),
+      deferredTaxLiabilitiesCurrentUsd: rawWert(
+        datenProTyp.get('deferredTaxLiabilitiesCurrentUsd')?.[i],
+      ),
     })
   }
-  daten.sort((a, b) => a.datum.localeCompare(b.datum))
-  return daten
+
+  return out.sort((a, b) => a.datum.localeCompare(b.datum))
 }
 
+async function ladeBalanceTimeseries(symbol: string): Promise<TimeseriesBlock[]> {
+  const auth = await holeYahooFinanceAuth()
+  if (!auth) return []
+
+  const period1 = Math.floor(new Date('2010-01-01').getTime() / 1000)
+  const period2 = Math.floor(Date.now() / 1000)
+  const u = new URL(
+    `https://query1.finance.yahoo.com/ws/fundamentals-timeseries/v1/finance/timeseries/${encodeURIComponent(symbol)}`,
+  )
+  u.searchParams.set('symbol', symbol)
+  u.searchParams.set('type', BALANCE_TYPES.join(','))
+  u.searchParams.set('period1', String(period1))
+  u.searchParams.set('period2', String(period2))
+  u.searchParams.set('crumb', auth.crumb)
+
+  const res = await fetch(u.toString(), {
+    headers: { ...YAHOO_FINANCE_FETCH_HEADERS, Cookie: auth.cookie },
+    cache: 'no-store',
+  })
+  if (!res.ok) return []
+
+  const j = (await res.json()) as { timeseries?: { result?: TimeseriesBlock[] } }
+  return j.timeseries?.result ?? []
+}
+
+/** Jahres-Bilanz (Equity, Schulden, latente Steuern) via Yahoo fundamentalsTimeSeries. */
 export async function ladeYahooBalanceSheetHistorie(symbol: string): Promise<YahooBilanzSnapshot[]> {
   const sym = symbol.trim().toUpperCase()
   if (!sym) return []
@@ -60,42 +135,9 @@ export async function ladeYahooBalanceSheetHistorie(symbol: string): Promise<Yah
   const hit = cache.get(sym)
   if (hit && hit.at + CACHE_MS > Date.now()) return hit.daten
 
-  const auth = await holeYahooFinanceAuth()
-  if (!auth) return []
-
-  const u = new URL(`https://query2.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(sym)}`)
-  u.searchParams.set('modules', 'balanceSheetHistory,balanceSheetHistoryQuarterly')
-  u.searchParams.set('crumb', auth.crumb)
-
   try {
-    const res = await fetch(u.toString(), {
-      headers: { ...YAHOO_FINANCE_FETCH_HEADERS, Cookie: auth.cookie },
-      cache: 'no-store',
-    })
-    if (!res.ok) {
-      cache.set(sym, { at: Date.now(), daten: [] })
-      return []
-    }
-
-    const j = (await res.json()) as {
-      quoteSummary?: {
-        result?: Array<{
-          balanceSheetHistory?: { balanceSheetStatements?: Array<Record<string, { raw?: number }>> }
-          balanceSheetHistoryQuarterly?: { balanceSheetStatements?: Array<Record<string, { raw?: number }>> }
-        }>
-      }
-    }
-
-    const row = j.quoteSummary?.result?.[0]
-    const annual = parseBalanceRows(row?.balanceSheetHistory?.balanceSheetStatements ?? [])
-    const quarterly = parseBalanceRows(row?.balanceSheetHistoryQuarterly?.balanceSheetStatements ?? [])
-
-    const byDate = new Map<string, YahooBilanzSnapshot>()
-    for (const b of [...annual, ...quarterly]) {
-      byDate.set(b.datum, b)
-    }
-    const daten = [...byDate.values()].sort((a, b) => a.datum.localeCompare(b.datum))
-
+    const result = await ladeBalanceTimeseries(sym)
+    const daten = result.length > 0 ? baueSnapshotsAusTimeseries(result) : []
     cache.set(sym, { at: Date.now(), daten })
     return daten
   } catch {

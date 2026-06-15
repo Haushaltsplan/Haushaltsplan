@@ -3,6 +3,7 @@ import {
   FUNDAMENTAL_FY1E_KEY,
   FUNDAMENTAL_NTM_KEY,
   FUNDAMENTAL_TTM_KEY,
+  istFundamentalSchaetzungIso,
   type FundamentalPeriode,
 } from '@/lib/portfolio-analyse/fundamentaldaten-types'
 
@@ -12,6 +13,10 @@ export const FUNDAMENTAL_CHART_SONDER_KEYS = new Set([
   FUNDAMENTAL_FY0E_KEY,
   FUNDAMENTAL_FY1E_KEY,
 ])
+
+export function istFundamentalChartSonderIso(iso: string): boolean {
+  return FUNDAMENTAL_CHART_SONDER_KEYS.has(iso) || istFundamentalSchaetzungIso(iso)
+}
 
 export function istHistorischeChartPeriode(p: FundamentalPeriode): boolean {
   return (

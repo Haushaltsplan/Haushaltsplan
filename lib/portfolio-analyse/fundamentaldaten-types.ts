@@ -182,3 +182,14 @@ export const FUNDAMENTAL_TTM_KEY = '__ttm__'
 export const FUNDAMENTAL_NTM_KEY = '__ntm__'
 export const FUNDAMENTAL_FY0E_KEY = '__fy0e__'
 export const FUNDAMENTAL_FY1E_KEY = '__fy1e__'
+
+/** Schätzungs-Spalte für FY≥2 (z. B. __fy2027e__). */
+export function fundamentalSchaetzungIso(jahr: number, indexInReihe: number): string {
+  if (indexInReihe === 0) return FUNDAMENTAL_FY0E_KEY
+  if (indexInReihe === 1) return FUNDAMENTAL_FY1E_KEY
+  return `__fy${jahr}e__`
+}
+
+export function istFundamentalSchaetzungIso(iso: string): boolean {
+  return iso === FUNDAMENTAL_FY0E_KEY || iso === FUNDAMENTAL_FY1E_KEY || /^__fy\d{4}e__$/.test(iso)
+}

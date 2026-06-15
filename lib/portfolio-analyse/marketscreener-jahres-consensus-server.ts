@@ -1,6 +1,7 @@
 import { formatEpsUsd, formatKompaktUsd } from '@/lib/portfolio-analyse/earnings-quartals-prognose'
 import type { JahresEarningsSchaetzung } from '@/lib/portfolio-analyse/jahres-earnings-schaetzung'
 import { marketscreenerSlugKandidaten } from '@/lib/portfolio-analyse/marketscreener-slug'
+import { ladeStockanalysisJahresForecast } from '@/lib/portfolio-analyse/stockanalysis-forecast-server'
 import { wachstumProzent, formatWachstumProzent } from '@/lib/portfolio-analyse/earnings-kennzahlen'
 
 const BASE = 'https://www.marketscreener.com/quote/stock'
@@ -14,51 +15,122 @@ function pause(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms))
 }
 
+function parseUsdZeile(rowHtml: string, maxCols: number): number[] {
+  const vals: number[] = []
+  for (const m of rowHtml.matchAll(
+    /<span class="efd_USD[^"]*"[^>]*>[\s\S]*?<span title="([^"]+)">/g,
+  )) {
+    const n = Number(m[1].replace(/,/g, ''))
+    if (Number.isFinite(n)) vals.push(n)
+  }
+  return vals.slice(0, maxCols)
+}
+
+function parseKonsensTabelle(html: string): {
+  headers: { jahr: number; schaetzung: boolean }[]
+  zeilen: Record<string, number[]>
+} | null {
+  const rowStart = html.search(/<td[^>]*>\s*Net sales\s*<\/td>/i)
+  if (rowStart < 0) return null
+
+  const tableStart = html.lastIndexOf('<table', rowStart)
+  const tableEnd = html.indexOf('</table>', rowStart)
+  if (tableStart < 0 || tableEnd < 0) return null
+  const table = html.slice(tableStart, tableEnd + 8)
+
+  const thead = table.match(/<thead>[\s\S]*?<\/thead>/i)?.[0] ?? ''
+  const headers: { jahr: number; schaetzung: boolean }[] = []
+  for (const m of thead.matchAll(/>(\d{4})\s*(\*)?<\/th>/g)) {
+    const jahr = Number(m[1])
+    if (!Number.isFinite(jahr)) continue
+    headers.push({ jahr, schaetzung: m[2] === '*' })
+  }
+  if (headers.length === 0) return null
+
+  const zeilen: Record<string, number[]> = {}
+  for (const label of ['Net sales', 'Net income']) {
+    const pos = table.search(new RegExp(`<td[^>]*>\\s*${label}\\s*<\\/td>`, 'i'))
+    if (pos < 0) continue
+    const rowEnd = table.indexOf('</tr>', pos)
+    const row = table.slice(pos, rowEnd > pos ? rowEnd : pos + 12_000)
+    zeilen[label] = parseUsdZeile(row, headers.length)
+  }
+
+  if (!zeilen['Net sales']?.length) return null
+  return { headers, zeilen }
+}
+
+export type MarketscreenerJahresForecast = {
+  quelle: 'marketscreener'
+  fy0Jahr: number | null
+  fy1Jahr: number | null
+  umsatzUsdFy0: number | null
+  umsatzUsdFy1: number | null
+  umsatzBasisUsd: number | null
+  umsatzWachstumFy0Pct: number | null
+  umsatzWachstumFy1Pct: number | null
+}
+
+function parseJahresKonsensVoll(html: string): MarketscreenerJahresForecast | null {
+  const tab = parseKonsensTabelle(html)
+  if (!tab) return null
+
+  const estIdx = tab.headers.map((h, i) => (h.schaetzung ? i : -1)).filter((i) => i >= 0)
+  if (estIdx.length === 0) return null
+
+  const umsatz = tab.zeilen['Net sales'] ?? []
+  const fy0Idx = estIdx[0]!
+  const fy1Idx = estIdx[1]
+  const umsatzUsdFy0 = umsatz[fy0Idx] ?? null
+  const umsatzUsdFy1 = fy1Idx != null ? (umsatz[fy1Idx] ?? null) : null
+  if (umsatzUsdFy0 == null || umsatzUsdFy0 < 1e8) return null
+
+  const basisIdx = fy0Idx > 0 ? fy0Idx - 1 : -1
+  const umsatzBasisUsd = basisIdx >= 0 ? (umsatz[basisIdx] ?? null) : null
+  const basisFy1 = fy1Idx != null && fy1Idx > 0 ? (umsatz[fy1Idx - 1] ?? null) : null
+
+  return {
+    quelle: 'marketscreener',
+    fy0Jahr: tab.headers[fy0Idx]?.jahr ?? null,
+    fy1Jahr: fy1Idx != null ? (tab.headers[fy1Idx]?.jahr ?? null) : null,
+    umsatzUsdFy0,
+    umsatzUsdFy1,
+    umsatzBasisUsd,
+    umsatzWachstumFy0Pct: wachstumProzent(umsatzUsdFy0, umsatzBasisUsd),
+    umsatzWachstumFy1Pct:
+      umsatzUsdFy1 != null && basisFy1 != null ? wachstumProzent(umsatzUsdFy1, umsatzUsdFy0) : null,
+  }
+}
+
 function parseJahresKonsens(html: string): {
   jahrSchaetzung: number
   jahrBasis: number
   umsatzEst: number
   umsatzBasis: number | null
 } | null {
-  const start = html.indexOf('Income Statement and Estimates')
-  if (start < 0) return null
-  const block = html.slice(start, start + 120_000)
-
-  const headers: { jahr: number; schaetzung: boolean }[] = []
-  for (const m of block.matchAll(/>(\d{4})\s*(\*)?<\/th>/g)) {
-    const jahr = Number(m[1])
-    if (!Number.isFinite(jahr)) continue
-    headers.push({ jahr, schaetzung: m[2] === '*' })
-  }
-
-  const estIdx = headers.findIndex((h) => h.schaetzung)
-  if (estIdx < 0) return null
-  const basisIdx = estIdx > 0 ? estIdx - 1 : -1
-  const jahrSchaetzung = headers[estIdx].jahr
-  const jahrBasis = basisIdx >= 0 ? headers[basisIdx].jahr : null
-
-  const ns = block.indexOf('Net sales</td>')
-  if (ns < 0) return null
-  const row = block.slice(ns, ns + 12_000)
-  const vals: number[] = []
-  for (const m of row.matchAll(
-    /<span class="efd_USD[^"]*"[^>]*>[\s\S]*?<span title="([^"]+)">/g,
-  )) {
-    const n = Number(m[1].replace(/,/g, ''))
-    if (Number.isFinite(n)) vals.push(n)
-  }
-  if (vals.length <= estIdx) return null
-
-  const umsatzEst = vals[estIdx]
-  const umsatzBasis = basisIdx >= 0 && vals.length > basisIdx ? vals[basisIdx] : null
-  if (umsatzEst < 1e8) return null
-
+  const voll = parseJahresKonsensVoll(html)
+  if (!voll?.fy0Jahr || voll.umsatzUsdFy0 == null) return null
   return {
-    jahrSchaetzung,
-    jahrBasis: jahrBasis ?? jahrSchaetzung - 1,
-    umsatzEst,
-    umsatzBasis,
+    jahrSchaetzung: voll.fy0Jahr,
+    jahrBasis: voll.fy0Jahr - 1,
+    umsatzEst: voll.umsatzUsdFy0,
+    umsatzBasis: voll.umsatzBasisUsd,
   }
+}
+
+/** FY0/FY1-Umsatz-Konsens von Marketscreener finances-consensus. */
+export async function ladeMarketscreenerJahresForecast(
+  isin: string,
+  name: string,
+  symbolYahoo?: string | null,
+): Promise<MarketscreenerJahresForecast | null> {
+  for (const slug of marketscreenerSlugKandidaten(isin, name, symbolYahoo)) {
+    const html = await fetchConsensusHtml(slug)
+    if (!html) continue
+    const parsed = parseJahresKonsensVoll(html)
+    if (parsed) return parsed
+  }
+  return null
 }
 
 async function fetchConsensusHtml(slug: string): Promise<string | null> {
@@ -148,22 +220,57 @@ export async function ladeJahresSchaetzungKombiniert(
   symbolYahoo: string | null,
   wallstreet: Parameters<typeof jahresEpsAusWallstreet>[0],
 ): Promise<JahresEarningsSchaetzung | null> {
-  const [msUmsatz] = await Promise.all([
+  const [msUmsatz, stockanalysis] = await Promise.all([
     ladeMarketscreenerJahresUmsatz(isin, name, symbolYahoo),
+    ladeStockanalysisJahresForecast({
+      symbolYahoo,
+      firmenname: name,
+      isin,
+    }),
   ])
-  const eps = jahresEpsAusWallstreet(wallstreet, msUmsatz?.waehrung ?? 'EUR')
-  const hatUmsatz = msUmsatz?.umsatz.schaetzung != null && msUmsatz.umsatz.schaetzung >= 1e8
+  const eps =
+    stockanalysis?.epsFy0 != null
+      ? {
+          schaetzung: stockanalysis.epsFy0,
+          schaetzungAnzeige: formatEpsUsd(stockanalysis.epsFy0),
+          vorjahr: null,
+          vorjahrAnzeige: null,
+          wachstumAnzeige:
+            stockanalysis.epsWachstumFy0Pct != null
+              ? formatWachstumProzent(stockanalysis.epsWachstumFy0Pct)
+              : null,
+        }
+      : jahresEpsAusWallstreet(wallstreet, msUmsatz?.waehrung ?? 'USD')
+
+  const umsatzAusSa =
+    stockanalysis?.umsatzUsdFy0 != null && stockanalysis.umsatzUsdFy0 >= 1e8
+      ? {
+          schaetzung: stockanalysis.umsatzUsdFy0,
+          schaetzungAnzeige: formatKompaktUsd(stockanalysis.umsatzUsdFy0),
+          vorjahr: null,
+          vorjahrAnzeige: null,
+          wachstumAnzeige:
+            stockanalysis.umsatzWachstumFy0Pct != null
+              ? formatWachstumProzent(stockanalysis.umsatzWachstumFy0Pct)
+              : null,
+        }
+      : null
+
+  const hatUmsatz =
+    (msUmsatz?.umsatz.schaetzung != null && msUmsatz.umsatz.schaetzung >= 1e8) ||
+    umsatzAusSa != null
   const hatEps = eps?.schaetzung != null
   if (!hatUmsatz && !hatEps) return null
 
   return {
     jahrLabel:
       msUmsatz?.jahrLabel ??
+      (stockanalysis?.fy0Jahr ? `Geschäftsjahr ${stockanalysis.fy0Jahr}e` : null) ??
       (wallstreet?.jahr ? `Geschäftsjahr ${wallstreet.jahr}e` : 'Geschäftsjahr'),
     vorjahrLabel: msUmsatz?.vorjahrLabel ?? null,
-    waehrung: msUmsatz?.waehrung ?? 'EUR',
+    waehrung: msUmsatz?.waehrung ?? 'USD',
     umsatz: hatUmsatz
-      ? msUmsatz!.umsatz
+      ? (umsatzAusSa ?? msUmsatz!.umsatz)
       : {
           schaetzung: null,
           schaetzungAnzeige: null,
