@@ -95,7 +95,7 @@ export function PaFundamentalSecBerichte({
   const [laden, setLaden] = useState(false)
   const [berichtLaden, setBerichtLaden] = useState<string | null>(null)
   const [fehler, setFehler] = useState<string | null>(null)
-  const [detailTab, setDetailTab] = useState<'ki' | 'text' | 'diff'>('ki')
+  const [detailTab, setDetailTab] = useState<'ki' | 'diff'>('ki')
   const datenRef = useRef<SecBerichtePaket | null>(null)
   datenRef.current = daten
 
@@ -201,7 +201,6 @@ export function PaFundamentalSecBerichte({
     setOffeneId(b.id)
     setDetailTab('ki')
     if (!b.zusammenfassung) void ladeKiFuerBericht(b.id)
-    else if (!b.textVollstaendig) void ladeKiFuerBericht(b.id)
   }
 
   if (!ticker?.trim()) {
@@ -301,17 +300,6 @@ export function PaFundamentalSecBerichte({
                   >
                     KI-Analyse
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => setDetailTab('text')}
-                    className={`rounded-md px-2 py-1 text-[10px] font-medium transition ${
-                      detailTab === 'text'
-                        ? 'bg-zinc-700/40 text-zinc-200'
-                        : 'text-zinc-500 hover:text-zinc-300'
-                    }`}
-                  >
-                    Berichtstext
-                  </button>
                   {offenerBericht.zusammenfassung && vorherBerichtMitKi ? (
                     <button
                       type="button"
@@ -356,38 +344,21 @@ export function PaFundamentalSecBerichte({
                       <p className="text-sm text-zinc-500">Analyse wird vorbereitet …</p>
                     </PaCard>
                   )
-                ) : detailTab === 'diff' ? (
-                  offenerBericht.zusammenfassung && vorherBerichtMitKi ? (
-                    <PaFundamentalQuartalsDiff
-                      ticker={anfrageBasis.ticker}
-                      firmenname={firmenname}
-                      typ="sec_bericht"
-                      aktuellId={offenerBericht.id}
-                      vorherId={vorherBerichtMitKi.id}
-                      aktuellLabel={offenerBericht.label}
-                      vorherLabel={vorherBerichtMitKi.label}
-                    />
-                  ) : (
-                    <PaCard variant="glass" className="flex flex-1 items-center justify-center p-6">
-                      <p className="text-sm text-zinc-500">
-                        Quartals-Diff benötigt KI-Summaries für aktuellen und vorherigen Bericht.
-                      </p>
-                    </PaCard>
-                  )
+                ) : offenerBericht.zusammenfassung && vorherBerichtMitKi ? (
+                  <PaFundamentalQuartalsDiff
+                    ticker={anfrageBasis.ticker}
+                    firmenname={firmenname}
+                    typ="sec_bericht"
+                    aktuellId={offenerBericht.id}
+                    vorherId={vorherBerichtMitKi.id}
+                    aktuellLabel={offenerBericht.label}
+                    vorherLabel={vorherBerichtMitKi.label}
+                  />
                 ) : (
-                  <PaCard variant="glass" className="min-h-0 flex-1 overflow-y-auto p-4">
-                    {berichtWirdGeladen && !offenerBericht.textVollstaendig ? (
-                      <p className="text-sm text-zinc-500">Volltext wird geladen …</p>
-                    ) : (
-                      <div className="whitespace-pre-wrap text-xs leading-relaxed text-zinc-400">
-                        {offenerBericht.textAuszug || 'Kein Text verfügbar.'}
-                        {offenerBericht.textZeichen > offenerBericht.textAuszug.length ? (
-                          <p className="mt-3 text-[10px] text-zinc-600">
-                            Auszug · {offenerBericht.textZeichen.toLocaleString('de-DE')} Zeichen gesamt
-                          </p>
-                        ) : null}
-                      </div>
-                    )}
+                  <PaCard variant="glass" className="flex flex-1 items-center justify-center p-6">
+                    <p className="text-sm text-zinc-500">
+                      Quartals-Diff benötigt KI-Summaries für aktuellen und vorherigen Bericht.
+                    </p>
                   </PaCard>
                 )}
               </div>

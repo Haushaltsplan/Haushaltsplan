@@ -3,7 +3,7 @@
 import type { SecBerichtAnfrage, SecBerichtePaket } from '@/lib/portfolio-analyse/sec-berichte-types'
 import { syncSecBerichteKiAusLocal } from '@/lib/portfolio-analyse/portfolio-ki-cache-sync-client'
 
-const LS_STORE_KEY = 'pa-sec-berichte-unternehmen-v2'
+const LS_STORE_KEY = 'pa-sec-berichte-unternehmen-v3'
 
 type UnternehmenStore = Record<
   string,
@@ -69,26 +69,31 @@ function gleichesUnternehmen(a: SecBerichtePaket | null | undefined, anfrage: Se
   return a.ticker.trim().toUpperCase() === anfrage.ticker.trim().toUpperCase()
 }
 
+function ohneBerichtstext(b: SecBerichtePaket['berichte'][number]) {
+  return { ...b, textAuszug: '', textVollstaendig: false, textZeichen: 0 }
+}
+
+function ohneBerichtstextPaket(paket: SecBerichtePaket): SecBerichtePaket {
+  return { ...paket, berichte: paket.berichte.map(ohneBerichtstext) }
+}
+
 function mergePakete(
   prev: SecBerichtePaket | null,
   next: SecBerichtePaket,
   anfrage: SecBerichtAnfrage,
 ): SecBerichtePaket {
-  if (!prev || !gleichesUnternehmen(prev, anfrage)) return next
+  if (!prev || !gleichesUnternehmen(prev, anfrage)) return ohneBerichtstextPaket(next)
 
   const mergedBerichte = next.berichte.map((b) => {
     const alt = prev.berichte.find((p) => p.id === b.id)
-    return {
+    return ohneBerichtstext({
       ...alt,
       ...b,
       zusammenfassung: b.zusammenfassung ?? alt?.zusammenfassung ?? null,
-      textAuszug: b.textVollstaendig ? b.textAuszug : (alt?.textVollstaendig ? alt.textAuszug : b.textAuszug),
-      textVollstaendig: b.textVollstaendig || Boolean(alt?.textVollstaendig),
-      textZeichen: Math.max(b.textZeichen, alt?.textZeichen ?? 0),
-    }
+    })
   })
 
-  return { ...next, berichte: mergedBerichte }
+  return ohneBerichtstextPaket({ ...next, berichte: mergedBerichte })
 }
 
 export function ladeSecBerichteAusLocalCache(
