@@ -1,0 +1,123 @@
+'use client'
+
+import { useCallback, useEffect, useState } from 'react'
+import { PaCard } from '@/components/portfolio-analyse/pa-ui'
+import type { EarningsBeatMissPaket } from '@/lib/portfolio-analyse/earnings-beat-miss-historie-server'
+import { formatEpsUsd, formatKompaktUsd } from '@/lib/portfolio-analyse/earnings-quartals-prognose'
+
+function BeatMissBadge({ anzeige }: { anzeige: string | null }) {
+  if (!anzeige) return <span className="text-zinc-500">–</span>
+  const beat = anzeige.startsWith('Beat')
+  const miss = anzeige.startsWith('Miss')
+  return (
+    <span
+      className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold ring-1 ${
+        beat
+          ? 'bg-emerald-500/15 text-emerald-300 ring-emerald-500/30'
+          : miss
+            ? 'bg-red-500/15 text-red-300 ring-red-500/30'
+            : 'bg-zinc-700/40 text-zinc-400 ring-zinc-600/40'
+      }`}
+    >
+      {anzeige}
+    </span>
+  )
+}
+
+export function PaFundamentalBeatMiss({
+  ticker,
+  symbolYahoo,
+  selectionKey,
+}: {
+  ticker: string | null
+  symbolYahoo?: string | null
+  selectionKey?: string
+}) {
+  const [daten, setDaten] = useState<EarningsBeatMissPaket | null>(null)
+  const [laden, setLaden] = useState(false)
+
+  const lade = useCallback(async () => {
+    if (!ticker?.trim()) return
+    setLaden(true)
+    try {
+      const res = await fetch('/api/portfolio-analyse/earnings-beat-miss', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ticker, symbolYahoo, limit: 8 }),
+        signal: AbortSignal.timeout(60_000),
+      })
+      setDaten((await res.json()) as EarningsBeatMissPaket)
+    } catch {
+      setDaten(null)
+    } finally {
+      setLaden(false)
+    }
+  }, [ticker, symbolYahoo])
+
+  useEffect(() => {
+    setDaten(null)
+    if (ticker?.trim()) void lade()
+  }, [selectionKey, ticker, lade])
+
+  if (!ticker?.trim()) return null
+
+  return (
+    <PaCard className="space-y-3 overflow-hidden p-4">
+      <div>
+        <h3 className="text-sm font-semibold text-white">Earnings Beat/Miss-Historie</h3>
+        <p className="text-xs text-zinc-500">Letzte 8 Quartale · EPS & Umsatz vs. Konsens (Yahoo)</p>
+      </div>
+
+      {laden && !daten ? <p className="text-sm text-zinc-500">Lädt …</p> : null}
+
+      {daten?.guidanceHinweis ? (
+        <p className="rounded-xl border border-teal-500/20 bg-teal-500/5 px-3 py-2 text-sm text-zinc-300">
+          {daten.guidanceHinweis}
+        </p>
+      ) : null}
+
+      {daten?.fehler && !daten.quartale.length ? (
+        <p className="text-sm text-amber-200/90">{daten.fehler}</p>
+      ) : null}
+
+      {daten?.quartale.length ? (
+        <div className="overflow-x-auto rounded-xl border border-zinc-800/80">
+          <table className="min-w-full text-left text-sm">
+            <thead className="bg-zinc-900/60 text-xs uppercase tracking-wide text-zinc-400">
+              <tr>
+                <th className="px-3 py-2 font-semibold">Quartal</th>
+                <th className="px-3 py-2 font-semibold">EPS</th>
+                <th className="px-3 py-2 font-semibold">EPS vs. Schätzung</th>
+                <th className="px-3 py-2 font-semibold">Umsatz</th>
+                <th className="px-3 py-2 font-semibold">Umsatz vs. Schätzung</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-zinc-800/70">
+              {daten.quartale.map((q) => (
+                <tr key={q.quartalLabel} className="align-top">
+                  <td className="whitespace-nowrap px-3 py-2.5 font-medium text-white">{q.quartalLabel}</td>
+                  <td className="px-3 py-2.5 text-zinc-300">
+                    {q.eps.ist != null ? formatEpsUsd(q.eps.ist) : '–'}
+                  </td>
+                  <td className="px-3 py-2.5">
+                    <BeatMissBadge anzeige={q.eps.anzeige} />
+                  </td>
+                  <td className="px-3 py-2.5 text-zinc-300">
+                    {q.umsatz.ist != null ? formatKompaktUsd(q.umsatz.ist) : '–'}
+                  </td>
+                  <td className="px-3 py-2.5">
+                    <BeatMissBadge anzeige={q.umsatz.anzeige} />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : null}
+
+      {!laden && daten && !daten.quartale.length ? (
+        <p className="text-sm text-zinc-500">Keine Beat/Miss-Historie verfügbar.</p>
+      ) : null}
+    </PaCard>
+  )
+}

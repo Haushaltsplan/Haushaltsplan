@@ -2,8 +2,8 @@
 
 import 'server-only'
 
-import { htmlZuFliesstext } from '@/lib/html/text-aus-html'
 import { jsonParseFehlerNachricht, leseAlsJson } from '@/lib/http/safe-json-response'
+import { ladeLesbarenBerichtText } from '@/lib/portfolio-analyse/sec-edgar-bericht-text-server'
 
 export type EdgarFilingRoh = {
   formular: '10-Q' | '10-K'
@@ -16,7 +16,6 @@ export type EdgarFilingRoh = {
 
 const MAX_FILINGS = 14
 const AUSZUG_ZEICHEN = 4_000
-const MAX_VOLLTEXT = 600_000
 
 let tickerCikCache: Map<string, number> | null = null
 let tickerCikLoadedAt = 0
@@ -101,20 +100,15 @@ type SubmissionsRecent = {
   primaryDocument?: string[]
 }
 
-function htmlZuBerichtText(html: string): string {
-  return htmlZuFliesstext(html)
-    .split('\n\n')
-    .filter((p) => p.trim().length > 20)
-    .join('\n\n')
-}
-
-async function ladeDokumentText(cik: number, accession: string, dateiname: string): Promise<string> {
-  const url = dokumentUrl(cik, accession, dateiname)
-  const res = await secFetch(url)
-  if (!res.ok) throw new Error(`SEC Dokument (${res.status})`)
-  const raw = await res.text()
-  const text = /\.(htm|html)$/i.test(dateiname) ? htmlZuBerichtText(raw) : raw.replace(/\s+/g, ' ').trim()
-  return text.slice(0, MAX_VOLLTEXT)
+async function ladeDokumentText(
+  cik: number,
+  accession: string,
+  formular: '10-Q' | '10-K',
+  dateiname: string,
+): Promise<{ text: string; url: string } | null> {
+  const hit = await ladeLesbarenBerichtText(cik, accession, formular, dateiname)
+  if (hit) return { text: hit.text, url: hit.url }
+  return null
 }
 
 function labelAusFiling(f: EdgarFilingRoh): string {
@@ -140,20 +134,20 @@ async function sleep(ms: number): Promise<void> {
 export async function ladeSecEdgarBerichteHistorie(
   tickerRaw: string,
   opts?: { max?: number; accessionVolltext?: string | null },
-): Promise<{ firmenname: string; cik: number; berichte: EdgarFilingRoh[]; texte: Map<string, string> }> {
+): Promise<{ firmenname: string; cik: number; berichte: EdgarFilingRoh[]; texte: Map<string, string>; urls: Map<string, string> }> {
   const cik = await cikFuerTicker(tickerRaw)
-  if (!cik) return { firmenname: tickerRaw.toUpperCase(), cik: 0, berichte: [], texte: new Map() }
+  if (!cik) return { firmenname: tickerRaw.toUpperCase(), cik: 0, berichte: [], texte: new Map(), urls: new Map() }
 
   const subUrl = `https://data.sec.gov/submissions/CIK${padCik(cik)}.json`
   const subRes = await secFetch(subUrl)
-  if (!subRes.ok) return { firmenname: tickerRaw.toUpperCase(), cik, berichte: [], texte: new Map() }
+  if (!subRes.ok) return { firmenname: tickerRaw.toUpperCase(), cik, berichte: [], texte: new Map(), urls: new Map() }
 
   const sub = await leseAlsJson<{ name?: string; filings?: { recent?: SubmissionsRecent } }>(subRes)
-  if (!sub) return { firmenname: tickerRaw.toUpperCase(), cik, berichte: [], texte: new Map() }
+  if (!sub) return { firmenname: tickerRaw.toUpperCase(), cik, berichte: [], texte: new Map(), urls: new Map() }
 
   const recent = sub.filings?.recent
   const firmenname = sub.name?.trim() || tickerRaw.toUpperCase()
-  if (!recent?.form?.length) return { firmenname, cik, berichte: [], texte: new Map() }
+  if (!recent?.form?.length) return { firmenname, cik, berichte: [], texte: new Map(), urls: new Map() }
 
   const max = opts?.max ?? MAX_FILINGS
   const roh: EdgarFilingRoh[] = []
@@ -177,20 +171,24 @@ export async function ladeSecEdgarBerichteHistorie(
   }
 
   const texte = new Map<string, string>()
+  const urls = new Map<string, string>()
   const vollAcc = opts?.accessionVolltext?.trim()
   const zuLaden = vollAcc ? roh.filter((r) => r.accession === vollAcc) : []
 
   for (const f of zuLaden) {
     await sleep(120)
     try {
-      const text = await ladeDokumentText(cik, f.accession, f.primaryDocument)
-      if (text.length > 200) texte.set(f.accession, text)
+      const hit = await ladeDokumentText(cik, f.accession, f.formular, f.primaryDocument)
+      if (hit && hit.text.length > 200) {
+        texte.set(f.accession, hit.text)
+        urls.set(f.accession, hit.url)
+      }
     } catch {
       /* nächster */
     }
   }
 
-  return { firmenname, cik, berichte: roh, texte }
+  return { firmenname, cik, berichte: roh, texte, urls }
 }
 
 export function baueSecBerichtEintrag(
@@ -198,8 +196,9 @@ export function baueSecBerichtEintrag(
   cik: number,
   text: string | undefined,
   vollstaendig: boolean,
+  dokumentUrlOverride?: string,
 ): import('@/lib/portfolio-analyse/sec-berichte-types').SecBerichtEintrag {
-  const url = dokumentUrl(cik, f.accession, f.primaryDocument)
+  const url = dokumentUrlOverride ?? dokumentUrl(cik, f.accession, f.primaryDocument)
   const voll = text ?? ''
   const auszug = voll.slice(0, AUSZUG_ZEICHEN)
   return {
@@ -222,11 +221,11 @@ export async function ladeSecEdgarBerichtVolltext(
   tickerRaw: string,
   accession: string,
 ): Promise<{ text: string; eintrag: import('@/lib/portfolio-analyse/sec-berichte-types').SecBerichtEintrag } | null> {
-  const { firmenname: _, cik, berichte, texte } = await ladeSecEdgarBerichteHistorie(tickerRaw, {
+  const { firmenname: _, cik, berichte, texte, urls } = await ladeSecEdgarBerichteHistorie(tickerRaw, {
     accessionVolltext: accession,
   })
   const f = berichte.find((b) => b.accession === accession)
   const text = texte.get(accession)
   if (!f || !text || cik === 0) return null
-  return { text, eintrag: baueSecBerichtEintrag(f, cik, text, true) }
+  return { text, eintrag: baueSecBerichtEintrag(f, cik, text, true, urls.get(accession)) }
 }

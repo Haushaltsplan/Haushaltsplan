@@ -6,6 +6,8 @@ import { PaFundamentalMantra } from '@/components/portfolio-analyse/pa-fundament
 import { PaFundamentalMaterialEvents } from '@/components/portfolio-analyse/pa-fundamental-material-events'
 import { PaFundamentalNews } from '@/components/portfolio-analyse/pa-fundamental-news'
 import { PaFundamentalPeerVergleich } from '@/components/portfolio-analyse/pa-fundamental-peer-vergleich'
+import { PaFundamentalInsider } from '@/components/portfolio-analyse/pa-fundamental-insider'
+import { PaFundamentalCapitalAllocation } from '@/components/portfolio-analyse/pa-fundamental-capital-allocation'
 import { PaFundamentalUebersicht } from '@/components/portfolio-analyse/pa-fundamental-uebersicht'
 import { PaFundamentalUnternehmenHeader } from '@/components/portfolio-analyse/pa-fundamental-unternehmen-header'
 import { PaFundamentalMetrikChart } from '@/components/portfolio-analyse/pa-fundamental-metrik-chart'
@@ -189,6 +191,18 @@ export function PaFundamentalInhalt({
           {unterTab === 'mantra' && daten.mantra ? (
             <div className="space-y-4">
               <PaFundamentalMantra audit={daten.mantra} />
+              <PaFundamentalCapitalAllocation
+                ticker={daten.ticker}
+                symbolYahoo={daten.symbolYahoo}
+                selectionKey={selectionKey}
+              />
+              <PaFundamentalInsider
+                ticker={daten.ticker}
+                symbolYahoo={daten.symbolYahoo}
+                firmenname={daten.firmenname}
+                isin={anfrage.isin ?? null}
+                selectionKey={selectionKey}
+              />
               <PaFundamentalPeerVergleich ticker={daten.ticker} isin={anfrage.isin ?? null} />
             </div>
           ) : null}
@@ -198,6 +212,7 @@ export function PaFundamentalInhalt({
               ticker={daten.ticker}
               firmenname={daten.firmenname}
               isin={anfrage.isin ?? null}
+              symbolYahoo={daten.symbolYahoo}
               selectionKey={selectionKey}
             />
           ) : null}

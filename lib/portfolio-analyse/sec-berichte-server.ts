@@ -23,6 +23,8 @@ import { resolveCoachProviderFromMode, runCoachCompletion, earningsCallGeminiMod
 const MAX_REPORT_CHARS = 120_000
 const serverCache = new Map<string, { at: number; paket: SecBerichtePaket }>()
 const CACHE_MS = 12 * 60 * 60 * 1000
+/** Cache-Version — bei Parser-Änderungen erhöhen (z. B. XBRL-Fix). */
+const LIST_CACHE_VERSION = 2
 
 type ListCache = {
   expiresAt: number
@@ -39,7 +41,7 @@ function tickerKey(ticker: string): string {
 }
 
 function cacheKey(anfrage: SecBerichtAnfrage): string {
-  return [tickerKey(anfrage.ticker), anfrage.isin?.trim().toUpperCase() ?? ''].join('|')
+  return [LIST_CACHE_VERSION, tickerKey(anfrage.ticker), anfrage.isin?.trim().toUpperCase() ?? ''].join('|')
 }
 
 function leerPaket(ticker: string, fehler?: string): SecBerichtePaket {
@@ -112,7 +114,8 @@ async function ladeBerichteListe(
   opts: { force?: boolean; isin?: string | null; firmenname?: string | null },
 ): Promise<ListCache> {
   const key = tickerKey(ticker)
-  const hit = listCache.get(key)
+  const listKey = `${LIST_CACHE_VERSION}|${key}`
+  const hit = listCache.get(listKey)
   if (hit && hit.expiresAt > Date.now() && !opts.force) {
     await ladePersistenteSummaries(ticker, hit)
     return hit
@@ -132,7 +135,7 @@ async function ladeBerichteListe(
       texte,
     }
     await ladePersistenteSummaries(ticker, cache)
-    listCache.set(key, cache)
+    listCache.set(listKey, cache)
     return cache
   }
 
@@ -149,7 +152,7 @@ async function ladeBerichteListe(
     texte: ir.texte,
   }
   await ladePersistenteSummaries(ticker, cache)
-  listCache.set(key, cache)
+  listCache.set(listKey, cache)
   return cache
 }
 
@@ -230,7 +233,7 @@ export async function ladeSecBerichte(anfrage: SecBerichtAnfrage): Promise<SecBe
       isin: anfrage.isin,
       firmenname: anfrage.firmenname,
     })
-    const ausCache = !anfrage.force && listCache.has(tickerKey(ticker))
+    const ausCache = !anfrage.force && listCache.has(`${LIST_CACHE_VERSION}|${tickerKey(ticker)}`)
     const quelleLabel = cache.quelle === 'ir_pdf' ? 'Investor Relations (PDF)' : 'SEC EDGAR'
 
     if (!berichtId) {
