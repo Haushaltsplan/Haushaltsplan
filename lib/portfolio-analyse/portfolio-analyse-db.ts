@@ -43,11 +43,71 @@ const SPALTEN_META: Record<
 
 function fehlendePortfolioSpalte(message: string): keyof BuchungDbSpalten | null {
   const m = /could not find the '([^']+)' column/i.exec(message)
-  if (!m) return null
-  if (m[1] === 'realisierter_gewinn_eur') return 'realisierterGewinn'
-  if (m[1] === 'parqet_typ') return 'parqetTyp'
-  if (m[1] === 'steuer_eur') return 'steuerEur'
+  if (m) {
+    if (m[1] === 'realisierter_gewinn_eur') return 'realisierterGewinn'
+    if (m[1] === 'parqet_typ') return 'parqetTyp'
+    if (m[1] === 'steuer_eur') return 'steuerEur'
+  }
+  const pg = /(?:portfolio_analyse_buchung\.)?(realisierter_gewinn_eur|parqet_typ|steuer_eur)\s+does not exist/i.exec(
+    message,
+  )
+  if (pg?.[1] === 'realisierter_gewinn_eur') return 'realisierterGewinn'
+  if (pg?.[1] === 'parqet_typ') return 'parqetTyp'
+  if (pg?.[1] === 'steuer_eur') return 'steuerEur'
   return null
+}
+
+let spaltenCache: BuchungDbSpalten | null = null
+let spaltenCacheAt = 0
+const SPALTEN_CACHE_MS = 30_000
+
+/** Prüft, welche optionalen Spalten in Supabase wirklich existieren (nicht nur ob die Tabelle da ist). */
+export async function ermittlePortfolioBuchungSpalten(
+  force = false,
+): Promise<BuchungDbSpalten> {
+  if (!force && spaltenCache && Date.now() - spaltenCacheAt < SPALTEN_CACHE_MS) {
+    return spaltenCache
+  }
+  const out: BuchungDbSpalten = {
+    realisierterGewinn: false,
+    parqetTyp: false,
+    steuerEur: false,
+  }
+  for (const key of Object.keys(SPALTEN_META) as (keyof BuchungDbSpalten)[]) {
+    const col = SPALTEN_META[key].db
+    const { error } = await supabase.from('portfolio_analyse_buchung').select(col).limit(0)
+    out[key] = !error
+  }
+  spaltenCache = out
+  spaltenCacheAt = Date.now()
+  return out
+}
+
+function migrationHinweis(fehlende: Set<keyof BuchungDbSpalten>): string {
+  const migrations = [...new Set([...fehlende].map((k) => SPALTEN_META[k].migration))]
+  const spalten = [...fehlende].map((k) => SPALTEN_META[k].db).join(', ')
+  return (
+    `In Supabase fehlt noch die Spalte${fehlende.size > 1 ? 'n' : ''} ${spalten} ` +
+    `(Tabelle portfolio_analyse_buchung existiert bereits). ` +
+    `SQL-Editor → ausführen: supabase/migrations/${migrations.join(' und ')} ` +
+    `— danach CSV erneut importieren.`
+  )
+}
+
+function buchungVerliertDaten(
+  key: keyof BuchungDbSpalten,
+  buchungen: PortfolioBuchung[],
+): boolean {
+  if (key === 'steuerEur') {
+    return buchungen.some((b) => b.steuerEur != null && b.steuerEur > 0)
+  }
+  if (key === 'realisierterGewinn') {
+    return buchungen.some((b) => b.realisierterGewinnEur != null)
+  }
+  if (key === 'parqetTyp') {
+    return buchungen.some((b) => b.parqetTyp != null && b.parqetTyp.trim() !== '')
+  }
+  return false
 }
 
 function buchungZuDbRow(b: PortfolioBuchung, spalten: BuchungDbSpalten): Record<string, unknown> {
@@ -231,8 +291,11 @@ export async function speicherePortfolioImport(
   }
 
   let eingefuegt = 0
-  let dbSpalten: BuchungDbSpalten = { realisierterGewinn: true, parqetTyp: true, steuerEur: true }
+  let dbSpalten = await ermittlePortfolioBuchungSpalten(true)
   const fehlendeSpalten = new Set<keyof BuchungDbSpalten>()
+  for (const key of Object.keys(SPALTEN_META) as (keyof BuchungDbSpalten)[]) {
+    if (!dbSpalten[key]) fehlendeSpalten.add(key)
+  }
   let hinweis: string | undefined
 
   if (buchungen.length > 0) {
@@ -251,6 +314,8 @@ export async function speicherePortfolioImport(
         if (fehlend && dbSpalten[fehlend]) {
           dbSpalten = { ...dbSpalten, [fehlend]: false }
           fehlendeSpalten.add(fehlend)
+          spaltenCache = dbSpalten
+          spaltenCacheAt = Date.now()
           i -= PORTFOLIO_UPSERT_BATCH
           continue
         }
@@ -264,16 +329,9 @@ export async function speicherePortfolioImport(
       eingefuegt += data?.length ?? 0
     }
 
-    if (fehlendeSpalten.size > 0) {
-      const migrations = [
-        ...new Set([...fehlendeSpalten].map((k) => SPALTEN_META[k].migration)),
-      ]
-      const spalten = [...fehlendeSpalten].map((k) => SPALTEN_META[k].db).join(', ')
-      hinweis =
-        `Datenbank-Migration fehlt noch (Spalte${fehlendeSpalten.size > 1 ? 'n' : ''}: ${spalten}). ` +
-        'Buchungen wurden ohne diese Felder gespeichert. ' +
-        `Im Supabase SQL-Editor ausführen: supabase/migrations/${migrations.join(' und ')} ` +
-        '— danach CSV erneut importieren (Upsert aktualisiert bestehende Zeilen).'
+    const relevant = [...fehlendeSpalten].filter((k) => buchungVerliertDaten(k, buchungen))
+    if (relevant.length > 0) {
+      hinweis = migrationHinweis(new Set(relevant))
     }
   }
 

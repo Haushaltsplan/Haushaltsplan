@@ -1,7 +1,8 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { formatEur } from '@/lib/portfolio-analyse/berechnung'
+import { ermittlePortfolioBuchungSpalten } from '@/lib/portfolio-analyse/portfolio-analyse-db'
 import {
   quellensteuerProJahr,
   steuernProJahr,
@@ -156,6 +157,17 @@ export function PaSteuernPanel({ buchungen }: { buchungen: PortfolioBuchung[] })
   const jahresZeilen = useMemo(() => steuernProJahr(buchungen), [buchungen])
   const steuerJahre = useMemo(() => verfuegbareSteuerJahre(buchungen), [buchungen])
   const [quellenJahr, setQuellenJahr] = useState(() => steuerJahre[0] ?? new Date().getFullYear())
+  const [steuerSpalteFehlt, setSteuerSpalteFehlt] = useState<boolean | null>(null)
+
+  useEffect(() => {
+    let aktiv = true
+    void ermittlePortfolioBuchungSpalten(true).then((spalten) => {
+      if (aktiv) setSteuerSpalteFehlt(!spalten.steuerEur)
+    })
+    return () => {
+      aktiv = false
+    }
+  }, [buchungen.length])
 
   const quellenJahre =
     steuerJahre.length > 0 ? steuerJahre : [new Date().getFullYear()]
@@ -165,6 +177,26 @@ export function PaSteuernPanel({ buchungen }: { buchungen: PortfolioBuchung[] })
 
   return (
     <div className="space-y-8">
+      {steuerSpalteFehlt ? (
+        <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-xs text-amber-100/90">
+          Die Spalte <strong className="font-medium">steuer_eur</strong> fehlt in Supabase (die Tabelle
+          selbst ist da). Im{' '}
+          <a
+            href="https://supabase.com/dashboard/project/vkxsmplcmojybuauffyz/sql/new"
+            target="_blank"
+            rel="noreferrer"
+            className="text-amber-200 underline hover:text-amber-100"
+          >
+            SQL-Editor
+          </a>{' '}
+          ausführen:{' '}
+          <code className="rounded bg-black/20 px-1 py-0.5 text-[11px]">
+            ALTER TABLE portfolio_analyse_buchung ADD COLUMN IF NOT EXISTS steuer_eur numeric(14,2);
+          </code>{' '}
+          — danach Parqet-CSV erneut importieren.
+        </div>
+      ) : null}
+
       <div>
         <h2 className="text-base font-semibold text-zinc-100">Steuern pro Jahr</h2>
         <p className="mt-1 text-xs text-zinc-500">

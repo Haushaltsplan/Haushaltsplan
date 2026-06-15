@@ -192,7 +192,7 @@ export function PortfolioImportClient() {
         return
       }
       if (res.hinweis) {
-        toast.error(res.hinweis, { duration: 12000 })
+        toast(res.hinweis, { icon: '⚠️', duration: 14000 })
       }
       toast.success(
         res.eingefuegt > 0
