@@ -6,6 +6,7 @@ import { htmlZuFliesstext, linksAusHtml } from '@/lib/html/text-aus-html'
 import {
   istEarningsCallTranskript,
   istPresseMitteilung,
+  istWebcastDokumentText,
 } from '@/lib/portfolio-analyse/earnings-call-transcript-heuristik'
 import { crawlIrTranskripte } from '@/lib/portfolio-analyse/ir-earnings-crawler'
 import { ladeQ4TranskriptHistorie } from '@/lib/portfolio-analyse/ir-q4-transcript-server'
@@ -15,6 +16,7 @@ import {
   scoreTranskriptLink,
   type IrEarningsQuelle,
 } from '@/lib/portfolio-analyse/ir-earnings-sources'
+import { ladeHermesWebcastHistorie, HERMES_ISIN } from '@/lib/portfolio-analyse/hermes-finance-ir-server'
 import { ladeIrQuartalsTranskriptHistorie } from '@/lib/portfolio-analyse/ir-quarter-transcript-server'
 import type { IrRohesTranskript } from '@/lib/portfolio-analyse/ir-earnings-types'
 
@@ -71,7 +73,8 @@ async function transkripteAusLinks(kandidaten: LinkKandidat[], max: number): Pro
     if (out.length >= max) break
     const text = await ladeDokumentText(k.href)
     if (text.length < 600) continue
-    if (!istEarningsCallTranskript(text) || istPresseMitteilung(text)) continue
+    if (!istEarningsCallTranskript(text) && !istWebcastDokumentText(text)) continue
+    if (istPresseMitteilung(text) && !istWebcastDokumentText(text)) continue
     out.push({
       titel: k.text,
       url: k.href,
@@ -124,6 +127,12 @@ export async function ladeIrTranskriptHistorie(
     return []
   }
 
+  const isinNorm = isin.trim().toUpperCase()
+  if (isinNorm === HERMES_ISIN) {
+    const hermes = await ladeHermesWebcastHistorie(max)
+    if (hermes.length > 0) return hermes
+  }
+
   const q4 = await ladeQ4TranskriptHistorie(quelle.listenUrls, quelle.q4BasisUrls ?? [], max)
   if (q4.length > 0) return q4
 
@@ -153,7 +162,10 @@ export async function ladeIrTranskriptHistorie(
       const { ladeIrViaPlaywrightBrowser } = await import('@/lib/portfolio-analyse/ir-earnings-browser')
       const pwOut = await ladeIrViaPlaywrightBrowser(quelle, max, ladeDokumentText, parseDatumAusText)
       const valid = pwOut.filter(
-        (t) => t.text.length >= 800 && istEarningsCallTranskript(t.text) && !istPresseMitteilung(t.text),
+        (t) =>
+          t.text.length >= 800 &&
+          (istEarningsCallTranskript(t.text) || istWebcastDokumentText(t.text)) &&
+          !(istPresseMitteilung(t.text) && !istWebcastDokumentText(t.text)),
       )
       if (valid.length > 0) return valid
     } catch {

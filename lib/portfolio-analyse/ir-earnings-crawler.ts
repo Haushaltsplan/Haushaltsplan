@@ -7,6 +7,7 @@ import {
   istEarningsCallTranskript,
   istPresseMitteilung,
   istTranskriptLinkStreng,
+  istWebcastDokumentText,
 } from '@/lib/portfolio-analyse/earnings-call-transcript-heuristik'
 import { scoreTranskriptLink } from '@/lib/portfolio-analyse/ir-earnings-sources'
 import type { IrRohesTranskript } from '@/lib/portfolio-analyse/ir-earnings-types'
@@ -116,7 +117,8 @@ export async function crawlIrTranskripte(startUrls: string[], max = 8): Promise<
 
     const text = await ladeDokumentText(k.href)
     if (text.length < 800) continue
-    if (!istEarningsCallTranskript(text) || istPresseMitteilung(text)) continue
+    if (!istEarningsCallTranskript(text) && !istWebcastDokumentText(text)) continue
+    if (istPresseMitteilung(text) && !istWebcastDokumentText(text)) continue
 
     out.push({
       titel: k.text || k.href,

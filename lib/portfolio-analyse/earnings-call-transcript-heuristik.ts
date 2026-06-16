@@ -26,13 +26,14 @@ const CALL_SIGNALS = [
   /\bspeaker \d+:/i,
 ]
 
-/** Link-Text/URL — explizites Transkript, keine reine Pressemitteilung. */
+/** Link-Text/URL — explizites Transkript oder Webcast-PDF (EU-IR). */
 export function istTranskriptLinkStreng(text: string, href: string): boolean {
   const combined = `${text} ${href}`.toLowerCase()
+  if (istWebcastDokumentLink(text, href)) return true
   if (/presentation|investor deck|slides|10-q|10-k|annual report/i.test(combined)) {
-    if (!/transcript|conference call|earnings call/i.test(combined)) return false
+    if (!/transcript|conference call|earnings call|webcast/i.test(combined)) return false
   }
-  if (PRESS_ONLY.test(combined) && !/transcript|conference call|earnings call|webcast transcript/i.test(combined)) {
+  if (PRESS_ONLY.test(combined) && !/transcript|conference call|earnings call|webcast transcript|webcast|revenue_q/i.test(combined)) {
     return false
   }
   if (
@@ -46,6 +47,38 @@ export function istTranskriptLinkStreng(text: string, href: string): boolean {
     return true
   }
   return false
+}
+
+/** Webcast-, Präsentations- oder Ergebnis-PDF (z. B. Hermès finance.hermes.com). */
+export function istWebcastDokumentLink(text: string, href: string): boolean {
+  const combined = `${text} ${href}`.toLowerCase()
+  if (!/\.pdf(\?|$)/i.test(href) && !/assets-finance\.hermes\.com/i.test(href)) return false
+  if (/webcast|replay|analyst conference|results presentation|investor presentation|message.*executive|executive management/i.test(combined)) {
+    return true
+  }
+  if (/revenue_q[1-4]|ca_t[1-4]|_t[1-4]_|chiffre.*affaires|half.?year|semest/i.test(combined)) return true
+  if (/assets-finance\.hermes\.com/i.test(href) && /revenue|webcast|presentation|message|publishing|urd|ca_t|ca_s/i.test(combined)) {
+    return true
+  }
+  return false
+}
+
+/** Rohtext — volles Transkript oder Webcast-/Ergebnis-PDF (ohne Q&A-Pflicht). */
+export function istWebcastDokumentText(text: string): boolean {
+  if (istEarningsCallTranskript(text)) return true
+  const sample = text.slice(0, 80_000)
+  if (sample.length < 1_000) return false
+
+  let score = 0
+  if (/revenue|turnover|chiffre d'affaires|chiffre d affaires|at constant exchange rates|sales at constant/i.test(sample)) {
+    score += 2
+  }
+  if (/hermes international|executive management|financial communication|analyst conference|webcast/i.test(sample)) {
+    score += 1
+  }
+  if (/\d{1,3}[,.]\d+\s*(million|milliard|bn|m€|%)/i.test(sample)) score += 1
+  if (/presentation|prepared remarks|message from/i.test(sample)) score += 1
+  return score >= 2
 }
 
 /** Rohtext — typische Merkmale eines Calls inkl. Q&A. */

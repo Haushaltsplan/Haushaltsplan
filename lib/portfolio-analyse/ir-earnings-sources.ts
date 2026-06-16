@@ -25,7 +25,13 @@ export const IR_EARNINGS_NACH_ISIN: Record<string, IrEarningsQuelle> = {
     ],
   },
   FR0000052292: {
-    listenUrls: ['https://finance.hermes.com/en/publications/'],
+    listenUrls: [
+      'https://finance.hermes.com/en/',
+      'https://finance.hermes.com/en/publications/',
+      'https://finance.hermes.com/fr/publications/',
+    ],
+    keywords: ['webcast', 'revenue', 'message', 'presentation', 'publishing'],
+    erwarteVollesTranskript: false,
   },
   NL0000395903: {
     listenUrls: ['https://www.wolterskluwer.com/en/investors/financials'],
@@ -187,7 +193,9 @@ export function scoreTranskriptLink(text: string, href: string): number {
   ) {
     score += 10
   }
-  if (combined.includes('webcast') || combined.includes('replay')) score += 4
+  if (combined.includes('webcast') || combined.includes('replay')) score += 8
+  if (/revenue_q|ca_t[1-4]|message.*executive|executive management|analyst conference/i.test(combined)) score += 6
+  if (/assets-finance\.hermes\.com/i.test(href)) score += 5
   if (/q[1-4]\s*20\d{2}|20\d{2}.*q[1-4]/i.test(combined)) score += 6
   if (/\.pdf$/i.test(href)) score += 2
   if (combined.includes('presentation') && !combined.includes('transcript')) score -= 8

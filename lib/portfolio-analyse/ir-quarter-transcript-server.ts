@@ -6,6 +6,7 @@ import { linksAusHtml } from '@/lib/html/text-aus-html'
 import {
   istEarningsCallTranskript,
   istPresseMitteilung,
+  istWebcastDokumentText,
 } from '@/lib/portfolio-analyse/earnings-call-transcript-heuristik'
 import { ladeDokumentText } from '@/lib/portfolio-analyse/ir-earnings-scraper'
 import type { IrRohesTranskript } from '@/lib/portfolio-analyse/ir-earnings-types'
@@ -33,7 +34,8 @@ function istTranskriptPdf(href: string, text: string): boolean {
   if (/transcript|transkript|investor-call|investor call|conference call|results-video-transcript|earnings call/i.test(c)) {
     return true
   }
-  if (/press release|presentation|financial-statements|financial statements/i.test(c) && !/transcript/i.test(c)) {
+  if (/webcast|replay|presentation|revenue_q|ca_t[1-4]|message.*executive|analyst conference/i.test(c)) return true
+  if (/press release|financial-statements|financial statements/i.test(c) && !/transcript|webcast|revenue/i.test(c)) {
     return false
   }
   return false
@@ -101,7 +103,8 @@ async function transkripteAusQuartalsseite(seitenUrl: string, max: number): Prom
     if (out.length >= max) break
     const text = await ladeDokumentText(pdf.href)
     if (text.length < 600) continue
-    if (!istEarningsCallTranskript(text) || istPresseMitteilung(text)) continue
+    if (!istEarningsCallTranskript(text) && !istWebcastDokumentText(text)) continue
+    if (istPresseMitteilung(text) && !istWebcastDokumentText(text)) continue
     out.push({
       titel: pdf.text || pdf.href.split('/').pop() || 'Earnings Call Transcript',
       url: pdf.href,
