@@ -7,7 +7,12 @@ import {
   parseQuartalAusText,
   sortiereQuartale,
 } from '@/lib/portfolio-analyse/earnings-call-quartal'
-import { EARNINGS_CALL_SYSTEM_PROMPT } from '@/lib/portfolio-analyse/earnings-call-prompt'
+import {
+  EARNINGS_CALL_SYSTEM_PROMPT,
+  EARNINGS_WEBCAST_SYSTEM_PROMPT,
+} from '@/lib/portfolio-analyse/earnings-call-prompt'
+import { istWebcastDokumentText } from '@/lib/portfolio-analyse/earnings-call-transcript-heuristik'
+import { loesePortfolioIsin } from '@/lib/portfolio-analyse/isin-kenntnisse'
 import {
   ladeEarningsCallKiCacheEintrag,
   ladeEarningsCallKiCacheFuerTicker,
@@ -121,10 +126,22 @@ async function mitZeitlimit<T>(promise: Promise<T>, ms: number, fallback: T): Pr
   ])
 }
 
+function anfrageMitIsin(anfrage: EarningsCallAnfrage): EarningsCallAnfrage {
+  const isin =
+    loesePortfolioIsin({
+      isin: anfrage.isin,
+      symbolYahoo: anfrage.ticker,
+      ticker: anfrage.ticker,
+      firmenname: anfrage.firmenname,
+    }) ?? anfrage.isin
+  return isin && isin !== anfrage.isin ? { ...anfrage, isin } : anfrage
+}
+
 async function entdeckeTranskripte(
   anfrage: EarningsCallAnfrage,
   irUrl: string | null,
 ): Promise<RohesTranskript[]> {
+  anfrage = anfrageMitIsin(anfrage)
   const kontext = aufloeseEarningsCallKontext(anfrage)
   const ticker = tickerKey(kontext.foolTicker || anfrage.ticker)
   const firmenname = kontext.firmenname ?? anfrage.firmenname
@@ -139,9 +156,12 @@ async function entdeckeTranskripte(
   const symbolYahoo = kontext.symbolYahoo
 
   const irHard = irEarningsQuelleFuerIsin(anfrage.isin ?? '')
-  const irErwarteTranskript = !kontext.irNurWebcast && irHard?.erwarteVollesTranskript !== false
+  const irWebcastModus = irHard?.erwarteVollesTranskript === false
+  const irErwarteVollesTranskript = !kontext.irNurWebcast && !irWebcastModus
   const irVersuchen =
-    irErwarteTranskript && Boolean(anfrage.isin?.trim() || irUrl) && (!isUsSec || Boolean(irHard?.listenUrls.length))
+    (irErwarteVollesTranskript || irWebcastModus) &&
+    Boolean(anfrage.isin?.trim() || irUrl) &&
+    (!isUsSec || Boolean(irHard?.listenUrls.length))
 
   const marketbeatVersuchen = async (budgetMs: number) => {
     const mb = await mitZeitlimit(
@@ -262,8 +282,11 @@ async function entdeckeTranskripte(
       : 'MarketBeat, Motley Fool und SEC'
     : 'IR, MarketBeat, Investing.com, Finnhub, Motley Fool'
 
+  const webcastHinweis = irWebcastModus
+    ? ' Für dieses Unternehmen werden Webcast- und Ergebnis-PDFs von der IR-Seite erwartet (kein US-Transkript).'
+    : ''
   throw new Error(
-    `Kein Earnings-Call-Transkript (Conference Call inkl. Q&A) für ${firmenname ?? ticker} (${ticker}) gefunden. Geprüft: ${quellen}.`,
+    `Kein Earnings-Call-Transkript${irWebcastModus ? ' oder Webcast-PDF' : ' (Conference Call inkl. Q&A)'} für ${firmenname ?? ticker} (${ticker}) gefunden. Geprüft: ${quellen}.${webcastHinweis}`,
   )
 }
 
@@ -283,6 +306,12 @@ function rohZuQuartale(roh: RohesTranskript[]): EarningsCallQuartalEintrag[] {
     }
     usedIds.add(id)
 
+    const webcastPdf =
+      istWebcastDokumentText(r.text) &&
+      !/\bconference call transcript\b|\bearnings call transcript\b|\bquestion[- ]and[- ]answer\b/i.test(
+        r.text.slice(0, 12_000),
+      )
+
     eintraege.push({
       id,
       jahr,
@@ -294,6 +323,7 @@ function rohZuQuartale(roh: RohesTranskript[]): EarningsCallQuartalEintrag[] {
       quelle: r.quelle,
       transcriptZeichen: r.text.length,
       zusammenfassung: null,
+      istWebcastPdf: webcastPdf,
     })
   }
 
@@ -309,6 +339,11 @@ async function zusammenfasseTranscript(
     throw new Error('KI nicht konfiguriert — GEMINI_API_KEY in .env.local setzen.')
   }
 
+  const webcast =
+    istWebcastDokumentText(transcript) && !/\bconference call transcript\b|\bearnings call transcript\b|\bquestion[- ]and[- ]answer\b/i.test(
+      transcript.slice(0, 12_000),
+    )
+
   const clipped =
     transcript.length > MAX_TRANSCRIPT_CHARS
       ? `${transcript.slice(0, MAX_TRANSCRIPT_CHARS)}\n\n[… gekürzt …]`
@@ -319,14 +354,14 @@ async function zusammenfasseTranscript(
     `Quartal: ${meta.label}`,
     `Titel: ${meta.titel}`,
     '',
-    '--- TRANSKRIPT ---',
+    webcast ? '--- WEBCAST / ERGEBNIS-PDF ---' : '--- TRANSKRIPT ---',
     clipped,
   ].join('\n')
 
   const result = await runCoachCompletion(
     provider.provider,
     provider.apiKey,
-    EARNINGS_CALL_SYSTEM_PROMPT,
+    webcast ? EARNINGS_WEBCAST_SYSTEM_PROMPT : EARNINGS_CALL_SYSTEM_PROMPT,
     [{ role: 'user', content: userText }],
     {
       temperature: 0.35,
@@ -377,6 +412,7 @@ function bauePaket(
 }
 
 export async function ladeEarningsCallZusammenfassung(anfrage: EarningsCallAnfrage): Promise<EarningsCallPaket> {
+  anfrage = anfrageMitIsin(anfrage)
   const kontext = aufloeseEarningsCallKontext(anfrage)
   const ticker = tickerKey(kontext.foolTicker || anfrage.ticker)
 

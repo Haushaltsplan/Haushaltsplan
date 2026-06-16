@@ -24,6 +24,8 @@ export type EarningsCallQuartalEintrag = {
   quelle: EarningsCallQuelle
   transcriptZeichen: number
   zusammenfassung: string | null
+  /** Webcast-/Ergebnis-PDF statt vollem Conference-Call-Transkript */
+  istWebcastPdf?: boolean
 }
 
 export type EarningsCallPaket = {

@@ -219,7 +219,7 @@ export function PaFundamentalSecBerichte({
       <div className="flex flex-wrap items-end justify-between gap-2 border-b border-white/[0.06] pb-3">
         <div>
           <h2 className="text-base font-medium text-zinc-100">Quartals- & Jahresberichte</h2>
-          <p className="mt-0.5 text-xs text-zinc-500">SEC 10-Q / 10-K · KI-Analyse (Gemini)</p>
+          <p className="mt-0.5 text-xs text-zinc-500">Finanzberichte (SEC / IR-PDF) · KI-Analyse (Gemini)</p>
         </div>
         <button
           type="button"

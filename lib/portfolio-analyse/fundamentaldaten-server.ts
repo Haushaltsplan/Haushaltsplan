@@ -22,7 +22,7 @@ import type {
   FundamentalPeriode,
 } from '@/lib/portfolio-analyse/fundamentaldaten-types'
 import { FUNDAMENTAL_NTM_KEY } from '@/lib/portfolio-analyse/fundamentaldaten-types'
-import { isinKenntnis } from '@/lib/portfolio-analyse/isin-kenntnisse'
+import { isinKenntnis, loesePortfolioIsin } from '@/lib/portfolio-analyse/isin-kenntnisse'
 import {
   ladeMacrotrendsFundamentaldaten,
   loeseMacrotrendsIdent,
@@ -30,6 +30,11 @@ import {
   type MacrotrendsIdent,
   type MacrotrendsIdentOpts,
 } from '@/lib/portfolio-analyse/macrotrends-scraper-server'
+import {
+  ergaenzeMacrotrendsMitYahooGuV,
+  HERMES_YAHOO_ISIN,
+  nutzeYahooGuVFuerIsin,
+} from '@/lib/portfolio-analyse/fundamentaldaten-yahoo-guv-server'
 import { ladeUnitEconomics } from '@/lib/portfolio-analyse/unit-economics-server'
 import { holeYahooFinanceAuth } from '@/lib/portfolio-analyse/yahoo-finance-auth-server'
 
@@ -56,7 +61,13 @@ function macrotrendsOptsAusAnfrage(
   anfrage: FundamentaldatenAnfrage,
   erwarteterTicker: string,
 ): MacrotrendsIdentOpts {
-  const k = isinKenntnis(anfrage.isin?.trim().toUpperCase())
+  const isin = loesePortfolioIsin({
+    isin: anfrage.isin,
+    symbolYahoo: anfrage.symbolYahoo,
+    ticker: erwarteterTicker,
+    firmenname: anfrage.name,
+  })
+  const k = isinKenntnis(isin)
   return {
     erwarteterTicker: erwarteterTicker.trim().toUpperCase(),
     firmenname: anfrage.name?.trim() || k?.name?.trim(),
@@ -71,7 +82,12 @@ async function loeseIdent(anfrage: FundamentaldatenAnfrage): Promise<{
 }> {
   const symbole = symboleAusAnfrage(anfrage)
   const symbolYahoo = symbole[0] ?? anfrage.symbolYahoo ?? null
-  const k = isinKenntnis(anfrage.isin?.trim().toUpperCase())
+  const isin = loesePortfolioIsin({
+    isin: anfrage.isin,
+    symbolYahoo: anfrage.symbolYahoo ?? symbolYahoo,
+    firmenname: anfrage.name,
+  })
+  const k = isinKenntnis(isin)
   const firmenname = anfrage.name?.trim() || k?.name?.trim()
 
   if (anfrage.tickerOverride?.trim()) {
@@ -285,7 +301,7 @@ export async function ladeFundamentaldaten(anfrage: FundamentaldatenAnfrage): Pr
     })
   }
 
-  const [roh, yahooRaw, schaetzungen, news, yahooFinanz, unitEconomics] = await Promise.all([
+  const [rohRaw, yahooRaw, schaetzungen, news, yahooFinanz, unitEconomics] = await Promise.all([
     ladeMacrotrendsFundamentaldaten(ident, frequenz),
     symbolYahoo ? ladeYahooFundamentalKennzahlen(symbolYahoo) : Promise.resolve(null),
     frequenz === 'jahr' && symbolYahoo
@@ -300,6 +316,16 @@ export async function ladeFundamentaldaten(anfrage: FundamentaldatenAnfrage): Pr
     symbolYahoo ? ladeYahooMantraFinanzdaten(symbolYahoo) : Promise.resolve(null),
     ladeUnitEconomics(ident.ticker).catch(() => null),
   ])
+
+  let roh = rohRaw
+  const isinNorm = loesePortfolioIsin({
+    isin: anfrage.isin,
+    symbolYahoo: symbolYahoo ?? anfrage.symbolYahoo,
+    firmenname: anfrage.name ?? ident.firmenname,
+  })
+  if (roh && symbolYahoo && frequenz === 'jahr' && nutzeYahooGuVFuerIsin(isinNorm ?? anfrage.isin)) {
+    roh = await ergaenzeMacrotrendsMitYahooGuV(roh, symbolYahoo)
+  }
 
   const yahooExt = yahooRaw as (YahooFundamentalKennzahlen & {
     sector?: string
@@ -370,6 +396,9 @@ export async function ladeFundamentaldaten(anfrage: FundamentaldatenAnfrage): Pr
     yahooFinanz,
     unitEconomics,
   })
+  const waehrung =
+    isinNorm === HERMES_YAHOO_ISIN && symbolYahoo?.toUpperCase().endsWith('.PA') ? 'EUR' : 'USD'
+
   return leeresPaket({
     ok: true,
     ticker: ident.ticker,
@@ -379,6 +408,7 @@ export async function ladeFundamentaldaten(anfrage: FundamentaldatenAnfrage): Pr
     sektor: sektorFinal,
     website: yahooExt?.website ?? null,
     beschreibung: beschreibungDe,
+    waehrung,
     perioden: merged.perioden,
     zeilen: merged.zeilen,
     keyMetrics: baueKeyMetrics(yahooExt, mergedRoh, schaetzungenGefiltert, kontextWerte),

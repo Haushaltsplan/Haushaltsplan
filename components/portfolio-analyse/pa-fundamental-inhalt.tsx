@@ -287,7 +287,7 @@ export function PaFundamentalInhalt({
 
               {unterTab === 'finanzdaten' && finanzdaten.length > 0 ? (
                 <PaFundamentalMetrikTabelle
-                  titel="GuV / Finanzdaten (Mio. USD)"
+                  titel={`GuV / Finanzdaten (Mio. ${daten.waehrung ?? 'USD'})`}
                   perioden={daten.perioden}
                   zeilen={finanzdaten}
                   aktivIds={chartAktiv}
@@ -297,7 +297,7 @@ export function PaFundamentalInhalt({
 
               {unterTab === 'finanzdaten' && cashflow.length > 0 ? (
                 <PaFundamentalMetrikTabelle
-                  titel="Cashflow (Mio. USD)"
+                  titel={`Cashflow (Mio. ${daten.waehrung ?? 'USD'})`}
                   perioden={daten.perioden}
                   zeilen={cashflow}
                   aktivIds={chartAktiv}

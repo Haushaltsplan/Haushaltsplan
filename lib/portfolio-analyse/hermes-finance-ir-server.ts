@@ -147,7 +147,7 @@ async function fetchHtml(url: string): Promise<string> {
   }
 }
 
-async function sammlePdfKandidaten(): Promise<PdfKandidat[]> {
+async function sammlePdfKandidaten(nurBerichte = false): Promise<PdfKandidat[]> {
   const byUrl = new Map<string, PdfKandidat>()
   const slugPages = new Set<string>()
 
@@ -159,11 +159,11 @@ async function sammlePdfKandidaten(): Promise<PdfKandidat[]> {
       slugPages.add(`${BASE}/fr/publications/${slug}`)
     }
     for (const url of extrahiereHermesPdfUrls(html)) {
-      const score = scoreHermesPdf(url)
+      const score = nurBerichte ? scoreHermesBerichtPdf(url) : scoreHermesPdf(url)
       if (score <= 0) continue
       const cur = byUrl.get(url)
       if (!cur || score > cur.score) {
-        byUrl.set(url, { url, titel: titelAusPdf(url), score })
+        byUrl.set(url, { url, titel: nurBerichte ? titelAusBerichtPdf(url) : titelAusPdf(url), score })
       }
     }
   }
@@ -173,11 +173,15 @@ async function sammlePdfKandidaten(): Promise<PdfKandidat[]> {
     if (!html) continue
     const slug = pageUrl.split('/').pop() ?? ''
     for (const url of extrahiereHermesPdfUrls(html)) {
-      const score = scoreHermesPdf(url, slug)
+      const score = nurBerichte ? scoreHermesBerichtPdf(url, slug) : scoreHermesPdf(url, slug)
       if (score <= 0) continue
       const cur = byUrl.get(url)
       if (!cur || score > cur.score) {
-        byUrl.set(url, { url, titel: titelAusPdf(url, slug), score })
+        byUrl.set(url, {
+          url,
+          titel: nurBerichte ? titelAusBerichtPdf(url, slug) : titelAusPdf(url, slug),
+          score,
+        })
       }
     }
   }
@@ -185,7 +189,6 @@ async function sammlePdfKandidaten(): Promise<PdfKandidat[]> {
   return [...byUrl.values()].sort((a, b) => b.score - a.score)
 }
 
-/** Webcast-, Präsentations- und Ergebnis-PDFs von finance.hermes.com. */
 export async function ladeHermesWebcastHistorie(max = 8): Promise<IrRohesTranskript[]> {
   const kandidaten = await sammlePdfKandidaten()
   const out: IrRohesTranskript[] = []
@@ -203,6 +206,58 @@ export async function ladeHermesWebcastHistorie(max = 8): Promise<IrRohesTranskr
       url: k.url,
       callDatum: parseDatumAusHermes(k.url, k.titel),
       text,
+    })
+  }
+
+  out.sort((a, b) => (b.callDatum ?? '').localeCompare(a.callDatum ?? ''))
+  return out.slice(0, max)
+}
+
+function istHermesFinanzBerichtPdf(url: string, slugHint?: string): boolean {
+  const name = dateinameAusUrl(url).toLowerCase()
+  const kombi = `${name} ${slugHint ?? ''}`.toLowerCase()
+  if (istStorePressePdf(kombi)) return false
+  return /urd|publishing|annual.?report|registration document|document de reference|half.?year|semest|interim|financial.?statements|consolidated|revenue_q|ca_t[1-4]/i.test(
+    kombi,
+  )
+}
+
+function scoreHermesBerichtPdf(url: string, slugHint?: string): number {
+  if (!istHermesFinanzBerichtPdf(url, slugHint)) return 0
+  const name = dateinameAusUrl(url).toLowerCase()
+  let score = 6
+  if (/urd|publishing|annual|registration/i.test(name)) score += 8
+  if (/half|semest|interim/i.test(name)) score += 6
+  if (/financial.?statements|consolidated/i.test(name)) score += 4
+  return score
+}
+
+function titelAusBerichtPdf(url: string, slugHint?: string): string {
+  const name = dateinameAusUrl(url)
+  const slug = slugHint?.replace(/-/g, ' ') ?? ''
+  if (/urd|publishing|annual/i.test(name)) return slug || 'Universal Registration Document'
+  if (/half|semest|interim/i.test(name)) return slug || 'Halbjahresbericht'
+  if (/financial.?statements/i.test(name)) return slug || 'Konsolidierte Finanzdaten'
+  return slug || name.replace(/[_-]+/g, ' ').replace(/\.pdf$/i, '').slice(0, 80)
+}
+
+/** URD, Jahres- und Halbjahresberichte von finance.hermes.com. */
+export async function ladeHermesFinanzberichteHistorie(max = 12): Promise<
+  Array<{ url: string; titel: string; text: string; callDatum: string | null }>
+> {
+  const kandidaten = await sammlePdfKandidaten(true)
+
+  const out: Array<{ url: string; titel: string; text: string; callDatum: string | null }> = []
+
+  for (const k of kandidaten) {
+    if (out.length >= max) break
+    const text = await ladePdfText(k.url)
+    if (text.length < 2_000) continue
+    out.push({
+      url: k.url,
+      titel: k.titel,
+      text,
+      callDatum: parseDatumAusHermes(k.url, k.titel),
     })
   }
 

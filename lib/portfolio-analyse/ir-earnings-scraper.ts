@@ -16,6 +16,7 @@ import {
   scoreTranskriptLink,
   type IrEarningsQuelle,
 } from '@/lib/portfolio-analyse/ir-earnings-sources'
+import { loesePortfolioIsin } from '@/lib/portfolio-analyse/isin-kenntnisse'
 import { ladeHermesWebcastHistorie, HERMES_ISIN } from '@/lib/portfolio-analyse/hermes-finance-ir-server'
 import { ladeIrQuartalsTranskriptHistorie } from '@/lib/portfolio-analyse/ir-quarter-transcript-server'
 import type { IrRohesTranskript } from '@/lib/portfolio-analyse/ir-earnings-types'
@@ -122,12 +123,14 @@ export async function ladeIrTranskriptHistorie(
   fallbackIrUrl: string | null,
   max = MAX_FETCH,
 ): Promise<IrRohesTranskript[]> {
-  const quelle = baueQuelle(isin, fallbackIrUrl)
+  const isinNorm =
+    loesePortfolioIsin({ isin }) ??
+    isin.trim().toUpperCase()
+  const quelle = baueQuelle(isinNorm, fallbackIrUrl)
   if (!quelle.listenUrls.length) {
     return []
   }
 
-  const isinNorm = isin.trim().toUpperCase()
   if (isinNorm === HERMES_ISIN) {
     const hermes = await ladeHermesWebcastHistorie(max)
     if (hermes.length > 0) return hermes

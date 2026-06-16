@@ -472,6 +472,8 @@ function namePasstZuIdent(firmenname: string, ident: MacrotrendsIdent): boolean 
   const n = normalisiereName(firmenname)
   const f = normalisiereName(ident.firmenname)
   if (!n || !f) return false
+  if (/hermes|hermès/.test(n) && /federated|federal/.test(f)) return false
+  if (/hermes|hermès/.test(n) && ident.slug.includes('federated')) return false
   return f.includes(n) || n.includes(f) || n.split(' ').filter((w) => w.length > 3).every((w) => f.includes(w))
 }
 

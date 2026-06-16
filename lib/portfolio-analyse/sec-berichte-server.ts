@@ -16,6 +16,7 @@ import {
   loescheSecBerichtKiCacheEintrag,
   speichereSecBerichtKiCache,
 } from '@/lib/portfolio-analyse/sec-berichte-ki-cache-server'
+import { loesePortfolioIsin } from '@/lib/portfolio-analyse/isin-kenntnisse'
 import { SEC_BERICHTE_SYSTEM_PROMPT } from '@/lib/portfolio-analyse/sec-berichte-prompt'
 import type { SecBerichtAnfrage, SecBerichtEintrag, SecBerichtePaket } from '@/lib/portfolio-analyse/sec-berichte-types'
 import { resolveCoachProviderFromMode, runCoachCompletion, earningsCallGeminiModelKandidaten } from '@/lib/ki-coach-backend'
@@ -24,7 +25,7 @@ const MAX_REPORT_CHARS = 120_000
 const serverCache = new Map<string, { at: number; paket: SecBerichtePaket }>()
 const CACHE_MS = 12 * 60 * 60 * 1000
 /** Cache-Version — bei Parser-Änderungen erhöhen (z. B. XBRL-Fix). */
-const LIST_CACHE_VERSION = 2
+const LIST_CACHE_VERSION = 3
 
 type ListCache = {
   expiresAt: number
@@ -111,7 +112,7 @@ async function summaryAusPersistenz(
 
 async function ladeBerichteListe(
   ticker: string,
-  opts: { force?: boolean; isin?: string | null; firmenname?: string | null },
+  opts: { force?: boolean; isin?: string | null; firmenname?: string | null; symbolYahoo?: string | null },
 ): Promise<ListCache> {
   const key = tickerKey(ticker)
   const listKey = `${LIST_CACHE_VERSION}|${key}`
@@ -139,10 +140,18 @@ async function ladeBerichteListe(
     return cache
   }
 
+  const isin = loesePortfolioIsin({
+    isin: opts.isin,
+    ticker,
+    symbolYahoo: opts.symbolYahoo,
+    firmenname: opts.firmenname,
+  })
+
   const ir = await ladeIrFinanzberichteHistorie({
     ticker,
-    isin: opts.isin,
+    isin,
     firmenname: opts.firmenname,
+    symbolYahoo: opts.symbolYahoo,
   })
   const cache: ListCache = {
     expiresAt: Date.now() + CACHE_MS,
@@ -230,7 +239,11 @@ export async function ladeSecBerichte(anfrage: SecBerichtAnfrage): Promise<SecBe
   try {
     const cache = await ladeBerichteListe(ticker, {
       force: anfrage.force,
-      isin: anfrage.isin,
+      isin: loesePortfolioIsin({
+        isin: anfrage.isin,
+        ticker,
+        firmenname: anfrage.firmenname,
+      }),
       firmenname: anfrage.firmenname,
     })
     const ausCache = !anfrage.force && listCache.has(`${LIST_CACHE_VERSION}|${tickerKey(ticker)}`)

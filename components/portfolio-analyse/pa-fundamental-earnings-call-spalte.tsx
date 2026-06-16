@@ -222,13 +222,15 @@ export function PaFundamentalEarningsCallSpalte({
   const irUrl = daten?.investorRelationsUrl
   const initialLaden = laden && !daten?.quartale.length
   const quartalWirdGeladen = offenesQuartal && quartalLaden === offenesQuartal.id
+  const hatWebcastPdf = daten?.quartale.some((q) => q.istWebcastPdf) ?? false
+  const dokLabel = hatWebcastPdf ? 'Webcast-PDF' : 'Transkript'
 
   return (
     <div className="flex h-full min-h-[320px] flex-col space-y-3">
       <div className="flex flex-wrap items-end justify-between gap-2 border-b border-white/[0.06] pb-3">
         <div>
           <h2 className="text-base font-medium text-zinc-100">Earnings Call</h2>
-          <p className="mt-0.5 text-xs text-zinc-500">Transkript · KI-Analyse (Gemini)</p>
+          <p className="mt-0.5 text-xs text-zinc-500">{dokLabel} · KI-Analyse (Gemini)</p>
         </div>
         <button
           type="button"
@@ -242,7 +244,7 @@ export function PaFundamentalEarningsCallSpalte({
 
       {initialLaden ? (
         <PaCard variant="glass" className="flex flex-1 items-center justify-center p-8">
-          <p className="text-sm text-zinc-400">Transkripte werden gesucht …</p>
+          <p className="text-sm text-zinc-400">{dokLabel} werden gesucht …</p>
         </PaCard>
       ) : null}
 
@@ -300,7 +302,7 @@ export function PaFundamentalEarningsCallSpalte({
                     rel="noopener noreferrer"
                     className="text-[11px] text-teal-400 hover:underline"
                   >
-                    Transkript ↗
+                    {offenesQuartal.istWebcastPdf ? 'Webcast-PDF ↗' : 'Transkript ↗'}
                   </a>
                 </div>
 

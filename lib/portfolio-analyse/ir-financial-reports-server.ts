@@ -4,7 +4,9 @@ import 'server-only'
 
 import { createHash } from 'crypto'
 import { linksAusHtml } from '@/lib/html/text-aus-html'
+import { HERMES_ISIN, ladeHermesFinanzberichteHistorie } from '@/lib/portfolio-analyse/hermes-finance-ir-server'
 import { ladeInvestorRelationsUrl } from '@/lib/portfolio-analyse/investor-relations-url'
+import { loesePortfolioIsin } from '@/lib/portfolio-analyse/isin-kenntnisse'
 import { ladeDokumentText } from '@/lib/portfolio-analyse/ir-earnings-scraper'
 import type { SecBerichtEintrag, SecBerichtFormular } from '@/lib/portfolio-analyse/sec-berichte-types'
 
@@ -31,7 +33,7 @@ const IR_LISTEN_PFADE = [
 ]
 
 const BERICHT_MUSTER =
-  /\b(annual report|geschäftsbericht|geschaeftsbericht|half[- ]year|halbjahr|interim report|quarterly report|quarterly results|financial report|financial statements|universal registration|registration document|rapport annuel|rapport financier|results presentation|investor presentation|q[1-4]\s*20\d{2}|fy20\d{2}|20\d{2}\s*(results|report|annual))\b/i
+  /\b(annual report|geschäftsbericht|geschaeftsbericht|half[- ]year|halbjahr|interim report|quarterly report|quarterly results|financial report|financial statements|universal registration|registration document|rapport annuel|rapport financier|results presentation|investor presentation|q[1-4]\s*20\d{2}|fy20\d{2}|20\d{2}\s*(results|report|annual|publishing|urd|revenue))\b/i
 
 const SKIP_MUSTER =
   /\b(transcript|conference call|earnings call|webcast|press release|pressemitteilung|corporate governance|sustainability|esg|proxy|agm notice|share buyback notice)\b/i
@@ -55,6 +57,15 @@ function formularAusText(text: string): SecBerichtFormular {
 function scoreBerichtLink(text: string, href: string): number {
   const kombi = `${text} ${href}`
   if (SKIP_MUSTER.test(kombi)) return -10
+  if (/assets-finance\.hermes\.com/i.test(href) && /urd|publishing|annual|half|semest|revenue_q|financial/i.test(kombi)) {
+    let score = 8
+    if (/\.pdf(\?|$)/i.test(href)) score += 4
+    if (/\b(urd|publishing|annual)\b/i.test(kombi)) score += 3
+    return score
+  }
+  if (/access in pdf|access the pdf|télécharger|download pdf/i.test(text) && /publications|urd|publishing/i.test(kombi)) {
+    return 6
+  }
   if (!BERICHT_MUSTER.test(kombi)) return 0
   let score = 5
   if (/\.pdf(\?|$)/i.test(href)) score += 4
@@ -124,6 +135,20 @@ async function sammleBerichtLinks(irUrl: string): Promise<LinkKandidat[]> {
           formular: formularAusText(`${l.text} ${l.href}`),
         })
       }
+      if (/finance\.hermes\.com/i.test(listenUrl)) {
+        for (const m of html.matchAll(/value="(https:\/\/assets-finance\.hermes\.com\/s3fs-public\/[^"]+\.pdf[^"]*)"/gi)) {
+          const href = m[1]!.replace(/&amp;/g, '&')
+          const score = scoreBerichtLink('', href)
+          if (score <= 0 || seen.has(href)) continue
+          seen.add(href)
+          kandidaten.push({
+            href,
+            text: href.split('/').pop() ?? href,
+            score,
+            formular: formularAusText(href),
+          })
+        }
+      }
     } catch {
       continue
     }
@@ -156,8 +181,36 @@ export async function ladeIrFinanzberichteHistorie(opts: {
   ticker: string
   isin?: string | null
   firmenname?: string | null
+  symbolYahoo?: string | null
 }): Promise<{ berichte: SecBerichtEintrag[]; texte: Map<string, string> }> {
-  const isin = opts.isin?.trim().toUpperCase() ?? ''
+  const isin =
+    loesePortfolioIsin({
+      isin: opts.isin,
+      ticker: opts.ticker,
+      symbolYahoo: opts.symbolYahoo,
+      firmenname: opts.firmenname,
+    }) ?? opts.isin?.trim().toUpperCase() ?? ''
+
+  if (isin === HERMES_ISIN) {
+    const hermes = await ladeHermesFinanzberichteHistorie(MAX_BERICHTE)
+    const berichte: SecBerichtEintrag[] = []
+    const texte = new Map<string, string>()
+    for (const h of hermes) {
+      const eintrag = baueEintrag(
+        {
+          href: h.url,
+          text: h.titel,
+          score: 10,
+          formular: formularAusText(`${h.titel} ${h.url}`),
+        },
+        h.text,
+      )
+      berichte.push(eintrag)
+      texte.set(eintrag.accession, h.text)
+    }
+    if (berichte.length > 0) return { berichte, texte }
+  }
+
   const irUrl = isin
     ? await ladeInvestorRelationsUrl(isin, opts.firmenname?.trim() || opts.ticker, opts.ticker)
     : null

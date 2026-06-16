@@ -169,12 +169,38 @@ export function isinKenntnis(isin: string | null | undefined): IsinKenntnis | nu
 export function isinAusYahooSymbol(symbol: string | null | undefined): string | null {
   const s = symbol?.trim().toUpperCase()
   if (!s) return null
+  const basis = s.split('.')[0]!
   for (const [isin, k] of Object.entries(ISIN_KENNTNISSE)) {
     if (k.symbolYahoo?.toUpperCase() === s) return isin
     if (k.kursNurSymbol?.toUpperCase() === s) return isin
     if (k.symbolCandidates?.some((c) => c.toUpperCase() === s)) return isin
+    if (k.symbolYahoo?.split('.')[0]?.toUpperCase() === basis) return isin
+    if (k.kursNurSymbol?.split('.')[0]?.toUpperCase() === basis) return isin
   }
   return null
+}
+
+/** ISIN aus UI-Feldern (Depot, Watchlist, Ticker) — inkl. RMS → Hermès. */
+export function loesePortfolioIsin(opts: {
+  isin?: string | null
+  symbolYahoo?: string | null
+  ticker?: string | null
+  firmenname?: string | null
+}): string | null {
+  const direct = opts.isin?.trim().toUpperCase()
+  if (direct && ISIN_KENNTNISSE[direct]) return direct
+
+  for (const sym of [opts.symbolYahoo, opts.ticker]) {
+    const hit = isinAusYahooSymbol(sym)
+    if (hit) return hit
+  }
+
+  const name = opts.firmenname?.trim().toLowerCase().normalize('NFD').replace(/\p{M}/gu, '')
+  if (name && /hermes|hermès/.test(name) && !/federated|federal/.test(name)) {
+    return 'FR0000052292'
+  }
+
+  return direct ?? null
 }
 
 export function nameAusKenntnis(isin: string, fallback: string): string {
