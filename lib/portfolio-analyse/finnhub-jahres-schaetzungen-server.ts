@@ -68,7 +68,7 @@ async function ladeAnnualEstimates(symbol: string, kind: 'revenue' | 'eps'): Pro
   return []
 }
 
-function zukuenftigeAnnualZeilen(rows: EstimateRow[], maxJahre = 6): EstimateRow[] {
+function zukuenftigeAnnualZeilen(rows: EstimateRow[], maxJahre = 10): EstimateRow[] {
   const heuteJahr = new Date().getUTCFullYear()
   return [...rows]
     .filter((r) => r.year != null && (r.year ?? 0) >= heuteJahr)

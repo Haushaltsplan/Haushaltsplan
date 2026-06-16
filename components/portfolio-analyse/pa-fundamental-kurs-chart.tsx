@@ -9,9 +9,12 @@ const DRAWDOWN_ACCENT = '#f04438'
 const ACHSE_FONT = 13
 const VIEW_W = 1000
 
-export type KursZeitraum = '3m' | '6m' | 'ytd' | '1yr' | '3yr' | '5yr' | '10yr' | 'all'
+export type KursZeitraum = '1d' | '1w' | '1m' | '3m' | '6m' | 'ytd' | '1yr' | '3yr' | '5yr' | '10yr' | 'all'
 
 const ZEITRAUM_OPTIONS: { id: KursZeitraum; label: string }[] = [
+  { id: '1d', label: '1T' },
+  { id: '1w', label: '1W' },
+  { id: '1m', label: '1M' },
   { id: '3m', label: '3m' },
   { id: '6m', label: '6m' },
   { id: 'ytd', label: 'YTD' },
@@ -22,11 +25,32 @@ const ZEITRAUM_OPTIONS: { id: KursZeitraum; label: string }[] = [
   { id: 'all', label: 'Max' },
 ]
 
+function intervallFuerZeitraum(z: KursZeitraum): '5m' | '15m' | '1h' | '1d' {
+  switch (z) {
+    case '1d':
+      return '5m'
+    case '1w':
+      return '15m'
+    case '1m':
+      return '1h'
+    default:
+      return '1d'
+  }
+}
+
 function vonDatumFuerZeitraum(z: KursZeitraum): string {
   const heute = new Date()
   const d = new Date(heute)
   switch (z) {
-    case '3m':
+    case '1d':
+      d.setDate(d.getDate() - 2)
+      break
+    case '1w':
+      d.setDate(d.getDate() - 7)
+      break
+    case '1m':
+      d.setMonth(d.getMonth() - 1)
+      break
       d.setMonth(d.getMonth() - 3)
       break
     case '6m':
@@ -93,7 +117,14 @@ function formatYAxisUsd(price: number): string {
   return `$${price.toLocaleString('de-DE', { maximumFractionDigits: abs >= 10 ? 1 : 2 })}`
 }
 
-function formatXAxisDatum(datum: string): string {
+function formatXAxisDatum(datum: string, zeitraum: KursZeitraum): string {
+  if (datum.includes('T')) {
+    const d = new Date(datum)
+    if (zeitraum === '1d') {
+      return d.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })
+    }
+    return d.toLocaleDateString('de-DE', { day: '2-digit', month: 'short' })
+  }
   const d = new Date(`${datum}T12:00:00`)
   return d.toLocaleDateString('de-DE', { month: 'short', year: '2-digit' })
 }
@@ -139,10 +170,16 @@ export function PaFundamentalKursChart({
       try {
         const von = vonDatumFuerZeitraum(zeitraum)
         const bis = new Date().toISOString().slice(0, 10)
+        const interval = intervallFuerZeitraum(zeitraum)
         const res = await fetch('/api/portfolio-analyse/kurse/historie', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ symbols: [sym], vonDatum: von, bisDatum: bis }),
+          body: JSON.stringify({
+            symbols: [sym],
+            vonDatum: von,
+            bisDatum: bis,
+            interval: interval === '1d' ? '1d' : interval,
+          }),
         })
         const j = (await res.json()) as { ok?: boolean; serien?: Record<string, Record<string, number>> }
         if (cancelled) return
@@ -239,11 +276,11 @@ export function PaFundamentalKursChart({
       const labelStep = Math.max(1, Math.ceil(n / labelCount))
       const labels: { x: number; label: string }[] = []
       for (let i = 0; i < n; i += labelStep) {
-        labels.push({ x: pts[i].x, label: formatXAxisDatum(gefiltert[i].datum) })
+        labels.push({ x: pts[i].x, label: formatXAxisDatum(gefiltert[i].datum, zeitraum) })
       }
       const lastIdx = n - 1
       if (lastIdx % labelStep !== 0) {
-        labels.push({ x: pts[lastIdx].x, label: formatXAxisDatum(gefiltert[lastIdx].datum) })
+        labels.push({ x: pts[lastIdx].x, label: formatXAxisDatum(gefiltert[lastIdx].datum, zeitraum) })
       }
 
       return {
@@ -285,11 +322,11 @@ export function PaFundamentalKursChart({
     const labelStep = Math.max(1, Math.ceil(n / labelCount))
     const labels: { x: number; label: string }[] = []
     for (let i = 0; i < n; i += labelStep) {
-      labels.push({ x: pts[i].x, label: formatXAxisDatum(gefiltert[i].datum) })
+      labels.push({ x: pts[i].x, label: formatXAxisDatum(gefiltert[i].datum, zeitraum) })
     }
     const lastIdx = n - 1
     if (lastIdx % labelStep !== 0) {
-      labels.push({ x: pts[lastIdx].x, label: formatXAxisDatum(gefiltert[lastIdx].datum) })
+      labels.push({ x: pts[lastIdx].x, label: formatXAxisDatum(gefiltert[lastIdx].datum, zeitraum) })
     }
 
     return {
@@ -303,7 +340,7 @@ export function PaFundamentalKursChart({
       letzterKurs: gefiltert[gefiltert.length - 1]?.kurs ?? null,
       istDrawdown: false,
     }
-  }, [gefiltert, drawdownSerie, modus, kompakt, padLinks, padOben, plotH, plotW])
+  }, [gefiltert, drawdownSerie, modus, kompakt, padLinks, padOben, plotH, plotW, zeitraum])
 
   const onMove = useCallback(
     (clientX: number) => {

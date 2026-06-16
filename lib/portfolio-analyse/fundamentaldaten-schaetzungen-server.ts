@@ -164,12 +164,13 @@ function wsKennzahlMio(ws: EarningsSchaetzungen | null, schluessel: string): num
   return v != null && Number.isFinite(v) ? v : null
 }
 
-/** StockAnalysis-Basis + Marketscreener/Finnhub/Wallstreet für FY+2 und weiter. */
+/** StockAnalysis-Basis + Marketscreener/Finnhub/Wallstreet/Yahoo — nur echte Scrapes, keine Fortschreibung. */
 function mergeJahresSchaetzungen(opts: {
   stockanalysis: StockanalysisJahresForecast | null
   marketscreener: MarketscreenerJahresForecast | null
   finnhub: FinnhubJahresForecast | null
   wallstreet: EarningsSchaetzungen | null
+  yahoo: { fy0: MergeFy; fy1: MergeFy } | null
 }): StockanalysisJahresForecastEintrag[] {
   const byJahr = new Map<number, StockanalysisJahresForecastEintrag>()
 
@@ -211,6 +212,18 @@ function mergeJahresSchaetzungen(opts: {
       cur.umsatzUsd = opts.wallstreet.umsatz.average
     }
     byJahr.set(wsJahr, cur)
+  }
+
+  for (const yf of [opts.yahoo?.fy0, opts.yahoo?.fy1]) {
+    if (!yf?.jahr || yf.jahr <= 2000) continue
+    const cur = byJahr.get(yf.jahr) ?? leererJahresEintrag(yf.jahr)
+    if (cur.umsatzUsd == null && yf.umsatzMio != null) cur.umsatzUsd = yf.umsatzMio * 1_000_000
+    if (cur.eps == null && yf.eps != null) cur.eps = yf.eps
+    if (cur.revenueGrowthPct == null && yf.umsatzWachstumPct != null) {
+      cur.revenueGrowthPct = yf.umsatzWachstumPct
+    }
+    if (cur.epsGrowthPct == null && yf.epsWachstumPct != null) cur.epsGrowthPct = yf.epsWachstumPct
+    byJahr.set(yf.jahr, cur)
   }
 
   const reihe = [...byJahr.values()].filter(hatJahresWert).sort((a, b) => a.jahr - b.jahr)
@@ -575,6 +588,7 @@ export async function ladeFundamentalSchaetzungen(
     marketscreener,
     finnhub,
     wallstreet,
+    yahoo,
   })
   if (saSchaetz.length > 0) {
     const quellenUsed: NonNullable<FundamentalSchaetzungenRoh['quelle']>[] = []
@@ -582,6 +596,17 @@ export async function ladeFundamentalSchaetzungen(
     if (marketscreener?.jahresreihe?.length) quellenUsed.push('marketscreener')
     if (finnhub?.jahresreihe?.length) quellenUsed.push('finnhub')
     if (wallstreet) quellenUsed.push('wallstreet')
+    if (
+      yahoo &&
+      saSchaetz.some(
+        (e) =>
+          (e.jahr === yahoo.fy0.jahr && (yahoo.fy0.umsatzMio != null || yahoo.fy0.eps != null)) ||
+          (e.jahr === yahoo.fy1.jahr && (yahoo.fy1.umsatzMio != null || yahoo.fy1.eps != null)),
+      ) &&
+      !quellenUsed.includes('yahoo')
+    ) {
+      quellenUsed.push('yahoo')
+    }
     const mergedQuelle: FundamentalSchaetzungenRoh['quelle'] =
       quellenUsed.length === 0
         ? 'kombiniert'

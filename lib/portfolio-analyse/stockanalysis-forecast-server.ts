@@ -219,7 +219,7 @@ function baueJahresreiheAusAnnual(block: string): StockanalysisJahresForecastEin
       grossProfitUsd != null ||
       epsVal != null ||
       adjEps != null
-    if (!hatWert) continue
+    if (!hatWert && i < schaetzStartIdx) continue
 
     const periodenEnde =
       dates[i]?.match(/^\d{4}-\d{2}-\d{2}$/) ? dates[i]! : `${jahr}-12-31`

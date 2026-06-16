@@ -5,7 +5,7 @@ import { isinKenntnis } from '@/lib/portfolio-analyse/isin-kenntnisse'
 import { lookupIsinMetadaten } from '@/lib/portfolio-analyse/isin-lookup-server'
 import { mergeKursHistorieMitStooqAliase } from '@/lib/portfolio-analyse/kurs-historie-merge'
 import { ladeStooqHistorieBatchTaeglich, yahooZuStooqSymbol } from '@/lib/portfolio-analyse/stooq-historie-server'
-import { ladeYahooHistorieBatchTaeglich } from '@/lib/portfolio-analyse/yahoo-historie-server'
+import { ladeYahooHistorieBatch, ladeYahooHistorieBatchTaeglich } from '@/lib/portfolio-analyse/yahoo-historie-server'
 
 export const dynamic = 'force-dynamic'
 
@@ -27,6 +27,17 @@ export async function POST(req: Request) {
   const rawIsins = (body as { isins?: unknown })?.isins
   const vonDatum = String((body as { vonDatum?: string })?.vonDatum ?? '').trim()
   const bisDatum = String((body as { bisDatum?: string })?.bisDatum ?? '').trim()
+  const intervalRaw = String((body as { interval?: string })?.interval ?? '1d').trim()
+  const interval =
+    intervalRaw === '5m' ||
+    intervalRaw === '15m' ||
+    intervalRaw === '30m' ||
+    intervalRaw === '1h' ||
+    intervalRaw === '1d' ||
+    intervalRaw === '1mo'
+      ? intervalRaw
+      : '1d'
+  const intraday = interval !== '1d' && interval !== '1mo'
 
   if (!Array.isArray(raw) || !vonDatum || !bisDatum) {
     return NextResponse.json(
@@ -85,14 +96,18 @@ export async function POST(req: Request) {
   try {
     const yahooMap = new Map<string, Map<string, number>>()
     for (const batch of teileArray(symbols, 40)) {
-      const part = await ladeYahooHistorieBatchTaeglich(batch, vonDatum, bisDatum)
+      const part = intraday
+        ? await ladeYahooHistorieBatch(batch, vonDatum, bisDatum, interval)
+        : await ladeYahooHistorieBatchTaeglich(batch, vonDatum, bisDatum)
       for (const [sym, serie] of part) yahooMap.set(sym, serie)
     }
 
     const stooqMap = new Map<string, Map<string, number>>()
-    for (const batch of teileArray(stooqSymbols, 30)) {
-      const part = await ladeStooqHistorieBatchTaeglich(batch, vonDatum, bisDatum)
-      for (const [sym, serie] of part) stooqMap.set(sym, serie)
+    if (!intraday) {
+      for (const batch of teileArray(stooqSymbols, 30)) {
+        const part = await ladeStooqHistorieBatchTaeglich(batch, vonDatum, bisDatum)
+        for (const [sym, serie] of part) stooqMap.set(sym, serie)
+      }
     }
 
     const serienMap = mergeKursHistorieMitStooqAliase(yahooMap, stooqMap, symbols)

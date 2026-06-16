@@ -37,9 +37,18 @@ type YahooChartJson = {
   }
 }
 
+export type YahooChartInterval = '5m' | '15m' | '30m' | '1h' | '1d' | '1mo'
+
+function zeitpunktAusUnix(sec: number): string | null {
+  if (!Number.isFinite(sec) || sec <= 0) return null
+  const d = new Date(sec * 1000)
+  if (!Number.isFinite(d.getTime())) return null
+  return d.toISOString().slice(0, 16)
+}
+
 async function ladeYahooChartSerie(
   symbol: string,
-  interval: '1d' | '1mo',
+  interval: YahooChartInterval,
   period1: number,
   period2: number,
   keyFn: (sec: number) => string | null,
@@ -134,15 +143,37 @@ export async function ladeYahooHistorieBatchTaeglich(
   vonDatum: string,
   bisDatum: string,
 ): Promise<Map<string, Map<string, number>>> {
+  return ladeYahooHistorieBatch(symbols, vonDatum, bisDatum, '1d')
+}
+
+/** Intraday oder tägliche Kurse via Yahoo Chart API. */
+export async function ladeYahooHistorieBatch(
+  symbols: string[],
+  vonDatum: string,
+  bisDatum: string,
+  interval: YahooChartInterval = '1d',
+): Promise<Map<string, Map<string, number>>> {
   const uniq = [...new Set(symbols.map((s) => s.trim().toUpperCase()).filter(Boolean))].filter(
     (s) => !s.startsWith('STOOQ:'),
   )
   const out = new Map<string, Map<string, number>>()
+  const keyFn = interval === '1d' || interval === '1mo' ? tagAusUnix : zeitpunktAusUnix
 
   for (const batch of teileArray(uniq, BATCH_PARALLEL)) {
     await Promise.all(
       batch.map(async (sym) => {
-        const serie = await ladeYahooHistorieTaeglich(sym, vonDatum, bisDatum)
+        if (interval === '1d') {
+          const serie = await ladeYahooHistorieTaeglich(sym, vonDatum, bisDatum)
+          if (serie.size > 0) out.set(sym, serie)
+          return
+        }
+        const serie = await ladeYahooChartSerie(
+          sym,
+          interval,
+          unixTagStart(vonDatum),
+          unixTagEnde(bisDatum),
+          keyFn,
+        )
         if (serie.size > 0) out.set(sym, serie)
       }),
     )
