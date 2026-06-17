@@ -8,6 +8,11 @@ import {
   euAdhocQuelleFuerIsin,
 } from '@/lib/portfolio-analyse/eu-adhoc-sources'
 import { ladeInvestorRelationsUrl } from '@/lib/portfolio-analyse/investor-relations-url'
+import {
+  HERMES_ISIN,
+  ladeHermesRegulatedAdhocEvents,
+} from '@/lib/portfolio-analyse/hermes-finance-ir-server'
+import { loesePortfolioIsin } from '@/lib/portfolio-analyse/isin-kenntnisse'
 import { ladeDokumentText } from '@/lib/portfolio-analyse/ir-earnings-scraper'
 import type { MaterialEventEintrag, MaterialEventKategorie } from '@/lib/portfolio-analyse/material-events-types'
 
@@ -135,11 +140,36 @@ export async function ladeEuAdhocEvents(opts: {
   isin?: string | null
   firmenname?: string | null
 }): Promise<MaterialEventEintrag[]> {
-  const isin = opts.isin?.trim().toUpperCase() ?? ''
+  const isin =
+    loesePortfolioIsin({
+      isin: opts.isin,
+      ticker: opts.ticker,
+      firmenname: opts.firmenname,
+    }) ?? opts.isin?.trim().toUpperCase() ?? ''
   const irUrl = isin
     ? await ladeInvestorRelationsUrl(isin, opts.firmenname?.trim() || opts.ticker, opts.ticker)
     : null
   if (!irUrl) return []
+
+  const out: MaterialEventEintrag[] = []
+  const seenUrls = new Set<string>()
+
+  if (isin === HERMES_ISIN) {
+    for (const h of await ladeHermesRegulatedAdhocEvents(MAX_EVENTS)) {
+      seenUrls.add(h.url)
+      const kat = kategorieAusText(`${h.titel} ${h.text.slice(0, 800)}`)
+      out.push({
+        id: `eu-hermes-${Buffer.from(h.url).toString('base64url').slice(0, 16)}`,
+        titel: h.titel,
+        kategorie: kat,
+        quelle: 'eu_adhoc',
+        datum: h.datum,
+        url: h.url,
+        textAuszug: h.text.slice(0, AUSZUG),
+      })
+    }
+    if (out.length >= MAX_EVENTS) return out
+  }
 
   const hard = euAdhocQuelleFuerIsin(isin)
   const extraKeywords = hard?.keywords ?? []
@@ -150,10 +180,10 @@ export async function ladeEuAdhocEvents(opts: {
   await Promise.all(listenUrls.map((u) => sammleLinksVonUrl(u, extraKeywords, seen, kandidaten)))
 
   kandidaten.sort((a, b) => b.score - a.score)
-  const out: MaterialEventEintrag[] = []
 
   for (const k of kandidaten) {
     if (out.length >= MAX_EVENTS) break
+    if (seenUrls.has(k.href)) continue
     const text = await ladeDokumentText(k.href)
     if (text.length < 120) continue
     const meta = `${k.text} ${k.href}`

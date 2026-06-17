@@ -159,16 +159,40 @@ function extrahiereAnnualBlock(html: string): string | null {
   const idx = html.indexOf(anchor)
   if (idx < 0) return null
   const start = html.lastIndexOf('annual:{', idx)
-  if (start < 0) return null
-  let depth = 0
-  for (let i = start + 'annual:{'.length - 1; i < html.length; i++) {
-    if (html[i] === '{') depth++
-    if (html[i] === '}') {
-      depth--
-      if (depth === 0) return html.slice(start + 'annual:'.length, i + 1)
+  if (start >= 0) {
+    let depth = 0
+    for (let i = start + 'annual:{'.length - 1; i < html.length; i++) {
+      if (html[i] === '{') depth++
+      if (html[i] === '}') {
+        depth--
+        if (depth === 0) return html.slice(start + 'annual:'.length, i + 1)
+      }
     }
   }
-  return null
+  const end =
+    html.indexOf('},annual:{', idx) >= 0
+      ? html.indexOf('},annual:{', idx) + 1
+      : html.indexOf('},quarterly:{', idx) >= 0
+        ? html.indexOf('},quarterly:{', idx) + 1
+        : Math.min(html.length, idx + 60_000)
+  return `{${html.slice(idx, end)}}`
+}
+
+function dedupeJahresreiheNachJahr(
+  reihe: StockanalysisJahresForecastEintrag[],
+): StockanalysisJahresForecastEintrag[] {
+  const byYear = new Map<number, StockanalysisJahresForecastEintrag>()
+  for (const r of reihe) {
+    const cur = byYear.get(r.jahr)
+    if (!cur) {
+      byYear.set(r.jahr, r)
+      continue
+    }
+    const curRev = cur.umsatzUsd ?? 0
+    const neuRev = r.umsatzUsd ?? 0
+    if (neuRev >= curRev) byYear.set(r.jahr, r)
+  }
+  return [...byYear.values()].sort((a, b) => a.jahr - b.jahr)
 }
 
 function baueJahresreiheAusAnnual(block: string): StockanalysisJahresForecastEintrag[] {
@@ -240,7 +264,54 @@ function baueJahresreiheAusAnnual(block: string): StockanalysisJahresForecastEin
       istSchätzung: i >= schaetzStartIdx,
     })
   }
+  return dedupeJahresreiheNachJahr(out)
+}
+
+function kandidatenFinanzPfade(opts: {
+  symbolYahoo?: string | null
+  ticker?: string | null
+  isin?: string | null
+}): string[] {
+  const out: string[] = []
+  const add = (p: string) => {
+    if (p && !out.includes(p)) out.push(p)
+  }
+
+  const sym = opts.symbolYahoo?.trim().toUpperCase() ?? ''
+  if (sym.includes('.')) {
+    const [base, suf] = sym.split('.')
+    const ex = YAHOO_SUFFIX_TO_EXCHANGE[suf ?? '']
+    if (ex && base) add(`/quote/${ex}/${base}/financials/`)
+  } else if (sym) {
+    add(`/stocks/${sym.toLowerCase()}/financials/`)
+  }
+
+  for (const pfad of kandidatenForecastPfade(opts)) {
+    add(forecastPfadAusBasis(pfad.replace(/forecast\/?$/, '')))
+  }
+
   return out
+}
+
+/** Historische GuV/Cashflow-Jahre von StockAnalysis /financials/ oder /forecast/. */
+export async function ladeStockanalysisGuVHistorie(opts: {
+  symbolYahoo?: string | null
+  ticker?: string | null
+  firmenname?: string | null
+  isin?: string | null
+}): Promise<StockanalysisJahresForecastEintrag[]> {
+  for (const pfad of kandidatenFinanzPfade(opts)) {
+    const html = await fetchHtml(pfad)
+    if (!html) continue
+    const block = extrahiereAnnualBlock(html)
+    if (!block) continue
+    const reihe = dedupeJahresreiheNachJahr(baueJahresreiheAusAnnual(block)).filter((j) => !j.istSchätzung)
+    if (reihe.length >= 2) return reihe
+  }
+
+  const forecast = await ladeStockanalysisJahresForecast(opts)
+  if (!forecast?.jahresreihe.length) return []
+  return dedupeJahresreiheNachJahr(forecast.jahresreihe).filter((j) => !j.istSchätzung)
 }
 
 function parseForecastAusHtml(html: string, url: string): StockanalysisJahresForecast | null {

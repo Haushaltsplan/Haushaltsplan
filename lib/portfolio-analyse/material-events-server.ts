@@ -1,6 +1,7 @@
 import 'server-only'
 
 import { ladeEuAdhocEvents } from '@/lib/portfolio-analyse/eu-adhoc-server'
+import { loesePortfolioIsin } from '@/lib/portfolio-analyse/isin-kenntnisse'
 import type {
   MaterialEventEintrag,
   MaterialEventsAnfrage,
@@ -9,10 +10,17 @@ import type {
 import { ladeSec8KMaterialEvents } from '@/lib/portfolio-analyse/sec-edgar-8k-server'
 
 const CACHE_MS = 6 * 60 * 60 * 1000
+const CACHE_VERSION = 2
 const cache = new Map<string, { at: number; events: MaterialEventEintrag[] }>()
 
 function istUsTicker(ticker: string): boolean {
   return !/\.(PA|AS|DE|SW|L|TO|HM|SG|MU)$/i.test(ticker.trim())
+}
+
+function istPrimaerEuIsin(isin: string): boolean {
+  if (!isin || isin.length < 12) return false
+  const land = isin.slice(0, 2)
+  return land !== 'US' && /^[A-Z]{2}$/.test(land)
 }
 
 export async function ladeMaterialEvents(anfrage: MaterialEventsAnfrage): Promise<MaterialEventsPaket> {
@@ -21,7 +29,14 @@ export async function ladeMaterialEvents(anfrage: MaterialEventsAnfrage): Promis
     return { ok: false, ticker: '', events: [], geladenAm: new Date().toISOString(), fehler: 'Ticker fehlt.' }
   }
 
-  const key = `${ticker}|${anfrage.isin?.trim() ?? ''}`
+  const isin =
+    loesePortfolioIsin({
+      isin: anfrage.isin,
+      ticker,
+      firmenname: anfrage.firmenname,
+    }) ?? anfrage.isin?.trim().toUpperCase() ?? ''
+
+  const key = `${CACHE_VERSION}|${ticker}|${isin}`
   const hit = cache.get(key)
   if (hit && hit.at + CACHE_MS > Date.now() && !anfrage.force) {
     return {
@@ -35,13 +50,13 @@ export async function ladeMaterialEvents(anfrage: MaterialEventsAnfrage): Promis
 
   const events: MaterialEventEintrag[] = []
 
-  if (istUsTicker(ticker)) {
+  if (istUsTicker(ticker) && !istPrimaerEuIsin(isin)) {
     events.push(...(await ladeSec8KMaterialEvents(ticker)))
   }
 
   const eu = await ladeEuAdhocEvents({
     ticker,
-    isin: anfrage.isin,
+    isin,
     firmenname: anfrage.firmenname,
   })
   events.push(...eu)

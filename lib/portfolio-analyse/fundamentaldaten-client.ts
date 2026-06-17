@@ -5,7 +5,7 @@ import type {
   FundamentaldatenPaket,
 } from '@/lib/portfolio-analyse/fundamentaldaten-types'
 
-const LS_KEY = 'pa-fundamentaldaten-v21'
+const LS_KEY = 'pa-fundamentaldaten-v23'
 const LS_MAX_AGE_MS = 24 * 60 * 60 * 1000
 
 function cacheKey(anfrage: FundamentaldatenAnfrage): string {

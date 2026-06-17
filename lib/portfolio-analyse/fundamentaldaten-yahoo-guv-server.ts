@@ -7,6 +7,10 @@ import { FUNDAMENTAL_TTM_KEY } from '@/lib/portfolio-analyse/fundamentaldaten-ty
 import type { FundamentalMetrikZeile, FundamentalPeriode } from '@/lib/portfolio-analyse/fundamentaldaten-types'
 import { loesePortfolioIsin } from '@/lib/portfolio-analyse/isin-kenntnisse'
 import type { MacrotrendsFundamentalRoh } from '@/lib/portfolio-analyse/macrotrends-scraper-server'
+import {
+  ladeStockanalysisGuVHistorie,
+  type StockanalysisJahresForecastEintrag,
+} from '@/lib/portfolio-analyse/stockanalysis-forecast-server'
 import { holeYahooFinanceAuth, YAHOO_FINANCE_FETCH_HEADERS } from '@/lib/portfolio-analyse/yahoo-finance-auth-server'
 
 export const HERMES_YAHOO_ISIN = 'FR0000052292'
@@ -289,41 +293,117 @@ export function nutzeYahooGuVFuerIsin(isin: string | null | undefined): boolean 
   return loesePortfolioIsin({ isin }) === HERMES_YAHOO_ISIN
 }
 
-/** Macrotrends-GuV/Cashflow durch Yahoo-Historie ersetzen/ergänzen (Hermès). */
+function pickWert(...kandidaten: Array<number | null | undefined>): number | null {
+  for (const v of kandidaten) {
+    if (v != null && Number.isFinite(v)) return v
+  }
+  return null
+}
+
+function guvRohAusStockanalysis(reihe: StockanalysisJahresForecastEintrag[]): YahooGuVRoh | null {
+  if (reihe.length < 2) return null
+
+  const periodenIso = reihe.map((r) => r.periodenEnde)
+  const perioden: FundamentalPeriode[] = periodenIso.map((iso) => ({
+    iso,
+    label: formatFundamentalPeriodeLabel(iso, 'jahr'),
+  }))
+
+  const maps = {
+    umsatz: new Map<string, number>(),
+    bruttogewinn: new Map<string, number>(),
+    ebit: new Map<string, number>(),
+    nettogewinn: new Map<string, number>(),
+    eps: new Map<string, number>(),
+    fcf: new Map<string, number>(),
+  }
+
+  for (const r of reihe) {
+    const iso = r.periodenEnde
+    const u = zuMio(r.umsatzUsd)
+    if (u != null) maps.umsatz.set(iso, u)
+    const g = zuMio(r.grossProfitUsd)
+    if (g != null) maps.bruttogewinn.set(iso, g)
+    const e = zuMio(r.operatingIncomeUsd)
+    if (e != null) maps.ebit.set(iso, e)
+    const n = zuMio(r.netIncomeUsd)
+    if (n != null) maps.nettogewinn.set(iso, n)
+    if (r.eps != null) maps.eps.set(iso, r.eps)
+    const f = zuMio(r.freeCashFlowUsd)
+    if (f != null) maps.fcf.set(iso, f)
+  }
+
+  const zeilen: FundamentalMetrikZeile[] = [
+    baueZeile('umsatz', 'Umsatz', 'finanzdaten', 'waehrung_usd_mio', periodenIso, maps.umsatz, null),
+    baueZeile('bruttogewinn', 'Bruttogewinn', 'finanzdaten', 'waehrung_usd_mio', periodenIso, maps.bruttogewinn, null),
+    baueZeile('ebit', 'EBIT', 'finanzdaten', 'waehrung_usd_mio', periodenIso, maps.ebit, null),
+    baueZeile('nettogewinn', 'Nettogewinn', 'finanzdaten', 'waehrung_usd_mio', periodenIso, maps.nettogewinn, null),
+    baueZeile('eps', 'EPS (verwässert)', 'finanzdaten', 'waehrung_usd_aktie', periodenIso, maps.eps, null),
+    baueZeile('fcf', 'Free Cashflow (FCF)', 'cashflow', 'waehrung_usd_mio', periodenIso, maps.fcf, null),
+  ]
+
+  return { perioden, zeilen }
+}
+
+/** Macrotrends-GuV/Cashflow durch StockAnalysis, Yahoo & Macrotrends ergänzen (Hermès). */
 export async function ergaenzeMacrotrendsMitYahooGuV(
   roh: MacrotrendsFundamentalRoh,
   symbolYahoo: string,
+  opts?: { isin?: string | null; firmenname?: string | null; ticker?: string | null },
 ): Promise<MacrotrendsFundamentalRoh> {
-  const yahooRoh = await baueYahooGuVRoh(symbolYahoo)
-  if (!yahooRoh) return roh
+  const [saReihe, yahooRoh] = await Promise.all([
+    ladeStockanalysisGuVHistorie({
+      symbolYahoo,
+      isin: opts?.isin,
+      firmenname: opts?.firmenname,
+      ticker: opts?.ticker,
+    }),
+    baueYahooGuVRoh(symbolYahoo),
+  ])
+  const saRoh = guvRohAusStockanalysis(saReihe)
 
-  const yahooHist = yahooRoh.perioden.filter((p) => !p.istLtm && !p.istSchaetzung && !p.istNtm)
+  if (!saRoh && !yahooRoh) return roh
+
+  const saHist = saRoh?.perioden.filter((p) => !p.istLtm && !p.istSchaetzung && !p.istNtm) ?? []
+  const yahooHist = yahooRoh?.perioden.filter((p) => !p.istLtm && !p.istSchaetzung && !p.istNtm) ?? []
   const mtHist = roh.perioden.filter((p) => !p.istLtm && !p.istSchaetzung && !p.istNtm)
 
-  const histIso = [...new Set([...yahooHist.map((p) => p.iso), ...mtHist.map((p) => p.iso)])].sort()
-  const ttm = yahooRoh.perioden.find((p) => p.istLtm) ?? roh.perioden.find((p) => p.istLtm)
+  const histIso = [
+    ...new Set([...saHist.map((p) => p.iso), ...yahooHist.map((p) => p.iso), ...mtHist.map((p) => p.iso)]),
+  ].sort()
+
+  const ttm =
+    yahooRoh?.perioden.find((p) => p.istLtm) ?? roh.perioden.find((p) => p.istLtm)
+
   const perioden: FundamentalPeriode[] = histIso.map((iso) => {
-    const hit = yahooHist.find((p) => p.iso === iso) ?? mtHist.find((p) => p.iso === iso)
+    const hit =
+      saHist.find((p) => p.iso === iso) ??
+      yahooHist.find((p) => p.iso === iso) ??
+      mtHist.find((p) => p.iso === iso)
     return hit ?? { iso, label: formatFundamentalPeriodeLabel(iso, 'jahr') }
   })
   if (ttm) perioden.push(ttm)
 
-  const yahooById = new Map(yahooRoh.zeilen.map((z) => [z.id, z]))
+  const saById = new Map(saRoh?.zeilen.map((z) => [z.id, z]) ?? [])
+  const yahooById = new Map(yahooRoh?.zeilen.map((z) => [z.id, z]) ?? [])
   const mergedZeilen: FundamentalMetrikZeile[] = []
 
   for (const z of roh.zeilen) {
-    if (YAHOO_GUV_ZEILEN_IDS.has(z.id) && yahooById.has(z.id)) {
-      const yz = yahooById.get(z.id)!
+    if (YAHOO_GUV_ZEILEN_IDS.has(z.id)) {
+      const sz = saById.get(z.id)
+      const yz = yahooById.get(z.id)
       const werte: Record<string, number | null> = {}
       for (const iso of histIso) {
-        const yv = yz.werte[iso]
-        werte[iso] = yv != null && Number.isFinite(yv) ? yv : (z.werte[iso] ?? null)
+        werte[iso] = pickWert(sz?.werte[iso], yz?.werte[iso], z.werte[iso])
       }
       if (ttm) {
-        werte[FUNDAMENTAL_TTM_KEY] =
-          yz.werte[FUNDAMENTAL_TTM_KEY] ?? z.werte[FUNDAMENTAL_TTM_KEY] ?? null
+        werte[FUNDAMENTAL_TTM_KEY] = pickWert(
+          yz?.werte[FUNDAMENTAL_TTM_KEY],
+          z.werte[FUNDAMENTAL_TTM_KEY],
+        )
       }
       mergedZeilen.push({ ...z, werte })
+      saById.delete(z.id)
       yahooById.delete(z.id)
     } else {
       const werte = { ...z.werte }
@@ -334,8 +414,9 @@ export async function ergaenzeMacrotrendsMitYahooGuV(
     }
   }
 
-  for (const yz of yahooById.values()) {
-    mergedZeilen.push(yz)
+  for (const z of [...saById.values(), ...yahooById.values()]) {
+    if (mergedZeilen.some((m) => m.id === z.id)) continue
+    mergedZeilen.push(z)
   }
 
   return { ...roh, perioden, zeilen: mergedZeilen }

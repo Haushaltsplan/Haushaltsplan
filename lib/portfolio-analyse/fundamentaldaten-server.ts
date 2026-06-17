@@ -324,7 +324,11 @@ export async function ladeFundamentaldaten(anfrage: FundamentaldatenAnfrage): Pr
     firmenname: anfrage.name ?? ident.firmenname,
   })
   if (roh && symbolYahoo && frequenz === 'jahr' && nutzeYahooGuVFuerIsin(isinNorm ?? anfrage.isin)) {
-    roh = await ergaenzeMacrotrendsMitYahooGuV(roh, symbolYahoo)
+    roh = await ergaenzeMacrotrendsMitYahooGuV(roh, symbolYahoo, {
+      isin: isinNorm ?? anfrage.isin,
+      firmenname: anfrage.name ?? ident.firmenname,
+      ticker: ident.ticker,
+    })
   }
 
   const yahooExt = yahooRaw as (YahooFundamentalKennzahlen & {

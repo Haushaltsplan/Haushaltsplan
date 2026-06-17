@@ -102,12 +102,47 @@ function titelAusKategorie(k: MaterialEventKategorie, datum: string | null): str
   return map[k]
 }
 
+function htmlZuSec8kText(html: string): string {
+  const bereinigt = html
+    .replace(/<ix:header[\s\S]*?<\/ix:header>/gi, ' ')
+    .replace(/<ix:hidden[\s\S]*?<\/ix:hidden>/gi, ' ')
+    .replace(/<ix:nonNumeric[^>]*>[\s\S]*?<\/ix:nonNumeric>/gi, ' ')
+    .replace(/<ix:nonFraction[^>]*>[\s\S]*?<\/ix:nonFraction>/gi, ' ')
+    .replace(/<[^>]*\b(?:ix|xbrli|link|xbrldi):[^>]*>/gi, ' ')
+    .replace(/\b(us-gaap|dei|ma|country|currency|exch|iso4217|srt):[A-Za-z0-9_.-]+(?:Member|Axis|Domain|LineItems|Table|Statement)?\b/g, ' ')
+  return htmlZuFliesstext(bereinigt)
+}
+
+function istXbrlMuell(text: string): boolean {
+  if (/\b(us-gaap|dei|xbrli|ma):[A-Za-z0-9_-]+Member\b/i.test(text)) return true
+  if ((text.match(/\b20\d{2}-\d{2}-\d{2}\b/g) ?? []).length > 6) return true
+  if (/\b000\d{7}\b/.test(text) && text.length < 600) return true
+  if (/Member,\s*[A-Za-z0-9:._-]+Member/.test(text)) return true
+  return false
+}
+
+function auszugAusItems(items: string[] | undefined, kat: MaterialEventKategorie, datum: string | null): string {
+  const itemText =
+    items?.length && items.some((i) => i.trim())
+      ? `Gemeldete SEC-Items: ${items.join(', ')}.`
+      : 'SEC Form 8-K — aktuelle Pflichtmitteilung.'
+  return `${titelAusKategorie(kat, datum)} ${itemText} Details im verlinkten Originaldokument.`
+}
+
+function istBrauchbarer8kAuszug(text: string): boolean {
+  if (text.length < 80) return false
+  if (istXbrlMuell(text)) return false
+  const woerter = text.split(/\s+/).filter((w) => w.length > 2)
+  if (woerter.length < 25) return false
+  return true
+}
+
 async function lade8kAuszug(cik: number, accession: string, primary: string): Promise<string> {
   const url = dokumentUrl(cik, accession, primary)
   const res = await secFetch(url)
   if (!res.ok) return ''
   const raw = await res.text()
-  const text = /\.(htm|html)$/i.test(primary) ? htmlZuFliesstext(raw) : raw.replace(/\s+/g, ' ').trim()
+  const text = /\.(htm|html)$/i.test(primary) ? htmlZuSec8kText(raw) : raw.replace(/\s+/g, ' ').trim()
   return text.slice(0, AUSZUG_ZEICHEN)
 }
 
@@ -134,11 +169,13 @@ export async function ladeSec8KMaterialEvents(ticker: string): Promise<MaterialE
     if (!accession || !primary || seen.has(accession)) continue
     seen.add(accession)
 
-    const auszug = await lade8kAuszug(cik, accession, primary)
-    if (auszug.length < 80) continue
-
-    const kat = kategorieAusText(auszug, itemsRaw)
+    const auszugRaw = await lade8kAuszug(cik, accession, primary)
     const items = itemsRaw?.split(',').map((s) => s.trim()).filter(Boolean)
+    const kat = kategorieAusText(auszugRaw, itemsRaw)
+    const auszug = istBrauchbarer8kAuszug(auszugRaw)
+      ? auszugRaw
+      : auszugAusItems(items, kat, datum)
+    if (auszug.length < 40) continue
 
     out.push({
       id: `8k-${accession}`,
