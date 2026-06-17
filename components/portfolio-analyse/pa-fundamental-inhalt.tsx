@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { PaFundamentalQuartalszahlen } from '@/components/portfolio-analyse/pa-fundamental-quartalszahlen'
 import { PaFundamentalMantra } from '@/components/portfolio-analyse/pa-fundamental-mantra'
-import { PaFundamentalMaterialEvents } from '@/components/portfolio-analyse/pa-fundamental-material-events'
 import { PaFundamentalNews } from '@/components/portfolio-analyse/pa-fundamental-news'
 import { PaFundamentalPeerVergleich } from '@/components/portfolio-analyse/pa-fundamental-peer-vergleich'
 import { PaFundamentalInsider } from '@/components/portfolio-analyse/pa-fundamental-insider'
@@ -220,17 +219,7 @@ export function PaFundamentalInhalt({
             />
           ) : null}
 
-          {unterTab === 'news' ? (
-            <div className="space-y-4">
-              <PaFundamentalMaterialEvents
-                ticker={daten.ticker}
-                firmenname={daten.firmenname}
-                isin={anfrage.isin ?? null}
-                selectionKey={selectionKey}
-              />
-              <PaFundamentalNews artikel={daten.news} />
-            </div>
-          ) : null}
+          {unterTab === 'news' ? <PaFundamentalNews artikel={daten.news} /> : null}
 
           {unterTab !== 'uebersicht' &&
           unterTab !== 'news' &&
