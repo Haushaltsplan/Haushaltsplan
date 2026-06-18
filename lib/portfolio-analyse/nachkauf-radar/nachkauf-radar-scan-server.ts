@@ -210,6 +210,9 @@ async function scanneEinenTitel(opts: {
     kiBegruendung,
     gescannt_am: new Date().toISOString(),
     tiefenAnalyse: opts.deepResearchMap.get(ticker.toUpperCase()) ?? null,
+    // Depot-Gewichte werden nach dem Scan via ergaenzeDepotGewichte() befüllt
+    depotGewichtPct: null,
+    klumpenrisiko: false,
   }
 }
 
