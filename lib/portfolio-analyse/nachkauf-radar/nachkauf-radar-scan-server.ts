@@ -1,8 +1,8 @@
 /**
  * Nachkauf-Radar — Scan-Server (Stufe A).
  *
- * 1. Depot-Positionen aus Supabase laden (admin client)
- * 2. Für jede Aktien-Position: Fundamentaldaten + gecachte KI-Summaries
+ * 1. Feste Whitelist (32 Quality-Positionen)
+ * 2. Für jede Position: Fundamentaldaten + gecachte KI-Summaries
  * 3. Regelbasierter Score (kein LLM)
  * 4. Gemini Flash: kurze Begründung pro Titel
  * 5. Ergebnisse in Supabase speichern und zurückgeben
@@ -10,8 +10,6 @@
 
 import 'server-only'
 
-import { createSupabaseAdmin } from '@/lib/supabase-admin'
-import { bestandAusBuchungen } from '@/lib/portfolio-analyse/bestand'
 import { ladeFundamentaldaten } from '@/lib/portfolio-analyse/fundamentaldaten-server'
 import { isinKenntnis } from '@/lib/portfolio-analyse/isin-kenntnisse'
 import { ladeSecBerichtKiCacheFuerTicker } from '@/lib/portfolio-analyse/sec-berichte-ki-cache-server'
@@ -30,8 +28,8 @@ import {
   ladeNachkaufScanDatum,
   speichereNachkaufScanEintraege,
 } from './nachkauf-radar-db-server'
+import { NACHKAUF_RADAR_WHITELIST } from './nachkauf-radar-whitelist'
 import type { NachkaufScanAnfrage, NachkaufScanEintrag, NachkaufScanPaket } from './nachkauf-radar-types'
-import type { PortfolioBuchung } from '@/lib/portfolio-analyse/types'
 
 // ---------------------------------------------------------------------------
 // Modell-Kandidaten
@@ -51,38 +49,7 @@ function nachkaufScanModell(): string[] {
   })
 }
 
-// ---------------------------------------------------------------------------
-// Depot-Positionen server-seitig laden
-// ---------------------------------------------------------------------------
-
-async function ladeBuchungenAusSupabase(): Promise<PortfolioBuchung[]> {
-  const supabase = createSupabaseAdmin()
-  const { data, error } = await supabase
-    .from('portfolio_analyse_buchung')
-    .select('*')
-    .order('datum', { ascending: true })
-
-  if (error) {
-    console.warn('[nachkauf-radar] Buchungen laden:', error.message)
-    return []
-  }
-
-  return (data ?? []).map((r: Record<string, unknown>) => ({
-    buchungsHash: String(r.buchungs_hash ?? ''),
-    datum: String(r.datum ?? ''),
-    typ: r.typ as PortfolioBuchung['typ'],
-    isin: r.isin != null ? String(r.isin) : null,
-    wertpapierName: r.wertpapier_name != null ? String(r.wertpapier_name) : null,
-    stueck: r.stueck != null ? Number(r.stueck) : null,
-    kursEur: r.kurs_eur != null ? Number(r.kurs_eur) : null,
-    betragEur: Number(r.betrag_eur ?? 0),
-    assetKlasse: r.asset_klasse as PortfolioBuchung['assetKlasse'],
-    quelle: r.quelle as PortfolioBuchung['quelle'],
-    realisierterGewinnEur: r.realisierter_gewinn_eur != null ? Number(r.realisierter_gewinn_eur) : null,
-    parqetTyp: r.parqet_typ != null ? String(r.parqet_typ) : null,
-    steuerEur: r.steuer_eur != null ? Number(r.steuer_eur) : null,
-  }))
-}
+// (Depot-DB-Abfrage entfernt — Whitelist wird direkt aus nachkauf-radar-whitelist.ts geladen)
 
 // ---------------------------------------------------------------------------
 // KI-Begründung via Flash
@@ -247,7 +214,7 @@ async function scanneEinenTitel(opts: {
 // ---------------------------------------------------------------------------
 
 export async function laufeScan(anfrage: NachkaufScanAnfrage): Promise<NachkaufScanPaket> {
-  // Cache prüfen (sofern nicht erzwungen)
+  // Cache prüfen (sofern nicht erzwungen und kein Einzel-Ticker)
   if (!anfrage.erzwingen && !anfrage.ticker) {
     const letzterScan = await ladeNachkaufScanDatum()
     if (letzterScan) {
@@ -270,37 +237,22 @@ export async function laufeScan(anfrage: NachkaufScanAnfrage): Promise<NachkaufS
     }
   }
 
-  // Depot-Positionen ermitteln
-  const buchungen = await ladeBuchungenAusSupabase()
-  if (buchungen.length === 0) {
-    return {
-      ok: false,
-      ergebnisse: [],
-      monatsEmpfehlung: { typ: 'sparen', text: 'Kein Depot importiert. Bitte zuerst Buchungen importieren.' },
-      gescannt_am: new Date().toISOString(),
-      fehler: 'Keine Buchungen im Depot gefunden.',
-    }
-  }
-
-  const positionen = bestandAusBuchungen(buchungen).filter(
-    (p) => p.assetKlasse === 'aktie' && p.stueck > 0 && p.isin,
-  )
-
+  // Whitelist als Quelle — alle 32 Quality-Positionen
   const zuScannen = anfrage.ticker
-    ? positionen.filter((p) => {
-        const k = p.isin ? isinKenntnis(p.isin) : undefined
+    ? NACHKAUF_RADAR_WHITELIST.filter((p) => {
+        const k = isinKenntnis(p.isin)
         const ticker = k?.symbolYahoo?.replace(/\.[^.]+$/, '') ?? ''
-        return ticker.toUpperCase() === anfrage.ticker!.toUpperCase()
+        return ticker.toUpperCase() === anfrage.ticker!.toUpperCase() || p.isin === anfrage.ticker
       })
-    : positionen
+    : NACHKAUF_RADAR_WHITELIST
 
   if (zuScannen.length === 0) {
     return {
       ok: false,
       ergebnisse: [],
-      monatsEmpfehlung: { typ: 'sparen', text: 'Keine Aktien-Positionen im Depot gefunden.' },
+      monatsEmpfehlung: { typ: 'sparen', text: 'Keine Positionen in der Whitelist gefunden.' },
       gescannt_am: new Date().toISOString(),
-      fehler: anfrage.ticker ? `Ticker ${anfrage.ticker} nicht im Depot.` : 'Keine Aktien im Depot.',
+      fehler: anfrage.ticker ? `Ticker/ISIN ${anfrage.ticker} nicht in der Whitelist.` : 'Whitelist leer.',
     }
   }
 
@@ -316,8 +268,8 @@ export async function laufeScan(anfrage: NachkaufScanAnfrage): Promise<NachkaufS
     const batchErgebnisse = await Promise.allSettled(
       batch.map((p) =>
         scanneEinenTitel({
-          isin: p.isin!,
-          name: p.name ?? '',
+          isin: p.isin,
+          name: p.name,
           deepResearchMap,
         }),
       ),
@@ -325,7 +277,7 @@ export async function laufeScan(anfrage: NachkaufScanAnfrage): Promise<NachkaufS
     for (const r of batchErgebnisse) {
       if (r.status === 'fulfilled' && r.value) ergebnisse.push(r.value)
     }
-    // Kurze Pause zwischen Batches
+    // Kurze Pause zwischen Batches (Macrotrends / Yahoo Rate-Limit)
     if (i + BATCH_SIZE < zuScannen.length) {
       await new Promise((res) => setTimeout(res, 1200))
     }
@@ -344,7 +296,7 @@ export async function laufeScan(anfrage: NachkaufScanAnfrage): Promise<NachkaufS
   // Nach Score absteigend sortieren
   ergebnisse.sort((a, b) => b.score - a.score)
 
-  // Gespeicherte Scan-Ergebnisse → Supabase
+  // In Supabase persistieren
   await speichereNachkaufScanEintraege(ergebnisse)
 
   const gescannt_am = ergebnisse[0]?.gescannt_am ?? new Date().toISOString()
