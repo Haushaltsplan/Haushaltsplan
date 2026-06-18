@@ -3,19 +3,7 @@
 import 'server-only'
 
 import { resolveCoachProviderFromMode, runCoachCompletion, earningsCallGeminiModelKandidaten } from '@/lib/ki-coach-backend'
-
-const MARKTKONTEXT_SYSTEM = `Rolle: Senior Equity Analyst. Ergänze die vorliegende Analyse um einen aktuellen Marktkontext.
-
-STRIKTE REGELN:
-- Nutze die Websuche für Nachrichten der letzten 4–8 Wochen zum genannten Unternehmen.
-- Erfinde keine Zahlen. Nur belegbare Fakten aus der Suche.
-- Fokus: regulatorische Risiken, Wettbewerb, Management-Wechsel, Produkte, M&A, Analysten-Stimmung — relevant für Quality-Investing und Nachkauf-Entscheidungen.
-- Keine Kursziele oder Trading-Tipps.
-
-Format (Markdown, Deutsch):
-## Marktkontext (Live)
-- 4–8 prägnante Bulletpoints
-- Am Ende optional: „Quellen:“ mit Kurzverweis (Medien/Datum), soweit aus der Suche ableitbar`
+import { MARKTKONTEXT_SYSTEM_PROMPT } from './marktkontext-prompt'
 
 export function marktkontextKiAktiv(): boolean {
   const v = (process.env.PORTFOLIO_KI_MARKTKONTEXT ?? '1').trim().toLowerCase()
@@ -49,7 +37,7 @@ export async function ergaenzeMarktkontextKi(opts: {
   const result = await runCoachCompletion(
     provider.provider,
     provider.apiKey,
-    MARKTKONTEXT_SYSTEM,
+    MARKTKONTEXT_SYSTEM_PROMPT,
     [{ role: 'user', content: userText }],
     {
       temperature: 0.35,

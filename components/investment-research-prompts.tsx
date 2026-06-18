@@ -8,6 +8,7 @@ import {
   CollapsibleRowHeaderEnd,
   LABEL_ZUKLAPPEN,
 } from '@/components/collapsible-ui'
+import { SYSTEM_PROMPTS_UEBERSICHT } from '@/lib/portfolio-analyse/system-prompts-uebersicht'
 
 type PromptStep = {
   id: string
@@ -476,6 +477,111 @@ function persistSteps(steps: PromptStep[]) {
   window.localStorage.setItem(STORAGE_KEY, JSON.stringify({ v: 3, steps } satisfies PersistFileV2))
 }
 
+// ---------------------------------------------------------------------------
+// Automatische KI-System-Prompts (read-only)
+// ---------------------------------------------------------------------------
+
+function SystemPromptsPanel() {
+  const [open, setOpen] = useState(false)
+  const [openGruppen, setOpenGruppen] = useState<Set<string>>(new Set())
+
+  const gruppen = useMemo(() => {
+    const map = new Map<string, typeof SYSTEM_PROMPTS_UEBERSICHT>()
+    for (const p of SYSTEM_PROMPTS_UEBERSICHT) {
+      const g = map.get(p.gruppe) ?? []
+      g.push(p)
+      map.set(p.gruppe, g)
+    }
+    return map
+  }, [])
+
+  function toggleGruppe(name: string) {
+    setOpenGruppen((prev) => {
+      const next = new Set(prev)
+      if (next.has(name)) next.delete(name)
+      else next.add(name)
+      return next
+    })
+  }
+
+  async function copyPrompt(text: string, titel: string) {
+    try {
+      await navigator.clipboard.writeText(text)
+      toast.success(`${titel} kopiert`)
+    } catch {
+      toast.error('Kopieren fehlgeschlagen')
+    }
+  }
+
+  return (
+    <div className="mt-4 space-y-3 border-t border-zinc-800/60 pt-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-xs font-semibold uppercase tracking-wide text-zinc-400">System-Prompts</p>
+          <h2 className="text-base font-semibold tracking-tight text-white">Automatische KI-Prompts</h2>
+          <p className="mt-1 text-sm text-zinc-500">
+            {SYSTEM_PROMPTS_UEBERSICHT.length} Prompts · diese werden automatisch vom System verwendet
+          </p>
+        </div>
+        <CollapsiblePillButton
+          open={open}
+          onClick={() => setOpen((v) => !v)}
+          labels={LABEL_ZUKLAPPEN}
+          compact
+          aria-expanded={open}
+        />
+      </div>
+
+      <CollapsibleAnimatedBody open={open} className="mt-3 space-y-3">
+        {[...gruppen.entries()].map(([gruppenName, prompts]) => (
+          <div key={gruppenName} className="overflow-hidden rounded-xl border border-zinc-800/90 bg-zinc-950/30">
+            <button
+              type="button"
+              onClick={() => toggleGruppe(gruppenName)}
+              className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left text-sm font-medium text-white transition hover:bg-zinc-900/60"
+              aria-expanded={openGruppen.has(gruppenName)}
+            >
+              <span>
+                {gruppenName}
+                <span className="ml-2 text-xs font-normal text-zinc-500">({prompts.length})</span>
+              </span>
+              <CollapsibleRowHeaderEnd open={openGruppen.has(gruppenName)} labels={LABEL_ZUKLAPPEN} size="sm" />
+            </button>
+
+            {openGruppen.has(gruppenName) && (
+              <div className="space-y-3 border-t border-zinc-800/90 bg-zinc-950/20 p-4">
+                {prompts.map((p) => (
+                  <article key={p.id} className="rounded-xl border border-zinc-800/80 bg-zinc-950/50 px-4 py-3">
+                    <div className="flex flex-wrap items-start justify-between gap-2 border-b border-zinc-800/60 pb-3">
+                      <div className="min-w-0">
+                        <h3 className="text-sm font-medium text-white">{p.titel}</h3>
+                        <p className="mt-0.5 text-xs text-zinc-500">{p.beschreibung}</p>
+                        <span className="mt-1 inline-block rounded-md bg-zinc-800/70 px-2 py-0.5 text-[10px] font-mono text-zinc-400 ring-1 ring-white/[0.04]">
+                          {p.modell}
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => void copyPrompt(p.text, p.titel)}
+                        className="shrink-0 rounded-lg bg-teal-700 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-teal-600"
+                      >
+                        Kopieren
+                      </button>
+                    </div>
+                    <pre className="mt-3 max-h-64 overflow-y-auto whitespace-pre-wrap break-words rounded-lg bg-zinc-950/60 p-3 text-[11px] leading-relaxed text-zinc-400 ring-1 ring-white/[0.04]">
+                      {p.text}
+                    </pre>
+                  </article>
+                ))}
+              </div>
+            )}
+          </div>
+        ))}
+      </CollapsibleAnimatedBody>
+    </div>
+  )
+}
+
 export function InvestmentResearchPrompts({ embedded = false }: { embedded?: boolean }) {
   const [steps, setSteps] = useState<PromptStep[]>(DEFAULT_STEPS)
   const [loaded, setLoaded] = useState(false)
@@ -833,6 +939,8 @@ export function InvestmentResearchPrompts({ embedded = false }: { embedded?: boo
           </div>
         ) : null}
       </CollapsibleAnimatedBody>
+
+      <SystemPromptsPanel />
     </section>
   )
 }
