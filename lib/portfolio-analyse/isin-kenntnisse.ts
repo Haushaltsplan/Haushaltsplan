@@ -141,7 +141,7 @@ export const ISIN_KENNTNISSE: Record<string, IsinKenntnis> = {
   US49714P1084: usd('KNSL', 'Kinsale Capital'),
   US4370761029: usd('HD', 'The Home Depot', { macrotrendsSlug: 'home-depot' }),
   US3841091040: usd('GGG', 'Graco'),
-  US0404132054: usd('ANET', 'Arista Networks', { wkn: 'A1J4UL' }),
+  US0404132054: usd('ANET', 'Arista Networks', { wkn: 'A1J4UL', macrotrendsSlug: 'arista-networks' }),
   CA01626P1484: cad('ATD.TO', 'Alimentation Couche-Tard', {
     logoSymbol: 'ATD',
     divvydiarySlug: 'alimentation-couche-tard-aktie',

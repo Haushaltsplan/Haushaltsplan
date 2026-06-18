@@ -488,6 +488,10 @@ function waehleMacrotrendsIdent(
   if (erwartet) {
     const exakt = kandidaten.find((k) => k.ticker.toUpperCase() === erwartet)
     if (exakt) return exakt
+    if (opts.firmenname) {
+      const perName = kandidaten.find((k) => namePasstZuIdent(opts.firmenname!, k))
+      if (perName) return perName
+    }
     return null
   }
 

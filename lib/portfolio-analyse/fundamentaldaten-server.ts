@@ -46,14 +46,14 @@ function symboleAusAnfrage(anfrage: FundamentaldatenAnfrage): string[] {
   const add = (s?: string | null) => {
     for (const t of brokerSymbolKandidaten(s ?? '')) out.add(t)
   }
-  add(anfrage.symbolYahoo)
-  for (const s of anfrage.symbolCandidates ?? []) add(s)
   const isin = anfrage.isin?.trim().toUpperCase()
   if (isin) {
     const k = isinKenntnis(isin)
     add(k?.symbolYahoo)
     for (const s of k?.symbolCandidates ?? []) add(s)
   }
+  add(anfrage.symbolYahoo)
+  for (const s of anfrage.symbolCandidates ?? []) add(s)
   return [...out]
 }
 
@@ -68,8 +68,12 @@ function macrotrendsOptsAusAnfrage(
     firmenname: anfrage.name,
   })
   const k = isinKenntnis(isin)
+  const macrotrendsTicker =
+    k?.macrotrendsTicker?.trim().toUpperCase() ||
+    k?.symbolYahoo?.split('.')[0]?.toUpperCase() ||
+    erwarteterTicker.trim().toUpperCase()
   return {
-    erwarteterTicker: erwarteterTicker.trim().toUpperCase(),
+    erwarteterTicker: macrotrendsTicker,
     firmenname: anfrage.name?.trim() || k?.name?.trim(),
     slug: k?.macrotrendsSlug,
     macrotrendsTicker: k?.macrotrendsTicker,
