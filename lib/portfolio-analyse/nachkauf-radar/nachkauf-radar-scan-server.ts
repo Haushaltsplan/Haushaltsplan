@@ -1,0 +1,358 @@
+/**
+ * Nachkauf-Radar — Scan-Server (Stufe A).
+ *
+ * 1. Depot-Positionen aus Supabase laden (admin client)
+ * 2. Für jede Aktien-Position: Fundamentaldaten + gecachte KI-Summaries
+ * 3. Regelbasierter Score (kein LLM)
+ * 4. Gemini Flash: kurze Begründung pro Titel
+ * 5. Ergebnisse in Supabase speichern und zurückgeben
+ */
+
+import 'server-only'
+
+import { createSupabaseAdmin } from '@/lib/supabase-admin'
+import { bestandAusBuchungen } from '@/lib/portfolio-analyse/bestand'
+import { ladeFundamentaldaten } from '@/lib/portfolio-analyse/fundamentaldaten-server'
+import { isinKenntnis } from '@/lib/portfolio-analyse/isin-kenntnisse'
+import { ladeSecBerichtKiCacheFuerTicker } from '@/lib/portfolio-analyse/sec-berichte-ki-cache-server'
+import { ladeEarningsCallKiCacheFuerTicker } from '@/lib/portfolio-analyse/earnings-call-unternehmen-cache-server'
+import { resolveCoachProviderFromMode, runCoachCompletion } from '@/lib/ki-coach-backend'
+import { NACHKAUF_SCAN_SYSTEM_PROMPT } from './nachkauf-scan-prompt'
+import {
+  berechneMonatsEmpfehlung,
+  berechneNachkaufScore,
+  extrahiereBewertungsSignale,
+  leiteNachkaufAmpelAb,
+} from './nachkauf-radar-score'
+import {
+  ladeAlleDeepResearch,
+  ladeNachkaufScanAusCloud,
+  ladeNachkaufScanDatum,
+  speichereNachkaufScanEintraege,
+} from './nachkauf-radar-db-server'
+import type { NachkaufScanAnfrage, NachkaufScanEintrag, NachkaufScanPaket } from './nachkauf-radar-types'
+import type { PortfolioBuchung } from '@/lib/portfolio-analyse/types'
+
+// ---------------------------------------------------------------------------
+// Modell-Kandidaten
+// ---------------------------------------------------------------------------
+
+function nachkaufScanModell(): string[] {
+  const primary =
+    process.env.NACHKAUF_SCAN_GEMINI_MODEL?.trim() ||
+    process.env.FINANCE_COACH_GEMINI_MODEL?.trim() ||
+    'gemini-3.5-flash'
+  const fallbacks = ['gemini-flash-latest', 'gemini-2.5-flash', 'gemini-3.1-flash-lite']
+  const seen = new Set<string>()
+  return [primary, ...fallbacks].filter((m) => {
+    if (seen.has(m)) return false
+    seen.add(m)
+    return true
+  })
+}
+
+// ---------------------------------------------------------------------------
+// Depot-Positionen server-seitig laden
+// ---------------------------------------------------------------------------
+
+async function ladeBuchungenAusSupabase(): Promise<PortfolioBuchung[]> {
+  const supabase = createSupabaseAdmin()
+  const { data, error } = await supabase
+    .from('portfolio_analyse_buchung')
+    .select('*')
+    .order('datum', { ascending: true })
+
+  if (error) {
+    console.warn('[nachkauf-radar] Buchungen laden:', error.message)
+    return []
+  }
+
+  return (data ?? []).map((r: Record<string, unknown>) => ({
+    buchungsHash: String(r.buchungs_hash ?? ''),
+    datum: String(r.datum ?? ''),
+    typ: r.typ as PortfolioBuchung['typ'],
+    isin: r.isin != null ? String(r.isin) : null,
+    wertpapierName: r.wertpapier_name != null ? String(r.wertpapier_name) : null,
+    stueck: r.stueck != null ? Number(r.stueck) : null,
+    kursEur: r.kurs_eur != null ? Number(r.kurs_eur) : null,
+    betragEur: Number(r.betrag_eur ?? 0),
+    assetKlasse: r.asset_klasse as PortfolioBuchung['assetKlasse'],
+    quelle: r.quelle as PortfolioBuchung['quelle'],
+    realisierterGewinnEur: r.realisierter_gewinn_eur != null ? Number(r.realisierter_gewinn_eur) : null,
+    parqetTyp: r.parqet_typ != null ? String(r.parqet_typ) : null,
+    steuerEur: r.steuer_eur != null ? Number(r.steuer_eur) : null,
+  }))
+}
+
+// ---------------------------------------------------------------------------
+// KI-Begründung via Flash
+// ---------------------------------------------------------------------------
+
+async function generiereKiBegruendung(opts: {
+  name: string
+  ticker: string
+  ampel: string
+  score: number
+  mantraAmpelText: string
+  sellTriggerText: string
+  fcfYield: string
+  forwardPe: string
+  earningsSummary: string
+  secSummary: string
+}): Promise<string | null> {
+  const provider = resolveCoachProviderFromMode('gemini')
+  if (!provider || provider.provider !== 'gemini') return null
+
+  const userText = [
+    `Unternehmen: ${opts.name} (${opts.ticker})`,
+    `Radar-Ampel: ${opts.ampel} | Score: ${opts.score}/100`,
+    `Mantra-Qualität: ${opts.mantraAmpelText}`,
+    `Sell-Trigger-Status: ${opts.sellTriggerText}`,
+    `FCF-Rendite (NTM/LTM): ${opts.fcfYield}`,
+    `Forward-KGV (NTM): ${opts.forwardPe}`,
+    '',
+    opts.earningsSummary
+      ? `--- EARNINGS CALL (Auszug, max. 1500 Zeichen) ---\n${opts.earningsSummary.slice(0, 1500)}`
+      : '--- Kein Earnings-Call-Auszug im Cache ---',
+    '',
+    opts.secSummary
+      ? `--- SEC/IR-BERICHT (Auszug, max. 1500 Zeichen) ---\n${opts.secSummary.slice(0, 1500)}`
+      : '--- Kein Berichts-Auszug im Cache ---',
+    '',
+    'Schreibe jetzt die 2–3-Satz-Begründung gemäß dem System-Prompt.',
+  ]
+    .filter(Boolean)
+    .join('\n')
+
+  const result = await runCoachCompletion(
+    provider.provider,
+    provider.apiKey,
+    NACHKAUF_SCAN_SYSTEM_PROMPT,
+    [{ role: 'user', content: userText }],
+    { temperature: 0.25, skipMessageTrim: true, geminiModels: nachkaufScanModell() },
+  )
+
+  return result.ok ? result.reply.trim() : null
+}
+
+// ---------------------------------------------------------------------------
+// Einen Titel scannen
+// ---------------------------------------------------------------------------
+
+async function scanneEinenTitel(opts: {
+  isin: string
+  name: string
+  deepResearchMap: Map<string, import('./nachkauf-radar-types').NachkaufDeepResearch>
+}): Promise<NachkaufScanEintrag | null> {
+  const { isin, name } = opts
+  const kenntnis = isinKenntnis(isin)
+  const ticker = kenntnis?.symbolYahoo?.replace(/\.[^.]+$/, '') ?? isin
+
+  // Fundamentaldaten laden (Macrotrends + Yahoo)
+  let paket
+  try {
+    paket = await ladeFundamentaldaten({
+      isin,
+      name,
+      symbolYahoo: kenntnis?.symbolYahoo ?? null,
+      symbolCandidates: kenntnis?.symbolCandidates ?? undefined,
+    })
+  } catch (e) {
+    console.warn(`[nachkauf-radar] Fundamentaldaten für ${ticker} fehlgeschlagen:`, e)
+    return null
+  }
+
+  if (!paket.ok && paket.zeilen.length === 0) {
+    console.warn(`[nachkauf-radar] Keine Fundamentaldaten für ${ticker}`)
+    return null
+  }
+
+  // Score regelbasiert berechnen
+  const bewertungsSignale = extrahiereBewertungsSignale(paket)
+  const scoreDetail = berechneNachkaufScore(paket, bewertungsSignale)
+  const ampel = leiteNachkaufAmpelAb(paket, scoreDetail, bewertungsSignale)
+
+  // KI-Summaries aus Caches lesen (nicht neu generieren)
+  const earningsMap = await ladeEarningsCallKiCacheFuerTicker(ticker)
+  const secMap = await ladeSecBerichtKiCacheFuerTicker(ticker)
+
+  const neuesteEarnings = [...earningsMap.values()]
+    .sort((a, b) => b.transcriptUrl.localeCompare(a.transcriptUrl))
+    .at(0)?.zusammenfassung ?? ''
+
+  const neuesteSec = [...secMap.values()]
+    .sort((a, b) => b.aktualisiertAm.localeCompare(a.aktualisiertAm))
+    .at(0)?.zusammenfassung ?? ''
+
+  // Sell-Trigger-Text für LLM
+  const mantra = paket.mantra
+  const watchWarnungen = mantra.sellTriggerWatch
+    .filter((w) => w.status === 'warnung' || w.status === 'beobachten')
+    .map((w) => `${w.status === 'warnung' ? 'WARNUNG' : 'Beobachten'}: ${w.titel}`)
+
+  const sellTriggerText =
+    watchWarnungen.length > 0 ? watchWarnungen.join('; ') : 'Keine aktiven Sell-Trigger'
+
+  const ampelText: Record<string, string> = {
+    gruen: 'Alle/Mehrzahl Metriken erfüllt',
+    gelb: 'Teilweise erfüllt / im Beobachtungsmodus',
+    rot: 'Mehrere Metriken nicht erfüllt',
+    grau: 'Zu wenig Daten',
+  }
+
+  const fcfYieldText =
+    bewertungsSignale.fcfYieldPct != null
+      ? `${bewertungsSignale.fcfYieldPct.toFixed(1)} %`
+      : 'keine Daten'
+  const forwardPeText =
+    bewertungsSignale.forwardPe != null
+      ? `${bewertungsSignale.forwardPe.toFixed(1)}×`
+      : 'keine Daten'
+
+  // KI-Begründung generieren
+  const kiBegruendung = await generiereKiBegruendung({
+    name: paket.firmenname || name,
+    ticker,
+    ampel: ampel === 'gruen' ? 'Grün' : ampel === 'gelb' ? 'Gelb' : ampel === 'rot' ? 'Rot' : ampel === 'teuer' ? 'Teuer (Quality ok, Preis zu hoch)' : 'Grau',
+    score: scoreDetail.gesamt,
+    mantraAmpelText: ampelText[mantra.ampel] ?? mantra.ampel,
+    sellTriggerText,
+    fcfYield: fcfYieldText,
+    forwardPe: forwardPeText,
+    earningsSummary: neuesteEarnings,
+    secSummary: neuesteSec,
+  })
+
+  const hatWarnung = mantra.sellTriggerWatch.some((w) => w.status === 'warnung')
+
+  return {
+    ticker,
+    isin,
+    name: paket.firmenname || name,
+    ampel,
+    score: scoreDetail.gesamt,
+    scoreDetail,
+    bewertung: bewertungsSignale,
+    mantraAmpel: mantra.ampel,
+    mantraScorePct: mantra.ampelScorePct,
+    sellTriggerOk: !hatWarnung,
+    kiBegruendung,
+    gescannt_am: new Date().toISOString(),
+    tiefenAnalyse: opts.deepResearchMap.get(ticker.toUpperCase()) ?? null,
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Haupt-Export: laufeScan
+// ---------------------------------------------------------------------------
+
+export async function laufeScan(anfrage: NachkaufScanAnfrage): Promise<NachkaufScanPaket> {
+  // Cache prüfen (sofern nicht erzwungen)
+  if (!anfrage.erzwingen && !anfrage.ticker) {
+    const letzterScan = await ladeNachkaufScanDatum()
+    if (letzterScan) {
+      const alterMs = Date.now() - new Date(letzterScan).getTime()
+      const CACHE_TTL_MS = 6 * 60 * 60 * 1000 // 6 Stunden
+      if (alterMs < CACHE_TTL_MS) {
+        const ergebnisse = await ladeNachkaufScanAusCloud()
+        const deepMap = await ladeAlleDeepResearch()
+        const mitDeep = ergebnisse.map((e) => ({
+          ...e,
+          tiefenAnalyse: deepMap.get(e.ticker.toUpperCase()) ?? null,
+        }))
+        return {
+          ok: true,
+          ergebnisse: mitDeep,
+          monatsEmpfehlung: berechneMonatsEmpfehlung(mitDeep),
+          gescannt_am: letzterScan,
+        }
+      }
+    }
+  }
+
+  // Depot-Positionen ermitteln
+  const buchungen = await ladeBuchungenAusSupabase()
+  if (buchungen.length === 0) {
+    return {
+      ok: false,
+      ergebnisse: [],
+      monatsEmpfehlung: { typ: 'sparen', text: 'Kein Depot importiert. Bitte zuerst Buchungen importieren.' },
+      gescannt_am: new Date().toISOString(),
+      fehler: 'Keine Buchungen im Depot gefunden.',
+    }
+  }
+
+  const positionen = bestandAusBuchungen(buchungen).filter(
+    (p) => p.assetKlasse === 'aktie' && p.stueck > 0 && p.isin,
+  )
+
+  const zuScannen = anfrage.ticker
+    ? positionen.filter((p) => {
+        const k = p.isin ? isinKenntnis(p.isin) : undefined
+        const ticker = k?.symbolYahoo?.replace(/\.[^.]+$/, '') ?? ''
+        return ticker.toUpperCase() === anfrage.ticker!.toUpperCase()
+      })
+    : positionen
+
+  if (zuScannen.length === 0) {
+    return {
+      ok: false,
+      ergebnisse: [],
+      monatsEmpfehlung: { typ: 'sparen', text: 'Keine Aktien-Positionen im Depot gefunden.' },
+      gescannt_am: new Date().toISOString(),
+      fehler: anfrage.ticker ? `Ticker ${anfrage.ticker} nicht im Depot.` : 'Keine Aktien im Depot.',
+    }
+  }
+
+  // Deep-Research-Cache vorab laden
+  const deepResearchMap = await ladeAlleDeepResearch()
+
+  // Titel in Batches von 3 scannen (Rate-Limit-freundlich)
+  const BATCH_SIZE = 3
+  const ergebnisse: NachkaufScanEintrag[] = []
+
+  for (let i = 0; i < zuScannen.length; i += BATCH_SIZE) {
+    const batch = zuScannen.slice(i, i + BATCH_SIZE)
+    const batchErgebnisse = await Promise.allSettled(
+      batch.map((p) =>
+        scanneEinenTitel({
+          isin: p.isin!,
+          name: p.name ?? '',
+          deepResearchMap,
+        }),
+      ),
+    )
+    for (const r of batchErgebnisse) {
+      if (r.status === 'fulfilled' && r.value) ergebnisse.push(r.value)
+    }
+    // Kurze Pause zwischen Batches
+    if (i + BATCH_SIZE < zuScannen.length) {
+      await new Promise((res) => setTimeout(res, 1200))
+    }
+  }
+
+  if (ergebnisse.length === 0) {
+    return {
+      ok: false,
+      ergebnisse: [],
+      monatsEmpfehlung: { typ: 'sparen', text: 'Scan fehlgeschlagen — keine Fundamentaldaten verfügbar.' },
+      gescannt_am: new Date().toISOString(),
+      fehler: 'Alle Fundamentaldaten-Abrufe fehlgeschlagen.',
+    }
+  }
+
+  // Nach Score absteigend sortieren
+  ergebnisse.sort((a, b) => b.score - a.score)
+
+  // Gespeicherte Scan-Ergebnisse → Supabase
+  await speichereNachkaufScanEintraege(ergebnisse)
+
+  const gescannt_am = ergebnisse[0]?.gescannt_am ?? new Date().toISOString()
+
+  return {
+    ok: true,
+    ergebnisse,
+    monatsEmpfehlung: berechneMonatsEmpfehlung(ergebnisse),
+    gescannt_am,
+  }
+}
