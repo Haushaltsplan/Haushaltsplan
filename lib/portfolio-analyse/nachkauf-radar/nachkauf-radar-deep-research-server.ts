@@ -13,8 +13,8 @@ import { ladeSecBerichtKiCacheFuerTicker } from '@/lib/portfolio-analyse/sec-ber
 import { ladeEarningsCallKiCacheFuerTicker } from '@/lib/portfolio-analyse/earnings-call-unternehmen-cache-server'
 import { resolveCoachProviderFromMode, runCoachCompletion } from '@/lib/ki-coach-backend'
 import { NACHKAUF_DEEP_RESEARCH_SYSTEM_PROMPT } from './nachkauf-deep-research-prompt'
-import { speichereDeepResearch } from './nachkauf-radar-db-server'
-import type { NachkaufDeepResearch, NachkaufDeepResearchAnfrage } from './nachkauf-radar-types'
+import { ergaenzeDepotGewichte, speichereDeepResearch } from './nachkauf-radar-db-server'
+import type { NachkaufDeepResearch, NachkaufDeepResearchAnfrage, NachkaufScanEintrag } from './nachkauf-radar-types'
 
 // ---------------------------------------------------------------------------
 // Modell-Kandidaten (Gemini Pro)
@@ -54,11 +54,26 @@ function baueKontextText(opts: {
   roic: string
   netDebtEbitda: string
   revWachstum: string
+  depotGewichtPct: number | null
+  klumpenrisiko: boolean
   earningsSummaries: { quartalId: string; text: string }[]
   secSummaries: { berichtId: string; text: string }[]
 }): string {
+  const gewichtHinweis =
+    opts.depotGewichtPct != null
+      ? opts.klumpenrisiko
+        ? `${opts.depotGewichtPct.toFixed(1)} % des Depots (KLUMPENRISIKO — bereits übergewichtet)`
+        : `${opts.depotGewichtPct.toFixed(1)} % des Depots`
+      : 'Keine Depot-Buchungen vorhanden (Position ggf. noch nicht im Depot)'
+
   const teile: string[] = [
     `=== DEPOT-POSITION: ${opts.name} (${opts.ticker}) — ISIN: ${opts.isin} ===`,
+    '',
+    '--- DEPOT-KONTEXT (WICHTIG für Nachkauf-Entscheidung) ---',
+    `Aktueller Depot-Anteil (Marktwert): ${gewichtHinweis}`,
+    opts.klumpenrisiko
+      ? `HINWEIS: Position bereits übergewichtet. Nachkauf nur wenn aussergewöhnlich attraktives Chance/Risiko-Verhältnis — andernfalls auf günstigere Alternativen verweisen.`
+      : '',
     '',
     '--- MANTRA-QUALITÄTS-DASHBOARD ---',
     `Mantra-Ampel: ${opts.mantraAmpel}`,
@@ -151,6 +166,20 @@ export async function fuhreDeepResearchDurch(
     .map((w) => `${w.status === 'warnung' ? 'WARNUNG' : w.status === 'beobachten' ? 'Beobachten' : 'OK'}: ${w.titel}`)
     .join('; ')
 
+  // Depot-Gewicht ermitteln
+  const platzhalter: NachkaufScanEintrag[] = [{
+    ticker, isin: resolvedIsin, name: name ?? ticker,
+    ampel: 'grau', score: 0,
+    scoreDetail: { mantraScore: 0, bewertungsScore: 0, sellTriggerPenalty: 0, gesamt: 0 },
+    bewertung: { fcfYieldPct: null, forwardPe: null, drawdown52wPct: null },
+    mantraAmpel: null, mantraScorePct: null, sellTriggerOk: true,
+    kiBegruendung: null, gescannt_am: new Date().toISOString(), tiefenAnalyse: null,
+    depotGewichtPct: null, klumpenrisiko: false,
+  }]
+  await ergaenzeDepotGewichte(platzhalter)
+  const depotGewichtPct = platzhalter[0]!.depotGewichtPct
+  const klumpenrisiko = platzhalter[0]!.klumpenrisiko
+
   const kontextText = baueKontextText({
     name: paket.firmenname || name || ticker,
     ticker,
@@ -163,6 +192,8 @@ export async function fuhreDeepResearchDurch(
     roic: fmtOrDash('roic') !== '–' ? fmtOrDash('roic') : '–',
     netDebtEbitda: fmtOrDash('net_debt_ebitda') !== '–' ? fmtOrDash('net_debt_ebitda') : '–',
     revWachstum: fmtOrDash('rev_cagr_3y'),
+    depotGewichtPct,
+    klumpenrisiko,
     earningsSummaries: earningsList,
     secSummaries: secList,
   })

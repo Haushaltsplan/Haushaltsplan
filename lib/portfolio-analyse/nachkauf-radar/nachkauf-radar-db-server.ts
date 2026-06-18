@@ -9,6 +9,68 @@ import type {
   NachkaufScanEintrag,
 } from './nachkauf-radar-types'
 
+// ---------------------------------------------------------------------------
+// Depot-Gewichte aus Buchungen berechnen
+// ---------------------------------------------------------------------------
+
+export type DepotGewicht = {
+  /** Netto investiertes Kapital (Käufe − Verkäufe) in EUR. */
+  investiertEur: number
+  /** Anteil am Gesamt-Depot-Einstandswert (0–100). */
+  anteilPct: number
+}
+
+/**
+ * Lädt die aktuellen Depot-Gewichte aus dem neuesten Portfolio-Snapshot.
+ *
+ * Der Snapshot enthält für jede Position den aktuellen Marktwert (`wertEur`),
+ * sodass die Gewichte den echten Depot-Anteil widerspiegeln — nicht den Einstandswert.
+ *
+ * Gibt eine Map<ISIN (upper), DepotGewicht> zurück.
+ */
+export async function ladeDepotGewichte(): Promise<Map<string, DepotGewicht>> {
+  const out = new Map<string, DepotGewicht>()
+  if (!istKonfiguriert()) return out
+
+  try {
+    const { data, error } = await admin()
+      .from('portfolio_analyse_snapshot')
+      .select('depotwert_eur, positionen')
+      .order('erfasst_am', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+
+    if (error || !data) return out
+
+    const snapshot = data as {
+      depotwert_eur: number | null
+      positionen: Array<{ isin?: string | null; wertEur?: number; assetKlasse?: string }>
+    }
+
+    const positionen = snapshot.positionen ?? []
+
+    // Gesamtwert: Snapshot-Wert bevorzugen; Fallback: Summe der Positionen
+    const gesamtEur =
+      snapshot.depotwert_eur ??
+      positionen.reduce((s, p) => s + (p.wertEur ?? 0), 0)
+
+    if (gesamtEur <= 0) return out
+
+    for (const pos of positionen) {
+      const isin = pos.isin?.trim().toUpperCase()
+      if (!isin || !pos.wertEur || pos.wertEur <= 0) continue
+      out.set(isin, {
+        investiertEur: pos.wertEur,
+        anteilPct: Math.round((pos.wertEur / gesamtEur) * 1000) / 10, // 1 Nachkomma
+      })
+    }
+  } catch (e) {
+    console.warn('[nachkauf-radar] Depot-Gewichte laden fehlgeschlagen:', e)
+  }
+
+  return out
+}
+
 const TABLE_SCAN = 'nachkauf_radar_scan' as const
 const TABLE_DEEP = 'nachkauf_radar_deep_research' as const
 
@@ -180,6 +242,19 @@ function dbZeileZuEintrag(r: DbZeile): NachkaufScanEintrag {
     kiBegruendung: r.ki_begruendung ?? null,
     gescannt_am: r.gescannt_am,
     tiefenAnalyse: null,
+    // Depot-Gewichte werden nach dem DB-Laden dynamisch ergänzt (ladeDepotGewichte)
+    depotGewichtPct: null,
+    klumpenrisiko: false,
+  }
+}
+
+/** Reichert Scan-Einträge mit aktuellen Depot-Gewichten an (In-place). */
+export async function ergaenzeDepotGewichte(eintraege: NachkaufScanEintrag[]): Promise<void> {
+  const gewichte = await ladeDepotGewichte()
+  for (const e of eintraege) {
+    const g = gewichte.get(e.isin.toUpperCase())
+    e.depotGewichtPct = g?.anteilPct ?? null
+    e.klumpenrisiko = (g?.anteilPct ?? 0) >= 15
   }
 }
 

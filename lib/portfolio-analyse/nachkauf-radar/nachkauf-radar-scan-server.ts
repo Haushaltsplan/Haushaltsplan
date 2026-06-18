@@ -23,6 +23,7 @@ import {
   leiteNachkaufAmpelAb,
 } from './nachkauf-radar-score'
 import {
+  ergaenzeDepotGewichte,
   ladeAlleDeepResearch,
   ladeNachkaufScanAusCloud,
   ladeNachkaufScanDatum,
@@ -245,6 +246,7 @@ export async function laufeScan(anfrage: NachkaufScanAnfrage): Promise<NachkaufS
     const alle = await ladeNachkaufScanAusCloud()
     const deepMap = await ladeAlleDeepResearch()
     const mitDeep = alle.map((e) => ({ ...e, tiefenAnalyse: deepMap.get(e.ticker.toUpperCase()) ?? null }))
+    await ergaenzeDepotGewichte(mitDeep)
     mitDeep.sort((a, b) => b.score - a.score)
     return {
       ok: true,
@@ -281,6 +283,7 @@ export async function laufeScan(anfrage: NachkaufScanAnfrage): Promise<NachkaufS
       ...e,
       tiefenAnalyse: deepMap.get(e.ticker.toUpperCase()) ?? null,
     }))
+    await ergaenzeDepotGewichte(mitDeep)
     mitDeep.sort((a, b) => b.score - a.score)
     return {
       ok: true,
@@ -329,6 +332,7 @@ export async function laufeScan(anfrage: NachkaufScanAnfrage): Promise<NachkaufS
     ...e,
     tiefenAnalyse: deepMapAktuell.get(e.ticker.toUpperCase()) ?? null,
   }))
+  await ergaenzeDepotGewichte(mitDeep)
   mitDeep.sort((a, b) => b.score - a.score)
 
   const ausstehend = gesamtAnzahl - alle.length

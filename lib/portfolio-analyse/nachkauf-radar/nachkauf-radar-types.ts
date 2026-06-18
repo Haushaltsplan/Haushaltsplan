@@ -56,6 +56,17 @@ export type NachkaufScanEintrag = {
   gescannt_am: string
   /** Deep-Research-Memo, falls bereits erstellt. */
   tiefenAnalyse: NachkaufDeepResearch | null
+  /**
+   * Aktueller Anteil dieser Position am Depot-Marktwert (0–100 %).
+   * Wird dynamisch aus dem neuesten Portfolio-Snapshot berechnet — nicht in der DB gespeichert.
+   * null = kein Snapshot vorhanden oder Position nicht im Depot.
+   */
+  depotGewichtPct: number | null
+  /**
+   * true wenn depotGewichtPct >= 15 % (Klumpenrisiko-Warnung).
+   * Nachkauf trotzdem möglich, aber explizit begründet.
+   */
+  klumpenrisiko: boolean
 }
 
 /** Monatliche Gesamt-Empfehlung des Radars. */

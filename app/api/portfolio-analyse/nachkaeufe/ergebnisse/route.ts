@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import {
+  ergaenzeDepotGewichte,
   ladeAlleDeepResearch,
   ladeNachkaufScanAusCloud,
   ladeNachkaufScanDatum,
@@ -23,6 +24,7 @@ export async function GET() {
       ...e,
       tiefenAnalyse: deepMap.get(e.ticker.toUpperCase()) ?? null,
     }))
+    await ergaenzeDepotGewichte(mitDeep)
 
     const gesamtAnzahl = NACHKAUF_RADAR_WHITELIST.length
     const ausstehend = Math.max(0, gesamtAnzahl - mitDeep.length)

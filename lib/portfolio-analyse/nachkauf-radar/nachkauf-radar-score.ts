@@ -189,17 +189,26 @@ export function berechneMonatsEmpfehlung(ergebnisse: NachkaufScanEintrag[]): Mon
   const rot = ergebnisse.filter((e) => e.ampel === 'rot')
 
   if (gruen.length > 0) {
-    const kandidaten = gruen
-      .sort((a, b) => b.score - a.score)
-      .slice(0, 3)
-      .map((e) => e.ticker)
+    // Kandidaten mit Klumpenrisiko-Warnung nach hinten sortieren
+    const sortiertGruen = [...gruen].sort((a, b) => {
+      if (a.klumpenrisiko !== b.klumpenrisiko) return a.klumpenrisiko ? 1 : -1
+      return b.score - a.score
+    })
+    const kandidaten = sortiertGruen.slice(0, 3).map((e) => e.ticker)
+    const klumpen = sortiertGruen.filter((e) => e.klumpenrisiko).map((e) => e.ticker)
+
+    const klumpenHinweis =
+      klumpen.length > 0
+        ? ` Achtung Klumpenrisiko: ${klumpen.join(', ')} bereits ≥15 % des Depots — dort nur sehr selektiv nachkaufen.`
+        : ''
+
     return {
       typ: 'nachkauf',
       tickers: kandidaten,
       text:
         `${gruen.length} Nachkauf-Kandidat${gruen.length > 1 ? 'en' : ''} identifiziert. ` +
         `Stärkste Signale: ${kandidaten.join(', ')}. ` +
-        `Deep Research vor dem Kauf empfohlen.`,
+        `Deep Research vor dem Kauf empfohlen.${klumpenHinweis}`,
     }
   }
 

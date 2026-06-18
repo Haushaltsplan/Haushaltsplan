@@ -200,6 +200,15 @@ function TitelKarte({
             Mantra <span className="text-zinc-300">{eintrag.mantraScorePct} %</span>
           </span>
         )}
+        {eintrag.depotGewichtPct != null && (
+          <span className={`text-[11px] ${eintrag.klumpenrisiko ? 'font-medium text-orange-400' : 'text-zinc-500'}`}>
+            Depot{' '}
+            <span className={eintrag.klumpenrisiko ? 'text-orange-300' : 'text-zinc-300'}>
+              {eintrag.depotGewichtPct.toFixed(1)} %
+            </span>
+            {eintrag.klumpenrisiko && ' ⚠'}
+          </span>
+        )}
         {!eintrag.sellTriggerOk && (
           <span className="text-[11px] font-medium text-rose-400">Sell-Trigger aktiv</span>
         )}
@@ -313,8 +322,23 @@ function DetailPanel({
               {eintrag.bewertung.drawdown52wPct != null ? `${eintrag.bewertung.drawdown52wPct.toFixed(0)} %` : '–'}
             </p>
           </div>
+          <div>
+            <p className="text-[11px] text-zinc-500">Depot-Gewicht</p>
+            <p className={`text-sm font-medium ${eintrag.klumpenrisiko ? 'text-orange-400' : 'text-zinc-100'}`}>
+              {eintrag.depotGewichtPct != null ? `${eintrag.depotGewichtPct.toFixed(1)} %` : '–'}
+            </p>
+          </div>
         </div>
       </PaCard>
+      {eintrag.klumpenrisiko && (
+        <div className="rounded-xl border border-orange-500/20 bg-orange-950/30 p-3">
+          <p className="text-[12px] text-orange-300">
+            <span className="font-semibold">Klumpenrisiko:</span> Diese Position macht aktuell{' '}
+            {eintrag.depotGewichtPct?.toFixed(1)} % deines Depots aus (Marktwert).
+            Nachkauf nur sehr selektiv — prüfe ob die Übergewichtung durch besondere Qualität gerechtfertigt ist.
+          </p>
+        </div>
+      )}
 
       {/* KI-Begründung */}
       {eintrag.kiBegruendung && (
