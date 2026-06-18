@@ -8,6 +8,7 @@ import type { IrRohesTranskript } from '@/lib/portfolio-analyse/ir-earnings-type
 
 const USER_AGENT =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'
+const MAX_PDF_BYTES = 14_000_000
 
 type PdfKandidat = { url: string; titel: string; score: number; art: 'webcast' | 'bericht' }
 
@@ -23,15 +24,26 @@ async function pdfZuText(buffer: Buffer): Promise<string> {
 
 async function ladePdfText(url: string, referer: string): Promise<string> {
   try {
+    const head = await fetch(url, {
+      method: 'HEAD',
+      headers: { 'User-Agent': USER_AGENT, Referer: referer },
+      cache: 'no-store',
+      signal: AbortSignal.timeout(12_000),
+    })
+    const len = Number(head.headers.get('content-length') ?? 0)
+    if (len > MAX_PDF_BYTES) return ''
+
     const res = await fetch(url, {
       headers: { 'User-Agent': USER_AGENT, Accept: 'application/pdf,*/*', Referer: referer },
       cache: 'no-store',
-      signal: AbortSignal.timeout(25_000),
+      signal: AbortSignal.timeout(45_000),
     })
     if (!res.ok) return ''
     const ct = res.headers.get('content-type') ?? ''
-    if (!ct.includes('pdf') && !/\.pdf|contenthub\.wolterskluwer|filecache\.investorroom/i.test(url)) return ''
-    return pdfZuText(Buffer.from(await res.arrayBuffer()))
+    if (!ct.includes('pdf') && !/\.pdf|contenthub\.wolterskluwer|filecache\.investorroom|couche-tard\.com\/download/i.test(url)) return ''
+    const buf = Buffer.from(await res.arrayBuffer())
+    if (buf.length > MAX_PDF_BYTES) return ''
+    return pdfZuText(buf)
   } catch {
     return ''
   }
@@ -78,15 +90,18 @@ function extrahiereUrlsAusHtml(html: string, origin: string): string[] {
     /"(https:\/\/assets\.contenthub\.wolterskluwer\.com[^"]+)"/gi,
     /"(https:\/\/filecache\.investorroom\.com[^"]+)"/gi,
     /(\/content\/dam\/[^"'\\s]+\.pdf)/gi,
-    /(\/download\/[^"'\\s]+\.pdf[^"'\\s]*)/gi,
+    /(\/dam\/[^"'\\s]+\.pdf)/gi,
+    /(\/download\/[^"'\\s]+)/gi,
+    /(~\/media\/[^"'\\s]+\.pdf[^"'\\s]*)/gi,
     /(\/-\/media\/[^"'\\s]+\.pdf[^"'\\s]*)/gi,
     /(\/~\/media\/[^"'\\s]+\.pdf[^"'\\s]*)/gi,
   ]
   for (const pat of patterns) {
     for (const m of html.matchAll(pat)) {
       const raw = m[1] ?? m[0]
+      if (/^image\//i.test(raw) || /^\/image\//i.test(raw)) continue
       const abs = absolutUrl(raw, origin)
-      if (abs) out.add(abs)
+      if (abs && !/\/image\//i.test(abs)) out.add(abs)
     }
   }
   for (const m of html.matchAll(/downloads\.listing\.json/gi)) {
@@ -100,17 +115,18 @@ function extrahiereUrlsAusHtml(html: string, origin: string): string[] {
   return [...out]
 }
 
-function parseAemListing(json: unknown): string[] {
+function parseAemListing(json: unknown): Array<{ path: string; title?: string }> {
   const root = json as Record<string, unknown>
   const items = (root.results ?? root.items) as unknown[] | undefined
   if (!Array.isArray(items)) return []
-  const paths: string[] = []
+  const paths: Array<{ path: string; title?: string }> = []
   for (const it of items) {
-    if (typeof it === 'string') paths.push(it)
+    if (typeof it === 'string') paths.push({ path: it })
     else if (it && typeof it === 'object') {
       const row = it as Record<string, unknown>
-      for (const k of ['path', 'url', 'downloadUrl', 'link', 'assetPath']) {
-        if (typeof row[k] === 'string') paths.push(row[k] as string)
+      const title = typeof row.title === 'string' ? row.title : undefined
+      for (const k of ['path', 'url', 'downloadUrl', 'link', 'assetPath', 'modalUrl']) {
+        if (typeof row[k] === 'string') paths.push({ path: row[k] as string, title })
       }
     }
   }
@@ -138,13 +154,16 @@ function scoreBericht(url: string, titelHint = ''): number {
   if (/sustainability|esg|proxy|circular|factsheet|xbrl|workbook|\.xlsx|\.zip|compensation.?report/i.test(kombi)) {
     return 0
   }
-  if (/annual.?report|geschäftsbericht|geschaeftsbericht|financial.?statements|consolidated|quarterly.?report|md&a|interim|half.?year|halbjahr|10-k|finanzbericht|gb20|_ar/i.test(kombi)) {
+  if (/annual.?report|geschäftsbericht|geschaeftsbericht|financial.?statements|consolidated|quarterly.?report|md&a|interim|half.?year|halbjahr|10-k|finanzbericht|gb20|_ar|konzernueberblick|group\.pdf|management.?discussion|aif|financial-report|annual.?information|\bara\b|glo-ar/i.test(kombi)) {
     let s = 7
-    if (/annual|geschäfts|jahres|gb20|_ar/i.test(kombi)) s += 4
+    if (/annual|geschäfts|jahres|gb20|_ar|glo-ar|\bara\b/i.test(kombi)) s += 4
+    if (/aif|annual.?information|management.?discussion/i.test(kombi)) s += 3
     if (/quarter|quartal|q[1-4]|interim|half/i.test(kombi)) s += 3
     if (/20\d{2}/.test(kombi)) s += 2
+    if (/annual.?report.?print|_print_/i.test(kombi)) s -= 3
     return s
   }
+  if (/rns|results.?announcement|trading.?update/i.test(kombi) && /20\d{2}|fy/i.test(kombi)) return 5
   if (/management discussion|mda|aif/i.test(kombi)) return 5
   return 0
 }
@@ -208,11 +227,13 @@ async function sammleDokumentUrls(cfg: EuPortfolioIrConfig): Promise<PdfKandidat
     try {
       const res = await fetch(absJson, { headers: { 'User-Agent': USER_AGENT, Accept: 'application/json' } })
       if (!res.ok) continue
-      for (const path of parseAemListing(await res.json())) {
-        const ws = scoreWebcast(path)
-        const bs = scoreBericht(path)
-        if (ws >= bs && ws > 0) add(path, 'webcast')
-        else if (bs > 0) add(path, 'bericht')
+      for (const entry of parseAemListing(await res.json())) {
+        const path = entry.path
+        const hint = entry.title ?? ''
+        const ws = scoreWebcast(path, hint)
+        const bs = scoreBericht(path, hint)
+        if (ws >= bs && ws > 0) add(path, 'webcast', hint)
+        else if (bs > 0) add(path, 'bericht', hint)
       }
     } catch {
       /* skip */
@@ -260,7 +281,7 @@ export async function ladeEuPortfolioFinanzberichteHistorie(
   for (const k of kandidaten) {
     if (out.length >= max) break
     const text = await ladePdfText(k.url, cfg.referer)
-    if (text.length < 1_500) continue
+    if (text.length < 800) continue
     out.push({
       url: k.url,
       titel: k.titel,

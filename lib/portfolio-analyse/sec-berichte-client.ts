@@ -3,7 +3,7 @@
 import type { SecBerichtAnfrage, SecBerichtePaket } from '@/lib/portfolio-analyse/sec-berichte-types'
 import { syncSecBerichteKiAusLocal } from '@/lib/portfolio-analyse/portfolio-ki-cache-sync-client'
 
-const LS_STORE_KEY = 'pa-sec-berichte-unternehmen-v3'
+const LS_STORE_KEY = 'pa-sec-berichte-unternehmen-v4'
 
 type UnternehmenStore = Record<
   string,

@@ -25,7 +25,7 @@ const MAX_REPORT_CHARS = 120_000
 const serverCache = new Map<string, { at: number; paket: SecBerichtePaket }>()
 const CACHE_MS = 12 * 60 * 60 * 1000
 /** Cache-Version — bei Parser-Änderungen erhöhen (z. B. XBRL-Fix). */
-const LIST_CACHE_VERSION = 3
+const LIST_CACHE_VERSION = 4
 
 type ListCache = {
   expiresAt: number
@@ -42,7 +42,13 @@ function tickerKey(ticker: string): string {
 }
 
 function cacheKey(anfrage: SecBerichtAnfrage): string {
-  return [LIST_CACHE_VERSION, tickerKey(anfrage.ticker), anfrage.isin?.trim().toUpperCase() ?? ''].join('|')
+  const isin =
+    loesePortfolioIsin({
+      isin: anfrage.isin,
+      ticker: anfrage.ticker,
+      firmenname: anfrage.firmenname,
+    }) ?? anfrage.isin?.trim().toUpperCase() ?? ''
+  return [LIST_CACHE_VERSION, tickerKey(anfrage.ticker), isin].join('|')
 }
 
 function leerPaket(ticker: string, fehler?: string): SecBerichtePaket {
@@ -115,7 +121,13 @@ async function ladeBerichteListe(
   opts: { force?: boolean; isin?: string | null; firmenname?: string | null; symbolYahoo?: string | null },
 ): Promise<ListCache> {
   const key = tickerKey(ticker)
-  const listKey = `${LIST_CACHE_VERSION}|${key}`
+  const isin = loesePortfolioIsin({
+    isin: opts.isin,
+    ticker,
+    symbolYahoo: opts.symbolYahoo,
+    firmenname: opts.firmenname,
+  })
+  const listKey = `${LIST_CACHE_VERSION}|${key}|${isin ?? ''}`
   const hit = listCache.get(listKey)
   if (hit && hit.expiresAt > Date.now() && !opts.force) {
     await ladePersistenteSummaries(ticker, hit)
@@ -139,13 +151,6 @@ async function ladeBerichteListe(
     listCache.set(listKey, cache)
     return cache
   }
-
-  const isin = loesePortfolioIsin({
-    isin: opts.isin,
-    ticker,
-    symbolYahoo: opts.symbolYahoo,
-    firmenname: opts.firmenname,
-  })
 
   const ir = await ladeIrFinanzberichteHistorie({
     ticker,
@@ -246,7 +251,7 @@ export async function ladeSecBerichte(anfrage: SecBerichtAnfrage): Promise<SecBe
       }),
       firmenname: anfrage.firmenname,
     })
-    const ausCache = !anfrage.force && listCache.has(`${LIST_CACHE_VERSION}|${tickerKey(ticker)}`)
+    const ausCache = !anfrage.force && listCache.has(key)
     const quelleLabel = cache.quelle === 'ir_pdf' ? 'Investor Relations (PDF)' : 'SEC EDGAR'
 
     if (!berichtId) {

@@ -31,6 +31,7 @@ import {
   type MacrotrendsIdentOpts,
 } from '@/lib/portfolio-analyse/macrotrends-scraper-server'
 import {
+  baueFundamentalRohAusAlternativQuellen,
   ergaenzeMacrotrendsMitYahooGuV,
   nutzeYahooGuVFuerIsin,
 } from '@/lib/portfolio-analyse/fundamentaldaten-yahoo-guv-server'
@@ -293,7 +294,29 @@ function leeresPaket(partial: Partial<FundamentaldatenPaket> & Pick<Fundamentald
 
 export async function ladeFundamentaldaten(anfrage: FundamentaldatenAnfrage): Promise<FundamentaldatenPaket> {
   const frequenz = anfrage.frequenz === 'quartal' ? 'quartal' : 'jahr'
-  const { ident, symbolYahoo } = await loeseIdent(anfrage)
+  let { ident, symbolYahoo } = await loeseIdent(anfrage)
+
+  const isinNormEarly = loesePortfolioIsin({
+    isin: anfrage.isin,
+    symbolYahoo: symbolYahoo ?? anfrage.symbolYahoo,
+    firmenname: anfrage.name,
+  })
+  const kEarly = isinNormEarly ? isinKenntnis(isinNormEarly) : null
+
+  if (!ident && isinNormEarly && nutzeYahooGuVFuerIsin(isinNormEarly)) {
+    const sym = symbolYahoo ?? kEarly?.symbolYahoo ?? anfrage.symbolYahoo
+    if (sym) {
+      const mt =
+        kEarly?.macrotrendsTicker?.trim().toUpperCase() ||
+        macrotrendsTickerAusSymbol(sym)
+      ident = {
+        ticker: mt,
+        slug: kEarly?.macrotrendsSlug ?? mt.toLowerCase(),
+        firmenname: kEarly?.name ?? anfrage.name ?? mt,
+      }
+      symbolYahoo = sym
+    }
+  }
 
   if (!ident) {
     return leeresPaket({
@@ -327,7 +350,19 @@ export async function ladeFundamentaldaten(anfrage: FundamentaldatenAnfrage): Pr
     symbolYahoo: symbolYahoo ?? anfrage.symbolYahoo,
     firmenname: anfrage.name ?? ident.firmenname,
   })
-  if (roh && symbolYahoo && frequenz === 'jahr' && nutzeYahooGuVFuerIsin(isinNorm ?? anfrage.isin)) {
+  if (
+    (!roh || roh.zeilen.length === 0) &&
+    symbolYahoo &&
+    frequenz === 'jahr' &&
+    nutzeYahooGuVFuerIsin(isinNorm ?? anfrage.isin)
+  ) {
+    const fallback = await baueFundamentalRohAusAlternativQuellen(ident, symbolYahoo, {
+      isin: isinNorm ?? anfrage.isin,
+      firmenname: anfrage.name ?? ident.firmenname,
+      ticker: ident.ticker,
+    })
+    if (fallback) roh = fallback
+  } else if (roh && symbolYahoo && frequenz === 'jahr' && nutzeYahooGuVFuerIsin(isinNorm ?? anfrage.isin)) {
     roh = await ergaenzeMacrotrendsMitYahooGuV(roh, symbolYahoo, {
       isin: isinNorm ?? anfrage.isin,
       firmenname: anfrage.name ?? ident.firmenname,

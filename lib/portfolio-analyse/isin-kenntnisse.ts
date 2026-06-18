@@ -96,6 +96,12 @@ export const ISIN_KENNTNISSE: Record<string, IsinKenntnis> = {
   DE0006580806: direkt('MUM.DE', 'Mensch und Maschine', {
     divvydiarySlug: 'mensch-und-maschine-software-aktie',
     macrotrendsSlug: 'mensch-und-maschine',
+    logoSymbol: 'MUM',
+  }),
+  DE0005785802: direkt('MUM.DE', 'Mensch und Maschine', {
+    divvydiarySlug: 'mensch-und-maschine-software-aktie',
+    macrotrendsSlug: 'mensch-und-maschine',
+    logoSymbol: 'MUM',
   }),
   DE000A0BVU28: direkt('OSP2.HM', 'USU Software', {
     wkn: 'A0BVU2',
@@ -147,10 +153,14 @@ export const ISIN_KENNTNISSE: Record<string, IsinKenntnis> = {
     divvydiarySlug: 'alimentation-couche-tard-aktie',
     macrotrendsSlug: 'alimentation-couche-tard',
   }),
-  CA15135U1093: cad('ATD.TO', 'Alimentation Couche-Tard', { logoSymbol: 'ATD' }),
+  CA15135U1093: cad('ATD.TO', 'Alimentation Couche-Tard', {
+    logoSymbol: 'ATD',
+    macrotrendsSlug: 'alimentation-couche-tard',
+  }),
   CA015DM1098: cad('ATD.TO', 'Alimentation Couche-Tard', {
     logoSymbol: 'ATD',
     divvydiarySlug: 'alimentation-couche-tard-aktie',
+    macrotrendsSlug: 'alimentation-couche-tard',
   }),
   US7757111049: usd('ROL', 'Rollins', { divvydiarySlug: 'rollins-aktie' }),
   US1729081059: usd('CTAS', 'Cintas', { divvydiarySlug: 'cintas-aktie' }),

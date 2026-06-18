@@ -19,9 +19,37 @@ const YAHOO_SUFFIX_TO_EXCHANGE: Record<string, string> = {
   ST: 'sto',
   HE: 'etr',
   HM: 'ham',
-  SG: 'etr',
   TO: 'tsx',
   V: 'vie',
+}
+
+/** Bekannte StockAnalysis /quote/{börse}/{ticker}/financials/ — vor Yahoo-Suffix (H11.SG → falsch). */
+const SA_QUOTE_FINANCIALS: Record<string, string> = {
+  HLMA: '/quote/lon/HLMA/financials/',
+  MUM: '/quote/etr/MUM/financials/',
+  ATD: '/quote/tsx/ATD/financials/',
+  SIKA: '/quote/swx/SIKA/financials/',
+  WKL: '/quote/ams/WKL/financials/',
+  STMN: '/quote/swx/STMN/financials/',
+}
+
+function saFinanzPfadeAusKenntnisUndTicker(opts: {
+  symbolYahoo?: string | null
+  ticker?: string | null
+  isin?: string | null
+}): string[] {
+  const out: string[] = []
+  const add = (p: string) => {
+    if (p && !out.includes(p)) out.push(p)
+  }
+
+  const k = isinKenntnis(opts.isin?.trim().toUpperCase() ?? '')
+  for (const key of [k?.logoSymbol, k?.macrotrendsTicker, opts.ticker]) {
+    const sym = key?.trim().toUpperCase()
+    if (sym && SA_QUOTE_FINANCIALS[sym]) add(SA_QUOTE_FINANCIALS[sym]!)
+  }
+
+  return out
 }
 
 type SearchHit = { id?: string; s?: string; t?: string; n?: string; st?: string }
@@ -277,6 +305,8 @@ function kandidatenFinanzPfade(opts: {
     if (p && !out.includes(p)) out.push(p)
   }
 
+  for (const p of saFinanzPfadeAusKenntnisUndTicker(opts)) add(p)
+
   const sym = opts.symbolYahoo?.trim().toUpperCase() ?? ''
   if (sym.includes('.')) {
     const [base, suf] = sym.split('.')
@@ -358,6 +388,10 @@ function kandidatenForecastPfade(opts: {
   const out: string[] = []
   const add = (p: string) => {
     if (p && !out.includes(p)) out.push(p)
+  }
+
+  for (const p of saFinanzPfadeAusKenntnisUndTicker(opts)) {
+    add(p.replace(/\/financials\/?$/, '/forecast/'))
   }
 
   const sym = opts.symbolYahoo?.trim().toUpperCase() ?? ''

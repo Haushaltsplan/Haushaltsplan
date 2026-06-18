@@ -510,7 +510,15 @@ function identAusBekanntemSlug(
   macrotrendsTickerOverride?: string,
 ): MacrotrendsIdent | null {
   const t = ticker.toUpperCase()
-  const basis = BEKANNTE_MACROTRENDS_SLUGS[t]
+  let basis = BEKANNTE_MACROTRENDS_SLUGS[t]
+  if (!basis) {
+    for (const [, val] of Object.entries(BEKANNTE_MACROTRENDS_SLUGS)) {
+      if (val.macrotrendsTicker?.toUpperCase() === t) {
+        basis = val
+        break
+      }
+    }
+  }
   const slug = slugOverride?.trim() || basis?.slug
   if (!slug) return null
   const chartTicker =

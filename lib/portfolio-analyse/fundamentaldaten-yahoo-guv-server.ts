@@ -9,7 +9,7 @@ import {
   EU_GUV_FALLBACK_ISINS,
 } from '@/lib/portfolio-analyse/eu-portfolio-ir-config'
 import { loesePortfolioIsin } from '@/lib/portfolio-analyse/isin-kenntnisse'
-import type { MacrotrendsFundamentalRoh } from '@/lib/portfolio-analyse/macrotrends-scraper-server'
+import type { MacrotrendsFundamentalRoh, MacrotrendsIdent } from '@/lib/portfolio-analyse/macrotrends-scraper-server'
 import {
   ladeStockanalysisGuVHistorie,
   type StockanalysisJahresForecastEintrag,
@@ -424,4 +424,22 @@ export async function ergaenzeMacrotrendsMitYahooGuV(
   }
 
   return { ...roh, perioden, zeilen: mergedZeilen }
+}
+
+/** Fallback wenn Macrotrends leer/404 — StockAnalysis + Yahoo (EU-Portfolio). */
+export async function baueFundamentalRohAusAlternativQuellen(
+  ident: MacrotrendsIdent,
+  symbolYahoo: string,
+  opts?: { isin?: string | null; firmenname?: string | null; ticker?: string | null },
+): Promise<MacrotrendsFundamentalRoh | null> {
+  const shell: MacrotrendsFundamentalRoh = {
+    ident,
+    perioden: [],
+    zeilen: [],
+    beschreibung: null,
+    branche: null,
+  }
+  const merged = await ergaenzeMacrotrendsMitYahooGuV(shell, symbolYahoo, opts)
+  if (merged.zeilen.length === 0) return null
+  return merged
 }

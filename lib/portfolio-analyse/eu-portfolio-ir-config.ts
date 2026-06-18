@@ -45,6 +45,10 @@ export const EU_PORTFOLIO_IR_CONFIGS: EuPortfolioIrConfig[] = [
       'https://www.sika.com/en/investors/reports-publications/presentations.html',
       'https://www.sika.com/en/investors/reports-publications/financial-reports.html',
     ],
+    listingJsonUrls: [
+      'https://www.sika.com/en/investors/reports-publications/financial-reports/_jcr_content/content/layoutcontainer_27246852/first/downloads.listing.json',
+      'https://www.sika.com/en/investors/reports-publications/presentations/_jcr_content/content/layoutcontainer_550841723/first/container/accordionitem_1531742667/content/downloads.listing.json',
+    ],
   },
   {
     isins: ['GB0004052071'],
@@ -52,7 +56,10 @@ export const EU_PORTFOLIO_IR_CONFIGS: EuPortfolioIrConfig[] = [
     referer: 'https://www.halma.com/investors/results-centre',
     seedUrls: [
       'https://www.halma.com/investors/results-centre',
+      'https://www.halma.com/investors/results-reports-presentations/2026',
+      'https://www.halma.com/investors/results-reports-presentations/2025',
       'https://www.halma.com/investors/annual-report',
+      'https://www.halma.com/investors/annual-report/annual-report-archive',
     ],
   },
   {
