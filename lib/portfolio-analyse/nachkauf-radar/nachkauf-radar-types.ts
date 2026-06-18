@@ -70,6 +70,12 @@ export type NachkaufScanPaket = {
   ergebnisse: NachkaufScanEintrag[]
   monatsEmpfehlung: MonatsEmpfehlung
   gescannt_am: string
+  /** Anzahl aller Positionen in der Whitelist. */
+  gesamtAnzahl: number
+  /** Anzahl tatsächlich gescannter Positionen in diesem Lauf. */
+  gescannt: number
+  /** Noch nicht gescannte Positionen (z. B. nach Timeout). */
+  ausstehend: number
   fehler?: string | null
 }
 
@@ -102,4 +108,6 @@ export type NachkaufErgebnissePaket = {
   ergebnisse: NachkaufScanEintrag[]
   gescannt_am: string | null
   monatsEmpfehlung: MonatsEmpfehlung | null
+  gesamtAnzahl?: number
+  ausstehend?: number
 }

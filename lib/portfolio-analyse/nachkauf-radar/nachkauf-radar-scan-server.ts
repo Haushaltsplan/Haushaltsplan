@@ -28,6 +28,9 @@ import {
   ladeNachkaufScanDatum,
   speichereNachkaufScanEintraege,
 } from './nachkauf-radar-db-server'
+
+/** Positionen, die innerhalb dieser Zeit bereits gescannt wurden, werden übersprungen. */
+const SKIP_WENN_JUENGER_MS = 12 * 60 * 60 * 1000 // 12 Stunden
 import { NACHKAUF_RADAR_WHITELIST } from './nachkauf-radar-whitelist'
 import type { NachkaufScanAnfrage, NachkaufScanEintrag, NachkaufScanPaket } from './nachkauf-radar-types'
 
@@ -214,68 +217,104 @@ async function scanneEinenTitel(opts: {
 // ---------------------------------------------------------------------------
 
 export async function laufeScan(anfrage: NachkaufScanAnfrage): Promise<NachkaufScanPaket> {
-  // Cache prüfen (sofern nicht erzwungen und kein Einzel-Ticker)
-  if (!anfrage.erzwingen && !anfrage.ticker) {
-    const letzterScan = await ladeNachkaufScanDatum()
-    if (letzterScan) {
-      const alterMs = Date.now() - new Date(letzterScan).getTime()
-      const CACHE_TTL_MS = 6 * 60 * 60 * 1000 // 6 Stunden
-      if (alterMs < CACHE_TTL_MS) {
-        const ergebnisse = await ladeNachkaufScanAusCloud()
-        const deepMap = await ladeAlleDeepResearch()
-        const mitDeep = ergebnisse.map((e) => ({
-          ...e,
-          tiefenAnalyse: deepMap.get(e.ticker.toUpperCase()) ?? null,
-        }))
-        return {
-          ok: true,
-          ergebnisse: mitDeep,
-          monatsEmpfehlung: berechneMonatsEmpfehlung(mitDeep),
-          gescannt_am: letzterScan,
-        }
+  const gesamtAnzahl = NACHKAUF_RADAR_WHITELIST.length
+
+  // Einzelner Ticker → direkt scannen, kein Cache-Check
+  if (anfrage.ticker) {
+    const kandidaten = NACHKAUF_RADAR_WHITELIST.filter((p) => {
+      const k = isinKenntnis(p.isin)
+      const ticker = k?.symbolYahoo?.replace(/\.[^.]+$/, '') ?? ''
+      return ticker.toUpperCase() === anfrage.ticker!.toUpperCase() || p.isin === anfrage.ticker
+    })
+    if (kandidaten.length === 0) {
+      const gespeicherte = await ladeNachkaufScanAusCloud()
+      return {
+        ok: false,
+        ergebnisse: gespeicherte,
+        monatsEmpfehlung: berechneMonatsEmpfehlung(gespeicherte),
+        gescannt_am: gespeicherte[0]?.gescannt_am ?? new Date().toISOString(),
+        gesamtAnzahl,
+        gescannt: 0,
+        ausstehend: 0,
+        fehler: `Ticker/ISIN ${anfrage.ticker} nicht in der Whitelist.`,
       }
+    }
+    const deepResearchMap = await ladeAlleDeepResearch()
+    const ergebnis = await scanneEinenTitel({ isin: kandidaten[0]!.isin, name: kandidaten[0]!.name, deepResearchMap })
+    if (ergebnis) await speichereNachkaufScanEintraege([ergebnis])
+    const alle = await ladeNachkaufScanAusCloud()
+    const deepMap = await ladeAlleDeepResearch()
+    const mitDeep = alle.map((e) => ({ ...e, tiefenAnalyse: deepMap.get(e.ticker.toUpperCase()) ?? null }))
+    mitDeep.sort((a, b) => b.score - a.score)
+    return {
+      ok: true,
+      ergebnisse: mitDeep,
+      monatsEmpfehlung: berechneMonatsEmpfehlung(mitDeep),
+      gescannt_am: ergebnis?.gescannt_am ?? new Date().toISOString(),
+      gesamtAnzahl,
+      gescannt: ergebnis ? 1 : 0,
+      ausstehend: 0,
     }
   }
 
-  // Whitelist als Quelle — alle 32 Quality-Positionen
-  const zuScannen = anfrage.ticker
-    ? NACHKAUF_RADAR_WHITELIST.filter((p) => {
-        const k = isinKenntnis(p.isin)
-        const ticker = k?.symbolYahoo?.replace(/\.[^.]+$/, '') ?? ''
-        return ticker.toUpperCase() === anfrage.ticker!.toUpperCase() || p.isin === anfrage.ticker
-      })
-    : NACHKAUF_RADAR_WHITELIST
+  // Bereits gespeicherte Ergebnisse laden — zum Skip-Check und als Basis für die Rückgabe
+  const bereitsGespeichert = await ladeNachkaufScanAusCloud()
+  const bereitsMap = new Map(bereitsGespeichert.map((e) => [e.ticker.toUpperCase(), e]))
 
+  // Wenn nicht erzwungen: Positionen, die in den letzten 12h gescannt wurden, überspringen
+  const jetzt = Date.now()
+  const zuScannen = anfrage.erzwingen
+    ? NACHKAUF_RADAR_WHITELIST
+    : NACHKAUF_RADAR_WHITELIST.filter((p) => {
+        const k = isinKenntnis(p.isin)
+        const ticker = (k?.symbolYahoo?.replace(/\.[^.]+$/, '') ?? p.isin).toUpperCase()
+        const existing = bereitsMap.get(ticker)
+        if (!existing) return true
+        const alter = jetzt - new Date(existing.gescannt_am).getTime()
+        return alter > SKIP_WENN_JUENGER_MS
+      })
+
+  // Alle bereits aktuellen Positionen zurückgeben, falls gar nichts mehr zu scannen ist
   if (zuScannen.length === 0) {
+    const deepMap = await ladeAlleDeepResearch()
+    const mitDeep = bereitsGespeichert.map((e) => ({
+      ...e,
+      tiefenAnalyse: deepMap.get(e.ticker.toUpperCase()) ?? null,
+    }))
+    mitDeep.sort((a, b) => b.score - a.score)
     return {
-      ok: false,
-      ergebnisse: [],
-      monatsEmpfehlung: { typ: 'sparen', text: 'Keine Positionen in der Whitelist gefunden.' },
-      gescannt_am: new Date().toISOString(),
-      fehler: anfrage.ticker ? `Ticker/ISIN ${anfrage.ticker} nicht in der Whitelist.` : 'Whitelist leer.',
+      ok: true,
+      ergebnisse: mitDeep,
+      monatsEmpfehlung: berechneMonatsEmpfehlung(mitDeep),
+      gescannt_am: bereitsGespeichert[0]?.gescannt_am ?? new Date().toISOString(),
+      gesamtAnzahl,
+      gescannt: 0,
+      ausstehend: 0,
     }
   }
 
   // Deep-Research-Cache vorab laden
   const deepResearchMap = await ladeAlleDeepResearch()
 
-  // Titel in Batches von 3 scannen (Rate-Limit-freundlich)
+  // Titel in Batches scannen.
+  // WICHTIG: Nach jedem Batch sofort in Supabase speichern —
+  // so gehen bei einem Timeout keine Ergebnisse verloren.
   const BATCH_SIZE = 3
-  const ergebnisse: NachkaufScanEintrag[] = []
+  let neuGescannt = 0
 
   for (let i = 0; i < zuScannen.length; i += BATCH_SIZE) {
     const batch = zuScannen.slice(i, i + BATCH_SIZE)
     const batchErgebnisse = await Promise.allSettled(
-      batch.map((p) =>
-        scanneEinenTitel({
-          isin: p.isin,
-          name: p.name,
-          deepResearchMap,
-        }),
-      ),
+      batch.map((p) => scanneEinenTitel({ isin: p.isin, name: p.name, deepResearchMap })),
     )
+    const batchOk: NachkaufScanEintrag[] = []
     for (const r of batchErgebnisse) {
-      if (r.status === 'fulfilled' && r.value) ergebnisse.push(r.value)
+      if (r.status === 'fulfilled' && r.value) batchOk.push(r.value)
+    }
+    if (batchOk.length > 0) {
+      // Sofort persistieren — kein Verlust bei Timeout
+      await speichereNachkaufScanEintraege(batchOk)
+      neuGescannt += batchOk.length
     }
     // Kurze Pause zwischen Batches (Macrotrends / Yahoo Rate-Limit)
     if (i + BATCH_SIZE < zuScannen.length) {
@@ -283,28 +322,24 @@ export async function laufeScan(anfrage: NachkaufScanAnfrage): Promise<NachkaufS
     }
   }
 
-  if (ergebnisse.length === 0) {
-    return {
-      ok: false,
-      ergebnisse: [],
-      monatsEmpfehlung: { typ: 'sparen', text: 'Scan fehlgeschlagen — keine Fundamentaldaten verfügbar.' },
-      gescannt_am: new Date().toISOString(),
-      fehler: 'Alle Fundamentaldaten-Abrufe fehlgeschlagen.',
-    }
-  }
+  // Vollständiges, aktuelles Ergebnis aus Supabase laden (inkl. bereits vor diesem Lauf gespeicherter)
+  const alle = await ladeNachkaufScanAusCloud()
+  const deepMapAktuell = await ladeAlleDeepResearch()
+  const mitDeep = alle.map((e) => ({
+    ...e,
+    tiefenAnalyse: deepMapAktuell.get(e.ticker.toUpperCase()) ?? null,
+  }))
+  mitDeep.sort((a, b) => b.score - a.score)
 
-  // Nach Score absteigend sortieren
-  ergebnisse.sort((a, b) => b.score - a.score)
-
-  // In Supabase persistieren
-  await speichereNachkaufScanEintraege(ergebnisse)
-
-  const gescannt_am = ergebnisse[0]?.gescannt_am ?? new Date().toISOString()
+  const ausstehend = gesamtAnzahl - alle.length
 
   return {
     ok: true,
-    ergebnisse,
-    monatsEmpfehlung: berechneMonatsEmpfehlung(ergebnisse),
-    gescannt_am,
+    ergebnisse: mitDeep,
+    monatsEmpfehlung: berechneMonatsEmpfehlung(mitDeep),
+    gescannt_am: mitDeep[0]?.gescannt_am ?? new Date().toISOString(),
+    gesamtAnzahl,
+    gescannt: neuGescannt,
+    ausstehend,
   }
 }

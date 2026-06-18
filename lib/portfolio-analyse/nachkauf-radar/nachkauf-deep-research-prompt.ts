@@ -43,7 +43,16 @@ Struktur (alle Abschnitte ausführlich, mit konkreten Zahlen wo vorhanden):
 - Historischer Kontext: Ist die aktuelle Bewertung günstig / fair / teuer vs. eigene Historie?
 - FCF-Rendite: Implizite Rendite bei heutigen Kursen
 - Bewertung im Kontext der Wachstumserwartungen (PEG-Logik)
-- Bei welchem Kurs wäre die Bewertung klar attraktiv?
+
+## Kaufzone & konkreter Einstiegspunkt
+WICHTIG: Gib hier ausschließlich messbare, prüfbare Aussagen. Keine Kursphantasien, sondern Schwellenwerte.
+- Attraktive FCF-Rendite-Schwelle: Ab welcher FCF-Rendite (%) wäre ein Nachkauf klar attraktiv? (z. B. „FCF-Rendite > 3 % entspräche ca. X € Kurs")
+- KGV-Zielkorridor: Bei welchem NTM-KGV wäre die Bewertung fair bis günstig, historisch betrachtet? (z. B. „NTM-KGV < 28× war historisch attraktiver Einstieg")
+- Konkreter Kurs-Orientierungswert: Falls aus vorhandenen Daten ableitbar — bei welchem ungefähren Kursniveau (in Heimwährung) würde die Bewertung den Quality-Compounder-Aufschlag rechtfertigen?
+  Wenn DATENLÜCKE: Schreib explizit „Kein Kursziel ableitbar — keine ausreichende Datenbasis."
+- Trigger-Bedingung: Welches Ereignis oder welcher Daten-Release würde die Kaufentscheidung auslösen oder verwerfen? (z. B. „Quartalsbericht muss ROIC-Stabilisierung bestätigen")
+- Zeitfenster: Ist der aktuelle Rücksetzer/Bewertung ein seltenes Fenster oder eher strukturell (= einfach teures Unternehmen)?
+- Fazit-Satz: „Ich würde nachkaufen wenn: [Bedingung A und Bedingung B], nicht vorher."
 
 ## Risiken & Sell-Trigger-Check
 - Aktuelle Risikofaktoren aus MD&A / Earnings Calls
@@ -67,7 +76,8 @@ Bear-Case:
 - Empfehlung: NACHKAUF SINNVOLL / WARTEN / NICHT KAUFEN (kein Verkauf — das ist ein separates Thema)
 - Begründung in 3–4 Sätzen
 - Falls "Nachkauf sinnvoll": Welche Größenordnung wäre angemessen (% der 500 €/Monat)?
+- Konkrete Zusammenfassung der Kaufzone aus dem obigen Abschnitt in einem Satz (z. B. „Kaufzone: FCF-Rendite > 2,5 % oder Kurs < X €, aktuell noch nicht erreicht.")
 
 Sprache: Deutsch. Stil: analytisch, sachlich, direkt.
-Format: Exakt diese sechs Markdown-Hauptüberschriften (##). Keine weiteren ##.
+Format: Exakt diese sieben Markdown-Hauptüberschriften (##). Keine weiteren ##.
 Kein Markdown-Fettdruck (keine **). Betonungen nur über klare Formulierung.`

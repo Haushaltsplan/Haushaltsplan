@@ -5,6 +5,7 @@ import {
   ladeNachkaufScanDatum,
 } from '@/lib/portfolio-analyse/nachkauf-radar/nachkauf-radar-db-server'
 import { berechneMonatsEmpfehlung } from '@/lib/portfolio-analyse/nachkauf-radar/nachkauf-radar-score'
+import { NACHKAUF_RADAR_WHITELIST } from '@/lib/portfolio-analyse/nachkauf-radar/nachkauf-radar-whitelist'
 import type { NachkaufErgebnissePaket } from '@/lib/portfolio-analyse/nachkauf-radar/nachkauf-radar-types'
 
 export const dynamic = 'force-dynamic'
@@ -23,11 +24,16 @@ export async function GET() {
       tiefenAnalyse: deepMap.get(e.ticker.toUpperCase()) ?? null,
     }))
 
+    const gesamtAnzahl = NACHKAUF_RADAR_WHITELIST.length
+    const ausstehend = Math.max(0, gesamtAnzahl - mitDeep.length)
+
     const paket: NachkaufErgebnissePaket = {
       ok: true,
       ergebnisse: mitDeep,
       gescannt_am: gescannt_am ?? null,
       monatsEmpfehlung: mitDeep.length > 0 ? berechneMonatsEmpfehlung(mitDeep) : null,
+      gesamtAnzahl,
+      ausstehend,
     }
 
     return NextResponse.json(paket)

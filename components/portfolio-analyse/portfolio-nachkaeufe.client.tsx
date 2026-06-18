@@ -377,6 +377,8 @@ export function NachkaufRadarClient() {
   const [ergebnisse, setErgebnisse] = useState<NachkaufScanEintrag[]>([])
   const [monatsEmpfehlung, setMonatsEmpfehlung] = useState<MonatsEmpfehlung | null>(null)
   const [gescannt_am, setGescannt_am] = useState<string | null>(null)
+  const [gesamtAnzahl, setGesamtAnzahl] = useState<number>(32)
+  const [ausstehend, setAusstehend] = useState<number>(0)
   const [laden, setLaden] = useState(true)
   const [scanLaeuft, setScanLaeuft] = useState(false)
   const [deepLadenTicker, setDeepLadenTicker] = useState<string | null>(null)
@@ -392,6 +394,8 @@ export function NachkaufRadarClient() {
         const res = await fetch('/api/portfolio-analyse/nachkaeufe/ergebnisse')
         if (res.ok) {
           const paket = (await res.json()) as NachkaufErgebnissePaket
+          if (paket.gesamtAnzahl) setGesamtAnzahl(paket.gesamtAnzahl)
+          if (paket.ausstehend != null) setAusstehend(paket.ausstehend)
           if (paket.ergebnisse.length > 0) {
             setErgebnisse(paket.ergebnisse)
             setMonatsEmpfehlung(paket.monatsEmpfehlung)
@@ -425,6 +429,8 @@ export function NachkaufRadarClient() {
         setErgebnisse(paket.ergebnisse)
         setMonatsEmpfehlung(paket.monatsEmpfehlung)
         setGescannt_am(paket.gescannt_am)
+        setGesamtAnzahl(paket.gesamtAnzahl ?? 32)
+        setAusstehend(paket.ausstehend ?? 0)
         setSelectedTicker(paket.ergebnisse[0]?.ticker ?? null)
       } else if (!paket.ok) {
         setFehler(paket.fehler ?? 'Scan fehlgeschlagen.')
@@ -479,11 +485,21 @@ export function NachkaufRadarClient() {
             title="Nachkauf-Radar"
             description="Monatliche Priorisierung: Welche Depot-Positionen verdienen neues Kapital — und welche nicht?"
           />
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             {gescannt_am && (
               <span className="text-[11px] text-zinc-600">
                 Letzter Scan: {new Date(gescannt_am).toLocaleDateString('de-DE')}
               </span>
+            )}
+            {ausstehend > 0 && !scanLaeuft && (
+              <button
+                type="button"
+                onClick={() => starteNeuenScan(false)}
+                disabled={scanLaeuft || laden}
+                className="rounded-xl bg-amber-500/15 px-4 py-2 text-sm font-medium text-amber-300 ring-1 ring-amber-500/25 transition-all hover:bg-amber-500/20 disabled:opacity-50"
+              >
+                Scan fortsetzen ({ergebnisse.length}/{gesamtAnzahl})
+              </button>
             )}
             <button
               type="button"
@@ -515,11 +531,25 @@ export function NachkaufRadarClient() {
           <div className="rounded-xl border border-teal-500/20 bg-teal-950/30 p-4">
             <div className="flex items-center gap-3">
               <div className="h-4 w-4 animate-spin rounded-full border-2 border-teal-500 border-t-transparent" />
-              <div>
+              <div className="min-w-0 flex-1">
                 <p className="text-sm font-medium text-teal-300">Scan läuft …</p>
                 <p className="mt-0.5 text-xs text-zinc-500">
-                  Fundamentaldaten für alle Aktien-Positionen werden geladen. Dies kann 2–5 Minuten dauern.
+                  Jede Position wird nach Abschluss sofort gespeichert. Falls der Browser-Tab schließt, kannst du mit
+                  &ldquo;Scan fortsetzen&rdquo; weitermachen.
                 </p>
+                {ergebnisse.length > 0 && (
+                  <div className="mt-2 flex items-center gap-2">
+                    <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-zinc-800">
+                      <div
+                        className="h-full rounded-full bg-teal-500 transition-all"
+                        style={{ width: `${Math.round((ergebnisse.length / gesamtAnzahl) * 100)}%` }}
+                      />
+                    </div>
+                    <span className="text-[11px] tabular-nums text-zinc-500">
+                      {ergebnisse.length}/{gesamtAnzahl}
+                    </span>
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -562,7 +592,10 @@ export function NachkaufRadarClient() {
             {/* Titel-Liste */}
             <div className="space-y-2">
               <p className="text-[11px] font-medium uppercase tracking-widest text-zinc-600">
-                {ergebnisse.length} Positionen
+                {ergebnisse.length} von {gesamtAnzahl} Positionen
+                {ausstehend > 0 && (
+                  <span className="ml-1.5 text-amber-500/80">({ausstehend} ausstehend)</span>
+                )}
               </p>
               <div className="space-y-2">
                 {ergebnisse.map((e) => (
