@@ -18,6 +18,8 @@ import {
 } from '@/lib/portfolio-analyse/ir-earnings-sources'
 import { loesePortfolioIsin } from '@/lib/portfolio-analyse/isin-kenntnisse'
 import { ladeHermesWebcastHistorie, HERMES_ISIN } from '@/lib/portfolio-analyse/hermes-finance-ir-server'
+import { ladeEuPortfolioWebcastHistorie } from '@/lib/portfolio-analyse/eu-portfolio-ir-server'
+import { euPortfolioIrConfig } from '@/lib/portfolio-analyse/eu-portfolio-ir-config'
 import { ladeIrQuartalsTranskriptHistorie } from '@/lib/portfolio-analyse/ir-quarter-transcript-server'
 import type { IrRohesTranskript } from '@/lib/portfolio-analyse/ir-earnings-types'
 
@@ -134,6 +136,11 @@ export async function ladeIrTranskriptHistorie(
   if (isinNorm === HERMES_ISIN) {
     const hermes = await ladeHermesWebcastHistorie(max)
     if (hermes.length > 0) return hermes
+  }
+
+  if (euPortfolioIrConfig(isinNorm)) {
+    const eu = await ladeEuPortfolioWebcastHistorie(isinNorm, max)
+    if (eu.length > 0) return eu
   }
 
   const q4 = await ladeQ4TranskriptHistorie(quelle.listenUrls, quelle.q4BasisUrls ?? [], max)

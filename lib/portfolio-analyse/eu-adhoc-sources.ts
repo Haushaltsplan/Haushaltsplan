@@ -88,8 +88,8 @@ export const EU_ADHOC_NACH_ISIN: Record<string, EuAdhocQuelle> = {
   },
   CA01626P1484: {
     listenUrls: [
-      'https://corpo.couche-tard.com/en/news/press-releases',
-      'https://corpo.couche-tard.com/en/investors',
+      'https://corporate.couche-tard.com/financial-reporting?cat=29',
+      'https://corporate.couche-tard.com/investors',
     ],
   },
   CA15135U1093: {

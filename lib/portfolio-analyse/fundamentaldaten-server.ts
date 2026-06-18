@@ -32,9 +32,9 @@ import {
 } from '@/lib/portfolio-analyse/macrotrends-scraper-server'
 import {
   ergaenzeMacrotrendsMitYahooGuV,
-  HERMES_YAHOO_ISIN,
   nutzeYahooGuVFuerIsin,
 } from '@/lib/portfolio-analyse/fundamentaldaten-yahoo-guv-server'
+import { ISIN_WAEHRUNG } from '@/lib/portfolio-analyse/eu-portfolio-ir-config'
 import { ladeUnitEconomics } from '@/lib/portfolio-analyse/unit-economics-server'
 import { holeYahooFinanceAuth } from '@/lib/portfolio-analyse/yahoo-finance-auth-server'
 
@@ -404,8 +404,7 @@ export async function ladeFundamentaldaten(anfrage: FundamentaldatenAnfrage): Pr
     yahooFinanz,
     unitEconomics,
   })
-  const waehrung =
-    isinNorm === HERMES_YAHOO_ISIN && symbolYahoo?.toUpperCase().endsWith('.PA') ? 'EUR' : 'USD'
+  const waehrung = (isinNorm && ISIN_WAEHRUNG[isinNorm]) || 'USD'
 
   return leeresPaket({
     ok: true,

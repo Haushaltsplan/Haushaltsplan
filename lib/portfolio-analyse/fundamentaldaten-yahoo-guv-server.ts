@@ -5,6 +5,9 @@ import 'server-only'
 import { formatFundamentalPeriodeLabel } from '@/lib/portfolio-analyse/fundamentaldaten-format'
 import { FUNDAMENTAL_TTM_KEY } from '@/lib/portfolio-analyse/fundamentaldaten-types'
 import type { FundamentalMetrikZeile, FundamentalPeriode } from '@/lib/portfolio-analyse/fundamentaldaten-types'
+import {
+  EU_GUV_FALLBACK_ISINS,
+} from '@/lib/portfolio-analyse/eu-portfolio-ir-config'
 import { loesePortfolioIsin } from '@/lib/portfolio-analyse/isin-kenntnisse'
 import type { MacrotrendsFundamentalRoh } from '@/lib/portfolio-analyse/macrotrends-scraper-server'
 import {
@@ -290,7 +293,8 @@ async function baueYahooGuVRoh(symbol: string): Promise<YahooGuVRoh | null> {
 }
 
 export function nutzeYahooGuVFuerIsin(isin: string | null | undefined): boolean {
-  return loesePortfolioIsin({ isin }) === HERMES_YAHOO_ISIN
+  const norm = loesePortfolioIsin({ isin }) ?? isin?.trim().toUpperCase()
+  return norm != null && EU_GUV_FALLBACK_ISINS.has(norm)
 }
 
 function pickWert(...kandidaten: Array<number | null | undefined>): number | null {

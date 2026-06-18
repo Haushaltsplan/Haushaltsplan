@@ -13,6 +13,7 @@ const LOGO_NACH_ISIN: Record<string, PortfolioLogoQuelle> = {
   NL0010273215: { finnhubSlug: 'ASML', clearbitDomains: ['asml.com'] },
   US91680M1071: { finnhubSlug: 'UPST', clearbitDomains: ['upstart.com'] },
   GB0004052071: { finnhubSlug: 'HLMA', clearbitDomains: ['halma.com'] },
+  CA01626P1484: { finnhubSlug: 'ATD', clearbitDomains: ['couche-tard.com'] },
   CA15135U1093: { finnhubSlug: 'ATD', clearbitDomains: ['couche-tard.com'] },
   CA015DM1098: { finnhubSlug: 'ATD', clearbitDomains: ['couche-tard.com'] },
   IE00BLNMYC90: { clearbitDomains: ['xtrackers.com', 'dws.com'] },

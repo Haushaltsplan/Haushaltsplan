@@ -33,6 +33,7 @@ import { ladeInvestingTranskriptHistorie } from '@/lib/portfolio-analyse/investi
 import { ladeIrTranskriptHistorie } from '@/lib/portfolio-analyse/ir-earnings-scraper'
 import { aufloeseEarningsCallKontext } from '@/lib/portfolio-analyse/earnings-call-kenntnisse'
 import { irEarningsQuelleFuerIsin } from '@/lib/portfolio-analyse/ir-earnings-sources'
+import { euPortfolioIrConfig } from '@/lib/portfolio-analyse/eu-portfolio-ir-config'
 import { ladeMotleyFoolTranskriptHistorie } from '@/lib/portfolio-analyse/motley-fool-earnings-transcript-server'
 import { ladeInvestorRelationsUrl } from '@/lib/portfolio-analyse/investor-relations-url'
 import { ladeSecEdgarTranskriptHistorie } from '@/lib/portfolio-analyse/sec-edgar-earnings-transcript-server'
@@ -152,7 +153,8 @@ async function entdeckeTranskripte(
     )
   }
 
-  const isUsSec = kontext.isUsSec
+  const euIrPortfolio = euPortfolioIrConfig(anfrage.isin ?? '')
+  const isUsSec = kontext.isUsSec && !euIrPortfolio
   const symbolYahoo = kontext.symbolYahoo
 
   const irHard = irEarningsQuelleFuerIsin(anfrage.isin ?? '')

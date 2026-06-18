@@ -34,37 +34,65 @@ export const IR_EARNINGS_NACH_ISIN: Record<string, IrEarningsQuelle> = {
     erwarteVollesTranskript: false,
   },
   NL0000395903: {
-    listenUrls: ['https://www.wolterskluwer.com/en/investors/financials'],
+    listenUrls: [
+      'https://www.wolterskluwer.com/en/investors/financials/results',
+      'https://www.wolterskluwer.com/en/investors/presentations/past-presentations',
+    ],
+    keywords: ['presentation', 'webcast', 'results'],
+    erwarteVollesTranskript: false,
   },
   CH0418792922: {
-    listenUrls: ['https://www.sika.com/en/investors/financial-reports.html'],
+    listenUrls: [
+      'https://www.sika.com/en/investors/reports-publications/presentations.html',
+      'https://www.sika.com/en/investors/reports-publications/financial-reports.html',
+    ],
+    erwarteVollesTranskript: false,
   },
   CH1175448666: {
-    listenUrls: ['https://www.straumann.com/group/en/investors/results-and-presentations.html'],
+    listenUrls: [
+      'https://www.straumann.com/group/en/home/investors/financial-reports/conference-presentations.html',
+      'https://www.straumann.com/group/en/home/media/annual-reports-and-publications.html',
+    ],
+    erwarteVollesTranskript: false,
   },
   CH0012221716: {
-    listenUrls: ['https://www.straumann.com/group/en/investors/results-and-presentations.html'],
+    listenUrls: [
+      'https://www.straumann.com/group/en/home/investors/financial-reports/conference-presentations.html',
+    ],
+    erwarteVollesTranskript: false,
   },
   GB0004052071: {
     listenUrls: ['https://www.halma.com/investors/results-centre'],
+    erwarteVollesTranskript: false,
   },
   DE0006580806: {
-    listenUrls: ['https://www.mum.de/unternehmen/investor-relations/finanzberichte'],
+    listenUrls: [
+      'https://www.mum.de/unternehmen/investor-relations/finanzberichte',
+      'https://www.mum.de/unternehmen/investor-relations/praesentationen-presentations',
+    ],
+    erwarteVollesTranskript: false,
   },
   DE0005785802: {
     listenUrls: ['https://www.mum.de/unternehmen/investor-relations/finanzberichte'],
+    erwarteVollesTranskript: false,
   },
   DE000A0BVU28: {
     listenUrls: ['https://www.usu.com/de/unternehmen/investor-relations/publikationen'],
   },
   CA01626P1484: {
-    listenUrls: ['https://corpo.couche-tard.com/en/financial-reports'],
+    listenUrls: [
+      'https://corporate.couche-tard.com/investors',
+      'https://corporate.couche-tard.com/financial-reporting?cat=29',
+    ],
+    erwarteVollesTranskript: false,
   },
   CA15135U1093: {
-    listenUrls: ['https://corpo.couche-tard.com/en/financial-reports'],
+    listenUrls: ['https://corporate.couche-tard.com/financial-reporting?cat=29'],
+    erwarteVollesTranskript: false,
   },
   CA015DM1098: {
-    listenUrls: ['https://corpo.couche-tard.com/en/financial-reports'],
+    listenUrls: ['https://corporate.couche-tard.com/financial-reporting?cat=29'],
+    erwarteVollesTranskript: false,
   },
   US02079K1079: {
     listenUrls: ['https://abc.xyz/investor/earnings/'],

@@ -5,6 +5,8 @@ import 'server-only'
 import { createHash } from 'crypto'
 import { linksAusHtml } from '@/lib/html/text-aus-html'
 import { HERMES_ISIN, ladeHermesFinanzberichteHistorie } from '@/lib/portfolio-analyse/hermes-finance-ir-server'
+import { ladeEuPortfolioFinanzberichteHistorie } from '@/lib/portfolio-analyse/eu-portfolio-ir-server'
+import { euPortfolioIrConfig } from '@/lib/portfolio-analyse/eu-portfolio-ir-config'
 import { ladeInvestorRelationsUrl } from '@/lib/portfolio-analyse/investor-relations-url'
 import { loesePortfolioIsin } from '@/lib/portfolio-analyse/isin-kenntnisse'
 import { ladeDokumentText } from '@/lib/portfolio-analyse/ir-earnings-scraper'
@@ -196,6 +198,26 @@ export async function ladeIrFinanzberichteHistorie(opts: {
     const berichte: SecBerichtEintrag[] = []
     const texte = new Map<string, string>()
     for (const h of hermes) {
+      const eintrag = baueEintrag(
+        {
+          href: h.url,
+          text: h.titel,
+          score: 10,
+          formular: formularAusText(`${h.titel} ${h.url}`),
+        },
+        h.text,
+      )
+      berichte.push(eintrag)
+      texte.set(eintrag.accession, h.text)
+    }
+    if (berichte.length > 0) return { berichte, texte }
+  }
+
+  if (isin && euPortfolioIrConfig(isin)) {
+    const eu = await ladeEuPortfolioFinanzberichteHistorie(isin, MAX_BERICHTE)
+    const berichte: SecBerichtEintrag[] = []
+    const texte = new Map<string, string>()
+    for (const h of eu) {
       const eintrag = baueEintrag(
         {
           href: h.url,
