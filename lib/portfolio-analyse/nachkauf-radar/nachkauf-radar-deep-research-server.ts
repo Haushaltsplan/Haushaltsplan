@@ -23,12 +23,16 @@ import type { NachkaufDeepResearch, NachkaufDeepResearchAnfrage, NachkaufScanEin
 function deepResearchModell(): string[] {
   const primary =
     process.env.NACHKAUF_DEEP_RESEARCH_GEMINI_MODEL?.trim() ||
-    'gemini-3.1-pro'
+    'gemini-3.1-pro-preview'
+  // Fallback-Reihenfolge: 3.1-Varianten priorisieren, 2.5-Pro nur als letzter Ausweg
   const fallbacks = [
-    'gemini-3.5-pro',
-    'gemini-2.5-pro',
     'gemini-3.1-pro-preview',
+    'gemini-3.1-pro-preview-customtools',
+    'gemini-3.1-pro-exp',
+    'gemini-3.5-pro-preview',
+    'gemini-3.5-pro',
     'gemini-2.5-pro-preview-06-05',
+    'gemini-2.5-pro',
   ]
   const seen = new Set<string>()
   return [primary, ...fallbacks].filter((m) => {
