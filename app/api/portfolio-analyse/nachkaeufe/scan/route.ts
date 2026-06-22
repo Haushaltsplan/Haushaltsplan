@@ -23,9 +23,19 @@ export async function POST(req: Request) {
     const paket = await laufeScan(anfrage)
     return NextResponse.json(paket)
   } catch (e) {
-    console.error('[api/nachkaeufe/scan]', e)
+    const msg = e instanceof Error ? e.message : String(e)
+    console.error('[api/nachkaeufe/scan]', msg)
     return NextResponse.json(
-      { ok: false, fehler: 'Scan fehlgeschlagen.', ergebnisse: [], monatsEmpfehlung: null, gescannt_am: new Date().toISOString() },
+      {
+        ok: false,
+        fehler: `Scan fehlgeschlagen: ${msg.slice(0, 300)}`,
+        ergebnisse: [],
+        monatsEmpfehlung: null,
+        gescannt_am: new Date().toISOString(),
+        gesamtAnzahl: 32,
+        gescannt: 0,
+        ausstehend: 32,
+      },
       { status: 502 },
     )
   }

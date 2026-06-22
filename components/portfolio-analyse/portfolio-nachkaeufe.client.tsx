@@ -889,6 +889,10 @@ export function NachkaufRadarClient() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ erzwingen }),
       })
+      if (!res.ok && res.status !== 502) {
+        const text = await res.text().catch(() => `HTTP ${res.status}`)
+        throw new Error(`Scan-API Fehler ${res.status}: ${text.slice(0, 200)}`)
+      }
       const paket = (await res.json()) as NachkaufScanPaket
       if (paket.ok && paket.ergebnisse.length > 0) {
         setErgebnisse(paket.ergebnisse)

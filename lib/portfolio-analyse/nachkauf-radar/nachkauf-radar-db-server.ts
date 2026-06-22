@@ -385,11 +385,12 @@ export async function aktualisiereKaufhistorieCache(isins: string[]): Promise<vo
   if (!istKonfiguriert() || isins.length === 0) return
   try {
     // Buchungen für alle Whitelist-ISINs laden
+    // Nur 'kauf' und 'verkauf' — 'sparplan' ist kein valider Enum-Wert in portfolio_analyse_buchung
     const { data, error } = await admin()
       .from('portfolio_analyse_buchung')
       .select('isin, datum, kurs_eur, anzahl, typ')
       .in('isin', isins)
-      .in('typ', ['kauf', 'sparplan'])
+      .in('typ', ['kauf', 'verkauf'])
       .order('datum', { ascending: false })
 
     if (error || !data) return
