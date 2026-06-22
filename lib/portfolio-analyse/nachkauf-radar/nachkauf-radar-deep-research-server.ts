@@ -58,6 +58,14 @@ function baueKontextText(opts: {
   klumpenrisiko: boolean
   earningsSummaries: { quartalId: string; text: string }[]
   secSummaries: { berichtId: string; text: string }[]
+  // Nachkauf-Score-Kontext
+  nachkaufScore?: number
+  nachkaufAmpel?: string
+  kaufTriggerAusgeloest?: boolean
+  kaufTriggerText?: string | null
+  premiumDiscountPct?: number | null
+  historischerMedianPe?: number | null
+  scoreVerlauf?: Array<{ datum: string; score: number }>
 }): string {
   const gewichtHinweis =
     opts.depotGewichtPct != null
@@ -75,6 +83,28 @@ function baueKontextText(opts: {
       ? `HINWEIS: Position bereits übergewichtet. Nachkauf nur wenn aussergewöhnlich attraktives Chance/Risiko-Verhältnis — andernfalls auf günstigere Alternativen verweisen.`
       : '',
     '',
+  ].filter(Boolean)
+
+  // Nachkauf-Radar Score-Kontext (neu)
+  if (opts.nachkaufScore !== undefined) {
+    teile.push('--- NACHKAUF-RADAR SCORE (regelbasiert, kein LLM) ---')
+    teile.push(`Gesamt-Score: ${opts.nachkaufScore}/100 (Ampel: ${opts.nachkaufAmpel ?? 'n/a'})`)
+    if (opts.kaufTriggerAusgeloest) {
+      teile.push(`KAUFZONE AKTIV: ${opts.kaufTriggerText ?? 'Kaufzone wurde ausgelöst'}`)
+    }
+    if (opts.premiumDiscountPct != null) {
+      const pd = opts.premiumDiscountPct
+      const label = pd > 0 ? `${pd.toFixed(1)} % Premium` : `${Math.abs(pd).toFixed(1)} % Discount`
+      teile.push(`Historischer Bewertungsvergleich: ${label} vs. 5J-Median (${opts.historischerMedianPe != null ? `Median KGV: ${opts.historischerMedianPe}×` : 'kein Median'})`)
+    }
+    if (opts.scoreVerlauf && opts.scoreVerlauf.length >= 2) {
+      const trend = opts.scoreVerlauf.slice(-3).map((v) => `${v.datum.slice(0, 7)}: ${v.score}`).join(' → ')
+      teile.push(`Score-Trend (letzte Monate): ${trend}`)
+    }
+    teile.push('')
+  }
+
+  const scoreTeile = [
     '--- MANTRA-QUALITÄTS-DASHBOARD ---',
     `Mantra-Ampel: ${opts.mantraAmpel}`,
     opts.mantraScorePct != null ? `Mantra-Score: ${opts.mantraScorePct} %` : '',
@@ -86,6 +116,7 @@ function baueKontextText(opts: {
     `Sell-Trigger-Status: ${opts.sellTrigger}`,
     '',
   ].filter(Boolean)
+  teile.push(...scoreTeile)
 
   // Earnings-Summaries (neueste 2)
   const earnings = opts.earningsSummaries.slice(0, 2)
@@ -125,7 +156,17 @@ function baueKontextText(opts: {
 // ---------------------------------------------------------------------------
 
 export async function fuhreDeepResearchDurch(
-  anfrage: NachkaufDeepResearchAnfrage,
+  anfrage: NachkaufDeepResearchAnfrage & {
+    scanEintrag?: {
+      score: number
+      ampel: string
+      kaufTriggerAusgeloest: boolean
+      kaufTriggerText: string | null
+      premiumDiscountPct: number | null
+      scoreVerlauf: Array<{ datum: string; score: number }>
+    }
+    historischerMedianPe?: number | null
+  },
 ): Promise<{ ok: true; dr: NachkaufDeepResearch } | { ok: false; fehler: string }> {
   const { ticker, isin, name } = anfrage
 
@@ -170,11 +211,13 @@ export async function fuhreDeepResearchDurch(
   const platzhalter: NachkaufScanEintrag[] = [{
     ticker, isin: resolvedIsin, name: name ?? ticker,
     ampel: 'grau', score: 0,
-    scoreDetail: { mantraScore: 0, bewertungsScore: 0, sellTriggerPenalty: 0, gesamt: 0 },
-    bewertung: { fcfYieldPct: null, forwardPe: null, drawdown52wPct: null },
+    scoreDetail: { mantraScore: 0, bewertungsScore: 0, sellTriggerPenalty: 0, historischerBewertungsBonus: 0, gesamt: 0 },
+    bewertung: { fcfYieldPct: null, forwardPe: null, drawdown52wPct: null, premiumDiscountPct: null },
     mantraAmpel: null, mantraScorePct: null, sellTriggerOk: true,
     kiBegruendung: null, gescannt_am: new Date().toISOString(), tiefenAnalyse: null,
     depotGewichtPct: null, klumpenrisiko: false,
+    kaufTriggerAusgeloest: false, kaufTriggerText: null,
+    scoreVerlauf: [], insiderKaeufe: [],
   }]
   await ergaenzeDepotGewichte(platzhalter)
   const depotGewichtPct = platzhalter[0]!.depotGewichtPct
@@ -196,6 +239,14 @@ export async function fuhreDeepResearchDurch(
     klumpenrisiko,
     earningsSummaries: earningsList,
     secSummaries: secList,
+    // Nachkauf-Radar Score-Kontext
+    nachkaufScore: anfrage.scanEintrag?.score,
+    nachkaufAmpel: anfrage.scanEintrag?.ampel,
+    kaufTriggerAusgeloest: anfrage.scanEintrag?.kaufTriggerAusgeloest,
+    kaufTriggerText: anfrage.scanEintrag?.kaufTriggerText,
+    premiumDiscountPct: anfrage.scanEintrag?.premiumDiscountPct,
+    historischerMedianPe: anfrage.historischerMedianPe,
+    scoreVerlauf: anfrage.scanEintrag?.scoreVerlauf,
   })
 
   // LLM-Aufruf mit Gemini Pro

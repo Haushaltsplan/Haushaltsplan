@@ -23,6 +23,11 @@ export type NachkaufScoreDetail = {
   sellTriggerPenalty: number
   /** Gesamt (0–100, kann durch Penalty unter 0 sinken → auf 0 geclamped). */
   gesamt: number
+  /**
+   * Bewertungs-Bonus/Malus aus historischem Vergleich (–10 bis +10).
+   * Positiv = günstiger als historischer Median.
+   */
+  historischerBewertungsBonus: number
 }
 
 /** Bewertungssignale, die für Score und Anzeige verwendet werden. */
@@ -33,9 +38,52 @@ export type NachkaufBewertungsSignale = {
   forwardPe: number | null
   /**
    * Abstand vom 52-Wochen-Hoch in Prozent (positiver Wert = Drawdown).
-   * Proxy: (52w_hoch – 52w_tief) / 52w_hoch * 100.
    */
   drawdown52wPct: number | null
+  /**
+   * Premium/Discount gegenüber dem eigenen historischen Median-KGV.
+   * Negativ = günstiger als historisch, positiv = teurer.
+   * null = kein historischer Median in der Whitelist hinterlegt.
+   */
+  premiumDiscountPct: number | null
+  /**
+   * Historischer Median-FCF-Yield aus der Whitelist.
+   * Für Vergleich im UI: FCF-Yield aktuell vs. Median.
+   */
+  historischerMedianFcfYield?: number | null
+}
+
+/** Ein historischer Score-Datenpunkt für die Sparkline. */
+export type ScoreVerlaufPunkt = {
+  datum: string   // ISO-Datum (YYYY-MM-DD)
+  score: number
+  ampel: NachkaufAmpel
+}
+
+/** Insider-Transaktion (Form 4, nur Käufe). */
+export type InsiderKauf = {
+  datum: string
+  name: string
+  titel: string
+  anteile: number
+  wertUsd: number
+}
+
+/** Kaufhistorie aus portfolio_analyse_buchung. */
+export type Kaufhistorie = {
+  letzterKaufAm: string | null
+  anzahlKaeufe: number
+  durchschnittskaufpreisEur: number | null
+  /** Anzahl Tage seit dem letzten Kauf. null = noch nie gekauft. */
+  tageSeitletztemKauf: number | null
+}
+
+/**
+ * Verkaufs-/Trim-Signal: wird ausgelöst wenn Position zu groß oder Score stark gesunken.
+ */
+export type TrimSignal = {
+  typ: 'trim' | 'ueberpruefen'
+  grund: string
 }
 
 /** Ein Eintrag im Scan-Ergebnis (ein Depot-Titel). */
@@ -58,20 +106,53 @@ export type NachkaufScanEintrag = {
   tiefenAnalyse: NachkaufDeepResearch | null
   /**
    * Aktueller Anteil dieser Position am Depot-Marktwert (0–100 %).
-   * Wird dynamisch aus dem neuesten Portfolio-Snapshot berechnet — nicht in der DB gespeichert.
-   * null = kein Snapshot vorhanden oder Position nicht im Depot.
+   * Dynamisch berechnet — nicht in der DB gespeichert.
    */
   depotGewichtPct: number | null
-  /**
-   * true wenn depotGewichtPct >= 15 % (Klumpenrisiko-Warnung).
-   * Nachkauf trotzdem möglich, aber explizit begründet.
-   */
+  /** true wenn depotGewichtPct >= 15 % (Klumpenrisiko). */
   klumpenrisiko: boolean
+  /**
+   * true wenn eine manuelle Kaufzone aus der Whitelist ausgelöst wurde
+   * (z. B. Forward P/E < 22× oder FCF-Rendite > 3,5 %).
+   */
+  kaufTriggerAusgeloest: boolean
+  /** Beschreibung des ausgelösten Triggers (für UI-Tooltip). */
+  kaufTriggerText: string | null
+  /**
+   * Historischer Score-Verlauf (letzte 12 Monate).
+   * Dynamisch geladen — nicht in der Haupt-DB-Zeile.
+   */
+  scoreVerlauf: ScoreVerlaufPunkt[]
+  /**
+   * Insider-Käufe der letzten 90 Tage (SEC EDGAR Form 4).
+   * Nur für US-Positionen. Dynamisch geladen.
+   */
+  insiderKaeufe: InsiderKauf[]
+  /** Kaufhistorie aus portfolio_analyse_buchung. Dynamisch geladen. */
+  kaufhistorie?: Kaufhistorie
+  /** Freitext-Notiz des Nutzers. Dynamisch geladen. */
+  notiz?: string
+  /** Verkaufs-/Trim-Signal. Dynamisch berechnet. */
+  trimSignal?: TrimSignal
+}
+
+/** Sparplan-Allokation für einen einzelnen Titel. */
+export type SparplanPosten = {
+  ticker: string
+  name: string
+  betragEur: number
+  begruendung: string
 }
 
 /** Monatliche Gesamt-Empfehlung des Radars. */
 export type MonatsEmpfehlung =
-  | { typ: 'nachkauf'; tickers: string[]; text: string }
+  | {
+      typ: 'nachkauf'
+      tickers: string[]
+      text: string
+      /** Konkrete EUR-Aufteilung des Sparplans (Summe = 500 €). */
+      sparplanAllokation: SparplanPosten[]
+    }
   | { typ: 'sparen'; text: string }
   | { typ: 'beobachten'; text: string }
 
@@ -81,21 +162,22 @@ export type NachkaufScanPaket = {
   ergebnisse: NachkaufScanEintrag[]
   monatsEmpfehlung: MonatsEmpfehlung
   gescannt_am: string
-  /** Anzahl aller Positionen in der Whitelist. */
   gesamtAnzahl: number
-  /** Anzahl tatsächlich gescannter Positionen in diesem Lauf. */
   gescannt: number
-  /** Noch nicht gescannte Positionen (z. B. nach Timeout). */
   ausstehend: number
   fehler?: string | null
 }
 
 /** Anfrage an den Scan-Endpunkt. */
 export type NachkaufScanAnfrage = {
-  /** Nur diesen Ticker scannen (für Test/Einzelscan). Fehlt → alle Depot-Titel. */
   ticker?: string | null
-  /** Scan erzwingen, auch wenn Cache noch frisch ist. */
   erzwingen?: boolean
+  /** Wenn gesetzt, wird nur diese ISIN neu gescannt (Einzel-Rescan). */
+  nurEinenTicker?: string
+  /** Fehlende Titel scannen, bereits vorhandene überspringen. */
+  nurFehlende?: boolean
+  /** Für Cron: erzwinge false ist default, nurFehlende true. */
+  erzwinge?: boolean
 }
 
 /** Deep-Research-Memo für einen Titel (Stufe B). */

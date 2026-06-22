@@ -1,11 +1,15 @@
 import { NextResponse } from 'next/server'
 import {
   ergaenzeDepotGewichte,
+  ergaenzeKaufhistorieUndNotizen,
   ladeAlleDeepResearch,
   ladeNachkaufScanAusCloud,
   ladeNachkaufScanDatum,
 } from '@/lib/portfolio-analyse/nachkauf-radar/nachkauf-radar-db-server'
 import { berechneMonatsEmpfehlung } from '@/lib/portfolio-analyse/nachkauf-radar/nachkauf-radar-score'
+import { ergaenzeScoreVerlauf } from '@/lib/portfolio-analyse/nachkauf-radar/nachkauf-radar-verlauf-server'
+import { ergaenzeInsiderKaeufe } from '@/lib/portfolio-analyse/nachkauf-radar/insider-kaeufe-server'
+import { berechneTrimSignale } from '@/lib/portfolio-analyse/nachkauf-radar/nachkauf-trim-signal'
 import { NACHKAUF_RADAR_WHITELIST } from '@/lib/portfolio-analyse/nachkauf-radar/nachkauf-radar-whitelist'
 import type { NachkaufErgebnissePaket } from '@/lib/portfolio-analyse/nachkauf-radar/nachkauf-radar-types'
 
@@ -24,7 +28,17 @@ export async function GET() {
       ...e,
       tiefenAnalyse: deepMap.get(e.ticker.toUpperCase()) ?? null,
     }))
-    await ergaenzeDepotGewichte(mitDeep)
+
+    // Alle Anreicherungen parallel
+    await Promise.allSettled([
+      ergaenzeDepotGewichte(mitDeep),
+      ergaenzeScoreVerlauf(mitDeep),
+      ergaenzeInsiderKaeufe(mitDeep, NACHKAUF_RADAR_WHITELIST),
+      ergaenzeKaufhistorieUndNotizen(mitDeep),
+    ])
+
+    // Trim-Signale nachgelagert (braucht depotGewichtPct + scoreVerlauf)
+    berechneTrimSignale(mitDeep)
 
     const gesamtAnzahl = NACHKAUF_RADAR_WHITELIST.length
     const ausstehend = Math.max(0, gesamtAnzahl - mitDeep.length)

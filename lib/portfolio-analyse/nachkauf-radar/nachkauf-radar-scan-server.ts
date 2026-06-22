@@ -3,9 +3,10 @@
  *
  * 1. Feste Whitelist (32 Quality-Positionen)
  * 2. Für jede Position: Fundamentaldaten + gecachte KI-Summaries
- * 3. Regelbasierter Score (kein LLM)
+ * 3. Regelbasierter Score inkl. historischer Relative Bewertung + Kaufzonen-Trigger
  * 4. Gemini Flash: kurze Begründung pro Titel
- * 5. Ergebnisse in Supabase speichern und zurückgeben
+ * 5. Ergebnisse in Supabase speichern + Score-Verlauf archivieren
+ * 6. Depot-Gewichte, Insider-Käufe und Score-Verlauf anreichern
  */
 
 import 'server-only'
@@ -21,19 +22,25 @@ import {
   berechneNachkaufScore,
   extrahiereBewertungsSignale,
   leiteNachkaufAmpelAb,
+  pruefKaufTrigger,
 } from './nachkauf-radar-score'
 import {
+  aktualisiereKaufhistorieCache,
   ergaenzeDepotGewichte,
+  ergaenzeKaufhistorieUndNotizen,
   ladeAlleDeepResearch,
   ladeNachkaufScanAusCloud,
-  ladeNachkaufScanDatum,
   speichereNachkaufScanEintraege,
 } from './nachkauf-radar-db-server'
+import { ergaenzeScoreVerlauf, speichereVerlaufPunkte } from './nachkauf-radar-verlauf-server'
+import { ergaenzeInsiderKaeufe } from './insider-kaeufe-server'
+import { berechneTrimSignale } from './nachkauf-trim-signal'
+import { NACHKAUF_RADAR_WHITELIST } from './nachkauf-radar-whitelist'
+import type { WhitelistPosition } from './nachkauf-radar-whitelist'
+import type { NachkaufScanAnfrage, NachkaufScanEintrag, NachkaufScanPaket } from './nachkauf-radar-types'
 
 /** Positionen, die innerhalb dieser Zeit bereits gescannt wurden, werden übersprungen. */
 const SKIP_WENN_JUENGER_MS = 12 * 60 * 60 * 1000 // 12 Stunden
-import { NACHKAUF_RADAR_WHITELIST } from './nachkauf-radar-whitelist'
-import type { NachkaufScanAnfrage, NachkaufScanEintrag, NachkaufScanPaket } from './nachkauf-radar-types'
 
 // ---------------------------------------------------------------------------
 // Modell-Kandidaten
@@ -53,8 +60,6 @@ function nachkaufScanModell(): string[] {
   })
 }
 
-// (Depot-DB-Abfrage entfernt — Whitelist wird direkt aus nachkauf-radar-whitelist.ts geladen)
-
 // ---------------------------------------------------------------------------
 // KI-Begründung via Flash
 // ---------------------------------------------------------------------------
@@ -68,11 +73,18 @@ async function generiereKiBegruendung(opts: {
   sellTriggerText: string
   fcfYield: string
   forwardPe: string
+  premiumDiscount: string
+  kaufTriggerAusgeloest: boolean
+  kaufTriggerText: string | null
   earningsSummary: string
   secSummary: string
 }): Promise<string | null> {
   const provider = resolveCoachProviderFromMode('gemini')
   if (!provider || provider.provider !== 'gemini') return null
+
+  const triggerHinweis = opts.kaufTriggerAusgeloest && opts.kaufTriggerText
+    ? `\nKaufzonen-Trigger: AUSGELÖST — ${opts.kaufTriggerText}`
+    : ''
 
   const userText = [
     `Unternehmen: ${opts.name} (${opts.ticker})`,
@@ -81,6 +93,8 @@ async function generiereKiBegruendung(opts: {
     `Sell-Trigger-Status: ${opts.sellTriggerText}`,
     `FCF-Rendite (NTM/LTM): ${opts.fcfYield}`,
     `Forward-KGV (NTM): ${opts.forwardPe}`,
+    `Historischer Vergleich (Premium/Discount vs. 5J-Median): ${opts.premiumDiscount}`,
+    triggerHinweis,
     '',
     opts.earningsSummary
       ? `--- EARNINGS CALL (Auszug, max. 1500 Zeichen) ---\n${opts.earningsSummary.slice(0, 1500)}`
@@ -111,11 +125,11 @@ async function generiereKiBegruendung(opts: {
 // ---------------------------------------------------------------------------
 
 async function scanneEinenTitel(opts: {
-  isin: string
-  name: string
+  position: WhitelistPosition
   deepResearchMap: Map<string, import('./nachkauf-radar-types').NachkaufDeepResearch>
 }): Promise<NachkaufScanEintrag | null> {
-  const { isin, name } = opts
+  const { position } = opts
+  const { isin, name } = position
   const kenntnis = isinKenntnis(isin)
   const ticker = kenntnis?.symbolYahoo?.replace(/\.[^.]+$/, '') ?? isin
 
@@ -138,10 +152,13 @@ async function scanneEinenTitel(opts: {
     return null
   }
 
-  // Score regelbasiert berechnen
-  const bewertungsSignale = extrahiereBewertungsSignale(paket)
-  const scoreDetail = berechneNachkaufScore(paket, bewertungsSignale)
+  // Score regelbasiert berechnen (mit historischer Relative Bewertung)
+  const bewertungsSignale = extrahiereBewertungsSignale(paket, position)
+  const scoreDetail = berechneNachkaufScore(paket, bewertungsSignale, position)
   const ampel = leiteNachkaufAmpelAb(paket, scoreDetail, bewertungsSignale)
+
+  // Kaufzonen-Trigger prüfen
+  const { ausgeloest: kaufTriggerAusgeloest, text: kaufTriggerText } = pruefKaufTrigger(bewertungsSignale, position)
 
   // KI-Summaries aus Caches lesen (nicht neu generieren)
   const earningsMap = await ladeEarningsCallKiCacheFuerTicker(ticker)
@@ -175,21 +192,35 @@ async function scanneEinenTitel(opts: {
     bewertungsSignale.fcfYieldPct != null
       ? `${bewertungsSignale.fcfYieldPct.toFixed(1)} %`
       : 'keine Daten'
+
   const forwardPeText =
     bewertungsSignale.forwardPe != null
       ? `${bewertungsSignale.forwardPe.toFixed(1)}×`
       : 'keine Daten'
 
+  const premiumDiscountText =
+    bewertungsSignale.premiumDiscountPct != null
+      ? `${bewertungsSignale.premiumDiscountPct > 0 ? '+' : ''}${bewertungsSignale.premiumDiscountPct.toFixed(1)} % vs. 5J-Median`
+      : 'kein historischer Median hinterlegt'
+
   // KI-Begründung generieren
   const kiBegruendung = await generiereKiBegruendung({
     name: paket.firmenname || name,
     ticker,
-    ampel: ampel === 'gruen' ? 'Grün' : ampel === 'gelb' ? 'Gelb' : ampel === 'rot' ? 'Rot' : ampel === 'teuer' ? 'Teuer (Quality ok, Preis zu hoch)' : 'Grau',
+    ampel:
+      ampel === 'gruen' ? 'Grün'
+      : ampel === 'gelb' ? 'Gelb'
+      : ampel === 'rot' ? 'Rot'
+      : ampel === 'teuer' ? 'Teuer (Quality ok, Preis zu hoch)'
+      : 'Grau',
     score: scoreDetail.gesamt,
     mantraAmpelText: ampelText[mantra.ampel] ?? mantra.ampel,
     sellTriggerText,
     fcfYield: fcfYieldText,
     forwardPe: forwardPeText,
+    premiumDiscount: premiumDiscountText,
+    kaufTriggerAusgeloest,
+    kaufTriggerText,
     earningsSummary: neuesteEarnings,
     secSummary: neuesteSec,
   })
@@ -210,10 +241,31 @@ async function scanneEinenTitel(opts: {
     kiBegruendung,
     gescannt_am: new Date().toISOString(),
     tiefenAnalyse: opts.deepResearchMap.get(ticker.toUpperCase()) ?? null,
-    // Depot-Gewichte werden nach dem Scan via ergaenzeDepotGewichte() befüllt
     depotGewichtPct: null,
     klumpenrisiko: false,
+    kaufTriggerAusgeloest,
+    kaufTriggerText,
+    scoreVerlauf: [],
+    insiderKaeufe: [],
   }
+}
+
+// ---------------------------------------------------------------------------
+// Ergebnisse nach dem Scan anreichern (Verlauf, Insider, Depot-Gewichte)
+// ---------------------------------------------------------------------------
+
+async function reichereErgebnisseAn(
+  eintraege: NachkaufScanEintrag[],
+  mitInsider: boolean,
+): Promise<void> {
+  await Promise.allSettled([
+    ergaenzeDepotGewichte(eintraege),
+    ergaenzeScoreVerlauf(eintraege),
+    ergaenzeKaufhistorieUndNotizen(eintraege),
+    mitInsider ? ergaenzeInsiderKaeufe(eintraege, NACHKAUF_RADAR_WHITELIST) : Promise.resolve(),
+  ])
+  // Trim-Signale nachgelagert (braucht depotGewichtPct und scoreVerlauf)
+  berechneTrimSignale(eintraege)
 }
 
 // ---------------------------------------------------------------------------
@@ -223,15 +275,40 @@ async function scanneEinenTitel(opts: {
 export async function laufeScan(anfrage: NachkaufScanAnfrage): Promise<NachkaufScanPaket> {
   const gesamtAnzahl = NACHKAUF_RADAR_WHITELIST.length
 
-  // Einzelner Ticker → direkt scannen, kein Cache-Check
+  // Einzel-Rescan via ISIN (von der Rescan-API-Route)
+  if (anfrage.nurEinenTicker) {
+    const isinTarget = anfrage.nurEinenTicker.toUpperCase()
+    const positionEintrag = NACHKAUF_RADAR_WHITELIST.find((p) => p.isin.toUpperCase() === isinTarget)
+    if (!positionEintrag) {
+      const gespeicherte = await ladeNachkaufScanAusCloud()
+      await reichereErgebnisseAn(gespeicherte, false)
+      return { ok: false, ergebnisse: gespeicherte, monatsEmpfehlung: berechneMonatsEmpfehlung(gespeicherte), gescannt_am: gespeicherte[0]?.gescannt_am ?? new Date().toISOString(), gesamtAnzahl, gescannt: 0, ausstehend: 0, fehler: `ISIN ${isinTarget} nicht in der Whitelist.` }
+    }
+    const deepResearchMap = await ladeAlleDeepResearch()
+    const ergebnis = await scanneEinenTitel({ position: positionEintrag, deepResearchMap })
+    if (ergebnis) {
+      await speichereNachkaufScanEintraege([ergebnis])
+      await speichereVerlaufPunkte([ergebnis])
+    }
+    const alle = await ladeNachkaufScanAusCloud()
+    const deepMap = await ladeAlleDeepResearch()
+    const mitDeep = alle.map((e) => ({ ...e, tiefenAnalyse: deepMap.get(e.ticker.toUpperCase()) ?? null }))
+    await reichereErgebnisseAn(mitDeep, false)
+    mitDeep.sort((a, b) => b.score - a.score)
+    return { ok: true, ergebnisse: mitDeep, monatsEmpfehlung: berechneMonatsEmpfehlung(mitDeep), gescannt_am: ergebnis?.gescannt_am ?? new Date().toISOString(), gesamtAnzahl, gescannt: ergebnis ? 1 : 0, ausstehend: 0 }
+  }
+
+  // Einzelner Ticker → direkt scannen (Legacy-Pfad)
   if (anfrage.ticker) {
-    const kandidaten = NACHKAUF_RADAR_WHITELIST.filter((p) => {
+    const positionEintrag = NACHKAUF_RADAR_WHITELIST.find((p) => {
       const k = isinKenntnis(p.isin)
       const ticker = k?.symbolYahoo?.replace(/\.[^.]+$/, '') ?? ''
       return ticker.toUpperCase() === anfrage.ticker!.toUpperCase() || p.isin === anfrage.ticker
     })
-    if (kandidaten.length === 0) {
+
+    if (!positionEintrag) {
       const gespeicherte = await ladeNachkaufScanAusCloud()
+      await reichereErgebnisseAn(gespeicherte, false)
       return {
         ok: false,
         ergebnisse: gespeicherte,
@@ -243,14 +320,20 @@ export async function laufeScan(anfrage: NachkaufScanAnfrage): Promise<NachkaufS
         fehler: `Ticker/ISIN ${anfrage.ticker} nicht in der Whitelist.`,
       }
     }
+
     const deepResearchMap = await ladeAlleDeepResearch()
-    const ergebnis = await scanneEinenTitel({ isin: kandidaten[0]!.isin, name: kandidaten[0]!.name, deepResearchMap })
-    if (ergebnis) await speichereNachkaufScanEintraege([ergebnis])
+    const ergebnis = await scanneEinenTitel({ position: positionEintrag, deepResearchMap })
+    if (ergebnis) {
+      await speichereNachkaufScanEintraege([ergebnis])
+      await speichereVerlaufPunkte([ergebnis])
+    }
+
     const alle = await ladeNachkaufScanAusCloud()
     const deepMap = await ladeAlleDeepResearch()
     const mitDeep = alle.map((e) => ({ ...e, tiefenAnalyse: deepMap.get(e.ticker.toUpperCase()) ?? null }))
-    await ergaenzeDepotGewichte(mitDeep)
+    await reichereErgebnisseAn(mitDeep, false)
     mitDeep.sort((a, b) => b.score - a.score)
+
     return {
       ok: true,
       ergebnisse: mitDeep,
@@ -262,11 +345,11 @@ export async function laufeScan(anfrage: NachkaufScanAnfrage): Promise<NachkaufS
     }
   }
 
-  // Bereits gespeicherte Ergebnisse laden — zum Skip-Check und als Basis für die Rückgabe
+  // Bereits gespeicherte Ergebnisse laden
   const bereitsGespeichert = await ladeNachkaufScanAusCloud()
   const bereitsMap = new Map(bereitsGespeichert.map((e) => [e.ticker.toUpperCase(), e]))
 
-  // Wenn nicht erzwungen: Positionen, die in den letzten 12h gescannt wurden, überspringen
+  // Nicht erzwungen: Positionen aus den letzten 12h überspringen
   const jetzt = Date.now()
   const zuScannen = anfrage.erzwingen
     ? NACHKAUF_RADAR_WHITELIST
@@ -279,14 +362,14 @@ export async function laufeScan(anfrage: NachkaufScanAnfrage): Promise<NachkaufS
         return alter > SKIP_WENN_JUENGER_MS
       })
 
-  // Alle bereits aktuellen Positionen zurückgeben, falls gar nichts mehr zu scannen ist
+  // Nichts zu tun
   if (zuScannen.length === 0) {
     const deepMap = await ladeAlleDeepResearch()
     const mitDeep = bereitsGespeichert.map((e) => ({
       ...e,
       tiefenAnalyse: deepMap.get(e.ticker.toUpperCase()) ?? null,
     }))
-    await ergaenzeDepotGewichte(mitDeep)
+    await reichereErgebnisseAn(mitDeep, false)
     mitDeep.sort((a, b) => b.score - a.score)
     return {
       ok: true,
@@ -302,40 +385,48 @@ export async function laufeScan(anfrage: NachkaufScanAnfrage): Promise<NachkaufS
   // Deep-Research-Cache vorab laden
   const deepResearchMap = await ladeAlleDeepResearch()
 
-  // Titel in Batches scannen.
-  // WICHTIG: Nach jedem Batch sofort in Supabase speichern —
-  // so gehen bei einem Timeout keine Ergebnisse verloren.
+  // Titel in Batches scannen — nach jedem Batch sofort in Supabase speichern
   const BATCH_SIZE = 3
   let neuGescannt = 0
+  const neueEintraege: NachkaufScanEintrag[] = []
 
   for (let i = 0; i < zuScannen.length; i += BATCH_SIZE) {
     const batch = zuScannen.slice(i, i + BATCH_SIZE)
     const batchErgebnisse = await Promise.allSettled(
-      batch.map((p) => scanneEinenTitel({ isin: p.isin, name: p.name, deepResearchMap })),
+      batch.map((p) => scanneEinenTitel({ position: p, deepResearchMap })),
     )
     const batchOk: NachkaufScanEintrag[] = []
     for (const r of batchErgebnisse) {
       if (r.status === 'fulfilled' && r.value) batchOk.push(r.value)
     }
     if (batchOk.length > 0) {
-      // Sofort persistieren — kein Verlust bei Timeout
       await speichereNachkaufScanEintraege(batchOk)
       neuGescannt += batchOk.length
+      neueEintraege.push(...batchOk)
     }
-    // Kurze Pause zwischen Batches (Macrotrends / Yahoo Rate-Limit)
     if (i + BATCH_SIZE < zuScannen.length) {
       await new Promise((res) => setTimeout(res, 1200))
     }
   }
 
-  // Vollständiges, aktuelles Ergebnis aus Supabase laden (inkl. bereits vor diesem Lauf gespeicherter)
+  // Score-Verlauf archivieren + Kaufhistorie-Cache aktualisieren
+  if (neueEintraege.length > 0) {
+    await Promise.allSettled([
+      speichereVerlaufPunkte(neueEintraege),
+      aktualisiereKaufhistorieCache(NACHKAUF_RADAR_WHITELIST.map((p) => p.isin)),
+    ]).catch((e) => console.warn('[nachkauf-scan] Post-Scan-Cache fehlgeschlagen:', e))
+  }
+
+  // Vollständiges, aktuelles Ergebnis aus Supabase laden
   const alle = await ladeNachkaufScanAusCloud()
   const deepMapAktuell = await ladeAlleDeepResearch()
   const mitDeep = alle.map((e) => ({
     ...e,
     tiefenAnalyse: deepMapAktuell.get(e.ticker.toUpperCase()) ?? null,
   }))
-  await ergaenzeDepotGewichte(mitDeep)
+
+  // Alle Anreicherungen parallel (Verlauf, Insider, Depot-Gewichte)
+  await reichereErgebnisseAn(mitDeep, true)
   mitDeep.sort((a, b) => b.score - a.score)
 
   const ausstehend = gesamtAnzahl - alle.length

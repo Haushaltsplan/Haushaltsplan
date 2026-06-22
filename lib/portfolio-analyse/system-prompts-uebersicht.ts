@@ -94,6 +94,44 @@ export const SYSTEM_PROMPTS_UEBERSICHT: SystemPromptEintrag[] = [
   },
 
   // -------------------------------------------------------------------------
+  // Nachkauf-Radar: Regelbasierte Logik (kein LLM-Prompt, aber dokumentiert)
+  // -------------------------------------------------------------------------
+  {
+    id: 'sys-nachkauf-scoring',
+    gruppe: 'Nachkauf-Radar',
+    titel: 'Score-Formel (regelbasiert, kein LLM)',
+    beschreibung: 'Transparente Dokumentation wie der Nachkauf-Score berechnet wird: Qualität (0–60 Pkt.) + Bewertung absolut (0–40 Pkt.) ± Historischer Vergleich zum 5-Jahres-Median (±10 Pkt.) − Sell-Trigger (0/−10/−25 Pkt.).',
+    modell: 'Regelbasiert (TypeScript)',
+    text: `SCORE-FORMEL:
+
+1. QUALITÄTS-SCORE (0–60 Punkte)
+   Quelle: Mantra-Audit (5 quantitative Metriken aus Fundamentaldaten)
+   Bewertung: erfüllte_Metriken / bewertbare_Metriken × 60
+
+2. BEWERTUNGS-SCORE ABSOLUT (0–40 Punkte)
+   FCF-Rendite (0–22 Pkt.):
+     ≥ 5,0 % = 22 Pkt. | ≥ 3,5 % = 17 Pkt. | ≥ 2,5 % = 12 Pkt. | ≥ 1,5 % = 6 Pkt.
+   Forward P/E (0–18 Pkt.):
+     < 15× = 18 Pkt. | < 20× = 14 Pkt. | < 25× = 9 Pkt. | < 35× = 4 Pkt.
+
+3. HISTORISCHER BONUS/MALUS (–10 bis +10 Punkte)
+   Vergleich des aktuellen P/E mit dem 5-Jahres-Median aus der Whitelist.
+   Discount ≥ 20 % = +10 | 10–20 % = +6 | 5–10 % = +3
+   Premium 5–15 % = –4 | 15–25 % = –7 | > 25 % = –10
+
+4. SELL-TRIGGER-PENALTY
+   Aktive Warnung (sell_trigger = true) = –25 Pkt.
+   Beobachten-Status = –10 Pkt.
+
+AMPEL-LOGIK:
+   gruen  = Gesamt-Score ≥ 65, kein Sell-Trigger
+   gelb   = Score 35–64
+   rot    = Score < 35 oder aktiver Sell-Trigger
+   teuer  = Quality intakt (Mantra ≥ 30 Pkt.), aber FCF-Rendite < 1,5 % UND P/E > 38×
+   grau   = Keine Fundamentaldaten verfügbar`,
+  },
+
+  // -------------------------------------------------------------------------
   // Investment Movers
   // -------------------------------------------------------------------------
   {

@@ -221,20 +221,36 @@ type DbZeile = {
   forward_pe: number | null
   drawdown_52w_pct: number | null
   gescannt_am: string
+  // erweiterte Spalten (Migration 20260622200000)
+  score_mantra: number | null
+  score_bewertung: number | null
+  score_hist_bonus: number | null
+  score_sell_penalty: number | null
+  premium_discount_pct: number | null
+  kauf_trigger_ausgeloest: boolean | null
+  kauf_trigger_text: string | null
 }
 
 function dbZeileZuEintrag(r: DbZeile): NachkaufScanEintrag {
+  const gesamt = r.score ?? 0
   return {
     ticker: r.ticker,
     isin: r.isin ?? '',
     name: r.name ?? r.ticker,
     ampel: r.ampel as NachkaufAmpel,
-    score: r.score ?? 0,
-    scoreDetail: { mantraScore: 0, bewertungsScore: 0, sellTriggerPenalty: 0, gesamt: r.score ?? 0 },
+    score: gesamt,
+    scoreDetail: {
+      mantraScore: r.score_mantra ?? 0,
+      bewertungsScore: r.score_bewertung ?? 0,
+      sellTriggerPenalty: r.score_sell_penalty ?? 0,
+      historischerBewertungsBonus: r.score_hist_bonus ?? 0,
+      gesamt,
+    },
     bewertung: {
       fcfYieldPct: r.fcf_yield_pct ?? null,
       forwardPe: r.forward_pe ?? null,
       drawdown52wPct: r.drawdown_52w_pct ?? null,
+      premiumDiscountPct: r.premium_discount_pct ?? null,
     },
     mantraAmpel: r.mantra_ampel ?? null,
     mantraScorePct: r.mantra_score_pct ?? null,
@@ -242,9 +258,12 @@ function dbZeileZuEintrag(r: DbZeile): NachkaufScanEintrag {
     kiBegruendung: r.ki_begruendung ?? null,
     gescannt_am: r.gescannt_am,
     tiefenAnalyse: null,
-    // Depot-Gewichte werden nach dem DB-Laden dynamisch ergänzt (ladeDepotGewichte)
     depotGewichtPct: null,
     klumpenrisiko: false,
+    kaufTriggerAusgeloest: r.kauf_trigger_ausgeloest ?? false,
+    kaufTriggerText: r.kauf_trigger_text ?? null,
+    scoreVerlauf: [],
+    insiderKaeufe: [],
   }
 }
 
@@ -273,5 +292,168 @@ function eintragZuDbZeile(e: NachkaufScanEintrag): Record<string, unknown> {
     forward_pe: e.bewertung.forwardPe ?? null,
     drawdown_52w_pct: e.bewertung.drawdown52wPct ?? null,
     gescannt_am: e.gescannt_am,
+    // erweiterte Spalten
+    score_mantra: e.scoreDetail.mantraScore,
+    score_bewertung: e.scoreDetail.bewertungsScore,
+    score_hist_bonus: e.scoreDetail.historischerBewertungsBonus,
+    score_sell_penalty: e.scoreDetail.sellTriggerPenalty,
+    premium_discount_pct: e.bewertung.premiumDiscountPct ?? null,
+    kauf_trigger_ausgeloest: e.kaufTriggerAusgeloest,
+    kauf_trigger_text: e.kaufTriggerText ?? null,
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Notizen — lesen / schreiben
+// ---------------------------------------------------------------------------
+
+const TABLE_NOTIZEN = 'nachkauf_radar_notizen' as const
+
+export async function ladeNotizen(): Promise<Map<string, string>> {
+  const out = new Map<string, string>()
+  if (!istKonfiguriert()) return out
+  try {
+    const { data, error } = await admin().from(TABLE_NOTIZEN).select('ticker, notiz')
+    if (error || !data) return out
+    for (const r of data as Array<{ ticker: string; notiz: string }>) {
+      out.set(r.ticker.toUpperCase(), r.notiz)
+    }
+  } catch { /* ignore */ }
+  return out
+}
+
+export async function speichereNotiz(ticker: string, notiz: string): Promise<void> {
+  if (!istKonfiguriert()) return
+  try {
+    const { error } = await admin()
+      .from(TABLE_NOTIZEN)
+      .upsert(
+        { ticker: ticker.trim().toUpperCase(), notiz, aktualisiert_am: new Date().toISOString() },
+        { onConflict: 'ticker' },
+      )
+    if (error) console.warn('[nachkauf-notiz] Speichern fehlgeschlagen:', error.message)
+  } catch (e) {
+    console.warn('[nachkauf-notiz] Fehler:', e)
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Kaufhistorie-Cache — aus Buchungen befüllen
+// ---------------------------------------------------------------------------
+
+const TABLE_KAUFHIST = 'nachkauf_radar_kaufhistorie_cache' as const
+
+export type KaufhistorieEintrag = {
+  ticker?: string
+  letzterKaufAm: string | null
+  anzahlKaeufe: number
+  durchschnittskaufpreisEur: number | null
+  tageSeitletztemKauf: number | null
+}
+
+export async function ladeKaufhistorie(): Promise<Map<string, KaufhistorieEintrag>> {
+  const out = new Map<string, KaufhistorieEintrag>()
+  if (!istKonfiguriert()) return out
+  try {
+    const { data, error } = await admin()
+      .from(TABLE_KAUFHIST)
+      .select('ticker, letzter_kauf_am, anzahl_kaeufe, avg_kaufpreis_eur')
+    if (error || !data) return out
+    const heute = Date.now()
+    for (const r of data as Array<{ ticker: string; letzter_kauf_am: string | null; anzahl_kaeufe: number; avg_kaufpreis_eur: number | null }>) {
+      const letzterKaufAm = r.letzter_kauf_am ?? null
+      const tage = letzterKaufAm
+        ? Math.floor((heute - new Date(letzterKaufAm).getTime()) / 86_400_000)
+        : null
+      out.set(r.ticker.toUpperCase(), {
+        ticker: r.ticker,
+        letzterKaufAm,
+        anzahlKaeufe: r.anzahl_kaeufe,
+        durchschnittskaufpreisEur: r.avg_kaufpreis_eur ?? null,
+        tageSeitletztemKauf: tage,
+      })
+    }
+  } catch { /* ignore */ }
+  return out
+}
+
+/**
+ * Aktualisiert den Kaufhistorie-Cache aus portfolio_analyse_buchung.
+ * Wird nach jedem Scan einmal aufgerufen.
+ */
+export async function aktualisiereKaufhistorieCache(isins: string[]): Promise<void> {
+  if (!istKonfiguriert() || isins.length === 0) return
+  try {
+    // Buchungen für alle Whitelist-ISINs laden
+    const { data, error } = await admin()
+      .from('portfolio_analyse_buchung')
+      .select('isin, datum, kurs_eur, anzahl, typ')
+      .in('isin', isins)
+      .in('typ', ['kauf', 'sparplan'])
+      .order('datum', { ascending: false })
+
+    if (error || !data) return
+
+    type BuchungsZeile = { isin: string; datum: string; kurs_eur: number | null; anzahl: number | null; typ: string }
+    const buchungen = data as BuchungsZeile[]
+
+    // Gruppierung nach ISIN
+    const gruppenMap = new Map<string, BuchungsZeile[]>()
+    for (const b of buchungen) {
+      const isin = b.isin?.toUpperCase()
+      if (!isin) continue
+      const arr = gruppenMap.get(isin) ?? []
+      arr.push(b)
+      gruppenMap.set(isin, arr)
+    }
+
+    // Isin → Ticker mapping aus Whitelist-ISINs nicht direkt verfügbar hier
+    // → Cache mit ISIN als Key, Ticker wird nachgelagert gemapped
+    const zeilen: Array<Record<string, unknown>> = []
+    for (const [isin, gruppe] of gruppenMap) {
+      const sorted = gruppe.sort((a, b) => b.datum.localeCompare(a.datum))
+      const letzterKauf = sorted[0]!
+      const anzahl = gruppe.length
+
+      // Durchschnittskaufpreis: gewichtetes Mittel
+      let gesamtKosten = 0
+      let gesamtAnteile = 0
+      for (const b of gruppe) {
+        if (b.kurs_eur != null && b.anzahl != null && b.kurs_eur > 0 && b.anzahl > 0) {
+          gesamtKosten += b.kurs_eur * b.anzahl
+          gesamtAnteile += b.anzahl
+        }
+      }
+      const durchschnitt = gesamtAnteile > 0 ? gesamtKosten / gesamtAnteile : null
+
+      // Ticker für ISIN nachschlagen (lazy — wir nutzen den ISIN selbst als Fallback)
+      zeilen.push({
+        ticker: isin, // wird im UI durch ISIN-Lookup ergänzt
+        isin,
+        letzter_kauf_am: letzterKauf.datum,
+        anzahl_kaeufe: anzahl,
+        avg_kaufpreis_eur: durchschnitt,
+        aktualisiert_am: new Date().toISOString(),
+      })
+    }
+
+    if (zeilen.length > 0) {
+      await admin().from(TABLE_KAUFHIST).upsert(zeilen, { onConflict: 'ticker' })
+    }
+  } catch (e) {
+    console.warn('[kaufhistorie-cache] Aktualisierung fehlgeschlagen:', e)
+  }
+}
+
+/** Reichert Scan-Einträge mit Kaufhistorie und Notizen an (In-place). */
+export async function ergaenzeKaufhistorieUndNotizen(eintraege: NachkaufScanEintrag[]): Promise<void> {
+  const [kaufMap, notizMap] = await Promise.all([ladeKaufhistorie(), ladeNotizen()])
+  for (const e of eintraege) {
+    const hist = kaufMap.get(e.ticker.toUpperCase()) ?? kaufMap.get(e.isin.toUpperCase())
+    if (hist) {
+      e.kaufhistorie = hist
+    }
+    const notiz = notizMap.get(e.ticker.toUpperCase())
+    if (notiz) e.notiz = notiz
   }
 }

@@ -16,6 +16,8 @@
     "db:investment-portfolio": "node scripts/apply-investment-portfolio-schema.cjs",
     "db:portfolio-analyse": "node scripts/apply-portfolio-analyse-schema.cjs",
     "db:nachkauf-radar": "node scripts/apply-nachkauf-radar-schema.cjs",
+    "db:nachkauf-verlauf": "node scripts/apply-nachkauf-verlauf-schema.cjs",
+    "db:nachkauf-erweitern": "node scripts/apply-nachkauf-radar-erweitern.cjs",
     "cap:sync": "cap sync android",
     "cap:open": "cap open android",
     "omnia:keystore": "node scripts/ensure-omnia-keystore.mjs",
