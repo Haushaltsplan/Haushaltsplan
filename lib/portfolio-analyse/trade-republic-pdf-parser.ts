@@ -317,39 +317,44 @@ function parseDividendenAbrechnung(alleTexte: string[]): TrRawCashZeile[] {
   if (!/\bDIVIDENDE\b/i.test(joined)) return []
   if (/WERTPAPIERABRECHNUNG/i.test(joined)) return []
 
-  // ISIN: Suche mit Word-Boundary damit BRUNNENSTRASSE etc. nicht matchen.
-  // Bevorzuge Suche im ÜBERSICHT/POSITION-Block — dort steht die echte ISIN.
-  const uebersichtIdx = alleTexte.findIndex((t) => /^ÜBERSICHT$|^OVERVIEW$/i.test(t.trim()))
-  const abrechnungSuchIdx = alleTexte.findIndex((t) => t.trim() === 'ABRECHNUNG')
-  const isinSuchStart = uebersichtIdx >= 0 ? uebersichtIdx : 0
-  const isinSuchEnd = abrechnungSuchIdx >= 0 ? abrechnungSuchIdx : alleTexte.length
+  // Arbeite direkt auf dem ÜBERSICHT-Block des joined-Textes.
+  // pdfjs-dist splittet Tabellenzeilen oft auf verschiedene Y-Koordinaten auf,
+  // daher ist Zeilenindex-Navigation in alleTexte unzuverlässig.
+  const uebersichtStart = joined.search(/ÜBERSICHT|OVERVIEW/i)
+  const abrechnungStart = joined.search(/\bABRECHNUNG\b/)
+  const uebersichtBlock = joined.slice(
+    uebersichtStart >= 0 ? uebersichtStart : 0,
+    abrechnungStart >= 0 ? abrechnungStart : joined.length,
+  )
 
-  let isin: string | undefined = undefined
-  for (let i = isinSuchStart; i < isinSuchEnd; i++) {
-    const m = alleTexte[i]?.match(/\b([A-Z]{2}[A-Z0-9]{10})\b/)
-    if (m) { isin = m[1]; break }
-  }
-  // Fallback: gesamtes Dokument mit Word-Boundary
-  if (!isin) {
-    const m = joined.match(/\b([A-Z]{2}[A-Z0-9]{10})\b/)
-    if (m) isin = m[1]
-  }
+  // ISIN: Word-Boundary verhindert False Matches wie "BRUNNENSTRA" aus "BRUNNENSTRASSE"
+  const isinMatch = uebersichtBlock.match(/\b([A-Z]{2}[A-Z0-9]{10})\b/)
+  const isin = isinMatch?.[1]
+    ?? joined.match(/\b([A-Z]{2}[A-Z0-9]{10})\b/)?.[1]
 
+  // Firmenname: letzte Zeile VOR der ISIN im ÜBERSICHT-Block die wie ein Firmenname aussieht
+  // (kein reiner Zahlen-/Header-String, Länge 2–80)
   let name = ''
-  const isinLineIdx = alleTexte.findIndex((t) => isin != null && t.includes(isin))
-  if (isinLineIdx > 0) {
-    const prev = alleTexte[isinLineIdx - 1]?.trim() ?? ''
-    if (prev && !/^(POSITION|ANZAHL|ERTRAG|BETRAG|GESAMT|ABRECHNUNG|BUCHUNG|DEPOT)/i.test(prev)) {
-      name = prev
+  if (isin) {
+    const beforeIsin = uebersichtBlock.slice(0, uebersichtBlock.indexOf(isin))
+    const candidateLines = beforeIsin.split('\n').map((s) => s.trim()).filter(Boolean)
+    for (let i = candidateLines.length - 1; i >= 0; i--) {
+      const line = candidateLines[i] ?? ''
+      if (line.length < 2 || line.length > 80) continue
+      if (/^(POSITION|ANZAHL|ERTRAG|BETRAG|GESAMT|ÜBERSICHT|DIVIDENDE|OVERVIEW)/i.test(line)) continue
+      if (/^\d/.test(line)) continue
+      if (/\d{5,}/.test(line)) continue
+      name = line
+      break
     }
   }
 
+  // Stücke: aus dem ÜBERSICHT-Block, Zeile die ISIN enthält oder Zeile mit "Stücke"
   let stueck: number | null = null
-  if (isinLineIdx >= 0) {
-    const stueckMatch = (alleTexte[isinLineIdx] ?? '').match(/(\d+(?:\.\d+)?)\s*Stücke?/i)
-    if (stueckMatch) stueck = parseFloat(stueckMatch[1])
-  }
+  const stueckMatch = uebersichtBlock.match(/(\d+(?:\.\d+)?)\s*Stücke?/i)
+  if (stueckMatch) stueck = parseFloat(stueckMatch[1])
 
+  // Datum: aus BUCHUNG-Block
   let datum: string | null = null
   const buchungIdx = alleTexte.findIndex((t) => t.trim() === 'BUCHUNG')
   if (buchungIdx >= 0) {
@@ -364,18 +369,23 @@ function parseDividendenAbrechnung(alleTexte: string[]): TrRawCashZeile[] {
   }
   if (!datum) return []
 
+  // EUR-Nettobetrag aus ABRECHNUNG-Block
   let betragEur: number | null = null
-  const abrechnungEnd = buchungIdx >= 0 ? buchungIdx : alleTexte.length
+  const abrechnungBlock = abrechnungStart >= 0
+    ? joined.slice(abrechnungStart, buchungIdx >= 0
+        ? joined.indexOf('BUCHUNG', abrechnungStart)
+        : joined.length)
+    : ''
 
-  if (abrechnungSuchIdx >= 0) {
-    for (let i = abrechnungSuchIdx; i < abrechnungEnd; i++) {
-      const line = alleTexte[i]?.trim() ?? ''
-      const gestMatch = line.match(/^GESAMT\s+(\d+(?:\.\d+)?)\s*EUR$/i)
-      if (gestMatch) { betragEur = parseFloat(gestMatch[1]); break }
-      const zwMatch = line.match(/Zwischensumme\s+[\d.]+\s*USD\/EUR\s+(\d+(?:\.\d+)?)\s*EUR/i)
-      if (zwMatch) betragEur = parseFloat(zwMatch[1])
-    }
+  // "GESAMT 3.91 EUR"
+  const gestMatch = abrechnungBlock.match(/\bGESAMT\s+(\d+(?:\.\d+)?)\s*EUR\b/i)
+  if (gestMatch) betragEur = parseFloat(gestMatch[1])
+  // "Zwischensumme 1.1644 USD/EUR 3.91 EUR"
+  if (betragEur == null) {
+    const zwMatch = abrechnungBlock.match(/Zwischensumme\s+[\d.]+\s*USD\/EUR\s+(\d+(?:\.\d+)?)\s*EUR/i)
+    if (zwMatch) betragEur = parseFloat(zwMatch[1])
   }
+  // Fallback: EUR-Betrag in BUCHUNG-Zeile "DE... 01.06.2026 3.91 EUR"
   if (betragEur == null && buchungIdx >= 0) {
     for (let i = buchungIdx + 1; i < Math.min(buchungIdx + 6, alleTexte.length); i++) {
       const m = alleTexte[i]?.match(/(\d+(?:[.,]\d+)?)\s*EUR/i)
