@@ -344,6 +344,9 @@ function parseDividendenAbrechnung(alleTexte: string[]): TrRawCashZeile[] {
       if (/^(POSITION|ANZAHL|ERTRAG|BETRAG|GESAMT|ÜBERSICHT|DIVIDENDE|OVERVIEW)/i.test(line)) continue
       if (/^\d/.test(line)) continue
       if (/\d{5,}/.test(line)) continue
+      // Zeilen mit Dezimalzahlen (0.67, 5.36) oder Währungscodes sind keine Firmennamen
+      if (/\d+[.,]\d+/.test(line)) continue
+      if (/\b(USD|EUR|GBP|CHF|JPY|CNY)\b/.test(line)) continue
       name = line
       break
     }
