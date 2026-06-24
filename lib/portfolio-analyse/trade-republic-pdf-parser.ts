@@ -317,8 +317,23 @@ function parseDividendenAbrechnung(alleTexte: string[]): TrRawCashZeile[] {
   if (!/\bDIVIDENDE\b/i.test(joined)) return []
   if (/WERTPAPIERABRECHNUNG/i.test(joined)) return []
 
-  const isinMatch = joined.match(/([A-Z]{2}[A-Z0-9]{10})/)
-  const isin = isinMatch?.[1]
+  // ISIN: Suche mit Word-Boundary damit BRUNNENSTRASSE etc. nicht matchen.
+  // Bevorzuge Suche im ÜBERSICHT/POSITION-Block — dort steht die echte ISIN.
+  const uebersichtIdx = alleTexte.findIndex((t) => /^ÜBERSICHT$|^OVERVIEW$/i.test(t.trim()))
+  const abrechnungSuchIdx = alleTexte.findIndex((t) => t.trim() === 'ABRECHNUNG')
+  const isinSuchStart = uebersichtIdx >= 0 ? uebersichtIdx : 0
+  const isinSuchEnd = abrechnungSuchIdx >= 0 ? abrechnungSuchIdx : alleTexte.length
+
+  let isin: string | undefined = undefined
+  for (let i = isinSuchStart; i < isinSuchEnd; i++) {
+    const m = alleTexte[i]?.match(/\b([A-Z]{2}[A-Z0-9]{10})\b/)
+    if (m) { isin = m[1]; break }
+  }
+  // Fallback: gesamtes Dokument mit Word-Boundary
+  if (!isin) {
+    const m = joined.match(/\b([A-Z]{2}[A-Z0-9]{10})\b/)
+    if (m) isin = m[1]
+  }
 
   let name = ''
   const isinLineIdx = alleTexte.findIndex((t) => isin != null && t.includes(isin))
@@ -350,11 +365,10 @@ function parseDividendenAbrechnung(alleTexte: string[]): TrRawCashZeile[] {
   if (!datum) return []
 
   let betragEur: number | null = null
-  const abrechnungIdx = alleTexte.findIndex((t) => t.trim() === 'ABRECHNUNG')
   const abrechnungEnd = buchungIdx >= 0 ? buchungIdx : alleTexte.length
 
-  if (abrechnungIdx >= 0) {
-    for (let i = abrechnungIdx; i < abrechnungEnd; i++) {
+  if (abrechnungSuchIdx >= 0) {
+    for (let i = abrechnungSuchIdx; i < abrechnungEnd; i++) {
       const line = alleTexte[i]?.trim() ?? ''
       const gestMatch = line.match(/^GESAMT\s+(\d+(?:\.\d+)?)\s*EUR$/i)
       if (gestMatch) { betragEur = parseFloat(gestMatch[1]); break }
