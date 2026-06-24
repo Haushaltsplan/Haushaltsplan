@@ -1,4 +1,4 @@
-import { parseDeDatumZuIso, parseEuropeanNumber } from '@/lib/portfolio-analyse/parse-hilfen'
+﻿import { parseDeDatumZuIso, parseEuropeanNumber } from '@/lib/portfolio-analyse/parse-hilfen'
 
 export type TrRawCashZeile = {
   datum: string
@@ -295,6 +295,102 @@ function formatEuroBetrag(n: number): string {
   return n.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 
+/**
+ * Parst einen Betrag der entweder US-Notation (3.91) oder DE-Notation (3,91) haben kann.
+ * Dividenden-PDFs von Trade Republic nutzen US-Notation fuer USD/EUR-Betraege auf Seite 1.
+ */
+function parseFlexiblerBetrag(raw: string): number | null {
+  const s = raw.replace(/\s/g, '').trim()
+  if (!s) return null
+  if (s.includes(',')) return parseEuropeanNumber(s)
+  const n = parseFloat(s)
+  return isFinite(n) ? n : null
+}
+
+/**
+ * Einzel-PDF „Dividendenabrechnung“ (Trade Republic).
+ * Erwartet den kombinierten Text ALLER Seiten (damit Steuern von Seite 2 einbezogen werden).
+ */
+function parseDividendenAbrechnung(alleTexte: string[]): TrRawCashZeile[] {
+  const joined = alleTexte.join('\n')
+
+  if (!/\bDIVIDENDE\b/i.test(joined)) return []
+  if (/WERTPAPIERABRECHNUNG/i.test(joined)) return []
+
+  const isinMatch = joined.match(/([A-Z]{2}[A-Z0-9]{10})/)
+  const isin = isinMatch?.[1]
+
+  let name = ''
+  const isinLineIdx = alleTexte.findIndex((t) => isin != null && t.includes(isin))
+  if (isinLineIdx > 0) {
+    const prev = alleTexte[isinLineIdx - 1]?.trim() ?? ''
+    if (prev && !/^(POSITION|ANZAHL|ERTRAG|BETRAG|GESAMT|ABRECHNUNG|BUCHUNG|DEPOT)/i.test(prev)) {
+      name = prev
+    }
+  }
+
+  let stueck: number | null = null
+  if (isinLineIdx >= 0) {
+    const stueckMatch = (alleTexte[isinLineIdx] ?? '').match(/(\d+(?:\.\d+)?)\s*Stücke?/i)
+    if (stueckMatch) stueck = parseFloat(stueckMatch[1])
+  }
+
+  let datum: string | null = null
+  const buchungIdx = alleTexte.findIndex((t) => t.trim() === 'BUCHUNG')
+  if (buchungIdx >= 0) {
+    for (let i = buchungIdx + 1; i < Math.min(buchungIdx + 8, alleTexte.length); i++) {
+      const m = alleTexte[i]?.match(/(\d{2}\.\d{2}\.\d{4})/)
+      if (m) { datum = parseDeDatumZuIso(m[1]); break }
+    }
+  }
+  if (!datum) {
+    const m = joined.match(/DATUM\s+(\d{2}\.\d{2}\.\d{4})/)
+    if (m) datum = parseDeDatumZuIso(m[1])
+  }
+  if (!datum) return []
+
+  let betragEur: number | null = null
+  const abrechnungIdx = alleTexte.findIndex((t) => t.trim() === 'ABRECHNUNG')
+  const abrechnungEnd = buchungIdx >= 0 ? buchungIdx : alleTexte.length
+
+  if (abrechnungIdx >= 0) {
+    for (let i = abrechnungIdx; i < abrechnungEnd; i++) {
+      const line = alleTexte[i]?.trim() ?? ''
+      const gestMatch = line.match(/^GESAMT\s+(\d+(?:\.\d+)?)\s*EUR$/i)
+      if (gestMatch) { betragEur = parseFloat(gestMatch[1]); break }
+      const zwMatch = line.match(/Zwischensumme\s+[\d.]+\s*USD\/EUR\s+(\d+(?:\.\d+)?)\s*EUR/i)
+      if (zwMatch) betragEur = parseFloat(zwMatch[1])
+    }
+  }
+  if (betragEur == null && buchungIdx >= 0) {
+    for (let i = buchungIdx + 1; i < Math.min(buchungIdx + 6, alleTexte.length); i++) {
+      const m = alleTexte[i]?.match(/(\d+(?:[.,]\d+)?)\s*EUR/i)
+      if (m) { betragEur = parseFlexiblerBetrag(m[1]); break }
+    }
+  }
+
+  if (betragEur == null || betragEur <= 0) return []
+
+  let steuerEur: number | null = null
+  const steuernMatch = joined.match(/GESAMTE\s+STEUERN\s+(\d+(?:[.,]\d+)?)\s*EUR/i)
+  if (steuernMatch) steuerEur = parseFlexiblerBetrag(steuernMatch[1])
+
+  return [{
+    datum,
+    typ: 'Dividende',
+    beschreibung: [
+      name,
+      isin ? ('ISIN: ' + isin) : '',
+      (stueck != null && stueck > 0) ? (stueck + ' Stk.') : '',
+    ].filter(Boolean).join(' '),
+    zahlungseingang: formatEuroBetrag(betragEur),
+    zahlungsausgang: '',
+    saldo: '',
+    isin,
+    stueck: stueck ?? undefined,
+    steuerEur: steuerEur ?? undefined,
+  }]
+}
 /** Einzel-PDF „Wertpapierabrechnung“ (Kauf/Verkauf) — nicht Kontoauszug. */
 function parseWertpapierabrechnung(items: PdfTextItem[]): TrRawCashZeile[] {
   const lines = groupItemsIntoLines(items.filter((it) => it.y > FOOTER_BOTTOM_BAND), 3)
@@ -387,6 +483,7 @@ async function parsePdfDocument(pdf: import('pdfjs-dist').PDFDocumentProxy): Pro
   let portfolioBoundaries: PortfolioColumnBoundaries | null = null
   let isParsingCash = false
   let isParsingPortfolio = false
+  const allPageLines: string[] = []
 
   for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
     const page = await pdf.getPage(pageNum)
@@ -404,6 +501,8 @@ async function parsePdfDocument(pdf: import('pdfjs-dist').PDFDocumentProxy): Pro
         }
       })
     pageItems = pageItems.filter((it) => it.y > FOOTER_BOTTOM_BAND)
+    const pageLines = groupItemsIntoLines(pageItems, 3).map((l) => l.text)
+    allPageLines.push(...pageLines)
 
     const cashStart = pageItems.find((i) => ['UMSATZÜBERSICHT', 'ACCOUNT TRANSACTIONS'].includes(i.text.trim()))
     const cashEnd = pageItems.find((i) =>
@@ -445,6 +544,11 @@ async function parsePdfDocument(pdf: import('pdfjs-dist').PDFDocumentProxy): Pro
     }
   }
 
+
+  // Dividenden-Einzelabrechnung (separate TR-PDF)
+  if (allPageLines.some((t) => /\bDIVIDENDE\b/i.test(t)) && !allPageLines.some((t) => /WERTPAPIERABRECHNUNG/i.test(t))) {
+    allCash = allCash.concat(parseDividendenAbrechnung(allPageLines))
+  }
   return { cash: allCash, portfolio: allPortfolio, crypto: [] }
 }
 
