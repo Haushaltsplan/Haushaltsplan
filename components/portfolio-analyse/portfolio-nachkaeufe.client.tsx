@@ -849,6 +849,9 @@ export function NachkaufRadarClient() {
   const [sortKey, setSortKey] = useState<SortKey>('score')
   const [notizEdit, setNotizEdit] = useState<{ ticker: string; text: string } | null>(null)
   const [notizSpeichern, setNotizSpeichern] = useState(false)
+  const [kaufempfehlungLaeuft, setKaufempfehlungLaeuft] = useState(false)
+  const [kaufempfehlungText, setKaufempfehlungText] = useState<string | null>(null)
+  const [kaufempfehlungAllokation, setKaufempfehlungAllokation] = useState<SparplanPosten[]>([])
   const scanRef = useRef(false)
 
   // Gespeicherte Ergebnisse beim Start laden
@@ -868,6 +871,15 @@ export function NachkaufRadarClient() {
             setSelectedTicker(paket.ergebnisse[0]?.ticker ?? null)
           }
         }
+        // Gespeicherte Kaufempfehlung für aktuellen Monat laden
+        const empRes = await fetch('/api/portfolio-analyse/nachkaeufe/kaufempfehlung')
+        if (empRes.ok) {
+          const { daten } = await empRes.json()
+          if (daten?.ki_text) {
+            setKaufempfehlungText(daten.ki_text)
+            setKaufempfehlungAllokation(daten.basis_allokation ?? [])
+          }
+        }
       } catch {
         // ignorieren — leerer Zustand wird angezeigt
       } finally {
@@ -876,6 +888,25 @@ export function NachkaufRadarClient() {
     }
     void init()
   }, [])
+
+  async function starteKaufempfehlung() {
+    setKaufempfehlungLaeuft(true)
+    setKaufempfehlungText(null)
+    try {
+      const res = await fetch('/api/portfolio-analyse/nachkaeufe/kaufempfehlung', { method: 'POST' })
+      const daten = await res.json()
+      if (!res.ok || !daten.ok) {
+        setKaufempfehlungText(`Fehler: ${daten.fehler ?? 'Unbekannter Fehler'}`)
+        return
+      }
+      setKaufempfehlungText(daten.kiEmpfehlungText)
+      setKaufempfehlungAllokation(daten.basisAllokation ?? [])
+    } catch (e) {
+      setKaufempfehlungText(`Fehler: ${e instanceof Error ? e.message : String(e)}`)
+    } finally {
+      setKaufempfehlungLaeuft(false)
+    }
+  }
 
   // Scan starten
   const starteNeuenScan = useCallback(async (erzwingen = true) => {
@@ -1175,6 +1206,76 @@ export function NachkaufRadarClient() {
         {/* Monatliche Empfehlung */}
         {monatsEmpfehlung && !scanLaeuft && (
           <MonatsEmpfehlungBanner emp={monatsEmpfehlung} />
+        )}
+
+        {/* KI-Kaufempfehlung mit Deep Research */}
+        {ergebnisse.length > 0 && !scanLaeuft && (
+          <div className="rounded-2xl border border-violet-500/20 bg-gradient-to-br from-violet-950/50 to-zinc-950/80 p-5">
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex items-start gap-3">
+                <span className="mt-0.5 text-xl" role="img" aria-hidden>🤖</span>
+                <div>
+                  <p className="text-sm font-semibold text-violet-300">Kaufempfehlung (KI + Deep Research)</p>
+                  <p className="mt-0.5 text-xs text-zinc-500">
+                    Gemini analysiert alle Positionen mit Score ≥ 90 + Deep Research und verteilt das 500 € Budget.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={starteKaufempfehlung}
+                disabled={kaufempfehlungLaeuft}
+                className="shrink-0 rounded-xl bg-violet-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-violet-500 disabled:opacity-50 transition-colors"
+              >
+                {kaufempfehlungLaeuft ? 'Analysiere…' : kaufempfehlungText ? 'Neu generieren' : 'Empfehlung generieren'}
+              </button>
+            </div>
+
+            {kaufempfehlungLaeuft && (
+              <div className="mt-4 flex items-center gap-2 text-xs text-zinc-500">
+                <span className="inline-block h-3 w-3 animate-spin rounded-full border border-violet-400 border-t-transparent" />
+                Gemini liest die Deep Research Memos… (30–90 Sek.)
+              </div>
+            )}
+
+            {kaufempfehlungText && !kaufempfehlungLaeuft && (
+              <div className="mt-4 space-y-3">
+                {kaufempfehlungAllokation.length > 0 && (
+                  <div className="rounded-xl border border-violet-500/15 bg-violet-950/20 p-3">
+                    <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-violet-400">
+                      Regelbasierte Basis-Allokation
+                    </p>
+                    <div className="space-y-1.5">
+                      {kaufempfehlungAllokation.map((p) => {
+                        const gesamt = kaufempfehlungAllokation.reduce((s, x) => s + x.betragEur, 0)
+                        return (
+                          <div key={p.ticker} className="flex items-center justify-between gap-2">
+                            <div className="flex items-center gap-2">
+                              <div
+                                className="h-1.5 rounded-full bg-violet-500/60"
+                                style={{ width: `${Math.round((p.betragEur / gesamt) * 72)}px` }}
+                              />
+                              <span className="text-[11px] text-zinc-300">{p.name}</span>
+                              <span className="text-[10px] text-zinc-600">{p.begruendung}</span>
+                            </div>
+                            <span className="text-[12px] font-bold tabular-nums text-violet-300">{p.betragEur} €</span>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )}
+                <div className="rounded-xl border border-white/5 bg-zinc-900/50 p-4">
+                  <p className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-violet-400">
+                    KI-Analyse & finale Empfehlung
+                  </p>
+                  <div className="whitespace-pre-wrap text-xs leading-relaxed text-zinc-300">
+                    {kaufempfehlungText}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
         )}
 
         {/* Filter- und Sort-Leiste */}
