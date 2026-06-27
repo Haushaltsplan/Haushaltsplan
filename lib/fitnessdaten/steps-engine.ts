@@ -89,3 +89,25 @@ export function schritteHeuteAusDaily(): number {
   const heute = heuteIsoLocal()
   return ladeDailyStore().days.find((d) => d.date === heute)?.steps ?? 0
 }
+
+/**
+ * Migration: Löscht alle Schritte aus Tagen ohne BFF-Datenstempel.
+ * Historische Schätz-Werte (aus der alten schaetzeSchritteAusStrain-Logik)
+ * werden so entfernt — nur BFF-verifizierte Daten bleiben.
+ */
+export function migriereStalenSchritteAusDaily(): void {
+  if (typeof window === 'undefined') return
+  const store = ladeDailyStore()
+  const heute = heuteIsoLocal()
+  let changed = false
+  for (const d of store.days) {
+    // Heute: Schätz-Schritte erlaubt (werden live aktualisiert)
+    if (d.date === heute) continue
+    // Vergangene Tage: nur BFF-verifizierte Schritte behalten
+    if (!d.bffMetrics && d.steps != null) {
+      d.steps = null
+      changed = true
+    }
+  }
+  if (changed) speichereDailyStore(store)
+}

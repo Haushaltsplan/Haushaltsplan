@@ -75,6 +75,31 @@ export function speichereVo2Trends(store: Vo2TrendsStore): void {
   window.localStorage.setItem(WHOOP_VO2_TRENDS_KEY, JSON.stringify({ ...store, version: 1 }))
 }
 
+/**
+ * Migration: Löscht alle VO2max-Werte aus Tagesrecords, die nur Schätzungen waren
+ * (= von spiegeleVo2AufTagesrecords gesetzt, bevor wir die Trennung eingeführt haben).
+ * Nur nötig solange kein Cloud-Wert vorhanden.
+ */
+export function migriereStalenVo2AusDaily(): void {
+  if (typeof window === 'undefined') return
+  const trendsStore = ladeVo2Trends()
+  // Migration ist nur nötig wenn kein bestätigter Cloud/Manuell-Wert vorliegt
+  if (trendsStore.quelle === 'cloud' || trendsStore.quelle === 'manuell') return
+
+  const daily = ladeDailyStore()
+  let changed = false
+  for (const d of daily.days) {
+    // Tage mit BFF-Daten behalten ihren vo2Max (der kam aus dem BFF-Tages-Trend)
+    // Tage ohne BFF-Daten hatten nur gespiegelte Schätzungen → löschen
+    if (!d.bffMetrics && d.vo2Max != null) {
+      d.vo2Max = null
+      changed = true
+    }
+  }
+  if (changed) speichereDailyStore(daily)
+}
+}
+
 /** Nur aufrufen wenn Cloud Sync fehlschlägt und Nutzer manuell eingreift. */
 export function setzeVo2MaxManuell(wert: number | null): Vo2TrendsStore {
   const s = ladeVo2Trends()
@@ -120,14 +145,28 @@ function tageMitRecovery(days: WhoopDayRecord[]): WhoopDayRecord[] {
   return days.filter((d) => d.restingHr != null && d.restingHr > 0)
 }
 
+/**
+ * Max-HF: 90. Perzentil aus Workout-Daten + Tagesmax — filtert Einzel-Spikes heraus.
+ * WHOOP nutzt ebenfalls einen geglätteten Peak, nicht das absolute Maximum.
+ */
 function maxHrAusDaten(days: WhoopDayRecord[], profilMax: number): number {
   const store = ladeDailyStore()
-  const workoutMax = store.activities
-    .map((a) => a.maxHr)
-    .filter((v): v is number => v != null && v > 0)
-  const tagesMax = days.map((d) => d.maxHr).filter((v): v is number => v != null && v > 0)
-  const peak = Math.max(0, ...workoutMax, ...tagesMax, profilMax)
-  return peak > 0 ? peak : profilMax
+  const allMax = [
+    ...store.activities.map((a) => a.maxHr).filter((v): v is number => v != null && v > 150),
+    ...days.map((d) => d.maxHr).filter((v): v is number => v != null && v > 150),
+  ].sort((a, b) => a - b)
+
+  if (allMax.length === 0) return profilMax
+
+  // 90. Perzentil: filtert Einzel-Spikes und untypische Ausreißer heraus
+  const p90Idx = Math.floor(allMax.length * 0.9)
+  const p90 = allMax[Math.min(p90Idx, allMax.length - 1)]!
+
+  // Profil-Override hat Vorrang (Nutzer kennt seine echte Max-HF)
+  if (profilMax >= 150 && profilMax <= 220) {
+    return Math.min(profilMax, p90 > profilMax ? profilMax : p90)
+  }
+  return p90
 }
 
 /**
@@ -158,10 +197,12 @@ export function berechneVo2MaxLangfristig(days = ladeDailyStore().days): number 
   }
 
   const rhrVals = mitRecovery.map((d) => d.restingHr!)
+  /**
+   * WHOOP "Ruheherzfrequenz" = 30-Tage-Ø der nächtlichen Minimalwerte.
+   * Kein Blend mit Absolutminimum — das würde RHR künstlich senken und VO₂max aufblasen.
+   */
   const rhrAvg = mittelwert(rhrVals)!
-  const rhrMin = Math.min(...rhrVals)
-  /** WHOOP nutzt nächtliche Tiefstwerte stärker als Tagesmittel. */
-  const rhr30 = Math.round(rhrMin * 0.55 + rhrAvg * 0.45)
+  const rhr30 = Math.round(rhrAvg)
   if (rhr30 < 35) return null
 
   const mhr = maxHrAusDaten(fenster, profilMhr)

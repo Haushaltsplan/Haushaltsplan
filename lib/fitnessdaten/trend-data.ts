@@ -123,12 +123,9 @@ export function trendInsight(
 
 export function heuteWert(metricId: HomeMetricId, heute: WhoopDayRecord): number | null {
   if (metricId === 'vo2max') {
-    // Nur bestätigte Werte zeigen (cloud oder manuell), nie lokale Schätzung
-    const v = aktuellesVo2Max()
-    if (v != null && v > 0) return v
-    // Auch BFF-Tageswert nutzen, falls vorhanden
-    if (heute.vo2Max != null && heute.vo2Max > 0) return heute.vo2Max
-    return null // → zeigt "—" im Dashboard mit Hinweis "Cloud Sync erforderlich"
+    // NUR bestätigte Werte zeigen (cloud oder manuell).
+    // heute.vo2Max NICHT als Fallback — könnte stale Schätz-Daten aus localStorage enthalten.
+    return aktuellesVo2Max()
   }
   const v = wertFuerMetrik(heute, metricId)
   return v > 0 ? v : null

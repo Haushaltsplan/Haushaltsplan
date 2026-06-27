@@ -189,8 +189,15 @@ export function baueHealthspanModel(heute: WhoopDayRecord): HealthspanModel {
   })
 
   const totalImpact = metrics.reduce((a, m) => a + m.impactYears, 0)
+  /**
+   * WHOOP Age: keine harte Deckelung auf ±8 Jahre — WHOOP-Formel erlaubt bis zu
+   * ~15 Jahre jünger (Top-Athleten). Realistischer Bereich: age ± 15 Jahre.
+   * Minimales Alter: 18 (biologisch sinnvoll).
+   */
   const whoopAge =
-    metrics.length > 0 ? Math.round(Math.min(age + 5, Math.max(age - 8, age - totalImpact)) * 10) / 10 : null
+    metrics.length > 0
+      ? Math.round(Math.max(18, Math.min(age + 10, age - totalImpact)) * 10) / 10
+      : null
   const yearsYounger = whoopAge != null ? Math.round((age - whoopAge) * 10) / 10 : null
 
   const recoveryAvg = baseline30('recoveryPercent') ?? 65

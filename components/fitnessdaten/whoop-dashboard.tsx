@@ -59,7 +59,8 @@ import toast from 'react-hot-toast'
 import { useWhoopBle } from '@/components/fitnessdaten/whoop-ble-provider'
 import { setzeWhoopBleAlwaysOn } from '@/lib/fitnessdaten/whoop-ble-keepalive'
 import { syncWhoopCloudVomServer, WHOOP_CLOUD_SYNC_EVENT } from '@/lib/fitnessdaten/whoop-cloud-merge'
-import { vo2MaxQuelle } from '@/lib/fitnessdaten/vo2max-engine'
+import { migriereStalenVo2AusDaily, vo2MaxQuelle } from '@/lib/fitnessdaten/vo2max-engine'
+import { migriereStalenSchritteAusDaily } from '@/lib/fitnessdaten/steps-engine'
 
 type Tab = 'home' | 'sleep' | 'recovery' | 'strain' | 'health' | 'connect'
 
@@ -136,6 +137,9 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange }: P
   const model = useMemo(() => baueWhoopDashboard(snapshot), [snapshot, dataRevision])
 
   useEffect(() => {
+    // Beim ersten Render: alte Schätz-Werte aus localStorage entfernen
+    migriereStalenVo2AusDaily()
+    migriereStalenSchritteAusDaily()
     const onSync = () => setDataRevision((r) => r + 1)
     window.addEventListener(WHOOP_CLOUD_SYNC_EVENT, onSync)
     return () => window.removeEventListener(WHOOP_CLOUD_SYNC_EVENT, onSync)
@@ -485,6 +489,49 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange }: P
                       <span className="text-zinc-600">›</span>
                     </button>
                   ) : null}
+
+                  {/* Schlaf als Aktivität — wie in der echten WHOOP-App */}
+                  {heute.sleepMinutes != null && heute.sleepMinutes > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setTab('sleep')}
+                      className="mt-2 flex w-full items-center gap-3 rounded-2xl border border-[#00E5FF]/20 bg-[#00E5FF]/[0.04] px-3.5 py-3 text-left transition active:scale-[0.98] hover:bg-[#00E5FF]/[0.07]"
+                    >
+                      {/* Schlaf-Icon mit Score-Ring */}
+                      <span className="relative flex h-12 w-12 shrink-0 items-center justify-center">
+                        <svg viewBox="0 0 48 48" className="absolute inset-0 h-full w-full -rotate-90">
+                          <circle cx="24" cy="24" r="20" fill="none" stroke="#00E5FF20" strokeWidth="3.5" />
+                          <circle
+                            cx="24" cy="24" r="20" fill="none"
+                            stroke="#00E5FF"
+                            strokeWidth="3.5"
+                            strokeLinecap="round"
+                            strokeDasharray={`${2 * Math.PI * 20}`}
+                            strokeDashoffset={`${2 * Math.PI * 20 * (1 - (heute.sleepScore ?? 0) / 100)}`}
+                          />
+                        </svg>
+                        <span className="text-lg">🌙</span>
+                      </span>
+                      <span className="flex-1">
+                        <span className="block text-[12px] font-bold uppercase text-white">Schlaf</span>
+                        <span className="text-[10px] text-zinc-400">
+                          {Math.floor(heute.sleepMinutes / 60)}h {heute.sleepMinutes % 60}m
+                          {heute.wakeTimeMs != null && heute.bedTimeMs != null && (
+                            <> · {new Date(heute.bedTimeMs).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })} – {new Date(heute.wakeTimeMs).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })}</>
+                          )}
+                        </span>
+                      </span>
+                      <div className="text-right">
+                        {heute.sleepScore != null && (
+                          <span className="block text-[18px] font-bold tabular-nums text-[#00E5FF]">
+                            {Math.round(heute.sleepScore)}%
+                          </span>
+                        )}
+                        <span className="text-[10px] text-zinc-600">Schlafleistung</span>
+                      </div>
+                      <span className="text-zinc-600">›</span>
+                    </button>
+                  )}
 
                   {/* Heutige Aktivitäten */}
                   {aktivitaeten.length > 0 && (
