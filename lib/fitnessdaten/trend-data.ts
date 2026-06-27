@@ -6,6 +6,7 @@ import {
   type WhoopDayRecord,
 } from '@/lib/fitnessdaten/daily-records'
 import { aktuellesVo2Max, ladeVo2Trends } from '@/lib/fitnessdaten/vo2max-engine'
+// aktuellesVo2Max gibt nur cloud/manuell zurück — keine Schätzungen für die UI
 import type { MetricInfoId } from '@/lib/fitnessdaten/metric-explanations'
 
 export type TrendZeitraum = 'woche' | 'monat' | '6monate'
@@ -122,9 +123,12 @@ export function trendInsight(
 
 export function heuteWert(metricId: HomeMetricId, heute: WhoopDayRecord): number | null {
   if (metricId === 'vo2max') {
-    if (heute.vo2Max != null && heute.vo2Max > 0) return heute.vo2Max
+    // Nur bestätigte Werte zeigen (cloud oder manuell), nie lokale Schätzung
     const v = aktuellesVo2Max()
-    return v != null && v > 0 ? v : null
+    if (v != null && v > 0) return v
+    // Auch BFF-Tageswert nutzen, falls vorhanden
+    if (heute.vo2Max != null && heute.vo2Max > 0) return heute.vo2Max
+    return null // → zeigt "—" im Dashboard mit Hinweis "Cloud Sync erforderlich"
   }
   const v = wertFuerMetrik(heute, metricId)
   return v > 0 ? v : null

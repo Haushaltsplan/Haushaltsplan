@@ -46,7 +46,7 @@ import {
   type HomeMetricId,
 } from '@/lib/fitnessdaten/trend-data'
 import type { WhoopActivity } from '@/lib/fitnessdaten/daily-records'
-import { baseline30 } from '@/lib/fitnessdaten/daily-records'
+import { baseline30, ladeDailyStore } from '@/lib/fitnessdaten/daily-records'
 import { zoneSegmenteAusTag } from '@/lib/fitnessdaten/healthspan-engine'
 import { formatStundenMin } from '@/lib/fitnessdaten/sleep-detail'
 import type { WhoopDayRecord } from '@/lib/fitnessdaten/daily-records'
@@ -59,6 +59,7 @@ import toast from 'react-hot-toast'
 import { useWhoopBle } from '@/components/fitnessdaten/whoop-ble-provider'
 import { setzeWhoopBleAlwaysOn } from '@/lib/fitnessdaten/whoop-ble-keepalive'
 import { syncWhoopCloudVomServer, WHOOP_CLOUD_SYNC_EVENT } from '@/lib/fitnessdaten/whoop-cloud-merge'
+import { vo2MaxQuelle } from '@/lib/fitnessdaten/vo2max-engine'
 
 type Tab = 'home' | 'sleep' | 'recovery' | 'strain' | 'health' | 'connect'
 
@@ -190,7 +191,7 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange }: P
         : 'Offline'
 
   const zoneAnteil = scores?.zoneMinutes ? formatZoneAnteil(scores.zoneMinutes) : []
-  const { heute, woche, metriken, aktivitaeten, aktivitaetenHistorie, journal, schlafdefizit } = model
+  const { heute, woche, metriken, aktivitaeten, aktivitaetenHistorie, journal, schlafdefizit, baselines } = model
 
   const tabs: { id: Tab; label: string; icon: string; color: string }[] = [
     { id: 'home', label: 'Home', icon: '◉', color: '#ffffff' },
@@ -230,44 +231,55 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange }: P
       <div
         className={`relative max-h-[calc(100dvh-4rem)] px-4 pb-28 pt-5 sm:px-6 sm:pt-6 ${appModalScrollHiddenClassName}`}
       >
-        <header className="flex items-start justify-between gap-3">
-          <div>
-            <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-zinc-500">WHOOP</p>
-            <h1 className="mt-1 text-lg font-semibold capitalize text-white sm:text-xl">{formatDatum()}</h1>
-            <p className="mt-0.5 text-xs text-zinc-500">
-              {snapshot?.deviceName ?? 'Nicht verbunden'}
-              {deviceInfo?.batteryPercent != null ? ` · ${deviceInfo.batteryPercent}% Akku` : ''}
-            </p>
+        <header className="flex items-center justify-between gap-2">
+          {/* Avatar + Streak */}
+          <button
+            type="button"
+            onClick={() => setTab('connect')}
+            className="flex shrink-0 items-center gap-2 rounded-full border border-white/[0.08] bg-white/[0.04] px-2 py-1.5 transition hover:bg-white/[0.08]"
+          >
+            <span className="flex h-7 w-7 items-center justify-center rounded-full bg-zinc-700 text-[11px] font-bold text-white">
+              {snapshot?.deviceName?.slice(0, 2).toUpperCase() ?? 'WP'}
+            </span>
+            {heute.strain != null && (
+              <>
+                <span className="text-sm">🔥</span>
+                <span className="text-[12px] font-bold text-white">{Math.round(heute.strain * 10)}</span>
+              </>
+            )}
+          </button>
+
+          {/* Datum-Navigation */}
+          <div className="flex items-center gap-1">
+            <span className="text-[11px] text-zinc-600">‹</span>
+            <span className="rounded-full border border-white/[0.10] bg-white/[0.04] px-3 py-1 text-[11px] font-bold uppercase tracking-wider text-white">
+              Heute
+            </span>
+            <span className="text-[11px] text-zinc-600">›</span>
           </div>
+
+          {/* Akku + Connect */}
           <button
             type="button"
             onClick={() => void onStatusTap()}
             disabled={statusBusy || isConnecting}
-            title={
+            className={`flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-1.5 text-[11px] font-semibold transition active:scale-[0.97] disabled:cursor-default disabled:opacity-70 ${
               isLive
-                ? 'Daten synchronisieren'
-                : isConnecting
-                  ? 'Verbindung läuft …'
-                  : 'Verbinden & synchronisieren'
-            }
-            className={`flex items-center gap-2 rounded-full border px-3 py-1.5 text-[11px] font-semibold transition active:scale-[0.97] disabled:cursor-default disabled:opacity-70 ${
-              isLive
-                ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/20'
+                ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300'
                 : isConnecting
                   ? 'border-amber-500/30 bg-amber-500/10 text-amber-200'
-                  : 'border-zinc-700/60 bg-zinc-900/80 text-zinc-400 hover:border-zinc-600 hover:bg-zinc-800/90 hover:text-zinc-200'
+                  : 'border-zinc-700/60 bg-zinc-900/80 text-zinc-400 hover:border-zinc-600 hover:text-zinc-200'
             }`}
           >
+            {deviceInfo?.batteryPercent != null && (
+              <span className="text-[10px] text-zinc-500">{deviceInfo.batteryPercent}%</span>
+            )}
             <span
-              className={`h-2 w-2 rounded-full ${
-                isLive || statusBusy
-                  ? 'animate-pulse bg-emerald-400'
-                  : isConnecting
-                    ? 'animate-pulse bg-amber-400'
-                    : 'bg-zinc-600'
+              className={`h-1.5 w-1.5 rounded-full ${
+                isLive || statusBusy ? 'animate-pulse bg-emerald-400' : isConnecting ? 'animate-pulse bg-amber-400' : 'bg-zinc-600'
               }`}
             />
-            {statusLabel}
+            <span>{statusLabel}</span>
           </button>
         </header>
 
@@ -279,166 +291,422 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange }: P
           onInfo={() => showInfo('sync')}
         />
 
-        {tab === 'home' && (
-          <>
-            <div className="mt-6 flex items-start justify-around gap-2">
-              <div
-                className="flex flex-col items-center"
-                style={{
-                  filter: heute.recoveryPercent != null ? `drop-shadow(0 0 12px ${recoveryColor(heute.recoveryPercent)}50)` : 'none',
-                }}
-              >
-                <WhoopRing
-                  value={heute.recoveryPercent ?? 0}
-                  label="Erholung"
-                  sublabel={recoveryLabelDe(scores?.recoveryLabel)}
-                  color={recoveryColor(heute.recoveryPercent)}
-                  unavailable={heute.recoveryPercent == null}
-                  onPress={() => setTab('recovery')}
-                />
-              </div>
-              <div
-                className="flex flex-col items-center"
-                style={{
-                  filter: heute.strain != null ? 'drop-shadow(0 0 12px #009dff50)' : 'none',
-                }}
-              >
-                <WhoopRing
-                  value={heute.strain ?? 0}
-                  max={21}
-                  label="Belastung"
-                  sublabel="Heute"
-                  color="#009dff"
-                  unavailable={heute.strain == null}
-                  onPress={() => setTab('strain')}
-                />
-              </div>
-              <div
-                className="flex flex-col items-center"
-                style={{
-                  filter: heute.sleepScore != null ? 'drop-shadow(0 0 12px #00E5FF50)' : 'none',
-                }}
-              >
-                <WhoopRing
-                  value={heute.sleepScore ?? 0}
-                  label="Schlaf"
-                  sublabel={
-                    heute.sleepMinutes ? `${Math.floor(heute.sleepMinutes / 60)}h ${heute.sleepMinutes % 60}m` : 'Nacht'
-                  }
-                  color="#00E5FF"
-                  unavailable={heute.sleepScore == null}
-                  onPress={() => setTab('sleep')}
-                />
-              </div>
-            </div>
+        {tab === 'home' && (() => {
+          const stress = berechneStressScore(heute.recoveryPercent, heute.hrvRmssd, baselines.hrv)
+          const vitals = vitalsStatus(heute)
+          const tageIso = letzte7TageIso()
+          const store = ladeDailyStore()
+          const journalDates = new Set(store.journal.map((j) => j.date))
+          const vo2Quelle = vo2MaxQuelle() // 'cloud' | 'manuell' | 'berechnet' | null
 
-            <section className="mt-6 space-y-4">
-              <div className="rounded-2xl border border-white/[0.06] bg-[#111113] p-4">
-                <button type="button" onClick={() => showInfo('behavior')} className="w-full text-left">
-                  <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">Verhaltenseinblicke</p>
-                  <p className="mt-2 text-xs leading-relaxed text-zinc-500">
-                    Verhaltenstags (Alkohol, Koffein …) kommen aus der WHOOP-Cloud — lokal nicht verfügbar. Tippe
-                    für Details.
-                  </p>
+          return (
+            <>
+              {/* ── DREI RINGE (Schlaf | Erholung | Belastung) ── */}
+              <div className="mt-5 flex items-center justify-around gap-1">
+                {/* Schlaf */}
+                <button
+                  type="button"
+                  onClick={() => setTab('sleep')}
+                  className="flex flex-col items-center gap-1.5 rounded-2xl px-1 transition active:scale-[0.97]"
+                  style={{ filter: heute.sleepScore != null ? 'drop-shadow(0 0 14px #00E5FF40)' : 'none' }}
+                >
+                  <div className="relative" style={{ width: 108, height: 108 }}>
+                    <svg width={108} height={108}>
+                      <circle cx={54} cy={54} r={47} fill="none" stroke="rgba(255,255,255,0.10)" strokeWidth={8} />
+                      {heute.sleepScore != null && (
+                        <circle
+                          cx={54} cy={54} r={47} fill="none"
+                          stroke="#00E5FF" strokeWidth={8}
+                          strokeDasharray={2 * Math.PI * 47}
+                          strokeDashoffset={2 * Math.PI * 47 * (1 - Math.min(1, heute.sleepScore / 100))}
+                          strokeLinecap="round"
+                          transform="rotate(-90 54 54)"
+                          style={{ filter: 'drop-shadow(0 0 6px #00E5FF80)' }}
+                        />
+                      )}
+                    </svg>
+                    <div className="absolute inset-0 flex flex-col items-center justify-center">
+                      <span className="text-[22px] font-bold tabular-nums text-white leading-none">
+                        {heute.sleepScore != null ? `${Math.round(heute.sleepScore)}%` : '—'}
+                      </span>
+                    </div>
+                  </div>
+                  <span className="flex items-center gap-1 text-[11px] font-bold uppercase tracking-[0.12em] text-[#00E5FF]">
+                    SCHLAF <span className="text-zinc-600">›</span>
+                  </span>
+                </button>
+
+                {/* Erholung */}
+                <button
+                  type="button"
+                  onClick={() => setTab('recovery')}
+                  className="flex flex-col items-center gap-1.5 rounded-2xl px-1 transition active:scale-[0.97]"
+                  style={{ filter: heute.recoveryPercent != null ? `drop-shadow(0 0 14px ${recoveryColor(heute.recoveryPercent)}40)` : 'none' }}
+                >
+                  <div className="relative" style={{ width: 108, height: 108 }}>
+                    <svg width={108} height={108}>
+                      <circle cx={54} cy={54} r={47} fill="none" stroke="rgba(255,255,255,0.10)" strokeWidth={8} />
+                      {heute.recoveryPercent != null && (
+                        <circle
+                          cx={54} cy={54} r={47} fill="none"
+                          stroke={recoveryColor(heute.recoveryPercent)} strokeWidth={8}
+                          strokeDasharray={2 * Math.PI * 47}
+                          strokeDashoffset={2 * Math.PI * 47 * (1 - Math.min(1, heute.recoveryPercent / 100))}
+                          strokeLinecap="round"
+                          transform="rotate(-90 54 54)"
+                          style={{ filter: `drop-shadow(0 0 6px ${recoveryColor(heute.recoveryPercent)}80)` }}
+                        />
+                      )}
+                    </svg>
+                    <div className="absolute inset-0 flex flex-col items-center justify-center">
+                      <span className="text-[22px] font-bold tabular-nums text-white leading-none">
+                        {heute.recoveryPercent != null ? `${Math.round(heute.recoveryPercent)}%` : '—'}
+                      </span>
+                    </div>
+                  </div>
+                  <span className="flex items-center gap-1 text-[11px] font-bold uppercase tracking-[0.12em]" style={{ color: recoveryColor(heute.recoveryPercent) }}>
+                    ERHOLUNG <span className="text-zinc-600">›</span>
+                  </span>
+                </button>
+
+                {/* Belastung */}
+                <button
+                  type="button"
+                  onClick={() => setTab('strain')}
+                  className="flex flex-col items-center gap-1.5 rounded-2xl px-1 transition active:scale-[0.97]"
+                  style={{ filter: heute.strain != null ? 'drop-shadow(0 0 14px #009dff40)' : 'none' }}
+                >
+                  <div className="relative" style={{ width: 108, height: 108 }}>
+                    <svg width={108} height={108}>
+                      <circle cx={54} cy={54} r={47} fill="none" stroke="rgba(255,255,255,0.10)" strokeWidth={8} />
+                      {heute.strain != null && (
+                        <circle
+                          cx={54} cy={54} r={47} fill="none"
+                          stroke="#009dff" strokeWidth={8}
+                          strokeDasharray={2 * Math.PI * 47}
+                          strokeDashoffset={2 * Math.PI * 47 * (1 - Math.min(1, heute.strain / 21))}
+                          strokeLinecap="round"
+                          transform="rotate(-90 54 54)"
+                          style={{ filter: 'drop-shadow(0 0 6px #009dff80)' }}
+                        />
+                      )}
+                    </svg>
+                    <div className="absolute inset-0 flex flex-col items-center justify-center">
+                      <span className="text-[22px] font-bold tabular-nums text-white leading-none">
+                        {heute.strain != null ? heute.strain.toFixed(1) : '—'}
+                      </span>
+                    </div>
+                  </div>
+                  <span className="flex items-center gap-1 text-[11px] font-bold uppercase tracking-[0.12em] text-[#009dff]">
+                    BELASTUNG <span className="text-zinc-600">›</span>
+                  </span>
                 </button>
               </div>
 
-              <div>
-                <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">Herzfrequenz live</p>
-                <p className="mt-1 text-5xl font-bold tabular-nums text-white">
-                  {model.liveHr ?? '—'}
-                  <span className="ml-2 text-xl font-semibold text-zinc-500">bpm</span>
-                </p>
-                <WhoopHrChart points={snapshot?.hrHistory ?? []} live={isLive} />
-              </div>
+              <section className="mt-4 space-y-3">
+                {/* ── GESUNDHEITS-MONITOR + STRESS-MONITOR ── */}
+                <div className="grid grid-cols-2 gap-3">
+                  {/* Gesundheits-Monitor */}
+                  <button
+                    type="button"
+                    onClick={() => setTab('health')}
+                    className="rounded-2xl border border-white/[0.06] bg-[#111113] p-3.5 text-left transition active:scale-[0.97]"
+                  >
+                    <p className="text-[9px] font-bold uppercase tracking-[0.16em] text-zinc-400">Gesundheits-Monitor</p>
+                    <div className="mt-2 flex items-center gap-2">
+                      <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-sm" style={{ backgroundColor: vitals.ok > 0 && vitals.allOk ? '#00E67620' : vitals.ok > 0 ? '#FFD60020' : '#3f3f4620' }}>
+                        {vitals.ok > 0 && vitals.allOk ? '✓' : vitals.ok > 0 ? '!' : '—'}
+                      </span>
+                      <div>
+                        <p className="text-[11px] font-bold" style={{ color: vitals.ok > 0 && vitals.allOk ? '#00E676' : vitals.ok > 0 ? '#FFD600' : '#52525b' }}>
+                          {vitals.ok > 0 && vitals.allOk ? 'NORMAL' : vitals.ok > 0 ? 'PRÜFEN' : 'KEINE DATEN'}
+                        </p>
+                        <p className="text-[10px] text-zinc-600">{vitals.ok}/{vitals.total} Messwerte</p>
+                      </div>
+                    </div>
+                  </button>
 
-              <div className="rounded-2xl border border-white/[0.06] bg-[#111113] p-4">
-                <p className="mb-3 text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">
-                  Vitalwerte — tippe für Verlauf
-                </p>
-                <ul className="grid grid-cols-2 gap-2">
-                  {HOME_METRICS.map((m) => {
-                    const val = heuteWert(m.id, heute)
-                    const base = baselineFuerMetrik(m.id)
-                    const diff = val != null && base != null && base > 0 ? (val - base) / base : null
-                    const invertiert = m.id === 'rhr' || m.id === 'respiratory'
-                    const trendDir = diff == null ? null : Math.abs(diff) < 0.03 ? 'neutral' : diff > 0 ? 'up' : 'down'
-                    const trendGood = trendDir == null || trendDir === 'neutral' ? null : invertiert ? trendDir === 'down' : trendDir === 'up'
-                    const trendColor = trendGood == null ? '#52525b' : trendGood ? '#00E676' : '#ef4444'
-                    const trendIcon = trendDir === 'up' ? '▲' : trendDir === 'down' ? '▼' : null
-                    const metricColor = m.id === 'vo2max' ? '#00E5FF' : m.id === 'hrv' ? '#00E676' : m.id === 'steps' || m.id === 'calories' ? '#009dff' : undefined
-                    return (
-                      <li key={m.id}>
-                        <button
-                          type="button"
-                          onClick={() => setTrendMetric(m.id)}
-                          className="w-full rounded-xl border border-white/[0.04] bg-black/25 px-3 py-2.5 text-left transition hover:border-white/10 active:scale-[0.98]"
-                        >
-                          <div className="flex items-center justify-between">
-                            <span className="text-[9px] font-bold uppercase text-zinc-500">{m.label}</span>
-                            {trendIcon && (
-                              <span className="text-[10px] font-bold" style={{ color: trendColor }}>
-                                {trendIcon}
-                              </span>
-                            )}
-                          </div>
-                          <p className="mt-1 text-[17px] font-bold tabular-nums" style={{ color: val != null ? (metricColor ?? 'white') : '#52525b' }}>
-                            {formatMetricWert(m.id, val, m.decimals ?? 0)}
-                            {m.unit && val != null ? (
-                              <span className="ml-1 text-[10px] font-normal text-zinc-500">{m.unit}</span>
-                            ) : null}
-                          </p>
-                          {base != null ? (
-                            <p className="mt-0.5 text-[9px] text-zinc-600">
-                              Ø {formatMetricWert(m.id, base, m.decimals ?? 0)}
-                              {m.unit ? ` ${m.unit}` : ''}
-                            </p>
-                          ) : null}
-                        </button>
-                      </li>
-                    )
-                  })}
-                </ul>
-              </div>
-
-              {aktivitaetenHistorie.length > 0 ? (
-                <div className="rounded-2xl border border-white/[0.06] bg-[#111113] p-4">
-                  <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">
-                    Letzte Aktivitäten
-                  </p>
-                  <ul className="mt-3 space-y-2">
-                    {aktivitaetenHistorie.slice(0, 6).map((a) => (
-                      <li key={a.id}>
-                        <button
-                          type="button"
-                          onClick={() => setSelectedActivity(a)}
-                          className="flex w-full items-center gap-3 rounded-xl border border-white/[0.04] bg-black/30 px-3 py-2.5 text-left transition hover:border-[#009dff]/25"
-                        >
-                          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#009dff]/20 text-xs font-bold text-[#009dff]">
-                            {a.strain.toFixed(1)}
-                          </span>
-                          <span className="min-w-0 flex-1">
-                            <span className="block truncate text-xs font-bold uppercase">{a.label}</span>
-                            <span className="text-[10px] text-zinc-500">
-                              {new Date(a.startMs).toLocaleDateString('de-DE', {
-                                weekday: 'short',
-                                day: 'numeric',
-                              })}{' '}
-                              · {formatUhrzeit(a.startMs)}
-                            </span>
-                          </span>
-                          <span className="text-zinc-600">›</span>
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
+                  {/* Stress-Monitor */}
+                  <button
+                    type="button"
+                    onClick={() => showInfo('hrv')}
+                    className="rounded-2xl border border-white/[0.06] bg-[#111113] p-3.5 text-left transition active:scale-[0.97]"
+                  >
+                    <p className="text-[9px] font-bold uppercase tracking-[0.16em] text-zinc-400">Stress-Monitor</p>
+                    <div className="mt-2">
+                      <p className="text-[22px] font-bold tabular-nums leading-none" style={{ color: stressColor(stress) }}>
+                        {stress != null ? stress.toFixed(1).replace('.', ',') : '—'}
+                      </p>
+                      <p className="mt-0.5 text-[10px] font-bold" style={{ color: stressColor(stress) }}>
+                        {stressLabel(stress)}
+                      </p>
+                    </div>
+                  </button>
                 </div>
-              ) : null}
 
-              {model.insightRecovery ? <WhoopInsightCard text={model.insightRecovery} /> : null}
-            </section>
-          </>
-        )}
+                {/* ── LIVE HR (kompakt) ── */}
+                {(model.liveHr != null || (snapshot?.hrHistory ?? []).length > 0) && (
+                  <div className="rounded-2xl border border-white/[0.06] bg-[#111113] p-4">
+                    <div className="flex items-baseline gap-3">
+                      <span className="text-3xl font-bold tabular-nums text-white">{model.liveHr ?? '—'}</span>
+                      <span className="text-sm text-zinc-500">bpm live</span>
+                      {model.hrZone > 0 && (
+                        <span className="ml-auto rounded-full bg-[#009dff]/20 px-2 py-0.5 text-[10px] font-bold text-[#009dff]">
+                          Zone {model.hrZone}
+                        </span>
+                      )}
+                    </div>
+                    <WhoopHrChart points={snapshot?.hrHistory ?? []} live={isLive} />
+                  </div>
+                )}
+
+                {/* ── MEIN TAG ── */}
+                <div>
+                  <div className="flex items-center justify-between">
+                    <h2 className="text-base font-bold text-white">Mein Tag</h2>
+                    <button
+                      type="button"
+                      onClick={() => setTab('strain')}
+                      className="flex h-8 w-8 items-center justify-center rounded-full border border-white/[0.10] bg-white/[0.05] text-lg font-light text-white transition hover:bg-white/10"
+                    >
+                      +
+                    </button>
+                  </div>
+
+                  {/* Täglicher Ausblick / Coach */}
+                  {model.insightRecovery || model.insightStrain || model.coachSchlaf ? (
+                    <button
+                      type="button"
+                      onClick={() => setCoachExpanded(!coachExpanded)}
+                      className="mt-2 flex w-full items-center gap-3 rounded-2xl border border-white/[0.06] bg-[#111113] px-4 py-3 text-left transition hover:bg-white/[0.03]"
+                    >
+                      <span className="text-lg">☀</span>
+                      <span className="flex-1 text-[12px] text-zinc-300">Dein täglicher Ausblick</span>
+                      <span className="text-zinc-600">›</span>
+                    </button>
+                  ) : null}
+
+                  {/* Heutige Aktivitäten */}
+                  {aktivitaeten.length > 0 && (
+                    <div className="mt-2 rounded-2xl border border-white/[0.06] bg-[#111113] p-3.5">
+                      <div className="flex items-center justify-between">
+                        <p className="text-[9px] font-bold uppercase tracking-[0.16em] text-zinc-500">Heutige Aktivitäten</p>
+                        <button type="button" onClick={() => setTab('strain')} className="text-[10px] text-zinc-600">↗</button>
+                      </div>
+                      <ul className="mt-2 space-y-2">
+                        {aktivitaeten.slice(0, 3).map((a) => (
+                          <li key={a.id}>
+                            <button
+                              type="button"
+                              onClick={() => setSelectedActivity(a)}
+                              className="flex w-full items-center gap-3 rounded-xl bg-[#009dff]/10 px-3 py-2.5 text-left transition active:scale-[0.98]"
+                            >
+                              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[#009dff]/20 text-[13px] font-bold text-[#009dff]">
+                                {a.strain.toFixed(1)}
+                              </span>
+                              <span className="flex-1">
+                                <span className="block text-[12px] font-bold uppercase text-white">{a.label}</span>
+                                <span className="text-[10px] text-zinc-500">
+                                  {formatUhrzeit(a.startMs)} – {formatUhrzeit(a.endMs)}
+                                </span>
+                              </span>
+                              <span className="text-zinc-600">›</span>
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                      <div className="mt-2 flex gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setTab('strain')}
+                          className="flex-1 rounded-xl border border-white/[0.08] py-2 text-[11px] font-semibold text-zinc-300 hover:bg-white/[0.04]"
+                        >
+                          + Hinzufügen
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setTab('strain')}
+                          className="flex-1 rounded-xl border border-white/[0.08] py-2 text-[11px] font-semibold text-zinc-300 hover:bg-white/[0.04]"
+                        >
+                          ⏱ Aktivität starten
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* ── SCHLAF HEUTE NACHT ── */}
+                {(heute.sleepNeedMinutes != null || heute.wakeTimeMs != null) && (
+                  <div className="rounded-2xl border border-white/[0.06] bg-[#111113] p-4">
+                    <div className="flex items-center justify-between">
+                      <p className="text-[9px] font-bold uppercase tracking-[0.16em] text-zinc-500">Schlaf für heute Nacht</p>
+                      <span className="text-zinc-600">›</span>
+                    </div>
+                    <div className="mt-3 flex items-center justify-between">
+                      <div>
+                        <p className="text-[22px] font-bold tabular-nums text-white leading-none">
+                          {empfohleneSchlafzeit(heute.sleepNeedMinutes, heute.wakeTimeMs) ?? formatSchlafbedarf(heute.sleepNeedMinutes)}
+                        </p>
+                        <p className="mt-0.5 text-[10px] text-zinc-500">
+                          Empfohlene Schlafenszeit
+                        </p>
+                      </div>
+                      {heute.wakeTimeMs != null && (
+                        <div className="text-right">
+                          <p className="text-[17px] font-bold tabular-nums text-zinc-300">{formatUhrzeitShort(heute.wakeTimeMs)}</p>
+                          <p className="text-[10px] text-zinc-600">Letztes Aufwachen</p>
+                        </div>
+                      )}
+                    </div>
+                    <div className="mt-3 w-full rounded-xl border border-white/[0.08] py-2.5 text-center text-[11px] font-semibold text-zinc-400">
+                      Schlafbedarf: {formatSchlafbedarf(heute.sleepNeedMinutes)} Std.
+                    </div>
+                  </div>
+                )}
+
+                {/* ── MEIN LOGBUCH ── */}
+                <div className="rounded-2xl border border-white/[0.06] bg-[#111113] p-4">
+                  <div className="flex items-center justify-between">
+                    <p className="text-[9px] font-bold uppercase tracking-[0.16em] text-zinc-500">Mein Logbuch</p>
+                    <span className="text-zinc-600">›</span>
+                  </div>
+                  <div className="mt-3 flex justify-between">
+                    {tageIso.map((iso) => {
+                      const hatEintrag = journalDates.has(iso)
+                      const istHeute = iso === tageIso[tageIso.length - 1]
+                      return (
+                        <div key={iso} className="flex flex-col items-center gap-1.5">
+                          <span className="text-[9px] font-bold text-zinc-600">
+                            {wochentagKurzDe(iso)}
+                          </span>
+                          <div
+                            className="flex h-7 w-7 items-center justify-center rounded-full border-2 text-sm"
+                            style={{
+                              borderColor: hatEintrag ? '#00E676' : istHeute ? '#ffffff30' : '#27272a',
+                              backgroundColor: hatEintrag ? '#00E676' : 'transparent',
+                            }}
+                          >
+                            {hatEintrag && <span className="text-black font-bold text-[11px]">✓</span>}
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => showInfo('behavior')}
+                    className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl border border-white/[0.08] py-2.5 text-[11px] font-semibold uppercase tracking-wider text-zinc-400 hover:bg-white/[0.03]"
+                  >
+                    ☀ Verhaltenseinblicke
+                  </button>
+                </div>
+
+                {/* ── MEIN DASHBOARD (vertikale Liste) ── */}
+                <div>
+                  <div className="flex items-center justify-between py-1">
+                    <h2 className="text-base font-bold text-white">Mein Dashboard</h2>
+                    <span className="text-[10px] text-zinc-500">PERSONALISIEREN ✏</span>
+                  </div>
+                  <div className="rounded-2xl border border-white/[0.06] bg-[#111113] px-4">
+                    {[
+                      ...HOME_METRICS.map((m) => {
+                        const val = heuteWert(m.id, heute)
+                        const base = baselineFuerMetrik(m.id)
+                        const invertiert = m.id === 'rhr' || m.id === 'respiratory'
+                        const diff = val != null && base != null && base > 0 ? (val - base) / base : null
+                        const dir = diff == null ? null : Math.abs(diff) < 0.03 ? 'neutral' : diff > 0 ? 'up' : 'down'
+                        const good = dir == null || dir === 'neutral' ? null : invertiert ? dir === 'down' : dir === 'up'
+                        const arrowColor = good == null ? '#3f3f46' : good ? '#00E676' : '#FF1744'
+                        const arrow = dir === 'up' ? '▲' : dir === 'down' ? '▼' : '●'
+                        const isVo2 = m.id === 'vo2max'
+                        // VO2max-Badge: nur bei Manuell-Override zeigen; bei Cloud = kein Badge
+                        const vo2Badge = isVo2
+                          ? vo2Quelle === 'manuell'
+                            ? 'manuell'
+                            : vo2Quelle === null || val == null
+                              ? '→ Cloud Sync'
+                              : null
+                          : null
+                        return {
+                          id: m.id,
+                          label: m.label.toUpperCase(),
+                          val,
+                          base,
+                          unit: m.unit,
+                          decimals: m.decimals ?? 0,
+                          arrow,
+                          arrowColor,
+                          onClick: () => setTrendMetric(m.id),
+                          badge: vo2Badge,
+                        }
+                      }),
+                      // Tagesbelastung
+                      (() => {
+                        const val = heute.strain
+                        const base = baselines.strain
+                        const diff = val != null && base != null && base > 0 ? (val - base) / base : null
+                        const dir = diff == null ? null : Math.abs(diff) < 0.03 ? 'neutral' : diff > 0 ? 'up' : 'down'
+                        const good = dir == null || dir === 'neutral' ? null : dir === 'up'
+                        return {
+                          id: 'strain',
+                          label: 'TAGESBELASTUNG',
+                          val,
+                          base,
+                          unit: '',
+                          decimals: 1,
+                          arrow: dir === 'up' ? '▲' : dir === 'down' ? '▼' : '●',
+                          arrowColor: good == null ? '#3f3f46' : good ? '#009dff' : '#FF1744',
+                          onClick: () => setTab('strain'),
+                          badge: null,
+                        }
+                      })(),
+                    ].map((row, idx, arr) => (
+                      <button
+                        key={row.id}
+                        type="button"
+                        onClick={row.onClick}
+                        className={`flex w-full items-center gap-3 py-3.5 text-left transition hover:bg-white/[0.02] ${idx < arr.length - 1 ? 'border-b border-white/[0.06]' : ''}`}
+                      >
+                        <div className="min-w-0 flex-1">
+                          <p className="text-[9px] font-bold uppercase tracking-wide text-zinc-500">{row.label}</p>
+                        </div>
+                        <div className="shrink-0 text-right">
+                          <div className="flex items-baseline gap-1.5">
+                            <span className="text-[22px] font-bold tabular-nums text-white leading-none">
+                              {row.val != null
+                                ? row.decimals > 0
+                                  ? row.val.toFixed(row.decimals).replace('.', ',')
+                                  : formatMetricWert(row.id as HomeMetricId, row.val)
+                                : '—'}
+                            </span>
+                            {row.unit && row.val != null && (
+                              <span className="text-[10px] text-zinc-600">{row.unit}</span>
+                            )}
+                            <span className="text-[11px] font-bold" style={{ color: row.arrowColor }}>{row.arrow}</span>
+                          </div>
+                          {row.base != null ? (
+                            <p className="text-[10px] tabular-nums text-zinc-600">
+                              {row.decimals > 0
+                                ? row.base.toFixed(row.decimals).replace('.', ',')
+                                : formatMetricWert(row.id as HomeMetricId, row.base)}
+                              {row.unit ? ` ${row.unit}` : ''}
+                            </p>
+                          ) : row.badge === '→ Cloud Sync' ? (
+                            <p className="text-[9px] text-sky-500/80">{row.badge}</p>
+                          ) : row.badge ? (
+                            <p className="text-[9px] text-zinc-500">{row.badge}</p>
+                          ) : null}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {model.insightRecovery ? <WhoopInsightCard text={model.insightRecovery} /> : null}
+              </section>
+            </>
+          )
+        })()}
 
         {tab === 'sleep' && (
           <section className="mt-6 space-y-4">
@@ -1074,4 +1342,81 @@ function trendSteps(heute: number | null, base: number | null): 'up' | 'down' | 
   if (heute > base * 1.05) return 'up'
   if (heute < base * 0.95) return 'down'
   return 'neutral'
+}
+
+function berechneStressScore(rec: number | null, hrvHeute: number | null, hrvBase: number | null): number | null {
+  if (rec != null) {
+    return Math.round(Math.max(0.1, Math.min(3, 3 - (rec / 100) * 2.6)) * 10) / 10
+  }
+  if (hrvHeute != null && hrvBase != null && hrvBase > 0) {
+    const abw = (hrvBase - hrvHeute) / hrvBase
+    return Math.round(Math.max(0.1, Math.min(3, 1.5 + abw * 3)) * 10) / 10
+  }
+  return null
+}
+
+function stressLabel(s: number | null): string {
+  if (s == null) return '—'
+  if (s < 1.0) return 'NIEDRIG'
+  if (s < 2.0) return 'MITTEL'
+  if (s < 2.5) return 'ERHÖHT'
+  return 'HOCH'
+}
+
+function stressColor(s: number | null): string {
+  if (s == null) return '#52525b'
+  if (s < 1.0) return '#00E676'
+  if (s < 2.0) return '#00E5FF'
+  if (s < 2.5) return '#FFD600'
+  return '#FF6B35'
+}
+
+function vitalsStatus(d: WhoopDayRecord): { ok: number; total: number; allOk: boolean } {
+  const checks: boolean[] = [
+    d.restingHr != null,
+    d.hrvRmssd != null,
+    d.respiratoryRate != null,
+    d.spo2Percent != null,
+    d.skinTempDelta != null,
+  ]
+  const ok = checks.filter(Boolean).length
+  const probleme =
+    (d.spo2Percent != null && d.spo2Percent < 95) ||
+    (d.skinTempDelta != null && (d.skinTempDelta < -0.5 || d.skinTempDelta > 0.7))
+  return { ok, total: 5, allOk: !probleme }
+}
+
+function wochentagKurzDe(isoOrDate: string | Date): string {
+  const d = typeof isoOrDate === 'string' ? new Date(isoOrDate + 'T12:00:00') : isoOrDate
+  return d.toLocaleDateString('de-DE', { weekday: 'short' }).toUpperCase().slice(0, 2)
+}
+
+function letzte7TageIso(): string[] {
+  return Array.from({ length: 7 }, (_, i) => {
+    const d = new Date()
+    d.setDate(d.getDate() - (6 - i))
+    return d.toISOString().slice(0, 10)
+  })
+}
+
+function formatSchlafbedarf(min: number | null): string {
+  if (min == null) return '—'
+  const h = Math.floor(min / 60)
+  const m = Math.round(min % 60)
+  return `${h}:${String(m).padStart(2, '0')}`
+}
+
+function empfohleneSchlafzeit(schlafbedarfMin: number | null, weckMs: number | null): string | null {
+  if (schlafbedarfMin == null) return null
+  const weckHour = weckMs != null ? new Date(weckMs).getHours() : 7
+  const schlafZeit = new Date()
+  schlafZeit.setHours(weckHour, 0, 0, 0)
+  schlafZeit.setTime(schlafZeit.getTime() - schlafbedarfMin * 60 * 1000)
+  return `${String(schlafZeit.getHours()).padStart(2, '0')}:${String(schlafZeit.getMinutes()).padStart(2, '0')}`
+}
+
+function formatUhrzeitShort(ms: number | null): string {
+  if (ms == null) return '—'
+  const d = new Date(ms)
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
 }

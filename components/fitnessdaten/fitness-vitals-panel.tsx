@@ -2,7 +2,8 @@
 
 import { heuteIsoLocal } from '@/lib/fitnessdaten/scores'
 import { fuegeVitalEintragHinzu, letzteVitalEintraege } from '@/lib/fitnessdaten/vitals-log'
-import { useCallback, useState } from 'react'
+import { ladeVo2Trends, setzeVo2MaxManuell } from '@/lib/fitnessdaten/vo2max-engine'
+import { useCallback, useEffect, useState } from 'react'
 import toast from 'react-hot-toast'
 
 type Props = {
@@ -15,6 +16,26 @@ export function FitnessVitalsPanel({ onSaved, embedded = false }: Props) {
   const [dia, setDia] = useState('')
   const [spo2, setSpo2] = useState('')
   const [note, setNote] = useState('')
+  const [vo2Input, setVo2Input] = useState('')
+  const [vo2Gespeichert, setVo2Gespeichert] = useState<number | null>(null)
+
+  useEffect(() => {
+    const s = ladeVo2Trends()
+    setVo2Gespeichert(s.manuell)
+  }, [])
+
+  const speichernVo2 = useCallback(() => {
+    const wert = vo2Input ? Number(vo2Input) : null
+    if (wert != null && (wert < 20 || wert > 90)) {
+      toast.error('VO₂ Max muss zwischen 20 und 90 ml/kg/min liegen.')
+      return
+    }
+    const s = setzeVo2MaxManuell(wert)
+    setVo2Gespeichert(s.manuell)
+    setVo2Input('')
+    toast.success(wert != null ? `VO₂ Max auf ${wert} gesetzt.` : 'VO₂ Max-Override gelöscht.')
+    onSaved?.()
+  }, [vo2Input, onSaved])
 
   const speichern = useCallback(() => {
     const bpSystolic = sys ? Number(sys) : null
@@ -46,11 +67,79 @@ export function FitnessVitalsPanel({ onSaved, embedded = false }: Props) {
       className={`rounded-2xl border border-rose-500/20 bg-[#111113] ${embedded ? 'p-4' : 'p-5'}`}
     >
       <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-rose-200">Vitalwerte</p>
-      <p className="mt-2 text-xs leading-relaxed text-zinc-500">
+
+      {/* VO2max — Cloud Sync Hinweis + Notfall-Override */}
+      <div className="mt-4 rounded-xl border border-white/[0.06] bg-white/[0.02] p-3">
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-300">VO₂ Max</p>
+            <p className="mt-0.5 text-[10px] text-zinc-500">
+              Wird automatisch via Cloud Sync geladen (Monatsdurchschnitt aus WHOOP)
+            </p>
+          </div>
+          {vo2Gespeichert != null && (
+            <span className="ml-3 shrink-0 rounded-lg bg-zinc-800 px-2 py-1 text-sm font-bold tabular-nums text-zinc-300">
+              {vo2Gespeichert}
+            </span>
+          )}
+        </div>
+
+        {/* Nur anzeigen wenn manueller Override aktiv */}
+        {vo2Gespeichert != null ? (
+          <div className="mt-2 flex items-center gap-2">
+            <p className="flex-1 text-[10px] text-amber-500/80">
+              Manueller Override aktiv: {vo2Gespeichert} ml/kg/min. Cloud Sync setzt diesen Wert zurück.
+            </p>
+            <button
+              type="button"
+              onClick={() => {
+                setzeVo2MaxManuell(null)
+                setVo2Gespeichert(null)
+                toast.success('Override gelöscht — VO₂ Max kommt wieder aus Cloud Sync.')
+                onSaved?.()
+              }}
+              className="rounded-lg border border-zinc-700 px-3 py-1.5 text-xs text-zinc-500 transition hover:text-zinc-300"
+            >
+              Override löschen
+            </button>
+          </div>
+        ) : (
+          /* Notfall-Override: nur zugänglich wenn Cloud Sync fehlschlägt */
+          <details className="mt-2">
+            <summary className="cursor-pointer text-[9px] text-zinc-600 hover:text-zinc-400">
+              Cloud Sync liefert keinen Wert? Notfall-Override
+            </summary>
+            <div className="mt-2 flex gap-2">
+              <input
+                type="number"
+                min={20}
+                max={90}
+                step={1}
+                placeholder="z. B. 57"
+                value={vo2Input}
+                onChange={(e) => setVo2Input(e.target.value)}
+                className="flex-1 rounded-xl border border-white/[0.08] bg-black/30 px-3 py-2 text-sm text-zinc-100 tabular-nums outline-none focus:border-white/20"
+              />
+              <button
+                type="button"
+                onClick={speichernVo2}
+                className="rounded-xl border border-zinc-700 bg-zinc-800 px-4 py-2 text-sm font-semibold text-zinc-300 transition hover:bg-zinc-700"
+              >
+                Setzen
+              </button>
+            </div>
+            <p className="mt-1 text-[9px] text-zinc-600">
+              Nur nutzen wenn WHOOP Cloud Sync keinen VO₂ Max-Wert zurückgibt.
+            </p>
+          </details>
+        )}
+      </div>
+
+      <p className="mt-4 text-xs leading-relaxed text-zinc-500">
         Blutdruck aus WHOOP Life manuell übernehmen (App → Health Monitor). SpO₂ optional als Zusatzmessung.
       </p>
 
-      <div className="mt-4 grid grid-cols-2 gap-3">
+      <div className="mt-3 grid grid-cols-2 gap-3">
         <label className="block">
           <span className="text-[10px] font-semibold uppercase text-zinc-500">Systole</span>
           <input

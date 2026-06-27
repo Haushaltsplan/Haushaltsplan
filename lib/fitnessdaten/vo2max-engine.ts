@@ -20,24 +20,42 @@ import {
 
 export const WHOOP_VO2_TRENDS_KEY = 'mein-haushalt:whoop-vo2-trends'
 
+export type Vo2Quelle = 'cloud' | 'berechnet' | 'manuell'
+
 export type Vo2TrendsStore = {
   version: 1
-  /** Aktueller Wochenwert (ml/kg/min). */
+  /** Bestätigter Wert (Cloud-Sync oder Manuell). NIE Uth-Schätzung. */
   vo2Max: number | null
-  /** ISO-Woche der letzten Berechnung (z. B. 2026-W23). */
+  /** ISO-Woche der letzten lokalen Berechnung (z. B. 2026-W23). */
   woche: string | null
   berechnetAm: string | null
   /** Wöchentliche Historie für Verlaufs-Charts. */
   historie: { woche: string; wert: number }[]
-  /** Optional: Laborwert aus WHOOP-App manuell. */
+  /**
+   * @deprecated Nicht mehr für Cloud-Werte verwenden — nutze vo2Max + quelle = 'cloud'.
+   * Bleibt für Rückwärtskompatibilität.
+   */
   manuell: number | null
+  /** Herkunft des aktuellen vo2Max-Werts. */
+  quelle: Vo2Quelle | null
+  /** Lokale Uth-Schätzung — wird im Dashboard NICHT angezeigt, nur für Omnia Age. */
+  schaetzung: number | null
 }
 
 const MIN_RECOVERY_TAGE = 7
 const FENSTER_TAGE = 30
 
 function defaultStore(): Vo2TrendsStore {
-  return { version: 1, vo2Max: null, woche: null, berechnetAm: null, historie: [], manuell: null }
+  return {
+    version: 1,
+    vo2Max: null,
+    woche: null,
+    berechnetAm: null,
+    historie: [],
+    manuell: null,
+    quelle: null,
+    schaetzung: null,
+  }
 }
 
 export function ladeVo2Trends(): Vo2TrendsStore {
@@ -57,12 +75,30 @@ export function speichereVo2Trends(store: Vo2TrendsStore): void {
   window.localStorage.setItem(WHOOP_VO2_TRENDS_KEY, JSON.stringify({ ...store, version: 1 }))
 }
 
+/** Nur aufrufen wenn Cloud Sync fehlschlägt und Nutzer manuell eingreift. */
 export function setzeVo2MaxManuell(wert: number | null): Vo2TrendsStore {
   const s = ladeVo2Trends()
-  s.manuell = wert != null && wert >= 20 && wert <= 90 ? Math.round(wert) : null
-  if (s.manuell != null) s.vo2Max = s.manuell
+  if (wert != null && wert >= 20 && wert <= 90) {
+    s.manuell = Math.round(wert)
+    s.vo2Max = s.manuell
+    s.quelle = 'manuell'
+  } else {
+    s.manuell = null
+    s.vo2Max = s.schaetzung ?? null
+    s.quelle = s.schaetzung != null ? 'berechnet' : null
+  }
   speichereVo2Trends(s)
   return s
+}
+
+/** Wird von Cloud Sync aufgerufen — setzt Quelle als 'cloud'. */
+export function setzeVo2MaxAusCloud(wert: number): void {
+  const s = ladeVo2Trends()
+  s.vo2Max = Math.round(wert)
+  s.quelle = 'cloud'
+  s.manuell = null // Cloud-Wert übernimmt Priorität
+  speichereVo2Trends(s)
+  spiegeleVo2AufTagesrecords(Math.round(wert))
 }
 
 /** ISO-Kalenderwoche (Montag = Wochenstart, WHOOP-ähnlich). */
@@ -159,35 +195,47 @@ export function berechneVo2MaxLangfristig(days = ladeDailyStore().days): number 
   return Math.round(Math.min(75, Math.max(28, vo2)))
 }
 
-/** Nur einmal pro Kalenderwoche neu berechnen (WHOOP: wöchentlich, keine Tageswerte). */
+/**
+ * Aktualisiert die lokale Uth-SCHÄTZUNG (wird nur für Omnia Age genutzt, nie im Dashboard).
+ * Schreibt NIEMALS in vo2Max wenn ein Cloud/Manuell-Wert vorhanden.
+ */
 export function aktualisiereVo2MaxWennFaellig(force = false): Vo2TrendsStore {
   const store = ladeVo2Trends()
+
+  // Cloud- oder Manuell-Wert vorhanden → keine Überschreibung
+  if ((store.quelle === 'cloud' || store.quelle === 'manuell') && store.vo2Max != null && !force) {
+    return store
+  }
+  // Legacy: manuell-Feld gesetzt → respektieren
   if (store.manuell != null && !force) {
-    store.vo2Max = store.manuell
+    if (store.vo2Max == null) {
+      store.vo2Max = store.manuell
+      store.quelle = 'manuell'
+      speichereVo2Trends(store)
+    }
     return store
   }
 
   const aktuelleWoche = isoKalenderwoche()
-  if (!force && store.woche === aktuelleWoche && store.vo2Max != null) {
+  if (!force && store.woche === aktuelleWoche && store.schaetzung != null) {
     return store
   }
 
   const neu = berechneVo2MaxLangfristig()
   if (neu == null) return store
 
-  store.vo2Max = neu
+  // Schätzung NUR in schaetzung schreiben — nie in vo2Max
+  store.schaetzung = neu
   store.woche = aktuelleWoche
   store.berechnetAm = new Date().toISOString()
 
-  const idx = store.historie.findIndex((h) => h.woche === aktuelleWoche)
-  if (idx >= 0) store.historie[idx] = { woche: aktuelleWoche, wert: neu }
-  else store.historie.push({ woche: aktuelleWoche, wert: neu })
-
-  store.historie.sort((a, b) => a.woche.localeCompare(b.woche))
-  if (store.historie.length > 52) store.historie = store.historie.slice(-52)
+  // Nur wenn kein bestätigter Wert existiert: auch vo2Max setzen (für Omnia Age intern)
+  if (store.vo2Max == null || store.quelle === 'berechnet') {
+    store.vo2Max = neu
+    store.quelle = 'berechnet'
+  }
 
   speichereVo2Trends(store)
-  spiegeleVo2AufTagesrecords(neu)
   return store
 }
 
@@ -210,7 +258,29 @@ function spiegeleVo2AufTagesrecords(vo2: number): void {
   speichereDailyStore(daily)
 }
 
+/**
+ * Gibt den bestätigten VO2max zurück (cloud oder manuell).
+ * Gibt KEINE lokale Schätzung zurück — nur für Dashboard-Anzeige.
+ */
 export function aktuellesVo2Max(): number | null {
+  const s = ladeVo2Trends()
+  if (s.quelle === 'cloud' || s.quelle === 'manuell') return s.vo2Max
+  if (s.manuell != null) return s.manuell // Legacy
+  return null
+}
+
+/**
+ * Gibt den besten verfügbaren VO2max inkl. Schätzung zurück.
+ * Nur für Omnia-Age-Berechnung — NICHT für Dashboard-Anzeige.
+ */
+export function vo2MaxFuerHealthspan(): number | null {
   const s = aktualisiereVo2MaxWennFaellig()
-  return s.manuell ?? s.vo2Max
+  return s.manuell ?? s.vo2Max ?? s.schaetzung
+}
+
+/** Gibt Quelle des aktuellen VO2max zurück. */
+export function vo2MaxQuelle(): Vo2Quelle | null {
+  const s = ladeVo2Trends()
+  if (s.manuell != null) return 'manuell'
+  return s.quelle
 }

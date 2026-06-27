@@ -8,11 +8,10 @@ import {
   type WhoopActivity,
   type WhoopDayRecord,
 } from '@/lib/fitnessdaten/daily-records'
-import { aktualisiereVo2MaxWennFaellig, speichereVo2Trends, ladeVo2Trends } from '@/lib/fitnessdaten/vo2max-engine'
+import { aktualisiereVo2MaxWennFaellig, setzeVo2MaxAusCloud } from '@/lib/fitnessdaten/vo2max-engine'
 import { heuteIsoLocal, mergeTagesStrain, recoveryLabelAusProzent } from '@/lib/fitnessdaten/scores'
 import { berechneSkinTempDelta } from '@/lib/fitnessdaten/skin-temp'
 import { ladeSyncState, speichereSyncState } from '@/lib/fitnessdaten/offline-sync'
-import { schaetzeSchritteAusStrain } from '@/lib/fitnessdaten/steps-engine'
 import type { WhoopCloudSyncPayload, WhoopCloudSyncResult } from '@/lib/fitnessdaten/whoop-cloud-types'
 import {
   ladeFitnessProfil,
@@ -125,15 +124,11 @@ function mergeDay(
     calories:
       bffRow?.calories ??
       (cycle?.calories != null && cycle.calories > 0 ? cycle.calories : prev.calories),
-    steps: (() => {
-      if (bffRow?.steps != null && bffRow.steps > 0) return bffRow.steps
-      if (prev.bffMetrics && prev.steps != null && prev.steps > 0) return prev.steps
-      // Schätzung aus Strain/Zonen als Fallback (kein BFF vorhanden)
-      const strain = cycle?.strain ?? prev.strain
-      const rhr = prev.restingHr ?? 58
-      const geschaetzt = schaetzeSchritteAusStrain(strain, prev.zoneMin13, prev.avgHr, rhr)
-      return geschaetzt > 200 ? geschaetzt : null
-    })(),
+    steps: bffRow?.steps != null && bffRow.steps > 0
+      ? bffRow.steps
+      : prev.bffMetrics && prev.steps != null && prev.steps > 0
+        ? prev.steps
+        : null,
     vo2Max: pickBff(bffRow?.vo2Max, null, prev.vo2Max),
   }
 }
@@ -224,11 +219,10 @@ export function mergeCloudPayload(payload: WhoopCloudSyncPayload): WhoopCloudSyn
   speichereDailyStore(store)
 
   if (payload.bff?.monthlyAvgs.vo2Max != null) {
-    const vo2 = ladeVo2Trends()
-    vo2.vo2Max = payload.bff.monthlyAvgs.vo2Max
-    vo2.manuell = payload.bff.monthlyAvgs.vo2Max
-    speichereVo2Trends(vo2)
+    // Cloud Sync liefert Monatsdurchschnitt — als verifizierte Quelle speichern
+    setzeVo2MaxAusCloud(payload.bff.monthlyAvgs.vo2Max)
   } else {
+    // Kein Cloud-Wert: lokale Uth-Schätzung aktualisieren (nur für Omnia Age, nicht für Anzeige)
     aktualisiereVo2MaxWennFaellig()
   }
 

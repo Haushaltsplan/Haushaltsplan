@@ -3,7 +3,7 @@
 import { baseline30, letzte7Tage, type WhoopDayRecord } from '@/lib/fitnessdaten/daily-records'
 import { ladeFitnessHistory } from '@/lib/fitnessdaten/history-storage'
 import { ladeFitnessProfil, profilAlter } from '@/lib/fitnessdaten/user-profile'
-import { aktuellesVo2Max } from '@/lib/fitnessdaten/vo2max-engine'
+import { vo2MaxFuerHealthspan } from '@/lib/fitnessdaten/vo2max-engine'
 import type { HrZoneMinutes } from '@/lib/fitnessdaten/types'
 
 export type HealthspanMetricId =
@@ -84,7 +84,7 @@ export function baueHealthspanModel(heute: WhoopDayRecord): HealthspanModel {
   // Nur echten Messwert für Omnia-Age nutzen — Fallback auf 30-Tage-Baseline
   const rhrBase = baseline30('restingHr') ?? history.baselines.restingHrBpm
   const rhr = heute.restingHr ?? rhrBase
-  const vo2 = aktuellesVo2Max() ?? heute.vo2Max
+  const vo2 = vo2MaxFuerHealthspan() ?? heute.vo2Max
 
   const metrics: HealthspanMetric[] = [
     {
