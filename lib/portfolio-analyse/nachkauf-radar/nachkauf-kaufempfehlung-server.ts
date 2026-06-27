@@ -196,21 +196,29 @@ export async function generiereKaufempfehlung(
   let kiText = ''
   let fehler: string | undefined
 
-  for (const modell of kaufempfehlungModell()) {
+  const provider = resolveCoachProviderFromMode('gemini')
+  if (!provider || provider.provider !== 'gemini') {
+    fehler = 'Kein Gemini-API-Key konfiguriert.'
+  } else {
     try {
-      const provider = resolveCoachProviderFromMode('gemini', modell)
-      kiText = await runCoachCompletion({
-        provider,
-        systemPrompt: 'Du bist ein rationaler Investmentassistent. Antworte immer auf Deutsch. Sei direkt, ehrlich und kritisch.',
-        userMessage: prompt,
-        maxTokens: 2000,
-      })
-      if (kiText?.trim()) break
+      const result = await runCoachCompletion(
+        provider.provider,
+        provider.apiKey,
+        'Du bist ein rationaler Investmentassistent. Antworte immer auf Deutsch. Sei direkt, ehrlich und kritisch.',
+        [{ role: 'user', content: prompt }],
+        {
+          temperature: 0.3,
+          skipMessageTrim: true,
+          geminiModels: kaufempfehlungModell(),
+        },
+      )
+      if (result.ok && result.reply?.trim()) {
+        kiText = result.reply.trim()
+      } else if (!result.ok) {
+        fehler = result.hint ?? 'Unbekannter Fehler'
+      }
     } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e)
-      if (msg.includes('not found') || msg.includes('invalid')) continue
-      fehler = msg
-      break
+      fehler = e instanceof Error ? e.message : String(e)
     }
   }
 
