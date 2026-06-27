@@ -21,7 +21,7 @@ export async function POST() {
     }
 
     await ergaenzeKaufhistorieUndNotizen(ergebnisse)
-    ergebnisse = berechneTrimSignale(ergebnisse)
+    berechneTrimSignale(ergebnisse)
 
     // 2. Kaufempfehlung generieren
     const ergebnis = await generiereKaufempfehlung(ergebnisse)
