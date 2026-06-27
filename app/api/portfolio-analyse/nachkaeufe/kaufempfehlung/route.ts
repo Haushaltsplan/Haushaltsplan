@@ -1,8 +1,12 @@
 import { NextResponse } from 'next/server'
 import 'server-only'
 
-import { ladeNachkaufScanAusCloud } from '@/lib/portfolio-analyse/nachkauf-radar/nachkauf-radar-db-server'
-import { ergaenzeKaufhistorieUndNotizen } from '@/lib/portfolio-analyse/nachkauf-radar/nachkauf-radar-db-server'
+import {
+  ladeNachkaufScanAusCloud,
+  ergaenzeKaufhistorieUndNotizen,
+  ergaenzeDepotGewichte,
+  ladeAlleDeepResearch,
+} from '@/lib/portfolio-analyse/nachkauf-radar/nachkauf-radar-db-server'
 import { berechneTrimSignale } from '@/lib/portfolio-analyse/nachkauf-radar/nachkauf-trim-signal'
 import { generiereKaufempfehlung } from '@/lib/portfolio-analyse/nachkauf-radar/nachkauf-kaufempfehlung-server'
 import { createSupabaseAdmin } from '@/lib/supabase-admin'
@@ -11,7 +15,7 @@ export const maxDuration = 120
 
 export async function POST() {
   try {
-    // 1. Scan-Ergebnisse laden und anreichern
+    // 1. Scan-Ergebnisse laden
     let ergebnisse = await ladeNachkaufScanAusCloud()
     if (ergebnisse.length === 0) {
       return NextResponse.json(
@@ -20,13 +24,24 @@ export async function POST() {
       )
     }
 
-    await ergaenzeKaufhistorieUndNotizen(ergebnisse)
+    // 2. Daten anreichern (parallel)
+    const deepMap = await ladeAlleDeepResearch()
+    await Promise.all([
+      ergaenzeKaufhistorieUndNotizen(ergebnisse),
+      ergaenzeDepotGewichte(ergebnisse),
+    ])
     berechneTrimSignale(ergebnisse)
 
-    // 2. Kaufempfehlung generieren
+    // 3. Deep Research einhängen
+    for (const e of ergebnisse) {
+      const dr = deepMap.get(e.ticker.toUpperCase())
+      if (dr) e.tiefenAnalyse = dr
+    }
+
+    // 4. Kaufempfehlung generieren
     const ergebnis = await generiereKaufempfehlung(ergebnisse)
 
-    // 3. In Supabase speichern
+    // 5. In Supabase speichern
     try {
       const monat = new Date().toISOString().slice(0, 7)
       const supabase = createSupabaseAdmin()
