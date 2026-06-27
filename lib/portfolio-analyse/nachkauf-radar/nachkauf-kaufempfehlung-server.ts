@@ -207,11 +207,13 @@ export async function generiereKaufempfehlung(
 
   // Fallback ohne KI wenn keine Kandidaten
   if (kandidaten.length === 0) {
-    const sparen: MonatsEmpfehlung = {
-      typ: 'sparen',
-      text: `Keine Positionen mit Score ≥ ${MIN_SCORE_FUER_KI_EMPFEHLUNG} und Deep Research gefunden. ` +
-        `${BUDGET_EUR} € auf Trade Republic sparen (2,25 % p.a.).`,
-    }
+    const scoreMin = String(MIN_SCORE_FUER_KI_EMPFEHLUNG)
+    const budgetStr = String(BUDGET_EUR)
+    const sparText =
+      'Keine Positionen mit Score \u2265 ' + scoreMin +
+      ' und Deep Research gefunden. ' + budgetStr +
+      ' \u20AC auf Trade Republic sparen (2,25\u00A0%\u00A0p.a.).'
+    const sparen: MonatsEmpfehlung = { typ: 'sparen', text: sparText }
     return {
       ok: true,
       kandidatenAnzahl: 0,
