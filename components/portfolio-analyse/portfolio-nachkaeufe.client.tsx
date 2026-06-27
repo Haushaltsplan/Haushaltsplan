@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { EarningsCallAnalyseDarstellung } from '@/components/portfolio-analyse/pa-earnings-call-analyse'
 import { PortfolioAnalyseShell } from '@/components/portfolio-analyse/portfolio-analyse-shell.client'
 import { PaCard, PaSectionTitle, PA_SCROLL_ELEGANT } from '@/components/portfolio-analyse/pa-ui'
+import { NACHKAUF_RADAR_WHITELIST, type RisikoKlasse } from '@/lib/portfolio-analyse/nachkauf-radar/nachkauf-radar-whitelist'
 import type {
   InsiderKauf,
   Kaufhistorie,
@@ -17,6 +18,10 @@ import type {
   SparplanPosten,
   TrimSignal,
 } from '@/lib/portfolio-analyse/nachkauf-radar/nachkauf-radar-types'
+
+function risikoKlasseVon(isin: string): RisikoKlasse {
+  return NACHKAUF_RADAR_WHITELIST.find((p) => p.isin === isin)?.risikoKlasse ?? 'moderat'
+}
 
 // ---------------------------------------------------------------------------
 // Ampel-Helfer
@@ -365,7 +370,7 @@ function TitelKarte({
         <ScoreSparkline verlauf={eintrag.scoreVerlauf} ampel={eintrag.ampel} />
       </div>
 
-      {/* Badges: Trigger, Insider, Klumpen */}
+      {/* Badges: Trigger, Insider, Klumpen, Risiko */}
       <div className="mt-2 flex flex-wrap gap-1 pl-4">
         <TriggerBadge ausgeloest={eintrag.kaufTriggerAusgeloest} text={eintrag.kaufTriggerText} />
         <InsiderBadge kaeufe={eintrag.insiderKaeufe} />
@@ -374,6 +379,27 @@ function TitelKarte({
             ⚠ Klumpen
           </span>
         )}
+        {(() => {
+          const rk = risikoKlasseVon(eintrag.isin)
+          const cfg =
+            rk === 'konservativ'
+              ? 'bg-emerald-500/10 text-emerald-400 ring-emerald-500/20'
+              : rk === 'moderat'
+                ? 'bg-amber-500/10 text-amber-400 ring-amber-500/20'
+                : 'bg-red-500/10 text-red-400 ring-red-500/20'
+          const label =
+            rk === 'konservativ' ? 'Konservativ' : rk === 'moderat' ? 'Moderat' : 'Spekulativ'
+          const cap =
+            rk === 'konservativ' ? '≤ 350 €' : rk === 'moderat' ? '≤ 200 €' : '≤ 100 €'
+          return (
+            <span
+              className={`inline-flex rounded px-1.5 py-0.5 text-[10px] font-semibold ring-1 ${cfg}`}
+              title={`Risikoklasse: ${label} — max. ${cap}/Monat bei der Kaufempfehlung`}
+            >
+              {label} {cap}
+            </span>
+          )
+        })()}
       </div>
 
       {/* Kennzahlen */}

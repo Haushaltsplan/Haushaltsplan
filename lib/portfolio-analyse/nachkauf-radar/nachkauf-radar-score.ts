@@ -21,6 +21,22 @@ import type {
   SparplanPosten,
 } from './nachkauf-radar-types'
 import type { WhitelistPosition } from './nachkauf-radar-whitelist'
+import { NACHKAUF_RADAR_WHITELIST, type RisikoKlasse } from './nachkauf-radar-whitelist'
+
+// ---------------------------------------------------------------------------
+// Risiko-Hilfsfunktion
+// ---------------------------------------------------------------------------
+
+/** Maximale monatliche Investition je Risikoklasse für den Sparplan. */
+const SPARPLAN_RISIKO_CAP: Record<RisikoKlasse, number> = {
+  konservativ: 350,
+  moderat: 200,
+  spekulativ: 100,
+}
+
+function risikoKlasseVon(isin: string): RisikoKlasse {
+  return NACHKAUF_RADAR_WHITELIST.find((p) => p.isin === isin)?.risikoKlasse ?? 'moderat'
+}
 
 // ---------------------------------------------------------------------------
 // Hilfsfunktionen
@@ -260,18 +276,18 @@ const SPARPLAN_BUDGET_EUR = 500
 
 /**
  * Verteilt das Monatsbudget proportional auf Grün-Kandidaten.
- * - Klumpenrisiko-Positionen erhalten max. 25 % des Budgets.
+ * - Klumpenrisiko-Positionen erhalten max. 20 % des Budgets.
+ * - Risikoklasse begrenzt den Maximalbetrag (konservativ 350 €, moderat 200 €, spekulativ 100 €).
  * - Trigger-Positionen erhalten einen 20 % Bonus-Gewichtung.
- * - Mindestposten: 50 € (sonst weggelassen).
+ * - Mindestposten: 100 € (sonst weggelassen).
  */
 function berechneSparplanAllokation(gruenKandidaten: NachkaufScanEintrag[]): SparplanPosten[] {
   if (gruenKandidaten.length === 0) return []
 
-  // Gewichtung pro Kandidat
   const gewichte = gruenKandidaten.map((e) => {
     let g = e.score
-    if (e.kaufTriggerAusgeloest) g *= 1.2    // Trigger = Bonus
-    if (e.klumpenrisiko) g *= 0.5             // Klumpenrisiko = Abschlag
+    if (e.kaufTriggerAusgeloest) g *= 1.2
+    if (e.klumpenrisiko) g *= 0.5
     return { eintrag: e, gewicht: g }
   })
 
@@ -280,28 +296,38 @@ function berechneSparplanAllokation(gruenKandidaten: NachkaufScanEintrag[]): Spa
 
   const posten: SparplanPosten[] = []
   let restBudget = SPARPLAN_BUDGET_EUR
-
-  // Klumpenrisiko-Cap: max. 25 % des Budgets pro Position
-  const maxProKlumpen = SPARPLAN_BUDGET_EUR * 0.25
+  const maxProKlumpen = SPARPLAN_BUDGET_EUR * 0.2
 
   for (const { eintrag, gewicht } of gewichte) {
-    let betrag = (gewicht / summeGewichte) * SPARPLAN_BUDGET_EUR
-    if (eintrag.klumpenrisiko) betrag = Math.min(betrag, maxProKlumpen)
-    betrag = Math.round(betrag / 10) * 10  // auf 10 € runden
+    const risiko = risikoKlasseVon(eintrag.isin)
+    const maxBetrag = eintrag.klumpenrisiko
+      ? Math.min(SPARPLAN_RISIKO_CAP[risiko], maxProKlumpen)
+      : SPARPLAN_RISIKO_CAP[risiko]
 
-    if (betrag < 50) continue  // Mindestposten
+    let betrag = (gewicht / summeGewichte) * SPARPLAN_BUDGET_EUR
+    betrag = Math.min(betrag, maxBetrag)
+    betrag = Math.round(betrag / 10) * 10
+
+    if (betrag < 100) continue
     restBudget -= betrag
 
-    let begruendung = `Score ${eintrag.score}/100`
+    let begruendung = `Score ${eintrag.score}/100 · Risiko: ${risiko}`
     if (eintrag.kaufTriggerAusgeloest) begruendung += ' · Kaufzone ausgelöst'
-    if (eintrag.klumpenrisiko) begruendung += ' · Klumpenrisiko-Cap 25 %'
+    if (eintrag.klumpenrisiko) begruendung += ' · Klumpenrisiko-Cap'
 
     posten.push({ ticker: eintrag.ticker, name: eintrag.name, betragEur: betrag, begruendung })
   }
 
-  // Restbetrag dem ersten Kandidaten zuschlagen (verhindert Rundungsfehler)
-  if (restBudget !== 0 && posten.length > 0) {
-    posten[0]!.betragEur += restBudget
+  // Restbetrag dem besten konservativen Kandidaten ohne Klumpen-Cap gutschreiben
+  if (restBudget >= 100 && posten.length > 0) {
+    const konservativIdx = gruenKandidaten.findIndex(
+      (e, i) => posten[i] && risikoKlasseVon(e.isin) === 'konservativ' && !e.klumpenrisiko,
+    )
+    const target = konservativIdx >= 0 ? konservativIdx : 0
+    if (posten[target]) {
+      const risiko = risikoKlasseVon(gruenKandidaten[target]!.isin)
+      posten[target]!.betragEur = Math.min(posten[target]!.betragEur + restBudget, SPARPLAN_RISIKO_CAP[risiko])
+    }
   }
 
   return posten

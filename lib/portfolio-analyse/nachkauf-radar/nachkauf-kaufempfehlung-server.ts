@@ -9,10 +9,30 @@
 import 'server-only'
 
 import { runCoachCompletion, resolveCoachProviderFromMode } from '@/lib/ki-coach-backend'
+import { NACHKAUF_RADAR_WHITELIST, type RisikoKlasse } from './nachkauf-radar-whitelist'
 import type { NachkaufScanEintrag, MonatsEmpfehlung, SparplanPosten } from './nachkauf-radar-types'
 
 const BUDGET_EUR = 500
 const MIN_SCORE_FUER_KI_EMPFEHLUNG = 90
+
+/** Maximale monatliche Investition je Risikoklasse. */
+const RISIKO_CAP: Record<RisikoKlasse, number> = {
+  konservativ: 350,
+  moderat: 200,
+  spekulativ: 100,
+}
+
+/** Lesbare Labels für die Anzeige im Prompt und UI. */
+const RISIKO_LABEL: Record<RisikoKlasse, string> = {
+  konservativ: 'Konservativ (≤ 350 €)',
+  moderat: 'Moderat (≤ 200 €)',
+  spekulativ: 'Spekulativ (≤ 100 €)',
+}
+
+/** Risikoklasse aus der Whitelist anhand ISIN abrufen — Fallback: moderat. */
+function risikoKlasseVon(isin: string): RisikoKlasse {
+  return NACHKAUF_RADAR_WHITELIST.find((p) => p.isin === isin)?.risikoKlasse ?? 'moderat'
+}
 
 // ---------------------------------------------------------------------------
 // Kontext-Builder
@@ -49,10 +69,14 @@ function baueKandidatenText(kandidaten: NachkaufScanEintrag[]): string {
     const insider = e.insiderKaeufe?.length > 0
       ? `${e.insiderKaeufe.length} Insider-Käufe in letzten 90 Tagen`
       : 'keine Insider-Käufe'
+    const risiko = risikoKlasseVon(e.isin)
+    const risikoLabel = RISIKO_LABEL[risiko]
+    const maxBetrag = e.klumpenrisiko ? Math.min(RISIKO_CAP[risiko], 100) : RISIKO_CAP[risiko]
 
     return [
       `### ${e.ticker} – ${e.name}`,
       `Score: ${e.score}/100 | Ampel: ${e.ampel} | ${trigger}`,
+      `Risikoklasse: **${risikoLabel}** | Max. Einzelkauf diesen Monat: ${maxBetrag} €`,
       `Bewertung: ${premium} | FCF-Yield: ${e.bewertung.fcfYieldPct?.toFixed(1) ?? '?'}% | Fwd-KGV: ${e.bewertung.forwardPe?.toFixed(1) ?? '?'}`,
       klumpen,
       `Kaufhistorie: ${formatKaufhistorie(e)}`,
@@ -82,8 +106,15 @@ Verteile das Monatsbudget von **${BUDGET_EUR} €** auf die nachstehenden Kandid
 - Kein Zwangskauf: Wenn kein gutes Chancen-Risiko-Verhältnis vorliegt → sparen (Trade Republic zahlt 2,25 % p.a.)
 - Klumpenrisiko-Grenze: Positionen mit ≥15 % Depotanteil maximal 100 € zusätzlich investieren
 - Mindestbetrag pro Position: 100 € (sonst unwirtschaftlich)
-- Maximalbetrag pro Position: 350 € (Diversifikation)
 - Budget kann teilweise gespart werden — Restbetrag wird benannt
+
+## Risiko-adjustierte Positionsobergrenzen (HART, nicht überschreiten)
+Jede Position hat eine Risikoklasse, die den maximalen monatlichen Investitionsbetrag begrenzt:
+- **Konservativ** (Oligopole, rezessionssichere Large Caps): max. **350 €** — z.B. Mastercard, Visa, Microsoft, Alphabet, McDonald's
+- **Moderat** (gute Qualität, aber spezifische Risiken wie Regulierung, KI-Disruption, Zyklizität): max. **200 €** — z.B. ASML, UnitedHealth, Wolters Kluwer, ServiceNow
+- **Spekulativ** (Small/Mid-Cap oder sehr hohe Bewertungen mit erhöhter Volatilität): max. **100 €** — z.B. Balchem, Datadog
+
+Die Risikoklasse jedes Kandidaten ist unten angegeben. Du **musst** diese Obergrenzen einhalten — unabhängig von Score oder Trigger.
 
 ## Regelbasierte Basis-Allokation (nur Score/Trigger/Klumpen)
 ${basisText}
@@ -101,12 +132,12 @@ Beantworte folgende Punkte **auf Deutsch**:
 **1. Gesamtbewertung:** Ist der Markt aktuell für Käufe geeignet? (2–3 Sätze)
 
 **2. Kandidaten-Ranking mit Begründung:**
-Für jeden Kandidaten: Kaufen (wie viel €) oder überspringen — und warum (insbesondere auf Basis des Deep Research).
+Für jeden Kandidaten: Kaufen (wie viel €, unter Berücksichtigung seiner Risikoklasse) oder überspringen — und warum (insbesondere auf Basis des Deep Research). Begründe bei Spekulativ/Moderat explizit, warum das Chancen-Risiko-Verhältnis den niedrigeren Cap rechtfertigt oder nicht.
 
 **3. Finale Allokation:**
 Liste im Format:
-- TICKER: XXX € — Begründung in einem Satz
-- TICKER: XXX € — Begründung in einem Satz
+- TICKER (Risikoklasse): XXX € — Begründung in einem Satz
+- TICKER (Risikoklasse): XXX € — Begründung in einem Satz
 - Gespart: XXX € (Begründung)
 
 **4. Wichtigste Warnung:** Was ist der kritischste Risikofaktor der Gesamtempfehlung?
@@ -256,7 +287,6 @@ function berechneBasisAllokation(kandidaten: NachkaufScanEintrag[]): SparplanPos
   if (kandidaten.length === 0) return []
 
   const MAX_KLUMPEN = BUDGET_EUR * 0.2   // max. 100 € für Klumpen-Positionen
-  const MAX_PRO_POS = 350
   const MIN_POS = 100
 
   const gewichte = kandidaten.map((e) => {
@@ -276,17 +306,22 @@ function berechneBasisAllokation(kandidaten: NachkaufScanEintrag[]): SparplanPos
   let rest = BUDGET_EUR
 
   for (const { eintrag, gewicht } of gewichte) {
+    const risiko = risikoKlasseVon(eintrag.isin)
+    // Risikoklasse begrenzt den Maximalbetrag — Klumpen-Cap greift zusätzlich
+    const maxBetrag = eintrag.klumpenrisiko
+      ? Math.min(RISIKO_CAP[risiko], MAX_KLUMPEN)
+      : RISIKO_CAP[risiko]
+
     let betrag = (gewicht / summe) * BUDGET_EUR
-    if (eintrag.klumpenrisiko) betrag = Math.min(betrag, MAX_KLUMPEN)
-    betrag = Math.min(betrag, MAX_PRO_POS)
+    betrag = Math.min(betrag, maxBetrag)
     betrag = Math.round(betrag / 10) * 10
 
     if (betrag < MIN_POS) continue
     rest -= betrag
 
-    const teile: string[] = [`Score ${eintrag.score}`]
+    const teile: string[] = [`Score ${eintrag.score}`, `Risiko: ${risiko}`]
     if (eintrag.kaufTriggerAusgeloest) teile.push('Kaufzone aktiv')
-    if (eintrag.klumpenrisiko) teile.push('Klumpen-Cap 20%')
+    if (eintrag.klumpenrisiko) teile.push('Klumpen-Cap aktiv')
 
     posten.push({
       ticker: eintrag.ticker,
@@ -296,11 +331,16 @@ function berechneBasisAllokation(kandidaten: NachkaufScanEintrag[]): SparplanPos
     })
   }
 
-  // Restbetrag dem besten Kandidaten ohne Klumpen-Cap gutschreiben
-  if (rest > 0 && posten.length > 0) {
-    const idx = posten.findIndex((_, i) => !kandidaten[i]?.klumpenrisiko)
-    const target = idx >= 0 ? idx : 0
-    posten[target]!.betragEur = Math.min(posten[target]!.betragEur + rest, MAX_PRO_POS)
+  // Restbetrag dem besten konservativen Kandidaten ohne Klumpen-Cap gutschreiben
+  if (rest >= MIN_POS && posten.length > 0) {
+    const konservativIdx = kandidaten.findIndex(
+      (e, i) => posten[i] && risikoKlasseVon(e.isin) === 'konservativ' && !e.klumpenrisiko,
+    )
+    const target = konservativIdx >= 0 ? konservativIdx : 0
+    if (posten[target]) {
+      const risiko = risikoKlasseVon(kandidaten[target]!.isin)
+      posten[target]!.betragEur = Math.min(posten[target]!.betragEur + rest, RISIKO_CAP[risiko])
+    }
   }
 
   return posten
