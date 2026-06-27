@@ -8,10 +8,10 @@ function formatVal(v: number | null, dec = 0): string {
 }
 
 function TrendIcon({ trend, invertiert }: { trend: MetricMitBaseline['trend']; invertiert?: boolean }) {
-  if (trend === 'neutral') return <span className="text-zinc-600">●</span>
+  if (trend === 'neutral') return <span className="text-zinc-700">—</span>
   const good = invertiert ? trend === 'down' : trend === 'up'
   const sym = trend === 'up' ? '▲' : '▼'
-  return <span className={good ? 'text-emerald-400' : 'text-orange-400'}>{sym}</span>
+  return <span style={{ color: good ? '#00E676' : '#FF1744' }}>{sym}</span>
 }
 
 export function WhoopMetricRow({
@@ -59,10 +59,14 @@ export function WhoopMetricRow({
 
 export function WhoopInsightCard({ text, link }: { text: string; link?: string }) {
   return (
-    <div className="rounded-2xl border border-violet-900/40 bg-gradient-to-br from-violet-950/30 to-transparent p-4">
-      <p className="text-sm leading-relaxed text-zinc-300">{text}</p>
+    <div className="rounded-2xl border border-white/[0.06] bg-[#111113] p-4">
+      <div className="mb-2 flex items-center gap-2">
+        <span className="h-1.5 w-1.5 rounded-full bg-[#00E676]" style={{ boxShadow: '0 0 6px #00E676' }} />
+        <span className="text-[9px] font-bold uppercase tracking-[0.18em] text-[#00E676]">Einblick</span>
+      </div>
+      <p className="text-[13px] leading-relaxed text-zinc-300">{text}</p>
       {link ? (
-        <p className="mt-3 text-[11px] font-bold uppercase tracking-wider text-violet-300">{link} →</p>
+        <p className="mt-3 text-[11px] font-semibold tracking-wide text-zinc-500">{link} →</p>
       ) : null}
     </div>
   )
@@ -91,7 +95,7 @@ export function WhoopHealthTile({
         : 'bg-emerald-950/40 text-emerald-300 border-emerald-900/40'
 
   return (
-    <div className="rounded-2xl border border-white/[0.06] bg-[#141618] p-3">
+    <div className="rounded-2xl border border-white/[0.06] bg-[#111113] p-3">
       <span className="text-lg">{icon}</span>
       <p className="mt-2 text-[9px] font-bold uppercase leading-tight tracking-wide text-zinc-500">{label}</p>
       <p className="mt-1 text-lg font-bold tabular-nums text-white">

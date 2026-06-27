@@ -64,7 +64,7 @@ export function WhoopAgingScale({
         : '● stabil'
 
   return (
-    <div className="rounded-2xl border border-white/[0.06] bg-[#141618] p-4">
+    <div className="rounded-2xl border border-white/[0.06] bg-[#111113] p-4">
       <button type="button" onClick={onInfo} className="flex w-full items-center justify-between text-left">
         <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-zinc-300">Alterungsprozess</p>
         <span
@@ -188,7 +188,7 @@ export function WhoopLiveHrMonitor({
     <button
       type="button"
       onClick={onInfo}
-      className="w-full rounded-2xl border border-white/[0.06] bg-[#141618] p-4 text-left"
+      className="w-full rounded-2xl border border-white/[0.06] bg-[#111113] p-4 text-left"
     >
       <p className="text-[10px] font-bold uppercase tracking-wide text-zinc-500">Herzfrequenz</p>
       <div className="mt-2 flex items-center gap-2">
@@ -245,7 +245,7 @@ export function WhoopAgeTrendChart({ model }: { model: HealthspanModel }) {
   const range = max - min || 1
 
   return (
-    <div className="rounded-2xl border border-white/[0.06] bg-[#141618] p-4">
+    <div className="rounded-2xl border border-white/[0.06] bg-[#111113] p-4">
       <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-zinc-300">Whoop-Alter Trend</p>
       <div className="mt-2 flex gap-3 text-[9px] text-zinc-500">
         <span className="flex items-center gap-1">
@@ -300,7 +300,7 @@ export function WhoopAgeTrendChart({ model }: { model: HealthspanModel }) {
 export function WhoopAgingTrendChart({ model }: { model: HealthspanModel }) {
   const h = 90
   return (
-    <div className="rounded-2xl border border-white/[0.06] bg-[#141618] p-4">
+    <div className="rounded-2xl border border-white/[0.06] bg-[#111113] p-4">
       <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-zinc-300">Alterungsprozess Trend</p>
       <svg viewBox={`0 0 360 ${h}`} className="mt-2 w-full">
         <line x1={20} y1={45} x2={340} y2={45} stroke="white" strokeWidth="1" opacity="0.5" />

@@ -81,7 +81,7 @@ export function FitnessWhoopImportPanel({ onImportComplete, embedded = false }: 
 
   return (
     <div
-      className={`rounded-2xl border border-white/[0.08] bg-[#141618] ${embedded ? 'p-4' : 'p-5'}`}
+      className={`rounded-2xl border border-white/[0.08] bg-[#111113] ${embedded ? 'p-4' : 'p-5'}`}
     >
       <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-zinc-300">Daten importieren</p>
       <p className="mt-2 text-xs leading-relaxed text-zinc-500">

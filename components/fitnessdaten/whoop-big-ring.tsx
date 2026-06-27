@@ -29,7 +29,7 @@ export function WhoopBigRing({
     <div className="flex flex-col items-center py-4">
       <div className="relative" style={{ width: size, height: size }}>
         <svg width={size} height={size}>
-          <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="#1a1a1a" strokeWidth={stroke} />
+          <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth={stroke} />
           {!unavailable ? (
             <circle
               cx={size / 2}
@@ -42,6 +42,7 @@ export function WhoopBigRing({
               strokeDashoffset={circ * (1 - pct)}
               strokeLinecap="round"
               transform={`rotate(-90 ${size / 2} ${size / 2})`}
+              style={{ filter: `drop-shadow(0 0 8px ${ringColor}80)` }}
             />
           ) : null}
         </svg>
@@ -66,7 +67,7 @@ export function WhoopMiniRings({
   return (
     <div className="flex justify-center gap-8">
       <MiniRing value={strain} max={21} label="Belastung" color="#009dff" />
-      <MiniRing value={sleep} max={100} label="Schlaf" color="#7b61ff" unit="%" />
+      <MiniRing value={sleep} max={100} label="Schlaf" color="#00E5FF" unit="%" />
     </div>
   )
 }

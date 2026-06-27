@@ -192,13 +192,13 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange }: P
   const zoneAnteil = scores?.zoneMinutes ? formatZoneAnteil(scores.zoneMinutes) : []
   const { heute, woche, metriken, aktivitaeten, aktivitaetenHistorie, journal, schlafdefizit } = model
 
-  const tabs: { id: Tab; label: string; icon: string }[] = [
-    { id: 'home', label: 'Home', icon: '◉' },
-    { id: 'sleep', label: 'Schlaf', icon: '☾' },
-    { id: 'recovery', label: 'Erholung', icon: '◐' },
-    { id: 'strain', label: 'Belastung', icon: '◎' },
-    { id: 'health', label: 'Gesundheit', icon: '♡' },
-    { id: 'connect', label: 'Gerät', icon: '⬡' },
+  const tabs: { id: Tab; label: string; icon: string; color: string }[] = [
+    { id: 'home', label: 'Home', icon: '◉', color: '#ffffff' },
+    { id: 'sleep', label: 'Schlaf', icon: '☾', color: '#00E5FF' },
+    { id: 'recovery', label: 'Erholung', icon: '◐', color: '#00E676' },
+    { id: 'strain', label: 'Belastung', icon: '◎', color: '#009dff' },
+    { id: 'health', label: 'Gesundheit', icon: '♡', color: '#a78bfa' },
+    { id: 'connect', label: 'Gerät', icon: '⬡', color: '#64748b' },
   ]
 
   const zone13Points = woche.map((d, i) => {
@@ -220,12 +220,12 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange }: P
   })
 
   return (
-    <div className="relative min-h-[calc(100dvh-4rem)] overflow-hidden rounded-3xl border border-white/[0.06] bg-[#050505] text-white shadow-2xl shadow-black/60">
+    <div className="relative min-h-[calc(100dvh-4rem)] overflow-hidden rounded-3xl border border-white/[0.05] bg-black text-white shadow-2xl shadow-black/80">
       <div
-        className="pointer-events-none absolute -left-32 -top-32 h-64 w-64 rounded-full opacity-30 blur-3xl"
+        className="pointer-events-none absolute -left-32 -top-32 h-64 w-64 rounded-full opacity-20 blur-3xl"
         style={{ background: recoveryColor(heute.recoveryPercent) }}
       />
-      <div className="pointer-events-none absolute -right-24 top-1/3 h-48 w-48 rounded-full bg-[#009dff]/10 blur-3xl" />
+      <div className="pointer-events-none absolute -right-24 top-1/3 h-48 w-48 rounded-full bg-[#00E5FF]/[0.06] blur-3xl" />
 
       <div
         className={`relative max-h-[calc(100dvh-4rem)] px-4 pb-28 pt-5 sm:px-6 sm:pt-6 ${appModalScrollHiddenClassName}`}
@@ -282,37 +282,58 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange }: P
         {tab === 'home' && (
           <>
             <div className="mt-6 flex items-start justify-around gap-2">
-              <WhoopRing
-                value={heute.recoveryPercent ?? 0}
-                label="Erholung"
-                sublabel={recoveryLabelDe(scores?.recoveryLabel)}
-                color={recoveryColor(heute.recoveryPercent)}
-                unavailable={heute.recoveryPercent == null}
-                onPress={() => setTab('recovery')}
-              />
-              <WhoopRing
-                value={heute.strain ?? 0}
-                max={21}
-                label="Belastung"
-                sublabel="Heute"
-                color="#009dff"
-                unavailable={heute.strain == null}
-                onPress={() => setTab('strain')}
-              />
-              <WhoopRing
-                value={heute.sleepScore ?? 0}
-                label="Schlaf"
-                sublabel={
-                  heute.sleepMinutes ? `${Math.floor(heute.sleepMinutes / 60)}h ${heute.sleepMinutes % 60}m` : 'Nacht'
-                }
-                color="#7b61ff"
-                unavailable={heute.sleepScore == null}
-                onPress={() => setTab('sleep')}
-              />
+              <div
+                className="flex flex-col items-center"
+                style={{
+                  filter: heute.recoveryPercent != null ? `drop-shadow(0 0 12px ${recoveryColor(heute.recoveryPercent)}50)` : 'none',
+                }}
+              >
+                <WhoopRing
+                  value={heute.recoveryPercent ?? 0}
+                  label="Erholung"
+                  sublabel={recoveryLabelDe(scores?.recoveryLabel)}
+                  color={recoveryColor(heute.recoveryPercent)}
+                  unavailable={heute.recoveryPercent == null}
+                  onPress={() => setTab('recovery')}
+                />
+              </div>
+              <div
+                className="flex flex-col items-center"
+                style={{
+                  filter: heute.strain != null ? 'drop-shadow(0 0 12px #009dff50)' : 'none',
+                }}
+              >
+                <WhoopRing
+                  value={heute.strain ?? 0}
+                  max={21}
+                  label="Belastung"
+                  sublabel="Heute"
+                  color="#009dff"
+                  unavailable={heute.strain == null}
+                  onPress={() => setTab('strain')}
+                />
+              </div>
+              <div
+                className="flex flex-col items-center"
+                style={{
+                  filter: heute.sleepScore != null ? 'drop-shadow(0 0 12px #00E5FF50)' : 'none',
+                }}
+              >
+                <WhoopRing
+                  value={heute.sleepScore ?? 0}
+                  label="Schlaf"
+                  sublabel={
+                    heute.sleepMinutes ? `${Math.floor(heute.sleepMinutes / 60)}h ${heute.sleepMinutes % 60}m` : 'Nacht'
+                  }
+                  color="#00E5FF"
+                  unavailable={heute.sleepScore == null}
+                  onPress={() => setTab('sleep')}
+                />
+              </div>
             </div>
 
             <section className="mt-6 space-y-4">
-              <div className="rounded-2xl border border-white/[0.06] bg-[#141618] p-4">
+              <div className="rounded-2xl border border-white/[0.06] bg-[#111113] p-4">
                 <button type="button" onClick={() => showInfo('behavior')} className="w-full text-left">
                   <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">Verhaltenseinblicke</p>
                   <p className="mt-2 text-xs leading-relaxed text-zinc-500">
@@ -331,7 +352,7 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange }: P
                 <WhoopHrChart points={snapshot?.hrHistory ?? []} live={isLive} />
               </div>
 
-              <div className="rounded-2xl border border-white/[0.06] bg-[#141618] p-4">
+              <div className="rounded-2xl border border-white/[0.06] bg-[#111113] p-4">
                 <p className="mb-3 text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">
                   Vitalwerte — tippe für Verlauf
                 </p>
@@ -339,15 +360,29 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange }: P
                   {HOME_METRICS.map((m) => {
                     const val = heuteWert(m.id, heute)
                     const base = baselineFuerMetrik(m.id)
+                    const diff = val != null && base != null && base > 0 ? (val - base) / base : null
+                    const invertiert = m.id === 'rhr' || m.id === 'respiratory'
+                    const trendDir = diff == null ? null : Math.abs(diff) < 0.03 ? 'neutral' : diff > 0 ? 'up' : 'down'
+                    const trendGood = trendDir == null || trendDir === 'neutral' ? null : invertiert ? trendDir === 'down' : trendDir === 'up'
+                    const trendColor = trendGood == null ? '#52525b' : trendGood ? '#00E676' : '#ef4444'
+                    const trendIcon = trendDir === 'up' ? '▲' : trendDir === 'down' ? '▼' : null
+                    const metricColor = m.id === 'vo2max' ? '#00E5FF' : m.id === 'hrv' ? '#00E676' : m.id === 'steps' || m.id === 'calories' ? '#009dff' : undefined
                     return (
                       <li key={m.id}>
                         <button
                           type="button"
                           onClick={() => setTrendMetric(m.id)}
-                          className="w-full rounded-xl border border-white/[0.04] bg-black/25 px-3 py-2.5 text-left transition hover:border-[#009dff]/30"
+                          className="w-full rounded-xl border border-white/[0.04] bg-black/25 px-3 py-2.5 text-left transition hover:border-white/10 active:scale-[0.98]"
                         >
-                          <span className="text-[9px] font-bold uppercase text-zinc-500">{m.label}</span>
-                          <p className="mt-1 text-base font-bold tabular-nums text-white">
+                          <div className="flex items-center justify-between">
+                            <span className="text-[9px] font-bold uppercase text-zinc-500">{m.label}</span>
+                            {trendIcon && (
+                              <span className="text-[10px] font-bold" style={{ color: trendColor }}>
+                                {trendIcon}
+                              </span>
+                            )}
+                          </div>
+                          <p className="mt-1 text-[17px] font-bold tabular-nums" style={{ color: val != null ? (metricColor ?? 'white') : '#52525b' }}>
                             {formatMetricWert(m.id, val, m.decimals ?? 0)}
                             {m.unit && val != null ? (
                               <span className="ml-1 text-[10px] font-normal text-zinc-500">{m.unit}</span>
@@ -355,7 +390,7 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange }: P
                           </p>
                           {base != null ? (
                             <p className="mt-0.5 text-[9px] text-zinc-600">
-                              Monats-Ø: {formatMetricWert(m.id, base, m.decimals ?? 0)}
+                              Ø {formatMetricWert(m.id, base, m.decimals ?? 0)}
                               {m.unit ? ` ${m.unit}` : ''}
                             </p>
                           ) : null}
@@ -367,7 +402,7 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange }: P
               </div>
 
               {aktivitaetenHistorie.length > 0 ? (
-                <div className="rounded-2xl border border-white/[0.06] bg-[#141618] p-4">
+                <div className="rounded-2xl border border-white/[0.06] bg-[#111113] p-4">
                   <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">
                     Letzte Aktivitäten
                   </p>
@@ -414,7 +449,7 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange }: P
                 sublabel={
                   heute.sleepMinutes ? `${Math.floor(heute.sleepMinutes / 60)}h ${heute.sleepMinutes % 60}m` : undefined
                 }
-                color="#7b61ff"
+                color="#00E5FF"
               />
             </button>
 
@@ -519,7 +554,7 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange }: P
               points={wochePunkte(woche, 'sleepScore')}
               max={100}
               formatValue={(v) => `${v}%`}
-              color="#7b61ff"
+              color="#00E5FF"
               onInfo={() => showInfo('sleep_score')}
             />
 
@@ -535,7 +570,7 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange }: P
               color={recoveryColor(heute.recoveryPercent)}
             />
 
-            <div className="rounded-2xl border border-white/[0.06] bg-[#141618] px-4">
+            <div className="rounded-2xl border border-white/[0.06] bg-[#111113] px-4">
               <WhoopMetricRow icon="〰" label="Herzfrequenzvariabilität" m={metriken.hrv} unit="ms" onPress={() => setTrendMetric('hrv')} onInfo={() => showInfo('hrv')} />
               <WhoopMetricRow icon="♥" label="Ruheherzfrequenz" m={metriken.rhr} onPress={() => setTrendMetric('rhr')} onInfo={() => showInfo('rhr')} />
               <WhoopMetricRow icon="◎" label="Atemfrequenz" m={metriken.respiratory} decimals={1} onPress={() => setTrendMetric('respiratory')} onInfo={() => showInfo('respiratory')} />
@@ -571,7 +606,7 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange }: P
               points={wochePunkte(woche, 'sleepScore')}
               max={100}
               formatValue={(v) => `${v}%`}
-              color="#7b61ff"
+              color="#00E5FF"
               onInfo={() => showInfo('sleep_score')}
             />
           </section>
@@ -581,7 +616,7 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange }: P
           <section className="mt-4 space-y-4">
             <WhoopBigRing value={heute.strain} max={21} label="Belastung" color="#009dff" />
 
-            <div className="rounded-2xl border border-white/[0.06] bg-[#141618] px-4">
+            <div className="rounded-2xl border border-white/[0.06] bg-[#111113] px-4">
               <WhoopMetricRow
                 icon="♥"
                 label="Herzfrequenzzonen 1–3"
@@ -645,7 +680,7 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange }: P
             ) : null}
 
             {aktivitaeten.length > 0 ? (
-              <div className="rounded-2xl border border-white/[0.06] bg-[#141618] p-4">
+              <div className="rounded-2xl border border-white/[0.06] bg-[#111113] p-4">
                 <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-zinc-300">Aktivitäten heute</p>
                 <ul className="mt-3 space-y-2">
                   {aktivitaeten.map((a) => (
@@ -670,7 +705,7 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange }: P
             ) : null}
 
             {aktivitaetenHistorie.filter((a) => !aktivitaeten.some((t) => t.id === a.id)).length > 0 ? (
-              <div className="rounded-2xl border border-white/[0.06] bg-[#141618] p-4">
+              <div className="rounded-2xl border border-white/[0.06] bg-[#111113] p-4">
                 <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-zinc-300">Vorangegangene Aktivitäten</p>
                 <ul className="mt-3 space-y-2">
                   {aktivitaetenHistorie
@@ -733,7 +768,7 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange }: P
             />
 
             {zoneAnteil.length > 0 ? (
-              <div className="rounded-2xl border border-white/[0.06] bg-[#141618] p-4">
+              <div className="rounded-2xl border border-white/[0.06] bg-[#111113] p-4">
                 <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-zinc-500">Zonen heute</p>
                 <ul className="mt-3 space-y-2">
                   {zoneAnteil.map(({ key, pct }) => (
@@ -773,7 +808,7 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange }: P
               onInfo={() => showInfo('aging_process')}
             />
 
-            <div className="rounded-2xl border border-white/[0.06] bg-[#141618] px-4">
+            <div className="rounded-2xl border border-white/[0.06] bg-[#111113] px-4">
               <p className="border-b border-white/[0.06] py-3 text-[11px] font-bold uppercase tracking-[0.14em] text-zinc-300">
                 Schlaf
               </p>
@@ -790,7 +825,7 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange }: P
                 ))}
             </div>
 
-            <div className="rounded-2xl border border-white/[0.06] bg-[#141618] px-4">
+            <div className="rounded-2xl border border-white/[0.06] bg-[#111113] px-4">
               <p className="border-b border-white/[0.06] py-3 text-[11px] font-bold uppercase tracking-[0.14em] text-zinc-300">
                 Belastung
               </p>
@@ -815,7 +850,7 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange }: P
                 ))}
             </div>
 
-            <div className="rounded-2xl border border-white/[0.06] bg-[#141618] px-4">
+            <div className="rounded-2xl border border-white/[0.06] bg-[#111113] px-4">
               <p className="border-b border-white/[0.06] py-3 text-[11px] font-bold uppercase tracking-[0.14em] text-zinc-300">
                 Fitness
               </p>
@@ -844,7 +879,7 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange }: P
               onInfo={() => showInfo('health_monitor')}
             />
 
-            <div className="rounded-2xl border border-white/[0.06] bg-[#141618] p-4">
+            <div className="rounded-2xl border border-white/[0.06] bg-[#111113] p-4">
               <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-zinc-300">Gesundheitsmonitor</p>
               <div className="mt-3 grid grid-cols-2 gap-2">
                 <WhoopHealthTile
@@ -935,7 +970,7 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange }: P
             </div>
 
             {journal.length > 0 ? (
-              <div className="rounded-2xl border border-white/[0.06] bg-[#141618] p-4">
+              <div className="rounded-2xl border border-white/[0.06] bg-[#111113] p-4">
                 <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-zinc-300">Journal heute</p>
                 <ul className="mt-3 space-y-2">
                   {journal.slice(0, 8).map((j) => (
@@ -950,7 +985,7 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange }: P
 
             <button
               type="button"
-              className="flex w-full items-center justify-center gap-2 rounded-2xl border border-white/[0.08] bg-[#141618] py-3.5 text-[11px] font-bold uppercase tracking-wider text-zinc-300"
+              className="flex w-full items-center justify-center gap-2 rounded-2xl border border-white/[0.08] bg-[#111113] py-3.5 text-[11px] font-bold uppercase tracking-wider text-zinc-300"
               onClick={() => {
                 const text = [
                   'Omnia Gesundheitsbericht',
@@ -966,7 +1001,7 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange }: P
             </button>
 
             {snapshot?.gen5 ? (
-              <div className="rounded-2xl border border-white/[0.06] bg-[#141618] p-4 font-mono text-[11px] text-zinc-500">
+              <div className="rounded-2xl border border-white/[0.06] bg-[#111113] p-4 font-mono text-[11px] text-zinc-500">
                 <p className="font-sans text-[10px] font-bold uppercase text-zinc-400">Gen5 fd4b</p>
                 <p className="mt-1">Phase: {snapshot.gen5.phase}</p>
                 <p>r22: {snapshot.gen5.r22Count} · Historie: {snapshot.gen5.historyPackets}</p>
@@ -986,17 +1021,22 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange }: P
         )}
       </div>
 
-      <nav className="absolute bottom-0 left-0 right-0 border-t border-white/[0.06] bg-[#050505]/95 px-1 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-2 backdrop-blur-xl">
+      <nav className="absolute bottom-0 left-0 right-0 border-t border-white/[0.06] bg-black/95 px-1 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-1 backdrop-blur-xl">
         <ul className="flex justify-around">
           {tabs.map((t) => (
             <li key={t.id}>
               <button
                 type="button"
                 onClick={() => setTab(t.id)}
-                className={`flex flex-col items-center gap-0.5 rounded-xl px-2 py-2 text-[9px] font-semibold transition sm:px-3 sm:text-[10px] ${
-                  tab === t.id ? 'text-white' : 'text-zinc-600 hover:text-zinc-400'
-                }`}
+                className="relative flex flex-col items-center gap-0.5 rounded-xl px-2 py-2 text-[9px] font-semibold transition sm:px-3 sm:text-[10px]"
+                style={{ color: tab === t.id ? t.color : '#52525b' }}
               >
+                {tab === t.id && (
+                  <span
+                    className="absolute -top-px left-1/2 h-[2px] w-6 -translate-x-1/2 rounded-full"
+                    style={{ backgroundColor: t.color, boxShadow: `0 0 8px 1px ${t.color}80` }}
+                  />
+                )}
                 <span className="text-base leading-none">{t.icon}</span>
                 {t.label}
               </button>

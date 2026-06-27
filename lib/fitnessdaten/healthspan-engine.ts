@@ -77,9 +77,13 @@ export function baueHealthspanModel(heute: WhoopDayRecord): HealthspanModel {
   const sleepMin = heute.sleepMinutes ?? 0
   const zone13Week = wochenSumme('zoneMin13', woche)
   const zone45Week = wochenSumme('zoneMin45', woche)
-  const stepsAvg = baseline30('steps', woche) ?? heute.steps ?? 0
+  // Nur echte Step-Daten verwenden — keine 0-Schätzung für Omnia-Age-Berechnung
+  const stepsRaw = baseline30('steps', woche) ?? heute.steps ?? null
+  const stepsAvg = stepsRaw != null && stepsRaw > 200 ? stepsRaw : null
   const strengthWeek = wochenSumme('strengthMin', woche)
-  const rhr = heute.restingHr ?? history.baselines.restingHrBpm
+  // Nur echten Messwert für Omnia-Age nutzen — Fallback auf 30-Tage-Baseline
+  const rhrBase = baseline30('restingHr') ?? history.baselines.restingHrBpm
+  const rhr = heute.restingHr ?? rhrBase
   const vo2 = aktuellesVo2Max() ?? heute.vo2Max
 
   const metrics: HealthspanMetric[] = [
@@ -143,16 +147,20 @@ export function baueHealthspanModel(heute: WhoopDayRecord): HealthspanModel {
           ? 'Unter dem empfohlenen Bereich — mehr Krafttraining kann dein Omnia-Alter verbessern.'
           : undefined,
     },
-    {
-      id: 'steps',
-      label: 'Schritte',
-      value: `${Math.round(stepsAvg).toLocaleString('de-DE')} Schritte`,
-      valueNum: stepsAvg,
-      min: 0,
-      max: 16000,
-      position: posLinear(stepsAvg, 0, 16000),
-      impactYears: impactFromPosition(posLinear(stepsAvg, 0, 16000), 1.6),
-    },
+    ...(stepsAvg != null
+      ? [
+          {
+            id: 'steps' as HealthspanMetricId,
+            label: 'Schritte',
+            value: `${Math.round(stepsAvg).toLocaleString('de-DE')} Schritte`,
+            valueNum: stepsAvg,
+            min: 0,
+            max: 16000,
+            position: posLinear(stepsAvg, 0, 16000),
+            impactYears: impactFromPosition(posLinear(stepsAvg, 0, 16000), 1.6),
+          },
+        ]
+      : []),
   ]
 
   if (vo2 != null) {

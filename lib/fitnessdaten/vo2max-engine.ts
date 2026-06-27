@@ -33,7 +33,7 @@ export type Vo2TrendsStore = {
   manuell: number | null
 }
 
-const MIN_RECOVERY_TAGE = 14
+const MIN_RECOVERY_TAGE = 7
 const FENSTER_TAGE = 30
 
 function defaultStore(): Vo2TrendsStore {
@@ -97,17 +97,29 @@ function maxHrAusDaten(days: WhoopDayRecord[], profilMax: number): number {
 /**
  * WHOOP-nah: Uth (15,3 × MHR/RHR) auf 30-Tage-Baseline-RHR und Workout-Peak-MHR,
  * leicht angehoben durch HFV (WHOOP nutzt HRV + Recovery langfristig).
+ * Profil-Fallback wenn weniger als MIN_RECOVERY_TAGE Tage mit RHR vorhanden.
  */
 export function berechneVo2MaxLangfristig(days = ladeDailyStore().days): number | null {
   const fenster = days.slice(-FENSTER_TAGE)
   const mitRecovery = tageMitRecovery(fenster)
-  if (mitRecovery.length < MIN_RECOVERY_TAGE) return null
 
   const profil = ladeFitnessProfil()
   const alter = profilAlter(profil)
   const gewicht = profilGewichtKg(profil)
   const maennlich = profilMaennlich(profil)
   const profilMhr = profilMaxHr(profil)
+
+  if (mitRecovery.length < MIN_RECOVERY_TAGE) {
+    // Profil-Schätzung wenn noch zu wenig RHR-Daten — einfaches demografisches Modell
+    if (profilMhr <= 0) return null
+    const defaultRhr = 62 - Math.max(0, (alter - 30) * 0.2)
+    if (defaultRhr < 35) return null
+    let vo2 = 15.3 * (profilMhr / defaultRhr)
+    if (!maennlich) vo2 *= 0.96
+    if (alter > 45) vo2 *= 1 - Math.min(0.08, (alter - 45) * 0.004)
+    if (gewicht > 0 && gewicht < 72) vo2 *= 1.02
+    return Math.round(Math.min(65, Math.max(28, vo2)))
+  }
 
   const rhrVals = mitRecovery.map((d) => d.restingHr!)
   const rhrAvg = mittelwert(rhrVals)!

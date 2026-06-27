@@ -40,7 +40,7 @@ export function WhoopWeeklyBarChart({
   const werteAnzeigen = n <= 12
 
   return (
-    <div className="rounded-2xl border border-white/[0.06] bg-[#141618] p-4">
+    <div className="rounded-2xl border border-white/[0.06] bg-[#111113] p-4">
       <WhoopChartHeader title={title} onInfo={onInfo} />
       <div className="overflow-x-auto">
         <svg
@@ -129,7 +129,7 @@ export function WhoopWeeklyLineChart({
   const poly = coords.map((c) => `${c.x},${c.y}`).join(' ')
 
   return (
-    <div className="rounded-2xl border border-white/[0.06] bg-[#141618] p-4">
+    <div className="rounded-2xl border border-white/[0.06] bg-[#111113] p-4">
       <WhoopChartHeader title={title} onInfo={onInfo} />
       <div className="overflow-x-auto">
         <svg
@@ -179,7 +179,7 @@ export function WhoopStackedZoneChart({
   const peak = Math.max(...points.map((p) => p.segments.reduce((a, s) => a + s.min, 0)), 0.01)
 
   return (
-    <div className="rounded-2xl border border-white/[0.06] bg-[#141618] p-4">
+    <div className="rounded-2xl border border-white/[0.06] bg-[#111113] p-4">
       <WhoopChartHeader title={title} onInfo={onInfo} />
       <div className="mt-2 flex flex-wrap gap-3 text-[9px] text-zinc-500">
         {zones.map((z) => (
@@ -295,7 +295,7 @@ export function WhoopDualLineChart({
   }
 
   return (
-    <div className="rounded-2xl border border-white/[0.06] bg-[#141618] p-4">
+    <div className="rounded-2xl border border-white/[0.06] bg-[#111113] p-4">
       <WhoopChartHeader title={title} onInfo={onInfo} />
       <div className="mb-2 flex gap-4 text-[9px] text-zinc-500">
         <span className="flex items-center gap-1">
@@ -340,7 +340,7 @@ export function WhoopTimeInBedChart({
       : '—'
 
   return (
-    <div className="rounded-2xl border border-white/[0.06] bg-[#141618] p-4">
+    <div className="rounded-2xl border border-white/[0.06] bg-[#111113] p-4">
       <WhoopChartHeader title={title} onInfo={onInfo} />
       <svg viewBox={`0 0 360 ${h}`} className="w-full">
         {points.map((p, i) => {
@@ -390,7 +390,7 @@ export function WhoopRestorativeChart({
   const peak = Math.max(...points.map((p) => p.remMin + p.deepMin), 1)
 
   return (
-    <div className="rounded-2xl border border-white/[0.06] bg-[#141618] p-4">
+    <div className="rounded-2xl border border-white/[0.06] bg-[#111113] p-4">
       <WhoopChartHeader title={title} onInfo={onInfo} />
       <div className="mb-2 flex gap-4 text-[9px] text-zinc-500">
         <span className="flex items-center gap-1">

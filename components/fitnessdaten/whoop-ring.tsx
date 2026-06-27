@@ -38,7 +38,7 @@ export function WhoopRing({
             cy={size / 2}
             r={r}
             fill="none"
-            stroke="rgba(255,255,255,0.08)"
+            stroke="rgba(255,255,255,0.10)"
             strokeWidth={stroke}
           />
           {!unavailable ? (
@@ -54,6 +54,7 @@ export function WhoopRing({
               strokeLinecap="round"
               transform={`rotate(-90 ${size / 2} ${size / 2})`}
               className="transition-[stroke-dashoffset] duration-700 ease-out"
+              style={{ filter: `drop-shadow(0 0 4px ${color}80)` }}
             />
           ) : null}
         </svg>
@@ -95,9 +96,9 @@ export function WhoopRing({
 
 export function recoveryColor(percent: number | null | undefined): string {
   if (percent == null) return '#52525b'
-  if (percent >= 67) return '#00ff87'
-  if (percent >= 34) return '#facc15'
-  return '#ef4444'
+  if (percent >= 67) return '#00E676'
+  if (percent >= 34) return '#FFD600'
+  return '#FF1744'
 }
 
 export function recoveryLabelDe(label: string | null | undefined): string {
