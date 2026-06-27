@@ -22,6 +22,14 @@ export type StravaStoredTokens = {
   athleteId?: number | null
 }
 
+export type StravaHrZoneMinutes = {
+  z1: number
+  z2: number
+  z3: number
+  z4: number
+  z5: number
+}
+
 export type StravaActivityRow = {
   strava_id: number
   name: string
@@ -42,9 +50,23 @@ export type StravaActivityRow = {
   average_speed_kmh: number | null
   device_watts: boolean | null
   power_peaks: StravaPowerPeaks | null
+  summary_polyline: string | null
+  suffer_score: number | null
+  gear_id: number | null
+  workout_type: number | null
+  hr_zone_minutes: StravaHrZoneMinutes | null
+  estimated_tss: number | null
 }
 
-export type StravaAthleteProfile = {
+export type StravaSeasonGoals = {
+  goal_km_year: number | null
+  goal_hm_year: number | null
+  goal_rides_per_week: number | null
+  goal_event_name: string | null
+  goal_event_date: string | null
+}
+
+export type StravaAthleteProfile = StravaSeasonGoals & {
   omnia_weight_kg: number | null
   ftp: number | null
   max_hr: number | null

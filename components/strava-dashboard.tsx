@@ -1,11 +1,13 @@
 'use client'
 
 import { StravaAnalyticsView } from '@/components/strava/strava-analytics-view'
+import { StravaAthleteSwitcher } from '@/components/strava/strava-athlete-switcher'
 import { STRAVA_COLORS, STRAVA_INTERACTIVE } from '@/components/strava/design-tokens'
 import { StravaCard } from '@/components/strava/strava-card'
 import { WhoopWeeklyBarChart } from '@/components/fitnessdaten/whoop-charts'
 import { PageChrome, PageHero, PageSection, PageSectionPanel } from '@/components/page-shell'
 import { istOmniaNativeApp } from '@/lib/fitnessdaten/omnia-native'
+import type { StravaConnectionPublic } from '@/lib/strava/strava-connections'
 import { stravaApiFetch } from '@/lib/strava/strava-api-fetch'
 import { oeffneStravaOAuthUrl } from '@/lib/strava/strava-oauth-open'
 import { stravaRedirectUri } from '@/lib/strava/strava-types'
@@ -27,6 +29,7 @@ type Status = {
   connected: boolean
   athlete?: StravaAthleteProfile | null
   activityCount?: number
+  connections?: StravaConnectionPublic[]
 }
 
 const PR_KATEGORIE_TITEL: Record<StravaPrKategorie, string> = {
@@ -54,6 +57,8 @@ export function StravaDashboard() {
   const [nativeApp] = useState(() => istOmniaNativeApp())
   const [gewichtInput, setGewichtInput] = useState('')
   const [gewichtSpeichern, setGewichtSpeichern] = useState(false)
+  const [connections, setConnections] = useState<StravaConnectionPublic[]>([])
+  const [activeConnectionId, setActiveConnectionId] = useState<string | null>(null)
 
   useEffect(() => {
     void fetch('/api/strava/ping', { cache: 'no-store' })
@@ -75,6 +80,7 @@ export function StravaDashboard() {
       let connected = false
       let athleteProfil: StravaAthleteProfile | null = null
       let activityCount = 0
+      let conns: StravaConnectionPublic[] = []
       const { data } = await supabase.auth.getSession()
       if (data.session?.access_token) {
         const res = await stravaApiFetch('/api/strava/status')
@@ -83,9 +89,17 @@ export function StravaDashboard() {
           connected = Boolean(s.connected)
           athleteProfil = s.athlete ?? null
           activityCount = s.activityCount ?? 0
+          conns = s.connections ?? []
+          if (conns.length) {
+            setConnections(conns)
+            setActiveConnectionId((prev) => {
+              if (prev && conns.some((c) => c.id === prev)) return prev
+              return conns.find((c) => c.isPrimary)?.id ?? conns[0].id
+            })
+          }
         }
       }
-      setStatus({ configured, connected, athlete: athleteProfil, activityCount })
+      setStatus({ configured, connected, athlete: athleteProfil, activityCount, connections: conns })
       setAthlete(athleteProfil)
     } catch {
       toast.error('Strava-Status konnte nicht geladen werden.')
@@ -94,18 +108,22 @@ export function StravaDashboard() {
     }
   }, [])
 
-  const ladeDaten = useCallback(async () => {
+  const ladeDaten = useCallback(async (connectionId?: string | null) => {
     setDataLoading(true)
     try {
-      const res = await stravaApiFetch('/api/strava/activities')
+      const cid = connectionId ?? activeConnectionId
+      const qs = cid ? `?connection=${encodeURIComponent(cid)}` : ''
+      const res = await stravaApiFetch(`/api/strava/activities${qs}`)
       if (!res.ok) return
       const body = (await res.json()) as {
         auswertung?: StravaAuswertung
         athlete?: StravaAthleteProfile | null
         activities?: StravaActivityRow[]
+        connectionId?: string | null
       }
       if (body.auswertung) setAuswertung(body.auswertung)
       if (body.activities) setAllActivities(body.activities)
+      if (body.connectionId) setActiveConnectionId(body.connectionId)
       if (body.athlete) {
         setAthlete(body.athlete)
         const kg = body.athlete.omnia_weight_kg
@@ -116,7 +134,7 @@ export function StravaDashboard() {
     } finally {
       setDataLoading(false)
     }
-  }, [])
+  }, [activeConnectionId])
 
   useEffect(() => {
     void ladeStatus()
@@ -125,31 +143,44 @@ export function StravaDashboard() {
   }, [ladeStatus])
 
   useEffect(() => {
-    if (status.connected) void ladeDaten()
-  }, [status.connected, ladeDaten])
+    if (status.connected) void ladeDaten(activeConnectionId)
+  }, [status.connected, activeConnectionId, ladeDaten])
 
-  const sync = useCallback(async () => {
-    setBusy(true)
-    try {
-      const res = await stravaApiFetch('/api/strava/sync', { method: 'POST' })
-      const body = (await res.json()) as { ok?: boolean; message?: string; fehler?: string }
-      if (body.ok) {
-        toast.success(body.message ?? 'Synchronisiert')
-        await ladeStatus()
-        await ladeDaten()
-      } else {
-        toast.error(body.fehler ?? body.message ?? 'Sync fehlgeschlagen')
-      }
-    } finally {
+  const sync = useCallback(
+    async (opts: { fullImport?: boolean; syncAll?: boolean; connectionId?: string | null } = {}) => {
+      setBusy(true)
+      try {
+        const res = await stravaApiFetch('/api/strava/sync', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            full: opts.fullImport ?? false,
+            syncAll: opts.syncAll ?? false,
+            connectionId: opts.connectionId ?? activeConnectionId,
+          }),
+        })
+        const body = (await res.json()) as { ok?: boolean; message?: string; fehler?: string }
+        if (body.ok) {
+          toast.success(body.message ?? 'Synchronisiert')
+          await ladeStatus()
+          await ladeDaten(opts.connectionId ?? activeConnectionId)
+        } else {
+          toast.error(body.fehler ?? body.message ?? 'Sync fehlgeschlagen')
+        }
+      } finally {
       setBusy(false)
     }
-  }, [ladeDaten, ladeStatus])
+  }, [activeConnectionId, ladeDaten, ladeStatus])
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
     if (params.get('strava') === 'connected') {
-      toast.success('Strava verbunden — Aktivitäten werden synchronisiert.')
-      void ladeStatus().then(() => sync())
+      toast.success(
+        params.get('guest') === '1'
+          ? 'Freund verbunden — Daten werden synchronisiert.'
+          : 'Strava verbunden — Aktivitäten werden synchronisiert.',
+      )
+      void ladeStatus().then(() => sync({}))
       window.history.replaceState({}, '', window.location.pathname)
     }
     const err = params.get('strava_error')
@@ -163,7 +194,7 @@ export function StravaDashboard() {
     if (!nativeApp) return
     const onResume = () => {
       void ladeStatus().then(() => {
-        if (status.connected) void sync()
+        if (status.connected) void sync({})
       })
     }
     const onVisible = () => {
@@ -179,14 +210,19 @@ export function StravaDashboard() {
     }
   }, [ladeStatus, nativeApp, status.connected, sync])
 
-  const verbinden = useCallback(async () => {
-    const { data } = await supabase.auth.getSession()
-    if (!data.session?.access_token) {
-      toast.error('Bitte zuerst in Omnia einloggen.')
-      return
-    }
-    try {
-      const res = await stravaApiFetch('/api/strava/auth/start', { method: 'POST' })
+  const verbinden = useCallback(
+    async (mode: 'primary' | 'guest' = 'primary', label?: string) => {
+      const { data } = await supabase.auth.getSession()
+      if (!data.session?.access_token) {
+        toast.error('Bitte zuerst in Omnia einloggen.')
+        return
+      }
+      try {
+        const res = await stravaApiFetch('/api/strava/auth/start', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ mode, label }),
+        })
       if (!res.ok) {
         const body = (await res.json().catch(() => ({}))) as { error?: string }
         toast.error(body.error ?? 'Strava-Verbindung konnte nicht gestartet werden.')
@@ -199,12 +235,31 @@ export function StravaDashboard() {
       }
       await oeffneStravaOAuthUrl(url)
       if (nativeApp) {
-        toast('Strava-Anmeldung im Browser. Danach Omnia wieder öffnen.', { duration: 9000 })
+        toast(
+          mode === 'guest'
+            ? 'Freund:in meldet sich bei Strava an. Danach Omnia wieder öffnen.'
+            : 'Strava-Anmeldung im Browser. Danach Omnia wieder öffnen.',
+          { duration: 9000 },
+        )
       }
     } catch {
       toast.error('Strava-Verbindung konnte nicht gestartet werden.')
     }
   }, [nativeApp])
+
+  const entferneVerbindung = useCallback(
+    async (connectionId: string) => {
+      await stravaApiFetch('/api/strava/disconnect', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ connectionId }),
+      })
+      toast.success('Verbindung entfernt.')
+      await ladeStatus()
+      await ladeDaten()
+    },
+    [ladeDaten, ladeStatus],
+  )
 
   const speichereGewicht = useCallback(async () => {
     const parsed = Number.parseFloat(gewichtInput.replace(',', '.'))
@@ -217,7 +272,7 @@ export function StravaDashboard() {
       const res = await stravaApiFetch('/api/strava/settings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ omnia_weight_kg: parsed }),
+        body: JSON.stringify({ omnia_weight_kg: parsed, connectionId: activeConnectionId }),
       })
       if (!res.ok) {
         const err = (await res.json().catch(() => ({}))) as { error?: string }
@@ -231,7 +286,7 @@ export function StravaDashboard() {
     } finally {
       setGewichtSpeichern(false)
     }
-  }, [gewichtInput, ladeDaten])
+  }, [gewichtInput, ladeDaten, activeConnectionId])
 
   const trennen = useCallback(async () => {
     await stravaApiFetch('/api/strava/disconnect', { method: 'POST' })
@@ -319,7 +374,7 @@ STRAVA_CLIENT_SECRET=dein_client_secret`}
             <div className="flex flex-wrap items-center gap-3">
               <button
                 type="button"
-                onClick={() => void verbinden()}
+                onClick={() => void verbinden('primary')}
                 className={[
                   'rounded-xl px-4 py-2.5 text-sm font-semibold text-white',
                   STRAVA_INTERACTIVE,
@@ -331,28 +386,68 @@ STRAVA_CLIENT_SECRET=dein_client_secret`}
               <p className="text-xs text-zinc-500">Lesezugriff auf Profil und alle Aktivitäten.</p>
             </div>
           ) : (
-            <div className="flex flex-wrap items-center gap-3">
-              <span className="rounded-full bg-emerald-500/15 px-3 py-1 text-xs font-medium text-emerald-300">
-                Verbunden · {status.activityCount ?? 0} Aktivitäten
-              </span>
-              <button
-                type="button"
-                disabled={busy}
-                onClick={() => void sync()}
-                className={[
-                  'rounded-xl border border-white/10 bg-zinc-900 px-4 py-2 text-sm text-zinc-200 hover:bg-zinc-800 disabled:opacity-50',
-                  STRAVA_INTERACTIVE,
-                ].join(' ')}
-              >
-                {busy ? 'Synchronisiere…' : 'Jetzt synchronisieren'}
-              </button>
-              <button
-                type="button"
-                onClick={() => void trennen()}
-                className="text-xs text-zinc-500 underline transition-colors hover:text-zinc-300"
-              >
-                Trennen
-              </button>
+            <div className="space-y-4">
+              <div className="flex flex-wrap items-center gap-3">
+                <span className="rounded-full bg-emerald-500/15 px-3 py-1 text-xs font-medium text-emerald-300">
+                  Verbunden · {status.activityCount ?? 0} Aktivitäten gesamt
+                </span>
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => void sync({})}
+                  className={[
+                    'rounded-xl border border-white/10 bg-zinc-900 px-4 py-2 text-sm text-zinc-200 hover:bg-zinc-800 disabled:opacity-50',
+                    STRAVA_INTERACTIVE,
+                  ].join(' ')}
+                >
+                  {busy ? 'Synchronisiere…' : 'Aktiven Athlet syncen'}
+                </button>
+                {connections.length > 1 ? (
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => void sync({ syncAll: true })}
+                    className={[
+                      'rounded-xl border border-cyan-500/20 bg-cyan-500/10 px-3 py-2 text-xs text-cyan-200 hover:bg-cyan-500/15 disabled:opacity-50',
+                      STRAVA_INTERACTIVE,
+                    ].join(' ')}
+                  >
+                    Alle syncen
+                  </button>
+                ) : null}
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => void sync({ fullImport: true })}
+                  className={[
+                    'rounded-xl border border-orange-500/20 bg-orange-500/10 px-3 py-2 text-xs text-orange-200 hover:bg-orange-500/15 disabled:opacity-50',
+                    STRAVA_INTERACTIVE,
+                  ].join(' ')}
+                  title="Alle Aktivitäten + Polylines neu laden"
+                >
+                  Vollimport
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void trennen()}
+                  className="text-xs text-zinc-500 underline transition-colors hover:text-zinc-300"
+                >
+                  Alles trennen
+                </button>
+              </div>
+              {connections.length > 0 ? (
+                <StravaAthleteSwitcher
+                  connections={connections}
+                  activeId={activeConnectionId}
+                  onSelect={(id) => {
+                    setActiveConnectionId(id)
+                    void ladeDaten(id)
+                  }}
+                  onAddGuest={(label) => void verbinden('guest', label)}
+                  onRemove={(id) => void entferneVerbindung(id)}
+                  busy={busy}
+                />
+              ) : null}
             </div>
           )}
         </PageSectionPanel>
@@ -362,8 +457,8 @@ STRAVA_CLIENT_SECRET=dein_client_secret`}
         <PageSection titleId="strava-gewicht" title="Gewicht für W/kg">
           <PageSectionPanel className="border-slate-500/15 bg-[#0c0d0f]">
             <p className="mb-3 text-xs text-zinc-500">
-              W/kg wird mit deinem Omnia-Gewicht berechnet (nicht Strava). Für Leistungs-Peaks (1 min, 5 min, 20 min …)
-              werden beim Sync Watt-Streams von Strava geladen (max. 25 Fahrten pro Sync).
+              W/kg wird mit deinem Omnia-Gewicht berechnet (nicht Strava). Beim Sync werden Watt- + HF-Streams
+              geladen (max. 12 Streams pro Athlet/Sync).
             </p>
             <div className="flex flex-wrap items-end gap-3">
               <label className="block">
@@ -423,7 +518,12 @@ STRAVA_CLIENT_SECRET=dein_client_secret`}
           {dataLoading ? (
             <p className="text-sm text-zinc-500">Auswertung wird geladen…</p>
           ) : tab === 'analytics' ? (
-            <StravaAnalyticsView activities={allActivities} maxHr={athlete?.max_hr} />
+            <StravaAnalyticsView
+              activities={allActivities}
+              athlete={athlete}
+              connectionId={activeConnectionId}
+              onGoalsSaved={() => void ladeDaten(activeConnectionId)}
+            />
           ) : tab === 'entwicklung' ? (
             <div className="space-y-6">
               {auswertung.wkgMonat.some((m) => m.rides > 0) ? (

@@ -6,6 +6,7 @@ import { formatRelativeDate, sportIcon, type TransformedStravaActivity } from '@
 
 type Props = {
   activities: TransformedStravaActivity[]
+  onSelect?: (id: number) => void
 }
 
 function MetricCell({ value, muted }: { value: string; muted?: boolean }) {
@@ -22,7 +23,7 @@ function MetricCell({ value, muted }: { value: string; muted?: boolean }) {
   )
 }
 
-export function StravaActivityFeed({ activities }: Props) {
+export function StravaActivityFeed({ activities, onSelect }: Props) {
   if (activities.length === 0) {
     return (
       <StravaCard padding="lg">
@@ -36,13 +37,12 @@ export function StravaActivityFeed({ activities }: Props) {
       <StravaSectionTitle title="Aktivitäten-Feed" subtitle="Letzte Fahrten & Runs" />
       <div className="space-y-2">
         {activities.map((a) => (
-          <a
+          <button
             key={a.id}
-            href={a.stravaUrl}
-            target="_blank"
-            rel="noreferrer"
+            type="button"
+            onClick={() => onSelect?.(a.id)}
             className={[
-              'group flex items-center gap-3 rounded-2xl border border-slate-500/15 bg-[#0c0d0f] p-3',
+              'group flex w-full items-center gap-3 rounded-2xl border border-slate-500/15 bg-[#0c0d0f] p-3 text-left',
               'shadow-[0_2px_12px_rgba(0,0,0,0.25)]',
               STRAVA_INTERACTIVE,
               'hover:border-[#FC4C02]/30 hover:bg-[#141618]',
@@ -90,7 +90,7 @@ export function StravaActivityFeed({ activities }: Props) {
               <MetricCell value={a.distanceLabel} />
               <MetricCell value={a.movingTimeCompact} />
             </div>
-          </a>
+          </button>
         ))}
       </div>
     </div>

@@ -21,14 +21,15 @@ export async function GET(req: Request) {
     return NextResponse.redirect(`${redirectBase}?strava_error=invalid_callback`)
   }
 
-  const ownerUserId = await loeseStravaPending(state)
-  if (!ownerUserId) {
+  const pending = await loeseStravaPending(state)
+  if (!pending?.ownerUserId) {
     return NextResponse.redirect(`${redirectBase}?strava_error=state_mismatch`)
   }
 
   try {
-    await tauscheAuthCode(code, origin, ownerUserId)
-    return NextResponse.redirect(`${redirectBase}?strava=connected`)
+    await tauscheAuthCode(code, origin, pending)
+    const extra = pending.linkMode === 'guest' ? '&guest=1' : ''
+    return NextResponse.redirect(`${redirectBase}?strava=connected${extra}`)
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'token_exchange_failed'
     return NextResponse.redirect(`${redirectBase}?strava_error=${encodeURIComponent(msg.slice(0, 120))}`)
