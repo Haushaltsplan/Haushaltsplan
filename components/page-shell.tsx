@@ -119,10 +119,12 @@ export function PageSection({
 export function PageSectionPanel({
   children,
   density = 'default',
+  className,
 }: {
   children: ReactNode
   density?: 'default' | 'compact'
+  className?: string
 }) {
   const panel = density === 'compact' ? pageSectionPanelCompactClass : pageSectionPanelClass
-  return <div className={panel}>{children}</div>
+  return <div className={className ? `${panel} ${className}` : panel}>{children}</div>
 }
