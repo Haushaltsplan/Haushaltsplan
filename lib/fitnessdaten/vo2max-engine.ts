@@ -98,7 +98,6 @@ export function migriereStalenVo2AusDaily(): void {
   }
   if (changed) speichereDailyStore(daily)
 }
-}
 
 /** Nur aufrufen wenn Cloud Sync fehlschlägt und Nutzer manuell eingreift. */
 export function setzeVo2MaxManuell(wert: number | null): Vo2TrendsStore {
