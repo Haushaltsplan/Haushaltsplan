@@ -13,8 +13,15 @@ import { createSupabaseAdmin } from '@/lib/supabase-admin'
 
 export const maxDuration = 120
 
-export async function POST() {
+export async function POST(req: Request) {
   try {
+    // Budget aus Body lesen (Fallback: 500 €)
+    let budgetEur = 500
+    try {
+      const body = await req.json()
+      if (typeof body.budget === 'number' && body.budget >= 100) budgetEur = body.budget
+    } catch { /* kein Body = Standardwert */ }
+
     // 1. Scan-Ergebnisse laden
     let ergebnisse = await ladeNachkaufScanAusCloud()
     if (ergebnisse.length === 0) {
@@ -39,7 +46,7 @@ export async function POST() {
     }
 
     // 4. Kaufempfehlung generieren
-    const ergebnis = await generiereKaufempfehlung(ergebnisse)
+    const ergebnis = await generiereKaufempfehlung(ergebnisse, budgetEur)
 
     // 5. In Supabase speichern
     try {

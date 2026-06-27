@@ -12,7 +12,7 @@ import { runCoachCompletion, resolveCoachProviderFromMode } from '@/lib/ki-coach
 import { NACHKAUF_RADAR_WHITELIST, type RisikoKlasse } from './nachkauf-radar-whitelist'
 import type { NachkaufScanEintrag, MonatsEmpfehlung, SparplanPosten } from './nachkauf-radar-types'
 
-const BUDGET_EUR = 500
+const DEFAULT_BUDGET_EUR = 500
 const MIN_SCORE_FUER_KI_EMPFEHLUNG = 90
 
 /** Maximale monatliche Investition je Risikoklasse. */
@@ -54,7 +54,7 @@ function kuerzerMemo(memo: string): string {
   return idx > 0 ? memo.slice(0, idx) + '\n\n[…gekürzt]' : memo.slice(0, 900) + ' […]'
 }
 
-function baueKandidatenText(kandidaten: NachkaufScanEintrag[]): string {
+function baueKandidatenText(kandidaten: NachkaufScanEintrag[], budgetEur: number): string {
   return kandidaten.map((e) => {
     const dr = e.tiefenAnalyse
     const premium = e.bewertung.premiumDiscountPct != null
@@ -71,7 +71,9 @@ function baueKandidatenText(kandidaten: NachkaufScanEintrag[]): string {
       : 'keine Insider-Käufe'
     const risiko = risikoKlasseVon(e.isin)
     const risikoLabel = RISIKO_LABEL[risiko]
-    const maxBetrag = e.klumpenrisiko ? Math.min(RISIKO_CAP[risiko], 100) : RISIKO_CAP[risiko]
+    const maxBetrag = e.klumpenrisiko
+      ? Math.min(Math.min(RISIKO_CAP[risiko], budgetEur), Math.round(budgetEur * 0.2))
+      : Math.min(RISIKO_CAP[risiko], budgetEur)
 
     return [
       `### ${e.ticker} – ${e.name}`,
@@ -91,28 +93,32 @@ function baueKandidatenText(kandidaten: NachkaufScanEintrag[]): string {
 // Prompt
 // ---------------------------------------------------------------------------
 
-function bauePrompt(kandidaten: NachkaufScanEintrag[], basisAllokation: SparplanPosten[]): string {
+function bauePrompt(kandidaten: NachkaufScanEintrag[], basisAllokation: SparplanPosten[], budgetEur: number): string {
   const basisText = basisAllokation.length > 0
     ? basisAllokation.map((p) => `  • ${p.ticker}: ${p.betragEur} € (${p.begruendung})`).join('\n')
     : '  • Regelbasiert: kein Kauf empfohlen'
+  const capKonservativ = Math.min(RISIKO_CAP.konservativ, budgetEur)
+  const capModerat = Math.min(RISIKO_CAP.moderat, budgetEur)
+  const capSpekulativ = Math.min(RISIKO_CAP.spekulativ, budgetEur)
+  const klumpenCap = Math.round(budgetEur * 0.2)
 
   return `Du bist ein rationaler, emotionsfreier Investment-Assistent für einen Quality-Investor.
 
 ## Aufgabe
-Verteile das Monatsbudget von **${BUDGET_EUR} €** auf die nachstehenden Kandidaten — oder empfehle ausdrücklich zu sparen.
+Verteile das Monatsbudget von **${budgetEur} €** auf die nachstehenden Kandidaten — oder empfehle ausdrücklich zu sparen.
 
 ## Rahmenbedingungen
 - Investitionsphilosophie: Langfristiges Quality-Investing in profitable Qualitätsunternehmen
 - Kein Zwangskauf: Wenn kein gutes Chancen-Risiko-Verhältnis vorliegt → sparen (Trade Republic zahlt 2,25 % p.a.)
-- Klumpenrisiko-Grenze: Positionen mit ≥15 % Depotanteil maximal 100 € zusätzlich investieren
+- Klumpenrisiko-Grenze: Positionen mit ≥15 % Depotanteil maximal ${klumpenCap} € zusätzlich investieren
 - Mindestbetrag pro Position: 100 € (sonst unwirtschaftlich)
 - Budget kann teilweise gespart werden — Restbetrag wird benannt
 
 ## Risiko-adjustierte Positionsobergrenzen (HART, nicht überschreiten)
 Jede Position hat eine Risikoklasse, die den maximalen monatlichen Investitionsbetrag begrenzt:
-- **Konservativ** (Oligopole, rezessionssichere Large Caps): max. **350 €** — z.B. Mastercard, Visa, Microsoft, Alphabet, McDonald's
-- **Moderat** (gute Qualität, aber spezifische Risiken wie Regulierung, KI-Disruption, Zyklizität): max. **200 €** — z.B. ASML, UnitedHealth, Wolters Kluwer, ServiceNow
-- **Spekulativ** (Small/Mid-Cap oder sehr hohe Bewertungen mit erhöhter Volatilität): max. **100 €** — z.B. Balchem, Datadog
+- **Konservativ** (Oligopole, rezessionssichere Large Caps): max. **${capKonservativ} €** — z.B. Mastercard, Visa, Microsoft, Alphabet, McDonald's
+- **Moderat** (gute Qualität, aber spezifische Risiken wie Regulierung, KI-Disruption, Zyklizität): max. **${capModerat} €** — z.B. ASML, UnitedHealth, Wolters Kluwer, ServiceNow
+- **Spekulativ** (Small/Mid-Cap oder sehr hohe Bewertungen mit erhöhter Volatilität): max. **${capSpekulativ} €** — z.B. Balchem, Datadog
 
 Die Risikoklasse jedes Kandidaten ist unten angegeben. Du **musst** diese Obergrenzen einhalten — unabhängig von Score oder Trigger.
 
@@ -121,7 +127,7 @@ ${basisText}
 
 ## Kandidaten mit Deep Research (Score ≥ ${MIN_SCORE_FUER_KI_EMPFEHLUNG})
 
-${baueKandidatenText(kandidaten)}
+${baueKandidatenText(kandidaten, budgetEur)}
 
 ---
 
@@ -184,6 +190,7 @@ export type KaufempfehlungErgebnis = {
 
 export async function generiereKaufempfehlung(
   alleErgebnisse: NachkaufScanEintrag[],
+  budgetEur: number = DEFAULT_BUDGET_EUR,
 ): Promise<KaufempfehlungErgebnis> {
   const jetzt = new Date().toISOString()
 
@@ -203,12 +210,12 @@ export async function generiereKaufempfehlung(
     })
 
   // Regelbasierte Basis-Allokation
-  const basisAllokation = berechneBasisAllokation(kandidaten)
+  const basisAllokation = berechneBasisAllokation(kandidaten, budgetEur)
 
   // Fallback ohne KI wenn keine Kandidaten
   if (kandidaten.length === 0) {
     const scoreMin = String(MIN_SCORE_FUER_KI_EMPFEHLUNG)
-    const budgetStr = String(BUDGET_EUR)
+    const budgetStr = String(budgetEur)
     const sparText =
       'Keine Positionen mit Score \u2265 ' + scoreMin +
       ' und Deep Research gefunden. ' + budgetStr +
@@ -225,7 +232,7 @@ export async function generiereKaufempfehlung(
   }
 
   // Gemini-Synthese
-  const prompt = bauePrompt(kandidaten, basisAllokation)
+  const prompt = bauePrompt(kandidaten, basisAllokation, budgetEur)
   let kiText = ''
   let fehler: string | undefined
 
@@ -285,10 +292,10 @@ export async function generiereKaufempfehlung(
 // Regelbasierte Basis-Allokation (intern)
 // ---------------------------------------------------------------------------
 
-function berechneBasisAllokation(kandidaten: NachkaufScanEintrag[]): SparplanPosten[] {
+function berechneBasisAllokation(kandidaten: NachkaufScanEintrag[], budgetEur: number): SparplanPosten[] {
   if (kandidaten.length === 0) return []
 
-  const MAX_KLUMPEN = BUDGET_EUR * 0.2   // max. 100 € für Klumpen-Positionen
+  const MAX_KLUMPEN = budgetEur * 0.2
   const MIN_POS = 100
 
   const gewichte = kandidaten.map((e) => {
@@ -305,7 +312,7 @@ function berechneBasisAllokation(kandidaten: NachkaufScanEintrag[]): SparplanPos
   if (summe <= 0) return []
 
   const posten: SparplanPosten[] = []
-  let rest = BUDGET_EUR
+  let rest = budgetEur
 
   for (const { eintrag, gewicht } of gewichte) {
     const risiko = risikoKlasseVon(eintrag.isin)
@@ -314,7 +321,7 @@ function berechneBasisAllokation(kandidaten: NachkaufScanEintrag[]): SparplanPos
       ? Math.min(RISIKO_CAP[risiko], MAX_KLUMPEN)
       : RISIKO_CAP[risiko]
 
-    let betrag = (gewicht / summe) * BUDGET_EUR
+    let betrag = (gewicht / summe) * budgetEur
     betrag = Math.min(betrag, maxBetrag)
     betrag = Math.round(betrag / 10) * 10
 

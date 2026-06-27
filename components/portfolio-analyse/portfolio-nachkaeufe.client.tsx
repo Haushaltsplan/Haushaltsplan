@@ -856,6 +856,59 @@ function DetailPanel({
 type FilterAmpel = 'alle' | 'gruen' | 'gelb' | 'rot' | 'teuer'
 type SortKey = 'score' | 'name' | 'ampel' | 'depot' | 'trigger'
 
+// ---------------------------------------------------------------------------
+// Einfacher Markdown-Renderer (bold, italic, headings, lists)
+// ---------------------------------------------------------------------------
+
+function KiMdText({ text }: { text: string }) {
+  function renderInline(line: string, key: number) {
+    // Split by **bold** and *italic* patterns
+    const parts = line.split(/(\*\*[^*]+\*\*|\*[^*]+\*)/g)
+    return (
+      <span key={key}>
+        {parts.map((part, i) => {
+          if (part.startsWith('**') && part.endsWith('**'))
+            return <strong key={i} className="font-semibold text-zinc-100">{part.slice(2, -2)}</strong>
+          if (part.startsWith('*') && part.endsWith('*'))
+            return <em key={i} className="not-italic text-zinc-400">{part.slice(1, -1)}</em>
+          return part
+        })}
+      </span>
+    )
+  }
+
+  const lines = text.split('\n')
+  const elements: React.ReactNode[] = []
+  let i = 0
+  while (i < lines.length) {
+    const line = lines[i]!
+    if (line.startsWith('### ')) {
+      elements.push(
+        <p key={i} className="mt-4 mb-1 text-[11px] font-bold uppercase tracking-wider text-violet-400">
+          {line.slice(4)}
+        </p>
+      )
+    } else if (line.startsWith('## ')) {
+      elements.push(
+        <p key={i} className="mt-4 mb-1 text-xs font-bold text-violet-300">{line.slice(3)}</p>
+      )
+    } else if (line.startsWith('- ') || line.startsWith('* ')) {
+      elements.push(
+        <div key={i} className="flex gap-1.5 py-0.5">
+          <span className="mt-0.5 shrink-0 text-violet-500">•</span>
+          <span>{renderInline(line.slice(2), i)}</span>
+        </div>
+      )
+    } else if (line.trim() === '') {
+      elements.push(<div key={i} className="h-2" />)
+    } else {
+      elements.push(<p key={i} className="py-0.5">{renderInline(line, i)}</p>)
+    }
+    i++
+  }
+  return <div className="text-xs leading-relaxed text-zinc-300">{elements}</div>
+}
+
 export function NachkaufRadarClient() {
   const [ergebnisse, setErgebnisse] = useState<NachkaufScanEintrag[]>([])
   const [monatsEmpfehlung, setMonatsEmpfehlung] = useState<MonatsEmpfehlung | null>(null)
@@ -878,6 +931,7 @@ export function NachkaufRadarClient() {
   const [kaufempfehlungLaeuft, setKaufempfehlungLaeuft] = useState(false)
   const [kaufempfehlungText, setKaufempfehlungText] = useState<string | null>(null)
   const [kaufempfehlungAllokation, setKaufempfehlungAllokation] = useState<SparplanPosten[]>([])
+  const [kaufBudget, setKaufBudget] = useState<number>(500)
   const scanRef = useRef(false)
 
   // Gespeicherte Ergebnisse beim Start laden
@@ -919,7 +973,11 @@ export function NachkaufRadarClient() {
     setKaufempfehlungLaeuft(true)
     setKaufempfehlungText(null)
     try {
-      const res = await fetch('/api/portfolio-analyse/nachkaeufe/kaufempfehlung', { method: 'POST' })
+      const res = await fetch('/api/portfolio-analyse/nachkaeufe/kaufempfehlung', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ budget: kaufBudget }),
+      })
       const daten = await res.json()
       if (!res.ok || !daten.ok) {
         setKaufempfehlungText(`Fehler: ${daten.fehler ?? 'Unbekannter Fehler'}`)
@@ -1243,7 +1301,7 @@ export function NachkaufRadarClient() {
                 <div>
                   <p className="text-sm font-semibold text-violet-300">Kaufempfehlung (KI + Deep Research)</p>
                   <p className="mt-0.5 text-xs text-zinc-500">
-                    Gemini analysiert alle Positionen mit Score ≥ 90 + Deep Research und verteilt das 500 € Budget.
+                    Gemini analysiert alle Positionen mit Score ≥ 90 + Deep Research und verteilt das Budget.
                   </p>
                 </div>
               </div>
@@ -1255,6 +1313,35 @@ export function NachkaufRadarClient() {
               >
                 {kaufempfehlungLaeuft ? 'Analysiere…' : kaufempfehlungText ? 'Neu generieren' : 'Empfehlung generieren'}
               </button>
+            </div>
+
+            {/* Budget-Eingabe */}
+            <div className="mt-3 flex items-center gap-3 rounded-xl border border-violet-500/10 bg-violet-950/20 px-3 py-2">
+              <span className="text-[11px] text-zinc-500">Monatsbudget:</span>
+              <div className="flex items-center gap-1">
+                {[200, 300, 500, 750, 1000].map((v) => (
+                  <button
+                    key={v}
+                    type="button"
+                    onClick={() => setKaufBudget(v)}
+                    className={`rounded-md px-2 py-0.5 text-[11px] font-semibold transition-all ${kaufBudget === v ? 'bg-violet-600 text-white' : 'text-zinc-500 hover:text-zinc-300'}`}
+                  >
+                    {v} €
+                  </button>
+                ))}
+                <input
+                  type="number"
+                  min={100}
+                  max={10000}
+                  step={50}
+                  value={kaufBudget}
+                  onChange={(ev) => {
+                    const v = parseInt(ev.target.value, 10)
+                    if (!isNaN(v) && v >= 100) setKaufBudget(v)
+                  }}
+                  className="ml-1 w-20 rounded-md border border-violet-500/20 bg-zinc-900 px-2 py-0.5 text-[11px] text-zinc-300 focus:outline-none focus:ring-1 focus:ring-violet-500"
+                />
+              </div>
             </div>
 
             {kaufempfehlungLaeuft && (
@@ -1292,12 +1379,10 @@ export function NachkaufRadarClient() {
                   </div>
                 )}
                 <div className="rounded-xl border border-white/5 bg-zinc-900/50 p-4">
-                  <p className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-violet-400">
+                  <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-violet-400">
                     KI-Analyse & finale Empfehlung
                   </p>
-                  <div className="whitespace-pre-wrap text-xs leading-relaxed text-zinc-300">
-                    {kaufempfehlungText}
-                  </div>
+                  <KiMdText text={kaufempfehlungText} />
                 </div>
               </div>
             )}
