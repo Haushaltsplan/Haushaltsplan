@@ -12,18 +12,6 @@ import {
 } from '@/lib/strava/strava-power'
 import { geschaetztesTss } from '@/lib/strava/strava-training-load'
 import {
-  aktualisiereVerbindungTokens,
-  ladeStravaVerbindung,
-  listeStravaVerbindungen,
-  loescheStravaVerbindung,
-  primaereVerbindung,
-  speichereVerbindungProfil,
-  speichereVerbindungTokensAdmin,
-  verbindungOeffentlich,
-  type StravaConnectionRow,
-  type StravaLinkMode,
-} from '@/lib/strava/strava-connections'
-import {
   leseStravaTokensDb,
   loescheStravaTokensDb,
   speichereStravaTokensAdmin,
@@ -40,8 +28,7 @@ import {
 import type { SupabaseClient } from '@supabase/supabase-js'
 
 const STREAM_PAUSE_MS = 280
-/** Streams pro Verbindung und Sync (API-Schonung bei mehreren Athleten). */
-const MAX_STREAMS_PRO_VERBINDUNG = 12
+const MAX_STREAMS_PRO_SYNC = 25
 
 const AUTH_URL = 'https://www.strava.com/oauth/authorize'
 const TOKEN_URL = 'https://www.strava.com/oauth/token'
@@ -165,77 +152,16 @@ async function refreshTokens(refreshToken: string): Promise<StravaStoredTokens> 
   }
 }
 
-export async function tauscheAuthCode(
-  code: string,
-  origin: string,
-  pending: { ownerUserId: string; linkMode: StravaLinkMode; guestLabel: string | null },
-): Promise<void> {
+export async function tauscheAuthCode(code: string, origin: string, ownerUserId: string): Promise<void> {
   const tokens = await tauscheCode(code, stravaRedirectUri(origin))
+  await speichereStravaTokensAdmin(ownerUserId, tokens)
   const meta = await ladeStravaAthleteMeta(tokens.accessToken)
-
-  await speichereVerbindungTokensAdmin(pending.ownerUserId, {
-    linkMode: pending.linkMode,
-    guestLabel: pending.guestLabel,
-    tokens: {
-      accessToken: tokens.accessToken,
-      refreshToken: tokens.refreshToken,
-      expiresAtMs: tokens.expiresAtMs,
-      athleteId: tokens.athleteId ?? meta.athleteId ?? null,
-    },
-    meta: {
-      firstname: meta.firstname,
-      lastname: meta.lastname,
-      ftp: meta.ftp,
-      max_hr: meta.max_hr,
-    },
-  })
-
-  if (pending.linkMode === 'primary') {
-    await speichereStravaTokensAdmin(pending.ownerUserId, tokens)
-    const sbAdmin = (await import('@/lib/supabase-admin')).createSupabaseAdmin()
-    await aktualisiereAthleteMetaVonStrava(sbAdmin as unknown as SupabaseClient, meta)
-  }
+  const sbAdmin = (await import('@/lib/supabase-admin')).createSupabaseAdmin()
+  await aktualisiereAthleteMetaVonStrava(sbAdmin as unknown as SupabaseClient, meta)
 }
 
-async function holeTokenFuerVerbindung(
-  sb: SupabaseClient,
-  connection: StravaConnectionRow,
-): Promise<string | null> {
-  if (connection.id === 'legacy-primary') {
-    return holeGueltigenAccessTokenLegacy(sb)
-  }
-  if (!connection.accessToken || !connection.refreshToken) return null
-  if (connection.expiresAtMs != null && connection.expiresAtMs > Date.now()) {
-    return connection.accessToken
-  }
-  try {
-    const fresh = await refreshTokens(connection.refreshToken)
-    await aktualisiereVerbindungTokens(sb, connection.id, {
-      accessToken: fresh.accessToken,
-      refreshToken: fresh.refreshToken,
-      expiresAtMs: fresh.expiresAtMs,
-    })
-    return fresh.accessToken
-  } catch {
-    return null
-  }
-}
-
-export async function holeGueltigenAccessToken(
-  sb: SupabaseClient | null,
-  connectionId?: string | null,
-): Promise<string | null> {
+export async function holeGueltigenAccessToken(sb: SupabaseClient | null): Promise<string | null> {
   if (!sb) return null
-  if (connectionId && connectionId !== 'legacy-primary') {
-    const conn = await ladeStravaVerbindung(sb, connectionId)
-    if (conn) return holeTokenFuerVerbindung(sb, conn)
-  }
-  const primary = await primaereVerbindung(sb)
-  if (primary) return holeTokenFuerVerbindung(sb, primary)
-  return holeGueltigenAccessTokenLegacy(sb)
-}
-
-async function holeGueltigenAccessTokenLegacy(sb: SupabaseClient): Promise<string | null> {
   const stored = await leseStravaTokensDb(sb)
   if (!stored) return null
   if (stored.expiresAtMs > Date.now()) return stored.accessToken
@@ -349,15 +275,7 @@ async function aktualisiereAthleteMetaVonStrava(
   }
 }
 
-export async function leseAthleteProfilDb(
-  sb: SupabaseClient,
-  connectionId?: string | null,
-): Promise<StravaAthleteProfile | null> {
-  const conn = connectionId
-    ? await ladeStravaVerbindung(sb, connectionId)
-    : await primaereVerbindung(sb)
-  if (conn) return conn.profile
-
+export async function leseAthleteProfilDb(sb: SupabaseClient): Promise<StravaAthleteProfile | null> {
   const {
     data: { user },
   } = await sb.auth.getUser()
@@ -390,18 +308,8 @@ export async function leseAthleteProfilDb(
   }
 }
 
-export async function speichereOmniaGewicht(
-  sb: SupabaseClient,
-  kg: number | null,
-  connectionId?: string | null,
-): Promise<void> {
+export async function speichereOmniaGewicht(sb: SupabaseClient, kg: number | null): Promise<void> {
   const weight = kg != null && kg > 0 && kg < 300 ? kg : null
-  const conn = connectionId ? await ladeStravaVerbindung(sb, connectionId) : await primaereVerbindung(sb)
-  if (conn && conn.id !== 'legacy-primary') {
-    await speichereVerbindungProfil(sb, conn.id, { omnia_weight_kg: weight })
-    return
-  }
-
   const {
     data: { user },
   } = await sb.auth.getUser()
@@ -440,14 +348,7 @@ export async function speichereSaisonZiele(
     goal_event_name?: string | null
     goal_event_date?: string | null
   },
-  connectionId?: string | null,
 ): Promise<void> {
-  const conn = connectionId ? await ladeStravaVerbindung(sb, connectionId) : await primaereVerbindung(sb)
-  if (conn && conn.id !== 'legacy-primary') {
-    await speichereVerbindungProfil(sb, conn.id, goals)
-    return
-  }
-
   const {
     data: { user },
   } = await sb.auth.getUser()
@@ -501,25 +402,16 @@ function sleep(ms: number): Promise<void> {
 async function synchronisiereActivityStreams(
   sb: SupabaseClient,
   token: string,
-  connectionId: string,
   ownerUserId: string,
   maxHr: number | null,
 ): Promise<number> {
-  let query = sb
+  const { data: kandidaten } = await sb
     .from('strava_activities')
     .select('strava_id, average_heartrate, device_watts, average_watts, max_watts, weighted_avg_watts')
     .eq('owner_user_id', ownerUserId)
     .or('power_peaks.is.null,hr_zone_minutes.is.null')
     .order('start_date', { ascending: false })
-    .limit(MAX_STREAMS_PRO_VERBINDUNG)
-
-  if (connectionId !== 'legacy-primary') {
-    query = query.eq('connection_id', connectionId)
-  } else {
-    query = query.is('connection_id', null)
-  }
-
-  const { data: kandidaten } = await query
+    .limit(MAX_STREAMS_PRO_SYNC)
 
   if (!kandidaten?.length) return 0
 
@@ -552,55 +444,48 @@ async function synchronisiereActivityStreams(
 
     if (Object.keys(update).length === 0) continue
 
-    let upd = sb.from('strava_activities').update(update).eq('owner_user_id', ownerUserId).eq('strava_id', stravaId)
-    if (connectionId !== 'legacy-primary') {
-      upd = upd.eq('connection_id', connectionId)
-    }
-    const { error } = await upd
+    const { error } = await sb
+      .from('strava_activities')
+      .update(update)
+      .eq('owner_user_id', ownerUserId)
+      .eq('strava_id', stravaId)
     if (!error) count += 1
   }
   return count
 }
 
-async function neuestesAktivitaetsDatum(sb: SupabaseClient, connectionId: string): Promise<number | null> {
+async function neuestesAktivitaetsDatum(sb: SupabaseClient): Promise<number | null> {
   const {
     data: { user },
   } = await sb.auth.getUser()
   if (!user?.id) return null
 
-  let query = sb
+  const { data } = await sb
     .from('strava_activities')
     .select('start_date')
     .eq('owner_user_id', user.id)
     .order('start_date', { ascending: false })
     .limit(1)
+    .maybeSingle()
 
-  if (connectionId !== 'legacy-primary') {
-    query = query.eq('connection_id', connectionId)
-  } else {
-    query = query.is('connection_id', null)
-  }
-
-  const { data } = await query.maybeSingle()
   if (!data?.start_date) return null
   return Math.floor(Date.parse(String(data.start_date)) / 1000) - 86400 * 14
 }
 
-async function synchronisiereEinVerbindung(
+export async function synchronisiereStravaAktivitaeten(
   sb: SupabaseClient,
-  connection: StravaConnectionRow,
-  opts: { maxPages?: number; fullImport?: boolean },
-): Promise<{ imported: number; streamsAnalysiert: number }> {
+  opts: { maxPages?: number; fullImport?: boolean } = {},
+): Promise<{ imported: number; total: number; streamsAnalysiert: number }> {
+  const token = await holeGueltigenAccessToken(sb)
+  if (!token) throw new Error('Keine Strava-Verbindung.')
+
   const maxPages = opts.maxPages ?? 60
-  const token = await holeTokenFuerVerbindung(sb, connection)
-  if (!token) throw new Error(`Strava-Token für „${connection.label}“ ungültig — bitte erneut verbinden.`)
-
   const meta = await ladeStravaAthleteMeta(token)
-  if (connection.isPrimary) {
-    await aktualisiereAthleteMetaVonStrava(sb, meta)
-  }
+  await aktualisiereAthleteMetaVonStrava(sb, meta)
 
-  const after = opts.fullImport ? null : await neuestesAktivitaetsDatum(sb, connection.id)
+  const profil = await leseAthleteProfilDb(sb)
+  const ftp = profil?.ftp ?? meta.ftp ?? null
+  const after = opts.fullImport ? null : await neuestesAktivitaetsDatum(sb)
   const all: StravaActivityRow[] = []
 
   for (let page = 1; page <= maxPages; page++) {
@@ -617,13 +502,9 @@ async function synchronisiereEinVerbindung(
   } = await sb.auth.getUser()
   if (!user?.id) throw new Error('Nicht angemeldet.')
 
-  const ftp = connection.profile.ftp ?? null
-  const dbConnectionId = connection.id === 'legacy-primary' ? null : connection.id
-
   if (all.length > 0) {
     const rows = all.map((a) => ({
       owner_user_id: user.id,
-      connection_id: dbConnectionId,
       strava_id: a.strava_id,
       name: a.name,
       sport_type: a.sport_type,
@@ -649,127 +530,37 @@ async function synchronisiereEinVerbindung(
       estimated_tss: geschaetztesTss(a, ftp),
       synced_at: new Date().toISOString(),
     }))
-
-    if (dbConnectionId) {
-      const { error } = await sb.from('strava_activities').upsert(rows, {
-        onConflict: 'connection_id,strava_id',
-      })
-      if (error) throw new Error(`Strava-Aktivitäten speichern: ${error.message}`)
-    } else {
-      const { error } = await sb.from('strava_activities').upsert(rows, {
-        onConflict: 'owner_user_id,strava_id',
-      })
-      if (error) throw new Error(`Strava-Aktivitäten speichern: ${error.message}`)
-    }
+    const { error } = await sb.from('strava_activities').upsert(rows, {
+      onConflict: 'owner_user_id,strava_id',
+    })
+    if (error) throw new Error(`Strava-Aktivitäten speichern: ${error.message}`)
   }
 
-  const maxHr = connection.profile.max_hr ?? meta.max_hr
-  const streamsAnalysiert = await synchronisiereActivityStreams(
-    sb,
-    token,
-    connection.id,
-    user.id,
-    maxHr,
-  )
-
-  return { imported: all.length, streamsAnalysiert }
-}
-
-export async function synchronisiereStravaAktivitaeten(
-  sb: SupabaseClient,
-  opts: {
-    maxPages?: number
-    fullImport?: boolean
-    connectionId?: string | null
-    syncAll?: boolean
-  } = {},
-): Promise<{ imported: number; total: number; streamsAnalysiert: number; connectionsSynced: number }> {
-  const {
-    data: { user },
-  } = await sb.auth.getUser()
-  if (!user?.id) throw new Error('Nicht angemeldet.')
-
-  const connections = await listeStravaVerbindungen(sb)
-  let targets = connections
-
-  if (opts.connectionId) {
-    targets = connections.filter((c) => c.id === opts.connectionId)
-  } else if (!opts.syncAll) {
-    targets = [connections.find((c) => c.isPrimary) ?? connections[0]].filter(Boolean) as StravaConnectionRow[]
-  }
-
-  if (targets.length === 0) {
-    const token = await holeGueltigenAccessTokenLegacy(sb)
-    if (!token) throw new Error('Keine Strava-Verbindung.')
-    const legacy: StravaConnectionRow = {
-      id: 'legacy-primary',
-      label: 'Ich',
-      isPrimary: true,
-      stravaAthleteId: null,
-      accessToken: token,
-      refreshToken: null,
-      expiresAtMs: null,
-      profile: (await leseAthleteProfilDb(sb)) ?? {
-        omnia_weight_kg: null,
-        ftp: null,
-        max_hr: null,
-        firstname: null,
-        lastname: null,
-        goal_km_year: null,
-        goal_hm_year: null,
-        goal_rides_per_week: null,
-        goal_event_name: null,
-        goal_event_date: null,
-      },
-    }
-    targets = [legacy]
-  }
-
-  let imported = 0
-  let streamsAnalysiert = 0
-  for (const conn of targets) {
-    const r = await synchronisiereEinVerbindung(sb, conn, opts)
-    imported += r.imported
-    streamsAnalysiert += r.streamsAnalysiert
-  }
+  const maxHr = profil?.max_hr ?? meta.max_hr
+  const streamsAnalysiert = await synchronisiereActivityStreams(sb, token, user.id, maxHr)
 
   const { count } = await sb
     .from('strava_activities')
     .select('*', { count: 'exact', head: true })
     .eq('owner_user_id', user.id)
 
-  return {
-    imported,
-    total: count ?? 0,
-    streamsAnalysiert,
-    connectionsSynced: targets.length,
-  }
+  return { imported: all.length, total: count ?? 0, streamsAnalysiert }
 }
 
-export async function ladeGespeicherteAktivitaeten(
-  sb: SupabaseClient,
-  connectionId?: string | null,
-): Promise<StravaActivityRow[]> {
+export async function ladeGespeicherteAktivitaeten(sb: SupabaseClient): Promise<StravaActivityRow[]> {
   const {
     data: { user },
   } = await sb.auth.getUser()
   if (!user?.id) return []
 
-  let query = sb
+  const { data, error } = await sb
     .from('strava_activities')
     .select(
-      'strava_id, name, sport_type, type, start_date, distance_m, moving_time_s, elapsed_time_s, elevation_gain_m, average_watts, weighted_avg_watts, max_watts, average_heartrate, max_heartrate, kilojoules, calories_kcal, average_speed_kmh, device_watts, power_peaks, summary_polyline, suffer_score, gear_id, workout_type, hr_zone_minutes, estimated_tss, connection_id',
+      'strava_id, name, sport_type, type, start_date, distance_m, moving_time_s, elapsed_time_s, elevation_gain_m, average_watts, weighted_avg_watts, max_watts, average_heartrate, max_heartrate, kilojoules, calories_kcal, average_speed_kmh, device_watts, power_peaks, summary_polyline, suffer_score, gear_id, workout_type, hr_zone_minutes, estimated_tss',
     )
     .eq('owner_user_id', user.id)
     .order('start_date', { ascending: false })
 
-  if (connectionId && connectionId !== 'legacy-primary') {
-    query = query.eq('connection_id', connectionId)
-  } else if (connectionId === 'legacy-primary') {
-    query = query.is('connection_id', null)
-  }
-
-  const { data, error } = await query
   if (error || !data) return []
   return data.map((r) => ({
     strava_id: Number(r.strava_id),
@@ -805,32 +596,30 @@ export async function stravaStatus(sb: SupabaseClient | null): Promise<{
   connected: boolean
   athlete?: StravaAthleteProfile | null
   activityCount?: number
-  connections?: import('@/lib/strava/strava-connections').StravaConnectionPublic[]
 }> {
   const configured = stravaApiKonfiguriert()
   if (!sb) return { configured, connected: false }
 
-  const raw = await listeStravaVerbindungen(sb)
-  const connections = raw.map((c) => verbindungOeffentlich(c))
-  const connected = connections.length > 0
-  const primary = raw.find((c) => c.isPrimary) ?? raw[0]
-  const athlete = primary?.profile ?? null
-  const activityCount = connections.reduce((s, c) => s + (c.activityCount ?? 0), 0)
-
-  return { configured, connected, athlete, activityCount, connections }
-}
-
-export async function stravaTrenneVerbindung(sb: SupabaseClient, connectionId: string): Promise<void> {
-  await loescheStravaVerbindung(sb, connectionId)
+  const tokens = await leseStravaTokensDb(sb)
+  const connected = Boolean(tokens)
+  const athlete = connected ? await leseAthleteProfilDb(sb) : null
+  let activityCount = 0
+  if (connected) {
+    const {
+      data: { user },
+    } = await sb.auth.getUser()
+    if (user?.id) {
+      const { count } = await sb
+        .from('strava_activities')
+        .select('*', { count: 'exact', head: true })
+        .eq('owner_user_id', user.id)
+      activityCount = count ?? 0
+    }
+  }
+  return { configured, connected, athlete, activityCount }
 }
 
 export async function stravaTrennen(sb: SupabaseClient): Promise<void> {
-  const connections = await listeStravaVerbindungen(sb)
-  for (const c of connections) {
-    if (c.id !== 'legacy-primary') {
-      await loescheStravaVerbindung(sb, c.id)
-    }
-  }
   const {
     data: { user },
   } = await sb.auth.getUser()

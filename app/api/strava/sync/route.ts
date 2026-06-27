@@ -13,46 +13,28 @@ export async function POST(req: Request) {
     }
 
     let fullImport = false
-    let syncAll = false
-    let connectionId: string | null = null
-
     try {
       const url = new URL(req.url)
       fullImport = url.searchParams.get('full') === '1'
-      syncAll = url.searchParams.get('all') === '1'
-      connectionId = url.searchParams.get('connection')
-      const body = (await req.clone().json().catch(() => null)) as {
-        full?: boolean
-        syncAll?: boolean
-        connectionId?: string
-      } | null
+      const body = (await req.clone().json().catch(() => null)) as { full?: boolean } | null
       if (body?.full) fullImport = true
-      if (body?.syncAll) syncAll = true
-      if (body?.connectionId) connectionId = body.connectionId
     } catch {
       /* optional body */
     }
 
-    const result = await synchronisiereStravaAktivitaeten(sb, {
-      fullImport,
-      syncAll,
-      connectionId,
-    })
+    const result = await synchronisiereStravaAktivitaeten(sb, { fullImport })
 
     const streamHint =
       result.streamsAnalysiert > 0
         ? `, ${result.streamsAnalysiert} Streams analysiert`
         : ''
-    const connHint =
-      result.connectionsSynced > 1 ? ` (${result.connectionsSynced} Athleten)` : ''
 
     return NextResponse.json({
       ok: true,
       syncedAt: new Date().toISOString(),
-      message: `${result.imported} Aktivitäten aktualisiert — ${result.total} gespeichert${streamHint}${connHint}`,
+      message: `${result.imported} Aktivitäten aktualisiert — ${result.total} gespeichert${streamHint}`,
       stats: result,
       fullImport,
-      syncAll,
     })
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'Sync fehlgeschlagen'

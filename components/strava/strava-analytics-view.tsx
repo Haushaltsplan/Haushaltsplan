@@ -28,11 +28,10 @@ import { useMemo, useState } from 'react'
 type Props = {
   activities: StravaActivityRow[]
   athlete: StravaAthleteProfile | null
-  connectionId?: string | null
   onGoalsSaved?: () => void
 }
 
-export function StravaAnalyticsView({ activities, athlete, connectionId, onGoalsSaved }: Props) {
+export function StravaAnalyticsView({ activities, athlete, onGoalsSaved }: Props) {
   const [period, setPeriod] = useState<KpiPeriod>('week')
   const [selectedId, setSelectedId] = useState<number | null>(null)
 
@@ -66,7 +65,6 @@ export function StravaAnalyticsView({ activities, athlete, connectionId, onGoals
       <StravaGoalsPanel
         goals={analytics.goals}
         athlete={athlete}
-        connectionId={connectionId}
         onSaved={() => onGoalsSaved?.()}
       />
 

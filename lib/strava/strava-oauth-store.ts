@@ -1,21 +1,10 @@
 /** Strava OAuth — Tokens in Supabase. */
 
-import type { StravaLinkMode } from '@/lib/strava/strava-connections'
 import { createSupabaseAdmin } from '@/lib/supabase-admin'
 import type { StravaStoredTokens } from '@/lib/strava/strava-types'
 import type { SupabaseClient } from '@supabase/supabase-js'
 
-export type StravaPendingState = {
-  ownerUserId: string
-  linkMode: StravaLinkMode
-  guestLabel: string | null
-}
-
-export async function speichereStravaPending(
-  state: string,
-  ownerUserId: string,
-  opts: { linkMode?: StravaLinkMode; guestLabel?: string | null } = {},
-): Promise<void> {
+export async function speichereStravaPending(state: string, ownerUserId: string): Promise<void> {
   const expiresAt = new Date(Date.now() + 10 * 60_000).toISOString()
   const { error } = await createSupabaseAdmin()
     .from('strava_oauth_pending')
@@ -23,27 +12,21 @@ export async function speichereStravaPending(
       state,
       owner_user_id: ownerUserId,
       expires_at: expiresAt,
-      link_mode: opts.linkMode ?? 'primary',
-      guest_label: opts.guestLabel?.trim() || null,
     })
   if (error) throw new Error(`Strava OAuth-Pending: ${error.message}`)
 }
 
-export async function loeseStravaPending(state: string): Promise<StravaPendingState | null> {
+export async function loeseStravaPending(state: string): Promise<string | null> {
   const admin = createSupabaseAdmin()
   const { data, error } = await admin
     .from('strava_oauth_pending')
-    .select('owner_user_id, expires_at, link_mode, guest_label')
+    .select('owner_user_id, expires_at')
     .eq('state', state)
     .maybeSingle()
   if (error || !data) return null
   await admin.from('strava_oauth_pending').delete().eq('state', state)
   if (Date.parse(String(data.expires_at)) < Date.now()) return null
-  return {
-    ownerUserId: String(data.owner_user_id || '') || '',
-    linkMode: data.link_mode === 'guest' ? 'guest' : 'primary',
-    guestLabel: data.guest_label ? String(data.guest_label) : null,
-  }
+  return String(data.owner_user_id || '') || null
 }
 
 export async function speichereStravaTokensAdmin(

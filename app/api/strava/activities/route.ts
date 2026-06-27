@@ -1,5 +1,4 @@
 import { berechneAuswertung } from '@/lib/strava/strava-auswertung'
-import { primaereVerbindung } from '@/lib/strava/strava-connections'
 import {
   effektivesGewichtKg,
   ladeGespeicherteAktivitaeten,
@@ -17,16 +16,9 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: 'Anmeldung erforderlich.' }, { status: 401 })
   }
 
-  const url = new URL(req.url)
-  let connectionId = url.searchParams.get('connection')
-  if (!connectionId) {
-    const primary = await primaereVerbindung(sb)
-    connectionId = primary?.id ?? null
-  }
-
   const [activities, athlete] = await Promise.all([
-    ladeGespeicherteAktivitaeten(sb, connectionId),
-    leseAthleteProfilDb(sb, connectionId),
+    ladeGespeicherteAktivitaeten(sb),
+    leseAthleteProfilDb(sb),
   ])
   const weightKg = effektivesGewichtKg(athlete)
   const auswertung = berechneAuswertung(activities, weightKg)
@@ -34,7 +26,6 @@ export async function GET(req: Request) {
   return NextResponse.json({
     activities,
     athlete,
-    connectionId,
     omnia_weight_kg: weightKg,
     auswertung,
   })

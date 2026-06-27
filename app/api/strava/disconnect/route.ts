@@ -1,4 +1,4 @@
-import { stravaTrenneVerbindung, stravaTrennen } from '@/lib/strava/strava-server'
+import { stravaTrennen } from '@/lib/strava/strava-server'
 import { createSupabaseFuerRequest } from '@/lib/supabase-user'
 import { NextResponse } from 'next/server'
 
@@ -11,18 +11,6 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Anmeldung erforderlich.' }, { status: 401 })
   }
 
-  let body: { connectionId?: string; all?: boolean } = {}
-  try {
-    body = (await req.json()) as { connectionId?: string; all?: boolean }
-  } catch {
-    /* leer = alles trennen (Legacy) */
-  }
-
-  if (body.all || !body.connectionId) {
-    await stravaTrennen(sb)
-  } else {
-    await stravaTrenneVerbindung(sb, body.connectionId)
-  }
-
+  await stravaTrennen(sb)
   return NextResponse.json({ ok: true })
 }

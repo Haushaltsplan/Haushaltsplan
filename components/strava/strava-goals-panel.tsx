@@ -11,11 +11,10 @@ import toast from 'react-hot-toast'
 type Props = {
   goals: GoalProgress[]
   athlete: StravaAthleteProfile | null
-  connectionId?: string | null
   onSaved: () => void
 }
 
-export function StravaGoalsPanel({ goals, athlete, connectionId, onSaved }: Props) {
+export function StravaGoalsPanel({ goals, athlete, onSaved }: Props) {
   const [open, setOpen] = useState(goals.length === 0)
   const [km, setKm] = useState(athlete?.goal_km_year != null ? String(athlete.goal_km_year) : '')
   const [hm, setHm] = useState(athlete?.goal_hm_year != null ? String(athlete.goal_hm_year) : '')
@@ -36,7 +35,6 @@ export function StravaGoalsPanel({ goals, athlete, connectionId, onSaved }: Prop
           goal_rides_per_week: freq ? Number.parseInt(freq, 10) : null,
           goal_event_name: eventName || null,
           goal_event_date: eventDate || null,
-          connectionId,
         }),
       })
       if (!res.ok) {
@@ -49,7 +47,7 @@ export function StravaGoalsPanel({ goals, athlete, connectionId, onSaved }: Prop
     } finally {
       setBusy(false)
     }
-  }, [km, hm, freq, eventName, eventDate, connectionId, onSaved])
+  }, [km, hm, freq, eventName, eventDate, onSaved])
 
   return (
     <StravaCard padding="md" accent="orange">
