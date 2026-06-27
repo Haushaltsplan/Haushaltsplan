@@ -1,0 +1,101 @@
+---
+description: Nachkauf-Radar — vollständiger Projektstatus, Architektur und offene Punkte
+alwaysApply: true
+---
+
+# Nachkauf-Radar — Projektstatus
+
+## Was ist das?
+Emotion-freier Nachkauf-Assistent für 32 festgelegte Qualitätsaktien (Whitelist).
+Monatsbudget (Standard 500 €) wird per KI risiko-adjustiert auf Kandidaten verteilt.
+
+## 3-stufige Architektur
+
+| Stufe | Modell | Trigger | Output |
+|-------|--------|---------|--------|
+| A – Scan | `gemini-3.5-flash` | Manuell / Vercel Cron | Score 0–100, Ampel, KI-Begründung |
+| B – Deep Research | `gemini-3.1-pro-preview` | Manuell pro Position | Langes Memo (~2000 Wörter) |
+| C – Kaufempfehlung | `gemini-3.1-pro-preview` | Manuell | Budget-Allokation mit Begründung |
+
+## Wichtigste Dateien
+
+```
+lib/portfolio-analyse/nachkauf-radar/
+  nachkauf-radar-whitelist.ts          ← 32 ISINs mit risikoKlasse + KaufTrigger
+  nachkauf-radar-types.ts              ← alle TypeScript-Typen
+  nachkauf-radar-score.ts              ← regelbasierter Score, berechneSparplanAllokation
+  nachkauf-radar-db-server.ts          ← Supabase-Lesen/Schreiben, ladeAlleDeepResearch()
+  nachkauf-kaufempfehlung-server.ts    ← generiereKaufempfehlung(ergebnisse, budgetEur)
+  nachkauf-deep-research-prompt.ts     ← System-Prompt für Deep Research
+  nachkauf-scan-prompt.ts              ← System-Prompt für Scan
+  nachkauf-trim-signal.ts              ← Trim/Verkaufs-Signal-Berechnung
+
+app/api/portfolio-analyse/nachkaeufe/
+  route.ts                             ← GET/POST Scan-Endpunkt
+  deep-research/route.ts               ← POST Deep Research für einen Ticker
+  kaufempfehlung/route.ts              ← GET (laden) / POST (generieren+speichern)
+
+components/portfolio-analyse/
+  portfolio-nachkaeufe.client.tsx      ← gesamte UI inkl. KiMdText-Renderer, Budget-Input
+```
+
+## Supabase-Tabellen (alle mit RLS)
+
+| Tabelle | Inhalt |
+|---------|--------|
+| `nachkauf_radar_scan` | Scan-Ergebnisse pro Ticker (upsert on ticker) |
+| `nachkauf_radar_deep_research` | Deep Research Memos (upsert on ticker) |
+| `nachkauf_kaufempfehlung` | KI-Kaufempfehlung pro Monat (unique: owner+monat) |
+| `nachkauf_radar_notizen` | Freitext-Notizen pro Ticker |
+| `nachkauf_radar_scan_verlauf` | Score-History für Sparklines |
+| `nachkauf_radar_kaufhistorie_cache` | Kaufhistorie aus Buchungen |
+| `portfolio_analyse_snapshot` | Depot-Marktwerte für Klumpenrisiko |
+
+## Risikoklassen (in Whitelist hinterlegt)
+
+- **konservativ** (15 Pos.): MA, V, MSFT, GOOGL, MCD, WM, ODFL, UNP, ROL, CTAS, LIN, HD, HRMS, SPGI, MSCI → max. 350 €/Monat
+- **moderat** (15 Pos.): ASML, UNH, TMO, RMD, ZTS, NOW, STMN, HLMA, SIKA, KNSL, GGG, VEEV, ATD, ANET, WKL → max. 200 €/Monat
+- **spekulativ** (2 Pos.): BCPC, DDOG → max. 100 €/Monat
+
+## Kaufempfehlung-Logik (kaufempfehlung/route.ts → POST)
+
+1. `ladeNachkaufScanAusCloud()` — Scan-Ergebnisse laden
+2. `ladeAlleDeepResearch()` — Deep Research Memos laden (MAP ticker→memo)
+3. `ergaenzeDepotGewichte()` + `ergaenzeKaufhistorieUndNotizen()` — parallel
+4. `berechneTrimSignale()` — Trim-Signale berechnen
+5. Deep Research in `e.tiefenAnalyse` einhängen (war Bug: fehlte vorher!)
+6. `generiereKaufempfehlung(ergebnisse, budgetEur)` — KI-Synthese
+
+## Budget-Feature (UI + Server)
+
+- UI: Buttons 200/300/500/750/1000 € + freies Zahlen-Input → `kaufBudget` State
+- POST body: `{ budget: number }` → Route liest `body.budget` (Fallback 500)
+- Server: `generiereKaufempfehlung(ergebnisse, budgetEur = 500)`
+- Caps skalieren mit Budget: Risikoklasse-Cap wird mit `Math.min(RISIKO_CAP[rk], budgetEur)` begrenzt
+
+## Deployment
+
+- **Manuell** (user will selbst deployen)
+- Deploy Hook: `https://api.vercel.com/v1/integrations/deploy/prj_RkC8ZDQI4xumpWLiyPReP94TXjyi/0BzbhpUDnH`
+- URL im Browser öffnen → triggert Vercel Build von Branch `main`
+- Nach Deploy: DB-Eintrag ggf. löschen + "Neu generieren" klicken
+
+## Bekannte Quirks
+
+- `tiefenAnalyse` ist nach `ladeNachkaufScanAusCloud()` immer `null` → muss manuell per `ladeAlleDeepResearch()` befüllt werden
+- `ergaenzeKaufhistorieUndNotizen()` und `berechneTrimSignale()` mutieren in-place (return void)
+- Template-Literals im Fallback-Text durch explizite String-Verkettung ersetzt (PowerShell-Bug-Workaround)
+- `owner_user_id` in `nachkauf_kaufempfehlung` nutzt `DEFAULT auth.uid()` — Insert via Service Role muss `owner_user_id` explizit setzen oder RLS umgehen
+
+## Prompt-Qualität
+
+- Deep Research: Explizit kritisch zu KI-Disruption, Bear-Case, Strukturrisiken (in `nachkauf-deep-research-prompt.ts`)
+- Kaufempfehlung: Risiko-Caps im Prompt hardcoded + per Kandidat wiederholt, kein Optimismus-Bias
+
+## Nächste mögliche Erweiterungen
+
+- Score-Verlauf (Sparkline) automatisch per Cron befüllen
+- Valuation-Alerts wenn Kaufzone ausgelöst wird
+- Insider-Käufe automatisch per Cron laden
+- Radar-Performance-Tracking (waren die Empfehlungen richtig?)
+- PDF-Export der Kaufempfehlung
