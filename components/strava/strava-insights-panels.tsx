@@ -1,6 +1,14 @@
 'use client'
 
-import { appTableScrollInlineClassName } from '@/components/page-shell'
+import { formatHm } from '@/components/strava/strava-chart-utils'
+import { ComposedChart, Bar, XAxis, YAxis } from 'recharts'
+import {
+  StravaBrush,
+  StravaCartesianGrid,
+  StravaChartShell,
+  StravaTooltip,
+  STRAVA_CHART_AXIS,
+} from '@/components/strava/strava-recharts'
 import { STRAVA_COLORS, STRAVA_INTERACTIVE } from '@/components/strava/design-tokens'
 import { StravaCard, StravaSectionTitle } from '@/components/strava/strava-card'
 import type {
@@ -9,6 +17,7 @@ import type {
   IntensityMix,
   YearCompare,
 } from '@/lib/strava/strava-insights'
+import { useMemo } from 'react'
 
 export function StravaConsistencyPanel({ stats }: { stats: ConsistencyStats }) {
   return (
@@ -74,34 +83,26 @@ export function StravaIntensityPanel({ mix }: { mix: IntensityMix }) {
 }
 
 export function StravaClimbingPanel({ data }: { data: ClimbingWeek[] }) {
-  const peak = Math.max(...data.map((d) => d.hm), 1)
-  const h = 100
-  const w = Math.max(320, data.length * 24)
+  const chartData = useMemo(
+    () => data.map((d) => ({ label: d.label, hm: d.hm })),
+    [data],
+  )
+
+  if (chartData.every((d) => d.hm === 0)) return null
+
   return (
     <StravaCard padding="md">
-      <StravaSectionTitle title="Kletter-Profil" subtitle="Höhenmeter pro Woche" />
-      <div className={appTableScrollInlineClassName}>
-        <svg viewBox={`0 0 ${w} ${h}`} style={{ minWidth: w, width: '100%', height: h }}>
-          {data.map((d, i) => {
-            const barW = Math.max(10, w / data.length - 4)
-            const x = i * (w / data.length) + 2
-            const barH = (d.hm / peak) * (h - 28)
-            return (
-              <g key={d.label}>
-                {d.hm > 0 ? (
-                  <text x={x + barW / 2} y={12} textAnchor="middle" fill={STRAVA_COLORS.green} fontSize="7">
-                    {d.hm}
-                  </text>
-                ) : null}
-                <rect x={x} y={h - 20 - barH} width={barW} height={Math.max(barH, d.hm > 0 ? 2 : 0)} fill={STRAVA_COLORS.green} rx={2} opacity={0.85} />
-                <text x={x + barW / 2} y={h - 4} textAnchor="middle" fill="#71717a" fontSize="6">
-                  {d.label}
-                </text>
-              </g>
-            )
-          })}
-        </svg>
-      </div>
+      <StravaSectionTitle title="Kletter-Profil" subtitle="Höhenmeter pro Woche · Zoom unten" />
+      <StravaChartShell height={180} minWidth={360}>
+        <ComposedChart data={chartData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+          <StravaCartesianGrid />
+          <XAxis dataKey="label" {...STRAVA_CHART_AXIS} interval="preserveStartEnd" minTickGap={20} />
+          <YAxis {...STRAVA_CHART_AXIS} width={36} unit=" m" />
+          <StravaTooltip formatter={(v) => formatHm(Number(v ?? 0))} />
+          <Bar dataKey="hm" name="Hm" fill={STRAVA_COLORS.green} radius={[2, 2, 0, 0]} />
+          <StravaBrush />
+        </ComposedChart>
+      </StravaChartShell>
     </StravaCard>
   )
 }

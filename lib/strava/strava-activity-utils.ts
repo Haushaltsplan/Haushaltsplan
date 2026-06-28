@@ -1,6 +1,6 @@
 /** Strava — Formatierung & Transformation von Aktivitätsdaten (UI-tauglich). */
 
-import { aktivitaetSpeedKmh } from '@/lib/strava/strava-auswertung'
+import { aktivitaetSpeedKmh, leistungWatts, wattProKg } from '@/lib/strava/strava-auswertung'
 import type { StravaActivityRow } from '@/lib/strava/strava-types'
 
 export type StravaSportKind = 'ride' | 'run' | 'other'
@@ -27,6 +27,10 @@ export type TransformedStravaActivity = {
   avgHrLabel: string
   avgWatts: number | null
   wattsLabel: string
+  wkg: number | null
+  wkgLabel: string
+  tss: number | null
+  tssLabel: string
   hasPowerMeter: boolean
   stravaUrl: string
 }
@@ -120,11 +124,21 @@ export function speedOrPaceFromActivity(a: StravaActivityRow): { label: string; 
   return { label: formatSpeedKmh(kmh), value: kmh }
 }
 
-export function transformActivity(a: StravaActivityRow): TransformedStravaActivity {
+export function formatWkg(wkg: number | null | undefined): string {
+  if (wkg == null || !Number.isFinite(wkg) || wkg <= 0) return 'N/A'
+  return `${wkg.toFixed(2)} W/kg`
+}
+
+export function transformActivity(
+  a: StravaActivityRow,
+  weightKg: number | null = null,
+): TransformedStravaActivity {
   const kind = sportKind(a.type, a.sport_type)
   const { label: speedOrPaceLabel, value: speedOrPaceValue } = speedOrPaceFromActivity(a)
-  const watts = a.weighted_avg_watts ?? a.average_watts
+  const watts = leistungWatts(a) ?? a.weighted_avg_watts ?? a.average_watts
   const hasPowerMeter = Boolean(a.device_watts)
+  const wkg = watts != null && watts > 0 ? wattProKg(watts, weightKg) : null
+  const tss = a.estimated_tss != null && a.estimated_tss > 0 ? a.estimated_tss : null
 
   return {
     id: a.strava_id,
@@ -147,14 +161,21 @@ export function transformActivity(a: StravaActivityRow): TransformedStravaActivi
     avgHr: a.average_heartrate,
     avgHrLabel: formatHeartRate(a.average_heartrate),
     avgWatts: watts,
-    wattsLabel: formatWatts(watts, hasPowerMeter),
+    wattsLabel: formatWatts(watts, hasPowerMeter || watts != null),
+    wkg,
+    wkgLabel: formatWkg(wkg),
+    tss,
+    tssLabel: tss != null ? String(Math.round(tss)) : 'N/A',
     hasPowerMeter,
     stravaUrl: `https://www.strava.com/activities/${a.strava_id}`,
   }
 }
 
-export function transformActivities(rows: StravaActivityRow[]): TransformedStravaActivity[] {
-  return rows.map(transformActivity)
+export function transformActivities(
+  rows: StravaActivityRow[],
+  weightKg: number | null = null,
+): TransformedStravaActivity[] {
+  return rows.map((a) => transformActivity(a, weightKg))
 }
 
 /** Relatives Datum auf Deutsch (Heute, Gestern, …). */

@@ -56,12 +56,20 @@ export type StravaActivityRow = {
   workout_type: number | null
   hr_zone_minutes: StravaHrZoneMinutes | null
   estimated_tss: number | null
+  weather_temp_c?: number | null
+  weather_wind_kmh?: number | null
+  weather_code?: number | null
+  weather_lat?: number | null
+  weather_lon?: number | null
+  aerobic_decoupling_pct?: number | null
+  variability_index?: number | null
 }
 
 export type StravaSeasonGoals = {
   goal_km_year: number | null
   goal_hm_year: number | null
   goal_rides_per_week: number | null
+  goal_tss_week: number | null
   goal_event_name: string | null
   goal_event_date: string | null
 }
@@ -72,6 +80,8 @@ export type StravaAthleteProfile = StravaSeasonGoals & {
   max_hr: number | null
   firstname: string | null
   lastname: string | null
+  weather_home_lat?: number | null
+  weather_home_lon?: number | null
 }
 
 export type StravaJahresStat = {

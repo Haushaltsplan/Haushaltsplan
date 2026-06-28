@@ -2,6 +2,15 @@
 
 import { StravaActivityFeed } from '@/components/strava/strava-activity-feed'
 import { StravaActivityModal } from '@/components/strava/strava-activity-modal'
+import {
+  StravaActivityFilterBar,
+  useFilteredActivities,
+  useSortedFeed,
+  type FilterBarState,
+} from '@/components/strava/strava-activity-filter-bar'
+import { StravaBackfillPanel } from '@/components/strava/strava-backfill-panel'
+import { StravaAdvancedSection } from '@/components/strava/strava-advanced-panels'
+import { StravaStreckenPrPanel } from '@/components/strava/strava-strecken-pr-panel'
 import { StravaAlertsBanner } from '@/components/strava/strava-alerts-banner'
 import { StravaVolumeChart, StravaSpeedTrendChart, StravaZoneDonut } from '@/components/strava/strava-charts'
 import { STRAVA_COLORS } from '@/components/strava/design-tokens'
@@ -15,12 +24,22 @@ import {
 } from '@/components/strava/strava-insights-panels'
 import { StravaKpiBar } from '@/components/strava/strava-kpi-bar'
 import { StravaPowerCurvePanel } from '@/components/strava/strava-power-curve-panel'
+import {
+  StravaMonthlyProgressChart,
+  StravaPrTimelinePanel,
+  StravaQuarterlyPowerPanel,
+  StravaTssAdherencePanel,
+  StravaTssBudgetPanel,
+} from '@/components/strava/strava-progress-panels'
+import { StravaWeatherPanel } from '@/components/strava/strava-weather-panel'
 import { StravaWhoopPanel } from '@/components/strava/strava-whoop-panel'
+import type { BackfillStatus } from '@/lib/strava/strava-backfill-status'
+import type { KpiPeriod } from '@/lib/strava/strava-dashboard-analytics'
 import {
   berechneStravaExtendedAnalytics,
   type StravaExtendedAnalytics,
 } from '@/lib/strava/strava-extended-analytics'
-import type { KpiPeriod } from '@/lib/strava/strava-dashboard-analytics'
+import type { StravaSegmentEffortRow } from '@/lib/strava/strava-segments'
 import { berechneWhoopStravaInsight } from '@/lib/strava/strava-whoop-bridge'
 import type { StravaActivityRow, StravaAthleteProfile } from '@/lib/strava/strava-types'
 import { useMemo, useState } from 'react'
@@ -28,16 +47,60 @@ import { useMemo, useState } from 'react'
 type Props = {
   activities: StravaActivityRow[]
   athlete: StravaAthleteProfile | null
+  segmentEfforts?: StravaSegmentEffortRow[]
+  segmentBacklog?: number
+  backfill?: BackfillStatus | null
+  backfillBusy?: boolean
+  backfillRound?: number | null
+  onBackfill?: () => void
   onGoalsSaved?: () => void
 }
 
-export function StravaAnalyticsView({ activities, athlete, onGoalsSaved }: Props) {
+export function StravaAnalyticsView({
+  activities,
+  athlete,
+  segmentEfforts = [],
+  segmentBacklog = 0,
+  backfill = null,
+  backfillBusy = false,
+  backfillRound = null,
+  onBackfill,
+  onGoalsSaved,
+}: Props) {
   const [period, setPeriod] = useState<KpiPeriod>('week')
   const [selectedId, setSelectedId] = useState<number | null>(null)
+  const [filterState, setFilterState] = useState<FilterBarState>({
+    rangeDays: 84,
+    ridesOnly: true,
+    outdoorOnly: false,
+    sortKey: 'date',
+    sortDesc: true,
+  })
+
+  const weightKg = athlete?.omnia_weight_kg ?? null
+  const filteredActivities = useFilteredActivities(activities, filterState)
+  const feedActivities = useSortedFeed(
+    filteredActivities,
+    filterState.sortKey,
+    filterState.sortDesc,
+    weightKg,
+  )
 
   const analytics: StravaExtendedAnalytics = useMemo(
-    () => berechneStravaExtendedAnalytics(activities, athlete, { period }),
-    [activities, athlete, period],
+    () =>
+      berechneStravaExtendedAnalytics(filteredActivities, athlete, {
+        period,
+        segmentEfforts,
+        segmentBacklog,
+      }),
+    [filteredActivities, athlete, period, segmentEfforts, segmentBacklog],
+  )
+
+  const weatherBacklog = useMemo(
+    () =>
+      backfill?.categories.find((c) => c.key === 'weather')?.pending ??
+      activities.filter((a) => a.weather_temp_c == null).length,
+    [backfill, activities],
   )
 
   const whoopInsight = useMemo(
@@ -54,11 +117,23 @@ export function StravaAnalyticsView({ activities, athlete, onGoalsSaved }: Props
     <div className="space-y-6">
       <StravaAlertsBanner alerts={analytics.alerts} />
 
-      {analytics.streamBacklog > 0 ? (
-        <p className="rounded-xl border border-white/[0.06] bg-black/40 px-3 py-2 text-[11px] text-[var(--app-text-muted)]">
-          {analytics.streamBacklog} Fahrten warten auf Stream-Analyse — Sync mehrfach klicken oder Vollimport nutzen.
-        </p>
+      {backfill ? (
+        <StravaBackfillPanel
+          backfill={backfill}
+          busy={backfillBusy}
+          backfillRound={backfillRound}
+          onBackfill={onBackfill}
+        />
       ) : null}
+
+      <StravaActivityFilterBar
+        state={filterState}
+        onChange={setFilterState}
+        activities={filteredActivities}
+        filteredCount={filteredActivities.length}
+        athlete={athlete}
+        analytics={analytics}
+      />
 
       <StravaKpiBar kpis={analytics.kpis} period={period} onPeriodChange={setPeriod} />
 
@@ -69,8 +144,34 @@ export function StravaAnalyticsView({ activities, athlete, onGoalsSaved }: Props
       />
 
       <div className="grid gap-4 lg:grid-cols-2">
+        <StravaMonthlyProgressChart data={analytics.progress.monthly} />
+        <StravaTssBudgetPanel budget={analytics.progress.tssBudget} />
+      </div>
+
+      <StravaTssAdherencePanel
+        adherence={analytics.progress.tssAdherence}
+        weeklyTarget={analytics.progress.tssBudget.weeklyTarget}
+      />
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        <StravaWeatherPanel analysis={analytics.weatherAnalysis} backlog={weatherBacklog} />
+        <StravaPrTimelinePanel items={analytics.progress.prTimeline} />
+      </div>
+
+      <StravaQuarterlyPowerPanel quarters={analytics.progress.quarterlyCurves} />
+
+      <StravaAdvancedSection advanced={analytics.advanced} />
+
+      <StravaStreckenPrPanel segments={analytics.segments} routes={analytics.routes} />
+
+      <div className="grid gap-4 lg:grid-cols-2">
         <StravaFormChart data={analytics.formVerlauf} current={analytics.currentForm} />
-        <StravaPowerCurvePanel curve={analytics.powerCurve} eftp={analytics.eftp} stravaFtp={analytics.stravaFtp} />
+        <StravaPowerCurvePanel
+          curve={analytics.powerCurve}
+          curve90d={analytics.powerCurve90d}
+          eftp={analytics.eftp}
+          stravaFtp={analytics.stravaFtp}
+        />
       </div>
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
@@ -92,7 +193,7 @@ export function StravaAnalyticsView({ activities, athlete, onGoalsSaved }: Props
       </div>
 
       <StravaActivityFeed
-        activities={analytics.activities}
+        activities={feedActivities}
         onSelect={(id) => setSelectedId(id)}
       />
 

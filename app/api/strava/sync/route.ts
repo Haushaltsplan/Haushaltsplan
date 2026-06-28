@@ -28,11 +28,16 @@ export async function POST(req: Request) {
       result.streamsAnalysiert > 0
         ? `, ${result.streamsAnalysiert} Streams analysiert`
         : ''
+    const weatherHint =
+      result.wetterAngereichert > 0 ? `, ${result.wetterAngereichert} mit Wetter` : ''
+
+    const segmentHint =
+      result.segmenteGeladen > 0 ? `, ${result.segmenteGeladen} mit Segmenten` : ''
 
     return NextResponse.json({
       ok: true,
       syncedAt: new Date().toISOString(),
-      message: `${result.imported} Aktivitäten aktualisiert — ${result.total} gespeichert${streamHint}`,
+      message: `${result.imported} Aktivitäten aktualisiert — ${result.total} gespeichert${streamHint}${weatherHint}${segmentHint}`,
       stats: result,
       fullImport,
     })

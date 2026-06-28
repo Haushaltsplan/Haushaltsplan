@@ -16,6 +16,8 @@ import type {
   StravaPersoenlicheBestleistung,
   StravaPrKategorie,
 } from '@/lib/strava/strava-types'
+import type { StravaSegmentEffortRow } from '@/lib/strava/strava-segments'
+import type { BackfillStatus } from '@/lib/strava/strava-backfill-status'
 import { supabase } from '@/lib/supabase'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import toast from 'react-hot-toast'
@@ -46,6 +48,10 @@ export function StravaDashboard() {
   const [statusLoading, setStatusLoading] = useState(true)
   const [auswertung, setAuswertung] = useState<StravaAuswertung | null>(null)
   const [allActivities, setAllActivities] = useState<StravaActivityRow[]>([])
+  const [segmentEfforts, setSegmentEfforts] = useState<StravaSegmentEffortRow[]>([])
+  const [segmentBacklog, setSegmentBacklog] = useState(0)
+  const [backfill, setBackfill] = useState<BackfillStatus | null>(null)
+  const [backfillRound, setBackfillRound] = useState<number | null>(null)
   const [athlete, setAthlete] = useState<StravaAthleteProfile | null>(null)
   const [busy, setBusy] = useState(false)
   const [dataLoading, setDataLoading] = useState(false)
@@ -103,9 +109,15 @@ export function StravaDashboard() {
         auswertung?: StravaAuswertung
         athlete?: StravaAthleteProfile | null
         activities?: StravaActivityRow[]
+        segmentEfforts?: StravaSegmentEffortRow[]
+        segmentBacklog?: number
+        backfill?: BackfillStatus
       }
       if (body.auswertung) setAuswertung(body.auswertung)
       if (body.activities) setAllActivities(body.activities)
+      if (body.segmentEfforts) setSegmentEfforts(body.segmentEfforts)
+      setSegmentBacklog(body.segmentBacklog ?? 0)
+      if (body.backfill) setBackfill(body.backfill)
       if (body.athlete) {
         setAthlete(body.athlete)
         const kg = body.athlete.omnia_weight_kg
@@ -151,6 +163,36 @@ export function StravaDashboard() {
     },
     [ladeDaten, ladeStatus],
   )
+
+  const startBackfill = useCallback(async () => {
+    setBusy(true)
+    setBackfillRound(1)
+    try {
+      const res = await stravaApiFetch('/api/strava/backfill', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ maxRounds: 15 }),
+      })
+      const body = (await res.json()) as {
+        ok?: boolean
+        message?: string
+        fehler?: string
+        rounds?: number
+        backfill?: BackfillStatus
+      }
+      if (body.ok) {
+        toast.success(body.message ?? 'Backfill abgeschlossen')
+        if (body.backfill) setBackfill(body.backfill)
+        if (body.rounds) setBackfillRound(body.rounds)
+        await ladeDaten()
+      } else {
+        toast.error(body.fehler ?? body.message ?? 'Backfill fehlgeschlagen')
+      }
+    } finally {
+      setBusy(false)
+      setBackfillRound(null)
+    }
+  }, [ladeDaten])
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
@@ -445,6 +487,12 @@ STRAVA_CLIENT_SECRET=dein_client_secret`}
             <StravaAnalyticsView
               activities={allActivities}
               athlete={athlete}
+              segmentEfforts={segmentEfforts}
+              segmentBacklog={segmentBacklog}
+              backfill={backfill}
+              backfillBusy={busy}
+              backfillRound={backfillRound}
+              onBackfill={() => void startBackfill()}
               onGoalsSaved={() => void ladeDaten()}
             />
           ) : tab === 'entwicklung' ? (

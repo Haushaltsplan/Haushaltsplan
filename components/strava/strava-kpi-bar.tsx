@@ -36,20 +36,27 @@ export function StravaKpiBar({ kpis, period, onPeriodChange }: Props) {
       <div className="flex items-center justify-between gap-3">
         <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-[var(--app-text-muted)]">Performance Summary</p>
         <div className="flex rounded-full border border-white/[0.08] bg-black/40 p-0.5">
-          {(['week', 'month'] as KpiPeriod[]).map((p) => (
+          {(
+            [
+              ['week', 'Woche'],
+              ['month', 'Monat'],
+              ['quarter', 'Quartal'],
+              ['ytd', 'YTD'],
+            ] as const
+          ).map(([p, label]) => (
             <button
               key={p}
               type="button"
               onClick={() => onPeriodChange(p)}
               className={[
-                'rounded-full px-3 py-1 text-[11px] font-semibold capitalize',
+                'rounded-full px-2.5 py-1 text-[10px] font-semibold sm:px-3 sm:text-[11px]',
                 STRAVA_INTERACTIVE,
                 period === p
                   ? 'bg-[#FC4C02]/20 text-orange-200 ring-1 ring-[#FC4C02]/35'
                   : 'text-[var(--app-text-muted)] hover:text-[var(--app-text)]',
               ].join(' ')}
             >
-              {p === 'week' ? 'Woche' : 'Monat'}
+              {label}
             </button>
           ))}
         </div>

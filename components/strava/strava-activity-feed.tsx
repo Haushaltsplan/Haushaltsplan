@@ -68,7 +68,7 @@ export function StravaActivityFeed({ activities, onSelect }: Props) {
               <p className="mt-0.5 text-[11px] text-[var(--app-text-muted)]">{formatRelativeDate(a.startDate)}</p>
             </div>
 
-            <div className="hidden shrink-0 grid-cols-4 gap-x-4 text-right sm:grid">
+            <div className="hidden shrink-0 grid-cols-6 gap-x-3 text-right lg:grid">
               <div>
                 <p className="text-[9px] uppercase tracking-wider text-[var(--app-text-muted)]">Dist</p>
                 <MetricCell value={a.distanceLabel} />
@@ -78,8 +78,16 @@ export function StravaActivityFeed({ activities, onSelect }: Props) {
                 <MetricCell value={a.movingTimeCompact} />
               </div>
               <div>
-                <p className="text-[9px] uppercase tracking-wider text-[var(--app-text-muted)]">Ø HF</p>
-                <MetricCell value={a.avgHrLabel} muted={a.avgHr == null} />
+                <p className="text-[9px] uppercase tracking-wider text-[var(--app-text-muted)]">Ø W</p>
+                <MetricCell value={a.wattsLabel} muted={a.avgWatts == null} />
+              </div>
+              <div>
+                <p className="text-[9px] uppercase tracking-wider text-[var(--app-text-muted)]">W/kg</p>
+                <MetricCell value={a.wkgLabel} muted={a.wkg == null} />
+              </div>
+              <div>
+                <p className="text-[9px] uppercase tracking-wider text-[var(--app-text-muted)]">TSS</p>
+                <MetricCell value={a.tssLabel} muted={a.tss == null} />
               </div>
               <div>
                 <p className="text-[9px] uppercase tracking-wider text-[var(--app-text-muted)]">Hm</p>
@@ -87,9 +95,25 @@ export function StravaActivityFeed({ activities, onSelect }: Props) {
               </div>
             </div>
 
+            <div className="hidden shrink-0 grid-cols-3 gap-x-3 text-right sm:grid lg:hidden">
+              <div>
+                <p className="text-[9px] uppercase tracking-wider text-[var(--app-text-muted)]">Dist</p>
+                <MetricCell value={a.distanceLabel} />
+              </div>
+              <div>
+                <p className="text-[9px] uppercase tracking-wider text-[var(--app-text-muted)]">W/kg</p>
+                <MetricCell value={a.wkgLabel} muted={a.wkg == null} />
+              </div>
+              <div>
+                <p className="text-[9px] uppercase tracking-wider text-[var(--app-text-muted)]">TSS</p>
+                <MetricCell value={a.tssLabel} muted={a.tss == null} />
+              </div>
+            </div>
+
             <div className="flex shrink-0 flex-col gap-1 text-right sm:hidden">
               <MetricCell value={a.distanceLabel} />
-              <MetricCell value={a.movingTimeCompact} />
+              <MetricCell value={a.wkgLabel} muted={a.wkg == null} />
+              <MetricCell value={a.tssLabel} muted={a.tss == null} />
             </div>
           </button>
         ))}

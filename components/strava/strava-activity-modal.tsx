@@ -5,6 +5,8 @@ import { StravaRouteMap } from '@/components/strava/strava-route-map'
 import { transformActivity } from '@/lib/strava/strava-activity-utils'
 import { leistungWatts, wattProKg } from '@/lib/strava/strava-auswertung'
 import { POWER_PEAK_LABELS } from '@/lib/strava/strava-power'
+import { normalisiereLeistungBeiReferenz, REFERENZ_TEMP_C } from '@/lib/strava/strava-weather-adjust'
+import { wetterCodeDe } from '@/lib/strava/strava-weather'
 import type { StravaActivityRow, StravaAthleteProfile } from '@/lib/strava/strava-types'
 import { appModalScrollHiddenClassName } from '@/lib/app-modal-overlay'
 
@@ -21,6 +23,36 @@ export function StravaActivityModal({ activity, athlete, onClose }: Props) {
   const w = leistungWatts(activity)
   const wkg = wattProKg(w, athlete?.omnia_weight_kg ?? null)
   const peaks = activity.power_peaks
+  const temp = activity.weather_temp_c
+  const normW =
+    w != null && temp != null ? Math.round(normalisiereLeistungBeiReferenz(w, temp)) : null
+
+  const stats = [
+    { l: 'Distanz', v: t.distanceLabel },
+    { l: 'Zeit', v: t.movingTimeCompact },
+    { l: 'Tempo', v: t.speedOrPaceLabel },
+    { l: 'Hm', v: t.elevationLabel },
+    { l: 'Ø HF', v: t.avgHrLabel },
+    { l: 'Leistung', v: t.wattsLabel },
+    { l: 'W/kg', v: wkg ? `${wkg.toFixed(2)}` : 'N/A' },
+    {
+      l: 'TSS',
+      v: activity.estimated_tss
+        ? `${Math.round(activity.estimated_tss)}`
+        : activity.suffer_score
+          ? `${Math.round(activity.suffer_score)}`
+          : 'N/A',
+    },
+  ]
+  if (temp != null) {
+    stats.push({
+      l: 'Wetter',
+      v: `${Math.round(temp)} °C${activity.weather_wind_kmh != null ? ` · ${activity.weather_wind_kmh} km/h` : ''}`,
+    })
+  }
+  if (normW != null && temp != null && temp > 24) {
+    stats.push({ l: `Norm. ${REFERENZ_TEMP_C}°C`, v: `${normW} W` })
+  }
 
   return (
     <div
@@ -56,22 +88,19 @@ export function StravaActivityModal({ activity, athlete, onClose }: Props) {
           </div>
 
           <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
-            {[
-              { l: 'Distanz', v: t.distanceLabel },
-              { l: 'Zeit', v: t.movingTimeCompact },
-              { l: 'Tempo', v: t.speedOrPaceLabel },
-              { l: 'Hm', v: t.elevationLabel },
-              { l: 'Ø HF', v: t.avgHrLabel },
-              { l: 'Leistung', v: t.wattsLabel },
-              { l: 'W/kg', v: wkg ? `${wkg.toFixed(2)}` : 'N/A' },
-              { l: 'TSS', v: activity.estimated_tss ? `${Math.round(activity.estimated_tss)}` : activity.suffer_score ? `${Math.round(activity.suffer_score)}` : 'N/A' },
-            ].map((m) => (
+            {stats.map((m) => (
               <div key={m.l} className="rounded-xl border border-white/[0.06] bg-black/40 px-3 py-2">
                 <p className="text-[9px] uppercase tracking-wider text-[var(--app-text-muted)]">{m.l}</p>
                 <p className="mt-0.5 text-sm font-semibold tabular-nums text-[var(--app-text)]">{m.v}</p>
               </div>
             ))}
           </div>
+
+          {temp != null ? (
+            <p className="mt-2 text-[11px] text-cyan-200/70">
+              {wetterCodeDe(activity.weather_code)} · Leistung bei {Math.round(temp)} °C einordnen (optimal ca. 18–22 °C)
+            </p>
+          ) : null}
 
           {peaks && Object.values(peaks).some((v) => v != null) ? (
             <div className="mt-4">

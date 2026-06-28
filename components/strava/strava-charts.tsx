@@ -1,97 +1,53 @@
 'use client'
 
-import { appTableScrollInlineClassName } from '@/components/page-shell'
+import { ComposedChart, Bar, Line, XAxis, YAxis, Legend } from 'recharts'
+import { formatKm } from '@/components/strava/strava-chart-utils'
 import { STRAVA_COLORS } from '@/components/strava/design-tokens'
+import {
+  StravaBrush,
+  StravaCartesianGrid,
+  StravaChartShell,
+  StravaTooltip,
+  STRAVA_CHART_AXIS,
+} from '@/components/strava/strava-recharts'
 import { StravaCard, StravaSectionTitle } from '@/components/strava/strava-card'
 import type { SpeedTrendPoint, WeeklyVolumeBar, ZoneSlice } from '@/lib/strava/strava-dashboard-analytics'
 import { SPORT_COLORS } from '@/lib/strava/strava-dashboard-analytics'
-import { useMemo, useState } from 'react'
+import { useMemo } from 'react'
 
 type VolumeChartProps = {
   data: WeeklyVolumeBar[]
 }
 
 export function StravaVolumeChart({ data }: VolumeChartProps) {
-  const peak = useMemo(() => Math.max(...data.map((d) => d.totalKm), 1), [data])
-  const h = 180
-  const w = Math.max(480, data.length * 36)
-  const n = data.length || 1
+  const chartData = useMemo(
+    () =>
+      data.map((d) => ({
+        label: d.label,
+        Ride: Math.round(d.rideKm * 10) / 10,
+        Run: Math.round(d.runKm * 10) / 10,
+        Sonstige: Math.round(d.otherKm * 10) / 10,
+        totalKm: d.totalKm,
+      })),
+    [data],
+  )
 
   return (
     <StravaCard padding="md">
-      <StravaSectionTitle
-        title="Volume & Consistency"
-        subtitle="Wöchentliche Distanz · letzte 12 Wochen"
-      />
-      <div className="mb-3 flex flex-wrap gap-4 text-[10px] text-[var(--app-text-muted)]">
-        <span className="flex items-center gap-1.5">
-          <span className="inline-block h-2.5 w-2.5 rounded-sm" style={{ background: SPORT_COLORS.ride }} />
-          Ride
-        </span>
-        <span className="flex items-center gap-1.5">
-          <span className="inline-block h-2.5 w-2.5 rounded-sm" style={{ background: SPORT_COLORS.run }} />
-          Run
-        </span>
-        <span className="flex items-center gap-1.5">
-          <span className="inline-block h-2.5 w-2.5 rounded-sm" style={{ background: SPORT_COLORS.other }} />
-          Sonstige
-        </span>
-      </div>
-      <div className={appTableScrollInlineClassName}>
-        <svg viewBox={`0 0 ${w} ${h}`} style={{ minWidth: w, width: '100%', height: h }} preserveAspectRatio="xMinYMid meet">
-          {[0.25, 0.5, 0.75, 1].map((f) => (
-            <line
-              key={f}
-              x1={0}
-              y1={h - 32 - f * (h - 56)}
-              x2={w}
-              y2={h - 32 - f * (h - 56)}
-              stroke="rgba(255,255,255,0.05)"
-              strokeWidth={1}
-            />
-          ))}
-          {data.map((d, i) => {
-            const barW = Math.max(14, w / n - 8)
-            const x = i * (w / n) + 4
-            const baseY = h - 32
-            const totalH = peak > 0 ? (d.totalKm / peak) * (h - 56) : 0
-            const segments = [
-              { km: d.rideKm, color: SPORT_COLORS.ride },
-              { km: d.runKm, color: SPORT_COLORS.run },
-              { km: d.otherKm, color: SPORT_COLORS.other },
-            ]
-            let stackY = baseY
-            return (
-              <g key={d.weekStart}>
-                {d.totalKm > 0 ? (
-                  <text x={x + barW / 2} y={baseY - totalH - 4} textAnchor="middle" fill={STRAVA_COLORS.orange} fontSize="8" fontWeight="600">
-                    {d.totalKm.toFixed(0)}
-                  </text>
-                ) : null}
-                {[...segments].reverse().map((seg) => {
-                  const segH = peak > 0 ? (seg.km / peak) * (h - 56) : 0
-                  stackY -= segH
-                  return (
-                    <rect
-                      key={seg.color}
-                      x={x}
-                      y={stackY}
-                      width={barW}
-                      height={Math.max(segH, seg.km > 0 ? 2 : 0)}
-                      fill={seg.color}
-                      rx={2}
-                      className="transition-opacity duration-200 hover:opacity-90"
-                    />
-                  )
-                })}
-                <text x={x + barW / 2} y={h - 8} textAnchor="middle" fill="#71717a" fontSize="7">
-                  {d.label}
-                </text>
-              </g>
-            )
-          })}
-        </svg>
-      </div>
+      <StravaSectionTitle title="Volume & Consistency" subtitle="Wöchentliche Distanz · Zoom unten" />
+      <StravaChartShell height={200} minWidth={480}>
+        <ComposedChart data={chartData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+          <StravaCartesianGrid />
+          <XAxis dataKey="label" {...STRAVA_CHART_AXIS} interval="preserveStartEnd" />
+          <YAxis {...STRAVA_CHART_AXIS} width={32} unit=" km" />
+          <StravaTooltip formatter={(v) => formatKm(Number(v ?? 0))} />
+          <Legend wrapperStyle={{ fontSize: 10, paddingTop: 8 }} />
+          <Bar dataKey="Ride" stackId="v" fill={SPORT_COLORS.ride} radius={[0, 0, 0, 0]} />
+          <Bar dataKey="Run" stackId="v" fill={SPORT_COLORS.run} />
+          <Bar dataKey="Sonstige" stackId="v" fill={SPORT_COLORS.other} radius={[2, 2, 0, 0]} />
+          <StravaBrush />
+        </ComposedChart>
+      </StravaChartShell>
     </StravaCard>
   )
 }
@@ -174,93 +130,41 @@ type SpeedChartProps = {
 }
 
 export function StravaSpeedTrendChart({ points }: SpeedChartProps) {
-  const [hoverIdx, setHoverIdx] = useState<number | null>(null)
-  const vals = points.map((p) => p.value).filter((v) => v > 0)
-  const h = 180
-  const w = Math.max(400, points.length * 40)
-  const n = points.length
-  const min = vals.length ? Math.min(...vals) * 0.88 : 0
-  const max = vals.length ? Math.max(...vals) * 1.08 : 1
-  const range = max - min || 1
-  const padX = 20
-  const chartW = w - padX * 2
-
-  const coords = points.map((p, i) => {
-    const x = padX + (i / Math.max(n - 1, 1)) * chartW
-    const y = 28 + (1 - ((p.value || min) - min) / range) * (h - 60)
-    return { x, y, i, ...p }
-  })
-
-  const smoothPath = useMemo(() => {
-    if (coords.length < 2) return ''
-    let d = `M ${coords[0].x} ${coords[0].y}`
-    for (let i = 1; i < coords.length; i++) {
-      const prev = coords[i - 1]
-      const cur = coords[i]
-      const cpx = (prev.x + cur.x) / 2
-      d += ` C ${cpx} ${prev.y}, ${cpx} ${cur.y}, ${cur.x} ${cur.y}`
-    }
-    return d
-  }, [coords])
-
-  const hover = hoverIdx != null ? coords[hoverIdx] : null
+  const chartData = useMemo(
+    () =>
+      points.map((p) => ({
+        label: p.label,
+        value: p.value,
+        name: p.name,
+        detail: `${p.valueLabel} · ${p.distanceLabel} · ${p.timeLabel}`,
+      })),
+    [points],
+  )
 
   return (
     <StravaCard padding="md">
-      <StravaSectionTitle title="Fitness & Speed Trend" subtitle="Ø Tempo/Pace · Fahrten ≥20 min" />
+      <StravaSectionTitle title="Fitness & Speed Trend" subtitle="Ø Tempo/Pace · Zoom unten" />
       {points.length === 0 ? (
         <p className="py-8 text-center text-sm text-[var(--app-text-muted)]">Noch nicht genug Daten für den Trend.</p>
       ) : (
-        <>
-          {hover ? (
-            <div className="mb-3 rounded-xl border border-white/[0.08] bg-black/50 px-3 py-2 text-xs">
-              <p className="font-semibold text-[var(--app-text)]">{hover.name}</p>
-              <p className="mt-1 text-[var(--app-text-muted)]">
-                {hover.valueLabel} · {hover.distanceLabel} · {hover.timeLabel} · HF {hover.hrLabel}
-              </p>
-            </div>
-          ) : (
-            <p className="mb-3 text-[11px] text-[var(--app-text-muted)]">Hover über einen Punkt für Details</p>
-          )}
-          <div className={appTableScrollInlineClassName}>
-            <svg
-              viewBox={`0 0 ${w} ${h}`}
-              style={{ minWidth: w, width: '100%', height: h }}
-              preserveAspectRatio="xMinYMid meet"
-            >
-              {[0.25, 0.5, 0.75, 1].map((f) => (
-                <line
-                  key={f}
-                  x1={padX}
-                  y1={28 + (1 - f) * (h - 60)}
-                  x2={w - padX}
-                  y2={28 + (1 - f) * (h - 60)}
-                  stroke="rgba(255,255,255,0.05)"
-                  strokeWidth={1}
-                />
-              ))}
-              {smoothPath ? (
-                <path d={smoothPath} fill="none" stroke={STRAVA_COLORS.cyan} strokeWidth={2.5} strokeLinecap="round" />
-              ) : null}
-              {coords.map((c) => (
-                <g key={c.activityId}>
-                  <circle
-                    cx={c.x}
-                    cy={c.y}
-                    r={hoverIdx === c.i ? 6 : 4}
-                    fill={STRAVA_COLORS.cyan}
-                    className="cursor-pointer transition-all duration-150"
-                    onMouseEnter={() => setHoverIdx(c.i)}
-                    onMouseLeave={() => setHoverIdx(null)}
-                  />
-                  <text x={c.x} y={h - 8} textAnchor="middle" fill="#71717a" fontSize="7">
-                    {c.label}
-                  </text>
-                </g>
-              ))}
-            </svg>
-          </div>
-        </>
+        <StravaChartShell height={200} minWidth={400}>
+          <ComposedChart data={chartData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+            <StravaCartesianGrid />
+            <XAxis dataKey="label" {...STRAVA_CHART_AXIS} interval="preserveStartEnd" minTickGap={20} />
+            <YAxis {...STRAVA_CHART_AXIS} width={36} />
+            <StravaTooltip />
+            <Line
+              type="monotone"
+              dataKey="value"
+              name="Tempo/Pace"
+              stroke={STRAVA_COLORS.cyan}
+              strokeWidth={2.5}
+              dot={{ r: 3, fill: STRAVA_COLORS.cyan }}
+              activeDot={{ r: 5 }}
+            />
+            <StravaBrush />
+          </ComposedChart>
+        </StravaChartShell>
       )}
     </StravaCard>
   )

@@ -10,7 +10,7 @@ import {
 } from '@/lib/strava/strava-activity-utils'
 import type { StravaActivityRow } from '@/lib/strava/strava-types'
 
-export type KpiPeriod = 'week' | 'month'
+export type KpiPeriod = 'week' | 'month' | 'quarter' | 'ytd'
 
 export type KpiMetric = {
   key: 'distance' | 'time' | 'elevation' | 'count'
@@ -123,12 +123,27 @@ function aggregate(rows: StravaActivityRow[]) {
   return { km, timeH, hm, count: rows.length }
 }
 
+function startOfQuarter(d: Date): Date {
+  const q = Math.floor(d.getMonth() / 3)
+  return new Date(d.getFullYear(), q * 3, 1)
+}
+
+function endOfQuarter(d: Date): Date {
+  const q = Math.floor(d.getMonth() / 3)
+  return new Date(d.getFullYear(), q * 3 + 3, 0, 23, 59, 59, 999)
+}
+
+function startOfYear(d: Date): Date {
+  return new Date(d.getFullYear(), 0, 1)
+}
+
 function buildKpis(rows: StravaActivityRow[], period: KpiPeriod, now = new Date()): KpiMetric[] {
   const all = rows.filter(istRadAktivitaet)
   let curFrom: Date
   let curTo: Date
   let prevFrom: Date
   let prevTo: Date
+  let compareLabel: string
 
   if (period === 'week') {
     curFrom = startOfWeek(now)
@@ -136,20 +151,34 @@ function buildKpis(rows: StravaActivityRow[], period: KpiPeriod, now = new Date(
     prevTo = new Date(curFrom.getTime() - 1)
     prevFrom = startOfWeek(prevTo)
     prevTo = endOfWeek(prevFrom)
-  } else {
+    compareLabel = 'vs. Vorwoche'
+  } else if (period === 'month') {
     curFrom = startOfMonth(now)
     curTo = endOfMonth(now)
     prevTo = new Date(curFrom.getTime() - 1)
     prevFrom = startOfMonth(prevTo)
     prevTo = endOfMonth(prevTo)
+    compareLabel = 'vs. Vormonat'
+  } else if (period === 'quarter') {
+    curFrom = startOfQuarter(now)
+    curTo = endOfQuarter(now)
+    prevTo = new Date(curFrom.getTime() - 1)
+    prevFrom = startOfQuarter(prevTo)
+    prevTo = endOfQuarter(prevTo)
+    compareLabel = 'vs. Vorquartal'
+  } else {
+    curFrom = startOfYear(now)
+    curTo = now
+    const prevYear = now.getFullYear() - 1
+    prevFrom = new Date(prevYear, 0, 1)
+    prevTo = new Date(prevYear, now.getMonth(), now.getDate(), 23, 59, 59, 999)
+    compareLabel = 'vs. Vorjahr YTD'
   }
 
   const cur = all.filter((a) => inRange(Date.parse(a.start_date), curFrom, curTo))
   const prev = all.filter((a) => inRange(Date.parse(a.start_date), prevFrom, prevTo))
   const c = aggregate(cur)
   const p = aggregate(prev)
-
-  const compareLabel = period === 'week' ? 'vs. Vorwoche' : 'vs. Vormonat'
 
   const mk = (
     key: KpiMetric['key'],

@@ -35,8 +35,13 @@ const PEAK_KEYS: (keyof StravaPowerPeaks)[] = [
 export function berechnePowerCurve(
   activities: StravaActivityRow[],
   weightKg: number | null,
+  opts: { sinceDays?: number } = {},
 ): PowerCurvePoint[] {
-  const rides = activities.filter(istRadAktivitaet)
+  let rides = activities.filter(istRadAktivitaet)
+  if (opts.sinceDays != null && opts.sinceDays > 0) {
+    const cutoff = Date.now() - opts.sinceDays * 86400_000
+    rides = rides.filter((a) => Date.parse(a.start_date) >= cutoff)
+  }
 
   return PEAK_KEYS.map((key) => {
     let bestW: number | null = null
@@ -56,7 +61,7 @@ export function berechnePowerCurve(
       key,
       label: POWER_PEAK_LABELS[key],
       seconds: PEAK_SECONDS[key],
-      bestWatts: bestW,
+      bestWatts: bestW != null ? Math.round(bestW) : null,
       bestWkg: bestWkg != null ? Math.round(bestWkg * 100) / 100 : null,
       activityId: bestA?.strava_id ?? null,
       activityName: bestA?.name ?? null,

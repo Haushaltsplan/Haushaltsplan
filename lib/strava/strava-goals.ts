@@ -106,6 +106,7 @@ export function parseSeasonGoals(raw: Partial<StravaSeasonGoals> | null | undefi
     goal_km_year: raw?.goal_km_year != null ? Number(raw.goal_km_year) : null,
     goal_hm_year: raw?.goal_hm_year != null ? Number(raw.goal_hm_year) : null,
     goal_rides_per_week: raw?.goal_rides_per_week != null ? Number(raw.goal_rides_per_week) : null,
+    goal_tss_week: raw?.goal_tss_week != null ? Number(raw.goal_tss_week) : null,
     goal_event_name: raw?.goal_event_name?.trim() || null,
     goal_event_date: raw?.goal_event_date || null,
   }

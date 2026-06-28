@@ -18,11 +18,21 @@ import {
 import { berechnePowerCurve, schaetzeEftp, type PowerCurvePoint } from '@/lib/strava/strava-power-curve'
 import { aktuelleForm, berechneFormVerlauf, type FormPoint } from '@/lib/strava/strava-training-load'
 import type { GoalProgress } from '@/lib/strava/strava-goals'
+import { berechneProgressAnalytics, type ProgressAnalytics } from '@/lib/strava/strava-progress-analytics'
+import { berechneWetterLeistungsAnalyse, type WetterLeistungsAnalyse } from '@/lib/strava/strava-weather-adjust'
+import {
+  berechneAdvancedMetrics,
+  type AdvancedMetrics,
+} from '@/lib/strava/strava-advanced-metrics'
+import { berechneRouteAnalytics, type RouteAnalytics } from '@/lib/strava/strava-route-analytics'
+import { berechneSegmentAnalytics, type SegmentAnalytics } from '@/lib/strava/strava-segments'
+import type { StravaSegmentEffortRow } from '@/lib/strava/strava-segments'
 import type { KpiPeriod } from '@/lib/strava/strava-dashboard-analytics'
 import type { StravaActivityRow, StravaAthleteProfile, StravaSeasonGoals } from '@/lib/strava/strava-types'
 
 export type StravaExtendedAnalytics = StravaDashboardAnalytics & {
   powerCurve: PowerCurvePoint[]
+  powerCurve90d: PowerCurvePoint[]
   eftp: number | null
   stravaFtp: number | null
   formVerlauf: FormPoint[]
@@ -34,12 +44,23 @@ export type StravaExtendedAnalytics = StravaDashboardAnalytics & {
   goals: GoalProgress[]
   alerts: SmartAlert[]
   streamBacklog: number
+  progress: ProgressAnalytics
+  weatherAnalysis: WetterLeistungsAnalyse
+  weatherBacklog: number
+  advanced: AdvancedMetrics
+  decouplingBacklog: number
+  routes: RouteAnalytics
+  segments: SegmentAnalytics
 }
 
 export function berechneStravaExtendedAnalytics(
   activities: StravaActivityRow[],
   athlete: StravaAthleteProfile | null,
-  opts: { period?: KpiPeriod } = {},
+  opts: {
+    period?: KpiPeriod
+    segmentEfforts?: StravaSegmentEffortRow[]
+    segmentBacklog?: number
+  } = {},
 ): StravaExtendedAnalytics {
   const period = opts.period ?? 'week'
   const maxHr = athlete?.max_hr ?? null
@@ -48,6 +69,7 @@ export function berechneStravaExtendedAnalytics(
 
   const base = berechneStravaDashboardAnalytics(activities, { period, maxHr })
   const powerCurve = berechnePowerCurve(activities, weightKg)
+  const powerCurve90d = berechnePowerCurve(activities, weightKg, { sinceDays: 90 })
   const eftp = schaetzeEftp(powerCurve)
   const formVerlauf = berechneFormVerlauf(activities, ftp ?? eftp, 84)
   const currentForm = aktuelleForm(activities, ftp ?? eftp)
@@ -60,10 +82,13 @@ export function berechneStravaExtendedAnalytics(
     goal_km_year: athlete?.goal_km_year ?? null,
     goal_hm_year: athlete?.goal_hm_year ?? null,
     goal_rides_per_week: athlete?.goal_rides_per_week ?? null,
+    goal_tss_week: athlete?.goal_tss_week ?? null,
     goal_event_name: athlete?.goal_event_name ?? null,
     goal_event_date: athlete?.goal_event_date ?? null,
   }
   const goalProgress = berechneZielFortschritt(activities, goals)
+  const progress = berechneProgressAnalytics(activities, weightKg, goals.goal_tss_week)
+  const weatherAnalysis = berechneWetterLeistungsAnalyse(activities, weightKg)
 
   const alerts = berechneSmartAlerts(activities, {
     ftp: ftp ?? eftp,
@@ -75,6 +100,14 @@ export function berechneStravaExtendedAnalytics(
   const streamBacklog = activities.filter(
     (a) => (a.device_watts || a.average_watts) && !a.power_peaks,
   ).length
+  const weatherBacklog = activities.filter((a) => a.weather_temp_c == null).length
+  const advanced = berechneAdvancedMetrics(activities, weightKg)
+  const routes = berechneRouteAnalytics(activities, weightKg)
+  const segments = berechneSegmentAnalytics(
+    opts.segmentEfforts ?? [],
+    weightKg,
+    opts.segmentBacklog ?? 0,
+  )
 
   // Wenn echte HR-Stream-Zonen vorhanden, Zone-Distribution verbessern
   if (maxHr != null && maxHr > 0) {
@@ -98,6 +131,7 @@ export function berechneStravaExtendedAnalytics(
   return {
     ...base,
     powerCurve,
+    powerCurve90d,
     eftp,
     stravaFtp: ftp,
     formVerlauf,
@@ -109,5 +143,12 @@ export function berechneStravaExtendedAnalytics(
     goals: goalProgress,
     alerts,
     streamBacklog,
+    progress,
+    weatherAnalysis,
+    weatherBacklog,
+    advanced,
+    decouplingBacklog: advanced.decouplingBacklog,
+    routes,
+    segments,
   }
 }

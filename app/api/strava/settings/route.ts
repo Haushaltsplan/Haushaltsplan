@@ -58,18 +58,30 @@ export async function POST(req: Request) {
       'goal_km_year' in body ||
       'goal_hm_year' in body ||
       'goal_rides_per_week' in body ||
+      'goal_tss_week' in body ||
       'goal_event_name' in body ||
-      'goal_event_date' in body
+      'goal_event_date' in body ||
+      'weather_home_lat' in body ||
+      'weather_home_lon' in body
     ) {
       await speichereSaisonZiele(sb, {
         goal_km_year: parseNum(body.goal_km_year),
         goal_hm_year: parseNum(body.goal_hm_year),
-        goal_rides_per_week:
-          body.goal_rides_per_week != null && body.goal_rides_per_week !== ''
-            ? Math.round(Number(body.goal_rides_per_week))
-            : null,
-        goal_event_name: typeof body.goal_event_name === 'string' ? body.goal_event_name : null,
+          goal_rides_per_week:
+            body.goal_rides_per_week != null && body.goal_rides_per_week !== ''
+              ? Math.round(Number(body.goal_rides_per_week))
+              : null,
+          goal_tss_week: parseNum(body.goal_tss_week),
+          goal_event_name: typeof body.goal_event_name === 'string' ? body.goal_event_name : null,
         goal_event_date: typeof body.goal_event_date === 'string' ? body.goal_event_date : null,
+        weather_home_lat:
+          body.weather_home_lat != null && body.weather_home_lat !== ''
+            ? Number.parseFloat(String(body.weather_home_lat).replace(',', '.'))
+            : null,
+        weather_home_lon:
+          body.weather_home_lon != null && body.weather_home_lon !== ''
+            ? Number.parseFloat(String(body.weather_home_lon).replace(',', '.'))
+            : null,
       })
     }
 

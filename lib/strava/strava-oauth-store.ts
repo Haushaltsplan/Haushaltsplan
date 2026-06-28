@@ -49,10 +49,14 @@ export async function leseStravaTokensDb(sb: SupabaseClient): Promise<StravaStor
     data: { user },
   } = await sb.auth.getUser()
   if (!user?.id) return null
-  const { data, error } = await sb
+  return leseStravaTokensAdmin(user.id)
+}
+
+export async function leseStravaTokensAdmin(ownerUserId: string): Promise<StravaStoredTokens | null> {
+  const { data, error } = await createSupabaseAdmin()
     .from('strava_oauth_tokens')
     .select('access_token, refresh_token, expires_at_ms, athlete_id')
-    .eq('owner_user_id', user.id)
+    .eq('owner_user_id', ownerUserId)
     .maybeSingle()
   if (error || !data) return null
   if (!data.access_token || !data.refresh_token) return null
@@ -62,6 +66,14 @@ export async function leseStravaTokensDb(sb: SupabaseClient): Promise<StravaStor
     expiresAtMs: Number(data.expires_at_ms),
     athleteId: data.athlete_id != null ? Number(data.athlete_id) : null,
   }
+}
+
+export async function listeStravaTokenUserIds(): Promise<string[]> {
+  const { data, error } = await createSupabaseAdmin()
+    .from('strava_oauth_tokens')
+    .select('owner_user_id')
+  if (error || !data?.length) return []
+  return data.map((r) => String(r.owner_user_id)).filter(Boolean)
 }
 
 export async function speichereStravaTokensDb(
