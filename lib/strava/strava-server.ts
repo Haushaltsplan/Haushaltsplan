@@ -510,23 +510,39 @@ async function synchronisiereActivityStreams(
       hrZones = berechneHrZonenAusStream(hr, time, maxHr)
     }
 
+    const movingTime = Number(row.moving_time_s) || 0
+    const hasPower = Boolean(row.device_watts || row.average_watts || row.max_watts)
+    const hasHr = row.average_heartrate != null && Number(row.average_heartrate) > 0
+
     const update: Record<string, unknown> = {}
     if (hasPeaks) update.power_peaks = peaks
-    else if (row.device_watts || row.average_watts || row.max_watts) update.power_peaks = {}
+    else if (hasPower) update.power_peaks = {}
+
     if (hrZones) update.hr_zone_minutes = hrZones
-    else if (row.average_heartrate && maxHr) update.hr_zone_minutes = {}
+    else if (hasHr && maxHr) update.hr_zone_minutes = {}
 
     const dec =
-      watts.length > 0 && hr.length === watts.length && Number(row.moving_time_s) >= 45 * 60
+      watts.length > 0 && hr.length === watts.length && movingTime >= 45 * 60
         ? berechneAerobicDecoupling(watts, hr, time)
         : null
     if (dec != null) update.aerobic_decoupling_pct = dec
+    else if (hasPower && movingTime > 0 && movingTime < 45 * 60) {
+      // Kurze Fahrt — Dekoupling nicht anwendbar, sonst ewig „offen“
+      update.aerobic_decoupling_pct = 0
+    }
 
     const vi = berechneVariabilityIndex(
       row.weighted_avg_watts != null ? Number(row.weighted_avg_watts) : null,
       row.average_watts != null ? Number(row.average_watts) : null,
     )
     if (vi != null) update.variability_index = vi
+
+    // Stream leer / Fehler: trotzdem als bearbeitet markieren (kein Endlos-Retry)
+    if (Object.keys(update).length === 0 && (hasPower || hasHr)) {
+      if (hasPower) update.power_peaks = {}
+      if (hasHr) update.hr_zone_minutes = {}
+      if (hasPower && movingTime > 0 && movingTime < 45 * 60) update.aerobic_decoupling_pct = 0
+    }
 
     if (Object.keys(update).length === 0) continue
 
@@ -669,7 +685,10 @@ async function neuestesAktivitaetsDatumFuerOwner(
     .maybeSingle()
 
   if (!data?.start_date) return null
-  return Math.floor(Date.parse(String(data.start_date)) / 1000) - 86400 * 14
+  const ts = Math.floor(Date.parse(String(data.start_date)) / 1000)
+  if (!Number.isFinite(ts)) return null
+  // 3 Tage Überlappung für Updates, nicht 14 (verpasst sonst selten neue Randfälle nicht)
+  return Math.max(0, ts - 86400 * 3)
 }
 
 async function neuestesAktivitaetsDatum(sb: SupabaseClient): Promise<number | null> {
@@ -1001,14 +1020,20 @@ export async function synchronisiereStravaBackfill(
     const before = await zaehleBackfillFuerOwner(sb, user.id)
     if (before.allComplete) break
 
-    const result = await synchronisiereStravaIntern(sb, user.id, token, { nurAnalyse: true, maxPages: 1 })
+    // Erster Durchlauf: auch neue Aktivitäten von Strava holen
+    const result = await synchronisiereStravaIntern(sb, user.id, token, {
+      nurAnalyse: r > 0,
+      maxPages: r === 0 ? 10 : 1,
+    })
     streamsAnalysiert += result.streamsAnalysiert
     wetterAngereichert += result.wetterAngereichert
     segmenteGeladen += result.segmenteGeladen
 
     const after = await zaehleBackfillFuerOwner(sb, user.id)
     if (after.allComplete) break
-    if (after.totalPending >= before.totalPending) break
+    const streamsVor = before.categories.find((c) => c.key === 'streams')?.pending ?? before.openTasks
+    const streamsNach = after.categories.find((c) => c.key === 'streams')?.pending ?? after.openTasks
+    if (streamsNach >= streamsVor && result.streamsAnalysiert === 0 && result.imported === 0) break
   }
 
   const backfill = await zaehleBackfillFuerOwner(sb, user.id)

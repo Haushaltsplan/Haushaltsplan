@@ -77,7 +77,7 @@ export function StravaBackfillPanel({
               ? backfillRound != null
                 ? `Analyse läuft… (${backfillRound})`
                 : 'Analyse läuft…'
-              : 'Analyse vervollständigen'}
+              : 'Sync + Analyse'}
           </button>
         ) : null}
       </div>
@@ -89,8 +89,9 @@ export function StravaBackfillPanel({
       ) : (
         <>
           <p className="mt-2 text-[11px] text-[var(--app-text-muted)]">
-            Offene Schritte: {backfill.openTasks} — dieselbe Fahrt kann in mehreren Kategorien vorkommen.
-            Power-Streams nur für Fahrten mit Powermeter oder HR.
+            Neue Fahrten: oben <strong className="text-[var(--app-text)]">Jetzt synchronisieren</strong> oder
+            hier <strong className="text-[var(--app-text)]">Sync + Analyse</strong> (importiert + Streams).
+            Offene Schritte: {backfill.openTasks} — dieselbe Fahrt kann mehrfach zählen.
           </p>
           <div className="mt-3 space-y-3">
             {backfill.categories.map((c) => (

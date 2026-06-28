@@ -230,7 +230,9 @@ export function berechneSmartAlerts(
   opts: { ftp?: number | null; tsb?: number | null; consistency?: ConsistencyStats; mix?: IntensityMix },
 ): SmartAlert[] {
   const alerts: SmartAlert[] = []
-  const rides = activities.filter(istRadAktivitaet)
+  const rides = activities
+    .filter(istRadAktivitaet)
+    .sort((a, b) => Date.parse(b.start_date) - Date.parse(a.start_date))
   const now = Date.now()
   const last14 = rides.filter((a) => now - Date.parse(a.start_date) <= 14 * 86_400_000)
   const last7Tss = last14
@@ -275,12 +277,23 @@ export function berechneSmartAlerts(
 
   const daysSince = rides.length
     ? Math.floor((now - Date.parse(rides[0].start_date)) / 86_400_000)
-    : 999
+    : activities.length
+      ? Math.floor(
+          (now - Date.parse(
+            [...activities].sort((a, b) => Date.parse(b.start_date) - Date.parse(a.start_date))[0]
+              .start_date,
+          )) /
+            86_400_000,
+        )
+      : 999
   if (daysSince >= 5) {
     alerts.push({
       id: 'rest',
       level: 'info',
-      message: `Letzte Fahrt vor ${daysSince} Tagen — Zeit für eine Einheit?`,
+      message:
+        rides.length > 0
+          ? `Letzte Rad-Fahrt vor ${daysSince} Tagen — Zeit für eine Einheit?`
+          : `Letzte Aktivität vor ${daysSince} Tagen — keine Rad-Fahrten im Feed?`,
     })
   }
 
