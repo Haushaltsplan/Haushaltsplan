@@ -10,6 +10,7 @@ import {
 } from '@/components/strava/strava-recharts'
 import { STRAVA_COLORS } from '@/components/strava/design-tokens'
 import { StravaCard, StravaSectionTitle } from '@/components/strava/strava-card'
+import { STRAVA_PANEL_INFO } from '@/lib/strava/strava-panel-info'
 import type {
   AdvancedMetrics,
   DecouplingTrendPoint,
@@ -35,7 +36,7 @@ export function StravaHeatmapPanel({ heatmap }: { heatmap: TrainingHeatmap }) {
 
   return (
     <StravaCard padding="md" accent="orange">
-      <StravaSectionTitle title="Trainings-Heatmap" subtitle={`${heatmap.weeks} Wochen · Stunden pro Tag`} />
+      <StravaSectionTitle title="Trainings-Heatmap" subtitle={`${heatmap.weeks} Wochen · Stunden pro Tag`} info={STRAVA_PANEL_INFO.heatmap} />
       <StravaChartHoverInfo>
         {hoverCell ? (
           <span>
@@ -109,6 +110,7 @@ export function StravaDecouplingPanel({
       <StravaSectionTitle
         title="Aerobe Dekoupling & VI"
         subtitle="HR-Drift bei langer Ausdauer (>45 min)"
+        info={STRAVA_PANEL_INFO.decoupling}
       />
       <div className="mb-3 flex flex-wrap gap-4 text-xs">
         {avgDecoupling != null ? (
@@ -174,7 +176,7 @@ export function StravaGearSplitPanel({ gear }: { gear: GearStat[] }) {
   if (gear.length === 0 || (gear.length === 1 && gear[0].gearId === 0)) {
     return (
       <StravaCard padding="md">
-        <StravaSectionTitle title="Bike-Split" subtitle="Km & Leistung pro Gear" />
+        <StravaSectionTitle title="Bike-Split" subtitle="Km & Leistung pro Gear" info={STRAVA_PANEL_INFO.gearSplit} />
         <p className="text-sm text-[var(--app-text-muted)]">Keine Gear-Daten in Strava-Aktivitäten.</p>
       </StravaCard>
     )
@@ -184,7 +186,7 @@ export function StravaGearSplitPanel({ gear }: { gear: GearStat[] }) {
 
   return (
     <StravaCard padding="md">
-      <StravaSectionTitle title="Bike-Split" subtitle="Km & Leistung pro Gear" />
+      <StravaSectionTitle title="Bike-Split" subtitle="Km & Leistung pro Gear" info={STRAVA_PANEL_INFO.gearSplit} />
       <div className="space-y-3">
         {gear.map((g) => (
           <div key={g.gearId}>

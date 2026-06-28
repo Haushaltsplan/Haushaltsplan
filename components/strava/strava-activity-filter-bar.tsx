@@ -1,7 +1,8 @@
 'use client'
 
 import { STRAVA_COLORS, STRAVA_INTERACTIVE } from '@/components/strava/design-tokens'
-import { StravaCard } from '@/components/strava/strava-card'
+import { StravaCard, StravaSectionTitle } from '@/components/strava/strava-card'
+import { STRAVA_PANEL_INFO } from '@/lib/strava/strava-panel-info'
 import {
   activitiesToCsv,
   filterActivities,
@@ -87,18 +88,17 @@ export function StravaActivityFilterBar({
 
   return (
     <StravaCard padding="md">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <p className="text-sm font-semibold text-[var(--app-text)]">Filter & Export</p>
-          <p className="text-[11px] text-[var(--app-text-muted)]">
-            {filteredCount} in der Auswahl
-            {totalCount !== filteredCount ? (
-              <span> · {totalCount} gespeichert in Omnia</span>
-            ) : (
-              <span> · {totalCount} gespeichert</span>
-            )}
-          </p>
-        </div>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <StravaSectionTitle
+          className="mb-0 min-w-0 flex-1"
+          title="Filter & Export"
+          info={STRAVA_PANEL_INFO.filterExport}
+          subtitle={
+            totalCount !== filteredCount
+              ? `${filteredCount} in der Auswahl · ${totalCount} gespeichert in Omnia`
+              : `${filteredCount} in der Auswahl · ${totalCount} gespeichert`
+          }
+        />
         <div className="flex flex-wrap gap-2">
           <button
             type="button"

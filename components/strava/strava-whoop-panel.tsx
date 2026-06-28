@@ -8,6 +8,7 @@ import {
   STRAVA_CHART_AXIS,
 } from '@/components/strava/strava-recharts'
 import { StravaCard, StravaSectionTitle } from '@/components/strava/strava-card'
+import { STRAVA_PANEL_INFO } from '@/lib/strava/strava-panel-info'
 import type { WhoopStravaInsight } from '@/lib/strava/strava-whoop-bridge'
 import Link from 'next/link'
 import { useMemo } from 'react'
@@ -35,7 +36,7 @@ export function StravaWhoopPanel({ insight }: { insight: WhoopStravaInsight }) {
 
   return (
     <StravaCard padding="md" accent="cyan">
-      <StravaSectionTitle title="WHOOP × Strava" subtitle="Recovery vs. Belastung" />
+      <StravaSectionTitle title="WHOOP × Strava" subtitle="Recovery vs. Belastung" info={STRAVA_PANEL_INFO.whoopBridge} />
       <div className="flex flex-wrap items-center gap-4">
         {insight.recovery != null ? (
           <div className="relative flex h-16 w-16 items-center justify-center rounded-full border-2" style={{ borderColor: insight.color }}>

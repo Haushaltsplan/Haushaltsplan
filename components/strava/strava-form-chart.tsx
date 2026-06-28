@@ -11,6 +11,7 @@ import {
   STRAVA_CHART_AXIS,
 } from '@/components/strava/strava-recharts'
 import { StravaCard, StravaSectionTitle } from '@/components/strava/strava-card'
+import { STRAVA_PANEL_INFO } from '@/lib/strava/strava-panel-info'
 import { formLabel, type FormPoint } from '@/lib/strava/strava-training-load'
 import { useMemo } from 'react'
 
@@ -33,7 +34,7 @@ export function StravaFormChart({ data, current }: { data: FormPoint[]; current:
   return (
     <StravaCard padding="md" accent="cyan">
       <div className="flex flex-wrap items-start justify-between gap-2">
-        <StravaSectionTitle title="Fitness · Fatigue · Form" subtitle="CTL / ATL / TSB · Zoom unten" />
+        <StravaSectionTitle className="mb-0 min-w-0 flex-1" title="Fitness · Fatigue · Form" subtitle="CTL / ATL / TSB · Zoom unten" info={STRAVA_PANEL_INFO.formChart} />
         {current && status ? (
           <div className="text-right">
             <p className="text-[10px] uppercase tracking-wider text-[var(--app-text-muted)]">Form (TSB)</p>

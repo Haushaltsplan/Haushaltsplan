@@ -11,6 +11,7 @@ import {
 } from '@/components/strava/strava-recharts'
 import { STRAVA_COLORS, STRAVA_INTERACTIVE } from '@/components/strava/design-tokens'
 import { StravaCard, StravaSectionTitle } from '@/components/strava/strava-card'
+import { STRAVA_PANEL_INFO } from '@/lib/strava/strava-panel-info'
 import type {
   ClimbingWeek,
   ConsistencyStats,
@@ -22,7 +23,7 @@ import { useMemo } from 'react'
 export function StravaConsistencyPanel({ stats }: { stats: ConsistencyStats }) {
   return (
     <StravaCard padding="md" hover>
-      <StravaSectionTitle title="Konsistenz" subtitle="Trainingsdisziplin" />
+      <StravaSectionTitle title="Konsistenz" subtitle="Trainingsdisziplin" info={STRAVA_PANEL_INFO.consistency} />
       <div className="grid grid-cols-2 gap-3">
         <div>
           <p className="text-[10px] uppercase tracking-wider text-[var(--app-text-muted)]">Aktuelle Streak</p>
@@ -59,7 +60,7 @@ export function StravaIntensityPanel({ mix }: { mix: IntensityMix }) {
   ]
   return (
     <StravaCard padding="md" hover>
-      <StravaSectionTitle title="Intensitäts-Mix" subtitle="Polarisation · 28 Tage" />
+      <StravaSectionTitle title="Intensitäts-Mix" subtitle="Polarisation · 28 Tage" info={STRAVA_PANEL_INFO.intensityMix} />
       <div className="flex h-3 overflow-hidden rounded-full">
         {segments.map((s) =>
           s.pct > 0 ? (
@@ -92,7 +93,7 @@ export function StravaClimbingPanel({ data }: { data: ClimbingWeek[] }) {
 
   return (
     <StravaCard padding="md">
-      <StravaSectionTitle title="Kletter-Profil" subtitle="Höhenmeter pro Woche · Zoom unten" />
+      <StravaSectionTitle title="Kletter-Profil" subtitle="Höhenmeter pro Woche · Zoom unten" info={STRAVA_PANEL_INFO.climbing} />
       <StravaChartShell height={180} minWidth={360}>
         <ComposedChart data={chartData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
           <StravaCartesianGrid />
@@ -110,7 +111,7 @@ export function StravaClimbingPanel({ data }: { data: ClimbingWeek[] }) {
 export function StravaYearComparePanel({ items }: { items: YearCompare[] }) {
   return (
     <StravaCard padding="md">
-      <StravaSectionTitle title="Jahresvergleich" subtitle="YTD vs. Vorjahr" />
+      <StravaSectionTitle title="Jahresvergleich" subtitle="YTD vs. Vorjahr" info={STRAVA_PANEL_INFO.yearCompare} />
       <div className="space-y-2">
         {items.map((item) => (
           <div key={item.label} className={`flex items-center justify-between rounded-lg px-2 py-1.5 ${STRAVA_INTERACTIVE} hover:bg-white/[0.03]`}>

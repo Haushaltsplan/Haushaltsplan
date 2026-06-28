@@ -15,6 +15,7 @@ import {
 } from '@/components/strava/strava-recharts'
 import { STRAVA_COLORS, STRAVA_INTERACTIVE } from '@/components/strava/design-tokens'
 import { StravaCard, StravaSectionTitle } from '@/components/strava/strava-card'
+import { STRAVA_PANEL_INFO } from '@/lib/strava/strava-panel-info'
 import type { ProgressAnalytics } from '@/lib/strava/strava-progress-analytics'
 import { useMemo, useState } from 'react'
 
@@ -36,7 +37,7 @@ export function StravaMonthlyProgressChart({ data }: { data: ProgressAnalytics['
   if (withEftp.length < 2) {
     return (
       <StravaCard padding="md">
-        <StravaSectionTitle title="eFTP-Entwicklung" subtitle="Monatlicher Trend" />
+        <StravaSectionTitle title="eFTP-Entwicklung" subtitle="Monatlicher Trend" info={STRAVA_PANEL_INFO.eftpProgress} />
         <p className="text-sm text-[var(--app-text-muted)]">Mehr Powermeter-Daten + Sync nötig für den Verlauf.</p>
       </StravaCard>
     )
@@ -44,7 +45,7 @@ export function StravaMonthlyProgressChart({ data }: { data: ProgressAnalytics['
 
   return (
     <StravaCard padding="md" accent="orange">
-      <StravaSectionTitle title="eFTP-Entwicklung" subtitle="Geschätzte FTP pro Monat · Zoom unten" />
+      <StravaSectionTitle title="eFTP-Entwicklung" subtitle="Geschätzte FTP pro Monat · Zoom unten" info={STRAVA_PANEL_INFO.eftpProgress} />
       <StravaChartShell height={200} minWidth={420}>
         <ComposedChart data={chartData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
           <StravaCartesianGrid />
@@ -72,7 +73,7 @@ export function StravaPrTimelinePanel({ items }: { items: ProgressAnalytics['prT
   if (items.length === 0) {
     return (
       <StravaCard padding="md">
-        <StravaSectionTitle title="PR-Timeline" subtitle="Wann Rekorde gesetzt wurden" />
+        <StravaSectionTitle title="PR-Timeline" subtitle="Wann Rekorde gesetzt wurden" info={STRAVA_PANEL_INFO.prTimeline} />
         <p className="text-sm text-[var(--app-text-muted)]">Noch keine Power-Peak-Rekorde.</p>
       </StravaCard>
     )
@@ -80,7 +81,7 @@ export function StravaPrTimelinePanel({ items }: { items: ProgressAnalytics['prT
 
   return (
     <StravaCard padding="md">
-      <StravaSectionTitle title="PR-Timeline" subtitle="Persönliche Power-Rekorde · chronologisch" />
+      <StravaSectionTitle title="PR-Timeline" subtitle="Persönliche Power-Rekorde · chronologisch" info={STRAVA_PANEL_INFO.prTimeline} />
       <div className="space-y-2">
         {items.map((pr) => (
           <div
@@ -145,7 +146,7 @@ export function StravaQuarterlyPowerPanel({ quarters }: { quarters: ProgressAnal
 
   return (
     <StravaCard padding="md" accent="orange">
-      <StravaSectionTitle title="Power Curve · Quartale" subtitle="eFTP-Entwicklung über 4 Quartale · Log-Dauer" />
+      <StravaSectionTitle title="Power Curve · Quartale" subtitle="eFTP-Entwicklung über 4 Quartale · Log-Dauer" info={STRAVA_PANEL_INFO.quarterlyPower} />
       <div className="mb-2 flex flex-wrap gap-3 text-[10px] text-[var(--app-text-muted)]">
         {withData.map((q, i) => (
           <span key={q.quarterKey} className="flex items-center gap-1.5">
@@ -198,6 +199,7 @@ export function StravaTssAdherencePanel({ adherence, weeklyTarget }: { adherence
       <StravaSectionTitle
         title="TSS-Disziplin"
         subtitle={`${adherence.weeksTracked} Wochen · Ziel ${weeklyTarget} TSS/Woche`}
+        info={STRAVA_PANEL_INFO.tssAdherence}
       />
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <div>
@@ -256,7 +258,7 @@ export function StravaTssBudgetPanel({ budget }: { budget: ProgressAnalytics['ts
   return (
     <StravaCard padding="md" accent="cyan">
       <div className="flex flex-wrap items-start justify-between gap-2">
-        <StravaSectionTitle title="TSS-Budget" subtitle={`Wochenziel ${budget.weeklyTarget} TSS · Zoom unten`} />
+        <StravaSectionTitle title="TSS-Budget" subtitle={`Wochenziel ${budget.weeklyTarget} TSS · Zoom unten`} info={STRAVA_PANEL_INFO.tssBudget} />
         {budget.onTrackPct != null ? (
           <div className="text-right text-xs">
             <p className="text-[var(--app-text-muted)]">

@@ -2,6 +2,7 @@
 
 import { STRAVA_COLORS, STRAVA_INTERACTIVE } from '@/components/strava/design-tokens'
 import { StravaCard, StravaSectionTitle } from '@/components/strava/strava-card'
+import { STRAVA_PANEL_INFO } from '@/lib/strava/strava-panel-info'
 import { stravaApiFetch } from '@/lib/strava/strava-api-fetch'
 import type { GoalProgress } from '@/lib/strava/strava-goals'
 import type { StravaAthleteProfile } from '@/lib/strava/strava-types'
@@ -62,7 +63,7 @@ export function StravaGoalsPanel({ goals, athlete, onSaved }: Props) {
   return (
     <StravaCard padding="md" accent="orange">
       <div className="flex items-center justify-between gap-2">
-        <StravaSectionTitle title="Saisonziele" subtitle="Fortschritt & Event-Countdown" />
+        <StravaSectionTitle className="mb-0 min-w-0 flex-1" title="Saisonziele" subtitle="Fortschritt & Event-Countdown" info={STRAVA_PANEL_INFO.seasonGoals} />
         <button
           type="button"
           onClick={() => setOpen((v) => !v)}

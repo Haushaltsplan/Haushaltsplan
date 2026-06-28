@@ -1,14 +1,16 @@
 'use client'
 
 import { StravaAnalyticsView } from '@/components/strava/strava-analytics-view'
+import { StravaCard, StravaSectionTitle } from '@/components/strava/strava-card'
+import { StravaInfoModal, type StravaInfoModalState } from '@/components/strava/strava-info-modal'
 import { STRAVA_COLORS, STRAVA_INTERACTIVE } from '@/components/strava/design-tokens'
-import { StravaCard } from '@/components/strava/strava-card'
 import { WhoopWeeklyBarChart } from '@/components/fitnessdaten/whoop-charts'
 import { PageChrome, PageHero, PageSection, PageSectionPanel, ResponsiveTableWrap, appTableScrollInlineClassName } from '@/components/page-shell'
 import { istOmniaNativeApp } from '@/lib/fitnessdaten/omnia-native'
 import { stravaApiFetch } from '@/lib/strava/strava-api-fetch'
 import { oeffneStravaOAuthUrl } from '@/lib/strava/strava-oauth-open'
 import { stravaRedirectUri } from '@/lib/strava/strava-types'
+import { STRAVA_PANEL_INFO } from '@/lib/strava/strava-panel-info'
 import type {
   StravaActivityRow,
   StravaAthleteProfile,
@@ -62,6 +64,7 @@ export function StravaDashboard() {
   const [nativeApp] = useState(() => istOmniaNativeApp())
   const [gewichtInput, setGewichtInput] = useState('')
   const [gewichtSpeichern, setGewichtSpeichern] = useState(false)
+  const [infoModal, setInfoModal] = useState<StravaInfoModalState>(null)
 
   useEffect(() => {
     void fetch('/api/strava/ping', { cache: 'no-store' })
@@ -325,10 +328,10 @@ export function StravaDashboard() {
         title="Athletic Analytics"
         description={
           <>
-            Professionelle Performance-Auswertung deiner Strava-Aktivitäten — Volume, Intensität und Progression.
+            Ausdauer, Leistung und Progression — aus deinen Strava-Daten, klar strukturiert und nachvollziehbar.
             {athlete?.ftp ? (
-              <span className="mt-1 block text-[var(--app-text-muted)]">
-                Strava FTP: <strong className="text-[var(--app-text-muted)]">{athlete.ftp} W</strong>
+              <span className="mt-1.5 block text-zinc-500">
+                Strava FTP: <strong className="font-medium text-zinc-400">{athlete.ftp} W</strong>
               </span>
             ) : null}
           </>
@@ -440,11 +443,13 @@ STRAVA_CLIENT_SECRET=dein_client_secret`}
 
       {status.connected ? (
         <PageSection titleId="strava-gewicht" title="Gewicht für W/kg">
-          <PageSectionPanel className="border-[var(--app-border)] bg-[var(--app-surface-muted)]">
-            <p className="mb-3 text-xs text-[var(--app-text-muted)]">
-              W/kg wird mit deinem Omnia-Gewicht berechnet (nicht Strava). Beim Sync werden Watt- + HF-Streams
-              geladen (max. 25 Streams pro Sync).
-            </p>
+          <PageSectionPanel className="border-white/[0.06] bg-[var(--app-surface-muted)]">
+            <StravaSectionTitle
+              className="mb-3"
+              title="Körpergewicht"
+              subtitle="Basis für W/kg in Omnia"
+              info={STRAVA_PANEL_INFO.bodyWeight}
+            />
             <div className="flex flex-wrap items-end gap-3">
               <label className="block">
                 <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--app-text-muted)]">Körpergewicht (kg)</span>
@@ -481,18 +486,18 @@ STRAVA_CLIENT_SECRET=dein_client_secret`}
 
       {status.connected && auswertung ? (
         <>
-          <div className="mb-4 flex flex-wrap gap-2">
+          <div className="mb-6 flex flex-wrap gap-2 rounded-2xl border border-white/[0.05] bg-black/20 p-1.5 backdrop-blur-sm">
             {tabs.map((t) => (
               <button
                 key={t.id}
                 type="button"
                 onClick={() => setTab(t.id)}
                 className={[
-                  'rounded-full px-4 py-1.5 text-sm font-medium',
+                  'rounded-xl px-4 py-2 text-sm font-medium tracking-wide',
                   STRAVA_INTERACTIVE,
                   tab === t.id
-                    ? 'bg-[#FC4C02]/20 text-orange-200 ring-1 ring-[#FC4C02]/40'
-                    : 'bg-[var(--app-surface-muted)] text-[var(--app-text-muted)] hover:text-[var(--app-text)]',
+                    ? 'bg-[#FC4C02]/18 text-orange-100 ring-1 ring-[#FC4C02]/35 shadow-sm'
+                    : 'text-zinc-500 hover:bg-white/[0.04] hover:text-zinc-200',
                 ].join(' ')}
               >
                 {t.label}
@@ -528,6 +533,9 @@ STRAVA_CLIENT_SECRET=dein_client_secret`}
                   }))}
                   formatValue={(v) => (v > 0 ? `${v.toFixed(2)}` : '—')}
                   color={STRAVA_COLORS.orange}
+                  onInfo={() =>
+                    setInfoModal({ title: 'W/kg-Entwicklung', body: STRAVA_PANEL_INFO.wkgMonthly })
+                  }
                 />
               ) : null}
               <WhoopWeeklyBarChart
@@ -538,6 +546,7 @@ STRAVA_CLIENT_SECRET=dein_client_secret`}
                 }))}
                 formatValue={(v) => `${v} km`}
                 color={STRAVA_COLORS.orange}
+                onInfo={() => setInfoModal({ title: 'Kilometer pro Jahr', body: STRAVA_PANEL_INFO.yearlyKm })}
               />
               <WhoopWeeklyBarChart
                 title="Fahrten pro Jahr"
@@ -546,6 +555,7 @@ STRAVA_CLIENT_SECRET=dein_client_secret`}
                   value: j.rides,
                 }))}
                 color="#f97316"
+                onInfo={() => setInfoModal({ title: 'Fahrten pro Jahr', body: STRAVA_PANEL_INFO.yearlyRides })}
               />
               <WhoopWeeklyBarChart
                 title="Höhenmeter pro Jahr"
@@ -555,8 +565,15 @@ STRAVA_CLIENT_SECRET=dein_client_secret`}
                 }))}
                 formatValue={(v) => `${v} hm`}
                 color="#fb923c"
+                onInfo={() => setInfoModal({ title: 'Höhenmeter pro Jahr', body: STRAVA_PANEL_INFO.yearlyHm })}
               />
               <StravaCard padding="sm">
+                <StravaSectionTitle
+                  className="mb-3 px-2 pt-2"
+                  title="Jahresübersicht"
+                  subtitle="Alle Jahre im Detail"
+                  info={STRAVA_PANEL_INFO.yearlyTable}
+                />
                 <ResponsiveTableWrap>
                 <table className="w-full min-w-[520px] text-left text-sm">
                   <thead>
@@ -595,9 +612,14 @@ STRAVA_CLIENT_SECRET=dein_client_secret`}
             </div>
           ) : (
             <div className="space-y-8">
+              <StravaSectionTitle
+                title="Persönliche Bestleistungen"
+                subtitle="Rekorde aus deiner Strava-Historie"
+                info={STRAVA_PANEL_INFO.personalRecords}
+              />
               {prGruppen.map((gruppe) => (
                 <div key={gruppe.kat}>
-                  <h3 className="mb-3 text-xs font-bold uppercase tracking-[0.16em] text-orange-300/90">
+                  <h3 className="mb-3 text-[10px] font-semibold uppercase tracking-[0.22em] text-orange-300/80">
                     {gruppe.titel}
                   </h3>
                   <div className="grid gap-3 sm:grid-cols-2">
@@ -642,6 +664,7 @@ STRAVA_CLIENT_SECRET=dein_client_secret`}
           </PageSectionPanel>
         </PageSection>
       ) : null}
+      <StravaInfoModal state={infoModal} onClose={() => setInfoModal(null)} />
     </PageChrome>
   )
 }

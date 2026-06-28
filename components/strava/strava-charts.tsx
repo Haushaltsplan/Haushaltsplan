@@ -11,6 +11,7 @@ import {
   STRAVA_CHART_AXIS,
 } from '@/components/strava/strava-recharts'
 import { StravaCard, StravaSectionTitle } from '@/components/strava/strava-card'
+import { STRAVA_PANEL_INFO } from '@/lib/strava/strava-panel-info'
 import type { SpeedTrendPoint, WeeklyVolumeBar, ZoneSlice } from '@/lib/strava/strava-dashboard-analytics'
 import { SPORT_COLORS } from '@/lib/strava/strava-dashboard-analytics'
 import { useMemo } from 'react'
@@ -34,7 +35,7 @@ export function StravaVolumeChart({ data }: VolumeChartProps) {
 
   return (
     <StravaCard padding="md">
-      <StravaSectionTitle title="Volume & Consistency" subtitle="Wöchentliche Distanz · Zoom unten" />
+      <StravaSectionTitle title="Volume & Consistency" subtitle="Wöchentliche Distanz · Zoom unten" info={STRAVA_PANEL_INFO.volumeChart} />
       <StravaChartShell height={200} minWidth={480}>
         <ComposedChart data={chartData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
           <StravaCartesianGrid />
@@ -88,6 +89,7 @@ export function StravaZoneDonut({ slices, mode }: ZoneChartProps) {
       <StravaSectionTitle
         title="Intensity & Zone Distribution"
         subtitle={mode === 'hr' ? 'HF-Zonen (geschätzt aus Ø-Puls)' : 'Verteilung nach Sportart'}
+        info={STRAVA_PANEL_INFO.zoneDonut}
       />
       <div className="flex flex-col items-center gap-4 sm:flex-row sm:items-start">
         <svg viewBox="0 0 160 160" className="h-40 w-40 shrink-0">
@@ -143,7 +145,7 @@ export function StravaSpeedTrendChart({ points }: SpeedChartProps) {
 
   return (
     <StravaCard padding="md">
-      <StravaSectionTitle title="Fitness & Speed Trend" subtitle="Ø Tempo/Pace · Zoom unten" />
+      <StravaSectionTitle title="Fitness & Speed Trend" subtitle="Ø Tempo/Pace · Zoom unten" info={STRAVA_PANEL_INFO.speedTrend} />
       {points.length === 0 ? (
         <p className="py-8 text-center text-sm text-[var(--app-text-muted)]">Noch nicht genug Daten für den Trend.</p>
       ) : (

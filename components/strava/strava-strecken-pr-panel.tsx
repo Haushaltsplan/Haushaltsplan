@@ -2,6 +2,7 @@
 
 import { STRAVA_INTERACTIVE } from '@/components/strava/design-tokens'
 import { StravaCard, StravaSectionTitle } from '@/components/strava/strava-card'
+import { STRAVA_PANEL_INFO } from '@/lib/strava/strava-panel-info'
 import type { RouteAnalytics } from '@/lib/strava/strava-route-analytics'
 import type { SegmentAnalytics } from '@/lib/strava/strava-segments'
 import { useState } from 'react'
@@ -34,7 +35,7 @@ export function StravaStreckenPrPanel({
   return (
     <StravaCard padding="md">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <StravaSectionTitle title="Strecken & Segmente" subtitle="Strava-Segmente + GPS-Routen" />
+        <StravaSectionTitle className="mb-0 min-w-0 flex-1" title="Strecken & Segmente" subtitle="Strava-Segmente + GPS-Routen" info={STRAVA_PANEL_INFO.segmentsRoutes} />
         <div className="flex gap-2">
           <button type="button" className={chip(tab === 'segments')} onClick={() => setTab('segments')}>
             Segmente ({segments.clusters.length})

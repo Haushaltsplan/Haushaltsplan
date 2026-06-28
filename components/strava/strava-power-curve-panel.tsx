@@ -10,6 +10,7 @@ import {
   STRAVA_CHART_AXIS,
 } from '@/components/strava/strava-recharts'
 import { StravaCard, StravaSectionTitle } from '@/components/strava/strava-card'
+import { STRAVA_PANEL_INFO } from '@/lib/strava/strava-panel-info'
 import type { PowerCurvePoint } from '@/lib/strava/strava-power-curve'
 import { useMemo } from 'react'
 
@@ -45,7 +46,7 @@ export function StravaPowerCurvePanel({
   if (withData.length === 0) {
     return (
       <StravaCard padding="md" accent="orange">
-        <StravaSectionTitle title="Power Curve" subtitle="Sync mehrfach ausführen für Watt-Streams" />
+        <StravaSectionTitle title="Power Curve" subtitle="Sync mehrfach ausführen für Watt-Streams" info={STRAVA_PANEL_INFO.powerCurveEmpty} />
         <p className="text-sm text-[var(--app-text-muted)]">
           Noch keine Power-Peak-Daten — benötigt Powermeter + Stream-Sync.
         </p>
@@ -56,7 +57,7 @@ export function StravaPowerCurvePanel({
   return (
     <StravaCard padding="md" accent="orange">
       <div className="flex flex-wrap items-start justify-between gap-3">
-        <StravaSectionTitle title="Power Curve" subtitle="Log-Dauerachse · All-time vs. 90 Tage" />
+        <StravaSectionTitle className="mb-0 min-w-0 flex-1" title="Power Curve" subtitle="Log-Dauerachse · All-time vs. 90 Tage" info={STRAVA_PANEL_INFO.powerCurve} />
         <div className="flex gap-4 text-right">
           {eftp ? (
             <div>

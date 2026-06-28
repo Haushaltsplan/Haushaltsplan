@@ -10,6 +10,7 @@ import {
 } from '@/components/strava/strava-chart-utils'
 import { STRAVA_COLORS } from '@/components/strava/design-tokens'
 import { StravaCard, StravaSectionTitle } from '@/components/strava/strava-card'
+import { STRAVA_PANEL_INFO } from '@/lib/strava/strava-panel-info'
 import { REFERENZ_TEMP_C } from '@/lib/strava/strava-weather-adjust'
 import type { WetterLeistungsAnalyse } from '@/lib/strava/strava-weather-adjust'
 import { useState } from 'react'
@@ -29,6 +30,7 @@ export function StravaWeatherPanel({
         <StravaSectionTitle
           title="Leistung & Wetter"
           subtitle="Open-Meteo · Einordnung nach Temperatur"
+          info={STRAVA_PANEL_INFO.weatherPerformance}
         />
         <p className="text-sm text-[var(--app-text-muted)]">
           Noch keine Wetterdaten — beim Sync werden bis zu 10 Fahrten pro Lauf angereichert
@@ -51,6 +53,7 @@ export function StravaWeatherPanel({
       <StravaSectionTitle
         title="Leistung & Wetter"
         subtitle={`Normalisiert auf ${REFERENZ_TEMP_C} °C · Optimal ${analysis.optimalTempRange}`}
+        info={STRAVA_PANEL_INFO.weatherPerformance}
       />
 
       <StravaChartHoverInfo>

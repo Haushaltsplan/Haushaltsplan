@@ -2,6 +2,7 @@
 
 import { STRAVA_CARD_HOVER, STRAVA_COLORS, STRAVA_INTERACTIVE } from '@/components/strava/design-tokens'
 import { StravaCard, StravaSectionTitle } from '@/components/strava/strava-card'
+import { STRAVA_PANEL_INFO } from '@/lib/strava/strava-panel-info'
 import { formatRelativeDate, sportIcon, type TransformedStravaActivity } from '@/lib/strava/strava-activity-utils'
 
 type Props = {
@@ -39,7 +40,7 @@ export function StravaActivityFeed({ activities, onSelect, filterBlocked }: Prop
 
   return (
     <div className="space-y-3">
-      <StravaSectionTitle title="Aktivitäten-Feed" subtitle="Letzte Fahrten & Runs" />
+      <StravaSectionTitle title="Aktivitäten-Feed" subtitle="Letzte Fahrten & Runs" info={STRAVA_PANEL_INFO.activityFeed} />
       <div className="space-y-2">
         {activities.map((a) => (
           <button
@@ -47,7 +48,7 @@ export function StravaActivityFeed({ activities, onSelect, filterBlocked }: Prop
             type="button"
             onClick={() => onSelect?.(a.id)}
             className={[
-              'group flex w-full items-center gap-3 rounded-2xl border border-[var(--app-border)] bg-[var(--app-surface)] p-3 text-left',
+              'group flex w-full items-center gap-3 rounded-2xl border border-white/[0.06] bg-[var(--app-surface)] p-3.5 text-left shadow-sm',
               'shadow-[var(--app-shadow)]',
               STRAVA_INTERACTIVE,
               STRAVA_CARD_HOVER,

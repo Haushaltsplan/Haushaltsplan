@@ -2,6 +2,7 @@
 
 import { STRAVA_COLORS, STRAVA_INTERACTIVE } from '@/components/strava/design-tokens'
 import { StravaCard, StravaSectionTitle } from '@/components/strava/strava-card'
+import { STRAVA_BACKFILL_INFO, STRAVA_PANEL_INFO } from '@/lib/strava/strava-panel-info'
 import type { BackfillKategorieStatus, BackfillStatus } from '@/lib/strava/strava-backfill-status'
 
 const BAR_COLORS: Record<string, string> = {
@@ -13,10 +14,11 @@ const BAR_COLORS: Record<string, string> = {
 
 function BackfillBar({ item }: { item: BackfillKategorieStatus }) {
   const color = BAR_COLORS[item.key] ?? STRAVA_COLORS.orange
+  const hint = STRAVA_BACKFILL_INFO[item.key]
   return (
     <div>
       <div className="mb-1 flex items-center justify-between gap-2 text-[11px]">
-        <span className="text-[var(--app-text-muted)]">{item.label}</span>
+        <span className="text-zinc-400">{item.label}</span>
         <span className="tabular-nums text-[var(--app-text)]">
           {item.complete}/{item.total}
           {item.pending > 0 ? (
@@ -31,10 +33,11 @@ function BackfillBar({ item }: { item: BackfillKategorieStatus }) {
         />
       </div>
       {item.pending > 0 ? (
-        <p className="mt-0.5 text-[10px] text-[var(--app-text-muted)]">
+        <p className="mt-0.5 text-[10px] text-zinc-500">
           ~{Math.ceil(item.pending / item.perRun)} Sync-Durchläufe à {item.perRun}/Lauf
         </p>
       ) : null}
+      {hint ? <p className="mt-1 text-[10px] leading-relaxed text-zinc-600">{hint}</p> : null}
     </div>
   )
 }
@@ -56,7 +59,9 @@ export function StravaBackfillPanel({
     <StravaCard padding="md" accent={backfill.allComplete ? undefined : 'orange'}>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <StravaSectionTitle
+          className="mb-0 min-w-0 flex-1"
           title="Datenqualität"
+          info={STRAVA_PANEL_INFO.dataQuality}
           subtitle={
             backfill.allComplete
               ? `${backfill.activityCount} Aktivitäten · alle Analysen vollständig`
