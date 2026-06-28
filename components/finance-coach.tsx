@@ -216,7 +216,7 @@ export function FinanceCoachProvider({ children }: { children: ReactNode }) {
               <button
                 type="button"
                 onClick={() => setOpen(false)}
-                className="rounded-xl border border-slate-600 px-3 py-1.5 text-xs font-bold text-slate-300 hover:bg-slate-800"
+                className="rounded-xl border border-[var(--app-border-strong)] px-3 py-1.5 text-xs font-bold text-[var(--app-text)] hover:bg-[var(--app-surface-hover)]"
               >
                 Schließen
               </button>
@@ -224,7 +224,7 @@ export function FinanceCoachProvider({ children }: { children: ReactNode }) {
 
             <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-3">
               {kiConfigured === null && open && (
-                <p className="rounded-xl border border-slate-700 bg-slate-950/80 p-3 text-xs text-slate-400">Konfiguration wird geprüft …</p>
+                <p className="rounded-xl border border-[var(--app-border-strong)] bg-[var(--app-surface-muted)] p-3 text-xs text-[var(--app-text-muted)]">Konfiguration wird geprüft …</p>
               )}
               {kiConfigured === false && (
                 <div className="rounded-xl border border-amber-700/60 bg-amber-950/40 p-3 text-xs leading-relaxed text-amber-100">
@@ -236,12 +236,12 @@ export function FinanceCoachProvider({ children }: { children: ReactNode }) {
                   ) : null}
                   <ol className="mt-2 list-decimal space-y-1.5 pl-4 text-amber-100/95">
                     <li>
-                      Im Projektordner die Datei <code className="rounded bg-slate-950 px-1 py-0.5 text-[11px] text-slate-300">.env.local</code>{' '}
+                      Im Projektordner die Datei <code className="rounded bg-[var(--app-surface-muted)] px-1 py-0.5 text-[11px] text-[var(--app-text)]">.env.local</code>{' '}
                       anlegen (falls nicht vorhanden).
                     </li>
                     <li>
                       <span className="font-semibold text-amber-200">Gemini (Google AI Studio)</span> — eine Zeile:{' '}
-                      <code className="mt-1 block rounded bg-slate-950 p-2 font-mono text-[11px] text-emerald-300/95">
+                      <code className="mt-1 block rounded bg-[var(--app-surface-muted)] p-2 font-mono text-[11px] text-emerald-300/95">
                         GEMINI_API_KEY=…dein-schlüssel…
                       </code>
                       <span className="mt-1 block text-[11px] text-amber-200/80">Schlüssel: </span>
@@ -254,15 +254,15 @@ export function FinanceCoachProvider({ children }: { children: ReactNode }) {
                         aistudio.google.com/apikey
                       </a>
                       . Wenn du zusätzlich OpenAI nutzt, wählt die App standardmäßig Gemini (oder setze{' '}
-                      <code className="rounded bg-slate-950 px-1 text-[10px]">FINANCE_COACH_PROVIDER=openai</code>).
+                      <code className="rounded bg-[var(--app-surface-muted)] px-1 text-[10px]">FINANCE_COACH_PROVIDER=openai</code>).
                     </li>
                     <li>
                       <span className="font-semibold text-amber-200">OpenAI</span> stattdessen:{' '}
-                      <code className="mt-1 block rounded bg-slate-950 p-2 font-mono text-[11px] text-slate-300">
+                      <code className="mt-1 block rounded bg-[var(--app-surface-muted)] p-2 font-mono text-[11px] text-[var(--app-text)]">
                         OPENAI_API_KEY=sk-…
                       </code>
                       <span className="mt-1 block text-[11px] text-amber-200/80">Alternativ: </span>
-                      <code className="mt-0.5 block rounded bg-slate-950 p-2 font-mono text-[11px] text-slate-400">AI_API_KEY=sk-…</code>
+                      <code className="mt-0.5 block rounded bg-[var(--app-surface-muted)] p-2 font-mono text-[11px] text-[var(--app-text-muted)]">AI_API_KEY=sk-…</code>
                       <span className="mt-1 block text-[11px]">
                         Schlüssel:{' '}
                         <a
@@ -277,22 +277,22 @@ export function FinanceCoachProvider({ children }: { children: ReactNode }) {
                       </span>
                     </li>
                     <li>
-                      Datei speichern, <strong>Dev-Server stoppen und neu starten</strong> (<code className="rounded bg-slate-950 px-1">npm run dev</code>), dann dieses Panel erneut öffnen.
+                      Datei speichern, <strong>Dev-Server stoppen und neu starten</strong> (<code className="rounded bg-[var(--app-surface-muted)] px-1">npm run dev</code>), dann dieses Panel erneut öffnen.
                     </li>
                     <li>
                       <span className="font-semibold text-amber-200">App online (z. B. Vercel):</span> Die Datei{' '}
-                      <code className="rounded bg-slate-950 px-1 text-[11px]">.env.local</code> liegt nur auf deinem Rechner — im Vercel-Dashboard unter{' '}
+                      <code className="rounded bg-[var(--app-surface-muted)] px-1 text-[11px]">.env.local</code> liegt nur auf deinem Rechner — im Vercel-Dashboard unter{' '}
                       <strong className="text-amber-100">Settings → Environment Variables</strong> dieselbe Variable{' '}
-                      <code className="rounded bg-slate-950 px-1 text-[11px]">GEMINI_API_KEY</code> (oder <code className="rounded bg-slate-950 px-1 text-[11px]">OPENAI_API_KEY</code>) für{' '}
+                      <code className="rounded bg-[var(--app-surface-muted)] px-1 text-[11px]">GEMINI_API_KEY</code> (oder <code className="rounded bg-[var(--app-surface-muted)] px-1 text-[11px]">OPENAI_API_KEY</code>) für{' '}
                       <strong>Production</strong> setzen und ein <strong>neues Deployment</strong> auslösen.
                     </li>
                   </ol>
                 </div>
               )}
               {messages.length === 0 && (
-                <p className="rounded-xl border border-slate-700/80 bg-slate-950/60 p-3 text-xs leading-relaxed text-slate-400">
-                  Stell Fragen zu <strong className="text-slate-300">Einnahmen, Ausgaben, Daueraufträgen, Sparzielen</strong> oder
-                  deinem Geld-Alltag. Die aktuellen <strong className="text-slate-300">Summen und Top-Kategorien</strong> von dieser
+                <p className="rounded-xl border border-[var(--app-border-strong)] bg-[var(--app-surface-muted)] p-3 text-xs leading-relaxed text-[var(--app-text-muted)]">
+                  Stell Fragen zu <strong className="text-[var(--app-text)]">Einnahmen, Ausgaben, Daueraufträgen, Sparzielen</strong> oder
+                  deinem Geld-Alltag. Die aktuellen <strong className="text-[var(--app-text)]">Summen und Top-Kategorien</strong> von dieser
                   Seite werden dem Modell mitgegeben, damit Antworten passen.
                 </p>
               )}
@@ -318,7 +318,7 @@ export function FinanceCoachProvider({ children }: { children: ReactNode }) {
               <div ref={endRef} />
             </div>
 
-            <div className="border-t border-slate-800 p-3">
+            <div className="border-t border-[var(--app-border)] p-3">
               <textarea
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
@@ -335,7 +335,7 @@ export function FinanceCoachProvider({ children }: { children: ReactNode }) {
                     ? 'Zuerst GEMINI_API_KEY oder OPENAI_API_KEY in .env.local …'
                     : 'Frage zu deinen Finanzen, z. B. größte Kosten, Spar-Tipps …'
                 }
-                className="mb-2 w-full resize-none rounded-xl border border-slate-700 bg-slate-950 p-3 text-sm text-slate-100 outline-none focus:ring-2 focus:ring-violet-500/40 disabled:cursor-not-allowed disabled:opacity-50"
+                className="mb-2 w-full resize-none rounded-xl border border-[var(--app-border-strong)] bg-[var(--app-surface-muted)] p-3 text-sm text-[var(--app-text)] outline-none focus:ring-2 focus:ring-violet-500/40 disabled:cursor-not-allowed disabled:opacity-50"
               />
               <div className="flex gap-2">
                 <button
@@ -344,7 +344,7 @@ export function FinanceCoachProvider({ children }: { children: ReactNode }) {
                     setMessages([])
                     toast('Chat geleert.')
                   }}
-                  className="rounded-xl border border-slate-600 px-3 py-2 text-xs font-bold text-slate-400 hover:bg-slate-800"
+                  className="rounded-xl border border-[var(--app-border-strong)] px-3 py-2 text-xs font-bold text-[var(--app-text-muted)] hover:bg-[var(--app-surface-hover)]"
                 >
                   Verlauf leeren
                 </button>
@@ -357,7 +357,7 @@ export function FinanceCoachProvider({ children }: { children: ReactNode }) {
                   Senden
                 </button>
               </div>
-              <p className="mt-2 text-[10px] text-slate-600">
+              <p className="mt-2 text-[10px] text-[var(--app-text-muted)]">
                 Text und Kennzahlen gehen an den konfigurierten KI-Dienst (Verarbeitung außerhalb der App). Keine
                 Rechts- oder Anlageberatung.
               </p>

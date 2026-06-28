@@ -98,7 +98,7 @@ export function PaFundamentalQuartalsDiff({
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
           <h3 className="text-sm font-semibold text-white">Quartals-Diff (KI)</h3>
-          <p className="text-xs text-zinc-500">
+          <p className="text-xs text-[var(--app-text-muted)]">
             {vorherLabel} → {aktuellLabel}
           </p>
         </div>
@@ -106,7 +106,7 @@ export function PaFundamentalQuartalsDiff({
           type="button"
           onClick={() => void lade(true)}
           disabled={laden}
-          className="rounded-lg border border-zinc-700 px-2.5 py-1 text-xs text-zinc-300 hover:bg-zinc-800 disabled:opacity-50"
+          className="rounded-lg border border-[var(--app-border-strong)] px-2.5 py-1 text-xs text-[var(--app-text)] hover:bg-[var(--app-surface-hover)] disabled:opacity-50"
         >
           {laden ? 'Analysiert…' : 'Neu berechnen'}
         </button>
@@ -117,13 +117,13 @@ export function PaFundamentalQuartalsDiff({
       {daten?.diff ? (
         <EarningsCallAnalyseDarstellung text={daten.diff} />
       ) : laden ? (
-        <p className="text-sm text-zinc-500">Vergleiche KI-Summaries …</p>
+        <p className="text-sm text-[var(--app-text-muted)]">Vergleiche KI-Summaries …</p>
       ) : null}
 
       {daten?.ausCache ? (
-        <p className="text-[10px] text-zinc-600">Lokal gespeichert · Sync zur Cloud</p>
+        <p className="text-[10px] text-[var(--app-text-muted)]">Lokal gespeichert · Sync zur Cloud</p>
       ) : daten?.diff ? (
-        <p className="text-[10px] text-zinc-600">Neu berechnet · lokal gespeichert</p>
+        <p className="text-[10px] text-[var(--app-text-muted)]">Neu berechnet · lokal gespeichert</p>
       ) : null}
     </PaCard>
   )

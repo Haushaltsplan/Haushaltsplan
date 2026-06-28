@@ -20,7 +20,7 @@ export const metadata: Metadata = {
 
 function StartBlockSkeleton() {
   return (
-    <div className="h-40 animate-pulse rounded-2xl border border-zinc-800/50 bg-zinc-950/40" />
+    <div className="h-40 animate-pulse rounded-2xl border border-[var(--app-border)] bg-[var(--app-surface-muted)]" />
   )
 }
 

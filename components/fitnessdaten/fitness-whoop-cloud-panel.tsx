@@ -175,7 +175,7 @@ export function FitnessWhoopCloudPanel({ onSyncComplete, embedded = false }: Pro
       className={`rounded-2xl border border-violet-500/20 bg-[#111113] ${embedded ? 'p-4' : 'p-5'}`}
     >
       <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-violet-200">WHOOP Cloud</p>
-      <p className="mt-2 text-xs leading-relaxed text-zinc-500">
+      <p className="mt-2 text-xs leading-relaxed text-[var(--app-text-muted)]">
         Recovery (SpO₂, Hauttemp.), Schlaf, Strain, Workouts — automatisch alle ~15 Min, sobald WHOOP
         verbunden ist. Manueller Sync unten optional.
       </p>
@@ -186,7 +186,7 @@ export function FitnessWhoopCloudPanel({ onSyncComplete, embedded = false }: Pro
           übernommen.
         </p>
       ) : null}
-      <p className="mt-2 text-[10px] leading-relaxed text-zinc-600">
+      <p className="mt-2 text-[10px] leading-relaxed text-[var(--app-text-muted)]">
         Blutdruck (WHOOP Life/MG) liefert die öffentliche WHOOP-API nicht — Werte im Tab Gerät unter
         Vitalwerte eintragen.
       </p>
@@ -220,8 +220,8 @@ export function FitnessWhoopCloudPanel({ onSyncComplete, embedded = false }: Pro
       ) : null}
 
       {!statusLoading && status.configured && redirectUri ? (
-        <p className="mt-3 rounded-xl border border-zinc-800 bg-zinc-900/40 p-3 text-[11px] leading-relaxed text-zinc-500">
-          <span className="font-medium text-zinc-400">Redirect-URI im WHOOP Developer Dashboard</span>{' '}
+        <p className="mt-3 rounded-xl border border-[var(--app-border)] bg-[var(--app-surface-muted)] p-3 text-[11px] leading-relaxed text-[var(--app-text-muted)]">
+          <span className="font-medium text-[var(--app-text-muted)]">Redirect-URI im WHOOP Developer Dashboard</span>{' '}
           (Zeichen für Zeichen, ohne Slash am Ende):
           <code className="mt-2 block break-all rounded-lg bg-black/30 px-2 py-1.5 text-[10px] text-violet-200">
             {redirectUri}
@@ -243,7 +243,7 @@ export function FitnessWhoopCloudPanel({ onSyncComplete, embedded = false }: Pro
             <button
               type="button"
               onClick={() => void trennen()}
-              className="w-full rounded-xl border border-white/[0.06] py-2 text-xs text-zinc-500 hover:text-zinc-300"
+              className="w-full rounded-xl border border-white/[0.06] py-2 text-xs text-[var(--app-text-muted)] hover:text-[var(--app-text)]"
             >
               WHOOP-Konto trennen
             </button>
@@ -261,7 +261,7 @@ export function FitnessWhoopCloudPanel({ onSyncComplete, embedded = false }: Pro
       </div>
 
       {meta.lastSpo2 != null ? (
-        <p className="mt-3 text-xs text-zinc-400">
+        <p className="mt-3 text-xs text-[var(--app-text-muted)]">
           Letzte SpO₂: {meta.lastSpo2.toFixed(1).replace('.', ',')} %{' '}
           {meta.lastSpo2Date ? `(${meta.lastSpo2Date})` : ''}
         </p>

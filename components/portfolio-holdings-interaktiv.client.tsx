@@ -160,7 +160,7 @@ function PortfolioPositionZeile({
   }, [editing, row])
 
   const btn =
-    'rounded-md p-1.5 text-zinc-400 transition hover:bg-zinc-800 hover:text-zinc-100 disabled:pointer-events-none disabled:opacity-30'
+    'rounded-md p-1.5 text-[var(--app-text-muted)] transition hover:bg-[var(--app-surface-hover)] hover:text-[var(--app-text)] disabled:pointer-events-none disabled:opacity-30'
 
   const toolbarLesen = (
     <>
@@ -181,7 +181,7 @@ function PortfolioPositionZeile({
     const nt =
       NOTIERUNGEN.includes(draft.notierung as (typeof NOTIERUNGEN)[number]) ? draft.notierung : 'USD'
     return (
-      <li className="rounded-xl border border-zinc-800/90 bg-zinc-950/50 px-3 py-3">
+      <li className="rounded-xl border border-[var(--app-border)] bg-[var(--app-surface-muted)] px-3 py-3">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="flex min-w-0 flex-1 items-start gap-2.5">
             <StockLogo symbol={draft.symbolYahoo.trim() || '?'} />
@@ -192,7 +192,7 @@ function PortfolioPositionZeile({
                   disabled={pending}
                   onChange={(e) => setDraft((d) => ({ ...d, name: e.target.value }))}
                   placeholder="Name"
-                  className="min-w-0 flex-1 rounded-lg border border-zinc-800 bg-zinc-950 px-2 py-1.5 text-sm text-white outline-none ring-teal-700/40 focus:ring-2"
+                  className="min-w-0 flex-1 rounded-lg border border-[var(--app-border)] bg-[var(--app-surface-muted)] px-2 py-1.5 text-sm text-white outline-none ring-teal-700/40 focus:ring-2"
                 />
                 <input
                   value={draft.symbolYahoo}
@@ -200,14 +200,14 @@ function PortfolioPositionZeile({
                   onChange={(e) => setDraft((d) => ({ ...d, symbolYahoo: e.target.value.toUpperCase() }))}
                   placeholder="Ticker"
                   spellCheck={false}
-                  className="w-[7.25rem] shrink-0 rounded-lg border border-zinc-800 bg-zinc-950 px-2 py-1.5 font-mono text-sm text-white outline-none ring-teal-700/40 focus:ring-2"
+                  className="w-[7.25rem] shrink-0 rounded-lg border border-[var(--app-border)] bg-[var(--app-surface-muted)] px-2 py-1.5 font-mono text-sm text-white outline-none ring-teal-700/40 focus:ring-2"
                 />
               </div>
               <select
                 value={nt}
                 disabled={pending}
                 onChange={(e) => setDraft((d) => ({ ...d, notierung: e.target.value }))}
-                className="w-full max-w-[12rem] rounded-lg border border-zinc-800 bg-zinc-950 px-2 py-1.5 text-sm text-white outline-none ring-teal-700/40 focus:ring-2"
+                className="w-full max-w-[12rem] rounded-lg border border-[var(--app-border)] bg-[var(--app-surface-muted)] px-2 py-1.5 text-sm text-white outline-none ring-teal-700/40 focus:ring-2"
               >
                 {NOTIERUNGEN.map((n) => (
                   <option key={n} value={n}>
@@ -221,7 +221,7 @@ function PortfolioPositionZeile({
                 onChange={(e) => setDraft((d) => ({ ...d, notiz: e.target.value }))}
                 placeholder="Notiz"
                 rows={3}
-                className="w-full max-w-xl resize-y rounded-lg border border-zinc-800 bg-zinc-950 px-2 py-1.5 text-[13px] leading-snug text-zinc-100 outline-none ring-teal-700/40 focus:ring-2"
+                className="w-full max-w-xl resize-y rounded-lg border border-[var(--app-border)] bg-[var(--app-surface-muted)] px-2 py-1.5 text-[13px] leading-snug text-[var(--app-text)] outline-none ring-teal-700/40 focus:ring-2"
               />
             </div>
           </div>
@@ -239,7 +239,7 @@ function PortfolioPositionZeile({
           </div>
         </div>
         {z.kurs != null ? (
-          <p className="mt-2 text-xs tabular-nums text-zinc-400">
+          <p className="mt-2 text-xs tabular-nums text-[var(--app-text-muted)]">
             Kurs ca. {z.kurs.toFixed(2)} {z.notierung ?? 'USD'}
           </p>
         ) : null}
@@ -248,7 +248,7 @@ function PortfolioPositionZeile({
   }
 
   return (
-    <li className="rounded-xl border border-zinc-800/90 bg-zinc-950/50 px-3 py-3">
+    <li className="rounded-xl border border-[var(--app-border)] bg-[var(--app-surface-muted)] px-3 py-3">
       <InvestmentMoverKarteBodyClient z={z} kopfExtrasObenRechts={<span className="flex shrink-0 gap-0.5">{toolbarLesen}</span>} />
     </li>
   )
@@ -300,7 +300,7 @@ export function PortfolioHoldingsInteraktiv({ bericht }: { bericht: PortfolioKur
     }
   }
 
-  const btnGhost = 'rounded-lg p-2 text-zinc-400 transition hover:bg-zinc-800 hover:text-white disabled:opacity-30'
+  const btnGhost = 'rounded-lg p-2 text-[var(--app-text-muted)] transition hover:bg-[var(--app-surface-hover)] hover:text-white disabled:opacity-30'
 
   function zeilenListe(liste: InvestmentMoverKarteDaten[]) {
     return liste.flatMap((z) => {
@@ -353,7 +353,7 @@ export function PortfolioHoldingsInteraktiv({ bericht }: { bericht: PortfolioKur
             Plus
           </h3>
           {positiv.length === 0 ? (
-            <p className="rounded-lg border border-zinc-800/80 bg-zinc-950/30 px-3 py-5 text-center text-xs text-zinc-500">—</p>
+            <p className="rounded-lg border border-[var(--app-border)] bg-[var(--app-surface-muted)]/30 px-3 py-5 text-center text-xs text-[var(--app-text-muted)]">—</p>
           ) : (
             <ul className="grid gap-2">{zeilenListe(positiv)}</ul>
           )}
@@ -363,7 +363,7 @@ export function PortfolioHoldingsInteraktiv({ bericht }: { bericht: PortfolioKur
             Minus
           </h3>
           {negativ.length === 0 ? (
-            <p className="rounded-lg border border-zinc-800/80 bg-zinc-950/30 px-3 py-5 text-center text-xs text-zinc-500">—</p>
+            <p className="rounded-lg border border-[var(--app-border)] bg-[var(--app-surface-muted)]/30 px-3 py-5 text-center text-xs text-[var(--app-text-muted)]">—</p>
           ) : (
             <ul className="grid gap-2">{zeilenListe(negativ)}</ul>
           )}
@@ -371,8 +371,8 @@ export function PortfolioHoldingsInteraktiv({ bericht }: { bericht: PortfolioKur
       </div>
 
       {neutral.length > 0 ? (
-        <div className="mt-6 border-t border-zinc-800/80 pt-4">
-          <h3 className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-zinc-500">±0</h3>
+        <div className="mt-6 border-t border-[var(--app-border)] pt-4">
+          <h3 className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-[var(--app-text-muted)]">±0</h3>
           <ul className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">{zeilenListe(neutral)}</ul>
         </div>
       ) : null}

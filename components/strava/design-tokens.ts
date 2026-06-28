@@ -23,10 +23,10 @@ export const STRAVA_COLORS = {
 } as const
 
 export const STRAVA_CARD_CLASS =
-  'rounded-2xl border border-slate-500/15 bg-[#0c0d0f] shadow-[0_4px_24px_rgba(0,0,0,0.35)] transition-colors duration-200'
+  'rounded-2xl border border-[var(--app-border)] bg-[var(--app-surface)] shadow-[var(--app-shadow)] transition-colors duration-200'
 
 export const STRAVA_CARD_HOVER =
-  'hover:border-slate-400/25 hover:shadow-[0_8px_32px_rgba(0,0,0,0.45)]'
+  'hover:border-[#FC4C02]/25 hover:shadow-[var(--app-shadow)]'
 
 export const STRAVA_INTERACTIVE =
   'transition-all duration-200 ease-out active:scale-[0.98]'

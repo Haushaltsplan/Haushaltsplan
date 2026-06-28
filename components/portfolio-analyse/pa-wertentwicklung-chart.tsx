@@ -198,7 +198,7 @@ function WertentwicklungChartBody({
                 x={breite - padRechts + 6}
                 y={y + 3}
                 textAnchor="start"
-                className="fill-zinc-500"
+                className="fill-[var(--app-text-muted)]"
                 style={{ fontSize: gross ? 11 : 10 }}
               >
                 {formatYAxis(tick)}
@@ -210,7 +210,7 @@ function WertentwicklungChartBody({
         <text
           x={breite - padRechts + 6}
           y={padOben - 8}
-          className="fill-zinc-600"
+          className="fill-[var(--app-text-muted)]"
           style={{ fontSize: 9 }}
         >
           (EUR)
@@ -244,7 +244,7 @@ function WertentwicklungChartBody({
               x={pt.x}
               y={hoehe - 10}
               textAnchor="middle"
-              className="fill-zinc-500"
+              className="fill-[var(--app-text-muted)]"
               style={{ fontSize: gross ? 10 : 9 }}
             >
               {pt.p.label}
@@ -256,7 +256,7 @@ function WertentwicklungChartBody({
 
       {active ? (
         <div
-          className="pointer-events-none absolute z-10 rounded-lg border border-zinc-700/80 bg-zinc-900/95 px-3 py-2.5 text-xs shadow-xl sm:min-w-[200px]"
+          className="pointer-events-none absolute z-10 rounded-lg border border-[var(--app-border-strong)] bg-[var(--app-surface-muted)] px-3 py-2.5 text-xs shadow-xl sm:min-w-[200px]"
           style={
             schmal
               ? { left: 8, right: 8, top: 8 }
@@ -266,28 +266,28 @@ function WertentwicklungChartBody({
                 }
           }
         >
-          <p className="mb-2 font-medium text-zinc-200">{formatDatumDe(active.p.datumIso)}</p>
+          <p className="mb-2 font-medium text-[var(--app-text)]">{formatDatumDe(active.p.datumIso)}</p>
           <div className="space-y-1.5">
             <div className="flex items-center justify-between gap-4">
-              <span className="flex items-center gap-2 text-zinc-400">
-                <span className="inline-block h-0.5 w-3 rounded bg-zinc-100" />
+              <span className="flex items-center gap-2 text-[var(--app-text-muted)]">
+                <span className="inline-block h-0.5 w-3 rounded bg-[var(--app-text-muted)]" />
                 Portfoliowert
               </span>
-              <span className="tabular-nums font-medium text-zinc-100">
+              <span className="tabular-nums font-medium text-[var(--app-text)]">
                 {formatEur(active.p.portfoliowertEur)}
               </span>
             </div>
             <div className="flex items-center justify-between gap-4">
-              <span className="flex items-center gap-2 text-zinc-400">
-                <span className="inline-block h-0.5 w-3 rounded bg-zinc-500" />
+              <span className="flex items-center gap-2 text-[var(--app-text-muted)]">
+                <span className="inline-block h-0.5 w-3 rounded bg-[var(--app-surface-muted)]" />
                 Zugeführtes Kapital
               </span>
-              <span className="tabular-nums font-medium text-zinc-300">
+              <span className="tabular-nums font-medium text-[var(--app-text)]">
                 {formatEur(active.p.zugefuehrtEur)}
               </span>
             </div>
-            <div className="mt-1 flex items-center justify-between gap-4 border-t border-zinc-800 pt-1.5">
-              <span className="text-zinc-500">Differenz</span>
+            <div className="mt-1 flex items-center justify-between gap-4 border-t border-[var(--app-border)] pt-1.5">
+              <span className="text-[var(--app-text-muted)]">Differenz</span>
               <span
                 className={`tabular-nums font-semibold ${
                   differenz >= 0 ? 'text-emerald-500' : 'text-red-500'
@@ -301,16 +301,16 @@ function WertentwicklungChartBody({
         </div>
       ) : null}
 
-      <div className="mt-3 flex flex-wrap items-center justify-center gap-6 text-xs text-zinc-500">
+      <div className="mt-3 flex flex-wrap items-center justify-center gap-6 text-xs text-[var(--app-text-muted)]">
         <span className="flex items-center gap-2">
-          <span className="inline-block h-0.5 w-5 rounded bg-zinc-100" />
+          <span className="inline-block h-0.5 w-5 rounded bg-[var(--app-text-muted)]" />
           Portfoliowert
         </span>
         <span className="flex items-center gap-2">
-          <span className="inline-block h-0.5 w-5 rounded bg-zinc-500" />
+          <span className="inline-block h-0.5 w-5 rounded bg-[var(--app-surface-muted)]" />
           Zugeführtes Kapital
         </span>
-        {laden ? <span className="text-zinc-600">· Tageskurse werden geladen …</span> : null}
+        {laden ? <span className="text-[var(--app-text-muted)]">· Tageskurse werden geladen …</span> : null}
       </div>
     </div>
   )
@@ -352,7 +352,7 @@ export function PaWertentwicklungChart({
   }, [expanded])
 
   if (punkte.length < 2) {
-    return <p className="py-12 text-center text-sm text-zinc-500">Noch zu wenig Historie für die Wertentwicklung.</p>
+    return <p className="py-12 text-center text-sm text-[var(--app-text-muted)]">Noch zu wenig Historie für die Wertentwicklung.</p>
   }
 
   return (
@@ -362,7 +362,7 @@ export function PaWertentwicklungChart({
           <button
             type="button"
             onClick={() => setExpanded(true)}
-            className="absolute right-0 top-0 z-20 rounded-lg p-2 text-zinc-500 transition-colors hover:bg-zinc-800/70 hover:text-zinc-200"
+            className="absolute right-0 top-0 z-20 rounded-lg p-2 text-[var(--app-text-muted)] transition-colors hover:bg-[var(--app-surface-hover)]/70 hover:text-[var(--app-text)]"
             aria-label="Chart vergrößern"
             title="Vergrößern"
           >
@@ -381,7 +381,7 @@ export function PaWertentwicklungChart({
           }}
         >
           <div
-            className="relative flex max-h-[min(94vh,760px)] w-full max-w-6xl flex-col overflow-hidden rounded-2xl border border-white/[0.08] bg-gradient-to-b from-zinc-900/95 to-zinc-950 shadow-2xl shadow-black/50 ring-1 ring-white/[0.05]"
+            className="relative flex max-h-[min(94vh,760px)] w-full max-w-6xl flex-col overflow-hidden rounded-2xl border border-[var(--app-border)] bg-gradient-to-b from-[var(--app-surface-muted)] to-[var(--app-surface)] shadow-2xl shadow-[var(--app-shadow)] ring-1 ring-[var(--app-ring)]"
             role="dialog"
             aria-modal="true"
             aria-label="Wertentwicklung – vergrößert"
@@ -389,7 +389,7 @@ export function PaWertentwicklungChart({
             <button
               type="button"
               onClick={() => setExpanded(false)}
-              className="absolute right-3 top-3 z-30 rounded-lg p-2 text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-100"
+              className="absolute right-3 top-3 z-30 rounded-lg p-2 text-[var(--app-text-muted)] transition-colors hover:bg-[var(--app-surface-hover)] hover:text-[var(--app-text)]"
               aria-label="Schließen"
               title="Schließen"
             >

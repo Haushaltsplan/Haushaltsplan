@@ -8,7 +8,7 @@ export const metadata: Metadata = {
 
 export default function PortfolioFundamentaldatenPage() {
   return (
-    <Suspense fallback={<p className="py-16 text-center text-sm text-zinc-500">Fundamentaldaten werden geladen …</p>}>
+    <Suspense fallback={<p className="py-16 text-center text-sm text-[var(--app-text-muted)]">Fundamentaldaten werden geladen …</p>}>
       <PortfolioFundamentaldatenClient />
     </Suspense>
   )

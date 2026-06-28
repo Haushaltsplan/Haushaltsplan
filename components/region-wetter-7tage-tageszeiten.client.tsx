@@ -31,20 +31,20 @@ function TageszeitZeile({ z }: { z: WetterTageszeitSlot }) {
   const kat = iconKategorieAnzeige(z.wmoCode, z.id === 'nacht')
   const grad = z.windRichtungGrad
   return (
-    <div className="flex flex-col gap-3 border-b border-slate-800/50 py-3 last:border-0 sm:flex-row sm:items-center sm:gap-4">
+    <div className="flex flex-col gap-3 border-b border-[var(--app-border)]/50 py-3 last:border-0 sm:flex-row sm:items-center sm:gap-4">
       <div className="shrink-0 sm:w-36">
         <p className="text-xs font-bold leading-snug text-cyan-200/90">{z.label}</p>
       </div>
       <WetterHimmelIcon kategorie={kat} pixel={40} className="shrink-0 opacity-95" />
       <div className="min-w-0 flex-1 space-y-1 text-sm">
-        <p className="font-medium text-slate-200">{z.zustandDe}</p>
-        <p className="text-xs text-slate-400">
-          <span className="font-semibold tabular-nums text-slate-100">
+        <p className="font-medium text-[var(--app-text)]">{z.zustandDe}</p>
+        <p className="text-xs text-[var(--app-text-muted)]">
+          <span className="font-semibold tabular-nums text-[var(--app-text)]">
             {z.tempMin}° – {z.tempMax}°
           </span>
-          {z.luftfeuchte != null ? <span className="ml-2 text-slate-500">· LF {z.luftfeuchte} %</span> : null}
+          {z.luftfeuchte != null ? <span className="ml-2 text-[var(--app-text-muted)]">· LF {z.luftfeuchte} %</span> : null}
         </p>
-        <p className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-slate-400">
+        <p className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-[var(--app-text-muted)]">
           {z.windKmh != null ? (
             <span className="inline-flex items-center gap-0.5">
               <WindIkon className="h-3.5 w-3.5 shrink-0 text-sky-400/80" />
@@ -108,8 +108,8 @@ export function RegionWetter7TageTageszeitenClient({ ortId, prognose7Tage }: Pro
   if (tage.length === 0) return null
 
   return (
-    <details className="app-disclosure group border-t border-slate-800/80 bg-slate-950/30">
-      <summary className="flex cursor-pointer list-none select-none items-center justify-between gap-3 px-4 py-4 text-left outline-offset-2 transition-colors hover:bg-slate-800/35 focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-500/50 sm:px-8">
+    <details className="app-disclosure group border-t border-[var(--app-border)] bg-[var(--app-surface-muted)]/30">
+      <summary className="flex cursor-pointer list-none select-none items-center justify-between gap-3 px-4 py-4 text-left outline-offset-2 transition-colors hover:bg-[var(--app-surface-hover)]/35 focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-500/50 sm:px-8">
         <p className="min-w-0 pr-1 text-[11px] font-black uppercase tracking-widest text-cyan-200/70">7-Tage-Ausblick</p>
         <DetailsDisclosureTriggerEnd tone="sky" />
       </summary>
@@ -127,18 +127,18 @@ export function RegionWetter7TageTageszeitenClient({ ortId, prognose7Tage }: Pro
         </div>
 
         {aktiv != null ? (
-          <div className="mt-4 rounded-2xl border border-slate-800/80 bg-slate-900/40 p-4 sm:p-5">
+          <div className="mt-4 rounded-2xl border border-[var(--app-border)] bg-[var(--app-surface-muted)]/40 p-4 sm:p-5">
             <div className="flex flex-wrap items-baseline justify-between gap-2">
               <h3 className="text-sm font-bold text-cyan-100/95">
                 {formatDatumKopf(aktiv)}
               </h3>
               {(() => {
                 const i = tage.findIndex((t) => t.datumIso === aktiv)
-                return i >= 0 ? <p className="text-xs text-slate-500">— {prognoseKopfzeile(i, aktiv)}</p> : null
+                return i >= 0 ? <p className="text-xs text-[var(--app-text-muted)]">— {prognoseKopfzeile(i, aktiv)}</p> : null
               })()}
             </div>
             {laden ? (
-              <p className="mt-3 text-sm text-slate-400">Lade Tageszeiten…</p>
+              <p className="mt-3 text-sm text-[var(--app-text-muted)]">Lade Tageszeiten…</p>
             ) : apiFehler ? (
               <p className="mt-3 text-sm text-amber-200/90">{apiFehler}</p>
             ) : detail?.tageszeiten.length ? (
@@ -148,7 +148,7 @@ export function RegionWetter7TageTageszeitenClient({ ortId, prognose7Tage }: Pro
                 ))}
               </div>
             ) : !laden && aktiv ? (
-              <p className="mt-3 text-sm text-slate-500">Keine stündlichen Daten.</p>
+              <p className="mt-3 text-sm text-[var(--app-text-muted)]">Keine stündlichen Daten.</p>
             ) : null}
           </div>
         ) : null}

@@ -1,5 +1,6 @@
 'use client'
 
+import { appTableScrollInlineClassName } from '@/components/page-shell'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { chartHoverFromClientX } from '@/components/portfolio-analyse/chart-hover'
 import { formatEur } from '@/lib/portfolio-analyse/berechnung'
@@ -128,7 +129,7 @@ export function PaGestapelteDividendenChart({
   }, [outerWidth, tooltipX])
 
   if (daten.length < 2) {
-    return <p className="py-12 text-center text-sm text-zinc-500">Noch zu wenig Dividenden-Daten.</p>
+    return <p className="py-12 text-center text-sm text-[var(--app-text-muted)]">Noch zu wenig Dividenden-Daten.</p>
   }
 
   const tooltipExtraPad =
@@ -142,7 +143,7 @@ export function PaGestapelteDividendenChart({
     >
       <div
         ref={containerRef}
-        className="relative w-full cursor-crosshair overflow-x-auto"
+        className={`relative w-full cursor-crosshair ${appTableScrollInlineClassName}`}
         style={{ height: hoehe }}
         onMouseMove={(e) => {
           lastClientX.current = e.clientX
@@ -183,7 +184,7 @@ export function PaGestapelteDividendenChart({
                   stroke="#27272a"
                   strokeWidth={1}
                 />
-                <text x={padLinks - 4} y={y + 3} textAnchor="end" className="fill-zinc-600" style={{ fontSize: 9 }}>
+                <text x={padLinks - 4} y={y + 3} textAnchor="end" className="fill-[var(--app-text-muted)]" style={{ fontSize: 9 }}>
                   {formatEur(tick)}
                 </text>
               </g>
@@ -212,7 +213,7 @@ export function PaGestapelteDividendenChart({
                   x={b.cx}
                   y={hoehe - 8}
                   textAnchor="middle"
-                  className="fill-zinc-500"
+                  className="fill-[var(--app-text-muted)]"
                   style={{ fontSize: 8 }}
                 >
                   {b.label}
@@ -248,43 +249,43 @@ export function PaGestapelteDividendenChart({
 
       {active && activeDaten ? (
         <div
-          className="pointer-events-none absolute z-20 w-max max-w-[min(100%,320px)] rounded-lg border border-zinc-700/80 bg-zinc-900/95 px-3 py-2.5 text-xs shadow-xl sm:min-w-[260px]"
+          className="pointer-events-none absolute z-20 w-max max-w-[min(100%,320px)] rounded-lg border border-[var(--app-border-strong)] bg-[var(--app-surface-muted)] px-3 py-2.5 text-xs shadow-xl sm:min-w-[260px]"
           style={{
             left: tooltipLeft,
             top: hoehe + 6,
             transform: 'translateX(-50%)',
           }}
         >
-          <div className="mb-2 flex items-baseline justify-between gap-4 border-b border-zinc-800 pb-2">
-            <span className="font-medium text-zinc-200">{activeDaten.tooltipTitel}</span>
-            <span className="tabular-nums font-semibold text-zinc-100">{formatEur(active.gesamt)}</span>
+          <div className="mb-2 flex items-baseline justify-between gap-4 border-b border-[var(--app-border)] pb-2">
+            <span className="font-medium text-[var(--app-text)]">{activeDaten.tooltipTitel}</span>
+            <span className="tabular-nums font-semibold text-[var(--app-text)]">{formatEur(active.gesamt)}</span>
           </div>
           <div className="space-y-1.5">
             {durchschnittIntervallEur > 0 ? (
               <div className="flex justify-between gap-4">
-                <span className="text-zinc-500">Ø Dividende im Intervall</span>
-                <span className="tabular-nums text-zinc-300">{formatEur(durchschnittIntervallEur)}</span>
+                <span className="text-[var(--app-text-muted)]">Ø Dividende im Intervall</span>
+                <span className="tabular-nums text-[var(--app-text)]">{formatEur(durchschnittIntervallEur)}</span>
               </div>
             ) : null}
             {active.ttm != null ? (
               <div className="flex justify-between gap-4">
-                <span className="text-zinc-500">Ø monatl. Einkommen (TTM)</span>
-                <span className="tabular-nums text-zinc-300">{formatEur(active.ttm)}</span>
+                <span className="text-[var(--app-text-muted)]">Ø monatl. Einkommen (TTM)</span>
+                <span className="tabular-nums text-[var(--app-text)]">{formatEur(active.ttm)}</span>
               </div>
             ) : null}
           </div>
           {activeDaten.segmente.length > 0 ? (
-            <ul className="mt-2 space-y-1.5 border-t border-zinc-800 pt-2">
+            <ul className="mt-2 space-y-1.5 border-t border-[var(--app-border)] pt-2">
               {activeDaten.segmente.map((s) => (
                 <li key={s.key} className="flex items-start justify-between gap-3">
-                  <span className="flex min-w-0 flex-1 items-center gap-2 text-zinc-400">
+                  <span className="flex min-w-0 flex-1 items-center gap-2 text-[var(--app-text-muted)]">
                     <span
                       className="mt-0.5 inline-block h-2.5 w-2.5 shrink-0 rounded-sm"
                       style={{ backgroundColor: s.farbe }}
                     />
                     <span className="leading-snug break-words">{s.label}</span>
                   </span>
-                  <span className="shrink-0 tabular-nums text-zinc-200">{formatEur(s.wert)}</span>
+                  <span className="shrink-0 tabular-nums text-[var(--app-text)]">{formatEur(s.wert)}</span>
                 </li>
               ))}
             </ul>
@@ -292,16 +293,16 @@ export function PaGestapelteDividendenChart({
         </div>
       ) : null}
 
-      <div className="mt-2 flex flex-wrap items-center gap-4 text-[11px] text-zinc-500">
+      <div className="mt-2 flex flex-wrap items-center gap-4 text-[11px] text-[var(--app-text-muted)]">
         {ttmPath ? (
           <span className="flex items-center gap-2">
-            <span className="inline-block h-0.5 w-6 bg-zinc-300" />
+            <span className="inline-block h-0.5 w-6 bg-[var(--app-text-muted)]" />
             Ø monatl. Einkommen (TTM)
           </span>
         ) : null}
         {durchschnittIntervallEur > 0 ? (
           <span className="flex items-center gap-2">
-            <span className="inline-block w-6 border-t border-dashed border-zinc-500" />
+            <span className="inline-block w-6 border-t border-dashed border-[var(--app-border-strong)]" />
             Ø Dividende im Intervall
           </span>
         ) : null}

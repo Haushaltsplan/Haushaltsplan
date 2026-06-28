@@ -143,3 +143,183 @@ details.app-disclosure > summary {
 details.app-disclosure > summary::-webkit-details-marker {
   display: none;
 }
+
+/* ── Responsive Tabellen ── */
+.app-table-scroll {
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+  scrollbar-color: rgb(82 82 91 / 0.45) transparent;
+}
+
+.app-table-scroll::-webkit-scrollbar {
+  height: 6px;
+}
+
+.app-table-scroll::-webkit-scrollbar-thumb {
+  border-radius: 9999px;
+  background: rgb(82 82 91 / 0.45);
+}
+
+/* Lange URLs, ISINs, Codes auf Mobilgeräten umbrechen */
+.app-break-anywhere {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+/* Swipe-Nav-Wrapper darf nicht über den Viewport hinauswachsen */
+main .touch-pan-y {
+  min-width: 0;
+  max-width: 100%;
+}
+
+/* ── Helle Oberflächen: slate-* (Einstellungen, Datenschutz, …) ── */
+html:not(.dark) .text-slate-100 {
+  color: var(--app-text);
+}
+
+html:not(.dark) .text-slate-200 {
+  color: var(--app-text);
+}
+
+html:not(.dark) .text-slate-300 {
+  color: var(--app-text-muted);
+}
+
+html:not(.dark) .text-slate-400 {
+  color: var(--app-text-muted);
+}
+
+html:not(.dark) .text-slate-500 {
+  color: #94a3b8;
+}
+
+html:not(.dark) .bg-slate-900\/40,
+html:not(.dark) .bg-slate-900\/60 {
+  background-color: var(--app-surface);
+}
+
+html:not(.dark) .border-slate-800,
+html:not(.dark) .border-slate-800\/90 {
+  border-color: var(--app-border-strong);
+}
+
+/* Slate-Hintergründe (Finanzen, Lager, Kalender, …) */
+html:not(.dark) .bg-slate-950,
+html:not(.dark) .bg-slate-950\/80,
+html:not(.dark) .bg-slate-950\/90,
+html:not(.dark) .bg-slate-900,
+html:not(.dark) .bg-slate-900\/80,
+html:not(.dark) .bg-slate-900\/90,
+html:not(.dark) .bg-slate-900\/95,
+html:not(.dark) .bg-slate-800\/80 {
+  background-color: var(--app-surface-muted);
+}
+
+html:not(.dark) .bg-gradient-to-b.from-slate-900.to-slate-950,
+html:not(.dark) .from-slate-900,
+html:not(.dark) .to-slate-950 {
+  --tw-gradient-from: var(--app-surface-muted);
+  --tw-gradient-to: var(--app-surface);
+  --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to);
+}
+
+html:not(.dark) .border-slate-700,
+html:not(.dark) .border-slate-700\/80,
+html:not(.dark) .border-slate-700\/90,
+html:not(.dark) .border-slate-600,
+html:not(.dark) .border-slate-600\/90,
+html:not(.dark) .border-slate-800\/80,
+html:not(.dark) .border-slate-800\/60,
+html:not(.dark) .border-slate-800\/50 {
+  border-color: var(--app-border-strong);
+}
+
+html:not(.dark) .divide-slate-800 > :not([hidden]) ~ :not([hidden]),
+html:not(.dark) .divide-slate-800\/50 > :not([hidden]) ~ :not([hidden]),
+html:not(.dark) .divide-slate-800\/60 > :not([hidden]) ~ :not([hidden]) {
+  border-color: var(--app-border);
+}
+
+html:not(.dark) .hover\:bg-slate-800:hover,
+html:not(.dark) .hover\:bg-slate-800\/80:hover {
+  background-color: var(--app-surface-hover);
+}
+
+html:not(.dark) .hover\:text-slate-200:hover {
+  color: var(--app-text);
+}
+
+html:not(.dark) .text-slate-600 {
+  color: #94a3b8;
+}
+
+html:not(.dark) .text-sky-200 {
+  color: #0369a1;
+}
+
+html:not(.dark) .text-violet-200 {
+  color: #6d28d9;
+}
+
+html:not(.dark) .text-emerald-400\/90 {
+  color: #059669;
+}
+
+html:not(.dark) .shadow-black\/35,
+html:not(.dark) .shadow-black\/20 {
+  --tw-shadow-color: var(--app-shadow);
+}
+
+/* Zinc (Portfolio) — Light-Mode */
+html:not(.dark) .text-zinc-100,
+html:not(.dark) .text-zinc-200 {
+  color: var(--app-text);
+}
+
+html:not(.dark) .bg-zinc-950\/40,
+html:not(.dark) .bg-zinc-950\/20,
+html:not(.dark) .bg-zinc-900\/50,
+html:not(.dark) .bg-zinc-900\/95 {
+  background-color: var(--app-surface-muted);
+}
+
+html:not(.dark) .border-zinc-800,
+html:not(.dark) .border-zinc-800\/60,
+html:not(.dark) .border-zinc-800\/70,
+html:not(.dark) .border-zinc-700,
+html:not(.dark) .border-zinc-700\/35 {
+  border-color: var(--app-border-strong);
+}
+
+html:not(.dark) .text-zinc-400,
+html:not(.dark) .text-zinc-500 {
+  color: var(--app-text-muted);
+}
+
+html:not(.dark) .text-zinc-200,
+html:not(.dark) .text-zinc-300 {
+  color: var(--app-text);
+}
+
+html:not(.dark) .bg-zinc-950\/50,
+html:not(.dark) .bg-zinc-950\/55,
+html:not(.dark) .bg-zinc-950\/35,
+html:not(.dark) .bg-zinc-950\/25,
+html:not(.dark) .bg-zinc-950\/30,
+html:not(.dark) .bg-zinc-900\/80,
+html:not(.dark) .bg-zinc-900\/60,
+html:not(.dark) .bg-zinc-800\/40,
+html:not(.dark) .bg-zinc-800\/60 {
+  background-color: var(--app-surface-muted);
+}
+
+html:not(.dark) .hover\:bg-slate-800\/40:hover,
+html:not(.dark) .hover\:bg-slate-800\/80:hover,
+html:not(.dark) .hover\:bg-zinc-800\/40:hover {
+  background-color: var(--app-surface-hover);
+}
+
+html:not(.dark) .ring-white\/\[0\.04\],
+html:not(.dark) .ring-white\/\[0\.03\] {
+  --tw-ring-color: var(--app-ring);
+}

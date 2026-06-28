@@ -46,9 +46,9 @@ export function PaAnkuendigteEarnings({
 
   if (laden) {
     return (
-      <p className="py-8 text-center text-sm text-zinc-500">
+      <p className="py-8 text-center text-sm text-[var(--app-text-muted)]">
         Quartalstermine werden geladen …
-        <span className="mt-2 block text-[11px] text-zinc-600">
+        <span className="mt-2 block text-[11px] text-[var(--app-text-muted)]">
           DivvyDiary — eine Aktie nach der anderen (ca. 3–5 s pro Position).
         </span>
       </p>
@@ -62,11 +62,11 @@ export function PaAnkuendigteEarnings({
   if (!daten || daten.monate.length === 0) {
     return (
       <div className="space-y-2">
-        <p className="text-sm text-zinc-500">
+        <p className="text-sm text-[var(--app-text-muted)]">
           Keine Quartalstermine für deine Depot-Positionen gefunden.
         </p>
         {daten?.hinweise.map((h) => (
-          <p key={h} className="text-[11px] leading-relaxed text-zinc-600">
+          <p key={h} className="text-[11px] leading-relaxed text-[var(--app-text-muted)]">
             {h}
           </p>
         ))}
@@ -79,10 +79,10 @@ export function PaAnkuendigteEarnings({
       {daten.monate.map((monat) => (
         <section key={monat.monatKey} data-monat={monat.monatKey}>
           <div className="mb-3 flex items-baseline justify-between gap-3">
-            <h3 className="text-[11px] font-semibold uppercase tracking-[0.22em] text-zinc-500">
+            <h3 className="text-[11px] font-semibold uppercase tracking-[0.22em] text-[var(--app-text-muted)]">
               {monat.monatLabel}
             </h3>
-            <p className="text-xs tabular-nums text-zinc-400">
+            <p className="text-xs tabular-nums text-[var(--app-text-muted)]">
               {monat.anzahl} {monat.anzahl === 1 ? 'Termin' : 'Termine'}
             </p>
           </div>
@@ -102,7 +102,7 @@ export function PaAnkuendigteEarnings({
                     trailing={
                       <div className="flex items-center gap-1.5">
                         <PaFundamentalQuickLink isin={e.isin} />
-                        <span className="rounded-md bg-zinc-800/90 px-1.5 py-0.5 text-[10px] tabular-nums text-zinc-400 ring-1 ring-white/[0.05]">
+                        <span className="rounded-md bg-[var(--app-surface-muted)]/90 px-1.5 py-0.5 text-[10px] tabular-nums text-[var(--app-text-muted)] ring-1 ring-white/[0.05]">
                           {e.stueck.toLocaleString('de-DE', { maximumFractionDigits: 4 })}×
                         </span>
                       </div>
@@ -114,11 +114,11 @@ export function PaAnkuendigteEarnings({
           </ul>
         </section>
       ))}
-      <p className="border-t border-[#eef0f1]/[0.06] pt-3 text-[10px] leading-relaxed text-zinc-600">
+      <p className="border-t border-[#eef0f1]/[0.06] pt-3 text-[10px] leading-relaxed text-[var(--app-text-muted)]">
         <span className="inline-flex flex-wrap items-center gap-2">
           <PaDividendEstimateBadge title="Geschätzt" />
           <span>= Termin geschätzt.</span>
-          <span className="text-zinc-500">Nächster Quartalstermin · DivvyDiary.</span>
+          <span className="text-[var(--app-text-muted)]">Nächster Quartalstermin · DivvyDiary.</span>
         </span>
       </p>
       <Link

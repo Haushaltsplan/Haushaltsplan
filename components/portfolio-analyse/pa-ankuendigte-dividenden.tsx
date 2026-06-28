@@ -37,7 +37,7 @@ export function PaAnkuendigteDividenden({
 }) {
   const router = useRouter()
   if (laden) {
-    return <p className="py-8 text-center text-sm text-zinc-500">Ankündigungen werden geladen …</p>
+    return <p className="py-8 text-center text-sm text-[var(--app-text-muted)]">Ankündigungen werden geladen …</p>
   }
 
   if (fehler) {
@@ -47,11 +47,11 @@ export function PaAnkuendigteDividenden({
   if (!daten || daten.monate.length === 0) {
     return (
       <div className="space-y-2">
-        <p className="text-sm text-zinc-500">
+        <p className="text-sm text-[var(--app-text-muted)]">
           Keine angekündigten Dividenden für deine Depot-Positionen gefunden.
         </p>
         {daten?.hinweise.map((h) => (
-          <p key={h} className="text-[11px] leading-relaxed text-zinc-600">
+          <p key={h} className="text-[11px] leading-relaxed text-[var(--app-text-muted)]">
             {h}
           </p>
         ))}
@@ -64,10 +64,10 @@ export function PaAnkuendigteDividenden({
       {daten.monate.map((monat) => (
         <section key={monat.monatKey}>
           <div className="mb-2 flex items-baseline justify-between gap-3 border-b border-white/[0.06] pb-2">
-            <h3 className="text-xs font-semibold uppercase tracking-widest text-zinc-400">
+            <h3 className="text-xs font-semibold uppercase tracking-widest text-[var(--app-text-muted)]">
               {monat.monatLabel}
             </h3>
-            <p className="text-sm font-semibold tabular-nums text-zinc-100">{formatEur(monat.summeEur)}</p>
+            <p className="text-sm font-semibold tabular-nums text-[var(--app-text)]">{formatEur(monat.summeEur)}</p>
           </div>
           <ul className="space-y-3">
             {monat.eintraege.map((e) => {
@@ -80,8 +80,8 @@ export function PaAnkuendigteDividenden({
               >
                 <PortfolioIsinLogo isin={e.isin} fallbackName={e.name} meta={meta} groesse="sm" />
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium text-zinc-100">{e.name}</p>
-                  <p className="text-[11px] text-zinc-500">
+                  <p className="truncate text-sm font-medium text-[var(--app-text)]">{e.name}</p>
+                  <p className="text-[11px] text-[var(--app-text-muted)]">
                     {formatDatumDe(e.zahlungsdatumIso)}
                     {e.bestaetigt
                       ? ' · angekündigt'
@@ -94,15 +94,15 @@ export function PaAnkuendigteDividenden({
                 </div>
                 <div className="shrink-0 text-right">
                   <div className="flex items-center justify-end gap-1.5">
-                    <p className="text-sm font-semibold tabular-nums text-zinc-50">{formatEur(e.gesamtEur)}</p>
+                    <p className="text-sm font-semibold tabular-nums text-[var(--app-text)]">{formatEur(e.gesamtEur)}</p>
                     {!e.bestaetigt ? <PaDividendEstimateBadge /> : null}
                     <PaFundamentalQuickLink isin={e.isin} />
                   </div>
                   <div className="mt-1 flex flex-wrap items-center justify-end gap-1.5">
-                    <span className="rounded-md bg-zinc-800/80 px-1.5 py-0.5 text-[10px] tabular-nums text-zinc-400 ring-1 ring-white/[0.04]">
+                    <span className="rounded-md bg-[var(--app-surface-hover)] px-1.5 py-0.5 text-[10px] tabular-nums text-[var(--app-text-muted)] ring-1 ring-white/[0.04]">
                       {formatStueckTag(e.stueck)}
                     </span>
-                    <span className="text-[10px] tabular-nums text-zinc-500">
+                    <span className="text-[10px] tabular-nums text-[var(--app-text-muted)]">
                       {formatDivProStueck(e.dividendeProStueckEur)}
                     </span>
                   </div>
@@ -112,7 +112,7 @@ export function PaAnkuendigteDividenden({
           </ul>
         </section>
       ))}
-      <p className="border-t border-white/[0.04] pt-3 text-[10px] leading-relaxed text-zinc-600">
+      <p className="border-t border-white/[0.04] pt-3 text-[10px] leading-relaxed text-[var(--app-text-muted)]">
         <span className="inline-flex items-center gap-1">
           <PaDividendEstimateBadge title="Geschätzt" />
           <span>= Prognose aus Historie und Wachstum (ersetzt bei offiziellem Termin).</span>

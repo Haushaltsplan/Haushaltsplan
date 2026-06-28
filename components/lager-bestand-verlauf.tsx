@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import toast from 'react-hot-toast'
 import { CollapsibleRowHeaderEnd, LABEL_EINKLAPPEN } from '@/components/collapsible-ui'
+import { appTableScrollClassName } from '@/components/page-shell'
 import { supabase } from '@/lib/supabase'
 
 export type LagerVerlaufProduktInfo = { id: string; name: string; einheit: string }
@@ -213,17 +214,17 @@ export function LagerBestandVerlauf({ produktInfos, refreshKey, onNachAenderung 
   }
 
   return (
-    <div className="rounded-[2rem] border border-slate-800 bg-slate-900 shadow-xl shadow-black/30">
+    <div className="rounded-[2rem] border border-[var(--app-border)] bg-[var(--app-surface-muted)] shadow-xl shadow-black/30">
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className="group flex w-full items-center justify-between gap-4 px-6 py-5 text-left transition hover:bg-slate-800/40 md:px-8"
+        className="group flex w-full items-center justify-between gap-4 px-6 py-5 text-left transition hover:bg-[var(--app-surface-hover)] md:px-8"
         aria-expanded={open}
       >
         <div>
           <h2 className="text-lg font-black text-sky-300">Bestandsverlauf</h2>
-          <p className="mt-1 text-sm text-slate-500">
-            Einkäufe und Ausbuchungen chronologisch. Bei Ausbuchungen: <span className="font-semibold text-slate-400">Storno</span>{' '}
+          <p className="mt-1 text-sm text-[var(--app-text-muted)]">
+            Einkäufe und Ausbuchungen chronologisch. Bei Ausbuchungen: <span className="font-semibold text-[var(--app-text-muted)]">Storno</span>{' '}
             stellt den Bestand wieder her (braucht Service Role).
           </p>
         </div>
@@ -231,7 +232,7 @@ export function LagerBestandVerlauf({ produktInfos, refreshKey, onNachAenderung 
       </button>
 
       {open && (
-        <div className="border-t border-slate-800 px-4 pb-5 pt-3 md:px-8">
+        <div className="border-t border-[var(--app-border)] px-4 pb-5 pt-3 md:px-8">
           {fehler && (
             <p className="mb-3 rounded-xl border border-amber-800/60 bg-amber-950/35 p-3 text-xs leading-relaxed text-amber-100">
               {fehler}
@@ -240,36 +241,36 @@ export function LagerBestandVerlauf({ produktInfos, refreshKey, onNachAenderung 
 
           <div className="mb-3 flex flex-wrap items-end gap-2">
             <div className="min-w-0 flex-1">
-              <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500">Filter (Produktname)</label>
+              <label className="block text-[10px] font-bold uppercase tracking-wider text-[var(--app-text-muted)]">Filter (Produktname)</label>
               <input
                 type="search"
                 value={filter}
                 onChange={(e) => setFilter(e.target.value)}
                 placeholder="z. B. Tomate"
-                className="mt-1 w-full max-w-md rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100 outline-none focus:ring-2 focus:ring-sky-500/40"
+                className="mt-1 w-full max-w-md rounded-xl border border-[var(--app-border-strong)] bg-[var(--app-surface-muted)] px-3 py-2 text-sm text-[var(--app-text)] outline-none focus:ring-2 focus:ring-sky-500/40"
               />
             </div>
             <button
               type="button"
               disabled={laden}
               onClick={() => void ladeAlles()}
-              className="rounded-lg border border-slate-600 bg-slate-800/80 px-2.5 py-1.5 text-[11px] font-bold text-slate-300 hover:bg-slate-700 disabled:opacity-40"
+              className="rounded-lg border border-[var(--app-border-strong)] bg-[var(--app-surface-hover)] px-2.5 py-1.5 text-[11px] font-bold text-[var(--app-text)] hover:bg-[var(--app-surface-hover)] disabled:opacity-40"
             >
               Aktualisieren
             </button>
           </div>
 
-          {laden && <p className="text-xs text-slate-500">Lade Verlauf …</p>}
+          {laden && <p className="text-xs text-[var(--app-text-muted)]">Lade Verlauf …</p>}
 
           {!laden && zeilen.length === 0 && !fehler && (
-            <p className="text-sm text-slate-500">Noch keine Einträge oder Filter passt zu nichts.</p>
+            <p className="text-sm text-[var(--app-text-muted)]">Noch keine Einträge oder Filter passt zu nichts.</p>
           )}
 
           {!laden && zeilen.length > 0 && (
-            <div className="overflow-x-auto rounded-xl border border-slate-800/90">
+            <div className={`${appTableScrollClassName} rounded-xl border border-[var(--app-border)]`}>
               <table className="min-w-[42rem] w-full border-collapse text-left text-xs">
                 <thead>
-                  <tr className="border-b border-slate-800 bg-slate-950/80 text-[10px] font-black uppercase tracking-wider text-slate-500">
+                  <tr className="border-b border-[var(--app-border)] bg-[var(--app-surface-muted)] text-[10px] font-black uppercase tracking-wider text-[var(--app-text-muted)]">
                     <th className="px-2 py-2 md:px-3">Zeit</th>
                     <th className="px-2 py-2 md:px-3">Art</th>
                     <th className="px-2 py-2 md:px-3">Produkt</th>
@@ -284,44 +285,44 @@ export function LagerBestandVerlauf({ produktInfos, refreshKey, onNachAenderung 
                     const eu = einheitById.get(z.produkt_id) || ''
                     if (z.kind === 'einkauf') {
                       return (
-                        <tr key={z.key} className="border-b border-slate-800/80 hover:bg-slate-950/40">
-                          <td className="whitespace-nowrap px-2 py-2 tabular-nums text-slate-400 md:px-3">
+                        <tr key={z.key} className="border-b border-[var(--app-border)] hover:bg-[var(--app-surface-muted)]">
+                          <td className="whitespace-nowrap px-2 py-2 tabular-nums text-[var(--app-text-muted)] md:px-3">
                             {formatZeit(z.zeit)}
                           </td>
                           <td className="px-2 py-2 md:px-3">
                             <span className="rounded-md bg-emerald-950/70 px-1.5 py-0.5 font-bold text-emerald-200">Einkauf</span>
                           </td>
-                          <td className="max-w-[14rem] truncate px-2 py-2 font-semibold text-slate-200 md:px-3">{pname}</td>
+                          <td className="max-w-[14rem] truncate px-2 py-2 font-semibold text-[var(--app-text)] md:px-3">{pname}</td>
                           <td className="whitespace-nowrap px-2 py-2 font-mono tabular-nums text-emerald-200 md:px-3">
                             +{z.menge} {eu}
                           </td>
-                          <td className="max-w-[18rem] truncate px-2 py-2 text-slate-500 md:px-3">
+                          <td className="max-w-[18rem] truncate px-2 py-2 text-[var(--app-text-muted)] md:px-3">
                             {formatEur(z.gesamtpreis)} · {z.quelle}
                           </td>
-                          <td className="px-2 py-2 text-right text-slate-600 md:px-3">—</td>
+                          <td className="px-2 py-2 text-right text-[var(--app-text-muted)] md:px-3">—</td>
                         </tr>
                       )
                     }
                     const mt = z.mahlzeit_id ? mahlzeitTitel[z.mahlzeit_id] : null
                     return (
-                      <tr key={z.key} className="border-b border-slate-800/80 hover:bg-slate-950/40">
-                        <td className="whitespace-nowrap px-2 py-2 tabular-nums text-slate-400 md:px-3">
+                      <tr key={z.key} className="border-b border-[var(--app-border)] hover:bg-[var(--app-surface-muted)]">
+                        <td className="whitespace-nowrap px-2 py-2 tabular-nums text-[var(--app-text-muted)] md:px-3">
                           {formatZeit(z.zeit)}
                         </td>
                         <td className="px-2 py-2 md:px-3">
                           <span className="rounded-md bg-amber-950/70 px-1.5 py-0.5 font-bold text-amber-200">Abgang</span>
                         </td>
-                        <td className="max-w-[14rem] truncate px-2 py-2 font-semibold text-slate-200 md:px-3">{pname}</td>
+                        <td className="max-w-[14rem] truncate px-2 py-2 font-semibold text-[var(--app-text)] md:px-3">{pname}</td>
                         <td className="whitespace-nowrap px-2 py-2 font-mono tabular-nums text-amber-200 md:px-3">
                           −{z.menge} {eu}
                         </td>
-                        <td className="max-w-[18rem] px-2 py-2 text-slate-500 md:px-3">
+                        <td className="max-w-[18rem] px-2 py-2 text-[var(--app-text-muted)] md:px-3">
                           <span className="line-clamp-2">
-                            {z.notiz ? <span>{z.notiz}</span> : <span className="text-slate-600">—</span>}
+                            {z.notiz ? <span>{z.notiz}</span> : <span className="text-[var(--app-text-muted)]">—</span>}
                             {mt ? (
-                              <span className="mt-0.5 block text-[10px] text-slate-600">Mahlzeit: {mt}</span>
+                              <span className="mt-0.5 block text-[10px] text-[var(--app-text-muted)]">Mahlzeit: {mt}</span>
                             ) : null}
-                            <span className="mt-0.5 block text-[10px] text-slate-600">{z.quelle}</span>
+                            <span className="mt-0.5 block text-[10px] text-[var(--app-text-muted)]">{z.quelle}</span>
                           </span>
                         </td>
                         <td className="whitespace-nowrap px-2 py-2 text-right md:px-3">
@@ -342,7 +343,7 @@ export function LagerBestandVerlauf({ produktInfos, refreshKey, onNachAenderung 
             </div>
           )}
 
-          <p className="mt-3 text-[10px] leading-relaxed text-slate-600">
+          <p className="mt-3 text-[10px] leading-relaxed text-[var(--app-text-muted)]">
             Einkäufe können hier nicht storniert werden (nur Abgänge). Gehört eine Abgang-Zeile zu einer Mahlzeit, wird die
             Kostenschätzung der Mahlzeit neu berechnet; war es die letzte Zeile, wird die Mahlzeit entfernt.
           </p>

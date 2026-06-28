@@ -13,11 +13,18 @@ import { supabase } from '@/lib/supabase'
 import {
   PageChrome,
   PageHero,
+  PageSubTabs,
   pageSectionHeaderClass,
   pageSectionPanelClass,
   pageSectionShellClass,
   pageSectionTitleClass,
 } from '@/components/page-shell'
+import {
+  appInputAmberClass,
+  appLabelClass,
+  appListItemClass,
+  appSecondaryBtnClass,
+} from '@/lib/app-ui'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import toast from 'react-hot-toast'
 import {
@@ -474,13 +481,13 @@ export default function BesitzPage() {
           <>
             <p>
               Kleiderschrank mit Fotos und feinen Kategorien (T-Shirt, Jeans …) — oder manuell / per{' '}
-              <strong className="font-medium text-zinc-300">Beleg-PDF</strong> importieren.
+              <strong className="font-medium text-[var(--app-text)]">Beleg-PDF</strong> importieren.
             </p>
             {!laden && !schemaFehlt && zeilen.length > 0 ? (
-              <p className="mt-3 text-sm text-zinc-400">
+              <p className="mt-3 text-sm text-[var(--app-text-muted)]">
                 Gesamtwert <span className="font-bold text-amber-200/95">{formatEur(summeGesamt)}</span>
                 {gefiltert.length !== zeilen.length ? (
-                  <span className="text-zinc-500"> · gefiltert {formatEur(summeGefiltert)}</span>
+                  <span className="text-[var(--app-text-muted)]"> · gefiltert {formatEur(summeGefiltert)}</span>
                 ) : null}
               </p>
             ) : null}
@@ -493,11 +500,11 @@ export default function BesitzPage() {
           <p className="font-bold text-amber-200">Tabelle „besitz_gegenstand“ fehlt</p>
           <p className="mt-1.5 text-xs text-amber-100/90">
             Migration in Supabase:{' '}
-            <code className="rounded bg-slate-950 px-1.5 py-0.5 text-[11px] text-slate-300">
+            <code className="rounded bg-[var(--app-surface-muted)] px-1.5 py-0.5 text-[11px] text-[var(--app-text)]">
               supabase/migrations/20260426120000_besitz_gegenstand.sql
             </code>
             {' '}und für Kleiderschrank/Fotos:{' '}
-            <code className="rounded bg-slate-950 px-1.5 py-0.5 text-[11px] text-slate-300">
+            <code className="rounded bg-[var(--app-surface-muted)] px-1.5 py-0.5 text-[11px] text-[var(--app-text)]">
               supabase/migrations/20260607120000_besitz_kleiderschrank.sql
             </code>
           </p>
@@ -513,24 +520,24 @@ export default function BesitzPage() {
             <div className={pageSectionPanelClass}>
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="sm:col-span-2">
-                <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-slate-500">Bezeichnung</label>
+                <label className={`mb-1.5 block ${appLabelClass}`}>Bezeichnung</label>
                 <input
                   type="text"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   placeholder="z. B. Jacke, Kopfhörer"
-                  className="w-full rounded-xl border border-slate-700/90 bg-slate-950/90 px-4 py-3 text-[15px] text-slate-100 outline-none focus:border-amber-600/50 focus:ring-2 focus:ring-amber-500/25"
+                  className={appInputAmberClass}
                 />
               </div>
               <div>
-                <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-slate-500">Kategorie</label>
+                <label className={`mb-1.5 block ${appLabelClass}`}>Kategorie</label>
                 <select
                   value={kategorie}
                   onChange={(e) => {
                     setKategorie(e.target.value)
                     setKleidungsart('')
                   }}
-                  className="w-full rounded-xl border border-slate-700/90 bg-slate-950/90 px-4 py-3 text-sm text-slate-100 outline-none focus:border-amber-600/50 focus:ring-2 focus:ring-amber-500/25"
+                  className={`${appInputAmberClass} text-sm`}
                 >
                   {BESITZ_KATEGORIEN.map((k) => (
                     <option key={k} value={k}>
@@ -541,13 +548,13 @@ export default function BesitzPage() {
               </div>
               {besitzHatFeinart(katNorm) ? (
                 <div>
-                  <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                  <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-[var(--app-text-muted)]">
                     {besitzArtLabel(katNorm)}
                   </label>
                   <select
                     value={kleidungsart}
                     onChange={(e) => setKleidungsart(e.target.value)}
-                    className="w-full rounded-xl border border-slate-700/90 bg-slate-950/90 px-4 py-3 text-sm text-slate-100 outline-none focus:border-amber-600/50 focus:ring-2 focus:ring-amber-500/25"
+                    className={`${appInputAmberClass} text-sm`}
                   >
                     <option value="">— Art wählen —</option>
                     {artGruppen.map((g) => (
@@ -565,7 +572,7 @@ export default function BesitzPage() {
               {besitzHatFeinart(katNorm) ? (
                 <>
                   <div>
-                    <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                    <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-[var(--app-text-muted)]">
                       Größe (optional)
                     </label>
                     <input
@@ -573,11 +580,11 @@ export default function BesitzPage() {
                       value={groesse}
                       onChange={(e) => setGroesse(e.target.value)}
                       placeholder="z. B. M, 32/32, 42"
-                      className="w-full rounded-xl border border-slate-700/90 bg-slate-950/90 px-4 py-3 text-sm text-slate-100 outline-none focus:border-amber-600/50 focus:ring-2 focus:ring-amber-500/25"
+                      className={`${appInputAmberClass} text-sm`}
                     />
                   </div>
                   <div>
-                    <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                    <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-[var(--app-text-muted)]">
                       Farbe (optional)
                     </label>
                     <input
@@ -585,50 +592,50 @@ export default function BesitzPage() {
                       value={farbe}
                       onChange={(e) => setFarbe(e.target.value)}
                       placeholder="z. B. Navy, Schwarz"
-                      className="w-full rounded-xl border border-slate-700/90 bg-slate-950/90 px-4 py-3 text-sm text-slate-100 outline-none focus:border-amber-600/50 focus:ring-2 focus:ring-amber-500/25"
+                      className={`${appInputAmberClass} text-sm`}
                     />
                   </div>
                 </>
               ) : null}
               <div>
-                <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-slate-500">Einkaufspreis (EUR)</label>
+                <label className={`mb-1.5 block ${appLabelClass}`}>Einkaufspreis (EUR)</label>
                 <input
                   type="text"
                   inputMode="decimal"
                   value={preisStr}
                   onChange={(e) => setPreisStr(e.target.value)}
                   placeholder="0,00"
-                  className="w-full rounded-xl border border-slate-700/90 bg-slate-950/90 px-4 py-3 text-lg font-semibold tabular-nums text-slate-100 outline-none focus:border-amber-600/50 focus:ring-2 focus:ring-amber-500/25"
+                  className={`${appInputAmberClass} text-lg font-semibold tabular-nums`}
                 />
               </div>
               <div>
-                <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-slate-500">Kaufdatum (optional)</label>
+                <label className={`mb-1.5 block ${appLabelClass}`}>Kaufdatum (optional)</label>
                 <input
                   type="date"
                   value={einkaufsdatum}
                   onChange={(e) => setEinkaufsdatum(e.target.value)}
                   max={heuteIsoDatum()}
-                  className="w-full rounded-xl border border-slate-700/90 bg-slate-950/90 px-4 py-3 text-sm text-slate-100 outline-none focus:border-amber-600/50 focus:ring-2 focus:ring-amber-500/25"
+                  className={`${appInputAmberClass} text-sm`}
                 />
               </div>
               <div>
-                <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-slate-500">Händler / Shop (optional)</label>
+                <label className={`mb-1.5 block ${appLabelClass}`}>Händler / Shop (optional)</label>
                 <input
                   type="text"
                   value={haendler}
                   onChange={(e) => setHaendler(e.target.value)}
                   placeholder="Shop (optional)"
-                  className="w-full rounded-xl border border-slate-700/90 bg-slate-950/90 px-4 py-3 text-sm text-slate-100 outline-none focus:border-amber-600/50 focus:ring-2 focus:ring-amber-500/25"
+                  className={`${appInputAmberClass} text-sm`}
                 />
               </div>
               <div>
-                <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-slate-500">Hersteller / Marke (optional)</label>
+                <label className={`mb-1.5 block ${appLabelClass}`}>Hersteller / Marke (optional)</label>
                 <input
                   type="text"
                   value={hersteller}
                   onChange={(e) => setHersteller(e.target.value)}
                   placeholder="Marke (optional)"
-                  className="w-full rounded-xl border border-slate-700/90 bg-slate-950/90 px-4 py-3 text-sm text-slate-100 outline-none focus:border-amber-600/50 focus:ring-2 focus:ring-amber-500/25"
+                  className={`${appInputAmberClass} text-sm`}
                 />
               </div>
               <div className="sm:col-span-2">
@@ -640,12 +647,12 @@ export default function BesitzPage() {
                 />
               </div>
               <div className="sm:col-span-2">
-                <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-slate-500">Notiz (optional)</label>
+                <label className={`mb-1.5 block ${appLabelClass}`}>Notiz (optional)</label>
                 <input
                   type="text"
                   value={notiz}
                   onChange={(e) => setNotiz(e.target.value)}
-                  className="w-full rounded-xl border border-slate-700/90 bg-slate-950/90 px-4 py-3 text-sm text-slate-100 outline-none focus:border-amber-600/50 focus:ring-2 focus:ring-amber-500/25"
+                  className={`${appInputAmberClass} text-sm`}
                 />
               </div>
             </div>
@@ -663,7 +670,7 @@ export default function BesitzPage() {
                   type="button"
                   disabled={speichernBusy}
                   onClick={leereFormular}
-                  className="rounded-xl border border-slate-600 bg-slate-950 px-5 py-3 text-sm font-semibold text-slate-300 transition hover:bg-slate-800 disabled:opacity-40"
+                  className={appSecondaryBtnClass}
                 >
                   Abbrechen
                 </button>
@@ -678,10 +685,10 @@ export default function BesitzPage() {
                 <KiBrandChip iconSize={14} />
                 <h2 className={pageSectionTitleClass}>Beleg importieren (PDF oder Foto)</h2>
               </div>
-              <p className="mt-2 text-xs leading-relaxed text-zinc-400">
+              <p className="mt-2 text-xs leading-relaxed text-[var(--app-text-muted)]">
               Text-PDFs werden lokal eingelesen; gescannte PDFs, Handy-Fotos und Bilder werden per KI ausgewertet (wie Finanz-Coach:{' '}
-              <code className="rounded bg-zinc-950 px-1 font-mono text-[10px] text-zinc-400">GEMINI_API_KEY</code> oder{' '}
-              <code className="rounded bg-zinc-950 px-1 font-mono text-[10px] text-zinc-400">OPENAI_API_KEY</code>
+              <code className="rounded bg-[var(--app-surface-muted)] px-1 font-mono text-[10px] text-[var(--app-text-muted)]">GEMINI_API_KEY</code> oder{' '}
+              <code className="rounded bg-[var(--app-surface-muted)] px-1 font-mono text-[10px] text-[var(--app-text-muted)]">OPENAI_API_KEY</code>
               ).
               </p>
             </div>
@@ -690,7 +697,7 @@ export default function BesitzPage() {
               <label
                 htmlFor="besitz-beleg-import"
                 className={`inline-flex cursor-pointer items-center justify-center rounded-xl border-2 border-dashed px-5 py-3.5 text-sm font-semibold transition-colors ${
-                  pdfLaden ? 'cursor-not-allowed border-slate-700 text-slate-600' : 'border-amber-700/55 text-amber-200/95 hover:bg-amber-950/25'
+                  pdfLaden ? 'cursor-not-allowed border-[var(--app-border-strong)] text-[var(--app-text-muted)]' : 'border-amber-700/55 text-amber-200/95 hover:bg-amber-950/25'
                 }`}
               >
                 {pdfLaden ? 'Beleg wird ausgewertet…' : 'PDF oder Foto auswählen …'}
@@ -705,51 +712,51 @@ export default function BesitzPage() {
               />
             </div>
             {pdfVorschau ? (
-              <div className="mt-6 rounded-xl border border-slate-700/80 bg-slate-950/50 p-4">
+              <div className="mt-6 rounded-xl border border-[var(--app-border-strong)] bg-[var(--app-surface-muted)] p-4">
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                  <p className="text-sm font-semibold text-slate-200">
-                    Vorschau: <span className="font-mono text-xs text-slate-400">{pdfVorschau.dateiname}</span>
+                  <p className="text-sm font-semibold text-[var(--app-text)]">
+                    Vorschau: <span className="font-mono text-xs text-[var(--app-text-muted)]">{pdfVorschau.dateiname}</span>
                   </p>
                   <div className="flex flex-wrap gap-2">
                     <button
                       type="button"
                       onClick={() => pdfAlleAn(true)}
-                      className="rounded-lg border border-slate-600 px-3 py-1.5 text-xs font-semibold text-slate-300 hover:bg-slate-800"
+                      className="rounded-lg border border-[var(--app-border-strong)] px-3 py-1.5 text-xs font-semibold text-[var(--app-text)] hover:bg-[var(--app-surface-hover)]"
                     >
                       Alle an
                     </button>
                     <button
                       type="button"
                       onClick={() => pdfAlleAn(false)}
-                      className="rounded-lg border border-slate-600 px-3 py-1.5 text-xs font-semibold text-slate-300 hover:bg-slate-800"
+                      className="rounded-lg border border-[var(--app-border-strong)] px-3 py-1.5 text-xs font-semibold text-[var(--app-text)] hover:bg-[var(--app-surface-hover)]"
                     >
                       Alle aus
                     </button>
                   </div>
                 </div>
-                {pdfVorschau.hinweis ? <p className="mt-2 text-[12px] text-slate-500">{pdfVorschau.hinweis}</p> : null}
+                {pdfVorschau.hinweis ? <p className="mt-2 text-[12px] text-[var(--app-text-muted)]">{pdfVorschau.hinweis}</p> : null}
                 <ul className="mt-4 max-h-[min(24rem,55vh)] space-y-2 overflow-y-auto pr-1">
                   {pdfVorschau.positionen.map((p, i) => (
                     <li key={`${p.name}-${i}`}>
-                      <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-slate-800/90 bg-slate-900/60 p-3 hover:bg-slate-800/40">
+                      <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-[var(--app-border)] bg-[var(--app-surface-muted)] p-3 hover:bg-[var(--app-surface-hover)]">
                         <input
                           type="checkbox"
                           checked={pdfVorschau.auswahl[i]}
                           onChange={() => pdfToggleZeile(i)}
-                          className="mt-1 h-4 w-4 shrink-0 rounded border-slate-600 accent-amber-500"
+                          className="mt-1 h-4 w-4 shrink-0 rounded border-[var(--app-border-strong)] accent-amber-500"
                         />
                         <div className="min-w-0 flex-1">
-                          <p className="font-semibold text-slate-100">{p.name}</p>
+                          <p className="font-semibold text-[var(--app-text)]">{p.name}</p>
                           <p className="mt-0.5 text-xs text-amber-200/90">{p.kategorie}</p>
-                          {p.haendler ? <p className="mt-0.5 text-xs text-slate-500">{p.haendler}</p> : null}
+                          {p.haendler ? <p className="mt-0.5 text-xs text-[var(--app-text-muted)]">{p.haendler}</p> : null}
                           {p.hersteller ? (
-                            <p className="mt-0.5 text-xs text-slate-400">Hersteller: {p.hersteller}</p>
+                            <p className="mt-0.5 text-xs text-[var(--app-text-muted)]">Hersteller: {p.hersteller}</p>
                           ) : null}
-                          {p.notiz ? <p className="mt-1 text-[12px] text-slate-500">{p.notiz}</p> : null}
+                          {p.notiz ? <p className="mt-1 text-[12px] text-[var(--app-text-muted)]">{p.notiz}</p> : null}
                         </div>
                         <div className="shrink-0 text-right">
                           <p className="font-bold tabular-nums text-amber-200">{formatEur(p.einkaufspreis_eur)}</p>
-                          <p className="text-[10px] text-slate-500">{formatDatumDe(p.einkaufsdatum)}</p>
+                          <p className="text-[10px] text-[var(--app-text-muted)]">{formatDatumDe(p.einkaufsdatum)}</p>
                         </div>
                       </label>
                     </li>
@@ -768,7 +775,7 @@ export default function BesitzPage() {
                     type="button"
                     disabled={pdfUebernehmenBusy}
                     onClick={() => setPdfVorschau(null)}
-                    className="rounded-xl border border-slate-600 bg-slate-950 px-5 py-2.5 text-sm font-semibold text-slate-300 transition hover:bg-slate-800 disabled:opacity-40"
+                    className="rounded-xl border border-[var(--app-border-strong)] bg-[var(--app-surface-muted)] px-5 py-2.5 text-sm font-semibold text-[var(--app-text)] transition hover:bg-[var(--app-surface-hover)] disabled:opacity-40"
                   >
                     Vorschau verwerfen
                   </button>
@@ -783,7 +790,7 @@ export default function BesitzPage() {
             <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
               <div className="min-w-0 flex-1">
                 <h2 className={pageSectionTitleClass}>{ansicht === 'kleiderschrank' ? 'Kleiderschrank' : 'Liste'}</h2>
-                <p className="mt-1 text-[12px] text-zinc-400">
+                <p className="mt-1 text-[12px] text-[var(--app-text-muted)]">
                   {laden
                     ? 'Lade …'
                     : ansicht === 'kleiderschrank'
@@ -791,33 +798,25 @@ export default function BesitzPage() {
                       : `${gefiltert.length} von ${zeilen.length} Einträgen`}
                 </p>
               </div>
-              <div className="flex flex-wrap items-center gap-2">
-                <div className="flex rounded-xl border border-slate-700/90 bg-slate-950 p-0.5">
-                  <button
-                    type="button"
-                    onClick={() => setAnsicht('kleiderschrank')}
-                    className={`rounded-lg px-3 py-2 text-xs font-bold transition ${
-                      ansicht === 'kleiderschrank' ? 'bg-amber-600 text-white' : 'text-slate-400 hover:text-slate-200'
-                    }`}
-                  >
-                    Kleiderschrank
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setAnsicht('liste')}
-                    className={`rounded-lg px-3 py-2 text-xs font-bold transition ${
-                      ansicht === 'liste' ? 'bg-amber-600 text-white' : 'text-slate-400 hover:text-slate-200'
-                    }`}
-                  >
-                    Liste
-                  </button>
-                </div>
+              <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap sm:items-center">
+              <PageSubTabs
+                selectId="besitz-ansicht"
+                ariaLabel="Besitz-Ansicht"
+                className="w-full sm:w-auto"
+                sticky={false}
+                tabs={[
+                  { id: 'kleiderschrank' as const, label: 'Kleiderschrank', accent: 'teal' },
+                  { id: 'liste' as const, label: 'Liste', accent: 'teal' },
+                ]}
+                active={ansicht}
+                onChange={setAnsicht}
+              />
                 {ansicht === 'liste' ? (
                   <>
                 <select
                   value={filterKat}
                   onChange={(e) => setFilterKat(e.target.value)}
-                  className="rounded-xl border border-slate-700/90 bg-slate-950 px-3 py-2 text-xs font-semibold text-slate-200 outline-none focus:ring-2 focus:ring-amber-500/30"
+                  className={`${appInputAmberClass} py-2 text-xs font-semibold`}
                 >
                   <option value="">Alle Kategorien</option>
                   {BESITZ_KATEGORIEN.map((k) => (
@@ -829,7 +828,7 @@ export default function BesitzPage() {
                 <select
                   value={sort}
                   onChange={(e) => setSort(e.target.value as 'name' | 'preis' | 'datum')}
-                  className="rounded-xl border border-slate-700/90 bg-slate-950 px-3 py-2 text-xs font-semibold text-slate-200 outline-none focus:ring-2 focus:ring-amber-500/30"
+                  className={`${appInputAmberClass} py-2 text-xs font-semibold`}
                 >
                   <option value="name">Sortierung: Name</option>
                   <option value="preis">Sortierung: Preis (hoch)</option>
@@ -847,7 +846,7 @@ export default function BesitzPage() {
                 value={suche}
                 onChange={(e) => setSuche(e.target.value)}
                 placeholder={ansicht === 'kleiderschrank' ? 'Im Kleiderschrank suchen …' : 'Suchen …'}
-                className="w-full rounded-xl border border-slate-700/90 bg-slate-950/90 px-4 py-3 text-sm text-slate-100 outline-none focus:border-amber-600/50 focus:ring-2 focus:ring-amber-500/25"
+                className={appInputAmberClass}
               />
             </div>
             {ansicht === 'kleiderschrank' ? (
@@ -870,13 +869,13 @@ export default function BesitzPage() {
             ) : (
               <>
             {laden ? (
-              <p className="mt-10 py-12 text-center text-slate-500">Lade Einträge …</p>
+              <p className="mt-10 py-12 text-center text-[var(--app-text-muted)]">Lade Einträge …</p>
             ) : zeilen.length === 0 ? (
-              <p className="mt-10 py-12 text-center text-slate-500">Noch leer — oben anlegen.</p>
+              <p className="mt-10 py-12 text-center text-[var(--app-text-muted)]">Noch leer — oben anlegen.</p>
             ) : gefiltert.length === 0 ? (
-              <p className="mt-10 py-12 text-center text-slate-500">Keine Treffer für Filter oder Suche.</p>
+              <p className="mt-10 py-12 text-center text-[var(--app-text-muted)]">Keine Treffer für Filter oder Suche.</p>
             ) : (
-              <ul className="mt-6 divide-y divide-slate-800/80">
+              <ul className="mt-6 divide-y divide-[var(--app-border)]">
                 {gefiltert.map((z) => (
                   <li key={z.id} className="flex flex-col gap-0 py-4 first:pt-0">
                     <BesitzGebrauchtpreisKiRoot row={z}>
@@ -887,25 +886,25 @@ export default function BesitzPage() {
                               {normalisiereBesitzKategorie(z.kategorie)}
                             </span>
                             {z.kleidungsart ? (
-                              <span className="rounded-lg border border-slate-700/80 bg-slate-900/60 px-2 py-0.5 text-[10px] font-semibold text-slate-300">
+                              <span className="rounded-lg border border-[var(--app-border-strong)] bg-[var(--app-surface-muted)] px-2 py-0.5 text-[10px] font-semibold text-[var(--app-text)]">
                                 {z.kleidungsart}
                               </span>
                             ) : null}
-                            <span className="text-[11px] tabular-nums text-slate-500">{formatDatumDe(z.einkaufsdatum)}</span>
+                            <span className="text-[11px] tabular-nums text-[var(--app-text-muted)]">{formatDatumDe(z.einkaufsdatum)}</span>
                           </div>
-                          <p className="mt-1.5 text-base font-semibold text-slate-100">{z.name}</p>
+                          <p className="mt-1.5 text-base font-semibold text-[var(--app-text)]">{z.name}</p>
                           {(z.groesse || z.farbe) ? (
-                            <p className="mt-0.5 text-xs text-slate-400">
+                            <p className="mt-0.5 text-xs text-[var(--app-text-muted)]">
                               {[z.groesse, z.farbe].filter(Boolean).join(' · ')}
                             </p>
                           ) : null}
                           {z.hersteller ? (
-                            <p className="mt-0.5 text-sm text-slate-300">
-                              <span className="text-slate-500">Hersteller:</span> {z.hersteller}
+                            <p className="mt-0.5 text-sm text-[var(--app-text)]">
+                              <span className="text-[var(--app-text-muted)]">Hersteller:</span> {z.hersteller}
                             </p>
                           ) : null}
-                          {z.haendler ? <p className="mt-0.5 text-sm text-slate-400">{z.haendler}</p> : null}
-                          {z.notiz ? <p className="mt-1 text-[13px] leading-relaxed text-slate-500">{z.notiz}</p> : null}
+                          {z.haendler ? <p className="mt-0.5 text-sm text-[var(--app-text-muted)]">{z.haendler}</p> : null}
+                          {z.notiz ? <p className="mt-1 text-[13px] leading-relaxed text-[var(--app-text-muted)]">{z.notiz}</p> : null}
                         </div>
                         <div className="flex shrink-0 flex-col items-stretch gap-2 sm:items-end">
                           <span className="text-lg font-bold tabular-nums text-amber-200 sm:text-right">
@@ -915,14 +914,14 @@ export default function BesitzPage() {
                             <button
                               type="button"
                               onClick={() => starteBearbeiten(z)}
-                              className="rounded-lg border border-slate-600 px-3 py-1.5 text-xs font-semibold text-sky-200 transition hover:bg-sky-500/15"
+                              className="rounded-lg border border-[var(--app-border-strong)] px-3 py-1.5 text-xs font-semibold text-sky-200 transition hover:bg-sky-500/15"
                             >
                               Bearbeiten
                             </button>
                             <button
                               type="button"
                               onClick={() => void loeschen(z.id)}
-                              className="rounded-lg border border-slate-600 px-3 py-1.5 text-xs font-semibold text-rose-300/95 transition hover:bg-rose-500/15"
+                              className="rounded-lg border border-[var(--app-border-strong)] px-3 py-1.5 text-xs font-semibold text-rose-300/95 transition hover:bg-rose-500/15"
                             >
                               Löschen
                             </button>

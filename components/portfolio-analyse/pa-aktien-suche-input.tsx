@@ -147,7 +147,7 @@ export function PaAktienSucheInput({
   return (
     <div className="relative" ref={wrapRef}>
     <form onSubmit={(e) => void onSubmit(e)}>
-      <label className="mb-1 block text-[11px] font-medium uppercase tracking-wide text-zinc-500">
+      <label className="mb-1 block text-[11px] font-medium uppercase tracking-wide text-[var(--app-text-muted)]">
         Aktie suchen
       </label>
       <div className="flex gap-2">
@@ -178,10 +178,10 @@ export function PaAktienSucheInput({
             aria-autocomplete="list"
             aria-controls={listId}
             aria-expanded={offen}
-            className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-600"
+            className="w-full rounded-lg border border-[var(--app-border-strong)] bg-[var(--app-surface-muted)] px-3 py-2 text-sm text-[var(--app-text)] placeholder:text-[var(--app-text-muted)]"
           />
           {sucheLaden ? (
-            <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-zinc-500">
+            <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-[var(--app-text-muted)]">
               …
             </span>
           ) : null}
@@ -189,7 +189,7 @@ export function PaAktienSucheInput({
             <ul
               id={listId}
               role="listbox"
-              className="absolute z-20 mt-1 max-h-56 w-full overflow-y-auto rounded-lg border border-zinc-700 bg-zinc-900 py-1 shadow-xl shadow-black/40"
+              className="absolute z-20 mt-1 max-h-56 w-full overflow-y-auto rounded-lg border border-[var(--app-border-strong)] bg-[var(--app-surface-muted)] py-1 shadow-xl shadow-black/40"
             >
               {treffer.map((t, i) => (
                 <li key={t.symbol} role="option" aria-selected={i === aktivIdx}>
@@ -201,8 +201,8 @@ export function PaAktienSucheInput({
                       i === aktivIdx ? 'bg-teal-500/15' : 'hover:bg-white/[0.04]'
                     }`}
                   >
-                    <span className="truncate text-sm font-medium text-zinc-100">{t.name}</span>
-                    <span className="mt-0.5 text-[11px] text-zinc-500">
+                    <span className="truncate text-sm font-medium text-[var(--app-text)]">{t.name}</span>
+                    <span className="mt-0.5 text-[11px] text-[var(--app-text-muted)]">
                       {t.symbol}
                       {t.exchange ? ` · ${t.exchange}` : ''}
                     </span>
@@ -223,7 +223,7 @@ export function PaAktienSucheInput({
       {fehler ? (
         <p className="mt-2 text-[11px] text-amber-400/90">{fehler}</p>
       ) : (
-        <p className="mt-2 text-[10px] text-zinc-600">Name, Ticker oder ISIN · nur Einzelaktien</p>
+        <p className="mt-2 text-[10px] text-[var(--app-text-muted)]">Name, Ticker oder ISIN · nur Einzelaktien</p>
       )}
     </form>
     </div>

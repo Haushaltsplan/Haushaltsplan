@@ -1,5 +1,6 @@
 'use client'
 
+import { appTableScrollInlineClassName } from '@/components/page-shell'
 import { WhoopChartHeader } from '@/components/fitnessdaten/whoop-info-modal'
 import { HR_ZONE_COLORS } from '@/lib/fitnessdaten/types'
 
@@ -42,7 +43,7 @@ export function WhoopWeeklyBarChart({
   return (
     <div className="rounded-2xl border border-white/[0.06] bg-[#111113] p-4">
       <WhoopChartHeader title={title} onInfo={onInfo} />
-      <div className="overflow-x-auto">
+      <div className={appTableScrollInlineClassName}>
         <svg
           viewBox={`0 0 ${w} ${h}`}
           style={{ minWidth: w, width: '100%', height: h }}
@@ -131,7 +132,7 @@ export function WhoopWeeklyLineChart({
   return (
     <div className="rounded-2xl border border-white/[0.06] bg-[#111113] p-4">
       <WhoopChartHeader title={title} onInfo={onInfo} />
-      <div className="overflow-x-auto">
+      <div className={appTableScrollInlineClassName}>
         <svg
           viewBox={`0 0 ${w} ${h}`}
           style={{ minWidth: w, width: '100%', height: h }}
@@ -181,7 +182,7 @@ export function WhoopStackedZoneChart({
   return (
     <div className="rounded-2xl border border-white/[0.06] bg-[#111113] p-4">
       <WhoopChartHeader title={title} onInfo={onInfo} />
-      <div className="mt-2 flex flex-wrap gap-3 text-[9px] text-zinc-500">
+      <div className="mt-2 flex flex-wrap gap-3 text-[9px] text-[var(--app-text-muted)]">
         {zones.map((z) => (
           <span key={z.key} className="flex items-center gap-1">
             <span className="inline-block h-2 w-2 rounded-sm" style={{ background: z.color }} />
@@ -297,7 +298,7 @@ export function WhoopDualLineChart({
   return (
     <div className="rounded-2xl border border-white/[0.06] bg-[#111113] p-4">
       <WhoopChartHeader title={title} onInfo={onInfo} />
-      <div className="mb-2 flex gap-4 text-[9px] text-zinc-500">
+      <div className="mb-2 flex gap-4 text-[9px] text-[var(--app-text-muted)]">
         <span className="flex items-center gap-1">
           <span className="h-2 w-2 rounded-full" style={{ background: colorA }} />
           {labelA}
@@ -392,7 +393,7 @@ export function WhoopRestorativeChart({
   return (
     <div className="rounded-2xl border border-white/[0.06] bg-[#111113] p-4">
       <WhoopChartHeader title={title} onInfo={onInfo} />
-      <div className="mb-2 flex gap-4 text-[9px] text-zinc-500">
+      <div className="mb-2 flex gap-4 text-[9px] text-[var(--app-text-muted)]">
         <span className="flex items-center gap-1">
           <span className="inline-block h-2 w-2 rounded-sm bg-[#a78bfa]" />
           REM

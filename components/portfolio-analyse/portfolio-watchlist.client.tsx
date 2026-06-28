@@ -107,8 +107,8 @@ export function PortfolioWatchlistClient() {
       <div className="grid gap-4 lg:grid-cols-[minmax(0,320px)_1fr] lg:items-start">
         <PaCard className="overflow-hidden">
           <div className="border-b border-white/[0.04] px-4 py-3">
-            <h2 className="text-sm font-semibold text-zinc-100">Beobachtungsliste</h2>
-            <p className="mt-0.5 text-[11px] text-zinc-500">{eintraege.length} Eintrag(e)</p>
+            <h2 className="text-sm font-semibold text-[var(--app-text)]">Beobachtungsliste</h2>
+            <p className="mt-0.5 text-[11px] text-[var(--app-text-muted)]">{eintraege.length} Eintrag(e)</p>
           </div>
 
           <div className="border-b border-white/[0.04] p-4">
@@ -121,7 +121,7 @@ export function PortfolioWatchlistClient() {
           </div>
 
           {eintraege.length === 0 ? (
-            <p className="px-4 py-8 text-center text-sm text-zinc-500">
+            <p className="px-4 py-8 text-center text-sm text-[var(--app-text-muted)]">
               Noch keine Aktien auf der Watchlist.
             </p>
           ) : (
@@ -138,8 +138,8 @@ export function PortfolioWatchlistClient() {
                     >
                       <PortfolioIsinLogo isin={e.isin} fallbackName={e.name} meta={meta} groesse="sm" />
                       <div className="min-w-0">
-                        <p className="truncate text-sm font-medium text-zinc-100">{e.name}</p>
-                        <p className="truncate text-[10px] text-zinc-500">
+                        <p className="truncate text-sm font-medium text-[var(--app-text)]">{e.name}</p>
+                        <p className="truncate text-[10px] text-[var(--app-text-muted)]">
                           {e.isin ?? e.symbolYahoo ?? '—'}
                         </p>
                       </div>
@@ -148,7 +148,7 @@ export function PortfolioWatchlistClient() {
                       type="button"
                       title="Entfernen"
                       onClick={() => onEntfernen(e)}
-                      className="shrink-0 rounded p-1.5 text-zinc-600 hover:bg-rose-500/10 hover:text-rose-400"
+                      className="shrink-0 rounded p-1.5 text-[var(--app-text-muted)] hover:bg-rose-500/10 hover:text-rose-400"
                     >
                       <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
                         <path strokeLinecap="round" d="M18 6 6 18M6 6l12 12" />

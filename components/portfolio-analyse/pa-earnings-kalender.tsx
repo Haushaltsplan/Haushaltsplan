@@ -1,5 +1,6 @@
 'use client'
 
+import { appTableScrollClassName } from '@/components/page-shell'
 import Link from 'next/link'
 import { useEffect, useMemo, useState } from 'react'
 import {
@@ -74,8 +75,8 @@ function ListenAnsicht({
       {daten.monate.map((monat) => (
         <section key={monat.monatKey}>
           <div className="mb-3 flex items-baseline justify-between gap-3 border-b border-white/[0.06] pb-2">
-            <h3 className="text-xs font-semibold uppercase tracking-widest text-zinc-400">{monat.monatLabel}</h3>
-            <p className="text-sm font-semibold tabular-nums text-zinc-100">
+            <h3 className="text-xs font-semibold uppercase tracking-widest text-[var(--app-text-muted)]">{monat.monatLabel}</h3>
+            <p className="text-sm font-semibold tabular-nums text-[var(--app-text)]">
               {monat.anzahl} {monat.anzahl === 1 ? 'Termin' : 'Termine'}
             </p>
           </div>
@@ -151,9 +152,9 @@ export function PaEarningsKalender({
 
   if (laden) {
     return (
-      <p className="py-16 text-center text-sm text-zinc-500">
+      <p className="py-16 text-center text-sm text-[var(--app-text-muted)]">
         Kalender wird geladen …
-        <span className="mt-2 block text-[11px] text-zinc-600">
+        <span className="mt-2 block text-[11px] text-[var(--app-text-muted)]">
           DivvyDiary-Abruf läuft (ca. 3–5 s pro Aktie).
         </span>
       </p>
@@ -167,7 +168,7 @@ export function PaEarningsKalender({
   if (!daten || eintraege.length === 0) {
     return (
       <div className="space-y-4">
-        <p className="text-sm text-zinc-500">Keine Quartalstermine im Zeitraum.</p>
+        <p className="text-sm text-[var(--app-text-muted)]">Keine Quartalstermine im Zeitraum.</p>
         <Link href="/portfolioanalyse/earnings" className="text-sm font-medium text-teal-400 hover:text-teal-300">
           ← Zurück zu Quartalszahlen
         </Link>
@@ -182,7 +183,7 @@ export function PaEarningsKalender({
           <button
             type="button"
             onClick={() => setMonatKey((m) => verschiebeMonat(m, ansicht === 'jahr' ? -12 : -1))}
-            className="rounded-lg border border-white/[0.08] bg-zinc-900/80 px-3 py-2 text-sm text-zinc-300 transition hover:bg-zinc-800"
+            className="rounded-lg border border-white/[0.08] bg-[var(--app-surface-muted)] px-3 py-2 text-sm text-[var(--app-text)] transition hover:bg-[var(--app-surface-hover)]"
             aria-label="Vorheriger Monat"
           >
             ‹
@@ -190,7 +191,7 @@ export function PaEarningsKalender({
           <button
             type="button"
             onClick={() => setMonatKey((m) => verschiebeMonat(m, ansicht === 'jahr' ? 12 : 1))}
-            className="rounded-lg border border-white/[0.08] bg-zinc-900/80 px-3 py-2 text-sm text-zinc-300 transition hover:bg-zinc-800"
+            className="rounded-lg border border-white/[0.08] bg-[var(--app-surface-muted)] px-3 py-2 text-sm text-[var(--app-text)] transition hover:bg-[var(--app-surface-hover)]"
             aria-label="Nächster Monat"
           >
             ›
@@ -206,7 +207,7 @@ export function PaEarningsKalender({
               className={`rounded-md px-3 py-1.5 text-xs font-medium capitalize transition ${
                 ansicht === id
                   ? 'bg-[#eef0f1]/10 text-[#eef0f1] ring-1 ring-[#eef0f1]/15'
-                  : 'text-zinc-500 hover:text-zinc-300'
+                  : 'text-[var(--app-text-muted)] hover:text-[var(--app-text)]'
               }`}
             >
               {id === 'monat' ? 'Monat' : 'Jahr'}
@@ -227,8 +228,8 @@ export function PaEarningsKalender({
               onClick={() => setLayout(id)}
               className={`rounded-md px-3 py-1.5 text-xs font-medium transition ${
                 layout === id
-                  ? 'bg-zinc-800/90 text-zinc-200 ring-1 ring-white/[0.06]'
-                  : 'text-zinc-500 hover:text-zinc-300'
+                  ? 'bg-[var(--app-surface-muted)]/90 text-[var(--app-text)] ring-1 ring-white/[0.06]'
+                  : 'text-[var(--app-text-muted)] hover:text-[var(--app-text)]'
               }`}
             >
               {label}
@@ -249,8 +250,8 @@ export function PaEarningsKalender({
       ) : ansicht === 'jahr' ? (
         <div>
           <div className="mb-4 flex flex-wrap items-baseline justify-between gap-2">
-            <h2 className="text-lg font-semibold text-zinc-100">{jahr}</h2>
-            <p className="text-sm tabular-nums text-zinc-400">
+            <h2 className="text-lg font-semibold text-[var(--app-text)]">{jahr}</h2>
+            <p className="text-sm tabular-nums text-[var(--app-text-muted)]">
               {kalenderJahr.reduce((s, m) => s + m.anzahl, 0)} Termine
             </p>
           </div>
@@ -263,18 +264,18 @@ export function PaEarningsKalender({
                   setMonatKey(m.monatKey)
                   setAnsicht('monat')
                 }}
-                className={`rounded-xl border p-4 text-left transition hover:border-teal-500/30 hover:bg-zinc-900/80 ${
+                className={`rounded-xl border p-4 text-left transition hover:border-teal-500/30 hover:bg-[var(--app-surface-muted)] ${
                   m.anzahl > 0
-                    ? 'border-white/[0.08] bg-zinc-950/60'
-                    : 'border-white/[0.04] bg-zinc-950/30 opacity-60'
+                    ? 'border-white/[0.08] bg-[var(--app-surface-muted)]'
+                    : 'border-white/[0.04] bg-[var(--app-surface-muted)]/30 opacity-60'
                 }`}
               >
-                <p className="text-sm font-medium text-zinc-200">{m.titel}</p>
-                <p className="mt-2 text-lg font-semibold tabular-nums text-zinc-50">
+                <p className="text-sm font-medium text-[var(--app-text)]">{m.titel}</p>
+                <p className="mt-2 text-lg font-semibold tabular-nums text-[var(--app-text)]">
                   {m.anzahl > 0 ? m.anzahl : '—'}
                 </p>
                 {m.anzahl > 0 ? (
-                  <p className="mt-1 text-[11px] text-zinc-500">
+                  <p className="mt-1 text-[11px] text-[var(--app-text-muted)]">
                     {m.anzahl === 1 ? 'Termin' : 'Termine'}
                   </p>
                 ) : null}
@@ -285,21 +286,21 @@ export function PaEarningsKalender({
       ) : (
         <div>
           <div className="mb-4 flex flex-wrap items-baseline justify-between gap-2">
-            <h2 className="text-lg font-semibold text-zinc-100">
+            <h2 className="text-lg font-semibold text-[var(--app-text)]">
               {kalenderMonat.titel}
-              <span className="ml-2 text-sm font-normal text-zinc-500">
+              <span className="ml-2 text-sm font-normal text-[var(--app-text-muted)]">
                 {kalenderMonat.anzahl} {kalenderMonat.anzahl === 1 ? 'Termin' : 'Termine'}
               </span>
             </h2>
           </div>
 
-          <div className="overflow-x-auto rounded-xl border border-[#eef0f1]/[0.08] bg-[#0a0a0b]/50">
-            <div className="min-w-[640px]">
-              <div className="grid grid-cols-7 border-b border-white/[0.06] bg-zinc-900/50">
+          <div className={`${appTableScrollClassName} rounded-xl border border-[var(--app-border)] bg-[var(--app-surface-muted)]`}>
+            <div className="min-w-[480px] sm:min-w-[640px]">
+              <div className="grid grid-cols-7 border-b border-white/[0.06] bg-[var(--app-surface-muted)]">
                 {KALENDER_WOCHENTAGE.map((w) => (
                   <div
                     key={w}
-                    className="px-2 py-2 text-center text-[10px] font-semibold uppercase tracking-wider text-zinc-500"
+                    className="px-2 py-2 text-center text-[10px] font-semibold uppercase tracking-wider text-[var(--app-text-muted)]"
                   >
                     {w}
                   </div>
@@ -312,8 +313,8 @@ export function PaEarningsKalender({
                     return (
                       <div
                         key={tag.iso}
-                        className={`flex min-h-[7.5rem] flex-col border-r border-white/[0.04] p-1.5 last:border-r-0 sm:min-h-[8.5rem] sm:p-2 ${
-                          tag.imMonat ? 'bg-zinc-950/40' : 'bg-zinc-950/20'
+                        className={`flex min-h-[4.5rem] flex-col border-r border-[var(--app-border)] p-1 last:border-r-0 sm:min-h-[7rem] sm:p-1.5 md:min-h-[8.5rem] md:p-2 ${
+                          tag.imMonat ? 'bg-[var(--app-surface-muted)]' : 'bg-[var(--app-surface)]/50'
                         }`}
                       >
                         <div className="mb-1 flex justify-end">
@@ -322,8 +323,8 @@ export function PaEarningsKalender({
                               istHeute
                                 ? 'bg-violet-500/90 font-semibold text-white'
                                 : tag.imMonat
-                                  ? 'text-zinc-400'
-                                  : 'text-zinc-600'
+                                  ? 'text-[var(--app-text-muted)]'
+                                  : 'text-[var(--app-text-muted)]'
                             }`}
                           >
                             {String(tag.tag).padStart(2, '0')}
@@ -355,7 +356,7 @@ export function PaEarningsKalender({
         </div>
       </div>
 
-      <p className="flex flex-wrap items-center gap-2 border-t border-white/[0.04] pt-4 text-[11px] text-zinc-600">
+      <p className="flex flex-wrap items-center gap-2 border-t border-white/[0.04] pt-4 text-[11px] text-[var(--app-text-muted)]">
         <PaDividendEstimateBadge title="Geschätzt" />
         <span>Nächstes Quartal · DivvyDiary · Depot</span>
         <Link

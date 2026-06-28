@@ -1,5 +1,6 @@
 'use client'
 
+import { appTableScrollClassName } from '@/components/page-shell'
 import { useEffect, useRef, useState } from 'react'
 import toast from 'react-hot-toast'
 import { CollapsiblePillButton, LABEL_EINKLAPPEN } from '@/components/collapsible-ui'
@@ -177,7 +178,7 @@ export function LagerKassenzettelPanel({ disabled, onBuchungFertig }: Props) {
           </div>
         </div>
         {hatEntwurf ? (
-          <div className="flex flex-wrap items-center gap-1.5 text-[10px] font-semibold text-slate-400">
+          <div className="flex flex-wrap items-center gap-1.5 text-[10px] font-semibold text-[var(--app-text-muted)]">
             {images.length > 0 ? (
               <span className="rounded-md border border-violet-800/50 bg-violet-950/40 px-2 py-0.5 text-violet-200">
                 {images.length} Foto{images.length === 1 ? '' : 's'}
@@ -201,15 +202,15 @@ export function LagerKassenzettelPanel({ disabled, onBuchungFertig }: Props) {
       </div>
 
       {aufgeklappt && (
-        <div className="mt-3 space-y-3 border-t border-slate-800/80 pt-3">
-          <details className="rounded-lg border border-slate-800/80 bg-slate-950/40 px-2 py-1.5 text-[11px] text-slate-500">
-            <summary className="cursor-pointer select-none font-semibold text-slate-400 hover:text-slate-300">
+        <div className="mt-3 space-y-3 border-t border-[var(--app-border)] pt-3">
+          <details className="rounded-lg border border-[var(--app-border)] bg-[var(--app-surface-muted)] px-2 py-1.5 text-[11px] text-[var(--app-text-muted)]">
+            <summary className="cursor-pointer select-none font-semibold text-[var(--app-text-muted)] hover:text-[var(--app-text)]">
               Technik & Voraussetzungen
             </summary>
             <p className="mt-2 leading-relaxed">
-              Benötigt <code className="rounded bg-slate-900 px-1 text-slate-300">GEMINI_API_KEY</code>, optional{' '}
-              <code className="rounded bg-slate-900 px-1 text-slate-300">GEMINI_MODEL</code>, zum Buchen{' '}
-              <code className="rounded bg-slate-900 px-1 text-slate-300">SUPABASE_SERVICE_ROLE_KEY</code> und aktuelle
+              Benötigt <code className="rounded bg-[var(--app-surface-muted)] px-1 text-[var(--app-text)]">GEMINI_API_KEY</code>, optional{' '}
+              <code className="rounded bg-[var(--app-surface-muted)] px-1 text-[var(--app-text)]">GEMINI_MODEL</code>, zum Buchen{' '}
+              <code className="rounded bg-[var(--app-surface-muted)] px-1 text-[var(--app-text)]">SUPABASE_SERVICE_ROLE_KEY</code> und aktuelle
               Vorrats-Migrationen in Supabase.
             </p>
           </details>
@@ -262,7 +263,7 @@ export function LagerKassenzettelPanel({ disabled, onBuchungFertig }: Props) {
                   setImages([])
                   setPositionen(null)
                 }}
-                className="rounded-lg border border-slate-600 px-3 py-2 text-xs font-bold text-slate-400 hover:bg-slate-800"
+                className="rounded-lg border border-[var(--app-border-strong)] px-3 py-2 text-xs font-bold text-[var(--app-text-muted)] hover:bg-[var(--app-surface-hover)]"
               >
                 Zurücksetzen
               </button>
@@ -277,7 +278,7 @@ export function LagerKassenzettelPanel({ disabled, onBuchungFertig }: Props) {
                   <img
                     src={`data:${im.mimeType};base64,${im.base64}`}
                     alt=""
-                    className="h-14 w-14 rounded-lg border border-slate-600 object-cover sm:h-16 sm:w-16"
+                    className="h-14 w-14 rounded-lg border border-[var(--app-border-strong)] object-cover sm:h-16 sm:w-16"
                   />
                   <button
                     type="button"
@@ -298,7 +299,7 @@ export function LagerKassenzettelPanel({ disabled, onBuchungFertig }: Props) {
             disabled={disabled || loading}
             rows={1}
             placeholder="Optional: Markt, Hinweis …"
-            className="min-h-[2.35rem] w-full resize-y rounded-lg border border-slate-700 bg-slate-950 px-2.5 py-2 text-xs text-slate-100 outline-none focus:ring-2 focus:ring-violet-500/35 disabled:opacity-50 sm:text-sm"
+            className="min-h-[2.35rem] w-full resize-y rounded-lg border border-[var(--app-border-strong)] bg-[var(--app-surface-muted)] px-2.5 py-2 text-xs text-[var(--app-text)] outline-none focus:ring-2 focus:ring-violet-500/35 disabled:opacity-50 sm:text-sm"
           />
 
           <div className="flex flex-wrap gap-2">
@@ -321,10 +322,10 @@ export function LagerKassenzettelPanel({ disabled, onBuchungFertig }: Props) {
           </div>
 
           {positionen && positionen.length > 0 && (
-            <div className="overflow-x-auto rounded-lg border border-slate-800">
+            <div className={`${appTableScrollClassName} rounded-lg border border-[var(--app-border)]`}>
               <table className="w-full min-w-[36rem] text-left text-xs sm:text-[13px]">
                 <thead>
-                  <tr className="border-b border-slate-800 bg-slate-800/50 text-[9px] font-semibold uppercase tracking-tight text-slate-500 sm:text-[10px]">
+                  <tr className="border-b border-[var(--app-border)] bg-[var(--app-surface-hover)] text-[9px] font-semibold uppercase tracking-tight text-[var(--app-text-muted)] sm:text-[10px]">
                     <th className="px-2 py-1.5 sm:px-3">Artikel</th>
                     <th className="hidden px-2 py-1.5 sm:table-cell sm:px-3">Kat.</th>
                     <th className="px-2 py-1.5 sm:px-3">Einh.</th>
@@ -333,21 +334,21 @@ export function LagerKassenzettelPanel({ disabled, onBuchungFertig }: Props) {
                     <th className="px-2 py-1.5 text-right sm:px-3">Σ €</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-800">
+                <tbody className="divide-y divide-[var(--app-border)]">
                   {positionen.map((z, i) => (
-                    <tr key={i} className="bg-slate-950/40">
+                    <tr key={i} className="bg-[var(--app-surface-muted)]">
                       <td className="px-2 py-1 sm:px-3">
                         <input
                           value={z.artikel}
                           onChange={(e) => updateZeile(i, { artikel: e.target.value })}
-                          className="w-full rounded border border-slate-700 bg-slate-900 px-1.5 py-0.5 text-xs text-slate-100 sm:text-sm"
+                          className="w-full rounded border border-[var(--app-border-strong)] bg-[var(--app-surface-muted)] px-1.5 py-0.5 text-xs text-[var(--app-text)] sm:text-sm"
                         />
                       </td>
                       <td className="hidden px-2 py-1 sm:table-cell sm:px-3">
                         <select
                           value={z.kategorie ?? 'Sonstiges'}
                           onChange={(e) => updateZeile(i, { kategorie: e.target.value })}
-                          className="max-w-[9rem] rounded border border-slate-700 bg-slate-900 px-1 py-0.5 text-[10px] text-slate-100 sm:text-xs"
+                          className="max-w-[9rem] rounded border border-[var(--app-border-strong)] bg-[var(--app-surface-muted)] px-1 py-0.5 text-[10px] text-[var(--app-text)] sm:text-xs"
                         >
                           {LAGER_PRODUKT_KATEGORIEN.map((k) => (
                             <option key={k} value={k}>
@@ -360,7 +361,7 @@ export function LagerKassenzettelPanel({ disabled, onBuchungFertig }: Props) {
                         <input
                           value={z.einheit ?? ''}
                           onChange={(e) => updateZeile(i, { einheit: e.target.value || null })}
-                          className="w-full min-w-[4rem] rounded border border-slate-700 bg-slate-900 px-1.5 py-0.5 text-xs text-slate-100"
+                          className="w-full min-w-[4rem] rounded border border-[var(--app-border-strong)] bg-[var(--app-surface-muted)] px-1.5 py-0.5 text-xs text-[var(--app-text)]"
                           placeholder="Stück"
                         />
                       </td>
@@ -371,7 +372,7 @@ export function LagerKassenzettelPanel({ disabled, onBuchungFertig }: Props) {
                           min={0.001}
                           value={z.menge}
                           onChange={(e) => updateZeile(i, { menge: Number(e.target.value) })}
-                          className="w-[4.5rem] rounded border border-slate-700 bg-slate-900 px-1 py-0.5 text-right text-xs text-slate-100 sm:w-24"
+                          className="w-[4.5rem] rounded border border-[var(--app-border-strong)] bg-[var(--app-surface-muted)] px-1 py-0.5 text-right text-xs text-[var(--app-text)] sm:w-24"
                         />
                       </td>
                       <td className="px-2 py-1 text-right sm:px-3">
@@ -385,7 +386,7 @@ export function LagerKassenzettelPanel({ disabled, onBuchungFertig }: Props) {
                               einzelpreis: e.target.value === '' ? null : Number(e.target.value),
                             })
                           }
-                          className="w-[4.5rem] rounded border border-slate-700 bg-slate-900 px-1 py-0.5 text-right text-xs text-slate-100 sm:w-24"
+                          className="w-[4.5rem] rounded border border-[var(--app-border-strong)] bg-[var(--app-surface-muted)] px-1 py-0.5 text-right text-xs text-[var(--app-text)] sm:w-24"
                         />
                       </td>
                       <td className="px-2 py-1 text-right sm:px-3">
@@ -399,15 +400,15 @@ export function LagerKassenzettelPanel({ disabled, onBuchungFertig }: Props) {
                               gesamtpreis: e.target.value === '' ? null : Number(e.target.value),
                             })
                           }
-                          className="w-[4.5rem] rounded border border-slate-700 bg-slate-900 px-1 py-0.5 text-right text-xs text-slate-100 sm:w-24"
+                          className="w-[4.5rem] rounded border border-[var(--app-border-strong)] bg-[var(--app-surface-muted)] px-1 py-0.5 text-right text-xs text-[var(--app-text)] sm:w-24"
                         />
                       </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
-              <details className="border-t border-slate-800 bg-slate-950/50 px-2 py-1.5 text-[10px] text-slate-500 sm:text-[11px]">
-                <summary className="cursor-pointer font-semibold text-slate-400 hover:text-slate-300">Hinweise zum Buchen</summary>
+              <details className="border-t border-[var(--app-border)] bg-[var(--app-surface-muted)] px-2 py-1.5 text-[10px] text-[var(--app-text-muted)] sm:text-[11px]">
+                <summary className="cursor-pointer font-semibold text-[var(--app-text-muted)] hover:text-[var(--app-text)]">Hinweise zum Buchen</summary>
                 <p className="mt-1.5 leading-relaxed">
                   Namen werden auf Sammelbegriffe im Vorrat gemappt. Gewicht in kg, Getränke in l; Gesamtpreis = Zeilensumme. Ohne
                   Preis → 0 €. Schema-Fehler: Migrationen in Supabase + ggf. Schema-Cache warten.

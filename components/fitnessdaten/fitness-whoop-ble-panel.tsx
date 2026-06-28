@@ -30,22 +30,22 @@ export function FitnessWhoopBlePanel({ embedded = false }: Props) {
 
   const shell = embedded
     ? 'rounded-2xl border border-white/[0.06] bg-white/[0.02] p-4'
-    : 'rounded-xl border border-orange-800/45 bg-gradient-to-b from-orange-950/25 to-zinc-950/50 p-4 sm:p-5'
+    : 'rounded-xl border border-orange-800/45 bg-gradient-to-b from-orange-950/25 to-[var(--app-surface-muted)] p-4 sm:p-5'
 
   return (
     <div className={shell}>
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <p
-            className={`text-[11px] font-bold uppercase tracking-[0.16em] ${embedded ? 'text-zinc-500' : 'text-orange-300/90'}`}
+            className={`text-[11px] font-bold uppercase tracking-[0.16em] ${embedded ? 'text-[var(--app-text-muted)]' : 'text-orange-300/90'}`}
           >
             {native ? 'Omnia Native · BLE' : 'Web Bluetooth · WHOOP 5.0'}
           </p>
-          <p className="mt-1 text-sm text-zinc-400">
-            <span className="font-medium text-zinc-200">{phaseLabel[phase]}</span>
+          <p className="mt-1 text-sm text-[var(--app-text-muted)]">
+            <span className="font-medium text-[var(--app-text)]">{phaseLabel[phase]}</span>
             {deviceName ? ` · ${deviceName}` : null}
           </p>
-          <p className="mt-1 text-[10px] text-zinc-600">
+          <p className="mt-1 text-[10px] text-[var(--app-text-muted)]">
             {native
               ? 'Dauer-Benachrichtigung = WHOOP bleibt verbunden, auch wenn du Omnia schließt. Akku → Omnia → Uneingeschränkt. Nicht „Beenden erzwingen“ in den Einstellungen.'
               : 'PWA: Reconnect alle 12 s. Für Standby-BLE die native Omnia-App nutzen (siehe docs/OMNIA-NATIVE-ANDROID.md).'}
@@ -56,7 +56,7 @@ export function FitnessWhoopBlePanel({ embedded = false }: Props) {
             <button
               type="button"
               onClick={trennen}
-              className="rounded-xl border border-zinc-600 bg-zinc-900 px-4 py-2.5 text-xs font-semibold text-zinc-200 transition hover:bg-zinc-800"
+              className="rounded-xl border border-[var(--app-border-strong)] bg-[var(--app-surface-muted)] px-4 py-2.5 text-xs font-semibold text-[var(--app-text)] transition hover:bg-[var(--app-surface-hover)]"
             >
               Trennen
             </button>
@@ -74,7 +74,7 @@ export function FitnessWhoopBlePanel({ embedded = false }: Props) {
                 type="button"
                 disabled={!bleOk}
                 onClick={() => void verbinden('alle')}
-                className="rounded-xl border border-zinc-600 bg-zinc-900 px-3 py-2.5 text-xs font-semibold text-zinc-300 transition hover:bg-zinc-800 disabled:opacity-40"
+                className="rounded-xl border border-[var(--app-border-strong)] bg-[var(--app-surface-muted)] px-3 py-2.5 text-xs font-semibold text-[var(--app-text)] transition hover:bg-[var(--app-surface-hover)] disabled:opacity-40"
               >
                 Alle scannen
               </button>
@@ -92,10 +92,10 @@ export function FitnessWhoopBlePanel({ embedded = false }: Props) {
             setAlwaysOn(an)
             setzeWhoopBleAlwaysOn(an)
           }}
-          className="mt-0.5 h-4 w-4 rounded border-zinc-600 bg-zinc-900 text-orange-500"
+          className="mt-0.5 h-4 w-4 rounded border-[var(--app-border-strong)] bg-[var(--app-surface-muted)] text-orange-500"
         />
-        <span className="text-xs leading-relaxed text-zinc-400">
-          <strong className="text-zinc-200">Dauerhaft verbunden</strong> — Omnia verbindet WHOOP automatisch
+        <span className="text-xs leading-relaxed text-[var(--app-text-muted)]">
+          <strong className="text-[var(--app-text)]">Dauerhaft verbunden</strong> — Omnia verbindet WHOOP automatisch
           neu (auch bei minimierter App). Omnia als PWA installieren und nicht „Beenden erzwingen“. Wenn die
           App komplett beendet ist, holt der Hintergrund-Sync WHOOP-Cloud-Daten; BLE startet beim nächsten
           Öffnen sofort.
@@ -107,43 +107,43 @@ export function FitnessWhoopBlePanel({ embedded = false }: Props) {
           Web Bluetooth fehlt. Chrome/Edge auf HTTPS — auf dem iPhone nicht in Safari.
         </p>
       ) : (
-        <ol className="mt-3 list-decimal space-y-1.5 rounded-lg border border-white/[0.06] bg-black/30 px-4 py-3 text-xs text-zinc-400 marker:text-orange-500">
-          <li>WHOOP-App → Gerät → <strong className="text-zinc-200">HR Broadcast</strong> an</li>
+        <ol className="mt-3 list-decimal space-y-1.5 rounded-lg border border-white/[0.06] bg-black/30 px-4 py-3 text-xs text-[var(--app-text-muted)] marker:text-orange-500">
+          <li>WHOOP-App → Gerät → <strong className="text-[var(--app-text)]">HR Broadcast</strong> an</li>
           <li>Band am Handgelenk — Verbindung hält über App-Sperre{mobile ? '' : ' (Handy zuverlässiger als PC)'}</li>
         </ol>
       )}
 
-      <details className="mt-3 rounded-lg border border-zinc-700/60 bg-zinc-950/40 px-3 py-2 text-xs text-zinc-400">
-        <summary className="cursor-pointer font-semibold text-zinc-300">Standby &amp; Timeout — deine Optionen</summary>
+      <details className="mt-3 rounded-lg border border-[var(--app-border-strong)] bg-[var(--app-surface-muted)] px-3 py-2 text-xs text-[var(--app-text-muted)]">
+        <summary className="cursor-pointer font-semibold text-[var(--app-text)]">Standby &amp; Timeout — deine Optionen</summary>
         <ul className="mt-2 list-disc space-y-1.5 pl-4 leading-relaxed">
           <li>
-            <strong className="text-zinc-300">WHOOP-Cloud-Sync</strong> (empfohlen für Schritte/Kalorien): Läuft
+            <strong className="text-[var(--app-text)]">WHOOP-Cloud-Sync</strong> (empfohlen für Schritte/Kalorien): Läuft
             auch bei gesperrtem Handy über den Service Worker — kein BLE nötig. Einmal unter Whoop → Cloud
             verbinden.
           </li>
           <li>
-            <strong className="text-zinc-300">Bildschirm an</strong>: Bei aktiver BLE-Verbindung hält Omnia den
+            <strong className="text-[var(--app-text)]">Bildschirm an</strong>: Bei aktiver BLE-Verbindung hält Omnia den
             Bildschirm wach (Wake Lock). Für Standby-Betrieb reicht das nicht — Android beendet Web Bluetooth im
             Hintergrund.
           </li>
           <li>
-            <strong className="text-zinc-300">Akku-Optimierung aus</strong>: Android → Einstellungen → Apps → Chrome
+            <strong className="text-[var(--app-text)]">Akku-Optimierung aus</strong>: Android → Einstellungen → Apps → Chrome
             (oder Omnia PWA) → Akku → „Uneingeschränkt“.
           </li>
           <li>
-            <strong className="text-zinc-300">PWA installiert lassen</strong>: Nicht „Beenden erzwingen“. App nur
+            <strong className="text-[var(--app-text)]">PWA installiert lassen</strong>: Nicht „Beenden erzwingen“. App nur
             minimieren — beim Entsperren reconnectet BLE automatisch.
           </li>
           <li>
-            <strong className="text-zinc-300">Live-HF nur mit BLE</strong>: Puls live braucht offene/minimierte App.
+            <strong className="text-[var(--app-text)]">Live-HF nur mit BLE</strong>: Puls live braucht offene/minimierte App.
             Recovery, Schlaf, Schritte kommen zuverlässig aus der Cloud.
           </li>
         </ul>
       </details>
 
       {!embedded ? (
-        <details className="mt-3 rounded-lg border border-zinc-700/60 bg-zinc-950/40 px-3 py-2 text-xs text-zinc-400">
-          <summary className="cursor-pointer font-semibold text-zinc-300">WHOOP nicht gefunden?</summary>
+        <details className="mt-3 rounded-lg border border-[var(--app-border-strong)] bg-[var(--app-surface-muted)] px-3 py-2 text-xs text-[var(--app-text-muted)]">
+          <summary className="cursor-pointer font-semibold text-[var(--app-text)]">WHOOP nicht gefunden?</summary>
           <ol className="mt-2 list-decimal space-y-1 pl-4">
             {WHOOP_WIEDERHERSTELLUNG.map((s) => (
               <li key={s}>{s}</li>
@@ -164,8 +164,8 @@ export function FitnessWhoopBlePanel({ embedded = false }: Props) {
       ) : null}
 
       {debug && (phase === 'waiting_hr' || phase === 'live') ? (
-        <details className="mt-3 rounded-lg border border-zinc-800/80 bg-zinc-950/60 px-3 py-2 text-xs text-zinc-500">
-          <summary className="cursor-pointer font-semibold text-zinc-400">Technische Diagnose</summary>
+        <details className="mt-3 rounded-lg border border-[var(--app-border)] bg-[var(--app-surface-muted)] px-3 py-2 text-xs text-[var(--app-text-muted)]">
+          <summary className="cursor-pointer font-semibold text-[var(--app-text-muted)]">Technische Diagnose</summary>
           <ul className="mt-2 space-y-1 font-mono">
             <li>BLE-Signale: {debug.notifyCount}</li>
             <li>Notify: {debug.notifyStarted ? 'ja' : 'nein'}</li>

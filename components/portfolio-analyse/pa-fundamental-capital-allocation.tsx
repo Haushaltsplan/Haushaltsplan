@@ -9,9 +9,9 @@ import type {
 
 const BEWERTUNG_CLASS: Record<CapitalAllocationBewertung, string> = {
   gut: 'bg-emerald-500/15 text-emerald-300 ring-emerald-500/30',
-  neutral: 'bg-zinc-700/40 text-zinc-300 ring-zinc-600/40',
+  neutral: 'bg-[var(--app-surface-muted)]/40 text-[var(--app-text)] ring-[var(--app-border-strong)]/40',
   warnung: 'bg-amber-500/15 text-amber-200 ring-amber-500/30',
-  keine_daten: 'bg-zinc-800/60 text-zinc-500 ring-zinc-700/40',
+  keine_daten: 'bg-[var(--app-surface-hover)] text-[var(--app-text-muted)] ring-[var(--app-border-strong)]/40',
 }
 
 const SCORE_CLASS: Record<CapitalAllocationPaket['scoreLabel'], string> = {
@@ -19,7 +19,7 @@ const SCORE_CLASS: Record<CapitalAllocationPaket['scoreLabel'], string> = {
   solide: 'text-teal-300',
   beobachten: 'text-amber-200',
   schwach: 'text-red-300',
-  keine_daten: 'text-zinc-500',
+  keine_daten: 'text-[var(--app-text-muted)]',
 }
 
 const SCORE_LABEL: Record<CapitalAllocationPaket['scoreLabel'], string> = {
@@ -69,13 +69,13 @@ export function PaFundamentalCapitalAllocation({
     <PaCard className="space-y-3 p-4">
       <div>
         <h3 className="text-sm font-semibold text-white">Capital-Allocation-Score</h3>
-        <p className="text-xs text-zinc-500">
+        <p className="text-xs text-[var(--app-text-muted)]">
           Buybacks, Dividenden, CapEx, M&A vs. operativer Cashflow
           {daten?.periodeLabel ? ` · ${daten.periodeLabel}` : ''}
         </p>
       </div>
 
-      {laden && !daten ? <p className="text-sm text-zinc-500">Lädt …</p> : null}
+      {laden && !daten ? <p className="text-sm text-[var(--app-text-muted)]">Lädt …</p> : null}
 
       {daten?.scorePct != null ? (
         <div className="flex flex-wrap items-center gap-3">
@@ -84,19 +84,19 @@ export function PaFundamentalCapitalAllocation({
             {SCORE_LABEL[daten.scoreLabel]}
           </span>
           {daten.fcfMioUsd != null ? (
-            <span className="text-xs text-zinc-500">
+            <span className="text-xs text-[var(--app-text-muted)]">
               FCF LTM: {daten.fcfMioUsd.toLocaleString('de-DE')} Mio. USD
             </span>
           ) : null}
         </div>
       ) : null}
 
-      {daten?.scoreHinweis ? <p className="text-sm text-zinc-400">{daten.scoreHinweis}</p> : null}
+      {daten?.scoreHinweis ? <p className="text-sm text-[var(--app-text-muted)]">{daten.scoreHinweis}</p> : null}
 
       {daten?.saeulen.length ? (
         <div className="space-y-2">
           {daten.saeulen.map((s) => (
-            <article key={s.id} className="rounded-xl border border-zinc-800/90 bg-zinc-950/40 px-3 py-2.5">
+            <article key={s.id} className="rounded-xl border border-[var(--app-border)] bg-[var(--app-surface-muted)] px-3 py-2.5">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <p className="text-sm font-medium text-white">{s.label}</p>
                 <span
@@ -111,13 +111,13 @@ export function PaFundamentalCapitalAllocation({
                         : 'Keine Daten'}
                 </span>
               </div>
-              <p className="mt-1 text-xs text-zinc-400">
+              <p className="mt-1 text-xs text-[var(--app-text-muted)]">
                 {s.betragMioUsd != null
                   ? `${s.betragMioUsd.toLocaleString('de-DE')} Mio. USD`
                   : '–'}
                 {s.pctVonOcf != null ? ` · ${s.pctVonOcf.toLocaleString('de-DE')}% vom OCF` : ''}
               </p>
-              <p className="mt-1 text-xs text-zinc-500">{s.hinweis}</p>
+              <p className="mt-1 text-xs text-[var(--app-text-muted)]">{s.hinweis}</p>
             </article>
           ))}
         </div>

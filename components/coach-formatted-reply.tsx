@@ -53,19 +53,19 @@ export function CoachFormattedReply({
 }: CoachFormattedReplyProps) {
   const strong =
     strongClassName ??
-    (accent === 'emerald' ? 'font-semibold text-emerald-50' : 'font-semibold text-slate-100')
+    (accent === 'emerald' ? 'font-semibold text-emerald-50' : 'font-semibold text-[var(--app-text)]')
 
   const para =
     paragraphClassName ??
     (accent === 'emerald'
       ? 'text-[13px] leading-relaxed text-emerald-100/95'
-      : 'text-[13px] leading-relaxed text-slate-200/95')
+      : 'text-[13px] leading-relaxed text-[var(--app-text)]/95')
 
   const list =
     listClassName ??
     (accent === 'emerald'
       ? 'list-outside space-y-1.5 pl-4 text-[13px] leading-snug text-emerald-100/90'
-      : 'list-outside space-y-1.5 pl-4 text-[13px] leading-snug text-slate-200/95')
+      : 'list-outside space-y-1.5 pl-4 text-[13px] leading-snug text-[var(--app-text)]/95')
 
   const raw = content.replace(/\r\n/g, '\n').trimEnd()
   const lines = raw.split('\n')

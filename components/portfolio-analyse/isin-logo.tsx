@@ -39,7 +39,7 @@ export function GewichtungAssetLogo({
   const sym = (symbol ?? label).trim()
   const logo = portfolioLogoQuellen(null, sym, label)
   const dim = groesse === 'sm' ? 'h-7 w-7' : 'h-9 w-9'
-  const imgClass = className ?? `${dim} shrink-0 rounded-lg border border-zinc-800 bg-zinc-950 p-0.5 object-contain`
+  const imgClass = className ?? `${dim} shrink-0 rounded-lg border border-[var(--app-border)] bg-[var(--app-surface-muted)] p-0.5 object-contain`
 
   if (sym || logo.finnhubSlug || (logo.clearbitDomains?.length ?? 0) > 0) {
     return (
@@ -55,7 +55,7 @@ export function GewichtungAssetLogo({
   const initials = logoInitialen(label.replace(/\s+/g, '').slice(0, 4) || sym || '?')
   return (
     <div
-      className={`flex ${dim} shrink-0 items-center justify-center rounded-lg border border-zinc-800 bg-zinc-900 font-mono text-[10px] font-bold uppercase text-zinc-400`}
+      className={`flex ${dim} shrink-0 items-center justify-center rounded-lg border border-[var(--app-border)] bg-[var(--app-surface-muted)] font-mono text-[10px] font-bold uppercase text-[var(--app-text-muted)]`}
       title={label}
     >
       {initials}
@@ -81,7 +81,7 @@ export function PortfolioIsinLogo({
   const name = anzeigeNameFuerIsin(isin, fallbackName ?? null, meta)
   const logo = portfolioLogoQuellen(isin, symbol ?? null, name)
   const dim = groesse === 'sm' ? 'h-7 w-7' : 'h-9 w-9'
-  const imgClass = `${dim} shrink-0 rounded-lg border border-zinc-800 bg-zinc-950 p-0.5 object-contain`
+  const imgClass = `${dim} shrink-0 rounded-lg border border-[var(--app-border)] bg-[var(--app-surface-muted)] p-0.5 object-contain`
 
   if (symbol || logo.finnhubSlug || (logo.clearbitDomains?.length ?? 0) > 0) {
     return (
@@ -97,7 +97,7 @@ export function PortfolioIsinLogo({
   const initials = logoInitialen(name.replace(/\s+/g, '').slice(0, 4) || isin || '?')
   return (
     <div
-      className={`flex ${dim} shrink-0 items-center justify-center rounded-lg border border-zinc-800 bg-zinc-900 font-mono text-[10px] font-bold uppercase text-zinc-400`}
+      className={`flex ${dim} shrink-0 items-center justify-center rounded-lg border border-[var(--app-border)] bg-[var(--app-surface-muted)] font-mono text-[10px] font-bold uppercase text-[var(--app-text-muted)]`}
       title={name}
     >
       {initials}

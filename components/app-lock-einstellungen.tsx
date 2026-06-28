@@ -86,24 +86,24 @@ export function AppLockEinstellungen() {
   }, [sync])
 
   if (!bereit) {
-    return <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-5 text-sm text-slate-400">Laden …</div>
+    return <div className="rounded-2xl border border-[var(--app-border)] bg-[var(--app-surface-muted)] p-5 text-sm text-[var(--app-text-muted)]">Laden …</div>
   }
 
   return (
-    <section className="rounded-2xl border border-slate-800 bg-slate-900/60 p-5">
+    <section className="rounded-2xl border border-[var(--app-border)] bg-[var(--app-surface-muted)] p-5">
       <div className="flex items-center gap-3">
-        <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-800 text-xl" aria-hidden>
+        <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-[var(--app-surface-muted)] text-xl" aria-hidden>
           🔒
         </span>
         <div>
-          <h2 className="text-base font-bold text-slate-100">App-Sperre</h2>
-          <p className="text-[13px] text-slate-400">
+          <h2 className="text-base font-bold text-[var(--app-text)]">App-Sperre</h2>
+          <p className="text-[13px] text-[var(--app-text-muted)]">
             Zusätzlicher Schutz beim Öffnen — per Fingerabdruck/Face-ID, PIN als Rückfall.
           </p>
         </div>
         <span
           className={`ml-auto rounded-full px-3 py-1 text-xs font-bold ${
-            aktiv ? 'bg-emerald-900/40 text-emerald-300' : 'bg-slate-800 text-slate-400'
+            aktiv ? 'bg-emerald-900/40 text-emerald-300' : 'bg-[var(--app-surface-muted)] text-[var(--app-text-muted)]'
           }`}
         >
           {aktiv ? 'Aktiv' : 'Inaktiv'}
@@ -112,7 +112,7 @@ export function AppLockEinstellungen() {
 
       {!aktiv && (
         <div className="mt-5 space-y-3">
-          <p className="text-sm text-slate-300">
+          <p className="text-sm text-[var(--app-text)]">
             Lege zuerst eine <strong>PIN</strong> fest (immer als Rückfall nötig). Den Fingerabdruck kannst du danach hinzufügen.
           </p>
           <div className="grid gap-3 sm:grid-cols-2">
@@ -122,7 +122,7 @@ export function AppLockEinstellungen() {
               value={pin1}
               onChange={(e) => setPin1(e.target.value.replace(/\D/g, '').slice(0, 12))}
               placeholder="PIN (mind. 4 Ziffern)"
-              className="rounded-xl border border-slate-700 bg-slate-950 px-3 py-2.5 text-sm text-slate-100 outline-none focus:ring-2 focus:ring-cyan-500/40"
+              className="rounded-xl border border-[var(--app-border-strong)] bg-[var(--app-surface-muted)] px-3 py-2.5 text-sm text-[var(--app-text)] outline-none focus:ring-2 focus:ring-cyan-500/40"
             />
             <input
               type="password"
@@ -133,7 +133,7 @@ export function AppLockEinstellungen() {
                 if (e.key === 'Enter') void pinSpeichern()
               }}
               placeholder="PIN wiederholen"
-              className="rounded-xl border border-slate-700 bg-slate-950 px-3 py-2.5 text-sm text-slate-100 outline-none focus:ring-2 focus:ring-cyan-500/40"
+              className="rounded-xl border border-[var(--app-border-strong)] bg-[var(--app-surface-muted)] px-3 py-2.5 text-sm text-[var(--app-text)] outline-none focus:ring-2 focus:ring-cyan-500/40"
             />
           </div>
           <button
@@ -149,11 +149,11 @@ export function AppLockEinstellungen() {
 
       {aktiv && (
         <div className="mt-5 space-y-4">
-          <div className="flex flex-wrap items-center gap-3 rounded-xl border border-slate-800 bg-slate-950/40 px-4 py-3">
+          <div className="flex flex-wrap items-center gap-3 rounded-xl border border-[var(--app-border)] bg-[var(--app-surface-muted)] px-4 py-3">
             <span className="text-xl" aria-hidden>👆</span>
             <div className="min-w-0">
-              <p className="text-sm font-semibold text-slate-200">Fingerabdruck / Face-ID</p>
-              <p className="text-[13px] text-slate-400">
+              <p className="text-sm font-semibold text-[var(--app-text)]">Fingerabdruck / Face-ID</p>
+              <p className="text-[13px] text-[var(--app-text-muted)]">
                 {hatBio ? 'Eingerichtet auf diesem Gerät.' : bioMoeglich ? 'Auf diesem Gerät möglich.' : 'Auf diesem Gerät nicht verfügbar.'}
               </p>
             </div>
@@ -162,7 +162,7 @@ export function AppLockEinstellungen() {
                 <button
                   type="button"
                   onClick={fingerEntfernen}
-                  className="rounded-lg border border-slate-700 px-3 py-2 text-[13px] font-medium text-slate-300 transition hover:bg-slate-800"
+                  className="rounded-lg border border-[var(--app-border-strong)] px-3 py-2 text-[13px] font-medium text-[var(--app-text)] transition hover:bg-[var(--app-surface-hover)]"
                 >
                   Entfernen
                 </button>
@@ -179,8 +179,8 @@ export function AppLockEinstellungen() {
             </div>
           </div>
 
-          <div className="rounded-xl border border-slate-800 bg-slate-950/40 px-4 py-3">
-            <p className="text-sm font-semibold text-slate-200">PIN ändern</p>
+          <div className="rounded-xl border border-[var(--app-border)] bg-[var(--app-surface-muted)] px-4 py-3">
+            <p className="text-sm font-semibold text-[var(--app-text)]">PIN ändern</p>
             <div className="mt-2 grid gap-3 sm:grid-cols-2">
               <input
                 type="password"
@@ -188,7 +188,7 @@ export function AppLockEinstellungen() {
                 value={pin1}
                 onChange={(e) => setPin1(e.target.value.replace(/\D/g, '').slice(0, 12))}
                 placeholder="Neue PIN"
-                className="rounded-xl border border-slate-700 bg-slate-950 px-3 py-2.5 text-sm text-slate-100 outline-none focus:ring-2 focus:ring-cyan-500/40"
+                className="rounded-xl border border-[var(--app-border-strong)] bg-[var(--app-surface-muted)] px-3 py-2.5 text-sm text-[var(--app-text)] outline-none focus:ring-2 focus:ring-cyan-500/40"
               />
               <input
                 type="password"
@@ -196,14 +196,14 @@ export function AppLockEinstellungen() {
                 value={pin2}
                 onChange={(e) => setPin2(e.target.value.replace(/\D/g, '').slice(0, 12))}
                 placeholder="Neue PIN wiederholen"
-                className="rounded-xl border border-slate-700 bg-slate-950 px-3 py-2.5 text-sm text-slate-100 outline-none focus:ring-2 focus:ring-cyan-500/40"
+                className="rounded-xl border border-[var(--app-border-strong)] bg-[var(--app-surface-muted)] px-3 py-2.5 text-sm text-[var(--app-text)] outline-none focus:ring-2 focus:ring-cyan-500/40"
               />
             </div>
             <button
               type="button"
               disabled={speichert}
               onClick={() => void pinSpeichern()}
-              className="mt-3 rounded-lg border border-slate-700 px-4 py-2 text-[13px] font-medium text-slate-200 transition hover:bg-slate-800 disabled:opacity-50"
+              className="mt-3 rounded-lg border border-[var(--app-border-strong)] px-4 py-2 text-[13px] font-medium text-[var(--app-text)] transition hover:bg-[var(--app-surface-hover)] disabled:opacity-50"
             >
               PIN aktualisieren
             </button>
@@ -219,7 +219,7 @@ export function AppLockEinstellungen() {
         </div>
       )}
 
-      <p className="mt-5 text-[12px] leading-relaxed text-slate-500">
+      <p className="mt-5 text-[12px] leading-relaxed text-[var(--app-text-muted)]">
         Hinweis: Die Sperre gilt pro Gerät/Browser. Auf einem neuen Gerät richtest du sie dort separat ein.
         Wer die Website-Daten löscht, muss sich anschließend ohnehin wieder per Login anmelden.
       </p>

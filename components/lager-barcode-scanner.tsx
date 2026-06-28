@@ -353,20 +353,20 @@ export function LagerBarcodeScanner({ produkte, onClose, onAenderung }: Props) {
     <div className={appModalBackdropClassName} role="presentation" onClick={(e) => e.target === e.currentTarget && onClose()}>
       <div className={`${appModalPanelClassName} p-5`} role="dialog" aria-modal="true" aria-label="Barcode scannen">
         <div className="mb-3 flex items-center justify-between gap-3">
-          <h3 className="text-lg font-bold text-slate-100">Barcode scannen</h3>
-          <button type="button" onClick={onClose} className="rounded-lg border border-slate-600 px-2.5 py-1 text-sm font-bold text-slate-300 hover:bg-slate-800">
+          <h3 className="text-lg font-bold text-[var(--app-text)]">Barcode scannen</h3>
+          <button type="button" onClick={onClose} className="rounded-lg border border-[var(--app-border-strong)] px-2.5 py-1 text-sm font-bold text-[var(--app-text)] hover:bg-[var(--app-surface-hover)]">
             Schließen
           </button>
         </div>
 
         {scanAktiv ? (
           <div className="space-y-3">
-            <div className="relative overflow-hidden rounded-xl border border-slate-700 bg-black">
+            <div className="relative overflow-hidden rounded-xl border border-[var(--app-border-strong)] bg-black">
               {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
               <video ref={videoRef} className="h-56 w-full object-cover" playsInline muted autoPlay />
               <div className="pointer-events-none absolute inset-x-8 top-1/2 h-0.5 -translate-y-1/2 bg-rose-500/70" />
             </div>
-            <p className="text-center text-[12px] text-slate-500">
+            <p className="text-center text-[12px] text-[var(--app-text-muted)]">
               Barcode vor die Kamera halten…
               {!detectorVerfuegbar ? ' (Fallback-Scanner)' : ''}
             </p>
@@ -374,7 +374,7 @@ export function LagerBarcodeScanner({ produkte, onClose, onAenderung }: Props) {
         ) : null}
 
         {!code ? (
-          <div className={`space-y-3 ${scanAktiv ? 'mt-3 border-t border-slate-800 pt-3' : ''}`}>
+          <div className={`space-y-3 ${scanAktiv ? 'mt-3 border-t border-[var(--app-border)] pt-3' : ''}`}>
             {kameraFehler ? (
               <p className="rounded-lg border border-amber-800/50 bg-amber-950/30 px-3 py-2 text-[12px] text-amber-200">{kameraFehler}</p>
             ) : null}
@@ -385,7 +385,7 @@ export function LagerBarcodeScanner({ produkte, onClose, onAenderung }: Props) {
                 onKeyDown={(e) => e.key === 'Enter' && manuell.trim() && manuellUebernehmen()}
                 inputMode="numeric"
                 placeholder="Barcode / EAN eingeben"
-                className="min-w-0 flex-1 rounded-lg border border-slate-700 bg-slate-950 px-3 py-2.5 text-sm font-semibold text-slate-100 outline-none focus:ring-2 focus:ring-emerald-500/40"
+                className="min-w-0 flex-1 rounded-lg border border-[var(--app-border-strong)] bg-[var(--app-surface-muted)] px-3 py-2.5 text-sm font-semibold text-[var(--app-text)] outline-none focus:ring-2 focus:ring-emerald-500/40"
               />
               <button
                 type="button"
@@ -406,14 +406,14 @@ export function LagerBarcodeScanner({ produkte, onClose, onAenderung }: Props) {
 
         {code ? (
           <div className="space-y-3">
-            <p className="text-[12px] text-slate-400">
-              Code: <span className="font-mono font-bold text-slate-100">{code}</span>
+            <p className="text-[12px] text-[var(--app-text-muted)]">
+              Code: <span className="font-mono font-bold text-[var(--app-text)]">{code}</span>
             </p>
 
             {treffer ? (
               <div className="rounded-xl border border-emerald-800/45 bg-emerald-950/20 p-3">
-                <p className="font-bold text-slate-100">{treffer.name}</p>
-                <p className="mt-0.5 text-[12px] text-slate-400">
+                <p className="font-bold text-[var(--app-text)]">{treffer.name}</p>
+                <p className="mt-0.5 text-[12px] text-[var(--app-text-muted)]">
                   Bestand: <span className="tabular-nums text-emerald-200">{treffer.menge} {treffer.einheit}</span>
                 </p>
                 <div className="mt-3 flex gap-2">
@@ -428,12 +428,12 @@ export function LagerBarcodeScanner({ produkte, onClose, onAenderung }: Props) {
             ) : (
               <div className="rounded-xl border border-sky-800/45 bg-sky-950/20 p-3">
                 {offLaden ? (
-                  <p className="text-[12px] text-slate-500">Produkt wird im Barcode-Verzeichnis gesucht…</p>
+                  <p className="text-[12px] text-[var(--app-text-muted)]">Produkt wird im Barcode-Verzeichnis gesucht…</p>
                 ) : off ? (
                   <div className="mb-3 rounded-lg border border-violet-800/40 bg-violet-950/25 px-3 py-2">
                     <p className="text-[11px] font-bold uppercase tracking-wide text-violet-300">Erkannt</p>
-                    <p className="mt-1 font-semibold text-slate-100">{off.anzeigeName}</p>
-                    <p className="mt-0.5 text-[12px] text-slate-400">
+                    <p className="mt-1 font-semibold text-[var(--app-text)]">{off.anzeigeName}</p>
+                    <p className="mt-0.5 text-[12px] text-[var(--app-text-muted)]">
                       Warengruppe: <span className="font-bold text-emerald-300">{off.kategorie}</span>
                       {off.marke ? ` · ${off.marke}` : ''}
                     </p>
@@ -444,7 +444,7 @@ export function LagerBarcodeScanner({ produkte, onClose, onAenderung }: Props) {
                   value={suche}
                   onChange={(e) => setSuche(e.target.value)}
                   placeholder="Artikel suchen…"
-                  className="mt-2 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100 outline-none focus:ring-2 focus:ring-sky-500/40"
+                  className="mt-2 w-full rounded-lg border border-[var(--app-border-strong)] bg-[var(--app-surface-muted)] px-3 py-2 text-sm text-[var(--app-text)] outline-none focus:ring-2 focus:ring-sky-500/40"
                 />
                 <div className="mt-2 max-h-48 space-y-1 overflow-y-auto">
                   {sucheTreffer.map((p) => (
@@ -453,13 +453,13 @@ export function LagerBarcodeScanner({ produkte, onClose, onAenderung }: Props) {
                       type="button"
                       disabled={busy}
                       onClick={() => void bindeAn(p)}
-                      className="flex w-full items-center justify-between gap-2 rounded-lg border border-slate-700/70 bg-slate-900/70 px-3 py-2 text-left text-sm font-semibold text-slate-200 hover:bg-slate-800 disabled:opacity-40"
+                      className="flex w-full items-center justify-between gap-2 rounded-lg border border-[var(--app-border-strong)] bg-[var(--app-surface-muted)] px-3 py-2 text-left text-sm font-semibold text-[var(--app-text)] hover:bg-[var(--app-surface-hover)] disabled:opacity-40"
                     >
                       <span className="min-w-0 truncate">{p.name}</span>
-                      <span className="shrink-0 text-[11px] tabular-nums text-slate-500">{p.menge} {p.einheit}</span>
+                      <span className="shrink-0 text-[11px] tabular-nums text-[var(--app-text-muted)]">{p.menge} {p.einheit}</span>
                     </button>
                   ))}
-                  {sucheTreffer.length === 0 ? <p className="px-1 py-2 text-[12px] text-slate-500">Kein passender Artikel — unten neu anlegen.</p> : null}
+                  {sucheTreffer.length === 0 ? <p className="px-1 py-2 text-[12px] text-[var(--app-text-muted)]">Kein passender Artikel — unten neu anlegen.</p> : null}
                 </div>
                 <button
                   type="button"
@@ -472,7 +472,7 @@ export function LagerBarcodeScanner({ produkte, onClose, onAenderung }: Props) {
               </div>
             )}
 
-            <button type="button" onClick={neuScannen} className="w-full rounded-lg border border-slate-600 py-2.5 text-sm font-bold text-slate-300 hover:bg-slate-800">
+            <button type="button" onClick={neuScannen} className="w-full rounded-lg border border-[var(--app-border-strong)] py-2.5 text-sm font-bold text-[var(--app-text)] hover:bg-[var(--app-surface-hover)]">
               Weiter scannen
             </button>
           </div>

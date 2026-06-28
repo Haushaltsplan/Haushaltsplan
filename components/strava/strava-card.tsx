@@ -1,6 +1,6 @@
 'use client'
 
-import { STRAVA_CARD_CLASS, STRAVA_COLORS } from '@/components/strava/design-tokens'
+import { STRAVA_CARD_CLASS, STRAVA_CARD_HOVER, STRAVA_COLORS } from '@/components/strava/design-tokens'
 import type { ReactNode } from 'react'
 
 type Props = {
@@ -26,7 +26,7 @@ export function StravaCard({ children, className = '', accent = 'none', padding 
         STRAVA_CARD_CLASS,
         PADDING[padding],
         ACCENT_BORDER[accent],
-        hover ? 'hover:border-slate-400/25 hover:shadow-[0_8px_32px_rgba(0,0,0,0.45)]' : '',
+        hover ? STRAVA_CARD_HOVER : '',
         className,
       ]
         .filter(Boolean)
@@ -43,7 +43,7 @@ export function StravaSectionTitle({ title, subtitle }: { title: string; subtitl
       <h3 className="text-xs font-bold uppercase tracking-[0.16em]" style={{ color: STRAVA_COLORS.textSecondary }}>
         {title}
       </h3>
-      {subtitle ? <p className="mt-0.5 text-[11px] text-zinc-500">{subtitle}</p> : null}
+      {subtitle ? <p className="mt-0.5 text-[11px] text-[var(--app-text-muted)]">{subtitle}</p> : null}
     </div>
   )
 }

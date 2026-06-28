@@ -22,7 +22,7 @@ export function PaPerformanceMap({
   const sektoren = useMemo(() => bauePerformanceMap(positionen, groesse), [positionen, groesse])
 
   if (sektoren.length === 0) {
-    return <p className="py-12 text-center text-sm text-zinc-500">Keine Positionen für die Performance Map.</p>
+    return <p className="py-12 text-center text-sm text-[var(--app-text-muted)]">Keine Positionen für die Performance Map.</p>
   }
 
   const gesamtH = 420
@@ -30,7 +30,7 @@ export function PaPerformanceMap({
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-end gap-4">
-        <fieldset className="flex items-center gap-4 text-xs text-zinc-400">
+        <fieldset className="flex items-center gap-4 text-xs text-[var(--app-text-muted)]">
           <label className="flex cursor-pointer items-center gap-2">
             <input
               type="radio"
@@ -52,7 +52,7 @@ export function PaPerformanceMap({
             Kaufwert
           </label>
         </fieldset>
-        <span className="text-xs text-zinc-500">Performance: Heute (live) bzw. Gesamt-G/V</span>
+        <span className="text-xs text-[var(--app-text-muted)]">Performance: Heute (live) bzw. Gesamt-G/V</span>
       </div>
 
       <PaCard className="overflow-hidden p-1" >
@@ -61,10 +61,10 @@ export function PaPerformanceMap({
           {sektoren.map((sek) => (
             <div
               key={sek.name}
-              className="flex min-h-[3rem] flex-col border border-zinc-950/80"
+              className="flex min-h-[3rem] flex-col border border-[var(--app-border)]"
               style={{ flex: sek.wertEur }}
             >
-              <div className="shrink-0 bg-zinc-800/90 px-2 py-1 text-[11px] font-medium text-zinc-200">
+              <div className="shrink-0 bg-[var(--app-surface-muted)]/90 px-2 py-1 text-[11px] font-medium text-[var(--app-text)]">
                 {sek.name}
               </div>
               <div className="flex min-h-0 flex-1">
@@ -77,7 +77,7 @@ export function PaPerformanceMap({
                   return (
                     <div
                       key={tile.id}
-                      className={`relative flex min-w-[4rem] flex-col items-center justify-center overflow-hidden border border-zinc-950/60 p-1 text-center ${fundamentalHref ? 'cursor-pointer hover:ring-1 hover:ring-white/20' : ''}`}
+                      className={`relative flex min-w-[4rem] flex-col items-center justify-center overflow-hidden border border-[var(--app-border)] p-1 text-center ${fundamentalHref ? 'cursor-pointer hover:ring-1 hover:ring-white/20' : ''}`}
                       style={{ flex: tile.wertEur, background, color }}
                       title={`${tile.label}: ${formatProzent(tile.performanceProzent)} · ${tile.gewichtProzent.toFixed(1)} %${fundamentalHref ? ' · Klick für Fundamentaldaten' : ''}`}
                       onClick={fundamentalHref ? () => router.push(fundamentalHref) : undefined}

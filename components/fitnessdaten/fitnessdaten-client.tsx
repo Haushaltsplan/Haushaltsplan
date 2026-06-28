@@ -2,6 +2,7 @@
 
 import { WhoopDashboard } from '@/components/fitnessdaten/whoop-dashboard'
 import { useWhoopBle } from '@/components/fitnessdaten/whoop-ble-provider'
+import { PageChrome } from '@/components/page-shell'
 import { ladeFitnessSnapshot, loescheFitnessDaten } from '@/lib/fitnessdaten/history-storage'
 import {
   WHOOP_BLE_PHASE_EVENT,
@@ -43,7 +44,7 @@ export function FitnessdatenClient() {
   }, [])
 
   return (
-    <div className="mx-auto max-w-lg px-3 py-4 sm:max-w-xl sm:px-4 sm:py-6 lg:max-w-2xl">
+    <PageChrome density="compact" className="max-w-2xl">
       <WhoopDashboard
         snapshot={snapshot}
         phase={phase}
@@ -51,13 +52,17 @@ export function FitnessdatenClient() {
         onPhaseChange={() => {}}
       />
 
-      <div className="mt-6 flex justify-center gap-4 text-[11px] text-zinc-600">
-        <button type="button" onClick={loescheDaten} className="underline-offset-2 hover:text-zinc-400 hover:underline">
+      <div className="flex flex-wrap justify-center gap-x-4 gap-y-1 text-[11px] text-[var(--app-text-muted)]">
+        <button
+          type="button"
+          onClick={loescheDaten}
+          className="underline-offset-2 hover:text-[var(--app-text)] hover:underline"
+        >
           Alle Daten löschen
         </button>
-        <span>·</span>
+        <span className="hidden sm:inline">·</span>
         <span>Lokal · abofrei · Omnia</span>
       </div>
-    </div>
+    </PageChrome>
   )
 }

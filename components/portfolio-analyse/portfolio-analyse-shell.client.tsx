@@ -46,11 +46,11 @@ export function PortfolioAnalyseShell({
           <PageSectionPanel>
             <p className="text-sm leading-relaxed text-amber-100/90">
               Tabellen oder Spalten fehlen — Migration im Supabase SQL-Editor oder{' '}
-              <code className="rounded bg-zinc-950 px-1.5 py-0.5 font-mono text-xs text-teal-400">
+              <code className="rounded bg-[var(--app-surface-muted)] px-1.5 py-0.5 font-mono text-xs text-teal-400">
                 npm run db:portfolio-analyse
               </code>
               {' '}
-              (Dateien unter <code className="font-mono text-xs text-zinc-400">supabase/migrations/</code>
+              (Dateien unter <code className="font-mono text-xs text-[var(--app-text-muted)]">supabase/migrations/</code>
               ).
             </p>
           </PageSectionPanel>
@@ -78,7 +78,7 @@ export function PortfolioAnalyseShell({
       {!hatDaten && !laden && !schemaFehlt ? (
         <PageSection titleId="pa-leer-heading" title="Keine Daten">
           <PageSectionPanel>
-            <p className="text-sm text-zinc-400">
+            <p className="text-sm text-[var(--app-text-muted)]">
               Importiere zuerst einen{' '}
               <Link href="/portfolioanalyse/import" className="text-teal-400 hover:underline">
                 Parqet-CSV-Export

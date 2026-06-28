@@ -1,5 +1,6 @@
 'use client'
 
+import { appTableScrollInlineClassName } from '@/components/page-shell'
 import { useEffect, useMemo, useState } from 'react'
 import { DonutChart, type DonutSegment } from '@/components/finanzen/donut-chart'
 import { normalisiereLagerKategorie } from '@/lib/lager-produkt-kategorie'
@@ -48,10 +49,10 @@ function letzteMonate(anzahl: number): string[] {
 
 function Karte({ titel, hint, children }: { titel: string; hint?: string; children: React.ReactNode }) {
   return (
-    <div className="min-w-0 rounded-2xl border border-slate-800 bg-slate-900/80 p-4 shadow-lg shadow-black/20">
+    <div className="min-w-0 rounded-2xl border border-[var(--app-border-strong)] bg-[var(--app-surface)] p-4 shadow-lg shadow-[var(--app-shadow)]">
       <div className="mb-3">
-        <h3 className="text-sm font-bold text-slate-100">{titel}</h3>
-        {hint ? <p className="mt-0.5 text-[11px] text-slate-500">{hint}</p> : null}
+        <h3 className="text-sm font-bold text-[var(--app-text)]">{titel}</h3>
+        {hint ? <p className="mt-0.5 text-[11px] text-[var(--app-text-muted)]">{hint}</p> : null}
       </div>
       {children}
     </div>
@@ -70,11 +71,11 @@ function MonatsBalken({ daten, hoehe = 180 }: { daten: { key: string; wert: numb
   const balkenBreite = Math.min(26, gruppenBreite * 0.62)
 
   if (daten.every((d) => d.wert <= 0)) {
-    return <div className="py-8 text-center text-[12px] text-slate-600">Noch keine Daten.</div>
+    return <div className="py-8 text-center text-[12px] text-[var(--app-text-muted)]">Noch keine Daten.</div>
   }
 
   return (
-    <div className="w-full overflow-x-auto">
+    <div className={`w-full ${appTableScrollInlineClassName}`}>
       <svg width="100%" viewBox={`0 0 ${breite} ${hoehe}`} preserveAspectRatio="xMidYMid meet" style={{ minWidth: breite }} role="img" aria-label="Werte je Monat">
         <line x1={padLinks} y1={padOben + plot} x2={breite - padLinks} y2={padOben + plot} stroke="#334155" strokeWidth={1} />
         {daten.map((d, i) => {
@@ -85,13 +86,13 @@ function MonatsBalken({ daten, hoehe = 180 }: { daten: { key: string; wert: numb
               <rect x={xMitte - balkenBreite / 2} y={padOben + (plot - h)} width={balkenBreite} height={Math.max(0, h)} rx={3} fill="#34d399">
                 <title>{`${monatsLabel(d.key)}: ${eur(d.wert)}`}</title>
               </rect>
-              <text x={xMitte} y={hoehe - 7} textAnchor="middle" className="fill-slate-500" style={{ fontSize: 10 }}>
+              <text x={xMitte} y={hoehe - 7} textAnchor="middle" className="fill-[var(--app-text-muted)]" style={{ fontSize: 10 }}>
                 {monatsLabel(d.key)}
               </text>
             </g>
           )
         })}
-        <text x={padLinks} y={padOben + 2} className="fill-slate-600" style={{ fontSize: 9 }}>
+        <text x={padLinks} y={padOben + 2} className="fill-[var(--app-text-muted)]" style={{ fontSize: 9 }}>
           {eur(max)}
         </text>
       </svg>
@@ -118,7 +119,7 @@ function LinienChart({
   const padRechts = 8
   const plot = hoehe - padUnten - padOben
   if (punkte.length === 0) {
-    return <div className="py-8 text-center text-[12px] text-slate-600">Noch keine Daten.</div>
+    return <div className="py-8 text-center text-[12px] text-[var(--app-text-muted)]">Noch keine Daten.</div>
   }
   const werte = punkte.map((p) => p.wert)
   const max = Math.max(...werte)
@@ -131,7 +132,7 @@ function LinienChart({
   const flaeche = `${linie} L ${xFuer(punkte.length - 1).toFixed(1)} ${(padOben + plot).toFixed(1)} L ${xFuer(0).toFixed(1)} ${(padOben + plot).toFixed(1)} Z`
 
   return (
-    <div className="w-full overflow-x-auto">
+    <div className={`w-full ${appTableScrollInlineClassName}`}>
       <svg width="100%" viewBox={`0 0 ${breite} ${hoehe}`} preserveAspectRatio="xMidYMid meet" style={{ minWidth: breite }} role="img" aria-label="Verlauf">
         <line x1={padLinks} y1={padOben + plot} x2={breite - padRechts} y2={padOben + plot} stroke="#334155" strokeWidth={1} />
         <path d={flaeche} fill={farbe} opacity={0.12} />
@@ -142,13 +143,13 @@ function LinienChart({
               <title>{`${p.label}: ${format(p.wert)}`}</title>
             </circle>
             {punkte.length <= 14 ? (
-              <text x={xFuer(i)} y={hoehe - 7} textAnchor="middle" className="fill-slate-500" style={{ fontSize: 9 }}>
+              <text x={xFuer(i)} y={hoehe - 7} textAnchor="middle" className="fill-[var(--app-text-muted)]" style={{ fontSize: 9 }}>
                 {p.label}
               </text>
             ) : null}
           </g>
         ))}
-        <text x={padLinks} y={padOben + 2} className="fill-slate-600" style={{ fontSize: 9 }}>
+        <text x={padLinks} y={padOben + 2} className="fill-[var(--app-text-muted)]" style={{ fontSize: 9 }}>
           {format(max)}
         </text>
       </svg>
@@ -158,16 +159,16 @@ function LinienChart({
 
 function Ranking({ zeilen }: { zeilen: { id: string; name: string; wert: number; anzeige: string; farbe: string }[] }) {
   const max = Math.max(1, ...zeilen.map((z) => z.wert))
-  if (zeilen.length === 0) return <div className="py-6 text-center text-[12px] text-slate-600">Noch keine Daten.</div>
+  if (zeilen.length === 0) return <div className="py-6 text-center text-[12px] text-[var(--app-text-muted)]">Noch keine Daten.</div>
   return (
     <div className="space-y-2">
       {zeilen.map((z) => (
         <div key={z.id} className="min-w-0">
           <div className="mb-0.5 flex items-baseline justify-between gap-2">
-            <span className="min-w-0 truncate text-[12px] font-semibold text-slate-200">{z.name}</span>
-            <span className="shrink-0 text-[11px] font-bold tabular-nums text-slate-300">{z.anzeige}</span>
+            <span className="min-w-0 truncate text-[12px] font-semibold text-[var(--app-text)]">{z.name}</span>
+            <span className="shrink-0 text-[11px] font-bold tabular-nums text-[var(--app-text)]">{z.anzeige}</span>
           </div>
-          <div className="h-2 w-full overflow-hidden rounded-full bg-slate-800">
+          <div className="h-2 w-full overflow-hidden rounded-full bg-[var(--app-surface-muted)]">
             <div className="h-full rounded-full" style={{ width: `${Math.max(3, (z.wert / max) * 100)}%`, backgroundColor: z.farbe }} />
           </div>
         </div>
@@ -340,13 +341,13 @@ export function LagerAuswertungen({ produkte, refreshKey }: Props) {
   }, [einkauf, verbrauch])
 
   if (laden) {
-    return <div className="rounded-2xl border border-slate-800 bg-slate-900/70 px-4 py-10 text-center text-sm text-slate-500">Auswertungen werden geladen…</div>
+    return <div className="rounded-2xl border border-[var(--app-border)] bg-[var(--app-surface-muted)] px-4 py-10 text-center text-sm text-[var(--app-text-muted)]">Auswertungen werden geladen…</div>
   }
 
   const keineDaten = einkauf.length === 0 && verbrauch.length === 0
   if (keineDaten) {
     return (
-      <div className="rounded-2xl border border-slate-800 bg-slate-900/70 px-4 py-10 text-center text-sm text-slate-500">
+      <div className="rounded-2xl border border-[var(--app-border)] bg-[var(--app-surface-muted)] px-4 py-10 text-center text-sm text-[var(--app-text-muted)]">
         Noch keine Einkäufe oder Verbräuche erfasst — sobald du buchst, erscheinen hier Diagramme.
       </div>
     )
@@ -366,12 +367,12 @@ export function LagerAuswertungen({ produkte, refreshKey }: Props) {
               <div key={s.key} className="flex items-center justify-between gap-2 text-[12px]">
                 <span className="flex min-w-0 items-center gap-1.5">
                   <span className="h-2.5 w-2.5 shrink-0 rounded-sm" style={{ backgroundColor: s.farbe }} />
-                  <span className="truncate text-slate-300">{s.label}</span>
+                  <span className="truncate text-[var(--app-text)]">{s.label}</span>
                 </span>
-                <span className="shrink-0 font-semibold tabular-nums text-slate-200">{eur(s.betrag)}</span>
+                <span className="shrink-0 font-semibold tabular-nums text-[var(--app-text)]">{eur(s.betrag)}</span>
               </div>
             ))}
-            {warengruppe.length === 0 ? <p className="text-[12px] text-slate-600">Keine Daten.</p> : null}
+            {warengruppe.length === 0 ? <p className="text-[12px] text-[var(--app-text-muted)]">Keine Daten.</p> : null}
           </div>
         </div>
       </Karte>
@@ -389,7 +390,7 @@ export function LagerAuswertungen({ produkte, refreshKey }: Props) {
           <select
             value={preisArtikel}
             onChange={(e) => setPreisArtikel(e.target.value)}
-            className="mb-3 w-full rounded-lg border border-slate-700 bg-slate-950 px-2.5 py-2 text-sm font-semibold text-slate-100 outline-none focus:ring-2 focus:ring-emerald-500/40"
+            className="mb-3 w-full rounded-lg border border-[var(--app-border-strong)] bg-[var(--app-surface-muted)] px-2.5 py-2 text-sm font-semibold text-[var(--app-text)] outline-none focus:ring-2 focus:ring-emerald-500/40"
           >
             {artikelMitEinkaeufen.map((a) => (
               <option key={a.id} value={a.id}>

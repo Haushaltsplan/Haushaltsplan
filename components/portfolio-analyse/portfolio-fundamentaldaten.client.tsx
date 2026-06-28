@@ -106,14 +106,14 @@ export function PortfolioFundamentaldatenClient() {
       description="Historische Kennzahlen und Bewertungsmultiples im TIKR-Stil — Daten von Macrotrends.net."
     >
       {!hatDaten && !paLaden && kandidaten.length === 0 ? (
-        <PaCard className="space-y-3 p-6 text-sm text-zinc-400">
+        <PaCard className="space-y-3 p-6 text-sm text-[var(--app-text-muted)]">
           <p>Importiere Portfolio-Daten oder lege Aktien auf der Watchlist an.</p>
           <Link href={WATCHLIST_PFAD} className="inline-block text-teal-400 hover:underline">
             Zur Watchlist →
           </Link>
         </PaCard>
       ) : kandidaten.length === 0 ? (
-        <PaCard className="space-y-3 p-6 text-sm text-zinc-400">
+        <PaCard className="space-y-3 p-6 text-sm text-[var(--app-text-muted)]">
           <p>Keine Aktien im Depot und keine Einträge auf der Watchlist.</p>
           <Link href={WATCHLIST_PFAD} className="inline-block text-teal-400 hover:underline">
             Watchlist anlegen →
@@ -123,7 +123,7 @@ export function PortfolioFundamentaldatenClient() {
         <div className="space-y-4">
           <PaCard className="p-3 sm:p-4">
             <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-              <label className="text-[11px] font-medium uppercase tracking-wide text-zinc-500">
+              <label className="text-[11px] font-medium uppercase tracking-wide text-[var(--app-text-muted)]">
                 Unternehmen
               </label>
               <Link href={WATCHLIST_PFAD} className="text-[11px] text-teal-400 hover:underline">
@@ -133,7 +133,7 @@ export function PortfolioFundamentaldatenClient() {
             <select
               value={selectedIdx}
               onChange={(e) => waehleKandidat(Number(e.target.value))}
-              className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100"
+              className="w-full rounded-lg border border-[var(--app-border-strong)] bg-[var(--app-surface-muted)] px-3 py-2 text-sm text-[var(--app-text)]"
             >
               {depotAnzahl > 0 ? (
                 <optgroup label="Depot">

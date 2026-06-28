@@ -1,5 +1,6 @@
 'use client'
 
+import { appTableScrollClassName } from '@/components/page-shell'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import toast from 'react-hot-toast'
 import { CollapsibleRowHeaderEnd, LABEL_EINKLAPPEN } from '@/components/collapsible-ui'
@@ -256,25 +257,25 @@ export function LagerGekochteMahlzeiten({ produktOptionen, refreshKey, onNachBuc
   }
 
   return (
-    <div className="rounded-[2rem] border border-slate-800 bg-slate-900 shadow-xl shadow-black/30">
+    <div className="rounded-[2rem] border border-[var(--app-border)] bg-[var(--app-surface-muted)] shadow-xl shadow-black/30">
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className="group flex w-full items-center justify-between gap-4 px-6 py-5 text-left transition hover:bg-slate-800/40 md:px-8"
+        className="group flex w-full items-center justify-between gap-4 px-6 py-5 text-left transition hover:bg-[var(--app-surface-hover)] md:px-8"
         aria-expanded={open}
       >
         <div>
           <h2 className="text-lg font-black text-violet-200">Gekocht &amp; gegessen</h2>
-          <p className="mt-1 text-sm text-slate-500">
+          <p className="mt-1 text-sm text-[var(--app-text-muted)]">
             Rückblick auf Mahlzeiten und{' '}
-            <span className="font-semibold text-slate-400">geschätzte</span> Zutatenkosten (Ø aus Kassenzettel-Einkäufen).
+            <span className="font-semibold text-[var(--app-text-muted)]">geschätzte</span> Zutatenkosten (Ø aus Kassenzettel-Einkäufen).
           </p>
         </div>
         <CollapsibleRowHeaderEnd open={open} labels={LABEL_EINKLAPPEN} tone="violet" />
       </button>
 
       {open && (
-        <div className="border-t border-slate-800 px-4 pb-5 pt-3 md:px-8">
+        <div className="border-t border-[var(--app-border)] px-4 pb-5 pt-3 md:px-8">
           {fehler && (
             <p className="mb-3 rounded-xl border border-amber-800/60 bg-amber-950/35 p-3 text-xs leading-relaxed text-amber-100">
               {fehler}
@@ -282,7 +283,7 @@ export function LagerGekochteMahlzeiten({ produktOptionen, refreshKey, onNachBuc
           )}
 
           <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
-            <p className="text-[11px] text-slate-500">
+            <p className="text-[11px] text-[var(--app-text-muted)]">
               Summe angezeigter Einträge: <span className="font-bold text-violet-200">{formatEur(summeKosten)}</span>
             </p>
             <div className="flex flex-wrap gap-2">
@@ -290,7 +291,7 @@ export function LagerGekochteMahlzeiten({ produktOptionen, refreshKey, onNachBuc
                 type="button"
                 disabled={laden}
                 onClick={() => void ladeListe()}
-                className="rounded-lg border border-slate-600 bg-slate-800/80 px-2.5 py-1.5 text-[11px] font-bold text-slate-300 hover:bg-slate-700 disabled:opacity-40"
+                className="rounded-lg border border-[var(--app-border-strong)] bg-[var(--app-surface-hover)] px-2.5 py-1.5 text-[11px] font-bold text-[var(--app-text)] hover:bg-[var(--app-surface-hover)] disabled:opacity-40"
               >
                 Aktualisieren
               </button>
@@ -307,10 +308,10 @@ export function LagerGekochteMahlzeiten({ produktOptionen, refreshKey, onNachBuc
             </div>
           </div>
 
-          {laden && <p className="text-xs text-slate-500">Lade Einträge …</p>}
+          {laden && <p className="text-xs text-[var(--app-text-muted)]">Lade Einträge …</p>}
 
           {!laden && !fehler && mahlzeiten.length === 0 && (
-            <p className="text-sm text-slate-500">
+            <p className="text-sm text-[var(--app-text-muted)]">
               Noch keine gebuchten Mahlzeiten. Beim Rezept-Coach auf „Zutaten aus Vorrat ausbuchen“ tippen — oder hier manuell
               verbuchen.
             </p>
@@ -322,15 +323,15 @@ export function LagerGekochteMahlzeiten({ produktOptionen, refreshKey, onNachBuc
                 const exp = expandedId === m.id
                 const lines = detail[m.id]
                 return (
-                  <li key={m.id} className="rounded-xl border border-slate-800 bg-slate-950/50">
+                  <li key={m.id} className="rounded-xl border border-[var(--app-border)] bg-[var(--app-surface-muted)]">
                     <button
                       type="button"
                       onClick={() => setExpandedId(exp ? null : m.id)}
-                      className="flex w-full flex-wrap items-center justify-between gap-2 px-3 py-2.5 text-left hover:bg-slate-900/60 md:px-4"
+                      className="flex w-full flex-wrap items-center justify-between gap-2 px-3 py-2.5 text-left hover:bg-[var(--app-surface-muted)] md:px-4"
                     >
                       <div className="min-w-0">
-                        <p className="truncate text-sm font-bold text-slate-100">{m.titel}</p>
-                        <p className="text-[11px] text-slate-500">
+                        <p className="truncate text-sm font-bold text-[var(--app-text)]">{m.titel}</p>
+                        <p className="text-[11px] text-[var(--app-text-muted)]">
                           {formatGekochtAm(m.gekocht_am)}
                           {m.quelle === 'rezept' ? ' · aus Rezept' : m.quelle === 'manuell' ? ' · manuell' : ` · ${m.quelle}`}
                         </p>
@@ -339,21 +340,21 @@ export function LagerGekochteMahlzeiten({ produktOptionen, refreshKey, onNachBuc
                         <p className="text-sm font-black tabular-nums text-violet-200">
                           {formatEur(Number(m.kosten_geschaetzt_eur))}
                         </p>
-                        <p className="text-[10px] text-slate-600">geschätzt</p>
+                        <p className="text-[10px] text-[var(--app-text-muted)]">geschätzt</p>
                       </div>
                     </button>
                     {exp && (
-                      <div className="border-t border-slate-800/80 px-3 py-2 text-xs text-slate-400 md:px-4">
-                        {detailLaden === m.id && <p className="text-slate-500">Lade Zutaten …</p>}
+                      <div className="border-t border-[var(--app-border)] px-3 py-2 text-xs text-[var(--app-text-muted)] md:px-4">
+                        {detailLaden === m.id && <p className="text-[var(--app-text-muted)]">Lade Zutaten …</p>}
                         {lines && lines.length > 0 && (
                           <div className="mt-1 space-y-2">
-                            <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                            <p className="text-[10px] font-bold uppercase tracking-wider text-[var(--app-text-muted)]">
                               Positionen & Kostensplit
                             </p>
-                            <div className="overflow-x-auto rounded-lg border border-slate-800/90">
+                            <div className={`${appTableScrollClassName} rounded-lg border border-[var(--app-border)]`}>
                               <table className="w-full min-w-[18rem] border-collapse text-left text-[11px]">
                                 <thead>
-                                  <tr className="border-b border-slate-800 bg-slate-950/80 text-[9px] font-black uppercase tracking-wider text-slate-500">
+                                  <tr className="border-b border-[var(--app-border)] bg-[var(--app-surface-muted)] text-[9px] font-black uppercase tracking-wider text-[var(--app-text-muted)]">
                                     <th className="px-2 py-1.5">Zutat</th>
                                     <th className="px-2 py-1.5 text-right">Menge</th>
                                     <th className="px-2 py-1.5 text-right">Ø-Preis</th>
@@ -366,15 +367,15 @@ export function LagerGekochteMahlzeiten({ produktOptionen, refreshKey, onNachBuc
                                     const einh = meta?.einheit ?? produktOptionen.find((p) => p.id === z.produkt_id)?.einheit ?? ''
                                     const anteil = anteilEurFuerZeile(z.produkt_id, z.menge)
                                     return (
-                                      <tr key={`${m.id}-${i}`} className="border-b border-slate-800/60 last:border-0">
-                                        <td className="max-w-[11rem] px-2 py-1.5 align-top text-slate-200">
+                                      <tr key={`${m.id}-${i}`} className="border-b border-[var(--app-border)] last:border-0">
+                                        <td className="max-w-[11rem] px-2 py-1.5 align-top text-[var(--app-text)]">
                                           <span className="font-semibold">{nameById.get(z.produkt_id) || z.produkt_id.slice(0, 8)}</span>
-                                          {z.notiz ? <span className="mt-0.5 block font-normal text-slate-600">{z.notiz}</span> : null}
+                                          {z.notiz ? <span className="mt-0.5 block font-normal text-[var(--app-text-muted)]">{z.notiz}</span> : null}
                                         </td>
-                                        <td className="whitespace-nowrap px-2 py-1.5 text-right font-mono tabular-nums text-slate-300">
+                                        <td className="whitespace-nowrap px-2 py-1.5 text-right font-mono tabular-nums text-[var(--app-text)]">
                                           −{z.menge} {einh}
                                         </td>
-                                        <td className="whitespace-nowrap px-2 py-1.5 text-right text-slate-500">
+                                        <td className="whitespace-nowrap px-2 py-1.5 text-right text-[var(--app-text-muted)]">
                                           {meta?.preis != null ? formatEurJeEinheit(meta.preis, einh) : '—'}
                                         </td>
                                         <td className="whitespace-nowrap px-2 py-1.5 text-right font-semibold tabular-nums text-violet-200/95">
@@ -399,24 +400,24 @@ export function LagerGekochteMahlzeiten({ produktOptionen, refreshKey, onNachBuc
                               summe = Math.round(summe * 100) / 100
                               const gespeichert = Number(m.kosten_geschaetzt_eur)
                               return (
-                                <div className="rounded-lg border border-slate-800/80 bg-slate-950/40 px-2 py-2 text-[10px] leading-relaxed text-slate-500">
+                                <div className="rounded-lg border border-[var(--app-border)] bg-[var(--app-surface-muted)] px-2 py-2 text-[10px] leading-relaxed text-[var(--app-text-muted)]">
                                   {hat ? (
                                     <>
-                                      <span className="font-semibold text-slate-400">Summe Positionen (jetziger Ø-Preis):</span>{' '}
+                                      <span className="font-semibold text-[var(--app-text-muted)]">Summe Positionen (jetziger Ø-Preis):</span>{' '}
                                       <span className="tabular-nums text-violet-200">{formatEur(summe)}</span>
                                       {Number.isFinite(gespeichert) ? (
                                         <>
                                           {' '}
                                           ·{' '}
-                                          <span className="font-semibold text-slate-400">beim Verbuchen:</span>{' '}
-                                          <span className="tabular-nums text-slate-300">{formatEur(gespeichert)}</span>
+                                          <span className="font-semibold text-[var(--app-text-muted)]">beim Verbuchen:</span>{' '}
+                                          <span className="tabular-nums text-[var(--app-text)]">{formatEur(gespeichert)}</span>
                                         </>
                                       ) : null}
                                     </>
                                   ) : (
                                     <span>Keine Ø-Preise für diese Produkte — Anteil nicht berechenbar.</span>
                                   )}
-                                  <span className="mt-1 block text-slate-600">
+                                  <span className="mt-1 block text-[var(--app-text-muted)]">
                                     Der Split nutzt die gleichen Ø-Einkaufspreise wie die Lagerkarten; kleine Abweichungen zur
                                     gespeicherten Summe sind durch Rundung oder neuere Käufe möglich.
                                   </span>
@@ -425,7 +426,7 @@ export function LagerGekochteMahlzeiten({ produktOptionen, refreshKey, onNachBuc
                             })()}
                           </div>
                         )}
-                        {lines && lines.length === 0 && <p className="text-slate-500">Keine Verbrauchszeilen verknüpft.</p>}
+                        {lines && lines.length === 0 && <p className="text-[var(--app-text-muted)]">Keine Verbrauchszeilen verknüpft.</p>}
                       </div>
                     )}
                   </li>
@@ -434,7 +435,7 @@ export function LagerGekochteMahlzeiten({ produktOptionen, refreshKey, onNachBuc
             </ul>
           )}
 
-          <p className="mt-4 text-[10px] leading-relaxed text-slate-600">
+          <p className="mt-4 text-[10px] leading-relaxed text-[var(--app-text-muted)]">
             Kosten = Summe über alle Zutaten (verbrauchte Menge × gewichteter Ø-Einkaufspreis aus Kassenzetteln). Ohne
             Einkaufshistorie wird 0 € geschätzt.
           </p>
@@ -451,28 +452,28 @@ export function LagerGekochteMahlzeiten({ produktOptionen, refreshKey, onNachBuc
         >
           <div role="dialog" aria-modal="true" className={`${appModalPanelWideScrollClassName} p-4 sm:p-5`}>
             <h3 className="text-base font-black text-violet-200">Mahlzeit manuell verbuchen</h3>
-            <p className="mt-1 text-xs leading-relaxed text-slate-500">
+            <p className="mt-1 text-xs leading-relaxed text-[var(--app-text-muted)]">
               Bestand wird wie beim Rezept-Coach reduziert; die Mahlzeit erscheint in der Liste mit Kostenschätzung.
             </p>
 
-            <label className="mt-4 block text-[10px] font-bold uppercase tracking-wider text-slate-500">Gericht / Mahlzeit</label>
+            <label className="mt-4 block text-[10px] font-bold uppercase tracking-wider text-[var(--app-text-muted)]">Gericht / Mahlzeit</label>
             <input
               type="text"
               value={manualTitel}
               onChange={(e) => setManualTitel(e.target.value)}
               placeholder="z. B. Veganes Chili"
-              className="mt-1 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100 outline-none focus:ring-2 focus:ring-violet-500/40"
+              className="mt-1 w-full rounded-xl border border-[var(--app-border-strong)] bg-[var(--app-surface-muted)] px-3 py-2 text-sm text-[var(--app-text)] outline-none focus:ring-2 focus:ring-violet-500/40"
             />
 
-            <label className="mt-3 block text-[10px] font-bold uppercase tracking-wider text-slate-500">Wann gegessen?</label>
+            <label className="mt-3 block text-[10px] font-bold uppercase tracking-wider text-[var(--app-text-muted)]">Wann gegessen?</label>
             <input
               type="datetime-local"
               value={manualZeit}
               onChange={(e) => setManualZeit(e.target.value)}
-              className="mt-1 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100 outline-none focus:ring-2 focus:ring-violet-500/40"
+              className="mt-1 w-full rounded-xl border border-[var(--app-border-strong)] bg-[var(--app-surface-muted)] px-3 py-2 text-sm text-[var(--app-text)] outline-none focus:ring-2 focus:ring-violet-500/40"
             />
 
-            <p className="mt-4 text-[10px] font-bold uppercase tracking-wider text-slate-500">Zutaten aus Vorrat (Basiseinheit)</p>
+            <p className="mt-4 text-[10px] font-bold uppercase tracking-wider text-[var(--app-text-muted)]">Zutaten aus Vorrat (Basiseinheit)</p>
             <div className="mt-2 space-y-2">
               {manualZeilen.map((z, idx) => (
                 <div key={idx} className="flex flex-wrap items-end gap-2">
@@ -483,7 +484,7 @@ export function LagerGekochteMahlzeiten({ produktOptionen, refreshKey, onNachBuc
                         const v = e.target.value
                         setManualZeilen((rows) => rows.map((r, j) => (j === idx ? { ...r, produkt_id: v } : r)))
                       }}
-                      className="w-full rounded-xl border border-slate-700 bg-slate-950 px-2 py-2 text-xs text-slate-100 outline-none focus:ring-2 focus:ring-violet-500/40"
+                      className="w-full rounded-xl border border-[var(--app-border-strong)] bg-[var(--app-surface-muted)] px-2 py-2 text-xs text-[var(--app-text)] outline-none focus:ring-2 focus:ring-violet-500/40"
                     >
                       <option value="">Produkt wählen …</option>
                       {produktOptionen.map((p) => (
@@ -502,13 +503,13 @@ export function LagerGekochteMahlzeiten({ produktOptionen, refreshKey, onNachBuc
                       const v = e.target.value
                       setManualZeilen((rows) => rows.map((r, j) => (j === idx ? { ...r, menge: v } : r)))
                     }}
-                    className="w-24 rounded-xl border border-slate-700 bg-slate-950 px-2 py-2 text-xs text-slate-100 outline-none focus:ring-2 focus:ring-violet-500/40"
+                    className="w-24 rounded-xl border border-[var(--app-border-strong)] bg-[var(--app-surface-muted)] px-2 py-2 text-xs text-[var(--app-text)] outline-none focus:ring-2 focus:ring-violet-500/40"
                   />
                   <button
                     type="button"
                     onClick={() => setManualZeilen((rows) => rows.filter((_, j) => j !== idx))}
                     disabled={manualZeilen.length <= 1}
-                    className="rounded-lg border border-slate-600 px-2 py-2 text-[11px] font-bold text-slate-400 hover:bg-slate-800 disabled:opacity-30"
+                    className="rounded-lg border border-[var(--app-border-strong)] px-2 py-2 text-[11px] font-bold text-[var(--app-text-muted)] hover:bg-[var(--app-surface-hover)] disabled:opacity-30"
                   >
                     ✕
                   </button>
@@ -528,7 +529,7 @@ export function LagerGekochteMahlzeiten({ produktOptionen, refreshKey, onNachBuc
                 type="button"
                 disabled={manualBusy}
                 onClick={() => setManualOpen(false)}
-                className="rounded-xl border border-slate-600 px-4 py-2 text-xs font-bold text-slate-400 hover:bg-slate-800 disabled:opacity-40"
+                className="rounded-xl border border-[var(--app-border-strong)] px-4 py-2 text-xs font-bold text-[var(--app-text-muted)] hover:bg-[var(--app-surface-hover)] disabled:opacity-40"
               >
                 Abbrechen
               </button>

@@ -194,9 +194,9 @@ export function BesitzGebrauchtpreisKiPanel() {
   return (
     <div
       id={panelDomId}
-      className="w-full min-w-0 border-t border-slate-800/90 pt-3 mt-1"
+      className="w-full min-w-0 border-t border-[var(--app-border)] pt-3 mt-1"
     >
-      <div className="flex flex-col gap-3 rounded-xl border border-slate-800/90 bg-slate-950/70 p-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
+      <div className="flex flex-col gap-3 rounded-xl border border-[var(--app-border)] bg-[var(--app-surface-muted)] p-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
         <div className="flex min-w-0 flex-1 flex-col gap-2">
           <input
             ref={kameraRef}
@@ -242,18 +242,18 @@ export function BesitzGebrauchtpreisKiPanel() {
                 type="button"
                 disabled={busy}
                 onClick={alleFotosLeeren}
-                className="rounded-lg border border-slate-600 px-3 py-2 text-[11px] font-semibold text-slate-400 transition hover:bg-slate-800/80 disabled:opacity-40"
+                className="rounded-lg border border-[var(--app-border-strong)] px-3 py-2 text-[11px] font-semibold text-[var(--app-text-muted)] transition hover:bg-[var(--app-surface-hover)] disabled:opacity-40"
               >
                 Fotos leeren
               </button>
             ) : null}
           </div>
           {dateien.length > 0 ? (
-            <p className="min-w-0 truncate text-[11px] text-slate-500" title={dateien.map((f) => f.name || f.type).join(', ')}>
+            <p className="min-w-0 truncate text-[11px] text-[var(--app-text-muted)]" title={dateien.map((f) => f.name || f.type).join(', ')}>
               {dateien.length}/{COACH_MAX_IMAGES_PER_MESSAGE}: {dateien.map((f) => f.name || '(Kamera)').join(', ')}
             </p>
           ) : (
-            <p className="text-[11px] text-slate-500">
+            <p className="text-[11px] text-[var(--app-text-muted)]">
               Bis zu {COACH_MAX_IMAGES_PER_MESSAGE} Bilder — Kamera oder Galerie. Vor dem Senden werden sie als JPEG
               verkleinert (Server-Limit).
             </p>
@@ -276,7 +276,7 @@ export function BesitzGebrauchtpreisKiPanel() {
               setErgebnis(null)
               setFehler(null)
             }}
-            className="rounded-lg border border-slate-600 px-3 py-2 text-xs font-semibold text-slate-400 transition hover:bg-slate-800/80"
+            className="rounded-lg border border-[var(--app-border-strong)] px-3 py-2 text-xs font-semibold text-[var(--app-text-muted)] transition hover:bg-[var(--app-surface-hover)]"
           >
             Schließen
           </button>
@@ -286,31 +286,31 @@ export function BesitzGebrauchtpreisKiPanel() {
       {fehler ? <p className="mt-2 text-[12px] text-rose-300">{fehler}</p> : null}
 
       {ergebnis ? (
-        <div className="mt-3 space-y-2.5 rounded-lg border border-slate-800/80 bg-slate-900/40 p-3 text-[13px] text-slate-300">
+        <div className="mt-3 space-y-2.5 rounded-lg border border-[var(--app-border)] bg-[var(--app-surface-muted)]/40 p-3 text-[13px] text-[var(--app-text)]">
           <p className="text-lg font-bold tabular-nums text-emerald-200/95">
             {formatEur(ergebnis.preis_wahrscheinlich_eur)}{' '}
-            <span className="text-sm font-normal text-slate-400">
+            <span className="text-sm font-normal text-[var(--app-text-muted)]">
               ({formatEur(ergebnis.preis_min_eur)} – {formatEur(ergebnis.preis_max_eur)})
             </span>
           </p>
           <p>
-            <span className="text-slate-500">Zustand:</span>{' '}
-            <span className="font-medium text-slate-200">{ergebnis.zustand_stufe}</span> — {ergebnis.zustand_kurz}
+            <span className="text-[var(--app-text-muted)]">Zustand:</span>{' '}
+            <span className="font-medium text-[var(--app-text)]">{ergebnis.zustand_stufe}</span> — {ergebnis.zustand_kurz}
           </p>
           <p>
-            <span className="text-slate-500">Markt:</span> {ergebnis.markt_einordnung}
+            <span className="text-[var(--app-text-muted)]">Markt:</span> {ergebnis.markt_einordnung}
           </p>
           <p>
-            <span className="text-slate-500">Begründung:</span> {ergebnis.begruendung}
+            <span className="text-[var(--app-text-muted)]">Begründung:</span> {ergebnis.begruendung}
           </p>
           {ergebnis.unsicherheiten.length > 0 ? (
-            <ul className="list-inside list-disc text-[12px] text-slate-400">
+            <ul className="list-inside list-disc text-[12px] text-[var(--app-text-muted)]">
               {ergebnis.unsicherheiten.map((u, i) => (
                 <li key={i}>{u}</li>
               ))}
             </ul>
           ) : null}
-          <p className="text-[11px] text-slate-500">{ergebnis.hinweis_rechtlich}</p>
+          <p className="text-[11px] text-[var(--app-text-muted)]">{ergebnis.hinweis_rechtlich}</p>
         </div>
       ) : null}
     </div>

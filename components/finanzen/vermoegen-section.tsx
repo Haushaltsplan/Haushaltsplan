@@ -1,5 +1,14 @@
 'use client'
 
+import {
+  finanzEmptyClass,
+  finanzInputClass,
+  finanzKpiCardCompactClass,
+  finanzLabelMutedClass,
+  finanzListItemClass,
+  finanzSecondaryBtnClass,
+  finanzTitleClass,
+} from '@/components/finanzen/finanzen-ui'
 import { useEffect, useMemo, useState } from 'react'
 import toast from 'react-hot-toast'
 import { PageSection, PageSectionPanel } from '@/components/page-shell'
@@ -85,11 +94,11 @@ export function VermoegenSection({ puffer }: { puffer: number }) {
     <PageSection titleId="finanzen-vermoegen-heading" title="Vermögensübersicht" density="compact">
       <PageSectionPanel density="compact">
         {schemaOk === null ? (
-          <p className="text-sm text-slate-500">Wird geladen …</p>
+          <p className="text-sm text-[var(--app-text-muted)]">Wird geladen …</p>
         ) : schemaOk === false ? (
           <div className="rounded-xl border border-amber-700/50 bg-amber-950/25 p-4 text-[13px] leading-relaxed text-amber-200/90">
             Vermögens-Tabelle fehlt. In Supabase einmal die Migration ausführen:
-            <code className="mt-1.5 block rounded bg-slate-950/80 px-1.5 py-1 text-[11px] text-slate-300">
+            <code className="mt-1.5 block rounded bg-[var(--app-surface-muted)] px-1.5 py-1 text-[11px] text-[var(--app-text)]">
               supabase/migrations/20260531130100_finanz_vermoegen.sql
             </code>
           </div>
@@ -101,16 +110,16 @@ export function VermoegenSection({ puffer }: { puffer: number }) {
                 {eur(gesamt)}
               </p>
               <div className="mt-3 grid gap-2 sm:grid-cols-3">
-                <div className="rounded-xl border border-slate-800/80 bg-slate-950/45 p-2.5">
-                  <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">Erarbeiteter Puffer</p>
+                <div className={finanzKpiCardCompactClass}>
+                  <p className={finanzLabelMutedClass}>Erarbeiteter Puffer</p>
                   <p className="mt-0.5 text-base font-semibold tabular-nums text-violet-200">{eur(puffer)}</p>
                 </div>
-                <div className="rounded-xl border border-slate-800/80 bg-slate-950/45 p-2.5">
-                  <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">Sparziele</p>
+                <div className={finanzKpiCardCompactClass}>
+                  <p className={finanzLabelMutedClass}>Sparziele</p>
                   <p className="mt-0.5 text-base font-semibold tabular-nums text-teal-200">{eur(sparzieleSumme)}</p>
                 </div>
-                <div className="rounded-xl border border-slate-800/80 bg-slate-950/45 p-2.5">
-                  <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">Weitere Posten</p>
+                <div className={finanzKpiCardCompactClass}>
+                  <p className={finanzLabelMutedClass}>Weitere Posten</p>
                   <p className="mt-0.5 text-base font-semibold tabular-nums text-sky-200">{eur(postenSumme)}</p>
                 </div>
               </div>
@@ -132,8 +141,8 @@ export function VermoegenSection({ puffer }: { puffer: number }) {
             </div>
 
             {formOffen && (
-              <div className="space-y-3 rounded-xl border border-slate-800/90 bg-slate-950/45 p-4">
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+              <div className={`space-y-3 ${finanzListItemClass} flex-col items-stretch`}>
+                <p className={finanzLabelMutedClass}>
                   {form.id ? 'Posten bearbeiten' : 'Neuer Posten'}
                 </p>
                 <input
@@ -141,17 +150,17 @@ export function VermoegenSection({ puffer }: { puffer: number }) {
                   value={form.titel}
                   onChange={(e) => setForm((p) => ({ ...p, titel: e.target.value }))}
                   placeholder="Bezeichnung (z. B. Depot Trade Republic, Tagesgeld, Bargeld)"
-                  className="w-full rounded-xl border border-slate-700/90 bg-slate-950/90 px-3 py-2.5 text-sm text-slate-100 outline-none focus:ring-2 focus:ring-indigo-500/30"
+                  className={finanzInputClass}
                 />
                 <div>
-                  <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-slate-500">Aktueller Wert €</label>
+                  <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-[var(--app-text-muted)]">Aktueller Wert €</label>
                   <input
                     type="text"
                     inputMode="decimal"
                     value={form.betrag}
                     onChange={(e) => setForm((p) => ({ ...p, betrag: e.target.value }))}
                     placeholder="z. B. 12500"
-                    className="w-full rounded-xl border border-slate-700/90 bg-slate-950/90 px-3 py-2.5 text-sm tabular-nums text-slate-100 outline-none focus:ring-2 focus:ring-indigo-500/30"
+                    className={`${finanzInputClass} tabular-nums`}
                   />
                 </div>
                 <div className="flex gap-2 pt-0.5">
@@ -161,7 +170,7 @@ export function VermoegenSection({ puffer }: { puffer: number }) {
                       setForm(LEER)
                       setFormOffen(false)
                     }}
-                    className="flex-1 rounded-xl border border-slate-600/90 bg-slate-900 py-2.5 text-sm font-semibold text-slate-300 transition hover:bg-slate-800"
+                    className={`flex-1 ${finanzSecondaryBtnClass}`}
                   >
                     Abbrechen
                   </button>
@@ -178,7 +187,7 @@ export function VermoegenSection({ puffer }: { puffer: number }) {
             )}
 
             {posten.length === 0 && !formOffen ? (
-              <p className="rounded-xl border border-slate-800/90 bg-slate-950/35 p-6 text-center text-sm italic text-slate-600">
+              <p className={finanzEmptyClass}>
                 Noch keine weiteren Posten. Trage z. B. deinen Depotwert oder dein Tagesgeld ein.
               </p>
             ) : (
@@ -187,9 +196,9 @@ export function VermoegenSection({ puffer }: { puffer: number }) {
                   {posten.map((p) => (
                     <li
                       key={p.id}
-                      className="flex items-center justify-between gap-3 rounded-xl border border-slate-800/90 bg-slate-950/45 p-3"
+                      className={finanzListItemClass}
                     >
-                      <p className="min-w-0 flex-1 truncate text-[14px] font-semibold text-slate-100">{p.titel}</p>
+                      <p className={`min-w-0 flex-1 truncate ${finanzTitleClass}`}>{p.titel}</p>
                       <p className="shrink-0 text-[14px] font-bold tabular-nums text-sky-200">{eur(Number(p.betrag) || 0)}</p>
                       <span className="flex shrink-0 gap-2 text-[11px]">
                         <button

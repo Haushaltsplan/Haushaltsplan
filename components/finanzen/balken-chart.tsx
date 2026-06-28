@@ -1,5 +1,6 @@
 'use client'
 
+import { appTableScrollClassName } from '@/components/page-shell'
 import { useMemo } from 'react'
 
 export type MonatsBalken = {
@@ -45,7 +46,7 @@ export function BalkenChart({ daten, hoehe = 200 }: { daten: MonatsBalken[]; hoe
   }, [daten, breite, plotHoehe])
 
   if (daten.length === 0) {
-    return <div className="py-8 text-center text-[12px] text-slate-600">Noch keine Monatsdaten.</div>
+    return <div className="py-8 text-center text-[12px] text-[var(--app-text-muted)]">Noch keine Monatsdaten.</div>
   }
 
   const linePath = saldoPunkte
@@ -53,7 +54,7 @@ export function BalkenChart({ daten, hoehe = 200 }: { daten: MonatsBalken[]; hoe
     .join(' ')
 
   return (
-    <div className="w-full overflow-x-auto">
+    <div className={`w-full ${appTableScrollClassName}`}>
       <svg
         width="100%"
         viewBox={`0 0 ${breite} ${hoehe}`}
@@ -75,7 +76,7 @@ export function BalkenChart({ daten, hoehe = 200 }: { daten: MonatsBalken[]; hoe
               x={d.xMitte}
               y={hoehe - 8}
               textAnchor="middle"
-              className="fill-slate-500"
+              className="fill-[var(--app-text-muted)]"
               style={{ fontSize: 10 }}
             >
               {d.label}
@@ -88,7 +89,7 @@ export function BalkenChart({ daten, hoehe = 200 }: { daten: MonatsBalken[]; hoe
             <title>{`Saldo: ${p.saldo.toLocaleString('de-DE', { style: 'currency', currency: 'EUR' })}`}</title>
           </circle>
         ))}
-        <text x={padLinks} y={padOben + 4} className="fill-slate-600" style={{ fontSize: 9 }}>
+        <text x={padLinks} y={padOben + 4} className="fill-[var(--app-text-muted)]" style={{ fontSize: 9 }}>
           {maxWert.toLocaleString('de-DE', { maximumFractionDigits: 0 })} €
         </text>
       </svg>

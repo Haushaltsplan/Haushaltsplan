@@ -63,8 +63,8 @@ function ampelConfig(ampel: NachkaufAmpel) {
       }
     default:
       return {
-        dot: 'bg-zinc-500',
-        badge: 'bg-zinc-800/60 text-zinc-400 ring-1 ring-white/[0.04]',
+        dot: 'bg-[var(--app-surface-muted)]',
+        badge: 'bg-[var(--app-surface-hover)] text-[var(--app-text-muted)] ring-1 ring-white/[0.04]',
         label: 'Keine Daten',
         cardRing: '',
         sparkColor: '#71717a',
@@ -87,14 +87,14 @@ function ScoreBar({ score, ampel }: { score: number; ampel: NachkaufAmpel }) {
           ? 'bg-rose-500'
           : ampel === 'teuer'
             ? 'bg-sky-500'
-            : 'bg-zinc-600'
+            : 'bg-[var(--app-surface-muted)]'
 
   return (
     <div className="flex items-center gap-2">
-      <div className="h-1.5 w-24 overflow-hidden rounded-full bg-zinc-800">
+      <div className="h-1.5 w-24 overflow-hidden rounded-full bg-[var(--app-surface-muted)]">
         <div className={`h-full rounded-full transition-all ${colorClass}`} style={{ width: `${fill}%` }} />
       </div>
-      <span className="text-[11px] tabular-nums text-zinc-500">{score}/100</span>
+      <span className="text-[11px] tabular-nums text-[var(--app-text-muted)]">{score}/100</span>
     </div>
   )
 }
@@ -117,7 +117,7 @@ function ScoreSparkline({
   const cfg = ampelConfig(ampel)
   if (verlauf.length < 2) {
     return (
-      <span className="text-[10px] text-zinc-700 italic">kein Verlauf</span>
+      <span className="text-[10px] text-[var(--app-text-muted)] italic">kein Verlauf</span>
     )
   }
 
@@ -144,7 +144,7 @@ function ScoreSparkline({
       ? 'text-emerald-400'
       : letzterScore < vorletzterScore
         ? 'text-rose-400'
-        : 'text-zinc-500'
+        : 'text-[var(--app-text-muted)]'
 
   return (
     <div className="flex items-center gap-1.5">
@@ -193,7 +193,7 @@ function PremiumDiscountBadge({ pct }: { pct: number | null }) {
           ? 'bg-emerald-500/10 text-emerald-400 ring-1 ring-emerald-500/20'
           : isPremium
             ? 'bg-rose-500/10 text-rose-400 ring-1 ring-rose-500/20'
-            : 'bg-zinc-800 text-zinc-400 ring-1 ring-white/[0.04]'
+            : 'bg-[var(--app-surface-muted)] text-[var(--app-text-muted)] ring-1 ring-white/[0.04]'
       }`}
     >
       {isDiscount ? '🏷 ' : isPremium ? '💸 ' : ''}
@@ -256,13 +256,13 @@ function SparplanAllokation({ posten }: { posten: SparplanPosten[] }) {
                 className="h-1.5 rounded-full bg-emerald-500/60"
                 style={{ width: `${Math.round((p.betragEur / gesamt) * 72)}px` }}
               />
-              <span className="text-[11px] text-zinc-300">{p.name}</span>
+              <span className="text-[11px] text-[var(--app-text)]">{p.name}</span>
             </div>
             <span className="text-[12px] font-bold tabular-nums text-emerald-300">{p.betragEur} €</span>
           </div>
         ))}
       </div>
-      <p className="mt-2 text-[10px] text-zinc-600">{posten.map((p) => p.begruendung).join(' · ')}</p>
+      <p className="mt-2 text-[10px] text-[var(--app-text-muted)]">{posten.map((p) => p.begruendung).join(' · ')}</p>
     </div>
   )
 }
@@ -275,20 +275,20 @@ function MonatsEmpfehlungBanner({ emp }: { emp: MonatsEmpfehlung }) {
   const config =
     emp.typ === 'nachkauf'
       ? {
-          bg: 'from-emerald-950/60 to-zinc-950/80 border-emerald-500/20',
+          bg: 'from-emerald-950/60 to-[var(--app-surface)] border-emerald-500/20',
           icon: '📈',
           titel: 'Nachkauf-Signal',
           textColor: 'text-emerald-300',
         }
       : emp.typ === 'sparen'
         ? {
-            bg: 'from-sky-950/60 to-zinc-950/80 border-sky-500/20',
+            bg: 'from-sky-950/60 to-[var(--app-surface)] border-sky-500/20',
             icon: '💰',
             titel: 'Diesen Monat sparen',
             textColor: 'text-sky-300',
           }
         : {
-            bg: 'from-amber-950/60 to-zinc-950/80 border-amber-500/20',
+            bg: 'from-amber-950/60 to-[var(--app-surface)] border-amber-500/20',
             icon: '🔍',
             titel: 'Beobachten',
             textColor: 'text-amber-300',
@@ -302,7 +302,7 @@ function MonatsEmpfehlungBanner({ emp }: { emp: MonatsEmpfehlung }) {
         </span>
         <div className="min-w-0 flex-1">
           <p className={`text-sm font-semibold tracking-tight ${config.textColor}`}>{config.titel}</p>
-          <p className="mt-1 text-sm leading-relaxed text-zinc-400">{emp.text}</p>
+          <p className="mt-1 text-sm leading-relaxed text-[var(--app-text-muted)]">{emp.text}</p>
           {emp.typ === 'nachkauf' && emp.tickers.length > 0 && (
             <div className="mt-2 flex flex-wrap gap-1.5">
               {emp.tickers.map((t) => (
@@ -353,9 +353,9 @@ function TitelKarte({
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
             <div className={`h-2 w-2 shrink-0 rounded-full ${cfg.dot}`} />
-            <p className="truncate text-sm font-semibold text-zinc-100">{eintrag.name}</p>
+            <p className="truncate text-sm font-semibold text-[var(--app-text)]">{eintrag.name}</p>
           </div>
-          <p className="mt-0.5 pl-4 text-[11px] font-mono text-zinc-500">{eintrag.ticker}</p>
+          <p className="mt-0.5 pl-4 text-[11px] font-mono text-[var(--app-text-muted)]">{eintrag.ticker}</p>
         </div>
         <div className="shrink-0 text-right">
           <span className={`inline-flex rounded-md px-2 py-0.5 text-[10px] font-semibold tracking-wide ${cfg.badge}`}>
@@ -405,22 +405,22 @@ function TitelKarte({
       {/* Kennzahlen */}
       <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 pl-4">
         {eintrag.bewertung.fcfYieldPct != null && (
-          <span className="text-[11px] text-zinc-500">
-            FCF <span className="text-zinc-300">{eintrag.bewertung.fcfYieldPct.toFixed(1)} %</span>
+          <span className="text-[11px] text-[var(--app-text-muted)]">
+            FCF <span className="text-[var(--app-text)]">{eintrag.bewertung.fcfYieldPct.toFixed(1)} %</span>
           </span>
         )}
         {eintrag.bewertung.forwardPe != null && (
-          <span className="text-[11px] text-zinc-500">
-            KGV <span className="text-zinc-300">{eintrag.bewertung.forwardPe.toFixed(1)}×</span>
+          <span className="text-[11px] text-[var(--app-text-muted)]">
+            KGV <span className="text-[var(--app-text)]">{eintrag.bewertung.forwardPe.toFixed(1)}×</span>
           </span>
         )}
         {eintrag.bewertung.premiumDiscountPct != null && (
           <PremiumDiscountBadge pct={eintrag.bewertung.premiumDiscountPct} />
         )}
         {eintrag.depotGewichtPct != null && (
-          <span className={`text-[11px] ${eintrag.klumpenrisiko ? 'font-medium text-orange-400' : 'text-zinc-500'}`}>
+          <span className={`text-[11px] ${eintrag.klumpenrisiko ? 'font-medium text-orange-400' : 'text-[var(--app-text-muted)]'}`}>
             Depot{' '}
-            <span className={eintrag.klumpenrisiko ? 'text-orange-300' : 'text-zinc-300'}>
+            <span className={eintrag.klumpenrisiko ? 'text-orange-300' : 'text-[var(--app-text)]'}>
               {eintrag.depotGewichtPct.toFixed(1)} %
             </span>
           </span>
@@ -429,14 +429,14 @@ function TitelKarte({
 
       {/* KI-Begründung (Vorschau) */}
       {eintrag.kiBegruendung && (
-        <p className="mt-2 line-clamp-2 pl-4 text-[12px] leading-relaxed text-zinc-500">
+        <p className="mt-2 line-clamp-2 pl-4 text-[12px] leading-relaxed text-[var(--app-text-muted)]">
           {eintrag.kiBegruendung}
         </p>
       )}
 
       {/* Deep Research Button */}
       <div className="mt-3 flex items-center justify-between pl-4">
-        <span className="text-[10px] text-zinc-600">
+        <span className="text-[10px] text-[var(--app-text-muted)]">
           {new Date(eintrag.gescannt_am).toLocaleDateString('de-DE')}
         </span>
         <button
@@ -446,7 +446,7 @@ function TitelKarte({
             onDeepResearch(eintrag)
           }}
           disabled={deepLaden}
-          className="rounded-lg bg-zinc-800/80 px-3 py-1.5 text-[11px] font-medium text-zinc-300 ring-1 ring-white/[0.06] transition-all hover:bg-zinc-700/80 hover:text-zinc-100 disabled:opacity-50"
+          className="rounded-lg bg-[var(--app-surface-hover)] px-3 py-1.5 text-[11px] font-medium text-[var(--app-text)] ring-1 ring-white/[0.06] transition-all hover:bg-[var(--app-surface-hover)] hover:text-[var(--app-text)] disabled:opacity-50"
         >
           {deepLaden ? 'Analysiert …' : eintrag.tiefenAnalyse ? 'Memo aktualisieren' : 'Deep Research'}
         </button>
@@ -463,31 +463,31 @@ function InsiderKaeufeSektion({ kaeufe }: { kaeufe: InsiderKauf[] }) {
   if (kaeufe.length === 0) return null
   return (
     <PaCard className="p-4">
-      <p className="mb-3 text-[11px] font-medium uppercase tracking-widest text-zinc-500">
+      <p className="mb-3 text-[11px] font-medium uppercase tracking-widest text-[var(--app-text-muted)]">
         Insider-Käufe · letzte 90 Tage (SEC Form 4)
       </p>
       <div className="space-y-2">
         {kaeufe.slice(0, 8).map((k, i) => (
           <div key={i} className="flex items-start justify-between gap-3 border-b border-white/[0.04] pb-2 last:border-0 last:pb-0">
             <div className="min-w-0">
-              <p className="text-[12px] font-medium text-zinc-200">{k.name}</p>
-              {k.titel && <p className="text-[11px] text-zinc-500">{k.titel}</p>}
+              <p className="text-[12px] font-medium text-[var(--app-text)]">{k.name}</p>
+              {k.titel && <p className="text-[11px] text-[var(--app-text-muted)]">{k.titel}</p>}
             </div>
             <div className="shrink-0 text-right">
               <p className="text-[12px] font-semibold text-violet-300">
                 +{k.anteile.toLocaleString('de-DE')} Aktien
               </p>
               {k.wertUsd > 0 && (
-                <p className="text-[11px] text-zinc-500">
+                <p className="text-[11px] text-[var(--app-text-muted)]">
                   ${(k.wertUsd / 1000).toFixed(0)}k
                 </p>
               )}
-              <p className="text-[10px] text-zinc-600">{k.datum}</p>
+              <p className="text-[10px] text-[var(--app-text-muted)]">{k.datum}</p>
             </div>
           </div>
         ))}
       </div>
-      <p className="mt-2 text-[10px] text-zinc-600">
+      <p className="mt-2 text-[10px] text-[var(--app-text-muted)]">
         Nur Open-Market-Käufe (Code P) — Optionsausübungen und Grants ausgeschlossen.
       </p>
     </PaCard>
@@ -502,24 +502,24 @@ function ScoreVerlaufSektion({ verlauf, ampel }: { verlauf: ScoreVerlaufPunkt[];
   if (verlauf.length < 2) return null
   return (
     <PaCard className="p-4">
-      <p className="mb-3 text-[11px] font-medium uppercase tracking-widest text-zinc-500">
+      <p className="mb-3 text-[11px] font-medium uppercase tracking-widest text-[var(--app-text-muted)]">
         Score-Verlauf ({verlauf.length} Datenpunkte)
       </p>
       <ScoreSparkline verlauf={verlauf} ampel={ampel} breite={280} hoehe={48} />
       <div className="mt-3 flex gap-4">
         <div>
-          <p className="text-[11px] text-zinc-500">Aktuell</p>
-          <p className="text-sm font-semibold text-zinc-100">{verlauf.at(-1)!.score}/100</p>
+          <p className="text-[11px] text-[var(--app-text-muted)]">Aktuell</p>
+          <p className="text-sm font-semibold text-[var(--app-text)]">{verlauf.at(-1)!.score}/100</p>
         </div>
         <div>
-          <p className="text-[11px] text-zinc-500">Min/Max</p>
-          <p className="text-sm font-semibold text-zinc-100">
+          <p className="text-[11px] text-[var(--app-text-muted)]">Min/Max</p>
+          <p className="text-sm font-semibold text-[var(--app-text)]">
             {Math.min(...verlauf.map((v) => v.score))} / {Math.max(...verlauf.map((v) => v.score))}
           </p>
         </div>
         <div>
-          <p className="text-[11px] text-zinc-500">Erster Scan</p>
-          <p className="text-sm font-semibold text-zinc-100">
+          <p className="text-[11px] text-[var(--app-text-muted)]">Erster Scan</p>
+          <p className="text-sm font-semibold text-[var(--app-text)]">
             {new Date(verlauf[0]!.datum).toLocaleDateString('de-DE', { month: 'short', year: 'numeric' })}
           </p>
         </div>
@@ -544,22 +544,22 @@ function KaufhistorieSektion({ hist }: { hist: Kaufhistorie }) {
 
   return (
     <PaCard className="p-4">
-      <p className="mb-3 text-[11px] font-medium uppercase tracking-widest text-zinc-500">
+      <p className="mb-3 text-[11px] font-medium uppercase tracking-widest text-[var(--app-text-muted)]">
         Kaufhistorie (eigene Buchungen)
       </p>
       <div className="grid grid-cols-3 gap-4">
         <div>
-          <p className="text-[11px] text-zinc-500">Letzter Kauf</p>
-          <p className="text-sm font-semibold text-zinc-100">{letzterKaufTxt}</p>
-          {tageText && <p className="text-[10px] text-zinc-600">{tageText}</p>}
+          <p className="text-[11px] text-[var(--app-text-muted)]">Letzter Kauf</p>
+          <p className="text-sm font-semibold text-[var(--app-text)]">{letzterKaufTxt}</p>
+          {tageText && <p className="text-[10px] text-[var(--app-text-muted)]">{tageText}</p>}
         </div>
         <div>
-          <p className="text-[11px] text-zinc-500">Anzahl Käufe</p>
-          <p className="text-sm font-semibold text-zinc-100">{hist.anzahlKaeufe}×</p>
+          <p className="text-[11px] text-[var(--app-text-muted)]">Anzahl Käufe</p>
+          <p className="text-sm font-semibold text-[var(--app-text)]">{hist.anzahlKaeufe}×</p>
         </div>
         <div>
-          <p className="text-[11px] text-zinc-500">Ø Kaufpreis</p>
-          <p className="text-sm font-semibold text-zinc-100">
+          <p className="text-[11px] text-[var(--app-text-muted)]">Ø Kaufpreis</p>
+          <p className="text-sm font-semibold text-[var(--app-text)]">
             {hist.durchschnittskaufpreisEur != null
               ? `${hist.durchschnittskaufpreisEur.toFixed(2)} €`
               : '–'}
@@ -599,9 +599,9 @@ function DetailPanel({
         <div>
           <div className="flex items-center gap-2">
             <div className={`h-2.5 w-2.5 shrink-0 rounded-full ${cfg.dot}`} />
-            <h2 className="text-lg font-semibold tracking-tight text-zinc-50">{eintrag.name}</h2>
+            <h2 className="text-lg font-semibold tracking-tight text-[var(--app-text)]">{eintrag.name}</h2>
           </div>
-          <p className="mt-0.5 pl-4 text-sm font-mono text-zinc-500">
+          <p className="mt-0.5 pl-4 text-sm font-mono text-[var(--app-text-muted)]">
             {eintrag.ticker}
             {eintrag.isin ? ` · ${eintrag.isin}` : ''}
           </p>
@@ -617,7 +617,7 @@ function DetailPanel({
             onClick={() => onRescan(eintrag)}
             disabled={rescanLaeuft}
             title="Einzelnen Titel neu scannen"
-            className="rounded-md bg-zinc-800/60 px-2 py-1 text-[11px] text-zinc-400 ring-1 ring-white/[0.05] transition-all hover:bg-zinc-700/80 hover:text-zinc-200 disabled:opacity-50"
+            className="rounded-md bg-[var(--app-surface-hover)] px-2 py-1 text-[11px] text-[var(--app-text-muted)] ring-1 ring-white/[0.05] transition-all hover:bg-[var(--app-surface-hover)] hover:text-[var(--app-text)] disabled:opacity-50"
           >
             {rescanLaeuft ? '↻ Läuft …' : '↻ Rescan'}
           </button>
@@ -625,7 +625,7 @@ function DetailPanel({
             type="button"
             onClick={onNotizEdit}
             title="Notiz bearbeiten"
-            className="rounded-md bg-zinc-800/60 px-2 py-1 text-[11px] text-zinc-400 ring-1 ring-white/[0.05] transition-all hover:bg-zinc-700/80 hover:text-zinc-200"
+            className="rounded-md bg-[var(--app-surface-hover)] px-2 py-1 text-[11px] text-[var(--app-text-muted)] ring-1 ring-white/[0.05] transition-all hover:bg-[var(--app-surface-hover)] hover:text-[var(--app-text)]"
           >
             {eintrag.notiz ? '📝 Notiz' : '+ Notiz'}
           </button>
@@ -634,9 +634,9 @@ function DetailPanel({
 
       {/* Notiz */}
       {eintrag.notiz && (
-        <div className="rounded-xl border border-white/[0.06] bg-zinc-800/40 px-4 py-3">
-          <p className="text-[11px] font-medium uppercase tracking-widest text-zinc-500 mb-1">Deine Notiz</p>
-          <p className="text-[13px] text-zinc-300 leading-relaxed">{eintrag.notiz}</p>
+        <div className="rounded-xl border border-white/[0.06] bg-[var(--app-surface-muted)]/40 px-4 py-3">
+          <p className="text-[11px] font-medium uppercase tracking-widest text-[var(--app-text-muted)] mb-1">Deine Notiz</p>
+          <p className="text-[13px] text-[var(--app-text)] leading-relaxed">{eintrag.notiz}</p>
         </div>
       )}
 
@@ -646,7 +646,7 @@ function DetailPanel({
           <p className={`text-[12px] font-semibold ${eintrag.trimSignal.typ === 'trim' ? 'text-orange-300' : 'text-amber-300'}`}>
             {eintrag.trimSignal.typ === 'trim' ? '✂️ Trim-Signal' : '⚠️ Position überprüfen'}
           </p>
-          <p className="mt-1 text-[12px] text-zinc-400">{eintrag.trimSignal.grund}</p>
+          <p className="mt-1 text-[12px] text-[var(--app-text-muted)]">{eintrag.trimSignal.grund}</p>
         </div>
       )}
 
@@ -654,7 +654,7 @@ function DetailPanel({
       {eintrag.kaufTriggerAusgeloest && eintrag.kaufTriggerText && (
         <div className="rounded-xl border border-yellow-500/20 bg-yellow-950/25 p-3">
           <p className="text-[12px] font-semibold text-yellow-300">⚡ Kaufzonen-Trigger ausgelöst</p>
-          <p className="mt-1 text-[12px] text-zinc-400">{eintrag.kaufTriggerText}</p>
+          <p className="mt-1 text-[12px] text-[var(--app-text-muted)]">{eintrag.kaufTriggerText}</p>
         </div>
       )}
 
@@ -666,7 +666,7 @@ function DetailPanel({
       {/* Score + Kennzahlen */}
       <PaCard className="p-4">
         <div className="mb-3">
-          <p className="text-[11px] font-medium uppercase tracking-widest text-zinc-500">Gesamt-Score</p>
+          <p className="text-[11px] font-medium uppercase tracking-widest text-[var(--app-text-muted)]">Gesamt-Score</p>
           <div className="mt-2">
             <ScoreBar score={eintrag.score} ampel={eintrag.ampel} />
           </div>
@@ -674,10 +674,10 @@ function DetailPanel({
 
         {/* Score-Zerlegung */}
         <div className="mt-2 flex flex-wrap gap-2 text-[11px]">
-          <span className="rounded bg-zinc-800/60 px-1.5 py-0.5 text-zinc-400 ring-1 ring-white/[0.04]">
+          <span className="rounded bg-[var(--app-surface-hover)] px-1.5 py-0.5 text-[var(--app-text-muted)] ring-1 ring-white/[0.04]">
             Qualität {eintrag.scoreDetail.mantraScore} Pkt.
           </span>
-          <span className="rounded bg-zinc-800/60 px-1.5 py-0.5 text-zinc-400 ring-1 ring-white/[0.04]">
+          <span className="rounded bg-[var(--app-surface-hover)] px-1.5 py-0.5 text-[var(--app-text-muted)] ring-1 ring-white/[0.04]">
             Bewertung {eintrag.scoreDetail.bewertungsScore} Pkt.
           </span>
           {eintrag.scoreDetail.historischerBewertungsBonus !== 0 && (
@@ -701,13 +701,13 @@ function DetailPanel({
 
         <div className="mt-4 grid grid-cols-2 gap-x-6 gap-y-2 border-t border-white/[0.05] pt-4 sm:grid-cols-3">
           <div>
-            <p className="text-[11px] text-zinc-500">Mantra-Score</p>
-            <p className="text-sm font-medium text-zinc-100">
+            <p className="text-[11px] text-[var(--app-text-muted)]">Mantra-Score</p>
+            <p className="text-sm font-medium text-[var(--app-text)]">
               {eintrag.mantraScorePct != null ? `${eintrag.mantraScorePct} %` : '–'}
             </p>
           </div>
           <div>
-            <p className="text-[11px] text-zinc-500">Mantra-Ampel</p>
+            <p className="text-[11px] text-[var(--app-text-muted)]">Mantra-Ampel</p>
             <p
               className={`text-sm font-medium ${
                 eintrag.mantraAmpel === 'gruen'
@@ -716,39 +716,39 @@ function DetailPanel({
                     ? 'text-amber-400'
                     : eintrag.mantraAmpel === 'rot'
                       ? 'text-rose-400'
-                      : 'text-zinc-500'
+                      : 'text-[var(--app-text-muted)]'
               }`}
             >
               {eintrag.mantraAmpel ?? '–'}
             </p>
           </div>
           <div>
-            <p className="text-[11px] text-zinc-500">Sell-Trigger</p>
+            <p className="text-[11px] text-[var(--app-text-muted)]">Sell-Trigger</p>
             <p className={`text-sm font-medium ${eintrag.sellTriggerOk ? 'text-emerald-400' : 'text-rose-400'}`}>
               {eintrag.sellTriggerOk ? 'OK' : 'Warnung'}
             </p>
           </div>
           <div>
-            <p className="text-[11px] text-zinc-500">FCF-Rendite</p>
-            <p className="text-sm font-medium text-zinc-100">
+            <p className="text-[11px] text-[var(--app-text-muted)]">FCF-Rendite</p>
+            <p className="text-sm font-medium text-[var(--app-text)]">
               {eintrag.bewertung.fcfYieldPct != null ? `${eintrag.bewertung.fcfYieldPct.toFixed(1)} %` : '–'}
             </p>
           </div>
           <div>
-            <p className="text-[11px] text-zinc-500">NTM KGV</p>
-            <p className="text-sm font-medium text-zinc-100">
+            <p className="text-[11px] text-[var(--app-text-muted)]">NTM KGV</p>
+            <p className="text-sm font-medium text-[var(--app-text)]">
               {eintrag.bewertung.forwardPe != null ? `${eintrag.bewertung.forwardPe.toFixed(1)}×` : '–'}
             </p>
           </div>
           <div>
-            <p className="text-[11px] text-zinc-500">vs. 5J-Median</p>
+            <p className="text-[11px] text-[var(--app-text-muted)]">vs. 5J-Median</p>
             <p
               className={`text-sm font-medium ${
                 (eintrag.bewertung.premiumDiscountPct ?? 0) < -3
                   ? 'text-emerald-400'
                   : (eintrag.bewertung.premiumDiscountPct ?? 0) > 3
                     ? 'text-rose-400'
-                    : 'text-zinc-400'
+                    : 'text-[var(--app-text-muted)]'
               }`}
             >
               {eintrag.bewertung.premiumDiscountPct != null
@@ -757,22 +757,22 @@ function DetailPanel({
             </p>
           </div>
           <div>
-            <p className="text-[11px] text-zinc-500">FCF-Yield Median (5J)</p>
-            <p className="text-sm font-medium text-zinc-100">
+            <p className="text-[11px] text-[var(--app-text-muted)]">FCF-Yield Median (5J)</p>
+            <p className="text-sm font-medium text-[var(--app-text)]">
               {eintrag.bewertung.historischerMedianFcfYield != null
                 ? `${eintrag.bewertung.historischerMedianFcfYield.toFixed(1)} %`
                 : '–'}
             </p>
           </div>
           <div>
-            <p className="text-[11px] text-zinc-500">52w-Spanne</p>
-            <p className="text-sm font-medium text-zinc-100">
+            <p className="text-[11px] text-[var(--app-text-muted)]">52w-Spanne</p>
+            <p className="text-sm font-medium text-[var(--app-text)]">
               {eintrag.bewertung.drawdown52wPct != null ? `${eintrag.bewertung.drawdown52wPct.toFixed(0)} %` : '–'}
             </p>
           </div>
           <div>
-            <p className="text-[11px] text-zinc-500">Depot-Gewicht</p>
-            <p className={`text-sm font-medium ${eintrag.klumpenrisiko ? 'text-orange-400' : 'text-zinc-100'}`}>
+            <p className="text-[11px] text-[var(--app-text-muted)]">Depot-Gewicht</p>
+            <p className={`text-sm font-medium ${eintrag.klumpenrisiko ? 'text-orange-400' : 'text-[var(--app-text)]'}`}>
               {eintrag.depotGewichtPct != null ? `${eintrag.depotGewichtPct.toFixed(1)} %` : '–'}
             </p>
           </div>
@@ -799,11 +799,11 @@ function DetailPanel({
       {/* KI-Begründung */}
       {eintrag.kiBegruendung && (
         <PaCard className="p-4">
-          <p className="mb-2 text-[11px] font-medium uppercase tracking-widest text-zinc-500">
+          <p className="mb-2 text-[11px] font-medium uppercase tracking-widest text-[var(--app-text-muted)]">
             KI-Einschätzung (Flash)
           </p>
-          <p className="text-sm leading-relaxed text-zinc-300">{eintrag.kiBegruendung}</p>
-          <p className="mt-2 text-[10px] text-zinc-600">
+          <p className="text-sm leading-relaxed text-[var(--app-text)]">{eintrag.kiBegruendung}</p>
+          <p className="mt-2 text-[10px] text-[var(--app-text-muted)]">
             Gescannt: {new Date(eintrag.gescannt_am).toLocaleString('de-DE')}
           </p>
         </PaCard>
@@ -825,19 +825,19 @@ function DetailPanel({
       {dr && (
         <PaCard className="p-4">
           <div className="mb-3 flex items-center justify-between gap-2">
-            <p className="text-[11px] font-medium uppercase tracking-widest text-zinc-500">
+            <p className="text-[11px] font-medium uppercase tracking-widest text-[var(--app-text-muted)]">
               Deep Research · Gemini Pro
             </p>
             <button
               type="button"
               onClick={() => onDeepResearch(eintrag)}
               disabled={deepLaden}
-              className="rounded-lg bg-zinc-800/80 px-2.5 py-1 text-[10px] font-medium text-zinc-400 ring-1 ring-white/[0.04] hover:text-zinc-200 disabled:opacity-50"
+              className="rounded-lg bg-[var(--app-surface-hover)] px-2.5 py-1 text-[10px] font-medium text-[var(--app-text-muted)] ring-1 ring-white/[0.04] hover:text-[var(--app-text)] disabled:opacity-50"
             >
               {deepLaden ? 'Aktualisiert …' : 'Aktualisieren'}
             </button>
           </div>
-          <p className="mb-3 text-[10px] text-zinc-600">
+          <p className="mb-3 text-[10px] text-[var(--app-text-muted)]">
             Erstellt: {new Date(dr.erstellt_am).toLocaleString('de-DE')}
           </p>
           <div className={`${PA_SCROLL_ELEGANT} max-h-[70vh] pr-1`}>
@@ -868,9 +868,9 @@ function KiMdText({ text }: { text: string }) {
       <span key={key}>
         {parts.map((part, i) => {
           if (part.startsWith('**') && part.endsWith('**'))
-            return <strong key={i} className="font-semibold text-zinc-100">{part.slice(2, -2)}</strong>
+            return <strong key={i} className="font-semibold text-[var(--app-text)]">{part.slice(2, -2)}</strong>
           if (part.startsWith('*') && part.endsWith('*'))
-            return <em key={i} className="not-italic text-zinc-400">{part.slice(1, -1)}</em>
+            return <em key={i} className="not-italic text-[var(--app-text-muted)]">{part.slice(1, -1)}</em>
           return part
         })}
       </span>
@@ -906,7 +906,7 @@ function KiMdText({ text }: { text: string }) {
     }
     i++
   }
-  return <div className="text-xs leading-relaxed text-zinc-300">{elements}</div>
+  return <div className="text-xs leading-relaxed text-[var(--app-text)]">{elements}</div>
 }
 
 export function NachkaufRadarClient() {
@@ -1152,7 +1152,7 @@ export function NachkaufRadarClient() {
           />
           <div className="flex flex-wrap items-center gap-2">
             {gescannt_am && (
-              <span className="text-[11px] text-zinc-600">
+              <span className="text-[11px] text-[var(--app-text-muted)]">
                 Letzter Scan: {new Date(gescannt_am).toLocaleDateString('de-DE')}
               </span>
             )}
@@ -1186,7 +1186,7 @@ export function NachkaufRadarClient() {
                 onClick={() => setFilterAmpel(filterAmpel === 'gruen' ? 'alle' : 'gruen')}
                 className={`rounded-xl px-3 py-2 ring-1 transition-all ${filterAmpel === 'gruen' ? 'bg-emerald-500/25 ring-emerald-400/40' : 'bg-emerald-500/10 ring-emerald-500/20'}`}
               >
-                <p className="text-[10px] text-zinc-500">Nachkauf-Kandidaten</p>
+                <p className="text-[10px] text-[var(--app-text-muted)]">Nachkauf-Kandidaten</p>
                 <p className="text-lg font-bold text-emerald-400">{gruen}</p>
               </button>
             )}
@@ -1196,7 +1196,7 @@ export function NachkaufRadarClient() {
                 onClick={() => setFilterTrigger(!filterTrigger)}
                 className={`rounded-xl px-3 py-2 ring-1 transition-all ${filterTrigger ? 'bg-yellow-500/25 ring-yellow-400/40' : 'bg-yellow-500/10 ring-yellow-500/20'}`}
               >
-                <p className="text-[10px] text-zinc-500">Trigger ausgelöst</p>
+                <p className="text-[10px] text-[var(--app-text-muted)]">Trigger ausgelöst</p>
                 <p className="text-lg font-bold text-yellow-300">{trigger}</p>
               </button>
             )}
@@ -1206,7 +1206,7 @@ export function NachkaufRadarClient() {
                 onClick={() => setFilterInsider(!filterInsider)}
                 className={`rounded-xl px-3 py-2 ring-1 transition-all ${filterInsider ? 'bg-violet-500/25 ring-violet-400/40' : 'bg-violet-500/10 ring-violet-500/20'}`}
               >
-                <p className="text-[10px] text-zinc-500">Insider-Käufe aktiv</p>
+                <p className="text-[10px] text-[var(--app-text-muted)]">Insider-Käufe aktiv</p>
                 <p className="text-lg font-bold text-violet-300">{mitInsider}</p>
               </button>
             )}
@@ -1216,7 +1216,7 @@ export function NachkaufRadarClient() {
                 onClick={() => setFilterTrim(!filterTrim)}
                 className={`rounded-xl px-3 py-2 ring-1 transition-all ${filterTrim ? 'bg-orange-500/25 ring-orange-400/40' : 'bg-orange-500/10 ring-orange-500/20'}`}
               >
-                <p className="text-[10px] text-zinc-500">Trim / Überprüfen</p>
+                <p className="text-[10px] text-[var(--app-text-muted)]">Trim / Überprüfen</p>
                 <p className="text-lg font-bold text-orange-300">{mitTrim}</p>
               </button>
             )}
@@ -1244,19 +1244,19 @@ export function NachkaufRadarClient() {
               <div className="h-4 w-4 animate-spin rounded-full border-2 border-teal-500 border-t-transparent" />
               <div className="min-w-0 flex-1">
                 <p className="text-sm font-medium text-teal-300">Scan läuft …</p>
-                <p className="mt-0.5 text-xs text-zinc-500">
+                <p className="mt-0.5 text-xs text-[var(--app-text-muted)]">
                   Jede Position wird nach Abschluss sofort gespeichert. Falls der Browser-Tab schließt, kannst du mit
                   &ldquo;Scan fortsetzen&rdquo; weitermachen.
                 </p>
                 {ergebnisse.length > 0 && (
                   <div className="mt-2 flex items-center gap-2">
-                    <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-zinc-800">
+                    <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-[var(--app-surface-muted)]">
                       <div
                         className="h-full rounded-full bg-teal-500 transition-all"
                         style={{ width: `${Math.round((ergebnisse.length / gesamtAnzahl) * 100)}%` }}
                       />
                     </div>
-                    <span className="text-[11px] tabular-nums text-zinc-500">
+                    <span className="text-[11px] tabular-nums text-[var(--app-text-muted)]">
                       {ergebnisse.length}/{gesamtAnzahl}
                     </span>
                   </div>
@@ -1268,8 +1268,8 @@ export function NachkaufRadarClient() {
 
         {/* Lade-Zustand */}
         {laden && !scanLaeuft && (
-          <div className="py-12 text-center text-sm text-zinc-500">
-            <div className="mb-3 inline-block h-5 w-5 animate-spin rounded-full border-2 border-zinc-600 border-t-transparent" />
+          <div className="py-12 text-center text-sm text-[var(--app-text-muted)]">
+            <div className="mb-3 inline-block h-5 w-5 animate-spin rounded-full border-2 border-[var(--app-border-strong)] border-t-transparent" />
             <p>Lade gespeicherte Scan-Ergebnisse …</p>
           </div>
         )}
@@ -1277,11 +1277,11 @@ export function NachkaufRadarClient() {
         {/* Erster Start */}
         {!laden && !scanLaeuft && ergebnisse.length === 0 && (
           <PaCard className="p-8 text-center">
-            <p className="text-sm text-zinc-400">
+            <p className="text-sm text-[var(--app-text-muted)]">
               Noch kein Scan durchgeführt. Klicke auf{' '}
               <span className="font-medium text-teal-400">Neuer Scan</span>, um alle Positionen zu analysieren.
             </p>
-            <p className="mt-2 text-xs text-zinc-600">
+            <p className="mt-2 text-xs text-[var(--app-text-muted)]">
               Der Radar berücksichtigt historische Medianwerte, Kaufzonen-Trigger, Insider-Käufe (US) und Klumpenrisiko.
             </p>
           </PaCard>
@@ -1294,13 +1294,13 @@ export function NachkaufRadarClient() {
 
         {/* KI-Kaufempfehlung mit Deep Research */}
         {ergebnisse.length > 0 && !scanLaeuft && (
-          <div className="rounded-2xl border border-violet-500/20 bg-gradient-to-br from-violet-950/50 to-zinc-950/80 p-5">
+          <div className="rounded-2xl border border-violet-500/20 bg-gradient-to-br from-violet-950/50 to-[var(--app-surface)] p-5">
             <div className="flex items-start justify-between gap-3">
               <div className="flex items-start gap-3">
                 <span className="mt-0.5 text-xl" role="img" aria-hidden>🤖</span>
                 <div>
                   <p className="text-sm font-semibold text-violet-300">Kaufempfehlung (KI + Deep Research)</p>
-                  <p className="mt-0.5 text-xs text-zinc-500">
+                  <p className="mt-0.5 text-xs text-[var(--app-text-muted)]">
                     Gemini analysiert alle Positionen mit Score ≥ 90 + Deep Research und verteilt das Budget.
                   </p>
                 </div>
@@ -1317,14 +1317,14 @@ export function NachkaufRadarClient() {
 
             {/* Budget-Eingabe */}
             <div className="mt-3 flex items-center gap-3 rounded-xl border border-violet-500/10 bg-violet-950/20 px-3 py-2">
-              <span className="text-[11px] text-zinc-500">Monatsbudget:</span>
+              <span className="text-[11px] text-[var(--app-text-muted)]">Monatsbudget:</span>
               <div className="flex items-center gap-1">
                 {[200, 300, 500, 750, 1000].map((v) => (
                   <button
                     key={v}
                     type="button"
                     onClick={() => setKaufBudget(v)}
-                    className={`rounded-md px-2 py-0.5 text-[11px] font-semibold transition-all ${kaufBudget === v ? 'bg-violet-600 text-white' : 'text-zinc-500 hover:text-zinc-300'}`}
+                    className={`rounded-md px-2 py-0.5 text-[11px] font-semibold transition-all ${kaufBudget === v ? 'bg-violet-600 text-white' : 'text-[var(--app-text-muted)] hover:text-[var(--app-text)]'}`}
                   >
                     {v} €
                   </button>
@@ -1339,13 +1339,13 @@ export function NachkaufRadarClient() {
                     const v = parseInt(ev.target.value, 10)
                     if (!isNaN(v) && v >= 100) setKaufBudget(v)
                   }}
-                  className="ml-1 w-20 rounded-md border border-violet-500/20 bg-zinc-900 px-2 py-0.5 text-[11px] text-zinc-300 focus:outline-none focus:ring-1 focus:ring-violet-500"
+                  className="ml-1 w-20 rounded-md border border-violet-500/20 bg-[var(--app-surface-muted)] px-2 py-0.5 text-[11px] text-[var(--app-text)] focus:outline-none focus:ring-1 focus:ring-violet-500"
                 />
               </div>
             </div>
 
             {kaufempfehlungLaeuft && (
-              <div className="mt-4 flex items-center gap-2 text-xs text-zinc-500">
+              <div className="mt-4 flex items-center gap-2 text-xs text-[var(--app-text-muted)]">
                 <span className="inline-block h-3 w-3 animate-spin rounded-full border border-violet-400 border-t-transparent" />
                 Gemini liest die Deep Research Memos… (30–90 Sek.)
               </div>
@@ -1368,8 +1368,8 @@ export function NachkaufRadarClient() {
                                 className="h-1.5 rounded-full bg-violet-500/60"
                                 style={{ width: `${Math.round((p.betragEur / gesamt) * 72)}px` }}
                               />
-                              <span className="text-[11px] text-zinc-300">{p.name}</span>
-                              <span className="text-[10px] text-zinc-600">{p.begruendung}</span>
+                              <span className="text-[11px] text-[var(--app-text)]">{p.name}</span>
+                              <span className="text-[10px] text-[var(--app-text-muted)]">{p.begruendung}</span>
                             </div>
                             <span className="text-[12px] font-bold tabular-nums text-violet-300">{p.betragEur} €</span>
                           </div>
@@ -1378,7 +1378,7 @@ export function NachkaufRadarClient() {
                     </div>
                   </div>
                 )}
-                <div className="rounded-xl border border-white/5 bg-zinc-900/50 p-4">
+                <div className="rounded-xl border border-white/5 bg-[var(--app-surface-muted)] p-4">
                   <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-violet-400">
                     KI-Analyse & finale Empfehlung
                   </p>
@@ -1391,8 +1391,8 @@ export function NachkaufRadarClient() {
 
         {/* Filter- und Sort-Leiste */}
         {ergebnisse.length > 0 && !laden && !scanLaeuft && (
-          <div className="flex flex-wrap items-center gap-2 rounded-xl border border-white/[0.05] bg-zinc-900/50 px-3 py-2">
-            <span className="text-[11px] text-zinc-600">Filter:</span>
+          <div className="flex flex-wrap items-center gap-2 rounded-xl border border-white/[0.05] bg-[var(--app-surface-muted)] px-3 py-2">
+            <span className="text-[11px] text-[var(--app-text-muted)]">Filter:</span>
             {(['gruen', 'gelb', 'teuer', 'rot'] as const).map((amp) => {
               const cfg = ampelConfig(amp)
               return (
@@ -1400,19 +1400,19 @@ export function NachkaufRadarClient() {
                   key={amp}
                   type="button"
                   onClick={() => setFilterAmpel(filterAmpel === amp ? 'alle' : amp)}
-                  className={`rounded-md px-2 py-0.5 text-[11px] transition-all ${filterAmpel === amp ? cfg.badge + ' opacity-100' : 'text-zinc-500 hover:text-zinc-300'}`}
+                  className={`rounded-md px-2 py-0.5 text-[11px] transition-all ${filterAmpel === amp ? cfg.badge + ' opacity-100' : 'text-[var(--app-text-muted)] hover:text-[var(--app-text)]'}`}
                 >
                   {cfg.label}
                 </button>
               )
             })}
-            <span className="ml-auto text-[11px] text-zinc-600">Sort:</span>
+            <span className="ml-auto text-[11px] text-[var(--app-text-muted)]">Sort:</span>
             {([['score', 'Score'], ['name', 'A–Z'], ['depot', 'Depot %'], ['trigger', 'Trigger'], ['ampel', 'Ampel']] as [SortKey, string][]).map(([k, label]) => (
               <button
                 key={k}
                 type="button"
                 onClick={() => setSortKey(k)}
-                className={`rounded-md px-2 py-0.5 text-[11px] transition-all ${sortKey === k ? 'text-zinc-100 bg-zinc-700' : 'text-zinc-500 hover:text-zinc-300'}`}
+                className={`rounded-md px-2 py-0.5 text-[11px] transition-all ${sortKey === k ? 'text-[var(--app-text)] bg-[var(--app-surface-muted)]' : 'text-[var(--app-text-muted)] hover:text-[var(--app-text)]'}`}
               >
                 {label}
               </button>
@@ -1434,7 +1434,7 @@ export function NachkaufRadarClient() {
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-[300px_1fr] xl:grid-cols-[340px_1fr]">
             {/* Titel-Liste */}
             <div className="space-y-2">
-              <p className="text-[11px] font-medium uppercase tracking-widest text-zinc-600">
+              <p className="text-[11px] font-medium uppercase tracking-widest text-[var(--app-text-muted)]">
                 {gefilterteSortiert.length} von {ergebnisse.length} Positionen
                 {ausstehend > 0 && (
                   <span className="ml-1.5 text-amber-500/80">({ausstehend} noch ausstehend)</span>
@@ -1453,7 +1453,7 @@ export function NachkaufRadarClient() {
                 ))}
               </div>
               {gefilterteSortiert.length === 0 && (
-                <p className="py-6 text-center text-sm text-zinc-600">Keine Positionen für diesen Filter.</p>
+                <p className="py-6 text-center text-sm text-[var(--app-text-muted)]">Keine Positionen für diesen Filter.</p>
               )}
             </div>
 
@@ -1469,7 +1469,7 @@ export function NachkaufRadarClient() {
                   onNotizEdit={() => setNotizEdit({ ticker: selected.ticker, text: selected.notiz ?? '' })}
                 />
               ) : (
-                <PaCard className="p-8 text-center text-sm text-zinc-500">
+                <PaCard className="p-8 text-center text-sm text-[var(--app-text-muted)]">
                   Titel auswählen für Details
                 </PaCard>
               )}
@@ -1480,12 +1480,12 @@ export function NachkaufRadarClient() {
         {/* Notiz-Modal */}
         {notizEdit && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-            <div className="w-full max-w-md rounded-2xl bg-zinc-900 p-6 ring-1 ring-white/[0.08]">
-              <h3 className="mb-3 text-sm font-semibold text-zinc-100">
+            <div className="w-full max-w-md rounded-2xl bg-[var(--app-surface-muted)] p-6 ring-1 ring-white/[0.08]">
+              <h3 className="mb-3 text-sm font-semibold text-[var(--app-text)]">
                 Notiz für {notizEdit.ticker}
               </h3>
               <textarea
-                className="w-full rounded-lg bg-zinc-800 px-3 py-2 text-sm text-zinc-200 ring-1 ring-white/[0.06] placeholder:text-zinc-600 focus:outline-none focus:ring-teal-500/50"
+                className="w-full rounded-lg bg-[var(--app-surface-muted)] px-3 py-2 text-sm text-[var(--app-text)] ring-1 ring-white/[0.06] placeholder:text-[var(--app-text-muted)] focus:outline-none focus:ring-teal-500/50"
                 rows={5}
                 placeholder="z. B. »Warte auf Q3-Earnings«, »Bereits bei 20× PE nachgekauft«…"
                 value={notizEdit.text}
@@ -1495,7 +1495,7 @@ export function NachkaufRadarClient() {
                 <button
                   type="button"
                   onClick={() => setNotizEdit(null)}
-                  className="rounded-lg px-3 py-1.5 text-sm text-zinc-400 hover:text-zinc-200"
+                  className="rounded-lg px-3 py-1.5 text-sm text-[var(--app-text-muted)] hover:text-[var(--app-text)]"
                 >
                   Abbrechen
                 </button>
@@ -1521,15 +1521,15 @@ export function NachkaufRadarClient() {
                 ['gelb', 'Beobachten', 'bg-amber-400'],
                 ['teuer', 'Zu teuer', 'bg-sky-400'],
                 ['rot', 'Nicht kaufen', 'bg-rose-400'],
-                ['grau', 'Keine Daten', 'bg-zinc-500'],
+                ['grau', 'Keine Daten', 'bg-[var(--app-surface-muted)]'],
               ] as const
             ).map(([, label, dot]) => (
               <div key={label} className="flex items-center gap-1.5">
                 <div className={`h-2 w-2 rounded-full ${dot}`} />
-                <span className="text-[11px] text-zinc-500">{label}</span>
+                <span className="text-[11px] text-[var(--app-text-muted)]">{label}</span>
               </div>
             ))}
-            <p className="ml-auto text-[11px] text-zinc-600">
+            <p className="ml-auto text-[11px] text-[var(--app-text-muted)]">
               Score: Qualität (60) + Bewertung (40) ± Hist. Bonus (10) − Sell-Trigger
             </p>
           </div>

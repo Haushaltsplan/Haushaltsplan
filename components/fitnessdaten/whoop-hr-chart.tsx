@@ -15,7 +15,7 @@ export function WhoopHrChart({ points, height = 120, live = false }: Props) {
         className="flex items-center justify-center rounded-2xl border border-white/[0.06] bg-white/[0.02]"
         style={{ height }}
       >
-        <p className="text-xs text-zinc-600">
+        <p className="text-xs text-[var(--app-text-muted)]">
           {live ? 'Warte auf Pulsdaten …' : 'Kein Verlauf — WHOOP verbinden'}
         </p>
       </div>
@@ -61,7 +61,7 @@ export function WhoopHrChart({ points, height = 120, live = false }: Props) {
         />
         <circle cx={last.x} cy={last.y} r="4" fill="#ef4444" />
       </svg>
-      <div className="absolute bottom-2 left-3 flex gap-3 text-[10px] tabular-nums text-zinc-600">
+      <div className="absolute bottom-2 left-3 flex gap-3 text-[10px] tabular-nums text-[var(--app-text-muted)]">
         <span>min {min}</span>
         <span>max {max}</span>
         <span className="text-red-400/80">live {points[points.length - 1]!.bpm} bpm</span>

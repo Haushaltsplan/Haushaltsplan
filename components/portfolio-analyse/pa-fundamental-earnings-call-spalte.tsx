@@ -61,12 +61,12 @@ function QuartalZeile({
       className={`flex w-full items-center justify-between gap-2 rounded-lg border px-3 py-2.5 text-left transition ${
         offen
           ? 'border-teal-500/30 bg-teal-500/[0.08]'
-          : 'border-white/[0.05] bg-zinc-950/30 hover:border-zinc-600/40 hover:bg-zinc-900/50'
+          : 'border-white/[0.05] bg-[var(--app-surface-muted)]/30 hover:border-[var(--app-border-strong)]/40 hover:bg-[var(--app-surface-muted)]'
       }`}
     >
       <div className="min-w-0">
-        <span className={`text-sm font-medium ${offen ? 'text-teal-100' : 'text-zinc-200'}`}>{q.label}</span>
-        <span className="mt-0.5 block truncate text-[11px] text-zinc-500">
+        <span className={`text-sm font-medium ${offen ? 'text-teal-100' : 'text-[var(--app-text)]'}`}>{q.label}</span>
+        <span className="mt-0.5 block truncate text-[11px] text-[var(--app-text-muted)]">
           {q.callDatum ?? '—'} · {QUELLE_LABEL[q.quelle]}
         </span>
       </div>
@@ -75,9 +75,9 @@ function QuartalZeile({
           <span className="rounded-full bg-teal-500/15 px-1.5 py-0.5 text-[9px] font-medium text-teal-300">KI</span>
         ) : null}
         {laden ? (
-          <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-zinc-600 border-t-teal-400" />
+          <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-[var(--app-border-strong)] border-t-teal-400" />
         ) : (
-          <span className={`text-zinc-500 transition ${offen ? 'rotate-90 text-teal-400' : ''}`}>›</span>
+          <span className={`text-[var(--app-text-muted)] transition ${offen ? 'rotate-90 text-teal-400' : ''}`}>›</span>
         )}
       </div>
     </button>
@@ -213,7 +213,7 @@ export function PaFundamentalEarningsCallSpalte({
 
   if (!ticker?.trim()) {
     return (
-      <PaCard variant="glass" className="p-8 text-center text-sm text-zinc-500">
+      <PaCard variant="glass" className="p-8 text-center text-sm text-[var(--app-text-muted)]">
         Kein Ticker — Earnings Calls benötigen ein Börsensymbol.
       </PaCard>
     )
@@ -229,14 +229,14 @@ export function PaFundamentalEarningsCallSpalte({
     <div className="flex h-full min-h-[320px] flex-col space-y-3">
       <div className="flex flex-wrap items-end justify-between gap-2 border-b border-white/[0.06] pb-3">
         <div>
-          <h2 className="text-base font-medium text-zinc-100">Earnings Call</h2>
-          <p className="mt-0.5 text-xs text-zinc-500">{dokLabel} · KI-Analyse (Gemini)</p>
+          <h2 className="text-base font-medium text-[var(--app-text)]">Earnings Call</h2>
+          <p className="mt-0.5 text-xs text-[var(--app-text-muted)]">{dokLabel} · KI-Analyse (Gemini)</p>
         </div>
         <button
           type="button"
           disabled={laden}
           onClick={() => void ladeTranskripte(true)}
-          className="rounded-lg border border-zinc-700/60 bg-zinc-900/50 px-2.5 py-1.5 text-[11px] text-zinc-400 transition hover:border-zinc-600 hover:text-zinc-200 disabled:opacity-50"
+          className="rounded-lg border border-[var(--app-border-strong)] bg-[var(--app-surface-muted)] px-2.5 py-1.5 text-[11px] text-[var(--app-text-muted)] transition hover:border-[var(--app-border-strong)] hover:text-[var(--app-text)] disabled:opacity-50"
         >
           {laden ? 'Lädt …' : 'Aktualisieren'}
         </button>
@@ -244,7 +244,7 @@ export function PaFundamentalEarningsCallSpalte({
 
       {initialLaden ? (
         <PaCard variant="glass" className="flex flex-1 items-center justify-center p-8">
-          <p className="text-sm text-zinc-400">{dokLabel} werden gesucht …</p>
+          <p className="text-sm text-[var(--app-text-muted)]">{dokLabel} werden gesucht …</p>
         </PaCard>
       ) : null}
 
@@ -261,11 +261,11 @@ export function PaFundamentalEarningsCallSpalte({
 
       {daten?.quartale.length ? (
         <div className="grid min-h-0 flex-1 gap-3 lg:grid-cols-[minmax(0,200px)_1fr]">
-          <div className="max-h-[420px] overflow-y-auto rounded-xl border border-white/[0.05] bg-zinc-950/40 p-2">
+          <div className="max-h-[420px] overflow-y-auto rounded-xl border border-white/[0.05] bg-[var(--app-surface-muted)] p-2">
             <div className="space-y-3">
               {jahrGruppen.map(({ jahr, eintraege }) => (
                 <div key={jahr}>
-                  <p className="mb-1 px-1 text-[10px] font-medium text-zinc-600">{jahr}</p>
+                  <p className="mb-1 px-1 text-[10px] font-medium text-[var(--app-text-muted)]">{jahr}</p>
                   <div className="space-y-1">
                     {eintraege.map((q) => (
                       <QuartalZeile
@@ -285,14 +285,14 @@ export function PaFundamentalEarningsCallSpalte({
           <div className="min-h-0 min-w-0">
             {!offenesQuartal ? (
               <PaCard variant="glass" className="flex h-full min-h-[200px] items-center justify-center p-6">
-                <p className="text-sm text-zinc-500">Quartal wählen</p>
+                <p className="text-sm text-[var(--app-text-muted)]">Quartal wählen</p>
               </PaCard>
             ) : (
               <div className="flex h-full max-h-[420px] flex-col space-y-2">
                 <div className="flex flex-wrap items-start justify-between gap-2 px-0.5">
                   <div>
-                    <h3 className="text-sm font-medium text-zinc-100">{offenesQuartal.label}</h3>
-                    <p className="text-[11px] text-zinc-500">
+                    <h3 className="text-sm font-medium text-[var(--app-text)]">{offenesQuartal.label}</h3>
+                    <p className="text-[11px] text-[var(--app-text-muted)]">
                       {offenesQuartal.callDatum ?? '—'} · {QUELLE_LABEL[offenesQuartal.quelle]}
                     </p>
                   </div>
@@ -313,7 +313,7 @@ export function PaFundamentalEarningsCallSpalte({
                     className={`rounded-md px-2 py-1 text-[10px] font-medium transition ${
                       detailTab === 'ki'
                         ? 'bg-teal-500/15 text-teal-200'
-                        : 'text-zinc-500 hover:text-zinc-300'
+                        : 'text-[var(--app-text-muted)] hover:text-[var(--app-text)]'
                     }`}
                   >
                     KI-Analyse
@@ -325,7 +325,7 @@ export function PaFundamentalEarningsCallSpalte({
                       className={`rounded-md px-2 py-1 text-[10px] font-medium transition ${
                         detailTab === 'diff'
                           ? 'bg-violet-500/15 text-violet-200'
-                          : 'text-zinc-500 hover:text-zinc-300'
+                          : 'text-[var(--app-text-muted)] hover:text-[var(--app-text)]'
                       }`}
                     >
                       Quartals-Diff
@@ -336,21 +336,21 @@ export function PaFundamentalEarningsCallSpalte({
                 {detailTab === 'ki' ? (
                   quartalWirdGeladen ? (
                     <PaCard variant="glass" className="flex flex-1 items-center justify-center p-8">
-                      <p className="text-sm text-zinc-500">Gemini analysiert Earnings Call …</p>
+                      <p className="text-sm text-[var(--app-text-muted)]">Gemini analysiert Earnings Call …</p>
                     </PaCard>
                   ) : fehler && !offenesQuartal.zusammenfassung ? (
                     <PaCard variant="glass" className="p-4 text-sm text-amber-200/90">{fehler}</PaCard>
                   ) : offenesQuartal.zusammenfassung ? (
                     <PaCard variant="glass" className="min-h-0 flex-1 overflow-y-auto p-3 sm:p-4">
                       <div className="mb-3 flex items-center justify-between gap-2 border-b border-white/[0.05] pb-2">
-                        <p className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
+                        <p className="text-[10px] font-semibold uppercase tracking-wider text-[var(--app-text-muted)]">
                           Quality-Analyse
                         </p>
                         <button
                           type="button"
                           disabled={quartalLaden === offenesQuartal.id}
                           onClick={() => void ladeKiFuerQuartal(offenesQuartal.id, { forceKi: true })}
-                          className="text-[10px] text-zinc-600 hover:text-zinc-400 disabled:opacity-50"
+                          className="text-[10px] text-[var(--app-text-muted)] hover:text-[var(--app-text-muted)] disabled:opacity-50"
                         >
                           Neu
                         </button>
@@ -359,7 +359,7 @@ export function PaFundamentalEarningsCallSpalte({
                     </PaCard>
                   ) : (
                     <PaCard variant="glass" className="flex flex-1 items-center justify-center p-6">
-                      <p className="text-sm text-zinc-500">Analyse wird vorbereitet …</p>
+                      <p className="text-sm text-[var(--app-text-muted)]">Analyse wird vorbereitet …</p>
                     </PaCard>
                   )
                 ) : offenesQuartal.zusammenfassung && vorherQuartalMitKi ? (
@@ -374,7 +374,7 @@ export function PaFundamentalEarningsCallSpalte({
                   />
                 ) : (
                   <PaCard variant="glass" className="flex flex-1 items-center justify-center p-6">
-                    <p className="text-sm text-zinc-500">
+                    <p className="text-sm text-[var(--app-text-muted)]">
                       Quartals-Diff benötigt KI-Summaries für aktuelles und vorheriges Quartal.
                     </p>
                   </PaCard>

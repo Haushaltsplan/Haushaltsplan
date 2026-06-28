@@ -47,7 +47,8 @@ import { supabase } from '@/lib/supabase'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import toast from 'react-hot-toast'
 import { CollapsibleRowHeaderEnd, LABEL_EINKLAPPEN } from '@/components/collapsible-ui'
-import { PageChrome, PageHero, pageSectionPanelClass, pageSectionShellClass } from '@/components/page-shell'
+import { PageChrome, PageHero, appTableScrollInlineClassName, pageCardClass, pageSectionPanelClass, pageSectionShellClass, PageSubTabs } from '@/components/page-shell'
+import { lagerFilterChipInactiveClass, lagerInputClass, lagerKpiCardClass, lagerLabelClass, lagerLabelSmClass, lagerSecondaryBtnClass } from '@/components/lager/lager-ui'
 
 type Lb = { aktuelle_menge?: number }
 type ProduktRow = {
@@ -830,51 +831,18 @@ export default function LagerPage() {
         </div>
       </section>
 
-      <div
-        className="sticky top-2 z-20 flex min-w-0 flex-wrap gap-1 rounded-xl border border-zinc-700/35 bg-zinc-950/90 p-1 shadow-md shadow-black/25 ring-1 ring-white/[0.04] backdrop-blur-md"
-        role="tablist"
-        aria-label="Speisekammer: Bereiche"
-      >
-        <button
-          type="button"
-          role="tab"
-          aria-selected={lagerHauptTab === 'bestand'}
-          onClick={() => setLagerHauptTab('bestand')}
-          className={`min-w-0 flex-1 rounded-lg px-3 py-2.5 text-left text-xs font-black transition sm:flex-none sm:px-4 sm:text-sm ${
-            lagerHauptTab === 'bestand'
-              ? 'bg-emerald-600 text-white shadow-sm shadow-emerald-950/40'
-              : 'text-slate-400 hover:bg-slate-800/80 hover:text-slate-200'
-          }`}
-        >
-          Bestand
-        </button>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={lagerHauptTab === 'kueche'}
-          onClick={() => setLagerHauptTab('kueche')}
-          className={`min-w-0 flex-1 rounded-lg px-3 py-2.5 text-left text-xs font-black transition sm:flex-none sm:px-4 sm:text-sm ${
-            lagerHauptTab === 'kueche'
-              ? 'bg-violet-600 text-white shadow-sm shadow-violet-950/40'
-              : 'text-slate-400 hover:bg-slate-800/80 hover:text-slate-200'
-          }`}
-        >
-          Küche & Verlauf
-        </button>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={lagerHauptTab === 'auswertungen'}
-          onClick={() => setLagerHauptTab('auswertungen')}
-          className={`min-w-0 flex-1 rounded-lg px-3 py-2.5 text-left text-xs font-black transition sm:flex-none sm:px-4 sm:text-sm ${
-            lagerHauptTab === 'auswertungen'
-              ? 'bg-sky-600 text-white shadow-sm shadow-sky-950/40'
-              : 'text-slate-400 hover:bg-slate-800/80 hover:text-slate-200'
-          }`}
-        >
-          Auswertungen
-        </button>
-      </div>
+      <PageSubTabs
+        selectId="lager-haupt-tab"
+        ariaLabel="Speisekammer: Bereiche"
+        className="mb-1"
+        tabs={[
+          { id: 'bestand' as const, label: 'Bestand', shortLabel: 'Bestand', accent: 'emerald' },
+          { id: 'kueche' as const, label: 'Küche & Verlauf', shortLabel: 'Küche', accent: 'violet' },
+          { id: 'auswertungen' as const, label: 'Auswertungen', shortLabel: 'Stats', accent: 'sky' },
+        ]}
+        active={lagerHauptTab}
+        onChange={setLagerHauptTab}
+      />
 
       {lagerHauptTab === 'bestand' && (
         <>
@@ -888,7 +856,7 @@ export default function LagerPage() {
             >
               <span aria-hidden>▦</span> Barcode scannen
             </button>
-            <span className="text-[11px] text-slate-500">Artikel per Kamera ein-/ausbuchen oder neu zuordnen.</span>
+            <span className={`text-[11px] ${lagerLabelClass}`}>Artikel per Kamera ein-/ausbuchen oder neu zuordnen.</span>
           </div>
 
           <LagerWasKochen
@@ -913,27 +881,27 @@ export default function LagerPage() {
           <LagerEinkaufsliste produkte={produkte} verbrauchHistorie={verbrauchHistorie} refreshKey={lagerRefreshKey} />
 
           <div className="grid min-w-0 gap-5 lg:grid-cols-3 lg:gap-6">
-            <div className="h-fit min-w-0 overflow-hidden rounded-2xl border border-slate-800 bg-slate-900 shadow-lg shadow-black/25">
+            <div className={`h-fit min-w-0 overflow-hidden ${pageCardClass}`}>
               <button
                 type="button"
                 onClick={() => setLagerManuellOffen((o) => !o)}
-                className="group flex w-full items-center justify-between gap-2 px-4 py-3 text-left transition hover:bg-slate-800/40"
+                className="group flex w-full items-center justify-between gap-2 px-4 py-3 text-left transition hover:bg-[var(--app-surface-hover)]"
                 aria-expanded={lagerManuellOffen}
               >
                 <div className="min-w-0">
-                  <h2 className="text-sm font-bold text-slate-100 sm:text-base">Manuell erfassen</h2>
+                  <h2 className="text-sm font-bold text-[var(--app-text)] sm:text-base">Manuell erfassen</h2>
                 </div>
                 <CollapsibleRowHeaderEnd open={lagerManuellOffen} labels={LABEL_EINKLAPPEN} tone="neutral" size="sm" />
               </button>
               {lagerManuellOffen && (
-                <div className="border-t border-slate-800 px-4 pb-4 pt-2">
+                <div className="border-t border-[var(--app-border)] px-4 pb-4 pt-2">
                   <div className="grid gap-2.5 sm:grid-cols-2">
-                    <label className="block text-[10px] font-black uppercase tracking-wider text-slate-500 sm:col-span-2">
+                    <label className={`block ${lagerLabelSmClass} sm:col-span-2`}>
                       Bezeichnung
                       <input
                         type="text"
                         placeholder="z. B. Vollmilch 3,5 %"
-                        className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 py-2 px-2.5 text-sm font-semibold text-slate-100 outline-none focus:ring-2 focus:ring-emerald-500/45"
+                        className={`${lagerInputClass} mt-1 py-2 font-semibold focus:ring-emerald-500/45`}
                         value={name}
                         onChange={(e) => {
                           const v = e.target.value
@@ -946,10 +914,10 @@ export default function LagerPage() {
                         disabled={formularLaden}
                       />
                     </label>
-                    <label className="block text-[10px] font-black uppercase tracking-wider text-slate-500">
+                    <label className={`block ${lagerLabelSmClass}`}>
                       Kategorie
                       <select
-                        className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 py-2 px-2 text-xs font-bold text-slate-100 outline-none focus:ring-2 focus:ring-emerald-500/45 sm:text-sm"
+                        className={`${lagerInputClass} mt-1 py-2 text-xs font-bold focus:ring-emerald-500/45 sm:text-sm`}
                         value={neuKategorie}
                         onChange={(e) => setNeuKategorie(e.target.value)}
                         disabled={formularLaden}
@@ -961,32 +929,32 @@ export default function LagerPage() {
                         ))}
                       </select>
                     </label>
-                    <label className="block text-[10px] font-black uppercase tracking-wider text-slate-500">
+                    <label className={`block ${lagerLabelSmClass}`}>
                       Einkaufsdatum
                       <input
                         type="date"
-                        className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 py-2 px-2 text-sm font-bold text-slate-100 outline-none focus:ring-2 focus:ring-emerald-500/45"
+                        className={`${lagerInputClass} mt-1 py-2 font-bold focus:ring-emerald-500/45`}
                         value={einkaufsdatum}
                         onChange={(e) => setEinkaufsdatum(e.target.value)}
                         disabled={formularLaden}
                       />
                     </label>
-                    <label className="block text-[10px] font-black uppercase tracking-wider text-slate-500">
+                    <label className={`block ${lagerLabelSmClass}`}>
                       Kauf-Menge
                       <input
                         type="text"
                         inputMode="decimal"
                         placeholder="z. B. 250"
-                        className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 py-2 px-2.5 text-sm font-semibold text-slate-100 outline-none focus:ring-2 focus:ring-emerald-500/45"
+                        className={`${lagerInputClass} mt-1 py-2 font-semibold focus:ring-emerald-500/45`}
                         value={neuMenge}
                         onChange={(e) => setNeuMenge(e.target.value)}
                         disabled={formularLaden}
                       />
                     </label>
-                    <label className="block text-[10px] font-black uppercase tracking-wider text-slate-500">
+                    <label className={`block ${lagerLabelSmClass}`}>
                       Kauf-Einheit
                       <select
-                        className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 py-2 px-2 text-xs font-bold text-slate-100 outline-none focus:ring-2 focus:ring-emerald-500/45 sm:text-sm"
+                        className={`${lagerInputClass} mt-1 py-2 text-xs font-bold focus:ring-emerald-500/45 sm:text-sm`}
                         value={neuKaufEinheit}
                         onChange={(e) => setNeuKaufEinheit(e.target.value as LagerKaufEinheit)}
                         disabled={formularLaden}
@@ -998,10 +966,10 @@ export default function LagerPage() {
                         <option value="Liter">Liter</option>
                       </select>
                     </label>
-                    <label className="block text-[10px] font-black uppercase tracking-wider text-slate-500">
+                    <label className={`block ${lagerLabelSmClass}`}>
                       Basiseinheit
                       <select
-                        className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 py-2 px-2 text-xs font-bold text-slate-100 outline-none focus:ring-2 focus:ring-emerald-500/45 sm:text-sm"
+                        className={`${lagerInputClass} mt-1 py-2 text-xs font-bold focus:ring-emerald-500/45 sm:text-sm`}
                         value={neuBasisEinheit}
                         onChange={(e) => setNeuBasisEinheit(e.target.value as LagerBasisEinheit)}
                         disabled={formularLaden}
@@ -1011,35 +979,35 @@ export default function LagerPage() {
                         <option value="Liter">Liter</option>
                       </select>
                     </label>
-                    <label className="block text-[10px] font-black uppercase tracking-wider text-slate-500">
+                    <label className={`block ${lagerLabelSmClass}`}>
                       Haltbar bis (MHD)
                       <input
                         type="date"
-                        className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 py-2 px-2 text-sm font-bold text-slate-100 outline-none focus:ring-2 focus:ring-amber-500/45"
+                        className={`${lagerInputClass} mt-1 py-2 font-bold focus:ring-amber-500/45`}
                         value={neuMhd}
                         onChange={(e) => setNeuMhd(e.target.value)}
                         disabled={formularLaden}
                       />
                     </label>
-                    <label className="block text-[10px] font-black uppercase tracking-wider text-slate-500">
+                    <label className={`block ${lagerLabelSmClass}`}>
                       Mindestbestand
                       <input
                         type="text"
                         inputMode="decimal"
                         placeholder="optional, z. B. 2"
-                        className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 py-2 px-2.5 text-sm font-semibold text-slate-100 outline-none focus:ring-2 focus:ring-sky-500/45"
+                        className={`${lagerInputClass} mt-1 py-2 font-semibold focus:ring-sky-500/45`}
                         value={neuMindestbestand}
                         onChange={(e) => setNeuMindestbestand(e.target.value)}
                         disabled={formularLaden}
                       />
                     </label>
-                    <label className="block text-[10px] font-black uppercase tracking-wider text-slate-500 sm:col-span-2">
+                    <label className={`block ${lagerLabelSmClass} sm:col-span-2`}>
                       Gesamtpreis (€)
                       <input
                         type="text"
                         inputMode="decimal"
                         placeholder="z. B. 5,99"
-                        className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 py-2 px-2.5 text-sm font-semibold text-slate-100 outline-none focus:ring-2 focus:ring-emerald-500/45"
+                        className={`${lagerInputClass} mt-1 py-2 font-semibold focus:ring-emerald-500/45`}
                         value={neuGesamtpreis}
                         onChange={(e) => setNeuGesamtpreis(e.target.value)}
                         disabled={formularLaden}
@@ -1058,14 +1026,14 @@ export default function LagerPage() {
               )}
             </div>
 
-            <div className="min-w-0 overflow-hidden rounded-2xl border border-slate-800/90 bg-gradient-to-b from-slate-900 to-slate-950 shadow-lg shadow-black/30 lg:col-span-2">
-          <div className="border-b border-slate-800/80 bg-slate-900/90 p-4 md:p-5">
+            <div className={`min-w-0 overflow-hidden ${pageCardClass} lg:col-span-2`}>
+          <div className="border-b border-[var(--app-border)] bg-[var(--app-surface-muted)] p-4 md:p-5">
             <div className="flex flex-col gap-1.5 sm:flex-row sm:items-end sm:justify-between">
-              <label htmlFor="lager-artikel-suche" className="text-[11px] font-bold uppercase tracking-[0.2em] text-slate-500">
+              <label htmlFor="lager-artikel-suche" className={`${lagerLabelClass} font-bold tracking-[0.2em]`}>
                 Artikel suchen
               </label>
               {artikelSuche.trim() || lagerKategorieFilter ? (
-                <span className="text-xs tabular-nums text-slate-500">
+                <span className="text-xs tabular-nums text-[var(--app-text-muted)]">
                   {produkteGefiltert.length} / {gesamtProdukte} {gesamtProdukte === 1 ? 'Artikel' : 'Artikel'}
                 </span>
               ) : null}
@@ -1078,10 +1046,10 @@ export default function LagerPage() {
               placeholder="Name, Einheit oder ähnliche Schreibweise …"
               value={artikelSuche}
               onChange={(e) => setArtikelSuche(e.target.value)}
-              className="mt-2.5 w-full rounded-xl border border-slate-700/90 bg-slate-950/90 px-3.5 py-3 text-sm text-slate-100 shadow-inner outline-none ring-emerald-500/0 transition placeholder:text-slate-600 focus:border-emerald-600/50 focus:ring-2 focus:ring-emerald-500/25 sm:text-[15px]"
+              className={`${lagerInputClass} mt-2.5 py-3 shadow-inner transition placeholder:text-[var(--app-text-muted)] focus:border-emerald-600/50 focus:ring-emerald-500/25 sm:text-[15px]`}
             />
             <div className="mt-4 min-w-0">
-              <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500">Schnellfilter</p>
+              <p className={`${lagerLabelClass} font-bold tracking-[0.18em]`}>Schnellfilter</p>
               <div className="mt-2 flex flex-wrap gap-1.5">
                 {(
                   [
@@ -1099,7 +1067,7 @@ export default function LagerPage() {
                     className={`rounded-lg border px-2.5 py-1.5 text-[12px] font-semibold transition sm:text-[13px] ${
                       bestandFilter === key
                         ? 'border-emerald-600/60 bg-emerald-950/40 text-emerald-100'
-                        : 'border-slate-700/80 bg-slate-900/80 text-slate-400 hover:border-slate-600 hover:text-slate-200'
+                        : lagerFilterChipInactiveClass
                     }`}
                   >
                     {label}
@@ -1108,7 +1076,7 @@ export default function LagerPage() {
               </div>
             </div>
             <div className="mt-4 min-w-0">
-              <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500">Warengruppe</p>
+              <p className={`${lagerLabelClass} font-bold tracking-[0.18em]`}>Warengruppe</p>
               <div className="mt-2 flex max-h-[11rem] flex-wrap gap-1.5 overflow-y-auto pr-0.5 sm:max-h-none sm:overflow-visible">
                 <button
                   type="button"
@@ -1116,7 +1084,7 @@ export default function LagerPage() {
                   className={`rounded-lg border px-2.5 py-1.5 text-left text-[12px] font-semibold transition sm:text-[13px] ${
                     !lagerKategorieFilter
                       ? 'border-emerald-600/60 bg-emerald-950/40 text-emerald-100'
-                      : 'border-slate-700/80 bg-slate-900/80 text-slate-400 hover:border-slate-600 hover:text-slate-200'
+                      : lagerFilterChipInactiveClass
                   }`}
                 >
                   Alle
@@ -1131,7 +1099,7 @@ export default function LagerPage() {
                       className={`max-w-[10.5rem] truncate rounded-lg border px-2.5 py-1.5 text-left text-[12px] font-semibold transition sm:max-w-[12rem] sm:text-[13px] ${
                         aktiv
                           ? 'border-sky-600/60 bg-sky-950/45 text-sky-100'
-                          : 'border-slate-700/80 bg-slate-900/80 text-slate-400 hover:border-slate-600 hover:text-slate-200'
+                          : lagerFilterChipInactiveClass
                       }`}
                       title={kat}
                     >
@@ -1141,7 +1109,7 @@ export default function LagerPage() {
                 })}
               </div>
             </div>
-            <div className="mt-4 flex flex-col gap-3 rounded-xl border border-slate-800/90 bg-slate-950/50 p-3 sm:p-4">
+            <div className={`${lagerKpiCardClass} mt-4 flex flex-col gap-3 p-3 sm:p-4`}>
               <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
                 <button
                   type="button"
@@ -1167,7 +1135,7 @@ export default function LagerPage() {
                     alleArtikelLoeschenLaden ||
                     gesamtProdukte === 0
                   }
-                  className="rounded-xl border border-slate-600/80 bg-slate-800/50 px-4 py-2.5 text-sm font-bold text-slate-200 transition hover:bg-slate-800 disabled:pointer-events-none disabled:opacity-35"
+                  className={lagerSecondaryBtnClass}
                 >
                   {bestandLeerenLaden ? '…' : 'Nur Bestände auf 0'}
                 </button>
@@ -1186,7 +1154,7 @@ export default function LagerPage() {
                   {alleArtikelLoeschenLaden ? '…' : 'Alle Artikel löschen'}
                 </button>
                 {artikelSuche.trim() || lagerKategorieFilter ? (
-                  <span className="text-sm tabular-nums text-slate-400 sm:ml-auto">
+                  <span className="text-sm tabular-nums text-[var(--app-text-muted)] sm:ml-auto">
                     Summe Ansicht: <span className="font-semibold text-violet-200">{formatEur(lagerwertGefiltert)}</span>
                   </span>
                 ) : null}
@@ -1194,7 +1162,7 @@ export default function LagerPage() {
             </div>
           </div>
 
-          <div className="w-full min-w-0 overflow-x-auto [-webkit-overflow-scrolling:touch]">
+          <div className={appTableScrollInlineClassName}>
             <table className="w-full max-w-full table-fixed border-collapse text-left text-[12px] leading-tight sm:text-[13px]">
               <colgroup>
                 <col className="min-w-0 [width:28%]" />
@@ -1204,12 +1172,12 @@ export default function LagerPage() {
                 <col className="min-w-0 [width:30%]" />
               </colgroup>
               <thead>
-                <tr className="border-b border-slate-800/90 bg-slate-900/95 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+                <tr className="border-b border-[var(--app-border)] bg-[var(--app-surface-muted)] text-[10px] font-semibold uppercase tracking-wide text-[var(--app-text-muted)]">
                   <th className="min-w-0 px-1.5 py-2.5 pl-2 text-left sm:px-2 sm:pl-3">
                     <button
                       type="button"
                       onClick={() => lagerSortKlick('name')}
-                      className="inline-flex max-w-full items-center gap-0.5 rounded-md px-0.5 py-0.5 text-left transition hover:bg-slate-800/80 hover:text-slate-200"
+                      className="inline-flex max-w-full items-center gap-0.5 rounded-md px-0.5 py-0.5 text-left transition hover:bg-[var(--app-surface-hover)] hover:text-[var(--app-text)]"
                       title="Nach Name sortieren"
                     >
                       <span className="truncate">Artikel</span>
@@ -1222,7 +1190,7 @@ export default function LagerPage() {
                     <button
                       type="button"
                       onClick={() => lagerSortKlick('bestand')}
-                      className="inline-flex w-full min-w-0 items-center justify-end gap-0.5 rounded-md px-0.5 py-0.5 transition hover:bg-slate-800/80 hover:text-slate-200"
+                      className="inline-flex w-full min-w-0 items-center justify-end gap-0.5 rounded-md px-0.5 py-0.5 transition hover:bg-[var(--app-surface-hover)] hover:text-[var(--app-text)]"
                       title="Nach Bestand sortieren"
                     >
                       <span className="truncate">Best.</span>
@@ -1235,7 +1203,7 @@ export default function LagerPage() {
                     <button
                       type="button"
                       onClick={() => lagerSortKlick('wert')}
-                      className="inline-flex w-full min-w-0 items-center justify-end gap-0.5 rounded-md px-0.5 py-0.5 transition hover:bg-slate-800/80 hover:text-slate-200"
+                      className="inline-flex w-full min-w-0 items-center justify-end gap-0.5 rounded-md px-0.5 py-0.5 transition hover:bg-[var(--app-surface-hover)] hover:text-[var(--app-text)]"
                       title="Bestandswert (Menge × Ø, sonst letzter Kauf)"
                     >
                       <span className="truncate">Wert</span>
@@ -1249,7 +1217,7 @@ export default function LagerPage() {
                       <button
                         type="button"
                         onClick={() => lagerSortKlick('durchschnitt')}
-                        className="inline-flex items-center gap-0.5 rounded-md px-0.5 py-0.5 transition hover:bg-slate-800/80 hover:text-slate-200"
+                        className="inline-flex items-center gap-0.5 rounded-md px-0.5 py-0.5 transition hover:bg-[var(--app-surface-hover)] hover:text-[var(--app-text)]"
                         title="Nach Ø-Preis sortieren"
                       >
                         <span className="text-amber-200/90">Ø</span>
@@ -1260,7 +1228,7 @@ export default function LagerPage() {
                       <button
                         type="button"
                         onClick={() => lagerSortKlick('letzter')}
-                        className="inline-flex items-center gap-0.5 rounded-md px-0.5 py-0.5 transition hover:bg-slate-800/80 hover:text-slate-200"
+                        className="inline-flex items-center gap-0.5 rounded-md px-0.5 py-0.5 transition hover:bg-[var(--app-surface-hover)] hover:text-[var(--app-text)]"
                         title="Nach letztem Kaufpreis sortieren"
                       >
                         <span className="text-sky-200/90">Ztz.</span>
@@ -1271,7 +1239,7 @@ export default function LagerPage() {
                     </div>
                   </th>
                   <th className="min-w-0 whitespace-normal px-1 py-2.5 pr-2 text-right sm:px-1.5 sm:pr-3">
-                    <span className="text-slate-500">Aktion</span>
+                    <span className="text-[var(--app-text-muted)]">Aktion</span>
                   </th>
                 </tr>
               </thead>
@@ -1283,12 +1251,12 @@ export default function LagerPage() {
                   return (
                     <tr
                       key={p.id}
-                      className="border-b border-slate-800/60 transition-colors last:border-0 hover:bg-slate-800/25"
+                      className="border-b border-[var(--app-border)] transition-colors last:border-0 hover:bg-[var(--app-surface-hover)]"
                     >
                       <td className="min-w-0 px-1.5 py-2 pl-2 align-middle sm:px-2 sm:pl-3">
-                        <div className="truncate font-semibold text-slate-100">{p.name}</div>
+                        <div className="truncate font-semibold text-[var(--app-text)]">{p.name}</div>
                         <div className="mt-0.5 flex min-w-0 flex-wrap items-center gap-1">
-                          <span className="truncate text-[10px] text-slate-500">
+                          <span className="truncate text-[10px] text-[var(--app-text-muted)]">
                             {normalisiereLagerKategorie(p.kategorie ?? null)}
                           </span>
                           {(() => {
@@ -1299,7 +1267,7 @@ export default function LagerPage() {
                                 ? 'border-rose-700/50 bg-rose-900/30 text-rose-200'
                                 : st === 'bald'
                                   ? 'border-amber-700/50 bg-amber-900/30 text-amber-200'
-                                  : 'border-slate-700/60 bg-slate-800/50 text-slate-400'
+                                  : 'border-[var(--app-border-strong)] bg-[var(--app-surface-muted)] text-[var(--app-text-muted)]'
                             return (
                               <span className={`inline-flex shrink-0 items-center rounded border px-1 text-[9px] font-bold ${cls}`}>
                                 MHD {mhdKurzLabel(p.mhd ?? null)}
@@ -1389,7 +1357,7 @@ export default function LagerPage() {
                             className={`rounded-md border px-1.5 py-1 text-[11px] font-bold transition ${
                               istGemerkt(p.id)
                                 ? 'border-sky-600/60 bg-sky-500/20 text-sky-100'
-                                : 'border-slate-600/60 text-slate-300 hover:bg-slate-800'
+                                : 'border-[var(--app-border-strong)] text-[var(--app-text)] hover:bg-[var(--app-surface-hover)]'
                             }`}
                             title="Auf die Einkaufsliste setzen"
                             aria-label="Auf die Einkaufsliste setzen"
@@ -1399,7 +1367,7 @@ export default function LagerPage() {
                           <button
                             type="button"
                             onClick={() => setModal({ typ: 'bearbeiten', p })}
-                            className="rounded-md border border-slate-600/60 px-1.5 py-1 text-[11px] font-bold text-slate-300 transition hover:bg-slate-800"
+                            className="rounded-md border border-[var(--app-border-strong)] hover:bg-[var(--app-surface-hover)]"
                             title="Bearbeiten"
                             aria-label="Bearbeiten"
                           >
@@ -1422,12 +1390,12 @@ export default function LagerPage() {
               </tbody>
               {produkteGefiltert.length > 0 ? (
                 <tfoot>
-                  <tr className="border-t-2 border-slate-700/80 bg-slate-900/70 text-[12px] font-semibold text-slate-300 sm:text-[13px]">
+                  <tr className="border-t-2 border-[var(--app-border-strong)] bg-[var(--app-surface-muted)] text-[12px] font-semibold text-[var(--app-text)] sm:text-[13px]">
                     <td className="min-w-0 px-1.5 py-2.5 pl-2 sm:px-2 sm:pl-3">
-                      <span className="text-slate-400">
+                      <span className="text-[var(--app-text-muted)]">
                         Σ{artikelSuche.trim() || lagerKategorieFilter ? ' Ansicht' : ''}
                       </span>
-                      <span className="mt-0.5 block text-[10px] font-normal text-slate-500">{produkteGefiltert.length} Z.</span>
+                      <span className="mt-0.5 block text-[10px] font-normal text-[var(--app-text-muted)]">{produkteGefiltert.length} Z.</span>
                     </td>
                     <td className="min-w-0 px-1 py-2.5 sm:px-1.5" />
                     <td className="min-w-0 truncate px-1 py-2.5 text-right align-middle tabular-nums text-sm text-violet-200 sm:px-1.5 sm:text-base">
@@ -1441,26 +1409,26 @@ export default function LagerPage() {
             </table>
           </div>
           {produkte.length === 0 && (
-            <div className="border-t border-slate-800/60 px-4 py-12 text-center text-sm italic text-slate-600 sm:px-6">
+            <div className="border-t border-[var(--app-border)] px-4 py-12 text-center text-sm italic text-[var(--app-text-muted)] sm:px-6">
               Hier ist noch alles ruhig…
             </div>
           )}
           {produkte.length > 0 && produkteGefiltert.length === 0 && (
-            <div className="border-t border-slate-800/60 px-4 py-10 text-center text-sm text-slate-500 sm:px-6">
+            <div className="border-t border-[var(--app-border)] px-4 py-10 text-center text-sm text-[var(--app-text-muted)] sm:px-6">
               {artikelSuche.trim() ? (
                 <>
-                  Keine Artikel passen zu „<span className="font-medium text-slate-400">{artikelSuche.trim()}</span>“
+                  Keine Artikel passen zu „<span className="font-medium text-[var(--app-text-muted)]">{artikelSuche.trim()}</span>“
                   {lagerKategorieFilter ? (
                     <>
                       {' '}
-                      in <span className="font-medium text-slate-400">{lagerKategorieFilter}</span>
+                      in <span className="font-medium text-[var(--app-text-muted)]">{lagerKategorieFilter}</span>
                     </>
                   ) : null}
                   .
                 </>
               ) : lagerKategorieFilter ? (
                 <>
-                  In der Warengruppe <span className="font-medium text-slate-400">{lagerKategorieFilter}</span> sind
+                  In der Warengruppe <span className="font-medium text-[var(--app-text-muted)]">{lagerKategorieFilter}</span> sind
                   keine Artikel.
                 </>
               ) : (

@@ -56,11 +56,11 @@ export const KALENDER_KATEGORIEN = [
   {
     id: 'sonstiges',
     label: 'Sonstiges',
-    dot: 'bg-slate-400 shadow-[0_0_0_1px_rgba(148,163,184,0.4)]',
-    leftBar: 'bg-slate-500',
-    listBorder: 'border-slate-500/50',
-    listBg: 'bg-slate-800/40',
-    badge: 'bg-slate-800/80 text-slate-200',
+    dot: 'bg-[var(--app-text-muted)] shadow-[0_0_0_1px_var(--app-border)]',
+    leftBar: 'bg-[var(--app-text-muted)]',
+    listBorder: 'border-[var(--app-border-strong)]/50',
+    listBg: 'bg-[var(--app-surface-hover)]',
+    badge: 'bg-[var(--app-surface-hover)] text-[var(--app-text)]',
   },
 ] as const
 

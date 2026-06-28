@@ -94,7 +94,7 @@ export function PortfolioEarningsDashboardClient() {
       {!paLaden && !hatDaten ? null : (
         <div className="min-w-0 space-y-6">
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <p className="text-sm text-zinc-500">
+            <p className="text-sm text-[var(--app-text-muted)]">
               {daten?.treffer ?? 0} Termin(e) für {daten?.abgefragtePositionen ?? 0} Position(en) mit ISIN.
             </p>
             <Link
@@ -111,7 +111,7 @@ export function PortfolioEarningsDashboardClient() {
               className="flex flex-col border-[#eef0f1]/[0.08] bg-[#0c0c0d] p-5"
             >
               <h2 className="text-sm font-semibold tracking-tight text-[#eef0f1]">Quartalstermine</h2>
-              <p className="mt-0.5 text-[11px] text-zinc-500">
+              <p className="mt-0.5 text-[11px] text-[var(--app-text-muted)]">
                 Nächstes Quartal · DivvyDiary · Klick für Konsens
               </p>
               <div className="mt-3 min-h-0 flex-1">
@@ -127,7 +127,7 @@ export function PortfolioEarningsDashboardClient() {
                 />
               </div>
               {daten?.hinweise.length ? (
-                <ul className="mt-4 space-y-1 border-t border-white/[0.06] pt-3 text-[10px] leading-relaxed text-zinc-600">
+                <ul className="mt-4 space-y-1 border-t border-white/[0.06] pt-3 text-[10px] leading-relaxed text-[var(--app-text-muted)]">
                   {daten.hinweise.map((h) => (
                     <li key={h}>{h}</li>
                   ))}

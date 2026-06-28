@@ -47,10 +47,10 @@ export function WhoopBigRing({
           ) : null}
         </svg>
         <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
-          <span className="text-[10px] font-bold tracking-[0.2em] text-zinc-500">OMNIA</span>
+          <span className="text-[10px] font-bold tracking-[0.2em] text-[var(--app-text-muted)]">OMNIA</span>
           <span className="mt-1 text-5xl font-bold tabular-nums text-white">{display}</span>
-          <span className="mt-1 text-xs font-bold uppercase tracking-[0.18em] text-zinc-400">{label}</span>
-          {sublabel ? <span className="mt-0.5 text-[10px] text-zinc-600">{sublabel}</span> : null}
+          <span className="mt-1 text-xs font-bold uppercase tracking-[0.18em] text-[var(--app-text-muted)]">{label}</span>
+          {sublabel ? <span className="mt-0.5 text-[10px] text-[var(--app-text-muted)]">{sublabel}</span> : null}
         </div>
       </div>
     </div>
@@ -112,7 +112,7 @@ function MiniRing({
           {display}
         </text>
       </svg>
-      <span className="text-[9px] font-bold uppercase tracking-wider text-zinc-500">{label}</span>
+      <span className="text-[9px] font-bold uppercase tracking-wider text-[var(--app-text-muted)]">{label}</span>
     </div>
   )
 }

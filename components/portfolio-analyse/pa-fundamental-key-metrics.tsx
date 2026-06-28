@@ -35,9 +35,9 @@ function MetrikZeile({
         klickbar ? 'cursor-pointer hover:bg-amber-500/[0.08]' : 'cursor-default'
       }`}
     >
-      <span className={`text-[10px] ${klickbar ? 'text-zinc-400' : 'text-zinc-500'}`}>{label}</span>
+      <span className={`text-[10px] ${klickbar ? 'text-[var(--app-text-muted)]' : 'text-[var(--app-text-muted)]'}`}>{label}</span>
       <span
-        className={`text-right text-[10px] font-semibold tabular-nums ${negativ ? 'text-rose-400/90' : 'text-zinc-100'}`}
+        className={`text-right text-[10px] font-semibold tabular-nums ${negativ ? 'text-rose-400/90' : 'text-[var(--app-text)]'}`}
       >
         {wert}
       </span>

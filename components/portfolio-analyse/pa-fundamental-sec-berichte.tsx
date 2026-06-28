@@ -56,12 +56,12 @@ function BerichtZeile({
       className={`flex w-full items-center justify-between gap-3 rounded-lg border px-3 py-2.5 text-left transition ${
         offen
           ? 'border-teal-500/30 bg-teal-500/[0.08]'
-          : 'border-white/[0.05] bg-zinc-950/30 hover:border-zinc-600/40 hover:bg-zinc-900/50'
+          : 'border-white/[0.05] bg-[var(--app-surface-muted)]/30 hover:border-[var(--app-border-strong)]/40 hover:bg-[var(--app-surface-muted)]'
       }`}
     >
       <div className="min-w-0">
-        <span className={`text-sm font-medium ${offen ? 'text-teal-100' : 'text-zinc-200'}`}>{b.label}</span>
-        <span className="mt-0.5 block truncate text-[11px] text-zinc-500">
+        <span className={`text-sm font-medium ${offen ? 'text-teal-100' : 'text-[var(--app-text)]'}`}>{b.label}</span>
+        <span className="mt-0.5 block truncate text-[11px] text-[var(--app-text-muted)]">
           {b.formular} · {b.filingDatum ?? '—'}
         </span>
       </div>
@@ -70,9 +70,9 @@ function BerichtZeile({
           <span className="rounded-full bg-teal-500/15 px-1.5 py-0.5 text-[9px] font-medium text-teal-300">KI</span>
         ) : null}
         {laden ? (
-          <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-zinc-600 border-t-teal-400" />
+          <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-[var(--app-border-strong)] border-t-teal-400" />
         ) : (
-          <span className={`text-zinc-500 transition ${offen ? 'rotate-90 text-teal-400' : ''}`}>›</span>
+          <span className={`text-[var(--app-text-muted)] transition ${offen ? 'rotate-90 text-teal-400' : ''}`}>›</span>
         )}
       </div>
     </button>
@@ -205,7 +205,7 @@ export function PaFundamentalSecBerichte({
 
   if (!ticker?.trim()) {
     return (
-      <PaCard variant="glass" className="p-8 text-center text-sm text-zinc-500">
+      <PaCard variant="glass" className="p-8 text-center text-sm text-[var(--app-text-muted)]">
         Kein Ticker — SEC-Berichte nur für US-Melder.
       </PaCard>
     )
@@ -218,14 +218,14 @@ export function PaFundamentalSecBerichte({
     <div className="flex h-full min-h-[320px] flex-col space-y-3">
       <div className="flex flex-wrap items-end justify-between gap-2 border-b border-white/[0.06] pb-3">
         <div>
-          <h2 className="text-base font-medium text-zinc-100">Quartals- & Jahresberichte</h2>
-          <p className="mt-0.5 text-xs text-zinc-500">Finanzberichte (SEC / IR-PDF) · KI-Analyse (Gemini)</p>
+          <h2 className="text-base font-medium text-[var(--app-text)]">Quartals- & Jahresberichte</h2>
+          <p className="mt-0.5 text-xs text-[var(--app-text-muted)]">Finanzberichte (SEC / IR-PDF) · KI-Analyse (Gemini)</p>
         </div>
         <button
           type="button"
           disabled={laden}
           onClick={() => void ladeListe(true)}
-          className="rounded-lg border border-zinc-700/60 bg-zinc-900/50 px-2.5 py-1.5 text-[11px] text-zinc-400 transition hover:border-zinc-600 hover:text-zinc-200 disabled:opacity-50"
+          className="rounded-lg border border-[var(--app-border-strong)] bg-[var(--app-surface-muted)] px-2.5 py-1.5 text-[11px] text-[var(--app-text-muted)] transition hover:border-[var(--app-border-strong)] hover:text-[var(--app-text)] disabled:opacity-50"
         >
           {laden ? 'Lädt …' : 'Aktualisieren'}
         </button>
@@ -233,7 +233,7 @@ export function PaFundamentalSecBerichte({
 
       {initialLaden ? (
         <PaCard variant="glass" className="flex flex-1 items-center justify-center p-8">
-          <p className="text-sm text-zinc-400">SEC EDGAR wird durchsucht …</p>
+          <p className="text-sm text-[var(--app-text-muted)]">SEC EDGAR wird durchsucht …</p>
         </PaCard>
       ) : null}
 
@@ -243,11 +243,11 @@ export function PaFundamentalSecBerichte({
 
       {daten?.berichte.length ? (
         <div className="grid min-h-0 flex-1 gap-3 lg:grid-cols-[minmax(0,200px)_1fr]">
-          <div className="max-h-[420px] overflow-y-auto rounded-xl border border-white/[0.05] bg-zinc-950/40 p-2">
+          <div className="max-h-[420px] overflow-y-auto rounded-xl border border-white/[0.05] bg-[var(--app-surface-muted)] p-2">
             <div className="space-y-3">
               {jahrGruppen.map(({ jahr, eintraege }) => (
                 <div key={jahr}>
-                  <p className="mb-1 px-1 text-[10px] font-medium text-zinc-600">{jahr}</p>
+                  <p className="mb-1 px-1 text-[10px] font-medium text-[var(--app-text-muted)]">{jahr}</p>
                   <div className="space-y-1">
                     {eintraege.map((b) => (
                       <BerichtZeile
@@ -267,14 +267,14 @@ export function PaFundamentalSecBerichte({
           <div className="min-h-0 min-w-0">
             {!offenerBericht ? (
               <PaCard variant="glass" className="flex h-full min-h-[200px] items-center justify-center p-6">
-                <p className="text-sm text-zinc-500">Bericht wählen</p>
+                <p className="text-sm text-[var(--app-text-muted)]">Bericht wählen</p>
               </PaCard>
             ) : (
               <div className="flex h-full max-h-[420px] flex-col space-y-2">
                 <div className="flex flex-wrap items-start justify-between gap-2 px-0.5">
                   <div>
-                    <h3 className="text-sm font-medium text-zinc-100">{offenerBericht.label}</h3>
-                    <p className="text-[11px] text-zinc-500">
+                    <h3 className="text-sm font-medium text-[var(--app-text)]">{offenerBericht.label}</h3>
+                    <p className="text-[11px] text-[var(--app-text-muted)]">
                       {offenerBericht.formular} · {offenerBericht.berichtszeitraum ?? offenerBericht.filingDatum}
                     </p>
                   </div>
@@ -295,7 +295,7 @@ export function PaFundamentalSecBerichte({
                     className={`rounded-md px-2 py-1 text-[10px] font-medium transition ${
                       detailTab === 'ki'
                         ? 'bg-teal-500/15 text-teal-200'
-                        : 'text-zinc-500 hover:text-zinc-300'
+                        : 'text-[var(--app-text-muted)] hover:text-[var(--app-text)]'
                     }`}
                   >
                     KI-Analyse
@@ -307,7 +307,7 @@ export function PaFundamentalSecBerichte({
                       className={`rounded-md px-2 py-1 text-[10px] font-medium transition ${
                         detailTab === 'diff'
                           ? 'bg-violet-500/15 text-violet-200'
-                          : 'text-zinc-500 hover:text-zinc-300'
+                          : 'text-[var(--app-text-muted)] hover:text-[var(--app-text)]'
                       }`}
                     >
                       Quartals-Diff
@@ -318,21 +318,21 @@ export function PaFundamentalSecBerichte({
                 {detailTab === 'ki' ? (
                   berichtWirdGeladen ? (
                     <PaCard variant="glass" className="flex flex-1 items-center justify-center p-8">
-                      <p className="text-sm text-zinc-500">Gemini analysiert 10-Q/10-K …</p>
+                      <p className="text-sm text-[var(--app-text-muted)]">Gemini analysiert 10-Q/10-K …</p>
                     </PaCard>
                   ) : fehler && !offenerBericht.zusammenfassung ? (
                     <PaCard variant="glass" className="p-4 text-sm text-amber-200/90">{fehler}</PaCard>
                   ) : offenerBericht.zusammenfassung ? (
                     <PaCard variant="glass" className="min-h-0 flex-1 overflow-y-auto p-3 sm:p-4">
                       <div className="mb-3 flex items-center justify-between gap-2 border-b border-white/[0.05] pb-2">
-                        <p className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
+                        <p className="text-[10px] font-semibold uppercase tracking-wider text-[var(--app-text-muted)]">
                           Quality-Analyse
                         </p>
                         <button
                           type="button"
                           disabled={berichtLaden === offenerBericht.id}
                           onClick={() => void ladeKiFuerBericht(offenerBericht.id, { forceKi: true })}
-                          className="text-[10px] text-zinc-600 hover:text-zinc-400 disabled:opacity-50"
+                          className="text-[10px] text-[var(--app-text-muted)] hover:text-[var(--app-text-muted)] disabled:opacity-50"
                         >
                           Neu
                         </button>
@@ -341,7 +341,7 @@ export function PaFundamentalSecBerichte({
                     </PaCard>
                   ) : (
                     <PaCard variant="glass" className="flex flex-1 items-center justify-center p-6">
-                      <p className="text-sm text-zinc-500">Analyse wird vorbereitet …</p>
+                      <p className="text-sm text-[var(--app-text-muted)]">Analyse wird vorbereitet …</p>
                     </PaCard>
                   )
                 ) : offenerBericht.zusammenfassung && vorherBerichtMitKi ? (
@@ -356,7 +356,7 @@ export function PaFundamentalSecBerichte({
                   />
                 ) : (
                   <PaCard variant="glass" className="flex flex-1 items-center justify-center p-6">
-                    <p className="text-sm text-zinc-500">
+                    <p className="text-sm text-[var(--app-text-muted)]">
                       Quartals-Diff benötigt KI-Summaries für aktuellen und vorherigen Bericht.
                     </p>
                   </PaCard>
@@ -367,7 +367,7 @@ export function PaFundamentalSecBerichte({
         </div>
       ) : null}
 
-      {daten?.hinweis ? <p className="text-[10px] text-zinc-600">{daten.hinweis}</p> : null}
+      {daten?.hinweis ? <p className="text-[10px] text-[var(--app-text-muted)]">{daten.hinweis}</p> : null}
     </div>
   )
 }

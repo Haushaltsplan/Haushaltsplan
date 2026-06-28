@@ -19,7 +19,7 @@ const KPI_ACCENT: Record<KpiMetric['key'], string> = {
 
 function ChangeBadge({ metric }: { metric: KpiMetric }) {
   if (metric.changePct == null) {
-    return <span className="text-[10px] text-zinc-600">{metric.changeLabel}</span>
+    return <span className="text-[10px] text-[var(--app-text-muted)]">{metric.changeLabel}</span>
   }
   const positive = metric.changePct >= 0
   const color = positive ? STRAVA_COLORS.positive : STRAVA_COLORS.negative
@@ -34,7 +34,7 @@ export function StravaKpiBar({ kpis, period, onPeriodChange }: Props) {
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between gap-3">
-        <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-zinc-500">Performance Summary</p>
+        <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-[var(--app-text-muted)]">Performance Summary</p>
         <div className="flex rounded-full border border-white/[0.08] bg-black/40 p-0.5">
           {(['week', 'month'] as KpiPeriod[]).map((p) => (
             <button
@@ -46,7 +46,7 @@ export function StravaKpiBar({ kpis, period, onPeriodChange }: Props) {
                 STRAVA_INTERACTIVE,
                 period === p
                   ? 'bg-[#FC4C02]/20 text-orange-200 ring-1 ring-[#FC4C02]/35'
-                  : 'text-zinc-500 hover:text-zinc-300',
+                  : 'text-[var(--app-text-muted)] hover:text-[var(--app-text)]',
               ].join(' ')}
             >
               {p === 'week' ? 'Woche' : 'Monat'}
@@ -62,8 +62,8 @@ export function StravaKpiBar({ kpis, period, onPeriodChange }: Props) {
               className="absolute inset-x-0 top-0 h-0.5 opacity-80"
               style={{ background: KPI_ACCENT[m.key] }}
             />
-            <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">{m.label}</p>
-            <p className="mt-2 text-2xl font-bold tabular-nums tracking-tight text-zinc-50">{m.value}</p>
+            <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--app-text-muted)]">{m.label}</p>
+            <p className="mt-2 text-2xl font-bold tabular-nums tracking-tight text-[var(--app-text)]">{m.value}</p>
             <div className="mt-2">
               <ChangeBadge metric={m} />
             </div>

@@ -92,7 +92,7 @@ export function StartSektion({
       className={`relative overflow-hidden rounded-2xl border bg-[var(--app-surface)] shadow-lg shadow-[var(--app-shadow)] ring-1 ${a.ring} ${a.border}`}
     >
       <div className={`pointer-events-none absolute inset-0 bg-gradient-to-br ${a.glow}`} />
-      <div className="relative border-b border-white/[0.05] px-4 py-3 sm:px-5">
+      <div className="relative border-b border-[var(--app-border)] px-4 py-3 sm:px-5">
         <div className="flex items-center justify-between gap-3">
           <div className="flex min-w-0 items-center gap-3">
             <span
@@ -105,7 +105,7 @@ export function StartSektion({
           </div>
           <Link
             href={href}
-            className={`shrink-0 rounded-lg border border-white/10 bg-white/[0.04] px-2.5 py-1 text-[11px] font-semibold text-zinc-300 transition ${a.link}`}
+            className={`shrink-0 rounded-lg border border-[var(--app-border)] bg-[var(--app-surface-muted)] px-2.5 py-1 text-[11px] font-semibold text-[var(--app-text-muted)] transition ${a.link}`}
           >
             Öffnen →
           </Link>
@@ -120,7 +120,7 @@ export function StartSkeleton({ zeilen = 2 }: { zeilen?: number }) {
   return (
     <div className="space-y-3 animate-pulse">
       {Array.from({ length: zeilen }).map((_, i) => (
-        <div key={i} className="h-12 rounded-xl bg-zinc-800/50" />
+        <div key={i} className="h-12 rounded-xl bg-[var(--app-surface-muted)]" />
       ))}
     </div>
   )
@@ -128,7 +128,7 @@ export function StartSkeleton({ zeilen = 2 }: { zeilen?: number }) {
 
 export function StartLeer({ text }: { text: string }) {
   return (
-    <p className="rounded-xl border border-dashed border-zinc-700/60 bg-zinc-900/30 px-4 py-6 text-center text-xs leading-relaxed text-zinc-500">
+    <p className="rounded-xl border border-dashed border-[var(--app-border-strong)] bg-[var(--app-surface-muted)] px-4 py-6 text-center text-xs leading-relaxed text-[var(--app-text-muted)]">
       {text}
     </p>
   )
@@ -148,10 +148,10 @@ export function StartMiniKachel({
       ? 'text-emerald-400'
       : tone === 'negative'
         ? 'text-rose-400'
-        : 'text-white'
+        : 'text-[var(--app-text)]'
   return (
-    <div className="rounded-xl border border-white/[0.06] bg-black/20 px-3 py-3 backdrop-blur-sm">
-      <p className="text-[9px] font-bold uppercase tracking-[0.12em] text-zinc-500">{label}</p>
+    <div className="rounded-xl border border-[var(--app-border)] bg-[var(--app-surface-muted)] px-3 py-3 backdrop-blur-sm">
+      <p className="text-[9px] font-bold uppercase tracking-[0.12em] text-[var(--app-text-muted)]">{label}</p>
       <p className={`mt-1.5 text-base font-bold tabular-nums sm:text-lg ${valueCls}`}>{value}</p>
     </div>
   )

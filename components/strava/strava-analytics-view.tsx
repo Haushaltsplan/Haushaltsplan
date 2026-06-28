@@ -55,7 +55,7 @@ export function StravaAnalyticsView({ activities, athlete, onGoalsSaved }: Props
       <StravaAlertsBanner alerts={analytics.alerts} />
 
       {analytics.streamBacklog > 0 ? (
-        <p className="rounded-xl border border-white/[0.06] bg-black/40 px-3 py-2 text-[11px] text-zinc-500">
+        <p className="rounded-xl border border-white/[0.06] bg-black/40 px-3 py-2 text-[11px] text-[var(--app-text-muted)]">
           {analytics.streamBacklog} Fahrten warten auf Stream-Analyse — Sync mehrfach klicken oder Vollimport nutzen.
         </p>
       ) : null}
@@ -102,7 +102,7 @@ export function StravaAnalyticsView({ activities, athlete, onGoalsSaved }: Props
         onClose={() => setSelectedId(null)}
       />
 
-      <p className="text-center text-[10px] text-zinc-600">
+      <p className="text-center text-[10px] text-[var(--app-text-muted)]">
         Powered by{' '}
         <span style={{ color: STRAVA_COLORS.orange }} className="font-semibold">
           Strava

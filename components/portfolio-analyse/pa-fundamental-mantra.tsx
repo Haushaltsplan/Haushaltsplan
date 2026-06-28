@@ -1,5 +1,6 @@
 'use client'
 
+import { appTableScrollClassName } from '@/components/page-shell'
 import type {
   FundamentalMantraAudit,
   MantraAuditErgebnis,
@@ -12,7 +13,7 @@ const AMPEL_CLASS: Record<MantraAmpel, string> = {
   gruen: 'bg-emerald-500/20 text-emerald-300 ring-emerald-500/40',
   gelb: 'bg-amber-500/20 text-amber-200 ring-amber-500/40',
   rot: 'bg-red-500/20 text-red-300 ring-red-500/40',
-  grau: 'bg-zinc-700/40 text-zinc-400 ring-zinc-600/40',
+  grau: 'bg-[var(--app-surface-muted)]/40 text-[var(--app-text-muted)] ring-[var(--app-border-strong)]/40',
 }
 
 const AMPEL_LABEL: Record<MantraAmpel, string> = {
@@ -26,7 +27,7 @@ const WATCH_CLASS: Record<SellTriggerWatchStatus, string> = {
   warnung: 'bg-red-500/15 text-red-300 ring-red-500/30',
   beobachten: 'bg-amber-500/15 text-amber-200 ring-amber-500/30',
   ok: 'bg-emerald-500/15 text-emerald-300 ring-emerald-500/30',
-  keine_daten: 'bg-zinc-700/40 text-zinc-400 ring-zinc-600/40',
+  keine_daten: 'bg-[var(--app-surface-muted)]/40 text-[var(--app-text-muted)] ring-[var(--app-border-strong)]/40',
 }
 
 const WATCH_LABEL: Record<SellTriggerWatchStatus, string> = {
@@ -46,7 +47,7 @@ const STATUS_LABEL: Record<MantraAuditStatus, string> = {
 const STATUS_CLASS: Record<MantraAuditStatus, string> = {
   erfuellt: 'bg-emerald-500/15 text-emerald-300 ring-emerald-500/30',
   nicht_erfuellt: 'bg-red-500/15 text-red-300 ring-red-500/30',
-  keine_daten: 'bg-zinc-700/40 text-zinc-400 ring-zinc-600/40',
+  keine_daten: 'bg-[var(--app-surface-muted)]/40 text-[var(--app-text-muted)] ring-[var(--app-border-strong)]/40',
   qualitativ: 'bg-amber-500/15 text-amber-200 ring-amber-500/30',
 }
 
@@ -77,13 +78,13 @@ function MantraAuditTabelle({
     <section className="space-y-3">
       <div>
         <h3 className="text-sm font-semibold tracking-tight text-white">{titel}</h3>
-        {intro ? <p className="mt-1 text-sm leading-relaxed text-zinc-400">{intro}</p> : null}
+        {intro ? <p className="mt-1 text-sm leading-relaxed text-[var(--app-text-muted)]">{intro}</p> : null}
       </div>
 
-      <div className="hidden overflow-x-auto rounded-xl border border-zinc-800/80 md:block">
-        <table className="min-w-full divide-y divide-zinc-800/90 text-left text-sm">
-          <thead className="bg-zinc-900/60">
-            <tr className="text-xs uppercase tracking-wide text-zinc-400">
+      <div className={`hidden ${appTableScrollClassName} rounded-xl border border-[var(--app-border)] md:block`}>
+        <table className="min-w-full divide-y divide-[var(--app-border)] text-left text-sm">
+          <thead className="bg-[var(--app-surface-muted)]">
+            <tr className="text-xs uppercase tracking-wide text-[var(--app-text-muted)]">
               <th className="px-3 py-2.5 font-semibold">Kennzahl</th>
               <th className="px-3 py-2.5 font-semibold">Benchmark</th>
               <th className="px-3 py-2.5 font-semibold">Ist (LTM)</th>
@@ -91,24 +92,24 @@ function MantraAuditTabelle({
               <th className="px-3 py-2.5 font-semibold">Rationale</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-zinc-800/70">
+          <tbody className="divide-y divide-[var(--app-border)]">
             {zeilen.map((item, i) => (
               <tr key={`${rowKeyPrefix}-${i}-${item.kennzahl}`} className="align-top">
                 <td className="px-3 py-2.5">
-                  <p className="text-xs font-medium text-zinc-500">{item.kategorie}</p>
+                  <p className="text-xs font-medium text-[var(--app-text-muted)]">{item.kategorie}</p>
                   <p className="font-medium text-white">{item.kennzahl}</p>
                   {item.hinweis ? (
-                    <p className="mt-1 text-[11px] leading-snug text-zinc-500">{item.hinweis}</p>
+                    <p className="mt-1 text-[11px] leading-snug text-[var(--app-text-muted)]">{item.hinweis}</p>
                   ) : null}
                 </td>
                 <td className="whitespace-nowrap px-3 py-2.5 font-semibold text-teal-400">{item.zielwert}</td>
-                <td className="whitespace-nowrap px-3 py-2.5 font-medium text-zinc-200">
+                <td className="whitespace-nowrap px-3 py-2.5 font-medium text-[var(--app-text)]">
                   {item.istWert ?? '–'}
                 </td>
                 <td className="px-3 py-2.5">
                   <StatusBadge status={item.status} />
                 </td>
-                <td className="max-w-md px-3 py-2.5 leading-relaxed text-zinc-400">{item.funktion}</td>
+                <td className="max-w-md px-3 py-2.5 leading-relaxed text-[var(--app-text-muted)]">{item.funktion}</td>
               </tr>
             ))}
           </tbody>
@@ -119,25 +120,25 @@ function MantraAuditTabelle({
         {zeilen.map((item, i) => (
           <article
             key={`${rowKeyPrefix}-m-${i}-${item.kennzahl}`}
-            className="rounded-xl border border-zinc-800/90 bg-zinc-950/40 px-4 py-3"
+            className="rounded-xl border border-[var(--app-border)] bg-[var(--app-surface-muted)] px-4 py-3"
           >
             <div className="flex items-start justify-between gap-2">
-              <p className="text-xs font-semibold uppercase tracking-wide text-zinc-400">{item.kategorie}</p>
+              <p className="text-xs font-semibold uppercase tracking-wide text-[var(--app-text-muted)]">{item.kategorie}</p>
               <StatusBadge status={item.status} />
             </div>
             <p className="mt-1 text-sm font-medium text-white">{item.kennzahl}</p>
             <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm">
               <span>
-                <span className="text-zinc-500">Benchmark: </span>
+                <span className="text-[var(--app-text-muted)]">Benchmark: </span>
                 <span className="font-semibold text-teal-400">{item.zielwert}</span>
               </span>
               <span>
-                <span className="text-zinc-500">Ist: </span>
-                <span className="font-medium text-zinc-200">{item.istWert ?? '–'}</span>
+                <span className="text-[var(--app-text-muted)]">Ist: </span>
+                <span className="font-medium text-[var(--app-text)]">{item.istWert ?? '–'}</span>
               </span>
             </div>
-            {item.hinweis ? <p className="mt-1 text-[11px] text-zinc-500">{item.hinweis}</p> : null}
-            <p className="mt-2 text-sm leading-relaxed text-zinc-400">{item.funktion}</p>
+            {item.hinweis ? <p className="mt-1 text-[11px] text-[var(--app-text-muted)]">{item.hinweis}</p> : null}
+            <p className="mt-2 text-sm leading-relaxed text-[var(--app-text-muted)]">{item.funktion}</p>
           </article>
         ))}
       </div>
@@ -166,15 +167,15 @@ function ZusammenfassungLeiste({ audit }: { audit: FundamentalMantraAudit }) {
     <div className="space-y-2">
       <div className="flex flex-wrap items-center gap-2">
         <AmpelBadge ampel={audit.ampel} scorePct={audit.ampelScorePct} />
-        <span className="text-xs text-zinc-500">{audit.ampelHinweis}</span>
+        <span className="text-xs text-[var(--app-text-muted)]">{audit.ampelHinweis}</span>
       </div>
-      <div className="flex flex-wrap items-center gap-2 rounded-xl border border-zinc-800/80 bg-zinc-950/50 px-4 py-3">
+      <div className="flex flex-wrap items-center gap-2 rounded-xl border border-[var(--app-border)] bg-[var(--app-surface-muted)] px-4 py-3">
       {scorePct != null ? (
         <span className="rounded-full bg-teal-500/15 px-3 py-1 text-sm font-semibold text-teal-300 ring-1 ring-teal-500/25">
           {z.erfuellt}/{z.bewertbar} erfüllt ({scorePct}%)
         </span>
       ) : (
-        <span className="text-sm text-zinc-500">Noch keine bewertbaren Kennzahlen</span>
+        <span className="text-sm text-[var(--app-text-muted)]">Noch keine bewertbaren Kennzahlen</span>
       )}
       {z.nichtErfuellt > 0 ? (
         <span className="rounded-full bg-red-500/10 px-2.5 py-0.5 text-xs font-medium text-red-300">
@@ -182,7 +183,7 @@ function ZusammenfassungLeiste({ audit }: { audit: FundamentalMantraAudit }) {
         </span>
       ) : null}
       {z.keineDaten > 0 ? (
-        <span className="rounded-full bg-zinc-800/80 px-2.5 py-0.5 text-xs font-medium text-zinc-400">
+        <span className="rounded-full bg-[var(--app-surface-hover)] px-2.5 py-0.5 text-xs font-medium text-[var(--app-text-muted)]">
           {z.keineDaten} ohne Daten
         </span>
       ) : null}
@@ -198,18 +199,18 @@ function ZusammenfassungLeiste({ audit }: { audit: FundamentalMantraAudit }) {
 
 export function PaFundamentalMantra({ audit }: { audit: FundamentalMantraAudit }) {
   return (
-    <div className="space-y-6 overflow-hidden rounded-xl border border-zinc-800/80 bg-zinc-950/80 p-4 ring-1 ring-white/[0.03] sm:p-5">
+    <div className="space-y-6 overflow-hidden rounded-xl border border-[var(--app-border)] bg-[var(--app-surface-muted)] p-4 ring-1 ring-white/[0.03] sm:p-5">
       <div>
-        <p className="text-xs font-semibold uppercase tracking-wide text-zinc-400">Mantra-Check</p>
+        <p className="text-xs font-semibold uppercase tracking-wide text-[var(--app-text-muted)]">Mantra-Check</p>
         <h2 className="mt-1 text-base font-semibold text-white">{audit.frameworkTitel}</h2>
-        <p className="mt-1 text-xs text-zinc-500">{audit.frameworkUntertitel}</p>
-        <p className="mt-3 text-sm leading-relaxed text-zinc-400">
+        <p className="mt-1 text-xs text-[var(--app-text-muted)]">{audit.frameworkUntertitel}</p>
+        <p className="mt-3 text-sm leading-relaxed text-[var(--app-text-muted)]">
           Abgleich des quantitativen Dashboards mit LTM-Daten aus Macrotrends, Yahoo Finance und berechneten
           Kennzahlen. Moat-Check und Sell-Triggers sind qualitative Referenz für Deep Research.
         </p>
       </div>
 
-      <blockquote className="rounded-xl border border-zinc-800/80 bg-zinc-900/40 px-4 py-3 text-sm italic leading-relaxed text-zinc-300">
+      <blockquote className="rounded-xl border border-[var(--app-border)] bg-[var(--app-surface-muted)] px-4 py-3 text-sm italic leading-relaxed text-[var(--app-text)]">
         {audit.anker}
       </blockquote>
 
@@ -225,7 +226,7 @@ export function PaFundamentalMantra({ audit }: { audit: FundamentalMantraAudit }
       <section className="space-y-3">
         <div>
           <h3 className="text-sm font-semibold tracking-tight text-white">3. Moat-Check (qualitativ)</h3>
-          <p className="mt-1 text-sm text-zinc-400">
+          <p className="mt-1 text-sm text-[var(--app-text-muted)]">
             Nicht automatisch bewertbar — in Earnings Calls, Quartalsreports und Deep Research prüfen.
           </p>
         </div>
@@ -233,16 +234,16 @@ export function PaFundamentalMantra({ audit }: { audit: FundamentalMantraAudit }
           {audit.moatCheck.map((p) => (
             <article
               key={p.id}
-              className="rounded-xl border border-zinc-800/90 bg-zinc-950/40 px-4 py-3"
+              className="rounded-xl border border-[var(--app-border)] bg-[var(--app-surface-muted)] px-4 py-3"
             >
               <p className="text-sm font-medium text-white">{p.titel}</p>
-              <p className="mt-2 text-sm leading-relaxed text-zinc-400">{p.beschreibung}</p>
+              <p className="mt-2 text-sm leading-relaxed text-[var(--app-text-muted)]">{p.beschreibung}</p>
               <p className="mt-2 text-sm text-amber-200/90">
-                Killer-Frage: <span className="text-zinc-300">{p.killerFrage}</span>
+                Killer-Frage: <span className="text-[var(--app-text)]">{p.killerFrage}</span>
               </p>
             </article>
           ))}
-          <p className="rounded-xl border border-teal-500/20 bg-teal-500/5 px-4 py-3 text-sm text-zinc-300">
+          <p className="rounded-xl border border-teal-500/20 bg-teal-500/5 px-4 py-3 text-sm text-[var(--app-text)]">
             <span className="font-medium text-teal-300">Junge Plattformen: </span>
             {audit.moatPlattformZusatz}
           </p>
@@ -252,7 +253,7 @@ export function PaFundamentalMantra({ audit }: { audit: FundamentalMantraAudit }
       <section className="space-y-3">
         <div>
           <h3 className="text-sm font-semibold tracking-tight text-white">4. Sell-Trigger-Watch</h3>
-          <p className="mt-1 text-sm text-zinc-400">
+          <p className="mt-1 text-sm text-[var(--app-text-muted)]">
             Regelbasiert aus LTM-Daten — ohne monatlichen LLM-Scan. Fließt in die Ampel ein.
           </p>
         </div>
@@ -260,7 +261,7 @@ export function PaFundamentalMantra({ audit }: { audit: FundamentalMantraAudit }
           {audit.sellTriggerWatch.map((w) => (
             <article
               key={w.id}
-              className="rounded-xl border border-zinc-800/90 bg-zinc-950/40 px-4 py-3"
+              className="rounded-xl border border-[var(--app-border)] bg-[var(--app-surface-muted)] px-4 py-3"
             >
               <div className="flex flex-wrap items-center gap-2">
                 <p className="text-sm font-medium text-white">{w.titel}</p>
@@ -270,8 +271,8 @@ export function PaFundamentalMantra({ audit }: { audit: FundamentalMantraAudit }
                   {WATCH_LABEL[w.status]}
                 </span>
               </div>
-              <p className="mt-1 text-sm text-zinc-400">{w.beschreibung}</p>
-              <p className="mt-2 text-sm text-zinc-300">{w.begruendung}</p>
+              <p className="mt-1 text-sm text-[var(--app-text-muted)]">{w.beschreibung}</p>
+              <p className="mt-2 text-sm text-[var(--app-text)]">{w.begruendung}</p>
             </article>
           ))}
         </div>
@@ -280,9 +281,9 @@ export function PaFundamentalMantra({ audit }: { audit: FundamentalMantraAudit }
       <section className="space-y-3">
         <div>
           <h3 className="text-sm font-semibold tracking-tight text-white">5. Sell-Triggers (Referenz)</h3>
-          <p className="mt-1 text-sm text-zinc-400">{audit.sellTriggersHinweis}</p>
+          <p className="mt-1 text-sm text-[var(--app-text-muted)]">{audit.sellTriggersHinweis}</p>
         </div>
-        <ol className="list-decimal space-y-3 pl-5 text-sm leading-relaxed text-zinc-300">
+        <ol className="list-decimal space-y-3 pl-5 text-sm leading-relaxed text-[var(--app-text)]">
           {audit.sellTriggers.map((t) => (
             <li key={t.id}>
               <span className="font-medium text-white">{t.titel}: </span>

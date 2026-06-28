@@ -280,33 +280,33 @@ export function PortfolioImportClient() {
               className={`cursor-pointer rounded-2xl border-2 border-dashed px-6 py-12 text-center transition ${
                 dragAktiv
                   ? 'border-teal-400/60 bg-teal-950/25'
-                  : 'border-zinc-700/70 bg-zinc-950/40 hover:border-zinc-600 hover:bg-zinc-900/40'
+                  : 'border-[var(--app-border-strong)] bg-[var(--app-surface-muted)] hover:border-[var(--app-border-strong)] hover:bg-[var(--app-surface-muted)]'
               } ${importBusy || schemaFehlt ? 'pointer-events-none opacity-50' : ''}`}
             >
-              <p className="text-base font-medium text-zinc-200">
+              <p className="text-base font-medium text-[var(--app-text)]">
                 {importBusy ? 'Dateien werden gelesen …' : 'PDFs & CSVs hierher ziehen'}
               </p>
-              <p className="mt-2 text-sm text-zinc-500">oder klicken zum Auswählen · mehrere Dateien gleichzeitig</p>
+              <p className="mt-2 text-sm text-[var(--app-text-muted)]">oder klicken zum Auswählen · mehrere Dateien gleichzeitig</p>
               {importFortschritt ? (
                 <p className="mt-3 text-xs text-teal-300/90">{importFortschritt}</p>
               ) : (
-                <p className="mt-4 text-xs leading-relaxed text-zinc-600">
+                <p className="mt-4 text-xs leading-relaxed text-[var(--app-text-muted)]">
                   Trade Republic: Transaktionsexport-CSV, Kontoauszug-PDF oder einzelne Wertpapierabrechnungen (Kauf/
                   Verkauf). Parqet: Portfolio-CSV.
                 </p>
               )}
             </div>
 
-            <div className="grid gap-4 text-sm text-zinc-500 sm:grid-cols-2">
-              <div className="rounded-xl border border-zinc-800/60 bg-zinc-950/30 p-4">
-                <h3 className="text-xs font-semibold uppercase tracking-wide text-zinc-400">CSV</h3>
+            <div className="grid gap-4 text-sm text-[var(--app-text-muted)] sm:grid-cols-2">
+              <div className="rounded-xl border border-[var(--app-border)] bg-[var(--app-surface-muted)]/30 p-4">
+                <h3 className="text-xs font-semibold uppercase tracking-wide text-[var(--app-text-muted)]">CSV</h3>
                 <p className="mt-2 leading-relaxed">
                   TR: Profil → Dokumente → Transaktionsexport (
                   <code className="text-teal-400/90">Timestamp, Type, amount</code>). Parqet: Aktien-Portfolio-Export.
                 </p>
               </div>
-              <div className="rounded-xl border border-zinc-800/60 bg-zinc-950/30 p-4">
-                <h3 className="text-xs font-semibold uppercase tracking-wide text-zinc-400">PDF</h3>
+              <div className="rounded-xl border border-[var(--app-border)] bg-[var(--app-surface-muted)]/30 p-4">
+                <h3 className="text-xs font-semibold uppercase tracking-wide text-[var(--app-text-muted)]">PDF</h3>
                 <p className="mt-2 leading-relaxed">
                   Kontoauszug mit Umsatzübersicht oder einzelne Wertpapierabrechnungen pro Trade — ideal für
                   Massenimport per Drag &amp; Drop.

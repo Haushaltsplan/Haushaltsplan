@@ -1,5 +1,13 @@
 'use client'
 
+import {
+  finanzEmptyClass,
+  finanzInputClass,
+  finanzLabelMutedClass,
+  finanzListItemClass,
+  finanzSecondaryBtnClass,
+  finanzTitleClass,
+} from '@/components/finanzen/finanzen-ui'
 import { useEffect, useState } from 'react'
 import toast from 'react-hot-toast'
 import { PageSection, PageSectionPanel } from '@/components/page-shell'
@@ -112,11 +120,11 @@ export function SparzieleSection() {
     <PageSection titleId="finanzen-sparziele-heading" title="Sparziele" density="compact">
       <PageSectionPanel density="compact">
         {schemaOk === null ? (
-          <p className="text-sm text-slate-500">Wird geladen …</p>
+          <p className="text-sm text-[var(--app-text-muted)]">Wird geladen …</p>
         ) : schemaOk === false ? (
           <div className="rounded-xl border border-amber-700/50 bg-amber-950/25 p-4 text-[13px] leading-relaxed text-amber-200/90">
             Sparziel-Tabelle fehlt. In Supabase einmal die Migration ausführen:
-            <code className="mt-1.5 block rounded bg-slate-950/80 px-1.5 py-1 text-[11px] text-slate-300">
+            <code className="mt-1.5 block rounded bg-[var(--app-surface-muted)] px-1.5 py-1 text-[11px] text-[var(--app-text)]">
               supabase/migrations/20260531120100_finanz_sparziel.sql
             </code>
           </div>
@@ -135,8 +143,8 @@ export function SparzieleSection() {
             </div>
 
             {formOffen && (
-              <div className="space-y-3 rounded-xl border border-slate-800/90 bg-slate-950/45 p-4">
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+              <div className={`space-y-3 ${finanzListItemClass} flex-col items-stretch`}>
+                <p className={finanzLabelMutedClass}>
                   {form.id ? 'Sparziel bearbeiten' : 'Neues Sparziel'}
                 </p>
                 <input
@@ -144,39 +152,39 @@ export function SparzieleSection() {
                   value={form.titel}
                   onChange={(e) => setForm((p) => ({ ...p, titel: e.target.value }))}
                   placeholder="Titel (z. B. Urlaub, Notgroschen, neues Rad)"
-                  className="w-full rounded-xl border border-slate-700/90 bg-slate-950/90 px-3 py-2.5 text-sm text-slate-100 outline-none focus:ring-2 focus:ring-teal-500/30"
+                  className={finanzInputClass}
                 />
                 <div className="grid grid-cols-2 gap-2">
                   <div>
-                    <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-slate-500">Zielbetrag €</label>
+                    <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-[var(--app-text-muted)]">Zielbetrag €</label>
                     <input
                       type="text"
                       inputMode="decimal"
                       value={form.zielbetrag}
                       onChange={(e) => setForm((p) => ({ ...p, zielbetrag: e.target.value }))}
                       placeholder="z. B. 2000"
-                      className="w-full rounded-xl border border-slate-700/90 bg-slate-950/90 px-3 py-2.5 text-sm tabular-nums text-slate-100 outline-none focus:ring-2 focus:ring-teal-500/30"
+                      className={`${finanzInputClass} tabular-nums`}
                     />
                   </div>
                   <div>
-                    <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-slate-500">Schon gespart €</label>
+                    <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-[var(--app-text-muted)]">Schon gespart €</label>
                     <input
                       type="text"
                       inputMode="decimal"
                       value={form.aktuell}
                       onChange={(e) => setForm((p) => ({ ...p, aktuell: e.target.value }))}
                       placeholder="0"
-                      className="w-full rounded-xl border border-slate-700/90 bg-slate-950/90 px-3 py-2.5 text-sm tabular-nums text-slate-100 outline-none focus:ring-2 focus:ring-teal-500/30"
+                      className={`${finanzInputClass} tabular-nums`}
                     />
                   </div>
                 </div>
                 <div>
-                  <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-slate-500">Zieldatum (optional)</label>
+                  <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-[var(--app-text-muted)]">Zieldatum (optional)</label>
                   <input
                     type="date"
                     value={form.zieldatum}
                     onChange={(e) => setForm((p) => ({ ...p, zieldatum: e.target.value }))}
-                    className="w-full rounded-xl border border-slate-700/90 bg-slate-950/90 px-3 py-2.5 text-sm text-slate-100 outline-none focus:ring-2 focus:ring-teal-500/30"
+                    className={finanzInputClass}
                   />
                 </div>
                 <div className="flex gap-2 pt-0.5">
@@ -186,7 +194,7 @@ export function SparzieleSection() {
                       setForm(LEER)
                       setFormOffen(false)
                     }}
-                    className="flex-1 rounded-xl border border-slate-600/90 bg-slate-900 py-2.5 text-sm font-semibold text-slate-300 transition hover:bg-slate-800"
+                    className={`flex-1 ${finanzSecondaryBtnClass}`}
                   >
                     Abbrechen
                   </button>
@@ -203,7 +211,7 @@ export function SparzieleSection() {
             )}
 
             {ziele.length === 0 && !formOffen ? (
-              <p className="rounded-xl border border-slate-800/90 bg-slate-950/35 p-8 text-center text-sm italic text-slate-600">
+              <p className={finanzEmptyClass}>
                 Noch keine Sparziele — z. B. Notgroschen oder Urlaub anlegen.
               </p>
             ) : (
@@ -215,24 +223,24 @@ export function SparzieleSection() {
                   const monate = monateBisDatum(z.zieldatum)
                   const proMonat = monate && monate > 0 && rest > 0 ? rest / monate : null
                   return (
-                    <li key={z.id} className="rounded-xl border border-slate-800/90 bg-slate-950/45 p-3.5">
+                    <li key={z.id} className={`${finanzListItemClass} flex-col items-stretch p-3.5`}>
                       <div className="flex flex-wrap items-center justify-between gap-2">
-                        <p className="truncate text-[15px] font-semibold text-slate-100">{z.titel}</p>
-                        <p className="text-[12px] tabular-nums text-slate-300">
+                        <p className={`truncate text-[15px] ${finanzTitleClass}`}>{z.titel}</p>
+                        <p className="text-[12px] tabular-nums text-[var(--app-text)]">
                           <span className={fertig ? 'font-semibold text-emerald-400' : 'font-semibold text-teal-300'}>
                             {eur(z.aktuell)}
                           </span>
-                          <span className="text-slate-600"> / </span>
-                          <span className="text-slate-400">{eur(z.zielbetrag)}</span>
+                          <span className="text-[var(--app-text-muted)]"> / </span>
+                          <span className="text-[var(--app-text-muted)]">{eur(z.zielbetrag)}</span>
                         </p>
                       </div>
-                      <div className="mt-2 h-2.5 w-full overflow-hidden rounded-full bg-slate-800">
+                      <div className="mt-2 h-2.5 w-full overflow-hidden rounded-full bg-[var(--app-border)]">
                         <div
                           className={`h-full rounded-full ${fertig ? 'bg-emerald-500' : 'bg-teal-500'}`}
                           style={{ width: `${anteil * 100}%` }}
                         />
                       </div>
-                      <div className="mt-1.5 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-[11px] text-slate-500">
+                      <div className="mt-1.5 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-[11px] text-[var(--app-text-muted)]">
                         <span>
                           {fertig ? (
                             <span className="font-semibold text-emerald-400">Ziel erreicht 🎉</span>

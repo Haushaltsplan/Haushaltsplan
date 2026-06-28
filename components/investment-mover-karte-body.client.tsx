@@ -6,7 +6,7 @@ import { StockLogo } from '@/components/stock-logo'
 
 function farbeUndStringProzent(p: number | null | undefined): { cls: string; s: string } {
   const ok = p != null && Number.isFinite(p)
-  if (!ok) return { cls: 'text-zinc-500', s: '—' }
+  if (!ok) return { cls: 'text-[var(--app-text-muted)]', s: '—' }
   const v = p as number
   return {
     cls: v >= 0 ? 'text-teal-400' : 'text-red-400/90',
@@ -32,23 +32,23 @@ export function InvestmentMoverKarteMetrikSpalte({ z }: { z: InvestmentMoverKart
     return (
       <dl className="shrink-0 space-y-1 text-right">
         <div className="flex items-baseline justify-end gap-3">
-          <dt className="text-[11px] font-medium uppercase tracking-wide text-zinc-500">Tag</dt>
+          <dt className="text-[11px] font-medium uppercase tracking-wide text-[var(--app-text-muted)]">Tag</dt>
           <dd className={`text-sm font-semibold tabular-nums ${tag.cls}`}>{tag.s}</dd>
         </div>
         <div className="flex items-baseline justify-end gap-3">
-          <dt className="text-[11px] font-medium uppercase tracking-wide text-zinc-500">YTD</dt>
+          <dt className="text-[11px] font-medium uppercase tracking-wide text-[var(--app-text-muted)]">YTD</dt>
           <dd className={`text-sm font-semibold tabular-nums ${ytd.cls}`}>{ytd.s}</dd>
         </div>
         <div className="flex items-baseline justify-end gap-3">
-          <dt className="text-[11px] font-medium uppercase tracking-wide text-zinc-500">5 J.</dt>
+          <dt className="text-[11px] font-medium uppercase tracking-wide text-[var(--app-text-muted)]">5 J.</dt>
           <dd className={`text-sm font-semibold tabular-nums ${z5.cls}`}>{z5.s}</dd>
         </div>
         <div className="flex items-baseline justify-end gap-3">
-          <dt className="text-[11px] font-medium uppercase tracking-wide text-zinc-500">10 J.</dt>
+          <dt className="text-[11px] font-medium uppercase tracking-wide text-[var(--app-text-muted)]">10 J.</dt>
           <dd className={`text-sm font-semibold tabular-nums ${z10.cls}`}>{z10.s}</dd>
         </div>
         <div className="flex items-baseline justify-end gap-3">
-          <dt className="max-w-[5.5rem] text-right text-[11px] font-medium uppercase leading-snug tracking-wide text-zinc-500">
+          <dt className="max-w-[5.5rem] text-right text-[11px] font-medium uppercase leading-snug tracking-wide text-[var(--app-text-muted)]">
             ATH
           </dt>
           <dd className={`text-sm font-semibold tabular-nums ${ath.cls}`}>{ath.s}</dd>
@@ -74,16 +74,16 @@ export function InvestmentMoverKarteBodyClient({
           <StockLogo symbol={z.symbol} />
           <div className="min-w-0 max-w-xl flex-1">
             <p className="font-mono text-sm font-semibold text-white">{z.symbol}</p>
-            <p className="truncate text-xs leading-snug text-zinc-400">{z.name}</p>
+            <p className="truncate text-xs leading-snug text-[var(--app-text-muted)]">{z.name}</p>
             {z.notiz?.trim() ? (
-              <p className="mt-1 whitespace-pre-wrap break-words text-[11px] leading-snug text-zinc-500">
+              <p className="mt-1 whitespace-pre-wrap break-words text-[11px] leading-snug text-[var(--app-text-muted)]">
                 {z.notiz.trim()}
               </p>
             ) : null}
             {z.brancheAnzeige ? (
-              <p className="mt-0.5 text-xs leading-snug text-zinc-500">
-                <span className="text-zinc-500">Branche: </span>
-                <span className="text-zinc-400">{z.brancheAnzeige}</span>
+              <p className="mt-0.5 text-xs leading-snug text-[var(--app-text-muted)]">
+                <span className="text-[var(--app-text-muted)]">Branche: </span>
+                <span className="text-[var(--app-text-muted)]">{z.brancheAnzeige}</span>
               </p>
             ) : null}
           </div>
@@ -94,7 +94,7 @@ export function InvestmentMoverKarteBodyClient({
         </div>
       </div>
       {z.kurs != null ? (
-        <p className="mt-2 text-xs tabular-nums text-zinc-400">
+        <p className="mt-2 text-xs tabular-nums text-[var(--app-text-muted)]">
           Kurs ca. {z.kurs.toFixed(2)} {z.notierung ?? 'USD'}
         </p>
       ) : null}

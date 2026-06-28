@@ -34,7 +34,7 @@ function metaFuerTitel(titel: string) {
   for (const [key, meta] of Object.entries(ABSCHNITT_META)) {
     if (n.includes(key)) return meta
   }
-  return { kurz: titel.slice(0, 12), icon: '·', accent: 'border-zinc-600/30 bg-zinc-900/40' }
+  return { kurz: titel.slice(0, 12), icon: '·', accent: 'border-[var(--app-border-strong)]/30 bg-[var(--app-surface-muted)]' }
 }
 
 function parseAnalyseAbschnitte(text: string): AnalyseAbschnitt[] {
@@ -73,13 +73,13 @@ function formatInlineMarkdown(text: string): ReactNode[] {
     const token = m[0]
     if (token.startsWith('**')) {
       parts.push(
-        <strong key={key++} className="font-semibold text-zinc-100">
+        <strong key={key++} className="font-semibold text-[var(--app-text)]">
           {token.slice(2, -2)}
         </strong>,
       )
     } else {
       parts.push(
-        <em key={key++} className="text-zinc-200">
+        <em key={key++} className="text-[var(--app-text)]">
           {token.slice(1, -1)}
         </em>,
       )
@@ -92,15 +92,15 @@ function formatInlineMarkdown(text: string): ReactNode[] {
 
 function AbschnittInhalt(body: string): ReactNode {
   return (
-    <div className="space-y-3 text-[13px] leading-relaxed text-zinc-300">
+    <div className="space-y-3 text-[13px] leading-relaxed text-[var(--app-text)]">
       {body.split(/\n\n+/).map((para, j) => {
         if (/^[-*•]\s/m.test(para)) {
           const items = para.split(/\n/).filter((l) => l.trim())
           return (
             <ul key={j} className="space-y-2 pl-0.5">
               {items.map((item, k) => (
-                <li key={k} className="flex gap-2.5 text-zinc-400">
-                  <span className="mt-2 h-1 w-1 shrink-0 rounded-full bg-zinc-500" />
+                <li key={k} className="flex gap-2.5 text-[var(--app-text-muted)]">
+                  <span className="mt-2 h-1 w-1 shrink-0 rounded-full bg-[var(--app-surface-muted)]" />
                   <span>{formatInlineMarkdown(item.replace(/^[-*•]\s*/, ''))}</span>
                 </li>
               ))}
@@ -110,7 +110,7 @@ function AbschnittInhalt(body: string): ReactNode {
         if (/^\d+\.\s/m.test(para)) {
           const items = para.split(/\n/).filter((l) => l.trim())
           return (
-            <ol key={j} className="list-decimal space-y-2 pl-5 text-zinc-400">
+            <ol key={j} className="list-decimal space-y-2 pl-5 text-[var(--app-text-muted)]">
               {items.map((item, k) => (
                 <li key={k}>{formatInlineMarkdown(item.replace(/^\d+\.\s*/, ''))}</li>
               ))}
@@ -118,7 +118,7 @@ function AbschnittInhalt(body: string): ReactNode {
           )
         }
         return (
-          <p key={j} className="text-zinc-300">
+          <p key={j} className="text-[var(--app-text)]">
             {formatInlineMarkdown(para)}
           </p>
         )
@@ -150,7 +150,7 @@ export function EarningsCallAnalyseDarstellung({ text }: { text: string }) {
 
   if (abschnitte.length <= 1) {
     return (
-      <div className="rounded-xl border border-white/[0.06] bg-zinc-950/50 p-5">
+      <div className="rounded-xl border border-white/[0.06] bg-[var(--app-surface-muted)] p-5">
         {AbschnittInhalt(text)}
       </div>
     )
@@ -159,7 +159,7 @@ export function EarningsCallAnalyseDarstellung({ text }: { text: string }) {
   return (
     <div className="space-y-4">
       {summary ? (
-        <div className="rounded-xl border border-amber-400/20 bg-gradient-to-br from-amber-500/[0.08] to-zinc-950/80 p-5">
+        <div className="rounded-xl border border-amber-400/20 bg-gradient-to-br from-amber-500/[0.08] to-[var(--app-surface)] p-5">
           <p className="mb-3 text-[10px] font-semibold uppercase tracking-[0.2em] text-amber-300/80">
             Executive Summary
           </p>
@@ -183,12 +183,12 @@ export function EarningsCallAnalyseDarstellung({ text }: { text: string }) {
                 className={`flex shrink-0 items-center gap-2 rounded-lg border px-3 py-2.5 text-left text-xs transition ${
                   aktivChip
                     ? 'border-teal-500/35 bg-teal-500/10 text-teal-100'
-                    : 'border-transparent bg-zinc-900/30 text-zinc-500 hover:border-zinc-700/50 hover:text-zinc-300'
+                    : 'border-transparent bg-[var(--app-surface-muted)]/30 text-[var(--app-text-muted)] hover:border-[var(--app-border-strong)] hover:text-[var(--app-text)]'
                 }`}
               >
                 <span
                   className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-[11px] font-medium ${
-                    aktivChip ? 'bg-teal-500/20 text-teal-200' : 'bg-zinc-800 text-zinc-500'
+                    aktivChip ? 'bg-teal-500/20 text-teal-200' : 'bg-[var(--app-surface-muted)] text-[var(--app-text-muted)]'
                   }`}
                 >
                   {meta.icon}
@@ -201,12 +201,12 @@ export function EarningsCallAnalyseDarstellung({ text }: { text: string }) {
 
         {aktiv && aktiv.id !== summary?.id ? (
           <article className={`rounded-xl border p-5 ${metaFuerTitel(aktiv.titel).accent}`}>
-            <h4 className="mb-4 text-sm font-medium capitalize text-zinc-100">{aktiv.titel}</h4>
+            <h4 className="mb-4 text-sm font-medium capitalize text-[var(--app-text)]">{aktiv.titel}</h4>
             {AbschnittInhalt(aktiv.body)}
           </article>
         ) : aktiv && !summary ? (
           <article className={`rounded-xl border p-5 ${metaFuerTitel(aktiv.titel).accent}`}>
-            <h4 className="mb-4 text-sm font-medium capitalize text-zinc-100">{aktiv.titel}</h4>
+            <h4 className="mb-4 text-sm font-medium capitalize text-[var(--app-text)]">{aktiv.titel}</h4>
             {AbschnittInhalt(aktiv.body)}
           </article>
         ) : null}

@@ -8,7 +8,7 @@ export const metadata: Metadata = {
 
 export default function NachkaufRadarPage() {
   return (
-    <Suspense fallback={<p className="py-16 text-center text-sm text-zinc-500">Nachkauf-Radar wird geladen …</p>}>
+    <Suspense fallback={<p className="py-16 text-center text-sm text-[var(--app-text-muted)]">Nachkauf-Radar wird geladen …</p>}>
       <NachkaufRadarClient />
     </Suspense>
   )

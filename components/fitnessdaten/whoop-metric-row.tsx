@@ -8,7 +8,7 @@ function formatVal(v: number | null, dec = 0): string {
 }
 
 function TrendIcon({ trend, invertiert }: { trend: MetricMitBaseline['trend']; invertiert?: boolean }) {
-  if (trend === 'neutral') return <span className="text-zinc-700">—</span>
+  if (trend === 'neutral') return <span className="text-[var(--app-text-muted)]">—</span>
   const good = invertiert ? trend === 'down' : trend === 'up'
   const sym = trend === 'up' ? '▲' : '▼'
   return <span style={{ color: good ? '#00E676' : '#FF1744' }}>{sym}</span>
@@ -39,14 +39,14 @@ export function WhoopMetricRow({
     >
       <span className="w-6 text-center text-lg opacity-80">{icon}</span>
       <div className="min-w-0 flex-1">
-        <p className="text-[10px] font-semibold uppercase tracking-wide text-zinc-500">{label}</p>
+        <p className="text-[10px] font-semibold uppercase tracking-wide text-[var(--app-text-muted)]">{label}</p>
       </div>
       <div className="text-right">
         <p className="text-xl font-bold tabular-nums text-white">
           {formatVal(m.heute, decimals)}
-          {unit ? <span className="ml-1 text-xs font-normal text-zinc-500">{unit}</span> : null}
+          {unit ? <span className="ml-1 text-xs font-normal text-[var(--app-text-muted)]">{unit}</span> : null}
         </p>
-        <p className="text-[10px] tabular-nums text-zinc-600">
+        <p className="text-[10px] tabular-nums text-[var(--app-text-muted)]">
           {formatVal(m.baseline30, decimals)}
           <span className="ml-2 inline-block">
             <TrendIcon trend={m.trend} invertiert={m.invertiert} />
@@ -64,9 +64,9 @@ export function WhoopInsightCard({ text, link }: { text: string; link?: string }
         <span className="h-1.5 w-1.5 rounded-full bg-[#00E676]" style={{ boxShadow: '0 0 6px #00E676' }} />
         <span className="text-[9px] font-bold uppercase tracking-[0.18em] text-[#00E676]">Einblick</span>
       </div>
-      <p className="text-[13px] leading-relaxed text-zinc-300">{text}</p>
+      <p className="text-[13px] leading-relaxed text-[var(--app-text)]">{text}</p>
       {link ? (
-        <p className="mt-3 text-[11px] font-semibold tracking-wide text-zinc-500">{link} →</p>
+        <p className="mt-3 text-[11px] font-semibold tracking-wide text-[var(--app-text-muted)]">{link} →</p>
       ) : null}
     </div>
   )
@@ -97,10 +97,10 @@ export function WhoopHealthTile({
   return (
     <div className="rounded-2xl border border-white/[0.06] bg-[#111113] p-3">
       <span className="text-lg">{icon}</span>
-      <p className="mt-2 text-[9px] font-bold uppercase leading-tight tracking-wide text-zinc-500">{label}</p>
+      <p className="mt-2 text-[9px] font-bold uppercase leading-tight tracking-wide text-[var(--app-text-muted)]">{label}</p>
       <p className="mt-1 text-lg font-bold tabular-nums text-white">
         {value}
-        {unit ? <span className="text-xs font-normal text-zinc-500"> {unit}</span> : null}
+        {unit ? <span className="text-xs font-normal text-[var(--app-text-muted)]"> {unit}</span> : null}
       </p>
       {status ? (
         <p className={`mt-2 rounded-md border px-1.5 py-0.5 text-[8px] font-semibold leading-tight ${tone}`}>

@@ -1,5 +1,6 @@
 'use client'
 
+import { appTableScrollClassName } from '@/components/page-shell'
 import { useEffect, useState } from 'react'
 import { PortfolioIsinLogo } from '@/components/portfolio-analyse/isin-logo'
 import { PaDividendEstimateBadge } from '@/components/portfolio-analyse/pa-ui'
@@ -72,45 +73,45 @@ function MetrikTabelle({
     : 'grid-cols-[minmax(5.5rem,1.1fr)_repeat(3,minmax(4rem,1fr))]'
 
   return (
-    <div className="overflow-x-auto">
+    <div className={appTableScrollClassName}>
       <div className={`grid min-w-[20rem] gap-x-2 gap-y-0 ${cols}`}>
-        <div className="border-b border-[#eef0f1]/10 pb-2 text-[10px] font-medium uppercase tracking-[0.1em] text-zinc-500">
+        <div className="border-b border-[#eef0f1]/10 pb-2 text-[10px] font-medium uppercase tracking-[0.1em] text-[var(--app-text-muted)]">
           {waehrung}
         </div>
-        <div className="border-b border-[#eef0f1]/10 pb-2 text-right text-[10px] font-medium uppercase tracking-[0.1em] text-zinc-500">
+        <div className="border-b border-[#eef0f1]/10 pb-2 text-right text-[10px] font-medium uppercase tracking-[0.1em] text-[var(--app-text-muted)]">
           Estimate
         </div>
-        <div className="border-b border-[#eef0f1]/10 pb-2 text-right text-[10px] font-medium uppercase tracking-[0.1em] text-zinc-500">
+        <div className="border-b border-[#eef0f1]/10 pb-2 text-right text-[10px] font-medium uppercase tracking-[0.1em] text-[var(--app-text-muted)]">
           {vorjahrLabel}
         </div>
         {mitIst ? (
           <>
-            <div className="border-b border-[#eef0f1]/10 pb-2 text-right text-[10px] font-medium uppercase tracking-[0.1em] text-zinc-500">
+            <div className="border-b border-[#eef0f1]/10 pb-2 text-right text-[10px] font-medium uppercase tracking-[0.1em] text-[var(--app-text-muted)]">
               Actual
             </div>
-            <div className="border-b border-[#eef0f1]/10 pb-2 text-right text-[10px] font-medium uppercase tracking-[0.1em] text-zinc-500">
+            <div className="border-b border-[#eef0f1]/10 pb-2 text-right text-[10px] font-medium uppercase tracking-[0.1em] text-[var(--app-text-muted)]">
               vs. Est.
             </div>
           </>
         ) : null}
-        <div className="border-b border-[#eef0f1]/10 pb-2 text-right text-[10px] font-medium uppercase tracking-[0.1em] text-zinc-500">
+        <div className="border-b border-[#eef0f1]/10 pb-2 text-right text-[10px] font-medium uppercase tracking-[0.1em] text-[var(--app-text-muted)]">
           Change
         </div>
 
         {zeilen.map((z) => (
           <div key={z.metrik} className="contents">
-            <div className="flex items-center border-b border-[#eef0f1]/[0.05] py-2.5 text-sm text-zinc-300">
+            <div className="flex items-center border-b border-[#eef0f1]/[0.05] py-2.5 text-sm text-[var(--app-text)]">
               {z.label}
             </div>
             <div className="flex items-center justify-end border-b border-[#eef0f1]/[0.05] py-2.5 text-sm font-semibold tabular-nums text-[#eef0f1]">
               {z.schaetzungAnzeige ?? '—'}
             </div>
-            <div className="flex items-center justify-end border-b border-[#eef0f1]/[0.05] py-2.5 text-sm tabular-nums text-zinc-500">
+            <div className="flex items-center justify-end border-b border-[#eef0f1]/[0.05] py-2.5 text-sm tabular-nums text-[var(--app-text-muted)]">
               {z.vorjahrAnzeige ?? '—'}
             </div>
             {mitIst ? (
               <>
-                <div className="flex items-center justify-end border-b border-[#eef0f1]/[0.05] py-2.5 text-sm font-medium tabular-nums text-zinc-200">
+                <div className="flex items-center justify-end border-b border-[#eef0f1]/[0.05] py-2.5 text-sm font-medium tabular-nums text-[var(--app-text)]">
                   {z.istAnzeige ?? '—'}
                 </div>
                 <div className="flex items-center justify-end border-b border-[#eef0f1]/[0.05] py-2.5">
@@ -129,14 +130,14 @@ function MetrikTabelle({
 }
 
 function ChangePill({ wachstumAnzeige }: { wachstumAnzeige: string | null }) {
-  if (!wachstumAnzeige) return <span className="text-[11px] text-zinc-600">—</span>
+  if (!wachstumAnzeige) return <span className="text-[11px] text-[var(--app-text-muted)]">—</span>
   return (
-    <Pill className="bg-zinc-800/90 text-zinc-200 ring-white/[0.06]">{wachstumAnzeige}</Pill>
+    <Pill className="bg-[var(--app-surface-muted)]/90 text-[var(--app-text)] ring-white/[0.06]">{wachstumAnzeige}</Pill>
   )
 }
 
 function BeatMissPill({ anzeige }: { anzeige: string | null }) {
-  if (!anzeige) return <span className="text-[11px] text-zinc-600">—</span>
+  if (!anzeige) return <span className="text-[11px] text-[var(--app-text-muted)]">—</span>
   const beat = anzeige.startsWith('Beat')
   const miss = anzeige.startsWith('Miss')
   return (
@@ -146,7 +147,7 @@ function BeatMissPill({ anzeige }: { anzeige: string | null }) {
           ? 'bg-emerald-950/50 text-emerald-300 ring-emerald-500/25'
           : miss
             ? 'bg-rose-950/40 text-rose-300 ring-rose-500/25'
-            : 'bg-zinc-800/90 text-zinc-300 ring-white/[0.06]'
+            : 'bg-[var(--app-surface-muted)]/90 text-[var(--app-text)] ring-white/[0.06]'
       }
     >
       {anzeige}
@@ -166,22 +167,22 @@ function JahresBlock({ j }: { j: JahresEarningsSchaetzung }) {
   if (zeilen.length === 0) return null
 
   return (
-    <div className="mb-4 rounded-xl border border-[#eef0f1]/[0.06] bg-zinc-900/35 px-3 py-3">
-      <p className="text-[10px] font-medium uppercase tracking-[0.12em] text-zinc-500">
+    <div className="mb-4 rounded-xl border border-[#eef0f1]/[0.06] bg-[var(--app-surface-muted)]/35 px-3 py-3">
+      <p className="text-[10px] font-medium uppercase tracking-[0.12em] text-[var(--app-text-muted)]">
         Jahres-Schätzung · {j.jahrLabel}
       </p>
       <div className="mt-2 grid grid-cols-[minmax(4.5rem,1fr)_repeat(3,minmax(3.5rem,1fr))] gap-x-2 gap-y-0 min-w-[16rem]">
-        <div className="pb-1 text-[10px] uppercase tracking-[0.1em] text-zinc-600">{j.waehrung}</div>
-        <div className="pb-1 text-right text-[10px] uppercase tracking-[0.1em] text-zinc-600">FY Est.</div>
-        <div className="pb-1 text-right text-[10px] uppercase tracking-[0.1em] text-zinc-600">{vorjahr}</div>
-        <div className="pb-1 text-right text-[10px] uppercase tracking-[0.1em] text-zinc-600">Δ</div>
+        <div className="pb-1 text-[10px] uppercase tracking-[0.1em] text-[var(--app-text-muted)]">{j.waehrung}</div>
+        <div className="pb-1 text-right text-[10px] uppercase tracking-[0.1em] text-[var(--app-text-muted)]">FY Est.</div>
+        <div className="pb-1 text-right text-[10px] uppercase tracking-[0.1em] text-[var(--app-text-muted)]">{vorjahr}</div>
+        <div className="pb-1 text-right text-[10px] uppercase tracking-[0.1em] text-[var(--app-text-muted)]">Δ</div>
         {zeilen.map((z) => (
           <div key={z.label} className="contents">
-            <div className="py-1.5 text-sm text-zinc-400">{z.label}</div>
-            <div className="py-1.5 text-right text-sm font-medium tabular-nums text-zinc-200">
+            <div className="py-1.5 text-sm text-[var(--app-text-muted)]">{z.label}</div>
+            <div className="py-1.5 text-right text-sm font-medium tabular-nums text-[var(--app-text)]">
               {z.schaetzungAnzeige ?? '—'}
             </div>
-            <div className="py-1.5 text-right text-sm tabular-nums text-zinc-500">
+            <div className="py-1.5 text-right text-sm tabular-nums text-[var(--app-text-muted)]">
               {z.vorjahrAnzeige ?? '—'}
             </div>
             <div className="py-1.5 text-right">
@@ -190,7 +191,7 @@ function JahresBlock({ j }: { j: JahresEarningsSchaetzung }) {
           </div>
         ))}
       </div>
-      <p className="mt-2 text-[10px] text-zinc-600">Umsatz: Marketscreener · EPS: Wallstreet</p>
+      <p className="mt-2 text-[10px] text-[var(--app-text-muted)]">Umsatz: Marketscreener · EPS: Wallstreet</p>
     </div>
   )
 }
@@ -241,8 +242,8 @@ export function PaEarningsPrognosePanel({
   if (!eintrag) {
     return (
       <div className="flex h-full min-h-[18rem] flex-col items-center justify-center rounded-2xl border border-dashed border-[#eef0f1]/10 bg-[#0c0c0d] px-6 text-center">
-        <p className="text-sm text-zinc-400">Klicke auf einen Termin.</p>
-        <p className="mt-2 text-[11px] text-zinc-600">Konsens-Schätzungen</p>
+        <p className="text-sm text-[var(--app-text-muted)]">Klicke auf einen Termin.</p>
+        <p className="mt-2 text-[11px] text-[var(--app-text-muted)]">Konsens-Schätzungen</p>
       </div>
     )
   }
@@ -262,17 +263,17 @@ export function PaEarningsPrognosePanel({
         <div className="flex items-start gap-3">
           <PortfolioIsinLogo isin={eintrag.isin} fallbackName={eintrag.name} meta={meta} groesse="md" />
           <div className="min-w-0 flex-1">
-            <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-zinc-500">
+            <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-[var(--app-text-muted)]">
               Nächster Termin
             </p>
             <p className="mt-1 text-lg font-semibold leading-tight tracking-tight text-[#eef0f1]">
               {q?.quartalLabel ?? daten?.prognosePeriode ?? 'Quartalszahlen'}
             </p>
             <div className="mt-2 flex flex-wrap items-center gap-2">
-              <Pill className="bg-zinc-800/90 text-[10px] font-semibold uppercase tracking-wide text-zinc-300 ring-white/[0.06]">
+              <Pill className="bg-[var(--app-surface-muted)]/90 text-[10px] font-semibold uppercase tracking-wide text-[var(--app-text)] ring-white/[0.06]">
                 {liveBadge(eintrag, daten)}
               </Pill>
-              <span className="text-[12px] tabular-nums text-zinc-400">
+              <span className="text-[12px] tabular-nums text-[var(--app-text-muted)]">
                 {formatEventDatum(eintrag.terminDatumIso)}
               </span>
               {!eintrag.bestaetigt ? <PaDividendEstimateBadge title="Geschätzter Termin" /> : null}
@@ -296,15 +297,15 @@ export function PaEarningsPrognosePanel({
 
       <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
         {laden ? (
-          <p className="py-10 text-center text-sm text-zinc-500">Prognosen werden geladen …</p>
+          <p className="py-10 text-center text-sm text-[var(--app-text-muted)]">Prognosen werden geladen …</p>
         ) : fehler ? (
           <p className="py-8 text-sm text-amber-400/90">{fehler}</p>
         ) : zeilen.length === 0 ? (
-          <p className="py-8 text-sm text-zinc-500">Keine Konsens-Schätzungen für diese Aktie verfügbar.</p>
+          <p className="py-8 text-sm text-[var(--app-text-muted)]">Keine Konsens-Schätzungen für diese Aktie verfügbar.</p>
         ) : (
           <>
             {jahresOk && daten?.jahresSchaetzung ? <JahresBlock j={daten.jahresSchaetzung} /> : null}
-            <p className="mb-2 text-[10px] font-medium uppercase tracking-[0.12em] text-zinc-500">
+            <p className="mb-2 text-[10px] font-medium uppercase tracking-[0.12em] text-[var(--app-text-muted)]">
               Quartals-Konsens
             </p>
             <MetrikTabelle
@@ -317,7 +318,7 @@ export function PaEarningsPrognosePanel({
         )}
       </div>
 
-      <p className="shrink-0 border-t border-[#eef0f1]/[0.06] px-4 py-2.5 text-[10px] leading-relaxed text-zinc-600">
+      <p className="shrink-0 border-t border-[#eef0f1]/[0.06] px-4 py-2.5 text-[10px] leading-relaxed text-[var(--app-text-muted)]">
         {daten
           ? `Quellen (${daten.quelle}): Yahoo, Marketscreener, Finnhub, Wallstreet (nur EPS jährlich).`
           : 'Daten werden beim Klick nachgeladen.'}

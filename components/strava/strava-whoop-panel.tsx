@@ -16,7 +16,7 @@ export function StravaWhoopPanel({ insight }: { insight: WhoopStravaInsight }) {
             </span>
           </div>
         ) : (
-          <div className="flex h-16 w-16 items-center justify-center rounded-full border border-dashed border-zinc-700 text-zinc-600">
+          <div className="flex h-16 w-16 items-center justify-center rounded-full border border-dashed border-[var(--app-border-strong)] text-[var(--app-text-muted)]">
             —
           </div>
         )}
@@ -26,8 +26,8 @@ export function StravaWhoopPanel({ insight }: { insight: WhoopStravaInsight }) {
               {insight.recoveryLabel}
             </p>
           ) : null}
-          <p className="mt-1 text-xs leading-relaxed text-zinc-400">{insight.recommendation}</p>
-          <p className="mt-2 text-[10px] text-zinc-600">Wochen-TSS (Rad): {insight.weekTss}</p>
+          <p className="mt-1 text-xs leading-relaxed text-[var(--app-text-muted)]">{insight.recommendation}</p>
+          <p className="mt-2 text-[10px] text-[var(--app-text-muted)]">Wochen-TSS (Rad): {insight.weekTss}</p>
         </div>
       </div>
       {!insight.hasWhoop ? (

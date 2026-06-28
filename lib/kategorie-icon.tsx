@@ -274,7 +274,7 @@ export function KategorieMark({ kategorie, isEinnahme, geplant, groesse = 'md', 
   const personHint = /\b(maximilian|eichlseder|person)\b/i.test(kategorie)
   const shMark = istSchwaebischHallKategorie(kategorie)
 
-  const box = `${SIZE_MAP[groesse]} inline-flex shrink-0 items-center justify-center overflow-hidden rounded-lg bg-slate-800/90 ring-1 ring-slate-600/80 ${className}`
+  const box = `${SIZE_MAP[groesse]} inline-flex shrink-0 items-center justify-center overflow-hidden rounded-lg bg-[var(--app-surface-muted)]/90 ring-1 ring-[var(--app-border-strong)]/80 ${className}`
 
   if (geplant && shMark) {
     return (
@@ -312,7 +312,7 @@ export function KategorieMark({ kategorie, isEinnahme, geplant, groesse = 'md', 
 
   if (personHint) {
     return (
-      <span className={`${box} text-slate-400`} title={kategorie}>
+      <span className={`${box} text-[var(--app-text-muted)]`} title={kategorie}>
         <IconPerson />
       </span>
     )

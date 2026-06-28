@@ -372,16 +372,16 @@ export function PaFundamentalKursChart({
       className={
         kompakt
           ? 'flex h-full min-h-[320px] flex-col'
-          : 'flex min-h-[420px] flex-col overflow-hidden rounded-xl border border-zinc-800/80 bg-zinc-950/70 ring-1 ring-white/[0.03]'
+          : 'flex min-h-[420px] flex-col overflow-hidden rounded-xl border border-[var(--app-border)] bg-[var(--app-surface-muted)]/70 ring-1 ring-white/[0.03]'
       }
     >
-      <div className={`border-b border-zinc-800/60 ${kompakt ? 'px-3 py-2.5' : 'px-4 py-3'}`}>
+      <div className={`border-b border-[var(--app-border)] ${kompakt ? 'px-3 py-2.5' : 'px-4 py-3'}`}>
         <div className="flex flex-wrap items-start justify-between gap-2">
           <div className="min-w-0">
             {kompakt ? (
               <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
                 {angezeigterKurs != null ? (
-                  <span className="text-lg font-semibold tabular-nums text-zinc-50">
+                  <span className="text-lg font-semibold tabular-nums text-[var(--app-text)]">
                     {istDrawdown
                       ? `${angezeigterKurs.toLocaleString('de-DE', { maximumFractionDigits: 1 })} %`
                       : `${angezeigterKurs.toLocaleString('de-DE', { maximumFractionDigits: 2 })} $`}
@@ -401,8 +401,8 @@ export function PaFundamentalKursChart({
             ) : (
               <>
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className="text-sm font-bold tabular-nums text-zinc-100">{ticker}</span>
-                  <span className="text-sm text-zinc-400">{firmenname}</span>
+                  <span className="text-sm font-bold tabular-nums text-[var(--app-text)]">{ticker}</span>
+                  <span className="text-sm text-[var(--app-text-muted)]">{firmenname}</span>
                 </div>
                 {rendite != null ? (
                   <p className={`mt-1 text-xs font-medium ${rendite >= 0 ? 'text-emerald-400/90' : 'text-rose-400/90'}`}>
@@ -414,7 +414,7 @@ export function PaFundamentalKursChart({
             )}
           </div>
           <div className="flex flex-wrap items-center gap-1.5">
-            <div className="flex rounded-lg border border-zinc-700/60 bg-zinc-900/60 p-0.5">
+            <div className="flex rounded-lg border border-[var(--app-border-strong)] bg-[var(--app-surface-muted)] p-0.5">
               {(['kurs', 'drawdown'] as const).map((m) => (
                 <button
                   key={m}
@@ -425,7 +425,7 @@ export function PaFundamentalKursChart({
                       ? m === 'drawdown'
                         ? 'bg-rose-500/20 text-rose-200'
                         : 'bg-amber-500/20 text-amber-200'
-                      : 'text-zinc-500 hover:text-zinc-300'
+                      : 'text-[var(--app-text-muted)] hover:text-[var(--app-text)]'
                   }`}
                 >
                   {m === 'kurs' ? 'Kurs' : 'Drawdown'}
@@ -440,7 +440,7 @@ export function PaFundamentalKursChart({
                 className={`rounded px-2 py-1 text-[10px] font-medium transition ${
                   zeitraum === z.id
                     ? 'bg-amber-500/20 text-amber-300 ring-1 ring-amber-500/30'
-                    : 'text-zinc-500 hover:bg-zinc-800/60 hover:text-zinc-300'
+                    : 'text-[var(--app-text-muted)] hover:bg-[var(--app-surface-hover)] hover:text-[var(--app-text)]'
                 }`}
               >
                 {z.label}
@@ -457,9 +457,9 @@ export function PaFundamentalKursChart({
         onMouseLeave={() => setHoverIndex(null)}
       >
         {laden ? (
-          <p className="py-16 text-center text-xs text-zinc-500">Kursdaten werden geladen …</p>
+          <p className="py-16 text-center text-xs text-[var(--app-text-muted)]">Kursdaten werden geladen …</p>
         ) : gefiltert.length === 0 ? (
-          <p className="py-16 text-center text-xs text-zinc-500">Kein Kursverlauf verfügbar.</p>
+          <p className="py-16 text-center text-xs text-[var(--app-text-muted)]">Kein Kursverlauf verfügbar.</p>
         ) : (
           <svg
             width="100%"
@@ -500,7 +500,7 @@ export function PaFundamentalKursChart({
                     x={VIEW_W - padRechts + 6}
                     y={y + 4}
                     textAnchor="start"
-                    className="fill-zinc-500"
+                    className="fill-[var(--app-text-muted)]"
                     style={{ fontSize: ACHSE_FONT, fontWeight: 500 }}
                   >
                     {istDrawdown
@@ -543,7 +543,7 @@ export function PaFundamentalKursChart({
                 x={l.x}
                 y={hoehe - 10}
                 textAnchor="middle"
-                className="fill-zinc-500"
+                className="fill-[var(--app-text-muted)]"
                 style={{ fontSize: ACHSE_FONT, fontWeight: 500 }}
               >
                 {l.label}
@@ -554,14 +554,14 @@ export function PaFundamentalKursChart({
       </div>
 
       {punkte.length > 4 && !kompakt ? (
-        <div className="border-t border-zinc-800/50 px-4 py-2">
+        <div className="border-t border-[var(--app-border)]/50 px-4 py-2">
           <input
             type="range"
             min={0}
             max={100}
             value={range[0]}
             onChange={(e) => setRange([Math.min(Number(e.target.value), range[1] - 5), range[1]])}
-            className="h-1 w-full cursor-pointer appearance-none rounded-full bg-zinc-800 accent-amber-500 [&::-webkit-slider-thumb]:h-2.5 [&::-webkit-slider-thumb]:w-2.5 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-amber-500"
+            className="h-1 w-full cursor-pointer appearance-none rounded-full bg-[var(--app-surface-muted)] accent-amber-500 [&::-webkit-slider-thumb]:h-2.5 [&::-webkit-slider-thumb]:w-2.5 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-amber-500"
             aria-label="Chart-Bereich Start"
           />
           <input
@@ -570,21 +570,21 @@ export function PaFundamentalKursChart({
             max={100}
             value={range[1]}
             onChange={(e) => setRange([range[0], Math.max(Number(e.target.value), range[0] + 5)])}
-            className="mt-1.5 h-1 w-full cursor-pointer appearance-none rounded-full bg-zinc-800 accent-amber-500 [&::-webkit-slider-thumb]:h-2.5 [&::-webkit-slider-thumb]:w-2.5 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-amber-500"
+            className="mt-1.5 h-1 w-full cursor-pointer appearance-none rounded-full bg-[var(--app-surface-muted)] accent-amber-500 [&::-webkit-slider-thumb]:h-2.5 [&::-webkit-slider-thumb]:w-2.5 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-amber-500"
             aria-label="Chart-Bereich Ende"
           />
         </div>
       ) : null}
 
       {hover ? (
-        <div className={`border-t border-zinc-800/50 text-[10px] text-zinc-500 ${kompakt ? 'px-3 py-1.5' : 'px-4 py-2'}`}>
+        <div className={`border-t border-[var(--app-border)]/50 text-[10px] text-[var(--app-text-muted)] ${kompakt ? 'px-3 py-1.5' : 'px-4 py-2'}`}>
           {formatDatumDe(hover.p.datum)} ·{' '}
           {istDrawdown
             ? `${(hover.dd ?? 0).toLocaleString('de-DE', { maximumFractionDigits: 2 })} % Drawdown`
             : `${hover.p.kurs.toLocaleString('de-DE', { maximumFractionDigits: 2 })} $`}
         </div>
       ) : kompakt ? (
-        <div className="border-t border-zinc-800/50 px-3 py-1.5 text-[10px] text-zinc-600">USD · Yahoo Finance</div>
+        <div className="border-t border-[var(--app-border)]/50 px-3 py-1.5 text-[10px] text-[var(--app-text-muted)]">USD · Yahoo Finance</div>
       ) : null}
     </div>
   )

@@ -63,11 +63,11 @@ export async function StartWetterKompakt({ ortId }: { ortId: WetterOrtId }) {
                 className="shrink-0 drop-shadow-[0_0_20px_rgba(56,189,248,0.2)]"
               />
               <div className="min-w-0">
-                <p className="text-4xl font-black tabular-nums leading-none tracking-tight text-zinc-50">
+                <p className="text-4xl font-black tabular-nums leading-none tracking-tight text-[var(--app-text)]">
                   {wetter.tempC}°
                 </p>
-                <p className="mt-1.5 text-sm font-medium text-zinc-200">{wetter.zustandDe}</p>
-                <p className="mt-0.5 text-[11px] text-zinc-500">
+                <p className="mt-1.5 text-sm font-medium text-[var(--app-text)]">{wetter.zustandDe}</p>
+                <p className="mt-0.5 text-[11px] text-[var(--app-text-muted)]">
                   {ortWetter.name} · {ortLabel(ortId)}
                 </p>
                 {wetter.feelsLikeC != null ? (
@@ -77,7 +77,7 @@ export async function StartWetterKompakt({ ortId }: { ortId: WetterOrtId }) {
             </div>
             <DetailsDisclosureTriggerEnd tone="sky" />
           </summary>
-          <div className="mt-4 overflow-hidden rounded-xl border border-zinc-800/60">
+          <div className="mt-4 overflow-hidden rounded-xl border border-[var(--app-border)]">
             <RegionWetterAnzeige
               wetter={wetter}
               aktualisiertAnzeige={formatUhr(wetter.aktualisiert)}

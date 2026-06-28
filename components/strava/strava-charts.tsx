@@ -1,5 +1,6 @@
 'use client'
 
+import { appTableScrollInlineClassName } from '@/components/page-shell'
 import { STRAVA_COLORS } from '@/components/strava/design-tokens'
 import { StravaCard, StravaSectionTitle } from '@/components/strava/strava-card'
 import type { SpeedTrendPoint, WeeklyVolumeBar, ZoneSlice } from '@/lib/strava/strava-dashboard-analytics'
@@ -22,7 +23,7 @@ export function StravaVolumeChart({ data }: VolumeChartProps) {
         title="Volume & Consistency"
         subtitle="Wöchentliche Distanz · letzte 12 Wochen"
       />
-      <div className="mb-3 flex flex-wrap gap-4 text-[10px] text-zinc-500">
+      <div className="mb-3 flex flex-wrap gap-4 text-[10px] text-[var(--app-text-muted)]">
         <span className="flex items-center gap-1.5">
           <span className="inline-block h-2.5 w-2.5 rounded-sm" style={{ background: SPORT_COLORS.ride }} />
           Ride
@@ -36,7 +37,7 @@ export function StravaVolumeChart({ data }: VolumeChartProps) {
           Sonstige
         </span>
       </div>
-      <div className="overflow-x-auto">
+      <div className={appTableScrollInlineClassName}>
         <svg viewBox={`0 0 ${w} ${h}`} style={{ minWidth: w, width: '100%', height: h }} preserveAspectRatio="xMinYMid meet">
           {[0.25, 0.5, 0.75, 1].map((f) => (
             <line
@@ -152,14 +153,14 @@ export function StravaZoneDonut({ slices, mode }: ZoneChartProps) {
           {slices.map((z) => (
             <div key={z.key} className="group flex items-center gap-2">
               <span className="inline-block h-2.5 w-2.5 shrink-0 rounded-sm" style={{ background: z.color }} />
-              <span className="min-w-[72px] text-xs text-zinc-400">{z.label}</span>
-              <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-zinc-800">
+              <span className="min-w-[72px] text-xs text-[var(--app-text-muted)]">{z.label}</span>
+              <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-[var(--app-surface-muted)]">
                 <div
                   className="h-full rounded-full transition-all duration-500"
                   style={{ width: `${z.pct}%`, background: z.color }}
                 />
               </div>
-              <span className="w-10 text-right text-[10px] tabular-nums text-zinc-500">{z.pct.toFixed(0)}%</span>
+              <span className="w-10 text-right text-[10px] tabular-nums text-[var(--app-text-muted)]">{z.pct.toFixed(0)}%</span>
             </div>
           ))}
         </div>
@@ -208,20 +209,20 @@ export function StravaSpeedTrendChart({ points }: SpeedChartProps) {
     <StravaCard padding="md">
       <StravaSectionTitle title="Fitness & Speed Trend" subtitle="Ø Tempo/Pace · Fahrten ≥20 min" />
       {points.length === 0 ? (
-        <p className="py-8 text-center text-sm text-zinc-500">Noch nicht genug Daten für den Trend.</p>
+        <p className="py-8 text-center text-sm text-[var(--app-text-muted)]">Noch nicht genug Daten für den Trend.</p>
       ) : (
         <>
           {hover ? (
             <div className="mb-3 rounded-xl border border-white/[0.08] bg-black/50 px-3 py-2 text-xs">
-              <p className="font-semibold text-zinc-100">{hover.name}</p>
-              <p className="mt-1 text-zinc-400">
+              <p className="font-semibold text-[var(--app-text)]">{hover.name}</p>
+              <p className="mt-1 text-[var(--app-text-muted)]">
                 {hover.valueLabel} · {hover.distanceLabel} · {hover.timeLabel} · HF {hover.hrLabel}
               </p>
             </div>
           ) : (
-            <p className="mb-3 text-[11px] text-zinc-600">Hover über einen Punkt für Details</p>
+            <p className="mb-3 text-[11px] text-[var(--app-text-muted)]">Hover über einen Punkt für Details</p>
           )}
-          <div className="overflow-x-auto">
+          <div className={appTableScrollInlineClassName}>
             <svg
               viewBox={`0 0 ${w} ${h}`}
               style={{ minWidth: w, width: '100%', height: h }}

@@ -1,6 +1,12 @@
 'use client'
 
 import { useMemo } from 'react'
+import {
+  finanzKpiCardClass,
+  finanzLabelMutedClass,
+  finanzListItemClass,
+  finanzTitleClass,
+} from '@/components/finanzen/finanzen-ui'
 import { PageSection, PageSectionPanel } from '@/components/page-shell'
 import { KategorieMark } from '@/lib/kategorie-icon'
 import { ordneKategorieZu } from '@/lib/finanz-kategorisierung'
@@ -39,29 +45,31 @@ export function SparenSection({ dauerauftraege }: { dauerauftraege: Dauerauftrag
     <PageSection titleId="finanzen-sparen-heading" title="Sparen & Anlage" density="compact">
       <PageSectionPanel density="compact">
         <div className="grid gap-3 sm:grid-cols-2">
-          <div className="rounded-2xl border border-slate-800/90 bg-slate-950/50 p-4">
-            <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">Sparrate pro Monat</p>
+          <div className={finanzKpiCardClass}>
+            <p className={finanzLabelMutedClass}>Sparrate pro Monat</p>
             <p className="mt-1 text-2xl font-bold tabular-nums text-teal-300">{eur(monatsSumme)}</p>
-            <p className="mt-0.5 text-[11px] text-slate-500">{posten.length} laufende Spar-/Anlageaufträge</p>
+            <p className="mt-0.5 text-[11px] text-[var(--app-text-muted)]">{posten.length} laufende Spar-/Anlageaufträge</p>
           </div>
-          <div className="rounded-2xl border border-slate-800/90 bg-slate-950/50 p-4">
-            <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">Hochrechnung pro Jahr</p>
+          <div className={finanzKpiCardClass}>
+            <p className={finanzLabelMutedClass}>Hochrechnung pro Jahr</p>
             <p className="mt-1 text-2xl font-bold tabular-nums text-emerald-300">{eur(jahresSumme)}</p>
-            <p className="mt-0.5 text-[11px] text-slate-500">monatliche Sparrate × 12</p>
+            <p className="mt-0.5 text-[11px] text-[var(--app-text-muted)]">monatliche Sparrate × 12</p>
           </div>
         </div>
 
         <ul className="mt-3 space-y-2">
           {posten.map((p) => (
-            <li key={p.id} className="flex items-center gap-3 rounded-xl border border-slate-800/90 bg-slate-950/45 p-3">
+            <li key={p.id} className={finanzListItemClass}>
               <KategorieMark kategorie={String(p.kategorie)} groesse="sm" className="shrink-0" />
               <div className="min-w-0 flex-1">
-                <p className="truncate text-[14px] font-semibold text-slate-100">{p.kategorie}</p>
-                <p className="text-[11px] text-slate-500">monatlich am {Math.min(Math.max(Number(p.tag_des_monats) || 1, 1), 31)}.</p>
+                <p className={finanzTitleClass}>{p.kategorie}</p>
+                <p className="text-[11px] text-[var(--app-text-muted)]">
+                  monatlich am {Math.min(Math.max(Number(p.tag_des_monats) || 1, 1), 31)}.
+                </p>
               </div>
               <div className="shrink-0 text-right">
                 <p className="text-[14px] font-bold tabular-nums text-teal-300">{eur(p.betragNum)}</p>
-                <p className="text-[10px] text-slate-500 tabular-nums">{eur(p.betragNum * 12)}/Jahr</p>
+                <p className="text-[10px] tabular-nums text-[var(--app-text-muted)]">{eur(p.betragNum * 12)}/Jahr</p>
               </div>
             </li>
           ))}

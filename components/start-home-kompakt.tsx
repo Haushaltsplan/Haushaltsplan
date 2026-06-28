@@ -97,8 +97,8 @@ export function StartKalenderKompakt() {
               >
                 <span className={`mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full ${kat.dot}`} />
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium text-zinc-100">{ev.titel || 'Termin'}</p>
-                  <p className="mt-0.5 text-[11px] text-zinc-500">
+                  <p className="truncate text-sm font-medium text-[var(--app-text)]">{ev.titel || 'Termin'}</p>
+                  <p className="mt-0.5 text-[11px] text-[var(--app-text-muted)]">
                     {ev.datum === heute ? 'Heute' : ev.datum}
                     {ev.uhrzeit ? ` · ${ev.uhrzeit}` : ''}
                   </p>
@@ -260,7 +260,7 @@ export function StartPortfolioKompakt() {
           </div>
           <div className="min-w-0 flex-1 space-y-3">
             <div>
-              <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">
+              <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--app-text-muted)]">
                 Depotwert
               </p>
               <p className="mt-1 text-2xl font-bold tabular-nums tracking-tight text-white">
@@ -268,11 +268,11 @@ export function StartPortfolioKompakt() {
               </p>
             </div>
             <div>
-              <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">
+              <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--app-text-muted)]">
                 Nächste Dividenden
               </p>
               {dividenden.length === 0 ? (
-                <p className="mt-1 text-xs text-zinc-600">Keine angekündigt.</p>
+                <p className="mt-1 text-xs text-[var(--app-text-muted)]">Keine angekündigt.</p>
               ) : (
                 <ul className="mt-2 space-y-2">
                   {dividenden.map((d) => (
@@ -280,8 +280,8 @@ export function StartPortfolioKompakt() {
                       key={`${d.label}-${d.datum}`}
                       className="flex items-center justify-between gap-2 rounded-lg bg-violet-500/5 px-2.5 py-1.5 text-xs"
                     >
-                      <span className="truncate font-medium text-zinc-200">{d.label}</span>
-                      <span className="shrink-0 tabular-nums text-zinc-500">
+                      <span className="truncate font-medium text-[var(--app-text)]">{d.label}</span>
+                      <span className="shrink-0 tabular-nums text-[var(--app-text-muted)]">
                         {d.datum.slice(8, 10)}.{d.datum.slice(5, 7)}. · {d.betrag}
                       </span>
                     </li>
@@ -349,7 +349,7 @@ export function StartFinanzenKompakt() {
         <StartSkeleton />
       ) : (
         <>
-          <p className="mb-3 text-xs font-medium text-zinc-500">{monatLabel}</p>
+          <p className="mb-3 text-xs font-medium text-[var(--app-text-muted)]">{monatLabel}</p>
           <div className="grid grid-cols-3 gap-2.5">
             <StartMiniKachel
               label="Saldo"

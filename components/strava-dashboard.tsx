@@ -4,7 +4,7 @@ import { StravaAnalyticsView } from '@/components/strava/strava-analytics-view'
 import { STRAVA_COLORS, STRAVA_INTERACTIVE } from '@/components/strava/design-tokens'
 import { StravaCard } from '@/components/strava/strava-card'
 import { WhoopWeeklyBarChart } from '@/components/fitnessdaten/whoop-charts'
-import { PageChrome, PageHero, PageSection, PageSectionPanel } from '@/components/page-shell'
+import { PageChrome, PageHero, PageSection, PageSectionPanel, ResponsiveTableWrap, appTableScrollInlineClassName } from '@/components/page-shell'
 import { istOmniaNativeApp } from '@/lib/fitnessdaten/omnia-native'
 import { stravaApiFetch } from '@/lib/strava/strava-api-fetch'
 import { oeffneStravaOAuthUrl } from '@/lib/strava/strava-oauth-open'
@@ -267,7 +267,7 @@ export function StravaDashboard() {
   ]
 
   return (
-    <PageChrome density="compact" className="max-w-full overflow-x-hidden bg-[#050506]">
+    <PageChrome density="compact" className="max-w-full overflow-x-hidden">
       <PageHero
         density="compact"
         eyebrow="Rennrad"
@@ -276,8 +276,8 @@ export function StravaDashboard() {
           <>
             Professionelle Performance-Auswertung deiner Strava-Aktivitäten — Volume, Intensität und Progression.
             {athlete?.ftp ? (
-              <span className="mt-1 block text-zinc-500">
-                Strava FTP: <strong className="text-zinc-400">{athlete.ftp} W</strong>
+              <span className="mt-1 block text-[var(--app-text-muted)]">
+                Strava FTP: <strong className="text-[var(--app-text-muted)]">{athlete.ftp} W</strong>
               </span>
             ) : null}
           </>
@@ -285,9 +285,9 @@ export function StravaDashboard() {
       />
 
       <PageSection titleId="strava-connect" title="Strava">
-        <PageSectionPanel className="border-slate-500/15 bg-[#0c0d0f]">
+        <PageSectionPanel className="border-[var(--app-border)] bg-[var(--app-surface-muted)]">
           {!status.configured ? (
-            <div className="space-y-3 text-sm text-zinc-400">
+            <div className="space-y-3 text-sm text-[var(--app-text-muted)]">
               <p>
                 Strava API ist noch nicht konfiguriert. In{' '}
                 <a
@@ -298,16 +298,16 @@ export function StravaDashboard() {
                 >
                   strava.com/settings/api
                 </a>{' '}
-                eine App anlegen und in <code className="text-xs text-zinc-300">.env.local</code> + Vercel eintragen:
+                eine App anlegen und in <code className="text-xs text-[var(--app-text)]">.env.local</code> + Vercel eintragen:
               </p>
-              <pre className="overflow-x-auto rounded-xl bg-black/60 p-3 text-xs text-zinc-300">
+              <pre className={`app-break-anywhere ${appTableScrollInlineClassName} rounded-xl bg-black/60 p-3 text-xs text-[var(--app-text)]`}>
                 {`STRAVA_CLIENT_ID=deine_client_id
 STRAVA_CLIENT_SECRET=dein_client_secret`}
               </pre>
               {redirectUri ? (
-                <div className="space-y-1 text-xs text-zinc-500">
+                <div className="space-y-1 text-xs text-[var(--app-text-muted)]">
                   <p>
-                    In Strava unter <strong className="text-zinc-400">Authorization Callback Domain</strong> nur den
+                    In Strava unter <strong className="text-[var(--app-text-muted)]">Authorization Callback Domain</strong> nur den
                     Hostnamen eintragen (ohne https://, ohne Pfad):
                   </p>
                   {callbackDomain ? (
@@ -321,7 +321,7 @@ STRAVA_CLIENT_SECRET=dein_client_secret`}
               ) : null}
             </div>
           ) : statusLoading ? (
-            <p className="text-sm text-zinc-500">Status wird geladen…</p>
+            <p className="text-sm text-[var(--app-text-muted)]">Status wird geladen…</p>
           ) : !status.connected ? (
             <div className="flex flex-wrap items-center gap-3">
               <button
@@ -335,7 +335,7 @@ STRAVA_CLIENT_SECRET=dein_client_secret`}
               >
                 Mit Strava verbinden
               </button>
-              <p className="text-xs text-zinc-500">Lesezugriff auf Profil und alle Aktivitäten.</p>
+              <p className="text-xs text-[var(--app-text-muted)]">Lesezugriff auf Profil und alle Aktivitäten.</p>
             </div>
           ) : (
             <div className="flex flex-wrap items-center gap-3">
@@ -347,7 +347,7 @@ STRAVA_CLIENT_SECRET=dein_client_secret`}
                 disabled={busy}
                 onClick={() => void sync({})}
                 className={[
-                  'rounded-xl border border-white/10 bg-zinc-900 px-4 py-2 text-sm text-zinc-200 hover:bg-zinc-800 disabled:opacity-50',
+                  'rounded-xl border border-white/10 bg-[var(--app-surface-muted)] px-4 py-2 text-sm text-[var(--app-text)] hover:bg-[var(--app-surface-hover)] disabled:opacity-50',
                   STRAVA_INTERACTIVE,
                 ].join(' ')}
               >
@@ -368,7 +368,7 @@ STRAVA_CLIENT_SECRET=dein_client_secret`}
               <button
                 type="button"
                 onClick={() => void trennen()}
-                className="text-xs text-zinc-500 underline transition-colors hover:text-zinc-300"
+                className="text-xs text-[var(--app-text-muted)] underline transition-colors hover:text-[var(--app-text)]"
               >
                 Trennen
               </button>
@@ -379,21 +379,21 @@ STRAVA_CLIENT_SECRET=dein_client_secret`}
 
       {status.connected ? (
         <PageSection titleId="strava-gewicht" title="Gewicht für W/kg">
-          <PageSectionPanel className="border-slate-500/15 bg-[#0c0d0f]">
-            <p className="mb-3 text-xs text-zinc-500">
+          <PageSectionPanel className="border-[var(--app-border)] bg-[var(--app-surface-muted)]">
+            <p className="mb-3 text-xs text-[var(--app-text-muted)]">
               W/kg wird mit deinem Omnia-Gewicht berechnet (nicht Strava). Beim Sync werden Watt- + HF-Streams
               geladen (max. 25 Streams pro Sync).
             </p>
             <div className="flex flex-wrap items-end gap-3">
               <label className="block">
-                <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">Körpergewicht (kg)</span>
+                <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--app-text-muted)]">Körpergewicht (kg)</span>
                 <input
                   type="text"
                   inputMode="decimal"
                   value={gewichtInput}
                   onChange={(e) => setGewichtInput(e.target.value)}
                   placeholder="z. B. 72,5"
-                  className="mt-1.5 w-32 rounded-xl border border-white/10 bg-black/60 px-3 py-2 text-sm text-zinc-100 transition-colors focus:border-[#FC4C02]/40 focus:outline-none"
+                  className="mt-1.5 w-32 rounded-xl border border-white/10 bg-black/60 px-3 py-2 text-sm text-[var(--app-text)] transition-colors focus:border-[#FC4C02]/40 focus:outline-none"
                 />
               </label>
               <button
@@ -431,7 +431,7 @@ STRAVA_CLIENT_SECRET=dein_client_secret`}
                   STRAVA_INTERACTIVE,
                   tab === t.id
                     ? 'bg-[#FC4C02]/20 text-orange-200 ring-1 ring-[#FC4C02]/40'
-                    : 'bg-zinc-900/80 text-zinc-400 hover:text-zinc-200',
+                    : 'bg-[var(--app-surface-muted)] text-[var(--app-text-muted)] hover:text-[var(--app-text)]',
                 ].join(' ')}
               >
                 {t.label}
@@ -440,7 +440,7 @@ STRAVA_CLIENT_SECRET=dein_client_secret`}
           </div>
 
           {dataLoading ? (
-            <p className="text-sm text-zinc-500">Auswertung wird geladen…</p>
+            <p className="text-sm text-[var(--app-text-muted)]">Auswertung wird geladen…</p>
           ) : tab === 'analytics' ? (
             <StravaAnalyticsView
               activities={allActivities}
@@ -487,10 +487,11 @@ STRAVA_CLIENT_SECRET=dein_client_secret`}
                 formatValue={(v) => `${v} hm`}
                 color="#fb923c"
               />
-              <StravaCard padding="sm" className="overflow-x-auto">
+              <StravaCard padding="sm">
+                <ResponsiveTableWrap>
                 <table className="w-full min-w-[520px] text-left text-sm">
                   <thead>
-                    <tr className="border-b border-white/[0.06] text-[10px] uppercase tracking-wider text-zinc-500">
+                    <tr className="border-b border-white/[0.06] text-[10px] uppercase tracking-wider text-[var(--app-text-muted)]">
                       <th className="px-4 py-3">Jahr</th>
                       <th className="px-4 py-3">Fahrten</th>
                       <th className="px-4 py-3">km</th>
@@ -502,7 +503,7 @@ STRAVA_CLIENT_SECRET=dein_client_secret`}
                   </thead>
                   <tbody>
                     {[...auswertung.jahre].reverse().map((j) => (
-                      <tr key={j.year} className="border-b border-white/[0.04] text-zinc-300 transition-colors hover:bg-white/[0.02]">
+                      <tr key={j.year} className="border-b border-white/[0.04] text-[var(--app-text)] transition-colors hover:bg-white/[0.02]">
                         <td className="px-4 py-2.5 font-medium">{j.year}</td>
                         <td className="px-4 py-2.5 tabular-nums">{j.rides}</td>
                         <td className="px-4 py-2.5 tabular-nums">
@@ -520,6 +521,7 @@ STRAVA_CLIENT_SECRET=dein_client_secret`}
                     ))}
                   </tbody>
                 </table>
+                </ResponsiveTableWrap>
               </StravaCard>
             </div>
           ) : (
@@ -540,9 +542,9 @@ STRAVA_CLIENT_SECRET=dein_client_secret`}
                         <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-orange-300/80">
                           {b.label}
                         </p>
-                        <p className="mt-2 text-xl font-semibold text-zinc-100">{b.value}</p>
-                        {b.detail ? <p className="mt-1 text-sm text-zinc-400">{b.detail}</p> : null}
-                        {b.date ? <p className="mt-1 text-xs text-zinc-500">{b.date}</p> : null}
+                        <p className="mt-2 text-xl font-semibold text-[var(--app-text)]">{b.value}</p>
+                        {b.detail ? <p className="mt-1 text-sm text-[var(--app-text-muted)]">{b.detail}</p> : null}
+                        {b.date ? <p className="mt-1 text-xs text-[var(--app-text-muted)]">{b.date}</p> : null}
                         {b.activityId ? (
                           <a
                             href={`https://www.strava.com/activities/${b.activityId}`}
@@ -563,8 +565,8 @@ STRAVA_CLIENT_SECRET=dein_client_secret`}
         </>
       ) : status.connected && !auswertung && !dataLoading ? (
         <PageSection titleId="strava-empty" title="Keine Daten">
-          <PageSectionPanel className="border-slate-500/15 bg-[#0c0d0f]">
-            <p className="text-sm text-zinc-400">
+          <PageSectionPanel className="border-[var(--app-border)] bg-[var(--app-surface-muted)]">
+            <p className="text-sm text-[var(--app-text-muted)]">
               Noch keine Aktivitäten gespeichert. Klicke auf „Jetzt synchronisieren“, um deine Strava-Fahrten zu
               importieren.
             </p>

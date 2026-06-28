@@ -56,14 +56,14 @@ export function StartWhoopPanel() {
           <p className="text-lg font-black tracking-[0.28em] text-white">WHOOP</p>
           <Link
             href="/fitnessdaten"
-            className="rounded-lg border border-white/10 bg-white/[0.04] px-2.5 py-1 text-[11px] font-semibold text-zinc-300 transition hover:bg-white/[0.08]"
+            className="rounded-lg border border-white/10 bg-white/[0.04] px-2.5 py-1 text-[11px] font-semibold text-[var(--app-text)] transition hover:bg-white/[0.08]"
           >
             Öffnen →
           </Link>
         </div>
 
         {!hasData ? (
-          <p className="text-xs leading-relaxed text-zinc-500">
+          <p className="text-xs leading-relaxed text-[var(--app-text-muted)]">
             Noch keine WHOOP-Daten — verbinde dein Band oder synchronisiere die WHOOP-Cloud unter{' '}
             <Link href="/fitnessdaten" className="text-[#009dff] underline-offset-2 hover:underline">
               Whoop
@@ -105,23 +105,23 @@ export function StartWhoopPanel() {
 
             <div className="mt-4 grid grid-cols-2 gap-2">
               <div className="rounded-xl border border-white/[0.06] bg-[#141618] px-3 py-2.5">
-                <p className="text-[9px] font-bold uppercase tracking-wide text-zinc-500">Gesundheitsmonitor</p>
+                <p className="text-[9px] font-bold uppercase tracking-wide text-[var(--app-text-muted)]">Gesundheitsmonitor</p>
                 <p className="mt-1 text-xs font-semibold text-emerald-400">
                   {vitalsOk >= 4 ? 'Normalbereich' : 'Daten unvollständig'}
                 </p>
-                <p className="text-[10px] text-zinc-600">{vitalsOk}/5 Messwerte</p>
+                <p className="text-[10px] text-[var(--app-text-muted)]">{vitalsOk}/5 Messwerte</p>
               </div>
               <button
                 type="button"
                 onClick={() => setTrendMetric('steps')}
                 className="rounded-xl border border-white/[0.06] bg-[#141618] px-3 py-2.5 text-left transition hover:border-[#009dff]/30"
               >
-                <p className="text-[9px] font-bold uppercase tracking-wide text-zinc-500">Schritte heute</p>
+                <p className="text-[9px] font-bold uppercase tracking-wide text-[var(--app-text-muted)]">Schritte heute</p>
                 <p className="mt-1 text-lg font-bold tabular-nums text-white">
                   {formatMetricWert('steps', heuteWert('steps', heute))}
                 </p>
                 {baselineFuerMetrik('steps') != null ? (
-                  <p className="text-[10px] text-zinc-600">
+                  <p className="text-[10px] text-[var(--app-text-muted)]">
                     Monats-Ø: {formatMetricWert('steps', baselineFuerMetrik('steps'))}
                   </p>
                 ) : null}
@@ -139,17 +139,17 @@ export function StartWhoopPanel() {
                       onClick={() => setTrendMetric(m.id)}
                       className="flex w-full flex-col rounded-xl border border-white/[0.06] bg-[#141618] px-3 py-2.5 text-left transition hover:border-[#009dff]/30"
                     >
-                      <span className="text-[10px] font-bold uppercase tracking-wide text-zinc-500">
+                      <span className="text-[10px] font-bold uppercase tracking-wide text-[var(--app-text-muted)]">
                         {m.label}
                       </span>
                       <span className="mt-1 text-base font-bold tabular-nums text-white">
                         {formatMetricWert(m.id, val, m.decimals ?? 0)}
                         {m.unit && val != null ? (
-                          <span className="ml-1 text-[10px] font-medium text-zinc-500">{m.unit}</span>
+                          <span className="ml-1 text-[10px] font-medium text-[var(--app-text-muted)]">{m.unit}</span>
                         ) : null}
                       </span>
                       {base != null ? (
-                        <span className="mt-0.5 text-[10px] text-zinc-600">
+                        <span className="mt-0.5 text-[10px] text-[var(--app-text-muted)]">
                           Monats-Ø: {formatMetricWert(m.id, base, m.decimals ?? 0)}
                         </span>
                       ) : null}

@@ -9,19 +9,19 @@ export default function AppError({ error, reset }: { error: Error & { digest?: s
   return (
     <div className="mx-auto max-w-lg rounded-2xl border border-rose-800/50 bg-rose-950/35 p-6 text-left shadow-xl">
       <h1 className="text-lg font-bold text-rose-100">Etwas ist schiefgelaufen</h1>
-      <p className="mt-2 text-sm text-slate-400">
+      <p className="mt-2 text-sm text-[var(--app-text-muted)]">
         {dev ? (error?.message || 'Unbekannter Fehler') : 'Bitte Seite neu laden oder es später erneut versuchen.'}
       </p>
       {dev && error?.stack ? (
-        <pre className="mt-3 max-h-48 overflow-auto rounded-lg border border-slate-800 bg-slate-950/80 p-2 text-[10px] leading-snug text-slate-500">
+        <pre className="mt-3 max-h-48 overflow-auto rounded-lg border border-[var(--app-border)] bg-[var(--app-surface-muted)] p-2 text-[10px] leading-snug text-[var(--app-text-muted)]">
           {error.stack}
         </pre>
       ) : null}
-      {error.digest ? <p className="mt-2 text-xs text-slate-600">Fehler-ID: {error.digest}</p> : null}
+      {error.digest ? <p className="mt-2 text-xs text-[var(--app-text-muted)]">Fehler-ID: {error.digest}</p> : null}
       <button
         type="button"
         onClick={() => reset()}
-        className="mt-4 rounded-xl bg-slate-100 px-4 py-2.5 text-sm font-bold text-slate-900 transition hover:bg-white"
+        className="mt-4 rounded-xl bg-[var(--app-surface-muted)] px-4 py-2.5 text-sm font-bold text-[var(--app-text)] transition hover:bg-[var(--app-surface-hover)]"
       >
         Erneut versuchen
       </button>

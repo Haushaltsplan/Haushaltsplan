@@ -37,11 +37,11 @@ export function WhoopAgeOrb({
             ? `${yearsYounger.toFixed(1).replace('.', ',')} Jahre jünger`
             : '—'}
         </span>
-        <span className="text-zinc-400">
+        <span className="text-[var(--app-text-muted)]">
           {agingProcess != null ? `${agingProcess.toFixed(1).replace('.', ',')}× Alterungsprozess` : '—'}
         </span>
       </div>
-      <p className="relative mt-2 text-[10px] text-zinc-600">Lokal geschätzt · Tippe für Erklärung</p>
+      <p className="relative mt-2 text-[10px] text-[var(--app-text-muted)]">Lokal geschätzt · Tippe für Erklärung</p>
     </button>
   )
 }
@@ -66,7 +66,7 @@ export function WhoopAgingScale({
   return (
     <div className="rounded-2xl border border-white/[0.06] bg-[#111113] p-4">
       <button type="button" onClick={onInfo} className="flex w-full items-center justify-between text-left">
-        <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-zinc-300">Alterungsprozess</p>
+        <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-[var(--app-text)]">Alterungsprozess</p>
         <span
           className={`rounded-full px-2 py-0.5 text-[9px] font-semibold ${
             trend === 'faster' ? 'bg-orange-950/50 text-orange-200' : 'bg-emerald-950/40 text-emerald-300'
@@ -79,7 +79,7 @@ export function WhoopAgingScale({
         {value != null ? `${value.toFixed(1).replace('.', ',')}×` : '—'}
       </p>
       <div className="relative mt-4 h-8">
-        <div className="absolute inset-x-0 top-3 flex justify-between text-[8px] text-zinc-600">
+        <div className="absolute inset-x-0 top-3 flex justify-between text-[8px] text-[var(--app-text-muted)]">
           <span>Langsam</span>
           <span>Schnell</span>
         </div>
@@ -87,12 +87,12 @@ export function WhoopAgingScale({
           {Array.from({ length: 24 }).map((_, i) => (
             <div
               key={i}
-              className={`w-1 rounded-sm ${i / 24 < pos ? 'bg-white/80' : 'bg-zinc-700'}`}
+              className={`w-1 rounded-sm ${i / 24 < pos ? 'bg-white/80' : 'bg-[var(--app-surface-muted)]'}`}
               style={{ height: `${8 + (i % 3) * 4}px` }}
             />
           ))}
         </div>
-        <div className="absolute inset-x-0 top-0 flex justify-between text-[9px] text-zinc-500">
+        <div className="absolute inset-x-0 top-0 flex justify-between text-[9px] text-[var(--app-text-muted)]">
           <span>-1,0×</span>
           <span>1,0×</span>
           <span>3,0×</span>
@@ -120,7 +120,7 @@ export function WhoopHealthspanBar({
     <div className="border-b border-white/[0.06] py-3 last:border-0">
       <button type="button" onClick={onToggle} className="flex w-full items-start justify-between gap-2 text-left">
         <div className="min-w-0 flex-1">
-          <p className="text-[9px] font-bold uppercase tracking-wide text-zinc-500">{metric.label}</p>
+          <p className="text-[9px] font-bold uppercase tracking-wide text-[var(--app-text-muted)]">{metric.label}</p>
           <p className="mt-1 text-lg font-bold text-white">{metric.value}</p>
         </div>
         <p className={`shrink-0 text-sm font-bold tabular-nums ${impactColor}`}>
@@ -151,12 +151,12 @@ export function WhoopHealthspanBar({
           style={{ left: `calc(${metric.position * 100}% - 5px)` }}
         />
       </div>
-      <div className="mt-1 flex justify-between text-[8px] text-zinc-600">
+      <div className="mt-1 flex justify-between text-[8px] text-[var(--app-text-muted)]">
         <span>{metric.min}</span>
         <span>{metric.max}</span>
       </div>
       {expanded && metric.insight ? (
-        <p className="mt-3 text-xs leading-relaxed text-zinc-400">{metric.insight}</p>
+        <p className="mt-3 text-xs leading-relaxed text-[var(--app-text-muted)]">{metric.insight}</p>
       ) : null}
       {expanded ? (
         <button type="button" onClick={onInfo} className="mt-2 text-[10px] font-bold uppercase text-sky-400">
@@ -190,12 +190,12 @@ export function WhoopLiveHrMonitor({
       onClick={onInfo}
       className="w-full rounded-2xl border border-white/[0.06] bg-[#111113] p-4 text-left"
     >
-      <p className="text-[10px] font-bold uppercase tracking-wide text-zinc-500">Herzfrequenz</p>
+      <p className="text-[10px] font-bold uppercase tracking-wide text-[var(--app-text-muted)]">Herzfrequenz</p>
       <div className="mt-2 flex items-center gap-2">
         <span className="text-2xl text-sky-400">♥</span>
         <div>
           <p className="text-5xl font-bold tabular-nums text-white">{bpm ?? '—'}</p>
-          <p className="text-xs text-zinc-500">S/min · Zone {zone}</p>
+          <p className="text-xs text-[var(--app-text-muted)]">S/min · Zone {zone}</p>
         </div>
       </div>
       <svg viewBox="0 0 320 48" className="mt-3 w-full">
@@ -246,8 +246,8 @@ export function WhoopAgeTrendChart({ model }: { model: HealthspanModel }) {
 
   return (
     <div className="rounded-2xl border border-white/[0.06] bg-[#111113] p-4">
-      <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-zinc-300">Whoop-Alter Trend</p>
-      <div className="mt-2 flex gap-3 text-[9px] text-zinc-500">
+      <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-[var(--app-text)]">Whoop-Alter Trend</p>
+      <div className="mt-2 flex gap-3 text-[9px] text-[var(--app-text-muted)]">
         <span className="flex items-center gap-1">
           <span className="h-2 w-2 rounded-sm bg-emerald-400" />
           Dein Omnia-Alter
@@ -301,7 +301,7 @@ export function WhoopAgingTrendChart({ model }: { model: HealthspanModel }) {
   const h = 90
   return (
     <div className="rounded-2xl border border-white/[0.06] bg-[#111113] p-4">
-      <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-zinc-300">Alterungsprozess Trend</p>
+      <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-[var(--app-text)]">Alterungsprozess Trend</p>
       <svg viewBox={`0 0 360 ${h}`} className="mt-2 w-full">
         <line x1={20} y1={45} x2={340} y2={45} stroke="white" strokeWidth="1" opacity="0.5" />
         <polyline

@@ -31,9 +31,9 @@ function MarktPanelSkeleton() {
   return (
     <PageSectionPanel>
       <div className="space-y-3 animate-pulse">
-        <div className="h-3 w-36 rounded bg-zinc-800/90" />
-        <div className="h-5 w-52 max-w-full rounded bg-zinc-800/70" />
-        <div className="h-28 rounded-xl bg-zinc-900/55 sm:h-32" />
+        <div className="h-3 w-36 rounded bg-[var(--app-surface-muted)]/90" />
+        <div className="h-5 w-52 max-w-full rounded bg-[var(--app-surface-muted)]/70" />
+        <div className="h-28 rounded-xl bg-[var(--app-surface-muted)]/55 sm:h-32" />
       </div>
     </PageSectionPanel>
   )
@@ -49,16 +49,16 @@ export default function InvestmentsPage() {
           description={
             <>
               Dieser Bereich ist absichtlich bis einschließlich{' '}
-              <span className="font-medium text-zinc-200">{investmentsSperreLetzterTagDisplayDE()}</span>{' '}
+              <span className="font-medium text-[var(--app-text)]">{investmentsSperreLetzterTagDisplayDE()}</span>{' '}
               ausgeblendet — inklusive Parqet-Link, Kursen und Prompts, damit keine Kursschau in Versuchung führt.
-              Ab dem <span className="font-medium text-zinc-200">{investmentsSperreFreischaltungKurzDE()}</span> ist
+              Ab dem <span className="font-medium text-[var(--app-text)]">{investmentsSperreFreischaltungKurzDE()}</span> ist
               hier wieder alles wie gewohnt erreichbar.
             </>
           }
         />
         <PageSection titleId="investments-pause-heading" title="Pause aktiv">
           <PageSectionPanel>
-            <p className="text-sm leading-relaxed text-zinc-400">
+            <p className="text-sm leading-relaxed text-[var(--app-text-muted)]">
               Wenn du diese Seite direkt aufgerufen hast: gut, dass die Sperre greift. Nutze die Zeit gerne für etwas
               anderes — die Märkte sind auch ohne täglichen Blick da.
             </p>
@@ -94,9 +94,9 @@ export default function InvestmentsPage() {
           ) : (
             <div className="max-w-md rounded-lg border border-orange-900/35 bg-orange-950/15 px-4 py-3 text-sm leading-relaxed text-orange-50">
               <span className="font-semibold text-orange-100">Parqet-Link fehlt.</span>{' '}
-              In <code className="rounded bg-zinc-950 px-1.5 py-0.5 font-mono text-xs text-zinc-300">.env.local</code>{' '}
+              In <code className="rounded bg-[var(--app-surface-muted)] px-1.5 py-0.5 font-mono text-xs text-[var(--app-text)]">.env.local</code>{' '}
               die Variable{' '}
-              <code className="rounded bg-zinc-950 px-1.5 py-0.5 font-mono text-xs text-teal-400">
+              <code className="rounded bg-[var(--app-surface-muted)] px-1.5 py-0.5 font-mono text-xs text-teal-400">
                 NEXT_PUBLIC_PARQET_PORTFOLIO_URL
               </code>{' '}
               setzen und den Dev-Server neu starten.

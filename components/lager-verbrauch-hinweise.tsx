@@ -88,28 +88,28 @@ export function LagerVerbrauchHinweise({ produkte, verbrauchHistorie, letzterEin
   }
 
   return (
-    <div className="overflow-hidden rounded-xl border border-teal-800/40 bg-slate-900/95 shadow-md shadow-black/20">
+    <div className="overflow-hidden rounded-xl border border-teal-800/40 bg-[var(--app-surface-muted)] shadow-md shadow-black/20">
       <button
         type="button"
         onClick={() => setOffen((o) => !o)}
-        className="flex w-full items-center justify-between gap-2 px-3 py-2.5 text-left hover:bg-slate-800/40 sm:px-4"
+        className="flex w-full items-center justify-between gap-2 px-3 py-2.5 text-left hover:bg-[var(--app-surface-hover)] sm:px-4"
         aria-expanded={offen}
       >
         <div>
           <h2 className="text-sm font-bold text-teal-100 sm:text-base">Lager-Tipps</h2>
-          <p className="text-[10px] text-slate-500 sm:text-[11px]">Mindestbestand & ungenutzter Vorrat</p>
+          <p className="text-[10px] text-[var(--app-text-muted)] sm:text-[11px]">Mindestbestand & ungenutzter Vorrat</p>
         </div>
         <CollapsibleRowHeaderEnd open={offen} labels={LABEL_EINKLAPPEN} tone="neutral" size="sm" />
       </button>
       {offen && (
-        <div className="space-y-3 border-t border-slate-800/80 px-3 pb-3 pt-2 sm:px-4">
+        <div className="space-y-3 border-t border-[var(--app-border)] px-3 pb-3 pt-2 sm:px-4">
           {minVorschlaege.length > 0 ? (
             <div>
-              <p className="mb-1.5 text-[11px] font-bold uppercase tracking-wide text-slate-500">Mindestbestand (≈ 2 Wochen Verbrauch)</p>
+              <p className="mb-1.5 text-[11px] font-bold uppercase tracking-wide text-[var(--app-text-muted)]">Mindestbestand (≈ 2 Wochen Verbrauch)</p>
               <div className="space-y-1.5">
                 {minVorschlaege.map((v) => (
-                  <div key={v.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-700/60 bg-slate-950/50 px-2.5 py-2">
-                    <span className="min-w-0 truncate text-[13px] font-semibold text-slate-200">{v.name}</span>
+                  <div key={v.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-[var(--app-border-strong)] bg-[var(--app-surface-muted)] px-2.5 py-2">
+                    <span className="min-w-0 truncate text-[13px] font-semibold text-[var(--app-text)]">{v.name}</span>
                     <button
                       type="button"
                       disabled={ladenId === v.id}
@@ -126,11 +126,11 @@ export function LagerVerbrauchHinweise({ produkte, verbrauchHistorie, letzterEin
           ) : null}
           {toteArtikel.length > 0 ? (
             <div>
-              <p className="mb-1.5 text-[11px] font-bold uppercase tracking-wide text-slate-500">Lange nicht nachgekauft</p>
+              <p className="mb-1.5 text-[11px] font-bold uppercase tracking-wide text-[var(--app-text-muted)]">Lange nicht nachgekauft</p>
               <div className="space-y-1">
                 {toteArtikel.map((t) => (
-                  <p key={t.id} className="text-[12px] text-slate-400">
-                    <span className="font-semibold text-slate-300">{t.name}</span> — {t.menge} {t.einheit} im Lager, seit {t.tage} Tagen kein Einkauf
+                  <p key={t.id} className="text-[12px] text-[var(--app-text-muted)]">
+                    <span className="font-semibold text-[var(--app-text)]">{t.name}</span> — {t.menge} {t.einheit} im Lager, seit {t.tage} Tagen kein Einkauf
                   </p>
                 ))}
               </div>

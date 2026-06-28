@@ -67,7 +67,7 @@ export function PaEarningsBerichtszeitBadge({
   return (
     <span
       title={title}
-      className={`inline-flex shrink-0 items-center rounded-full border border-dashed border-zinc-600/80 bg-zinc-900/70 font-medium text-zinc-500 ${pad}`}
+      className={`inline-flex shrink-0 items-center rounded-full border border-dashed border-[var(--app-border-strong)] bg-[var(--app-surface-muted)] font-medium text-[var(--app-text-muted)] ${pad}`}
     >
       {mini ? '?' : 'Zeit offen'}
     </span>
@@ -99,19 +99,19 @@ export function PaEarningsTerminRow({
         <div
           className={`flex w-[3.25rem] shrink-0 flex-col items-center justify-center rounded-lg border py-2 ${
             vergangen
-              ? 'border-[#eef0f1]/[0.04] bg-zinc-950/80'
+              ? 'border-[#eef0f1]/[0.04] bg-[var(--app-surface-muted)]'
               : 'border-[#eef0f1]/[0.07] bg-[#0a0a0b]'
           }`}
         >
           <span
             className={`text-xl font-semibold tabular-nums leading-none ${
-              vergangen ? 'text-zinc-500' : 'text-[#eef0f1]'
+              vergangen ? 'text-[var(--app-text-muted)]' : 'text-[#eef0f1]'
             }`}
           >
             {tag}
           </span>
-          <span className="mt-0.5 text-[9px] font-semibold uppercase tracking-[0.2em] text-zinc-500">{monat}</span>
-          <span className="mt-0.5 text-[9px] tabular-nums text-zinc-600">{jahr}</span>
+          <span className="mt-0.5 text-[9px] font-semibold uppercase tracking-[0.2em] text-[var(--app-text-muted)]">{monat}</span>
+          <span className="mt-0.5 text-[9px] tabular-nums text-[var(--app-text-muted)]">{jahr}</span>
         </div>
       ) : null}
 
@@ -125,15 +125,15 @@ export function PaEarningsTerminRow({
       <div className="min-w-0 flex-1">
         <p
           className={`truncate text-sm font-semibold tracking-tight ${
-            vergangen ? 'text-zinc-400' : 'text-[#eef0f1]'
+            vergangen ? 'text-[var(--app-text-muted)]' : 'text-[#eef0f1]'
           }`}
         >
           {e.name}
         </p>
-        <p className="mt-0.5 text-[11px] text-zinc-500">
+        <p className="mt-0.5 text-[11px] text-[var(--app-text-muted)]">
           {variant === 'kompakt' ? formatDatumDe(e.terminDatumIso) : formatDatumDe(e.terminDatumIso)}
           {zeitLabel ? (
-            <span className="text-zinc-400"> · {zeitLabel}</span>
+            <span className="text-[var(--app-text-muted)]"> · {zeitLabel}</span>
           ) : null}
           {!e.bestaetigt ? <span className="text-amber-500/90"> · geschätzt</span> : null}
         </p>
@@ -144,7 +144,7 @@ export function PaEarningsTerminRow({
         <div className="flex items-center gap-1.5">
           {!e.bestaetigt ? <PaDividendEstimateBadge title="Geschätzter Termin" /> : null}
           {trailing ?? (
-            <span className="rounded-md bg-zinc-800/90 px-1.5 py-0.5 text-[10px] tabular-nums text-zinc-400 ring-1 ring-white/[0.05]">
+            <span className="rounded-md bg-[var(--app-surface-muted)]/90 px-1.5 py-0.5 text-[10px] tabular-nums text-[var(--app-text-muted)] ring-1 ring-white/[0.05]">
               {formatStueckTag(e.stueck)}
             </span>
           )}
@@ -157,7 +157,7 @@ export function PaEarningsTerminRow({
     aktiv
       ? 'border-[#eef0f1]/20 bg-[#121214] shadow-[0_0_0_1px_rgba(238,240,241,0.06)]'
       : vergangen
-        ? 'border-[#eef0f1]/[0.04] bg-zinc-950/50 opacity-90 hover:border-[#eef0f1]/10 hover:bg-zinc-900/60'
+        ? 'border-[#eef0f1]/[0.04] bg-[var(--app-surface-muted)] opacity-90 hover:border-[#eef0f1]/10 hover:bg-[var(--app-surface-muted)]'
         : 'border-[#eef0f1]/[0.06] bg-[#0c0c0d]/90 hover:border-[#eef0f1]/12 hover:bg-[#101012]'
   }`
 

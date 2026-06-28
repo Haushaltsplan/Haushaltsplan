@@ -1,5 +1,6 @@
 'use client'
 
+import { appTableScrollClassName } from '@/components/page-shell'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import toast from 'react-hot-toast'
 import { CollapsibleRowHeaderEnd, LABEL_EINKLAPPEN } from '@/components/collapsible-ui'
@@ -243,16 +244,16 @@ export function LagerEinkaufsliste({ produkte, verbrauchHistorie, refreshKey }: 
   }
 
   return (
-    <div className="overflow-hidden rounded-xl border border-amber-800/40 bg-slate-900/95 shadow-md shadow-black/20">
+    <div className="overflow-hidden rounded-xl border border-amber-800/40 bg-[var(--app-surface-muted)] shadow-md shadow-black/20">
       <button
         type="button"
         onClick={() => setOffen((o) => !o)}
-        className="group flex w-full items-center justify-between gap-2 px-3 py-2.5 text-left transition hover:bg-slate-800/40 sm:px-4"
+        className="group flex w-full items-center justify-between gap-2 px-3 py-2.5 text-left transition hover:bg-[var(--app-surface-hover)] sm:px-4"
         aria-expanded={offen}
       >
         <div className="min-w-0">
           <h2 className="text-sm font-bold text-amber-100 sm:text-base">Einkaufsliste</h2>
-          <p className="text-[10px] text-slate-500 sm:text-[11px]">
+          <p className="text-[10px] text-[var(--app-text-muted)] sm:text-[11px]">
             Ablauf · leer · unter Min. · Immer-da · gemerkt
           </p>
         </div>
@@ -265,27 +266,27 @@ export function LagerEinkaufsliste({ produkte, verbrauchHistorie, refreshKey }: 
       </button>
 
       {offen && (
-        <div className="border-t border-slate-800/80 px-3 pb-3 pt-2 sm:px-4">
+        <div className="border-t border-[var(--app-border)] px-3 pb-3 pt-2 sm:px-4">
           {hidden.length > 0 && (
             <button
               type="button"
               onClick={() => void ausgeblendeteZurueck()}
-              className="mb-2 text-[11px] font-bold text-slate-500 underline decoration-slate-600 hover:text-slate-300"
+              className="mb-2 text-[11px] font-bold text-[var(--app-text-muted)] underline decoration-[var(--app-border-strong)] hover:text-[var(--app-text)]"
             >
               Ausgeblendete zurückholen ({hidden.length})
             </button>
           )}
 
           {zeilen.length === 0 && namensZeilen.length === 0 ? (
-            <p className="py-3 text-center text-xs text-slate-500">
+            <p className="py-3 text-center text-xs text-[var(--app-text-muted)]">
               Nichts auf der Liste{hidden.length ? ' (oder ausgeblendet)' : ''}. Hier erscheinen bald ablaufende Artikel,
               leere Bestände, Unter-Mindestbestand, Immer-da-Favoriten und per 🛒 Gemerktes.
             </p>
           ) : (
-            <div className="overflow-x-auto rounded-lg border border-slate-800/90">
+            <div className={`${appTableScrollClassName} rounded-lg border border-[var(--app-border)]`}>
               <table className="w-full min-w-[44rem] border-collapse text-left text-[11px] sm:text-xs">
                 <thead>
-                  <tr className="border-b border-slate-800 bg-slate-950/80 text-[9px] font-bold uppercase tracking-wide text-slate-500 sm:text-[10px]">
+                  <tr className="border-b border-[var(--app-border)] bg-[var(--app-surface-muted)] text-[9px] font-bold uppercase tracking-wide text-[var(--app-text-muted)] sm:text-[10px]">
                     <th className="px-2 py-2 sm:px-3">Produkt</th>
                     <th className="px-2 py-2 text-right sm:px-3">Letzter €</th>
                     <th className="px-2 py-2 text-right sm:px-3">Ø €</th>
@@ -295,12 +296,12 @@ export function LagerEinkaufsliste({ produkte, verbrauchHistorie, refreshKey }: 
                     <th className="px-2 py-2 text-right sm:px-3">Aktion</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-800/80">
+                <tbody className="divide-y divide-[var(--app-border)]">
                   {zeilen.map(({ p, basis, einheit, k, menge, vorschlag, grund }) => (
-                    <tr key={p.id} className="bg-slate-950/30">
+                    <tr key={p.id} className="bg-[var(--app-surface-muted)]/30">
                       <td className="max-w-[14rem] px-2 py-1.5 sm:px-3">
                         <div className="flex min-w-0 items-center gap-1.5">
-                          <span className="truncate font-semibold text-slate-100">{p.name}</span>
+                          <span className="truncate font-semibold text-[var(--app-text)]">{p.name}</span>
                           {grund === 'ablauf' ? (
                             <span className="shrink-0 rounded border border-amber-700/50 bg-amber-900/30 px-1 text-[9px] font-bold text-amber-200">läuft ab</span>
                           ) : grund === 'min' ? (
@@ -311,7 +312,7 @@ export function LagerEinkaufsliste({ produkte, verbrauchHistorie, refreshKey }: 
                             <span className="shrink-0 rounded border border-violet-700/50 bg-violet-900/30 px-1 text-[9px] font-bold text-violet-200">gemerkt</span>
                           ) : null}
                         </div>
-                        <div className="truncate text-[10px] text-slate-600">{einheit}</div>
+                        <div className="truncate text-[10px] text-[var(--app-text-muted)]">{einheit}</div>
                       </td>
                       <td className="whitespace-nowrap px-2 py-1.5 text-right text-sky-100/90 sm:px-3">
                         {formatEurJeBasiseinheit(p.letzterEinkaufspreis ?? null, basis)}
@@ -319,10 +320,10 @@ export function LagerEinkaufsliste({ produkte, verbrauchHistorie, refreshKey }: 
                       <td className="whitespace-nowrap px-2 py-1.5 text-right text-amber-100/90 sm:px-3">
                         {formatEurJeBasiseinheit(p.durchschnittspreis ?? null, basis)}
                       </td>
-                      <td className="whitespace-nowrap px-2 py-1.5 text-right tabular-nums text-slate-300 sm:px-3">
+                      <td className="whitespace-nowrap px-2 py-1.5 text-right tabular-nums text-[var(--app-text)] sm:px-3">
                         {k.summe28Tage > 0 ? `${formatMengeDe(k.durchschnittProWoche)} ${einheit}` : '—'}
                       </td>
-                      <td className="whitespace-nowrap px-2 py-1.5 text-right tabular-nums text-slate-300 sm:px-3">
+                      <td className="whitespace-nowrap px-2 py-1.5 text-right tabular-nums text-[var(--app-text)] sm:px-3">
                         {k.summe90Tage > 0 ? `${formatMengeDe(k.durchschnittProMonat)} ${einheit}` : '—'}
                       </td>
                       <td className="px-2 py-1.5 text-right sm:px-3">
@@ -332,7 +333,7 @@ export function LagerEinkaufsliste({ produkte, verbrauchHistorie, refreshKey }: 
                             inputMode="decimal"
                             defaultValue={String(menge).replace('.', ',')}
                             key={`${p.id}-${refreshKey}-${menge}`}
-                            className="w-[5.5rem] rounded border border-slate-700 bg-slate-900 px-1.5 py-0.5 text-right text-xs tabular-nums text-slate-100"
+                            className="w-[5.5rem] rounded border border-[var(--app-border-strong)] bg-[var(--app-surface-muted)] px-1.5 py-0.5 text-right text-xs tabular-nums text-[var(--app-text)]"
                             aria-label={`Menge ${p.name}`}
                             onBlur={(e) => {
                               const raw = parseDeZahlLocal(e.target.value)
@@ -344,7 +345,7 @@ export function LagerEinkaufsliste({ produkte, verbrauchHistorie, refreshKey }: 
                             }}
                           />
                           {mengen[p.id] == null ? (
-                            <span className="text-[9px] text-slate-600">Vorschlag: {formatMengeDe(vorschlag)}</span>
+                            <span className="text-[9px] text-[var(--app-text-muted)]">Vorschlag: {formatMengeDe(vorschlag)}</span>
                           ) : null}
                         </div>
                       </td>
@@ -352,7 +353,7 @@ export function LagerEinkaufsliste({ produkte, verbrauchHistorie, refreshKey }: 
                         <button
                           type="button"
                           onClick={() => entfernen(p.id)}
-                          className="rounded border border-slate-600 px-2 py-0.5 text-[11px] font-bold text-slate-400 hover:bg-slate-800"
+                          className="rounded border border-[var(--app-border-strong)] px-2 py-0.5 text-[11px] font-bold text-[var(--app-text-muted)] hover:bg-[var(--app-surface-hover)]"
                         >
                           Ausblenden
                         </button>
@@ -363,19 +364,19 @@ export function LagerEinkaufsliste({ produkte, verbrauchHistorie, refreshKey }: 
                     <tr key={`name:${name}`} className="bg-violet-950/20">
                       <td className="max-w-[14rem] px-2 py-1.5 sm:px-3" colSpan={5}>
                         <div className="flex min-w-0 items-center gap-1.5">
-                          <span className="truncate font-semibold text-slate-100">{name}</span>
+                          <span className="truncate font-semibold text-[var(--app-text)]">{name}</span>
                           <span className="shrink-0 rounded border border-violet-700/50 bg-violet-900/30 px-1 text-[9px] font-bold text-violet-200">
                             aus Rezept
                           </span>
                         </div>
-                        <div className="truncate text-[10px] text-slate-600">Noch kein Lager-Artikel — beim Einkauf anlegen</div>
+                        <div className="truncate text-[10px] text-[var(--app-text-muted)]">Noch kein Lager-Artikel — beim Einkauf anlegen</div>
                       </td>
-                      <td className="px-2 py-1.5 text-right text-slate-600 sm:px-3">—</td>
+                      <td className="px-2 py-1.5 text-right text-[var(--app-text-muted)] sm:px-3">—</td>
                       <td className="whitespace-nowrap px-2 py-1.5 text-right sm:px-3">
                         <button
                           type="button"
                           onClick={() => namensEintragEntfernen(name)}
-                          className="rounded border border-slate-600 px-2 py-0.5 text-[11px] font-bold text-slate-400 hover:bg-slate-800"
+                          className="rounded border border-[var(--app-border-strong)] px-2 py-0.5 text-[11px] font-bold text-[var(--app-text-muted)] hover:bg-[var(--app-surface-hover)]"
                         >
                           Entfernen
                         </button>
@@ -387,7 +388,7 @@ export function LagerEinkaufsliste({ produkte, verbrauchHistorie, refreshKey }: 
             </div>
           )}
 
-          <p className="mt-2 text-[10px] leading-relaxed text-slate-600">
+          <p className="mt-2 text-[10px] leading-relaxed text-[var(--app-text-muted)]">
             Ø/Woche = Verbrauch der letzten 28 Tage ÷ 4; Ø/Monat = letzte 90 Tage ÷ 3 (jeweils Basiseinheit). Nach Bon-Import
             steigt der Bestand — Position fällt automatisch von der Liste. Ausgeblendete bleiben in dieser Sitzung gespeichert.
           </p>

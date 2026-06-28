@@ -57,25 +57,25 @@ export function WetterHimmelIcon({
           <circle cx="46" cy="58" r="22" className="fill-amber-300" />
           <path
             d="M 70 40 Q 100 50 100 80 Q 100 102 80 110 Q 40 100 50 64"
-            className="fill-slate-500/80"
+            className="fill-[var(--app-text-muted)]/80"
           />
         </svg>
       )
     case 'mond':
       return (
         <svg className={cn} viewBox="0 0 128 128" width={pixel} height={pixel} aria-hidden>
-          <circle cx="62" cy="58" r="24" className="fill-slate-200/95" />
-          <circle cx="78" cy="48" r="19" className="fill-zinc-950" />
+          <circle cx="62" cy="58" r="24" className="fill-gray-200/95 dark:fill-slate-200/95" />
+          <circle cx="78" cy="48" r="19" className="fill-[var(--app-surface)]" />
         </svg>
       )
     case 'halb_nacht':
       return (
         <svg className={cn} viewBox="0 0 128 128" width={pixel} height={pixel} aria-hidden>
-          <circle cx="42" cy="56" r="20" className="fill-slate-200/95" />
-          <circle cx="54" cy="48" r="15" className="fill-zinc-950" />
+          <circle cx="42" cy="56" r="20" className="fill-gray-200/95 dark:fill-slate-200/95" />
+          <circle cx="54" cy="48" r="15" className="fill-[var(--app-surface)]" />
           <path
             d="M 70 40 Q 100 50 100 80 Q 100 102 80 110 Q 40 100 50 64"
-            className="fill-slate-500/78"
+            className="fill-[var(--app-text-muted)]/78"
           />
         </svg>
       )
@@ -84,16 +84,16 @@ export function WetterHimmelIcon({
         <svg className={cn} viewBox="0 0 128 128" width={pixel} height={pixel} aria-hidden>
           <path
             d="M 40 90 Q 25 80 32 64 Q 28 48 50 50 Q 60 30 80 40 Q 100 32 100 55 Q 115 60 110 80 Q 108 100 80 100 L 40 90 Z"
-            className="fill-slate-500"
+            className="fill-[var(--app-text-muted)]"
           />
         </svg>
       )
     case 'nebel':
       return (
         <svg className={cn} viewBox="0 0 128 128" width={pixel} height={pixel} aria-hidden>
-          <rect x="20" y="50" width="88" height="6" rx="3" className="fill-slate-500/50" />
-          <rect x="12" y="64" width="96" height="6" rx="3" className="fill-slate-500/40" />
-          <rect x="24" y="78" width="80" height="6" rx="3" className="fill-slate-500/35" />
+          <rect x="20" y="50" width="88" height="6" rx="3" className="fill-[var(--app-text-muted)]/50" />
+          <rect x="12" y="64" width="96" height="6" rx="3" className="fill-[var(--app-text-muted)]/40" />
+          <rect x="24" y="78" width="80" height="6" rx="3" className="fill-[var(--app-text-muted)]/35" />
         </svg>
       )
     case 'niesel':
@@ -102,7 +102,7 @@ export function WetterHimmelIcon({
         <svg className={cn} viewBox="0 0 128 128" width={pixel} height={pixel} aria-hidden>
           <path
             d="M 36 78 Q 22 70 30 55 Q 26 40 50 44 Q 58 24 80 32 Q 98 28 100 50 Q 112 55 108 70 Q 100 90 70 90 Z"
-            className="fill-slate-500"
+            className="fill-[var(--app-text-muted)]"
           />
           {[0, 1, 2, 3, 4].map((i) => (
             <line
@@ -123,7 +123,7 @@ export function WetterHimmelIcon({
         <svg className={cn} viewBox="0 0 128 128" width={pixel} height={pixel} aria-hidden>
           <path
             d="M 36 78 Q 22 70 30 55 Q 26 40 50 44 Q 58 24 80 32 Q 98 28 100 50 Q 112 55 108 70 Q 100 90 70 90 Z"
-            className="fill-slate-500"
+            className="fill-[var(--app-text-muted)]"
           />
           {[
             [48, 96],
@@ -132,7 +132,7 @@ export function WetterHimmelIcon({
             [56, 110],
             [72, 112],
           ].map(([x, y], i) => (
-            <circle key={i} cx={x} cy={y} r="2.5" className="fill-slate-200" />
+            <circle key={i} cx={x} cy={y} r="2.5" className="fill-gray-300 dark:fill-slate-200" />
           ))}
         </svg>
       )
@@ -141,7 +141,7 @@ export function WetterHimmelIcon({
         <svg className={cn} viewBox="0 0 128 128" width={pixel} height={pixel} aria-hidden>
           <path
             d="M 36 78 Q 22 70 30 55 Q 26 40 50 44 Q 58 24 80 32 Q 98 28 100 50 Q 112 55 108 70 Q 100 90 70 90 Z"
-            className="fill-slate-600"
+            className="fill-[var(--app-text-muted)]"
           />
           <path d="M 68 50 L 52 84 H 64 L 56 120 L 84 70 H 70 L 78 50 Z" className="fill-amber-300" />
         </svg>
@@ -177,7 +177,7 @@ export function WindIkon({ className }: { className?: string }) {
 }
 
 const kachelKlasse =
-  'flex min-w-[4.75rem] snap-center w-full flex-col items-center gap-1.5 rounded-xl border border-slate-800/70 bg-slate-900/50 px-2 py-3 sm:min-w-0'
+  'flex min-w-[4.75rem] snap-center w-full flex-col items-center gap-1.5 rounded-xl border border-[var(--app-border)]/70 bg-[var(--app-surface-muted)]/50 px-2 py-3 sm:min-w-0'
 
 type KachelProps = {
   tag: WetterTagPrognose
@@ -200,24 +200,24 @@ export function PrognoseTagKachel({ tag, index, onClick, selected }: KachelProps
 
   const inhalt = (
     <>
-      <p className="text-center text-[10px] font-bold uppercase leading-tight tracking-tight text-slate-500">
+      <p className="text-center text-[10px] font-bold uppercase leading-tight tracking-tight text-[var(--app-text-muted)]">
         {prognoseKopfzeile(index, tag.datumIso)}
       </p>
       <WetterHimmelIcon kategorie={kat} pixel={52} className="opacity-95" />
-      <p className="text-center text-[9px] leading-tight text-slate-500 line-clamp-2">{tag.zustandDe}</p>
-      <p className="text-sm font-black tabular-nums text-slate-100">
+      <p className="text-center text-[9px] leading-tight text-[var(--app-text-muted)] line-clamp-2">{tag.zustandDe}</p>
+      <p className="text-sm font-black tabular-nums text-[var(--app-text)]">
         {tag.tMin}° / {tag.tMax}°
       </p>
       {tag.windKmh != null || tag.windBoeenKmh != null || g != null ? (
-        <div className="mt-0.5 w-full space-y-0.5 border-t border-slate-800/60 pt-1.5 text-center">
-          <p className="flex min-h-[1em] items-center justify-center gap-0.5 text-[8px] leading-tight text-slate-500">
+        <div className="mt-0.5 w-full space-y-0.5 border-t border-[var(--app-border)] pt-1.5 text-center">
+          <p className="flex min-h-[1em] items-center justify-center gap-0.5 text-[8px] leading-tight text-[var(--app-text-muted)]">
             {tag.windKmh != null ? (
               <>
                 <WindIkon className="h-3 w-3 shrink-0 text-sky-400/80" />
                 <span className="tabular-nums">max. {tag.windKmh}</span>
                 {g != null ? (
                   <span>
-                    <span className="text-slate-600">·</span> {windHimmelsrichtungKurz(g)}
+                    <span className="text-[var(--app-text-muted)]">·</span> {windHimmelsrichtungKurz(g)}
                   </span>
                 ) : null}
               </>
@@ -243,7 +243,7 @@ export function PrognoseTagKachel({ tag, index, onClick, selected }: KachelProps
 
   const title = [tag.zustandDe, windTitel || undefined].filter(Boolean).join(' — ')
   const klickCls = onClick
-    ? `${kachelKlasse} transition hover:border-cyan-700/50 hover:bg-slate-900/80 focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-500/60 ${
+    ? `${kachelKlasse} transition hover:border-cyan-700/50 hover:bg-[var(--app-surface-muted)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-500/60 ${
         selected ? 'border-cyan-600/60 ring-2 ring-cyan-500/50' : ''
       }`
     : kachelKlasse

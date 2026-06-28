@@ -1,5 +1,11 @@
 'use client'
 
+import {
+  finanzKpiCardClass,
+  finanzKpiCardCompactClass,
+  finanzLabelMutedClass,
+  finanzSecondaryBtnClass,
+} from '@/components/finanzen/finanzen-ui'
 import { useMemo, useState } from 'react'
 import { PageSection, PageSectionPanel } from '@/components/page-shell'
 
@@ -33,7 +39,7 @@ function leereWerte(): Jahreswerte {
 
 function DeltaBadge({ wert, guteRichtung }: { wert: number; guteRichtung: 'hoch' | 'runter' }) {
   if (Math.abs(wert) < 0.005) {
-    return <span className="text-[11px] font-semibold text-slate-500">±0 €</span>
+    return <span className="text-[11px] font-semibold text-[var(--app-text-muted)]">±0 €</span>
   }
   const positiv = wert > 0
   const gut = guteRichtung === 'hoch' ? positiv : !positiv
@@ -99,17 +105,17 @@ export function JahresSection({
             type="button"
             onClick={() => setJahr((j) => j - 1)}
             disabled={jahr <= minJahr}
-            className="rounded-lg border border-slate-700 px-3 py-1.5 text-sm font-semibold text-slate-300 transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-40"
+            className={`rounded-lg border border-[var(--app-border)] px-3 py-1.5 text-sm font-semibold text-[var(--app-text-muted)] transition hover:bg-[var(--app-surface-hover)] disabled:cursor-not-allowed disabled:opacity-40`}
             aria-label="Vorheriges Jahr"
           >
             ‹
           </button>
-          <p className="text-lg font-bold tabular-nums text-slate-100">{jahr}</p>
+          <p className="text-lg font-bold tabular-nums text-[var(--app-text)]">{jahr}</p>
           <button
             type="button"
             onClick={() => setJahr((j) => j + 1)}
             disabled={jahr >= maxJahr}
-            className="rounded-lg border border-slate-700 px-3 py-1.5 text-sm font-semibold text-slate-300 transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-40"
+            className={`rounded-lg border border-[var(--app-border)] px-3 py-1.5 text-sm font-semibold text-[var(--app-text-muted)] transition hover:bg-[var(--app-surface-hover)] disabled:cursor-not-allowed disabled:opacity-40`}
             aria-label="Nächstes Jahr"
           >
             ›
@@ -117,41 +123,41 @@ export function JahresSection({
         </div>
 
         <div className="mt-3 grid gap-3 sm:grid-cols-3">
-          <div className="rounded-2xl border border-slate-800/90 bg-slate-950/50 p-4">
-            <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">Einnahmen</p>
+          <div className={finanzKpiCardClass}>
+            <p className={finanzLabelMutedClass}>Einnahmen</p>
             <p className="mt-1 text-xl font-bold tabular-nums text-emerald-400">{eur(aktuell.einnahmen)}</p>
             <p className="mt-1">vs. {jahr - 1}: <DeltaBadge wert={aktuell.einnahmen - vorjahr.einnahmen} guteRichtung="hoch" /></p>
           </div>
-          <div className="rounded-2xl border border-slate-800/90 bg-slate-950/50 p-4">
-            <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">Ausgaben</p>
+          <div className={finanzKpiCardClass}>
+            <p className={finanzLabelMutedClass}>Ausgaben</p>
             <p className="mt-1 text-xl font-bold tabular-nums text-rose-400">{eur(aktuell.ausgaben)}</p>
             <p className="mt-1">vs. {jahr - 1}: <DeltaBadge wert={aktuell.ausgaben - vorjahr.ausgaben} guteRichtung="runter" /></p>
           </div>
-          <div className="rounded-2xl border border-slate-800/90 bg-slate-950/50 p-4">
-            <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">Saldo</p>
+          <div className={finanzKpiCardClass}>
+            <p className={finanzLabelMutedClass}>Saldo</p>
             <p className={`mt-1 text-xl font-bold tabular-nums ${saldo >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>{eur(saldo)}</p>
             <p className="mt-1">vs. {jahr - 1}: <DeltaBadge wert={saldo - vorSaldo} guteRichtung="hoch" /></p>
           </div>
         </div>
 
         <div className="mt-3 grid gap-3 sm:grid-cols-3">
-          <div className="rounded-xl border border-slate-800/80 bg-slate-950/35 p-3">
-            <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">Ø Ausgaben / Monat</p>
-            <p className="mt-1 text-base font-semibold tabular-nums text-slate-200">{eur(aktuell.ausgaben / monateMitDaten)}</p>
+          <div className={finanzKpiCardCompactClass}>
+            <p className={finanzLabelMutedClass}>Ø Ausgaben / Monat</p>
+            <p className="mt-1 text-base font-semibold tabular-nums text-[var(--app-text)]">{eur(aktuell.ausgaben / monateMitDaten)}</p>
           </div>
-          <div className="rounded-xl border border-slate-800/80 bg-slate-950/35 p-3">
-            <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">Ø Sparrate / Monat</p>
+          <div className={finanzKpiCardCompactClass}>
+            <p className={finanzLabelMutedClass}>Ø Sparrate / Monat</p>
             <p className={`mt-1 text-base font-semibold tabular-nums ${saldo >= 0 ? 'text-emerald-300' : 'text-rose-300'}`}>{eur(saldo / monateMitDaten)}</p>
           </div>
-          <div className="rounded-xl border border-slate-800/80 bg-slate-950/35 p-3">
-            <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">Sparquote</p>
+          <div className={finanzKpiCardCompactClass}>
+            <p className={finanzLabelMutedClass}>Sparquote</p>
             <p className={`mt-1 text-base font-semibold tabular-nums ${sparquote >= 0 ? 'text-emerald-300' : 'text-rose-300'}`}>
               {sparquote.toLocaleString('de-DE', { maximumFractionDigits: 0 })}%
             </p>
           </div>
         </div>
 
-        <p className="mt-3 text-[11px] text-slate-500">
+        <p className="mt-3 text-[11px] text-[var(--app-text-muted)]">
           {aktuell.monate.size > 0
             ? `Basierend auf ${aktuell.monate.size} ${aktuell.monate.size === 1 ? 'Monat' : 'Monaten'} mit Buchungen.`
             : 'Für dieses Jahr liegen noch keine Buchungen vor.'}

@@ -20,7 +20,7 @@ type Props<T extends string> = {
 
 function MetaChip({ children }: { children: ReactNode }) {
   return (
-    <span className="inline-flex items-center rounded-md border border-white/[0.06] bg-zinc-900/70 px-2 py-0.5 text-[11px] text-zinc-400 ring-1 ring-white/[0.03]">
+    <span className="inline-flex items-center rounded-md border border-white/[0.06] bg-[var(--app-surface-muted)] px-2 py-0.5 text-[11px] text-[var(--app-text-muted)] ring-1 ring-white/[0.03]">
       {children}
     </span>
   )
@@ -45,8 +45,8 @@ export function PaFundamentalUnternehmenHeader<T extends string>({
     return (
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-2">
-          <span className="text-sm font-bold tabular-nums text-zinc-100">{ticker}</span>
-          <span className="text-sm text-zinc-400">{firmenname}</span>
+          <span className="text-sm font-bold tabular-nums text-[var(--app-text)]">{ticker}</span>
+          <span className="text-sm text-[var(--app-text-muted)]">{firmenname}</span>
         </div>
         <PaIconTabs tabs={tabs} active={activeTab} onChange={onTabChange} className="shrink-0" />
       </div>
@@ -58,7 +58,7 @@ export function PaFundamentalUnternehmenHeader<T extends string>({
       <div className="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-start sm:justify-between sm:px-5 sm:py-4">
         <div className="min-w-0 space-y-1.5">
           <div className="flex flex-wrap items-center gap-2">
-            <h2 className="text-lg font-semibold tracking-tight text-zinc-50">{firmenname}</h2>
+            <h2 className="text-lg font-semibold tracking-tight text-[var(--app-text)]">{firmenname}</h2>
             <span className="rounded-md bg-teal-500/10 px-2 py-0.5 text-xs font-semibold tabular-nums text-teal-300 ring-1 ring-teal-400/20">
               {ticker}
             </span>
@@ -91,11 +91,11 @@ export function PaFundamentalUnternehmenHeader<T extends string>({
       </div>
 
       {beschreibung && beschreibungOffen ? (
-        <div className="border-t border-white/[0.04] bg-zinc-950/40 px-4 py-4 sm:px-5">
-          <h3 className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-zinc-500">
+        <div className="border-t border-white/[0.04] bg-[var(--app-surface-muted)] px-4 py-4 sm:px-5">
+          <h3 className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-[var(--app-text-muted)]">
             Über das Unternehmen
           </h3>
-          <p className="text-sm leading-relaxed text-zinc-300">{beschreibung}</p>
+          <p className="text-sm leading-relaxed text-[var(--app-text)]">{beschreibung}</p>
         </div>
       ) : null}
     </PaCard>

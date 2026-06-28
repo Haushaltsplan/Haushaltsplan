@@ -1,5 +1,10 @@
 'use client'
 
+import {
+  finanzListItemClass,
+  finanzSecondaryBtnClass,
+  finanzTitleClass,
+} from '@/components/finanzen/finanzen-ui'
 import { useMemo, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import toast from 'react-hot-toast'
@@ -133,18 +138,18 @@ export function DauerauftragVorschlaege({
   return (
     <div className="mb-4 rounded-xl border border-amber-700/40 bg-amber-950/15 p-4">
       <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-amber-300/90">Erkannte wiederkehrende Buchungen</p>
-      <p className="mt-1 text-[12px] text-slate-400">
+      <p className="mt-1 text-[12px] text-[var(--app-text-muted)]">
         Diese Positionen tauchen regelmäßig auf, haben aber noch keinen Dauerauftrag. Per Klick übernehmen:
       </p>
       <ul className="mt-3 space-y-2">
         {vorschlaege.map((v) => (
           <li
             key={v.key}
-            className="flex flex-col gap-2 rounded-xl border border-slate-800/90 bg-slate-950/50 p-3 sm:flex-row sm:items-center sm:justify-between"
+            className={`flex flex-col gap-2 ${finanzListItemClass} sm:flex-row sm:items-center sm:justify-between`}
           >
             <div className="min-w-0">
-              <p className="truncate text-[14px] font-semibold text-slate-100">{v.kategorie}</p>
-              <p className="text-[11px] text-slate-500">
+              <p className={finanzTitleClass}>{v.kategorie}</p>
+              <p className="text-[11px] text-[var(--app-text-muted)]">
                 <span className={v.typ === 'einnahme' ? 'text-emerald-400/95' : 'text-rose-400/95'}>
                   {v.typ === 'einnahme' ? 'Einnahme' : 'Ausgabe'}
                 </span>{' '}
@@ -163,7 +168,7 @@ export function DauerauftragVorschlaege({
               <button
                 type="button"
                 onClick={() => setVerworfen((prev) => new Set(prev).add(v.key))}
-                className="rounded-lg border border-slate-600/90 bg-slate-900 px-3 py-2 text-xs font-semibold text-slate-300 transition hover:bg-slate-800"
+                className={finanzSecondaryBtnClass}
               >
                 Ignorieren
               </button>

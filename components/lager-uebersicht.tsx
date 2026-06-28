@@ -42,7 +42,7 @@ function Kachel({
   hint?: string
 }) {
   const toene: Record<string, string> = {
-    neutral: 'border-zinc-700/80 bg-zinc-800/45 text-zinc-100',
+    neutral: 'border-[var(--app-border-strong)] bg-[var(--app-surface-muted)]/45 text-[var(--app-text)]',
     emerald: 'border-emerald-800/45 bg-emerald-950/25 text-emerald-100',
     amber: 'border-amber-800/50 bg-amber-950/30 text-amber-100',
     rose: 'border-rose-800/50 bg-rose-950/30 text-rose-100',
@@ -50,7 +50,7 @@ function Kachel({
     sky: 'border-sky-800/45 bg-sky-950/25 text-sky-100',
   }
   const labelTon: Record<string, string> = {
-    neutral: 'text-zinc-400',
+    neutral: 'text-[var(--app-text-muted)]',
     emerald: 'text-emerald-400',
     amber: 'text-amber-300',
     rose: 'text-rose-300',
@@ -61,7 +61,7 @@ function Kachel({
     <div className={`flex min-h-[4.75rem] min-w-0 flex-col justify-center rounded-xl border px-2.5 py-2.5 sm:min-h-0 sm:px-3 sm:py-3 ${toene[ton]}`}>
       <span className={`truncate text-[9px] font-bold uppercase tracking-wide sm:text-[10px] ${labelTon[ton]}`}>{label}</span>
       <span className="mt-0.5 truncate text-xl font-black tabular-nums leading-tight sm:text-2xl">{wert}</span>
-      {hint ? <span className="mt-1 truncate text-[10px] text-zinc-500">{hint}</span> : null}
+      {hint ? <span className="mt-1 truncate text-[10px] text-[var(--app-text-muted)]">{hint}</span> : null}
     </div>
   )
 }
@@ -95,8 +95,8 @@ function Gruppe({
     <div className={`rounded-xl border px-3 py-2.5 ${rahmen[ton]}`}>
       <div className="mb-2 flex items-center gap-2">
         <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${punkt[ton]}`} aria-hidden />
-        <span className="text-[12px] font-bold uppercase tracking-wide text-slate-200">{titel}</span>
-        <span className="text-[11px] font-semibold tabular-nums text-slate-500">{items.length}</span>
+        <span className="text-[12px] font-bold uppercase tracking-wide text-[var(--app-text)]">{titel}</span>
+        <span className="text-[11px] font-semibold tabular-nums text-[var(--app-text-muted)]">{items.length}</span>
       </div>
       <div className="flex flex-wrap gap-1.5">
         {items.map((it) => (

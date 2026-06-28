@@ -68,14 +68,14 @@ export function WhoopActivityModal({ activity, onClose }: Props) {
       >
         <div className="flex shrink-0 items-start justify-between border-b border-white/[0.06] px-5 py-4">
           <div>
-            <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-zinc-500">Aktivität</p>
+            <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-[var(--app-text-muted)]">Aktivität</p>
             <h2 className="mt-1 text-lg font-semibold uppercase text-white">{activity.label}</h2>
-            <p className="mt-1 text-xs text-zinc-500">{datumLabel}</p>
+            <p className="mt-1 text-xs text-[var(--app-text-muted)]">{datumLabel}</p>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="rounded-xl p-2 text-zinc-500 hover:bg-white/[0.06] hover:text-white"
+            className="rounded-xl p-2 text-[var(--app-text-muted)] hover:bg-white/[0.06] hover:text-white"
             aria-label="Schließen"
           >
             ×
@@ -86,7 +86,7 @@ export function WhoopActivityModal({ activity, onClose }: Props) {
           <div className="flex items-center gap-4">
             <div className="flex h-16 w-16 flex-col items-center justify-center rounded-2xl bg-[#009dff]/20">
               <span className="text-2xl font-bold text-[#009dff]">{activity.strain.toFixed(1)}</span>
-              <span className="text-[9px] font-bold uppercase text-zinc-500">Strain</span>
+              <span className="text-[9px] font-bold uppercase text-[var(--app-text-muted)]">Strain</span>
             </div>
             <div className="grid flex-1 grid-cols-2 gap-2 text-xs">
               <Stat label="Zeit" value={`${formatUhrzeit(activity.startMs)} – ${formatUhrzeit(activity.endMs)}`} />
@@ -100,21 +100,21 @@ export function WhoopActivityModal({ activity, onClose }: Props) {
 
           {hrPoints.length >= 3 ? (
             <div>
-              <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">
+              <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--app-text-muted)]">
                 Herzfrequenz-Verlauf
               </p>
               <WhoopHrChart points={hrPoints} live={false} />
             </div>
           ) : (
-            <p className="rounded-xl border border-white/[0.06] bg-white/[0.03] px-4 py-3 text-xs text-zinc-500">
+            <p className="rounded-xl border border-white/[0.06] bg-white/[0.03] px-4 py-3 text-xs text-[var(--app-text-muted)]">
               Kein detaillierter HF-Verlauf — verbinde das Band per BLE oder synchronisiere WHOOP Cloud für
               Workout-Daten.
             </p>
           )}
 
           <div className="rounded-xl border border-white/[0.06] bg-white/[0.03] px-4 py-3">
-            <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">Analyse</p>
-            <p className="mt-2 text-sm leading-relaxed text-zinc-300">{info.body}</p>
+            <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--app-text-muted)]">Analyse</p>
+            <p className="mt-2 text-sm leading-relaxed text-[var(--app-text)]">{info.body}</p>
             {activity.strain >= 14 ? (
               <p className="mt-2 text-sm text-amber-200/90">
                 Hohe Belastung — plane morgen ausreichend Erholung ein.
@@ -124,7 +124,7 @@ export function WhoopActivityModal({ activity, onClose }: Props) {
                 Moderate bis intensive Belastung — gut für deine Fitnessentwicklung.
               </p>
             ) : (
-              <p className="mt-2 text-sm text-zinc-400">Leichte Aktivität — trägt zum Tages-Strain bei.</p>
+              <p className="mt-2 text-sm text-[var(--app-text-muted)]">Leichte Aktivität — trägt zum Tages-Strain bei.</p>
             )}
           </div>
         </div>
@@ -136,8 +136,8 @@ export function WhoopActivityModal({ activity, onClose }: Props) {
 function Stat({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-lg border border-white/[0.04] bg-black/20 px-2.5 py-2">
-      <p className="text-[9px] font-bold uppercase text-zinc-600">{label}</p>
-      <p className="mt-0.5 font-semibold text-zinc-200">{value}</p>
+      <p className="text-[9px] font-bold uppercase text-[var(--app-text-muted)]">{label}</p>
+      <p className="mt-0.5 font-semibold text-[var(--app-text)]">{value}</p>
     </div>
   )
 }

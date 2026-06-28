@@ -57,7 +57,7 @@ type Props = {
   onKatalogGeaendert?: () => void
 }
 
-const MD_STRONG = 'font-semibold text-slate-100'
+const MD_STRONG = 'font-semibold text-[var(--app-text)]'
 
 function toDatetimeLocalValue(d = new Date()) {
   const pad = (n: number) => String(n).padStart(2, '0')
@@ -97,7 +97,7 @@ export function RezeptStructuredCards({
   return (
     <div className="space-y-4">
       {data.einleitung?.trim() ? (
-        <p className="text-[13px] leading-relaxed text-slate-300">{formatInlineMarkdown(data.einleitung.trim(), MD_STRONG)}</p>
+        <p className="text-[13px] leading-relaxed text-[var(--app-text)]">{formatInlineMarkdown(data.einleitung.trim(), MD_STRONG)}</p>
       ) : null}
       {(data.rezepte || []).map((g, idx) => {
         const actionKey = `${g.titel}#${idx}`
@@ -119,12 +119,12 @@ export function RezeptStructuredCards({
         return (
           <div
             key={actionKey}
-            className="rounded-xl border border-slate-700/80 bg-slate-950/50 p-3 shadow-inner shadow-black/15"
+            className="rounded-xl border border-[var(--app-border-strong)] bg-[var(--app-surface-muted)] p-3 shadow-inner shadow-black/15"
           >
-            <div className="flex flex-wrap items-start justify-between gap-2 border-b border-slate-800/80 pb-2">
+            <div className="flex flex-wrap items-start justify-between gap-2 border-b border-[var(--app-border)] pb-2">
               <div className="min-w-0">
                 <h4 className="text-[15px] font-bold tracking-tight text-teal-200">{anzeige.titel}</h4>
-                <p className="mt-0.5 text-[11px] text-slate-500">
+                <p className="mt-0.5 text-[11px] text-[var(--app-text-muted)]">
                   {Math.abs(zielPortionen - basisPortionen) > 1e-4 ? (
                     <>
                       Zutaten für {portionenAnzeigeText(zielPortionen)} Personen · Rezept ursprünglich für{' '}
@@ -140,7 +140,7 @@ export function RezeptStructuredCards({
                   </p>
                 ) : null}
                 {kategorieAnzeige ? (
-                  <p className="mt-1 text-[11px] font-semibold text-slate-400">Kategorie: {kategorieAnzeige}</p>
+                  <p className="mt-1 text-[11px] font-semibold text-[var(--app-text-muted)]">Kategorie: {kategorieAnzeige}</p>
                 ) : null}
               </div>
               {anzeigeNur ? (
@@ -162,7 +162,7 @@ export function RezeptStructuredCards({
                   ) : null}
                   <button
                     type="button"
-                    className="rounded-lg border border-slate-600 bg-slate-800/80 px-2.5 py-1.5 text-[11px] font-bold text-slate-200 hover:bg-slate-700"
+                    className="rounded-lg border border-[var(--app-border-strong)] bg-[var(--app-surface-hover)] px-2.5 py-1.5 text-[11px] font-bold text-[var(--app-text)] hover:bg-[var(--app-surface-hover)]"
                     onClick={async () => {
                       const text = buildMehrKochanleitungPrompt(anzeige)
                       try {
@@ -205,7 +205,7 @@ export function RezeptStructuredCards({
                     type="button"
                     disabled={kiBusy}
                     onClick={() => onMehrAnleitung(anzeige)}
-                    className="rounded-lg border border-slate-600 bg-slate-800/80 px-2.5 py-1.5 text-[11px] font-bold text-slate-200 hover:bg-slate-700 disabled:opacity-40"
+                    className="rounded-lg border border-[var(--app-border-strong)] bg-[var(--app-surface-hover)] px-2.5 py-1.5 text-[11px] font-bold text-[var(--app-text)] hover:bg-[var(--app-surface-hover)] disabled:opacity-40"
                   >
                     Anleitung noch feiner
                   </button>
@@ -222,16 +222,16 @@ export function RezeptStructuredCards({
                 </div>
               )}
             </div>
-            <div className="mt-2 flex flex-wrap items-center gap-2 rounded-lg border border-slate-800/80 bg-slate-900/35 px-2 py-1.5">
-              <span className="text-[10px] font-black uppercase tracking-wider text-slate-500">Portionen</span>
-              <label className="flex flex-wrap items-center gap-1.5 text-[12px] font-bold text-slate-200">
-                <span className="text-slate-500">Für</span>
+            <div className="mt-2 flex flex-wrap items-center gap-2 rounded-lg border border-[var(--app-border)] bg-[var(--app-surface-muted)]/35 px-2 py-1.5">
+              <span className="text-[10px] font-black uppercase tracking-wider text-[var(--app-text-muted)]">Portionen</span>
+              <label className="flex flex-wrap items-center gap-1.5 text-[12px] font-bold text-[var(--app-text)]">
+                <span className="text-[var(--app-text-muted)]">Für</span>
                 <input
                   type="number"
                   min={0.5}
                   max={99}
                   step={0.5}
-                  className="w-16 rounded border border-slate-600 bg-slate-950 px-1.5 py-0.5 text-center text-xs font-black tabular-nums text-teal-100"
+                  className="w-16 rounded border border-[var(--app-border-strong)] bg-[var(--app-surface-muted)] px-1.5 py-0.5 text-center text-xs font-black tabular-nums text-teal-100"
                   value={zielPortionen}
                   onChange={(e) => {
                     const v = Number(e.target.value.replace(',', '.'))
@@ -243,14 +243,14 @@ export function RezeptStructuredCards({
                   }}
                   aria-label="Anzahl Portionen bzw. Personen"
                 />
-                <span className="text-slate-500">Personen</span>
+                <span className="text-[var(--app-text-muted)]">Personen</span>
               </label>
               {Math.abs(zielPortionen - basisPortionen) > 1e-4 ? (
-                <span className="text-[10px] text-slate-500">Zutaten &amp; kcal proportional angepasst</span>
+                <span className="text-[10px] text-[var(--app-text-muted)]">Zutaten &amp; kcal proportional angepasst</span>
               ) : null}
             </div>
-            <p className="mt-2 text-[10px] font-bold uppercase tracking-wider text-slate-500">Zutaten (Mengen)</p>
-            <ul className="mt-1.5 list-none space-y-1.5 text-[13px] leading-snug text-slate-300">
+            <p className="mt-2 text-[10px] font-bold uppercase tracking-wider text-[var(--app-text-muted)]">Zutaten (Mengen)</p>
+            <ul className="mt-1.5 list-none space-y-1.5 text-[13px] leading-snug text-[var(--app-text)]">
               {(anzeige.zutaten || []).map((z, zi) => {
                 const st = zutatLagerStatus(z, artikel)
                 return (
@@ -259,7 +259,7 @@ export function RezeptStructuredCards({
                       className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[11px] font-black ${
                         st.ausreichend
                           ? 'bg-emerald-900/50 text-emerald-300 ring-1 ring-emerald-600/45'
-                          : 'bg-slate-800/80 text-slate-600 ring-1 ring-slate-700/80'
+                          : 'bg-[var(--app-surface-hover)] text-[var(--app-text-muted)] ring-1 ring-[var(--app-border-strong)]/80'
                       }`}
                       aria-hidden
                       title={st.ausreichend ? 'Im Lager vorhanden' : 'Nicht oder nicht ausreichend im Lager'}
@@ -267,7 +267,7 @@ export function RezeptStructuredCards({
                       {st.ausreichend ? '✓' : ''}
                     </span>
                     <span className="min-w-0 flex-1">
-                      <span className="font-semibold text-slate-100">
+                      <span className="font-semibold text-[var(--app-text)]">
                         {z.menge} {z.einheit}
                       </span>{' '}
                       {z.name}
@@ -278,7 +278,7 @@ export function RezeptStructuredCards({
                         </span>
                       ) : null}
                       {!st.gematcht ? (
-                        <span className="text-slate-500"> — nicht im Lager</span>
+                        <span className="text-[var(--app-text-muted)]"> — nicht im Lager</span>
                       ) : st.ausreichend && st.produktName ? (
                         <span className="text-emerald-400/80"> — {st.produktName}</span>
                       ) : null}
@@ -289,12 +289,12 @@ export function RezeptStructuredCards({
             </ul>
             {anzeige.kochschritte?.length ? (
               <>
-                <p className="mt-3 text-[10px] font-bold uppercase tracking-wider text-slate-500">Schritt-für-Schritt</p>
-                <p className="mb-2 text-[12px] leading-relaxed text-slate-500">
-                  <span className="font-semibold text-slate-400">Einen Schritt nach dem anderen</span> — nichts
+                <p className="mt-3 text-[10px] font-bold uppercase tracking-wider text-[var(--app-text-muted)]">Schritt-für-Schritt</p>
+                <p className="mb-2 text-[12px] leading-relaxed text-[var(--app-text-muted)]">
+                  <span className="font-semibold text-[var(--app-text-muted)]">Einen Schritt nach dem anderen</span> — nichts
                   überspringen. Wenn etwas unklar ist, unten im Chat nachfragen.
                 </p>
-                <ol className="mt-1.5 list-outside list-decimal space-y-3 pl-5 text-[14px] leading-relaxed text-slate-200 marker:font-bold marker:text-teal-400/90">
+                <ol className="mt-1.5 list-outside list-decimal space-y-3 pl-5 text-[14px] leading-relaxed text-[var(--app-text)] marker:font-bold marker:text-teal-400/90">
                   {anzeige.kochschritte.map((s, si) => (
                     <li key={si} className="border-l-2 border-teal-900/50 pl-3">
                       {formatInlineMarkdown(s, MD_STRONG)}
@@ -584,30 +584,30 @@ export function LagerRezeptCoach({ artikel, onLagerAktualisiert, onKatalogGeaend
               Rezepte gegen Lebensmittelverschwendung
             </h2>
           </div>
-          <p className="mt-1 text-sm text-slate-500">{mitBestand} Artikel mit Bestand</p>
+          <p className="mt-1 text-sm text-[var(--app-text-muted)]">{mitBestand} Artikel mit Bestand</p>
         </div>
         <CollapsibleRowHeaderEnd open={open} labels={LABEL_EINKLAPPEN} tone="violet" />
       </button>
 
       {open && (
-        <div className="flex flex-col border-t border-slate-800 px-4 pb-5 pt-3 md:px-8">
+        <div className="flex flex-col border-t border-[var(--app-border)] px-4 pb-5 pt-3 md:px-8">
           {kiConfigured === null && (
-            <p className="mb-3 shrink-0 rounded-xl border border-slate-700 bg-slate-950/80 p-3 text-xs text-slate-400">Konfiguration wird geprüft …</p>
+            <p className="mb-3 shrink-0 rounded-xl border border-[var(--app-border-strong)] bg-[var(--app-surface-muted)] p-3 text-xs text-[var(--app-text-muted)]">Konfiguration wird geprüft …</p>
           )}
           {kiConfigured === false && (
             <div className="mb-3 shrink-0 rounded-xl border border-amber-700/60 bg-amber-950/40 p-3 text-xs leading-relaxed text-amber-100">
               <p className="font-bold text-amber-200">KI ist noch nicht eingerichtet</p>
               <p className="mt-2">
-                Wie beim Finanz-Coach: <code className="rounded bg-slate-950 px-1">GEMINI_API_KEY</code> oder{' '}
-                <code className="rounded bg-slate-950 px-1">OPENAI_API_KEY</code> in <code className="rounded bg-slate-950 px-1">.env.local</code>, dann
+                Wie beim Finanz-Coach: <code className="rounded bg-[var(--app-surface-muted)] px-1">GEMINI_API_KEY</code> oder{' '}
+                <code className="rounded bg-[var(--app-surface-muted)] px-1">OPENAI_API_KEY</code> in <code className="rounded bg-[var(--app-surface-muted)] px-1">.env.local</code>, dann
                 Dev-Server neu starten.
               </p>
             </div>
           )}
           <div className="mb-1 flex shrink-0 items-center justify-between gap-2">
-            <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-500">Konversation</span>
+            <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-[var(--app-text-muted)]">Konversation</span>
             {messages.length > 0 && (
-              <span className="text-[10px] tabular-nums text-slate-600">
+              <span className="text-[10px] tabular-nums text-[var(--app-text-muted)]">
                 {messages.length} {messages.length === 1 ? 'Nachricht' : 'Nachrichten'}
               </span>
             )}
@@ -678,13 +678,13 @@ export function LagerRezeptCoach({ artikel, onLagerAktualisiert, onKatalogGeaend
             </div>
           </div>
 
-          <div className="mt-4 shrink-0 space-y-2 border-t border-slate-800/80 pt-4">
+          <div className="mt-4 shrink-0 space-y-2 border-t border-[var(--app-border)] pt-4">
             <div className="flex flex-wrap gap-2">
               <button
                 type="button"
                 disabled={loading || kiConfigured !== true}
                 onClick={() => setInput('Drei schnelle Reste-Rezepte für heute Abend, bitte mit Portionsangabe.')}
-                className="rounded-lg border border-slate-600 bg-slate-800/80 px-2.5 py-1.5 text-[11px] font-bold text-slate-300 hover:bg-slate-700 disabled:opacity-40"
+                className="rounded-lg border border-[var(--app-border-strong)] bg-[var(--app-surface-hover)] px-2.5 py-1.5 text-[11px] font-bold text-[var(--app-text)] hover:bg-[var(--app-surface-hover)] disabled:opacity-40"
               >
                 3 Reste-Rezepte
               </button>
@@ -692,7 +692,7 @@ export function LagerRezeptCoach({ artikel, onLagerAktualisiert, onKatalogGeaend
                 type="button"
                 disabled={loading || kiConfigured !== true}
                 onClick={() => setInput('Was sollte ich zuerst aufbrauchen, bevor es schlecht wird — und womit kombinieren?')}
-                className="rounded-lg border border-slate-600 bg-slate-800/80 px-2.5 py-1.5 text-[11px] font-bold text-slate-300 hover:bg-slate-700 disabled:opacity-40"
+                className="rounded-lg border border-[var(--app-border-strong)] bg-[var(--app-surface-hover)] px-2.5 py-1.5 text-[11px] font-bold text-[var(--app-text)] hover:bg-[var(--app-surface-hover)] disabled:opacity-40"
               >
                 Zuerst aufbrauchen
               </button>
@@ -731,7 +731,7 @@ export function LagerRezeptCoach({ artikel, onLagerAktualisiert, onKatalogGeaend
                     <img
                       src={coachImageDataUrl(im)}
                       alt=""
-                      className="h-16 w-16 rounded-lg border border-slate-600 object-cover"
+                      className="h-16 w-16 rounded-lg border border-[var(--app-border-strong)] object-cover"
                     />
                     <button
                       type="button"
@@ -762,7 +762,7 @@ export function LagerRezeptCoach({ artikel, onLagerAktualisiert, onKatalogGeaend
                   ? 'Zuerst KI-Schlüssel in .env.local …'
                   : 'Nachricht …'
               }
-              className="w-full resize-none rounded-xl border border-slate-700 bg-slate-950 p-3 text-sm text-slate-100 outline-none focus:ring-2 focus:ring-teal-500/40 disabled:opacity-50"
+              className="w-full resize-none rounded-xl border border-[var(--app-border-strong)] bg-[var(--app-surface-muted)] p-3 text-sm text-[var(--app-text)] outline-none focus:ring-2 focus:ring-teal-500/40 disabled:opacity-50"
             />
             <div className="flex flex-wrap gap-2">
               <button
@@ -780,7 +780,7 @@ export function LagerRezeptCoach({ artikel, onLagerAktualisiert, onKatalogGeaend
                   setDraftImages([])
                   toast('Chat geleert.')
                 }}
-                className="rounded-xl border border-slate-600 px-3 py-2 text-xs font-bold text-slate-400 hover:bg-slate-800"
+                className="rounded-xl border border-[var(--app-border-strong)] px-3 py-2 text-xs font-bold text-[var(--app-text-muted)] hover:bg-[var(--app-surface-hover)]"
               >
                 Verlauf leeren
               </button>
@@ -810,25 +810,25 @@ export function LagerRezeptCoach({ artikel, onLagerAktualisiert, onKatalogGeaend
       >
         <div role="dialog" aria-modal="true" className={`${appModalPanelClassName} p-4 sm:p-5`}>
           <h3 className="text-base font-black text-amber-200">Mahlzeit ausbuchen</h3>
-          <p className="mt-1 text-sm text-slate-400">
-            Gericht: <span className="font-semibold text-slate-200">{mahlzeitDialog.gericht.titel}</span>
+          <p className="mt-1 text-sm text-[var(--app-text-muted)]">
+            Gericht: <span className="font-semibold text-[var(--app-text)]">{mahlzeitDialog.gericht.titel}</span>
           </p>
-          <p className="mt-2 text-xs leading-relaxed text-slate-500">
+          <p className="mt-2 text-xs leading-relaxed text-[var(--app-text-muted)]">
             Wann hast du gekocht / gegessen? (erscheint im Rückblick „Gekocht &amp; gegessen“)
           </p>
-          <label className="mt-3 block text-[10px] font-bold uppercase tracking-wider text-slate-500">Zeitpunkt</label>
+          <label className="mt-3 block text-[10px] font-bold uppercase tracking-wider text-[var(--app-text-muted)]">Zeitpunkt</label>
           <input
             type="datetime-local"
             value={gekochtAmInput}
             onChange={(e) => setGekochtAmInput(e.target.value)}
-            className="mt-1 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100 outline-none focus:ring-2 focus:ring-amber-500/40"
+            className="mt-1 w-full rounded-xl border border-[var(--app-border-strong)] bg-[var(--app-surface-muted)] px-3 py-2 text-sm text-[var(--app-text)] outline-none focus:ring-2 focus:ring-amber-500/40"
           />
           <div className="mt-5 flex flex-wrap justify-end gap-2">
             <button
               type="button"
               disabled={buchungKey !== null}
               onClick={() => setMahlzeitDialog(null)}
-              className="rounded-xl border border-slate-600 px-4 py-2 text-xs font-bold text-slate-400 hover:bg-slate-800 disabled:opacity-40"
+              className="rounded-xl border border-[var(--app-border-strong)] px-4 py-2 text-xs font-bold text-[var(--app-text-muted)] hover:bg-[var(--app-surface-hover)] disabled:opacity-40"
             >
               Abbrechen
             </button>

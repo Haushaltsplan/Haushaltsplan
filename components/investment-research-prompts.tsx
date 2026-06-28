@@ -514,12 +514,12 @@ function SystemPromptsPanel() {
   }
 
   return (
-    <div className="mt-4 space-y-3 border-t border-zinc-800/60 pt-4">
+    <div className="mt-4 space-y-3 border-t border-[var(--app-border)] pt-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="min-w-0">
-          <p className="text-xs font-semibold uppercase tracking-wide text-zinc-400">System-Prompts</p>
+          <p className="text-xs font-semibold uppercase tracking-wide text-[var(--app-text-muted)]">System-Prompts</p>
           <h2 className="text-base font-semibold tracking-tight text-white">Automatische KI-Prompts</h2>
-          <p className="mt-1 text-sm text-zinc-500">
+          <p className="mt-1 text-sm text-[var(--app-text-muted)]">
             {SYSTEM_PROMPTS_UEBERSICHT.length} Prompts · diese werden automatisch vom System verwendet
           </p>
         </div>
@@ -534,29 +534,29 @@ function SystemPromptsPanel() {
 
       <CollapsibleAnimatedBody open={open} className="mt-3 space-y-3">
         {[...gruppen.entries()].map(([gruppenName, prompts]) => (
-          <div key={gruppenName} className="overflow-hidden rounded-xl border border-zinc-800/90 bg-zinc-950/30">
+          <div key={gruppenName} className="overflow-hidden rounded-xl border border-[var(--app-border)] bg-[var(--app-surface-muted)]/30">
             <button
               type="button"
               onClick={() => toggleGruppe(gruppenName)}
-              className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left text-sm font-medium text-white transition hover:bg-zinc-900/60"
+              className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left text-sm font-medium text-white transition hover:bg-[var(--app-surface-muted)]"
               aria-expanded={openGruppen.has(gruppenName)}
             >
               <span>
                 {gruppenName}
-                <span className="ml-2 text-xs font-normal text-zinc-500">({prompts.length})</span>
+                <span className="ml-2 text-xs font-normal text-[var(--app-text-muted)]">({prompts.length})</span>
               </span>
               <CollapsibleRowHeaderEnd open={openGruppen.has(gruppenName)} labels={LABEL_ZUKLAPPEN} size="sm" />
             </button>
 
             {openGruppen.has(gruppenName) && (
-              <div className="space-y-3 border-t border-zinc-800/90 bg-zinc-950/20 p-4">
+              <div className="space-y-3 border-t border-[var(--app-border)] bg-[var(--app-surface-muted)]/20 p-4">
                 {prompts.map((p) => (
-                  <article key={p.id} className="rounded-xl border border-zinc-800/80 bg-zinc-950/50 px-4 py-3">
-                    <div className="flex flex-wrap items-start justify-between gap-2 border-b border-zinc-800/60 pb-3">
+                  <article key={p.id} className="rounded-xl border border-[var(--app-border)] bg-[var(--app-surface-muted)] px-4 py-3">
+                    <div className="flex flex-wrap items-start justify-between gap-2 border-b border-[var(--app-border)] pb-3">
                       <div className="min-w-0">
                         <h3 className="text-sm font-medium text-white">{p.titel}</h3>
-                        <p className="mt-0.5 text-xs text-zinc-500">{p.beschreibung}</p>
-                        <span className="mt-1 inline-block rounded-md bg-zinc-800/70 px-2 py-0.5 text-[10px] font-mono text-zinc-400 ring-1 ring-white/[0.04]">
+                        <p className="mt-0.5 text-xs text-[var(--app-text-muted)]">{p.beschreibung}</p>
+                        <span className="mt-1 inline-block rounded-md bg-[var(--app-surface-muted)]/70 px-2 py-0.5 text-[10px] font-mono text-[var(--app-text-muted)] ring-1 ring-white/[0.04]">
                           {p.modell}
                         </span>
                       </div>
@@ -568,7 +568,7 @@ function SystemPromptsPanel() {
                         Kopieren
                       </button>
                     </div>
-                    <pre className="mt-3 max-h-64 overflow-y-auto whitespace-pre-wrap break-words rounded-lg bg-zinc-950/60 p-3 text-[11px] leading-relaxed text-zinc-400 ring-1 ring-white/[0.04]">
+                    <pre className="mt-3 max-h-64 overflow-y-auto whitespace-pre-wrap break-words rounded-lg bg-[var(--app-surface-muted)] p-3 text-[11px] leading-relaxed text-[var(--app-text-muted)] ring-1 ring-white/[0.04]">
                       {p.text}
                     </pre>
                   </article>
@@ -670,23 +670,23 @@ export function InvestmentResearchPrompts({ embedded = false }: { embedded?: boo
     setSteps((prev) => prev.map((s) => (s.id === stepId ? { ...s, ...patch } : s)))
   }
 
-  const shell = embedded ? 'space-y-3' : 'rounded-2xl border border-zinc-800 bg-zinc-900/70 p-4'
+  const shell = embedded ? 'space-y-3' : 'rounded-2xl border border-[var(--app-border)] bg-[var(--app-surface-muted)] p-4'
 
   return (
     <section className={shell}>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="min-w-0">
-          <p className="text-xs font-semibold uppercase tracking-wide text-zinc-400">Prompts</p>
+          <p className="text-xs font-semibold uppercase tracking-wide text-[var(--app-text-muted)]">Prompts</p>
           <h2 className={`font-semibold tracking-tight text-white ${embedded ? 'text-base' : 'text-lg'}`}>
             Analyse-Prompts
           </h2>
-          <p className="mt-1 text-sm text-zinc-400">
+          <p className="mt-1 text-sm text-[var(--app-text-muted)]">
             {analysisSteps.length} Schritte · {totalChars.toLocaleString('de-DE')} Zeichen
           </p>
           <button
             type="button"
             onClick={restoreAllDefaults}
-            className="mt-2 text-xs font-medium text-zinc-500 underline-offset-2 transition hover:text-teal-400 hover:underline"
+            className="mt-2 text-xs font-medium text-[var(--app-text-muted)] underline-offset-2 transition hover:text-teal-400 hover:underline"
           >
             Alle Standard-Prompts wiederherstellen
           </button>
@@ -701,21 +701,21 @@ export function InvestmentResearchPrompts({ embedded = false }: { embedded?: boo
       </div>
 
       <CollapsibleAnimatedBody open={promptsPanelOpen} className="mt-3">
-        <div className="overflow-hidden rounded-xl border border-zinc-800/90 bg-zinc-950/30">
+        <div className="overflow-hidden rounded-xl border border-[var(--app-border)] bg-[var(--app-surface-muted)]/30">
           <button
             type="button"
             onClick={() => setSectionOpen((v) => !v)}
-            className="group flex w-full items-center justify-between gap-3 px-4 py-3 text-left text-sm font-medium text-white transition hover:bg-zinc-900/60"
+            className="group flex w-full items-center justify-between gap-3 px-4 py-3 text-left text-sm font-medium text-white transition hover:bg-[var(--app-surface-muted)]"
             aria-expanded={sectionOpen}
           >
             <span>Unternehmensanalyse ({analysisSteps.length} Schritte)</span>
             <CollapsibleRowHeaderEnd open={sectionOpen} labels={LABEL_ZUKLAPPEN} size="sm" />
           </button>
           {!sectionOpen ? null : (
-            <div className="space-y-3 border-t border-zinc-800/90 bg-zinc-950/20 p-4">
+            <div className="space-y-3 border-t border-[var(--app-border)] bg-[var(--app-surface-muted)]/20 p-4">
               {analysisSteps.map((step) => (
-                <article key={step.id} className="rounded-xl border border-zinc-800/80 bg-zinc-950/50 px-4 py-3">
-                  <div className="flex flex-wrap items-center justify-between gap-2 border-b border-zinc-800/60 pb-3">
+                <article key={step.id} className="rounded-xl border border-[var(--app-border)] bg-[var(--app-surface-muted)] px-4 py-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--app-border)] pb-3">
                     <h3 className="min-w-0 text-sm font-medium text-white">{step.title || 'Ohne Titel'}</h3>
                     <div className="flex flex-wrap items-center justify-end gap-2">
                       <button
@@ -728,7 +728,7 @@ export function InvestmentResearchPrompts({ embedded = false }: { embedded?: boo
                       <button
                         type="button"
                         onClick={() => deletePrompt(step.id)}
-                        className="rounded-lg border border-rose-900/80 bg-zinc-900 px-3 py-1.5 text-xs font-medium text-rose-300 transition hover:bg-rose-950/50"
+                        className="rounded-lg border border-rose-900/80 bg-[var(--app-surface-muted)] px-3 py-1.5 text-xs font-medium text-rose-300 transition hover:bg-rose-950/50"
                       >
                         Löschen
                       </button>
@@ -736,7 +736,7 @@ export function InvestmentResearchPrompts({ embedded = false }: { embedded?: boo
                         <button
                           type="button"
                           onClick={() => resetStep(step.id)}
-                          className="rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-1.5 text-xs font-medium text-zinc-300 transition hover:bg-zinc-800"
+                          className="rounded-lg border border-[var(--app-border-strong)] bg-[var(--app-surface-muted)] px-3 py-1.5 text-xs font-medium text-[var(--app-text)] transition hover:bg-[var(--app-surface-hover)]"
                         >
                           Zurücksetzen
                         </button>
@@ -747,7 +747,7 @@ export function InvestmentResearchPrompts({ embedded = false }: { embedded?: boo
                     <div>
                       <label
                         htmlFor={`research-prompt-title-${step.id}`}
-                        className="mb-1 block text-xs font-medium text-zinc-500"
+                        className="mb-1 block text-xs font-medium text-[var(--app-text-muted)]"
                       >
                         Titel (bearbeiten)
                       </label>
@@ -756,14 +756,14 @@ export function InvestmentResearchPrompts({ embedded = false }: { embedded?: boo
                         type="text"
                         value={step.title}
                         onChange={(e) => updateStep(step.id, { title: e.target.value })}
-                        className="w-full rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm text-white outline-none focus:ring-2 focus:ring-zinc-600"
+                        className="w-full rounded-lg border border-[var(--app-border)] bg-[var(--app-surface-muted)] px-3 py-2 text-sm text-white outline-none focus:ring-2 focus:ring-[var(--app-border-strong)]"
                         autoComplete="off"
                       />
                     </div>
                     <div>
                       <label
                         htmlFor={`research-prompt-body-${step.id}`}
-                        className="mb-1 block text-xs font-medium text-zinc-500"
+                        className="mb-1 block text-xs font-medium text-[var(--app-text-muted)]"
                       >
                         Prompt-Text (bearbeiten)
                       </label>
@@ -771,7 +771,7 @@ export function InvestmentResearchPrompts({ embedded = false }: { embedded?: boo
                         id={`research-prompt-body-${step.id}`}
                         value={step.text}
                         onChange={(e) => updateStep(step.id, { text: e.target.value })}
-                        className="min-h-[14rem] w-full rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2.5 text-sm leading-relaxed text-zinc-200 outline-none focus:ring-2 focus:ring-zinc-600"
+                        className="min-h-[14rem] w-full rounded-lg border border-[var(--app-border)] bg-[var(--app-surface-muted)] px-3 py-2.5 text-sm leading-relaxed text-[var(--app-text)] outline-none focus:ring-2 focus:ring-[var(--app-border-strong)]"
                         spellCheck={false}
                       />
                     </div>
@@ -781,7 +781,7 @@ export function InvestmentResearchPrompts({ embedded = false }: { embedded?: boo
               <button
                 type="button"
                 onClick={addPrompt}
-                className="w-full rounded-xl border border-dashed border-zinc-700 bg-zinc-950/40 px-4 py-3 text-sm font-medium text-zinc-400 transition hover:border-teal-700/55 hover:bg-zinc-900/50 hover:text-teal-200"
+                className="w-full rounded-xl border border-dashed border-[var(--app-border-strong)] bg-[var(--app-surface-muted)] px-4 py-3 text-sm font-medium text-[var(--app-text-muted)] transition hover:border-teal-700/55 hover:bg-[var(--app-surface-muted)] hover:text-teal-200"
               >
                 + Prompt hinzufügen
               </button>
@@ -790,17 +790,17 @@ export function InvestmentResearchPrompts({ embedded = false }: { embedded?: boo
         </div>
 
         {earningsStep ? (
-          <div className="mt-3 overflow-hidden rounded-xl border border-zinc-800/90 bg-zinc-950/30">
+          <div className="mt-3 overflow-hidden rounded-xl border border-[var(--app-border)] bg-[var(--app-surface-muted)]/30">
             <button
               type="button"
               onClick={() => setEarningsOpen((v) => !v)}
-              className="group flex w-full items-center justify-between gap-3 px-4 py-3 text-left text-sm font-medium text-white transition hover:bg-zinc-900/60"
+              className="group flex w-full items-center justify-between gap-3 px-4 py-3 text-left text-sm font-medium text-white transition hover:bg-[var(--app-surface-muted)]"
               aria-expanded={earningsOpen}
             >
               <span>Earningsanalyse</span>
               <CollapsibleRowHeaderEnd open={earningsOpen} labels={LABEL_ZUKLAPPEN} size="sm" />
             </button>
-            <CollapsibleAnimatedBody open={earningsOpen} className="border-t border-zinc-800/90">
+            <CollapsibleAnimatedBody open={earningsOpen} className="border-t border-[var(--app-border)]">
               <div className="space-y-3 p-4">
                 <div className="flex flex-wrap items-center justify-end gap-2">
                   <button
@@ -814,14 +814,14 @@ export function InvestmentResearchPrompts({ embedded = false }: { embedded?: boo
                     type="button"
                     disabled
                     title="Dieser Standard-Prompt kann nicht gelöscht werden."
-                    className="cursor-not-allowed rounded-lg border border-zinc-800 bg-zinc-900/80 px-3 py-1.5 text-xs font-medium text-zinc-600"
+                    className="cursor-not-allowed rounded-lg border border-[var(--app-border)] bg-[var(--app-surface-muted)] px-3 py-1.5 text-xs font-medium text-[var(--app-text-muted)]"
                   >
                     Löschen
                   </button>
                   <button
                     type="button"
                     onClick={() => resetStep(earningsStep.id)}
-                    className="rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-1.5 text-xs font-medium text-zinc-300 transition hover:bg-zinc-800"
+                    className="rounded-lg border border-[var(--app-border-strong)] bg-[var(--app-surface-muted)] px-3 py-1.5 text-xs font-medium text-[var(--app-text)] transition hover:bg-[var(--app-surface-hover)]"
                   >
                     Zurücksetzen
                   </button>
@@ -830,7 +830,7 @@ export function InvestmentResearchPrompts({ embedded = false }: { embedded?: boo
                   <div>
                     <label
                       htmlFor={`research-prompt-title-${earningsStep.id}`}
-                      className="mb-1 block text-xs font-medium text-zinc-500"
+                      className="mb-1 block text-xs font-medium text-[var(--app-text-muted)]"
                     >
                       Titel (bearbeiten)
                     </label>
@@ -839,14 +839,14 @@ export function InvestmentResearchPrompts({ embedded = false }: { embedded?: boo
                       type="text"
                       value={earningsStep.title}
                       onChange={(e) => updateStep(earningsStep.id, { title: e.target.value })}
-                      className="w-full rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm text-white outline-none focus:ring-2 focus:ring-zinc-600"
+                      className="w-full rounded-lg border border-[var(--app-border)] bg-[var(--app-surface-muted)] px-3 py-2 text-sm text-white outline-none focus:ring-2 focus:ring-[var(--app-border-strong)]"
                       autoComplete="off"
                     />
                   </div>
                   <div>
                     <label
                       htmlFor={`research-prompt-body-${earningsStep.id}`}
-                      className="mb-1 block text-xs font-medium text-zinc-500"
+                      className="mb-1 block text-xs font-medium text-[var(--app-text-muted)]"
                     >
                       Prompt-Text (bearbeiten)
                     </label>
@@ -854,7 +854,7 @@ export function InvestmentResearchPrompts({ embedded = false }: { embedded?: boo
                       id={`research-prompt-body-${earningsStep.id}`}
                       value={earningsStep.text}
                       onChange={(e) => updateStep(earningsStep.id, { text: e.target.value })}
-                      className="min-h-[14rem] w-full rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2.5 text-sm leading-relaxed text-zinc-200 outline-none focus:ring-2 focus:ring-zinc-600"
+                      className="min-h-[14rem] w-full rounded-lg border border-[var(--app-border)] bg-[var(--app-surface-muted)] px-3 py-2.5 text-sm leading-relaxed text-[var(--app-text)] outline-none focus:ring-2 focus:ring-[var(--app-border-strong)]"
                       spellCheck={false}
                     />
                   </div>
@@ -865,17 +865,17 @@ export function InvestmentResearchPrompts({ embedded = false }: { embedded?: boo
         ) : null}
 
         {earningsCallStep ? (
-          <div className="mt-3 overflow-hidden rounded-xl border border-zinc-800/90 bg-zinc-950/30">
+          <div className="mt-3 overflow-hidden rounded-xl border border-[var(--app-border)] bg-[var(--app-surface-muted)]/30">
             <button
               type="button"
               onClick={() => setEarningsCallOpen((v) => !v)}
-              className="group flex w-full items-center justify-between gap-3 px-4 py-3 text-left text-sm font-medium text-white transition hover:bg-zinc-900/60"
+              className="group flex w-full items-center justify-between gap-3 px-4 py-3 text-left text-sm font-medium text-white transition hover:bg-[var(--app-surface-muted)]"
               aria-expanded={earningsCallOpen}
             >
               <span>Earnings Call (Transkript)</span>
               <CollapsibleRowHeaderEnd open={earningsCallOpen} labels={LABEL_ZUKLAPPEN} size="sm" />
             </button>
-            <CollapsibleAnimatedBody open={earningsCallOpen} className="border-t border-zinc-800/90">
+            <CollapsibleAnimatedBody open={earningsCallOpen} className="border-t border-[var(--app-border)]">
               <div className="space-y-3 p-4">
                 <div className="flex flex-wrap items-center justify-end gap-2">
                   <button
@@ -889,14 +889,14 @@ export function InvestmentResearchPrompts({ embedded = false }: { embedded?: boo
                     type="button"
                     disabled
                     title="Dieser Standard-Prompt kann nicht gelöscht werden."
-                    className="cursor-not-allowed rounded-lg border border-zinc-800 bg-zinc-900/80 px-3 py-1.5 text-xs font-medium text-zinc-600"
+                    className="cursor-not-allowed rounded-lg border border-[var(--app-border)] bg-[var(--app-surface-muted)] px-3 py-1.5 text-xs font-medium text-[var(--app-text-muted)]"
                   >
                     Löschen
                   </button>
                   <button
                     type="button"
                     onClick={() => resetStep(earningsCallStep.id)}
-                    className="rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-1.5 text-xs font-medium text-zinc-300 transition hover:bg-zinc-800"
+                    className="rounded-lg border border-[var(--app-border-strong)] bg-[var(--app-surface-muted)] px-3 py-1.5 text-xs font-medium text-[var(--app-text)] transition hover:bg-[var(--app-surface-hover)]"
                   >
                     Zurücksetzen
                   </button>
@@ -905,7 +905,7 @@ export function InvestmentResearchPrompts({ embedded = false }: { embedded?: boo
                   <div>
                     <label
                       htmlFor={`research-prompt-title-${earningsCallStep.id}`}
-                      className="mb-1 block text-xs font-medium text-zinc-500"
+                      className="mb-1 block text-xs font-medium text-[var(--app-text-muted)]"
                     >
                       Titel (bearbeiten)
                     </label>
@@ -914,14 +914,14 @@ export function InvestmentResearchPrompts({ embedded = false }: { embedded?: boo
                       type="text"
                       value={earningsCallStep.title}
                       onChange={(e) => updateStep(earningsCallStep.id, { title: e.target.value })}
-                      className="w-full rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm text-white outline-none focus:ring-2 focus:ring-zinc-600"
+                      className="w-full rounded-lg border border-[var(--app-border)] bg-[var(--app-surface-muted)] px-3 py-2 text-sm text-white outline-none focus:ring-2 focus:ring-[var(--app-border-strong)]"
                       autoComplete="off"
                     />
                   </div>
                   <div>
                     <label
                       htmlFor={`research-prompt-body-${earningsCallStep.id}`}
-                      className="mb-1 block text-xs font-medium text-zinc-500"
+                      className="mb-1 block text-xs font-medium text-[var(--app-text-muted)]"
                     >
                       Prompt-Text (bearbeiten)
                     </label>
@@ -929,7 +929,7 @@ export function InvestmentResearchPrompts({ embedded = false }: { embedded?: boo
                       id={`research-prompt-body-${earningsCallStep.id}`}
                       value={earningsCallStep.text}
                       onChange={(e) => updateStep(earningsCallStep.id, { text: e.target.value })}
-                      className="min-h-[14rem] w-full rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2.5 text-sm leading-relaxed text-zinc-200 outline-none focus:ring-2 focus:ring-zinc-600"
+                      className="min-h-[14rem] w-full rounded-lg border border-[var(--app-border)] bg-[var(--app-surface-muted)] px-3 py-2.5 text-sm leading-relaxed text-[var(--app-text)] outline-none focus:ring-2 focus:ring-[var(--app-border-strong)]"
                       spellCheck={false}
                     />
                   </div>

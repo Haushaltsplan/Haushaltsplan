@@ -5,7 +5,7 @@ const cn = (...a: (string | false | undefined)[]) => a.filter(Boolean).join(' ')
 type Tone = 'neutral' | 'emerald' | 'sky' | 'violet' | 'amber' | 'teal' | 'orange'
 
 const toneFocus: Record<Tone, string> = {
-  neutral: 'focus-visible:ring-slate-400/35',
+  neutral: 'focus-visible:ring-[var(--app-border-strong)]/35',
   emerald: 'focus-visible:ring-emerald-500/40',
   sky: 'focus-visible:ring-sky-500/40',
   violet: 'focus-visible:ring-violet-500/45',
@@ -15,7 +15,7 @@ const toneFocus: Record<Tone, string> = {
 }
 
 const toneChevron: Record<Tone, string> = {
-  neutral: 'border-slate-500/25 text-slate-200',
+  neutral: 'border-[var(--app-border-strong)]/25 text-[var(--app-text)]',
   emerald: 'border-emerald-500/25 text-emerald-200/90',
   sky: 'border-sky-500/25 text-sky-200/90',
   violet: 'border-violet-500/30 text-violet-200/90',
@@ -29,7 +29,7 @@ export function CollapsibleChevron({ open, tone = 'neutral', size = 'md' }: { op
   return (
     <span
       className={cn(
-        'inline-flex shrink-0 items-center justify-center border bg-gradient-to-b from-white/[0.1] to-slate-950/55 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.08)]',
+        'inline-flex shrink-0 items-center justify-center border bg-gradient-to-b from-[var(--app-surface)] to-[var(--app-surface-muted)] shadow-[inset_0_1px_0_0_rgba(255,255,255,0.08)] dark:from-white/[0.1] dark:to-[var(--app-surface-muted)]',
         s,
         toneChevron[tone],
       )}
@@ -125,7 +125,7 @@ export function CollapsibleTriggerEnd({
   return (
     <div className={cn('flex min-w-0 items-center gap-2 sm:gap-2.5', className)}>
       <span
-        className="hidden min-[360px]:inline text-[10px] font-medium tracking-[0.12em] text-slate-500 transition-colors group-hover:text-slate-200 sm:text-[11px]"
+        className="hidden min-[360px]:inline text-[10px] font-medium tracking-[0.12em] text-[var(--app-text-muted)] transition-colors group-hover:text-[var(--app-text)] sm:text-[11px]"
         title={open ? labels.open : labels.closed}
       >
         {open ? labels.open : labels.closed}
@@ -155,7 +155,7 @@ export function DetailsDisclosureChevron({ tone = 'neutral', size = 'md' }: { to
   return (
     <span
       className={cn(
-        'inline-flex shrink-0 items-center justify-center border bg-gradient-to-b from-white/[0.1] to-slate-950/55 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.08)]',
+        'inline-flex shrink-0 items-center justify-center border bg-gradient-to-b from-[var(--app-surface)] to-[var(--app-surface-muted)] shadow-[inset_0_1px_0_0_rgba(255,255,255,0.08)] dark:from-white/[0.1] dark:to-[var(--app-surface-muted)]',
         s,
         toneChevron[tone],
       )}
@@ -199,7 +199,7 @@ export function DetailsDisclosureTriggerEnd({
 
   return (
     <div className="flex min-w-0 shrink-0 items-center gap-2 sm:gap-2.5">
-      <span className="hidden min-[360px]:inline text-[10px] font-medium tracking-[0.12em] text-slate-500 transition-colors group-hover:text-slate-200 sm:text-[11px]">
+      <span className="hidden min-[360px]:inline text-[10px] font-medium tracking-[0.12em] text-[var(--app-text-muted)] transition-colors group-hover:text-[var(--app-text)] sm:text-[11px]">
         <span className="group-open:hidden">{labels.closed}</span>
         <span className="hidden group-open:inline">{labels.open}</span>
       </span>
@@ -235,7 +235,7 @@ export function CollapsiblePillButton({
         aria-expanded={ariaExpanded}
         className={cn(
           disclosureGlassShell,
-          'cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-white/35 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-950',
+          'cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-white/35 focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--app-surface)]',
         )}
       >
         <span className="select-none whitespace-nowrap text-white">{open ? labels.open : labels.closed}</span>
@@ -250,11 +250,11 @@ export function CollapsiblePillButton({
       onClick={onClick}
       aria-expanded={ariaExpanded}
       className={cn(
-        'group inline-flex items-center gap-2 rounded-full border border-white/10 bg-gradient-to-b from-white/[0.09] to-slate-950/85 text-slate-200 shadow-lg shadow-black/25 ring-1 ring-white/[0.04] transition duration-200',
+        'group inline-flex items-center gap-2 rounded-full border border-[var(--app-border)] bg-gradient-to-b from-[var(--app-surface)] to-[var(--app-surface-muted)] text-[var(--app-text)] shadow-lg shadow-[var(--app-shadow)] ring-1 ring-[var(--app-ring)] transition duration-200 dark:border-white/10 dark:from-white/[0.09] dark:to-[var(--app-surface-muted)] dark:shadow-black/25 dark:ring-white/[0.04]',
         'font-semibold',
         compact ? 'px-3 py-1.5 text-[11px]' : 'gap-2.5 px-4 py-2.5 text-xs',
         'hover:border-white/16 hover:from-white/[0.11] hover:text-white hover:shadow-xl hover:shadow-black/30',
-        'focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-900',
+        'focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--app-surface)]',
         toneFocus[tone],
       )}
     >

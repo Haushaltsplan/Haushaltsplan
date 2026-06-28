@@ -1,6 +1,7 @@
 'use client'
 
 import { istOeffentlicheRoute } from '@/lib/public-routes'
+import { appInputClass, appSectionCardClass } from '@/lib/app-ui'
 import { istOmniaNativeApp } from '@/lib/fitnessdaten/omnia-native'
 import { supabase } from '@/lib/supabase'
 import type { Session } from '@supabase/supabase-js'
@@ -132,14 +133,14 @@ export function AuthGate({ children }: { children: ReactNode }) {
   }
 
   if (loading) {
-    return <div className="py-10 text-center text-sm text-slate-400">Anmeldung wird geprüft …</div>
+    return <div className="py-10 text-center text-sm text-[var(--app-text-muted)]">Anmeldung wird geprüft …</div>
   }
 
   if (!session) {
     return (
-      <div className="mx-auto mt-8 max-w-md rounded-2xl border border-slate-800 bg-slate-900/80 p-5 shadow-xl shadow-black/30">
-        <h2 className="text-lg font-bold text-slate-100">Anmeldung erforderlich</h2>
-        <p className="mt-2 text-sm text-slate-400">
+      <div className={`${appSectionCardClass} mx-auto mt-8 max-w-md`}>
+        <h2 className="text-lg font-bold text-[var(--app-text)]">Anmeldung erforderlich</h2>
+        <p className="mt-2 text-sm text-[var(--app-text-muted)]">
           Für Datenschutz: Zugriff nur nach Login.
           {nativeApp
             ? ' In der Omnia-App bitte mit Passwort anmelden — der E-Mail-Link öffnet sich sonst in Chrome und bleibt nicht in der App gespeichert.'
@@ -168,7 +169,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
           }}
           placeholder="deine@email.de"
           autoComplete="email"
-          className="mt-4 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2.5 text-sm text-slate-100 outline-none focus:ring-2 focus:ring-cyan-500/40"
+          className={`${appInputClass} mt-4 focus:ring-cyan-500/40`}
         />
         {loginModus === 'passwort' && (
           <input
@@ -180,7 +181,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
             }}
             placeholder="Passwort"
             autoComplete="current-password"
-            className="mt-3 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2.5 text-sm text-slate-100 outline-none focus:ring-2 focus:ring-cyan-500/40"
+            className={`${appInputClass} mt-3 focus:ring-cyan-500/40`}
           />
         )}
         <button
@@ -195,7 +196,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
           <button
             type="button"
             onClick={() => setLoginModus((m) => (m === 'passwort' ? 'magic' : 'passwort'))}
-            className="mt-3 w-full text-center text-[13px] text-slate-500 hover:text-slate-300"
+            className="mt-3 w-full text-center text-[13px] text-[var(--app-text-muted)] hover:text-[var(--app-text)]"
           >
             {loginModus === 'passwort' ? 'Stattdessen Login-Link per E-Mail' : 'Stattdessen mit Passwort anmelden'}
           </button>

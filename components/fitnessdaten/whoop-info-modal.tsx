@@ -56,11 +56,11 @@ export function WhoopInfoModal({
         </div>
 
         <div className="flex shrink-0 items-start gap-3 border-b border-white/[0.06] px-5 pb-4 pt-3 sm:pt-5">
-          <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white/[0.06] text-sm text-zinc-300 ring-1 ring-white/[0.08]">
+          <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white/[0.06] text-sm text-[var(--app-text)] ring-1 ring-white/[0.08]">
             ⓘ
           </div>
           <div className="min-w-0 flex-1">
-            <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-zinc-500">Erklärung</p>
+            <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-[var(--app-text-muted)]">Erklärung</p>
             <h2 id="whoop-info-title" className="mt-1 text-base font-semibold leading-snug text-white">
               {info.title}
             </h2>
@@ -68,7 +68,7 @@ export function WhoopInfoModal({
           <button
             type="button"
             onClick={onClose}
-            className="shrink-0 rounded-xl p-2 text-zinc-500 transition hover:bg-white/[0.06] hover:text-white"
+            className="shrink-0 rounded-xl p-2 text-[var(--app-text-muted)] transition hover:bg-white/[0.06] hover:text-white"
             aria-label="Schließen"
           >
             <span className="text-lg leading-none">×</span>
@@ -77,11 +77,11 @@ export function WhoopInfoModal({
 
         <div className="relative min-h-0 flex-1">
           <div className={`${appModalScrollHiddenClassName} px-5 py-4`}>
-            <p className="text-[15px] leading-[1.65] text-zinc-300">{info.body}</p>
+            <p className="text-[15px] leading-[1.65] text-[var(--app-text)]">{info.body}</p>
             {info.source ? (
-              <p className="mt-4 rounded-xl border border-white/[0.06] bg-white/[0.03] px-3 py-2.5 text-[11px] leading-relaxed text-zinc-500">
-                <span className="font-semibold text-zinc-400">Quelle in Omnia</span>
-                <span className="mt-1 block text-zinc-500">{info.source}</span>
+              <p className="mt-4 rounded-xl border border-white/[0.06] bg-white/[0.03] px-3 py-2.5 text-[11px] leading-relaxed text-[var(--app-text-muted)]">
+                <span className="font-semibold text-[var(--app-text-muted)]">Quelle in Omnia</span>
+                <span className="mt-1 block text-[var(--app-text-muted)]">{info.source}</span>
               </p>
             ) : null}
           </div>
@@ -118,8 +118,8 @@ export function WhoopChartHeader({
       onClick={onInfo}
       className={`mb-3 flex w-full items-center justify-between text-left ${onInfo ? 'cursor-pointer hover:opacity-90' : ''}`}
     >
-      <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-zinc-300">{title}</p>
-      <span className="text-zinc-600">{onInfo ? 'ⓘ' : '›'}</span>
+      <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-[var(--app-text)]">{title}</p>
+      <span className="text-[var(--app-text-muted)]">{onInfo ? 'ⓘ' : '›'}</span>
     </button>
   )
 }
@@ -180,8 +180,8 @@ export function WhoopCoachBar({ text, onExpand }: { text: string; onExpand?: () 
       <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-violet-900/50 text-xs font-bold text-violet-200">
         O
       </span>
-      <p className="line-clamp-2 flex-1 text-xs leading-snug text-zinc-300">{text}</p>
-      <span className="text-zinc-500">⌃</span>
+      <p className="line-clamp-2 flex-1 text-xs leading-snug text-[var(--app-text)]">{text}</p>
+      <span className="text-[var(--app-text-muted)]">⌃</span>
     </button>
   )
 }

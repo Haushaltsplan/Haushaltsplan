@@ -15,14 +15,14 @@ export function BesitzFotoUpload({ previewUrl, busy, label = 'Foto', onPick, onR
 
   return (
     <div>
-      <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-slate-500">{label}</label>
+      <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-[var(--app-text-muted)]">{label}</label>
       <div className="flex flex-wrap items-start gap-4">
-        <div className="relative h-36 w-28 shrink-0 overflow-hidden rounded-xl border border-slate-700/90 bg-slate-950/80 shadow-inner">
+        <div className="relative h-36 w-28 shrink-0 overflow-hidden rounded-xl border border-[var(--app-border-strong)] bg-[var(--app-surface-muted)] shadow-inner">
           {previewUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img src={previewUrl} alt="" className="h-full w-full object-cover" />
           ) : (
-            <div className="flex h-full flex-col items-center justify-center gap-1 px-2 text-center text-[11px] text-slate-500">
+            <div className="flex h-full flex-col items-center justify-center gap-1 px-2 text-center text-[11px] text-[var(--app-text-muted)]">
               <span className="text-2xl opacity-40">👕</span>
               <span>Kein Foto</span>
             </div>
@@ -42,12 +42,12 @@ export function BesitzFotoUpload({ previewUrl, busy, label = 'Foto', onPick, onR
               type="button"
               disabled={busy}
               onClick={onRemove}
-              className="inline-flex w-fit rounded-lg border border-slate-600 px-3 py-1.5 text-xs font-semibold text-rose-300/95 transition hover:bg-rose-500/10 disabled:opacity-40"
+              className="inline-flex w-fit rounded-lg border border-[var(--app-border-strong)] px-3 py-1.5 text-xs font-semibold text-rose-300/95 transition hover:bg-rose-500/10 disabled:opacity-40"
             >
               Foto entfernen
             </button>
           ) : null}
-          <p className="text-[11px] leading-relaxed text-slate-500">JPEG, PNG oder WebP — wird automatisch verkleinert.</p>
+          <p className="text-[11px] leading-relaxed text-[var(--app-text-muted)]">JPEG, PNG oder WebP — wird automatisch verkleinert.</p>
         </div>
       </div>
       <input

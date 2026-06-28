@@ -44,14 +44,14 @@ export function PortfolioAnalyseMainClient() {
       {!laden && !hatDaten ? null : (
         <PaCard variant="elevated" className="min-w-0 overflow-hidden p-4 sm:p-6">
             {!hatDaten ? (
-              <p className="text-sm text-zinc-500">
+              <p className="text-sm text-[var(--app-text-muted)]">
                 <Link href="/portfolioanalyse/import" className="text-teal-400 hover:underline">
                   Daten importieren
                 </Link>{' '}
                 für die Analyse.
               </p>
             ) : liveLadenOhneDaten(live, laden) ? (
-              <p className="py-12 text-center text-sm text-zinc-500">Portfolio wird geladen …</p>
+              <p className="py-12 text-center text-sm text-[var(--app-text-muted)]">Portfolio wird geladen …</p>
             ) : (
               <div className="space-y-6">
                 <PaIconTabs tabs={HAUPT_TABS} active={tab} onChange={setTab} />
@@ -59,8 +59,8 @@ export function PortfolioAnalyseMainClient() {
                 {tab === 'gewichtung' && (
                   <div className="space-y-4">
                     <div>
-                      <h2 className="text-base font-semibold text-zinc-100">Gewichtungsanalyse</h2>
-                      <p className="mt-1 text-xs text-zinc-500">
+                      <h2 className="text-base font-semibold text-[var(--app-text)]">Gewichtungsanalyse</h2>
+                      <p className="mt-1 text-xs text-[var(--app-text-muted)]">
                         {assetKlassen} Assetklassen · {positionenCount} Assets
                         {report?.allocation.bySector.length
                           ? ` · ${report.allocation.bySector.length} Sektoren`
@@ -85,8 +85,8 @@ export function PortfolioAnalyseMainClient() {
                   <div className="space-y-4">
                     <div className="flex flex-wrap items-end justify-between gap-4">
                       <div>
-                        <h2 className="text-base font-semibold text-zinc-100">Kapitalfluss</h2>
-                        <p className="mt-1 text-xs text-zinc-500">
+                        <h2 className="text-base font-semibold text-[var(--app-text)]">Kapitalfluss</h2>
+                        <p className="mt-1 text-xs text-[var(--app-text-muted)]">
                           Monatlicher Kapitalzu- und -abfluss durch Käufe und Verkäufe (Kauf − Verkauf).
                         </p>
                       </div>
@@ -109,8 +109,8 @@ export function PortfolioAnalyseMainClient() {
                 {tab === 'performance' && (
                   <div className="space-y-4">
                     <div>
-                      <h2 className="text-base font-semibold text-zinc-100">Performance Map</h2>
-                      <p className="mt-1 text-xs text-zinc-500">
+                      <h2 className="text-base font-semibold text-[var(--app-text)]">Performance Map</h2>
+                      <p className="mt-1 text-xs text-[var(--app-text-muted)]">
                         Kacheln nach Sektor — Größe = Gewicht, Farbe = Tages- bzw. Gesamtperformance.
                       </p>
                     </div>
@@ -135,14 +135,14 @@ function PaQmToggle({
   onChange: (m: 'M' | 'Q') => void
 }) {
   return (
-    <div className="flex rounded-lg border border-zinc-800 bg-zinc-950/60 p-0.5 text-xs">
+    <div className="flex rounded-lg border border-[var(--app-border)] bg-[var(--app-surface-muted)] p-0.5 text-xs">
       {(['Q', 'M'] as const).map((m) => (
         <button
           key={m}
           type="button"
           onClick={() => onChange(m)}
           className={`rounded-md px-3 py-1.5 font-medium transition ${
-            modus === m ? 'bg-zinc-800 text-white' : 'text-zinc-500 hover:text-zinc-300'
+            modus === m ? 'bg-[var(--app-surface-muted)] text-white' : 'text-[var(--app-text-muted)] hover:text-[var(--app-text)]'
           }`}
         >
           {m}

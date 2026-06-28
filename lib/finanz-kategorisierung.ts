@@ -183,7 +183,7 @@ export const FINANZ_KATEGORIEN: readonly FinanzKategorieDef[] = [
     key: 'sonstiges',
     label: 'Sonstiges',
     farbe: '#94a3b8',
-    textClass: 'text-slate-300',
+    textClass: 'text-[var(--app-text)]',
     keywords: [],
   },
 ] as const

@@ -87,7 +87,7 @@ export function DonutChart({
   if (gesamt <= 0) {
     return (
       <div
-        className="flex items-center justify-center rounded-full border border-dashed border-slate-700 text-[11px] text-slate-600"
+        className="flex items-center justify-center rounded-full border border-dashed border-[var(--app-border-strong)] text-[11px] text-[var(--app-text-muted)]"
         style={{ width: groesse, height: groesse }}
       >
         Keine Daten
@@ -183,7 +183,7 @@ export function DonutChart({
             x={center}
             y={labelY}
             textAnchor="middle"
-            className="fill-slate-400"
+            className="fill-[var(--app-text-muted)]"
             style={{
               fontSize: hoverSeg ? 9 : 10,
               fontWeight: 600,
@@ -198,7 +198,7 @@ export function DonutChart({
           x={center}
           y={wertY}
           textAnchor="middle"
-          className="fill-slate-100"
+          className="fill-[var(--app-text)]"
           style={{
             fontSize: hoverSeg ? 15 : mitte && !mitte.label ? 20 : 17,
             fontWeight: 700,
@@ -212,7 +212,7 @@ export function DonutChart({
             x={center}
             y={center + 26}
             textAnchor="middle"
-            className="fill-slate-500"
+            className="fill-[var(--app-text-muted)]"
             style={{ fontSize: 9, fontWeight: 500 }}
           >
             {centerAnteil}

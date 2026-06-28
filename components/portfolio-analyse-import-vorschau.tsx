@@ -1,5 +1,6 @@
 'use client'
 
+import { appTableScrollClassName } from '@/components/page-shell'
 import { useEffect, useMemo, useState } from 'react'
 import {
   bereiteBuchungFuerSpeicherung,
@@ -218,16 +219,16 @@ export function PortfolioAnalyseImportVorschau({
     !positionenMitWarnung.some((x) => positionAktiv.has(x.key) && x.warnung)
 
   return (
-    <div className="mt-5 space-y-4 rounded-xl border border-zinc-700/50 bg-zinc-950/40 p-4">
+    <div className="mt-5 space-y-4 rounded-xl border border-[var(--app-border-strong)] bg-[var(--app-surface-muted)] p-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-sm font-medium text-white">
           Vorschau{' '}
-          <span className="font-normal text-zinc-500">({dateiname} — Datei wird nicht gespeichert)</span>
+          <span className="font-normal text-[var(--app-text-muted)]">({dateiname} — Datei wird nicht gespeichert)</span>
         </p>
         <div className="flex flex-wrap gap-2">
           <button
             type="button"
-            className="rounded-lg border border-zinc-700 px-3 py-1.5 text-xs text-zinc-400 hover:text-white"
+            className="rounded-lg border border-[var(--app-border-strong)] px-3 py-1.5 text-xs text-[var(--app-text-muted)] hover:text-white"
             onClick={onVerwerfen}
           >
             Verwerfen
@@ -255,7 +256,7 @@ export function PortfolioAnalyseImportVorschau({
       </div>
 
       <label className="block space-y-1.5">
-        <span className="text-xs font-medium text-zinc-400">Namen blockieren (lokal im Browser, kommagetrennt)</span>
+        <span className="text-xs font-medium text-[var(--app-text-muted)]">Namen blockieren (lokal im Browser, kommagetrennt)</span>
         <div className="flex flex-col gap-2 sm:flex-row">
           <input
             type="text"
@@ -263,13 +264,13 @@ export function PortfolioAnalyseImportVorschau({
             onChange={(e) => onBlocklistChange(e.target.value)}
             onBlur={blocklistSpeichern}
             placeholder="z. B. Max, Mustermann"
-            className="min-w-0 flex-1 rounded-lg border border-zinc-700 bg-zinc-900/80 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-600"
+            className="min-w-0 flex-1 rounded-lg border border-[var(--app-border-strong)] bg-[var(--app-surface-muted)] px-3 py-2 text-sm text-[var(--app-text)] placeholder:text-[var(--app-text-muted)]"
             autoComplete="off"
           />
           <button
             type="button"
             onClick={blocklistSpeichern}
-            className="shrink-0 rounded-lg border border-zinc-600 px-3 py-2 text-xs text-zinc-300 hover:bg-zinc-800"
+            className="shrink-0 rounded-lg border border-[var(--app-border-strong)] px-3 py-2 text-xs text-[var(--app-text)] hover:bg-[var(--app-surface-hover)]"
           >
             Blockliste anwenden
           </button>
@@ -277,21 +278,21 @@ export function PortfolioAnalyseImportVorschau({
       </label>
 
       {ergebnis.hinweise.map((h) => (
-        <p key={h} className="text-xs text-zinc-500">
+        <p key={h} className="text-xs text-[var(--app-text-muted)]">
           {h}
         </p>
       ))}
 
-      <p className="text-xs text-zinc-500">
+      <p className="text-xs text-[var(--app-text-muted)]">
         {buchungAktiv.size} von {buchungenListe.length} Buchung(en) ausgewählt · {positionAktiv.size} von{' '}
         {positionenListe.length} Position(en)
         {positionenListe.length > 0 ? (
-          <label className="ml-2 inline-flex items-center gap-1.5 text-zinc-400">
+          <label className="ml-2 inline-flex items-center gap-1.5 text-[var(--app-text-muted)]">
             <input
               type="checkbox"
               checked={snapshotAktiv}
               onChange={(e) => setSnapshotAktiv(e.target.checked)}
-              className="rounded border-zinc-600"
+              className="rounded border-[var(--app-border-strong)]"
             />
             Depot-Snapshot übernehmen
           </label>
@@ -304,14 +305,14 @@ export function PortfolioAnalyseImportVorschau({
             <button
               type="button"
               onClick={alleBuchungenAnwaehlen}
-              className="text-[11px] text-zinc-500 underline hover:text-zinc-300"
+              className="text-[11px] text-[var(--app-text-muted)] underline hover:text-[var(--app-text)]"
             >
               Alle Buchungen
             </button>
             <button
               type="button"
               onClick={alleBuchungenAbwaehlen}
-              className="text-[11px] text-zinc-500 underline hover:text-zinc-300"
+              className="text-[11px] text-[var(--app-text-muted)] underline hover:text-[var(--app-text)]"
             >
               Keine Buchungen
             </button>
@@ -324,9 +325,9 @@ export function PortfolioAnalyseImportVorschau({
               Ausgewählte aus Liste entfernen
             </button>
           </div>
-          <div className="max-h-64 overflow-auto rounded-lg border border-zinc-800/80">
+          <div className={`max-h-64 overflow-auto rounded-lg border border-[var(--app-border)] ${appTableScrollClassName}`}>
             <table className="w-full min-w-[560px] text-left text-xs">
-              <thead className="sticky top-0 bg-zinc-900/95 text-zinc-500">
+              <thead className="sticky top-0 bg-[var(--app-surface-muted)] text-[var(--app-text-muted)]">
                 <tr>
                   <th className="w-8 px-2 py-2" />
                   <th className="px-2 py-2">Datum</th>
@@ -342,7 +343,7 @@ export function PortfolioAnalyseImportVorschau({
                   return (
                     <tr
                       key={b.buchungsHash}
-                      className={`border-t border-zinc-800/60 ${warnung ? 'bg-amber-950/25' : ''} ${!aktiv ? 'opacity-45' : ''}`}
+                      className={`border-t border-[var(--app-border)] ${warnung ? 'bg-amber-950/25' : ''} ${!aktiv ? 'opacity-45' : ''}`}
                     >
                       <td className="px-2 py-1.5">
                         <input
@@ -352,18 +353,18 @@ export function PortfolioAnalyseImportVorschau({
                           aria-label="Buchung übernehmen"
                         />
                       </td>
-                      <td className="px-2 py-1.5 tabular-nums text-zinc-400">{formatDatumDe(b.datum)}</td>
-                      <td className="px-2 py-1.5 text-zinc-300">{BUCHUNGS_TYP_LABEL[b.typ]}</td>
+                      <td className="px-2 py-1.5 tabular-nums text-[var(--app-text-muted)]">{formatDatumDe(b.datum)}</td>
+                      <td className="px-2 py-1.5 text-[var(--app-text)]">{BUCHUNGS_TYP_LABEL[b.typ]}</td>
                       <td className="max-w-[200px] px-2 py-1.5">
-                        <span className="block truncate text-zinc-300">{b.wertpapierName ?? b.isin ?? '—'}</span>
+                        <span className="block truncate text-[var(--app-text)]">{b.wertpapierName ?? b.isin ?? '—'}</span>
                         {warnung ? <span className="mt-0.5 block text-[10px] text-amber-400">{warnung}</span> : null}
                       </td>
-                      <td className="px-2 py-1.5 text-right tabular-nums text-zinc-200">{formatEur(b.betragEur)}</td>
+                      <td className="px-2 py-1.5 text-right tabular-nums text-[var(--app-text)]">{formatEur(b.betragEur)}</td>
                       <td className="px-1 py-1.5">
                         <button
                           type="button"
                           title="Aus Importliste entfernen"
-                          className="text-zinc-600 hover:text-rose-400"
+                          className="text-[var(--app-text-muted)] hover:text-rose-400"
                           onClick={() => buchungAusListeEntfernen(b.buchungsHash)}
                         >
                           ×
@@ -384,14 +385,14 @@ export function PortfolioAnalyseImportVorschau({
             <button
               type="button"
               onClick={() => setPositionAktiv(new Set(positionenListe.map(positionSchluessel)))}
-              className="text-[11px] text-zinc-500 underline hover:text-zinc-300"
+              className="text-[11px] text-[var(--app-text-muted)] underline hover:text-[var(--app-text)]"
             >
               Alle Positionen
             </button>
             <button
               type="button"
               onClick={() => setPositionAktiv(new Set())}
-              className="text-[11px] text-zinc-500 underline hover:text-zinc-300"
+              className="text-[11px] text-[var(--app-text-muted)] underline hover:text-[var(--app-text)]"
             >
               Keine Positionen
             </button>
@@ -404,9 +405,9 @@ export function PortfolioAnalyseImportVorschau({
               Ausgewählte Positionen entfernen
             </button>
           </div>
-          <div className="max-h-48 overflow-auto rounded-lg border border-zinc-800/80">
+          <div className={`max-h-48 overflow-auto rounded-lg border border-[var(--app-border)] ${appTableScrollClassName}`}>
             <table className="w-full min-w-[480px] text-left text-xs">
-              <thead className="sticky top-0 bg-zinc-900/95 text-zinc-500">
+              <thead className="sticky top-0 bg-[var(--app-surface-muted)] text-[var(--app-text-muted)]">
                 <tr>
                   <th className="w-8 px-2 py-2" />
                   <th className="px-2 py-2">Name / ISIN</th>
@@ -420,7 +421,7 @@ export function PortfolioAnalyseImportVorschau({
                   return (
                     <tr
                       key={key}
-                      className={`border-t border-zinc-800/60 ${warnung ? 'bg-amber-950/25' : ''} ${!aktiv ? 'opacity-45' : ''}`}
+                      className={`border-t border-[var(--app-border)] ${warnung ? 'bg-amber-950/25' : ''} ${!aktiv ? 'opacity-45' : ''}`}
                     >
                       <td className="px-2 py-1.5">
                         <input
@@ -431,15 +432,15 @@ export function PortfolioAnalyseImportVorschau({
                         />
                       </td>
                       <td className="px-2 py-1.5">
-                        <span className="text-zinc-300">{p.name}</span>
-                        {p.isin ? <span className="ml-1 font-mono text-[10px] text-zinc-500">{p.isin}</span> : null}
+                        <span className="text-[var(--app-text)]">{p.name}</span>
+                        {p.isin ? <span className="ml-1 font-mono text-[10px] text-[var(--app-text-muted)]">{p.isin}</span> : null}
                         {warnung ? <span className="mt-0.5 block text-[10px] text-amber-400">{warnung}</span> : null}
                       </td>
-                      <td className="px-2 py-1.5 text-right tabular-nums text-zinc-200">{formatEur(p.wertEur)}</td>
+                      <td className="px-2 py-1.5 text-right tabular-nums text-[var(--app-text)]">{formatEur(p.wertEur)}</td>
                       <td className="px-1 py-1.5">
                         <button
                           type="button"
-                          className="text-zinc-600 hover:text-rose-400"
+                          className="text-[var(--app-text-muted)] hover:text-rose-400"
                           onClick={() => positionAusListeEntfernen(key)}
                         >
                           ×

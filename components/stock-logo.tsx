@@ -23,12 +23,12 @@ export function StockLogo({
   const initials = logoInitialen(symbol)
 
   const imgClass =
-    className ?? 'h-8 w-8 shrink-0 rounded-md border border-zinc-800 bg-zinc-950 p-0.5 object-contain'
+    className ?? 'h-8 w-8 shrink-0 rounded-md border border-[var(--app-border)] bg-[var(--app-surface-muted)] p-0.5 object-contain'
 
   if (step >= urls.length) {
     return (
       <div
-        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-zinc-800 bg-zinc-900 font-mono text-[10px] font-bold uppercase leading-none text-zinc-400"
+        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-[var(--app-border)] bg-[var(--app-surface-muted)] font-mono text-[10px] font-bold uppercase leading-none text-[var(--app-text-muted)]"
         title={symbol}
         aria-label={symbol}
       >

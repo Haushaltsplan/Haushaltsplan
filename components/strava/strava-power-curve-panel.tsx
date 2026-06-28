@@ -18,7 +18,7 @@ export function StravaPowerCurvePanel({
     return (
       <StravaCard padding="md" accent="orange">
         <StravaSectionTitle title="Power Curve" subtitle="Sync mehrfach ausführen für Watt-Streams" />
-        <p className="text-sm text-zinc-500">Noch keine Power-Peak-Daten — benötigt Powermeter + Stream-Sync.</p>
+        <p className="text-sm text-[var(--app-text-muted)]">Noch keine Power-Peak-Daten — benötigt Powermeter + Stream-Sync.</p>
       </StravaCard>
     )
   }
@@ -34,14 +34,14 @@ export function StravaPowerCurvePanel({
         <div className="flex gap-4 text-right">
           {eftp ? (
             <div>
-              <p className="text-[10px] uppercase tracking-wider text-zinc-500">eFTP (geschätzt)</p>
+              <p className="text-[10px] uppercase tracking-wider text-[var(--app-text-muted)]">eFTP (geschätzt)</p>
               <p className="text-xl font-bold tabular-nums text-orange-300">{eftp} W</p>
             </div>
           ) : null}
           {stravaFtp ? (
             <div>
-              <p className="text-[10px] uppercase tracking-wider text-zinc-500">Strava FTP</p>
-              <p className="text-xl font-bold tabular-nums text-zinc-300">{stravaFtp} W</p>
+              <p className="text-[10px] uppercase tracking-wider text-[var(--app-text-muted)]">Strava FTP</p>
+              <p className="text-xl font-bold tabular-nums text-[var(--app-text)]">{stravaFtp} W</p>
             </div>
           ) : null}
         </div>

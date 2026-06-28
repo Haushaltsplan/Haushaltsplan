@@ -1,5 +1,6 @@
 'use client'
 
+import { appTableScrollClassName } from '@/components/page-shell'
 import { useRouter } from 'next/navigation'
 import { useMemo, useState } from 'react'
 import { PortfolioIsinLogo } from '@/components/portfolio-analyse/isin-logo'
@@ -59,7 +60,7 @@ function CopyIsinButton({ isin }: { isin: string }) {
           setTimeout(() => setOk(false), 1500)
         })
       }}
-      className="inline-flex text-zinc-600 hover:text-zinc-400"
+      className="inline-flex text-[var(--app-text-muted)] hover:text-[var(--app-text-muted)]"
       aria-label="ISIN kopieren"
     >
       {ok ? (
@@ -119,30 +120,30 @@ function WertpapierZeile({
         <div className="flex gap-3">
           <PortfolioIsinLogo isin={p.isin} fallbackName={p.name} meta={meta} groesse="md" />
           <div className="min-w-0">
-            <p className="flex flex-wrap items-center gap-1 text-[11px] text-zinc-500">
+            <p className="flex flex-wrap items-center gap-1 text-[11px] text-[var(--app-text-muted)]">
               <span>{assetZeileLabel(p.assetKlasse)}</span>
               {isin ? (
                 <>
-                  <span className="text-zinc-600">·</span>
+                  <span className="text-[var(--app-text-muted)]">·</span>
                   <span className="font-mono">{isin}</span>
                   <CopyIsinButton isin={isin} />
                 </>
               ) : null}
               {p.wkn ? (
                 <>
-                  <span className="text-zinc-600">·</span>
+                  <span className="text-[var(--app-text-muted)]">·</span>
                   <span className="font-mono">{p.wkn}</span>
                 </>
               ) : null}
             </p>
-            <p className="mt-1 text-sm font-semibold leading-snug text-zinc-100">{p.anzeigeName}</p>
+            <p className="mt-1 text-sm font-semibold leading-snug text-[var(--app-text)]">{p.anzeigeName}</p>
           </div>
         </div>
       </td>
       <td className="hidden py-4 pr-4 text-right sm:table-cell">
-        <p className="text-sm font-semibold tabular-nums text-zinc-100">{formatEur(p.wertLiveEur)}</p>
+        <p className="text-sm font-semibold tabular-nums text-[var(--app-text)]">{formatEur(p.wertLiveEur)}</p>
         {p.stueck > 0 && kurs != null && kurs > 0 ? (
-          <p className="mt-0.5 text-[11px] tabular-nums text-zinc-500">
+          <p className="mt-0.5 text-[11px] tabular-nums text-[var(--app-text-muted)]">
             {formatStueck(p.stueck)} x {formatKursKompakt(kurs)}
           </p>
         ) : null}
@@ -159,7 +160,7 @@ function WertpapierZeile({
             </p>
           </>
         ) : (
-          <p className="text-sm text-zinc-600">—</p>
+          <p className="text-sm text-[var(--app-text-muted)]">—</p>
         )}
       </td>
       <td className="hidden py-4 pr-4 text-right lg:table-cell">
@@ -172,22 +173,22 @@ function WertpapierZeile({
           </>
         ) : (
           <>
-            <p className="text-sm tabular-nums text-zinc-400">{formatEur(0)}</p>
-            <p className="mt-0.5 text-[11px] text-zinc-600">—</p>
+            <p className="text-sm tabular-nums text-[var(--app-text-muted)]">{formatEur(0)}</p>
+            <p className="mt-0.5 text-[11px] text-[var(--app-text-muted)]">—</p>
           </>
         )}
       </td>
       <td className="hidden py-4 pr-4 text-right xl:table-cell">
         <div className="inline-flex items-center justify-end gap-2">
-          <span className="h-2 w-2 rounded-full border border-zinc-600" aria-hidden />
-          <span className="text-sm tabular-nums text-zinc-300">
+          <span className="h-2 w-2 rounded-full border border-[var(--app-border-strong)]" aria-hidden />
+          <span className="text-sm tabular-nums text-[var(--app-text)]">
             {p.gewichtProzent.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} %
           </span>
         </div>
       </td>
       <td className="py-4 pr-3 sm:hidden">
         <div className="space-y-2 text-right text-[11px]">
-          <p className="text-sm font-semibold tabular-nums text-zinc-100">{formatEur(p.wertLiveEur)}</p>
+          <p className="text-sm font-semibold tabular-nums text-[var(--app-text)]">{formatEur(p.wertLiveEur)}</p>
           {gvPct != null ? (
             <p className={positiv ? 'text-emerald-400' : 'text-rose-400'}>
               {formatGewinnEur(gv)} · {formatProzent(gvPct)}
@@ -249,7 +250,7 @@ export function PaWertpapiereListe({
 
   if (positionen.length === 0) {
     return (
-      <PaCard variant="elevated" className="p-8 text-center text-sm text-zinc-500">
+      <PaCard variant="elevated" className="p-8 text-center text-sm text-[var(--app-text-muted)]">
         Keine offenen Positionen.
       </PaCard>
     )
@@ -263,7 +264,7 @@ export function PaWertpapiereListe({
         className="flex w-full items-center gap-3 border-b border-white/[0.04] px-4 py-3.5 text-left sm:px-5"
       >
         <svg
-          className={`h-4 w-4 shrink-0 text-zinc-500 transition-transform ${offen ? 'rotate-0' : '-rotate-90'}`}
+          className={`h-4 w-4 shrink-0 text-[var(--app-text-muted)] transition-transform ${offen ? 'rotate-0' : '-rotate-90'}`}
           viewBox="0 0 24 24"
           fill="none"
           stroke="currentColor"
@@ -271,19 +272,19 @@ export function PaWertpapiereListe({
         >
           <path d="M6 9l6 6 6-6" />
         </svg>
-        <h2 className="text-sm font-semibold text-zinc-100">Wertpapiere</h2>
+        <h2 className="text-sm font-semibold text-[var(--app-text)]">Wertpapiere</h2>
         <span className="flex items-center gap-2 text-[11px] tabular-nums">
           <span className="text-emerald-400">↑ {gewinner}</span>
           <span className="text-rose-400">↓ {verlierer}</span>
         </span>
-        {laden ? <span className="ml-auto text-[11px] text-zinc-600">Kurse …</span> : null}
+        {laden ? <span className="ml-auto text-[11px] text-[var(--app-text-muted)]">Kurse …</span> : null}
       </button>
 
       {offen ? (
-        <div className="overflow-x-auto">
+        <div className={appTableScrollClassName}>
           <table className="w-full min-w-[640px] border-collapse text-left">
             <thead>
-              <tr className="border-b border-white/[0.04] text-[10px] font-medium uppercase tracking-wider text-zinc-500">
+              <tr className="border-b border-white/[0.04] text-[10px] font-medium uppercase tracking-wider text-[var(--app-text-muted)]">
                 <th className="py-3 pl-4 pr-3 font-medium sm:pl-5">Name</th>
                 <th className="hidden py-3 pr-4 text-right font-medium sm:table-cell">Position / Kurs</th>
                 <th className="hidden py-3 pr-4 text-right font-medium md:table-cell">

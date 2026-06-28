@@ -104,7 +104,7 @@ export function PortfolioAktivitaetenClient() {
       {!laden && !hatDaten ? null : (
         <PaCard variant="elevated" className="min-w-0 overflow-hidden p-4 sm:p-6">
             {!hatDaten ? (
-              <p className="text-sm text-zinc-500">
+              <p className="text-sm text-[var(--app-text-muted)]">
                 <Link href="/portfolioanalyse/import" className="text-teal-400 hover:underline">
                   Daten importieren
                 </Link>
@@ -112,14 +112,14 @@ export function PortfolioAktivitaetenClient() {
             ) : (
               <div className="space-y-6">
                 <div className="flex flex-wrap items-start justify-between gap-4">
-                  <p className="text-sm text-zinc-500">
+                  <p className="text-sm text-[var(--app-text-muted)]">
                     {stats.kaeufe} Käufe · {stats.verkaeufe} Verkäufe · {stats.dividenden} Dividenden
                     {stats.andere > 0 ? ` · ${stats.andere} Andere` : ''}
                   </p>
                   <button
                     type="button"
                     onClick={csvExport}
-                    className="rounded-lg border border-zinc-700/60 bg-zinc-900/50 px-4 py-2 text-sm text-zinc-200 hover:bg-zinc-800/60"
+                    className="rounded-lg border border-[var(--app-border-strong)] bg-[var(--app-surface-muted)] px-4 py-2 text-sm text-[var(--app-text)] hover:bg-[var(--app-surface-hover)]"
                   >
                     Export als CSV
                   </button>
@@ -129,7 +129,7 @@ export function PortfolioAktivitaetenClient() {
                   <select
                     value={typFilter}
                     onChange={(e) => setTypFilter(e.target.value as BuchungsTyp | 'alle')}
-                    className="rounded-lg border border-zinc-800 bg-zinc-950/60 px-3 py-2 text-sm text-zinc-200"
+                    className="rounded-lg border border-[var(--app-border)] bg-[var(--app-surface-muted)] px-3 py-2 text-sm text-[var(--app-text)]"
                   >
                     <option value="alle">Alle Aktivitäten</option>
                     {(Object.keys(BUCHUNGS_TYP_LABEL) as BuchungsTyp[]).map((t) => (
@@ -141,7 +141,7 @@ export function PortfolioAktivitaetenClient() {
                   <select
                     value={isinFilter}
                     onChange={(e) => setIsinFilter(e.target.value)}
-                    className="max-w-xs rounded-lg border border-zinc-800 bg-zinc-950/60 px-3 py-2 text-sm text-zinc-200"
+                    className="max-w-xs rounded-lg border border-[var(--app-border)] bg-[var(--app-surface-muted)] px-3 py-2 text-sm text-[var(--app-text)]"
                   >
                     <option value="alle">Alle Assets</option>
                     {assetOptionen.map(([isin, name]) => (
@@ -154,21 +154,21 @@ export function PortfolioAktivitaetenClient() {
 
                 <div className="space-y-2">
                   {gruppen.length === 0 ? (
-                    <p className="py-8 text-center text-sm text-zinc-500">Keine Buchungen für diese Filter.</p>
+                    <p className="py-8 text-center text-sm text-[var(--app-text-muted)]">Keine Buchungen für diese Filter.</p>
                   ) : (
                     gruppen.map((jahr) => (
                       <PaCard key={jahr.jahr} variant="elevated" className="overflow-hidden">
                         <button
                           type="button"
                           onClick={() => toggleJahr(jahr.jahr)}
-                          className="flex w-full flex-wrap items-center gap-3 border-b border-zinc-800/60 px-4 py-3 text-left hover:bg-zinc-800/20"
+                          className="flex w-full flex-wrap items-center gap-3 border-b border-[var(--app-border)] px-4 py-3 text-left hover:bg-[var(--app-surface-hover)]/20"
                         >
-                          <span className="text-lg font-semibold text-zinc-100">{jahr.jahr}</span>
-                          <span className="text-xs text-zinc-500">
+                          <span className="text-lg font-semibold text-[var(--app-text)]">{jahr.jahr}</span>
+                          <span className="text-xs text-[var(--app-text-muted)]">
                             {jahr.anzahl} Aktivitäten · Käufe {formatEur(jahr.kaeufeSumme)} · Verkäufe{' '}
                             {formatEur(jahr.verkaeufeSumme)} · Div. {formatEur(jahr.dividendenSumme)}
                           </span>
-                          <span className="ml-auto text-zinc-500">{offenJahre.has(jahr.jahr) ? '▼' : '▶'}</span>
+                          <span className="ml-auto text-[var(--app-text-muted)]">{offenJahre.has(jahr.jahr) ? '▼' : '▶'}</span>
                         </button>
                         {offenJahre.has(jahr.jahr)
                           ? jahr.monate.map((monat) => (
@@ -176,19 +176,19 @@ export function PortfolioAktivitaetenClient() {
                                 <button
                                   type="button"
                                   onClick={() => toggleMonat(monat.key)}
-                                  className="flex w-full flex-wrap items-center gap-2 border-b border-zinc-800/40 bg-zinc-950/30 px-5 py-2.5 text-left text-sm hover:bg-zinc-800/20"
+                                  className="flex w-full flex-wrap items-center gap-2 border-b border-[var(--app-border)]/40 bg-[var(--app-surface-muted)]/30 px-5 py-2.5 text-left text-sm hover:bg-[var(--app-surface-hover)]/20"
                                 >
-                                  <span className="font-medium capitalize text-zinc-300">{monat.label}</span>
-                                  <span className="text-xs text-zinc-500">
+                                  <span className="font-medium capitalize text-[var(--app-text)]">{monat.label}</span>
+                                  <span className="text-xs text-[var(--app-text-muted)]">
                                     {monat.anzahl} · {formatEur(monat.kaeufeSumme)} /{' '}
                                     {formatEur(monat.verkaeufeSumme)} / {formatEur(monat.dividendenSumme)}
                                   </span>
-                                  <span className="ml-auto text-zinc-600">
+                                  <span className="ml-auto text-[var(--app-text-muted)]">
                                     {offenMonate.has(monat.key) ? '▼' : '▶'}
                                   </span>
                                 </button>
                                 {offenMonate.has(monat.key) ? (
-                                  <ul className="divide-y divide-zinc-800/40">
+                                  <ul className="divide-y divide-[var(--app-border)]">
                                     {monat.buchungen.map((b) => (
                                       <AktivitaetenZeile key={b.id} b={b} meta={meta} />
                                     ))}
@@ -229,12 +229,12 @@ function AktivitaetenZeile({
     >
       <div className="flex min-w-[7rem] items-center gap-2">
         <PaBadge variant={badgeVariant(b.typ)}>{BUCHUNGS_TYP_LABEL[b.typ]}</PaBadge>
-        <span className="text-xs tabular-nums text-zinc-500">{formatDatumZeit(b.datum)}</span>
+        <span className="text-xs tabular-nums text-[var(--app-text-muted)]">{formatDatumZeit(b.datum)}</span>
       </div>
       <PortfolioIsinLogo isin={b.isin} fallbackName={name} meta={meta} groesse="md" />
       <div className="min-w-0 flex-1">
-        <p className="text-sm font-medium text-zinc-100">{name}</p>
-        <p className="text-[11px] text-zinc-500">
+        <p className="text-sm font-medium text-[var(--app-text)]">{name}</p>
+        <p className="text-[11px] text-[var(--app-text-muted)]">
           {ASSET_KLASSE_LABEL[b.assetKlasse]}
           {b.isin ? (
             <>
@@ -246,10 +246,10 @@ function AktivitaetenZeile({
         </p>
       </div>
       <div className="ml-auto text-right">
-        <p className="text-sm font-semibold tabular-nums text-zinc-100">{formatEur(b.betragEur)}</p>
+        <p className="text-sm font-semibold tabular-nums text-[var(--app-text)]">{formatEur(b.betragEur)}</p>
         {b.stueck != null && b.stueck > 0 ? (
-          <p className="mt-0.5 text-[11px] text-zinc-500">
-            <span className="rounded-full bg-zinc-800/80 px-2 py-0.5">
+          <p className="mt-0.5 text-[11px] text-[var(--app-text-muted)]">
+            <span className="rounded-full bg-[var(--app-surface-hover)] px-2 py-0.5">
               {b.stueck.toLocaleString('de-DE', { maximumFractionDigits: 4 })}×{' '}
               {b.kursEur != null
                 ? b.kursEur.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })

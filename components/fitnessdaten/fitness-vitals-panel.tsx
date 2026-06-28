@@ -72,13 +72,13 @@ export function FitnessVitalsPanel({ onSaved, embedded = false }: Props) {
       <div className="mt-4 rounded-xl border border-white/[0.06] bg-white/[0.02] p-3">
         <div className="flex items-center justify-between">
           <div>
-            <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-300">VO₂ Max</p>
-            <p className="mt-0.5 text-[10px] text-zinc-500">
+            <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--app-text)]">VO₂ Max</p>
+            <p className="mt-0.5 text-[10px] text-[var(--app-text-muted)]">
               Wird automatisch via Cloud Sync geladen (Monatsdurchschnitt aus WHOOP)
             </p>
           </div>
           {vo2Gespeichert != null && (
-            <span className="ml-3 shrink-0 rounded-lg bg-zinc-800 px-2 py-1 text-sm font-bold tabular-nums text-zinc-300">
+            <span className="ml-3 shrink-0 rounded-lg bg-[var(--app-surface-muted)] px-2 py-1 text-sm font-bold tabular-nums text-[var(--app-text)]">
               {vo2Gespeichert}
             </span>
           )}
@@ -98,7 +98,7 @@ export function FitnessVitalsPanel({ onSaved, embedded = false }: Props) {
                 toast.success('Override gelöscht — VO₂ Max kommt wieder aus Cloud Sync.')
                 onSaved?.()
               }}
-              className="rounded-lg border border-zinc-700 px-3 py-1.5 text-xs text-zinc-500 transition hover:text-zinc-300"
+              className="rounded-lg border border-[var(--app-border-strong)] px-3 py-1.5 text-xs text-[var(--app-text-muted)] transition hover:text-[var(--app-text)]"
             >
               Override löschen
             </button>
@@ -106,7 +106,7 @@ export function FitnessVitalsPanel({ onSaved, embedded = false }: Props) {
         ) : (
           /* Notfall-Override: nur zugänglich wenn Cloud Sync fehlschlägt */
           <details className="mt-2">
-            <summary className="cursor-pointer text-[9px] text-zinc-600 hover:text-zinc-400">
+            <summary className="cursor-pointer text-[9px] text-[var(--app-text-muted)] hover:text-[var(--app-text-muted)]">
               Cloud Sync liefert keinen Wert? Notfall-Override
             </summary>
             <div className="mt-2 flex gap-2">
@@ -118,57 +118,57 @@ export function FitnessVitalsPanel({ onSaved, embedded = false }: Props) {
                 placeholder="z. B. 57"
                 value={vo2Input}
                 onChange={(e) => setVo2Input(e.target.value)}
-                className="flex-1 rounded-xl border border-white/[0.08] bg-black/30 px-3 py-2 text-sm text-zinc-100 tabular-nums outline-none focus:border-white/20"
+                className="flex-1 rounded-xl border border-white/[0.08] bg-black/30 px-3 py-2 text-sm text-[var(--app-text)] tabular-nums outline-none focus:border-white/20"
               />
               <button
                 type="button"
                 onClick={speichernVo2}
-                className="rounded-xl border border-zinc-700 bg-zinc-800 px-4 py-2 text-sm font-semibold text-zinc-300 transition hover:bg-zinc-700"
+                className="rounded-xl border border-[var(--app-border-strong)] bg-[var(--app-surface-muted)] px-4 py-2 text-sm font-semibold text-[var(--app-text)] transition hover:bg-[var(--app-surface-muted)]"
               >
                 Setzen
               </button>
             </div>
-            <p className="mt-1 text-[9px] text-zinc-600">
+            <p className="mt-1 text-[9px] text-[var(--app-text-muted)]">
               Nur nutzen wenn WHOOP Cloud Sync keinen VO₂ Max-Wert zurückgibt.
             </p>
           </details>
         )}
       </div>
 
-      <p className="mt-4 text-xs leading-relaxed text-zinc-500">
+      <p className="mt-4 text-xs leading-relaxed text-[var(--app-text-muted)]">
         Blutdruck aus WHOOP Life manuell übernehmen (App → Health Monitor). SpO₂ optional als Zusatzmessung.
       </p>
 
       <div className="mt-3 grid grid-cols-2 gap-3">
         <label className="block">
-          <span className="text-[10px] font-semibold uppercase text-zinc-500">Systole</span>
+          <span className="text-[10px] font-semibold uppercase text-[var(--app-text-muted)]">Systole</span>
           <input
             type="number"
             placeholder="120"
             value={sys}
             onChange={(e) => setSys(e.target.value)}
-            className="mt-1 w-full rounded-xl border border-white/[0.08] bg-black/30 px-3 py-2 text-sm text-zinc-100 outline-none"
+            className="mt-1 w-full rounded-xl border border-white/[0.08] bg-black/30 px-3 py-2 text-sm text-[var(--app-text)] outline-none"
           />
         </label>
         <label className="block">
-          <span className="text-[10px] font-semibold uppercase text-zinc-500">Diastole</span>
+          <span className="text-[10px] font-semibold uppercase text-[var(--app-text-muted)]">Diastole</span>
           <input
             type="number"
             placeholder="80"
             value={dia}
             onChange={(e) => setDia(e.target.value)}
-            className="mt-1 w-full rounded-xl border border-white/[0.08] bg-black/30 px-3 py-2 text-sm text-zinc-100 outline-none"
+            className="mt-1 w-full rounded-xl border border-white/[0.08] bg-black/30 px-3 py-2 text-sm text-[var(--app-text)] outline-none"
           />
         </label>
         <label className="block col-span-2">
-          <span className="text-[10px] font-semibold uppercase text-zinc-500">SpO₂ optional (%)</span>
+          <span className="text-[10px] font-semibold uppercase text-[var(--app-text-muted)]">SpO₂ optional (%)</span>
           <input
             type="number"
             step={0.1}
             placeholder="98"
             value={spo2}
             onChange={(e) => setSpo2(e.target.value)}
-            className="mt-1 w-full rounded-xl border border-white/[0.08] bg-black/30 px-3 py-2 text-sm text-zinc-100 outline-none"
+            className="mt-1 w-full rounded-xl border border-white/[0.08] bg-black/30 px-3 py-2 text-sm text-[var(--app-text)] outline-none"
           />
         </label>
       </div>
@@ -178,7 +178,7 @@ export function FitnessVitalsPanel({ onSaved, embedded = false }: Props) {
         placeholder="Notiz (optional)"
         value={note}
         onChange={(e) => setNote(e.target.value)}
-        className="mt-3 w-full rounded-xl border border-white/[0.06] bg-black/20 px-3 py-2 text-xs text-zinc-300 outline-none"
+        className="mt-3 w-full rounded-xl border border-white/[0.06] bg-black/20 px-3 py-2 text-xs text-[var(--app-text)] outline-none"
       />
 
       <button
@@ -190,7 +190,7 @@ export function FitnessVitalsPanel({ onSaved, embedded = false }: Props) {
       </button>
 
       {letzte.length > 0 ? (
-        <ul className="mt-3 space-y-1 text-[10px] text-zinc-500">
+        <ul className="mt-3 space-y-1 text-[10px] text-[var(--app-text-muted)]">
           {letzte.map((v) => (
             <li key={v.id}>
               {v.date}:{' '}

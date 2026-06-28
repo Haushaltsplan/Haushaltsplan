@@ -97,13 +97,13 @@ export function WhoopMetricTrendModal({ metricId, heute, onClose }: Props) {
       >
         <div className="flex shrink-0 items-start justify-between border-b border-white/[0.06] px-5 py-4">
           <div>
-            <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-zinc-500">Trendanzeige</p>
+            <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-[var(--app-text-muted)]">Trendanzeige</p>
             <h2 className="mt-1 text-base font-semibold uppercase tracking-wide text-white">{meta.label}</h2>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="rounded-xl p-2 text-zinc-500 hover:bg-white/[0.06] hover:text-white"
+            className="rounded-xl p-2 text-[var(--app-text-muted)] hover:bg-white/[0.06] hover:text-white"
             aria-label="Schließen"
           >
             ×
@@ -119,7 +119,7 @@ export function WhoopMetricTrendModal({ metricId, heute, onClose }: Props) {
               className={`min-w-[2.5rem] rounded-lg py-2 text-[11px] font-bold transition ${
                 zeitraum === z.id
                   ? 'bg-white/[0.12] text-white'
-                  : 'text-zinc-500 hover:text-zinc-300'
+                  : 'text-[var(--app-text-muted)] hover:text-[var(--app-text)]'
               }`}
             >
               {z.label}
@@ -139,10 +139,10 @@ export function WhoopMetricTrendModal({ metricId, heute, onClose }: Props) {
           />
 
           <div className="mt-4 rounded-xl border border-white/[0.06] bg-white/[0.03] px-4 py-3">
-            <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">Was ist das?</p>
-            <p className="mt-2 text-sm leading-relaxed text-zinc-300">{info.body}</p>
+            <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--app-text-muted)]">Was ist das?</p>
+            <p className="mt-2 text-sm leading-relaxed text-[var(--app-text)]">{info.body}</p>
             {info.source ? (
-              <p className="mt-2 text-[11px] text-zinc-500">Quelle: {info.source}</p>
+              <p className="mt-2 text-[11px] text-[var(--app-text-muted)]">Quelle: {info.source}</p>
             ) : null}
           </div>
         </div>

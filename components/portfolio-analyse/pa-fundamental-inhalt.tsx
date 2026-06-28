@@ -120,7 +120,7 @@ export function PaFundamentalInhalt({
 
   if (!anfrage) {
     return (
-      <PaCard className="p-8 text-center text-sm text-zinc-500">
+      <PaCard className="p-8 text-center text-sm text-[var(--app-text-muted)]">
         Wähle ein Unternehmen, um Fundamentaldaten anzuzeigen.
       </PaCard>
     )
@@ -136,7 +136,7 @@ export function PaFundamentalInhalt({
   return (
     <div className="space-y-4">
       {laden && !daten?.ok ? (
-        <PaCard className="p-8 text-center text-sm text-zinc-500">
+        <PaCard className="p-8 text-center text-sm text-[var(--app-text-muted)]">
           Fundamentaldaten werden von Macrotrends geladen …
         </PaCard>
       ) : null}
@@ -145,13 +145,13 @@ export function PaFundamentalInhalt({
         <PaCard className="space-y-4 p-6">
           <p className="text-sm text-amber-200/90">{fehler}</p>
           <div>
-            <label className="mb-1 block text-xs text-zinc-500">Macrotrends-Ticker manuell (z. B. AAPL, ASML)</label>
+            <label className="mb-1 block text-xs text-[var(--app-text-muted)]">Macrotrends-Ticker manuell (z. B. AAPL, ASML)</label>
             <div className="flex gap-2">
               <input
                 value={tickerOverride}
                 onChange={(e) => setTickerOverride(e.target.value.toUpperCase())}
                 placeholder="Ticker"
-                className="flex-1 rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100"
+                className="flex-1 rounded-lg border border-[var(--app-border-strong)] bg-[var(--app-surface-muted)] px-3 py-2 text-sm text-[var(--app-text)]"
               />
               <button
                 type="button"
@@ -228,15 +228,15 @@ export function PaFundamentalInhalt({
             <div className="space-y-4">
               {(unterTab === 'finanzdaten' || unterTab === 'bewertung') && (
                 <div className="flex items-center gap-2">
-                  <span className="text-xs text-zinc-500">Periode:</span>
-                  <div className="inline-flex rounded-lg border border-zinc-700 bg-zinc-900/80 p-0.5">
+                  <span className="text-xs text-[var(--app-text-muted)]">Periode:</span>
+                  <div className="inline-flex rounded-lg border border-[var(--app-border-strong)] bg-[var(--app-surface-muted)] p-0.5">
                     <button
                       type="button"
                       onClick={() => setFrequenz('jahr')}
                       className={`rounded-md px-3 py-1.5 text-xs font-medium transition ${
                         frequenz === 'jahr'
                           ? 'bg-amber-600/90 text-white'
-                          : 'text-zinc-400 hover:text-zinc-200'
+                          : 'text-[var(--app-text-muted)] hover:text-[var(--app-text)]'
                       }`}
                     >
                       Jahr
@@ -247,14 +247,14 @@ export function PaFundamentalInhalt({
                       className={`rounded-md px-3 py-1.5 text-xs font-medium transition ${
                         frequenz === 'quartal'
                           ? 'bg-amber-600/90 text-white'
-                          : 'text-zinc-400 hover:text-zinc-200'
+                          : 'text-[var(--app-text-muted)] hover:text-[var(--app-text)]'
                       }`}
                     >
                       Quartal
                     </button>
                   </div>
                   {laden && daten?.frequenz !== frequenz ? (
-                    <span className="text-xs text-zinc-500">Lade {frequenz === 'quartal' ? 'Quartals' : 'Jahres'}daten …</span>
+                    <span className="text-xs text-[var(--app-text-muted)]">Lade {frequenz === 'quartal' ? 'Quartals' : 'Jahres'}daten …</span>
                   ) : null}
                 </div>
               )}
@@ -327,7 +327,7 @@ export function PaFundamentalInhalt({
             </div>
           ) : null}
 
-          <p className="text-[10px] text-zinc-600">
+          <p className="text-[10px] text-[var(--app-text-muted)]">
             Quellen: Macrotrends.net · Yahoo Finance ·{' '}
             {daten.frequenz === 'quartal' ? 'Quartalsdaten' : 'Jahresdaten'} · Stand{' '}
             {new Date(daten.geladenAm).toLocaleString('de-DE')} · Cache 24h

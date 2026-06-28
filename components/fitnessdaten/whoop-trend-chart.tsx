@@ -1,5 +1,6 @@
 'use client'
 
+import { appTableScrollInlineClassName } from '@/components/page-shell'
 import { useCallback, useMemo, useRef, useState } from 'react'
 
 export type WhoopTrendPoint = {
@@ -112,14 +113,14 @@ export function WhoopTrendChart({
 
   return (
     <div className="rounded-2xl border border-white/[0.06] bg-[#0f1012] p-4">
-      <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">{title}</p>
+      <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--app-text-muted)]">{title}</p>
 
       <div className="mt-3 flex items-end justify-between gap-3">
         <div>
-          <p className="text-[10px] font-semibold uppercase tracking-wide text-zinc-500">Durchschnitt</p>
+          <p className="text-[10px] font-semibold uppercase tracking-wide text-[var(--app-text-muted)]">Durchschnitt</p>
           <p className="text-3xl font-bold tabular-nums text-white">
             {aktiv ? formatValue(aktiv.value) : '—'}
-            {unit ? <span className="ml-1 text-sm font-medium text-zinc-500">{unit}</span> : null}
+            {unit ? <span className="ml-1 text-sm font-medium text-[var(--app-text-muted)]">{unit}</span> : null}
           </p>
           {trendPct != null ? (
             <span
@@ -131,22 +132,22 @@ export function WhoopTrendChart({
             </span>
           ) : null}
           {aktiv?.label ? (
-            <p className="mt-1 text-[11px] text-zinc-500">{aktiv.label}</p>
+            <p className="mt-1 text-[11px] text-[var(--app-text-muted)]">{aktiv.label}</p>
           ) : null}
         </div>
         {avg != null ? (
           <div className="text-right">
-            <p className="text-[9px] font-bold uppercase text-zinc-600">Monats-Ø</p>
-            <p className="text-sm font-bold tabular-nums text-zinc-400">
+            <p className="text-[9px] font-bold uppercase text-[var(--app-text-muted)]">Monats-Ø</p>
+            <p className="text-sm font-bold tabular-nums text-[var(--app-text-muted)]">
               {formatValue(avg)}
             </p>
           </div>
         ) : null}
       </div>
 
-      {insight ? <p className="mt-3 text-xs leading-relaxed text-zinc-400">{insight}</p> : null}
+      {insight ? <p className="mt-3 text-xs leading-relaxed text-[var(--app-text-muted)]">{insight}</p> : null}
 
-      <div className="mt-4 overflow-x-auto">
+      <div className={`mt-4 ${appTableScrollInlineClassName}`}>
         <svg
           ref={svgRef}
           viewBox={`0 0 ${w} ${h}`}
@@ -260,7 +261,7 @@ export function WhoopTrendChart({
         </svg>
       </div>
 
-      <p className="mt-2 text-center text-[10px] text-zinc-600">
+      <p className="mt-2 text-center text-[10px] text-[var(--app-text-muted)]">
         Wische über die Grafik, um frühere Tage zu sehen
       </p>
     </div>

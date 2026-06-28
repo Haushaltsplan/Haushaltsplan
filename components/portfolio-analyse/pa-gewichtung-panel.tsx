@@ -261,7 +261,7 @@ export function PaGewichtungPanel({
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <PaIconTabs tabs={DIMENSION_TABS} active={dimension} onChange={setDimension} className="flex-1" />
-        <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-zinc-800 bg-zinc-950/50 px-3 py-2 text-xs text-zinc-400">
+        <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-[var(--app-border)] bg-[var(--app-surface-muted)] px-3 py-2 text-xs text-[var(--app-text-muted)]">
           <input
             type="checkbox"
             checked={xrayAn}
@@ -275,9 +275,9 @@ export function PaGewichtungPanel({
         </label>
       </div>
 
-      <p className="text-xs text-zinc-500">{stats}</p>
+      <p className="text-xs text-[var(--app-text-muted)]">{stats}</p>
       {xrayAn && etfBreakdownLaden ? (
-        <p className="text-[11px] leading-relaxed text-zinc-500">ETF-Zusammensetzungen werden geladen …</p>
+        <p className="text-[11px] leading-relaxed text-[var(--app-text-muted)]">ETF-Zusammensetzungen werden geladen …</p>
       ) : null}
       {xrayAn && !etfBreakdownLaden && fehlendeEtf.length > 0 ? (
         <p className="text-[11px] leading-relaxed text-amber-200/80">
@@ -286,19 +286,19 @@ export function PaGewichtungPanel({
         </p>
       ) : null}
       {xrayAn && !lookthroughMoeglich && !etfBreakdownLaden ? (
-        <p className="text-[11px] leading-relaxed text-zinc-600">
+        <p className="text-[11px] leading-relaxed text-[var(--app-text-muted)]">
           X-Ray benötigt Holdings-Daten der ETFs. Für Index-ETFs werden alle Konstituenten geladen; sonst Amundi/Yahoo.
         </p>
       ) : null}
       {sektorNachladen ? (
-        <p className="text-[11px] leading-relaxed text-zinc-500">
+        <p className="text-[11px] leading-relaxed text-[var(--app-text-muted)]">
           Sektoren aus Fundamentaldaten werden geladen …
         </p>
       ) : null}
 
       <div className="grid gap-6 lg:grid-cols-2">
         <PaCard variant="elevated" className="flex flex-col items-center justify-center p-6">
-          <p className="mb-4 self-start text-sm font-medium text-zinc-300">{titel}</p>
+          <p className="mb-4 self-start text-sm font-medium text-[var(--app-text)]">{titel}</p>
           <DonutChart
             segmente={donut}
             groesse={220}
@@ -308,23 +308,23 @@ export function PaGewichtungPanel({
           <p className="mt-3 text-center text-lg font-semibold tabular-nums text-white">
             {formatEur(depotwertEur)}
           </p>
-          <p className="text-[11px] text-zinc-500">Gesamt</p>
+          <p className="text-[11px] text-[var(--app-text-muted)]">Gesamt</p>
           {summeProzent != null ? (
-            <p className="mt-1 text-[11px] tabular-nums text-zinc-500">
+            <p className="mt-1 text-[11px] tabular-nums text-[var(--app-text-muted)]">
               Summe sichtbar: {summeProzent.toLocaleString('de-DE', { maximumFractionDigits: 2 })} %
             </p>
           ) : null}
         </PaCard>
 
         <PaCard variant="elevated" className="max-h-[28rem] overflow-y-auto p-4">
-          <p className="mb-3 text-[11px] text-zinc-600">
+          <p className="mb-3 text-[11px] text-[var(--app-text-muted)]">
             {drilldownAktiv
               ? 'Sektor antippen → Firmen darunter · Firmenzeile antippen für Euro'
               : 'Antippen für Depotwert in Euro'}
           </p>
           <ul className="space-y-4">
             {eintraege.length === 0 ? (
-              <li className="py-8 text-center text-sm text-zinc-500">
+              <li className="py-8 text-center text-sm text-[var(--app-text-muted)]">
                 {xrayAn && etfBreakdownLaden ? 'X-Ray wird vorbereitet …' : 'Keine Positionen.'}
               </li>
             ) : (
@@ -393,17 +393,17 @@ export function PaGewichtungPanel({
                           style={{ background: e.farbe }}
                         />
                       )}
-                      <span className="min-w-0 flex-1 truncate text-sm text-zinc-200">
+                      <span className="min-w-0 flex-1 truncate text-sm text-[var(--app-text)]">
                         {e.label}
-                        <span className="text-zinc-500"> ({e.anzahl})</span>
+                        <span className="text-[var(--app-text-muted)]"> ({e.anzahl})</span>
                         {drilldownAktiv ? (
-                          <span className="ml-1 text-[10px] text-zinc-600">
+                          <span className="ml-1 text-[10px] text-[var(--app-text-muted)]">
                             {expanded ? '▾' : '▸'}
                           </span>
                         ) : null}
                       </span>
                       <span
-                        className={`shrink-0 text-sm tabular-nums ${zeigeEuro ? 'font-semibold text-teal-300' : 'text-zinc-100'}`}
+                        className={`shrink-0 text-sm tabular-nums ${zeigeEuro ? 'font-semibold text-teal-300' : 'text-[var(--app-text)]'}`}
                       >
                         {zeigeEuro
                           ? formatEur(wertEur)
@@ -413,7 +413,7 @@ export function PaGewichtungPanel({
                             })} %`}
                       </span>
                     </div>
-                    <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-zinc-800">
+                    <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-[var(--app-surface-muted)]">
                       <div
                         className="h-full rounded-full bg-teal-500"
                         style={{ width: `${Math.min(100, e.gewichtProzent)}%` }}
@@ -422,7 +422,7 @@ export function PaGewichtungPanel({
 
                     {expanded ? (
                       firmen.length > 0 ? (
-                      <ul className="mt-2 max-h-64 space-y-2 overflow-y-auto border-l border-zinc-800 pl-3 ml-1">
+                      <ul className="mt-2 max-h-64 space-y-2 overflow-y-auto border-l border-[var(--app-border)] pl-3 ml-1">
                         {firmen.map((f) => {
                           const logoCtx = assetLogoKontext(f, posByIsin, symbolZuIsin, meta)
                           const pos = logoCtx.isin ? posByIsin.get(logoCtx.isin) : undefined
@@ -436,10 +436,10 @@ export function PaGewichtungPanel({
                                 meta={meta}
                                 groesse="sm"
                               />
-                              <span className="min-w-0 flex-1 truncate text-xs text-zinc-400">{f.label}</span>
+                              <span className="min-w-0 flex-1 truncate text-xs text-[var(--app-text-muted)]">{f.label}</span>
                               <button
                                 type="button"
-                                className="shrink-0 text-xs tabular-nums text-zinc-300 hover:text-teal-300"
+                                className="shrink-0 text-xs tabular-nums text-[var(--app-text)] hover:text-teal-300"
                                 onClick={() => setEuroKey((k) => (k === f.key ? null : f.key))}
                               >
                                 {fEuro
@@ -451,7 +451,7 @@ export function PaGewichtungPanel({
                         })}
                       </ul>
                       ) : (
-                        <p className="mt-2 pl-3 text-[11px] text-zinc-600">Keine Detailpositionen in dieser Gruppe.</p>
+                        <p className="mt-2 pl-3 text-[11px] text-[var(--app-text-muted)]">Keine Detailpositionen in dieser Gruppe.</p>
                       )
                     ) : null}
                   </li>

@@ -119,7 +119,7 @@ export function BesitzAnreichernRunner({ zeilen, laden, autoStart = true, onFert
               Art (T-Shirt, Jeans …), Größe/Farbe aus Bezeichnung — Produktfotos per Websuche (Marke, Artikelnummer).
             </p>
             {fortschritt ? (
-              <p className="mt-1 text-[11px] tabular-nums text-slate-400">
+              <p className="mt-1 text-[11px] tabular-nums text-[var(--app-text-muted)]">
                 {fortschritt.erledigt} / {fortschritt.gesamt}
                 {fortschritt.fotos ? ` · ${fortschritt.fotos} Fotos` : ''}
                 {fortschritt.fehler ? ` · ${fortschritt.fehler} Hinweise` : ''}
@@ -134,7 +134,7 @@ export function BesitzAnreichernRunner({ zeilen, laden, autoStart = true, onFert
               onClick={() => {
                 abbruch.current = true
               }}
-              className="rounded-lg border border-slate-600 px-3 py-1.5 text-xs font-semibold text-slate-300 hover:bg-slate-800"
+              className="rounded-lg border border-[var(--app-border-strong)] px-3 py-1.5 text-xs font-semibold text-[var(--app-text)] hover:bg-[var(--app-surface-hover)]"
             >
               Abbrechen
             </button>
@@ -150,7 +150,7 @@ export function BesitzAnreichernRunner({ zeilen, laden, autoStart = true, onFert
         </div>
       </div>
       {laeuft ? (
-        <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-slate-900">
+        <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-[var(--app-surface-muted)]">
           <div
             className="h-full rounded-full bg-amber-500 transition-all duration-500"
             style={{

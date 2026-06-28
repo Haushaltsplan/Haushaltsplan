@@ -67,10 +67,10 @@ export function StravaGoalsPanel({ goals, athlete, onSaved }: Props) {
           {goals.map((g) => (
             <div key={g.key}>
               <div className="mb-1 flex justify-between text-xs">
-                <span className="text-zinc-400">{g.label}</span>
+                <span className="text-[var(--app-text-muted)]">{g.label}</span>
                 <span className={g.onTrack ? 'text-emerald-400' : 'text-amber-400'}>{g.detail}</span>
               </div>
-              <div className="h-2 overflow-hidden rounded-full bg-zinc-800">
+              <div className="h-2 overflow-hidden rounded-full bg-[var(--app-surface-muted)]">
                 <div
                   className="h-full rounded-full transition-all duration-500"
                   style={{
@@ -83,29 +83,29 @@ export function StravaGoalsPanel({ goals, athlete, onSaved }: Props) {
           ))}
         </div>
       ) : (
-        <p className="mt-2 text-xs text-zinc-500">Noch keine Ziele — unten definieren.</p>
+        <p className="mt-2 text-xs text-[var(--app-text-muted)]">Noch keine Ziele — unten definieren.</p>
       )}
 
       {open ? (
         <div className="mt-4 grid gap-3 border-t border-white/[0.06] pt-4 sm:grid-cols-2">
           <label className="block text-xs">
-            <span className="text-zinc-500">Jahres-km</span>
+            <span className="text-[var(--app-text-muted)]">Jahres-km</span>
             <input value={km} onChange={(e) => setKm(e.target.value)} placeholder="5000" className="mt-1 w-full rounded-lg border border-white/10 bg-black/50 px-2 py-1.5 text-sm" />
           </label>
           <label className="block text-xs">
-            <span className="text-zinc-500">Jahres-hm</span>
+            <span className="text-[var(--app-text-muted)]">Jahres-hm</span>
             <input value={hm} onChange={(e) => setHm(e.target.value)} placeholder="50000" className="mt-1 w-full rounded-lg border border-white/10 bg-black/50 px-2 py-1.5 text-sm" />
           </label>
           <label className="block text-xs">
-            <span className="text-zinc-500">Fahrten / Woche</span>
+            <span className="text-[var(--app-text-muted)]">Fahrten / Woche</span>
             <input value={freq} onChange={(e) => setFreq(e.target.value)} placeholder="3" className="mt-1 w-full rounded-lg border border-white/10 bg-black/50 px-2 py-1.5 text-sm" />
           </label>
           <label className="block text-xs">
-            <span className="text-zinc-500">Event-Datum</span>
+            <span className="text-[var(--app-text-muted)]">Event-Datum</span>
             <input type="date" value={eventDate} onChange={(e) => setEventDate(e.target.value)} className="mt-1 w-full rounded-lg border border-white/10 bg-black/50 px-2 py-1.5 text-sm" />
           </label>
           <label className="block text-xs sm:col-span-2">
-            <span className="text-zinc-500">Event-Name</span>
+            <span className="text-[var(--app-text-muted)]">Event-Name</span>
             <input value={eventName} onChange={(e) => setEventName(e.target.value)} placeholder="Gran Fondo …" className="mt-1 w-full rounded-lg border border-white/10 bg-black/50 px-2 py-1.5 text-sm" />
           </label>
           <button

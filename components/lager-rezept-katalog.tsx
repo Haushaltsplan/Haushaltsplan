@@ -218,21 +218,21 @@ export function LagerRezeptKatalog({ artikel, refreshKey }: Props) {
     laden ? '…' : filterAktiv ? `${gefiltert.length} von ${zeilen.length}` : `${zeilen.length} ${zeilen.length === 1 ? 'Eintrag' : 'Einträge'}`
 
   return (
-    <div className="overflow-hidden rounded-2xl border border-teal-900/45 bg-slate-900 shadow-lg shadow-black/25">
+    <div className="overflow-hidden rounded-2xl border border-teal-900/45 bg-[var(--app-surface-muted)] shadow-lg shadow-black/25">
       <button
         type="button"
         onClick={() => setOffen((o) => !o)}
-        className="group flex w-full items-center justify-between gap-3 px-5 py-4 text-left transition hover:bg-slate-800/40 md:px-6"
+        className="group flex w-full items-center justify-between gap-3 px-5 py-4 text-left transition hover:bg-[var(--app-surface-hover)] md:px-6"
         aria-expanded={offen}
       >
         <div className="min-w-0">
           <h2 className="text-base font-black text-teal-200">Rezeptkatalog</h2>
-          <p className="mt-0.5 text-xs text-slate-500">
+          <p className="mt-0.5 text-xs text-[var(--app-text-muted)]">
             Gespeicherte KI-Rezepte · Rating 1–10 (1 schlecht, 10 am besten) · geschätzte kcal fürs Gesamtgericht
           </p>
         </div>
         <div className="flex shrink-0 items-center gap-2 sm:gap-2.5">
-          <span className="rounded-lg border border-slate-600/90 bg-slate-950/40 px-2.5 py-1 text-[11px] font-bold text-slate-300">
+          <span className="rounded-lg border border-[var(--app-border-strong)] bg-[var(--app-surface-muted)] px-2.5 py-1 text-[11px] font-bold text-[var(--app-text)]">
             {zaehlerText}
           </span>
           <CollapsibleRowHeaderEnd open={offen} labels={LABEL_EINKLAPPEN} tone="teal" size="sm" />
@@ -240,13 +240,13 @@ export function LagerRezeptKatalog({ artikel, refreshKey }: Props) {
       </button>
 
       {offen && (
-        <div className="border-t border-slate-800 px-4 pb-4 pt-2 md:px-6">
+        <div className="border-t border-[var(--app-border)] px-4 pb-4 pt-2 md:px-6">
           {zeilen.length > 0 && (
-            <div className="mb-3 flex flex-col gap-2 rounded-xl border border-slate-800/90 bg-slate-950/50 p-3 sm:flex-row sm:flex-wrap sm:items-end sm:gap-3">
+            <div className="mb-3 flex flex-col gap-2 rounded-xl border border-[var(--app-border)] bg-[var(--app-surface-muted)] p-3 sm:flex-row sm:flex-wrap sm:items-end sm:gap-3">
               <label className="flex min-w-[10rem] flex-1 flex-col gap-1">
-                <span className="text-[10px] font-black uppercase tracking-wider text-slate-500">Bewertung</span>
+                <span className="text-[10px] font-black uppercase tracking-wider text-[var(--app-text-muted)]">Bewertung</span>
                 <select
-                  className="rounded-lg border border-slate-600 bg-slate-900 px-2 py-1.5 text-xs font-bold text-slate-100"
+                  className="rounded-lg border border-[var(--app-border-strong)] bg-[var(--app-surface-muted)] px-2 py-1.5 text-xs font-bold text-[var(--app-text)]"
                   value={filterBewertung}
                   onChange={(e) => setFilterBewertung(e.target.value)}
                 >
@@ -260,9 +260,9 @@ export function LagerRezeptKatalog({ artikel, refreshKey }: Props) {
                 </select>
               </label>
               <label className="flex min-w-[10rem] flex-1 flex-col gap-1">
-                <span className="text-[10px] font-black uppercase tracking-wider text-slate-500">Kategorie</span>
+                <span className="text-[10px] font-black uppercase tracking-wider text-[var(--app-text-muted)]">Kategorie</span>
                 <select
-                  className="rounded-lg border border-slate-600 bg-slate-900 px-2 py-1.5 text-xs font-bold text-slate-100"
+                  className="rounded-lg border border-[var(--app-border-strong)] bg-[var(--app-surface-muted)] px-2 py-1.5 text-xs font-bold text-[var(--app-text)]"
                   value={filterKategorie}
                   onChange={(e) => setFilterKategorie(e.target.value)}
                 >
@@ -275,14 +275,14 @@ export function LagerRezeptKatalog({ artikel, refreshKey }: Props) {
                   ))}
                 </select>
               </label>
-              <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-slate-700/80 bg-slate-900/80 px-2.5 py-2 sm:shrink-0">
+              <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-[var(--app-border-strong)] bg-[var(--app-surface-muted)] px-2.5 py-2 sm:shrink-0">
                 <input
                   type="checkbox"
-                  className="h-3.5 w-3.5 rounded border-slate-500 text-teal-600 focus:ring-teal-500/40"
+                  className="h-3.5 w-3.5 rounded border-[var(--app-border-strong)] text-teal-600 focus:ring-teal-500/40"
                   checked={nurAlleLagerZutatenDa}
                   onChange={(e) => setNurAlleLagerZutatenDa(e.target.checked)}
                 />
-                <span className="text-[11px] font-semibold leading-snug text-slate-300">
+                <span className="text-[11px] font-semibold leading-snug text-[var(--app-text)]">
                   Nur Rezepte, bei denen alle Zutaten aktuell im Lager sind
                 </span>
               </label>
@@ -290,11 +290,11 @@ export function LagerRezeptKatalog({ artikel, refreshKey }: Props) {
           )}
 
           {zeilen.length === 0 && !laden ? (
-            <p className="py-4 text-center text-sm text-slate-500">
+            <p className="py-4 text-center text-sm text-[var(--app-text-muted)]">
               Noch keine Rezepte gespeichert. Unter „KI: Rezepte …“ bei einem Gericht auf „Im Katalog speichern“ tippen.
             </p>
           ) : gefiltert.length === 0 ? (
-            <p className="py-4 text-center text-sm text-slate-500">
+            <p className="py-4 text-center text-sm text-[var(--app-text-muted)]">
               Keine Rezepte passen zu den Filtern. Filter zurücksetzen oder Kriterien lockern.
             </p>
           ) : (
@@ -304,16 +304,16 @@ export function LagerRezeptKatalog({ artikel, refreshKey }: Props) {
                 const istOffen = expanded === row.id
                 const kat = effektiveKategorie(row, ger)
                 return (
-                  <li key={row.id} className="rounded-xl border border-slate-800/90 bg-slate-950/40">
+                  <li key={row.id} className="rounded-xl border border-[var(--app-border)] bg-[var(--app-surface-muted)]">
                     <div className="flex flex-col gap-2 px-3 py-2.5 md:px-3.5">
                       <div className="flex flex-wrap items-start gap-2">
                         <button
                           type="button"
                           onClick={() => setExpanded((e) => (e === row.id ? null : row.id))}
-                          className="min-w-0 flex-1 text-left text-sm font-bold text-slate-100 hover:text-teal-200"
+                          className="min-w-0 flex-1 text-left text-sm font-bold text-[var(--app-text)] hover:text-teal-200"
                         >
                           <span className="truncate">{row.titel}</span>
-                          <span className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[10px] font-semibold text-slate-500">
+                          <span className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[10px] font-semibold text-[var(--app-text-muted)]">
                             <span>
                               {formatDatumDe(row.erstellt_am)} · {kcalAnzeige(row, ger)}
                             </span>
@@ -332,14 +332,14 @@ export function LagerRezeptKatalog({ artikel, refreshKey }: Props) {
                           Löschen
                         </button>
                       </div>
-                      <div className="flex flex-wrap items-end gap-3 border-t border-slate-800/60 pt-2">
+                      <div className="flex flex-wrap items-end gap-3 border-t border-[var(--app-border)] pt-2">
                         <div className="flex min-w-0 flex-wrap items-center gap-2">
-                          <span className="text-[11px] font-bold text-slate-400">Rating</span>
+                          <span className="text-[11px] font-bold text-[var(--app-text-muted)]">Rating</span>
                           <span className="text-sm font-black tabular-nums text-teal-200">
                             {row.bewertung != null ? `${row.bewertung}/10` : '—'}
                           </span>
                           <select
-                            className="rounded-md border border-slate-600 bg-slate-900 px-1.5 py-1 text-xs font-bold text-slate-100"
+                            className="rounded-md border border-[var(--app-border-strong)] bg-[var(--app-surface-muted)] px-1.5 py-1 text-xs font-bold text-[var(--app-text)]"
                             value={row.bewertung == null ? '' : String(row.bewertung)}
                             disabled={bewertungLadenId === row.id}
                             onChange={(e) => void bewertungSetzen(row.id, e.target.value)}
@@ -354,9 +354,9 @@ export function LagerRezeptKatalog({ artikel, refreshKey }: Props) {
                           </select>
                         </div>
                         <label className="flex min-w-[12rem] flex-1 flex-wrap items-center gap-2 sm:max-w-xs">
-                          <span className="text-[11px] font-bold text-slate-400">Kategorie</span>
+                          <span className="text-[11px] font-bold text-[var(--app-text-muted)]">Kategorie</span>
                           <select
-                            className="min-w-0 flex-1 rounded-md border border-slate-600 bg-slate-900 px-1.5 py-1 text-xs font-bold text-slate-100"
+                            className="min-w-0 flex-1 rounded-md border border-[var(--app-border-strong)] bg-[var(--app-surface-muted)] px-1.5 py-1 text-xs font-bold text-[var(--app-text)]"
                             value={kat ?? ''}
                             disabled={kategorieLadenId === row.id}
                             onChange={(e) => void kategorieSetzen(row.id, e.target.value)}
@@ -372,7 +372,7 @@ export function LagerRezeptKatalog({ artikel, refreshKey }: Props) {
                       </div>
                     </div>
                     {istOffen && ger ? (
-                      <div className="border-t border-slate-800/80 px-2 py-3 md:px-3">
+                      <div className="border-t border-[var(--app-border)] px-2 py-3 md:px-3">
                         <RezeptStructuredCards
                           data={{ rezepte: [ger] }}
                           artikel={artikel}
@@ -385,7 +385,7 @@ export function LagerRezeptKatalog({ artikel, refreshKey }: Props) {
                       </div>
                     ) : null}
                     {istOffen && !ger ? (
-                      <div className="border-t border-slate-800/80 px-3 py-3 text-xs text-rose-300">
+                      <div className="border-t border-[var(--app-border)] px-3 py-3 text-xs text-rose-300">
                         Gespeicherte Daten konnten nicht als Rezept gelesen werden.
                       </div>
                     ) : null}
@@ -394,7 +394,7 @@ export function LagerRezeptKatalog({ artikel, refreshKey }: Props) {
               })}
             </ul>
           )}
-          <p className="mt-2 text-[10px] leading-relaxed text-slate-600">
+          <p className="mt-2 text-[10px] leading-relaxed text-[var(--app-text-muted)]">
             Kalorienangaben sind grobe Schätzungen der KI (Gesamtmenge des Gerichts), keine Nährwerttabelle. Kategorien
             kommen von der KI und kannst du pro Zeile anpassen.
           </p>

@@ -108,39 +108,39 @@ export function PortfolioDividendenDashboardClient() {
       {!laden && !hatDaten ? null : (
         <div className="min-w-0 space-y-5 sm:space-y-8">
             {!hatDaten ? (
-              <p className="text-sm text-zinc-500">
+              <p className="text-sm text-[var(--app-text-muted)]">
                 <Link href="/portfolioanalyse/import" className="text-teal-400 hover:underline">
                   Daten importieren
                 </Link>
               </p>
             ) : !kpis ? (
-              <p className="py-12 text-center text-sm text-zinc-500">Lade …</p>
+              <p className="py-12 text-center text-sm text-[var(--app-text-muted)]">Lade …</p>
             ) : (
               <div className="space-y-8">
                 <div className="grid gap-4 sm:grid-cols-3">
                   <PaCard variant="elevated" className="p-5">
-                    <p className="text-xs text-zinc-500">Portfoliowert</p>
+                    <p className="text-xs text-[var(--app-text-muted)]">Portfoliowert</p>
                     <p className="mt-1 text-2xl font-semibold tabular-nums text-white">
                       {formatEur(kpis.depotwertEur)}
                     </p>
                     {startLabel ? (
-                      <p className="mt-1 text-[11px] text-zinc-600">
+                      <p className="mt-1 text-[11px] text-[var(--app-text-muted)]">
                         Start {startLabel} · Investiert {formatEur(kpis.investiertEur)}
                       </p>
                     ) : null}
                   </PaCard>
                   <PaCard variant="elevated" className="p-5">
-                    <p className="text-xs text-zinc-500">Erhaltene Dividenden</p>
+                    <p className="text-xs text-[var(--app-text-muted)]">Erhaltene Dividenden</p>
                     <p className="mt-1 text-2xl font-semibold tabular-nums text-emerald-400">
                       {formatEur(kpis.dividendenBruttoEur)}
                     </p>
-                    <p className="mt-1 text-[11px] text-zinc-600">
+                    <p className="mt-1 text-[11px] text-[var(--app-text-muted)]">
                       TTM {formatEur(kpis.jahreseinkommenTtmEur)} · Ø mtl.{' '}
                       {formatEur(kpis.monatlichDurchschnittTtmEur)}
                     </p>
                   </PaCard>
                   <PaCard variant="elevated" className="p-5">
-                    <p className="text-xs text-zinc-500">Pers. Div-Rendite (TTM)</p>
+                    <p className="text-xs text-[var(--app-text-muted)]">Pers. Div-Rendite (TTM)</p>
                     <p className="mt-1 text-2xl font-semibold tabular-nums text-white">
                       {kpis.persoenlicheRenditeProzent != null
                         ? `${kpis.persoenlicheRenditeProzent.toLocaleString('de-DE', {
@@ -153,8 +153,8 @@ export function PortfolioDividendenDashboardClient() {
                 </div>
 
                 <PaCard variant="elevated" className="overflow-visible">
-                  <div className="border-b border-zinc-800/60 px-4 py-3 sm:px-6">
-                    <h2 className="text-sm font-semibold text-zinc-100">Monatlich</h2>
+                  <div className="border-b border-[var(--app-border)] px-4 py-3 sm:px-6">
+                    <h2 className="text-sm font-semibold text-[var(--app-text)]">Monatlich</h2>
                   </div>
                   <div className="overflow-visible p-4 sm:p-6">
                     <PaGestapelteDividendenChart
@@ -163,9 +163,9 @@ export function PortfolioDividendenDashboardClient() {
                       hoehe={280}
                     />
                   </div>
-                  <div className="border-t border-zinc-800/60 px-4 py-3 sm:px-6">
-                    <h2 className="text-sm font-semibold text-zinc-100">Heatmap</h2>
-                    <p className="mt-0.5 text-[11px] text-zinc-500">Dividenden pro Jahr und Monat (EUR)</p>
+                  <div className="border-t border-[var(--app-border)] px-4 py-3 sm:px-6">
+                    <h2 className="text-sm font-semibold text-[var(--app-text)]">Heatmap</h2>
+                    <p className="mt-0.5 text-[11px] text-[var(--app-text-muted)]">Dividenden pro Jahr und Monat (EUR)</p>
                   </div>
                   <div className="p-4 pt-0 sm:p-6 sm:pt-0">
                     <PaDividendenHeatmapGrid heatmap={heatmap} />
@@ -174,26 +174,26 @@ export function PortfolioDividendenDashboardClient() {
 
                 <div className="grid gap-6 lg:grid-cols-3">
                   <PaCard variant="elevated" className="p-5">
-                    <h2 className="text-sm font-semibold text-zinc-100">Rendite</h2>
+                    <h2 className="text-sm font-semibold text-[var(--app-text)]">Rendite</h2>
                     {startLabel ? (
-                      <p className="mt-0.5 text-[11px] text-zinc-500">seit {startLabel}</p>
+                      <p className="mt-0.5 text-[11px] text-[var(--app-text-muted)]">seit {startLabel}</p>
                     ) : null}
-                    <div className="mt-4 divide-y divide-zinc-800/60">
+                    <div className="mt-4 divide-y divide-[var(--app-border)]">
                       <PaStatRow label="Brutto Dividende" value={formatEur(kpis.dividendenBruttoEur)} />
                       <PaStatRow label="Netto Dividende" value={formatEur(kpis.dividendenNettoEur)} />
                       <PaStatRow label="1 Jahr (TTM)" value={formatEur(kpis.jahreseinkommenTtmEur)} />
                       <PaStatRow label="Ø mtl. (TTM)" value={formatEur(kpis.monatlichDurchschnittTtmEur)} />
                     </div>
-                    <div className="mt-4 border-t border-zinc-800/60 pt-3">
-                      <p className="mb-2 text-[11px] font-medium uppercase tracking-wide text-zinc-500">
+                    <div className="mt-4 border-t border-[var(--app-border)] pt-3">
+                      <p className="mb-2 text-[11px] font-medium uppercase tracking-wide text-[var(--app-text-muted)]">
                         Pro Jahr
                       </p>
                       <ul className="space-y-2">
                         {jahresVergleich.map((j) => (
                           <li key={j.jahr} className="flex justify-between gap-2 text-sm">
-                            <span className="text-zinc-400">{j.jahr}</span>
+                            <span className="text-[var(--app-text-muted)]">{j.jahr}</span>
                             <span className="flex items-center gap-2">
-                              <span className="tabular-nums text-zinc-200">{formatEur(j.betragEur)}</span>
+                              <span className="tabular-nums text-[var(--app-text)]">{formatEur(j.betragEur)}</span>
                               {j.vsVorjahrProzent != null ? (
                                 <PaBadge variant={j.vsVorjahrProzent >= 0 ? 'positive' : 'negative'}>
                                   {j.vsVorjahrProzent >= 0 ? '↑' : '↓'}{' '}
@@ -208,7 +208,7 @@ export function PortfolioDividendenDashboardClient() {
                   </PaCard>
 
                   <PaCard variant="elevated" className="flex flex-col p-5">
-                    <h2 className="text-sm font-semibold text-zinc-100">Angekündigte Dividenden</h2>
+                    <h2 className="text-sm font-semibold text-[var(--app-text)]">Angekündigte Dividenden</h2>
                     <div className="mt-3 min-h-0 flex-1">
                       <PaAnkuendigteDividenden
                         daten={ankuendig}
@@ -220,12 +220,12 @@ export function PortfolioDividendenDashboardClient() {
                   </PaCard>
 
                   <PaCard className="flex flex-col">
-                    <div className="border-b border-zinc-800/60 px-5 py-3">
-                      <h2 className="text-sm font-semibold text-zinc-100">Letzte Auszahlungen</h2>
+                    <div className="border-b border-[var(--app-border)] px-5 py-3">
+                      <h2 className="text-sm font-semibold text-[var(--app-text)]">Letzte Auszahlungen</h2>
                     </div>
-                    <ul className="max-h-80 flex-1 divide-y divide-zinc-800/50 overflow-y-auto">
+                    <ul className="max-h-80 flex-1 divide-y divide-[var(--app-border)] overflow-y-auto">
                       {letzteDivs.length === 0 ? (
-                        <li className="px-5 py-8 text-center text-sm text-zinc-500">Keine Dividenden.</li>
+                        <li className="px-5 py-8 text-center text-sm text-[var(--app-text-muted)]">Keine Dividenden.</li>
                       ) : (
                         letzteDivs.map((d, i) => {
                           const href = d.isin ? fundamentaldatenHref({ isin: d.isin }) : null
@@ -237,14 +237,14 @@ export function PortfolioDividendenDashboardClient() {
                           >
                             <PortfolioIsinLogo isin={d.isin} fallbackName={d.name} meta={meta} groesse="sm" />
                             <div className="min-w-0 flex-1">
-                              <p className="truncate text-sm text-zinc-200">
+                              <p className="truncate text-sm text-[var(--app-text)]">
                                 {anzeigeNameFuerIsin(d.isin, d.name, meta)}
                               </p>
-                              <p className="text-[11px] text-zinc-500">{formatDatumDe(d.datum)}</p>
+                              <p className="text-[11px] text-[var(--app-text-muted)]">{formatDatumDe(d.datum)}</p>
                             </div>
                             <div className="text-right">
                               <PaBadge variant="dividend">Dividende</PaBadge>
-                              <p className="mt-1 text-sm tabular-nums text-zinc-100">{formatEur(d.betrag)}</p>
+                              <p className="mt-1 text-sm tabular-nums text-[var(--app-text)]">{formatEur(d.betrag)}</p>
                             </div>
                           </li>
                         )})

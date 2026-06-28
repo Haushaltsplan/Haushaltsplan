@@ -65,7 +65,7 @@ export function WhoopRing({
             {display}
           </span>
           {max === 21 ? (
-            <span className="text-[9px] font-semibold uppercase tracking-wider text-zinc-500">/ 21</span>
+            <span className="text-[9px] font-semibold uppercase tracking-wider text-[var(--app-text-muted)]">/ 21</span>
           ) : null}
         </div>
       </div>
@@ -73,7 +73,7 @@ export function WhoopRing({
         <p className="text-[11px] font-bold uppercase tracking-[0.14em]" style={{ color }}>
           {label}
         </p>
-        {sublabel ? <p className="mt-0.5 text-[10px] text-zinc-500">{sublabel}</p> : null}
+        {sublabel ? <p className="mt-0.5 text-[10px] text-[var(--app-text-muted)]">{sublabel}</p> : null}
       </div>
     </>
   )

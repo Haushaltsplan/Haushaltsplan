@@ -225,7 +225,7 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange }: P
   })
 
   return (
-    <div className="relative min-h-[calc(100dvh-4rem)] overflow-hidden rounded-3xl border border-white/[0.05] bg-black text-white shadow-2xl shadow-black/80">
+    <div className="relative min-h-0 overflow-hidden rounded-2xl border border-white/[0.05] bg-black text-white shadow-2xl shadow-black/80 sm:rounded-3xl md:min-h-[calc(100dvh-4rem)]">
       <div
         className="pointer-events-none absolute -left-32 -top-32 h-64 w-64 rounded-full opacity-20 blur-3xl"
         style={{ background: recoveryColor(heute.recoveryPercent) }}
@@ -233,7 +233,7 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange }: P
       <div className="pointer-events-none absolute -right-24 top-1/3 h-48 w-48 rounded-full bg-[#00E5FF]/[0.06] blur-3xl" />
 
       <div
-        className={`relative max-h-[calc(100dvh-4rem)] px-4 pb-28 pt-5 sm:px-6 sm:pt-6 ${appModalScrollHiddenClassName}`}
+        className={`relative px-3 pb-24 pt-4 sm:px-6 sm:pb-28 sm:pt-6 md:max-h-[calc(100dvh-4rem)] ${appModalScrollHiddenClassName}`}
       >
         <header className="flex items-center justify-between gap-2">
           {/* Avatar + Streak */}
@@ -242,7 +242,7 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange }: P
             onClick={() => setTab('connect')}
             className="flex shrink-0 items-center gap-2 rounded-full border border-white/[0.08] bg-white/[0.04] px-2 py-1.5 transition hover:bg-white/[0.08]"
           >
-            <span className="flex h-7 w-7 items-center justify-center rounded-full bg-zinc-700 text-[11px] font-bold text-white">
+            <span className="flex h-7 w-7 items-center justify-center rounded-full bg-[var(--app-surface-muted)] text-[11px] font-bold text-white">
               {snapshot?.deviceName?.slice(0, 2).toUpperCase() ?? 'WP'}
             </span>
             {heute.strain != null && (
@@ -255,11 +255,11 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange }: P
 
           {/* Datum-Navigation */}
           <div className="flex items-center gap-1">
-            <span className="text-[11px] text-zinc-600">‹</span>
+            <span className="text-[11px] text-[var(--app-text-muted)]">‹</span>
             <span className="rounded-full border border-white/[0.10] bg-white/[0.04] px-3 py-1 text-[11px] font-bold uppercase tracking-wider text-white">
               Heute
             </span>
-            <span className="text-[11px] text-zinc-600">›</span>
+            <span className="text-[11px] text-[var(--app-text-muted)]">›</span>
           </div>
 
           {/* Akku + Connect */}
@@ -272,15 +272,15 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange }: P
                 ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300'
                 : isConnecting
                   ? 'border-amber-500/30 bg-amber-500/10 text-amber-200'
-                  : 'border-zinc-700/60 bg-zinc-900/80 text-zinc-400 hover:border-zinc-600 hover:text-zinc-200'
+                  : 'border-[var(--app-border-strong)] bg-[var(--app-surface-muted)] text-[var(--app-text-muted)] hover:border-[var(--app-border-strong)] hover:text-[var(--app-text)]'
             }`}
           >
             {deviceInfo?.batteryPercent != null && (
-              <span className="text-[10px] text-zinc-500">{deviceInfo.batteryPercent}%</span>
+              <span className="text-[10px] text-[var(--app-text-muted)]">{deviceInfo.batteryPercent}%</span>
             )}
             <span
               className={`h-1.5 w-1.5 rounded-full ${
-                isLive || statusBusy ? 'animate-pulse bg-emerald-400' : isConnecting ? 'animate-pulse bg-amber-400' : 'bg-zinc-600'
+                isLive || statusBusy ? 'animate-pulse bg-emerald-400' : isConnecting ? 'animate-pulse bg-amber-400' : 'bg-[var(--app-surface-muted)]'
               }`}
             />
             <span>{statusLabel}</span>
@@ -336,7 +336,7 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange }: P
                     </div>
                   </div>
                   <span className="flex items-center gap-1 text-[11px] font-bold uppercase tracking-[0.12em] text-[#00E5FF]">
-                    SCHLAF <span className="text-zinc-600">›</span>
+                    SCHLAF <span className="text-[var(--app-text-muted)]">›</span>
                   </span>
                 </button>
 
@@ -369,7 +369,7 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange }: P
                     </div>
                   </div>
                   <span className="flex items-center gap-1 text-[11px] font-bold uppercase tracking-[0.12em]" style={{ color: recoveryColor(heute.recoveryPercent) }}>
-                    ERHOLUNG <span className="text-zinc-600">›</span>
+                    ERHOLUNG <span className="text-[var(--app-text-muted)]">›</span>
                   </span>
                 </button>
 
@@ -402,7 +402,7 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange }: P
                     </div>
                   </div>
                   <span className="flex items-center gap-1 text-[11px] font-bold uppercase tracking-[0.12em] text-[#009dff]">
-                    BELASTUNG <span className="text-zinc-600">›</span>
+                    BELASTUNG <span className="text-[var(--app-text-muted)]">›</span>
                   </span>
                 </button>
               </div>
@@ -416,7 +416,7 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange }: P
                     onClick={() => setTab('health')}
                     className="rounded-2xl border border-white/[0.06] bg-[#111113] p-3.5 text-left transition active:scale-[0.97]"
                   >
-                    <p className="text-[9px] font-bold uppercase tracking-[0.16em] text-zinc-400">Gesundheits-Monitor</p>
+                    <p className="text-[9px] font-bold uppercase tracking-[0.16em] text-[var(--app-text-muted)]">Gesundheits-Monitor</p>
                     <div className="mt-2 flex items-center gap-2">
                       <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-sm" style={{ backgroundColor: vitals.ok > 0 && vitals.allOk ? '#00E67620' : vitals.ok > 0 ? '#FFD60020' : '#3f3f4620' }}>
                         {vitals.ok > 0 && vitals.allOk ? '✓' : vitals.ok > 0 ? '!' : '—'}
@@ -425,7 +425,7 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange }: P
                         <p className="text-[11px] font-bold" style={{ color: vitals.ok > 0 && vitals.allOk ? '#00E676' : vitals.ok > 0 ? '#FFD600' : '#52525b' }}>
                           {vitals.ok > 0 && vitals.allOk ? 'NORMAL' : vitals.ok > 0 ? 'PRÜFEN' : 'KEINE DATEN'}
                         </p>
-                        <p className="text-[10px] text-zinc-600">{vitals.ok}/{vitals.total} Messwerte</p>
+                        <p className="text-[10px] text-[var(--app-text-muted)]">{vitals.ok}/{vitals.total} Messwerte</p>
                       </div>
                     </div>
                   </button>
@@ -436,7 +436,7 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange }: P
                     onClick={() => showInfo('hrv')}
                     className="rounded-2xl border border-white/[0.06] bg-[#111113] p-3.5 text-left transition active:scale-[0.97]"
                   >
-                    <p className="text-[9px] font-bold uppercase tracking-[0.16em] text-zinc-400">Stress-Monitor</p>
+                    <p className="text-[9px] font-bold uppercase tracking-[0.16em] text-[var(--app-text-muted)]">Stress-Monitor</p>
                     <div className="mt-2">
                       <p className="text-[22px] font-bold tabular-nums leading-none" style={{ color: stressColor(stress) }}>
                         {stress != null ? stress.toFixed(1).replace('.', ',') : '—'}
@@ -453,7 +453,7 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange }: P
                   <div className="rounded-2xl border border-white/[0.06] bg-[#111113] p-4">
                     <div className="flex items-baseline gap-3">
                       <span className="text-3xl font-bold tabular-nums text-white">{model.liveHr ?? '—'}</span>
-                      <span className="text-sm text-zinc-500">bpm live</span>
+                      <span className="text-sm text-[var(--app-text-muted)]">bpm live</span>
                       {model.hrZone > 0 && (
                         <span className="ml-auto rounded-full bg-[#009dff]/20 px-2 py-0.5 text-[10px] font-bold text-[#009dff]">
                           Zone {model.hrZone}
@@ -485,8 +485,8 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange }: P
                       className="mt-2 flex w-full items-center gap-3 rounded-2xl border border-white/[0.06] bg-[#111113] px-4 py-3 text-left transition hover:bg-white/[0.03]"
                     >
                       <span className="text-lg">☀</span>
-                      <span className="flex-1 text-[12px] text-zinc-300">Dein täglicher Ausblick</span>
-                      <span className="text-zinc-600">›</span>
+                      <span className="flex-1 text-[12px] text-[var(--app-text)]">Dein täglicher Ausblick</span>
+                      <span className="text-[var(--app-text-muted)]">›</span>
                     </button>
                   ) : null}
 
@@ -514,7 +514,7 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange }: P
                       </span>
                       <span className="flex-1">
                         <span className="block text-[12px] font-bold uppercase text-white">Schlaf</span>
-                        <span className="text-[10px] text-zinc-400">
+                        <span className="text-[10px] text-[var(--app-text-muted)]">
                           {Math.floor(heute.sleepMinutes / 60)}h {heute.sleepMinutes % 60}m
                           {heute.wakeTimeMs != null && heute.bedTimeMs != null && (
                             <> · {new Date(heute.bedTimeMs).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })} – {new Date(heute.wakeTimeMs).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })}</>
@@ -527,9 +527,9 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange }: P
                             {Math.round(heute.sleepScore)}%
                           </span>
                         )}
-                        <span className="text-[10px] text-zinc-600">Schlafleistung</span>
+                        <span className="text-[10px] text-[var(--app-text-muted)]">Schlafleistung</span>
                       </div>
-                      <span className="text-zinc-600">›</span>
+                      <span className="text-[var(--app-text-muted)]">›</span>
                     </button>
                   )}
 
@@ -537,8 +537,8 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange }: P
                   {aktivitaeten.length > 0 && (
                     <div className="mt-2 rounded-2xl border border-white/[0.06] bg-[#111113] p-3.5">
                       <div className="flex items-center justify-between">
-                        <p className="text-[9px] font-bold uppercase tracking-[0.16em] text-zinc-500">Heutige Aktivitäten</p>
-                        <button type="button" onClick={() => setTab('strain')} className="text-[10px] text-zinc-600">↗</button>
+                        <p className="text-[9px] font-bold uppercase tracking-[0.16em] text-[var(--app-text-muted)]">Heutige Aktivitäten</p>
+                        <button type="button" onClick={() => setTab('strain')} className="text-[10px] text-[var(--app-text-muted)]">↗</button>
                       </div>
                       <ul className="mt-2 space-y-2">
                         {aktivitaeten.slice(0, 3).map((a) => (
@@ -553,11 +553,11 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange }: P
                               </span>
                               <span className="flex-1">
                                 <span className="block text-[12px] font-bold uppercase text-white">{a.label}</span>
-                                <span className="text-[10px] text-zinc-500">
+                                <span className="text-[10px] text-[var(--app-text-muted)]">
                                   {formatUhrzeit(a.startMs)} – {formatUhrzeit(a.endMs)}
                                 </span>
                               </span>
-                              <span className="text-zinc-600">›</span>
+                              <span className="text-[var(--app-text-muted)]">›</span>
                             </button>
                           </li>
                         ))}
@@ -566,14 +566,14 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange }: P
                         <button
                           type="button"
                           onClick={() => setTab('strain')}
-                          className="flex-1 rounded-xl border border-white/[0.08] py-2 text-[11px] font-semibold text-zinc-300 hover:bg-white/[0.04]"
+                          className="flex-1 rounded-xl border border-white/[0.08] py-2 text-[11px] font-semibold text-[var(--app-text)] hover:bg-white/[0.04]"
                         >
                           + Hinzufügen
                         </button>
                         <button
                           type="button"
                           onClick={() => setTab('strain')}
-                          className="flex-1 rounded-xl border border-white/[0.08] py-2 text-[11px] font-semibold text-zinc-300 hover:bg-white/[0.04]"
+                          className="flex-1 rounded-xl border border-white/[0.08] py-2 text-[11px] font-semibold text-[var(--app-text)] hover:bg-white/[0.04]"
                         >
                           ⏱ Aktivität starten
                         </button>
@@ -586,26 +586,26 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange }: P
                 {(heute.sleepNeedMinutes != null || heute.wakeTimeMs != null) && (
                   <div className="rounded-2xl border border-white/[0.06] bg-[#111113] p-4">
                     <div className="flex items-center justify-between">
-                      <p className="text-[9px] font-bold uppercase tracking-[0.16em] text-zinc-500">Schlaf für heute Nacht</p>
-                      <span className="text-zinc-600">›</span>
+                      <p className="text-[9px] font-bold uppercase tracking-[0.16em] text-[var(--app-text-muted)]">Schlaf für heute Nacht</p>
+                      <span className="text-[var(--app-text-muted)]">›</span>
                     </div>
                     <div className="mt-3 flex items-center justify-between">
                       <div>
                         <p className="text-[22px] font-bold tabular-nums text-white leading-none">
                           {empfohleneSchlafzeit(heute.sleepNeedMinutes, heute.wakeTimeMs) ?? formatSchlafbedarf(heute.sleepNeedMinutes)}
                         </p>
-                        <p className="mt-0.5 text-[10px] text-zinc-500">
+                        <p className="mt-0.5 text-[10px] text-[var(--app-text-muted)]">
                           Empfohlene Schlafenszeit
                         </p>
                       </div>
                       {heute.wakeTimeMs != null && (
                         <div className="text-right">
-                          <p className="text-[17px] font-bold tabular-nums text-zinc-300">{formatUhrzeitShort(heute.wakeTimeMs)}</p>
-                          <p className="text-[10px] text-zinc-600">Letztes Aufwachen</p>
+                          <p className="text-[17px] font-bold tabular-nums text-[var(--app-text)]">{formatUhrzeitShort(heute.wakeTimeMs)}</p>
+                          <p className="text-[10px] text-[var(--app-text-muted)]">Letztes Aufwachen</p>
                         </div>
                       )}
                     </div>
-                    <div className="mt-3 w-full rounded-xl border border-white/[0.08] py-2.5 text-center text-[11px] font-semibold text-zinc-400">
+                    <div className="mt-3 w-full rounded-xl border border-white/[0.08] py-2.5 text-center text-[11px] font-semibold text-[var(--app-text-muted)]">
                       Schlafbedarf: {formatSchlafbedarf(heute.sleepNeedMinutes)} Std.
                     </div>
                   </div>
@@ -614,8 +614,8 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange }: P
                 {/* ── MEIN LOGBUCH ── */}
                 <div className="rounded-2xl border border-white/[0.06] bg-[#111113] p-4">
                   <div className="flex items-center justify-between">
-                    <p className="text-[9px] font-bold uppercase tracking-[0.16em] text-zinc-500">Mein Logbuch</p>
-                    <span className="text-zinc-600">›</span>
+                    <p className="text-[9px] font-bold uppercase tracking-[0.16em] text-[var(--app-text-muted)]">Mein Logbuch</p>
+                    <span className="text-[var(--app-text-muted)]">›</span>
                   </div>
                   <div className="mt-3 flex justify-between">
                     {tageIso.map((iso) => {
@@ -623,7 +623,7 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange }: P
                       const istHeute = iso === tageIso[tageIso.length - 1]
                       return (
                         <div key={iso} className="flex flex-col items-center gap-1.5">
-                          <span className="text-[9px] font-bold text-zinc-600">
+                          <span className="text-[9px] font-bold text-[var(--app-text-muted)]">
                             {wochentagKurzDe(iso)}
                           </span>
                           <div
@@ -642,7 +642,7 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange }: P
                   <button
                     type="button"
                     onClick={() => showInfo('behavior')}
-                    className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl border border-white/[0.08] py-2.5 text-[11px] font-semibold uppercase tracking-wider text-zinc-400 hover:bg-white/[0.03]"
+                    className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl border border-white/[0.08] py-2.5 text-[11px] font-semibold uppercase tracking-wider text-[var(--app-text-muted)] hover:bg-white/[0.03]"
                   >
                     ☀ Verhaltenseinblicke
                   </button>
@@ -652,7 +652,7 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange }: P
                 <div>
                   <div className="flex items-center justify-between py-1">
                     <h2 className="text-base font-bold text-white">Mein Dashboard</h2>
-                    <span className="text-[10px] text-zinc-500">PERSONALISIEREN ✏</span>
+                    <span className="text-[10px] text-[var(--app-text-muted)]">PERSONALISIEREN ✏</span>
                   </div>
                   <div className="rounded-2xl border border-white/[0.06] bg-[#111113] px-4">
                     {[
@@ -715,7 +715,7 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange }: P
                         className={`flex w-full items-center gap-3 py-3.5 text-left transition hover:bg-white/[0.02] ${idx < arr.length - 1 ? 'border-b border-white/[0.06]' : ''}`}
                       >
                         <div className="min-w-0 flex-1">
-                          <p className="text-[9px] font-bold uppercase tracking-wide text-zinc-500">{row.label}</p>
+                          <p className="text-[9px] font-bold uppercase tracking-wide text-[var(--app-text-muted)]">{row.label}</p>
                         </div>
                         <div className="shrink-0 text-right">
                           <div className="flex items-baseline gap-1.5">
@@ -727,12 +727,12 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange }: P
                                 : '—'}
                             </span>
                             {row.unit && row.val != null && (
-                              <span className="text-[10px] text-zinc-600">{row.unit}</span>
+                              <span className="text-[10px] text-[var(--app-text-muted)]">{row.unit}</span>
                             )}
                             <span className="text-[11px] font-bold" style={{ color: row.arrowColor }}>{row.arrow}</span>
                           </div>
                           {row.base != null ? (
-                            <p className="text-[10px] tabular-nums text-zinc-600">
+                            <p className="text-[10px] tabular-nums text-[var(--app-text-muted)]">
                               {row.decimals > 0
                                 ? row.base.toFixed(row.decimals).replace('.', ',')
                                 : formatMetricWert(row.id as HomeMetricId, row.base)}
@@ -741,7 +741,7 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange }: P
                           ) : row.badge === '→ Cloud Sync' ? (
                             <p className="text-[9px] text-sky-500/80">{row.badge}</p>
                           ) : row.badge ? (
-                            <p className="text-[9px] text-zinc-500">{row.badge}</p>
+                            <p className="text-[9px] text-[var(--app-text-muted)]">{row.badge}</p>
                           ) : null}
                         </div>
                       </button>
@@ -890,7 +890,7 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange }: P
               <WhoopMetricRow icon="♥" label="Ruheherzfrequenz" m={metriken.rhr} onPress={() => setTrendMetric('rhr')} onInfo={() => showInfo('rhr')} />
               <WhoopMetricRow icon="◎" label="Atemfrequenz" m={metriken.respiratory} decimals={1} onPress={() => setTrendMetric('respiratory')} onInfo={() => showInfo('respiratory')} />
               <WhoopMetricRow icon="☾" label="Schlafleistung" m={metriken.sleepPerformance} unit="%" onInfo={() => showInfo('sleep_performance')} />
-              <p className="border-t border-white/[0.06] py-2 text-[9px] text-zinc-600">
+              <p className="border-t border-white/[0.06] py-2 text-[9px] text-[var(--app-text-muted)]">
                 ▲ ▼ Heute im Vergleich zu den letzten 30 Tagen
               </p>
             </div>
@@ -985,7 +985,7 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange }: P
                 onPress={() => setTrendMetric('calories')}
                 onInfo={() => showInfo('calories')}
               />
-              <p className="border-t border-white/[0.06] py-2 text-[9px] text-zinc-600">
+              <p className="border-t border-white/[0.06] py-2 text-[9px] text-[var(--app-text-muted)]">
                 ▲ ▼ Heute im Vergleich zu den letzten 30 Tagen · Schritte geschätzt
               </p>
             </div>
@@ -996,7 +996,7 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange }: P
 
             {aktivitaeten.length > 0 ? (
               <div className="rounded-2xl border border-white/[0.06] bg-[#111113] p-4">
-                <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-zinc-300">Aktivitäten heute</p>
+                <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-[var(--app-text)]">Aktivitäten heute</p>
                 <ul className="mt-3 space-y-2">
                   {aktivitaeten.map((a) => (
                     <li key={a.id}>
@@ -1009,7 +1009,7 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange }: P
                           {a.strain.toFixed(1)}
                         </span>
                         <span className="flex-1 text-xs font-bold uppercase tracking-wide">{a.label}</span>
-                        <span className="text-[11px] tabular-nums text-zinc-500">
+                        <span className="text-[11px] tabular-nums text-[var(--app-text-muted)]">
                           {formatUhrzeit(a.startMs)} – {formatUhrzeit(a.endMs)}
                         </span>
                       </button>
@@ -1021,7 +1021,7 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange }: P
 
             {aktivitaetenHistorie.filter((a) => !aktivitaeten.some((t) => t.id === a.id)).length > 0 ? (
               <div className="rounded-2xl border border-white/[0.06] bg-[#111113] p-4">
-                <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-zinc-300">Vorangegangene Aktivitäten</p>
+                <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-[var(--app-text)]">Vorangegangene Aktivitäten</p>
                 <ul className="mt-3 space-y-2">
                   {aktivitaetenHistorie
                     .filter((a) => !aktivitaeten.some((t) => t.id === a.id))
@@ -1033,12 +1033,12 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange }: P
                           onClick={() => setSelectedActivity(a)}
                           className="flex w-full items-center gap-3 rounded-xl border border-white/[0.04] bg-black/30 px-3 py-2.5 text-left transition hover:border-[#009dff]/25"
                         >
-                          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-zinc-800 text-xs font-bold text-zinc-300">
+                          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[var(--app-surface-muted)] text-xs font-bold text-[var(--app-text)]">
                             {a.strain.toFixed(1)}
                           </span>
                           <span className="min-w-0 flex-1">
                             <span className="block truncate text-xs font-bold uppercase">{a.label}</span>
-                            <span className="text-[10px] text-zinc-500">
+                            <span className="text-[10px] text-[var(--app-text-muted)]">
                               {new Date(a.startMs).toLocaleDateString('de-DE', {
                                 day: 'numeric',
                                 month: 'short',
@@ -1046,7 +1046,7 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange }: P
                               · {formatUhrzeit(a.startMs)}
                             </span>
                           </span>
-                          <span className="text-zinc-600">›</span>
+                          <span className="text-[var(--app-text-muted)]">›</span>
                         </button>
                       </li>
                     ))}
@@ -1084,15 +1084,15 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange }: P
 
             {zoneAnteil.length > 0 ? (
               <div className="rounded-2xl border border-white/[0.06] bg-[#111113] p-4">
-                <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-zinc-500">Zonen heute</p>
+                <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--app-text-muted)]">Zonen heute</p>
                 <ul className="mt-3 space-y-2">
                   {zoneAnteil.map(({ key, pct }) => (
                     <li key={key}>
                       <div className="mb-1 flex justify-between text-xs">
                         <span style={{ color: HR_ZONE_COLORS[key] }}>{HR_ZONE_LABELS[key]}</span>
-                        <span className="text-zinc-500">{pct}%</span>
+                        <span className="text-[var(--app-text-muted)]">{pct}%</span>
                       </div>
-                      <div className="h-1.5 overflow-hidden rounded-full bg-zinc-900">
+                      <div className="h-1.5 overflow-hidden rounded-full bg-[var(--app-surface-muted)]">
                         <div
                           className="h-full rounded-full"
                           style={{ width: `${pct}%`, backgroundColor: HR_ZONE_COLORS[key] }}
@@ -1108,7 +1108,7 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange }: P
 
         {tab === 'health' && (
           <section className="mt-6 space-y-4">
-            <p className="text-center text-[10px] font-bold uppercase tracking-[0.2em] text-zinc-500">Gesundheit</p>
+            <p className="text-center text-[10px] font-bold uppercase tracking-[0.2em] text-[var(--app-text-muted)]">Gesundheit</p>
 
             <WhoopAgeOrb
               whoopAge={model.healthspan.whoopAge}
@@ -1124,7 +1124,7 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange }: P
             />
 
             <div className="rounded-2xl border border-white/[0.06] bg-[#111113] px-4">
-              <p className="border-b border-white/[0.06] py-3 text-[11px] font-bold uppercase tracking-[0.14em] text-zinc-300">
+              <p className="border-b border-white/[0.06] py-3 text-[11px] font-bold uppercase tracking-[0.14em] text-[var(--app-text)]">
                 Schlaf
               </p>
               {model.healthspan.metrics
@@ -1141,7 +1141,7 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange }: P
             </div>
 
             <div className="rounded-2xl border border-white/[0.06] bg-[#111113] px-4">
-              <p className="border-b border-white/[0.06] py-3 text-[11px] font-bold uppercase tracking-[0.14em] text-zinc-300">
+              <p className="border-b border-white/[0.06] py-3 text-[11px] font-bold uppercase tracking-[0.14em] text-[var(--app-text)]">
                 Belastung
               </p>
               {model.healthspan.metrics
@@ -1166,7 +1166,7 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange }: P
             </div>
 
             <div className="rounded-2xl border border-white/[0.06] bg-[#111113] px-4">
-              <p className="border-b border-white/[0.06] py-3 text-[11px] font-bold uppercase tracking-[0.14em] text-zinc-300">
+              <p className="border-b border-white/[0.06] py-3 text-[11px] font-bold uppercase tracking-[0.14em] text-[var(--app-text)]">
                 Fitness
               </p>
               {model.healthspan.metrics
@@ -1195,7 +1195,7 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange }: P
             />
 
             <div className="rounded-2xl border border-white/[0.06] bg-[#111113] p-4">
-              <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-zinc-300">Gesundheitsmonitor</p>
+              <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-[var(--app-text)]">Gesundheitsmonitor</p>
               <div className="mt-3 grid grid-cols-2 gap-2">
                 <WhoopHealthTile
                   icon="◎"
@@ -1286,12 +1286,12 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange }: P
 
             {journal.length > 0 ? (
               <div className="rounded-2xl border border-white/[0.06] bg-[#111113] p-4">
-                <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-zinc-300">Journal heute</p>
+                <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-[var(--app-text)]">Journal heute</p>
                 <ul className="mt-3 space-y-2">
                   {journal.slice(0, 8).map((j) => (
-                    <li key={`${j.question}-${j.answer}`} className="text-xs text-zinc-400">
-                      <span className="text-zinc-300">{j.question.replace(/\([^)]*\)/g, '').trim()}</span>
-                      <span className="ml-2 font-semibold text-zinc-200">{j.answer}</span>
+                    <li key={`${j.question}-${j.answer}`} className="text-xs text-[var(--app-text-muted)]">
+                      <span className="text-[var(--app-text)]">{j.question.replace(/\([^)]*\)/g, '').trim()}</span>
+                      <span className="ml-2 font-semibold text-[var(--app-text)]">{j.answer}</span>
                     </li>
                   ))}
                 </ul>
@@ -1300,7 +1300,7 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange }: P
 
             <button
               type="button"
-              className="flex w-full items-center justify-center gap-2 rounded-2xl border border-white/[0.08] bg-[#111113] py-3.5 text-[11px] font-bold uppercase tracking-wider text-zinc-300"
+              className="flex w-full items-center justify-center gap-2 rounded-2xl border border-white/[0.08] bg-[#111113] py-3.5 text-[11px] font-bold uppercase tracking-wider text-[var(--app-text)]"
               onClick={() => {
                 const text = [
                   'Omnia Gesundheitsbericht',
@@ -1316,8 +1316,8 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange }: P
             </button>
 
             {snapshot?.gen5 ? (
-              <div className="rounded-2xl border border-white/[0.06] bg-[#111113] p-4 font-mono text-[11px] text-zinc-500">
-                <p className="font-sans text-[10px] font-bold uppercase text-zinc-400">Gen5 fd4b</p>
+              <div className="rounded-2xl border border-white/[0.06] bg-[#111113] p-4 font-mono text-[11px] text-[var(--app-text-muted)]">
+                <p className="font-sans text-[10px] font-bold uppercase text-[var(--app-text-muted)]">Gen5 fd4b</p>
                 <p className="mt-1">Phase: {snapshot.gen5.phase}</p>
                 <p>r22: {snapshot.gen5.r22Count} · Historie: {snapshot.gen5.historyPackets}</p>
               </div>

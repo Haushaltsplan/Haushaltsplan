@@ -104,11 +104,11 @@ export function AppLockGate({ children }: { children: ReactNode }) {
       ? createPortal(
           <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-[#0b0d13] px-5 pt-[env(safe-area-inset-top,0px)] pb-[env(safe-area-inset-bottom,0px)]">
             <div className="w-full max-w-sm text-center">
-              <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-2xl bg-slate-800 text-3xl">
+              <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-2xl bg-[var(--app-surface-muted)] text-3xl">
                 🔒
               </div>
-              <h1 className="text-lg font-bold text-slate-100">App gesperrt</h1>
-              <p className="mt-1 text-sm text-slate-400">
+              <h1 className="text-lg font-bold text-[var(--app-text)]">App gesperrt</h1>
+              <p className="mt-1 text-sm text-[var(--app-text-muted)]">
                 Bitte entsperren, um auf deine Daten zuzugreifen.
               </p>
 
@@ -132,7 +132,7 @@ export function AppLockGate({ children }: { children: ReactNode }) {
 
               {(pinModus || !hatBiometrie) && hatPin && (
                 <div className="mt-6 text-left">
-                  <label className="text-[13px] font-medium text-slate-300">PIN eingeben</label>
+                  <label className="text-[13px] font-medium text-[var(--app-text)]">PIN eingeben</label>
                   <input
                     type="password"
                     inputMode="numeric"
@@ -144,7 +144,7 @@ export function AppLockGate({ children }: { children: ReactNode }) {
                       if (e.key === 'Enter') void pinEntsperren()
                     }}
                     placeholder="••••"
-                    className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-3 text-center text-lg tracking-[0.4em] text-slate-100 outline-none focus:ring-2 focus:ring-cyan-500/40"
+                    className="mt-2 w-full rounded-xl border border-[var(--app-border-strong)] bg-[var(--app-surface-muted)] px-3 py-3 text-center text-lg tracking-[0.4em] text-[var(--app-text)] outline-none focus:ring-2 focus:ring-cyan-500/40"
                   />
                   <button
                     type="button"
@@ -163,7 +163,7 @@ export function AppLockGate({ children }: { children: ReactNode }) {
                     setFehler('')
                     setPinModus((v) => !v)
                   }}
-                  className="mt-5 text-[13px] font-medium text-slate-400 underline-offset-2 hover:text-slate-200 hover:underline"
+                  className="mt-5 text-[13px] font-medium text-[var(--app-text-muted)] underline-offset-2 hover:text-[var(--app-text)] hover:underline"
                 >
                   {pinModus ? 'Stattdessen Fingerabdruck verwenden' : 'Stattdessen PIN verwenden'}
                 </button>

@@ -1,5 +1,6 @@
 'use client'
 
+import { appTableScrollClassName } from '@/components/page-shell'
 import Link from 'next/link'
 import { useEffect, useMemo, useState } from 'react'
 import { PortfolioIsinLogo } from '@/components/portfolio-analyse/isin-logo'
@@ -35,8 +36,8 @@ function KalenderTagZeile({
   return (
     <div className={`flex min-w-0 items-center gap-1.5 ${kompakt ? 'py-0.5' : ''}`}>
       <PortfolioIsinLogo isin={e.isin} fallbackName={e.name} meta={meta} groesse="sm" />
-      <span className="min-w-0 flex-1 truncate text-[11px] text-zinc-200">{e.name}</span>
-      <span className="flex shrink-0 items-center gap-0.5 tabular-nums text-[11px] font-medium text-zinc-100">
+      <span className="min-w-0 flex-1 truncate text-[11px] text-[var(--app-text)]">{e.name}</span>
+      <span className="flex shrink-0 items-center gap-0.5 tabular-nums text-[11px] font-medium text-[var(--app-text)]">
         {formatEur(e.gesamtEur)}
         {!e.bestaetigt ? <PaDividendEstimateBadge title="Geschätzt" /> : null}
       </span>
@@ -56,24 +57,24 @@ function ListenAnsicht({
       {daten.monate.map((monat) => (
         <section key={monat.monatKey}>
           <div className="mb-3 flex items-baseline justify-between gap-3 border-b border-white/[0.06] pb-2">
-            <h3 className="text-xs font-semibold uppercase tracking-widest text-zinc-400">{monat.monatLabel}</h3>
-            <p className="text-sm font-semibold tabular-nums text-zinc-100">{formatEur(monat.summeEur)}</p>
+            <h3 className="text-xs font-semibold uppercase tracking-widest text-[var(--app-text-muted)]">{monat.monatLabel}</h3>
+            <p className="text-sm font-semibold tabular-nums text-[var(--app-text)]">{formatEur(monat.summeEur)}</p>
           </div>
           <ul className="space-y-3">
             {monat.eintraege.map((e) => (
               <li key={`${e.isin ?? e.symbol}-${e.zahlungsdatumIso}`} className="flex items-center gap-3">
                 <PortfolioIsinLogo isin={e.isin} fallbackName={e.name} meta={meta} groesse="sm" />
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium text-zinc-100">{e.name}</p>
-                  <p className="text-[11px] text-zinc-500">{formatDatumDe(e.zahlungsdatumIso)}</p>
+                  <p className="truncate text-sm font-medium text-[var(--app-text)]">{e.name}</p>
+                  <p className="text-[11px] text-[var(--app-text-muted)]">{formatDatumDe(e.zahlungsdatumIso)}</p>
                 </div>
                 <div className="shrink-0 text-right">
                   <div className="flex items-center justify-end gap-1.5">
-                    <p className="text-sm font-semibold tabular-nums text-zinc-50">{formatEur(e.gesamtEur)}</p>
+                    <p className="text-sm font-semibold tabular-nums text-[var(--app-text)]">{formatEur(e.gesamtEur)}</p>
                     {!e.bestaetigt ? <PaDividendEstimateBadge /> : null}
                   </div>
                   <div className="mt-1 flex justify-end gap-1.5">
-                    <span className="rounded-md bg-zinc-800/80 px-1.5 py-0.5 text-[10px] tabular-nums text-zinc-400 ring-1 ring-white/[0.04]">
+                    <span className="rounded-md bg-[var(--app-surface-hover)] px-1.5 py-0.5 text-[10px] tabular-nums text-[var(--app-text-muted)] ring-1 ring-white/[0.04]">
                       {formatStueckTag(e.stueck)}
                     </span>
                   </div>
@@ -126,7 +127,7 @@ export function PaDividendenKalender({
   const kalenderJahr = useMemo(() => baueKalenderJahr(jahr, eintraege), [jahr, eintraege])
 
   if (laden) {
-    return <p className="py-16 text-center text-sm text-zinc-500">Kalender wird geladen …</p>
+    return <p className="py-16 text-center text-sm text-[var(--app-text-muted)]">Kalender wird geladen …</p>
   }
 
   if (fehler) {
@@ -136,7 +137,7 @@ export function PaDividendenKalender({
   if (!daten || eintraege.length === 0) {
     return (
       <div className="space-y-4">
-        <p className="text-sm text-zinc-500">Keine angekündigten oder prognostizierten Dividenden im Zeitraum.</p>
+        <p className="text-sm text-[var(--app-text-muted)]">Keine angekündigten oder prognostizierten Dividenden im Zeitraum.</p>
         <Link href="/portfolioanalyse/dividenden" className="text-sm font-medium text-teal-400 hover:text-teal-300">
           ← Zurück zu Dividenden
         </Link>
@@ -151,7 +152,7 @@ export function PaDividendenKalender({
           <button
             type="button"
             onClick={() => setMonatKey((m) => verschiebeMonat(m, ansicht === 'jahr' ? -12 : -1))}
-            className="rounded-lg border border-white/[0.08] bg-zinc-900/80 px-3 py-2 text-sm text-zinc-300 transition hover:bg-zinc-800"
+            className="rounded-lg border border-white/[0.08] bg-[var(--app-surface-muted)] px-3 py-2 text-sm text-[var(--app-text)] transition hover:bg-[var(--app-surface-hover)]"
             aria-label="Vorheriger Monat"
           >
             ‹
@@ -159,14 +160,14 @@ export function PaDividendenKalender({
           <button
             type="button"
             onClick={() => setMonatKey((m) => verschiebeMonat(m, ansicht === 'jahr' ? 12 : 1))}
-            className="rounded-lg border border-white/[0.08] bg-zinc-900/80 px-3 py-2 text-sm text-zinc-300 transition hover:bg-zinc-800"
+            className="rounded-lg border border-white/[0.08] bg-[var(--app-surface-muted)] px-3 py-2 text-sm text-[var(--app-text)] transition hover:bg-[var(--app-surface-hover)]"
             aria-label="Nächster Monat"
           >
             ›
           </button>
         </div>
 
-        <div className="flex rounded-lg border border-white/[0.06] bg-zinc-950/80 p-0.5">
+        <div className="flex rounded-lg border border-white/[0.06] bg-[var(--app-surface-muted)] p-0.5">
           {(['monat', 'jahr'] as const).map((id) => (
             <button
               key={id}
@@ -175,7 +176,7 @@ export function PaDividendenKalender({
               className={`rounded-md px-3 py-1.5 text-xs font-medium capitalize transition ${
                 ansicht === id
                   ? 'bg-teal-500/20 text-teal-300 ring-1 ring-teal-500/25'
-                  : 'text-zinc-500 hover:text-zinc-300'
+                  : 'text-[var(--app-text-muted)] hover:text-[var(--app-text)]'
               }`}
             >
               {id === 'monat' ? 'Monat' : 'Jahr'}
@@ -183,7 +184,7 @@ export function PaDividendenKalender({
           ))}
         </div>
 
-        <div className="flex rounded-lg border border-white/[0.06] bg-zinc-950/80 p-0.5">
+        <div className="flex rounded-lg border border-white/[0.06] bg-[var(--app-surface-muted)] p-0.5">
           {(
             [
               { id: 'kalender' as const, label: 'Kalender' },
@@ -196,8 +197,8 @@ export function PaDividendenKalender({
               onClick={() => setLayout(id)}
               className={`rounded-md px-3 py-1.5 text-xs font-medium transition ${
                 layout === id
-                  ? 'bg-zinc-800/90 text-zinc-200 ring-1 ring-white/[0.06]'
-                  : 'text-zinc-500 hover:text-zinc-300'
+                  ? 'bg-[var(--app-surface-muted)]/90 text-[var(--app-text)] ring-1 ring-white/[0.06]'
+                  : 'text-[var(--app-text-muted)] hover:text-[var(--app-text)]'
               }`}
             >
               {label}
@@ -211,10 +212,10 @@ export function PaDividendenKalender({
       ) : ansicht === 'jahr' ? (
         <div>
           <div className="mb-4 flex flex-wrap items-baseline justify-between gap-2">
-            <h2 className="text-lg font-semibold text-zinc-100">{jahr}</h2>
-            <p className="text-sm tabular-nums text-zinc-400">
+            <h2 className="text-lg font-semibold text-[var(--app-text)]">{jahr}</h2>
+            <p className="text-sm tabular-nums text-[var(--app-text-muted)]">
               Summe:{' '}
-              <span className="font-semibold text-zinc-100">
+              <span className="font-semibold text-[var(--app-text)]">
                 {formatEur(kalenderJahr.reduce((s, m) => s + m.summeEur, 0))}
               </span>
             </p>
@@ -228,18 +229,18 @@ export function PaDividendenKalender({
                   setMonatKey(m.monatKey)
                   setAnsicht('monat')
                 }}
-                className={`rounded-xl border p-4 text-left transition hover:border-teal-500/30 hover:bg-zinc-900/80 ${
+                className={`rounded-xl border p-4 text-left transition hover:border-teal-500/30 hover:bg-[var(--app-surface-muted)] ${
                   m.anzahl > 0
-                    ? 'border-white/[0.08] bg-zinc-950/60'
-                    : 'border-white/[0.04] bg-zinc-950/30 opacity-60'
+                    ? 'border-white/[0.08] bg-[var(--app-surface-muted)]'
+                    : 'border-white/[0.04] bg-[var(--app-surface-muted)]/30 opacity-60'
                 }`}
               >
-                <p className="text-sm font-medium text-zinc-200">{m.titel}</p>
-                <p className="mt-2 text-lg font-semibold tabular-nums text-zinc-50">
+                <p className="text-sm font-medium text-[var(--app-text)]">{m.titel}</p>
+                <p className="mt-2 text-lg font-semibold tabular-nums text-[var(--app-text)]">
                   {m.summeEur > 0 ? formatEur(m.summeEur) : '—'}
                 </p>
                 {m.anzahl > 0 ? (
-                  <p className="mt-1 text-[11px] text-zinc-500">
+                  <p className="mt-1 text-[11px] text-[var(--app-text-muted)]">
                     {m.anzahl} {m.anzahl === 1 ? 'Zahlung' : 'Zahlungen'}
                   </p>
                 ) : null}
@@ -250,24 +251,24 @@ export function PaDividendenKalender({
       ) : (
         <div>
           <div className="mb-4 flex flex-wrap items-baseline justify-between gap-2">
-            <h2 className="text-lg font-semibold text-zinc-100">
+            <h2 className="text-lg font-semibold text-[var(--app-text)]">
               {kalenderMonat.titel}
-              <span className="ml-2 text-sm font-normal text-zinc-500">
+              <span className="ml-2 text-sm font-normal text-[var(--app-text-muted)]">
                 Summe:{' '}
-                <span className="font-semibold tabular-nums text-zinc-200">
+                <span className="font-semibold tabular-nums text-[var(--app-text)]">
                   {formatEur(kalenderMonat.summeEur)}
                 </span>
               </span>
             </h2>
           </div>
 
-          <div className="overflow-x-auto rounded-xl border border-white/[0.06]">
-            <div className="min-w-[640px]">
-              <div className="grid grid-cols-7 border-b border-white/[0.06] bg-zinc-900/50">
+          <div className={`${appTableScrollClassName} rounded-xl border border-[var(--app-border)]`}>
+            <div className="min-w-[480px] sm:min-w-[640px]">
+              <div className="grid grid-cols-7 border-b border-white/[0.06] bg-[var(--app-surface-muted)]">
                 {KALENDER_WOCHENTAGE.map((w) => (
                   <div
                     key={w}
-                    className="px-2 py-2 text-center text-[10px] font-semibold uppercase tracking-wider text-zinc-500"
+                    className="px-2 py-2 text-center text-[10px] font-semibold uppercase tracking-wider text-[var(--app-text-muted)]"
                   >
                     {w}
                   </div>
@@ -280,8 +281,8 @@ export function PaDividendenKalender({
                     return (
                       <div
                         key={tag.iso}
-                        className={`flex min-h-[7.5rem] flex-col border-r border-white/[0.04] p-1.5 last:border-r-0 sm:min-h-[8.5rem] sm:p-2 ${
-                          tag.imMonat ? 'bg-zinc-950/40' : 'bg-zinc-950/20'
+                        className={`flex min-h-[4.5rem] flex-col border-r border-[var(--app-border)] p-1 last:border-r-0 sm:min-h-[7rem] sm:p-1.5 md:min-h-[8.5rem] md:p-2 ${
+                          tag.imMonat ? 'bg-[var(--app-surface-muted)]' : 'bg-[var(--app-surface)]/50'
                         }`}
                       >
                         <div className="mb-1 flex justify-end">
@@ -290,8 +291,8 @@ export function PaDividendenKalender({
                               istHeute
                                 ? 'bg-rose-500/90 font-semibold text-white'
                                 : tag.imMonat
-                                  ? 'text-zinc-400'
-                                  : 'text-zinc-600'
+                                  ? 'text-[var(--app-text-muted)]'
+                                  : 'text-[var(--app-text-muted)]'
                             }`}
                           >
                             {String(tag.tag).padStart(2, '0')}
@@ -303,7 +304,7 @@ export function PaDividendenKalender({
                           ))}
                         </div>
                         {tag.summeEur > 0 ? (
-                          <p className="mt-auto pt-1 text-right text-[10px] tabular-nums text-zinc-500">
+                          <p className="mt-auto pt-1 text-right text-[10px] tabular-nums text-[var(--app-text-muted)]">
                             Summe: {formatEur(tag.summeEur)}
                           </p>
                         ) : null}
@@ -317,7 +318,7 @@ export function PaDividendenKalender({
         </div>
       )}
 
-      <p className="flex flex-wrap items-center gap-2 border-t border-white/[0.04] pt-4 text-[11px] text-zinc-600">
+      <p className="flex flex-wrap items-center gap-2 border-t border-white/[0.04] pt-4 text-[11px] text-[var(--app-text-muted)]">
         <PaDividendEstimateBadge title="Geschätzt" />
         <span>Prognose · Zahltag · max. 1 Jahr voraus · nur Depot-Positionen</span>
         <Link

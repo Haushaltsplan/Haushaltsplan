@@ -21,7 +21,7 @@ function formatNewsDatum(iso: string | null): string {
 export function PaFundamentalNews({ artikel }: { artikel: FundamentalNewsArtikel[] }) {
   if (artikel.length === 0) {
     return (
-      <PaCard className="p-8 text-center text-sm text-zinc-500">
+      <PaCard className="p-8 text-center text-sm text-[var(--app-text-muted)]">
         Keine aktuellen Meldungen von Yahoo Finance gefunden.
       </PaCard>
     )
@@ -30,25 +30,25 @@ export function PaFundamentalNews({ artikel }: { artikel: FundamentalNewsArtikel
   return (
     <PaCard variant="glass" className="overflow-hidden">
       <div className="border-b border-white/[0.05] px-4 py-3">
-        <h3 className="text-sm font-semibold text-zinc-100">Aktuelle Meldungen</h3>
-        <p className="mt-0.5 text-[11px] text-zinc-500">Quelle: Yahoo Finance</p>
+        <h3 className="text-sm font-semibold text-[var(--app-text)]">Aktuelle Meldungen</h3>
+        <p className="mt-0.5 text-[11px] text-[var(--app-text-muted)]">Quelle: Yahoo Finance</p>
       </div>
-      <ul className={`divide-y divide-zinc-800/60 ${PA_SCROLL_ELEGANT} max-h-[min(70vh,42rem)]`}>
+      <ul className={`divide-y divide-[var(--app-border)] ${PA_SCROLL_ELEGANT} max-h-[min(70vh,42rem)]`}>
         {artikel.map((a) => (
           <li key={a.link}>
             <a
               href={a.link}
               target="_blank"
               rel="noopener noreferrer"
-              className="block px-4 py-3.5 transition hover:bg-zinc-900/60"
+              className="block px-4 py-3.5 transition hover:bg-[var(--app-surface-muted)]"
             >
-              <p className="text-sm font-medium leading-snug text-zinc-100">{a.titel}</p>
-              <p className="mt-1 flex flex-wrap gap-x-2 text-[11px] text-zinc-500">
+              <p className="text-sm font-medium leading-snug text-[var(--app-text)]">{a.titel}</p>
+              <p className="mt-1 flex flex-wrap gap-x-2 text-[11px] text-[var(--app-text-muted)]">
                 {a.quelle ? <span>{a.quelle}</span> : null}
                 {a.veroeffentlicht ? <span>{formatNewsDatum(a.veroeffentlicht)}</span> : null}
               </p>
               {a.zusammenfassung ? (
-                <p className="mt-2 line-clamp-2 text-xs leading-relaxed text-zinc-400">{a.zusammenfassung}</p>
+                <p className="mt-2 line-clamp-2 text-xs leading-relaxed text-[var(--app-text-muted)]">{a.zusammenfassung}</p>
               ) : null}
             </a>
           </li>

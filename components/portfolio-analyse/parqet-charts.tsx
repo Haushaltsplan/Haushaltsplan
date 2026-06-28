@@ -39,7 +39,7 @@ export function PaAreaChart({
   }, [punkte, plotW, plotH, padLinks, padOben])
 
   if (punkte.length < 2) {
-    return <p className="py-12 text-center text-sm text-zinc-500">Noch zu wenig Historie für einen Verlauf.</p>
+    return <p className="py-12 text-center text-sm text-[var(--app-text-muted)]">Noch zu wenig Historie für einen Verlauf.</p>
   }
 
   const labelStep = Math.max(1, Math.ceil(punkte.length / 8))
@@ -69,10 +69,10 @@ export function PaAreaChart({
           stroke="#27272a"
           strokeWidth={1}
         />
-        <text x={padLinks - 6} y={padOben + 4} textAnchor="end" className="fill-zinc-600" style={{ fontSize: 9 }}>
+        <text x={padLinks - 6} y={padOben + 4} textAnchor="end" className="fill-[var(--app-text-muted)]" style={{ fontSize: 9 }}>
           {formatEur(max)}
         </text>
-        <text x={padLinks - 6} y={padOben + plotH} textAnchor="end" className="fill-zinc-600" style={{ fontSize: 9 }}>
+        <text x={padLinks - 6} y={padOben + plotH} textAnchor="end" className="fill-[var(--app-text-muted)]" style={{ fontSize: 9 }}>
           {formatEur(min)}
         </text>
         <path d={area} fill={`url(#${gradId})`} />
@@ -89,7 +89,7 @@ export function PaAreaChart({
               x={dots[i]?.x ?? 0}
               y={hoehe - 6}
               textAnchor="middle"
-              className="fill-zinc-500"
+              className="fill-[var(--app-text-muted)]"
               style={{ fontSize: 9 }}
             >
               {p.label}
@@ -143,7 +143,7 @@ export function PaDrawdownChart({
   }, [punkte, plotW, plotH, padLinks, padOben])
 
   if (punkte.length < 2) {
-    return <p className="py-12 text-center text-sm text-zinc-500">Noch zu wenig Historie für Drawdown.</p>
+    return <p className="py-12 text-center text-sm text-[var(--app-text-muted)]">Noch zu wenig Historie für Drawdown.</p>
   }
 
   const minDd = Math.min(...punkte.map((p) => p.drawdownProzent))
@@ -183,7 +183,7 @@ export function PaDrawdownChart({
               <text
                 x={breite - padRechts + 4}
                 y={y + 3}
-                className="fill-zinc-600"
+                className="fill-[var(--app-text-muted)]"
                 style={{ fontSize: 9 }}
               >
                 {t}%
@@ -205,7 +205,7 @@ export function PaDrawdownChart({
               x={dots[i]?.x ?? 0}
               y={hoehe - 6}
               textAnchor="middle"
-              className="fill-zinc-500"
+              className="fill-[var(--app-text-muted)]"
               style={{ fontSize: 9 }}
             >
               {p.label}
@@ -252,7 +252,7 @@ export function PaSignedBarChart({
   }, [punkte, plotW, plotH, padLinks, padOben])
 
   if (punkte.length < 2) {
-    return <p className="py-12 text-center text-sm text-zinc-500">Noch zu wenig Daten.</p>
+    return <p className="py-12 text-center text-sm text-[var(--app-text-muted)]">Noch zu wenig Daten.</p>
   }
 
   const labelStep = Math.max(1, Math.ceil(punkte.length / 10))
@@ -276,13 +276,13 @@ export function PaSignedBarChart({
           stroke="#3f3f46"
           strokeWidth={1}
         />
-        <text x={breite - padRechts + 2} y={zeroY + 3} className="fill-zinc-600" style={{ fontSize: 9 }}>
+        <text x={breite - padRechts + 2} y={zeroY + 3} className="fill-[var(--app-text-muted)]" style={{ fontSize: 9 }}>
           0{yAxisProzent ? '%' : ''}
         </text>
-        <text x={padLinks - 4} y={padOben + 4} textAnchor="end" className="fill-zinc-600" style={{ fontSize: 9 }}>
+        <text x={padLinks - 4} y={padOben + 4} textAnchor="end" className="fill-[var(--app-text-muted)]" style={{ fontSize: 9 }}>
           {yAxisProzent ? `+${yMax.toFixed(0)}%` : formatEur(yMax)}
         </text>
-        <text x={padLinks - 4} y={padOben + plotH} textAnchor="end" className="fill-zinc-600" style={{ fontSize: 9 }}>
+        <text x={padLinks - 4} y={padOben + plotH} textAnchor="end" className="fill-[var(--app-text-muted)]" style={{ fontSize: 9 }}>
           {yAxisProzent ? `-${yMax.toFixed(0)}%` : `-${formatEur(yMax)}`}
         </text>
         {bars.map((b, i) => (
@@ -307,7 +307,7 @@ export function PaSignedBarChart({
               x={bars[i]?.x != null ? bars[i].x + (bars[i].w ?? 0) / 2 : 0}
               y={hoehe - 8}
               textAnchor="middle"
-              className="fill-zinc-500"
+              className="fill-[var(--app-text-muted)]"
               style={{ fontSize: 8 }}
               transform={`rotate(-35 ${bars[i]?.x != null ? bars[i].x + (bars[i].w ?? 0) / 2 : 0} ${hoehe - 8})`}
             >
@@ -351,7 +351,7 @@ export function PaDividendBarChart({
   }, [punkte, plotW, plotH, padLinks, padOben])
 
   if (punkte.length < 2) {
-    return <p className="py-12 text-center text-sm text-zinc-500">Noch keine Dividenden im Zeitraum.</p>
+    return <p className="py-12 text-center text-sm text-[var(--app-text-muted)]">Noch keine Dividenden im Zeitraum.</p>
   }
 
   const labelStep = Math.max(1, Math.ceil(punkte.length / 10))
@@ -368,10 +368,10 @@ export function PaDividendBarChart({
         aria-label="Dividenden pro Monat"
       >
         <line x1={padLinks} y1={baseY} x2={breite - padRechts} y2={baseY} stroke="#27272a" strokeWidth={1} />
-        <text x={breite - padRechts + 2} y={baseY + 3} className="fill-zinc-600" style={{ fontSize: 9 }}>
+        <text x={breite - padRechts + 2} y={baseY + 3} className="fill-[var(--app-text-muted)]" style={{ fontSize: 9 }}>
           0
         </text>
-        <text x={padLinks - 4} y={padOben + 4} textAnchor="end" className="fill-zinc-600" style={{ fontSize: 9 }}>
+        <text x={padLinks - 4} y={padOben + 4} textAnchor="end" className="fill-[var(--app-text-muted)]" style={{ fontSize: 9 }}>
           {formatEur(yMax)}
         </text>
         {bars.map((b, i) => (
@@ -386,7 +386,7 @@ export function PaDividendBarChart({
               x={bars[i]?.x != null ? bars[i].x + (bars[i].w ?? 0) / 2 : 0}
               y={hoehe - 6}
               textAnchor="middle"
-              className="fill-zinc-500"
+              className="fill-[var(--app-text-muted)]"
               style={{ fontSize: 8 }}
             >
               {p.label}

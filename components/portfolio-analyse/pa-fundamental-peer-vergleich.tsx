@@ -1,5 +1,6 @@
 'use client'
 
+import { appTableScrollClassName } from '@/components/page-shell'
 import { useEffect, useState } from 'react'
 import { PaCard } from '@/components/portfolio-analyse/pa-ui'
 import type { PeerKennzahlen, PeerVergleichPaket } from '@/lib/portfolio-analyse/peer-vergleich-server'
@@ -15,8 +16,8 @@ function fmtMult(v: number | null): string {
 }
 
 function vsPeer(subject: number | null, peer: number | null, higherIsBetter = true): string {
-  if (subject == null || peer == null) return 'text-zinc-400'
-  if (subject === peer) return 'text-zinc-300'
+  if (subject == null || peer == null) return 'text-[var(--app-text-muted)]'
+  if (subject === peer) return 'text-[var(--app-text)]'
   const besser = higherIsBetter ? subject > peer : subject < peer
   return besser ? 'text-emerald-300' : 'text-red-300'
 }
@@ -37,11 +38,11 @@ function Zeile({
   const fmt = format === 'mult' ? fmtMult : fmtPct
   return (
     <tr className="align-top">
-      <td className="px-3 py-2.5 text-sm text-zinc-300">{label}</td>
+      <td className="px-3 py-2.5 text-sm text-[var(--app-text)]">{label}</td>
       <td className={`px-3 py-2.5 text-sm font-medium ${vsPeer(subject, median, higherIsBetter)}`}>
         {fmt(subject)}
       </td>
-      <td className="px-3 py-2.5 text-sm text-zinc-400">{fmt(median)}</td>
+      <td className="px-3 py-2.5 text-sm text-[var(--app-text-muted)]">{fmt(median)}</td>
     </tr>
   )
 }
@@ -86,13 +87,13 @@ export function PaFundamentalPeerVergleich({
 
   if (laden && !daten) {
     return (
-      <PaCard className="p-4 text-sm text-zinc-500">Peer-Benchmark wird geladen …</PaCard>
+      <PaCard className="p-4 text-sm text-[var(--app-text-muted)]">Peer-Benchmark wird geladen …</PaCard>
     )
   }
 
   if (!daten?.ok) {
     return (
-      <PaCard className="p-4 text-sm text-zinc-500">
+      <PaCard className="p-4 text-sm text-[var(--app-text-muted)]">
         {daten?.fehler ?? 'Peer-Vergleich nicht verfügbar.'}
       </PaCard>
     )
@@ -104,21 +105,21 @@ export function PaFundamentalPeerVergleich({
     <PaCard className="space-y-3 overflow-hidden p-4">
       <div>
         <h3 className="text-sm font-semibold text-white">Peer-Vergleich (Sektor-Benchmark)</h3>
-        <p className="text-xs text-zinc-500">
+        <p className="text-xs text-[var(--app-text-muted)]">
           vs. Median ({daten.peers.length} Peers): {daten.peers.map((p) => p.ticker).join(', ') || '–'}
         </p>
       </div>
 
-      <div className="overflow-x-auto rounded-xl border border-zinc-800/80">
+      <div className={`${appTableScrollClassName} rounded-xl border border-[var(--app-border)]`}>
         <table className="min-w-full text-left text-sm">
-          <thead className="bg-zinc-900/60 text-xs uppercase tracking-wide text-zinc-400">
+          <thead className="bg-[var(--app-surface-muted)] text-xs uppercase tracking-wide text-[var(--app-text-muted)]">
             <tr>
               <th className="px-3 py-2 font-semibold">Kennzahl</th>
               <th className="px-3 py-2 font-semibold">{daten.ticker}</th>
               <th className="px-3 py-2 font-semibold">Peer-Median</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-zinc-800/70">
+          <tbody className="divide-y divide-[var(--app-border)]">
             <Zeile label="ROIC" subject={daten.subject.roic} median={m.roic} />
             <Zeile label="FCF-Marge" subject={daten.subject.fcfMarge} median={m.fcfMarge} />
             <Zeile label="Rule of 40" subject={daten.subject.ruleOf40} median={m.ruleOf40} />

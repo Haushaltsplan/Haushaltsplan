@@ -133,13 +133,13 @@ export function PortfolioDashboardClient() {
   const startDatum = startDatumIso ? formatDatumDe(startDatumIso) : null
 
   if (laden && !live) {
-    return <p className="py-16 text-center text-sm text-zinc-500">Portfolio wird geladen …</p>
+    return <p className="py-16 text-center text-sm text-[var(--app-text-muted)]">Portfolio wird geladen …</p>
   }
 
   if (!hatDaten) {
     return (
       <PaCard className="p-8 text-center">
-        <p className="text-sm text-zinc-400">Noch keine Portfolio-Daten.</p>
+        <p className="text-sm text-[var(--app-text-muted)]">Noch keine Portfolio-Daten.</p>
         <Link
           href="/portfolioanalyse/import"
           className="mt-4 inline-block rounded-full bg-teal-600/80 px-5 py-2 text-sm font-medium text-white hover:bg-teal-600"
@@ -175,9 +175,9 @@ export function PortfolioDashboardClient() {
 
       <div className="grid gap-6 lg:grid-cols-3">
         <PaCard variant="elevated" className="p-5">
-          <h2 className="text-sm font-semibold tracking-tight text-zinc-50">Kennzahlen</h2>
+          <h2 className="text-sm font-semibold tracking-tight text-[var(--app-text)]">Kennzahlen</h2>
           {startDatum ? (
-            <p className="mt-0.5 text-[11px] text-zinc-500">seit {startDatum} · in EUR</p>
+            <p className="mt-0.5 text-[11px] text-[var(--app-text-muted)]">seit {startDatum} · in EUR</p>
           ) : null}
           <div className="mt-4 divide-y divide-white/[0.04]">
             <PaStatRow label="Einstand (offen)" value={k ? formatEur(k.einstandOffenEur) : '—'} />
@@ -211,12 +211,12 @@ export function PortfolioDashboardClient() {
 
         <PaCard variant="elevated" className="flex flex-col">
           <div className="flex items-center justify-between border-b border-white/[0.04] px-5 py-3">
-            <h2 className="text-sm font-semibold text-zinc-100">Letzte Aktivitäten</h2>
+            <h2 className="text-sm font-semibold text-[var(--app-text)]">Letzte Aktivitäten</h2>
             <Link href="/portfolioanalyse/aktivitaeten" className="text-xs text-teal-400 hover:underline">
               Alle →
             </Link>
           </div>
-          <ul className="max-h-80 flex-1 divide-y divide-zinc-800/50 overflow-y-auto">
+          <ul className="max-h-80 flex-1 divide-y divide-[var(--app-border)] overflow-y-auto">
             {letzteAktivitaeten.map((b) => {
               const href =
                 b.assetKlasse === 'aktie' && b.isin ? fundamentaldatenHref({ isin: b.isin }) : null
@@ -228,14 +228,14 @@ export function PortfolioDashboardClient() {
               >
                 <PortfolioIsinLogo isin={b.isin} fallbackName={b.wertpapierName} meta={meta} groesse="sm" />
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm text-zinc-200">
+                  <p className="truncate text-sm text-[var(--app-text)]">
                     {anzeigeNameFuerIsin(b.isin, b.wertpapierName, meta)}
                   </p>
-                  <p className="text-[11px] text-zinc-500">{formatDatumDe(b.datum)}</p>
+                  <p className="text-[11px] text-[var(--app-text-muted)]">{formatDatumDe(b.datum)}</p>
                 </div>
                 <div className="text-right">
                   <PaBadge variant={badgeVariant(b.typ)}>{BUCHUNGS_TYP_LABEL[b.typ]}</PaBadge>
-                  <p className="mt-1 text-sm tabular-nums text-zinc-100">{formatEur(b.betragEur)}</p>
+                  <p className="mt-1 text-sm tabular-nums text-[var(--app-text)]">{formatEur(b.betragEur)}</p>
                 </div>
               </li>
             )})}
@@ -244,12 +244,12 @@ export function PortfolioDashboardClient() {
 
         <PaCard variant="elevated" className="flex flex-col">
           <div className="border-b border-white/[0.04] px-5 py-3">
-            <h2 className="text-sm font-semibold text-zinc-100">Top Mover</h2>
-            <p className="text-[11px] text-zinc-500">{topMoverUntertitel(periodKey)}</p>
+            <h2 className="text-sm font-semibold text-[var(--app-text)]">Top Mover</h2>
+            <p className="text-[11px] text-[var(--app-text-muted)]">{topMoverUntertitel(periodKey)}</p>
           </div>
-          <ul className="max-h-80 flex-1 divide-y divide-zinc-800/50 overflow-y-auto">
+          <ul className="max-h-80 flex-1 divide-y divide-[var(--app-border)] overflow-y-auto">
             {topMover.length === 0 ? (
-              <li className="px-5 py-8 text-center text-sm text-zinc-500">Keine Live-Performance.</li>
+              <li className="px-5 py-8 text-center text-sm text-[var(--app-text-muted)]">Keine Live-Performance.</li>
             ) : (
               topMover.map(({ p, perf }) => {
                 const fundamentalHref =
@@ -276,8 +276,8 @@ export function PortfolioDashboardClient() {
                   <div className="flex min-w-0 flex-1 items-center gap-3">
                     <PortfolioIsinLogo isin={p.isin} fallbackName={p.name} meta={meta} groesse="sm" />
                     <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm text-zinc-200">{p.anzeigeName}</p>
-                      <p className="text-[11px] text-zinc-500">{formatEur(p.wertLiveEur)}</p>
+                      <p className="truncate text-sm text-[var(--app-text)]">{p.anzeigeName}</p>
+                      <p className="text-[11px] text-[var(--app-text-muted)]">{formatEur(p.wertLiveEur)}</p>
                     </div>
                   </div>
                   <div className="shrink-0 self-start sm:self-center">
@@ -304,7 +304,7 @@ export function PortfolioDashboardClient() {
       />
 
       {liveLaden ? (
-        <p className="text-center text-[11px] text-zinc-600">Kurse werden aktualisiert …</p>
+        <p className="text-center text-[11px] text-[var(--app-text-muted)]">Kurse werden aktualisiert …</p>
       ) : null}
     </div>
   )

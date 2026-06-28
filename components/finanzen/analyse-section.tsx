@@ -1,5 +1,11 @@
 'use client'
 
+import {
+  finanzCardClass,
+  finanzKpiCardClass,
+  finanzLabelMutedClass,
+  finanzToggleGroupClass,
+} from '@/components/finanzen/finanzen-ui'
 import { useEffect, useMemo, useState } from 'react'
 import { PageSection, PageSectionPanel } from '@/components/page-shell'
 import { DonutChart } from '@/components/finanzen/donut-chart'
@@ -208,23 +214,23 @@ export function AnalyseSection({
       <PageSectionPanel density="compact">
         <div className="grid gap-4 lg:grid-cols-2">
           {/* Donut: Ausgaben nach Kategorie / Einnahmen nach Quelle (anklicken zeigt die Buchungen) */}
-          <div className="rounded-2xl border border-slate-800/90 bg-gradient-to-b from-slate-900 to-slate-950 p-4 shadow-xl shadow-black/30 sm:p-5">
+          <div className={finanzCardClass}>
             <div className="flex items-center justify-between gap-2">
               <p className={`text-[11px] font-bold uppercase tracking-[0.18em] ${istAusgaben ? 'text-rose-400/90' : 'text-emerald-400/90'}`}>
                 {istAusgaben ? 'Ausgaben nach Kategorie' : 'Einnahmen nach Quelle'}
               </p>
-              <div className="inline-flex rounded-lg border border-slate-700/80 bg-slate-950/60 p-0.5 text-[11px] font-semibold">
+              <div className={`${finanzToggleGroupClass} inline-flex`}>
                 <button
                   type="button"
                   onClick={() => setDonutModus('ausgaben')}
-                  className={`rounded-md px-2.5 py-1 transition ${istAusgaben ? 'bg-rose-500/20 text-rose-300' : 'text-slate-400 hover:text-slate-200'}`}
+                  className={`rounded-md px-2.5 py-1 transition ${istAusgaben ? 'bg-rose-500/20 text-rose-300' : 'text-[var(--app-text-muted)] hover:text-[var(--app-text)]'}`}
                 >
                   Ausgaben
                 </button>
                 <button
                   type="button"
                   onClick={() => setDonutModus('einnahmen')}
-                  className={`rounded-md px-2.5 py-1 transition ${!istAusgaben ? 'bg-emerald-500/20 text-emerald-300' : 'text-slate-400 hover:text-slate-200'}`}
+                  className={`rounded-md px-2.5 py-1 transition ${!istAusgaben ? 'bg-emerald-500/20 text-emerald-300' : 'text-[var(--app-text-muted)] hover:text-[var(--app-text)]'}`}
                 >
                   Einnahmen
                 </button>
@@ -234,7 +240,7 @@ export function AnalyseSection({
               <DonutChart segmente={aktiveSegmente} />
               <ul className="min-w-0 flex-1 space-y-0.5">
                 {aktiveSegmente.length === 0 ? (
-                  <li className="text-[12px] text-slate-600">
+                  <li className="text-[12px] text-[var(--app-text-muted)]">
                     {istAusgaben ? 'Keine Ausgaben in diesem Monat.' : 'Keine Einnahmen in diesem Monat.'}
                   </li>
                 ) : (
@@ -247,15 +253,15 @@ export function AnalyseSection({
                           onClick={() => setOffenerKey((prev) => (prev === k.key ? null : k.key))}
                           aria-expanded={aktiv}
                           className={`flex w-full items-center gap-2 rounded-lg px-1.5 py-1.5 text-left text-[12px] transition ${
-                            aktiv ? 'bg-slate-800/70 ring-1 ring-slate-600/60' : 'hover:bg-slate-800/40'
+                            aktiv ? 'bg-[var(--app-surface-muted)]/70 ring-1 ring-[var(--app-border-strong)]/60' : 'hover:bg-[var(--app-surface-hover)]'
                           }`}
                         >
                           <span className="h-2.5 w-2.5 shrink-0 rounded-sm" style={{ backgroundColor: k.farbe }} aria-hidden />
-                          <span className="min-w-0 flex-1 truncate text-slate-300">{k.label}</span>
-                          <span className="shrink-0 tabular-nums text-slate-400">{Math.round(k.anteil * 100)}%</span>
-                          <span className="shrink-0 tabular-nums font-semibold text-slate-200">{eur(k.betrag)}</span>
+                          <span className="min-w-0 flex-1 truncate text-[var(--app-text)]">{k.label}</span>
+                          <span className="shrink-0 tabular-nums text-[var(--app-text-muted)]">{Math.round(k.anteil * 100)}%</span>
+                          <span className="shrink-0 tabular-nums font-semibold text-[var(--app-text)]">{eur(k.betrag)}</span>
                           <span
-                            className={`shrink-0 text-slate-500 transition-transform ${aktiv ? 'rotate-90' : ''}`}
+                            className={`shrink-0 text-[var(--app-text-muted)] transition-transform ${aktiv ? 'rotate-90' : ''}`}
                             aria-hidden
                           >
                             ›
@@ -269,35 +275,35 @@ export function AnalyseSection({
             </div>
 
             {offenesSegment && (
-              <div className="mt-3 rounded-xl border border-slate-800 bg-slate-950/55 p-3">
+              <div className="mt-3 rounded-xl border border-[var(--app-border)] bg-[var(--app-surface-muted)]/55 p-3">
                 <div className="mb-2 flex items-center justify-between gap-2">
-                  <p className="flex items-center gap-2 text-[12px] font-semibold text-slate-200">
+                  <p className="flex items-center gap-2 text-[12px] font-semibold text-[var(--app-text)]">
                     <span className="h-2.5 w-2.5 rounded-sm" style={{ backgroundColor: offenesSegment.farbe }} aria-hidden />
                     {offenesSegment.label}
-                    <span className="font-normal text-slate-500">({offenesSegment.rows.length})</span>
+                    <span className="font-normal text-[var(--app-text-muted)]">({offenesSegment.rows.length})</span>
                   </p>
                   <button
                     type="button"
                     onClick={() => setOffenerKey(null)}
-                    className="rounded-md px-2 py-0.5 text-[11px] font-semibold text-slate-400 hover:bg-slate-800 hover:text-slate-200"
+                    className="rounded-md px-2 py-0.5 text-[11px] font-semibold text-[var(--app-text-muted)] hover:bg-[var(--app-surface-hover)] hover:text-[var(--app-text)]"
                   >
                     Schließen
                   </button>
                 </div>
                 {offenesSegment.rows.length === 0 ? (
-                  <p className="text-[12px] text-slate-600">Keine Buchungen.</p>
+                  <p className="text-[12px] text-[var(--app-text-muted)]">Keine Buchungen.</p>
                 ) : (
                   <ul className="space-y-1">
                     {offenesSegment.rows.map((b, i) => (
                       <li
                         key={i}
-                        className="flex items-center gap-2 border-b border-slate-800/50 py-1.5 text-[12px] last:border-0"
+                        className="flex items-center gap-2 border-b border-[var(--app-border)]/50 py-1.5 text-[12px] last:border-0"
                       >
-                        <span className="w-14 shrink-0 tabular-nums text-slate-500">{formatDatumKurz(b.datum)}</span>
+                        <span className="w-14 shrink-0 tabular-nums text-[var(--app-text-muted)]">{formatDatumKurz(b.datum)}</span>
                         <span className="min-w-0 flex-1">
-                          <span className="block truncate text-slate-200">{String(b.kategorie ?? '—')}</span>
+                          <span className="block truncate text-[var(--app-text)]">{String(b.kategorie ?? '—')}</span>
                           {detailNotiz(b.beschreibung) && (
-                            <span className="block truncate text-[11px] text-slate-500">{detailNotiz(b.beschreibung)}</span>
+                            <span className="block truncate text-[11px] text-[var(--app-text-muted)]">{detailNotiz(b.beschreibung)}</span>
                           )}
                         </span>
                         <span className={`shrink-0 tabular-nums font-semibold ${istAusgaben ? 'text-rose-400' : 'text-emerald-400'}`}>
@@ -315,19 +321,19 @@ export function AnalyseSection({
           {/* Kennzahlen + Prognose */}
           <div className="flex flex-col gap-3">
             <div className="grid grid-cols-2 gap-3">
-              <div className="rounded-2xl border border-slate-800/90 bg-slate-950/50 p-4">
-                <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">Sparquote</p>
+              <div className={finanzKpiCardClass}>
+                <p className="text-[10px] font-bold uppercase tracking-wide text-[var(--app-text-muted)]">Sparquote</p>
                 <p className={`mt-1 text-2xl font-bold tabular-nums ${sparquote >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
                   {(sparquote * 100).toLocaleString('de-DE', { maximumFractionDigits: 0 })}%
                 </p>
-                <p className="mt-0.5 text-[11px] text-slate-500">Anteil gespart vom Einkommen</p>
+                <p className="mt-0.5 text-[11px] text-[var(--app-text-muted)]">Anteil gespart vom Einkommen</p>
               </div>
-              <div className="rounded-2xl border border-slate-800/90 bg-slate-950/50 p-4">
-                <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">Größter Block</p>
-                <p className="mt-1 truncate text-base font-semibold text-slate-100" title={groessteKategorie?.label}>
+              <div className={finanzKpiCardClass}>
+                <p className="text-[10px] font-bold uppercase tracking-wide text-[var(--app-text-muted)]">Größter Block</p>
+                <p className="mt-1 truncate text-base font-semibold text-[var(--app-text)]" title={groessteKategorie?.label}>
                   {groessteKategorie ? groessteKategorie.label : '—'}
                 </p>
-                <p className="mt-0.5 text-[11px] tabular-nums text-slate-500">
+                <p className="mt-0.5 text-[11px] tabular-nums text-[var(--app-text-muted)]">
                   {groessteKategorie ? eur(groessteKategorie.betrag) : 'keine Ausgaben'}
                 </p>
               </div>
@@ -339,22 +345,22 @@ export function AnalyseSection({
                 {eur(erwarteterSaldo)}
               </p>
               {habenOffenePosten ? (
-                <p className="mt-1 text-[11px] leading-relaxed text-slate-400">
+                <p className="mt-1 text-[11px] leading-relaxed text-[var(--app-text-muted)]">
                   Inkl. noch ausstehender Daueraufträge: {geplanteEinnahmen > 0 ? `+${eur(geplanteEinnahmen)} ` : ''}
                   {geplanteAusgaben > 0 ? `−${eur(geplanteAusgaben)}` : ''}
                 </p>
               ) : (
-                <p className="mt-1 text-[11px] text-slate-500">Alle geplanten Daueraufträge sind bereits gebucht.</p>
+                <p className="mt-1 text-[11px] text-[var(--app-text-muted)]">Alle geplanten Daueraufträge sind bereits gebucht.</p>
               )}
             </div>
           </div>
         </div>
 
         {/* 12-Monats-Verlauf */}
-        <div className="mt-4 rounded-2xl border border-slate-800/90 bg-gradient-to-b from-slate-900 to-slate-950 p-4 shadow-xl shadow-black/30 sm:p-5">
+        <div className={`mt-4 ${finanzCardClass}`}>
           <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
             <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-sky-400/90">Verlauf (12 Monate)</p>
-            <div className="flex items-center gap-3 text-[11px] text-slate-400">
+            <div className="flex items-center gap-3 text-[11px] text-[var(--app-text-muted)]">
               <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm bg-green-500" />Einnahmen</span>
               <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm bg-rose-500" />Ausgaben</span>
               <span className="flex items-center gap-1.5"><span className="h-2.5 w-3 rounded-sm bg-sky-400" />Saldo</span>

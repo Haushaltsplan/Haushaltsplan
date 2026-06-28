@@ -57,14 +57,14 @@ export function FitnessUserProfilePanel({ onSaved, embedded = false }: Props) {
     <div
       className={`rounded-2xl border border-white/[0.08] bg-[#111113] ${embedded ? 'p-4' : 'p-5'}`}
     >
-      <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-zinc-300">Dein Profil</p>
-      <p className="mt-2 text-xs leading-relaxed text-zinc-500">
+      <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-[var(--app-text)]">Dein Profil</p>
+      <p className="mt-2 text-xs leading-relaxed text-[var(--app-text-muted)]">
         Für Kalorienschätzung, HF-Zonen, Strain und Omnia Age. Alles bleibt lokal auf dem Gerät.
       </p>
 
       <div className="mt-4 grid gap-3 sm:grid-cols-2">
         <label className="block">
-          <span className="text-[10px] font-semibold uppercase tracking-wide text-zinc-500">Geburtsjahr</span>
+          <span className="text-[10px] font-semibold uppercase tracking-wide text-[var(--app-text-muted)]">Geburtsjahr</span>
           <input
             type="number"
             min={1920}
@@ -72,17 +72,17 @@ export function FitnessUserProfilePanel({ onSaved, embedded = false }: Props) {
             placeholder={`z. B. ${jahrJetzt - 30}`}
             value={profile.birthYear ?? ''}
             onChange={(e) => setField('birthYear', e.target.value ? Number(e.target.value) : null)}
-            className="mt-1 w-full rounded-xl border border-white/[0.08] bg-black/30 px-3 py-2.5 text-sm text-zinc-100 outline-none focus:border-sky-500/40"
+            className="mt-1 w-full rounded-xl border border-white/[0.08] bg-black/30 px-3 py-2.5 text-sm text-[var(--app-text)] outline-none focus:border-sky-500/40"
           />
-          <span className="mt-1 block text-[10px] text-zinc-600">Alter: {alter} Jahre</span>
+          <span className="mt-1 block text-[10px] text-[var(--app-text-muted)]">Alter: {alter} Jahre</span>
         </label>
 
         <label className="block">
-          <span className="text-[10px] font-semibold uppercase tracking-wide text-zinc-500">Geschlecht</span>
+          <span className="text-[10px] font-semibold uppercase tracking-wide text-[var(--app-text-muted)]">Geschlecht</span>
           <select
             value={profile.gender ?? ''}
             onChange={(e) => setField('gender', (e.target.value || null) as FitnessGender | null)}
-            className="mt-1 w-full rounded-xl border border-white/[0.08] bg-black/30 px-3 py-2.5 text-sm text-zinc-100 outline-none focus:border-sky-500/40"
+            className="mt-1 w-full rounded-xl border border-white/[0.08] bg-black/30 px-3 py-2.5 text-sm text-[var(--app-text)] outline-none focus:border-sky-500/40"
           >
             <option value="">— wählen —</option>
             {GENDER_OPTIONS.map((o) => (
@@ -91,11 +91,11 @@ export function FitnessUserProfilePanel({ onSaved, embedded = false }: Props) {
               </option>
             ))}
           </select>
-          <span className="mt-1 block text-[10px] text-zinc-600">Beeinflusst Kalorienformel</span>
+          <span className="mt-1 block text-[10px] text-[var(--app-text-muted)]">Beeinflusst Kalorienformel</span>
         </label>
 
         <label className="block">
-          <span className="text-[10px] font-semibold uppercase tracking-wide text-zinc-500">Größe (cm)</span>
+          <span className="text-[10px] font-semibold uppercase tracking-wide text-[var(--app-text-muted)]">Größe (cm)</span>
           <input
             type="number"
             min={100}
@@ -103,12 +103,12 @@ export function FitnessUserProfilePanel({ onSaved, embedded = false }: Props) {
             placeholder="175"
             value={profile.heightCm ?? ''}
             onChange={(e) => setField('heightCm', e.target.value ? Number(e.target.value) : null)}
-            className="mt-1 w-full rounded-xl border border-white/[0.08] bg-black/30 px-3 py-2.5 text-sm text-zinc-100 outline-none focus:border-sky-500/40"
+            className="mt-1 w-full rounded-xl border border-white/[0.08] bg-black/30 px-3 py-2.5 text-sm text-[var(--app-text)] outline-none focus:border-sky-500/40"
           />
         </label>
 
         <label className="block">
-          <span className="text-[10px] font-semibold uppercase tracking-wide text-zinc-500">Gewicht (kg)</span>
+          <span className="text-[10px] font-semibold uppercase tracking-wide text-[var(--app-text-muted)]">Gewicht (kg)</span>
           <input
             type="number"
             min={30}
@@ -117,15 +117,15 @@ export function FitnessUserProfilePanel({ onSaved, embedded = false }: Props) {
             placeholder="75"
             value={profile.weightKg ?? ''}
             onChange={(e) => setField('weightKg', e.target.value ? Number(e.target.value) : null)}
-            className="mt-1 w-full rounded-xl border border-white/[0.08] bg-black/30 px-3 py-2.5 text-sm text-zinc-100 outline-none focus:border-sky-500/40"
+            className="mt-1 w-full rounded-xl border border-white/[0.08] bg-black/30 px-3 py-2.5 text-sm text-[var(--app-text)] outline-none focus:border-sky-500/40"
           />
           {bmi != null ? (
-            <span className="mt-1 block text-[10px] text-zinc-600">BMI: {bmi.toFixed(1).replace('.', ',')}</span>
+            <span className="mt-1 block text-[10px] text-[var(--app-text-muted)]">BMI: {bmi.toFixed(1).replace('.', ',')}</span>
           ) : null}
         </label>
 
         <label className="block sm:col-span-2">
-          <span className="text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
+          <span className="text-[10px] font-semibold uppercase tracking-wide text-[var(--app-text-muted)]">
             Max. Herzfrequenz (optional)
           </span>
           <input
@@ -135,9 +135,9 @@ export function FitnessUserProfilePanel({ onSaved, embedded = false }: Props) {
             placeholder={`Standard: ${maxHr} (220 − Alter)`}
             value={profile.maxHrOverride ?? ''}
             onChange={(e) => setField('maxHrOverride', e.target.value ? Number(e.target.value) : null)}
-            className="mt-1 w-full rounded-xl border border-white/[0.08] bg-black/30 px-3 py-2.5 text-sm text-zinc-100 outline-none focus:border-sky-500/40"
+            className="mt-1 w-full rounded-xl border border-white/[0.08] bg-black/30 px-3 py-2.5 text-sm text-[var(--app-text)] outline-none focus:border-sky-500/40"
           />
-          <span className="mt-1 block text-[10px] text-zinc-600">Aktiv für Zonen & Strain: {maxHr} bpm</span>
+          <span className="mt-1 block text-[10px] text-[var(--app-text-muted)]">Aktiv für Zonen & Strain: {maxHr} bpm</span>
         </label>
       </div>
 

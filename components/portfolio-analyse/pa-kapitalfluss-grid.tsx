@@ -1,5 +1,6 @@
 'use client'
 
+import { appTableScrollClassName } from '@/components/page-shell'
 import { formatEur } from '@/lib/portfolio-analyse/berechnung'
 import type { KapitalflussHeatmap } from '@/lib/portfolio-analyse/kapitalfluss-heatmap'
 
@@ -8,8 +9,8 @@ function heatmapFarbeEur(
   min: number,
   max: number,
 ): { bg: string; text: string; useStyle: boolean } {
-  if (wert == null) return { bg: 'transparent', text: 'text-zinc-600', useStyle: false }
-  if (Math.abs(wert) < 0.005) return { bg: 'bg-zinc-800/50', text: 'text-zinc-500', useStyle: false }
+  if (wert == null) return { bg: 'transparent', text: 'text-[var(--app-text-muted)]', useStyle: false }
+  if (Math.abs(wert) < 0.005) return { bg: 'bg-[var(--app-surface-hover)]', text: 'text-[var(--app-text-muted)]', useStyle: false }
 
   if (wert > 0) {
     const t = max > 0 ? Math.min(1, wert / max) : 0.5
@@ -54,7 +55,7 @@ function Zelle({
 export function PaKapitalflussHeatmapGrid({ heatmap }: { heatmap: KapitalflussHeatmap }) {
   if (heatmap.zeilen.length === 0) {
     return (
-      <p className="py-12 text-center text-sm text-zinc-500">
+      <p className="py-12 text-center text-sm text-[var(--app-text-muted)]">
         Noch keine Käufe oder Verkäufe für eine Kapitalfluss-Auswertung.
       </p>
     )
@@ -63,11 +64,11 @@ export function PaKapitalflussHeatmapGrid({ heatmap }: { heatmap: KapitalflussHe
   const { minEur, maxEur } = heatmap
 
   return (
-    <div className="overflow-x-auto">
+    <div className={appTableScrollClassName}>
       <table className="w-full min-w-[720px] border-collapse text-xs">
         <thead>
-          <tr className="text-zinc-500">
-            <th className="sticky left-0 z-10 bg-zinc-900/95 px-2 py-2 text-left font-medium" />
+          <tr className="text-[var(--app-text-muted)]">
+            <th className="sticky left-0 z-10 bg-[var(--app-surface-muted)] px-2 py-2 text-left font-medium" />
             {heatmap.spalten.map((col) => (
               <th key={col} className="px-1.5 py-2 text-right font-medium tabular-nums">
                 {col}
@@ -77,8 +78,8 @@ export function PaKapitalflussHeatmapGrid({ heatmap }: { heatmap: KapitalflussHe
         </thead>
         <tbody>
           {heatmap.zeilen.map((zeile) => (
-            <tr key={zeile.jahr} className="border-t border-zinc-800/50">
-              <td className="sticky left-0 z-10 bg-zinc-900/95 px-2 py-1.5 font-semibold text-zinc-200">
+            <tr key={zeile.jahr} className="border-t border-[var(--app-border)]/50">
+              <td className="sticky left-0 z-10 bg-[var(--app-surface-muted)] px-2 py-1.5 font-semibold text-[var(--app-text)]">
                 {zeile.jahr}
               </td>
               <Zelle wert={zeile.gesamtEur} min={minEur} max={maxEur} />
@@ -89,8 +90,8 @@ export function PaKapitalflussHeatmapGrid({ heatmap }: { heatmap: KapitalflussHe
             </tr>
           ))}
           {heatmap.summen ? (
-            <tr className="border-t border-zinc-700/60 bg-zinc-800/30">
-              <td className="sticky left-0 z-10 bg-zinc-800/50 px-2 py-2 font-bold text-zinc-100">Σ</td>
+            <tr className="border-t border-[var(--app-border-strong)] bg-[var(--app-surface-muted)]/30">
+              <td className="sticky left-0 z-10 bg-[var(--app-surface-hover)] px-2 py-2 font-bold text-[var(--app-text)]">Σ</td>
               <Zelle wert={heatmap.summen.gesamtEur} min={minEur} max={maxEur} />
               <Zelle wert={heatmap.summen.durchschnittEur} min={minEur} max={maxEur} />
               {heatmap.summen.monate.map((wert, i) => (

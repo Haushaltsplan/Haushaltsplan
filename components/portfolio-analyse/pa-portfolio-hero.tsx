@@ -58,8 +58,8 @@ function portfolioTitel(positionen: LivePosition[]): string {
 function MetricSecondary({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex items-baseline justify-between gap-4 border-b border-white/[0.04] py-2.5 last:border-0">
-      <span className="text-sm text-zinc-500">{label}</span>
-      <span className="text-sm font-medium tabular-nums text-zinc-300">{value}</span>
+      <span className="text-sm text-[var(--app-text-muted)]">{label}</span>
+      <span className="text-sm font-medium tabular-nums text-[var(--app-text)]">{value}</span>
     </div>
   )
 }
@@ -67,7 +67,7 @@ function MetricSecondary({ label, value }: { label: string; value: string }) {
 function MetricPrimary({
   label,
   value,
-  valueClass = 'text-zinc-50',
+  valueClass = 'text-[var(--app-text)]',
   badge,
 }: {
   label: string
@@ -78,7 +78,7 @@ function MetricPrimary({
   return (
     <div>
       <div className="flex flex-wrap items-center gap-2">
-        <span className="text-sm text-zinc-500">{label}</span>
+        <span className="text-sm text-[var(--app-text-muted)]">{label}</span>
         {badge}
       </div>
       <p className={`mt-1 text-xl font-semibold tabular-nums tracking-tight sm:text-[1.65rem] ${valueClass}`}>
@@ -169,10 +169,10 @@ export function PaPortfolioHero({
         <div className="min-w-0 flex-1">
           <div className="flex flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-start sm:justify-between">
             <div className="min-w-0">
-              <h1 className="text-xl font-semibold tracking-tight text-zinc-50 sm:text-2xl">
+              <h1 className="text-xl font-semibold tracking-tight text-[var(--app-text)] sm:text-2xl">
                 {portfolioTitel(positionen)}
               </h1>
-              <p className="mt-1 text-sm text-zinc-500">
+              <p className="mt-1 text-sm text-[var(--app-text-muted)]">
                 {assetklassen} {assetklassen === 1 ? 'Assetklasse' : 'Assetklassen'} · {holdings}{' '}
                 {holdings === 1 ? 'Holding' : 'Holdings'} · EUR
               </p>
@@ -182,7 +182,7 @@ export function PaPortfolioHero({
               <select
                 value={periodKennzahlen.periodKey}
                 onChange={(e) => onPeriodKeyChange(e.target.value as PeriodPerformance['periodKey'])}
-                className="rounded-lg border border-white/[0.06] bg-slate-950/30 px-3 py-1.5 text-sm text-zinc-200 outline-none transition hover:border-white/[0.12] focus:ring-2 focus:ring-cyan-500/40"
+                className="rounded-lg border border-white/[0.06] bg-[var(--app-surface-muted)]/30 px-3 py-1.5 text-sm text-[var(--app-text)] outline-none transition hover:border-white/[0.12] focus:ring-2 focus:ring-cyan-500/40"
                 aria-label="Zeitraum wählen"
               >
                 {(
@@ -231,17 +231,17 @@ export function PaPortfolioHero({
                 label="IZF"
                 value={irr != null ? formatProzent(irr) : '—'}
                 valueClass={
-                  irr != null && irr >= 0 ? 'text-emerald-400' : irr != null ? 'text-rose-400' : 'text-zinc-50'
+                  irr != null && irr >= 0 ? 'text-emerald-400' : irr != null ? 'text-rose-400' : 'text-[var(--app-text)]'
                 }
               />
               <div>
-                <p className="text-sm text-zinc-500">Dividenden</p>
+                <p className="text-sm text-[var(--app-text-muted)]">Dividenden</p>
                 <p className="mt-1 text-lg font-semibold tabular-nums text-emerald-400/95">
                   {formatEur(dividenden)}
                 </p>
               </div>
               <div>
-                <p className="text-sm text-zinc-500">Realisiert</p>
+                <p className="text-sm text-[var(--app-text-muted)]">Realisiert</p>
                 <p
                   className={`mt-1 text-lg font-semibold tabular-nums ${
                     realisiert >= 0 ? 'text-emerald-400/95' : 'text-rose-400'

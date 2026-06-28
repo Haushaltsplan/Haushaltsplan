@@ -258,7 +258,7 @@ function PerformanceChartBody({
                   x={breite - padRechts + 6}
                   y={y + 3}
                   textAnchor="start"
-                  className="fill-zinc-500"
+                  className="fill-[var(--app-text-muted)]"
                   style={{ fontSize: gross ? 11 : 10 }}
                 >
                   {istProzent
@@ -270,7 +270,7 @@ function PerformanceChartBody({
           })}
 
           {!istProzent ? (
-            <text x={breite - padRechts + 6} y={padOben - 8} className="fill-zinc-600" style={{ fontSize: 9 }}>
+            <text x={breite - padRechts + 6} y={padOben - 8} className="fill-[var(--app-text-muted)]" style={{ fontSize: 9 }}>
               (EUR)
             </text>
           ) : null}
@@ -296,7 +296,7 @@ function PerformanceChartBody({
                 x={pt.x}
                 y={hoehe - 10}
                 textAnchor="middle"
-                className="fill-zinc-500"
+                className="fill-[var(--app-text-muted)]"
                 style={{ fontSize: gross ? 10 : 9 }}
               >
                 {pt.p.label}
@@ -308,7 +308,7 @@ function PerformanceChartBody({
 
       {active ? (
         <div
-          className="pointer-events-none absolute z-10 rounded-lg border border-zinc-700/80 bg-zinc-900/95 px-3 py-2.5 text-xs shadow-xl sm:min-w-[200px]"
+          className="pointer-events-none absolute z-10 rounded-lg border border-[var(--app-border-strong)] bg-[var(--app-surface-muted)] px-3 py-2.5 text-xs shadow-xl sm:min-w-[200px]"
           style={
             schmal
               ? { left: 8, right: 8, top: 8 }
@@ -318,12 +318,12 @@ function PerformanceChartBody({
                 }
           }
         >
-          <p className="mb-2 font-medium text-zinc-200">
+          <p className="mb-2 font-medium text-[var(--app-text)]">
             {formatDatumDe(active.p.datumIso)} (Tagesende)
           </p>
           <div className="flex items-center justify-between gap-4">
-            <span className="flex items-center gap-2 text-zinc-400">
-              <span className="inline-block h-2 w-2 rounded-full bg-zinc-300" />
+            <span className="flex items-center gap-2 text-[var(--app-text-muted)]">
+              <span className="inline-block h-2 w-2 rounded-full bg-[var(--app-text-muted)]" />
               {portfolioName}
             </span>
             <span
@@ -335,7 +335,7 @@ function PerformanceChartBody({
               {formatWert(active.p)}
             </span>
           </div>
-          <p className="mt-1 text-[10px] text-zinc-600">{metrikLabel}</p>
+          <p className="mt-1 text-[10px] text-[var(--app-text-muted)]">{metrikLabel}</p>
         </div>
       ) : null}
     </div>
@@ -370,7 +370,7 @@ export function PaPerformanceChart({
 
   if (punkte.length < 2) {
     return (
-      <p className="py-12 text-center text-sm text-zinc-500">
+      <p className="py-12 text-center text-sm text-[var(--app-text-muted)]">
         Noch zu wenig Historie für die Performance-Kurve.
       </p>
     )
@@ -379,14 +379,14 @@ export function PaPerformanceChart({
   const toolbar = (
     <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
       {zeigeDivToggle ? (
-        <label className="flex cursor-pointer items-center gap-2.5 text-sm text-zinc-400">
+        <label className="flex cursor-pointer items-center gap-2.5 text-sm text-[var(--app-text-muted)]">
           <button
             type="button"
             role="switch"
             aria-checked={mitDivRealisiert}
             onClick={() => onMitDivRealisiertChange(!mitDivRealisiert)}
             className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${
-              mitDivRealisiert ? 'bg-teal-600' : 'bg-zinc-700'
+              mitDivRealisiert ? 'bg-teal-600' : 'bg-[var(--app-surface-muted)]'
             }`}
           >
             <span
@@ -398,13 +398,13 @@ export function PaPerformanceChart({
           Dividenden und realisierte Gewinne inkludieren
         </label>
       ) : (
-        <p className="text-xs text-zinc-600">
+        <p className="text-xs text-[var(--app-text-muted)]">
           Metrik: {metrikLabel}
           {punkte[0]?.einheit === 'eur' ? ' · Werte in EUR' : ' · Werte in %'}
         </p>
       )}
       <select
-        className="rounded-lg border border-white/[0.06] bg-slate-950/40 px-3 py-1.5 text-sm text-zinc-200 outline-none focus:ring-2 focus:ring-teal-500/40"
+        className="rounded-lg border border-white/[0.06] bg-[var(--app-surface-muted)] px-3 py-1.5 text-sm text-[var(--app-text)] outline-none focus:ring-2 focus:ring-teal-500/40"
         value={portfolioMetric}
         onChange={(e) => onPortfolioMetricChange(e.target.value as PortfolioMetric)}
         aria-label="Portfolio-Metrik"
@@ -429,7 +429,7 @@ export function PaPerformanceChart({
         gross={vollbild}
       />
       {laden ? (
-        <p className="mt-2 text-center text-[11px] text-zinc-600">Tageskurse werden geladen …</p>
+        <p className="mt-2 text-center text-[11px] text-[var(--app-text-muted)]">Tageskurse werden geladen …</p>
       ) : null}
     </>
   )
@@ -441,7 +441,7 @@ export function PaPerformanceChart({
         <button
           type="button"
           onClick={() => setVollbild(true)}
-          className="absolute right-0 bottom-0 rounded-lg p-2 text-zinc-500 transition hover:bg-white/5 hover:text-zinc-300"
+          className="absolute right-0 bottom-0 rounded-lg p-2 text-[var(--app-text-muted)] transition hover:bg-white/5 hover:text-[var(--app-text)]"
           aria-label="Chart vergrößern"
         >
           <IconExpand className="h-5 w-5" />
@@ -450,7 +450,7 @@ export function PaPerformanceChart({
 
       {vollbild ? (
         <div
-          className="fixed inset-0 z-50 flex flex-col bg-zinc-950/95 p-4 backdrop-blur-sm sm:p-6"
+          className="fixed inset-0 z-50 flex flex-col bg-[var(--app-surface-muted)]/95 p-4 backdrop-blur-sm sm:p-6"
           role="dialog"
           aria-modal="true"
           aria-label="Performance Vollbild"
@@ -459,7 +459,7 @@ export function PaPerformanceChart({
             <button
               type="button"
               onClick={() => setVollbild(false)}
-              className="rounded-lg p-2 text-zinc-400 hover:bg-white/10 hover:text-zinc-100"
+              className="rounded-lg p-2 text-[var(--app-text-muted)] hover:bg-white/10 hover:text-[var(--app-text)]"
               aria-label="Schließen"
             >
               <IconClose className="h-6 w-6" />

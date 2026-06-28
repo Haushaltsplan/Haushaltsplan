@@ -22,6 +22,12 @@ import {
 } from '@/lib/haushalt-kalender'
 import { KalenderFotoImport } from '@/components/kalender-foto-import'
 import { PageChrome, PageHero } from '@/components/page-shell'
+import {
+  appCardClass,
+  appCardHeaderClass,
+  appGhostBtnClass,
+  appLoadingClass,
+} from '@/lib/app-ui'
 import { bayernFeiertageFuerJahr } from '@/lib/bayern-feiertage'
 import { istSupabaseClientKonfiguriert } from '@/lib/supabase'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -239,18 +245,16 @@ export default function KalenderPage() {
       <PageHero eyebrow="Kalender" title="Termine & Übersicht" />
 
       {!kalenderBereit ? (
-        <div className="flex min-h-[14rem] items-center justify-center rounded-2xl border border-zinc-700/35 bg-zinc-950/50 px-4 text-sm text-zinc-400 shadow-xl shadow-black/25 ring-1 ring-white/[0.04] backdrop-blur-xl">
-          Kalender wird geladen …
-        </div>
+        <div className={appLoadingClass}>Kalender wird geladen …</div>
       ) : (
         <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,20rem)] lg:items-start">
-        <div className="overflow-hidden rounded-2xl border border-zinc-700/35 bg-zinc-950/50 shadow-xl shadow-black/25 ring-1 ring-white/[0.04] backdrop-blur-xl">
-          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-zinc-800/70 px-3 py-3 sm:px-4">
+        <div className={appCardClass}>
+          <div className={`${appCardHeaderClass} flex flex-wrap items-center justify-between gap-3`}>
             <div className="flex items-center gap-1 sm:gap-2">
               <button
                 type="button"
                 onClick={monatDavor}
-                className="rounded-lg border border-slate-600 bg-slate-800/60 px-2.5 py-1.5 text-sm font-bold text-slate-200 transition hover:bg-slate-800"
+                className={appGhostBtnClass}
                 aria-label="Vorheriger Monat"
               >
                 ←
@@ -258,13 +262,13 @@ export default function KalenderPage() {
               <button
                 type="button"
                 onClick={monatDanach}
-                className="rounded-lg border border-slate-600 bg-slate-800/60 px-2.5 py-1.5 text-sm font-bold text-slate-200 transition hover:bg-slate-800"
+                className={appGhostBtnClass}
                 aria-label="Nächster Monat"
               >
                 →
               </button>
             </div>
-            <h2 className="min-w-0 flex-1 text-center text-base font-black capitalize tracking-tight text-slate-100 sm:text-lg">
+            <h2 className="min-w-0 flex-1 text-center text-base font-black capitalize tracking-tight text-[var(--app-text)] sm:text-lg">
               {formatMonatTitelDe(sicht)}
             </h2>
             <div className="flex flex-wrap items-center justify-end gap-1.5">
@@ -286,8 +290,8 @@ export default function KalenderPage() {
             </div>
           </div>
 
-          <div className="border-b border-zinc-800/70 bg-zinc-950/35 px-2 py-2 sm:px-3">
-            <p className="mb-1.5 text-[9px] font-bold uppercase tracking-wide text-slate-500 sm:text-[10px]">
+          <div className="border-b border-[var(--app-border)] bg-[var(--app-surface-muted)] px-2 py-2 sm:px-3">
+            <p className="mb-1.5 text-[9px] font-bold uppercase tracking-wide text-[var(--app-text-muted)] sm:text-[10px]">
               Kategorie auf einen Tag ziehen
             </p>
             <div className="flex flex-wrap gap-1.5" role="list" aria-label="Kategorien zum Ziehen">
@@ -300,7 +304,7 @@ export default function KalenderPage() {
                     e.dataTransfer.setData(KALENDER_DND_MIME, k.id)
                     e.dataTransfer.effectAllowed = 'copy'
                   }}
-                  className={`flex cursor-grab select-none items-center gap-1.5 rounded-lg border border-slate-600/80 bg-slate-900/80 px-2 py-1 text-[10px] font-bold text-slate-200 shadow-sm active:cursor-grabbing sm:text-xs ${k.listBorder}`}
+                  className={`flex cursor-grab select-none items-center gap-1.5 rounded-lg border border-[var(--app-border)] bg-[var(--app-surface-muted)] px-2 py-1 text-[10px] font-bold text-[var(--app-text)] shadow-sm active:cursor-grabbing sm:text-xs ${k.listBorder}`}
                   title={`${k.label} auf Kalendertag ziehen (Desktop)`}
                 >
                   <span className={`h-2 w-2 shrink-0 rounded-full ${k.dot}`} aria-hidden />
@@ -310,7 +314,7 @@ export default function KalenderPage() {
             </div>
           </div>
 
-          <div className="grid grid-cols-7 border-b border-zinc-800/70 text-center text-[10px] font-bold uppercase tracking-wider text-zinc-500 sm:text-[11px]">
+          <div className="grid grid-cols-7 border-b border-[var(--app-border)] text-center text-[10px] font-bold uppercase tracking-wider text-[var(--app-text-muted)] sm:text-[11px]">
             {WOCHENTAGE_KURZ.map((w) => (
               <div key={w} className="px-0.5 py-2 sm:py-2.5">
                 {w}
@@ -321,7 +325,7 @@ export default function KalenderPage() {
           <div className="grid grid-cols-7">
             {zellen.map((z, i) => {
               if (z == null) {
-                return <div key={`e-${i}`} className="min-h-[5rem] border-b border-r border-zinc-800/60 bg-zinc-950/25 sm:min-h-[6.5rem]" />
+                return <div key={`e-${i}`} className="min-h-[4.5rem] border-b border-r border-[var(--app-border)] bg-[var(--app-surface)]/40 sm:min-h-[6rem]" />
               }
               const iso = isoDatumAusJahrMonatTag(sicht.jahr, sicht.monat, z)
               const amTag = proTagEintraege.get(iso) || []
@@ -352,8 +356,8 @@ export default function KalenderPage() {
                     if (!kid) return
                     legeKategorieAufTag(iso, kid)
                   }}
-                  className={`min-h-[5rem] border-b border-r border-zinc-800/60 p-0.5 text-left align-top transition sm:min-h-[6.5rem] sm:p-1.5 ${
-                    isSel ? 'bg-teal-950/45 ring-1 ring-inset ring-teal-500/50' : 'hover:bg-slate-800/40'
+                  className={`min-h-[4.5rem] border-b border-r border-[var(--app-border)] p-0.5 text-left align-top transition sm:min-h-[6rem] sm:p-1.5 ${
+                    isSel ? 'bg-teal-950/45 ring-1 ring-inset ring-teal-500/50' : 'hover:bg-[var(--app-surface-hover)]'
                   } ${isHeute && !isSel ? 'bg-sky-950/30' : ''} ${
                     dragOverIso === iso ? 'ring-2 ring-inset ring-teal-400/90' : ''
                   }`}
@@ -370,7 +374,7 @@ export default function KalenderPage() {
                 >
                   <span
                     className={`inline-flex h-5 min-w-[1.5rem] items-center justify-center rounded-md text-[11px] font-bold tabular-nums sm:h-6 sm:text-sm ${
-                      isHeute ? 'bg-sky-600 text-white' : 'text-slate-200'
+                      isHeute ? 'bg-sky-600 text-white' : 'text-[var(--app-text)]'
                     }`}
                   >
                     {z}
@@ -382,11 +386,11 @@ export default function KalenderPage() {
                         return (
                           <div key={ev.id} className="mt-0.5 flex min-w-0 items-start gap-0.5 sm:mt-0.5">
                             <span className={`mt-0.5 h-1.5 w-1.5 flex-shrink-0 rounded-full ${st.dot}`} title={st.label} />
-                            <span className="line-clamp-2 min-w-0 break-words text-left text-[7px] leading-tight text-slate-200 sm:text-[8px]">
+                            <span className="line-clamp-2 min-w-0 break-words text-left text-[7px] leading-tight text-[var(--app-text)] sm:text-[8px]">
                               {ev.uhrzeit.trim() ? (
                                 <>
-                                  <span className="whitespace-nowrap font-mono text-slate-500">{ev.uhrzeit}</span>
-                                  <span className="text-slate-300"> {ev.titel.trim() || 'Ohne Titel'}</span>
+                                  <span className="whitespace-nowrap font-mono text-[var(--app-text-muted)]">{ev.uhrzeit}</span>
+                                  <span className="text-[var(--app-text)]"> {ev.titel.trim() || 'Ohne Titel'}</span>
                                 </>
                               ) : (
                                 ev.titel.trim() || 'Ohne Titel'
@@ -401,11 +405,11 @@ export default function KalenderPage() {
                             className={`mt-0.5 h-1.5 w-1.5 flex-shrink-0 rounded-full ${kalenderKategorieMeta(amTag[2].kategorie).dot}`}
                             title={kalenderKategorieMeta(amTag[2].kategorie).label}
                           />
-                          <span className="line-clamp-2 min-w-0 break-words text-left text-[7px] leading-tight text-slate-200 sm:text-[8px]">
+                          <span className="line-clamp-2 min-w-0 break-words text-left text-[7px] leading-tight text-[var(--app-text)] sm:text-[8px]">
                             {amTag[2].uhrzeit.trim() ? (
                               <>
-                                <span className="whitespace-nowrap font-mono text-slate-500">{amTag[2].uhrzeit}</span>
-                                <span className="text-slate-300"> {amTag[2].titel.trim() || 'Ohne Titel'}</span>
+                                <span className="whitespace-nowrap font-mono text-[var(--app-text-muted)]">{amTag[2].uhrzeit}</span>
+                                <span className="text-[var(--app-text)]"> {amTag[2].titel.trim() || 'Ohne Titel'}</span>
                               </>
                             ) : (
                               amTag[2].titel.trim() || 'Ohne Titel'
@@ -415,15 +419,15 @@ export default function KalenderPage() {
                       ) : null}
                       {n > 2 ? (
                         n === 3 ? (
-                          <p className="mt-0.5 pl-1 text-[7px] font-bold leading-tight text-slate-500 sm:hidden">
+                          <p className="mt-0.5 pl-1 text-[7px] font-bold leading-tight text-[var(--app-text-muted)] sm:hidden">
                             +1 weiterer
                           </p>
                         ) : (
                           <>
-                            <p className="mt-0.5 pl-1 text-[7px] font-bold leading-tight text-slate-500 sm:hidden">
+                            <p className="mt-0.5 pl-1 text-[7px] font-bold leading-tight text-[var(--app-text-muted)] sm:hidden">
                               +{n - 2} weitere
                             </p>
-                            <p className="mt-0.5 hidden pl-1 text-[7px] font-bold leading-tight text-slate-500 sm:block">
+                            <p className="mt-0.5 hidden pl-1 text-[7px] font-bold leading-tight text-[var(--app-text-muted)] sm:block">
                               +{n - 3} weitere
                             </p>
                           </>
@@ -437,10 +441,10 @@ export default function KalenderPage() {
           </div>
         </div>
 
-        <aside className="overflow-hidden rounded-2xl border border-zinc-700/35 bg-zinc-950/50 shadow-xl shadow-black/25 ring-1 ring-white/[0.04] backdrop-blur-xl">
-          <div className="border-b border-zinc-800/70 px-4 py-3">
-            <p className="text-[11px] font-bold uppercase tracking-widest text-zinc-400">Ausgewählter Tag</p>
-            <p className="mt-0.5 text-sm font-bold text-slate-100">
+        <aside className={appCardClass}>
+          <div className={appCardHeaderClass}>
+            <p className="text-[11px] font-bold uppercase tracking-widest text-[var(--app-text-muted)]">Ausgewählter Tag</p>
+            <p className="mt-0.5 text-sm font-bold text-[var(--app-text)]">
               {new Date(ausgewaehltNorm + 'T12:00:00').toLocaleDateString('de-DE', {
                 weekday: 'long',
                 day: 'numeric',
@@ -451,7 +455,7 @@ export default function KalenderPage() {
           </div>
           <div className="max-h-[min(50vh,28rem)] space-y-2 overflow-y-auto px-3 py-3 sm:px-4">
             {listAmTag.length === 0 ? (
-              <p className="text-sm text-slate-500">Keine Einträge an diesem Tag.</p>
+              <p className="text-sm text-[var(--app-text-muted)]">Keine Einträge an diesem Tag.</p>
             ) : (
               <ul className="space-y-2">
                 {listAmTag.map((e) => {
@@ -461,7 +465,7 @@ export default function KalenderPage() {
                       <button
                         type="button"
                         onClick={() => setModal({ art: 'bearbeiten', eintrag: e })}
-                        className={`w-full rounded-xl border border-slate-700/90 bg-slate-800/40 pl-2 pr-3 py-2.5 text-left transition hover:border-teal-600/50 hover:bg-slate-800/80 ${km.listBorder} ${km.listBg}`}
+                        className={`w-full rounded-xl border border-[var(--app-border)] bg-[var(--app-surface-muted)] pl-2 pr-3 py-2.5 text-left transition hover:border-teal-600/50 hover:bg-[var(--app-surface-hover)] ${km.listBorder} ${km.listBg}`}
                       >
                         <div className="flex items-start gap-2.5">
                           <span
@@ -476,17 +480,17 @@ export default function KalenderPage() {
                               {km.label}
                             </span>
                             <div className="mt-1 flex items-start justify-between gap-2">
-                              <span className="min-w-0 break-words text-left text-sm font-semibold text-slate-100">
+                              <span className="min-w-0 break-words text-left text-sm font-semibold text-[var(--app-text)]">
                                 {e.titel}
                               </span>
                               {e.uhrzeit.trim() ? (
-                                <span className="shrink-0 rounded-md bg-slate-950/50 px-1.5 py-0.5 text-[10px] font-mono font-bold text-slate-200">
+                                <span className="shrink-0 rounded-md bg-[var(--app-surface-muted)] px-1.5 py-0.5 text-[10px] font-mono font-bold text-[var(--app-text)]">
                                   {e.uhrzeit}
                                 </span>
                               ) : null}
                             </div>
                             {e.notiz.trim() ? (
-                              <p className="mt-1 line-clamp-3 text-xs text-slate-400">{e.notiz}</p>
+                              <p className="mt-1 line-clamp-3 text-xs text-[var(--app-text-muted)]">{e.notiz}</p>
                             ) : null}
                           </div>
                         </div>
@@ -497,7 +501,7 @@ export default function KalenderPage() {
               </ul>
             )}
           </div>
-          <div className="border-t border-zinc-800/70 px-3 py-3 sm:px-4">
+          <div className="border-t border-[var(--app-border)] px-3 py-3 sm:px-4">
             <button
               type="button"
               onClick={() => {

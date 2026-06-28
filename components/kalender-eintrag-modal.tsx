@@ -1,6 +1,7 @@
 'use client'
 
 import { appModalBackdropClassName, appModalPanelClassName } from '@/lib/app-modal-overlay'
+import { appCardHeaderClass, appInputClass, appLabelClass, appSecondaryBtnClass } from '@/lib/app-ui'
 import {
   KALENDER_KATEGORIEN,
   listeIsoDatenInklusiv,
@@ -96,8 +97,8 @@ export function KalenderEintragModal(props: Props) {
         className={`${appModalPanelClassName} max-h-[min(90vh,32rem)] overflow-y-auto`}
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="border-b border-slate-800 px-4 py-3 sm:px-5">
-          <h3 id={titleId} className="text-base font-black text-slate-100">
+        <div className={appCardHeaderClass}>
+          <h3 id={titleId} className="text-base font-black text-[var(--app-text)]">
             {props.modus.art === 'neu' ? 'Neuer Eintrag (optional mehrere Tage)' : 'Eintrag bearbeiten'}
           </h3>
         </div>
@@ -147,7 +148,7 @@ export function KalenderEintragModal(props: Props) {
         >
           {versteckeKategorienBalken ? null : (
             <div className="block">
-              <span className="text-[10px] font-black uppercase tracking-wider text-slate-500">Kategorie</span>
+              <span className={appLabelClass}>Kategorie</span>
               <div
                 className="mt-1.5 grid grid-cols-2 gap-1.5 sm:grid-cols-3"
                 role="group"
@@ -162,8 +163,8 @@ export function KalenderEintragModal(props: Props) {
                       onClick={() => setKategorie(k.id)}
                       className={`flex items-center gap-2 rounded-lg border px-2 py-2 text-left text-xs font-bold transition ${
                         aktiv
-                          ? `${k.listBorder} ${k.listBg} text-slate-100 ring-2 ring-offset-2 ring-offset-slate-900 ring-slate-500/30`
-                          : 'border-slate-700/90 bg-slate-950/60 text-slate-400 hover:border-slate-600 hover:text-slate-200'
+                          ? `${k.listBorder} ${k.listBg} text-[var(--app-text)] ring-2 ring-offset-2 ring-offset-[var(--app-surface)] ring-[var(--app-border-strong)]`
+                          : 'border-[var(--app-border-strong)] bg-[var(--app-surface-muted)] text-[var(--app-text-muted)] hover:border-[var(--app-border-strong)] hover:text-[var(--app-text)]'
                       }`}
                     >
                       <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${k.dot}`} aria-hidden />
@@ -174,54 +175,54 @@ export function KalenderEintragModal(props: Props) {
               </div>
             </div>
           )}
-          <label className="block text-[10px] font-black uppercase tracking-wider text-slate-500">
+          <label className={`block ${appLabelClass}`}>
             Titel
             <input
-              className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 py-2 px-2.5 text-sm font-semibold text-slate-100 outline-none focus:ring-2 focus:ring-teal-500/45"
+              className={`${appInputClass} mt-1 font-semibold focus:ring-teal-500/45`}
               value={titel}
               onChange={(e) => setTitel(e.target.value)}
               autoFocus
             />
           </label>
           <div className="block sm:grid sm:grid-cols-2 sm:gap-3">
-            <label className="block text-[10px] font-black uppercase tracking-wider text-slate-500">
+            <label className={`block ${appLabelClass}`}>
               {props.modus.art === 'neu' ? 'Von' : 'Datum'}
               <input
                 type="date"
-                className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 py-2 px-2.5 text-sm font-bold text-slate-100 outline-none focus:ring-2 focus:ring-teal-500/45"
+                className={`${appInputClass} mt-1 font-bold focus:ring-teal-500/45`}
                 value={datum}
                 onChange={(e) => setDatum(e.target.value)}
               />
             </label>
             {props.modus.art === 'neu' ? (
-              <label className="mt-2 block text-[10px] font-black uppercase tracking-wider text-slate-500 sm:mt-0">
+              <label className={`mt-2 block ${appLabelClass} sm:mt-0`}>
                 Bis (optional)
                 <input
                   type="date"
                   min={datum}
-                  className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 py-2 px-2.5 text-sm font-bold text-slate-100 outline-none focus:ring-2 focus:ring-teal-500/45"
+                  className={`${appInputClass} mt-1 font-bold focus:ring-teal-500/45`}
                   value={datumBis}
                   onChange={(e) => setDatumBis(e.target.value)}
                 />
-                <span className="mt-0.5 block text-[9px] font-normal text-slate-500">
+                <span className="mt-0.5 block text-[9px] font-normal text-[var(--app-text-muted)]">
                   Gleicher Titel, Uhrzeit &amp; Notiz für jeden Tag im Zeitraum
                 </span>
               </label>
             ) : null}
           </div>
-          <label className="block text-[10px] font-black uppercase tracking-wider text-slate-500">
+          <label className={`block ${appLabelClass}`}>
             Uhrzeit (optional)
             <input
               type="time"
-              className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 py-2 px-2.5 text-sm font-bold text-slate-100 outline-none focus:ring-2 focus:ring-teal-500/45"
+              className={`${appInputClass} mt-1 font-bold focus:ring-teal-500/45`}
               value={uhrzeit}
               onChange={(e) => setUhrzeit(e.target.value)}
             />
           </label>
-          <label className="block text-[10px] font-black uppercase tracking-wider text-slate-500">
+          <label className={`block ${appLabelClass}`}>
             Notiz (optional)
             <textarea
-              className="mt-1 min-h-[4rem] w-full rounded-lg border border-slate-700 bg-slate-950 py-2 px-2.5 text-sm text-slate-100 outline-none focus:ring-2 focus:ring-teal-500/45"
+              className={`${appInputClass} mt-1 min-h-[4rem] focus:ring-teal-500/45`}
               value={notiz}
               onChange={(e) => setNotiz(e.target.value)}
               rows={3}
@@ -243,7 +244,7 @@ export function KalenderEintragModal(props: Props) {
             ) : null}
             <button
               type="button"
-              className="rounded-lg border border-slate-600 bg-slate-800/60 px-3 py-2 text-sm font-bold text-slate-200"
+              className={appSecondaryBtnClass}
               onClick={props.onClose}
             >
               Abbrechen

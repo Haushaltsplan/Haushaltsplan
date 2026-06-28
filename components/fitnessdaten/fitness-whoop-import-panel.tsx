@@ -83,15 +83,15 @@ export function FitnessWhoopImportPanel({ onImportComplete, embedded = false }: 
     <div
       className={`rounded-2xl border border-white/[0.08] bg-[#111113] ${embedded ? 'p-4' : 'p-5'}`}
     >
-      <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-zinc-300">Daten importieren</p>
-      <p className="mt-2 text-xs leading-relaxed text-zinc-500">
+      <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-[var(--app-text)]">Daten importieren</p>
+      <p className="mt-2 text-xs leading-relaxed text-[var(--app-text-muted)]">
         WHOOP-App → Profil → Datenschutz →{' '}
-        <strong className="font-semibold text-zinc-400">Daten exportieren</strong> → ZIP entpacken → CSVs
+        <strong className="font-semibold text-[var(--app-text-muted)]">Daten exportieren</strong> → ZIP entpacken → CSVs
         hochladen. Unterstützt{' '}
-        <code className="text-zinc-400">physiological_cycles.csv</code>,{' '}
-        <code className="text-zinc-400">sleeps.csv</code>,{' '}
-        <code className="text-zinc-400">workouts.csv</code>,{' '}
-        <code className="text-zinc-400">journal_entries.csv</code>.
+        <code className="text-[var(--app-text-muted)]">physiological_cycles.csv</code>,{' '}
+        <code className="text-[var(--app-text-muted)]">sleeps.csv</code>,{' '}
+        <code className="text-[var(--app-text-muted)]">workouts.csv</code>,{' '}
+        <code className="text-[var(--app-text-muted)]">journal_entries.csv</code>.
       </p>
 
       <div className="mt-4 space-y-3">
@@ -123,7 +123,7 @@ export function FitnessWhoopImportPanel({ onImportComplete, embedded = false }: 
           type="button"
           disabled={busy}
           onClick={() => jsonRef.current?.click()}
-          className="w-full rounded-xl border border-white/[0.08] bg-white/[0.03] py-2.5 text-sm font-medium text-zinc-300 transition hover:bg-white/[0.06] disabled:opacity-50"
+          className="w-full rounded-xl border border-white/[0.08] bg-white/[0.03] py-2.5 text-sm font-medium text-[var(--app-text)] transition hover:bg-white/[0.06] disabled:opacity-50"
         >
           Omnia-Backup (JSON) importieren
         </button>
@@ -131,7 +131,7 @@ export function FitnessWhoopImportPanel({ onImportComplete, embedded = false }: 
         <button
           type="button"
           onClick={exportBackup}
-          className="w-full rounded-xl border border-white/[0.06] py-2.5 text-sm font-medium text-zinc-500 transition hover:text-zinc-300"
+          className="w-full rounded-xl border border-white/[0.06] py-2.5 text-sm font-medium text-[var(--app-text-muted)] transition hover:text-[var(--app-text)]"
         >
           Omnia-Backup exportieren
         </button>

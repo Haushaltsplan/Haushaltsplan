@@ -8,7 +8,7 @@ export const metadata: Metadata = {
 
 export default function PortfolioWatchlistPage() {
   return (
-    <Suspense fallback={<p className="py-16 text-center text-sm text-zinc-500">Watchlist wird geladen …</p>}>
+    <Suspense fallback={<p className="py-16 text-center text-sm text-[var(--app-text-muted)]">Watchlist wird geladen …</p>}>
       <PortfolioWatchlistClient />
     </Suspense>
   )

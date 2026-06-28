@@ -120,7 +120,7 @@ function ChartSerieChip({
     <button
       type="button"
       onClick={onRemove}
-      className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-zinc-700/60 bg-zinc-900/80 py-1 pl-2 pr-1 text-[11px] text-zinc-300 transition hover:border-zinc-600 hover:bg-zinc-800/90"
+      className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-[var(--app-border-strong)] bg-[var(--app-surface-muted)] py-1 pl-2 pr-1 text-[11px] text-[var(--app-text)] transition hover:border-[var(--app-border-strong)] hover:bg-[var(--app-surface-hover)]/90"
       title={`${label} aus Chart entfernen`}
     >
       <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: farbe }} aria-hidden />
@@ -129,7 +129,7 @@ function ChartSerieChip({
         {dualAxis ? (yAxis === 1 ? ' (rechts)' : ' (links)') : ''}
       </span>
       <span
-        className="ml-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-[13px] leading-none text-zinc-500"
+        className="ml-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-[13px] leading-none text-[var(--app-text-muted)]"
         aria-hidden
       >
         ×
@@ -161,36 +161,36 @@ function SchnittBadge({
   const ueber = abweichungPct != null && abweichungPct > 0
   const unter = abweichungPct != null && abweichungPct < 0
   return (
-    <div className="relative rounded-lg border border-white/[0.06] bg-zinc-900/70 px-3 py-2 pr-8">
+    <div className="relative rounded-lg border border-white/[0.06] bg-[var(--app-surface-muted)] px-3 py-2 pr-8">
       {onRemove ? (
         <button
           type="button"
           onClick={onRemove}
-          className="absolute right-1.5 top-1.5 flex h-5 w-5 items-center justify-center rounded-md text-zinc-500 transition hover:bg-zinc-800 hover:text-zinc-200"
+          className="absolute right-1.5 top-1.5 flex h-5 w-5 items-center justify-center rounded-md text-[var(--app-text-muted)] transition hover:bg-[var(--app-surface-hover)] hover:text-[var(--app-text)]"
           title={`${label} aus Chart entfernen`}
           aria-label={`${label} aus Chart entfernen`}
         >
           ×
         </button>
       ) : null}
-      <p className="truncate text-[10px] font-medium text-zinc-400">{label}</p>
+      <p className="truncate text-[10px] font-medium text-[var(--app-text-muted)]">{label}</p>
       <div className="mt-1 flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-        <span className="text-[11px] text-zinc-500">
+        <span className="text-[11px] text-[var(--app-text-muted)]">
           Schnitt {zeitraum ? `(${zeitraum})` : ''}{' '}
-          <span className="font-semibold text-zinc-300">{formatFundamentalWert(schnitt, einheit)}</span>
-          {jahre > 0 ? <span className="text-zinc-600"> · {jahre} Werte</span> : null}
+          <span className="font-semibold text-[var(--app-text)]">{formatFundamentalWert(schnitt, einheit)}</span>
+          {jahre > 0 ? <span className="text-[var(--app-text-muted)]"> · {jahre} Werte</span> : null}
         </span>
         {aktuell != null ? (
           <>
-            <span className="text-zinc-600">·</span>
-            <span className="text-[11px] text-zinc-500">
+            <span className="text-[var(--app-text-muted)]">·</span>
+            <span className="text-[11px] text-[var(--app-text-muted)]">
               Aktuell{' '}
-              <span className="font-semibold text-zinc-100">{formatFundamentalWert(aktuell, einheit)}</span>
+              <span className="font-semibold text-[var(--app-text)]">{formatFundamentalWert(aktuell, einheit)}</span>
             </span>
             {abweichungPct != null ? (
               <span
                 className={`text-[10px] font-semibold tabular-nums ${
-                  ueber ? 'text-rose-400/90' : unter ? 'text-emerald-400/90' : 'text-zinc-500'
+                  ueber ? 'text-rose-400/90' : unter ? 'text-emerald-400/90' : 'text-[var(--app-text-muted)]'
                 }`}
               >
                 {ueber ? '▲' : unter ? '▼' : '●'}{' '}
@@ -233,7 +233,7 @@ function ChartZeitraumWahl({
     <div className="mt-3 flex flex-wrap items-end gap-3 border-t border-white/[0.04] pt-3">
       <div className="flex flex-wrap items-end gap-2">
         <label className="block">
-          <span className="mb-1 block text-[10px] font-medium uppercase tracking-wide text-zinc-500">Von</span>
+          <span className="mb-1 block text-[10px] font-medium uppercase tracking-wide text-[var(--app-text-muted)]">Von</span>
           <select
             value={vonIso}
             onChange={(e) => {
@@ -241,7 +241,7 @@ function ChartZeitraumWahl({
               onVonChange(neu)
               if (bisIso < neu) onBisChange(neu)
             }}
-            className="rounded-lg border border-zinc-700/70 bg-zinc-900/80 px-2.5 py-1.5 text-xs text-zinc-200 outline-none focus:border-amber-500/50"
+            className="rounded-lg border border-[var(--app-border-strong)] bg-[var(--app-surface-muted)] px-2.5 py-1.5 text-xs text-[var(--app-text)] outline-none focus:border-amber-500/50"
           >
             {allePerioden.filter((p) => !p.istSchaetzung).map((p) => (
               <option key={p.iso} value={p.iso}>
@@ -251,11 +251,11 @@ function ChartZeitraumWahl({
           </select>
         </label>
         <label className="block">
-          <span className="mb-1 block text-[10px] font-medium uppercase tracking-wide text-zinc-500">Bis</span>
+          <span className="mb-1 block text-[10px] font-medium uppercase tracking-wide text-[var(--app-text-muted)]">Bis</span>
           <select
             value={bisIso}
             onChange={(e) => onBisChange(e.target.value)}
-            className="rounded-lg border border-zinc-700/70 bg-zinc-900/80 px-2.5 py-1.5 text-xs text-zinc-200 outline-none focus:border-amber-500/50"
+            className="rounded-lg border border-[var(--app-border-strong)] bg-[var(--app-surface-muted)] px-2.5 py-1.5 text-xs text-[var(--app-text)] outline-none focus:border-amber-500/50"
           >
             {bisOptionen.map((p) => (
               <option key={p.iso} value={p.iso}>
@@ -283,7 +283,7 @@ function ChartZeitraumWahl({
               className={`rounded-lg border px-2.5 py-1.5 text-[11px] transition ${
                 vonIso === preset.von && bisIso === preset.bis
                   ? 'border-amber-500/40 bg-amber-500/10 text-amber-200'
-                  : 'border-zinc-700/60 bg-zinc-900/50 text-zinc-400 hover:border-zinc-600 hover:text-zinc-200'
+                  : 'border-[var(--app-border-strong)] bg-[var(--app-surface-muted)] text-[var(--app-text-muted)] hover:border-[var(--app-border-strong)] hover:text-[var(--app-text)]'
               }`}
             >
               {preset.label}
@@ -531,9 +531,9 @@ export function PaFundamentalMetrikChart({
     return (
       <div
         id="fundamental-metrik-chart"
-        className="rounded-2xl border border-dashed border-zinc-800/80 bg-gradient-to-b from-zinc-950/80 to-zinc-900/30 px-4 py-12 text-center"
+        className="rounded-2xl border border-dashed border-[var(--app-border)] bg-gradient-to-b from-[var(--app-surface-muted)] to-[var(--app-surface)] px-4 py-12 text-center"
       >
-        <p className="text-sm text-zinc-500">
+        <p className="text-sm text-[var(--app-text-muted)]">
           {variant === 'bewertung'
             ? 'Klicke auf eine Bewertungskennzahl, um den Verlauf mit Zeitraum-Schnitt anzuzeigen.'
             : 'Klicke auf eine Kennzahl in der Tabelle, um den Verlauf anzuzeigen.'}
@@ -544,8 +544,8 @@ export function PaFundamentalMetrikChart({
 
   if (serien.length === 0) {
     return (
-      <div id="fundamental-metrik-chart" className="rounded-2xl border border-zinc-800/70 bg-zinc-950/60 px-4 py-8 text-center">
-        <p className="text-sm text-zinc-500">Keine Daten im gewählten Zeitraum.</p>
+      <div id="fundamental-metrik-chart" className="rounded-2xl border border-[var(--app-border)]/70 bg-[var(--app-surface-muted)] px-4 py-8 text-center">
+        <p className="text-sm text-[var(--app-text-muted)]">Keine Daten im gewählten Zeitraum.</p>
       </div>
     )
   }
@@ -556,15 +556,15 @@ export function PaFundamentalMetrikChart({
   return (
     <div
       id="fundamental-metrik-chart"
-      className="overflow-hidden rounded-2xl border border-zinc-800/70 bg-gradient-to-br from-zinc-950 via-zinc-950/95 to-zinc-900/50 shadow-lg shadow-black/20"
+      className="overflow-hidden rounded-2xl border border-[var(--app-border)]/70 bg-gradient-to-br from-[var(--app-surface-muted)] via-[var(--app-surface-muted)] to-[var(--app-surface)] shadow-lg shadow-black/20"
     >
       <div className="border-b border-white/[0.05] px-4 py-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
-            <p className="text-sm font-medium text-zinc-200">
+            <p className="text-sm font-medium text-[var(--app-text)]">
               {variant === 'bewertung' ? 'Bewertungsverlauf' : 'Historischer Kennzahlenverlauf'}
             </p>
-            <p className="mt-0.5 text-[11px] text-zinc-500">
+            <p className="mt-0.5 text-[11px] text-[var(--app-text-muted)]">
               {variant === 'bewertung'
                 ? 'Zeitraum wählen · Schnitt nur im gewählten Intervall · Punkt = aktuell (TTM/NTM)'
                 : 'Zeitraum wählen · Schätzungen gestrichelt · bei zwei Kennzahlen eigene Y-Achse'}
@@ -572,14 +572,14 @@ export function PaFundamentalMetrikChart({
           </div>
           <div className="flex flex-wrap gap-2">
             {variant === 'standard' ? (
-              <div className="flex rounded-lg border border-zinc-700/60 bg-zinc-900/60 p-0.5">
+              <div className="flex rounded-lg border border-[var(--app-border-strong)] bg-[var(--app-surface-muted)] p-0.5">
                 {(['linie', 'balken'] as const).map((art) => (
                   <button
                     key={art}
                     type="button"
                     onClick={() => setChartArt(art)}
                     className={`rounded-md px-2.5 py-1 text-[11px] transition ${
-                      chartArt === art ? 'bg-amber-500/20 text-amber-200' : 'text-zinc-400 hover:text-zinc-200'
+                      chartArt === art ? 'bg-amber-500/20 text-amber-200' : 'text-[var(--app-text-muted)] hover:text-[var(--app-text)]'
                     }`}
                   >
                     {art === 'linie' ? 'Linie' : 'Balken'}
@@ -590,14 +590,14 @@ export function PaFundamentalMetrikChart({
           <button
             type="button"
             onClick={onToggleLabels}
-              className="rounded-lg border border-zinc-700/60 bg-zinc-900/60 px-2.5 py-1 text-[11px] text-zinc-400 transition hover:border-zinc-600 hover:text-zinc-200"
+              className="rounded-lg border border-[var(--app-border-strong)] bg-[var(--app-surface-muted)] px-2.5 py-1 text-[11px] text-[var(--app-text-muted)] transition hover:border-[var(--app-border-strong)] hover:text-[var(--app-text)]"
           >
               {labelsAnzeigen ? 'Labels aus' : 'Labels an'}
           </button>
           <button
             type="button"
             onClick={onClear}
-              className="rounded-lg border border-zinc-700/60 bg-zinc-900/60 px-2.5 py-1 text-[11px] text-zinc-400 transition hover:border-zinc-600 hover:text-zinc-200"
+              className="rounded-lg border border-[var(--app-border-strong)] bg-[var(--app-surface-muted)] px-2.5 py-1 text-[11px] text-[var(--app-text-muted)] transition hover:border-[var(--app-border-strong)] hover:text-[var(--app-text)]"
           >
               Leeren
           </button>
@@ -618,7 +618,7 @@ export function PaFundamentalMetrikChart({
 
         {variant === 'standard' && serien.length > 0 ? (
           <div className="mt-3 flex flex-wrap items-center gap-2">
-            <span className="text-[10px] font-medium uppercase tracking-wide text-zinc-600">Im Chart</span>
+            <span className="text-[10px] font-medium uppercase tracking-wide text-[var(--app-text-muted)]">Im Chart</span>
             {serien.map((s) => (
               <ChartSerieChip
                 key={s.id}
@@ -821,26 +821,26 @@ export function PaFundamentalMetrikChart({
           )}
       </svg>
 
-        <ul className="mt-1 flex flex-wrap gap-x-3 gap-y-1.5 px-1 text-[10px] text-zinc-500">
+        <ul className="mt-1 flex flex-wrap gap-x-3 gap-y-1.5 px-1 text-[10px] text-[var(--app-text-muted)]">
           {serien.map((s) => (
             <li key={s.id}>
               <button
                 type="button"
                 onClick={() => onToggleSerie(s.id)}
-                className="flex max-w-full items-center gap-1.5 rounded-md px-1 py-0.5 text-left transition hover:bg-zinc-800/60"
+                className="flex max-w-full items-center gap-1.5 rounded-md px-1 py-0.5 text-left transition hover:bg-[var(--app-surface-hover)]"
                 title={`${s.label} aus Chart entfernen`}
               >
                 <span className="h-2 w-4 shrink-0 rounded-full" style={{ background: s.farbe }} aria-hidden />
-                <span className="text-zinc-400">
+                <span className="text-[var(--app-text-muted)]">
             {s.label}
                   {dualAxis ? (s.yAxis === 1 ? ' (rechts)' : ' (links)') : ''}
                 </span>
                 {variant === 'bewertung' && s.schnitt != null ? (
-                  <span className="text-zinc-600">
+                  <span className="text-[var(--app-text-muted)]">
                     · Schnitt {zeitraumLabel} {formatFundamentalWert(s.schnitt, s.einheit)}
                   </span>
                 ) : null}
-                <span className="text-zinc-600" aria-hidden>
+                <span className="text-[var(--app-text-muted)]" aria-hidden>
                   ×
                 </span>
               </button>
@@ -853,8 +853,8 @@ export function PaFundamentalMetrikChart({
             </li>
           ) : null}
           {variant === 'bewertung' ? (
-            <li className="flex items-center gap-1.5 text-zinc-600">
-              <span className="h-0 w-4 border-t border-dashed border-zinc-500" />
+            <li className="flex items-center gap-1.5 text-[var(--app-text-muted)]">
+              <span className="h-0 w-4 border-t border-dashed border-[var(--app-border-strong)]" />
               Zeitraum-Schnitt
             </li>
           ) : null}

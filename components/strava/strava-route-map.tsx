@@ -59,7 +59,7 @@ export function StravaRouteMap({ polyline, className = '', height = 200 }: Props
   if (!polyline) {
     return (
       <div
-        className={`flex items-center justify-center rounded-xl bg-zinc-900/80 text-xs text-zinc-600 ${className}`}
+        className={`flex items-center justify-center rounded-xl bg-[var(--app-surface-muted)] text-xs text-[var(--app-text-muted)] ${className}`}
         style={{ height }}
       >
         Keine Routendaten — Sync ausführen

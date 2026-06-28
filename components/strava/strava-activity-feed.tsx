@@ -1,6 +1,6 @@
 'use client'
 
-import { STRAVA_COLORS, STRAVA_INTERACTIVE } from '@/components/strava/design-tokens'
+import { STRAVA_CARD_HOVER, STRAVA_COLORS, STRAVA_INTERACTIVE } from '@/components/strava/design-tokens'
 import { StravaCard, StravaSectionTitle } from '@/components/strava/strava-card'
 import { formatRelativeDate, sportIcon, type TransformedStravaActivity } from '@/lib/strava/strava-activity-utils'
 
@@ -15,7 +15,7 @@ function MetricCell({ value, muted }: { value: string; muted?: boolean }) {
     <span
       className={[
         'text-xs tabular-nums',
-        isNa || muted ? 'text-zinc-600' : 'text-zinc-300',
+        isNa || muted ? 'text-[var(--app-text-muted)]' : 'text-[var(--app-text)]',
       ].join(' ')}
     >
       {value}
@@ -27,7 +27,7 @@ export function StravaActivityFeed({ activities, onSelect }: Props) {
   if (activities.length === 0) {
     return (
       <StravaCard padding="lg">
-        <p className="text-center text-sm text-zinc-500">Noch keine Aktivitäten — synchronisiere mit Strava.</p>
+        <p className="text-center text-sm text-[var(--app-text-muted)]">Noch keine Aktivitäten — synchronisiere mit Strava.</p>
       </StravaCard>
     )
   }
@@ -42,10 +42,11 @@ export function StravaActivityFeed({ activities, onSelect }: Props) {
             type="button"
             onClick={() => onSelect?.(a.id)}
             className={[
-              'group flex w-full items-center gap-3 rounded-2xl border border-slate-500/15 bg-[#0c0d0f] p-3 text-left',
-              'shadow-[0_2px_12px_rgba(0,0,0,0.25)]',
+              'group flex w-full items-center gap-3 rounded-2xl border border-[var(--app-border)] bg-[var(--app-surface)] p-3 text-left',
+              'shadow-[var(--app-shadow)]',
               STRAVA_INTERACTIVE,
-              'hover:border-[#FC4C02]/30 hover:bg-[#141618]',
+              STRAVA_CARD_HOVER,
+              'hover:bg-[var(--app-surface-muted)]',
             ].join(' ')}
           >
             <div
@@ -63,25 +64,25 @@ export function StravaActivityFeed({ activities, onSelect }: Props) {
             </div>
 
             <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-bold text-zinc-100 group-hover:text-orange-100">{a.name}</p>
-              <p className="mt-0.5 text-[11px] text-zinc-500">{formatRelativeDate(a.startDate)}</p>
+              <p className="truncate text-sm font-bold text-[var(--app-text)] group-hover:text-orange-100">{a.name}</p>
+              <p className="mt-0.5 text-[11px] text-[var(--app-text-muted)]">{formatRelativeDate(a.startDate)}</p>
             </div>
 
             <div className="hidden shrink-0 grid-cols-4 gap-x-4 text-right sm:grid">
               <div>
-                <p className="text-[9px] uppercase tracking-wider text-zinc-600">Dist</p>
+                <p className="text-[9px] uppercase tracking-wider text-[var(--app-text-muted)]">Dist</p>
                 <MetricCell value={a.distanceLabel} />
               </div>
               <div>
-                <p className="text-[9px] uppercase tracking-wider text-zinc-600">Zeit</p>
+                <p className="text-[9px] uppercase tracking-wider text-[var(--app-text-muted)]">Zeit</p>
                 <MetricCell value={a.movingTimeCompact} />
               </div>
               <div>
-                <p className="text-[9px] uppercase tracking-wider text-zinc-600">Ø HF</p>
+                <p className="text-[9px] uppercase tracking-wider text-[var(--app-text-muted)]">Ø HF</p>
                 <MetricCell value={a.avgHrLabel} muted={a.avgHr == null} />
               </div>
               <div>
-                <p className="text-[9px] uppercase tracking-wider text-zinc-600">Hm</p>
+                <p className="text-[9px] uppercase tracking-wider text-[var(--app-text-muted)]">Hm</p>
                 <MetricCell value={a.elevationLabel} muted={a.elevationGainM == null || a.elevationGainM <= 0} />
               </div>
             </div>

@@ -74,11 +74,11 @@ export function RegionWetterArchivClient({ ortId, startDatumIso, initialHistorie
   const istReferenz = datumIso === startDatumIso
   const titelDatum = tag?.datumAnzeigeDe ?? isoZuDatumAnzeigeDe(datumIso)
   const btnCls =
-    'rounded-lg border border-amber-700/35 bg-slate-950/70 px-2.5 py-1.5 text-xs font-semibold text-amber-100/95 transition hover:bg-slate-900/90 disabled:cursor-not-allowed disabled:opacity-35'
+    'rounded-lg border border-amber-700/35 bg-[var(--app-surface-muted)] px-2.5 py-1.5 text-xs font-semibold text-amber-100/95 transition hover:bg-[var(--app-surface-muted)] disabled:cursor-not-allowed disabled:opacity-35'
 
   return (
-    <details className="app-disclosure group border-t border-slate-800/80 bg-slate-950/25">
-      <summary className="flex cursor-pointer list-none select-none items-center justify-between gap-3 px-4 py-4 text-left outline-offset-2 transition-colors hover:bg-slate-800/35 focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-500/50 sm:px-8">
+    <details className="app-disclosure group border-t border-[var(--app-border)] bg-[var(--app-surface-muted)]/25">
+      <summary className="flex cursor-pointer list-none select-none items-center justify-between gap-3 px-4 py-4 text-left outline-offset-2 transition-colors hover:bg-[var(--app-surface-hover)]/35 focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-500/50 sm:px-8">
         <p className="min-w-0 pr-1 text-[11px] font-black uppercase tracking-widest text-amber-200/85">
           Wetterarchiv
           <span className="mt-0.5 block font-mono font-bold normal-case tracking-normal text-amber-100/75">
@@ -89,7 +89,7 @@ export function RegionWetterArchivClient({ ortId, startDatumIso, initialHistorie
         <DetailsDisclosureTriggerEnd tone="sky" />
       </summary>
       <div className="space-y-4 px-4 pb-5 sm:px-8">
-        <div className="flex flex-wrap items-center gap-2 border-b border-slate-800/60 pb-4">
+        <div className="flex flex-wrap items-center gap-2 border-b border-[var(--app-border)] pb-4">
           <button type="button" disabled={!kannZurueck || laden} className={btnCls} onClick={() => geheTag(-1)}>
             ← Tag
           </button>
@@ -101,7 +101,7 @@ export function RegionWetterArchivClient({ ortId, startDatumIso, initialHistorie
               Zu „vor 1 Jahr“
             </button>
           ) : null}
-          {laden ? <span className="text-xs text-slate-500">Lade …</span> : null}
+          {laden ? <span className="text-xs text-[var(--app-text-muted)]">Lade …</span> : null}
         </div>
 
         {fehler ? <p className="text-sm text-amber-200/90">{fehler}</p> : null}
@@ -110,21 +110,21 @@ export function RegionWetterArchivClient({ ortId, startDatumIso, initialHistorie
           <div className="grid gap-4 sm:grid-cols-[1fr_auto] sm:items-center">
             <div>
               <div className="flex flex-wrap items-end gap-3">
-                <span className="text-4xl font-black tabular-nums leading-none text-slate-100 sm:text-5xl">
+                <span className="text-4xl font-black tabular-nums leading-none text-[var(--app-text)] sm:text-5xl">
                   {tag.tMin}° – {tag.tMax}°
                 </span>
                 <div className="pb-1">
-                  <p className="text-base font-semibold text-slate-200">{tag.zustandDe}</p>
-                  <p className="text-xs text-slate-500">Tagesmin / ‑max (Archiv)</p>
+                  <p className="text-base font-semibold text-[var(--app-text)]">{tag.zustandDe}</p>
+                  <p className="text-xs text-[var(--app-text-muted)]">Tagesmin / ‑max (Archiv)</p>
                 </div>
               </div>
-              <div className="mt-4 grid gap-2 text-sm text-slate-300 sm:grid-cols-2">
+              <div className="mt-4 grid gap-2 text-sm text-[var(--app-text)] sm:grid-cols-2">
                 {tag.windMaxKmh != null ? (
                   <p>
-                    <span className="text-slate-500">Wind (max.)</span>{' '}
-                    <span className="font-semibold text-slate-100">{tag.windMaxKmh} km/h</span>
+                    <span className="text-[var(--app-text-muted)]">Wind (max.)</span>{' '}
+                    <span className="font-semibold text-[var(--app-text)]">{tag.windMaxKmh} km/h</span>
                     {tag.windRichtungGrad != null ? (
-                      <span className="text-slate-500">
+                      <span className="text-[var(--app-text-muted)]">
                         {' '}
                         · {windHimmelsrichtungKurz(tag.windRichtungGrad)} ({Math.round(tag.windRichtungGrad)}°)
                       </span>
@@ -133,14 +133,14 @@ export function RegionWetterArchivClient({ ortId, startDatumIso, initialHistorie
                 ) : null}
                 {tag.windBoeenMaxKmh != null ? (
                   <p>
-                    <span className="text-slate-500">Böen (max.)</span>{' '}
+                    <span className="text-[var(--app-text-muted)]">Böen (max.)</span>{' '}
                     <span className="font-semibold text-amber-200/90">{tag.windBoeenMaxKmh} km/h</span>
                   </p>
                 ) : null}
                 {tag.niederschlagMm != null ? (
                   <p>
-                    <span className="text-slate-500">Niederschlag</span>{' '}
-                    <span className="font-semibold text-slate-100">{tag.niederschlagMm} mm</span>
+                    <span className="text-[var(--app-text-muted)]">Niederschlag</span>{' '}
+                    <span className="font-semibold text-[var(--app-text)]">{tag.niederschlagMm} mm</span>
                   </p>
                 ) : null}
               </div>

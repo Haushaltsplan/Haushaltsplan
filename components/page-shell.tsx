@@ -1,12 +1,36 @@
 import type { ReactNode } from 'react'
 
+/** Standard-Breiten für Seiteninhalte. */
+export const pageContainerNarrowClass = 'mx-auto w-full min-w-0 max-w-2xl'
+export const pageContainerWideClass = 'mx-auto w-full min-w-0 max-w-6xl'
+export const pageContainerFullClass = 'mx-auto w-full min-w-0 max-w-full'
+
+/** Horizontal scrollbare Tabellen — verhindert Layout-Overflow auf schmalen Viewports. */
+export const appTableScrollClassName =
+  'app-table-scroll -mx-1 max-w-[calc(100%+0.5rem)] overflow-x-auto overscroll-x-contain px-1 sm:mx-0 sm:max-w-full sm:px-0'
+
+/** Wie oben, ohne negative Außenränder (für verschachtelte Scroll-Container). */
+export const appTableScrollInlineClassName =
+  'app-table-scroll w-full min-w-0 overflow-x-auto overscroll-x-contain'
+
+/** Standard-Sektionskarte (Finanzen, Lager, …). */
+export const pageCardClass =
+  'min-w-0 overflow-hidden rounded-2xl border border-[var(--app-border-strong)] bg-[var(--app-surface)] shadow-xl shadow-[var(--app-shadow)] ring-1 ring-[var(--app-ring)]'
+
+export const pageCardHeaderClass =
+  'border-b border-[var(--app-border)] bg-[var(--app-surface-muted)] p-3 sm:p-4'
+
+/** Aktionsleiste in Hero/Sektionen — Buttons stapeln sich auf Mobilgeräten. */
+export const pageActionBarClass =
+  'flex w-full min-w-0 flex-wrap items-stretch gap-2 sm:w-auto sm:items-center sm:justify-end sm:gap-3'
+
 /** Außenrahmen: Abstand wie Investments (`pb-14 pt-6`, Einblend-Animation). */
 export const pageChromeClass =
-  'relative w-full min-w-0 space-y-6 pb-14 pt-6 animate-in fade-in duration-300 motion-reduce:animate-none'
+  'relative w-full min-w-0 max-w-full space-y-6 pb-14 pt-6 animate-in fade-in duration-300 motion-reduce:animate-none'
 
 /** Engerer Außenrahmen (z. B. Finanzen — weniger Scroll). */
 export const pageChromeCompactClass =
-  'relative w-full min-w-0 space-y-3 pb-10 pt-3 animate-in fade-in duration-300 motion-reduce:animate-none'
+  'relative w-full min-w-0 max-w-full space-y-3 pb-10 pt-3 animate-in fade-in duration-300 motion-reduce:animate-none'
 
 /** Obere Titelzeile / Hero (gläserner Zinc-Kasten). */
 export const pageHeroClass =
@@ -86,7 +110,7 @@ export function PageHero({
         <div className={titleClass}>{title}</div>
         {description ? <div className={descClass}>{description}</div> : null}
       </div>
-      {actions ? <div className="flex shrink-0 flex-wrap items-center gap-3">{actions}</div> : null}
+      {actions ? <div className={pageActionBarClass}>{actions}</div> : null}
     </header>
   )
 }
@@ -127,4 +151,94 @@ export function PageSectionPanel({
 }) {
   const panel = density === 'compact' ? pageSectionPanelCompactClass : pageSectionPanelClass
   return <div className={className ? `${panel} ${className}` : panel}>{children}</div>
+}
+
+export function ResponsiveTableWrap({
+  children,
+  className,
+}: {
+  children: ReactNode
+  className?: string
+}) {
+  return (
+    <div className={[appTableScrollClassName, className].filter(Boolean).join(' ')}>{children}</div>
+  )
+}
+
+type PageSubTabAccent = 'teal' | 'emerald' | 'violet' | 'sky'
+
+const SUB_TAB_ACCENT: Record<PageSubTabAccent, string> = {
+  teal: 'bg-teal-600 text-white shadow-sm',
+  emerald: 'bg-emerald-600 text-white shadow-sm shadow-emerald-950/30',
+  violet: 'bg-violet-600 text-white shadow-sm shadow-violet-950/30',
+  sky: 'bg-sky-600 text-white shadow-sm shadow-sky-950/30',
+}
+
+/** Sticky Unter-Tabs: Select auf Mobil, Button-Leiste ab sm. */
+export function PageSubTabs<T extends string>({
+  selectId,
+  tabs,
+  active,
+  onChange,
+  ariaLabel,
+  className = '',
+  sticky = true,
+}: {
+  selectId: string
+  tabs: readonly { id: T; label: string; shortLabel?: string; accent?: PageSubTabAccent }[]
+  active: T
+  onChange: (id: T) => void
+  ariaLabel: string
+  className?: string
+  sticky?: boolean
+}) {
+  return (
+    <div className={className}>
+      <div className="sm:hidden">
+        <label htmlFor={selectId} className="sr-only">
+          {ariaLabel}
+        </label>
+        <select
+          id={selectId}
+          value={active}
+          onChange={(e) => onChange(e.target.value as T)}
+          className="w-full appearance-none rounded-2xl border border-[var(--app-border-strong)] bg-[var(--app-surface)] py-3 pl-4 pr-10 text-sm font-medium text-[var(--app-text)] shadow-sm outline-none focus-visible:ring-2 focus-visible:ring-teal-500/40"
+        >
+          {tabs.map((t) => (
+            <option key={t.id} value={t.id}>
+              {t.label}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      <div
+        className={`${sticky ? 'sticky top-[var(--app-nav-offset)] z-20 sm:top-2' : ''} hidden min-w-0 gap-1 rounded-xl border border-[var(--app-border-strong)] bg-[var(--app-surface)]/95 p-1 shadow-md ring-1 ring-[var(--app-ring)] backdrop-blur-md sm:flex`}
+        role="tablist"
+        aria-label={ariaLabel}
+      >
+        {tabs.map((t) => {
+          const on = t.id === active
+          const accent = SUB_TAB_ACCENT[t.accent ?? 'teal']
+          return (
+            <button
+              key={t.id}
+              type="button"
+              role="tab"
+              aria-selected={on}
+              onClick={() => onChange(t.id)}
+              className={`min-w-0 flex-1 rounded-lg px-3 py-2.5 text-xs font-bold transition sm:flex-none sm:px-4 sm:text-sm ${
+                on
+                  ? accent
+                  : 'text-[var(--app-text-muted)] hover:bg-[var(--app-surface-hover)] hover:text-[var(--app-text)]'
+              }`}
+            >
+              <span className="sm:hidden">{t.shortLabel ?? t.label}</span>
+              <span className="hidden sm:inline">{t.label}</span>
+            </button>
+          )
+        })}
+      </div>
+    </div>
+  )
 }

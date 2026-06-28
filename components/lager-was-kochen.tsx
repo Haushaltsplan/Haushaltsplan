@@ -99,7 +99,7 @@ export function LagerWasKochen({ artikel, refreshKey }: Props) {
 
   if (laden && treffer.length === 0) {
     return (
-      <div className="rounded-xl border border-violet-800/40 bg-violet-950/15 px-4 py-6 text-center text-sm text-slate-500">
+      <div className="rounded-xl border border-violet-800/40 bg-violet-950/15 px-4 py-6 text-center text-sm text-[var(--app-text-muted)]">
         Rezepte werden geprüft…
       </div>
     )
@@ -110,34 +110,34 @@ export function LagerWasKochen({ artikel, refreshKey }: Props) {
   }
 
   return (
-    <div className="overflow-hidden rounded-xl border border-violet-800/45 bg-slate-900/95 shadow-md shadow-black/20">
+    <div className="overflow-hidden rounded-xl border border-violet-800/45 bg-[var(--app-surface-muted)] shadow-md shadow-black/20">
       <button
         type="button"
         onClick={() => setOffen((o) => !o)}
-        className="flex w-full items-center justify-between gap-2 px-4 py-3 text-left hover:bg-slate-800/40"
+        className="flex w-full items-center justify-between gap-2 px-4 py-3 text-left hover:bg-[var(--app-surface-hover)]"
         aria-expanded={offen}
       >
         <div>
           <h2 className="text-sm font-bold text-violet-100 sm:text-base">Was kann ich kochen?</h2>
-          <p className="text-[11px] text-slate-500">
+          <p className="text-[11px] text-[var(--app-text-muted)]">
             {machbare.length} sofort machbar · {fastFertig.length} fast komplett
           </p>
         </div>
         <span className="text-xs font-bold text-violet-300">{offen ? '▲' : '▼'}</span>
       </button>
       {offen && (
-        <div className="space-y-2 border-t border-slate-800/80 px-3 pb-3 pt-2 sm:px-4">
+        <div className="space-y-2 border-t border-[var(--app-border)] px-3 pb-3 pt-2 sm:px-4">
           {treffer.map((t) => (
             <div
               key={t.id}
               className={`rounded-xl border px-3 py-2.5 ${
-                t.machbar ? 'border-emerald-800/45 bg-emerald-950/20' : 'border-slate-700/60 bg-slate-950/40'
+                t.machbar ? 'border-emerald-800/45 bg-emerald-950/20' : 'border-[var(--app-border-strong)] bg-[var(--app-surface-muted)]'
               }`}
             >
               <div className="flex flex-wrap items-start justify-between gap-2">
                 <div className="min-w-0">
-                  <p className="font-semibold text-slate-100">{t.titel}</p>
-                  <p className="text-[11px] text-slate-500">{t.portionen} Portionen</p>
+                  <p className="font-semibold text-[var(--app-text)]">{t.titel}</p>
+                  <p className="text-[11px] text-[var(--app-text-muted)]">{t.portionen} Portionen</p>
                 </div>
                 {t.machbar ? (
                   <span className="shrink-0 rounded border border-emerald-700/50 bg-emerald-900/40 px-2 py-0.5 text-[10px] font-bold text-emerald-200">

@@ -40,8 +40,8 @@ export function StravaActivityModal({ activity, athlete, onClose }: Props) {
           <div className="flex items-start justify-between gap-3">
             <div>
               <p className="text-[10px] font-bold uppercase tracking-wider text-orange-400/80">{t.sportType}</p>
-              <h2 className="mt-1 text-lg font-bold text-zinc-50">{t.name}</h2>
-              <p className="mt-1 text-xs text-zinc-500">
+              <h2 className="mt-1 text-lg font-bold text-[var(--app-text)]">{t.name}</h2>
+              <p className="mt-1 text-xs text-[var(--app-text-muted)]">
                 {new Date(t.startDate).toLocaleDateString('de-DE', {
                   weekday: 'long',
                   day: 'numeric',
@@ -50,7 +50,7 @@ export function StravaActivityModal({ activity, athlete, onClose }: Props) {
                 })}
               </p>
             </div>
-            <button type="button" onClick={onClose} className="rounded-lg p-2 text-zinc-500 hover:bg-white/5 hover:text-zinc-200">
+            <button type="button" onClick={onClose} className="rounded-lg p-2 text-[var(--app-text-muted)] hover:bg-white/5 hover:text-[var(--app-text)]">
               ✕
             </button>
           </div>
@@ -67,15 +67,15 @@ export function StravaActivityModal({ activity, athlete, onClose }: Props) {
               { l: 'TSS', v: activity.estimated_tss ? `${Math.round(activity.estimated_tss)}` : activity.suffer_score ? `${Math.round(activity.suffer_score)}` : 'N/A' },
             ].map((m) => (
               <div key={m.l} className="rounded-xl border border-white/[0.06] bg-black/40 px-3 py-2">
-                <p className="text-[9px] uppercase tracking-wider text-zinc-600">{m.l}</p>
-                <p className="mt-0.5 text-sm font-semibold tabular-nums text-zinc-200">{m.v}</p>
+                <p className="text-[9px] uppercase tracking-wider text-[var(--app-text-muted)]">{m.l}</p>
+                <p className="mt-0.5 text-sm font-semibold tabular-nums text-[var(--app-text)]">{m.v}</p>
               </div>
             ))}
           </div>
 
           {peaks && Object.values(peaks).some((v) => v != null) ? (
             <div className="mt-4">
-              <p className="mb-2 text-[10px] font-bold uppercase tracking-wider text-zinc-500">Power Peaks</p>
+              <p className="mb-2 text-[10px] font-bold uppercase tracking-wider text-[var(--app-text-muted)]">Power Peaks</p>
               <div className="grid grid-cols-3 gap-2">
                 {(Object.keys(peaks) as (keyof typeof peaks)[]).map((k) =>
                   peaks[k] ? (

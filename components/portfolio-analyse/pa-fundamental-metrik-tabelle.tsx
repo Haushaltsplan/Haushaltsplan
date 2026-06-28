@@ -29,15 +29,15 @@ export function PaFundamentalMetrikTabelle({
   if (zeilen.length === 0) return null
 
   return (
-    <div className="min-w-0 rounded-xl border border-zinc-800/80 bg-zinc-950/60">
-      <div className="border-b border-zinc-800 px-4 py-2.5">
-        <h3 className="text-sm font-semibold text-zinc-100">{titel}</h3>
+    <div className="min-w-0 rounded-xl border border-[var(--app-border)] bg-[var(--app-surface-muted)]">
+      <div className="border-b border-[var(--app-border)] px-4 py-2.5">
+        <h3 className="text-sm font-semibold text-[var(--app-text)]">{titel}</h3>
       </div>
       <div className={`${PA_SCROLL_ELEGANT} max-w-full`}>
         <table className="w-max min-w-full border-collapse text-xs">
           <thead>
-            <tr className="bg-zinc-900/90 text-zinc-400">
-              <th className="sticky left-0 z-10 min-w-[220px] border-r border-zinc-800 bg-zinc-900/95 px-3 py-2 text-left font-medium">
+            <tr className="bg-[var(--app-surface-muted)] text-[var(--app-text-muted)]">
+              <th className="sticky left-0 z-10 min-w-[220px] border-r border-[var(--app-border)] bg-[var(--app-surface-muted)] px-3 py-2 text-left font-medium">
                 Kennzahl
               </th>
               {perioden.map((p) => (
@@ -64,21 +64,21 @@ export function PaFundamentalMetrikTabelle({
               return (
                 <tr
                   key={z.id}
-                  className={`cursor-pointer border-t border-zinc-800/60 transition hover:bg-amber-500/[0.06] ${
-                    ri % 2 === 1 ? 'bg-zinc-900/30' : 'bg-transparent'
+                  className={`cursor-pointer border-t border-[var(--app-border)] transition hover:bg-amber-500/[0.06] ${
+                    ri % 2 === 1 ? 'bg-[var(--app-surface-muted)]/30' : 'bg-transparent'
                   } ${aktiv ? 'bg-amber-500/[0.08]' : ''}`}
                   onClick={() => onToggleZeile(z.id)}
                 >
-                  <td className="sticky left-0 z-10 border-r border-zinc-800/60 bg-inherit px-3 py-2">
-                    <span className="flex items-center gap-2 text-zinc-200">
-                      <span className={aktiv ? 'text-amber-400' : 'text-zinc-600'}>{CHART_ICON}</span>
+                  <td className="sticky left-0 z-10 border-r border-[var(--app-border)] bg-inherit px-3 py-2">
+                    <span className="flex items-center gap-2 text-[var(--app-text)]">
+                      <span className={aktiv ? 'text-amber-400' : 'text-[var(--app-text-muted)]'}>{CHART_ICON}</span>
                       {z.label}
                     </span>
                   </td>
                   {perioden.map((p) => (
                     <td
                       key={p.iso}
-                      className={`whitespace-nowrap px-3 py-2 text-right tabular-nums text-zinc-300 ${
+                      className={`whitespace-nowrap px-3 py-2 text-right tabular-nums text-[var(--app-text)] ${
                         p.istLtm
                           ? 'font-medium text-amber-100/90'
                           : p.istNtm

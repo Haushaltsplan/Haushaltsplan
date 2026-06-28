@@ -1,5 +1,6 @@
 'use client'
 
+import { appTableScrollClassName } from '@/components/page-shell'
 import { useMemo } from 'react'
 import { formatEur } from '@/lib/portfolio-analyse/berechnung'
 
@@ -16,11 +17,11 @@ export function PaChartKarte({
 }) {
   return (
     <div
-      className={`min-w-0 rounded-2xl border border-zinc-800/80 bg-zinc-900/50 p-4 shadow-lg shadow-black/20 ${className ?? ''}`}
+      className={`min-w-0 rounded-2xl border border-[var(--app-border-strong)] bg-[var(--app-surface)] p-4 shadow-lg shadow-[var(--app-shadow)] ${className ?? ''}`}
     >
       <div className="mb-3">
-        <h3 className="text-sm font-semibold text-zinc-100">{titel}</h3>
-        {hint ? <p className="mt-0.5 text-[11px] text-zinc-500">{hint}</p> : null}
+        <h3 className="text-sm font-semibold text-[var(--app-text)]">{titel}</h3>
+        {hint ? <p className="mt-0.5 text-[11px] text-[var(--app-text-muted)]">{hint}</p> : null}
       </div>
       {children}
     </div>
@@ -68,17 +69,17 @@ export function PaLinienChart({
   }, [serien, allePunkte, breite, plot, padLinks, padOben, padRechts])
 
   if (allePunkte.length === 0) {
-    return <p className="py-8 text-center text-xs text-zinc-600">Noch keine Verlaufsdaten.</p>
+    return <p className="py-8 text-center text-xs text-[var(--app-text-muted)]">Noch keine Verlaufsdaten.</p>
   }
 
   const labels = serien[0]?.punkte ?? []
   const labelStep = Math.max(1, Math.ceil(labels.length / 8))
 
   return (
-    <div className="w-full overflow-x-auto">
+    <div className={`w-full ${appTableScrollClassName}`}>
       <svg width="100%" viewBox={`0 0 ${breite} ${hoehe}`} preserveAspectRatio="xMidYMid meet" style={{ minWidth: breite }} role="img">
         <line x1={padLinks} y1={padOben + plot} x2={breite - padRechts} y2={padOben + plot} stroke="#3f3f46" strokeWidth={1} />
-        <text x={padLinks - 4} y={padOben + 4} textAnchor="end" className="fill-zinc-600" style={{ fontSize: 9 }}>
+        <text x={padLinks - 4} y={padOben + 4} textAnchor="end" className="fill-[var(--app-text-muted)]" style={{ fontSize: 9 }}>
           {formatEur(max)}
         </text>
         {paths.map((s) => (
@@ -93,13 +94,13 @@ export function PaLinienChart({
         ))}
         {labels.map((p, i) =>
           i % labelStep === 0 || i === labels.length - 1 ? (
-            <text key={i} x={padLinks + ((breite - padLinks - padRechts) * i) / Math.max(1, labels.length - 1)} y={hoehe - 8} textAnchor="middle" className="fill-zinc-500" style={{ fontSize: 9 }}>
+            <text key={i} x={padLinks + ((breite - padLinks - padRechts) * i) / Math.max(1, labels.length - 1)} y={hoehe - 8} textAnchor="middle" className="fill-[var(--app-text-muted)]" style={{ fontSize: 9 }}>
               {p.label}
             </text>
           ) : null,
         )}
       </svg>
-      <ul className="mt-2 flex flex-wrap gap-3 text-[10px] text-zinc-500">
+      <ul className="mt-2 flex flex-wrap gap-3 text-[10px] text-[var(--app-text-muted)]">
         {serien.map((s) => (
           <li key={s.key} className="flex items-center gap-1.5">
             <span className="h-2 w-3 rounded-sm" style={{ background: s.farbe }} />
@@ -128,14 +129,14 @@ export function PaMonatsBalken({
   const max = Math.max(1, ...daten.map((d) => d.wert))
 
   if (daten.every((d) => d.wert <= 0)) {
-    return <p className="py-8 text-center text-xs text-zinc-600">Noch keine Daten in diesem Zeitraum.</p>
+    return <p className="py-8 text-center text-xs text-[var(--app-text-muted)]">Noch keine Daten in diesem Zeitraum.</p>
   }
 
   const gruppenBreite = (breite - padLinks * 2) / Math.max(1, daten.length)
   const balkenBreite = Math.min(28, gruppenBreite * 0.65)
 
   return (
-    <div className="w-full overflow-x-auto">
+    <div className={`w-full ${appTableScrollClassName}`}>
       <svg width="100%" viewBox={`0 0 ${breite} ${hoehe}`} preserveAspectRatio="xMidYMid meet" style={{ minWidth: breite }} role="img">
         <line x1={padLinks} y1={padOben + plot} x2={breite - padLinks} y2={padOben + plot} stroke="#3f3f46" strokeWidth={1} />
         {daten.map((d, i) => {
@@ -146,7 +147,7 @@ export function PaMonatsBalken({
               <rect x={xMitte - balkenBreite / 2} y={padOben + (plot - h)} width={balkenBreite} height={Math.max(0, h)} rx={3} fill={farbe}>
                 <title>{`${d.label}: ${formatEur(d.wert)}`}</title>
               </rect>
-              <text x={xMitte} y={hoehe - 8} textAnchor="middle" className="fill-zinc-500" style={{ fontSize: 9 }}>
+              <text x={xMitte} y={hoehe - 8} textAnchor="middle" className="fill-[var(--app-text-muted)]" style={{ fontSize: 9 }}>
                 {d.label}
               </text>
             </g>
@@ -174,7 +175,7 @@ export function PaCashflowBalken({
   const balkenBreite = Math.min(14, gruppenBreite / 2.8)
 
   return (
-    <div className="w-full overflow-x-auto">
+    <div className={`w-full ${appTableScrollClassName}`}>
       <svg width="100%" viewBox={`0 0 ${breite} ${hoehe}`} preserveAspectRatio="xMidYMid meet" style={{ minWidth: breite }} role="img">
         <line x1={padLinks} y1={padOben + plot} x2={breite - padLinks} y2={padOben + plot} stroke="#3f3f46" strokeWidth={1} />
         {daten.map((d, i) => {
@@ -189,14 +190,14 @@ export function PaCashflowBalken({
               <rect x={xMitte + 1} y={padOben + plot - hAus} width={balkenBreite} height={hAus} rx={2} fill="#f43f5e">
                 <title>{`Ausgang ${formatEur(d.ausgang)}`}</title>
               </rect>
-              <text x={xMitte} y={hoehe - 8} textAnchor="middle" className="fill-zinc-500" style={{ fontSize: 9 }}>
+              <text x={xMitte} y={hoehe - 8} textAnchor="middle" className="fill-[var(--app-text-muted)]" style={{ fontSize: 9 }}>
                 {d.label}
               </text>
             </g>
           )
         })}
       </svg>
-      <p className="mt-2 text-[10px] text-zinc-500">
+      <p className="mt-2 text-[10px] text-[var(--app-text-muted)]">
         <span className="inline-block h-2 w-2 rounded-sm bg-emerald-400 align-middle" /> Eingänge ·{' '}
         <span className="inline-block h-2 w-2 rounded-sm bg-rose-500 align-middle" /> Ausgänge
       </p>
@@ -217,10 +218,10 @@ export function PaHorizontalBalken({
       {daten.map((d) => (
         <li key={d.label}>
           <div className="mb-1 flex justify-between gap-2 text-xs">
-            <span className="truncate text-zinc-300">{d.label}</span>
-            <span className="shrink-0 tabular-nums text-zinc-400">{format(d.wert)}</span>
+            <span className="truncate text-[var(--app-text)]">{d.label}</span>
+            <span className="shrink-0 tabular-nums text-[var(--app-text-muted)]">{format(d.wert)}</span>
           </div>
-          <div className="h-2 overflow-hidden rounded-full bg-zinc-800">
+          <div className="h-2 overflow-hidden rounded-full bg-[var(--app-surface-muted)]">
             <div className="h-full rounded-full transition-all" style={{ width: `${(d.wert / max) * 100}%`, background: d.farbe }} />
           </div>
         </li>

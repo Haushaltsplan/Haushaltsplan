@@ -115,19 +115,19 @@ function BearbeitenForm({
 
   return (
     <>
-      <h3 id="lager-modal-title" className="mb-4 text-lg font-bold text-slate-100">
+      <h3 id="lager-modal-title" className="mb-4 text-lg font-bold text-[var(--app-text)]">
         Artikel bearbeiten
       </h3>
-      <label className="mb-2 block text-[11px] font-bold uppercase tracking-wider text-slate-500">Name</label>
+      <label className="mb-2 block text-[11px] font-bold uppercase tracking-wider text-[var(--app-text-muted)]">Name</label>
       <input
-        className="mb-4 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2.5 font-semibold text-slate-100 outline-none focus:ring-2 focus:ring-emerald-500/40"
+        className="mb-4 w-full rounded-xl border border-[var(--app-border-strong)] bg-[var(--app-surface-muted)] px-3 py-2.5 font-semibold text-[var(--app-text)] outline-none focus:ring-2 focus:ring-emerald-500/40"
         value={name}
         onChange={(e) => setName(e.target.value)}
         disabled={pending}
       />
-      <label className="mb-2 block text-[11px] font-bold uppercase tracking-wider text-slate-500">Kategorie</label>
+      <label className="mb-2 block text-[11px] font-bold uppercase tracking-wider text-[var(--app-text-muted)]">Kategorie</label>
       <select
-        className="mb-4 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2.5 font-semibold text-slate-100 outline-none focus:ring-2 focus:ring-emerald-500/40"
+        className="mb-4 w-full rounded-xl border border-[var(--app-border-strong)] bg-[var(--app-surface-muted)] px-3 py-2.5 font-semibold text-[var(--app-text)] outline-none focus:ring-2 focus:ring-emerald-500/40"
         value={kategorie}
         onChange={(e) => setKategorie(e.target.value)}
         disabled={pending}
@@ -139,23 +139,23 @@ function BearbeitenForm({
         ))}
       </select>
       <div className="mb-4 grid grid-cols-2 gap-3">
-        <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500">
+        <label className="block text-[11px] font-bold uppercase tracking-wider text-[var(--app-text-muted)]">
           Haltbar bis (MHD)
           <input
             type="date"
-            className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2.5 font-semibold text-slate-100 outline-none focus:ring-2 focus:ring-amber-500/40"
+            className="mt-2 w-full rounded-xl border border-[var(--app-border-strong)] bg-[var(--app-surface-muted)] px-3 py-2.5 font-semibold text-[var(--app-text)] outline-none focus:ring-2 focus:ring-amber-500/40"
             value={mhd}
             onChange={(e) => setMhd(e.target.value)}
             disabled={pending}
           />
         </label>
-        <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500">
+        <label className="block text-[11px] font-bold uppercase tracking-wider text-[var(--app-text-muted)]">
           Mindestbestand ({einheitLabel})
           <input
             type="text"
             inputMode="decimal"
             placeholder="z. B. 2"
-            className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2.5 font-semibold text-slate-100 outline-none focus:ring-2 focus:ring-sky-500/40"
+            className="mt-2 w-full rounded-xl border border-[var(--app-border-strong)] bg-[var(--app-surface-muted)] px-3 py-2.5 font-semibold text-[var(--app-text)] outline-none focus:ring-2 focus:ring-sky-500/40"
             value={mindestbestand}
             onChange={(e) => setMindestbestand(e.target.value)}
             disabled={pending}
@@ -168,21 +168,21 @@ function BearbeitenForm({
           checked={immerDa}
           onChange={(e) => setImmerDa(e.target.checked)}
           disabled={pending}
-          className="h-4 w-4 rounded border-slate-600"
+          className="h-4 w-4 rounded border-[var(--app-border-strong)]"
         />
         <span className="text-sm font-semibold text-teal-100">Immer da (Favorit)</span>
-        <span className="text-[11px] text-slate-500">— bleibt auf der Einkaufsliste, wenn leer oder unter Mindestbestand</span>
+        <span className="text-[11px] text-[var(--app-text-muted)]">— bleibt auf der Einkaufsliste, wenn leer oder unter Mindestbestand</span>
       </label>
-      <p className="mb-6 rounded-lg border border-slate-800 bg-slate-950/80 px-3 py-2 text-xs text-slate-400">
-        Basiseinheit (fest): <span className="font-semibold text-slate-200">{einheitLabel}</span>
-        <span className="mt-1 block text-slate-500">
+      <p className="mb-6 rounded-lg border border-[var(--app-border)] bg-[var(--app-surface-muted)] px-3 py-2 text-xs text-[var(--app-text-muted)]">
+        Basiseinheit (fest): <span className="font-semibold text-[var(--app-text)]">{einheitLabel}</span>
+        <span className="mt-1 block text-[var(--app-text-muted)]">
           MHD speist die Ablauf-Ampel, der Mindestbestand die „Nachkaufen"-Liste in der Übersicht.
         </span>
       </p>
       <div className="flex gap-3">
         <button
           type="button"
-          className="flex-1 rounded-xl border border-slate-600 py-3 font-bold text-slate-300 transition hover:bg-slate-800"
+          className="flex-1 rounded-xl border border-[var(--app-border-strong)] py-3 font-bold text-[var(--app-text)] transition hover:bg-[var(--app-surface-hover)]"
           onClick={() => !pending && onClose()}
           disabled={pending}
         >
@@ -252,30 +252,30 @@ function VerbrauchForm({
 
   return (
     <>
-      <h3 id="lager-modal-title" className="mb-1 text-lg font-bold text-slate-100">
+      <h3 id="lager-modal-title" className="mb-1 text-lg font-bold text-[var(--app-text)]">
         Verbrauch ausbuchen
       </h3>
-      <p className="mb-4 text-sm text-slate-400">
-        <span className="font-semibold text-slate-200">{produkt.name}</span> — aktuell{' '}
+      <p className="mb-4 text-sm text-[var(--app-text-muted)]">
+        <span className="font-semibold text-[var(--app-text)]">{produkt.name}</span> — aktuell{' '}
         <span className="tabular-nums text-amber-200/95">
           {produkt.bestand} {basisEinheitFuerPreisanzeige(produkt.basis_einheit)}
         </span>
       </p>
-      <label className="mb-2 block text-[11px] font-bold uppercase tracking-wider text-slate-500">
+      <label className="mb-2 block text-[11px] font-bold uppercase tracking-wider text-[var(--app-text-muted)]">
         Menge (Abgang in {basisEinheitFuerPreisanzeige(produkt.basis_einheit)})
       </label>
       <input
         type="text"
         inputMode="decimal"
-        className="mb-4 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2.5 font-semibold text-slate-100 outline-none focus:ring-2 focus:ring-amber-500/40"
+        className="mb-4 w-full rounded-xl border border-[var(--app-border-strong)] bg-[var(--app-surface-muted)] px-3 py-2.5 font-semibold text-[var(--app-text)] outline-none focus:ring-2 focus:ring-amber-500/40"
         value={verbrauchMenge}
         onChange={(e) => setVerbrauchMenge(e.target.value)}
         placeholder="z. B. 1 oder 0,5"
         disabled={pending}
       />
-      <label className="mb-2 block text-[11px] font-bold uppercase tracking-wider text-slate-500">Notiz (optional)</label>
+      <label className="mb-2 block text-[11px] font-bold uppercase tracking-wider text-[var(--app-text-muted)]">Notiz (optional)</label>
       <input
-        className="mb-6 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2.5 text-slate-100 outline-none focus:ring-2 focus:ring-amber-500/40"
+        className="mb-6 w-full rounded-xl border border-[var(--app-border-strong)] bg-[var(--app-surface-muted)] px-3 py-2.5 text-[var(--app-text)] outline-none focus:ring-2 focus:ring-amber-500/40"
         value={verbrauchNotiz}
         onChange={(e) => setVerbrauchNotiz(e.target.value)}
         placeholder="z. B. gegessen, geschenkt …"
@@ -284,7 +284,7 @@ function VerbrauchForm({
       <div className="flex gap-3">
         <button
           type="button"
-          className="flex-1 rounded-xl border border-slate-600 py-3 font-bold text-slate-300 transition hover:bg-slate-800"
+          className="flex-1 rounded-xl border border-[var(--app-border-strong)] py-3 font-bold text-[var(--app-text)] transition hover:bg-[var(--app-surface-hover)]"
           onClick={() => !pending && onClose()}
           disabled={pending}
         >

@@ -25,11 +25,11 @@ export function PaCard({
 }
 
 const scrollTabsClass =
-  'max-w-full overflow-x-auto overscroll-x-contain [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden'
+  'app-table-scroll max-w-full overflow-x-auto overscroll-x-contain [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden'
 
 /** Dezente Scrollbars für Kennzahlen-Panel und Tabellen */
 export const PA_SCROLL_ELEGANT =
-  'overflow-auto overscroll-contain scroll-smooth [scrollbar-gutter:stable] [scrollbar-width:thin] [scrollbar-color:rgb(82_82_91/0.55)_transparent] [&::-webkit-scrollbar]:h-1.5 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-zinc-600/50 hover:[&::-webkit-scrollbar-thumb]:bg-zinc-500/70'
+  'overflow-auto overscroll-contain scroll-smooth [scrollbar-gutter:stable] [scrollbar-width:thin] [scrollbar-color:rgb(82_82_91/0.55)_transparent] [&::-webkit-scrollbar]:h-1.5 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-[var(--app-surface-muted)]/50 hover:[&::-webkit-scrollbar-thumb]:bg-[var(--app-surface-muted)]/70'
 
 export function PaIconTabs<T extends string>({
   tabs,
@@ -125,7 +125,7 @@ export function PaSubNav() {
       </div>
 
       <nav
-        className={`${scrollTabsClass} hidden w-full max-w-full rounded-2xl border border-white/[0.06] bg-zinc-950/80 p-1 shadow-lg shadow-black/30 ring-1 ring-white/[0.04] sm:block sm:p-1.5`}
+        className={`${scrollTabsClass} hidden w-full max-w-full rounded-2xl border border-white/[0.06] bg-[var(--app-surface-muted)] p-1 shadow-lg shadow-black/30 ring-1 ring-white/[0.04] sm:block sm:p-1.5`}
       >
         <div className="flex w-max min-w-full flex-nowrap gap-0.5 sm:w-full sm:flex-wrap sm:gap-1">
           {SUB_NAV.map((item) => {
@@ -137,7 +137,7 @@ export function PaSubNav() {
                 className={`shrink-0 whitespace-nowrap rounded-xl px-3 py-2 text-xs font-medium tracking-tight transition-all sm:px-4 sm:text-sm ${
                   aktiv
                     ? 'bg-gradient-to-b from-teal-500/20 to-teal-600/10 text-teal-300 ring-1 ring-teal-500/25'
-                    : 'text-zinc-500 hover:bg-white/[0.03] hover:text-zinc-200'
+                    : 'text-[var(--app-text-muted)] hover:bg-white/[0.03] hover:text-[var(--app-text)]'
                 }`}
               >
                 {item.label}
@@ -176,7 +176,7 @@ export function PaBadge({
     buy: 'bg-sky-500/12 text-sky-400 ring-1 ring-sky-500/20',
     sell: 'bg-amber-500/12 text-amber-400 ring-1 ring-amber-500/20',
     dividend: 'bg-emerald-500/12 text-emerald-400 ring-1 ring-emerald-500/20',
-    neutral: 'bg-zinc-800/60 text-zinc-400 ring-1 ring-white/[0.04]',
+    neutral: 'bg-[var(--app-surface-hover)] text-[var(--app-text-muted)] ring-1 ring-white/[0.04]',
   }[variant]
   return (
     <span className={`inline-flex rounded-md px-2 py-0.5 text-[11px] font-semibold tracking-wide ${cls}`}>
@@ -199,11 +199,11 @@ export function PaStatRow({
   return (
     <div className="flex items-start justify-between gap-4 py-2.5">
       <div className="min-w-0">
-        <p className="text-[13px] text-zinc-500">{label}</p>
-        {sub ? <p className="mt-0.5 text-[11px] leading-relaxed text-zinc-600">{sub}</p> : null}
+        <p className="text-[13px] text-[var(--app-text-muted)]">{label}</p>
+        {sub ? <p className="mt-0.5 text-[11px] leading-relaxed text-[var(--app-text-muted)]">{sub}</p> : null}
       </div>
       <div className="shrink-0 text-right">
-        <p className="text-sm font-medium tabular-nums tracking-tight text-zinc-100">{value}</p>
+        <p className="text-sm font-medium tabular-nums tracking-tight text-[var(--app-text)]">{value}</p>
         {badge ? <div className="mt-1.5 flex justify-end">{badge}</div> : null}
       </div>
     </div>
@@ -222,9 +222,9 @@ export function PaSectionTitle({
   return (
     <div className="flex flex-wrap items-end justify-between gap-4">
       <div>
-        <h2 className="text-lg font-semibold tracking-tight text-zinc-50">{title}</h2>
+        <h2 className="text-lg font-semibold tracking-tight text-[var(--app-text)]">{title}</h2>
         {description ? (
-          <p className="mt-1 max-w-2xl text-sm leading-relaxed text-zinc-500">{description}</p>
+          <p className="mt-1 max-w-2xl text-sm leading-relaxed text-[var(--app-text-muted)]">{description}</p>
         ) : null}
       </div>
       {action}
@@ -244,14 +244,14 @@ export function PaHeroKpi({
   trend?: ReactNode
 }) {
   return (
-    <div className="relative overflow-hidden rounded-2xl border border-white/[0.06] bg-gradient-to-br from-zinc-900/80 via-zinc-950/90 to-black/50 p-6 ring-1 ring-white/[0.04]">
+    <div className="relative overflow-hidden rounded-2xl border border-white/[0.06] bg-gradient-to-br from-[var(--app-surface-muted)] via-[var(--app-surface-muted)] to-black/50 p-6 ring-1 ring-white/[0.04]">
       <div className="pointer-events-none absolute -right-8 -top-8 h-32 w-32 rounded-full bg-teal-500/10 blur-3xl" />
-      <p className="text-xs font-medium uppercase tracking-widest text-zinc-500">{label}</p>
+      <p className="text-xs font-medium uppercase tracking-widest text-[var(--app-text-muted)]">{label}</p>
       <div className="mt-2 flex flex-wrap items-end gap-3">
         <p className="text-3xl font-semibold tabular-nums tracking-tight text-white sm:text-4xl">{value}</p>
         {trend}
       </div>
-      {sub ? <p className="mt-3 text-sm text-zinc-500">{sub}</p> : null}
+      {sub ? <p className="mt-3 text-sm text-[var(--app-text-muted)]">{sub}</p> : null}
     </div>
   )
 }

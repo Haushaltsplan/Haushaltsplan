@@ -79,9 +79,9 @@ export function KalenderFotoImport({ onImport }: Props) {
           <KiBrandChip iconSize={14} />
           <h2 className="text-sm font-black text-violet-100 sm:text-base">Foto importieren</h2>
         </div>
-        <p className="mt-1 text-[11px] leading-relaxed text-slate-500 sm:text-xs">
-          Foto hochladen (Einladung, Ticket, Arztbrief, Screenshot). Die KI liest <strong className="text-slate-400">Datum</strong> und{' '}
-          <strong className="text-slate-400">Titel</strong> und schlägt eine <strong className="text-slate-400">Kategorie</strong> vor — bitte vor dem
+        <p className="mt-1 text-[11px] leading-relaxed text-[var(--app-text-muted)] sm:text-xs">
+          Foto hochladen (Einladung, Ticket, Arztbrief, Screenshot). Die KI liest <strong className="text-[var(--app-text-muted)]">Datum</strong> und{' '}
+          <strong className="text-[var(--app-text-muted)]">Titel</strong> und schlägt eine <strong className="text-[var(--app-text-muted)]">Kategorie</strong> vor — bitte vor dem
           Speichern prüfen. Benötigt dieselbe KI-Konfiguration wie der Finanz-Coach (<code className="font-mono text-[10px] text-sky-300/90">GEMINI_API_KEY</code> oder{' '}
           <code className="font-mono text-[10px] text-sky-300/90">OPENAI_API_KEY</code> in <code className="font-mono text-[10px]">.env.local</code>).
         </p>
@@ -116,7 +116,7 @@ export function KalenderFotoImport({ onImport }: Props) {
                 setAuswahl({})
                 setFehler(null)
               }}
-              className="rounded-lg border border-slate-600 bg-slate-800/60 px-3 py-2 text-xs font-bold text-slate-200"
+              className="rounded-lg border border-[var(--app-border-strong)] bg-[var(--app-surface-hover)] px-3 py-2 text-xs font-bold text-[var(--app-text)]"
             >
               Vorschau schließen
             </button>
@@ -129,8 +129,8 @@ export function KalenderFotoImport({ onImport }: Props) {
 
         {vorschau && vorschau.length > 0 ? (
           <div className="space-y-2">
-            <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Vorschau — Häkchen entfernen zum Auslassen</p>
-            <ul className="max-h-[min(50vh,22rem)] space-y-2 overflow-y-auto rounded-xl border border-slate-800 bg-slate-950/40 p-2">
+            <p className="text-[11px] font-bold uppercase tracking-wider text-[var(--app-text-muted)]">Vorschau — Häkchen entfernen zum Auslassen</p>
+            <ul className="max-h-[min(50vh,22rem)] space-y-2 overflow-y-auto rounded-xl border border-[var(--app-border)] bg-[var(--app-surface-muted)] p-2">
               {vorschau.map((z, i) => {
                 const km = kalenderKategorieMeta(z.kategorie)
                 const iso = z.datum
@@ -153,7 +153,7 @@ export function KalenderFotoImport({ onImport }: Props) {
                   >
                     <input
                       type="checkbox"
-                      className="mt-0.5 h-4 w-4 shrink-0 rounded border-slate-600 bg-slate-900 text-sky-600"
+                      className="mt-0.5 h-4 w-4 shrink-0 rounded border-[var(--app-border-strong)] bg-[var(--app-surface-muted)] text-sky-600"
                       checked={auswahl[i] !== false}
                       onChange={() => abwaehlenToggle(i)}
                       aria-label={`${z.titel} übernehmen`}
@@ -161,12 +161,12 @@ export function KalenderFotoImport({ onImport }: Props) {
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-1.5">
                         <span className={`rounded px-1.5 py-0.5 text-[9px] font-bold uppercase ${km.badge}`}>{km.label}</span>
-                        <span className="text-xs text-slate-300">{de}</span>
+                        <span className="text-xs text-[var(--app-text)]">{de}</span>
                         {z.uhrzeit ? (
-                          <span className="font-mono text-xs text-slate-200">{z.uhrzeit}</span>
+                          <span className="font-mono text-xs text-[var(--app-text)]">{z.uhrzeit}</span>
                         ) : null}
                       </div>
-                      <p className="mt-0.5 font-semibold text-slate-100">{z.titel}</p>
+                      <p className="mt-0.5 font-semibold text-[var(--app-text)]">{z.titel}</p>
                     </div>
                   </li>
                 )
