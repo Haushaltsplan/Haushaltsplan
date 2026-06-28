@@ -59,8 +59,8 @@ export function StravaBackfillPanel({
           title="Datenqualität"
           subtitle={
             backfill.allComplete
-              ? 'Alle Analysen vollständig'
-              : `${backfill.totalPending} Aktivitäten warten auf Nachbearbeitung`
+              ? `${backfill.activityCount} Aktivitäten · alle Analysen vollständig`
+              : `${backfill.activityCount} Aktivitäten gespeichert · Nachbearbeitung läuft (keine fehlenden Imports)`
           }
         />
         {onBackfill && !backfill.allComplete ? (
@@ -87,11 +87,17 @@ export function StravaBackfillPanel({
           Streams, Wetter, Segmente und Dekoupling sind auf dem neuesten Stand.
         </p>
       ) : (
-        <div className="mt-3 space-y-3">
-          {backfill.categories.map((c) => (
-            <BackfillBar key={c.key} item={c} />
-          ))}
-        </div>
+        <>
+          <p className="mt-2 text-[11px] text-[var(--app-text-muted)]">
+            Offene Schritte: {backfill.openTasks} — dieselbe Fahrt kann in mehreren Kategorien vorkommen.
+            Power-Streams nur für Fahrten mit Powermeter oder HR.
+          </p>
+          <div className="mt-3 space-y-3">
+            {backfill.categories.map((c) => (
+              <BackfillBar key={c.key} item={c} />
+            ))}
+          </div>
+        </>
       )}
     </StravaCard>
   )

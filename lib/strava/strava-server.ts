@@ -912,6 +912,10 @@ export async function zaehleSegmentBacklog(sb: SupabaseClient): Promise<number> 
 async function zaehleBackfillFuerOwner(sb: SupabaseClient, ownerUserId: string) {
   const base = () => sb.from('strava_activities').select('*', { count: 'exact', head: true }).eq('owner_user_id', ownerUserId)
 
+  /** Nur Fahrten mit Powermeter oder HR — wie Stream-Sync-Kandidaten */
+  const mitSensor = () =>
+    base().or('device_watts.eq.true,average_watts.not.is.null,average_heartrate.not.is.null')
+
   const [
     { count: activityTotal },
     { count: streamsPending },
@@ -922,8 +926,8 @@ async function zaehleBackfillFuerOwner(sb: SupabaseClient, ownerUserId: string) 
     { count: decouplingEligible },
   ] = await Promise.all([
     base(),
-    base().or('power_peaks.is.null,hr_zone_minutes.is.null,aerobic_decoupling_pct.is.null'),
-    base().or('device_watts.eq.true,average_watts.not.is.null,average_heartrate.not.is.null'),
+    mitSensor().or('power_peaks.is.null,hr_zone_minutes.is.null,aerobic_decoupling_pct.is.null'),
+    mitSensor(),
     base().is('weather_temp_c', null),
     base().is('segments_synced_at', null),
     base()
@@ -937,6 +941,7 @@ async function zaehleBackfillFuerOwner(sb: SupabaseClient, ownerUserId: string) 
   ])
 
   return baueBackfillStatus({
+    activityCount: activityTotal ?? 0,
     streamsPending: streamsPending ?? 0,
     streamsTotal: streamsEligible ?? 0,
     weatherPending: weatherPending ?? 0,
@@ -954,6 +959,7 @@ export async function ladeBackfillStatus(sb: SupabaseClient): Promise<BackfillSt
   } = await sb.auth.getUser()
   if (!user?.id) {
     return baueBackfillStatus({
+      activityCount: 0,
       streamsPending: 0,
       streamsTotal: 0,
       weatherPending: 0,

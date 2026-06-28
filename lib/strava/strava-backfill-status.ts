@@ -13,7 +13,12 @@ export type BackfillKategorieStatus = {
 }
 
 export type BackfillStatus = {
+  /** Gespeicherte Strava-Aktivitäten in der DB */
+  activityCount: number
   categories: BackfillKategorieStatus[]
+  /** Summe offener Schritte — eine Aktivität kann in mehreren Kategorien zählen */
+  openTasks: number
+  /** @deprecated Alias für openTasks */
   totalPending: number
   allComplete: boolean
 }
@@ -31,6 +36,7 @@ function pct(complete: number, total: number): number {
 }
 
 export function baueBackfillStatus(counts: {
+  activityCount: number
   streamsPending: number
   streamsTotal: number
   weatherPending: number
@@ -40,14 +46,17 @@ export function baueBackfillStatus(counts: {
   decouplingPending: number
   decouplingTotal: number
 }): BackfillStatus {
+  const streamsPending = Math.min(counts.streamsPending, counts.streamsTotal)
+  const streamsComplete = Math.max(0, counts.streamsTotal - streamsPending)
+
   const categories: BackfillKategorieStatus[] = [
     {
       key: 'streams',
       label: 'Power-Streams & HR-Zonen',
-      pending: counts.streamsPending,
+      pending: streamsPending,
       total: counts.streamsTotal,
-      complete: Math.max(0, counts.streamsTotal - counts.streamsPending),
-      pct: pct(counts.streamsTotal - counts.streamsPending, counts.streamsTotal),
+      complete: streamsComplete,
+      pct: pct(streamsComplete, counts.streamsTotal),
       perRun: BACKFILL_PER_RUN.streams,
     },
     {
@@ -79,11 +88,13 @@ export function baueBackfillStatus(counts: {
     },
   ]
 
-  const totalPending = categories.reduce((s, c) => s + c.pending, 0)
+  const openTasks = categories.reduce((s, c) => s + c.pending, 0)
 
   return {
+    activityCount: counts.activityCount,
     categories: categories.filter((c) => c.total > 0 || c.pending > 0),
-    totalPending,
-    allComplete: totalPending === 0,
+    openTasks,
+    totalPending: openTasks,
+    allComplete: openTasks === 0,
   }
 }
