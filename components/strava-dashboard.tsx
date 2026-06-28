@@ -383,6 +383,16 @@ STRAVA_CLIENT_SECRET=dein_client_secret`}
             <div className="flex flex-wrap items-center gap-3">
               <span className="rounded-full bg-emerald-500/15 px-3 py-1 text-xs font-medium text-emerald-300">
                 Verbunden · {status.activityCount ?? 0} Aktivitäten
+                {allActivities[0]?.start_date ? (
+                  <span className="text-emerald-200/70">
+                    {' '}
+                    · neueste:{' '}
+                    {new Date(allActivities[0].start_date).toLocaleDateString('de-DE', {
+                      day: 'numeric',
+                      month: 'short',
+                    })}
+                  </span>
+                ) : null}
               </span>
               <button
                 type="button"

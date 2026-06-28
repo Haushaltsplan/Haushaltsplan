@@ -25,6 +25,7 @@ type Props = {
   state: FilterBarState
   onChange: (next: FilterBarState) => void
   activities: StravaActivityRow[]
+  totalCount: number
   filteredCount: number
   athlete: StravaAthleteProfile | null
   analytics: StravaExtendedAnalytics
@@ -62,6 +63,7 @@ export function StravaActivityFilterBar({
   state,
   onChange,
   activities,
+  totalCount,
   filteredCount,
   athlete,
   analytics,
@@ -89,7 +91,12 @@ export function StravaActivityFilterBar({
         <div>
           <p className="text-sm font-semibold text-[var(--app-text)]">Filter & Export</p>
           <p className="text-[11px] text-[var(--app-text-muted)]">
-            {filteredCount} Aktivitäten in der Auswahl
+            {filteredCount} in der Auswahl
+            {totalCount !== filteredCount ? (
+              <span> · {totalCount} gespeichert in Omnia</span>
+            ) : (
+              <span> · {totalCount} gespeichert</span>
+            )}
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -110,6 +117,20 @@ export function StravaActivityFilterBar({
           </button>
         </div>
       </div>
+
+      {totalCount > 0 && filteredCount === 0 ? (
+        <p className="mt-3 rounded-xl border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-[11px] text-amber-200/90">
+          Keine Aktivität passt zum Filter — {totalCount} sind in der DB. Zeitraum auf{' '}
+          <button
+            type="button"
+            className={`font-semibold underline ${STRAVA_INTERACTIVE}`}
+            onClick={() => onChange({ ...state, rangeDays: null, ridesOnly: false })}
+          >
+            Alles · Alle Sportarten
+          </button>{' '}
+          stellen.
+        </p>
+      ) : null}
 
       <div className="mt-3 flex flex-wrap gap-2">
         <span className="self-center text-[10px] uppercase tracking-wider text-[var(--app-text-muted)]">

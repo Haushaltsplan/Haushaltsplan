@@ -7,6 +7,7 @@ import { formatRelativeDate, sportIcon, type TransformedStravaActivity } from '@
 type Props = {
   activities: TransformedStravaActivity[]
   onSelect?: (id: number) => void
+  filterBlocked?: boolean
 }
 
 function MetricCell({ value, muted }: { value: string; muted?: boolean }) {
@@ -23,11 +24,15 @@ function MetricCell({ value, muted }: { value: string; muted?: boolean }) {
   )
 }
 
-export function StravaActivityFeed({ activities, onSelect }: Props) {
+export function StravaActivityFeed({ activities, onSelect, filterBlocked }: Props) {
   if (activities.length === 0) {
     return (
       <StravaCard padding="lg">
-        <p className="text-center text-sm text-[var(--app-text-muted)]">Noch keine Aktivitäten — synchronisiere mit Strava.</p>
+        <p className="text-center text-sm text-[var(--app-text-muted)]">
+          {filterBlocked
+            ? 'Keine Aktivitäten im aktuellen Filter — oben Zeitraum oder Sportart anpassen.'
+            : 'Noch keine Aktivitäten — „Jetzt synchronisieren“ oder Vollimport ausführen.'}
+        </p>
       </StravaCard>
     )
   }

@@ -676,10 +676,12 @@ async function neuestesAktivitaetsDatumFuerOwner(
   sb: SupabaseClient,
   ownerUserId: string,
 ): Promise<number | null> {
+  const nowIso = new Date().toISOString()
   const { data } = await sb
     .from('strava_activities')
     .select('start_date')
     .eq('owner_user_id', ownerUserId)
+    .lte('start_date', nowIso)
     .order('start_date', { ascending: false })
     .limit(1)
     .maybeSingle()
@@ -687,8 +689,44 @@ async function neuestesAktivitaetsDatumFuerOwner(
   if (!data?.start_date) return null
   const ts = Math.floor(Date.parse(String(data.start_date)) / 1000)
   if (!Number.isFinite(ts)) return null
-  // 3 Tage Überlappung für Updates, nicht 14 (verpasst sonst selten neue Randfälle nicht)
-  return Math.max(0, ts - 86400 * 3)
+
+  const nowSec = Math.floor(Date.now() / 1000)
+  const overlapStart = Math.max(0, ts - 86400 * 3)
+  // Falls DB-Datum fehlerhaft in der Zukunft liegt: mindestens die letzten 14 Tage nachladen
+  const minWindow = nowSec - 86400 * 14
+  return Math.min(overlapStart, minWindow)
+}
+
+async function ladeAktivitaetenVonStrava(
+  token: string,
+  opts: { after: number | null; maxPages: number },
+): Promise<StravaActivityRow[]> {
+  const byId = new Map<number, StravaActivityRow>()
+
+  const mergeBatch = (batch: StravaApiActivity[] | null | undefined) => {
+    if (!Array.isArray(batch)) return
+    for (const a of batch) {
+      byId.set(a.id, mapActivity(a))
+    }
+  }
+
+  // Immer die letzten 50 ohne after — fängt Tages-Fahrten zuverlässig
+  const frisch = await stravaGet<StravaApiActivity[]>(token, '/athlete/activities', {
+    page: '1',
+    per_page: '50',
+  })
+  mergeBatch(frisch)
+
+  for (let page = 1; page <= opts.maxPages; page++) {
+    const params: Record<string, string> = { page: String(page), per_page: '200' }
+    if (opts.after != null) params.after = String(opts.after)
+    const batch = await stravaGet<StravaApiActivity[]>(token, '/athlete/activities', params)
+    if (!Array.isArray(batch) || batch.length === 0) break
+    mergeBatch(batch)
+    if (batch.length < 200) break
+  }
+
+  return [...byId.values()]
 }
 
 async function neuestesAktivitaetsDatum(sb: SupabaseClient): Promise<number | null> {
@@ -718,7 +756,15 @@ async function holeGueltigenAccessTokenAdmin(ownerUserId: string): Promise<strin
 export async function synchronisiereStravaAktivitaeten(
   sb: SupabaseClient,
   opts: { maxPages?: number; fullImport?: boolean } = {},
-): Promise<{ imported: number; total: number; streamsAnalysiert: number; wetterAngereichert: number; segmenteGeladen: number }> {
+): Promise<{
+  imported: number
+  total: number
+  streamsAnalysiert: number
+  wetterAngereichert: number
+  segmenteGeladen: number
+  newestInDb: string | null
+  newestFromStrava: string | null
+}> {
   const {
     data: { user },
   } = await sb.auth.getUser()
@@ -762,7 +808,15 @@ async function synchronisiereStravaIntern(
   ownerUserId: string,
   token: string,
   opts: { maxPages?: number; fullImport?: boolean; nurAnalyse?: boolean } = {},
-): Promise<{ imported: number; total: number; streamsAnalysiert: number; wetterAngereichert: number; segmenteGeladen: number }> {
+): Promise<{
+  imported: number
+  total: number
+  streamsAnalysiert: number
+  wetterAngereichert: number
+  segmenteGeladen: number
+  newestInDb: string | null
+  newestFromStrava: string | null
+}> {
   const maxPages = opts.maxPages ?? 60
   const meta = await ladeStravaAthleteMeta(token)
   await aktualisiereAthleteMetaVonStrava(sb, meta, ownerUserId)
@@ -773,15 +827,8 @@ async function synchronisiereStravaIntern(
 
   if (!opts.nurAnalyse) {
     const after = opts.fullImport ? null : await neuestesAktivitaetsDatumFuerOwner(sb, ownerUserId)
-
-    for (let page = 1; page <= maxPages; page++) {
-      const params: Record<string, string> = { page: String(page), per_page: '200' }
-      if (after != null) params.after = String(after)
-      const batch = await stravaGet<StravaApiActivity[]>(token, '/athlete/activities', params)
-      if (!Array.isArray(batch) || batch.length === 0) break
-      all.push(...batch.map(mapActivity))
-      if (batch.length < 200) break
-    }
+    const fetched = await ladeAktivitaetenVonStrava(token, { after, maxPages })
+    all.push(...fetched)
 
     if (all.length > 0) {
       const rows = all.map((a) => ({
@@ -829,7 +876,31 @@ async function synchronisiereStravaIntern(
     .select('*', { count: 'exact', head: true })
     .eq('owner_user_id', ownerUserId)
 
-  return { imported: all.length, total: count ?? 0, streamsAnalysiert, wetterAngereichert, segmenteGeladen }
+  const nowIso = new Date().toISOString()
+  const { data: newestRow } = await sb
+    .from('strava_activities')
+    .select('start_date')
+    .eq('owner_user_id', ownerUserId)
+    .lte('start_date', nowIso)
+    .order('start_date', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  const newestFromStrava =
+    all.length > 0
+      ? [...all].sort((a, b) => Date.parse(b.start_date) - Date.parse(a.start_date))[0]?.start_date ??
+        null
+      : null
+
+  return {
+    imported: all.length,
+    total: count ?? 0,
+    streamsAnalysiert,
+    wetterAngereichert,
+    segmenteGeladen,
+    newestInDb: newestRow?.start_date ? String(newestRow.start_date) : null,
+    newestFromStrava,
+  }
 }
 
 export async function ladeGespeicherteAktivitaeten(sb: SupabaseClient): Promise<StravaActivityRow[]> {

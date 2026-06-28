@@ -5,6 +5,33 @@ import { NextResponse } from 'next/server'
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
+function formatDatum(iso: string | null): string | null {
+  if (!iso) return null
+  const d = new Date(iso)
+  if (!Number.isFinite(d.getTime())) return null
+  return d.toLocaleDateString('de-DE', { day: 'numeric', month: 'short', year: 'numeric' })
+}
+
+function formatSyncMessage(result: {
+  imported: number
+  total: number
+  streamsAnalysiert: number
+  wetterAngereichert: number
+  segmenteGeladen: number
+  newestInDb: string | null
+  newestFromStrava: string | null
+}): string {
+  const parts = [`${result.imported} von Strava geladen — ${result.total} gespeichert`]
+  if (result.streamsAnalysiert > 0) parts.push(`${result.streamsAnalysiert} Streams`)
+  if (result.wetterAngereichert > 0) parts.push(`${result.wetterAngereichert} Wetter`)
+  if (result.segmenteGeladen > 0) parts.push(`${result.segmenteGeladen} Segmente`)
+  const neu = formatDatum(result.newestInDb)
+  if (neu) parts.push(`neueste in DB: ${neu}`)
+  const vonStrava = formatDatum(result.newestFromStrava)
+  if (vonStrava && vonStrava !== neu) parts.push(`Strava lieferte bis: ${vonStrava}`)
+  return parts.join(' · ')
+}
+
 export async function POST(req: Request) {
   try {
     const sb = createSupabaseFuerRequest(req)
@@ -24,20 +51,10 @@ export async function POST(req: Request) {
 
     const result = await synchronisiereStravaAktivitaeten(sb, { fullImport })
 
-    const streamHint =
-      result.streamsAnalysiert > 0
-        ? `, ${result.streamsAnalysiert} Streams analysiert`
-        : ''
-    const weatherHint =
-      result.wetterAngereichert > 0 ? `, ${result.wetterAngereichert} mit Wetter` : ''
-
-    const segmentHint =
-      result.segmenteGeladen > 0 ? `, ${result.segmenteGeladen} mit Segmenten` : ''
-
     return NextResponse.json({
       ok: true,
       syncedAt: new Date().toISOString(),
-      message: `${result.imported} Aktivitäten aktualisiert — ${result.total} gespeichert${streamHint}${weatherHint}${segmentHint}`,
+      message: formatSyncMessage(result),
       stats: result,
       fullImport,
     })

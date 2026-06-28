@@ -70,7 +70,7 @@ export function StravaAnalyticsView({
   const [period, setPeriod] = useState<KpiPeriod>('week')
   const [selectedId, setSelectedId] = useState<number | null>(null)
   const [filterState, setFilterState] = useState<FilterBarState>({
-    rangeDays: 84,
+    rangeDays: null,
     ridesOnly: true,
     outdoorOnly: false,
     sortKey: 'date',
@@ -130,6 +130,7 @@ export function StravaAnalyticsView({
         state={filterState}
         onChange={setFilterState}
         activities={filteredActivities}
+        totalCount={activities.length}
         filteredCount={filteredActivities.length}
         athlete={athlete}
         analytics={analytics}
@@ -194,6 +195,7 @@ export function StravaAnalyticsView({
 
       <StravaActivityFeed
         activities={feedActivities}
+        filterBlocked={activities.length > 0 && filteredActivities.length === 0}
         onSelect={(id) => setSelectedId(id)}
       />
 
