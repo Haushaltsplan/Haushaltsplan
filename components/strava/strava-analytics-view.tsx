@@ -47,6 +47,7 @@ import { useMemo, useState } from 'react'
 type Props = {
   activities: StravaActivityRow[]
   athlete: StravaAthleteProfile | null
+  activitiesLoadError?: string | null
   segmentEfforts?: StravaSegmentEffortRow[]
   segmentBacklog?: number
   backfill?: BackfillStatus | null
@@ -59,6 +60,7 @@ type Props = {
 export function StravaAnalyticsView({
   activities,
   athlete,
+  activitiesLoadError = null,
   segmentEfforts = [],
   segmentBacklog = 0,
   backfill = null,
@@ -116,6 +118,19 @@ export function StravaAnalyticsView({
   return (
     <div className="space-y-6">
       <StravaAlertsBanner alerts={analytics.alerts} />
+
+      {activitiesLoadError ? (
+        <p className="rounded-xl border border-red-500/25 bg-red-500/10 px-3 py-2 text-[11px] text-red-200">
+          Aktivitäten konnten nicht geladen werden: {activitiesLoadError}
+        </p>
+      ) : null}
+
+      {activities.length === 0 && !activitiesLoadError && backfill && backfill.activityCount > 0 ? (
+        <p className="rounded-xl border border-amber-500/25 bg-amber-500/10 px-3 py-2 text-[11px] text-amber-200">
+          {backfill.activityCount} Aktivitäten in der Datenbank, aber die Liste ist leer — Seite neu laden. Falls
+          das bleibt: Deploy mit dem neuesten Fix (GPS-Polylines werden separat geladen).
+        </p>
+      ) : null}
 
       {backfill ? (
         <StravaBackfillPanel

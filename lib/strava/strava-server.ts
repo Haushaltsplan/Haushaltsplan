@@ -904,25 +904,19 @@ async function synchronisiereStravaIntern(
 }
 
 export async function ladeGespeicherteAktivitaeten(sb: SupabaseClient): Promise<StravaActivityRow[]> {
-  const {
-    data: { user },
-  } = await sb.auth.getUser()
-  if (!user?.id) return []
+  const { rows } = await ladeGespeicherteAktivitaetenMitMeta(sb)
+  return rows
+}
 
-  const { data, error } = await sb
-    .from('strava_activities')
-    .select(
-      'strava_id, name, sport_type, type, start_date, distance_m, moving_time_s, elapsed_time_s, elevation_gain_m, average_watts, weighted_avg_watts, max_watts, average_heartrate, max_heartrate, kilojoules, calories_kcal, average_speed_kmh, device_watts, power_peaks, summary_polyline, suffer_score, gear_id, workout_type, hr_zone_minutes, estimated_tss, weather_temp_c, weather_wind_kmh, weather_code, weather_lat, weather_lon, aerobic_decoupling_pct, variability_index',
-    )
-    .eq('owner_user_id', user.id)
-    .order('start_date', { ascending: false })
+const ACTIVITY_LIST_COLUMNS =
+  'strava_id, name, sport_type, type, start_date, distance_m, moving_time_s, elapsed_time_s, elevation_gain_m, average_watts, weighted_avg_watts, max_watts, average_heartrate, max_heartrate, kilojoules, calories_kcal, average_speed_kmh, device_watts, power_peaks, suffer_score, gear_id, workout_type, hr_zone_minutes, estimated_tss, weather_temp_c, weather_wind_kmh, weather_code, weather_lat, weather_lon, aerobic_decoupling_pct, variability_index'
 
-  if (error || !data) return []
+function mapActivityRows(data: Record<string, unknown>[]): StravaActivityRow[] {
   return data.map((r) => ({
     strava_id: Number(r.strava_id),
     name: String(r.name || ''),
     sport_type: String(r.sport_type || 'Ride'),
-    type: r.type,
+    type: (r.type as string | null) ?? null,
     start_date: String(r.start_date),
     distance_m: Number(r.distance_m) || 0,
     moving_time_s: Number(r.moving_time_s) || 0,
@@ -938,7 +932,7 @@ export async function ladeGespeicherteAktivitaeten(sb: SupabaseClient): Promise<
     average_speed_kmh: r.average_speed_kmh != null ? Number(r.average_speed_kmh) : null,
     device_watts: r.device_watts != null ? Boolean(r.device_watts) : null,
     power_peaks: parsePowerPeaks(r.power_peaks),
-    summary_polyline: r.summary_polyline ? String(r.summary_polyline) : null,
+    summary_polyline: null,
     suffer_score: r.suffer_score != null ? Number(r.suffer_score) : null,
     gear_id: r.gear_id != null ? Number(r.gear_id) : null,
     workout_type: r.workout_type != null ? Number(r.workout_type) : null,
@@ -953,6 +947,50 @@ export async function ladeGespeicherteAktivitaeten(sb: SupabaseClient): Promise<
       r.aerobic_decoupling_pct != null ? Number(r.aerobic_decoupling_pct) : null,
     variability_index: r.variability_index != null ? Number(r.variability_index) : null,
   }))
+}
+
+export async function ladeGespeicherteAktivitaetenMitMeta(sb: SupabaseClient): Promise<{
+  rows: StravaActivityRow[]
+  loadError?: string
+}> {
+  const {
+    data: { user },
+  } = await sb.auth.getUser()
+  if (!user?.id) return { rows: [], loadError: 'Nicht angemeldet.' }
+
+  const { data, error } = await sb
+    .from('strava_activities')
+    .select(ACTIVITY_LIST_COLUMNS)
+    .eq('owner_user_id', user.id)
+    .order('start_date', { ascending: false })
+    .limit(2500)
+
+  if (error) {
+    console.error('[strava] ladeGespeicherteAktivitaeten:', error.message)
+    return { rows: [], loadError: error.message }
+  }
+  if (!data) return { rows: [] }
+  return { rows: mapActivityRows(data as Record<string, unknown>[]) }
+}
+
+export async function ladeActivityPolyline(
+  sb: SupabaseClient,
+  stravaId: number,
+): Promise<string | null> {
+  const {
+    data: { user },
+  } = await sb.auth.getUser()
+  if (!user?.id) return null
+
+  const { data, error } = await sb
+    .from('strava_activities')
+    .select('summary_polyline')
+    .eq('owner_user_id', user.id)
+    .eq('strava_id', stravaId)
+    .maybeSingle()
+
+  if (error || !data?.summary_polyline) return null
+  return String(data.summary_polyline)
 }
 
 export async function ladeSegmentEfforts(sb: SupabaseClient): Promise<StravaSegmentEffortRow[]> {

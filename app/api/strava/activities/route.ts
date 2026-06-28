@@ -2,7 +2,7 @@ import { berechneAuswertung } from '@/lib/strava/strava-auswertung'
 import {
   effektivesGewichtKg,
   ladeBackfillStatus,
-  ladeGespeicherteAktivitaeten,
+  ladeGespeicherteAktivitaetenMitMeta,
   ladeSegmentEfforts,
   leseAthleteProfilDb,
   zaehleSegmentBacklog,
@@ -19,18 +19,20 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: 'Anmeldung erforderlich.' }, { status: 401 })
   }
 
-  const [activities, athlete, segmentEfforts, segmentBacklog, backfill] = await Promise.all([
-    ladeGespeicherteAktivitaeten(sb),
+  const [activitiesResult, athlete, segmentEfforts, segmentBacklog, backfill] = await Promise.all([
+    ladeGespeicherteAktivitaetenMitMeta(sb),
     leseAthleteProfilDb(sb),
     ladeSegmentEfforts(sb),
     zaehleSegmentBacklog(sb),
     ladeBackfillStatus(sb),
   ])
+  const activities = activitiesResult.rows
   const weightKg = effektivesGewichtKg(athlete)
   const auswertung = berechneAuswertung(activities, weightKg)
 
   return NextResponse.json({
     activities,
+    activitiesLoadError: activitiesResult.loadError ?? null,
     athlete,
     segmentEfforts,
     segmentBacklog,

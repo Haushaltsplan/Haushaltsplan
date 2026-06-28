@@ -48,6 +48,7 @@ export function StravaDashboard() {
   const [statusLoading, setStatusLoading] = useState(true)
   const [auswertung, setAuswertung] = useState<StravaAuswertung | null>(null)
   const [allActivities, setAllActivities] = useState<StravaActivityRow[]>([])
+  const [activitiesLoadError, setActivitiesLoadError] = useState<string | null>(null)
   const [segmentEfforts, setSegmentEfforts] = useState<StravaSegmentEffortRow[]>([])
   const [segmentBacklog, setSegmentBacklog] = useState(0)
   const [backfill, setBackfill] = useState<BackfillStatus | null>(null)
@@ -109,12 +110,17 @@ export function StravaDashboard() {
         auswertung?: StravaAuswertung
         athlete?: StravaAthleteProfile | null
         activities?: StravaActivityRow[]
+        activitiesLoadError?: string | null
         segmentEfforts?: StravaSegmentEffortRow[]
         segmentBacklog?: number
         backfill?: BackfillStatus
       }
+      setAllActivities(body.activities ?? [])
+      setActivitiesLoadError(body.activitiesLoadError ?? null)
       if (body.auswertung) setAuswertung(body.auswertung)
-      if (body.activities) setAllActivities(body.activities)
+      if (body.activitiesLoadError) {
+        toast.error(`Aktivitäten-Laden: ${body.activitiesLoadError}`)
+      }
       if (body.segmentEfforts) setSegmentEfforts(body.segmentEfforts)
       setSegmentBacklog(body.segmentBacklog ?? 0)
       if (body.backfill) setBackfill(body.backfill)
@@ -497,6 +503,7 @@ STRAVA_CLIENT_SECRET=dein_client_secret`}
             <StravaAnalyticsView
               activities={allActivities}
               athlete={athlete}
+              activitiesLoadError={activitiesLoadError}
               segmentEfforts={segmentEfforts}
               segmentBacklog={segmentBacklog}
               backfill={backfill}

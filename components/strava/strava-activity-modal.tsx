@@ -2,6 +2,7 @@
 
 import { STRAVA_COLORS, STRAVA_INTERACTIVE } from '@/components/strava/design-tokens'
 import { StravaRouteMap } from '@/components/strava/strava-route-map'
+import { stravaApiFetch } from '@/lib/strava/strava-api-fetch'
 import { transformActivity } from '@/lib/strava/strava-activity-utils'
 import { leistungWatts, wattProKg } from '@/lib/strava/strava-auswertung'
 import { POWER_PEAK_LABELS } from '@/lib/strava/strava-power'
@@ -9,6 +10,7 @@ import { normalisiereLeistungBeiReferenz, REFERENZ_TEMP_C } from '@/lib/strava/s
 import { wetterCodeDe } from '@/lib/strava/strava-weather'
 import type { StravaActivityRow, StravaAthleteProfile } from '@/lib/strava/strava-types'
 import { appModalScrollHiddenClassName } from '@/lib/app-modal-overlay'
+import { useEffect, useState } from 'react'
 
 type Props = {
   activity: StravaActivityRow | null
@@ -17,6 +19,28 @@ type Props = {
 }
 
 export function StravaActivityModal({ activity, athlete, onClose }: Props) {
+  const [polyline, setPolyline] = useState<string | null>(activity?.summary_polyline ?? null)
+
+  useEffect(() => {
+    if (!activity) {
+      setPolyline(null)
+      return
+    }
+    if (activity.summary_polyline) {
+      setPolyline(activity.summary_polyline)
+      return
+    }
+    let cancelled = false
+    void stravaApiFetch(`/api/strava/activities/${activity.strava_id}/polyline`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((body: { polyline?: string | null } | null) => {
+        if (!cancelled && body?.polyline) setPolyline(body.polyline)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [activity])
+
   if (!activity) return null
 
   const t = transformActivity(activity)
@@ -66,7 +90,7 @@ export function StravaActivityModal({ activity, athlete, onClose }: Props) {
         role="dialog"
         aria-modal="true"
       >
-        <StravaRouteMap polyline={activity.summary_polyline} height={180} className="rounded-t-2xl sm:rounded-t-2xl" />
+        <StravaRouteMap polyline={polyline} height={180} className="rounded-t-2xl sm:rounded-t-2xl" />
 
         <div className="p-5">
           <div className="flex items-start justify-between gap-3">
