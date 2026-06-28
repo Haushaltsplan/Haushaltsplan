@@ -382,7 +382,7 @@ export function PaWertentwicklungChart({
           }}
         >
           <div
-            className="app-surface-card relative flex max-h-[min(94vh,760px)] w-full max-w-6xl flex-col overflow-hidden"
+            className="app-surface-card app-scroll-panel relative flex max-h-[min(94vh,760px)] w-full max-w-6xl flex-col"
             role="dialog"
             aria-modal="true"
             aria-label="Wertentwicklung – vergrößert"

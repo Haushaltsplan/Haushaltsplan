@@ -94,7 +94,7 @@ export function KalenderEintragModal(props: Props) {
       }}
     >
       <div
-        className={`${appModalPanelClassName} max-h-[min(90vh,32rem)] overflow-y-auto`}
+        className={`${appModalPanelClassName} app-scroll-panel max-h-[min(90vh,32rem)]`}
         onClick={(e) => e.stopPropagation()}
       >
         <div className={appCardHeaderClass}>

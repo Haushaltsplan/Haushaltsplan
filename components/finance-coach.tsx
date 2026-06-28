@@ -222,7 +222,7 @@ export function FinanceCoachProvider({ children }: { children: ReactNode }) {
               </button>
             </div>
 
-            <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-3">
+            <div className="app-scroll-panel min-h-0 flex-1 space-y-3 px-4 py-3">
               {kiConfigured === null && open && (
                 <p className="rounded-xl border border-[var(--app-border-strong)] bg-[var(--app-surface-muted)] p-3 text-xs text-[var(--app-text-muted)]">Konfiguration wird geprüft …</p>
               )}

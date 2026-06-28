@@ -91,11 +91,19 @@ body {
 #app-main {
   -webkit-overflow-scrolling: touch;
   overscroll-behavior-y: contain;
-  touch-action: pan-y;
 }
 
 html.app-scroll-locked #app-main {
   overflow: hidden !important;
+}
+
+/** Scrollbare Panels — überschreibt overflow:hidden von app-*-card/frame */
+.app-scroll-panel {
+  overflow-x: clip !important;
+  overflow-y: auto !important;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  min-height: 0;
 }
 
 /* ── Premium Oberflächen (alle Pages via page-shell / app-ui) ── */

@@ -226,7 +226,7 @@ export function PaFundamentalEarningsCallSpalte({
   const dokLabel = hatWebcastPdf ? 'Webcast-PDF' : 'Transkript'
 
   return (
-    <div className="flex h-full min-h-[320px] flex-col space-y-3">
+    <div className="space-y-3">
       <div className="flex flex-wrap items-end justify-between gap-2 border-b border-white/[0.06] pb-3">
         <div>
           <h2 className="text-base font-medium text-[var(--app-text)]">Earnings Call</h2>
@@ -260,8 +260,8 @@ export function PaFundamentalEarningsCallSpalte({
       ) : null}
 
       {daten?.quartale.length ? (
-        <div className="grid min-h-0 flex-1 gap-3 lg:grid-cols-[minmax(0,200px)_1fr]">
-          <div className="max-h-[420px] overflow-y-auto rounded-xl border border-white/[0.05] bg-[var(--app-surface-muted)] p-2">
+        <div className="grid gap-3 lg:grid-cols-[minmax(0,200px)_1fr] lg:items-start">
+          <div className="rounded-xl border border-white/[0.05] bg-[var(--app-surface-muted)] p-2 lg:sticky lg:top-0 lg:max-h-[min(60vh,28rem)] lg:overflow-y-auto">
             <div className="space-y-3">
               {jahrGruppen.map(({ jahr, eintraege }) => (
                 <div key={jahr}>
@@ -288,7 +288,7 @@ export function PaFundamentalEarningsCallSpalte({
                 <p className="text-sm text-[var(--app-text-muted)]">Quartal wählen</p>
               </PaCard>
             ) : (
-              <div className="flex h-full max-h-[420px] flex-col space-y-2">
+              <div className="space-y-2">
                 <div className="flex flex-wrap items-start justify-between gap-2 px-0.5">
                   <div>
                     <h3 className="text-sm font-medium text-[var(--app-text)]">{offenesQuartal.label}</h3>
@@ -341,7 +341,7 @@ export function PaFundamentalEarningsCallSpalte({
                   ) : fehler && !offenesQuartal.zusammenfassung ? (
                     <PaCard variant="glass" className="p-4 text-sm text-amber-200/90">{fehler}</PaCard>
                   ) : offenesQuartal.zusammenfassung ? (
-                    <PaCard variant="glass" className="min-h-0 flex-1 overflow-y-auto p-3 sm:p-4">
+                    <PaCard variant="glass" className="p-3 sm:p-4">
                       <div className="mb-3 flex items-center justify-between gap-2 border-b border-white/[0.05] pb-2">
                         <p className="text-[10px] font-semibold uppercase tracking-wider text-[var(--app-text-muted)]">
                           Quality-Analyse

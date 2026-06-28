@@ -840,7 +840,7 @@ function DetailPanel({
           <p className="mb-3 text-[10px] text-[var(--app-text-muted)]">
             Erstellt: {new Date(dr.erstellt_am).toLocaleString('de-DE')}
           </p>
-          <div className={`${PA_SCROLL_ELEGANT} max-h-[70vh] pr-1`}>
+          <div className="pr-1">
             <EarningsCallAnalyseDarstellung text={dr.memo} />
           </div>
         </PaCard>

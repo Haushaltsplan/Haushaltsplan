@@ -2,7 +2,7 @@
 
 import { DonutChart } from '@/components/finanzen/donut-chart'
 import { GewichtungAssetLogo } from '@/components/portfolio-analyse/isin-logo'
-import { PaCard, PaIconTabs } from '@/components/portfolio-analyse/pa-ui'
+import { PaCard, PaIconTabs, PA_SCROLL_PANEL } from '@/components/portfolio-analyse/pa-ui'
 import { formatEur } from '@/lib/portfolio-analyse/berechnung'
 import {
   eintraegeZuDonut,
@@ -316,7 +316,7 @@ export function PaGewichtungPanel({
           ) : null}
         </PaCard>
 
-        <PaCard variant="elevated" className="max-h-[28rem] overflow-y-auto p-4">
+        <PaCard variant="elevated" className={`max-h-[28rem] p-4 ${PA_SCROLL_PANEL}`}>
           <p className="mb-3 text-[11px] text-[var(--app-text-muted)]">
             {drilldownAktiv
               ? 'Sektor antippen → Firmen darunter · Firmenzeile antippen für Euro'

@@ -11,11 +11,11 @@ export const appModalPanelClassName = 'app-surface-card w-full max-w-md'
 
 /** Breiteres, scrollbares Panel (z. B. manuelle Mahlzeit). */
 export const appModalPanelWideScrollClassName =
-  'app-surface-card max-h-[min(92vh,40rem)] w-full max-w-lg overflow-y-auto'
+  'app-surface-card app-scroll-panel max-h-[min(92vh,40rem)] w-full max-w-lg'
 
 /** Unsichtbare Scrollbar — Touch-/Trackpad-Scroll bleibt. */
 export const appModalScrollHiddenClassName =
-  'overflow-y-auto overscroll-contain [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden'
+  'app-scroll-panel overscroll-contain [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden'
 
 /** WHOOP/Omnia — edler Overlay-Dialog. */
 export const whoopModalBackdropClassName =

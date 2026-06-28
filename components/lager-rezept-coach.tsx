@@ -615,7 +615,7 @@ export function LagerRezeptCoach({ artikel, onLagerAktualisiert, onKatalogGeaend
           <div
             className={`flex min-h-[13rem] max-h-[min(30rem,52vh)] flex-col overflow-hidden rounded-xl ${KI_INNER_WELL}`}
           >
-            <div className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain p-3 md:p-4">
+            <div className="app-scroll-panel min-h-0 flex-1 space-y-4 overscroll-contain p-3 md:p-4">
               {messages.length === 0 ? null : null}
               {messages.map((m, i) =>
                 m.role === 'user' ? (
