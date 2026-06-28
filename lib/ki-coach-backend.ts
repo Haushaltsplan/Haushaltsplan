@@ -285,35 +285,44 @@ function buildGeminiModelChain(opts: {
   return out
 }
 
-function geminiModelKandidaten(): string[] {
+/** Flash-Modelle mit Google-AI-Studio-Tageskontingent — kein Pro, kein kostenpflichtiges Fallback. */
+export function geminiFreeTierFlashModelKandidaten(opts?: {
+  primaryEnvKeys?: string[]
+  fallbackEnvKey?: string
+}): string[] {
   return buildGeminiModelChain({
-    primaryEnvKeys: ['FINANCE_COACH_GEMINI_MODEL'],
-    fallbackEnvKey: 'GEMINI_MODEL_FALLBACKS',
+    primaryEnvKeys: opts?.primaryEnvKeys ?? ['FINANCE_COACH_GEMINI_MODEL', 'GEMINI_MODEL'],
+    fallbackEnvKey: opts?.fallbackEnvKey ?? 'GEMINI_MODEL_FALLBACKS',
     defaultPrimary: 'gemini-3.5-flash',
-    /** Quota oft pro Modell — nächstes Modell = neues Kontingent. Kein 2.0 (EOL 2026). */
+    /** Quota oft pro Modell — nächstes Modell = neues Free-Tier-Kontingent. Kein Pro / kein 3.1-flash-lite. */
     defaultFallbacks: [
       'gemini-flash-latest',
       'gemini-2.5-flash',
-      'gemini-3.1-flash-lite',
       'gemini-2.5-flash-lite',
       'gemini-3-flash-preview',
     ],
   })
 }
 
-/** Earnings Call — lange Transkripte, bevorzugt neuestes Flash mit Quota-Fallbacks. */
-export function earningsCallGeminiModelKandidaten(): string[] {
+/** Nur Gemini 3.1 Pro — kostenpflichtig; ausschließlich Deep Research & Kaufempfehlung. */
+export function geminiProPaidModelKandidaten(opts?: { primaryEnvKeys?: string[] }): string[] {
   return buildGeminiModelChain({
-    primaryEnvKeys: ['EARNINGS_CALL_GEMINI_MODEL', 'FINANCE_COACH_GEMINI_MODEL'],
+    primaryEnvKeys: opts?.primaryEnvKeys ?? ['NACHKAUF_DEEP_RESEARCH_GEMINI_MODEL'],
+    fallbackEnvKey: 'NACHKAUF_DEEP_RESEARCH_GEMINI_MODEL_FALLBACKS',
+    defaultPrimary: 'gemini-3.1-pro-preview',
+    defaultFallbacks: ['gemini-3.1-pro-preview-customtools', 'gemini-3.1-pro-exp'],
+  })
+}
+
+function geminiModelKandidaten(): string[] {
+  return geminiFreeTierFlashModelKandidaten()
+}
+
+/** Earnings Call — lange Transkripte, bevorzugt neuestes Flash mit Free-Tier-Fallbacks. */
+export function earningsCallGeminiModelKandidaten(): string[] {
+  return geminiFreeTierFlashModelKandidaten({
+    primaryEnvKeys: ['EARNINGS_CALL_GEMINI_MODEL', 'FINANCE_COACH_GEMINI_MODEL', 'GEMINI_MODEL'],
     fallbackEnvKey: 'EARNINGS_CALL_GEMINI_MODEL_FALLBACKS',
-    defaultPrimary: 'gemini-3.5-flash',
-    defaultFallbacks: [
-      'gemini-flash-latest',
-      'gemini-2.5-flash',
-      'gemini-3.1-flash-lite',
-      'gemini-2.5-flash-lite',
-      'gemini-3-flash-preview',
-    ],
   })
 }
 
@@ -363,8 +372,9 @@ export function formatCoachFehlerHint(hint: string, modelsVersucht = 1): string 
   }
   if (m.includes('quota') || m.includes('rate limit') || m.includes('resource_exhausted')) {
     return (
-      'Das Gemini-Kontingent für dieses Modell ist gerade erschöpft. ' +
-      'Kurz warten oder in .env.local ein anderes Modell setzen (GEMINI_MODEL / GEMINI_MODEL_FALLBACKS).'
+      'Das kostenlose Gemini-Tageskontingent ist gerade erschöpft. ' +
+      'Kurz warten (Reset meist um Mitternacht Pacific Time) oder morgen erneut versuchen. ' +
+      'Nur Deep Research / Kaufempfehlung nutzen kostenpflichtiges 3.1 Pro.'
     )
   }
   return hint

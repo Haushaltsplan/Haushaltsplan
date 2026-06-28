@@ -1,4 +1,5 @@
 import type { CoachImagePart } from '@/lib/finance-coach-images'
+import { geminiFreeTierFlashModelKandidaten } from '@/lib/ki-coach-backend'
 import {
   applyMultipackGetraenkKorrektur,
   istLagerIrrelevantPfandOderLeergut,
@@ -41,22 +42,16 @@ const RECEIPT_SCHEMA = {
 } as const
 
 /**
- * Reihenfolge: Modell aus .env, dann neuere Flash-Modelle (Free-Tier / Kontingente weichen pro Modell ab).
+ * Reihenfolge: Modell aus .env, dann Free-Tier-Flash-Modelle (Tageskontingent pro Modell).
  * @see https://ai.google.dev/gemini-api/docs/models
  */
-const FALLBACK_GEMINI_FLASH_MODELLE = [
-  'gemini-2.5-flash',
-  'gemini-3-flash-preview',
-  'gemini-1.5-flash',
-  'gemini-2.0-flash',
-  'gemini-2.0-flash-001',
-] as const
-
 function modellKandidaten(primaer: string): string[] {
+  const chain = geminiFreeTierFlashModelKandidaten()
   const p = primaer.trim()
-  const out: string[] = []
-  for (const m of [p, ...FALLBACK_GEMINI_FLASH_MODELLE]) {
-    if (m && !out.includes(m)) out.push(m)
+  if (!p) return chain
+  const out = [p]
+  for (const m of chain) {
+    if (!out.includes(m)) out.push(m)
   }
   return out
 }

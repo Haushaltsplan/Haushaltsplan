@@ -11,36 +11,14 @@ import { ladeFundamentaldaten } from '@/lib/portfolio-analyse/fundamentaldaten-s
 import { isinKenntnis } from '@/lib/portfolio-analyse/isin-kenntnisse'
 import { ladeSecBerichtKiCacheFuerTicker } from '@/lib/portfolio-analyse/sec-berichte-ki-cache-server'
 import { ladeEarningsCallKiCacheFuerTicker } from '@/lib/portfolio-analyse/earnings-call-unternehmen-cache-server'
-import { resolveCoachProviderFromMode, runCoachCompletion } from '@/lib/ki-coach-backend'
+import {
+  geminiProPaidModelKandidaten,
+  resolveCoachProviderFromMode,
+  runCoachCompletion,
+} from '@/lib/ki-coach-backend'
 import { NACHKAUF_DEEP_RESEARCH_SYSTEM_PROMPT } from './nachkauf-deep-research-prompt'
 import { ergaenzeDepotGewichte, speichereDeepResearch } from './nachkauf-radar-db-server'
 import type { NachkaufDeepResearch, NachkaufDeepResearchAnfrage, NachkaufScanEintrag } from './nachkauf-radar-types'
-
-// ---------------------------------------------------------------------------
-// Modell-Kandidaten (Gemini Pro)
-// ---------------------------------------------------------------------------
-
-function deepResearchModell(): string[] {
-  const primary =
-    process.env.NACHKAUF_DEEP_RESEARCH_GEMINI_MODEL?.trim() ||
-    'gemini-3.1-pro-preview'
-  // Fallback-Reihenfolge: 3.1-Varianten priorisieren, 2.5-Pro nur als letzter Ausweg
-  const fallbacks = [
-    'gemini-3.1-pro-preview',
-    'gemini-3.1-pro-preview-customtools',
-    'gemini-3.1-pro-exp',
-    'gemini-3.5-pro-preview',
-    'gemini-3.5-pro',
-    'gemini-2.5-pro-preview-06-05',
-    'gemini-2.5-pro',
-  ]
-  const seen = new Set<string>()
-  return [primary, ...fallbacks].filter((m) => {
-    if (seen.has(m)) return false
-    seen.add(m)
-    return true
-  })
-}
 
 // ---------------------------------------------------------------------------
 // Kontext-Text für Deep Research bauen
@@ -267,7 +245,7 @@ export async function fuhreDeepResearchDurch(
     {
       temperature: 0.3,
       skipMessageTrim: true,
-      geminiModels: deepResearchModell(),
+      geminiModels: geminiProPaidModelKandidaten(),
     },
   )
 

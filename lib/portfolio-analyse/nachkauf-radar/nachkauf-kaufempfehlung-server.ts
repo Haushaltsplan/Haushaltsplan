@@ -8,7 +8,11 @@
 
 import 'server-only'
 
-import { runCoachCompletion, resolveCoachProviderFromMode } from '@/lib/ki-coach-backend'
+import {
+  geminiProPaidModelKandidaten,
+  resolveCoachProviderFromMode,
+  runCoachCompletion,
+} from '@/lib/ki-coach-backend'
 import { NACHKAUF_RADAR_WHITELIST, type RisikoKlasse } from './nachkauf-radar-whitelist'
 import type { NachkaufScanEintrag, MonatsEmpfehlung, SparplanPosten } from './nachkauf-radar-types'
 
@@ -152,28 +156,6 @@ Sei direkt und konkret. Kein Bullshit, kein Optimismus-Bias. Wenn du nicht kaufe
 }
 
 // ---------------------------------------------------------------------------
-// Modell-Kandidaten
-// ---------------------------------------------------------------------------
-
-function kaufempfehlungModell(): string[] {
-  const primary =
-    process.env.NACHKAUF_DEEP_RESEARCH_GEMINI_MODEL?.trim() || 'gemini-3.1-pro-preview'
-  const fallbacks = [
-    'gemini-3.1-pro-preview',
-    'gemini-3.1-pro-exp',
-    'gemini-3.5-pro-preview',
-    'gemini-2.5-pro-preview-06-05',
-    'gemini-2.5-pro',
-  ]
-  const seen = new Set<string>()
-  return [primary, ...fallbacks].filter((m) => {
-    if (seen.has(m)) return false
-    seen.add(m)
-    return true
-  })
-}
-
-// ---------------------------------------------------------------------------
 // Hauptfunktion
 // ---------------------------------------------------------------------------
 
@@ -249,7 +231,7 @@ export async function generiereKaufempfehlung(
         {
           temperature: 0.3,
           skipMessageTrim: true,
-          geminiModels: kaufempfehlungModell(),
+          geminiModels: geminiProPaidModelKandidaten(),
         },
       )
       if (result.ok && result.reply?.trim()) {

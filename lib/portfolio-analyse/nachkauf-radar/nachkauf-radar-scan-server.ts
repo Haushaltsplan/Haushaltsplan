@@ -15,7 +15,11 @@ import { ladeFundamentaldaten } from '@/lib/portfolio-analyse/fundamentaldaten-s
 import { isinKenntnis } from '@/lib/portfolio-analyse/isin-kenntnisse'
 import { ladeSecBerichtKiCacheFuerTicker } from '@/lib/portfolio-analyse/sec-berichte-ki-cache-server'
 import { ladeEarningsCallKiCacheFuerTicker } from '@/lib/portfolio-analyse/earnings-call-unternehmen-cache-server'
-import { resolveCoachProviderFromMode, runCoachCompletion } from '@/lib/ki-coach-backend'
+import {
+  geminiFreeTierFlashModelKandidaten,
+  resolveCoachProviderFromMode,
+  runCoachCompletion,
+} from '@/lib/ki-coach-backend'
 import { NACHKAUF_SCAN_SYSTEM_PROMPT } from './nachkauf-scan-prompt'
 import {
   berechneMonatsEmpfehlung,
@@ -41,24 +45,6 @@ import type { NachkaufScanAnfrage, NachkaufScanEintrag, NachkaufScanPaket } from
 
 /** Positionen, die innerhalb dieser Zeit bereits gescannt wurden, werden übersprungen. */
 const SKIP_WENN_JUENGER_MS = 12 * 60 * 60 * 1000 // 12 Stunden
-
-// ---------------------------------------------------------------------------
-// Modell-Kandidaten
-// ---------------------------------------------------------------------------
-
-function nachkaufScanModell(): string[] {
-  const primary =
-    process.env.NACHKAUF_SCAN_GEMINI_MODEL?.trim() ||
-    process.env.FINANCE_COACH_GEMINI_MODEL?.trim() ||
-    'gemini-3.5-flash'
-  const fallbacks = ['gemini-flash-latest', 'gemini-2.5-flash', 'gemini-3.1-flash-lite']
-  const seen = new Set<string>()
-  return [primary, ...fallbacks].filter((m) => {
-    if (seen.has(m)) return false
-    seen.add(m)
-    return true
-  })
-}
 
 // ---------------------------------------------------------------------------
 // KI-Begründung via Flash
@@ -114,7 +100,13 @@ async function generiereKiBegruendung(opts: {
     provider.apiKey,
     NACHKAUF_SCAN_SYSTEM_PROMPT,
     [{ role: 'user', content: userText }],
-    { temperature: 0.25, skipMessageTrim: true, geminiModels: nachkaufScanModell() },
+    {
+      temperature: 0.25,
+      skipMessageTrim: true,
+      geminiModels: geminiFreeTierFlashModelKandidaten({
+        primaryEnvKeys: ['NACHKAUF_SCAN_GEMINI_MODEL', 'FINANCE_COACH_GEMINI_MODEL', 'GEMINI_MODEL'],
+      }),
+    },
   )
 
   return result.ok ? result.reply.trim() : null
