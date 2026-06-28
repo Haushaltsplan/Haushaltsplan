@@ -5,6 +5,7 @@ import {
   whoopModalBackdropClassName,
   whoopModalPanelClassName,
 } from '@/lib/app-modal-overlay'
+import { lockAppScroll } from '@/lib/app-scroll-lock'
 import type { MetricInfo } from '@/lib/fitnessdaten/metric-explanations'
 import { useEffect } from 'react'
 
@@ -17,14 +18,13 @@ export function WhoopInfoModal({
 }) {
   useEffect(() => {
     if (!info) return
-    const prevOverflow = document.body.style.overflow
-    document.body.style.overflow = 'hidden'
+    const unlock = lockAppScroll()
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose()
     }
     window.addEventListener('keydown', onKey)
     return () => {
-      document.body.style.overflow = prevOverflow
+      unlock()
       window.removeEventListener('keydown', onKey)
     }
   }, [info, onClose])

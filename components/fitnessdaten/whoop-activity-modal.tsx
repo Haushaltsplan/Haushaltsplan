@@ -13,6 +13,7 @@ import {
 import { getMetricInfo } from '@/lib/fitnessdaten/metric-explanations'
 import { ladeFitnessHistory } from '@/lib/fitnessdaten/history-storage'
 import type { WhoopActivity } from '@/lib/fitnessdaten/daily-records'
+import { lockAppScroll } from '@/lib/app-scroll-lock'
 import { useEffect, useMemo } from 'react'
 
 type Props = {
@@ -33,14 +34,13 @@ export function WhoopActivityModal({ activity, onClose }: Props) {
 
   useEffect(() => {
     if (!activity) return
-    const prevOverflow = document.body.style.overflow
-    document.body.style.overflow = 'hidden'
+    const unlock = lockAppScroll()
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose()
     }
     window.addEventListener('keydown', onKey)
     return () => {
-      document.body.style.overflow = prevOverflow
+      unlock()
       window.removeEventListener('keydown', onKey)
     }
   }, [activity, onClose])

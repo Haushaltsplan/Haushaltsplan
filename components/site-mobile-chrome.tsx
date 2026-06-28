@@ -23,6 +23,7 @@ import {
 import { CSS } from '@dnd-kit/utilities'
 import { NavLinkList } from '@/components/nav-link-list'
 import { ThemeToggle } from '@/components/theme-toggle'
+import { lockAppScroll } from '@/lib/app-scroll-lock'
 import { istInvestmentsGesperrt, investmentsSperreNavTitle } from '@/lib/investments-sperre'
 import { HREF_TO_DEF, type NavItem as OmniaNavItem, linkActive, navHrefForPathname } from '@/lib/nav-model'
 import { useNavOrder } from '@/lib/use-nav-order'
@@ -145,11 +146,7 @@ export function SiteMobileChrome() {
 
   useEffect(() => {
     if (!drawerOpen) return
-    const prev = document.body.style.overflow
-    document.body.style.overflow = 'hidden'
-    return () => {
-      document.body.style.overflow = prev
-    }
+    return lockAppScroll()
   }, [drawerOpen])
 
   const sensors = useSensors(

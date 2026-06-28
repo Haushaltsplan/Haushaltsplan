@@ -9,6 +9,7 @@ import {
 } from '@/lib/besitz-kleidungsarten'
 import { besitzFotoSignedUrl, loescheBesitzFoto, uploadBesitzFoto } from '@/lib/besitz-foto'
 import type { BesitzPdfPosition } from '@/lib/besitz-pdf-import'
+import { scrollAppTo } from '@/lib/app-scroll-lock'
 import { supabase } from '@/lib/supabase'
 import {
   PageChrome,
@@ -261,7 +262,7 @@ export default function BesitzPage() {
         if (url) setFotoVorschau(url)
       })
     }
-    window.scrollTo({ top: 0, behavior: 'smooth' })
+    scrollAppTo(0, 'smooth')
   }
 
   async function speichern() {

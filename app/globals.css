@@ -64,6 +64,7 @@
 
 html {
   overflow-x: clip;
+  height: 100%;
   -webkit-text-size-adjust: 100%;
 }
 
@@ -74,15 +75,27 @@ body {
     radial-gradient(ellipse 120% 80% at 100% -20%, var(--app-accent-soft), transparent 52%),
     radial-gradient(ellipse 90% 60% at -10% 100%, rgb(99 102 241 / 0.06), transparent 48%),
     linear-gradient(180deg, var(--app-bg) 0%, var(--app-bg-accent) 100%);
-  background-attachment: fixed;
+  background-attachment: scroll;
   margin: 0;
   padding: 0;
-  overflow-x: clip;
+  height: 100%;
+  overflow: hidden;
   padding-left: env(safe-area-inset-left, 0px);
   padding-right: env(safe-area-inset-right, 0px);
   font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
+}
+
+/* Ein Scroll-Container: #app-main in layout.tsx */
+#app-main {
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: contain;
+  touch-action: pan-y;
+}
+
+html.app-scroll-locked #app-main {
+  overflow: hidden !important;
 }
 
 /* ── Premium Oberflächen (alle Pages via page-shell / app-ui) ── */

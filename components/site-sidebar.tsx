@@ -12,7 +12,7 @@ export function SiteSidebar() {
   const { orderedDefs } = useNavOrder()
 
   return (
-    <aside className="app-glass-bar sticky top-0 hidden h-screen max-h-[100dvh] w-[240px] shrink-0 flex-col border-r shadow-[4px_0_32px_-12px_var(--app-shadow-lg)] md:flex">
+    <aside className="app-glass-bar sticky top-0 hidden h-full max-h-[100dvh] w-[240px] shrink-0 flex-col border-r shadow-[4px_0_32px_-12px_var(--app-shadow-lg)] md:flex">
       <div className="flex shrink-0 items-center gap-2.5 border-b border-[var(--app-border)] px-4 py-5">
         <Link
           href="/"

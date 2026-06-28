@@ -2,6 +2,7 @@
 
 import { CHART, CHART_AXIS, CHART_GRID } from '@/lib/chart-theme'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { lockAppScroll } from '@/lib/app-scroll-lock'
 import { chartHoverFromClientX } from '@/components/portfolio-analyse/chart-hover'
 import { formatDatumDe, formatEur } from '@/lib/portfolio-analyse/berechnung'
 import type { WertentwicklungPunkt } from '@/lib/portfolio-analyse/wertentwicklung'
@@ -343,12 +344,11 @@ export function PaWertentwicklungChart({
       if (e.key === 'Escape') setExpanded(false)
     }
     document.addEventListener('keydown', onKey)
-    const prev = document.body.style.overflow
-    document.body.style.overflow = 'hidden'
+    const unlock = lockAppScroll()
     return () => {
       window.removeEventListener('resize', update)
       document.removeEventListener('keydown', onKey)
-      document.body.style.overflow = prev
+      unlock()
     }
   }, [expanded])
 
