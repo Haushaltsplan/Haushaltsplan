@@ -33,6 +33,7 @@ export async function GET(req: Request) {
   return NextResponse.json({
     activities,
     activitiesLoadError: activitiesResult.loadError ?? null,
+    activitiesSchemaHint: activitiesResult.schemaHint ?? null,
     athlete,
     segmentEfforts,
     segmentBacklog,

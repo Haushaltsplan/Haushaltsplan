@@ -908,8 +908,28 @@ export async function ladeGespeicherteAktivitaeten(sb: SupabaseClient): Promise<
   return rows
 }
 
+const ACTIVITY_LIST_COLUMNS_BASE =
+  'strava_id, name, sport_type, type, start_date, distance_m, moving_time_s, elapsed_time_s, elevation_gain_m, average_watts, weighted_avg_watts, max_watts, average_heartrate, max_heartrate, kilojoules, calories_kcal, average_speed_kmh, device_watts, power_peaks, suffer_score, gear_id, workout_type, hr_zone_minutes, estimated_tss'
+
 const ACTIVITY_LIST_COLUMNS =
-  'strava_id, name, sport_type, type, start_date, distance_m, moving_time_s, elapsed_time_s, elevation_gain_m, average_watts, weighted_avg_watts, max_watts, average_heartrate, max_heartrate, kilojoules, calories_kcal, average_speed_kmh, device_watts, power_peaks, suffer_score, gear_id, workout_type, hr_zone_minutes, estimated_tss, weather_temp_c, weather_wind_kmh, weather_code, weather_lat, weather_lon, aerobic_decoupling_pct, variability_index'
+  `${ACTIVITY_LIST_COLUMNS_BASE}, weather_temp_c, weather_wind_kmh, weather_code, weather_lat, weather_lon, aerobic_decoupling_pct, variability_index`
+
+function istSpaltenFehler(message: string): boolean {
+  return /column .* does not exist/i.test(message)
+}
+
+async function ladeAktivitaetenQuery(
+  sb: SupabaseClient,
+  ownerUserId: string,
+  columns: string,
+) {
+  return sb
+    .from('strava_activities')
+    .select(columns)
+    .eq('owner_user_id', ownerUserId)
+    .order('start_date', { ascending: false })
+    .limit(2500)
+}
 
 function mapActivityRows(data: Record<string, unknown>[]): StravaActivityRow[] {
   return data.map((r) => ({
@@ -952,25 +972,31 @@ function mapActivityRows(data: Record<string, unknown>[]): StravaActivityRow[] {
 export async function ladeGespeicherteAktivitaetenMitMeta(sb: SupabaseClient): Promise<{
   rows: StravaActivityRow[]
   loadError?: string
+  schemaHint?: string
 }> {
   const {
     data: { user },
   } = await sb.auth.getUser()
   if (!user?.id) return { rows: [], loadError: 'Nicht angemeldet.' }
 
-  const { data, error } = await sb
-    .from('strava_activities')
-    .select(ACTIVITY_LIST_COLUMNS)
-    .eq('owner_user_id', user.id)
-    .order('start_date', { ascending: false })
-    .limit(2500)
+  let { data, error } = await ladeAktivitaetenQuery(sb, user.id, ACTIVITY_LIST_COLUMNS)
+  let schemaHint: string | undefined
+
+  if (error && istSpaltenFehler(error.message)) {
+    console.warn('[strava] Spalten fehlen — Fallback ohne Wetter/Advanced:', error.message)
+    const retry = await ladeAktivitaetenQuery(sb, user.id, ACTIVITY_LIST_COLUMNS_BASE)
+    data = retry.data
+    error = retry.error
+    schemaHint =
+      'Supabase-Migrationen fehlen (weather_temp_c u.a.) — bitte 20260627200000_strava_weather.sql und Folgende ausführen.'
+  }
 
   if (error) {
     console.error('[strava] ladeGespeicherteAktivitaeten:', error.message)
-    return { rows: [], loadError: error.message }
+    return { rows: [], loadError: error.message, schemaHint }
   }
-  if (!data) return { rows: [] }
-  return { rows: mapActivityRows(data as Record<string, unknown>[]) }
+  if (!data) return { rows: [], schemaHint }
+  return { rows: mapActivityRows(data as unknown as Record<string, unknown>[]), schemaHint }
 }
 
 export async function ladeActivityPolyline(

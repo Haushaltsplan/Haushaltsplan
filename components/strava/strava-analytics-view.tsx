@@ -48,6 +48,7 @@ type Props = {
   activities: StravaActivityRow[]
   athlete: StravaAthleteProfile | null
   activitiesLoadError?: string | null
+  activitiesSchemaHint?: string | null
   segmentEfforts?: StravaSegmentEffortRow[]
   segmentBacklog?: number
   backfill?: BackfillStatus | null
@@ -61,6 +62,7 @@ export function StravaAnalyticsView({
   activities,
   athlete,
   activitiesLoadError = null,
+  activitiesSchemaHint = null,
   segmentEfforts = [],
   segmentBacklog = 0,
   backfill = null,
@@ -118,6 +120,12 @@ export function StravaAnalyticsView({
   return (
     <div className="space-y-6">
       <StravaAlertsBanner alerts={analytics.alerts} />
+
+      {activitiesSchemaHint ? (
+        <p className="rounded-xl border border-amber-500/25 bg-amber-500/10 px-3 py-2 text-[11px] text-amber-200">
+          {activitiesSchemaHint}
+        </p>
+      ) : null}
 
       {activitiesLoadError ? (
         <p className="rounded-xl border border-red-500/25 bg-red-500/10 px-3 py-2 text-[11px] text-red-200">
