@@ -111,7 +111,7 @@ export function PaFundamentalPeerVergleich({
       </div>
 
       <div className={`${appTableScrollClassName} rounded-xl border border-[var(--app-border)]`}>
-        <table className="min-w-full text-left text-sm">
+        <table className="app-data-table min-w-full text-left text-sm">
           <thead className="bg-[var(--app-surface-muted)] text-xs uppercase tracking-wide text-[var(--app-text-muted)]">
             <tr>
               <th className="px-3 py-2 font-semibold">Kennzahl</th>

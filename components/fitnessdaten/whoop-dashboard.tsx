@@ -225,7 +225,7 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange }: P
   })
 
   return (
-    <div className="relative min-h-0 overflow-hidden rounded-2xl border border-white/[0.05] bg-black text-white shadow-2xl shadow-black/80 sm:rounded-3xl md:min-h-[calc(100dvh-4rem)]">
+    <div className="relative flex max-h-[calc(100dvh-var(--app-nav-offset)-var(--app-mobile-bottom-nav)-2.5rem)] flex-col overflow-hidden rounded-2xl border border-white/[0.05] bg-black text-white shadow-2xl shadow-black/80 sm:max-h-none sm:rounded-3xl md:min-h-[calc(100dvh-4rem)] md:max-h-[calc(100dvh-4rem)]">
       <div
         className="pointer-events-none absolute -left-32 -top-32 h-64 w-64 rounded-full opacity-20 blur-3xl"
         style={{ background: recoveryColor(heute.recoveryPercent) }}
@@ -233,7 +233,8 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange }: P
       <div className="pointer-events-none absolute -right-24 top-1/3 h-48 w-48 rounded-full bg-[#00E5FF]/[0.06] blur-3xl" />
 
       <div
-        className={`relative px-3 pb-24 pt-4 sm:px-6 sm:pb-28 sm:pt-6 md:max-h-[calc(100dvh-4rem)] ${appModalScrollHiddenClassName}`}
+        className={`min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 pb-4 pt-4 sm:px-6 sm:pb-6 sm:pt-6 ${appModalScrollHiddenClassName}`}
+        data-no-swipe-nav
       >
         <header className="flex items-center justify-between gap-2">
           {/* Avatar + Streak */}
@@ -1336,7 +1337,7 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange }: P
         )}
       </div>
 
-      <nav className="absolute bottom-0 left-0 right-0 border-t border-white/[0.06] bg-black/95 px-1 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-1 backdrop-blur-xl">
+      <nav className="shrink-0 border-t border-white/[0.06] bg-black/95 px-1 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-1 backdrop-blur-xl">
         <ul className="flex justify-around">
           {tabs.map((t) => (
             <li key={t.id}>

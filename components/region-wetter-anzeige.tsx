@@ -59,7 +59,7 @@ export function RegionWetterAnzeige({ wetter, aktualisiertAnzeige, ortId, ortNam
   const vorJahrDatum = kalenderdatumVorJahrEuropeBerlin()
 
   return (
-    <div className="overflow-hidden rounded-2xl border border-[var(--app-border-strong)]/35 bg-gradient-to-br from-[var(--app-surface-muted)]/70 via-[var(--app-surface)] to-[var(--app-surface-muted)] shadow-xl shadow-[var(--app-shadow)] ring-1 ring-[var(--app-ring)] backdrop-blur-xl">
+    <div className="app-hero overflow-hidden">
       <div className="grid gap-6 p-6 sm:grid-cols-[1fr_auto] sm:items-center sm:gap-8 sm:p-8">
         <div>
           <div className="flex flex-wrap items-start justify-between gap-3">
@@ -81,7 +81,7 @@ export function RegionWetterAnzeige({ wetter, aktualisiertAnzeige, ortId, ortNam
         </div>
       </div>
 
-      <div className="grid gap-3 border-t border-[var(--app-border)]/70 bg-[var(--app-surface-muted)]/35 px-6 py-5 sm:grid-cols-2 sm:px-8">
+      <div className="grid gap-3 border-t border-[var(--app-border)] app-surface-card-header px-6 py-5 sm:grid-cols-2 sm:px-8">
         <div className="flex gap-4 rounded-xl border border-[var(--app-border)] bg-[var(--app-surface-muted)]/45 p-4">
           <WindIkon />
           <div className="min-w-0">

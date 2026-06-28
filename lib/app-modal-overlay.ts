@@ -7,12 +7,11 @@ export const appModalBackdropClassName =
   'fixed inset-0 z-[70] flex items-end justify-center bg-black/55 p-3 backdrop-blur-sm sm:items-center sm:p-4'
 
 /** Kompakte Dialoge (Formulare, Bestätigungen). */
-export const appModalPanelClassName =
-  'w-full max-w-md rounded-2xl border border-[var(--app-border-strong)] bg-[var(--app-surface)] shadow-2xl shadow-[var(--app-shadow)]'
+export const appModalPanelClassName = 'app-surface-card w-full max-w-md'
 
 /** Breiteres, scrollbares Panel (z. B. manuelle Mahlzeit). */
 export const appModalPanelWideScrollClassName =
-  'max-h-[min(92vh,40rem)] w-full max-w-lg overflow-y-auto rounded-2xl border border-[var(--app-border-strong)] bg-[var(--app-surface)] shadow-2xl shadow-[var(--app-shadow)]'
+  'app-surface-card max-h-[min(92vh,40rem)] w-full max-w-lg overflow-y-auto'
 
 /** Unsichtbare Scrollbar — Touch-/Trackpad-Scroll bleibt. */
 export const appModalScrollHiddenClassName =

@@ -15,7 +15,7 @@ export function ThemeToggle() {
     <button
       type="button"
       onClick={() => setTheme(isDark ? 'light' : 'dark')}
-      className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-[var(--app-border-strong)] bg-[var(--app-surface-muted)] text-[var(--app-text-muted)] transition hover:bg-[var(--app-surface-hover)] hover:text-[var(--app-text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500/40"
+      className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[0.875rem] border border-[var(--app-border-strong)] bg-[var(--app-surface-muted)] text-[var(--app-text-muted)] shadow-sm transition hover:border-[var(--app-accent-glow)] hover:bg-[var(--app-surface-hover)] hover:text-[var(--app-text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--app-accent-soft)]"
       aria-label={isDark ? 'Hellmodus aktivieren' : 'Dunkelmodus aktivieren'}
       title={isDark ? 'Hellmodus' : 'Dunkelmodus'}
     >

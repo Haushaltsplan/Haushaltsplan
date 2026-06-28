@@ -61,12 +61,12 @@ export function StartHero() {
   const gruß = stunde < 11 ? 'Guten Morgen' : stunde < 18 ? 'Guten Tag' : 'Guten Abend'
 
   return (
-    <header className="relative overflow-hidden rounded-2xl border border-[var(--app-border-strong)] bg-[var(--app-surface)] px-5 py-5 shadow-xl shadow-[var(--app-shadow)] ring-1 ring-[var(--app-ring)]">
-      <div className="pointer-events-none absolute -right-8 -top-10 h-32 w-32 rounded-full bg-teal-500/10 blur-3xl" />
-      <div className="pointer-events-none absolute -left-6 bottom-0 h-24 w-24 rounded-full bg-violet-500/10 blur-2xl" />
-      <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-[var(--app-text-muted)]">Omnia</p>
-      <h1 className="mt-1 text-xl font-semibold tracking-tight text-[var(--app-text)] sm:text-2xl">{gruß}</h1>
-      <p className="mt-1 text-sm capitalize text-[var(--app-text-muted)]">{heute}</p>
+    <header className="app-hero relative px-5 py-6 sm:py-7">
+      <div className="pointer-events-none absolute -right-10 -top-12 h-40 w-40 rounded-full bg-[var(--app-accent-soft)] blur-3xl" />
+      <div className="pointer-events-none absolute -left-8 bottom-0 h-28 w-28 rounded-full bg-violet-500/10 blur-2xl" />
+      <p className="app-eyebrow relative">Omnia</p>
+      <h1 className="relative mt-2 text-xl font-semibold tracking-tight text-[var(--app-text)] sm:text-2xl">{gruß}</h1>
+      <p className="relative mt-1.5 text-sm capitalize text-[var(--app-text-muted)]">{heute}</p>
     </header>
   )
 }
@@ -88,11 +88,9 @@ export function StartSektion({
 }) {
   const a = AKZENT[akzent]
   return (
-    <section
-      className={`relative overflow-hidden rounded-2xl border bg-[var(--app-surface)] shadow-lg shadow-[var(--app-shadow)] ring-1 ${a.ring} ${a.border}`}
-    >
+    <section className={`app-section-shell relative ${a.ring} ${a.border}`}>
       <div className={`pointer-events-none absolute inset-0 bg-gradient-to-br ${a.glow}`} />
-      <div className="relative border-b border-[var(--app-border)] px-4 py-3 sm:px-5">
+      <div className="app-surface-card-header relative px-4 py-3.5 sm:px-5">
         <div className="flex items-center justify-between gap-3">
           <div className="flex min-w-0 items-center gap-3">
             <span
@@ -105,7 +103,7 @@ export function StartSektion({
           </div>
           <Link
             href={href}
-            className={`shrink-0 rounded-lg border border-[var(--app-border)] bg-[var(--app-surface-muted)] px-2.5 py-1 text-[11px] font-semibold text-[var(--app-text-muted)] transition ${a.link}`}
+            className={`shrink-0 rounded-[0.875rem] border border-[var(--app-border-strong)] bg-[var(--app-surface-muted)] px-3 py-1.5 text-[11px] font-semibold text-[var(--app-text-muted)] shadow-sm transition ${a.link}`}
           >
             Öffnen →
           </Link>
@@ -150,8 +148,8 @@ export function StartMiniKachel({
         ? 'text-rose-400'
         : 'text-[var(--app-text)]'
   return (
-    <div className="rounded-xl border border-[var(--app-border)] bg-[var(--app-surface-muted)] px-3 py-3 backdrop-blur-sm">
-      <p className="text-[9px] font-bold uppercase tracking-[0.12em] text-[var(--app-text-muted)]">{label}</p>
+    <div className="app-kpi-tile px-3 py-3">
+      <p className="app-eyebrow text-[9px]">{label}</p>
       <p className={`mt-1.5 text-base font-bold tabular-nums sm:text-lg ${valueCls}`}>{value}</p>
     </div>
   )

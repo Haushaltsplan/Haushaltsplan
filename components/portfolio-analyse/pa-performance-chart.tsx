@@ -1,5 +1,6 @@
 'use client'
 
+import { CHART, CHART_AXIS, CHART_GRID } from '@/lib/chart-theme'
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import { chartHoverFromClientX } from '@/components/portfolio-analyse/chart-hover'
 import { formatDatumDe, formatEur, formatProzent } from '@/lib/portfolio-analyse/berechnung'
@@ -251,7 +252,7 @@ function PerformanceChartBody({
                   y1={y}
                   x2={breite - padRechts}
                   y2={y}
-                  stroke={isZero ? '#52525b' : '#27272a'}
+                  stroke={isZero ? CHART_AXIS : CHART_GRID}
                   strokeWidth={isZero ? 1.25 : 1}
                 />
                 <text
@@ -276,7 +277,7 @@ function PerformanceChartBody({
           ) : null}
 
           <path d={areaPath} fill={`url(#${areaGradId})`} />
-          <path d={linePath} fill="none" stroke="#a1a1aa" strokeWidth={gross ? 2 : 1.5} strokeLinejoin="round" />
+          <path d={linePath} fill="none" stroke={CHART.primary} strokeWidth={gross ? 2 : 1.5} strokeLinejoin="round" opacity={0.85} />
 
           {active ? (
             <line
@@ -284,7 +285,7 @@ function PerformanceChartBody({
               y1={padOben}
               x2={active.x}
               y2={padOben + plotH}
-              stroke="#e4e4e7"
+              stroke={CHART_AXIS}
               strokeWidth={1}
             />
           ) : null}
@@ -435,7 +436,7 @@ export function PaPerformanceChart({
   )
 
   return (
-    <div className="relative">
+    <div className="app-chart-frame relative p-4 sm:p-5">
       {body}
       {expandierbar ? (
         <button

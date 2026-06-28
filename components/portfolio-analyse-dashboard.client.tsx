@@ -289,21 +289,21 @@ export function PortfolioAnalyseDashboard({
       )}
 
       {sektion === 'transaktionen' && (
-        <div className="mt-6 overflow-hidden rounded-2xl border border-[var(--app-border)] bg-[var(--app-surface-muted)]/20">
+        <div className="app-table-frame mt-6">
           <ResponsiveTableWrap>
-          <table className="w-full min-w-[640px] text-left text-sm">
-            <thead className="bg-[var(--app-surface-muted)] text-xs text-[var(--app-text-muted)]">
+          <table className="app-data-table min-w-[640px]">
+            <thead>
               <tr>
                 <th className="px-4 py-2.5" />
-                <th className="px-4 py-2.5">Datum</th>
-                <th className="px-4 py-2.5">Typ</th>
-                <th className="px-4 py-2.5">Wertpapier</th>
-                <th className="px-4 py-2.5 text-right">Betrag</th>
+                <th>Datum</th>
+                <th>Typ</th>
+                <th>Wertpapier</th>
+                <th className="text-right">Betrag</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-[var(--app-border)]">
+            <tbody>
               {buchungenListe.map((b) => (
-                <tr key={b.id} className="hover:bg-[var(--app-surface-hover)]/20">
+                <tr key={b.id}>
                   <td className="px-4 py-2">
                     <PortfolioIsinLogo isin={b.isin} fallbackName={b.wertpapierName} meta={meta} groesse="sm" />
                   </td>

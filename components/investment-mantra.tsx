@@ -25,7 +25,7 @@ function MantraTabellenBlock({
   return (
     <>
       <div className={`hidden ${appTableScrollInlineClassName} pb-0.5 md:block`}>
-        <table className="min-w-full divide-y divide-[var(--app-border)] text-left text-sm">
+        <table className="app-data-table min-w-full divide-y divide-[var(--app-border)] text-left text-sm">
           <thead>
             <tr className="text-xs uppercase tracking-wide text-[var(--app-text-muted)]">
               <th className="px-3 py-2 font-semibold">Kategorie</th>

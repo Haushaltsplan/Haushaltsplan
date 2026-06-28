@@ -34,7 +34,7 @@ export function PaFundamentalMetrikTabelle({
         <h3 className="text-sm font-semibold text-[var(--app-text)]">{titel}</h3>
       </div>
       <div className={`${PA_SCROLL_ELEGANT} max-w-full`}>
-        <table className="w-max min-w-full border-collapse text-xs">
+        <table className="app-data-table w-max min-w-full border-collapse text-xs">
           <thead>
             <tr className="bg-[var(--app-surface-muted)] text-[var(--app-text-muted)]">
               <th className="sticky left-0 z-10 min-w-[220px] border-r border-[var(--app-border)] bg-[var(--app-surface-muted)] px-3 py-2 text-left font-medium">

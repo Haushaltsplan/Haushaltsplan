@@ -188,7 +188,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
           type="button"
           disabled={sending}
           onClick={() => void (loginModus === 'passwort' ? loginMitPasswort() : sendMagicLink())}
-          className="mt-3 w-full rounded-xl bg-cyan-600 py-2.5 text-sm font-bold text-white hover:bg-cyan-500 disabled:opacity-40"
+          className="mt-3 w-full rounded-[0.875rem] bg-gradient-to-b from-teal-500 to-teal-600 py-2.5 text-sm font-bold text-white shadow-md shadow-teal-950/25 ring-1 ring-white/10 transition hover:from-teal-400 hover:to-teal-500 disabled:opacity-40"
         >
           {sending ? 'Bitte warten …' : loginModus === 'passwort' ? 'Anmelden' : 'Login-Link senden'}
         </button>

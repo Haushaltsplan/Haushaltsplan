@@ -323,7 +323,7 @@ export function LagerKassenzettelPanel({ disabled, onBuchungFertig }: Props) {
 
           {positionen && positionen.length > 0 && (
             <div className={`${appTableScrollClassName} rounded-lg border border-[var(--app-border)]`}>
-              <table className="w-full min-w-[36rem] text-left text-xs sm:text-[13px]">
+              <table className="app-data-table w-full min-w-[36rem] text-left text-xs sm:text-[13px]">
                 <thead>
                   <tr className="border-b border-[var(--app-border)] bg-[var(--app-surface-hover)] text-[9px] font-semibold uppercase tracking-tight text-[var(--app-text-muted)] sm:text-[10px]">
                     <th className="px-2 py-1.5 sm:px-3">Artikel</th>

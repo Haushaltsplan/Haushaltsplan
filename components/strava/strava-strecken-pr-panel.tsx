@@ -118,7 +118,7 @@ export function StravaStreckenPrPanel({
                   </button>
                   {open ? (
                     <div className="border-t border-white/[0.06] px-3 py-2">
-                      <table className="w-full text-[11px]">
+                      <table className="app-data-table w-full text-[11px]">
                         <thead>
                           <tr className="text-[var(--app-text-muted)]">
                             <th className="pb-1 text-left font-normal">Datum</th>
@@ -187,7 +187,7 @@ export function StravaStreckenPrPanel({
                 </button>
                 {open ? (
                   <div className="border-t border-white/[0.06] px-3 py-2">
-                    <table className="w-full text-[11px]">
+                    <table className="app-data-table w-full text-[11px]">
                       <thead>
                         <tr className="text-[var(--app-text-muted)]">
                           <th className="pb-1 text-left font-normal">Datum</th>

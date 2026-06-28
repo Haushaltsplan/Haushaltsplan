@@ -39,7 +39,7 @@ export function PaDividendenHeatmapGrid({ heatmap }: { heatmap: DividendenHeatma
 
   return (
     <div className={appTableScrollClassName}>
-      <table className="w-full min-w-[720px] border-collapse text-xs">
+      <table className="app-data-table w-full min-w-[720px] border-collapse text-xs">
         <thead>
           <tr className="text-[var(--app-text-muted)]">
             <th className="sticky left-0 z-10 bg-[var(--app-surface-muted)] px-2 py-2 text-left font-medium" />

@@ -32,8 +32,8 @@ const BOTTOM_TAB_COUNT = 4
 function MobileBottomTab({ tab, pathname }: { tab: OmniaNavItem; pathname: string }) {
   const active = linkActive(pathname, tab.href)
   const tabLabel = tab.shortLabel
-  const tabClass = `flex min-w-0 flex-col items-center justify-center gap-0.5 px-1 py-1.5 text-[10px] font-semibold leading-tight outline-none transition ${
-    active ? 'text-teal-500 dark:text-teal-400' : 'text-[var(--app-text-muted)]'
+  const tabClass = `relative flex min-w-0 flex-col items-center justify-center gap-0.5 px-1 py-1.5 text-[10px] font-semibold leading-tight outline-none transition ${
+    active ? 'text-[var(--app-accent)]' : 'text-[var(--app-text-muted)]'
   }`
   const gesperrt = tab.href === '/investments' && istInvestmentsGesperrt()
 
@@ -54,6 +54,12 @@ function MobileBottomTab({ tab, pathname }: { tab: OmniaNavItem; pathname: strin
       aria-current={active ? 'page' : undefined}
       className={`${tabClass} hover:text-[var(--app-text)] active:scale-[0.98]`}
     >
+      {active ? (
+        <span
+          className="absolute inset-x-3 top-0 h-0.5 rounded-full bg-[var(--app-accent)] shadow-[0_0_8px_var(--app-accent-glow)]"
+          aria-hidden
+        />
+      ) : null}
       <span className="text-lg leading-none" aria-hidden>
         {tab.emoji}
       </span>
@@ -162,7 +168,7 @@ export function SiteMobileChrome() {
 
   return (
     <>
-      <header className="sticky top-0 z-50 border-b border-[var(--app-border-strong)] bg-[var(--app-bg)]/95 pt-[env(safe-area-inset-top,0px)] backdrop-blur-md md:hidden">
+      <header className="app-glass-bar sticky top-0 z-50 border-b pt-[env(safe-area-inset-top,0px)] md:hidden">
         <div className="flex h-14 min-w-0 items-center gap-2 px-3">
           <button
             type="button"
@@ -177,7 +183,7 @@ export function SiteMobileChrome() {
           </button>
 
           <div className="min-w-0 flex-1">
-            <p className="truncate text-[11px] font-medium uppercase tracking-wide text-[var(--app-text-muted)]">
+            <p className="truncate app-eyebrow text-[10px]">
               Omnia
             </p>
             <p className="truncate text-base font-semibold text-[var(--app-text)]">
@@ -190,7 +196,7 @@ export function SiteMobileChrome() {
       </header>
 
       <nav
-        className="fixed inset-x-0 bottom-0 z-50 border-t border-[var(--app-border-strong)] bg-[var(--app-bg)]/95 pb-[env(safe-area-inset-bottom,0px)] backdrop-blur-md md:hidden"
+        className="app-glass-bar fixed inset-x-0 bottom-0 z-50 border-t pb-[env(safe-area-inset-bottom,0px)] shadow-[0_-8px_32px_-12px_var(--app-shadow-lg)] md:hidden"
         aria-label="Schnellnavigation"
       >
         <div className="grid h-[3.75rem] grid-cols-5">
@@ -202,10 +208,16 @@ export function SiteMobileChrome() {
             type="button"
             onClick={() => setDrawerOpen(true)}
             aria-expanded={drawerOpen}
-            className={`flex min-w-0 flex-col items-center justify-center gap-0.5 px-1 py-1.5 text-[10px] font-semibold leading-tight outline-none transition hover:text-[var(--app-text)] active:scale-[0.98] ${
-              moreTabActive ? 'text-teal-500 dark:text-teal-400' : 'text-[var(--app-text-muted)]'
+            className={`relative flex min-w-0 flex-col items-center justify-center gap-0.5 px-1 py-1.5 text-[10px] font-semibold leading-tight outline-none transition hover:text-[var(--app-text)] active:scale-[0.98] ${
+              moreTabActive ? 'text-[var(--app-accent)]' : 'text-[var(--app-text-muted)]'
             }`}
           >
+            {moreTabActive ? (
+              <span
+                className="absolute inset-x-3 top-0 h-0.5 rounded-full bg-[var(--app-accent)] shadow-[0_0_8px_var(--app-accent-glow)]"
+                aria-hidden
+              />
+            ) : null}
             <span className="flex h-[18px] w-[18px] items-center justify-center text-lg leading-none" aria-hidden>
               ⋯
             </span>
@@ -222,7 +234,7 @@ export function SiteMobileChrome() {
             aria-label="Menü schließen"
             onClick={closeDrawer}
           />
-          <aside className="absolute inset-y-0 left-0 flex w-[min(100vw-3rem,320px)] max-w-full flex-col border-r border-[var(--app-border-strong)] bg-[var(--app-sidebar)] shadow-2xl shadow-black/40">
+          <aside className="app-glass-bar absolute inset-y-0 left-0 flex w-[min(100vw-3rem,320px)] max-w-full flex-col border-r shadow-2xl shadow-black/40">
             <div className="flex shrink-0 items-center justify-between gap-2 border-b border-[var(--app-border)] px-4 py-4 pt-[max(1rem,env(safe-area-inset-top))]">
               <Link
                 href="/"

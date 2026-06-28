@@ -1,6 +1,9 @@
 'use client'
 
 import { useId, useMemo } from 'react'
+import { ChartFrame } from '@/components/chart-frame'
+import { appTableScrollInlineClassName } from '@/components/page-shell'
+import { CHART, CHART_AXIS, CHART_GRID, chartGridLinesY } from '@/lib/chart-theme'
 import { formatEur } from '@/lib/portfolio-analyse/berechnung'
 
 /** Flächen-Chart (Parqet-ähnlich): Portfolio-Wert über Zeit. */
@@ -45,59 +48,64 @@ export function PaAreaChart({
   const labelStep = Math.max(1, Math.ceil(punkte.length / 8))
 
   return (
-    <div className="w-full min-w-0 overflow-hidden">
-      <svg
-        width="100%"
-        height={hoehe}
-        viewBox={`0 0 ${breite} ${hoehe}`}
-        preserveAspectRatio="xMidYMid meet"
-        className="block w-full select-none"
-        role="img"
-        aria-label="Portfolio-Verlauf"
-      >
-        <defs>
-          <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#10b981" stopOpacity={0.35} />
-            <stop offset="100%" stopColor="#10b981" stopOpacity={0} />
-          </linearGradient>
-        </defs>
-        <line
-          x1={padLinks}
-          y1={padOben + plotH}
-          x2={breite - padRechts}
-          y2={padOben + plotH}
-          stroke="#27272a"
-          strokeWidth={1}
-        />
-        <text x={padLinks - 6} y={padOben + 4} textAnchor="end" className="fill-[var(--app-text-muted)]" style={{ fontSize: 9 }}>
-          {formatEur(max)}
-        </text>
-        <text x={padLinks - 6} y={padOben + plotH} textAnchor="end" className="fill-[var(--app-text-muted)]" style={{ fontSize: 9 }}>
-          {formatEur(min)}
-        </text>
-        <path d={area} fill={`url(#${gradId})`} />
-        <path d={path} fill="none" stroke="#10b981" strokeWidth={2.5} strokeLinejoin="round" />
-        {dots.map((p, i) => (
-          <circle key={i} cx={p.x} cy={p.y} r={3} fill="#10b981">
-            <title>{`${p.label}: ${formatEur(p.wert)}`}</title>
-          </circle>
-        ))}
-        {punkte.map((p, i) =>
-          i % labelStep === 0 || i === punkte.length - 1 ? (
-            <text
-              key={p.label}
-              x={dots[i]?.x ?? 0}
-              y={hoehe - 6}
-              textAnchor="middle"
-              className="fill-[var(--app-text-muted)]"
-              style={{ fontSize: 9 }}
-            >
-              {p.label}
-            </text>
-          ) : null,
-        )}
-      </svg>
-    </div>
+    <ChartFrame padding="compact">
+      <div className={`w-full min-w-0 ${appTableScrollInlineClassName}`}>
+        <svg
+          width="100%"
+          height={hoehe}
+          viewBox={`0 0 ${breite} ${hoehe}`}
+          preserveAspectRatio="xMidYMid meet"
+          className="block w-full select-none"
+          role="img"
+          aria-label="Portfolio-Verlauf"
+        >
+          <defs>
+            <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor={CHART.emerald} stopOpacity={0.4} />
+              <stop offset="100%" stopColor={CHART.emerald} stopOpacity={0} />
+            </linearGradient>
+          </defs>
+          {chartGridLinesY(breite, padLinks, padOben, padUnten, hoehe, [0.5, 1]).map((g, i) => (
+            <line key={i} x1={g.x1} y1={g.y1} x2={g.x2} y2={g.y2} stroke={CHART_GRID} strokeWidth={1} />
+          ))}
+          <line
+            x1={padLinks}
+            y1={padOben + plotH}
+            x2={breite - padRechts}
+            y2={padOben + plotH}
+            stroke={CHART_AXIS}
+            strokeWidth={1}
+          />
+          <text x={padLinks - 6} y={padOben + 4} textAnchor="end" className="fill-[var(--app-text-muted)]" style={{ fontSize: 9, fontWeight: 600 }}>
+            {formatEur(max)}
+          </text>
+          <text x={padLinks - 6} y={padOben + plotH} textAnchor="end" className="fill-[var(--app-text-muted)]" style={{ fontSize: 9, fontWeight: 600 }}>
+            {formatEur(min)}
+          </text>
+          <path d={area} fill={`url(#${gradId})`} />
+          <path d={path} fill="none" stroke={CHART.emerald} strokeWidth={2.5} strokeLinejoin="round" strokeLinecap="round" />
+          {dots.map((p, i) => (
+            <circle key={i} cx={p.x} cy={p.y} r={3.5} fill={CHART.emerald} stroke="var(--app-surface)" strokeWidth={1.5}>
+              <title>{`${p.label}: ${formatEur(p.wert)}`}</title>
+            </circle>
+          ))}
+          {punkte.map((p, i) =>
+            i % labelStep === 0 || i === punkte.length - 1 ? (
+              <text
+                key={p.label}
+                x={dots[i]?.x ?? 0}
+                y={hoehe - 6}
+                textAnchor="middle"
+                className="fill-[var(--app-text-muted)]"
+                style={{ fontSize: 9, fontWeight: 500 }}
+              >
+                {p.label}
+              </text>
+            ) : null,
+          )}
+        </svg>
+      </div>
+    </ChartFrame>
   )
 }
 
@@ -177,7 +185,7 @@ export function PaDrawdownChart({
                 y1={y}
                 x2={breite - padRechts}
                 y2={y}
-                stroke="#27272a"
+                stroke={CHART_AXIS}
                 strokeWidth={1}
               />
               <text
@@ -273,7 +281,7 @@ export function PaSignedBarChart({
           y1={zeroY}
           x2={breite - padRechts}
           y2={zeroY}
-          stroke="#3f3f46"
+          stroke={CHART_AXIS}
           strokeWidth={1}
         />
         <text x={breite - padRechts + 2} y={zeroY + 3} className="fill-[var(--app-text-muted)]" style={{ fontSize: 9 }}>
@@ -367,7 +375,7 @@ export function PaDividendBarChart({
         role="img"
         aria-label="Dividenden pro Monat"
       >
-        <line x1={padLinks} y1={baseY} x2={breite - padRechts} y2={baseY} stroke="#27272a" strokeWidth={1} />
+        <line x1={padLinks} y1={baseY} x2={breite - padRechts} y2={baseY} stroke={CHART_AXIS} strokeWidth={1} />
         <text x={breite - padRechts + 2} y={baseY + 3} className="fill-[var(--app-text-muted)]" style={{ fontSize: 9 }}>
           0
         </text>

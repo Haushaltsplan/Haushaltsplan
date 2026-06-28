@@ -268,7 +268,7 @@ export function LagerBestandVerlauf({ produktInfos, refreshKey, onNachAenderung 
 
           {!laden && zeilen.length > 0 && (
             <div className={`${appTableScrollClassName} rounded-xl border border-[var(--app-border)]`}>
-              <table className="min-w-[42rem] w-full border-collapse text-left text-xs">
+              <table className="app-data-table min-w-[42rem] w-full border-collapse text-left text-xs">
                 <thead>
                   <tr className="border-b border-[var(--app-border)] bg-[var(--app-surface-muted)] text-[10px] font-black uppercase tracking-wider text-[var(--app-text-muted)]">
                     <th className="px-2 py-2 md:px-3">Zeit</th>

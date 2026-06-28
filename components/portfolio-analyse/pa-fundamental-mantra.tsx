@@ -82,7 +82,7 @@ function MantraAuditTabelle({
       </div>
 
       <div className={`hidden ${appTableScrollClassName} rounded-xl border border-[var(--app-border)] md:block`}>
-        <table className="min-w-full divide-y divide-[var(--app-border)] text-left text-sm">
+        <table className="app-data-table min-w-full divide-y divide-[var(--app-border)] text-left text-sm">
           <thead className="bg-[var(--app-surface-muted)]">
             <tr className="text-xs uppercase tracking-wide text-[var(--app-text-muted)]">
               <th className="px-3 py-2.5 font-semibold">Kennzahl</th>

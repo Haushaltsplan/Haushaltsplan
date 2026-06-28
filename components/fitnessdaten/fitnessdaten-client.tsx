@@ -44,7 +44,7 @@ export function FitnessdatenClient() {
   }, [])
 
   return (
-    <PageChrome density="compact" className="max-w-2xl">
+    <PageChrome density="compact" className="max-w-2xl min-w-0">
       <WhoopDashboard
         snapshot={snapshot}
         phase={phase}

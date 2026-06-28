@@ -32,7 +32,7 @@ function SteuernProJahrTabelle({ zeilen }: { zeilen: SteuerJahrZeile[] }) {
 
   return (
     <div className={appTableScrollClassName}>
-      <table className="w-full min-w-[640px] border-collapse text-sm">
+      <table className="app-data-table w-full min-w-[640px] border-collapse text-sm">
         <thead>
           <tr className="border-b border-[var(--app-border)] text-xs text-[var(--app-text-muted)]">
             <th className="py-2 pr-4 text-left font-medium">Jahr</th>
@@ -118,7 +118,7 @@ function QuellensteuerTabelle({
 
   return (
     <div className={appTableScrollClassName}>
-      <table className="w-full min-w-[560px] border-collapse text-sm">
+      <table className="app-data-table w-full min-w-[560px] border-collapse text-sm">
         <thead>
           <tr className="border-b border-[var(--app-border)] text-xs text-[var(--app-text-muted)]">
             <th className="py-2 pr-4 text-left font-medium">Land</th>

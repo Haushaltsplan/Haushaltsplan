@@ -282,7 +282,7 @@ export function PaWertpapiereListe({
 
       {offen ? (
         <div className={appTableScrollClassName}>
-          <table className="w-full min-w-[640px] border-collapse text-left">
+          <table className="app-data-table w-full min-w-[640px] border-collapse text-left">
             <thead>
               <tr className="border-b border-white/[0.04] text-[10px] font-medium uppercase tracking-wider text-[var(--app-text-muted)]">
                 <th className="py-3 pl-4 pr-3 font-medium sm:pl-5">Name</th>

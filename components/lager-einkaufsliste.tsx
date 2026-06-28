@@ -284,7 +284,7 @@ export function LagerEinkaufsliste({ produkte, verbrauchHistorie, refreshKey }: 
             </p>
           ) : (
             <div className={`${appTableScrollClassName} rounded-lg border border-[var(--app-border)]`}>
-              <table className="w-full min-w-[44rem] border-collapse text-left text-[11px] sm:text-xs">
+              <table className="app-data-table w-full min-w-[44rem] border-collapse text-left text-[11px] sm:text-xs">
                 <thead>
                   <tr className="border-b border-[var(--app-border)] bg-[var(--app-surface-muted)] text-[9px] font-bold uppercase tracking-wide text-[var(--app-text-muted)] sm:text-[10px]">
                     <th className="px-2 py-2 sm:px-3">Produkt</th>

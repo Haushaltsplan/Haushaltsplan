@@ -1,6 +1,7 @@
 'use client'
 
 import type { ReactNode } from 'react'
+import { CHART_GRID } from '@/lib/chart-theme'
 
 export function formatWatts(w: number | null | undefined): string {
   if (w == null || !Number.isFinite(w)) return '—'
@@ -29,7 +30,7 @@ type HoverInfoProps = {
 export function StravaChartHoverInfo({ hint = 'Mit der Maus über Chart-Elemente fahren für Details', children }: HoverInfoProps) {
   if (children) {
     return (
-      <div className="mb-3 rounded-xl border border-white/[0.08] bg-black/50 px-3 py-2.5 text-xs transition-opacity duration-150">
+      <div className="app-chart-frame mb-3 rounded-[0.875rem] border border-[var(--app-border-strong)] bg-[var(--app-surface-muted)] px-3 py-2.5 text-xs transition-opacity duration-150">
         {children}
       </div>
     )
@@ -64,7 +65,7 @@ export function StravaChartGrid({
           y1={padTop + (1 - f) * chartH}
           x2={width - padX}
           y2={padTop + (1 - f) * chartH}
-          stroke="rgba(255,255,255,0.06)"
+          stroke={CHART_GRID}
           strokeWidth={1}
         />
       ))}

@@ -26,9 +26,9 @@ export function NavLinkList({
       {items.map((d) => {
         const active = linkActive(pathname, d.href)
         const investmentsGesperrt = d.href === '/investments' && istInvestmentsGesperrt()
-        const itemClass = `flex items-center gap-3 ${radius} px-3 ${py} ${textSize} font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-teal-500/35 ${
+        const itemClass = `flex items-center gap-3 ${radius} px-3 ${py} ${textSize} font-medium outline-none transition-all duration-150 focus-visible:ring-2 focus-visible:ring-[var(--app-accent-glow)] ${
           active
-            ? 'bg-[var(--app-surface-hover)] text-[var(--app-text)] shadow-sm shadow-[var(--app-shadow)]'
+            ? 'app-nav-active text-[var(--app-text)]'
             : 'text-[var(--app-text-muted)] hover:bg-[var(--app-surface-hover)] hover:text-[var(--app-text)] active:bg-[var(--app-surface-hover)]'
         }`
 

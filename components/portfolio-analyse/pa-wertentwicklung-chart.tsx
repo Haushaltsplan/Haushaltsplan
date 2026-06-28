@@ -1,5 +1,6 @@
 'use client'
 
+import { CHART, CHART_AXIS, CHART_GRID } from '@/lib/chart-theme'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { chartHoverFromClientX } from '@/components/portfolio-analyse/chart-hover'
 import { formatDatumDe, formatEur } from '@/lib/portfolio-analyse/berechnung'
@@ -191,7 +192,7 @@ function WertentwicklungChartBody({
                 y1={y}
                 x2={breite - padRechts}
                 y2={y}
-                stroke="#27272a"
+                stroke={CHART_GRID}
                 strokeWidth={1}
               />
               <text
@@ -216,11 +217,11 @@ function WertentwicklungChartBody({
           (EUR)
         </text>
 
-        <path d={kapitalPath} fill="none" stroke="#71717a" strokeWidth={gross ? 2.5 : 2} />
+        <path d={kapitalPath} fill="none" stroke={CHART.primary} strokeWidth={gross ? 2.5 : 2} opacity={0.75} />
         <path
           d={portfolioPath}
           fill="none"
-          stroke="#f4f4f5"
+          stroke={CHART.emerald}
           strokeWidth={gross ? 3 : 2.5}
           strokeLinejoin="round"
         />
@@ -231,7 +232,7 @@ function WertentwicklungChartBody({
             y1={padOben}
             x2={active.x}
             y2={padOben + plotH}
-            stroke="#a1a1aa"
+            stroke={CHART_AXIS}
             strokeWidth={1}
             strokeDasharray="4 3"
           />
@@ -357,7 +358,7 @@ export function PaWertentwicklungChart({
 
   return (
     <>
-      <div className="relative min-w-0 pr-10">
+      <div className="app-chart-frame relative min-w-0 p-4 pr-10 sm:p-5">
         {expandierbar ? (
           <button
             type="button"
@@ -381,7 +382,7 @@ export function PaWertentwicklungChart({
           }}
         >
           <div
-            className="relative flex max-h-[min(94vh,760px)] w-full max-w-6xl flex-col overflow-hidden rounded-2xl border border-[var(--app-border)] bg-gradient-to-b from-[var(--app-surface-muted)] to-[var(--app-surface)] shadow-2xl shadow-[var(--app-shadow)] ring-1 ring-[var(--app-ring)]"
+            className="app-surface-card relative flex max-h-[min(94vh,760px)] w-full max-w-6xl flex-col overflow-hidden"
             role="dialog"
             aria-modal="true"
             aria-label="Wertentwicklung – vergrößert"

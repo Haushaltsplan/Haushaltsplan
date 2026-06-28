@@ -1,5 +1,6 @@
 'use client'
 
+import { CHART_TRACK } from '@/lib/chart-theme'
 import { useMemo, useState } from 'react'
 
 export type DonutSegment = {
@@ -87,7 +88,7 @@ export function DonutChart({
   if (gesamt <= 0) {
     return (
       <div
-        className="flex items-center justify-center rounded-full border border-dashed border-[var(--app-border-strong)] text-[11px] text-[var(--app-text-muted)]"
+        className="flex items-center justify-center rounded-full border border-dashed border-[var(--app-border-strong)] bg-[var(--app-surface-muted)] text-[11px] text-[var(--app-text-muted)]"
         style={{ width: groesse, height: groesse }}
       >
         Keine Daten
@@ -105,7 +106,7 @@ export function DonutChart({
       className={`shrink-0 ${interaktiv ? 'cursor-default' : ''}`}
       onMouseLeave={interaktiv ? () => setHoverKey(null) : undefined}
     >
-      <circle cx={center} cy={center} r={radius} fill="none" stroke="#1e293b" strokeWidth={dicke} />
+      <circle cx={center} cy={center} r={radius} fill="none" stroke={CHART_TRACK} strokeWidth={dicke} />
       <g transform={`rotate(-90 ${center} ${center})`}>
         {anteile.map((s) => {
           const aktiv = hoverKey === s.key
@@ -126,7 +127,7 @@ export function DonutChart({
               strokeOpacity={gedimmt ? 0.42 : 1}
               style={{
                 transition: interaktiv ? SEG_TRANSITION : undefined,
-                filter: aktiv ? 'drop-shadow(0 0 6px rgba(255,255,255,0.35))' : undefined,
+                filter: aktiv ? `drop-shadow(0 0 8px ${s.farbe}88)` : undefined,
               }}
               pointerEvents="none"
             />

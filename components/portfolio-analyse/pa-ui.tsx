@@ -6,6 +6,10 @@ import type { ReactNode } from 'react'
 
 export const PA_ACCENT = 'rgb(45, 212, 191)'
 
+export const PA_TABLE = 'app-data-table w-full text-left text-sm'
+export const PA_TABLE_COMPACT = 'app-data-table app-data-table-compact w-full text-left text-xs'
+export const PA_TABLE_FRAME = 'app-table-frame'
+
 export function PaCard({
   children,
   className = '',
@@ -17,10 +21,10 @@ export function PaCard({
 }) {
   const base =
     variant === 'elevated'
-      ? 'rounded-2xl border border-[var(--app-border)] bg-[var(--app-surface)] shadow-2xl shadow-[var(--app-shadow)] ring-1 ring-[var(--app-ring)]'
+      ? 'app-surface-card'
       : variant === 'glass'
-        ? 'rounded-2xl border border-[var(--app-border)] bg-[var(--app-surface-muted)] backdrop-blur-md ring-1 ring-[var(--app-ring)]'
-        : 'rounded-2xl border border-[var(--app-border)] bg-[var(--app-surface)] ring-1 ring-[var(--app-ring)]'
+        ? 'app-chart-frame'
+        : 'app-section-shell'
   return <section className={`${base} ${className}`}>{children}</section>
 }
 

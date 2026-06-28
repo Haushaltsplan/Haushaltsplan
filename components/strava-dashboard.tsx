@@ -321,7 +321,7 @@ export function StravaDashboard() {
   ]
 
   return (
-    <PageChrome density="compact" className="max-w-full overflow-x-hidden">
+    <PageChrome density="compact" className="max-w-full min-w-0">
       <PageHero
         density="compact"
         eyebrow="Rennrad"
@@ -574,24 +574,25 @@ STRAVA_CLIENT_SECRET=dein_client_secret`}
                   subtitle="Alle Jahre im Detail"
                   info={STRAVA_PANEL_INFO.yearlyTable}
                 />
+                <div className="app-table-frame mx-2 mb-2">
                 <ResponsiveTableWrap>
-                <table className="w-full min-w-[520px] text-left text-sm">
+                <table className="app-data-table min-w-[520px]">
                   <thead>
-                    <tr className="border-b border-white/[0.06] text-[10px] uppercase tracking-wider text-[var(--app-text-muted)]">
-                      <th className="px-4 py-3">Jahr</th>
-                      <th className="px-4 py-3">Fahrten</th>
-                      <th className="px-4 py-3">km</th>
-                      <th className="px-4 py-3">hm</th>
-                      <th className="px-4 py-3">kcal</th>
-                      <th className="px-4 py-3">Ø W</th>
-                      <th className="px-4 py-3">Ø W/kg</th>
+                    <tr>
+                      <th>Jahr</th>
+                      <th>Fahrten</th>
+                      <th>km</th>
+                      <th>hm</th>
+                      <th>kcal</th>
+                      <th>Ø W</th>
+                      <th>Ø W/kg</th>
                     </tr>
                   </thead>
                   <tbody>
                     {[...auswertung.jahre].reverse().map((j) => (
-                      <tr key={j.year} className="border-b border-white/[0.04] text-[var(--app-text)] transition-colors hover:bg-white/[0.02]">
-                        <td className="px-4 py-2.5 font-medium">{j.year}</td>
-                        <td className="px-4 py-2.5 tabular-nums">{j.rides}</td>
+                      <tr key={j.year}>
+                        <td className="font-medium">{j.year}</td>
+                        <td>{j.rides}</td>
                         <td className="px-4 py-2.5 tabular-nums">
                           {j.km.toLocaleString('de-DE', { maximumFractionDigits: 0 })}
                         </td>
@@ -608,6 +609,7 @@ STRAVA_CLIENT_SECRET=dein_client_secret`}
                   </tbody>
                 </table>
                 </ResponsiveTableWrap>
+                </div>
               </StravaCard>
             </div>
           ) : (

@@ -1,6 +1,8 @@
 'use client'
 
+import { ChartFrame } from '@/components/chart-frame'
 import { appTableScrollInlineClassName } from '@/components/page-shell'
+import { CHART_AXIS, CHART_GRID, chartGridLinesY } from '@/lib/chart-theme'
 import { useEffect, useMemo, useState } from 'react'
 import { DonutChart, type DonutSegment } from '@/components/finanzen/donut-chart'
 import { normalisiereLagerKategorie } from '@/lib/lager-produkt-kategorie'
@@ -131,29 +133,36 @@ function LinienChart({
   const linie = punkte.map((p, i) => `${i === 0 ? 'M' : 'L'} ${xFuer(i).toFixed(1)} ${yFuer(p.wert).toFixed(1)}`).join(' ')
   const flaeche = `${linie} L ${xFuer(punkte.length - 1).toFixed(1)} ${(padOben + plot).toFixed(1)} L ${xFuer(0).toFixed(1)} ${(padOben + plot).toFixed(1)} Z`
 
+  const gridLines = chartGridLinesY(breite, padLinks, padOben, padUnten, hoehe)
+
   return (
-    <div className={`w-full ${appTableScrollInlineClassName}`}>
-      <svg width="100%" viewBox={`0 0 ${breite} ${hoehe}`} preserveAspectRatio="xMidYMid meet" style={{ minWidth: breite }} role="img" aria-label="Verlauf">
-        <line x1={padLinks} y1={padOben + plot} x2={breite - padRechts} y2={padOben + plot} stroke="#334155" strokeWidth={1} />
-        <path d={flaeche} fill={farbe} opacity={0.12} />
-        <path d={linie} fill="none" stroke={farbe} strokeWidth={1.9} strokeLinejoin="round" />
-        {punkte.map((p, i) => (
-          <g key={i}>
-            <circle cx={xFuer(i)} cy={yFuer(p.wert)} r={2.6} fill={farbe}>
-              <title>{`${p.label}: ${format(p.wert)}`}</title>
-            </circle>
-            {punkte.length <= 14 ? (
-              <text x={xFuer(i)} y={hoehe - 7} textAnchor="middle" className="fill-[var(--app-text-muted)]" style={{ fontSize: 9 }}>
-                {p.label}
-              </text>
-            ) : null}
-          </g>
-        ))}
-        <text x={padLinks} y={padOben + 2} className="fill-[var(--app-text-muted)]" style={{ fontSize: 9 }}>
-          {format(max)}
-        </text>
-      </svg>
-    </div>
+    <ChartFrame padding="compact">
+      <div className={`w-full ${appTableScrollInlineClassName}`}>
+        <svg width="100%" viewBox={`0 0 ${breite} ${hoehe}`} preserveAspectRatio="xMidYMid meet" style={{ minWidth: breite }} role="img" aria-label="Verlauf" className="select-none">
+          {gridLines.map((g, i) => (
+            <line key={i} x1={g.x1} y1={g.y1} x2={g.x2} y2={g.y2} stroke={CHART_GRID} strokeWidth={1} />
+          ))}
+          <line x1={padLinks} y1={padOben + plot} x2={breite - padRechts} y2={padOben + plot} stroke={CHART_AXIS} strokeWidth={1} />
+          <path d={flaeche} fill={farbe} opacity={0.14} />
+          <path d={linie} fill="none" stroke={farbe} strokeWidth={2.2} strokeLinejoin="round" strokeLinecap="round" />
+          {punkte.map((p, i) => (
+            <g key={i}>
+              <circle cx={xFuer(i)} cy={yFuer(p.wert)} r={3.2} fill={farbe} stroke="var(--app-surface)" strokeWidth={1.5}>
+                <title>{`${p.label}: ${format(p.wert)}`}</title>
+              </circle>
+              {punkte.length <= 14 ? (
+                <text x={xFuer(i)} y={hoehe - 7} textAnchor="middle" className="fill-[var(--app-text-muted)]" style={{ fontSize: 9, fontWeight: 500 }}>
+                  {p.label}
+                </text>
+              ) : null}
+            </g>
+          ))}
+          <text x={padLinks} y={padOben + 2} className="fill-[var(--app-text-muted)]" style={{ fontSize: 9, fontWeight: 600 }}>
+            {format(max)}
+          </text>
+        </svg>
+      </div>
+    </ChartFrame>
   )
 }
 
@@ -168,8 +177,11 @@ function Ranking({ zeilen }: { zeilen: { id: string; name: string; wert: number;
             <span className="min-w-0 truncate text-[12px] font-semibold text-[var(--app-text)]">{z.name}</span>
             <span className="shrink-0 text-[11px] font-bold tabular-nums text-[var(--app-text)]">{z.anzeige}</span>
           </div>
-          <div className="h-2 w-full overflow-hidden rounded-full bg-[var(--app-surface-muted)]">
-            <div className="h-full rounded-full" style={{ width: `${Math.max(3, (z.wert / max) * 100)}%`, backgroundColor: z.farbe }} />
+          <div className="app-chart-bar-track">
+            <div
+              className="app-chart-bar-fill transition-all duration-300"
+              style={{ width: `${Math.max(3, (z.wert / max) * 100)}%`, backgroundColor: z.farbe, color: z.farbe }}
+            />
           </div>
         </div>
       ))}

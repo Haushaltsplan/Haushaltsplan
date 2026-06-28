@@ -326,7 +326,7 @@ export function PortfolioAnalyseImportVorschau({
             </button>
           </div>
           <div className={`max-h-64 overflow-auto rounded-lg border border-[var(--app-border)] ${appTableScrollClassName}`}>
-            <table className="w-full min-w-[560px] text-left text-xs">
+            <table className="app-data-table w-full min-w-[560px] text-left text-xs">
               <thead className="sticky top-0 bg-[var(--app-surface-muted)] text-[var(--app-text-muted)]">
                 <tr>
                   <th className="w-8 px-2 py-2" />
@@ -406,7 +406,7 @@ export function PortfolioAnalyseImportVorschau({
             </button>
           </div>
           <div className={`max-h-48 overflow-auto rounded-lg border border-[var(--app-border)] ${appTableScrollClassName}`}>
-            <table className="w-full min-w-[480px] text-left text-xs">
+            <table className="app-data-table w-full min-w-[480px] text-left text-xs">
               <thead className="sticky top-0 bg-[var(--app-surface-muted)] text-[var(--app-text-muted)]">
                 <tr>
                   <th className="w-8 px-2 py-2" />

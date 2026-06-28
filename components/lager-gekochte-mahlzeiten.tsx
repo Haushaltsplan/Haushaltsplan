@@ -352,7 +352,7 @@ export function LagerGekochteMahlzeiten({ produktOptionen, refreshKey, onNachBuc
                               Positionen & Kostensplit
                             </p>
                             <div className={`${appTableScrollClassName} rounded-lg border border-[var(--app-border)]`}>
-                              <table className="w-full min-w-[18rem] border-collapse text-left text-[11px]">
+                              <table className="app-data-table w-full min-w-[18rem] border-collapse text-left text-[11px]">
                                 <thead>
                                   <tr className="border-b border-[var(--app-border)] bg-[var(--app-surface-muted)] text-[9px] font-black uppercase tracking-wider text-[var(--app-text-muted)]">
                                     <th className="px-2 py-1.5">Zutat</th>

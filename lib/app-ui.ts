@@ -1,53 +1,56 @@
 /**
  * App-weite, theme-konforme UI-Klassen — für Finanzen, Lager, Besitz, Kalender, Auth, …
- * Nutzt CSS-Variablen aus globals.css (Light + Dark).
+ * Nutzt CSS-Variablen + Premium-Oberflächen aus globals.css (Light + Dark).
  */
 
-export const appKpiCardClass =
-  'rounded-2xl border border-[var(--app-border-strong)] bg-[var(--app-surface-muted)] p-4'
+export const appKpiCardClass = 'app-kpi-tile p-4'
 
-export const appKpiCardCompactClass =
-  'rounded-xl border border-[var(--app-border)] bg-[var(--app-surface-muted)] p-3'
+export const appKpiCardCompactClass = 'app-kpi-tile p-3'
 
 export const appListItemClass =
-  'flex items-center gap-3 rounded-xl border border-[var(--app-border)] bg-[var(--app-surface-muted)] p-3'
+  'flex items-center gap-3 rounded-[var(--app-radius-lg)] border border-[var(--app-border)] bg-[var(--app-surface-muted)] p-3 transition hover:border-[var(--app-border-strong)]'
 
 export const appEmptyClass =
-  'rounded-xl border border-[var(--app-border)] bg-[var(--app-surface-muted)] p-8 text-center text-sm italic text-[var(--app-text-muted)]'
+  'rounded-[var(--app-radius-lg)] border border-dashed border-[var(--app-border-strong)] bg-[var(--app-surface-muted)] p-8 text-center text-sm italic text-[var(--app-text-muted)]'
 
 export const appInputClass =
-  'w-full rounded-xl border border-[var(--app-border-strong)] bg-[var(--app-surface-muted)] px-3 py-2.5 text-sm text-[var(--app-text)] outline-none focus:ring-2 focus:ring-teal-500/30'
+  'app-input-premium w-full px-3 py-2.5 text-sm text-[var(--app-text)]'
 
 export const appInputLgClass =
-  'w-full rounded-xl border border-[var(--app-border-strong)] bg-[var(--app-surface-muted)] px-4 py-3 text-[15px] text-[var(--app-text)] outline-none focus:ring-2 focus:ring-teal-500/30'
+  'app-input-premium w-full px-4 py-3 text-[15px] text-[var(--app-text)]'
 
 export const appInputAmberClass =
-  'w-full rounded-xl border border-[var(--app-border-strong)] bg-[var(--app-surface-muted)] px-4 py-3 text-[var(--app-text)] outline-none focus:border-amber-600/50 focus:ring-2 focus:ring-amber-500/25'
+  'app-input-premium w-full px-4 py-3 text-[var(--app-text)] focus:border-amber-600/50 focus:shadow-[0_0_0_3px_rgb(245_158_11/0.15)]'
 
 export const appSecondaryBtnClass =
-  'rounded-xl border border-[var(--app-border-strong)] bg-[var(--app-surface-muted)] px-3 py-2.5 text-sm font-semibold text-[var(--app-text-muted)] transition hover:bg-[var(--app-surface-hover)]'
+  'rounded-[0.875rem] border border-[var(--app-border-strong)] bg-[var(--app-surface-muted)] px-3 py-2.5 text-sm font-semibold text-[var(--app-text-muted)] shadow-sm transition hover:border-[var(--app-border-strong)] hover:bg-[var(--app-surface-hover)] hover:text-[var(--app-text)]'
 
 export const appGhostBtnClass =
-  'rounded-lg border border-[var(--app-border)] bg-[var(--app-surface-muted)] px-2.5 py-1.5 text-sm font-bold text-[var(--app-text-muted)] transition hover:bg-[var(--app-surface-hover)]'
+  'rounded-lg border border-[var(--app-border)] bg-[var(--app-surface-muted)] px-2.5 py-1.5 text-sm font-bold text-[var(--app-text-muted)] transition hover:bg-[var(--app-surface-hover)] hover:text-[var(--app-text)]'
 
-export const appCardClass =
-  'overflow-hidden rounded-2xl border border-[var(--app-border-strong)] bg-[var(--app-surface)] shadow-xl shadow-[var(--app-shadow)] ring-1 ring-[var(--app-ring)]'
+export const appCardClass = 'app-surface-card min-w-0'
 
-export const appCardHeaderClass = 'border-b border-[var(--app-border)] bg-[var(--app-surface-muted)] px-3 py-3 sm:px-4'
+export const appCardHeaderClass = 'app-surface-card-header px-3 py-3 sm:px-4'
 
-export const appSectionCardClass =
-  'rounded-2xl border border-[var(--app-border-strong)] bg-[var(--app-surface)] p-4 shadow-lg shadow-[var(--app-shadow)] sm:p-5'
+export const appSectionCardClass = 'app-section-shell p-4 sm:p-5'
 
-export const appLabelClass =
-  'text-[11px] font-semibold uppercase tracking-wide text-[var(--app-text-muted)]'
+export const appLabelClass = 'app-eyebrow text-[10px]'
 
-export const appLabelSmClass =
-  'text-[10px] font-bold uppercase tracking-wide text-[var(--app-text-muted)]'
+export const appLabelSmClass = 'app-eyebrow text-[9px]'
 
-export const appTitleClass = 'truncate text-[14px] font-semibold text-[var(--app-text)]'
+export const appTitleClass = 'truncate text-[14px] font-semibold tracking-tight text-[var(--app-text)]'
 
 export const appMonatPickerClass =
-  'flex w-full min-w-0 flex-wrap items-stretch gap-1 rounded-xl border border-[var(--app-border)] bg-[var(--app-surface-muted)] p-1 shadow-inner sm:inline-flex sm:w-auto sm:flex-nowrap'
+  'flex w-full min-w-0 flex-wrap items-stretch gap-1 rounded-[0.875rem] border border-[var(--app-border)] bg-[var(--app-surface-muted)] p-1 shadow-inner sm:inline-flex sm:w-auto sm:flex-nowrap'
 
 export const appLoadingClass =
-  'flex min-h-[14rem] items-center justify-center rounded-2xl border border-[var(--app-border-strong)] bg-[var(--app-surface-muted)] px-4 text-sm text-[var(--app-text-muted)] shadow-lg shadow-[var(--app-shadow)]'
+  'app-surface-card flex min-h-[14rem] items-center justify-center px-4 text-sm text-[var(--app-text-muted)]'
+
+/** Premium-Datentabelle (siehe globals.css `.app-data-table`). */
+export const appDataTableClass = 'app-data-table w-full text-left text-sm'
+
+export const appDataTableCompactClass = 'app-data-table app-data-table-compact w-full text-left text-xs'
+
+export const appTableFrameClass = 'app-table-frame'
+
+export const appChartFrameClass = 'app-chart-frame'

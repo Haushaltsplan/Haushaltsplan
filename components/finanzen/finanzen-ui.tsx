@@ -1,6 +1,8 @@
 /** Finanz-spezifische Aliase — gemeinsame Basis in lib/app-ui.ts */
 export {
   appCardClass as finanzCardClass,
+  appDataTableClass as finanzTableClass,
+  appTableFrameClass as finanzTableFrameClass,
   appEmptyClass as finanzEmptyClass,
   appInputClass as finanzInputClass,
   appKpiCardClass as finanzKpiCardClass,

@@ -1,6 +1,8 @@
 'use client'
 
+import { ChartFrame } from '@/components/chart-frame'
 import { appTableScrollClassName } from '@/components/page-shell'
+import { CHART, CHART_AXIS, CHART_GRID, chartGridLinesY } from '@/lib/chart-theme'
 import { useMemo } from 'react'
 
 export type MonatsBalken = {
@@ -53,46 +55,77 @@ export function BalkenChart({ daten, hoehe = 200 }: { daten: MonatsBalken[]; hoe
     .map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x.toFixed(1)} ${p.y.toFixed(1)}`)
     .join(' ')
 
+  const gridLines = chartGridLinesY(breite, padLinks, padOben, padUnten, hoehe, [0.5, 1])
+
   return (
-    <div className={`w-full ${appTableScrollClassName}`}>
-      <svg
-        width="100%"
-        viewBox={`0 0 ${breite} ${hoehe}`}
-        preserveAspectRatio="xMidYMid meet"
-        role="img"
-        aria-label="Einnahmen und Ausgaben je Monat"
-        style={{ minWidth: breite }}
-      >
-        <line x1={padLinks} y1={padOben + plotHoehe} x2={breite - padLinks} y2={padOben + plotHoehe} stroke="#334155" strokeWidth={1} />
-        {gruppen.map((d) => (
-          <g key={d.monat}>
-            <rect x={d.einBar.x} y={d.einBar.y} width={d.balkenBreite} height={Math.max(0, d.einBar.h)} rx={2} fill="#22c55e">
-              <title>{`${d.label} – Einnahmen: ${d.einnahmen.toLocaleString('de-DE', { style: 'currency', currency: 'EUR' })}`}</title>
-            </rect>
-            <rect x={d.ausBar.x} y={d.ausBar.y} width={d.balkenBreite} height={Math.max(0, d.ausBar.h)} rx={2} fill="#f43f5e">
-              <title>{`${d.label} – Ausgaben: ${d.ausgaben.toLocaleString('de-DE', { style: 'currency', currency: 'EUR' })}`}</title>
-            </rect>
-            <text
-              x={d.xMitte}
-              y={hoehe - 8}
-              textAnchor="middle"
-              className="fill-[var(--app-text-muted)]"
-              style={{ fontSize: 10 }}
-            >
-              {d.label}
-            </text>
-          </g>
-        ))}
-        <path d={linePath} fill="none" stroke="#38bdf8" strokeWidth={1.75} strokeLinejoin="round" opacity={0.9} />
-        {saldoPunkte.map((p, i) => (
-          <circle key={i} cx={p.x} cy={p.y} r={2.4} fill="#38bdf8">
-            <title>{`Saldo: ${p.saldo.toLocaleString('de-DE', { style: 'currency', currency: 'EUR' })}`}</title>
-          </circle>
-        ))}
-        <text x={padLinks} y={padOben + 4} className="fill-[var(--app-text-muted)]" style={{ fontSize: 9 }}>
-          {maxWert.toLocaleString('de-DE', { maximumFractionDigits: 0 })} €
-        </text>
-      </svg>
-    </div>
+    <ChartFrame padding="compact">
+      <div className={`w-full ${appTableScrollClassName}`}>
+        <svg
+          width="100%"
+          viewBox={`0 0 ${breite} ${hoehe}`}
+          preserveAspectRatio="xMidYMid meet"
+          role="img"
+          aria-label="Einnahmen und Ausgaben je Monat"
+          style={{ minWidth: breite }}
+          className="select-none"
+        >
+          {gridLines.map((g, i) => (
+            <line key={i} x1={g.x1} y1={g.y1} x2={g.x2} y2={g.y2} stroke={CHART_GRID} strokeWidth={1} />
+          ))}
+          <line
+            x1={padLinks}
+            y1={padOben + plotHoehe}
+            x2={breite - padLinks}
+            y2={padOben + plotHoehe}
+            stroke={CHART_AXIS}
+            strokeWidth={1}
+          />
+          {gruppen.map((d) => (
+            <g key={d.monat}>
+              <rect
+                x={d.einBar.x}
+                y={d.einBar.y}
+                width={d.balkenBreite}
+                height={Math.max(0, d.einBar.h)}
+                rx={3}
+                fill={CHART.positive}
+                opacity={0.92}
+              >
+                <title>{`${d.label} – Einnahmen: ${d.einnahmen.toLocaleString('de-DE', { style: 'currency', currency: 'EUR' })}`}</title>
+              </rect>
+              <rect
+                x={d.ausBar.x}
+                y={d.ausBar.y}
+                width={d.balkenBreite}
+                height={Math.max(0, d.ausBar.h)}
+                rx={3}
+                fill={CHART.negative}
+                opacity={0.92}
+              >
+                <title>{`${d.label} – Ausgaben: ${d.ausgaben.toLocaleString('de-DE', { style: 'currency', currency: 'EUR' })}`}</title>
+              </rect>
+              <text
+                x={d.xMitte}
+                y={hoehe - 8}
+                textAnchor="middle"
+                className="fill-[var(--app-text-muted)]"
+                style={{ fontSize: 10, fontWeight: 500 }}
+              >
+                {d.label}
+              </text>
+            </g>
+          ))}
+          <path d={linePath} fill="none" stroke={CHART.sky} strokeWidth={2} strokeLinejoin="round" opacity={0.95} />
+          {saldoPunkte.map((p, i) => (
+            <circle key={i} cx={p.x} cy={p.y} r={3} fill={CHART.sky} stroke="var(--app-surface)" strokeWidth={1.5}>
+              <title>{`Saldo: ${p.saldo.toLocaleString('de-DE', { style: 'currency', currency: 'EUR' })}`}</title>
+            </circle>
+          ))}
+          <text x={padLinks} y={padOben + 4} className="fill-[var(--app-text-muted)]" style={{ fontSize: 9, fontWeight: 600 }}>
+            {maxWert.toLocaleString('de-DE', { maximumFractionDigits: 0 })} €
+          </text>
+        </svg>
+      </div>
+    </ChartFrame>
   )
 }
