@@ -9,6 +9,7 @@ import {
   type FilterBarState,
 } from '@/components/strava/strava-activity-filter-bar'
 import { StravaBackfillPanel } from '@/components/strava/strava-backfill-panel'
+import { StravaCoachSummaryPanel } from '@/components/strava/strava-coach-summary-panel'
 import { StravaAdvancedSection } from '@/components/strava/strava-advanced-panels'
 import { StravaStreckenPrPanel } from '@/components/strava/strava-strecken-pr-panel'
 import { StravaAlertsBanner } from '@/components/strava/strava-alerts-banner'
@@ -158,6 +159,8 @@ export function StravaAnalyticsView({
         athlete={athlete}
         analytics={analytics}
       />
+
+      <StravaCoachSummaryPanel summary={analytics.coachSummary} />
 
       <StravaKpiBar kpis={analytics.kpis} period={period} onPeriodChange={setPeriod} />
 

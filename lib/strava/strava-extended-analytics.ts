@@ -1,7 +1,11 @@
 /** Strava — Extended Analytics (alles kombiniert). */
 
 import { berechneStravaDashboardAnalytics, type StravaDashboardAnalytics } from '@/lib/strava/strava-dashboard-analytics'
-import { berechneZielFortschritt } from '@/lib/strava/strava-goals'
+import {
+  berechneCoachSummary,
+  monatlicherEftpTrend,
+  type CoachSummary,
+} from '@/lib/strava/strava-coach-summary'
 import {
   aggregierteHrZonen,
   berechneJahresvergleich,
@@ -18,6 +22,7 @@ import {
 import { berechnePowerCurve, schaetzeEftp, type PowerCurvePoint } from '@/lib/strava/strava-power-curve'
 import { aktuelleForm, berechneFormVerlauf, type FormPoint } from '@/lib/strava/strava-training-load'
 import type { GoalProgress } from '@/lib/strava/strava-goals'
+import { berechneZielFortschritt } from '@/lib/strava/strava-goals'
 import { berechneProgressAnalytics, type ProgressAnalytics } from '@/lib/strava/strava-progress-analytics'
 import { berechneWetterLeistungsAnalyse, type WetterLeistungsAnalyse } from '@/lib/strava/strava-weather-adjust'
 import {
@@ -51,6 +56,7 @@ export type StravaExtendedAnalytics = StravaDashboardAnalytics & {
   decouplingBacklog: number
   routes: RouteAnalytics
   segments: SegmentAnalytics
+  coachSummary: CoachSummary
 }
 
 export function berechneStravaExtendedAnalytics(
@@ -109,6 +115,20 @@ export function berechneStravaExtendedAnalytics(
     opts.segmentBacklog ?? 0,
   )
 
+  const coachSummary = berechneCoachSummary({
+    activities,
+    athlete,
+    currentForm,
+    consistency,
+    intensityMix,
+    yearCompare,
+    goals: goalProgress,
+    tssBudget: progress.tssBudget,
+    tssAdherence: progress.tssAdherence,
+    eftp,
+    monthlyEftpTrend: monatlicherEftpTrend(progress.monthly),
+  })
+
   // Wenn echte HR-Stream-Zonen vorhanden, Zone-Distribution verbessern
   if (maxHr != null && maxHr > 0) {
     const agg = aggregierteHrZonen(activities, maxHr)
@@ -150,5 +170,6 @@ export function berechneStravaExtendedAnalytics(
     decouplingBacklog: advanced.decouplingBacklog,
     routes,
     segments,
+    coachSummary,
   }
 }

@@ -1,6 +1,8 @@
 /** Kurze Erklärungen für Strava-Dashboard-Panels (deutsch, laienverständlich). */
 
 export const STRAVA_PANEL_INFO = {
+  coachSummary:
+    'Automatische Auswertung aus Form (TSB), TSS, Konsistenz, Intensität, Zielen und Leistungstrends — aktualisiert sich bei jedem Filter und jeder neuen Fahrt.',
   kpiSummary:
     'Kennzahlen für den gewählten Zeitraum: Distanz, Fahrzeit, Höhenmeter und Anzahl der Einheiten. Der Vergleich bezieht sich auf die vorherige Periode (z. B. letzte Woche vs. die davor).',
   dataQuality:
