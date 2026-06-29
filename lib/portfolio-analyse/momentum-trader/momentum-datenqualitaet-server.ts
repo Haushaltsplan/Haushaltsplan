@@ -3,7 +3,7 @@ import 'server-only'
 import { heuteIsoUtc, tageZwischenIso } from '@/lib/portfolio-analyse/dividenden-datum-hilfen'
 import { gapVolatilitaetSchaetzung } from '@/lib/portfolio-analyse/momentum-trader/momentum-earnings-events-server'
 import { ladeMomentumBars } from '@/lib/portfolio-analyse/momentum-trader/momentum-db-server'
-import { istMomentumPseudoIsin } from '@/lib/portfolio-analyse/momentum-trader/momentum-pseudo-isin'
+import { istMomentumPreIpoEintrag } from '@/lib/portfolio-analyse/momentum-trader/momentum-pseudo-isin'
 import { primaeresAnzeigeSymbol } from '@/lib/portfolio-analyse/momentum-trader/momentum-symbol-hilfen'
 import type {
   MomentumDatenqualitaet,
@@ -29,7 +29,7 @@ export function berechneDatenqualitaetAusEvents(
   >,
   barsNeuesterTag: string | null,
 ): MomentumDatenqualitaet {
-  if (istMomentumPseudoIsin(eintrag.isin)) {
+  if (istMomentumPreIpoEintrag(eintrag)) {
     const ipoOk = Boolean(eintrag.ipoDatum)
     const checks = [
       check('pre_ipo', 'Pre-IPO', true, eintrag.name),

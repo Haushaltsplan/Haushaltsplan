@@ -5,7 +5,7 @@ import {
   EARNINGS_VORLAUF_MAX,
   EARNINGS_VORLAUF_MIN,
 } from '@/lib/portfolio-analyse/momentum-trader/momentum-constants'
-import { istMomentumPseudoIsin } from '@/lib/portfolio-analyse/momentum-trader/momentum-pseudo-isin'
+import { istMomentumPreIpoEintrag } from '@/lib/portfolio-analyse/momentum-trader/momentum-pseudo-isin'
 import { berechneRegimeGates } from '@/lib/portfolio-analyse/momentum-trader/momentum-regime-server'
 import { sammleHandlungssignale } from '@/lib/portfolio-analyse/momentum-trader/momentum-handlungssignal-server'
 import type {
@@ -90,7 +90,7 @@ export function generiereMomentumHandlungsempfehlung(input: {
 
   for (const e of input.watchlist) {
     const sym = e.symbolYahoo ?? e.symbolCandidates[0] ?? e.isin
-    const preIpo = istMomentumPseudoIsin(e.isin)
+    const preIpo = istMomentumPreIpoEintrag(e)
     const n = e.naechstesEarnings
     let aktion: MomentumHandlungAktion = 'beobachten'
     let prioritaet = 30

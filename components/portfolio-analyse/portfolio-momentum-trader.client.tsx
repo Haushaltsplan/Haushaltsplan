@@ -14,7 +14,7 @@ import {
   type MomentumWatchlistAuswahl,
 } from '@/components/portfolio-analyse/momentum-watchlist-suche-input'
 import { momentumApiFetch } from '@/lib/portfolio-analyse/momentum-trader/momentum-api-fetch'
-import { istMomentumPseudoIsin } from '@/lib/portfolio-analyse/momentum-trader/momentum-pseudo-isin'
+import { istMomentumPreIpoEintrag } from '@/lib/portfolio-analyse/momentum-trader/momentum-pseudo-isin'
 import type {
   MomentumAmpel,
   MomentumBarsSyncErgebnis,
@@ -68,10 +68,12 @@ function ScoreSparkline({ punkte }: { punkte: MomentumScoreVerlaufPunkt[] }) {
   )
 }
 
-function WahrscheinlichkeitsRing({ pct }: { pct: number }) {
+function WahrscheinlichkeitsRing({ pct, label = 'Trade geht auf' }: { pct: number; label?: string }) {
   const r = 44
   const c = 2 * Math.PI * r
   const dash = pct > 0 ? (pct / 100) * c : 0
+  const farbe =
+    pct >= 72 ? 'text-emerald-400' : pct >= 55 ? 'text-teal-400' : pct > 0 ? 'text-amber-400' : 'text-zinc-500'
   return (
     <div className="relative h-28 w-28 shrink-0">
       <svg viewBox="0 0 100 100" className="h-full w-full -rotate-90">
@@ -86,13 +88,47 @@ function WahrscheinlichkeitsRing({ pct }: { pct: number }) {
             strokeWidth="6"
             strokeLinecap="round"
             strokeDasharray={`${dash} ${c}`}
-            className="text-teal-400 transition-all duration-500"
+            className={farbe + ' transition-all duration-500'}
           />
         )}
       </svg>
       <div className="absolute inset-0 flex flex-col items-center justify-center">
         <span className="text-2xl font-bold tabular-nums text-[var(--app-text)]">{pct > 0 ? pct + '%' : '—'}</span>
-        <span className="text-[9px] uppercase tracking-wider text-[var(--app-text-muted)]">Konfidenz</span>
+        <span className="max-w-[4.5rem] text-center text-[9px] uppercase leading-tight tracking-wider text-[var(--app-text-muted)]">
+          {label}
+        </span>
+      </div>
+    </div>
+  )
+}
+
+function MiniErfolgRing({ pct }: { pct: number }) {
+  const r = 36
+  const c = 2 * Math.PI * r
+  const dash = pct > 0 ? (pct / 100) * c : 0
+  const farbe =
+    pct >= 72 ? 'text-emerald-400' : pct >= 55 ? 'text-teal-400' : pct > 0 ? 'text-amber-400' : 'text-zinc-500'
+  return (
+    <div className="relative h-[4.5rem] w-[4.5rem] shrink-0">
+      <svg viewBox="0 0 100 100" className="h-full w-full -rotate-90">
+        <circle cx="50" cy="50" r={r} fill="none" stroke="currentColor" strokeWidth="8" className="text-white/10" />
+        {pct > 0 && (
+          <circle
+            cx="50"
+            cy="50"
+            r={r}
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="8"
+            strokeLinecap="round"
+            strokeDasharray={`${dash} ${c}`}
+            className={farbe}
+          />
+        )}
+      </svg>
+      <div className="absolute inset-0 flex flex-col items-center justify-center">
+        <span className="text-sm font-bold tabular-nums text-[var(--app-text)]">{pct > 0 ? pct + '%' : '—'}</span>
+        <span className="text-[7px] uppercase tracking-wide text-[var(--app-text-muted)]">aufgehen</span>
       </div>
     </div>
   )
@@ -277,6 +313,11 @@ function HandlungsempfehlungPanel({
                 >
                   {richtungLabel(signal.richtung)}
                 </span>
+                {signal.wahrscheinlichkeitPct > 0 ? (
+                  <span className="rounded-lg bg-teal-500/15 px-2.5 py-0.5 text-xs font-bold tabular-nums text-teal-200 ring-1 ring-teal-500/25">
+                    {signal.wahrscheinlichkeitPct}% Trade geht auf
+                  </span>
+                ) : null}
               </div>
 
               <div className="rounded-xl border border-teal-500/30 bg-gradient-to-r from-teal-500/15 to-transparent px-4 py-3 ring-1 ring-teal-500/20">
@@ -782,7 +823,7 @@ function WatchlistZeile({
 
   const earningsHeute = e.naechstesEarnings?.tageBis === 0
   const earningsBald = e.naechstesEarnings?.tageBis != null && e.naechstesEarnings.tageBis <= 3
-  const preIpo = istMomentumPseudoIsin(e.isin)
+  const preIpo = istMomentumPreIpoEintrag(e)
 
   const metaSpeichern = async () => {
     setSpeichern(true)
@@ -974,132 +1015,155 @@ function ScanKarte({
   tradeLaden: boolean
   verlauf?: MomentumScoreVerlaufPunkt[]
 }) {
+  const [detailsOffen, setDetailsOffen] = useState(false)
   const gap = e.indikatoren.gapPct
   const rvol = e.indikatoren.rvol
-  const richtung = e.indikatoren.richtung
-  const median = e.indikatoren.medianGapPct
+  const richtung = (e.indikatoren.erfolgRichtung ?? e.indikatoren.richtung) as 'long' | 'short' | null | undefined
   const stop = e.indikatoren.stopPrice
   const target = e.indikatoren.targetPrice
-  const surprise = e.indikatoren.surpriseEpsPct
-  const guidance = e.indikatoren.guidanceLabel ?? e.indikatoren.guidanceFlag
-  const kiMemo = e.indikatoren.kiBegruendung
-  const rs = e.indikatoren.rsVsSpy20d
-  const laufVor = e.indikatoren.laufVorEarningsPct
-  const beatRate = e.indikatoren.beatRatePct
-  const erwartet = e.indikatoren.erwarteteBewegungPct
-  const gapUpRate = e.indikatoren.gapUpRatePct
-  const [kopiert, setKopiert] = useState(false)
+  const entry = e.indikatoren.entryPrice
+  const erfolgPct =
+    typeof e.indikatoren.erfolgWahrscheinlichkeitPct === 'number'
+      ? e.indikatoren.erfolgWahrscheinlichkeitPct
+      : 0
+  const handlungKurz =
+    typeof e.indikatoren.handlungKurz === 'string' ? e.indikatoren.handlungKurz : null
+  const erfolgLabel =
+    typeof e.indikatoren.erfolgLabel === 'string' ? e.indikatoren.erfolgLabel : null
+  const istAktiv = e.indikatoren.erfolgIstAktiv === true
   const istPreEvent =
     e.playbook === 'earnings_pre_event' || e.playbook === 'earnings_vorlauf' || e.playbook === 'earnings_pre_run'
-  const istPreRun = e.playbook === 'earnings_pre_run'
   const szenarioPlan =
     typeof e.indikatoren.szenarioPlan === 'string' ? e.indikatoren.szenarioPlan : null
-  const vorbereitungStufe =
-    typeof e.indikatoren.vorbereitungStufe === 'string' ? e.indikatoren.vorbereitungStufe : null
-  const preEventHinweis = typeof e.indikatoren.hinweis === 'string' ? e.indikatoren.hinweis : null
-  const tageBis = e.indikatoren.tageBisEarnings
-  const atrElev = e.indikatoren.atrElevationsFaktor
+  const kiMemo = e.indikatoren.kiBegruendung
   const kannTrade =
     TRADE_PLAYBOOKS.includes(e.playbook) && e.ampel !== 'grau' && e.ampel !== 'rot' && richtung != null
 
   return (
     <li className={`rounded-xl p-4 ring-1 ${ampelRing(e.ampel)}`}>
-      <div className="flex flex-wrap items-start justify-between gap-2">
-        <div>
-          <p className="text-sm font-semibold text-[var(--app-text)]">
-            {e.symbol} · {playbookTitel(e.playbook)}
-            {vorbereitungStufe === 'hoch' ? (
-              <span className="ml-2 rounded bg-amber-500/20 px-1.5 py-0.5 text-[10px] font-medium uppercase text-amber-300">
-                Katalysator hoch
+      <div className="flex items-start gap-3">
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="text-sm font-semibold text-[var(--app-text)]">
+              {e.symbol} · {playbookTitel(e.playbook)}
+            </p>
+            {richtung === 'long' ? (
+              <span className="rounded-lg bg-emerald-500/20 px-2 py-0.5 text-[10px] font-bold uppercase text-emerald-300">
+                Long
+              </span>
+            ) : richtung === 'short' ? (
+              <span className="rounded-lg bg-rose-500/20 px-2 py-0.5 text-[10px] font-bold uppercase text-rose-300">
+                Short
               </span>
             ) : null}
-          </p>
-          <p className="mt-0.5 text-xs text-[var(--app-text-muted)]">
-            Score {e.score}/100
-            {tageBis != null && istPreEvent ? ' · in ' + String(tageBis) + ' Tagen' : ''}
-            {richtung === 'short' ? ' · Short' : richtung === 'long' ? ' · Long' : ''}
-          </p>
+            <span
+              className={
+                'rounded-lg px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-[var(--app-text-muted)] ring-1 ring-[var(--app-border)]'
+              }
+            >
+              {e.ampel}
+            </span>
+            {istAktiv ? (
+              <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-medium text-emerald-300">
+                Jetzt
+              </span>
+            ) : istPreEvent ? (
+              <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-medium text-amber-300">
+                Vorbereiten
+              </span>
+            ) : null}
+          </div>
+
+          {handlungKurz ? (
+            <p className="mt-2 text-sm font-medium leading-snug text-[var(--app-text)]">{handlungKurz}</p>
+          ) : (
+            <p className="mt-2 text-sm text-[var(--app-text-muted)]">Score {e.score}/100</p>
+          )}
+
+          {erfolgLabel && erfolgPct > 0 ? (
+            <p className="mt-1 text-[11px] text-[var(--app-text-muted)]">
+              Erfolgswahrscheinlichkeit: <span className="font-medium text-teal-300">{erfolgLabel}</span>
+            </p>
+          ) : null}
+
+          {(entry != null || stop != null || target != null) && (
+            <div className="mt-3 flex flex-wrap gap-2 text-[11px] tabular-nums">
+              {entry != null && (
+                <span className="rounded-lg bg-black/25 px-2 py-1 ring-1 ring-white/5">
+                  Entry {String(entry)}
+                </span>
+              )}
+              {stop != null && (
+                <span className="rounded-lg bg-rose-500/10 px-2 py-1 text-rose-200 ring-1 ring-rose-500/20">
+                  Stop {String(stop)}
+                </span>
+              )}
+              {target != null && (
+                <span className="rounded-lg bg-emerald-500/10 px-2 py-1 text-emerald-200 ring-1 ring-emerald-500/20">
+                  Ziel {String(target)}
+                </span>
+              )}
+            </div>
+          )}
+
           {verlauf && verlauf.length >= 2 && (
-            <div className="mt-1">
+            <div className="mt-2">
               <ScoreSparkline punkte={verlauf.filter((p) => p.playbook === e.playbook)} />
             </div>
           )}
+
+          <button
+            type="button"
+            onClick={() => setDetailsOffen((v) => !v)}
+            className="mt-3 text-[11px] text-[var(--app-text-muted)] underline-offset-2 hover:underline"
+          >
+            {detailsOffen ? 'Weniger Details' : 'Gates & Daten anzeigen'}
+          </button>
+
+          {detailsOffen && (
+            <div className="mt-2 space-y-2">
+              <div className="flex flex-wrap gap-2 text-[11px] tabular-nums text-[var(--app-text-muted)]">
+                {gap != null && <span>Gap {String(gap)}%</span>}
+                {rvol != null && <span>RVOL {String(rvol)}×</span>}
+                <span>Score {e.score}</span>
+              </div>
+              {e.gatesPassed.length > 0 && (
+                <ul className="space-y-0.5 text-[11px] text-emerald-400/90">
+                  {e.gatesPassed.map((g) => (
+                    <li key={g}>✓ {g}</li>
+                  ))}
+                </ul>
+              )}
+              {e.gatesFailed.length > 0 && (
+                <ul className="space-y-0.5 text-[11px] text-red-300/80">
+                  {e.gatesFailed.map((g) => (
+                    <li key={g}>✗ {g}</li>
+                  ))}
+                </ul>
+              )}
+              {szenarioPlan && istPreEvent && (
+                <div className="rounded-lg border border-violet-500/20 bg-violet-500/5 p-2.5 text-[11px] text-[var(--app-text-muted)]">
+                  {szenarioPlan.split('\n').map((zeile) => (
+                    <p key={zeile}>{zeile}</p>
+                  ))}
+                </div>
+              )}
+              {kiMemo != null && typeof kiMemo === 'string' && (
+                <p className="text-[11px] italic text-[var(--app-text-muted)]">{kiMemo}</p>
+              )}
+            </div>
+          )}
         </div>
-        <span className="rounded-lg px-2 py-1 text-[10px] font-medium uppercase tracking-wide text-[var(--app-text-muted)] ring-1 ring-[var(--app-border)]">
-          {e.ampel}
-        </span>
+
+        <MiniErfolgRing pct={erfolgPct} />
       </div>
-      <div className="mt-3 flex flex-wrap gap-3 text-xs tabular-nums text-[var(--app-text-muted)]">
-        {gap != null && <span>Gap {String(gap)}%</span>}
-        {median != null && <span>Median {String(median)}%</span>}
-        {laufVor != null && istPreEvent && <span>20T-Lauf {String(laufVor)}%</span>}
-        {erwartet != null && istPreEvent && <span>Erw. ~{String(erwartet)}%</span>}
-        {beatRate != null && istPreEvent && <span>Beats {String(beatRate)}%</span>}
-        {gapUpRate != null && istPreEvent && <span>Gap-Up {String(gapUpRate)}%</span>}
-        {istPreRun && typeof e.indikatoren.strategie === 'string' && (
-          <span className="text-violet-300">{e.indikatoren.strategie}</span>
-        )}
-        {atrElev != null && istPreEvent && <span>ATR-Faktor {String(atrElev)}×</span>}
-        {rvol != null && <span>RVOL {String(rvol)}×</span>}
-        {surprise != null && <span>Surprise {String(surprise)}%</span>}
-        {rs != null && <span>RS {String(rs)}%</span>}
-        {guidance != null && <span>{String(guidance)}</span>}
-        {stop != null && <span>Stop {String(stop)}</span>}
-        {target != null && <span>Ziel {String(target)}</span>}
-      </div>
-      {e.gatesPassed.length > 0 && (
-        <ul className="mt-2 space-y-0.5 text-[11px] text-emerald-400/90">
-          {e.gatesPassed.map((g) => (
-            <li key={g}>✓ {g}</li>
-          ))}
-        </ul>
-      )}
-      {e.gatesFailed.length > 0 && (
-        <ul className="mt-1 space-y-0.5 text-[11px] text-red-300/80">
-          {e.gatesFailed.map((g) => (
-            <li key={g}>✗ {g}</li>
-          ))}
-        </ul>
-      )}
-      {preEventHinweis && istPreEvent && (
-        <p className="mt-2 text-xs font-medium text-amber-300/90">{preEventHinweis}</p>
-      )}
-      {szenarioPlan && istPreEvent && (
-        <div className="mt-3 rounded-lg border border-violet-500/20 bg-violet-500/5 p-3">
-          <div className="flex items-center justify-between gap-2">
-            <p className="text-[10px] font-medium uppercase tracking-wide text-violet-300/90">Szenario-Plan</p>
-            <button
-              type="button"
-              onClick={() => {
-                void navigator.clipboard.writeText(szenarioPlan).then(() => {
-                  setKopiert(true)
-                  window.setTimeout(() => setKopiert(false), 2000)
-                })
-              }}
-              className="text-[10px] text-violet-300/80 hover:text-violet-200"
-            >
-              {kopiert ? 'Kopiert' : 'Kopieren'}
-            </button>
-          </div>
-          <ul className="mt-2 space-y-1.5 text-[11px] leading-relaxed text-[var(--app-text-muted)]">
-            {szenarioPlan.split('\n').map((zeile) => (
-              <li key={zeile}>{zeile}</li>
-            ))}
-          </ul>
-          <p className="mt-2 text-[10px] italic text-amber-400/80">
-            Kein Einstieg vor den Zahlen — nur Vorbereitung.
-          </p>
-        </div>
-      )}
-      {kiMemo != null && typeof kiMemo === 'string' && (
-        <p className="mt-2 text-xs italic text-[var(--app-text-muted)]">{kiMemo}</p>
-      )}
+
       {kannTrade && (
         <button
           type="button"
           disabled={tradeLaden}
           onClick={() => onTrade(e)}
-          className="mt-3 rounded-lg bg-teal-500/15 px-3 py-1.5 text-xs font-medium text-teal-300 ring-1 ring-teal-500/30 hover:bg-teal-500/25 disabled:opacity-50"
+          className="mt-3 w-full rounded-lg bg-teal-500/15 px-3 py-2 text-xs font-medium text-teal-300 ring-1 ring-teal-500/30 hover:bg-teal-500/25 disabled:opacity-50 sm:w-auto"
         >
           {tradeLaden ? 'Speichern …' : 'Im Journal erfassen (10 €)'}
         </button>

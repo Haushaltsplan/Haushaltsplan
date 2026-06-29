@@ -2,7 +2,7 @@ import 'server-only'
 
 import { sucheAktien, loeseAktieAusSuche } from '@/lib/portfolio-analyse/aktien-suche-server'
 import { findePreIpoKandidaten } from '@/lib/portfolio-analyse/momentum-trader/momentum-pre-ipo-katalog'
-import { erzeugeMomentumPseudoIsin, istMomentumPseudoIsin } from '@/lib/portfolio-analyse/momentum-trader/momentum-pseudo-isin'
+import { erzeugeMomentumListedIsin, erzeugeMomentumPseudoIsin } from '@/lib/portfolio-analyse/momentum-trader/momentum-pseudo-isin'
 import { normalisiereMomentumWatchlistSymbole } from '@/lib/portfolio-analyse/momentum-trader/momentum-symbol-hilfen'
 import type {
   MomentumWatchlistAufloesung,
@@ -81,7 +81,7 @@ export async function loeseMomentumWatchlistKandidat(opts: {
 
   const isinRaw = aufgeloest.isin?.trim().toUpperCase()
   const isin =
-    isinRaw && /^[A-Z]{2}[A-Z0-9]{10}$/.test(isinRaw) ? isinRaw : erzeugeMomentumPseudoIsin(sym)
+    isinRaw && /^[A-Z]{2}[A-Z0-9]{10}$/.test(isinRaw) ? isinRaw : erzeugeMomentumListedIsin(sym)
 
   const symNorm = normalisiereMomentumWatchlistSymbole({
     symbolYahoo: aufgeloest.meta.symbolYahoo?.trim().toUpperCase() || sym,
@@ -96,7 +96,7 @@ export async function loeseMomentumWatchlistKandidat(opts: {
     name: aufgeloest.meta.name?.trim() || name,
     symbolYahoo: symNorm.symbolYahoo,
     symbolCandidates: symNorm.symbolCandidates,
-    istPreIpo: istMomentumPseudoIsin(isin),
+    istPreIpo: false,
     ipoDatum: null,
     notiz: null,
   }

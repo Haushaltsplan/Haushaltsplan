@@ -18,7 +18,7 @@ import {
   ladeMomentumEarningsEventsFuerSymbol,
   ladeMomentumEarningsKalenderFuerSymbole,
 } from '@/lib/portfolio-analyse/momentum-trader/momentum-db-server'
-import { istMomentumPseudoIsin } from '@/lib/portfolio-analyse/momentum-trader/momentum-pseudo-isin'
+import { istMomentumPreIpoEintrag } from '@/lib/portfolio-analyse/momentum-trader/momentum-pseudo-isin'
 import type {
   MomentumEarningsZeit,
   MomentumLiveKurs,
@@ -100,14 +100,14 @@ export async function reichereWatchlistMitEarningsAn(
       }
 
       let barsNeuesterTag: string | null = null
-      if (sym && !istMomentumPseudoIsin(e.isin)) {
+      if (sym && !istMomentumPreIpoEintrag(e)) {
         if (!barTagCache.has(sym)) {
           barTagCache.set(sym, await ladeNeuesterBarTag(sym))
         }
         barsNeuesterTag = barTagCache.get(sym) ?? null
       }
 
-      const datenqualitaet = istMomentumPseudoIsin(e.isin)
+      const datenqualitaet = istMomentumPreIpoEintrag(e)
         ? berechneDatenqualitaetAusEvents(e, [], basis, null)
         : berechneDatenqualitaetAusEvents(e, mergedEvents, basis, barsNeuesterTag)
 

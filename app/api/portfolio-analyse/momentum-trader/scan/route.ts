@@ -41,10 +41,13 @@ export async function GET(req: Request) {
 
   const regime = await ladeNeuestesMomentumRegime()
   const regimeGates = regime ? berechneRegimeGates(regime) : null
+  const { ergaenzeScanMitErfolg } = await import(
+    '@/lib/portfolio-analyse/momentum-trader/momentum-trade-erfolg-server'
+  )
   return NextResponse.json({
     scanDate: gespeichert.scanDate,
     regime: regimeGates,
-    ergebnisse: gespeichert.ergebnisse,
+    ergebnisse: ergaenzeScanMitErfolg(gespeichert.ergebnisse, regimeGates),
   })
 }
 

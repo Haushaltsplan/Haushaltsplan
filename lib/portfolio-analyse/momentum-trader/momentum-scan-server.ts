@@ -37,6 +37,7 @@ import {
   primaeresAnzeigeSymbol,
 } from '@/lib/portfolio-analyse/momentum-trader/momentum-symbol-hilfen'
 import { ladeMomentumIpoDatum } from '@/lib/portfolio-analyse/momentum-trader/momentum-ipo-server'
+import { istMomentumPreIpoEintrag } from '@/lib/portfolio-analyse/momentum-trader/momentum-pseudo-isin'
 import { bewerteEarningsPreEvent } from '@/lib/portfolio-analyse/momentum-trader/momentum-pre-event-server'
 import { bewerteEarningsPreRun } from '@/lib/portfolio-analyse/momentum-trader/momentum-pre-run-server'
 import { guidanceLabel } from '@/lib/portfolio-analyse/momentum-trader/momentum-guidance'
@@ -592,7 +593,9 @@ export async function scanMomentumWatchlist(
       }
     }
 
-    const ipoDatum = e.ipoDatum ?? (await ladeMomentumIpoDatum(symbol, e.symbolYahoo))
+    const ipoDatum =
+      e.ipoDatum ??
+      (istMomentumPreIpoEintrag(e) ? await ladeMomentumIpoDatum(symbol, e.symbolYahoo) : null)
     if (ipoDatum) {
       const tageBisIpo = tageZwischenIso(heute, ipoDatum)
       if (tageBisIpo > 0) {
@@ -606,7 +609,10 @@ export async function scanMomentumWatchlist(
 
   ergebnisse.sort((a, b) => b.score - a.score)
 
-  const final = ergebnisse
+  const { ergaenzeScanMitErfolg } = await import(
+    '@/lib/portfolio-analyse/momentum-trader/momentum-trade-erfolg-server'
+  )
+  const final = ergaenzeScanMitErfolg(ergebnisse, regimeGates)
 
   if (final.length > 0) {
     await loescheMomentumScanFuerDatum(heute)

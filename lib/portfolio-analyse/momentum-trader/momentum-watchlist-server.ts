@@ -7,7 +7,11 @@ import {
   momentumBarsSymboleAusWatchlist,
   normalisiereMomentumWatchlistSymbole,
 } from '@/lib/portfolio-analyse/momentum-trader/momentum-symbol-hilfen'
-import { istMomentumPseudoIsin } from '@/lib/portfolio-analyse/momentum-trader/momentum-pseudo-isin'
+import {
+  istMomentumListedPlatzhalterIsin,
+  istMomentumPreIpoEintrag,
+  istMomentumPseudoIsin,
+} from '@/lib/portfolio-analyse/momentum-trader/momentum-pseudo-isin'
 import type { MomentumWatchlistEintrag } from '@/lib/portfolio-analyse/momentum-trader/momentum-trader-types'
 
 export const MOMENTUM_WATCHLIST_MAX = 32
@@ -47,10 +51,10 @@ export function istGueltigeMomentumIsin(isin: string): boolean {
   return ISIN_RE.test(n)
 }
 
-/** Echte oder Pseudo-ISIN (Pre-IPO). */
+/** Echte ISIN, Pre-IPO (XP) oder gelisteter Platzhalter (XL). */
 export function istGueltigeMomentumWatchlistIsin(isin: string): boolean {
   const n = isin.trim().toUpperCase()
-  return istGueltigeMomentumIsin(n) || istMomentumPseudoIsin(n)
+  return istGueltigeMomentumIsin(n) || istMomentumPseudoIsin(n) || istMomentumListedPlatzhalterIsin(n)
 }
 
 export async function repariereWatchlistSymbolKandidaten(
@@ -85,7 +89,70 @@ export async function ladeMomentumWatchlist(sb: SupabaseClient): Promise<Momentu
     .select('*')
     .order('hinzugefuegt_am', { ascending: false })
   if (error) throw new Error(error.message)
-  return (data ?? []).map((r) => dbZuEintrag(r as WatchlistDbZeile))
+  const eintraege = (data ?? []).map((r) => dbZuEintrag(r as WatchlistDbZeile))
+  return repariereFalschKlassifizierteWatchlistEintraege(sb, eintraege)
+}
+
+/** XP-ISIN + Börsenticker = fälschlich als Pre-IPO gespeichert (z. B. Accenture). */
+async function repariereFalschKlassifizierteWatchlistEintraege(
+  sb: SupabaseClient,
+  eintraege: MomentumWatchlistEintrag[],
+): Promise<MomentumWatchlistEintrag[]> {
+  const zuReparieren = eintraege.filter((e) => istMomentumPseudoIsin(e.isin) && e.symbolYahoo?.trim())
+  if (zuReparieren.length === 0) return eintraege
+
+  const { loeseIsinFuerTicker } = await import('@/lib/portfolio-analyse/ticker-isin-aufloesung-server')
+  const { erzeugeMomentumListedIsin } = await import(
+    '@/lib/portfolio-analyse/momentum-trader/momentum-pseudo-isin'
+  )
+
+  const {
+    data: { user },
+  } = await sb.auth.getUser()
+  if (!user) return eintraege
+
+  const ersetzt = new Map<string, MomentumWatchlistEintrag>()
+
+  for (const e of zuReparieren) {
+    const sym = e.symbolYahoo!.trim().toUpperCase()
+    const echteIsin = await loeseIsinFuerTicker(sym)
+    const neueIsin =
+      echteIsin && ISIN_RE.test(echteIsin.toUpperCase())
+        ? echteIsin.toUpperCase()
+        : erzeugeMomentumListedIsin(sym)
+
+    if (neueIsin === e.isin) continue
+
+    const { data: dup } = await sb.from(TABLE).select('isin').eq('isin', neueIsin).maybeSingle()
+    if (dup) {
+      await sb.from(TABLE).delete().eq('isin', e.isin)
+      ersetzt.set(e.isin, { ...e, isin: neueIsin, ipoDatum: null, ipoSyncAm: null })
+      continue
+    }
+
+    const { error: insErr } = await sb.from(TABLE).insert({
+      owner_user_id: user.id,
+      isin: neueIsin,
+      name: e.name,
+      symbol_yahoo: e.symbolYahoo,
+      symbol_candidates: e.symbolCandidates,
+      hinzugefuegt_am: e.hinzugefuegtAm,
+      earnings_sync_am: e.earningsSyncAm,
+      ipo_datum: null,
+      ipo_sync_am: null,
+      notiz: e.notiz,
+    })
+    if (insErr) continue
+
+    await sb.from(TABLE).delete().eq('isin', e.isin)
+    ersetzt.set(e.isin, { ...e, isin: neueIsin, ipoDatum: null, ipoSyncAm: null })
+  }
+
+  if (ersetzt.size === 0) return eintraege
+  const entfernteAlte = new Set(ersetzt.keys())
+  return [...eintraege.filter((e) => !entfernteAlte.has(e.isin)), ...ersetzt.values()].sort((a, b) =>
+    b.hinzugefuegtAm.localeCompare(a.hinzugefuegtAm),
+  )
 }
 
 export async function fuegeZurMomentumWatchlist(
@@ -169,6 +236,7 @@ export async function syncIpoDatumFuerWatchlist(
   let aktualisiert = 0
 
   for (const e of eintraege) {
+    if (!istMomentumPreIpoEintrag(e)) continue
     const symbol = e.symbolYahoo?.trim().toUpperCase() || e.symbolCandidates[0]?.trim().toUpperCase()
     if (!symbol) continue
     if (e.ipoDatum) continue

@@ -2,6 +2,10 @@ import 'server-only'
 
 import { momentumPlaybookLabel } from '@/lib/portfolio-analyse/momentum-trader/momentum-constants'
 import { baueHandlungsplanFuerScan } from '@/lib/portfolio-analyse/momentum-trader/momentum-handlungsplan-server'
+import {
+  baueErfolgSzenarienPreEvent,
+  berechneTradeErfolg,
+} from '@/lib/portfolio-analyse/momentum-trader/momentum-trade-erfolg-server'
 import type {
   MomentumHandlungssignal,
   MomentumPlaybook,
@@ -17,10 +21,6 @@ const TRADE_PLAYBOOKS = new Set<MomentumPlaybook>([
   'ipo_fade',
 ])
 const PRE_EVENT_PLAYBOOKS = new Set<MomentumPlaybook>(['earnings_pre_event', 'earnings_vorlauf'])
-
-function klemmeWahrscheinlichkeit(n: number): number {
-  return Math.min(92, Math.max(28, Math.round(n)))
-}
 
 function alsZahl(v: unknown, fallback: number): number {
   return typeof v === 'number' && Number.isFinite(v) ? v : fallback
@@ -48,49 +48,14 @@ function baereFakten(e: MomentumScanEintrag): string[] {
   return out.slice(0, 8)
 }
 
-function baueAlternativenPreEvent(
-  beat: number,
-  median: number,
-  lauf: number,
-  gates: MomentumRegimeGates | null,
-): MomentumHandlungssignal['alternativen'] {
-  let wShort =
-    beat * Math.min(0.9, 0.32 + median * 0.055) * (lauf >= 6 ? 1.28 : lauf >= 3 ? 1.1 : 1)
-  let wLongFade = (1 - beat) * Math.min(0.85, 0.28 + median * 0.05)
-  let wLongMom = beat * 0.38 * (lauf < 6 && lauf > -3 ? 1.2 : 0.65)
-  if (gates?.shortBias) wShort *= 1.12
-  if (gates?.longBias) {
-    wLongFade *= 1.1
-    wLongMom *= 1.15
-  }
-  const sum = wShort + wLongFade + wLongMom || 1
-  return [
-    {
-      richtung: 'short' as const,
-      wahrscheinlichkeitPct: klemmeWahrscheinlichkeit((wShort / sum) * 100),
-      label: 'Gap-Fade Short (Beat + Gap-Up)',
-    },
-    {
-      richtung: 'long' as const,
-      wahrscheinlichkeitPct: klemmeWahrscheinlichkeit((wLongMom / sum) * 100),
-      label: 'Momentum Long (Beat + Stärke)',
-    },
-    {
-      richtung: 'long' as const,
-      wahrscheinlichkeitPct: klemmeWahrscheinlichkeit((wLongFade / sum) * 100),
-      label: 'Gap-Fade Long (Miss + Gap-Down)',
-    },
-  ].sort((a, b) => b.wahrscheinlichkeitPct - a.wahrscheinlichkeitPct)
-}
-
 /** Aktives Trade-Setup — klare Jetzt-Anweisung. */
 export function handlungssignalAusTradeSetup(e: MomentumScanEintrag): MomentumHandlungssignal | null {
   if (!TRADE_PLAYBOOKS.has(e.playbook) || e.ampel === 'grau' || e.ampel === 'rot') return null
   const r = e.indikatoren.richtung
   if (r !== 'long' && r !== 'short') return null
 
-  let w = e.score
-  if (e.ampel === 'gelb') w *= 0.88
+  const erfolg = berechneTradeErfolg(e, null)
+  const wahrscheinlichkeitPct = erfolg.pct
 
   const phase = e.playbook === 'earnings_pre_run' ? 'vor_earnings' : 'jetzt'
   const pbLabel = momentumPlaybookLabel(e.playbook)
@@ -102,11 +67,11 @@ export function handlungssignalAusTradeSetup(e: MomentumScanEintrag): MomentumHa
   let aktionJetzt =
     richtungWort(r) +
     ' eröffnen — ' +
+    wahrscheinlichkeitPct +
+    '% Erfolgschance — ' +
     e.symbol +
     ' (' +
     pbLabel +
-    ', Score ' +
-    e.score +
     ')'
   if (entry != null && stop != null) {
     aktionJetzt += '. Stop ' + stop.toFixed(2) + ', Ziel ' + (target?.toFixed(2) ?? '—') + ', max. 10 € Risiko'
@@ -138,7 +103,7 @@ export function handlungssignalAusTradeSetup(e: MomentumScanEintrag): MomentumHa
   return {
     symbol: e.symbol,
     richtung: r,
-    wahrscheinlichkeitPct: klemmeWahrscheinlichkeit(w),
+    wahrscheinlichkeitPct,
     playbook: e.playbook,
     phase,
     istAktiv: true,
@@ -170,7 +135,7 @@ export function handlungssignalAusPreEvent(
   const erwartet = alsZahl(e.indikatoren.erwarteteBewegungPct, median)
   const gapUp = alsZahl(e.indikatoren.gapUpRatePct, 50)
 
-  const alternativen = baueAlternativenPreEvent(beat, median, lauf, gates)
+  const alternativen = baueErfolgSzenarienPreEvent(beat, median, lauf, gates)
   const top = alternativen[0]
   if (!top) return null
 
@@ -178,10 +143,7 @@ export function handlungssignalAusPreEvent(
   if (richtung !== 'long' && richtung !== 'short') return null
   const playbook: MomentumPlaybook =
     top.label.includes('Momentum') ? 'earnings_momentum' : 'earnings_gap_fade'
-  const datenQualitaet = 0.45 + Math.min(0.35, e.score / 220)
-  const wahrscheinlichkeitPct = klemmeWahrscheinlichkeit(
-    top.wahrscheinlichkeitPct * datenQualitaet + e.score * 0.12,
-  )
+  const wahrscheinlichkeitPct = berechneTradeErfolg(e, gates).pct
 
   const plan = baueHandlungsplanFuerScan(e, richtung, playbook, false)
   const gapSchwelle = Math.max(3, Math.min(12, median * 2))
