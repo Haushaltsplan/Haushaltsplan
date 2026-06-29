@@ -92,24 +92,10 @@ function WahrscheinlichkeitsRing({ pct }: { pct: number }) {
       </svg>
       <div className="absolute inset-0 flex flex-col items-center justify-center">
         <span className="text-2xl font-bold tabular-nums text-[var(--app-text)]">{pct > 0 ? pct + '%' : '—'}</span>
-        <span className="text-[9px] uppercase tracking-wider text-[var(--app-text-muted)]">Daten</span>
+        <span className="text-[9px] uppercase tracking-wider text-[var(--app-text-muted)]">Konfidenz</span>
       </div>
     </div>
   )
-}
-
-function richtungStil(r: MomentumHandlungssignal['richtung'], aktiv: boolean) {
-  if (r === 'long') {
-    return aktiv
-      ? 'from-emerald-500/25 via-emerald-500/10 to-transparent ring-emerald-500/40 text-emerald-200'
-      : 'from-emerald-500/15 to-transparent ring-emerald-500/25 text-emerald-300/90'
-  }
-  if (r === 'short') {
-    return aktiv
-      ? 'from-rose-500/25 via-rose-500/10 to-transparent ring-rose-500/40 text-rose-200'
-      : 'from-rose-500/15 to-transparent ring-rose-500/25 text-rose-300/90'
-  }
-  return 'from-amber-500/15 to-transparent ring-amber-500/30 text-amber-200'
 }
 
 function richtungLabel(r: MomentumHandlungssignal['richtung']) {
@@ -118,110 +104,118 @@ function richtungLabel(r: MomentumHandlungssignal['richtung']) {
   return 'WARTEN'
 }
 
-function HandlungssignalZeile({ s, kompakt }: { s: MomentumHandlungssignal; kompakt?: boolean }) {
-  return (
-    <div
-      className={
-        'flex items-center justify-between gap-3 rounded-xl border border-white/5 bg-black/20 px-3 py-2.5 ' +
-        (kompakt ? 'text-xs' : '')
-      }
-    >
-      <div className="min-w-0">
-        <p className="font-semibold text-[var(--app-text)]">
-          {s.symbol}
-          <span
-            className={
-              'ml-2 rounded px-1.5 py-0.5 text-[10px] font-bold uppercase ' +
-              (s.richtung === 'long'
-                ? 'bg-emerald-500/20 text-emerald-300'
-                : s.richtung === 'short'
-                  ? 'bg-rose-500/20 text-rose-300'
-                  : 'bg-amber-500/20 text-amber-300')
-            }
-          >
-            {richtungLabel(s.richtung)}
-          </span>
-        </p>
-        {!kompakt && <p className="mt-0.5 truncate text-xs text-[var(--app-text-muted)]">{s.kurztext}</p>}
-      </div>
-      <span className="shrink-0 text-lg font-bold tabular-nums text-teal-300">{s.wahrscheinlichkeitPct}%</span>
-    </div>
-  )
-}
-
 function HandlungsplanKarte({ plan }: { plan: import('@/lib/portfolio-analyse/momentum-trader/momentum-trader-types').MomentumHandlungsplan }) {
   const p = plan
-  const richtungFarbe =
-    p.richtung === 'long' ? 'text-emerald-300' : 'text-rose-300'
+  const richtungFarbe = p.richtung === 'long' ? 'text-emerald-300' : 'text-rose-300'
+  const schritte = p.schritte?.length > 0 ? p.schritte : []
+
+  const phaseStil = (phase: string) => {
+    if (phase === 'trigger') return 'border-amber-500/30 bg-amber-500/5'
+    if (phase === 'nach_event') return 'border-violet-500/25 bg-violet-500/5'
+    if (phase === 'risiko') return 'border-rose-500/25 bg-rose-500/5'
+    return 'border-teal-500/20 bg-teal-500/5'
+  }
+
+  const phaseLabel = (phase: string) => {
+    if (phase === 'trigger') return 'Trigger'
+    if (phase === 'nach_event') return 'Nach Earnings'
+    if (phase === 'risiko') return 'Risiko'
+    return 'Jetzt'
+  }
 
   return (
-    <div className="rounded-xl border border-teal-500/25 bg-gradient-to-br from-teal-500/10 to-black/30 p-4">
-      <p className="text-[10px] font-medium uppercase tracking-widest text-teal-300/90">
-        {p.modus === 'aktiv' ? 'Trade-Plan (jetzt ausführbar)' : 'Trade-Plan (nach Earnings)'}
-      </p>
-      <p className="mt-1 text-xs text-[var(--app-text-muted)]">{p.instrumentLabel}</p>
+    <div className="rounded-xl border border-teal-500/25 bg-gradient-to-br from-teal-500/8 to-black/40 p-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="text-[10px] font-medium uppercase tracking-widest text-teal-300/90">
+            {p.modus === 'aktiv' ? 'Ausführungsplan' : 'Vorbereitungsplan'}
+          </p>
+          <p className="mt-0.5 text-xs text-[var(--app-text-muted)]">{p.instrumentLabel}</p>
+        </div>
+        {p.zeitfenster ? (
+          <span className="rounded-lg bg-violet-500/15 px-2.5 py-1 text-[10px] text-violet-200 ring-1 ring-violet-500/25">
+            {p.zeitfenster}
+          </span>
+        ) : null}
+      </div>
 
-      <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <div className="rounded-lg bg-black/25 px-3 py-2 ring-1 ring-white/5">
+      <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="rounded-lg bg-black/30 px-3 py-2 ring-1 ring-white/5">
           <p className="text-[9px] uppercase text-[var(--app-text-muted)]">Einstieg</p>
-          <p className="mt-0.5 text-sm font-bold tabular-nums text-[var(--app-text)]">{p.entryPreis.toFixed(2)}</p>
+          <p className="mt-0.5 text-base font-bold tabular-nums">{p.entryPreis.toFixed(2)}</p>
           <p className="text-[10px] text-[var(--app-text-muted)]">{p.entryHinweis}</p>
         </div>
-        <div className="rounded-lg bg-black/25 px-3 py-2 ring-1 ring-rose-500/20">
-          <p className="text-[9px] uppercase text-rose-300/80">Stop-Loss</p>
-          <p className="mt-0.5 text-sm font-bold tabular-nums text-rose-200">{p.stopLoss.toFixed(2)}</p>
-          <p className="text-[10px] text-[var(--app-text-muted)]">−{p.stopAbstandPct}% · {p.riskEur} € Risiko</p>
+        <div className="rounded-lg bg-black/30 px-3 py-2 ring-1 ring-rose-500/25">
+          <p className="text-[9px] uppercase text-rose-300/80">Stop</p>
+          <p className="mt-0.5 text-base font-bold tabular-nums text-rose-200">{p.stopLoss.toFixed(2)}</p>
+          <p className="text-[10px] text-[var(--app-text-muted)]">−{p.stopAbstandPct}% · {p.riskEur} €</p>
         </div>
-        <div className="rounded-lg bg-black/25 px-3 py-2 ring-1 ring-emerald-500/20">
-          <p className="text-[9px] uppercase text-emerald-300/80">Take-Profit</p>
-          <p className="mt-0.5 text-sm font-bold tabular-nums text-emerald-200">{p.takeProfit.toFixed(2)}</p>
+        <div className="rounded-lg bg-black/30 px-3 py-2 ring-1 ring-emerald-500/25">
+          <p className="text-[9px] uppercase text-emerald-300/80">Ziel</p>
+          <p className="mt-0.5 text-base font-bold tabular-nums text-emerald-200">{p.takeProfit.toFixed(2)}</p>
           <p className="text-[10px] text-[var(--app-text-muted)]">+{p.zielAbstandPct}% · ~{p.gewinnZielEur} €</p>
         </div>
-        <div className="rounded-lg bg-black/25 px-3 py-2 ring-1 ring-violet-500/20">
-          <p className="text-[9px] uppercase text-violet-300/80">CFD Hebel</p>
-          <p className={'mt-0.5 text-sm font-bold tabular-nums ' + richtungFarbe}>{p.hebelEmpfohlen}×</p>
-          <p className="text-[10px] text-[var(--app-text-muted)]">
-            Einsatz ~{p.marginEur} € · Exposure ~{p.exposureEur} €
-          </p>
+        <div className="rounded-lg bg-black/30 px-3 py-2 ring-1 ring-violet-500/25">
+          <p className="text-[9px] uppercase text-violet-300/80">CFD</p>
+          <p className={'mt-0.5 text-base font-bold tabular-nums ' + richtungFarbe}>{p.hebelEmpfohlen}×</p>
+          <p className="text-[10px] text-[var(--app-text-muted)]">~{p.marginEur} € · Exp. {p.exposureEur} €</p>
         </div>
       </div>
 
       {p.triggerBedingungen.length > 0 && (
-        <div className="mt-4 rounded-lg border border-amber-500/20 bg-amber-500/5 px-3 py-2">
-          <p className="text-[10px] font-medium uppercase text-amber-300/90">Trigger (alle erforderlich)</p>
-          <ul className="mt-1.5 space-y-1 text-xs text-amber-100/90">
+        <div className="mt-4 rounded-lg border border-amber-500/25 bg-amber-500/8 px-3 py-2.5">
+          <p className="text-[10px] font-semibold uppercase tracking-wide text-amber-300">Alle Trigger erforderlich</p>
+          <ul className="mt-2 space-y-1">
             {p.triggerBedingungen.map((t) => (
-              <li key={t}>→ {t}</li>
+              <li key={t} className="flex items-start gap-2 text-xs text-amber-100/95">
+                <span className="mt-0.5 text-amber-400">□</span>
+                <span>{t}</span>
+              </li>
             ))}
           </ul>
         </div>
       )}
 
-      {p.schritteJetzt.length > 0 && (
-        <div className="mt-4">
-          <p className="text-[10px] font-medium uppercase tracking-wider text-[var(--app-text-muted)]">Jetzt</p>
-          <ol className="mt-2 space-y-2 text-xs leading-relaxed text-[var(--app-text)]">
-            {p.schritteJetzt.map((s) => (
-              <li key={s}>{s}</li>
-            ))}
-          </ol>
-        </div>
+      {schritte.length > 0 && (
+        <ol className="mt-4 space-y-2">
+          {schritte.map((s) => (
+            <li
+              key={s.nr + s.titel}
+              className={'rounded-lg border px-3 py-2.5 ' + phaseStil(s.phase)}
+            >
+              <div className="flex items-start gap-3">
+                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-black/40 text-xs font-bold tabular-nums text-teal-300">
+                  {s.nr}
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="text-[9px] font-medium uppercase tracking-wide text-[var(--app-text-muted)]">
+                    {phaseLabel(s.phase)}
+                  </p>
+                  <p className="mt-0.5 text-sm font-medium text-[var(--app-text)]">{s.titel}</p>
+                  {s.detail ? (
+                    <p className="mt-0.5 text-xs leading-relaxed text-[var(--app-text-muted)]">{s.detail}</p>
+                  ) : null}
+                </div>
+              </div>
+            </li>
+          ))}
+        </ol>
       )}
 
-      {p.schritteNachEarnings.length > 0 && (
-        <div className="mt-4 border-t border-white/10 pt-4">
-          <p className="text-[10px] font-medium uppercase tracking-wider text-violet-300/90">Nach Earnings</p>
-          <ol className="mt-2 space-y-2 text-xs leading-relaxed text-[var(--app-text-muted)]">
-            {p.schritteNachEarnings.map((s) => (
-              <li key={s}>{s}</li>
+      {p.nichtTun && p.nichtTun.length > 0 && (
+        <div className="mt-4 rounded-lg border border-rose-500/20 bg-rose-500/5 px-3 py-2.5">
+          <p className="text-[10px] font-semibold uppercase text-rose-300">Nicht tun</p>
+          <ul className="mt-1.5 space-y-1 text-xs text-rose-200/90">
+            {p.nichtTun.map((n) => (
+              <li key={n}>✕ {n}</li>
             ))}
-          </ol>
+          </ul>
         </div>
       )}
 
       {p.stueckzahl != null && p.stueckzahl > 0 && (
         <p className="mt-3 text-[10px] text-[var(--app-text-muted)]">
-          Alternative Aktie (ohne Hebel): ca. {p.stueckzahl} Stück — gleicher Verlust am Stop ({p.riskEur} €).
+          Ohne Hebel: ca. {p.stueckzahl} Aktien — gleicher Verlust am Stop ({p.riskEur} €).
         </p>
       )}
     </div>
@@ -237,138 +231,239 @@ function HandlungsempfehlungPanel({
   onSync: () => void
   syncLaeuft: boolean
 }) {
-  const signal = empfehlung.topSignal
+  const [kontextOffen, setKontextOffen] = useState(false)
+  const [signalIdx, setSignalIdx] = useState(0)
+  const signale = empfehlung.signale
+  const signal = signale[signalIdx] ?? empfehlung.topSignal
   const brauchtSync = !empfehlung.hatAktivesTradeSetup && empfehlung.datenHinweise.length > 0 && !signal
 
+  const topPositionen = empfehlung.positionen
+    .filter((p) => p.prioritaet >= 70)
+    .slice(0, 4)
+
   return (
-    <div className="relative overflow-hidden rounded-2xl border border-white/10 bg-gradient-to-br from-[var(--app-surface-muted)] via-black/40 to-violet-950/30 p-6 shadow-2xl shadow-black/40 ring-1 ring-white/5 backdrop-blur-sm">
+    <div className="relative overflow-hidden rounded-2xl border border-white/10 bg-gradient-to-br from-[var(--app-surface-muted)] via-black/40 to-violet-950/30 p-5 shadow-2xl shadow-black/40 ring-1 ring-white/5 sm:p-6">
       <div className="pointer-events-none absolute -right-16 -top-16 h-48 w-48 rounded-full bg-teal-500/10 blur-3xl" />
-      <div className="pointer-events-none absolute -bottom-12 -left-12 h-40 w-40 rounded-full bg-violet-500/10 blur-3xl" />
+
+      <div className="relative mb-5 rounded-xl border border-white/5 bg-black/25 px-4 py-3">
+        <p className="text-[10px] font-medium uppercase tracking-widest text-[var(--app-text-muted)]">Überblick</p>
+        <p className="mt-1 text-sm leading-relaxed text-[var(--app-text)]">{empfehlung.zusammenfassung}</p>
+        <p className="mt-2 text-[11px] text-[var(--app-text-muted)]">{empfehlung.regimeText}</p>
+      </div>
 
       {signal ? (
-        <div className="relative flex flex-col gap-6 sm:flex-row sm:items-center">
-          <div className="flex flex-1 flex-col gap-4">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="text-[10px] font-medium uppercase tracking-widest text-[var(--app-text-muted)]">
-                {signal.istAktiv ? 'Jetzt handeln' : 'Vorbereitung'}
-              </span>
-              {signal.istAktiv ? (
-                <span className="rounded-full bg-emerald-500/20 px-2 py-0.5 text-[10px] font-medium text-emerald-300">
-                  {signal.phase === 'vor_earnings' ? 'Pre-Run aktiv' : 'Setup aktiv'}
+        <div className="relative space-y-5">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
+            <div className="min-w-0 flex-1 space-y-4">
+              <div className="flex flex-wrap items-center gap-2">
+                <span
+                  className={
+                    'rounded-full px-2.5 py-0.5 text-[10px] font-semibold uppercase ' +
+                    (signal.istAktiv ? 'bg-emerald-500/20 text-emerald-300' : 'bg-amber-500/20 text-amber-300')
+                  }
+                >
+                  {signal.istAktiv ? 'Jetzt ausführen' : 'Vorbereiten'}
                 </span>
-              ) : (
-                <span className="rounded-full bg-amber-500/20 px-2 py-0.5 text-[10px] font-medium text-amber-300">
-                  Erst nach Earnings
+                <span className="text-sm font-medium text-[var(--app-text-muted)]">{signal.symbol}</span>
+                <span
+                  className={
+                    'rounded-lg px-2 py-0.5 text-xs font-black uppercase ' +
+                    (signal.richtung === 'long'
+                      ? 'bg-emerald-500/20 text-emerald-300'
+                      : signal.richtung === 'short'
+                        ? 'bg-rose-500/20 text-rose-300'
+                        : 'bg-amber-500/20 text-amber-300')
+                  }
+                >
+                  {richtungLabel(signal.richtung)}
                 </span>
-              )}
-            </div>
-
-            <div>
-              <p className="text-sm font-medium text-[var(--app-text-muted)]">{signal.symbol}</p>
-              <p
-                className={
-                  'mt-1 inline-block rounded-xl bg-gradient-to-r px-4 py-2 text-3xl font-black tracking-tight ring-1 ' +
-                  richtungStil(signal.richtung, signal.istAktiv)
-                }
-              >
-                {richtungLabel(signal.richtung)}
-              </p>
-            </div>
-
-            <p className="max-w-lg text-sm leading-relaxed text-[var(--app-text)]">{signal.kurztext}</p>
-
-            {signal.detailText && (
-              <p className="max-w-2xl text-sm leading-relaxed text-[var(--app-text-muted)]">{signal.detailText}</p>
-            )}
-
-            {signal.timing && (
-              <p className="text-xs text-teal-300/90">
-                <span className="font-medium text-teal-200">Timing:</span> {signal.timing}
-              </p>
-            )}
-
-            {signal.risikoHinweis && (
-              <p className="rounded-lg border border-amber-500/20 bg-amber-500/5 px-3 py-2 text-xs leading-relaxed text-amber-200/90">
-                {signal.risikoHinweis}
-              </p>
-            )}
-
-            {signal.fakten.length > 0 && (
-              <div className="flex flex-wrap gap-2">
-                {signal.fakten.map((f) => (
-                  <span
-                    key={f}
-                    className="rounded-lg bg-white/5 px-2.5 py-1 text-[11px] tabular-nums text-[var(--app-text-muted)] ring-1 ring-white/10"
-                  >
-                    {f}
-                  </span>
-                ))}
               </div>
-            )}
 
-            {signal.plan && <HandlungsplanKarte plan={signal.plan} />}
-
-            {signal.alternativen.length > 0 && (
-              <div className="rounded-xl border border-white/5 bg-black/20 p-3">
-                <p className="text-[10px] font-medium uppercase tracking-wider text-[var(--app-text-muted)]">
-                  Alternative Szenarien nach Earnings
+              <div className="rounded-xl border border-teal-500/30 bg-gradient-to-r from-teal-500/15 to-transparent px-4 py-3 ring-1 ring-teal-500/20">
+                <p className="text-[10px] font-semibold uppercase tracking-widest text-teal-300">Deine nächste Aktion</p>
+                <p className="mt-2 text-base font-semibold leading-snug text-[var(--app-text)] sm:text-lg">
+                  {signal.aktionJetzt || signal.kurztext}
                 </p>
-                <ul className="mt-2 space-y-1.5 text-xs text-[var(--app-text-muted)]">
-                  {signal.alternativen.map((a) => (
-                    <li key={a.label + a.richtung} className="flex justify-between gap-2">
-                      <span>
-                        {a.richtung === 'long' ? 'Long' : a.richtung === 'short' ? 'Short' : 'Warten'} — {a.label}
-                      </span>
-                      <span className="shrink-0 tabular-nums text-teal-300">{a.wahrscheinlichkeitPct}%</span>
-                    </li>
-                  ))}
-                </ul>
+                {signal.timing ? (
+                  <p className="mt-2 text-xs text-teal-200/80">⏱ {signal.timing}</p>
+                ) : null}
               </div>
-            )}
+
+              {signal.checkliste && signal.checkliste.length > 0 && (
+                <div className="rounded-xl border border-white/5 bg-black/20 p-3">
+                  <p className="text-[10px] font-medium uppercase tracking-wider text-[var(--app-text-muted)]">Checkliste</p>
+                  <ul className="mt-2 space-y-1.5">
+                    {signal.checkliste.map((c) => (
+                      <li key={c} className="flex items-start gap-2 text-xs text-[var(--app-text)]">
+                        <span className="text-teal-400">□</span>
+                        <span>{c}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {signal.warnungen && signal.warnungen.length > 0 && (
+                <div className="flex flex-wrap gap-2">
+                  {signal.warnungen.map((w) => (
+                    <span
+                      key={w}
+                      className="rounded-lg border border-amber-500/25 bg-amber-500/8 px-2.5 py-1 text-[11px] text-amber-200/90"
+                    >
+                      ⚠ {w}
+                    </span>
+                  ))}
+                </div>
+              )}
+
+              <button
+                type="button"
+                onClick={() => setKontextOffen((v) => !v)}
+                className="text-[11px] text-[var(--app-text-muted)] underline-offset-2 hover:underline"
+              >
+                {kontextOffen ? 'Weniger Kontext' : 'Warum? Daten & Alternativen'}
+              </button>
+
+              {kontextOffen && (
+                <div className="space-y-3 rounded-xl border border-white/5 bg-black/15 p-3">
+                  <p className="text-xs leading-relaxed text-[var(--app-text-muted)]">{signal.detailText}</p>
+                  {signal.fakten.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5">
+                      {signal.fakten.map((f) => (
+                        <span
+                          key={f}
+                          className="rounded-md bg-white/5 px-2 py-0.5 text-[10px] tabular-nums text-[var(--app-text-muted)]"
+                        >
+                          {f}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                  {signal.alternativen.length > 0 && (
+                    <div>
+                      <p className="text-[10px] uppercase text-[var(--app-text-muted)]">Alternative Szenarien</p>
+                      <ul className="mt-1 space-y-1 text-xs text-[var(--app-text-muted)]">
+                        {signal.alternativen.map((a) => (
+                          <li key={a.label} className="flex justify-between gap-2">
+                            <span>
+                              {a.richtung === 'long' ? 'Long' : 'Short'} — {a.label}
+                            </span>
+                            <span className="tabular-nums text-teal-300">{a.wahrscheinlichkeitPct}%</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {signal.plan && <HandlungsplanKarte plan={signal.plan} />}
+            </div>
+
+            <WahrscheinlichkeitsRing pct={signal.wahrscheinlichkeitPct} />
           </div>
 
-          <WahrscheinlichkeitsRing pct={signal.wahrscheinlichkeitPct} />
+          {signale.length > 1 && (
+            <div className="border-t border-white/10 pt-4">
+              <p className="mb-2 text-[10px] font-medium uppercase tracking-wider text-[var(--app-text-muted)]">
+                Weitere Titel
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {signale.slice(0, 6).map((s, i) => (
+                  <button
+                    key={s.symbol + s.playbook}
+                    type="button"
+                    onClick={() => setSignalIdx(i)}
+                    className={
+                      'rounded-lg px-3 py-1.5 text-xs ring-1 transition ' +
+                      (i === signalIdx
+                        ? 'bg-teal-500/20 text-teal-200 ring-teal-500/40'
+                        : 'bg-black/20 text-[var(--app-text-muted)] ring-white/10 hover:bg-white/5')
+                    }
+                  >
+                    {s.symbol}{' '}
+                    <span className="font-bold">{s.richtung === 'long' ? 'L' : s.richtung === 'short' ? 'S' : '—'}</span>{' '}
+                    {s.wahrscheinlichkeitPct}%
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       ) : (
         <div className="relative flex flex-col gap-4 sm:flex-row sm:items-center">
           <div className="flex-1">
             <p className="text-[10px] font-medium uppercase tracking-widest text-[var(--app-text-muted)]">Aktion</p>
-            <p className="mt-2 text-3xl font-black tracking-tight text-amber-200">WARTEN</p>
+            <p className="mt-2 text-2xl font-black tracking-tight text-amber-200">WARTEN</p>
             <p className="mt-2 text-sm text-[var(--app-text-muted)]">
               {brauchtSync
-                ? 'Daten unvollständig — Pipeline ausführen für Long/Short-Empfehlung.'
-                : 'Kein aktives Setup — Pre-Event-Katalysator oder Reaktion nach Earnings abwarten.'}
+                ? 'Daten unvollständig — Pipeline ausführen für konkrete Long/Short-Anweisung.'
+                : 'Kein aktives Setup — Pre-Event vorbereiten oder Reaktion nach Earnings abwarten.'}
             </p>
           </div>
           <WahrscheinlichkeitsRing pct={0} />
         </div>
       )}
 
-      {empfehlung.signale.length > 1 && (
-        <div className="relative mt-6 border-t border-white/10 pt-4">
+      {topPositionen.length > 0 && (
+        <div className="relative mt-5 border-t border-white/10 pt-4">
           <p className="mb-2 text-[10px] font-medium uppercase tracking-wider text-[var(--app-text-muted)]">
-            Weitere Signale
+            Watchlist — Priorität
           </p>
-          <div className="grid gap-2 sm:grid-cols-2">
-            {empfehlung.signale.slice(1, 5).map((s) => (
-              <HandlungssignalZeile key={s.symbol + s.playbook + s.phase} s={s} kompakt />
+          <ul className="space-y-2">
+            {topPositionen.map((pos) => (
+              <li
+                key={pos.symbol}
+                className="flex gap-3 rounded-lg border border-white/5 bg-black/15 px-3 py-2 text-xs"
+              >
+                <span
+                  className={
+                    'shrink-0 rounded px-1.5 py-0.5 text-[9px] font-bold uppercase ' +
+                    (pos.aktion === 'trade_pruefen'
+                      ? 'bg-emerald-500/20 text-emerald-300'
+                      : pos.aktion === 'vorbereiten'
+                        ? 'bg-amber-500/20 text-amber-300'
+                        : pos.aktion === 'sync'
+                          ? 'bg-violet-500/20 text-violet-300'
+                          : 'bg-white/10 text-[var(--app-text-muted)]')
+                  }
+                >
+                  {pos.aktion === 'trade_pruefen'
+                    ? 'Trade'
+                    : pos.aktion === 'vorbereiten'
+                      ? 'Prep'
+                      : pos.aktion === 'sync'
+                        ? 'Sync'
+                        : 'Watch'}
+                </span>
+                <span className="text-[var(--app-text-muted)]">
+                  <span className="font-medium text-[var(--app-text)]">{pos.name}</span> — {pos.text}
+                </span>
+              </li>
             ))}
-          </div>
+          </ul>
         </div>
       )}
 
-      {(brauchtSync || (signal && !signal.istAktiv && empfehlung.datenHinweise.length > 0)) && (
-        <button
-          type="button"
-          onClick={onSync}
-          disabled={syncLaeuft}
-          className="relative mt-5 w-full rounded-xl bg-teal-500/20 py-2.5 text-sm font-semibold text-teal-200 ring-1 ring-teal-500/35 hover:bg-teal-500/30 disabled:opacity-50 sm:w-auto sm:px-6"
-        >
-          {syncLaeuft ? 'Pipeline läuft …' : 'Daten aktualisieren'}
-        </button>
+      {(brauchtSync || empfehlung.datenHinweise.length > 0) && (
+        <div className="relative mt-4 flex flex-wrap items-center gap-3">
+          {empfehlung.datenHinweise.slice(0, 2).map((h) => (
+            <span key={h} className="text-[10px] text-amber-300/90">
+              ○ {h}
+            </span>
+          ))}
+          <button
+            type="button"
+            onClick={onSync}
+            disabled={syncLaeuft}
+            className="rounded-xl bg-teal-500/20 px-4 py-2 text-sm font-semibold text-teal-200 ring-1 ring-teal-500/35 hover:bg-teal-500/30 disabled:opacity-50"
+          >
+            {syncLaeuft ? 'Pipeline läuft …' : 'Daten aktualisieren'}
+          </button>
+        </div>
       )}
 
-      <div className="relative mt-4 flex flex-wrap gap-2 text-[10px] text-[var(--app-text-muted)]">
+      <div className="relative mt-4 flex flex-wrap gap-2 text-[10px]">
         {empfehlung.longBias && (
           <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-emerald-400/90">Regime Long-Bias</span>
         )}
@@ -649,18 +744,36 @@ function filterScanErgebnisse(
     .sort((a, b) => b.score - a.score)
 }
 
+function DatenqualitaetBadge({ dq }: { dq: MomentumWatchlistEintragAngereichert['datenqualitaet'] }) {
+  const farbe =
+    dq.status === 'gut'
+      ? 'bg-teal-500/15 text-teal-300'
+      : dq.status === 'teilweise'
+        ? 'bg-amber-500/15 text-amber-300'
+        : 'bg-red-500/10 text-red-300'
+  return (
+    <span className={'rounded px-1.5 py-0.5 text-[10px] font-medium tabular-nums ' + farbe}>
+      Daten {dq.score}%
+    </span>
+  )
+}
+
 function WatchlistZeile({
   e,
   meta,
   preEvent,
   onEntfernen,
   onMetaSpeichern,
+  onNachsyncen,
+  syncLaden,
 }: {
   e: MomentumWatchlistEintragAngereichert
   meta: ReturnType<typeof usePortfolioAnalyse>['meta']
   preEvent?: { score: number; stufe: string; tageBis: number | null } | null
   onEntfernen: (isin: string) => void
   onMetaSpeichern: (isin: string, patch: { ipoDatum?: string | null; notiz?: string | null }) => Promise<void>
+  onNachsyncen: (isin: string) => void | Promise<void>
+  syncLaden: boolean
 }) {
   const [aufgeklappt, setAufgeklappt] = useState(false)
   const [ipoInput, setIpoInput] = useState(e.ipoDatum ?? '')
@@ -732,11 +845,36 @@ function WatchlistZeile({
               Median-Gap {e.medianGapPct.toFixed(1)}% ({e.earningsEventsAnzahl} Events)
             </p>
           )}
+          {!preIpo && e.datenqualitaet ? (
+            <div className="mt-1 flex flex-wrap items-center gap-2">
+              <DatenqualitaetBadge dq={e.datenqualitaet} />
+              {e.liveKurs ? (
+                <span className="text-[11px] tabular-nums text-teal-300/90">
+                  {e.liveKurs.preis.toFixed(2)}
+                  {e.liveKurs.quelle === 'pre' ? ' Pre' : e.liveKurs.quelle === 'post' ? ' Post' : ''}
+                  {e.liveKurs.gapVsPrevClosePct != null
+                    ? ' · ' + (e.liveKurs.gapVsPrevClosePct > 0 ? '+' : '') + e.liveKurs.gapVsPrevClosePct + '%'
+                    : ''}
+                </span>
+              ) : null}
+            </div>
+          ) : null}
           {e.notiz && !aufgeklappt && (
             <p className="mt-0.5 truncate text-[11px] italic text-[var(--app-text-muted)]">{e.notiz}</p>
           )}
         </div>
         <div className="flex shrink-0 gap-1">
+          {!preIpo ? (
+            <button
+              type="button"
+              disabled={syncLaden}
+              onClick={() => void onNachsyncen(e.isin)}
+              className="rounded-lg px-2.5 py-1.5 text-xs text-teal-300/90 ring-1 ring-teal-500/30 hover:bg-teal-500/10 disabled:opacity-50"
+              title="Earnings, Kurse, Gap-Historie (3J MarketBeat) + Live-Kurs"
+            >
+              {syncLaden ? '…' : '↻'}
+            </button>
+          ) : null}
           <button
             type="button"
             onClick={() => setAufgeklappt((v) => !v)}
@@ -755,6 +893,26 @@ function WatchlistZeile({
       </div>
       {aufgeklappt && (
         <div className="mt-3 space-y-3 border-t border-[var(--app-border)] pt-3">
+          {e.datenqualitaet && e.datenqualitaet.checks.length > 0 ? (
+            <div>
+              <p className="text-[10px] uppercase tracking-wide text-[var(--app-text-muted)]">Datenqualität</p>
+              <ul className="mt-1.5 space-y-1">
+                {e.datenqualitaet.checks.map((c) => (
+                  <li key={c.id} className="flex items-start gap-2 text-[11px]">
+                    <span className={c.ok ? 'text-teal-400' : 'text-amber-400'}>{c.ok ? '✓' : '○'}</span>
+                    <span className="text-[var(--app-text-muted)]">
+                      <span className="font-medium text-[var(--app-text)]">{c.label}</span>
+                      {' — '}
+                      {c.detail}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+              {e.datenqualitaet.empfehlung ? (
+                <p className="mt-2 text-[11px] text-amber-300/90">{e.datenqualitaet.empfehlung}</p>
+              ) : null}
+            </div>
+          ) : null}
           {e.letzteGapEvents.length > 0 ? (
             <div>
               <p className="text-[10px] uppercase tracking-wide text-[var(--app-text-muted)]">Gap-Historie</p>
@@ -763,7 +921,8 @@ function WatchlistZeile({
                   <li key={g.datum}>
                     {new Date(g.datum + 'T12:00:00').toLocaleDateString('de-DE')}: Gap{' '}
                     {g.gapPct != null ? g.gapPct + '%' : '—'}
-                    {g.surpriseEpsPct != null ? ' · Surprise ' + g.surpriseEpsPct + '%' : ''}
+                    {g.surpriseEpsPct != null ? ' · EPS ' + g.surpriseEpsPct + '%' : ''}
+                    {g.surpriseRevPct != null ? ' · Umsatz ' + g.surpriseRevPct + '%' : ''}
                     {g.rvol != null ? ' · RVOL ' + g.rvol + '×' : ''}
                   </li>
                 ))}
@@ -1037,6 +1196,7 @@ export function MomentumTraderClient() {
   const [scanLaeuft, setScanLaeuft] = useState(false)
   const [tradeLaden, setTradeLaden] = useState(false)
   const [hinzufuegenLaden, setHinzufuegenLaden] = useState(false)
+  const [syncIsin, setSyncIsin] = useState<string | null>(null)
   const [fehler, setFehler] = useState<string | null>(null)
   const [syncLog, setSyncLog] = useState<string[]>([])
   const [letztesBarsSync, setLetztesBarsSync] = useState<MomentumBarsSyncErgebnis | null>(null)
@@ -1089,6 +1249,35 @@ export function MomentumTraderClient() {
   useEffect(() => {
     void ladeAlles()
   }, [ladeAlles])
+
+  const nachsyncTicker = useCallback(async (isin: string) => {
+    setSyncIsin(isin)
+    setFehler(null)
+    try {
+      const res = await momentumApiFetch('/api/portfolio-analyse/momentum-trader/watchlist/sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ isin }),
+      })
+      const data = (await res.json()) as {
+        eintrag?: MomentumWatchlistEintragAngereichert
+        fehler?: string | string[]
+        schritte?: string[]
+      }
+      if (!res.ok) {
+        const f = data.fehler
+        throw new Error(Array.isArray(f) ? f.join(' · ') : (f ?? 'Nachsync fehlgeschlagen.'))
+      }
+      if (data.eintrag) {
+        setWatchlist((wl) => wl.map((w) => (w.isin === isin ? data.eintrag! : w)))
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      setFehler(msg.replace(/^Error:\s*/i, ''))
+    } finally {
+      setSyncIsin(null)
+    }
+  }, [])
 
   const hinzufuegen = useCallback(
     async (auswahl: MomentumWatchlistAuswahl) => {
@@ -1473,7 +1662,7 @@ export function MomentumTraderClient() {
 
         {kalender && watchlist.length > 0 && <EarningsKalenderPanel kalender={kalender} />}
 
-        <PaCard className="p-5">
+        <PaCard className="overflow-visible p-5">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <h2 className="text-sm font-semibold text-[var(--app-text)]">Watchlist</h2>
@@ -1493,7 +1682,7 @@ export function MomentumTraderClient() {
           </div>
 
           {!voll && (
-            <div className="mt-4">
+            <div className="relative z-30 mt-4 overflow-visible">
               <MomentumWatchlistSucheInput onAuswahl={hinzufuegen} laden={hinzufuegenLaden} fehler={fehler} onFehler={setFehler} />
             </div>
           )}
@@ -1513,6 +1702,8 @@ export function MomentumTraderClient() {
                   preEvent={preEvent}
                   onEntfernen={(isin) => void entfernen(isin)}
                   onMetaSpeichern={speichereWatchlistMeta}
+                  onNachsyncen={nachsyncTicker}
+                  syncLaden={syncIsin === e.isin}
                 />
               )})}
             </ul>

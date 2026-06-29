@@ -32,6 +32,7 @@ import {
   medianGapAbsPct,
 } from '@/lib/portfolio-analyse/momentum-trader/momentum-earnings-events-server'
 import { berechneEarningsHistorieStatistik } from '@/lib/portfolio-analyse/momentum-trader/momentum-earnings-analytics-server'
+import { sektorEtfSymbol } from '@/lib/portfolio-analyse/momentum-trader/momentum-sektor-etf-server'
 import {
   primaeresAnzeigeSymbol,
 } from '@/lib/portfolio-analyse/momentum-trader/momentum-symbol-hilfen'
@@ -65,6 +66,7 @@ import type {
 } from '@/lib/portfolio-analyse/momentum-trader/momentum-trader-types'
 import { symboleAusWatchlist } from '@/lib/portfolio-analyse/momentum-trader/momentum-watchlist-server'
 import { MOMENTUM_REGIME_SYMBOLS } from '@/lib/portfolio-analyse/momentum-trader/momentum-universe'
+import { holeSektorenBatch } from '@/lib/portfolio-analyse/sektor-batch-server'
 
 const SPY_SYMBOL = MOMENTUM_REGIME_SYMBOLS[0]
 
@@ -241,6 +243,7 @@ function bewerteEarningsMomentum(
   spyBars: MomentumBarDaily[],
   regimeGates: MomentumRegimeGates,
   event: MomentumEarningsEvent | null,
+  sectorBars: MomentumBarDaily[] = [],
 ): MomentumScanEintrag | null {
   const heute = heuteIsoUtc()
   const tageSeit = tageZwischenIso(earningsDate, heute)
@@ -304,7 +307,22 @@ function bewerteEarningsMomentum(
       gatesFailed.push('RS vs. S&P widerspricht Richtung (' + rs + '%)')
     }
   } else if (richtung != null) {
-    gatesFailed.push('Relative Stärke nicht berechenbar')
+    gatesFailed.push('Relative Stärke vs. S&P nicht berechenbar')
+  }
+
+  if (sectorBars.length > 0 && richtung != null) {
+    const secIdx = sectorBars.findIndex((b) => b.handelstag === bar.handelstag)
+    const rsSek =
+      secIdx >= 0 ? berechneRelativeStaerke(bars, sectorBars, ctx.barIdx, RS_TAGE) : null
+    if (rsSek != null) {
+      if (richtung === 'long' && rsSek >= RS_MIN_LONG_PCT) {
+        gatesPassed.push('RS vs. Sektor-ETF (' + RS_TAGE + 'T): +' + rsSek + '%')
+      } else if (richtung === 'short' && rsSek <= RS_MAX_SHORT_PCT) {
+        gatesPassed.push('RS vs. Sektor-ETF (' + RS_TAGE + 'T): ' + rsSek + '%')
+      } else {
+        gatesFailed.push('RS vs. Sektor widerspricht (' + rsSek + '%)')
+      }
+    }
   }
 
   let score = 30
@@ -488,12 +506,29 @@ export async function scanMomentumWatchlist(
   const symbole = symboleAusWatchlist(watchlist)
   const kalender = await ladeMomentumEarningsKalenderFuerSymbole(symbole)
   const spyBars = await ladeMomentumBars(SPY_SYMBOL, vonBars, heute)
+  const sektorMap = await holeSektorenBatch(
+    watchlist.map((e) => ({ isin: e.isin, symbolYahoo: e.symbolYahoo, name: e.name })),
+  )
+  const sectorBarsCache = new Map<string, MomentumBarDaily[]>()
 
   const ergebnisse: MomentumScanEintrag[] = []
 
   for (const e of watchlist) {
     const symbol = primaeresSymbol(e)
     if (!symbol) continue
+
+    const sektor = sektorMap[e.isin]?.sektor ?? sektorMap[symbol]?.sektor ?? null
+    const etf = sektorEtfSymbol(sektor)
+    let sectorBars: MomentumBarDaily[] = []
+    if (etf) {
+      const cached = sectorBarsCache.get(etf)
+      if (cached) {
+        sectorBars = cached
+      } else {
+        sectorBars = await ladeMomentumBars(etf, vonBars, heute)
+        sectorBarsCache.set(etf, sectorBars)
+      }
+    }
 
     const events = await ladeEarningsEventsFuerWatchlistEintrag(e)
     const gapStat = gapVolatilitaetSchaetzung(events)
@@ -514,7 +549,7 @@ export async function scanMomentumWatchlist(
       const fade = bewerteGapFade(symbol, t.earningsDate, zeit, bars, regimeGates, medianGap, ev)
       if (fade) ergebnisse.push(fade)
 
-      const mom = bewerteEarningsMomentum(symbol, t.earningsDate, zeit, bars, spyBars, regimeGates, ev)
+      const mom = bewerteEarningsMomentum(symbol, t.earningsDate, zeit, bars, spyBars, regimeGates, ev, sectorBars)
       if (mom && mom.score >= 40) ergebnisse.push(mom)
     }
 

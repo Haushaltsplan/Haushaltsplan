@@ -261,7 +261,7 @@ export async function ladeMarketbeatBeatMissHistorie(opts: {
 }): Promise<MarketbeatBeatMissZeile[]> {
   const basis = marketbeatBasisTicker(opts.ticker, opts.symbolYahoo)
   const boersen = marketbeatBoersenKandidaten(opts.symbolYahoo, opts.ticker)
-  const limit = opts.limit ?? 8
+  const limit = opts.limit ?? 16
 
   for (const boerse of boersen) {
     const html = await ladeEarningsSeite(boerse, basis)

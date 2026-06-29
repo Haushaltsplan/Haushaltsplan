@@ -50,13 +50,13 @@ export async function fuehreVollenMomentumSyncAus(
   )
   if (earnings.fehler.length) fehler.push(...earnings.fehler)
 
-  const bars = await syncBarsFuerWatchlist(watchlist, 252)
+  const bars = await syncBarsFuerWatchlist(watchlist, 400)
   schritte.push('Kurse: ' + bars.kerzenGeschrieben + ' Kerzen, ' + bars.symbole + ' Symbole')
   if (bars.fehler) fehler.push(bars.fehler)
   if (!bars.ok) fehler.push('Kurs-Sync unvollständig')
 
   const events = await backfillEarningsEventsFuerWatchlist(watchlist)
-  schritte.push('Earnings-Historie: ' + events.geschrieben + ' Events (2 Jahre, MarketBeat-Fallback)')
+  schritte.push('Earnings-Historie: ' + events.geschrieben + ' Events (3 Jahre, MarketBeat 24Q)')
   if (events.fehler.length) fehler.push(...events.fehler)
 
   const ipo = await syncIpoDatumFuerWatchlist(sb, watchlist)

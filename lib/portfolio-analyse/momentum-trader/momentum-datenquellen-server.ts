@@ -49,5 +49,12 @@ export function momentumDatenquellenStatus(): MomentumDatenquelle[] {
       aktiv: true,
       nutzen: 'Earnings-Termin, BMO/AMC, Surprise-Fallback, IPO-Fallback',
     },
+    {
+      id: 'yahoo-quote',
+      name: 'Yahoo Live-Kurs',
+      typ: 'scraper',
+      aktiv: true,
+      nutzen: 'Regular / Pre-Market / After-Hours (quoteSummary price)',
+    },
   ]
 }

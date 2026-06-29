@@ -7,7 +7,9 @@ import {
 } from '@/lib/portfolio-analyse/momentum-trader/momentum-constants'
 import { momentumPlaybookLabel } from '@/lib/portfolio-analyse/momentum-trader/momentum-constants'
 import type {
+  MomentumEarningsZeit,
   MomentumHandlungsplan,
+  MomentumHandlungsschritt,
   MomentumPlaybook,
   MomentumRichtung,
   MomentumScanEintrag,
@@ -27,9 +29,36 @@ function alsZahl(v: unknown, fallback: number): number {
   return typeof v === 'number' && Number.isFinite(v) ? v : fallback
 }
 
-function formatPreis(n: number, waehrung = 'USD'): string {
-  if (waehrung === 'EUR') return n.toFixed(2) + ' €'
+function formatPreis(n: number): string {
   return n.toFixed(2) + ' $'
+}
+
+function earningsZeitfenster(timeBmo: MomentumEarningsZeit | undefined, tage: number): string {
+  if (timeBmo === 'bmo') {
+    return tage === 0
+      ? 'Heute vor US-Eröffnung (BMO) — Reaktion ab 15:30 MEZ'
+      : 'BMO: Einstieg nach Zahlen zur US-Eröffnung (15:30 MEZ)'
+  }
+  if (timeBmo === 'amc') {
+    return tage === 0
+      ? 'Heute nach US-Schluss (AMC) — Reaktion morgen zur Eröffnung'
+      : 'AMC: Reaktion am Folgetag zur US-Eröffnung (15:30 MEZ)'
+  }
+  return 'Nach Bekanntgabe der Zahlen — erst Sync + Scan, dann handeln'
+}
+
+function schritteZuLegacy(schritte: MomentumHandlungsschritt[]): {
+  jetzt: string[]
+  nach: string[]
+} {
+  const jetzt: string[] = []
+  const nach: string[] = []
+  for (const s of schritte) {
+    const line = s.detail ? s.nr + '. ' + s.titel + ' — ' + s.detail : s.nr + '. ' + s.titel
+    if (s.phase === 'nach_event') nach.push(line)
+    else jetzt.push(line)
+  }
+  return { jetzt, nach }
 }
 
 function berechneCfdHebelMargin(
@@ -61,7 +90,6 @@ function baueNiveaus(
   entry: number,
   stop: number,
   target: number,
-  richtung: MomentumRichtung,
   riskEur: number,
 ): Pick<
   MomentumHandlungsplan,
@@ -99,7 +127,21 @@ function baueNiveaus(
   }
 }
 
-/** Konkreter Trade-Plan aus aktivem Scan-Setup (Pre-Run, Gap-Fade, …). */
+function planBasis(
+  partial: Omit<
+    MomentumHandlungsplan,
+    'schritteJetzt' | 'schritteNachEarnings'
+  > & { schritte: MomentumHandlungsschritt[] },
+): MomentumHandlungsplan {
+  const legacy = schritteZuLegacy(partial.schritte)
+  return {
+    ...partial,
+    schritteJetzt: legacy.jetzt,
+    schritteNachEarnings: legacy.nach,
+  }
+}
+
+/** Konkreter Trade-Plan aus aktivem Scan-Setup. */
 export function baueHandlungsplanAusScan(
   e: MomentumScanEintrag,
   richtung: MomentumRichtung,
@@ -107,94 +149,138 @@ export function baueHandlungsplanAusScan(
   const entry = alsZahl(e.indikatoren.entryPrice, 0) || alsZahl(e.indikatoren.letzterKurs, 0)
   const stop = alsZahl(e.indikatoren.stopPrice, 0)
   const target = alsZahl(e.indikatoren.targetPrice, 0)
-  if (entry <= 0 || stop <= 0 || target <= 0) return null
+  const atrOk =
+    alsZahl(e.indikatoren.atr, 0) > 0 ||
+    alsZahl(e.indikatoren.atr14, 0) > 0 ||
+    alsZahl(e.indikatoren.atrImpliedMovePct, 0) > 0
+  if (entry <= 0 || stop <= 0 || target <= 0 || !atrOk) return null
 
   const riskEur = alsZahl(e.indikatoren.riskEur, MOMENTUM_DEFAULT_RISK_EUR)
-  const niveaus = baueNiveaus(entry, stop, target, richtung, riskEur)
-  const pb = momentumPlaybookLabel(e.playbook)
+  const niveaus = baueNiveaus(entry, stop, target, riskEur)
   const sym = e.symbol
+  const rLabel = richtung === 'long' ? 'Long' : 'Short'
   const exitBis = typeof e.indikatoren.exitBis === 'string' ? e.indikatoren.exitBis : null
   const tage = alsZahl(e.indikatoren.tageBisEarnings, -1)
+  const timeBmo = e.indikatoren.timeBmoAmc as MomentumEarningsZeit | undefined
+  const zeitfenster =
+    e.playbook === 'earnings_pre_run'
+      ? 'Jetzt bis spätestens vor Earnings schließen' + (exitBis ? ' (' + exitBis + ')' : '')
+      : earningsZeitfenster(timeBmo, 0)
 
-  const schritte: string[] = []
+  const schritte: MomentumHandlungsschritt[] = []
+  const nichtTun: string[] = [
+    'Kein Nachkaufen oder Stop nachziehen ohne neuen Scan',
+    'Max. ' + riskEur + ' € Verlust — nicht erhöhen',
+  ]
+
   if (e.playbook === 'earnings_pre_run') {
     schritte.push(
-      '1. Jetzt ' +
-        (richtung === 'long' ? 'Long' : 'Short') +
-        ' eröffnen (CFD ' +
-        sym +
-        ' oder US-Ticker NKE bei EU-Listing).',
+      { nr: 1, phase: 'jetzt', titel: rLabel + ' eröffnen (' + sym + ')', detail: 'Market ~' + formatPreis(entry) },
+      {
+        nr: 2,
+        phase: 'jetzt',
+        titel: 'Stop-Loss sofort setzen',
+        detail: formatPreis(stop) + ' (−' + niveaus.stopAbstandPct + '% = ' + riskEur + ' €)',
+      },
+      {
+        nr: 3,
+        phase: 'jetzt',
+        titel: 'Take-Profit setzen',
+        detail: formatPreis(target) + ' (+' + niveaus.zielAbstandPct + '%, ~' + niveaus.gewinnZielEur + ' €)',
+      },
+      {
+        nr: 4,
+        phase: 'jetzt',
+        titel: 'CFD: Hebel ' + niveaus.hebelEmpfohlen + '×',
+        detail: 'Einsatz ~' + niveaus.marginEur + ' €, Exposure ~' + niveaus.exposureEur + ' €',
+      },
+      {
+        nr: 5,
+        phase: 'risiko',
+        titel: 'Pflicht-Exit vor Earnings',
+        detail:
+          (tage >= 0 ? 'In ' + tage + ' Tag(en) ' : '') +
+          'Position schließen — nicht über die Zahlen halten',
+      },
+      {
+        nr: 6,
+        phase: 'nach_event',
+        titel: 'Nach Earnings: Sync + Scan',
+        detail: 'Separates Gap-Fade/Momentum-Setup prüfen',
+      },
     )
-    schritte.push('2. Einstieg: Market um ' + formatPreis(entry) + ' (letzter Kurs).')
-    schritte.push('3. Stop-Loss sofort setzen: ' + formatPreis(stop) + ' (' + niveaus.stopAbstandPct + '%).')
-    schritte.push('4. Take-Profit: ' + formatPreis(target) + ' (Ziel +' + niveaus.zielAbstandPct + '%, ~' + niveaus.gewinnZielEur + ' €).')
-    schritte.push(
-      '5. CFD: Hebel ' +
-        niveaus.hebelEmpfohlen +
-        '×, Einsatz ca. ' +
-        niveaus.marginEur +
-        ' € → Exposure ~' +
-        niveaus.exposureEur +
-        ' €. Verlust am Stop = ' +
-        riskEur +
-        ' €.',
-    )
-    schritte.push(
-      '6. Pflicht-Exit spätestens vor Earnings' +
-        (tage >= 0 ? ' (in ' + tage + ' Tag(en))' : '') +
-        (exitBis ? ', Datum ' + exitBis : '') +
-        ' — Position nicht über die Zahlen halten.',
-    )
-    schritte.push('7. Nach Earnings: Sync + Scan für separates Gap-Fade/Momentum-Setup.')
+    nichtTun.push('Position nicht über Earnings halten — Event-Risiko')
   } else {
-    schritte.push('1. ' + (richtung === 'long' ? 'Long' : 'Short') + ' eröffnen — ' + pb + ' (' + sym + ').')
-    schritte.push('2. Einstieg: ' + formatPreis(entry) + ' (Reaktionsbar / aktueller Kurs).')
-    schritte.push('3. Stop-Loss: ' + formatPreis(stop) + ' — bei Erreichen genau ' + riskEur + ' € Verlust.')
-    schritte.push('4. Take-Profit: ' + formatPreis(target) + ' (~' + niveaus.gewinnZielEur + ' € Gewinn bei 2:1).')
     schritte.push(
-      '5. CFD Hebel ' +
-        niveaus.hebelEmpfohlen +
-        '×, Einsatz ~' +
-        niveaus.marginEur +
-        ' € (Exposure ~' +
-        niveaus.exposureEur +
-        ' €).',
+      {
+        nr: 1,
+        phase: 'jetzt',
+        titel: rLabel + ' — ' + momentumPlaybookLabel(e.playbook),
+        detail: sym + ' · Market ~' + formatPreis(entry),
+      },
+      {
+        nr: 2,
+        phase: 'jetzt',
+        titel: 'Stop-Loss setzen',
+        detail: formatPreis(stop) + ' — Verlust am Stop = ' + riskEur + ' €',
+      },
+      {
+        nr: 3,
+        phase: 'jetzt',
+        titel: 'Take-Profit setzen',
+        detail: formatPreis(target) + ' (~' + niveaus.gewinnZielEur + ' € bei 2:1)',
+      },
+      {
+        nr: 4,
+        phase: 'jetzt',
+        titel: 'CFD Hebel ' + niveaus.hebelEmpfohlen + '×',
+        detail: 'Einsatz ~' + niveaus.marginEur + ' €',
+      },
+      {
+        nr: 5,
+        phase: 'risiko',
+        titel: 'Bei Ampel Rot oder Gate-Bruch',
+        detail: 'Sofort schließen — Setup ungültig',
+      },
     )
-    schritte.push('6. Kein Nachkaufen. Bei Ampel-Rot oder Gate-Bruch: Trade schließen.')
+    nichtTun.push('Nicht gegen Regime handeln (Scan-Gates prüfen)')
   }
 
-  return {
+  return planBasis({
     modus: 'aktiv',
-    instrumentLabel: 'CFD / Turbo (' + sym + ' — bei EU-Listing US-Session für Earnings)',
+    instrumentLabel: 'CFD ' + sym + (sym.includes('.') ? ' — US-Ticker für Earnings-Session' : ''),
     richtung,
     entryHinweis: 'Market jetzt',
     triggerBedingungen: [],
-    schritteJetzt: schritte,
-    schritteNachEarnings: [],
+    schritte,
+    nichtTun,
+    zeitfenster,
     exitBis,
     ...niveaus,
-  }
+  })
 }
 
-/** Vorbereitungs-Plan für Post-Earnings (noch kein Einstieg). */
+/** Vorbereitungs-Plan — noch kein Einstieg, klare IF-THEN-Trigger. */
 export function baueHandlungsplanNachEarnings(
   e: MomentumScanEintrag,
   richtung: MomentumRichtung,
   playbook: MomentumPlaybook,
 ): MomentumHandlungsplan | null {
   const kurs = alsZahl(e.indikatoren.letzterKurs, 0)
-  if (kurs <= 0) return null
+  const atrMove = alsZahl(e.indikatoren.atrImpliedMovePct, 0)
+  if (kurs <= 0 || atrMove <= 0) return null
 
   const median = Math.max(alsZahl(e.indikatoren.medianGapPct, 0), 0.5)
   const erwartet = alsZahl(e.indikatoren.erwarteteBewegungPct, Math.max(median, 3))
-  const atrPct = Math.max(alsZahl(e.indikatoren.atrImpliedMovePct, 2), 1.5) / 100
+  const atrPct = Math.max(atrMove, 1.5) / 100
   const beat = alsZahl(e.indikatoren.beatRatePct, 50)
   const gapUp = alsZahl(e.indikatoren.gapUpRatePct, 50)
   const tage = alsZahl(e.indikatoren.tageBisEarnings, -1)
-  const timeBmo = e.indikatoren.timeBmoAmc
+  const timeBmo = e.indikatoren.timeBmoAmc as MomentumEarningsZeit | undefined
   const riskEur = MOMENTUM_DEFAULT_RISK_EUR
+  const rLabel = richtung === 'long' ? 'Long' : 'Short'
 
-  const gapSchwelle = Math.max(GAP_MIN_PCT, Math.min(12, Math.max(median * 2, erwartet * 0.6, 3)))
+  const gapSchwelle = runde2(Math.max(GAP_MIN_PCT, Math.min(12, Math.max(median * 2, erwartet * 0.6, 3))))
   const triggerBedingungen: string[] = []
 
   let entry: number
@@ -203,76 +289,118 @@ export function baueHandlungsplanNachEarnings(
 
   if (richtung === 'short' && playbook === 'earnings_gap_fade') {
     triggerBedingungen.push('EPS Beat (Surprise > 0%)')
-    triggerBedingungen.push('Gap-Up ≥ ' + runde2(gapSchwelle) + '% zur Eröffnung nach Earnings')
-    triggerBedingungen.push('Optional: RVOL ≥ 1,5× (im Scan nach Sync geprüft)')
+    triggerBedingungen.push('Gap-Up ≥ ' + gapSchwelle + '% an der Eröffnung')
+    triggerBedingungen.push('RVOL ≥ 1,5× (nach Sync im Scan)')
     entry = runde4(kurs * (1 + gapSchwelle / 100))
     const stopDist = kurs * atrPct * 1.35
     stop = runde4(entry + stopDist)
     target = runde4(entry - stopDist * REWARD_RISK_RATIO)
   } else if (richtung === 'long' && playbook === 'earnings_gap_fade') {
     triggerBedingungen.push('EPS Miss (Surprise < 0%)')
-    triggerBedingungen.push('Gap-Down ≤ -' + runde2(gapSchwelle) + '%')
+    triggerBedingungen.push('Gap-Down ≤ −' + gapSchwelle + '%')
+    triggerBedingungen.push('RVOL ≥ 1,5× (nach Sync im Scan)')
     entry = runde4(kurs * (1 - gapSchwelle / 100))
     const stopDist = kurs * atrPct * 1.35
     stop = runde4(entry - stopDist)
     target = runde4(entry + stopDist * REWARD_RISK_RATIO)
   } else {
-    triggerBedingungen.push('EPS Beat + Tag-1-Stärke (Kurs hält Gap)')
-    triggerBedingungen.push('RS vs. S&P positiv (im Scan geprüft)')
+    triggerBedingungen.push('EPS Beat + Kurs hält Gap (Tag 1 bullisch)')
+    triggerBedingungen.push('RS vs. S&P positiv (im Scan)')
     entry = runde4(kurs * (1 + gapSchwelle * 0.6 / 100))
     const stopDist = kurs * atrPct * 1.2
     stop = runde4(entry - stopDist)
     target = runde4(entry + stopDist * REWARD_RISK_RATIO)
   }
 
-  const niveaus = baueNiveaus(entry, stop, target, richtung, riskEur)
+  const niveaus = baueNiveaus(entry, stop, target, riskEur)
   const sym = e.symbol
+  const zeitfenster = earningsZeitfenster(timeBmo, tage)
 
-  const schritteJetzt: string[] = [
-    '1. Jetzt KEIN Trade — Earnings' + (tage >= 0 ? ' in ' + tage + ' Tag(en)' : ' stehen bevor') + '.',
-    '2. Alarm setzen für ' + sym + ' am Earnings-Tag.',
-    '3. Watchlist: Beat-Rate ' + beat + '%, historisch Gap-Up ' + gapUp + '%, erwartete Reaktion ~' + erwartet + '%.',
+  const schritte: MomentumHandlungsschritt[] = [
+    {
+      nr: 1,
+      phase: 'jetzt',
+      titel: 'Jetzt: kein Trade',
+      detail:
+        'Earnings' +
+        (tage >= 0 ? ' in ' + tage + ' Tag(en)' : ' stehen bevor') +
+        ' — nur vorbereiten',
+    },
+    {
+      nr: 2,
+      phase: 'jetzt',
+      titel: 'Alarm setzen',
+      detail: sym + ' am Earnings-Tag · Beat-Rate ' + beat + '%, Gap-Up ' + gapUp + '%',
+    },
+    {
+      nr: 3,
+      phase: 'trigger',
+      titel: 'Trigger merken',
+      detail: 'Nur handeln wenn ALLE Bedingungen erfüllt (siehe unten)',
+    },
+    ...triggerBedingungen.map((t, i) => ({
+      nr: 4 + i,
+      phase: 'trigger' as const,
+      titel: t,
+      detail: 'Pflicht — sonst kein Trade',
+    })),
+    {
+      nr: 4 + triggerBedingungen.length,
+      phase: 'nach_event',
+      titel: 'Nach Zahlen: Sync + Scan',
+      detail: '„Alles aktualisieren“ — Gap, RVOL, Surprise frisch prüfen',
+    },
+    {
+      nr: 5 + triggerBedingungen.length,
+      phase: 'nach_event',
+      titel: rLabel + ' eröffnen wenn Trigger grün',
+      detail: 'Einstieg ~' + formatPreis(entry) + ' · ' + zeitfenster,
+    },
+    {
+      nr: 6 + triggerBedingungen.length,
+      phase: 'nach_event',
+      titel: 'Stop + Take-Profit sofort',
+      detail:
+        'SL ' +
+        formatPreis(stop) +
+        ' · TP ' +
+        formatPreis(target) +
+        ' · Hebel ' +
+        niveaus.hebelEmpfohlen +
+        '× (~' +
+        niveaus.marginEur +
+        ' €)',
+    },
   ]
-  if (tage <= 1) {
-    schritteJetzt.push('4. Optional heute: Pre-Run im Scan prüfen (Filter Pre-Event) — nur mit Exit vor Zahlen.')
+
+  const nichtTun = [
+    'Vor den Zahlen blind ' + rLabel + ' eröffnen',
+    'Trade erzwingen wenn Gap oder Surprise nicht passt',
+    'Mehr als ' + riskEur + ' € riskieren',
+    'Ohne frischen Scan nach Earnings handeln',
+  ]
+
+  if (tage <= 7 && tage >= 1) {
+    schritte.splice(2, 0, {
+      nr: 3,
+      phase: 'jetzt',
+      titel: 'Optional: Pre-Run prüfen',
+      detail: 'Scan-Filter „Pre-Event“ — nur mit Exit vor Earnings',
+    })
   }
 
-  const nachEarningsZeit =
-    timeBmo === 'bmo'
-      ? 'BMO: Reaktion direkt zur US-Eröffnung'
-      : timeBmo === 'amc'
-        ? 'AMC: Reaktion meist am nächsten Handelstag zur Eröffnung'
-        : 'nach Bekanntgabe der Zahlen'
-
-  const schritteNachEarnings: string[] = [
-    '1. Nach Zahlen: „Alles aktualisieren“ + Scan (Gap, RVOL, Surprise frisch).',
-    '2. Nur wenn ALLE Trigger erfüllt sind → ' + (richtung === 'long' ? 'Long' : 'Short') + ' eröffnen.',
-    '3. Einstieg ca. ' + formatPreis(entry) + ' (' + nachEarningsZeit + ').',
-    '4. Stop-Loss sofort: ' + formatPreis(stop) + ' (' + niveaus.stopAbstandPct + '% Abstand = ' + riskEur + ' € Risiko).',
-    '5. Take-Profit: ' + formatPreis(target) + ' (Ziel ~' + niveaus.gewinnZielEur + ' €).',
-    '6. CFD: Hebel ' +
-      niveaus.hebelEmpfohlen +
-      '×, Einsatz ~' +
-      niveaus.marginEur +
-      ' € (Exposure ~' +
-      niveaus.exposureEur +
-      ' €). Nicht über ' +
-      riskEur +
-      ' € verlieren.',
-    '7. Wenn Trigger nicht erfüllt (kein Gap, falsches Surprise): Trade NICHT erzwingen.',
-  ]
-
-  return {
+  return planBasis({
     modus: 'vorbereitung',
-    instrumentLabel: 'CFD ' + sym + ' (Earnings-Reaktion: US-Ticker falls .DE gelistet)',
+    instrumentLabel: 'CFD ' + sym,
     richtung,
-    entryHinweis: 'Market nach Trigger (geschätzt ' + formatPreis(entry) + ')',
+    entryHinweis: 'Nach Trigger ~' + formatPreis(entry),
     triggerBedingungen,
-    schritteJetzt,
-    schritteNachEarnings,
+    schritte: schritte.map((s, i) => ({ ...s, nr: i + 1 })),
+    nichtTun,
+    zeitfenster,
     exitBis: null,
     ...niveaus,
-  }
+  })
 }
 
 export function baueHandlungsplanFuerScan(

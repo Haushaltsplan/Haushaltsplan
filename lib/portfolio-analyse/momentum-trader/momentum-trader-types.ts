@@ -136,6 +136,7 @@ export type MomentumGapEventKurz = {
   gapPct: number | null
   rvol: number | null
   surpriseEpsPct: number | null
+  surpriseRevPct?: number | null
   timeBmoAmc: MomentumEarningsZeit
 }
 
@@ -174,6 +175,39 @@ export type MomentumWatchlistEintragAngereichert = MomentumWatchlistEintrag & {
   medianGapPct: number | null
   earningsEventsAnzahl: number
   letzteGapEvents: MomentumGapEventKurz[]
+  datenqualitaet: MomentumDatenqualitaet
+  liveKurs: MomentumLiveKurs | null
+}
+
+/** Live-/Extended-Hours-Kurs (Yahoo quoteSummary). */
+export type MomentumLiveKurs = {
+  preis: number
+  quelle: 'regular' | 'pre' | 'post'
+  marketState: string | null
+  gapVsPrevClosePct: number | null
+  aktualisiertAm: string
+}
+
+export type MomentumDatenqualitaetCheck = {
+  id: string
+  label: string
+  ok: boolean
+  detail: string
+}
+
+export type MomentumDatenqualitaet = {
+  score: number
+  status: 'gut' | 'teilweise' | 'schwach' | 'pre_ipo'
+  checks: MomentumDatenqualitaetCheck[]
+  empfehlung: string | null
+}
+
+/** Ergebnis Einzel-Ticker-Sync. */
+export type MomentumTickerSyncErgebnis = {
+  ok: boolean
+  schritte: string[]
+  fehler: string[]
+  eintrag: MomentumWatchlistEintragAngereichert | null
 }
 
 /** Scan-Paket inkl. Regime. */
@@ -340,9 +374,14 @@ export type MomentumHandlungssignal = {
   istAktiv: boolean
   prioritaet: number
   kurztext: string
+  /** Eine Zeile — was du jetzt konkret tun sollst */
+  aktionJetzt: string
   detailText: string
   risikoHinweis: string
   timing: string
+  /** Kurz-Checkliste vor dem Trade */
+  checkliste: string[]
+  warnungen: string[]
   fakten: string[]
   alternativen: Array<{
     richtung: MomentumRichtung | 'warten'
@@ -354,6 +393,15 @@ export type MomentumHandlungssignal = {
 }
 
 /** CFD/Aktie — konkrete Ausführungsempfehlung. */
+export type MomentumHandlungsschrittPhase = 'jetzt' | 'nach_event' | 'trigger' | 'risiko'
+
+export type MomentumHandlungsschritt = {
+  nr: number
+  phase: MomentumHandlungsschrittPhase
+  titel: string
+  detail?: string
+}
+
 export type MomentumHandlungsplan = {
   modus: 'aktiv' | 'vorbereitung'
   instrumentLabel: string
@@ -371,6 +419,12 @@ export type MomentumHandlungsplan = {
   stueckzahl: number | null
   gewinnZielEur: number
   triggerBedingungen: string[]
+  /** Strukturierte Schritt-für-Schritt-Anleitung */
+  schritte: MomentumHandlungsschritt[]
+  /** Was du bewusst nicht tun sollst */
+  nichtTun: string[]
+  /** Wann genau handeln (BMO/AMC/Pre-Run) */
+  zeitfenster: string | null
   schritteJetzt: string[]
   schritteNachEarnings: string[]
   exitBis: string | null

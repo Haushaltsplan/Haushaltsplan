@@ -37,7 +37,7 @@ export async function ladeHistorischeEarningsTermine(
     const mb = await ladeMarketbeatBeatMissHistorie({
       ticker: earningsSym,
       symbolYahoo: momentumEarningsTicker(earningsSym),
-      limit: 16,
+      limit: 24,
     })
     for (const row of mb) {
       const d = row.period
@@ -58,5 +58,5 @@ export async function ladeHistorischeEarningsTermine(
 }
 
 export function standardHistorieVonIso(): string {
-  return isoVorJahren(2)
+  return isoVorJahren(3)
 }

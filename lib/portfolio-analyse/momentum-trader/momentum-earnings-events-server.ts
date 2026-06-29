@@ -5,7 +5,7 @@
 import 'server-only'
 
 import { heuteIsoUtc, tageZwischenIso } from '@/lib/portfolio-analyse/dividenden-datum-hilfen'
-import { reichereEventMitEpsSurprise } from '@/lib/portfolio-analyse/momentum-trader/momentum-earnings-enrich-server'
+import { reichereEventsMitEpsSurprise } from '@/lib/portfolio-analyse/momentum-trader/momentum-earnings-enrich-server'
 import { findeEarningsReaktionsBar } from '@/lib/portfolio-analyse/momentum-trader/momentum-earnings-bar'
 import {
   ladeHistorischeEarningsTermine,
@@ -140,7 +140,14 @@ export async function ladeBarsFuerEarningsGap(
   return best
 }
 
-/** DivvyDiary + MarketBeat-Historie + Bars → momentum_earnings_events. */
+/** Einzelner Watchlist-Titel: Termine + Bars → Events (3 Jahre, MarketBeat-Batch). */
+export async function backfillEarningsEventsFuerEintrag(
+  e: MomentumWatchlistEintrag,
+): Promise<{ geschrieben: number; fehler: string[] }> {
+  return backfillEarningsEventsFuerWatchlist([e])
+}
+
+/** DivvyDiary + MarketBeat (3J) + Bars → momentum_earnings_events. */
 export async function backfillEarningsEventsFuerWatchlist(
   watchlist: MomentumWatchlistEintrag[],
 ): Promise<{ geschrieben: number; fehler: string[] }> {
@@ -182,14 +189,21 @@ export async function backfillEarningsEventsFuerWatchlist(
         if (ev) events.push(ev)
       }
 
-      const angereichert: MomentumEarningsEvent[] = []
-      for (let j = 0; j < events.length; j++) {
-        if (j > 0) await sleep(300)
-        angereichert.push(await reichereEventMitEpsSurprise(events[j], earningsSym))
-      }
+      const angereichert = await reichereEventsMitEpsSurprise(events, earningsSym)
 
       if (angereichert.length > 0) {
         geschrieben += await speichereMomentumEarningsEvents(angereichert)
+        const mitGap = angereichert.filter((ev) => ev.gapPct != null)
+        if (mitGap.length < 4 && termine.length > mitGap.length) {
+          fehler.push(
+            storeSymbol +
+              ': nur ' +
+              mitGap.length +
+              ' Gap-Events — ggf. mehr Bars oder US-Ticker prüfen (' +
+              earningsSym +
+              ')',
+          )
+        }
       } else if (termine.length > 0) {
         fehler.push(storeSymbol + ': ' + termine.length + ' Termine, aber keine Gap-Events aus Bars berechenbar')
       }

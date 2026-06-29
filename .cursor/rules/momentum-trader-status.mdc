@@ -33,7 +33,8 @@ Kurzfristiger, faktenbasierter Trading-Assistent (Earnings-Gaps, Momentum, IPO-F
 | **Yahoo Chart / quoteSummary** | OHLCV, BMO/AMC, Surprise-Fallback, IPO-Fallback |
 | **Stooq CSV** | OHLCV EU-first, Lückenfüller |
 | **DivvyDiary** | Earnings-Kalender + Historie |
-| **MarketBeat** | Termine, BMO/AMC, EPS-Surprise, IPO |
+| **MarketBeat** | Termine, BMO/AMC, EPS+Umsatz Surprise (24 Quartale), IPO |
+| **Yahoo quoteSummary** | Live-Kurs Pre/Post/Regular, Earnings, Surprise-Fallback |
 | **Wallstreet-Online** | Earnings EU |
 
 Kein Finnhub, kein Polygon — alles HTML/CSV-Scraping.
@@ -54,7 +55,10 @@ lib/portfolio-analyse/momentum-trader/
   momentum-full-sync-server.ts      ← Pipeline (Earnings→Bars→Events→IPO→Regime→Scan)
   momentum-ohlcv-merge-server.ts       ← Yahoo + Stooq (EU-first)
   momentum-ipo-server.ts               ← MarketBeat → Yahoo IPO
-  momentum-scan-verlauf-server.ts   ← Score-Historie für Sparklines
+  momentum-datenqualitaet-server.ts  ← 7 Checks pro Titel (Score 0–100)
+  momentum-ticker-sync-server.ts    ← Einzel-Titel: Earnings→Bars→Backfill→Live
+  momentum-yahoo-quote-server.ts    ← Pre/Post/Regular-Kurs
+  momentum-sektor-etf-server.ts     ← Sektor-RS (XLK/XLF/…)
   momentum-kalender-server.ts       ← Earnings-Kalender (35 Tage)
   momentum-briefing-server.ts       ← Tages-Briefing Markdown
   momentum-watchlist-server.ts      ← CRUD + IPO-Sync
@@ -67,6 +71,7 @@ lib/portfolio-analyse/momentum-trader/
 
 app/api/portfolio-analyse/momentum-trader/
   watchlist/   GET POST PATCH DELETE
+  watchlist/sync/ POST Einzel-Titel vollständig syncen
   sync/all/    POST Full-Pipeline
   scan/        GET POST (body: { mitKi: true })
   trades/      GET POST PATCH DELETE + Performance
@@ -104,7 +109,10 @@ components/portfolio-analyse/
 
 ## UI-Features
 
-- Onboarding-Karte bei leerer Watchlist
+- **Datenqualität** pro Watchlist-Titel (Score %, 7 Checks, ↻ Nachsyncen)
+- **Live-Kurs** (Pre/Post/Regular) nach Einzel-Sync
+- Gap-Historie **3 Jahre**, MarketBeat **24 Quartale** (EPS + Umsatz)
+- Momentum-Scan: zusätzlich **RS vs. Sektor-ETF**
 - Earnings-Kalender (nächste 35 Tage, Median-Gap)
 - Score-Sparklines in Scan-Karten (nach mehreren Scans)
 - Tages-Briefing → Zwischenablage (Markdown)

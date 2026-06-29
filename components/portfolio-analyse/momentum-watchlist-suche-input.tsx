@@ -1,7 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from 'react'
-import { createPortal } from 'react-dom'
+import { useCallback, useEffect, useId, useRef, useState } from 'react'
 import { momentumApiFetch } from '@/lib/portfolio-analyse/momentum-trader/momentum-api-fetch'
 import type { MomentumWatchlistSuchTreffer } from '@/lib/portfolio-analyse/momentum-trader/momentum-trader-types'
 import { istGueltigeIsin } from '@/lib/portfolio-analyse/watchlist-client'
@@ -30,13 +29,12 @@ export function MomentumWatchlistSucheInput({
 }) {
   const listId = useId()
   const wrapRef = useRef<HTMLDivElement>(null)
-  const inputRef = useRef<HTMLInputElement>(null)
+  const waehlenAktivRef = useRef(false)
   const [query, setQuery] = useState('')
   const [treffer, setTreffer] = useState<MomentumWatchlistSuchTreffer[]>([])
   const [sucheLaden, setSucheLaden] = useState(false)
   const [offen, setOffen] = useState(false)
   const [aktivIdx, setAktivIdx] = useState(-1)
-  const [dropdownRect, setDropdownRect] = useState<{ top: number; left: number; width: number } | null>(null)
   const [manuell, setManuell] = useState(false)
   const [manuellName, setManuellName] = useState('')
   const [manuellSymbol, setManuellSymbol] = useState('')
@@ -65,8 +63,9 @@ export function MomentumWatchlistSucheInput({
           )
           const data = (await res.json()) as { treffer?: MomentumWatchlistSuchTreffer[] }
           if (!cancelled) {
-            setTreffer(data.treffer ?? [])
-            setOffen((data.treffer?.length ?? 0) > 0)
+            const liste = data.treffer ?? []
+            setTreffer(liste)
+            setOffen(liste.length > 0)
             setAktivIdx(-1)
           }
         } catch {
@@ -85,41 +84,15 @@ export function MomentumWatchlistSucheInput({
   }, [query, manuell])
 
   useEffect(() => {
-    function onDocClick(e: MouseEvent) {
+    function onDocPointerDown(e: PointerEvent) {
+      if (waehlenAktivRef.current) return
       const target = e.target as Node
       if (wrapRef.current?.contains(target)) return
-      const portal = document.getElementById(listId + '-portal')
-      if (portal?.contains(target)) return
       setOffen(false)
     }
-    document.addEventListener('mousedown', onDocClick)
-    return () => document.removeEventListener('mousedown', onDocClick)
-  }, [listId])
-
-  const aktualisiereDropdownPosition = useCallback(() => {
-    const el = inputRef.current
-    if (!el) return
-    const r = el.getBoundingClientRect()
-    setDropdownRect({
-      top: r.bottom + 6,
-      left: r.left,
-      width: Math.max(r.width, 360),
-    })
+    document.addEventListener('pointerdown', onDocPointerDown)
+    return () => document.removeEventListener('pointerdown', onDocPointerDown)
   }, [])
-
-  useLayoutEffect(() => {
-    if (!offen || treffer.length === 0) {
-      setDropdownRect(null)
-      return
-    }
-    aktualisiereDropdownPosition()
-    window.addEventListener('resize', aktualisiereDropdownPosition)
-    window.addEventListener('scroll', aktualisiereDropdownPosition, true)
-    return () => {
-      window.removeEventListener('resize', aktualisiereDropdownPosition)
-      window.removeEventListener('scroll', aktualisiereDropdownPosition, true)
-    }
-  }, [offen, treffer.length, aktualisiereDropdownPosition])
 
   const loeseUndWaehle = useCallback(
     async (payload: {
@@ -131,6 +104,7 @@ export function MomentumWatchlistSucheInput({
     }) => {
       onFehler?.(null)
       setOffen(false)
+      waehlenAktivRef.current = true
       try {
         const res = await momentumApiFetch('/api/portfolio-analyse/momentum-trader/watchlist-suche', {
           method: 'POST',
@@ -152,21 +126,23 @@ export function MomentumWatchlistSucheInput({
           notiz: data.eintrag.notiz ?? null,
         })
         setQuery('')
+        setTreffer([])
         setManuell(false)
         setManuellName('')
         setManuellSymbol('')
         setManuellIpo('')
       } catch (e) {
         onFehler?.(e instanceof Error ? e.message : String(e))
+      } finally {
+        waehlenAktivRef.current = false
       }
     },
     [onAuswahl, onFehler],
   )
 
   const waehleTreffer = useCallback(
-    async (t: MomentumWatchlistSuchTreffer) => {
-      setQuery(t.name)
-      await loeseUndWaehle({
+    (t: MomentumWatchlistSuchTreffer) => {
+      void loeseUndWaehle({
         symbol: t.symbol,
         name: t.name,
         istPreIpo: t.istPreIpo,
@@ -193,7 +169,6 @@ export function MomentumWatchlistSucheInput({
         return
       }
       await loeseUndWaehle({ symbol: sym, name: meta.name || sym, istPreIpo: false })
-      setQuery('')
     },
     [loeseUndWaehle, onFehler],
   )
@@ -225,12 +200,12 @@ export function MomentumWatchlistSucheInput({
     }
 
     if (aktivIdx >= 0 && treffer[aktivIdx]) {
-      await waehleTreffer(treffer[aktivIdx])
+      waehleTreffer(treffer[aktivIdx])
       return
     }
 
     if (treffer.length === 1) {
-      await waehleTreffer(treffer[0])
+      waehleTreffer(treffer[0])
       return
     }
 
@@ -244,7 +219,7 @@ export function MomentumWatchlistSucheInput({
   }
 
   return (
-    <div className="relative" ref={wrapRef}>
+    <div className="relative z-30" ref={wrapRef}>
       <form onSubmit={(e) => void onSubmit(e)}>
         <label className="mb-1 block text-[11px] font-medium uppercase tracking-wide text-[var(--app-text-muted)]">
           Aktie / Pre-IPO suchen
@@ -291,7 +266,6 @@ export function MomentumWatchlistSucheInput({
           <div className="flex gap-2">
             <div className="relative min-w-0 flex-1">
               <input
-                ref={inputRef}
                 value={query}
                 onChange={(e) => {
                   setQuery(e.target.value)
@@ -304,7 +278,7 @@ export function MomentumWatchlistSucheInput({
                   if (e.key === 'Enter' && offen && treffer.length > 0) {
                     e.preventDefault()
                     const idx = aktivIdx >= 0 ? aktivIdx : 0
-                    void waehleTreffer(treffer[idx])
+                    waehleTreffer(treffer[idx])
                     return
                   }
                   if (!offen || treffer.length === 0) return
@@ -330,52 +304,40 @@ export function MomentumWatchlistSucheInput({
                   …
                 </span>
               ) : null}
-              {offen && treffer.length > 0 && dropdownRect && typeof document !== 'undefined'
-                ? createPortal(
-                    <ul
-                      id={listId + '-portal'}
-                      role="listbox"
-                      style={{
-                        position: 'fixed',
-                        top: dropdownRect.top,
-                        left: dropdownRect.left,
-                        width: dropdownRect.width,
-                        zIndex: 9999,
-                      }}
-                      className="max-h-[min(70vh,28rem)] overflow-y-auto rounded-xl border border-[var(--app-border-strong)] bg-[var(--app-surface-muted)] py-1.5 shadow-2xl shadow-black/50 ring-1 ring-white/5"
-                    >
-                      {treffer.map((t, i) => (
-                        <li key={t.symbol + (t.istPreIpo ? '-pre' : '')} role="option" aria-selected={i === aktivIdx}>
-                          <button
-                            type="button"
-                            onMouseDown={(e) => {
-                              e.preventDefault()
-                              void waehleTreffer(t)
-                            }}
-                            className={
-                              'flex w-full flex-col px-4 py-3 text-left transition ' +
-                              (i === aktivIdx ? 'bg-teal-500/15' : 'hover:bg-white/[0.06]')
-                            }
-                          >
-                            <span className="flex items-center gap-2 text-sm font-medium text-[var(--app-text)]">
-                              <span className="min-w-0 flex-1 truncate">{t.name}</span>
-                              {t.istPreIpo ? (
-                                <span className="shrink-0 rounded bg-violet-500/20 px-1.5 py-0.5 text-[9px] font-medium uppercase text-violet-300">
-                                  Pre-IPO
-                                </span>
-                              ) : null}
+              {offen && treffer.length > 0 ? (
+                <ul
+                  id={listId}
+                  role="listbox"
+                  className="absolute left-0 right-0 top-full z-50 mt-1 max-h-[min(70vh,28rem)] overflow-y-auto rounded-xl border border-[var(--app-border-strong)] bg-[var(--app-surface-muted)] py-1.5 shadow-2xl shadow-black/50 ring-1 ring-white/5"
+                >
+                  {treffer.map((t, i) => (
+                    <li key={t.symbol + (t.istPreIpo ? '-pre' : '') + i} role="option" aria-selected={i === aktivIdx}>
+                      <button
+                        type="button"
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => waehleTreffer(t)}
+                        className={
+                          'flex w-full flex-col px-4 py-3 text-left transition ' +
+                          (i === aktivIdx ? 'bg-teal-500/15' : 'hover:bg-white/[0.06]')
+                        }
+                      >
+                        <span className="flex items-center gap-2 text-sm font-medium text-[var(--app-text)]">
+                          <span className="min-w-0 flex-1 truncate">{t.name}</span>
+                          {t.istPreIpo ? (
+                            <span className="shrink-0 rounded bg-violet-500/20 px-1.5 py-0.5 text-[9px] font-medium uppercase text-violet-300">
+                              Pre-IPO
                             </span>
-                            <span className="mt-1 text-xs text-[var(--app-text-muted)]">
-                              {t.symbol}
-                              {t.exchange ? ` · ${t.exchange}` : ''}
-                            </span>
-                          </button>
-                        </li>
-                      ))}
-                    </ul>,
-                    document.body,
-                  )
-                : null}
+                          ) : null}
+                        </span>
+                        <span className="mt-1 text-xs text-[var(--app-text-muted)]">
+                          {t.symbol}
+                          {t.exchange ? ` · ${t.exchange}` : ''}
+                        </span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
             </div>
             <button
               type="submit"

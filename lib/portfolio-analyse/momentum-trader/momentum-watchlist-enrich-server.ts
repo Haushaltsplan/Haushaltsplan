@@ -1,17 +1,27 @@
 /**
- * Watchlist mit Earnings-Terminen + Gap-Historie anreichern.
+ * Watchlist mit Earnings-Terminen + Gap-Historie + Datenqualität anreichern.
  */
 
 import 'server-only'
 
 import { heuteIsoUtc, tageZwischenIso } from '@/lib/portfolio-analyse/dividenden-datum-hilfen'
-import { medianGapAbsPct, gapVolatilitaetSchaetzung } from '@/lib/portfolio-analyse/momentum-trader/momentum-earnings-events-server'
+import {
+  berechneDatenqualitaetAusEvents,
+  ladeNeuesterBarTag,
+} from '@/lib/portfolio-analyse/momentum-trader/momentum-datenqualitaet-server'
+import {
+  gapVolatilitaetSchaetzung,
+  ladeEarningsEventsFuerWatchlistEintrag,
+  medianGapAbsPct,
+} from '@/lib/portfolio-analyse/momentum-trader/momentum-earnings-events-server'
 import {
   ladeMomentumEarningsEventsFuerSymbol,
   ladeMomentumEarningsKalenderFuerSymbole,
 } from '@/lib/portfolio-analyse/momentum-trader/momentum-db-server'
+import { istMomentumPseudoIsin } from '@/lib/portfolio-analyse/momentum-trader/momentum-pseudo-isin'
 import type {
   MomentumEarningsZeit,
+  MomentumLiveKurs,
   MomentumWatchlistEintrag,
   MomentumWatchlistEintragAngereichert,
 } from '@/lib/portfolio-analyse/momentum-trader/momentum-trader-types'
@@ -28,6 +38,7 @@ function zeitLabel(z: MomentumEarningsZeit): string {
 
 export async function reichereWatchlistMitEarningsAn(
   eintraege: MomentumWatchlistEintrag[],
+  opts?: { liveKursProIsin?: Map<string, MomentumLiveKurs> },
 ): Promise<MomentumWatchlistEintragAngereichert[]> {
   const heute = heuteIsoUtc()
   const symbole = symboleAusWatchlist(eintraege)
@@ -43,6 +54,7 @@ export async function reichereWatchlistMitEarningsAn(
   }
 
   const eventsCache = new Map<string, Awaited<ReturnType<typeof ladeMomentumEarningsEventsFuerSymbol>>>()
+  const barTagCache = new Map<string, string | null>()
 
   return Promise.all(
     eintraege.map(async (e) => {
@@ -53,23 +65,27 @@ export async function reichereWatchlistMitEarningsAn(
         eventsCache.set(sym, events)
       }
 
+      const eventsVoll = await ladeEarningsEventsFuerWatchlistEintrag(e)
+      const mergedEvents = eventsVoll.length > (events?.length ?? 0) ? eventsVoll : (events ?? [])
+
       const naechstes = sym ? naechstesProSymbol.get(sym) ?? null : null
       const tageBis = naechstes ? tageZwischenIso(heute, naechstes.datum) : null
-      const medianGap = events ? gapVolatilitaetSchaetzung(events).medianGapPct ?? medianGapAbsPct(events ?? []) : null
-      const letzteGapEvents = (events ?? [])
+      const medianGap =
+        gapVolatilitaetSchaetzung(mergedEvents).medianGapPct ?? medianGapAbsPct(mergedEvents ?? [])
+      const letzteGapEvents = mergedEvents
         .slice()
         .sort((a, b) => b.earningsDate.localeCompare(a.earningsDate))
-        .slice(0, 4)
+        .slice(0, 6)
         .map((ev) => ({
           datum: ev.earningsDate,
           gapPct: ev.gapPct,
           rvol: ev.rvol,
           surpriseEpsPct: ev.surpriseEpsPct,
+          surpriseRevPct: ev.surpriseRevPct,
           timeBmoAmc: ev.timeBmoAmc,
         }))
 
-      return {
-        ...e,
+      const basis = {
         naechstesEarnings: naechstes
           ? {
               datum: naechstes.datum,
@@ -79,8 +95,29 @@ export async function reichereWatchlistMitEarningsAn(
             }
           : null,
         medianGapPct: medianGap,
-        earningsEventsAnzahl: events?.length ?? 0,
+        earningsEventsAnzahl: mergedEvents.length,
         letzteGapEvents,
+      }
+
+      let barsNeuesterTag: string | null = null
+      if (sym && !istMomentumPseudoIsin(e.isin)) {
+        if (!barTagCache.has(sym)) {
+          barTagCache.set(sym, await ladeNeuesterBarTag(sym))
+        }
+        barsNeuesterTag = barTagCache.get(sym) ?? null
+      }
+
+      const datenqualitaet = istMomentumPseudoIsin(e.isin)
+        ? berechneDatenqualitaetAusEvents(e, [], basis, null)
+        : berechneDatenqualitaetAusEvents(e, mergedEvents, basis, barsNeuesterTag)
+
+      const liveKurs = opts?.liveKursProIsin?.get(e.isin) ?? null
+
+      return {
+        ...e,
+        ...basis,
+        datenqualitaet,
+        liveKurs,
       }
     }),
   )
