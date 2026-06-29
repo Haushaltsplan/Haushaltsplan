@@ -105,8 +105,20 @@ export type MomentumTrade = {
   erstelltAm: string
 }
 
+/** Persönliche Watchlist — nur diese Titel werden geladen/gescrapt. */
+export type MomentumWatchlistEintrag = {
+  isin: string
+  name: string
+  symbolYahoo: string | null
+  symbolCandidates: string[]
+  hinzugefuegtAm: string
+  earningsSyncAm: string | null
+}
+
 /** Status-Übersicht für die UI (Datenfundament). */
 export type MomentumDatenStatus = {
+  watchlistAnzahl: number
+  watchlistMax: number
   barsAnzahl: number
   barsNeuesterTag: string | null
   earningsKalenderAnzahl: number
@@ -115,6 +127,14 @@ export type MomentumDatenStatus = {
   scanAnzahl: number
   tradesAnzahl: number
   supabaseKonfiguriert: boolean
+}
+
+/** Antwort des Earnings-Sync-Endpunkts. */
+export type MomentumEarningsSyncErgebnis = {
+  ok: boolean
+  watchlistGroesse: number
+  termineGeschrieben: number
+  fehler: string[]
 }
 
 /** Antwort des Bars-Sync-Endpunkts. */
