@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { PortfolioIsinLogo } from '@/components/portfolio-analyse/isin-logo'
 import { usePortfolioAnalyse } from '@/components/portfolio-analyse/pa-data-provider'
 import { PortfolioAnalyseShell } from '@/components/portfolio-analyse/portfolio-analyse-shell.client'
@@ -204,6 +204,7 @@ function PerformancePanel({ p }: { p: MomentumPerformance }) {
     'earnings_gap_fade',
     'earnings_momentum',
     'ipo_fade',
+    'earnings_pre_event',
     'earnings_vorlauf',
   ]
 
@@ -271,12 +272,14 @@ const TRADE_PLAYBOOKS: MomentumPlaybook[] = ['earnings_gap_fade', 'earnings_mome
 
 function filterScanErgebnisse(
   ergebnisse: MomentumScanEintrag[],
-  scanFilter: 'trade' | 'momentum' | 'ipo' | 'vorlauf' | 'alle',
+  scanFilter: 'trade' | 'momentum' | 'ipo' | 'pre_event' | 'alle',
 ): MomentumScanEintrag[] {
   return ergebnisse
     .filter((e) => {
       if (scanFilter === 'alle') return true
-      if (scanFilter === 'vorlauf') return e.playbook === 'earnings_vorlauf'
+      if (scanFilter === 'pre_event') {
+        return e.playbook === 'earnings_pre_event' || e.playbook === 'earnings_vorlauf'
+      }
       if (scanFilter === 'momentum') return e.playbook === 'earnings_momentum'
       if (scanFilter === 'ipo') {
         return e.playbook === 'ipo_fade' && e.ampel !== 'grau'
@@ -289,6 +292,44 @@ function filterScanErgebnisse(
       return true
     })
     .sort((a, b) => b.score - a.score)
+}
+
+function PreEventBanner({ eintraege }: { eintraege: MomentumScanEintrag[] }) {
+  const top = eintraege
+    .filter((e) => e.playbook === 'earnings_pre_event' && e.ampel === 'gelb')
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 4)
+  if (top.length === 0) return null
+
+  return (
+    <PaCard className="border-amber-500/25 bg-gradient-to-r from-amber-500/10 to-violet-500/5 p-4">
+      <h2 className="text-sm font-semibold text-amber-200">Pre-Event-Katalysator aktiv</h2>
+      <p className="mt-1 text-xs text-[var(--app-text-muted)]">
+        Vorbereitung vor Earnings — Szenario-Pläne im Scan (Filter „Pre-Event“).
+      </p>
+      <ul className="mt-3 space-y-2">
+        {top.map((e) => (
+          <li
+            key={e.symbol + e.scanDate}
+            className="rounded-lg border border-amber-500/20 bg-black/10 px-3 py-2 text-xs"
+          >
+            <span className="font-medium text-[var(--app-text)]">{e.symbol}</span>
+            <span className="text-[var(--app-text-muted)]">
+              {' '}
+              · Score {e.score}
+              {e.indikatoren.tageBisEarnings != null
+                ? ' · in ' + String(e.indikatoren.tageBisEarnings) + ' Tagen'
+                : ''}
+              {e.indikatoren.medianGapPct != null
+                ? ' · Median-Gap ' + String(e.indikatoren.medianGapPct) + '%'
+                : ''}
+              {e.indikatoren.vorbereitungStufe === 'hoch' ? ' · Katalysator hoch' : ''}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </PaCard>
+  )
 }
 
 function HandlungsempfehlungPanel({
@@ -357,11 +398,13 @@ function HandlungsempfehlungPanel({
 function WatchlistZeile({
   e,
   meta,
+  preEvent,
   onEntfernen,
   onMetaSpeichern,
 }: {
   e: MomentumWatchlistEintragAngereichert
   meta: ReturnType<typeof usePortfolioAnalyse>['meta']
+  preEvent?: { score: number; stufe: string; tageBis: number | null } | null
   onEntfernen: (isin: string) => void
   onMetaSpeichern: (isin: string, patch: { ipoDatum?: string | null; notiz?: string | null }) => Promise<void>
 }) {
@@ -408,7 +451,13 @@ function WatchlistZeile({
           <p className="truncate text-xs text-[var(--app-text-muted)]">
             {e.symbolYahoo ?? e.symbolCandidates[0] ?? '—'} · {preIpo ? 'Beobachtung' : e.isin}
           </p>
-          {preIpo && e.ipoDatum ? (
+          {preEvent && !preIpo ? (
+            <p className="mt-0.5 text-xs text-amber-300/90">
+              Pre-Event Score {preEvent.score}
+              {preEvent.tageBis != null ? ' · in ' + preEvent.tageBis + ' Tagen' : ''}
+              {preEvent.stufe === 'hoch' ? ' · Katalysator hoch' : ''}
+            </p>
+          ) : preIpo && e.ipoDatum ? (
             <p className="mt-0.5 text-xs text-violet-300/90">
               IPO geplant {new Date(e.ipoDatum + 'T12:00:00').toLocaleDateString('de-DE')}
             </p>
@@ -522,6 +571,17 @@ function ScanKarte({
   const guidance = e.indikatoren.guidanceLabel ?? e.indikatoren.guidanceFlag
   const kiMemo = e.indikatoren.kiBegruendung
   const rs = e.indikatoren.rsVsSpy20d
+  const laufVor = e.indikatoren.laufVorEarningsPct
+  const beatRate = e.indikatoren.beatRatePct
+  const [kopiert, setKopiert] = useState(false)
+  const istPreEvent = e.playbook === 'earnings_pre_event' || e.playbook === 'earnings_vorlauf'
+  const szenarioPlan =
+    typeof e.indikatoren.szenarioPlan === 'string' ? e.indikatoren.szenarioPlan : null
+  const vorbereitungStufe =
+    typeof e.indikatoren.vorbereitungStufe === 'string' ? e.indikatoren.vorbereitungStufe : null
+  const preEventHinweis = typeof e.indikatoren.hinweis === 'string' ? e.indikatoren.hinweis : null
+  const tageBis = e.indikatoren.tageBisEarnings
+  const atrElev = e.indikatoren.atrElevationsFaktor
   const kannTrade =
     TRADE_PLAYBOOKS.includes(e.playbook) && e.ampel !== 'grau' && e.ampel !== 'rot' && richtung != null
 
@@ -531,9 +591,15 @@ function ScanKarte({
         <div>
           <p className="text-sm font-semibold text-[var(--app-text)]">
             {e.symbol} · {playbookTitel(e.playbook)}
+            {vorbereitungStufe === 'hoch' ? (
+              <span className="ml-2 rounded bg-amber-500/20 px-1.5 py-0.5 text-[10px] font-medium uppercase text-amber-300">
+                Katalysator hoch
+              </span>
+            ) : null}
           </p>
           <p className="mt-0.5 text-xs text-[var(--app-text-muted)]">
             Score {e.score}/100
+            {tageBis != null && istPreEvent ? ' · in ' + String(tageBis) + ' Tagen' : ''}
             {richtung === 'short' ? ' · Short' : richtung === 'long' ? ' · Long' : ''}
           </p>
           {verlauf && verlauf.length >= 2 && (
@@ -549,6 +615,9 @@ function ScanKarte({
       <div className="mt-3 flex flex-wrap gap-3 text-xs tabular-nums text-[var(--app-text-muted)]">
         {gap != null && <span>Gap {String(gap)}%</span>}
         {median != null && <span>Median {String(median)}%</span>}
+        {laufVor != null && istPreEvent && <span>20T-Lauf {String(laufVor)}%</span>}
+        {beatRate != null && istPreEvent && <span>Beats {String(beatRate)}%</span>}
+        {atrElev != null && istPreEvent && <span>ATR-Faktor {String(atrElev)}×</span>}
         {rvol != null && <span>RVOL {String(rvol)}×</span>}
         {surprise != null && <span>Surprise {String(surprise)}%</span>}
         {rs != null && <span>RS {String(rs)}%</span>}
@@ -569,6 +638,36 @@ function ScanKarte({
             <li key={g}>✗ {g}</li>
           ))}
         </ul>
+      )}
+      {preEventHinweis && istPreEvent && (
+        <p className="mt-2 text-xs font-medium text-amber-300/90">{preEventHinweis}</p>
+      )}
+      {szenarioPlan && istPreEvent && (
+        <div className="mt-3 rounded-lg border border-violet-500/20 bg-violet-500/5 p-3">
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-[10px] font-medium uppercase tracking-wide text-violet-300/90">Szenario-Plan</p>
+            <button
+              type="button"
+              onClick={() => {
+                void navigator.clipboard.writeText(szenarioPlan).then(() => {
+                  setKopiert(true)
+                  window.setTimeout(() => setKopiert(false), 2000)
+                })
+              }}
+              className="text-[10px] text-violet-300/80 hover:text-violet-200"
+            >
+              {kopiert ? 'Kopiert' : 'Kopieren'}
+            </button>
+          </div>
+          <ul className="mt-2 space-y-1.5 text-[11px] leading-relaxed text-[var(--app-text-muted)]">
+            {szenarioPlan.split('\n').map((zeile) => (
+              <li key={zeile}>{zeile}</li>
+            ))}
+          </ul>
+          <p className="mt-2 text-[10px] italic text-amber-400/80">
+            Kein Einstieg vor den Zahlen — nur Vorbereitung.
+          </p>
+        </div>
       )}
       {kiMemo != null && typeof kiMemo === 'string' && (
         <p className="mt-2 text-xs italic text-[var(--app-text-muted)]">{kiMemo}</p>
@@ -662,7 +761,7 @@ export function MomentumTraderClient() {
   const [performance, setPerformance] = useState<MomentumPerformance | null>(null)
   const [erinnerungen, setErinnerungen] = useState<MomentumErinnerung[]>([])
   const [handlung, setHandlung] = useState<MomentumHandlungsempfehlung | null>(null)
-  const [scanFilter, setScanFilter] = useState<'trade' | 'momentum' | 'ipo' | 'vorlauf' | 'alle'>('alle')
+  const [scanFilter, setScanFilter] = useState<'trade' | 'momentum' | 'ipo' | 'pre_event' | 'alle'>('alle')
   const [exportHinweis, setExportHinweis] = useState<string | null>(null)
   const [kalender, setKalender] = useState<MomentumEarningsKalenderMonat | null>(null)
   const [scoreVerlauf, setScoreVerlauf] = useState<Record<string, MomentumScoreVerlaufPunkt[]>>({})
@@ -948,7 +1047,7 @@ export function MomentumTraderClient() {
       '',
       ...filterScanErgebnisse(scan.ergebnisse, scanFilter).map((e) => {
         const r = e.indikatoren.richtung
-        return (
+        let line =
           '- **' +
           e.symbol +
           '** · ' +
@@ -958,8 +1057,17 @@ export function MomentumTraderClient() {
           ' · ' +
           e.ampel +
           (r ? ' · ' + String(r) : '') +
-          (e.indikatoren.gapPct != null ? ' · Gap ' + e.indikatoren.gapPct + '%' : '')
-        )
+          (e.indikatoren.gapPct != null ? ' · Gap ' + e.indikatoren.gapPct + '%' : '') +
+          (e.indikatoren.tageBisEarnings != null
+            ? ' · in ' + String(e.indikatoren.tageBisEarnings) + ' Tagen'
+            : '')
+        if (
+          (e.playbook === 'earnings_pre_event' || e.playbook === 'earnings_vorlauf') &&
+          typeof e.indikatoren.szenarioPlan === 'string'
+        ) {
+          line += '\n  ' + e.indikatoren.szenarioPlan.split('\n').join('\n  ')
+        }
+        return line
       }),
     ]
     void navigator.clipboard.writeText(lines.join('\n')).then(() => {
@@ -994,6 +1102,25 @@ export function MomentumTraderClient() {
   const busy = fullSyncLaeuft || barsSyncLaeuft || earningsSyncLaeuft || scanLaeuft
 
   const gefilterteScan = scan ? filterScanErgebnisse(scan.ergebnisse, scanFilter) : []
+
+  const preEventMap = useMemo(() => {
+    const m = new Map<string, { score: number; stufe: string; tageBis: number | null }>()
+    if (!scan) return m
+    for (const e of scan.ergebnisse) {
+      if (e.playbook !== 'earnings_pre_event' && e.playbook !== 'earnings_vorlauf') continue
+      const sym = e.symbol
+      const prev = m.get(sym)
+      if (!prev || e.score > prev.score) {
+        m.set(sym, {
+          score: e.score,
+          stufe: String(e.indikatoren.vorbereitungStufe ?? ''),
+          tageBis:
+            e.indikatoren.tageBisEarnings != null ? Number(e.indikatoren.tageBisEarnings) : null,
+        })
+      }
+    }
+    return m
+  }, [scan])
 
   return (
     <PortfolioAnalyseShell title="Momentum Trader">
@@ -1054,6 +1181,8 @@ export function MomentumTraderClient() {
           />
         )}
 
+        {scan && <PreEventBanner eintraege={scan.ergebnisse} />}
+
         {performance && performance.tradesGesamt > 0 && <PerformancePanel p={performance} />}
 
         {regime && (
@@ -1103,15 +1232,19 @@ export function MomentumTraderClient() {
             <p className="mt-4 text-sm text-[var(--app-text-muted)]">Titel per Suche hinzufügen — dann „Alles aktualisieren“.</p>
           ) : (
             <ul className="mt-4 divide-y divide-[var(--app-border)] rounded-xl border border-[var(--app-border)]">
-              {watchlist.map((e) => (
+              {watchlist.map((e) => {
+                const sym = e.symbolYahoo ?? e.symbolCandidates[0] ?? ''
+                const preEvent = sym ? preEventMap.get(sym.toUpperCase()) ?? null : null
+                return (
                 <WatchlistZeile
                   key={e.isin}
                   e={e}
                   meta={meta}
+                  preEvent={preEvent}
                   onEntfernen={(isin) => void entfernen(isin)}
                   onMetaSpeichern={speichereWatchlistMeta}
                 />
-              ))}
+              )})}
             </ul>
           )}
         </PaCard>
@@ -1121,7 +1254,7 @@ export function MomentumTraderClient() {
             <div>
               <h2 className="text-sm font-semibold text-[var(--app-text)]">Scan</h2>
               <p className="mt-1 text-xs text-[var(--app-text-muted)]">
-                Gap-Fade · Earnings-Momentum · IPO-Fade · Vorlauf. 100 % Scraper — keine API-Keys.
+                Gap-Fade · Momentum · IPO · Pre-Event-Katalysator. 100 % Scraper — keine API-Keys.
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
@@ -1131,7 +1264,7 @@ export function MomentumTraderClient() {
                   ['trade', 'Gap-Fade'],
                   ['momentum', 'Momentum'],
                   ['ipo', 'IPO-Fade'],
-                  ['vorlauf', 'Vorlauf'],
+                  ['pre_event', 'Pre-Event'],
                   ['alle', 'Alle'],
                 ] as const
               ).map(([key, label]) => (
@@ -1178,7 +1311,7 @@ export function MomentumTraderClient() {
               {scanLaeuft
                 ? 'Scan läuft …'
                 : scan?.ergebnisse.length
-                  ? 'Keine Trade-Setups in diesem Filter — „Alle“ oder „Vorlauf“ zeigt Beobachtungseinträge.'
+                  ? 'Keine Trade-Setups in diesem Filter — „Pre-Event“ oder „Alle“ für Katalysator vor Earnings.'
                   : 'Kein Scan — oben „Alles aktualisieren“ oder nur „Scan“. Handlungsempfehlung erklärt den nächsten Schritt.'}
             </p>
           )}

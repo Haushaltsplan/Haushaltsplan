@@ -5,7 +5,7 @@
 import 'server-only'
 
 import { heuteIsoUtc, tageZwischenIso } from '@/lib/portfolio-analyse/dividenden-datum-hilfen'
-import { medianGapAbsPct } from '@/lib/portfolio-analyse/momentum-trader/momentum-earnings-events-server'
+import { medianGapAbsPct, gapVolatilitaetSchaetzung } from '@/lib/portfolio-analyse/momentum-trader/momentum-earnings-events-server'
 import {
   ladeMomentumEarningsEventsFuerSymbol,
   ladeMomentumEarningsKalenderFuerSymbole,
@@ -55,7 +55,7 @@ export async function reichereWatchlistMitEarningsAn(
 
       const naechstes = sym ? naechstesProSymbol.get(sym) ?? null : null
       const tageBis = naechstes ? tageZwischenIso(heute, naechstes.datum) : null
-      const medianGap = events ? medianGapAbsPct(events) : null
+      const medianGap = events ? gapVolatilitaetSchaetzung(events).medianGapPct ?? medianGapAbsPct(events ?? []) : null
       const letzteGapEvents = (events ?? [])
         .slice()
         .sort((a, b) => b.earningsDate.localeCompare(a.earningsDate))

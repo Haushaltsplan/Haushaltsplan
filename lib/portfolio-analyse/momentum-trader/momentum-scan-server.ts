@@ -8,8 +8,6 @@ import { heuteIsoUtc, tageZwischenIso } from '@/lib/portfolio-analyse/dividenden
 import {
   EARNINGS_LOOKBACK_TAGE,
   EARNINGS_BEOBACHTUNG_MAX_TAGE,
-  EARNINGS_VORLAUF_MAX,
-  EARNINGS_VORLAUF_MIN,
   GAP_MEDIAN_FAKTOR,
   GAP_MIN_PCT,
   IPO_FADE_MAX_TAGE,
@@ -27,6 +25,7 @@ import {
 } from '@/lib/portfolio-analyse/momentum-trader/momentum-constants'
 import { findeEarningsReaktionsBar } from '@/lib/portfolio-analyse/momentum-trader/momentum-earnings-bar'
 import {
+  gapVolatilitaetSchaetzung,
   ladeBarsFuerEarningsGap,
   ladeMedianGapFuerSymbol,
   medianGapAbsPct,
@@ -35,6 +34,7 @@ import {
   primaeresAnzeigeSymbol,
 } from '@/lib/portfolio-analyse/momentum-trader/momentum-symbol-hilfen'
 import { ladeMomentumIpoDatum } from '@/lib/portfolio-analyse/momentum-trader/momentum-ipo-server'
+import { bewerteEarningsPreEvent } from '@/lib/portfolio-analyse/momentum-trader/momentum-pre-event-server'
 import { guidanceLabel } from '@/lib/portfolio-analyse/momentum-trader/momentum-guidance'
 import {
   ladeMomentumBars,
@@ -471,85 +471,11 @@ function bewerteIpoFade(
   }
 }
 
-function bewerteEarningsVorlauf(
-  symbol: string,
-  earningsDate: string,
-  timeBmoAmc: string,
-  regimeGates: MomentumRegimeGates,
-  medianGap: number | null,
-): MomentumScanEintrag {
-  const heute = heuteIsoUtc()
-  const tageBis = tageZwischenIso(heute, earningsDate)
-  const gatesPassed: string[] = []
-  const gatesFailed: string[] = []
-
-  if (tageBis >= 0 && tageBis <= EARNINGS_VORLAUF_MAX) {
-    if (tageBis < EARNINGS_VORLAUF_MIN) {
-      gatesPassed.push(
-        'Earnings in ' +
-          tageBis +
-          ' Tagen — unmittelbar bevorstehend (nach Zahlen: Kurse syncen + Scan)',
-      )
-    } else {
-      gatesPassed.push(
-        'Earnings in ' + tageBis + ' Tagen (Fenster ' + EARNINGS_VORLAUF_MIN + '–' + EARNINGS_VORLAUF_MAX + ')',
-      )
-    }
-  } else if (tageBis > EARNINGS_VORLAUF_MAX) {
-    gatesFailed.push(
-      'Earnings in ' + tageBis + ' Tagen — noch Beobachtung, kein Trade (Vorlauf ab ' + EARNINGS_VORLAUF_MIN + ' Tage)',
-    )
-  } else {
-    gatesFailed.push('Earnings-Termin liegt in der Vergangenheit')
-  }
-
-  if (medianGap != null) {
-    gatesPassed.push('Historischer Median-Gap: ' + medianGap.toFixed(1) + '%')
-  } else {
-    gatesFailed.push('Keine Gap-Historie — Backfill ausführen')
-  }
-
-  gatesPassed.push(
-    'Regime: ' + (regimeGates.longBias ? 'Long' : '—') + ' / ' + (regimeGates.shortBias ? 'Short' : '—'),
-  )
-
-  let score = 40
-  if (tageBis >= 0 && tageBis <= EARNINGS_VORLAUF_MAX) {
-    if (tageBis <= 7) score += 25
-    else score += 10
-  } else if (tageBis > EARNINGS_VORLAUF_MAX) {
-    score = 25
-  }
-  if (medianGap != null && medianGap >= 4) score += 15
-  score = Math.min(85, score)
-
-  const ampel =
-    tageBis >= 0 && tageBis <= EARNINGS_VORLAUF_MAX ? 'gelb' : tageBis > EARNINGS_VORLAUF_MAX ? 'grau' : 'grau'
-
-  return {
-    scanDate: heute,
-    symbol,
-    playbook: 'earnings_vorlauf',
-    score,
-    ampel,
-    gatesPassed,
-    gatesFailed,
-    indikatoren: {
-      playbookLabel: momentumPlaybookLabel('earnings_vorlauf'),
-      earningsDate,
-      tageBisEarnings: tageBis,
-      timeBmoAmc,
-      medianGapPct: medianGap,
-      hinweis: 'Beobachten — nach Earnings Kurse syncen + Scan wiederholen',
-    },
-  }
-}
-
 export type MomentumScanOptionen = {
   mitKiMemos?: boolean
 }
 
-/** Scan: Gap-Fade, Momentum, IPO-Fade + Vorlauf. */
+/** Scan: Gap-Fade, Momentum, IPO-Fade, Pre-Event-Katalysator. */
 export async function scanMomentumWatchlist(
   watchlist: MomentumWatchlistEintrag[],
   regimeGates: MomentumRegimeGates,
@@ -568,7 +494,8 @@ export async function scanMomentumWatchlist(
     if (!symbol) continue
 
     const events = await ladeMomentumEarningsEventsFuerSymbol(symbol)
-    const medianGap = medianGapAbsPct(events) ?? (await ladeMedianGapFuerSymbol(symbol))
+    const gapStat = gapVolatilitaetSchaetzung(events)
+    const medianGap = gapStat.medianGapPct ?? medianGapAbsPct(events) ?? (await ladeMedianGapFuerSymbol(symbol))
     const bars = await ladeBarsFuerEarningsGap(e, vonBars, heute)
 
     const vergangen = kalender.filter((k) => {
@@ -599,12 +526,15 @@ export async function scanMomentumWatchlist(
 
     if (naechstesKommend) {
       ergebnisse.push(
-        bewerteEarningsVorlauf(
+        bewerteEarningsPreEvent(
           symbol,
+          heute,
           naechstesKommend.earningsDate,
           naechstesKommend.timeBmoAmc,
           regimeGates,
           medianGap,
+          bars,
+          events,
         ),
       )
     }
@@ -623,16 +553,10 @@ export async function scanMomentumWatchlist(
 
   ergebnisse.sort((a, b) => b.score - a.score)
 
-  let final = ergebnisse
-  if (opts?.mitKiMemos) {
-    const { ergaenzeScanMitKiMemos } = await import(
-      '@/lib/portfolio-analyse/momentum-trader/momentum-scan-memo-server'
-    )
-    final = await ergaenzeScanMitKiMemos(ergebnisse)
-  }
+  const final = ergebnisse
 
-  await loescheMomentumScanFuerDatum(heute)
   if (final.length > 0) {
+    await loescheMomentumScanFuerDatum(heute)
     await speichereMomentumScanErgebnisse(final)
     const { speichereMomentumScanVerlauf } = await import(
       '@/lib/portfolio-analyse/momentum-trader/momentum-scan-verlauf-server'
@@ -640,7 +564,23 @@ export async function scanMomentumWatchlist(
     await speichereMomentumScanVerlauf(final)
   }
 
-  return { scanDate: heute, regime: regimeGates, ergebnisse: final }
+  let mitMemos = final
+  if (opts?.mitKiMemos) {
+    const { ergaenzeScanMitKiMemos } = await import(
+      '@/lib/portfolio-analyse/momentum-trader/momentum-scan-memo-server'
+    )
+    const { ergaenzePreEventMitKiMemos } = await import(
+      '@/lib/portfolio-analyse/momentum-trader/momentum-pre-event-memo-server'
+    )
+    mitMemos = await ergaenzeScanMitKiMemos(final)
+    mitMemos = await ergaenzePreEventMitKiMemos(mitMemos)
+    if (mitMemos.length > 0) {
+      await loescheMomentumScanFuerDatum(heute)
+      await speichereMomentumScanErgebnisse(mitMemos)
+    }
+  }
+
+  return { scanDate: heute, regime: regimeGates, ergebnisse: mitMemos }
 }
 
 export { momentumPlaybookLabel as playbookLabel }

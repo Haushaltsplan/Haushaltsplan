@@ -47,7 +47,7 @@ export function berechneMomentumErinnerungen(input: {
         typ: 'earnings_bald',
         schwere: 'info',
         symbol: sym,
-        text: sym + ': Earnings in ' + n.tageBis + ' Tagen — Vorlauf-Setup beobachten.',
+        text: sym + ': Earnings in ' + n.tageBis + ' Tagen — Pre-Event-Katalysator / Szenario-Plan im Scan.',
       })
     }
   }

@@ -23,7 +23,8 @@ Kurzfristiger, faktenbasierter Trading-Assistent (Earnings-Gaps, Momentum, IPO-F
 | `earnings_gap_fade` | Short bei Gap-Up / Long bei Gap-Down | Gap ≥5%, RVOL ≥1,5×, ≥2× Median-Gap, Regime-Bias |
 | `earnings_momentum` | Mit Surprise | Beat+Gap-Up+Tag1-Stärke+RS vs. S&P 20T |
 | `ipo_fade` | Short | 2–14 Tage nach IPO, Lauf ≥20%, Reversal |
-| `earnings_vorlauf` | — | Beobachten 3–14 Tage vor Earnings |
+| `earnings_pre_event` | — | Katalysator 0–14 Tage vor Earnings: Median-Gap, ATR-Spannung, Szenario-Plan (kein Einstieg) |
+| `earnings_vorlauf` | — | Legacy — ersetzt durch `earnings_pre_event` |
 
 ## Datenquellen (100 % Scraper — keine API-Keys)
 

@@ -9,6 +9,7 @@
 export type MomentumPlaybook =
   | 'earnings_gap_fade'
   | 'earnings_vorlauf'
+  | 'earnings_pre_event'
   | 'earnings_momentum'
   | 'ipo_fade'
 

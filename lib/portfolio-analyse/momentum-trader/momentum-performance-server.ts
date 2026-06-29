@@ -9,6 +9,7 @@ import type {
 
 const PLAYBOOKS: MomentumPlaybook[] = [
   'earnings_gap_fade',
+  'earnings_pre_event',
   'earnings_vorlauf',
   'earnings_momentum',
   'ipo_fade',

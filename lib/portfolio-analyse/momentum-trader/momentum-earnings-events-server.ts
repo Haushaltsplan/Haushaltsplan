@@ -85,6 +85,35 @@ export function medianGapAbsPct(events: MomentumEarningsEvent[]): number | null 
   return abs.length % 2 === 0 ? (abs[mid - 1] + abs[mid]) / 2 : abs[mid]
 }
 
+/** Median oder Einzel-Event-Fallback für Pre-Event-Scoring. */
+export function gapVolatilitaetSchaetzung(events: MomentumEarningsEvent[]): {
+  medianGapPct: number | null
+  eventsMitGap: number
+  beatRatePct: number | null
+  avgSurprisePct: number | null
+} {
+  const mitGap = events.filter((e) => e.gapPct != null && Number.isFinite(e.gapPct))
+  const median = medianGapAbsPct(events)
+  const fallback =
+    median ??
+    (mitGap.length === 1 && mitGap[0].gapPct != null ? Math.abs(mitGap[0].gapPct) : null)
+
+  const surprises = events
+    .map((e) => e.surpriseEpsPct)
+    .filter((s): s is number => s != null && Number.isFinite(s))
+  const beats = surprises.filter((s) => s > 0).length
+
+  return {
+    medianGapPct: fallback,
+    eventsMitGap: mitGap.length,
+    beatRatePct: surprises.length > 0 ? Math.round((beats / surprises.length) * 100) : null,
+    avgSurprisePct:
+      surprises.length > 0
+        ? Math.round((surprises.reduce((a, b) => a + b, 0) / surprises.length) * 10) / 10
+        : null,
+  }
+}
+
 export async function ladeBarsFuerEarningsGap(
   eintrag: MomentumWatchlistEintrag,
   vonBars: string,

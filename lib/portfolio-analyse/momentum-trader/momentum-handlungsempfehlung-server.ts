@@ -18,6 +18,7 @@ import type {
 } from '@/lib/portfolio-analyse/momentum-trader/momentum-trader-types'
 
 const TRADE_PLAYBOOKS = new Set(['earnings_gap_fade', 'earnings_momentum', 'ipo_fade'])
+const PRE_EVENT_PLAYBOOKS = new Set(['earnings_pre_event', 'earnings_vorlauf'])
 
 function regimeText(regime: MomentumMarketRegime | null): string {
   if (!regime) return 'Regime unbekannt — Pipeline ausführen.'
@@ -140,13 +141,34 @@ export function generiereMomentumHandlungsempfehlung(input: {
       text += 'Earnings morgen (' + n.zeitLabel + '). Heute: keine neue Position — Plan für Reaktionstag.'
     } else if (n.tageBis >= EARNINGS_VORLAUF_MIN && n.tageBis <= EARNINGS_VORLAUF_MAX) {
       aktion = 'vorbereiten'
-      prioritaet = 75
+      prioritaet = 80
+      const preEvent = input.scan?.ergebnisse.find(
+        (s) => s.symbol === sym && PRE_EVENT_PLAYBOOKS.has(s.playbook),
+      )
       text +=
         'Earnings in ' +
         n.tageBis +
-        ' Tagen — Vorlauf-Fenster aktiv. Median-Gap: ' +
-        (e.medianGapPct != null ? e.medianGapPct.toFixed(1) + '%' : 'noch unbekannt (Backfill)') +
-        '. Playbook: Beobachten, nach Zahlen Gap-Fade prüfen.'
+        ' Tagen — Pre-Event-Katalysator aktiv. Median-Gap: ' +
+        (e.medianGapPct != null ? e.medianGapPct.toFixed(1) + '%' : 'Backfill nötig') +
+        '.'
+      if (preEvent) {
+        const stufe = preEvent.indikatoren.vorbereitungStufe
+        if (stufe === 'hoch') {
+          text += ' Hohes Vorbereitungs-Potenzial — Szenario-Plan im Scan (Filter Pre-Event).'
+          prioritaet = 88
+        } else {
+          text += ' Szenario-Plan unter Scan → Pre-Event.'
+        }
+      } else {
+        text += ' Scan ausführen für Szenario-Plan.'
+      }
+    } else if (n.tageBis >= 0 && n.tageBis < EARNINGS_VORLAUF_MIN) {
+      aktion = 'vorbereiten'
+      prioritaet = 90
+      text +=
+        'Earnings in ' +
+        n.tageBis +
+        ' Tagen — unmittelbar bevorstehend. Pre-Event-Szenarien prüfen, nach Zahlen sofort Sync + Scan.'
     } else if (n.tageBis > EARNINGS_VORLAUF_MAX) {
       aktion = 'beobachten'
       prioritaet = 20
@@ -188,19 +210,27 @@ export function generiereMomentumHandlungsempfehlung(input: {
 
   positionen.sort((a, b) => b.prioritaet - a.prioritaet)
 
+  const preEventAktiv =
+    input.scan?.ergebnisse.some(
+      (e) => PRE_EVENT_PLAYBOOKS.has(e.playbook) && e.ampel === 'gelb',
+    ) ?? false
+
   let zusammenfassung: string
   if (setups.length > 0) {
     zusammenfassung =
       setups.length +
       ' Trade-Setup(s) aktiv — zuerst prüfen, dann optional im Journal erfassen (max. 10 €).'
+  } else if (preEventAktiv) {
+    zusammenfassung =
+      'Pre-Event-Katalysator aktiv — Szenario-Plan unter Scan → „Pre-Event“. Kein Einstieg vor den Zahlen.'
   } else if (datenHinweise.length > 0) {
     zusammenfassung =
       'Noch kein Trade-Setup — das ist normal außerhalb von Earnings-Wochen. ' +
       datenHinweise[0] +
-      ' Beobachtungs-Scan unter „Alle“ / „Vorlauf“.'
+      ' Katalysator unter Scan → „Pre-Event“.'
   } else {
     zusammenfassung =
-      'Kein Trade jetzt — Watchlist beobachten. Nächster Schritt: Vorlauf 3–14 Tage vor Earnings oder Reaktion nach Zahlen.'
+      'Kein Trade jetzt — Pre-Event-Katalysator 3–14 Tage vor Earnings oder Reaktion nach Zahlen.'
   }
 
   const offen = input.trades.filter((t) => t.exitPrice == null)

@@ -46,6 +46,52 @@ export function generiereMomentumBriefing(input: MomentumBriefingInput): string 
     lines.push('')
   }
 
+  const preEventSetups = input.ergebnisse
+    .filter(
+      (e) =>
+        (e.playbook === 'earnings_pre_event' || e.playbook === 'earnings_vorlauf') &&
+        e.ampel !== 'grau',
+    )
+    .sort((a, b) => b.score - a.score)
+
+  if (preEventSetups.length > 0) {
+    lines.push('## Pre-Event-Katalysator')
+    lines.push('_Vorbereitung vor Earnings — kein Einstieg vor den Zahlen._')
+    lines.push('')
+    for (const e of preEventSetups) {
+      lines.push(
+        '### ' +
+          e.symbol +
+          ' (Score ' +
+          e.score +
+          ', Stufe ' +
+          String(e.indikatoren.vorbereitungStufe ?? '—') +
+          ')',
+      )
+      if (e.indikatoren.tageBisEarnings != null) {
+        lines.push('- Earnings in ' + String(e.indikatoren.tageBisEarnings) + ' Tagen')
+      }
+      if (e.indikatoren.medianGapPct != null) {
+        lines.push('- Median-Gap: ' + String(e.indikatoren.medianGapPct) + '%')
+      }
+      if (e.indikatoren.laufVorEarningsPct != null) {
+        lines.push('- 20-Tage-Lauf: ' + String(e.indikatoren.laufVorEarningsPct) + '%')
+      }
+      if (e.indikatoren.beatRatePct != null) {
+        lines.push('- Beat-Rate: ' + String(e.indikatoren.beatRatePct) + '%')
+      }
+      const plan = e.indikatoren.szenarioPlan
+      if (typeof plan === 'string' && plan.trim()) {
+        lines.push('- Szenario-Plan:')
+        for (const z of plan.split('\n')) lines.push('  ' + z)
+      }
+      if (e.indikatoren.kiBegruendung && typeof e.indikatoren.kiBegruendung === 'string') {
+        lines.push('- KI: ' + e.indikatoren.kiBegruendung)
+      }
+      lines.push('')
+    }
+  }
+
   const tradeSetups = input.ergebnisse.filter(
     (e) =>
       (e.playbook === 'earnings_gap_fade' ||
@@ -53,6 +99,7 @@ export function generiereMomentumBriefing(input: MomentumBriefingInput): string 
         e.playbook === 'ipo_fade') &&
       (e.ampel === 'gruen' || e.ampel === 'gelb'),
   )
+
   if (tradeSetups.length > 0) {
     lines.push('## Trade-Setups')
     for (const e of tradeSetups.sort((a, b) => b.score - a.score)) {
