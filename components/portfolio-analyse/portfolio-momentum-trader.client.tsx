@@ -23,7 +23,7 @@ import type {
   MomentumWatchlistEintragAngereichert,
 } from '@/lib/portfolio-analyse/momentum-trader/momentum-trader-types'
 import { momentumPlaybookLabel } from '@/lib/portfolio-analyse/momentum-trader/momentum-constants'
-import { watchlistEintragAusMeta } from '@/lib/portfolio-analyse/watchlist-client'
+import { istGueltigeIsin, watchlistEintragAusMeta } from '@/lib/portfolio-analyse/watchlist-client'
 
 function StatKachel({ label, wert }: { label: string; wert: string | number }) {
   return (
@@ -481,9 +481,13 @@ export function MomentumTraderClient() {
 
   const hinzufuegen = useCallback(
     async (auswahl: AktienSucheAuswahl) => {
-      const isin = auswahl.isin?.trim().toUpperCase() || auswahl.meta.isin?.trim().toUpperCase()
+      const kandidat =
+        auswahl.isin?.trim().toUpperCase() || auswahl.meta.isin?.trim().toUpperCase() || ''
+      const isin = kandidat && istGueltigeIsin(kandidat) ? kandidat : null
       if (!isin) {
-        setFehler('Keine ISIN — Watchlist braucht ISIN für DivvyDiary.')
+        setFehler(
+          'Keine gültige ISIN — Ticker aus der Liste wählen, ISIN direkt eingeben (z. B. US0378331005) oder FINNHUB_API_KEY setzen.',
+        )
         return
       }
       setHinzufuegenLaden(true)
@@ -505,7 +509,8 @@ export function MomentumTraderClient() {
         setWatchlist(data.eintraege ?? [])
         await ladeAlles()
       } catch (e) {
-        setFehler(String(e))
+        const msg = e instanceof Error ? e.message : String(e)
+        setFehler(msg.replace(/^Error:\s*/i, ''))
       } finally {
         setHinzufuegenLaden(false)
       }

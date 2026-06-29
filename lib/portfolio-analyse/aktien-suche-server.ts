@@ -1,5 +1,6 @@
 import 'server-only'
 
+import { loeseIsinFuerTicker } from '@/lib/portfolio-analyse/ticker-isin-aufloesung-server'
 import { isinAusYahooSymbol } from '@/lib/portfolio-analyse/isin-kenntnisse'
 import { lookupIsinMetadaten, type IsinMetadata } from '@/lib/portfolio-analyse/isin-lookup-server'
 
@@ -78,30 +79,6 @@ export async function sucheAktien(query: string): Promise<AktienSuchTreffer[]> {
   return out
 }
 
-async function finnhubIsinFuerSymbol(symbol: string): Promise<string | null> {
-  const key = (process.env.FINNHUB_API_KEY ?? '').trim()
-  if (!key) return null
-
-  const kandidaten = [symbol.trim(), symbol.split('.')[0]?.trim()].filter(Boolean) as string[]
-  const uniq = [...new Set(kandidaten.map((s) => s.toUpperCase()))]
-
-  for (const sym of uniq) {
-    const u = new URL('https://finnhub.io/api/v1/stock/profile2')
-    u.searchParams.set('symbol', sym)
-    u.searchParams.set('token', key)
-    try {
-      const res = await fetch(u.toString(), { next: { revalidate: 86400 } })
-      if (!res.ok) continue
-      const j = (await res.json()) as { isin?: string }
-      const isin = j.isin?.trim().toUpperCase()
-      if (isin && ISIN_RE.test(isin)) return isin
-    } catch {
-      /* nächster Kandidat */
-    }
-  }
-  return null
-}
-
 /** Metadaten für Watchlist / Fundamentaldaten (ISIN wenn auflösbar). */
 export async function loeseAktieAusSuche(
   symbol: string,
@@ -110,11 +87,23 @@ export async function loeseAktieAusSuche(
   const sym = symbol.trim()
   if (!sym) return null
 
-  const isinViaFinnhub = await finnhubIsinFuerSymbol(sym)
-  if (isinViaFinnhub) {
-    const [meta] = await lookupIsinMetadaten([isinViaFinnhub])
+  const isinAufgeloest = await loeseIsinFuerTicker(sym)
+
+  if (isinAufgeloest) {
+    const [meta] = await lookupIsinMetadaten([isinAufgeloest])
     if (meta?.symbolYahoo || meta?.name) {
-      return { meta, isin: isinViaFinnhub }
+      return { meta, isin: isinAufgeloest }
+    }
+    return {
+      meta: {
+        isin: isinAufgeloest,
+        name: name?.trim() || sym,
+        symbolYahoo: sym,
+        symbolCandidates: [sym],
+        wkn: null,
+        assetType: 'Equity',
+      },
+      isin: isinAufgeloest,
     }
   }
 
@@ -125,7 +114,7 @@ export async function loeseAktieAusSuche(
   }
 
   const meta: IsinMetadata = {
-    isin: isinViaFinnhub ?? sym.toUpperCase(),
+    isin: isinAufgeloest ?? isinViaKenntnis ?? '',
     name: name?.trim() || sym,
     symbolYahoo: sym,
     symbolCandidates: [sym],
@@ -133,7 +122,7 @@ export async function loeseAktieAusSuche(
     assetType: 'Equity',
   }
 
-  return { meta, isin: isinViaFinnhub }
+  return { meta, isin: isinAufgeloest ?? isinViaKenntnis ?? null }
 }
 
 export function istGueltigeIsinEingabe(s: string): boolean {

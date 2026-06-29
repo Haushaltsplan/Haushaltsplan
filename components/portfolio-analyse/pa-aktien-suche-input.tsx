@@ -88,6 +88,15 @@ export function PaAktienSucheInput({
         onFehler?.('Aktie konnte nicht aufgelöst werden.')
         return
       }
+      const isin = aufgeloest.isin?.trim().toUpperCase()
+      if (!isin || !istGueltigeIsin(isin)) {
+        onFehler?.(
+          'Keine ISIN für „' +
+            t.name +
+            '“ — Treffer mit ISIN wählen, ISIN direkt eingeben oder FINNHUB_API_KEY in .env.local setzen.',
+        )
+        return
+      }
       await onAuswahl(aufgeloest)
       setQuery('')
     },
