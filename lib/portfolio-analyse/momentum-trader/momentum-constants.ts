@@ -11,6 +11,8 @@ export const GAP_MEDIAN_FAKTOR = 2
 /** Earnings-Vorlauf: Tage bis zum Termin. */
 export const EARNINGS_VORLAUF_MIN = 3
 export const EARNINGS_VORLAUF_MAX = 14
+/** Beobachtung im Scan bis zu diesem Horizont (Tage bis Earnings). */
+export const EARNINGS_BEOBACHTUNG_MAX_TAGE = 120
 
 export const EARNINGS_LOOKBACK_TAGE = 3
 

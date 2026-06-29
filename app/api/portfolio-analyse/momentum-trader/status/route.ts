@@ -1,6 +1,7 @@
 /** Datenfundament-Status (scoped auf eigene Watchlist). */
 import { NextResponse } from 'next/server'
 import { berechneMomentumErinnerungen } from '@/lib/portfolio-analyse/momentum-trader/momentum-erinnerungen-server'
+import { generiereMomentumHandlungsempfehlung } from '@/lib/portfolio-analyse/momentum-trader/momentum-handlungsempfehlung-server'
 import {
   ladeMomentumDatenStatus,
   ladeNeuestenMomentumScan,
@@ -60,7 +61,13 @@ export async function GET(req: Request) {
       scan,
       barsNeuesterTag: status.barsNeuesterTag,
     })
-    return NextResponse.json({ ...status, erinnerungen })
+    const handlungsempfehlung = generiereMomentumHandlungsempfehlung({
+      watchlist: angereichert,
+      status,
+      scan,
+      trades,
+    })
+    return NextResponse.json({ ...status, erinnerungen, handlungsempfehlung })
   } catch (e) {
     return NextResponse.json({ fehler: String(e) }, { status: 500 })
   }

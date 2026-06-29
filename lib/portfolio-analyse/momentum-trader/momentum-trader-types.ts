@@ -267,6 +267,35 @@ export type MomentumErinnerung = {
   symbol?: string
 }
 
+/** Handlungsempfehlung pro Titel. */
+export type MomentumHandlungAktion =
+  | 'beobachten'
+  | 'vorbereiten'
+  | 'trade_pruefen'
+  | 'sync'
+  | 'halten'
+
+export type MomentumHandlungPosition = {
+  symbol: string
+  name: string
+  aktion: MomentumHandlungAktion
+  prioritaet: number
+  text: string
+}
+
+/** Regelbasierte Empfehlung — was jetzt tun (auch ohne Trade-Setup). */
+export type MomentumHandlungsempfehlung = {
+  generiertAm: string
+  zusammenfassung: string
+  regimeText: string
+  longBias: boolean
+  shortBias: boolean
+  datenHinweise: string[]
+  positionen: MomentumHandlungPosition[]
+  tradeSetups: MomentumScanEintrag[]
+  hatAktivesTradeSetup: boolean
+}
+
 /** Trade aus Scan vorbereiten. */
 export type MomentumTradeAnlegenInput = {
   symbol: string

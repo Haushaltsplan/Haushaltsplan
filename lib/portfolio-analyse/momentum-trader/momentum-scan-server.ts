@@ -7,6 +7,7 @@ import 'server-only'
 import { heuteIsoUtc, tageZwischenIso } from '@/lib/portfolio-analyse/dividenden-datum-hilfen'
 import {
   EARNINGS_LOOKBACK_TAGE,
+  EARNINGS_BEOBACHTUNG_MAX_TAGE,
   EARNINGS_VORLAUF_MAX,
   EARNINGS_VORLAUF_MIN,
   GAP_MEDIAN_FAKTOR,
@@ -440,6 +441,10 @@ function bewerteEarningsVorlauf(
     gatesPassed.push(
       'Earnings in ' + tageBis + ' Tagen (Fenster ' + EARNINGS_VORLAUF_MIN + '–' + EARNINGS_VORLAUF_MAX + ')',
     )
+  } else if (tageBis > EARNINGS_VORLAUF_MAX) {
+    gatesFailed.push(
+      'Earnings in ' + tageBis + ' Tagen — noch Beobachtung, kein Trade (Vorlauf ab ' + EARNINGS_VORLAUF_MIN + ' Tage)',
+    )
   } else {
     gatesFailed.push('Außerhalb Vorlauf-Fenster')
   }
@@ -455,17 +460,28 @@ function bewerteEarningsVorlauf(
   )
 
   let score = 40
-  if (tageBis >= 3 && tageBis <= 7) score += 25
-  else if (tageBis <= 14) score += 10
+  if (tageBis >= EARNINGS_VORLAUF_MIN && tageBis <= EARNINGS_VORLAUF_MAX) {
+    if (tageBis <= 7) score += 25
+    else score += 10
+  } else if (tageBis > EARNINGS_VORLAUF_MAX) {
+    score = 25
+  }
   if (medianGap != null && medianGap >= 4) score += 15
   score = Math.min(85, score)
+
+  const ampel =
+    tageBis >= EARNINGS_VORLAUF_MIN && tageBis <= EARNINGS_VORLAUF_MAX
+      ? 'gelb'
+      : tageBis > EARNINGS_VORLAUF_MAX
+        ? 'grau'
+        : 'grau'
 
   return {
     scanDate: heute,
     symbol,
     playbook: 'earnings_vorlauf',
     score,
-    ampel: 'gelb',
+    ampel,
     gatesPassed,
     gatesFailed,
     indikatoren: {
@@ -522,15 +538,25 @@ export async function scanMomentumWatchlist(
       if (mom && mom.score >= 40) ergebnisse.push(mom)
     }
 
-    const kommend = kalender.filter((k) => {
-      if (k.symbol !== symbol) return false
-      if (k.earningsDate < heute) return false
-      const tage = tageZwischenIso(heute, k.earningsDate)
-      return tage >= EARNINGS_VORLAUF_MIN && tage <= EARNINGS_VORLAUF_MAX
-    })
+    const naechstesKommend = kalender
+      .filter((k) => {
+        if (k.symbol !== symbol) return false
+        if (k.earningsDate < heute) return false
+        const tage = tageZwischenIso(heute, k.earningsDate)
+        return tage >= 0 && tage <= EARNINGS_BEOBACHTUNG_MAX_TAGE
+      })
+      .sort((a, b) => a.earningsDate.localeCompare(b.earningsDate))[0]
 
-    for (const t of kommend) {
-      ergebnisse.push(bewerteEarningsVorlauf(symbol, t.earningsDate, t.timeBmoAmc, regimeGates, medianGap))
+    if (naechstesKommend) {
+      ergebnisse.push(
+        bewerteEarningsVorlauf(
+          symbol,
+          naechstesKommend.earningsDate,
+          naechstesKommend.timeBmoAmc,
+          regimeGates,
+          medianGap,
+        ),
+      )
     }
 
     const ipoDatum = e.ipoDatum ?? (await ladeMomentumIpoDatum(symbol, e.symbolYahoo))

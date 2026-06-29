@@ -16,6 +16,7 @@ import type {
   MomentumEarningsSyncErgebnis,
   MomentumErinnerung,
   MomentumFullSyncErgebnis,
+  MomentumHandlungsempfehlung,
   MomentumPerformance,
   MomentumPlaybook,
   MomentumRichtung,
@@ -275,9 +276,77 @@ function filterScanErgebnisse(
       if (scanFilter === 'vorlauf') return e.playbook === 'earnings_vorlauf'
       if (scanFilter === 'momentum') return e.playbook === 'earnings_momentum'
       if (scanFilter === 'ipo') return e.playbook === 'ipo_fade'
-      return e.playbook === 'earnings_gap_fade' && e.ampel !== 'grau' && e.ampel !== 'rot'
+      if (scanFilter === 'trade') {
+        return (
+          TRADE_PLAYBOOKS.includes(e.playbook) && (e.ampel === 'gruen' || e.ampel === 'gelb')
+        )
+      }
+      return true
     })
     .sort((a, b) => b.score - a.score)
+}
+
+function HandlungsempfehlungPanel({
+  empfehlung,
+  onSync,
+  syncLaeuft,
+}: {
+  empfehlung: import('@/lib/portfolio-analyse/momentum-trader/momentum-trader-types').MomentumHandlungsempfehlung
+  onSync: () => void
+  syncLaeuft: boolean
+}) {
+  return (
+    <PaCard className="border-teal-500/25 bg-gradient-to-br from-teal-500/10 to-violet-500/5 p-5">
+      <h2 className="text-sm font-semibold text-[var(--app-text)]">Handlungsempfehlung</h2>
+      <p className="mt-2 text-sm text-[var(--app-text)]">{empfehlung.zusammenfassung}</p>
+      <p className="mt-2 text-xs text-[var(--app-text-muted)]">{empfehlung.regimeText}</p>
+      {empfehlung.datenHinweise.length > 0 && (
+        <ul className="mt-3 space-y-1">
+          {empfehlung.datenHinweise.map((h) => (
+            <li key={h} className="text-xs text-amber-300/90">
+              ⚠ {h}
+            </li>
+          ))}
+        </ul>
+      )}
+      {empfehlung.positionen.length > 0 && (
+        <ul className="mt-4 space-y-2">
+          {empfehlung.positionen.map((p) => (
+            <li
+              key={p.symbol + p.aktion}
+              className="rounded-lg border border-[var(--app-border)] bg-[var(--app-surface-muted)]/50 px-3 py-2.5 text-xs"
+            >
+              <span
+                className={
+                  'mr-2 rounded px-1.5 py-0.5 text-[10px] font-medium uppercase ' +
+                  (p.aktion === 'trade_pruefen'
+                    ? 'bg-emerald-500/20 text-emerald-300'
+                    : p.aktion === 'vorbereiten'
+                      ? 'bg-violet-500/20 text-violet-300'
+                      : p.aktion === 'sync'
+                        ? 'bg-amber-500/20 text-amber-300'
+                        : 'bg-[var(--app-surface)] text-[var(--app-text-muted)]')
+                }
+              >
+                {p.aktion.replace('_', ' ')}
+              </span>
+              {p.text}
+            </li>
+          ))}
+        </ul>
+      )}
+      {!empfehlung.hatAktivesTradeSetup && empfehlung.datenHinweise.length > 0 && (
+        <button
+          type="button"
+          onClick={onSync}
+          disabled={syncLaeuft}
+          className="mt-4 rounded-xl bg-teal-500/20 px-4 py-2 text-sm font-medium text-teal-300 ring-1 ring-teal-500/30 hover:bg-teal-500/30 disabled:opacity-50"
+        >
+          {syncLaeuft ? 'Pipeline läuft …' : 'Jetzt: Alles aktualisieren'}
+        </button>
+      )}
+    </PaCard>
+  )
 }
 
 function WatchlistZeile({
@@ -573,7 +642,8 @@ export function MomentumTraderClient() {
   const [trades, setTrades] = useState<MomentumTrade[]>([])
   const [performance, setPerformance] = useState<MomentumPerformance | null>(null)
   const [erinnerungen, setErinnerungen] = useState<MomentumErinnerung[]>([])
-  const [scanFilter, setScanFilter] = useState<'trade' | 'momentum' | 'ipo' | 'vorlauf' | 'alle'>('trade')
+  const [handlung, setHandlung] = useState<MomentumHandlungsempfehlung | null>(null)
+  const [scanFilter, setScanFilter] = useState<'trade' | 'momentum' | 'ipo' | 'vorlauf' | 'alle'>('alle')
   const [exportHinweis, setExportHinweis] = useState<string | null>(null)
   const [kalender, setKalender] = useState<MomentumEarningsKalenderMonat | null>(null)
   const [scoreVerlauf, setScoreVerlauf] = useState<Record<string, MomentumScoreVerlaufPunkt[]>>({})
@@ -606,9 +676,13 @@ export function MomentumTraderClient() {
       if (!stRes.ok) throw new Error(((await stRes.json()) as { fehler?: string }).fehler ?? 'Status-Fehler')
       const wl = (await wlRes.json()) as { eintraege: MomentumWatchlistEintragAngereichert[] }
       setWatchlist(wl.eintraege ?? [])
-      const st = (await stRes.json()) as MomentumDatenStatus & { erinnerungen?: MomentumErinnerung[] }
+      const st = (await stRes.json()) as MomentumDatenStatus & {
+        erinnerungen?: MomentumErinnerung[]
+        handlungsempfehlung?: MomentumHandlungsempfehlung
+      }
       setStatus(st)
       setErinnerungen(st.erinnerungen ?? [])
+      setHandlung(st.handlungsempfehlung ?? null)
       if (scanRes.ok) setScan((await scanRes.json()) as MomentumScanPaket)
       const trData = (await trRes.json()) as { trades: MomentumTrade[]; performance?: MomentumPerformance }
       setTrades(trData.trades ?? [])
@@ -961,6 +1035,14 @@ export function MomentumTraderClient() {
 
         <ErinnerungenLeiste items={erinnerungen} />
 
+        {handlung && watchlist.length > 0 && (
+          <HandlungsempfehlungPanel
+            empfehlung={handlung}
+            onSync={() => void starteFullSync()}
+            syncLaeuft={fullSyncLaeuft}
+          />
+        )}
+
         {performance && performance.tradesGesamt > 0 && <PerformancePanel p={performance} />}
 
         {regime && (
@@ -1085,8 +1167,8 @@ export function MomentumTraderClient() {
               {scanLaeuft
                 ? 'Scan läuft …'
                 : scan?.ergebnisse.length
-                  ? 'Keine Setups in diesem Filter — anderen Tab wählen.'
-                  : 'Keine Setups — Pipeline ausführen oder nach Earnings erneut scannen.'}
+                  ? 'Keine Trade-Setups in diesem Filter — „Alle“ oder „Vorlauf“ zeigt Beobachtungseinträge.'
+                  : 'Kein Scan — oben „Alles aktualisieren“ oder nur „Scan“. Handlungsempfehlung erklärt den nächsten Schritt.'}
             </p>
           )}
         </PaCard>
