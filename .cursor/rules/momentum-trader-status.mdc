@@ -25,21 +25,17 @@ Kurzfristiger, faktenbasierter Trading-Assistent (Earnings-Gaps, Momentum, IPO-F
 | `ipo_fade` | Short | 2–14 Tage nach IPO, Lauf ≥20%, Reversal |
 | `earnings_vorlauf` | — | Beobachten 3–14 Tage vor Earnings |
 
-## Datenquellen (Multi-Scraper — kein Finnhub)
+## Datenquellen (100 % Scraper — keine API-Keys)
 
 | Quelle | Daten |
 |--------|-------|
-| **Yahoo Chart** | OHLCV-Basis, Regime |
-| **Stooq CSV** | OHLCV-Fallback / Lücken |
-| **Polygon** | US-OHLCV (optional, `POLYGON_API_KEY`) |
+| **Yahoo Chart / quoteSummary** | OHLCV, BMO/AMC, Surprise-Fallback, IPO-Fallback |
+| **Stooq CSV** | OHLCV EU-first, Lückenfüller |
 | **DivvyDiary** | Earnings-Kalender + Historie |
-| **Yahoo calendarEvents** | BMO/AMC, nächster Termin |
-| **Wallstreet-Online** | Earnings-Termine EU |
-| **MarketBeat** | EPS-/Umsatz-Surprise (primär) |
-| **Yahoo earningsHistory** | Surprise-Fallback |
-| **Yahoo Profil** | IPO-Datum |
+| **MarketBeat** | Termine, BMO/AMC, EPS-Surprise, IPO |
+| **Wallstreet-Online** | Earnings EU |
 
-Merge-Logik: `momentum-ohlcv-merge-server.ts`, `momentum-earnings-termine-server.ts`, `momentum-earnings-enrich-server.ts`
+Kein Finnhub, kein Polygon — alles HTML/CSV-Scraping.
 
 ## Watchlist-only (max. 32)
 
@@ -55,11 +51,8 @@ lib/portfolio-analyse/momentum-trader/
   momentum-scan-server.ts           ← Regel-Engine (4 Playbooks)
   momentum-earnings-bar.ts          ← BMO/AMC Reaktionsbar
   momentum-full-sync-server.ts      ← Pipeline (Earnings→Bars→Events→IPO→Regime→Scan)
-  momentum-ohlcv-merge-server.ts       ← Yahoo + Stooq + Polygon
-  momentum-stooq-ohlcv-server.ts      ← Stooq OHLCV
-  momentum-polygon-ohlcv-server.ts    ← Polygon US-Bars (optional)
-  momentum-earnings-termine-server.ts  ← DivvyDiary + Yahoo + Wallstreet
-  momentum-earnings-enrich-server.ts   ← Marketbeat → Yahoo Surprise
+  momentum-ohlcv-merge-server.ts       ← Yahoo + Stooq (EU-first)
+  momentum-ipo-server.ts               ← MarketBeat → Yahoo IPO
   momentum-scan-verlauf-server.ts   ← Score-Historie für Sparklines
   momentum-kalender-server.ts       ← Earnings-Kalender (35 Tage)
   momentum-briefing-server.ts       ← Tages-Briefing Markdown

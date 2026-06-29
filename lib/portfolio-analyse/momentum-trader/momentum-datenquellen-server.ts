@@ -1,35 +1,25 @@
 import 'server-only'
 
-import { polygonAktiv } from '@/lib/portfolio-analyse/momentum-trader/momentum-polygon-ohlcv-server'
 import type { MomentumDatenquelle } from '@/lib/portfolio-analyse/momentum-trader/momentum-trader-types'
 
 export type { MomentumDatenquelle }
 
-/** Externe Quellen des Momentum Traders — Multi-Scraper (kein Finnhub). */
+/** Alle Quellen sind Scraper — keine API-Keys nötig. */
 export function momentumDatenquellenStatus(): MomentumDatenquelle[] {
-  const quellen: MomentumDatenquelle[] = [
+  return [
     {
       id: 'yahoo-ohlcv',
-      name: 'Yahoo Finance (Kurse)',
+      name: 'Yahoo Finance',
       typ: 'scraper',
       aktiv: true,
-      nutzen: 'OHLCV-Basis, Regime (^GSPC, ^VIX)',
+      nutzen: 'OHLCV (US + Indizes ^GSPC/^VIX)',
     },
     {
       id: 'stooq',
-      name: 'Stooq (Kurse)',
+      name: 'Stooq.com',
       typ: 'scraper',
       aktiv: true,
-      nutzen: 'OHLCV-Fallback / Lückenfüller (EU + US)',
-    },
-    {
-      id: 'polygon',
-      name: 'Polygon.io (Kurse)',
-      typ: 'api',
-      aktiv: polygonAktiv(),
-      nutzen: polygonAktiv()
-        ? 'US-OHLCV Premium (POLYGON_API_KEY)'
-        : 'Optional — POLYGON_API_KEY für US-Titel',
+      nutzen: 'OHLCV EU/US (CSV, Lückenfüller)',
     },
     {
       id: 'divvydiary',
@@ -39,40 +29,25 @@ export function momentumDatenquellenStatus(): MomentumDatenquelle[] {
       nutzen: 'Earnings-Kalender + Historie',
     },
     {
-      id: 'yahoo-earnings',
-      name: 'Yahoo Finance (Earnings)',
+      id: 'marketbeat',
+      name: 'MarketBeat.com',
       typ: 'scraper',
       aktiv: true,
-      nutzen: 'Termine, BMO/AMC',
+      nutzen: 'Earnings-Termine, BMO/AMC, EPS-Surprise, IPO',
     },
     {
       id: 'wallstreet',
       name: 'Wallstreet-Online',
       typ: 'scraper',
       aktiv: true,
-      nutzen: 'Earnings-Termine (EU-Titel)',
+      nutzen: 'Earnings-Termine (EU)',
     },
     {
-      id: 'marketbeat',
-      name: 'MarketBeat',
+      id: 'yahoo-earnings',
+      name: 'Yahoo quoteSummary',
       typ: 'scraper',
       aktiv: true,
-      nutzen: 'EPS-/Umsatz-Surprise (8+ Quartale)',
-    },
-    {
-      id: 'yahoo-surprise',
-      name: 'Yahoo earningsHistory',
-      typ: 'scraper',
-      aktiv: true,
-      nutzen: 'EPS-Surprise Fallback',
-    },
-    {
-      id: 'yahoo-ipo',
-      name: 'Yahoo Finance (Profil)',
-      typ: 'scraper',
-      aktiv: true,
-      nutzen: 'IPO-/Ersthandelstag',
+      nutzen: 'Earnings-Termin, BMO/AMC, Surprise-Fallback, IPO-Fallback',
     },
   ]
-  return quellen
 }

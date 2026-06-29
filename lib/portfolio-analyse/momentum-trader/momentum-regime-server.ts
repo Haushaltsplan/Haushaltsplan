@@ -16,7 +16,7 @@ import type {
   MomentumMarketRegime,
   MomentumRegimeGates,
 } from '@/lib/portfolio-analyse/momentum-trader/momentum-trader-types'
-import { ladeYahooOhlcvTaeglich } from '@/lib/portfolio-analyse/momentum-trader/yahoo-ohlcv-server'
+import { ladeMomentumOhlcvBatch } from '@/lib/portfolio-analyse/momentum-trader/momentum-ohlcv-merge-server'
 
 const SPY_SYMBOL = '^GSPC'
 const VIX_SYMBOL = '^VIX'
@@ -36,7 +36,8 @@ function barsZuMap(bars: MomentumBarDaily[]): Map<string, MomentumBarDaily> {
 async function ladeOderHoleBars(symbol: string, von: string, bis: string): Promise<MomentumBarDaily[]> {
   let bars = await ladeMomentumBars(symbol, von, bis)
   if (bars.length >= MA_TAGE) return bars
-  const frisch = await ladeYahooOhlcvTaeglich(symbol, von, bis)
+  const frischMap = await ladeMomentumOhlcvBatch([symbol], von, bis)
+  const frisch = frischMap.get(symbol.trim().toUpperCase()) ?? []
   if (frisch.length > 0) {
     await speichereMomentumBars(frisch)
     bars = frisch

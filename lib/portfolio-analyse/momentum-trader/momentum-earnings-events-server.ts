@@ -116,7 +116,7 @@ export async function backfillEarningsEventsFuerWatchlist(
       for (const t of termine) {
         let zeit = t.timeBmoAmc
         if (zeit === 'unknown') {
-          zeit = await ladeBerichtszeitFuerEarningsDatum(symbol, t.terminDatumIso)
+          zeit = await ladeBerichtszeitFuerEarningsDatum(symbol, t.terminDatumIso, e.symbolYahoo)
         }
         const ev = berechneEventAusBars(symbol, t.terminDatumIso, zeit, bars)
         if (ev) events.push(ev)

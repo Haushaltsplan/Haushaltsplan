@@ -29,7 +29,7 @@ import {
   ladeMedianGapFuerSymbol,
   medianGapAbsPct,
 } from '@/lib/portfolio-analyse/momentum-trader/momentum-earnings-events-server'
-import { ladeYahooIpoDatum } from '@/lib/portfolio-analyse/momentum-trader/momentum-yahoo-ipo-server'
+import { ladeMomentumIpoDatum } from '@/lib/portfolio-analyse/momentum-trader/momentum-ipo-server'
 import { guidanceLabel } from '@/lib/portfolio-analyse/momentum-trader/momentum-guidance'
 import {
   ladeMomentumBars,
@@ -533,7 +533,7 @@ export async function scanMomentumWatchlist(
       ergebnisse.push(bewerteEarningsVorlauf(symbol, t.earningsDate, t.timeBmoAmc, regimeGates, medianGap))
     }
 
-    const ipoDatum = e.ipoDatum ?? (await ladeYahooIpoDatum(symbol))
+    const ipoDatum = e.ipoDatum ?? (await ladeMomentumIpoDatum(symbol, e.symbolYahoo))
     if (ipoDatum) {
       const ipo = bewerteIpoFade(symbol, ipoDatum, bars, regimeGates)
       if (ipo) ergebnisse.push(ipo)

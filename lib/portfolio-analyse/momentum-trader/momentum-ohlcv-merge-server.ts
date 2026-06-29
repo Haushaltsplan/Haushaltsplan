@@ -1,33 +1,50 @@
 import 'server-only'
 
 import { teileArray } from '@/lib/portfolio-analyse/batch-hilfen'
-import {
-  ladePolygonOhlcvTaeglich,
-  polygonAktiv,
-  yahooZuPolygonTicker,
-} from '@/lib/portfolio-analyse/momentum-trader/momentum-polygon-ohlcv-server'
 import { ladeStooqOhlcvBatch } from '@/lib/portfolio-analyse/momentum-trader/momentum-stooq-ohlcv-server'
 import type { MomentumBarDaily } from '@/lib/portfolio-analyse/momentum-trader/momentum-trader-types'
 import { ladeYahooOhlcvBatch } from '@/lib/portfolio-analyse/momentum-trader/yahoo-ohlcv-server'
 
-const POLYGON_PARALLEL = 3
-
-function mergeBarSerien(primaer: MomentumBarDaily[], ergaenzung: MomentumBarDaily[]): MomentumBarDaily[] {
+function mergeBarSerien(...serien: MomentumBarDaily[][]): MomentumBarDaily[] {
   const map = new Map<string, MomentumBarDaily>()
-  for (const b of ergaenzung) map.set(b.handelstag, b)
-  for (const b of primaer) map.set(b.handelstag, b)
+  for (const serie of serien) {
+    for (const b of serie) map.set(b.handelstag, b)
+  }
   return [...map.values()].sort((a, b) => a.handelstag.localeCompare(b.handelstag))
 }
 
-function waehleBesteSerie(a: MomentumBarDaily[], b: MomentumBarDaily[]): MomentumBarDaily[] {
-  if (a.length === 0) return b
-  if (b.length === 0) return a
-  if (b.length > a.length * 1.1) return mergeBarSerien(b, a)
-  return mergeBarSerien(a, b)
+/** EU-/XETRA-Titel → Stooq bevorzugen. */
+function istEuOderXetra(symbol: string): boolean {
+  const u = symbol.trim().toUpperCase()
+  if (u.startsWith('^')) return false
+  if (!u.includes('.')) return false
+  return /\.(DE|F|PA|AS|BR|L|SW|MI|MC|TO|V|HK|SG|T|AX|ST|HE|CO|OL|IR|LS|IC|VI)$/i.test(u)
+}
+
+function waehlePrimaerUndFallback(
+  sym: string,
+  yahoo: MomentumBarDaily[],
+  stooq: MomentumBarDaily[],
+): MomentumBarDaily[] {
+  if (yahoo.length === 0) return stooq
+  if (stooq.length === 0) return yahoo
+
+  const eu = istEuOderXetra(sym)
+  const primaer = eu ? stooq : yahoo
+  const fallback = eu ? yahoo : stooq
+
+  if (primaer.length >= fallback.length * 0.85) {
+    return mergeBarSerien(fallback, primaer)
+  }
+  if (fallback.length > primaer.length * 1.15) {
+    return mergeBarSerien(primaer, fallback)
+  }
+  return mergeBarSerien(fallback, primaer)
 }
 
 /**
- * OHLCV aus mehreren Quellen: Yahoo → Polygon (US, optional) → Stooq-Fallback.
+ * OHLCV nur via Scraper: Yahoo Chart + Stooq CSV (keine API-Keys).
+ * EU: Stooq-first · US: Yahoo-first · Lücken werden gemerged.
  */
 export async function ladeMomentumOhlcvBatch(
   symbols: string[],
@@ -45,29 +62,9 @@ export async function ladeMomentumOhlcvBatch(
   ])
 
   const out = new Map<string, MomentumBarDaily[]>()
-
-  const polygonSymbole = polygonAktiv()
-    ? uniq.filter((s) => yahooZuPolygonTicker(s) != null && !s.startsWith('^'))
-    : []
-
-  const polygonMap = new Map<string, MomentumBarDaily[]>()
-  for (const batch of teileArray(polygonSymbole, POLYGON_PARALLEL)) {
-    await Promise.all(
-      batch.map(async (sym) => {
-        const bars = await ladePolygonOhlcvTaeglich(sym, vonDatum, bisDatum)
-        if (bars.length > 0) polygonMap.set(sym, bars)
-      }),
-    )
-  }
-
   for (const sym of uniq) {
-    let bars = yahooMap.get(sym) ?? []
-    const poly = polygonMap.get(sym)
-    if (poly?.length) bars = waehleBesteSerie(bars, poly)
-    const stooq = stooqMap.get(sym)
-    if (stooq?.length) bars = mergeBarSerien(bars, stooq)
+    const bars = waehlePrimaerUndFallback(sym, yahooMap.get(sym) ?? [], stooqMap.get(sym) ?? [])
     if (bars.length > 0) out.set(sym, bars)
   }
-
   return out
 }

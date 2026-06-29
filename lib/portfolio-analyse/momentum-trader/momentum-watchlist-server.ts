@@ -2,7 +2,7 @@ import 'server-only'
 
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { createSupabaseAdmin } from '@/lib/supabase-admin'
-import { ladeYahooIpoDatum } from '@/lib/portfolio-analyse/momentum-trader/momentum-yahoo-ipo-server'
+import { ladeMomentumIpoDatum } from '@/lib/portfolio-analyse/momentum-trader/momentum-ipo-server'
 import type { MomentumWatchlistEintrag } from '@/lib/portfolio-analyse/momentum-trader/momentum-trader-types'
 
 export const MOMENTUM_WATCHLIST_MAX = 32
@@ -102,7 +102,7 @@ export async function setzeMomentumWatchlistEarningsSync(sb: SupabaseClient, isi
   if (error) throw new Error(error.message)
 }
 
-/** IPO-Datum aus Yahoo laden und in Watchlist speichern. */
+/** IPO-Datum scrapen (MarketBeat → Yahoo) und in Watchlist speichern. */
 export async function syncIpoDatumFuerWatchlist(
   sb: SupabaseClient,
   eintraege: MomentumWatchlistEintrag[],
@@ -116,7 +116,7 @@ export async function syncIpoDatumFuerWatchlist(
     if (e.ipoDatum) continue
 
     try {
-      const ipo = await ladeYahooIpoDatum(symbol)
+      const ipo = await ladeMomentumIpoDatum(symbol, e.symbolYahoo)
       if (!ipo) continue
       const { error } = await sb
         .from(TABLE)
