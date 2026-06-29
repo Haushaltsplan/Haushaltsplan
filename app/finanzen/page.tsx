@@ -1522,7 +1522,7 @@ export default function FinanzenPage() {
           )}
         </div>
 
-        <div className={`${pageCardClass} min-w-0 max-lg:overflow-x-hidden overflow-y-visible lg:overflow-x-auto`}>
+        <div className={`${pageCardClass} app-h-scroll min-w-0 overflow-y-visible`}>
           <div className={pageCardHeaderClass}>
             <div className="flex flex-col gap-3 sm:gap-3">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between sm:gap-4">

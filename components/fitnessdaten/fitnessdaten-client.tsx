@@ -10,11 +10,13 @@ import {
 } from '@/lib/fitnessdaten/whoop-ble-keepalive'
 import { WHOOP_CLOUD_SYNC_EVENT } from '@/lib/fitnessdaten/whoop-cloud-merge'
 import type { FitnessSnapshot } from '@/lib/fitnessdaten/types'
-import type { WhoopWebBlePhase } from '@/lib/fitnessdaten/web-bluetooth-whoop'
+import { useSearchParams } from 'next/navigation'
 import { useCallback, useEffect, useState } from 'react'
 import toast from 'react-hot-toast'
 
 export function FitnessdatenClient() {
+  const searchParams = useSearchParams()
+  const initialTab = searchParams.get('tab') === 'health' ? ('health' as const) : undefined
   const { phase, snapshot: bleSnapshot } = useWhoopBle()
   const [snapshot, setSnapshot] = useState<FitnessSnapshot | null>(null)
 
@@ -50,6 +52,7 @@ export function FitnessdatenClient() {
         phase={phase}
         onSnapshot={setSnapshot}
         onPhaseChange={() => {}}
+        initialTab={initialTab}
       />
 
       <div className="flex flex-wrap justify-center gap-x-4 gap-y-1 text-[11px] text-[var(--app-text-muted)]">

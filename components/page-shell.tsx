@@ -7,11 +7,11 @@ export const pageContainerFullClass = 'mx-auto w-full min-w-0 max-w-full'
 
 /** Horizontal scrollbare Tabellen — verhindert Layout-Overflow auf schmalen Viewports. */
 export const appTableScrollClassName =
-  'app-table-scroll -mx-1 max-w-[calc(100%+0.5rem)] overflow-x-auto overscroll-x-contain px-1 sm:mx-0 sm:max-w-full sm:px-0'
+  'app-table-scroll app-h-scroll -mx-1 max-w-[calc(100%+0.5rem)] px-1 sm:mx-0 sm:max-w-full sm:px-0'
 
 /** Wie oben, ohne negative Außenränder (für verschachtelte Scroll-Container). */
 export const appTableScrollInlineClassName =
-  'app-table-scroll w-full min-w-0 overflow-x-auto overscroll-x-contain'
+  'app-table-scroll app-h-scroll w-full min-w-0'
 
 /** Standard-Sektionskarte (Finanzen, Lager, …). */
 export const pageCardClass = 'app-surface-card min-w-0'

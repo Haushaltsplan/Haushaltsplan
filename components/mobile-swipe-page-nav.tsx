@@ -148,7 +148,7 @@ export function MobileSwipePageNav({ children }: { children: ReactNode }) {
 
   return (
     <div
-      className="min-h-full touch-pan-y"
+      className="min-h-full min-w-0"
       onPointerDown={onPointerDown}
       onPointerUp={endGesture}
       onPointerCancel={endGesture}

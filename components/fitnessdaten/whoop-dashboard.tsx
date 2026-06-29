@@ -26,9 +26,9 @@ import {
   WhoopAgingScale,
   WhoopAgingTrendChart,
   WhoopHealthspanBar,
-  WhoopLiveHrMonitor,
 } from '@/components/fitnessdaten/whoop-healthspan'
-import { WhoopHealthTile, WhoopInsightCard, WhoopMetricRow } from '@/components/fitnessdaten/whoop-metric-row'
+import { WhoopGesundheitsmonitorPanel } from '@/components/fitnessdaten/whoop-gesundheitsmonitor-panel'
+import { WhoopInsightCard, WhoopMetricRow } from '@/components/fitnessdaten/whoop-metric-row'
 import {
   recoveryColor,
   recoveryLabelDe,
@@ -69,6 +69,7 @@ type Props = {
   phase: WhoopWebBlePhase
   onSnapshot: (s: FitnessSnapshot | null) => void
   onPhaseChange: (p: WhoopWebBlePhase) => void
+  initialTab?: Tab
 }
 
 function formatDatum() {
@@ -120,9 +121,9 @@ function schlafstressSegmente(d: WhoopDayRecord) {
   ]
 }
 
-export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange }: Props) {
+export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange, initialTab }: Props) {
   const { verbinden, bleOk } = useWhoopBle()
-  const [tab, setTab] = useState<Tab>('home')
+  const [tab, setTab] = useState<Tab>(initialTab ?? 'home')
   const [info, setInfo] = useState<MetricInfo | null>(null)
   const [expandedHealthMetric, setExpandedHealthMetric] = useState<string | null>(null)
   const [coachExpanded, setCoachExpanded] = useState(false)
@@ -135,6 +136,10 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange }: P
   const scores = snapshot?.scores
   const deviceInfo = snapshot?.deviceInfo
   const model = useMemo(() => baueWhoopDashboard(snapshot), [snapshot, dataRevision])
+
+  useEffect(() => {
+    if (initialTab) setTab(initialTab)
+  }, [initialTab])
 
   useEffect(() => {
     // Beim ersten Render: alte Schätz-Werte aus localStorage entfernen
@@ -1108,196 +1113,101 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange }: P
         )}
 
         {tab === 'health' && (
-          <section className="mt-6 space-y-4">
-            <p className="text-center text-[10px] font-bold uppercase tracking-[0.2em] text-[var(--app-text-muted)]">Gesundheit</p>
-
-            <WhoopAgeOrb
-              whoopAge={model.healthspan.whoopAge}
-              yearsYounger={model.healthspan.yearsYounger}
-              agingProcess={model.healthspan.agingProcess}
-              onInfo={() => showInfo('healthspan')}
-            />
-
-            <WhoopAgingScale
-              value={model.healthspan.agingProcess}
-              trend={model.healthspan.agingTrend}
-              onInfo={() => showInfo('aging_process')}
-            />
-
-            <div className="rounded-2xl border border-white/[0.06] bg-[#111113] px-4">
-              <p className="border-b border-white/[0.06] py-3 text-[11px] font-bold uppercase tracking-[0.14em] text-[var(--app-text)]">
-                Schlaf
-              </p>
-              {model.healthspan.metrics
-                .filter((m) => m.id === 'sleep_consistency' || m.id === 'sleep_hours')
-                .map((m) => (
-                  <WhoopHealthspanBar
-                    key={m.id}
-                    metric={m}
-                    expanded={expandedHealthMetric === m.id}
-                    onToggle={() => setExpandedHealthMetric(expandedHealthMetric === m.id ? null : m.id)}
-                    onInfo={() => showInfo(m.id === 'sleep_consistency' ? 'sleep_consistency' : 'sleep_hours')}
-                  />
-                ))}
-            </div>
-
-            <div className="rounded-2xl border border-white/[0.06] bg-[#111113] px-4">
-              <p className="border-b border-white/[0.06] py-3 text-[11px] font-bold uppercase tracking-[0.14em] text-[var(--app-text)]">
-                Belastung
-              </p>
-              {model.healthspan.metrics
-                .filter((m) => m.id.startsWith('zones_') || m.id === 'strength')
-                .map((m) => (
-                  <WhoopHealthspanBar
-                    key={m.id}
-                    metric={m}
-                    expanded={expandedHealthMetric === m.id}
-                    onToggle={() => setExpandedHealthMetric(expandedHealthMetric === m.id ? null : m.id)}
-                    onInfo={() =>
-                      showInfo(
-                        m.id === 'zones_13_weekly'
-                          ? 'zones_13'
-                          : m.id === 'zones_45_weekly'
-                            ? 'zones_45'
-                            : 'strength',
-                      )
-                    }
-                  />
-                ))}
-            </div>
-
-            <div className="rounded-2xl border border-white/[0.06] bg-[#111113] px-4">
-              <p className="border-b border-white/[0.06] py-3 text-[11px] font-bold uppercase tracking-[0.14em] text-[var(--app-text)]">
-                Fitness
-              </p>
-              {model.healthspan.metrics
-                .filter((m) => m.id === 'steps' || m.id === 'vo2max' || m.id === 'rhr')
-                .map((m) => (
-                  <WhoopHealthspanBar
-                    key={m.id}
-                    metric={m}
-                    expanded={expandedHealthMetric === m.id}
-                    onToggle={() => setExpandedHealthMetric(expandedHealthMetric === m.id ? null : m.id)}
-                    onInfo={() =>
-                      showInfo(m.id === 'vo2max' ? 'vo2max' : m.id === 'rhr' ? 'rhr' : 'steps')
-                    }
-                  />
-                ))}
-            </div>
-
-            <WhoopAgeTrendChart model={model.healthspan} />
-            <WhoopAgingTrendChart model={model.healthspan} />
-
-            <WhoopLiveHrMonitor
-              bpm={model.liveHr}
-              zone={model.hrZone}
-              history={snapshot?.hrHistory ?? []}
+          <section className="mt-6 min-w-0 space-y-4">
+            <WhoopGesundheitsmonitorPanel
+              heute={heute}
+              journal={journal}
+              liveHr={model.liveHr}
+              hrZone={model.hrZone}
+              hrHistory={snapshot?.hrHistory ?? []}
+              isLive={isLive}
+              onBpTap={() => setTab('connect')}
               onInfo={() => showInfo('health_monitor')}
             />
 
-            <div className="rounded-2xl border border-white/[0.06] bg-[#111113] p-4">
-              <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-[var(--app-text)]">Gesundheitsmonitor</p>
-              <div className="mt-3 grid grid-cols-2 gap-2">
-                <WhoopHealthTile
-                  icon="◎"
-                  label="Atemfrequenz"
-                  value={
-                    heute.respiratoryRate != null ? heute.respiratoryRate.toFixed(1).replace('.', ',') : '—'
-                  }
-                  unit="AZ/min"
-                  status={
-                    heute.respiratoryRate != null && heute.respiratoryRate > 15.6 ? '! erhöht > 15,6' : undefined
-                  }
-                  statusTone={heute.respiratoryRate != null && heute.respiratoryRate > 15.6 ? 'warn' : 'ok'}
+            <details className="rounded-2xl border border-white/[0.06] bg-[#111113]">
+              <summary className="cursor-pointer list-none px-4 py-3 text-[11px] font-bold uppercase tracking-[0.14em] text-[var(--app-text)] [&::-webkit-details-marker]:hidden">
+                Omnia Age & Langzeit-Trends ›
+              </summary>
+              <div className="space-y-4 border-t border-white/[0.06] px-4 pb-4 pt-2">
+                <WhoopAgeOrb
+                  whoopAge={model.healthspan.whoopAge}
+                  yearsYounger={model.healthspan.yearsYounger}
+                  agingProcess={model.healthspan.agingProcess}
+                  onInfo={() => showInfo('healthspan')}
                 />
-                <WhoopHealthTile
-                  icon="🩺"
-                  label="Blutdruck"
-                  value={
-                    heute.bpSystolic != null && heute.bpDiastolic != null
-                      ? `${heute.bpSystolic}/${heute.bpDiastolic}`
-                      : '—'
-                  }
-                  unit="mmHg"
-                  status={heute.bpSystolic == null ? 'Nicht in WHOOP-API — Tab Gerät' : '✓ erfasst'}
-                  statusTone={heute.bpSystolic != null ? 'ok' : 'warn'}
-                />
-                <WhoopHealthTile
-                  icon="💧"
-                  label="SpO₂"
-                  value={
-                    heute.spo2Percent != null ? heute.spo2Percent.toFixed(1).replace('.', ',') : '—'
-                  }
-                  unit="%"
-                  status={
-                    heute.spo2Percent != null
-                      ? heute.spo2Percent < 95
-                        ? '! unter 95 %'
-                        : '✓ automatisch'
-                      : 'WHOOP Cloud (auto)'
-                  }
-                  statusTone={
-                    heute.spo2Percent != null ? (heute.spo2Percent < 95 ? 'bad' : 'ok') : 'warn'
-                  }
-                />
-                <WhoopHealthTile
-                  icon="♥"
-                  label="RHF"
-                  value={heute.restingHr != null ? String(heute.restingHr) : '—'}
-                  unit="S/min"
-                  status={heute.restingHr != null && heute.restingHr > 58 ? '! stark erhöht > 58' : undefined}
-                  statusTone={heute.restingHr != null && heute.restingHr > 58 ? 'bad' : 'ok'}
-                />
-                <WhoopHealthTile
-                  icon="〰"
-                  label="HFV"
-                  value={heute.hrvRmssd != null ? String(Math.round(heute.hrvRmssd)) : '—'}
-                  unit="ms"
-                  status={heute.hrvRmssd != null && heute.hrvRmssd < 85 ? '! sehr niedrig < 85' : undefined}
-                  statusTone={heute.hrvRmssd != null && heute.hrvRmssd < 85 ? 'bad' : 'ok'}
-                />
-                <WhoopHealthTile
-                  icon="🌡"
-                  label="Hauttemp."
-                  value={
-                    heute.skinTempDelta != null
-                      ? `${heute.skinTempDelta >= 0 ? '+' : ''}${heute.skinTempDelta.toFixed(1).replace('.', ',')}`
-                      : '—'
-                  }
-                  unit="°C Δ"
-                  status={
-                    heute.skinTempDelta != null &&
-                    heute.skinTempDelta >= -0.4 &&
-                    heute.skinTempDelta <= 0.5
-                      ? '✓ in der Nähe von -0,4 bis +0,5'
-                      : heute.skinTempC != null || heute.skinTempDelta != null
-                        ? '! außerhalb Bereich'
-                        : 'Cloud / BLE (auto)'
-                  }
-                  statusTone={
-                    heute.skinTempDelta != null &&
-                    heute.skinTempDelta >= -0.4 &&
-                    heute.skinTempDelta <= 0.5
-                      ? 'ok'
-                      : 'warn'
-                  }
-                />
-              </div>
-            </div>
 
-            {journal.length > 0 ? (
-              <div className="rounded-2xl border border-white/[0.06] bg-[#111113] p-4">
-                <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-[var(--app-text)]">Journal heute</p>
-                <ul className="mt-3 space-y-2">
-                  {journal.slice(0, 8).map((j) => (
-                    <li key={`${j.question}-${j.answer}`} className="text-xs text-[var(--app-text-muted)]">
-                      <span className="text-[var(--app-text)]">{j.question.replace(/\([^)]*\)/g, '').trim()}</span>
-                      <span className="ml-2 font-semibold text-[var(--app-text)]">{j.answer}</span>
-                    </li>
-                  ))}
-                </ul>
+                <WhoopAgingScale
+                  value={model.healthspan.agingProcess}
+                  trend={model.healthspan.agingTrend}
+                  onInfo={() => showInfo('aging_process')}
+                />
+
+                <div className="rounded-2xl border border-white/[0.06] bg-black/20 px-4">
+                  <p className="border-b border-white/[0.06] py-3 text-[11px] font-bold uppercase tracking-[0.14em] text-[var(--app-text)]">
+                    Schlaf
+                  </p>
+                  {model.healthspan.metrics
+                    .filter((m) => m.id === 'sleep_consistency' || m.id === 'sleep_hours')
+                    .map((m) => (
+                      <WhoopHealthspanBar
+                        key={m.id}
+                        metric={m}
+                        expanded={expandedHealthMetric === m.id}
+                        onToggle={() => setExpandedHealthMetric(expandedHealthMetric === m.id ? null : m.id)}
+                        onInfo={() => showInfo(m.id === 'sleep_consistency' ? 'sleep_consistency' : 'sleep_hours')}
+                      />
+                    ))}
+                </div>
+
+                <div className="rounded-2xl border border-white/[0.06] bg-black/20 px-4">
+                  <p className="border-b border-white/[0.06] py-3 text-[11px] font-bold uppercase tracking-[0.14em] text-[var(--app-text)]">
+                    Belastung
+                  </p>
+                  {model.healthspan.metrics
+                    .filter((m) => m.id.startsWith('zones_') || m.id === 'strength')
+                    .map((m) => (
+                      <WhoopHealthspanBar
+                        key={m.id}
+                        metric={m}
+                        expanded={expandedHealthMetric === m.id}
+                        onToggle={() => setExpandedHealthMetric(expandedHealthMetric === m.id ? null : m.id)}
+                        onInfo={() =>
+                          showInfo(
+                            m.id === 'zones_13_weekly'
+                              ? 'zones_13'
+                              : m.id === 'zones_45_weekly'
+                                ? 'zones_45'
+                                : 'strength',
+                          )
+                        }
+                      />
+                    ))}
+                </div>
+
+                <div className="rounded-2xl border border-white/[0.06] bg-black/20 px-4">
+                  <p className="border-b border-white/[0.06] py-3 text-[11px] font-bold uppercase tracking-[0.14em] text-[var(--app-text)]">
+                    Fitness
+                  </p>
+                  {model.healthspan.metrics
+                    .filter((m) => m.id === 'steps' || m.id === 'vo2max' || m.id === 'rhr')
+                    .map((m) => (
+                      <WhoopHealthspanBar
+                        key={m.id}
+                        metric={m}
+                        expanded={expandedHealthMetric === m.id}
+                        onToggle={() => setExpandedHealthMetric(expandedHealthMetric === m.id ? null : m.id)}
+                        onInfo={() =>
+                          showInfo(m.id === 'vo2max' ? 'vo2max' : m.id === 'rhr' ? 'rhr' : 'steps')
+                        }
+                      />
+                    ))}
+                </div>
+
+                <WhoopAgeTrendChart model={model.healthspan} />
+                <WhoopAgingTrendChart model={model.healthspan} />
               </div>
-            ) : null}
+            </details>
 
             <button
               type="button"

@@ -79,6 +79,7 @@ export function WhoopHealthTile({
   unit,
   status,
   statusTone,
+  onPress,
 }: {
   icon: string
   label: string
@@ -86,6 +87,7 @@ export function WhoopHealthTile({
   unit?: string
   status?: string
   statusTone?: 'ok' | 'warn' | 'bad'
+  onPress?: () => void
 }) {
   const tone =
     statusTone === 'bad'
@@ -94,19 +96,33 @@ export function WhoopHealthTile({
         ? 'bg-orange-950/50 text-orange-200 border-orange-900/50'
         : 'bg-emerald-950/40 text-emerald-300 border-emerald-900/40'
 
-  return (
-    <div className="rounded-2xl border border-white/[0.06] bg-[#111113] p-3">
+  const inner = (
+    <>
       <span className="text-lg">{icon}</span>
       <p className="mt-2 text-[9px] font-bold uppercase leading-tight tracking-wide text-[var(--app-text-muted)]">{label}</p>
-      <p className="mt-1 text-lg font-bold tabular-nums text-white">
+      <p className="mt-1 break-words text-lg font-bold tabular-nums text-white">
         {value}
         {unit ? <span className="text-xs font-normal text-[var(--app-text-muted)]"> {unit}</span> : null}
       </p>
       {status ? (
-        <p className={`mt-2 rounded-md border px-1.5 py-0.5 text-[8px] font-semibold leading-tight ${tone}`}>
+        <p className={`mt-2 break-words rounded-md border px-1.5 py-0.5 text-[8px] font-semibold leading-snug ${tone}`}>
           {status}
         </p>
       ) : null}
-    </div>
+    </>
   )
+
+  if (onPress) {
+    return (
+      <button
+        type="button"
+        onClick={onPress}
+        className="min-w-0 rounded-2xl border border-white/[0.06] bg-[#111113] p-3 text-left transition active:scale-[0.98] hover:border-white/[0.12]"
+      >
+        {inner}
+      </button>
+    )
+  }
+
+  return <div className="min-w-0 rounded-2xl border border-white/[0.06] bg-[#111113] p-3">{inner}</div>
 }

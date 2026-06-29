@@ -91,6 +91,13 @@ export type WhoopCloudSyncPayload = {
   workouts: WhoopCloudWorkoutRow[]
   body: WhoopCloudBodyMeasurements | null
   bff?: WhoopBffSyncPayload | null
+  healthMonitor?: WhoopHealthMonitorRow | null
+}
+
+export type WhoopHealthMonitorRow = {
+  date: string
+  bpSystolic: number | null
+  bpDiastolic: number | null
 }
 
 export type WhoopCloudSyncResult = {

@@ -1,5 +1,6 @@
-import { FitnessdatenClient } from '@/components/fitnessdaten/fitnessdaten-client'
 import type { Metadata } from 'next'
+import { Suspense } from 'react'
+import { FitnessdatenClient } from '@/components/fitnessdaten/fitnessdaten-client'
 
 export const metadata: Metadata = {
   title: 'Whoop',
@@ -7,5 +8,9 @@ export const metadata: Metadata = {
 }
 
 export default function FitnessdatenPage() {
-  return <FitnessdatenClient />
+  return (
+    <Suspense fallback={null}>
+      <FitnessdatenClient />
+    </Suspense>
+  )
 }

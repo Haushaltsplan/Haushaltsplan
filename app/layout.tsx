@@ -73,7 +73,7 @@ export default function RootLayout({
               <Providers>
                 <main
                   id="app-main"
-                  className="min-h-0 w-full min-w-0 flex-1 overflow-x-clip overflow-y-auto px-3 py-4 pb-[max(5.25rem,calc(env(safe-area-inset-bottom)+4.5rem))] sm:px-6 sm:py-6 md:px-8 md:py-8 md:pb-[max(1.25rem,env(safe-area-inset-bottom))]"
+                  className="min-h-0 w-full min-w-0 flex-1 overflow-x-auto overflow-y-auto overscroll-contain px-3 py-4 pb-[max(5.25rem,calc(env(safe-area-inset-bottom)+4.5rem))] sm:px-6 sm:py-6 md:px-8 md:py-8 md:pb-[max(1.25rem,env(safe-area-inset-bottom))]"
                 >
                   <MobileSwipePageNav>{children}</MobileSwipePageNav>
                 </main>

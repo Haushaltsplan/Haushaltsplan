@@ -90,7 +90,15 @@ body {
 /* Ein Scroll-Container: #app-main in layout.tsx */
 #app-main {
   -webkit-overflow-scrolling: touch;
-  overscroll-behavior-y: contain;
+  overscroll-behavior: contain;
+}
+
+/** Horizontales Scrollen in Tabellen, Tabs, Karussells */
+.app-h-scroll {
+  max-width: 100%;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  -webkit-overflow-scrolling: touch;
 }
 
 html.app-scroll-locked #app-main {

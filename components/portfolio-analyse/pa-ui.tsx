@@ -29,7 +29,7 @@ export function PaCard({
 }
 
 const scrollTabsClass =
-  'app-table-scroll max-w-full overflow-x-auto overscroll-x-contain [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden'
+  'app-table-scroll app-h-scroll max-w-full [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden'
 
 /** Dezente Scrollbars für Kennzahlen-Panel und Tabellen */
 export const PA_SCROLL_PANEL = 'app-scroll-panel'

@@ -130,6 +130,14 @@ function mergeDay(
         ? prev.steps
         : null,
     vo2Max: pickBff(bffRow?.vo2Max, null, prev.vo2Max),
+    bpSystolic:
+      payload.healthMonitor?.date === date && payload.healthMonitor.bpSystolic != null
+        ? payload.healthMonitor.bpSystolic
+        : prev.bpSystolic,
+    bpDiastolic:
+      payload.healthMonitor?.date === date && payload.healthMonitor.bpDiastolic != null
+        ? payload.healthMonitor.bpDiastolic
+        : prev.bpDiastolic,
   }
 }
 

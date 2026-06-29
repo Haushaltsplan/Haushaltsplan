@@ -104,13 +104,16 @@ export function StartWhoopPanel() {
             </div>
 
             <div className="mt-4 grid grid-cols-2 gap-2">
-              <div className="rounded-xl border border-white/[0.06] bg-[#141618] px-3 py-2.5">
+              <Link
+                href="/fitnessdaten?tab=health"
+                className="rounded-xl border border-white/[0.06] bg-[#141618] px-3 py-2.5 transition hover:border-emerald-500/30"
+              >
                 <p className="text-[9px] font-bold uppercase tracking-wide text-[var(--app-text-muted)]">Gesundheitsmonitor</p>
                 <p className="mt-1 text-xs font-semibold text-emerald-400">
                   {vitalsOk >= 4 ? 'Normalbereich' : 'Daten unvollständig'}
                 </p>
                 <p className="text-[10px] text-[var(--app-text-muted)]">{vitalsOk}/5 Messwerte</p>
-              </div>
+              </Link>
               <button
                 type="button"
                 onClick={() => setTrendMetric('steps')}

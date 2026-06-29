@@ -187,8 +187,8 @@ export function FitnessWhoopCloudPanel({ onSyncComplete, embedded = false }: Pro
         </p>
       ) : null}
       <p className="mt-2 text-[10px] leading-relaxed text-[var(--app-text-muted)]">
-        Blutdruck (WHOOP Life/MG) liefert die öffentliche WHOOP-API nicht — Werte im Tab Gerät unter
-        Vitalwerte eintragen.
+        Blutdruck (WHOOP Life): wird bei Cloud-Sync aus dem Health-Monitor-BFF gelesen, falls verfügbar.
+        Sonst Manschette-Wert im Tab Gerät unter Vitalwerte eintragen.
       </p>
 
       {!statusLoading && statusError ? (
