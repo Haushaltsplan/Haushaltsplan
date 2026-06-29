@@ -8,6 +8,7 @@
 /** Playbook-Typen (erweiterbar). */
 export type MomentumPlaybook =
   | 'earnings_gap_fade'
+  | 'earnings_vorlauf'
   | 'earnings_momentum'
   | 'ipo_fade'
 
@@ -74,6 +75,15 @@ export type MomentumMarketRegime = {
   vixChangePct: number | null
 }
 
+/** Hard Gates aus Markt-Regime. */
+export type MomentumRegimeGates = {
+  longBias: boolean
+  shortBias: boolean
+  gatesPassed: string[]
+  gatesFailed: string[]
+  regime: MomentumMarketRegime
+}
+
 /** Ergebnis der Regel-Engine (Stufe A). */
 export type MomentumScanEintrag = {
   scanDate: string
@@ -115,6 +125,24 @@ export type MomentumWatchlistEintrag = {
   earningsSyncAm: string | null
 }
 
+export type MomentumWatchlistEintragAngereichert = MomentumWatchlistEintrag & {
+  naechstesEarnings: {
+    datum: string
+    timeBmoAmc: MomentumEarningsZeit
+    zeitLabel: string
+    tageBis: number | null
+  } | null
+  medianGapPct: number | null
+  earningsEventsAnzahl: number
+}
+
+/** Scan-Paket inkl. Regime. */
+export type MomentumScanPaket = {
+  scanDate: string
+  regime: MomentumRegimeGates | null
+  ergebnisse: MomentumScanEintrag[]
+}
+
 /** Status-Übersicht für die UI (Datenfundament). */
 export type MomentumDatenStatus = {
   watchlistAnzahl: number
@@ -124,6 +152,7 @@ export type MomentumDatenStatus = {
   earningsKalenderAnzahl: number
   earningsEventsAnzahl: number
   regimeNeuesterTag: string | null
+  regime: MomentumMarketRegime | null
   scanAnzahl: number
   tradesAnzahl: number
   supabaseKonfiguriert: boolean
@@ -145,4 +174,25 @@ export type MomentumBarsSyncErgebnis = {
   vonDatum: string
   bisDatum: string
   fehler: string | null
+}
+
+/** Komplette Sync-Pipeline. */
+export type MomentumFullSyncErgebnis = {
+  ok: boolean
+  schritte: string[]
+  fehler: string[]
+  scan: MomentumScanPaket | null
+}
+
+/** Trade aus Scan vorbereiten. */
+export type MomentumTradeAnlegenInput = {
+  symbol: string
+  playbook: MomentumPlaybook
+  direction: MomentumRichtung
+  entryDate: string
+  entryPrice: number
+  stopPrice?: number | null
+  targetPrice?: number | null
+  riskEur?: number
+  notizen?: string | null
 }

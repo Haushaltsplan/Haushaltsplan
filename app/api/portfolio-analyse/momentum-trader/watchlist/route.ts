@@ -6,6 +6,7 @@ import {
   fuegeZurMomentumWatchlist,
   ladeMomentumWatchlist,
 } from '@/lib/portfolio-analyse/momentum-trader/momentum-watchlist-server'
+import { reichereWatchlistMitEarningsAn } from '@/lib/portfolio-analyse/momentum-trader/momentum-watchlist-enrich-server'
 import { createSupabaseFuerRequest } from '@/lib/supabase-user'
 
 export const dynamic = 'force-dynamic'
@@ -29,7 +30,8 @@ export async function GET(req: Request) {
 
   try {
     const eintraege = await ladeMomentumWatchlist(sb)
-    return NextResponse.json({ eintraege })
+    const angereichert = await reichereWatchlistMitEarningsAn(eintraege)
+    return NextResponse.json({ eintraege: angereichert })
   } catch (e) {
     return NextResponse.json({ fehler: String(e) }, { status: 500 })
   }
@@ -69,7 +71,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ fehler: ergebnis.fehler }, { status: 400 })
   }
 
-  const eintraege = await ladeMomentumWatchlist(sb)
+  const eintraege = await reichereWatchlistMitEarningsAn(await ladeMomentumWatchlist(sb))
   return NextResponse.json({ ok: true, eintraege })
 }
 
@@ -92,7 +94,7 @@ export async function DELETE(req: Request) {
 
   try {
     await entferneAusMomentumWatchlist(sb, isin)
-    const eintraege = await ladeMomentumWatchlist(sb)
+    const eintraege = await reichereWatchlistMitEarningsAn(await ladeMomentumWatchlist(sb))
     return NextResponse.json({ ok: true, eintraege })
   } catch (e) {
     return NextResponse.json({ fehler: String(e) }, { status: 500 })
