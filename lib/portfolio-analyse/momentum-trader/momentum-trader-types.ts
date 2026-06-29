@@ -125,6 +125,16 @@ export type MomentumWatchlistEintrag = {
   earningsSyncAm: string | null
   ipoDatum: string | null
   ipoSyncAm: string | null
+  notiz: string | null
+}
+
+/** Kompakte Gap-Historie für die Watchlist-UI. */
+export type MomentumGapEventKurz = {
+  datum: string
+  gapPct: number | null
+  rvol: number | null
+  surpriseEpsPct: number | null
+  timeBmoAmc: MomentumEarningsZeit
 }
 
 export type MomentumWatchlistEintragAngereichert = MomentumWatchlistEintrag & {
@@ -136,6 +146,7 @@ export type MomentumWatchlistEintragAngereichert = MomentumWatchlistEintrag & {
   } | null
   medianGapPct: number | null
   earningsEventsAnzahl: number
+  letzteGapEvents: MomentumGapEventKurz[]
 }
 
 /** Scan-Paket inkl. Regime. */

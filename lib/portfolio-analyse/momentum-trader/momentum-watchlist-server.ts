@@ -20,6 +20,7 @@ type WatchlistDbZeile = {
   earnings_sync_am: string | null
   ipo_datum: string | null
   ipo_sync_am: string | null
+  notiz: string | null
 }
 
 function dbZuEintrag(row: WatchlistDbZeile): MomentumWatchlistEintrag {
@@ -32,6 +33,7 @@ function dbZuEintrag(row: WatchlistDbZeile): MomentumWatchlistEintrag {
     earningsSyncAm: row.earnings_sync_am,
     ipoDatum: row.ipo_datum?.slice(0, 10) ?? null,
     ipoSyncAm: row.ipo_sync_am,
+    notiz: row.notiz,
   }
 }
 
@@ -128,6 +130,33 @@ export async function syncIpoDatumFuerWatchlist(
   }
 
   return { aktualisiert, fehler }
+}
+
+/** IPO-Datum und/oder Notiz aktualisieren. */
+export async function aktualisiereMomentumWatchlistMeta(
+  sb: SupabaseClient,
+  isin: string,
+  meta: { ipoDatum?: string | null; notiz?: string | null },
+): Promise<void> {
+  const isinNorm = isin.trim().toUpperCase()
+  const patch: Record<string, string | null> = {}
+
+  if ('ipoDatum' in meta) {
+    const d = meta.ipoDatum?.trim().slice(0, 10) ?? null
+    if (d != null && !/^\d{4}-\d{2}-\d{2}$/.test(d)) {
+      throw new Error('ipoDatum muss YYYY-MM-DD sein.')
+    }
+    patch.ipo_datum = d
+    if (d) patch.ipo_sync_am = new Date().toISOString()
+  }
+  if ('notiz' in meta) {
+    patch.notiz = meta.notiz?.trim() || null
+  }
+
+  if (Object.keys(patch).length === 0) return
+
+  const { error } = await sb.from(TABLE).update(patch).eq('isin', isinNorm)
+  if (error) throw new Error(error.message)
 }
 
 /** Alle Watchlists gruppiert nach owner_user_id (Cron / Admin). */

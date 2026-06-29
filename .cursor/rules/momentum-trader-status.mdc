@@ -1,0 +1,85 @@
+---
+description: Momentum Trader — Architektur, Playbooks und Betrieb
+alwaysApply: true
+---
+
+# Momentum Trader — Projektstatus
+
+## Was ist das?
+Kurzfristiger, faktenbasierter Trading-Assistent (Earnings-Gaps, Momentum, IPO-Fade).
+**Getrennt vom Nachkauf-Radar** — eigene Watchlist, Playbooks, Journal. Max. **10 € Risiko** pro Trade.
+
+## Architektur: Regeln entscheiden, KI erklärt
+
+| Stufe | Modell | Trigger | Output |
+|-------|--------|---------|--------|
+| A – Scan | Gemini Flash | Manuell / Cron | Score, Ampel, Gates, optional KI-Memo |
+| — | — | — | Kein Deep Research / keine Kaufempfehlung wie Nachkauf |
+
+## Playbooks
+
+| Playbook | Richtung | Kernregeln |
+|----------|----------|------------|
+| `earnings_gap_fade` | Short bei Gap-Up / Long bei Gap-Down | Gap ≥5%, RVOL ≥1,5×, ≥2× Median-Gap, Regime-Bias |
+| `earnings_momentum` | Mit Surprise | Beat+Gap-Up+Tag1-Stärke+RS vs. S&P 20T |
+| `ipo_fade` | Short | 2–14 Tage nach IPO, Lauf ≥20%, Reversal |
+| `earnings_vorlauf` | — | Beobachten 3–14 Tage vor Earnings |
+
+## Watchlist-only (max. 32)
+
+- DivvyDiary sequentiell (~2,5 s Pause), **kein Marktweit-Scraping**
+- Finnhub: EPS-Surprise, Guidance, IPO-Datum (`FINNHUB_API_KEY`)
+- BMO/AMC-Gap: `momentum-earnings-bar.ts` (Auto-Erkennung wenn unbekannt)
+
+## Wichtigste Dateien
+
+```
+lib/portfolio-analyse/momentum-trader/
+  momentum-scan-server.ts           ← Regel-Engine (4 Playbooks)
+  momentum-earnings-bar.ts          ← BMO/AMC Reaktionsbar
+  momentum-full-sync-server.ts      ← Pipeline
+  momentum-scan-memo-server.ts      ← KI-Erklärung (max. 5/Scan)
+  momentum-watchlist-server.ts      ← CRUD + IPO-Sync
+  momentum-trades-server.ts         ← Journal + PnL
+  momentum-performance-server.ts    ← Win-Rate, Profit Factor
+  momentum-erinnerungen-server.ts   ← UI-Hinweise
+  momentum-cron-server.ts           ← Vercel Cron Full-Sync
+
+app/api/portfolio-analyse/momentum-trader/
+  watchlist/   GET POST PATCH DELETE
+  sync/all/    POST Full-Pipeline
+  scan/        GET POST (body: { mitKi: true })
+  trades/      Journal
+  cron-sync/   GET (CRON_SECRET)
+
+components/portfolio-analyse/
+  portfolio-momentum-trader.client.tsx
+```
+
+## Supabase-Tabellen
+
+| Tabelle | Inhalt |
+|---------|--------|
+| `momentum_watchlist` | owner + isin, ipo_datum, notiz (RLS) |
+| `momentum_bars_daily` | OHLCV (Service Role) |
+| `momentum_earnings_calendar` | Termine + BMO/AMC |
+| `momentum_earnings_events` | Gap-Historie + Surprise |
+| `momentum_market_regime_daily` | SPY/VIX |
+| `momentum_scan_results` | Tägliche Setups |
+| `momentum_trades` | Journal (RLS pro User) |
+
+## Cron (vercel.json)
+
+- Mo–Fr **07:00** + **22:00 UTC** → `/api/portfolio-analyse/momentum-trader/cron-sync`
+
+## Deployment
+
+- Manuell via Deploy Hook (Branch `main`)
+- Nach Deploy: Migrationen + einmal „Alles aktualisieren“
+
+## Bekannte Quirks
+
+- `tiefenAnalyse` gibt es nicht — KI nur als `kiBegruendung` in Scan-Indikatoren
+- Momentum braucht Finnhub-Backfill für Surprise (sonst Momentum-Playbook schwach)
+- IPO-Fade nur mit `ipo_datum` (Finnhub-Sync oder manuell PATCH)
+- Gleicher Ticker kann Gap-Fade **und** Momentum gleichzeitig zeigen (gegenteilige Logik — Nutzer wählt Playbook)

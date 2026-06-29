@@ -2,6 +2,7 @@
 import { NextResponse } from 'next/server'
 import { isinKenntnis } from '@/lib/portfolio-analyse/isin-kenntnisse'
 import {
+  aktualisiereMomentumWatchlistMeta,
   entferneAusMomentumWatchlist,
   fuegeZurMomentumWatchlist,
   ladeMomentumWatchlist,
@@ -98,5 +99,31 @@ export async function DELETE(req: Request) {
     return NextResponse.json({ ok: true, eintraege })
   } catch (e) {
     return NextResponse.json({ fehler: String(e) }, { status: 500 })
+  }
+}
+
+export async function PATCH(req: Request) {
+  const { sb, res } = await authOder401(req)
+  if (res || !sb) return res!
+
+  let body: Record<string, unknown>
+  try {
+    body = ((await req.json()) ?? {}) as Record<string, unknown>
+  } catch {
+    return NextResponse.json({ fehler: 'Kein gültiges JSON.' }, { status: 400 })
+  }
+
+  const isin = body.isin != null ? String(body.isin).trim().toUpperCase() : ''
+  if (!isin) return NextResponse.json({ fehler: 'ISIN fehlt.' }, { status: 400 })
+
+  try {
+    await aktualisiereMomentumWatchlistMeta(sb, isin, {
+      ipoDatum: 'ipoDatum' in body ? (body.ipoDatum != null ? String(body.ipoDatum) : null) : undefined,
+      notiz: 'notiz' in body ? (body.notiz != null ? String(body.notiz) : null) : undefined,
+    })
+    const eintraege = await reichereWatchlistMitEarningsAn(await ladeMomentumWatchlist(sb))
+    return NextResponse.json({ ok: true, eintraege })
+  } catch (e) {
+    return NextResponse.json({ fehler: String(e) }, { status: 400 })
   }
 }

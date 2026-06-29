@@ -29,6 +29,11 @@ export const IPO_FADE_MAX_TAGE = 14
 export const IPO_RUN_MIN_PCT = 20
 export const IPO_REVERSAL_GAP_PCT = -2
 
+/** Relative Stärke: Long braucht Outperformance vs. Benchmark. */
+export const RS_MIN_LONG_PCT = 0
+export const RS_MAX_SHORT_PCT = 0
+export const RS_TAGE = 20
+
 export function momentumPlaybookLabel(playbook: string): string {
   if (playbook === 'earnings_gap_fade') return 'Earnings-Gap-Fade'
   if (playbook === 'earnings_vorlauf') return 'Earnings-Vorlauf'

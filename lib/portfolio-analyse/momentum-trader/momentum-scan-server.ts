@@ -17,6 +17,9 @@ import {
   IPO_RUN_MIN_PCT,
   momentumPlaybookLabel,
   MOMENTUM_GAP_MIN_PCT,
+  RS_MAX_SHORT_PCT,
+  RS_MIN_LONG_PCT,
+  RS_TAGE,
   RVOL_MIN,
   SURPRISE_BEAT_MIN_PCT,
   SURPRISE_MISS_MAX_PCT,
@@ -38,6 +41,7 @@ import {
 import {
   berechneAtr,
   berechneGapPct,
+  berechneRelativeStaerke,
   berechneRvol,
 } from '@/lib/portfolio-analyse/momentum-trader/momentum-indicators'
 import { berechnePositionsVorschlag } from '@/lib/portfolio-analyse/momentum-trader/momentum-position-sizing'
@@ -53,6 +57,9 @@ import type {
   MomentumWatchlistEintrag,
 } from '@/lib/portfolio-analyse/momentum-trader/momentum-trader-types'
 import { symboleAusWatchlist } from '@/lib/portfolio-analyse/momentum-trader/momentum-watchlist-server'
+import { MOMENTUM_REGIME_SYMBOLS } from '@/lib/portfolio-analyse/momentum-trader/momentum-universe'
+
+const SPY_SYMBOL = MOMENTUM_REGIME_SYMBOLS[0]
 
 function addDaysIso(iso: string, tage: number): string {
   const d = new Date(iso + 'T12:00:00Z')
@@ -224,6 +231,7 @@ function bewerteEarningsMomentum(
   earningsDate: string,
   timeBmoAmc: MomentumEarningsZeit,
   bars: MomentumBarDaily[],
+  spyBars: MomentumBarDaily[],
   regimeGates: MomentumRegimeGates,
   event: MomentumEarningsEvent | null,
 ): MomentumScanEintrag | null {
@@ -277,6 +285,21 @@ function bewerteEarningsMomentum(
     else gatesFailed.push('Regime: kein Short-Bias')
   }
 
+  const spyIdx = spyBars.findIndex((b) => b.handelstag === bar.handelstag)
+  const rs =
+    spyIdx >= 0 ? berechneRelativeStaerke(bars, spyBars, ctx.barIdx, RS_TAGE) : null
+  if (rs != null && richtung != null) {
+    if (richtung === 'long' && rs >= RS_MIN_LONG_PCT) {
+      gatesPassed.push('RS vs. S&P (' + RS_TAGE + 'T): +' + rs + '%')
+    } else if (richtung === 'short' && rs <= RS_MAX_SHORT_PCT) {
+      gatesPassed.push('RS vs. S&P (' + RS_TAGE + 'T): ' + rs + '%')
+    } else {
+      gatesFailed.push('RS vs. S&P widerspricht Richtung (' + rs + '%)')
+    }
+  } else if (richtung != null) {
+    gatesFailed.push('Relative Stärke nicht berechenbar')
+  }
+
   let score = 30
   if (surprise != null) score += Math.min(20, Math.abs(surprise))
   if (gapPct != null) score += Math.min(15, Math.abs(gapPct) * 1.5)
@@ -307,6 +330,7 @@ function bewerteEarningsMomentum(
       guidanceLabel: guidanceLabel(event?.guidanceFlag ?? 'unknown'),
       rvol,
       atr,
+      rsVsSpy20d: rs,
       richtung,
       handelstag: bar.handelstag,
       entryPrice: pos?.entryPrice ?? bar.close,
@@ -469,6 +493,7 @@ export async function scanMomentumWatchlist(
   const vonBars = addDaysIso(heute, -400)
   const symbole = symboleAusWatchlist(watchlist)
   const kalender = await ladeMomentumEarningsKalenderFuerSymbole(symbole)
+  const spyBars = await ladeMomentumBars(SPY_SYMBOL, vonBars, heute)
 
   const ergebnisse: MomentumScanEintrag[] = []
 
@@ -493,7 +518,7 @@ export async function scanMomentumWatchlist(
       const fade = bewerteGapFade(symbol, t.earningsDate, zeit, bars, regimeGates, medianGap, ev)
       if (fade) ergebnisse.push(fade)
 
-      const mom = bewerteEarningsMomentum(symbol, t.earningsDate, zeit, bars, regimeGates, ev)
+      const mom = bewerteEarningsMomentum(symbol, t.earningsDate, zeit, bars, spyBars, regimeGates, ev)
       if (mom && mom.score >= 40) ergebnisse.push(mom)
     }
 

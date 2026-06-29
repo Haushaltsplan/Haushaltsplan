@@ -63,7 +63,12 @@ function PerformancePanel({ p }: { p: MomentumPerformance }) {
       : p.tradesGeschlossen > 0 && p.pnlGesamtEur > 0
         ? '∞'
         : '—'
-  const gapFade = p.nachPlaybook.earnings_gap_fade
+  const playbooks: MomentumPlaybook[] = [
+    'earnings_gap_fade',
+    'earnings_momentum',
+    'ipo_fade',
+    'earnings_vorlauf',
+  ]
 
   return (
     <PaCard className="p-5">
@@ -72,7 +77,7 @@ function PerformancePanel({ p }: { p: MomentumPerformance }) {
         {p.tradesGeschlossen} geschlossen · {p.tradesOffen} offen
         {p.ruleCompliancePct != null ? ' · ' + p.ruleCompliancePct + '% regelkonform' : ''}
       </p>
-      <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+      <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <StatKachel
           label="PnL gesamt"
           wert={(p.pnlGesamtEur >= 0 ? '+' : '') + p.pnlGesamtEur.toFixed(2) + ' €'}
@@ -83,14 +88,32 @@ function PerformancePanel({ p }: { p: MomentumPerformance }) {
           label="Ø PnL / Trade"
           wert={p.pnlDurchschnittEur != null ? p.pnlDurchschnittEur.toFixed(2) + ' €' : '—'}
         />
-        <StatKachel
-          label="Gap-Fade"
-          wert={
-            gapFade.geschlossen > 0
-              ? gapFade.pnlEur.toFixed(2) + ' € (' + gapFade.geschlossen + ')'
-              : gapFade.trades + ' offen'
-          }
-        />
+      </div>
+      <div className="mt-4 overflow-x-auto">
+        <table className="w-full min-w-[320px] text-left text-xs">
+          <thead>
+            <tr className="text-[var(--app-text-muted)]">
+              <th className="pb-2 font-medium">Playbook</th>
+              <th className="pb-2 font-medium">Trades</th>
+              <th className="pb-2 font-medium">Win-Rate</th>
+              <th className="pb-2 font-medium">PnL</th>
+            </tr>
+          </thead>
+          <tbody className="text-[var(--app-text)]">
+            {playbooks.map((pb) => {
+              const s = p.nachPlaybook[pb]
+              if (s.trades === 0) return null
+              return (
+                <tr key={pb} className="border-t border-[var(--app-border)]">
+                  <td className="py-2">{momentumPlaybookLabel(pb)}</td>
+                  <td className="py-2 tabular-nums">{s.geschlossen}/{s.trades}</td>
+                  <td className="py-2 tabular-nums">{s.winRatePct != null ? s.winRatePct + '%' : '—'}</td>
+                  <td className="py-2 tabular-nums">{s.pnlEur.toFixed(2)} €</td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
       </div>
     </PaCard>
   )
@@ -108,6 +131,154 @@ function playbookTitel(playbook: MomentumPlaybook): string {
 }
 
 const TRADE_PLAYBOOKS: MomentumPlaybook[] = ['earnings_gap_fade', 'earnings_momentum', 'ipo_fade']
+
+function filterScanErgebnisse(
+  ergebnisse: MomentumScanEintrag[],
+  scanFilter: 'trade' | 'momentum' | 'ipo' | 'vorlauf' | 'alle',
+): MomentumScanEintrag[] {
+  return ergebnisse
+    .filter((e) => {
+      if (scanFilter === 'alle') return true
+      if (scanFilter === 'vorlauf') return e.playbook === 'earnings_vorlauf'
+      if (scanFilter === 'momentum') return e.playbook === 'earnings_momentum'
+      if (scanFilter === 'ipo') return e.playbook === 'ipo_fade'
+      return e.playbook === 'earnings_gap_fade' && e.ampel !== 'grau' && e.ampel !== 'rot'
+    })
+    .sort((a, b) => b.score - a.score)
+}
+
+function WatchlistZeile({
+  e,
+  meta,
+  onEntfernen,
+  onMetaSpeichern,
+}: {
+  e: MomentumWatchlistEintragAngereichert
+  meta: ReturnType<typeof usePortfolioAnalyse>['meta']
+  onEntfernen: (isin: string) => void
+  onMetaSpeichern: (isin: string, patch: { ipoDatum?: string | null; notiz?: string | null }) => Promise<void>
+}) {
+  const [aufgeklappt, setAufgeklappt] = useState(false)
+  const [ipoInput, setIpoInput] = useState(e.ipoDatum ?? '')
+  const [notizInput, setNotizInput] = useState(e.notiz ?? '')
+  const [speichern, setSpeichern] = useState(false)
+
+  const earningsHeute = e.naechstesEarnings?.tageBis === 0
+  const earningsBald = e.naechstesEarnings?.tageBis != null && e.naechstesEarnings.tageBis <= 3
+
+  const metaSpeichern = async () => {
+    setSpeichern(true)
+    try {
+      await onMetaSpeichern(e.isin, {
+        ipoDatum: ipoInput.trim() || null,
+        notiz: notizInput.trim() || null,
+      })
+    } finally {
+      setSpeichern(false)
+    }
+  }
+
+  return (
+    <li
+      className={
+        (aufgeklappt ? 'block ' : 'flex items-center justify-between gap-3 ') +
+        'px-3 py-2.5 sm:px-4 ' +
+        (earningsHeute ? 'bg-violet-500/10' : earningsBald ? 'bg-amber-500/5' : '')
+      }
+    >
+      <div className={aufgeklappt ? 'flex items-start justify-between gap-3' : 'flex min-w-0 flex-1 items-center gap-3'}>
+        <PortfolioIsinLogo isin={e.isin} fallbackName={e.name} meta={meta} groesse="sm" />
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-medium text-[var(--app-text)]">{e.name}</p>
+          <p className="truncate text-xs text-[var(--app-text-muted)]">
+            {e.symbolYahoo ?? '—'} · {e.isin}
+          </p>
+          {e.naechstesEarnings ? (
+            <p className="mt-0.5 text-xs text-violet-300/90">
+              Earnings {new Date(e.naechstesEarnings.datum + 'T12:00:00').toLocaleDateString('de-DE')}
+              {e.naechstesEarnings.tageBis != null && e.naechstesEarnings.tageBis <= 14
+                ? ' · in ' + e.naechstesEarnings.tageBis + ' Tagen'
+                : ''}
+            </p>
+          ) : (
+            <p className="mt-0.5 text-xs text-[var(--app-text-muted)]">Kein Termin — Sync ausführen</p>
+          )}
+          {e.medianGapPct != null && (
+            <p className="text-[11px] text-[var(--app-text-muted)]">
+              Median-Gap {e.medianGapPct.toFixed(1)}% ({e.earningsEventsAnzahl} Events)
+            </p>
+          )}
+          {e.notiz && !aufgeklappt && (
+            <p className="mt-0.5 truncate text-[11px] italic text-[var(--app-text-muted)]">{e.notiz}</p>
+          )}
+        </div>
+        <div className="flex shrink-0 gap-1">
+          <button
+            type="button"
+            onClick={() => setAufgeklappt((v) => !v)}
+            className="rounded-lg px-2.5 py-1.5 text-xs text-[var(--app-text-muted)] ring-1 ring-[var(--app-border)] hover:bg-[var(--app-surface-hover)]"
+          >
+            {aufgeklappt ? '−' : '+'}
+          </button>
+          <button
+            type="button"
+            onClick={() => onEntfernen(e.isin)}
+            className="rounded-lg px-2.5 py-1.5 text-xs text-[var(--app-text-muted)] ring-1 ring-[var(--app-border)] hover:bg-red-500/10 hover:text-red-300"
+          >
+            Entfernen
+          </button>
+        </div>
+      </div>
+      {aufgeklappt && (
+        <div className="mt-3 space-y-3 border-t border-[var(--app-border)] pt-3">
+          {e.letzteGapEvents.length > 0 ? (
+            <div>
+              <p className="text-[10px] uppercase tracking-wide text-[var(--app-text-muted)]">Gap-Historie</p>
+              <ul className="mt-1 space-y-1 text-[11px] tabular-nums text-[var(--app-text-muted)]">
+                {e.letzteGapEvents.map((g) => (
+                  <li key={g.datum}>
+                    {new Date(g.datum + 'T12:00:00').toLocaleDateString('de-DE')}: Gap{' '}
+                    {g.gapPct != null ? g.gapPct + '%' : '—'}
+                    {g.surpriseEpsPct != null ? ' · Surprise ' + g.surpriseEpsPct + '%' : ''}
+                    {g.rvol != null ? ' · RVOL ' + g.rvol + '×' : ''}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : (
+            <p className="text-[11px] text-[var(--app-text-muted)]">Keine Gap-Historie — Backfill via „Alles aktualisieren“.</p>
+          )}
+          <div className="flex flex-wrap gap-2">
+            <label className="text-[11px] text-[var(--app-text-muted)]">
+              IPO-Datum
+              <input
+                type="date"
+                value={ipoInput}
+                onChange={(ev) => setIpoInput(ev.target.value)}
+                className="mt-1 block rounded-lg border border-[var(--app-border)] bg-[var(--app-surface)] px-2 py-1 text-xs"
+              />
+            </label>
+          </div>
+          <textarea
+            value={notizInput}
+            onChange={(ev) => setNotizInput(ev.target.value)}
+            placeholder="Notiz (Setup, Erwartung …)"
+            rows={2}
+            className="w-full rounded-lg border border-[var(--app-border)] bg-[var(--app-surface)] px-2 py-1.5 text-xs"
+          />
+          <button
+            type="button"
+            disabled={speichern}
+            onClick={() => void metaSpeichern()}
+            className="rounded-lg bg-[var(--app-surface-muted)] px-3 py-1.5 text-xs ring-1 ring-[var(--app-border)] disabled:opacity-50"
+          >
+            {speichern ? 'Speichern …' : 'Meta speichern'}
+          </button>
+        </div>
+      )}
+    </li>
+  )
+}
 
 function ScanKarte({
   e,
@@ -127,6 +298,7 @@ function ScanKarte({
   const surprise = e.indikatoren.surpriseEpsPct
   const guidance = e.indikatoren.guidanceLabel ?? e.indikatoren.guidanceFlag
   const kiMemo = e.indikatoren.kiBegruendung
+  const rs = e.indikatoren.rsVsSpy20d
   const kannTrade =
     TRADE_PLAYBOOKS.includes(e.playbook) && e.ampel !== 'grau' && e.ampel !== 'rot' && richtung != null
 
@@ -151,6 +323,7 @@ function ScanKarte({
         {median != null && <span>Median {String(median)}%</span>}
         {rvol != null && <span>RVOL {String(rvol)}×</span>}
         {surprise != null && <span>Surprise {String(surprise)}%</span>}
+        {rs != null && <span>RS {String(rs)}%</span>}
         {guidance != null && <span>{String(guidance)}</span>}
         {stop != null && <span>Stop {String(stop)}</span>}
         {target != null && <span>Ziel {String(target)}</span>}
@@ -261,6 +434,7 @@ export function MomentumTraderClient() {
   const [performance, setPerformance] = useState<MomentumPerformance | null>(null)
   const [erinnerungen, setErinnerungen] = useState<MomentumErinnerung[]>([])
   const [scanFilter, setScanFilter] = useState<'trade' | 'momentum' | 'ipo' | 'vorlauf' | 'alle'>('trade')
+  const [exportHinweis, setExportHinweis] = useState<string | null>(null)
   const [laden, setLaden] = useState(true)
   const [fullSyncLaeuft, setFullSyncLaeuft] = useState(false)
   const [barsSyncLaeuft, setBarsSyncLaeuft] = useState(false)
@@ -493,6 +667,48 @@ export function MomentumTraderClient() {
     [ladeAlles],
   )
 
+  const speichereWatchlistMeta = useCallback(
+    async (isin: string, patch: { ipoDatum?: string | null; notiz?: string | null }) => {
+      setFehler(null)
+      const res = await momentumApiFetch('/api/portfolio-analyse/momentum-trader/watchlist', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ isin, ...patch }),
+      })
+      const data = (await res.json()) as { eintraege?: MomentumWatchlistEintragAngereichert[]; fehler?: string }
+      if (!res.ok) throw new Error(data.fehler ?? 'Speichern fehlgeschlagen.')
+      setWatchlist(data.eintraege ?? [])
+    },
+    [],
+  )
+
+  const exportiereScan = useCallback(() => {
+    if (!scan || scan.ergebnisse.length === 0) return
+    const lines = [
+      '# Momentum Scan ' + scan.scanDate,
+      '',
+      ...filterScanErgebnisse(scan.ergebnisse, scanFilter).map((e) => {
+        const r = e.indikatoren.richtung
+        return (
+          '- **' +
+          e.symbol +
+          '** · ' +
+          playbookTitel(e.playbook) +
+          ' · Score ' +
+          e.score +
+          ' · ' +
+          e.ampel +
+          (r ? ' · ' + String(r) : '') +
+          (e.indikatoren.gapPct != null ? ' · Gap ' + e.indikatoren.gapPct + '%' : '')
+        )
+      }),
+    ]
+    void navigator.clipboard.writeText(lines.join('\n')).then(() => {
+      setExportHinweis('Scan in Zwischenablage kopiert.')
+      setTimeout(() => setExportHinweis(null), 2500)
+    })
+  }, [scan, scanFilter])
+
   const loescheTrade = useCallback(
     async (id: string) => {
       setTradeLaden(true)
@@ -518,18 +734,7 @@ export function MomentumTraderClient() {
   const regime = status?.regime ?? scan?.regime?.regime ?? null
   const busy = fullSyncLaeuft || barsSyncLaeuft || earningsSyncLaeuft || scanLaeuft
 
-  const gefilterteScan =
-    scan?.ergebnisse
-      .filter((e) => {
-        if (scanFilter === 'alle') return true
-        if (scanFilter === 'vorlauf') return e.playbook === 'earnings_vorlauf'
-        if (scanFilter === 'momentum') return e.playbook === 'earnings_momentum'
-        if (scanFilter === 'ipo') return e.playbook === 'ipo_fade'
-        return (
-          e.playbook === 'earnings_gap_fade' && e.ampel !== 'grau' && e.ampel !== 'rot'
-        )
-      })
-      .sort((a, b) => b.score - a.score) ?? []
+  const gefilterteScan = scan ? filterScanErgebnisse(scan.ergebnisse, scanFilter) : []
 
   return (
     <PortfolioAnalyseShell title="Momentum Trader">
@@ -613,54 +818,15 @@ export function MomentumTraderClient() {
             <p className="mt-4 text-sm text-[var(--app-text-muted)]">Titel per Suche hinzufügen — dann „Alles aktualisieren“.</p>
           ) : (
             <ul className="mt-4 divide-y divide-[var(--app-border)] rounded-xl border border-[var(--app-border)]">
-              {watchlist.map((e) => {
-                const earningsHeute = e.naechstesEarnings?.tageBis === 0
-                const earningsBald =
-                  e.naechstesEarnings?.tageBis != null && e.naechstesEarnings.tageBis <= 3
-                return (
-                <li
+              {watchlist.map((e) => (
+                <WatchlistZeile
                   key={e.isin}
-                  className={
-                    'flex items-center justify-between gap-3 px-3 py-2.5 sm:px-4 ' +
-                    (earningsHeute
-                      ? 'bg-violet-500/10'
-                      : earningsBald
-                        ? 'bg-amber-500/5'
-                        : '')
-                  }
-                >
-                  <div className="flex min-w-0 items-center gap-3">
-                    <PortfolioIsinLogo isin={e.isin} fallbackName={e.name} meta={meta} groesse="sm" />
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-medium text-[var(--app-text)]">{e.name}</p>
-                      <p className="truncate text-xs text-[var(--app-text-muted)]">{e.symbolYahoo ?? '—'} · {e.isin}</p>
-                      {e.naechstesEarnings ? (
-                        <p className="mt-0.5 text-xs text-violet-300/90">
-                          Earnings {new Date(e.naechstesEarnings.datum + 'T12:00:00').toLocaleDateString('de-DE')}
-                          {e.naechstesEarnings.tageBis != null && e.naechstesEarnings.tageBis <= 14
-                            ? ' · in ' + e.naechstesEarnings.tageBis + ' Tagen'
-                            : ''}
-                        </p>
-                      ) : (
-                        <p className="mt-0.5 text-xs text-[var(--app-text-muted)]">Kein Termin — Sync ausführen</p>
-                      )}
-                      {e.medianGapPct != null && (
-                        <p className="text-[11px] text-[var(--app-text-muted)]">
-                          Median-Gap {e.medianGapPct.toFixed(1)}% ({e.earningsEventsAnzahl} Events)
-                        </p>
-                      )}
-                      {e.ipoDatum && (
-                        <p className="text-[11px] text-teal-300/80">
-                          IPO {new Date(e.ipoDatum + 'T12:00:00').toLocaleDateString('de-DE')}
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                  <button type="button" onClick={() => void entfernen(e.isin)} className="shrink-0 rounded-lg px-2.5 py-1.5 text-xs text-[var(--app-text-muted)] ring-1 ring-[var(--app-border)] hover:bg-red-500/10 hover:text-red-300">
-                    Entfernen
-                  </button>
-                </li>
-              )})}
+                  e={e}
+                  meta={meta}
+                  onEntfernen={(isin) => void entfernen(isin)}
+                  onMetaSpeichern={speichereWatchlistMeta}
+                />
+              ))}
             </ul>
           )}
         </PaCard>
@@ -673,7 +839,8 @@ export function MomentumTraderClient() {
                 Gap-Fade · Earnings-Momentum · IPO-Fade · Vorlauf. BMO/AMC-Gap-Erkennung, Finnhub-Surprise.
               </p>
             </div>
-            <div className="flex flex-wrap gap-1 rounded-xl bg-[var(--app-surface-muted)]/50 p-1 ring-1 ring-[var(--app-border)]">
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="flex flex-wrap gap-1 rounded-xl bg-[var(--app-surface-muted)]/50 p-1 ring-1 ring-[var(--app-border)]">
               {(
                 [
                   ['trade', 'Gap-Fade'],
@@ -697,6 +864,16 @@ export function MomentumTraderClient() {
                   {label}
                 </button>
               ))}
+              </div>
+              {scan && scan.ergebnisse.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => exportiereScan()}
+                  className="rounded-lg px-3 py-1.5 text-xs text-[var(--app-text-muted)] ring-1 ring-[var(--app-border)] hover:bg-[var(--app-surface-hover)]"
+                >
+                  {exportHinweis ?? 'Scan kopieren'}
+                </button>
+              )}
             </div>
           </div>
           {gefilterteScan.length > 0 ? (

@@ -58,6 +58,17 @@ export async function reichereWatchlistMitEarningsAn(
       const naechstes = sym ? naechstesProSymbol.get(sym) ?? null : null
       const tageBis = naechstes ? tageZwischenIso(heute, naechstes.datum) : null
       const medianGap = events ? medianGapAbsPct(events) : null
+      const letzteGapEvents = (events ?? [])
+        .slice()
+        .sort((a, b) => b.earningsDate.localeCompare(a.earningsDate))
+        .slice(0, 4)
+        .map((ev) => ({
+          datum: ev.earningsDate,
+          gapPct: ev.gapPct,
+          rvol: ev.rvol,
+          surpriseEpsPct: ev.surpriseEpsPct,
+          timeBmoAmc: ev.timeBmoAmc,
+        }))
 
       return {
         ...e,
@@ -71,6 +82,7 @@ export async function reichereWatchlistMitEarningsAn(
           : null,
         medianGapPct: medianGap,
         earningsEventsAnzahl: events?.length ?? 0,
+        letzteGapEvents,
       }
     }),
   )
