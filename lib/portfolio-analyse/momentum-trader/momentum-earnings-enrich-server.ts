@@ -5,6 +5,7 @@ import { tageZwischenIso } from '@/lib/portfolio-analyse/dividenden-datum-hilfen
 import { quartalLabelAusTermin } from '@/lib/portfolio-analyse/earnings-quartal-termin'
 import { ladeMarketbeatBeatMissHistorie } from '@/lib/portfolio-analyse/marketbeat-beat-miss-historie-server'
 import { leiteGuidanceFlagAb } from '@/lib/portfolio-analyse/momentum-trader/momentum-guidance'
+import { momentumEarningsTicker } from '@/lib/portfolio-analyse/momentum-trader/momentum-symbol-hilfen'
 import type { MomentumEarningsEvent } from '@/lib/portfolio-analyse/momentum-trader/momentum-trader-types'
 import { ladeYahooEarningsHistoryZeile } from '@/lib/portfolio-analyse/yahoo-earnings-history-server'
 
@@ -26,11 +27,12 @@ export async function reichereEventMitEpsSurprise(
   symbolYahoo?: string | null,
 ): Promise<MomentumEarningsEvent> {
   const label = quartalLabelAusTermin(event.earningsDate)
+  const scrapeTicker = momentumEarningsTicker(symbolYahoo?.trim() || event.symbol)
 
   try {
     const mb = await ladeMarketbeatBeatMissHistorie({
-      ticker: event.symbol,
-      symbolYahoo,
+      ticker: scrapeTicker,
+      symbolYahoo: scrapeTicker,
       limit: 12,
     })
     const row = marketbeatZeileFuerTermin(mb, event.earningsDate, label)
@@ -50,7 +52,7 @@ export async function reichereEventMitEpsSurprise(
     /* Marketbeat optional */
   }
 
-  const yh = await ladeYahooEarningsHistoryZeile(event.symbol, [label])
+  const yh = await ladeYahooEarningsHistoryZeile(scrapeTicker, [label])
   const epsIst = yh?.ist?.eps
   const epsSchaetzung = yh?.schaetzung?.eps
   if (epsIst == null) return event

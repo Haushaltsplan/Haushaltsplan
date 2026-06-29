@@ -40,16 +40,11 @@ function berichtszeitZuMomentumZeit(zeit: Berichtszeit | null): MomentumEarnings
   return 'unknown'
 }
 
-function primaeresSymbol(e: MomentumWatchlistEintrag): string | null {
-  return e.symbolYahoo?.trim().toUpperCase() || e.symbolCandidates[0]?.trim().toUpperCase() || null
-}
-
-function symbolKandidaten(e: MomentumWatchlistEintrag): string[] {
-  const sym = primaeresSymbol(e)
-  if (!sym) return []
-  const out = [sym, ...e.symbolCandidates.map((s) => s.trim().toUpperCase())]
-  return [...new Set(out.filter(Boolean))]
-}
+import {
+  primaeresAnzeigeSymbol,
+  primaeresEarningsSymbol,
+  symbolKandidatenFuerEarnings,
+} from '@/lib/portfolio-analyse/momentum-trader/momentum-symbol-hilfen'
 
 async function ladeDivvydiaryTermineImZeitraum(
   isin: string,
@@ -137,8 +132,8 @@ export async function ladeMomentumEarningsTermineFuerTitel(
   const heute = heuteIsoUtc()
   const von = vonIso ?? heute
   const bis = bisIso ?? addDaysIso(heute, MOMENTUM_EARNINGS_HORIZONT_TAGE)
-  const sym = primaeresSymbol(eintrag)
-  const symbole = symbolKandidaten(eintrag)
+  const sym = primaeresAnzeigeSymbol(eintrag)
+  const symbole = symbolKandidatenFuerEarnings(eintrag)
   if (!sym) return []
 
   const name = isinKenntnis(eintrag.isin)?.name ?? eintrag.name

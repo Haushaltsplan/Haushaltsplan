@@ -27,9 +27,13 @@ import {
 } from '@/lib/portfolio-analyse/momentum-trader/momentum-constants'
 import { findeEarningsReaktionsBar } from '@/lib/portfolio-analyse/momentum-trader/momentum-earnings-bar'
 import {
+  ladeBarsFuerEarningsGap,
   ladeMedianGapFuerSymbol,
   medianGapAbsPct,
 } from '@/lib/portfolio-analyse/momentum-trader/momentum-earnings-events-server'
+import {
+  primaeresAnzeigeSymbol,
+} from '@/lib/portfolio-analyse/momentum-trader/momentum-symbol-hilfen'
 import { ladeMomentumIpoDatum } from '@/lib/portfolio-analyse/momentum-trader/momentum-ipo-server'
 import { guidanceLabel } from '@/lib/portfolio-analyse/momentum-trader/momentum-guidance'
 import {
@@ -69,7 +73,7 @@ function addDaysIso(iso: string, tage: number): string {
 }
 
 function primaeresSymbol(e: MomentumWatchlistEintrag): string | null {
-  return e.symbolYahoo?.trim().toUpperCase() || e.symbolCandidates[0]?.trim().toUpperCase() || null
+  return primaeresAnzeigeSymbol(e)
 }
 
 function ampelAusScore(score: number, gatesFailed: string[], kritisch = false): MomentumAmpel {
@@ -342,6 +346,48 @@ function bewerteEarningsMomentum(
   }
 }
 
+function bewerteIpoBeobachtung(
+  symbol: string,
+  ipoDatum: string,
+  regimeGates: MomentumRegimeGates,
+): MomentumScanEintrag {
+  const heute = heuteIsoUtc()
+  const tageBis = tageZwischenIso(heute, ipoDatum)
+  const gatesPassed: string[] = []
+  const gatesFailed: string[] = []
+
+  if (tageBis > 0) {
+    gatesPassed.push('IPO geplant in ' + tageBis + ' Tagen (' + ipoDatum + ')')
+  } else {
+    gatesFailed.push('IPO-Datum in der Vergangenheit')
+  }
+
+  gatesPassed.push(
+    'Regime: ' + (regimeGates.longBias ? 'Long' : '—') + ' / ' + (regimeGates.shortBias ? 'Short' : '—'),
+  )
+  gatesFailed.push('Noch nicht gelistet — kein Trade bis nach Börsengang')
+
+  let score = 20
+  if (tageBis > 0 && tageBis <= 30) score += 15
+  else if (tageBis > 30 && tageBis <= 90) score += 8
+
+  return {
+    scanDate: heute,
+    symbol,
+    playbook: 'ipo_fade',
+    score,
+    ampel: 'grau',
+    gatesPassed,
+    gatesFailed,
+    indikatoren: {
+      playbookLabel: 'IPO-Beobachtung',
+      ipoDatum,
+      tageBisEarnings: tageBis,
+      hinweis: 'Pre-IPO — nach Listung Kurse syncen, dann IPO-Fade prüfen',
+    },
+  }
+}
+
 function bewerteIpoFade(
   symbol: string,
   ipoDatum: string,
@@ -437,16 +483,24 @@ function bewerteEarningsVorlauf(
   const gatesPassed: string[] = []
   const gatesFailed: string[] = []
 
-  if (tageBis >= EARNINGS_VORLAUF_MIN && tageBis <= EARNINGS_VORLAUF_MAX) {
-    gatesPassed.push(
-      'Earnings in ' + tageBis + ' Tagen (Fenster ' + EARNINGS_VORLAUF_MIN + '–' + EARNINGS_VORLAUF_MAX + ')',
-    )
+  if (tageBis >= 0 && tageBis <= EARNINGS_VORLAUF_MAX) {
+    if (tageBis < EARNINGS_VORLAUF_MIN) {
+      gatesPassed.push(
+        'Earnings in ' +
+          tageBis +
+          ' Tagen — unmittelbar bevorstehend (nach Zahlen: Kurse syncen + Scan)',
+      )
+    } else {
+      gatesPassed.push(
+        'Earnings in ' + tageBis + ' Tagen (Fenster ' + EARNINGS_VORLAUF_MIN + '–' + EARNINGS_VORLAUF_MAX + ')',
+      )
+    }
   } else if (tageBis > EARNINGS_VORLAUF_MAX) {
     gatesFailed.push(
       'Earnings in ' + tageBis + ' Tagen — noch Beobachtung, kein Trade (Vorlauf ab ' + EARNINGS_VORLAUF_MIN + ' Tage)',
     )
   } else {
-    gatesFailed.push('Außerhalb Vorlauf-Fenster')
+    gatesFailed.push('Earnings-Termin liegt in der Vergangenheit')
   }
 
   if (medianGap != null) {
@@ -460,7 +514,7 @@ function bewerteEarningsVorlauf(
   )
 
   let score = 40
-  if (tageBis >= EARNINGS_VORLAUF_MIN && tageBis <= EARNINGS_VORLAUF_MAX) {
+  if (tageBis >= 0 && tageBis <= EARNINGS_VORLAUF_MAX) {
     if (tageBis <= 7) score += 25
     else score += 10
   } else if (tageBis > EARNINGS_VORLAUF_MAX) {
@@ -470,11 +524,7 @@ function bewerteEarningsVorlauf(
   score = Math.min(85, score)
 
   const ampel =
-    tageBis >= EARNINGS_VORLAUF_MIN && tageBis <= EARNINGS_VORLAUF_MAX
-      ? 'gelb'
-      : tageBis > EARNINGS_VORLAUF_MAX
-        ? 'grau'
-        : 'grau'
+    tageBis >= 0 && tageBis <= EARNINGS_VORLAUF_MAX ? 'gelb' : tageBis > EARNINGS_VORLAUF_MAX ? 'grau' : 'grau'
 
   return {
     scanDate: heute,
@@ -519,7 +569,7 @@ export async function scanMomentumWatchlist(
 
     const events = await ladeMomentumEarningsEventsFuerSymbol(symbol)
     const medianGap = medianGapAbsPct(events) ?? (await ladeMedianGapFuerSymbol(symbol))
-    const bars = await ladeMomentumBars(symbol, vonBars, heute)
+    const bars = await ladeBarsFuerEarningsGap(e, vonBars, heute)
 
     const vergangen = kalender.filter((k) => {
       if (k.symbol !== symbol) return false
@@ -561,8 +611,13 @@ export async function scanMomentumWatchlist(
 
     const ipoDatum = e.ipoDatum ?? (await ladeMomentumIpoDatum(symbol, e.symbolYahoo))
     if (ipoDatum) {
-      const ipo = bewerteIpoFade(symbol, ipoDatum, bars, regimeGates)
-      if (ipo) ergebnisse.push(ipo)
+      const tageBisIpo = tageZwischenIso(heute, ipoDatum)
+      if (tageBisIpo > 0) {
+        ergebnisse.push(bewerteIpoBeobachtung(symbol, ipoDatum, regimeGates))
+      } else {
+        const ipo = bewerteIpoFade(symbol, ipoDatum, bars, regimeGates)
+        if (ipo) ergebnisse.push(ipo)
+      }
     }
   }
 

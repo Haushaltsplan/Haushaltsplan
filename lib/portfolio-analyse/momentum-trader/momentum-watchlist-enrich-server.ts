@@ -17,9 +17,7 @@ import type {
 } from '@/lib/portfolio-analyse/momentum-trader/momentum-trader-types'
 import { symboleAusWatchlist } from '@/lib/portfolio-analyse/momentum-trader/momentum-watchlist-server'
 
-function primaeresSymbol(e: MomentumWatchlistEintrag): string | null {
-  return e.symbolYahoo?.trim().toUpperCase() || e.symbolCandidates[0]?.trim().toUpperCase() || null
-}
+import { primaeresAnzeigeSymbol } from '@/lib/portfolio-analyse/momentum-trader/momentum-symbol-hilfen'
 
 function zeitLabel(z: MomentumEarningsZeit): string {
   if (z === 'bmo') return 'vor Börseneröffnung'
@@ -48,7 +46,7 @@ export async function reichereWatchlistMitEarningsAn(
 
   return Promise.all(
     eintraege.map(async (e) => {
-      const sym = primaeresSymbol(e)
+      const sym = primaeresAnzeigeSymbol(e)
       let events = sym ? eventsCache.get(sym) : undefined
       if (sym && !events) {
         events = await ladeMomentumEarningsEventsFuerSymbol(sym)

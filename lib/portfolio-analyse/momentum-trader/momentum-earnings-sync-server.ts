@@ -24,9 +24,7 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
-function primaeresSymbol(e: MomentumWatchlistEintrag): string | null {
-  return e.symbolYahoo?.trim().toUpperCase() || e.symbolCandidates[0]?.trim().toUpperCase() || null
-}
+import { primaeresAnzeigeSymbol } from '@/lib/portfolio-analyse/momentum-trader/momentum-symbol-hilfen'
 
 /**
  * Earnings-Kalender für die Watchlist — DivvyDiary + Yahoo (Scraper).
@@ -53,7 +51,7 @@ export async function syncEarningsFuerWatchlist(
 
   for (let i = 0; i < eintraege.length; i++) {
     const e = eintraege[i]
-    const symbol = primaeresSymbol(e)
+    const symbol = primaeresAnzeigeSymbol(e)
     if (!symbol) {
       fehler.push(e.isin + ': kein Yahoo-Symbol hinterlegt.')
       continue

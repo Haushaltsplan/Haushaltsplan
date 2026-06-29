@@ -5,6 +5,7 @@ import {
   EARNINGS_VORLAUF_MAX,
   EARNINGS_VORLAUF_MIN,
 } from '@/lib/portfolio-analyse/momentum-trader/momentum-constants'
+import { istMomentumPseudoIsin } from '@/lib/portfolio-analyse/momentum-trader/momentum-pseudo-isin'
 import { berechneRegimeGates } from '@/lib/portfolio-analyse/momentum-trader/momentum-regime-server'
 import type {
   MomentumDatenStatus,
@@ -86,10 +87,41 @@ export function generiereMomentumHandlungsempfehlung(input: {
 
   for (const e of input.watchlist) {
     const sym = e.symbolYahoo ?? e.symbolCandidates[0] ?? e.isin
+    const preIpo = istMomentumPseudoIsin(e.isin)
     const n = e.naechstesEarnings
     let aktion: MomentumHandlungAktion = 'beobachten'
     let prioritaet = 30
     let text = sym + ': '
+
+    if (preIpo) {
+      aktion = 'beobachten'
+      prioritaet = 35
+      if (e.ipoDatum) {
+        const tageBis = tageZwischenIso(heute, e.ipoDatum)
+        if (tageBis > 0 && tageBis <= 30) {
+          aktion = 'vorbereiten'
+          prioritaet = 70
+          text +=
+            'Pre-IPO — geplantes IPO in ' +
+            tageBis +
+            ' Tagen (' +
+            e.ipoDatum +
+            '). Nach Listung: Kurse syncen, IPO-Fade-Setup prüfen.'
+        } else if (tageBis > 0) {
+          text += 'Pre-IPO — IPO geplant am ' + e.ipoDatum + ' (in ' + tageBis + ' Tagen). Beobachten.'
+        } else {
+          text += 'Pre-IPO — IPO-Datum vergangen oder unklar. Ticker prüfen / Datum aktualisieren.'
+          aktion = 'sync'
+          prioritaet = 55
+        }
+      } else {
+        text +=
+          'Pre-IPO (noch nicht gelistet). IPO-Datum in der Watchlist eintragen — dann Scan & Erinnerungen.'
+        prioritaet = 40
+      }
+      positionen.push({ symbol: sym, name: e.name, aktion, prioritaet, text })
+      continue
+    }
 
     if (!n || n.tageBis == null) {
       text += 'Kein Earnings-Termin in der DB — Earnings-Sync ausführen.'

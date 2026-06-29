@@ -3,6 +3,10 @@ import 'server-only'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { createSupabaseAdmin } from '@/lib/supabase-admin'
 import { ladeMomentumIpoDatum } from '@/lib/portfolio-analyse/momentum-trader/momentum-ipo-server'
+import {
+  momentumBarsSymboleAusWatchlist,
+  normalisiereMomentumWatchlistSymbole,
+} from '@/lib/portfolio-analyse/momentum-trader/momentum-symbol-hilfen'
 import type { MomentumWatchlistEintrag } from '@/lib/portfolio-analyse/momentum-trader/momentum-trader-types'
 
 export const MOMENTUM_WATCHLIST_MAX = 32
@@ -41,6 +45,32 @@ export function istGueltigeMomentumIsin(isin: string): boolean {
   return ISIN_RE.test(isin.trim().toUpperCase())
 }
 
+export async function repariereWatchlistSymbolKandidaten(
+  sb: SupabaseClient,
+  eintraege: MomentumWatchlistEintrag[],
+): Promise<number> {
+  let aktualisiert = 0
+  for (const e of eintraege) {
+    const norm = normalisiereMomentumWatchlistSymbole({
+      symbolYahoo: e.symbolYahoo,
+      symbolCandidates: e.symbolCandidates,
+    })
+    const alt = [...e.symbolCandidates].sort().join(',')
+    const neu = [...norm.symbolCandidates].sort().join(',')
+    if (alt === neu && e.symbolYahoo === norm.symbolYahoo) continue
+
+    const { error } = await sb
+      .from(TABLE)
+      .update({
+        symbol_yahoo: norm.symbolYahoo,
+        symbol_candidates: norm.symbolCandidates,
+      })
+      .eq('isin', e.isin)
+    if (!error) aktualisiert++
+  }
+  return aktualisiert
+}
+
 export async function ladeMomentumWatchlist(sb: SupabaseClient): Promise<MomentumWatchlistEintrag[]> {
   const { data, error } = await sb
     .from(TABLE)
@@ -57,12 +87,19 @@ export async function fuegeZurMomentumWatchlist(
     name: string
     symbolYahoo: string | null
     symbolCandidates: string[]
+    ipoDatum?: string | null
+    notiz?: string | null
   },
 ): Promise<{ ok: true } | { ok: false; fehler: string }> {
   const isin = eintrag.isin.trim().toUpperCase()
   if (!istGueltigeMomentumIsin(isin)) {
     return { ok: false, fehler: 'Ungültige ISIN.' }
   }
+
+  const symNorm = normalisiereMomentumWatchlistSymbole({
+    symbolYahoo: eintrag.symbolYahoo,
+    symbolCandidates: eintrag.symbolCandidates,
+  })
 
   const { count, error: countErr } = await sb
     .from(TABLE)
@@ -79,8 +116,10 @@ export async function fuegeZurMomentumWatchlist(
     {
       isin,
       name: eintrag.name.trim() || isin,
-      symbol_yahoo: eintrag.symbolYahoo?.trim().toUpperCase() || null,
-      symbol_candidates: eintrag.symbolCandidates.map((s) => s.trim().toUpperCase()).filter(Boolean),
+      symbol_yahoo: symNorm.symbolYahoo?.trim().toUpperCase() || null,
+      symbol_candidates: symNorm.symbolCandidates.map((s) => s.trim().toUpperCase()).filter(Boolean),
+      ...(eintrag.ipoDatum ? { ipo_datum: eintrag.ipoDatum.slice(0, 10), ipo_sync_am: new Date().toISOString() } : {}),
+      ...(eintrag.notiz ? { notiz: eintrag.notiz.trim() } : {}),
     },
     { onConflict: 'owner_user_id,isin' },
   )
@@ -177,16 +216,7 @@ export async function ladeAlleMomentumWatchlistenGruppiert(): Promise<
   return gruppen
 }
 
-/** Yahoo-Symbole aus der Watchlist (+ Kandidaten), ohne Duplikate. */
+/** Yahoo-Symbole aus der Watchlist (+ US-Basis bei EU-Tickern). */
 export function symboleAusWatchlist(eintraege: MomentumWatchlistEintrag[]): string[] {
-  const out: string[] = []
-  const add = (s: string | null | undefined) => {
-    const sym = s?.trim().toUpperCase()
-    if (sym && !out.includes(sym)) out.push(sym)
-  }
-  for (const e of eintraege) {
-    add(e.symbolYahoo)
-    for (const c of e.symbolCandidates) add(c)
-  }
-  return out
+  return momentumBarsSymboleAusWatchlist(eintraege)
 }

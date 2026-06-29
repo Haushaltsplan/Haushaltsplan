@@ -12,6 +12,7 @@ import type {
 } from '@/lib/portfolio-analyse/momentum-trader/momentum-trader-types'
 import {
   ladeMomentumWatchlist,
+  repariereWatchlistSymbolKandidaten,
   syncIpoDatumFuerWatchlist,
 } from '@/lib/portfolio-analyse/momentum-trader/momentum-watchlist-server'
 
@@ -21,9 +22,10 @@ import {
  */
 export async function fuehreVollenMomentumSyncAus(
   sb: SupabaseClient,
-  watchlist: MomentumWatchlistEintrag[],
+  watchlistIn: MomentumWatchlistEintrag[],
   opts?: { mitKiMemos?: boolean },
 ): Promise<MomentumFullSyncErgebnis> {
+  let watchlist = watchlistIn
   if (watchlist.length === 0) {
     return {
       ok: false,
@@ -35,6 +37,12 @@ export async function fuehreVollenMomentumSyncAus(
 
   const schritte: string[] = []
   const fehler: string[] = []
+
+  const symboleRepariert = await repariereWatchlistSymbolKandidaten(sb, watchlist)
+  if (symboleRepariert > 0) {
+    schritte.push('Symbole: ' + symboleRepariert + ' Titel (US-Ticker für EU-Listings ergänzt)')
+    watchlist = await ladeMomentumWatchlist(sb)
+  }
 
   const earnings = await syncEarningsFuerWatchlist(sb, watchlist)
   schritte.push(

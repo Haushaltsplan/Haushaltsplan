@@ -1,12 +1,16 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
-import { PaAktienSucheInput, type AktienSucheAuswahl } from '@/components/portfolio-analyse/pa-aktien-suche-input'
 import { PortfolioIsinLogo } from '@/components/portfolio-analyse/isin-logo'
 import { usePortfolioAnalyse } from '@/components/portfolio-analyse/pa-data-provider'
 import { PortfolioAnalyseShell } from '@/components/portfolio-analyse/portfolio-analyse-shell.client'
 import { PaCard, PaSectionTitle } from '@/components/portfolio-analyse/pa-ui'
+import {
+  MomentumWatchlistSucheInput,
+  type MomentumWatchlistAuswahl,
+} from '@/components/portfolio-analyse/momentum-watchlist-suche-input'
 import { momentumApiFetch } from '@/lib/portfolio-analyse/momentum-trader/momentum-api-fetch'
+import { istMomentumPseudoIsin } from '@/lib/portfolio-analyse/momentum-trader/momentum-pseudo-isin'
 import type {
   MomentumAmpel,
   MomentumBarsSyncErgebnis,
@@ -27,7 +31,6 @@ import type {
   MomentumWatchlistEintragAngereichert,
 } from '@/lib/portfolio-analyse/momentum-trader/momentum-trader-types'
 import { momentumPlaybookLabel } from '@/lib/portfolio-analyse/momentum-trader/momentum-constants'
-import { istGueltigeIsin, watchlistEintragAusMeta } from '@/lib/portfolio-analyse/watchlist-client'
 
 function StatKachel({ label, wert }: { label: string; wert: string | number }) {
   return (
@@ -98,7 +101,7 @@ function OnboardingKarte() {
       <h2 className="text-sm font-semibold text-[var(--app-text)]">So startest du</h2>
       <ol className="mt-4 space-y-3 text-sm text-[var(--app-text-muted)]">
         <li>
-          <span className="font-medium text-violet-300">1.</span> Aktie suchen (Name, Ticker oder ISIN) — max. 32
+          <span className="font-medium text-violet-300">1.</span> Aktie oder Pre-IPO suchen (z. B. Apple, SpaceX) — max. 32
           Titel
         </li>
         <li>
@@ -275,7 +278,9 @@ function filterScanErgebnisse(
       if (scanFilter === 'alle') return true
       if (scanFilter === 'vorlauf') return e.playbook === 'earnings_vorlauf'
       if (scanFilter === 'momentum') return e.playbook === 'earnings_momentum'
-      if (scanFilter === 'ipo') return e.playbook === 'ipo_fade'
+      if (scanFilter === 'ipo') {
+        return e.playbook === 'ipo_fade' && e.ampel !== 'grau'
+      }
       if (scanFilter === 'trade') {
         return (
           TRADE_PLAYBOOKS.includes(e.playbook) && (e.ampel === 'gruen' || e.ampel === 'gelb')
@@ -367,6 +372,7 @@ function WatchlistZeile({
 
   const earningsHeute = e.naechstesEarnings?.tageBis === 0
   const earningsBald = e.naechstesEarnings?.tageBis != null && e.naechstesEarnings.tageBis <= 3
+  const preIpo = istMomentumPseudoIsin(e.isin)
 
   const metaSpeichern = async () => {
     setSpeichern(true)
@@ -391,21 +397,34 @@ function WatchlistZeile({
       <div className={aufgeklappt ? 'flex items-start justify-between gap-3' : 'flex min-w-0 flex-1 items-center gap-3'}>
         <PortfolioIsinLogo isin={e.isin} fallbackName={e.name} meta={meta} groesse="sm" />
         <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-medium text-[var(--app-text)]">{e.name}</p>
-          <p className="truncate text-xs text-[var(--app-text-muted)]">
-            {e.symbolYahoo ?? '—'} · {e.isin}
+          <p className="truncate text-sm font-medium text-[var(--app-text)]">
+            {e.name}
+            {preIpo ? (
+              <span className="ml-2 rounded bg-violet-500/20 px-1.5 py-0.5 text-[10px] font-medium uppercase text-violet-300">
+                Pre-IPO
+              </span>
+            ) : null}
           </p>
-          {e.naechstesEarnings ? (
+          <p className="truncate text-xs text-[var(--app-text-muted)]">
+            {e.symbolYahoo ?? e.symbolCandidates[0] ?? '—'} · {preIpo ? 'Beobachtung' : e.isin}
+          </p>
+          {preIpo && e.ipoDatum ? (
+            <p className="mt-0.5 text-xs text-violet-300/90">
+              IPO geplant {new Date(e.ipoDatum + 'T12:00:00').toLocaleDateString('de-DE')}
+            </p>
+          ) : e.naechstesEarnings ? (
             <p className="mt-0.5 text-xs text-violet-300/90">
               Earnings {new Date(e.naechstesEarnings.datum + 'T12:00:00').toLocaleDateString('de-DE')}
               {e.naechstesEarnings.tageBis != null && e.naechstesEarnings.tageBis <= 14
                 ? ' · in ' + e.naechstesEarnings.tageBis + ' Tagen'
                 : ''}
             </p>
+          ) : preIpo ? (
+            <p className="mt-0.5 text-xs text-[var(--app-text-muted)]">IPO-Datum eintragen (Zeile aufklappen)</p>
           ) : (
             <p className="mt-0.5 text-xs text-[var(--app-text-muted)]">Kein Termin — Sync ausführen</p>
           )}
-          {e.medianGapPct != null && (
+          {!preIpo && e.medianGapPct != null && (
             <p className="text-[11px] text-[var(--app-text-muted)]">
               Median-Gap {e.medianGapPct.toFixed(1)}% ({e.earningsEventsAnzahl} Events)
             </p>
@@ -705,28 +724,20 @@ export function MomentumTraderClient() {
   }, [ladeAlles])
 
   const hinzufuegen = useCallback(
-    async (auswahl: AktienSucheAuswahl) => {
-      const kandidat =
-        auswahl.isin?.trim().toUpperCase() || auswahl.meta.isin?.trim().toUpperCase() || ''
-      const isin = kandidat && istGueltigeIsin(kandidat) ? kandidat : null
-      if (!isin) {
-        setFehler(
-          'Keine gültige ISIN — Ticker aus der Liste wählen, ISIN direkt eingeben (z. B. US0378331005) oder FINNHUB_API_KEY setzen.',
-        )
-        return
-      }
+    async (auswahl: MomentumWatchlistAuswahl) => {
       setHinzufuegenLaden(true)
       setFehler(null)
       try {
-        const e = watchlistEintragAusMeta(auswahl.meta, isin)
         const res = await momentumApiFetch('/api/portfolio-analyse/momentum-trader/watchlist', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            isin: e.isin,
-            name: e.name,
-            symbolYahoo: e.symbolYahoo,
-            symbolCandidates: e.symbolCandidates,
+            isin: auswahl.isin,
+            name: auswahl.name,
+            symbolYahoo: auswahl.symbolYahoo,
+            symbolCandidates: auswahl.symbolCandidates,
+            ipoDatum: auswahl.ipoDatum,
+            notiz: auswahl.notiz,
           }),
         })
         const data = (await res.json()) as { eintraege?: MomentumWatchlistEintragAngereichert[]; fehler?: string }
@@ -1083,8 +1094,8 @@ export function MomentumTraderClient() {
           </div>
 
           {!voll && (
-            <div className="mt-4 max-w-xl">
-              <PaAktienSucheInput onAuswahl={hinzufuegen} laden={hinzufuegenLaden} fehler={fehler} onFehler={setFehler} />
+            <div className="mt-4">
+              <MomentumWatchlistSucheInput onAuswahl={hinzufuegen} laden={hinzufuegenLaden} fehler={fehler} onFehler={setFehler} />
             </div>
           )}
 

@@ -267,6 +267,26 @@ export type MomentumErinnerung = {
   symbol?: string
 }
 
+/** Suchtreffer für Momentum-Watchlist (Börse + Pre-IPO). */
+export type MomentumWatchlistSuchTreffer = {
+  symbol: string
+  name: string
+  exchange: string | null
+  istPreIpo: boolean
+  ipoDatumVorschlag: string | null
+  notiz: string | null
+}
+
+export type MomentumWatchlistAufloesung = {
+  isin: string
+  name: string
+  symbolYahoo: string | null
+  symbolCandidates: string[]
+  istPreIpo: boolean
+  ipoDatum: string | null
+  notiz: string | null
+}
+
 /** Handlungsempfehlung pro Titel. */
 export type MomentumHandlungAktion =
   | 'beobachten'

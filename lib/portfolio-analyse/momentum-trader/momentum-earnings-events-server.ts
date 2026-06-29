@@ -39,9 +39,11 @@ function addDaysIso(iso: string, tage: number): string {
   return d.toISOString().slice(0, 10)
 }
 
-function primaeresSymbol(e: MomentumWatchlistEintrag): string | null {
-  return e.symbolYahoo?.trim().toUpperCase() || e.symbolCandidates[0]?.trim().toUpperCase() || null
-}
+import {
+  primaeresAnzeigeSymbol,
+  primaeresEarningsSymbol,
+  symbolKandidatenFuerEarnings,
+} from '@/lib/portfolio-analyse/momentum-trader/momentum-symbol-hilfen'
 
 export function berechneEventAusBars(
   symbol: string,
@@ -83,6 +85,29 @@ export function medianGapAbsPct(events: MomentumEarningsEvent[]): number | null 
   return abs.length % 2 === 0 ? (abs[mid - 1] + abs[mid]) / 2 : abs[mid]
 }
 
+export async function ladeBarsFuerEarningsGap(
+  eintrag: MomentumWatchlistEintrag,
+  vonBars: string,
+  heute: string,
+): Promise<MomentumBarDaily[]> {
+  const earningsSym = primaeresEarningsSymbol(eintrag)
+  const anzeige = primaeresAnzeigeSymbol(eintrag)
+  const tryOrder = [
+    earningsSym,
+    anzeige,
+    ...eintrag.symbolCandidates.map((s) => s.trim().toUpperCase()),
+    eintrag.symbolYahoo?.trim().toUpperCase(),
+  ].filter((s, i, a): s is string => Boolean(s) && a.indexOf(s) === i)
+
+  let best: MomentumBarDaily[] = []
+  for (const sym of tryOrder) {
+    const bars = await ladeMomentumBars(sym, vonBars, heute)
+    if (bars.length > best.length) best = bars
+    if (bars.length >= 40 && sym === earningsSym) break
+  }
+  return best
+}
+
 /** DivvyDiary-Historie (1 Jahr) + Bars → momentum_earnings_events. */
 export async function backfillEarningsEventsFuerWatchlist(
   watchlist: MomentumWatchlistEintrag[],
@@ -95,8 +120,9 @@ export async function backfillEarningsEventsFuerWatchlist(
 
   for (let i = 0; i < watchlist.length; i++) {
     const e = watchlist[i]
-    const symbol = primaeresSymbol(e)
-    if (!symbol) {
+    const symbol = primaeresAnzeigeSymbol(e)
+    const earningsSym = primaeresEarningsSymbol(e)
+    if (!symbol || !earningsSym) {
       fehler.push(e.isin + ': kein Symbol')
       continue
     }
@@ -106,9 +132,9 @@ export async function backfillEarningsEventsFuerWatchlist(
     try {
       const termineAngereichert = await ladeMomentumEarningsTermineFuerTitel(e, von, heute)
       const termine = termineAngereichert.filter((t) => t.terminDatumIso <= heute)
-      const bars = await ladeMomentumBars(symbol, vonBars, heute)
+      const bars = await ladeBarsFuerEarningsGap(e, vonBars, heute)
       if (bars.length < 5) {
-        fehler.push(symbol + ': zu wenig Bars für Backfill')
+        fehler.push(symbol + ': zu wenig Bars für Backfill (auch ' + earningsSym + ' probiert)')
         continue
       }
 
@@ -116,7 +142,7 @@ export async function backfillEarningsEventsFuerWatchlist(
       for (const t of termine) {
         let zeit = t.timeBmoAmc
         if (zeit === 'unknown') {
-          zeit = await ladeBerichtszeitFuerEarningsDatum(symbol, t.terminDatumIso, e.symbolYahoo)
+          zeit = await ladeBerichtszeitFuerEarningsDatum(earningsSym, t.terminDatumIso, earningsSym)
         }
         const ev = berechneEventAusBars(symbol, t.terminDatumIso, zeit, bars)
         if (ev) events.push(ev)
@@ -125,7 +151,7 @@ export async function backfillEarningsEventsFuerWatchlist(
       const angereichert: MomentumEarningsEvent[] = []
       for (let j = 0; j < events.length; j++) {
         if (j > 0) await sleep(400)
-        angereichert.push(await reichereEventMitEpsSurprise(events[j], e.symbolYahoo))
+        angereichert.push(await reichereEventMitEpsSurprise(events[j], earningsSym))
       }
 
       if (angereichert.length > 0) {

@@ -55,6 +55,8 @@ export async function POST(req: Request) {
   const symbolCandidates = Array.isArray(body.symbolCandidates)
     ? body.symbolCandidates.map((s) => String(s).trim().toUpperCase()).filter(Boolean)
     : []
+  const ipoDatum = body.ipoDatum != null ? String(body.ipoDatum).trim().slice(0, 10) : null
+  const notiz = body.notiz != null ? String(body.notiz).trim() : null
 
   if (!isin) {
     return NextResponse.json({ fehler: 'ISIN fehlt.' }, { status: 400 })
@@ -66,6 +68,8 @@ export async function POST(req: Request) {
     name: name || k?.name || isin,
     symbolYahoo: symbolYahoo || k?.symbolYahoo || null,
     symbolCandidates: symbolCandidates.length > 0 ? symbolCandidates : (k?.symbolCandidates ?? []),
+    ipoDatum: ipoDatum && /^\d{4}-\d{2}-\d{2}$/.test(ipoDatum) ? ipoDatum : null,
+    notiz: notiz || null,
   })
 
   if (!ergebnis.ok) {
