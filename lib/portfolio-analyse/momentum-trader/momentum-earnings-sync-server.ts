@@ -29,7 +29,7 @@ function primaeresSymbol(e: MomentumWatchlistEintrag): string | null {
 }
 
 /**
- * Earnings-Kalender für die Watchlist — DivvyDiary + Finnhub + Yahoo.
+ * Earnings-Kalender für die Watchlist — DivvyDiary + Yahoo (Scraper).
  * Alle Termine im Horizont (nicht nur das nächste Quartal).
  */
 export async function syncEarningsFuerWatchlist(
@@ -76,7 +76,7 @@ export async function syncEarningsFuerWatchlist(
       if (kalender.length > 0) {
         termineGeschrieben += await speichereMomentumEarningsKalender(kalender)
       } else {
-        fehler.push(symbol + ': keine Earnings-Termine gefunden (DivvyDiary/Yahoo/Finnhub).')
+        fehler.push(symbol + ': keine Earnings-Termine (DivvyDiary/Yahoo/Wallstreet).')
       }
 
       await setzeMomentumWatchlistEarningsSync(sb, e.isin)

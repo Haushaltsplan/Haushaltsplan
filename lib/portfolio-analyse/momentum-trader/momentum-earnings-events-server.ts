@@ -125,7 +125,7 @@ export async function backfillEarningsEventsFuerWatchlist(
       const angereichert: MomentumEarningsEvent[] = []
       for (let j = 0; j < events.length; j++) {
         if (j > 0) await sleep(400)
-        angereichert.push(await reichereEventMitEpsSurprise(events[j]))
+        angereichert.push(await reichereEventMitEpsSurprise(events[j], e.symbolYahoo))
       }
 
       if (angereichert.length > 0) {

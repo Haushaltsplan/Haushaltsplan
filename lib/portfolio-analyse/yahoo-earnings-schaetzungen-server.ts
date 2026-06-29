@@ -120,12 +120,36 @@ export type YahooEarningsKalenderTermin = {
   berichtszeit: Berichtszeit | null
 }
 
-async function ladeYahooEarningsKalenderRoh(symbol: string): Promise<YahooEarningsKalenderTermin | null> {
+function parseKalenderTermineAusEarnings(
+  earnings: Record<string, unknown>,
+): YahooEarningsKalenderTermin[] {
+  const dates = Array.isArray(earnings.earningsDate) ? earnings.earningsDate : []
+  const bestaetigt = earnings.isEarningsDateEstimate !== true
+  const out: YahooEarningsKalenderTermin[] = []
+  const seen = new Set<string>()
+
+  for (const entry of dates) {
+    const d = entry as { raw?: number; fmt?: string } | undefined
+    const terminDatumIso =
+      d?.fmt?.slice(0, 10) ?? (d?.raw != null ? tagAusUnix(d.raw) : null)
+    if (!terminDatumIso || seen.has(terminDatumIso)) continue
+    seen.add(terminDatumIso)
+    out.push({
+      terminDatumIso,
+      bestaetigt,
+      berichtszeit: berichtszeitAusYahooUnix(d?.raw ?? null),
+    })
+  }
+
+  return out.sort((a, b) => a.terminDatumIso.localeCompare(b.terminDatumIso))
+}
+
+async function ladeYahooEarningsKalenderRoh(symbol: string): Promise<YahooEarningsKalenderTermin[]> {
   const sym = symbol.trim().toUpperCase()
-  if (!sym) return null
+  if (!sym) return []
 
   const auth = await holeYahooFinanceAuth()
-  if (!auth) return null
+  if (!auth) return []
 
   const u = new URL(
     `https://query2.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(sym)}`,
@@ -141,28 +165,38 @@ async function ladeYahooEarningsKalenderRoh(symbol: string): Promise<YahooEarnin
       },
       next: { revalidate: CACHE_REVALIDATE },
     })
-    if (!res.ok) return null
+    if (!res.ok) return []
     const j = (await res.json()) as {
       quoteSummary?: { result?: Array<{ calendarEvents?: { earnings?: Record<string, unknown> } }> }
     }
     const earnings = j.quoteSummary?.result?.[0]?.calendarEvents?.earnings
-    if (!earnings || typeof earnings !== 'object') return null
+    if (!earnings || typeof earnings !== 'object') return []
 
-    const dates = Array.isArray(earnings.earningsDate) ? earnings.earningsDate : []
-    const firstDate = dates[0] as { raw?: number; fmt?: string } | undefined
-    const terminDatumIso =
-      firstDate?.fmt?.slice(0, 10) ??
-      (firstDate?.raw != null ? tagAusUnix(firstDate.raw) : null)
-    if (!terminDatumIso) return null
-
-    return {
-      terminDatumIso,
-      bestaetigt: earnings.isEarningsDateEstimate !== true,
-      berichtszeit: berichtszeitAusYahooUnix(firstDate?.raw ?? null),
-    }
+    return parseKalenderTermineAusEarnings(earnings as Record<string, unknown>)
   } catch {
-    return null
+    return []
   }
+}
+
+/** Alle Yahoo-Earnings-Termine im Zeitraum (calendarEvents). */
+export async function ladeYahooEarningsKalenderImZeitraum(
+  symbole: string[],
+  vonIso: string,
+  bisIso: string,
+): Promise<YahooEarningsKalenderTermin[]> {
+  const uniq: string[] = []
+  for (const s of symbole) {
+    for (const t of brokerSymbolKandidaten(s)) {
+      if (t && !uniq.includes(t)) uniq.push(t)
+    }
+  }
+
+  for (const sym of uniq) {
+    const termine = await ladeYahooEarningsKalenderRoh(sym)
+    const imZeitraum = termine.filter((t) => t.terminDatumIso >= vonIso && t.terminDatumIso <= bisIso)
+    if (imZeitraum.length > 0) return imZeitraum
+  }
+  return []
 }
 
 export async function ladeYahooEarningsKalenderTerminKandidaten(
@@ -175,8 +209,8 @@ export async function ladeYahooEarningsKalenderTerminKandidaten(
     }
   }
   for (const sym of uniq) {
-    const hit = await ladeYahooEarningsKalenderRoh(sym)
-    if (hit) return hit
+    const hits = await ladeYahooEarningsKalenderRoh(sym)
+    if (hits.length > 0) return hits[0]
   }
   return null
 }

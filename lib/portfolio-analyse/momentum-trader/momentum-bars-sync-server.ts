@@ -10,7 +10,7 @@ import type {
   MomentumWatchlistEintrag,
 } from '@/lib/portfolio-analyse/momentum-trader/momentum-trader-types'
 import { symboleAusWatchlist } from '@/lib/portfolio-analyse/momentum-trader/momentum-watchlist-server'
-import { ladeYahooOhlcvBatch } from '@/lib/portfolio-analyse/momentum-trader/yahoo-ohlcv-server'
+import { ladeMomentumOhlcvBatch } from '@/lib/portfolio-analyse/momentum-trader/momentum-ohlcv-merge-server'
 
 function addDaysIso(iso: string, tage: number): string {
   const d = new Date(iso + 'T12:00:00Z')
@@ -37,7 +37,7 @@ export async function syncBarsFuerWatchlist(
     }
   }
 
-  const batch = await ladeYahooOhlcvBatch(symbole, vonDatum, bisDatum)
+  const batch = await ladeMomentumOhlcvBatch(symbole, vonDatum, bisDatum)
   const alleBars = [...batch.values()].flat()
   const geschrieben = await speichereMomentumBars(alleBars)
   await syncMomentumMarketRegime()

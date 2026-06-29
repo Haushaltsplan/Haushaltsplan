@@ -1028,7 +1028,7 @@ export function MomentumTraderClient() {
             <div>
               <h2 className="text-sm font-semibold text-[var(--app-text)]">Scan</h2>
               <p className="mt-1 text-xs text-[var(--app-text-muted)]">
-                Gap-Fade · Earnings-Momentum · IPO-Fade · Vorlauf. BMO/AMC-Gap-Erkennung, Finnhub-Surprise.
+                Gap-Fade · Earnings-Momentum · IPO-Fade · Vorlauf. Daten: Yahoo + Stooq + Marketbeat + DivvyDiary.
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-2">

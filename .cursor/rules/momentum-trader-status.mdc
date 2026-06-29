@@ -25,21 +25,26 @@ Kurzfristiger, faktenbasierter Trading-Assistent (Earnings-Gaps, Momentum, IPO-F
 | `ipo_fade` | Short | 2–14 Tage nach IPO, Lauf ≥20%, Reversal |
 | `earnings_vorlauf` | — | Beobachten 3–14 Tage vor Earnings |
 
-## Datenquellen (ohne diese keine Setups)
+## Datenquellen (Multi-Scraper — kein Finnhub)
 
-| Quelle | Typ | Daten |
-|--------|-----|-------|
-| **Yahoo Chart API** | Scraper | OHLCV, Regime (^GSPC, ^VIX) |
-| **Yahoo quoteSummary** | Scraper | Earnings-Termin, BMO/AMC, EPS-Historie |
-| **DivvyDiary** | Scraper | Earnings-Kalender + Historie (watchlist-only) |
-| **Finnhub** | API (`FINNHUB_API_KEY`) | BMO/AMC, EPS-Surprise, IPO-Datum |
+| Quelle | Daten |
+|--------|-------|
+| **Yahoo Chart** | OHLCV-Basis, Regime |
+| **Stooq CSV** | OHLCV-Fallback / Lücken |
+| **Polygon** | US-OHLCV (optional, `POLYGON_API_KEY`) |
+| **DivvyDiary** | Earnings-Kalender + Historie |
+| **Yahoo calendarEvents** | BMO/AMC, nächster Termin |
+| **Wallstreet-Online** | Earnings-Termine EU |
+| **MarketBeat** | EPS-/Umsatz-Surprise (primär) |
+| **Yahoo earningsHistory** | Surprise-Fallback |
+| **Yahoo Profil** | IPO-Datum |
 
-Pipeline „Alles aktualisieren“: Earnings (3 Quellen) → Yahoo-Kurse → Gap-Backfill → IPO → Regime → Scan.
+Merge-Logik: `momentum-ohlcv-merge-server.ts`, `momentum-earnings-termine-server.ts`, `momentum-earnings-enrich-server.ts`
 
 ## Watchlist-only (max. 32)
 
 - DivvyDiary sequentiell (~2,5 s Pause), **kein Marktweit-Scraping**
-- Finnhub: EPS-Surprise, Guidance, IPO-Datum (`FINNHUB_API_KEY`)
+- **Kein Finnhub** — alle Daten via Yahoo + DivvyDiary
 - BMO/AMC-Gap: `momentum-earnings-bar.ts` (Auto-Erkennung wenn unbekannt)
 - ISIN-Auflösung: Finnhub → `isin-kenntnisse` → Fallback-Map (`ticker-isin-aufloesung-server.ts`)
 
@@ -50,9 +55,11 @@ lib/portfolio-analyse/momentum-trader/
   momentum-scan-server.ts           ← Regel-Engine (4 Playbooks)
   momentum-earnings-bar.ts          ← BMO/AMC Reaktionsbar
   momentum-full-sync-server.ts      ← Pipeline (Earnings→Bars→Events→IPO→Regime→Scan)
-  momentum-earnings-termine-server.ts  ← DivvyDiary + Finnhub + Yahoo Merge
-  momentum-datenquellen-server.ts      ← Quellen-Status (UI)
-  momentum-earnings-enrich-server.ts   ← EPS Surprise (Finnhub → Yahoo)
+  momentum-ohlcv-merge-server.ts       ← Yahoo + Stooq + Polygon
+  momentum-stooq-ohlcv-server.ts      ← Stooq OHLCV
+  momentum-polygon-ohlcv-server.ts    ← Polygon US-Bars (optional)
+  momentum-earnings-termine-server.ts  ← DivvyDiary + Yahoo + Wallstreet
+  momentum-earnings-enrich-server.ts   ← Marketbeat → Yahoo Surprise
   momentum-scan-verlauf-server.ts   ← Score-Historie für Sparklines
   momentum-kalender-server.ts       ← Earnings-Kalender (35 Tage)
   momentum-briefing-server.ts       ← Tages-Briefing Markdown
@@ -118,8 +125,8 @@ components/portfolio-analyse/
 ## Bekannte Quirks
 
 - KI nur als `kiBegruendung` in Scan-Indikatoren (kein Deep Research)
-- Momentum braucht Finnhub-Backfill für Surprise (sonst Momentum-Playbook schwach)
-- IPO-Fade nur mit `ipo_datum` (Finnhub-Sync oder manuell PATCH)
+- Momentum braucht Event-Backfill für EPS-Surprise (Yahoo earningsHistory)
+- IPO-Fade nur mit `ipo_datum` (Yahoo-Sync oder manuell PATCH)
 - Gleicher Ticker kann Gap-Fade **und** Momentum gleichzeitig zeigen (gegenteilige Logik — Nutzer wählt Playbook)
 - Sparklines füllen sich erst nach mehreren Scans (Verlauf-Tabelle)
 

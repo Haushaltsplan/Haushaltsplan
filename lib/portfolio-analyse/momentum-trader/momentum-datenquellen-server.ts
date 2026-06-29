@@ -1,42 +1,78 @@
 import 'server-only'
 
+import { polygonAktiv } from '@/lib/portfolio-analyse/momentum-trader/momentum-polygon-ohlcv-server'
 import type { MomentumDatenquelle } from '@/lib/portfolio-analyse/momentum-trader/momentum-trader-types'
 
 export type { MomentumDatenquelle }
 
-/** Welche externen Quellen der Momentum Trader nutzt. */
+/** Externe Quellen des Momentum Traders — Multi-Scraper (kein Finnhub). */
 export function momentumDatenquellenStatus(): MomentumDatenquelle[] {
-  const finnhub = Boolean((process.env.FINNHUB_API_KEY ?? '').trim())
-  return [
+  const quellen: MomentumDatenquelle[] = [
     {
       id: 'yahoo-ohlcv',
       name: 'Yahoo Finance (Kurse)',
       typ: 'scraper',
       aktiv: true,
-      nutzen: 'OHLCV, Gap, RVOL, RS vs. S&P',
+      nutzen: 'OHLCV-Basis, Regime (^GSPC, ^VIX)',
     },
     {
-      id: 'yahoo-earnings',
-      name: 'Yahoo Finance (Earnings)',
+      id: 'stooq',
+      name: 'Stooq (Kurse)',
       typ: 'scraper',
       aktiv: true,
-      nutzen: 'Termine, BMO/AMC, EPS-Historie (Fallback)',
+      nutzen: 'OHLCV-Fallback / Lückenfüller (EU + US)',
+    },
+    {
+      id: 'polygon',
+      name: 'Polygon.io (Kurse)',
+      typ: 'api',
+      aktiv: polygonAktiv(),
+      nutzen: polygonAktiv()
+        ? 'US-OHLCV Premium (POLYGON_API_KEY)'
+        : 'Optional — POLYGON_API_KEY für US-Titel',
     },
     {
       id: 'divvydiary',
       name: 'DivvyDiary',
       typ: 'scraper',
       aktiv: true,
-      nutzen: 'Earnings-Kalender + Historie (Watchlist)',
+      nutzen: 'Earnings-Kalender + Historie',
     },
     {
-      id: 'finnhub',
-      name: 'Finnhub',
-      typ: 'api',
-      aktiv: finnhub,
-      nutzen: finnhub
-        ? 'BMO/AMC, EPS-Surprise, IPO-Datum'
-        : 'Optional — FINNHUB_API_KEY fehlt (Surprise/IPO schwächer)',
+      id: 'yahoo-earnings',
+      name: 'Yahoo Finance (Earnings)',
+      typ: 'scraper',
+      aktiv: true,
+      nutzen: 'Termine, BMO/AMC',
+    },
+    {
+      id: 'wallstreet',
+      name: 'Wallstreet-Online',
+      typ: 'scraper',
+      aktiv: true,
+      nutzen: 'Earnings-Termine (EU-Titel)',
+    },
+    {
+      id: 'marketbeat',
+      name: 'MarketBeat',
+      typ: 'scraper',
+      aktiv: true,
+      nutzen: 'EPS-/Umsatz-Surprise (8+ Quartale)',
+    },
+    {
+      id: 'yahoo-surprise',
+      name: 'Yahoo earningsHistory',
+      typ: 'scraper',
+      aktiv: true,
+      nutzen: 'EPS-Surprise Fallback',
+    },
+    {
+      id: 'yahoo-ipo',
+      name: 'Yahoo Finance (Profil)',
+      typ: 'scraper',
+      aktiv: true,
+      nutzen: 'IPO-/Ersthandelstag',
     },
   ]
+  return quellen
 }

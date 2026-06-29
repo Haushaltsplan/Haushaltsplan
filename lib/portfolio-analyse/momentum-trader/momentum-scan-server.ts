@@ -29,7 +29,7 @@ import {
   ladeMedianGapFuerSymbol,
   medianGapAbsPct,
 } from '@/lib/portfolio-analyse/momentum-trader/momentum-earnings-events-server'
-import { ladeFinnhubIpoDatum } from '@/lib/portfolio-analyse/momentum-trader/momentum-finnhub-ipo-server'
+import { ladeYahooIpoDatum } from '@/lib/portfolio-analyse/momentum-trader/momentum-yahoo-ipo-server'
 import { guidanceLabel } from '@/lib/portfolio-analyse/momentum-trader/momentum-guidance'
 import {
   ladeMomentumBars,
@@ -247,7 +247,7 @@ function bewerteEarningsMomentum(
   const { bar, gapPct, rvol, atr, effektiveZeit } = ctx
   const surprise = event?.surpriseEpsPct ?? null
 
-  if (surprise == null) gatesFailed.push('Kein EPS-Surprise (Finnhub-Backfill ausführen)')
+  if (surprise == null) gatesFailed.push('Kein EPS-Surprise (Marketbeat/Yahoo-Backfill)')
   else if (surprise >= SURPRISE_BEAT_MIN_PCT) gatesPassed.push('EPS-Beat ≥ ' + SURPRISE_BEAT_MIN_PCT + '% (' + surprise + '%)')
   else if (surprise <= SURPRISE_MISS_MAX_PCT) gatesPassed.push('EPS-Miss ≤ ' + SURPRISE_MISS_MAX_PCT + '% (' + surprise + '%)')
   else gatesFailed.push('Surprise zu schwach für Momentum (' + surprise + '%)')
@@ -533,7 +533,7 @@ export async function scanMomentumWatchlist(
       ergebnisse.push(bewerteEarningsVorlauf(symbol, t.earningsDate, t.timeBmoAmc, regimeGates, medianGap))
     }
 
-    const ipoDatum = e.ipoDatum ?? (await ladeFinnhubIpoDatum(symbol))
+    const ipoDatum = e.ipoDatum ?? (await ladeYahooIpoDatum(symbol))
     if (ipoDatum) {
       const ipo = bewerteIpoFade(symbol, ipoDatum, bars, regimeGates)
       if (ipo) ergebnisse.push(ipo)

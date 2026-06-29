@@ -7,17 +7,14 @@ import {
   naechstesEarningsTerminAusHtml,
   type DivvydiaryEarningsTerminKurz,
 } from '@/lib/portfolio-analyse/divvydiary-scraper-server'
-import {
-  berichtszeitAusKalenderListe,
-  type Berichtszeit,
-} from '@/lib/portfolio-analyse/earnings-berichtszeit'
+import type { Berichtszeit } from '@/lib/portfolio-analyse/earnings-berichtszeit'
 import type { EarningsTerminQuelle } from '@/lib/portfolio-analyse/earnings-termine'
-import {
-  ladeFinnhubEarningsKalenderImZeitraum,
-  type FinnhubEarningsKalenderTermin,
-} from '@/lib/portfolio-analyse/finnhub-earnings-kalender-server'
 import { isinKenntnis } from '@/lib/portfolio-analyse/isin-kenntnisse'
-import { ladeYahooEarningsKalenderTerminKandidaten } from '@/lib/portfolio-analyse/yahoo-earnings-schaetzungen-server'
+import {
+  ladeYahooEarningsKalenderImZeitraum,
+  type YahooEarningsKalenderTermin,
+} from '@/lib/portfolio-analyse/yahoo-earnings-schaetzungen-server'
+import { ladeWallstreetEarningsTermine } from '@/lib/portfolio-analyse/wallstreet-earnings-termine-server'
 import type {
   MomentumEarningsZeit,
   MomentumWatchlistEintrag,
@@ -30,7 +27,7 @@ export type MomentumEarningsTerminAngereichert = {
   terminDatumIso: string
   berichtszeit: Berichtszeit | null
   timeBmoAmc: MomentumEarningsZeit
-  quelle: EarningsTerminQuelle | 'merged'
+  quelle: EarningsTerminQuelle | 'merged' | 'wallstreet'
   bestaetigt: boolean
 }
 
@@ -51,7 +48,6 @@ function symbolKandidaten(e: MomentumWatchlistEintrag): string[] {
   return [...new Set(out.filter(Boolean))]
 }
 
-/** DivvyDiary: alle Termine im Zeitraum (nicht nur „nächstes Quartal“). */
 async function ladeDivvydiaryTermineImZeitraum(
   isin: string,
   name: string,
@@ -73,10 +69,7 @@ async function ladeDivvydiaryTermineImZeitraum(
   return []
 }
 
-function finnhubFuerDatum(
-  kalender: FinnhubEarningsKalenderTermin[],
-  datum: string,
-): FinnhubEarningsKalenderTermin | null {
+function yahooFuerDatum(kalender: YahooEarningsKalenderTermin[], datum: string): YahooEarningsKalenderTermin | null {
   const exakt = kalender.find((t) => t.terminDatumIso === datum)
   if (exakt) return exakt
   return kalender.find((t) => Math.abs(tageZwischenIso(t.terminDatumIso, datum)) <= 2) ?? null
@@ -84,42 +77,35 @@ function finnhubFuerDatum(
 
 function mergeTermine(
   dd: DivvydiaryEarningsTerminKurz[],
-  fh: FinnhubEarningsKalenderTermin[],
-  yahooDatum: string | null,
-  yahooBerichtszeit: Berichtszeit | null,
+  yahoo: YahooEarningsKalenderTermin[],
+  wallstreet: string[],
 ): MomentumEarningsTerminAngereichert[] {
   const daten = new Set<string>()
   for (const t of dd) daten.add(t.terminDatumIso)
-  for (const t of fh) daten.add(t.terminDatumIso)
+  for (const t of yahoo) daten.add(t.terminDatumIso)
+  for (const d of wallstreet) daten.add(d)
 
   const ddMap = new Map(dd.map((t) => [t.terminDatumIso, t]))
+  const wsSet = new Set(wallstreet)
   const out: MomentumEarningsTerminAngereichert[] = []
 
   for (const datum of [...daten].sort()) {
     const ddHit = ddMap.get(datum)
-    const fhHit = finnhubFuerDatum(fh, datum)
-    const berichtszeit =
-      fhHit?.berichtszeit ??
-      berichtszeitAusKalenderListe(fh, datum) ??
-      (yahooDatum === datum ? yahooBerichtszeit : null) ??
-      null
+    const yhHit = yahooFuerDatum(yahoo, datum)
+    const wsHit = wsSet.has(datum)
+    const berichtszeit = yhHit?.berichtszeit ?? null
 
-    const quelle: EarningsTerminQuelle | 'merged' = ddHit
-      ? ddHit.bestaetigt
-        ? 'divvydiary'
-        : 'divvydiary-prognose'
-      : fhHit
-        ? 'finnhub'
-        : yahooDatum === datum
-          ? 'yahoo'
-          : 'merged'
+    let quelle: EarningsTerminQuelle | 'merged' | 'wallstreet' = 'merged'
+    if (ddHit) quelle = ddHit.bestaetigt ? 'divvydiary' : 'divvydiary-prognose'
+    else if (yhHit) quelle = 'yahoo'
+    else if (wsHit) quelle = 'wallstreet'
 
     out.push({
       terminDatumIso: datum,
       berichtszeit,
       timeBmoAmc: berichtszeitZuMomentumZeit(berichtszeit),
       quelle,
-      bestaetigt: Boolean(ddHit?.bestaetigt ?? fhHit ?? yahooDatum === datum),
+      bestaetigt: Boolean(ddHit?.bestaetigt ?? yhHit?.bestaetigt ?? wsHit),
     })
   }
 
@@ -127,8 +113,7 @@ function mergeTermine(
 }
 
 /**
- * Earnings-Termine für einen Watchlist-Titel — DivvyDiary + Finnhub + Yahoo.
- * Liefert alle Termine im Zeitraum inkl. BMO/AMC.
+ * Earnings-Termine — DivvyDiary + Yahoo + Wallstreet (alle Scraper, kein Finnhub).
  */
 export async function ladeMomentumEarningsTermineFuerTitel(
   eintrag: MomentumWatchlistEintrag,
@@ -139,30 +124,23 @@ export async function ladeMomentumEarningsTermineFuerTitel(
   const von = vonIso ?? heute
   const bis = bisIso ?? addDaysIso(heute, MOMENTUM_EARNINGS_HORIZONT_TAGE)
   const symbole = symbolKandidaten(eintrag)
-  const symbol = primaeresSymbol(eintrag)
-  if (!symbol) return []
+  if (!primaeresSymbol(eintrag)) return []
 
   const name = isinKenntnis(eintrag.isin)?.name ?? eintrag.name
 
-  const [dd, fh, yahoo] = await Promise.all([
+  const [dd, yahoo, ws] = await Promise.all([
     ladeDivvydiaryTermineImZeitraum(eintrag.isin, name, von, bis),
     symbole.length > 0
-      ? ladeFinnhubEarningsKalenderImZeitraum(symbol, von, bis).catch(() => [] as FinnhubEarningsKalenderTermin[])
-      : Promise.resolve([] as FinnhubEarningsKalenderTermin[]),
-    symbole.length > 0
-      ? ladeYahooEarningsKalenderTerminKandidaten(symbole).catch(() => null)
-      : Promise.resolve(null),
+      ? ladeYahooEarningsKalenderImZeitraum(symbole, von, bis).catch(() => [] as YahooEarningsKalenderTermin[])
+      : Promise.resolve([] as YahooEarningsKalenderTermin[]),
+    ladeWallstreetEarningsTermine(eintrag.isin, name, von, bis).catch(() => []),
   ])
 
-  return mergeTermine(
-    dd,
-    fh,
-    yahoo?.terminDatumIso ?? null,
-    yahoo?.berichtszeit ?? null,
-  )
+  const wsDaten = ws.map((t) => t.terminDatumIso)
+  return mergeTermine(dd, yahoo, wsDaten)
 }
 
-/** BMO/AMC für ein vergangenes Earnings-Datum (aus Finnhub-Kalender). */
+/** BMO/AMC aus Yahoo calendarEvents; sonst unknown → Auto-Erkennung aus Bars. */
 export async function ladeBerichtszeitFuerEarningsDatum(
   symbol: string,
   earningsDate: string,
@@ -170,8 +148,8 @@ export async function ladeBerichtszeitFuerEarningsDatum(
   const von = addDaysIso(earningsDate, -5)
   const bis = addDaysIso(earningsDate, 5)
   try {
-    const fh = await ladeFinnhubEarningsKalenderImZeitraum(symbol, von, bis)
-    const hit = finnhubFuerDatum(fh, earningsDate)
+    const yahoo = await ladeYahooEarningsKalenderImZeitraum([symbol], von, bis)
+    const hit = yahooFuerDatum(yahoo, earningsDate)
     if (hit?.berichtszeit) return berichtszeitZuMomentumZeit(hit.berichtszeit)
   } catch {
     /* optional */
