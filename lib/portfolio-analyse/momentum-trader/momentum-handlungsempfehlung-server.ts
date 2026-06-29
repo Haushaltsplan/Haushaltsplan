@@ -7,6 +7,7 @@ import {
 } from '@/lib/portfolio-analyse/momentum-trader/momentum-constants'
 import { istMomentumPseudoIsin } from '@/lib/portfolio-analyse/momentum-trader/momentum-pseudo-isin'
 import { berechneRegimeGates } from '@/lib/portfolio-analyse/momentum-trader/momentum-regime-server'
+import { sammleHandlungssignale } from '@/lib/portfolio-analyse/momentum-trader/momentum-handlungssignal-server'
 import type {
   MomentumDatenStatus,
   MomentumHandlungAktion,
@@ -58,8 +59,7 @@ export function generiereMomentumHandlungsempfehlung(input: {
   if (input.watchlist.length === 0) {
     return {
       generiertAm: heute,
-      zusammenfassung:
-        'Watchlist leer — zuerst 1–3 Titel hinzufügen, dann „Alles aktualisieren“ für Kurse, Earnings-Historie und Scan.',
+      zusammenfassung: 'Watchlist leer — Titel hinzufügen und Pipeline starten.',
       regimeText: regimeText(regime),
       longBias: gates?.longBias ?? false,
       shortBias: gates?.shortBias ?? false,
@@ -67,6 +67,8 @@ export function generiereMomentumHandlungsempfehlung(input: {
       positionen: [],
       tradeSetups: [],
       hatAktivesTradeSetup: false,
+      topSignal: null,
+      signale: [],
     }
   }
 
@@ -238,6 +240,28 @@ export function generiereMomentumHandlungsempfehlung(input: {
     zusammenfassung = offen.length + ' offene(r) Trade(s) — Exit prüfen. ' + zusammenfassung
   }
 
+  const signale = sammleHandlungssignale(input.scan?.ergebnisse ?? [], gates)
+  const topSignal = signale[0] ?? null
+
+  if (topSignal?.istAktiv) {
+    zusammenfassung =
+      topSignal.symbol +
+      ': ' +
+      (topSignal.richtung === 'long' ? 'Long' : topSignal.richtung === 'short' ? 'Short' : 'Warten') +
+      ' (' +
+      topSignal.wahrscheinlichkeitPct +
+      '%) — ' +
+      topSignal.kurztext
+  } else if (topSignal) {
+    zusammenfassung =
+      topSignal.symbol +
+      ': voraussichtlich ' +
+      (topSignal.richtung === 'long' ? 'Long' : topSignal.richtung === 'short' ? 'Short' : 'Warten') +
+      ' (' +
+      topSignal.wahrscheinlichkeitPct +
+      '%) — noch kein Einstieg'
+  }
+
   return {
     generiertAm: heute,
     zusammenfassung,
@@ -248,5 +272,7 @@ export function generiereMomentumHandlungsempfehlung(input: {
     positionen,
     tradeSetups: setups,
     hatAktivesTradeSetup: setups.length > 0,
+    topSignal,
+    signale: signale.slice(0, 6),
   }
 }

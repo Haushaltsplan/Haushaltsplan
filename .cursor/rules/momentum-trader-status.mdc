@@ -61,6 +61,8 @@ lib/portfolio-analyse/momentum-trader/
   momentum-trades-server.ts         ← Journal + PnL
   momentum-performance-server.ts    ← Win-Rate, Profit Factor
   momentum-erinnerungen-server.ts   ← UI-Hinweise
+  momentum-erinnerungen-client.ts   ← Browser-Notification-Einstellungen (localStorage)
+  momentum-katalysator-tracking-server.ts ← Pre-Event vs. Post-Setup Trefferquote
   momentum-cron-server.ts           ← Vercel Cron Full-Sync
 
 app/api/portfolio-analyse/momentum-trader/
@@ -71,10 +73,12 @@ app/api/portfolio-analyse/momentum-trader/
   kalender/    GET (?tage=35)
   briefing/    GET → Markdown
   verlauf/     GET → Score-Sparkline-Daten
+  tracking/    GET → Pre-Event/Post-Setup Trefferquote
   cron-sync/   GET (CRON_SECRET)
 
 components/portfolio-analyse/
   portfolio-momentum-trader.client.tsx
+  momentum-erinnerungen-notifier.tsx  ← Browser-Push (Earnings, Pre-Event, Setups)
 ```
 
 ## Supabase-Tabellen
@@ -106,6 +110,8 @@ components/portfolio-analyse/
 - Tages-Briefing → Zwischenablage (Markdown)
 - Scan kopieren, KI-Memo, Trade aus Scan erfassen
 - Performance nach Playbook, Erinnerungen-Banner
+- **Browser-Erinnerungen** (Earnings heute/morgen, Pre-Event, Trade-Setups) — Toggle in der UI
+- **Pre-Event → Trade-Setup Tracking** (Trefferquote aus `momentum_scan_verlauf`, 365 Tage)
 
 ## Cron (vercel.json)
 
@@ -127,6 +133,5 @@ components/portfolio-analyse/
 ## Nächste mögliche Erweiterungen
 
 - PDF-Export des Briefings
-- Push/E-Mail bei Earnings heute
-- Setup-Performance-Tracking (waren die Scans richtig?)
-- Valuation-Alerts bei Vorlauf-Setups
+- E-Mail bei Earnings heute (zusätzlich zu Browser-Push)
+- Valuation-Alerts bei Pre-Event-Setups

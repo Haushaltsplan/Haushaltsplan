@@ -6,6 +6,10 @@ import { usePortfolioAnalyse } from '@/components/portfolio-analyse/pa-data-prov
 import { PortfolioAnalyseShell } from '@/components/portfolio-analyse/portfolio-analyse-shell.client'
 import { PaCard, PaSectionTitle } from '@/components/portfolio-analyse/pa-ui'
 import {
+  MomentumErinnerungenEinstellungen,
+  MomentumErinnerungenNotifier,
+} from '@/components/portfolio-analyse/momentum-erinnerungen-notifier'
+import {
   MomentumWatchlistSucheInput,
   type MomentumWatchlistAuswahl,
 } from '@/components/portfolio-analyse/momentum-watchlist-suche-input'
@@ -15,12 +19,13 @@ import type {
   MomentumAmpel,
   MomentumBarsSyncErgebnis,
   MomentumDatenStatus,
-  MomentumDatenquelle,
   MomentumEarningsKalenderMonat,
   MomentumEarningsSyncErgebnis,
   MomentumErinnerung,
   MomentumFullSyncErgebnis,
   MomentumHandlungsempfehlung,
+  MomentumHandlungssignal,
+  MomentumKatalysatorTracking,
   MomentumPerformance,
   MomentumPlaybook,
   MomentumRichtung,
@@ -63,34 +68,199 @@ function ScoreSparkline({ punkte }: { punkte: MomentumScoreVerlaufPunkt[] }) {
   )
 }
 
-function DatenquellenPanel({ quellen }: { quellen: MomentumDatenquelle[] }) {
+function WahrscheinlichkeitsRing({ pct }: { pct: number }) {
+  const r = 44
+  const c = 2 * Math.PI * r
+  const dash = pct > 0 ? (pct / 100) * c : 0
   return (
-    <div className="mt-4 border-t border-[var(--app-border)] pt-4">
-      <p className="text-[11px] font-medium uppercase tracking-wide text-[var(--app-text-muted)]">
-        Datenquellen (Scraper / APIs)
-      </p>
-      <ul className="mt-2 space-y-2">
-        {quellen.map((q) => (
-          <li
-            key={q.id}
-            className="flex flex-wrap items-start justify-between gap-2 rounded-lg bg-[var(--app-surface-muted)]/40 px-2.5 py-2 text-xs"
+    <div className="relative h-28 w-28 shrink-0">
+      <svg viewBox="0 0 100 100" className="h-full w-full -rotate-90">
+        <circle cx="50" cy="50" r={r} fill="none" stroke="currentColor" strokeWidth="6" className="text-white/10" />
+        {pct > 0 && (
+          <circle
+            cx="50"
+            cy="50"
+            r={r}
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="6"
+            strokeLinecap="round"
+            strokeDasharray={`${dash} ${c}`}
+            className="text-teal-400 transition-all duration-500"
+          />
+        )}
+      </svg>
+      <div className="absolute inset-0 flex flex-col items-center justify-center">
+        <span className="text-2xl font-bold tabular-nums text-[var(--app-text)]">{pct > 0 ? pct + '%' : '—'}</span>
+        <span className="text-[9px] uppercase tracking-wider text-[var(--app-text-muted)]">Daten</span>
+      </div>
+    </div>
+  )
+}
+
+function richtungStil(r: MomentumHandlungssignal['richtung'], aktiv: boolean) {
+  if (r === 'long') {
+    return aktiv
+      ? 'from-emerald-500/25 via-emerald-500/10 to-transparent ring-emerald-500/40 text-emerald-200'
+      : 'from-emerald-500/15 to-transparent ring-emerald-500/25 text-emerald-300/90'
+  }
+  if (r === 'short') {
+    return aktiv
+      ? 'from-rose-500/25 via-rose-500/10 to-transparent ring-rose-500/40 text-rose-200'
+      : 'from-rose-500/15 to-transparent ring-rose-500/25 text-rose-300/90'
+  }
+  return 'from-amber-500/15 to-transparent ring-amber-500/30 text-amber-200'
+}
+
+function richtungLabel(r: MomentumHandlungssignal['richtung']) {
+  if (r === 'long') return 'LONG'
+  if (r === 'short') return 'SHORT'
+  return 'WARTEN'
+}
+
+function HandlungssignalZeile({ s, kompakt }: { s: MomentumHandlungssignal; kompakt?: boolean }) {
+  return (
+    <div
+      className={
+        'flex items-center justify-between gap-3 rounded-xl border border-white/5 bg-black/20 px-3 py-2.5 ' +
+        (kompakt ? 'text-xs' : '')
+      }
+    >
+      <div className="min-w-0">
+        <p className="font-semibold text-[var(--app-text)]">
+          {s.symbol}
+          <span
+            className={
+              'ml-2 rounded px-1.5 py-0.5 text-[10px] font-bold uppercase ' +
+              (s.richtung === 'long'
+                ? 'bg-emerald-500/20 text-emerald-300'
+                : s.richtung === 'short'
+                  ? 'bg-rose-500/20 text-rose-300'
+                  : 'bg-amber-500/20 text-amber-300')
+            }
           >
-            <div>
-              <span className="font-medium text-[var(--app-text)]">{q.name}</span>
-              <span className="ml-2 text-[10px] uppercase text-[var(--app-text-muted)]">{q.typ}</span>
-              <p className="mt-0.5 text-[var(--app-text-muted)]">{q.nutzen}</p>
+            {richtungLabel(s.richtung)}
+          </span>
+        </p>
+        {!kompakt && <p className="mt-0.5 truncate text-xs text-[var(--app-text-muted)]">{s.kurztext}</p>}
+      </div>
+      <span className="shrink-0 text-lg font-bold tabular-nums text-teal-300">{s.wahrscheinlichkeitPct}%</span>
+    </div>
+  )
+}
+
+function HandlungsempfehlungPanel({
+  empfehlung,
+  onSync,
+  syncLaeuft,
+}: {
+  empfehlung: MomentumHandlungsempfehlung
+  onSync: () => void
+  syncLaeuft: boolean
+}) {
+  const signal = empfehlung.topSignal
+  const brauchtSync = !empfehlung.hatAktivesTradeSetup && empfehlung.datenHinweise.length > 0 && !signal
+
+  return (
+    <div className="relative overflow-hidden rounded-2xl border border-white/10 bg-gradient-to-br from-[var(--app-surface-muted)] via-black/40 to-violet-950/30 p-6 shadow-2xl shadow-black/40 ring-1 ring-white/5 backdrop-blur-sm">
+      <div className="pointer-events-none absolute -right-16 -top-16 h-48 w-48 rounded-full bg-teal-500/10 blur-3xl" />
+      <div className="pointer-events-none absolute -bottom-12 -left-12 h-40 w-40 rounded-full bg-violet-500/10 blur-3xl" />
+
+      {signal ? (
+        <div className="relative flex flex-col gap-6 sm:flex-row sm:items-center">
+          <div className="flex flex-1 flex-col gap-4">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-[10px] font-medium uppercase tracking-widest text-[var(--app-text-muted)]">
+                {signal.istAktiv ? 'Jetzt handeln' : 'Vorbereitung'}
+              </span>
+              {signal.istAktiv ? (
+                <span className="rounded-full bg-emerald-500/20 px-2 py-0.5 text-[10px] font-medium text-emerald-300">
+                  Setup aktiv
+                </span>
+              ) : (
+                <span className="rounded-full bg-amber-500/20 px-2 py-0.5 text-[10px] font-medium text-amber-300">
+                  Erst nach Earnings
+                </span>
+              )}
             </div>
-            <span
-              className={
-                'shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium ' +
-                (q.aktiv ? 'bg-emerald-500/15 text-emerald-300' : 'bg-amber-500/15 text-amber-300')
-              }
-            >
-              {q.aktiv ? 'aktiv' : 'optional'}
-            </span>
-          </li>
-        ))}
-      </ul>
+
+            <div>
+              <p className="text-sm font-medium text-[var(--app-text-muted)]">{signal.symbol}</p>
+              <p
+                className={
+                  'mt-1 inline-block rounded-xl bg-gradient-to-r px-4 py-2 text-3xl font-black tracking-tight ring-1 ' +
+                  richtungStil(signal.richtung, signal.istAktiv)
+                }
+              >
+                {richtungLabel(signal.richtung)}
+              </p>
+            </div>
+
+            <p className="max-w-lg text-sm leading-relaxed text-[var(--app-text)]">{signal.kurztext}</p>
+
+            {signal.fakten.length > 0 && (
+              <div className="flex flex-wrap gap-2">
+                {signal.fakten.map((f) => (
+                  <span
+                    key={f}
+                    className="rounded-lg bg-white/5 px-2.5 py-1 text-[11px] tabular-nums text-[var(--app-text-muted)] ring-1 ring-white/10"
+                  >
+                    {f}
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <WahrscheinlichkeitsRing pct={signal.wahrscheinlichkeitPct} />
+        </div>
+      ) : (
+        <div className="relative flex flex-col gap-4 sm:flex-row sm:items-center">
+          <div className="flex-1">
+            <p className="text-[10px] font-medium uppercase tracking-widest text-[var(--app-text-muted)]">Aktion</p>
+            <p className="mt-2 text-3xl font-black tracking-tight text-amber-200">WARTEN</p>
+            <p className="mt-2 text-sm text-[var(--app-text-muted)]">
+              {brauchtSync
+                ? 'Daten unvollständig — Pipeline ausführen für Long/Short-Empfehlung.'
+                : 'Kein aktives Setup — Pre-Event-Katalysator oder Reaktion nach Earnings abwarten.'}
+            </p>
+          </div>
+          <WahrscheinlichkeitsRing pct={0} />
+        </div>
+      )}
+
+      {empfehlung.signale.length > 1 && (
+        <div className="relative mt-6 border-t border-white/10 pt-4">
+          <p className="mb-2 text-[10px] font-medium uppercase tracking-wider text-[var(--app-text-muted)]">
+            Weitere Signale
+          </p>
+          <div className="grid gap-2 sm:grid-cols-2">
+            {empfehlung.signale.slice(1, 5).map((s) => (
+              <HandlungssignalZeile key={s.symbol + s.playbook + s.phase} s={s} kompakt />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {(brauchtSync || (signal && !signal.istAktiv && empfehlung.datenHinweise.length > 0)) && (
+        <button
+          type="button"
+          onClick={onSync}
+          disabled={syncLaeuft}
+          className="relative mt-5 w-full rounded-xl bg-teal-500/20 py-2.5 text-sm font-semibold text-teal-200 ring-1 ring-teal-500/35 hover:bg-teal-500/30 disabled:opacity-50 sm:w-auto sm:px-6"
+        >
+          {syncLaeuft ? 'Pipeline läuft …' : 'Daten aktualisieren'}
+        </button>
+      )}
+
+      <div className="relative mt-4 flex flex-wrap gap-2 text-[10px] text-[var(--app-text-muted)]">
+        {empfehlung.longBias && (
+          <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-emerald-400/90">Regime Long-Bias</span>
+        )}
+        {empfehlung.shortBias && (
+          <span className="rounded-full bg-rose-500/10 px-2 py-0.5 text-rose-400/90">Regime Short-Bias</span>
+        )}
+      </div>
     </div>
   )
 }
@@ -257,6 +427,66 @@ function PerformancePanel({ p }: { p: MomentumPerformance }) {
   )
 }
 
+function KatalysatorTrackingPanel({ t }: { t: MomentumKatalysatorTracking }) {
+  if (t.katalysatoren === 0) {
+    return (
+      <PaCard className="p-5">
+        <h2 className="text-sm font-semibold text-[var(--app-text)]">Pre-Event → Trade-Setup</h2>
+        <p className="mt-2 text-xs text-[var(--app-text-muted)]">
+          Noch keine auswertbaren Katalysatoren — Scan-Verlauf füllt sich nach täglichen Scans.
+        </p>
+      </PaCard>
+    )
+  }
+
+  return (
+    <PaCard className="p-5">
+      <h2 className="text-sm font-semibold text-[var(--app-text)]">Pre-Event → Trade-Setup</h2>
+      <p className="mt-1 text-xs text-[var(--app-text-muted)]">
+        Letzte {t.fensterTage} Tage · Pre-Event-Signal (gelb, Score ≥45) vs. Gap-Fade/Momentum innerhalb 3 Tage nach
+        Earnings
+      </p>
+      <div className="mt-4 grid gap-3 sm:grid-cols-3">
+        <StatKachel label="Katalysatoren" wert={t.katalysatoren} />
+        <StatKachel label="Mit Post-Setup" wert={t.mitTradeSetup} />
+        <StatKachel label="Trefferquote" wert={t.trefferquotePct != null ? t.trefferquotePct + '%' : '—'} />
+      </div>
+      <div className="mt-4 overflow-x-auto">
+        <table className="w-full min-w-[480px] text-left text-xs">
+          <thead>
+            <tr className="text-[var(--app-text-muted)]">
+              <th className="pb-2 font-medium">Symbol</th>
+              <th className="pb-2 font-medium">Earnings</th>
+              <th className="pb-2 font-medium">Pre</th>
+              <th className="pb-2 font-medium">Post</th>
+              <th className="pb-2 font-medium">Gap</th>
+            </tr>
+          </thead>
+          <tbody className="text-[var(--app-text)]">
+            {t.eintraege.map((e) => (
+              <tr key={e.symbol + e.earningsDate} className="border-t border-[var(--app-border)]">
+                <td className="py-2 font-medium">{e.symbol}</td>
+                <td className="py-2 tabular-nums">{e.earningsDate}</td>
+                <td className="py-2 tabular-nums">{e.preEventScore ?? '—'}</td>
+                <td className="py-2">
+                  {e.postTradeSetup ? (
+                    <span className="text-teal-300">
+                      {e.postPlaybook ? momentumPlaybookLabel(e.postPlaybook) : 'Setup'} ({e.postAmpel})
+                    </span>
+                  ) : (
+                    <span className="text-[var(--app-text-muted)]">—</span>
+                  )}
+                </td>
+                <td className="py-2 tabular-nums">{e.gapPct != null ? e.gapPct.toFixed(1) + '%' : '—'}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </PaCard>
+  )
+}
+
 function ampelRing(ampel: MomentumAmpel): string {
   if (ampel === 'gruen') return 'ring-emerald-500/40 bg-emerald-500/10'
   if (ampel === 'gelb') return 'ring-amber-500/40 bg-amber-500/10'
@@ -292,107 +522,6 @@ function filterScanErgebnisse(
       return true
     })
     .sort((a, b) => b.score - a.score)
-}
-
-function PreEventBanner({ eintraege }: { eintraege: MomentumScanEintrag[] }) {
-  const top = eintraege
-    .filter((e) => e.playbook === 'earnings_pre_event' && e.ampel === 'gelb')
-    .sort((a, b) => b.score - a.score)
-    .slice(0, 4)
-  if (top.length === 0) return null
-
-  return (
-    <PaCard className="border-amber-500/25 bg-gradient-to-r from-amber-500/10 to-violet-500/5 p-4">
-      <h2 className="text-sm font-semibold text-amber-200">Pre-Event-Katalysator aktiv</h2>
-      <p className="mt-1 text-xs text-[var(--app-text-muted)]">
-        Vorbereitung vor Earnings — Szenario-Pläne im Scan (Filter „Pre-Event“).
-      </p>
-      <ul className="mt-3 space-y-2">
-        {top.map((e) => (
-          <li
-            key={e.symbol + e.scanDate}
-            className="rounded-lg border border-amber-500/20 bg-black/10 px-3 py-2 text-xs"
-          >
-            <span className="font-medium text-[var(--app-text)]">{e.symbol}</span>
-            <span className="text-[var(--app-text-muted)]">
-              {' '}
-              · Score {e.score}
-              {e.indikatoren.tageBisEarnings != null
-                ? ' · in ' + String(e.indikatoren.tageBisEarnings) + ' Tagen'
-                : ''}
-              {e.indikatoren.medianGapPct != null
-                ? ' · Median-Gap ' + String(e.indikatoren.medianGapPct) + '%'
-                : ''}
-              {e.indikatoren.vorbereitungStufe === 'hoch' ? ' · Katalysator hoch' : ''}
-            </span>
-          </li>
-        ))}
-      </ul>
-    </PaCard>
-  )
-}
-
-function HandlungsempfehlungPanel({
-  empfehlung,
-  onSync,
-  syncLaeuft,
-}: {
-  empfehlung: import('@/lib/portfolio-analyse/momentum-trader/momentum-trader-types').MomentumHandlungsempfehlung
-  onSync: () => void
-  syncLaeuft: boolean
-}) {
-  return (
-    <PaCard className="border-teal-500/25 bg-gradient-to-br from-teal-500/10 to-violet-500/5 p-5">
-      <h2 className="text-sm font-semibold text-[var(--app-text)]">Handlungsempfehlung</h2>
-      <p className="mt-2 text-sm text-[var(--app-text)]">{empfehlung.zusammenfassung}</p>
-      <p className="mt-2 text-xs text-[var(--app-text-muted)]">{empfehlung.regimeText}</p>
-      {empfehlung.datenHinweise.length > 0 && (
-        <ul className="mt-3 space-y-1">
-          {empfehlung.datenHinweise.map((h) => (
-            <li key={h} className="text-xs text-amber-300/90">
-              ⚠ {h}
-            </li>
-          ))}
-        </ul>
-      )}
-      {empfehlung.positionen.length > 0 && (
-        <ul className="mt-4 space-y-2">
-          {empfehlung.positionen.map((p) => (
-            <li
-              key={p.symbol + p.aktion}
-              className="rounded-lg border border-[var(--app-border)] bg-[var(--app-surface-muted)]/50 px-3 py-2.5 text-xs"
-            >
-              <span
-                className={
-                  'mr-2 rounded px-1.5 py-0.5 text-[10px] font-medium uppercase ' +
-                  (p.aktion === 'trade_pruefen'
-                    ? 'bg-emerald-500/20 text-emerald-300'
-                    : p.aktion === 'vorbereiten'
-                      ? 'bg-violet-500/20 text-violet-300'
-                      : p.aktion === 'sync'
-                        ? 'bg-amber-500/20 text-amber-300'
-                        : 'bg-[var(--app-surface)] text-[var(--app-text-muted)]')
-                }
-              >
-                {p.aktion.replace('_', ' ')}
-              </span>
-              {p.text}
-            </li>
-          ))}
-        </ul>
-      )}
-      {!empfehlung.hatAktivesTradeSetup && empfehlung.datenHinweise.length > 0 && (
-        <button
-          type="button"
-          onClick={onSync}
-          disabled={syncLaeuft}
-          className="mt-4 rounded-xl bg-teal-500/20 px-4 py-2 text-sm font-medium text-teal-300 ring-1 ring-teal-500/30 hover:bg-teal-500/30 disabled:opacity-50"
-        >
-          {syncLaeuft ? 'Pipeline läuft …' : 'Jetzt: Alles aktualisieren'}
-        </button>
-      )}
-    </PaCard>
-  )
 }
 
 function WatchlistZeile({
@@ -760,6 +889,7 @@ export function MomentumTraderClient() {
   const [trades, setTrades] = useState<MomentumTrade[]>([])
   const [performance, setPerformance] = useState<MomentumPerformance | null>(null)
   const [erinnerungen, setErinnerungen] = useState<MomentumErinnerung[]>([])
+  const [tracking, setTracking] = useState<MomentumKatalysatorTracking | null>(null)
   const [handlung, setHandlung] = useState<MomentumHandlungsempfehlung | null>(null)
   const [scanFilter, setScanFilter] = useState<'trade' | 'momentum' | 'ipo' | 'pre_event' | 'alle'>('alle')
   const [exportHinweis, setExportHinweis] = useState<string | null>(null)
@@ -782,13 +912,14 @@ export function MomentumTraderClient() {
     setLaden(true)
     setFehler(null)
     try {
-      const [wlRes, stRes, scanRes, trRes, kalRes, verlRes] = await Promise.all([
+      const [wlRes, stRes, scanRes, trRes, kalRes, verlRes, trackRes] = await Promise.all([
         momentumApiFetch('/api/portfolio-analyse/momentum-trader/watchlist'),
         momentumApiFetch('/api/portfolio-analyse/momentum-trader/status'),
         momentumApiFetch('/api/portfolio-analyse/momentum-trader/scan'),
         momentumApiFetch('/api/portfolio-analyse/momentum-trader/trades'),
         momentumApiFetch('/api/portfolio-analyse/momentum-trader/kalender'),
         momentumApiFetch('/api/portfolio-analyse/momentum-trader/verlauf'),
+        momentumApiFetch('/api/portfolio-analyse/momentum-trader/tracking'),
       ])
       if (!wlRes.ok) throw new Error(((await wlRes.json()) as { fehler?: string }).fehler ?? 'Watchlist-Fehler')
       if (!stRes.ok) throw new Error(((await stRes.json()) as { fehler?: string }).fehler ?? 'Status-Fehler')
@@ -810,6 +941,9 @@ export function MomentumTraderClient() {
       }
       if (verlRes.ok) {
         setScoreVerlauf(((await verlRes.json()) as { verlauf: Record<string, MomentumScoreVerlaufPunkt[]> }).verlauf ?? {})
+      }
+      if (trackRes.ok) {
+        setTracking(((await trackRes.json()) as { tracking: MomentumKatalysatorTracking }).tracking ?? null)
       }
     } catch (e) {
       setFehler(String(e))
@@ -1171,8 +1305,6 @@ export function MomentumTraderClient() {
           <PaCard className="border-red-500/30 bg-red-500/5 p-4 text-sm text-red-300">{fehler}</PaCard>
         )}
 
-        <ErinnerungenLeiste items={erinnerungen} />
-
         {handlung && watchlist.length > 0 && (
           <HandlungsempfehlungPanel
             empfehlung={handlung}
@@ -1181,9 +1313,14 @@ export function MomentumTraderClient() {
           />
         )}
 
-        {scan && <PreEventBanner eintraege={scan.ergebnisse} />}
+        <ErinnerungenLeiste items={erinnerungen} />
+
+        <MomentumErinnerungenNotifier erinnerungen={erinnerungen} />
+        <MomentumErinnerungenEinstellungen />
 
         {performance && performance.tradesGesamt > 0 && <PerformancePanel p={performance} />}
+
+        {tracking && watchlist.length > 0 && <KatalysatorTrackingPanel t={tracking} />}
 
         {regime && (
           <PaCard className="p-5">
@@ -1254,7 +1391,7 @@ export function MomentumTraderClient() {
             <div>
               <h2 className="text-sm font-semibold text-[var(--app-text)]">Scan</h2>
               <p className="mt-1 text-xs text-[var(--app-text-muted)]">
-                Gap-Fade · Momentum · IPO · Pre-Event-Katalysator. 100 % Scraper — keine API-Keys.
+                {scan?.scanDate ? 'Stand ' + scan.scanDate : 'Gap-Fade · Momentum · IPO · Pre-Event'}
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
@@ -1351,9 +1488,6 @@ export function MomentumTraderClient() {
             <p className="mt-1 text-xs text-[var(--app-text-muted)]">
               Earnings: {letztesEarningsSync.termineGeschrieben} Termine
             </p>
-          )}
-          {status?.datenquellen && status.datenquellen.length > 0 && (
-            <DatenquellenPanel quellen={status.datenquellen} />
           )}
         </PaCard>
       </div>

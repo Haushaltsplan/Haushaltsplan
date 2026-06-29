@@ -264,6 +264,19 @@ export async function ladeMomentumEarningsEventsFuerSymbol(symbol: string): Prom
   return (data ?? []).map((r) => dbZuEvent(r as EventDbZeile))
 }
 
+export async function ladeMomentumEarningsEventsFuerSymbole(
+  symbole: string[],
+  opts?: { seitIso?: string },
+): Promise<MomentumEarningsEvent[]> {
+  if (!istKonfiguriert() || symbole.length === 0) return []
+  const norm = [...new Set(symbole.map((s) => s.trim().toUpperCase()).filter(Boolean))]
+  let q = admin().from(TABLE_EVENTS).select('*').in('symbol', norm).order('earnings_date', { ascending: false })
+  if (opts?.seitIso) q = q.gte('earnings_date', opts.seitIso)
+  const { data, error } = await q.limit(500)
+  if (error) return []
+  return (data ?? []).map((r) => dbZuEvent(r as EventDbZeile))
+}
+
 // ---------------------------------------------------------------------------
 // Markt-Regime
 // ---------------------------------------------------------------------------

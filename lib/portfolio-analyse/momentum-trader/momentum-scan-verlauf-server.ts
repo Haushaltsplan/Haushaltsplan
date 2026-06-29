@@ -83,3 +83,49 @@ export async function ladeMomentumScoreVerlauf(
 
   return out
 }
+
+export type MomentumScanVerlaufRohPunkt = MomentumScoreVerlaufPunkt
+
+/** Vollständiger Scan-Verlauf je Symbol (für Katalysator-Tracking). */
+export async function ladeMomentumScanVerlaufRoh(
+  symbole: string[],
+  seitIso: string,
+): Promise<Map<string, MomentumScanVerlaufRohPunkt[]>> {
+  const out = new Map<string, MomentumScanVerlaufRohPunkt[]>()
+  if (!istKonfiguriert() || symbole.length === 0) return out
+
+  const norm = [...new Set(symbole.map((s) => s.trim().toUpperCase()).filter(Boolean))]
+
+  try {
+    const { data, error } = await createSupabaseAdmin()
+      .from(TABLE)
+      .select('symbol, playbook, scan_date, score, ampel')
+      .in('symbol', norm)
+      .gte('scan_date', seitIso)
+      .order('scan_date', { ascending: true })
+
+    if (error || !data) return out
+
+    for (const row of data as Array<{
+      symbol: string
+      playbook: string
+      scan_date: string
+      score: number
+      ampel: string
+    }>) {
+      const key = row.symbol.toUpperCase()
+      const arr = out.get(key) ?? []
+      arr.push({
+        datum: row.scan_date,
+        score: row.score,
+        ampel: row.ampel as MomentumAmpel,
+        playbook: row.playbook as MomentumPlaybook,
+      })
+      out.set(key, arr)
+    }
+  } catch (e) {
+    console.warn('[momentum-verlauf] Roh-Laden:', e)
+  }
+
+  return out
+}

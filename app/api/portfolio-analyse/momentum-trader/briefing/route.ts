@@ -1,5 +1,6 @@
 /** Tages-Briefing als Markdown. */
 import { NextResponse } from 'next/server'
+import { berechneKatalysatorTracking } from '@/lib/portfolio-analyse/momentum-trader/momentum-katalysator-tracking-server'
 import { berechneMomentumErinnerungen } from '@/lib/portfolio-analyse/momentum-trader/momentum-erinnerungen-server'
 import { berechneMomentumPerformance } from '@/lib/portfolio-analyse/momentum-trader/momentum-performance-server'
 import { generiereMomentumBriefing } from '@/lib/portfolio-analyse/momentum-trader/momentum-briefing-server'
@@ -58,6 +59,7 @@ export async function GET(req: Request) {
       barsNeuesterTag: status.barsNeuesterTag,
     })
     const performance = trades.length > 0 ? berechneMomentumPerformance(trades) : null
+    const tracking = symbole.length > 0 ? await berechneKatalysatorTracking(symbole) : null
 
     const markdown = generiereMomentumBriefing({
       scanDate,
@@ -68,6 +70,7 @@ export async function GET(req: Request) {
       kalender,
       trades,
       performance,
+      tracking,
     })
 
     return NextResponse.json({ scanDate, markdown })

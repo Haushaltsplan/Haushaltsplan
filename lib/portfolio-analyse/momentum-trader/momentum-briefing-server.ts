@@ -4,6 +4,7 @@ import { momentumPlaybookLabel } from '@/lib/portfolio-analyse/momentum-trader/m
 import type {
   MomentumEarningsKalenderMonat,
   MomentumErinnerung,
+  MomentumKatalysatorTracking,
   MomentumMarketRegime,
   MomentumPerformance,
   MomentumRegimeGates,
@@ -21,6 +22,7 @@ export type MomentumBriefingInput = {
   kalender: MomentumEarningsKalenderMonat
   trades: MomentumTrade[]
   performance: MomentumPerformance | null
+  tracking?: MomentumKatalysatorTracking | null
 }
 
 /** Tages-Briefing als Markdown (Copy/PDF-Vorlage). */
@@ -184,6 +186,35 @@ export function generiereMomentumBriefing(input: MomentumBriefingInput): string 
         ' € · Win-Rate: ' +
         (p.winRatePct != null ? p.winRatePct + '%' : '—'),
     )
+    lines.push('')
+  }
+
+  const tr = input.tracking
+  if (tr && tr.katalysatoren > 0) {
+    lines.push('## Pre-Event → Trade-Setup (letzte ' + tr.fensterTage + ' Tage)')
+    lines.push(
+      '- Trefferquote: ' +
+        (tr.trefferquotePct != null ? tr.trefferquotePct + '%' : '—') +
+        ' (' +
+        tr.mitTradeSetup +
+        '/' +
+        tr.katalysatoren +
+        ' Katalysatoren mit Post-Setup)',
+    )
+    for (const e of tr.eintraege.slice(0, 8)) {
+      lines.push(
+        '- ' +
+          e.symbol +
+          ' ' +
+          e.earningsDate +
+          ': Pre ' +
+          (e.preEventScore ?? '—') +
+          (e.postTradeSetup
+            ? ' → ' + String(e.postPlaybook) + ' (' + String(e.postAmpel) + ')'
+            : ' → kein Setup') +
+          (e.gapPct != null ? ', Gap ' + e.gapPct.toFixed(1) + '%' : ''),
+      )
+    }
     lines.push('')
   }
 

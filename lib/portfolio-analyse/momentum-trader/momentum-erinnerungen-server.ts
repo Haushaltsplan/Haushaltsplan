@@ -109,5 +109,27 @@ export function berechneMomentumErinnerungen(input: {
     })
   }
 
+  for (const e of input.scan?.ergebnisse ?? []) {
+    if (e.playbook !== 'earnings_pre_event' || e.ampel !== 'gelb' || e.score < 45) continue
+    const wl = input.watchlist.find((w) => {
+      const sym = (w.symbolYahoo ?? w.symbolCandidates[0] ?? '').toUpperCase()
+      return sym === e.symbol.toUpperCase()
+    })
+    const tage = wl?.naechstesEarnings?.tageBis
+    if (tage == null || tage < 0 || tage > 3) continue
+    out.push({
+      typ: 'pre_event_aktiv',
+      schwere: tage <= 1 ? 'aktion' : 'warnung',
+      symbol: e.symbol,
+      text:
+        e.symbol +
+        ': Pre-Event-Katalysator (Score ' +
+        e.score +
+        ') — Szenario-Plan prüfen, Earnings in ' +
+        tage +
+        ' Tag(en).',
+    })
+  }
+
   return out.sort(sortiereErinnerungen)
 }

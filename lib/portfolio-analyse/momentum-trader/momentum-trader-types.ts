@@ -260,12 +260,36 @@ export type MomentumErinnerung = {
     | 'earnings_heute'
     | 'earnings_morgen'
     | 'earnings_bald'
+    | 'pre_event_aktiv'
     | 'trade_offen'
     | 'daten_veraltet'
     | 'scan_verfuegbar'
   schwere: 'info' | 'warnung' | 'aktion'
   text: string
   symbol?: string
+}
+
+/** Pre-Event-Signal vs. Post-Earnings-Trade-Setup (Scan-Verlauf). */
+export type MomentumKatalysatorTrackingEintrag = {
+  symbol: string
+  earningsDate: string
+  preEventScore: number | null
+  preEventAmpel: MomentumAmpel | null
+  postTradeSetup: boolean
+  postPlaybook: MomentumPlaybook | null
+  postAmpel: MomentumAmpel | null
+  gapPct: number | null
+  treffer: boolean
+}
+
+export type MomentumKatalysatorTracking = {
+  fensterTage: number
+  /** Earnings mit Pre-Event-Signal (gelb, Score ≥45) in den 14 Tagen davor */
+  katalysatoren: number
+  /** Davon mit Gap-Fade/Momentum-Setup innerhalb 0–3 Tage nach Earnings */
+  mitTradeSetup: number
+  trefferquotePct: number | null
+  eintraege: MomentumKatalysatorTrackingEintrag[]
 }
 
 /** Suchtreffer für Momentum-Watchlist (Börse + Pre-IPO). */
@@ -304,6 +328,20 @@ export type MomentumHandlungPosition = {
   text: string
 }
 
+/** Long/Short-Empfehlung mit datenbasierter Wahrscheinlichkeit. */
+export type MomentumHandlungssignal = {
+  symbol: string
+  richtung: MomentumRichtung | 'warten'
+  wahrscheinlichkeitPct: number
+  playbook: MomentumPlaybook
+  /** Jetzt handeln oder erst nach Earnings */
+  phase: 'jetzt' | 'nach_earnings'
+  istAktiv: boolean
+  prioritaet: number
+  kurztext: string
+  fakten: string[]
+}
+
 /** Regelbasierte Empfehlung — was jetzt tun (auch ohne Trade-Setup). */
 export type MomentumHandlungsempfehlung = {
   generiertAm: string
@@ -315,6 +353,8 @@ export type MomentumHandlungsempfehlung = {
   positionen: MomentumHandlungPosition[]
   tradeSetups: MomentumScanEintrag[]
   hatAktivesTradeSetup: boolean
+  topSignal: MomentumHandlungssignal | null
+  signale: MomentumHandlungssignal[]
 }
 
 /** Trade aus Scan vorbereiten. */
