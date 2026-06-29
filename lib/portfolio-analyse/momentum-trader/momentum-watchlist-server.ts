@@ -7,6 +7,7 @@ import {
   momentumBarsSymboleAusWatchlist,
   normalisiereMomentumWatchlistSymbole,
 } from '@/lib/portfolio-analyse/momentum-trader/momentum-symbol-hilfen'
+import { istMomentumPseudoIsin } from '@/lib/portfolio-analyse/momentum-trader/momentum-pseudo-isin'
 import type { MomentumWatchlistEintrag } from '@/lib/portfolio-analyse/momentum-trader/momentum-trader-types'
 
 export const MOMENTUM_WATCHLIST_MAX = 32
@@ -42,7 +43,14 @@ function dbZuEintrag(row: WatchlistDbZeile): MomentumWatchlistEintrag {
 }
 
 export function istGueltigeMomentumIsin(isin: string): boolean {
-  return ISIN_RE.test(isin.trim().toUpperCase())
+  const n = isin.trim().toUpperCase()
+  return ISIN_RE.test(n)
+}
+
+/** Echte oder Pseudo-ISIN (Pre-IPO). */
+export function istGueltigeMomentumWatchlistIsin(isin: string): boolean {
+  const n = isin.trim().toUpperCase()
+  return istGueltigeMomentumIsin(n) || istMomentumPseudoIsin(n)
 }
 
 export async function repariereWatchlistSymbolKandidaten(
@@ -92,8 +100,16 @@ export async function fuegeZurMomentumWatchlist(
   },
 ): Promise<{ ok: true } | { ok: false; fehler: string }> {
   const isin = eintrag.isin.trim().toUpperCase()
-  if (!istGueltigeMomentumIsin(isin)) {
+  if (!istGueltigeMomentumWatchlistIsin(isin)) {
     return { ok: false, fehler: 'Ungültige ISIN.' }
+  }
+
+  const {
+    data: { user },
+    error: userErr,
+  } = await sb.auth.getUser()
+  if (userErr || !user) {
+    return { ok: false, fehler: 'Nicht angemeldet.' }
   }
 
   const symNorm = normalisiereMomentumWatchlistSymbole({
@@ -105,7 +121,9 @@ export async function fuegeZurMomentumWatchlist(
     .from(TABLE)
     .select('*', { count: 'exact', head: true })
   if (countErr) return { ok: false, fehler: countErr.message }
-  if ((count ?? 0) >= MOMENTUM_WATCHLIST_MAX) {
+
+  const { data: vorhanden } = await sb.from(TABLE).select('isin').eq('isin', isin).maybeSingle()
+  if (!vorhanden && (count ?? 0) >= MOMENTUM_WATCHLIST_MAX) {
     return {
       ok: false,
       fehler: 'Watchlist voll (max. ' + MOMENTUM_WATCHLIST_MAX + ' Titel).',
@@ -114,6 +132,7 @@ export async function fuegeZurMomentumWatchlist(
 
   const { error } = await sb.from(TABLE).upsert(
     {
+      owner_user_id: user.id,
       isin,
       name: eintrag.name.trim() || isin,
       symbol_yahoo: symNorm.symbolYahoo?.trim().toUpperCase() || null,

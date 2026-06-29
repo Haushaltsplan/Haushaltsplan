@@ -1110,7 +1110,6 @@ export function MomentumTraderClient() {
         const data = (await res.json()) as { eintraege?: MomentumWatchlistEintragAngereichert[]; fehler?: string }
         if (!res.ok) throw new Error(data.fehler ?? 'Hinzufügen fehlgeschlagen.')
         setWatchlist(data.eintraege ?? [])
-        await ladeAlles()
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e)
         setFehler(msg.replace(/^Error:\s*/i, ''))
@@ -1118,7 +1117,7 @@ export function MomentumTraderClient() {
         setHinzufuegenLaden(false)
       }
     },
-    [ladeAlles],
+    [],
   )
 
   const entfernen = useCallback(

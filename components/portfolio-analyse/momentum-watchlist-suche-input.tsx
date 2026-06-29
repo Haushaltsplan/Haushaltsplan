@@ -86,11 +86,11 @@ export function MomentumWatchlistSucheInput({
 
   useEffect(() => {
     function onDocClick(e: MouseEvent) {
-      if (!wrapRef.current?.contains(e.target as Node)) {
-        const portal = document.getElementById(listId + '-portal')
-        if (portal?.contains(e.target as Node)) return
-        setOffen(false)
-      }
+      const target = e.target as Node
+      if (wrapRef.current?.contains(target)) return
+      const portal = document.getElementById(listId + '-portal')
+      if (portal?.contains(target)) return
+      setOffen(false)
     }
     document.addEventListener('mousedown', onDocClick)
     return () => document.removeEventListener('mousedown', onDocClick)
@@ -131,22 +131,34 @@ export function MomentumWatchlistSucheInput({
     }) => {
       onFehler?.(null)
       setOffen(false)
-      const res = await momentumApiFetch('/api/portfolio-analyse/momentum-trader/watchlist-suche', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      })
-      const data = (await res.json()) as { eintrag?: MomentumWatchlistAuswahl; fehler?: string }
-      if (!res.ok || !data.eintrag) {
-        onFehler?.(data.fehler ?? 'Titel konnte nicht aufgelöst werden.')
-        return
+      try {
+        const res = await momentumApiFetch('/api/portfolio-analyse/momentum-trader/watchlist-suche', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        })
+        const data = (await res.json()) as { eintrag?: MomentumWatchlistAuswahl; fehler?: string }
+        if (!res.ok || !data.eintrag) {
+          onFehler?.(data.fehler ?? 'Titel konnte nicht aufgelöst werden.')
+          return
+        }
+        await onAuswahl({
+          isin: data.eintrag.isin,
+          name: data.eintrag.name,
+          symbolYahoo: data.eintrag.symbolYahoo,
+          symbolCandidates: data.eintrag.symbolCandidates ?? [],
+          istPreIpo: data.eintrag.istPreIpo ?? false,
+          ipoDatum: data.eintrag.ipoDatum ?? null,
+          notiz: data.eintrag.notiz ?? null,
+        })
+        setQuery('')
+        setManuell(false)
+        setManuellName('')
+        setManuellSymbol('')
+        setManuellIpo('')
+      } catch (e) {
+        onFehler?.(e instanceof Error ? e.message : String(e))
       }
-      await onAuswahl(data.eintrag)
-      setQuery('')
-      setManuell(false)
-      setManuellName('')
-      setManuellSymbol('')
-      setManuellIpo('')
     },
     [onAuswahl, onFehler],
   )
@@ -289,6 +301,12 @@ export function MomentumWatchlistSucheInput({
                   if (treffer.length > 0) setOffen(true)
                 }}
                 onKeyDown={(e) => {
+                  if (e.key === 'Enter' && offen && treffer.length > 0) {
+                    e.preventDefault()
+                    const idx = aktivIdx >= 0 ? aktivIdx : 0
+                    void waehleTreffer(treffer[idx])
+                    return
+                  }
                   if (!offen || treffer.length === 0) return
                   if (e.key === 'ArrowDown') {
                     e.preventDefault()
@@ -315,7 +333,7 @@ export function MomentumWatchlistSucheInput({
               {offen && treffer.length > 0 && dropdownRect && typeof document !== 'undefined'
                 ? createPortal(
                     <ul
-                      id={listId}
+                      id={listId + '-portal'}
                       role="listbox"
                       style={{
                         position: 'fixed',
@@ -330,8 +348,10 @@ export function MomentumWatchlistSucheInput({
                         <li key={t.symbol + (t.istPreIpo ? '-pre' : '')} role="option" aria-selected={i === aktivIdx}>
                           <button
                             type="button"
-                            onMouseDown={(e) => e.preventDefault()}
-                            onClick={() => void waehleTreffer(t)}
+                            onMouseDown={(e) => {
+                              e.preventDefault()
+                              void waehleTreffer(t)
+                            }}
                             className={
                               'flex w-full flex-col px-4 py-3 text-left transition ' +
                               (i === aktivIdx ? 'bg-teal-500/15' : 'hover:bg-white/[0.06]')
