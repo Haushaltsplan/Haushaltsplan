@@ -1,10 +1,16 @@
 /** Datenfundament-Status (scoped auf eigene Watchlist). */
 import { NextResponse } from 'next/server'
-import { ladeMomentumDatenStatus } from '@/lib/portfolio-analyse/momentum-trader/momentum-db-server'
+import { berechneMomentumErinnerungen } from '@/lib/portfolio-analyse/momentum-trader/momentum-erinnerungen-server'
+import {
+  ladeMomentumDatenStatus,
+  ladeNeuestenMomentumScan,
+} from '@/lib/portfolio-analyse/momentum-trader/momentum-db-server'
+import { reichereWatchlistMitEarningsAn } from '@/lib/portfolio-analyse/momentum-trader/momentum-watchlist-enrich-server'
 import {
   ladeMomentumWatchlist,
   symboleAusWatchlist,
 } from '@/lib/portfolio-analyse/momentum-trader/momentum-watchlist-server'
+import { ladeMomentumTrades } from '@/lib/portfolio-analyse/momentum-trader/momentum-trades-server'
 import { MOMENTUM_REGIME_SYMBOLS } from '@/lib/portfolio-analyse/momentum-trader/momentum-universe'
 import { createSupabaseFuerRequest } from '@/lib/supabase-user'
 
@@ -27,11 +33,34 @@ export async function GET(req: Request) {
   try {
     const watchlist = await ladeMomentumWatchlist(sb)
     const symbole = [...new Set([...MOMENTUM_REGIME_SYMBOLS, ...symboleAusWatchlist(watchlist)])]
+    const [{ count: tradesAnzahl }, angereichert, trades, scanNeu] = await Promise.all([
+      sb.from('momentum_trades').select('*', { count: 'exact', head: true }),
+      reichereWatchlistMitEarningsAn(watchlist),
+      ladeMomentumTrades(sb),
+      ladeNeuestenMomentumScan(),
+    ])
     const status = await ladeMomentumDatenStatus({
       watchlistAnzahl: watchlist.length,
       watchlistSymbole: symbole,
+      tradesAnzahl: tradesAnzahl ?? 0,
     })
-    return NextResponse.json(status)
+    const scan =
+      scanNeu != null
+        ? {
+            scanDate: scanNeu.scanDate,
+            regime: null,
+            ergebnisse: scanNeu.ergebnisse.filter((e) =>
+              symboleAusWatchlist(watchlist).includes(e.symbol),
+            ),
+          }
+        : null
+    const erinnerungen = berechneMomentumErinnerungen({
+      watchlist: angereichert,
+      trades,
+      scan,
+      barsNeuesterTag: status.barsNeuesterTag,
+    })
+    return NextResponse.json({ ...status, erinnerungen })
   } catch (e) {
     return NextResponse.json({ fehler: String(e) }, { status: 500 })
   }

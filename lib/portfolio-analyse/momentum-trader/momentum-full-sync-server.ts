@@ -10,6 +10,10 @@ import type {
   MomentumFullSyncErgebnis,
   MomentumWatchlistEintrag,
 } from '@/lib/portfolio-analyse/momentum-trader/momentum-trader-types'
+import {
+  ladeMomentumWatchlist,
+  syncIpoDatumFuerWatchlist,
+} from '@/lib/portfolio-analyse/momentum-trader/momentum-watchlist-server'
 
 /**
  * Komplette Pipeline: Earnings → Kurse → Event-Backfill → Regime → Scan.
@@ -18,6 +22,7 @@ import type {
 export async function fuehreVollenMomentumSyncAus(
   sb: SupabaseClient,
   watchlist: MomentumWatchlistEintrag[],
+  opts?: { mitKiMemos?: boolean },
 ): Promise<MomentumFullSyncErgebnis> {
   if (watchlist.length === 0) {
     return {
@@ -46,6 +51,10 @@ export async function fuehreVollenMomentumSyncAus(
   schritte.push('Earnings-Historie: ' + events.geschrieben + ' Events')
   if (events.fehler.length) fehler.push(...events.fehler)
 
+  const ipo = await syncIpoDatumFuerWatchlist(sb, watchlist)
+  if (ipo.aktualisiert > 0) schritte.push('IPO-Daten: ' + ipo.aktualisiert + ' Titel')
+  if (ipo.fehler.length) fehler.push(...ipo.fehler)
+
   const regimeGates = await syncMomentumMarketRegime()
   if (regimeGates) {
     schritte.push(
@@ -60,7 +69,10 @@ export async function fuehreVollenMomentumSyncAus(
 
   let scan = null
   if (regimeGates) {
-    scan = await scanMomentumWatchlist(watchlist, regimeGates)
+    const wlAktuell = await ladeMomentumWatchlist(sb)
+    scan = await scanMomentumWatchlist(wlAktuell.length ? wlAktuell : watchlist, regimeGates, {
+      mitKiMemos: opts?.mitKiMemos ?? true,
+    })
     schritte.push('Scan: ' + scan.ergebnisse.length + ' Setup(s)')
   }
 

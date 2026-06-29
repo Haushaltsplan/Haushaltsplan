@@ -17,3 +17,22 @@ export const EARNINGS_LOOKBACK_TAGE = 3
 /** ATR-Multiplikatoren für Stop/Ziel. */
 export const ATR_STOP_FAKTOR = 1.5
 export const REWARD_RISK_RATIO = 2
+
+/** Earnings-Momentum: Surprise-Schwelle (%). */
+export const SURPRISE_BEAT_MIN_PCT = 5
+export const SURPRISE_MISS_MAX_PCT = -5
+export const MOMENTUM_GAP_MIN_PCT = 3
+
+/** IPO-Fade: Tage nach IPO + Mindest-Lauf. */
+export const IPO_FADE_MIN_TAGE = 2
+export const IPO_FADE_MAX_TAGE = 14
+export const IPO_RUN_MIN_PCT = 20
+export const IPO_REVERSAL_GAP_PCT = -2
+
+export function momentumPlaybookLabel(playbook: string): string {
+  if (playbook === 'earnings_gap_fade') return 'Earnings-Gap-Fade'
+  if (playbook === 'earnings_vorlauf') return 'Earnings-Vorlauf'
+  if (playbook === 'earnings_momentum') return 'Earnings-Momentum'
+  if (playbook === 'ipo_fade') return 'IPO-Fade'
+  return playbook
+}

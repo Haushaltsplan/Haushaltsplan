@@ -7,6 +7,8 @@ import 'server-only'
 import { heuteIsoUtc, isoVorJahren, tageZwischenIso } from '@/lib/portfolio-analyse/dividenden-datum-hilfen'
 import { ladeDivvydiaryEarningsTermine } from '@/lib/portfolio-analyse/divvydiary-scraper-server'
 import { isinKenntnis } from '@/lib/portfolio-analyse/isin-kenntnisse'
+import { reichereEventMitFinnhub } from '@/lib/portfolio-analyse/momentum-trader/momentum-earnings-enrich-server'
+import { findeEarningsReaktionsBar } from '@/lib/portfolio-analyse/momentum-trader/momentum-earnings-bar'
 import {
   ladeMomentumBars,
   ladeMomentumEarningsEventsFuerSymbol,
@@ -39,29 +41,23 @@ function primaeresSymbol(e: MomentumWatchlistEintrag): string | null {
   return e.symbolYahoo?.trim().toUpperCase() || e.symbolCandidates[0]?.trim().toUpperCase() || null
 }
 
-function findeBarAbDatum(bars: MomentumBarDaily[], abDatum: string): number | null {
-  const idx = bars.findIndex((b) => b.handelstag >= abDatum)
-  return idx >= 0 ? idx : null
-}
-
 export function berechneEventAusBars(
   symbol: string,
   earningsDate: string,
   timeBmoAmc: MomentumEarningsZeit,
   bars: MomentumBarDaily[],
 ): MomentumEarningsEvent | null {
-  const barIdx = findeBarAbDatum(bars, earningsDate)
-  if (barIdx == null || barIdx < 1) return null
+  const reaktion = findeEarningsReaktionsBar(bars, earningsDate, timeBmoAmc)
+  if (!reaktion) return null
 
-  const bar = bars[barIdx]
-  const prevClose = bars[barIdx - 1].close
-  const gapPct = berechneGapPct(bar, prevClose)
-  const rvol = berechneRvol(bars, barIdx)
+  const bar = bars[reaktion.barIdx]
+  const gapPct = berechneGapPct(bar, reaktion.prevClose)
+  const rvol = berechneRvol(bars, reaktion.barIdx)
 
   return {
     symbol,
     earningsDate,
-    timeBmoAmc,
+    timeBmoAmc: reaktion.effektiveZeit,
     epsEstimate: null,
     epsActual: null,
     revenueEstimate: null,
@@ -69,7 +65,7 @@ export function berechneEventAusBars(
     surpriseEpsPct: null,
     surpriseRevPct: null,
     guidanceFlag: 'unknown',
-    pricePrevClose: prevClose,
+    pricePrevClose: reaktion.prevClose,
     openGap: bar.open,
     closeDay1: bar.close,
     gapPct,
@@ -121,8 +117,14 @@ export async function backfillEarningsEventsFuerWatchlist(
         if (ev) events.push(ev)
       }
 
-      if (events.length > 0) {
-        geschrieben += await speichereMomentumEarningsEvents(events)
+      const angereichert: MomentumEarningsEvent[] = []
+      for (let j = 0; j < events.length; j++) {
+        if (j > 0) await sleep(400)
+        angereichert.push(await reichereEventMitFinnhub(events[j]))
+      }
+
+      if (angereichert.length > 0) {
+        geschrieben += await speichereMomentumEarningsEvents(angereichert)
       }
     } catch (err) {
       fehler.push(e.isin + ': ' + String(err))

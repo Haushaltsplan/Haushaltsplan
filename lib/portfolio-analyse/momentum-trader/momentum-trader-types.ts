@@ -123,6 +123,8 @@ export type MomentumWatchlistEintrag = {
   symbolCandidates: string[]
   hinzugefuegtAm: string
   earningsSyncAm: string | null
+  ipoDatum: string | null
+  ipoSyncAm: string | null
 }
 
 export type MomentumWatchlistEintragAngereichert = MomentumWatchlistEintrag & {
@@ -182,6 +184,41 @@ export type MomentumFullSyncErgebnis = {
   schritte: string[]
   fehler: string[]
   scan: MomentumScanPaket | null
+}
+
+/** Performance-Kennzahlen pro Playbook. */
+export type MomentumPerformancePlaybook = {
+  trades: number
+  geschlossen: number
+  pnlEur: number
+  winRatePct: number | null
+}
+
+/** Journal-Performance (regelbasiert). */
+export type MomentumPerformance = {
+  tradesGesamt: number
+  tradesGeschlossen: number
+  tradesOffen: number
+  winRatePct: number | null
+  profitFactor: number | null
+  pnlGesamtEur: number
+  pnlDurchschnittEur: number | null
+  ruleCompliancePct: number | null
+  nachPlaybook: Record<MomentumPlaybook, MomentumPerformancePlaybook>
+}
+
+/** UI-Hinweis (Earnings, offene Trades, veraltete Daten). */
+export type MomentumErinnerung = {
+  typ:
+    | 'earnings_heute'
+    | 'earnings_morgen'
+    | 'earnings_bald'
+    | 'trade_offen'
+    | 'daten_veraltet'
+    | 'scan_verfuegbar'
+  schwere: 'info' | 'warnung' | 'aktion'
+  text: string
+  symbol?: string
 }
 
 /** Trade aus Scan vorbereiten. */

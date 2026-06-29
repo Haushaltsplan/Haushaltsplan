@@ -59,6 +59,17 @@ export async function ladeMomentumTrades(sb: SupabaseClient): Promise<MomentumTr
   return (data ?? []).map((r) => dbZuTrade(r as TradeDbZeile))
 }
 
+/** Alle Trades für Performance-Statistik (max. 500). */
+export async function ladeMomentumTradesAlle(sb: SupabaseClient): Promise<MomentumTrade[]> {
+  const { data, error } = await sb
+    .from(TABLE)
+    .select('*')
+    .order('entry_date', { ascending: false })
+    .limit(500)
+  if (error) throw new Error(error.message)
+  return (data ?? []).map((r) => dbZuTrade(r as TradeDbZeile))
+}
+
 export async function erstelleMomentumTrade(
   sb: SupabaseClient,
   input: {

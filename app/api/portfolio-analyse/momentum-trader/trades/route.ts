@@ -1,9 +1,11 @@
 /** Trade-Journal — GET / POST / PATCH / DELETE */
 import { NextResponse } from 'next/server'
 import { heuteIsoUtc } from '@/lib/portfolio-analyse/dividenden-datum-hilfen'
+import { berechneMomentumPerformance } from '@/lib/portfolio-analyse/momentum-trader/momentum-performance-server'
 import {
   erstelleMomentumTrade,
   ladeMomentumTrades,
+  ladeMomentumTradesAlle,
   loescheMomentumTrade,
   schliesseMomentumTrade,
 } from '@/lib/portfolio-analyse/momentum-trader/momentum-trades-server'
@@ -28,7 +30,8 @@ export async function GET(req: Request) {
   if (res || !sb) return res!
   try {
     const trades = await ladeMomentumTrades(sb)
-    return NextResponse.json({ trades })
+    const performance = berechneMomentumPerformance(await ladeMomentumTradesAlle(sb))
+    return NextResponse.json({ trades, performance })
   } catch (e) {
     return NextResponse.json({ fehler: String(e) }, { status: 500 })
   }

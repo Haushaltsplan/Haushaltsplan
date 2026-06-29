@@ -390,6 +390,7 @@ export async function ladeNeuestenMomentumScan(): Promise<{ scanDate: string; er
 export async function ladeMomentumDatenStatus(opts?: {
   watchlistAnzahl?: number
   watchlistSymbole?: string[]
+  tradesAnzahl?: number
 }): Promise<MomentumDatenStatus> {
   const leer: MomentumDatenStatus = {
     watchlistAnzahl: opts?.watchlistAnzahl ?? 0,
@@ -411,7 +412,7 @@ export async function ladeMomentumDatenStatus(opts?: {
   ]
 
   try {
-    const [barsCount, barsNeueste, kalenderCount, eventsCount, regimeRow, scanCount, tradesCount] =
+    const [barsCount, barsNeueste, kalenderCount, eventsCount, regimeRow, scanCount] =
       await Promise.all([
         symbole.length > 0
           ? admin().from(TABLE_BARS).select('*', { count: 'exact', head: true }).in('symbol', symbole)
@@ -420,15 +421,24 @@ export async function ladeMomentumDatenStatus(opts?: {
         symbole.length > 0
           ? admin().from(TABLE_EARNINGS_CAL).select('*', { count: 'exact', head: true }).in('symbol', symbole)
           : Promise.resolve({ count: 0, data: null, error: null }),
-        admin().from('momentum_earnings_events').select('*', { count: 'exact', head: true }),
+        symbole.length > 0
+          ? admin()
+              .from('momentum_earnings_events')
+              .select('*', { count: 'exact', head: true })
+              .in('symbol', symbole)
+          : admin().from('momentum_earnings_events').select('*', { count: 'exact', head: true }),
         admin()
           .from(TABLE_REGIME)
           .select('*')
           .order('handelstag', { ascending: false })
           .limit(1)
           .maybeSingle(),
-        admin().from('momentum_scan_results').select('*', { count: 'exact', head: true }),
-        admin().from('momentum_trades').select('*', { count: 'exact', head: true }),
+        symbole.length > 0
+          ? admin()
+              .from('momentum_scan_results')
+              .select('*', { count: 'exact', head: true })
+              .in('symbol', symbole.filter((s) => !s.startsWith('^')))
+          : admin().from('momentum_scan_results').select('*', { count: 'exact', head: true }),
       ])
 
     const regime = regimeRow.data ? dbZuRegime(regimeRow.data as RegimeDbZeile) : null
@@ -443,7 +453,7 @@ export async function ladeMomentumDatenStatus(opts?: {
       regimeNeuesterTag: regime?.handelstag ?? null,
       regime,
       scanAnzahl: scanCount.count ?? 0,
-      tradesAnzahl: tradesCount.count ?? 0,
+      tradesAnzahl: opts?.tradesAnzahl ?? 0,
       supabaseKonfiguriert: true,
     }
   } catch (e) {

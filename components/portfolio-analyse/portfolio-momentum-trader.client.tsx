@@ -12,7 +12,9 @@ import type {
   MomentumBarsSyncErgebnis,
   MomentumDatenStatus,
   MomentumEarningsSyncErgebnis,
+  MomentumErinnerung,
   MomentumFullSyncErgebnis,
+  MomentumPerformance,
   MomentumPlaybook,
   MomentumRichtung,
   MomentumScanEintrag,
@@ -20,6 +22,7 @@ import type {
   MomentumTrade,
   MomentumWatchlistEintragAngereichert,
 } from '@/lib/portfolio-analyse/momentum-trader/momentum-trader-types'
+import { momentumPlaybookLabel } from '@/lib/portfolio-analyse/momentum-trader/momentum-constants'
 import { watchlistEintragAusMeta } from '@/lib/portfolio-analyse/watchlist-client'
 
 function StatKachel({ label, wert }: { label: string; wert: string | number }) {
@@ -31,6 +34,68 @@ function StatKachel({ label, wert }: { label: string; wert: string | number }) {
   )
 }
 
+function erinnerungFarbe(s: MomentumErinnerung['schwere']): string {
+  if (s === 'aktion') return 'border-violet-500/30 bg-violet-500/10 text-violet-200'
+  if (s === 'warnung') return 'border-amber-500/30 bg-amber-500/10 text-amber-200'
+  return 'border-[var(--app-border)] bg-[var(--app-surface-muted)]/40 text-[var(--app-text-muted)]'
+}
+
+function ErinnerungenLeiste({ items }: { items: MomentumErinnerung[] }) {
+  if (items.length === 0) return null
+  return (
+    <ul className="space-y-2">
+      {items.map((e, i) => (
+        <li
+          key={e.typ + (e.symbol ?? '') + i}
+          className={'rounded-xl border px-4 py-2.5 text-sm ' + erinnerungFarbe(e.schwere)}
+        >
+          {e.text}
+        </li>
+      ))}
+    </ul>
+  )
+}
+
+function PerformancePanel({ p }: { p: MomentumPerformance }) {
+  const pf =
+    p.profitFactor != null
+      ? String(p.profitFactor)
+      : p.tradesGeschlossen > 0 && p.pnlGesamtEur > 0
+        ? '∞'
+        : '—'
+  const gapFade = p.nachPlaybook.earnings_gap_fade
+
+  return (
+    <PaCard className="p-5">
+      <h2 className="text-sm font-semibold text-[var(--app-text)]">Performance</h2>
+      <p className="mt-1 text-xs text-[var(--app-text-muted)]">
+        {p.tradesGeschlossen} geschlossen · {p.tradesOffen} offen
+        {p.ruleCompliancePct != null ? ' · ' + p.ruleCompliancePct + '% regelkonform' : ''}
+      </p>
+      <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+        <StatKachel
+          label="PnL gesamt"
+          wert={(p.pnlGesamtEur >= 0 ? '+' : '') + p.pnlGesamtEur.toFixed(2) + ' €'}
+        />
+        <StatKachel label="Win-Rate" wert={p.winRatePct != null ? p.winRatePct + '%' : '—'} />
+        <StatKachel label="Profit Factor" wert={pf} />
+        <StatKachel
+          label="Ø PnL / Trade"
+          wert={p.pnlDurchschnittEur != null ? p.pnlDurchschnittEur.toFixed(2) + ' €' : '—'}
+        />
+        <StatKachel
+          label="Gap-Fade"
+          wert={
+            gapFade.geschlossen > 0
+              ? gapFade.pnlEur.toFixed(2) + ' € (' + gapFade.geschlossen + ')'
+              : gapFade.trades + ' offen'
+          }
+        />
+      </div>
+    </PaCard>
+  )
+}
+
 function ampelRing(ampel: MomentumAmpel): string {
   if (ampel === 'gruen') return 'ring-emerald-500/40 bg-emerald-500/10'
   if (ampel === 'gelb') return 'ring-amber-500/40 bg-amber-500/10'
@@ -39,10 +104,10 @@ function ampelRing(ampel: MomentumAmpel): string {
 }
 
 function playbookTitel(playbook: MomentumPlaybook): string {
-  if (playbook === 'earnings_gap_fade') return 'Earnings-Gap-Fade'
-  if (playbook === 'earnings_vorlauf') return 'Earnings-Vorlauf'
-  return playbook
+  return momentumPlaybookLabel(playbook)
 }
+
+const TRADE_PLAYBOOKS: MomentumPlaybook[] = ['earnings_gap_fade', 'earnings_momentum', 'ipo_fade']
 
 function ScanKarte({
   e,
@@ -59,7 +124,11 @@ function ScanKarte({
   const median = e.indikatoren.medianGapPct
   const stop = e.indikatoren.stopPrice
   const target = e.indikatoren.targetPrice
-  const kannTrade = e.playbook === 'earnings_gap_fade' && e.ampel !== 'grau' && richtung != null
+  const surprise = e.indikatoren.surpriseEpsPct
+  const guidance = e.indikatoren.guidanceLabel ?? e.indikatoren.guidanceFlag
+  const kiMemo = e.indikatoren.kiBegruendung
+  const kannTrade =
+    TRADE_PLAYBOOKS.includes(e.playbook) && e.ampel !== 'grau' && e.ampel !== 'rot' && richtung != null
 
   return (
     <li className={`rounded-xl p-4 ring-1 ${ampelRing(e.ampel)}`}>
@@ -81,6 +150,8 @@ function ScanKarte({
         {gap != null && <span>Gap {String(gap)}%</span>}
         {median != null && <span>Median {String(median)}%</span>}
         {rvol != null && <span>RVOL {String(rvol)}×</span>}
+        {surprise != null && <span>Surprise {String(surprise)}%</span>}
+        {guidance != null && <span>{String(guidance)}</span>}
         {stop != null && <span>Stop {String(stop)}</span>}
         {target != null && <span>Ziel {String(target)}</span>}
       </div>
@@ -97,6 +168,9 @@ function ScanKarte({
             <li key={g}>✗ {g}</li>
           ))}
         </ul>
+      )}
+      {kiMemo != null && typeof kiMemo === 'string' && (
+        <p className="mt-2 text-xs italic text-[var(--app-text-muted)]">{kiMemo}</p>
       )}
       {kannTrade && (
         <button
@@ -184,6 +258,9 @@ export function MomentumTraderClient() {
   const [status, setStatus] = useState<MomentumDatenStatus | null>(null)
   const [scan, setScan] = useState<MomentumScanPaket | null>(null)
   const [trades, setTrades] = useState<MomentumTrade[]>([])
+  const [performance, setPerformance] = useState<MomentumPerformance | null>(null)
+  const [erinnerungen, setErinnerungen] = useState<MomentumErinnerung[]>([])
+  const [scanFilter, setScanFilter] = useState<'trade' | 'momentum' | 'ipo' | 'vorlauf' | 'alle'>('trade')
   const [laden, setLaden] = useState(true)
   const [fullSyncLaeuft, setFullSyncLaeuft] = useState(false)
   const [barsSyncLaeuft, setBarsSyncLaeuft] = useState(false)
@@ -210,9 +287,13 @@ export function MomentumTraderClient() {
       if (!stRes.ok) throw new Error(((await stRes.json()) as { fehler?: string }).fehler ?? 'Status-Fehler')
       const wl = (await wlRes.json()) as { eintraege: MomentumWatchlistEintragAngereichert[] }
       setWatchlist(wl.eintraege ?? [])
-      setStatus((await stRes.json()) as MomentumDatenStatus)
+      const st = (await stRes.json()) as MomentumDatenStatus & { erinnerungen?: MomentumErinnerung[] }
+      setStatus(st)
+      setErinnerungen(st.erinnerungen ?? [])
       if (scanRes.ok) setScan((await scanRes.json()) as MomentumScanPaket)
-      if (trRes.ok) setTrades(((await trRes.json()) as { trades: MomentumTrade[] }).trades ?? [])
+      const trData = (await trRes.json()) as { trades: MomentumTrade[]; performance?: MomentumPerformance }
+      setTrades(trData.trades ?? [])
+      setPerformance(trData.performance ?? null)
     } catch (e) {
       setFehler(String(e))
     } finally {
@@ -342,7 +423,11 @@ export function MomentumTraderClient() {
     setScanLaeuft(true)
     setFehler(null)
     try {
-      const res = await momentumApiFetch('/api/portfolio-analyse/momentum-trader/scan', { method: 'POST' })
+      const res = await momentumApiFetch('/api/portfolio-analyse/momentum-trader/scan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mitKi: true }),
+      })
       const data = (await res.json()) as MomentumScanPaket & { fehler?: string }
       if (!res.ok) throw new Error(data.fehler ?? 'Scan fehlgeschlagen.')
       setScan(data)
@@ -433,13 +518,26 @@ export function MomentumTraderClient() {
   const regime = status?.regime ?? scan?.regime?.regime ?? null
   const busy = fullSyncLaeuft || barsSyncLaeuft || earningsSyncLaeuft || scanLaeuft
 
+  const gefilterteScan =
+    scan?.ergebnisse
+      .filter((e) => {
+        if (scanFilter === 'alle') return true
+        if (scanFilter === 'vorlauf') return e.playbook === 'earnings_vorlauf'
+        if (scanFilter === 'momentum') return e.playbook === 'earnings_momentum'
+        if (scanFilter === 'ipo') return e.playbook === 'ipo_fade'
+        return (
+          e.playbook === 'earnings_gap_fade' && e.ampel !== 'grau' && e.ampel !== 'rot'
+        )
+      })
+      .sort((a, b) => b.score - a.score) ?? []
+
   return (
     <PortfolioAnalyseShell title="Momentum Trader">
       <div className="space-y-6">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <PaSectionTitle
             title="Momentum Trader"
-            description="Watchlist → Daten → Regel-Scan → Journal. Alles faktenbasiert, max. 10 € Risiko pro Trade."
+            description="Watchlist → Daten → Regel-Scan (Fade, Momentum, IPO) → Journal. Max. 10 € Risiko pro Trade."
           />
           <button
             type="button"
@@ -465,6 +563,10 @@ export function MomentumTraderClient() {
         {fehler && (
           <PaCard className="border-red-500/30 bg-red-500/5 p-4 text-sm text-red-300">{fehler}</PaCard>
         )}
+
+        <ErinnerungenLeiste items={erinnerungen} />
+
+        {performance && performance.tradesGesamt > 0 && <PerformancePanel p={performance} />}
 
         {regime && (
           <PaCard className="p-5">
@@ -511,8 +613,22 @@ export function MomentumTraderClient() {
             <p className="mt-4 text-sm text-[var(--app-text-muted)]">Titel per Suche hinzufügen — dann „Alles aktualisieren“.</p>
           ) : (
             <ul className="mt-4 divide-y divide-[var(--app-border)] rounded-xl border border-[var(--app-border)]">
-              {watchlist.map((e) => (
-                <li key={e.isin} className="flex items-center justify-between gap-3 px-3 py-2.5 sm:px-4">
+              {watchlist.map((e) => {
+                const earningsHeute = e.naechstesEarnings?.tageBis === 0
+                const earningsBald =
+                  e.naechstesEarnings?.tageBis != null && e.naechstesEarnings.tageBis <= 3
+                return (
+                <li
+                  key={e.isin}
+                  className={
+                    'flex items-center justify-between gap-3 px-3 py-2.5 sm:px-4 ' +
+                    (earningsHeute
+                      ? 'bg-violet-500/10'
+                      : earningsBald
+                        ? 'bg-amber-500/5'
+                        : '')
+                  }
+                >
                   <div className="flex min-w-0 items-center gap-3">
                     <PortfolioIsinLogo isin={e.isin} fallbackName={e.name} meta={meta} groesse="sm" />
                     <div className="min-w-0">
@@ -533,31 +649,69 @@ export function MomentumTraderClient() {
                           Median-Gap {e.medianGapPct.toFixed(1)}% ({e.earningsEventsAnzahl} Events)
                         </p>
                       )}
+                      {e.ipoDatum && (
+                        <p className="text-[11px] text-teal-300/80">
+                          IPO {new Date(e.ipoDatum + 'T12:00:00').toLocaleDateString('de-DE')}
+                        </p>
+                      )}
                     </div>
                   </div>
                   <button type="button" onClick={() => void entfernen(e.isin)} className="shrink-0 rounded-lg px-2.5 py-1.5 text-xs text-[var(--app-text-muted)] ring-1 ring-[var(--app-border)] hover:bg-red-500/10 hover:text-red-300">
                     Entfernen
                   </button>
                 </li>
-              ))}
+              )})}
             </ul>
           )}
         </PaCard>
 
         <PaCard className="p-5">
-          <h2 className="text-sm font-semibold text-[var(--app-text)]">Scan</h2>
-          <p className="mt-1 text-xs text-[var(--app-text-muted)]">
-            Gap-Fade (letzte 3 Tage) + Vorlauf (3–14 Tage). Gap ≥ 5 %, RVOL ≥ 1,5×, vs. 2× Median-Gap.
-          </p>
-          {scan && scan.ergebnisse.length > 0 ? (
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h2 className="text-sm font-semibold text-[var(--app-text)]">Scan</h2>
+              <p className="mt-1 text-xs text-[var(--app-text-muted)]">
+                Gap-Fade · Earnings-Momentum · IPO-Fade · Vorlauf. BMO/AMC-Gap-Erkennung, Finnhub-Surprise.
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-1 rounded-xl bg-[var(--app-surface-muted)]/50 p-1 ring-1 ring-[var(--app-border)]">
+              {(
+                [
+                  ['trade', 'Gap-Fade'],
+                  ['momentum', 'Momentum'],
+                  ['ipo', 'IPO-Fade'],
+                  ['vorlauf', 'Vorlauf'],
+                  ['alle', 'Alle'],
+                ] as const
+              ).map(([key, label]) => (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => setScanFilter(key)}
+                  className={
+                    'rounded-lg px-3 py-1.5 text-xs font-medium transition ' +
+                    (scanFilter === key
+                      ? 'bg-[var(--app-surface)] text-[var(--app-text)] shadow-sm'
+                      : 'text-[var(--app-text-muted)] hover:text-[var(--app-text)]')
+                  }
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+          {gefilterteScan.length > 0 ? (
             <ul className="mt-4 space-y-3">
-              {scan.ergebnisse.map((e) => (
+              {gefilterteScan.map((e) => (
                 <ScanKarte key={e.symbol + e.playbook + e.scanDate} e={e} onTrade={tradeAusScan} tradeLaden={tradeLaden} />
               ))}
             </ul>
           ) : (
             <p className="mt-4 text-sm text-[var(--app-text-muted)]">
-              {scanLaeuft ? 'Scan läuft …' : 'Keine Setups — Pipeline ausführen oder nach Earnings erneut scannen.'}
+              {scanLaeuft
+                ? 'Scan läuft …'
+                : scan?.ergebnisse.length
+                  ? 'Keine Setups in diesem Filter — anderen Tab wählen.'
+                  : 'Keine Setups — Pipeline ausführen oder nach Earnings erneut scannen.'}
             </p>
           )}
         </PaCard>

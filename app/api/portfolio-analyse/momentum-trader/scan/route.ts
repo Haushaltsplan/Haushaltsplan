@@ -61,6 +61,14 @@ export async function POST(req: Request) {
   }
 
   try {
+    let mitKi = true
+    try {
+      const body = ((await req.json()) ?? {}) as Record<string, unknown>
+      if (body.mitKi === false) mitKi = false
+    } catch {
+      /* leerer Body ok */
+    }
+
     const regimeGates = await syncMomentumMarketRegime()
     if (!regimeGates) {
       return NextResponse.json(
@@ -69,7 +77,7 @@ export async function POST(req: Request) {
       )
     }
 
-    const paket = await scanMomentumWatchlist(watchlist, regimeGates)
+    const paket = await scanMomentumWatchlist(watchlist, regimeGates, { mitKiMemos: mitKi })
     return NextResponse.json(paket)
   } catch (e) {
     console.error('[api/momentum-trader/scan]', e)
