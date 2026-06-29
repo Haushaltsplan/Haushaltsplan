@@ -259,7 +259,7 @@ export async function ladeMomentumEarningsEventsFuerSymbol(symbol: string): Prom
     .select('*')
     .eq('symbol', sym)
     .order('earnings_date', { ascending: false })
-    .limit(12)
+    .limit(24)
   if (error) return []
   return (data ?? []).map((r) => dbZuEvent(r as EventDbZeile))
 }

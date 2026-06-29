@@ -75,6 +75,16 @@ async function ladeYahooHistoryRows(symbol: string): Promise<HistoryRow[]> {
   return Array.isArray(history) ? (history as HistoryRow[]) : []
 }
 
+/** Alle Yahoo earningsHistory-Zeilen (Quartal + Schätzung/Ist). */
+export async function ladeYahooEarningsHistoryListe(symbol: string): Promise<YahooEarningsHistoryZeile[]> {
+  try {
+    const history = await ladeYahooHistoryRows(symbol)
+    return history.map(zeileAusHistory).filter((z): z is YahooEarningsHistoryZeile => z != null)
+  } catch {
+    return []
+  }
+}
+
 export async function ladeYahooEarningsHistoryZeile(
   symbol: string,
   quartalLabelKandidaten: string[],

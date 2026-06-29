@@ -4,12 +4,15 @@
 
 import 'server-only'
 
-import { heuteIsoUtc, isoVorJahren, tageZwischenIso } from '@/lib/portfolio-analyse/dividenden-datum-hilfen'
+import { heuteIsoUtc, tageZwischenIso } from '@/lib/portfolio-analyse/dividenden-datum-hilfen'
 import { reichereEventMitEpsSurprise } from '@/lib/portfolio-analyse/momentum-trader/momentum-earnings-enrich-server'
 import { findeEarningsReaktionsBar } from '@/lib/portfolio-analyse/momentum-trader/momentum-earnings-bar'
 import {
+  ladeHistorischeEarningsTermine,
+  standardHistorieVonIso,
+} from '@/lib/portfolio-analyse/momentum-trader/momentum-earnings-historie-server'
+import {
   ladeBerichtszeitFuerEarningsDatum,
-  ladeMomentumEarningsTermineFuerTitel,
 } from '@/lib/portfolio-analyse/momentum-trader/momentum-earnings-termine-server'
 import {
   ladeMomentumBars,
@@ -137,21 +140,22 @@ export async function ladeBarsFuerEarningsGap(
   return best
 }
 
-/** DivvyDiary-Historie (1 Jahr) + Bars → momentum_earnings_events. */
+/** DivvyDiary + MarketBeat-Historie + Bars → momentum_earnings_events. */
 export async function backfillEarningsEventsFuerWatchlist(
   watchlist: MomentumWatchlistEintrag[],
 ): Promise<{ geschrieben: number; fehler: string[] }> {
   const heute = heuteIsoUtc()
-  const von = isoVorJahren(1)
-  const vonBars = addDaysIso(heute, -400)
+  const von = standardHistorieVonIso()
+  const vonBars = addDaysIso(heute, -500)
   const fehler: string[] = []
   let geschrieben = 0
 
   for (let i = 0; i < watchlist.length; i++) {
     const e = watchlist[i]
-    const symbol = primaeresAnzeigeSymbol(e)
+    const anzeige = primaeresAnzeigeSymbol(e)
     const earningsSym = primaeresEarningsSymbol(e)
-    if (!symbol || !earningsSym) {
+    const storeSymbol = earningsSym ?? anzeige
+    if (!storeSymbol || !earningsSym) {
       fehler.push(e.isin + ': kein Symbol')
       continue
     }
@@ -159,11 +163,12 @@ export async function backfillEarningsEventsFuerWatchlist(
     if (i > 0) await sleep(PAUSE_MS)
 
     try {
-      const termineAngereichert = await ladeMomentumEarningsTermineFuerTitel(e, von, heute)
-      const termine = termineAngereichert.filter((t) => t.terminDatumIso <= heute)
+      const termine = (await ladeHistorischeEarningsTermine(e, von, heute)).filter(
+        (t) => t.terminDatumIso <= heute,
+      )
       const bars = await ladeBarsFuerEarningsGap(e, vonBars, heute)
       if (bars.length < 5) {
-        fehler.push(symbol + ': zu wenig Bars für Backfill (auch ' + earningsSym + ' probiert)')
+        fehler.push((anzeige ?? storeSymbol) + ': zu wenig Bars für Backfill (auch ' + earningsSym + ' probiert)')
         continue
       }
 
@@ -173,18 +178,20 @@ export async function backfillEarningsEventsFuerWatchlist(
         if (zeit === 'unknown') {
           zeit = await ladeBerichtszeitFuerEarningsDatum(earningsSym, t.terminDatumIso, earningsSym)
         }
-        const ev = berechneEventAusBars(symbol, t.terminDatumIso, zeit, bars)
+        const ev = berechneEventAusBars(storeSymbol, t.terminDatumIso, zeit, bars)
         if (ev) events.push(ev)
       }
 
       const angereichert: MomentumEarningsEvent[] = []
       for (let j = 0; j < events.length; j++) {
-        if (j > 0) await sleep(400)
+        if (j > 0) await sleep(300)
         angereichert.push(await reichereEventMitEpsSurprise(events[j], earningsSym))
       }
 
       if (angereichert.length > 0) {
         geschrieben += await speichereMomentumEarningsEvents(angereichert)
+      } else if (termine.length > 0) {
+        fehler.push(storeSymbol + ': ' + termine.length + ' Termine, aber keine Gap-Events aus Bars berechenbar')
       }
     } catch (err) {
       fehler.push(e.isin + ': ' + String(err))
@@ -192,6 +199,24 @@ export async function backfillEarningsEventsFuerWatchlist(
   }
 
   return { geschrieben, fehler }
+}
+
+/** Events für Watchlist-Titel (Anzeige- + US-Ticker). */
+export async function ladeEarningsEventsFuerWatchlistEintrag(
+  eintrag: MomentumWatchlistEintrag,
+): Promise<MomentumEarningsEvent[]> {
+  const sym = primaeresAnzeigeSymbol(eintrag)
+  const earn = primaeresEarningsSymbol(eintrag)
+  const listen = await Promise.all([
+    sym ? ladeMomentumEarningsEventsFuerSymbol(sym) : Promise.resolve([]),
+    earn && earn !== sym ? ladeMomentumEarningsEventsFuerSymbol(earn) : Promise.resolve([]),
+  ])
+  const map = new Map<string, MomentumEarningsEvent>()
+  for (const ev of [...listen[0], ...listen[1]]) {
+    const prev = map.get(ev.earningsDate)
+    if (!prev || (ev.gapPct != null && prev.gapPct == null)) map.set(ev.earningsDate, ev)
+  }
+  return [...map.values()].sort((a, b) => b.earningsDate.localeCompare(a.earningsDate))
 }
 
 export async function ladeMedianGapFuerSymbol(symbol: string): Promise<number | null> {

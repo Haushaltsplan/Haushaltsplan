@@ -94,6 +94,7 @@ export function berechneMomentumErinnerungen(input: {
       (e) =>
         (e.playbook === 'earnings_gap_fade' ||
           e.playbook === 'earnings_momentum' ||
+          e.playbook === 'earnings_pre_run' ||
           e.playbook === 'ipo_fade') &&
         (e.ampel === 'gruen' || e.ampel === 'gelb'),
     ) ?? []

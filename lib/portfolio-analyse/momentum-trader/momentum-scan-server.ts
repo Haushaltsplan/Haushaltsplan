@@ -27,18 +27,20 @@ import { findeEarningsReaktionsBar } from '@/lib/portfolio-analyse/momentum-trad
 import {
   gapVolatilitaetSchaetzung,
   ladeBarsFuerEarningsGap,
+  ladeEarningsEventsFuerWatchlistEintrag,
   ladeMedianGapFuerSymbol,
   medianGapAbsPct,
 } from '@/lib/portfolio-analyse/momentum-trader/momentum-earnings-events-server'
+import { berechneEarningsHistorieStatistik } from '@/lib/portfolio-analyse/momentum-trader/momentum-earnings-analytics-server'
 import {
   primaeresAnzeigeSymbol,
 } from '@/lib/portfolio-analyse/momentum-trader/momentum-symbol-hilfen'
 import { ladeMomentumIpoDatum } from '@/lib/portfolio-analyse/momentum-trader/momentum-ipo-server'
 import { bewerteEarningsPreEvent } from '@/lib/portfolio-analyse/momentum-trader/momentum-pre-event-server'
+import { bewerteEarningsPreRun } from '@/lib/portfolio-analyse/momentum-trader/momentum-pre-run-server'
 import { guidanceLabel } from '@/lib/portfolio-analyse/momentum-trader/momentum-guidance'
 import {
   ladeMomentumBars,
-  ladeMomentumEarningsEventsFuerSymbol,
   ladeMomentumEarningsKalenderFuerSymbole,
   loescheMomentumScanFuerDatum,
   speichereMomentumScanErgebnisse,
@@ -493,10 +495,11 @@ export async function scanMomentumWatchlist(
     const symbol = primaeresSymbol(e)
     if (!symbol) continue
 
-    const events = await ladeMomentumEarningsEventsFuerSymbol(symbol)
+    const events = await ladeEarningsEventsFuerWatchlistEintrag(e)
     const gapStat = gapVolatilitaetSchaetzung(events)
     const medianGap = gapStat.medianGapPct ?? medianGapAbsPct(events) ?? (await ladeMedianGapFuerSymbol(symbol))
     const bars = await ladeBarsFuerEarningsGap(e, vonBars, heute)
+    const historie = berechneEarningsHistorieStatistik(events, bars)
 
     const vergangen = kalender.filter((k) => {
       if (k.symbol !== symbol) return false
@@ -535,8 +538,23 @@ export async function scanMomentumWatchlist(
           medianGap,
           bars,
           events,
+          historie,
         ),
       )
+
+      const preRun = bewerteEarningsPreRun(
+        symbol,
+        heute,
+        naechstesKommend.earningsDate,
+        naechstesKommend.timeBmoAmc,
+        regimeGates,
+        bars,
+        spyBars,
+        historie,
+      )
+      if (preRun && (preRun.ampel === 'gruen' || preRun.ampel === 'gelb')) {
+        ergebnisse.push(preRun)
+      }
     }
 
     const ipoDatum = e.ipoDatum ?? (await ladeMomentumIpoDatum(symbol, e.symbolYahoo))

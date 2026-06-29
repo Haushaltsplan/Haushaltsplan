@@ -10,6 +10,7 @@ export type MomentumPlaybook =
   | 'earnings_gap_fade'
   | 'earnings_vorlauf'
   | 'earnings_pre_event'
+  | 'earnings_pre_run'
   | 'earnings_momentum'
   | 'ipo_fade'
 
@@ -335,11 +336,19 @@ export type MomentumHandlungssignal = {
   wahrscheinlichkeitPct: number
   playbook: MomentumPlaybook
   /** Jetzt handeln oder erst nach Earnings */
-  phase: 'jetzt' | 'nach_earnings'
+  phase: 'jetzt' | 'vor_earnings' | 'nach_earnings'
   istAktiv: boolean
   prioritaet: number
   kurztext: string
+  detailText: string
+  risikoHinweis: string
+  timing: string
   fakten: string[]
+  alternativen: Array<{
+    richtung: MomentumRichtung | 'warten'
+    wahrscheinlichkeitPct: number
+    label: string
+  }>
 }
 
 /** Regelbasierte Empfehlung — was jetzt tun (auch ohne Trade-Setup). */

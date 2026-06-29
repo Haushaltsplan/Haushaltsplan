@@ -14,6 +14,10 @@ export const PRE_EVENT_GAP_MEDIAN_STARK = 5
 /** ATR vs. 20-Tage-Schnitt — Mindest-Faktor für Spannungs-Bonus. */
 export const PRE_EVENT_ATR_ELEVATION_MIN = 1.12
 
+/** Pre-Run: handelbar 1–7 Tage vor Earnings (Exit vor Event). */
+export const EARNINGS_PRE_RUN_MIN = 1
+export const EARNINGS_PRE_RUN_MAX = 7
+
 /** Earnings-Vorlauf: Tage bis zum Termin (Katalysator-Fenster). */
 export const EARNINGS_VORLAUF_MIN = 3
 export const EARNINGS_VORLAUF_MAX = 14
@@ -46,6 +50,7 @@ export function momentumPlaybookLabel(playbook: string): string {
   if (playbook === 'earnings_gap_fade') return 'Earnings-Gap-Fade'
   if (playbook === 'earnings_vorlauf') return 'Earnings-Vorlauf'
   if (playbook === 'earnings_pre_event') return 'Pre-Event-Katalysator'
+  if (playbook === 'earnings_pre_run') return 'Pre-Earnings-Run'
   if (playbook === 'earnings_momentum') return 'Earnings-Momentum'
   if (playbook === 'ipo_fade') return 'IPO-Fade'
   return playbook

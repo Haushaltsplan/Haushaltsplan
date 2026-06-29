@@ -14,6 +14,8 @@ import {
   momentumPlaybookLabel,
 } from '@/lib/portfolio-analyse/momentum-trader/momentum-constants'
 import { berechneAtr } from '@/lib/portfolio-analyse/momentum-trader/momentum-indicators'
+import type { MomentumEarningsHistorieStatistik } from '@/lib/portfolio-analyse/momentum-trader/momentum-earnings-analytics-server'
+import { berechneEarningsHistorieStatistik } from '@/lib/portfolio-analyse/momentum-trader/momentum-earnings-analytics-server'
 import type {
   MomentumAmpel,
   MomentumBarDaily,
@@ -126,7 +128,9 @@ export function bewerteEarningsPreEvent(
   medianGap: number | null,
   bars: MomentumBarDaily[],
   events: MomentumEarningsEvent[] = [],
+  historieIn?: MomentumEarningsHistorieStatistik,
 ): MomentumScanEintrag {
+  const historie = historieIn ?? berechneEarningsHistorieStatistik(events, bars)
   const tageBis = tageZwischenIso(scanDate, earningsDate)
   const gatesPassed: string[] = []
   const gatesFailed: string[] = []
@@ -160,10 +164,18 @@ export function bewerteEarningsPreEvent(
     if (medianGap >= PRE_EVENT_GAP_MEDIAN_STARK) {
       gatesPassed.push('Starkes Gap-Profil (≥ ' + PRE_EVENT_GAP_MEDIAN_STARK + '% Median)')
     }
+  } else if (historie.eventsMitGap >= 1 && historie.medianGapPct != null) {
+    gatesPassed.push(
+      'Gap-Historie: ' +
+        historie.eventsMitGap +
+        ' Event(s), Median ' +
+        historie.medianGapPct.toFixed(1) +
+        '%',
+    )
   } else if (medianGap != null) {
     gatesFailed.push('Median-Gap nur ' + medianGap.toFixed(1) + '% — wenig Earnings-Reaktion historisch')
   } else {
-    gatesFailed.push('Keine Gap-Historie — Backfill ausführen für Szenario-Qualität')
+    gatesFailed.push('Keine Gap-Historie — „Alles aktualisieren“ für Backfill (MarketBeat + Bars)')
   }
 
   const atrFaktor = atrElevationsFaktor(bars)
@@ -281,6 +293,12 @@ export function bewerteEarningsPreEvent(
       beatRatePct,
       avgSurprisePct,
       earningsEventsAnzahl: events.length,
+      eventsMitGap: historie.eventsMitGap,
+      gapUpRatePct: historie.gapUpRatePct,
+      gapDownRatePct: historie.gapDownRatePct,
+      erwarteteBewegungPct: historie.erwarteteBewegungPct,
+      preDrift5dPct: historie.preDrift5dPct,
+      atrImpliedMovePct: historie.atrImpliedMovePct,
       atrElevationsFaktor: atrFaktor != null ? Math.round(atrFaktor * 100) / 100 : null,
       vorbereitungStufe,
       szenarioPlan: szenarien.join('\n'),

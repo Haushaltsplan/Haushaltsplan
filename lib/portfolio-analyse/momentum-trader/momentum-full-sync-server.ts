@@ -56,7 +56,7 @@ export async function fuehreVollenMomentumSyncAus(
   if (!bars.ok) fehler.push('Kurs-Sync unvollständig')
 
   const events = await backfillEarningsEventsFuerWatchlist(watchlist)
-  schritte.push('Earnings-Historie: ' + events.geschrieben + ' Events')
+  schritte.push('Earnings-Historie: ' + events.geschrieben + ' Events (2 Jahre, MarketBeat-Fallback)')
   if (events.fehler.length) fehler.push(...events.fehler)
 
   const ipo = await syncIpoDatumFuerWatchlist(sb, watchlist)

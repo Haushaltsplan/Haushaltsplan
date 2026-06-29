@@ -175,7 +175,7 @@ function HandlungsempfehlungPanel({
               </span>
               {signal.istAktiv ? (
                 <span className="rounded-full bg-emerald-500/20 px-2 py-0.5 text-[10px] font-medium text-emerald-300">
-                  Setup aktiv
+                  {signal.phase === 'vor_earnings' ? 'Pre-Run aktiv' : 'Setup aktiv'}
                 </span>
               ) : (
                 <span className="rounded-full bg-amber-500/20 px-2 py-0.5 text-[10px] font-medium text-amber-300">
@@ -198,6 +198,22 @@ function HandlungsempfehlungPanel({
 
             <p className="max-w-lg text-sm leading-relaxed text-[var(--app-text)]">{signal.kurztext}</p>
 
+            {signal.detailText && (
+              <p className="max-w-2xl text-sm leading-relaxed text-[var(--app-text-muted)]">{signal.detailText}</p>
+            )}
+
+            {signal.timing && (
+              <p className="text-xs text-teal-300/90">
+                <span className="font-medium text-teal-200">Timing:</span> {signal.timing}
+              </p>
+            )}
+
+            {signal.risikoHinweis && (
+              <p className="rounded-lg border border-amber-500/20 bg-amber-500/5 px-3 py-2 text-xs leading-relaxed text-amber-200/90">
+                {signal.risikoHinweis}
+              </p>
+            )}
+
             {signal.fakten.length > 0 && (
               <div className="flex flex-wrap gap-2">
                 {signal.fakten.map((f) => (
@@ -208,6 +224,24 @@ function HandlungsempfehlungPanel({
                     {f}
                   </span>
                 ))}
+              </div>
+            )}
+
+            {signal.alternativen.length > 0 && (
+              <div className="rounded-xl border border-white/5 bg-black/20 p-3">
+                <p className="text-[10px] font-medium uppercase tracking-wider text-[var(--app-text-muted)]">
+                  Alternative Szenarien nach Earnings
+                </p>
+                <ul className="mt-2 space-y-1.5 text-xs text-[var(--app-text-muted)]">
+                  {signal.alternativen.map((a) => (
+                    <li key={a.label + a.richtung} className="flex justify-between gap-2">
+                      <span>
+                        {a.richtung === 'long' ? 'Long' : a.richtung === 'short' ? 'Short' : 'Warten'} — {a.label}
+                      </span>
+                      <span className="shrink-0 tabular-nums text-teal-300">{a.wahrscheinlichkeitPct}%</span>
+                    </li>
+                  ))}
+                </ul>
               </div>
             )}
           </div>
@@ -375,6 +409,7 @@ function PerformancePanel({ p }: { p: MomentumPerformance }) {
     'earnings_momentum',
     'ipo_fade',
     'earnings_pre_event',
+    'earnings_pre_run',
     'earnings_vorlauf',
   ]
 
@@ -498,7 +533,12 @@ function playbookTitel(playbook: MomentumPlaybook): string {
   return momentumPlaybookLabel(playbook)
 }
 
-const TRADE_PLAYBOOKS: MomentumPlaybook[] = ['earnings_gap_fade', 'earnings_momentum', 'ipo_fade']
+const TRADE_PLAYBOOKS: MomentumPlaybook[] = [
+  'earnings_gap_fade',
+  'earnings_momentum',
+  'earnings_pre_run',
+  'ipo_fade',
+]
 
 function filterScanErgebnisse(
   ergebnisse: MomentumScanEintrag[],
@@ -508,7 +548,11 @@ function filterScanErgebnisse(
     .filter((e) => {
       if (scanFilter === 'alle') return true
       if (scanFilter === 'pre_event') {
-        return e.playbook === 'earnings_pre_event' || e.playbook === 'earnings_vorlauf'
+        return (
+          e.playbook === 'earnings_pre_event' ||
+          e.playbook === 'earnings_vorlauf' ||
+          e.playbook === 'earnings_pre_run'
+        )
       }
       if (scanFilter === 'momentum') return e.playbook === 'earnings_momentum'
       if (scanFilter === 'ipo') {
@@ -702,8 +746,12 @@ function ScanKarte({
   const rs = e.indikatoren.rsVsSpy20d
   const laufVor = e.indikatoren.laufVorEarningsPct
   const beatRate = e.indikatoren.beatRatePct
+  const erwartet = e.indikatoren.erwarteteBewegungPct
+  const gapUpRate = e.indikatoren.gapUpRatePct
   const [kopiert, setKopiert] = useState(false)
-  const istPreEvent = e.playbook === 'earnings_pre_event' || e.playbook === 'earnings_vorlauf'
+  const istPreEvent =
+    e.playbook === 'earnings_pre_event' || e.playbook === 'earnings_vorlauf' || e.playbook === 'earnings_pre_run'
+  const istPreRun = e.playbook === 'earnings_pre_run'
   const szenarioPlan =
     typeof e.indikatoren.szenarioPlan === 'string' ? e.indikatoren.szenarioPlan : null
   const vorbereitungStufe =
@@ -745,7 +793,12 @@ function ScanKarte({
         {gap != null && <span>Gap {String(gap)}%</span>}
         {median != null && <span>Median {String(median)}%</span>}
         {laufVor != null && istPreEvent && <span>20T-Lauf {String(laufVor)}%</span>}
+        {erwartet != null && istPreEvent && <span>Erw. ~{String(erwartet)}%</span>}
         {beatRate != null && istPreEvent && <span>Beats {String(beatRate)}%</span>}
+        {gapUpRate != null && istPreEvent && <span>Gap-Up {String(gapUpRate)}%</span>}
+        {istPreRun && typeof e.indikatoren.strategie === 'string' && (
+          <span className="text-violet-300">{e.indikatoren.strategie}</span>
+        )}
         {atrElev != null && istPreEvent && <span>ATR-Faktor {String(atrElev)}×</span>}
         {rvol != null && <span>RVOL {String(rvol)}×</span>}
         {surprise != null && <span>Surprise {String(surprise)}%</span>}
