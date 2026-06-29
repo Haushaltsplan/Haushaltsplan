@@ -13,7 +13,7 @@ Kurzfristiger, faktenbasierter Trading-Assistent (Earnings-Gaps, Momentum, IPO-F
 
 | Stufe | Modell | Trigger | Output |
 |-------|--------|---------|--------|
-| A – Scan | Gemini Flash | Manuell / Cron | Score, Ampel, Gates, optional KI-Memo |
+| A – Scan | Gemini Flash | Manuell / Cron | Score, Ampel, Gates, optional KI-Memo (max. 5/Scan) |
 | — | — | — | Kein Deep Research / keine Kaufempfehlung wie Nachkauf |
 
 ## Playbooks
@@ -30,6 +30,7 @@ Kurzfristiger, faktenbasierter Trading-Assistent (Earnings-Gaps, Momentum, IPO-F
 - DivvyDiary sequentiell (~2,5 s Pause), **kein Marktweit-Scraping**
 - Finnhub: EPS-Surprise, Guidance, IPO-Datum (`FINNHUB_API_KEY`)
 - BMO/AMC-Gap: `momentum-earnings-bar.ts` (Auto-Erkennung wenn unbekannt)
+- ISIN-Auflösung: Finnhub → `isin-kenntnisse` → Fallback-Map (`ticker-isin-aufloesung-server.ts`)
 
 ## Wichtigste Dateien
 
@@ -37,8 +38,11 @@ Kurzfristiger, faktenbasierter Trading-Assistent (Earnings-Gaps, Momentum, IPO-F
 lib/portfolio-analyse/momentum-trader/
   momentum-scan-server.ts           ← Regel-Engine (4 Playbooks)
   momentum-earnings-bar.ts          ← BMO/AMC Reaktionsbar
-  momentum-full-sync-server.ts      ← Pipeline
+  momentum-full-sync-server.ts      ← Pipeline (Earnings→Bars→Events→IPO→Regime→Scan)
   momentum-scan-memo-server.ts      ← KI-Erklärung (max. 5/Scan)
+  momentum-scan-verlauf-server.ts   ← Score-Historie für Sparklines
+  momentum-kalender-server.ts       ← Earnings-Kalender (35 Tage)
+  momentum-briefing-server.ts       ← Tages-Briefing Markdown
   momentum-watchlist-server.ts      ← CRUD + IPO-Sync
   momentum-trades-server.ts         ← Journal + PnL
   momentum-performance-server.ts    ← Win-Rate, Profit Factor
@@ -49,7 +53,10 @@ app/api/portfolio-analyse/momentum-trader/
   watchlist/   GET POST PATCH DELETE
   sync/all/    POST Full-Pipeline
   scan/        GET POST (body: { mitKi: true })
-  trades/      Journal
+  trades/      GET POST PATCH DELETE + Performance
+  kalender/    GET (?tage=35)
+  briefing/    GET → Markdown
+  verlauf/     GET → Score-Sparkline-Daten
   cron-sync/   GET (CRON_SECRET)
 
 components/portfolio-analyse/
@@ -66,7 +73,25 @@ components/portfolio-analyse/
 | `momentum_earnings_events` | Gap-Historie + Surprise |
 | `momentum_market_regime_daily` | SPY/VIX |
 | `momentum_scan_results` | Tägliche Setups |
+| `momentum_scan_verlauf` | Score-Historie je Symbol/Playbook |
 | `momentum_trades` | Journal (RLS pro User) |
+
+## Migrationen (Reihenfolge)
+
+1. `20260629120000_momentum_trader_phase1.sql`
+2. `20260629140000_momentum_watchlist.sql`
+3. `20260629200000_momentum_watchlist_ipo.sql`
+4. `20260629210000_momentum_watchlist_notiz.sql`
+5. `20260629220000_momentum_scan_verlauf.sql`
+
+## UI-Features
+
+- Onboarding-Karte bei leerer Watchlist
+- Earnings-Kalender (nächste 35 Tage, Median-Gap)
+- Score-Sparklines in Scan-Karten (nach mehreren Scans)
+- Tages-Briefing → Zwischenablage (Markdown)
+- Scan kopieren, KI-Memo, Trade aus Scan erfassen
+- Performance nach Playbook, Erinnerungen-Banner
 
 ## Cron (vercel.json)
 
@@ -75,11 +100,19 @@ components/portfolio-analyse/
 ## Deployment
 
 - Manuell via Deploy Hook (Branch `main`)
-- Nach Deploy: Migrationen + einmal „Alles aktualisieren“
+- Nach Deploy: alle Migrationen + einmal „Alles aktualisieren“
 
 ## Bekannte Quirks
 
-- `tiefenAnalyse` gibt es nicht — KI nur als `kiBegruendung` in Scan-Indikatoren
+- KI nur als `kiBegruendung` in Scan-Indikatoren (kein Deep Research)
 - Momentum braucht Finnhub-Backfill für Surprise (sonst Momentum-Playbook schwach)
 - IPO-Fade nur mit `ipo_datum` (Finnhub-Sync oder manuell PATCH)
 - Gleicher Ticker kann Gap-Fade **und** Momentum gleichzeitig zeigen (gegenteilige Logik — Nutzer wählt Playbook)
+- Sparklines füllen sich erst nach mehreren Scans (Verlauf-Tabelle)
+
+## Nächste mögliche Erweiterungen
+
+- PDF-Export des Briefings
+- Push/E-Mail bei Earnings heute
+- Setup-Performance-Tracking (waren die Scans richtig?)
+- Valuation-Alerts bei Vorlauf-Setups

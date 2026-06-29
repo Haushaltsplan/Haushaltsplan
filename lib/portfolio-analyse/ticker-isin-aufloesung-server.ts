@@ -1,13 +1,13 @@
 import 'server-only'
 
-import { isinAusYahooSymbol } from '@/lib/portfolio-analyse/isin-kenntnisse'
+import { isinAusYahooSymbol, ISIN_KENNTNISSE } from '@/lib/portfolio-analyse/isin-kenntnisse'
 
 const ISIN_RE = /^[A-Z]{2}[A-Z0-9]{10}$/
 
-/**
- * Häufig gesuchte US-Titel (Yahoo-Ticker → ISIN).
- * Fallback wenn Finnhub-Key fehlt oder Rate-Limit greift.
- */
+function normTicker(symbol: string): string {
+  return symbol.trim().toUpperCase().split('.')[0]!
+}
+
 const BEKANNTE_US_TICKER_ISIN: Record<string, string> = {
   AAPL: 'US0378331005',
   MSFT: 'US5949181045',
@@ -56,8 +56,19 @@ const BEKANNTE_US_TICKER_ISIN: Record<string, string> = {
   DDOG: 'US23804L1035',
 }
 
-function normTicker(symbol: string): string {
-  return symbol.trim().toUpperCase().split('.')[0]!
+// Kenntnisse-Whitelist automatisch eintragen (Nachkauf + Portfolio)
+for (const [isin, k] of Object.entries(ISIN_KENNTNISSE)) {
+  const syms = [
+    k.symbolYahoo,
+    k.kursNurSymbol,
+    ...(k.symbolCandidates ?? []),
+  ].filter(Boolean) as string[]
+  for (const s of syms) {
+    const basis = normTicker(s)
+    if (basis && !BEKANNTE_US_TICKER_ISIN[basis]) {
+      BEKANNTE_US_TICKER_ISIN[basis] = isin
+    }
+  }
 }
 
 async function finnhubIsinFuerSymbol(symbol: string): Promise<string | null> {

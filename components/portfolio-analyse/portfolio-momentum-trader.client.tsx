@@ -11,6 +11,7 @@ import type {
   MomentumAmpel,
   MomentumBarsSyncErgebnis,
   MomentumDatenStatus,
+  MomentumEarningsKalenderMonat,
   MomentumEarningsSyncErgebnis,
   MomentumErinnerung,
   MomentumFullSyncErgebnis,
@@ -19,6 +20,7 @@ import type {
   MomentumRichtung,
   MomentumScanEintrag,
   MomentumScanPaket,
+  MomentumScoreVerlaufPunkt,
   MomentumTrade,
   MomentumWatchlistEintragAngereichert,
 } from '@/lib/portfolio-analyse/momentum-trader/momentum-trader-types'
@@ -31,6 +33,104 @@ function StatKachel({ label, wert }: { label: string; wert: string | number }) {
       <p className="text-[10px] uppercase tracking-wide text-[var(--app-text-muted)]">{label}</p>
       <p className="mt-1 text-xl font-semibold tabular-nums text-[var(--app-text)]">{wert}</p>
     </div>
+  )
+}
+
+function ScoreSparkline({ punkte }: { punkte: MomentumScoreVerlaufPunkt[] }) {
+  if (punkte.length < 2) return null
+  const scores = punkte.map((p) => p.score)
+  const min = Math.min(...scores)
+  const max = Math.max(...scores)
+  const range = max - min || 1
+  const w = 72
+  const h = 22
+  const pts = punkte
+    .map((p, i) => {
+      const x = (i / (punkte.length - 1)) * w
+      const y = h - ((p.score - min) / range) * (h - 2) - 1
+      return x + ',' + y
+    })
+    .join(' ')
+  return (
+    <svg width={w} height={h} className="text-teal-400/80" aria-hidden>
+      <polyline points={pts} fill="none" stroke="currentColor" strokeWidth="1.5" />
+    </svg>
+  )
+}
+
+function OnboardingKarte() {
+  return (
+    <PaCard className="border-violet-500/20 bg-gradient-to-br from-violet-500/10 to-teal-500/5 p-6">
+      <h2 className="text-sm font-semibold text-[var(--app-text)]">So startest du</h2>
+      <ol className="mt-4 space-y-3 text-sm text-[var(--app-text-muted)]">
+        <li>
+          <span className="font-medium text-violet-300">1.</span> Aktie suchen (Name, Ticker oder ISIN) — max. 32
+          Titel
+        </li>
+        <li>
+          <span className="font-medium text-violet-300">2.</span> „Alles aktualisieren“ — Earnings, Kurse, Scan
+        </li>
+        <li>
+          <span className="font-medium text-violet-300">3.</span> Setups prüfen → Trade erfassen (max. 10 € Risiko)
+        </li>
+        <li>
+          <span className="font-medium text-violet-300">4.</span> Exit im Journal schließen → Performance tracken
+        </li>
+      </ol>
+      <p className="mt-4 text-xs text-[var(--app-text-muted)]">
+        Playbooks: Gap-Fade · Earnings-Momentum · IPO-Fade · Vorlauf-Beobachtung
+      </p>
+    </PaCard>
+  )
+}
+
+function EarningsKalenderPanel({ kalender }: { kalender: MomentumEarningsKalenderMonat }) {
+  if (kalender.gesamt === 0) {
+    return (
+      <PaCard className="p-5">
+        <h2 className="text-sm font-semibold text-[var(--app-text)]">Earnings-Kalender</h2>
+        <p className="mt-2 text-sm text-[var(--app-text-muted)]">
+          Keine Termine in den nächsten Wochen — Earnings-Sync ausführen.
+        </p>
+      </PaCard>
+    )
+  }
+  return (
+    <PaCard className="p-5">
+      <h2 className="text-sm font-semibold text-[var(--app-text)]">Earnings-Kalender</h2>
+      <p className="mt-1 text-xs text-[var(--app-text-muted)]">
+        {kalender.gesamt} Termin(e) bis {new Date(kalender.bis + 'T12:00:00').toLocaleDateString('de-DE')}
+      </p>
+      <ul className="mt-4 max-h-64 space-y-3 overflow-y-auto">
+        {kalender.tage.map((tag) => (
+          <li key={tag.datum}>
+            <p className="text-[11px] font-medium uppercase tracking-wide text-violet-300/90">
+              {new Date(tag.datum + 'T12:00:00').toLocaleDateString('de-DE', {
+                weekday: 'short',
+                day: '2-digit',
+                month: '2-digit',
+              })}
+            </p>
+            <ul className="mt-1 space-y-1">
+              {tag.eintraege.map((e) => (
+                <li
+                  key={e.symbol + e.earningsDate}
+                  className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-[var(--app-surface-muted)]/40 px-2.5 py-1.5 text-xs"
+                >
+                  <span className="font-medium text-[var(--app-text)]">
+                    {e.symbol} · {e.name}
+                  </span>
+                  <span className="text-[var(--app-text-muted)]">
+                    in {e.tageBis}T · {e.zeitLabel}
+                    {e.medianGapPct != null ? ' · Median ' + e.medianGapPct.toFixed(1) + '%' : ''}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </li>
+        ))}
+      </ul>
+    </PaCard>
   )
 }
 
@@ -284,10 +384,12 @@ function ScanKarte({
   e,
   onTrade,
   tradeLaden,
+  verlauf,
 }: {
   e: MomentumScanEintrag
   onTrade: (e: MomentumScanEintrag) => void
   tradeLaden: boolean
+  verlauf?: MomentumScoreVerlaufPunkt[]
 }) {
   const gap = e.indikatoren.gapPct
   const rvol = e.indikatoren.rvol
@@ -313,6 +415,11 @@ function ScanKarte({
             Score {e.score}/100
             {richtung === 'short' ? ' · Short' : richtung === 'long' ? ' · Long' : ''}
           </p>
+          {verlauf && verlauf.length >= 2 && (
+            <div className="mt-1">
+              <ScoreSparkline punkte={verlauf.filter((p) => p.playbook === e.playbook)} />
+            </div>
+          )}
         </div>
         <span className="rounded-lg px-2 py-1 text-[10px] font-medium uppercase tracking-wide text-[var(--app-text-muted)] ring-1 ring-[var(--app-border)]">
           {e.ampel}
@@ -435,6 +542,9 @@ export function MomentumTraderClient() {
   const [erinnerungen, setErinnerungen] = useState<MomentumErinnerung[]>([])
   const [scanFilter, setScanFilter] = useState<'trade' | 'momentum' | 'ipo' | 'vorlauf' | 'alle'>('trade')
   const [exportHinweis, setExportHinweis] = useState<string | null>(null)
+  const [kalender, setKalender] = useState<MomentumEarningsKalenderMonat | null>(null)
+  const [scoreVerlauf, setScoreVerlauf] = useState<Record<string, MomentumScoreVerlaufPunkt[]>>({})
+  const [briefingLaden, setBriefingLaden] = useState(false)
   const [laden, setLaden] = useState(true)
   const [fullSyncLaeuft, setFullSyncLaeuft] = useState(false)
   const [barsSyncLaeuft, setBarsSyncLaeuft] = useState(false)
@@ -451,11 +561,13 @@ export function MomentumTraderClient() {
     setLaden(true)
     setFehler(null)
     try {
-      const [wlRes, stRes, scanRes, trRes] = await Promise.all([
+      const [wlRes, stRes, scanRes, trRes, kalRes, verlRes] = await Promise.all([
         momentumApiFetch('/api/portfolio-analyse/momentum-trader/watchlist'),
         momentumApiFetch('/api/portfolio-analyse/momentum-trader/status'),
         momentumApiFetch('/api/portfolio-analyse/momentum-trader/scan'),
         momentumApiFetch('/api/portfolio-analyse/momentum-trader/trades'),
+        momentumApiFetch('/api/portfolio-analyse/momentum-trader/kalender'),
+        momentumApiFetch('/api/portfolio-analyse/momentum-trader/verlauf'),
       ])
       if (!wlRes.ok) throw new Error(((await wlRes.json()) as { fehler?: string }).fehler ?? 'Watchlist-Fehler')
       if (!stRes.ok) throw new Error(((await stRes.json()) as { fehler?: string }).fehler ?? 'Status-Fehler')
@@ -468,6 +580,12 @@ export function MomentumTraderClient() {
       const trData = (await trRes.json()) as { trades: MomentumTrade[]; performance?: MomentumPerformance }
       setTrades(trData.trades ?? [])
       setPerformance(trData.performance ?? null)
+      if (kalRes.ok) {
+        setKalender(((await kalRes.json()) as { kalender: MomentumEarningsKalenderMonat }).kalender ?? null)
+      }
+      if (verlRes.ok) {
+        setScoreVerlauf(((await verlRes.json()) as { verlauf: Record<string, MomentumScoreVerlaufPunkt[]> }).verlauf ?? {})
+      }
     } catch (e) {
       setFehler(String(e))
     } finally {
@@ -687,6 +805,24 @@ export function MomentumTraderClient() {
     [],
   )
 
+  const ladeBriefing = useCallback(async () => {
+    setBriefingLaden(true)
+    try {
+      const res = await momentumApiFetch('/api/portfolio-analyse/momentum-trader/briefing')
+      const data = (await res.json()) as { markdown?: string; fehler?: string }
+      if (!res.ok) throw new Error(data.fehler ?? 'Briefing fehlgeschlagen')
+      if (data.markdown) {
+        await navigator.clipboard.writeText(data.markdown)
+        setExportHinweis('Tages-Briefing kopiert')
+        setTimeout(() => setExportHinweis(null), 2500)
+      }
+    } catch (e) {
+      setFehler(String(e))
+    } finally {
+      setBriefingLaden(false)
+    }
+  }, [])
+
   const exportiereScan = useCallback(() => {
     if (!scan || scan.ergebnisse.length === 0) return
     const lines = [
@@ -749,15 +885,31 @@ export function MomentumTraderClient() {
             title="Momentum Trader"
             description="Watchlist → Daten → Regel-Scan (Fade, Momentum, IPO) → Journal. Max. 10 € Risiko pro Trade."
           />
-          <button
-            type="button"
-            onClick={() => void starteFullSync()}
-            disabled={busy || laden || watchlist.length === 0}
-            className="rounded-xl bg-gradient-to-r from-violet-500/20 to-teal-500/20 px-5 py-2.5 text-sm font-semibold text-[var(--app-text)] ring-1 ring-violet-500/30 transition hover:from-violet-500/30 hover:to-teal-500/30 disabled:opacity-50"
-          >
-            {fullSyncLaeuft ? 'Pipeline läuft …' : 'Alles aktualisieren'}
-          </button>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => void ladeBriefing()}
+              disabled={briefingLaden || watchlist.length === 0}
+              className="rounded-xl bg-[var(--app-surface-muted)] px-4 py-2.5 text-sm font-medium text-[var(--app-text)] ring-1 ring-[var(--app-border)] hover:bg-[var(--app-surface-hover)] disabled:opacity-50"
+            >
+              {briefingLaden ? 'Briefing …' : 'Tages-Briefing'}
+            </button>
+            <button
+              type="button"
+              onClick={() => void starteFullSync()}
+              disabled={busy || laden || watchlist.length === 0}
+              className="rounded-xl bg-gradient-to-r from-violet-500/20 to-teal-500/20 px-5 py-2.5 text-sm font-semibold text-[var(--app-text)] ring-1 ring-violet-500/30 transition hover:from-violet-500/30 hover:to-teal-500/30 disabled:opacity-50"
+            >
+              {fullSyncLaeuft ? 'Pipeline läuft …' : 'Alles aktualisieren'}
+            </button>
+          </div>
         </div>
+
+        {exportHinweis && (
+          <p className="text-center text-xs text-teal-300">{exportHinweis}</p>
+        )}
+
+        {watchlist.length === 0 && <OnboardingKarte />}
 
         {syncLog.length > 0 && (
           <PaCard className="border-teal-500/20 bg-teal-500/5 p-4">
@@ -793,6 +945,8 @@ export function MomentumTraderClient() {
             </div>
           </PaCard>
         )}
+
+        {kalender && watchlist.length > 0 && <EarningsKalenderPanel kalender={kalender} />}
 
         <PaCard className="p-5">
           <div className="flex flex-wrap items-center justify-between gap-3">
@@ -884,7 +1038,13 @@ export function MomentumTraderClient() {
           {gefilterteScan.length > 0 ? (
             <ul className="mt-4 space-y-3">
               {gefilterteScan.map((e) => (
-                <ScanKarte key={e.symbol + e.playbook + e.scanDate} e={e} onTrade={tradeAusScan} tradeLaden={tradeLaden} />
+                <ScanKarte
+                  key={e.symbol + e.playbook + e.scanDate}
+                  e={e}
+                  onTrade={tradeAusScan}
+                  tradeLaden={tradeLaden}
+                  verlauf={scoreVerlauf[e.symbol]}
+                />
               ))}
             </ul>
           ) : (

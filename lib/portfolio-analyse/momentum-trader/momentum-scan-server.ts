@@ -551,7 +551,13 @@ export async function scanMomentumWatchlist(
   }
 
   await loescheMomentumScanFuerDatum(heute)
-  if (final.length > 0) await speichereMomentumScanErgebnisse(final)
+  if (final.length > 0) {
+    await speichereMomentumScanErgebnisse(final)
+    const { speichereMomentumScanVerlauf } = await import(
+      '@/lib/portfolio-analyse/momentum-trader/momentum-scan-verlauf-server'
+    )
+    await speichereMomentumScanVerlauf(final)
+  }
 
   return { scanDate: heute, regime: regimeGates, ergebnisse: final }
 }

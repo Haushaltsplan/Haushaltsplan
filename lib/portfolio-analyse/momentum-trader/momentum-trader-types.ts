@@ -137,6 +137,31 @@ export type MomentumGapEventKurz = {
   timeBmoAmc: MomentumEarningsZeit
 }
 
+export type MomentumKalenderEintrag = {
+  symbol: string
+  name: string
+  isin: string
+  earningsDate: string
+  timeBmoAmc: MomentumEarningsZeit
+  zeitLabel: string
+  tageBis: number
+  medianGapPct: number | null
+}
+
+export type MomentumEarningsKalenderMonat = {
+  von: string
+  bis: string
+  tage: Array<{ datum: string; eintraege: MomentumKalenderEintrag[] }>
+  gesamt: number
+}
+
+export type MomentumScoreVerlaufPunkt = {
+  datum: string
+  score: number
+  ampel: MomentumAmpel
+  playbook: MomentumPlaybook
+}
+
 export type MomentumWatchlistEintragAngereichert = MomentumWatchlistEintrag & {
   naechstesEarnings: {
     datum: string
