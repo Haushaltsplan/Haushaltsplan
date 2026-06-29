@@ -183,6 +183,7 @@ export function bewerteEarningsPreRun(
       gapUpRatePct: historie.gapUpRatePct,
       gapDownRatePct: historie.gapDownRatePct,
       exitBis,
+      letzterKurs: lastBar.close,
       entryPrice: pos?.entryPrice ?? lastBar.close,
       stopPrice: pos?.stopPrice ?? null,
       targetPrice: pos?.targetPrice ?? null,

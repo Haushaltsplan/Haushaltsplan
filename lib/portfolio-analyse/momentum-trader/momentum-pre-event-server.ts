@@ -299,6 +299,7 @@ export function bewerteEarningsPreEvent(
       erwarteteBewegungPct: historie.erwarteteBewegungPct,
       preDrift5dPct: historie.preDrift5dPct,
       atrImpliedMovePct: historie.atrImpliedMovePct,
+      letzterKurs: bars.length > 0 ? bars[bars.length - 1].close : null,
       atrElevationsFaktor: atrFaktor != null ? Math.round(atrFaktor * 100) / 100 : null,
       vorbereitungStufe,
       szenarioPlan: szenarien.join('\n'),

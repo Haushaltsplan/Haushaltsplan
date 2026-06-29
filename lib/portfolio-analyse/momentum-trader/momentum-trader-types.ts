@@ -349,6 +349,31 @@ export type MomentumHandlungssignal = {
     wahrscheinlichkeitPct: number
     label: string
   }>
+  /** Konkrete Levels: Entry, Stop, Hebel, Schritt-für-Schritt */
+  plan: MomentumHandlungsplan | null
+}
+
+/** CFD/Aktie — konkrete Ausführungsempfehlung. */
+export type MomentumHandlungsplan = {
+  modus: 'aktiv' | 'vorbereitung'
+  instrumentLabel: string
+  richtung: MomentumRichtung
+  entryPreis: number
+  entryHinweis: string
+  stopLoss: number
+  takeProfit: number
+  stopAbstandPct: number
+  zielAbstandPct: number
+  riskEur: number
+  hebelEmpfohlen: number
+  marginEur: number
+  exposureEur: number
+  stueckzahl: number | null
+  gewinnZielEur: number
+  triggerBedingungen: string[]
+  schritteJetzt: string[]
+  schritteNachEarnings: string[]
+  exitBis: string | null
 }
 
 /** Regelbasierte Empfehlung — was jetzt tun (auch ohne Trade-Setup). */

@@ -1,6 +1,7 @@
 import 'server-only'
 
 import { momentumPlaybookLabel } from '@/lib/portfolio-analyse/momentum-trader/momentum-constants'
+import { baueHandlungsplanFuerScan } from '@/lib/portfolio-analyse/momentum-trader/momentum-handlungsplan-server'
 import type {
   MomentumHandlungssignal,
   MomentumPlaybook,
@@ -44,6 +45,9 @@ function baereFakten(e: MomentumScanEintrag): string[] {
   push('5T-Drift hist.', e.indikatoren.preDrift5dPct, '%')
   push('Gap-Up-Rate', e.indikatoren.gapUpRatePct, '%')
   push('RS vs. S&P', e.indikatoren.rsVsSpy20d, '%')
+  push('Kurs', e.indikatoren.letzterKurs, '')
+  const events = e.indikatoren.eventsMitGap
+  if (typeof events === 'number') out.push(events + ' Gap-Events')
   const tage = e.indikatoren.tageBisEarnings
   if (typeof tage === 'number') out.push('Earnings in ' + tage + ' Tagen')
   return out.slice(0, 6)
@@ -145,6 +149,7 @@ export function handlungssignalAusTradeSetup(e: MomentumScanEintrag): MomentumHa
     timing,
     fakten: baereFakten(e),
     alternativen: [],
+    plan: baueHandlungsplanFuerScan(e, r, e.playbook, true),
   }
 }
 
@@ -212,22 +217,30 @@ export function handlungssignalAusPreEvent(
     timing: tage === 0 ? 'Heute: nach AMC/BMO Sync + Scan' : 'Nach Earnings in ' + tage + ' Tag(en)',
     fakten: baereFakten(e),
     alternativen: alternativen.slice(1),
+    plan: baueHandlungsplanFuerScan(e, richtung, playbook, false),
   }
 }
 
-/** Signale aus Scan-Ergebnissen ranken. */
+/** Signale aus Scan-Ergebnissen ranken — pro Symbol nur das stärkste. */
 export function sammleHandlungssignale(
   ergebnisse: MomentumScanEintrag[],
   gates: MomentumRegimeGates | null,
 ): MomentumHandlungssignal[] {
-  const out: MomentumHandlungssignal[] = []
+  const bySymbol = new Map<string, MomentumHandlungssignal[]>()
+
   for (const e of ergebnisse) {
     const trade = handlungssignalAusTradeSetup(e)
-    if (trade) out.push(trade)
-    else {
-      const pre = handlungssignalAusPreEvent(e, gates)
-      if (pre) out.push(pre)
-    }
+    const sig = trade ?? handlungssignalAusPreEvent(e, gates)
+    if (!sig) continue
+    const arr = bySymbol.get(e.symbol) ?? []
+    arr.push(sig)
+    bySymbol.set(e.symbol, arr)
+  }
+
+  const out: MomentumHandlungssignal[] = []
+  for (const arr of bySymbol.values()) {
+    arr.sort((a, b) => b.prioritaet - a.prioritaet)
+    out.push(arr[0])
   }
   return out.sort((a, b) => b.prioritaet - a.prioritaet)
 }

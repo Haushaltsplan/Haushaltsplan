@@ -149,6 +149,85 @@ function HandlungssignalZeile({ s, kompakt }: { s: MomentumHandlungssignal; komp
   )
 }
 
+function HandlungsplanKarte({ plan }: { plan: import('@/lib/portfolio-analyse/momentum-trader/momentum-trader-types').MomentumHandlungsplan }) {
+  const p = plan
+  const richtungFarbe =
+    p.richtung === 'long' ? 'text-emerald-300' : 'text-rose-300'
+
+  return (
+    <div className="rounded-xl border border-teal-500/25 bg-gradient-to-br from-teal-500/10 to-black/30 p-4">
+      <p className="text-[10px] font-medium uppercase tracking-widest text-teal-300/90">
+        {p.modus === 'aktiv' ? 'Trade-Plan (jetzt ausführbar)' : 'Trade-Plan (nach Earnings)'}
+      </p>
+      <p className="mt-1 text-xs text-[var(--app-text-muted)]">{p.instrumentLabel}</p>
+
+      <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="rounded-lg bg-black/25 px-3 py-2 ring-1 ring-white/5">
+          <p className="text-[9px] uppercase text-[var(--app-text-muted)]">Einstieg</p>
+          <p className="mt-0.5 text-sm font-bold tabular-nums text-[var(--app-text)]">{p.entryPreis.toFixed(2)}</p>
+          <p className="text-[10px] text-[var(--app-text-muted)]">{p.entryHinweis}</p>
+        </div>
+        <div className="rounded-lg bg-black/25 px-3 py-2 ring-1 ring-rose-500/20">
+          <p className="text-[9px] uppercase text-rose-300/80">Stop-Loss</p>
+          <p className="mt-0.5 text-sm font-bold tabular-nums text-rose-200">{p.stopLoss.toFixed(2)}</p>
+          <p className="text-[10px] text-[var(--app-text-muted)]">−{p.stopAbstandPct}% · {p.riskEur} € Risiko</p>
+        </div>
+        <div className="rounded-lg bg-black/25 px-3 py-2 ring-1 ring-emerald-500/20">
+          <p className="text-[9px] uppercase text-emerald-300/80">Take-Profit</p>
+          <p className="mt-0.5 text-sm font-bold tabular-nums text-emerald-200">{p.takeProfit.toFixed(2)}</p>
+          <p className="text-[10px] text-[var(--app-text-muted)]">+{p.zielAbstandPct}% · ~{p.gewinnZielEur} €</p>
+        </div>
+        <div className="rounded-lg bg-black/25 px-3 py-2 ring-1 ring-violet-500/20">
+          <p className="text-[9px] uppercase text-violet-300/80">CFD Hebel</p>
+          <p className={'mt-0.5 text-sm font-bold tabular-nums ' + richtungFarbe}>{p.hebelEmpfohlen}×</p>
+          <p className="text-[10px] text-[var(--app-text-muted)]">
+            Einsatz ~{p.marginEur} € · Exposure ~{p.exposureEur} €
+          </p>
+        </div>
+      </div>
+
+      {p.triggerBedingungen.length > 0 && (
+        <div className="mt-4 rounded-lg border border-amber-500/20 bg-amber-500/5 px-3 py-2">
+          <p className="text-[10px] font-medium uppercase text-amber-300/90">Trigger (alle erforderlich)</p>
+          <ul className="mt-1.5 space-y-1 text-xs text-amber-100/90">
+            {p.triggerBedingungen.map((t) => (
+              <li key={t}>→ {t}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {p.schritteJetzt.length > 0 && (
+        <div className="mt-4">
+          <p className="text-[10px] font-medium uppercase tracking-wider text-[var(--app-text-muted)]">Jetzt</p>
+          <ol className="mt-2 space-y-2 text-xs leading-relaxed text-[var(--app-text)]">
+            {p.schritteJetzt.map((s) => (
+              <li key={s}>{s}</li>
+            ))}
+          </ol>
+        </div>
+      )}
+
+      {p.schritteNachEarnings.length > 0 && (
+        <div className="mt-4 border-t border-white/10 pt-4">
+          <p className="text-[10px] font-medium uppercase tracking-wider text-violet-300/90">Nach Earnings</p>
+          <ol className="mt-2 space-y-2 text-xs leading-relaxed text-[var(--app-text-muted)]">
+            {p.schritteNachEarnings.map((s) => (
+              <li key={s}>{s}</li>
+            ))}
+          </ol>
+        </div>
+      )}
+
+      {p.stueckzahl != null && p.stueckzahl > 0 && (
+        <p className="mt-3 text-[10px] text-[var(--app-text-muted)]">
+          Alternative Aktie (ohne Hebel): ca. {p.stueckzahl} Stück — gleicher Verlust am Stop ({p.riskEur} €).
+        </p>
+      )}
+    </div>
+  )
+}
+
 function HandlungsempfehlungPanel({
   empfehlung,
   onSync,
@@ -226,6 +305,8 @@ function HandlungsempfehlungPanel({
                 ))}
               </div>
             )}
+
+            {signal.plan && <HandlungsplanKarte plan={signal.plan} />}
 
             {signal.alternativen.length > 0 && (
               <div className="rounded-xl border border-white/5 bg-black/20 p-3">
