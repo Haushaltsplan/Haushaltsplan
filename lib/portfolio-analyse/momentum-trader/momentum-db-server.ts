@@ -3,6 +3,7 @@
 import 'server-only'
 
 import { createSupabaseAdmin } from '@/lib/supabase-admin'
+import { momentumDatenquellenStatus } from '@/lib/portfolio-analyse/momentum-trader/momentum-datenquellen-server'
 import { MOMENTUM_REGIME_SYMBOLS } from '@/lib/portfolio-analyse/momentum-trader/momentum-universe'
 import { MOMENTUM_WATCHLIST_MAX } from '@/lib/portfolio-analyse/momentum-trader/momentum-watchlist-server'
 import type {
@@ -404,6 +405,7 @@ export async function ladeMomentumDatenStatus(opts?: {
     scanAnzahl: 0,
     tradesAnzahl: 0,
     supabaseKonfiguriert: istKonfiguriert(),
+    datenquellen: momentumDatenquellenStatus(),
   }
   if (!istKonfiguriert()) return leer
 
@@ -455,6 +457,7 @@ export async function ladeMomentumDatenStatus(opts?: {
       scanAnzahl: scanCount.count ?? 0,
       tradesAnzahl: opts?.tradesAnzahl ?? 0,
       supabaseKonfiguriert: true,
+      datenquellen: momentumDatenquellenStatus(),
     }
   } catch (e) {
     console.warn('[momentum-trader] Status laden fehlgeschlagen:', e)

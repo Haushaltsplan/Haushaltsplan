@@ -1,31 +1,27 @@
 import 'server-only'
 
 import type { SupabaseClient } from '@supabase/supabase-js'
-import type { Berichtszeit } from '@/lib/portfolio-analyse/earnings-berichtszeit'
-import { ladeAlleEarningsTermineFuerIsin } from '@/lib/portfolio-analyse/earnings-termine-alle'
 import {
   setzeMomentumWatchlistEarningsSync,
-  symboleAusWatchlist,
 } from '@/lib/portfolio-analyse/momentum-trader/momentum-watchlist-server'
 import { speichereMomentumEarningsKalender } from '@/lib/portfolio-analyse/momentum-trader/momentum-db-server'
+import {
+  ladeMomentumEarningsTermineFuerTitel,
+  MOMENTUM_EARNINGS_HORIZONT_TAGE,
+} from '@/lib/portfolio-analyse/momentum-trader/momentum-earnings-termine-server'
 import type {
   MomentumEarningsKalenderEintrag,
   MomentumEarningsSyncErgebnis,
-  MomentumEarningsZeit,
   MomentumWatchlistEintrag,
 } from '@/lib/portfolio-analyse/momentum-trader/momentum-trader-types'
+import { addDaysIso, heuteIsoUtc } from '@/lib/portfolio-analyse/dividenden-datum-hilfen'
+import { symboleAusWatchlist } from '@/lib/portfolio-analyse/momentum-trader/momentum-watchlist-server'
 
-/** Pause zwischen DivvyDiary-Scrapes — schont Warteschlange und Rate-Limits. */
+/** Pause zwischen externen Abrufen — schont Scraper-Warteschlange. */
 const PAUSE_MS = 2_500
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
-}
-
-function berichtszeitZuMomentumZeit(zeit: Berichtszeit | null): MomentumEarningsZeit {
-  if (zeit === 'vor_boersenoeffnung') return 'bmo'
-  if (zeit === 'nach_handelsschluss') return 'amc'
-  return 'unknown'
 }
 
 function primaeresSymbol(e: MomentumWatchlistEintrag): string | null {
@@ -33,8 +29,8 @@ function primaeresSymbol(e: MomentumWatchlistEintrag): string | null {
 }
 
 /**
- * Earnings-Kalender nur für Watchlist-Titel (DivvyDiary, sequentiell).
- * Kein Marktweit-Scan — ein Titel nach dem anderen.
+ * Earnings-Kalender für die Watchlist — DivvyDiary + Finnhub + Yahoo.
+ * Alle Termine im Horizont (nicht nur das nächste Quartal).
  */
 export async function syncEarningsFuerWatchlist(
   sb: SupabaseClient,
@@ -52,6 +48,9 @@ export async function syncEarningsFuerWatchlist(
     }
   }
 
+  const heute = heuteIsoUtc()
+  const bis = addDaysIso(heute, MOMENTUM_EARNINGS_HORIZONT_TAGE)
+
   for (let i = 0; i < eintraege.length; i++) {
     const e = eintraege[i]
     const symbol = primaeresSymbol(e)
@@ -63,11 +62,11 @@ export async function syncEarningsFuerWatchlist(
     if (i > 0) await sleep(PAUSE_MS)
 
     try {
-      const termine = await ladeAlleEarningsTermineFuerIsin(e.isin, e.name)
+      const termine = await ladeMomentumEarningsTermineFuerTitel(e, heute, bis)
       const kalender: MomentumEarningsKalenderEintrag[] = termine.map((t) => ({
         symbol,
         earningsDate: t.terminDatumIso,
-        timeBmoAmc: berichtszeitZuMomentumZeit(t.berichtszeit),
+        timeBmoAmc: t.timeBmoAmc,
         epsEstimate: null,
         revenueEstimate: null,
         quarter: null,
@@ -76,6 +75,8 @@ export async function syncEarningsFuerWatchlist(
 
       if (kalender.length > 0) {
         termineGeschrieben += await speichereMomentumEarningsKalender(kalender)
+      } else {
+        fehler.push(symbol + ': keine Earnings-Termine gefunden (DivvyDiary/Yahoo/Finnhub).')
       }
 
       await setzeMomentumWatchlistEarningsSync(sb, e.isin)

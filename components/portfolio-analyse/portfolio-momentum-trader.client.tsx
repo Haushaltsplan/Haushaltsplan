@@ -11,6 +11,7 @@ import type {
   MomentumAmpel,
   MomentumBarsSyncErgebnis,
   MomentumDatenStatus,
+  MomentumDatenquelle,
   MomentumEarningsKalenderMonat,
   MomentumEarningsSyncErgebnis,
   MomentumErinnerung,
@@ -55,6 +56,38 @@ function ScoreSparkline({ punkte }: { punkte: MomentumScoreVerlaufPunkt[] }) {
     <svg width={w} height={h} className="text-teal-400/80" aria-hidden>
       <polyline points={pts} fill="none" stroke="currentColor" strokeWidth="1.5" />
     </svg>
+  )
+}
+
+function DatenquellenPanel({ quellen }: { quellen: MomentumDatenquelle[] }) {
+  return (
+    <div className="mt-4 border-t border-[var(--app-border)] pt-4">
+      <p className="text-[11px] font-medium uppercase tracking-wide text-[var(--app-text-muted)]">
+        Datenquellen (Scraper / APIs)
+      </p>
+      <ul className="mt-2 space-y-2">
+        {quellen.map((q) => (
+          <li
+            key={q.id}
+            className="flex flex-wrap items-start justify-between gap-2 rounded-lg bg-[var(--app-surface-muted)]/40 px-2.5 py-2 text-xs"
+          >
+            <div>
+              <span className="font-medium text-[var(--app-text)]">{q.name}</span>
+              <span className="ml-2 text-[10px] uppercase text-[var(--app-text-muted)]">{q.typ}</span>
+              <p className="mt-0.5 text-[var(--app-text-muted)]">{q.nutzen}</p>
+            </div>
+            <span
+              className={
+                'shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium ' +
+                (q.aktiv ? 'bg-emerald-500/15 text-emerald-300' : 'bg-amber-500/15 text-amber-300')
+              }
+            >
+              {q.aktiv ? 'aktiv' : 'optional'}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </div>
   )
 }
 
@@ -1092,6 +1125,9 @@ export function MomentumTraderClient() {
             <p className="mt-1 text-xs text-[var(--app-text-muted)]">
               Earnings: {letztesEarningsSync.termineGeschrieben} Termine
             </p>
+          )}
+          {status?.datenquellen && status.datenquellen.length > 0 && (
+            <DatenquellenPanel quellen={status.datenquellen} />
           )}
         </PaCard>
       </div>

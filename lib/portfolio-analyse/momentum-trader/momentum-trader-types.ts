@@ -181,6 +181,15 @@ export type MomentumScanPaket = {
   ergebnisse: MomentumScanEintrag[]
 }
 
+/** Externe Datenquelle (Scraper/API). */
+export type MomentumDatenquelle = {
+  id: string
+  name: string
+  typ: 'scraper' | 'api'
+  aktiv: boolean
+  nutzen: string
+}
+
 /** Status-Übersicht für die UI (Datenfundament). */
 export type MomentumDatenStatus = {
   watchlistAnzahl: number
@@ -194,6 +203,7 @@ export type MomentumDatenStatus = {
   scanAnzahl: number
   tradesAnzahl: number
   supabaseKonfiguriert: boolean
+  datenquellen: MomentumDatenquelle[]
 }
 
 /** Antwort des Earnings-Sync-Endpunkts. */

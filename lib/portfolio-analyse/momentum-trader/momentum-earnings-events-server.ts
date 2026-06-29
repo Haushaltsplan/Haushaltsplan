@@ -5,10 +5,12 @@
 import 'server-only'
 
 import { heuteIsoUtc, isoVorJahren, tageZwischenIso } from '@/lib/portfolio-analyse/dividenden-datum-hilfen'
-import { ladeDivvydiaryEarningsTermine } from '@/lib/portfolio-analyse/divvydiary-scraper-server'
-import { isinKenntnis } from '@/lib/portfolio-analyse/isin-kenntnisse'
-import { reichereEventMitFinnhub } from '@/lib/portfolio-analyse/momentum-trader/momentum-earnings-enrich-server'
+import { reichereEventMitEpsSurprise } from '@/lib/portfolio-analyse/momentum-trader/momentum-earnings-enrich-server'
 import { findeEarningsReaktionsBar } from '@/lib/portfolio-analyse/momentum-trader/momentum-earnings-bar'
+import {
+  ladeBerichtszeitFuerEarningsDatum,
+  ladeMomentumEarningsTermineFuerTitel,
+} from '@/lib/portfolio-analyse/momentum-trader/momentum-earnings-termine-server'
 import {
   ladeMomentumBars,
   ladeMomentumEarningsEventsFuerSymbol,
@@ -102,8 +104,8 @@ export async function backfillEarningsEventsFuerWatchlist(
     if (i > 0) await sleep(PAUSE_MS)
 
     try {
-      const name = isinKenntnis(e.isin)?.name ?? e.name
-      const termine = await ladeDivvydiaryEarningsTermine(e.isin, name, von, heute)
+      const termineAngereichert = await ladeMomentumEarningsTermineFuerTitel(e, von, heute)
+      const termine = termineAngereichert.filter((t) => t.terminDatumIso <= heute)
       const bars = await ladeMomentumBars(symbol, vonBars, heute)
       if (bars.length < 5) {
         fehler.push(symbol + ': zu wenig Bars für Backfill')
@@ -112,15 +114,18 @@ export async function backfillEarningsEventsFuerWatchlist(
 
       const events: MomentumEarningsEvent[] = []
       for (const t of termine) {
-        if (t.terminDatumIso > heute) continue
-        const ev = berechneEventAusBars(symbol, t.terminDatumIso, 'unknown', bars)
+        let zeit = t.timeBmoAmc
+        if (zeit === 'unknown') {
+          zeit = await ladeBerichtszeitFuerEarningsDatum(symbol, t.terminDatumIso)
+        }
+        const ev = berechneEventAusBars(symbol, t.terminDatumIso, zeit, bars)
         if (ev) events.push(ev)
       }
 
       const angereichert: MomentumEarningsEvent[] = []
       for (let j = 0; j < events.length; j++) {
         if (j > 0) await sleep(400)
-        angereichert.push(await reichereEventMitFinnhub(events[j]))
+        angereichert.push(await reichereEventMitEpsSurprise(events[j]))
       }
 
       if (angereichert.length > 0) {

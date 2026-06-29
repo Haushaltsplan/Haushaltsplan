@@ -25,6 +25,17 @@ Kurzfristiger, faktenbasierter Trading-Assistent (Earnings-Gaps, Momentum, IPO-F
 | `ipo_fade` | Short | 2–14 Tage nach IPO, Lauf ≥20%, Reversal |
 | `earnings_vorlauf` | — | Beobachten 3–14 Tage vor Earnings |
 
+## Datenquellen (ohne diese keine Setups)
+
+| Quelle | Typ | Daten |
+|--------|-----|-------|
+| **Yahoo Chart API** | Scraper | OHLCV, Regime (^GSPC, ^VIX) |
+| **Yahoo quoteSummary** | Scraper | Earnings-Termin, BMO/AMC, EPS-Historie |
+| **DivvyDiary** | Scraper | Earnings-Kalender + Historie (watchlist-only) |
+| **Finnhub** | API (`FINNHUB_API_KEY`) | BMO/AMC, EPS-Surprise, IPO-Datum |
+
+Pipeline „Alles aktualisieren“: Earnings (3 Quellen) → Yahoo-Kurse → Gap-Backfill → IPO → Regime → Scan.
+
 ## Watchlist-only (max. 32)
 
 - DivvyDiary sequentiell (~2,5 s Pause), **kein Marktweit-Scraping**
@@ -39,7 +50,9 @@ lib/portfolio-analyse/momentum-trader/
   momentum-scan-server.ts           ← Regel-Engine (4 Playbooks)
   momentum-earnings-bar.ts          ← BMO/AMC Reaktionsbar
   momentum-full-sync-server.ts      ← Pipeline (Earnings→Bars→Events→IPO→Regime→Scan)
-  momentum-scan-memo-server.ts      ← KI-Erklärung (max. 5/Scan)
+  momentum-earnings-termine-server.ts  ← DivvyDiary + Finnhub + Yahoo Merge
+  momentum-datenquellen-server.ts      ← Quellen-Status (UI)
+  momentum-earnings-enrich-server.ts   ← EPS Surprise (Finnhub → Yahoo)
   momentum-scan-verlauf-server.ts   ← Score-Historie für Sparklines
   momentum-kalender-server.ts       ← Earnings-Kalender (35 Tage)
   momentum-briefing-server.ts       ← Tages-Briefing Markdown
