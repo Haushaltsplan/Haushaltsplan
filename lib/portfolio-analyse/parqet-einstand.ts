@@ -11,7 +11,13 @@ function round2(n: number): number {
   return Math.round(n * 100) / 100
 }
 
-/** Gebühren + Steuern je Datum|ISIN (aus separaten Buchungszeilen). */
+/** Einstand für Aktien-/Wahldividende (Parqet TransferIn / Wiederanlage). */
+function aktiendividendeEinstandEur(b: PortfolioBuchung): number {
+  if (b.betragEur > 0) return round2(b.betragEur)
+  const stk = Math.abs(b.stueck ?? 0)
+  if (stk > 0 && b.kursEur != null && b.kursEur > 0) return round2(stk * b.kursEur)
+  return 0
+}
 export function gebuehrSteuerIndex(buchungen: PortfolioBuchung[]): Map<string, number> {
   const map = new Map<string, number>()
   for (const b of buchungen) {
@@ -32,7 +38,7 @@ export function kaufEinstandBetragEur(
   b: PortfolioBuchung,
   feeIndex: Map<string, number>,
 ): number {
-  if (istAktiendividendeAlsKauf(b)) return 0
+  if (istAktiendividendeAlsKauf(b)) return aktiendividendeEinstandEur(b)
 
   const stk = Math.abs(b.stueck ?? 0)
   const handelFromKurs =
