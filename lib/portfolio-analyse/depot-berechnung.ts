@@ -10,6 +10,7 @@ import {
 import { gebuehrSteuerIndex, kaufEinstandBetragEur } from '@/lib/portfolio-analyse/parqet-einstand'
 import { summeParqetRealisiertAusBuchungen } from '@/lib/portfolio-analyse/parqet-realisiert'
 import type { PortfolioBuchung } from '@/lib/portfolio-analyse/types'
+import { heuteIso } from '@/lib/portfolio-analyse/wertentwicklung-tage'
 
 export type MonatsPunkt = { label: string; wert: number; monat: string }
 
@@ -170,19 +171,27 @@ export function irrMindestHistorieTage(buchungen: PortfolioBuchung[], asOf: Date
   return Math.floor((asOf.getTime() - start.getTime()) / (1000 * 60 * 60 * 24))
 }
 
+function irrStichtag(asOf: Date = new Date()): Date {
+  const iso = asOf.toISOString().slice(0, 10)
+  const heute = heuteIso()
+  const tag = iso === heute || !Number.isFinite(asOf.getTime()) ? heute : iso
+  return new Date(`${tag}T12:00:00`)
+}
+
 /** IZF (XIRR) wie Parqet — siehe parqet-xirr.ts */
 export function irrAusBuchungen(
   buchungen: PortfolioBuchung[],
   terminalValueEUR: number,
   asOf: Date = new Date(),
 ): number | null {
-  const tage = irrMindestHistorieTage(buchungen, asOf)
+  const stichtag = irrStichtag(asOf)
+  const tage = irrMindestHistorieTage(buchungen, stichtag)
   if (tage != null && tage < 90) return null
 
   return berechneIrrAnnualizedPercent(
     parqetIrrCashflowsAusBuchungen(buchungen),
     terminalValueEUR,
-    asOf,
+    stichtag,
   )
 }
 

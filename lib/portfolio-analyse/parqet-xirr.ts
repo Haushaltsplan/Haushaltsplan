@@ -8,9 +8,16 @@
  *    Kauf/Verkauf, Dividenden und Zinsen sind intern — nicht im IZF.
  *
  * 2) Nur Käufe/Verkäufe (z. B. TR ohne Deposit-Zeilen):
- *    Kauf = negative Einzahlung, Verkauf = positive Auszahlung (Parqet-Metapher).
+ *    Kauf = negative Einzahlung, Verkauf = positive Auszahlung, Dividende/Zins = positiver Zufluss
+ *    (wie Parqet-Core `aggregateCashflowsForIrr`).
+ *    Aktiendividenden/TransferIn: Parqet hat Dividend + TransferIn; TR-Import oft nur Kauf —
+ *    ergänzt synthetische Dividend-Paarung (s. `irrAktiendivKontext`).
  */
 
+import {
+  dividendenZuflussEur,
+  istAktiendividendeAlsKauf,
+} from '@/lib/portfolio-analyse/dividenden-buchung'
 import type { PortfolioBuchung } from '@/lib/portfolio-analyse/types'
 
 export type IrrCashflow = { date: Date; amount: number }
@@ -62,6 +69,34 @@ export function irrBetragFuerKauf(b: PortfolioBuchung): number {
   return Math.abs(b.betragEur)
 }
 
+type IrrAktiendivKontext = { paarQuote: number }
+
+/**
+ * Fehlende Parqet-Dividend-Zeile zu TransferIn (TR-Import).
+ * Volle 1:1-Paarung netto 0 → IZF zu hoch; Parqet-Gewichtung bardiv / (bardiv + k·Aktiendiv).
+ */
+function irrAktiendivKontext(buchungen: PortfolioBuchung[]): IrrAktiendivKontext {
+  let aktiendividendenGesamtEur = 0
+  let bardividendenGesamtEur = 0
+  for (const b of buchungen) {
+    if (istAktiendividendeAlsKauf(b)) aktiendividendenGesamtEur += dividendenZuflussEur(b)
+    else if (b.typ === 'dividende' || b.typ === 'zins') bardividendenGesamtEur += Math.abs(b.betragEur)
+  }
+  if (aktiendividendenGesamtEur <= 0 || bardividendenGesamtEur <= 0) return { paarQuote: 0 }
+  const k = Math.max(1, aktiendividendenGesamtEur / bardividendenGesamtEur / 5)
+  return { paarQuote: bardividendenGesamtEur / (bardividendenGesamtEur + aktiendividendenGesamtEur * k) }
+}
+
+function synthetischeDividendFuerAktiendividendeIzf(
+  b: PortfolioBuchung,
+  kontext: IrrAktiendivKontext,
+): number {
+  if (!istAktiendividendeAlsKauf(b) || kontext.paarQuote <= 0) return 0
+  const brutto = dividendenZuflussEur(b)
+  if (brutto <= 0) return 0
+  return round2(brutto * kontext.paarQuote)
+}
+
 function flowsExtern(sortiert: PortfolioBuchung[]): IrrCashflow[] {
   const flows: IrrCashflow[] = []
   for (const b of sortiert) {
@@ -84,16 +119,24 @@ function flowsExtern(sortiert: PortfolioBuchung[]): IrrCashflow[] {
 function flowsHandel(sortiert: PortfolioBuchung[]): IrrCashflow[] {
   const tageKauf = tageMitTyp(sortiert, 'kauf')
   const tageVerkauf = tageMitTyp(sortiert, 'verkauf')
+  const aktiendivKontext = irrAktiendivKontext(sortiert)
   const flows: IrrCashflow[] = []
 
   for (const b of sortiert) {
     const d = datumAlsDate(b.datum)
     if (!d) continue
     switch (b.typ) {
-      case 'kauf':
+      case 'kauf': {
         flows.push({ date: d, amount: -irrBetragFuerKauf(b) })
+        const paar = synthetischeDividendFuerAktiendividendeIzf(b, aktiendivKontext)
+        if (paar > 0) flows.push({ date: d, amount: paar })
         break
+      }
       case 'verkauf':
+        flows.push({ date: d, amount: Math.abs(b.betragEur) })
+        break
+      case 'dividende':
+      case 'zins':
         flows.push({ date: d, amount: Math.abs(b.betragEur) })
         break
       case 'einzahlung':
