@@ -1,4 +1,5 @@
 import { wendeAktienSplitsAufMap } from '@/lib/portfolio-analyse/aktien-splits'
+import { gebuehrSteuerIndex, kaufEinstandBetragEur } from '@/lib/portfolio-analyse/parqet-einstand'
 import { alleKalendertage } from '@/lib/portfolio-analyse/wertentwicklung-tage'
 import type { PortfolioBuchung, PortfolioDbSnapshot, PortfolioPositionSnapshot } from '@/lib/portfolio-analyse/types'
 
@@ -96,6 +97,7 @@ function wendeBuchungAufStand(
     { stueck: number; kosten: number; name: string; assetKlasse: PortfolioPositionSnapshot['assetKlasse'] }
   >,
   b: PortfolioBuchung,
+  feeIndex: Map<string, number>,
 ): void {
   if (!b.isin) return
   const isin = b.isin.toUpperCase()
@@ -111,7 +113,7 @@ function wendeBuchungAufStand(
     if (stk <= 0 && b.kursEur != null && b.kursEur > 0) stk = b.betragEur / b.kursEur
     if (stk <= 0) return
     cur.stueck += stk
-    cur.kosten += b.betragEur
+    cur.kosten += kaufEinstandBetragEur(b, feeIndex)
   } else if (b.typ === 'verkauf') {
     let stk = b.stueck != null ? Math.abs(b.stueck) : 0
     if (stk <= 0 && b.kursEur != null && b.kursEur > 0) stk = b.betragEur / b.kursEur
@@ -198,10 +200,11 @@ export function depotStandProTag(
   >()
   let cash = 0
   const out = new Map<string, DepotStand>()
+  const feeIndex = gebuehrSteuerIndex(buchungen)
 
   for (const tag of tage) {
     for (const b of byTag.get(tag) ?? []) {
-      wendeBuchungAufStand(map, b)
+      wendeBuchungAufStand(map, b, feeIndex)
       cash += cashDelta(b)
     }
     wendeAktienSplitsAufMap(map, tag)

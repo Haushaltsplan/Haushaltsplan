@@ -2,6 +2,7 @@
 
 import type { FitnessHrPoint } from '@/lib/fitnessdaten/types'
 import type { WhoopActivity } from '@/lib/fitnessdaten/daily-records'
+import { isoAusMs } from '@/lib/fitnessdaten/iso-date'
 import { heuteIsoLocal } from '@/lib/fitnessdaten/scores'
 
 const LABELS = ['Aktivität', 'Spazieren', 'Radfahren', 'Laufen', 'Workout']
@@ -12,7 +13,7 @@ export function erkenneAktivitaeten(
   minDauerSec = 180,
   datum = heuteIsoLocal(),
 ): WhoopActivity[] {
-  const heuteSeries = hrSeries.filter((p) => new Date(p.t).toISOString().slice(0, 10) === datum)
+  const heuteSeries = hrSeries.filter((p) => isoAusMs(p.t) === datum)
   if (heuteSeries.length < 5) return []
 
   const schwelle = restingHr + 25

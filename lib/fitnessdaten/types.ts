@@ -88,6 +88,12 @@ export type FitnessHistoryState = {
   rhrSamples: { t: number; bpm: number }[]
   dayStrain: number
   dayStrainDate: string
+  /** Live-Strain mit Abklingen (0–21), Banister-Load — nicht kumulierte Zonen. */
+  strainScore?: number
+  /** Interner Banister-TRIMP-Load (vor logarithmischer Skalierung). */
+  strainLoad?: number
+  /** Letzter Strain-Tick (ms) für Zeit-Abklingen ohne HF-Daten. */
+  lastStrainTick?: number
   zoneSecondsToday: HrZoneMinutes
   caloriesToday: number
   stepsToday: number

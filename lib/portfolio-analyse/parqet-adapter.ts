@@ -4,9 +4,13 @@ import {
   irrAusBuchungen,
   realisierterGewinnAusVerkaeufen,
   steuernAufDividendenMonate,
-  summenAusBuchungen,
   twrAusMonatsVerlauf,
 } from '@/lib/portfolio-analyse/depot-berechnung'
+import {
+  summeDividendenBruttoParqet,
+  summeGebuehrenParqet,
+  summeSteuernParqet,
+} from '@/lib/portfolio-analyse/parqet-rendite-kennzahlen'
 import type { IsinMetadata } from '@/lib/portfolio-analyse/isin-lookup-server'
 import type {
   AssetCashflow,
@@ -214,15 +218,14 @@ export function parqetReportAusDepot(
     report.performance.twrTotalPercent = twr
   }
 
-  const summen = summenAusBuchungen(buchungen)
-  const bruttoDiv = summen.dividenden + summen.zinsen
+  const bruttoDiv = summeDividendenBruttoParqet(buchungen)
   const steuerDiv = steuernAufDividendenMonate(buchungen)
   report.metrics.totalDividendsGrossEUR = bruttoDiv
   report.metrics.totalDividendsNetEUR = round2(Math.max(0, bruttoDiv - steuerDiv))
-  report.metrics.totalTaxesEUR = summen.steuern
-  report.metrics.totalFeesEUR = summen.gebuehren
-  report.taxFees.totalTaxesPaidEUR = summen.steuern
-  report.taxFees.totalFeesPaidEUR = summen.gebuehren
+  report.metrics.totalTaxesEUR = summeSteuernParqet(buchungen)
+  report.metrics.totalFeesEUR = summeGebuehrenParqet(buchungen)
+  report.taxFees.totalTaxesPaidEUR = report.metrics.totalTaxesEUR
+  report.taxFees.totalFeesPaidEUR = report.metrics.totalFeesEUR
 
   const realisiert = realisierterGewinnAusVerkaeufen(buchungen)
   report.metrics.realizedGainsEUR = realisiert

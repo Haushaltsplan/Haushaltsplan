@@ -5,6 +5,11 @@ import type {
   WhoopBffMonthlyAvgs,
   WhoopBffSyncPayload,
 } from '@/lib/fitnessdaten/whoop-cloud-types'
+import {
+  heuteIsoInZeitzone,
+  isoAddDaysKalender,
+  trendTageAusEndDatum,
+} from '@/lib/fitnessdaten/iso-date'
 
 const BFF_BASE = 'https://api.prod.whoop.com'
 
@@ -56,15 +61,12 @@ export function parseWhoopNumber(label: string | null | undefined): number | nul
   return Number.isFinite(n) ? n : null
 }
 
-function heuteIso(): string {
-  const d = new Date()
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+function heuteIso(endDate?: string): string {
+  return endDate ?? heuteIsoInZeitzone()
 }
 
-function isoVorTagen(tage: number): string {
-  const d = new Date()
-  d.setDate(d.getDate() - tage)
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+function isoVorTagen(tage: number, endDate: string): string {
+  return isoAddDaysKalender(endDate, -tage)
 }
 
 function parseContextDate(display: string, refIso: string): string | null {
@@ -153,17 +155,10 @@ function extrahiereGraphPunkte(segment: unknown, endDate: string): { date: strin
   }
 
   if (raw.length === 0) return []
-  raw.sort((a, b) => a.x - b.x)
-
-  const end = new Date(endDate + 'T12:00:00')
-  return raw.map((r, i) => {
-    const d = new Date(end)
-    d.setDate(d.getDate() - (raw.length - 1 - i))
-    return {
-      date: r.date ?? d.toISOString().slice(0, 10),
-      value: r.value,
-    }
-  })
+  return trendTageAusEndDatum(
+    raw.map((r) => ({ value: r.value, x: r.x })),
+    endDate,
+  )
 }
 
 function segmentAvg(segment: unknown): number | null {
@@ -312,11 +307,14 @@ async function ladeRecoveryDeepDive(
 
 async function ladeSchritteHistorie(
   accessToken: string,
+  endDate: string,
   tage = 35,
 ): Promise<{ date: string; steps: number }[]> {
   const out: { date: string; steps: number }[] = []
   for (let offset = 0; offset < tage; offset += 6) {
-    const batch = Array.from({ length: Math.min(6, tage - offset) }, (_, i) => isoVorTagen(offset + i))
+    const batch = Array.from({ length: Math.min(6, tage - offset) }, (_, i) =>
+      isoVorTagen(offset + i, endDate),
+    )
     const results = await Promise.all(batch.map((date) => ladeStrainDeepDive(accessToken, date)))
     batch.forEach((date, j) => {
       const steps = results[j]?.steps
@@ -331,6 +329,7 @@ function mergeDailyRows(
   strainHistorie: { date: string; steps: number }[],
   strainToday: { steps: number | null },
   recoveryToday: Awaited<ReturnType<typeof ladeRecoveryDeepDive>>,
+  endDate: string,
 ): WhoopBffDailyRow[] {
   const byDate = new Map<string, WhoopBffDailyRow>()
 
@@ -371,7 +370,7 @@ function mergeDailyRows(
     set(date, { steps })
   }
 
-  const heute = heuteIso()
+  const heute = endDate
   if (strainToday.steps != null) set(heute, { steps: strainToday.steps })
   if (recoveryToday.rhr != null) set(heute, { restingHr: Math.round(recoveryToday.rhr) })
   if (recoveryToday.hrv != null) set(heute, { hrvRmssd: Math.round(recoveryToday.hrv * 10) / 10 })
@@ -382,21 +381,24 @@ function mergeDailyRows(
   return [...byDate.values()].sort((a, b) => a.date.localeCompare(b.date))
 }
 
-export async function ladeWhoopBffSync(accessToken: string): Promise<WhoopBffSyncPayload | null> {
-  const endDate = heuteIso()
+export async function ladeWhoopBffSync(
+  accessToken: string,
+  endDate?: string,
+): Promise<WhoopBffSyncPayload | null> {
+  const tag = heuteIso(endDate)
 
   try {
     const trendResults = await Promise.all(
       TREND_METRICS.map(async (metric) => {
-        const result = await ladeTrend(accessToken, metric, endDate)
+        const result = await ladeTrend(accessToken, metric, tag)
         return [metric, result] as const
       }),
     )
 
     const [strainHistorie, strainToday, recoveryToday] = await Promise.all([
-      ladeSchritteHistorie(accessToken, 35),
-      ladeStrainDeepDive(accessToken, endDate),
-      ladeRecoveryDeepDive(accessToken, endDate),
+      ladeSchritteHistorie(accessToken, tag, 35),
+      ladeStrainDeepDive(accessToken, tag),
+      ladeRecoveryDeepDive(accessToken, tag),
     ])
 
     const trendsOk = trendResults.filter(([, r]) => r.ok).length
@@ -453,7 +455,7 @@ export async function ladeWhoopBffSync(accessToken: string): Promise<WhoopBffSyn
       monthlyAvgs.respiratory = Math.round(recoveryToday.respiratoryBaseline * 10) / 10
     }
 
-    const daily = mergeDailyRows(trends, strainHistorie, strainToday, recoveryToday)
+    const daily = mergeDailyRows(trends, strainHistorie, strainToday, recoveryToday, tag)
 
     return {
       daily,

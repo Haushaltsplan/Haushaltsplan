@@ -69,7 +69,11 @@ export function PortfolioImportClient() {
       )
     } else {
       const bestehend = new Set(buchungen.map((b) => b.buchungsHash))
-      const { neu, uebersprungen } = await dedupliziereGegenBestehend(ergebnis.buchungen, bestehend)
+      const { neu, uebersprungen } = await dedupliziereGegenBestehend(
+        ergebnis.buchungen,
+        bestehend,
+        buchungen,
+      )
       ergebnis = { ...ergebnis, buchungen: neu }
       if (uebersprungen > 0) {
         ergebnis.hinweise.push(`${uebersprungen} Buchung(en) bereits gespeichert — werden übersprungen.`)

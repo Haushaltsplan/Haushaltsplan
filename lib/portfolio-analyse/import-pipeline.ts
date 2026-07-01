@@ -19,6 +19,7 @@ import {
 import type { TrPdfParseErgebnis, TrRawCashZeile, TrRawPosition } from '@/lib/portfolio-analyse/trade-republic-pdf-parser'
 import { parseTradeRepublicPdfBuffer } from '@/lib/portfolio-analyse/trade-republic-pdf-parser'
 import { istParqetPortfolioCsv, parseParqetPortfolioCsvText } from '@/lib/portfolio-analyse/parqet-portfolio-csv'
+import { bereinigeDoppelteHandelsbuchungen, filterGegenBestehendeHandelsbuchungen } from '@/lib/portfolio-analyse/import-deduplizierung'
 import {
   istTradeRepublicCsv,
   parseTradeRepublicCsvText,
@@ -136,10 +137,18 @@ async function rohZuImportErgebnis(
     if (snap) positionen.push(snap)
   }
 
+  const bereinigt = bereinigeDoppelteHandelsbuchungen(buchungen)
+  const entferntWeich = buchungen.length - bereinigt.length
+  if (entferntWeich > 0) {
+    hinweise.push(
+      `${entferntWeich} wahrscheinliche Doppelbuchung(en) entfernt (z. B. Kontoauszug + Wertpapierabrechnung).`,
+    )
+  }
+
   const hashSet = new Set<string>()
   let doppelteHashes = 0
   const dedup: PortfolioBuchung[] = []
-  for (const b of buchungen) {
+  for (const b of bereinigt) {
     if (hashSet.has(b.buchungsHash)) {
       doppelteHashes++
       continue
@@ -283,14 +292,20 @@ export function mergeImportErgebnisse(ergebnisse: PortfolioImportErgebnis[]): Po
     }
   }
 
+  const bereinigt = bereinigeDoppelteHandelsbuchungen(buchungen)
+  const entferntWeich = buchungen.length - bereinigt.length
+  if (entferntWeich > 0) {
+    hinweise.push(`${entferntWeich} wahrscheinliche Doppelbuchung(en) zwischen Dateien entfernt.`)
+  }
+
   const letzteMitSnapshot = [...ergebnisse].reverse().find((e) => e.positionen.length > 0)
   const positionen = letzteMitSnapshot?.positionen ?? []
   const depotwertEur = letzteMitSnapshot?.depotwertEur ?? null
 
-  hinweise.unshift(`${ergebnisse.length} Datei(en) zusammengeführt — ${buchungen.length} Buchung(en).`)
+  hinweise.unshift(`${ergebnisse.length} Datei(en) zusammengeführt — ${bereinigt.length} Buchung(en).`)
 
   return {
-    buchungen,
+    buchungen: bereinigt,
     positionen,
     depotwertEur,
     hinweise,
@@ -306,10 +321,12 @@ export function mergeImportErgebnisse(ergebnisse: PortfolioImportErgebnis[]): Po
 export async function dedupliziereGegenBestehend(
   neu: PortfolioBuchung[],
   bestehendeHashes: Set<string>,
+  bestehendeBuchungen: PortfolioBuchung[] = [],
 ): Promise<{ neu: PortfolioBuchung[]; uebersprungen: number }> {
+  const weich = filterGegenBestehendeHandelsbuchungen(neu, bestehendeBuchungen)
   const out: PortfolioBuchung[] = []
-  let uebersprungen = 0
-  for (const b of neu) {
+  let uebersprungen = weich.uebersprungen
+  for (const b of weich.neu) {
     if (bestehendeHashes.has(b.buchungsHash)) {
       uebersprungen++
       continue

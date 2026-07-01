@@ -8,6 +8,7 @@ import {
   ladeDailyStore,
   speichereDailyStore,
 } from '@/lib/fitnessdaten/daily-records'
+import { isoAusMs } from '@/lib/fitnessdaten/iso-date'
 import { heuteIsoLocal } from '@/lib/fitnessdaten/scores'
 import { zaehleSchrittAusAccel } from '@/lib/fitnessdaten/steps-tracker'
 
@@ -63,7 +64,7 @@ export function mergeTagesSchritte(
 export function verarbeiteAccelSchritt(
   accel: { x: number; y: number; z: number },
   ts: number,
-  isoDate = new Date(ts).toISOString().slice(0, 10),
+  isoDate = isoAusMs(ts),
 ): boolean {
   if (!zaehleSchrittAusAccel(accel, ts)) return false
 

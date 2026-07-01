@@ -9,7 +9,8 @@ import {
   type WhoopDayRecord,
 } from '@/lib/fitnessdaten/daily-records'
 import { aktualisiereVo2MaxWennFaellig, setzeVo2MaxAusCloud } from '@/lib/fitnessdaten/vo2max-engine'
-import { heuteIsoLocal, mergeTagesStrain, recoveryLabelAusProzent } from '@/lib/fitnessdaten/scores'
+import { loadAusStrain } from '@/lib/fitnessdaten/strain-engine'
+import { heuteIsoLocal, recoveryLabelAusProzent } from '@/lib/fitnessdaten/scores'
 import { berechneSkinTempDelta } from '@/lib/fitnessdaten/skin-temp'
 import { ladeSyncState, speichereSyncState } from '@/lib/fitnessdaten/offline-sync'
 import type { WhoopCloudSyncPayload, WhoopCloudSyncResult } from '@/lib/fitnessdaten/whoop-cloud-types'
@@ -118,7 +119,8 @@ function mergeDay(
     respiratoryRate: pickBff(bffRow?.respiratoryRate, sleep?.respiratoryRate, prev.respiratoryRate),
     bedTimeMs: pick(sleep?.bedTimeMs, prev.bedTimeMs),
     wakeTimeMs: pick(sleep?.wakeTimeMs, prev.wakeTimeMs),
-    strain: mergeTagesStrain(cycle?.strain, prev.strain),
+    strain: cycle?.strain ?? prev.strain,
+    strainFromCloud: cycle?.strain != null ? true : prev.strainFromCloud,
     avgHr: pickBff(bffRow?.avgHr, cycle?.avgHr, prev.avgHr),
     maxHr: pick(cycle?.maxHr, prev.maxHr) ?? prev.maxHr,
     calories:
@@ -236,10 +238,13 @@ export function mergeCloudPayload(payload: WhoopCloudSyncPayload): WhoopCloudSyn
 
   const heute = heuteIsoLocal()
   const heuteRecord = store.days.find((d) => d.date === heute)
-  if (heuteRecord?.strain != null && heuteRecord.strain > 0) {
+  if (heuteRecord?.strain != null) {
     const history = ladeFitnessHistory()
     history.dayStrain = heuteRecord.strain
     history.dayStrainDate = heute
+    history.strainScore = heuteRecord.strain
+    history.strainLoad = loadAusStrain(heuteRecord.strain)
+    history.lastStrainTick = Date.now()
     speichereFitnessHistory(history)
   }
 
@@ -311,7 +316,11 @@ export function mergeCloudPayload(payload: WhoopCloudSyncPayload): WhoopCloudSyn
 }
 
 export async function syncWhoopCloudVomServer(): Promise<WhoopCloudSyncResult> {
-  const res = await whoopApiFetch('/api/fitnessdaten/whoop/sync', { method: 'POST' })
+  const res = await whoopApiFetch('/api/fitnessdaten/whoop/sync', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ endDate: heuteIsoLocal() }),
+  })
   const data = (await res.json()) as WhoopCloudSyncResult & { payload?: WhoopCloudSyncPayload }
   if (!res.ok || !data.ok || !data.payload) {
     return {

@@ -13,7 +13,14 @@ import {
   profilMaxHr,
   wendeProfilAufHistory,
 } from '@/lib/fitnessdaten/user-profile'
+import { isoAusMs } from '@/lib/fitnessdaten/iso-date'
 import { schritteHeuteAusDaily, verarbeiteAccelSchritt } from '@/lib/fitnessdaten/steps-engine'
+import {
+  decayStrainLoad,
+  loadAusStrain,
+  strainAusStrainLoad,
+  tickStrainLoad,
+} from '@/lib/fitnessdaten/strain-engine'
 import {
   avgHr,
   heuteIsoLocal,
@@ -26,7 +33,6 @@ import {
   recoveryLabelAusProzent,
   ruhepulsSchaetzung,
   sekundenZuMinuten,
-  strainAusZonen,
   zoneFuerBpm,
 } from '@/lib/fitnessdaten/scores'
 import type {
@@ -113,6 +119,84 @@ export function parseFitnessSnapshotJson(text: string): FitnessSnapshot {
 
 let letzterHrTick = 0
 
+function normalisiereStrainState(history: FitnessHistoryState): void {
+  if (history.strainLoad == null) {
+    const basis = history.strainScore ?? history.dayStrain ?? 0
+    history.strainLoad = loadAusStrain(basis)
+    history.strainScore = strainAusStrainLoad(history.strainLoad)
+    if (history.lastStrainTick == null) {
+      const snap = ladeFitnessSnapshot()
+      const snapAt = snap?.updatedAt ? Date.parse(snap.updatedAt) : Date.now()
+      history.lastStrainTick = Number.isFinite(snapAt) ? snapAt : Date.now()
+    }
+  }
+  if (history.strainScore == null) {
+    history.strainScore = strainAusStrainLoad(history.strainLoad ?? 0)
+  }
+  if (history.lastStrainTick == null) {
+    history.lastStrainTick = Date.now()
+  }
+}
+
+function wendeStrainZeitDecay(history: FitnessHistoryState, now: number): void {
+  normalisiereStrainState(history)
+  const dtSec = Math.min(7200, (now - history.lastStrainTick!) / 1000)
+  if (dtSec < 1) return
+  history.strainLoad = decayStrainLoad(history.strainLoad!, dtSec)
+  history.strainScore = strainAusStrainLoad(history.strainLoad)
+  history.lastStrainTick = now
+}
+
+function setzeStrainAusCloud(history: FitnessHistoryState, strain: number): void {
+  history.strainScore = strain
+  history.strainLoad = loadAusStrain(strain)
+  history.dayStrain = strain
+  history.lastStrainTick = Date.now()
+}
+
+/** Strain-Abklingen für UI (ohne neuen BLE-Tick), z. B. alle 60 s. */
+export function aktualisiereStrainFuerAnzeige(minIntervallSec = 30): boolean {
+  if (typeof window === 'undefined') return false
+  const history = ladeFitnessHistory()
+  const heute = heuteIsoLocal()
+  if (history.dayStrainDate !== heute) return false
+
+  const prevHeute = ladeDailyStore().days.find((d) => d.date === heute)
+  if (prevHeute?.strainFromCloud && prevHeute.strain != null) {
+    setzeStrainAusCloud(history, prevHeute.strain)
+    speichereFitnessHistory(history)
+    const snap = ladeFitnessSnapshot()
+    if (snap?.scores && Math.abs((snap.scores.strain ?? 0) - prevHeute.strain) >= 0.05) {
+      speichereFitnessSnapshot({
+        ...snap,
+        scores: { ...snap.scores, strain: prevHeute.strain, dayStrain: prevHeute.strain },
+      })
+      return true
+    }
+    return false
+  }
+
+  normalisiereStrainState(history)
+  const now = Date.now()
+  const dtSec = (now - history.lastStrainTick!) / 1000
+  if (dtSec < minIntervallSec) return false
+
+  const vorher = history.strainScore!
+  wendeStrainZeitDecay(history, now)
+  history.dayStrain = history.strainScore!
+  speichereFitnessHistory(history)
+
+  const snap = ladeFitnessSnapshot()
+  if (snap?.scores && Math.abs((snap.scores.strain ?? 0) - history.strainScore!) >= 0.05) {
+    speichereFitnessSnapshot({
+      ...snap,
+      scores: { ...snap.scores, strain: history.strainScore, dayStrain: history.strainScore },
+    })
+    return true
+  }
+  return Math.abs(vorher - history.strainScore!) >= 0.05
+}
+
 /** Live-Sample in Snapshot + Historie mergen, Scores berechnen. */
 export function mergeLiveSnapshot(
   partial: FitnessSnapshot,
@@ -120,10 +204,16 @@ export function mergeLiveSnapshot(
 ): FitnessSnapshot {
   const history = ladeFitnessHistory()
   const heute = heuteIsoLocal()
+  const prevHeute = ladeDailyStore().days.find((d) => d.date === heute) ?? createEmptyDayRecord(heute)
+  const cloudStrainHeute = prevHeute.strainFromCloud ? prevHeute.strain : null
+
   if (history.dayStrainDate !== heute) {
     history.dayStrainDate = heute
-    const cloudStrain = ladeDailyStore().days.find((d) => d.date === heute)?.strain
+    const cloudStrain = cloudStrainHeute ?? ladeDailyStore().days.find((d) => d.date === heute)?.strain
     history.dayStrain = cloudStrain ?? 0
+    history.strainScore = cloudStrain ?? 0
+    history.strainLoad = loadAusStrain(cloudStrain ?? 0)
+    history.lastStrainTick = Date.now()
     history.zoneSecondsToday = leereZonen()
     history.caloriesToday = 0
   }
@@ -136,9 +226,19 @@ export function mergeLiveSnapshot(
 
   const bpm = partial.live?.heartRateBpm
   const now = Date.now()
+  const profile = ladeFitnessProfil()
+  const maennlich = profilMaennlich(profile)
+
+  if (cloudStrainHeute != null) {
+    setzeStrainAusCloud(history, cloudStrainHeute)
+  } else {
+    normalisiereStrainState(history)
+    wendeStrainZeitDecay(history, now)
+  }
+
   let hrHistory: FitnessHrPoint[] = partial.hrHistory ?? []
 
-  if (bpm != null && bpm > 0) {
+  if (bpm != null && bpm > 0 && cloudStrainHeute == null) {
     const point: FitnessHrPoint = { t: now, bpm }
     history.hrSeries.push(point)
     if (history.hrSeries.length > MAX_HR_SERIES) {
@@ -152,7 +252,16 @@ export function mergeLiveSnapshot(
     const rhr = history.baselines.restingHrBpm
     const zone = zoneFuerBpm(bpm, history.maxHrEstimate, rhr)
     history.zoneSecondsToday[zone] += dtSec
-    const profile = ladeFitnessProfil()
+    history.strainLoad = tickStrainLoad(
+      history.strainLoad!,
+      bpm,
+      history.maxHrEstimate,
+      rhr,
+      dtSec,
+      maennlich,
+    )
+    history.strainScore = strainAusStrainLoad(history.strainLoad)
+    history.lastStrainTick = now
     history.caloriesToday += kalorienDelta(
       bpm,
       dtSec,
@@ -186,10 +295,11 @@ export function mergeLiveSnapshot(
   const rmssd = partial.scores?.hrvRmssdMs ?? null
   const restingHr = ruhepulsSchaetzung(sessionHistory) ?? history.baselines.restingHrBpm
 
-  const prevHeute = ladeDailyStore().days.find((d) => d.date === heute) ?? createEmptyDayRecord(heute)
-  const recoveryLocked = Boolean(prevHeute.recoveryLocked && prevHeute.recoveryPercent != null)
+  const prevHeuteRecord =
+    ladeDailyStore().days.find((d) => d.date === heute) ?? createEmptyDayRecord(heute)
+  const recoveryLocked = Boolean(prevHeuteRecord.recoveryLocked && prevHeuteRecord.recoveryPercent != null)
 
-  let recoveryPercent: number | null = prevHeute.recoveryPercent
+  let recoveryPercent: number | null = prevHeuteRecord.recoveryPercent
   let recoveryLabel =
     recoveryPercent != null ? recoveryLabelAusProzent(recoveryPercent) : null
 
@@ -214,8 +324,9 @@ export function mergeLiveSnapshot(
   }
   const schlaf = aktualisiereSchlafSchaetzung()
 
-  const sessionStrain = strainAusZonen(history.zoneSecondsToday)
-  const dayStrain = mergeTagesStrain(sessionStrain, prevHeute.strain)
+  const sessionStrain =
+    cloudStrainHeute != null ? cloudStrainHeute : (history.strainScore ?? 0)
+  const dayStrain = mergeTagesStrain(sessionStrain, prevHeuteRecord.strain)
   history.dayStrain = dayStrain ?? sessionStrain
 
   const scores = {
@@ -230,7 +341,7 @@ export function mergeLiveSnapshot(
     sleepMinutes: schlaf.sleepMinutes > 0 ? schlaf.sleepMinutes : null,
     sleepEfficiency: schlaf.sleepMinutes > 0 ? schlaf.efficiency : null,
     caloriesKcal: Math.round(history.caloriesToday),
-    maxHrToday: maxHr(history.hrSeries.filter((p) => new Date(p.t).toISOString().slice(0, 10) === heute)),
+    maxHrToday: maxHr(history.hrSeries.filter((p) => isoAusMs(p.t) === heute)),
     avgHrSession: avgHr(sessionHistory),
     zoneMinutes: sekundenZuMinuten(history.zoneSecondsToday),
   }

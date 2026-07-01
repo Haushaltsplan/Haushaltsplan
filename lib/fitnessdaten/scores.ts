@@ -1,6 +1,14 @@
 /** Lokal berechnete WHOOP-ähnliche Metriken aus BLE-Daten. */
 
 import type { FitnessHrPoint, FitnessScores, HrZoneKey, HrZoneMinutes } from '@/lib/fitnessdaten/types'
+import { heuteIsoKalender } from '@/lib/fitnessdaten/iso-date'
+
+export {
+  begrenzeStrain,
+  strainAusZonen,
+  strainAusLoad,
+  loadAusStrain,
+} from '@/lib/fitnessdaten/strain-engine'
 
 const ZONE_THRESHOLDS: { key: HrZoneKey; minPct: number }[] = [
   { key: 'z5', minPct: 0.9 },
@@ -22,24 +30,6 @@ export function zoneFuerBpm(bpm: number, maxHr: number, restingHr = 60): HrZoneK
     if (pct >= z.minPct) return z.key
   }
   return 'rest'
-}
-
-/** WHOOP-ähnliche Strain-Skalierung 0–21 aus Zonen-Sekunden. */
-export function strainAusZonen(zoneSeconds: HrZoneMinutes): number {
-  const weights: Record<HrZoneKey, number> = {
-    rest: 0,
-    z1: 0.1,
-    z2: 0.3,
-    z3: 0.6,
-    z4: 1.0,
-    z5: 1.4,
-  }
-  let load = 0
-  for (const key of Object.keys(weights) as HrZoneKey[]) {
-    load += (zoneSeconds[key] / 3600) * weights[key]
-  }
-  if (load <= 0) return 0
-  return Math.min(21, Math.round(Math.log1p(load * 12) * 3.2 * 10) / 10)
 }
 
 export function recoveryAusBaseline(
@@ -102,7 +92,7 @@ export function maxHr(history: FitnessHrPoint[]): number | null {
 }
 
 export function heuteIsoLocal(): string {
-  return new Date().toISOString().slice(0, 10)
+  return heuteIsoKalender()
 }
 
 /** Erholung nur morgens (nach Aufstehen) — WHOOP-ähnlich 5–14 Uhr. */
@@ -111,16 +101,19 @@ export function istMorgenFenster(now = new Date()): boolean {
   return h >= 5 && h < 14
 }
 
-/** Cloud-/Tages-Strain nicht durch 0 aus BLE-Session überschreiben. */
+/**
+ * Live-/Cloud-Strain ist der aktuelle Tageswert (kann fallen wie bei WHOOP).
+ * Nur bei fehlendem Signal den bisherigen Wert behalten.
+ */
 export function mergeTagesStrain(
   live: number | null | undefined,
   prev: number | null | undefined,
 ): number | null {
   const p = prev ?? null
   const l = live ?? null
-  if (p != null && p > 0 && (l == null || l === 0)) return p
-  if (l != null && l > 0) return p != null ? Math.max(p, l) : l
-  return p
+  if (l == null) return p
+  if (l === 0 && p != null && p > 0) return p
+  return l
 }
 
 export function recoveryLabelAusProzent(percent: number): FitnessScores['recoveryLabel'] {

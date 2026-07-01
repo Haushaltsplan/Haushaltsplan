@@ -11,6 +11,7 @@ import {
 } from '@/lib/fitnessdaten/daily-records'
 import { verarbeiteAccelSchritt } from '@/lib/fitnessdaten/steps-engine'
 import { ladeFitnessHistory, ladeFitnessSnapshot, mergeLiveSnapshot, speichereFitnessHistory, speichereFitnessSnapshot } from '@/lib/fitnessdaten/history-storage'
+import { isoAusMs } from '@/lib/fitnessdaten/iso-date'
 import { heuteIsoLocal, maxHr, ruhepulsSchaetzung, zoneFuerBpm } from '@/lib/fitnessdaten/scores'
 import { profilMaxHr, ladeFitnessProfil } from '@/lib/fitnessdaten/user-profile'
 import { berechneSkinTempDelta } from '@/lib/fitnessdaten/skin-temp'
@@ -147,7 +148,7 @@ export function mergeHistoricalR22(
   if (sample.heartRateBpm <= 0) return null
   const t = r22ZuTimestampMs(sample.tsSec)
   const history = ladeFitnessHistory()
-  const isoDate = new Date(t).toISOString().slice(0, 10)
+  const isoDate = isoAusMs(t)
 
   if (sample.accel) {
     verarbeiteAccelSchritt(sample.accel, t, isoDate)
@@ -157,7 +158,7 @@ export function mergeHistoricalR22(
   history.hrSeries.push({ t, bpm: sample.heartRateBpm })
   if (history.hrSeries.length > 600) history.hrSeries = history.hrSeries.slice(-600)
 
-  const tagPoints = history.hrSeries.filter((p) => new Date(p.t).toISOString().slice(0, 10) === isoDate)
+  const tagPoints = history.hrSeries.filter((p) => isoAusMs(p.t) === isoDate)
   const rhr = ruhepulsSchaetzung(tagPoints) ?? history.baselines.restingHrBpm
   const mhr = profilMaxHr(ladeFitnessProfil())
   if (tagPoints.length >= 2) {
@@ -210,7 +211,7 @@ export function mergeHistoricalEvent(
   snapshot: FitnessSnapshot,
 ): FitnessSnapshot {
   const t = r22ZuTimestampMs(ev.tsSec)
-  const isoDate = new Date(t).toISOString().slice(0, 10)
+  const isoDate = isoAusMs(t)
   if (ev.skinTempC != null) {
     aktualisiereTagAusHistorie(isoDate, { skinTempC: ev.skinTempC })
   }

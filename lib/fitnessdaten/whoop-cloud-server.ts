@@ -14,6 +14,7 @@ import {
   whoopRedirectUri,
 } from '@/lib/fitnessdaten/whoop-cloud-types'
 import { ladeWhoopBffSync } from '@/lib/fitnessdaten/whoop-bff-server'
+import { heuteIsoInZeitzone } from '@/lib/fitnessdaten/iso-date'
 import { ladeWhoopHealthMonitorBff } from '@/lib/fitnessdaten/whoop-health-bff-server'
 import {
   leseWhoopTokensDb,
@@ -358,17 +359,13 @@ function parseSleepRow(rec: SleepRec): WhoopCloudSleepRow | null {
   }
 }
 
-function heuteIsoServer(): string {
-  return new Date().toISOString().slice(0, 10)
-}
 
-function parseCycleRow(rec: CycleRec): WhoopCloudCycleRow | null {
+function parseCycleRow(rec: CycleRec, heute: string): WhoopCloudCycleRow | null {
   if (!rec.score || !rec.start) return null
   if (rec.score_state === 'UNSCORABLE') return null
   const s = rec.score
   if (s.strain == null && s.kilojoule == null) return null
-  // Laufender Zyklus (noch kein end) → Strain dem heutigen Tag zuordnen
-  const date = rec.end ? datumAusIso(rec.start) : heuteIsoServer()
+  const date = rec.end ? datumAusIso(rec.start) : heute
   return {
     date,
     strain: s.strain != null ? Math.round(s.strain * 10) / 10 : null,
@@ -432,8 +429,13 @@ export async function ladeBodyMeasurements(accessToken: string): Promise<WhoopCl
   }
 }
 
-export async function ladeVollstaendigerCloudSync(accessToken: string, tage = 35): Promise<WhoopCloudSyncPayload> {
-  const start = new Date()
+export async function ladeVollstaendigerCloudSync(
+  accessToken: string,
+  tage = 35,
+  opts?: { endDate?: string },
+): Promise<WhoopCloudSyncPayload> {
+  const endDate = opts?.endDate ?? heuteIsoInZeitzone()
+  const start = new Date(endDate + 'T12:00:00')
   start.setDate(start.getDate() - tage)
   const startIso = start.toISOString()
 
@@ -443,7 +445,7 @@ export async function ladeVollstaendigerCloudSync(accessToken: string, tage = 35
     fetchPaginated<CycleRec>(accessToken, '/v2/cycle', startIso),
     fetchPaginated<WorkoutRec>(accessToken, '/v2/activity/workout', startIso, 20),
     ladeBodyMeasurements(accessToken),
-    ladeWhoopBffSync(accessToken),
+    ladeWhoopBffSync(accessToken, endDate),
     ladeWhoopHealthMonitorBff(accessToken),
   ])
 
@@ -455,7 +457,7 @@ export async function ladeVollstaendigerCloudSync(accessToken: string, tage = 35
   return {
     recoveries: dedupeByDate(recoveryRaw.map(parseRecoveryRow)),
     sleeps: dedupeByDate(sleepRaw.map(parseSleepRow)),
-    cycles: dedupeByDate(cycleRaw.map(parseCycleRow)),
+    cycles: dedupeByDate(cycleRaw.map((r) => parseCycleRow(r, endDate))),
     workouts: [...workoutMap.values()].sort((a, b) => a.startMs - b.startMs),
     body,
     bff,

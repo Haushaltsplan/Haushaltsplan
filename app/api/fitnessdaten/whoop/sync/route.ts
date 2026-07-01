@@ -1,4 +1,5 @@
 import { holeGueltigenAccessToken, ladeVollstaendigerCloudSync } from '@/lib/fitnessdaten/whoop-cloud-server'
+import { heuteIsoInZeitzone } from '@/lib/fitnessdaten/iso-date'
 import { createSupabaseFuerRequest } from '@/lib/supabase-user'
 import { NextResponse } from 'next/server'
 
@@ -15,7 +16,12 @@ export async function POST(req: Request) {
         { status: 401 },
       )
     }
-    const payload = await ladeVollstaendigerCloudSync(token, 35)
+    const body = (await req.json().catch(() => ({}))) as { endDate?: string }
+    const endDate =
+      typeof body.endDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(body.endDate)
+        ? body.endDate
+        : heuteIsoInZeitzone()
+    const payload = await ladeVollstaendigerCloudSync(token, 35, { endDate })
     const mitSpo2 = payload.recoveries.filter((r) => r.spo2Percent != null).length
     return NextResponse.json({
       ok: true,

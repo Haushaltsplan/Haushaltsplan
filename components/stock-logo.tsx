@@ -8,16 +8,19 @@ export function StockLogo({
   className,
   finnhubSlug,
   clearbitDomains,
+  localPath,
 }: {
   symbol: string
   className?: string
   /** Abweichender Finnhub-Slug (z. B. HLMA statt H11.MU). */
   finnhubSlug?: string
   clearbitDomains?: string[]
+  /** Lokales Logo unter public/ */
+  localPath?: string
 }) {
   const urls = useMemo(
-    () => alleLogoUrls(symbol, { finnhubSlug, clearbitDomains }),
-    [symbol, finnhubSlug, clearbitDomains?.join('|')],
+    () => alleLogoUrls(symbol, { finnhubSlug, clearbitDomains, localPath }),
+    [symbol, finnhubSlug, clearbitDomains?.join('|'), localPath],
   )
   const [step, setStep] = useState(0)
   const initials = logoInitialen(symbol)

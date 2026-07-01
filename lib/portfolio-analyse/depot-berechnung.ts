@@ -7,6 +7,7 @@ import {
   parqetIrrCashflowsAusBuchungen,
   parqetIrrDiagnose,
 } from '@/lib/portfolio-analyse/parqet-xirr'
+import { gebuehrSteuerIndex, kaufEinstandBetragEur } from '@/lib/portfolio-analyse/parqet-einstand'
 import { summeParqetRealisiertAusBuchungen } from '@/lib/portfolio-analyse/parqet-realisiert'
 import type { PortfolioBuchung } from '@/lib/portfolio-analyse/types'
 
@@ -20,6 +21,7 @@ function round2(n: number): number {
 function einstandJeIsin(buchungen: PortfolioBuchung[]): Map<string, { stueck: number; kosten: number }> {
   const map = new Map<string, { stueck: number; kosten: number }>()
   const sortiert = [...buchungen].sort((a, b) => a.datum.localeCompare(b.datum))
+  const feeIndex = gebuehrSteuerIndex(buchungen)
 
   for (const b of sortiert) {
     if (!b.isin) continue
@@ -31,7 +33,7 @@ function einstandJeIsin(buchungen: PortfolioBuchung[]): Map<string, { stueck: nu
       if (stk <= 0 && b.kursEur != null && b.kursEur > 0) stk = b.betragEur / b.kursEur
       if (stk > 0) {
         cur.stueck += stk
-        cur.kosten += b.betragEur
+        cur.kosten += kaufEinstandBetragEur(b, feeIndex)
       }
     } else if (b.typ === 'verkauf') {
       let stk = b.stueck != null ? Math.abs(b.stueck) : 0
@@ -57,6 +59,7 @@ export function baueMonatsVerlauf(
 
   const byMonth = new Map<string, number>()
   let cash = 0
+  const feeIndex = gebuehrSteuerIndex(buchungen)
   const wp = einstandJeIsin(buchungen)
 
   const wpKosten = () => {
@@ -82,7 +85,7 @@ export function baueMonatsVerlauf(
           if (stk <= 0 && b.kursEur != null && b.kursEur > 0) stk = b.betragEur / b.kursEur
           if (stk > 0) {
             cur.stueck += stk
-            cur.kosten += b.betragEur
+            cur.kosten += kaufEinstandBetragEur(b, feeIndex)
             wp.set(isin, cur)
           }
         }

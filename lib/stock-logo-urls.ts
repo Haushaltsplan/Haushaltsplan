@@ -67,15 +67,16 @@ export function clearbitLogoUrls(domains: string[]): string[] {
   return urls
 }
 
-/** Finnhub + optional Clearbit-Fallback. */
+/** Lokales Logo zuerst, dann Finnhub + optional Clearbit-Fallback. */
 export function alleLogoUrls(
   symbol: string,
-  opts?: { finnhubSlug?: string; clearbitDomains?: string[] },
+  opts?: { finnhubSlug?: string; clearbitDomains?: string[]; localPath?: string },
 ): string[] {
   const slug = opts?.finnhubSlug?.trim() || symbol
   const finnhub = finnhubLogoUrls(slug)
   const clearbit = clearbitLogoUrls(opts?.clearbitDomains ?? [])
   const out: string[] = []
+  if (opts?.localPath) out.push(opts.localPath)
   for (const u of [...finnhub, ...clearbit]) {
     if (!out.includes(u)) out.push(u)
   }

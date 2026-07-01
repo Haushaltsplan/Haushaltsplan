@@ -17,6 +17,7 @@ import {
   speichereFitnessSnapshot,
 } from '@/lib/fitnessdaten/history-storage'
 import { ergaenzeSchlafDetails } from '@/lib/fitnessdaten/sleep-detail'
+import { loadAusStrain } from '@/lib/fitnessdaten/strain-engine'
 import type { FitnessHistoryState, FitnessSnapshot } from '@/lib/fitnessdaten/types'
 import { ladeFitnessProfil, speichereFitnessProfil, type FitnessUserProfile } from '@/lib/fitnessdaten/user-profile'
 import { ladeSyncState, speichereSyncState, type SyncState } from '@/lib/fitnessdaten/offline-sync'
@@ -396,6 +397,9 @@ function historyAusImport(days: WhoopDayRecord[]): FitnessHistoryState {
   if (heute?.strain != null) {
     history.dayStrain = heute.strain
     history.dayStrainDate = heute.date
+    history.strainScore = heute.strain
+    history.strainLoad = loadAusStrain(heute.strain)
+    history.lastStrainTick = Date.now()
   }
   if (heute?.calories != null) history.caloriesToday = heute.calories
   return history

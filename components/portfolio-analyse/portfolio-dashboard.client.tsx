@@ -7,7 +7,8 @@ import { PortfolioIsinLogo } from '@/components/portfolio-analyse/isin-logo'
 import { usePortfolioAnalyse } from '@/components/portfolio-analyse/pa-data-provider'
 import { PaPortfolioHero } from '@/components/portfolio-analyse/pa-portfolio-hero'
 import { PaWertpapiereListe } from '@/components/portfolio-analyse/pa-wertpapiere-liste'
-import { PaBadge, PaCard, PaStatRow } from '@/components/portfolio-analyse/pa-ui'
+import { PaRenditePanel } from '@/components/portfolio-analyse/pa-rendite-panel'
+import { PaBadge, PaCard } from '@/components/portfolio-analyse/pa-ui'
 import {
   formatDatumDe,
   formatEur,
@@ -19,6 +20,7 @@ import { fundamentaldatenHref } from '@/lib/portfolio-analyse/fundamentaldaten-n
 import { depotwertVorBoersenbeginn, ladeHistorischeKurseClient } from '@/lib/portfolio-analyse/live-bewertung'
 import { isinKenntnis } from '@/lib/portfolio-analyse/isin-kenntnisse'
 import { berechneParqetPeriodKennzahlen } from '@/lib/portfolio-analyse/parqet-period-kennzahlen'
+import { berechneParqetRenditeKennzahlen } from '@/lib/portfolio-analyse/parqet-rendite-kennzahlen'
 import {
   bauePositionPerfMap,
   berechnePositionPerfFuerPeriode,
@@ -60,6 +62,11 @@ export function PortfolioDashboardClient() {
     if (buchungen.length === 0) return null
     return [...buchungen].sort((a, b) => a.datum.localeCompare(b.datum))[0]?.datum ?? null
   }, [buchungen])
+
+  const renditeKennzahlen = useMemo(() => {
+    if (!k || buchungen.length === 0) return null
+    return berechneParqetRenditeKennzahlen(buchungen, k.depotwertEur, wertFuerPeriode, startDatumIso)
+  }, [buchungen, k, wertFuerPeriode, startDatumIso])
 
   const periodKennzahlen = useMemo(() => {
     if (!k || buchungen.length === 0) {
@@ -151,10 +158,7 @@ export function PortfolioDashboardClient() {
   }
 
   const m = report?.metrics
-  const irr = report?.performance.irrAnnualizedPercent
-
-  const gewinn = k?.gewinnVerlustEur
-  const gewinnPct = k?.gewinnVerlustProzent
+  const irr = renditeKennzahlen?.izfProzent ?? report?.performance.irrAnnualizedPercent
 
   return (
     <div className="space-y-5 sm:space-y-8">
@@ -163,7 +167,7 @@ export function PortfolioDashboardClient() {
           positionen={positionen}
           kennzahlen={{
             depotwertEur: k.depotwertEur,
-            investiertEur: k.investiertEur,
+            investiertEur: renditeKennzahlen?.investiertEur ?? k.investiertEur,
             gewinnVerlustProzent: k.gewinnVerlustProzent,
           }}
           metrics={m}
@@ -174,40 +178,18 @@ export function PortfolioDashboardClient() {
       ) : null}
 
       <div className="grid gap-6 lg:grid-cols-3">
-        <PaCard variant="elevated" className="p-5">
-          <h2 className="text-sm font-semibold tracking-tight text-[var(--app-text)]">Kennzahlen</h2>
-          {startDatum ? (
-            <p className="mt-0.5 text-[11px] text-[var(--app-text-muted)]">seit {startDatum} · in EUR</p>
-          ) : null}
-          <div className="mt-4 divide-y divide-white/[0.04]">
-            <PaStatRow label="Einstand (offen)" value={k ? formatEur(k.einstandOffenEur) : '—'} />
-            <PaStatRow label="Netto eingezahlt" value={k ? formatEur(k.investiertEur) : '—'} />
-            <PaStatRow
-              label="Gewinn / Verlust"
-              value={gewinn != null ? formatEur(gewinn) : '—'}
-              badge={
-                gewinnPct != null ? (
-                  <PaBadge variant={gewinnPct >= 0 ? 'positive' : 'negative'}>
-                    {formatProzent(gewinnPct)}
-                  </PaBadge>
-                ) : undefined
-              }
-            />
-            <PaStatRow
-              label="Dividenden (brutto)"
-              value={m ? formatEur(m.totalDividendsGrossEUR) : k ? formatEur(k.dividendenEur) : '—'}
-            />
-            <PaStatRow
-              label="Dividenden (netto)"
-              value={m ? formatEur(m.totalDividendsNetEUR) : '—'}
-            />
-            <PaStatRow label="Steuern (gesamt)" value={m ? formatEur(m.totalTaxesEUR) : '—'} />
-            <PaStatRow label="Gebühren" value={m ? formatEur(m.totalFeesEUR) : '—'} />
+        {renditeKennzahlen ? (
+          <div>
+            <PaRenditePanel kennzahlen={renditeKennzahlen} startDatum={startDatum} />
+            {kursFehler ? (
+              <p className="mt-2 text-[11px] text-amber-500/90">Live-Kurse teilweise nicht verfügbar.</p>
+            ) : null}
           </div>
-          {kursFehler ? (
-            <p className="mt-3 text-[11px] text-amber-500/90">Live-Kurse teilweise nicht verfügbar.</p>
-          ) : null}
-        </PaCard>
+        ) : (
+          <PaCard variant="elevated" className="p-5">
+            <p className="text-sm text-[var(--app-text-muted)]">Rendite wird berechnet …</p>
+          </PaCard>
+        )}
 
         <PaCard variant="elevated" className="flex flex-col">
           <div className="flex items-center justify-between border-b border-white/[0.04] px-5 py-3">

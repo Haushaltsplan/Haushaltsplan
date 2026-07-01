@@ -41,12 +41,13 @@ export function GewichtungAssetLogo({
   const dim = groesse === 'sm' ? 'h-7 w-7' : 'h-9 w-9'
   const imgClass = className ?? `${dim} shrink-0 rounded-lg border border-[var(--app-border)] bg-[var(--app-surface-muted)] p-0.5 object-contain`
 
-  if (sym || logo.finnhubSlug || (logo.clearbitDomains?.length ?? 0) > 0) {
+  if (sym || logo.localPath || logo.finnhubSlug || (logo.clearbitDomains?.length ?? 0) > 0) {
     return (
       <StockLogo
         symbol={sym || logo.finnhubSlug || label}
         finnhubSlug={logo.finnhubSlug}
         clearbitDomains={logo.clearbitDomains}
+        localPath={logo.localPath}
         className={imgClass}
       />
     )
@@ -83,12 +84,13 @@ export function PortfolioIsinLogo({
   const dim = groesse === 'sm' ? 'h-7 w-7' : 'h-9 w-9'
   const imgClass = `${dim} shrink-0 rounded-lg border border-[var(--app-border)] bg-[var(--app-surface-muted)] p-0.5 object-contain`
 
-  if (symbol || logo.finnhubSlug || (logo.clearbitDomains?.length ?? 0) > 0) {
+  if (symbol || logo.localPath || logo.finnhubSlug || (logo.clearbitDomains?.length ?? 0) > 0) {
     return (
       <StockLogo
         symbol={symbol ?? logo.finnhubSlug ?? name}
         finnhubSlug={logo.finnhubSlug}
         clearbitDomains={logo.clearbitDomains}
+        localPath={logo.localPath}
         className={className ?? imgClass}
       />
     )

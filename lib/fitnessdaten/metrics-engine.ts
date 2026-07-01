@@ -8,16 +8,17 @@ import {
   aktivitaetenFuerDatum,
   aktivitaetenLetzteTage,
   baseline30,
-  createEmptyDayRecord,
+  ergaenzeZonenUndVitals,
+  fenster7TageUmDatum,
   journalFuerDatum,
-  letzte7Tage,
   ladeDailyStore,
   schlafdefizit7Tage,
+  tagRecordFuerDatum,
   type WhoopActivity,
   type WhoopDayRecord,
   type WhoopJournalEntry,
 } from '@/lib/fitnessdaten/daily-records'
-import { ladeFitnessHistory } from '@/lib/fitnessdaten/history-storage'
+import { ladeFitnessHistory, aktualisiereStrainFuerAnzeige } from '@/lib/fitnessdaten/history-storage'
 import { heuteIsoLocal, zoneFuerBpm } from '@/lib/fitnessdaten/scores'
 import { profilMaxHr, ladeFitnessProfil } from '@/lib/fitnessdaten/user-profile'
 import type { FitnessSnapshot } from '@/lib/fitnessdaten/types'
@@ -33,6 +34,9 @@ export type MetricMitBaseline = {
 }
 
 export type WhoopDashboardModel = {
+  /** Gewählter Tag (ISO); Daten in `heute` beziehen sich auf diesen Tag. */
+  selectedDate: string
+  istHeute: boolean
   heute: WhoopDayRecord
   woche: WhoopDayRecord[]
   baselines: {
@@ -84,10 +88,20 @@ function wochentagKurz(iso: string): string {
   return d.toLocaleDateString('de-DE', { weekday: 'short', day: 'numeric' })
 }
 
-export function baueWhoopDashboard(snapshot: FitnessSnapshot | null): WhoopDashboardModel {
+export function baueWhoopDashboard(
+  snapshot: FitnessSnapshot | null,
+  selectedDate: string = heuteIsoLocal(),
+): WhoopDashboardModel {
+  const istHeute = selectedDate === heuteIsoLocal()
+  if (snapshot && istHeute) aktualisiereStrainFuerAnzeige()
   const history = ladeFitnessHistory()
-  const heuteRecord = snapshot ? aktualisiereHeuteAusSnapshot(snapshot, history) : letzte7Tage().slice(-1)[0] ?? leereHeute()
-  const woche = letzte7Tage()
+  const store = ladeDailyStore()
+
+  const tagRecord = istHeute && snapshot
+    ? aktualisiereHeuteAusSnapshot(snapshot, history)
+    : ergaenzeZonenUndVitals(tagRecordFuerDatum(selectedDate, store), history, store)
+
+  const woche = fenster7TageUmDatum(selectedDate)
   const baselines = {
     hrv: baseline30('hrvRmssd', ladeDailyStore().days),
     rhr: baseline30('restingHr', ladeDailyStore().days),
@@ -97,22 +111,26 @@ export function baueWhoopDashboard(snapshot: FitnessSnapshot | null): WhoopDashb
     respiratory: baseline30('respiratoryRate', ladeDailyStore().days),
   }
 
-  const store = ladeDailyStore()
-  const heuteIso = heuteRecord.date
-  const cloudActs = aktivitaetenFuerDatum(heuteIso, store)
-  const detected = erkenneAktivitaeten(
-    history.hrSeries,
-    heuteRecord.restingHr ?? history.baselines.restingHrBpm,
-  )
+  const tagIso = tagRecord.date
+  const cloudActs = aktivitaetenFuerDatum(tagIso, store)
+  const detected =
+    istHeute
+      ? erkenneAktivitaeten(
+          history.hrSeries,
+          tagRecord.restingHr ?? history.baselines.restingHrBpm,
+        )
+      : []
   const aktivitaeten =
     cloudActs.length > 0
       ? cloudActs
       : detected.length > 0
         ? detected
-        : store.activitiesToday
-  const journal = journalFuerDatum(heuteIso, store)
+        : istHeute
+          ? store.activitiesToday
+          : []
+  const journal = journalFuerDatum(tagIso, store)
 
-  const hrvHeute = heuteRecord.hrvRmssd
+  const hrvHeute = tagRecord.hrvRmssd
   const hrvBase = baselines.hrv ?? history.baselines.hrvRmssdMs
   let insightRecovery: string | null = null
   if (hrvHeute != null && hrvBase != null && hrvBase > 0) {
@@ -124,7 +142,7 @@ export function baueWhoopDashboard(snapshot: FitnessSnapshot | null): WhoopDashb
     }
   }
 
-  const strain = heuteRecord.strain
+  const strain = tagRecord.strain
   let insightStrain: string | null = null
   if (strain != null && strain > 14) {
     insightStrain =
@@ -138,9 +156,9 @@ export function baueWhoopDashboard(snapshot: FitnessSnapshot | null): WhoopDashb
     label: wochentagKurz(s.date),
   }))
 
-  const liveHr = snapshot?.live?.heartRateBpm ?? null
-  const rhrLive = heuteRecord.restingHr ?? history.baselines.restingHrBpm
-  const maxHrLive = heuteRecord.maxHr ?? profilMaxHr(ladeFitnessProfil())
+  const liveHr = istHeute ? (snapshot?.live?.heartRateBpm ?? null) : null
+  const rhrLive = tagRecord.restingHr ?? history.baselines.restingHrBpm
+  const maxHrLive = tagRecord.maxHr ?? profilMaxHr(ladeFitnessProfil())
   const zoneKey =
     liveHr != null && liveHr > 0 ? zoneFuerBpm(liveHr, maxHrLive, rhrLive) : 'rest'
   const hrZone =
@@ -149,22 +167,24 @@ export function baueWhoopDashboard(snapshot: FitnessSnapshot | null): WhoopDashb
   const aktivitaetenHistorie = aktivitaetenLetzteTage(21, store)
 
   const coachSchlaf =
-    heuteRecord.sleepScore != null && heuteRecord.sleepScore < 60
-      ? 'Dein Schlaf wurde heute Nacht eher durch zu wenig Zeit im Bett begrenzt — nicht durch schlechte Qualität im Bett.'
-      : heuteRecord.sleepEfficiency != null && heuteRecord.sleepEfficiency >= 85
-        ? 'Dein Schlaf wurde heute Nacht nicht von der Qualität im Bett gebremst — Effizienz sieht solide aus.'
+    tagRecord.sleepScore != null && tagRecord.sleepScore < 60
+      ? 'Dein Schlaf wurde in dieser Nacht eher durch zu wenig Zeit im Bett begrenzt — nicht durch schlechte Qualität im Bett.'
+      : tagRecord.sleepEfficiency != null && tagRecord.sleepEfficiency >= 85
+        ? 'Dein Schlaf wurde in dieser Nacht nicht von der Qualität im Bett gebremst — Effizienz sieht solide aus.'
         : null
 
   return {
-    heute: heuteRecord,
+    selectedDate,
+    istHeute,
+    heute: tagRecord,
     woche,
     baselines,
     metriken: {
       hrv: metric(hrvHeute, hrvBase),
-      rhr: metric(heuteRecord.restingHr, baselines.rhr, true),
-      respiratory: metric(heuteRecord.respiratoryRate, baselines.respiratory, true),
-      sleepPerformance: metric(heuteRecord.sleepScore, baselines.sleep),
-      recovery: metric(heuteRecord.recoveryPercent, baselines.recovery),
+      rhr: metric(tagRecord.restingHr, baselines.rhr, true),
+      respiratory: metric(tagRecord.respiratoryRate, baselines.respiratory, true),
+      sleepPerformance: metric(tagRecord.sleepScore, baselines.sleep),
+      recovery: metric(tagRecord.recoveryPercent, baselines.recovery),
     },
     schlafdefizit,
     journal,
@@ -173,8 +193,8 @@ export function baueWhoopDashboard(snapshot: FitnessSnapshot | null): WhoopDashb
     insightRecovery,
     insightStrain,
     insightSchlaf:
-      heuteRecord.sleepScore != null && heuteRecord.sleepScore < 50
-        ? 'Schlaf heute unter dem üblichen Niveau — früh ins Bett kann morgen die Recovery verbessern.'
+      tagRecord.sleepScore != null && tagRecord.sleepScore < 50
+        ? 'Schlaf an diesem Tag unter dem üblichen Niveau — früh ins Bett kann die Recovery verbessern.'
         : null,
     liveHr,
     hrZone,
@@ -182,10 +202,6 @@ export function baueWhoopDashboard(snapshot: FitnessSnapshot | null): WhoopDashb
     gen5Phase: snapshot?.gen5?.phase ?? null,
     sync: ladeSyncState(),
     coachSchlaf,
-    healthspan: baueHealthspanModel(heuteRecord),
+    healthspan: baueHealthspanModel(tagRecord),
   }
-}
-
-function leereHeute(): WhoopDayRecord {
-  return createEmptyDayRecord(heuteIsoLocal())
 }

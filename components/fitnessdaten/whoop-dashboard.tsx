@@ -34,7 +34,15 @@ import {
   recoveryLabelDe,
   WhoopRing,
 } from '@/components/fitnessdaten/whoop-ring'
+import { WhoopBottomNav, type WhoopTab } from '@/components/fitnessdaten/whoop-bottom-nav'
 import { WhoopActivityModal } from '@/components/fitnessdaten/whoop-activity-modal'
+import { WhoopLogbuchPanel } from '@/components/fitnessdaten/whoop-logbuch-panel'
+import { WhoopStressMonitorModal } from '@/components/fitnessdaten/whoop-stress-monitor-modal'
+import {
+  berechneStressScore,
+  stressColor,
+  stressLabel,
+} from '@/lib/fitnessdaten/stress-engine'
 import { WhoopMetricTrendModal } from '@/components/fitnessdaten/whoop-metric-trend-modal'
 import { getMetricInfo, type MetricInfo, type MetricInfoId } from '@/lib/fitnessdaten/metric-explanations'
 import { baueWhoopDashboard } from '@/lib/fitnessdaten/metrics-engine'
@@ -46,11 +54,19 @@ import {
   type HomeMetricId,
 } from '@/lib/fitnessdaten/trend-data'
 import type { WhoopActivity } from '@/lib/fitnessdaten/daily-records'
-import { baseline30, ladeDailyStore } from '@/lib/fitnessdaten/daily-records'
+import {
+  baseline30,
+  isoAddDays,
+  kannTagVor,
+  kannTagZurueck,
+  labelTagNavigation,
+  ladeDailyStore,
+} from '@/lib/fitnessdaten/daily-records'
+import { heuteIsoLocal } from '@/lib/fitnessdaten/scores'
 import { zoneSegmenteAusTag } from '@/lib/fitnessdaten/healthspan-engine'
 import { formatStundenMin } from '@/lib/fitnessdaten/sleep-detail'
 import type { WhoopDayRecord } from '@/lib/fitnessdaten/daily-records'
-import { formatZoneAnteil } from '@/lib/fitnessdaten/history-storage'
+import { formatZoneAnteil, aktualisiereStrainFuerAnzeige } from '@/lib/fitnessdaten/history-storage'
 import type { FitnessSnapshot } from '@/lib/fitnessdaten/types'
 import { HR_ZONE_COLORS, HR_ZONE_LABELS } from '@/lib/fitnessdaten/types'
 import type { WhoopWebBlePhase } from '@/lib/fitnessdaten/web-bluetooth-whoop'
@@ -62,7 +78,7 @@ import { syncWhoopCloudVomServer, WHOOP_CLOUD_SYNC_EVENT } from '@/lib/fitnessda
 import { migriereStalenVo2AusDaily, vo2MaxQuelle } from '@/lib/fitnessdaten/vo2max-engine'
 import { migriereStalenSchritteAusDaily } from '@/lib/fitnessdaten/steps-engine'
 
-type Tab = 'home' | 'sleep' | 'recovery' | 'strain' | 'health' | 'connect'
+type Tab = WhoopTab
 
 type Props = {
   snapshot: FitnessSnapshot | null
@@ -72,14 +88,6 @@ type Props = {
   initialTab?: Tab
 }
 
-function formatDatum() {
-  return new Date().toLocaleDateString('de-DE', {
-    weekday: 'long',
-    day: 'numeric',
-    month: 'long',
-  })
-}
-
 function tagLabel(iso: string): string {
   return new Date(iso + 'T12:00:00').toLocaleDateString('de-DE', {
     weekday: 'short',
@@ -87,11 +95,15 @@ function tagLabel(iso: string): string {
   })
 }
 
-function wochePunkte(woche: WhoopDayRecord[], field: keyof WhoopDayRecord): { label: string; value: number; highlight?: boolean }[] {
-  return woche.map((d, i) => ({
+function wochePunkte(
+  woche: WhoopDayRecord[],
+  field: keyof WhoopDayRecord,
+  highlightDate: string,
+): { label: string; value: number; highlight?: boolean }[] {
+  return woche.map((d) => ({
     label: tagLabel(d.date),
     value: typeof d[field] === 'number' ? (d[field] as number) : 0,
-    highlight: i === woche.length - 1,
+    highlight: d.date === highlightDate,
   }))
 }
 
@@ -123,6 +135,8 @@ function schlafstressSegmente(d: WhoopDayRecord) {
 
 export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange, initialTab }: Props) {
   const { verbinden, bleOk } = useWhoopBle()
+  const [stressModalOpen, setStressModalOpen] = useState(false)
+  const [selectedDate, setSelectedDate] = useState(() => heuteIsoLocal())
   const [tab, setTab] = useState<Tab>(initialTab ?? 'home')
   const [info, setInfo] = useState<MetricInfo | null>(null)
   const [expandedHealthMetric, setExpandedHealthMetric] = useState<string | null>(null)
@@ -135,7 +149,10 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange, ini
   const live = snapshot?.live
   const scores = snapshot?.scores
   const deviceInfo = snapshot?.deviceInfo
-  const model = useMemo(() => baueWhoopDashboard(snapshot), [snapshot, dataRevision])
+  const model = useMemo(
+    () => baueWhoopDashboard(snapshot, selectedDate),
+    [snapshot, dataRevision, selectedDate],
+  )
 
   useEffect(() => {
     if (initialTab) setTab(initialTab)
@@ -147,7 +164,13 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange, ini
     migriereStalenSchritteAusDaily()
     const onSync = () => setDataRevision((r) => r + 1)
     window.addEventListener(WHOOP_CLOUD_SYNC_EVENT, onSync)
-    return () => window.removeEventListener(WHOOP_CLOUD_SYNC_EVENT, onSync)
+    const strainTick = window.setInterval(() => {
+      if (aktualisiereStrainFuerAnzeige()) setDataRevision((r) => r + 1)
+    }, 60_000)
+    return () => {
+      window.removeEventListener(WHOOP_CLOUD_SYNC_EVENT, onSync)
+      window.clearInterval(strainTick)
+    }
   }, [])
 
   const isLive = phase === 'live'
@@ -199,32 +222,37 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange, ini
           : 'Verbinde'
         : 'Offline'
 
-  const zoneAnteil = scores?.zoneMinutes ? formatZoneAnteil(scores.zoneMinutes) : []
-  const { heute, woche, metriken, aktivitaeten, aktivitaetenHistorie, journal, schlafdefizit, baselines } = model
+  const { heute, woche, metriken, aktivitaeten, aktivitaetenHistorie, journal, schlafdefizit, baselines, istHeute, selectedDate: tagIso } = model
 
-  const tabs: { id: Tab; label: string; icon: string; color: string }[] = [
-    { id: 'home', label: 'Home', icon: '◉', color: '#ffffff' },
-    { id: 'sleep', label: 'Schlaf', icon: '☾', color: '#00E5FF' },
-    { id: 'recovery', label: 'Erholung', icon: '◐', color: '#00E676' },
-    { id: 'strain', label: 'Belastung', icon: '◎', color: '#009dff' },
-    { id: 'health', label: 'Gesundheit', icon: '♡', color: '#a78bfa' },
-    { id: 'connect', label: 'Gerät', icon: '⬡', color: '#64748b' },
-  ]
+  const zoneMin = istHeute && scores?.zoneMinutes ? scores.zoneMinutes : heute.zoneMinutes
+  const zoneAnteil = zoneMin ? formatZoneAnteil(zoneMin) : []
 
-  const zone13Points = woche.map((d, i) => {
+  const tagZurueck = useCallback(() => {
+    setSelectedDate((d) => (kannTagZurueck(d) ? isoAddDays(d, -1) : d))
+  }, [])
+
+  const tagVor = useCallback(() => {
+    setSelectedDate((d) => (kannTagVor(d) ? isoAddDays(d, 1) : d))
+  }, [])
+
+  const springeZuHeute = useCallback(() => {
+    setSelectedDate(heuteIsoLocal())
+  }, [])
+
+  const zone13Points = woche.map((d) => {
     const seg = zoneSegmenteAusTag(d)
     return {
       label: tagLabel(d.date),
-      highlight: i === woche.length - 1,
+      highlight: d.date === tagIso,
       segments: seg.z13,
     }
   })
 
-  const zone45Points = woche.map((d, i) => {
+  const zone45Points = woche.map((d) => {
     const seg = zoneSegmenteAusTag(d)
     return {
       label: tagLabel(d.date),
-      highlight: i === woche.length - 1,
+      highlight: d.date === tagIso,
       segments: seg.z45,
     }
   })
@@ -260,12 +288,32 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange, ini
           </button>
 
           {/* Datum-Navigation */}
-          <div className="flex items-center gap-1">
-            <span className="text-[11px] text-[var(--app-text-muted)]">‹</span>
-            <span className="rounded-full border border-white/[0.10] bg-white/[0.04] px-3 py-1 text-[11px] font-bold uppercase tracking-wider text-white">
-              Heute
-            </span>
-            <span className="text-[11px] text-[var(--app-text-muted)]">›</span>
+          <div className="flex items-center gap-0.5">
+            <button
+              type="button"
+              onClick={tagZurueck}
+              disabled={!kannTagZurueck(tagIso)}
+              aria-label="Vorheriger Tag"
+              className="flex h-8 w-8 items-center justify-center rounded-full text-[15px] text-[var(--app-text-muted)] transition hover:bg-white/[0.06] hover:text-white disabled:cursor-default disabled:opacity-25"
+            >
+              ‹
+            </button>
+            <button
+              type="button"
+              onClick={springeZuHeute}
+              className="min-w-[5.5rem] rounded-full border border-white/[0.10] bg-white/[0.04] px-3 py-1 text-[11px] font-bold uppercase tracking-wider text-white transition hover:bg-white/[0.08]"
+            >
+              {labelTagNavigation(tagIso)}
+            </button>
+            <button
+              type="button"
+              onClick={tagVor}
+              disabled={!kannTagVor(tagIso)}
+              aria-label="Nächster Tag"
+              className="flex h-8 w-8 items-center justify-center rounded-full text-[15px] text-[var(--app-text-muted)] transition hover:bg-white/[0.06] hover:text-white disabled:cursor-default disabled:opacity-25"
+            >
+              ›
+            </button>
           </div>
 
           {/* Akku + Connect */}
@@ -293,6 +341,12 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange, ini
           </button>
         </header>
 
+        {!istHeute ? (
+          <p className="mt-2 text-center text-[10px] text-[var(--app-text-muted)]">
+            {labelTagNavigation(tagIso)} · historische Daten
+          </p>
+        ) : null}
+
         <WhoopSyncBanner
           status={model.sync.status}
           message={model.sync.message}
@@ -304,9 +358,6 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange, ini
         {tab === 'home' && (() => {
           const stress = berechneStressScore(heute.recoveryPercent, heute.hrvRmssd, baselines.hrv)
           const vitals = vitalsStatus(heute)
-          const tageIso = letzte7TageIso()
-          const store = ladeDailyStore()
-          const journalDates = new Set(store.journal.map((j) => j.date))
           const vo2Quelle = vo2MaxQuelle() // 'cloud' | 'manuell' | 'berechnet' | null
 
           return (
@@ -439,7 +490,7 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange, ini
                   {/* Stress-Monitor */}
                   <button
                     type="button"
-                    onClick={() => showInfo('hrv')}
+                    onClick={() => setStressModalOpen(true)}
                     className="rounded-2xl border border-white/[0.06] bg-[#111113] p-3.5 text-left transition active:scale-[0.97]"
                   >
                     <p className="text-[9px] font-bold uppercase tracking-[0.16em] text-[var(--app-text-muted)]">Stress-Monitor</p>
@@ -455,7 +506,7 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange, ini
                 </div>
 
                 {/* ── LIVE HR (kompakt) ── */}
-                {(model.liveHr != null || (snapshot?.hrHistory ?? []).length > 0) && (
+                {istHeute && (model.liveHr != null || (snapshot?.hrHistory ?? []).length > 0) && (
                   <div className="rounded-2xl border border-white/[0.06] bg-[#111113] p-4">
                     <div className="flex items-baseline gap-3">
                       <span className="text-3xl font-bold tabular-nums text-white">{model.liveHr ?? '—'}</span>
@@ -589,7 +640,7 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange, ini
                 </div>
 
                 {/* ── SCHLAF HEUTE NACHT ── */}
-                {(heute.sleepNeedMinutes != null || heute.wakeTimeMs != null) && (
+                {istHeute && (heute.sleepNeedMinutes != null || heute.wakeTimeMs != null) && (
                   <div className="rounded-2xl border border-white/[0.06] bg-[#111113] p-4">
                     <div className="flex items-center justify-between">
                       <p className="text-[9px] font-bold uppercase tracking-[0.16em] text-[var(--app-text-muted)]">Schlaf für heute Nacht</p>
@@ -617,42 +668,11 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange, ini
                   </div>
                 )}
 
-                {/* ── MEIN LOGBUCH ── */}
-                <div className="rounded-2xl border border-white/[0.06] bg-[#111113] p-4">
-                  <div className="flex items-center justify-between">
-                    <p className="text-[9px] font-bold uppercase tracking-[0.16em] text-[var(--app-text-muted)]">Mein Logbuch</p>
-                    <span className="text-[var(--app-text-muted)]">›</span>
-                  </div>
-                  <div className="mt-3 flex justify-between">
-                    {tageIso.map((iso) => {
-                      const hatEintrag = journalDates.has(iso)
-                      const istHeute = iso === tageIso[tageIso.length - 1]
-                      return (
-                        <div key={iso} className="flex flex-col items-center gap-1.5">
-                          <span className="text-[9px] font-bold text-[var(--app-text-muted)]">
-                            {wochentagKurzDe(iso)}
-                          </span>
-                          <div
-                            className="flex h-7 w-7 items-center justify-center rounded-full border-2 text-sm"
-                            style={{
-                              borderColor: hatEintrag ? '#00E676' : istHeute ? '#ffffff30' : '#27272a',
-                              backgroundColor: hatEintrag ? '#00E676' : 'transparent',
-                            }}
-                          >
-                            {hatEintrag && <span className="text-black font-bold text-[11px]">✓</span>}
-                          </div>
-                        </div>
-                      )
-                    })}
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => showInfo('behavior')}
-                    className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl border border-white/[0.08] py-2.5 text-[11px] font-semibold uppercase tracking-wider text-[var(--app-text-muted)] hover:bg-white/[0.03]"
-                  >
-                    ☀ Verhaltenseinblicke
-                  </button>
-                </div>
+                <WhoopLogbuchPanel
+                  selectedDate={tagIso}
+                  onDateChange={setSelectedDate}
+                  onSaved={() => setDataRevision((r) => r + 1)}
+                />
 
                 {/* ── MEIN DASHBOARD (vertikale Liste) ── */}
                 <div>
@@ -778,15 +798,15 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange, ini
               title="Stunden vs. Bedarf (Stunden)"
               labelA="Geschlafene Stunden"
               labelB="Schlafbedarf"
-              seriesA={woche.map((d, i) => ({
+              seriesA={woche.map((d) => ({
                 label: tagLabel(d.date),
                 value: d.sleepMinutes ?? 0,
-                highlight: i === woche.length - 1,
+                highlight: d.date === tagIso,
               }))}
-              seriesB={woche.map((d, i) => ({
+              seriesB={woche.map((d) => ({
                 label: tagLabel(d.date),
                 value: d.sleepNeedMinutes ?? 480,
-                highlight: i === woche.length - 1,
+                highlight: d.date === tagIso,
               }))}
               formatValue={(v) => formatStundenMin(v)}
               onInfo={() => showInfo('sleep_hours')}
@@ -800,7 +820,7 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange, ini
                   d.sleepMinutes != null && d.sleepNeedMinutes
                     ? Math.round((d.sleepMinutes / d.sleepNeedMinutes) * 100)
                     : d.sleepScore ?? 0,
-                highlight: i === woche.length - 1,
+                highlight: d.date === tagIso,
               }))}
               max={100}
               formatValue={(v) => `${v}%`}
@@ -813,14 +833,14 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange, ini
                 label: tagLabel(d.date),
                 remMin: d.remMinutes ?? 0,
                 deepMin: d.deepMinutes ?? 0,
-                highlight: i === woche.length - 1,
+                highlight: d.date === tagIso,
               }))}
               onInfo={() => showInfo('restorative_sleep')}
             />
 
             <WhoopWeeklyBarChart
               title="Schlafregelmäßigkeit"
-              points={wochePunkte(woche, 'sleepConsistency')}
+              points={wochePunkte(woche, 'sleepConsistency', tagIso)}
               max={100}
               formatValue={(v) => `${v}%`}
               onInfo={() => showInfo('sleep_consistency')}
@@ -832,14 +852,14 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange, ini
                 label: tagLabel(d.date),
                 bedMs: d.bedTimeMs,
                 wakeMs: d.wakeTimeMs,
-                highlight: i === woche.length - 1,
+                highlight: d.date === tagIso,
               }))}
               onInfo={() => showInfo('time_in_bed')}
             />
 
             <WhoopWeeklyLineChart
               title="Schlafeffizienz"
-              points={wochePunkte(woche, 'sleepEfficiency')}
+              points={wochePunkte(woche, 'sleepEfficiency', tagIso)}
               onInfo={() => showInfo('sleep_efficiency')}
             />
 
@@ -848,7 +868,7 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange, ini
               points={schlafdefizit.map((s, i) => ({
                 label: s.label,
                 value: s.defizitMin,
-                highlight: i === schlafdefizit.length - 1,
+                highlight: s.date === tagIso,
               }))}
               formatValue={(v) => formatMinuten(v)}
               color="#5eb3d6"
@@ -864,7 +884,7 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange, ini
               ]}
               points={woche.map((d, i) => ({
                 label: tagLabel(d.date),
-                highlight: i === woche.length - 1,
+                highlight: d.date === tagIso,
                 segments: schlafstressSegmente(d),
               }))}
               onInfo={() => showInfo('sleep_stress')}
@@ -872,7 +892,7 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange, ini
 
             <WhoopWeeklyBarChart
               title="Schlafleistung"
-              points={wochePunkte(woche, 'sleepScore')}
+              points={wochePunkte(woche, 'sleepScore', tagIso)}
               max={100}
               formatValue={(v) => `${v}%`}
               color="#00E5FF"
@@ -907,24 +927,24 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange, ini
 
             <WhoopWeeklyBarChart
               title="Erholung"
-              points={wochePunkte(woche, 'recoveryPercent')}
+              points={wochePunkte(woche, 'recoveryPercent', tagIso)}
               max={100}
               formatValue={(v) => `${v}%`}
               color={recoveryColor(heute.recoveryPercent ?? 50)}
               onInfo={() => showInfo('recovery')}
             />
 
-            <WhoopWeeklyLineChart title="Herzfrequenzvariabilität" points={wochePunkte(woche, 'hrvRmssd')} onInfo={() => showInfo('hrv')} />
-            <WhoopWeeklyLineChart title="Ruheherzfrequenz" points={wochePunkte(woche, 'restingHr')} color="#a78bfa" onInfo={() => showInfo('rhr')} />
+            <WhoopWeeklyLineChart title="Herzfrequenzvariabilität" points={wochePunkte(woche, 'hrvRmssd', tagIso)} onInfo={() => showInfo('hrv')} />
+            <WhoopWeeklyLineChart title="Ruheherzfrequenz" points={wochePunkte(woche, 'restingHr', tagIso)} color="#a78bfa" onInfo={() => showInfo('rhr')} />
             <WhoopWeeklyLineChart
               title="Atemfrequenz"
-              points={wochePunkte(woche, 'respiratoryRate')}
+              points={wochePunkte(woche, 'respiratoryRate', tagIso)}
               color="#5eb3d6"
               onInfo={() => showInfo('respiratory')}
             />
             <WhoopWeeklyBarChart
               title="Schlafleistung"
-              points={wochePunkte(woche, 'sleepScore')}
+              points={wochePunkte(woche, 'sleepScore', tagIso)}
               max={100}
               formatValue={(v) => `${v}%`}
               color="#00E5FF"
@@ -1002,7 +1022,9 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange, ini
 
             {aktivitaeten.length > 0 ? (
               <div className="rounded-2xl border border-white/[0.06] bg-[#111113] p-4">
-                <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-[var(--app-text)]">Aktivitäten heute</p>
+                <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-[var(--app-text)]">
+                  {istHeute ? 'Aktivitäten heute' : `Aktivitäten · ${labelTagNavigation(tagIso)}`}
+                </p>
                 <ul className="mt-3 space-y-2">
                   {aktivitaeten.map((a) => (
                     <li key={a.id}>
@@ -1062,7 +1084,7 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange, ini
 
             <WhoopWeeklyBarChart
               title="Belastung"
-              points={wochePunkte(woche, 'strain')}
+              points={wochePunkte(woche, 'strain', tagIso)}
               max={21}
               formatValue={(v) => v.toFixed(1)}
               onInfo={() => showInfo('strain')}
@@ -1071,26 +1093,28 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange, ini
             <WhoopStackedZoneChart title="HF-Zonen 4–5" zones={WHOOP_ZONE_45} points={zone45Points} onInfo={() => showInfo('zones_45')} />
             <WhoopWeeklyBarChart
               title="Schritte"
-              points={wochePunkte(woche, 'steps')}
+              points={wochePunkte(woche, 'steps', tagIso)}
               formatValue={(v) => v.toLocaleString('de-DE')}
               onInfo={() => showInfo('steps')}
             />
             <WhoopWeeklyBarChart
               title="Kalorien"
-              points={wochePunkte(woche, 'calories')}
+              points={wochePunkte(woche, 'calories', tagIso)}
               formatValue={(v) => v.toLocaleString('de-DE')}
               onInfo={() => showInfo('calories')}
             />
             <WhoopWeeklyBarChart
               title="Kraftaktivitätszeit"
-              points={wochePunkte(woche, 'strengthMin')}
+              points={wochePunkte(woche, 'strengthMin', tagIso)}
               formatValue={(v) => formatMinuten(v)}
               onInfo={() => showInfo('strength')}
             />
 
             {zoneAnteil.length > 0 ? (
               <div className="rounded-2xl border border-white/[0.06] bg-[#111113] p-4">
-                <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--app-text-muted)]">Zonen heute</p>
+                <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--app-text-muted)]">
+                  {istHeute ? 'Zonen heute' : `Zonen · ${labelTagNavigation(tagIso)}`}
+                </p>
                 <ul className="mt-3 space-y-2">
                   {zoneAnteil.map(({ key, pct }) => (
                     <li key={key}>
@@ -1117,10 +1141,10 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange, ini
             <WhoopGesundheitsmonitorPanel
               heute={heute}
               journal={journal}
-              liveHr={model.liveHr}
-              hrZone={model.hrZone}
-              hrHistory={snapshot?.hrHistory ?? []}
-              isLive={isLive}
+              liveHr={istHeute ? model.liveHr : null}
+              hrZone={istHeute ? model.hrZone : 0}
+              hrHistory={istHeute ? (snapshot?.hrHistory ?? []) : []}
+              isLive={istHeute && isLive}
               onBpTap={() => setTab('connect')}
               onInfo={() => showInfo('health_monitor')}
             />
@@ -1247,33 +1271,20 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange, ini
         )}
       </div>
 
-      <nav className="shrink-0 border-t border-white/[0.06] bg-black/95 px-1 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-1 backdrop-blur-xl">
-        <ul className="flex justify-around">
-          {tabs.map((t) => (
-            <li key={t.id}>
-              <button
-                type="button"
-                onClick={() => setTab(t.id)}
-                className="relative flex flex-col items-center gap-0.5 rounded-xl px-2 py-2 text-[9px] font-semibold transition sm:px-3 sm:text-[10px]"
-                style={{ color: tab === t.id ? t.color : '#52525b' }}
-              >
-                {tab === t.id && (
-                  <span
-                    className="absolute -top-px left-1/2 h-[2px] w-6 -translate-x-1/2 rounded-full"
-                    style={{ backgroundColor: t.color, boxShadow: `0 0 8px 1px ${t.color}80` }}
-                  />
-                )}
-                <span className="text-base leading-none">{t.icon}</span>
-                {t.label}
-              </button>
-            </li>
-          ))}
-        </ul>
-      </nav>
+      <WhoopBottomNav tab={tab} onTabChange={setTab} />
 
       <WhoopInfoModal info={info} onClose={() => setInfo(null)} />
       <WhoopMetricTrendModal metricId={trendMetric} heute={heute} onClose={() => setTrendMetric(null)} />
       <WhoopActivityModal activity={selectedActivity} onClose={() => setSelectedActivity(null)} />
+      <WhoopStressMonitorModal
+        open={stressModalOpen}
+        selectedDate={tagIso}
+        heute={heute}
+        hrvBaseline={baselines.hrv}
+        onClose={() => setStressModalOpen(false)}
+        onDateChange={setSelectedDate}
+        onInfo={(id) => showInfo(id)}
+      />
 
       {model.coachSchlaf && (tab === 'sleep' || tab === 'recovery') ? (
         <WhoopCoachBar
@@ -1302,33 +1313,6 @@ function trendSteps(heute: number | null, base: number | null): 'up' | 'down' | 
   return 'neutral'
 }
 
-function berechneStressScore(rec: number | null, hrvHeute: number | null, hrvBase: number | null): number | null {
-  if (rec != null) {
-    return Math.round(Math.max(0.1, Math.min(3, 3 - (rec / 100) * 2.6)) * 10) / 10
-  }
-  if (hrvHeute != null && hrvBase != null && hrvBase > 0) {
-    const abw = (hrvBase - hrvHeute) / hrvBase
-    return Math.round(Math.max(0.1, Math.min(3, 1.5 + abw * 3)) * 10) / 10
-  }
-  return null
-}
-
-function stressLabel(s: number | null): string {
-  if (s == null) return '—'
-  if (s < 1.0) return 'NIEDRIG'
-  if (s < 2.0) return 'MITTEL'
-  if (s < 2.5) return 'ERHÖHT'
-  return 'HOCH'
-}
-
-function stressColor(s: number | null): string {
-  if (s == null) return '#52525b'
-  if (s < 1.0) return '#00E676'
-  if (s < 2.0) return '#00E5FF'
-  if (s < 2.5) return '#FFD600'
-  return '#FF6B35'
-}
-
 function vitalsStatus(d: WhoopDayRecord): { ok: number; total: number; allOk: boolean } {
   const checks: boolean[] = [
     d.restingHr != null,
@@ -1347,14 +1331,6 @@ function vitalsStatus(d: WhoopDayRecord): { ok: number; total: number; allOk: bo
 function wochentagKurzDe(isoOrDate: string | Date): string {
   const d = typeof isoOrDate === 'string' ? new Date(isoOrDate + 'T12:00:00') : isoOrDate
   return d.toLocaleDateString('de-DE', { weekday: 'short' }).toUpperCase().slice(0, 2)
-}
-
-function letzte7TageIso(): string[] {
-  return Array.from({ length: 7 }, (_, i) => {
-    const d = new Date()
-    d.setDate(d.getDate() - (6 - i))
-    return d.toISOString().slice(0, 10)
-  })
 }
 
 function formatSchlafbedarf(min: number | null): string {

@@ -1,6 +1,7 @@
 /** Tages-Aggregate für WHOOP-ähnliche Trends (7 / 30 Tage). */
 
 import { heuteIsoLocal, istMorgenFenster, mergeTagesStrain } from '@/lib/fitnessdaten/scores'
+import { isoAddDaysKalender, isoAusMs } from '@/lib/fitnessdaten/iso-date'
 import { ergaenzeSchlafDetails } from '@/lib/fitnessdaten/sleep-detail'
 import { speichereZonenImTag } from '@/lib/fitnessdaten/healthspan-engine'
 import { mergeTagesSchritte, schritteHeuteAusDaily } from '@/lib/fitnessdaten/steps-engine'
@@ -12,6 +13,7 @@ import {
   zonenAusZyklus,
 } from '@/lib/fitnessdaten/zone-aggregator'
 import type { FitnessHistoryState, FitnessScores, FitnessSnapshot, HrZoneMinutes } from '@/lib/fitnessdaten/types'
+import type { LogbuchTagRecord } from '@/lib/fitnessdaten/logbuch'
 import { profilAlter, ladeFitnessProfil, profilMaxHr } from '@/lib/fitnessdaten/user-profile'
 
 export const FITNESS_DAILY_STORAGE_KEY = 'mein-haushalt:fitnessdaten-daily'
@@ -52,6 +54,8 @@ export type WhoopDayRecord = {
   recoveryLocked?: boolean
   /** true = Schritte/Kalorien/Vitals aus WHOOP-App-BFF (nicht überschreiben) */
   bffMetrics?: boolean
+  /** true = Strain aus WHOOP Cloud Zyklus-API — lokale BLE-Schätzung nicht überschreiben */
+  strainFromCloud?: boolean
 }
 
 export type WhoopActivity = {
@@ -101,6 +105,8 @@ export type WhoopDailyStore = {
   /** Workouts aus Cloud/CSV */
   activities: WhoopActivity[]
   journal: WhoopJournalEntry[]
+  /** Tägliches Verhaltens-Logbuch (Ja/Nein + Details). */
+  logbuch: LogbuchTagRecord[]
   vitals: VitalLogEntry[]
   skinTempBaseline: number | null
   /** Monatsdurchschnitte aus WHOOP-App-BFF */
@@ -144,7 +150,7 @@ export function createEmptyDayRecord(date: string): WhoopDayRecord {
 }
 
 function defaultStore(): WhoopDailyStore {
-  return { version: 2, days: [], activitiesToday: [], activities: [], journal: [], vitals: [], skinTempBaseline: null }
+  return { version: 2, days: [], activitiesToday: [], activities: [], journal: [], logbuch: [], vitals: [], skinTempBaseline: null }
 }
 
 function normalizeDay(d: WhoopDayRecord): WhoopDayRecord {
@@ -162,6 +168,7 @@ function migrateStore(raw: unknown): WhoopDailyStore {
       activitiesToday: s.activitiesToday ?? [],
       activities: s.activities ?? [],
       journal: s.journal ?? [],
+      logbuch: s.logbuch ?? [],
       vitals: s.vitals ?? [],
       skinTempBaseline: s.skinTempBaseline ?? null,
     }
@@ -173,6 +180,7 @@ function migrateStore(raw: unknown): WhoopDailyStore {
       activitiesToday: (o.activitiesToday as WhoopActivity[]) ?? [],
       activities: [],
       journal: [],
+      logbuch: [],
       vitals: [],
       skinTempBaseline: (o.skinTempBaseline as number | null) ?? null,
     }
@@ -229,19 +237,17 @@ export function vitalFuerDatum(date: string, store = ladeDailyStore()): VitalLog
   return store.vitals.filter((v) => v.date === date)
 }
 
-export function isoAusMs(ms: number): string {
-  const d = new Date(ms)
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-}
-
 function mergeKalorien(
   live: number | null | undefined,
   prev: number | null,
   historyToday: number,
+  bffAutoritativ: boolean,
 ): number | null {
-  const kandidaten = [prev, live, historyToday > 0 ? historyToday : null].filter(
-    (v): v is number => v != null && v > 0,
-  )
+  const kandidaten = [
+    prev,
+    live,
+    !bffAutoritativ && historyToday > 0 ? historyToday : null,
+  ].filter((v): v is number => v != null && v > 0)
   if (kandidaten.length === 0) return prev
   return Math.round(Math.max(...kandidaten))
 }
@@ -253,9 +259,7 @@ export function ergaenzeZonenUndVitals(
 ): WhoopDayRecord {
   const rhr = record.restingHr ?? history.baselines.restingHrBpm
   const maxHr = record.maxHr ?? profilMaxHr(ladeFitnessProfil())
-  const hrPoints = history.hrSeries.filter(
-    (p) => new Date(p.t).toISOString().slice(0, 10) === record.date,
-  )
+  const hrPoints = history.hrSeries.filter((p) => isoAusMs(p.t) === record.date)
   const acts = store.activities.filter((a) => (a.date ?? isoAusMs(a.startMs)) === record.date)
   const zBle = hrPoints.length >= 5 ? zonenAusHrPunkten(hrPoints, maxHr, rhr) : null
   const zWork = acts.length > 0 ? zonenAusWorkouts(acts, rhr, maxHr) : null
@@ -337,7 +341,10 @@ export function aktualisiereHeuteAusSnapshot(
   }
 
   const liveStrain = scores?.dayStrain ?? scores?.strain ?? null
-  const strain = mergeTagesStrain(liveStrain, prevHeute.strain)
+  const strain =
+    prevHeute.strainFromCloud && prevHeute.strain != null
+      ? prevHeute.strain
+      : mergeTagesStrain(liveStrain, prevHeute.strain)
 
   const record: WhoopDayRecord = speichereZonenImTag(
     ergaenzeSchlafDetails(
@@ -370,7 +377,12 @@ export function aktualisiereHeuteAusSnapshot(
         calories:
           prevHeute.bffMetrics && prevHeute.calories != null
             ? prevHeute.calories
-            : mergeKalorien(scores?.caloriesKcal, prevHeute.calories, history.caloriesToday),
+            : mergeKalorien(
+                scores?.caloriesKcal,
+                prevHeute.calories,
+                history.caloriesToday,
+                Boolean(prevHeute.bffMetrics && prevHeute.calories != null),
+              ),
         steps:
           prevHeute.bffMetrics && prevHeute.steps != null
             ? prevHeute.steps
@@ -422,6 +434,47 @@ export function aktivitaetenLetzteTage(tage = 14, store = ladeDailyStore()): Who
 
 export function letzte7Tage(): WhoopDayRecord[] {
   return ladeDailyStore().days.slice(-7)
+}
+
+export const MAX_TAGE_NAVIGATION = 35
+
+export function isoAddDays(iso: string, days: number): string {
+  return isoAddDaysKalender(iso, days)
+}
+
+export function tagRecordFuerDatum(date: string, store = ladeDailyStore()): WhoopDayRecord {
+  const found = store.days.find((d) => d.date === date)
+  return found ? { ...found } : createEmptyDayRecord(date)
+}
+
+/** 7-Tage-Fenster mit anchorIso als letztem Tag (für Charts um gewählten Tag). */
+export function fenster7TageUmDatum(anchorIso: string): WhoopDayRecord[] {
+  const store = ladeDailyStore()
+  const out: WhoopDayRecord[] = []
+  for (let i = 6; i >= 0; i--) {
+    out.push(tagRecordFuerDatum(isoAddDays(anchorIso, -i), store))
+  }
+  return out
+}
+
+export function labelTagNavigation(iso: string): string {
+  const heute = heuteIsoLocal()
+  if (iso === heute) return 'Heute'
+  if (iso === isoAddDays(heute, -1)) return 'Gestern'
+  return new Date(iso + 'T12:00:00').toLocaleDateString('de-DE', {
+    weekday: 'short',
+    day: 'numeric',
+    month: 'short',
+  })
+}
+
+export function kannTagZurueck(iso: string, maxTage = MAX_TAGE_NAVIGATION): boolean {
+  const earliest = isoAddDays(heuteIsoLocal(), -(maxTage - 1))
+  return iso > earliest
+}
+
+export function kannTagVor(iso: string): boolean {
+  return iso < heuteIsoLocal()
 }
 
 export function baseline30(field: keyof WhoopDayRecord, days = ladeDailyStore().days): number | null {

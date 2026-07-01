@@ -3,6 +3,7 @@
 export type MetricInfoId =
   | 'recovery'
   | 'strain'
+  | 'stress'
   | 'sleep_score'
   | 'sleep_debt'
   | 'sleep_stress'
@@ -48,8 +49,13 @@ export const METRIC_INFO: Record<MetricInfoId, MetricInfo> = {
   },
   strain: {
     title: 'Belastung',
-    body: 'Kardiovaskuläre Belastung auf einer Skala von 0–21. Steigt mit Zeit in höheren Herzfrequenzzonen. WHOOP empfiehlt oft einen Bereich, der zu deiner Erholung passt.',
-    source: 'Lokal aus HF-Zonen heute',
+    body: 'Kardiovaskuläre Belastung auf einer Skala von 0–21 (logarithmisch wie bei WHOOP). Steigt mit Zeit in höheren Herzfrequenzzonen (%HRR, Banister-TRIMP) und baut in Ruhe wieder ab. Mit WHOOP Cloud: Wert direkt vom Zyklus-API.',
+    source: 'Banister-TRIMP · WHOOP Cloud Zyklus',
+  },
+  stress: {
+    title: 'Stress-Monitor',
+    body: 'Geschätztes physiologisches Stress-Signal auf einer Skala von 0,1 bis 3,0. Primär aus Erholung (invers), alternativ aus HFV-Abweichung vom 30-Tage-Schnitt. Niedrig = entspannt, hoch = Körper unter Druck.',
+    source: 'Erholung · HFV vs. Baseline',
   },
   sleep_score: {
     title: 'Schlafleistung',

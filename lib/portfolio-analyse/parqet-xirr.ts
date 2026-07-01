@@ -4,9 +4,8 @@
  * Zwei Modi — abhängig vom Import:
  *
  * 1) Parqet/Depot mit Ein- & Auszahlungen (Deposit/Withdrawal in CSV):
- *    Nur Geldflüsse über die Depot-Grenze (wie Portfolio Performance).
- *    Kauf/Verkauf sind intern (Cash ↔ Wertpapier) und werden NICHT gezählt.
- *    → verhindert Doppelzählung Deposit + Buy.
+ *    Nur Geldflüsse über die Depot-Grenze (wie Portfolio Performance / Parqet IZF).
+ *    Kauf/Verkauf, Dividenden und Zinsen sind intern — nicht im IZF.
  *
  * 2) Nur Käufe/Verkäufe (z. B. TR ohne Deposit-Zeilen):
  *    Kauf = negative Einzahlung, Verkauf = positive Auszahlung (Parqet-Metapher).
@@ -75,10 +74,6 @@ function flowsExtern(sortiert: PortfolioBuchung[]): IrrCashflow[] {
       case 'auszahlung':
         flows.push({ date: d, amount: Math.abs(b.betragEur) })
         break
-      case 'dividende':
-      case 'zins':
-        flows.push({ date: d, amount: Math.abs(b.betragEur) })
-        break
       default:
         break
     }
@@ -99,10 +94,6 @@ function flowsHandel(sortiert: PortfolioBuchung[]): IrrCashflow[] {
         flows.push({ date: d, amount: -irrBetragFuerKauf(b) })
         break
       case 'verkauf':
-        flows.push({ date: d, amount: Math.abs(b.betragEur) })
-        break
-      case 'dividende':
-      case 'zins':
         flows.push({ date: d, amount: Math.abs(b.betragEur) })
         break
       case 'einzahlung':

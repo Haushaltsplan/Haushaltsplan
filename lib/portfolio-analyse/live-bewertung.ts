@@ -10,6 +10,7 @@ import { isinKenntnis } from '@/lib/portfolio-analyse/isin-kenntnisse'
 import { korrigiereAssetKlasse } from '@/lib/portfolio-analyse/isin-asset-klasse'
 import { anzeigeNameFuerIsin, wknFuerIsin } from '@/lib/portfolio-analyse/isin-metadata-client'
 import type { IsinMetadata } from '@/lib/portfolio-analyse/isin-lookup-server'
+import { parqetInvestiertAmStichtag } from '@/lib/portfolio-analyse/parqet-period-kennzahlen'
 import {
   FX_SYMBOLE,
   fxKurseAusYahooMap,
@@ -19,6 +20,7 @@ import {
   waehleBesterKurs,
 } from '@/lib/portfolio-analyse/kurs-aufloesung'
 import type { YahooKursZeile } from '@/lib/portfolio-analyse/yahoo-kurse-server'
+import { heuteIso } from '@/lib/portfolio-analyse/wertentwicklung-tage'
 import type {
   PortfolioAnalyseKennzahlen,
   PortfolioBuchung,
@@ -311,9 +313,10 @@ export function berechneLivePortfolio(
   positionen.sort((a, b) => b.wertLiveEur - a.wertLiveEur)
 
   const nettoEingezahlt = Math.round((einzahlungenEur - auszahlungenEur) * 100) / 100
-  const gewinnVerlustEur = Math.round((depotwertEur - nettoEingezahlt) * 100) / 100
+  const investiertParqet = parqetInvestiertAmStichtag(buchungen, heuteIso())
+  const gewinnVerlustEur = Math.round((depotwertEur - investiertParqet) * 100) / 100
   const gewinnVerlustProzent =
-    nettoEingezahlt > 0 ? Math.round((gewinnVerlustEur / nettoEingezahlt) * 10000) / 100 : null
+    investiertParqet > 0 ? Math.round((gewinnVerlustEur / investiertParqet) * 10000) / 100 : null
 
   const kurseQuelle: LivePortfolio['kennzahlen']['kurseQuelle'] =
     liveCount > 0 ? 'live' : snapshot?.depotwert_eur != null ? 'snapshot' : 'einstand'
@@ -324,7 +327,7 @@ export function berechneLivePortfolio(
     positionen,
     kennzahlen: {
       depotwertEur,
-      investiertEur: nettoEingezahlt > 0 ? nettoEingezahlt : einstandOffenEur,
+      investiertEur: investiertParqet,
       gewinnVerlustEur,
       gewinnVerlustProzent,
       dividendenEur: Math.round(dividendenEur * 100) / 100,
