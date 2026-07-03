@@ -1,6 +1,10 @@
 import 'server-only'
 
 import { momentumPlaybookLabel } from '@/lib/portfolio-analyse/momentum-trader/momentum-constants'
+import {
+  MOMENTUM_PRE_EVENT_PLAYBOOKS,
+  MOMENTUM_TRADE_PLAYBOOKS,
+} from '@/lib/portfolio-analyse/momentum-trader/momentum-playbook-registry'
 import { baueHandlungsplanFuerScan } from '@/lib/portfolio-analyse/momentum-trader/momentum-handlungsplan-server'
 import {
   baueErfolgSzenarienPreEvent,
@@ -14,13 +18,8 @@ import type {
   MomentumScanEintrag,
 } from '@/lib/portfolio-analyse/momentum-trader/momentum-trader-types'
 
-const TRADE_PLAYBOOKS = new Set<MomentumPlaybook>([
-  'earnings_gap_fade',
-  'earnings_momentum',
-  'earnings_pre_run',
-  'ipo_fade',
-])
-const PRE_EVENT_PLAYBOOKS = new Set<MomentumPlaybook>(['earnings_pre_event', 'earnings_vorlauf'])
+const TRADE_PLAYBOOKS = new Set<MomentumPlaybook>(MOMENTUM_TRADE_PLAYBOOKS)
+const PRE_EVENT_PLAYBOOKS = new Set<MomentumPlaybook>(MOMENTUM_PRE_EVENT_PLAYBOOKS)
 
 function alsZahl(v: unknown, fallback: number): number {
   return typeof v === 'number' && Number.isFinite(v) ? v : fallback
@@ -107,7 +106,7 @@ export function handlungssignalAusTradeSetup(e: MomentumScanEintrag): MomentumHa
     playbook: e.playbook,
     phase,
     istAktiv: true,
-    prioritaet: e.score + (e.playbook === 'earnings_pre_run' ? 38 : 40),
+    prioritaet: Math.round(wahrscheinlichkeitPct + e.score * 0.25),
     kurztext: richtungWort(r) + ' · ' + pbLabel,
     aktionJetzt,
     detailText,
@@ -245,8 +244,8 @@ export function sammleHandlungssignale(
 
   const out: MomentumHandlungssignal[] = []
   for (const arr of bySymbol.values()) {
-    arr.sort((a, b) => b.prioritaet - a.prioritaet)
+    arr.sort((a, b) => b.wahrscheinlichkeitPct - a.wahrscheinlichkeitPct || b.prioritaet - a.prioritaet)
     out.push(arr[0])
   }
-  return out.sort((a, b) => b.prioritaet - a.prioritaet)
+  return out.sort((a, b) => b.wahrscheinlichkeitPct - a.wahrscheinlichkeitPct || b.prioritaet - a.prioritaet)
 }

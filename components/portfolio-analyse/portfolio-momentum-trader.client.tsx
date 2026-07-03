@@ -28,6 +28,8 @@ import type {
   MomentumKatalysatorTracking,
   MomentumPerformance,
   MomentumPlaybook,
+  MomentumTopSignalTracking,
+  MomentumPlaybookStatsPaket,
   MomentumRichtung,
   MomentumScanEintrag,
   MomentumScanPaket,
@@ -36,6 +38,18 @@ import type {
   MomentumWatchlistEintragAngereichert,
 } from '@/lib/portfolio-analyse/momentum-trader/momentum-trader-types'
 import { momentumPlaybookLabel } from '@/lib/portfolio-analyse/momentum-trader/momentum-constants'
+import {
+  BACKTEST_MIN_SAMPLES_GLOBAL,
+  PLAYBOOK_MIN_BACKTEST_TREFFER_PCT,
+  TRADE_TOP_MIN_PCT,
+} from '@/lib/portfolio-analyse/momentum-trader/momentum-constants'
+import {
+  MOMENTUM_ALL_PLAYBOOKS,
+  MOMENTUM_PATTERN_PLAYBOOKS,
+  MOMENTUM_TRADE_PLAYBOOKS,
+  playbookKategorieLabel,
+  playbookMeta,
+} from '@/lib/portfolio-analyse/momentum-trader/momentum-playbook-registry'
 
 function StatKachel({ label, wert }: { label: string; wert: string | number }) {
   return (
@@ -526,7 +540,7 @@ function OnboardingKarte() {
           Titel
         </li>
         <li>
-          <span className="font-medium text-violet-300">2.</span> „Alles aktualisieren“ — Earnings, Kurse, Scan
+          <span className="text-sm font-medium text-[var(--app-text-muted)]">2.</span> „Alles aktualisieren“ — Kurse, Regime, Scan (Gap, Trend, Earnings)
         </li>
         <li>
           <span className="font-medium text-violet-300">3.</span> Setups prüfen → Trade erfassen (max. 10 € Risiko)
@@ -536,7 +550,7 @@ function OnboardingKarte() {
         </li>
       </ol>
       <p className="mt-4 text-xs text-[var(--app-text-muted)]">
-        Playbooks: Gap-Fade · Earnings-Momentum · IPO-Fade · Vorlauf-Beobachtung
+        Playbooks: Gap · Trend · Mean Rev. · Regime · News · Earnings · IPO
       </p>
     </PaCard>
   )
@@ -621,14 +635,11 @@ function PerformancePanel({ p }: { p: MomentumPerformance }) {
       : p.tradesGeschlossen > 0 && p.pnlGesamtEur > 0
         ? '∞'
         : '—'
-  const playbooks: MomentumPlaybook[] = [
-    'earnings_gap_fade',
-    'earnings_momentum',
-    'ipo_fade',
-    'earnings_pre_event',
-    'earnings_pre_run',
-    'earnings_vorlauf',
-  ]
+  const playbooks: MomentumPlaybook[] = MOMENTUM_ALL_PLAYBOOKS.filter(
+    (pb) => (p.nachPlaybook[pb]?.trades ?? 0) > 0,
+  )
+  const playbooksAnzeige =
+    playbooks.length > 0 ? playbooks : (['gap_fade', 'trend_pullback', 'earnings_gap_fade'] as MomentumPlaybook[])
 
   return (
     <PaCard className="p-5">
@@ -660,7 +671,7 @@ function PerformancePanel({ p }: { p: MomentumPerformance }) {
             </tr>
           </thead>
           <tbody className="text-[var(--app-text)]">
-            {playbooks.map((pb) => {
+            {playbooksAnzeige.map((pb) => {
               const s = p.nachPlaybook[pb]
               if (s.trades === 0) return null
               return (
@@ -669,6 +680,68 @@ function PerformancePanel({ p }: { p: MomentumPerformance }) {
                   <td className="py-2 tabular-nums">{s.geschlossen}/{s.trades}</td>
                   <td className="py-2 tabular-nums">{s.winRatePct != null ? s.winRatePct + '%' : '—'}</td>
                   <td className="py-2 tabular-nums">{s.pnlEur.toFixed(2)} €</td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
+    </PaCard>
+  )
+}
+
+function PlaybookBacktestPanel({ paket }: { paket: MomentumPlaybookStatsPaket }) {
+  const global = paket.stats
+    .filter((s) => !s.symbol && s.sampleSize > 0)
+    .sort((a, b) => (b.trefferPct ?? 0) - (a.trefferPct ?? 0))
+  if (global.length === 0) return null
+
+  const jahre = Math.round(paket.fensterTage / 252)
+
+  return (
+    <PaCard className="p-5">
+      <h2 className="text-sm font-semibold text-[var(--app-text)]">Playbook-Backtest</h2>
+      <p className="mt-1 text-xs text-[var(--app-text-muted)]">
+        Historische Trefferquoten (~{jahre}J) · Pausiert unter {PLAYBOOK_MIN_BACKTEST_TREFFER_PCT}% bei ≥
+        {BACKTEST_MIN_SAMPLES_GLOBAL} Samples
+        {paket.berechnetAm ? ' · Stand ' + paket.berechnetAm.slice(0, 10) : ''}
+      </p>
+      <div className="mt-4 overflow-x-auto">
+        <table className="w-full min-w-[360px] text-left text-xs">
+          <thead>
+            <tr className="text-[var(--app-text-muted)]">
+              <th className="pb-2 font-medium">Playbook</th>
+              <th className="pb-2 font-medium">Treffer</th>
+              <th className="pb-2 font-medium">Quote</th>
+              <th className="pb-2 font-medium">Status</th>
+            </tr>
+          </thead>
+          <tbody className="text-[var(--app-text)]">
+            {global.map((s) => {
+              const pausiert =
+                s.sampleSize >= BACKTEST_MIN_SAMPLES_GLOBAL &&
+                s.trefferPct != null &&
+                s.trefferPct < PLAYBOOK_MIN_BACKTEST_TREFFER_PCT
+              return (
+                <tr key={s.playbook} className="border-t border-[var(--app-border)]">
+                  <td className="py-2">{momentumPlaybookLabel(s.playbook)}</td>
+                  <td className="py-2 tabular-nums">
+                    {s.wins}/{s.sampleSize}
+                  </td>
+                  <td className="py-2 tabular-nums">
+                    {s.trefferPct != null ? s.trefferPct + '%' : '—'}
+                  </td>
+                  <td className="py-2">
+                    {pausiert ? (
+                      <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] text-amber-300">
+                        pausiert
+                      </span>
+                    ) : (
+                      <span className="rounded-full bg-teal-500/15 px-2 py-0.5 text-[10px] text-teal-300">
+                        aktiv
+                      </span>
+                    )}
+                  </td>
                 </tr>
               )
             })}
@@ -739,6 +812,158 @@ function KatalysatorTrackingPanel({ t }: { t: MomentumKatalysatorTracking }) {
   )
 }
 
+function outcomeLabel(outcome: string): string {
+  if (outcome === 'win') return 'Gewinn'
+  if (outcome === 'loss') return 'Verlust'
+  if (outcome === 'timeout') return 'Timeout'
+  return 'Ausstehend'
+}
+
+function outcomeFarbe(outcome: string): string {
+  if (outcome === 'win') return 'text-emerald-300'
+  if (outcome === 'loss') return 'text-red-300'
+  if (outcome === 'timeout') return 'text-amber-300'
+  return 'text-[var(--app-text-muted)]'
+}
+
+function TopSignalTrackingPanel({ t }: { t: MomentumTopSignalTracking }) {
+  const playbooks = Object.keys(t.nachPlaybook) as MomentumPlaybook[]
+
+  if (t.signaleGesamt === 0) {
+    return (
+      <PaCard className="p-5">
+        <h2 className="text-sm font-semibold text-[var(--app-text)]">Top-Signal-Tracking</h2>
+        <p className="mt-2 text-xs text-[var(--app-text-muted)]">
+          Noch keine archivierten Top-Signale — nach täglichen Scans werden aktive Setups (≥{TRADE_TOP_MIN_PCT}%)
+          automatisch gespeichert und nach 5 Handelstagen ausgewertet.
+        </p>
+      </PaCard>
+    )
+  }
+
+  const delta =
+    t.kalibrierungsDeltaPct != null
+      ? (t.kalibrierungsDeltaPct >= 0 ? '+' : '') + t.kalibrierungsDeltaPct + ' %'
+      : '—'
+
+  return (
+    <PaCard className="p-5">
+      <h2 className="text-sm font-semibold text-[var(--app-text)]">Top-Signal-Tracking</h2>
+      <p className="mt-1 text-xs text-[var(--app-text-muted)]">
+        Letzte {t.fensterTage} Tage · Aktive Top-Signale (≥{TRADE_TOP_MIN_PCT}%) vs. Kursverlauf (Stop/Ziel, 5T) ·
+        Journal-Vergleich
+      </p>
+      <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <StatKachel
+          label="Trefferquote (simuliert)"
+          wert={t.trefferquotePct != null ? t.trefferquotePct + '%' : '—'}
+        />
+        <StatKachel
+          label="Ø Vorhersage"
+          wert={t.avgVorhersagePct != null ? t.avgVorhersagePct + '%' : '—'}
+        />
+        <StatKachel label="Kalibrierung Δ" wert={delta} />
+        <StatKachel
+          label="Journal PnL"
+          wert={
+            t.journalPnlEur != null
+              ? (t.journalPnlEur >= 0 ? '+' : '') + t.journalPnlEur.toFixed(2) + ' €'
+              : '—'
+          }
+        />
+      </div>
+      <div className="mt-3 grid gap-3 sm:grid-cols-4">
+        <StatKachel label="Signale gesamt" wert={t.signaleGesamt} />
+        <StatKachel label="Ausgewertet" wert={t.ausgewertet} />
+        <StatKachel label="Im Journal" wert={t.journalSignale} />
+        <StatKachel
+          label="Journal Win-Rate"
+          wert={t.journalWinRatePct != null ? t.journalWinRatePct + '%' : '—'}
+        />
+      </div>
+      {playbooks.length > 0 && (
+        <div className="mt-4 overflow-x-auto">
+          <table className="w-full min-w-[320px] text-left text-xs">
+            <thead>
+              <tr className="text-[var(--app-text-muted)]">
+                <th className="pb-2 font-medium">Playbook</th>
+                <th className="pb-2 font-medium">Signale</th>
+                <th className="pb-2 font-medium">Treffer</th>
+                <th className="pb-2 font-medium">Quote</th>
+              </tr>
+            </thead>
+            <tbody className="text-[var(--app-text)]">
+              {playbooks
+                .sort((a, b) => (t.nachPlaybook[b]?.signale ?? 0) - (t.nachPlaybook[a]?.signale ?? 0))
+                .map((pb) => {
+                  const s = t.nachPlaybook[pb]
+                  if (!s) return null
+                  return (
+                    <tr key={pb} className="border-t border-[var(--app-border)]">
+                      <td className="py-2">{momentumPlaybookLabel(pb)}</td>
+                      <td className="py-2 tabular-nums">{s.signale}</td>
+                      <td className="py-2 tabular-nums">{s.gewinne}</td>
+                      <td className="py-2 tabular-nums">
+                        {s.trefferPct != null ? s.trefferPct + '%' : '—'}
+                      </td>
+                    </tr>
+                  )
+                })}
+            </tbody>
+          </table>
+        </div>
+      )}
+      <div className="mt-4 overflow-x-auto">
+        <table className="w-full min-w-[560px] text-left text-xs">
+          <thead>
+            <tr className="text-[var(--app-text-muted)]">
+              <th className="pb-2 font-medium">Symbol</th>
+              <th className="pb-2 font-medium">Datum</th>
+              <th className="pb-2 font-medium">Playbook</th>
+              <th className="pb-2 font-medium">Vorhersage</th>
+              <th className="pb-2 font-medium">Outcome</th>
+              <th className="pb-2 font-medium">Journal</th>
+            </tr>
+          </thead>
+          <tbody className="text-[var(--app-text)]">
+            {t.eintraege.map((e) => (
+              <tr key={e.symbol + e.playbook + e.scanDate} className="border-t border-[var(--app-border)]">
+                <td className="py-2 font-medium">
+                  {e.symbol}{' '}
+                  <span className="text-[var(--app-text-muted)]">{e.direction.toUpperCase()}</span>
+                </td>
+                <td className="py-2 tabular-nums">{e.scanDate}</td>
+                <td className="py-2">{momentumPlaybookLabel(e.playbook)}</td>
+                <td className="py-2 tabular-nums">{e.erfolgPct}%</td>
+                <td className={`py-2 font-medium ${outcomeFarbe(e.outcome)}`}>{outcomeLabel(e.outcome)}</td>
+                <td className="py-2">
+                  {e.imJournal ? (
+                    e.journalGeschlossen ? (
+                      <span className={(e.journalPnlEur ?? 0) >= 0 ? 'text-emerald-300' : 'text-red-300'}>
+                        {(e.journalPnlEur ?? 0) >= 0 ? '+' : ''}
+                        {e.journalPnlEur?.toFixed(2)} €
+                      </span>
+                    ) : (
+                      <span className="text-amber-300">offen</span>
+                    )
+                  ) : (
+                    <span className="text-[var(--app-text-muted)]">—</span>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {t.ausstehend > 0 && (
+        <p className="mt-3 text-[10px] text-[var(--app-text-muted)]">
+          {t.ausstehend} Signal{t.ausstehend === 1 ? '' : 'e'} warten noch auf Auswertung (5 Handelstage).
+        </p>
+      )}
+    </PaCard>
+  )
+}
+
 function ampelRing(ampel: MomentumAmpel): string {
   if (ampel === 'gruen') return 'ring-emerald-500/40 bg-emerald-500/10'
   if (ampel === 'gelb') return 'ring-amber-500/40 bg-amber-500/10'
@@ -750,17 +975,64 @@ function playbookTitel(playbook: MomentumPlaybook): string {
   return momentumPlaybookLabel(playbook)
 }
 
-const TRADE_PLAYBOOKS: MomentumPlaybook[] = [
-  'earnings_gap_fade',
-  'earnings_momentum',
-  'earnings_pre_run',
-  'ipo_fade',
-]
+const TRADE_PLAYBOOKS: MomentumPlaybook[] = [...MOMENTUM_TRADE_PLAYBOOKS]
+
+type ScanFilterKey =
+  | 'top'
+  | 'taeglich'
+  | 'pattern'
+  | 'mean_reversion'
+  | 'regime'
+  | 'katalysator'
+  | 'earnings'
+  | 'ipo'
+  | 'pre_event'
+  | 'alle'
+
+function erfolgPct(e: MomentumScanEintrag): number {
+  return typeof e.indikatoren.erfolgWahrscheinlichkeitPct === 'number'
+    ? e.indikatoren.erfolgWahrscheinlichkeitPct
+    : 0
+}
 
 function filterScanErgebnisse(
   ergebnisse: MomentumScanEintrag[],
-  scanFilter: 'trade' | 'momentum' | 'ipo' | 'pre_event' | 'alle',
+  scanFilter: ScanFilterKey,
 ): MomentumScanEintrag[] {
+  const taegliche = new Set<MomentumPlaybook>([
+    'gap_fade',
+    'gap_and_go',
+    'volume_spike_breakout',
+    'trend_pullback',
+    'trend_breakout',
+    'relative_strength_leader',
+  ])
+  const patternPlaybooks = new Set<MomentumPlaybook>(MOMENTUM_PATTERN_PLAYBOOKS)
+  const meanReversion = new Set<MomentumPlaybook>([
+    'oversold_bounce',
+    'overbought_fade',
+    'range_fade',
+  ])
+  const regimePlaybooks = new Set<MomentumPlaybook>([
+    'sector_rotation_long',
+    'market_regime_long',
+    'market_regime_short',
+  ])
+  const earningsTrade = new Set<MomentumPlaybook>([
+    'earnings_gap_fade',
+    'earnings_momentum',
+    'earnings_pre_run',
+    'earnings_post_run',
+    'guidance_shock',
+    'revenue_beat_divergence',
+  ])
+  const katalysatorPlaybooks = new Set<MomentumPlaybook>([
+    'news_gap',
+    'analyst_upgrade',
+    'insider_cluster',
+    'short_squeeze_setup',
+  ])
+
   return ergebnisse
     .filter((e) => {
       if (scanFilter === 'alle') return true
@@ -771,18 +1043,26 @@ function filterScanErgebnisse(
           e.playbook === 'earnings_pre_run'
         )
       }
-      if (scanFilter === 'momentum') return e.playbook === 'earnings_momentum'
+      if (scanFilter === 'earnings') return earningsTrade.has(e.playbook)
+      if (scanFilter === 'taeglich') return taegliche.has(e.playbook)
+      if (scanFilter === 'pattern') return patternPlaybooks.has(e.playbook)
+      if (scanFilter === 'mean_reversion') return meanReversion.has(e.playbook)
+      if (scanFilter === 'regime') return regimePlaybooks.has(e.playbook)
+      if (scanFilter === 'katalysator') return katalysatorPlaybooks.has(e.playbook)
       if (scanFilter === 'ipo') {
         return e.playbook === 'ipo_fade' && e.ampel !== 'grau'
       }
-      if (scanFilter === 'trade') {
+      if (scanFilter === 'top') {
         return (
-          TRADE_PLAYBOOKS.includes(e.playbook) && (e.ampel === 'gruen' || e.ampel === 'gelb')
+          TRADE_PLAYBOOKS.includes(e.playbook) &&
+          (e.ampel === 'gruen' || e.ampel === 'gelb') &&
+          e.indikatoren.erfolgIstAktiv === true &&
+          erfolgPct(e) >= TRADE_TOP_MIN_PCT
         )
       }
       return true
     })
-    .sort((a, b) => b.score - a.score)
+    .sort((a, b) => erfolgPct(b) - erfolgPct(a) || b.score - a.score)
 }
 
 function DatenqualitaetBadge({ dq }: { dq: MomentumWatchlistEintragAngereichert['datenqualitaet'] }) {
@@ -1030,14 +1310,25 @@ function ScanKarte({
     typeof e.indikatoren.handlungKurz === 'string' ? e.indikatoren.handlungKurz : null
   const erfolgLabel =
     typeof e.indikatoren.erfolgLabel === 'string' ? e.indikatoren.erfolgLabel : null
+  const backtestHinweis =
+    typeof e.indikatoren.backtestHinweis === 'string' ? e.indikatoren.backtestHinweis : null
   const istAktiv = e.indikatoren.erfolgIstAktiv === true
+  const pausiert = e.indikatoren.playbookDeaktiviert === true
+  const pausiertGrund =
+    typeof e.indikatoren.playbookDeaktiviertGrund === 'string'
+      ? e.indikatoren.playbookDeaktiviertGrund
+      : null
   const istPreEvent =
     e.playbook === 'earnings_pre_event' || e.playbook === 'earnings_vorlauf' || e.playbook === 'earnings_pre_run'
   const szenarioPlan =
     typeof e.indikatoren.szenarioPlan === 'string' ? e.indikatoren.szenarioPlan : null
   const kiMemo = e.indikatoren.kiBegruendung
   const kannTrade =
-    TRADE_PLAYBOOKS.includes(e.playbook) && e.ampel !== 'grau' && e.ampel !== 'rot' && richtung != null
+    TRADE_PLAYBOOKS.includes(e.playbook) &&
+    e.ampel !== 'grau' &&
+    e.ampel !== 'rot' &&
+    richtung != null &&
+    !pausiert
 
   return (
     <li className={`rounded-xl p-4 ring-1 ${ampelRing(e.ampel)}`}>
@@ -1047,6 +1338,9 @@ function ScanKarte({
             <p className="text-sm font-semibold text-[var(--app-text)]">
               {e.symbol} · {playbookTitel(e.playbook)}
             </p>
+            <span className="rounded bg-violet-500/10 px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wide text-violet-300/90">
+              {playbookKategorieLabel(playbookMeta(e.playbook).kategorie)}
+            </span>
             {richtung === 'long' ? (
               <span className="rounded-lg bg-emerald-500/20 px-2 py-0.5 text-[10px] font-bold uppercase text-emerald-300">
                 Long
@@ -1071,6 +1365,10 @@ function ScanKarte({
               <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-medium text-amber-300">
                 Vorbereiten
               </span>
+            ) : pausiert ? (
+              <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-medium text-amber-300">
+                Pausiert
+              </span>
             ) : null}
           </div>
 
@@ -1080,9 +1378,16 @@ function ScanKarte({
             <p className="mt-2 text-sm text-[var(--app-text-muted)]">Score {e.score}/100</p>
           )}
 
+          {pausiertGrund ? (
+            <p className="mt-1 text-[11px] text-amber-300/90">{pausiertGrund}</p>
+          ) : null}
+
           {erfolgLabel && erfolgPct > 0 ? (
             <p className="mt-1 text-[11px] text-[var(--app-text-muted)]">
               Erfolgswahrscheinlichkeit: <span className="font-medium text-teal-300">{erfolgLabel}</span>
+              {backtestHinweis ? (
+                <span className="text-[var(--app-text-muted)]"> · Backtest {backtestHinweis}</span>
+              ) : null}
             </p>
           ) : null}
 
@@ -1198,6 +1503,8 @@ function TradeZeile({
             {t.stopPrice != null ? ' · Stop ' + t.stopPrice : ''}
             {t.targetPrice != null ? ' · Ziel ' + t.targetPrice : ''}
             {' · Risiko ' + t.riskEur + ' €'}
+            {t.ausScan && t.signalErfolgPct != null ? ' · Signal ' + t.signalErfolgPct + '%' : ''}
+            {t.ausScan ? ' · aus Scan' : ''}
           </p>
           {!offen && (
             <p className={`mt-1 text-xs font-medium ${(t.pnlEur ?? 0) >= 0 ? 'text-emerald-400' : 'text-red-300'}`}>
@@ -1247,8 +1554,9 @@ export function MomentumTraderClient() {
   const [performance, setPerformance] = useState<MomentumPerformance | null>(null)
   const [erinnerungen, setErinnerungen] = useState<MomentumErinnerung[]>([])
   const [tracking, setTracking] = useState<MomentumKatalysatorTracking | null>(null)
+  const [signalTracking, setSignalTracking] = useState<MomentumTopSignalTracking | null>(null)
   const [handlung, setHandlung] = useState<MomentumHandlungsempfehlung | null>(null)
-  const [scanFilter, setScanFilter] = useState<'trade' | 'momentum' | 'ipo' | 'pre_event' | 'alle'>('alle')
+  const [scanFilter, setScanFilter] = useState<ScanFilterKey>('top')
   const [exportHinweis, setExportHinweis] = useState<string | null>(null)
   const [kalender, setKalender] = useState<MomentumEarningsKalenderMonat | null>(null)
   const [scoreVerlauf, setScoreVerlauf] = useState<Record<string, MomentumScoreVerlaufPunkt[]>>({})
@@ -1270,7 +1578,7 @@ export function MomentumTraderClient() {
     setLaden(true)
     setFehler(null)
     try {
-      const [wlRes, stRes, scanRes, trRes, kalRes, verlRes, trackRes] = await Promise.all([
+      const [wlRes, stRes, scanRes, trRes, kalRes, verlRes, trackRes, signalTrackRes] = await Promise.all([
         momentumApiFetch('/api/portfolio-analyse/momentum-trader/watchlist'),
         momentumApiFetch('/api/portfolio-analyse/momentum-trader/status'),
         momentumApiFetch('/api/portfolio-analyse/momentum-trader/scan'),
@@ -1278,6 +1586,7 @@ export function MomentumTraderClient() {
         momentumApiFetch('/api/portfolio-analyse/momentum-trader/kalender'),
         momentumApiFetch('/api/portfolio-analyse/momentum-trader/verlauf'),
         momentumApiFetch('/api/portfolio-analyse/momentum-trader/tracking'),
+        momentumApiFetch('/api/portfolio-analyse/momentum-trader/signal-tracking'),
       ])
       if (!wlRes.ok) throw new Error(((await wlRes.json()) as { fehler?: string }).fehler ?? 'Watchlist-Fehler')
       if (!stRes.ok) throw new Error(((await stRes.json()) as { fehler?: string }).fehler ?? 'Status-Fehler')
@@ -1302,6 +1611,11 @@ export function MomentumTraderClient() {
       }
       if (trackRes.ok) {
         setTracking(((await trackRes.json()) as { tracking: MomentumKatalysatorTracking }).tracking ?? null)
+      }
+      if (signalTrackRes.ok) {
+        setSignalTracking(
+          ((await signalTrackRes.json()) as { signalTracking: MomentumTopSignalTracking }).signalTracking ?? null,
+        )
       }
     } catch (e) {
       setFehler(String(e))
@@ -1479,6 +1793,10 @@ export function MomentumTraderClient() {
       setFehler(null)
       try {
         const direction = e.indikatoren.richtung as MomentumRichtung
+        const erfolgPctVal =
+          typeof e.indikatoren.erfolgWahrscheinlichkeitPct === 'number'
+            ? e.indikatoren.erfolgWahrscheinlichkeitPct
+            : null
         const res = await momentumApiFetch('/api/portfolio-analyse/momentum-trader/trades', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -1486,11 +1804,20 @@ export function MomentumTraderClient() {
             symbol: e.symbol,
             playbook: e.playbook,
             direction,
+            entryDate: e.scanDate,
             entryPrice: e.indikatoren.entryPrice ?? e.indikatoren.open,
             stopPrice: e.indikatoren.stopPrice,
             targetPrice: e.indikatoren.targetPrice,
             riskEur: 10,
-            notizen: 'Aus Scan ' + e.scanDate + ', Score ' + e.score,
+            ausScan: true,
+            scanDate: e.scanDate,
+            signalErfolgPct: erfolgPctVal,
+            notizen:
+              'Aus Scan ' +
+              e.scanDate +
+              ', Score ' +
+              e.score +
+              (erfolgPctVal != null ? ', Erfolg ' + erfolgPctVal + '%' : ''),
           }),
         })
         const data = (await res.json()) as { trade?: MomentumTrade; fehler?: string }
@@ -1553,6 +1880,37 @@ export function MomentumTraderClient() {
         setExportHinweis('Tages-Briefing kopiert')
         setTimeout(() => setExportHinweis(null), 2500)
       }
+    } catch (e) {
+      setFehler(String(e))
+    } finally {
+      setBriefingLaden(false)
+    }
+  }, [])
+
+  const druckeBriefing = useCallback(async () => {
+    setBriefingLaden(true)
+    try {
+      const res = await momentumApiFetch('/api/portfolio-analyse/momentum-trader/briefing')
+      const data = (await res.json()) as { markdown?: string; fehler?: string }
+      if (!res.ok) throw new Error(data.fehler ?? 'Briefing fehlgeschlagen')
+      if (!data.markdown) return
+      const w = window.open('', '_blank', 'noopener,noreferrer')
+      if (!w) throw new Error('Pop-up blockiert — Druckfenster konnte nicht geöffnet werden.')
+      const safe = data.markdown
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+      w.document.write(
+        '<!DOCTYPE html><html lang="de"><head><meta charset="utf-8"><title>Momentum Briefing</title>' +
+          '<style>body{font-family:system-ui,sans-serif;max-width:48rem;margin:2rem auto;padding:0 1rem;color:#111}' +
+          'pre{white-space:pre-wrap;font-size:13px;line-height:1.55}@media print{body{margin:1rem}}</style></head>' +
+          '<body><pre>' +
+          safe +
+          '</pre></body></html>',
+      )
+      w.document.close()
+      w.focus()
+      window.setTimeout(() => w.print(), 400)
     } catch (e) {
       setFehler(String(e))
     } finally {
@@ -1657,7 +2015,15 @@ export function MomentumTraderClient() {
               disabled={briefingLaden || watchlist.length === 0}
               className="rounded-xl bg-[var(--app-surface-muted)] px-4 py-2.5 text-sm font-medium text-[var(--app-text)] ring-1 ring-[var(--app-border)] hover:bg-[var(--app-surface-hover)] disabled:opacity-50"
             >
-              {briefingLaden ? 'Briefing …' : 'Tages-Briefing'}
+              {briefingLaden ? 'Briefing …' : 'Briefing kopieren'}
+            </button>
+            <button
+              type="button"
+              onClick={() => void druckeBriefing()}
+              disabled={briefingLaden || watchlist.length === 0}
+              className="rounded-xl bg-[var(--app-surface-muted)] px-4 py-2.5 text-sm font-medium text-[var(--app-text)] ring-1 ring-[var(--app-border)] hover:bg-[var(--app-surface-hover)] disabled:opacity-50"
+            >
+              PDF / Druck
             </button>
             <button
               type="button"
@@ -1706,17 +2072,27 @@ export function MomentumTraderClient() {
 
         {performance && performance.tradesGesamt > 0 && <PerformancePanel p={performance} />}
 
+        {scan?.playbookStats && scan.playbookStats.stats.length > 0 && (
+          <PlaybookBacktestPanel paket={scan.playbookStats} />
+        )}
+
         {tracking && watchlist.length > 0 && <KatalysatorTrackingPanel t={tracking} />}
+
+        {signalTracking && watchlist.length > 0 && <TopSignalTrackingPanel t={signalTracking} />}
 
         {regime && (
           <PaCard className="p-5">
             <h2 className="text-sm font-semibold text-[var(--app-text)]">Markt-Regime</h2>
             <p className="mt-1 text-xs text-[var(--app-text-muted)]">Stand {regime.handelstag}</p>
-            <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
               <StatKachel label="S&P 500" wert={regime.spyClose?.toLocaleString('de-DE') ?? '—'} />
               <StatKachel
                 label="vs. 20-Tage-MA"
                 wert={regime.spyAbove20Ma ? 'darüber ↑' : regime.spyAbove20Ma === false ? 'darunter ↓' : '—'}
+              />
+              <StatKachel
+                label="SPY 5T"
+                wert={regime.spyReturn5dPct != null ? (regime.spyReturn5dPct >= 0 ? '+' : '') + regime.spyReturn5dPct + '%' : '—'}
               />
               <StatKachel label="VIX" wert={regime.vixClose?.toFixed(2) ?? '—'} />
               <StatKachel label="VIX Δ" wert={regime.vixChangePct != null ? regime.vixChangePct + '%' : '—'} />
@@ -1786,9 +2162,14 @@ export function MomentumTraderClient() {
               <div className="flex flex-wrap gap-1 rounded-xl bg-[var(--app-surface-muted)]/50 p-1 ring-1 ring-[var(--app-border)]">
               {(
                 [
-                  ['trade', 'Gap-Fade'],
-                  ['momentum', 'Momentum'],
-                  ['ipo', 'IPO-Fade'],
+                  ['top', 'Top-Trades'],
+                  ['taeglich', 'Gap/Trend'],
+                  ['pattern', 'Pattern'],
+                  ['mean_reversion', 'Mean Rev.'],
+                  ['regime', 'Regime'],
+                  ['katalysator', 'Katalysator'],
+                  ['earnings', 'Earnings'],
+                  ['ipo', 'IPO'],
                   ['pre_event', 'Pre-Event'],
                   ['alle', 'Alle'],
                 ] as const
@@ -1836,7 +2217,7 @@ export function MomentumTraderClient() {
               {scanLaeuft
                 ? 'Scan läuft …'
                 : scan?.ergebnisse.length
-                  ? 'Keine Trade-Setups in diesem Filter — „Pre-Event“ oder „Alle“ für Katalysator vor Earnings.'
+                  ? 'Keine Setups in diesem Filter — „Top-Trades“ oder „Alle“ zeigen die Rangliste.'
                   : 'Kein Scan — oben „Alles aktualisieren“ oder nur „Scan“. Handlungsempfehlung erklärt den nächsten Schritt.'}
             </p>
           )}

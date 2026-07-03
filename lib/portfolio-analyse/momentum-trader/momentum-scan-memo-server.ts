@@ -5,11 +5,12 @@ import {
   resolveCoachProviderFromMode,
   runCoachCompletion,
 } from '@/lib/ki-coach-backend'
+import { MOMENTUM_TRADE_PLAYBOOKS } from '@/lib/portfolio-analyse/momentum-trader/momentum-playbook-registry'
 import { MOMENTUM_SCAN_SYSTEM_PROMPT } from '@/lib/portfolio-analyse/momentum-trader/momentum-scan-prompt'
 import { momentumPlaybookLabel } from '@/lib/portfolio-analyse/momentum-trader/momentum-constants'
 import type { MomentumScanEintrag } from '@/lib/portfolio-analyse/momentum-trader/momentum-trader-types'
 
-const TRADE_PLAYBOOKS = new Set(['earnings_gap_fade', 'earnings_momentum', 'ipo_fade'])
+const TRADE_PLAYBOOKS = new Set(MOMENTUM_TRADE_PLAYBOOKS)
 const MAX_KI_MEMOS = 5
 
 async function generiereSetupMemo(e: MomentumScanEintrag): Promise<string | null> {
@@ -60,6 +61,11 @@ export async function ergaenzeScanMitKiMemos(
         (e.ampel === 'gruen' || e.ampel === 'gelb') &&
         !e.indikatoren.kiBegruendung,
     )
+    .sort((a, b) => {
+      const pa = typeof a.indikatoren.erfolgWahrscheinlichkeitPct === 'number' ? a.indikatoren.erfolgWahrscheinlichkeitPct : 0
+      const pb = typeof b.indikatoren.erfolgWahrscheinlichkeitPct === 'number' ? b.indikatoren.erfolgWahrscheinlichkeitPct : 0
+      return pb - pa || b.score - a.score
+    })
     .slice(0, MAX_KI_MEMOS)
 
   if (kandidaten.length === 0) return ergebnisse

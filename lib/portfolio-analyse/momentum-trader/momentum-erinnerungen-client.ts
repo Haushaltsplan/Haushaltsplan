@@ -19,6 +19,7 @@ const NOTIFY_TYPEN = new Set<MomentumErinnerung['typ']>([
   'earnings_morgen',
   'pre_event_aktiv',
   'scan_verfuegbar',
+  'top_signal',
 ])
 
 export function ladeMomentumErinnerungenEinstellungen(): MomentumErinnerungenSettings {
@@ -70,6 +71,9 @@ export function bauMomentumNotification(e: MomentumErinnerung): { title: string;
   }
   if (e.typ === 'pre_event_aktiv') {
     return { title: 'Pre-Event: ' + sym, body: e.text, tag }
+  }
+  if (e.typ === 'top_signal') {
+    return { title: 'Top-Signal: ' + sym, body: e.text, tag }
   }
   return { title: 'Trade-Setup aktiv', body: e.text, tag }
 }

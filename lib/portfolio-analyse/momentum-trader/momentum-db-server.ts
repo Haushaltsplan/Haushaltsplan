@@ -13,6 +13,7 @@ import type {
   MomentumEarningsEvent,
   MomentumMarketRegime,
   MomentumScanEintrag,
+  MomentumTechSnapshot,
 } from '@/lib/portfolio-analyse/momentum-trader/momentum-trader-types'
 
 const TABLE_BARS = 'momentum_bars_daily' as const
@@ -20,6 +21,7 @@ const TABLE_EARNINGS_CAL = 'momentum_earnings_calendar' as const
 const TABLE_REGIME = 'momentum_market_regime_daily' as const
 const TABLE_SCAN = 'momentum_scan_results' as const
 const TABLE_EVENTS = 'momentum_earnings_events' as const
+const TABLE_TECH_SNAPSHOT = 'momentum_tech_snapshot' as const
 
 function istKonfiguriert(): boolean {
   return Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL?.trim() && process.env.SUPABASE_SERVICE_ROLE_KEY?.trim())
@@ -288,6 +290,7 @@ type RegimeDbZeile = {
   spy_above_20ma: boolean | null
   vix_close: number | null
   vix_change_pct: number | null
+  spy_return_5d_pct: number | null
 }
 
 function dbZuRegime(row: RegimeDbZeile): MomentumMarketRegime {
@@ -298,6 +301,7 @@ function dbZuRegime(row: RegimeDbZeile): MomentumMarketRegime {
     spyAbove20Ma: row.spy_above_20ma,
     vixClose: row.vix_close != null ? Number(row.vix_close) : null,
     vixChangePct: row.vix_change_pct != null ? Number(row.vix_change_pct) : null,
+    spyReturn5dPct: row.spy_return_5d_pct != null ? Number(row.spy_return_5d_pct) : null,
   }
 }
 
@@ -313,6 +317,7 @@ export async function speichereMomentumMarketRegime(regime: MomentumMarketRegime
         spy_above_20ma: regime.spyAbove20Ma,
         vix_close: regime.vixClose,
         vix_change_pct: regime.vixChangePct,
+        spy_return_5d_pct: regime.spyReturn5dPct,
       },
       { onConflict: 'handelstag' },
     )
@@ -476,6 +481,24 @@ export async function ladeMomentumDatenStatus(opts?: {
     console.warn('[momentum-trader] Status laden fehlgeschlagen:', e)
     return leer
   }
+}
+
+export async function speichereMomentumTechSnapshots(snapshots: MomentumTechSnapshot[]): Promise<number> {
+  if (!istKonfiguriert() || snapshots.length === 0) return 0
+  const zeilen = snapshots.map((s) => ({
+    symbol: s.symbol.trim().toUpperCase(),
+    scan_date: s.scanDate,
+    handelstag: s.handelstag,
+    snapshot: s,
+  }))
+  const { error } = await admin()
+    .from(TABLE_TECH_SNAPSHOT)
+    .upsert(zeilen, { onConflict: 'symbol,scan_date' })
+  if (error) {
+    console.warn('[momentum-trader] Tech-Snapshot speichern:', error.message)
+    return 0
+  }
+  return zeilen.length
 }
 
 export { istKonfiguriert as momentumSupabaseKonfiguriert }

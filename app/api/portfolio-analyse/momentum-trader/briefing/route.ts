@@ -10,6 +10,7 @@ import {
   ladeNeuestenMomentumScan,
 } from '@/lib/portfolio-analyse/momentum-trader/momentum-db-server'
 import { berechneRegimeGates } from '@/lib/portfolio-analyse/momentum-trader/momentum-regime-server'
+import { ladePlaybookStats } from '@/lib/portfolio-analyse/momentum-trader/momentum-playbook-stats-server'
 import { reichereWatchlistMitEarningsAn } from '@/lib/portfolio-analyse/momentum-trader/momentum-watchlist-enrich-server'
 import {
   ladeMomentumWatchlist,
@@ -60,6 +61,7 @@ export async function GET(req: Request) {
     })
     const performance = trades.length > 0 ? berechneMomentumPerformance(trades) : null
     const tracking = symbole.length > 0 ? await berechneKatalysatorTracking(symbole) : null
+    const playbookStats = await ladePlaybookStats()
 
     const markdown = generiereMomentumBriefing({
       scanDate,
@@ -71,6 +73,7 @@ export async function GET(req: Request) {
       trades,
       performance,
       tracking,
+      playbookStats,
     })
 
     return NextResponse.json({ scanDate, markdown })

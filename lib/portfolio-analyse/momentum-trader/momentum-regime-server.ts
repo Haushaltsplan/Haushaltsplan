@@ -5,7 +5,7 @@
 import 'server-only'
 
 import { heuteIsoUtc } from '@/lib/portfolio-analyse/dividenden-datum-hilfen'
-import { berechneSma } from '@/lib/portfolio-analyse/momentum-trader/momentum-indicators'
+import { berechneSma, berechneReturnPct } from '@/lib/portfolio-analyse/momentum-trader/momentum-indicators'
 import {
   ladeMomentumBars,
   speichereMomentumBars,
@@ -97,6 +97,7 @@ export async function syncMomentumMarketRegime(): Promise<MomentumRegimeGates | 
   const handelstag = spyBars[spyIdx].handelstag
   const spyClose = spyBars[spyIdx].close
   const spyMa20 = berechneSma(spyBars, spyIdx, MA_TAGE)
+  const spyReturn5dPct = berechneReturnPct(spyBars, spyIdx, 5)
 
   const vixBar = barsZuMap(vixBars).get(handelstag) ?? vixBars[vixBars.length - 1]
   const vixIdx = vixBars.findIndex((b) => b.handelstag === vixBar?.handelstag)
@@ -110,6 +111,7 @@ export async function syncMomentumMarketRegime(): Promise<MomentumRegimeGates | 
     spyAbove20Ma: spyMa20 != null ? spyClose > spyMa20 : null,
     vixClose,
     vixChangePct: vixChange,
+    spyReturn5dPct,
   }
 
   await speichereMomentumMarketRegime(regime)

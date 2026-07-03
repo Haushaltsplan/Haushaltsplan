@@ -1,6 +1,21 @@
 import 'server-only'
 
-import { momentumPlaybookLabel } from '@/lib/portfolio-analyse/momentum-trader/momentum-constants'
+import {
+  BACKTEST_LOW_CONFIDENCE_CAP_PCT,
+  BACKTEST_MIN_SAMPLES_GLOBAL,
+  BACKTEST_MIN_SAMPLES_SYMBOL,
+  PLAYBOOK_HARD_BLOCK_TREFFER_PCT,
+  momentumPlaybookLabel,
+} from '@/lib/portfolio-analyse/momentum-trader/momentum-constants'
+import {
+  findePlaybookStat,
+  type MomentumPlaybookStatsLookup,
+} from '@/lib/portfolio-analyse/momentum-trader/momentum-playbook-stats-server'
+import { bewerteTradeQualitaet } from '@/lib/portfolio-analyse/momentum-trader/momentum-trade-qualitaet-server'
+import {
+  MOMENTUM_PRE_EVENT_PLAYBOOKS,
+  MOMENTUM_TRADE_PLAYBOOKS,
+} from '@/lib/portfolio-analyse/momentum-trader/momentum-playbook-registry'
 import type {
   MomentumPlaybook,
   MomentumRegimeGates,
@@ -8,16 +23,11 @@ import type {
   MomentumScanEintrag,
 } from '@/lib/portfolio-analyse/momentum-trader/momentum-trader-types'
 
-const TRADE_PLAYBOOKS = new Set<MomentumPlaybook>([
-  'earnings_gap_fade',
-  'earnings_momentum',
-  'earnings_pre_run',
-  'ipo_fade',
-])
-const PRE_EVENT_PLAYBOOKS = new Set<MomentumPlaybook>(['earnings_pre_event', 'earnings_vorlauf'])
+const TRADE_PLAYBOOKS = new Set<MomentumPlaybook>(MOMENTUM_TRADE_PLAYBOOKS)
+const PRE_EVENT_PLAYBOOKS = new Set<MomentumPlaybook>(MOMENTUM_PRE_EVENT_PLAYBOOKS)
 
 export function klemmeErfolgWahrscheinlichkeit(n: number): number {
-  return Math.min(92, Math.max(28, Math.round(n)))
+  return Math.min(88, Math.max(30, Math.round(n)))
 }
 
 function alsZahl(v: unknown, fallback: number): number {
@@ -29,8 +39,8 @@ function richtungWort(r: MomentumRichtung): string {
 }
 
 function erfolgLabel(pct: number): string {
-  if (pct >= 72) return 'Hoch'
-  if (pct >= 55) return 'Mittel'
+  if (pct >= 70) return 'Hoch'
+  if (pct >= 58) return 'Mittel'
   return 'Niedrig'
 }
 
@@ -119,7 +129,63 @@ function berechneAktiv(e: MomentumScanEintrag): { pct: number; richtung: Momentu
   }
 
   if (e.playbook === 'earnings_pre_run') pct -= 8
-  if (e.gatesFailed.length > 0) pct -= Math.min(18, e.gatesFailed.length * 5)
+  if (e.playbook === 'gap_fade' || e.playbook === 'gap_and_go') {
+    if (e.ampel === 'gruen') pct += 4
+  }
+  if (e.playbook === 'volume_spike_breakout' || e.playbook === 'trend_breakout') {
+    const rs = alsZahl(e.indikatoren.rsVsSpy20d, NaN)
+    if (Number.isFinite(rs) && rs >= 3) pct += 4
+  }
+  if (e.playbook === 'relative_strength_leader') {
+    const rs = alsZahl(e.indikatoren.rsVsSpy20d, 0)
+    if (rs >= 8) pct += 5
+  }
+  if (e.playbook === 'oversold_bounce' || e.playbook === 'range_fade') {
+    if (e.ampel === 'gruen') pct += 3
+  }
+  if (e.playbook === 'overbought_fade') {
+    const sf = alsZahl(e.indikatoren.shortFloatPct, 0)
+    if (sf >= 15) pct -= 6
+    else if (e.ampel === 'gruen') pct += 3
+  }
+  if (e.playbook === 'news_gap' || e.playbook === 'analyst_upgrade') {
+    if (e.ampel === 'gruen') pct += 4
+  }
+  if (e.playbook === 'earnings_post_run' || e.playbook === 'guidance_shock') {
+    if (e.ampel === 'gruen') pct += 5
+  }
+  if (e.playbook === 'revenue_beat_divergence') {
+    const rev = alsZahl(e.indikatoren.surpriseRevPct, 0)
+    if (rev <= -5) pct += 4
+  }
+  if (e.playbook === 'insider_cluster') {
+    const insider = alsZahl(e.indikatoren.insiderAnzahl, 0)
+    if (insider >= 3) pct += 5
+    else if (e.ampel === 'gruen') pct += 3
+  }
+  if (e.playbook === 'short_squeeze_setup') {
+    const sf = alsZahl(e.indikatoren.shortFloatPct, 0)
+    if (sf >= 20) pct += 4
+    if (e.ampel === 'gruen') pct += 4
+  }
+  if (
+    e.playbook === 'nr7_breakout' ||
+    e.playbook === 'inside_day_breakout' ||
+    e.playbook === 'ma_cross_momentum'
+  ) {
+    if (e.ampel === 'gruen') pct += 3
+  }
+  if (e.playbook === 'failed_breakout' || e.playbook === 'trend_exhaustion') {
+    if (e.ampel === 'gruen') pct += 3
+  }
+  if (e.playbook === 'capitulation_bounce' || e.playbook === 'vix_spike_fade') {
+    if (e.ampel === 'gruen') pct += 4
+  }
+  if (e.playbook === 'sector_rotation_long' || e.playbook === 'market_regime_long') {
+    const breadth = alsZahl(e.indikatoren.watchlistBreadthPct, NaN)
+    if (Number.isFinite(breadth) && breadth >= 55) pct += 4
+  }
+  if (e.gatesFailed.length > 0) pct -= Math.min(22, e.gatesFailed.length * 6)
 
   return { pct: klemmeErfolgWahrscheinlichkeit(pct), richtung: r }
 }
@@ -160,14 +226,64 @@ export type MomentumTradeErfolg = {
   richtung: MomentumRichtung | null
   istAktiv: boolean
   handlungKurz: string
+  backtestTrefferPct: number | null
+  backtestStichprobe: number | null
+  backtestHinweis: string | null
+}
+
+function kalibriereMitBacktest(
+  heuristikPct: number,
+  playbook: MomentumPlaybook,
+  symbol: string,
+  lookup: MomentumPlaybookStatsLookup | null,
+): { pct: number; stat: ReturnType<typeof findePlaybookStat> } {
+  const stat = findePlaybookStat(lookup, playbook, symbol)
+  if (!stat || stat.trefferPct == null) {
+    return { pct: heuristikPct, stat: null }
+  }
+
+  const hist = stat.trefferPct
+  let pct: number
+  if (stat.symbol && stat.sampleSize >= BACKTEST_MIN_SAMPLES_SYMBOL) {
+    pct = heuristikPct * 0.32 + hist * 0.68
+  } else if (stat.sampleSize >= 15) {
+    pct = heuristikPct * 0.28 + hist * 0.72
+  } else if (stat.sampleSize >= BACKTEST_MIN_SAMPLES_GLOBAL) {
+    pct = heuristikPct * 0.38 + hist * 0.62
+  } else {
+    pct = heuristikPct * 0.55 + hist * 0.45
+  }
+
+  if (stat.sampleSize >= 10 && hist < PLAYBOOK_HARD_BLOCK_TREFFER_PCT) {
+    pct = Math.min(pct, 42)
+  } else if (stat.sampleSize < BACKTEST_MIN_SAMPLES_GLOBAL) {
+    pct = Math.min(pct, BACKTEST_LOW_CONFIDENCE_CAP_PCT)
+  } else if (hist < heuristikPct - 12) {
+    pct = pct * 0.92
+  }
+
+  return { pct: klemmeErfolgWahrscheinlichkeit(pct), stat }
+}
+
+function backtestHinweisText(stat: ReturnType<typeof findePlaybookStat>): string | null {
+  if (!stat || stat.trefferPct == null || stat.sampleSize < 3) return null
+  const jahre = Math.round(stat.fensterTage / 252)
+  const jahreLabel = jahre >= 2 ? jahre + 'J' : Math.round(stat.fensterTage / 30) + 'M'
+  return stat.wins + '/' + stat.sampleSize + ' Treffer (' + jahreLabel + ', ' + stat.trefferPct + '%)'
 }
 
 /** Erfolgswahrscheinlichkeit: wie wahrscheinlich der empfohlene Trade aufgeht. */
 export function berechneTradeErfolg(
   e: MomentumScanEintrag,
   gates: MomentumRegimeGates | null,
+  statsLookup: MomentumPlaybookStatsLookup | null = null,
 ): MomentumTradeErfolg {
   const pbLabel = momentumPlaybookLabel(e.playbook)
+  const leerBacktest = {
+    backtestTrefferPct: null as number | null,
+    backtestStichprobe: null as number | null,
+    backtestHinweis: null as string | null,
+  }
 
   if (e.playbook === 'ipo_fade' && e.ampel === 'grau') {
     return {
@@ -176,6 +292,7 @@ export function berechneTradeErfolg(
       richtung: null,
       istAktiv: false,
       handlungKurz: 'IPO-Beobachtung — noch kein Trade',
+      ...leerBacktest,
     }
   }
 
@@ -199,54 +316,81 @@ export function berechneTradeErfolg(
       richtung: pe.richtung,
       istAktiv: false,
       handlungKurz,
+      ...leerBacktest,
     }
   }
 
   if (TRADE_PLAYBOOKS.has(e.playbook) && e.ampel !== 'grau' && e.ampel !== 'rot') {
     const aktiv = berechneAktiv(e)
     if (aktiv.richtung) {
-      return {
-        pct: aktiv.pct,
-        label: erfolgLabel(aktiv.pct),
-        richtung: aktiv.richtung,
-        istAktiv: true,
-        handlungKurz:
+      const kal = kalibriereMitBacktest(aktiv.pct, e.playbook, e.symbol, statsLookup)
+      const hinweis = backtestHinweisText(kal.stat)
+      const qual = bewerteTradeQualitaet(e, kal.pct, gates, kal.stat)
+      const istAktiv = qual.qualifiziert
+      let handlungKurz: string
+      if (istAktiv) {
+        handlungKurz =
           richtungWort(aktiv.richtung) +
           ' jetzt — ' +
-          aktiv.pct +
-          '% dass Trade aufgeht · ' +
-          pbLabel,
+          kal.pct +
+          '% Erfolgschance' +
+          (qual.erwartungswertR != null ? ' · EV +' + qual.erwartungswertR + 'R' : '') +
+          ' · ' +
+          pbLabel
+      } else if (qual.blockiertGruende.length > 0) {
+        handlungKurz = 'Beobachten — ' + qual.blockiertGruende[0] + ' · ' + pbLabel
+      } else {
+        handlungKurz = 'Beobachten — Qualitätsfilter · ' + pbLabel
+      }
+      return {
+        pct: kal.pct,
+        label: erfolgLabel(kal.pct),
+        richtung: aktiv.richtung,
+        istAktiv,
+        handlungKurz,
+        backtestTrefferPct: kal.stat?.trefferPct ?? null,
+        backtestStichprobe: kal.stat?.sampleSize ?? null,
+        backtestHinweis: hinweis,
       }
     }
   }
 
   if (e.ampel === 'rot' || e.gatesFailed.length > e.gatesPassed.length) {
-    const pct = klemmeErfolgWahrscheinlichkeit(32 + e.score * 0.15)
+    const aktiv = klemmeErfolgWahrscheinlichkeit(32 + e.score * 0.15)
+    const kal = kalibriereMitBacktest(aktiv, e.playbook, e.symbol, statsLookup)
     return {
-      pct,
+      pct: kal.pct,
       label: 'Niedrig',
       richtung: (e.indikatoren.richtung as MomentumRichtung) ?? null,
       istAktiv: false,
       handlungKurz: 'Kein Trade — Setup noch nicht erfüllt',
+      backtestTrefferPct: kal.stat?.trefferPct ?? null,
+      backtestStichprobe: kal.stat?.sampleSize ?? null,
+      backtestHinweis: backtestHinweisText(kal.stat),
     }
   }
 
-  const pct = klemmeErfolgWahrscheinlichkeit(e.score * 0.65)
+  const aktiv = klemmeErfolgWahrscheinlichkeit(e.score * 0.65)
+  const kal = kalibriereMitBacktest(aktiv, e.playbook, e.symbol, statsLookup)
   return {
-    pct,
-    label: erfolgLabel(pct),
+    pct: kal.pct,
+    label: erfolgLabel(kal.pct),
     richtung: (e.indikatoren.richtung as MomentumRichtung) ?? null,
     istAktiv: false,
     handlungKurz: 'Beobachten — ' + pbLabel,
+    backtestTrefferPct: kal.stat?.trefferPct ?? null,
+    backtestStichprobe: kal.stat?.sampleSize ?? null,
+    backtestHinweis: backtestHinweisText(kal.stat),
   }
 }
 
 export function ergaenzeScanMitErfolg(
   ergebnisse: MomentumScanEintrag[],
   gates: MomentumRegimeGates | null,
+  statsLookup: MomentumPlaybookStatsLookup | null = null,
 ): MomentumScanEintrag[] {
   return ergebnisse.map((e) => {
-    const erfolg = berechneTradeErfolg(e, gates)
+    const erfolg = berechneTradeErfolg(e, gates, statsLookup)
     return {
       ...e,
       indikatoren: {
@@ -256,6 +400,10 @@ export function ergaenzeScanMitErfolg(
         erfolgIstAktiv: erfolg.istAktiv,
         handlungKurz: erfolg.handlungKurz,
         erfolgRichtung: erfolg.richtung,
+        backtestTrefferPct: erfolg.backtestTrefferPct,
+        backtestStichprobe: erfolg.backtestStichprobe,
+        backtestHinweis: erfolg.backtestHinweis,
+        tradeQualitaetOk: erfolg.istAktiv,
       },
     }
   })

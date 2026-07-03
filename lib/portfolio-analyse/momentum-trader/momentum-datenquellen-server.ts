@@ -33,7 +33,7 @@ export function momentumDatenquellenStatus(): MomentumDatenquelle[] {
       name: 'MarketBeat.com',
       typ: 'scraper',
       aktiv: true,
-      nutzen: 'Earnings-Termine, BMO/AMC, EPS-Surprise, IPO',
+      nutzen: 'Earnings-Termine, BMO/AMC, EPS-Surprise, IPO, Analyst-Ratings',
     },
     {
       id: 'wallstreet',
@@ -55,6 +55,34 @@ export function momentumDatenquellenStatus(): MomentumDatenquelle[] {
       typ: 'scraper',
       aktiv: true,
       nutzen: 'Regular / Pre-Market / After-Hours (quoteSummary price)',
+    },
+    {
+      id: 'google-news',
+      name: 'Google News RSS',
+      typ: 'scraper',
+      aktiv: true,
+      nutzen: 'Headlines + Sentiment für News-Gap',
+    },
+    {
+      id: 'finviz',
+      name: 'Finviz.com',
+      typ: 'scraper',
+      aktiv: true,
+      nutzen: 'Short Float, RSI, Rel Volume',
+    },
+    {
+      id: 'openinsider',
+      name: 'OpenInsider.com',
+      typ: 'scraper',
+      aktiv: true,
+      nutzen: 'SEC Form 4 Insider-Käufe für Cluster-Setup',
+    },
+    {
+      id: 'marketbeat-analyst',
+      name: 'MarketBeat Analyst',
+      typ: 'scraper',
+      aktiv: true,
+      nutzen: 'Analyst Upgrades/Initiates',
     },
   ]
 }

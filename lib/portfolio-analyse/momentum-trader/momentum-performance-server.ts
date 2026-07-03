@@ -1,5 +1,6 @@
 import 'server-only'
 
+import { MOMENTUM_ALL_PLAYBOOKS } from '@/lib/portfolio-analyse/momentum-trader/momentum-playbook-registry'
 import type {
   MomentumPerformance,
   MomentumPerformancePlaybook,
@@ -7,14 +8,7 @@ import type {
   MomentumTrade,
 } from '@/lib/portfolio-analyse/momentum-trader/momentum-trader-types'
 
-const PLAYBOOKS: MomentumPlaybook[] = [
-  'earnings_gap_fade',
-  'earnings_pre_event',
-  'earnings_pre_run',
-  'earnings_vorlauf',
-  'earnings_momentum',
-  'ipo_fade',
-]
+const PLAYBOOKS: MomentumPlaybook[] = MOMENTUM_ALL_PLAYBOOKS
 
 function leeresPlaybookStats(): MomentumPerformancePlaybook {
   return { trades: 0, geschlossen: 0, pnlEur: 0, winRatePct: null }
@@ -78,21 +72,24 @@ export function berechneMomentumPerformance(trades: MomentumTrade[]): MomentumPe
   const profitFactor =
     grossLoss > 0
       ? Math.round((grossWin / grossLoss) * 100) / 100
-      : grossWin > 0 && losses === 0
+      : grossWin > 0
         ? null
         : null
 
+  const tradesGesamt = trades.length
+  const winRateGesamt = winRate(wins, tradesGeschlossen)
+
   return {
-    tradesGesamt: trades.length,
+    tradesGesamt,
     tradesGeschlossen,
     tradesOffen,
-    winRatePct: winRate(wins, tradesGeschlossen),
-    profitFactor,
     pnlGesamtEur: Math.round(pnlGesamt * 100) / 100,
     pnlDurchschnittEur:
       tradesGeschlossen > 0 ? Math.round((pnlGesamt / tradesGeschlossen) * 100) / 100 : null,
+    winRatePct: winRateGesamt,
+    profitFactor,
     ruleCompliancePct:
-      trades.length > 0 ? Math.round((ruleOk / trades.length) * 1000) / 10 : null,
+      tradesGesamt > 0 ? Math.round((ruleOk / tradesGesamt) * 1000) / 10 : null,
     nachPlaybook,
   }
 }

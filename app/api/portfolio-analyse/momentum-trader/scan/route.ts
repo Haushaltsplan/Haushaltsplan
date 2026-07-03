@@ -44,10 +44,19 @@ export async function GET(req: Request) {
   const { ergaenzeScanMitErfolg } = await import(
     '@/lib/portfolio-analyse/momentum-trader/momentum-trade-erfolg-server'
   )
+  const { ladePlaybookStats, baueStatsLookup, wendePlaybookDeaktivierungAn } = await import(
+    '@/lib/portfolio-analyse/momentum-trader/momentum-playbook-stats-server'
+  )
+  const statsPaket = await ladePlaybookStats()
+  const statsLookup = baueStatsLookup(statsPaket.stats)
   return NextResponse.json({
     scanDate: gespeichert.scanDate,
     regime: regimeGates,
-    ergebnisse: ergaenzeScanMitErfolg(gespeichert.ergebnisse, regimeGates),
+    ergebnisse: wendePlaybookDeaktivierungAn(
+      ergaenzeScanMitErfolg(gespeichert.ergebnisse, regimeGates, statsLookup),
+      statsLookup,
+    ),
+    playbookStats: statsPaket,
   })
 }
 

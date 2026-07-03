@@ -27,6 +27,9 @@ type TradeDbZeile = {
   rule_compliance: boolean
   notizen: string | null
   erstellt_am: string
+  scan_date?: string | null
+  signal_erfolg_pct?: number | null
+  aus_scan?: boolean
 }
 
 function dbZuTrade(row: TradeDbZeile): MomentumTrade {
@@ -46,6 +49,9 @@ function dbZuTrade(row: TradeDbZeile): MomentumTrade {
     ruleCompliance: row.rule_compliance,
     notizen: row.notizen,
     erstelltAm: row.erstellt_am,
+    scanDate: row.scan_date ?? null,
+    signalErfolgPct: row.signal_erfolg_pct != null ? Number(row.signal_erfolg_pct) : null,
+    ausScan: row.aus_scan === true,
   }
 }
 
@@ -83,6 +89,9 @@ export async function erstelleMomentumTrade(
     riskEur?: number
     notizen?: string | null
     ruleCompliance?: boolean
+    scanDate?: string | null
+    signalErfolgPct?: number | null
+    ausScan?: boolean
   },
 ): Promise<MomentumTrade> {
   const riskEur = Math.min(
@@ -103,6 +112,12 @@ export async function erstelleMomentumTrade(
       risk_eur: riskEur,
       rule_compliance: input.ruleCompliance ?? true,
       notizen: input.notizen ?? null,
+      scan_date: input.scanDate ?? null,
+      signal_erfolg_pct:
+        input.signalErfolgPct != null && Number.isFinite(input.signalErfolgPct)
+          ? Math.round(input.signalErfolgPct)
+          : null,
+      aus_scan: input.ausScan === true,
     })
     .select('*')
     .single()

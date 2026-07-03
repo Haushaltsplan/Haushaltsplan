@@ -131,7 +131,7 @@ export function MomentumErinnerungenEinstellungen() {
         <div>
           <p className="text-xs font-medium text-[var(--app-text)]">Browser-Erinnerungen</p>
           <p className="mt-0.5 text-[10px] text-[var(--app-text-muted)]">
-            Earnings heute/morgen, Pre-Event-Katalysator, Trade-Setups
+            Earnings heute/morgen, Pre-Event, Trade-Setups, Top-Signal ≥65%
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">

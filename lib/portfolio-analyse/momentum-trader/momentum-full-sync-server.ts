@@ -69,10 +69,33 @@ export async function fuehreVollenMomentumSyncAus(
       'Regime: SPY ' +
         (regimeGates.regime.spyAbove20Ma ? 'über' : 'unter') +
         ' MA20, VIX ' +
-        (regimeGates.regime.vixClose?.toFixed(1) ?? '—'),
+        (regimeGates.regime.vixClose?.toFixed(1) ?? '—') +
+        (regimeGates.regime.spyReturn5dPct != null
+          ? ', SPY 5T ' + regimeGates.regime.spyReturn5dPct + '%'
+          : ''),
     )
   } else {
     fehler.push('Regime konnte nicht berechnet werden')
+  }
+
+  try {
+    const wlAktuell = await ladeMomentumWatchlist(sb)
+    const wl = wlAktuell.length ? wlAktuell : watchlist
+    const { berechneUndSpeicherePlaybookStats } = await import(
+      '@/lib/portfolio-analyse/momentum-trader/momentum-playbook-stats-server'
+    )
+    const backtest = await berechneUndSpeicherePlaybookStats(wl)
+    if (backtest.stats.length > 0) {
+      schritte.push(
+        'Backtest: ' +
+          backtest.stats.filter((s) => !s.symbol).length +
+          ' Playbooks kalibriert (' +
+          backtest.fensterTage +
+          'T Fenster)',
+      )
+    }
+  } catch (e) {
+    fehler.push('Backtest: ' + String(e))
   }
 
   let scan = null

@@ -1,12 +1,14 @@
 import 'server-only'
 
-import { momentumPlaybookLabel } from '@/lib/portfolio-analyse/momentum-trader/momentum-constants'
+import { momentumPlaybookLabel, PLAYBOOK_MIN_BACKTEST_TREFFER_PCT } from '@/lib/portfolio-analyse/momentum-trader/momentum-constants'
+import { MOMENTUM_TRADE_PLAYBOOKS } from '@/lib/portfolio-analyse/momentum-trader/momentum-playbook-registry'
 import type {
   MomentumEarningsKalenderMonat,
   MomentumErinnerung,
   MomentumKatalysatorTracking,
   MomentumMarketRegime,
   MomentumPerformance,
+  MomentumPlaybookStatsPaket,
   MomentumRegimeGates,
   MomentumScanEintrag,
   MomentumTrade,
@@ -23,6 +25,7 @@ export type MomentumBriefingInput = {
   trades: MomentumTrade[]
   performance: MomentumPerformance | null
   tracking?: MomentumKatalysatorTracking | null
+  playbookStats?: MomentumPlaybookStatsPaket | null
 }
 
 /** Tages-Briefing als Markdown (Copy/PDF-Vorlage). */
@@ -36,6 +39,9 @@ export function generiereMomentumBriefing(input: MomentumBriefingInput): string 
     lines.push('## Markt-Regime')
     lines.push('- S&P 500: ' + (regime.spyClose?.toLocaleString('de-DE') ?? '—'))
     lines.push('- vs. MA20: ' + (regime.spyAbove20Ma ? 'darüber' : 'darunter'))
+    if ('spyReturn5dPct' in regime && regime.spyReturn5dPct != null) {
+      lines.push('- SPY 5T: ' + regime.spyReturn5dPct + '%')
+    }
     lines.push('- VIX: ' + (regime.vixClose?.toFixed(2) ?? '—'))
     lines.push('')
   }
@@ -96,15 +102,17 @@ export function generiereMomentumBriefing(input: MomentumBriefingInput): string 
 
   const tradeSetups = input.ergebnisse.filter(
     (e) =>
-      (e.playbook === 'earnings_gap_fade' ||
-        e.playbook === 'earnings_momentum' ||
-        e.playbook === 'ipo_fade') &&
+      MOMENTUM_TRADE_PLAYBOOKS.includes(e.playbook) &&
       (e.ampel === 'gruen' || e.ampel === 'gelb'),
   )
 
   if (tradeSetups.length > 0) {
     lines.push('## Trade-Setups')
-    for (const e of tradeSetups.sort((a, b) => b.score - a.score)) {
+    for (const e of tradeSetups.sort((a, b) => {
+      const pa = typeof a.indikatoren.erfolgWahrscheinlichkeitPct === 'number' ? a.indikatoren.erfolgWahrscheinlichkeitPct : 0
+      const pb = typeof b.indikatoren.erfolgWahrscheinlichkeitPct === 'number' ? b.indikatoren.erfolgWahrscheinlichkeitPct : 0
+      return pb - pa || b.score - a.score
+    })) {
       const r = e.indikatoren.richtung
       lines.push(
         '### ' +
@@ -213,6 +221,31 @@ export function generiereMomentumBriefing(input: MomentumBriefingInput): string 
             ? ' → ' + String(e.postPlaybook) + ' (' + String(e.postAmpel) + ')'
             : ' → kein Setup') +
           (e.gapPct != null ? ', Gap ' + e.gapPct.toFixed(1) + '%' : ''),
+      )
+    }
+    lines.push('')
+  }
+
+  const pbStats = input.playbookStats?.stats.filter((s) => !s.symbol) ?? []
+  if (pbStats.length > 0) {
+    const fenster = input.playbookStats?.fensterTage ?? 504
+    lines.push('## Backtest-Kalibrierung (' + Math.round(fenster / 252) + 'J Fenster)')
+    for (const s of [...pbStats].sort((a, b) => (b.trefferPct ?? 0) - (a.trefferPct ?? 0)).slice(0, 15)) {
+      const aktiv =
+        s.sampleSize < 10 || (s.trefferPct != null && s.trefferPct >= PLAYBOOK_MIN_BACKTEST_TREFFER_PCT)
+          ? 'aktiv'
+          : 'pausiert'
+      lines.push(
+        '- ' +
+          momentumPlaybookLabel(s.playbook) +
+          ': ' +
+          s.wins +
+          '/' +
+          s.sampleSize +
+          ' (' +
+          (s.trefferPct != null ? s.trefferPct + '%' : '—') +
+          ') · ' +
+          aktiv,
       )
     }
     lines.push('')

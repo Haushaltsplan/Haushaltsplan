@@ -7,6 +7,10 @@ import {
 } from '@/lib/portfolio-analyse/momentum-trader/momentum-constants'
 import { istMomentumPreIpoEintrag } from '@/lib/portfolio-analyse/momentum-trader/momentum-pseudo-isin'
 import { berechneRegimeGates } from '@/lib/portfolio-analyse/momentum-trader/momentum-regime-server'
+import {
+  MOMENTUM_PRE_EVENT_PLAYBOOKS,
+  MOMENTUM_TRADE_PLAYBOOKS,
+} from '@/lib/portfolio-analyse/momentum-trader/momentum-playbook-registry'
 import { sammleHandlungssignale } from '@/lib/portfolio-analyse/momentum-trader/momentum-handlungssignal-server'
 import type {
   MomentumDatenStatus,
@@ -18,8 +22,8 @@ import type {
   MomentumWatchlistEintragAngereichert,
 } from '@/lib/portfolio-analyse/momentum-trader/momentum-trader-types'
 
-const TRADE_PLAYBOOKS = new Set(['earnings_gap_fade', 'earnings_momentum', 'ipo_fade'])
-const PRE_EVENT_PLAYBOOKS = new Set(['earnings_pre_event', 'earnings_vorlauf'])
+const TRADE_PLAYBOOKS = new Set(MOMENTUM_TRADE_PLAYBOOKS)
+const PRE_EVENT_PLAYBOOKS = new Set(MOMENTUM_PRE_EVENT_PLAYBOOKS)
 
 function regimeText(regime: MomentumMarketRegime | null): string {
   if (!regime) return 'Regime unbekannt — Pipeline ausführen.'
@@ -29,6 +33,9 @@ function regimeText(regime: MomentumMarketRegime | null): string {
   if (gates.shortBias) parts.push('Short-Bias möglich')
   if (regime.spyClose != null) parts.push('S&P ' + regime.spyClose.toLocaleString('de-DE'))
   if (regime.vixClose != null) parts.push('VIX ' + regime.vixClose.toFixed(1))
+  if (regime.spyReturn5dPct != null) {
+    parts.push('SPY 5T ' + (regime.spyReturn5dPct >= 0 ? '+' : '') + regime.spyReturn5dPct + '%')
+  }
   return parts.join(' · ') || 'Neutral'
 }
 
@@ -221,18 +228,17 @@ export function generiereMomentumHandlungsempfehlung(input: {
   if (setups.length > 0) {
     zusammenfassung =
       setups.length +
-      ' Trade-Setup(s) aktiv — zuerst prüfen, dann optional im Journal erfassen (max. 10 €).'
+      ' Trade-Setup(s) aktiv — nach Wahrscheinlichkeit sortiert (Gap, Trend, Earnings). Max. 10 € Risiko.'
   } else if (preEventAktiv) {
     zusammenfassung =
       'Pre-Event-Katalysator aktiv — Szenario-Plan unter Scan → „Pre-Event“. Kein Einstieg vor den Zahlen.'
   } else if (datenHinweise.length > 0) {
     zusammenfassung =
-      'Noch kein Trade-Setup — das ist normal außerhalb von Earnings-Wochen. ' +
-      datenHinweise[0] +
-      ' Katalysator unter Scan → „Pre-Event“.'
+      'Noch kein Trade-Setup über Schwelle — „Alles aktualisieren“ für frische Kurse und Scan. ' +
+      datenHinweise[0]
   } else {
     zusammenfassung =
-      'Kein Trade jetzt — Pre-Event-Katalysator 3–14 Tage vor Earnings oder Reaktion nach Zahlen.'
+      'Kein Trade über Mindest-Wahrscheinlichkeit — Watchlist wird täglich auf Gap, Trend und Earnings geprüft.'
   }
 
   const offen = input.trades.filter((t) => t.exitPrice == null)

@@ -12,7 +12,13 @@ import type {
 } from '@/lib/portfolio-analyse/momentum-trader/momentum-trader-types'
 
 const FENSTER_TAGE = 365
-const POST_PLAYBOOKS: MomentumPlaybook[] = ['earnings_gap_fade', 'earnings_momentum']
+const POST_PLAYBOOKS: MomentumPlaybook[] = [
+  'earnings_gap_fade',
+  'earnings_momentum',
+  'earnings_post_run',
+  'guidance_shock',
+  'revenue_beat_divergence',
+]
 const PRE_PLAYBOOKS: MomentumPlaybook[] = ['earnings_pre_event', 'earnings_vorlauf']
 
 function addDaysIso(iso: string, tage: number): string {

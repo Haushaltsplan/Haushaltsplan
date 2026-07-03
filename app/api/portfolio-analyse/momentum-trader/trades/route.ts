@@ -73,6 +73,9 @@ export async function POST(req: Request) {
       riskEur: body.riskEur != null ? Number(body.riskEur) : undefined,
       notizen: body.notizen != null ? String(body.notizen) : null,
       ruleCompliance: body.ruleCompliance !== false,
+      scanDate: body.scanDate != null ? String(body.scanDate).slice(0, 10) : null,
+      signalErfolgPct: body.signalErfolgPct != null ? Number(body.signalErfolgPct) : null,
+      ausScan: body.ausScan === true,
     })
     return NextResponse.json({ ok: true, trade })
   } catch (e) {

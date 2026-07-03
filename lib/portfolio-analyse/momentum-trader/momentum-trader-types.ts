@@ -1,7 +1,7 @@
 /**
  * Momentum Trader — Typen.
  *
- * Kurzfristige, faktenbasierte Setups (Earnings-Gap, IPO-Fade, …).
+ * Always-On Watchlist-Scanner: Earnings, Gap, Trend, Volumen.
  * Getrennt vom Nachkauf-Radar — andere Playbooks, andere Regeln.
  */
 
@@ -13,6 +13,118 @@ export type MomentumPlaybook =
   | 'earnings_pre_run'
   | 'earnings_momentum'
   | 'ipo_fade'
+  | 'gap_fade'
+  | 'gap_and_go'
+  | 'volume_spike_breakout'
+  | 'trend_pullback'
+  | 'trend_breakout'
+  | 'relative_strength_leader'
+  | 'oversold_bounce'
+  | 'overbought_fade'
+  | 'range_fade'
+  | 'sector_rotation_long'
+  | 'market_regime_long'
+  | 'market_regime_short'
+  | 'news_gap'
+  | 'analyst_upgrade'
+  | 'earnings_post_run'
+  | 'guidance_shock'
+  | 'revenue_beat_divergence'
+  | 'insider_cluster'
+  | 'short_squeeze_setup'
+  | 'nr7_breakout'
+  | 'inside_day_breakout'
+  | 'failed_breakout'
+  | 'relative_weakness_fade'
+  | 'capitulation_bounce'
+  | 'ma_cross_momentum'
+  | 'trend_exhaustion'
+  | 'sector_laggard_catchup'
+  | 'vix_spike_fade'
+
+/** News-Katalysator (Google RSS). */
+export type MomentumNewsSentiment = 'bullish' | 'bearish' | 'neutral'
+
+export type MomentumNewsKatalysator = {
+  symbol: string
+  headline: string
+  href: string
+  veroeffentlichtAm: string
+  sentiment: MomentumNewsSentiment
+  tageAlt: number
+}
+
+/** Analyst-Rating-Änderung (MarketBeat). */
+export type MomentumAnalystAktion = 'upgrade' | 'downgrade' | 'initiate' | 'reiterate' | 'target'
+
+export type MomentumAnalystRating = {
+  symbol: string
+  datum: string
+  aktion: MomentumAnalystAktion
+  firma: string | null
+  ratingAlt: string | null
+  ratingNeu: string | null
+  zielpreisAlt: number | null
+  zielpreisNeu: number | null
+}
+
+/** SEC Form 4 Kauf via OpenInsider. */
+export type MomentumInsiderKauf = {
+  symbol: string
+  tradeDate: string
+  filingDate: string
+  insiderName: string
+  title: string | null
+  tradeType: 'purchase' | 'sale'
+  valueUsd: number | null
+  qty: number | null
+  price: number | null
+}
+
+/** Mehrere Insider-Käufe in kurzem Fenster. */
+export type MomentumInsiderCluster = {
+  symbol: string
+  fensterTage: number
+  kaufAnzahl: number
+  insiderAnzahl: number
+  gesamtWertUsd: number | null
+  letzterKauf: string
+  kauefe: MomentumInsiderKauf[]
+}
+
+/** Technischer Snapshot pro Symbol (für tägliche Playbooks). */
+export type MomentumTechSnapshot = {
+  symbol: string
+  scanDate: string
+  handelstag: string
+  close: number
+  open: number
+  high: number
+  low: number
+  gapPct: number | null
+  rvol: number | null
+  atr: number | null
+  atrPct: number | null
+  ma20: number | null
+  ma50: number | null
+  rsi14: number | null
+  bbUpper: number | null
+  bbLower: number | null
+  high20d: number | null
+  high52w: number | null
+  low20d: number | null
+  distHigh52wPct: number | null
+  return20dPct: number | null
+  rsVsSpy20d: number | null
+  rsVsSector20d: number | null
+  uptrend: boolean
+  downtrend: boolean
+  aboveMa20: boolean
+  range20dPct: number | null
+  distRangeLowPct: number | null
+  distRangeHighPct: number | null
+  shortFloatPct: number | null
+}
 
 /** Long / Short / kein Trade. */
 export type MomentumRichtung = 'long' | 'short'
@@ -75,6 +187,8 @@ export type MomentumMarketRegime = {
   spyAbove20Ma: boolean | null
   vixClose: number | null
   vixChangePct: number | null
+  /** S&P 5-Tage-Performance (%). */
+  spyReturn5dPct: number | null
 }
 
 /** Hard Gates aus Markt-Regime. */
@@ -84,6 +198,14 @@ export type MomentumRegimeGates = {
   gatesPassed: string[]
   gatesFailed: string[]
   regime: MomentumMarketRegime
+}
+
+/** Erweiterter Scan-Kontext (Breadth, Sektor-Trends). */
+export type MomentumRegimeKontext = {
+  spyReturn5dPct: number | null
+  watchlistBreadthPct: number | null
+  /** Sektor-ETF → 5-Tage-Return (%). */
+  sectorReturn5d: Record<string, number>
 }
 
 /** Ergebnis der Regel-Engine (Stufe A). */
@@ -115,6 +237,10 @@ export type MomentumTrade = {
   ruleCompliance: boolean
   notizen: string | null
   erstelltAm: string
+  /** Scan-Datum des Ausgangs-Signals (wenn aus Scan erfasst). */
+  scanDate?: string | null
+  signalErfolgPct?: number | null
+  ausScan?: boolean
 }
 
 /** Persönliche Watchlist — nur diese Titel werden geladen/gescrapt. */
@@ -215,6 +341,7 @@ export type MomentumScanPaket = {
   scanDate: string
   regime: MomentumRegimeGates | null
   ergebnisse: MomentumScanEintrag[]
+  playbookStats?: MomentumPlaybookStatsPaket | null
 }
 
 /** Externe Datenquelle (Scraper/API). */
@@ -299,6 +426,7 @@ export type MomentumErinnerung = {
     | 'trade_offen'
     | 'daten_veraltet'
     | 'scan_verfuegbar'
+    | 'top_signal'
   schwere: 'info' | 'warnung' | 'aktion'
   text: string
   symbol?: string
@@ -325,6 +453,73 @@ export type MomentumKatalysatorTracking = {
   mitTradeSetup: number
   trefferquotePct: number | null
   eintraege: MomentumKatalysatorTrackingEintrag[]
+}
+
+/** Forward-Outcome eines archivierten Top-Signals. */
+export type MomentumTopSignalOutcome = 'win' | 'loss' | 'timeout' | 'pending'
+
+export type MomentumTopSignalEintrag = {
+  symbol: string
+  playbook: MomentumPlaybook
+  scanDate: string
+  direction: MomentumRichtung
+  score: number
+  ampel: MomentumAmpel
+  erfolgPct: number
+  entryPrice: number
+  stopPrice: number
+  targetPrice: number
+  outcome: MomentumTopSignalOutcome
+  /** Trade aus Journal zu diesem Signal erfasst */
+  imJournal: boolean
+  journalPnlEur: number | null
+  journalGeschlossen: boolean
+}
+
+export type MomentumTopSignalPlaybookStat = {
+  signale: number
+  gewinne: number
+  trefferPct: number | null
+}
+
+/** Top-Signal-Tracking: Vorhersage vs. tatsächlicher Kursverlauf + Journal-Vergleich. */
+export type MomentumTopSignalTracking = {
+  fensterTage: number
+  signaleGesamt: number
+  ausgewertet: number
+  ausstehend: number
+  gewinne: number
+  verluste: number
+  timeouts: number
+  trefferquotePct: number | null
+  avgVorhersagePct: number | null
+  kalibrierungsDeltaPct: number | null
+  journalSignale: number
+  journalGeschlossen: number
+  journalWinRatePct: number | null
+  journalPnlEur: number | null
+  nachPlaybook: Partial<Record<MomentumPlaybook, MomentumTopSignalPlaybookStat>>
+  eintraege: MomentumTopSignalEintrag[]
+}
+
+/** Backtest-Ergebnis pro Playbook (global oder pro Symbol). */
+export type MomentumPlaybookStat = {
+  playbook: MomentumPlaybook
+  /** leer = aggregiert über alle Watchlist-Titel */
+  symbol: string
+  wins: number
+  losses: number
+  timeouts: number
+  sampleSize: number
+  trefferPct: number | null
+  fensterTage: number
+  berechnetAm: string
+}
+
+export type MomentumPlaybookStatsPaket = {
+  stats: MomentumPlaybookStat[]
+  berechnetAm: string | null
+  fensterTage: number
 }
 
 /** Suchtreffer für Momentum-Watchlist (Börse + Pre-IPO). */

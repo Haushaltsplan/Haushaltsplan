@@ -8,6 +8,7 @@ import { heuteIsoUtc, tageZwischenIso } from '@/lib/portfolio-analyse/dividenden
 import {
   EARNINGS_LOOKBACK_TAGE,
   EARNINGS_BEOBACHTUNG_MAX_TAGE,
+  EARNINGS_EXTENDED_LOOKBACK_TAGE,
   GAP_MEDIAN_FAKTOR,
   GAP_MIN_PCT,
   IPO_FADE_MAX_TAGE,
@@ -40,12 +41,27 @@ import { ladeMomentumIpoDatum } from '@/lib/portfolio-analyse/momentum-trader/mo
 import { istMomentumPreIpoEintrag } from '@/lib/portfolio-analyse/momentum-trader/momentum-pseudo-isin'
 import { bewerteEarningsPreEvent } from '@/lib/portfolio-analyse/momentum-trader/momentum-pre-event-server'
 import { bewerteEarningsPreRun } from '@/lib/portfolio-analyse/momentum-trader/momentum-pre-run-server'
+import { bewerteTaeglichePlaybooks } from '@/lib/portfolio-analyse/momentum-trader/momentum-playbooks-taeglich'
+import { bewerteMeanReversionPlaybooks } from '@/lib/portfolio-analyse/momentum-trader/momentum-playbooks-mean-reversion'
+import { bewerteRegimePlaybooks } from '@/lib/portfolio-analyse/momentum-trader/momentum-playbooks-regime'
+import { berechneRegimeKontext } from '@/lib/portfolio-analyse/momentum-trader/momentum-regime-kontext-server'
+import { ladeFinvizKennzahlenBatch } from '@/lib/portfolio-analyse/momentum-trader/momentum-finviz-server'
+import { bewerteKatalysatorPlaybooks } from '@/lib/portfolio-analyse/momentum-trader/momentum-playbooks-katalysator'
+import { bewerteEarningsExtendedPlaybooks } from '@/lib/portfolio-analyse/momentum-trader/momentum-playbooks-earnings-extended'
+import { ladeNewsKatalysatorenBatch } from '@/lib/portfolio-analyse/momentum-trader/momentum-news-server'
+import { ladeAnalystRatingsBatch } from '@/lib/portfolio-analyse/momentum-trader/momentum-analyst-server'
+import { ladeInsiderKauefeBatch } from '@/lib/portfolio-analyse/momentum-trader/momentum-insider-server'
+import { bewerteErweitertePlaybooks } from '@/lib/portfolio-analyse/momentum-trader/momentum-playbooks-advanced'
+import { bewertePatternPlaybooks } from '@/lib/portfolio-analyse/momentum-trader/momentum-playbooks-pattern'
+import { loeseScanKonflikte, sortiereScanGlobal } from '@/lib/portfolio-analyse/momentum-trader/momentum-konflikt-server'
+import { berechneTechSnapshot } from '@/lib/portfolio-analyse/momentum-trader/momentum-tech-snapshot-server'
 import { guidanceLabel } from '@/lib/portfolio-analyse/momentum-trader/momentum-guidance'
 import {
   ladeMomentumBars,
   ladeMomentumEarningsKalenderFuerSymbole,
   loescheMomentumScanFuerDatum,
   speichereMomentumScanErgebnisse,
+  speichereMomentumTechSnapshots,
 } from '@/lib/portfolio-analyse/momentum-trader/momentum-db-server'
 import {
   berechneAtr,
@@ -63,6 +79,7 @@ import type {
   MomentumRichtung,
   MomentumScanEintrag,
   MomentumScanPaket,
+  MomentumTechSnapshot,
   MomentumWatchlistEintrag,
 } from '@/lib/portfolio-analyse/momentum-trader/momentum-trader-types'
 import { symboleAusWatchlist } from '@/lib/portfolio-analyse/momentum-trader/momentum-watchlist-server'
@@ -83,8 +100,8 @@ function primaeresSymbol(e: MomentumWatchlistEintrag): string | null {
 
 function ampelAusScore(score: number, gatesFailed: string[], kritisch = false): MomentumAmpel {
   if (kritisch || gatesFailed.some((g) => g.startsWith('Keine Kursdaten'))) return 'grau'
-  if (score >= 70 && gatesFailed.length === 0) return 'gruen'
-  if (score >= 45) return 'gelb'
+  if (score >= 72 && gatesFailed.length === 0) return 'gruen'
+  if (score >= 48) return 'gelb'
   return 'rot'
 }
 
@@ -494,9 +511,25 @@ function bewerteIpoFade(
 
 export type MomentumScanOptionen = {
   mitKiMemos?: boolean
+  /** Finviz Short-Float für Mean-Reversion (max. 10 Titel, ~8s). */
+  mitFinviz?: boolean
+  /** Google News + MarketBeat Analyst (max. je 8–10 Titel). */
+  mitKatalysatoren?: boolean
+  /** OpenInsider Form 4 + Short-Squeeze (max. 8 Titel). */
+  mitErweitert?: boolean
 }
 
-/** Scan: Gap-Fade, Momentum, IPO-Fade, Pre-Event-Katalysator. */
+type SymbolScanPaket = {
+  symbol: string
+  name: string
+  symbolYahoo: string | null
+  bars: MomentumBarDaily[]
+  tech: MomentumTechSnapshot
+  sectorBars: MomentumBarDaily[]
+  sectorEtf: string | null
+}
+
+/** Scan: tägliche + Earnings + IPO Playbooks, global nach Wahrscheinlichkeit sortiert. */
 export async function scanMomentumWatchlist(
   watchlist: MomentumWatchlistEintrag[],
   regimeGates: MomentumRegimeGates,
@@ -513,6 +546,8 @@ export async function scanMomentumWatchlist(
   const sectorBarsCache = new Map<string, MomentumBarDaily[]>()
 
   const ergebnisse: MomentumScanEintrag[] = []
+  const techSnapshots: MomentumTechSnapshot[] = []
+  const symbolPakete: SymbolScanPaket[] = []
 
   for (const e of watchlist) {
     const symbol = primaeresSymbol(e)
@@ -537,6 +572,23 @@ export async function scanMomentumWatchlist(
     const bars = await ladeBarsFuerEarningsGap(e, vonBars, heute)
     const historie = berechneEarningsHistorieStatistik(events, bars)
 
+    // --- Tägliche Playbooks (Always-On) ---
+    const tech = berechneTechSnapshot(symbol, bars, spyBars, sectorBars, heute)
+    if (tech) {
+      techSnapshots.push(tech)
+      symbolPakete.push({
+        symbol,
+        name: e.name,
+        symbolYahoo: e.symbolYahoo,
+        bars,
+        tech,
+        sectorBars,
+        sectorEtf: etf,
+      })
+      const taeglich = bewerteTaeglichePlaybooks(tech, bars, regimeGates, kalender)
+      ergebnisse.push(...taeglich)
+    }
+
     const vergangen = kalender.filter((k) => {
       if (k.symbol !== symbol) return false
       const tage = tageZwischenIso(k.earningsDate, heute)
@@ -552,6 +604,28 @@ export async function scanMomentumWatchlist(
 
       const mom = bewerteEarningsMomentum(symbol, t.earningsDate, zeit, bars, spyBars, regimeGates, ev, sectorBars)
       if (mom && mom.score >= 40) ergebnisse.push(mom)
+    }
+
+    const vergangenExtended = kalender.filter((k) => {
+      if (k.symbol !== symbol) return false
+      const tage = tageZwischenIso(k.earningsDate, heute)
+      return tage >= 0 && tage <= EARNINGS_EXTENDED_LOOKBACK_TAGE
+    })
+
+    for (const t of vergangenExtended) {
+      const ev = eventFuerDatum(events, t.earningsDate)
+      const zeit = ev?.timeBmoAmc ?? t.timeBmoAmc
+      ergebnisse.push(
+        ...bewerteEarningsExtendedPlaybooks({
+          symbol,
+          earningsDate: t.earningsDate,
+          timeBmoAmc: zeit,
+          bars,
+          spyBars,
+          regimeGates,
+          event: ev,
+        }),
+      )
     }
 
     const naechstesKommend = kalender
@@ -607,20 +681,118 @@ export async function scanMomentumWatchlist(
     }
   }
 
-  ergebnisse.sort((a, b) => b.score - a.score)
+  // --- Phase 2: Finviz + Mean Reversion + Regime ---
+  if (symbolPakete.length > 0) {
+    if (opts?.mitFinviz !== false) {
+      const finvizMap = await ladeFinvizKennzahlenBatch(
+        symbolPakete.map((p) => p.symbol),
+        10,
+      )
+      for (const p of symbolPakete) {
+        const fz = finvizMap.get(p.symbol.toUpperCase())
+        if (fz?.shortFloatPct != null) {
+          p.tech = { ...p.tech, shortFloatPct: fz.shortFloatPct }
+        }
+      }
+    }
+
+    const regimeKontext = berechneRegimeKontext(techSnapshots, spyBars, sectorBarsCache)
+    if (regimeGates.regime.spyReturn5dPct == null && regimeKontext.spyReturn5dPct != null) {
+      regimeGates.regime.spyReturn5dPct = regimeKontext.spyReturn5dPct
+    }
+
+    for (const p of symbolPakete) {
+      ergebnisse.push(
+        ...bewerteMeanReversionPlaybooks(p.tech, p.bars, regimeGates, kalender, regimeKontext),
+      )
+      ergebnisse.push(
+        ...bewerteRegimePlaybooks(p.tech, p.bars, regimeGates, p.sectorEtf, regimeKontext),
+      )
+      ergebnisse.push(
+        ...bewertePatternPlaybooks({
+          tech: p.tech,
+          bars: p.bars,
+          regimeGates,
+          kalender,
+          sectorEtf: p.sectorEtf,
+          rk: regimeKontext,
+        }),
+      )
+    }
+
+    // --- Phase 3: News + Analyst + Katalysator-Playbooks ---
+    if (opts?.mitKatalysatoren !== false) {
+      const newsMap = await ladeNewsKatalysatorenBatch(
+        symbolPakete.map((p) => ({ symbol: p.symbol, name: p.name })),
+        10,
+      )
+      const analystMap = await ladeAnalystRatingsBatch(
+        symbolPakete.map((p) => ({ symbol: p.symbol, symbolYahoo: p.symbolYahoo })),
+        8,
+      )
+      for (const p of symbolPakete) {
+        const sym = p.symbol.toUpperCase()
+        ergebnisse.push(
+          ...bewerteKatalysatorPlaybooks({
+            tech: p.tech,
+            bars: p.bars,
+            regimeGates,
+            kalender,
+            news: newsMap.get(sym) ?? null,
+            ratings: analystMap.get(sym) ?? [],
+          }),
+        )
+      }
+    }
+
+    // --- Phase 5: Insider-Cluster + Short-Squeeze ---
+    if (opts?.mitErweitert !== false) {
+      const insiderMap = await ladeInsiderKauefeBatch(
+        symbolPakete.map((p) => p.symbol),
+        8,
+      )
+      for (const p of symbolPakete) {
+        const sym = p.symbol.toUpperCase()
+        ergebnisse.push(
+          ...bewerteErweitertePlaybooks({
+            tech: p.tech,
+            bars: p.bars,
+            regimeGates,
+            kalender,
+            insiderKauefe: insiderMap.get(sym) ?? [],
+          }),
+        )
+      }
+    }
+  }
 
   const { ergaenzeScanMitErfolg } = await import(
     '@/lib/portfolio-analyse/momentum-trader/momentum-trade-erfolg-server'
   )
-  const final = ergaenzeScanMitErfolg(ergebnisse, regimeGates)
+  const { ladePlaybookStats, baueStatsLookup, wendePlaybookDeaktivierungAn } = await import(
+    '@/lib/portfolio-analyse/momentum-trader/momentum-playbook-stats-server'
+  )
+  const statsPaket = await ladePlaybookStats()
+  const statsLookup = baueStatsLookup(statsPaket.stats)
+  const mitErfolg = ergaenzeScanMitErfolg(ergebnisse, regimeGates, statsLookup)
+  const mitDeaktiv = wendePlaybookDeaktivierungAn(mitErfolg, statsLookup)
+  const aufgeloest = loeseScanKonflikte(mitDeaktiv)
+  const final = sortiereScanGlobal(aufgeloest)
 
   if (final.length > 0) {
     await loescheMomentumScanFuerDatum(heute)
     await speichereMomentumScanErgebnisse(final)
+    if (techSnapshots.length > 0) {
+      await speichereMomentumTechSnapshots(techSnapshots).catch(() => {})
+    }
     const { speichereMomentumScanVerlauf } = await import(
       '@/lib/portfolio-analyse/momentum-trader/momentum-scan-verlauf-server'
     )
     await speichereMomentumScanVerlauf(final)
+    const { archiviereTopSignale } = await import(
+      '@/lib/portfolio-analyse/momentum-trader/momentum-top-signal-tracking-server'
+    )
+    await archiviereTopSignale(final).catch(() => {})
   }
 
   let mitMemos = final
@@ -639,7 +811,7 @@ export async function scanMomentumWatchlist(
     }
   }
 
-  return { scanDate: heute, regime: regimeGates, ergebnisse: mitMemos }
+  return { scanDate: heute, regime: regimeGates, ergebnisse: mitMemos, playbookStats: statsPaket }
 }
 
 export { momentumPlaybookLabel as playbookLabel }

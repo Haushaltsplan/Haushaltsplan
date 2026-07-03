@@ -1,6 +1,11 @@
 import 'server-only'
 
 import { heuteIsoUtc, tageZwischenIso } from '@/lib/portfolio-analyse/dividenden-datum-hilfen'
+import {
+  momentumPlaybookLabel,
+  TOP_SIGNAL_PUSH_MIN_PCT,
+} from '@/lib/portfolio-analyse/momentum-trader/momentum-constants'
+import { MOMENTUM_TRADE_PLAYBOOKS } from '@/lib/portfolio-analyse/momentum-trader/momentum-playbook-registry'
 import type {
   MomentumErinnerung,
   MomentumScanPaket,
@@ -92,21 +97,66 @@ export function berechneMomentumErinnerungen(input: {
   const gapSetups =
     input.scan?.ergebnisse.filter(
       (e) =>
-        (e.playbook === 'earnings_gap_fade' ||
-          e.playbook === 'earnings_momentum' ||
-          e.playbook === 'earnings_pre_run' ||
-          e.playbook === 'ipo_fade') &&
-        (e.ampel === 'gruen' || e.ampel === 'gelb'),
+        MOMENTUM_TRADE_PLAYBOOKS.includes(e.playbook) &&
+        (e.ampel === 'gruen' || e.ampel === 'gelb') &&
+        e.indikatoren.erfolgIstAktiv === true,
     ) ?? []
   if (gapSetups.length > 0) {
+    const top = [...gapSetups].sort((a, b) => {
+      const pa = typeof a.indikatoren.erfolgWahrscheinlichkeitPct === 'number' ? a.indikatoren.erfolgWahrscheinlichkeitPct : 0
+      const pb = typeof b.indikatoren.erfolgWahrscheinlichkeitPct === 'number' ? b.indikatoren.erfolgWahrscheinlichkeitPct : 0
+      return pb - pa
+    })[0]
     out.push({
       typ: 'scan_verfuegbar',
       schwere: 'aktion',
       text:
         gapSetups.length +
-        ' Trade-Setup(s) aktiv (' +
-        gapSetups.map((e) => e.symbol + ' ' + e.playbook.replace('earnings_', '').replace('_', '-')).join(', ') +
-        ').',
+        ' Trade-Setup(s) aktiv — Top: ' +
+        top.symbol +
+        ' ' +
+        momentumPlaybookLabel(top.playbook) +
+        ' (' +
+        (typeof top.indikatoren.erfolgWahrscheinlichkeitPct === 'number'
+          ? top.indikatoren.erfolgWahrscheinlichkeitPct
+          : top.score) +
+        '%).',
+    })
+  }
+
+  const topSignale = (input.scan?.ergebnisse ?? [])
+    .filter(
+      (e) =>
+        MOMENTUM_TRADE_PLAYBOOKS.includes(e.playbook) &&
+        e.indikatoren.erfolgIstAktiv === true &&
+        e.indikatoren.playbookDeaktiviert !== true &&
+        (e.ampel === 'gruen' || e.ampel === 'gelb'),
+    )
+    .map((e) => ({
+      e,
+      pct:
+        typeof e.indikatoren.erfolgWahrscheinlichkeitPct === 'number'
+          ? e.indikatoren.erfolgWahrscheinlichkeitPct
+          : 0,
+    }))
+    .filter((x) => x.pct >= TOP_SIGNAL_PUSH_MIN_PCT)
+    .sort((a, b) => b.pct - a.pct)
+    .slice(0, 3)
+
+  for (const { e, pct } of topSignale) {
+    out.push({
+      typ: 'top_signal',
+      schwere: 'aktion',
+      symbol: e.symbol,
+      text:
+        e.symbol +
+        ' · ' +
+        momentumPlaybookLabel(e.playbook) +
+        ' — ' +
+        pct +
+        '% Erfolgschance (Top-Signal ≥' +
+        TOP_SIGNAL_PUSH_MIN_PCT +
+        '%)',
     })
   }
 
