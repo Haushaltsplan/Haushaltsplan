@@ -291,7 +291,7 @@ export function FinanceCoachProvider({ children }: { children: ReactNode }) {
               )}
               {messages.length === 0 && (
                 <p className="rounded-xl border border-[var(--app-border-strong)] bg-[var(--app-surface-muted)] p-3 text-xs leading-relaxed text-[var(--app-text-muted)]">
-                  Stell Fragen zu <strong className="text-[var(--app-text)]">Einnahmen, Ausgaben, Daueraufträgen, Sparzielen</strong> oder
+                  Stell Fragen zu <strong className="text-[var(--app-text)]">Einnahmen, Ausgaben, Daueraufträgen</strong> oder
                   deinem Geld-Alltag. Die aktuellen <strong className="text-[var(--app-text)]">Summen und Top-Kategorien</strong> von dieser
                   Seite werden dem Modell mitgegeben, damit Antworten passen.
                 </p>

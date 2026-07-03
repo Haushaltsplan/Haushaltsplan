@@ -15,8 +15,6 @@ import {
   finanzInputClass,
   finanzLabelMutedClass,
   finanzListeFilterGroupClass,
-  finanzMonatPickerClass,
-  finanzMonatSliderClass,
   finanzSecondaryBtnClass,
   finanzToggleInactiveClass,
   finanzTypeToggleClass,
@@ -25,7 +23,8 @@ import {
 import { AnalyseSection } from '@/components/finanzen/analyse-section'
 import { AboSection } from '@/components/finanzen/abo-section'
 import { SparenSection } from '@/components/finanzen/sparen-section'
-import { SparzieleSection } from '@/components/finanzen/sparziele-section'
+import { FinanzenMonatswahl } from '@/components/finanzen/finanzen-monatswahl'
+import { FinanzenTabs, type FinanzenTab } from '@/components/finanzen/finanzen-tabs'
 import { JahresSection } from '@/components/finanzen/jahres-section'
 import { VermoegenSection } from '@/components/finanzen/vermoegen-section'
 import { DauerauftragVorschlaege } from '@/components/finanzen/dauerauftrag-vorschlaege'
@@ -255,6 +254,7 @@ export default function FinanzenPage() {
   }>({ modus: 'datum', dir: 'desc' })
   /** Liste zeigt zunächst nur die letzten 5 Buchungen; Rest per Klick aufklappen. */
   const [alleBuchungenZeigen, setAlleBuchungenZeigen] = useState(false)
+  const [finanzTab, setFinanzTab] = useState<FinanzenTab>('uebersicht')
 
   type TopfMonatRow = { monat: string; saldo_monat: number; gebucht_am: string; automatisch?: boolean | null }
   const [topfMeta, setTopfMeta] = useState({ stand_offset: 0 })
@@ -1134,6 +1134,22 @@ export default function FinanzenPage() {
 
   return (
     <PageChrome className="max-w-full" density="compact">
+      <FinanzenTabs active={finanzTab} onChange={setFinanzTab} />
+
+      {(finanzTab === 'uebersicht' || finanzTab === 'buchen') && (
+        <FinanzenMonatswahl
+          ansichtMonat={ansichtMonat}
+          monatsListeNavigation={monatsListeNavigation}
+          sliderValue={sliderValue}
+          formatMonatsLabelDe={formatMonatsLabelDe}
+          onMonatChange={setAnsichtMonat}
+          onMonatDelta={verschiebeAnsichtMonat}
+          onHeute={() => setAnsichtMonat(aktuellesIsoMonat())}
+        />
+      )}
+
+      {finanzTab === 'uebersicht' && (
+      <>
       <PageSection titleId="finanzen-monatsuebersicht" title="Monatsübersicht" density="compact">
         <PageSectionPanel density="compact">
           <div className="flex flex-col justify-between gap-3 text-center sm:flex-row sm:items-stretch sm:gap-4 lg:text-left">
@@ -1289,73 +1305,6 @@ export default function FinanzenPage() {
         </div>
           </div>
         </PageSectionPanel>
-        <PageSectionPanel density="compact">
-      <div className="space-y-3">
-        <div className="flex flex-col gap-2 sm:gap-3 md:flex-row md:items-start md:justify-between">
-          <div className="min-w-0">
-            <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-sky-400/90">Ansichtsmonat</p>
-            <p className="mt-0.5 text-base font-semibold tracking-tight text-[var(--app-text)] sm:text-lg">{formatMonatsLabelDe(ansichtMonat)}</p>
-          </div>
-          <div className="flex w-full min-w-0 flex-col gap-2 sm:w-auto sm:max-w-full md:shrink-0">
-            <div className={finanzMonatPickerClass}>
-            <button
-              type="button"
-              onClick={() => verschiebeAnsichtMonat(-1)}
-              className="shrink-0 rounded-lg px-3 py-2.5 text-sm font-semibold text-[var(--app-text-muted)] transition hover:bg-[var(--app-surface-hover)] sm:px-3.5"
-              aria-label="Vorheriger Monat"
-            >
-              ◀
-            </button>
-            <input
-              type="month"
-              value={ansichtMonat}
-              onChange={(e) => {
-                const v = e.target.value
-                if (v) setAnsichtMonat(v)
-              }}
-              className="min-h-[2.75rem] min-w-0 flex-1 rounded-lg border-0 bg-transparent px-1 py-2 text-sm font-semibold text-[var(--app-text)] outline-none ring-0 sm:min-w-[9.5rem] sm:flex-none sm:px-2"
-            />
-            <button
-              type="button"
-              onClick={() => verschiebeAnsichtMonat(1)}
-              className="shrink-0 rounded-lg px-3 py-2.5 text-sm font-semibold text-[var(--app-text-muted)] transition hover:bg-[var(--app-surface-hover)] sm:px-3.5"
-              aria-label="Nächster Monat"
-            >
-              ▶
-            </button>
-            <button
-              type="button"
-              onClick={() => setAnsichtMonat(aktuellesIsoMonat())}
-              className="w-full rounded-lg bg-emerald-600/90 px-3 py-2.5 text-xs font-bold text-white shadow-sm shadow-emerald-950/30 transition hover:bg-emerald-500 sm:w-auto sm:px-4"
-            >
-              Heute
-            </button>
-          </div>
-          </div>
-        </div>
-        <div className={finanzMonatSliderClass}>
-          <label className="mb-2 block text-[11px] font-semibold uppercase tracking-wide text-[var(--app-text-muted)]">
-            Schnellwahl über alle Monate mit Buchungen
-          </label>
-          <input
-            type="range"
-            min={0}
-            max={Math.max(0, monatsListeNavigation.length - 1)}
-            value={sliderValue}
-            onChange={(e) => {
-              const i = Number(e.target.value)
-              const yyyymm = monatsListeNavigation[i]
-              if (yyyymm) setAnsichtMonat(yyyymm)
-            }}
-            className="h-2.5 w-full cursor-pointer accent-sky-500"
-          />
-          <div className="mt-2 flex justify-between text-[11px] font-medium text-[var(--app-text-muted)]">
-            <span>{formatMonatsLabelDe(monatsListeNavigation[0] || ansichtMonat)}</span>
-            <span>{formatMonatsLabelDe(monatsListeNavigation[monatsListeNavigation.length - 1] || ansichtMonat)}</span>
-          </div>
-        </div>
-      </div>
-        </PageSectionPanel>
       </PageSection>
 
       <AnalyseSection
@@ -1369,7 +1318,11 @@ export default function FinanzenPage() {
       />
 
       <JahresSection einnahmen={einnahmen} ausgaben={ausgaben} ansichtMonat={ansichtMonat} />
+      </>
+      )}
 
+      {finanzTab === 'buchen' && (
+      <>
       <PageSection titleId="finanzen-buchungen-heading" title="Buchungen" density="compact">
         <PageSectionPanel density="compact">
       <div className="grid min-w-0 gap-4 lg:grid-cols-[minmax(0,17.5rem)_1fr] xl:grid-cols-[minmax(0,19rem)_1fr] lg:gap-5">
@@ -1835,10 +1788,6 @@ export default function FinanzenPage() {
         </PageSectionPanel>
       </PageSection>
 
-      <AboSection dauerauftraege={dauerauftraege} />
-
-      <SparenSection dauerauftraege={dauerauftraege} />
-
       <PageSection titleId="finanzen-dauerauftraege-heading" title="Daueraufträge" density="compact">
         <PageSectionPanel density="compact">
       <div className={appSectionCardClass}>
@@ -2004,10 +1953,18 @@ export default function FinanzenPage() {
       </div>
         </PageSectionPanel>
       </PageSection>
+      </>
+      )}
 
-      <SparzieleSection />
+      {finanzTab === 'planen' && (
+      <>
+      <AboSection dauerauftraege={dauerauftraege} />
+
+      <SparenSection dauerauftraege={dauerauftraege} />
 
       <VermoegenSection puffer={topfStand} />
+      </>
+      )}
 
       {buchungEdit && (
         <div

@@ -16,7 +16,6 @@ import {
   ladeVermoegen,
   speichereVermoegenPosten,
   loescheVermoegenPosten,
-  ladeSparziele,
   type VermoegenRow,
 } from '@/lib/finanz-extra-db'
 
@@ -28,22 +27,19 @@ type FormState = { id?: string; titel: string; betrag: string }
 const LEER: FormState = { titel: '', betrag: '' }
 
 /**
- * Gesamtvermögen = erarbeiteter Puffer + Sparziele + manuelle Posten (Depot, Tagesgeld, Bargeld …).
- * Investments sind im App-Modul nur eine Watchlist ohne Geldbeträge — daher hier manuell pflegbar.
+ * Gesamtvermögen = erarbeiteter Puffer + manuelle Posten (Depot, Tagesgeld, Bargeld …).
  */
 export function VermoegenSection({ puffer }: { puffer: number }) {
   const [schemaOk, setSchemaOk] = useState<boolean | null>(null)
   const [posten, setPosten] = useState<VermoegenRow[]>([])
-  const [sparzieleSumme, setSparzieleSumme] = useState(0)
   const [form, setForm] = useState<FormState>(LEER)
   const [formOffen, setFormOffen] = useState(false)
   const [speichert, setSpeichert] = useState(false)
 
   async function laden() {
-    const [v, s] = await Promise.all([ladeVermoegen(), ladeSparziele()])
+    const v = await ladeVermoegen()
     setSchemaOk(v.schemaOk)
     setPosten(v.rows)
-    setSparzieleSumme(s.rows.reduce((a, z) => a + (Number(z.aktuell) || 0), 0))
   }
 
   useEffect(() => {
@@ -51,7 +47,7 @@ export function VermoegenSection({ puffer }: { puffer: number }) {
   }, [])
 
   const postenSumme = useMemo(() => posten.reduce((a, p) => a + (Number(p.betrag) || 0), 0), [posten])
-  const gesamt = Math.round((puffer + sparzieleSumme + postenSumme) * 100) / 100
+  const gesamt = Math.round((puffer + postenSumme) * 100) / 100
 
   function startBearbeiten(p: VermoegenRow) {
     setForm({ id: p.id, titel: p.titel, betrag: String(p.betrag).replace('.', ',') })
@@ -109,14 +105,10 @@ export function VermoegenSection({ puffer }: { puffer: number }) {
               <p className={`mt-1 text-3xl font-bold tabular-nums ${gesamt >= 0 ? 'text-indigo-100' : 'text-rose-300'}`}>
                 {eur(gesamt)}
               </p>
-              <div className="mt-3 grid gap-2 sm:grid-cols-3">
+              <div className="mt-3 grid gap-2 sm:grid-cols-2">
                 <div className={finanzKpiCardCompactClass}>
                   <p className={finanzLabelMutedClass}>Erarbeiteter Puffer</p>
                   <p className="mt-0.5 text-base font-semibold tabular-nums text-violet-200">{eur(puffer)}</p>
-                </div>
-                <div className={finanzKpiCardCompactClass}>
-                  <p className={finanzLabelMutedClass}>Sparziele</p>
-                  <p className="mt-0.5 text-base font-semibold tabular-nums text-teal-200">{eur(sparzieleSumme)}</p>
                 </div>
                 <div className={finanzKpiCardCompactClass}>
                   <p className={finanzLabelMutedClass}>Weitere Posten</p>
