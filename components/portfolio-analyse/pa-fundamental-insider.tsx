@@ -60,7 +60,7 @@ export function PaFundamentalInsider({
       <div>
         <h3 className="text-sm font-semibold text-white">Insider-Käufe / -Verkäufe</h3>
         <p className="text-xs text-[var(--app-text-muted)]">
-          US: SEC Form 4 (Open Market) · EU: Directors Dealings (begrenzt)
+          US: SEC Form 4 (EDGAR, Open Market) · EU: Directors Dealings (begrenzt)
         </p>
       </div>
 

@@ -43,7 +43,7 @@ export type InsiderNettoPaket = {
   nettoWertUsd90d: number | null
   nettoRichtung: 'kauf' | 'verkauf' | 'neutral' | null
   letzterTrade: string | null
-  quelle: 'openinsider'
+  quelle: 'sec_edgar' | 'openinsider'
 }
 
 export type SecSegmentEintrag = {

@@ -23,7 +23,7 @@ const FETCH_HEADERS = {
   'User-Agent':
     'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
   Accept: 'text/html',
-  Referer: 'http://openinsider.com/',
+  Referer: 'https://openinsider.com/',
 } as const
 
 function zellenText(html: string): string {
@@ -61,11 +61,37 @@ function parseMenge(text: string): number | null {
   return Number.isFinite(n) ? n : null
 }
 
-function tradeTypAusText(text: string): 'purchase' | 'sale' | null {
-  const t = text.toLowerCase()
-  if (/\bp\b|purchase|buy/.test(t) && !/sale/.test(t)) return 'purchase'
-  if (/\bs\b|sale|sell/.test(t)) return 'sale'
-  return null
+function parseTinytableRow(tds: string[], sym: string): MomentumInsiderKauf | null {
+  if (tds.length < 10) return null
+  if (!tds.some((t) => t.toUpperCase() === sym) && !tds.join(' ').toUpperCase().includes(sym)) return null
+
+  const typCol = tds.find((t) => /P - Purchase|S - Sale/i.test(t)) ?? ''
+  if (!/P - Purchase/i.test(typCol)) return null
+
+  const filingDate = parseDatum(tds[0] ?? '') ?? parseDatum(tds[1] ?? '')
+  const tradeDate = parseDatum(tds[1] ?? '') ?? filingDate
+  if (!tradeDate) return null
+
+  const valueZelle = tds.find((t) => /\$|k\b|m\b/i.test(t) && parseGeld(t) != null) ?? ''
+  const valueUsd = parseGeld(valueZelle)
+  if (valueUsd != null && valueUsd < INSIDER_MIN_VALUE_USD) return null
+
+  const qtyZelle = tds.find((t) => /^\+?[\d,]+$/.test(t.replace(/\s/g, ''))) ?? ''
+  const priceZelle = tds.find((t) => /^\$?[\d.]+$/.test(t.replace(/\s/g, ''))) ?? ''
+  const insiderName = tds[4] ?? tds[3] ?? 'Unbekannt'
+  const title = tds[5] ?? tds[4] ?? null
+
+  return {
+    symbol: sym,
+    tradeDate,
+    filingDate: filingDate ?? tradeDate,
+    insiderName,
+    title: title && title !== insiderName ? title : null,
+    tradeType: 'purchase',
+    valueUsd,
+    qty: parseMenge(qtyZelle),
+    price: parseGeld(priceZelle),
+  }
 }
 
 /** OpenInsider-Screener-Tabelle parsen. */
@@ -74,50 +100,28 @@ export function parseOpenInsiderKauefe(html: string, symbol: string): MomentumIn
   const out: MomentumInsiderKauf[] = []
   const seen = new Set<string>()
 
-  for (const row of html.matchAll(/<tr[^>]*>([\s\S]*?)<\/tr>/gi)) {
+  const tableHtml = html.match(/<table[^>]*class="tinytable"[^>]*>([\s\S]*?)<\/table>/i)?.[1] ?? html
+
+  for (const row of tableHtml.matchAll(/<tr[^>]*>([\s\S]*?)<\/tr>/gi)) {
     const tds = [...row[1].matchAll(/<td[^>]*>([\s\S]*?)<\/td>/gi)].map((m) => zellenText(m[1]))
-    if (tds.length < 8) continue
-
-    const rowText = tds.join(' ')
-    const typ = tradeTypAusText(rowText)
-    if (!typ) continue
-
-    const tickerZelle = tds.find((t) => t.toUpperCase() === sym) ?? tds[2] ?? ''
-    if (tickerZelle && tickerZelle.toUpperCase() !== sym && !rowText.toUpperCase().includes(sym)) continue
-
-    const filingDate = parseDatum(tds[0] ?? '') ?? parseDatum(tds[1] ?? '')
-    const tradeDate = parseDatum(tds[1] ?? '') ?? filingDate
-    if (!tradeDate) continue
-
-    const typZelle = tds.find((t) => /purchase|sale|\bP\b|\bS\b/i.test(t)) ?? ''
-    const typFinal = tradeTypAusText(typZelle) ?? typ
-    if (typFinal !== 'purchase') continue
-
-    const valueZelle = tds.find((t) => /\$|k\b|m\b/i.test(t) && parseGeld(t) != null) ?? ''
-    const valueUsd = parseGeld(valueZelle)
-    if (valueUsd != null && valueUsd < INSIDER_MIN_VALUE_USD) continue
-
-    const qtyZelle = tds.find((t) => /^\+?[\d,]+$/.test(t.replace(/\s/g, ''))) ?? ''
-    const priceZelle = tds.find((t) => /^\$?[\d.]+$/.test(t.replace(/\s/g, ''))) ?? ''
-
-    const insiderName = tds[4] ?? tds[3] ?? 'Unbekannt'
-    const title = tds[5] ?? tds[4] ?? null
-
-    const key = tradeDate + insiderName + (valueUsd ?? 0)
+    const parsed = parseTinytableRow(tds, sym)
+    if (!parsed) continue
+    const key = parsed.tradeDate + parsed.insiderName + (parsed.valueUsd ?? 0)
     if (seen.has(key)) continue
     seen.add(key)
+    out.push(parsed)
+  }
 
-    out.push({
-      symbol: sym,
-      tradeDate,
-      filingDate: filingDate ?? tradeDate,
-      insiderName,
-      title: title && title !== insiderName ? title : null,
-      tradeType: 'purchase',
-      valueUsd,
-      qty: parseMenge(qtyZelle),
-      price: parseGeld(priceZelle),
-    })
+  if (out.length === 0) {
+    for (const row of html.matchAll(/<tr[^>]*>([\s\S]*?)<\/tr>/gi)) {
+      const tds = [...row[1].matchAll(/<td[^>]*>([\s\S]*?)<\/td>/gi)].map((m) => zellenText(m[1]))
+      const parsed = parseTinytableRow(tds, sym)
+      if (!parsed) continue
+      const key = parsed.tradeDate + parsed.insiderName + (parsed.valueUsd ?? 0)
+      if (seen.has(key)) continue
+      seen.add(key)
+      out.push(parsed)
+    }
   }
 
   return out.sort((a, b) => b.tradeDate.localeCompare(a.tradeDate))
@@ -156,12 +160,13 @@ export function findeInsiderCluster(
 async function ladeOpenInsiderSeite(symbol: string): Promise<string | null> {
   const sym = symbol.trim().toUpperCase()
   const url =
-    'http://openinsider.com/screener?s=' +
+    'https://openinsider.com/screener?s=' +
     encodeURIComponent(sym) +
     '&xp=1&xs=1&vl=' +
     INSIDER_MIN_VALUE_USD +
     '&o=-transactionDate&sortDir=1&fd=0&fdr=&td=0&tdr=&fdlyl=&fdlyh=&daysago=&filterfd=' +
-    INSIDER_CLUSTER_MAX_TAGE
+    INSIDER_CLUSTER_MAX_TAGE +
+    '&cnt=100&page=1'
   try {
     const res = await fetch(url, {
       headers: FETCH_HEADERS,
