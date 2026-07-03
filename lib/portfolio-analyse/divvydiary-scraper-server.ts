@@ -174,8 +174,13 @@ export type DivvydiaryRohZeile = {
   forecast: boolean
 }
 
-/** Eingebettetes JSON (RSC) + Klartext-Fallback aus dateTime. */
-export function parseDivvydiaryHtml(html: string): DivvydiaryRohZeile[] {
+const DIV_JSON_PATTERNS = [
+  /\\"exDate\\":\\"(\d{4}-\d{2}-\d{2})\\",\\"payDate\\":\\"(\d{4}-\d{2}-\d{2})\\",\\"amount\\":([\d.]+),\\"currency\\":\\"([^"]+)\\",\\"forecast\\":(true|false)/g,
+  /"exDate":"(\d{4}-\d{2}-\d{2})","payDate":"(\d{4}-\d{2}-\d{2})","amount":([\d.]+),"currency":"([^"]+)","forecast":(true|false)/g,
+  /"exDate":"(\d{4}-\d{2}-\d{2})","payDate":"(\d{4}-\d{2}-\d{2})","amount":([\d.]+),"forecast":(true|false)/g,
+] as const
+
+function parseDivvydiaryRowsAusBlock(block: string): DivvydiaryRohZeile[] {
   const seen = new Set<string>()
   const rows: DivvydiaryRohZeile[] = []
 
@@ -188,18 +193,70 @@ export function parseDivvydiaryHtml(html: string): DivvydiaryRohZeile[] {
     rows.push({ exDate: ex, payDate: pay, amount, forecast })
   }
 
-  const jsonPatterns = [
-    /\\"exDate\\":\\"(\d{4}-\d{2}-\d{2})\\",\\"payDate\\":\\"(\d{4}-\d{2}-\d{2})\\",\\"amount\\":([\d.]+),\\"currency\\":\\"([^"]+)\\",\\"forecast\\":(true|false)/g,
-    /"exDate":"(\d{4}-\d{2}-\d{2})","payDate":"(\d{4}-\d{2}-\d{2})","amount":([\d.]+),"currency":"([^"]+)","forecast":(true|false)/g,
-    /"exDate":"(\d{4}-\d{2}-\d{2})","payDate":"(\d{4}-\d{2}-\d{2})","amount":([\d.]+),"forecast":(true|false)/g,
-  ]
-
-  for (const re of jsonPatterns) {
+  for (const re of DIV_JSON_PATTERNS) {
+    const local = new RegExp(re.source, re.flags)
     let m: RegExpExecArray | null
-    while ((m = re.exec(html)) !== null) {
+    while ((m = local.exec(block)) !== null) {
       push(m[1], m[2], Number(m[3]), m[5] === 'true')
     }
   }
+
+  return rows
+}
+
+function extrahiereDividendsArrayBlock(html: string, dividendsKeyIdx: number): string {
+  const slice = html.slice(dividendsKeyIdx)
+  const open = slice.indexOf('[')
+  if (open < 0) return ''
+  let depth = 0
+  for (let i = open; i < slice.length && i < open + 150_000; i++) {
+    const c = slice[i]
+    if (c === '[') depth++
+    else if (c === ']') {
+      depth--
+      if (depth === 0) return slice.slice(open, i + 1)
+    }
+  }
+  return slice.slice(open, Math.min(slice.length, open + 80_000))
+}
+
+/** Nur Dividenden aus dem JSON-Block der gesuchten ISIN — kein globales HTML-Regex. */
+export function parseDivvydiaryDividendsForIsin(html: string, isinNorm: string): DivvydiaryRohZeile[] {
+  const isin = isinNorm.trim().toUpperCase()
+  if (!isin || isin.length < 10) return []
+
+  const needles = [`\\"isin\\":\\"${isin}\\"`, `"isin":"${isin}"`]
+  let best: DivvydiaryRohZeile[] = []
+
+  for (const needle of needles) {
+    let i = 0
+    while ((i = html.indexOf(needle, i)) >= 0) {
+      const win = html.slice(i, i + 30_000)
+      const rel =
+        win.indexOf('\\"dividends\\":[') >= 0
+          ? win.indexOf('\\"dividends\\":[')
+          : win.indexOf('"dividends":[')
+      if (rel < 0) {
+        i += needle.length
+        continue
+      }
+      const arrayBlock = extrahiereDividendsArrayBlock(html, i + rel)
+      const rows = parseDivvydiaryRowsAusBlock(arrayBlock)
+      if (rows.length > best.length) best = rows
+      i += needle.length
+    }
+  }
+
+  return best.sort((a, b) => a.payDate.localeCompare(b.payDate))
+}
+
+/** Eingebettetes JSON (RSC) + Klartext-Fallback aus dateTime. */
+export function parseDivvydiaryHtml(html: string, isinNorm?: string): DivvydiaryRohZeile[] {
+  if (isinNorm?.trim()) {
+    return parseDivvydiaryDividendsForIsin(html, isinNorm.trim().toUpperCase())
+  }
+
+  const rows = parseDivvydiaryRowsAusBlock(html)
 
   const blockStart = html.indexOf('"dividends":')
   if (blockStart >= 0 && rows.length === 0) {
@@ -208,6 +265,14 @@ export function parseDivvydiaryHtml(html: string): DivvydiaryRohZeile[] {
     const dtRe = /dateTime="(\d{4}-\d{2}-\d{2})"/g
     let dm: RegExpExecArray | null
     while ((dm = dtRe.exec(block)) !== null) dates.push(dm[1])
+    const seen = new Set<string>()
+    const out = [...rows]
+    const push = (ex: string, pay: string, amount: number, forecast: boolean) => {
+      const key = `${ex}|${pay}|${amount}|${forecast}`
+      if (seen.has(key)) return
+      seen.add(key)
+      out.push({ exDate: ex, payDate: pay, amount, forecast })
+    }
     for (let i = 0; i + 1 < dates.length; i += 2) {
       const ex = dates[i]
       const pay = dates[i + 1]
@@ -218,9 +283,40 @@ export function parseDivvydiaryHtml(html: string): DivvydiaryRohZeile[] {
       const amount = amtMatch ? Number(amtMatch[1]) : 0
       if (amount > 0) push(ex, pay, amount, true)
     }
+    return out.sort((a, b) => a.payDate.localeCompare(b.payDate))
   }
 
   return rows.sort((a, b) => a.payDate.localeCompare(b.payDate))
+}
+
+/**
+ * DivvyDiary vermischt gelegentlich Fremddaten (z. B. MSFT-Dividenden auf NOW-Seiten).
+ * Nur echte, aktive Dividendenzahler durchlassen.
+ */
+export function dividendenHistoriePlausibel(
+  rows: DivvydiaryRohZeile[],
+  earnings: DivvydiaryEarningsRoh | null,
+  heuteIso: string,
+): boolean {
+  const real = rows.filter((r) => !r.forecast)
+  if (real.length === 0) return false
+
+  const freq = (earnings?.dividendFrequency ?? '').trim().toLowerCase()
+  if (freq === 'none') return false
+
+  const letzteEx = real[real.length - 1]!.exDate
+  const tLetzte = Date.parse(letzteEx)
+  const tHeute = Date.parse(heuteIso)
+  if (!Number.isFinite(tLetzte) || !Number.isFinite(tHeute)) return false
+
+  const jahreSeit = (tHeute - tLetzte) / (365.25 * 86_400_000)
+  if (jahreSeit > 5) return false
+
+  if (!freq || freq === 'unknown') {
+    return jahreSeit <= 3
+  }
+
+  return true
 }
 
 type DivvydiaryEarningsTreffer = DivvydiaryEarningsRoh & { score: number }
@@ -365,9 +461,8 @@ export function parseDivvydiaryEarningsHtml(html: string, isinNorm: string): Div
 }
 
 function seitePasstZuIsin(html: string, isinNorm: string, rows: DivvydiaryRohZeile[]): boolean {
-  if (html.includes(isinNorm)) return true
-  if (rows.length >= 4) return true
-  return rows.length >= 2 && html.toLowerCase().includes(isinNorm.slice(0, 8).toLowerCase())
+  if (rows.length === 0) return html.includes(isinNorm)
+  return html.includes(isinNorm)
 }
 
 function scoreSeite(isinNorm: string, rows: DivvydiaryRohZeile[], html: string, heute: string): number {
@@ -555,8 +650,11 @@ async function ladeDivvydiaryHtml(
     for (const path of pfade) {
       const html = await fetchSeite(path, 1)
       if (!html) continue
-      const rows = parseDivvydiaryHtml(html)
       const earnings = parseDivvydiaryEarningsHtml(html, isinNorm)
+      let rows = parseDivvydiaryHtml(html, isinNorm)
+      if (rows.length > 0 && !dividendenHistoriePlausibel(rows, earnings, heute)) {
+        rows = []
+      }
       const klartext = parseEarningsDatumKlartext(html, isinNorm)
       if (rows.length === 0 && !earnings && !klartext) continue
       if (rows.length > 0 && !seitePasstZuIsin(html, isinNorm, rows)) continue

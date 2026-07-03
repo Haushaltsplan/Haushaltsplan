@@ -4,7 +4,10 @@ import 'server-only'
 
 import { cagrProzent } from '@/lib/portfolio-analyse/fundamentaldaten-format'
 import type { DividendenHistorieStat } from '@/lib/portfolio-analyse/fundamentaldaten-erweitert-types'
-import { ladeDivvydiaryRohdaten } from '@/lib/portfolio-analyse/divvydiary-scraper-server'
+import {
+  dividendenHistoriePlausibel,
+  ladeDivvydiaryRohdaten,
+} from '@/lib/portfolio-analyse/divvydiary-scraper-server'
 import { heuteIsoUtc } from '@/lib/portfolio-analyse/dividenden-datum-hilfen'
 
 type DivRow = { exDate: string; amount: number; forecast: boolean }
@@ -90,6 +93,7 @@ export async function ladeDividendenHistorieStat(
   const heute = heuteIsoUtc()
   const roh = await ladeDivvydiaryRohdaten(isinNorm, name, heute)
   if (!roh?.rows?.length) return null
+  if (!dividendenHistoriePlausibel(roh.rows, roh.earnings, heute)) return null
 
   const real = roh.rows.filter((r) => !r.forecast)
   if (real.length === 0) return null
