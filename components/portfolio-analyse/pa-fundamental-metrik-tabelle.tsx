@@ -9,11 +9,20 @@ import type {
 } from '@/lib/portfolio-analyse/fundamentaldaten-types'
 
 const TABLE_SCROLL =
-  `${appTableScrollInlineClassName} scroll-smooth [scrollbar-gutter:stable] [scrollbar-width:thin] [scrollbar-color:rgb(82_82_91/0.55)_transparent] [&::-webkit-scrollbar]:h-1.5 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-[var(--app-surface-muted)]/50 hover:[&::-webkit-scrollbar-thumb]:bg-[var(--app-surface-muted)]/70`
+  `${appTableScrollInlineClassName} relative isolate scroll-smooth [scrollbar-gutter:stable] [scrollbar-width:thin] [scrollbar-color:rgb(82_82_91/0.55)_transparent] [&::-webkit-scrollbar]:h-1.5 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-[var(--app-surface-muted)]/50 hover:[&::-webkit-scrollbar-thumb]:bg-[var(--app-surface-muted)]/70`
+
+const STICKY_SPALTE =
+  'sticky left-0 border-r border-[var(--app-border)] shadow-[4px_0_10px_-4px_rgb(0_0_0/0.45)]'
 
 function periodeSpaltenLabel(p: FundamentalPeriode, modus: 'jahr' | 'datum'): string {
   if (modus === 'jahr' && /^\d{4}-\d{2}-\d{2}$/.test(p.iso)) return p.iso.slice(0, 4)
   return p.label
+}
+
+function stickySpaltenHintergrund(ri: number, aktiv: boolean): string {
+  const basis = ri % 2 === 1 ? 'bg-[var(--app-bg-accent)]' : 'bg-[var(--app-bg)]'
+  if (aktiv) return `${basis} shadow-[inset_3px_0_0_rgb(245_158_11/0.85)]`
+  return basis
 }
 
 const CHART_ICON = (
@@ -56,14 +65,16 @@ export function PaFundamentalMetrikTabelle({
       <div ref={scrollRef} className={`${TABLE_SCROLL} max-w-full`}>
         <table className="app-data-table w-max min-w-full border-collapse text-xs">
           <thead>
-            <tr className="bg-[var(--app-surface-muted)] text-[var(--app-text-muted)]">
-              <th className="sticky left-0 z-10 min-w-[220px] border-r border-[var(--app-border)] bg-[var(--app-surface-muted)] px-3 py-2 text-left font-medium">
+            <tr className="text-[var(--app-text-muted)]">
+              <th
+                className={`${STICKY_SPALTE} z-20 min-w-[220px] bg-[var(--app-bg)] px-3 py-2 text-left font-medium`}
+              >
                 Kennzahl
               </th>
               {perioden.map((p) => (
                 <th
                   key={p.iso}
-                  className={`min-w-[88px] whitespace-nowrap px-3 py-2 text-right font-medium ${
+                  className={`min-w-[88px] whitespace-nowrap bg-[var(--app-surface-muted)] px-3 py-2 text-right font-medium ${
                     p.istLtm
                       ? 'text-amber-400/90'
                       : p.istNtm
@@ -89,7 +100,7 @@ export function PaFundamentalMetrikTabelle({
                   } ${aktiv ? 'bg-amber-500/[0.08]' : ''}`}
                   onClick={() => onToggleZeile(z.id)}
                 >
-                  <td className="sticky left-0 z-10 border-r border-[var(--app-border)] bg-inherit px-3 py-2">
+                  <td className={`${STICKY_SPALTE} z-10 px-3 py-2 ${stickySpaltenHintergrund(ri, aktiv)}`}>
                     <span className="flex items-center gap-2 text-[var(--app-text)]">
                       <span className={aktiv ? 'text-amber-400' : 'text-[var(--app-text-muted)]'}>{CHART_ICON}</span>
                       {z.label}
