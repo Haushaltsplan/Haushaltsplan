@@ -80,11 +80,24 @@ export type YahooOptionsIvPaket = {
   quelle: 'yahoo_options'
 }
 
-export type ArbeitgeberBewertungPaket = {
+export type PlattformBewertung = {
+  /** Skala 1–5. */
   score: number | null
   anzahlBewertungen: number | null
-  plattform: 'kununu' | 'glassdoor' | null
   url: string | null
+}
+
+export type CeoZustimmung = {
+  name: string | null
+  /** 0–100 % CEO-Zustimmung (Glassdoor). */
+  zustimmungPct: number | null
+  url: string | null
+}
+
+export type ArbeitgeberBewertungPaket = {
+  kununu: PlattformBewertung | null
+  glassdoor: PlattformBewertung | null
+  glassdoorCeo: CeoZustimmung | null
   hinweis: string | null
 }
 

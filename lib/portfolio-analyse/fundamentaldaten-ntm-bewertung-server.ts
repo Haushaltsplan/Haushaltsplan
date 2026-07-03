@@ -3,6 +3,7 @@ import 'server-only'
 import type { YahooFundamentalKennzahlen } from '@/lib/portfolio-analyse/fundamentaldaten-key-metrics'
 import {
   FUNDAMENTAL_NTM_KEY,
+  FUNDAMENTAL_TTM_KEY,
   type FundamentalMetrikZeile,
   type FundamentalPeriode,
 } from '@/lib/portfolio-analyse/fundamentaldaten-types'
@@ -21,6 +22,73 @@ function historischeFyKeys(perioden: FundamentalPeriode[]): string[] {
   return perioden
     .filter((p) => !p.istLtm && !p.istNtm && !p.istSchaetzung && /^\d{4}-\d{2}-\d{2}$/.test(p.iso))
     .map((p) => p.iso)
+}
+
+function schaetzungsPeriodenKeys(perioden: FundamentalPeriode[]): string[] {
+  return perioden.filter((p) => p.istSchaetzung).map((p) => p.iso)
+}
+
+/** Historische FYs plus Schätzungs-Spalten — für NTM „nächstes Jahr“. */
+function alleNtmFundamentalKeys(perioden: FundamentalPeriode[]): string[] {
+  const hist = historischeFyKeys(perioden)
+  const schaetz = schaetzungsPeriodenKeys(perioden)
+  const out = [...hist]
+  for (const s of schaetz) {
+    if (!out.includes(s)) out.push(s)
+  }
+  return out
+}
+
+function fuelleNtmSpalte(
+  keys: {
+    pe: Record<string, number | null>
+    ps: Record<string, number | null>
+    pfcf: Record<string, number | null>
+    evRev: Record<string, number | null>
+    evEbitda: Record<string, number | null>
+  },
+  spalte: string,
+  price: number | null,
+  zeilen: FundamentalMetrikZeile[],
+  nextKey: string,
+): void {
+  const epsNext = wert(zeilen, 'eps', nextKey)
+  const revNext = wert(zeilen, 'umsatz', nextKey)
+  const fcfNext = wert(zeilen, 'fcf', nextKey)
+  const ebitdaNext = wert(zeilen, 'ebitda', nextKey)
+  const shares = wert(zeilen, 'aktien', spalte)
+
+  keys.pe[spalte] = safeDiv(price, epsNext)
+  const mc = price != null && shares != null ? price * shares : null
+  keys.ps[spalte] = safeDiv(mc, revNext)
+  keys.pfcf[spalte] = safeDiv(mc, fcfNext)
+  keys.evRev[spalte] = keys.ps[spalte]
+  keys.evEbitda[spalte] = safeDiv(mc, ebitdaNext)
+}
+
+function setzeAktuellNtmSpalten(
+  keys: {
+    pe: Record<string, number | null>
+    ps: Record<string, number | null>
+    pfcf: Record<string, number | null>
+    evRev: Record<string, number | null>
+    evEbitda: Record<string, number | null>
+  },
+  aktuell: {
+    pe: number | null
+    ps: number | null
+    pfcf: number | null
+    evRev: number | null
+    evEbitda: number | null
+  },
+): void {
+  for (const iso of [FUNDAMENTAL_NTM_KEY, FUNDAMENTAL_TTM_KEY]) {
+    keys.pe[iso] = aktuell.pe
+    keys.ps[iso] = aktuell.ps
+    keys.pfcf[iso] = aktuell.pfcf
+    keys.evRev[iso] = aktuell.evRev
+    keys.evEbitda[iso] = aktuell.evEbitda
+  }
 }
 
 function safeDiv(a: number | null, b: number | null): number | null {
@@ -110,6 +178,7 @@ export async function baueNtmBewertungsZeilen(
   const fyKeys = historischeFyKeys(perioden)
   if (fyKeys.length < 2) return { periodenPatch: null, zeilen: [] }
 
+  const allKeys = alleNtmFundamentalKeys(perioden)
   const preise = symbolYahoo ? await ladeSchlusskurseNaheDatum(symbolYahoo, fyKeys) : new Map()
 
   const ntmPe: Record<string, number | null> = {}
@@ -117,24 +186,14 @@ export async function baueNtmBewertungsZeilen(
   const ntmPfcf: Record<string, number | null> = {}
   const ntmEvRev: Record<string, number | null> = {}
   const ntmEvEbitda: Record<string, number | null> = {}
+  const keyMaps = { pe: ntmPe, ps: ntmPs, pfcf: ntmPfcf, evRev: ntmEvRev, evEbitda: ntmEvEbitda }
 
-  for (let i = 0; i < fyKeys.length - 1; i++) {
-    const cur = fyKeys[i]!
-    const next = fyKeys[i + 1]!
+  for (let i = 0; i < allKeys.length - 1; i++) {
+    const cur = allKeys[i]!
+    const next = allKeys[i + 1]!
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(cur)) continue
     const price = preise.get(cur) ?? null
-    const epsNext = wert(zeilen, 'eps', next)
-    const revNext = wert(zeilen, 'umsatz', next)
-    const fcfNext = wert(zeilen, 'fcf', next)
-    const ebitdaNext = wert(zeilen, 'ebitda', next)
-    const shares = wert(zeilen, 'aktien', cur)
-
-    ntmPe[cur] = safeDiv(price, epsNext)
-
-    const mc = price != null && shares != null ? price * shares : null
-    ntmPs[cur] = safeDiv(mc, revNext)
-    ntmPfcf[cur] = safeDiv(mc, fcfNext)
-    ntmEvRev[cur] = ntmPs[cur]
-    ntmEvEbitda[cur] = safeDiv(mc, ebitdaNext)
+    fuelleNtmSpalte(keyMaps, cur, price, zeilen, next)
   }
 
   const ltmFcf =
@@ -168,11 +227,24 @@ export async function baueNtmBewertungsZeilen(
       ? yahoo.marketCap / yahoo.ntmRevenueUsd
       : null
 
-  ntmPe[FUNDAMENTAL_NTM_KEY] = ntmKgv
-  ntmPs[FUNDAMENTAL_NTM_KEY] = ntmPsAktuell
-  ntmPfcf[FUNDAMENTAL_NTM_KEY] = ntmMcFcf
-  ntmEvRev[FUNDAMENTAL_NTM_KEY] = ntmEvRevenueAktuell
-  ntmEvEbitda[FUNDAMENTAL_NTM_KEY] = ntmEvEbitdaAktuell
+  setzeAktuellNtmSpalten(keyMaps, {
+    pe: ntmKgv,
+    ps: ntmPsAktuell,
+    pfcf: ntmMcFcf,
+    evRev: ntmEvRevenueAktuell,
+    evEbitda: ntmEvEbitdaAktuell,
+  })
+
+  // Schätzungs-Spalte (z. B. FY25E): aktueller Forward-Multiple, falls noch leer
+  for (const sk of schaetzungsPeriodenKeys(perioden)) {
+    if (ntmPe[sk] == null && ntmKgv != null) {
+      ntmPe[sk] = ntmKgv
+      ntmPs[sk] = ntmPsAktuell
+      ntmPfcf[sk] = ntmMcFcf
+      ntmEvRev[sk] = ntmEvRevenueAktuell
+      ntmEvEbitda[sk] = ntmEvEbitdaAktuell
+    }
+  }
 
   if (ntmKgv == null && ntmEvRevenueAktuell == null && ntmEvEbitdaAktuell == null && ntmMcFcf == null) {
     const hatHistorie = Object.values(ntmPe).some((v) => v != null)

@@ -18,6 +18,7 @@ import {
   ladeFundamentaldatenClient,
 } from '@/lib/portfolio-analyse/fundamentaldaten-client'
 import { keyMetricNavZiel } from '@/lib/portfolio-analyse/fundamentaldaten-key-metric-nav'
+import { bewertungForwardTabellenPerioden } from '@/lib/portfolio-analyse/fundamentaldaten-chart-hilfen'
 import type {
   FundamentaldatenAnfrage,
   FundamentaldatenPaket,
@@ -119,6 +120,11 @@ export function PaFundamentalInhalt({
       document.getElementById('fundamental-metrik-chart')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
     })
   }, [])
+
+  const bewertungNtmPerioden = useMemo(
+    () => (daten?.perioden ? bewertungForwardTabellenPerioden(daten.perioden) : []),
+    [daten?.perioden],
+  )
 
   if (!anfrage) {
     return (
@@ -334,7 +340,7 @@ export function PaFundamentalInhalt({
               {unterTab === 'bewertung' && bewertungNtm.length > 0 ? (
                 <PaFundamentalMetrikTabelle
                   titel="Bewertung NTM (Forward) · NTM = aktuell"
-                  perioden={daten.perioden}
+                  perioden={bewertungNtmPerioden}
                   zeilen={bewertungNtm}
                   aktivIds={chartAktiv}
                   onToggleZeile={toggleChartZeile}

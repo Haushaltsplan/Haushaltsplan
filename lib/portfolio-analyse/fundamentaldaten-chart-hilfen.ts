@@ -40,6 +40,15 @@ export function finanzdatenChartPerioden(perioden: FundamentalPeriode[]): Fundam
   return [...historischeChartPerioden(perioden), ...schaetzungsChartPerioden(perioden)]
 }
 
+/** Spalten für NTM-Bewertungstabelle: Historie → Schätzung → NTM (aktuell) → TTM. */
+export function bewertungForwardTabellenPerioden(perioden: FundamentalPeriode[]): FundamentalPeriode[] {
+  const hist = historischeChartPerioden(perioden)
+  const schaetz = schaetzungsChartPerioden(perioden)
+  const ntm = perioden.find((p) => p.istNtm)
+  const ttm = perioden.find((p) => p.istLtm)
+  return [...hist, ...schaetz, ...(ntm ? [ntm] : []), ...(ttm ? [ttm] : [])]
+}
+
 export function einheitSkalaGruppe(einheit: string): string {
   if (einheit === 'aktien_mio') return 'aktien_mio'
   if (einheit === 'waehrung_usd_aktie') return 'waehrung_usd_aktie'

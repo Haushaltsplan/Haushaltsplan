@@ -7,43 +7,63 @@ import type { DividendenHistorieStat } from '@/lib/portfolio-analyse/fundamental
 import { ladeDivvydiaryRohdaten } from '@/lib/portfolio-analyse/divvydiary-scraper-server'
 import { heuteIsoUtc } from '@/lib/portfolio-analyse/dividenden-datum-hilfen'
 
-function jahresSummen(
-  rows: { exDate: string; amount: number; forecast: boolean }[],
-): { jahr: number; summe: number; istPrognose: boolean }[] {
-  const map = new Map<number, { summe: number; prognose: boolean }>()
+type DivRow = { exDate: string; amount: number; forecast: boolean }
+type JahresSumme = { jahr: number; summe: number; zahlungen: number }
+
+/** Kleine Toleranz für Rundung / FX-Rauschen — kein echter Dividenden-Cut. */
+const SENKUNG_TOLERANZ = 0.995
+
+function jahresSummen(rows: DivRow[]): JahresSumme[] {
+  const map = new Map<number, { summe: number; zahlungen: number }>()
   for (const r of rows) {
     if (r.forecast) continue
     const jahr = parseInt(r.exDate.slice(0, 4), 10)
-    const prev = map.get(jahr) ?? { summe: 0, prognose: false }
+    const prev = map.get(jahr) ?? { summe: 0, zahlungen: 0 }
     prev.summe += r.amount
+    prev.zahlungen += 1
     map.set(jahr, prev)
   }
   return [...map.entries()]
-    .map(([jahr, v]) => ({ jahr, summe: v.summe, istPrognose: v.prognose }))
+    .map(([jahr, v]) => ({ jahr, summe: v.summe, zahlungen: v.zahlungen }))
     .sort((a, b) => a.jahr - b.jahr)
 }
 
-function jahreOhneSenkung(jahre: { jahr: number; summe: number }[]): { streak: number; letzteSenkung: number | null } {
-  if (jahre.length < 2) return { streak: jahre.length, letzteSenkung: null }
-  let streak = 0
+/**
+ * Nur vollständige Geschäftsjahre für YoY-Vergleiche.
+ * Laufendes Kalenderjahr und Jahre mit zu wenigen Zahlungen (YTD) werden ausgeschlossen.
+ */
+function jahreFuerSenkungVergleich(jahre: JahresSumme[], heuteIso: string): JahresSumme[] {
+  const aktJahr = parseInt(heuteIso.slice(0, 4), 10)
+  return jahre.filter((j) => {
+    if (j.jahr >= aktJahr) return false
+    const vorjahr = jahre.find((x) => x.jahr === j.jahr - 1)
+    if (vorjahr && vorjahr.zahlungen >= 2 && j.zahlungen < vorjahr.zahlungen) return false
+    return j.zahlungen > 0
+  })
+}
+
+function istSenkung(vorjahrSumme: number, jahrSumme: number): boolean {
+  return jahrSumme < vorjahrSumme * SENKUNG_TOLERANZ
+}
+
+function jahreOhneSenkung(jahre: JahresSumme[]): { streak: number; letzteSenkung: number | null } {
+  if (jahre.length === 0) return { streak: 0, letzteSenkung: null }
+  if (jahre.length === 1) return { streak: 1, letzteSenkung: null }
+
   let letzteSenkung: number | null = null
   for (let i = jahre.length - 1; i >= 1; i--) {
-    const cur = jahre[i]!
-    const prev = jahre[i - 1]!
-    if (cur.summe >= prev.summe * 0.995) streak++
-    else {
-      letzteSenkung = cur.jahr
+    if (istSenkung(jahre[i - 1]!.summe, jahre[i]!.summe)) {
+      letzteSenkung = jahre[i]!.jahr
       break
     }
   }
-  if (letzteSenkung == null) {
-    for (let i = 1; i < jahre.length; i++) {
-      if (jahre[i]!.summe < jahre[i - 1]!.summe * 0.995) {
-        letzteSenkung = jahre[i]!.jahr
-        break
-      }
-    }
+
+  let streak = 0
+  for (let i = jahre.length - 1; i >= 1; i--) {
+    if (istSenkung(jahre[i - 1]!.summe, jahre[i]!.summe)) break
+    streak++
   }
+
   return { streak: streak > 0 ? streak + 1 : 1, letzteSenkung }
 }
 
@@ -67,34 +87,36 @@ export async function ladeDividendenHistorieStat(
   const isinNorm = isin.trim().toUpperCase()
   if (isinNorm.length < 10) return null
 
-  const roh = await ladeDivvydiaryRohdaten(isinNorm, name, heuteIsoUtc())
+  const heute = heuteIsoUtc()
+  const roh = await ladeDivvydiaryRohdaten(isinNorm, name, heute)
   if (!roh?.rows?.length) return null
 
   const real = roh.rows.filter((r) => !r.forecast)
   if (real.length === 0) return null
 
-  const jahre = jahresSummen(roh.rows)
-  const { streak, letzteSenkung } = jahreOhneSenkung(jahre)
+  const jahreAlle = jahresSummen(roh.rows)
+  const jahreVergleich = jahreFuerSenkungVergleich(jahreAlle, heute)
+  const { streak, letzteSenkung } = jahreOhneSenkung(jahreVergleich)
   const letzte = real[real.length - 1]!
 
   const cagr5 =
-    jahre.length >= 6
+    jahreVergleich.length >= 6
       ? cagrProzent(
-          [jahre[jahre.length - 6]!.summe, jahre[jahre.length - 1]!.summe],
+          [jahreVergleich[jahreVergleich.length - 6]!.summe, jahreVergleich[jahreVergleich.length - 1]!.summe],
           5,
         )
       : null
   const cagr10 =
-    jahre.length >= 11
+    jahreVergleich.length >= 11
       ? cagrProzent(
-          [jahre[jahre.length - 11]!.summe, jahre[jahre.length - 1]!.summe],
+          [jahreVergleich[jahreVergleich.length - 11]!.summe, jahreVergleich[jahreVergleich.length - 1]!.summe],
           10,
         )
       : null
 
   return {
     anzahlZahlungen: real.length,
-    jahreMitDaten: jahre.length,
+    jahreMitDaten: jahreAlle.length,
     letzteExDate: letzte.exDate,
     letzteDividendeUsd: letzte.amount,
     frequenz: roh.earnings?.dividendFrequency ?? null,
@@ -102,7 +124,7 @@ export async function ladeDividendenHistorieStat(
     cagr10yPct: cagr10,
     jahreOhneSenkung: streak,
     letzteSenkungJahr: letzteSenkung,
-    durchschnittWachstum3yPct: durchschnittWachstum(jahre, 3),
+    durchschnittWachstum3yPct: durchschnittWachstum(jahreVergleich, 3),
     quelle: 'divvydiary',
   }
 }

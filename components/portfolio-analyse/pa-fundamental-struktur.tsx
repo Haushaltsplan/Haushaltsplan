@@ -53,7 +53,10 @@ export function PaFundamentalStruktur({ erweitert }: { erweitert: Fundamentaldat
     erweitert.secStruktur ||
     erweitert.euFundamental ||
     erweitert.optionsIv ||
-    erweitert.arbeitgeber
+    (erweitert.arbeitgeber &&
+      (erweitert.arbeitgeber.kununu ||
+        erweitert.arbeitgeber.glassdoor ||
+        erweitert.arbeitgeber.glassdoorCeo))
 
   if (!hatInhalt) {
     return (
@@ -214,25 +217,62 @@ export function PaFundamentalStruktur({ erweitert }: { erweitert: Fundamentaldat
               wert={pct(iv?.impliziteVolatilitaetPct)}
               hinweis={iv?.expiration ? `Expiry ${iv.expiration}` : undefined}
             />
-            <Kennzahl
-              label={ag?.plattform === 'kununu' ? 'Kununu-Score' : ag?.plattform === 'glassdoor' ? 'Glassdoor' : 'Arbeitgeber'}
-              wert={ag?.score != null ? `${ag.score} / 5` : null}
-              hinweis={
-                ag?.anzahlBewertungen != null
-                  ? `${ag.anzahlBewertungen} Bewertungen`
-                  : ag?.hinweis ?? undefined
-              }
-            />
+            {ag?.glassdoor?.score != null ? (
+              <Kennzahl
+                label="Glassdoor (Unternehmen)"
+                wert={`${ag.glassdoor.score} / 5`}
+                hinweis={
+                  ag.glassdoor.anzahlBewertungen != null
+                    ? `${ag.glassdoor.anzahlBewertungen} Bewertungen`
+                    : undefined
+                }
+              />
+            ) : null}
+            {ag?.glassdoorCeo?.zustimmungPct != null ? (
+              <Kennzahl
+                label={ag.glassdoorCeo.name ? `CEO: ${ag.glassdoorCeo.name}` : 'CEO-Zustimmung (Glassdoor)'}
+                wert={`${ag.glassdoorCeo.zustimmungPct} %`}
+                hinweis="befürworten den CEO"
+              />
+            ) : null}
+            {ag?.kununu?.score != null ? (
+              <Kennzahl
+                label="Kununu-Score"
+                wert={`${ag.kununu.score} / 5`}
+                hinweis={
+                  ag.kununu.anzahlBewertungen != null
+                    ? `${ag.kununu.anzahlBewertungen} Bewertungen`
+                    : undefined
+                }
+              />
+            ) : null}
           </div>
-          {ag?.url ? (
-            <a
-              href={ag.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-xs text-amber-400/90 hover:underline"
-            >
-              Bewertungen öffnen →
-            </a>
+          {(ag?.glassdoor?.url || ag?.kununu?.url) && (
+            <div className="flex flex-wrap gap-3">
+              {ag.glassdoor?.url ? (
+                <a
+                  href={ag.glassdoor.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-xs text-amber-400/90 hover:underline"
+                >
+                  Glassdoor öffnen →
+                </a>
+              ) : null}
+              {ag.kununu?.url ? (
+                <a
+                  href={ag.kununu.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-xs text-amber-400/90 hover:underline"
+                >
+                  Kununu öffnen →
+                </a>
+              ) : null}
+            </div>
+          )}
+          {ag?.hinweis ? (
+            <p className="text-[10px] text-[var(--app-text-muted)]">{ag.hinweis}</p>
           ) : null}
         </PaCard>
       )}
