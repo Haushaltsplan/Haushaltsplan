@@ -157,7 +157,7 @@ export function generiereMomentumHandlungsempfehlung(input: {
           String(symbolSetup.indikatoren.stopPrice ?? '—') +
           ', Ziel ' +
           String(symbolSetup.indikatoren.targetPrice ?? '—') +
-          '. Max. 10 €.',
+          '. Stop/Ziel aus Scan übernehmen.',
       })
       continue
     }
@@ -204,7 +204,7 @@ export function generiereMomentumHandlungsempfehlung(input: {
   if (setups.length > 0) {
     zusammenfassung =
       setups.length +
-      ' Top-Trade(s) JETZT handelbar — Stop/Ziel aus Scan übernehmen. Max. 10 € Risiko. Kein Trade ohne „Jetzt“-Badge.'
+      ' Top-Trade(s) JETZT handelbar — Stop/Ziel aus Scan übernehmen. Kein Trade ohne „Jetzt“-Badge.'
   } else if (datenHinweise.length > 0) {
     zusammenfassung =
       'Noch kein Trade-Setup über Schwelle — „Alles aktualisieren“ für frische Kurse und Scan. ' +

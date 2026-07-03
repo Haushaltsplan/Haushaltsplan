@@ -1,7 +1,5 @@
-/** Standard-Risiko pro Trade (EUR). */
-export const MOMENTUM_DEFAULT_RISK_EUR = 10
-
-export const MOMENTUM_MAX_RISK_EUR = 10
+/** Standard-Einsatz (Margin) für XTB-CFD — Position daraus, Stop bleibt technisch (ATR). */
+export const CFD_DEFAULT_MARGIN_EUR = 50
 
 /** BaFin/ESMA Retail-CFD Aktien in DE + XTB: fester Hebel 1:5 (keine niedrigere Stufe wählbar). */
 export const CFD_HEBEL_XTB = 5

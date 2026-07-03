@@ -13,6 +13,7 @@ import {
 } from '@/lib/portfolio-analyse/momentum-trader/momentum-constants'
 import type { MomentumEarningsHistorieStatistik } from '@/lib/portfolio-analyse/momentum-trader/momentum-earnings-analytics-server'
 import { berechneAtr, berechneRelativeStaerke } from '@/lib/portfolio-analyse/momentum-trader/momentum-indicators'
+import { cfdIndikatorenAusLevels } from '@/lib/portfolio-analyse/momentum-trader/momentum-cfd-planung-server'
 import { berechnePositionsVorschlag } from '@/lib/portfolio-analyse/momentum-trader/momentum-position-sizing'
 import type {
   MomentumAmpel,
@@ -187,9 +188,9 @@ export function bewerteEarningsPreRun(
       entryPrice: pos?.entryPrice ?? lastBar.close,
       stopPrice: pos?.stopPrice ?? null,
       targetPrice: pos?.targetPrice ?? null,
-      riskEur: pos?.riskEur ?? null,
+      ...cfdIndikatorenAusLevels(pos?.entryPrice ?? lastBar.close, pos?.stopPrice ?? null, pos?.targetPrice ?? null),
       hinweis:
-        'Pre-Earnings-Trade: höheres Event-Risiko — nur mit Stop, Exit vor Zahlen, max. 10 €.',
+        'Pre-Earnings-Trade: höheres Event-Risiko — nur mit Stop, Exit vor Zahlen.',
     },
   }
 }

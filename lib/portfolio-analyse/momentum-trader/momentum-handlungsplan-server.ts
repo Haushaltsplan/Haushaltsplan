@@ -1,11 +1,11 @@
 import 'server-only'
 
 import {
-  CFD_HEBEL_XTB,
+  CFD_DEFAULT_MARGIN_EUR,
   GAP_MIN_PCT,
-  MOMENTUM_DEFAULT_RISK_EUR,
   REWARD_RISK_RATIO,
 } from '@/lib/portfolio-analyse/momentum-trader/momentum-constants'
+import { berechneCfdPlanung } from '@/lib/portfolio-analyse/momentum-trader/momentum-cfd-planung-server'
 import { momentumPlaybookLabel } from '@/lib/portfolio-analyse/momentum-trader/momentum-constants'
 import type {
   MomentumEarningsZeit,
@@ -16,32 +16,55 @@ import type {
   MomentumScanEintrag,
 } from '@/lib/portfolio-analyse/momentum-trader/momentum-trader-types'
 
-/**
- * XTB-CFD: Hebel ist fest 1:5 — Margin aus Risiko (10 € am Stop) und Stop-Abstand.
- * margin = (riskEur × entry) / (5 × stopDist), exposure = margin × 5
- */
-function berechneCfdHebelMargin(
+function baueNiveaus(
   entry: number,
   stop: number,
-  riskEur: number,
-): { hebel: number; marginEur: number; exposureEur: number } {
-  const hebel = CFD_HEBEL_XTB
-  const stopDist = Math.abs(entry - stop)
-  const minStopDist = entry > 0 ? entry * 0.01 : 0.01
-
-  if (stopDist <= 0 || entry <= 0) {
-    const marginEur = (riskEur * Math.max(entry, 1)) / (hebel * minStopDist)
-    const m = runde2(Math.min(100, Math.max(8, marginEur)))
-    return { hebel, marginEur: m, exposureEur: runde2(m * hebel) }
+  target: number,
+  marginEur: number,
+): Pick<
+  MomentumHandlungsplan,
+  | 'entryPreis'
+  | 'stopLoss'
+  | 'takeProfit'
+  | 'stopAbstandPct'
+  | 'zielAbstandPct'
+  | 'riskEur'
+  | 'hebelEmpfohlen'
+  | 'marginEur'
+  | 'exposureEur'
+  | 'stueckzahl'
+  | 'gewinnZielEur'
+> {
+  const plan = berechneCfdPlanung(entry, stop, target, marginEur)
+  if (!plan) {
+    return {
+      entryPreis: runde4(entry),
+      stopLoss: runde4(stop),
+      takeProfit: runde4(target),
+      stopAbstandPct: 0,
+      zielAbstandPct: 0,
+      riskEur: 0,
+      hebelEmpfohlen: 5,
+      marginEur: marginEur,
+      exposureEur: marginEur * 5,
+      stueckzahl: null,
+      gewinnZielEur: 0,
+    }
   }
 
-  const marginEur = (riskEur * entry) / (hebel * stopDist)
-  const m = runde2(marginEur)
-  return { hebel, marginEur: m, exposureEur: runde2(m * hebel) }
-}
-
-function runde2(n: number): number {
-  return Math.round(n * 100) / 100
+  return {
+    entryPreis: runde4(entry),
+    stopLoss: runde4(stop),
+    takeProfit: runde4(target),
+    stopAbstandPct: plan.stopAbstandPct,
+    zielAbstandPct: plan.zielAbstandPct,
+    riskEur: plan.verlustAmStopEur,
+    hebelEmpfohlen: plan.hebel,
+    marginEur: plan.marginEur,
+    exposureEur: plan.exposureEur,
+    stueckzahl: Math.max(1, Math.floor(plan.einheiten)),
+    gewinnZielEur: plan.gewinnAmZielEur,
+  }
 }
 
 function runde4(n: number): number {
@@ -84,47 +107,6 @@ function schritteZuLegacy(schritte: MomentumHandlungsschritt[]): {
   return { jetzt, nach }
 }
 
-function baueNiveaus(
-  entry: number,
-  stop: number,
-  target: number,
-  riskEur: number,
-): Pick<
-  MomentumHandlungsplan,
-  | 'entryPreis'
-  | 'stopLoss'
-  | 'takeProfit'
-  | 'stopAbstandPct'
-  | 'zielAbstandPct'
-  | 'riskEur'
-  | 'hebelEmpfohlen'
-  | 'marginEur'
-  | 'exposureEur'
-  | 'stueckzahl'
-  | 'gewinnZielEur'
-> {
-  const stopDist = Math.abs(entry - stop)
-  const zielDist = Math.abs(entry - target)
-  const stopAbstandPct = entry > 0 ? runde2((stopDist / entry) * 100) : 0
-  const zielAbstandPct = entry > 0 ? runde2((zielDist / entry) * 100) : 0
-  const cfd = berechneCfdHebelMargin(entry, stop, riskEur)
-  const stueckzahl = stopDist > 0 ? Math.max(1, Math.floor(riskEur / stopDist)) : null
-
-  return {
-    entryPreis: runde4(entry),
-    stopLoss: runde4(stop),
-    takeProfit: runde4(target),
-    stopAbstandPct,
-    zielAbstandPct,
-    riskEur,
-    hebelEmpfohlen: cfd.hebel,
-    marginEur: cfd.marginEur,
-    exposureEur: cfd.exposureEur,
-    stueckzahl,
-    gewinnZielEur: riskEur * REWARD_RISK_RATIO,
-  }
-}
-
 function planBasis(
   partial: Omit<
     MomentumHandlungsplan,
@@ -154,8 +136,8 @@ export function baueHandlungsplanAusScan(
     (entry > 0 && stop > 0 && Math.abs(entry - stop) > 0)
   if (entry <= 0 || stop <= 0 || target <= 0 || !atrOk) return null
 
-  const riskEur = alsZahl(e.indikatoren.riskEur, MOMENTUM_DEFAULT_RISK_EUR)
-  const niveaus = baueNiveaus(entry, stop, target, riskEur)
+  const marginEur = alsZahl(e.indikatoren.marginEur, CFD_DEFAULT_MARGIN_EUR)
+  const niveaus = baueNiveaus(entry, stop, target, marginEur)
   const sym = e.symbol
   const rLabel = richtung === 'long' ? 'Long' : 'Short'
   const exitBis = typeof e.indikatoren.exitBis === 'string' ? e.indikatoren.exitBis : null
@@ -169,7 +151,7 @@ export function baueHandlungsplanAusScan(
   const schritte: MomentumHandlungsschritt[] = []
   const nichtTun: string[] = [
     'Kein Nachkaufen oder Stop nachziehen ohne neuen Scan',
-    'Max. ' + riskEur + ' € Verlust — nicht erhöhen',
+    'Einsatz ~' + niveaus.marginEur + ' € (XTB 5×) — Verlust am Stop ~' + niveaus.riskEur + ' €',
   ]
 
   if (e.playbook === 'earnings_pre_run') {
@@ -179,7 +161,7 @@ export function baueHandlungsplanAusScan(
         nr: 2,
         phase: 'jetzt',
         titel: 'Stop-Loss sofort setzen',
-        detail: formatPreis(stop) + ' (−' + niveaus.stopAbstandPct + '% = ' + riskEur + ' €)',
+        detail: formatPreis(stop) + ' (−' + niveaus.stopAbstandPct + '% · ~' + niveaus.riskEur + ' € wenn Stop)',
       },
       {
         nr: 3,
@@ -226,7 +208,7 @@ export function baueHandlungsplanAusScan(
         nr: 2,
         phase: 'jetzt',
         titel: 'Stop-Loss setzen',
-        detail: formatPreis(stop) + ' — Verlust am Stop = ' + riskEur + ' €',
+        detail: formatPreis(stop) + ' — bei Stop ~' + niveaus.riskEur + ' € Verlust (Einsatz ' + niveaus.marginEur + ' €)',
       },
       {
         nr: 3,
@@ -281,10 +263,10 @@ export function baueHandlungsplanNachEarnings(
   const gapUp = alsZahl(e.indikatoren.gapUpRatePct, 50)
   const tage = alsZahl(e.indikatoren.tageBisEarnings, -1)
   const timeBmo = e.indikatoren.timeBmoAmc as MomentumEarningsZeit | undefined
-  const riskEur = MOMENTUM_DEFAULT_RISK_EUR
+  const marginEur = CFD_DEFAULT_MARGIN_EUR
   const rLabel = richtung === 'long' ? 'Long' : 'Short'
 
-  const gapSchwelle = runde2(Math.max(GAP_MIN_PCT, Math.min(12, Math.max(median * 2, erwartet * 0.6, 3))))
+  const gapSchwelle = Math.round(Math.max(GAP_MIN_PCT, Math.min(12, Math.max(median * 2, erwartet * 0.6, 3))) * 10) / 10
   const triggerBedingungen: string[] = []
 
   let entry: number
@@ -316,7 +298,7 @@ export function baueHandlungsplanNachEarnings(
     target = runde4(entry + stopDist * REWARD_RISK_RATIO)
   }
 
-  const niveaus = baueNiveaus(entry, stop, target, riskEur)
+  const niveaus = baueNiveaus(entry, stop, target, marginEur)
   const sym = e.symbol
   const zeitfenster = earningsZeitfenster(timeBmo, tage)
 
@@ -378,7 +360,8 @@ export function baueHandlungsplanNachEarnings(
   const nichtTun = [
     'Vor den Zahlen blind ' + rLabel + ' eröffnen',
     'Trade erzwingen wenn Gap oder Surprise nicht passt',
-    'Mehr als ' + riskEur + ' € riskieren',
+    'Position nicht über Earnings halten',
+    'Stop nicht weiten ohne neuen Scan',
     'Ohne frischen Scan nach Earnings handeln',
   ]
 

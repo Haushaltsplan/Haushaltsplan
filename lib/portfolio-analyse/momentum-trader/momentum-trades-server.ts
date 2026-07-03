@@ -2,7 +2,8 @@ import 'server-only'
 
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { berechnePnlEur } from '@/lib/portfolio-analyse/momentum-trader/momentum-position-sizing'
-import { MOMENTUM_DEFAULT_RISK_EUR, MOMENTUM_MAX_RISK_EUR } from '@/lib/portfolio-analyse/momentum-trader/momentum-constants'
+import { berechneCfdPlanung } from '@/lib/portfolio-analyse/momentum-trader/momentum-cfd-planung-server'
+import { CFD_DEFAULT_MARGIN_EUR } from '@/lib/portfolio-analyse/momentum-trader/momentum-constants'
 import type {
   MomentumPlaybook,
   MomentumRichtung,
@@ -94,10 +95,19 @@ export async function erstelleMomentumTrade(
     ausScan?: boolean
   },
 ): Promise<MomentumTrade> {
-  const riskEur = Math.min(
-    MOMENTUM_MAX_RISK_EUR,
-    Math.max(1, input.riskEur ?? MOMENTUM_DEFAULT_RISK_EUR),
-  )
+  let riskEur = input.riskEur
+  if (riskEur == null && input.stopPrice != null && input.targetPrice != null) {
+    const plan = berechneCfdPlanung(
+      input.entryPrice,
+      input.stopPrice,
+      input.targetPrice,
+      CFD_DEFAULT_MARGIN_EUR,
+    )
+    riskEur = plan?.verlustAmStopEur
+  }
+  if (riskEur == null || !Number.isFinite(riskEur) || riskEur <= 0) {
+    riskEur = 0
+  }
 
   const basisInsert = {
     symbol: input.symbol.trim().toUpperCase(),

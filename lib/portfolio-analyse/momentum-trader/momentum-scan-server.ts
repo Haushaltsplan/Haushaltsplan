@@ -33,6 +33,7 @@ import {
   medianGapAbsPct,
 } from '@/lib/portfolio-analyse/momentum-trader/momentum-earnings-events-server'
 import { berechneEarningsHistorieStatistik } from '@/lib/portfolio-analyse/momentum-trader/momentum-earnings-analytics-server'
+import { cfdIndikatorenAusLevels } from '@/lib/portfolio-analyse/momentum-trader/momentum-cfd-planung-server'
 import { sektorEtfSymbol } from '@/lib/portfolio-analyse/momentum-trader/momentum-sektor-etf-server'
 import {
   primaeresAnzeigeSymbol,
@@ -246,7 +247,11 @@ function bewerteGapFade(
       stopPrice: pos?.stopPrice ?? null,
       targetPrice: pos?.targetPrice ?? null,
       stopAbstandPct: pos?.stopAbstandPct ?? null,
-      riskEur: pos?.riskEur ?? null,
+      ...cfdIndikatorenAusLevels(
+        pos?.entryPrice ?? bar.open,
+        pos?.stopPrice ?? null,
+        pos?.targetPrice ?? null,
+      ),
       spyAbove20Ma: regimeGates.regime.spyAbove20Ma,
       vixClose: regimeGates.regime.vixClose,
     },
@@ -379,7 +384,11 @@ function bewerteEarningsMomentum(
       entryPrice: pos?.entryPrice ?? bar.close,
       stopPrice: pos?.stopPrice ?? null,
       targetPrice: pos?.targetPrice ?? null,
-      riskEur: pos?.riskEur ?? null,
+      ...cfdIndikatorenAusLevels(
+        pos?.entryPrice ?? bar.close,
+        pos?.stopPrice ?? null,
+        pos?.targetPrice ?? null,
+      ),
     },
   }
 }
@@ -504,7 +513,11 @@ function bewerteIpoFade(
       entryPrice: pos?.entryPrice ?? lastBar.close,
       stopPrice: pos?.stopPrice ?? null,
       targetPrice: pos?.targetPrice ?? null,
-      riskEur: pos?.riskEur ?? null,
+      ...cfdIndikatorenAusLevels(
+        pos?.entryPrice ?? lastBar.close,
+        pos?.stopPrice ?? null,
+        pos?.targetPrice ?? null,
+      ),
     },
   }
 }

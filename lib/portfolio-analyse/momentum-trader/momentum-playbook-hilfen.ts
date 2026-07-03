@@ -4,6 +4,7 @@
 
 import { momentumPlaybookLabel } from '@/lib/portfolio-analyse/momentum-trader/momentum-constants'
 import { berechnePositionsVorschlag } from '@/lib/portfolio-analyse/momentum-trader/momentum-position-sizing'
+import { cfdIndikatorenAusLevels } from '@/lib/portfolio-analyse/momentum-trader/momentum-cfd-planung-server'
 import type {
   MomentumAmpel,
   MomentumBarDaily,
@@ -59,6 +60,10 @@ export function baueScanEintrag(input: {
     richtung && atr != null && entry != null
       ? berechnePositionsVorschlag(entry, atr, richtung)
       : null
+  const cfd =
+    pos != null
+      ? cfdIndikatorenAusLevels(pos.entryPrice, pos.stopPrice, pos.targetPrice)
+      : cfdIndikatorenAusLevels(null, null, null)
 
   return {
     scanDate: input.scanDate,
@@ -77,7 +82,7 @@ export function baueScanEintrag(input: {
       stopPrice: pos?.stopPrice ?? null,
       targetPrice: pos?.targetPrice ?? null,
       stopAbstandPct: pos?.stopAbstandPct ?? null,
-      riskEur: pos?.riskEur ?? null,
+      ...cfd,
       atr,
     },
   }

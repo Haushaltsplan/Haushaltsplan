@@ -15,7 +15,7 @@ const PRE_EVENT_SYSTEM_PROMPT = `Du bist ein nüchterner Earnings-Strategie-Assi
 Aufgabe: Pre-Event-Vorbereitung erklären — KEIN konkreter Trade vor den Zahlen.
 Max. 120 Wörter. Keine Anlageberatung. Keine Richtungs-Wette vor dem Event.
 Nenne: historisches Gap-Profil, Lauf vor Earnings, Beat-Historie, welche Szenarien nach den Zahlen zu prüfen sind.
-Betone: erst nach Reaktion handeln (max. 10 € Risiko).`
+Betone: erst nach Reaktion handeln.`
 
 async function generierePreEventMemo(e: MomentumScanEintrag): Promise<string | null> {
   const provider = resolveCoachProviderFromMode('gemini')

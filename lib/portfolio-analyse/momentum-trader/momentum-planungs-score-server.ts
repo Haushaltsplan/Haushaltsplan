@@ -2,8 +2,9 @@ import 'server-only'
 
 import {
   BACKTEST_MIN_SAMPLES_GLOBAL,
-  MOMENTUM_DEFAULT_RISK_EUR,
+  CFD_DEFAULT_MARGIN_EUR,
 } from '@/lib/portfolio-analyse/momentum-trader/momentum-constants'
+import { berechneCfdPlanung } from '@/lib/portfolio-analyse/momentum-trader/momentum-cfd-planung-server'
 import {
   berechneErwartungswertR,
   berechneRewardRisk,
@@ -22,6 +23,26 @@ export type MomentumPlanungsScore = {
   basisText: string
 }
 
+function alsZahl(v: unknown): number | null {
+  return typeof v === 'number' && Number.isFinite(v) ? v : null
+}
+
+/** 1R in € = Verlust am technischen Stop (aus XTB-Margin-Planung). */
+function einRisikoEur(e: MomentumScanEintrag): number {
+  const ausScan = alsZahl(e.indikatoren.verlustAmStopEur) ?? alsZahl(e.indikatoren.riskEur)
+  if (ausScan != null && ausScan > 0) return ausScan
+
+  const entry = alsZahl(e.indikatoren.entryPrice) ?? alsZahl(e.indikatoren.letzterKurs)
+  const stop = alsZahl(e.indikatoren.stopPrice)
+  const target = alsZahl(e.indikatoren.targetPrice)
+  const margin = alsZahl(e.indikatoren.marginEur) ?? CFD_DEFAULT_MARGIN_EUR
+  if (entry != null && stop != null && target != null) {
+    const plan = berechneCfdPlanung(entry, stop, target, margin)
+    if (plan && plan.verlustAmStopEur > 0) return plan.verlustAmStopEur
+  }
+  return CFD_DEFAULT_MARGIN_EUR
+}
+
 /**
  * Planungs-Score für Priorisierung — basiert auf Erwartungswert (R) mit Backtest-Trefferquote,
  * nicht auf optimistischer Treffer-Schätzung.
@@ -35,7 +56,8 @@ export function berechnePlanungsScore(
   const rr = berechneRewardRisk(e)
   const trefferFuerEv = stat?.trefferPct ?? trefferPct
   const evR = rr != null ? berechneErwartungswertR(trefferFuerEv, rr) : null
-  const riskEur = MOMENTUM_DEFAULT_RISK_EUR
+  const einR = einRisikoEur(e)
+  const margin = alsZahl(e.indikatoren.marginEur) ?? CFD_DEFAULT_MARGIN_EUR
 
   let score: number
   if (evR != null) {
@@ -63,14 +85,21 @@ export function berechnePlanungsScore(
   const label =
     score >= 62 ? 'Stark planbar' : score >= 54 ? 'Planbar' : score >= 46 ? 'Neutral' : 'Schwach'
 
-  const erwartungEur = evR != null ? Math.round(evR * riskEur * 100) / 100 : null
+  const erwartungEur = evR != null ? Math.round(evR * einR * 100) / 100 : null
 
   const basisParts: string[] = []
   if (evR != null && rr != null) {
     basisParts.push('EV ' + (evR >= 0 ? '+' : '') + evR + 'R (R/R ' + rr + ')')
     if (erwartungEur != null) {
       basisParts.push(
-        '≈ ' + (erwartungEur >= 0 ? '+' : '') + erwartungEur + ' € bei ' + riskEur + ' € Risiko',
+        '≈ ' +
+          (erwartungEur >= 0 ? '+' : '') +
+          erwartungEur +
+          ' € (Einsatz ' +
+          margin +
+          ' €, 1R ~' +
+          Math.round(einR) +
+          ' €)',
       )
     }
   }

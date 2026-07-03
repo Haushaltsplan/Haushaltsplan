@@ -252,6 +252,6 @@ export function generiereMomentumBriefing(input: MomentumBriefingInput): string 
   }
 
   lines.push('---')
-  lines.push('_Regelbasiert · max. 10 € Risiko/Trade · keine Anlageberatung._')
+  lines.push('_Regelbasiert · XTB CFD 5× · keine Anlageberatung._')
   return lines.join('\n')
 }

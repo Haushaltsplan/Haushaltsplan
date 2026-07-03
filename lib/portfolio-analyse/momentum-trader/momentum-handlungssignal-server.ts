@@ -92,7 +92,7 @@ export function handlungssignalAusTradeSetup(
     (stop?.toFixed(2) ?? '—') +
     ' · 3) Take-Profit ' +
     (target?.toFixed(2) ?? '—') +
-    ' · Max. 10 € Verlust'
+    ' · Stop sofort setzen'
   if (entry != null) {
     aktionJetzt = aktionJetzt + ' · Einstieg ~' + entry.toFixed(2)
   }
@@ -106,7 +106,7 @@ export function handlungssignalAusTradeSetup(
     'Bei Ampel rot oder Gate-Bruch: Position sofort schließen',
   ]
 
-  const warnungen = ['Kein Nachkaufen', 'Stop nicht weiten', 'Nicht ohne Stop handeln', 'Max. 10 € Risiko']
+  const warnungen = ['Kein Nachkaufen', 'Stop nicht weiten', 'Nicht ohne Stop handeln', 'XTB: Hebel 5× fest']
 
   const detailText =
     pbLabel +
@@ -206,7 +206,7 @@ export function handlungssignalAusPreEvent(
   const warnungen = [
     'Blind vor Earnings einsteigen',
     'Trade ohne frischen Scan nach Zahlen',
-    'Mehr als 10 € riskieren',
+    'Mehr Einsatz als geplant riskieren',
   ]
 
   const kurztext =

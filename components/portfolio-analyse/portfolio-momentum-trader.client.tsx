@@ -246,7 +246,7 @@ function HandlungsplanKarte({ plan }: { plan: import('@/lib/portfolio-analyse/mo
         <div className="rounded-lg bg-black/30 px-3 py-2 ring-1 ring-rose-500/25">
           <p className="text-[9px] uppercase text-rose-300/80">Stop</p>
           <p className="mt-0.5 text-base font-bold tabular-nums text-rose-200">{p.stopLoss.toFixed(2)}</p>
-          <p className="text-[10px] text-[var(--app-text-muted)]">−{p.stopAbstandPct}% · {p.riskEur} €</p>
+          <p className="text-[10px] text-[var(--app-text-muted)]">−{p.stopAbstandPct}% · ~{p.riskEur} € am Stop</p>
         </div>
         <div className="rounded-lg bg-black/30 px-3 py-2 ring-1 ring-emerald-500/25">
           <p className="text-[9px] uppercase text-emerald-300/80">Ziel</p>
@@ -313,7 +313,7 @@ function HandlungsplanKarte({ plan }: { plan: import('@/lib/portfolio-analyse/mo
 
       {p.stueckzahl != null && p.stueckzahl > 0 && (
         <p className="mt-3 text-[10px] text-[var(--app-text-muted)]">
-          Ohne Hebel: ca. {p.stueckzahl} Aktien — gleicher Verlust am Stop ({p.riskEur} €).
+          Ohne Hebel: ca. {p.stueckzahl} Aktien — gleiche Exposure wie CFD-Plan.
         </p>
       )}
     </div>
@@ -594,7 +594,7 @@ function OnboardingKarte() {
           <span className="text-sm font-medium text-[var(--app-text-muted)]">2.</span> „Alles aktualisieren“ — Kurse, Regime, Scan (Gap, Trend, Earnings)
         </li>
         <li>
-          <span className="font-medium text-violet-300">3.</span> Setups prüfen → Trade erfassen (max. 10 € Risiko)
+          <span className="font-medium text-violet-300">3.</span> Setups prüfen → Trade im Journal erfassen
         </li>
         <li>
           <span className="font-medium text-violet-300">4.</span> Exit im Journal schließen → Performance tracken
@@ -1463,7 +1463,7 @@ function ScanKarte({
                 <span className="text-teal-300/90">
                   {' · Erwartung '}
                   {planungErwartungEur >= 0 ? '+' : ''}
-                  {planungErwartungEur} € (10 € Risiko)
+                  {planungErwartungEur} € Erwartung
                 </span>
               ) : null}
               {planungBasisText ? (
@@ -1507,7 +1507,7 @@ function ScanKarte({
                   <strong>{richtung === 'long' ? 'LONG' : 'SHORT'} Market</strong> eröffnen (~{String(entry)})
                 </li>
                 <li>
-                  <strong>Stop-Loss sofort</strong> auf {String(stop)} setzen (max. 10 € Verlust)
+                  <strong>Stop-Loss sofort</strong> auf {String(stop)} setzen (technischer Stop aus ATR)
                 </li>
                 <li>
                   <strong>Take-Profit</strong> auf {String(target)} setzen
@@ -1602,7 +1602,7 @@ function ScanKarte({
           onClick={() => onTrade(e)}
           className="mt-3 w-full rounded-lg bg-teal-500/15 px-3 py-2 text-xs font-medium text-teal-300 ring-1 ring-teal-500/30 hover:bg-teal-500/25 disabled:opacity-50 sm:w-auto"
         >
-          {tradeLaden ? 'Speichern …' : 'Im Journal erfassen (10 € Risiko)'}
+          {tradeLaden ? 'Speichern …' : 'Im Journal erfassen'}
         </button>
       )}
     </li>
@@ -1945,7 +1945,12 @@ export function MomentumTraderClient() {
             entryPrice: e.indikatoren.entryPrice ?? e.indikatoren.open,
             stopPrice: e.indikatoren.stopPrice,
             targetPrice: e.indikatoren.targetPrice,
-            riskEur: 10,
+            riskEur:
+              typeof e.indikatoren.verlustAmStopEur === 'number'
+                ? e.indikatoren.verlustAmStopEur
+                : typeof e.indikatoren.riskEur === 'number'
+                  ? e.indikatoren.riskEur
+                  : undefined,
             ausScan: true,
             scanDate: e.scanDate,
             signalErfolgPct: erfolgPctVal,
@@ -2143,7 +2148,7 @@ export function MomentumTraderClient() {
         <div className="flex flex-wrap items-start justify-between gap-4">
           <PaSectionTitle
             title="Momentum Trader"
-            description="Watchlist → Daten → Regel-Scan (Fade, Momentum, IPO) → Journal. Max. 10 € Risiko pro Trade."
+            description="Watchlist → Daten → Regel-Scan → Journal. XTB CFD 5×, Einsatz 50 € Standard."
           />
           <div className="flex flex-wrap gap-2">
             <button
@@ -2362,7 +2367,7 @@ export function MomentumTraderClient() {
 
         <PaCard className="p-5">
           <h2 className="text-sm font-semibold text-[var(--app-text)]">Trade-Journal</h2>
-          <p className="mt-1 text-xs text-[var(--app-text-muted)]">Max. 10 € Risiko · Stop/Ziel aus ATR · Performance tracken</p>
+          <p className="mt-1 text-xs text-[var(--app-text-muted)]">XTB CFD 5× · Einsatz 50 € · Stop/Ziel aus ATR</p>
           {trades.length === 0 ? (
             <p className="mt-4 text-sm text-[var(--app-text-muted)]">Noch keine Trades — aus einem grünen/gelben Scan erfassen.</p>
           ) : (

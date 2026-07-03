@@ -43,7 +43,7 @@ function baueSzenarioPlan(opts: {
 }): string[] {
   const med = opts.medianGap != null ? opts.medianGap.toFixed(1) : '—'
   const s: string[] = [
-    '① Nach Zahlen: Kurse syncen + Scan — erst dann Journal (max. 10 €).',
+    '① Nach Zahlen: Kurse syncen + Scan — erst dann Journal.',
   ]
 
   if (opts.beatRatePct != null) {
