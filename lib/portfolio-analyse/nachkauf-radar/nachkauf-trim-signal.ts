@@ -57,12 +57,13 @@ function berechneTrimSignalFuerEintrag(
   }
 
   // C) Extreme Überbewertung vs. historischer Median + relevante Größe
-  if (position?.historischerMedianPe && e.bewertung.forwardPe && depot > 10) {
-    const ratio = e.bewertung.forwardPe / position.historischerMedianPe
+  const medianPe = e.bewertung.historischerMedianPe ?? position?.historischerMedianPe
+  if (medianPe && e.bewertung.forwardPe && depot > 10) {
+    const ratio = e.bewertung.forwardPe / medianPe
     if (ratio > 2.0) {
       return {
         typ: 'ueberpruefen',
-        grund: `KGV ${e.bewertung.forwardPe.toFixed(0)}× = ${Math.round((ratio - 1) * 100)} % über historischem Median (${position.historischerMedianPe}×). Bei ${depot.toFixed(1)} % Depot-Anteil: Bewertung überprüfen.`,
+        grund: `KGV ${e.bewertung.forwardPe.toFixed(0)}× = ${Math.round((ratio - 1) * 100)} % über historischem Median (${medianPe}×). Bei ${depot.toFixed(1)} % Depot-Anteil: Bewertung überprüfen.`,
       }
     }
     if (ratio > 1.5 && depot > 15) {

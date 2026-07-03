@@ -111,6 +111,12 @@ export function baueKeyMetrics(
   out.push(
     { id: '52w_hoch', label: '52-Wochen-Hoch', wert: zahl(yahoo?.fiftyTwoWeekHigh, ' $'), gruppe: 'marktdaten' },
     { id: '52w_tief', label: '52-Wochen-Tief', wert: zahl(yahoo?.fiftyTwoWeekLow, ' $'), gruppe: 'marktdaten' },
+    {
+      id: 'kurs_aktuell',
+      label: 'Aktueller Kurs',
+      wert: zahl(yahoo?.currentPrice, ' $'),
+      gruppe: 'marktdaten',
+    },
     { id: 'vol_3m', label: 'Ø Volumen (3M)', wert: volMio != null ? `${zahl(volMio)} Mio.` : '–', gruppe: 'marktdaten' },
     { id: 'beta', label: '5-Jahres-Beta', wert: zahl(yahoo?.beta), gruppe: 'marktdaten' },
     { id: 'float', label: 'Free Float', wert: pctRaw(floatPct), gruppe: 'marktdaten' },

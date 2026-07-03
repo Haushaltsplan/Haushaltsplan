@@ -86,6 +86,31 @@ export function PaFundamentalBeatMiss({
         <p className="text-sm text-amber-200/90">{daten.fehler}</p>
       ) : null}
 
+      {daten?.agg12 || daten?.agg20 || daten?.streak ? (
+        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+          {daten.agg12 ? (
+            <p className="rounded-lg bg-[var(--app-surface-muted)]/40 px-3 py-2 text-xs text-[var(--app-text)]">
+              EPS Beat 12Q: {daten.agg12.epsBeatRatePct ?? '–'} % ({daten.agg12.epsBeats}/{daten.agg12.bewertbarEps})
+            </p>
+          ) : null}
+          {daten.agg20 ? (
+            <p className="rounded-lg bg-[var(--app-surface-muted)]/40 px-3 py-2 text-xs text-[var(--app-text)]">
+              EPS Beat 20Q: {daten.agg20.epsBeatRatePct ?? '–'} % ({daten.agg20.epsBeats}/{daten.agg20.bewertbarEps})
+            </p>
+          ) : null}
+          {daten.streak?.epsLaenge ? (
+            <p className="rounded-lg bg-[var(--app-surface-muted)]/40 px-3 py-2 text-xs text-[var(--app-text)]">
+              EPS-Streak: {daten.streak.epsLaenge}× {daten.streak.eps}
+            </p>
+          ) : null}
+          {daten.streak?.umsatzLaenge ? (
+            <p className="rounded-lg bg-[var(--app-surface-muted)]/40 px-3 py-2 text-xs text-[var(--app-text)]">
+              Umsatz-Streak: {daten.streak.umsatzLaenge}× {daten.streak.umsatz}
+            </p>
+          ) : null}
+        </div>
+      ) : null}
+
       {daten?.quartale.length ? (
         <div className={`${appTableScrollClassName} rounded-xl border border-[var(--app-border)]`}>
           <table className="app-data-table min-w-full text-left text-sm">

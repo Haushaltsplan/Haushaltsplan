@@ -28,6 +28,18 @@ export type NachkaufScoreDetail = {
    * Positiv = günstiger als historischer Median.
    */
   historischerBewertungsBonus: number
+  /** Beat/Miss, CapAlloc, Struktur, Insider (Summe der Teilpunkte). */
+  datenSignaleDelta: number
+  /** Operative Dynamik: Earnings, CapAlloc, Wachstum (0–12). */
+  momentumPunkte: number
+  /** Bilanz & Risiko: Schulden, CapEx, Short, Pension (–10 bis +5). */
+  strukturPunkte: number
+  /** Qualitäts-Titel mit Rücksetzer (0–5). */
+  drawdownBonus: number
+  /** Insider-Käufe Form 4 / OpenInsider (0–4). */
+  insiderPunkte: number
+  /** Wie vollständig die Entscheidungsdaten sind (0–100 %). */
+  datenVollstaendigkeitPct: number
 }
 
 /** Bewertungssignale, die für Score und Anzeige verwendet werden. */
@@ -43,14 +55,28 @@ export type NachkaufBewertungsSignale = {
   /**
    * Premium/Discount gegenüber dem eigenen historischen Median-KGV.
    * Negativ = günstiger als historisch, positiv = teurer.
-   * null = kein historischer Median in der Whitelist hinterlegt.
+   * null = kein historischer Median verfügbar.
    */
   premiumDiscountPct: number | null
+  /** Automatisch berechneter 5J-Median-KGV (Macrotrends). */
+  historischerMedianPe?: number | null
   /**
-   * Historischer Median-FCF-Yield aus der Whitelist.
+   * Historischer Median-FCF-Yield (Macrotrends oder Whitelist-Fallback).
    * Für Vergleich im UI: FCF-Yield aktuell vs. Median.
    */
   historischerMedianFcfYield?: number | null
+  /** EPS-Beat-Rate letzte ~8 Quartale (%). */
+  epsBeatRatePct?: number | null
+  /** Capital-Allocation-Score (0–100). */
+  capitalAllocationScorePct?: number | null
+  /** Net Debt / EBITDA (LTM). */
+  netDebtEbitda?: number | null
+  /** Short Float % (Finviz, US). */
+  shortFloatPct?: number | null
+  /** NTM EV / EBITDA. */
+  ntmEvEbitda?: number | null
+  /** Datenabdeckung für Entscheidung (0–100 %). */
+  datenVollstaendigkeitPct?: number | null
 }
 
 /** Ein historischer Score-Datenpunkt für die Sparkline. */
@@ -124,16 +150,19 @@ export type NachkaufScanEintrag = {
    */
   scoreVerlauf: ScoreVerlaufPunkt[]
   /**
-   * Insider-Käufe der letzten 90 Tage (SEC EDGAR Form 4).
-   * Nur für US-Positionen. Dynamisch geladen.
+   * Insider-Käufe der letzten 90 Tage (SEC Form 4, OpenInsider, EU Dealings).
    */
   insiderKaeufe: InsiderKauf[]
+  /** Zusatzdaten für UI (Beat/Miss, Schätzungen, CapAlloc). */
+  datenSignale?: import('./nachkauf-zusatz-signale-server').NachkaufZusatzSignale | null
   /** Kaufhistorie aus portfolio_analyse_buchung. Dynamisch geladen. */
   kaufhistorie?: Kaufhistorie
   /** Freitext-Notiz des Nutzers. Dynamisch geladen. */
   notiz?: string
   /** Verkaufs-/Trim-Signal. Dynamisch berechnet. */
   trimSignal?: TrimSignal
+  /** Disziplin-Hinweis (frischer Kauf, fallender Score) — ohne Score-Änderung. */
+  disziplinHinweis?: string | null
 }
 
 /** Sparplan-Allokation für einen einzelnen Titel. */

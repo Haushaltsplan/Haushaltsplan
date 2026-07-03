@@ -158,6 +158,53 @@ const CASH_FLOW_METRIKEN: MetrikDef[] = [
     einheit: 'waehrung_usd_mio',
     statement: 'cash-flow-statement',
   },
+  {
+    slug: 'depreciation-amortization',
+    id: 'da',
+    label: 'Abschreibungen (D&A)',
+    gruppe: 'cashflow',
+    einheit: 'waehrung_usd_mio',
+    statement: 'cash-flow-statement',
+    aliases: ['total-depreciation-amortization-cash-flow'],
+  },
+  {
+    slug: 'common-stock-repurchased',
+    id: 'aktienrueckkauf',
+    label: 'Aktienrückkäufe',
+    gruppe: 'cashflow',
+    einheit: 'waehrung_usd_mio',
+    statement: 'cash-flow-statement',
+    aliases: ['net-common-equity-issued-repurchased'],
+  },
+  {
+    slug: 'common-stock-dividends-paid',
+    id: 'dividenden_gezahlt',
+    label: 'Gezahlte Dividenden',
+    gruppe: 'cashflow',
+    einheit: 'waehrung_usd_mio',
+    statement: 'cash-flow-statement',
+  },
+]
+
+const BALANCE_SHEET_METRIKEN: MetrikDef[] = [
+  { slug: 'total-assets', id: 'gesamtvermoegen', label: 'Gesamtvermögen', gruppe: 'bilanz', einheit: 'waehrung_usd_mio', statement: 'balance-sheet' },
+  { slug: 'total-liabilities', id: 'gesamtverbindlichkeiten', label: 'Gesamtverbindlichkeiten', gruppe: 'bilanz', einheit: 'waehrung_usd_mio', statement: 'balance-sheet' },
+  {
+    slug: 'total-stockholder-equity',
+    id: 'eigenkapital',
+    label: 'Eigenkapital',
+    gruppe: 'bilanz',
+    einheit: 'waehrung_usd_mio',
+    statement: 'balance-sheet',
+    aliases: ['total-stockholders-equity'],
+  },
+  { slug: 'total-debt', id: 'gesamtverschuldung', label: 'Gesamtverschuldung', gruppe: 'bilanz', einheit: 'waehrung_usd_mio', statement: 'balance-sheet' },
+  { slug: 'cash-on-hand', id: 'bargeld', label: 'Bargeld & Äquivalente', gruppe: 'bilanz', einheit: 'waehrung_usd_mio', statement: 'balance-sheet' },
+  { slug: 'net-receivables', id: 'forderungen', label: 'Forderungen (netto)', gruppe: 'bilanz', einheit: 'waehrung_usd_mio', statement: 'balance-sheet' },
+  { slug: 'inventory', id: 'vorraete', label: 'Vorräte', gruppe: 'bilanz', einheit: 'waehrung_usd_mio', statement: 'balance-sheet' },
+  { slug: 'goodwill', id: 'goodwill', label: 'Goodwill', gruppe: 'bilanz', einheit: 'waehrung_usd_mio', statement: 'balance-sheet' },
+  { slug: 'total-current-assets', id: 'umlaufvermoegen', label: 'Umlaufvermögen', gruppe: 'bilanz', einheit: 'waehrung_usd_mio', statement: 'balance-sheet' },
+  { slug: 'total-current-liabilities', id: 'kurzfrist_verbindl', label: 'Kurzfristige Verbindlichkeiten', gruppe: 'bilanz', einheit: 'waehrung_usd_mio', statement: 'balance-sheet' },
 ]
 
 const FINANCIAL_RATIOS_METRIKEN: MetrikDef[] = [
@@ -183,6 +230,23 @@ const FINANCIAL_RATIOS_METRIKEN: MetrikDef[] = [
     slug: 'days-sales-in-receivables',
     id: 'dso',
     label: 'Forderungslaufzeit (DSO, Tage)',
+    gruppe: 'umschlag',
+    einheit: 'zahl',
+    statement: 'financial-ratios',
+  },
+  {
+    slug: 'days-in-inventory',
+    id: 'dio',
+    label: 'Lagerdauer (DIO, Tage)',
+    gruppe: 'umschlag',
+    einheit: 'zahl',
+    statement: 'financial-ratios',
+    aliases: ['days-sales-in-inventory'],
+  },
+  {
+    slug: 'days-payables-outstanding',
+    id: 'dpo',
+    label: 'Verbindlichkeitenlaufzeit (DPO, Tage)',
     gruppe: 'umschlag',
     einheit: 'zahl',
     statement: 'financial-ratios',
@@ -344,24 +408,76 @@ function wertAusChartPunkt(p: ChartPunkt, feld: 'v3' | 'v1' | 'value'): number |
   return parseZahl(v)
 }
 
-/** Nur exakte Geschäftsjahres-Enddaten — kein Fuzzy-Matching. */
+const CHART_DATUM_TOLERANZ_MS = 45 * 24 * 3600 * 1000
+
+function wertAusChartNaehe(
+  chart: ChartPunkt[],
+  iso: string,
+  feld: 'v3' | 'v1' | 'value',
+): number | null {
+  const byDate = new Map(chart.map((p) => [p.date, p]))
+  const exakt = byDate.get(iso)
+  if (exakt) return wertAusChartPunkt(exakt, feld)
+
+  const ziel = new Date(`${iso}T12:00:00Z`).getTime()
+  let best: ChartPunkt | null = null
+  let bestDiff = Infinity
+  for (const p of chart) {
+    const diff = Math.abs(new Date(`${p.date}T12:00:00Z`).getTime() - ziel)
+    if (diff < bestDiff && diff <= CHART_DATUM_TOLERANZ_MS) {
+      bestDiff = diff
+      best = p
+    }
+  }
+  return best ? wertAusChartPunkt(best, feld) : null
+}
+
+/** Geschäftsjahres-Enddaten mit ±45-Tage-Toleranz zum Chart; letzter Chart-Punkt = TTM. */
 function werteAusChartExakt(
   chart: ChartPunkt[],
   perioden: string[],
   feld: 'v3' | 'v1' | 'value',
   mitTtm = true,
 ): Record<string, number | null> {
-  const byDate = new Map(chart.map((p) => [p.date, p]))
   const out: Record<string, number | null> = {}
   for (const iso of perioden) {
-    const punkt = byDate.get(iso)
-    out[iso] = punkt ? wertAusChartPunkt(punkt, feld) : null
+    out[iso] = wertAusChartNaehe(chart, iso, feld)
   }
   if (mitTtm) {
     const latest = chart.length > 0 ? chart[chart.length - 1] : null
     out[FUNDAMENTAL_TTM_KEY] = latest ? wertAusChartPunkt(latest, feld) : null
   }
   return out
+}
+
+/** FY-Spalten aus Bewertungs-Charts ergänzen, wenn GuV/FR noch kein aktuelles Jahr hat. */
+function ergaenzePeriodenAusBewertungsCharts(
+  periodenIso: string[],
+  charts: ChartPunkt[][],
+  mitTtm: boolean,
+): string[] {
+  const set = new Set(periodenIso)
+  const jahreInPerioden = new Set(periodenIso.map((iso) => iso.slice(0, 4)))
+  const aktuellesJahr = String(new Date().getUTCFullYear())
+
+  for (const chart of charts) {
+    if (!chart.length) continue
+    const historisch = mitTtm ? chart.slice(0, -1) : chart
+    const letzterProJahr = new Map<string, string>()
+    for (const punkt of historisch) {
+      const jahr = punkt.date.slice(0, 4)
+      const prev = letzterProJahr.get(jahr)
+      if (!prev || punkt.date > prev) letzterProJahr.set(jahr, punkt.date)
+    }
+    for (const [jahr, iso] of letzterProJahr) {
+      if (jahreInPerioden.has(jahr)) continue
+      if (jahr >= aktuellesJahr) continue
+      set.add(iso)
+      jahreInPerioden.add(jahr)
+    }
+  }
+
+  return [...set].sort()
 }
 
 function berechneFcf(ocf: Record<string, number | null>, capex: Record<string, number | null>): Record<string, number | null> {
@@ -566,7 +682,7 @@ export async function ladeMacrotrendsFundamentaldaten(
   }
 
   /** Union aller Statements — financial-ratios hinkt oft hinter GuV/CF (z. B. ASML FY2025). */
-  const periodenIso = [
+  let periodenIso = [
     ...new Set([
       ...periodenAusRoh(ratios),
       ...periodenAusRoh(income),
@@ -577,7 +693,7 @@ export async function ladeMacrotrendsFundamentaldaten(
   if (periodenIso.length === 0) return null
 
   const mitTtm = frequenz === 'jahr'
-  const perioden = bauePerioden(periodenIso, mitTtm, frequenz)
+  let perioden = bauePerioden(periodenIso, mitTtm, frequenz)
   const zeilen: FundamentalMetrikZeile[] = []
 
   const rohCache = new Map<StatementSeite, RohZeile[]>([
@@ -606,6 +722,7 @@ export async function ladeMacrotrendsFundamentaldaten(
 
   metrikenAusDefs(INCOME_STATEMENT_METRIKEN)
   metrikenAusDefs(CASH_FLOW_METRIKEN)
+  metrikenAusDefs(BALANCE_SHEET_METRIKEN)
   metrikenAusDefs(FINANCIAL_RATIOS_METRIKEN)
 
   const ocfRow = zeileFuerSlug(cf, 'cash-flow-from-operating-activities')
@@ -623,11 +740,53 @@ export async function ladeMacrotrendsFundamentaldaten(
     })
   }
 
+  const daRow = zeileFuerSlug(cf, 'depreciation-amortization', ['total-depreciation-amortization-cash-flow'])
+  if (capexRow && daRow) {
+    const capexWerte = werteAusRoh(capexRow, periodenIso)
+    const daWerte = werteAusRoh(daRow, periodenIso)
+    const ratioWerte: Record<string, number | null> = {}
+    for (const iso of periodenIso) {
+      const c = capexWerte[iso]
+      const d = daWerte[iso]
+      if (c != null && d != null && d !== 0) ratioWerte[iso] = Math.abs(c) / Math.abs(d)
+      else ratioWerte[iso] = null
+    }
+    zeilen.push({
+      id: 'capex_da_ratio',
+      label: 'CapEx / D&A (Wartungs-CapEx-Proxy)',
+      gruppe: 'cashflow',
+      einheit: 'ratio',
+      werte: ratioWerte,
+      macrotrendsStatement: 'cash-flow-statement',
+    })
+  }
+
+  const bewertungCharts: Array<{ def: (typeof BEWERTUNG_METRIKEN)[number]; chart: ChartPunkt[] | null }> = []
+
   for (const def of BEWERTUNG_METRIKEN) {
     const freqCode = frequenz === 'quartal' ? 'Q' : 'A'
     const iframeUrl = `${IFRAME_BASE}?t=${encodeURIComponent(ident.ticker)}&type=${encodeURIComponent(def.slug)}&statement=price-ratios&freq=${freqCode}&sub=&yb=15`
     const iframeHtml = await ladeSeite(iframeUrl)
     const chart = iframeHtml ? parseChartData(iframeHtml) : null
+    bewertungCharts.push({ def, chart })
+  }
+
+  if (mitTtm && bewertungCharts.some((b) => b.chart?.length)) {
+    const charts = bewertungCharts.map((b) => b.chart).filter((c): c is ChartPunkt[] => c != null && c.length > 0)
+    const erweitert = ergaenzePeriodenAusBewertungsCharts(periodenIso, charts, mitTtm)
+    if (erweitert.length > periodenIso.length) {
+      const neu = erweitert.filter((iso) => !periodenIso.includes(iso))
+      periodenIso = erweitert
+      perioden = bauePerioden(periodenIso, mitTtm, frequenz)
+      for (const z of zeilen) {
+        for (const iso of neu) {
+          if (!(iso in z.werte)) z.werte[iso] = null
+        }
+      }
+    }
+  }
+
+  for (const { def, chart } of bewertungCharts) {
     zeilen.push({
       id: def.id,
       label: def.label,

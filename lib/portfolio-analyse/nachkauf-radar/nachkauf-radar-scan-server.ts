@@ -11,6 +11,7 @@
 
 import 'server-only'
 
+import { berechneHistorischeBewertung } from '@/lib/portfolio-analyse/fundamentaldaten-historische-bewertung'
 import { ladeFundamentaldaten } from '@/lib/portfolio-analyse/fundamentaldaten-server'
 import { isinKenntnis } from '@/lib/portfolio-analyse/isin-kenntnisse'
 import { ladeSecBerichtKiCacheFuerTicker } from '@/lib/portfolio-analyse/sec-berichte-ki-cache-server'
@@ -29,6 +30,15 @@ import {
   pruefKaufTrigger,
 } from './nachkauf-radar-score'
 import {
+  ergaenzeInsiderKaeufe,
+  ladeInsiderKaeufeFuerPosition,
+} from './insider-kaeufe-server'
+import {
+  ergaenzeDatenVollstaendigkeit,
+  formatZusatzSignaleKurz,
+  ladeNachkaufZusatzSignale,
+} from './nachkauf-zusatz-signale-server'
+import {
   aktualisiereKaufhistorieCache,
   ergaenzeDepotGewichte,
   ergaenzeKaufhistorieUndNotizen,
@@ -37,8 +47,8 @@ import {
   speichereNachkaufScanEintraege,
 } from './nachkauf-radar-db-server'
 import { ergaenzeScoreVerlauf, speichereVerlaufPunkte } from './nachkauf-radar-verlauf-server'
-import { ergaenzeInsiderKaeufe } from './insider-kaeufe-server'
 import { berechneTrimSignale } from './nachkauf-trim-signal'
+import { wendeNachkaufDisziplinAn } from './nachkauf-disziplin-server'
 import { NACHKAUF_RADAR_WHITELIST } from './nachkauf-radar-whitelist'
 import type { WhitelistPosition } from './nachkauf-radar-whitelist'
 import type { NachkaufScanAnfrage, NachkaufScanEintrag, NachkaufScanPaket } from './nachkauf-radar-types'
@@ -62,6 +72,9 @@ async function generiereKiBegruendung(opts: {
   premiumDiscount: string
   kaufTriggerAusgeloest: boolean
   kaufTriggerText: string | null
+  beatMissText: string
+  capitalAllocText: string
+  strukturText: string
   earningsSummary: string
   secSummary: string
 }): Promise<string | null> {
@@ -81,6 +94,10 @@ async function generiereKiBegruendung(opts: {
     `Forward-KGV (NTM): ${opts.forwardPe}`,
     `Historischer Vergleich (Premium/Discount vs. 5J-Median): ${opts.premiumDiscount}`,
     triggerHinweis,
+    '',
+    `Beat/Miss-Historie: ${opts.beatMissText}`,
+    `Capital Allocation: ${opts.capitalAllocText}`,
+    `Struktur & Verhalten: ${opts.strukturText}`,
     '',
     opts.earningsSummary
       ? `--- EARNINGS CALL (Auszug, max. 1500 Zeichen) ---\n${opts.earningsSummary.slice(0, 1500)}`
@@ -124,6 +141,7 @@ async function scanneEinenTitel(opts: {
   const { isin, name } = position
   const kenntnis = isinKenntnis(isin)
   const ticker = kenntnis?.symbolYahoo?.replace(/\.[^.]+$/, '') ?? isin
+  const symbolYahoo = kenntnis?.symbolYahoo ?? null
 
   // Fundamentaldaten laden (Macrotrends + Yahoo)
   let paket
@@ -131,7 +149,7 @@ async function scanneEinenTitel(opts: {
     paket = await ladeFundamentaldaten({
       isin,
       name,
-      symbolYahoo: kenntnis?.symbolYahoo ?? null,
+      symbolYahoo,
       symbolCandidates: kenntnis?.symbolCandidates ?? undefined,
     })
   } catch (e) {
@@ -144,9 +162,16 @@ async function scanneEinenTitel(opts: {
     return null
   }
 
-  // Score regelbasiert berechnen (mit historischer Relative Bewertung)
-  const bewertungsSignale = extrahiereBewertungsSignale(paket, position)
-  const scoreDetail = berechneNachkaufScore(paket, bewertungsSignale, position)
+  const [zusatzRoh, insiderKaeufe] = await Promise.all([
+    ladeNachkaufZusatzSignale({ paket, ticker, symbolYahoo, isin }),
+    ladeInsiderKaeufeFuerPosition(position, symbolYahoo).catch(() => [] as import('./nachkauf-radar-types').InsiderKauf[]),
+  ])
+
+  const historisch = berechneHistorischeBewertung(paket)
+
+  const bewertungsSignale = extrahiereBewertungsSignale(paket, position, historisch, zusatzRoh)
+  const zusatz = ergaenzeDatenVollstaendigkeit(zusatzRoh, bewertungsSignale)
+  const scoreDetail = berechneNachkaufScore(paket, bewertungsSignale, position, zusatz, insiderKaeufe)
   const ampel = leiteNachkaufAmpelAb(paket, scoreDetail, bewertungsSignale)
 
   // Kaufzonen-Trigger prüfen
@@ -192,8 +217,20 @@ async function scanneEinenTitel(opts: {
 
   const premiumDiscountText =
     bewertungsSignale.premiumDiscountPct != null
-      ? `${bewertungsSignale.premiumDiscountPct > 0 ? '+' : ''}${bewertungsSignale.premiumDiscountPct.toFixed(1)} % vs. 5J-Median`
-      : 'kein historischer Median hinterlegt'
+      ? `${bewertungsSignale.premiumDiscountPct > 0 ? '+' : ''}${bewertungsSignale.premiumDiscountPct.toFixed(1)} % vs. 5J-Median${historisch.quelle === 'macrotrends' ? ' (Macrotrends)' : ''}`
+      : 'kein historischer Median verfügbar'
+
+  const beatMissText =
+    zusatz.epsBeatRatePct != null
+      ? `EPS-Beat 8Q ${zusatz.epsBeatRatePct} %${zusatz.epsBeatRate12Pct != null ? `, 12Q ${zusatz.epsBeatRate12Pct} %` : ''}${zusatz.epsStreakLaenge >= 2 ? `, Streak ${zusatz.epsStreakLaenge}× ${zusatz.epsStreakArt}` : ''}`
+      : 'keine Beat/Miss-Daten'
+
+  const capitalAllocText =
+    zusatz.capitalAllocationScorePct != null
+      ? `Score ${zusatz.capitalAllocationScorePct}/100 (${zusatz.capitalAllocationLabel ?? '–'})`
+      : 'keine Capital-Allocation-Daten'
+
+  const strukturText = formatZusatzSignaleKurz(zusatz)
 
   // KI-Begründung generieren
   const kiBegruendung = await generiereKiBegruendung({
@@ -213,6 +250,9 @@ async function scanneEinenTitel(opts: {
     premiumDiscount: premiumDiscountText,
     kaufTriggerAusgeloest,
     kaufTriggerText,
+    beatMissText,
+    capitalAllocText,
+    strukturText,
     earningsSummary: neuesteEarnings,
     secSummary: neuesteSec,
   })
@@ -238,7 +278,8 @@ async function scanneEinenTitel(opts: {
     kaufTriggerAusgeloest,
     kaufTriggerText,
     scoreVerlauf: [],
-    insiderKaeufe: [],
+    insiderKaeufe,
+    datenSignale: zusatz,
   }
 }
 
@@ -256,6 +297,8 @@ async function reichereErgebnisseAn(
     ergaenzeKaufhistorieUndNotizen(eintraege),
     mitInsider ? ergaenzeInsiderKaeufe(eintraege, NACHKAUF_RADAR_WHITELIST) : Promise.resolve(),
   ])
+  // Disziplin nach Kaufhistorie + Score-Verlauf (Ampel/Sparplan, kein Score-Delta)
+  wendeNachkaufDisziplinAn(eintraege)
   // Trim-Signale nachgelagert (braucht depotGewichtPct und scoreVerlauf)
   berechneTrimSignale(eintraege)
 }

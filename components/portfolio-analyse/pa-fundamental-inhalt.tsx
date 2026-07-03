@@ -8,6 +8,7 @@ import { PaFundamentalPeerVergleich } from '@/components/portfolio-analyse/pa-fu
 import { PaFundamentalInsider } from '@/components/portfolio-analyse/pa-fundamental-insider'
 import { PaFundamentalCapitalAllocation } from '@/components/portfolio-analyse/pa-fundamental-capital-allocation'
 import { PaFundamentalUebersicht } from '@/components/portfolio-analyse/pa-fundamental-uebersicht'
+import { PaFundamentalStruktur } from '@/components/portfolio-analyse/pa-fundamental-struktur'
 import { PaFundamentalUnternehmenHeader } from '@/components/portfolio-analyse/pa-fundamental-unternehmen-header'
 import { PaFundamentalMetrikChart } from '@/components/portfolio-analyse/pa-fundamental-metrik-chart'
 import { PaFundamentalMetrikTabelle } from '@/components/portfolio-analyse/pa-fundamental-metrik-tabelle'
@@ -27,6 +28,7 @@ const UNTER_TABS = [
   { id: 'mantra' as const, label: 'Mantra' },
   { id: 'finanzdaten' as const, label: 'Finanzdaten' },
   { id: 'bewertung' as const, label: 'Bewertung' },
+  { id: 'struktur' as const, label: 'Struktur & Risiko' },
   { id: 'quartalszahlen' as const, label: 'Quartalszahlen' },
   { id: 'news' as const, label: 'News' },
 ]
@@ -130,6 +132,7 @@ export function PaFundamentalInhalt({
   const margen = daten?.zeilen.filter((z) => z.gruppe === 'margen') ?? []
   const umschlag = daten?.zeilen.filter((z) => z.gruppe === 'umschlag') ?? []
   const finanzdaten = daten?.zeilen.filter((z) => z.gruppe === 'finanzdaten') ?? []
+  const bilanz = daten?.zeilen.filter((z) => z.gruppe === 'bilanz') ?? []
   const cashflow = daten?.zeilen.filter((z) => z.gruppe === 'cashflow') ?? []
   const bewertungLtm = daten?.zeilen.filter((z) => z.gruppe === 'bewertung_trailing') ?? []
   const bewertungNtm = daten?.zeilen.filter((z) => z.gruppe === 'bewertung_forward') ?? []
@@ -219,12 +222,15 @@ export function PaFundamentalInhalt({
             />
           ) : null}
 
+          {unterTab === 'struktur' ? <PaFundamentalStruktur erweitert={daten.erweitert} /> : null}
+
           {unterTab === 'news' ? <PaFundamentalNews artikel={daten.news} /> : null}
 
           {unterTab !== 'uebersicht' &&
           unterTab !== 'news' &&
           unterTab !== 'mantra' &&
-          unterTab !== 'quartalszahlen' ? (
+          unterTab !== 'quartalszahlen' &&
+          unterTab !== 'struktur' ? (
             <div className="space-y-4">
               {(unterTab === 'finanzdaten' || unterTab === 'bewertung') && (
                 <div className="flex items-center gap-2">
@@ -294,6 +300,16 @@ export function PaFundamentalInhalt({
                 />
               ) : null}
 
+              {unterTab === 'finanzdaten' && bilanz.length > 0 ? (
+                <PaFundamentalMetrikTabelle
+                  titel={`Bilanz (Mio. ${daten.waehrung ?? 'USD'})`}
+                  perioden={daten.perioden}
+                  zeilen={bilanz}
+                  aktivIds={chartAktiv}
+                  onToggleZeile={toggleChartZeile}
+                />
+              ) : null}
+
               {unterTab === 'finanzdaten' && rentabilitaet.length + margen.length + umschlag.length > 0 ? (
                 <PaFundamentalMetrikTabelle
                   titel="Rentabilitätskennzahlen & Margenanalyse"
@@ -311,6 +327,7 @@ export function PaFundamentalInhalt({
                   zeilen={bewertungLtm}
                   aktivIds={chartAktiv}
                   onToggleZeile={toggleChartZeile}
+                  labelModus="jahr"
                 />
               ) : null}
 
@@ -321,6 +338,7 @@ export function PaFundamentalInhalt({
                   zeilen={bewertungNtm}
                   aktivIds={chartAktiv}
                   onToggleZeile={toggleChartZeile}
+                  labelModus="jahr"
                 />
               ) : null}
 

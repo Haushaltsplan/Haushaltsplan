@@ -21,6 +21,8 @@ import type {
   FundamentalMetrikZeile,
   FundamentalPeriode,
 } from '@/lib/portfolio-analyse/fundamentaldaten-types'
+import type { FundamentaldatenErweitert } from '@/lib/portfolio-analyse/fundamentaldaten-erweitert-types'
+import { ladeFundamentaldatenErweitert } from '@/lib/portfolio-analyse/fundamentaldaten-erweitert-server'
 import { FUNDAMENTAL_NTM_KEY } from '@/lib/portfolio-analyse/fundamentaldaten-types'
 import { isinKenntnis, loesePortfolioIsin } from '@/lib/portfolio-analyse/isin-kenntnisse'
 import {
@@ -288,6 +290,7 @@ function leeresPaket(partial: Partial<FundamentaldatenPaket> & Pick<Fundamentald
     geladenAm: new Date().toISOString(),
     quelle: 'macrotrends',
     fehler: null,
+    erweitert: null,
     ...partial,
   }
 }
@@ -328,7 +331,7 @@ export async function ladeFundamentaldaten(anfrage: FundamentaldatenAnfrage): Pr
     })
   }
 
-  const [rohRaw, yahooRaw, schaetzungen, news, yahooFinanz, unitEconomics] = await Promise.all([
+  const [rohRaw, yahooRaw, schaetzungen, news, yahooFinanz, unitEconomics, erweitert] = await Promise.all([
     ladeMacrotrendsFundamentaldaten(ident, frequenz),
     symbolYahoo ? ladeYahooFundamentalKennzahlen(symbolYahoo) : Promise.resolve(null),
     frequenz === 'jahr' && symbolYahoo
@@ -342,6 +345,12 @@ export async function ladeFundamentaldaten(anfrage: FundamentaldatenAnfrage): Pr
     symbolYahoo ? ladeFundamentalNews(symbolYahoo, ident.firmenname) : Promise.resolve([]),
     symbolYahoo ? ladeYahooMantraFinanzdaten(symbolYahoo) : Promise.resolve(null),
     ladeUnitEconomics(ident.ticker).catch(() => null),
+    ladeFundamentaldatenErweitert({
+      ticker: ident.ticker,
+      symbolYahoo,
+      isin: isinNormEarly,
+      firmenname: anfrage.name ?? ident.firmenname,
+    }),
   ])
 
   let roh = rohRaw
@@ -401,6 +410,7 @@ export async function ladeFundamentaldaten(anfrage: FundamentaldatenAnfrage): Pr
       mantraMeta,
       news,
       symbolYahoo,
+      erweitert,
       fehler: 'Macrotrends-Daten konnten nicht geladen werden.',
     })
   }
@@ -467,5 +477,6 @@ export async function ladeFundamentaldaten(anfrage: FundamentaldatenAnfrage): Pr
     news,
     symbolYahoo,
     frequenz,
+    erweitert,
   })
 }

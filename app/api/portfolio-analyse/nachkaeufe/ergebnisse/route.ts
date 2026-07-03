@@ -10,6 +10,7 @@ import { berechneMonatsEmpfehlung } from '@/lib/portfolio-analyse/nachkauf-radar
 import { ergaenzeScoreVerlauf } from '@/lib/portfolio-analyse/nachkauf-radar/nachkauf-radar-verlauf-server'
 import { ergaenzeInsiderKaeufe } from '@/lib/portfolio-analyse/nachkauf-radar/insider-kaeufe-server'
 import { berechneTrimSignale } from '@/lib/portfolio-analyse/nachkauf-radar/nachkauf-trim-signal'
+import { wendeNachkaufDisziplinAn } from '@/lib/portfolio-analyse/nachkauf-radar/nachkauf-disziplin-server'
 import { NACHKAUF_RADAR_WHITELIST } from '@/lib/portfolio-analyse/nachkauf-radar/nachkauf-radar-whitelist'
 import type { NachkaufErgebnissePaket } from '@/lib/portfolio-analyse/nachkauf-radar/nachkauf-radar-types'
 
@@ -37,6 +38,7 @@ export async function GET() {
       ergaenzeKaufhistorieUndNotizen(mitDeep),
     ])
 
+    wendeNachkaufDisziplinAn(mitDeep)
     // Trim-Signale nachgelagert (braucht depotGewichtPct + scoreVerlauf)
     berechneTrimSignale(mitDeep)
 

@@ -4,24 +4,32 @@
  * Anti-Halluzinations-Prinzip: Zahlen kommen aus dem Code, nicht vom LLM.
  * Das Flash-LLM erklärt anschließend nur, was diese Funktion berechnet.
  *
- * Punkte-Verteilung (max 100):
- *  – Mantra-Qualität             0–60   (aus mantraAudit.zusammenfassung)
- *  – Bewertung (absolut)         0–40   (FCF-Yield + Forward-KGV)
- *  – Historischer Bonus/Malus   –10 bis +10  (relativ zum 5-Jahres-Median)
+ * Punkte-Verteilung (Ziel: 0–100, ausgewogen für Nachkauf-Entscheidungen):
+ *  – Mantra-Qualität             0–50
+ *  – Bewertung (absolut)         0–35   (kein Gratis-Punkte bei fehlenden Daten)
+ *  – Historischer Bonus/Malus   –10 bis +10
+ *  – Momentum (Earnings/CapAlloc) 0–12
+ *  – Struktur & Risiko          –10 bis +5
+ *  – Drawdown-Chance             0–5   (Rücksetzer bei intakter Qualität)
+ *  – Insider-Käufe               0–4
  *  – Sell-Trigger               –25 / –10 / 0
  */
 
 import type { FundamentaldatenPaket } from '@/lib/portfolio-analyse/fundamentaldaten-types'
+import type { HistorischeBewertung } from '@/lib/portfolio-analyse/fundamentaldaten-historische-bewertung'
 import type {
   MonatsEmpfehlung,
   NachkaufAmpel,
   NachkaufBewertungsSignale,
   NachkaufScoreDetail,
   NachkaufScanEintrag,
+  InsiderKauf,
   SparplanPosten,
 } from './nachkauf-radar-types'
 import type { WhitelistPosition } from './nachkauf-radar-whitelist'
 import { NACHKAUF_RADAR_WHITELIST, type RisikoKlasse } from './nachkauf-radar-whitelist'
+import type { NachkaufZusatzSignale } from './nachkauf-zusatz-signale-server'
+import { disziplinSparplanFaktor } from './nachkauf-disziplin-server'
 
 // ---------------------------------------------------------------------------
 // Risiko-Hilfsfunktion
@@ -45,7 +53,7 @@ function risikoKlasseVon(isin: string): RisikoKlasse {
 /** Parsed "25,3x" oder "3,5 %" → Zahl. Gibt null bei "–" oder ungültig zurück. */
 function parseMetricWert(wert: string): number | null {
   const s = wert
-    .replace(/[x%\s]/g, '')
+    .replace(/[x%\s$€]/g, '')
     .replace(/\./g, '')   // Tausender-Punkt entfernen
     .replace(',', '.')    // Dezimal-Komma
   const v = parseFloat(s)
@@ -59,12 +67,17 @@ function parseMetricWert(wert: string): number | null {
 export function extrahiereBewertungsSignale(
   paket: FundamentaldatenPaket,
   position?: WhitelistPosition,
+  historisch?: HistorischeBewertung | null,
+  zusatz?: NachkaufZusatzSignale | null,
 ): NachkaufBewertungsSignale {
   const km = paket.keyMetrics
 
   // Forward PE (NTM KGV)
   const fwdPeMetric = km.find((m) => m.id === 'ntm_pe')
   const forwardPe = fwdPeMetric ? parseMetricWert(fwdPeMetric.wert) : null
+
+  const evEbitdaMetric = km.find((m) => m.id === 'ntm_ev_ebitda')
+  const ntmEvEbitda = evEbitdaMetric ? parseMetricWert(evEbitdaMetric.wert) : null
 
   // FCF Yield = 1 / (MC / FCF) * 100
   let fcfYieldPct: number | null = null
@@ -76,35 +89,184 @@ export function extrahiereBewertungsSignale(
     if (ratio != null && ratio > 0) fcfYieldPct = (1 / ratio) * 100
   }
 
-  // 52w-Drawdown-Proxy
+  // Echter Drawdown: aktueller Kurs vs. 52-Wochen-Hoch
   let drawdown52wPct: number | null = null
   const w52High = km.find((m) => m.id === '52w_hoch')
-  const w52Low = km.find((m) => m.id === '52w_tief')
-  if (w52High && w52Low) {
+  const kursAktuell = km.find((m) => m.id === 'kurs_aktuell')
+  if (w52High && kursAktuell) {
     const h = parseMetricWert(w52High.wert)
-    const l = parseMetricWert(w52Low.wert)
-    if (h != null && l != null && h > 0 && l > 0 && l < h) {
-      drawdown52wPct = ((h - l) / h) * 100
+    const kurs = parseMetricWert(kursAktuell.wert)
+    if (h != null && kurs != null && h > 0 && kurs > 0 && kurs <= h) {
+      drawdown52wPct = ((h - kurs) / h) * 100
     }
   }
 
-  // Historischer Premium/Discount
+  const medianPe =
+    historisch?.medianPe5y ?? position?.historischerMedianPe ?? null
+  const medianFcfYield =
+    historisch?.medianFcfYield5y ?? position?.historischerMedianFcfYield ?? null
+
+  // Historischer Premium/Discount — KGV und FCF-Median gleichwertig
   let premiumDiscountPct: number | null = null
-  if (position?.historischerMedianPe && forwardPe) {
-    // Positiv = teurer als Median, Negativ = günstiger
-    premiumDiscountPct = ((forwardPe - position.historischerMedianPe) / position.historischerMedianPe) * 100
-  } else if (position?.historischerMedianFcfYield && fcfYieldPct) {
-    // Bei FCF-Yield: höherer Yield = günstiger → invertiert
-    premiumDiscountPct = ((position.historischerMedianFcfYield - fcfYieldPct) / position.historischerMedianFcfYield) * 100
+  let pdPe: number | null = null
+  let pdFcf: number | null = null
+  if (medianPe && forwardPe) pdPe = ((forwardPe - medianPe) / medianPe) * 100
+  if (medianFcfYield && fcfYieldPct) {
+    pdFcf = ((medianFcfYield - fcfYieldPct) / medianFcfYield) * 100
   }
+  if (pdPe != null && pdFcf != null) premiumDiscountPct = (pdPe + pdFcf) / 2
+  else if (pdPe != null) premiumDiscountPct = pdPe
+  else if (pdFcf != null) premiumDiscountPct = pdFcf
 
   return {
     fcfYieldPct,
     forwardPe,
+    ntmEvEbitda,
     drawdown52wPct,
     premiumDiscountPct,
-    historischerMedianFcfYield: position?.historischerMedianFcfYield ?? null,
+    historischerMedianPe: medianPe,
+    historischerMedianFcfYield: medianFcfYield,
+    epsBeatRatePct: zusatz?.epsBeatRatePct ?? null,
+    capitalAllocationScorePct: zusatz?.capitalAllocationScorePct ?? null,
+    netDebtEbitda: zusatz?.netDebtEbitda ?? null,
+    shortFloatPct: zusatz?.shortFloatPct ?? null,
+    datenVollstaendigkeitPct: zusatz?.datenVollstaendigkeitPct ?? null,
   }
+}
+
+function clamp(n: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, n))
+}
+
+/** Operative Dynamik: Earnings-Treffer, CapAlloc, EPS-Wachstum (0–12). */
+function berechneMomentumPunkte(zusatz: NachkaufZusatzSignale | null | undefined): number {
+  if (!zusatz) return 6
+  let pts = 6
+
+  const eps8 = zusatz.epsBeatRatePct
+  const eps12 = zusatz.epsBeatRate12Pct
+  if (eps8 != null) {
+    if (eps8 >= 75) pts += 2
+    else if (eps8 >= 62) pts += 1
+    else if (eps8 < 42) pts -= 3
+    else if (eps8 < 52) pts -= 1
+  }
+  if (eps12 != null) {
+    if (eps12 >= 68) pts += 1
+    else if (eps12 < 42) pts -= 2
+  }
+
+  if (zusatz.epsStreakLaenge >= 3) {
+    if (zusatz.epsStreakArt === 'beat') pts += 2
+    else if (zusatz.epsStreakArt === 'miss') pts -= 2
+  } else if (zusatz.letztesQuartalEpsBeat === false) {
+    pts -= 1
+  } else if (zusatz.letztesQuartalEpsBeat === true) {
+    pts += 1
+  }
+
+  const ums12 = zusatz.umsatzBeatRate12Pct ?? zusatz.umsatzBeatRatePct
+  if (ums12 != null) {
+    if (ums12 >= 65) pts += 1
+    else if (ums12 < 40) pts -= 1
+  }
+
+  if (zusatz.capitalAllocationScorePct != null) {
+    if (zusatz.capitalAllocationScorePct >= 72) pts += 2
+    else if (zusatz.capitalAllocationScorePct >= 55) pts += 1
+    else if (zusatz.capitalAllocationScorePct < 38) pts -= 3
+    else if (zusatz.capitalAllocationScorePct < 48) pts -= 1
+  }
+
+  if (zusatz.capAllocWarnungen >= 2) pts -= 1
+  if (zusatz.capAllocBuyback === 'gut') pts += 1
+  else if (zusatz.capAllocBuyback === 'warnung') pts -= 1
+  if (zusatz.capAllocDividend === 'warnung') pts -= 1
+
+  if (
+    zusatz.aktienrueckkaufMio != null &&
+    zusatz.aktienrueckkaufMio < -100 &&
+    zusatz.capAllocBuyback === 'warnung'
+  ) {
+    pts -= 1
+  }
+
+  if (zusatz.epsWachstumFy0Pct != null) {
+    if (zusatz.epsWachstumFy0Pct < -8) pts -= 2
+    else if (zusatz.epsWachstumFy0Pct < 0) pts -= 1
+    else if (zusatz.epsWachstumFy0Pct >= 10) pts += 1
+  }
+
+  if (zusatz.dividendenCagr5yPct != null) {
+    if (zusatz.jahreOhneSenkung != null && zusatz.jahreOhneSenkung >= 8) pts += 1
+    else if (zusatz.dividendenCagr5yPct < -2) pts -= 1
+  }
+
+  return clamp(Math.round(pts), 0, 12)
+}
+
+/** Bilanz, Kapitalstruktur, Markt-Skepsis (–10 bis +5). */
+function berechneStrukturPunkte(zusatz: NachkaufZusatzSignale | null | undefined): number {
+  if (!zusatz) return 0
+  let pts = 0
+
+  const nd = zusatz.netDebtEbitda
+  if (nd != null) {
+    if (nd > 3.5) pts -= 4
+    else if (nd > 2.5) pts -= 2
+    else if (nd < 0.8) pts += 1
+  } else if (zusatz.nettoCashMio != null) {
+    if (zusatz.nettoCashMio > 500) pts += 1
+    else if (zusatz.nettoCashMio < -2_000) pts -= 2
+  }
+
+  if (zusatz.capexDaRatio != null) {
+    if (zusatz.capexDaRatio > 2.8) pts -= 1
+    else if (zusatz.capexDaRatio < 1.15) pts += 1
+  }
+
+  if (zusatz.goodwillAnteilPct != null && zusatz.goodwillAnteilPct >= 35) pts -= 1
+  if (zusatz.segmentKonzentrationPct != null && zusatz.segmentKonzentrationPct >= 55) pts -= 1
+
+  const strukturRisiko = (zusatz.pensionVerpflichtungMio ?? 0) + (zusatz.leaseVerpflichtungMio ?? 0)
+  if (strukturRisiko > 5_000) pts -= 2
+  else if (strukturRisiko > 2_000) pts -= 1
+
+  if (zusatz.shortFloatPct != null && zusatz.shortFloatPct >= 12) pts -= 2
+  else if (zusatz.shortFloatPct != null && zusatz.shortFloatPct >= 8) pts -= 1
+
+  if (zusatz.insiderNettoRichtung === 'verkauf') pts -= 2
+  else if (zusatz.insiderNettoRichtung === 'kauf') pts += 1
+
+  if (zusatz.sbcVsFcfPct != null) {
+    if (zusatz.sbcVsFcfPct >= 28) pts -= 2
+    else if (zusatz.sbcVsFcfPct >= 16) pts -= 1
+  }
+
+  if (zusatz.dsoTrendDelta != null && zusatz.dsoTrendDelta >= 8) pts -= 1
+  if (zusatz.dioTrendDelta != null && zusatz.dioTrendDelta >= 12) pts -= 1
+  if (zusatz.dpoTrendDelta != null && zusatz.dpoTrendDelta <= -10) pts -= 1
+
+  return clamp(pts, -10, 5)
+}
+
+function berechneDrawdownBonus(
+  drawdown52wPct: number | null | undefined,
+  mantraScore: number,
+): number {
+  if (drawdown52wPct == null || mantraScore < 28) return 0
+  if (drawdown52wPct >= 28) return 5
+  if (drawdown52wPct >= 18) return 3
+  if (drawdown52wPct >= 12) return 1
+  return 0
+}
+
+export function berechneInsiderPunkte(kaeufe: InsiderKauf[]): number {
+  if (kaeufe.length === 0) return 0
+  const namen = new Set(kaeufe.map((k) => k.name.toLowerCase()))
+  if (namen.size >= 3) return 4
+  if (kaeufe.length >= 2) return 3
+  return 1
 }
 
 // ---------------------------------------------------------------------------
@@ -115,35 +277,27 @@ export function berechneNachkaufScore(
   paket: FundamentaldatenPaket,
   signale: NachkaufBewertungsSignale,
   position?: WhitelistPosition,
+  zusatz?: NachkaufZusatzSignale | null,
+  insiderKaeufe: InsiderKauf[] = [],
 ): NachkaufScoreDetail {
   const { mantra } = paket
   const sum = mantra.zusammenfassung
 
-  // --- Mantra-Score (0–60) ---
-  //
-  // Drei Datensituationen:
-  //  A) Gut bewertbar (≥3 bewertbar): Score proportional zu erfüllten Metriken.
-  //  B) Wenig bewertbar (1–2): Score gedämpft — nie vollen Bonus/Penalty aus 1 Metrik.
-  //  C) Nur qualitativ: halbe Kredit-Vergabe.
-  //
-  // "qualitativ" = Proxy-Bewertung (z. B. ROE statt ROIC, Yahoo-Marge statt Macrotrends):
-  //  Zählt als 0.5 × erfüllt und 0.5 × bewertbar (Teilpunkt).
+  // --- Mantra-Score (0–50) ---
   let mantraScore: number
   const effektivErfuellt = sum.erfuellt + sum.qualitativ * 0.5
   const effektivBewertbar = sum.bewertbar + sum.qualitativ * 0.5
 
   if (effektivBewertbar >= 3) {
-    // Gut bewertbar: voller Score
-    mantraScore = Math.round((effektivErfuellt / effektivBewertbar) * 60)
+    mantraScore = Math.round((effektivErfuellt / effektivBewertbar) * 50)
   } else if (effektivBewertbar >= 1) {
-    // Wenig Daten: Score dämpfen — max. 40 Punkte wenn nur 1–2 Metriken da sind
-    const rohScore = (effektivErfuellt / effektivBewertbar) * 60
+    const rohScore = (effektivErfuellt / effektivBewertbar) * 50
     const konfidenz = Math.min(1, effektivBewertbar / 3)
-    const basisScore = 20 // Baseline: etablierte Qualitätsfirma hat im Zweifelsfall solide Basis
+    const basisScore = 18
     mantraScore = Math.round(basisScore + (rohScore - basisScore) * konfidenz)
   } else {
-    // Keine Daten: Ampel-basierter Fallback
-    mantraScore = mantra.ampel === 'gruen' ? 40 : mantra.ampel === 'gelb' ? 28 : mantra.ampel === 'grau' ? 22 : 10
+    mantraScore =
+      mantra.ampel === 'gruen' ? 34 : mantra.ampel === 'gelb' ? 24 : mantra.ampel === 'grau' ? 18 : 8
   }
 
   // --- Sell-Trigger-Penalty ---
@@ -151,34 +305,43 @@ export function berechneNachkaufScore(
   const hatBeobachten = mantra.sellTriggerWatch.some((w) => w.status === 'beobachten')
   const sellTriggerPenalty = hatWarnung ? -25 : hatBeobachten ? -10 : 0
 
-  // --- Bewertungs-Score (0–40) — absolut ---
-  const { fcfYieldPct, forwardPe } = signale
+  // --- Bewertungs-Score (0–35) — FCF, KGV, EV/EBITDA ---
+  const { fcfYieldPct, forwardPe, ntmEvEbitda } = signale
+  const hatFcf = fcfYieldPct != null
+  const hatPe = forwardPe != null
+  const hatEv = ntmEvEbitda != null
 
-  // FCF-Rendite (0–22 Punkte)
   let fcfPunkte = 0
-  if (fcfYieldPct != null) {
-    if (fcfYieldPct >= 5) fcfPunkte = 22
-    else if (fcfYieldPct >= 3.5) fcfPunkte = 17
-    else if (fcfYieldPct >= 2.5) fcfPunkte = 12
-    else if (fcfYieldPct >= 1.5) fcfPunkte = 6
-    else fcfPunkte = 0
-  } else {
-    fcfPunkte = 8 // neutral bei fehlenden Daten
+  if (hatFcf) {
+    if (fcfYieldPct! >= 5) fcfPunkte = 13
+    else if (fcfYieldPct! >= 3.5) fcfPunkte = 10
+    else if (fcfYieldPct! >= 2.5) fcfPunkte = 7
+    else if (fcfYieldPct! >= 1.5) fcfPunkte = 3
   }
 
-  // Forward-KGV (0–18 Punkte)
   let kgvPunkte = 0
-  if (forwardPe != null) {
-    if (forwardPe < 15) kgvPunkte = 18
-    else if (forwardPe < 20) kgvPunkte = 14
-    else if (forwardPe < 25) kgvPunkte = 9
-    else if (forwardPe < 35) kgvPunkte = 4
-    else kgvPunkte = 0
-  } else {
-    kgvPunkte = 7 // neutral bei fehlenden Daten
+  if (hatPe) {
+    if (forwardPe! < 15) kgvPunkte = 11
+    else if (forwardPe! < 20) kgvPunkte = 9
+    else if (forwardPe! < 25) kgvPunkte = 6
+    else if (forwardPe! < 35) kgvPunkte = 2
   }
 
-  const bewertungsScore = fcfPunkte + kgvPunkte
+  let evPunkte = 0
+  if (hatEv) {
+    if (ntmEvEbitda! < 12) evPunkte = 11
+    else if (ntmEvEbitda! < 16) evPunkte = 8
+    else if (ntmEvEbitda! < 22) evPunkte = 4
+  }
+
+  let bewertungsScore = fcfPunkte + kgvPunkte + evPunkte
+  const metrikAnzahl = [hatFcf, hatPe, hatEv].filter(Boolean).length
+  if (metrikAnzahl === 1 && bewertungsScore > 0) {
+    bewertungsScore = Math.round(bewertungsScore * 0.82)
+  } else if (metrikAnzahl === 2 && bewertungsScore > 24) {
+    bewertungsScore = Math.round(bewertungsScore * 0.9)
+  }
+  bewertungsScore = Math.min(35, bewertungsScore)
 
   // --- Historischer Bonus/Malus (–10 bis +10) ---
   // Vergleich des aktuellen KGVs mit dem historischen 5-Jahres-Median.
@@ -193,15 +356,42 @@ export function berechneNachkaufScore(
     else if (pd <= 15) historischerBewertungsBonus = -4   // 5–15 % Premium
     else if (pd <= 25) historischerBewertungsBonus = -7   // 15–25 % Premium
     else historischerBewertungsBonus = -10                // >25 % Premium
-  } else if (position?.historischerMedianPe || position?.historischerMedianFcfYield) {
+  } else if (position?.historischerMedianPe || position?.historischerMedianFcfYield || signale.historischerMedianPe) {
     // Historischer Median vorhanden, aber aktuelle Daten fehlen → neutral
     historischerBewertungsBonus = 0
   }
 
-  const roh = mantraScore + sellTriggerPenalty + bewertungsScore + historischerBewertungsBonus
+  const momentumPunkte = berechneMomentumPunkte(zusatz)
+  const strukturPunkte = berechneStrukturPunkte(zusatz)
+  const drawdownBonus = berechneDrawdownBonus(signale.drawdown52wPct, mantraScore)
+  const insiderPunkte = berechneInsiderPunkte(insiderKaeufe)
+  const datenSignaleDelta = momentumPunkte + strukturPunkte + drawdownBonus + insiderPunkte
+  const datenVollstaendigkeitPct = zusatz?.datenVollstaendigkeitPct ?? 0
+
+  const roh =
+    mantraScore +
+    sellTriggerPenalty +
+    bewertungsScore +
+    historischerBewertungsBonus +
+    momentumPunkte +
+    strukturPunkte +
+    drawdownBonus +
+    insiderPunkte
   const gesamt = Math.max(0, Math.min(100, roh))
 
-  return { mantraScore, bewertungsScore, sellTriggerPenalty, historischerBewertungsBonus, gesamt }
+  return {
+    mantraScore,
+    bewertungsScore,
+    sellTriggerPenalty,
+    historischerBewertungsBonus,
+    datenSignaleDelta,
+    momentumPunkte,
+    strukturPunkte,
+    drawdownBonus,
+    insiderPunkte,
+    datenVollstaendigkeitPct,
+    gesamt,
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -259,12 +449,12 @@ export function leiteNachkaufAmpelAb(
       (fcfZuTeuer && nurFcfDaten) ||
       (kgvZuTeuer && nurKgvDaten)
     ) {
-      if (score.mantraScore >= 30) return 'teuer'
+      if (score.mantraScore >= 25) return 'teuer'
     }
   }
 
-  if (score.gesamt >= 65) return 'gruen'
-  if (score.gesamt >= 35) return 'gelb'
+  if (score.gesamt >= 62 && (score.datenVollstaendigkeitPct ?? 0) >= 45) return 'gruen'
+  if (score.gesamt >= 38) return 'gelb'
   return 'rot'
 }
 
@@ -288,6 +478,7 @@ function berechneSparplanAllokation(gruenKandidaten: NachkaufScanEintrag[]): Spa
     let g = e.score
     if (e.kaufTriggerAusgeloest) g *= 1.2
     if (e.klumpenrisiko) g *= 0.5
+    g *= disziplinSparplanFaktor(e)
     return { eintrag: e, gewicht: g }
   })
 
@@ -314,6 +505,7 @@ function berechneSparplanAllokation(gruenKandidaten: NachkaufScanEintrag[]): Spa
     let begruendung = `Score ${eintrag.score}/100 · Risiko: ${risiko}`
     if (eintrag.kaufTriggerAusgeloest) begruendung += ' · Kaufzone ausgelöst'
     if (eintrag.klumpenrisiko) begruendung += ' · Klumpenrisiko-Cap'
+    if (eintrag.disziplinHinweis) begruendung += ' · Disziplin: reduziert'
 
     posten.push({ ticker: eintrag.ticker, name: eintrag.name, betragEur: betrag, begruendung })
   }
@@ -345,6 +537,9 @@ export function berechneMonatsEmpfehlung(ergebnisse: NachkaufScanEintrag[]): Mon
 
   if (gruen.length > 0) {
     const sortiertGruen = [...gruen].sort((a, b) => {
+      const diszA = a.disziplinHinweis ? 1 : 0
+      const diszB = b.disziplinHinweis ? 1 : 0
+      if (diszA !== diszB) return diszA - diszB
       if (a.klumpenrisiko !== b.klumpenrisiko) return a.klumpenrisiko ? 1 : -1
       if (a.kaufTriggerAusgeloest !== b.kaufTriggerAusgeloest) return a.kaufTriggerAusgeloest ? -1 : 1
       return b.score - a.score

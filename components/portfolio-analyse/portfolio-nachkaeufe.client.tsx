@@ -650,6 +650,13 @@ function DetailPanel({
         </div>
       )}
 
+      {eintrag.disziplinHinweis && (
+        <div className="rounded-xl border border-sky-500/20 bg-sky-950/20 p-3">
+          <p className="text-[12px] font-semibold text-sky-300">🧭 Nachkauf-Disziplin</p>
+          <p className="mt-1 text-[12px] text-[var(--app-text-muted)]">{eintrag.disziplinHinweis}</p>
+        </div>
+      )}
+
       {/* Kaufzonen-Trigger Detail */}
       {eintrag.kaufTriggerAusgeloest && eintrag.kaufTriggerText && (
         <div className="rounded-xl border border-yellow-500/20 bg-yellow-950/25 p-3">
@@ -692,6 +699,56 @@ function DetailPanel({
               {eintrag.scoreDetail.historischerBewertungsBonus} Pkt.
             </span>
           )}
+          {eintrag.scoreDetail.datenSignaleDelta !== 0 && (
+            <span
+              className={`rounded px-1.5 py-0.5 ring-1 ${
+                eintrag.scoreDetail.datenSignaleDelta > 0
+                  ? 'bg-sky-500/10 text-sky-400 ring-sky-500/20'
+                  : 'bg-rose-500/10 text-rose-400 ring-rose-500/20'
+              }`}
+            >
+              Dynamik/Struktur {eintrag.scoreDetail.datenSignaleDelta > 0 ? '+' : ''}
+              {eintrag.scoreDetail.datenSignaleDelta} Pkt.
+            </span>
+          )}
+          {eintrag.scoreDetail.momentumPunkte > 0 && eintrag.scoreDetail.momentumPunkte !== 6 ? (
+            <span className="rounded bg-sky-500/5 px-1.5 py-0.5 text-sky-300/80 ring-1 ring-sky-500/10">
+              Momentum {eintrag.scoreDetail.momentumPunkte}
+            </span>
+          ) : null}
+          {eintrag.scoreDetail.strukturPunkte !== 0 ? (
+            <span
+              className={`rounded px-1.5 py-0.5 ring-1 ${
+                eintrag.scoreDetail.strukturPunkte > 0
+                  ? 'bg-violet-500/10 text-violet-300 ring-violet-500/20'
+                  : 'bg-rose-500/10 text-rose-300 ring-rose-500/20'
+              }`}
+            >
+              Struktur {eintrag.scoreDetail.strukturPunkte > 0 ? '+' : ''}
+              {eintrag.scoreDetail.strukturPunkte}
+            </span>
+          ) : null}
+          {eintrag.scoreDetail.drawdownBonus > 0 ? (
+            <span className="rounded bg-emerald-500/10 px-1.5 py-0.5 text-emerald-300 ring-1 ring-emerald-500/20">
+              Drawdown +{eintrag.scoreDetail.drawdownBonus}
+            </span>
+          ) : null}
+          {eintrag.scoreDetail.insiderPunkte > 0 ? (
+            <span className="rounded bg-teal-500/10 px-1.5 py-0.5 text-teal-300 ring-1 ring-teal-500/20">
+              Insider +{eintrag.scoreDetail.insiderPunkte}
+            </span>
+          ) : null}
+          {(eintrag.scoreDetail.datenVollstaendigkeitPct ?? 0) > 0 ? (
+            <span
+              className={`rounded px-1.5 py-0.5 ring-1 ${
+                (eintrag.scoreDetail.datenVollstaendigkeitPct ?? 0) >= 60
+                  ? 'bg-[var(--app-surface-hover)] text-[var(--app-text-muted)] ring-white/[0.04]'
+                  : 'bg-amber-500/10 text-amber-300 ring-amber-500/20'
+              }`}
+            >
+              Daten {eintrag.scoreDetail.datenVollstaendigkeitPct} %
+            </span>
+          ) : null}
           {eintrag.scoreDetail.sellTriggerPenalty !== 0 && (
             <span className="rounded bg-rose-500/10 px-1.5 py-0.5 text-rose-400 ring-1 ring-rose-500/20">
               Sell-Trigger {eintrag.scoreDetail.sellTriggerPenalty} Pkt.
@@ -757,6 +814,14 @@ function DetailPanel({
             </p>
           </div>
           <div>
+            <p className="text-[11px] text-[var(--app-text-muted)]">KGV-Median (5J)</p>
+            <p className="text-sm font-medium text-[var(--app-text)]">
+              {eintrag.bewertung.historischerMedianPe != null
+                ? `${eintrag.bewertung.historischerMedianPe.toFixed(1)}×`
+                : '–'}
+            </p>
+          </div>
+          <div>
             <p className="text-[11px] text-[var(--app-text-muted)]">FCF-Yield Median (5J)</p>
             <p className="text-sm font-medium text-[var(--app-text)]">
               {eintrag.bewertung.historischerMedianFcfYield != null
@@ -765,11 +830,101 @@ function DetailPanel({
             </p>
           </div>
           <div>
-            <p className="text-[11px] text-[var(--app-text-muted)]">52w-Spanne</p>
+            <p className="text-[11px] text-[var(--app-text-muted)]">52w-Drawdown</p>
             <p className="text-sm font-medium text-[var(--app-text)]">
               {eintrag.bewertung.drawdown52wPct != null ? `${eintrag.bewertung.drawdown52wPct.toFixed(0)} %` : '–'}
             </p>
           </div>
+          <div>
+            <p className="text-[11px] text-[var(--app-text-muted)]">EPS-Beat-Rate</p>
+            <p className="text-sm font-medium text-[var(--app-text)]">
+              {eintrag.bewertung.epsBeatRatePct != null ? `${eintrag.bewertung.epsBeatRatePct} %` : '–'}
+            </p>
+          </div>
+          <div>
+            <p className="text-[11px] text-[var(--app-text-muted)]">Capital Allocation</p>
+            <p className="text-sm font-medium text-[var(--app-text)]">
+              {eintrag.bewertung.capitalAllocationScorePct != null
+                ? `${eintrag.bewertung.capitalAllocationScorePct}/100`
+                : '–'}
+            </p>
+          </div>
+          <div>
+            <p className="text-[11px] text-[var(--app-text-muted)]">Net Debt / EBITDA</p>
+            <p className="text-sm font-medium text-[var(--app-text)]">
+              {eintrag.bewertung.netDebtEbitda != null
+                ? `${eintrag.bewertung.netDebtEbitda.toFixed(1)}×`
+                : '–'}
+            </p>
+          </div>
+          {eintrag.datenSignale?.epsBeatRate12Pct != null && (
+            <div>
+              <p className="text-[11px] text-[var(--app-text-muted)]">EPS-Beat 12Q</p>
+              <p className="text-sm font-medium text-[var(--app-text)]">{eintrag.datenSignale.epsBeatRate12Pct} %</p>
+            </div>
+          )}
+          {eintrag.datenSignale?.epsStreakLaenge != null && eintrag.datenSignale.epsStreakLaenge >= 2 && (
+            <div>
+              <p className="text-[11px] text-[var(--app-text-muted)]">EPS-Streak</p>
+              <p className="text-sm font-medium text-[var(--app-text)]">
+                {eintrag.datenSignale.epsStreakLaenge}× {eintrag.datenSignale.epsStreakArt}
+              </p>
+            </div>
+          )}
+          {eintrag.datenSignale?.capexDaRatio != null && (
+            <div>
+              <p className="text-[11px] text-[var(--app-text-muted)]">CapEx / D&A</p>
+              <p className="text-sm font-medium text-[var(--app-text)]">
+                {eintrag.datenSignale.capexDaRatio.toFixed(2)}×
+              </p>
+            </div>
+          )}
+          {eintrag.datenSignale?.dividendenCagr5yPct != null && (
+            <div>
+              <p className="text-[11px] text-[var(--app-text-muted)]">Div.-CAGR 5J</p>
+              <p className="text-sm font-medium text-[var(--app-text)]">
+                {eintrag.datenSignale.dividendenCagr5yPct.toFixed(1)} %
+              </p>
+            </div>
+          )}
+          {eintrag.datenSignale?.umsatzBeatRate12Pct != null && (
+            <div>
+              <p className="text-[11px] text-[var(--app-text-muted)]">Umsatz-Beat 12Q</p>
+              <p className="text-sm font-medium text-[var(--app-text)]">{eintrag.datenSignale.umsatzBeatRate12Pct} %</p>
+            </div>
+          )}
+          {eintrag.datenSignale?.nettoCashMio != null && (
+            <div>
+              <p className="text-[11px] text-[var(--app-text-muted)]">Netto-Cash (Bilanz)</p>
+              <p className="text-sm font-medium text-[var(--app-text)]">
+                ${eintrag.datenSignale.nettoCashMio.toLocaleString('de-DE')} Mio.
+              </p>
+            </div>
+          )}
+          {eintrag.datenSignale?.goodwillAnteilPct != null && eintrag.datenSignale.goodwillAnteilPct >= 20 && (
+            <div>
+              <p className="text-[11px] text-[var(--app-text-muted)]">Goodwill-Anteil</p>
+              <p className="text-sm font-medium text-[var(--app-text)]">{eintrag.datenSignale.goodwillAnteilPct.toFixed(0)} %</p>
+            </div>
+          )}
+          {eintrag.datenSignale?.segmentKonzentrationPct != null && (
+            <div>
+              <p className="text-[11px] text-[var(--app-text-muted)]">Größtes Segment</p>
+              <p className="text-sm font-medium text-[var(--app-text)]">{eintrag.datenSignale.segmentKonzentrationPct.toFixed(0)} %</p>
+            </div>
+          )}
+          {eintrag.datenSignale?.insiderNettoRichtung && eintrag.datenSignale.insiderNettoRichtung !== 'neutral' && (
+            <div>
+              <p className="text-[11px] text-[var(--app-text-muted)]">Insider-Netto 90T</p>
+              <p
+                className={`text-sm font-medium ${
+                  eintrag.datenSignale.insiderNettoRichtung === 'kauf' ? 'text-emerald-400' : 'text-rose-400'
+                }`}
+              >
+                {eintrag.datenSignale.insiderNettoRichtung === 'kauf' ? 'Netto-Kauf' : 'Netto-Verkauf'}
+              </p>
+            </div>
+          )}
           <div>
             <p className="text-[11px] text-[var(--app-text-muted)]">Depot-Gewicht</p>
             <p className={`text-sm font-medium ${eintrag.klumpenrisiko ? 'text-orange-400' : 'text-[var(--app-text)]'}`}>

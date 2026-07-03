@@ -1,11 +1,20 @@
 'use client'
 
-import { PA_SCROLL_ELEGANT } from '@/components/portfolio-analyse/pa-ui'
+import { useEffect, useRef } from 'react'
+import { appTableScrollInlineClassName } from '@/components/page-shell'
 import { formatFundamentalWert } from '@/lib/portfolio-analyse/fundamentaldaten-format'
 import type {
   FundamentalMetrikZeile,
   FundamentalPeriode,
 } from '@/lib/portfolio-analyse/fundamentaldaten-types'
+
+const TABLE_SCROLL =
+  `${appTableScrollInlineClassName} scroll-smooth [scrollbar-gutter:stable] [scrollbar-width:thin] [scrollbar-color:rgb(82_82_91/0.55)_transparent] [&::-webkit-scrollbar]:h-1.5 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-[var(--app-surface-muted)]/50 hover:[&::-webkit-scrollbar-thumb]:bg-[var(--app-surface-muted)]/70`
+
+function periodeSpaltenLabel(p: FundamentalPeriode, modus: 'jahr' | 'datum'): string {
+  if (modus === 'jahr' && /^\d{4}-\d{2}-\d{2}$/.test(p.iso)) return p.iso.slice(0, 4)
+  return p.label
+}
 
 const CHART_ICON = (
   <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" aria-hidden>
@@ -19,13 +28,24 @@ export function PaFundamentalMetrikTabelle({
   zeilen,
   aktivIds,
   onToggleZeile,
+  labelModus = 'datum',
 }: {
   titel: string
   perioden: FundamentalPeriode[]
   zeilen: FundamentalMetrikZeile[]
   aktivIds: Set<string>
   onToggleZeile: (id: string) => void
+  /** Bewertung: Jahreszahl (z. B. 2025) statt Geschäftsjahresende */
+  labelModus?: 'jahr' | 'datum'
 }) {
+  const scrollRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const el = scrollRef.current
+    if (!el) return
+    el.scrollLeft = el.scrollWidth
+  }, [perioden, zeilen])
+
   if (zeilen.length === 0) return null
 
   return (
@@ -33,7 +53,7 @@ export function PaFundamentalMetrikTabelle({
       <div className="border-b border-[var(--app-border)] px-4 py-2.5">
         <h3 className="text-sm font-semibold text-[var(--app-text)]">{titel}</h3>
       </div>
-      <div className={`${PA_SCROLL_ELEGANT} max-w-full`}>
+      <div ref={scrollRef} className={`${TABLE_SCROLL} max-w-full`}>
         <table className="app-data-table w-max min-w-full border-collapse text-xs">
           <thead>
             <tr className="bg-[var(--app-surface-muted)] text-[var(--app-text-muted)]">
@@ -53,7 +73,7 @@ export function PaFundamentalMetrikTabelle({
                           : ''
                   }`}
                 >
-                  {p.label}
+                  {periodeSpaltenLabel(p, labelModus)}
                 </th>
               ))}
             </tr>

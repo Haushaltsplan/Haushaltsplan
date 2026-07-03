@@ -42,9 +42,31 @@ export type EarningsBeatMissPaket = {
   umsatzBeats: number
   bewertbarEps: number
   bewertbarUmsatz: number
+  /** Letzte 12 Quartale */
+  agg12?: BeatMissAggregate | null
+  /** Letzte 20 Quartale */
+  agg20?: BeatMissAggregate | null
+  streak?: BeatMissStreak | null
   guidanceHinweis: string
   geladenAm: string
   fehler?: string | null
+}
+
+export type BeatMissAggregate = {
+  fenster: 12 | 20
+  epsBeatRatePct: number | null
+  umsatzBeatRatePct: number | null
+  epsBeats: number
+  umsatzBeats: number
+  bewertbarEps: number
+  bewertbarUmsatz: number
+}
+
+export type BeatMissStreak = {
+  eps: 'beat' | 'miss' | 'mixed' | null
+  epsLaenge: number
+  umsatz: 'beat' | 'miss' | 'mixed' | null
+  umsatzLaenge: number
 }
 
 function metrikZeile(
@@ -69,6 +91,62 @@ function metrikZeile(
 
 function istBeat(m: BeatMissMetrik): boolean {
   return m.surprisePct != null && m.surprisePct > 0.05
+}
+
+function istMiss(m: BeatMissMetrik): boolean {
+  return m.surprisePct != null && m.surprisePct < -0.05
+}
+
+function berechneAggregate(quartale: BeatMissQuartal[], fenster: 12 | 20): BeatMissAggregate {
+  const slice = quartale.slice(0, fenster)
+  let epsBeats = 0
+  let umsatzBeats = 0
+  let bewertbarEps = 0
+  let bewertbarUmsatz = 0
+  for (const q of slice) {
+    if (q.eps.ist != null && q.eps.schaetzung != null) {
+      bewertbarEps++
+      if (istBeat(q.eps)) epsBeats++
+    }
+    if (q.umsatz.ist != null && q.umsatz.schaetzung != null) {
+      bewertbarUmsatz++
+      if (istBeat(q.umsatz)) umsatzBeats++
+    }
+  }
+  return {
+    fenster,
+    epsBeatRatePct: bewertbarEps > 0 ? Math.round((epsBeats / bewertbarEps) * 100) : null,
+    umsatzBeatRatePct: bewertbarUmsatz > 0 ? Math.round((umsatzBeats / bewertbarUmsatz) * 100) : null,
+    epsBeats,
+    umsatzBeats,
+    bewertbarEps,
+    bewertbarUmsatz,
+  }
+}
+
+function berechneStreak(quartale: BeatMissQuartal[]): BeatMissStreak {
+  const streakFuer = (pick: (q: BeatMissQuartal) => BeatMissMetrik): { art: 'beat' | 'miss' | 'mixed' | null; laenge: number } => {
+    let art: 'beat' | 'miss' | null = null
+    let laenge = 0
+    for (const q of quartale) {
+      const m = pick(q)
+      if (m.ist == null || m.schaetzung == null) continue
+      const cur = istBeat(m) ? 'beat' : istMiss(m) ? 'miss' : null
+      if (!cur) break
+      if (art == null) art = cur
+      else if (art !== cur) return { art: 'mixed', laenge }
+      laenge++
+    }
+    return { art, laenge }
+  }
+  const eps = streakFuer((q) => q.eps)
+  const umsatz = streakFuer((q) => q.umsatz)
+  return {
+    eps: eps.art,
+    epsLaenge: eps.laenge,
+    umsatz: umsatz.art,
+    umsatzLaenge: umsatz.laenge,
+  }
 }
 
 function baueGuidanceHinweis(
@@ -149,22 +227,24 @@ export async function ladeEarningsBeatMissHistorie(opts: {
 }): Promise<EarningsBeatMissPaket> {
   const ticker = opts.ticker.trim().toUpperCase()
   const limit = opts.limit ?? 8
+  const fetchLimit = Math.max(limit, 20)
   const key = `${ticker}|${opts.symbolYahoo ?? ''}|${opts.isin ?? ''}|${limit}`
   const hit = cache.get(key)
   if (hit && hit.at + CACHE_MS > Date.now() && !opts.force) return hit.data
 
   try {
     const [mb, fh] = await Promise.all([
-      ladeMarketbeatBeatMissHistorie({ ticker, symbolYahoo: opts.symbolYahoo, limit }),
+      ladeMarketbeatBeatMissHistorie({ ticker, symbolYahoo: opts.symbolYahoo, limit: fetchLimit }),
       ladeFinnhubBeatMissHistorie({
         ticker,
         symbolYahoo: opts.symbolYahoo,
         isin: opts.isin,
-        limit,
+        limit: fetchLimit,
       }),
     ])
 
-    const { quartale, quelle } = mergeQuartale(mb, fh, limit)
+    const { quartale: quartaleAlle, quelle } = mergeQuartale(mb, fh, fetchLimit)
+    const quartale = quartaleAlle.slice(0, limit)
 
     let epsBeats = 0
     let umsatzBeats = 0
@@ -192,6 +272,9 @@ export async function ladeEarningsBeatMissHistorie(opts: {
       umsatzBeats,
       bewertbarEps,
       bewertbarUmsatz,
+      agg12: quartaleAlle.length >= 4 ? berechneAggregate(quartaleAlle, 12) : null,
+      agg20: quartaleAlle.length >= 8 ? berechneAggregate(quartaleAlle, 20) : null,
+      streak: quartaleAlle.length > 0 ? berechneStreak(quartaleAlle) : null,
       guidanceHinweis: baueGuidanceHinweis(epsBeats, bewertbarEps, umsatzBeats, bewertbarUmsatz),
       geladenAm: new Date().toISOString(),
     }

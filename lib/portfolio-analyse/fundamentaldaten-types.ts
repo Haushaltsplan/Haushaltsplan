@@ -30,6 +30,7 @@ export type FundamentalMetrikZeile = {
   gruppe:
     | 'finanzdaten'
     | 'cashflow'
+    | 'bilanz'
     | 'rentabilitaet'
     | 'margen'
     | 'umschlag'
@@ -144,6 +145,8 @@ export type FundamentalMantraAudit = {
 }
 
 
+import type { FundamentaldatenErweitert } from '@/lib/portfolio-analyse/fundamentaldaten-erweitert-types'
+
 export type FundamentaldatenPaket = {
   ok: boolean
   ticker: string
@@ -166,6 +169,8 @@ export type FundamentaldatenPaket = {
   quelle: 'macrotrends'
   frequenz?: FundamentalFrequenz
   fehler?: string | null
+  /** Tier 1–3: Bilanz-Struktur, Holder, Dividenden, SEC, IV, etc. */
+  erweitert?: FundamentaldatenErweitert | null
 }
 
 export type FundamentaldatenAnfrage = {

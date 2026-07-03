@@ -8,6 +8,8 @@ import {
   ladeAlleDeepResearch,
 } from '@/lib/portfolio-analyse/nachkauf-radar/nachkauf-radar-db-server'
 import { berechneTrimSignale } from '@/lib/portfolio-analyse/nachkauf-radar/nachkauf-trim-signal'
+import { wendeNachkaufDisziplinAn } from '@/lib/portfolio-analyse/nachkauf-radar/nachkauf-disziplin-server'
+import { ergaenzeScoreVerlauf } from '@/lib/portfolio-analyse/nachkauf-radar/nachkauf-radar-verlauf-server'
 import { generiereKaufempfehlung } from '@/lib/portfolio-analyse/nachkauf-radar/nachkauf-kaufempfehlung-server'
 import { createSupabaseAdmin } from '@/lib/supabase-admin'
 
@@ -36,7 +38,9 @@ export async function POST(req: Request) {
     await Promise.all([
       ergaenzeKaufhistorieUndNotizen(ergebnisse),
       ergaenzeDepotGewichte(ergebnisse),
+      ergaenzeScoreVerlauf(ergebnisse),
     ])
+    wendeNachkaufDisziplinAn(ergebnisse)
     berechneTrimSignale(ergebnisse)
 
     // 3. Deep Research einhängen

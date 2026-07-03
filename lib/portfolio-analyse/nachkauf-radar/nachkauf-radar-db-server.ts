@@ -244,6 +244,12 @@ function dbZeileZuEintrag(r: DbZeile): NachkaufScanEintrag {
       bewertungsScore: r.score_bewertung ?? 0,
       sellTriggerPenalty: r.score_sell_penalty ?? 0,
       historischerBewertungsBonus: r.score_hist_bonus ?? 0,
+      datenSignaleDelta: 0,
+      momentumPunkte: 0,
+      strukturPunkte: 0,
+      drawdownBonus: 0,
+      insiderPunkte: 0,
+      datenVollstaendigkeitPct: 0,
       gesamt,
     },
     bewertung: {

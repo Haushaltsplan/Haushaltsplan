@@ -10,8 +10,12 @@ const cache = new Map<string, { at: number; data: MomentumFinvizKennzahlen | nul
 export type MomentumFinvizKennzahlen = {
   symbol: string
   shortFloatPct: number | null
+  shortRatio: number | null
   rsi14: number | null
   relVolume: number | null
+  insiderOwnershipPct: number | null
+  institutionalOwnershipPct: number | null
+  peg: number | null
 }
 
 const FETCH_HEADERS = {
@@ -64,8 +68,12 @@ export async function ladeFinvizKennzahlen(
     const data: MomentumFinvizKennzahlen = {
       symbol: sym,
       shortFloatPct: parseZahl(snap.get('Short Float') ?? ''),
+      shortRatio: parseZahl(snap.get('Short Ratio') ?? ''),
       rsi14: parseZahl(snap.get('RSI (14)') ?? ''),
       relVolume: parseZahl(snap.get('Rel Volume') ?? ''),
+      insiderOwnershipPct: parseZahl(snap.get('Insider Own') ?? ''),
+      institutionalOwnershipPct: parseZahl(snap.get('Inst Own') ?? ''),
+      peg: parseZahl(snap.get('PEG') ?? ''),
     }
     cache.set(sym, { at: Date.now(), data })
     return data
