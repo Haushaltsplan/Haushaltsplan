@@ -13,7 +13,7 @@ import {
   MomentumWatchlistSucheInput,
   type MomentumWatchlistAuswahl,
 } from '@/components/portfolio-analyse/momentum-watchlist-suche-input'
-import { momentumApiFetch } from '@/lib/portfolio-analyse/momentum-trader/momentum-api-fetch'
+import { momentumApiFetch, parseMomentumApiJsonOderFehler, parseMomentumApiJsonOptional } from '@/lib/portfolio-analyse/momentum-trader/momentum-api-fetch'
 import { istMomentumPreIpoEintrag } from '@/lib/portfolio-analyse/momentum-trader/momentum-pseudo-isin'
 import type {
   MomentumAmpel,
@@ -40,8 +40,8 @@ import type {
 import { momentumPlaybookLabel } from '@/lib/portfolio-analyse/momentum-trader/momentum-constants'
 import {
   BACKTEST_MIN_SAMPLES_GLOBAL,
+  PLANUNG_TOP_MIN_SCORE,
   PLAYBOOK_MIN_BACKTEST_TREFFER_PCT,
-  TRADE_TOP_MIN_PCT,
 } from '@/lib/portfolio-analyse/momentum-trader/momentum-constants'
 import {
   MOMENTUM_ALL_PLAYBOOKS,
@@ -82,6 +82,54 @@ function ScoreSparkline({ punkte }: { punkte: MomentumScoreVerlaufPunkt[] }) {
   )
 }
 
+function PlanungsRing({
+  score,
+  erwartungEur,
+  label = 'Planungs-Score',
+}: {
+  score: number
+  erwartungEur?: number | null
+  label?: string
+}) {
+  const r = 44
+  const c = 2 * Math.PI * r
+  const dash = score > 0 ? (score / 100) * c : 0
+  const farbe =
+    score >= 62 ? 'text-emerald-400' : score >= 54 ? 'text-teal-400' : score > 0 ? 'text-amber-400' : 'text-zinc-500'
+  return (
+    <div className="relative h-28 w-28 shrink-0">
+      <svg viewBox="0 0 100 100" className="h-full w-full -rotate-90">
+        <circle cx="50" cy="50" r={r} fill="none" stroke="currentColor" strokeWidth="6" className="text-white/10" />
+        {score > 0 && (
+          <circle
+            cx="50"
+            cy="50"
+            r={r}
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="6"
+            strokeLinecap="round"
+            strokeDasharray={`${dash} ${c}`}
+            className={farbe + ' transition-all duration-500'}
+          />
+        )}
+      </svg>
+      <div className="absolute inset-0 flex flex-col items-center justify-center">
+        <span className="text-2xl font-bold tabular-nums text-[var(--app-text)]">{score > 0 ? score : '—'}</span>
+        {erwartungEur != null ? (
+          <span className="text-[9px] tabular-nums text-teal-300/90">
+            {erwartungEur >= 0 ? '+' : ''}
+            {erwartungEur} €
+          </span>
+        ) : null}
+        <span className="max-w-[4.5rem] text-center text-[9px] uppercase leading-tight tracking-wider text-[var(--app-text-muted)]">
+          {label}
+        </span>
+      </div>
+    </div>
+  )
+}
+
 function WahrscheinlichkeitsRing({ pct, label = 'Trade geht auf' }: { pct: number; label?: string }) {
   const r = 44
   const c = 2 * Math.PI * r
@@ -116,17 +164,17 @@ function WahrscheinlichkeitsRing({ pct, label = 'Trade geht auf' }: { pct: numbe
   )
 }
 
-function MiniErfolgRing({ pct }: { pct: number }) {
+function MiniPlanungsRing({ score }: { score: number }) {
   const r = 36
   const c = 2 * Math.PI * r
-  const dash = pct > 0 ? (pct / 100) * c : 0
+  const dash = score > 0 ? (score / 100) * c : 0
   const farbe =
-    pct >= 72 ? 'text-emerald-400' : pct >= 55 ? 'text-teal-400' : pct > 0 ? 'text-amber-400' : 'text-zinc-500'
+    score >= 62 ? 'text-emerald-400' : score >= 54 ? 'text-teal-400' : score > 0 ? 'text-amber-400' : 'text-zinc-500'
   return (
     <div className="relative h-[4.5rem] w-[4.5rem] shrink-0">
       <svg viewBox="0 0 100 100" className="h-full w-full -rotate-90">
         <circle cx="50" cy="50" r={r} fill="none" stroke="currentColor" strokeWidth="8" className="text-white/10" />
-        {pct > 0 && (
+        {score > 0 && (
           <circle
             cx="50"
             cy="50"
@@ -141,8 +189,8 @@ function MiniErfolgRing({ pct }: { pct: number }) {
         )}
       </svg>
       <div className="absolute inset-0 flex flex-col items-center justify-center">
-        <span className="text-sm font-bold tabular-nums text-[var(--app-text)]">{pct > 0 ? pct + '%' : '—'}</span>
-        <span className="text-[7px] uppercase tracking-wide text-[var(--app-text-muted)]">aufgehen</span>
+        <span className="text-sm font-bold tabular-nums text-[var(--app-text)]">{score > 0 ? score : '—'}</span>
+        <span className="text-[7px] uppercase tracking-wide text-[var(--app-text-muted)]">Planung</span>
       </div>
     </div>
   )
@@ -206,9 +254,9 @@ function HandlungsplanKarte({ plan }: { plan: import('@/lib/portfolio-analyse/mo
           <p className="text-[10px] text-[var(--app-text-muted)]">+{p.zielAbstandPct}% · ~{p.gewinnZielEur} €</p>
         </div>
         <div className="rounded-lg bg-black/30 px-3 py-2 ring-1 ring-violet-500/25">
-          <p className="text-[9px] uppercase text-violet-300/80">CFD</p>
-          <p className={'mt-0.5 text-base font-bold tabular-nums ' + richtungFarbe}>{p.hebelEmpfohlen}×</p>
-          <p className="text-[10px] text-[var(--app-text-muted)]">~{p.marginEur} € · Exp. {p.exposureEur} €</p>
+          <p className="text-[9px] uppercase text-violet-300/80">CFD XTB</p>
+          <p className={'mt-0.5 text-base font-bold tabular-nums ' + richtungFarbe}>5× fest</p>
+          <p className="text-[10px] text-[var(--app-text-muted)]">Einsatz ~{p.marginEur} € · Exp. {p.exposureEur} €</p>
         </div>
       </div>
 
@@ -415,7 +463,10 @@ function HandlungsempfehlungPanel({
               {signal.plan && <HandlungsplanKarte plan={signal.plan} />}
             </div>
 
-            <WahrscheinlichkeitsRing pct={signal.wahrscheinlichkeitPct} />
+            <PlanungsRing
+              score={signal.planungsScore}
+              erwartungEur={signal.planungsErwartungEur}
+            />
           </div>
 
           {signale.length > 1 && (
@@ -438,7 +489,7 @@ function HandlungsempfehlungPanel({
                   >
                     {s.symbol}{' '}
                     <span className="font-bold">{s.richtung === 'long' ? 'L' : s.richtung === 'short' ? 'S' : '—'}</span>{' '}
-                    {s.wahrscheinlichkeitPct}%
+                    {s.planungsScore}
                   </button>
                 ))}
               </div>
@@ -456,7 +507,7 @@ function HandlungsempfehlungPanel({
                 : 'Kein Top-Trade aktiv — NICHT handeln. Warten bis Badge „Jetzt“ + grüner Ring erscheint.'}
             </p>
           </div>
-          <WahrscheinlichkeitsRing pct={0} />
+          <PlanungsRing score={0} label="Warten" />
         </div>
       )}
 
@@ -834,7 +885,7 @@ function TopSignalTrackingPanel({ t }: { t: MomentumTopSignalTracking }) {
       <PaCard className="p-5">
         <h2 className="text-sm font-semibold text-[var(--app-text)]">Top-Signal-Tracking</h2>
         <p className="mt-2 text-xs text-[var(--app-text-muted)]">
-          Noch keine archivierten Top-Signale — nach täglichen Scans werden aktive Setups (≥{TRADE_TOP_MIN_PCT}%)
+          Noch keine archivierten Top-Signale — nach täglichen Scans werden aktive Setups (Planung ≥{PLANUNG_TOP_MIN_SCORE})
           automatisch gespeichert und nach 5 Handelstagen ausgewertet.
         </p>
       </PaCard>
@@ -850,7 +901,7 @@ function TopSignalTrackingPanel({ t }: { t: MomentumTopSignalTracking }) {
     <PaCard className="p-5">
       <h2 className="text-sm font-semibold text-[var(--app-text)]">Top-Signal-Tracking</h2>
       <p className="mt-1 text-xs text-[var(--app-text-muted)]">
-        Letzte {t.fensterTage} Tage · Aktive Top-Signale (≥{TRADE_TOP_MIN_PCT}%) vs. Kursverlauf (Stop/Ziel, 5T) ·
+        Letzte {t.fensterTage} Tage · Aktive Top-Signale (Planung ≥{PLANUNG_TOP_MIN_SCORE}) vs. Kursverlauf (Stop/Ziel, 5T) ·
         Journal-Vergleich
       </p>
       <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -989,6 +1040,10 @@ type ScanFilterKey =
   | 'pre_event'
   | 'alle'
 
+function planungsScore(e: MomentumScanEintrag): number {
+  return typeof e.indikatoren.planungsScore === 'number' ? e.indikatoren.planungsScore : 0
+}
+
 function erfolgPct(e: MomentumScanEintrag): number {
   return typeof e.indikatoren.erfolgWahrscheinlichkeitPct === 'number'
     ? e.indikatoren.erfolgWahrscheinlichkeitPct
@@ -1057,12 +1112,12 @@ function filterScanErgebnisse(
           TRADE_PLAYBOOKS.includes(e.playbook) &&
           (e.ampel === 'gruen' || e.ampel === 'gelb') &&
           e.indikatoren.erfolgIstAktiv === true &&
-          erfolgPct(e) >= TRADE_TOP_MIN_PCT
+          planungsScore(e) >= PLANUNG_TOP_MIN_SCORE
         )
       }
       return true
     })
-    .sort((a, b) => erfolgPct(b) - erfolgPct(a) || b.score - a.score)
+    .sort((a, b) => planungsScore(b) - planungsScore(a) || b.score - a.score)
 }
 
 function DatenqualitaetBadge({ dq }: { dq: MomentumWatchlistEintragAngereichert['datenqualitaet'] }) {
@@ -1302,6 +1357,14 @@ function ScanKarte({
   const stop = e.indikatoren.stopPrice
   const target = e.indikatoren.targetPrice
   const entry = e.indikatoren.entryPrice
+  const planungScoreVal =
+    typeof e.indikatoren.planungsScore === 'number' ? e.indikatoren.planungsScore : 0
+  const planungLabel =
+    typeof e.indikatoren.planungsLabel === 'string' ? e.indikatoren.planungsLabel : null
+  const planungErwartungEur =
+    typeof e.indikatoren.planungsErwartungEur === 'number' ? e.indikatoren.planungsErwartungEur : null
+  const planungBasisText =
+    typeof e.indikatoren.planungsBasisText === 'string' ? e.indikatoren.planungsBasisText : null
   const erfolgPct =
     typeof e.indikatoren.erfolgWahrscheinlichkeitPct === 'number'
       ? e.indikatoren.erfolgWahrscheinlichkeitPct
@@ -1310,6 +1373,8 @@ function ScanKarte({
     typeof e.indikatoren.handlungKurz === 'string' ? e.indikatoren.handlungKurz : null
   const erfolgLabel =
     typeof e.indikatoren.erfolgLabel === 'string' ? e.indikatoren.erfolgLabel : null
+  const backtestTrefferPct =
+    typeof e.indikatoren.backtestTrefferPct === 'number' ? e.indikatoren.backtestTrefferPct : null
   const backtestHinweis =
     typeof e.indikatoren.backtestHinweis === 'string' ? e.indikatoren.backtestHinweis : null
   const erfolgBasisText =
@@ -1384,16 +1449,52 @@ function ScanKarte({
             <p className="mt-1 text-[11px] text-amber-300/90">{pausiertGrund}</p>
           ) : null}
 
+          {planungScoreVal > 0 ? (
+            <p className="mt-1 text-[11px] text-[var(--app-text-muted)]">
+              Planungs-Score:{' '}
+              <span className="font-semibold text-teal-300">{planungScoreVal}/100</span>
+              {planungLabel ? (
+                <>
+                  {' · '}
+                  <span className="font-medium">{planungLabel}</span>
+                </>
+              ) : null}
+              {planungErwartungEur != null ? (
+                <span className="text-teal-300/90">
+                  {' · Erwartung '}
+                  {planungErwartungEur >= 0 ? '+' : ''}
+                  {planungErwartungEur} € (10 € Risiko)
+                </span>
+              ) : null}
+              {planungBasisText ? (
+                <span className="block mt-0.5 text-[10px] text-[var(--app-text-muted)]">{planungBasisText}</span>
+              ) : null}
+            </p>
+          ) : null}
+
           {erfolgLabel && erfolgPct > 0 ? (
             <p className="mt-1 text-[11px] text-[var(--app-text-muted)]">
-              Erfolgswahrscheinlichkeit: <span className="font-medium text-teal-300">{erfolgPct}%</span>
+              Trefferchance:{' '}
+              {backtestTrefferPct != null ? (
+                <>
+                  <span className="font-medium text-[var(--app-text)]">{backtestTrefferPct}%</span> Backtest
+                  {backtestTrefferPct !== erfolgPct ? (
+                    <>
+                      {' · heute '}
+                      <span className="font-medium text-teal-300">{erfolgPct}%</span>
+                    </>
+                  ) : null}
+                </>
+              ) : (
+                <span className="font-medium text-teal-300">{erfolgPct}%</span>
+              )}
               {' · '}
               <span className="font-medium">{erfolgLabel}</span>
               {erfolgBasisText ? (
                 <span className="block mt-0.5 text-[10px] text-[var(--app-text-muted)]">Basis: {erfolgBasisText}</span>
               ) : null}
               {backtestHinweis ? (
-                <span className="text-[var(--app-text-muted)]"> · Backtest {backtestHinweis}</span>
+                <span className="text-[var(--app-text-muted)]"> · {backtestHinweis}</span>
               ) : null}
             </p>
           ) : null}
@@ -1491,7 +1592,7 @@ function ScanKarte({
           )}
         </div>
 
-        <MiniErfolgRing pct={erfolgPct} />
+        <MiniPlanungsRing score={planungScoreVal} />
       </div>
 
       {istAktiv && kannTrade && (
@@ -1619,35 +1720,40 @@ export function MomentumTraderClient() {
         momentumApiFetch('/api/portfolio-analyse/momentum-trader/tracking'),
         momentumApiFetch('/api/portfolio-analyse/momentum-trader/signal-tracking'),
       ])
-      if (!wlRes.ok) throw new Error(((await wlRes.json()) as { fehler?: string }).fehler ?? 'Watchlist-Fehler')
-      if (!stRes.ok) throw new Error(((await stRes.json()) as { fehler?: string }).fehler ?? 'Status-Fehler')
-      const wl = (await wlRes.json()) as { eintraege: MomentumWatchlistEintragAngereichert[] }
+      const wl = await parseMomentumApiJsonOderFehler<{ eintraege: MomentumWatchlistEintragAngereichert[] }>(
+        wlRes,
+        'Watchlist-Fehler',
+      )
       setWatchlist(wl.eintraege ?? [])
-      const st = (await stRes.json()) as MomentumDatenStatus & {
-        erinnerungen?: MomentumErinnerung[]
-        handlungsempfehlung?: MomentumHandlungsempfehlung
-      }
+      const st = await parseMomentumApiJsonOderFehler<
+        MomentumDatenStatus & {
+          erinnerungen?: MomentumErinnerung[]
+          handlungsempfehlung?: MomentumHandlungsempfehlung
+        }
+      >(stRes, 'Status-Fehler')
       setStatus(st)
       setErinnerungen(st.erinnerungen ?? [])
       setHandlung(st.handlungsempfehlung ?? null)
-      if (scanRes.ok) setScan((await scanRes.json()) as MomentumScanPaket)
-      const trData = (await trRes.json()) as { trades: MomentumTrade[]; performance?: MomentumPerformance }
+      const scanData = await parseMomentumApiJsonOptional<MomentumScanPaket>(scanRes)
+      if (scanData) setScan(scanData)
+      const trData = await parseMomentumApiJsonOderFehler<{
+        trades: MomentumTrade[]
+        performance?: MomentumPerformance
+      }>(trRes, 'Trades-Fehler')
       setTrades(trData.trades ?? [])
       setPerformance(trData.performance ?? null)
-      if (kalRes.ok) {
-        setKalender(((await kalRes.json()) as { kalender: MomentumEarningsKalenderMonat }).kalender ?? null)
-      }
-      if (verlRes.ok) {
-        setScoreVerlauf(((await verlRes.json()) as { verlauf: Record<string, MomentumScoreVerlaufPunkt[]> }).verlauf ?? {})
-      }
-      if (trackRes.ok) {
-        setTracking(((await trackRes.json()) as { tracking: MomentumKatalysatorTracking }).tracking ?? null)
-      }
-      if (signalTrackRes.ok) {
-        setSignalTracking(
-          ((await signalTrackRes.json()) as { signalTracking: MomentumTopSignalTracking }).signalTracking ?? null,
-        )
-      }
+      const kalData = await parseMomentumApiJsonOptional<{ kalender: MomentumEarningsKalenderMonat }>(kalRes)
+      if (kalData) setKalender(kalData.kalender ?? null)
+      const verlData = await parseMomentumApiJsonOptional<{
+        verlauf: Record<string, MomentumScoreVerlaufPunkt[]>
+      }>(verlRes)
+      if (verlData) setScoreVerlauf(verlData.verlauf ?? {})
+      const trackData = await parseMomentumApiJsonOptional<{ tracking: MomentumKatalysatorTracking }>(trackRes)
+      if (trackData) setTracking(trackData.tracking ?? null)
+      const signalData = await parseMomentumApiJsonOptional<{ signalTracking: MomentumTopSignalTracking }>(
+        signalTrackRes,
+      )
+      if (signalData) setSignalTracking(signalData.signalTracking ?? null)
     } catch (e) {
       setFehler(String(e))
     } finally {
@@ -1805,7 +1911,7 @@ export function MomentumTraderClient() {
       const res = await momentumApiFetch('/api/portfolio-analyse/momentum-trader/scan', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ mitKi: true }),
+        body: JSON.stringify({ mitKi: false }),
       })
       const data = (await res.json()) as MomentumScanPaket & { fehler?: string }
       if (!res.ok) throw new Error(data.fehler ?? 'Scan fehlgeschlagen.')

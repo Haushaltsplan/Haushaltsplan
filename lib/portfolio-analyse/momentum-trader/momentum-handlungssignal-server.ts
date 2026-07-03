@@ -61,6 +61,18 @@ export function handlungssignalAusTradeSetup(
     typeof e.indikatoren.erfolgWahrscheinlichkeitPct === 'number'
       ? e.indikatoren.erfolgWahrscheinlichkeitPct
       : berechneTradeErfolg(e, gates).pct
+  const planungsScore =
+    typeof e.indikatoren.planungsScore === 'number'
+      ? e.indikatoren.planungsScore
+      : berechneTradeErfolg(e, gates).planungsScore
+  const planungsLabel =
+    typeof e.indikatoren.planungsLabel === 'string'
+      ? e.indikatoren.planungsLabel
+      : berechneTradeErfolg(e, gates).planungsLabel
+  const planungsErwartungEur =
+    typeof e.indikatoren.planungsErwartungEur === 'number'
+      ? e.indikatoren.planungsErwartungEur
+      : berechneTradeErfolg(e, gates).planungsErwartungEur
   const basisText =
     typeof e.indikatoren.erfolgBasisText === 'string'
       ? e.indikatoren.erfolgBasisText
@@ -86,11 +98,11 @@ export function handlungssignalAusTradeSetup(
   }
 
   const checkliste = [
-    'Nur handeln wenn Badge „Jetzt“ + Erfolgs-% ≥ ' + String(wahrscheinlichkeitPct) + '%',
+    'Nur handeln wenn Badge „Jetzt“ + Planungs-Score ≥ ' + String(planungsScore),
     richtungWort(r) + ' Market eröffnen',
     'Stop-Loss SOFORT auf ' + (stop?.toFixed(2) ?? 'vom Scan') + ' setzen — nicht verschieben',
     'Take-Profit auf ' + (target?.toFixed(2) ?? 'vom Scan') + ' setzen',
-    'CFD: Hebel ' + (plan?.hebelEmpfohlen ?? '5') + '× · Einsatz ~' + (plan?.marginEur ?? '20') + ' €',
+    'CFD Hebel 5× (XTB fest) · Einsatz ~' + (plan?.marginEur ?? '—') + ' €',
     'Bei Ampel rot oder Gate-Bruch: Position sofort schließen',
   ]
 
@@ -113,7 +125,7 @@ export function handlungssignalAusTradeSetup(
     playbook: e.playbook,
     phase,
     istAktiv: true,
-    prioritaet: Math.round(wahrscheinlichkeitPct + e.score * 0.2),
+    prioritaet: Math.round(planungsScore + e.score * 0.15),
     kurztext: richtungWort(r) + ' · ' + pbLabel,
     aktionJetzt,
     detailText,
@@ -124,6 +136,9 @@ export function handlungssignalAusTradeSetup(
     fakten: baereFakten(e).filter((f) => !f.startsWith('Earnings')),
     alternativen: [],
     plan,
+    planungsScore,
+    planungsLabel,
+    planungsErwartungEur,
   }
 }
 
@@ -231,6 +246,9 @@ export function handlungssignalAusPreEvent(
     fakten: baereFakten(e),
     alternativen: alternativen.slice(1),
     plan,
+    planungsScore: wahrscheinlichkeitPct,
+    planungsLabel: 'Vorbereiten',
+    planungsErwartungEur: null,
   }
 }
 
@@ -245,5 +263,5 @@ export function sammleHandlungssignale(
     if (trade) out.push(trade)
   }
 
-  return out.sort((a, b) => b.wahrscheinlichkeitPct - a.wahrscheinlichkeitPct || b.prioritaet - a.prioritaet)
+  return out.sort((a, b) => b.planungsScore - a.planungsScore || b.prioritaet - a.prioritaet)
 }

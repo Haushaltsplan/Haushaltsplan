@@ -3,11 +3,26 @@ export const MOMENTUM_DEFAULT_RISK_EUR = 10
 
 export const MOMENTUM_MAX_RISK_EUR = 10
 
+/** BaFin/ESMA Retail-CFD Aktien in DE + XTB: fester Hebel 1:5 (keine niedrigere Stufe wählbar). */
+export const CFD_HEBEL_XTB = 5
+
+/** Alias — Planung nutzt immer diesen Hebel. */
+export const CFD_MAX_HEBEL_DE = CFD_HEBEL_XTB
+
+/** Planungs-Score 0–100: ab hier Top-Trades-Filter. */
+export const PLANUNG_TOP_MIN_SCORE = 58
+
+/** Planungs-Score: Mindest für „Jetzt“-Badge / aktiven Trade. */
+export const PLANUNG_HANDELN_MIN_SCORE = 54
+
 /** Mindest-Wahrscheinlichkeit für Top-Signale in der UI. */
 export const MOMENTUM_MIN_SIGNAL_PCT = 58
 
 /** Max. Top-Signale in der Handlungsempfehlung. */
 export const MOMENTUM_MAX_TOP_SIGNALE = 5
+
+/** KI-Memos beim Scan (Gemini) — Standard aus, Trading braucht keine KI. */
+export const MOMENTUM_SCAN_MIT_KI_DEFAULT = false
 
 /** Browser-Push ab dieser Erfolgswahrscheinlichkeit (%). */
 export const TOP_SIGNAL_PUSH_MIN_PCT = 68
@@ -41,6 +56,9 @@ export const TRADE_ERWARTUNGSWERT_MIN_R = 0.25
 
 /** Long vs. Short Konflikt: Mindest-Spread in Erfolgs-%. */
 export const KONFLIKT_MIN_DIFF_PCT = 15
+
+/** Long vs. Short Konflikt: Mindest-Spread im Planungs-Score. */
+export const PLANUNG_KONFLIKT_MIN_DIFF = 8
 
 /** Gap-Fade Schwellen (Earnings). */
 export const GAP_MIN_PCT = 5

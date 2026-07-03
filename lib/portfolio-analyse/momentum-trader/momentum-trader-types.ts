@@ -585,6 +585,10 @@ export type MomentumHandlungssignal = {
   }>
   /** Konkrete Levels: Entry, Stop, Hebel, Schritt-für-Schritt */
   plan: MomentumHandlungsplan | null
+  /** 0–100: EV-basierter Planungs-Score */
+  planungsScore: number
+  planungsLabel: string
+  planungsErwartungEur: number | null
 }
 
 /** CFD/Aktie — konkrete Ausführungsempfehlung. */

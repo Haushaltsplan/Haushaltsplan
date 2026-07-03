@@ -1,6 +1,7 @@
 import 'server-only'
 
 import {
+  CFD_HEBEL_XTB,
   GAP_MIN_PCT,
   MOMENTUM_DEFAULT_RISK_EUR,
   REWARD_RISK_RATIO,
@@ -15,7 +16,29 @@ import type {
   MomentumScanEintrag,
 } from '@/lib/portfolio-analyse/momentum-trader/momentum-trader-types'
 
-const HEBEL_STUFEN = [2, 3, 5, 8, 10, 15, 20] as const
+/**
+ * XTB-CFD: Hebel ist fest 1:5 — Margin aus Risiko (10 € am Stop) und Stop-Abstand.
+ * margin = (riskEur × entry) / (5 × stopDist), exposure = margin × 5
+ */
+function berechneCfdHebelMargin(
+  entry: number,
+  stop: number,
+  riskEur: number,
+): { hebel: number; marginEur: number; exposureEur: number } {
+  const hebel = CFD_HEBEL_XTB
+  const stopDist = Math.abs(entry - stop)
+  const minStopDist = entry > 0 ? entry * 0.01 : 0.01
+
+  if (stopDist <= 0 || entry <= 0) {
+    const marginEur = (riskEur * Math.max(entry, 1)) / (hebel * minStopDist)
+    const m = runde2(Math.min(100, Math.max(8, marginEur)))
+    return { hebel, marginEur: m, exposureEur: runde2(m * hebel) }
+  }
+
+  const marginEur = (riskEur * entry) / (hebel * stopDist)
+  const m = runde2(marginEur)
+  return { hebel, marginEur: m, exposureEur: runde2(m * hebel) }
+}
 
 function runde2(n: number): number {
   return Math.round(n * 100) / 100
@@ -59,31 +82,6 @@ function schritteZuLegacy(schritte: MomentumHandlungsschritt[]): {
     else jetzt.push(line)
   }
   return { jetzt, nach }
-}
-
-function berechneCfdHebelMargin(
-  entry: number,
-  stop: number,
-  riskEur: number,
-): { hebel: number; marginEur: number; exposureEur: number } {
-  const stopDist = Math.abs(entry - stop)
-  if (stopDist <= 0 || entry <= 0) return { hebel: 5, marginEur: 20, exposureEur: 100 }
-
-  let hebel: number = 5
-  let marginEur = 20
-  for (const L of HEBEL_STUFEN) {
-    const m = (riskEur * entry) / (L * stopDist)
-    if (m >= 8 && m <= 100) {
-      hebel = L
-      marginEur = m
-      break
-    }
-    if (L === HEBEL_STUFEN[HEBEL_STUFEN.length - 1]) {
-      hebel = L
-      marginEur = Math.min(100, m)
-    }
-  }
-  return { hebel, marginEur: runde2(marginEur), exposureEur: runde2(marginEur * hebel) }
 }
 
 function baueNiveaus(
@@ -192,8 +190,13 @@ export function baueHandlungsplanAusScan(
       {
         nr: 4,
         phase: 'jetzt',
-        titel: 'CFD: Hebel ' + niveaus.hebelEmpfohlen + '×',
-        detail: 'Einsatz ~' + niveaus.marginEur + ' €, Exposure ~' + niveaus.exposureEur + ' €',
+        titel: 'CFD Hebel 5× (XTB fest)',
+        detail:
+          'Einsatz ~' +
+          niveaus.marginEur +
+          ' €, Exposure ~' +
+          niveaus.exposureEur +
+          ' € · bei XTB nur 1:5 möglich',
       },
       {
         nr: 5,
@@ -234,8 +237,8 @@ export function baueHandlungsplanAusScan(
       {
         nr: 4,
         phase: 'jetzt',
-        titel: 'CFD Hebel ' + niveaus.hebelEmpfohlen + '×',
-        detail: 'Einsatz ~' + niveaus.marginEur + ' €',
+        titel: 'CFD Hebel 5× (XTB fest)',
+        detail: 'Einsatz ~' + niveaus.marginEur + ' € · Exposure ~' + niveaus.exposureEur + ' €',
       },
       {
         nr: 5,
@@ -366,11 +369,9 @@ export function baueHandlungsplanNachEarnings(
         formatPreis(stop) +
         ' · TP ' +
         formatPreis(target) +
-        ' · Hebel ' +
-        niveaus.hebelEmpfohlen +
-        '× (~' +
+        ' · Hebel 5× XTB (~' +
         niveaus.marginEur +
-        ' €)',
+        ' € Einsatz)',
     },
   ]
 

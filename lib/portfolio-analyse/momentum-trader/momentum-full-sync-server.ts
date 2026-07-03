@@ -5,6 +5,7 @@ import { syncBarsFuerWatchlist } from '@/lib/portfolio-analyse/momentum-trader/m
 import { backfillEarningsEventsFuerWatchlist } from '@/lib/portfolio-analyse/momentum-trader/momentum-earnings-events-server'
 import { syncEarningsFuerWatchlist } from '@/lib/portfolio-analyse/momentum-trader/momentum-earnings-sync-server'
 import { syncMomentumMarketRegime } from '@/lib/portfolio-analyse/momentum-trader/momentum-regime-server'
+import { MOMENTUM_SCAN_MIT_KI_DEFAULT } from '@/lib/portfolio-analyse/momentum-trader/momentum-constants'
 import { scanMomentumWatchlist } from '@/lib/portfolio-analyse/momentum-trader/momentum-scan-server'
 import type {
   MomentumFullSyncErgebnis,
@@ -102,7 +103,7 @@ export async function fuehreVollenMomentumSyncAus(
   if (regimeGates) {
     const wlAktuell = await ladeMomentumWatchlist(sb)
     scan = await scanMomentumWatchlist(wlAktuell.length ? wlAktuell : watchlist, regimeGates, {
-      mitKiMemos: opts?.mitKiMemos ?? true,
+      mitKiMemos: opts?.mitKiMemos ?? MOMENTUM_SCAN_MIT_KI_DEFAULT,
     })
     schritte.push('Scan: ' + scan.ergebnisse.length + ' Setup(s)')
   }

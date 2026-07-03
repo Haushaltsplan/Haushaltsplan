@@ -3,7 +3,7 @@ import 'server-only'
 import { heuteIsoUtc, tageZwischenIso } from '@/lib/portfolio-analyse/dividenden-datum-hilfen'
 import {
   momentumPlaybookLabel,
-  TOP_SIGNAL_PUSH_MIN_PCT,
+  PLANUNG_TOP_MIN_SCORE,
 } from '@/lib/portfolio-analyse/momentum-trader/momentum-constants'
 import { MOMENTUM_TRADE_PLAYBOOKS } from '@/lib/portfolio-analyse/momentum-trader/momentum-playbook-registry'
 import type {
@@ -103,8 +103,8 @@ export function berechneMomentumErinnerungen(input: {
     ) ?? []
   if (gapSetups.length > 0) {
     const top = [...gapSetups].sort((a, b) => {
-      const pa = typeof a.indikatoren.erfolgWahrscheinlichkeitPct === 'number' ? a.indikatoren.erfolgWahrscheinlichkeitPct : 0
-      const pb = typeof b.indikatoren.erfolgWahrscheinlichkeitPct === 'number' ? b.indikatoren.erfolgWahrscheinlichkeitPct : 0
+      const pa = typeof a.indikatoren.planungsScore === 'number' ? a.indikatoren.planungsScore : 0
+      const pb = typeof b.indikatoren.planungsScore === 'number' ? b.indikatoren.planungsScore : 0
       return pb - pa
     })[0]
     out.push({
@@ -116,11 +116,9 @@ export function berechneMomentumErinnerungen(input: {
         top.symbol +
         ' ' +
         momentumPlaybookLabel(top.playbook) +
-        ' (' +
-        (typeof top.indikatoren.erfolgWahrscheinlichkeitPct === 'number'
-          ? top.indikatoren.erfolgWahrscheinlichkeitPct
-          : top.score) +
-        '%).',
+        ' (Planung ' +
+        (typeof top.indikatoren.planungsScore === 'number' ? top.indikatoren.planungsScore : top.score) +
+        '/100).',
     })
   }
 
@@ -134,16 +132,13 @@ export function berechneMomentumErinnerungen(input: {
     )
     .map((e) => ({
       e,
-      pct:
-        typeof e.indikatoren.erfolgWahrscheinlichkeitPct === 'number'
-          ? e.indikatoren.erfolgWahrscheinlichkeitPct
-          : 0,
+      score: typeof e.indikatoren.planungsScore === 'number' ? e.indikatoren.planungsScore : 0,
     }))
-    .filter((x) => x.pct >= TOP_SIGNAL_PUSH_MIN_PCT)
-    .sort((a, b) => b.pct - a.pct)
+    .filter((x) => x.score >= PLANUNG_TOP_MIN_SCORE)
+    .sort((a, b) => b.score - a.score)
     .slice(0, 3)
 
-  for (const { e, pct } of topSignale) {
+  for (const { e, score } of topSignale) {
     out.push({
       typ: 'top_signal',
       schwere: 'aktion',
@@ -152,11 +147,11 @@ export function berechneMomentumErinnerungen(input: {
         e.symbol +
         ' · ' +
         momentumPlaybookLabel(e.playbook) +
-        ' — ' +
-        pct +
-        '% Erfolgschance (Top-Signal ≥' +
-        TOP_SIGNAL_PUSH_MIN_PCT +
-        '%)',
+        ' — Planungs-Score ' +
+        score +
+        '/100 (≥' +
+        PLANUNG_TOP_MIN_SCORE +
+        ')',
     })
   }
 

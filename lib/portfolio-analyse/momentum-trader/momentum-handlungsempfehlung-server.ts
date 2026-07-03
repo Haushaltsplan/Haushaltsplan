@@ -228,8 +228,8 @@ export function generiereMomentumHandlungsempfehlung(input: {
       ': ' +
       (topSignal.richtung === 'long' ? 'LONG' : 'SHORT') +
       ' jetzt (' +
-      topSignal.wahrscheinlichkeitPct +
-      '% Backtest-Chance) — ' +
+      topSignal.planungsScore +
+      '/100 Planung) — ' +
       topSignal.kurztext
   }
 

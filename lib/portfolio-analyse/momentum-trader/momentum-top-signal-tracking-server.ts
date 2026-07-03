@@ -8,7 +8,7 @@ import { heuteIsoUtc } from '@/lib/portfolio-analyse/dividenden-datum-hilfen'
 import { simuliereTradeOutcome } from '@/lib/portfolio-analyse/momentum-trader/momentum-backtest-outcome'
 import {
   BACKTEST_HOLD_TAGE,
-  TRADE_TOP_MIN_PCT,
+  PLANUNG_TOP_MIN_SCORE,
 } from '@/lib/portfolio-analyse/momentum-trader/momentum-constants'
 import { ladeMomentumBars } from '@/lib/portfolio-analyse/momentum-trader/momentum-db-server'
 import type {
@@ -60,8 +60,10 @@ function istTopSignal(e: MomentumScanEintrag): boolean {
   if (e.indikatoren.erfolgIstAktiv !== true) return false
   if (e.indikatoren.konflikt === true) return false
   if (e.indikatoren.playbookDeaktiviert === true) return false
+  const planung = alsZahl(e.indikatoren.planungsScore)
+  if (planung != null && planung > 0 && planung < PLANUNG_TOP_MIN_SCORE) return false
   const pct = alsZahl(e.indikatoren.erfolgWahrscheinlichkeitPct)
-  if (pct != null && pct < TRADE_TOP_MIN_PCT) return false
+  if (planung == null && pct != null && pct < 50) return false
   const r = e.indikatoren.richtung ?? e.indikatoren.erfolgRichtung
   if (r !== 'long' && r !== 'short') return false
   const entry = alsZahl(e.indikatoren.entryPrice)

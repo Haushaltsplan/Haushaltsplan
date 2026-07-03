@@ -99,29 +99,35 @@ export async function erstelleMomentumTrade(
     Math.max(1, input.riskEur ?? MOMENTUM_DEFAULT_RISK_EUR),
   )
 
-  const { data, error } = await sb
-    .from(TABLE)
-    .insert({
-      symbol: input.symbol.trim().toUpperCase(),
-      playbook: input.playbook,
-      direction: input.direction,
-      entry_date: input.entryDate,
-      entry_price: input.entryPrice,
-      stop_price: input.stopPrice ?? null,
-      target_price: input.targetPrice ?? null,
-      risk_eur: riskEur,
-      rule_compliance: input.ruleCompliance ?? true,
-      notizen: input.notizen ?? null,
-      scan_date: input.scanDate ?? null,
-      signal_erfolg_pct:
-        input.signalErfolgPct != null && Number.isFinite(input.signalErfolgPct)
-          ? Math.round(input.signalErfolgPct)
-          : null,
-      aus_scan: input.ausScan === true,
-    })
-    .select('*')
-    .single()
+  const basisInsert = {
+    symbol: input.symbol.trim().toUpperCase(),
+    playbook: input.playbook,
+    direction: input.direction,
+    entry_date: input.entryDate,
+    entry_price: input.entryPrice,
+    stop_price: input.stopPrice ?? null,
+    target_price: input.targetPrice ?? null,
+    risk_eur: riskEur,
+    rule_compliance: input.ruleCompliance ?? true,
+    notizen: input.notizen ?? null,
+  }
 
+  const mitScanMeta = {
+    ...basisInsert,
+    scan_date: input.scanDate ?? null,
+    signal_erfolg_pct:
+      input.signalErfolgPct != null && Number.isFinite(input.signalErfolgPct)
+        ? Math.round(input.signalErfolgPct)
+        : null,
+    aus_scan: input.ausScan === true,
+  }
+
+  let result = await sb.from(TABLE).insert(mitScanMeta).select('*').single()
+  if (result.error?.message?.includes('scan_date') || result.error?.message?.includes('aus_scan')) {
+    result = await sb.from(TABLE).insert(basisInsert).select('*').single()
+  }
+
+  const { data, error } = result
   if (error || !data) throw new Error(error?.message ?? 'Trade konnte nicht gespeichert werden.')
   return dbZuTrade(data as TradeDbZeile)
 }

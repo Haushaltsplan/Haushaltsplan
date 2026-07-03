@@ -1,14 +1,17 @@
 import 'server-only'
 
 import {
+  BACKTEST_LOW_CONFIDENCE_CAP_PCT,
   BACKTEST_MIN_SAMPLES_GLOBAL,
   BACKTEST_MIN_SAMPLES_SYMBOL,
+  PLANUNG_HANDELN_MIN_SCORE,
   momentumPlaybookLabel,
 } from '@/lib/portfolio-analyse/momentum-trader/momentum-constants'
 import {
   findePlaybookStat,
   type MomentumPlaybookStatsLookup,
 } from '@/lib/portfolio-analyse/momentum-trader/momentum-playbook-stats-server'
+import { berechnePlanungsScore } from '@/lib/portfolio-analyse/momentum-trader/momentum-planungs-score-server'
 import { bewerteTradeQualitaet } from '@/lib/portfolio-analyse/momentum-trader/momentum-trade-qualitaet-server'
 import {
   MOMENTUM_PRE_EVENT_PLAYBOOKS,
@@ -34,6 +37,14 @@ export function klemmeErfolgWahrscheinlichkeit(n: number): number {
   return rundeTrefferPct(n)
 }
 
+/** Neutrale Prior-Quote ohne nachgewiesenen Edge (Shrinkage). */
+const PRIOR_TREFFER_PCT = 50
+
+function shrinkageGewicht(sampleSize: number, zielStichprobe: number): number {
+  if (sampleSize <= 0 || zielStichprobe <= 0) return 0
+  return Math.min(1, sampleSize / zielStichprobe)
+}
+
 function alsZahl(v: unknown, fallback: number): number {
   return typeof v === 'number' && Number.isFinite(v) ? v : fallback
 }
@@ -43,8 +54,8 @@ function richtungWort(r: MomentumRichtung): string {
 }
 
 function erfolgLabel(pct: number): string {
-  if (pct >= 65) return 'Hoch'
-  if (pct >= 50) return 'Mittel'
+  if (pct >= 58) return 'Hoch'
+  if (pct >= 48) return 'Mittel'
   return 'Niedrig'
 }
 
@@ -91,30 +102,29 @@ export function baueErfolgSzenarienPreEvent(
 }
 
 /**
- * Schätzung ohne Backtest: Anteil erfüllter Gates × Score-Stärke.
- * Entspricht grob „wie oft würde ein Setup dieser Qualität gewinnen“.
+ * Schätzung ohne Backtest: konservativ um ~45–58 % — Score/Gates verschieben nur moderat.
  */
 function berechneHeuristikTrefferPct(e: MomentumScanEintrag): number {
   const total = e.gatesPassed.length + e.gatesFailed.length
-  const gateRatio = total > 0 ? e.gatesPassed.length / total : 0
-  let pct = gateRatio * 48 + e.score * 0.38
-  if (e.ampel === 'gruen') pct += 3
-  else if (e.ampel === 'gelb') pct -= 2
-  else pct -= 14
-  if (e.gatesFailed.length > 0) pct -= e.gatesFailed.length * 4
+  const gateRatio = total > 0 ? e.gatesPassed.length / total : 0.5
+  let pct = 40 + gateRatio * 12 + (e.score - 50) * 0.2
+  if (e.ampel === 'gruen') pct += 2
+  else if (e.ampel === 'gelb') pct -= 1
+  else pct -= 8
+  if (e.gatesFailed.length > 0) pct -= e.gatesFailed.length * 3
   return rundeTrefferPct(pct)
 }
 
-/** Setup vs. Backtest-Durchschnitt (−15 … +10 Punkte). */
+/** Setup vs. Durchschnitt — max. ±8 Punkte, nur bei guter Datenlage wirksam. */
 function berechneSetupQualitaetBonus(e: MomentumScanEintrag): number {
   const total = e.gatesPassed.length + e.gatesFailed.length
   const gateRatio = total > 0 ? e.gatesPassed.length / total : 0.5
-  let bonus = (gateRatio - 0.85) * 28
-  if (e.ampel === 'gruen') bonus += 5
-  else if (e.ampel === 'gelb') bonus -= 3
-  else bonus -= 12
-  bonus += (e.score - 58) * 0.15
-  if (e.gatesFailed.length > 0) bonus -= e.gatesFailed.length * 4
+  let bonus = (gateRatio - 0.9) * 18
+  if (e.ampel === 'gruen') bonus += 3
+  else if (e.ampel === 'gelb') bonus -= 2
+  else bonus -= 8
+  bonus += (e.score - 62) * 0.1
+  if (e.gatesFailed.length > 0) bonus -= e.gatesFailed.length * 3
 
   const entry = alsZahl(e.indikatoren.entryPrice, 0)
   const stop = alsZahl(e.indikatoren.stopPrice, 0)
@@ -124,12 +134,12 @@ function berechneSetupQualitaetBonus(e: MomentumScanEintrag): number {
     const reward = Math.abs(target - entry)
     if (risk > 0) {
       const rr = reward / risk
-      if (rr >= 2) bonus += 3
-      else if (rr < 1.2) bonus -= 5
+      if (rr >= 2) bonus += 2
+      else if (rr < 1.2) bonus -= 4
     }
   }
 
-  return Math.round(bonus)
+  return Math.max(-8, Math.min(8, Math.round(bonus)))
 }
 
 function berechnePreEvent(
@@ -143,8 +153,8 @@ function berechnePreEvent(
   const top = szenarien[0]
   if (!top) return { pct: 0, richtung: null, szenario: '' }
 
-  const datenQualitaet = 0.45 + Math.min(0.35, e.score / 220)
-  let pct = top.wahrscheinlichkeitPct * datenQualitaet + e.score * 0.12
+  const datenQualitaet = 0.35 + Math.min(0.25, e.score / 280)
+  let pct = top.wahrscheinlichkeitPct * datenQualitaet + e.score * 0.06
 
   if (e.playbook === 'earnings_pre_run' && e.ampel !== 'grau') {
     pct = pct * 0.55 + berechneHeuristikTrefferPct(e) * 0.45
@@ -171,11 +181,26 @@ export type MomentumTradeErfolg = {
   backtestTrefferPct: number | null
   backtestStichprobe: number | null
   backtestHinweis: string | null
+  planungsScore: number
+  planungsLabel: string
+  planungsErwartungEur: number | null
+  planungsBasisText: string | null
+}
+
+function bauePlanung(
+  e: MomentumScanEintrag,
+  trefferPct: number,
+  stat: ReturnType<typeof findePlaybookStat>,
+  qualifiziert: boolean,
+) {
+  const planung = berechnePlanungsScore(e, trefferPct, stat, qualifiziert)
+  const istAktiv = qualifiziert && planung.score >= PLANUNG_HANDELN_MIN_SCORE
+  return { planung, istAktiv }
 }
 
 /**
- * Trefferwahrscheinlichkeit = historische Backtest-Quote + Setup-Anpassung.
- * Ohne Backtest: Schätzung aus Gates/Score.
+ * Trefferwahrscheinlichkeit = gewichtete Backtest-Quote + kleine Setup-Anpassung.
+ * Wenig Stichproben → Shrinkage Richtung 50 % + Deckelung.
  */
 function berechneTrefferWahrscheinlichkeit(
   e: MomentumScanEintrag,
@@ -189,32 +214,68 @@ function berechneTrefferWahrscheinlichkeit(
     return {
       pct: heuristik,
       stat: null,
-      basisText: 'Schätzung (kein Backtest): ' + heuristik + '% aus Score ' + e.score + ' und Gates',
+      basisText: 'Schätzung ohne Backtest: Gates/Score → ' + heuristik + '%',
     }
   }
 
   const hist = stat.trefferPct
-  let pct: number
+  const n = stat.sampleSize
+  const symbolStat = Boolean(stat.symbol && n >= BACKTEST_MIN_SAMPLES_SYMBOL)
+  const zielN = symbolStat ? BACKTEST_MIN_SAMPLES_SYMBOL * 4 : BACKTEST_MIN_SAMPLES_GLOBAL * 3
+  const w = shrinkageGewicht(n, zielN)
+  const shrunkHist = PRIOR_TREFFER_PCT * (1 - w) + hist * w
+  const adj = Math.round(bonus * w * 0.65)
+  let pct = shrunkHist + adj
+
   let basisText: string
 
-  if (stat.symbol && stat.sampleSize >= BACKTEST_MIN_SAMPLES_SYMBOL) {
-    pct = hist + bonus
+  if (symbolStat) {
     basisText =
-      hist + '% historisch (' + stat.wins + '/' + stat.sampleSize + ' ' + e.symbol + ')' +
-      (bonus !== 0 ? ', Setup ' + (bonus >= 0 ? '+' : '') + bonus + '%' : '') +
-      ' = ' + rundeTrefferPct(pct) + '%'
-  } else if (stat.sampleSize >= BACKTEST_MIN_SAMPLES_GLOBAL) {
-    const adj = Math.round(bonus * 0.85)
-    pct = hist + adj
-    basisText =
-      hist + '% Playbook-Backtest (' + stat.wins + '/' + stat.sampleSize + ')' +
+      hist +
+      '% historisch ' +
+      e.symbol +
+      ' (' +
+      stat.wins +
+      '/' +
+      n +
+      '), gewichtet ' +
+      rundeTrefferPct(shrunkHist) +
+      '%' +
       (adj !== 0 ? ', Setup ' + (adj >= 0 ? '+' : '') + adj + '%' : '') +
-      ' = ' + rundeTrefferPct(pct) + '%'
-  } else {
-    const gewicht = stat.sampleSize / BACKTEST_MIN_SAMPLES_GLOBAL
-    pct = hist * gewicht + heuristik * (1 - gewicht) + bonus * 0.4
+      ' = ' +
+      rundeTrefferPct(pct) +
+      '%'
+  } else if (n >= BACKTEST_MIN_SAMPLES_GLOBAL) {
     basisText =
-      'Mix: Backtest ' + hist + '% (' + stat.sampleSize + '×, gering) + Schätzung ' + heuristik + '%'
+      hist +
+      '% Playbook-Backtest (' +
+      stat.wins +
+      '/' +
+      n +
+      '), gewichtet ' +
+      rundeTrefferPct(shrunkHist) +
+      '%' +
+      (adj !== 0 ? ', Setup ' + (adj >= 0 ? '+' : '') + adj + '%' : '') +
+      ' = ' +
+      rundeTrefferPct(pct) +
+      '%'
+  } else {
+    pct = hist * w + heuristik * (1 - w) + adj * 0.5
+    pct = Math.min(pct, BACKTEST_LOW_CONFIDENCE_CAP_PCT)
+    basisText =
+      'Wenig Daten (' +
+      n +
+      '×): Backtest ' +
+      hist +
+      '% + Schätzung ' +
+      heuristik +
+      '% (max. ' +
+      BACKTEST_LOW_CONFIDENCE_CAP_PCT +
+      '%)'
+  }
+
+  if (n < BACKTEST_MIN_SAMPLES_GLOBAL && n > 0) {
+    pct = Math.min(pct, BACKTEST_LOW_CONFIDENCE_CAP_PCT)
   }
 
   return { pct: rundeTrefferPct(pct), stat, basisText }
@@ -239,6 +300,10 @@ export function berechneTradeErfolg(
     backtestTrefferPct: null as number | null,
     backtestStichprobe: null as number | null,
     backtestHinweis: null as string | null,
+    planungsScore: 0,
+    planungsLabel: '—',
+    planungsErwartungEur: null as number | null,
+    planungsBasisText: null as string | null,
   }
 
   if (e.playbook === 'ipo_fade' && e.ampel === 'grau') {
@@ -283,7 +348,7 @@ export function berechneTradeErfolg(
     const kal = berechneTrefferWahrscheinlichkeit(e, statsLookup)
     const hinweis = backtestHinweisText(kal.stat)
     const qual = bewerteTradeQualitaet(e, kal.pct, gates, kal.stat)
-    const istAktiv = qual.qualifiziert
+    const { planung, istAktiv } = bauePlanung(e, kal.pct, kal.stat, qual.qualifiziert)
     let handlungKurz: string
     if (istAktiv) {
       handlungKurz =
@@ -293,11 +358,16 @@ export function berechneTradeErfolg(
         String(e.indikatoren.stopPrice ?? '—') +
         ' · Ziel ' +
         String(e.indikatoren.targetPrice ?? '—') +
-        ' · ' +
-        kal.pct +
-        '% Trefferchance'
+        ' · Planung ' +
+        planung.score +
+        '/100' +
+        (planung.erwartungEur != null
+          ? ' (≈' + (planung.erwartungEur >= 0 ? '+' : '') + planung.erwartungEur + ' €)'
+          : '')
     } else if (qual.blockiertGruende.length > 0) {
       handlungKurz = 'NICHT handeln — ' + qual.blockiertGruende[0]
+    } else if (qual.qualifiziert && planung.score < PLANUNG_HANDELN_MIN_SCORE) {
+      handlungKurz = 'NICHT handeln — Planungs-Score ' + planung.score + ' < ' + PLANUNG_HANDELN_MIN_SCORE
     } else {
       handlungKurz = 'NICHT handeln — Qualitätsfilter'
     }
@@ -311,16 +381,30 @@ export function berechneTradeErfolg(
       backtestTrefferPct: kal.stat?.trefferPct ?? null,
       backtestStichprobe: kal.stat?.sampleSize ?? null,
       backtestHinweis: hinweis,
+      planungsScore: planung.score,
+      planungsLabel: planung.label,
+      planungsErwartungEur: planung.erwartungEur,
+      planungsBasisText: planung.basisText,
     }
   }
 
   const kal = berechneTrefferWahrscheinlichkeit(e, statsLookup)
   const istSchwach = e.ampel === 'rot' || e.gatesFailed.length > e.gatesPassed.length
+  const qual = bewerteTradeQualitaet(e, kal.pct, gates, kal.stat)
+  const { planung, istAktiv } = bauePlanung(e, kal.pct, kal.stat, qual.qualifiziert && !istSchwach)
+  let displayPct = kal.pct
+  if (istSchwach) {
+    if (kal.stat?.trefferPct != null) {
+      displayPct = Math.min(displayPct, kal.stat.trefferPct)
+    } else {
+      displayPct = Math.min(displayPct, berechneHeuristikTrefferPct(e) - 4)
+    }
+  }
   return {
-    pct: kal.pct,
-    label: istSchwach ? 'Niedrig' : erfolgLabel(kal.pct),
+    pct: displayPct,
+    label: istSchwach ? 'Niedrig' : erfolgLabel(displayPct),
     richtung: richtungOk,
-    istAktiv: false,
+    istAktiv: istAktiv && !istSchwach,
     handlungKurz: istSchwach
       ? 'NICHT handeln — Setup unvollständig'
       : 'NICHT handeln — ' + pbLabel + ' noch nicht aktiv',
@@ -328,6 +412,10 @@ export function berechneTradeErfolg(
     backtestTrefferPct: kal.stat?.trefferPct ?? null,
     backtestStichprobe: kal.stat?.sampleSize ?? null,
     backtestHinweis: backtestHinweisText(kal.stat),
+    planungsScore: planung.score,
+    planungsLabel: planung.label,
+    planungsErwartungEur: planung.erwartungEur,
+    planungsBasisText: planung.basisText,
   }
 }
 
@@ -351,6 +439,10 @@ export function ergaenzeScanMitErfolg(
         backtestTrefferPct: erfolg.backtestTrefferPct,
         backtestStichprobe: erfolg.backtestStichprobe,
         backtestHinweis: erfolg.backtestHinweis,
+        planungsScore: erfolg.planungsScore,
+        planungsLabel: erfolg.planungsLabel,
+        planungsErwartungEur: erfolg.planungsErwartungEur,
+        planungsBasisText: erfolg.planungsBasisText,
         tradeQualitaetOk: erfolg.istAktiv,
       },
     }

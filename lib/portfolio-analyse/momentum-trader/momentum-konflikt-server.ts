@@ -5,8 +5,8 @@
 import 'server-only'
 
 import {
-  KONFLIKT_MIN_DIFF_PCT,
-  TRADE_TOP_MIN_PCT,
+  PLANUNG_KONFLIKT_MIN_DIFF,
+  PLANUNG_TOP_MIN_SCORE,
 } from '@/lib/portfolio-analyse/momentum-trader/momentum-constants'
 import { MOMENTUM_TRADE_PLAYBOOKS } from '@/lib/portfolio-analyse/momentum-trader/momentum-playbook-registry'
 import type {
@@ -16,6 +16,10 @@ import type {
 
 function alsZahl(v: unknown): number {
   return typeof v === 'number' && Number.isFinite(v) ? v : 0
+}
+
+function planungsScore(e: MomentumScanEintrag): number {
+  return alsZahl(e.indikatoren.planungsScore)
 }
 
 function erfolgPct(e: MomentumScanEintrag): number {
@@ -55,12 +59,12 @@ export function loeseScanKonflikte(ergebnisse: MomentumScanEintrag[]): MomentumS
     const shorts = aktiv.filter((e) => richtung(e) === 'short')
     if (longs.length === 0 || shorts.length === 0) continue
 
-    const bestLong = longs.sort((a, b) => erfolgPct(b) - erfolgPct(a))[0]
-    const bestShort = shorts.sort((a, b) => erfolgPct(b) - erfolgPct(a))[0]
+    const bestLong = longs.sort((a, b) => planungsScore(b) - planungsScore(a))[0]
+    const bestShort = shorts.sort((a, b) => planungsScore(b) - planungsScore(a))[0]
     if (!bestLong || !bestShort) continue
 
-    const diff = Math.abs(erfolgPct(bestLong) - erfolgPct(bestShort))
-    if (diff < KONFLIKT_MIN_DIFF_PCT) {
+    const diff = Math.abs(planungsScore(bestLong) - planungsScore(bestShort))
+    if (diff < PLANUNG_KONFLIKT_MIN_DIFF) {
       konfliktKeys.add(bestLong.symbol + bestLong.playbook)
       konfliktKeys.add(bestShort.symbol + bestShort.playbook)
     }
@@ -82,16 +86,16 @@ export function loeseScanKonflikte(ergebnisse: MomentumScanEintrag[]): MomentumS
   })
 }
 
-/** Global nach Erfolgswahrscheinlichkeit sortieren, schwache ausblenden optional. */
+/** Global nach Planungs-Score sortieren. */
 export function sortiereScanGlobal(
   ergebnisse: MomentumScanEintrag[],
-  minPct = 0,
+  minScore = 0,
 ): MomentumScanEintrag[] {
   return [...ergebnisse]
-    .filter((e) => erfolgPct(e) >= minPct || e.ampel === 'grau')
+    .filter((e) => planungsScore(e) >= minScore || e.ampel === 'grau')
     .sort((a, b) => {
-      const pa = erfolgPct(a)
-      const pb = erfolgPct(b)
+      const pa = planungsScore(a)
+      const pb = planungsScore(b)
       if (pb !== pa) return pb - pa
       return b.score - a.score
     })
@@ -102,7 +106,7 @@ export function topTradeSetups(
   ergebnisse: MomentumScanEintrag[],
   max = 5,
 ): MomentumScanEintrag[] {
-  return sortiereScanGlobal(ergebnisse, TRADE_TOP_MIN_PCT)
+  return sortiereScanGlobal(ergebnisse, PLANUNG_TOP_MIN_SCORE)
     .filter((e) => e.indikatoren.erfolgIstAktiv === true && !e.indikatoren.konflikt)
     .slice(0, max)
 }

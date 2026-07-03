@@ -6,6 +6,7 @@ import {
   berechneRegimeGates,
   syncMomentumMarketRegime,
 } from '@/lib/portfolio-analyse/momentum-trader/momentum-regime-server'
+import { MOMENTUM_SCAN_MIT_KI_DEFAULT } from '@/lib/portfolio-analyse/momentum-trader/momentum-constants'
 import { scanMomentumWatchlist } from '@/lib/portfolio-analyse/momentum-trader/momentum-scan-server'
 import { ladeMomentumWatchlist } from '@/lib/portfolio-analyse/momentum-trader/momentum-watchlist-server'
 import { createSupabaseFuerRequest } from '@/lib/supabase-user'
@@ -30,34 +31,39 @@ export async function GET(req: Request) {
   const { res } = await authOder401(req)
   if (res) return res
 
-  const gespeichert = await ladeNeuestenMomentumScan()
-  if (!gespeichert) {
-    return NextResponse.json({
-      scanDate: heuteIsoUtc(),
-      regime: null,
-      ergebnisse: [],
-    })
-  }
+  try {
+    const gespeichert = await ladeNeuestenMomentumScan()
+    if (!gespeichert) {
+      return NextResponse.json({
+        scanDate: heuteIsoUtc(),
+        regime: null,
+        ergebnisse: [],
+      })
+    }
 
-  const regime = await ladeNeuestesMomentumRegime()
-  const regimeGates = regime ? berechneRegimeGates(regime) : null
-  const { ergaenzeScanMitErfolg } = await import(
-    '@/lib/portfolio-analyse/momentum-trader/momentum-trade-erfolg-server'
-  )
-  const { ladePlaybookStats, baueStatsLookup, wendePlaybookDeaktivierungAn } = await import(
-    '@/lib/portfolio-analyse/momentum-trader/momentum-playbook-stats-server'
-  )
-  const statsPaket = await ladePlaybookStats()
-  const statsLookup = baueStatsLookup(statsPaket.stats)
-  return NextResponse.json({
-    scanDate: gespeichert.scanDate,
-    regime: regimeGates,
-    ergebnisse: wendePlaybookDeaktivierungAn(
-      ergaenzeScanMitErfolg(gespeichert.ergebnisse, regimeGates, statsLookup),
-      statsLookup,
-    ),
-    playbookStats: statsPaket,
-  })
+    const regime = await ladeNeuestesMomentumRegime()
+    const regimeGates = regime ? berechneRegimeGates(regime) : null
+    const { ergaenzeScanMitErfolg } = await import(
+      '@/lib/portfolio-analyse/momentum-trader/momentum-trade-erfolg-server'
+    )
+    const { ladePlaybookStats, baueStatsLookup, wendePlaybookDeaktivierungAn } = await import(
+      '@/lib/portfolio-analyse/momentum-trader/momentum-playbook-stats-server'
+    )
+    const statsPaket = await ladePlaybookStats()
+    const statsLookup = baueStatsLookup(statsPaket.stats)
+    return NextResponse.json({
+      scanDate: gespeichert.scanDate,
+      regime: regimeGates,
+      ergebnisse: wendePlaybookDeaktivierungAn(
+        ergaenzeScanMitErfolg(gespeichert.ergebnisse, regimeGates, statsLookup),
+        statsLookup,
+      ),
+      playbookStats: statsPaket,
+    })
+  } catch (e) {
+    console.error('[api/momentum-trader/scan] GET', e)
+    return NextResponse.json({ fehler: String(e) }, { status: 500 })
+  }
 }
 
 export async function POST(req: Request) {
@@ -73,9 +79,10 @@ export async function POST(req: Request) {
   }
 
   try {
-    let mitKi = true
+    let mitKi = MOMENTUM_SCAN_MIT_KI_DEFAULT
     try {
       const body = ((await req.json()) ?? {}) as Record<string, unknown>
+      if (body.mitKi === true) mitKi = true
       if (body.mitKi === false) mitKi = false
     } catch {
       /* leerer Body ok */
