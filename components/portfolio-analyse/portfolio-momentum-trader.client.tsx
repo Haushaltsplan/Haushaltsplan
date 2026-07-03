@@ -1357,6 +1357,12 @@ function ScanKarte({
   const stop = e.indikatoren.stopPrice
   const target = e.indikatoren.targetPrice
   const entry = e.indikatoren.entryPrice
+  const stopBasis =
+    typeof e.indikatoren.stopBasis === 'string' ? e.indikatoren.stopBasis : null
+  const targetBasis =
+    typeof e.indikatoren.targetBasis === 'string' ? e.indikatoren.targetBasis : null
+  const rewardRisk =
+    typeof e.indikatoren.rewardRisk === 'number' ? e.indikatoren.rewardRisk : null
   const planungScoreVal =
     typeof e.indikatoren.planungsScore === 'number' ? e.indikatoren.planungsScore : 0
   const planungLabel =
@@ -1507,10 +1513,13 @@ function ScanKarte({
                   <strong>{richtung === 'long' ? 'LONG' : 'SHORT'} Market</strong> eröffnen (~{String(entry)})
                 </li>
                 <li>
-                  <strong>Stop-Loss sofort</strong> auf {String(stop)} setzen (technischer Stop aus ATR)
+                  <strong>Stop-Loss sofort</strong> auf {String(stop)} setzen
+                  {stopBasis ? ' (' + stopBasis + ')' : ''}
                 </li>
                 <li>
                   <strong>Take-Profit</strong> auf {String(target)} setzen
+                  {targetBasis ? ' (' + targetBasis + ')' : ''}
+                  {rewardRisk != null ? ' · R/R ' + rewardRisk + ':1' : ''}
                 </li>
                 <li>Stop nicht nachziehen · bei Ampel rot sofort schließen</li>
               </ol>
@@ -1531,13 +1540,22 @@ function ScanKarte({
                 </span>
               )}
               {stop != null && (
-                <span className="rounded-lg bg-rose-500/10 px-2 py-1 text-rose-200 ring-1 ring-rose-500/20">
+                <span
+                  className="rounded-lg bg-rose-500/10 px-2 py-1 text-rose-200 ring-1 ring-rose-500/20"
+                  title={stopBasis ?? undefined}
+                >
                   Stop {String(stop)}
+                  {stopBasis ? ' · ' + stopBasis : ''}
                 </span>
               )}
               {target != null && (
-                <span className="rounded-lg bg-emerald-500/10 px-2 py-1 text-emerald-200 ring-1 ring-emerald-500/20">
+                <span
+                  className="rounded-lg bg-emerald-500/10 px-2 py-1 text-emerald-200 ring-1 ring-emerald-500/20"
+                  title={targetBasis ?? undefined}
+                >
                   Ziel {String(target)}
+                  {targetBasis ? ' · ' + targetBasis : ''}
+                  {rewardRisk != null ? ' (' + rewardRisk + ':1)' : ''}
                 </span>
               )}
             </div>

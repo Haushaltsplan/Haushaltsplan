@@ -24,8 +24,6 @@ import type {
   MomentumScanEintrag,
 } from '@/lib/portfolio-analyse/momentum-trader/momentum-trader-types'
 
-const PRE_RUN_ATR_STOP = 1.15
-
 function laufVorEarningsPct(bars: MomentumBarDaily[], tage = 20): number | null {
   if (bars.length < tage + 2) return null
   const last = bars[bars.length - 1].close
@@ -152,7 +150,7 @@ export function bewerteEarningsPreRun(
 
   const pos =
     richtung && atr != null
-      ? berechnePositionsVorschlag(lastBar.close, atr * (PRE_RUN_ATR_STOP / 1.5), richtung)
+      ? berechnePositionsVorschlag(lastBar.close, atr, richtung, { bars, barIdx: lastIdx })
       : null
 
   const exitBis =
@@ -188,7 +186,14 @@ export function bewerteEarningsPreRun(
       entryPrice: pos?.entryPrice ?? lastBar.close,
       stopPrice: pos?.stopPrice ?? null,
       targetPrice: pos?.targetPrice ?? null,
-      ...cfdIndikatorenAusLevels(pos?.entryPrice ?? lastBar.close, pos?.stopPrice ?? null, pos?.targetPrice ?? null),
+      stopBasis: pos?.stopBasis ?? null,
+      targetBasis: pos?.targetBasis ?? null,
+      rewardRisk: pos?.rewardRisk ?? null,
+      ...cfdIndikatorenAusLevels(
+        pos?.entryPrice ?? lastBar.close,
+        pos?.stopPrice ?? null,
+        pos?.targetPrice ?? null,
+      ),
       hinweis:
         'Pre-Earnings-Trade: höheres Event-Risiko — nur mit Stop, Exit vor Zahlen.',
     },

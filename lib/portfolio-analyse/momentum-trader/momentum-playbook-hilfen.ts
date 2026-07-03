@@ -12,6 +12,7 @@ import type {
   MomentumRegimeGates,
   MomentumRichtung,
   MomentumScanEintrag,
+  MomentumTechSnapshot,
 } from '@/lib/portfolio-analyse/momentum-trader/momentum-trader-types'
 
 export function ampelAusScore(score: number, gatesFailed: string[], kritisch = false): MomentumAmpel {
@@ -44,21 +45,35 @@ export function baueScanEintrag(input: {
   gatesPassed: string[]
   gatesFailed: string[]
   indikatoren: Record<string, number | string | boolean | null>
+  bars?: MomentumBarDaily[]
   bar?: MomentumBarDaily
   atr?: number | null
+  tech?: MomentumTechSnapshot | null
+  /** Reaktionsbar bei Gap/Earnings — Stop über/unter deren Extrem. */
+  reactionBar?: MomentumBarDaily | null
+  barIdx?: number
   richtung?: MomentumRichtung | null
   entryPrice?: number | null
   kritisch?: boolean
 }): MomentumScanEintrag {
   const richtung = input.richtung ?? null
-  const bar = input.bar
+  const bars = input.bars
+  const bar = input.bar ?? (bars && bars.length > 0 ? bars[bars.length - 1] : undefined)
   const atr = input.atr ?? null
   const entry =
     input.entryPrice ??
     (bar != null ? (richtung === 'long' ? bar.close : bar.open) : null)
+  const barIdx =
+    input.barIdx ??
+    (bars && bar ? bars.findIndex((b) => b.handelstag === bar.handelstag) : undefined)
   const pos =
     richtung && atr != null && entry != null
-      ? berechnePositionsVorschlag(entry, atr, richtung)
+      ? berechnePositionsVorschlag(entry, atr, richtung, {
+          bars,
+          tech: input.tech,
+          barIdx: barIdx != null && barIdx >= 0 ? barIdx : undefined,
+          reactionBar: input.reactionBar,
+        })
       : null
   const cfd =
     pos != null
@@ -82,6 +97,9 @@ export function baueScanEintrag(input: {
       stopPrice: pos?.stopPrice ?? null,
       targetPrice: pos?.targetPrice ?? null,
       stopAbstandPct: pos?.stopAbstandPct ?? null,
+      stopBasis: pos?.stopBasis ?? null,
+      targetBasis: pos?.targetBasis ?? null,
+      rewardRisk: pos?.rewardRisk ?? null,
       ...cfd,
       atr,
     },

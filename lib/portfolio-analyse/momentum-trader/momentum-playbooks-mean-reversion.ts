@@ -94,7 +94,9 @@ function bewerteOversoldBounce(
     score,
     gatesPassed,
     gatesFailed,
+    bars,
     bar: bars[bars.length - 1],
+    tech,
     atr: tech.atr,
     richtung,
     indikatoren: {
@@ -150,7 +152,9 @@ function bewerteOverboughtFade(
     score,
     gatesPassed,
     gatesFailed,
+    bars,
     bar: bars[bars.length - 1],
+    tech,
     atr: tech.atr,
     richtung,
     indikatoren: {
@@ -207,7 +211,9 @@ function bewerteRangeFade(
     score,
     gatesPassed,
     gatesFailed,
+    bars,
     bar: bars[bars.length - 1],
+    tech,
     atr: tech.atr,
     richtung,
     indikatoren: {

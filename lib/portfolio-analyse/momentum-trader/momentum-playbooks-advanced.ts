@@ -100,7 +100,9 @@ export function bewerteInsiderCluster(
     score,
     gatesPassed,
     gatesFailed,
+    bars,
     bar: bars[bars.length - 1],
+    tech,
     atr: tech.atr,
     richtung,
     indikatoren: {
@@ -191,7 +193,9 @@ export function bewerteShortSqueezeSetup(
     score,
     gatesPassed,
     gatesFailed,
+    bars,
     bar: bars[bars.length - 1],
+    tech,
     atr: tech.atr,
     richtung,
     indikatoren: {

@@ -71,7 +71,9 @@ function bewerteSectorRotationLong(
     score,
     gatesPassed,
     gatesFailed,
+    bars,
     bar: bars[bars.length - 1],
+    tech,
     atr: tech.atr,
     richtung,
     indikatoren: {
@@ -127,7 +129,9 @@ function bewerteMarketRegimeLong(
     score,
     gatesPassed,
     gatesFailed,
+    bars,
     bar: bars[bars.length - 1],
+    tech,
     atr: tech.atr,
     richtung,
     indikatoren: {
@@ -184,7 +188,9 @@ function bewerteMarketRegimeShort(
     score,
     gatesPassed,
     gatesFailed,
+    bars,
     bar: bars[bars.length - 1],
+    tech,
     atr: tech.atr,
     richtung,
     indikatoren: {

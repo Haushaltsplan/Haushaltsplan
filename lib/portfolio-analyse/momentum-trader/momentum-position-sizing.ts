@@ -1,5 +1,10 @@
 import { ATR_STOP_FAKTOR, REWARD_RISK_RATIO } from '@/lib/portfolio-analyse/momentum-trader/momentum-constants'
-import type { MomentumRichtung } from '@/lib/portfolio-analyse/momentum-trader/momentum-trader-types'
+import { berechneStrukturTradeLevels } from '@/lib/portfolio-analyse/momentum-trader/momentum-trade-levels-server'
+import type {
+  MomentumBarDaily,
+  MomentumRichtung,
+  MomentumTechSnapshot,
+} from '@/lib/portfolio-analyse/momentum-trader/momentum-trader-types'
 
 export type MomentumPositionsVorschlag = {
   entryPrice: number
@@ -7,19 +12,55 @@ export type MomentumPositionsVorschlag = {
   targetPrice: number
   stopAbstandPct: number
   richtung: MomentumRichtung
+  stopBasis?: string
+  targetBasis?: string
+  rewardRisk?: number
+}
+
+export type PositionsVorschlagOpts = {
+  bars?: MomentumBarDaily[]
+  tech?: MomentumTechSnapshot | null
+  barIdx?: number
+  reactionBar?: MomentumBarDaily | null
 }
 
 function runde4(n: number): number {
   return Math.round(n * 10_000) / 10_000
 }
 
-/** Stop/Ziel aus ATR — technische Levels, kein €-Risiko-Sizing. */
+/** Stop/Ziel — bevorzugt Struktur (Kerzen/MA/Range), sonst ATR-Fallback. */
 export function berechnePositionsVorschlag(
   entryPrice: number,
   atr: number,
   richtung: MomentumRichtung,
+  barsOrOpts?: MomentumBarDaily[] | PositionsVorschlagOpts,
+  tech?: MomentumTechSnapshot | null,
+  barIdx?: number,
 ): MomentumPositionsVorschlag | null {
   if (!Number.isFinite(entryPrice) || entryPrice <= 0 || !Number.isFinite(atr) || atr <= 0) return null
+
+  let bars: MomentumBarDaily[] | undefined
+  let reactionBar: MomentumBarDaily | null | undefined
+  let techSnap = tech
+  let idx = barIdx
+  if (Array.isArray(barsOrOpts)) {
+    bars = barsOrOpts
+  } else if (barsOrOpts) {
+    bars = barsOrOpts.bars
+    techSnap = barsOrOpts.tech ?? tech
+    idx = barsOrOpts.barIdx ?? barIdx
+    reactionBar = barsOrOpts.reactionBar
+  }
+
+  if (bars && bars.length >= 25) {
+    const struktur = berechneStrukturTradeLevels(entryPrice, richtung, bars, {
+      atr,
+      tech: techSnap,
+      barIdx: idx,
+      reactionBar,
+    })
+    if (struktur) return struktur
+  }
 
   const stopDist = atr * ATR_STOP_FAKTOR
   const stopPrice =
@@ -35,6 +76,9 @@ export function berechnePositionsVorschlag(
     targetPrice,
     stopAbstandPct,
     richtung,
+    stopBasis: 'ATR × ' + ATR_STOP_FAKTOR + ' (wenig Bars)',
+    targetBasis: REWARD_RISK_RATIO + ':1 R/R',
+    rewardRisk: REWARD_RISK_RATIO,
   }
 }
 

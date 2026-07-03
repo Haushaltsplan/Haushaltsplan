@@ -99,9 +99,12 @@ export function bewerteNewsGap(
     score,
     gatesPassed,
     gatesFailed,
+    bars,
     bar: bars[bars.length - 1],
+    tech,
     atr: tech.atr,
     richtung,
+    reactionBar: bars[bars.length - 1],
     indikatoren: {
       gapPct: gap,
       newsHeadline: news.headline,
@@ -165,7 +168,9 @@ export function bewerteAnalystUpgrade(
     score,
     gatesPassed,
     gatesFailed,
+    bars,
     bar: bars[bars.length - 1],
+    tech,
     atr: tech.atr,
     richtung,
     indikatoren: {

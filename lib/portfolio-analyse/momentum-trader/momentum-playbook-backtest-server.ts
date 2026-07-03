@@ -212,7 +212,11 @@ function simuliereEarningsTrade(
   atr: number,
   richtung: MomentumRichtung,
 ): 'win' | 'loss' | 'timeout' | null {
-  const pos = berechnePositionsVorschlag(entry, atr, richtung)
+  const pos = berechnePositionsVorschlag(entry, atr, richtung, {
+    bars: bars.slice(0, entryIdx + 1),
+    barIdx: entryIdx,
+    reactionBar: bars[entryIdx],
+  })
   if (!pos || entryIdx + BACKTEST_HOLD_TAGE >= bars.length) return null
   return simuliereTradeOutcome(
     bars,

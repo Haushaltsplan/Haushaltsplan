@@ -218,7 +218,13 @@ function bewerteGapFade(
   score = Math.min(100, Math.round(score))
 
   const pos =
-    richtung && atr != null ? berechnePositionsVorschlag(bar.open, atr, richtung) : null
+    richtung && atr != null
+      ? berechnePositionsVorschlag(bar.open, atr, richtung, {
+          bars: bars.slice(0, ctx.barIdx + 1),
+          barIdx: ctx.barIdx,
+          reactionBar: bar,
+        })
+      : null
 
   return {
     scanDate: heute,
@@ -247,6 +253,9 @@ function bewerteGapFade(
       stopPrice: pos?.stopPrice ?? null,
       targetPrice: pos?.targetPrice ?? null,
       stopAbstandPct: pos?.stopAbstandPct ?? null,
+      stopBasis: pos?.stopBasis ?? null,
+      targetBasis: pos?.targetBasis ?? null,
+      rewardRisk: pos?.rewardRisk ?? null,
       ...cfdIndikatorenAusLevels(
         pos?.entryPrice ?? bar.open,
         pos?.stopPrice ?? null,
@@ -356,7 +365,13 @@ function bewerteEarningsMomentum(
   score = Math.min(100, Math.round(score))
 
   const pos =
-    richtung && atr != null ? berechnePositionsVorschlag(bar.open, atr, richtung) : null
+    richtung && atr != null
+      ? berechnePositionsVorschlag(bar.close, atr, richtung, {
+          bars: bars.slice(0, ctx.barIdx + 1),
+          barIdx: ctx.barIdx,
+          reactionBar: bar,
+        })
+      : null
 
   return {
     scanDate: heute,
@@ -384,6 +399,9 @@ function bewerteEarningsMomentum(
       entryPrice: pos?.entryPrice ?? bar.close,
       stopPrice: pos?.stopPrice ?? null,
       targetPrice: pos?.targetPrice ?? null,
+      stopBasis: pos?.stopBasis ?? null,
+      targetBasis: pos?.targetBasis ?? null,
+      rewardRisk: pos?.rewardRisk ?? null,
       ...cfdIndikatorenAusLevels(
         pos?.entryPrice ?? bar.close,
         pos?.stopPrice ?? null,
@@ -490,7 +508,13 @@ function bewerteIpoFade(
   if (gatesFailed.length === 0) score += 15
   score = Math.min(100, Math.round(score))
 
-  const pos = atr != null ? berechnePositionsVorschlag(lastBar.close, atr, richtung) : null
+  const pos =
+    atr != null
+      ? berechnePositionsVorschlag(lastBar.close, atr, richtung, {
+          bars,
+          barIdx: lastIdx,
+        })
+      : null
 
   return {
     scanDate: heute,
@@ -513,6 +537,9 @@ function bewerteIpoFade(
       entryPrice: pos?.entryPrice ?? lastBar.close,
       stopPrice: pos?.stopPrice ?? null,
       targetPrice: pos?.targetPrice ?? null,
+      stopBasis: pos?.stopBasis ?? null,
+      targetBasis: pos?.targetBasis ?? null,
+      rewardRisk: pos?.rewardRisk ?? null,
       ...cfdIndikatorenAusLevels(
         pos?.entryPrice ?? lastBar.close,
         pos?.stopPrice ?? null,
