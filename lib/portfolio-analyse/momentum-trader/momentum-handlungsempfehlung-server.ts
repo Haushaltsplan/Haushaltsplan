@@ -8,7 +8,6 @@ import {
 import { istMomentumPreIpoEintrag } from '@/lib/portfolio-analyse/momentum-trader/momentum-pseudo-isin'
 import { berechneRegimeGates } from '@/lib/portfolio-analyse/momentum-trader/momentum-regime-server'
 import {
-  MOMENTUM_PRE_EVENT_PLAYBOOKS,
   MOMENTUM_TRADE_PLAYBOOKS,
 } from '@/lib/portfolio-analyse/momentum-trader/momentum-playbook-registry'
 import { sammleHandlungssignale } from '@/lib/portfolio-analyse/momentum-trader/momentum-handlungssignal-server'
@@ -23,7 +22,6 @@ import type {
 } from '@/lib/portfolio-analyse/momentum-trader/momentum-trader-types'
 
 const TRADE_PLAYBOOKS = new Set(MOMENTUM_TRADE_PLAYBOOKS)
-const PRE_EVENT_PLAYBOOKS = new Set(MOMENTUM_PRE_EVENT_PLAYBOOKS)
 
 function regimeText(regime: MomentumMarketRegime | null): string {
   if (!regime) return 'Regime unbekannt — Pipeline ausführen.'
@@ -42,7 +40,10 @@ function regimeText(regime: MomentumMarketRegime | null): string {
 function tradeSetupsAusScan(scan: MomentumScanPaket | null) {
   return (
     scan?.ergebnisse.filter(
-      (e) => TRADE_PLAYBOOKS.has(e.playbook) && (e.ampel === 'gruen' || e.ampel === 'gelb'),
+      (e) =>
+        TRADE_PLAYBOOKS.has(e.playbook) &&
+        e.indikatoren.erfolgIstAktiv === true &&
+        (e.ampel === 'gruen' || e.ampel === 'gelb'),
     ) ?? []
   )
 }
@@ -133,85 +134,65 @@ export function generiereMomentumHandlungsempfehlung(input: {
       continue
     }
 
+    const symbolSetup = setups.find((s) => s.symbol === sym)
+    if (symbolSetup) {
+      const pct =
+        typeof symbolSetup.indikatoren.erfolgWahrscheinlichkeitPct === 'number'
+          ? symbolSetup.indikatoren.erfolgWahrscheinlichkeitPct
+          : null
+      const r = symbolSetup.indikatoren.richtung
+      positionen.push({
+        symbol: sym,
+        name: e.name,
+        aktion: 'trade_pruefen',
+        prioritaet: 98,
+        text:
+          sym +
+          ': JETZT — ' +
+          String(symbolSetup.indikatoren.playbookLabel ?? symbolSetup.playbook) +
+          ' ' +
+          (r === 'long' ? 'LONG' : r === 'short' ? 'SHORT' : '') +
+          (pct != null ? ' · ' + pct + '%' : '') +
+          '. Stop ' +
+          String(symbolSetup.indikatoren.stopPrice ?? '—') +
+          ', Ziel ' +
+          String(symbolSetup.indikatoren.targetPrice ?? '—') +
+          '. Max. 10 €.',
+      })
+      continue
+    }
+
     if (!n || n.tageBis == null) {
-      text += 'Kein Earnings-Termin in der DB — Earnings-Sync ausführen.'
-      aktion = 'sync'
-      prioritaet = 70
+      text += 'Tages-Scan läuft — Filter „Top-Trades“ für handelbare Signale.'
+      aktion = 'beobachten'
+      prioritaet = 25
     } else if (n.tageBis === 0) {
-      aktion = 'vorbereiten'
-      prioritaet = 95
-      text +=
-        'Earnings HEUTE (' +
-        n.zeitLabel +
-        '). Nach US-Schluss: Kurse syncen + Scan. Gap-Fade/Momentum erst nach Reaktion.'
+      aktion = 'beobachten'
+      prioritaet = 40
+      text += 'Earnings heute — optional; Tages-Signale haben Vorrang wenn „Jetzt“-Badge aktiv.'
     } else if (n.tageBis === 1) {
-      aktion = 'vorbereiten'
-      prioritaet = 85
-      text += 'Earnings morgen (' + n.zeitLabel + '). Heute: keine neue Position — Plan für Reaktionstag.'
+      aktion = 'beobachten'
+      prioritaet = 35
+      text += 'Earnings morgen — nur handeln wenn Top-Trade aktiv, sonst warten.'
     } else if (n.tageBis >= EARNINGS_VORLAUF_MIN && n.tageBis <= EARNINGS_VORLAUF_MAX) {
-      aktion = 'vorbereiten'
-      prioritaet = 80
-      const preEvent = input.scan?.ergebnisse.find(
-        (s) => s.symbol === sym && PRE_EVENT_PLAYBOOKS.has(s.playbook),
-      )
+      aktion = 'beobachten'
+      prioritaet = 30
       text +=
         'Earnings in ' +
         n.tageBis +
-        ' Tagen — Pre-Event-Katalysator aktiv. Median-Gap: ' +
-        (e.medianGapPct != null ? e.medianGapPct.toFixed(1) + '%' : 'Backfill nötig') +
-        '.'
-      if (preEvent) {
-        const stufe = preEvent.indikatoren.vorbereitungStufe
-        if (stufe === 'hoch') {
-          text += ' Hohes Vorbereitungs-Potenzial — Szenario-Plan im Scan (Filter Pre-Event).'
-          prioritaet = 88
-        } else {
-          text += ' Szenario-Plan unter Scan → Pre-Event.'
-        }
-      } else {
-        text += ' Scan ausführen für Szenario-Plan.'
-      }
+        ' Tagen (optional). Fokus: tägliche Signale — Filter Top-Trades.'
     } else if (n.tageBis >= 0 && n.tageBis < EARNINGS_VORLAUF_MIN) {
-      aktion = 'vorbereiten'
-      prioritaet = 90
-      text +=
-        'Earnings in ' +
-        n.tageBis +
-        ' Tagen — unmittelbar bevorstehend. Pre-Event-Szenarien prüfen, nach Zahlen sofort Sync + Scan.'
+      aktion = 'beobachten'
+      prioritaet = 35
+      text += 'Earnings bald — Tages-Setup bevorzugen, Earnings nur bei aktivem Scan-Signal.'
     } else if (n.tageBis > EARNINGS_VORLAUF_MAX) {
       aktion = 'beobachten'
       prioritaet = 20
-      text +=
-        'Earnings in ' +
-        n.tageBis +
-        ' Tagen (' +
-        n.datum +
-        '). Noch kein Trade — ab ' +
-        EARNINGS_VORLAUF_MIN +
-        ' Tage vorher wird Vorlauf aktiv.'
+      text += 'Earnings in ' + n.tageBis + ' Tagen (' + n.datum + ').'
     } else {
-      text += 'Earnings-Termin in der Vergangenheit — auf nächstes Quartal warten oder Sync.'
-      aktion = 'sync'
-      prioritaet = 40
-    }
-
-    if (e.medianGapPct != null && e.medianGapPct >= 5) {
-      text += ' Historisch volatil (Median ' + e.medianGapPct.toFixed(1) + '% Gap).'
-    }
-
-    const symbolSetup = setups.find((s) => s.symbol === sym)
-    if (symbolSetup) {
-      aktion = 'trade_pruefen'
-      prioritaet = 90
-      text =
-        sym +
-        ': Aktives Setup — ' +
-        String(symbolSetup.indikatoren.playbookLabel ?? symbolSetup.playbook) +
-        ', Score ' +
-        symbolSetup.score +
-        ', Ampel ' +
-        symbolSetup.ampel +
-        '. Max. 10 € Risiko, Regeln prüfen.'
+      text += 'Earnings-Termin veraltet — Sync optional.'
+      aktion = 'beobachten'
+      prioritaet = 20
     }
 
     positionen.push({ symbol: sym, name: e.name, aktion, prioritaet, text })
@@ -219,26 +200,18 @@ export function generiereMomentumHandlungsempfehlung(input: {
 
   positionen.sort((a, b) => b.prioritaet - a.prioritaet)
 
-  const preEventAktiv =
-    input.scan?.ergebnisse.some(
-      (e) => PRE_EVENT_PLAYBOOKS.has(e.playbook) && e.ampel === 'gelb',
-    ) ?? false
-
   let zusammenfassung: string
   if (setups.length > 0) {
     zusammenfassung =
       setups.length +
-      ' Trade-Setup(s) aktiv — nach Wahrscheinlichkeit sortiert (Gap, Trend, Earnings). Max. 10 € Risiko.'
-  } else if (preEventAktiv) {
-    zusammenfassung =
-      'Pre-Event-Katalysator aktiv — Szenario-Plan unter Scan → „Pre-Event“. Kein Einstieg vor den Zahlen.'
+      ' Top-Trade(s) JETZT handelbar — Stop/Ziel aus Scan übernehmen. Max. 10 € Risiko. Kein Trade ohne „Jetzt“-Badge.'
   } else if (datenHinweise.length > 0) {
     zusammenfassung =
       'Noch kein Trade-Setup über Schwelle — „Alles aktualisieren“ für frische Kurse und Scan. ' +
       datenHinweise[0]
   } else {
     zusammenfassung =
-      'Kein Trade über Mindest-Wahrscheinlichkeit — Watchlist wird täglich auf Gap, Trend und Earnings geprüft.'
+      'Kein Top-Trade aktiv — nur handeln wenn Badge „Jetzt“ erscheint. Täglicher Scan prüft Gap, Trend, Momentum.'
   }
 
   const offen = input.trades.filter((t) => t.exitPrice == null)
@@ -253,19 +226,11 @@ export function generiereMomentumHandlungsempfehlung(input: {
     zusammenfassung =
       topSignal.symbol +
       ': ' +
-      (topSignal.richtung === 'long' ? 'Long' : topSignal.richtung === 'short' ? 'Short' : 'Warten') +
-      ' (' +
+      (topSignal.richtung === 'long' ? 'LONG' : 'SHORT') +
+      ' jetzt (' +
       topSignal.wahrscheinlichkeitPct +
-      '%) — ' +
+      '% Backtest-Chance) — ' +
       topSignal.kurztext
-  } else if (topSignal) {
-    zusammenfassung =
-      topSignal.symbol +
-      ': voraussichtlich ' +
-      (topSignal.richtung === 'long' ? 'Long' : topSignal.richtung === 'short' ? 'Short' : 'Warten') +
-      ' (' +
-      topSignal.wahrscheinlichkeitPct +
-      '%) — noch kein Einstieg'
   }
 
   return {

@@ -152,7 +152,8 @@ export function baueHandlungsplanAusScan(
   const atrOk =
     alsZahl(e.indikatoren.atr, 0) > 0 ||
     alsZahl(e.indikatoren.atr14, 0) > 0 ||
-    alsZahl(e.indikatoren.atrImpliedMovePct, 0) > 0
+    alsZahl(e.indikatoren.atrImpliedMovePct, 0) > 0 ||
+    (entry > 0 && stop > 0 && Math.abs(entry - stop) > 0)
   if (entry <= 0 || stop <= 0 || target <= 0 || !atrOk) return null
 
   const riskEur = alsZahl(e.indikatoren.riskEur, MOMENTUM_DEFAULT_RISK_EUR)
@@ -165,7 +166,7 @@ export function baueHandlungsplanAusScan(
   const zeitfenster =
     e.playbook === 'earnings_pre_run'
       ? 'Jetzt bis spätestens vor Earnings schließen' + (exitBis ? ' (' + exitBis + ')' : '')
-      : earningsZeitfenster(timeBmo, 0)
+      : 'Jetzt — aktives Tages-Signal (US-Session 15:30–22:00 MEZ)'
 
   const schritte: MomentumHandlungsschritt[] = []
   const nichtTun: string[] = [

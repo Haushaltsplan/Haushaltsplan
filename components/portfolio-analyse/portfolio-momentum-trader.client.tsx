@@ -452,8 +452,8 @@ function HandlungsempfehlungPanel({
             <p className="mt-2 text-2xl font-black tracking-tight text-amber-200">WARTEN</p>
             <p className="mt-2 text-sm text-[var(--app-text-muted)]">
               {brauchtSync
-                ? 'Daten unvollständig — Pipeline ausführen für konkrete Long/Short-Anweisung.'
-                : 'Kein aktives Setup — Pre-Event vorbereiten oder Reaktion nach Earnings abwarten.'}
+                ? 'Daten unvollständig — „Alles aktualisieren“, dann Filter Top-Trades.'
+                : 'Kein Top-Trade aktiv — NICHT handeln. Warten bis Badge „Jetzt“ + grüner Ring erscheint.'}
             </p>
           </div>
           <WahrscheinlichkeitsRing pct={0} />
@@ -1312,6 +1312,8 @@ function ScanKarte({
     typeof e.indikatoren.erfolgLabel === 'string' ? e.indikatoren.erfolgLabel : null
   const backtestHinweis =
     typeof e.indikatoren.backtestHinweis === 'string' ? e.indikatoren.backtestHinweis : null
+  const erfolgBasisText =
+    typeof e.indikatoren.erfolgBasisText === 'string' ? e.indikatoren.erfolgBasisText : null
   const istAktiv = e.indikatoren.erfolgIstAktiv === true
   const pausiert = e.indikatoren.playbookDeaktiviert === true
   const pausiertGrund =
@@ -1384,12 +1386,41 @@ function ScanKarte({
 
           {erfolgLabel && erfolgPct > 0 ? (
             <p className="mt-1 text-[11px] text-[var(--app-text-muted)]">
-              Erfolgswahrscheinlichkeit: <span className="font-medium text-teal-300">{erfolgLabel}</span>
+              Erfolgswahrscheinlichkeit: <span className="font-medium text-teal-300">{erfolgPct}%</span>
+              {' · '}
+              <span className="font-medium">{erfolgLabel}</span>
+              {erfolgBasisText ? (
+                <span className="block mt-0.5 text-[10px] text-[var(--app-text-muted)]">Basis: {erfolgBasisText}</span>
+              ) : null}
               {backtestHinweis ? (
                 <span className="text-[var(--app-text-muted)]"> · Backtest {backtestHinweis}</span>
               ) : null}
             </p>
           ) : null}
+
+          {istAktiv && entry != null && stop != null && target != null && (
+            <div className="mt-3 rounded-lg border border-teal-500/25 bg-teal-500/5 p-3 text-[11px] leading-relaxed text-[var(--app-text)]">
+              <p className="font-semibold text-teal-200">So handelst du dieses Signal:</p>
+              <ol className="mt-2 list-decimal space-y-1 pl-4">
+                <li>
+                  <strong>{richtung === 'long' ? 'LONG' : 'SHORT'} Market</strong> eröffnen (~{String(entry)})
+                </li>
+                <li>
+                  <strong>Stop-Loss sofort</strong> auf {String(stop)} setzen (max. 10 € Verlust)
+                </li>
+                <li>
+                  <strong>Take-Profit</strong> auf {String(target)} setzen
+                </li>
+                <li>Stop nicht nachziehen · bei Ampel rot sofort schließen</li>
+              </ol>
+            </div>
+          )}
+
+          {!istAktiv && kannTrade && (
+            <p className="mt-2 text-[11px] font-medium text-amber-300">
+              Noch nicht handeln — Qualitätsfilter nicht erfüllt. Nur Signale mit „Jetzt“-Badge.
+            </p>
+          )}
 
           {(entry != null || stop != null || target != null) && (
             <div className="mt-3 flex flex-wrap gap-2 text-[11px] tabular-nums">
@@ -1463,14 +1494,14 @@ function ScanKarte({
         <MiniErfolgRing pct={erfolgPct} />
       </div>
 
-      {kannTrade && (
+      {istAktiv && kannTrade && (
         <button
           type="button"
           disabled={tradeLaden}
           onClick={() => onTrade(e)}
           className="mt-3 w-full rounded-lg bg-teal-500/15 px-3 py-2 text-xs font-medium text-teal-300 ring-1 ring-teal-500/30 hover:bg-teal-500/25 disabled:opacity-50 sm:w-auto"
         >
-          {tradeLaden ? 'Speichern …' : 'Im Journal erfassen (10 €)'}
+          {tradeLaden ? 'Speichern …' : 'Im Journal erfassen (10 € Risiko)'}
         </button>
       )}
     </li>
@@ -2170,7 +2201,7 @@ export function MomentumTraderClient() {
                   ['katalysator', 'Katalysator'],
                   ['earnings', 'Earnings'],
                   ['ipo', 'IPO'],
-                  ['pre_event', 'Pre-Event'],
+                  ['pre_event', 'Earnings (opt.)'],
                   ['alle', 'Alle'],
                 ] as const
               ).map(([key, label]) => (

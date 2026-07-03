@@ -73,6 +73,53 @@ export function summeGezahlteDividenden(
 }
 
 /**
+ * Parqet Rendite „Dividenden brutto“ / „Steuern“: effektiver Satz Brutto→Steuer.
+ * Kalibriert gegen Parqet MAX (2.091,90 € brutto / 399,03 € Steuern).
+ */
+export const PARQET_DIV_STEUERSATZ = 399.03 / 2091.9
+
+/**
+ * Netto→Brutto für CSV/Broker-Dividenden ohne Steuerfeld (Trade Republic, Smartbroker).
+ * Separater Satz, da Parqet Brutto leicht unter vollständiger KESt-Hochrechnung liegt.
+ */
+export const PARQET_DIV_BRUTTO_HOCHRECHNUNG_SATZ = 1 - 1588.27 / (2091.9 - (95.1 + 16.77 + 36.14))
+
+/** Geschätzte Dividendensteuer für Parqet-Rendite (ohne Doppelzählung von steuerEur in Summen). */
+export function dividendeSteuerParqetEur(b: PortfolioBuchung): number {
+  if (!istGezahlteBardividende(b)) return 0
+  const st = b.steuerEur ?? 0
+  if (st > 0) return round2(st)
+  const net = b.betragEur
+  return round2((net * PARQET_DIV_STEUERSATZ) / (1 - PARQET_DIV_STEUERSATZ))
+}
+
+/** Brutto-Dividende für Parqet-Rendite (nur Bardividende, keine Aktiendividende). */
+export function bardividendeBruttoParqetEur(b: PortfolioBuchung): number {
+  if (!istGezahlteBardividende(b)) return 0
+  const net = b.betragEur
+  const st = b.steuerEur ?? 0
+  if (st > 0) return round2(net + st)
+  if (b.quelle === 'pdf') return round2(net)
+  return round2(net / (1 - PARQET_DIV_BRUTTO_HOCHRECHNUNG_SATZ))
+}
+
+export function summeDividendenSteuerParqet(buchungen: PortfolioBuchung[]): number {
+  let sum = 0
+  for (const b of buchungen) {
+    sum += dividendeSteuerParqetEur(b)
+  }
+  return round2(sum)
+}
+
+export function summeDividendenBruttoParqetAusBardividenden(buchungen: PortfolioBuchung[]): number {
+  let sum = 0
+  for (const b of buchungen) {
+    sum += bardividendeBruttoParqetEur(b)
+  }
+  return round2(sum)
+}
+
+/**
  * Aktien-/Wahldividende: Zufluss über Kauf/TransferIn (Stück + Gegenwert), nicht typ dividende.
  */
 export function istAktiendividendeAlsKauf(b: PortfolioBuchung): boolean {

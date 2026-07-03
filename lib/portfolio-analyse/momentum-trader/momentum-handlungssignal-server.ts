@@ -47,16 +47,26 @@ function baereFakten(e: MomentumScanEintrag): string[] {
   return out.slice(0, 8)
 }
 
-/** Aktives Trade-Setup — klare Jetzt-Anweisung. */
-export function handlungssignalAusTradeSetup(e: MomentumScanEintrag): MomentumHandlungssignal | null {
+/** Aktives Trade-Setup — nur wenn Qualitätsfilter grün. */
+export function handlungssignalAusTradeSetup(
+  e: MomentumScanEintrag,
+  gates: MomentumRegimeGates | null = null,
+): MomentumHandlungssignal | null {
   if (!TRADE_PLAYBOOKS.has(e.playbook) || e.ampel === 'grau' || e.ampel === 'rot') return null
-  const r = e.indikatoren.richtung
+  if (e.indikatoren.erfolgIstAktiv !== true) return null
+  const r = e.indikatoren.richtung ?? e.indikatoren.erfolgRichtung
   if (r !== 'long' && r !== 'short') return null
 
-  const erfolg = berechneTradeErfolg(e, null)
-  const wahrscheinlichkeitPct = erfolg.pct
+  const wahrscheinlichkeitPct =
+    typeof e.indikatoren.erfolgWahrscheinlichkeitPct === 'number'
+      ? e.indikatoren.erfolgWahrscheinlichkeitPct
+      : berechneTradeErfolg(e, gates).pct
+  const basisText =
+    typeof e.indikatoren.erfolgBasisText === 'string'
+      ? e.indikatoren.erfolgBasisText
+      : berechneTradeErfolg(e, gates).erfolgBasisText
 
-  const phase = e.playbook === 'earnings_pre_run' ? 'vor_earnings' : 'jetzt'
+  const phase = 'jetzt'
   const pbLabel = momentumPlaybookLabel(e.playbook)
   const plan = baueHandlungsplanFuerScan(e, r, e.playbook, true)
   const entry = plan?.entryPreis
@@ -64,40 +74,37 @@ export function handlungssignalAusTradeSetup(e: MomentumScanEintrag): MomentumHa
   const target = plan?.takeProfit
 
   let aktionJetzt =
+    '1) ' +
     richtungWort(r) +
-    ' eröffnen — ' +
-    wahrscheinlichkeitPct +
-    '% Erfolgschance — ' +
-    e.symbol +
-    ' (' +
-    pbLabel +
-    ')'
-  if (entry != null && stop != null) {
-    aktionJetzt += '. Stop ' + stop.toFixed(2) + ', Ziel ' + (target?.toFixed(2) ?? '—') + ', max. 10 € Risiko'
+    ' eröffnen (Market) · 2) Stop sofort auf ' +
+    (stop?.toFixed(2) ?? '—') +
+    ' · 3) Take-Profit ' +
+    (target?.toFixed(2) ?? '—') +
+    ' · Max. 10 € Verlust'
+  if (entry != null) {
+    aktionJetzt = aktionJetzt + ' · Einstieg ~' + entry.toFixed(2)
   }
 
   const checkliste = [
-    'Scan-Ampel grün oder gelb',
-    'Regime-Gate passt zur Richtung',
-    'Stop-Loss direkt nach Einstieg setzen',
-    e.playbook === 'earnings_pre_run' ? 'Exit vor Earnings planen' : 'Max. 10 € Verlust am Stop',
+    'Nur handeln wenn Badge „Jetzt“ + Erfolgs-% ≥ ' + String(wahrscheinlichkeitPct) + '%',
+    richtungWort(r) + ' Market eröffnen',
+    'Stop-Loss SOFORT auf ' + (stop?.toFixed(2) ?? 'vom Scan') + ' setzen — nicht verschieben',
+    'Take-Profit auf ' + (target?.toFixed(2) ?? 'vom Scan') + ' setzen',
+    'CFD: Hebel ' + (plan?.hebelEmpfohlen ?? '5') + '× · Einsatz ~' + (plan?.marginEur ?? '20') + ' €',
+    'Bei Ampel rot oder Gate-Bruch: Position sofort schließen',
   ]
 
-  const warnungen =
-    e.playbook === 'earnings_pre_run'
-      ? ['Nicht über Earnings halten', 'Nach Exit: separates Gap-Setup abwarten']
-      : ['Kein Nachkaufen', 'Bei Gate-Bruch sofort schließen']
+  const warnungen = ['Kein Nachkaufen', 'Stop nicht weiten', 'Nicht ohne Stop handeln', 'Max. 10 € Risiko']
 
   const detailText =
     pbLabel +
-    ': Setup erfüllt ' +
+    ' · Tages-Signal (nicht Quartalszahlen). ' +
+    (basisText ?? '') +
+    '. Gates: ' +
     e.gatesPassed.length +
-    ' von ' +
+    '/' +
     (e.gatesPassed.length + e.gatesFailed.length) +
-    ' Gates. ' +
-    (e.playbook === 'earnings_pre_run'
-      ? 'Trade auf Lauf in die Zahlen — nicht auf Gap-Reaktion.'
-      : 'Trade auf gemessene Earnings-Reaktion (Gap, Volumen, Surprise).')
+    ' erfüllt.'
 
   return {
     symbol: e.symbol,
@@ -106,15 +113,15 @@ export function handlungssignalAusTradeSetup(e: MomentumScanEintrag): MomentumHa
     playbook: e.playbook,
     phase,
     istAktiv: true,
-    prioritaet: Math.round(wahrscheinlichkeitPct + e.score * 0.25),
+    prioritaet: Math.round(wahrscheinlichkeitPct + e.score * 0.2),
     kurztext: richtungWort(r) + ' · ' + pbLabel,
     aktionJetzt,
     detailText,
     risikoHinweis: warnungen.join(' · '),
-    timing: plan?.zeitfenster ?? (phase === 'vor_earnings' ? 'Jetzt bis vor Earnings' : 'Jetzt — Reaktionsfenster'),
+    timing: plan?.zeitfenster ?? 'Jetzt — aktives Tages-Setup',
     checkliste,
     warnungen,
-    fakten: baereFakten(e),
+    fakten: baereFakten(e).filter((f) => !f.startsWith('Earnings')),
     alternativen: [],
     plan,
   }
@@ -231,21 +238,12 @@ export function sammleHandlungssignale(
   ergebnisse: MomentumScanEintrag[],
   gates: MomentumRegimeGates | null,
 ): MomentumHandlungssignal[] {
-  const bySymbol = new Map<string, MomentumHandlungssignal[]>()
+  const out: MomentumHandlungssignal[] = []
 
   for (const e of ergebnisse) {
-    const trade = handlungssignalAusTradeSetup(e)
-    const sig = trade ?? handlungssignalAusPreEvent(e, gates)
-    if (!sig) continue
-    const arr = bySymbol.get(e.symbol) ?? []
-    arr.push(sig)
-    bySymbol.set(e.symbol, arr)
+    const trade = handlungssignalAusTradeSetup(e, gates)
+    if (trade) out.push(trade)
   }
 
-  const out: MomentumHandlungssignal[] = []
-  for (const arr of bySymbol.values()) {
-    arr.sort((a, b) => b.wahrscheinlichkeitPct - a.wahrscheinlichkeitPct || b.prioritaet - a.prioritaet)
-    out.push(arr[0])
-  }
   return out.sort((a, b) => b.wahrscheinlichkeitPct - a.wahrscheinlichkeitPct || b.prioritaet - a.prioritaet)
 }
