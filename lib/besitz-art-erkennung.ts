@@ -200,9 +200,15 @@ export function alleBesitzArtenListe(kategorie: BesitzKategorie): string[] {
 export function brauchtBesitzAnreicherung(row: {
   kategorie: string
   kleidungsart?: string | null
+  groesse?: string | null
+  farbe?: string | null
+  hersteller?: string | null
   bild_pfad?: string | null
 }): boolean {
+  if (!row.bild_pfad?.trim()) return false
   const kat = normalisiereBesitzKategorie(row.kategorie)
-  if (kat !== 'Kleidung' && kat !== 'Schuhe') return false
-  return !row.kleidungsart?.trim() || !row.bild_pfad?.trim()
+  if (kat === 'Kleidung' || kat === 'Schuhe') {
+    return !row.kleidungsart?.trim() || !row.groesse?.trim() || !row.farbe?.trim()
+  }
+  return !row.farbe?.trim() || !row.hersteller?.trim()
 }

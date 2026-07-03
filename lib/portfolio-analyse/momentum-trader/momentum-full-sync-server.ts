@@ -5,7 +5,6 @@ import { syncBarsFuerWatchlist } from '@/lib/portfolio-analyse/momentum-trader/m
 import { backfillEarningsEventsFuerWatchlist } from '@/lib/portfolio-analyse/momentum-trader/momentum-earnings-events-server'
 import { syncEarningsFuerWatchlist } from '@/lib/portfolio-analyse/momentum-trader/momentum-earnings-sync-server'
 import { syncMomentumMarketRegime } from '@/lib/portfolio-analyse/momentum-trader/momentum-regime-server'
-import { MOMENTUM_SCAN_MIT_KI_DEFAULT } from '@/lib/portfolio-analyse/momentum-trader/momentum-constants'
 import { scanMomentumWatchlist } from '@/lib/portfolio-analyse/momentum-trader/momentum-scan-server'
 import type {
   MomentumFullSyncErgebnis,
@@ -24,7 +23,6 @@ import {
 export async function fuehreVollenMomentumSyncAus(
   sb: SupabaseClient,
   watchlistIn: MomentumWatchlistEintrag[],
-  opts?: { mitKiMemos?: boolean },
 ): Promise<MomentumFullSyncErgebnis> {
   let watchlist = watchlistIn
   if (watchlist.length === 0) {
@@ -102,9 +100,7 @@ export async function fuehreVollenMomentumSyncAus(
   let scan = null
   if (regimeGates) {
     const wlAktuell = await ladeMomentumWatchlist(sb)
-    scan = await scanMomentumWatchlist(wlAktuell.length ? wlAktuell : watchlist, regimeGates, {
-      mitKiMemos: opts?.mitKiMemos ?? MOMENTUM_SCAN_MIT_KI_DEFAULT,
-    })
+    scan = await scanMomentumWatchlist(wlAktuell.length ? wlAktuell : watchlist, regimeGates)
     schritte.push('Scan: ' + scan.ergebnisse.length + ' Setup(s)')
   }
 

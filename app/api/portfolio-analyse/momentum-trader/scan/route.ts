@@ -6,7 +6,6 @@ import {
   berechneRegimeGates,
   syncMomentumMarketRegime,
 } from '@/lib/portfolio-analyse/momentum-trader/momentum-regime-server'
-import { MOMENTUM_SCAN_MIT_KI_DEFAULT } from '@/lib/portfolio-analyse/momentum-trader/momentum-constants'
 import { scanMomentumWatchlist } from '@/lib/portfolio-analyse/momentum-trader/momentum-scan-server'
 import { ladeMomentumWatchlist } from '@/lib/portfolio-analyse/momentum-trader/momentum-watchlist-server'
 import { createSupabaseFuerRequest } from '@/lib/supabase-user'
@@ -79,15 +78,6 @@ export async function POST(req: Request) {
   }
 
   try {
-    let mitKi = MOMENTUM_SCAN_MIT_KI_DEFAULT
-    try {
-      const body = ((await req.json()) ?? {}) as Record<string, unknown>
-      if (body.mitKi === true) mitKi = true
-      if (body.mitKi === false) mitKi = false
-    } catch {
-      /* leerer Body ok */
-    }
-
     const regimeGates = await syncMomentumMarketRegime()
     if (!regimeGates) {
       return NextResponse.json(
@@ -96,7 +86,7 @@ export async function POST(req: Request) {
       )
     }
 
-    const paket = await scanMomentumWatchlist(watchlist, regimeGates, { mitKiMemos: mitKi })
+    const paket = await scanMomentumWatchlist(watchlist, regimeGates)
     return NextResponse.json(paket)
   } catch (e) {
     console.error('[api/momentum-trader/scan]', e)

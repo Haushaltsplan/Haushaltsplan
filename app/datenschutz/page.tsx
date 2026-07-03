@@ -130,7 +130,7 @@ export default function DatenschutzPage() {
           <ul className="list-disc space-y-2 pl-5">
             <li>Supabase (Authentifizierung &amp; Datenbank)</li>
             <li>WHOOP (Cloud-Fitnessdaten, falls verbunden)</li>
-            <li>Google Gemini / OpenAI (KI-Funktionen, z. B. Kassenbon, Natur-Erkennung — nur bei aktiver Nutzung)</li>
+            <li>Google Gemini / OpenAI (KI-Funktionen, z. B. Kassenbon, Besitz-Foto — nur bei aktiver Nutzung)</li>
             <li>Finnhub, Yahoo u. a. (Markt-/Portfolio-Kursdaten)</li>
           </ul>
           <p>Es findet kein Verkauf personenbezogener Daten statt.</p>

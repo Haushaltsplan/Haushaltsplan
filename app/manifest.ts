@@ -4,7 +4,7 @@ export default function manifest(): MetadataRoute.Manifest {
   return {
     name: 'Omnia',
     short_name: 'Omnia',
-    description: 'Finanzen, Speisekammer, Kalender, Natur & mehr',
+    description: 'Finanzen, Speisekammer, Kalender & mehr',
     start_url: '/',
     scope: '/',
     display: 'standalone',

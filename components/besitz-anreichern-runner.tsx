@@ -1,7 +1,6 @@
 'use client'
 
 import { brauchtBesitzAnreicherung } from '@/lib/besitz-art-erkennung'
-import { normalisiereBesitzKategorie } from '@/lib/besitz-kategorien'
 import { KiBrandChip } from '@/components/ki-brand'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import toast from 'react-hot-toast'
@@ -26,7 +25,6 @@ type Props = {
 type Fortschritt = {
   gesamt: number
   erledigt: number
-  fotos: number
   fehler: number
 }
 
@@ -37,12 +35,7 @@ export function BesitzAnreichernRunner({ zeilen, laden, autoStart = true, onFert
   const abbruch = useRef(false)
 
   const offene = useMemo(
-    () =>
-      zeilen.filter(
-        (z) =>
-          ['Kleidung', 'Schuhe'].includes(normalisiereBesitzKategorie(z.kategorie)) &&
-          brauchtBesitzAnreicherung(z),
-      ),
+    () => zeilen.filter((z) => brauchtBesitzAnreicherung(z)),
     [zeilen],
   )
 
@@ -50,10 +43,9 @@ export function BesitzAnreichernRunner({ zeilen, laden, autoStart = true, onFert
     if (laeuft || !offene.length) return
     abbruch.current = false
     setLaeuft(true)
-    setFortschritt({ gesamt: offene.length, erledigt: 0, fotos: 0, fehler: 0 })
+    setFortschritt({ gesamt: offene.length, erledigt: 0, fehler: 0 })
 
     let erledigt = 0
-    let fotos = 0
     let fehler = 0
     let fertig = false
 
@@ -76,20 +68,15 @@ export function BesitzAnreichernRunner({ zeilen, laden, autoStart = true, onFert
         }
         const batch = Array.isArray(data.ergebnisse) ? data.ergebnisse : []
         erledigt += batch.length
-        fotos += batch.filter((e) => e.foto).length
         fehler += batch.filter((e) => e.fehler).length
-        setFortschritt({ gesamt: offene.length, erledigt, fotos, fehler })
+        setFortschritt({ gesamt: offene.length, erledigt, fehler })
         fertig = Boolean(data.fertig) || batch.length === 0
         if (!fertig) await new Promise((r) => setTimeout(r, 800))
       }
 
       if (!abbruch.current) {
-        if (fotos > 0 || erledigt > 0) {
-          toast.success(
-            erledigt === 1
-              ? `1 Teil angereichert${fotos ? ` (${fotos} Foto${fotos > 1 ? 's' : ''})` : ''}.`
-              : `${erledigt} Teile angereichert${fotos ? ` · ${fotos} Fotos` : ''}.`,
-          )
+        if (erledigt > 0) {
+          toast.success(erledigt === 1 ? '1 Gegenstand angereichert.' : `${erledigt} Gegenstände angereichert.`)
         }
         await onFertig()
       }
@@ -113,15 +100,14 @@ export function BesitzAnreichernRunner({ zeilen, laden, autoStart = true, onFert
           <KiBrandChip iconSize={14} />
           <div className="min-w-0">
             <p className="text-sm font-semibold text-amber-100">
-              {laeuft ? 'Kleiderschrank wird angereichert …' : `${offene.length} Teile ohne vollständige Zuordnung`}
+              {laeuft ? 'Gegenstände werden per KI ergänzt …' : `${offene.length} mit Foto — Metadaten unvollständig`}
             </p>
             <p className="mt-0.5 text-[11px] leading-relaxed text-amber-200/70">
-              Art (T-Shirt, Jeans …), Größe/Farbe aus Bezeichnung — Produktfotos per Websuche (Marke, Artikelnummer).
+              Art, Größe, Farbe und Marke aus dem eigenen Foto (keine Websuche, kein Stock-Bild).
             </p>
             {fortschritt ? (
               <p className="mt-1 text-[11px] tabular-nums text-[var(--app-text-muted)]">
                 {fortschritt.erledigt} / {fortschritt.gesamt}
-                {fortschritt.fotos ? ` · ${fortschritt.fotos} Fotos` : ''}
                 {fortschritt.fehler ? ` · ${fortschritt.fehler} Hinweise` : ''}
               </p>
             ) : null}

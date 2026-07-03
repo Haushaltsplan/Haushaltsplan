@@ -93,9 +93,6 @@ export function generiereMomentumBriefing(input: MomentumBriefingInput): string 
         lines.push('- Szenario-Plan:')
         for (const z of plan.split('\n')) lines.push('  ' + z)
       }
-      if (e.indikatoren.kiBegruendung && typeof e.indikatoren.kiBegruendung === 'string') {
-        lines.push('- KI: ' + e.indikatoren.kiBegruendung)
-      }
       lines.push('')
     }
   }
@@ -132,9 +129,6 @@ export function generiereMomentumBriefing(input: MomentumBriefingInput): string 
       }
       if (e.indikatoren.stopPrice != null) lines.push('- Stop: ' + e.indikatoren.stopPrice)
       if (e.indikatoren.targetPrice != null) lines.push('- Ziel: ' + e.indikatoren.targetPrice)
-      if (e.indikatoren.kiBegruendung && typeof e.indikatoren.kiBegruendung === 'string') {
-        lines.push('- KI: ' + e.indikatoren.kiBegruendung)
-      }
       lines.push('')
     }
   } else {

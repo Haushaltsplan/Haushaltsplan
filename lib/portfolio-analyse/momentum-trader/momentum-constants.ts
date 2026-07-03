@@ -19,9 +19,6 @@ export const MOMENTUM_MIN_SIGNAL_PCT = 58
 /** Max. Top-Signale in der Handlungsempfehlung. */
 export const MOMENTUM_MAX_TOP_SIGNALE = 5
 
-/** KI-Memos beim Scan (Gemini) — Standard aus, Trading braucht keine KI. */
-export const MOMENTUM_SCAN_MIT_KI_DEFAULT = false
-
 /** Browser-Push ab dieser Erfolgswahrscheinlichkeit (%). */
 export const TOP_SIGNAL_PUSH_MIN_PCT = 68
 

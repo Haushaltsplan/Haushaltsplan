@@ -8,7 +8,7 @@ import {
 } from '@/lib/besitz-art-erkennung'
 import { normalisiereBesitzKategorie } from '@/lib/besitz-kategorien'
 import { normalisiereBesitzKleidungsart } from '@/lib/besitz-kleidungsarten'
-import type { CoachMessage } from '@/lib/ki-coach-backend'
+import type { CoachImagePart, CoachMessage } from '@/lib/ki-coach-backend'
 import { runCoachCompletion } from '@/lib/ki-coach-backend'
 
 export const BESITZ_ANREICHern_RESPONSE_SCHEMA: Record<string, unknown> = {
@@ -17,19 +17,17 @@ export const BESITZ_ANREICHern_RESPONSE_SCHEMA: Record<string, unknown> = {
     kleidungsart: { type: 'STRING', nullable: true },
     groesse: { type: 'STRING', nullable: true },
     farbe: { type: 'STRING', nullable: true },
-    bild_url: { type: 'STRING', nullable: true },
-    suchbegriff: { type: 'STRING', nullable: true },
+    hersteller: { type: 'STRING', nullable: true },
     hinweis: { type: 'STRING', nullable: true },
   },
-  required: ['kleidungsart'],
+  required: [],
 }
 
 export type BesitzAnreichernKiErgebnis = {
   kleidungsart: string | null
   groesse: string | null
   farbe: string | null
-  bild_url: string | null
-  suchbegriff: string | null
+  hersteller: string | null
   hinweis: string | null
 }
 
@@ -39,36 +37,40 @@ export type BesitzAnreichernItem = BesitzArtErkennungInput & {
   einkaufsdatum?: string | null
 }
 
-function buildSystemPrompt(kategorie: string, arten: string[]): string {
-  return `Du ordnest **Kleidung/Schuhe** aus einem persönlichen Inventar zu und findest **Produktfotos** im Web.
-
-Antwort: **Nur** JSON gemäß Schema.
-
-## Kleidungsart / Schuhart
+function buildSystemPrompt(kategorie: string, arten: string[] | null): string {
+  const artBlock =
+    arten && arten.length
+      ? `## Kleidungsart / Schuhart
 Wähle **genau eine** Bezeichnung aus dieser Liste (exakt so schreiben):
 ${arten.map((a) => `- ${a}`).join('\n')}
 
-Wenn nichts passt: \`Sonstiges\`.
+Wenn nichts passt: \`Sonstiges\`.`
+      : `## Art / Typ
+Kurze, präzise Bezeichnung des Gegenstands (z. B. „Bluetooth-Kopfhörer“, „Kaffeemaschine“, „Rucksack“). Feld \`kleidungsart\` für die Art nutzen.`
+
+  return `Du analysierst **Fotos aus einem persönlichen Inventar** (eigenes Foto des Besitzers — kein Websuche, kein Stock-Foto).
+
+Antwort: **Nur** JSON gemäß Schema.
+
+${artBlock}
 
 ## Größe & Farbe
-Aus Name, Notiz, Artikelnummer — nur wenn erkennbar, sonst null.
+Nur aus Foto und mitgelieferten Stammdaten — wenn erkennbar, sonst null.
 
-## Produktfoto (\`bild_url\`)
-Mit **Google Search** (Grounding) ein **direktes HTTPS-Bild** suchen:
-- Packshot / Produktfoto auf **Hersteller-, Händler- oder Shop-Seite**
-- URL muss auf eine **Bilddatei** enden (.jpg, .jpeg, .png, .webp) oder ein CDN-Produktbild sein
-- **Kein** Logo, kein Lifestyle-Foto mit Person, kein Icon
-- Priorität: Artikelnummer/SKU + Marke + Produktname
-- Wenn kein brauchbares Bild: \`bild_url\` = null
+## Hersteller / Marke
+Nur wenn auf dem Foto, Etikett oder in den Stammdaten erkennbar — sonst null. Nicht raten.
 
-Kategorie des Artikels: **${kategorie}**.`
+## Regeln
+- Keine Websuche, keine erfundenen Produkt-URLs.
+- Keine Schätzungen zu Wert oder Zustand (dafür gibt es einen separaten Gebrauchtpreis-Flow).
+- Kategorie des Artikels: **${kategorie}**.`
 }
 
 function buildUserText(item: BesitzAnreichernItem, regel: ReturnType<typeof errateBesitzArtRegeln>): string {
   const lines = [
     `Bezeichnung: ${item.name}`,
     `Kategorie: ${item.kategorie}`,
-    item.hersteller ? `Marke/Hersteller: ${item.hersteller}` : null,
+    item.hersteller ? `Marke/Hersteller (Stamm): ${item.hersteller}` : null,
     item.haendler ? `Händler: ${item.haendler}` : null,
     item.notiz ? `Notiz: ${item.notiz}` : null,
     item.einkaufsdatum ? `Kaufdatum: ${item.einkaufsdatum}` : null,
@@ -76,7 +78,7 @@ function buildUserText(item: BesitzAnreichernItem, regel: ReturnType<typeof erra
     regel.artikelnummer ? `Erkannte Artikelnummer: ${regel.artikelnummer}` : null,
     regel.kleidungsart ? `Regel-Vorschlag Art: ${regel.kleidungsart}` : null,
   ].filter(Boolean)
-  return `${lines.join('\n')}\n\nBitte Art zuordnen und ein passendes Produktfoto-URL finden.`
+  return `${lines.join('\n')}\n\nBitte Art, Größe, Farbe und ggf. Marke aus dem **eigenen Foto** ergänzen.`
 }
 
 function parseKiJson(raw: string, kategorie: ReturnType<typeof normalisiereBesitzKategorie>): BesitzAnreichernKiErgebnis | null {
@@ -104,13 +106,10 @@ function parseKiJson(raw: string, kategorie: ReturnType<typeof normalisiereBesit
       : null
   const groesse = typeof p.groesse === 'string' && p.groesse.trim() ? p.groesse.trim().slice(0, 40) : null
   const farbe = typeof p.farbe === 'string' && p.farbe.trim() ? p.farbe.trim().slice(0, 40) : null
-  let bild_url: string | null = null
-  if (typeof p.bild_url === 'string' && p.bild_url.trim().startsWith('https://')) {
-    bild_url = p.bild_url.trim().slice(0, 2000)
-  }
-  const suchbegriff = typeof p.suchbegriff === 'string' && p.suchbegriff.trim() ? p.suchbegriff.trim().slice(0, 200) : null
+  const hersteller =
+    typeof p.hersteller === 'string' && p.hersteller.trim() ? p.hersteller.trim().slice(0, 80) : null
   const hinweis = typeof p.hinweis === 'string' && p.hinweis.trim() ? p.hinweis.trim().slice(0, 500) : null
-  return { kleidungsart, groesse, farbe, bild_url, suchbegriff, hinweis }
+  return { kleidungsart, groesse, farbe, hersteller, hinweis }
 }
 
 export function mergeAnreicherung(
@@ -121,19 +120,16 @@ export function mergeAnreicherung(
   kleidungsart: string | null
   groesse: string | null
   farbe: string | null
-  bild_url: string | null
+  hersteller: string | null
   art_quelle: 'regel' | 'ki' | null
-  foto_quelle: 'ki' | null
 } {
-  const kat = normalisiereBesitzKategorie(item.kategorie)
   const blob = [item.name, item.notiz, item.hersteller].filter(Boolean).join(' ')
   return {
     kleidungsart: regel.kleidungsart ?? ki?.kleidungsart ?? null,
     groesse: regel.groesse ?? ki?.groesse ?? extrahiereGroesse(blob),
     farbe: regel.farbe ?? ki?.farbe ?? extrahiereFarbe(blob),
-    bild_url: ki?.bild_url ?? null,
+    hersteller: item.hersteller?.trim() || ki?.hersteller || null,
     art_quelle: regel.kleidungsart ? 'regel' : ki?.kleidungsart ? 'ki' : null,
-    foto_quelle: ki?.bild_url ? 'ki' : null,
   }
 }
 
@@ -141,54 +137,39 @@ export async function kiAnreichereBesitzItem(
   provider: 'gemini' | 'openai',
   apiKey: string,
   item: BesitzAnreichernItem,
-  opts?: { mitGoogleSearch?: boolean; brauchtFoto?: boolean },
+  foto: CoachImagePart,
 ): Promise<{ ok: true; ergebnis: BesitzAnreichernKiErgebnis } | { ok: false; error: string }> {
   const kat = normalisiereBesitzKategorie(item.kategorie)
-  if (kat !== 'Kleidung' && kat !== 'Schuhe') {
-    return { ok: false, error: 'Nur Kleidung/Schuhe.' }
-  }
-
   const regel = errateBesitzArtRegeln(item)
-  const brauchtArtKi = !regel.kleidungsart
-  const brauchtFotoKi = opts?.brauchtFoto ?? true
-  if (!brauchtArtKi && !brauchtFotoKi) {
+  const brauchtKi = !regel.kleidungsart || !regel.groesse || !regel.farbe || !item.hersteller?.trim()
+
+  if (!brauchtKi && regel.kleidungsart) {
     return {
       ok: true,
       ergebnis: {
         kleidungsart: regel.kleidungsart,
         groesse: regel.groesse,
         farbe: regel.farbe,
-        bild_url: null,
-        suchbegriff: null,
+        hersteller: item.hersteller?.trim() || null,
         hinweis: 'Nur Regeln — kein KI-Lauf nötig.',
       },
     }
   }
 
-  const arten = alleBesitzArtenListe(kat)
+  const arten = kat === 'Kleidung' || kat === 'Schuhe' ? alleBesitzArtenListe(kat) : null
   const systemText = buildSystemPrompt(kat, arten)
-  const userMessages: CoachMessage[] = [{ role: 'user', content: buildUserText(item, regel) }]
+  const userMessages: CoachMessage[] = [
+    {
+      role: 'user',
+      content: buildUserText(item, regel),
+      images: [foto],
+    },
+  ]
 
-  const mitWeb = provider === 'gemini' && (opts?.mitGoogleSearch ?? true) && brauchtFotoKi
-
-  let result = await runCoachCompletion(provider, apiKey, systemText, userMessages, {
+  const result = await runCoachCompletion(provider, apiKey, systemText, userMessages, {
     temperature: 0.2,
     jsonResponse: provider === 'gemini' ? { schema: BESITZ_ANREICHern_RESPONSE_SCHEMA } : undefined,
-    geminiGoogleSearch: mitWeb,
   })
-
-  if (
-    !result.ok &&
-    provider === 'gemini' &&
-    mitWeb &&
-    (result.status === 400 || /tool|google|search|schema|invalid/i.test(result.hint))
-  ) {
-    result = await runCoachCompletion(provider, apiKey, systemText, userMessages, {
-      temperature: 0.2,
-      jsonResponse: { schema: BESITZ_ANREICHern_RESPONSE_SCHEMA },
-      geminiGoogleSearch: false,
-    })
-  }
 
   if (!result.ok) return { ok: false, error: result.hint || 'KI fehlgeschlagen.' }
 

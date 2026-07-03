@@ -1403,7 +1403,6 @@ function ScanKarte({
     e.playbook === 'earnings_pre_event' || e.playbook === 'earnings_vorlauf' || e.playbook === 'earnings_pre_run'
   const szenarioPlan =
     typeof e.indikatoren.szenarioPlan === 'string' ? e.indikatoren.szenarioPlan : null
-  const kiMemo = e.indikatoren.kiBegruendung
   const kannTrade =
     TRADE_PLAYBOOKS.includes(e.playbook) &&
     e.ampel !== 'grau' &&
@@ -1623,9 +1622,6 @@ function ScanKarte({
                     <p key={zeile}>{zeile}</p>
                   ))}
                 </div>
-              )}
-              {kiMemo != null && typeof kiMemo === 'string' && (
-                <p className="text-[11px] italic text-[var(--app-text-muted)]">{kiMemo}</p>
               )}
             </div>
           )}
@@ -1951,8 +1947,6 @@ export function MomentumTraderClient() {
     try {
       const res = await momentumApiFetch('/api/portfolio-analyse/momentum-trader/scan', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ mitKi: false }),
       })
       const data = (await res.json()) as MomentumScanPaket & { fehler?: string }
       if (!res.ok) throw new Error(data.fehler ?? 'Scan fehlgeschlagen.')

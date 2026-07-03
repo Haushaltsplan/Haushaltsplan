@@ -34,8 +34,6 @@ export type Sp500MoversBericht = {
   top10: Sp500MoverEintrag[]
   flop10: Sp500MoverEintrag[]
   fehler: string | null
-  /** Ungenutzt (früher KI-/News-Hinweis); bleibt aus Kompatibilität. */
-  kiHinweis: string | null
   anzahlPositiv: number
   anzahlNegativ: number
   anzahlUnveraendert: number
@@ -245,7 +243,6 @@ export async function ladeSp500MoversBericht(): Promise<Sp500MoversBericht> {
         top10: [],
         flop10: [],
         fehler: 'Zu wenige Kursdaten vom Datenanbieter — bitte später erneut versuchen.',
-        kiHinweis: null,
         anzahlPositiv: 0,
         anzahlNegativ: 0,
         anzahlUnveraendert: 0,
@@ -292,7 +289,6 @@ export async function ladeSp500MoversBericht(): Promise<Sp500MoversBericht> {
       top10,
       flop10,
       fehler: null,
-      kiHinweis: null,
       anzahlPositiv,
       anzahlNegativ,
       anzahlUnveraendert,
@@ -303,7 +299,6 @@ export async function ladeSp500MoversBericht(): Promise<Sp500MoversBericht> {
       top10: [],
       flop10: [],
       fehler: e instanceof Error ? e.message : 'S&P-500-Movers konnten nicht geladen werden.',
-      kiHinweis: null,
       anzahlPositiv: 0,
       anzahlNegativ: 0,
       anzahlUnveraendert: 0,

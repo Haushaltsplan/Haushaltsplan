@@ -12,7 +12,6 @@ import { QUARTALS_KI_DIFF_SYSTEM_PROMPT } from './quartals-ki-diff-prompt'
 import { MARKTKONTEXT_SYSTEM_PROMPT } from './marktkontext-prompt'
 import { NACHKAUF_SCAN_SYSTEM_PROMPT } from './nachkauf-radar/nachkauf-scan-prompt'
 import { NACHKAUF_DEEP_RESEARCH_SYSTEM_PROMPT } from './nachkauf-radar/nachkauf-deep-research-prompt'
-import { kiMoverEinordnungSystemPrompt } from '@/lib/investment-movers-begruendung'
 
 export type SystemPromptEintrag = {
   id: string
@@ -129,25 +128,5 @@ AMPEL-LOGIK:
    rot    = Score < 35 oder aktiver Sell-Trigger
    teuer  = Quality intakt (Mantra ≥ 30 Pkt.), aber FCF-Rendite < 1,5 % UND P/E > 38×
    grau   = Keine Fundamentaldaten verfügbar`,
-  },
-
-  // -------------------------------------------------------------------------
-  // Investment Movers
-  // -------------------------------------------------------------------------
-  {
-    id: 'sys-movers-live',
-    gruppe: 'Investment Movers',
-    titel: 'Kurs-Bewegungen Einordnung (Live)',
-    beschreibung: 'Begründung der stärksten Tages-Gewinner und -Verlierer im S&P 500 / Nasdaq 100 mit Google Search Grounding.',
-    modell: 'Gemini (Google Search Grounding)',
-    text: kiMoverEinordnungSystemPrompt(true),
-  },
-  {
-    id: 'sys-movers-cache',
-    gruppe: 'Investment Movers',
-    titel: 'Kurs-Bewegungen Einordnung (Offline)',
-    beschreibung: 'Gleicher Prompt — aber ohne Live-Websuche, basiert nur auf mitgelieferten RSS/Artikel-Feldern.',
-    modell: 'Gemini / GPT (konfigurierbar)',
-    text: kiMoverEinordnungSystemPrompt(false),
   },
 ]

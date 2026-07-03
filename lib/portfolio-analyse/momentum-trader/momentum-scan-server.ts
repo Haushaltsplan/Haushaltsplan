@@ -550,7 +550,6 @@ function bewerteIpoFade(
 }
 
 export type MomentumScanOptionen = {
-  mitKiMemos?: boolean
   /** Finviz Short-Float für Mean-Reversion (max. 10 Titel, ~8s). */
   mitFinviz?: boolean
   /** Google News + MarketBeat Analyst (max. je 8–10 Titel). */
@@ -835,23 +834,7 @@ export async function scanMomentumWatchlist(
     await archiviereTopSignale(final).catch(() => {})
   }
 
-  let mitMemos = final
-  if (opts?.mitKiMemos) {
-    const { ergaenzeScanMitKiMemos } = await import(
-      '@/lib/portfolio-analyse/momentum-trader/momentum-scan-memo-server'
-    )
-    const { ergaenzePreEventMitKiMemos } = await import(
-      '@/lib/portfolio-analyse/momentum-trader/momentum-pre-event-memo-server'
-    )
-    mitMemos = await ergaenzeScanMitKiMemos(final)
-    mitMemos = await ergaenzePreEventMitKiMemos(mitMemos)
-    if (mitMemos.length > 0) {
-      await loescheMomentumScanFuerDatum(heute)
-      await speichereMomentumScanErgebnisse(mitMemos)
-    }
-  }
-
-  return { scanDate: heute, regime: regimeGates, ergebnisse: mitMemos, playbookStats: statsPaket }
+  return { scanDate: heute, regime: regimeGates, ergebnisse: final, playbookStats: statsPaket }
 }
 
 export { momentumPlaybookLabel as playbookLabel }

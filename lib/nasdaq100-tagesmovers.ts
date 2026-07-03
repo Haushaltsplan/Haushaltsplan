@@ -34,8 +34,6 @@ export type Nasdaq100MoversBericht = {
   top10: Nasdaq100MoverEintrag[]
   flop10: Nasdaq100MoverEintrag[]
   fehler: string | null
-  /** Ungenutzt (früher KI-/News-Hinweis); bleibt aus Kompatibilität. */
-  kiHinweis: string | null
   anzahlPositiv: number
   anzahlNegativ: number
   anzahlUnveraendert: number
@@ -266,7 +264,6 @@ export async function ladeNasdaq100MoversBericht(): Promise<Nasdaq100MoversBeric
         top10: [],
         flop10: [],
         fehler: 'Zu wenige Kursdaten vom Datenanbieter — bitte später erneut versuchen.',
-        kiHinweis: null,
         anzahlPositiv: 0,
         anzahlNegativ: 0,
         anzahlUnveraendert: 0,
@@ -313,7 +310,6 @@ export async function ladeNasdaq100MoversBericht(): Promise<Nasdaq100MoversBeric
       top10,
       flop10,
       fehler: null,
-      kiHinweis: null,
       anzahlPositiv,
       anzahlNegativ,
       anzahlUnveraendert,
@@ -324,7 +320,6 @@ export async function ladeNasdaq100MoversBericht(): Promise<Nasdaq100MoversBeric
       top10: [],
       flop10: [],
       fehler: e instanceof Error ? e.message : 'Nasdaq-100 Movers konnten nicht geladen werden.',
-      kiHinweis: null,
       anzahlPositiv: 0,
       anzahlNegativ: 0,
       anzahlUnveraendert: 0,
