@@ -1053,6 +1053,8 @@ function erfolgPct(e: MomentumScanEintrag): number {
 function filterScanErgebnisse(
   ergebnisse: MomentumScanEintrag[],
   scanFilter: ScanFilterKey,
+  minTrefferPct: number,
+  sortBy: 'planung' | 'treffer',
 ): MomentumScanEintrag[] {
   const taegliche = new Set<MomentumPlaybook>([
     'gap_fade',
@@ -1117,7 +1119,13 @@ function filterScanErgebnisse(
       }
       return true
     })
-    .sort((a, b) => planungsScore(b) - planungsScore(a) || b.score - a.score)
+    .filter((e) => minTrefferPct <= 0 || erfolgPct(e) >= minTrefferPct)
+    .sort((a, b) => {
+      if (sortBy === 'treffer') {
+        return erfolgPct(b) - erfolgPct(a) || planungsScore(b) - planungsScore(a) || b.score - a.score
+      }
+      return planungsScore(b) - planungsScore(a) || erfolgPct(b) - erfolgPct(a) || b.score - a.score
+    })
 }
 
 function DatenqualitaetBadge({ dq }: { dq: MomentumWatchlistEintragAngereichert['datenqualitaet'] }) {
@@ -1443,6 +1451,20 @@ function ScanKarte({
                 Pausiert
               </span>
             ) : null}
+            {erfolgPct > 0 ? (
+              <span
+                className={
+                  'rounded-lg px-2 py-0.5 text-[10px] font-semibold tabular-nums ' +
+                  (erfolgPct >= 62
+                    ? 'bg-teal-500/15 text-teal-300'
+                    : erfolgPct >= 52
+                      ? 'bg-sky-500/10 text-sky-300'
+                      : 'bg-zinc-500/15 text-[var(--app-text-muted)]')
+                }
+              >
+                {erfolgPct}% Treffer
+              </span>
+            ) : null}
           </div>
 
           {handlungKurz ? (
@@ -1481,19 +1503,18 @@ function ScanKarte({
           {erfolgLabel && erfolgPct > 0 ? (
             <p className="mt-1 text-[11px] text-[var(--app-text-muted)]">
               Trefferchance:{' '}
-              {backtestTrefferPct != null ? (
+              <span className="font-medium text-teal-300">{erfolgPct}%</span>
+              {backtestTrefferPct != null && backtestTrefferPct !== erfolgPct ? (
                 <>
-                  <span className="font-medium text-[var(--app-text)]">{backtestTrefferPct}%</span> Backtest
-                  {backtestTrefferPct !== erfolgPct ? (
-                    <>
-                      {' · heute '}
-                      <span className="font-medium text-teal-300">{erfolgPct}%</span>
-                    </>
-                  ) : null}
+                  {' · Playbook-Backtest '}
+                  <span className="font-medium text-[var(--app-text)]">{backtestTrefferPct}%</span>
                 </>
-              ) : (
-                <span className="font-medium text-teal-300">{erfolgPct}%</span>
-              )}
+              ) : backtestTrefferPct != null ? (
+                <>
+                  {' · Backtest '}
+                  <span className="font-medium text-[var(--app-text)]">{backtestTrefferPct}%</span>
+                </>
+              ) : null}
               {' · '}
               <span className="font-medium">{erfolgLabel}</span>
               {erfolgBasisText ? (
@@ -1707,6 +1728,8 @@ export function MomentumTraderClient() {
   const [signalTracking, setSignalTracking] = useState<MomentumTopSignalTracking | null>(null)
   const [handlung, setHandlung] = useState<MomentumHandlungsempfehlung | null>(null)
   const [scanFilter, setScanFilter] = useState<ScanFilterKey>('top')
+  const [minTrefferPct, setMinTrefferPct] = useState(0)
+  const [scanSortBy, setScanSortBy] = useState<'planung' | 'treffer'>('planung')
   const [exportHinweis, setExportHinweis] = useState<string | null>(null)
   const [kalender, setKalender] = useState<MomentumEarningsKalenderMonat | null>(null)
   const [scoreVerlauf, setScoreVerlauf] = useState<Record<string, MomentumScoreVerlaufPunkt[]>>({})
@@ -2083,7 +2106,7 @@ export function MomentumTraderClient() {
     const lines = [
       '# Momentum Scan ' + scan.scanDate,
       '',
-      ...filterScanErgebnisse(scan.ergebnisse, scanFilter).map((e) => {
+      ...filterScanErgebnisse(scan.ergebnisse, scanFilter, minTrefferPct, scanSortBy).map((e) => {
         const r = e.indikatoren.richtung
         let line =
           '- **' +
@@ -2112,7 +2135,7 @@ export function MomentumTraderClient() {
       setExportHinweis('Scan in Zwischenablage kopiert.')
       setTimeout(() => setExportHinweis(null), 2500)
     })
-  }, [scan, scanFilter])
+  }, [scan, scanFilter, minTrefferPct, scanSortBy])
 
   const loescheTrade = useCallback(
     async (id: string) => {
@@ -2139,7 +2162,9 @@ export function MomentumTraderClient() {
   const regime = status?.regime ?? scan?.regime?.regime ?? null
   const busy = fullSyncLaeuft || barsSyncLaeuft || earningsSyncLaeuft || scanLaeuft
 
-  const gefilterteScan = scan ? filterScanErgebnisse(scan.ergebnisse, scanFilter) : []
+  const gefilterteScan = scan
+    ? filterScanErgebnisse(scan.ergebnisse, scanFilter, minTrefferPct, scanSortBy)
+    : []
 
   const preEventMap = useMemo(() => {
     const m = new Map<string, { score: number; stufe: string; tageBis: number | null }>()
@@ -2349,6 +2374,54 @@ export function MomentumTraderClient() {
                 </button>
               ))}
               </div>
+              <div className="flex flex-wrap items-center gap-1 rounded-xl bg-[var(--app-surface-muted)]/50 p-1 ring-1 ring-[var(--app-border)]">
+                <span className="px-2 text-[10px] text-[var(--app-text-muted)]">Treffer ≥</span>
+                {(
+                  [
+                    [0, 'Alle'],
+                    [50, '50%'],
+                    [55, '55%'],
+                    [60, '60%'],
+                    [65, '65%'],
+                  ] as const
+                ).map(([pct, label]) => (
+                  <button
+                    key={String(pct)}
+                    type="button"
+                    onClick={() => setMinTrefferPct(pct)}
+                    className={
+                      'rounded-lg px-2.5 py-1.5 text-xs font-medium transition ' +
+                      (minTrefferPct === pct
+                        ? 'bg-[var(--app-surface)] text-[var(--app-text)] shadow-sm'
+                        : 'text-[var(--app-text-muted)] hover:text-[var(--app-text)]')
+                    }
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+              <div className="flex gap-1 rounded-xl bg-[var(--app-surface-muted)]/50 p-1 ring-1 ring-[var(--app-border)]">
+                {(
+                  [
+                    ['planung', 'Planung'],
+                    ['treffer', 'Treffer'],
+                  ] as const
+                ).map(([key, label]) => (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => setScanSortBy(key)}
+                    className={
+                      'rounded-lg px-2.5 py-1.5 text-xs font-medium transition ' +
+                      (scanSortBy === key
+                        ? 'bg-[var(--app-surface)] text-[var(--app-text)] shadow-sm'
+                        : 'text-[var(--app-text-muted)] hover:text-[var(--app-text)]')
+                    }
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
               {scan && scan.ergebnisse.length > 0 && (
                 <button
                   type="button"
@@ -2377,7 +2450,9 @@ export function MomentumTraderClient() {
               {scanLaeuft
                 ? 'Scan läuft …'
                 : scan?.ergebnisse.length
-                  ? 'Keine Setups in diesem Filter — „Top-Trades“ oder „Alle“ zeigen die Rangliste.'
+                  ? minTrefferPct > 0
+                    ? 'Keine Signale mit Trefferchance ≥ ' + minTrefferPct + '% — Filter lockern oder „Alle“ wählen.'
+                    : 'Keine Setups in diesem Filter — „Top-Trades“ oder „Alle“ zeigen die Rangliste.'
                   : 'Kein Scan — oben „Alles aktualisieren“ oder nur „Scan“. Handlungsempfehlung erklärt den nächsten Schritt.'}
             </p>
           )}

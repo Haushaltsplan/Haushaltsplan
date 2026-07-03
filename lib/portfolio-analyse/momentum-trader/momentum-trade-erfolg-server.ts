@@ -12,7 +12,7 @@ import {
   type MomentumPlaybookStatsLookup,
 } from '@/lib/portfolio-analyse/momentum-trader/momentum-playbook-stats-server'
 import { berechnePlanungsScore } from '@/lib/portfolio-analyse/momentum-trader/momentum-planungs-score-server'
-import { bewerteTradeQualitaet } from '@/lib/portfolio-analyse/momentum-trader/momentum-trade-qualitaet-server'
+import { bewerteTradeQualitaet, berechneRewardRisk } from '@/lib/portfolio-analyse/momentum-trader/momentum-trade-qualitaet-server'
 import {
   MOMENTUM_PRE_EVENT_PLAYBOOKS,
   MOMENTUM_TRADE_PLAYBOOKS,
@@ -37,8 +37,14 @@ export function klemmeErfolgWahrscheinlichkeit(n: number): number {
   return rundeTrefferPct(n)
 }
 
-/** Neutrale Prior-Quote ohne nachgewiesenen Edge (Shrinkage). */
+/** Neutrale Prior-Quote ohne nachgewiesenen Edge (nur bei sehr wenig Daten). */
 const PRIOR_TREFFER_PCT = 50
+
+/** Setup-Anpassung: max. ±22 Punkte um Backtest/Schätzung. */
+const SETUP_DELTA_MAX = 22
+
+/** Unter dieser Stichprobe: starke Unsicherheit, keine hohen %-Versprechen. */
+const TREFFER_UNSICHER_N = 3
 
 function shrinkageGewicht(sampleSize: number, zielStichprobe: number): number {
   if (sampleSize <= 0 || zielStichprobe <= 0) return 0
@@ -54,8 +60,8 @@ function richtungWort(r: MomentumRichtung): string {
 }
 
 function erfolgLabel(pct: number): string {
-  if (pct >= 58) return 'Hoch'
-  if (pct >= 48) return 'Mittel'
+  if (pct >= 62) return 'Hoch'
+  if (pct >= 52) return 'Mittel'
   return 'Niedrig'
 }
 
@@ -102,44 +108,68 @@ export function baueErfolgSzenarienPreEvent(
 }
 
 /**
- * Schätzung ohne Backtest: konservativ um ~45–58 % — Score/Gates verschieben nur moderat.
+ * Schätzung ohne Backtest — breite Spanne (~30–72 %), damit Setups unterscheidbar bleiben.
  */
 function berechneHeuristikTrefferPct(e: MomentumScanEintrag): number {
   const total = e.gatesPassed.length + e.gatesFailed.length
   const gateRatio = total > 0 ? e.gatesPassed.length / total : 0.5
-  let pct = 40 + gateRatio * 12 + (e.score - 50) * 0.2
-  if (e.ampel === 'gruen') pct += 2
-  else if (e.ampel === 'gelb') pct -= 1
-  else pct -= 8
-  if (e.gatesFailed.length > 0) pct -= e.gatesFailed.length * 3
+  let pct = 26 + gateRatio * 24 + (e.score - 42) * 0.62
+  if (e.ampel === 'gruen') pct += 5
+  else if (e.ampel === 'gelb') pct += 1
+  else pct -= 10
+  pct -= e.gatesFailed.length * 5
+  const rr = berechneRewardRisk(e)
+  if (rr != null) {
+    if (rr >= 2.2) pct += 4
+    else if (rr < 1.35) pct -= 7
+  }
   return rundeTrefferPct(pct)
 }
 
-/** Setup vs. Durchschnitt — max. ±8 Punkte, nur bei guter Datenlage wirksam. */
-function berechneSetupQualitaetBonus(e: MomentumScanEintrag): number {
+/**
+ * Setup-spezifische Abweichung vom Playbook-Backtest (−22 … +22).
+ * Score, Gates, Ampel, R/R, RVOL und Gap unterscheiden Signale desselben Playbooks.
+ */
+function berechneSetupTrefferDelta(e: MomentumScanEintrag): number {
   const total = e.gatesPassed.length + e.gatesFailed.length
   const gateRatio = total > 0 ? e.gatesPassed.length / total : 0.5
-  let bonus = (gateRatio - 0.9) * 18
-  if (e.ampel === 'gruen') bonus += 3
-  else if (e.ampel === 'gelb') bonus -= 2
-  else bonus -= 8
-  bonus += (e.score - 62) * 0.1
-  if (e.gatesFailed.length > 0) bonus -= e.gatesFailed.length * 3
+  let delta = (gateRatio - 1) * 28
+  delta += (e.score - 62) * 0.42
+  if (e.ampel === 'gruen') delta += 5
+  else if (e.ampel === 'gelb') delta -= 2
+  else delta -= 11
+  delta -= e.gatesFailed.length * 4.5
 
-  const entry = alsZahl(e.indikatoren.entryPrice, 0)
-  const stop = alsZahl(e.indikatoren.stopPrice, 0)
-  const target = alsZahl(e.indikatoren.targetPrice, 0)
-  if (entry > 0 && stop > 0 && target > 0) {
-    const risk = Math.abs(entry - stop)
-    const reward = Math.abs(target - entry)
-    if (risk > 0) {
-      const rr = reward / risk
-      if (rr >= 2) bonus += 2
-      else if (rr < 1.2) bonus -= 4
-    }
+  const rvol = alsZahl(e.indikatoren.rvol, -1)
+  if (rvol >= 0) {
+    if (rvol >= 2.5) delta += 4
+    else if (rvol >= 1.8) delta += 2
+    else if (rvol < 1.2) delta -= 5
   }
 
-  return Math.max(-8, Math.min(8, Math.round(bonus)))
+  const gap = alsZahl(e.indikatoren.gapPct, 0)
+  if (gap !== 0) {
+    const g = Math.abs(gap)
+    if (g >= 8) delta += 4
+    else if (g >= 5) delta += 2
+    else if (g < 3) delta -= 3
+  }
+
+  const rr = berechneRewardRisk(e)
+  if (rr != null) {
+    if (rr >= 2.5) delta += 5
+    else if (rr >= 2) delta += 2
+    else if (rr < 1.35) delta -= 9
+  }
+
+  const rs = alsZahl(e.indikatoren.rsVsSpy20d, 0)
+  const r = e.indikatoren.richtung
+  if (r === 'long' && rs >= 8) delta += 3
+  else if (r === 'short' && rs <= -8) delta += 3
+  else if (r === 'long' && rs < 0) delta -= 4
+  else if (r === 'short' && rs > 0) delta -= 4
+
+  return Math.max(-SETUP_DELTA_MAX, Math.min(SETUP_DELTA_MAX, Math.round(delta)))
 }
 
 function berechnePreEvent(
@@ -199,83 +229,94 @@ function bauePlanung(
 }
 
 /**
- * Trefferwahrscheinlichkeit = gewichtete Backtest-Quote + kleine Setup-Anpassung.
- * Wenig Stichproben → Shrinkage Richtung 50 % + Deckelung.
+ * Trefferwahrscheinlichkeit = Playbook-Backtest (Anker) + setup-spezifische Anpassung.
+ * Gleiches Playbook, unterschiedliche Gates/Score → unterschiedliche %.
  */
 function berechneTrefferWahrscheinlichkeit(
   e: MomentumScanEintrag,
   lookup: MomentumPlaybookStatsLookup | null,
 ): { pct: number; stat: ReturnType<typeof findePlaybookStat>; basisText: string | null } {
   const stat = findePlaybookStat(lookup, e.playbook, e.symbol)
-  const bonus = berechneSetupQualitaetBonus(e)
   const heuristik = berechneHeuristikTrefferPct(e)
+  const delta = berechneSetupTrefferDelta(e)
 
   if (!stat || stat.trefferPct == null) {
+    const pct = rundeTrefferPct(heuristik)
     return {
-      pct: heuristik,
+      pct,
       stat: null,
-      basisText: 'Schätzung ohne Backtest: Gates/Score → ' + heuristik + '%',
+      basisText: 'Kein Backtest — Schätzung aus Gates/Score/RVOL/R/R → ' + pct + '%',
     }
   }
 
   const hist = stat.trefferPct
   const n = stat.sampleSize
   const symbolStat = Boolean(stat.symbol && n >= BACKTEST_MIN_SAMPLES_SYMBOL)
-  const zielN = symbolStat ? BACKTEST_MIN_SAMPLES_SYMBOL * 4 : BACKTEST_MIN_SAMPLES_GLOBAL * 3
-  const w = shrinkageGewicht(n, zielN)
-  const shrunkHist = PRIOR_TREFFER_PCT * (1 - w) + hist * w
-  const adj = Math.round(bonus * w * 0.65)
-  let pct = shrunkHist + adj
+  const setupDelta = delta
 
+  let pct: number
   let basisText: string
 
-  if (symbolStat) {
-    basisText =
-      hist +
-      '% historisch ' +
-      e.symbol +
-      ' (' +
-      stat.wins +
-      '/' +
-      n +
-      '), gewichtet ' +
-      rundeTrefferPct(shrunkHist) +
-      '%' +
-      (adj !== 0 ? ', Setup ' + (adj >= 0 ? '+' : '') + adj + '%' : '') +
-      ' = ' +
-      rundeTrefferPct(pct) +
-      '%'
-  } else if (n >= BACKTEST_MIN_SAMPLES_GLOBAL) {
-    basisText =
-      hist +
-      '% Playbook-Backtest (' +
-      stat.wins +
-      '/' +
-      n +
-      '), gewichtet ' +
-      rundeTrefferPct(shrunkHist) +
-      '%' +
-      (adj !== 0 ? ', Setup ' + (adj >= 0 ? '+' : '') + adj + '%' : '') +
-      ' = ' +
-      rundeTrefferPct(pct) +
-      '%'
-  } else {
-    pct = hist * w + heuristik * (1 - w) + adj * 0.5
+  if (n < TREFFER_UNSICHER_N) {
+    pct = heuristik * 0.55 + hist * 0.45 + setupDelta * 0.5
     pct = Math.min(pct, BACKTEST_LOW_CONFIDENCE_CAP_PCT)
     basisText =
-      'Wenig Daten (' +
+      'Sehr wenig Daten (' +
       n +
       '×): Backtest ' +
       hist +
-      '% + Schätzung ' +
+      '% gemischt mit Schätzung ' +
       heuristik +
-      '% (max. ' +
-      BACKTEST_LOW_CONFIDENCE_CAP_PCT +
-      '%)'
-  }
-
-  if (n < BACKTEST_MIN_SAMPLES_GLOBAL && n > 0) {
-    pct = Math.min(pct, BACKTEST_LOW_CONFIDENCE_CAP_PCT)
+      '%'
+  } else if (n < BACKTEST_MIN_SAMPLES_GLOBAL) {
+    const w = shrinkageGewicht(n, BACKTEST_MIN_SAMPLES_GLOBAL * 2)
+    const ank = PRIOR_TREFFER_PCT * (1 - w) + hist * w
+    pct = ank + setupDelta * 0.85
+    pct = Math.min(pct, BACKTEST_LOW_CONFIDENCE_CAP_PCT + 4)
+    basisText =
+      'Backtest ' +
+      hist +
+      '% (' +
+      stat.wins +
+      '/' +
+      n +
+      ') + Setup ' +
+      (setupDelta >= 0 ? '+' : '') +
+      setupDelta +
+      '% → ' +
+      rundeTrefferPct(pct) +
+      '%'
+  } else {
+    pct = hist + setupDelta
+    if (symbolStat) {
+      basisText =
+        hist +
+        '% ' +
+        e.symbol +
+        ' (' +
+        stat.wins +
+        '/' +
+        n +
+        ') + Setup ' +
+        (setupDelta >= 0 ? '+' : '') +
+        setupDelta +
+        '% = ' +
+        rundeTrefferPct(pct) +
+        '%'
+    } else {
+      basisText =
+        hist +
+        '% Playbook (' +
+        stat.wins +
+        '/' +
+        n +
+        ') + Setup ' +
+        (setupDelta >= 0 ? '+' : '') +
+        setupDelta +
+        '% = ' +
+        rundeTrefferPct(pct) +
+        '%'
+    }
   }
 
   return { pct: rundeTrefferPct(pct), stat, basisText }
