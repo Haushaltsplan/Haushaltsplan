@@ -243,7 +243,7 @@ async function ladeNewsFuerUnternehmen(
       id: a.link,
       titel: a.titel,
       href: a.link,
-      quelle: a.quelle,
+      quelle: a.quelle ?? '',
       veroeffentlichtAm,
       unternehmen: [u],
       kategorie: kategorieAusText(a.titel, a.zusammenfassung ?? ''),

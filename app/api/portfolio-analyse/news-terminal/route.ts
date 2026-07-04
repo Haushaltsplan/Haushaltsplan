@@ -13,35 +13,33 @@ const MAX_EXTRA = 40
 
 function parseDepotPositionen(raw: unknown): NewsTerminalDepotPosition[] {
   if (!Array.isArray(raw)) return []
-  return raw
-    .slice(0, MAX_POSITIONEN)
-    .map((row) => {
-      const r = row as Record<string, unknown>
-      const name = String(r.name ?? '').trim()
-      if (!name) return null
-      return {
-        isin: r.isin != null ? String(r.isin).trim().toUpperCase() || null : null,
-        name,
-        symbolYahoo: r.symbolYahoo != null ? String(r.symbolYahoo).trim().toUpperCase() || null : null,
-      } satisfies NewsTerminalDepotPosition
+  const out: NewsTerminalDepotPosition[] = []
+  for (const row of raw.slice(0, MAX_POSITIONEN)) {
+    const r = row as Record<string, unknown>
+    const name = String(r.name ?? '').trim()
+    if (!name) continue
+    out.push({
+      isin: r.isin != null ? String(r.isin).trim().toUpperCase() || null : null,
+      name,
+      symbolYahoo: r.symbolYahoo != null ? String(r.symbolYahoo).trim().toUpperCase() || null : null,
     })
-    .filter((p): p is NewsTerminalDepotPosition => p != null)
+  }
+  return out
 }
 
 function parseExtraUnternehmen(raw: unknown): NewsTerminalUnternehmen[] {
   if (!Array.isArray(raw)) return []
-  return raw
-    .slice(0, MAX_EXTRA)
-    .map((row) => {
-      const r = row as Record<string, unknown>
-      const name = String(r.name ?? '').trim()
-      const symbol = r.symbol != null ? String(r.symbol).trim().toUpperCase() || null : null
-      const isin = r.isin != null ? String(r.isin).trim().toUpperCase() || null : null
-      const id = isin ?? symbol ?? name.toUpperCase()
-      if (!id || !name) return null
-      return { id, name, symbol, isin } satisfies NewsTerminalUnternehmen
-    })
-    .filter((e): e is NewsTerminalUnternehmen => e != null)
+  const out: NewsTerminalUnternehmen[] = []
+  for (const row of raw.slice(0, MAX_EXTRA)) {
+    const r = row as Record<string, unknown>
+    const name = String(r.name ?? '').trim()
+    const symbol = r.symbol != null ? String(r.symbol).trim().toUpperCase() || null : null
+    const isin = r.isin != null ? String(r.isin).trim().toUpperCase() || null : null
+    const id = isin ?? symbol ?? name.toUpperCase()
+    if (!id || !name) continue
+    out.push({ id, name, symbol, isin })
+  }
+  return out
 }
 
 export async function GET(req: Request) {
