@@ -1,0 +1,600 @@
+/** Geo- & Produktsegmente aus iXBRL-10-K-Tabellen (us-gaap TextBlocks). */
+
+export type SecSegmentRoh = {
+  name: string
+  umsatzMio: number | null
+  anteilPct: number | null
+}
+
+const XBRL_GEO_TAGS = [
+  'ScheduleOfRevenuesFromExternalCustomersAndLongLivedAssetsByGeographicalAreasTableTextBlock',
+  'RevenueFromExternalCustomersByGeographicAreasTableTextBlock',
+  'RevenuesFromExternalCustomersByGeographicAreasTableTextBlock',
+]
+
+const XBRL_OPERATING_TAG = 'ScheduleOfSegmentReportingInformationBySegmentTextBlock'
+const XBRL_OPERATING_FALLBACK = 'SegmentReportingDisclosureTextBlock'
+
+const SKIP_LABELS =
+  /^(net revenue[s]?|total revenue[s]?|total net sales|revenue[s]?|revenues?|total[s]?|consolidated|eliminations?|intercompany|corporate|other(\s+and)?\s+unallocated|unallocated|not\s+assigned|all\s+other|year ended|in millions|\(in millions\)|cost of revenue|operating expenses|operating income|gross profit|depreciation|amortization|assets|liabilities|capital expenditures|adjusted ebitda|reconciling items|long-lived assets|property and equipment|revenue from operations|revenue from external customers|revenues from external customers|consolidated revenues|intersegment revenues|segment operating profit|operating profit|gross margin|employee benefit|less: other segment items)$/i
+
+const JUNK_LABEL =
+  /incorporated|recognized|privacy|union\s*\(|&#|payments,|chief executive|officer since|previous business|accounts receivable|contract assets|receivables from contracts|shares outstanding|weighted[- ]average|diluted|basic shares|per share|stockholders|shareholders|remeasurement|held for sale|medical costs|payable|long-term assets|capitalized software|common stock|preferred stock|class [a-z0-9]/i
+
+const BALANCE_JUNK =
+  /\breceivable\b|\bprepaid\b|\bother assets\b|\bother current\b|\bother liabilities\b|\bliabilit|\bnet income\b|\bgoodwill\b|\bintangible\b|\bproperty, plant\b|\bcash and cash\b|\btotal assets\b|\bsegment assets\b/i
+
+const FINANCIAL_LINE_ITEM =
+  /^(premiums?|products?|services?|investment|interest|depreciation|amortization|earnings|employee|personnel|professional fees|data processing|foreign exchange|advertising|marketing|provision|capital expenditure|total operating costs|total company|total franchised|total other|other costs|other segment items|other \(income\)|gains|losses|hedging|elimination|corporate|unallocated|income tax|tax expense|membership|operating loss|income before|operating supplies and expenses|general supplies and expenses|operating taxes and licenses|insurance and claims|communications and utilities|purchased transportation|miscellaneous expenses, net|other income, net|revenues?)$/i
+
+/** GuV-/Reconciliation-Zeilen — keine echten Segmente. */
+const AUFWAND_ZEILE =
+  /\b(expense|expenses|depreciation|amortization|provision|litigation|interest|income tax|tax expense|compensation|personnel|professional fees|foreign exchange|data processing|telecommunications|purchased|fuel|salaries|membership and other|corporate and support|alphabet-level|employee compensation|other costs and expenses|operating supplies|general supplies|operating taxes|insurance and claims|communications and utilities|purchased transportation|miscellaneous expenses|other income, net|reconciling|elimination|materials and supplies|other cost of services|restructuring costs?|cost of services)\b/i
+
+const GEO_SKIP =
+  /hedging|elimination|intercompany|unallocated|corporate activities|alphabet-level/i
+
+const GEO_HINT =
+  /america|europe|asia|pacific|africa|middle east|international|united states|u\.s\.|emea|apac|latin|canada|china|japan|korea|india|germany|uk|united kingdom|austral|mexico|brazil|regional|foreign|domestic|north america|south america|rest of world|outside|geograph|country|market[s]?$|americas|other countries|other americas/i
+
+export type SegmentExtraktionErgebnis = {
+  segmente: SecSegmentRoh[]
+  art: 'produkt' | 'geo' | null
+  quelle: 'xbrl_operating' | 'xbrl_geo' | 'html_heuristik' | null
+}
+
+type TabellenZeile = { zellen: string[]; betraege: number[] }
+
+function decodeHtmlEntities(s: string): string {
+  return s
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#(\d+);/g, (_, code) => String.fromCharCode(parseInt(code, 10)))
+}
+
+function zellenText(tdHtml: string): string {
+  return decodeHtmlEntities(
+    tdHtml
+      .replace(/<ix:nonfraction[^>]*>([\s\S]*?)<\/ix:nonfraction>/gi, '$1')
+      .replace(/<ix:nonnumeric[^>]*>([\s\S]*?)<\/ix:nonnumeric>/gi, '$1')
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/&nbsp;/gi, ' ')
+      .replace(/\s+/g, ' ')
+      .trim(),
+  )
+}
+
+function betraegeAusZeile(trHtml: string): number[] {
+  const betraege: number[] = []
+  const ixRe = /<ix:nonfraction[^>]*>([\s\S]*?)<\/ix:nonfraction>/gi
+  let m: RegExpExecArray | null
+  while ((m = ixRe.exec(trHtml)) !== null) {
+    const s = m[1].replace(/<[^>]+>/g, '').replace(/,/g, '').replace(/\$/g, '').trim()
+    if (!/^-?\d+(?:\.\d+)?$/.test(s)) continue
+    const n = Number(s)
+    if (Number.isFinite(n) && n > 0) betraege.push(n)
+  }
+  if (betraege.length > 0) return betraege
+
+  const zellen = [...trHtml.matchAll(/<t[dh][^>]*>([\s\S]*?)<\/t[dh]>/gi)].map((c) => zellenText(c[1]!))
+  for (const z of zellen) {
+    const s = z.replace(/[$,()]/g, '').trim()
+    if (!/^\d+(?:\.\d+)?$/.test(s)) continue
+    const n = Number(s)
+    if (Number.isFinite(n) && n > 0) betraege.push(n)
+  }
+  return betraege
+}
+
+function parseTabellenZeilen(fragment: string): TabellenZeile[] {
+  const rows: TabellenZeile[] = []
+  const rowRe = /<tr[^>]*>([\s\S]*?)<\/tr>/gi
+  let row: RegExpExecArray | null
+  while ((row = rowRe.exec(fragment)) !== null) {
+    const tr = row[1]!
+    if (/visibility:\s*collapse/i.test(row[0]!)) continue
+    const zellen = [...tr.matchAll(/<t[dh][^>]*>([\s\S]*?)<\/t[dh]>/gi)]
+      .map((c) => zellenText(c[1]!))
+    const sichtbar = nichtLeereZellen(zellen)
+    if (sichtbar.length === 0) continue
+    rows.push({ zellen, betraege: betraegeAusZeile(tr) })
+  }
+  return rows
+}
+
+function normalisiereZelle(z: string): string {
+  return z.replace(/\u00a0/g, ' ').trim()
+}
+
+function nichtLeereZellen(zellen: string[]): string[] {
+  return zellen.map(normalisiereZelle).filter((z) => z.length > 0 && z !== '$')
+}
+
+function segmentNameAusZeile(zellen: string[], betraege: number[] = []): string | null {
+  const cleaned = nichtLeereZellen(zellen)
+  if (cleaned.length === 0) return null
+  const label0 = bereinigeLabel(cleaned[0]!)
+  if (!istSegmentLabel(label0, false, false)) return null
+  if (betraege.length > 0 && betragZuMio(betraege[0]!) >= 100) return null
+  if (cleaned.length === 1) return label0
+  const restNurLeer = cleaned.slice(1).every((c) => c.length <= 1 || c === '$')
+  return restNurLeer ? label0 : null
+}
+
+function bereinigeLabel(raw: string): string {
+  return decodeHtmlEntities(raw)
+    .replace(/\s*\(\s*[a-z]\s*\)\s*$/gi, '')
+    .replace(/\s*\(\s*\d+\s*\)\s*$/g, '')
+    .replace(/\s+\d{1,2}\s*$/g, '')
+    .replace(/\s*\$\s*$/g, '')
+    .replace(/[:;]+\s*$/g, '')
+    .replace(/\s*\(\s*in\s+millions?\s*\)\s*/gi, '')
+    .trim()
+}
+
+function betragZuMio(n: number): number {
+  if (n > 50_000_000) return Math.round(n / 1_000_000)
+  return Math.round(n)
+}
+
+function istGeoName(name: string): boolean {
+  return GEO_HINT.test(bereinigeLabel(name))
+}
+
+/** MCD & Co.: Geschäftssegmente, die wie Geo-Namen aussehen. */
+function istGeoartigesOperatingSegment(name: string): boolean {
+  const n = bereinigeLabel(name)
+  return (
+    /^u\.s\.?$/i.test(n) ||
+    /operated markets|developmental licensed|licensed markets\s*&\s*corporate/i.test(n)
+  )
+}
+
+function istSegmentLabel(name: string, geoModus: boolean, ausXbrlGeo: boolean): boolean {
+  const n = bereinigeLabel(name)
+  if (n.length < 3 || n.length > 90) return false
+  if (/^\(.*millions?\)$/i.test(n) || /^amounts in millions$/i.test(n)) return false
+  if (/^\(?\s*in (?:millions?|thousands?|billions?|dollars)\s*\)?$/i.test(n)) return false
+  if (/^\(?\s*millions of dollars\s*\)?$/i.test(n)) return false
+  if (/^(january|february|march|april|may|june|july|august|september|october|november|december)\s+\d{1,2},?\s+\d{4}$/i.test(n)) return false
+  if (/^fiscal\s+\d{4}$/i.test(n)) return false
+  if (SKIP_LABELS.test(n)) return false
+  if (JUNK_LABEL.test(n)) return false
+  if (BALANCE_JUNK.test(n)) return false
+  if (/^\d{4}$/.test(n)) return false
+  if (/^\(in /i.test(n)) return false
+  if (/[,(]$/.test(n)) return false
+  if (!/[a-zA-Z]{2,}/.test(n) && !/^u\.s\.?$/i.test(n)) return false
+  if (geoModus && !ausXbrlGeo && !istGeoName(n)) return false
+  return true
+}
+
+/** iXBRL-TextBlock inkl. ix:continuation-Auslagerung. */
+export function extrahiereIxbrlTextBlock(html: string, tagSuffix: string): string {
+  const escaped = tagSuffix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const nameRe = new RegExp(`name="(?:[a-zA-Z0-9_-]+:)?${escaped}"`, 'i')
+  const nameMatch = nameRe.exec(html)
+  if (!nameMatch) return ''
+  const idx = nameMatch.index
+
+  const nonNumericStart = html.lastIndexOf('<ix:nonNumeric', idx)
+  if (nonNumericStart < 0) return ''
+
+  const header = html.slice(nonNumericStart, nonNumericStart + 2500)
+  const contMatch = header.match(/continuedAt="([^"]+)"/)
+  if (contMatch?.[1]) {
+    const contId = contMatch[1]
+    const contStart = html.indexOf(`<ix:continuation id="${contId}"`, nonNumericStart)
+    if (contStart >= 0) {
+      const contEnd = html.indexOf('</ix:continuation>', contStart)
+      if (contEnd > contStart) return html.slice(contStart, contEnd)
+    }
+  }
+
+  const end = html.indexOf('</ix:nonNumeric>', nonNumericStart)
+  if (end < 0) return ''
+  return html.slice(nonNumericStart, end)
+}
+
+function extrahiereErstenGeoBlock(html: string): string {
+  for (const tag of XBRL_GEO_TAGS) {
+    const block = extrahiereIxbrlTextBlock(html, tag)
+    if (block.length > 200) return block
+  }
+  return ''
+}
+
+/** Produktsegmente: Segmentname-Zeile + folgende Revenue-Zeile (MSFT-Muster). */
+export function parseOperatingSegmente(fragment: string): SecSegmentRoh[] {
+  if (!fragment) return []
+  const zeilen = parseTabellenZeilen(fragment)
+  const segmente: SecSegmentRoh[] = []
+  const seen = new Set<string>()
+  let aktuellesSegment = ''
+  let nachTotal = false
+
+  for (const z of zeilen) {
+    const sichtbar = nichtLeereZellen(z.zellen)
+    const label0 = bereinigeLabel(sichtbar[0] ?? '')
+    const labelJoin = bereinigeLabel(sichtbar.join(' '))
+
+    if (/^total$/i.test(label0) || /^total net sales$/i.test(label0)) {
+      nachTotal = true
+      aktuellesSegment = ''
+      continue
+    }
+    if (nachTotal) continue
+
+    const segName = segmentNameAusZeile(z.zellen, z.betraege)
+    if (segName) {
+      aktuellesSegment = segName
+      continue
+    }
+
+    if (aktuellesSegment && /^(revenue|total revenues)$/i.test(label0) && z.betraege.length > 0) {
+      const key = aktuellesSegment.toLowerCase()
+      if (!seen.has(key)) {
+        seen.add(key)
+        segmente.push({ name: aktuellesSegment, umsatzMio: betragZuMio(z.betraege[0]!), anteilPct: null })
+      }
+      aktuellesSegment = ''
+      continue
+    }
+
+    // GOOGL/MCD-Muster: Segmentname und Umsatz in einer Zeile
+    if (
+      sichtbar.length >= 2 &&
+      !/^total\b/i.test(label0) &&
+      istSegmentLabel(label0, false, false) &&
+      (!istGeoName(label0) || istGeoartigesOperatingSegment(label0)) &&
+      !FINANCIAL_LINE_ITEM.test(label0) &&
+      !AUFWAND_ZEILE.test(label0) &&
+      !istIncomeStatementZeile(label0) &&
+      !SKIP_LABELS.test(label0) &&
+      z.betraege.length > 0
+    ) {
+      const mio = betragZuMio(z.betraege[0]!)
+      if (mio >= 500) {
+        const key = label0.toLowerCase()
+        if (!seen.has(key)) {
+          seen.add(key)
+          segmente.push({ name: label0, umsatzMio: mio, anteilPct: null })
+        }
+      }
+    }
+  }
+
+  return segmente
+}
+
+export function parseSpaltenOrientierteSegmente(fragment: string): SecSegmentRoh[] {
+  if (!fragment) return []
+  const zeilen = parseTabellenZeilen(fragment)
+  let spaltenNamen: string[] = []
+  const segmente: SecSegmentRoh[] = []
+
+  for (const z of zeilen) {
+    const sichtbar = nichtLeereZellen(z.zellen).map(bereinigeLabel)
+    const potNamen = sichtbar.filter(
+      (c) =>
+        c &&
+        istSegmentLabel(c, false, false) &&
+        !FINANCIAL_LINE_ITEM.test(c) &&
+        !AUFWAND_ZEILE.test(c) &&
+        !istIncomeStatementZeile(c),
+    )
+
+    if (potNamen.length >= 2 && z.betraege.length < potNamen.length) {
+      if (potNamen.length >= spaltenNamen.length) spaltenNamen = potNamen
+      continue
+    }
+
+    const label0 = sichtbar[0] ?? ''
+    if (/unaffiliated|affiliated/i.test(label0)) continue
+    if (
+      spaltenNamen.length >= 2 &&
+      /^(total revenues?|revenues?|revenue from external customers|revenues from external customers|sales(\s*\([a-z]\))?|net sales)$/i.test(
+        label0,
+      )
+    ) {
+      const zahlenAusText = sichtbar
+        .slice(1)
+        .map((c) => Number(c.replace(/[^\d.]/g, '')))
+        .filter((n) => Number.isFinite(n) && n > 0)
+      const zahlen =
+        zahlenAusText.length >= spaltenNamen.length
+          ? zahlenAusText
+          : z.betraege.length >= spaltenNamen.length
+            ? z.betraege
+            : zahlenAusText
+
+      if (zahlen.length >= spaltenNamen.length) {
+        const namen = spaltenNamen.filter((n) => !/^\(?\s*millions of dollars\s*\)?$/i.test(n))
+        const werte = zahlen.slice(0, namen.length)
+        for (let i = 0; i < namen.length; i++) {
+          segmente.push({
+            name: namen[i]!,
+            umsatzMio: betragZuMio(werte[i]!),
+            anteilPct: null,
+          })
+        }
+        if (segmente.length >= 2) return bereinigeSpaltenSegmente(segmente)
+      }
+    }
+  }
+
+  return segmente
+}
+
+function bereinigeSpaltenSegmente(segmente: SecSegmentRoh[]): SecSegmentRoh[] {
+  let ohneElim = segmente.filter(
+    (s) => !/elimination|intercompany|^total$|^engineering$|^other$/i.test(bereinigeLabel(s.name)),
+  )
+  const hatOptumUntereinheiten = ohneElim.some((s) => /^optum (health|insight|rx)/i.test(s.name))
+  if (hatOptumUntereinheiten) {
+    ohneElim = ohneElim.filter((s) => !/^optum$/i.test(bereinigeLabel(s.name)))
+  }
+  const mitUmsatz = ohneElim.filter((s) => (s.umsatzMio ?? 0) >= 30)
+  return mitUmsatz.length >= 2 ? mitUmsatz : ohneElim
+}
+
+export function parseGeoSegmente(fragment: string, ausXbrlGeo: boolean): SecSegmentRoh[] {
+  if (!fragment) return []
+  const zeilen = parseTabellenZeilen(fragment)
+  const segmente: SecSegmentRoh[] = []
+  const seen = new Set<string>()
+  const combinedAssetsTable = /RevenuesFromExternalCustomersAndLongLivedAssets|LongLivedAssetsByGeographical/i.test(
+    fragment,
+  )
+  let inRevenueSection = !combinedAssetsTable
+
+  for (const z of zeilen) {
+    const sichtbar = nichtLeereZellen(z.zellen)
+    const label0 = bereinigeLabel(sichtbar[0] ?? '')
+    const labelJoin = sichtbar.join(' ').toLowerCase()
+
+    if (/long[- ]lived assets|property and equipment|total assets/i.test(labelJoin)) {
+      inRevenueSection = false
+      continue
+    }
+    if (/net revenue|revenue[s]? by|revenues? by|net sales/i.test(labelJoin) && !/cost of revenue/i.test(labelJoin)) {
+      inRevenueSection = true
+    }
+    if (!inRevenueSection) continue
+
+    if (!label0 || GEO_SKIP.test(label0)) continue
+    if (istIncomeStatementZeile(label0)) continue
+    if (/^total\b/i.test(label0)) continue
+    if (/^net sales$/i.test(label0) && !istGeoName(label0)) continue
+    if (!istSegmentLabel(label0, true, ausXbrlGeo)) continue
+    if (/^net revenue|^total revenue|^total$|^total net sales|^revenue$/i.test(label0)) continue
+    if (z.betraege.length === 0) continue
+
+    const mio = betragZuMio(z.betraege[0]!)
+    if (combinedAssetsTable && mio < 3000) continue
+
+    const key = label0.toLowerCase()
+    if (seen.has(key)) continue
+    seen.add(key)
+    segmente.push({ name: label0, umsatzMio: betragZuMio(z.betraege[0]!), anteilPct: null })
+  }
+
+  return segmente
+}
+
+function istIncomeStatementZeile(label: string): boolean {
+  return /cost of sales|cost of revenue|research and development|selling and marketing|general and administrative|operating income|operating loss|gross profit|^net sales$|income before|corporate and support|other \(gains\)/i.test(
+    bereinigeLabel(label),
+  )
+}
+
+function dedupliziereSegmente(segmente: SecSegmentRoh[]): SecSegmentRoh[] {
+  const seen = new Set<string>()
+  const out: SecSegmentRoh[] = []
+  for (const s of segmente) {
+    const key = s.name.toLowerCase()
+    if (seen.has(key)) continue
+    seen.add(key)
+    out.push(s)
+  }
+  return out
+}
+
+function sindKlareProduktsegmente(segmente: SecSegmentRoh[]): boolean {
+  if (segmente.length < 2) return false
+  const produktHinweis =
+    /google (services|cloud)|other bets|intelligent cloud|productivity|unitedhealthcare|optum|walmart u\.s|sam's club|more personal computing|bulk|industrial|east tier|west tier|index|analytics|sustainability|zts|pharma|cloud|software|platform/i
+  const mitHinweis = segmente.filter((s) => produktHinweis.test(s.name)).length
+  if (mitHinweis >= 2) return true
+  const geoCount = segmente.filter((s) => istGeoName(s.name)).length
+  return geoCount < Math.ceil(segmente.length / 2)
+}
+
+function inferArt(segmente: SecSegmentRoh[]): 'produkt' | 'geo' {
+  if (segmente.some((s) => istGeoartigesOperatingSegment(s.name) || /operated markets|market intelligence|ratings|life sciences|analytical instruments|walmart|google /i.test(s.name))) {
+    return 'produkt'
+  }
+  const geoCount = segmente.filter((s) => istGeoName(s.name)).length
+  return geoCount >= Math.ceil(segmente.length / 2) ? 'geo' : 'produkt'
+}
+
+function istPlausiblerSegmentname(name: string): boolean {
+  const n = bereinigeLabel(name)
+  if (istIncomeStatementZeile(n) || FINANCIAL_LINE_ITEM.test(n) || AUFWAND_ZEILE.test(n)) return false
+  if (
+    /adjusted ebitda|segment expenses|other segment items|locomotive fuel|salaries|variable costs|fixed costs|gross margin|expenditures for|corporate and support|revenue from operations|operating \[|administrative \[|other subsidiary|intersegment revenues|consolidated revenues|selling, general|operating supplies|general supplies|operating taxes|insurance and claims|communications and utilities|purchased transportation|miscellaneous expenses|deferral of|recognition of|unearned revenue|beginning balance|ending balance|residential revenues|commercial revenues|termite and ancillary/i.test(
+      n,
+    )
+  ) {
+    return false
+  }
+  if (/^fiscal\s+\d{4}$/i.test(n)) return false
+  if (/^\w{3,9}\s+\d{1,2},/i.test(n)) return false
+  if (/^millions|^may \d|^\(millions/i.test(n)) return false
+  if (/^primary$|^secondary$|^total company$|^all other$/i.test(n)) return false
+  return true
+}
+
+function korrigiereSkalierung(segmente: SecSegmentRoh[]): SecSegmentRoh[] {
+  const werte = segmente.map((s) => s.umsatzMio ?? 0).filter((v) => v > 0)
+  if (werte.length === 0) return segmente
+  const median = [...werte].sort((a, b) => a - b)[Math.floor(werte.length / 2)] ?? 0
+  if (median > 200_000) {
+    const summeRoh = werte.reduce((a, b) => a + b, 0)
+    // Nur skalieren wenn Werte wie Tausender aussehen (nach /1000 noch sinnvolle Konzernsumme).
+    if (summeRoh / 1000 >= 3000) {
+      for (const s of segmente) {
+        if (s.umsatzMio != null) s.umsatzMio = Math.round(s.umsatzMio / 1000)
+      }
+    }
+  }
+  return segmente
+}
+
+export function validiereSegmente(segmente: SecSegmentRoh[]): SecSegmentRoh[] {
+  const skaliert = korrigiereSkalierung([...segmente])
+  const plausibel = skaliert.filter((s) => istPlausiblerSegmentname(s.name))
+  if (plausibel.filter((s) => istIncomeStatementZeile(s.name)).length >= 2) return []
+
+  const mitUmsatz = plausibel.filter((s) => (s.umsatzMio ?? 0) >= 30)
+  if (mitUmsatz.length < 2) return []
+
+  const nameKeys = mitUmsatz.map((s) => s.name.toLowerCase())
+  if (new Set(nameKeys).size !== nameKeys.length) return []
+
+  const summe = mitUmsatz.reduce((s, e) => s + (e.umsatzMio ?? 0), 0)
+  const minSumme = mitUmsatz.length === 2 && mitUmsatz.every((s) => istGeoName(s.name)) ? 1500 : 3000
+  if (summe < minSumme) return []
+
+  for (const s of mitUmsatz) {
+    s.anteilPct = Math.round(((s.umsatzMio ?? 0) / summe) * 1000) / 10
+  }
+
+  if (mitUmsatz.length > 10) return []
+
+  const anteile = mitUmsatz.map((s) => s.anteilPct ?? 0)
+  if (anteile.some((a) => a < 0.5 || a > 98.5)) return []
+
+  const summeAnteil = anteile.reduce((a, b) => a + b, 0)
+  if (summeAnteil < 75 || summeAnteil > 125) return []
+
+  return mitUmsatz
+}
+
+function scoreSegmente(segmente: SecSegmentRoh[], art: 'produkt' | 'geo'): number {
+  if (segmente.length < 2) return 0
+  const summeAnteil = segmente.reduce((s, e) => s + (e.anteilPct ?? 0), 0)
+  let score = segmente.length * 20
+  if (art === 'produkt') score += 10
+  if (summeAnteil >= 90 && summeAnteil <= 110) score += 25
+  if (segmente.every((s) => (s.umsatzMio ?? 0) >= 100)) score += 10
+  const junk = segmente.filter((s) => JUNK_LABEL.test(s.name) || BALANCE_JUNK.test(s.name)).length
+  score -= junk * 50
+  return score
+}
+
+const HTML_SECTION_RES = [
+  /RevenueFromExternalCustomersByGeographicAreasTableTextBlock/i,
+  /ScheduleOfRevenuesFromExternalCustomersAndLongLivedAssetsByGeographicalAreasTableTextBlock/i,
+  /ScheduleOfSegmentReportingInformationBySegmentTextBlock/i,
+  /revenue[s]?,?\s+classified by the major geographic/i,
+  /net revenue[s]? by geographic(?:al)?(?:\s+area|\s+region)?/i,
+  /revenues? by geographic(?:al)?(?:\s+area|\s+region)?/i,
+  /revenue by geographic/i,
+  /segment revenue, cost of revenue/i,
+  /net revenues? by region/i,
+]
+
+function extrahiereHtmlHeuristik(html: string): SegmentExtraktionErgebnis {
+  let fensterStart = -1
+  for (const re of HTML_SECTION_RES) {
+    const m = re.exec(html)
+    if (m && (fensterStart < 0 || m.index < fensterStart)) fensterStart = m.index
+  }
+  if (fensterStart < 0) return { segmente: [], art: null, quelle: null }
+
+  const fenster = html.slice(fensterStart, fensterStart + 45_000)
+  const geoModus = /geographic|GeographicalAreas|country|region/i.test(fenster.slice(0, 1500))
+
+  const spalten = validiereSegmente(parseSpaltenOrientierteSegmente(fenster))
+  const zeilen = validiereSegmente(dedupliziereSegmente(parseOperatingSegmente(fenster)))
+  const operating = spalten.length >= 2 ? spalten : zeilen
+  const geo = validiereSegmente(parseGeoSegmente(fenster, geoModus))
+
+  if (operating.length >= 2 && sindKlareProduktsegmente(operating)) {
+    return { segmente: operating, art: 'produkt', quelle: 'html_heuristik' }
+  }
+  if (operating.length >= 2 && scoreSegmente(operating, 'produkt') >= scoreSegmente(geo, 'geo')) {
+    return { segmente: operating, art: inferArt(operating), quelle: 'html_heuristik' }
+  }
+  if (geo.length >= 2) return { segmente: geo, art: 'geo', quelle: 'html_heuristik' }
+  if (operating.length >= 2) return { segmente: operating, art: inferArt(operating), quelle: 'html_heuristik' }
+  return { segmente: [], art: null, quelle: null }
+}
+
+/** Haupt-Einstieg: XBRL-TextBlocks bevorzugen, HTML-Heuristik als Fallback. */
+export function extrahiereSegmenteAus10kHtml(html: string): SegmentExtraktionErgebnis {
+  const operatingBlock = extrahiereIxbrlTextBlock(html, XBRL_OPERATING_TAG)
+  const geoBlock = extrahiereErstenGeoBlock(html)
+  const geoRaw = parseGeoSegmente(geoBlock, true)
+
+  const spalten = validiereSegmente(parseSpaltenOrientierteSegmente(operatingBlock))
+  const zeilen = validiereSegmente(dedupliziereSegmente(parseOperatingSegmente(operatingBlock)))
+  let operating = spalten.length >= 2 ? spalten : zeilen
+  let geo = validiereSegmente(geoRaw)
+
+  if (operating.length < 2) {
+    const fallbackBlock = extrahiereIxbrlTextBlock(html, XBRL_OPERATING_FALLBACK)
+    if (fallbackBlock.length > 500) {
+      const spaltenFb = validiereSegmente(parseSpaltenOrientierteSegmente(fallbackBlock))
+      const zeilenFb = validiereSegmente(dedupliziereSegmente(parseOperatingSegmente(fallbackBlock)))
+      const fbOp = spaltenFb.length >= 2 ? spaltenFb : zeilenFb
+      if (fbOp.length > operating.length) operating = fbOp
+      if (geo.length < 2) {
+        const geoFromFallback = validiereSegmente(parseGeoSegmente(fallbackBlock, false))
+        if (geoFromFallback.length > geo.length) geo = geoFromFallback
+      }
+    }
+  }
+
+  if (geo.length < 2 && geoBlock) {
+    const geoHtml = validiereSegmente(parseGeoSegmente(geoBlock, false))
+    if (geoHtml.length > geo.length) geo = geoHtml
+  }
+
+  const opScore = scoreSegmente(operating, 'produkt')
+  const geoScore = scoreSegmente(geo, 'geo')
+
+  if (operating.length >= 2 && sindKlareProduktsegmente(operating)) {
+    return { segmente: operating, art: 'produkt', quelle: 'xbrl_operating' }
+  }
+
+  const operatingIstProdukt = operating.length >= 2 && operating.some((s) => !istGeoName(s.name))
+
+  if (operatingIstProdukt && operating.length >= 2 && opScore >= geoScore - 5) {
+    return { segmente: operating, art: 'produkt', quelle: 'xbrl_operating' }
+  }
+  if (geo.length >= 2 && geoScore >= opScore) {
+    return { segmente: geo, art: 'geo', quelle: 'xbrl_geo' }
+  }
+  if (operating.length >= 2) {
+    const art = inferArt(operating)
+    return { segmente: operating, art, quelle: 'xbrl_operating' }
+  }
+  if (geo.length >= 2) {
+    return { segmente: geo, art: 'geo', quelle: 'xbrl_geo' }
+  }
+
+  return extrahiereHtmlHeuristik(html)
+}
+
+export function segmentHinweisFuerErgebnis(ergebnis: SegmentExtraktionErgebnis): string | null {
+  if (ergebnis.segmente.length === 0) {
+    return 'Keine Geo-/Produktsegmente automatisch erkannt (10-K prüfen).'
+  }
+  if (ergebnis.art === 'geo') return 'Geografische Umsatzverteilung (10-K).'
+  if (ergebnis.art === 'produkt') return 'Produkt-/Geschäftssegmente (10-K).'
+  return null
+}
