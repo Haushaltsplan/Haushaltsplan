@@ -5,10 +5,12 @@ import { useMemo } from 'react'
 import { PaBadge, PaCard } from '@/components/portfolio-analyse/pa-ui'
 import { fundamentaldatenHref } from '@/lib/portfolio-analyse/fundamentaldaten-navigation'
 import type {
+  NewsTerminalDepotPosition,
   NewsTerminalKategorie,
   NewsTerminalPaket,
+  NewsTerminalUnternehmen,
   NewsTerminalZeile,
-} from '@/lib/portfolio-analyse/portfolio-news-terminal-server'
+} from '@/lib/portfolio-analyse/portfolio-news-terminal-types'
 
 const KATEGORIE_LABEL: Record<NewsTerminalKategorie, string> = {
   earnings: 'Quartal',
@@ -177,8 +179,8 @@ export function PaNewsTerminal({
           </p>
         ) : (
           <ul className="divide-y divide-white/[0.04]">
-            {gefiltert.map((z) => (
-              <li key={z.id}>
+            {gefiltert.map((z, i) => (
+              <li key={`${z.href}-${i}`}>
                 <a
                   href={z.href}
                   target="_blank"

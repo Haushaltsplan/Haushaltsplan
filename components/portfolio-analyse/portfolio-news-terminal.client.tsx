@@ -12,7 +12,7 @@ import type {
   NewsTerminalKategorie,
   NewsTerminalPaket,
   NewsTerminalUnternehmen,
-} from '@/lib/portfolio-analyse/portfolio-news-terminal-server'
+} from '@/lib/portfolio-analyse/portfolio-news-terminal-types'
 import { ladeWatchlist } from '@/lib/portfolio-analyse/watchlist-client'
 
 async function fetchNewsTerminal(opts: {

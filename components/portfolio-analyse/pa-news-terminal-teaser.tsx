@@ -6,7 +6,7 @@ import { PaCard } from '@/components/portfolio-analyse/pa-ui'
 import type {
   NewsTerminalDepotPosition,
   NewsTerminalPaket,
-} from '@/lib/portfolio-analyse/portfolio-news-terminal-server'
+} from '@/lib/portfolio-analyse/portfolio-news-terminal-types'
 
 export function PaNewsTerminalTeaser({
   positionen,

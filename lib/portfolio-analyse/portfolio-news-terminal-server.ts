@@ -3,46 +3,21 @@ import 'server-only'
 import { teileArray } from '@/lib/portfolio-analyse/batch-hilfen'
 import { ladeFundamentalNews } from '@/lib/portfolio-analyse/fundamentaldaten-news-server'
 import { isinAusYahooSymbol, isinKenntnis } from '@/lib/portfolio-analyse/isin-kenntnisse'
+import type {
+  NewsTerminalDepotPosition,
+  NewsTerminalKategorie,
+  NewsTerminalPaket,
+  NewsTerminalUnternehmen,
+  NewsTerminalZeile,
+} from '@/lib/portfolio-analyse/portfolio-news-terminal-types'
 
-export type NewsTerminalKategorie =
-  | 'earnings'
-  | 'dividende'
-  | 'insider'
-  | 'ma'
-  | 'guidance'
-  | 'produkt'
-  | 'sonstiges'
-
-export type NewsTerminalUnternehmen = {
-  id: string
-  name: string
-  symbol: string | null
-  isin: string | null
-}
-
-export type NewsTerminalDepotPosition = {
-  isin?: string | null
-  name: string
-  symbolYahoo?: string | null
-}
-
-export type NewsTerminalZeile = {
-  id: string
-  titel: string
-  href: string
-  quelle: string
-  veroeffentlichtAm: string | null
-  unternehmen: NewsTerminalUnternehmen[]
-  kategorie: NewsTerminalKategorie
-  istHeute: boolean
-}
-
-export type NewsTerminalPaket = {
-  zeilen: NewsTerminalZeile[]
-  unternehmen: NewsTerminalUnternehmen[]
-  fehler: string | null
-  aktualisiertAm: string
-}
+export type {
+  NewsTerminalDepotPosition,
+  NewsTerminalKategorie,
+  NewsTerminalPaket,
+  NewsTerminalUnternehmen,
+  NewsTerminalZeile,
+} from '@/lib/portfolio-analyse/portfolio-news-terminal-types'
 
 const PARALLEL = 6
 const ZEITFENSTER_48H_MS = 48 * 60 * 60 * 1000
