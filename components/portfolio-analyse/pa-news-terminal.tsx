@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { useMemo } from 'react'
-import { PaBadge, PaCard, PA_SCROLL_ELEGANT } from '@/components/portfolio-analyse/pa-ui'
+import { PaBadge, PaCard } from '@/components/portfolio-analyse/pa-ui'
 import { fundamentaldatenHref } from '@/lib/portfolio-analyse/fundamentaldaten-navigation'
 import type {
   NewsTerminalKategorie,
@@ -143,7 +143,7 @@ export function PaNewsTerminal({
         ))}
       </div>
 
-      <PaCard variant="glass" className="overflow-hidden border-[#1a1a1c] bg-[#080809]">
+      <PaCard variant="glass" className="border-[#1a1a1c] bg-[#080809]">
         <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/[0.05] bg-[#0a0a0b] px-4 py-2.5 font-mono text-[11px] text-[var(--app-text-muted)]">
           <span>
             <span className="text-emerald-400/90">●</span> NEWS-TERMINAL
@@ -176,7 +176,7 @@ export function PaNewsTerminal({
               : 'Keine aktuellen Meldungen für dein Portfolio.'}
           </p>
         ) : (
-          <ul className={`divide-y divide-white/[0.04] ${PA_SCROLL_ELEGANT}`}>
+          <ul className="divide-y divide-white/[0.04]">
             {gefiltert.map((z) => (
               <li key={z.id}>
                 <a
