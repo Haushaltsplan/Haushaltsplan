@@ -79,6 +79,7 @@ export function PaIconTabs<T extends string>({
 
 const SUB_NAV = [
   { href: '/portfolioanalyse/dashboard', label: 'Dashboard' },
+  { href: '/portfolioanalyse/news', label: 'News' },
   { href: '/portfolioanalyse/dividenden', label: 'Dividenden' },
   { href: '/portfolioanalyse/earnings', label: 'Quartalszahlen' },
   { href: '/portfolioanalyse/fundamentaldaten', label: 'Fundamentaldaten' },

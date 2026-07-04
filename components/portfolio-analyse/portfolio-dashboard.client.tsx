@@ -9,6 +9,7 @@ import { PaPortfolioHero } from '@/components/portfolio-analyse/pa-portfolio-her
 import { PaWertpapiereListe } from '@/components/portfolio-analyse/pa-wertpapiere-liste'
 import { PaRenditePanel } from '@/components/portfolio-analyse/pa-rendite-panel'
 import { PaBadge, PaCard } from '@/components/portfolio-analyse/pa-ui'
+import { PaNewsTerminalTeaser } from '@/components/portfolio-analyse/pa-news-terminal-teaser'
 import {
   formatDatumDe,
   formatEur,
@@ -176,6 +177,8 @@ export function PortfolioDashboardClient() {
           onPeriodKeyChange={setPeriodKey}
         />
       ) : null}
+
+      <PaNewsTerminalTeaser />
 
       <div className="grid gap-6 lg:grid-cols-3">
         {renditeKennzahlen ? (

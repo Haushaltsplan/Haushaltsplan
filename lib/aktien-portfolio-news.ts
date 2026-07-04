@@ -96,7 +96,7 @@ function chunken<T>(arr: T[], size: number): T[][] {
 /** Quartalszyklen / Nachricht — etwas großzügiger als 14 Tage */
 const NEWS_MAX_ALTER_MS = 28 * 24 * 60 * 60 * 1000
 
-function artikelIstAktuell(veroeffentlichtAm: string | null): boolean {
+export function artikelIstAktuell(veroeffentlichtAm: string | null): boolean {
   if (!veroeffentlichtAm) return false
   const t = Date.parse(veroeffentlichtAm)
   if (!Number.isFinite(t)) return false
@@ -107,7 +107,7 @@ function artikelIstAktuell(veroeffentlichtAm: string | null): boolean {
  * Strenge inhaltliche Prüfung: Titel + Snippet. Mind. ein Treffer der Kategorien
  * (Zahlen, Ausschüttung, Insiders, M&A, Finanzierung, wichtige Produkt/Reg.-News, …).
  */
-function istWichtigerPortfolioEintrag(titel: string, roh: string): boolean {
+export function istWichtigerPortfolioEintrag(titel: string, roh: string): boolean {
   const s = `${titel} ${roh}`.replace(/\s+/g, ' ').trim()
   if (s.length < 10) return false
 
@@ -153,8 +153,9 @@ function istWichtigerPortfolioEintrag(titel: string, roh: string): boolean {
  * Parallele Google-News-Abfragen: (Unternehmen) AND (finanzrelevante Signale).
  * Danach strikter Textfilter auf Titel+Snippet.
  */
-export async function ladeAktienPortfolioNews(): Promise<{
-  artikel: NewsEintrag[]
+/** Roh-Artikel nach Google-Abfrage (vor Dedup/Filter) — für News-Terminal. */
+export async function holePortfolioNewsRoh(): Promise<{
+  artikel: RohGoogleNewsEintrag[]
   fehler: string | null
 }> {
   const { positionen } = await ladePortfolioKomplett()
@@ -197,10 +198,26 @@ export async function ladeAktienPortfolioNews(): Promise<{
   ])
 
   const seen = new Set<string>()
-  const dedup: NewsEintrag[] = []
+  const dedup: RohGoogleNewsEintrag[] = []
   for (const a of alle) {
     if (seen.has(a.href)) continue
     seen.add(a.href)
+    dedup.push(a)
+  }
+
+  return {
+    artikel: dedup,
+    fehler: fehler.length ? fehler.join(' · ') : null,
+  }
+}
+
+export async function ladeAktienPortfolioNews(): Promise<{
+  artikel: NewsEintrag[]
+  fehler: string | null
+}> {
+  const { artikel: roh, fehler } = await holePortfolioNewsRoh()
+  const dedup: NewsEintrag[] = []
+  for (const a of roh) {
     if (!artikelIstAktuell(a.veroeffentlichtAm)) continue
     if (!istWichtigerPortfolioEintrag(a.titel, a.sucheFuerLokal)) continue
     dedup.push({
@@ -219,6 +236,6 @@ export async function ladeAktienPortfolioNews(): Promise<{
 
   return {
     artikel: dedup.slice(0, 36),
-    fehler: fehler.length ? fehler.join(' · ') : null,
+    fehler,
   }
 }
