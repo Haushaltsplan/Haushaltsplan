@@ -178,7 +178,15 @@ export function PortfolioDashboardClient() {
         />
       ) : null}
 
-      <PaNewsTerminalTeaser />
+      <PaNewsTerminalTeaser
+        positionen={(live?.positionen ?? [])
+          .filter((p) => p.assetKlasse === 'aktie' && p.stueck > 0)
+          .map((p) => ({
+            isin: p.isin,
+            name: p.anzeigeName || p.name,
+            symbolYahoo: p.symbolYahoo,
+          }))}
+      />
 
       <div className="grid gap-6 lg:grid-cols-3">
         {renditeKennzahlen ? (

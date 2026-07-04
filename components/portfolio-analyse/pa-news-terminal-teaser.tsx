@@ -1,19 +1,41 @@
 'use client'
 
 import Link from 'next/link'
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { PaCard } from '@/components/portfolio-analyse/pa-ui'
-import type { NewsTerminalPaket } from '@/lib/portfolio-analyse/portfolio-news-terminal-server'
+import type {
+  NewsTerminalDepotPosition,
+  NewsTerminalPaket,
+} from '@/lib/portfolio-analyse/portfolio-news-terminal-server'
 
-export function PaNewsTerminalTeaser() {
+export function PaNewsTerminalTeaser({
+  positionen,
+}: {
+  positionen: NewsTerminalDepotPosition[]
+}) {
   const [paket, setPaket] = useState<NewsTerminalPaket | null>(null)
   const [laden, setLaden] = useState(true)
 
+  const depotKey = useMemo(
+    () => positionen.map((p) => `${p.isin ?? ''}:${p.symbolYahoo ?? ''}`).join('|'),
+    [positionen],
+  )
+
   useEffect(() => {
+    if (positionen.length === 0) {
+      setPaket(null)
+      setLaden(false)
+      return
+    }
     let cancelled = false
     async function run() {
+      setLaden(true)
       try {
-        const res = await fetch('/api/portfolio-analyse/news-terminal?heute=1&limit=12')
+        const res = await fetch('/api/portfolio-analyse/news-terminal', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ nurHeute: false, positionen, limit: 12 }),
+        })
         const json = (await res.json()) as { ok?: boolean } & Partial<NewsTerminalPaket>
         if (!cancelled && json.ok) {
           setPaket({
@@ -33,7 +55,7 @@ export function PaNewsTerminalTeaser() {
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [depotKey, positionen])
 
   const top = paket?.zeilen.slice(0, 3) ?? []
   const heuteCount = paket?.zeilen.filter((z) => z.istHeute).length ?? 0
@@ -44,20 +66,17 @@ export function PaNewsTerminalTeaser() {
         <div>
           <h2 className="text-sm font-semibold text-[var(--app-text)]">News-Terminal</h2>
           <p className="text-[11px] text-[var(--app-text-muted)]">
-            {laden ? 'Lade …' : `${heuteCount} Meldung(en) heute`}
+            {laden ? 'Lade …' : `${paket?.zeilen.length ?? 0} Meldungen (48h)${heuteCount ? ` · ${heuteCount} heute` : ''}`}
           </p>
         </div>
-        <Link
-          href="/portfolioanalyse/news"
-          className="text-xs text-teal-400 hover:underline"
-        >
+        <Link href="/portfolioanalyse/news" className="text-xs text-teal-400 hover:underline">
           Öffnen →
         </Link>
       </div>
       <ul className="flex-1 divide-y divide-[var(--app-border)]">
         {top.length === 0 && !laden ? (
           <li className="px-5 py-6 text-center text-sm text-[var(--app-text-muted)]">
-            Heute keine Portfolio-News.
+            Keine aktuellen Portfolio-News.
           </li>
         ) : (
           top.map((z) => (
