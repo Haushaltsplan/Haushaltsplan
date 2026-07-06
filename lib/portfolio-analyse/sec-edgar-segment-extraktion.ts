@@ -6,6 +6,35 @@ export type SecSegmentRoh = {
   anteilPct: number | null
 }
 
+/** Segment-Umbenennungen über Jahre (10-K-Reporting-Änderungen). */
+const SEGMENT_NAME_ALIASES: [RegExp, string][] = [
+  [/^google$/i, 'Google Services'],
+  [/^google segment$/i, 'Google Services'],
+  [/^google advertising$/i, 'Google advertising'],
+  [/^google search\s*&?\s*other$/i, 'Google Search & other'],
+  [/^youtube ads$/i, 'YouTube ads'],
+  [/^youtube advertising$/i, 'YouTube ads'],
+  [/^google network$/i, 'Google Network'],
+  [/^google subscriptions?,?\s*platforms?,?\s*(?:and|&)\s*devices$/i, 'Google subscriptions, platforms & devices'],
+  [/^other bets$/i, 'Other Bets'],
+  [/^intelligent cloud$/i, 'Intelligent Cloud'],
+  [/^productivity and business processes$/i, 'Productivity and Business Processes'],
+  [/^more personal computing$/i, 'More Personal Computing'],
+]
+
+export function kanonisereSegmentNamen(segmente: SecSegmentRoh[]): SecSegmentRoh[] {
+  return segmente.map((s) => {
+    let name = s.name.trim()
+    for (const [re, ziel] of SEGMENT_NAME_ALIASES) {
+      if (re.test(name)) {
+        name = ziel
+        break
+      }
+    }
+    return { ...s, name }
+  })
+}
+
 const XBRL_GEO_TAGS = [
   'ScheduleOfRevenuesFromExternalCustomersAndLongLivedAssetsByGeographicalAreasTableTextBlock',
   'RevenueFromExternalCustomersByGeographicAreasTableTextBlock',
@@ -134,6 +163,66 @@ function bereinigeLabel(raw: string): string {
     .trim()
 }
 
+function parseBetragAusText(raw: string): number | null {
+  const s = bereinigeLabel(raw)
+    .replace(/\$/g, '')
+    .replace(/%/g, '')
+    .replace(/,/g, '')
+    .trim()
+  if (!/^-?\d+(?:\.\d+)?$/.test(s)) return null
+  const n = Number(s)
+  return Number.isFinite(n) ? n : null
+}
+
+/** Große Beträge pro Zeile (ohne Prozent-Spalten). */
+function grossWerteAusZeile(z: TabellenZeile, minWert: number): number[] {
+  const ausIx = z.betraege.filter((n) => Math.abs(n) >= minWert)
+  if (ausIx.length >= 2) return ausIx
+  const ausZellen: number[] = []
+  for (const cell of z.zellen) {
+    const n = parseBetragAusText(cell)
+    if (n != null && Math.abs(n) >= minWert) ausZellen.push(n)
+  }
+  return ausZellen.length >= 2 ? ausZellen : ausIx.length > 0 ? ausIx : ausZellen
+}
+
+function betragAnSpaltenIdx(z: TabellenZeile, idx: number, minWert: number): number | null {
+  let best: number | null = null
+  for (let di = -3; di <= 3; di++) {
+    const n = parseBetragAusText(z.zellen[idx + di] ?? '')
+    if (n != null && Math.abs(n) >= minWert && (best == null || n > best)) best = n
+  }
+  if (best != null) return betragZuMio(best)
+
+  const klassisch = betragAnIndex(z, idx)
+  if (klassisch != null && klassisch >= (minWert >= 500 ? 30 : 5)) return klassisch
+
+  return null
+}
+
+function betragAnJahrIndex(
+  z: TabellenZeile,
+  jahrSpalten: { jahr: number; idx: number }[],
+  yearIdx: number,
+  metrik: 'umsatz' | 'assets',
+): number | null {
+  const minWert = metrik === 'assets' ? 50 : 500
+  const gross = grossWerteAusZeile(z, minWert)
+
+  if (gross.length === jahrSpalten.length && yearIdx < gross.length) {
+    return betragZuMio(gross[yearIdx]!)
+  }
+
+  const spalte = jahrSpalten[yearIdx]
+  if (spalte) {
+    const anSpalte = betragAnSpaltenIdx(z, spalte.idx, minWert)
+    if (anSpalte != null) return anSpalte
+  }
+
+  if (yearIdx < gross.length) return betragZuMio(gross[yearIdx]!)
+  return null
+}
+
 function betragZuMio(n: number): number {
   if (n > 50_000_000) return Math.round(n / 1_000_000)
   return Math.round(n)
@@ -198,7 +287,7 @@ export function extrahiereIxbrlTextBlock(html: string, tagSuffix: string): strin
   return html.slice(nonNumericStart, end)
 }
 
-function extrahiereErstenGeoBlock(html: string): string {
+export function extrahiereErstenGeoBlock(html: string): string {
   for (const tag of XBRL_GEO_TAGS) {
     const block = extrahiereIxbrlTextBlock(html, tag)
     if (block.length > 200) return block
@@ -350,6 +439,22 @@ export function parseGeoSegmente(fragment: string, ausXbrlGeo: boolean): SecSegm
   )
   let inRevenueSection = !combinedAssetsTable
 
+  let jahrSpalten: { jahr: number; idx: number }[] = []
+  for (let i = 0; i < Math.min(zeilen.length, 15); i++) {
+    const sp = jahresSpaltenAusZeile(zeilen[i]!.zellen)
+    if (sp.length >= 1) {
+      jahrSpalten = sp
+      break
+    }
+  }
+  const juengstesYearIdx =
+    jahrSpalten.length > 0
+      ? jahrSpalten.reduce(
+          (best, s, i) => (s.jahr > jahrSpalten[best]!.jahr ? i : best),
+          0,
+        )
+      : -1
+
   for (const z of zeilen) {
     const sichtbar = nichtLeereZellen(z.zellen)
     const label0 = bereinigeLabel(sichtbar[0] ?? '')
@@ -370,15 +475,23 @@ export function parseGeoSegmente(fragment: string, ausXbrlGeo: boolean): SecSegm
     if (/^net sales$/i.test(label0) && !istGeoName(label0)) continue
     if (!istSegmentLabel(label0, true, ausXbrlGeo)) continue
     if (/^net revenue|^total revenue|^total$|^total net sales|^revenue$/i.test(label0)) continue
-    if (z.betraege.length === 0) continue
+    if (z.betraege.length === 0 && grossWerteAusZeile(z, 500).length === 0) continue
 
-    const mio = betragZuMio(z.betraege[0]!)
+    let mio: number | null = null
+    if (juengstesYearIdx >= 0) {
+      mio = betragAnJahrIndex(z, jahrSpalten, juengstesYearIdx, 'umsatz')
+    } else if (z.betraege.length > 0) {
+      const gross = grossWerteAusZeile(z, 500)
+      const raw = gross.length > 0 ? gross[gross.length - 1]! : z.betraege[0]!
+      mio = betragZuMio(raw)
+    }
+    if (mio == null || mio < 5) continue
     if (combinedAssetsTable && mio < 3000) continue
 
     const key = label0.toLowerCase()
     if (seen.has(key)) continue
     seen.add(key)
-    segmente.push({ name: label0, umsatzMio: betragZuMio(z.betraege[0]!), anteilPct: null })
+    segmente.push({ name: label0, umsatzMio: mio, anteilPct: null })
   }
 
   return segmente
@@ -453,12 +566,26 @@ function korrigiereSkalierung(segmente: SecSegmentRoh[]): SecSegmentRoh[] {
   return segmente
 }
 
+/** Entfernt Prozent-Spalten, die fälschlich als Umsatz (z. B. „104“ statt 10.400) gelesen wurden. */
+function filterProzentArtefakte(segmente: SecSegmentRoh[]): SecSegmentRoh[] {
+  if (segmente.length < 2) return segmente
+  const werte = segmente.map((s) => s.umsatzMio ?? 0).filter((v) => v > 0)
+  const max = Math.max(...werte)
+  if (max < 200) return segmente
+  return segmente.filter((s) => {
+    const v = s.umsatzMio ?? 0
+    if (v >= max * 0.015) return true
+    if (v >= 500) return true
+    return false
+  })
+}
+
 export function validiereSegmente(segmente: SecSegmentRoh[]): SecSegmentRoh[] {
   const skaliert = korrigiereSkalierung([...segmente])
   const plausibel = skaliert.filter((s) => istPlausiblerSegmentname(s.name))
   if (plausibel.filter((s) => istIncomeStatementZeile(s.name)).length >= 2) return []
 
-  const mitUmsatz = plausibel.filter((s) => (s.umsatzMio ?? 0) >= 30)
+  const mitUmsatz = filterProzentArtefakte(plausibel.filter((s) => (s.umsatzMio ?? 0) >= 30))
   if (mitUmsatz.length < 2) return []
 
   const nameKeys = mitUmsatz.map((s) => s.name.toLowerCase())
@@ -475,12 +602,88 @@ export function validiereSegmente(segmente: SecSegmentRoh[]): SecSegmentRoh[] {
   if (mitUmsatz.length > 10) return []
 
   const anteile = mitUmsatz.map((s) => s.anteilPct ?? 0)
-  if (anteile.some((a) => a < 0.5 || a > 98.5)) return []
+  if (anteile.some((a) => a > 98.5)) return []
+  if (anteile.filter((a) => a < 0.5).length > 1) return []
 
   const summeAnteil = anteile.reduce((a, b) => a + b, 0)
   if (summeAnteil < 75 || summeAnteil > 125) return []
 
   return mitUmsatz
+}
+
+/** Detail-Tabellen: mehr Zeilen, kleinere Mindestsummen (Disaggregation, Sub-Produkte). */
+function approxGleich(a: number, b: number, tol = 0.03): boolean {
+  if (a <= 0 || b <= 0) return false
+  return Math.abs(a - b) / Math.max(a, b) <= tol
+}
+
+/** Entfernt Zwischen- und Gesamtsummen (z. B. „Google advertising“, „… total“). */
+function entferneSubtotalZeilen(segmente: SecSegmentRoh[]): SecSegmentRoh[] {
+  if (segmente.length < 3) return segmente
+  const toRemove = new Set<string>()
+
+  for (const s of segmente) {
+    const sv = s.umsatzMio ?? 0
+    if (sv <= 0) continue
+    const n = s.name.toLowerCase()
+    const kandidat =
+      /\btotal\b|subtotal|gesamt|\badvertising$/i.test(n) || /services total$/i.test(n)
+    if (!kandidat) continue
+    const others = segmente.filter((o) => o.name !== s.name)
+    for (let mask = 1; mask < 1 << others.length; mask++) {
+      if (mask === (1 << others.length) - 1) continue
+      const subset = others.filter((_, i) => mask & (1 << i))
+      if (subset.length < 2) continue
+      const sum = subset.reduce((a, b) => a + (b.umsatzMio ?? 0), 0)
+      if (approxGleich(sum, sv)) {
+        toRemove.add(s.name)
+        break
+      }
+    }
+  }
+
+  for (const s of segmente) {
+    const n = s.name.toLowerCase()
+    if (/\btotal\b|subtotal|gesamt/i.test(n)) toRemove.add(s.name)
+    if (/\badvertising$/i.test(n) && !/search|youtube|network/i.test(n)) toRemove.add(s.name)
+    if (/services total$/i.test(n)) toRemove.add(s.name)
+  }
+
+  const rest = segmente.filter((s) => !toRemove.has(s.name))
+  return rest.length >= 2 ? rest : segmente
+}
+
+export function validiereSegmenteDetail(segmente: SecSegmentRoh[]): SecSegmentRoh[] {
+  const skaliert = korrigiereSkalierung([...segmente])
+  const plausibel = skaliert.filter((s) => istPlausiblerSegmentname(s.name))
+  const mitUmsatz = plausibel.filter((s) => (s.umsatzMio ?? 0) >= 5)
+  if (mitUmsatz.length < 2) return []
+
+  const ohneSubtotals = entferneSubtotalZeilen(mitUmsatz)
+
+  const merged = new Map<string, SecSegmentRoh>()
+  for (const s of ohneSubtotals) {
+    const key = s.name.toLowerCase()
+    const hit = merged.get(key)
+    if (!hit || (s.umsatzMio ?? 0) > (hit.umsatzMio ?? 0)) merged.set(key, s)
+  }
+  const dedup = [...merged.values()]
+  if (dedup.length < 2) return []
+
+  const summe = dedup.reduce((s, e) => s + (e.umsatzMio ?? 0), 0)
+  if (summe < 200) return []
+
+  for (const s of dedup) {
+    s.anteilPct = Math.round(((s.umsatzMio ?? 0) / summe) * 1000) / 10
+  }
+
+  if (dedup.length > 25) return []
+
+  const anteile = dedup.map((s) => s.anteilPct ?? 0)
+  const summeAnteil = anteile.reduce((a, b) => a + b, 0)
+  if (summeAnteil < 85 || summeAnteil > 115) return []
+
+  return dedup
 }
 
 function scoreSegmente(segmente: SecSegmentRoh[], art: 'produkt' | 'geo'): number {
@@ -738,6 +941,25 @@ function anteileBerechnen(segmente: SecSegmentRoh[]): SecSegmentRoh[] {
 export function parseMehrjahresSegmente(
   fragment: string,
   art: 'produkt' | 'geo',
+  metrik: 'umsatz' | 'assets' = 'umsatz',
+): SecSegmentJahrEintrag[] {
+  return parseMehrjahresSegmenteIntern(fragment, art, metrik, validiereSegmente)
+}
+
+/** Detail-Aufschlüsselung (Disaggregation, Sub-Produkte) — lockere Validierung. */
+export function parseMehrjahresSegmenteDetail(
+  fragment: string,
+  art: 'produkt' | 'geo',
+  metrik: 'umsatz' | 'assets' = 'umsatz',
+): SecSegmentJahrEintrag[] {
+  return parseMehrjahresSegmenteIntern(fragment, art, metrik, validiereSegmenteDetail)
+}
+
+function parseMehrjahresSegmenteIntern(
+  fragment: string,
+  art: 'produkt' | 'geo',
+  metrik: 'umsatz' | 'assets',
+  validiere: (seg: SecSegmentRoh[]) => SecSegmentRoh[],
 ): SecSegmentJahrEintrag[] {
   if (!fragment || fragment.length < 200) return []
   const zeilen = parseTabellenZeilen(fragment)
@@ -761,7 +983,8 @@ export function parseMehrjahresSegmente(
   const byJahr = new Map<number, Map<string, number>>()
   for (const { jahr } of jahrSpalten) byJahr.set(jahr, new Map())
 
-  let inRevenueSection = geoModus || !/LongLivedAssetsByGeographical/i.test(fragment)
+  let inRevenueSection = metrik === 'assets' ? false : geoModus || !/LongLivedAssetsByGeographical/i.test(fragment)
+  if (metrik === 'assets') inRevenueSection = false
   let aktivesSegment: string | null = null
 
   for (let i = headerIdx + 1; i < zeilen.length; i++) {
@@ -770,15 +993,24 @@ export function parseMehrjahresSegmente(
     const label0 = bereinigeLabel(sichtbar[0] ?? '')
     const labelJoin = sichtbar.join(' ').toLowerCase()
 
-    if (/long[- ]lived assets|property and equipment|total assets/i.test(labelJoin)) {
-      inRevenueSection = false
+    if (/long[- ]lived assets|property and equipment/i.test(labelJoin)) {
+      inRevenueSection = metrik !== 'assets'
+      if (metrik === 'assets') inRevenueSection = true
+      aktivesSegment = null
+      if (/total assets/i.test(labelJoin) && metrik === 'assets') continue
+      continue
+    }
+    if (/total assets/i.test(labelJoin) && metrik === 'assets') {
       aktivesSegment = null
       continue
     }
     if (/net revenue|revenue[s]? by|revenues? by/i.test(labelJoin) && !/cost of revenue/i.test(labelJoin)) {
       inRevenueSection = true
     }
-    if (!inRevenueSection && geoModus) continue
+    if (!inRevenueSection && geoModus && metrik === 'umsatz') continue
+    if (metrik === 'assets' && !/asset|property|equipment|long[- ]lived/i.test(labelJoin) && !istGeoName(label0)) {
+      if (!inRevenueSection) continue
+    }
 
     if (!label0 || GEO_SKIP.test(label0)) continue
 
@@ -789,11 +1021,11 @@ export function parseMehrjahresSegmente(
       inRevenueSection &&
       !istIncomeStatementZeile(aktivesSegment)
     ) {
-      for (const { jahr, idx } of jahrSpalten) {
-        const mio = betragAnIndex(z, idx)
-        if (mio == null || mio < 5) continue
-        byJahr.get(jahr)!.set(aktivesSegment, mio)
-      }
+      jahrSpalten.forEach(({ jahr }, yearIdx) => {
+        const mio = betragAnJahrIndex(z, jahrSpalten, yearIdx, metrik)
+        if (mio == null || mio < 5) return
+        byJahr.get(jahr)!.set(aktivesSegment!, mio)
+      })
       aktivesSegment = null
       continue
     }
@@ -803,8 +1035,8 @@ export function parseMehrjahresSegmente(
     if (!istSegmentLabel(label0, geoModus, ausXbrlGeo)) continue
     if (FINANCIAL_LINE_ITEM.test(label0) || AUFWAND_ZEILE.test(label0)) continue
 
-    const hatBetragInZeile = jahrSpalten.some(({ idx }) => {
-      const mio = betragAnIndex(z, idx)
+    const hatBetragInZeile = jahrSpalten.some((_, yearIdx) => {
+      const mio = betragAnJahrIndex(z, jahrSpalten, yearIdx, metrik)
       return mio != null && mio >= 5
     })
 
@@ -818,11 +1050,11 @@ export function parseMehrjahresSegmente(
       }
     }
 
-    for (const { jahr, idx } of jahrSpalten) {
-      const mio = betragAnIndex(z, idx)
-      if (mio == null || mio < 5) continue
+    jahrSpalten.forEach(({ jahr }, yearIdx) => {
+      const mio = betragAnJahrIndex(z, jahrSpalten, yearIdx, metrik)
+      if (mio == null || mio < 5) return
       byJahr.get(jahr)!.set(label0, mio)
-    }
+    })
     aktivesSegment = null
   }
 
@@ -833,7 +1065,7 @@ export function parseMehrjahresSegmente(
       umsatzMio,
       anteilPct: null,
     }))
-    const val = validiereSegmente(roh)
+    const val = validiere(roh)
     if (val.length >= 2) {
       jahre.push({ jahr, segmente: anteileBerechnen(val) })
     }
@@ -880,7 +1112,7 @@ export function extrahiereSegmentHistorieAus10kHtml(html: string): {
   }
 }
 
-/** Einzeljahr-Segmente für ältere 10-K-Filings (nur jüngste Spalte). */
+/** Einzeljahr-Segmente für ältere 10-K-Filings. */
 export function extrahiereSegmenteFuerJahr(
   html: string,
   zielJahr: number,
@@ -889,8 +1121,12 @@ export function extrahiereSegmenteFuerJahr(
   const pJahr = pHist.find((j) => j.jahr === zielJahr)
   const gJahr = gHist.find((j) => j.jahr === zielJahr)
   if (pJahr || gJahr) {
-    return { produkt: pJahr?.segmente ?? [], geo: gJahr?.segmente ?? [] }
+    return {
+      produkt: kanonisereSegmentNamen(pJahr?.segmente ?? []),
+      geo: kanonisereSegmentNamen(gJahr?.segmente ?? []),
+    }
   }
-  const { produkt, geo } = extrahiereBeideSegmentartenAus10kHtml(html)
-  return { produkt: produkt.segmente, geo: geo.segmente }
+
+  // Kein Fallback auf „aktuelles“ Segment — verhindert falsche Jahreszuordnung
+  return { produkt: [], geo: [] }
 }

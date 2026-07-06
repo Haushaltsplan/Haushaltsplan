@@ -342,6 +342,15 @@ function baueSignale(
   return out
 }
 
+export function baueStrukturBilanzKennzahlen(
+  paket: FundamentaldatenPaket,
+): StrukturBilanzKennzahlen & { drawdown52wPct: number | null } {
+  return {
+    ...bilanzKennzahlen(paket),
+    drawdown52wPct: drawdown52wPct(paket),
+  }
+}
+
 export function baueStrukturRisikoUebersicht(
   paket: FundamentaldatenPaket,
 ): StrukturRisikoUebersicht {

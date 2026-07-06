@@ -8,17 +8,15 @@ import {
   PaStrukturHorizontalBars,
   PaStrukturKennzahl,
   PaStrukturOwnershipDonut,
-  PaStrukturRisikoGauge,
   PaStrukturSectionHeader,
   PaStrukturSegmentDonut,
-  PaStrukturSignalChips,
 } from '@/components/portfolio-analyse/struktur/pa-struktur-visuals'
 import { PaSecSegmentHistorie } from '@/components/portfolio-analyse/struktur/pa-sec-segment-historie'
 import type { FundamentaldatenErweitert } from '@/lib/portfolio-analyse/fundamentaldaten-erweitert-types'
 import {
   baueBeatBalken,
   baueOwnershipSegmente,
-  baueStrukturRisikoUebersicht,
+  baueStrukturBilanzKennzahlen,
   pctFmt,
   segmentFarben,
   strukturKmText,
@@ -26,11 +24,10 @@ import {
 } from '@/lib/portfolio-analyse/fundamentaldaten-struktur-hilfen'
 import type { FundamentaldatenPaket } from '@/lib/portfolio-analyse/fundamentaldaten-types'
 
-function trendHinweis(delta: number | null, einheit: string, invertiert = false): string | undefined {
+function trendHinweis(delta: number | null, einheit: string): string | undefined {
   if (delta == null || Math.abs(delta) < 0.05) return undefined
-  const schlechter = invertiert ? delta < 0 : delta > 0
   const pfeil = delta > 0 ? '↑' : '↓'
-  return `${pfeil} ${Math.abs(delta).toLocaleString('de-DE')} ${einheit} vs. Vorjahr${schlechter ? ' (Achtung)' : ''}`
+  return `${pfeil} ${Math.abs(delta).toLocaleString('de-DE')} ${einheit} vs. Vorjahr`
 }
 
 export function PaFundamentalStruktur({
@@ -51,7 +48,7 @@ export function PaFundamentalStruktur({
   if (!paket?.ok) {
     return (
       <PaCard className="p-6 text-sm text-[var(--app-text-muted)]">
-        Struktur- & Risikodaten werden geladen …
+        Strukturdaten werden geladen …
       </PaCard>
     )
   }
@@ -64,10 +61,9 @@ export function PaFundamentalStruktur({
     )
   }
 
-  const uebersicht = baueStrukturRisikoUebersicht(paket)
   const ownership = baueOwnershipSegmente(erweitert)
   const beatBalken = baueBeatBalken(erweitert)
-  const bilanz = uebersicht.bilanz
+  const bilanz = baueStrukturBilanzKennzahlen(paket)
 
   const hatInhalt =
     ownership.length > 0 ||
@@ -80,13 +76,12 @@ export function PaFundamentalStruktur({
     erweitert.secStruktur ||
     erweitert.secSegmentHistorie ||
     erweitert.euFundamental ||
-    erweitert.optionsIv ||
-    uebersicht.signale.length > 0
+    erweitert.optionsIv
 
   if (!hatInhalt) {
     return (
       <PaCard className="p-6 text-sm text-[var(--app-text-muted)]">
-        Für diesen Titel konnten keine Struktur- & Risikodaten geladen werden.
+        Für diesen Titel konnten keine Strukturdaten geladen werden.
       </PaCard>
     )
   }
@@ -100,6 +95,11 @@ export function PaFundamentalStruktur({
   const eu = erweitert.euFundamental
   const iv = erweitert.optionsIv
   const ag = erweitert.arbeitgeber
+
+  const hatSecHistorieDetail =
+    (secHist?.kategorien?.length ?? 0) >= 1 ||
+    (secHist?.produkt?.anzahlJahre ?? 0) >= 2 ||
+    (secHist?.geo?.anzahlJahre ?? 0) >= 2
 
   const segmentFarbenListe = segmentFarben(sec?.segmente.length ?? 0)
   const segmentDonut = (sec?.segmente ?? []).map((s, i) => ({
@@ -133,60 +133,25 @@ export function PaFundamentalStruktur({
 
   return (
     <div className="space-y-5">
-      {/* Risiko-Übersicht */}
-      <PaCard variant="elevated" className="space-y-4 p-5 sm:p-6">
-        <PaStrukturSectionHeader
-          titel="Struktur- & Risiko-Score"
-          untertitel={`${paket.firmenname} (${paket.ticker}) · Bilanz, Markt, Konzentration & Insider`}
-        />
-        <PaStrukturRisikoGauge
-          score={uebersicht.score}
-          label={uebersicht.scoreLabel}
-          hinweis={uebersicht.scoreHinweis}
-        />
-        {uebersicht.signale.length > 0 ? (
-          <div className="border-t border-[var(--app-border)]/60 pt-4">
-            <p className="mb-2 text-[11px] font-medium uppercase tracking-wide text-[var(--app-text-muted)]">
-              Risiko-Signale
-            </p>
-            <PaStrukturSignalChips signale={uebersicht.signale} />
-          </div>
-        ) : null}
-      </PaCard>
-
       <div className="grid gap-5 lg:grid-cols-2">
-        {/* Marktrisiko */}
+        {/* Marktdaten */}
         <PaCard variant="elevated" className="space-y-4 p-5">
           <PaStrukturSectionHeader
-            titel="Marktrisiko & Liquidität"
+            titel="Marktdaten"
             untertitel="Beta, Volatilität, Short Interest, Momentum"
           />
           <div className="grid gap-2 sm:grid-cols-2">
             <PaStrukturKennzahl label="5-Jahres-Beta" wert={strukturKmText(paket, 'beta')} />
-            <PaStrukturKennzahl
-              label="Drawdown vs. 52W-Hoch"
-              wert={pctFmt(uebersicht.drawdown52wPct)}
-              accent={uebersicht.drawdown52wPct != null && uebersicht.drawdown52wPct >= 25 ? 'amber' : undefined}
-            />
+            <PaStrukturKennzahl label="Drawdown vs. 52W-Hoch" wert={pctFmt(bilanz.drawdown52wPct)} />
             <PaStrukturKennzahl
               label="Impl. Volatilität (ATM)"
               wert={pctFmt(iv?.impliziteVolatilitaetPct)}
               hinweis={iv?.expiration ? `Expiry ${iv.expiration}` : undefined}
             />
-            <PaStrukturKennzahl
-              label="Short Float"
-              wert={pctFmt(f?.shortFloatPct)}
-              accent={f?.shortFloatPct != null && f.shortFloatPct >= 10 ? 'amber' : undefined}
-            />
-            <PaStrukturKennzahl
-              label="Days to Cover"
-              wert={f?.shortRatio != null ? `${f.shortRatio} Tage` : null}
-            />
+            <PaStrukturKennzahl label="Short Float" wert={pctFmt(f?.shortFloatPct)} />
+            <PaStrukturKennzahl label="Days to Cover" wert={f?.shortRatio != null ? `${f.shortRatio} Tage` : null} />
             <PaStrukturKennzahl label="RSI (14)" wert={f?.rsi14?.toFixed(1) ?? null} />
-            <PaStrukturKennzahl
-              label="Rel. Volumen"
-              wert={f?.relVolume != null ? `${f.relVolume.toFixed(2)}×` : null}
-            />
+            <PaStrukturKennzahl label="Rel. Volumen" wert={f?.relVolume != null ? `${f.relVolume.toFixed(2)}×` : null} />
             <PaStrukturKennzahl label="PEG (Finviz)" wert={f?.peg?.toFixed(2) ?? null} />
           </div>
         </PaCard>
@@ -215,7 +180,7 @@ export function PaFundamentalStruktur({
       {/* Kapitalstruktur & Bilanz */}
       <PaCard variant="elevated" className="space-y-4 p-5 sm:p-6">
         <PaStrukturSectionHeader
-          titel="Kapitalstruktur & Bilanzqualität"
+          titel="Kapitalstruktur & Bilanz"
           untertitel="Verschuldung, Working Capital, SBC — aus Macrotrends GuV/Bilanz/CF"
         />
         <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
@@ -225,7 +190,6 @@ export function PaFundamentalStruktur({
           <PaStrukturKennzahl
             label="Net Debt / EBITDA"
             wert={strukturKmText(paket, 'net_debt_ebitda')}
-            accent={bilanz.netDebtEbitda != null && bilanz.netDebtEbitda > 2.5 ? 'amber' : undefined}
           />
           <PaStrukturKennzahl
             label="Netto-Cash (Bilanz)"
@@ -234,12 +198,10 @@ export function PaFundamentalStruktur({
                 ? `${bilanz.nettoCashMio.toLocaleString('de-DE')} Mio. USD`
                 : null
             }
-            accent={bilanz.nettoCashMio != null && bilanz.nettoCashMio < 0 ? 'amber' : 'emerald'}
           />
           <PaStrukturKennzahl
             label="Goodwill / Assets"
             wert={pctFmt(bilanz.goodwillAnteilPct)}
-            accent={bilanz.goodwillAnteilPct != null && bilanz.goodwillAnteilPct >= 35 ? 'amber' : undefined}
           />
           <PaStrukturKennzahl
             label="CapEx / D&A"
@@ -248,7 +210,6 @@ export function PaFundamentalStruktur({
           <PaStrukturKennzahl
             label="SBC / |FCF|"
             wert={pctFmt(bilanz.sbcVsFcfPct)}
-            accent={bilanz.sbcVsFcfPct != null && bilanz.sbcVsFcfPct >= 20 ? 'amber' : undefined}
           />
           <PaStrukturKennzahl
             label="Zinsdeckung (EBIT/Zins)"
@@ -262,12 +223,11 @@ export function PaFundamentalStruktur({
           <PaStrukturKennzahl
             label="DIO-Trend"
             wert={bilanz.dioTrendDelta != null ? `${bilanz.dioTrendDelta > 0 ? '+' : ''}${bilanz.dioTrendDelta} Tage` : null}
-            accent={bilanz.dioTrendDelta != null && bilanz.dioTrendDelta >= 12 ? 'amber' : undefined}
           />
           <PaStrukturKennzahl
             label="DPO-Trend"
             wert={bilanz.dpoTrendDelta != null ? `${bilanz.dpoTrendDelta > 0 ? '+' : ''}${bilanz.dpoTrendDelta} Tage` : null}
-            hinweis={trendHinweis(bilanz.dpoTrendDelta, 'Tage', true)}
+            hinweis={trendHinweis(bilanz.dpoTrendDelta, 'Tage')}
           />
           <PaStrukturKennzahl
             label="Aktienrückkäufe (FY)"
@@ -283,20 +243,13 @@ export function PaFundamentalStruktur({
       {/* SEC Segment-Historie (Geo + Produkt über Jahre) */}
       {secHist ? <PaSecSegmentHistorie paket={secHist} /> : null}
 
-      {/* SEC Segmente (aktuellstes FY) */}
-      {sec && (sec.segmente.length > 0 || sec.segmenteProdukt.length > 0 || sec.segmenteGeo.length > 0 || sec.pensionVerpflichtungMio != null) ? (
+      {/* SEC Segmente (aktuellstes FY) — nur wenn keine Historie mit Detailtabs */}
+      {sec && !hatSecHistorieDetail && (sec.segmente.length > 0 || sec.segmenteProdukt.length > 0 || sec.segmenteGeo.length > 0 || sec.pensionVerpflichtungMio != null) ? (
         <PaCard variant="elevated" className="space-y-4 p-5 sm:p-6">
           <PaStrukturSectionHeader
             titel={`Geschäftsstruktur (SEC 10-K${sec.berichtJahr ? ` ${sec.berichtJahr}` : ''})`}
             untertitel={sec.segmentHinweis ?? 'Segmente, Verbindlichkeiten & Vergütung aus SEC EDGAR'}
           />
-          {uebersicht.segmentKonzentrationPct != null ? (
-            <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 px-3 py-2 text-xs text-amber-100/90">
-              Größtes Segment: <strong>{uebersicht.segmentKonzentrationPct.toFixed(0)} %</strong> des Umsatzes
-              {uebersicht.segmentKonzentrationPct >= 55 ? ' — erhöhtes Klumpenrisiko' : ''}
-            </div>
-          ) : null}
-
           {hatBeideSegmente ? (
             <div className="grid gap-6 lg:grid-cols-2">
               <div>
@@ -402,6 +355,30 @@ export function PaFundamentalStruktur({
         </PaCard>
       ) : null}
 
+      {sec && hatSecHistorieDetail && (sec.pensionVerpflichtungMio != null || sec.leaseVerpflichtungMio != null || sec.ceoVerguetungUsd != null) ? (
+        <PaCard variant="elevated" className="space-y-4 p-5 sm:p-6">
+          <PaStrukturSectionHeader
+            titel={`SEC 10-K Zusatzdaten${sec.berichtJahr ? ` ${sec.berichtJahr}` : ''}`}
+            untertitel="Pensionsverpflichtungen, Leases, CEO-Vergütung"
+          />
+          <div className="grid gap-2 sm:grid-cols-3">
+            <PaStrukturKennzahl
+              label="Pensionsverpflichtung"
+              wert={sec.pensionVerpflichtungMio != null ? `$${sec.pensionVerpflichtungMio.toLocaleString('de-DE')} Mio.` : null}
+            />
+            <PaStrukturKennzahl
+              label="Lease-Verpflichtungen"
+              wert={sec.leaseVerpflichtungMio != null ? `$${sec.leaseVerpflichtungMio.toLocaleString('de-DE')} Mio.` : null}
+            />
+            <PaStrukturKennzahl
+              label="CEO-Vergütung (Proxy)"
+              wert={usdKompakt(sec.ceoVerguetungUsd)}
+              hinweis={sec.proxyJahr ? `DEF 14A ${sec.proxyJahr}` : undefined}
+            />
+          </div>
+        </PaCard>
+      ) : null}
+
       <div className="grid gap-5 lg:grid-cols-2">
         {/* Earnings & Insider */}
         {(bm || ins) && (
@@ -447,7 +424,6 @@ export function PaFundamentalStruktur({
                         ? 'Neutral'
                         : null
                 }
-                accent={ins?.nettoRichtung === 'kauf' ? 'emerald' : ins?.nettoRichtung === 'verkauf' ? 'amber' : undefined}
               />
             </div>
           </PaCard>
@@ -461,13 +437,12 @@ export function PaFundamentalStruktur({
               untertitel="DivvyDiary — Wachstum, Kontinuität, Ausschüttungsmuster"
             />
             <div className="grid gap-2 sm:grid-cols-2">
-              <PaStrukturKennzahl label="CAGR 5J" wert={pctFmt(d.cagr5yPct)} accent="emerald" />
+              <PaStrukturKennzahl label="CAGR 5J" wert={pctFmt(d.cagr5yPct)} />
               <PaStrukturKennzahl label="CAGR 10J" wert={pctFmt(d.cagr10yPct)} />
               <PaStrukturKennzahl label="Ø Wachstum 3J" wert={pctFmt(d.durchschnittWachstum3yPct)} />
               <PaStrukturKennzahl
                 label="Jahre ohne Senkung"
                 wert={d.jahreOhneSenkung}
-                accent={d.jahreOhneSenkung != null && d.jahreOhneSenkung >= 10 ? 'emerald' : undefined}
               />
               <PaStrukturKennzahl label="Letzte Senkung" wert={d.letzteSenkungJahr ?? 'keine erkannt'} />
               <PaStrukturKennzahl

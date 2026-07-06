@@ -5,6 +5,7 @@ import 'server-only'
 import type { SecSegmentEintrag, SecStrukturPaket } from '@/lib/portfolio-analyse/fundamentaldaten-erweitert-types'
 import { ladeLesbarenBerichtText } from '@/lib/portfolio-analyse/sec-edgar-bericht-text-server'
 import { cikFuerTicker, ladeSecSubmissionsRecent, secFetch } from '@/lib/portfolio-analyse/sec-edgar-common-server'
+import { extrahiereAlleDetailBloeckeAus10kHtml } from '@/lib/portfolio-analyse/sec-edgar-detail-extraktion'
 import {
   extrahiereBeideSegmentartenAus10kHtml,
   extrahiereSegmenteAus10kHtml,
@@ -118,6 +119,10 @@ export async function ladeSecStrukturExtraktion(ticker: string): Promise<SecStru
       ? extrahiereBeideSegmentartenAus10kHtml(html10k)
       : { produkt: { segmente: [], art: null, quelle: null }, geo: { segmente: [], art: null, quelle: null } }
 
+    const detailBloecke = html10k ? extrahiereAlleDetailBloeckeAus10kHtml(html10k) : []
+    const umsatzDetailKat = detailBloecke.find((d) => d.def.id === 'umsatz_detail')
+    const umsatzDetailJahr = umsatzDetailKat?.jahre.sort((a, b) => b.jahr - a.jahr)[0]
+
     const mapSeg = (liste: typeof segmentErgebnis.segmente): SecSegmentEintrag[] =>
       liste.map((s) => ({
         name: s.name,
@@ -125,7 +130,11 @@ export async function ladeSecStrukturExtraktion(ticker: string): Promise<SecStru
         anteilPct: s.anteilPct,
       }))
 
-    const segmente = mapSeg(segmentErgebnis.segmente)
+    const segmente = mapSeg(
+      umsatzDetailJahr && umsatzDetailJahr.segmente.length >= 2
+        ? umsatzDetailJahr.segmente
+        : segmentErgebnis.segmente,
+    )
     const segmenteProdukt = mapSeg(beide.produkt.segmente)
     const segmenteGeo = mapSeg(beide.geo.segmente)
 

@@ -29,7 +29,7 @@ const UNTER_TABS = [
   { id: 'mantra' as const, label: 'Mantra' },
   { id: 'finanzdaten' as const, label: 'Finanzdaten' },
   { id: 'bewertung' as const, label: 'Bewertung' },
-  { id: 'struktur' as const, label: 'Struktur & Risiko' },
+  { id: 'struktur' as const, label: 'Struktur & Daten' },
   { id: 'quartalszahlen' as const, label: 'Quartalszahlen' },
   { id: 'news' as const, label: 'News' },
 ]

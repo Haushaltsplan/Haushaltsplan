@@ -74,12 +74,20 @@ export type SecSegmentHistorieJahr = {
 }
 
 export type SecSegmentHistorie = {
-  art: 'produkt' | 'geo'
+  art: 'produkt' | 'geo' | 'geo_assets' | 'umsatz_detail' | 'produkte_services'
   jahre: SecSegmentHistorieJahr[]
   segmentNamen: string[]
   anzahlJahre: number
   aeltestesJahr: number
   juengstesJahr: number
+}
+
+export type SecSegmentHistorieKategorie = {
+  id: string
+  titel: string
+  art: SecSegmentHistorie['art']
+  metrik: 'umsatz' | 'assets'
+  historie: SecSegmentHistorie
 }
 
 export type SecZusatzRisikoFelder = {
@@ -121,6 +129,8 @@ export type SecKennzahlenHistorie = {
 export type SecSegmentHistoriePaket = {
   produkt: SecSegmentHistorie | null
   geo: SecSegmentHistorie | null
+  /** Alle erkannten XBRL-Tabellen (Disaggregation, Geo-Assets, …). */
+  kategorien: SecSegmentHistorieKategorie[]
   zusatz: SecZusatzRisikoFelder
   kennzahlen: SecKennzahlenHistorie | null
   berichtJahr: number | null
