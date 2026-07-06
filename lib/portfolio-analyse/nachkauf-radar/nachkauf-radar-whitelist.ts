@@ -200,7 +200,7 @@ export const NACHKAUF_RADAR_WHITELIST: WhitelistPosition[] = [
     historischerMedianPe: 27,
     historischerMedianFcfYield: 3.5,
     kaufTrigger: { peMax: 22, notiz: 'Linde unter 22×: Industriegase-Oligopol mit 20+ Jahre Vertragslaufzeiten.' },
-    cik: '0001707092',
+    cik: '0001707925',
   },
   {
     isin: 'US4370761029',
@@ -220,7 +220,7 @@ export const NACHKAUF_RADAR_WHITELIST: WhitelistPosition[] = [
     historischerMedianPe: 50,
     historischerMedianFcfYield: 2.0,
     kaufTrigger: { peMax: 38, notiz: 'ROL unter 38×: Schädlingsbekämpfung ist recession-proof und wird regulatorisch komplexer.' },
-    cik: '0000085408',
+    cik: '0000084839',
   },
   {
     isin: 'US1729081059',
@@ -264,7 +264,7 @@ export const NACHKAUF_RADAR_WHITELIST: WhitelistPosition[] = [
     historischerMedianPe: 28,
     historischerMedianFcfYield: 3.0,
     kaufTrigger: { peMax: 22, notiz: 'TMO unter 22× nach zyklischem Post-COVID-Dip = Langfrist-Einstieg.' },
-    cik: '0000097476',
+    cik: '0000097745',
   },
   {
     isin: 'US7611521078',
@@ -327,7 +327,7 @@ export const NACHKAUF_RADAR_WHITELIST: WhitelistPosition[] = [
     historischerMedianPe: 22,
     historischerMedianFcfYield: 4.5,
     kaufTrigger: { peMax: 18, notiz: 'KNSL unter 18× — Surplus-Lines-Versicherer mit bestem Combined Ratio in der Branche.' },
-    cik: '0001679273',
+    cik: '0001669162',
   },
   {
     isin: 'US3841091040',
@@ -337,7 +337,7 @@ export const NACHKAUF_RADAR_WHITELIST: WhitelistPosition[] = [
     historischerMedianPe: 28,
     historischerMedianFcfYield: 3.5,
     kaufTrigger: { peMax: 22, notiz: 'GGG unter 22×: Fluid-Handling-Nische, 50+ % Marktanteil, zyklischer Drawdown = Einstieg.' },
-    cik: '0000850693',
+    cik: '0000042888',
   },
   {
     isin: 'US9224751084',
@@ -364,7 +364,7 @@ export const NACHKAUF_RADAR_WHITELIST: WhitelistPosition[] = [
     risikoKlasse: 'moderat',
     historischerMedianPe: 45,
     kaufTrigger: { peMax: 35, notiz: 'ANET unter 35×: Cloud-Networking-Marktführer, profitiert direkt von AI-Datacenter-Boom.' },
-    cik: '0001313925',
+    cik: '0001596532',
   },
   {
     isin: 'NL0000395903',
@@ -387,7 +387,7 @@ export const NACHKAUF_RADAR_WHITELIST: WhitelistPosition[] = [
     historischerMedianPe: 40,
     historischerMedianFcfYield: 2.5,
     kaufTrigger: { peMax: 32, notiz: 'BCPC unter 32×: Nischenchemie mit hohen Wechselkosten im Lebensmittel-/Pharmabereich.' },
-    cik: '0000009626',
+    cik: '0000009326',
   },
   {
     isin: 'US23804L1035',
@@ -396,6 +396,6 @@ export const NACHKAUF_RADAR_WHITELIST: WhitelistPosition[] = [
     risikoKlasse: 'spekulativ',
     historischerMedianPe: 70,
     kaufTrigger: { peMax: 50, notiz: 'DDOG unter 50× (NTM): Observability wird Mission-Critical — NRR > 115 % als Qualitätsanker.' },
-    cik: '0001561894',
+    cik: '0001561550',
   },
 ]

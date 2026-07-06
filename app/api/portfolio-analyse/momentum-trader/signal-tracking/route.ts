@@ -9,6 +9,7 @@ import {
 import { createSupabaseFuerRequest } from '@/lib/supabase-user'
 
 export const dynamic = 'force-dynamic'
+export const maxDuration = 60
 
 export async function GET(req: Request) {
   const sb = createSupabaseFuerRequest(req)

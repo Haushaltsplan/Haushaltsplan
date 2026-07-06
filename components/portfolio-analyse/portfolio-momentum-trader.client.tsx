@@ -14,6 +14,11 @@ import {
   type MomentumWatchlistAuswahl,
 } from '@/components/portfolio-analyse/momentum-watchlist-suche-input'
 import { momentumApiFetch, parseMomentumApiJsonOderFehler, parseMomentumApiJsonOptional } from '@/lib/portfolio-analyse/momentum-trader/momentum-api-fetch'
+
+function fehlerText(e: unknown): string {
+  const msg = e instanceof Error ? e.message : String(e)
+  return msg.replace(/^Error:\s*/i, '')
+}
 import { istMomentumPreIpoEintrag } from '@/lib/portfolio-analyse/momentum-trader/momentum-pseudo-isin'
 import type {
   MomentumAmpel,
@@ -1792,7 +1797,7 @@ export function MomentumTraderClient() {
       )
       if (signalData) setSignalTracking(signalData.signalTracking ?? null)
     } catch (e) {
-      setFehler(String(e))
+      setFehler(fehlerText(e))
     } finally {
       setLaden(false)
     }
@@ -1811,14 +1816,14 @@ export function MomentumTraderClient() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ isin }),
       })
-      const data = (await res.json()) as {
+      const data = await parseMomentumApiJsonOderFehler<{
         eintrag?: MomentumWatchlistEintragAngereichert
         fehler?: string | string[]
         schritte?: string[]
-      }
-      if (!res.ok) {
+      }>(res, 'Nachsync fehlgeschlagen.')
+      if (data.fehler) {
         const f = data.fehler
-        throw new Error(Array.isArray(f) ? f.join(' · ') : (f ?? 'Nachsync fehlgeschlagen.'))
+        throw new Error(Array.isArray(f) ? f.join(' · ') : f)
       }
       if (data.eintrag) {
         setWatchlist((wl) => wl.map((w) => (w.isin === isin ? data.eintrag! : w)))
@@ -1848,8 +1853,9 @@ export function MomentumTraderClient() {
             notiz: auswahl.notiz,
           }),
         })
-        const data = (await res.json()) as { eintraege?: MomentumWatchlistEintragAngereichert[]; fehler?: string }
-        if (!res.ok) throw new Error(data.fehler ?? 'Hinzufügen fehlgeschlagen.')
+        const data = await parseMomentumApiJsonOderFehler<{
+          eintraege?: MomentumWatchlistEintragAngereichert[]
+        }>(res, 'Hinzufügen fehlgeschlagen.')
         setWatchlist(data.eintraege ?? [])
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e)
@@ -1870,8 +1876,9 @@ export function MomentumTraderClient() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ isin }),
         })
-        const data = (await res.json()) as { eintraege?: MomentumWatchlistEintragAngereichert[]; fehler?: string }
-        if (!res.ok) throw new Error(data.fehler ?? 'Entfernen fehlgeschlagen.')
+        const data = await parseMomentumApiJsonOderFehler<{
+          eintraege?: MomentumWatchlistEintragAngereichert[]
+        }>(res, 'Entfernen fehlgeschlagen.')
         setWatchlist(data.eintraege ?? [])
         await ladeAlles()
       } catch (e) {
@@ -1888,14 +1895,14 @@ export function MomentumTraderClient() {
     setSyncLog([])
     try {
       const res = await momentumApiFetch('/api/portfolio-analyse/momentum-trader/sync/all', { method: 'POST' })
-      const data = (await res.json()) as MomentumFullSyncErgebnis
+      const data = await parseMomentumApiJsonOderFehler<MomentumFullSyncErgebnis>(res, 'Sync fehlgeschlagen.')
       setSyncLog(data.schritte ?? [])
       if (data.scan) setScan(data.scan)
       if (data.fehler?.length) setFehler(data.fehler.join(' · '))
       if (!res.ok && res.status !== 207) throw new Error(data.fehler?.join(' · ') ?? 'Sync fehlgeschlagen.')
       await ladeAlles()
     } catch (e) {
-      setFehler(String(e))
+      setFehler(fehlerText(e))
     } finally {
       setFullSyncLaeuft(false)
     }
@@ -1911,12 +1918,12 @@ export function MomentumTraderClient() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ tage: 252, backfillEvents: true }),
       })
-      const data = (await res.json()) as MomentumBarsSyncErgebnis
-      if (!res.ok || !data.ok) throw new Error(data.fehler ?? 'Kurs-Sync fehlgeschlagen.')
+      const data = await parseMomentumApiJsonOderFehler<MomentumBarsSyncErgebnis>(res, 'Kurs-Sync fehlgeschlagen.')
+      if (!data.ok) throw new Error(data.fehler ?? 'Kurs-Sync fehlgeschlagen.')
       setLetztesBarsSync(data)
       await ladeAlles()
     } catch (e) {
-      setFehler(String(e))
+      setFehler(fehlerText(e))
     } finally {
       setBarsSyncLaeuft(false)
     }
@@ -1928,13 +1935,13 @@ export function MomentumTraderClient() {
     setFehler(null)
     try {
       const res = await momentumApiFetch('/api/portfolio-analyse/momentum-trader/earnings/sync', { method: 'POST' })
-      const data = (await res.json()) as MomentumEarningsSyncErgebnis
+      const data = await parseMomentumApiJsonOderFehler<MomentumEarningsSyncErgebnis>(res, 'Earnings-Sync fehlgeschlagen.')
       setLetztesEarningsSync(data)
       if (!res.ok && res.status !== 207) throw new Error(data.fehler?.join(' · ') ?? 'Earnings-Sync fehlgeschlagen.')
       if (data.fehler?.length) setFehler(data.fehler.join(' · '))
       await ladeAlles()
     } catch (e) {
-      setFehler(String(e))
+      setFehler(fehlerText(e))
     } finally {
       setEarningsSyncLaeuft(false)
     }
@@ -1948,12 +1955,11 @@ export function MomentumTraderClient() {
       const res = await momentumApiFetch('/api/portfolio-analyse/momentum-trader/scan', {
         method: 'POST',
       })
-      const data = (await res.json()) as MomentumScanPaket & { fehler?: string }
-      if (!res.ok) throw new Error(data.fehler ?? 'Scan fehlgeschlagen.')
+      const data = await parseMomentumApiJsonOderFehler<MomentumScanPaket>(res, 'Scan fehlgeschlagen.')
       setScan(data)
       await ladeAlles()
     } catch (e) {
-      setFehler(String(e))
+      setFehler(fehlerText(e))
     } finally {
       setScanLaeuft(false)
     }
@@ -1997,8 +2003,7 @@ export function MomentumTraderClient() {
               (erfolgPctVal != null ? ', Erfolg ' + erfolgPctVal + '%' : ''),
           }),
         })
-        const data = (await res.json()) as { trade?: MomentumTrade; fehler?: string }
-        if (!res.ok) throw new Error(data.fehler ?? 'Trade konnte nicht gespeichert werden.')
+        const data = await parseMomentumApiJsonOderFehler<{ trade?: MomentumTrade }>(res, 'Trade konnte nicht gespeichert werden.')
         await ladeAlles()
       } catch (err) {
         setFehler(String(err))
@@ -2019,8 +2024,7 @@ export function MomentumTraderClient() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ id, exitPrice }),
         })
-        const data = (await res.json()) as { fehler?: string }
-        if (!res.ok) throw new Error(data.fehler ?? 'Schließen fehlgeschlagen.')
+        await parseMomentumApiJsonOderFehler(res, 'Schließen fehlgeschlagen.')
         await ladeAlles()
       } catch (e) {
         setFehler(String(e))
@@ -2039,8 +2043,9 @@ export function MomentumTraderClient() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ isin, ...patch }),
       })
-      const data = (await res.json()) as { eintraege?: MomentumWatchlistEintragAngereichert[]; fehler?: string }
-      if (!res.ok) throw new Error(data.fehler ?? 'Speichern fehlgeschlagen.')
+      const data = await parseMomentumApiJsonOderFehler<{
+        eintraege?: MomentumWatchlistEintragAngereichert[]
+      }>(res, 'Speichern fehlgeschlagen.')
       setWatchlist(data.eintraege ?? [])
     },
     [],
@@ -2050,15 +2055,14 @@ export function MomentumTraderClient() {
     setBriefingLaden(true)
     try {
       const res = await momentumApiFetch('/api/portfolio-analyse/momentum-trader/briefing')
-      const data = (await res.json()) as { markdown?: string; fehler?: string }
-      if (!res.ok) throw new Error(data.fehler ?? 'Briefing fehlgeschlagen')
+      const data = await parseMomentumApiJsonOderFehler<{ markdown?: string }>(res, 'Briefing fehlgeschlagen')
       if (data.markdown) {
         await navigator.clipboard.writeText(data.markdown)
         setExportHinweis('Tages-Briefing kopiert')
         setTimeout(() => setExportHinweis(null), 2500)
       }
     } catch (e) {
-      setFehler(String(e))
+      setFehler(fehlerText(e))
     } finally {
       setBriefingLaden(false)
     }
@@ -2068,8 +2072,7 @@ export function MomentumTraderClient() {
     setBriefingLaden(true)
     try {
       const res = await momentumApiFetch('/api/portfolio-analyse/momentum-trader/briefing')
-      const data = (await res.json()) as { markdown?: string; fehler?: string }
-      if (!res.ok) throw new Error(data.fehler ?? 'Briefing fehlgeschlagen')
+      const data = await parseMomentumApiJsonOderFehler<{ markdown?: string }>(res, 'Briefing fehlgeschlagen')
       if (!data.markdown) return
       const w = window.open('', '_blank', 'noopener,noreferrer')
       if (!w) throw new Error('Pop-up blockiert — Druckfenster konnte nicht geöffnet werden.')
@@ -2089,7 +2092,7 @@ export function MomentumTraderClient() {
       w.focus()
       window.setTimeout(() => w.print(), 400)
     } catch (e) {
-      setFehler(String(e))
+      setFehler(fehlerText(e))
     } finally {
       setBriefingLaden(false)
     }
@@ -2140,7 +2143,7 @@ export function MomentumTraderClient() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ id }),
         })
-        if (!res.ok) throw new Error(((await res.json()) as { fehler?: string }).fehler ?? 'Löschen fehlgeschlagen.')
+        await parseMomentumApiJsonOderFehler(res, 'Löschen fehlgeschlagen.')
         await ladeAlles()
       } catch (e) {
         setFehler(String(e))

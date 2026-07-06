@@ -33,6 +33,17 @@ function umsatzFuerSegment(hist: SecSegmentHistorie, jahr: number, name: string)
   return hist.jahre.find((j) => j.jahr === jahr)?.segmente.find((s) => s.name === name)?.umsatzMio ?? null
 }
 
+function umsatzWachstumPct(aktuell: number | null, vorjahr: number | null): number | null {
+  if (aktuell == null || vorjahr == null || vorjahr === 0) return null
+  return Math.round(((aktuell - vorjahr) / Math.abs(vorjahr)) * 1000) / 10
+}
+
+function wachstumClass(pct: number): string {
+  if (pct > 0.5) return 'text-emerald-400'
+  if (pct < -0.5) return 'text-red-300'
+  return 'text-[var(--app-text-muted)]'
+}
+
 function barBreite(anzahl: number): number {
   if (anzahl > 12) return 20
   if (anzahl > 8) return 26
@@ -168,13 +179,27 @@ function PaSecSegmentTabelle({ hist, farben }: { hist: SecSegmentHistorie; farbe
                 <span className="mr-2 inline-block h-2 w-2 rounded-sm" style={{ backgroundColor: farben[i % farben.length] }} />
                 {name}
               </td>
-              {jahre.map((j) => {
+              {jahre.map((j, ji) => {
                 const pct = anteilFuerSegment(hist, j, name)
                 const mio = umsatzFuerSegment(hist, j, name)
+                const vorjahr = ji > 0 ? jahre[ji - 1]! : null
+                const wachstum = vorjahr != null ? umsatzWachstumPct(mio, umsatzFuerSegment(hist, vorjahr, name)) : null
                 return (
                   <td key={j} className="py-2 px-2 text-right tabular-nums">
                     {pct != null ? <span className="font-medium text-[var(--app-text)]">{pct.toFixed(1)} %</span> : '–'}
-                    {mio != null ? <span className="block text-[10px] text-[var(--app-text-muted)]">{mio.toLocaleString('de-DE')} {metrik}</span> : null}
+                    {mio != null ? (
+                      <span className="block text-[10px] text-[var(--app-text-muted)]">
+                        {mio.toLocaleString('de-DE')} {metrik}
+                      </span>
+                    ) : null}
+                    {wachstum != null ? (
+                      <span className={`block text-[10px] font-medium ${wachstumClass(wachstum)}`}>
+                        {wachstum > 0 ? '+' : ''}
+                        {wachstum.toLocaleString('de-DE')} % YoY
+                      </span>
+                    ) : ji > 0 ? (
+                      <span className="block text-[10px] text-[var(--app-text-muted)]">–</span>
+                    ) : null}
                   </td>
                 )
               })}

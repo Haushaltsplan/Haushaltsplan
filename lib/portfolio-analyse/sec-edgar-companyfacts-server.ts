@@ -60,6 +60,33 @@ const TAG_KETTEN: Record<
   aktienrueckkaufMio: ['PaymentsForRepurchaseOfCommonStock', 'StockRepurchasedDuringPeriodValue'],
 }
 
+const CAP_ALLOC_EXTRA_TAGS = {
+  dividendenMio: [
+    'PaymentsOfDividends',
+    'PaymentsOfDividendsCommonStock',
+    'PaymentsOfOrdinaryDividends',
+    'DividendsPaid',
+    'Dividends',
+  ],
+  mnaMio: [
+    'PaymentsToAcquireBusinessesNetOfCashAcquired',
+    'PaymentsToAcquireBusinessesAndInterestInAffiliates',
+    'BusinessCombinationConsiderationTransferred',
+    'PaymentsToAcquireBusinessTwoNetOfCashAcquired',
+  ],
+} as const
+
+export type SecCapitalAllocationRoh = {
+  jahr: number
+  periodeLabel: string
+  ocfUsd: number | null
+  capexUsd: number | null
+  dividendUsd: number | null
+  buybackUsd: number | null
+  mnaUsd: number | null
+  revenueUsd: number | null
+}
+
 function zuMioUsd(val: number): number {
   const abs = Math.abs(val)
   // > 1 Mrd. → Roh-USD (z. B. AAPL ~3,9e11)
@@ -81,7 +108,7 @@ function jahrAusEintrag(e: FactsUnit): number | null {
 function extrahiereJahresreihe(
   facts: CompanyFactsJson,
   tags: string[],
-  opts: { mio?: boolean; nur10k?: boolean } = {},
+  opts: { mio?: boolean; nur10k?: boolean; allowNegative?: boolean } = {},
 ): Map<number, number> {
   const map = new Map<number, { val: number; filed: string }>()
   const namespaces: Array<'us-gaap' | 'dei'> = ['us-gaap', 'dei']
@@ -97,11 +124,19 @@ function extrahiereJahresreihe(
           const jahr = jahrAusEintrag(e)
           const val = e.val
           if (jahr == null || val == null || !Number.isFinite(val)) continue
-          if (val < 0 && tag !== 'NetIncomeLoss' && !tag.includes('Income') && !tag.includes('Loss')) continue
+          if (
+            val < 0 &&
+            !opts.allowNegative &&
+            tag !== 'NetIncomeLoss' &&
+            !tag.includes('Income') &&
+            !tag.includes('Loss')
+          ) {
+            continue
+          }
 
-          let norm = val
+          let norm = opts.allowNegative ? Math.abs(val) : val
           if (opts.mio) {
-            norm = zuMioUsd(val)
+            norm = zuMioUsd(norm)
           }
 
           const filed = e.filed ?? e.end ?? ''
@@ -157,15 +192,15 @@ export async function ladeSecCompanyFacts(cik: number): Promise<SecKennzahlenHis
     const netto = extrahiereJahresreihe(facts, TAG_KETTEN.nettogewinnMio, { mio: true })
     const ebit = extrahiereJahresreihe(facts, TAG_KETTEN.ebitMio, { mio: true })
     const rnd = extrahiereJahresreihe(facts, TAG_KETTEN.rndMio, { mio: true })
-    const capex = extrahiereJahresreihe(facts, TAG_KETTEN.capexMio, { mio: true })
-    const ocf = extrahiereJahresreihe(facts, TAG_KETTEN.ocfMio, { mio: true })
+    const capex = extrahiereJahresreihe(facts, TAG_KETTEN.capexMio, { mio: true, allowNegative: true })
+    const ocf = extrahiereJahresreihe(facts, TAG_KETTEN.ocfMio, { mio: true, allowNegative: true })
     const assets = extrahiereJahresreihe(facts, TAG_KETTEN.assetsMio, { mio: true })
     const ek = extrahiereJahresreihe(facts, TAG_KETTEN.eigenkapitalMio, { mio: true })
     const schuld = extrahiereJahresreihe(facts, TAG_KETTEN.langfristigeSchuldenMio, { mio: true })
     const ma = extrahiereJahresreihe(facts, TAG_KETTEN.mitarbeiter, { mio: false })
     const goodwill = extrahiereJahresreihe(facts, TAG_KETTEN.goodwillMio, { mio: true })
     const da = extrahiereJahresreihe(facts, TAG_KETTEN.abschreibungMio, { mio: true })
-    const buyback = extrahiereJahresreihe(facts, TAG_KETTEN.aktienrueckkaufMio, { mio: true })
+    const buyback = extrahiereJahresreihe(facts, TAG_KETTEN.aktienrueckkaufMio, { mio: true, allowNegative: true })
 
     const rndAnteil = berechneQuotient(rnd, umsatz)
     const capexAnteil = berechneQuotient(capex, umsatz)
@@ -217,6 +252,47 @@ export async function ladeSecCompanyFacts(cik: number): Promise<SecKennzahlenHis
     return data
   } catch {
     cache.set(cik, { at: Date.now(), data: null })
+    return null
+  }
+}
+
+function rohUsdAusMio(mio: number | undefined): number | null {
+  if (mio == null || !Number.isFinite(mio)) return null
+  return Math.round(mio * 1_000_000)
+}
+
+/** Letztes GJ — Cashflow-Kennzahlen für Capital-Allocation (SEC Company Facts). */
+export async function ladeSecCapitalAllocation(cik: number): Promise<SecCapitalAllocationRoh | null> {
+  try {
+    const res = await secFetch(`https://data.sec.gov/api/xbrl/companyfacts/CIK${padCik(cik)}.json`)
+    if (!res.ok) return null
+    const facts = (await leseAlsJson<CompanyFactsJson>(res)) ?? {}
+    if (!facts.facts) return null
+
+    const ocfMap = extrahiereJahresreihe(facts, TAG_KETTEN.ocfMio, { mio: true, allowNegative: true })
+    if (ocfMap.size === 0) return null
+
+    const jahr = Math.max(...ocfMap.keys())
+    const ocfMio = ocfMap.get(jahr)
+    if (ocfMio == null) return null
+
+    const capexMap = extrahiereJahresreihe(facts, TAG_KETTEN.capexMio, { mio: true, allowNegative: true })
+    const divMap = extrahiereJahresreihe(facts, [...CAP_ALLOC_EXTRA_TAGS.dividendenMio], { mio: true, allowNegative: true })
+    const buyMap = extrahiereJahresreihe(facts, TAG_KETTEN.aktienrueckkaufMio, { mio: true, allowNegative: true })
+    const mnaMap = extrahiereJahresreihe(facts, [...CAP_ALLOC_EXTRA_TAGS.mnaMio], { mio: true, allowNegative: true })
+    const umsatzMap = extrahiereJahresreihe(facts, TAG_KETTEN.umsatzMio, { mio: true })
+
+    return {
+      jahr,
+      periodeLabel: `GJ ${jahr} (SEC 10-K)`,
+      ocfUsd: rohUsdAusMio(ocfMio),
+      capexUsd: rohUsdAusMio(capexMap.get(jahr)),
+      dividendUsd: rohUsdAusMio(divMap.get(jahr)),
+      buybackUsd: rohUsdAusMio(buyMap.get(jahr)),
+      mnaUsd: rohUsdAusMio(mnaMap.get(jahr)),
+      revenueUsd: rohUsdAusMio(umsatzMap.get(jahr)),
+    }
+  } catch {
     return null
   }
 }

@@ -77,15 +77,24 @@ export function PaFundamentalCapitalAllocation({
 
       {laden && !daten ? <p className="text-sm text-[var(--app-text-muted)]">Lädt …</p> : null}
 
-      {daten?.scorePct != null ? (
+      {daten && (daten.scorePct != null || daten.ocfMioUsd != null) ? (
         <div className="flex flex-wrap items-center gap-3">
-          <span className="text-2xl font-semibold tabular-nums text-white">{daten.scorePct}</span>
-          <span className={`text-sm font-medium ${SCORE_CLASS[daten.scoreLabel]}`}>
-            {SCORE_LABEL[daten.scoreLabel]}
-          </span>
+          {daten.scorePct != null ? (
+            <>
+              <span className="text-2xl font-semibold tabular-nums text-white">{daten.scorePct}</span>
+              <span className={`text-sm font-medium ${SCORE_CLASS[daten.scoreLabel]}`}>
+                {SCORE_LABEL[daten.scoreLabel]}
+              </span>
+            </>
+          ) : null}
+          {daten.ocfMioUsd != null ? (
+            <span className="text-xs text-[var(--app-text-muted)]">
+              OCF: {daten.ocfMioUsd.toLocaleString('de-DE')} Mio. USD
+            </span>
+          ) : null}
           {daten.fcfMioUsd != null ? (
             <span className="text-xs text-[var(--app-text-muted)]">
-              FCF LTM: {daten.fcfMioUsd.toLocaleString('de-DE')} Mio. USD
+              FCF: {daten.fcfMioUsd.toLocaleString('de-DE')} Mio. USD
             </span>
           ) : null}
         </div>

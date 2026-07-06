@@ -2,6 +2,8 @@
 
 import 'server-only'
 
+import { ladeSecCapitalAllocation } from '@/lib/portfolio-analyse/sec-edgar-companyfacts-server'
+import { cikFuerTicker } from '@/lib/portfolio-analyse/sec-edgar-common-server'
 import {
   holeYahooFinanceAuth,
   YAHOO_FINANCE_FETCH_HEADERS,
@@ -123,7 +125,7 @@ function scoreAusSaeulen(
   return { scorePct: score, label, hinweis }
 }
 
-async function ladeCashflowLtm(symbol: string): Promise<{
+async function ladeCashflowLtmYahoo(symbol: string): Promise<{
   periodeLabel: string | null
   ocfUsd: number | null
   capexUsd: number | null
@@ -230,17 +232,58 @@ export async function ladeCapitalAllocation(opts: {
 }): Promise<CapitalAllocationPaket> {
   const ticker = opts.ticker.trim().toUpperCase()
   const sym = (opts.symbolYahoo ?? ticker).trim().toUpperCase()
-  const key = sym
+  const key = `${ticker}:${sym}`
   const hit = cache.get(key)
   if (hit && hit.at + CACHE_MS > Date.now() && !opts.force) return hit.data
 
   try {
-    const cf = await ladeCashflowLtm(sym)
+    const cik = await cikFuerTicker(ticker)
+    let cf: {
+      periodeLabel: string | null
+      ocfUsd: number | null
+      capexUsd: number | null
+      dividendUsd: number | null
+      buybackUsd: number | null
+      mnaUsd: number | null
+      revenueUsd: number | null
+    } | null = null
+
+    if (cik) {
+      const sec = await ladeSecCapitalAllocation(cik)
+      if (sec?.ocfUsd != null) {
+        cf = {
+          periodeLabel: sec.periodeLabel,
+          ocfUsd: sec.ocfUsd,
+          capexUsd: sec.capexUsd,
+          dividendUsd: sec.dividendUsd,
+          buybackUsd: sec.buybackUsd,
+          mnaUsd: sec.mnaUsd,
+          revenueUsd: sec.revenueUsd,
+        }
+      }
+    }
+
+    if (!cf?.ocfUsd) {
+      const yahoo = await ladeCashflowLtmYahoo(sym)
+      if (yahoo.ocfUsd != null) cf = yahoo
+    }
+
+    if (!cf) {
+      cf = {
+        periodeLabel: null,
+        ocfUsd: null,
+        capexUsd: null,
+        dividendUsd: null,
+        buybackUsd: null,
+        mnaUsd: null,
+        revenueUsd: null,
+      }
+    }
     const ocfMio = mioUsd(cf.ocfUsd)
     const capexMio = mioUsd(cf.capexUsd != null ? Math.abs(cf.capexUsd) : null)
-    const divMio = mioUsd(cf.dividendUsd != null ? Math.abs(cf.dividendUsd) : null)
-    const buyMio = mioUsd(cf.buybackUsd != null ? Math.abs(cf.buybackUsd) : null)
-    const mnaMio = mioUsd(cf.mnaUsd != null ? Math.abs(cf.mnaUsd) : null)
+    const divMio = mioUsd(cf.dividendUsd != null ? Math.abs(cf.dividendUsd) : null) ?? (ocfMio != null ? 0 : null)
+    const buyMio = mioUsd(cf.buybackUsd != null ? Math.abs(cf.buybackUsd) : null) ?? (ocfMio != null ? 0 : null)
+    const mnaMio = mioUsd(cf.mnaUsd != null ? Math.abs(cf.mnaUsd) : null) ?? (ocfMio != null ? 0 : null)
     const umsatzMio = mioUsd(cf.revenueUsd)
     const fcfMio =
       ocfMio != null && capexMio != null ? Math.round((ocfMio - capexMio) * 10) / 10 : null
@@ -257,10 +300,10 @@ export async function ladeCapitalAllocation(opts: {
         id: 'dividend',
         label: 'Dividenden',
         betragMioUsd: divMio,
-        pctVonOcf: pct(cf.dividendUsd != null ? Math.abs(cf.dividendUsd) : null, cf.ocfUsd),
+        pctVonOcf: pct(Math.abs(cf.dividendUsd ?? 0), cf.ocfUsd),
         ...bewerteSaeule(
           'dividend',
-          pct(cf.dividendUsd != null ? Math.abs(cf.dividendUsd) : null, cf.ocfUsd),
+          pct(Math.abs(cf.dividendUsd ?? 0), cf.ocfUsd),
           fcfMio,
         ),
       },
@@ -268,10 +311,10 @@ export async function ladeCapitalAllocation(opts: {
         id: 'buyback',
         label: 'Buybacks / Rückkäufe',
         betragMioUsd: buyMio,
-        pctVonOcf: pct(cf.buybackUsd != null ? Math.abs(cf.buybackUsd) : null, cf.ocfUsd),
+        pctVonOcf: pct(Math.abs(cf.buybackUsd ?? 0), cf.ocfUsd),
         ...bewerteSaeule(
           'buyback',
-          pct(cf.buybackUsd != null ? Math.abs(cf.buybackUsd) : null, cf.ocfUsd),
+          pct(Math.abs(cf.buybackUsd ?? 0), cf.ocfUsd),
           fcfMio,
         ),
       },
@@ -279,8 +322,8 @@ export async function ladeCapitalAllocation(opts: {
         id: 'mna',
         label: 'M&A (Akquisitionen)',
         betragMioUsd: mnaMio,
-        pctVonOcf: pct(cf.mnaUsd != null ? Math.abs(cf.mnaUsd) : null, cf.ocfUsd),
-        ...bewerteSaeule('mna', pct(cf.mnaUsd != null ? Math.abs(cf.mnaUsd) : null, cf.ocfUsd), fcfMio),
+        pctVonOcf: pct(Math.abs(cf.mnaUsd ?? 0), cf.ocfUsd),
+        ...bewerteSaeule('mna', pct(Math.abs(cf.mnaUsd ?? 0), cf.ocfUsd), fcfMio),
       },
     ]
 

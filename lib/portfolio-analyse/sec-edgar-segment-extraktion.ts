@@ -937,6 +937,200 @@ function anteileBerechnen(segmente: SecSegmentRoh[]): SecSegmentRoh[] {
   return segmente
 }
 
+function mergeJahrEintraege(
+  primaer: SecSegmentJahrEintrag[],
+  sekundaer: SecSegmentJahrEintrag[],
+): SecSegmentJahrEintrag[] {
+  const map = new Map<number, SecSegmentRoh[]>()
+  for (const j of primaer) map.set(j.jahr, j.segmente)
+  for (const j of sekundaer) {
+    if (!map.has(j.jahr) || (map.get(j.jahr)?.length ?? 0) < j.segmente.length) {
+      map.set(j.jahr, j.segmente)
+    }
+  }
+  return [...map.entries()]
+    .sort((a, b) => a[0] - b[0])
+    .map(([jahr, segmente]) => ({ jahr, segmente }))
+}
+
+/** Spalten = Segmente, Zeilen = Jahre (UNH, viele Healthcare-/Finanz-Titel). */
+function parseSpaltenOrientierteMehrjahresSegmente(
+  fragment: string,
+  validiere: (seg: SecSegmentRoh[]) => SecSegmentRoh[],
+): SecSegmentJahrEintrag[] {
+  if (!fragment || fragment.length < 200) return []
+  const byJahr = new Map<number, SecSegmentRoh[]>()
+  let pendingJahr: number | null = null
+
+  const speichere = (jahr: number | null, roh: SecSegmentRoh[]) => {
+    const val = validiere(roh)
+    if (val.length < 2) return
+    const j = jahr != null && jahr >= 2010 && jahr <= 2030 ? jahr : pendingJahr
+    if (j == null || j < 2010) return
+    byJahr.set(j, anteileBerechnen(val))
+    pendingJahr = null
+  }
+
+  const verarbeiteTeil = (teil: string) => {
+    const zeilen = parseTabellenZeilen(teil)
+    let spaltenNamen: string[] = []
+
+    for (const z of zeilen) {
+      const sichtbar = nichtLeereZellen(z.zellen).map(bereinigeLabel)
+      const label0 = sichtbar[0] ?? ''
+
+      const potNamen = sichtbar.filter(
+        (c) =>
+          c &&
+          istSegmentLabel(c, false, false) &&
+          !FINANCIAL_LINE_ITEM.test(c) &&
+          !AUFWAND_ZEILE.test(c) &&
+          !istIncomeStatementZeile(c),
+      )
+      if (potNamen.length >= 2 && z.betraege.length < potNamen.length) {
+        if (potNamen.length >= spaltenNamen.length) spaltenNamen = potNamen
+        continue
+      }
+
+      const jahrInZeile = label0.match(/^(20\d{2})$/)?.[1] ?? sichtbar.join(' ').match(/\b(20\d{2})\b/)?.[1]
+      if (jahrInZeile && /^(20\d{2})$/.test(label0)) {
+        pendingJahr = parseInt(jahrInZeile, 10)
+        continue
+      }
+
+      if (/unaffiliated|affiliated/i.test(label0)) continue
+
+      if (
+        spaltenNamen.length >= 2 &&
+        /^(total revenues?|revenues?|revenue from external customers|revenues from external customers|sales(\s*\([a-z]\))?|net sales)$/i.test(
+          label0,
+        )
+      ) {
+        const zahlenAusText = sichtbar
+          .slice(1)
+          .map((c) => Number(c.replace(/[^\d.]/g, '')))
+          .filter((n) => Number.isFinite(n) && n > 0)
+        const zahlen =
+          zahlenAusText.length >= spaltenNamen.length
+            ? zahlenAusText
+            : z.betraege.length >= spaltenNamen.length
+              ? z.betraege
+              : zahlenAusText
+        if (zahlen.length < spaltenNamen.length) continue
+        const namen = spaltenNamen.filter((n) => !/^\(?\s*millions of dollars\s*\)?$/i.test(n))
+        const roh = bereinigeSpaltenSegmente(
+          namen.map((name, i) => ({
+            name,
+            umsatzMio: betragZuMio(zahlen[i]!),
+            anteilPct: null,
+          })),
+        )
+        const jahr =
+          pendingJahr ??
+          (jahrInZeile ? parseInt(jahrInZeile, 10) : null) ??
+          (parseInt(teil.match(/\b(20\d{2})\b/)?.[1] ?? '0', 10) || null)
+        speichere(jahr && jahr >= 2010 ? jahr : null, roh)
+      }
+    }
+  }
+
+  // Gesamter Block
+  verarbeiteTeil(fragment)
+
+  // Unter-Tabellen (UNH: mehrere Jahresblöcke in einem TextBlock)
+  const teile = fragment.split(/(?=<table\b)/i)
+  if (teile.length > 1) {
+    for (const teil of teile) {
+      if (teil.length < 300) continue
+      verarbeiteTeil(teil)
+    }
+  }
+
+  return [...byJahr.entries()]
+    .sort((a, b) => a[0] - b[0])
+    .map(([jahr, segmente]) => ({ jahr, segmente }))
+}
+
+/**
+ * LIN & ähnliche: pro Jahr eigene Tabelle ("Year Ended December 31, 20XX"),
+ * Spalten = Regionen, Zeilen = Produktlinien.
+ */
+function parseJahresSektionsMatrix(
+  fragment: string,
+  modus: 'geo' | 'produkt',
+  validiere: (seg: SecSegmentRoh[]) => SecSegmentRoh[],
+): SecSegmentJahrEintrag[] {
+  if (!/Year Ended/i.test(fragment) || !/Americas/i.test(fragment)) return []
+
+  const byJahr = new Map<number, Map<string, number>>()
+  const teile = fragment.split(/(?=Year Ended)/gi)
+
+  for (const teil of teile) {
+    const jahrM = teil.match(/Year Ended[\s\S]{0,200}?(20\d{2})/i)
+    if (!jahrM) continue
+    const jahr = parseInt(jahrM[1]!, 10)
+    if (jahr < 2010 || jahr > 2030) continue
+
+    const zeilen = parseTabellenZeilen(teil)
+    let geoSpalten: { name: string; idx: number }[] = []
+
+    for (const z of zeilen) {
+      const sichtbar = nichtLeereZellen(z.zellen).map(bereinigeLabel)
+      if (sichtbar.length < 2) continue
+
+      const geoInZeile = sichtbar
+        .map((c, idx) => ({ name: c, idx }))
+        .filter(({ name }) => istGeoName(name) && !/^total$/i.test(name))
+      if (geoInZeile.length >= 2) {
+        geoSpalten = geoInZeile
+        continue
+      }
+
+      const label0 = sichtbar[0] ?? ''
+      if (!label0 || /^sales$/i.test(label0) || SKIP_LABELS.test(label0) || istIncomeStatementZeile(label0)) {
+        continue
+      }
+      if (/^total\s*%?$/i.test(label0) || /^%$/i.test(label0)) continue
+      if (!/[a-zA-Z]{3,}/.test(label0)) continue
+
+      if (modus === 'geo' && geoSpalten.length >= 2) {
+        if (!byJahr.has(jahr)) byJahr.set(jahr, new Map())
+        const map = byJahr.get(jahr)!
+        for (const { name, idx } of geoSpalten) {
+          const mio = betragAnSpaltenIdx(z, idx, 500)
+          if (mio == null || mio < 5) continue
+          map.set(name, (map.get(name) ?? 0) + mio)
+        }
+        continue
+      }
+
+      if (modus === 'produkt') {
+        const totalIdx = sichtbar.findIndex((c) => /^total$/i.test(c))
+        let totalMio = totalIdx >= 0 ? betragAnSpaltenIdx(z, totalIdx, 500) : null
+        if (totalMio == null) {
+          const gross = grossWerteAusZeile(z, 500)
+          if (gross.length >= 1) totalMio = betragZuMio(gross[gross.length - 1]!)
+        }
+        if (totalMio == null || totalMio < 5) continue
+        if (!byJahr.has(jahr)) byJahr.set(jahr, new Map())
+        byJahr.get(jahr)!.set(label0, totalMio)
+      }
+    }
+  }
+
+  const jahre: SecSegmentJahrEintrag[] = []
+  for (const [jahr, map] of [...byJahr.entries()].sort((a, b) => a[0] - b[0])) {
+    const roh: SecSegmentRoh[] = [...map.entries()].map(([name, umsatzMio]) => ({
+      name,
+      umsatzMio,
+      anteilPct: null,
+    }))
+    const val = validiere(roh)
+    if (val.length >= 2) jahre.push({ jahr, segmente: anteileBerechnen(val) })
+  }
+  return jahre
+}
+
 /** Mehrjahres-Tabelle: Zeilen = Segmente, Spalten = Geschäftsjahre. */
 export function parseMehrjahresSegmente(
   fragment: string,
@@ -956,6 +1150,27 @@ export function parseMehrjahresSegmenteDetail(
 }
 
 function parseMehrjahresSegmenteIntern(
+  fragment: string,
+  art: 'produkt' | 'geo',
+  metrik: 'umsatz' | 'assets',
+  validiere: (seg: SecSegmentRoh[]) => SecSegmentRoh[],
+): SecSegmentJahrEintrag[] {
+  const jahreRowOrientiert = parseMehrjahresSegmenteInternRowOnly(fragment, art, metrik, validiere)
+  const jahreSpaltenOrientiert = parseSpaltenOrientierteMehrjahresSegmente(fragment, validiere)
+  let merged = mergeJahrEintraege(jahreRowOrientiert, jahreSpaltenOrientiert)
+  if (merged.length < 2 && /Year Ended/i.test(fragment) && /Americas/i.test(fragment)) {
+    const matrixModus = art === 'geo' ? 'geo' : 'produkt'
+    const matrix = parseJahresSektionsMatrix(fragment, matrixModus, validiere)
+    merged = mergeJahrEintraege(merged, matrix)
+    if (merged.length < 2 && matrixModus === 'produkt') {
+      const geoMatrix = parseJahresSektionsMatrix(fragment, 'geo', validiere)
+      merged = mergeJahrEintraege(merged, geoMatrix)
+    }
+  }
+  return merged
+}
+
+function parseMehrjahresSegmenteInternRowOnly(
   fragment: string,
   art: 'produkt' | 'geo',
   metrik: 'umsatz' | 'assets',

@@ -13,6 +13,7 @@ import {
   mergeDetailInMap,
   mergeJahrSmart,
   SEC_DETAIL_BLOCKS,
+  type SecDetailBlockDef,
 } from '@/lib/portfolio-analyse/sec-edgar-detail-extraktion'
 import { leseAlsJson } from '@/lib/http/safe-json-response'
 import { ladeLesbarenBerichtText } from '@/lib/portfolio-analyse/sec-edgar-bericht-text-server'
@@ -165,13 +166,14 @@ function baueHistorie(
 
 function baueKategorienListe(
   kategorieMaps: Map<string, Map<number, SecSegmentRoh[]>>,
+  kategorieDefs?: Map<string, SecDetailBlockDef>,
 ): SecSegmentHistorieKategorie[] {
   const out: SecSegmentHistorieKategorie[] = []
-  for (const def of SEC_DETAIL_BLOCKS) {
-    const map = kategorieMaps.get(def.id)
-    if (!map) continue
+  const erledigt = new Set<string>()
+
+  const pushKategorie = (def: SecDetailBlockDef, map: Map<number, SecSegmentRoh[]>) => {
     const historie = baueHistorie(def.art, map)
-    if (!historie || historie.anzahlJahre < 2) continue
+    if (!historie || historie.anzahlJahre < 2) return
     out.push({
       id: def.id,
       titel: def.titel,
@@ -180,6 +182,21 @@ function baueKategorienListe(
       historie,
     })
   }
+
+  for (const def of SEC_DETAIL_BLOCKS) {
+    const map = kategorieMaps.get(def.id)
+    if (!map) continue
+    erledigt.add(def.id)
+    pushKategorie(def, map)
+  }
+
+  for (const [id, map] of kategorieMaps) {
+    if (erledigt.has(id)) continue
+    const def = kategorieDefs?.get(id)
+    if (!def) continue
+    pushKategorie(def, map)
+  }
+
   return out.sort((a, b) => {
     const prio: Record<string, number> = {
       umsatz_detail: 0,
@@ -345,6 +362,33 @@ function mergeZusatzHistorie(
   }
 }
 
+function priorisiereNeuestesFiling(
+  kategorieMaps: Map<string, Map<number, SecSegmentRoh[]>>,
+  kategorieMeta: Map<string, Map<number, number>>,
+  kategorieDefs: Map<string, SecDetailBlockDef>,
+  html: string,
+  filingJahr: number,
+): void {
+  if (html.length < 5_000 || filingJahr < 2010) return
+  const details = extrahiereAlleDetailBloeckeAus10kHtml(html)
+  for (const kat of details) {
+    kategorieDefs.set(kat.def.id, kat.def)
+    let map = kategorieMaps.get(kat.def.id)
+    if (!map) {
+      map = new Map()
+      kategorieMaps.set(kat.def.id, map)
+    }
+    let meta = kategorieMeta.get(kat.def.id)
+    if (!meta) {
+      meta = new Map()
+      kategorieMeta.set(kat.def.id, meta)
+    }
+    for (const j of kat.jahre) {
+      mergeJahrSmart(map, j.jahr, j.segmente, filingJahr, meta, { erzwingen: j.jahr >= filingJahr - 2 })
+    }
+  }
+}
+
 export async function ladeSecSegmentHistorie(ticker: string): Promise<SecSegmentHistoriePaket | null> {
   const sym = ticker.trim().toUpperCase()
   if (!sym || sym.includes('.')) return null
@@ -371,6 +415,7 @@ export async function ladeSecSegmentHistorie(ticker: string): Promise<SecSegment
 
     const kategorieMaps = new Map<string, Map<number, SecSegmentRoh[]>>()
     const kategorieMeta = new Map<string, Map<number, number>>()
+    const kategorieDefs = new Map<string, SecDetailBlockDef>()
     const textProFiling: { jahr: number; text: string }[] = []
     let geladene10k = 0
     let text10k = ''
@@ -400,6 +445,7 @@ export async function ladeSecSegmentHistorie(ticker: string): Promise<SecSegment
       if (html.length > 5_000) {
         const details = extrahiereAlleDetailBloeckeAus10kHtml(html)
         for (const kat of details) {
+          kategorieDefs.set(kat.def.id, kat.def)
           mergeDetailInMap(kategorieMaps, kat, jahr ?? undefined, kategorieMeta)
         }
 
@@ -467,7 +513,11 @@ export async function ladeSecSegmentHistorie(ticker: string): Promise<SecSegment
       }
     }
 
-    const kategorien = baueKategorienListe(kategorieMaps)
+    if (html10k.length > 5_000 && berichtJahr != null) {
+      priorisiereNeuestesFiling(kategorieMaps, kategorieMeta, kategorieDefs, html10k, berichtJahr)
+    }
+
+    const kategorien = baueKategorienListe(kategorieMaps, kategorieDefs)
 
     let produkt =
       besteHistorie(kategorien, (k) => k.id === 'umsatz_detail') ??

@@ -102,6 +102,18 @@ export async function fuehreVollenMomentumSyncAus(
     const wlAktuell = await ladeMomentumWatchlist(sb)
     scan = await scanMomentumWatchlist(wlAktuell.length ? wlAktuell : watchlist, regimeGates)
     schritte.push('Scan: ' + scan.ergebnisse.length + ' Setup(s)')
+    try {
+      const { berechneTopSignalTracking } = await import(
+        '@/lib/portfolio-analyse/momentum-trader/momentum-top-signal-tracking-server'
+      )
+      const { symboleAusWatchlist } = await import(
+        '@/lib/portfolio-analyse/momentum-trader/momentum-watchlist-server'
+      )
+      const wl = wlAktuell.length ? wlAktuell : watchlist
+      await berechneTopSignalTracking(symboleAusWatchlist(wl), [], { syncUndResolve: true })
+    } catch (e) {
+      fehler.push('Top-Signal-Tracking: ' + String(e))
+    }
   }
 
   return {

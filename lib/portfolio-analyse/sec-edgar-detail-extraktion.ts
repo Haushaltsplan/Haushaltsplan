@@ -10,6 +10,7 @@ import {
   type SecSegmentJahrEintrag,
   type SecSegmentRoh,
 } from '@/lib/portfolio-analyse/sec-edgar-segment-extraktion'
+import { extrahiereDynamischeSegmentBloecke } from '@/lib/portfolio-analyse/sec-edgar-dynamic-blocks'
 
 export type SecDetailBlockDef = {
   id: string
@@ -95,10 +96,22 @@ export function extrahiereAlleDetailBloeckeAus10kHtml(html: string): SecDetailKa
     seen.add(block.slice(0, 120))
 
     const parseArt = def.art === 'geo_assets' ? 'geo' : def.art === 'umsatz_detail' || def.art === 'produkte_services' ? 'produkt' : def.art
-    const detail = def.art === 'umsatz_detail' || def.art === 'produkte_services'
-    const jahre = detail
+    const detailFirst =
+      def.art === 'umsatz_detail' ||
+      def.art === 'produkte_services' ||
+      def.id === 'produkt_segment' ||
+      def.id === 'segment_disclosure'
+    let jahre = detailFirst
       ? parseMehrjahresSegmenteDetail(block, parseArt, def.metrik)
       : parseMehrjahresSegmente(block, parseArt, def.metrik)
+    if (jahre.length < 2 && !detailFirst) {
+      const det = parseMehrjahresSegmenteDetail(block, parseArt, def.metrik)
+      if (det.length > jahre.length) jahre = det
+    }
+    if (jahre.length < 2 && detailFirst) {
+      const std = parseMehrjahresSegmente(block, parseArt, def.metrik)
+      if (std.length > jahre.length) jahre = std
+    }
 
     if (jahre.length >= 1) {
       out.push({
@@ -109,6 +122,11 @@ export function extrahiereAlleDetailBloeckeAus10kHtml(html: string): SecDetailKa
         })),
       })
     }
+  }
+
+  for (const dyn of extrahiereDynamischeSegmentBloecke(html)) {
+    if (out.some((o) => o.def.tag === dyn.def.tag)) continue
+    out.push(dyn)
   }
 
   return out
@@ -125,6 +143,7 @@ export function mergeJahrSmart(
   segmente: SecSegmentRoh[],
   filingBerichtJahr?: number,
   meta?: Map<number, number>,
+  opts?: { erzwingen?: boolean },
 ): void {
   const norm = kanonisereSegmentNamen(segmente)
   if (norm.length < 2) return
@@ -140,6 +159,7 @@ export function mergeJahrSmart(
   const plausibel = neuSumme >= altSumme * 0.85 || altSumme === 0
 
   const ueberschreiben =
+    opts?.erzwingen ||
     !alt ||
     (neuereQuelle && plausibel) ||
     (gleicheQuelle && bessereSumme) ||

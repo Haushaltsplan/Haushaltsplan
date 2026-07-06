@@ -33,14 +33,18 @@ export async function parseMomentumApiJson<T>(res: Response): Promise<T> {
   }
 }
 
+function apiFehlermeldung(data: { fehler?: string; error?: string }, label: string, status: number): string {
+  return data.fehler ?? data.error ?? label + ' (HTTP ' + status + ')'
+}
+
 /** JSON lesen; bei !ok mit lesbarer Fehlermeldung abbrechen. */
 export async function parseMomentumApiJsonOderFehler<T>(
   res: Response,
   label: string,
 ): Promise<T> {
-  const data = await parseMomentumApiJson<T & { fehler?: string }>(res)
+  const data = await parseMomentumApiJson<T & { fehler?: string; error?: string }>(res)
   if (!res.ok) {
-    throw new Error(data.fehler ?? label + ' (HTTP ' + res.status + ')')
+    throw new Error(apiFehlermeldung(data, label, res.status))
   }
   return data
 }

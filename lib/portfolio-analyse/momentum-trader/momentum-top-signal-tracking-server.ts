@@ -268,16 +268,24 @@ async function ladeTopSignaleDb(symbole: string[], seitIso: string): Promise<Top
   return data as TopSignalDbZeile[]
 }
 
+export type TopSignalTrackingOpts = {
+  /** Sync + Outcome-Auflösung — nur in Cron/Full-Sync, nicht beim UI-Laden. */
+  syncUndResolve?: boolean
+}
+
 /** Vollständiges Top-Signal-Tracking inkl. Journal-Vergleich. */
 export async function berechneTopSignalTracking(
   symbole: string[],
   trades: MomentumTrade[] = [],
+  opts?: TopSignalTrackingOpts,
 ): Promise<MomentumTopSignalTracking> {
   const heute = heuteIsoUtc()
   const seitIso = addDaysIso(heute, -FENSTER_TAGE)
 
-  await synchronisiereTopSignaleAusScanResults(symbole, seitIso)
-  await loeseTopSignalOutcomes(symbole)
+  if (opts?.syncUndResolve) {
+    await synchronisiereTopSignaleAusScanResults(symbole, seitIso)
+    await loeseTopSignalOutcomes(symbole)
+  }
 
   const rows = await ladeTopSignaleDb(symbole, seitIso)
   const eintraege: MomentumTopSignalEintrag[] = rows.map((row) =>

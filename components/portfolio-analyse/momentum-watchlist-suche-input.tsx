@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useId, useRef, useState } from 'react'
-import { momentumApiFetch } from '@/lib/portfolio-analyse/momentum-trader/momentum-api-fetch'
+import { momentumApiFetch, parseMomentumApiJsonOderFehler, parseMomentumApiJsonOptional } from '@/lib/portfolio-analyse/momentum-trader/momentum-api-fetch'
 import type { MomentumWatchlistSuchTreffer } from '@/lib/portfolio-analyse/momentum-trader/momentum-trader-types'
 import { istGueltigeIsin } from '@/lib/portfolio-analyse/watchlist-client'
 import { ladeIsinMetadaten } from '@/lib/portfolio-analyse/isin-metadata-client'
@@ -61,9 +61,9 @@ export function MomentumWatchlistSucheInput({
           const res = await momentumApiFetch(
             '/api/portfolio-analyse/momentum-trader/watchlist-suche?q=' + encodeURIComponent(q),
           )
-          const data = (await res.json()) as { treffer?: MomentumWatchlistSuchTreffer[] }
+          const data = await parseMomentumApiJsonOptional<{ treffer?: MomentumWatchlistSuchTreffer[] }>(res)
           if (!cancelled) {
-            const liste = data.treffer ?? []
+            const liste = data?.treffer ?? []
             setTreffer(liste)
             setOffen(liste.length > 0)
             setAktivIdx(-1)
@@ -111,9 +111,12 @@ export function MomentumWatchlistSucheInput({
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload),
         })
-        const data = (await res.json()) as { eintrag?: MomentumWatchlistAuswahl; fehler?: string }
-        if (!res.ok || !data.eintrag) {
-          onFehler?.(data.fehler ?? 'Titel konnte nicht aufgelöst werden.')
+        const data = await parseMomentumApiJsonOderFehler<{ eintrag?: MomentumWatchlistAuswahl }>(
+          res,
+          'Titel konnte nicht aufgelöst werden.',
+        )
+        if (!data.eintrag) {
+          onFehler?.('Titel konnte nicht aufgelöst werden.')
           return
         }
         await onAuswahl({
