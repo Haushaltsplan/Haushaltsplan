@@ -14,7 +14,11 @@ import {
   runCoachCompletion,
 } from '@/lib/ki-coach-backend'
 import { NACHKAUF_RADAR_WHITELIST, type RisikoKlasse } from './nachkauf-radar-whitelist'
-import type { NachkaufScanEintrag, MonatsEmpfehlung, SparplanPosten } from './nachkauf-radar-types'
+import type { NachkaufScanEintrag, MonatsEmpfehlung, SparplanPosten, VerkaufPosten } from './nachkauf-radar-types'
+import {
+  berechneBasisVerkaufAllokation,
+  filterVerkaufKandidaten,
+} from './nachkauf-trim-signal'
 
 const DEFAULT_BUDGET_EUR = 500
 const MIN_SCORE_FUER_KI_EMPFEHLUNG = 90
@@ -33,7 +37,15 @@ const RISIKO_LABEL: Record<RisikoKlasse, string> = {
   spekulativ: 'Spekulativ (≤ 100 €)',
 }
 
-/** Risikoklasse aus der Whitelist anhand ISIN abrufen — Fallback: moderat. */
+/** Blockiert Nachkäufe nur bei bestätigtem Verkaufssignal (nicht bei bloßem Beobachten). */
+function hatAktivesVerkaufSignal(e: NachkaufScanEintrag): boolean {
+  const ts = e.trimSignal
+  if (!ts) return false
+  if (ts.aktion === 'vollverkauf') return true
+  if (ts.aktion === 'teilverkauf' && ts.dringlichkeit === 'hoch') return true
+  return false
+}
+
 function risikoKlasseVon(isin: string): RisikoKlasse {
   return NACHKAUF_RADAR_WHITELIST.find((p) => p.isin === isin)?.risikoKlasse ?? 'moderat'
 }
@@ -97,7 +109,42 @@ function baueKandidatenText(kandidaten: NachkaufScanEintrag[], budgetEur: number
 // Prompt
 // ---------------------------------------------------------------------------
 
-function bauePrompt(kandidaten: NachkaufScanEintrag[], basisAllokation: SparplanPosten[], budgetEur: number): string {
+function baueVerkaufKandidatenText(kandidaten: NachkaufScanEintrag[]): string {
+  if (kandidaten.length === 0) return '_Keine Verkaufs-Kandidaten identifiziert._'
+
+  return kandidaten.map((e) => {
+    const ts = e.trimSignal!
+    const dr = e.tiefenAnalyse
+    const premium = e.bewertung.premiumDiscountPct != null
+      ? `${e.bewertung.premiumDiscountPct > 0 ? '+' : ''}${e.bewertung.premiumDiscountPct.toFixed(0)}% vs. hist. Median`
+      : 'keine Vergleichsdaten'
+    const faktoren = ts.faktoren.map((f) => `  - [${f.kategorie}] ${f.text}`).join('\n')
+
+    return [
+      `### ${e.ticker} – ${e.name}`,
+      `Aktion: **${ts.aktion}** | Dringlichkeit: ${ts.dringlichkeit} | Priorität: ${ts.prioritaet}/100`,
+      ts.verkaufAnteilPct != null
+        ? `Empfohlener Verkauf: ~${ts.verkaufAnteilPct} % der Position (Ziel: ${ts.zielDepotGewichtPct?.toFixed(1) ?? '?'} % Depot)`
+        : 'Kein konkreter Verkaufsanteil — nur Überprüfung',
+      `Score: ${e.score}/100 | Ampel: ${e.ampel} | Depot-Anteil: ${e.depotGewichtPct?.toFixed(1) ?? '?'}%`,
+      `Bewertung: ${premium} | FCF-Yield: ${e.bewertung.fcfYieldPct?.toFixed(1) ?? '?'}% | Fwd-KGV: ${e.bewertung.forwardPe?.toFixed(1) ?? '?'}`,
+      `Sell-Trigger: ${e.sellTriggerOk ? 'OK' : 'AKTIV'} | Mantra: ${e.mantraScorePct?.toFixed(0) ?? '?'}%`,
+      '',
+      '**Regelbasierte Faktoren:**',
+      faktoren,
+      '',
+      dr ? `**Deep Research Kernaussagen:**\n${kuerzerMemo(dr.memo)}` : '_Kein Deep Research — nur regelbasierte Signale_',
+    ].join('\n')
+  }).join('\n\n---\n\n')
+}
+
+function bauePrompt(
+  kandidaten: NachkaufScanEintrag[],
+  verkaufKandidaten: NachkaufScanEintrag[],
+  basisAllokation: SparplanPosten[],
+  basisVerkauf: VerkaufPosten[],
+  budgetEur: number,
+): string {
   const basisText = basisAllokation.length > 0
     ? basisAllokation.map((p) => `  • ${p.ticker}: ${p.betragEur} € (${p.begruendung})`).join('\n')
     : '  • Regelbasiert: kein Kauf empfohlen'
@@ -106,30 +153,44 @@ function bauePrompt(kandidaten: NachkaufScanEintrag[], basisAllokation: Sparplan
   const capSpekulativ = Math.min(RISIKO_CAP.spekulativ, budgetEur)
   const klumpenCap = Math.round(budgetEur * 0.2)
 
-  return `Du bist ein rationaler, emotionsfreier Investment-Assistent für einen Quality-Investor.
+  const basisVerkaufText = basisVerkauf.length > 0
+    ? basisVerkauf.map((p) => `  • ${p.ticker}: ~${p.verkaufAnteilPct} % verkaufen (${p.dringlichkeit}) — ${p.begruendung}`).join('\n')
+    : '  • Regelbasiert: kein Verkauf empfohlen'
+
+  return `Du bist ein rationaler Investment-Assistent für einen **langfristigen** Quality-Investor.
+Ziel: Markt outperformen durch disziplinierte Kapitalallokation — nicht durch häufiges Trading.
 
 ## Aufgabe
-Verteile das Monatsbudget von **${budgetEur} €** auf die nachstehenden Kandidaten — oder empfehle ausdrücklich zu sparen.
+1. Verteile das Monatsbudget von **${budgetEur} €** auf Kauf-Kandidaten — oder empfehle zu sparen.
+2. Bewerte oben genannte Verkaufs-Hinweise — aber **übertreibe nicht**: Default ist Halten.
 
-## Rahmenbedingungen
-- Investitionsphilosophie: Langfristiges Quality-Investing in profitable Qualitätsunternehmen
-- Kein Zwangskauf: Wenn kein gutes Chancen-Risiko-Verhältnis vorliegt → sparen (Trade Republic zahlt 2,25 % p.a.)
-- Klumpenrisiko-Grenze: Positionen mit ≥15 % Depotanteil maximal ${klumpenCap} € zusätzlich investieren
-- Mindestbetrag pro Position: 100 € (sonst unwirtschaftlich)
-- Budget kann teilweise gespart werden — Restbetrag wird benannt
+## Rahmenbedingungen (WICHTIG)
+- **Langfrist-Horizont**: Jahre, nicht Monate. Verkäufe sind die Ausnahme, nicht die Regel.
+- **Halten ist der Default**: Auch bei hoher Bewertung oder kurzfristig schwachem Score nicht reflexartig verkaufen.
+- Verkäufe/Teilverkäufe nur bei **kombinierter, klarer Evidenz** (z. B. Klumpenrisiko + teure Bewertung, oder Sell-Trigger-Warnung + Score-Verfall).
+- Kein Zwangskauf: Wenn kein gutes Chancen-Risiko-Verhältnis → sparen (Trade Republic 2,25 % p.a.)
+- Teilverkäufe: typisch 10–25 % der Position, nicht mehr — Rest langfristig halten
+- Vollverkauf: nur wenn die Investmenthypothese fundamental gebrochen ist (Sell-Trigger-Warnung + sehr niedriger Score)
+- Emotionslos: weder Panik-Verkauf noch FOMO-Kauf
+- Klumpenrisiko-Grenze beim Nachkauf: ≥15 % Depotanteil maximal ${klumpenCap} € zusätzlich
+- Mindestbetrag pro Kauf: 100 €
 
 ## Risiko-adjustierte Positionsobergrenzen (HART, nicht überschreiten)
-Jede Position hat eine Risikoklasse, die den maximalen monatlichen Investitionsbetrag begrenzt:
-- **Konservativ** (Oligopole, rezessionssichere Large Caps): max. **${capKonservativ} €** — z.B. Mastercard, Visa, Microsoft, Alphabet, McDonald's
-- **Moderat** (gute Qualität, aber spezifische Risiken wie Regulierung, KI-Disruption, Zyklizität): max. **${capModerat} €** — z.B. ASML, UnitedHealth, Wolters Kluwer, ServiceNow
-- **Spekulativ** (Small/Mid-Cap oder sehr hohe Bewertungen mit erhöhter Volatilität): max. **${capSpekulativ} €** — z.B. Balchem, Datadog
+- **Konservativ**: max. **${capKonservativ} €** — Mastercard, Visa, Microsoft, …
+- **Moderat**: max. **${capModerat} €** — ASML, UnitedHealth, Wolters Kluwer, …
+- **Spekulativ**: max. **${capSpekulativ} €** — Balchem, Datadog
 
-Die Risikoklasse jedes Kandidaten ist unten angegeben. Du **musst** diese Obergrenzen einhalten — unabhängig von Score oder Trigger.
-
-## Regelbasierte Basis-Allokation (nur Score/Trigger/Klumpen)
+## Regelbasierte Basis-Allokation (Käufe)
 ${basisText}
 
-## Kandidaten mit Deep Research (Score ≥ ${MIN_SCORE_FUER_KI_EMPFEHLUNG})
+## Regelbasierte Verkaufs-Hinweise (selten — nur klare Fälle)
+${basisVerkaufText}
+
+## Verkaufs-Kandidaten (falls vorhanden — kritisch prüfen, nicht automatisch umsetzen)
+
+${baueVerkaufKandidatenText(verkaufKandidaten)}
+
+## Kauf-Kandidaten mit Deep Research (Score ≥ ${MIN_SCORE_FUER_KI_EMPFEHLUNG})
 
 ${baueKandidatenText(kandidaten, budgetEur)}
 
@@ -139,20 +200,24 @@ ${baueKandidatenText(kandidaten, budgetEur)}
 
 Beantworte folgende Punkte **auf Deutsch**:
 
-**1. Gesamtbewertung:** Ist der Markt aktuell für Käufe geeignet? (2–3 Sätze)
+**1. Gesamtbewertung:** Marktlage + gibt es ernsthafte Verkaufsfälle? (2–3 Sätze, zurückhaltend bei Verkäufen)
 
-**2. Kandidaten-Ranking mit Begründung:**
-Für jeden Kandidaten: Kaufen (wie viel €, unter Berücksichtigung seiner Risikoklasse) oder überspringen — und warum (insbesondere auf Basis des Deep Research). Begründe bei Spekulativ/Moderat explizit, warum das Chancen-Risiko-Verhältnis den niedrigeren Cap rechtfertigt oder nicht.
+**2. Positions-Bewertung (Verkauf/Halten/Beobachten):**
+Für jeden Verkaufs-Kandidaten: Halten, optional Teilverkauf (wie viel %), oder Vollverkauf — und warum.
+Wenn die Evidenz nicht ausreicht: explizit **Halten** empfehlen und begründen.
+Format:
+- TICKER: Halten / ~XX % Teilverkauf / Vollverkauf prüfen — Begründung
 
-**3. Finale Allokation:**
-Liste im Format:
-- TICKER (Risikoklasse): XXX € — Begründung in einem Satz
-- TICKER (Risikoklasse): XXX € — Begründung in einem Satz
+**3. Kauf-Ranking:**
+Kaufen (wie viel €) oder überspringen — mit Deep-Research-Bezug.
+
+**4. Finale Kauf-Allokation:**
+- TICKER (Risikoklasse): XXX € — Begründung
 - Gespart: XXX € (Begründung)
 
-**4. Wichtigste Warnung:** Was ist der kritischste Risikofaktor der Gesamtempfehlung?
+**5. Wichtigste Warnung:** Kritischster Risikofaktor.
 
-Sei direkt und konkret. Kein Bullshit, kein Optimismus-Bias. Wenn du nicht kaufen würdest, sag es klar.`
+Sei direkt, aber **nicht verkaufs-biased**. Ein Langfrist-Investor verkauft selten.`
 }
 
 // ---------------------------------------------------------------------------
@@ -162,7 +227,9 @@ Sei direkt und konkret. Kein Bullshit, kein Optimismus-Bias. Wenn du nicht kaufe
 export type KaufempfehlungErgebnis = {
   ok: boolean
   kandidatenAnzahl: number
+  verkaufKandidatenAnzahl: number
   basisAllokation: SparplanPosten[]
+  basisVerkaufAllokation: VerkaufPosten[]
   kiEmpfehlungText: string
   /** Geparstes Ergebnis für die UI-Karte */
   monatsEmpfehlung: MonatsEmpfehlung
@@ -176,12 +243,16 @@ export async function generiereKaufempfehlung(
 ): Promise<KaufempfehlungErgebnis> {
   const jetzt = new Date().toISOString()
 
-  // Kandidaten: Score ≥ 90, Ampel nicht rot, kein aktives Trim-Signal, Deep Research vorhanden
+  // Verkaufs-Kandidaten (unabhängig von Kauf-Score)
+  const verkaufKandidaten = filterVerkaufKandidaten(alleErgebnisse)
+  const basisVerkaufAllokation = berechneBasisVerkaufAllokation(alleErgebnisse)
+
+  // Kauf-Kandidaten: Score ≥ 90, Ampel nicht rot, kein dringendes Verkaufssignal, Deep Research
   const kandidaten = alleErgebnisse
     .filter((e) =>
       e.score >= MIN_SCORE_FUER_KI_EMPFEHLUNG &&
       e.ampel !== 'rot' &&
-      !e.trimSignal &&
+      !hatAktivesVerkaufSignal(e) &&
       e.tiefenAnalyse != null,
     )
     .sort((a, b) => {
@@ -191,30 +262,89 @@ export async function generiereKaufempfehlung(
       return b.score - a.score
     })
 
-  // Regelbasierte Basis-Allokation
-  const basisAllokation = berechneBasisAllokation(kandidaten, budgetEur)
-
-  // Fallback ohne KI wenn keine Kandidaten
-  if (kandidaten.length === 0) {
+  // Fallback ohne KI wenn weder Käufe noch Verkäufe
+  if (kandidaten.length === 0 && verkaufKandidaten.length === 0) {
     const scoreMin = String(MIN_SCORE_FUER_KI_EMPFEHLUNG)
     const budgetStr = String(budgetEur)
     const sparText =
       'Keine Positionen mit Score \u2265 ' + scoreMin +
-      ' und Deep Research gefunden. ' + budgetStr +
+      ' und Deep Research gefunden. Keine Verkaufs-Signale. ' + budgetStr +
       ' \u20AC auf Trade Republic sparen (2,25\u00A0%\u00A0p.a.).'
     const sparen: MonatsEmpfehlung = { typ: 'sparen', text: sparText }
     return {
       ok: true,
       kandidatenAnzahl: 0,
+      verkaufKandidatenAnzahl: 0,
       basisAllokation: [],
+      basisVerkaufAllokation: [],
       kiEmpfehlungText: sparen.text,
       monatsEmpfehlung: sparen,
       erstellt_am: jetzt,
     }
   }
 
-  // Gemini-Synthese
-  const prompt = bauePrompt(kandidaten, basisAllokation, budgetEur)
+  // Nur Verkäufe, keine Käufe — trotzdem KI-Synthese
+  if (kandidaten.length === 0) {
+    const prompt = bauePrompt([], verkaufKandidaten, [], basisVerkaufAllokation, budgetEur)
+    const kiText = await rufeKiAuf(prompt)
+    return {
+      ok: true,
+      kandidatenAnzahl: 0,
+      verkaufKandidatenAnzahl: verkaufKandidaten.length,
+      basisAllokation: [],
+      basisVerkaufAllokation,
+      kiEmpfehlungText: kiText.text,
+      monatsEmpfehlung: { typ: 'beobachten', text: kiText.text },
+      erstellt_am: jetzt,
+      fehler: kiText.fehler,
+    }
+  }
+
+  // Regelbasierte Basis-Allokation
+  const basisAllokation = berechneBasisAllokation(kandidaten, budgetEur)
+
+  // Gemini-Synthese (Käufe + Verkäufe)
+  const prompt = bauePrompt(kandidaten, verkaufKandidaten, basisAllokation, basisVerkaufAllokation, budgetEur)
+  const kiResult = await rufeKiAuf(prompt)
+  let kiText = kiResult.text
+  const fehler = kiResult.fehler
+
+  if (!kiText?.trim()) {
+    const verkaufTeil = basisVerkaufAllokation.length > 0
+      ? '\n\nRegelbasierte Verkäufe:\n' +
+        basisVerkaufAllokation.map((p) => `• ${p.ticker}: ~${p.verkaufAnteilPct} % — ${p.begruendung}`).join('\n')
+      : ''
+    kiText = `[KI-Synthese fehlgeschlagen${fehler ? ': ' + fehler : ''}]\n\nRegelbasierte Käufe:\n` +
+      basisAllokation.map((p) => `• ${p.ticker}: ${p.betragEur} € — ${p.begruendung}`).join('\n') +
+      verkaufTeil
+  }
+
+  // MonatsEmpfehlung aus KI-Text + Basis-Allokation bauen
+  const monatsEmpfehlung: MonatsEmpfehlung = basisAllokation.length > 0
+    ? {
+        typ: 'nachkauf',
+        tickers: kandidaten.map((e) => e.ticker),
+        text: kiText,
+        sparplanAllokation: basisAllokation,
+      }
+    : basisVerkaufAllokation.length > 0
+      ? { typ: 'beobachten', text: kiText }
+      : { typ: 'sparen', text: kiText }
+
+  return {
+    ok: !fehler,
+    kandidatenAnzahl: kandidaten.length,
+    verkaufKandidatenAnzahl: verkaufKandidaten.length,
+    basisAllokation,
+    basisVerkaufAllokation,
+    kiEmpfehlungText: kiText,
+    monatsEmpfehlung,
+    erstellt_am: jetzt,
+    fehler,
+  }
+}
+
+async function rufeKiAuf(prompt: string): Promise<{ text: string; fehler?: string }> {
   let kiText = ''
   let fehler: string | undefined
 
@@ -226,7 +356,7 @@ export async function generiereKaufempfehlung(
       const result = await runCoachCompletion(
         provider.provider,
         provider.apiKey,
-        'Du bist ein rationaler Investmentassistent. Antworte immer auf Deutsch. Sei direkt, ehrlich und kritisch.',
+        'Du bist ein rationaler Investmentassistent für Langfrist-Investoren. Antworte auf Deutsch. Verkäufe sind selten — Halten ist der Default.',
         [{ role: 'user', content: prompt }],
         {
           temperature: 0.3,
@@ -244,30 +374,7 @@ export async function generiereKaufempfehlung(
     }
   }
 
-  if (!kiText?.trim()) {
-    kiText = `[KI-Synthese fehlgeschlagen${fehler ? ': ' + fehler : ''}]\n\nRegelbasierte Basis:\n` +
-      basisAllokation.map((p) => `• ${p.ticker}: ${p.betragEur} € — ${p.begruendung}`).join('\n')
-  }
-
-  // MonatsEmpfehlung aus KI-Text + Basis-Allokation bauen
-  const monatsEmpfehlung: MonatsEmpfehlung = basisAllokation.length > 0
-    ? {
-        typ: 'nachkauf',
-        tickers: kandidaten.map((e) => e.ticker),
-        text: kiText,
-        sparplanAllokation: basisAllokation,
-      }
-    : { typ: 'sparen', text: kiText }
-
-  return {
-    ok: !fehler,
-    kandidatenAnzahl: kandidaten.length,
-    basisAllokation,
-    kiEmpfehlungText: kiText,
-    monatsEmpfehlung,
-    erstellt_am: jetzt,
-    fehler,
-  }
+  return { text: kiText, fehler }
 }
 
 // ---------------------------------------------------------------------------

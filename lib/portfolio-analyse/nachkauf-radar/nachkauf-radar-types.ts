@@ -104,12 +104,53 @@ export type Kaufhistorie = {
   tageSeitletztemKauf: number | null
 }
 
+/** Kategorie eines Verkaufs-/Trim-Faktors (emotionslos, datenbasiert). */
+export type TrimSignalKategorie =
+  | 'klumpenrisiko'
+  | 'qualitaet'
+  | 'bewertung_hype'
+  | 'score_verfall'
+  | 'struktur'
+  | 'insider'
+
+export type TrimSignalAktion = 'teilverkauf' | 'vollverkauf' | 'ueberpruefen'
+export type TrimSignalDringlichkeit = 'hoch' | 'mittel' | 'niedrig'
+
+/** Einzelner, nachvollziehbarer Verkaufsgrund. */
+export type TrimFaktor = {
+  kategorie: TrimSignalKategorie
+  text: string
+  /** Gewicht 1–3 für Prioritätsberechnung. */
+  gewicht: number
+}
+
 /**
- * Verkaufs-/Trim-Signal: wird ausgelöst wenn Position zu groß oder Score stark gesunken.
+ * Verkaufs-/Trim-Signal: regelbasiert aus Depot-Gewicht, Score, Qualität, Bewertung.
  */
 export type TrimSignal = {
+  /** Legacy-Kompatibilität für UI-Filter. */
   typ: 'trim' | 'ueberpruefen'
+  aktion: TrimSignalAktion
+  dringlichkeit: TrimSignalDringlichkeit
+  /** Empfohlener Verkaufsanteil der Position in % (null = nur prüfen). */
+  verkaufAnteilPct: number | null
+  /** Ziel-Depotgewicht nach Trim in %. */
+  zielDepotGewichtPct: number | null
+  faktoren: TrimFaktor[]
+  /** Zusammengefasste Begründung für UI und KI. */
   grund: string
+  /** 0–100 für Sortierung der Verkaufsempfehlungen. */
+  prioritaet: number
+}
+
+/** Regelbasierte Verkaufsempfehlung (Stufe C). */
+export type VerkaufPosten = {
+  ticker: string
+  name: string
+  verkaufAnteilPct: number
+  begruendung: string
+  dringlichkeit: TrimSignalDringlichkeit
+  faktoren: string[]
 }
 
 /** Ein Eintrag im Scan-Ergebnis (ein Depot-Titel). */

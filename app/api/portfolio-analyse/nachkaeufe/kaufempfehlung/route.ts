@@ -63,6 +63,7 @@ export async function POST(req: Request) {
             monat,
             kandidaten: ergebnis.basisAllokation.map((p) => p.ticker),
             basis_allokation: ergebnis.basisAllokation,
+            verkauf_allokation: ergebnis.basisVerkaufAllokation,
             ki_text: ergebnis.kiEmpfehlungText,
           },
           { onConflict: 'owner_user_id,monat' },

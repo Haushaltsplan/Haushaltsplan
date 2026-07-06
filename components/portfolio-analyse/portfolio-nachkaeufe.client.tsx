@@ -5,6 +5,7 @@ import { EarningsCallAnalyseDarstellung } from '@/components/portfolio-analyse/p
 import { PortfolioAnalyseShell } from '@/components/portfolio-analyse/portfolio-analyse-shell.client'
 import { PaCard, PaSectionTitle, PA_SCROLL_ELEGANT } from '@/components/portfolio-analyse/pa-ui'
 import { NACHKAUF_RADAR_WHITELIST, type RisikoKlasse } from '@/lib/portfolio-analyse/nachkauf-radar/nachkauf-radar-whitelist'
+import { portfolioEmpfehlungVon, type PortfolioEmpfehlungTyp } from '@/lib/portfolio-analyse/nachkauf-radar/nachkauf-trim-signal'
 import type {
   InsiderKauf,
   Kaufhistorie,
@@ -17,7 +18,50 @@ import type {
   ScoreVerlaufPunkt,
   SparplanPosten,
   TrimSignal,
+  VerkaufPosten,
 } from '@/lib/portfolio-analyse/nachkauf-radar/nachkauf-radar-types'
+
+function portfolioEmpfehlungBadge(typ: PortfolioEmpfehlungTyp): { badge: string; label: string } {
+  switch (typ) {
+    case 'nachkauf':
+      return { badge: 'bg-emerald-500/12 text-emerald-400 ring-1 ring-emerald-500/20', label: 'Nachkauf' }
+    case 'halten':
+      return { badge: 'bg-sky-500/12 text-sky-400 ring-1 ring-sky-500/20', label: 'Halten' }
+    case 'beobachten':
+      return { badge: 'bg-amber-500/12 text-amber-400 ring-1 ring-amber-500/20', label: 'Beobachten' }
+    case 'teilverkauf_erwaegen':
+      return { badge: 'bg-orange-500/12 text-orange-300 ring-1 ring-orange-500/25', label: 'Teilverkauf?' }
+    case 'verkauf_pruefen':
+      return { badge: 'bg-rose-500/12 text-rose-400 ring-1 ring-rose-500/20', label: 'Verkauf prüfen' }
+  }
+}
+
+function trimAktionLabel(ts: TrimSignal): string {
+  if (ts.aktion === 'vollverkauf') return 'Vollverkauf prüfen'
+  if (ts.aktion === 'teilverkauf' && ts.verkaufAnteilPct != null) {
+    return `Optional ~${ts.verkaufAnteilPct} % reduzieren`
+  }
+  if (ts.aktion === 'ueberpruefen') return 'Zur Kenntnis / Beobachten'
+  return ts.typ === 'trim' ? 'Trim-Hinweis' : 'Beobachten'
+}
+
+function trimDringlichkeitFarbe(d: TrimSignal['dringlichkeit']): string {
+  if (d === 'hoch') return 'text-rose-300'
+  if (d === 'mittel') return 'text-orange-300'
+  return 'text-amber-300'
+}
+
+function trimKategorieLabel(k: TrimSignal['faktoren'][number]['kategorie']): string {
+  const map: Record<string, string> = {
+    klumpenrisiko: 'Klumpenrisiko',
+    qualitaet: 'Qualität',
+    bewertung_hype: 'Hype',
+    score_verfall: 'Score-Verfall',
+    struktur: 'Struktur',
+    insider: 'Insider',
+  }
+  return map[k] ?? k
+}
 
 function risikoKlasseVon(isin: string): RisikoKlasse {
   return NACHKAUF_RADAR_WHITELIST.find((p) => p.isin === isin)?.risikoKlasse ?? 'moderat'
@@ -342,6 +386,8 @@ function TitelKarte({
   deepLaden: boolean
 }) {
   const cfg = ampelConfig(eintrag.ampel)
+  const portfolio = portfolioEmpfehlungVon(eintrag)
+  const portfolioBadge = portfolioEmpfehlungBadge(portfolio.typ)
 
   return (
     <button
@@ -357,8 +403,11 @@ function TitelKarte({
           </div>
           <p className="mt-0.5 pl-4 text-[11px] font-mono text-[var(--app-text-muted)]">{eintrag.ticker}</p>
         </div>
-        <div className="shrink-0 text-right">
-          <span className={`inline-flex rounded-md px-2 py-0.5 text-[10px] font-semibold tracking-wide ${cfg.badge}`}>
+        <div className="shrink-0 text-right space-y-1">
+          <span className={`inline-flex rounded-md px-2 py-0.5 text-[10px] font-semibold tracking-wide ${portfolioBadge.badge}`}>
+            {portfolio.label}
+          </span>
+          <span className={`block rounded-md px-2 py-0.5 text-[9px] font-medium ${cfg.badge}`}>
             {cfg.label}
           </span>
         </div>
@@ -591,6 +640,8 @@ function DetailPanel({
 }) {
   const cfg = ampelConfig(eintrag.ampel)
   const dr = eintrag.tiefenAnalyse
+  const portfolio = portfolioEmpfehlungVon(eintrag)
+  const portfolioBadge = portfolioEmpfehlungBadge(portfolio.typ)
 
   return (
     <div className="space-y-4">
@@ -607,7 +658,10 @@ function DetailPanel({
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <span className={`rounded-md px-2.5 py-1 text-xs font-semibold tracking-wide ${cfg.badge}`}>
+          <span className={`rounded-md px-2.5 py-1 text-xs font-semibold tracking-wide ${portfolioBadge.badge}`}>
+            {portfolio.label}
+          </span>
+          <span className={`rounded-md px-2.5 py-1 text-xs font-medium tracking-wide ${cfg.badge}`}>
             {cfg.label}
           </span>
           <TriggerBadge ausgeloest={eintrag.kaufTriggerAusgeloest} text={eintrag.kaufTriggerText} />
@@ -642,11 +696,40 @@ function DetailPanel({
 
       {/* Trim-Signal */}
       {eintrag.trimSignal && (
-        <div className={`rounded-xl border p-3 ${eintrag.trimSignal.typ === 'trim' ? 'border-orange-500/25 bg-orange-950/30' : 'border-amber-500/20 bg-amber-950/20'}`}>
-          <p className={`text-[12px] font-semibold ${eintrag.trimSignal.typ === 'trim' ? 'text-orange-300' : 'text-amber-300'}`}>
-            {eintrag.trimSignal.typ === 'trim' ? '✂️ Trim-Signal' : '⚠️ Position überprüfen'}
+        <div className={`rounded-xl border p-3 ${eintrag.trimSignal.aktion === 'ueberpruefen' ? 'border-amber-500/15 bg-amber-950/15' : eintrag.trimSignal.typ === 'trim' ? 'border-orange-500/20 bg-orange-950/25' : 'border-amber-500/20 bg-amber-950/20'}`}>
+          <div className="flex flex-wrap items-center gap-2">
+            <p className={`text-[12px] font-semibold ${eintrag.trimSignal.aktion === 'vollverkauf' ? 'text-rose-300' : eintrag.trimSignal.aktion === 'teilverkauf' ? 'text-orange-300' : 'text-amber-300'}`}>
+              {eintrag.trimSignal.aktion === 'vollverkauf' ? '🔴' : eintrag.trimSignal.aktion === 'teilverkauf' ? '✂️' : '👁'}{' '}
+              {trimAktionLabel(eintrag.trimSignal)}
+            </p>
+            {eintrag.trimSignal.aktion !== 'ueberpruefen' && (
+              <span className={`rounded-md px-1.5 py-0.5 text-[10px] font-medium ring-1 ring-white/10 ${trimDringlichkeitFarbe(eintrag.trimSignal.dringlichkeit)}`}>
+                {eintrag.trimSignal.dringlichkeit}
+              </span>
+            )}
+            {eintrag.trimSignal.zielDepotGewichtPct != null && eintrag.trimSignal.aktion === 'teilverkauf' && (
+              <span className="text-[10px] text-[var(--app-text-muted)]">
+                Ziel: {eintrag.trimSignal.zielDepotGewichtPct.toFixed(1)} % Depot
+              </span>
+            )}
+          </div>
+          <p className="mt-1.5 text-[12px] text-[var(--app-text-muted)]">{eintrag.trimSignal.grund}</p>
+          <p className="mt-1 text-[11px] italic text-[var(--app-text-muted)]/80">
+            {portfolioEmpfehlungVon(eintrag).kurz}
           </p>
-          <p className="mt-1 text-[12px] text-[var(--app-text-muted)]">{eintrag.trimSignal.grund}</p>
+          {eintrag.trimSignal.faktoren.length > 0 && (
+            <div className="mt-2 flex flex-wrap gap-1">
+              {eintrag.trimSignal.faktoren.map((f, i) => (
+                <span
+                  key={i}
+                  title={f.text}
+                  className="rounded bg-black/20 px-1.5 py-0.5 text-[10px] text-[var(--app-text-muted)] ring-1 ring-white/5"
+                >
+                  {trimKategorieLabel(f.kategorie)}
+                </span>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
@@ -1086,6 +1169,7 @@ export function NachkaufRadarClient() {
   const [kaufempfehlungLaeuft, setKaufempfehlungLaeuft] = useState(false)
   const [kaufempfehlungText, setKaufempfehlungText] = useState<string | null>(null)
   const [kaufempfehlungAllokation, setKaufempfehlungAllokation] = useState<SparplanPosten[]>([])
+  const [verkaufAllokation, setVerkaufAllokation] = useState<VerkaufPosten[]>([])
   const [kaufBudget, setKaufBudget] = useState<number>(500)
   const scanRef = useRef(false)
 
@@ -1113,6 +1197,7 @@ export function NachkaufRadarClient() {
           if (daten?.ki_text) {
             setKaufempfehlungText(daten.ki_text)
             setKaufempfehlungAllokation(daten.basis_allokation ?? [])
+            setVerkaufAllokation(daten.verkauf_allokation ?? [])
           }
         }
       } catch {
@@ -1127,6 +1212,7 @@ export function NachkaufRadarClient() {
   async function starteKaufempfehlung() {
     setKaufempfehlungLaeuft(true)
     setKaufempfehlungText(null)
+    setVerkaufAllokation([])
     try {
       const res = await fetch('/api/portfolio-analyse/nachkaeufe/kaufempfehlung', {
         method: 'POST',
@@ -1140,6 +1226,7 @@ export function NachkaufRadarClient() {
       }
       setKaufempfehlungText(daten.kiEmpfehlungText)
       setKaufempfehlungAllokation(daten.basisAllokation ?? [])
+      setVerkaufAllokation(daten.basisVerkaufAllokation ?? [])
     } catch (e) {
       setKaufempfehlungText(`Fehler: ${e instanceof Error ? e.message : String(e)}`)
     } finally {
@@ -1303,7 +1390,7 @@ export function NachkaufRadarClient() {
         <div className="flex flex-wrap items-start justify-between gap-4">
           <PaSectionTitle
             title="Nachkauf-Radar"
-            description="Monatliche Priorisierung: Welche Depot-Positionen verdienen neues Kapital — und welche nicht?"
+            description="Monatliche Priorisierung: Wo neues Kapital hin — und wo Positionen reduziert werden sollten?"
           />
           <div className="flex flex-wrap items-center gap-2">
             {gescannt_am && (
@@ -1371,7 +1458,7 @@ export function NachkaufRadarClient() {
                 onClick={() => setFilterTrim(!filterTrim)}
                 className={`rounded-xl px-3 py-2 ring-1 transition-all ${filterTrim ? 'bg-orange-500/25 ring-orange-400/40' : 'bg-orange-500/10 ring-orange-500/20'}`}
               >
-                <p className="text-[10px] text-[var(--app-text-muted)]">Trim / Überprüfen</p>
+                <p className="text-[10px] text-[var(--app-text-muted)]">Hinweis Verkauf/Trim</p>
                 <p className="text-lg font-bold text-orange-300">{mitTrim}</p>
               </button>
             )}
@@ -1447,16 +1534,16 @@ export function NachkaufRadarClient() {
           <MonatsEmpfehlungBanner emp={monatsEmpfehlung} />
         )}
 
-        {/* KI-Kaufempfehlung mit Deep Research */}
+        {/* KI-Portfolio-Empfehlung (Kauf + Verkauf) */}
         {ergebnisse.length > 0 && !scanLaeuft && (
           <div className="rounded-2xl border border-violet-500/20 bg-gradient-to-br from-violet-950/50 to-[var(--app-surface)] p-5">
             <div className="flex items-start justify-between gap-3">
               <div className="flex items-start gap-3">
                 <span className="mt-0.5 text-xl" role="img" aria-hidden>🤖</span>
                 <div>
-                  <p className="text-sm font-semibold text-violet-300">Kaufempfehlung (KI + Deep Research)</p>
+                  <p className="text-sm font-semibold text-violet-300">Portfolio-Empfehlung</p>
                   <p className="mt-0.5 text-xs text-[var(--app-text-muted)]">
-                    Gemini analysiert alle Positionen mit Score ≥ 90 + Deep Research und verteilt das Budget.
+                    Nachkauf, Halten, Beobachten oder optional Teilverkauf — langfristig, ohne Übertreibung.
                   </p>
                 </div>
               </div>
@@ -1508,6 +1595,31 @@ export function NachkaufRadarClient() {
 
             {kaufempfehlungText && !kaufempfehlungLaeuft && (
               <div className="mt-4 space-y-3">
+                {verkaufAllokation.length > 0 && (
+                  <div className="rounded-xl border border-rose-500/20 bg-rose-950/20 p-3">
+                    <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-rose-400">
+                      Verkaufs-Hinweise (selten, nur klare Fälle)
+                    </p>
+                    <div className="space-y-2">
+                      {verkaufAllokation.map((p) => (
+                        <div key={p.ticker} className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="text-[12px] font-semibold text-[var(--app-text)]">{p.name}</span>
+                              <span className={`text-[10px] font-medium ${trimDringlichkeitFarbe(p.dringlichkeit)}`}>
+                                {p.dringlichkeit}
+                              </span>
+                            </div>
+                            <p className="mt-0.5 text-[11px] text-[var(--app-text-muted)] line-clamp-2">{p.begruendung}</p>
+                          </div>
+                          <span className="shrink-0 text-[13px] font-bold tabular-nums text-rose-300">
+                            −{p.verkaufAnteilPct} %
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
                 {kaufempfehlungAllokation.length > 0 && (
                   <div className="rounded-xl border border-violet-500/15 bg-violet-950/20 p-3">
                     <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-violet-400">
@@ -1535,7 +1647,7 @@ export function NachkaufRadarClient() {
                 )}
                 <div className="rounded-xl border border-white/5 bg-[var(--app-surface-muted)] p-4">
                   <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-violet-400">
-                    KI-Analyse & finale Empfehlung
+                    KI-Analyse (Halten/Verkauf vor Käufen, dann Budget)
                   </p>
                   <KiMdText text={kaufempfehlungText} />
                 </div>
