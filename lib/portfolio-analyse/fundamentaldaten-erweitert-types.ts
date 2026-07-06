@@ -50,6 +50,8 @@ export type SecSegmentEintrag = {
   name: string
   anteilPct: number | null
   umsatzMio: number | null
+  operatingIncomeMio?: number | null
+  margePct?: number | null
 }
 
 export type SecStrukturPaket = {
@@ -100,6 +102,22 @@ export type SecZusatzRisikoFelder = {
   kundenKonzentrationHistorie: { jahr: number; anteilPct: number; name: string | null }[]
 }
 
+export type SecBacklogEintrag = {
+  jahr: number
+  /** Wert in Mio. USD */
+  wertMio: number
+}
+
+export type SecBacklogHistorie = {
+  art: 'rpo' | 'backlog' | 'deferred_revenue'
+  label: string
+  quelleTag: string
+  eintraege: SecBacklogEintrag[]
+  anzahlJahre: number
+  aeltestesJahr: number
+  juengstesJahr: number
+}
+
 export type SecKennzahlJahr = { jahr: number; wert: number }
 
 export type SecKennzahlenHistorie = {
@@ -132,6 +150,8 @@ export type SecSegmentHistoriePaket = {
   /** Alle erkannten XBRL-Tabellen (Disaggregation, Geo-Assets, …). */
   kategorien: SecSegmentHistorieKategorie[]
   zusatz: SecZusatzRisikoFelder
+  /** Backlog / RPO / Deferred Revenue (SEC XBRL + 10-K-Text). */
+  backlog: SecBacklogHistorie | null
   kennzahlen: SecKennzahlenHistorie | null
   berichtJahr: number | null
   anzahl10k: number

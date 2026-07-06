@@ -37,20 +37,6 @@ export const SEC_DETAIL_BLOCKS: SecDetailBlockDef[] = [
     tag: 'ScheduleOfEntitysRevenueFromExternalCustomersByProductsAndServicesTextBlock',
   },
   {
-    id: 'produkt_segment',
-    titel: 'Geschäftssegmente (Operating)',
-    art: 'produkt',
-    metrik: 'umsatz',
-    tag: 'ScheduleOfSegmentReportingInformationBySegmentTextBlock',
-  },
-  {
-    id: 'segment_disclosure',
-    titel: 'Segment-Reporting (Disclosure)',
-    art: 'produkt',
-    metrik: 'umsatz',
-    tag: 'SegmentReportingDisclosureTextBlock',
-  },
-  {
     id: 'geo_umsatz',
     titel: 'Umsatz nach Region',
     art: 'geo',
@@ -96,11 +82,7 @@ export function extrahiereAlleDetailBloeckeAus10kHtml(html: string): SecDetailKa
     seen.add(block.slice(0, 120))
 
     const parseArt = def.art === 'geo_assets' ? 'geo' : def.art === 'umsatz_detail' || def.art === 'produkte_services' ? 'produkt' : def.art
-    const detailFirst =
-      def.art === 'umsatz_detail' ||
-      def.art === 'produkte_services' ||
-      def.id === 'produkt_segment' ||
-      def.id === 'segment_disclosure'
+    const detailFirst = def.art === 'umsatz_detail' || def.art === 'produkte_services'
     let jahre = detailFirst
       ? parseMehrjahresSegmenteDetail(block, parseArt, def.metrik)
       : parseMehrjahresSegmente(block, parseArt, def.metrik)

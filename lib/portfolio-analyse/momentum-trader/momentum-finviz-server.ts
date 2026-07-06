@@ -34,10 +34,16 @@ function parseZahl(text: string): number | null {
 
 function extrahiereSnapshotMap(html: string): Map<string, string> {
   const map = new Map<string, string>()
-  const re = /snapshot-td2[^>]*>\s*([^<]+?)\s*<\/td>\s*<td[^>]*>\s*<b[^>]*>([^<]+)</gi
-  let m: RegExpExecArray | null
-  while ((m = re.exec(html)) !== null) {
-    map.set(m[1].trim(), m[2].trim())
+  const rowRe = /<tr[^>]*class="[^"]*table-(?:dark-)?row[^"]*"[^>]*>([\s\S]*?)<\/tr>/gi
+  const pairRe =
+    /snapshot-td-label[^>]*>(?:[\s\S]*?<a[^>]*>([^<]+)<\/a>|([^<]+?))<\/div>[\s\S]*?<\/td>\s*<td[^>]*>[\s\S]*?snapshot-td-content[^>]*>[\s\S]*?<b[^>]*>([^<]+)<\/b>/i
+  let row: RegExpExecArray | null
+  while ((row = rowRe.exec(html)) !== null) {
+    const m = pairRe.exec(row[1])
+    if (!m) continue
+    const label = (m[1] ?? m[2] ?? '').trim()
+    const value = m[3].trim()
+    if (label) map.set(label, value)
   }
   return map
 }

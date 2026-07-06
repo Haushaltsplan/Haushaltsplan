@@ -17,7 +17,8 @@ import {
 } from '@/lib/portfolio-analyse/sec-edgar-detail-extraktion'
 import { leseAlsJson } from '@/lib/http/safe-json-response'
 import { ladeLesbarenBerichtText } from '@/lib/portfolio-analyse/sec-edgar-bericht-text-server'
-import { ladeSecCompanyFacts } from '@/lib/portfolio-analyse/sec-edgar-companyfacts-server'
+import { ladeCompanyFactsJson, ladeSecCompanyFacts } from '@/lib/portfolio-analyse/sec-edgar-companyfacts-server'
+import { extrahiereBacklogAusCompanyFacts, mergeBacklogMitTextHistorie } from '@/lib/portfolio-analyse/sec-edgar-backlog-server'
 import {
   cikFuerTicker,
   padCik,
@@ -26,8 +27,11 @@ import {
 } from '@/lib/portfolio-analyse/sec-edgar-common-server'
 import {
   extrahiereBeideSegmentartenAus10kHtml,
+  ergaenzeSegmentHistorieMitMargen,
   extrahiereErstenGeoBlock,
+  extrahiereOperatingIncomeHistorieAus10kHtml,
   extrahiereSegmentHistorieAus10kHtml,
+  mergeOiJahrSmart,
   extrahiereSegmenteFuerJahr,
   parseGeoSegmente,
   validiereSegmente,
@@ -164,6 +168,9 @@ function baueHistorie(
   }
 }
 
+/** Operating-/Disclosure-Segmente — redundant zur Umsatz-Aufschlüsselung. */
+const AUSGESCHLOSSENE_KATEGORIE_IDS = new Set(['produkt_segment', 'segment_disclosure'])
+
 function baueKategorienListe(
   kategorieMaps: Map<string, Map<number, SecSegmentRoh[]>>,
   kategorieDefs?: Map<string, SecDetailBlockDef>,
@@ -172,6 +179,7 @@ function baueKategorienListe(
   const erledigt = new Set<string>()
 
   const pushKategorie = (def: SecDetailBlockDef, map: Map<number, SecSegmentRoh[]>) => {
+    if (AUSGESCHLOSSENE_KATEGORIE_IDS.has(def.id)) return
     const historie = baueHistorie(def.art, map)
     if (!historie || historie.anzahlJahre < 2) return
     out.push({
@@ -203,9 +211,7 @@ function baueKategorienListe(
       geo_umsatz: 1,
       geo_kombiniert: 2,
       produkte_services: 3,
-      produkt_segment: 4,
-      segment_disclosure: 5,
-      geo_assets: 6,
+      geo_assets: 4,
     }
     const pa = prio[a.id] ?? 50
     const pb = prio[b.id] ?? 50
@@ -416,6 +422,8 @@ export async function ladeSecSegmentHistorie(ticker: string): Promise<SecSegment
     const kategorieMaps = new Map<string, Map<number, SecSegmentRoh[]>>()
     const kategorieMeta = new Map<string, Map<number, number>>()
     const kategorieDefs = new Map<string, SecDetailBlockDef>()
+    const oiMap = new Map<number, SecSegmentRoh[]>()
+    const oiMeta = new Map<number, number>()
     const textProFiling: { jahr: number; text: string }[] = []
     let geladene10k = 0
     let text10k = ''
@@ -449,14 +457,12 @@ export async function ladeSecSegmentHistorie(ticker: string): Promise<SecSegment
           mergeDetailInMap(kategorieMaps, kat, jahr ?? undefined, kategorieMeta)
         }
 
-        const hist = extrahiereSegmentHistorieAus10kHtml(html)
-        if (hist.produkt) {
-          let m = kategorieMaps.get('produkt_segment')
-          if (!m) { m = new Map(); kategorieMaps.set('produkt_segment', m) }
-          let meta = kategorieMeta.get('produkt_segment')
-          if (!meta) { meta = new Map(); kategorieMeta.set('produkt_segment', meta) }
-          mergeMehrjahresInMap(m, hist.produkt.jahre, jahr ?? undefined, meta)
+        const oiJahre = extrahiereOperatingIncomeHistorieAus10kHtml(html)
+        for (const j of oiJahre) {
+          mergeOiJahrSmart(oiMap, j.jahr, j.segmente, jahr ?? undefined, oiMeta)
         }
+
+        const hist = extrahiereSegmentHistorieAus10kHtml(html)
         if (hist.geo) {
           let m = kategorieMaps.get('geo_umsatz')
           if (!m) { m = new Map(); kategorieMaps.set('geo_umsatz', m) }
@@ -467,13 +473,6 @@ export async function ladeSecSegmentHistorie(ticker: string): Promise<SecSegment
 
         if (jahr != null) {
           const einzel = extrahiereSegmenteFuerJahr(html, jahr)
-          if (einzel.produkt.length >= 2) {
-            let m = kategorieMaps.get('produkt_segment')
-            if (!m) { m = new Map(); kategorieMaps.set('produkt_segment', m) }
-            let meta = kategorieMeta.get('produkt_segment')
-            if (!meta) { meta = new Map(); kategorieMeta.set('produkt_segment', meta) }
-            mergeJahrSmart(m, jahr, einzel.produkt, jahr, meta)
-          }
           if (einzel.geo.length >= 2) {
             let m = kategorieMaps.get('geo_umsatz')
             if (!m) { m = new Map(); kategorieMaps.set('geo_umsatz', m) }
@@ -495,13 +494,6 @@ export async function ladeSecSegmentHistorie(ticker: string): Promise<SecSegment
           }
 
           const beide = extrahiereBeideSegmentartenAus10kHtml(html)
-          if (beide.produkt.segmente.length >= 2) {
-            let m = kategorieMaps.get('produkt_segment')
-            if (!m) { m = new Map(); kategorieMaps.set('produkt_segment', m) }
-            let meta = kategorieMeta.get('produkt_segment')
-            if (!meta) { meta = new Map(); kategorieMeta.set('produkt_segment', meta) }
-            mergeJahrSmart(m, jahr, beide.produkt.segmente, jahr, meta)
-          }
           if (beide.geo.segmente.length >= 2) {
             let m = kategorieMaps.get('geo_umsatz')
             if (!m) { m = new Map(); kategorieMaps.set('geo_umsatz', m) }
@@ -517,12 +509,23 @@ export async function ladeSecSegmentHistorie(ticker: string): Promise<SecSegment
       priorisiereNeuestesFiling(kategorieMaps, kategorieMeta, kategorieDefs, html10k, berichtJahr)
     }
 
-    const kategorien = baueKategorienListe(kategorieMaps, kategorieDefs)
+    const kategorienRoh = baueKategorienListe(kategorieMaps, kategorieDefs)
+    const oiJahrEintraege: SecSegmentJahrEintrag[] = [...oiMap.entries()]
+      .sort((a, b) => a[0] - b[0])
+      .map(([jahr, segmente]) => ({ jahr, segmente }))
+    const kategorien = kategorienRoh.map((k) =>
+      k.metrik === 'umsatz'
+        ? { ...k, historie: ergaenzeSegmentHistorieMitMargen(k.historie, oiJahrEintraege) }
+        : k,
+    )
 
     let produkt =
       besteHistorie(kategorien, (k) => k.id === 'umsatz_detail') ??
       besteHistorie(kategorien, (k) => k.art === 'produkt' && k.metrik === 'umsatz') ??
       null
+    if (produkt) {
+      produkt = ergaenzeSegmentHistorieMitMargen(produkt, oiJahrEintraege)
+    }
     let geo =
       besteHistorie(kategorien, (k) => k.id === 'geo_umsatz') ??
       besteHistorie(kategorien, (k) => k.art === 'geo' && k.metrik === 'umsatz') ??
@@ -541,7 +544,21 @@ export async function ladeSecSegmentHistorie(ticker: string): Promise<SecSegment
     const zusatzBasis = extrahiereSecZusatzRisiko(text10k, html10k)
     const zusatz = mergeZusatzHistorie(zusatzBasis, textProFiling)
 
-    if (!produkt && !geo && kategorien.length === 0 && !kennzahlen && !zusatz.mitarbeiterAnzahl && zusatz.hauptkunden.length === 0) {
+    const factsJson = await ladeCompanyFactsJson(cik)
+    const backlog = mergeBacklogMitTextHistorie(
+      factsJson ? extrahiereBacklogAusCompanyFacts(factsJson) : null,
+      textProFiling,
+    )
+
+    if (
+      !produkt &&
+      !geo &&
+      kategorien.length === 0 &&
+      !kennzahlen &&
+      !backlog &&
+      !zusatz.mitarbeiterAnzahl &&
+      zusatz.hauptkunden.length === 0
+    ) {
       cache.set(sym, { at: Date.now(), data: null })
       return null
     }
@@ -551,6 +568,7 @@ export async function ladeSecSegmentHistorie(ticker: string): Promise<SecSegment
       geo,
       kategorien,
       zusatz,
+      backlog,
       kennzahlen,
       berichtJahr,
       anzahl10k: geladene10k,

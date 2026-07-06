@@ -11,6 +11,7 @@ const MIN_JAHRE = 10
 const MAX_JAHRE = 16
 
 const cache = new Map<number, { at: number; data: SecKennzahlenHistorie | null }>()
+const jsonCache = new Map<number, { at: number; data: CompanyFactsJson | null }>()
 
 type FactsUnit = {
   end?: string
@@ -172,18 +173,36 @@ function mapZuArray(map: Map<number, number>): { jahr: number; wert: number }[] 
 }
 
 
-export async function ladeSecCompanyFacts(cik: number): Promise<SecKennzahlenHistorie | null> {
-  const hit = cache.get(cik)
+export async function ladeCompanyFactsJson(cik: number): Promise<CompanyFactsJson | null> {
+  const hit = jsonCache.get(cik)
   if (hit && Date.now() - hit.at < CACHE_MS) return hit.data
 
   try {
     const res = await secFetch(`https://data.sec.gov/api/xbrl/companyfacts/CIK${padCik(cik)}.json`)
     if (!res.ok) {
-      cache.set(cik, { at: Date.now(), data: null })
+      jsonCache.set(cik, { at: Date.now(), data: null })
       return null
     }
     const facts = (await leseAlsJson<CompanyFactsJson>(res)) ?? {}
     if (!facts.facts) {
+      jsonCache.set(cik, { at: Date.now(), data: null })
+      return null
+    }
+    jsonCache.set(cik, { at: Date.now(), data: facts })
+    return facts
+  } catch {
+    jsonCache.set(cik, { at: Date.now(), data: null })
+    return null
+  }
+}
+
+export async function ladeSecCompanyFacts(cik: number): Promise<SecKennzahlenHistorie | null> {
+  const hit = cache.get(cik)
+  if (hit && Date.now() - hit.at < CACHE_MS) return hit.data
+
+  try {
+    const facts = await ladeCompanyFactsJson(cik)
+    if (!facts?.facts) {
       cache.set(cik, { at: Date.now(), data: null })
       return null
     }

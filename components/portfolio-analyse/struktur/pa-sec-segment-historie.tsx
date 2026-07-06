@@ -9,6 +9,7 @@ import {
   PaStrukturSectionHeader,
 } from '@/components/portfolio-analyse/struktur/pa-struktur-visuals'
 import type {
+  SecBacklogHistorie,
   SecKennzahlJahr,
   SecKennzahlenHistorie,
   SecSegmentHistorie,
@@ -31,6 +32,17 @@ function anteilFuerSegment(hist: SecSegmentHistorie, jahr: number, name: string)
 
 function umsatzFuerSegment(hist: SecSegmentHistorie, jahr: number, name: string): number | null {
   return hist.jahre.find((j) => j.jahr === jahr)?.segmente.find((s) => s.name === name)?.umsatzMio ?? null
+}
+
+function margeFuerSegment(hist: SecSegmentHistorie, jahr: number, name: string): number | null {
+  return hist.jahre.find((j) => j.jahr === jahr)?.segmente.find((s) => s.name === name)?.margePct ?? null
+}
+
+function margeClass(pct: number): string {
+  if (pct >= 25) return 'text-emerald-400'
+  if (pct >= 10) return 'text-teal-300'
+  if (pct > 0) return 'text-[var(--app-text)]'
+  return 'text-red-300'
 }
 
 function umsatzWachstumPct(aktuell: number | null, vorjahr: number | null): number | null {
@@ -79,7 +91,10 @@ function PaSecSegmentStackedChart({ hist, farben }: { hist: SecSegmentHistorie; 
                 const farbe = farben[namen.indexOf(s.name) % farben.length]!
                 return (
                   <rect key={s.name} x={x} y={yAcc} width={barW} height={h} fill={farbe} opacity={0.9} rx={1}>
-                    <title>{jahr}: {s.name} — {pct.toFixed(1)} % ({s.umsatzMio?.toLocaleString('de-DE')} Mio.)</title>
+                    <title>
+                      {jahr}: {s.name} — {pct.toFixed(1)} % ({s.umsatzMio?.toLocaleString('de-DE')} Mio.)
+                      {s.margePct != null ? ` · Marge ${s.margePct.toFixed(1)} %` : ''}
+                    </title>
                   </rect>
                 )
               })}
@@ -91,6 +106,358 @@ function PaSecSegmentStackedChart({ hist, farben }: { hist: SecSegmentHistorie; 
         })}
         <line x1={padL} y1={chartH} x2={width - 8} y2={chartH} stroke="var(--app-border-strong)" strokeOpacity={0.5} />
       </svg>
+    </div>
+  )
+}
+
+function formatMitarbeiterZahl(n: number): string {
+  return n.toLocaleString('de-DE')
+}
+
+function formatBacklogMio(mio: number): string {
+  if (mio >= 1_000) {
+    const mrd = mio / 1_000
+    return `${mrd.toLocaleString('de-DE', { maximumFractionDigits: 1 })} Mrd. $`
+  }
+  return `${mio.toLocaleString('de-DE', { maximumFractionDigits: 0 })} Mio. $`
+}
+
+function backlogYTicks(minV: number, maxV: number): number[] {
+  const span = maxV - minV || maxV * 0.1 || 1
+  const yMin = Math.max(0, minV - span * 0.08)
+  const yMax = maxV + span * 0.08
+  const mid = Math.round((yMin + yMax) / 2)
+  return [...new Set([Math.round(yMin), mid, Math.round(yMax)])].sort((a, b) => a - b)
+}
+
+function umsatzMioFuerJahr(kz: SecKennzahlenHistorie | null | undefined, jahr: number): number | null {
+  return kz?.umsatzMio.find((e) => e.jahr === jahr)?.wert ?? null
+}
+
+function PaSecBacklogHistorie({
+  backlog,
+  kennzahlen,
+}: {
+  backlog: SecBacklogHistorie
+  kennzahlen?: SecKennzahlenHistorie | null
+}) {
+  const sorted = [...backlog.eintraege].sort((a, b) => a.jahr - b.jahr)
+  if (sorted.length < 2) return null
+
+  const jahre = sorted.map((e) => e.jahr)
+  const werte = sorted.map((e) => e.wertMio)
+  const minV = Math.min(...werte)
+  const maxV = Math.max(...werte)
+  const yTicks = backlogYTicks(minV, maxV)
+  const yMin = yTicks[0]!
+  const yMax = yTicks[yTicks.length - 1]!
+  const ySpan = yMax - yMin || 1
+
+  const pad = { l: 62, r: 12, t: 22, b: 28 }
+  const chartH = 160
+  const w = Math.max(360, jahre.length * 52 + pad.l + pad.r)
+  const h = chartH + pad.t + pad.b
+  const chartW = w - pad.l - pad.r
+  const yAchse =
+    maxV >= 1_000 ? 'Mrd. USD' : 'Mio. USD'
+
+  const xFor = (ji: number) => pad.l + (ji / Math.max(1, jahre.length - 1)) * chartW
+  const yFor = (v: number) => pad.t + chartH - ((v - yMin) / ySpan) * chartH
+  const farbe = '#38bdf8'
+
+  const punkte = sorted.map((e, ji) => ({ ...e, x: xFor(ji), y: yFor(e.wertMio) }))
+  const neueste = sorted[sorted.length - 1]!
+
+  return (
+    <div className="space-y-4">
+      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+        <PaStrukturKennzahl label={backlog.label} wert={formatBacklogMio(neueste.wertMio)} hinweis={`GJ ${neueste.jahr} · ${backlog.quelleTag}`} />
+        {(() => {
+          const vor = sorted[sorted.length - 2]
+          if (!vor) return null
+          const yoy = umsatzWachstumPct(neueste.wertMio, vor.wertMio)
+          return yoy != null ? (
+            <PaStrukturKennzahl
+              label="YoY Backlog"
+              wert={`${yoy > 0 ? '+' : ''}${yoy.toLocaleString('de-DE')}%`}
+              accent={yoy > 0 ? 'emerald' : yoy < -0.5 ? 'red' : 'default'}
+            />
+          ) : null
+        })()}
+        {(() => {
+          const umsatz = umsatzMioFuerJahr(kennzahlen, neueste.jahr)
+          if (umsatz == null || umsatz <= 0) return null
+          const ratio = Math.round((neueste.wertMio / umsatz) * 1000) / 10
+          return (
+            <PaStrukturKennzahl
+              label="Backlog / Umsatz"
+              wert={`${ratio.toLocaleString('de-DE')}×`}
+              hinweis="RPO/Backlog geteilt durch Jahresumsatz"
+            />
+          )
+        })()}
+      </div>
+
+      <div className="overflow-x-auto">
+        <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} className="block min-w-full">
+          <text
+            x={12}
+            y={pad.t + chartH / 2}
+            textAnchor="middle"
+            transform={`rotate(-90, 12, ${pad.t + chartH / 2})`}
+            className="fill-[var(--app-text-muted)]"
+            style={{ fontSize: 9 }}
+          >
+            {yAchse}
+          </text>
+
+          {yTicks.map((tick) => {
+            const y = yFor(tick)
+            return (
+              <g key={tick}>
+                <line
+                  x1={pad.l}
+                  y1={y}
+                  x2={w - pad.r}
+                  y2={y}
+                  stroke="var(--app-border-strong)"
+                  strokeOpacity={0.35}
+                  strokeDasharray="3 3"
+                />
+                <text x={pad.l - 6} y={y + 3} textAnchor="end" className="fill-[var(--app-text-muted)]" style={{ fontSize: 9 }}>
+                  {tick >= 1_000 ? `${(tick / 1_000).toLocaleString('de-DE', { maximumFractionDigits: 1 })}` : tick.toLocaleString('de-DE')}
+                </text>
+              </g>
+            )
+          })}
+
+          <line x1={pad.l} y1={pad.t + chartH} x2={w - pad.r} y2={pad.t + chartH} stroke="var(--app-border-strong)" strokeOpacity={0.6} />
+          <line x1={pad.l} y1={pad.t} x2={pad.l} y2={pad.t + chartH} stroke="var(--app-border-strong)" strokeOpacity={0.6} />
+
+          <polyline fill="none" stroke={farbe} strokeWidth={2} points={punkte.map((p) => `${p.x},${p.y}`).join(' ')} />
+
+          {punkte.map((p) => (
+            <g key={p.jahr}>
+              <circle cx={p.x} cy={p.y} r={3.5} fill={farbe} />
+              <text x={p.x} y={p.y - 8} textAnchor="middle" className="fill-[var(--app-text)]" style={{ fontSize: 9, fontWeight: 600 }}>
+                {formatBacklogMio(p.wertMio)}
+              </text>
+            </g>
+          ))}
+
+          {jahre.map((j, ji) => (
+            <text key={j} x={xFor(ji)} y={h - 6} textAnchor="middle" className="fill-[var(--app-text-muted)]" style={{ fontSize: 9 }}>
+              {j}
+            </text>
+          ))}
+        </svg>
+      </div>
+
+      <div className={appTableScrollClassName}>
+        <table className="app-data-table min-w-full text-left text-xs">
+          <thead className="text-[var(--app-text-muted)]">
+            <tr>
+              <th className="px-2 py-1.5 font-medium">Jahr</th>
+              <th className="px-2 py-1.5 font-medium text-right">{backlog.label}</th>
+              <th className="px-2 py-1.5 font-medium text-right">YoY</th>
+              <th className="px-2 py-1.5 font-medium text-right">÷ Umsatz</th>
+            </tr>
+          </thead>
+          <tbody>
+            {sorted.map((e, i) => {
+              const vor = i > 0 ? sorted[i - 1] : null
+              const yoy = vor ? umsatzWachstumPct(e.wertMio, vor.wertMio) : null
+              const umsatz = umsatzMioFuerJahr(kennzahlen, e.jahr)
+              const ratio = umsatz != null && umsatz > 0 ? Math.round((e.wertMio / umsatz) * 1000) / 10 : null
+              return (
+                <tr key={e.jahr} className="border-t border-[var(--app-border)]/40">
+                  <td className="px-2 py-1.5 tabular-nums">{e.jahr}</td>
+                  <td className="px-2 py-1.5 text-right tabular-nums font-medium">{formatBacklogMio(e.wertMio)}</td>
+                  <td className={`px-2 py-1.5 text-right tabular-nums ${yoy != null ? wachstumClass(yoy) : ''}`}>
+                    {yoy != null ? `${yoy > 0 ? '+' : ''}${yoy.toLocaleString('de-DE')}%` : '–'}
+                  </td>
+                  <td className="px-2 py-1.5 text-right tabular-nums text-[var(--app-text-muted)]">
+                    {ratio != null ? `${ratio.toLocaleString('de-DE')}×` : '–'}
+                  </td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  )
+}
+
+function mitarbeiterYTicks(minV: number, maxV: number): number[] {
+  const span = maxV - minV || maxV * 0.1 || 1
+  const yMin = Math.max(0, Math.floor((minV - span * 0.06) / 1000) * 1000)
+  const yMax = Math.ceil((maxV + span * 0.06) / 1000) * 1000
+  const mid = Math.round((yMin + yMax) / 2)
+  return [...new Set([yMin, mid, yMax])].sort((a, b) => a - b)
+}
+
+function PaSecMitarbeiterHistorie({ eintraege }: { eintraege: { jahr: number; anzahl: number }[] }) {
+  const sorted = [...eintraege].sort((a, b) => a.jahr - b.jahr)
+  if (sorted.length < 2) return null
+
+  const jahre = sorted.map((e) => e.jahr)
+  const werte = sorted.map((e) => e.anzahl)
+  const minV = Math.min(...werte)
+  const maxV = Math.max(...werte)
+  const yTicks = mitarbeiterYTicks(minV, maxV)
+  const yMin = yTicks[0]!
+  const yMax = yTicks[yTicks.length - 1]!
+  const ySpan = yMax - yMin || 1
+
+  const pad = { l: 58, r: 12, t: 22, b: 28 }
+  const chartH = 160
+  const w = Math.max(360, jahre.length * 52 + pad.l + pad.r)
+  const h = chartH + pad.t + pad.b
+  const chartW = w - pad.l - pad.r
+
+  const xFor = (ji: number) => pad.l + (ji / Math.max(1, jahre.length - 1)) * chartW
+  const yFor = (v: number) => pad.t + chartH - ((v - yMin) / ySpan) * chartH
+  const farbe = '#a78bfa'
+
+  const punkte = sorted.map((e, ji) => ({ ...e, x: xFor(ji), y: yFor(e.anzahl) }))
+
+  return (
+    <div className="space-y-4">
+      <div className="overflow-x-auto">
+        <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} className="block min-w-full">
+          <text
+            x={12}
+            y={pad.t + chartH / 2}
+            textAnchor="middle"
+            transform={`rotate(-90, 12, ${pad.t + chartH / 2})`}
+            className="fill-[var(--app-text-muted)]"
+            style={{ fontSize: 9 }}
+          >
+            Mitarbeiter
+          </text>
+
+          {yTicks.map((tick) => {
+            const y = yFor(tick)
+            return (
+              <g key={tick}>
+                <line
+                  x1={pad.l}
+                  y1={y}
+                  x2={w - pad.r}
+                  y2={y}
+                  stroke="var(--app-border-strong)"
+                  strokeOpacity={0.35}
+                  strokeDasharray="3 3"
+                />
+                <text
+                  x={pad.l - 6}
+                  y={y + 3}
+                  textAnchor="end"
+                  className="fill-[var(--app-text-muted)]"
+                  style={{ fontSize: 9 }}
+                >
+                  {formatMitarbeiterZahl(tick)}
+                </text>
+              </g>
+            )
+          })}
+
+          <line
+            x1={pad.l}
+            y1={pad.t + chartH}
+            x2={w - pad.r}
+            y2={pad.t + chartH}
+            stroke="var(--app-border-strong)"
+            strokeOpacity={0.6}
+          />
+          <line
+            x1={pad.l}
+            y1={pad.t}
+            x2={pad.l}
+            y2={pad.t + chartH}
+            stroke="var(--app-border-strong)"
+            strokeOpacity={0.6}
+          />
+
+          <polyline
+            fill="none"
+            stroke={farbe}
+            strokeWidth={2}
+            points={punkte.map((p) => `${p.x},${p.y}`).join(' ')}
+          />
+
+          {punkte.map((p) => (
+            <g key={p.jahr}>
+              <circle cx={p.x} cy={p.y} r={3.5} fill={farbe} />
+              <text
+                x={p.x}
+                y={p.y - 8}
+                textAnchor="middle"
+                className="fill-[var(--app-text)]"
+                style={{ fontSize: 9, fontWeight: 600 }}
+              >
+                {formatMitarbeiterZahl(p.anzahl)}
+              </text>
+            </g>
+          ))}
+
+          {jahre.map((j, ji) => (
+            <text
+              key={j}
+              x={xFor(ji)}
+              y={h - 6}
+              textAnchor="middle"
+              className="fill-[var(--app-text-muted)]"
+              style={{ fontSize: 9 }}
+            >
+              {j}
+            </text>
+          ))}
+        </svg>
+      </div>
+
+      <div className={appTableScrollClassName}>
+        <table className="app-data-table min-w-full text-left text-xs">
+          <thead className="text-[var(--app-text-muted)]">
+            <tr>
+              <th className="pb-2 pr-3 font-medium">Jahr</th>
+              <th className="pb-2 pr-3 text-right font-medium">Mitarbeiter</th>
+              <th className="pb-2 text-right font-medium">Veränderung</th>
+            </tr>
+          </thead>
+          <tbody>
+            {sorted.map((e, i) => {
+              const vor = i > 0 ? sorted[i - 1]!.anzahl : null
+              const deltaPct =
+                vor != null && vor > 0 ? Math.round(((e.anzahl - vor) / vor) * 1000) / 10 : null
+              return (
+                <tr key={e.jahr} className="border-t border-[var(--app-border)]/40">
+                  <td className="py-2 pr-3 font-medium text-[var(--app-text)]">{e.jahr}</td>
+                  <td className="py-2 pr-3 text-right tabular-nums text-[var(--app-text)]">
+                    {formatMitarbeiterZahl(e.anzahl)}
+                  </td>
+                  <td
+                    className={`py-2 text-right tabular-nums font-medium ${
+                      deltaPct == null
+                        ? 'text-[var(--app-text-muted)]'
+                        : deltaPct > 0.5
+                          ? 'text-emerald-400'
+                          : deltaPct < -0.5
+                            ? 'text-red-300'
+                            : 'text-[var(--app-text-muted)]'
+                    }`}
+                  >
+                    {deltaPct == null
+                      ? '–'
+                      : (deltaPct > 0 ? '+' : '') + deltaPct.toLocaleString('de-DE') + ' %'}
+                  </td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
     </div>
   )
 }
@@ -182,6 +549,7 @@ function PaSecSegmentTabelle({ hist, farben }: { hist: SecSegmentHistorie; farbe
               {jahre.map((j, ji) => {
                 const pct = anteilFuerSegment(hist, j, name)
                 const mio = umsatzFuerSegment(hist, j, name)
+                const marge = margeFuerSegment(hist, j, name)
                 const vorjahr = ji > 0 ? jahre[ji - 1]! : null
                 const wachstum = vorjahr != null ? umsatzWachstumPct(mio, umsatzFuerSegment(hist, vorjahr, name)) : null
                 return (
@@ -190,6 +558,11 @@ function PaSecSegmentTabelle({ hist, farben }: { hist: SecSegmentHistorie; farbe
                     {mio != null ? (
                       <span className="block text-[10px] text-[var(--app-text-muted)]">
                         {mio.toLocaleString('de-DE')} {metrik}
+                      </span>
+                    ) : null}
+                    {marge != null ? (
+                      <span className={`block text-[10px] font-medium ${margeClass(marge)}`}>
+                        Marge {marge.toLocaleString('de-DE')} %
                       </span>
                     ) : null}
                     {wachstum != null ? (
@@ -238,7 +611,9 @@ function PaSecKennzahlenPanel({ kz }: { kz: SecKennzahlenHistorie }) {
       {tab === 'margen' && <PaSecLinienChart jahre={gemeinsameJahre(kz.ebitMargePct, kz.rndAnteilPct)} reihen={[{ label: 'EBIT-Marge %', farbe: '#34d399', werte: reiheZuMap(kz.ebitMargePct) }, { label: 'Netto-Marge %', farbe: '#60a5fa', werte: reiheZuMap(kz.nettoMargePct) }, { label: 'R&D/Umsatz %', farbe: '#f472b6', werte: reiheZuMap(kz.rndAnteilPct) }]} />}
       {tab === 'invest' && <PaSecLinienChart jahre={gemeinsameJahre(kz.capexMio, kz.fcfMio)} reihen={[{ label: 'CapEx', farbe: '#fbbf24', werte: reiheZuMap(kz.capexMio) }, { label: 'R&D', farbe: '#f472b6', werte: reiheZuMap(kz.rndMio) }, { label: 'FCF', farbe: '#2dd4bf', werte: reiheZuMap(kz.fcfMio) }]} />}
       {tab === 'bilanz' && <PaSecLinienChart jahre={gemeinsameJahre(kz.assetsMio, kz.eigenkapitalMio)} reihen={[{ label: 'Assets', farbe: '#94a3b8', werte: reiheZuMap(kz.assetsMio) }, { label: 'Eigenkapital', farbe: '#34d399', werte: reiheZuMap(kz.eigenkapitalMio) }, { label: 'LT-Schulden', farbe: '#f87171', werte: reiheZuMap(kz.langfristigeSchuldenMio) }]} />}
-      {tab === 'personal' && <PaSecLinienChart jahre={kz.mitarbeiter.map((e) => e.jahr)} reihen={[{ label: 'Mitarbeiter', farbe: '#a78bfa', werte: reiheZuMap(kz.mitarbeiter) }]} />}
+      {tab === 'personal' && (
+        <PaSecMitarbeiterHistorie eintraege={kz.mitarbeiter.map((e) => ({ jahr: e.jahr, anzahl: e.wert }))} />
+      )}
       <div className={appTableScrollClassName}>
         <table className="app-data-table min-w-full text-left text-[10px]">
           <thead><tr><th className="sticky left-0 bg-[var(--app-surface)] pb-1 pr-2">Kennzahl</th>{jahreUmsatz.slice(-14).map((j) => <th key={j} className="px-1 text-right">{j}</th>)}</tr></thead>
@@ -320,7 +695,7 @@ export function PaSecSegmentHistorie({ paket }: { paket: SecSegmentHistoriePaket
     return { min: Math.min(...alle), max: Math.max(...alle) }
   }, [kategorien, paket.kennzahlen])
 
-  if (kategorien.length === 0 && !paket.kennzahlen && !zusatz.mitarbeiterAnzahl) return null
+  if (kategorien.length === 0 && !paket.kennzahlen && !zusatz.mitarbeiterAnzahl && !paket.backlog) return null
 
   return (
     <PaCard variant="elevated" className="space-y-5 p-5 sm:p-6">
@@ -345,7 +720,7 @@ export function PaSecSegmentHistorie({ paket }: { paket: SecSegmentHistoriePaket
         <div className="space-y-4 border-t border-[var(--app-border)]/60 pt-4">
           <p className="text-sm font-medium text-white">Umsatzmix nach Segment</p>
           <p className="text-xs text-[var(--app-text-muted)]">
-            Geo- & Produktsegmente aus 10-K-Tabellen · SEC XBRL
+            Geo- & Produktsegmente aus 10-K-Tabellen · EBIT-Marge aus Segment-Operating-Income (wo verfügbar) · SEC XBRL
           </p>
           <div className="flex flex-wrap gap-1.5">
             {kategorien.map((k) => (
@@ -369,29 +744,21 @@ export function PaSecSegmentHistorie({ paket }: { paket: SecSegmentHistoriePaket
 
       {zusatz.mitarbeiterHistorie.length >= 2 && (
         <div className="border-t border-[var(--app-border)]/60 pt-4">
-          <p className="mb-2 text-xs font-medium text-[var(--app-text-muted)]">Mitarbeiter (10-K-Text, Historie)</p>
-          <PaSecLinienChart
-            jahre={zusatz.mitarbeiterHistorie.map((e) => e.jahr)}
-            reihen={[{ label: 'Mitarbeiter', farbe: '#a78bfa', werte: new Map(zusatz.mitarbeiterHistorie.map((e) => [e.jahr, e.anzahl])) }]}
-          />
+          <p className="mb-3 text-sm font-medium text-white">Mitarbeiter (10-K-Historie)</p>
+          <p className="mb-3 text-xs text-[var(--app-text-muted)]">
+            Headcount aus SEC-10-K-Text · exakte Zahlen je Geschäftsjahr
+          </p>
+          <PaSecMitarbeiterHistorie eintraege={zusatz.mitarbeiterHistorie} />
         </div>
       )}
 
-      {zusatz.kundenKonzentrationHistorie.length >= 1 && (
-        <div className={appTableScrollClassName}>
-          <p className="mb-2 text-xs font-medium text-[var(--app-text-muted)]">Kundenkonzentration (10-K-Text)</p>
-          <table className="app-data-table min-w-full text-left text-xs">
-            <thead><tr><th className="pb-2 pr-3">Jahr</th><th className="pb-2 pr-3">Kunde</th><th className="pb-2 text-right">Anteil</th></tr></thead>
-            <tbody>
-              {zusatz.kundenKonzentrationHistorie.map((k) => (
-                <tr key={k.jahr} className="border-t border-[var(--app-border)]/40">
-                  <td className="py-2 pr-3">{k.jahr}</td>
-                  <td className="py-2 pr-3">{k.name ?? '–'}</td>
-                  <td className="py-2 text-right tabular-nums">{k.anteilPct} %</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+      {paket.backlog && paket.backlog.eintraege.length >= 2 && (
+        <div className="border-t border-[var(--app-border)]/60 pt-4">
+          <p className="mb-3 text-sm font-medium text-white">Backlog / RPO</p>
+          <p className="mb-3 text-xs text-[var(--app-text-muted)]">
+            Auftragsbestand bzw. verbleibende Leistungsverpflichtungen aus SEC XBRL (Company Facts) · optional 10-K-Text
+          </p>
+          <PaSecBacklogHistorie backlog={paket.backlog} kennzahlen={paket.kennzahlen} />
         </div>
       )}
     </PaCard>
