@@ -231,10 +231,11 @@ function alleSlotTermine(
   wachstum: number,
 ): DividendenPrognoseTreffer[] {
   const heuteJahr = Number(heute.slice(0, 4))
+  const bisJahr = Number(bis.slice(0, 4))
   const letzteZahlung = past[past.length - 1]?.payDate ?? ''
   const hits: DividendenPrognoseTreffer[] = []
 
-  for (let jahr = heuteJahr; jahr <= heuteJahr + 1; jahr++) {
+  for (let jahr = heuteJahr; jahr <= bisJahr; jahr++) {
     for (const slot of slots) {
       const pay = isoDatum(jahr, slot.monat, slot.payTag)
       const ex = isoDatum(jahr, slot.monat, slot.exTag)

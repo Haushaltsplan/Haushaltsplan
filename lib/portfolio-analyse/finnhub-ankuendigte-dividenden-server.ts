@@ -2,11 +2,10 @@ import {
   addDaysIso,
   brokerSymbolKandidaten,
   heuteIsoUtc,
-  isoInJahren,
+  isoEndeNaechstesKalenderjahr,
 } from '@/lib/portfolio-analyse/dividenden-datum-hilfen'
 
 const CACHE_REVALIDATE = 86400
-const HORIZONT_JAHRE = 1
 
 export type FinnhubAnkuendigteDividende = {
   symbol: string
@@ -100,7 +99,7 @@ export async function ladeFinnhubAnkuendigteDividende(
   if (!key) return null
 
   const heute = heuteIsoUtc()
-  const bis = isoInJahren(HORIZONT_JAHRE)
+  const bis = isoEndeNaechstesKalenderjahr()
 
   for (const sym of brokerSymbolKandidaten(symbol)) {
     try {

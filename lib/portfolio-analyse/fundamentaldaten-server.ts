@@ -178,7 +178,10 @@ async function ladeYahooFundamentalKennzahlen(symbol: string): Promise<YahooFund
     trailingPE: rawNum(sd, 'trailingPE'),
     forwardPE: rawNum(sd, 'forwardPE'),
     dividendYield: rawNum(sd, 'dividendYield'),
-    payoutRatio: rawNum(dks, 'payoutRatio'),
+    payoutRatio: rawNum(dks, 'payoutRatio') ?? rawNum(sd, 'payoutRatio'),
+    trailingEps: rawNum(sd, 'trailingEps') ?? rawNum(dks, 'trailingEps'),
+    trailingAnnualDividendRate:
+      rawNum(sd, 'trailingAnnualDividendRate') ?? rawNum(dks, 'trailingAnnualDividendRate'),
     returnOnEquity: rawNum(fd, 'returnOnEquity'),
     returnOnAssets: rawNum(fd, 'returnOnAssets'),
     revenueGrowth: rawNum(fd, 'revenueGrowth'),

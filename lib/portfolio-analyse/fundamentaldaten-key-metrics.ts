@@ -24,6 +24,8 @@ export type YahooFundamentalKennzahlen = {
   forwardPE?: number
   dividendYield?: number
   payoutRatio?: number
+  trailingEps?: number
+  trailingAnnualDividendRate?: number
   returnOnEquity?: number
   returnOnAssets?: number
   revenueGrowth?: number

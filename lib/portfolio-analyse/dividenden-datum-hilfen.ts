@@ -29,6 +29,12 @@ export function isoInJahren(jahre: number): string {
   return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`
 }
 
+/** Dividenden-Prognose bis 31.12. des nächsten Kalenderjahres (z. B. Ende 2027 ab 2026). */
+export function isoEndeNaechstesKalenderjahr(jetzt: Date = new Date()): string {
+  const y = jetzt.getUTCFullYear() + 1
+  return `${y}-12-31`
+}
+
 export function median(values: number[]): number {
   if (values.length === 0) return 0
   const s = [...values].sort((a, b) => a - b)

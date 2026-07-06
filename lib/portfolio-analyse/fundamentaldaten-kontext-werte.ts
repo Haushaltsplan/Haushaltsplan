@@ -39,6 +39,51 @@ function berechneMargePct(zaehler: number | null, nenner: number | null): number
   return (zaehler / nenner) * 100
 }
 
+/** Yahoo payoutRatio ist oft leer — Fallbacks aus GuV/Cashflow oder Div-Rendite × KGV. */
+function berechneAusschuettungsquotePct(ctx: FundamentalKontextInput): number | null {
+  const plausibel = (pct: number): number | null =>
+    pct > 0 && pct < 500 ? Math.round(pct * 100) / 100 : null
+
+  const yahooRatio = ctx.yahoo?.payoutRatio
+  if (yahooRatio != null && Number.isFinite(yahooRatio) && yahooRatio > 0) {
+    const pct = yahooRatio > 2 ? yahooRatio : yahooRatio * 100
+    const hit = plausibel(pct)
+    if (hit != null) return hit
+  }
+
+  const perioden = ctx.roh?.perioden
+  const zeile = (id: string) => ctx.roh?.zeilen.find((z) => z.id === id)
+  const divMio = letzterWert(zeile('dividenden_gezahlt'), perioden)
+  const nettoMio = letzterWert(zeile('nettogewinn'), perioden)
+  if (divMio != null && nettoMio != null && nettoMio > 0) {
+    const hit = plausibel((Math.abs(divMio) / nettoMio) * 100)
+    if (hit != null) return hit
+  }
+
+  const eps = letzterWert(zeile('eps'), perioden)
+  const aktienMio = letzterWert(zeile('aktien'), perioden)
+  if (divMio != null && eps != null && eps > 0 && aktienMio != null && aktienMio > 0) {
+    const hit = plausibel((Math.abs(divMio) / aktienMio / eps) * 100)
+    if (hit != null) return hit
+  }
+
+  const divRate = ctx.yahoo?.trailingAnnualDividendRate
+  const trailEps = ctx.yahoo?.trailingEps
+  if (divRate != null && trailEps != null && trailEps > 0) {
+    const hit = plausibel((divRate / trailEps) * 100)
+    if (hit != null) return hit
+  }
+
+  const divYield = ctx.yahoo?.dividendYield
+  const pe = ctx.yahoo?.trailingPE
+  if (divYield != null && pe != null && pe > 0 && divYield > 0) {
+    const hit = plausibel(divYield * pe * 100)
+    if (hit != null) return hit
+  }
+
+  return null
+}
+
 /** Zentrale Kennzahlen — eine Quelle für Key Metrics und Mantra-Check. */
 export function baueKontextWerte(ctx: FundamentalKontextInput) {
   const perioden = ctx.roh?.perioden
@@ -179,7 +224,7 @@ export function baueKontextWerte(ctx: FundamentalKontextInput) {
 
   const assetTurnover = letzterWert(kapitalumschlagZeile, perioden)
 
-  const payoutPct = ctx.yahoo?.payoutRatio != null ? ctx.yahoo.payoutRatio * 100 : null
+  const payoutPct = berechneAusschuettungsquotePct(ctx)
   const pb = ctx.yahoo?.priceToBook ?? null
 
   const aktienSinkend =

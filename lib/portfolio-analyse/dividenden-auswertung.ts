@@ -1,4 +1,6 @@
 import { gezahlteDividendeEur } from '@/lib/portfolio-analyse/dividenden-buchung'
+import type { AnkuendigteDividendeEintrag } from '@/lib/portfolio-analyse/ankuendigte-dividenden'
+import { isoEndeNaechstesKalenderjahr } from '@/lib/portfolio-analyse/dividenden-datum-hilfen'
 import { heuteIso } from '@/lib/portfolio-analyse/wertentwicklung-tage'
 import { steuernAufDividendenMonate } from '@/lib/portfolio-analyse/depot-berechnung'
 import { anzeigeNameFuerIsin } from '@/lib/portfolio-analyse/isin-metadata-client'
@@ -36,32 +38,46 @@ export type DividendenHeatmapZeile = {
   gesamtEur: number | null
   durchschnittEur: number | null
   monate: (number | null)[]
+  monatIstPrognose: boolean[]
 }
 
 export type DividendenHeatmap = {
   spalten: readonly string[]
   zeilen: DividendenHeatmapZeile[]
-  summen: { gesamtEur: number | null; durchschnittEur: number | null; monate: (number | null)[] } | null
+  summen: {
+    gesamtEur: number | null
+    durchschnittEur: number | null
+    monate: (number | null)[]
+    monatIstPrognose: boolean[]
+  } | null
   minEur: number
   maxEur: number
+  hatPrognose: boolean
+}
+
+export type GestapelterDivSegment = {
+  key: string
+  label: string
+  wert: number
+  farbe: string
+  istPrognose: boolean
+  bestaetigt: boolean
 }
 
 export type GestapelterDivMonat = {
   monat: string
-  /** Achse (z. B. „Nov. 23“) */
   label: string
-  /** Tooltip-Kopf (z. B. „November 2023“) */
   tooltipTitel: string
   gesamt: number
-  segmente: { key: string; label: string; wert: number; farbe: string }[]
-  /** Gleitender Ø der Monatssummen (M−11 … M); null = Linie ausblenden */
+  segmente: GestapelterDivSegment[]
+  istPrognose: boolean
   ttmMonatlichEur: number | null
 }
 
 export type GestapelteDividendenSerie = {
   monate: GestapelterDivMonat[]
-  /** Ø Monatssumme über alle Monate mit Dividende im Chart-Intervall */
   durchschnittIntervallEur: number
+  hatPrognose: boolean
 }
 
 export type DividendenJahrVergleich = {
@@ -162,6 +178,23 @@ export function dividendenAnzeigeName(
   return k?.name ?? bestBuchung ?? 'Wertpapier'
 }
 
+/** Prognose-Termine im Horizont (heute … Ende nächstes Kalenderjahr). */
+export function filterDividendenPrognoseEintraege(
+  eintraege: AnkuendigteDividendeEintrag[] | null | undefined,
+): AnkuendigteDividendeEintrag[] {
+  if (!eintraege?.length) return []
+  const heute = heuteIso()
+  const bis = isoEndeNaechstesKalenderjahr()
+  return eintraege.filter(
+    (e) => e.zahlungsdatumIso > heute && e.zahlungsdatumIso <= bis && e.gesamtEur > 0,
+  )
+}
+
+export function dividendenPrognoseHorizontLabel(): string {
+  const bis = isoEndeNaechstesKalenderjahr()
+  return `Ende ${bis.slice(0, 4)}`
+}
+
 /** TTM = Ø der Monatssummen im Fenster (M−11 … M); bei &lt;12 Monaten Ø über vorhandene Monate. */
 export function ttmMonatlichJeIndex(monatsSummen: number[]): (number | null)[] {
   return monatsSummen.map((_, i) => {
@@ -173,12 +206,14 @@ export function ttmMonatlichJeIndex(monatsSummen: number[]): (number | null)[] {
   })
 }
 
-/** Gestapelte Monatsdividenden: volle Historie, alle Titel, stabile Farben je ISIN. */
+/** Gestapelte Monatsdividenden inkl. optionaler Prognose bis Ende nächstes Kalenderjahr. */
 export function dividendenGestapeltProMonat(
   buchungen: PortfolioBuchung[],
   meta: Map<string, IsinMetadata> = new Map(),
+  prognoseEintraege?: AnkuendigteDividendeEintrag[] | null,
 ): GestapelteDividendenSerie {
   const byMonat = new Map<string, Map<string, number>>()
+  const prognoseByMonat = new Map<string, Map<string, { wert: number; bestaetigt: boolean }>>()
   const namen = new Map<string, string>()
 
   const heute = heuteIso()
@@ -201,57 +236,108 @@ export function dividendenGestapeltProMonat(
     byMonat.set(k, mon)
   }
 
-  const keys = [...byMonat.keys()].sort()
+  for (const e of filterDividendenPrognoseEintraege(prognoseEintraege)) {
+    const k = monatsKey(e.zahlungsdatumIso)
+    if (!k) continue
+    const isin = e.isin?.toUpperCase() ?? e.symbol?.toUpperCase() ?? 'SONSTIGE'
+    if (!namen.has(isin)) {
+      namen.set(isin, e.name?.trim() || dividendenAnzeigeName(isin, buchungen, meta))
+    }
+    const mon = prognoseByMonat.get(k) ?? new Map()
+    const cur = mon.get(isin) ?? { wert: 0, bestaetigt: true }
+    mon.set(isin, {
+      wert: round2(cur.wert + e.gesamtEur),
+      bestaetigt: cur.bestaetigt && e.bestaetigt,
+    })
+    prognoseByMonat.set(k, mon)
+  }
+
+  const keys = [...new Set([...byMonat.keys(), ...prognoseByMonat.keys()])].sort()
   if (keys.length === 0) {
-    return { monate: [], durchschnittIntervallEur: 0 }
+    return { monate: [], durchschnittIntervallEur: 0, hatPrognose: false }
   }
 
   const alleIsins = [...namen.keys()].sort()
   const farbeByIsin = new Map(alleIsins.map((isin, i) => [isin, PALETTE[i % PALETTE.length]] as const))
 
-  const monatsSummen = keys.map((monat) => {
-    const map = byMonat.get(monat)!
-    return [...map.values()].reduce((s, v) => s + v, 0)
-  })
-  const ttmListe = ttmMonatlichJeIndex(monatsSummen)
-  const durchschnittIntervallEur = round2(
-    monatsSummen.reduce((a, b) => a + b, 0) / monatsSummen.length,
-  )
+  const monate: GestapelterDivMonat[] = keys.map((monat) => {
+    const istMap = byMonat.get(monat) ?? new Map()
+    const progMap = prognoseByMonat.get(monat) ?? new Map()
+    const segmente: GestapelterDivSegment[] = []
 
-  const monate = keys.map((monat, idx) => {
-    const map = byMonat.get(monat)!
-    const segmente = [...map.entries()]
-      .sort((a, b) => b[1] - a[1])
-      .map(([isin, wert]) => ({
+    for (const [isin, wert] of [...istMap.entries()].sort((a, b) => b[1] - a[1])) {
+      segmente.push({
         key: isin,
         label: namen.get(isin) ?? isin,
         wert: round2(wert),
-        farbe: farbeByIsin.get(isin) ?? PALETTE[0],
-      }))
+        farbe: farbeByIsin.get(isin) ?? PALETTE[0]!,
+        istPrognose: false,
+        bestaetigt: true,
+      })
+    }
+
+    for (const [isin, prog] of [...progMap.entries()].sort((a, b) => b[1].wert - a[1].wert)) {
+      if (istMap.has(isin)) continue
+      segmente.push({
+        key: isin,
+        label: namen.get(isin) ?? isin,
+        wert: round2(prog.wert),
+        farbe: farbeByIsin.get(isin) ?? PALETTE[0]!,
+        istPrognose: true,
+        bestaetigt: prog.bestaetigt,
+      })
+    }
+
+    segmente.sort((a, b) => b.wert - a.wert)
     const gesamt = round2(segmentsSumme(segmente))
     const [y, mo] = monat.split('-')
     const d = new Date(Number(y), Number(mo) - 1, 1)
-    const ttm = ttmListe[idx]
+    const istPrognose = segmente.length > 0 && segmente.every((s) => s.istPrognose)
     return {
       monat,
       label: d.toLocaleDateString('de-DE', { month: 'short', year: '2-digit' }),
       tooltipTitel: d.toLocaleDateString('de-DE', { month: 'long', year: 'numeric' }),
       gesamt,
       segmente,
-      ttmMonatlichEur: ttm != null && ttm > 0 ? ttm : null,
+      istPrognose,
+      ttmMonatlichEur: null,
     }
   })
 
-  return { monate, durchschnittIntervallEur }
+  const histSummen = monate.filter((m) => !m.istPrognose).map((m) => m.gesamt)
+  const ttmListe = ttmMonatlichJeIndex(histSummen)
+  let histIdx = 0
+  for (const m of monate) {
+    if (m.istPrognose) continue
+    const ttm = ttmListe[histIdx]
+    m.ttmMonatlichEur = ttm != null && ttm > 0 ? ttm : null
+    histIdx++
+  }
+
+  const durchschnittIntervallEur =
+    histSummen.length > 0
+      ? round2(histSummen.reduce((a, b) => a + b, 0) / histSummen.length)
+      : 0
+
+  return {
+    monate,
+    durchschnittIntervallEur,
+    hatPrognose: monate.some((m) => m.istPrognose),
+  }
 }
 
 function segmentsSumme(segmente: { wert: number }[]): number {
   return segmente.reduce((s, x) => s + x.wert, 0)
 }
 
-export function berechneDividendenHeatmap(buchungen: PortfolioBuchung[]): DividendenHeatmap {
+export function berechneDividendenHeatmap(
+  buchungen: PortfolioBuchung[],
+  prognoseEintraege?: AnkuendigteDividendeEintrag[] | null,
+): DividendenHeatmap {
   const map = new Map<string, number>()
+  const prognoseMap = new Map<string, number>()
   const heute = heuteIso()
+
   for (const b of buchungen) {
     if (b.datum > heute) continue
     const zahlung = gezahlteDividendeEur(b)
@@ -261,35 +347,61 @@ export function berechneDividendenHeatmap(buchungen: PortfolioBuchung[]): Divide
     map.set(k, round2((map.get(k) ?? 0) + zahlung))
   }
 
-  const jahre = [...new Set([...map.keys()].map((k) => Number(k.slice(0, 4))))].sort((a, b) => b - a)
-  const jetzt = new Date().getFullYear()
+  for (const e of filterDividendenPrognoseEintraege(prognoseEintraege)) {
+    const k = monatsKey(e.zahlungsdatumIso)
+    if (!k) continue
+    prognoseMap.set(k, round2((prognoseMap.get(k) ?? 0) + e.gesamtEur))
+  }
+
+  const prognoseJahre = [...new Set([...prognoseMap.keys()].map((k) => Number(k.slice(0, 4))))]
+  const istJahre = [...new Set([...map.keys()].map((k) => Number(k.slice(0, 4))))]
+  const bisJahr = Number(isoEndeNaechstesKalenderjahr().slice(0, 4))
+  const jahre = [...new Set([...istJahre, ...prognoseJahre])]
+    .filter((y) => y <= bisJahr)
+    .sort((a, b) => b - a)
+
   let minEur = 0
   let maxEur = 0
+  let hatPrognose = false
 
-  const zeilen: DividendenHeatmapZeile[] = jahre
-    .filter((y) => y <= jetzt)
-    .map((jahr) => {
-      const monate: (number | null)[] = []
-      const aktuellerMonat = jahr === jetzt ? new Date().getMonth() : 11
-      for (let mo = 0; mo < 12; mo++) {
-        if (jahr === jetzt && mo > aktuellerMonat) {
-          monate.push(null)
-          continue
-        }
-        const key = `${jahr}-${String(mo + 1).padStart(2, '0')}`
-        const val = map.get(key) ?? 0
+  const zeilen: DividendenHeatmapZeile[] = jahre.map((jahr) => {
+    const monate: (number | null)[] = []
+    const monatIstPrognose: boolean[] = []
+    const heuteMonat = heute.slice(0, 7)
+
+    for (let mo = 0; mo < 12; mo++) {
+      const key = `${jahr}-${String(mo + 1).padStart(2, '0')}`
+      const ist = map.get(key) ?? 0
+      const prog = prognoseMap.get(key) ?? 0
+
+      if (key <= heuteMonat) {
+        const val = ist > 0 ? round2(ist) : null
         monate.push(val)
-        if (val > 0) {
+        monatIstPrognose.push(false)
+        if (val != null && val > 0) {
           minEur = Math.min(minEur, val)
           maxEur = Math.max(maxEur, val)
         }
+        continue
       }
-      const vals = monate.filter((v): v is number => v != null)
-      const gesamt = vals.length ? round2(vals.reduce((a, b) => a + b, 0)) : null
-      const durchschnitt = vals.length ? round2(gesamt! / vals.filter((v) => v > 0).length || 1) : null
-      if (gesamt != null) maxEur = Math.max(maxEur, gesamt)
-      return { jahr, gesamtEur: gesamt, durchschnittEur: durchschnitt, monate }
-    })
+
+      const val = prog > 0 ? round2(prog) : null
+      monate.push(val)
+      monatIstPrognose.push(val != null)
+      if (val != null) {
+        hatPrognose = true
+        minEur = Math.min(minEur, val)
+        maxEur = Math.max(maxEur, val)
+      }
+    }
+
+    const vals = monate.filter((v): v is number => v != null && v > 0)
+    const gesamt = vals.length ? round2(vals.reduce((a, b) => a + b, 0)) : null
+    const durchschnitt =
+      vals.length ? round2(gesamt! / vals.filter((v) => v > 0).length) : null
+    if (gesamt != null) maxEur = Math.max(maxEur, gesamt)
+    return { jahr, gesamtEur: gesamt, durchschnittEur: durchschnitt, monate, monatIstPrognose }
+  })
 
   const summen =
     zeilen.length > 0
@@ -301,12 +413,13 @@ export function berechneDividendenHeatmap(buchungen: PortfolioBuchung[]): Divide
           monate: MONAT_KURZ.map((_, i) =>
             round2(zeilen.reduce((s, z) => s + (z.monate[i] ?? 0), 0)),
           ),
+          monatIstPrognose: MONAT_KURZ.map((_, i) => zeilen.some((z) => z.monatIstPrognose[i])),
         }
       : null
 
   if (maxEur === 0) maxEur = 1
 
-  return { spalten: ['Gesamt', 'Ø', ...MONAT_KURZ], zeilen, summen, minEur, maxEur }
+  return { spalten: ['Gesamt', 'Ø', ...MONAT_KURZ], zeilen, summen, minEur, maxEur, hatPrognose }
 }
 
 export function dividendenProJahrMitVergleich(buchungen: PortfolioBuchung[]): DividendenJahrVergleich[] {

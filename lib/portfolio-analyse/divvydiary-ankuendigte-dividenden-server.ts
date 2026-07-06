@@ -1,11 +1,10 @@
-import { heuteIsoUtc, isoInJahren } from '@/lib/portfolio-analyse/dividenden-datum-hilfen'
+import { heuteIsoUtc, isoEndeNaechstesKalenderjahr } from '@/lib/portfolio-analyse/dividenden-datum-hilfen'
 import { listeDividendenTermine } from '@/lib/portfolio-analyse/dividenden-prognose'
 import { istEuEwrIsin } from '@/lib/portfolio-analyse/dividend-isin-region'
 import { ladeDivvydiaryRohdaten } from '@/lib/portfolio-analyse/divvydiary-scraper-server'
 import { isinKenntnis } from '@/lib/portfolio-analyse/isin-kenntnisse'
 
 const CACHE_MS = 6 * 60 * 60 * 1000
-const HORIZONT_JAHRE = 1
 
 export type DivvydiaryAnkuendigteDividende = {
   zahlungsdatumIso: string
@@ -45,7 +44,7 @@ export async function ladeDivvydiaryAnkuendigteDividenden(
   if (cached && Date.now() - cached.at < CACHE_MS) return cached.hits
 
   const heute = heuteIsoUtc()
-  const bis = isoInJahren(HORIZONT_JAHRE)
+  const bis = isoEndeNaechstesKalenderjahr()
   const anzeigeName = isinKenntnis(isinNorm)?.name ?? name
 
   const roh = await ladeDivvydiaryRohdaten(isinNorm, anzeigeName, heute)

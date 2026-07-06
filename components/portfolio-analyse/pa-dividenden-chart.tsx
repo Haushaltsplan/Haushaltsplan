@@ -11,10 +11,12 @@ const MIN_BREITE = 1000
 export function PaGestapelteDividendenChart({
   daten,
   durchschnittIntervallEur = 0,
+  hatPrognose = false,
   hoehe = 220,
 }: {
   daten: GestapelterDivMonat[]
   durchschnittIntervallEur?: number
+  hatPrognose?: boolean
   hoehe?: number
 }) {
   const outerRef = useRef<HTMLDivElement>(null)
@@ -41,11 +43,25 @@ export function PaGestapelteDividendenChart({
   const plotH = hoehe - padOben - padUnten
   const plotW = breite - padLinks - padRechts
 
+  const erstePrognoseIdx = daten.findIndex((d) => d.istPrognose)
+
   type BarRow = {
     x: number
     cx: number
     label: string
-    segs: { x: number; y: number; w: number; h: number; key: string; label: string; wert: number; farbe: string }[]
+    istPrognose: boolean
+    segs: {
+      x: number
+      y: number
+      w: number
+      h: number
+      key: string
+      label: string
+      wert: number
+      farbe: string
+      istPrognose: boolean
+      bestaetigt: boolean
+    }[]
     gesamt: number
     ttm: number | null
     ttmY: number | null
@@ -76,7 +92,7 @@ export function PaGestapelteDividendenChart({
         d.ttmMonatlichEur != null && d.ttmMonatlichEur > 0
           ? padOben + plotH - (d.ttmMonatlichEur / yMax) * plotH
           : null
-      return { x, cx, label: d.label, segs, gesamt: d.gesamt, ttm: d.ttmMonatlichEur, ttmY }
+      return { x, cx, label: d.label, istPrognose: d.istPrognose, segs, gesamt: d.gesamt, ttm: d.ttmMonatlichEur, ttmY }
     })
 
     const ttmPts = bars.filter((b): b is typeof b & { ttmY: number } => b.ttmY != null)
@@ -135,6 +151,9 @@ export function PaGestapelteDividendenChart({
   const tooltipExtraPad =
     activeDaten != null ? Math.min(480, 64 + activeDaten.segmente.length * 28) : 0
 
+  const prognoseGrenzeX =
+    erstePrognoseIdx >= 0 ? bars[erstePrognoseIdx]?.cx ?? null : null
+
   return (
     <div
       ref={outerRef}
@@ -168,9 +187,26 @@ export function PaGestapelteDividendenChart({
           viewBox={`0 0 ${breite} ${hoehe}`}
           preserveAspectRatio="xMinYMid meet"
           role="img"
-          aria-label="Dividenden pro Monat mit TTM-Trend"
+          aria-label="Dividenden pro Monat mit TTM-Trend und Prognose"
           className="pointer-events-none block min-w-full select-none"
         >
+          <defs>
+            <pattern id="pa-div-prognose-stripe" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+              <rect width="6" height="6" fill="rgba(251,191,36,0.12)" />
+              <line x1="0" y1="0" x2="0" y2="6" stroke="rgba(251,191,36,0.55)" strokeWidth="1.5" />
+            </pattern>
+          </defs>
+
+          {hatPrognose && prognoseGrenzeX != null ? (
+            <rect
+              x={prognoseGrenzeX - 6}
+              y={padOben}
+              width={breite - padRechts - prognoseGrenzeX + 6}
+              height={plotH}
+              fill="url(#pa-div-prognose-stripe)"
+            />
+          ) : null}
+
           {[0, 0.25, 0.5, 0.75, 1].map((f) => {
             const y = padOben + plotH * (1 - f)
             const tick = yMax * f
@@ -206,14 +242,35 @@ export function PaGestapelteDividendenChart({
           {bars.map((b, i) => (
             <g key={i}>
               {b.segs.map((s) => (
-                <rect key={s.key} x={s.x} y={s.y} width={s.w} height={Math.max(1, s.h)} fill={s.farbe} />
+                <g key={s.key}>
+                  <rect
+                    x={s.x}
+                    y={s.y}
+                    width={s.w}
+                    height={Math.max(1, s.h)}
+                    fill={s.farbe}
+                    opacity={s.istPrognose ? 0.55 : 1}
+                  />
+                  {s.istPrognose ? (
+                    <rect
+                      x={s.x}
+                      y={s.y}
+                      width={s.w}
+                      height={Math.max(1, s.h)}
+                      fill="none"
+                      stroke={s.bestaetigt ? '#fbbf24' : '#c084fc'}
+                      strokeWidth={1}
+                      strokeDasharray={s.bestaetigt ? '0' : '2 2'}
+                    />
+                  ) : null}
+                </g>
               ))}
               {i % labelStep === 0 || i === bars.length - 1 ? (
                 <text
                   x={b.cx}
                   y={hoehe - 8}
                   textAnchor="middle"
-                  className="fill-[var(--app-text-muted)]"
+                  className={b.istPrognose ? 'fill-amber-300/90' : 'fill-[var(--app-text-muted)]'}
                   style={{ fontSize: 8 }}
                 >
                   {b.label}
@@ -221,6 +278,19 @@ export function PaGestapelteDividendenChart({
               ) : null}
             </g>
           ))}
+
+          {hatPrognose && prognoseGrenzeX != null ? (
+            <line
+              x1={prognoseGrenzeX - 4}
+              y1={padOben}
+              x2={prognoseGrenzeX - 4}
+              y2={padOben + plotH}
+              stroke="#fbbf24"
+              strokeWidth={1}
+              strokeDasharray="4 3"
+              opacity={0.7}
+            />
+          ) : null}
 
           {ttmPath ? (
             <path
@@ -257,7 +327,14 @@ export function PaGestapelteDividendenChart({
           }}
         >
           <div className="mb-2 flex items-baseline justify-between gap-4 border-b border-[var(--app-border)] pb-2">
-            <span className="font-medium text-[var(--app-text)]">{activeDaten.tooltipTitel}</span>
+            <span className="flex items-center gap-2 font-medium text-[var(--app-text)]">
+              {activeDaten.tooltipTitel}
+              {activeDaten.istPrognose ? (
+                <span className="rounded bg-amber-500/20 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-300">
+                  Schätzung
+                </span>
+              ) : null}
+            </span>
             <span className="tabular-nums font-semibold text-[var(--app-text)]">{formatEur(active.gesamt)}</span>
           </div>
           <div className="space-y-1.5">
@@ -280,10 +357,20 @@ export function PaGestapelteDividendenChart({
                 <li key={s.key} className="flex items-start justify-between gap-3">
                   <span className="flex min-w-0 flex-1 items-center gap-2 text-[var(--app-text-muted)]">
                     <span
-                      className="mt-0.5 inline-block h-2.5 w-2.5 shrink-0 rounded-sm"
-                      style={{ backgroundColor: s.farbe }}
+                      className="mt-0.5 inline-block h-2.5 w-2.5 shrink-0 rounded-sm border"
+                      style={{
+                        backgroundColor: s.farbe,
+                        opacity: s.istPrognose ? 0.55 : 1,
+                        borderColor: s.istPrognose ? (s.bestaetigt ? '#fbbf24' : '#c084fc') : 'transparent',
+                        borderStyle: s.istPrognose && !s.bestaetigt ? 'dashed' : 'solid',
+                      }}
                     />
-                    <span className="leading-snug break-words">{s.label}</span>
+                    <span className="leading-snug break-words">
+                      {s.label}
+                      {s.istPrognose && !s.bestaetigt ? (
+                        <span className="ml-1 text-[10px] text-violet-300">(Muster)</span>
+                      ) : null}
+                    </span>
                   </span>
                   <span className="shrink-0 tabular-nums text-[var(--app-text)]">{formatEur(s.wert)}</span>
                 </li>
@@ -305,6 +392,18 @@ export function PaGestapelteDividendenChart({
             <span className="inline-block w-6 border-t border-dashed border-[var(--app-border-strong)]" />
             Ø Dividende im Intervall
           </span>
+        ) : null}
+        {hatPrognose ? (
+          <>
+            <span className="flex items-center gap-2">
+              <span className="inline-block h-3 w-6 rounded-sm border border-amber-400/80 bg-amber-500/25" />
+              Schätzung (angekündigt)
+            </span>
+            <span className="flex items-center gap-2">
+              <span className="inline-block h-3 w-6 rounded-sm border border-dashed border-violet-400/80 bg-violet-500/20" />
+              Schätzung (Muster)
+            </span>
+          </>
         ) : null}
       </div>
     </div>

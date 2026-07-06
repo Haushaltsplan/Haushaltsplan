@@ -16,6 +16,7 @@ import {
   berechneDividendenHeatmap,
   berechneDividendenKpis,
   dividendenGestapeltProMonat,
+  dividendenPrognoseHorizontLabel,
   dividendenProJahrMitVergleich,
 } from '@/lib/portfolio-analyse/dividenden-auswertung'
 import { anzeigeNameFuerIsin } from '@/lib/portfolio-analyse/isin-metadata-client'
@@ -93,8 +94,15 @@ export function PortfolioDividendenDashboardClient() {
     return base
   }, [buchungen, k, report])
 
-  const divSerie = useMemo(() => dividendenGestapeltProMonat(buchungen, meta), [buchungen, meta])
-  const heatmap = useMemo(() => berechneDividendenHeatmap(buchungen), [buchungen])
+  const prognoseEintraege = ankuendig?.eintraege ?? null
+  const divSerie = useMemo(
+    () => dividendenGestapeltProMonat(buchungen, meta, prognoseEintraege),
+    [buchungen, meta, prognoseEintraege],
+  )
+  const heatmap = useMemo(
+    () => berechneDividendenHeatmap(buchungen, prognoseEintraege),
+    [buchungen, prognoseEintraege],
+  )
   const jahresVergleich = useMemo(() => dividendenProJahrMitVergleich(buchungen), [buchungen])
   const letzteDivs = useMemo(() => dividendenKalender(buchungen).slice(0, 10), [buchungen])
 
@@ -155,17 +163,27 @@ export function PortfolioDividendenDashboardClient() {
                 <PaCard variant="elevated" className="overflow-visible">
                   <div className="border-b border-[var(--app-border)] px-4 py-3 sm:px-6">
                     <h2 className="text-sm font-semibold text-[var(--app-text)]">Monatlich</h2>
+                    {divSerie.hatPrognose ? (
+                      <p className="mt-0.5 text-[11px] text-amber-300/80">
+                        Gelb markiert: geschätzte Dividenden bis {dividendenPrognoseHorizontLabel()} (angekündigt oder
+                        Muster)
+                      </p>
+                    ) : null}
                   </div>
                   <div className="overflow-visible p-4 sm:p-6">
                     <PaGestapelteDividendenChart
                       daten={divSerie.monate}
                       durchschnittIntervallEur={divSerie.durchschnittIntervallEur}
+                      hatPrognose={divSerie.hatPrognose}
                       hoehe={280}
                     />
                   </div>
                   <div className="border-t border-[var(--app-border)] px-4 py-3 sm:px-6">
                     <h2 className="text-sm font-semibold text-[var(--app-text)]">Heatmap</h2>
-                    <p className="mt-0.5 text-[11px] text-[var(--app-text-muted)]">Dividenden pro Jahr und Monat (EUR)</p>
+                    <p className="mt-0.5 text-[11px] text-[var(--app-text-muted)]">
+                      Dividenden pro Jahr und Monat (EUR)
+                      {heatmap.hatPrognose ? ` · Schätzungen bis ${dividendenPrognoseHorizontLabel()}` : ''}
+                    </p>
                   </div>
                   <div className="p-4 pt-0 sm:p-6 sm:pt-0">
                     <PaDividendenHeatmapGrid heatmap={heatmap} />

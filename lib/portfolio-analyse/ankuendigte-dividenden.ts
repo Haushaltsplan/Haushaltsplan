@@ -6,6 +6,7 @@ import type { DividendenPrognoseTreffer } from '@/lib/portfolio-analyse/dividend
 import {
   brokerSymbolKandidaten,
   heuteIsoUtc,
+  isoEndeNaechstesKalenderjahr,
   tageZwischenIso,
 } from '@/lib/portfolio-analyse/dividenden-datum-hilfen'
 import { isinAusYahooSymbol, isinKenntnis } from '@/lib/portfolio-analyse/isin-kenntnisse'
@@ -437,7 +438,7 @@ export async function berechneAnkuendigteDividendenDepot(
     hinweise.push('Keine offenen Positionen mit Börsen-Symbol — ISIN-Metadaten ggf. noch laden.')
   } else if (eintraege.length === 0) {
     hinweise.push(
-      'Keine angekündigten Dividenden im Zeitraum heute bis +1 Jahr (ETFs/thesaurierend oder ohne Termin).',
+      'Keine angekündigten Dividenden im Zeitraum heute bis Ende nächstes Kalenderjahr (ETFs/thesaurierend oder ohne Termin).',
     )
   } else {
     const teile: string[] = []
@@ -447,7 +448,7 @@ export async function berechneAnkuendigteDividendenDepot(
     if (stat.yahoo > 0) teile.push(`${stat.yahoo} Yahoo`)
     const positionenMitTermin = new Set(eintraege.map((e) => e.isin ?? e.symbol)).size
     hinweise.push(
-      `${eintraege.length} Termin(e) für ${positionenMitTermin} von ${aktiv.length} Position(en): ${teile.join(', ')}. Max. 1 Jahr.`,
+      `${eintraege.length} Termin(e) für ${positionenMitTermin} von ${aktiv.length} Position(en): ${teile.join(', ')}. Bis Ende ${isoEndeNaechstesKalenderjahr().slice(0, 4)}.`,
     )
   }
 

@@ -3,7 +3,7 @@ import type { DivvydiaryRohZeile } from '@/lib/portfolio-analyse/divvydiary-scra
 import {
   addDaysIso,
   heuteIsoUtc,
-  isoInJahren,
+  isoEndeNaechstesKalenderjahr,
   isoVorJahren,
   schaetzeZahlungsdatumNachEx,
 } from '@/lib/portfolio-analyse/dividenden-datum-hilfen'
@@ -13,7 +13,6 @@ import {
 } from '@/lib/portfolio-analyse/yahoo-finance-auth-server'
 
 const CACHE_REVALIDATE = 86400
-const HORIZONT_JAHRE = 1
 /** Ex vor kurzem, Zahltag fehlt bei Yahoo (EU) — nur wenn DivvyDiary nicht greift. */
 const EX_LOOKBACK_TAGE = 120
 
@@ -249,7 +248,7 @@ export async function ladeYahooAnkuendigteDividenden(
   if (!sym) return []
 
   const heute = heuteIsoUtc()
-  const bis = isoInJahren(HORIZONT_JAHRE)
+  const bis = isoEndeNaechstesKalenderjahr()
   const erlaubeExSchaetzung = opts?.erlaubeExSchaetzung !== false
 
   const [kalender, events, historie] = await Promise.all([
