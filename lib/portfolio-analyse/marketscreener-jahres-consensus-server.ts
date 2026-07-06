@@ -1,5 +1,7 @@
 import { formatEpsUsd, formatKompaktUsd } from '@/lib/portfolio-analyse/earnings-quartals-prognose'
 import type { JahresEarningsSchaetzung } from '@/lib/portfolio-analyse/jahres-earnings-schaetzung'
+import { ladeMarketscreenerForecastReihe } from '@/lib/portfolio-analyse/marketscreener-forecast-server'
+import type { MarketscreenerJahresForecastEintrag } from '@/lib/portfolio-analyse/marketscreener-forecast-server'
 import { marketscreenerSlugKandidaten } from '@/lib/portfolio-analyse/marketscreener-slug'
 import { ladeStockanalysisJahresForecast } from '@/lib/portfolio-analyse/stockanalysis-forecast-server'
 import { wachstumProzent, formatWachstumProzent } from '@/lib/portfolio-analyse/earnings-kennzahlen'
@@ -60,11 +62,7 @@ function parseKonsensTabelle(html: string): {
   return { headers, zeilen }
 }
 
-export type MarketscreenerJahresForecastEintrag = {
-  jahr: number
-  umsatzUsd: number | null
-  netIncomeUsd: number | null
-}
+export type { MarketscreenerJahresForecastEintrag } from '@/lib/portfolio-analyse/marketscreener-forecast-server'
 
 export type MarketscreenerJahresForecast = {
   quelle: 'marketscreener'
@@ -134,19 +132,42 @@ function parseJahresKonsens(html: string): {
   }
 }
 
-/** FY0/FY1-Umsatz-Konsens von Marketscreener finances-consensus. */
+/** FY0/FY1-Umsatz-Konsens von Marketscreener finances-consensus + Quartals-Aggregation. */
 export async function ladeMarketscreenerJahresForecast(
   isin: string,
   name: string,
   symbolYahoo?: string | null,
 ): Promise<MarketscreenerJahresForecast | null> {
-  for (const slug of marketscreenerSlugKandidaten(isin, name, symbolYahoo)) {
-    const html = await fetchConsensusHtml(slug)
-    if (!html) continue
-    const parsed = parseJahresKonsensVoll(html)
-    if (parsed) return parsed
+  const forecast = await ladeMarketscreenerForecastReihe(isin, name, symbolYahoo)
+  if (!forecast || forecast.jahresreihe.length === 0) return null
+
+  const jahresreihe = forecast.jahresreihe.map(({ jahr, umsatzUsd, netIncomeUsd }) => ({
+    jahr,
+    umsatzUsd,
+    netIncomeUsd,
+  }))
+
+  const fy0 = jahresreihe[0]
+  const fy1 = jahresreihe[1]
+  const umsatzUsdFy0 = fy0?.umsatzUsd ?? null
+  const umsatzUsdFy1 = fy1?.umsatzUsd ?? null
+
+  if (umsatzUsdFy0 == null || umsatzUsdFy0 < 1e8) return null
+
+  return {
+    quelle: 'marketscreener',
+    fy0Jahr: fy0?.jahr ?? null,
+    fy1Jahr: fy1?.jahr ?? null,
+    umsatzUsdFy0,
+    umsatzUsdFy1,
+    umsatzBasisUsd: null,
+    umsatzWachstumFy0Pct: null,
+    umsatzWachstumFy1Pct:
+      umsatzUsdFy0 != null && umsatzUsdFy1 != null
+        ? wachstumProzent(umsatzUsdFy1, umsatzUsdFy0)
+        : null,
+    jahresreihe,
   }
-  return null
 }
 
 async function fetchConsensusHtml(slug: string): Promise<string | null> {

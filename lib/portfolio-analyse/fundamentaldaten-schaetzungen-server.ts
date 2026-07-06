@@ -5,11 +5,13 @@ import type { EarningsSchaetzungen } from '@/lib/portfolio-analyse/earnings-scha
 import {
   FUNDAMENTAL_FY0E_KEY,
   FUNDAMENTAL_FY1E_KEY,
+  fruehestesSchaetzJahr,
   fundamentalSchaetzungIso,
   type FundamentalMetrikZeile,
   type FundamentalPeriode,
 } from '@/lib/portfolio-analyse/fundamentaldaten-types'
 import { ladeMarketscreenerJahresForecast } from '@/lib/portfolio-analyse/marketscreener-jahres-consensus-server'
+import { marketscreenerUmsatzPlausibel } from '@/lib/portfolio-analyse/marketscreener-forecast-server'
 import type { MarketscreenerJahresForecast } from '@/lib/portfolio-analyse/marketscreener-jahres-consensus-server'
 import type { FinnhubJahresForecast } from '@/lib/portfolio-analyse/finnhub-jahres-schaetzungen-server'
 import {
@@ -173,13 +175,20 @@ function mergeJahresSchaetzungen(opts: {
   yahoo: { fy0: MergeFy; fy1: MergeFy } | null
 }): StockanalysisJahresForecastEintrag[] {
   const byJahr = new Map<number, StockanalysisJahresForecastEintrag>()
+  const minJahr = fruehestesSchaetzJahr()
 
-  for (const e of opts.stockanalysis?.jahresreihe?.filter((x) => x.istSchätzung) ?? []) {
+  for (const e of opts.stockanalysis?.jahresreihe?.filter((x) => x.istSchätzung && x.jahr >= minJahr) ?? []) {
     byJahr.set(e.jahr, { ...e })
   }
 
+  const saReferenzUmsatz =
+    opts.stockanalysis?.umsatzUsdFy0 ??
+    opts.stockanalysis?.jahresreihe?.find((e) => e.umsatzUsd != null && e.umsatzUsd >= 1e9)?.umsatzUsd ??
+    null
+
   for (const ms of opts.marketscreener?.jahresreihe ?? []) {
-    if (ms.jahr <= 2000) continue
+    if (ms.jahr <= 2000 || ms.jahr < minJahr) continue
+    if (ms.umsatzUsd != null && !marketscreenerUmsatzPlausibel(ms.umsatzUsd, saReferenzUmsatz)) continue
     const cur = byJahr.get(ms.jahr) ?? leererJahresEintrag(ms.jahr)
     if (cur.umsatzUsd == null && ms.umsatzUsd != null) cur.umsatzUsd = ms.umsatzUsd
     if (cur.netIncomeUsd == null && ms.netIncomeUsd != null) cur.netIncomeUsd = ms.netIncomeUsd
@@ -187,6 +196,7 @@ function mergeJahresSchaetzungen(opts: {
   }
 
   for (const fh of opts.finnhub?.jahresreihe ?? []) {
+    if (fh.jahr < minJahr) continue
     const cur = byJahr.get(fh.jahr) ?? leererJahresEintrag(fh.jahr)
     if (cur.umsatzUsd == null && fh.umsatzUsd != null) cur.umsatzUsd = fh.umsatzUsd
     if (cur.eps == null && fh.eps != null) cur.eps = fh.eps
@@ -194,7 +204,7 @@ function mergeJahresSchaetzungen(opts: {
   }
 
   const wsJahr = opts.wallstreet?.jahr
-  if (wsJahr != null && wsJahr > 2000) {
+  if (wsJahr != null && wsJahr > 2000 && wsJahr >= minJahr) {
     const cur = byJahr.get(wsJahr) ?? leererJahresEintrag(wsJahr)
     if (cur.eps == null) {
       const eps = wsKennzahlMio(opts.wallstreet, 'eps')
@@ -215,7 +225,7 @@ function mergeJahresSchaetzungen(opts: {
   }
 
   for (const yf of [opts.yahoo?.fy0, opts.yahoo?.fy1]) {
-    if (!yf?.jahr || yf.jahr <= 2000) continue
+    if (!yf?.jahr || yf.jahr <= 2000 || yf.jahr < minJahr) continue
     const cur = byJahr.get(yf.jahr) ?? leererJahresEintrag(yf.jahr)
     if (cur.umsatzUsd == null && yf.umsatzMio != null) cur.umsatzUsd = yf.umsatzMio * 1_000_000
     if (cur.eps == null && yf.eps != null) cur.eps = yf.eps
@@ -226,7 +236,10 @@ function mergeJahresSchaetzungen(opts: {
     byJahr.set(yf.jahr, cur)
   }
 
-  const reihe = [...byJahr.values()].filter(hatJahresWert).sort((a, b) => a.jahr - b.jahr)
+  const reihe = [...byJahr.values()]
+    .filter(hatJahresWert)
+    .filter((e) => e.jahr >= minJahr)
+    .sort((a, b) => a.jahr - b.jahr)
   ergaenzeWachstumAusReihe(reihe)
   return reihe
 }
@@ -271,12 +284,13 @@ export function filterSchaetzungenGegenHistorisch(
 ): FundamentalSchaetzungenRoh {
   if (schaetzungen.perioden.length === 0) return schaetzungen
 
+  const minJahr = fruehestesSchaetzJahr()
   const histJahre = historischeJahreMitDaten(historisch)
-  if (histJahre.size === 0) return schaetzungen
 
   const behalten: Array<{ jahr: number; altIso: string }> = []
   for (const p of schaetzungen.perioden) {
     const jahr = jahrAusSchaetzungsLabel(p.label) ?? jahrAusSchaetzungIso(p.iso)
+    if (jahr != null && jahr < minJahr) continue
     if (jahr != null && histJahre.has(jahr)) continue
     if (jahr != null) behalten.push({ jahr, altIso: p.iso })
   }
@@ -314,7 +328,8 @@ function baueRohAusJahresreihe(
 function baueRohAusStockanalysisReihe(
   eintraege: StockanalysisJahresForecastEintrag[],
 ): FundamentalSchaetzungenRoh {
-  const schaetz = eintraege.filter((e) => e.istSchätzung)
+  const minJahr = fruehestesSchaetzJahr()
+  const schaetz = eintraege.filter((e) => e.istSchätzung && e.jahr >= minJahr)
   if (schaetz.length === 0) return { perioden: [], zeilen: [] }
 
   const perioden: FundamentalPeriode[] = schaetz.map((e, i) => ({

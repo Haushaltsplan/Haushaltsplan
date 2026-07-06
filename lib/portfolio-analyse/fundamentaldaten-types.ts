@@ -198,3 +198,12 @@ export function fundamentalSchaetzungIso(jahr: number, indexInReihe: number): st
 export function istFundamentalSchaetzungIso(iso: string): boolean {
   return iso === FUNDAMENTAL_FY0E_KEY || iso === FUNDAMENTAL_FY1E_KEY || /^__fy\d{4}e__$/.test(iso)
 }
+
+/** Abgeschlossene Kalenderjahre sind Ist-Daten — keine Schätz-Spalten (z. B. 2025 ab 2026). */
+export function fruehestesSchaetzJahr(jetzt: Date = new Date()): number {
+  return jetzt.getUTCFullYear()
+}
+
+export function istJahrAlsSchaetzungErlaubt(jahr: number, jetzt: Date = new Date()): boolean {
+  return jahr >= fruehestesSchaetzJahr(jetzt)
+}

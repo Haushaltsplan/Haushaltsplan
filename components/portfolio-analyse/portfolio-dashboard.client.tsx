@@ -8,7 +8,7 @@ import { usePortfolioAnalyse } from '@/components/portfolio-analyse/pa-data-prov
 import { PaPortfolioHero } from '@/components/portfolio-analyse/pa-portfolio-hero'
 import { PaWertpapiereListe } from '@/components/portfolio-analyse/pa-wertpapiere-liste'
 import { PaRenditePanel } from '@/components/portfolio-analyse/pa-rendite-panel'
-import { PaBadge, PaCard } from '@/components/portfolio-analyse/pa-ui'
+import { PaBadge, PaCard, PaScrollList } from '@/components/portfolio-analyse/pa-ui'
 import { PaNewsTerminalTeaser } from '@/components/portfolio-analyse/pa-news-terminal-teaser'
 import {
   formatDatumDe,
@@ -188,9 +188,9 @@ export function PortfolioDashboardClient() {
           }))}
       />
 
-      <div className="grid gap-6 lg:grid-cols-3">
+      <div className="grid gap-6 lg:grid-cols-3 lg:items-stretch">
         {renditeKennzahlen ? (
-          <div>
+          <div className="min-h-0">
             <PaRenditePanel kennzahlen={renditeKennzahlen} startDatum={startDatum} />
             {kursFehler ? (
               <p className="mt-2 text-[11px] text-amber-500/90">Live-Kurse teilweise nicht verfügbar.</p>
@@ -202,14 +202,14 @@ export function PortfolioDashboardClient() {
           </PaCard>
         )}
 
-        <PaCard variant="elevated" className="flex flex-col">
-          <div className="flex items-center justify-between border-b border-white/[0.04] px-5 py-3">
+        <PaCard variant="elevated" className="flex min-h-0 flex-col">
+          <div className="flex shrink-0 items-center justify-between border-b border-white/[0.04] px-5 py-3">
             <h2 className="text-sm font-semibold text-[var(--app-text)]">Letzte Aktivitäten</h2>
             <Link href="/portfolioanalyse/aktivitaeten" className="text-xs text-teal-400 hover:underline">
               Alle →
             </Link>
           </div>
-          <ul className="max-h-80 flex-1 divide-y divide-[var(--app-border)] overflow-y-auto">
+          <PaScrollList className="divide-y divide-[var(--app-border)]">
             {letzteAktivitaeten.map((b) => {
               const href =
                 b.assetKlasse === 'aktie' && b.isin ? fundamentaldatenHref({ isin: b.isin }) : null
@@ -232,15 +232,15 @@ export function PortfolioDashboardClient() {
                 </div>
               </li>
             )})}
-          </ul>
+          </PaScrollList>
         </PaCard>
 
-        <PaCard variant="elevated" className="flex flex-col">
-          <div className="border-b border-white/[0.04] px-5 py-3">
+        <PaCard variant="elevated" className="flex min-h-0 flex-col">
+          <div className="shrink-0 border-b border-white/[0.04] px-5 py-3">
             <h2 className="text-sm font-semibold text-[var(--app-text)]">Top Mover</h2>
             <p className="text-[11px] text-[var(--app-text-muted)]">{topMoverUntertitel(periodKey)}</p>
           </div>
-          <ul className="max-h-80 flex-1 divide-y divide-[var(--app-border)] overflow-y-auto">
+          <PaScrollList className="divide-y divide-[var(--app-border)]">
             {topMover.length === 0 ? (
               <li className="px-5 py-8 text-center text-sm text-[var(--app-text-muted)]">Keine Live-Performance.</li>
             ) : (
@@ -283,7 +283,7 @@ export function PortfolioDashboardClient() {
                 </li>
               )})
             )}
-          </ul>
+          </PaScrollList>
         </PaCard>
       </div>
 

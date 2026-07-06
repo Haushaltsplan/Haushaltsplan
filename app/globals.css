@@ -114,6 +114,72 @@ html.app-scroll-locked #app-main {
   min-height: 0;
 }
 
+/** Edle vertikale Listen in Dashboard-Karten */
+.app-scroll-list-wrap {
+  position: relative;
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+}
+
+.app-scroll-list-wrap::after {
+  content: '';
+  position: absolute;
+  inset-inline: 0;
+  bottom: 0;
+  z-index: 1;
+  height: 1.5rem;
+  pointer-events: none;
+  background: linear-gradient(
+    to top,
+    color-mix(in srgb, var(--app-surface) 94%, transparent) 0%,
+    transparent 100%
+  );
+}
+
+.app-scroll-list {
+  overflow-x: clip;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  scroll-behavior: smooth;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--app-accent) 32%, transparent) transparent;
+  padding-inline-end: 2px;
+  padding-block-end: 2px;
+}
+
+.app-scroll-list::-webkit-scrollbar {
+  width: 4px;
+}
+
+.app-scroll-list::-webkit-scrollbar-track {
+  margin-block: 12px;
+  background: transparent;
+}
+
+.app-scroll-list::-webkit-scrollbar-thumb {
+  border-radius: 9999px;
+  background: color-mix(in srgb, var(--app-accent) 24%, transparent);
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--app-accent) 8%, transparent) inset,
+    0 0 10px color-mix(in srgb, var(--app-accent) 12%, transparent);
+  transition: background 0.22s ease, box-shadow 0.22s ease;
+}
+
+.app-scroll-list:hover::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--app-accent) 42%, transparent);
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--app-accent) 14%, transparent) inset,
+    0 0 14px color-mix(in srgb, var(--app-accent) 22%, transparent);
+}
+
+.app-scroll-list::-webkit-scrollbar-thumb:active {
+  background: color-mix(in srgb, var(--app-accent) 58%, transparent);
+}
+
 /* ── Premium Oberflächen (alle Pages via page-shell / app-ui) ── */
 .app-eyebrow {
   font-size: 0.6875rem;

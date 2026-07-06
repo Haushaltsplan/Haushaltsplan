@@ -1,5 +1,6 @@
 import 'server-only'
 
+import { fruehestesSchaetzJahr } from '@/lib/portfolio-analyse/fundamentaldaten-types'
 import { isinKenntnis } from '@/lib/portfolio-analyse/isin-kenntnisse'
 
 const BASE = 'https://stockanalysis.com'
@@ -289,8 +290,11 @@ function baueJahresreiheAusAnnual(block: string): StockanalysisJahresForecastEin
       grossMarginPct,
       revenueGrowthPct,
       epsGrowthPct,
-      istSchätzung: i >= schaetzStartIdx,
+      istSchätzung: i >= schaetzStartIdx && jahr >= fruehestesSchaetzJahr(),
     })
+  }
+  for (const e of out) {
+    if (e.jahr < fruehestesSchaetzJahr()) e.istSchätzung = false
   }
   return dedupeJahresreiheNachJahr(out)
 }
@@ -344,6 +348,72 @@ export async function ladeStockanalysisGuVHistorie(opts: {
   return dedupeJahresreiheNachJahr(forecast.jahresreihe).filter((j) => !j.istSchätzung)
 }
 
+function leererSaJahresEintrag(jahr: number): StockanalysisJahresForecastEintrag {
+  return {
+    jahr,
+    periodenEnde: `${jahr}-12-31`,
+    umsatzUsd: null,
+    operatingIncomeUsd: null,
+    netIncomeUsd: null,
+    freeCashFlowUsd: null,
+    grossProfitUsd: null,
+    eps: null,
+    adjustedEps: null,
+    grossMarginPct: null,
+    revenueGrowthPct: null,
+    epsGrowthPct: null,
+    istSchätzung: true,
+  }
+}
+
+/** revenueNext/epsNext — FY+1 oft frei, obwohl annual-Array [PRO] zeigt. */
+function ergaenzeJahresreiheAusForecastTriples(
+  html: string,
+  reihe: StockanalysisJahresForecastEintrag[],
+): StockanalysisJahresForecastEintrag[] {
+  const revThis = parseTriple(html, 'revenueThis')
+  const revNext = parseTriple(html, 'revenueNext')
+  const epsThis = parseTriple(html, 'epsThis')
+  const epsNext = parseTriple(html, 'epsNext')
+  if (!revThis && !revNext && !epsThis && !epsNext) return reihe
+
+  const out = reihe.map((e) => ({ ...e }))
+  const minJahr = fruehestesSchaetzJahr()
+
+  const patch = (
+    jahr: number,
+    rev: { last: number; this: number; growth: number } | null,
+    eps: { last: number; this: number; growth: number } | null,
+  ) => {
+    if (jahr < minJahr) return
+    if (!rev?.this && !eps?.this) return
+    let row = out.find((e) => e.jahr === jahr)
+    if (!row) {
+      row = leererSaJahresEintrag(jahr)
+      out.push(row)
+    }
+    if (row.umsatzUsd == null && rev?.this != null) {
+      row.umsatzUsd = rev.this
+      if (Number.isFinite(rev.growth)) row.revenueGrowthPct = rev.growth
+    }
+    if (row.eps == null && eps?.this != null) {
+      row.eps = eps.this
+      row.adjustedEps = eps.this
+      if (Number.isFinite(eps.growth)) row.epsGrowthPct = eps.growth
+    }
+    if (!row.istSchätzung) row.istSchätzung = true
+  }
+
+  patch(minJahr, revThis, epsThis)
+  patch(minJahr + 1, revNext, epsNext)
+
+  for (const e of out) {
+    if (e.jahr < minJahr) e.istSchätzung = false
+  }
+
+  return dedupeJahresreiheNachJahr(out).sort((a, b) => a.jahr - b.jahr)
+}
+
 function parseForecastAusHtml(html: string, url: string): StockanalysisJahresForecast | null {
   const revThis = parseTriple(html, 'revenueThis')
   const revNext = parseTriple(html, 'revenueNext')
@@ -351,7 +421,8 @@ function parseForecastAusHtml(html: string, url: string): StockanalysisJahresFor
   const epsNext = parseTriple(html, 'epsNext')
 
   const annualBlock = extrahiereAnnualBlock(html)
-  const jahresreihe = annualBlock ? baueJahresreiheAusAnnual(annualBlock) : []
+  let jahresreihe = annualBlock ? baueJahresreiheAusAnnual(annualBlock) : []
+  jahresreihe = ergaenzeJahresreiheAusForecastTriples(html, jahresreihe)
   const schaetzungen = jahresreihe.filter((j) => j.istSchätzung)
 
   if (!revThis && !revNext && !epsThis && !epsNext && schaetzungen.length === 0) return null

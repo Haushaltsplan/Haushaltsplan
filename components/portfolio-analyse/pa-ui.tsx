@@ -37,6 +37,21 @@ export const PA_SCROLL_PANEL = 'app-scroll-panel'
 export const PA_SCROLL_ELEGANT =
   `${PA_SCROLL_PANEL} scroll-smooth [scrollbar-gutter:stable] [scrollbar-width:thin] [scrollbar-color:rgb(82_82_91/0.55)_transparent] [&::-webkit-scrollbar]:h-1.5 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-[var(--app-surface-muted)]/50 hover:[&::-webkit-scrollbar-thumb]:bg-[var(--app-surface-muted)]/70`
 
+/** Scrollbare Listen in Dashboard-Karten (Fade + Teal-Scrollbar) */
+export function PaScrollList({
+  children,
+  className = '',
+}: {
+  children: ReactNode
+  className?: string
+}) {
+  return (
+    <div className="app-scroll-list-wrap">
+      <ul className={`app-scroll-list min-h-0 flex-1 ${className}`}>{children}</ul>
+    </div>
+  )
+}
+
 export function PaIconTabs<T extends string>({
   tabs,
   active,
