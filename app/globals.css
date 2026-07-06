@@ -141,7 +141,8 @@ html.app-scroll-locked #app-main {
 .app-scroll-list {
   overflow-x: clip;
   overflow-y: auto;
-  overscroll-behavior: contain;
+  /* auto: Mausrad scrollt die Seite weiter, wenn die Liste oben/unten ist oder nicht überläuft */
+  overscroll-behavior-y: auto;
   -webkit-overflow-scrolling: touch;
   scroll-behavior: smooth;
   scrollbar-gutter: stable;

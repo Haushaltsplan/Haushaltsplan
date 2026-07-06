@@ -91,6 +91,11 @@ function baueKandidatenText(kandidaten: NachkaufScanEintrag[], budgetEur: number
       ? Math.min(Math.min(RISIKO_CAP[risiko], budgetEur), Math.round(budgetEur * 0.2))
       : Math.min(RISIKO_CAP[risiko], budgetEur)
 
+    const prognose =
+      e.datenSignale?.prognoseProfil && e.datenSignale.prognoseProfil.anzahlJahre >= 2
+        ? `Prognose (FY0–2027): ${e.datenSignale.prognoseProfil.zusammenfassung}`
+        : ''
+
     return [
       `### ${e.ticker} – ${e.name}`,
       `Score: ${e.score}/100 | Ampel: ${e.ampel} | ${trigger}`,
@@ -99,6 +104,7 @@ function baueKandidatenText(kandidaten: NachkaufScanEintrag[], budgetEur: number
       klumpen,
       `Kaufhistorie: ${formatKaufhistorie(e)}`,
       insider,
+      prognose,
       '',
       dr ? `**Deep Research Kernaussagen:**\n${kuerzerMemo(dr.memo)}` : '_Kein Deep Research vorhanden_',
     ].join('\n')
@@ -129,6 +135,9 @@ function baueVerkaufKandidatenText(kandidaten: NachkaufScanEintrag[]): string {
       `Score: ${e.score}/100 | Ampel: ${e.ampel} | Depot-Anteil: ${e.depotGewichtPct?.toFixed(1) ?? '?'}%`,
       `Bewertung: ${premium} | FCF-Yield: ${e.bewertung.fcfYieldPct?.toFixed(1) ?? '?'}% | Fwd-KGV: ${e.bewertung.forwardPe?.toFixed(1) ?? '?'}`,
       `Sell-Trigger: ${e.sellTriggerOk ? 'OK' : 'AKTIV'} | Mantra: ${e.mantraScorePct?.toFixed(0) ?? '?'}%`,
+      e.datenSignale?.prognoseProfil && e.datenSignale.prognoseProfil.anzahlJahre >= 2
+        ? `Prognose: ${e.datenSignale.prognoseProfil.zusammenfassung}`
+        : '',
       '',
       '**Regelbasierte Faktoren:**',
       faktoren,

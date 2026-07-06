@@ -3,6 +3,7 @@ import {
   FUNDAMENTAL_FY1E_KEY,
   FUNDAMENTAL_NTM_KEY,
   FUNDAMENTAL_TTM_KEY,
+  istFundamentalQuartalSchaetzungIso,
   istFundamentalSchaetzungIso,
   type FundamentalPeriode,
 } from '@/lib/portfolio-analyse/fundamentaldaten-types'
@@ -40,10 +41,12 @@ export function finanzdatenChartPerioden(perioden: FundamentalPeriode[]): Fundam
   return [...historischeChartPerioden(perioden), ...schaetzungsChartPerioden(perioden)]
 }
 
-/** Spalten für NTM-Bewertungstabelle: Historie → Schätzung → NTM (aktuell) → TTM. */
+/** Spalten für NTM-Bewertungstabelle: Historie → Jahres-Schätzung → NTM (aktuell) → TTM. */
 export function bewertungForwardTabellenPerioden(perioden: FundamentalPeriode[]): FundamentalPeriode[] {
   const hist = historischeChartPerioden(perioden)
-  const schaetz = schaetzungsChartPerioden(perioden)
+  const schaetz = schaetzungsChartPerioden(perioden).filter(
+    (p) => !istFundamentalQuartalSchaetzungIso(p.iso),
+  )
   const ntm = perioden.find((p) => p.istNtm)
   const ttm = perioden.find((p) => p.istLtm)
   return [...hist, ...schaetz, ...(ntm ? [ntm] : []), ...(ttm ? [ttm] : [])]

@@ -29,6 +29,7 @@ import type {
 import type { WhitelistPosition } from './nachkauf-radar-whitelist'
 import { NACHKAUF_RADAR_WHITELIST, type RisikoKlasse } from './nachkauf-radar-whitelist'
 import type { NachkaufZusatzSignale } from './nachkauf-zusatz-signale-server'
+import { berechnePrognoseMomentumDelta } from './nachkauf-prognose-server'
 import { disziplinSparplanFaktor } from './nachkauf-disziplin-server'
 
 // ---------------------------------------------------------------------------
@@ -194,8 +195,15 @@ function berechneMomentumPunkte(zusatz: NachkaufZusatzSignale | null | undefined
   if (zusatz.epsWachstumFy0Pct != null) {
     if (zusatz.epsWachstumFy0Pct < -8) pts -= 2
     else if (zusatz.epsWachstumFy0Pct < 0) pts -= 1
-    else if (zusatz.epsWachstumFy0Pct >= 10) pts += 1
+    else if (zusatz.epsWachstumFy1Pct == null && zusatz.epsWachstumFy0Pct >= 10) pts += 1
   }
+
+  if (zusatz.epsWachstumFy1Pct != null) {
+    if (zusatz.epsWachstumFy1Pct < -8) pts -= 1
+  }
+
+  // Mehrjahres-Prognose (FY0–2027): moderat, max. ±2 über berechnePrognoseMomentumDelta
+  pts += berechnePrognoseMomentumDelta(zusatz.prognoseProfil)
 
   if (zusatz.dividendenCagr5yPct != null) {
     if (zusatz.jahreOhneSenkung != null && zusatz.jahreOhneSenkung >= 8) pts += 1

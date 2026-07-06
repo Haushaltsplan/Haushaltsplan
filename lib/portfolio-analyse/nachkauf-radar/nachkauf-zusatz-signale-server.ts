@@ -10,6 +10,8 @@ import { ladeEarningsBeatMissHistorie } from '@/lib/portfolio-analyse/earnings-b
 import type { FundamentaldatenPaket } from '@/lib/portfolio-analyse/fundamentaldaten-types'
 import { FUNDAMENTAL_FY0E_KEY, FUNDAMENTAL_FY1E_KEY } from '@/lib/portfolio-analyse/fundamentaldaten-types'
 import type { NachkaufBewertungsSignale } from './nachkauf-radar-types'
+import type { NachkaufPrognoseProfil } from './nachkauf-prognose-server'
+import { extrahierePrognoseProfil } from './nachkauf-prognose-server'
 
 export type NachkaufZusatzSignale = {
   epsBeatRatePct: number | null
@@ -22,6 +24,8 @@ export type NachkaufZusatzSignale = {
   beatMissHinweis: string | null
   epsWachstumFy0Pct: number | null
   epsWachstumFy1Pct: number | null
+  /** Analysten-Schätzungen FY0 … 2027 (aus Fundamentaldaten). */
+  prognoseProfil: NachkaufPrognoseProfil | null
   capitalAllocationScorePct: number | null
   capitalAllocationLabel: string | null
   netDebtEbitda: number | null
@@ -204,6 +208,7 @@ export function berechneDatenVollstaendigkeit(
     signale.drawdown52wPct != null,
     zusatz.insiderNettoRichtung != null || zusatz.insiderOwnershipPct != null,
     zusatz.pensionVerpflichtungMio != null || zusatz.leaseVerpflichtungMio != null,
+    zusatz.prognoseProfil != null && zusatz.prognoseProfil.anzahlJahre >= 2,
   ]
   return Math.round((checks.filter(Boolean).length / checks.length) * 100)
 }
@@ -216,6 +221,7 @@ export async function ladeNachkaufZusatzSignale(opts: {
 }): Promise<NachkaufZusatzSignale> {
   const sym = opts.symbolYahoo ?? opts.ticker
   const wachstum = schaetzungsWachstum(opts.paket)
+  const prognoseProfil = extrahierePrognoseProfil(opts.paket)
   const erw = opts.paket.erweitert
   const bilanz = bilanzStruktur(opts.paket)
 
@@ -268,6 +274,7 @@ export async function ladeNachkaufZusatzSignale(opts: {
     beatMissHinweis,
     epsWachstumFy0Pct: wachstum.fy0,
     epsWachstumFy1Pct: wachstum.fy1,
+    prognoseProfil,
     capitalAllocationScorePct: capital?.scorePct ?? null,
     capitalAllocationLabel: capital?.scoreLabel ?? null,
     netDebtEbitda: netDebtEbitdaAusPaket(opts.paket),
@@ -318,6 +325,12 @@ export function formatZusatzSignaleKurz(z: NachkaufZusatzSignale): string {
   if (z.umsatzBeatRate12Pct != null) teile.push(`Umsatz-Beat 12Q ${z.umsatzBeatRate12Pct} %`)
   if (z.epsStreakLaenge >= 2 && z.epsStreakArt) {
     teile.push(`EPS-Streak ${z.epsStreakLaenge}× ${z.epsStreakArt}`)
+  }
+  if (z.epsWachstumFy0Pct != null) {
+    teile.push(`EPS FY0 ${z.epsWachstumFy0Pct > 0 ? '+' : ''}${z.epsWachstumFy0Pct.toFixed(0)} %`)
+  }
+  if (z.prognoseProfil && z.prognoseProfil.anzahlJahre >= 2) {
+    teile.push(`Prognose ${z.prognoseProfil.zusammenfassung}`)
   }
   if (z.dividendenCagr5yPct != null) {
     teile.push(`Div.-CAGR 5J ${z.dividendenCagr5yPct.toFixed(1)} %`)

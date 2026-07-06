@@ -75,6 +75,7 @@ async function generiereKiBegruendung(opts: {
   beatMissText: string
   capitalAllocText: string
   strukturText: string
+  prognoseText: string
   earningsSummary: string
   secSummary: string
 }): Promise<string | null> {
@@ -98,6 +99,7 @@ async function generiereKiBegruendung(opts: {
     `Beat/Miss-Historie: ${opts.beatMissText}`,
     `Capital Allocation: ${opts.capitalAllocText}`,
     `Struktur & Verhalten: ${opts.strukturText}`,
+    `Analysten-Prognose (Mehrjahr): ${opts.prognoseText}`,
     '',
     opts.earningsSummary
       ? `--- EARNINGS CALL (Auszug, max. 1500 Zeichen) ---\n${opts.earningsSummary.slice(0, 1500)}`
@@ -232,6 +234,11 @@ async function scanneEinenTitel(opts: {
 
   const strukturText = formatZusatzSignaleKurz(zusatz)
 
+  const prognoseText =
+    zusatz.prognoseProfil && zusatz.prognoseProfil.anzahlJahre >= 1
+      ? zusatz.prognoseProfil.zusammenfassung
+      : 'keine Mehrjahres-Schätzungen'
+
   // KI-Begründung generieren
   const kiBegruendung = await generiereKiBegruendung({
     name: paket.firmenname || name,
@@ -253,6 +260,7 @@ async function scanneEinenTitel(opts: {
     beatMissText,
     capitalAllocText,
     strukturText,
+    prognoseText,
     earningsSummary: neuesteEarnings,
     secSummary: neuesteSec,
   })

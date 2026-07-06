@@ -100,6 +100,8 @@ function parseJahresKonsensVoll(html: string): MarketscreenerJahresForecast | nu
     jahr: tab.headers[i]?.jahr ?? 0,
     umsatzUsd: umsatz[i] ?? null,
     netIncomeUsd: netIncome[i] ?? null,
+    operatingIncomeUsd: null,
+    ebitdaUsd: null,
   })).filter((e) => e.jahr > 2000 && (e.umsatzUsd != null || e.netIncomeUsd != null))
 
   return {
@@ -141,11 +143,15 @@ export async function ladeMarketscreenerJahresForecast(
   const forecast = await ladeMarketscreenerForecastReihe(isin, name, symbolYahoo)
   if (!forecast || forecast.jahresreihe.length === 0) return null
 
-  const jahresreihe = forecast.jahresreihe.map(({ jahr, umsatzUsd, netIncomeUsd }) => ({
-    jahr,
-    umsatzUsd,
-    netIncomeUsd,
-  }))
+  const jahresreihe = forecast.jahresreihe.map(
+    ({ jahr, umsatzUsd, netIncomeUsd, operatingIncomeUsd }) => ({
+      jahr,
+      umsatzUsd,
+      netIncomeUsd,
+      operatingIncomeUsd: operatingIncomeUsd ?? null,
+      ebitdaUsd: null,
+    }),
+  )
 
   const fy0 = jahresreihe[0]
   const fy1 = jahresreihe[1]

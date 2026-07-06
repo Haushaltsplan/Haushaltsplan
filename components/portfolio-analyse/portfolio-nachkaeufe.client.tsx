@@ -619,6 +619,73 @@ function KaufhistorieSektion({ hist }: { hist: Kaufhistorie }) {
   )
 }
 
+function PrognoseSektion({ eintrag }: { eintrag: NachkaufScanEintrag }) {
+  const prog = eintrag.datenSignale?.prognoseProfil
+  if (!prog || prog.jahre.length === 0) return null
+
+  return (
+    <PaCard className="p-4">
+      <p className="mb-1 text-[11px] font-medium uppercase tracking-widest text-[var(--app-text-muted)]">
+        Analysten-Prognose (Konsens)
+      </p>
+      <p className="mb-3 text-[10px] text-[var(--app-text-muted)]">
+        Mehrjahres-Schätzungen aus Fundamentaldaten — moderat im Score gewichtet.
+      </p>
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[280px] text-left text-[12px]">
+          <thead>
+            <tr className="text-[10px] uppercase tracking-wider text-[var(--app-text-muted)]">
+              <th className="pb-2 pr-3 font-medium">Jahr</th>
+              <th className="pb-2 pr-3 font-medium">EPS-Wachstum</th>
+              <th className="pb-2 font-medium">Umsatz-Wachstum</th>
+            </tr>
+          </thead>
+          <tbody>
+            {prog.jahre.map((j) => (
+              <tr key={j.jahr} className="border-t border-white/[0.04]">
+                <td className="py-1.5 pr-3 font-mono text-[var(--app-text)]">{j.label}</td>
+                <td className={`py-1.5 pr-3 tabular-nums ${wachstumFarbe(j.epsWachstumPct)}`}>
+                  {fmtWachstum(j.epsWachstumPct)}
+                </td>
+                <td className={`py-1.5 tabular-nums ${wachstumFarbe(j.umsatzWachstumPct)}`}>
+                  {fmtWachstum(j.umsatzWachstumPct)}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {(prog.epsWachstumMedianPct != null || prog.verlangsamung) && (
+        <p className="mt-2 text-[11px] text-[var(--app-text-muted)]">
+          {prog.epsWachstumMedianPct != null && (
+            <span>
+              Median EPS{' '}
+              <span className={wachstumFarbe(prog.epsWachstumMedianPct)}>
+                {fmtWachstum(prog.epsWachstumMedianPct)}
+              </span>
+            </span>
+          )}
+          {prog.verlangsamung && (
+            <span className="text-amber-400"> · Verlangsamung im Prognosepfad</span>
+          )}
+        </p>
+      )}
+    </PaCard>
+  )
+}
+
+function fmtWachstum(v: number | null): string {
+  if (v == null) return '–'
+  return `${v > 0 ? '+' : ''}${v.toFixed(1)} %`
+}
+
+function wachstumFarbe(v: number | null): string {
+  if (v == null) return 'text-[var(--app-text-muted)]'
+  if (v >= 8) return 'text-emerald-400'
+  if (v >= 0) return 'text-[var(--app-text)]'
+  return 'text-rose-400'
+}
+
 // ---------------------------------------------------------------------------
 // Detail-Panel
 // ---------------------------------------------------------------------------
@@ -747,6 +814,9 @@ function DetailPanel({
           <p className="mt-1 text-[12px] text-[var(--app-text-muted)]">{eintrag.kaufTriggerText}</p>
         </div>
       )}
+
+      {/* Analysten-Prognose */}
+      <PrognoseSektion eintrag={eintrag} />
 
       {/* Kaufhistorie */}
       {eintrag.kaufhistorie && (

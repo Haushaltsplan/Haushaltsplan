@@ -196,7 +196,20 @@ export function fundamentalSchaetzungIso(jahr: number, indexInReihe: number): st
 }
 
 export function istFundamentalSchaetzungIso(iso: string): boolean {
-  return iso === FUNDAMENTAL_FY0E_KEY || iso === FUNDAMENTAL_FY1E_KEY || /^__fy\d{4}e__$/.test(iso)
+  return (
+    iso === FUNDAMENTAL_FY0E_KEY ||
+    iso === FUNDAMENTAL_FY1E_KEY ||
+    /^__fy\d{4}e__$/.test(iso) ||
+    istFundamentalQuartalSchaetzungIso(iso)
+  )
+}
+
+export function fundamentalQuartalSchaetzungIso(jahr: number, quartal: number): string {
+  return `__${jahr}q${quartal}e__`
+}
+
+export function istFundamentalQuartalSchaetzungIso(iso: string): boolean {
+  return /^__\d{4}q[1-4]e__$/.test(iso)
 }
 
 /** Abgeschlossene Kalenderjahre sind Ist-Daten — keine Schätz-Spalten (z. B. 2025 ab 2026). */

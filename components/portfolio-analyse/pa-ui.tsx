@@ -45,9 +45,31 @@ export function PaScrollList({
   children: ReactNode
   className?: string
 }) {
+  function onWheel(e: React.WheelEvent<HTMLUListElement>) {
+    const el = e.currentTarget
+    const main = document.getElementById('app-main')
+    if (!main) return
+
+    const noOverflow = el.scrollHeight <= el.clientHeight + 1
+    const atTop = el.scrollTop <= 0
+    const atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 1
+    const down = e.deltaY > 0
+    const up = e.deltaY < 0
+
+    if (noOverflow || (up && atTop) || (down && atBottom)) {
+      main.scrollBy({ top: e.deltaY })
+      e.preventDefault()
+    }
+  }
+
   return (
     <div className="app-scroll-list-wrap">
-      <ul className={`app-scroll-list min-h-0 flex-1 ${className}`}>{children}</ul>
+      <ul
+        className={`app-scroll-list min-h-0 flex-1 ${className}`}
+        onWheel={onWheel}
+      >
+        {children}
+      </ul>
     </div>
   )
 }

@@ -7,6 +7,8 @@ export type MarketscreenerJahresForecastEintrag = {
   jahr: number
   umsatzUsd: number | null
   netIncomeUsd: number | null
+  operatingIncomeUsd: number | null
+  ebitdaUsd: number | null
 }
 
 const BASE = 'https://www.marketscreener.com/quote/stock'
@@ -129,7 +131,7 @@ function parseKonsensTabelle(html: string): {
   if (headers.length === 0) return null
 
   const zeilen: Record<string, number[]> = {}
-  for (const label of ['Net sales', 'Net income']) {
+  for (const label of ['Net sales', 'Net income', 'EBIT', 'EBITDA']) {
     const pos = table.search(new RegExp(`<td[^>]*>\\s*${label}\\s*<\\/td>`, 'i'))
     if (pos < 0) continue
     const rowEnd = table.indexOf('</tr>', pos)
@@ -147,6 +149,8 @@ function parseAnnualKonsens(html: string): MarketscreenerForecastJahresEintrag[]
 
   const umsatz = tab.zeilen['Net sales'] ?? []
   const netIncome = tab.zeilen['Net income'] ?? []
+  const ebit = tab.zeilen['EBIT'] ?? []
+  const ebitda = tab.zeilen['EBITDA'] ?? []
   const out: MarketscreenerForecastJahresEintrag[] = []
 
   for (let i = 0; i < tab.headers.length; i++) {
@@ -154,12 +158,18 @@ function parseAnnualKonsens(html: string): MarketscreenerForecastJahresEintrag[]
     if (!hdr?.schaetzung || hdr.jahr < minSchaetzJahr()) continue
     const umsatzUsd = umsatz[i] ?? null
     const netIncomeUsd = netIncome[i] ?? null
-    if (umsatzUsd == null && netIncomeUsd == null) continue
+    const operatingIncomeUsd = ebit[i] ?? null
+    const ebitdaUsd = ebitda[i] ?? null
+    if (umsatzUsd == null && netIncomeUsd == null && operatingIncomeUsd == null && ebitdaUsd == null) {
+      continue
+    }
     if (umsatzUsd != null && umsatzUsd < 1e9) continue
     out.push({
       jahr: hdr.jahr,
       umsatzUsd,
       netIncomeUsd,
+      operatingIncomeUsd,
+      ebitdaUsd,
       herkunft: 'annual',
     })
   }
@@ -173,6 +183,14 @@ function istSchaetzungsZelle(classAttr: string, cellHtml: string): boolean {
   )
 }
 
+function zellenLabel(tdHtml: string): string {
+  return tdHtml
+    .replace(/<sup[\s\S]*?<\/sup>/gi, '')
+    .replace(/<[^>]+>/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
 function parseMioZahl(raw: string): number | null {
   const t = raw.trim().replace(/\s/g, '')
   if (!t || t === '-' || t === '—') return null
@@ -180,11 +198,85 @@ function parseMioZahl(raw: string): number | null {
   return Number.isFinite(n) ? n * 1_000_000 : null
 }
 
+function parseMioZelleHtml(cellHtml: string): number | null {
+  const title = cellHtml.match(/title="([^"]+)"/)?.[1]
+  const txt = cellHtml.replace(/<[^>]+>/g, '').replace(/,/g, '').trim()
+  const raw = title?.replace(/,/g, '') ?? txt
+  if (!raw || raw === '-' || raw === '—') return null
+  const n = Number(raw)
+  return Number.isFinite(n) ? n * 1_000_000 : null
+}
+
+function parseAnnualFinancesGuV(html: string): MarketscreenerForecastJahresEintrag[] {
+  const idx = html.indexOf('income-statement-annual')
+  if (idx < 0) return []
+
+  const block = html.slice(idx, idx + 280_000)
+  const table = [...block.matchAll(/<table[\s\S]*?<\/table>/gi)].find((t) => /Net sales/i.test(t[0]))?.[0]
+  if (!table) return []
+
+  const jahre: number[] = []
+  for (const m of table.matchAll(/<th([^>]*)>([\s\S]*?)<\/th>/gi)) {
+    const label = m[2].replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim()
+    const ym = /^(\d{4})/.exec(label)
+    if (ym) jahre.push(Number(ym[1]))
+  }
+  if (jahre.length === 0) return []
+
+  const metrikFuerLabel = (label: string): 'umsatz' | 'ebit' | 'ebitda' | 'net_income' | null => {
+    const l = label.trim()
+    if (/^Net sales/i.test(l)) return 'umsatz'
+    if (/^EBITDA/i.test(l)) return 'ebitda'
+    if (/^EBIT$/i.test(l)) return 'ebit'
+    if (/^Net income/i.test(l)) return 'net_income'
+    return null
+  }
+
+  const zeilen: Partial<Record<'umsatz' | 'ebit' | 'ebitda' | 'net_income', (number | null)[]>> = {}
+
+  for (const tr of table.matchAll(/<tr[^>]*>([\s\S]*?)<\/tr>/gi)) {
+    const tds = [...tr[1].matchAll(/<td[^>]*>([\s\S]*?)<\/td>/gi)]
+    if (tds.length < 2) continue
+    const rowLabel = zellenLabel(tds[0]![1])
+    const metrik = metrikFuerLabel(rowLabel)
+    if (!metrik) continue
+    zeilen[metrik] = tds.slice(1).map((td) => parseMioZelleHtml(td[1]!))
+  }
+
+  const out: MarketscreenerForecastJahresEintrag[] = []
+  for (let i = 0; i < jahre.length; i++) {
+    const jahr = jahre[i]!
+    if (jahr < minSchaetzJahr()) continue
+    const umsatzUsd = zeilen.umsatz?.[i] ?? null
+    const operatingIncomeUsd = zeilen.ebit?.[i] ?? null
+    const ebitdaUsd = zeilen.ebitda?.[i] ?? null
+    const netIncomeUsd = zeilen.net_income?.[i] ?? null
+    if (umsatzUsd == null && netIncomeUsd == null && operatingIncomeUsd == null && ebitdaUsd == null) {
+      continue
+    }
+    if (umsatzUsd != null && umsatzUsd < 1e9) continue
+    out.push({
+      jahr,
+      umsatzUsd,
+      netIncomeUsd,
+      operatingIncomeUsd,
+      ebitdaUsd,
+      herkunft: 'annual',
+    })
+  }
+  return out
+}
+
 type QuartalsSpalte = { label: string; index: number; istSchaetzung: boolean }
 
 function parseQuartalsTabelle(html: string): {
   spalten: QuartalsSpalte[]
-  zeilen: Partial<Record<'umsatz' | 'net_income', Map<number, { wertUsd: number; quartale: number }>>>
+  zeilen: Partial<
+    Record<
+      'umsatz' | 'net_income' | 'ebit' | 'ebitda',
+      Map<number, { wertUsd: number; quartale: number }>
+    >
+  >
 } | null {
   const idx = html.indexOf('income-statement-quarterly')
   if (idx < 0) return null
@@ -208,16 +300,25 @@ function parseQuartalsTabelle(html: string): {
   }
   if (spalten.length === 0) return null
 
-  const metrikFuerLabel = (label: string): 'umsatz' | 'net_income' | null => {
+  const metrikFuerLabel = (label: string): 'umsatz' | 'net_income' | 'ebit' | 'ebitda' | null => {
     const l = label.trim()
     if (/^Net sales/i.test(l)) return 'umsatz'
     if (/^Net income/i.test(l)) return 'net_income'
+    if (/^EBITDA/i.test(l)) return 'ebitda'
+    if (/^EBIT$/i.test(l)) return 'ebit'
     return null
   }
 
-  const zeilen: Partial<Record<'umsatz' | 'net_income', Map<number, { wertUsd: number; quartale: number }>>> = {
+  const zeilen: Partial<
+    Record<
+      'umsatz' | 'net_income' | 'ebit' | 'ebitda',
+      Map<number, { wertUsd: number; quartale: number }>
+    >
+  > = {
     umsatz: new Map(),
     net_income: new Map(),
+    ebit: new Map(),
+    ebitda: new Map(),
   }
 
   for (const tr of table.matchAll(/<tr[^>]*>([\s\S]*?)<\/tr>/gi)) {
@@ -254,7 +355,11 @@ function parseQuartalsTabelle(html: string): {
     }
   }
 
-  const hatDaten = (zeilen.umsatz?.size ?? 0) > 0 || (zeilen.net_income?.size ?? 0) > 0
+  const hatDaten =
+    (zeilen.umsatz?.size ?? 0) > 0 ||
+    (zeilen.net_income?.size ?? 0) > 0 ||
+    (zeilen.ebit?.size ?? 0) > 0 ||
+    (zeilen.ebitda?.size ?? 0) > 0
   if (!hatDaten) return null
   return { spalten, zeilen }
 }
@@ -266,24 +371,34 @@ function parseQuartalsAggregation(html: string): MarketscreenerForecastJahresEin
   const jahre = new Set<number>([
     ...(parsed.zeilen.umsatz?.keys() ?? []),
     ...(parsed.zeilen.net_income?.keys() ?? []),
+    ...(parsed.zeilen.ebit?.keys() ?? []),
+    ...(parsed.zeilen.ebitda?.keys() ?? []),
   ])
 
   const out: MarketscreenerForecastJahresEintrag[] = []
   for (const jahr of [...jahre].sort((a, b) => a - b)) {
     const u = parsed.zeilen.umsatz?.get(jahr)
     const n = parsed.zeilen.net_income?.get(jahr)
-    const quartale = Math.max(u?.quartale ?? 0, n?.quartale ?? 0)
+    const e = parsed.zeilen.ebit?.get(jahr)
+    const ed = parsed.zeilen.ebitda?.get(jahr)
+    const quartale = Math.max(u?.quartale ?? 0, n?.quartale ?? 0, e?.quartale ?? 0, ed?.quartale ?? 0)
     if (quartale < 4) continue
 
     const umsatzUsd = u?.wertUsd ?? null
     const netIncomeUsd = n?.wertUsd ?? null
-    if (umsatzUsd == null && netIncomeUsd == null) continue
+    const operatingIncomeUsd = e?.wertUsd ?? null
+    const ebitdaUsd = ed?.wertUsd ?? null
+    if (umsatzUsd == null && netIncomeUsd == null && operatingIncomeUsd == null && ebitdaUsd == null) {
+      continue
+    }
     if (umsatzUsd != null && umsatzUsd < 1e9) continue
 
     out.push({
       jahr,
       umsatzUsd,
       netIncomeUsd,
+      operatingIncomeUsd,
+      ebitdaUsd,
       herkunft: 'quartal',
       schaetzQuartale: quartale,
     })
@@ -292,35 +407,49 @@ function parseQuartalsAggregation(html: string): MarketscreenerForecastJahresEin
 }
 
 function mergeForecastReihe(
-  annual: MarketscreenerForecastJahresEintrag[],
+  consensus: MarketscreenerForecastJahresEintrag[],
+  annualGuV: MarketscreenerForecastJahresEintrag[],
   quartal: MarketscreenerForecastJahresEintrag[],
 ): MarketscreenerForecastJahresEintrag[] {
   const byJahr = new Map<number, MarketscreenerForecastJahresEintrag>()
 
-  for (const q of quartal) {
-    byJahr.set(q.jahr, { ...q })
+  const leer = (jahr: number, herkunft: 'annual' | 'quartal'): MarketscreenerForecastJahresEintrag => ({
+    jahr,
+    umsatzUsd: null,
+    netIncomeUsd: null,
+    operatingIncomeUsd: null,
+    ebitdaUsd: null,
+    herkunft,
+  })
+
+  const overlay = (src: MarketscreenerForecastJahresEintrag) => {
+    const cur = byJahr.get(src.jahr) ?? leer(src.jahr, src.herkunft)
+    if (src.umsatzUsd != null) cur.umsatzUsd = src.umsatzUsd
+    if (src.netIncomeUsd != null) cur.netIncomeUsd = src.netIncomeUsd
+    if (src.operatingIncomeUsd != null) cur.operatingIncomeUsd = src.operatingIncomeUsd
+    if (src.ebitdaUsd != null) cur.ebitdaUsd = src.ebitdaUsd
+    cur.herkunft = src.herkunft
+    byJahr.set(src.jahr, cur)
   }
-  for (const a of annual) {
-    const cur = byJahr.get(a.jahr) ?? {
-      jahr: a.jahr,
-      umsatzUsd: null,
-      netIncomeUsd: null,
-      herkunft: 'annual' as const,
-    }
-    if (a.umsatzUsd != null) cur.umsatzUsd = a.umsatzUsd
-    if (a.netIncomeUsd != null) cur.netIncomeUsd = a.netIncomeUsd
-    cur.herkunft = 'annual'
-    byJahr.set(a.jahr, cur)
-  }
+
+  for (const q of quartal) overlay(q)
+  for (const g of annualGuV) overlay(g)
+  for (const c of consensus) overlay(c)
 
   return [...byJahr.values()]
     .filter((e) => e.jahr >= minSchaetzJahr() && e.jahr <= ZIEL_SCHAETZ_JAHR + 2)
-    .filter((e) => (e.umsatzUsd != null && e.umsatzUsd >= 1e9) || e.netIncomeUsd != null)
+    .filter(
+      (e) =>
+        (e.umsatzUsd != null && e.umsatzUsd >= 1e9) ||
+        e.netIncomeUsd != null ||
+        e.operatingIncomeUsd != null,
+    )
     .sort((a, b) => a.jahr - b.jahr)
 }
 
 /**
  * Marketscreener-Schätzungen: Jahres-Konsens (finances-consensus) +
+ * Jahres-GuV (finances, income-statement-annual) +
  * Quartals-Aggregation (finances, nur Jahre mit 4 Schätzungsquartalen).
  * Liefert typischerweise FY2026–FY2028 (abhängig vom Titel).
  */
@@ -332,27 +461,143 @@ export async function ladeMarketscreenerForecastReihe(
   for (const slug of marketscreenerSlugKandidaten(isin, name, symbolYahoo)) {
     const slugVariants = [slug, slug.replace(/-CORP-/, '-CORPORATION-')]
 
-    let annual: MarketscreenerForecastJahresEintrag[] = []
+    let consensus: MarketscreenerForecastJahresEintrag[] = []
+    let annualGuV: MarketscreenerForecastJahresEintrag[] = []
     let quartal: MarketscreenerForecastJahresEintrag[] = []
 
     for (const s of slugVariants) {
       const consensusHtml = await fetchHtml(`${BASE}/${s}/finances-consensus/`, `consensus:${s}`)
       if (consensusHtml?.includes('Net sales')) {
-        annual = parseAnnualKonsens(consensusHtml)
+        consensus = parseAnnualKonsens(consensusHtml)
       }
 
       const financesHtml = await fetchHtml(`${BASE}/${s}/finances/`, `finances:${s}`)
+      if (financesHtml?.includes('income-statement-annual')) {
+        annualGuV = parseAnnualFinancesGuV(financesHtml)
+      }
       if (financesHtml?.includes('income-statement-quarterly')) {
         quartal = parseQuartalsAggregation(financesHtml)
       }
 
-      if (annual.length > 0 || quartal.length > 0) break
+      if (consensus.length > 0 || annualGuV.length > 0 || quartal.length > 0) break
     }
 
-    const jahresreihe = mergeForecastReihe(annual, quartal)
+    const jahresreihe = mergeForecastReihe(consensus, annualGuV, quartal)
     if (jahresreihe.length === 0) continue
 
     return { quelle: 'marketscreener', jahresreihe }
+  }
+  return null
+}
+
+export type MarketscreenerQuartalsForecastEintrag = {
+  jahr: number
+  quartal: number
+  label: string
+  umsatzUsd: number | null
+  operatingIncomeUsd: number | null
+  ebitdaUsd: number | null
+  netIncomeUsd: number | null
+}
+
+const MAX_QUARTALS_SCHAETZ = 12
+
+function parseAlleQuartalsSchaetzungen(html: string): MarketscreenerQuartalsForecastEintrag[] {
+  const idx = html.indexOf('income-statement-quarterly')
+  if (idx < 0) return []
+
+  const block = html.slice(idx, idx + 450_000)
+  const table = [...block.matchAll(/<table[\s\S]*?<\/table>/gi)].find((t) => /\d{4} Q\d/.test(t[0]))?.[0]
+  if (!table) return []
+
+  const spalten: { jahr: number; quartal: number; label: string; tdIdx: number }[] = []
+  let thIdx = 0
+  for (const m of table.matchAll(/<th([^>]*)>([\s\S]*?)<\/th>/gi)) {
+    const label = m[2].replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim()
+    const qm = /^(\d{4}) Q(\d)$/.exec(label)
+    if (qm && /estimate|italic|muted/i.test(m[1])) {
+      const jahr = Number(qm[1])
+      const quartal = Number(qm[2])
+      if (jahr >= minSchaetzJahr()) {
+        spalten.push({ jahr, quartal, label, tdIdx: thIdx })
+      }
+    }
+    thIdx++
+  }
+  if (spalten.length === 0) return []
+
+  const byKey = new Map<string, MarketscreenerQuartalsForecastEintrag>()
+  for (const s of spalten) {
+    byKey.set(`${s.jahr}-Q${s.quartal}`, {
+      jahr: s.jahr,
+      quartal: s.quartal,
+      label: s.label,
+      umsatzUsd: null,
+      operatingIncomeUsd: null,
+      ebitdaUsd: null,
+      netIncomeUsd: null,
+    })
+  }
+
+  const metrikFuerLabel = (label: string): 'umsatz' | 'ebit' | 'ebitda' | 'net_income' | null => {
+    const l = label.trim()
+    if (/^Net sales/i.test(l)) return 'umsatz'
+    if (/^EBITDA/i.test(l)) return 'ebitda'
+    if (/^EBIT$/i.test(l)) return 'ebit'
+    if (/^Net income/i.test(l)) return 'net_income'
+    return null
+  }
+
+  for (const tr of table.matchAll(/<tr[^>]*>([\s\S]*?)<\/tr>/gi)) {
+    const row = tr[1]
+    if (!row.startsWith('<td')) continue
+    const tds = [...row.matchAll(/<td([^>]*)>([\s\S]*?)<\/td>/gi)]
+    if (tds.length < 2) continue
+
+    const rowLabel = zellenLabel(tds[0]![2])
+    const metrik = metrikFuerLabel(rowLabel)
+    if (!metrik) continue
+
+    for (const spalte of spalten) {
+      const td = tds[spalte.tdIdx + 1]
+      if (!td) continue
+      const wertUsd = parseMioZahl(td[2].replace(/<[^>]+>/g, '').trim())
+      if (wertUsd == null) continue
+      const entry = byKey.get(`${spalte.jahr}-Q${spalte.quartal}`)
+      if (!entry) continue
+      if (metrik === 'umsatz') entry.umsatzUsd = wertUsd
+      if (metrik === 'ebit') entry.operatingIncomeUsd = wertUsd
+      if (metrik === 'ebitda') entry.ebitdaUsd = wertUsd
+      if (metrik === 'net_income') entry.netIncomeUsd = wertUsd
+    }
+  }
+
+  return [...byKey.values()]
+    .filter(
+      (e) =>
+        e.umsatzUsd != null ||
+        e.operatingIncomeUsd != null ||
+        e.ebitdaUsd != null ||
+        e.netIncomeUsd != null,
+    )
+    .sort((a, b) => a.jahr - b.jahr || a.quartal - b.quartal)
+    .slice(0, MAX_QUARTALS_SCHAETZ)
+}
+
+/** Einzelne Schätzungsquartale (2026 Q1 …) von Marketscreener finances. */
+export async function ladeMarketscreenerQuartalsForecastReihe(
+  isin: string,
+  name: string,
+  symbolYahoo?: string | null,
+): Promise<MarketscreenerQuartalsForecastEintrag[] | null> {
+  for (const slug of marketscreenerSlugKandidaten(isin, name, symbolYahoo)) {
+    const slugVariants = [slug, slug.replace(/-CORP-/, '-CORPORATION-')]
+    for (const s of slugVariants) {
+      const financesHtml = await fetchHtml(`${BASE}/${s}/finances/`, `finances:${s}`)
+      if (!financesHtml?.includes('income-statement-quarterly')) continue
+      const reihe = parseAlleQuartalsSchaetzungen(financesHtml)
+      if (reihe.length > 0) return reihe
+    }
   }
   return null
 }
