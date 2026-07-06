@@ -1,4 +1,8 @@
-import { wendeAktienSplitsAufMap } from '@/lib/portfolio-analyse/aktien-splits'
+import {
+  istCorporateActionOhneCash,
+  wendeAktienSplitsAufMap,
+  wendeSpinOffsAufMap,
+} from '@/lib/portfolio-analyse/corporate-actions'
 import { gebuehrSteuerIndex, kaufEinstandBetragEur } from '@/lib/portfolio-analyse/parqet-einstand'
 import { alleKalendertage } from '@/lib/portfolio-analyse/wertentwicklung-tage'
 import type { PortfolioBuchung, PortfolioDbSnapshot, PortfolioPositionSnapshot } from '@/lib/portfolio-analyse/types'
@@ -114,6 +118,8 @@ function wendeBuchungAufStand(
     if (stk <= 0) return
     cur.stueck += stk
     cur.kosten += kaufEinstandBetragEur(b, feeIndex)
+  } else if (b.parqetTyp === 'SpinOffCost' && b.betragEur > 0) {
+    cur.kosten = Math.round(Math.max(0, cur.kosten - b.betragEur) * 100) / 100
   } else if (b.typ === 'verkauf') {
     let stk = b.stueck != null ? Math.abs(b.stueck) : 0
     if (stk <= 0 && b.kursEur != null && b.kursEur > 0) stk = b.betragEur / b.kursEur
@@ -136,7 +142,7 @@ function cashDelta(b: PortfolioBuchung): number {
     case 'auszahlung':
       return -b.betragEur
     case 'kauf':
-      return -b.betragEur
+      return istCorporateActionOhneCash(b) ? 0 : -b.betragEur
     case 'verkauf':
       return b.betragEur
     case 'dividende':
@@ -203,10 +209,12 @@ export function depotStandProTag(
   const feeIndex = gebuehrSteuerIndex(buchungen)
 
   for (const tag of tage) {
-    for (const b of byTag.get(tag) ?? []) {
+    const tagBuchungen = byTag.get(tag) ?? []
+    for (const b of tagBuchungen) {
       wendeBuchungAufStand(map, b, feeIndex)
       cash += cashDelta(b)
     }
+    wendeSpinOffsAufMap(map, tag, buchungen)
     wendeAktienSplitsAufMap(map, tag)
     out.set(tag, standAusMap(map, cash))
   }
@@ -224,6 +232,7 @@ export function cashSaldoAusBuchungen(buchungen: PortfolioBuchung[]): number {
         cash -= b.betragEur
         break
       case 'kauf':
+        if (istCorporateActionOhneCash(b)) break
         cash -= b.betragEur
         break
       case 'verkauf':

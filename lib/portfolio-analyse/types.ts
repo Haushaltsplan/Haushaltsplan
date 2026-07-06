@@ -11,7 +11,7 @@ export type BuchungsTyp =
 
 export type AssetKlasse = 'aktie' | 'etf' | 'anleihe' | 'crypto' | 'geldmarkt' | 'sonstiges'
 
-export type ImportQuelle = 'pdf' | 'csv'
+export type ImportQuelle = 'pdf' | 'csv' | 'manuell'
 
 /** Anonymisierte Buchung — keine Rohbeschreibung, kein Saldo, keine Kontodaten. */
 export type PortfolioBuchung = {

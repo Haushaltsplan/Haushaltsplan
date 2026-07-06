@@ -208,6 +208,8 @@ export async function berechneBuchungsHash(parts: {
   isin: string | null
   stueck: number | null
   betragEur: number
+  /** Zusatz für eindeutige manuelle Buchungen (z. B. UUID). */
+  zusatz?: string
 }): Promise<string> {
   const payload = [
     parts.datum,
@@ -215,6 +217,7 @@ export async function berechneBuchungsHash(parts: {
     parts.isin ?? '',
     parts.stueck != null ? parts.stueck.toFixed(8) : '',
     parts.betragEur.toFixed(2),
+    parts.zusatz ?? '',
   ].join('|')
   const enc = new TextEncoder().encode(payload)
   const digest = await crypto.subtle.digest('SHA-256', enc)

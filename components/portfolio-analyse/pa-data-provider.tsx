@@ -22,6 +22,7 @@ import {
 import { ladeIsinMetadaten } from '@/lib/portfolio-analyse/isin-metadata-client'
 import { PORTFOLIO_MAX_BUCHUNGEN } from '@/lib/portfolio-analyse/limits'
 import { ladePortfolioAnalyseDaten } from '@/lib/portfolio-analyse/portfolio-analyse-db'
+import { aktualisiereYahooSplitsFuerDepot } from '@/lib/portfolio-analyse/corporate-actions-verbuchung'
 import { parqetReportAusDepot } from '@/lib/portfolio-analyse/parqet-adapter'
 import { ladeEtfBreakdownsFuerPositionen } from '@/lib/portfolio-analyse/etf-breakdown-client'
 import type { EtfBreakdown } from '@/lib/portfolio-analyse/parqet-core/types'
@@ -95,6 +96,11 @@ export function PaDataProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     void neuLaden()
   }, [neuLaden])
+
+  useEffect(() => {
+    if (buchungen.length === 0) return
+    void aktualisiereYahooSplitsFuerDepot(buchungen)
+  }, [buchungen])
 
   useEffect(() => {
     syncAlleKiZusammenfassungenAusLocalStorage()

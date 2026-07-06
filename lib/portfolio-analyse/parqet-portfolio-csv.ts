@@ -305,7 +305,7 @@ export function parseParqetPortfolioCsvText(text: string): TrPdfParseErgebnis & 
 
   if ([...typUebersprungen.keys()].some((k) => istStockSplitTyp(k))) {
     hinweise.push(
-      'StockSplit-Zeilen in der CSV werden nicht als Buchung importiert — Splits werden wie bei Parqet beim Bestand angewendet (siehe aktien-splits.ts).',
+      'StockSplit-Zeilen in der CSV werden nicht als Buchung importiert — Splits werden automatisch erkannt (Yahoo) und im Bestand angewendet.',
     )
   }
 

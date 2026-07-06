@@ -5,6 +5,7 @@ import toast from 'react-hot-toast'
 import { usePortfolioAnalyse } from '@/components/portfolio-analyse/pa-data-provider'
 import { PortfolioAnalyseShell } from '@/components/portfolio-analyse/portfolio-analyse-shell.client'
 import { PortfolioAnalyseImportVorschau } from '@/components/portfolio-analyse-import-vorschau'
+import { PortfolioImportManuell } from '@/components/portfolio-analyse/portfolio-import-manuell'
 import { PageSection, PageSectionPanel } from '@/components/page-shell'
 import { ladePiiBlockliste, speicherePiiBlockliste } from '@/lib/portfolio-analyse/anonymisierung'
 import {
@@ -13,6 +14,7 @@ import {
   importiereTradeRepublicPdfBuffer,
   mergeImportErgebnisse,
 } from '@/lib/portfolio-analyse/import-pipeline'
+import { ermittleCorporateActionBuchungen } from '@/lib/portfolio-analyse/corporate-actions-verbuchung'
 import { istParqetPortfolioCsv } from '@/lib/portfolio-analyse/parqet-portfolio-csv'
 import { istTradeRepublicCsv } from '@/lib/portfolio-analyse/trade-republic-csv'
 import {
@@ -58,6 +60,23 @@ export function PortfolioImportClient() {
     [blocklistText],
   )
 
+  const [corporateBusy, setCorporateBusy] = useState(false)
+
+  async function corporateActionsAnwenden(ergebnis: PortfolioImportErgebnis): Promise<PortfolioImportErgebnis> {
+    const bestehendHashes = new Set(buchungen.map((b) => b.buchungsHash))
+    const alle = [...buchungen, ...ergebnis.buchungen]
+    const ca = await ermittleCorporateActionBuchungen(alle, bestehendHashes)
+    const hinweise = [...ergebnis.hinweise, ...ca.hinweise]
+    if (ca.zusaetzlicheBuchungen.length === 0) {
+      return { ...ergebnis, hinweise }
+    }
+    return {
+      ...ergebnis,
+      buchungen: [...ergebnis.buchungen, ...ca.zusaetzlicheBuchungen],
+      hinweise,
+    }
+  }
+
   async function importAbschliessen(
     label: string,
     ergebnis: PortfolioImportErgebnis,
@@ -79,6 +98,7 @@ export function PortfolioImportClient() {
         ergebnis.hinweise.push(`${uebersprungen} Buchung(en) bereits gespeichert — werden übersprungen.`)
       }
     }
+    ergebnis = await corporateActionsAnwenden(ergebnis)
     setVorschauDateiname(label)
     setVorschau(ergebnis)
     if (ergebnis.buchungen.length === 0 && ergebnis.positionen.length === 0) {
@@ -211,6 +231,35 @@ export function PortfolioImportClient() {
     }
   }
 
+  async function corporateActionsNachbuchen() {
+    if (buchungen.length === 0 || schemaFehlt) return
+    setCorporateBusy(true)
+    setVorschau(null)
+    try {
+      const leer: PortfolioImportErgebnis = {
+        buchungen: [],
+        positionen: [],
+        depotwertEur: null,
+        hinweise: [],
+        statistik: { cashZeilen: 0, positionen: 0, cryptoPositionen: 0, doppelteHashes: 0 },
+      }
+      const ergebnis = await corporateActionsAnwenden(leer)
+      if (ergebnis.buchungen.length === 0 && ergebnis.hinweise.length === 0) {
+        toast('Keine fehlenden Splits oder Spin-offs erkannt.')
+        return
+      }
+      setVorschauDateiname('Corporate Actions')
+      setVorschau(ergebnis)
+      if (ergebnis.buchungen.length > 0) {
+        toast.success('Corporate Actions — bitte Vorschau prüfen und speichern.')
+      } else {
+        toast.success(ergebnis.hinweise[0] ?? 'Splits registriert.')
+      }
+    } finally {
+      setCorporateBusy(false)
+    }
+  }
+
   async function alleDatenLoeschen() {
     if (
       !window.confirm(
@@ -234,8 +283,8 @@ export function PortfolioImportClient() {
       title="Import"
       description={
         <>
-          Parqet- oder Trade-Republic-CSV, Kontoauszug-PDF oder Wertpapierabrechnungen — mehrere Dateien per
-          Drag &amp; Drop, alles nur im Browser.
+          Parqet- oder Trade-Republic-CSV, Kontoauszug-PDF oder Wertpapierabrechnungen — mehrere Dateien per Drag
+          &amp; Drop. Oder einzelne Buchungen manuell erfassen. Alles nur im Browser.
         </>
       }
     >
@@ -243,7 +292,15 @@ export function PortfolioImportClient() {
         <PageSectionPanel>
           <div className="space-y-8">
             {buchungen.length > 0 && !schemaFehlt ? (
-              <div className="flex justify-end">
+              <div className="flex flex-wrap justify-end gap-2">
+                <button
+                  type="button"
+                  disabled={corporateBusy || importBusy}
+                  onClick={() => void corporateActionsNachbuchen()}
+                  className="rounded-lg border border-teal-800/45 bg-teal-950/20 px-4 py-2 text-xs text-teal-100 hover:bg-teal-950/35 disabled:opacity-50"
+                >
+                  {corporateBusy ? 'Prüft Splits …' : 'Splits & Spin-offs nachbuchen'}
+                </button>
                 <button
                   type="button"
                   onClick={() => void alleDatenLoeschen()}
@@ -300,6 +357,13 @@ export function PortfolioImportClient() {
                 </p>
               )}
             </div>
+
+            <PortfolioImportManuell
+              disabled={importBusy || schemaFehlt}
+              onErstellt={async (ergebnis, label) => {
+                await importAbschliessen(label, ergebnis)
+              }}
+            />
 
             <div className="grid gap-4 text-sm text-[var(--app-text-muted)] sm:grid-cols-2">
               <div className="rounded-xl border border-[var(--app-border)] bg-[var(--app-surface-muted)]/30 p-4">
