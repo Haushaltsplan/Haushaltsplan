@@ -228,7 +228,15 @@ export function PaFundamentalInhalt({
             />
           ) : null}
 
-          {unterTab === 'struktur' ? <PaFundamentalStruktur erweitert={daten.erweitert} /> : null}
+          {unterTab === 'struktur' ? (
+            <PaFundamentalStruktur
+              paket={daten}
+              ticker={daten.ticker}
+              symbolYahoo={daten.symbolYahoo}
+              isin={anfrage.isin ?? null}
+              selectionKey={selectionKey}
+            />
+          ) : null}
 
           {unterTab === 'news' ? <PaFundamentalNews artikel={daten.news} /> : null}
 

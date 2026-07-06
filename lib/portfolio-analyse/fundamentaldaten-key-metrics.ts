@@ -162,6 +162,12 @@ export function baueKeyMetrics(
       wert: netDebtEbitda != null ? (netDebtEbitda < 0 ? `(${multiple(Math.abs(netDebtEbitda))})` : multiple(netDebtEbitda)) : '–',
       gruppe: 'kapitalstruktur',
     },
+    {
+      id: 'interest_coverage',
+      label: 'Zinsdeckung (EBIT/Zins)',
+      wert: w?.interestCoverage != null ? multiple(w.interestCoverage) : '–',
+      gruppe: 'kapitalstruktur',
+    },
   )
 
   const fcfZeile = roh?.zeilen.find((z) => z.id === 'fcf')

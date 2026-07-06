@@ -2,7 +2,11 @@
  * Test SEC Segment-Extraktion gegen Live-10-K
  * npx tsx scripts/test-sec-segmente.ts [TICKER...]
  */
-import { extrahiereSegmenteAus10kHtml } from '@/lib/portfolio-analyse/sec-edgar-segment-extraktion'
+import {
+  extrahiereBeideSegmentartenAus10kHtml,
+  extrahiereSegmenteAus10kHtml,
+  extrahiereSegmentHistorieAus10kHtml,
+} from '@/lib/portfolio-analyse/sec-edgar-segment-extraktion'
 
 const UA = process.env.SEC_EDGAR_USER_AGENT || 'Omnia Haushalt test@example.com'
 const TICKERS = process.argv.slice(2).length
@@ -73,10 +77,22 @@ async function main() {
       continue
     }
     const r = extrahiereSegmenteAus10kHtml(html)
-    const status = r.segmente.length >= 2 ? 'OK' : 'FAIL'
+    const beide = extrahiereBeideSegmentartenAus10kHtml(html)
+    const hist = extrahiereSegmentHistorieAus10kHtml(html)
+    const status = r.segmente.length >= 2 || beide.geo.segmente.length >= 2 ? 'OK' : 'FAIL'
     if (status === 'OK') ok++
     else fail++
     console.log(`\n${sym}: ${status} | ${r.art ?? '-'} | ${r.quelle ?? '-'}`)
+    console.log(`  Geo: ${beide.geo.segmente.length} | Produkt: ${beide.produkt.segmente.length}`)
+  const histJahre = [
+    ...(hist.geo?.jahre.map((j) => `G${j.jahr}`) ?? []),
+    ...(hist.produkt?.jahre.map((j) => `P${j.jahr}`) ?? []),
+  ]
+  if (histJahre.length) console.log(`  Historie: ${histJahre.join(', ')}`)
+  if (hist.geo?.jahre.length) {
+    const latest = hist.geo.jahre[hist.geo.jahre.length - 1]!
+    console.log(`  Geo-Historie: ${latest.segmente.map((s) => s.name).join(', ')}`)
+  }
     for (const s of r.segmente) {
       console.log(`  - ${s.name}: ${s.umsatzMio} Mio. (${s.anteilPct}%)`)
     }

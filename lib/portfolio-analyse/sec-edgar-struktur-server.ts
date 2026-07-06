@@ -6,6 +6,7 @@ import type { SecSegmentEintrag, SecStrukturPaket } from '@/lib/portfolio-analys
 import { ladeLesbarenBerichtText } from '@/lib/portfolio-analyse/sec-edgar-bericht-text-server'
 import { cikFuerTicker, ladeSecSubmissionsRecent, secFetch } from '@/lib/portfolio-analyse/sec-edgar-common-server'
 import {
+  extrahiereBeideSegmentartenAus10kHtml,
   extrahiereSegmenteAus10kHtml,
   segmentHinweisFuerErgebnis,
 } from '@/lib/portfolio-analyse/sec-edgar-segment-extraktion'
@@ -113,11 +114,20 @@ export async function ladeSecStrukturExtraktion(ticker: string): Promise<SecStru
     }
 
     const segmentErgebnis = html10k ? extrahiereSegmenteAus10kHtml(html10k) : { segmente: [], art: null, quelle: null }
-    const segmente: SecSegmentEintrag[] = segmentErgebnis.segmente.map((s) => ({
-      name: s.name,
-      umsatzMio: s.umsatzMio,
-      anteilPct: s.anteilPct,
-    }))
+    const beide = html10k
+      ? extrahiereBeideSegmentartenAus10kHtml(html10k)
+      : { produkt: { segmente: [], art: null, quelle: null }, geo: { segmente: [], art: null, quelle: null } }
+
+    const mapSeg = (liste: typeof segmentErgebnis.segmente): SecSegmentEintrag[] =>
+      liste.map((s) => ({
+        name: s.name,
+        umsatzMio: s.umsatzMio,
+        anteilPct: s.anteilPct,
+      }))
+
+    const segmente = mapSeg(segmentErgebnis.segmente)
+    const segmenteProdukt = mapSeg(beide.produkt.segmente)
+    const segmenteGeo = mapSeg(beide.geo.segmente)
 
     const pension = text10k
       ? parseMioUsd(text10k, [
@@ -135,7 +145,10 @@ export async function ladeSecStrukturExtraktion(ticker: string): Promise<SecStru
 
     const data: SecStrukturPaket = {
       segmente,
+      segmenteProdukt,
+      segmenteGeo,
       segmentHinweis: segmentHinweisFuerErgebnis(segmentErgebnis),
+      segmentArt: segmentErgebnis.art,
       pensionVerpflichtungMio: pension,
       leaseVerpflichtungMio: lease,
       ceoVerguetungUsd: ceo.usd,
@@ -144,7 +157,14 @@ export async function ladeSecStrukturExtraktion(ticker: string): Promise<SecStru
       quelle: 'sec_edgar',
     }
 
-    if (segmente.length === 0 && pension == null && lease == null && ceo.usd == null) {
+    if (
+      segmente.length === 0 &&
+      segmenteProdukt.length === 0 &&
+      segmenteGeo.length === 0 &&
+      pension == null &&
+      lease == null &&
+      ceo.usd == null
+    ) {
       cache.set(sym, { at: Date.now(), data: null })
       return null
     }

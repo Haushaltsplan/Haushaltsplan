@@ -54,12 +54,78 @@ export type SecSegmentEintrag = {
 
 export type SecStrukturPaket = {
   segmente: SecSegmentEintrag[]
+  /** Produkt-/Geschäftssegmente (letztes FY). */
+  segmenteProdukt: SecSegmentEintrag[]
+  /** Geografische Umsatzsegmente (letztes FY). */
+  segmenteGeo: SecSegmentEintrag[]
   segmentHinweis: string | null
+  segmentArt: 'produkt' | 'geo' | null
   pensionVerpflichtungMio: number | null
   leaseVerpflichtungMio: number | null
   ceoVerguetungUsd: number | null
   proxyJahr: number | null
   berichtJahr: number | null
+  quelle: 'sec_edgar'
+}
+
+export type SecSegmentHistorieJahr = {
+  jahr: number
+  segmente: SecSegmentEintrag[]
+}
+
+export type SecSegmentHistorie = {
+  art: 'produkt' | 'geo'
+  jahre: SecSegmentHistorieJahr[]
+  segmentNamen: string[]
+  anzahlJahre: number
+  aeltestesJahr: number
+  juengstesJahr: number
+}
+
+export type SecZusatzRisikoFelder = {
+  mitarbeiterAnzahl: number | null
+  auslandsumsatzAnteilPct: number | null
+  hauptkunden: { name: string; anteilPct: number }[]
+  /** Mitarbeiter pro Geschäftsjahr (aus 10-K-Text). */
+  mitarbeiterHistorie: { jahr: number; anzahl: number }[]
+  /** Größter Kundenanteil je Jahr (wenn in 10-K genannt). */
+  kundenKonzentrationHistorie: { jahr: number; anteilPct: number; name: string | null }[]
+}
+
+export type SecKennzahlJahr = { jahr: number; wert: number }
+
+export type SecKennzahlenHistorie = {
+  umsatzMio: SecKennzahlJahr[]
+  nettogewinnMio: SecKennzahlJahr[]
+  ebitMio: SecKennzahlJahr[]
+  ebitMargePct: SecKennzahlJahr[]
+  nettoMargePct: SecKennzahlJahr[]
+  rndMio: SecKennzahlJahr[]
+  rndAnteilPct: SecKennzahlJahr[]
+  capexMio: SecKennzahlJahr[]
+  capexAnteilPct: SecKennzahlJahr[]
+  ocfMio: SecKennzahlJahr[]
+  fcfMio: SecKennzahlJahr[]
+  assetsMio: SecKennzahlJahr[]
+  eigenkapitalMio: SecKennzahlJahr[]
+  langfristigeSchuldenMio: SecKennzahlJahr[]
+  mitarbeiter: SecKennzahlJahr[]
+  goodwillMio: SecKennzahlJahr[]
+  abschreibungMio: SecKennzahlJahr[]
+  aktienrueckkaufMio: SecKennzahlJahr[]
+  aeltestesJahr: number
+  juengstesJahr: number
+  anzahlJahre: number
+}
+
+export type SecSegmentHistoriePaket = {
+  produkt: SecSegmentHistorie | null
+  geo: SecSegmentHistorie | null
+  zusatz: SecZusatzRisikoFelder
+  kennzahlen: SecKennzahlenHistorie | null
+  berichtJahr: number | null
+  anzahl10k: number
+  geladenAm: string
   quelle: 'sec_edgar'
 }
 
@@ -108,6 +174,7 @@ export type FundamentaldatenErweitert = {
   insiderNetto: InsiderNettoPaket | null
   beatMiss: Pick<EarningsBeatMissPaket, 'agg12' | 'agg20' | 'streak' | 'epsBeatRatePct' | 'umsatzBeatRatePct'> | null
   secStruktur: SecStrukturPaket | null
+  secSegmentHistorie: SecSegmentHistoriePaket | null
   euFundamental: EuFundamentalPaket | null
   optionsIv: YahooOptionsIvPaket | null
   arbeitgeber: ArbeitgeberBewertungPaket | null

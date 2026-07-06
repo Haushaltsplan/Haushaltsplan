@@ -598,3 +598,299 @@ export function segmentHinweisFuerErgebnis(ergebnis: SegmentExtraktionErgebnis):
   if (ergebnis.art === 'produkt') return 'Produkt-/Geschäftssegmente (10-K).'
   return null
 }
+
+// ---------------------------------------------------------------------------
+// Dual-Extraktion (Geo + Produkt parallel) & Mehrjahres-Historie
+// ---------------------------------------------------------------------------
+
+export type SecSegmentJahrEintrag = {
+  jahr: number
+  segmente: SecSegmentRoh[]
+}
+
+export type SecSegmentMehrjahresErgebnis = {
+  art: 'produkt' | 'geo'
+  jahre: SecSegmentJahrEintrag[]
+  quelle: SegmentExtraktionErgebnis['quelle']
+}
+
+function extrahiereOperatingSegmente(html: string): SecSegmentRoh[] {
+  let operatingBlock = extrahiereIxbrlTextBlock(html, XBRL_OPERATING_TAG)
+  let spalten = validiereSegmente(parseSpaltenOrientierteSegmente(operatingBlock))
+  let zeilen = validiereSegmente(dedupliziereSegmente(parseOperatingSegmente(operatingBlock)))
+  let operating = spalten.length >= 2 ? spalten : zeilen
+
+  if (operating.length < 2) {
+    const fallbackBlock = extrahiereIxbrlTextBlock(html, XBRL_OPERATING_FALLBACK)
+    if (fallbackBlock.length > 500) {
+      const spaltenFb = validiereSegmente(parseSpaltenOrientierteSegmente(fallbackBlock))
+      const zeilenFb = validiereSegmente(dedupliziereSegmente(parseOperatingSegmente(fallbackBlock)))
+      const fbOp = spaltenFb.length >= 2 ? spaltenFb : zeilenFb
+      if (fbOp.length > operating.length) {
+        operating = fbOp
+        operatingBlock = fallbackBlock
+      }
+    }
+  }
+
+  if (operating.length >= 2 && sindKlareProduktsegmente(operating)) return operating
+  if (operating.length >= 2 && operating.some((s) => !istGeoName(s.name))) return operating
+  return operating
+}
+
+function extrahiereGeoSegmenteListe(html: string): SecSegmentRoh[] {
+  const geoBlock = extrahiereErstenGeoBlock(html)
+  let geo = validiereSegmente(parseGeoSegmente(geoBlock, true))
+  if (geo.length < 2 && geoBlock) {
+    const geoHtml = validiereSegmente(parseGeoSegmente(geoBlock, false))
+    if (geoHtml.length > geo.length) geo = geoHtml
+  }
+  if (geo.length < 2) {
+    const operatingBlock = extrahiereIxbrlTextBlock(html, XBRL_OPERATING_TAG)
+    const geoFromOp = validiereSegmente(parseGeoSegmente(operatingBlock, false))
+    if (geoFromOp.length > geo.length) geo = geoFromOp
+  }
+  return geo
+}
+
+/** Geo- und Produktsegmente getrennt — nicht nur die „beste“ Variante. */
+export function extrahiereBeideSegmentartenAus10kHtml(html: string): {
+  produkt: SegmentExtraktionErgebnis
+  geo: SegmentExtraktionErgebnis
+} {
+  let operating = extrahiereOperatingSegmente(html)
+  let geoListe = extrahiereGeoSegmenteListe(html)
+
+  if (operating.length < 2 || geoListe.length < 2) {
+    const heur = extrahiereHtmlHeuristik(html)
+    if (heur.segmente.length >= 2) {
+      if (heur.art === 'geo' && geoListe.length < 2) geoListe = heur.segmente
+      else if (heur.art === 'produkt' && operating.length < 2) operating = heur.segmente
+      else if (geoListe.length < 2 && heur.segmente.every((s) => istGeoName(s.name))) geoListe = heur.segmente
+      else if (operating.length < 2) operating = heur.segmente
+    }
+  }
+
+  if (geoListe.length < 2 && operating.length >= 2 && operating.every((s) => istGeoName(s.name))) {
+    geoListe = operating
+    operating = []
+  }
+
+  const produkt: SegmentExtraktionErgebnis = {
+    segmente: operating,
+    art: operating.length >= 2 ? 'produkt' : null,
+    quelle: operating.length >= 2 ? 'xbrl_operating' : null,
+  }
+  const geo: SegmentExtraktionErgebnis = {
+    segmente: geoListe,
+    art: geoListe.length >= 2 ? 'geo' : null,
+    quelle: geoListe.length >= 2 ? 'xbrl_geo' : null,
+  }
+  return { produkt, geo }
+}
+
+function parseJahrAusZelle(z: string): number | null {
+  const n = bereinigeLabel(z)
+  const m4 = n.match(/^(20\d{2})$/)
+  if (m4) return parseInt(m4[1]!, 10)
+  const mLong = n.match(
+    /(?:year ended|years ended|fiscal year|(?:january|february|march|april|may|june|july|august|september|october|november|december)\s+\d{1,2})[^0-9]{0,40}(20\d{2})/i,
+  )
+  if (mLong) return parseInt(mLong[1]!, 10)
+  return null
+}
+
+function jahresSpaltenAusZeile(zellen: string[]): { jahr: number; idx: number }[] {
+  const out: { jahr: number; idx: number }[] = []
+  for (let i = 0; i < zellen.length; i++) {
+    const jahr = parseJahrAusZelle(zellen[i] ?? '')
+    if (jahr != null && jahr >= 2010 && jahr <= 2030) out.push({ jahr, idx: i })
+  }
+  return out
+}
+
+function betragAnIndex(z: TabellenZeile, idx: number): number | null {
+  const zelle = z.zellen[idx]
+  if (zelle != null) {
+    const s = bereinigeLabel(zelle).replace(/[$,()]/g, '').trim()
+    if (/^\d+(?:\.\d+)?$/.test(s)) {
+      const n = Number(s)
+      if (n > 0) return betragZuMio(n)
+    }
+  }
+  if (z.betraege.length > 0) {
+    const offset = Math.max(0, idx - 1)
+    if (z.betraege[offset] != null) return betragZuMio(z.betraege[offset]!)
+  }
+  return null
+}
+
+function anteileBerechnen(segmente: SecSegmentRoh[]): SecSegmentRoh[] {
+  const summe = segmente.reduce((s, e) => s + (e.umsatzMio ?? 0), 0)
+  if (summe <= 0) return segmente
+  for (const s of segmente) {
+    s.anteilPct = Math.round(((s.umsatzMio ?? 0) / summe) * 1000) / 10
+  }
+  return segmente
+}
+
+/** Mehrjahres-Tabelle: Zeilen = Segmente, Spalten = Geschäftsjahre. */
+export function parseMehrjahresSegmente(
+  fragment: string,
+  art: 'produkt' | 'geo',
+): SecSegmentJahrEintrag[] {
+  if (!fragment || fragment.length < 200) return []
+  const zeilen = parseTabellenZeilen(fragment)
+  const geoModus = art === 'geo'
+  const ausXbrlGeo = /GeographicalAreas|geographic/i.test(fragment.slice(0, 2000))
+
+  let headerIdx = -1
+  let jahrSpalten: { jahr: number; idx: number }[] = []
+
+  for (let i = 0; i < Math.min(zeilen.length, 30); i++) {
+    const spalten = jahresSpaltenAusZeile(zeilen[i]!.zellen)
+    if (spalten.length >= 2) {
+      headerIdx = i
+      jahrSpalten = spalten
+      break
+    }
+  }
+
+  if (headerIdx < 0 || jahrSpalten.length < 2) return []
+
+  const byJahr = new Map<number, Map<string, number>>()
+  for (const { jahr } of jahrSpalten) byJahr.set(jahr, new Map())
+
+  let inRevenueSection = geoModus || !/LongLivedAssetsByGeographical/i.test(fragment)
+  let aktivesSegment: string | null = null
+
+  for (let i = headerIdx + 1; i < zeilen.length; i++) {
+    const z = zeilen[i]!
+    const sichtbar = nichtLeereZellen(z.zellen)
+    const label0 = bereinigeLabel(sichtbar[0] ?? '')
+    const labelJoin = sichtbar.join(' ').toLowerCase()
+
+    if (/long[- ]lived assets|property and equipment|total assets/i.test(labelJoin)) {
+      inRevenueSection = false
+      aktivesSegment = null
+      continue
+    }
+    if (/net revenue|revenue[s]? by|revenues? by/i.test(labelJoin) && !/cost of revenue/i.test(labelJoin)) {
+      inRevenueSection = true
+    }
+    if (!inRevenueSection && geoModus) continue
+
+    if (!label0 || GEO_SKIP.test(label0)) continue
+
+    // MSFT-Stil: Segment-Kopfzeile, Revenue in Folgezeile
+    if (
+      /^revenues?$/i.test(label0) &&
+      aktivesSegment &&
+      inRevenueSection &&
+      !istIncomeStatementZeile(aktivesSegment)
+    ) {
+      for (const { jahr, idx } of jahrSpalten) {
+        const mio = betragAnIndex(z, idx)
+        if (mio == null || mio < 5) continue
+        byJahr.get(jahr)!.set(aktivesSegment, mio)
+      }
+      aktivesSegment = null
+      continue
+    }
+
+    if (istIncomeStatementZeile(label0)) continue
+    if (/^total\b/i.test(label0) && !istGeoName(label0)) continue
+    if (!istSegmentLabel(label0, geoModus, ausXbrlGeo)) continue
+    if (FINANCIAL_LINE_ITEM.test(label0) || AUFWAND_ZEILE.test(label0)) continue
+
+    const hatBetragInZeile = jahrSpalten.some(({ idx }) => {
+      const mio = betragAnIndex(z, idx)
+      return mio != null && mio >= 5
+    })
+
+    if (!hatBetragInZeile) {
+      const hatRevenueChild = zeilen.slice(i + 1, i + 6).some((nz) =>
+        /^revenues?$/i.test(bereinigeLabel(nichtLeereZellen(nz.zellen)[0] ?? '')),
+      )
+      if (hatRevenueChild) {
+        aktivesSegment = label0
+        continue
+      }
+    }
+
+    for (const { jahr, idx } of jahrSpalten) {
+      const mio = betragAnIndex(z, idx)
+      if (mio == null || mio < 5) continue
+      byJahr.get(jahr)!.set(label0, mio)
+    }
+    aktivesSegment = null
+  }
+
+  const jahre: SecSegmentJahrEintrag[] = []
+  for (const [jahr, map] of [...byJahr.entries()].sort((a, b) => a[0] - b[0])) {
+    const roh: SecSegmentRoh[] = [...map.entries()].map(([name, umsatzMio]) => ({
+      name,
+      umsatzMio,
+      anteilPct: null,
+    }))
+    const val = validiereSegmente(roh)
+    if (val.length >= 2) {
+      jahre.push({ jahr, segmente: anteileBerechnen(val) })
+    }
+  }
+
+  return jahre
+}
+
+function mehrjahresAusBloecke(html: string): {
+  produkt: SecSegmentJahrEintrag[]
+  geo: SecSegmentJahrEintrag[]
+} {
+  const operatingBlock = extrahiereIxbrlTextBlock(html, XBRL_OPERATING_TAG)
+  const fallbackBlock = extrahiereIxbrlTextBlock(html, XBRL_OPERATING_FALLBACK)
+  const geoBlock = extrahiereErstenGeoBlock(html)
+
+  let produkt = parseMehrjahresSegmente(operatingBlock, 'produkt')
+  if (produkt.length < 2 && fallbackBlock.length > 500) {
+    const fb = parseMehrjahresSegmente(fallbackBlock, 'produkt')
+    if (fb.length > produkt.length) produkt = fb
+  }
+
+  let geo = parseMehrjahresSegmente(geoBlock, 'geo')
+  if (geo.length < 2) {
+    const geoOp = parseMehrjahresSegmente(operatingBlock, 'geo')
+    if (geoOp.length > geo.length) geo = geoOp
+  }
+
+  return { produkt, geo }
+}
+
+/** Mehrjahres-Segmenthistorie aus einem 10-K (typ. 3 Spalten). */
+export function extrahiereSegmentHistorieAus10kHtml(html: string): {
+  produkt: SecSegmentMehrjahresErgebnis | null
+  geo: SecSegmentMehrjahresErgebnis | null
+} {
+  const { produkt, geo } = mehrjahresAusBloecke(html)
+  return {
+    produkt:
+      produkt.length >= 2
+        ? { art: 'produkt', jahre: produkt, quelle: 'xbrl_operating' }
+        : null,
+    geo: geo.length >= 2 ? { art: 'geo', jahre: geo, quelle: 'xbrl_geo' } : null,
+  }
+}
+
+/** Einzeljahr-Segmente für ältere 10-K-Filings (nur jüngste Spalte). */
+export function extrahiereSegmenteFuerJahr(
+  html: string,
+  zielJahr: number,
+): { produkt: SecSegmentRoh[]; geo: SecSegmentRoh[] } {
+  const { produkt: pHist, geo: gHist } = mehrjahresAusBloecke(html)
+  const pJahr = pHist.find((j) => j.jahr === zielJahr)
+  const gJahr = gHist.find((j) => j.jahr === zielJahr)
+  if (pJahr || gJahr) {
+    return { produkt: pJahr?.segmente ?? [], geo: gJahr?.segmente ?? [] }
+  }
+  const { produkt, geo } = extrahiereBeideSegmentartenAus10kHtml(html)
+  return { produkt: produkt.segmente, geo: geo.segmente }
+}
