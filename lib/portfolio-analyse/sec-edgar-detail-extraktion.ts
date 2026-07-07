@@ -30,6 +30,20 @@ export const SEC_DETAIL_BLOCKS: SecDetailBlockDef[] = [
     tag: 'DisaggregationOfRevenueTableTextBlock',
   },
   {
+    id: 'segment_reporting',
+    titel: 'Umsatz nach Reportable Segments',
+    art: 'produkt',
+    metrik: 'umsatz',
+    tag: 'ScheduleOfSegmentReportingInformationBySegmentTextBlock',
+  },
+  {
+    id: 'franchise_umsatz',
+    titel: 'Franchise-Umsatz',
+    art: 'umsatz_detail',
+    metrik: 'umsatz',
+    tag: 'ScheduleOfFranchiseRevenueTableTextBlock',
+  },
+  {
     id: 'produkte_services',
     titel: 'Umsatz nach Produkten & Services',
     art: 'produkte_services',

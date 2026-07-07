@@ -8,8 +8,9 @@ export type SecSegmentRoh = {
   anteilPct: number | null
   /** Segment-Operating-Income (Mio. USD) — aus 10-K Segment-Reporting. */
   operatingIncomeMio?: number | null
-  /** EBIT-Marge = Operating Income / Umsatz (nur wenn beides vorliegt). */
+  /** Netto- oder Operating-Marge = Gewinn / Umsatz (wenn in 10-K ausgewiesen). */
   margePct?: number | null
+  netIncomeMio?: number | null
 }
 
 /** Segment-Umbenennungen über Jahre (10-K-Reporting-Änderungen). */
@@ -26,6 +27,32 @@ const SEGMENT_NAME_ALIASES: [RegExp, string][] = [
   [/^intelligent cloud$/i, 'Intelligent Cloud'],
   [/^productivity and business processes$/i, 'Productivity and Business Processes'],
   [/^more personal computing$/i, 'More Personal Computing'],
+]
+
+/** Umsatz-Disaggregation → Reporting-Segment für EBIT-Marge (GOOGL, MSFT, …). */
+const UMSATZ_ZU_REPORTING_SEGMENT: [RegExp, string][] = [
+  [/^google cloud$/i, 'Google Cloud'],
+  [/^other bets$/i, 'Other Bets'],
+  [/^google services$/i, 'Google Services'],
+  [/^google search/i, 'Google Services'],
+  [/^youtube ads?$/i, 'Google Services'],
+  [/^youtube advertising$/i, 'Google Services'],
+  [/^google network/i, 'Google Services'],
+  [/^google subscriptions/i, 'Google Services'],
+  [/^google other$/i, 'Google Services'],
+  [/^google advertising$/i, 'Google Services'],
+  [/^intelligent cloud$/i, 'Intelligent Cloud'],
+  [/^productivity and business/i, 'Productivity and Business Processes'],
+  [/^more personal computing$/i, 'More Personal Computing'],
+  [/^server products/i, 'Intelligent Cloud'],
+  [/^microsoft 365/i, 'Productivity and Business Processes'],
+  [/^linked[in]?in/i, 'Productivity and Business Processes'],
+  [/^dynamics/i, 'Productivity and Business Processes'],
+  [/^windows$/i, 'More Personal Computing'],
+  [/^gaming$/i, 'More Personal Computing'],
+  [/^devices$/i, 'More Personal Computing'],
+  [/^unitedhealthcare$/i, 'UnitedHealthcare'],
+  [/^optum/i, 'Optum'],
 ]
 
 export function kanonisereSegmentNamen(segmente: SecSegmentRoh[]): SecSegmentRoh[] {
@@ -266,7 +293,7 @@ function istSegmentLabel(name: string, geoModus: boolean, ausXbrlGeo: boolean): 
   return true
 }
 
-/** iXBRL-TextBlock inkl. ix:continuation-Auslagerung. */
+/** iXBRL-TextBlock inkl. ix:continuation-Kette (MA, moderne 10-K). */
 export function extrahiereIxbrlTextBlock(html: string, tagSuffix: string): string {
   const escaped = tagSuffix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
   const nameRe = new RegExp(`name="(?:[a-zA-Z0-9_-]+:)?${escaped}"`, 'i')
@@ -277,20 +304,29 @@ export function extrahiereIxbrlTextBlock(html: string, tagSuffix: string): strin
   const nonNumericStart = html.lastIndexOf('<ix:nonNumeric', idx)
   if (nonNumericStart < 0) return ''
 
-  const header = html.slice(nonNumericStart, nonNumericStart + 2500)
-  const contMatch = header.match(/continuedAt="([^"]+)"/)
-  if (contMatch?.[1]) {
-    const contId = contMatch[1]
-    const contStart = html.indexOf(`<ix:continuation id="${contId}"`, nonNumericStart)
-    if (contStart >= 0) {
-      const contEnd = html.indexOf('</ix:continuation>', contStart)
-      if (contEnd > contStart) return html.slice(contStart, contEnd)
-    }
+  const nonNumericOpenEnd = html.indexOf('>', nonNumericStart) + 1
+  const nonNumericEnd = html.indexOf('</ix:nonNumeric>', nonNumericStart)
+  if (nonNumericEnd < 0) return ''
+
+  const header = html.slice(nonNumericStart, Math.min(nonNumericStart + 4000, nonNumericEnd))
+  let out = html.slice(nonNumericOpenEnd, nonNumericEnd)
+
+  let contId = header.match(/continuedAt="([^"]+)"/)?.[1]
+  const visited = new Set<string>()
+
+  while (contId && !visited.has(contId)) {
+    visited.add(contId)
+    const tagStart = html.indexOf(`<ix:continuation id="${contId}"`, nonNumericStart)
+    if (tagStart < 0) break
+    const openEnd = html.indexOf('>', tagStart) + 1
+    const contEnd = html.indexOf('</ix:continuation>', openEnd)
+    if (contEnd < 0) break
+    const chunkHeader = html.slice(tagStart, openEnd)
+    out += html.slice(openEnd, contEnd)
+    contId = chunkHeader.match(/continuedAt="([^"]+)"/)?.[1]
   }
 
-  const end = html.indexOf('</ix:nonNumeric>', nonNumericStart)
-  if (end < 0) return ''
-  return html.slice(nonNumericStart, end)
+  return out
 }
 
 export function extrahiereErstenGeoBlock(html: string): string {
@@ -516,6 +552,26 @@ function istOperatingIncomeZeile(label: string): boolean {
   )
 }
 
+function istNetIncomeZeile(label: string): boolean {
+  const n = bereinigeLabel(label)
+  return /^(net income|net earnings|net profit|net loss|net income \(loss\)|net \(loss\) income)$/i.test(n)
+}
+
+function istSegmentUmsatzZeile(label: string): boolean {
+  const n = bereinigeLabel(label)
+  return /^(revenues?|net sales|sales|total revenues?)$/i.test(n)
+}
+
+function reportingSegmentFuerUmsatzZeile(name: string, oiKeys: Set<string>): string {
+  const trimmed = name.trim()
+  const lower = trimmed.toLowerCase()
+  if (oiKeys.has(lower)) return trimmed
+  for (const [re, parent] of UMSATZ_ZU_REPORTING_SEGMENT) {
+    if (re.test(trimmed)) return parent
+  }
+  return trimmed
+}
+
 export function berechneSegmentMargePct(umsatzMio: number | null, operatingIncomeMio: number | null): number | null {
   if (umsatzMio == null || operatingIncomeMio == null || umsatzMio === 0) return null
   return Math.round((operatingIncomeMio / umsatzMio) * 1000) / 10
@@ -540,57 +596,58 @@ function betragAnJahrIndexSigned(
   return null
 }
 
-function findeOperatingIncomeFuerSegment(
-  oiMap: Map<string, number> | undefined,
-  segmentName: string,
-): number | null {
-  if (!oiMap || oiMap.size === 0) return null
-  const key = segmentName.trim().toLowerCase()
-  if (oiMap.has(key)) return oiMap.get(key)!
-  for (const [name, val] of oiMap) {
-    if (name.toLowerCase() === key) return val
-  }
-  for (const [re, ziel] of SEGMENT_NAME_ALIASES) {
-    if (ziel.toLowerCase() === key) {
-      for (const [name, val] of oiMap) {
-        if (re.test(name)) return val
-      }
-    }
-    if (re.test(segmentName)) {
-      const zielKey = ziel.toLowerCase()
-      if (oiMap.has(zielKey)) return oiMap.get(zielKey)!
-    }
-  }
-  return null
-}
-
 /** Operating-Income-Historie in bestehende Umsatz-Segment-Historie einmischen. */
 export function ergaenzeSegmentHistorieMitMargen(
   historie: SecSegmentHistorie,
   oiJahre: SecSegmentJahrEintrag[],
 ): SecSegmentHistorie {
-  const oiByJahr = new Map<number, Map<string, number>>()
+  const kennzByJahr = new Map<number, Map<string, { oi?: number; rev?: number; ni?: number }>>()
   for (const j of oiJahre) {
-    const map = new Map<string, number>()
+    const map = new Map<string, { oi?: number; rev?: number; ni?: number }>()
     for (const s of j.segmente) {
-      if (s.operatingIncomeMio != null) map.set(s.name.toLowerCase(), s.operatingIncomeMio)
+      const key = s.name.toLowerCase()
+      const cur = map.get(key) ?? {}
+      if (s.operatingIncomeMio != null) cur.oi = s.operatingIncomeMio
+      if (s.netIncomeMio != null) cur.ni = s.netIncomeMio
+      if (s.umsatzMio != null) cur.rev = s.umsatzMio
+      map.set(key, cur)
     }
-    if (map.size > 0) oiByJahr.set(j.jahr, map)
+    if (map.size > 0) kennzByJahr.set(j.jahr, map)
   }
+
   return {
     ...historie,
-    jahre: historie.jahre.map((j) => ({
-      ...j,
-      segmente: j.segmente.map((s) => {
-        const oi = findeOperatingIncomeFuerSegment(oiByJahr.get(j.jahr), s.name)
-        const margePct = berechneSegmentMargePct(s.umsatzMio, oi)
-        return {
-          ...s,
-          operatingIncomeMio: oi,
-          margePct,
-        }
-      }),
-    })),
+    jahre: historie.jahre.map((j) => {
+      const kennz = kennzByJahr.get(j.jahr)
+      const oiKeys = new Set(kennz ? [...kennz.keys()] : [])
+
+      const kindRev = new Map<string, number>()
+      for (const s of j.segmente) {
+        if (s.umsatzMio == null) continue
+        const parent = reportingSegmentFuerUmsatzZeile(s.name, oiKeys).toLowerCase()
+        kindRev.set(parent, Math.round(((kindRev.get(parent) ?? 0) + s.umsatzMio) * 10) / 10)
+      }
+
+      return {
+        ...j,
+        segmente: j.segmente.map((s) => {
+          const parent = reportingSegmentFuerUmsatzZeile(s.name, oiKeys)
+          const pk = parent.toLowerCase()
+          const k = kennz?.get(pk)
+          const oi = k?.oi ?? null
+          const ni = k?.ni ?? null
+          const revReporting = k?.rev ?? kindRev.get(pk) ?? null
+          const gewinn = ni ?? oi
+          const margePct = berechneSegmentMargePct(revReporting, gewinn)
+          return {
+            ...s,
+            operatingIncomeMio: oi,
+            netIncomeMio: ni,
+            margePct,
+          }
+        }),
+      }
+    }),
   }
 }
 
@@ -634,9 +691,16 @@ function parseMehrjahresOperatingIncomeRowOriented(fragment: string): SecSegment
   }
   if (headerIdx < 0 || jahrSpalten.length < 2) return []
 
-  const byJahr = new Map<number, Map<string, number>>()
+  const byJahr = new Map<number, Map<string, { oi?: number; rev?: number; ni?: number }>>()
   for (const { jahr } of jahrSpalten) byJahr.set(jahr, new Map())
   let aktivesSegment: string | null = null
+
+  const touch = (jahr: number, seg: string) => {
+    const key = seg.toLowerCase()
+    const m = byJahr.get(jahr)!
+    if (!m.has(key)) m.set(key, {})
+    return m.get(key)!
+  }
 
   for (let i = headerIdx + 1; i < zeilen.length; i++) {
     const z = zeilen[i]!
@@ -644,8 +708,22 @@ function parseMehrjahresOperatingIncomeRowOriented(fragment: string): SecSegment
     const label0 = bereinigeLabel(sichtbar[0] ?? '')
 
     const segName = segmentNameAusZeile(z.zellen, z.betraege)
-    if (segName && !istOperatingIncomeZeile(label0) && !istIncomeStatementZeile(label0)) {
+    if (
+      segName &&
+      !istOperatingIncomeZeile(label0) &&
+      !istSegmentUmsatzZeile(label0) &&
+      !istIncomeStatementZeile(label0)
+    ) {
       aktivesSegment = segName
+      continue
+    }
+
+    if (istSegmentUmsatzZeile(label0) && aktivesSegment) {
+      jahrSpalten.forEach(({ jahr }, yearIdx) => {
+        const mio = betragAnJahrIndexSigned(z, jahrSpalten, yearIdx)
+        if (mio == null) return
+        touch(jahr, aktivesSegment!).rev = mio
+      })
       continue
     }
 
@@ -653,7 +731,17 @@ function parseMehrjahresOperatingIncomeRowOriented(fragment: string): SecSegment
       jahrSpalten.forEach(({ jahr }, yearIdx) => {
         const mio = betragAnJahrIndexSigned(z, jahrSpalten, yearIdx)
         if (mio == null) return
-        byJahr.get(jahr)!.set(aktivesSegment!, mio)
+        touch(jahr, aktivesSegment!).oi = mio
+      })
+      aktivesSegment = null
+      continue
+    }
+
+    if (istNetIncomeZeile(label0) && aktivesSegment) {
+      jahrSpalten.forEach(({ jahr }, yearIdx) => {
+        const mio = betragAnJahrIndexSigned(z, jahrSpalten, yearIdx)
+        if (mio == null) return
+        touch(jahr, aktivesSegment!).ni = mio
       })
       aktivesSegment = null
       continue
@@ -674,13 +762,17 @@ function parseMehrjahresOperatingIncomeRowOriented(fragment: string): SecSegment
     .filter(([, map]) => map.size >= 1)
     .map(([jahr, map]) => ({
       jahr,
-      segmente: [...map.entries()].map(([name, operatingIncomeMio]) => ({
-        name,
-        umsatzMio: null,
-        anteilPct: null,
-        operatingIncomeMio,
-      })),
+      segmente: [...map.entries()]
+        .filter(([, k]) => k.oi != null || k.ni != null || k.rev != null)
+        .map(([name, k]) => ({
+          name,
+          umsatzMio: k.rev ?? null,
+          anteilPct: null,
+          operatingIncomeMio: k.oi ?? null,
+          netIncomeMio: k.ni ?? null,
+        })),
     }))
+    .filter((j) => j.segmente.length >= 1)
 }
 
 /** Spaltenorientiert: Spalten = Segmente, Zeile = Operating income. */
@@ -690,11 +782,25 @@ function parseMehrjahresOperatingIncomeSpaltenOrientiert(fragment: string): SecS
   let pendingJahr: number | null = null
 
   const speichere = (jahr: number | null, segmente: SecSegmentRoh[]) => {
-    const norm = kanonisereSegmentNamen(segmente).filter((s) => s.operatingIncomeMio != null)
+    const norm = kanonisereSegmentNamen(segmente).filter(
+      (s) => s.operatingIncomeMio != null || s.umsatzMio != null,
+    )
     if (norm.length < 1) return
     const j = jahr != null && jahr >= 2010 && jahr <= 2030 ? jahr : pendingJahr
     if (j == null || j < 2010) return
-    byJahr.set(j, norm)
+    const merged = new Map<string, SecSegmentRoh>()
+    for (const s of byJahr.get(j) ?? []) merged.set(s.name.toLowerCase(), s)
+    for (const s of norm) {
+      const key = s.name.toLowerCase()
+      const prev = merged.get(key)
+      merged.set(key, {
+        name: s.name,
+        umsatzMio: s.umsatzMio ?? prev?.umsatzMio ?? null,
+        anteilPct: null,
+        operatingIncomeMio: s.operatingIncomeMio ?? prev?.operatingIncomeMio ?? null,
+      })
+    }
+    byJahr.set(j, [...merged.values()])
     pendingJahr = null
   }
 
@@ -722,6 +828,30 @@ function parseMehrjahresOperatingIncomeSpaltenOrientiert(fragment: string): SecS
       const jahrInZeile = label0.match(/^(20\d{2})$/)?.[1]
       if (jahrInZeile && /^(20\d{2})$/.test(label0)) {
         pendingJahr = parseInt(jahrInZeile, 10)
+        continue
+      }
+
+      if (spaltenNamen.length >= 2 && istSegmentUmsatzZeile(label0)) {
+        const zahlen =
+          z.betraege.length >= spaltenNamen.length
+            ? z.betraege
+            : sichtbar
+                .slice(1)
+                .map((c) => parseBetragAusText(c))
+                .filter((n): n is number => n != null)
+        if (zahlen.length < spaltenNamen.length) continue
+        const namen = spaltenNamen.filter((n) => !/^\(?\s*millions of dollars\s*\)?$/i.test(n))
+        const roh = namen.map((name, idx) => ({
+          name,
+          umsatzMio: betragZuMio(zahlen[idx]!),
+          anteilPct: null,
+          operatingIncomeMio: null,
+        }))
+        const jahr =
+          pendingJahr ??
+          (jahrInZeile ? parseInt(jahrInZeile, 10) : null) ??
+          (parseInt(teil.match(/\b(20\d{2})\b/)?.[1] ?? '0', 10) || null)
+        speichere(jahr && jahr >= 2010 ? jahr : null, roh)
         continue
       }
 
@@ -1221,16 +1351,33 @@ function mergeJahrEintraege(
   primaer: SecSegmentJahrEintrag[],
   sekundaer: SecSegmentJahrEintrag[],
 ): SecSegmentJahrEintrag[] {
-  const map = new Map<number, SecSegmentRoh[]>()
-  for (const j of primaer) map.set(j.jahr, j.segmente)
-  for (const j of sekundaer) {
-    if (!map.has(j.jahr) || (map.get(j.jahr)?.length ?? 0) < j.segmente.length) {
-      map.set(j.jahr, j.segmente)
+  const map = new Map<number, Map<string, SecSegmentRoh>>()
+
+  const add = (jahr: number, segmente: SecSegmentRoh[]) => {
+    let m = map.get(jahr)
+    if (!m) {
+      m = new Map()
+      map.set(jahr, m)
+    }
+    for (const s of kanonisereSegmentNamen(segmente)) {
+      const key = s.name.toLowerCase()
+      const prev = m.get(key)
+      m.set(key, {
+        name: s.name,
+        umsatzMio: s.umsatzMio ?? prev?.umsatzMio ?? null,
+        anteilPct: s.anteilPct ?? prev?.anteilPct ?? null,
+        operatingIncomeMio: s.operatingIncomeMio ?? prev?.operatingIncomeMio ?? null,
+        margePct: s.margePct ?? prev?.margePct ?? null,
+      })
     }
   }
+
+  for (const j of primaer) add(j.jahr, j.segmente)
+  for (const j of sekundaer) add(j.jahr, j.segmente)
+
   return [...map.entries()]
     .sort((a, b) => a[0] - b[0])
-    .map(([jahr, segmente]) => ({ jahr, segmente }))
+    .map(([jahr, segMap]) => ({ jahr, segmente: [...segMap.values()] }))
 }
 
 /** Spalten = Segmente, Zeilen = Jahre (UNH, viele Healthcare-/Finanz-Titel). */

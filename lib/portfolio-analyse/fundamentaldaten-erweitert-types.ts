@@ -51,6 +51,7 @@ export type SecSegmentEintrag = {
   anteilPct: number | null
   umsatzMio: number | null
   operatingIncomeMio?: number | null
+  netIncomeMio?: number | null
   margePct?: number | null
 }
 

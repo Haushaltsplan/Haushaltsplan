@@ -16,6 +16,7 @@ const BEKANNTE_TAGS = new Set([
   'ScheduleOfEntitysRevenueFromExternalCustomersByProductsAndServicesTextBlock',
   'ScheduleOfSegmentReportingInformationBySegmentTextBlock',
   'SegmentReportingDisclosureTextBlock',
+  'ScheduleOfFranchiseRevenueTableTextBlock',
   'RevenueFromExternalCustomersByGeographicAreasTableTextBlock',
   'ScheduleOfRevenuesFromExternalCustomersAndLongLivedAssetsByGeographicalAreasTableTextBlock',
   'LongLivedAssetsByGeographicAreasTableTextBlock',

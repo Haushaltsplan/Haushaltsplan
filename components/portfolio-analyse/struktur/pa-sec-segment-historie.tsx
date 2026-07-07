@@ -1,4 +1,4 @@
-'use client'
+﻿'use client'
 
 import { useMemo, useState } from 'react'
 
@@ -13,7 +13,6 @@ import type {
   SecKennzahlJahr,
   SecKennzahlenHistorie,
   SecSegmentHistorie,
-  SecSegmentHistorieKategorie,
   SecSegmentHistoriePaket,
 } from '@/lib/portfolio-analyse/fundamentaldaten-erweitert-types'
 import { segmentFarben } from '@/lib/portfolio-analyse/fundamentaldaten-struktur-hilfen'
@@ -260,7 +259,7 @@ function PaSecBacklogHistorie({
               <th className="px-2 py-1.5 font-medium">Jahr</th>
               <th className="px-2 py-1.5 font-medium text-right">{backlog.label}</th>
               <th className="px-2 py-1.5 font-medium text-right">YoY</th>
-              <th className="px-2 py-1.5 font-medium text-right">÷ Umsatz</th>
+              <th className="px-2 py-1.5 font-medium text-right">├À Umsatz</th>
             </tr>
           </thead>
           <tbody>
@@ -523,56 +522,74 @@ function gemeinsameJahre(...arrays: SecKennzahlJahr[][]): number[] {
   return [...s].sort((a, b) => a - b)
 }
 
+function formatMio(mio: number): string {
+  if (Math.abs(mio) >= 1_000) {
+    return `${(mio / 1_000).toLocaleString('de-DE', { maximumFractionDigits: 2 })} Mrd. $`
+  }
+  return `${mio.toLocaleString('de-DE', { maximumFractionDigits: 0 })} Mio. $`
+}
+
 function PaSecSegmentTabelle({ hist, farben }: { hist: SecSegmentHistorie; farben: string[] }) {
   const namen = alleSegmentNamen(hist)
   const jahre = hist.jahre.map((j) => j.jahr)
-  const metrik = hist.art === 'geo_assets' ? 'Mio. USD (Assets)' : 'Mio. USD'
 
   return (
     <div className={appTableScrollClassName}>
       <table className="app-data-table min-w-full text-left text-xs">
         <thead className="text-[var(--app-text-muted)]">
           <tr>
-            <th className="sticky left-0 z-10 bg-[var(--app-surface)] pb-2 pr-3 font-medium">Position</th>
+            <th className="sticky left-0 z-10 bg-[var(--app-surface)] pb-2 pr-3 font-medium">Segment</th>
             {jahre.map((j) => (
-              <th key={j} className="pb-2 px-2 text-right font-medium tabular-nums">{j}</th>
+              <th key={j} className="min-w-[7.5rem] pb-2 px-2 text-right font-medium">
+                <span className="block tabular-nums">{j}</span>
+                <span className="mt-0.5 block text-[10px] font-normal text-[var(--app-text-muted)]">
+                  Umsatz · YoY · Nettomarge
+                </span>
+              </th>
             ))}
           </tr>
         </thead>
         <tbody>
           {namen.map((name, i) => (
             <tr key={name} className="border-t border-[var(--app-border)]/40">
-              <td className="sticky left-0 z-10 bg-[var(--app-surface)] py-2 pr-3">
+              <td className="sticky left-0 z-10 bg-[var(--app-surface)] py-2.5 pr-3 align-top">
                 <span className="mr-2 inline-block h-2 w-2 rounded-sm" style={{ backgroundColor: farben[i % farben.length] }} />
-                {name}
+                <span className="font-medium text-[var(--app-text)]">{name}</span>
               </td>
               {jahre.map((j, ji) => {
-                const pct = anteilFuerSegment(hist, j, name)
                 const mio = umsatzFuerSegment(hist, j, name)
+                const anteil = anteilFuerSegment(hist, j, name)
                 const marge = margeFuerSegment(hist, j, name)
                 const vorjahr = ji > 0 ? jahre[ji - 1]! : null
-                const wachstum = vorjahr != null ? umsatzWachstumPct(mio, umsatzFuerSegment(hist, vorjahr, name)) : null
+                const wachstum =
+                  vorjahr != null ? umsatzWachstumPct(mio, umsatzFuerSegment(hist, vorjahr, name)) : null
                 return (
-                  <td key={j} className="py-2 px-2 text-right tabular-nums">
-                    {pct != null ? <span className="font-medium text-[var(--app-text)]">{pct.toFixed(1)} %</span> : '–'}
+                  <td key={j} className="px-2 py-2.5 align-top text-right tabular-nums">
                     {mio != null ? (
+                      <span className="block font-semibold text-[var(--app-text)]">{formatMio(mio)}</span>
+                    ) : (
+                      <span className="block text-[var(--app-text-muted)]">–</span>
+                    )}
+                    {anteil != null ? (
                       <span className="block text-[10px] text-[var(--app-text-muted)]">
-                        {mio.toLocaleString('de-DE')} {metrik}
-                      </span>
-                    ) : null}
-                    {marge != null ? (
-                      <span className={`block text-[10px] font-medium ${margeClass(marge)}`}>
-                        Marge {marge.toLocaleString('de-DE')} %
+                        {anteil.toLocaleString('de-DE', { maximumFractionDigits: 1 })} % Mix
                       </span>
                     ) : null}
                     {wachstum != null ? (
-                      <span className={`block text-[10px] font-medium ${wachstumClass(wachstum)}`}>
+                      <span className={`mt-0.5 block text-[11px] font-semibold ${wachstumClass(wachstum)}`}>
                         {wachstum > 0 ? '+' : ''}
-                        {wachstum.toLocaleString('de-DE')} % YoY
+                        {wachstum.toLocaleString('de-DE')} % vs. VJ
                       </span>
                     ) : ji > 0 ? (
-                      <span className="block text-[10px] text-[var(--app-text-muted)]">–</span>
+                      <span className="mt-0.5 block text-[10px] text-[var(--app-text-muted)]">–</span>
                     ) : null}
+                    {marge != null ? (
+                      <span className={`mt-0.5 block text-[11px] font-semibold ${margeClass(marge)}`}>
+                        Nettomarge {marge.toLocaleString('de-DE')} %
+                      </span>
+                    ) : (
+                      <span className="mt-0.5 block text-[10px] text-[var(--app-text-muted)]">Marge n/a</span>
+                    )}
                   </td>
                 )
               })}
@@ -644,16 +661,21 @@ function PaSecKennzahlenPanel({ kz }: { kz: SecKennzahlenHistorie }) {
   )
 }
 
-function PaSecKategoriePanel({ kat }: { kat: SecSegmentHistorieKategorie }) {
-  const hist = kat.historie
+function PaUmsatzmixBlock({ titel, hist }: { titel: string; hist: SecSegmentHistorie }) {
   const farben = segmentFarben(alleSegmentNamen(hist).length)
-  const metrikLabel = kat.metrik === 'assets' ? 'Anlagevermögen' : 'Umsatz'
+  const hatMargen = hist.jahre.some((j) => j.segmente.some((s) => s.margePct != null))
 
   return (
     <div className="space-y-4">
-      <p className="text-xs text-[var(--app-text-muted)]">
-        {kat.titel} · {hist.anzahlJahre} Jahre ({hist.aeltestesJahr}–{hist.juengstesJahr}) · {metrikLabel} · SEC 10-K XBRL
-      </p>
+      <div>
+        <p className="text-sm font-medium text-white">{titel}</p>
+        <p className="text-xs text-[var(--app-text-muted)]">
+          {hist.anzahlJahre} Jahre ({hist.aeltestesJahr}–{hist.juengstesJahr}) · SEC 10-K XBRL
+          {hatMargen
+            ? ' · Nettomarge aus Segment-Gewinn (Net Income oder Operating Income, je nach Ausweis)'
+            : ' · Nettomarge je Segment oft nicht separat in 10-K ausgewiesen'}
+        </p>
+      </div>
       <PaSecSegmentStackedChart hist={hist} farben={farben} />
       <div className="flex flex-wrap gap-x-3 gap-y-1">
         {alleSegmentNamen(hist).map((name, i) => (
@@ -669,39 +691,38 @@ function PaSecKategoriePanel({ kat }: { kat: SecSegmentHistorieKategorie }) {
 }
 
 export function PaSecSegmentHistorie({ paket }: { paket: SecSegmentHistoriePaket }) {
-  const kategorien = paket.kategorien.length > 0
-    ? paket.kategorien
-    : [
-        ...(paket.geo ? [{ id: 'geo', titel: 'Geografie', art: 'geo' as const, metrik: 'umsatz' as const, historie: paket.geo }] : []),
-        ...(paket.produkt ? [{ id: 'produkt', titel: 'Produktsegmente', art: 'produkt' as const, metrik: 'umsatz' as const, historie: paket.produkt }] : []),
-      ]
-
-  const [aktivId, setAktivId] = useState(
-    () =>
-      kategorien.find((k) => k.id === 'umsatz_detail')?.id ??
-      kategorien.find((k) => k.id === 'geo_umsatz')?.id ??
-      kategorien[0]?.id ??
-      'umsatz_detail',
-  )
-  const aktiv = kategorien.find((k) => k.id === aktivId) ?? kategorien[0]
+  const produkt = paket.produkt
+  const geo = paket.geo
+  const hatProdukt = (produkt?.anzahlJahre ?? 0) >= 2
+  const hatGeo = (geo?.anzahlJahre ?? 0) >= 2
+  const hatUmsatzmix = hatProdukt || hatGeo
   const zusatz = paket.zusatz
 
   const jahresSpanne = useMemo(() => {
     const alle = [
-      ...kategorien.flatMap((k) => [k.historie.aeltestesJahr, k.historie.juengstesJahr]),
+      ...(produkt ? [produkt.aeltestesJahr, produkt.juengstesJahr] : []),
+      ...(geo ? [geo.aeltestesJahr, geo.juengstesJahr] : []),
       ...(paket.kennzahlen ? [paket.kennzahlen.aeltestesJahr, paket.kennzahlen.juengstesJahr] : []),
     ]
     if (alle.length === 0) return null
     return { min: Math.min(...alle), max: Math.max(...alle) }
-  }, [kategorien, paket.kennzahlen])
+  }, [produkt, geo, paket.kennzahlen])
 
-  if (kategorien.length === 0 && !paket.kennzahlen && !zusatz.mitarbeiterAnzahl && !paket.backlog) return null
+  if (
+    !hatUmsatzmix &&
+    !paket.kennzahlen &&
+    !zusatz.mitarbeiterAnzahl &&
+    !paket.backlog &&
+    zusatz.mitarbeiterHistorie.length < 2
+  ) {
+    return null
+  }
 
   return (
     <PaCard variant="elevated" className="space-y-5 p-5 sm:p-6">
       <PaStrukturSectionHeader
         titel="SEC 10-K — Strukturdaten"
-        untertitel={`${paket.anzahl10k} Jahresberichte · ${kategorien.length} XBRL-Tabellen · ${jahresSpanne ? `${jahresSpanne.min}–${jahresSpanne.max}` : '–'}`}
+        untertitel={`${paket.anzahl10k} Jahresberichte · ${jahresSpanne ? `${jahresSpanne.min}–${jahresSpanne.max}` : '–'}`}
       />
 
       {(zusatz.mitarbeiterAnzahl != null || zusatz.auslandsumsatzAnteilPct != null || zusatz.hauptkunden.length > 0) && (
@@ -716,31 +737,21 @@ export function PaSecSegmentHistorie({ paket }: { paket: SecSegmentHistoriePaket
 
       {paket.kennzahlen ? <PaSecKennzahlenPanel kz={paket.kennzahlen} /> : null}
 
-      {kategorien.length > 0 && (
-        <div className="space-y-4 border-t border-[var(--app-border)]/60 pt-4">
-          <p className="text-sm font-medium text-white">Umsatzmix nach Segment</p>
-          <p className="text-xs text-[var(--app-text-muted)]">
-            Geo- & Produktsegmente aus 10-K-Tabellen · EBIT-Marge aus Segment-Operating-Income (wo verfügbar) · SEC XBRL
-          </p>
-          <div className="flex flex-wrap gap-1.5">
-            {kategorien.map((k) => (
-              <button
-                key={k.id}
-                type="button"
-                onClick={() => setAktivId(k.id)}
-                className={`rounded-lg px-2.5 py-1.5 text-[11px] font-medium transition-colors ${
-                  aktiv?.id === k.id
-                    ? 'bg-teal-500/20 text-teal-300 ring-1 ring-teal-500/40'
-                    : 'bg-[var(--app-surface-muted)]/50 text-[var(--app-text-muted)] hover:text-[var(--app-text)]'
-                }`}
-              >
-                {k.titel} ({k.historie.anzahlJahre}J)
-              </button>
-            ))}
+      {hatUmsatzmix ? (
+        <div className="space-y-6 border-t border-[var(--app-border)]/60 pt-4">
+          <div>
+            <p className="text-sm font-medium text-white">Umsatzmix nach Segment</p>
+            <p className="text-xs text-[var(--app-text-muted)]">
+              Umsatz nach Produktgruppe und Region · YoY-Entwicklung · Nettomarge je Segment · SEC XBRL
+            </p>
           </div>
-          {aktiv ? <PaSecKategoriePanel kat={aktiv} /> : null}
+          {hatProdukt && produkt ? (
+            <PaUmsatzmixBlock titel="Umsatz nach Produktgruppe" hist={produkt} />
+          ) : null}
+          {hatProdukt && hatGeo ? <div className="border-t border-[var(--app-border)]/40" /> : null}
+          {hatGeo && geo ? <PaUmsatzmixBlock titel="Umsatz nach Region" hist={geo} /> : null}
         </div>
-      )}
+      ) : null}
 
       {zusatz.mitarbeiterHistorie.length >= 2 && (
         <div className="border-t border-[var(--app-border)]/60 pt-4">

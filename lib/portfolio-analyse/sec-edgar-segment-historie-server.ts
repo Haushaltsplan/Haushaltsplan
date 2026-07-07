@@ -40,13 +40,15 @@ import {
 } from '@/lib/portfolio-analyse/sec-edgar-segment-extraktion'
 
 const CACHE_MS = 24 * 60 * 60 * 1000
+/** Parser-Version — bei Extraktions-Fixes erhöhen (invalidiert Server-Cache). */
+const CACHE_VERSION = 4
 /** Ziel: mindestens 12 Geschäftsjahre Segmentdaten. */
 const ZIEL_JAHRE = 12
 /** Max. 10-K-Filings laden (je ~3 Jahre pro Filing → 12+ Jahre). */
 const MAX_10K_FILINGS = 14
 const PAUSE_MS = 350
 
-const cache = new Map<string, { at: number; data: SecSegmentHistoriePaket | null }>()
+const cache = new Map<string, { at: number; v: number; data: SecSegmentHistoriePaket | null }>()
 
 function pause(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms))
@@ -208,10 +210,12 @@ function baueKategorienListe(
   return out.sort((a, b) => {
     const prio: Record<string, number> = {
       umsatz_detail: 0,
-      geo_umsatz: 1,
-      geo_kombiniert: 2,
-      produkte_services: 3,
-      geo_assets: 4,
+      segment_reporting: 1,
+      franchise_umsatz: 2,
+      geo_umsatz: 3,
+      geo_kombiniert: 4,
+      produkte_services: 5,
+      geo_assets: 6,
     }
     const pa = prio[a.id] ?? 50
     const pb = prio[b.id] ?? 50
@@ -225,6 +229,53 @@ function besteHistorie(
   filter: (k: SecSegmentHistorieKategorie) => boolean,
 ): SecSegmentHistorie | null {
   const hits = kategorien.filter(filter)
+  if (hits.length === 0) return null
+  return hits.sort((a, b) => b.historie.anzahlJahre - a.historie.anzahlJahre)[0]!.historie
+}
+
+const PRODUKT_KAT_PRIO = ['umsatz_detail', 'segment_reporting', 'franchise_umsatz', 'produkte_services'] as const
+const GEO_KAT_PRIO = ['geo_umsatz', 'geo_kombiniert', 'revenues_geo_alt'] as const
+
+/** Bevorzugt aktuelle Jahre — veraltete Disaggregation (z. B. UNP) nicht über frische Segment-Tabellen. */
+function waehleProduktHistorie(
+  kategorien: SecSegmentHistorieKategorie[],
+  berichtJahr: number | null,
+): SecSegmentHistorie | null {
+  const refJahr = berichtJahr ?? new Date().getFullYear() - 1
+  const hits = PRODUKT_KAT_PRIO.map((id) => kategorien.find((k) => k.id === id)).filter(
+    (k): k is SecSegmentHistorieKategorie => k != null,
+  )
+  if (hits.length === 0) {
+    return besteHistorie(
+      kategorien,
+      (k) => k.art === 'produkt' && k.metrik === 'umsatz' && !k.id.startsWith('dyn_'),
+    )
+  }
+
+  const sortiert = [...hits].sort((a, b) => {
+    const aStale = a.historie.juengstesJahr < refJahr - 1 ? 1 : 0
+    const bStale = b.historie.juengstesJahr < refJahr - 1 ? 1 : 0
+    if (aStale !== bStale) return aStale - bStale
+    if (b.historie.anzahlJahre !== a.historie.anzahlJahre) {
+      return b.historie.anzahlJahre - a.historie.anzahlJahre
+    }
+    if (b.historie.juengstesJahr !== a.historie.juengstesJahr) {
+      return b.historie.juengstesJahr - a.historie.juengstesJahr
+    }
+    return PRODUKT_KAT_PRIO.indexOf(a.id as (typeof PRODUKT_KAT_PRIO)[number]) -
+      PRODUKT_KAT_PRIO.indexOf(b.id as (typeof PRODUKT_KAT_PRIO)[number])
+  })
+  return sortiert[0]?.historie ?? null
+}
+
+function waehleGeoHistorie(kategorien: SecSegmentHistorieKategorie[]): SecSegmentHistorie | null {
+  for (const id of GEO_KAT_PRIO) {
+    const hit = kategorien.find((k) => k.id === id)
+    if (hit && hit.historie.anzahlJahre >= 2) return hit.historie
+  }
+  const hits = kategorien.filter(
+    (k) => k.art === 'geo' && k.metrik === 'umsatz' && !k.id.startsWith('dyn_'),
+  )
   if (hits.length === 0) return null
   return hits.sort((a, b) => b.historie.anzahlJahre - a.historie.anzahlJahre)[0]!.historie
 }
@@ -400,11 +451,11 @@ export async function ladeSecSegmentHistorie(ticker: string): Promise<SecSegment
   if (!sym || sym.includes('.')) return null
 
   const hit = cache.get(sym)
-  if (hit && Date.now() - hit.at < CACHE_MS) return hit.data
+  if (hit && hit.v === CACHE_VERSION && Date.now() - hit.at < CACHE_MS) return hit.data
 
   const cik = await cikFuerTicker(sym)
   if (!cik) {
-    cache.set(sym, { at: Date.now(), data: null })
+    cache.set(sym, { at: Date.now(), v: CACHE_VERSION, data: null })
     return null
   }
 
@@ -415,7 +466,7 @@ export async function ladeSecSegmentHistorie(ticker: string): Promise<SecSegment
     ])
 
     if (filings.length === 0 && !kennzahlen) {
-      cache.set(sym, { at: Date.now(), data: null })
+      cache.set(sym, { at: Date.now(), v: CACHE_VERSION, data: null })
       return null
     }
 
@@ -432,8 +483,6 @@ export async function ladeSecSegmentHistorie(ticker: string): Promise<SecSegment
 
     for (let i = 0; i < filings.length; i++) {
       const f = filings[i]!
-      const jahreBisher = Math.max(...[...kategorieMaps.values()].map((m) => m.size), 0)
-      if (jahreBisher >= ZIEL_JAHRE && kategorieMaps.size >= 4) break
       if (i > 0) await pause(PAUSE_MS)
 
       const hitDoc = await lade10kHtml(cik, f)
@@ -519,17 +568,14 @@ export async function ladeSecSegmentHistorie(ticker: string): Promise<SecSegment
         : k,
     )
 
-    let produkt =
-      besteHistorie(kategorien, (k) => k.id === 'umsatz_detail') ??
-      besteHistorie(kategorien, (k) => k.art === 'produkt' && k.metrik === 'umsatz') ??
-      null
+    let produkt = waehleProduktHistorie(kategorien, berichtJahr)
     if (produkt) {
       produkt = ergaenzeSegmentHistorieMitMargen(produkt, oiJahrEintraege)
     }
-    let geo =
-      besteHistorie(kategorien, (k) => k.id === 'geo_umsatz') ??
-      besteHistorie(kategorien, (k) => k.art === 'geo' && k.metrik === 'umsatz') ??
-      null
+    let geo = waehleGeoHistorie(kategorien)
+    if (geo) {
+      geo = ergaenzeSegmentHistorieMitMargen(geo, oiJahrEintraege)
+    }
 
     if (!produkt && !geo && html10k.length > 5_000) {
       const beide = extrahiereBeideSegmentartenAus10kHtml(html10k)
@@ -559,7 +605,7 @@ export async function ladeSecSegmentHistorie(ticker: string): Promise<SecSegment
       !zusatz.mitarbeiterAnzahl &&
       zusatz.hauptkunden.length === 0
     ) {
-      cache.set(sym, { at: Date.now(), data: null })
+      cache.set(sym, { at: Date.now(), v: CACHE_VERSION, data: null })
       return null
     }
 
@@ -576,10 +622,10 @@ export async function ladeSecSegmentHistorie(ticker: string): Promise<SecSegment
       quelle: 'sec_edgar',
     }
 
-    cache.set(sym, { at: Date.now(), data })
+    cache.set(sym, { at: Date.now(), v: CACHE_VERSION, data })
     return data
   } catch {
-    cache.set(sym, { at: Date.now(), data: null })
+    cache.set(sym, { at: Date.now(), v: CACHE_VERSION, data: null })
     return null
   }
 }
