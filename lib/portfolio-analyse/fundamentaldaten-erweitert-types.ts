@@ -157,7 +157,7 @@ export type SecSegmentHistoriePaket = {
   berichtJahr: number | null
   anzahl10k: number
   geladenAm: string
-  quelle: 'sec_edgar'
+  quelle: 'sec_edgar' | 'marketscreener'
 }
 
 export type EuFundamentalKennzahl = {

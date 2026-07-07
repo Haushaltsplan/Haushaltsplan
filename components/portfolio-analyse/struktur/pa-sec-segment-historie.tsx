@@ -706,17 +706,22 @@ export function PaSecSegmentHistorie({ paket }: { paket: SecSegmentHistoriePaket
     return null
   }
 
+  const quelleLabel = paket.quelle === 'marketscreener' ? 'Marketscreener' : 'SEC XBRL'
+  const headerTitel =
+    paket.quelle === 'marketscreener' ? 'Umsatzstruktur — Segment & Region' : 'SEC 10-K — Strukturdaten'
+  const headerUntertitel =
+    paket.quelle === 'marketscreener'
+      ? `${Math.max(produkt?.anzahlJahre ?? 0, geo?.anzahlJahre ?? 0)} Jahre Historie · ${jahresSpanne ? `${jahresSpanne.min}–${jahresSpanne.max}` : '–'}`
+      : `${paket.anzahl10k} Jahresberichte · ${jahresSpanne ? `${jahresSpanne.min}–${jahresSpanne.max}` : '–'}`
+
   return (
     <PaCard variant="elevated" className="space-y-5 p-5 sm:p-6">
-      <PaStrukturSectionHeader
-        titel="SEC 10-K — Strukturdaten"
-        untertitel={`${paket.anzahl10k} Jahresberichte · ${jahresSpanne ? `${jahresSpanne.min}–${jahresSpanne.max}` : '–'}`}
-      />
+      <PaStrukturSectionHeader titel={headerTitel} untertitel={headerUntertitel} />
 
       {(zusatz.mitarbeiterAnzahl != null || zusatz.auslandsumsatzAnteilPct != null || zusatz.hauptkunden.length > 0) && (
         <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
           <PaStrukturKennzahl label="Mitarbeiter (10-K)" wert={zusatz.mitarbeiterAnzahl?.toLocaleString('de-DE') ?? null} />
-          <PaStrukturKennzahl label="Auslandsanteil Umsatz (10-K)" wert={zusatz.auslandsumsatzAnteilPct != null ? `${zusatz.auslandsumsatzAnteilPct} %` : null} />
+          <PaStrukturKennzahl label="Auslandsanteil Umsatz" wert={zusatz.auslandsumsatzAnteilPct != null ? `${zusatz.auslandsumsatzAnteilPct} %` : null} />
           {zusatz.hauptkunden.slice(0, 3).map((k) => (
             <PaStrukturKennzahl key={k.name} label={`Kunde: ${k.name}`} wert={`${k.anteilPct} % Umsatz`} />
           ))}
@@ -731,7 +736,7 @@ export function PaSecSegmentHistorie({ paket }: { paket: SecSegmentHistoriePaket
             <div>
               <p className="text-sm font-medium text-white">Umsatzmix nach Segment</p>
               <p className="text-xs text-[var(--app-text-muted)]">
-                Umsatz und YoY-Entwicklung · SEC XBRL
+                Umsatz und YoY-Entwicklung · {quelleLabel}
               </p>
             </div>
             {hatProdukt && hatGeo ? (

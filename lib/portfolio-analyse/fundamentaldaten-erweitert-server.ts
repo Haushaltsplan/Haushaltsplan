@@ -9,7 +9,7 @@ import { ladeInsiderNettoHandel } from '@/lib/portfolio-analyse/fundamentaldaten
 import { ladeEarningsBeatMissHistorie } from '@/lib/portfolio-analyse/earnings-beat-miss-historie-server'
 import { ladeEuFundamentalKennzahlen } from '@/lib/portfolio-analyse/marketscreener-fundamental-kennzahlen-server'
 import { ladeFinvizKennzahlen } from '@/lib/portfolio-analyse/momentum-trader/momentum-finviz-server'
-import { ladeSecSegmentHistorie } from '@/lib/portfolio-analyse/sec-edgar-segment-historie-server'
+import { ladeMarketscreenerSegmentHistorie } from '@/lib/portfolio-analyse/marketscreener-segment-historie-server'
 import { ladeSecStrukturExtraktion } from '@/lib/portfolio-analyse/sec-edgar-struktur-server'
 import { ladeYahooHolders } from '@/lib/portfolio-analyse/yahoo-holders-server'
 import { ladeYahooOptionsIv } from '@/lib/portfolio-analyse/yahoo-options-iv-server'
@@ -48,7 +48,14 @@ export async function ladeFundamentaldatenErweitert(opts: {
     !ticker.includes('.') ? ladeInsiderNettoHandel(ticker) : Promise.resolve(null),
     ticker ? ladeEarningsBeatMissHistorie({ ticker, symbolYahoo: symbol, isin, limit: 8 }) : Promise.resolve(null),
     !ticker.includes('.') ? ladeSecStrukturExtraktion(ticker) : Promise.resolve(null),
-    !ticker.includes('.') ? ladeSecSegmentHistorie(ticker) : Promise.resolve(null),
+    isin.length >= 10
+      ? ladeMarketscreenerSegmentHistorie({
+          isin,
+          name: opts.firmenname,
+          symbolYahoo: symbol,
+          ticker,
+        })
+      : Promise.resolve(null),
     isEu && isin.length >= 10
       ? ladeEuFundamentalKennzahlen(isin, opts.firmenname, symbol)
       : Promise.resolve(null),
