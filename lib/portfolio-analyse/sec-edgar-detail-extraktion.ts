@@ -20,6 +20,12 @@ export type SecDetailBlockDef = {
   tag: string
 }
 
+/** Alternative Schreibweise (ODFL u. a.). */
+const UMSATZ_DETAIL_TAGS = [
+  'DisaggregationOfRevenueTableTextBlock',
+  'DisaggregatedRevenueTableTextBlock',
+] as const
+
 /** Bekannte iXBRL-TextBlocks für maximale Detailtiefe. */
 export const SEC_DETAIL_BLOCKS: SecDetailBlockDef[] = [
   {
@@ -91,33 +97,44 @@ export function extrahiereAlleDetailBloeckeAus10kHtml(html: string): SecDetailKa
   const seen = new Set<string>()
 
   for (const def of SEC_DETAIL_BLOCKS) {
-    const block = extrahiereIxbrlTextBlock(html, def.tag)
-    if (block.length < 200 || seen.has(block.slice(0, 120))) continue
-    seen.add(block.slice(0, 120))
+    const tags =
+      def.id === 'umsatz_detail' ? [...UMSATZ_DETAIL_TAGS] : [def.tag]
+    let bestBlock = ''
+    let bestJahre: SecSegmentJahrEintrag[] = []
 
-    const parseArt = def.art === 'geo_assets' ? 'geo' : def.art === 'umsatz_detail' || def.art === 'produkte_services' ? 'produkt' : def.art
-    const detailFirst = def.art === 'umsatz_detail' || def.art === 'produkte_services'
-    let jahre = detailFirst
-      ? parseMehrjahresSegmenteDetail(block, parseArt, def.metrik)
-      : parseMehrjahresSegmente(block, parseArt, def.metrik)
-    if (jahre.length < 2 && !detailFirst) {
-      const det = parseMehrjahresSegmenteDetail(block, parseArt, def.metrik)
-      if (det.length > jahre.length) jahre = det
-    }
-    if (jahre.length < 2 && detailFirst) {
-      const std = parseMehrjahresSegmente(block, parseArt, def.metrik)
-      if (std.length > jahre.length) jahre = std
+    for (const tag of tags) {
+      const block = extrahiereIxbrlTextBlock(html, tag)
+      if (block.length < 200 || seen.has(block.slice(0, 120))) continue
+
+      const parseArt = def.art === 'geo_assets' ? 'geo' : def.art === 'umsatz_detail' || def.art === 'produkte_services' ? 'produkt' : def.art
+      const detailFirst = def.art === 'umsatz_detail' || def.art === 'produkte_services'
+      let jahre = detailFirst
+        ? parseMehrjahresSegmenteDetail(block, parseArt, def.metrik)
+        : parseMehrjahresSegmente(block, parseArt, def.metrik)
+      if (jahre.length < 2 && !detailFirst) {
+        const det = parseMehrjahresSegmenteDetail(block, parseArt, def.metrik)
+        if (det.length > jahre.length) jahre = det
+      }
+      if (jahre.length < 2 && detailFirst) {
+        const std = parseMehrjahresSegmente(block, parseArt, def.metrik)
+        if (std.length > jahre.length) jahre = std
+      }
+      if (jahre.length > bestJahre.length) {
+        bestJahre = jahre
+        bestBlock = block
+      }
     }
 
-    if (jahre.length >= 1) {
-      out.push({
-        def,
-        jahre: jahre.map((j) => ({
-          jahr: j.jahr,
-          segmente: kanonisereSegmentNamen(j.segmente),
-        })),
-      })
-    }
+    if (bestJahre.length < 1 || !bestBlock) continue
+    seen.add(bestBlock.slice(0, 120))
+
+    out.push({
+      def,
+      jahre: bestJahre.map((j) => ({
+        jahr: j.jahr,
+        segmente: kanonisereSegmentNamen(j.segmente),
+      })),
+    })
   }
 
   for (const dyn of extrahiereDynamischeSegmentBloecke(html)) {

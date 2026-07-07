@@ -18,13 +18,20 @@ import {
 import { leseAlsJson } from '@/lib/http/safe-json-response'
 import { ladeLesbarenBerichtText } from '@/lib/portfolio-analyse/sec-edgar-bericht-text-server'
 import { ladeCompanyFactsJson, ladeSecCompanyFacts } from '@/lib/portfolio-analyse/sec-edgar-companyfacts-server'
-import { extrahiereBacklogAusCompanyFacts, mergeBacklogMitTextHistorie } from '@/lib/portfolio-analyse/sec-edgar-backlog-server'
+import { extrahiereBacklogAusCompanyFacts, extrahiereBacklogMioAusText, mergeBacklogMitJahrWerten } from '@/lib/portfolio-analyse/sec-edgar-backlog-server'
+import {
+  ladeSecSegmentHistorieAusCloud,
+  speichereSecSegmentHistorieInCloud,
+} from '@/lib/portfolio-analyse/sec-edgar-segment-historie-cloud-server'
+import type { SecSegmentHistorieRohZustand } from '@/lib/portfolio-analyse/sec-edgar-segment-historie-roh-types'
 import {
   cikFuerTicker,
   padCik,
   secFetch,
   type SecSubmissionsRecent,
 } from '@/lib/portfolio-analyse/sec-edgar-common-server'
+import { extrahiereUmsatzAusIxbrlDimensionen } from '@/lib/portfolio-analyse/sec-edgar-ixbrl-dimensionen'
+import { extrahiereNarrativeSegmentTabellen } from '@/lib/portfolio-analyse/sec-edgar-narrative-tabellen'
 import {
   extrahiereBeideSegmentartenAus10kHtml,
   ergaenzeSegmentHistorieMitMargen,
@@ -34,14 +41,16 @@ import {
   mergeOiJahrSmart,
   extrahiereSegmenteFuerJahr,
   parseGeoSegmente,
+  teileUmsatzDetailInProduktUndGeo,
   validiereSegmente,
   type SecSegmentJahrEintrag,
   type SecSegmentRoh,
 } from '@/lib/portfolio-analyse/sec-edgar-segment-extraktion'
 
 const CACHE_MS = 24 * 60 * 60 * 1000
-/** Parser-Version — bei Extraktions-Fixes erhöhen (invalidiert Server-Cache). */
-const CACHE_VERSION = 4
+/** Parser-Version — bei Extraktions-Fixes erhöhen (invalidiert Server- + Cloud-Cache). */
+export const SEC_SEGMENT_HISTORIE_CACHE_VERSION = 6
+const CACHE_VERSION = SEC_SEGMENT_HISTORIE_CACHE_VERSION
 /** Ziel: mindestens 12 Geschäftsjahre Segmentdaten. */
 const ZIEL_JAHRE = 12
 /** Max. 10-K-Filings laden (je ~3 Jahre pro Filing → 12+ Jahre). */
@@ -49,6 +58,288 @@ const MAX_10K_FILINGS = 14
 const PAUSE_MS = 350
 
 const cache = new Map<string, { at: number; v: number; data: SecSegmentHistoriePaket | null }>()
+
+type Arbeitszustand = {
+  kategorieMaps: Map<string, Map<number, SecSegmentRoh[]>>
+  kategorieMeta: Map<string, Map<number, number>>
+  kategorieDefs: Map<string, SecDetailBlockDef>
+  oiMap: Map<number, SecSegmentRoh[]>
+  oiMeta: Map<number, number>
+  mitarbeiterProJahr: Map<number, number>
+  kundenProJahr: Map<number, { name: string | null; anteilPct: number } | null>
+  backlogProJahr: Map<number, number>
+  verarbeiteteAccessions: string[]
+}
+
+function leererArbeitszustand(): Arbeitszustand {
+  return {
+    kategorieMaps: new Map(),
+    kategorieMeta: new Map(),
+    kategorieDefs: new Map(),
+    oiMap: new Map(),
+    oiMeta: new Map(),
+    mitarbeiterProJahr: new Map(),
+    kundenProJahr: new Map(),
+    backlogProJahr: new Map(),
+    verarbeiteteAccessions: [],
+  }
+}
+
+function jahrMapToRecord(m: Map<number, SecSegmentRoh[]>): Record<string, SecSegmentRoh[]> {
+  return Object.fromEntries([...m.entries()].map(([k, v]) => [String(k), v]))
+}
+
+function recordToJahrMap(r: Record<string, SecSegmentRoh[]>): Map<number, SecSegmentRoh[]> {
+  return new Map(Object.entries(r).map(([k, v]) => [parseInt(k, 10), v]))
+}
+
+function metaMapToRecord(m: Map<number, number>): Record<string, number> {
+  return Object.fromEntries([...m.entries()].map(([k, v]) => [String(k), v]))
+}
+
+function recordToMetaMap(r: Record<string, number>): Map<number, number> {
+  return new Map(Object.entries(r).map(([k, v]) => [parseInt(k, 10), v]))
+}
+
+function arbeitszustandZuRoh(z: Arbeitszustand): SecSegmentHistorieRohZustand {
+  const kategorieMaps: SecSegmentHistorieRohZustand['kategorieMaps'] = {}
+  for (const [id, inner] of z.kategorieMaps) {
+    kategorieMaps[id] = jahrMapToRecord(inner)
+  }
+  const kategorieMeta: SecSegmentHistorieRohZustand['kategorieMeta'] = {}
+  for (const [id, inner] of z.kategorieMeta) {
+    kategorieMeta[id] = metaMapToRecord(inner)
+  }
+  const mitarbeiterProJahr: Record<string, number> = {}
+  for (const [j, v] of z.mitarbeiterProJahr) mitarbeiterProJahr[String(j)] = v
+  const kundenProJahr: SecSegmentHistorieRohZustand['kundenProJahr'] = {}
+  for (const [j, v] of z.kundenProJahr) kundenProJahr[String(j)] = v
+  const backlogProJahr: Record<string, number> = {}
+  for (const [j, v] of z.backlogProJahr) backlogProJahr[String(j)] = v
+  return {
+    kategorieMaps,
+    kategorieMeta,
+    kategorieDefs: Object.fromEntries(z.kategorieDefs),
+    oiMap: jahrMapToRecord(z.oiMap),
+    oiMeta: metaMapToRecord(z.oiMeta),
+    mitarbeiterProJahr,
+    kundenProJahr,
+    backlogProJahr,
+    verarbeiteteAccessions: [...z.verarbeiteteAccessions],
+  }
+}
+
+function rohZuArbeitszustand(r: SecSegmentHistorieRohZustand): Arbeitszustand {
+  const z = leererArbeitszustand()
+  for (const [id, inner] of Object.entries(r.kategorieMaps ?? {})) {
+    z.kategorieMaps.set(id, recordToJahrMap(inner))
+  }
+  for (const [id, inner] of Object.entries(r.kategorieMeta ?? {})) {
+    z.kategorieMeta.set(id, recordToMetaMap(inner))
+  }
+  for (const [id, def] of Object.entries(r.kategorieDefs ?? {})) {
+    z.kategorieDefs.set(id, def)
+  }
+  z.oiMap = recordToJahrMap(r.oiMap ?? {})
+  z.oiMeta = recordToMetaMap(r.oiMeta ?? {})
+  for (const [k, v] of Object.entries(r.mitarbeiterProJahr ?? {})) {
+    z.mitarbeiterProJahr.set(parseInt(k, 10), v)
+  }
+  for (const [k, v] of Object.entries(r.kundenProJahr ?? {})) {
+    if (v) z.kundenProJahr.set(parseInt(k, 10), v)
+  }
+  for (const [k, v] of Object.entries(r.backlogProJahr ?? {})) {
+    z.backlogProJahr.set(parseInt(k, 10), v)
+  }
+  z.verarbeiteteAccessions = [...(r.verarbeiteteAccessions ?? [])]
+  return z
+}
+
+function baueZusatzAusZustand(
+  basis: SecZusatzRisikoFelder,
+  zustand: Arbeitszustand,
+): SecZusatzRisikoFelder {
+  return {
+    ...basis,
+    mitarbeiterHistorie: [...zustand.mitarbeiterProJahr.entries()]
+      .sort((a, b) => a[0] - b[0])
+      .map(([jahr, anzahl]) => ({ jahr, anzahl })),
+    kundenKonzentrationHistorie: [...zustand.kundenProJahr.entries()]
+      .sort((a, b) => a[0] - b[0])
+      .map(([jahr, k]) => ({ jahr, anteilPct: k!.anteilPct, name: k!.name })),
+  }
+}
+
+function verarbeite10kInZustand(
+  zustand: Arbeitszustand,
+  html: string,
+  text: string,
+  filing: Filing10k,
+): void {
+  const jahr = jahrAusFiling(filing)
+  if (jahr != null && text.length > 1_000) {
+    const ma = extrahiereMitarbeiterAusText(text)
+    if (ma != null) zustand.mitarbeiterProJahr.set(jahr, ma)
+    const k = extrahiereKundenKonzentration(text)
+    if (k != null) zustand.kundenProJahr.set(jahr, k)
+    const bl = extrahiereBacklogMioAusText(text)
+    if (bl != null) zustand.backlogProJahr.set(jahr, bl)
+  }
+
+  if (html.length <= 5_000) {
+    if (!zustand.verarbeiteteAccessions.includes(filing.accession)) {
+      zustand.verarbeiteteAccessions.push(filing.accession)
+    }
+    return
+  }
+
+  const details = extrahiereAlleDetailBloeckeAus10kHtml(html)
+  for (const kat of details) {
+    zustand.kategorieDefs.set(kat.def.id, kat.def)
+    mergeDetailInMap(zustand.kategorieMaps, kat, jahr ?? undefined, zustand.kategorieMeta)
+  }
+
+  const oiJahre = extrahiereOperatingIncomeHistorieAus10kHtml(html)
+  for (const j of oiJahre) {
+    mergeOiJahrSmart(zustand.oiMap, j.jahr, j.segmente, jahr ?? undefined, zustand.oiMeta)
+  }
+
+  const hist = extrahiereSegmentHistorieAus10kHtml(html)
+  if (hist.produkt) {
+    mergeInKategorie(zustand.kategorieMaps, zustand.kategorieMeta, 'segment_reporting', hist.produkt.jahre, jahr ?? undefined)
+  }
+  if (hist.geo) {
+    mergeInKategorie(zustand.kategorieMaps, zustand.kategorieMeta, 'geo_umsatz', hist.geo.jahre, jahr ?? undefined)
+  }
+
+  if (jahr != null) {
+    const einzel = extrahiereSegmenteFuerJahr(html, jahr)
+    mergeEinzelInKategorie(zustand.kategorieMaps, zustand.kategorieMeta, 'segment_reporting', jahr, einzel.produkt, jahr)
+    mergeEinzelInKategorie(zustand.kategorieMaps, zustand.kategorieMeta, 'geo_umsatz', jahr, einzel.geo, jahr)
+
+    const geoBlock = extrahiereErstenGeoBlock(html)
+    if (geoBlock.length > 200) {
+      const geoSpalte = validiereSegmente(parseGeoSegmente(geoBlock, true))
+      mergeEinzelInKategorie(zustand.kategorieMaps, zustand.kategorieMeta, 'geo_umsatz', jahr, geoSpalte, jahr)
+    }
+
+    const beide = extrahiereBeideSegmentartenAus10kHtml(html)
+    mergeEinzelInKategorie(zustand.kategorieMaps, zustand.kategorieMeta, 'segment_reporting', jahr, beide.produkt.segmente, jahr)
+    mergeEinzelInKategorie(zustand.kategorieMaps, zustand.kategorieMeta, 'geo_umsatz', jahr, beide.geo.segmente, jahr)
+  }
+
+  const ixDim = extrahiereUmsatzAusIxbrlDimensionen(html)
+  if (ixDim.produkt.length >= 1) {
+    mergeInKategorie(zustand.kategorieMaps, zustand.kategorieMeta, 'segment_reporting', ixDim.produkt, jahr ?? undefined)
+  }
+  if (ixDim.geo.length >= 1) {
+    mergeInKategorie(zustand.kategorieMaps, zustand.kategorieMeta, 'geo_umsatz', ixDim.geo, jahr ?? undefined)
+  }
+
+  const narr = extrahiereNarrativeSegmentTabellen(html)
+  if (narr.produkt.length >= 1) {
+    mergeInKategorie(zustand.kategorieMaps, zustand.kategorieMeta, 'umsatz_detail', narr.produkt, jahr ?? undefined)
+  }
+  if (narr.geo.length >= 1) {
+    mergeInKategorie(zustand.kategorieMaps, zustand.kategorieMeta, 'geo_umsatz', narr.geo, jahr ?? undefined)
+  }
+
+  if (!zustand.verarbeiteteAccessions.includes(filing.accession)) {
+    zustand.verarbeiteteAccessions.push(filing.accession)
+  }
+}
+
+async function bauePaketAusZustand(
+  sym: string,
+  cik: number,
+  zustand: Arbeitszustand,
+  html10k: string,
+  text10k: string,
+  berichtJahr: number | null,
+  geladene10k: number,
+  kennzahlen: Awaited<ReturnType<typeof ladeSecCompanyFacts>>,
+): Promise<SecSegmentHistoriePaket | null> {
+  if (html10k.length > 5_000 && berichtJahr != null) {
+    priorisiereNeuestesFiling(zustand.kategorieMaps, zustand.kategorieMeta, zustand.kategorieDefs, html10k, berichtJahr)
+  }
+
+  const kategorienRoh = baueKategorienListe(zustand.kategorieMaps, zustand.kategorieDefs)
+  const oiJahrEintraege: SecSegmentJahrEintrag[] = [...zustand.oiMap.entries()]
+    .sort((a, b) => a[0] - b[0])
+    .map(([jahr, segmente]) => ({ jahr, segmente }))
+  const kategorien = kategorienRoh.map((k) =>
+    k.metrik === 'umsatz'
+      ? { ...k, historie: ergaenzeSegmentHistorieMitMargen(k.historie, oiJahrEintraege) }
+      : k,
+  )
+
+  let produkt = waehleProduktHistorie(kategorien, berichtJahr)
+  let geo = waehleGeoHistorie(kategorien)
+  const ergaenzt = ergaenzeFehlendeProduktGeo(produkt, geo, kategorien, html10k, berichtJahr)
+  produkt = ergaenzt.produkt
+  geo = ergaenzt.geo
+  if (produkt) produkt = ergaenzeSegmentHistorieMitMargen(produkt, oiJahrEintraege)
+  if (geo) geo = ergaenzeSegmentHistorieMitMargen(geo, oiJahrEintraege)
+
+  const zusatzBasis = extrahiereSecZusatzRisiko(text10k, html10k)
+  const zusatz = baueZusatzAusZustand(zusatzBasis, zustand)
+
+  const factsJson = await ladeCompanyFactsJson(cik)
+  const backlog = mergeBacklogMitJahrWerten(
+    factsJson ? extrahiereBacklogAusCompanyFacts(factsJson) : null,
+    zustand.backlogProJahr,
+  )
+
+  if (
+    !produkt &&
+    !geo &&
+    kategorien.length === 0 &&
+    !kennzahlen &&
+    !backlog &&
+    !zusatz.mitarbeiterAnzahl &&
+    zusatz.hauptkunden.length === 0
+  ) {
+    return null
+  }
+
+  return {
+    produkt,
+    geo,
+    kategorien,
+    zusatz,
+    backlog,
+    kennzahlen,
+    berichtJahr,
+    anzahl10k: geladene10k,
+    geladenAm: new Date().toISOString(),
+    quelle: 'sec_edgar',
+  }
+}
+
+function setMemoryCache(sym: string, data: SecSegmentHistoriePaket | null): void {
+  cache.set(sym, { at: Date.now(), v: CACHE_VERSION, data })
+}
+
+async function speichereInCloud(
+  sym: string,
+  cik: number,
+  zustand: Arbeitszustand,
+  paket: SecSegmentHistoriePaket,
+  neuesteAccession: string | null,
+  neuestesBerichtJahr: number | null,
+): Promise<void> {
+  await speichereSecSegmentHistorieInCloud({
+    ticker: sym,
+    cik,
+    cacheVersion: CACHE_VERSION,
+    verarbeiteteAccessions: zustand.verarbeiteteAccessions,
+    neuesteAccession,
+    neuestesBerichtJahr,
+    roh: arbeitszustandZuRoh(zustand),
+    paket,
+    aktualisiertAm: new Date().toISOString(),
+  })
+}
 
 function pause(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms))
@@ -245,6 +536,10 @@ function waehleProduktHistorie(
   const hits = PRODUKT_KAT_PRIO.map((id) => kategorien.find((k) => k.id === id)).filter(
     (k): k is SecSegmentHistorieKategorie => k != null,
   )
+  const dynDisagg = kategorien.find(
+    (k) => k.id.startsWith('dyn_') && /disaggregat/i.test(k.id) && k.metrik === 'umsatz',
+  )
+  if (dynDisagg && !hits.some((h) => h.id === 'umsatz_detail')) hits.push(dynDisagg)
   if (hits.length === 0) {
     return besteHistorie(
       kategorien,
@@ -273,11 +568,131 @@ function waehleGeoHistorie(kategorien: SecSegmentHistorieKategorie[]): SecSegmen
     const hit = kategorien.find((k) => k.id === id)
     if (hit && hit.historie.anzahlJahre >= 2) return hit.historie
   }
+  const dynGeo = kategorien.find(
+    (k) => k.id.startsWith('dyn_') && k.art === 'geo' && k.historie.anzahlJahre >= 2,
+  )
+  if (dynGeo) return dynGeo.historie
   const hits = kategorien.filter(
     (k) => k.art === 'geo' && k.metrik === 'umsatz' && !k.id.startsWith('dyn_'),
   )
   if (hits.length === 0) return null
   return hits.sort((a, b) => b.historie.anzahlJahre - a.historie.anzahlJahre)[0]!.historie
+}
+
+function mapAusJahrEintraegen(jahre: SecSegmentJahrEintrag[]): Map<number, SecSegmentRoh[]> {
+  return new Map(jahre.map((j) => [j.jahr, j.segmente]))
+}
+
+function mergeInKategorie(
+  kategorieMaps: Map<string, Map<number, SecSegmentRoh[]>>,
+  kategorieMeta: Map<string, Map<number, number>>,
+  id: string,
+  eintraege: SecSegmentJahrEintrag[],
+  filingJahr?: number,
+): void {
+  let m = kategorieMaps.get(id)
+  if (!m) {
+    m = new Map()
+    kategorieMaps.set(id, m)
+  }
+  let meta = kategorieMeta.get(id)
+  if (!meta) {
+    meta = new Map()
+    kategorieMeta.set(id, meta)
+  }
+  mergeMehrjahresInMap(m, eintraege, filingJahr, meta)
+}
+
+function mergeEinzelInKategorie(
+  kategorieMaps: Map<string, Map<number, SecSegmentRoh[]>>,
+  kategorieMeta: Map<string, Map<number, number>>,
+  id: string,
+  jahr: number,
+  segmente: SecSegmentRoh[],
+  filingJahr: number,
+): void {
+  if (segmente.length < 2) return
+  let m = kategorieMaps.get(id)
+  if (!m) {
+    m = new Map()
+    kategorieMaps.set(id, m)
+  }
+  let meta = kategorieMeta.get(id)
+  if (!meta) {
+    meta = new Map()
+    kategorieMeta.set(id, meta)
+  }
+  mergeJahrSmart(m, jahr, segmente, filingJahr, meta)
+}
+
+/** Produkt- und Geo-Historie aus Disaggregation, Heuristik und Einzeljahr-Fallbacks ergänzen. */
+function ergaenzeFehlendeProduktGeo(
+  produkt: SecSegmentHistorie | null,
+  geo: SecSegmentHistorie | null,
+  kategorien: SecSegmentHistorieKategorie[],
+  html10k: string,
+  berichtJahr: number | null,
+): { produkt: SecSegmentHistorie | null; geo: SecSegmentHistorie | null } {
+  let p = produkt
+  let g = geo
+
+  const disagg = kategorien.find((k) => k.id === 'umsatz_detail')?.historie
+  if (disagg && (!p || !g)) {
+    const split = teileUmsatzDetailInProduktUndGeo(disagg.jahre)
+    if (!p && split.produkt.length >= 2) {
+      p = baueHistorie('produkt', mapAusJahrEintraegen(split.produkt))
+    }
+    if (!g && split.geo.length >= 2) {
+      g = baueHistorie('geo', mapAusJahrEintraegen(split.geo))
+    }
+  }
+
+  if (!p) {
+    const fr = kategorien.find((k) => k.id === 'franchise_umsatz')
+    if (fr && fr.historie.anzahlJahre >= 2) p = fr.historie
+  }
+  if (!p) p = waehleProduktHistorie(kategorien, berichtJahr)
+  if (!g) g = waehleGeoHistorie(kategorien)
+
+  if (html10k.length > 5_000) {
+    const jahr = berichtJahr ?? new Date().getFullYear() - 1
+    const hist = extrahiereSegmentHistorieAus10kHtml(html10k)
+    if (!p && hist.produkt) {
+      p = baueHistorie('produkt', mapAusJahrEintraegen(hist.produkt.jahre))
+    }
+    if (!g && hist.geo) {
+      g = baueHistorie('geo', mapAusJahrEintraegen(hist.geo.jahre))
+    }
+    if (!p || !g) {
+      const beide = extrahiereBeideSegmentartenAus10kHtml(html10k)
+      if (!p && beide.produkt.segmente.length >= 2) {
+        p = baueHistorie('produkt', new Map([[jahr, beide.produkt.segmente]]))
+      }
+      if (!g && beide.geo.segmente.length >= 2) {
+        g = baueHistorie('geo', new Map([[jahr, beide.geo.segmente]]))
+      }
+    }
+    if (!p || !g) {
+      const ix = extrahiereUmsatzAusIxbrlDimensionen(html10k)
+      if (!p && ix.produkt.length >= 2) {
+        p = baueHistorie('produkt', mapAusJahrEintraegen(ix.produkt))
+      }
+      if (!g && ix.geo.length >= 2) {
+        g = baueHistorie('geo', mapAusJahrEintraegen(ix.geo))
+      }
+    }
+    if (!p || !g) {
+      const narr = extrahiereNarrativeSegmentTabellen(html10k)
+      if (!p && narr.produkt.length >= 2) {
+        p = baueHistorie('produkt', mapAusJahrEintraegen(narr.produkt))
+      }
+      if (!g && narr.geo.length >= 2) {
+        g = baueHistorie('geo', mapAusJahrEintraegen(narr.geo))
+      }
+    }
+  }
+
+  return { produkt: p, geo: g }
 }
 
 function extrahiereMitarbeiterAusText(text: string): number | null {
@@ -394,31 +809,6 @@ export function extrahiereSecZusatzRisiko(text: string, html: string): SecZusatz
   }
 }
 
-function mergeZusatzHistorie(
-  basis: SecZusatzRisikoFelder,
-  proFiling: { jahr: number; text: string }[],
-): SecZusatzRisikoFelder {
-  const maMap = new Map<number, number>()
-  const kundenMap = new Map<number, { anteilPct: number; name: string | null }>()
-
-  for (const { jahr, text } of proFiling) {
-    const ma = extrahiereMitarbeiterAusText(text)
-    if (ma != null && !maMap.has(jahr)) maMap.set(jahr, ma)
-    const k = extrahiereKundenKonzentration(text)
-    if (k != null && !kundenMap.has(jahr)) kundenMap.set(jahr, k)
-  }
-
-  return {
-    ...basis,
-    mitarbeiterHistorie: [...maMap.entries()]
-      .sort((a, b) => a[0] - b[0])
-      .map(([jahr, anzahl]) => ({ jahr, anzahl })),
-    kundenKonzentrationHistorie: [...kundenMap.entries()]
-      .sort((a, b) => a[0] - b[0])
-      .map(([jahr, k]) => ({ jahr, anteilPct: k.anteilPct, name: k.name })),
-  }
-}
-
 function priorisiereNeuestesFiling(
   kategorieMaps: Map<string, Map<number, SecSegmentRoh[]>>,
   kategorieMeta: Map<string, Map<number, number>>,
@@ -455,177 +845,126 @@ export async function ladeSecSegmentHistorie(ticker: string): Promise<SecSegment
 
   const cik = await cikFuerTicker(sym)
   if (!cik) {
-    cache.set(sym, { at: Date.now(), v: CACHE_VERSION, data: null })
+    setMemoryCache(sym, null)
     return null
   }
 
   try {
-    const [filings, kennzahlen] = await Promise.all([
+    const [filings, kennzahlen, cloud] = await Promise.all([
       liste10kFilings(cik, MAX_10K_FILINGS),
       ladeSecCompanyFacts(cik),
+      ladeSecSegmentHistorieAusCloud(sym),
     ])
 
-    if (filings.length === 0 && !kennzahlen) {
-      cache.set(sym, { at: Date.now(), v: CACHE_VERSION, data: null })
+    if (filings.length === 0 && !kennzahlen && !cloud?.paket) {
+      setMemoryCache(sym, null)
       return null
     }
 
-    const kategorieMaps = new Map<string, Map<number, SecSegmentRoh[]>>()
-    const kategorieMeta = new Map<string, Map<number, number>>()
-    const kategorieDefs = new Map<string, SecDetailBlockDef>()
-    const oiMap = new Map<number, SecSegmentRoh[]>()
-    const oiMeta = new Map<number, number>()
-    const textProFiling: { jahr: number; text: string }[] = []
+    const neuestesFiling = filings[0] ?? null
+    const neuesteAccession = neuestesFiling?.accession ?? null
+    const neuestesBerichtJahr = neuestesFiling ? jahrAusFiling(neuestesFiling) : null
+
+    const cloudAktuell =
+      cloud != null &&
+      cloud.cacheVersion === CACHE_VERSION &&
+      cloud.cik === cik &&
+      cloud.paket != null
+
+    if (cloudAktuell) {
+      const neueFilings = filings.filter((f) => !cloud.roh.verarbeiteteAccessions.includes(f.accession))
+      if (neueFilings.length === 0) {
+        const paket = { ...cloud.paket, geladenAm: new Date().toISOString() }
+        setMemoryCache(sym, paket)
+        return paket
+      }
+
+      const zustand = rohZuArbeitszustand(cloud.roh)
+      let html10k = ''
+      let text10k = ''
+      let berichtJahr = neuestesBerichtJahr
+      let geladene10k = cloud.paket.anzahl10k
+
+      for (let i = 0; i < neueFilings.length; i++) {
+        const f = neueFilings[i]!
+        await pause(PAUSE_MS)
+        const hitDoc = await lade10kHtml(cik, f)
+        if (!hitDoc) continue
+        geladene10k++
+        const { html, text } = hitDoc
+        verarbeite10kInZustand(zustand, html, text, f)
+        if (f.accession === neuesteAccession) {
+          html10k = html
+          text10k = text
+          berichtJahr = jahrAusFiling(f)
+        }
+      }
+
+      if (!html10k && neuestesFiling && cloud.neuesteAccession === neuesteAccession) {
+        const hitDoc = await lade10kHtml(cik, neuestesFiling)
+        if (hitDoc) {
+          html10k = hitDoc.html
+          text10k = hitDoc.text
+          berichtJahr = jahrAusFiling(neuestesFiling)
+        }
+      }
+
+      const paket = await bauePaketAusZustand(
+        sym,
+        cik,
+        zustand,
+        html10k,
+        text10k,
+        berichtJahr,
+        geladene10k,
+        kennzahlen,
+      )
+      if (paket) {
+        await speichereInCloud(sym, cik, zustand, paket, neuesteAccession, neuestesBerichtJahr)
+      }
+      setMemoryCache(sym, paket)
+      return paket
+    }
+
+    const zustand = leererArbeitszustand()
     let geladene10k = 0
-    let text10k = ''
     let html10k = ''
+    let text10k = ''
     let berichtJahr: number | null = null
 
     for (let i = 0; i < filings.length; i++) {
       const f = filings[i]!
       if (i > 0) await pause(PAUSE_MS)
-
       const hitDoc = await lade10kHtml(cik, f)
       if (!hitDoc) continue
       geladene10k++
-
       const { html, text } = hitDoc
-      const jahr = jahrAusFiling(f)
-      if (jahr != null && text.length > 1_000) textProFiling.push({ jahr, text })
-
       if (i === 0) {
         html10k = html
         text10k = text
-        berichtJahr = jahr
+        berichtJahr = jahrAusFiling(f)
       }
-
-      if (html.length > 5_000) {
-        const details = extrahiereAlleDetailBloeckeAus10kHtml(html)
-        for (const kat of details) {
-          kategorieDefs.set(kat.def.id, kat.def)
-          mergeDetailInMap(kategorieMaps, kat, jahr ?? undefined, kategorieMeta)
-        }
-
-        const oiJahre = extrahiereOperatingIncomeHistorieAus10kHtml(html)
-        for (const j of oiJahre) {
-          mergeOiJahrSmart(oiMap, j.jahr, j.segmente, jahr ?? undefined, oiMeta)
-        }
-
-        const hist = extrahiereSegmentHistorieAus10kHtml(html)
-        if (hist.geo) {
-          let m = kategorieMaps.get('geo_umsatz')
-          if (!m) { m = new Map(); kategorieMaps.set('geo_umsatz', m) }
-          let meta = kategorieMeta.get('geo_umsatz')
-          if (!meta) { meta = new Map(); kategorieMeta.set('geo_umsatz', meta) }
-          mergeMehrjahresInMap(m, hist.geo.jahre, jahr ?? undefined, meta)
-        }
-
-        if (jahr != null) {
-          const einzel = extrahiereSegmenteFuerJahr(html, jahr)
-          if (einzel.geo.length >= 2) {
-            let m = kategorieMaps.get('geo_umsatz')
-            if (!m) { m = new Map(); kategorieMaps.set('geo_umsatz', m) }
-            let meta = kategorieMeta.get('geo_umsatz')
-            if (!meta) { meta = new Map(); kategorieMeta.set('geo_umsatz', meta) }
-            mergeJahrSmart(m, jahr, einzel.geo, jahr, meta)
-          }
-
-          const geoBlock = extrahiereErstenGeoBlock(html)
-          if (geoBlock.length > 200) {
-            const geoSpalte = validiereSegmente(parseGeoSegmente(geoBlock, true))
-            if (geoSpalte.length >= 2) {
-              let m = kategorieMaps.get('geo_umsatz')
-              if (!m) { m = new Map(); kategorieMaps.set('geo_umsatz', m) }
-              let meta = kategorieMeta.get('geo_umsatz')
-              if (!meta) { meta = new Map(); kategorieMeta.set('geo_umsatz', meta) }
-              mergeJahrSmart(m, jahr, geoSpalte, jahr, meta)
-            }
-          }
-
-          const beide = extrahiereBeideSegmentartenAus10kHtml(html)
-          if (beide.geo.segmente.length >= 2) {
-            let m = kategorieMaps.get('geo_umsatz')
-            if (!m) { m = new Map(); kategorieMaps.set('geo_umsatz', m) }
-            let meta = kategorieMeta.get('geo_umsatz')
-            if (!meta) { meta = new Map(); kategorieMeta.set('geo_umsatz', meta) }
-            mergeJahrSmart(m, jahr, beide.geo.segmente, jahr, meta)
-          }
-        }
-      }
+      verarbeite10kInZustand(zustand, html, text, f)
     }
 
-    if (html10k.length > 5_000 && berichtJahr != null) {
-      priorisiereNeuestesFiling(kategorieMaps, kategorieMeta, kategorieDefs, html10k, berichtJahr)
-    }
-
-    const kategorienRoh = baueKategorienListe(kategorieMaps, kategorieDefs)
-    const oiJahrEintraege: SecSegmentJahrEintrag[] = [...oiMap.entries()]
-      .sort((a, b) => a[0] - b[0])
-      .map(([jahr, segmente]) => ({ jahr, segmente }))
-    const kategorien = kategorienRoh.map((k) =>
-      k.metrik === 'umsatz'
-        ? { ...k, historie: ergaenzeSegmentHistorieMitMargen(k.historie, oiJahrEintraege) }
-        : k,
-    )
-
-    let produkt = waehleProduktHistorie(kategorien, berichtJahr)
-    if (produkt) {
-      produkt = ergaenzeSegmentHistorieMitMargen(produkt, oiJahrEintraege)
-    }
-    let geo = waehleGeoHistorie(kategorien)
-    if (geo) {
-      geo = ergaenzeSegmentHistorieMitMargen(geo, oiJahrEintraege)
-    }
-
-    if (!produkt && !geo && html10k.length > 5_000) {
-      const beide = extrahiereBeideSegmentartenAus10kHtml(html10k)
-      const jahr = berichtJahr ?? new Date().getFullYear() - 1
-      if (beide.produkt.segmente.length >= 2) {
-        produkt = baueHistorie('produkt', new Map([[jahr, beide.produkt.segmente]]))
-      }
-      if (beide.geo.segmente.length >= 2) {
-        geo = baueHistorie('geo', new Map([[jahr, beide.geo.segmente]]))
-      }
-    }
-    const zusatzBasis = extrahiereSecZusatzRisiko(text10k, html10k)
-    const zusatz = mergeZusatzHistorie(zusatzBasis, textProFiling)
-
-    const factsJson = await ladeCompanyFactsJson(cik)
-    const backlog = mergeBacklogMitTextHistorie(
-      factsJson ? extrahiereBacklogAusCompanyFacts(factsJson) : null,
-      textProFiling,
-    )
-
-    if (
-      !produkt &&
-      !geo &&
-      kategorien.length === 0 &&
-      !kennzahlen &&
-      !backlog &&
-      !zusatz.mitarbeiterAnzahl &&
-      zusatz.hauptkunden.length === 0
-    ) {
-      cache.set(sym, { at: Date.now(), v: CACHE_VERSION, data: null })
-      return null
-    }
-
-    const data: SecSegmentHistoriePaket = {
-      produkt,
-      geo,
-      kategorien,
-      zusatz,
-      backlog,
-      kennzahlen,
+    const paket = await bauePaketAusZustand(
+      sym,
+      cik,
+      zustand,
+      html10k,
+      text10k,
       berichtJahr,
-      anzahl10k: geladene10k,
-      geladenAm: new Date().toISOString(),
-      quelle: 'sec_edgar',
-    }
+      geladene10k,
+      kennzahlen,
+    )
 
-    cache.set(sym, { at: Date.now(), v: CACHE_VERSION, data })
-    return data
+    if (paket) {
+      await speichereInCloud(sym, cik, zustand, paket, neuesteAccession, neuestesBerichtJahr)
+    }
+    setMemoryCache(sym, paket)
+    return paket
   } catch {
-    cache.set(sym, { at: Date.now(), v: CACHE_VERSION, data: null })
+    setMemoryCache(sym, null)
     return null
   }
 }

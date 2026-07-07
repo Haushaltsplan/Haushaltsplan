@@ -1338,7 +1338,7 @@ function betragAnIndex(z: TabellenZeile, idx: number): number | null {
   return null
 }
 
-function anteileBerechnen(segmente: SecSegmentRoh[]): SecSegmentRoh[] {
+export function anteileBerechnen(segmente: SecSegmentRoh[]): SecSegmentRoh[] {
   const summe = segmente.reduce((s, e) => s + (e.umsatzMio ?? 0), 0)
   if (summe <= 0) return segmente
   for (const s of segmente) {
@@ -1723,19 +1723,72 @@ function mehrjahresAusBloecke(html: string): {
   const operatingBlock = extrahiereIxbrlTextBlock(html, XBRL_OPERATING_TAG)
   const fallbackBlock = extrahiereIxbrlTextBlock(html, XBRL_OPERATING_FALLBACK)
   const geoBlock = extrahiereErstenGeoBlock(html)
+  const geoKombiBlock = extrahiereIxbrlTextBlock(
+    html,
+    'ScheduleOfRevenuesFromExternalCustomersAndLongLivedAssetsByGeographicalAreasTableTextBlock',
+  )
+  let disaggBlock = extrahiereIxbrlTextBlock(html, 'DisaggregationOfRevenueTableTextBlock')
+  if (disaggBlock.length < 200) {
+    const alt = extrahiereIxbrlTextBlock(html, 'DisaggregatedRevenueTableTextBlock')
+    if (alt.length > disaggBlock.length) disaggBlock = alt
+  }
 
   let produkt = parseMehrjahresSegmente(operatingBlock, 'produkt')
   if (produkt.length < 2 && fallbackBlock.length > 500) {
     const fb = parseMehrjahresSegmente(fallbackBlock, 'produkt')
     if (fb.length > produkt.length) produkt = fb
   }
+  if (produkt.length < 2 && disaggBlock.length > 200) {
+    const det = parseMehrjahresSegmenteDetail(disaggBlock, 'produkt')
+    const prodOnly = det
+      .map((j) => ({
+        jahr: j.jahr,
+        segmente: anteileBerechnen(j.segmente.filter((s) => !istGeoName(s.name))),
+      }))
+      .filter((j) => j.segmente.length >= 2)
+    if (prodOnly.length > produkt.length) produkt = prodOnly
+  }
 
   let geo = parseMehrjahresSegmente(geoBlock, 'geo')
+  if (geo.length < 2 && geoKombiBlock.length > 200) {
+    const gk = parseMehrjahresSegmente(geoKombiBlock, 'geo')
+    if (gk.length > geo.length) geo = gk
+  }
   if (geo.length < 2) {
     const geoOp = parseMehrjahresSegmente(operatingBlock, 'geo')
     if (geoOp.length > geo.length) geo = geoOp
   }
+  if (geo.length < 2 && fallbackBlock.length > 500) {
+    const geoFb = parseMehrjahresSegmente(fallbackBlock, 'geo')
+    if (geoFb.length > geo.length) geo = geoFb
+  }
+  if (geo.length < 2 && disaggBlock.length > 200) {
+    const det = parseMehrjahresSegmenteDetail(disaggBlock, 'geo')
+    const geoOnly = det
+      .map((j) => ({
+        jahr: j.jahr,
+        segmente: anteileBerechnen(j.segmente.filter((s) => istGeoName(s.name))),
+      }))
+      .filter((j) => j.segmente.length >= 2)
+    if (geoOnly.length > geo.length) geo = geoOnly
+  }
 
+  return { produkt, geo }
+}
+
+/** Disaggregation-Tabelle in Produkt- vs. Geo-Zeilen splitten (MA, V …). */
+export function teileUmsatzDetailInProduktUndGeo(jahre: SecSegmentJahrEintrag[]): {
+  produkt: SecSegmentJahrEintrag[]
+  geo: SecSegmentJahrEintrag[]
+} {
+  const produkt: SecSegmentJahrEintrag[] = []
+  const geo: SecSegmentJahrEintrag[] = []
+  for (const j of jahre) {
+    const geoSeg = j.segmente.filter((s) => istGeoName(s.name))
+    const prodSeg = j.segmente.filter((s) => !istGeoName(s.name))
+    if (geoSeg.length >= 2) geo.push({ jahr: j.jahr, segmente: anteileBerechnen(geoSeg) })
+    if (prodSeg.length >= 2) produkt.push({ jahr: j.jahr, segmente: anteileBerechnen(prodSeg) })
+  }
   return { produkt, geo }
 }
 

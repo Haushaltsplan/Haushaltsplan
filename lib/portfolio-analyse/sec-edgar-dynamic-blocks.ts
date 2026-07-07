@@ -13,6 +13,7 @@ import {
 
 const BEKANNTE_TAGS = new Set([
   'DisaggregationOfRevenueTableTextBlock',
+  'DisaggregatedRevenueTableTextBlock',
   'ScheduleOfEntitysRevenueFromExternalCustomersByProductsAndServicesTextBlock',
   'ScheduleOfSegmentReportingInformationBySegmentTextBlock',
   'SegmentReportingDisclosureTextBlock',

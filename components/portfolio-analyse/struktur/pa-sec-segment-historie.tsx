@@ -33,17 +33,6 @@ function umsatzFuerSegment(hist: SecSegmentHistorie, jahr: number, name: string)
   return hist.jahre.find((j) => j.jahr === jahr)?.segmente.find((s) => s.name === name)?.umsatzMio ?? null
 }
 
-function margeFuerSegment(hist: SecSegmentHistorie, jahr: number, name: string): number | null {
-  return hist.jahre.find((j) => j.jahr === jahr)?.segmente.find((s) => s.name === name)?.margePct ?? null
-}
-
-function margeClass(pct: number): string {
-  if (pct >= 25) return 'text-emerald-400'
-  if (pct >= 10) return 'text-teal-300'
-  if (pct > 0) return 'text-[var(--app-text)]'
-  return 'text-red-300'
-}
-
 function umsatzWachstumPct(aktuell: number | null, vorjahr: number | null): number | null {
   if (aktuell == null || vorjahr == null || vorjahr === 0) return null
   return Math.round(((aktuell - vorjahr) / Math.abs(vorjahr)) * 1000) / 10
@@ -92,7 +81,6 @@ function PaSecSegmentStackedChart({ hist, farben }: { hist: SecSegmentHistorie; 
                   <rect key={s.name} x={x} y={yAcc} width={barW} height={h} fill={farbe} opacity={0.9} rx={1}>
                     <title>
                       {jahr}: {s.name} — {pct.toFixed(1)} % ({s.umsatzMio?.toLocaleString('de-DE')} Mio.)
-                      {s.margePct != null ? ` · Marge ${s.margePct.toFixed(1)} %` : ''}
                     </title>
                   </rect>
                 )
@@ -543,7 +531,7 @@ function PaSecSegmentTabelle({ hist, farben }: { hist: SecSegmentHistorie; farbe
               <th key={j} className="min-w-[7.5rem] pb-2 px-2 text-right font-medium">
                 <span className="block tabular-nums">{j}</span>
                 <span className="mt-0.5 block text-[10px] font-normal text-[var(--app-text-muted)]">
-                  Umsatz · YoY · Nettomarge
+                  Umsatz · YoY
                 </span>
               </th>
             ))}
@@ -559,7 +547,6 @@ function PaSecSegmentTabelle({ hist, farben }: { hist: SecSegmentHistorie; farbe
               {jahre.map((j, ji) => {
                 const mio = umsatzFuerSegment(hist, j, name)
                 const anteil = anteilFuerSegment(hist, j, name)
-                const marge = margeFuerSegment(hist, j, name)
                 const vorjahr = ji > 0 ? jahre[ji - 1]! : null
                 const wachstum =
                   vorjahr != null ? umsatzWachstumPct(mio, umsatzFuerSegment(hist, vorjahr, name)) : null
@@ -583,13 +570,6 @@ function PaSecSegmentTabelle({ hist, farben }: { hist: SecSegmentHistorie; farbe
                     ) : ji > 0 ? (
                       <span className="mt-0.5 block text-[10px] text-[var(--app-text-muted)]">–</span>
                     ) : null}
-                    {marge != null ? (
-                      <span className={`mt-0.5 block text-[11px] font-semibold ${margeClass(marge)}`}>
-                        Nettomarge {marge.toLocaleString('de-DE')} %
-                      </span>
-                    ) : (
-                      <span className="mt-0.5 block text-[10px] text-[var(--app-text-muted)]">Marge n/a</span>
-                    )}
                   </td>
                 )
               })}
@@ -661,21 +641,14 @@ function PaSecKennzahlenPanel({ kz }: { kz: SecKennzahlenHistorie }) {
   )
 }
 
-function PaUmsatzmixBlock({ titel, hist }: { titel: string; hist: SecSegmentHistorie }) {
+function PaUmsatzmixBlock({ hist }: { hist: SecSegmentHistorie }) {
   const farben = segmentFarben(alleSegmentNamen(hist).length)
-  const hatMargen = hist.jahre.some((j) => j.segmente.some((s) => s.margePct != null))
 
   return (
     <div className="space-y-4">
-      <div>
-        <p className="text-sm font-medium text-white">{titel}</p>
-        <p className="text-xs text-[var(--app-text-muted)]">
-          {hist.anzahlJahre} Jahre ({hist.aeltestesJahr}–{hist.juengstesJahr}) · SEC 10-K XBRL
-          {hatMargen
-            ? ' · Nettomarge aus Segment-Gewinn (Net Income oder Operating Income, je nach Ausweis)'
-            : ' · Nettomarge je Segment oft nicht separat in 10-K ausgewiesen'}
-        </p>
-      </div>
+      <p className="text-xs text-[var(--app-text-muted)]">
+        {hist.anzahlJahre} Jahre ({hist.aeltestesJahr}–{hist.juengstesJahr}) · SEC 10-K XBRL
+      </p>
       <PaSecSegmentStackedChart hist={hist} farben={farben} />
       <div className="flex flex-wrap gap-x-3 gap-y-1">
         {alleSegmentNamen(hist).map((name, i) => (
@@ -697,6 +670,21 @@ export function PaSecSegmentHistorie({ paket }: { paket: SecSegmentHistoriePaket
   const hatGeo = (geo?.anzahlJahre ?? 0) >= 2
   const hatUmsatzmix = hatProdukt || hatGeo
   const zusatz = paket.zusatz
+
+  const [umsatzmixTab, setUmsatzmixTab] = useState<'produkt' | 'geo'>(() =>
+    hatProdukt ? 'produkt' : 'geo',
+  )
+
+  const aktiverMix =
+    umsatzmixTab === 'produkt' && hatProdukt && produkt
+      ? { titel: 'Umsatz nach Produktgruppe', hist: produkt }
+      : umsatzmixTab === 'geo' && hatGeo && geo
+        ? { titel: 'Umsatz nach Region', hist: geo }
+        : hatProdukt && produkt
+          ? { titel: 'Umsatz nach Produktgruppe', hist: produkt }
+          : hatGeo && geo
+            ? { titel: 'Umsatz nach Region', hist: geo }
+            : null
 
   const jahresSpanne = useMemo(() => {
     const alle = [
@@ -738,18 +726,49 @@ export function PaSecSegmentHistorie({ paket }: { paket: SecSegmentHistoriePaket
       {paket.kennzahlen ? <PaSecKennzahlenPanel kz={paket.kennzahlen} /> : null}
 
       {hatUmsatzmix ? (
-        <div className="space-y-6 border-t border-[var(--app-border)]/60 pt-4">
-          <div>
-            <p className="text-sm font-medium text-white">Umsatzmix nach Segment</p>
-            <p className="text-xs text-[var(--app-text-muted)]">
-              Umsatz nach Produktgruppe und Region · YoY-Entwicklung · Nettomarge je Segment · SEC XBRL
-            </p>
+        <div className="space-y-4 border-t border-[var(--app-border)]/60 pt-4">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <p className="text-sm font-medium text-white">Umsatzmix nach Segment</p>
+              <p className="text-xs text-[var(--app-text-muted)]">
+                Umsatz und YoY-Entwicklung · SEC XBRL
+              </p>
+            </div>
+            {hatProdukt && hatGeo ? (
+              <div className="flex flex-wrap gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => setUmsatzmixTab('produkt')}
+                  className={`rounded-lg px-2.5 py-1.5 text-[11px] font-medium transition-colors ${
+                    umsatzmixTab === 'produkt'
+                      ? 'bg-teal-500/20 text-teal-300 ring-1 ring-teal-500/40'
+                      : 'bg-[var(--app-surface-muted)]/50 text-[var(--app-text-muted)] hover:text-[var(--app-text)]'
+                  }`}
+                >
+                  Produktgruppe ({produkt!.anzahlJahre}J)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setUmsatzmixTab('geo')}
+                  className={`rounded-lg px-2.5 py-1.5 text-[11px] font-medium transition-colors ${
+                    umsatzmixTab === 'geo'
+                      ? 'bg-teal-500/20 text-teal-300 ring-1 ring-teal-500/40'
+                      : 'bg-[var(--app-surface-muted)]/50 text-[var(--app-text-muted)] hover:text-[var(--app-text)]'
+                  }`}
+                >
+                  Region ({geo!.anzahlJahre}J)
+                </button>
+              </div>
+            ) : null}
           </div>
-          {hatProdukt && produkt ? (
-            <PaUmsatzmixBlock titel="Umsatz nach Produktgruppe" hist={produkt} />
+          {aktiverMix ? (
+            <div className="space-y-1">
+              {!hatProdukt || !hatGeo ? (
+                <p className="text-sm font-medium text-white">{aktiverMix.titel}</p>
+              ) : null}
+              <PaUmsatzmixBlock hist={aktiverMix.hist} />
+            </div>
           ) : null}
-          {hatProdukt && hatGeo ? <div className="border-t border-[var(--app-border)]/40" /> : null}
-          {hatGeo && geo ? <PaUmsatzmixBlock titel="Umsatz nach Region" hist={geo} /> : null}
         </div>
       ) : null}
 

@@ -209,6 +209,31 @@ export function mergeBacklogMitTextHistorie(
   return xbrl
 }
 
+export function mergeBacklogMitJahrWerten(
+  xbrl: SecBacklogHistorie | null,
+  jahrWerte: Map<number, number>,
+): SecBacklogHistorie | null {
+  if (jahrWerte.size === 0) return xbrl
+  if (xbrl && xbrl.eintraege.length >= 2) {
+    const merged = new Map(xbrl.eintraege.map((e) => [e.jahr, e.wertMio]))
+    for (const [jahr, wert] of jahrWerte) {
+      if (!merged.has(jahr)) merged.set(jahr, wert)
+    }
+    return mapZuHistorie(merged, xbrl.art, xbrl.label, xbrl.quelleTag)
+  }
+  if (jahrWerte.size >= 2) {
+    return mapZuHistorie(jahrWerte, 'backlog', 'Auftragsbestand (10-K-Text)', 'text')
+  }
+  if (xbrl && xbrl.eintraege.length === 1 && jahrWerte.size === 1) {
+    const merged = new Map<number, number>([
+      ...xbrl.eintraege.map((e) => [e.jahr, e.wertMio] as const),
+      ...jahrWerte.entries(),
+    ])
+    return mapZuHistorie(merged, xbrl.art, xbrl.label, xbrl.quelleTag)
+  }
+  return xbrl
+}
+
 export async function ladeSecBacklogHistorie(
   cik: number,
   proFiling: { jahr: number; text: string }[] = [],
