@@ -31,6 +31,12 @@ import {
   type SecSubmissionsRecent,
 } from '@/lib/portfolio-analyse/sec-edgar-common-server'
 import { extrahiereUmsatzAusIxbrlDimensionen } from '@/lib/portfolio-analyse/sec-edgar-ixbrl-dimensionen'
+import {
+  baueNarrativeGeoHistorie,
+  extrahiereDomesticForeignEinkommenSplit,
+  extrahiereNarrativeGeoProzent,
+} from '@/lib/portfolio-analyse/sec-edgar-narrative-geo-server'
+import { ergaenzeJahresluecken, interpoliereJahresluecken } from '@/lib/portfolio-analyse/sec-edgar-segment-normalisierung'
 import { extrahiereNarrativeSegmentTabellen } from '@/lib/portfolio-analyse/sec-edgar-narrative-tabellen'
 import {
   extrahiereBeideSegmentartenAus10kHtml,
@@ -38,7 +44,10 @@ import {
   extrahiereErstenGeoBlock,
   extrahiereOperatingIncomeHistorieAus10kHtml,
   extrahiereSegmentHistorieAus10kHtml,
+  filterJahreNachArt,
+  filterSegmentHistorie,
   mergeOiJahrSmart,
+  segmentIstGeo,
   extrahiereSegmenteFuerJahr,
   parseGeoSegmente,
   teileUmsatzDetailInProduktUndGeo,
@@ -49,7 +58,7 @@ import {
 
 const CACHE_MS = 24 * 60 * 60 * 1000
 /** Parser-Version — bei Extraktions-Fixes erhöhen (invalidiert Server- + Cloud-Cache). */
-export const SEC_SEGMENT_HISTORIE_CACHE_VERSION = 6
+export const SEC_SEGMENT_HISTORIE_CACHE_VERSION = 13
 const CACHE_VERSION = SEC_SEGMENT_HISTORIE_CACHE_VERSION
 /** Ziel: mindestens 12 Geschäftsjahre Segmentdaten. */
 const ZIEL_JAHRE = 12
@@ -68,6 +77,7 @@ type Arbeitszustand = {
   mitarbeiterProJahr: Map<number, number>
   kundenProJahr: Map<number, { name: string | null; anteilPct: number } | null>
   backlogProJahr: Map<number, number>
+  narrativeGeoProJahr: Map<number, { usPct: number; intlPct: number }>
   verarbeiteteAccessions: string[]
 }
 
@@ -81,6 +91,7 @@ function leererArbeitszustand(): Arbeitszustand {
     mitarbeiterProJahr: new Map(),
     kundenProJahr: new Map(),
     backlogProJahr: new Map(),
+    narrativeGeoProJahr: new Map(),
     verarbeiteteAccessions: [],
   }
 }
@@ -116,6 +127,8 @@ function arbeitszustandZuRoh(z: Arbeitszustand): SecSegmentHistorieRohZustand {
   for (const [j, v] of z.kundenProJahr) kundenProJahr[String(j)] = v
   const backlogProJahr: Record<string, number> = {}
   for (const [j, v] of z.backlogProJahr) backlogProJahr[String(j)] = v
+  const narrativeGeoProJahr: SecSegmentHistorieRohZustand['narrativeGeoProJahr'] = {}
+  for (const [j, v] of z.narrativeGeoProJahr) narrativeGeoProJahr[String(j)] = v
   return {
     kategorieMaps,
     kategorieMeta,
@@ -125,6 +138,7 @@ function arbeitszustandZuRoh(z: Arbeitszustand): SecSegmentHistorieRohZustand {
     mitarbeiterProJahr,
     kundenProJahr,
     backlogProJahr,
+    narrativeGeoProJahr,
     verarbeiteteAccessions: [...z.verarbeiteteAccessions],
   }
 }
@@ -150,6 +164,9 @@ function rohZuArbeitszustand(r: SecSegmentHistorieRohZustand): Arbeitszustand {
   }
   for (const [k, v] of Object.entries(r.backlogProJahr ?? {})) {
     z.backlogProJahr.set(parseInt(k, 10), v)
+  }
+  for (const [k, v] of Object.entries(r.narrativeGeoProJahr ?? {})) {
+    if (v) z.narrativeGeoProJahr.set(parseInt(k, 10), v)
   }
   z.verarbeiteteAccessions = [...(r.verarbeiteteAccessions ?? [])]
   return z
@@ -184,6 +201,13 @@ function verarbeite10kInZustand(
     if (k != null) zustand.kundenProJahr.set(jahr, k)
     const bl = extrahiereBacklogMioAusText(text)
     if (bl != null) zustand.backlogProJahr.set(jahr, bl)
+    const narrPct = extrahiereNarrativeGeoProzent(text)
+    if (narrPct) zustand.narrativeGeoProJahr.set(jahr, narrPct)
+  }
+  if (html.length > 5_000) {
+    for (const [jahr, pct] of extrahiereDomesticForeignEinkommenSplit(html)) {
+      if (!zustand.narrativeGeoProJahr.has(jahr)) zustand.narrativeGeoProJahr.set(jahr, pct)
+    }
   }
 
   if (html.length <= 5_000) {
@@ -249,6 +273,42 @@ function verarbeite10kInZustand(
   }
 }
 
+function sammleProduktQuellen(kategorien: SecSegmentHistorieKategorie[]): SecSegmentJahrEintrag[][] {
+  const quellen: SecSegmentJahrEintrag[][] = []
+  for (const k of kategorien) {
+    if (k.metrik !== 'umsatz') continue
+    if (k.id === 'umsatz_detail' || k.id === 'franchise_umsatz' || (k.id.startsWith('dyn_') && /disaggregat/i.test(k.id))) {
+      const split = teileUmsatzDetailInProduktUndGeo(k.historie.jahre)
+      if (split.produkt.length >= 1) quellen.push(filterJahreNachArt(split.produkt, 'produkt'))
+    } else if (k.art === 'produkt' || k.art === 'produkte_services' || k.art === 'umsatz_detail') {
+      quellen.push(filterJahreNachArt(k.historie.jahre, 'produkt'))
+    }
+  }
+  return quellen
+}
+
+function sammleGeoQuellen(kategorien: SecSegmentHistorieKategorie[]): SecSegmentJahrEintrag[][] {
+  const quellen: SecSegmentJahrEintrag[][] = []
+  for (const k of kategorien) {
+    if (k.metrik !== 'umsatz') continue
+    if (k.art === 'geo' || k.id.startsWith('geo_') || k.id === 'revenues_geo_alt') {
+      quellen.push(filterJahreNachArt(k.historie.jahre, 'geo'))
+    } else if (k.id === 'umsatz_detail' || k.id === 'franchise_umsatz') {
+      const split = teileUmsatzDetailInProduktUndGeo(k.historie.jahre)
+      if (split.geo.length >= 1) quellen.push(filterJahreNachArt(split.geo, 'geo'))
+    }
+  }
+  return quellen
+}
+
+function finalisiereSegmentHistorie(
+  hist: SecSegmentHistorie | null,
+  quellen: SecSegmentJahrEintrag[][],
+): SecSegmentHistorie | null {
+  if (!hist && quellen.length === 0) return null
+  return interpoliereJahresluecken(ergaenzeJahresluecken(hist, quellen))
+}
+
 async function bauePaketAusZustand(
   sym: string,
   cik: number,
@@ -276,8 +336,30 @@ async function bauePaketAusZustand(
   let produkt = waehleProduktHistorie(kategorien, berichtJahr)
   let geo = waehleGeoHistorie(kategorien)
   const ergaenzt = ergaenzeFehlendeProduktGeo(produkt, geo, kategorien, html10k, berichtJahr)
-  produkt = ergaenzt.produkt
-  geo = ergaenzt.geo
+  produkt = finalisiereSegmentHistorie(
+    filterSegmentHistorie(ergaenzt.produkt, 'produkt'),
+    sammleProduktQuellen(kategorien),
+  )
+  geo = finalisiereSegmentHistorie(
+    filterSegmentHistorie(ergaenzt.geo, 'geo'),
+    sammleGeoQuellen(kategorien),
+  )
+
+  if (!geo && zustand.narrativeGeoProJahr.size >= 2) {
+    const umsatzProJahr = new Map<number, number>()
+    for (const e of kennzahlen?.umsatzMio ?? []) umsatzProJahr.set(e.jahr, e.wert)
+    if (produkt) {
+      for (const j of produkt.jahre) {
+        const sum = j.segmente.reduce((s, x) => s + (x.umsatzMio ?? 0), 0)
+        if (sum > 0 && !umsatzProJahr.has(j.jahr)) umsatzProJahr.set(j.jahr, sum)
+      }
+    }
+    const narJahre = baueNarrativeGeoHistorie(zustand.narrativeGeoProJahr, umsatzProJahr)
+    geo = finalisiereSegmentHistorie(
+      filterSegmentHistorie(baueHistorie('geo', mapAusJahrEintraegen(narJahre)), 'geo'),
+      [],
+    )
+  }
   if (produkt) produkt = ergaenzeSegmentHistorieMitMargen(produkt, oiJahrEintraege)
   if (geo) geo = ergaenzeSegmentHistorieMitMargen(geo, oiJahrEintraege)
 
@@ -560,23 +642,41 @@ function waehleProduktHistorie(
     return PRODUKT_KAT_PRIO.indexOf(a.id as (typeof PRODUKT_KAT_PRIO)[number]) -
       PRODUKT_KAT_PRIO.indexOf(b.id as (typeof PRODUKT_KAT_PRIO)[number])
   })
-  return sortiert[0]?.historie ?? null
+  const gewinner = sortiert[0]
+  if (!gewinner) return null
+
+  const istGemischteDisagg =
+    gewinner.id === 'umsatz_detail' ||
+    gewinner.id === 'franchise_umsatz' ||
+    (gewinner.id.startsWith('dyn_') && /disaggregat/i.test(gewinner.id))
+  if (istGemischteDisagg) {
+    const split = teileUmsatzDetailInProduktUndGeo(gewinner.historie.jahre)
+    const prodJahre = filterJahreNachArt(split.produkt, 'produkt')
+    if (prodJahre.length >= 2) {
+      return baueHistorie('produkt', mapAusJahrEintraegen(prodJahre))
+    }
+  }
+
+  return filterSegmentHistorie(gewinner.historie, 'produkt') ?? gewinner.historie
 }
 
 function waehleGeoHistorie(kategorien: SecSegmentHistorieKategorie[]): SecSegmentHistorie | null {
   for (const id of GEO_KAT_PRIO) {
     const hit = kategorien.find((k) => k.id === id)
-    if (hit && hit.historie.anzahlJahre >= 2) return hit.historie
+    if (hit && hit.historie.anzahlJahre >= 2) {
+      return filterSegmentHistorie(hit.historie, 'geo') ?? hit.historie
+    }
   }
   const dynGeo = kategorien.find(
     (k) => k.id.startsWith('dyn_') && k.art === 'geo' && k.historie.anzahlJahre >= 2,
   )
-  if (dynGeo) return dynGeo.historie
+  if (dynGeo) return filterSegmentHistorie(dynGeo.historie, 'geo') ?? dynGeo.historie
   const hits = kategorien.filter(
     (k) => k.art === 'geo' && k.metrik === 'umsatz' && !k.id.startsWith('dyn_'),
   )
   if (hits.length === 0) return null
-  return hits.sort((a, b) => b.historie.anzahlJahre - a.historie.anzahlJahre)[0]!.historie
+  const best = hits.sort((a, b) => b.historie.anzahlJahre - a.historie.anzahlJahre)[0]!.historie
+  return filterSegmentHistorie(best, 'geo') ?? best
 }
 
 function mapAusJahrEintraegen(jahre: SecSegmentJahrEintrag[]): Map<number, SecSegmentRoh[]> {
@@ -625,6 +725,14 @@ function mergeEinzelInKategorie(
   mergeJahrSmart(m, jahr, segmente, filingJahr, meta)
 }
 
+/** Produkt-Historie enthält fälschlich Regions-Segmentnamen (MA-Disaggregation). */
+function historieEnthaeltGeoLeaks(hist: SecSegmentHistorie): boolean {
+  for (const j of hist.jahre) {
+    if (j.segmente.some((s) => segmentIstGeo(s.name))) return true
+  }
+  return false
+}
+
 /** Produkt- und Geo-Historie aus Disaggregation, Heuristik und Einzeljahr-Fallbacks ergänzen. */
 function ergaenzeFehlendeProduktGeo(
   produkt: SecSegmentHistorie | null,
@@ -637,13 +745,15 @@ function ergaenzeFehlendeProduktGeo(
   let g = geo
 
   const disagg = kategorien.find((k) => k.id === 'umsatz_detail')?.historie
-  if (disagg && (!p || !g)) {
+  if (disagg) {
     const split = teileUmsatzDetailInProduktUndGeo(disagg.jahre)
-    if (!p && split.produkt.length >= 2) {
-      p = baueHistorie('produkt', mapAusJahrEintraegen(split.produkt))
+    const splitProd = baueHistorie('produkt', mapAusJahrEintraegen(filterJahreNachArt(split.produkt, 'produkt')))
+    const splitGeo = baueHistorie('geo', mapAusJahrEintraegen(filterJahreNachArt(split.geo, 'geo')))
+    if (splitProd && (!p || splitProd.anzahlJahre >= p.anzahlJahre || historieEnthaeltGeoLeaks(p))) {
+      p = splitProd
     }
-    if (!g && split.geo.length >= 2) {
-      g = baueHistorie('geo', mapAusJahrEintraegen(split.geo))
+    if (splitGeo && (!g || splitGeo.anzahlJahre >= g.anzahlJahre)) {
+      g = splitGeo
     }
   }
 

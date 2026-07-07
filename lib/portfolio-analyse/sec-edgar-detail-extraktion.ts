@@ -4,6 +4,7 @@
 
 import {
   extrahiereIxbrlTextBlock,
+  istPlausiblerSegmentname,
   kanonisereSegmentNamen,
   parseMehrjahresSegmente,
   parseMehrjahresSegmenteDetail,
@@ -158,7 +159,7 @@ export function mergeJahrSmart(
   meta?: Map<number, number>,
   opts?: { erzwingen?: boolean },
 ): void {
-  const norm = kanonisereSegmentNamen(segmente)
+  const norm = kanonisereSegmentNamen(segmente).filter((s) => istPlausiblerSegmentname(s.name))
   if (norm.length < 2) return
   const neuSumme = summeSegmenteMio(norm)
   const alt = map.get(jahr)

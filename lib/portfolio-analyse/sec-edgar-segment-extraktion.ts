@@ -262,7 +262,101 @@ function betragZuMio(n: number): number {
 }
 
 function istGeoName(name: string): boolean {
-  return GEO_HINT.test(bereinigeLabel(name))
+  const n = bereinigeLabel(name)
+  if (istGeoartigesOperatingSegment(n)) return false
+
+  // Gebühren-/Produktzeilen mit geo-ähnlichen Wörtern (MA, V, …)
+  if (
+    /\b(assessment|assessments|fee|fees|processing|network|incentive|incentives|rebate|volume|service|services|solution|solutions|product|products|subscription|license|royalt|contra-revenue|cross-border|cross border|gross revenue|other revenue)\b/i.test(
+      n,
+    )
+  ) {
+    return false
+  }
+
+  // Reine Regions-Labels
+  if (
+    /^(?:the\s+)?(?:americas?|europe|asia|africa|emea|apac|international|foreign|u\.s\.?|united states|north america|south america|latin america|rest of (?:the )?world|other countries)(?:\s+markets?)?$/i.test(
+      n,
+    )
+  ) {
+    return true
+  }
+  if (/north american markets?|international markets?/i.test(n)) return true
+  if (/asia pacific/i.test(n) && /(?:europe|africa|middle east)/i.test(n)) return true
+  if (/middle east and africa/i.test(n)) return true
+
+  if (GEO_SKIP.test(n)) return false
+  if (/^(domestic|international|foreign|regional)$/i.test(n)) return true
+
+  return GEO_HINT.test(n) && n.length <= 50 && !/\brevenue[s]?\b/i.test(n)
+}
+
+/** Öffentliche API für Segment-Trennung Produkt vs. Region. */
+export function segmentIstGeo(name: string): boolean {
+  return istGeoName(name)
+}
+
+function istEindeutigeProduktDisaggZeile(name: string): boolean {
+  const n = bereinigeLabel(name)
+  return /\b(assessment|assessments|fee|fees|processing|network|incentive|incentives|rebate|volume|service|services|solution|solutions|product|products|subscription|license|royalt|contra-revenue|cross-border|cross border|gross revenue|other revenue|payment network|transaction processing|value-added|client incentives)\b/i.test(
+    n,
+  )
+}
+
+function segmentGehoertZuProdukt(name: string): boolean {
+  return !istGeoName(name) || istGeoartigesOperatingSegment(name)
+}
+
+function segmentGehoertZuGeo(name: string): boolean {
+  if (istGeoartigesOperatingSegment(name)) return false
+  if (istGeoName(name)) return true
+  // KNSL: Commercial/Personal als Regions-Tab (kein klassisches Geo-Label)
+  if (/^(commercial|personal)$/i.test(bereinigeLabel(name))) return true
+  return false
+}
+
+/** Jahre auf reine Produkt- bzw. Geo-Segmente filtern (Anteile neu berechnen). */
+export function filterJahreNachArt(
+  jahre: SecSegmentJahrEintrag[],
+  art: 'produkt' | 'geo',
+): SecSegmentJahrEintrag[] {
+  const out: SecSegmentJahrEintrag[] = []
+  for (const j of jahre) {
+    let segmente: SecSegmentRoh[]
+    if (art === 'produkt') {
+      segmente = j.segmente.filter(
+        (s) => segmentGehoertZuProdukt(s.name) && istPlausiblerSegmentname(s.name),
+      )
+    } else {
+      const ohneProduktZeilen = j.segmente.filter((s) => !istEindeutigeProduktDisaggZeile(s.name))
+      const nurGeo = ohneProduktZeilen.filter((s) => segmentGehoertZuGeo(s.name))
+      segmente = nurGeo.length >= 2 ? nurGeo : []
+    }
+    if (segmente.length >= 2) {
+      out.push({ jahr: j.jahr, segmente: anteileBerechnen(segmente) })
+    }
+  }
+  return out
+}
+
+/** Historie bereinigen — gemischte Disaggregation (MA, V) in reine Produkt-/Geo-Sicht. */
+export function filterSegmentHistorie(
+  hist: SecSegmentHistorie | null,
+  art: 'produkt' | 'geo',
+): SecSegmentHistorie | null {
+  if (!hist) return null
+  const jahre = filterJahreNachArt(hist.jahre, art)
+  if (jahre.length < 2) return null
+  const segmentNamen = [...new Set(jahre.flatMap((j) => j.segmente.map((s) => s.name)))].sort()
+  return {
+    art,
+    jahre,
+    segmentNamen,
+    anzahlJahre: jahre.length,
+    aeltestesJahr: jahre[0]!.jahr,
+    juengstesJahr: jahre[jahre.length - 1]!.jahr,
+  }
 }
 
 /** MCD & Co.: Geschäftssegmente, die wie Geo-Namen aussehen. */
@@ -540,8 +634,11 @@ export function parseGeoSegmente(fragment: string, ausXbrlGeo: boolean): SecSegm
 }
 
 function istIncomeStatementZeile(label: string): boolean {
-  return /cost of sales|cost of revenue|research and development|selling and marketing|general and administrative|operating income|operating loss|gross profit|^net sales$|income before|corporate and support|other \(gains\)/i.test(
-    bereinigeLabel(label),
+  const n = bereinigeLabel(label)
+  return (
+    /cost of sales|cost of revenue|cost of products sold|research and development|selling and marketing|general and administrative|operating income|operating loss|operating earnings|gross profit|^net sales$|income before|earnings before income|corporate and support|other \(gains\)|contingent consideration|^impairment$/i.test(
+      n,
+    ) || /reportable segment operating earnings/i.test(n)
   )
 }
 
@@ -570,6 +667,56 @@ function reportingSegmentFuerUmsatzZeile(name: string, oiKeys: Set<string>): str
     if (re.test(trimmed)) return parent
   }
   return trimmed
+}
+
+/** Disaggregations-Zeilen (GOOGL, MSFT) auf Reporting-Segmente rollen. */
+export function rollupZuReportingSegmenten(segmente: SecSegmentRoh[]): SecSegmentRoh[] {
+  const oiKeys = new Set(
+    segmente.filter((s) => s.operatingIncomeMio != null).map((s) => s.name.trim().toLowerCase()),
+  )
+  const byParent = new Map<string, SecSegmentRoh>()
+  for (const s of segmente) {
+    const parent = reportingSegmentFuerUmsatzZeile(s.name, oiKeys)
+    const prev = byParent.get(parent)
+    if (!prev) {
+      byParent.set(parent, { ...s, name: parent })
+      continue
+    }
+    const umsatz = (prev.umsatzMio ?? 0) + (s.umsatzMio ?? 0)
+    const oi =
+      prev.operatingIncomeMio != null || s.operatingIncomeMio != null
+        ? (prev.operatingIncomeMio ?? 0) + (s.operatingIncomeMio ?? 0)
+        : null
+    byParent.set(parent, {
+      name: parent,
+      umsatzMio: umsatz > 0 ? Math.round(umsatz * 10) / 10 : prev.umsatzMio,
+      anteilPct: null,
+      operatingIncomeMio: oi,
+      margePct: null,
+      netIncomeMio: prev.netIncomeMio ?? s.netIncomeMio,
+    })
+  }
+  const merged = [...byParent.values()]
+  return merged.length >= 2 ? anteileBerechnen(merged) : segmente
+}
+
+export function brauchtReportingRollup(jahre: SecSegmentJahrEintrag[]): boolean {
+  const knownParents = new Set(UMSATZ_ZU_REPORTING_SEGMENT.map(([, p]) => p))
+  let hits = 0
+  const parents = new Set<string>()
+  for (const j of jahre) {
+    const oiKeys = new Set(
+      j.segmente.filter((s) => s.operatingIncomeMio != null).map((s) => s.name.trim().toLowerCase()),
+    )
+    for (const s of j.segmente) {
+      const parent = reportingSegmentFuerUmsatzZeile(s.name, oiKeys)
+      if (parent !== s.name.trim() && knownParents.has(parent)) {
+        hits++
+        parents.add(parent)
+      }
+    }
+  }
+  return hits >= 2 && parents.size >= 2
 }
 
 export function berechneSegmentMargePct(umsatzMio: number | null, operatingIncomeMio: number | null): number | null {
@@ -943,8 +1090,9 @@ function inferArt(segmente: SecSegmentRoh[]): 'produkt' | 'geo' {
   return geoCount >= Math.ceil(segmente.length / 2) ? 'geo' : 'produkt'
 }
 
-function istPlausiblerSegmentname(name: string): boolean {
+export function istPlausiblerSegmentname(name: string): boolean {
   const n = bereinigeLabel(name)
+  if (/^product$/i.test(n) || /^services?$/i.test(n)) return true
   if (istIncomeStatementZeile(n) || FINANCIAL_LINE_ITEM.test(n) || AUFWAND_ZEILE.test(n)) return false
   if (
     /adjusted ebitda|segment expenses|other segment items|locomotive fuel|salaries|variable costs|fixed costs|gross margin|expenditures for|corporate and support|revenue from operations|operating \[|administrative \[|other subsidiary|intersegment revenues|consolidated revenues|selling, general|operating supplies|general supplies|operating taxes|insurance and claims|communications and utilities|purchased transportation|miscellaneous expenses|deferral of|recognition of|unearned revenue|beginning balance|ending balance|residential revenues|commercial revenues|termite and ancillary/i.test(
@@ -1743,7 +1891,7 @@ function mehrjahresAusBloecke(html: string): {
     const prodOnly = det
       .map((j) => ({
         jahr: j.jahr,
-        segmente: anteileBerechnen(j.segmente.filter((s) => !istGeoName(s.name))),
+        segmente: anteileBerechnen(j.segmente.filter((s) => segmentGehoertZuProdukt(s.name))),
       }))
       .filter((j) => j.segmente.length >= 2)
     if (prodOnly.length > produkt.length) produkt = prodOnly
@@ -1754,23 +1902,33 @@ function mehrjahresAusBloecke(html: string): {
     const gk = parseMehrjahresSegmente(geoKombiBlock, 'geo')
     if (gk.length > geo.length) geo = gk
   }
-  if (geo.length < 2) {
-    const geoOp = parseMehrjahresSegmente(operatingBlock, 'geo')
-    if (geoOp.length > geo.length) geo = geoOp
-  }
-  if (geo.length < 2 && fallbackBlock.length > 500) {
-    const geoFb = parseMehrjahresSegmente(fallbackBlock, 'geo')
-    if (geoFb.length > geo.length) geo = geoFb
-  }
   if (geo.length < 2 && disaggBlock.length > 200) {
     const det = parseMehrjahresSegmenteDetail(disaggBlock, 'geo')
     const geoOnly = det
       .map((j) => ({
         jahr: j.jahr,
-        segmente: anteileBerechnen(j.segmente.filter((s) => istGeoName(s.name))),
+        segmente: anteileBerechnen(j.segmente.filter((s) => segmentGehoertZuGeo(s.name))),
       }))
       .filter((j) => j.segmente.length >= 2)
     if (geoOnly.length > geo.length) geo = geoOnly
+  }
+  if (geo.length < 2) {
+    const geoOp = parseMehrjahresSegmente(operatingBlock, 'geo')
+      .map((j) => ({
+        jahr: j.jahr,
+        segmente: anteileBerechnen(j.segmente.filter((s) => segmentGehoertZuGeo(s.name))),
+      }))
+      .filter((j) => j.segmente.length >= 2)
+    if (geoOp.length > geo.length) geo = geoOp
+  }
+  if (geo.length < 2 && fallbackBlock.length > 500) {
+    const geoFb = parseMehrjahresSegmente(fallbackBlock, 'geo')
+      .map((j) => ({
+        jahr: j.jahr,
+        segmente: anteileBerechnen(j.segmente.filter((s) => segmentGehoertZuGeo(s.name))),
+      }))
+      .filter((j) => j.segmente.length >= 2)
+    if (geoFb.length > geo.length) geo = geoFb
   }
 
   return { produkt, geo }
@@ -1784,8 +1942,8 @@ export function teileUmsatzDetailInProduktUndGeo(jahre: SecSegmentJahrEintrag[])
   const produkt: SecSegmentJahrEintrag[] = []
   const geo: SecSegmentJahrEintrag[] = []
   for (const j of jahre) {
-    const geoSeg = j.segmente.filter((s) => istGeoName(s.name))
-    const prodSeg = j.segmente.filter((s) => !istGeoName(s.name))
+    const geoSeg = j.segmente.filter((s) => segmentGehoertZuGeo(s.name))
+    const prodSeg = j.segmente.filter((s) => segmentGehoertZuProdukt(s.name))
     if (geoSeg.length >= 2) geo.push({ jahr: j.jahr, segmente: anteileBerechnen(geoSeg) })
     if (prodSeg.length >= 2) produkt.push({ jahr: j.jahr, segmente: anteileBerechnen(prodSeg) })
   }

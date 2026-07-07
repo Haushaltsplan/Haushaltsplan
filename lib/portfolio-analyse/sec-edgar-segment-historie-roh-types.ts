@@ -12,5 +12,6 @@ export type SecSegmentHistorieRohZustand = {
   mitarbeiterProJahr: Record<string, number>
   kundenProJahr: Record<string, { name: string | null; anteilPct: number } | null>
   backlogProJahr: Record<string, number>
+  narrativeGeoProJahr: Record<string, { usPct: number; intlPct: number }>
   verarbeiteteAccessions: string[]
 }
