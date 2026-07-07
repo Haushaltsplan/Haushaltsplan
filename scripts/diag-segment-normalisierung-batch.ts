@@ -248,18 +248,25 @@ async function ladeUmsatzMap(cikStr: string): Promise<Map<number, number>> {
   const res = await secFetch(`https://data.sec.gov/api/xbrl/companyfacts/CIK${cikStr}.json`)
   const data = await res.json()
   const gaap = data?.facts?.['us-gaap'] ?? {}
-  const out = new Map<number, number>()
+  const out = new Map<number, { val: number; filed: string }>()
   for (const tag of ['Revenues', 'RevenueFromContractWithCustomerExcludingAssessedTax', 'SalesRevenueNet']) {
-    const liste = gaap[tag]?.units?.USD as { fy?: number; fp?: string; form?: string; val?: number }[] | undefined
+    const liste = gaap[tag]?.units?.USD as
+      | { fy?: number; fp?: string; form?: string; val?: number; end?: string; filed?: string }[]
+      | undefined
     if (!liste) continue
     for (const e of liste) {
-      if (e.form !== '10-K' || e.fp !== 'FY' || !e.fy || e.val == null) continue
+      if (e.form !== '10-K' || e.fp !== 'FY' || e.val == null) continue
+      const jahr = e.end ? parseInt(e.end.slice(0, 4), 10) : e.fy
+      if (jahr == null || !Number.isFinite(jahr)) continue
       const mio = Math.round(e.val / 1_000_000)
-      const prev = out.get(e.fy)
-      if (prev == null || mio > prev) out.set(e.fy, mio)
+      const filed = e.filed ?? e.end ?? ''
+      const prev = out.get(jahr)
+      if (!prev || filed > prev.filed || (filed === prev.filed && mio > prev.val)) {
+        out.set(jahr, { val: mio, filed })
+      }
     }
   }
-  return out
+  return new Map([...out.entries()].map(([j, { val }]) => [j, val]))
 }
 
 async function main() {

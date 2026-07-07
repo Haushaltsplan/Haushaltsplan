@@ -30,12 +30,15 @@ function zuMioUsd(val: number): number {
   return Math.round(val * 10) / 10
 }
 
+/** Geschäftsjahr = Kalenderjahr des Periodenendes (end), nicht SEC-Filing-Feld fy. */
 function jahrAusEintrag(e: FactsUnit): number | null {
-  if (e.fy != null && e.fy >= 1990 && e.fy <= 2035) return e.fy
   const iso = e.end
-  if (!iso) return null
-  const y = parseInt(iso.slice(0, 4), 10)
-  return Number.isFinite(y) ? y : null
+  if (iso) {
+    const y = parseInt(iso.slice(0, 4), 10)
+    if (Number.isFinite(y) && y >= 1990 && y <= 2035) return y
+  }
+  if (e.fy != null && e.fy >= 1990 && e.fy <= 2035) return e.fy
+  return null
 }
 
 function extrahiereJahresreiheMio(facts: CompanyFactsJson, tags: string[]): Map<number, number> {
@@ -54,7 +57,13 @@ function extrahiereJahresreiheMio(facts: CompanyFactsJson, tags: string[]): Map<
           const norm = zuMioUsd(val)
           const filed = e.filed ?? e.end ?? ''
           const prev = map.get(jahr)
-          if (!prev || filed > prev.filed) map.set(jahr, { val: norm, filed })
+          if (
+            !prev ||
+            filed > prev.filed ||
+            (filed === prev.filed && Math.abs(norm) > Math.abs(prev.val))
+          ) {
+            map.set(jahr, { val: norm, filed })
+          }
         }
       }
     }

@@ -7,10 +7,12 @@ import type { SecKennzahlenHistorie } from '@/lib/portfolio-analyse/fundamentald
 import { padCik, secFetch } from '@/lib/portfolio-analyse/sec-edgar-common-server'
 
 const CACHE_MS = 24 * 60 * 60 * 1000
+/** Cache-Invalidierung bei Logik-Änderungen (Jahr aus period end, nicht fy). */
+export const SEC_COMPANYFACTS_CACHE_VERSION = 2
 const MIN_JAHRE = 10
 const MAX_JAHRE = 16
 
-const cache = new Map<number, { at: number; data: SecKennzahlenHistorie | null }>()
+const cache = new Map<number, { at: number; version: number; data: SecKennzahlenHistorie | null }>()
 const jsonCache = new Map<number, { at: number; data: CompanyFactsJson | null }>()
 
 type FactsUnit = {
@@ -98,12 +100,15 @@ function zuMioUsd(val: number): number {
   return Math.round(val * 10) / 10
 }
 
+/** Geschäftsjahr = Kalenderjahr des Periodenendes (end), nicht SEC-Filing-Feld fy. */
 function jahrAusEintrag(e: FactsUnit): number | null {
-  if (e.fy != null && e.fy >= 1990 && e.fy <= 2035) return e.fy
   const iso = e.end
-  if (!iso) return null
-  const y = parseInt(iso.slice(0, 4), 10)
-  return Number.isFinite(y) ? y : null
+  if (iso) {
+    const y = parseInt(iso.slice(0, 4), 10)
+    if (Number.isFinite(y) && y >= 1990 && y <= 2035) return y
+  }
+  if (e.fy != null && e.fy >= 1990 && e.fy <= 2035) return e.fy
+  return null
 }
 
 function extrahiereJahresreihe(
@@ -141,8 +146,15 @@ function extrahiereJahresreihe(
           }
 
           const filed = e.filed ?? e.end ?? ''
+          const gerundet = Math.round(norm * 10) / 10
           const prev = map.get(jahr)
-          if (!prev || filed > prev.filed) map.set(jahr, { val: Math.round(norm * 10) / 10, filed })
+          if (
+            !prev ||
+            filed > prev.filed ||
+            (filed === prev.filed && Math.abs(gerundet) > Math.abs(prev.val))
+          ) {
+            map.set(jahr, { val: gerundet, filed })
+          }
         }
       }
     }
@@ -198,12 +210,14 @@ export async function ladeCompanyFactsJson(cik: number): Promise<CompanyFactsJso
 
 export async function ladeSecCompanyFacts(cik: number): Promise<SecKennzahlenHistorie | null> {
   const hit = cache.get(cik)
-  if (hit && Date.now() - hit.at < CACHE_MS) return hit.data
+  if (hit && hit.version === SEC_COMPANYFACTS_CACHE_VERSION && Date.now() - hit.at < CACHE_MS) {
+    return hit.data
+  }
 
   try {
     const facts = await ladeCompanyFactsJson(cik)
     if (!facts?.facts) {
-      cache.set(cik, { at: Date.now(), data: null })
+      cache.set(cik, { at: Date.now(), version: SEC_COMPANYFACTS_CACHE_VERSION, data: null })
       return null
     }
 
@@ -238,7 +252,7 @@ export async function ladeSecCompanyFacts(cik: number): Promise<SecKennzahlenHis
       for (const j of m.keys()) alleJahre.add(j)
     }
     if (alleJahre.size < 3) {
-      cache.set(cik, { at: Date.now(), data: null })
+      cache.set(cik, { at: Date.now(), version: SEC_COMPANYFACTS_CACHE_VERSION, data: null })
       return null
     }
 
@@ -267,10 +281,10 @@ export async function ladeSecCompanyFacts(cik: number): Promise<SecKennzahlenHis
       anzahlJahre: jahreSort.length,
     }
 
-    cache.set(cik, { at: Date.now(), data })
+    cache.set(cik, { at: Date.now(), version: SEC_COMPANYFACTS_CACHE_VERSION, data })
     return data
   } catch {
-    cache.set(cik, { at: Date.now(), data: null })
+    cache.set(cik, { at: Date.now(), version: SEC_COMPANYFACTS_CACHE_VERSION, data: null })
     return null
   }
 }
