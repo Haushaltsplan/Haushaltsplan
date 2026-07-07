@@ -6,6 +6,10 @@ import type { SecSegmentHistorie } from '@/lib/portfolio-analyse/fundamentaldate
 import {
   anteileBerechnen,
   brauchtReportingRollup,
+  entferneSubtotalZeilen,
+  filterPeriodenSegmente,
+  istPeriodenLabel,
+  istPlausiblerSegmentname,
   kanonisereSegmentNamen,
   rollupZuReportingSegmenten,
   type SecSegmentJahrEintrag,
@@ -275,7 +279,7 @@ export function vereinheitlicheJahrSegmente(
 export function vereinheitlicheJahrEintraege(jahre: SecSegmentJahrEintrag[]): SecSegmentJahrEintrag[] {
   const mitAlias = jahre.map((j) => ({
     jahr: j.jahr,
-    segmente: kanonisereSegmentNamen(j.segmente).map((s) => ({
+    segmente: kanonisereSegmentNamen(filterPeriodenSegmente(j.segmente)).map((s) => ({
       ...s,
       name: wendeZusatzAlias(s.name),
     })),
@@ -428,4 +432,133 @@ export function interpoliereJahresluecken(hist: SecSegmentHistorie | null): SecS
     .sort((a, b) => a[0] - b[0])
     .map(([jahr, segmente]) => ({ jahr, segmente }))
   return vereinheitlicheSegmentHistorie({ ...vorab, jahre })
+}
+
+function skaliereSegmenteAufSumme(segmente: SecSegmentRoh[], zielSumme: number): SecSegmentRoh[] {
+  const summe = segmente.reduce((s, x) => s + (x.umsatzMio ?? 0), 0)
+  if (summe <= 0 || zielSumme <= 0) return segmente
+  const scaled = segmente.map((s) => ({
+    ...s,
+    umsatzMio: Math.round(((s.umsatzMio ?? 0) * zielSumme) / summe * 10) / 10,
+  }))
+  const neuSumme = scaled.reduce((s, x) => s + (x.umsatzMio ?? 0), 0)
+  const diff = Math.round((zielSumme - neuSumme) * 10) / 10
+  if (diff !== 0 && scaled.length > 0) {
+    let maxIdx = 0
+    for (let i = 1; i < scaled.length; i++) {
+      if ((scaled[i]!.umsatzMio ?? 0) > (scaled[maxIdx]!.umsatzMio ?? 0)) maxIdx = i
+    }
+    scaled[maxIdx] = {
+      ...scaled[maxIdx]!,
+      umsatzMio: Math.round(((scaled[maxIdx]!.umsatzMio ?? 0) + diff) * 10) / 10,
+    }
+  }
+  return scaled
+}
+
+function dedupliziereSegmente(segmente: SecSegmentRoh[]): SecSegmentRoh[] {
+  const byName = new Map<string, SecSegmentRoh>()
+  for (const s of segmente) {
+    const key = s.name.trim().toLowerCase()
+    const prev = byName.get(key)
+    if (!prev || (s.umsatzMio ?? 0) > (prev.umsatzMio ?? 0)) byName.set(key, { ...s })
+  }
+  return [...byName.values()]
+}
+
+function scoreJahrKandidat(segmente: SecSegmentRoh[], konzern: number | undefined): number {
+  let score = segmente.length >= 2 && segmente.length <= 10 ? 20 : 0
+  score -= segmente.filter((s) => istPeriodenLabel(s.name)).length * 50
+  if (konzern && konzern > 0) {
+    const summe = segmente.reduce((s, x) => s + (x.umsatzMio ?? 0), 0)
+    if (summe > 0) {
+      const ratio = summe / konzern
+      score += 30 - Math.min(30, Math.abs(1 - ratio) * 40)
+    }
+  }
+  return score
+}
+
+function bereinigeJahrSegmente(
+  segmente: SecSegmentRoh[],
+  konzernUmsatzMio: number | undefined,
+  art: SecSegmentHistorie['art'],
+): SecSegmentRoh[] | null {
+  let clean = filterPeriodenSegmente(segmente).filter((s) => (s.umsatzMio ?? 0) > 0)
+  clean = clean.filter((s) => istPlausiblerSegmentname(s.name))
+  if (clean.length < 2) return null
+
+  if (art === 'produkt' && brauchtReportingRollup([{ jahr: 0, segmente: clean }])) {
+    clean = rollupZuReportingSegmenten(clean)
+  }
+  clean = entferneSubtotalZeilen(clean)
+  clean = dedupliziereSegmente(clean)
+  if (clean.length < 2) return null
+
+  if (konzernUmsatzMio != null && konzernUmsatzMio > 0) {
+    clean = skaliereSegmenteAufSumme(clean, konzernUmsatzMio)
+  }
+
+  return anteileBerechnen(clean)
+}
+
+function waehleBesteJahrSegmente(
+  kandidaten: SecSegmentRoh[][],
+  konzern: number | undefined,
+  art: SecSegmentHistorie['art'],
+): SecSegmentRoh[] | null {
+  let best: SecSegmentRoh[] | null = null
+  let bestScore = -Infinity
+  for (const roh of kandidaten) {
+    const val = bereinigeJahrSegmente(roh, konzern, art)
+    if (!val) continue
+    const score = scoreJahrKandidat(val, konzern)
+    if (score > bestScore) {
+      bestScore = score
+      best = val
+    }
+  }
+  return best
+}
+
+/**
+ * Segment-Jahre bereinigen und auf exakt 100 % (= Konzern-Jahresumsatz) normalisieren.
+ * Jahre werden nicht verworfen — beste Quelle je Jahr, Über-/Unterzählung per Skalierung korrigiert.
+ */
+export function bereinigeHistorieGegenJahresumsatz(
+  hist: SecSegmentHistorie | null,
+  umsatzProJahr: Map<number, number>,
+  quellen: SecSegmentJahrEintrag[][] = [],
+): SecSegmentHistorie | null {
+  const art = hist?.art ?? 'produkt'
+  const jahreSet = new Set<number>()
+  for (const j of hist?.jahre ?? []) jahreSet.add(j.jahr)
+  for (const q of quellen) for (const j of q) jahreSet.add(j.jahr)
+  if (jahreSet.size === 0) return hist
+
+  const jahre: SecSegmentJahrEintrag[] = []
+  for (const jahr of [...jahreSet].sort((a, b) => a - b)) {
+    const kandidaten: SecSegmentRoh[][] = []
+    const prim = hist?.jahre.find((j) => j.jahr === jahr)?.segmente
+    if (prim) kandidaten.push(prim)
+    for (const q of quellen) {
+      const alt = q.find((j) => j.jahr === jahr)?.segmente
+      if (alt) kandidaten.push(alt)
+    }
+    const konzern = umsatzProJahr.get(jahr)
+    const segmente = waehleBesteJahrSegmente(kandidaten, konzern, art)
+    if (segmente) jahre.push({ jahr, segmente })
+  }
+
+  if (jahre.length < 2) return hist
+
+  const segmentNamen = [...new Set(jahre.flatMap((j) => j.segmente.map((s) => s.name)))].sort()
+  return {
+    art,
+    jahre,
+    segmentNamen,
+    anzahlJahre: jahre.length,
+    aeltestesJahr: jahre[0]!.jahr,
+    juengstesJahr: jahre[jahre.length - 1]!.jahr,
+  }
 }

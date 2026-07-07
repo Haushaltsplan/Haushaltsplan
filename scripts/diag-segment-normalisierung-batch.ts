@@ -29,10 +29,12 @@ import {
   extrahiereNarrativeGeoProzent,
 } from '../lib/portfolio-analyse/sec-edgar-narrative-geo-server.ts'
 import {
+  bereinigeHistorieGegenJahresumsatz,
   ergaenzeJahresluecken,
   interpoliereJahresluecken,
   vereinheitlicheSegmentHistorie,
 } from '../lib/portfolio-analyse/sec-edgar-segment-normalisierung.ts'
+import { istPeriodenLabel } from '../lib/portfolio-analyse/sec-edgar-segment-extraktion.ts'
 
 const UA = process.env.SEC_EDGAR_USER_AGENT || 'Omnia Haushalt test@example.com'
 const MAX_FILINGS = 12
@@ -80,7 +82,7 @@ function jahresluecken(hist: SecSegmentHistorie | null): number[] {
 }
 
 // Minimal mirror of server pipeline (offline)
-async function ladePaket(sym: string, cikStr: string) {
+async function ladePaket(sym: string, cikStr: string, umsatzMap: Map<number, number>) {
   const cik = parseInt(cikStr, 10)
   const sub = await (await secFetch(`https://data.sec.gov/submissions/CIK${cikStr.padStart(10, '0')}.json`)).json()
   const f = sub.filings.recent
@@ -224,6 +226,9 @@ async function ladePaket(sym: string, cikStr: string) {
     geo = interpoliereJahresluecken(ergaenzeJahresluecken(baueHistorie('geo', nar), []))
   }
 
+  produkt = bereinigeHistorieGegenJahresumsatz(produkt, umsatzMap, produktQuellen)
+  geo = bereinigeHistorieGegenJahresumsatz(geo, umsatzMap, geoQuellen)
+
   const vorProdNamen = new Set(produktQuellen.flat().flatMap((j) => j.segmente.map((s) => s.name)))
   const nachProdNamen = produkt?.segmentNamen.length ?? 0
 
@@ -235,7 +240,26 @@ async function ladePaket(sym: string, cikStr: string) {
     geoLuecken: jahresluecken(geo),
     namenVor: vorProdNamen.size,
     namenNach: nachProdNamen,
+    periodenLeaks: produkt?.segmentNamen.filter((n) => istPeriodenLabel(n)) ?? [],
   }
+}
+
+async function ladeUmsatzMap(cikStr: string): Promise<Map<number, number>> {
+  const res = await secFetch(`https://data.sec.gov/api/xbrl/companyfacts/CIK${cikStr}.json`)
+  const data = await res.json()
+  const gaap = data?.facts?.['us-gaap'] ?? {}
+  const out = new Map<number, number>()
+  for (const tag of ['Revenues', 'RevenueFromContractWithCustomerExcludingAssessedTax', 'SalesRevenueNet']) {
+    const liste = gaap[tag]?.units?.USD as { fy?: number; fp?: string; form?: string; val?: number }[] | undefined
+    if (!liste) continue
+    for (const e of liste) {
+      if (e.form !== '10-K' || e.fp !== 'FY' || !e.fy || e.val == null) continue
+      const mio = Math.round(e.val / 1_000_000)
+      const prev = out.get(e.fy)
+      if (prev == null || mio > prev) out.set(e.fy, mio)
+    }
+  }
+  return out
 }
 
 async function main() {
@@ -247,14 +271,33 @@ async function main() {
     const sym = ISIN_KENNTNISSE[pos.isin]?.symbolYahoo?.split('.')[0]?.toUpperCase()
     if (!sym || !pos.cik) continue
     try {
-      const r = await ladePaket(sym, pos.cik.replace(/^0+/, '').padStart(10, '0'))
+      const cikStr = pos.cik.replace(/^0+/, '').padStart(10, '0')
+      const umsatzMap = await ladeUmsatzMap(cikStr)
+      const r = await ladePaket(sym, cikStr, umsatzMap)
       const pJ = r.produkt?.anzahlJahre ?? 0
       const gJ = r.geo?.anzahlJahre ?? 0
       const prodL = r.prodLuecken.length
       const geoL = r.geoLuecken.length
+      const perioden = r.periodenLeaks
+      const summenFehler: number[] = []
+      for (const j of r.produkt?.jahre ?? []) {
+        const konzern = umsatzMap.get(j.jahr)
+        if (!konzern) continue
+        const summe = j.segmente.reduce((s, x) => s + (x.umsatzMio ?? 0), 0)
+        const anteilSum = j.segmente.reduce((s, x) => s + (x.anteilPct ?? 0), 0)
+        if (Math.abs(summe - konzern) / konzern > 0.005) summenFehler.push(j.jahr)
+        if (Math.abs(anteilSum - 100) > 0.5) summenFehler.push(j.jahr)
+      }
       const line = `${sym.padEnd(6)} P${pJ}J G${gJ}J | Namen ${r.namenVor}→${r.namenNach} | Lücken P${prodL} G${geoL}`
-      if (pJ >= 2 && gJ >= 2 && prodL <= 2 && geoL <= 2) ok.push(line)
-      else fehler.push(line + (prodL > 2 ? ` [Prod-Lücken: ${r.prodLuecken.join(',')}]` : '') + (geoL > 2 ? ` [Geo-Lücken: ${r.geoLuecken.join(',')}]` : ''))
+      if (pJ >= 2 && gJ >= 2 && prodL <= 2 && geoL <= 2 && perioden.length === 0 && summenFehler.length === 0) {
+        ok.push(line)
+      } else {
+        fehler.push(
+          line +
+            (perioden.length ? ` [Monate: ${perioden.join(',')}]` : '') +
+            (summenFehler.length ? ` [Summe≠Umsatz: ${summenFehler.join(',')}]` : ''),
+        )
+      }
     } catch (e) {
       fehler.push(`${sym}: ${e instanceof Error ? e.message : String(e)}`)
     }

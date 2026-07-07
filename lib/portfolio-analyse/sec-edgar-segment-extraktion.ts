@@ -99,6 +99,35 @@ const GEO_SKIP =
 const GEO_HINT =
   /america|europe|asia|pacific|africa|middle east|international|united states|u\.s\.|emea|apac|latin|canada|china|japan|korea|india|germany|uk|united kingdom|austral|mexico|brazil|regional|foreign|domestic|north america|south america|rest of world|outside|geograph|country|market[s]?$|americas|other countries|other americas/i
 
+const MONATSNAMEN_RE =
+  /^(january|february|march|april|may|june|july|august|september|october|november|december)$/i
+
+/** Quartals-/Perioden-Header — keine Umsatzsegmente (MSFT: „December“, „Quarter Ended“). */
+export function istPeriodenLabel(name: string): boolean {
+  const n = bereinigeLabel(name)
+  if (!n) return false
+  if (MONATSNAMEN_RE.test(n)) return true
+  if (/^quarter ended$/i.test(n)) return true
+  if (/^year ended$/i.test(n)) return true
+  if (/^(three|six|nine|twelve)\s+months?\s+ended$/i.test(n)) return true
+  if (/months?\s+ended$/i.test(n)) return true
+  if (/^fiscal\s+year/i.test(n)) return true
+  if (/^q[1-4](?:\s+fy\d{2,4})?$/i.test(n)) return true
+  if (/^fy\s*\d{2,4}$/i.test(n)) return true
+  if (/^(january|february|march|april|may|june|july|august|september|october|november|december)\s+\d{1,2},?\s+\d{4}$/i.test(n)) {
+    return true
+  }
+  return false
+}
+
+function sindAllesPeriodenLabels(namen: string[]): boolean {
+  return namen.length >= 2 && namen.every((n) => istPeriodenLabel(n))
+}
+
+export function filterPeriodenSegmente(segmente: SecSegmentRoh[]): SecSegmentRoh[] {
+  return segmente.filter((s) => !istPeriodenLabel(s.name))
+}
+
 export type SegmentExtraktionErgebnis = {
   segmente: SecSegmentRoh[]
   art: 'produkt' | 'geo' | null
@@ -326,7 +355,10 @@ export function filterJahreNachArt(
     let segmente: SecSegmentRoh[]
     if (art === 'produkt') {
       segmente = j.segmente.filter(
-        (s) => segmentGehoertZuProdukt(s.name) && istPlausiblerSegmentname(s.name),
+        (s) =>
+          segmentGehoertZuProdukt(s.name) &&
+          istPlausiblerSegmentname(s.name) &&
+          !istPeriodenLabel(s.name),
       )
     } else {
       const ohneProduktZeilen = j.segmente.filter((s) => !istEindeutigeProduktDisaggZeile(s.name))
@@ -376,6 +408,7 @@ function istSegmentLabel(name: string, geoModus: boolean, ausXbrlGeo: boolean): 
   if (/^\(?\s*millions of dollars\s*\)?$/i.test(n)) return false
   if (/^(january|february|march|april|may|june|july|august|september|october|november|december)\s+\d{1,2},?\s+\d{4}$/i.test(n)) return false
   if (/^fiscal\s+\d{4}$/i.test(n)) return false
+  if (istPeriodenLabel(n)) return false
   if (SKIP_LABELS.test(n)) return false
   if (JUNK_LABEL.test(n)) return false
   if (BALANCE_JUNK.test(n)) return false
@@ -506,13 +539,16 @@ export function parseSpaltenOrientierteSegmente(fragment: string): SecSegmentRoh
       (c) =>
         c &&
         istSegmentLabel(c, false, false) &&
+        !istPeriodenLabel(c) &&
         !FINANCIAL_LINE_ITEM.test(c) &&
         !AUFWAND_ZEILE.test(c) &&
         !istIncomeStatementZeile(c),
     )
 
     if (potNamen.length >= 2 && z.betraege.length < potNamen.length) {
-      if (potNamen.length >= spaltenNamen.length) spaltenNamen = potNamen
+      if (!sindAllesPeriodenLabels(potNamen) && potNamen.length >= spaltenNamen.length) {
+        spaltenNamen = potNamen
+      }
       continue
     }
 
@@ -963,12 +999,15 @@ function parseMehrjahresOperatingIncomeSpaltenOrientiert(fragment: string): SecS
         (c) =>
           c &&
           istSegmentLabel(c, false, false) &&
+          !istPeriodenLabel(c) &&
           !FINANCIAL_LINE_ITEM.test(c) &&
           !AUFWAND_ZEILE.test(c) &&
           !istIncomeStatementZeile(c),
       )
       if (potNamen.length >= 2 && z.betraege.length < potNamen.length) {
-        if (potNamen.length >= spaltenNamen.length) spaltenNamen = potNamen
+        if (!sindAllesPeriodenLabels(potNamen) && potNamen.length >= spaltenNamen.length) {
+          spaltenNamen = potNamen
+        }
         continue
       }
 
@@ -1093,6 +1132,7 @@ function inferArt(segmente: SecSegmentRoh[]): 'produkt' | 'geo' {
 export function istPlausiblerSegmentname(name: string): boolean {
   const n = bereinigeLabel(name)
   if (/^product$/i.test(n) || /^services?$/i.test(n)) return true
+  if (istPeriodenLabel(n)) return false
   if (istIncomeStatementZeile(n) || FINANCIAL_LINE_ITEM.test(n) || AUFWAND_ZEILE.test(n)) return false
   if (
     /adjusted ebitda|segment expenses|other segment items|locomotive fuel|salaries|variable costs|fixed costs|gross margin|expenditures for|corporate and support|revenue from operations|operating \[|administrative \[|other subsidiary|intersegment revenues|consolidated revenues|selling, general|operating supplies|general supplies|operating taxes|insurance and claims|communications and utilities|purchased transportation|miscellaneous expenses|deferral of|recognition of|unearned revenue|beginning balance|ending balance|residential revenues|commercial revenues|termite and ancillary/i.test(
@@ -1139,7 +1179,7 @@ function filterProzentArtefakte(segmente: SecSegmentRoh[]): SecSegmentRoh[] {
 }
 
 export function validiereSegmente(segmente: SecSegmentRoh[]): SecSegmentRoh[] {
-  const skaliert = korrigiereSkalierung([...segmente])
+  const skaliert = korrigiereSkalierung(filterPeriodenSegmente([...segmente]))
   const plausibel = skaliert.filter((s) => istPlausiblerSegmentname(s.name))
   if (plausibel.filter((s) => istIncomeStatementZeile(s.name)).length >= 2) return []
 
@@ -1176,7 +1216,7 @@ function approxGleich(a: number, b: number, tol = 0.03): boolean {
 }
 
 /** Entfernt Zwischen- und Gesamtsummen (z. B. „Google advertising“, „… total“). */
-function entferneSubtotalZeilen(segmente: SecSegmentRoh[]): SecSegmentRoh[] {
+export function entferneSubtotalZeilen(segmente: SecSegmentRoh[]): SecSegmentRoh[] {
   if (segmente.length < 3) return segmente
   const toRemove = new Set<string>()
 
@@ -1212,7 +1252,7 @@ function entferneSubtotalZeilen(segmente: SecSegmentRoh[]): SecSegmentRoh[] {
 }
 
 export function validiereSegmenteDetail(segmente: SecSegmentRoh[]): SecSegmentRoh[] {
-  const skaliert = korrigiereSkalierung([...segmente])
+  const skaliert = korrigiereSkalierung(filterPeriodenSegmente([...segmente]))
   const plausibel = skaliert.filter((s) => istPlausiblerSegmentname(s.name))
   const mitUmsatz = plausibel.filter((s) => (s.umsatzMio ?? 0) >= 5)
   if (mitUmsatz.length < 2) return []
@@ -1495,6 +1535,23 @@ export function anteileBerechnen(segmente: SecSegmentRoh[]): SecSegmentRoh[] {
   return segmente
 }
 
+function scoreSegmentMenge(segmente: SecSegmentRoh[]): number {
+  const clean = segmente.filter(
+    (s) => !istPeriodenLabel(s.name) && istPlausiblerSegmentname(s.name) && (s.umsatzMio ?? 0) > 0,
+  )
+  if (clean.length < 2) return -1000
+  let score = 0
+  score -= segmente.filter((s) => istPeriodenLabel(s.name)).length * 100
+  if (clean.length >= 2 && clean.length <= 8) score += 25
+  if (clean.length > 12) score -= 40
+  const summe = clean.reduce((s, x) => s + (x.umsatzMio ?? 0), 0)
+  if (summe > 0) {
+    const maxAnteil = Math.max(...clean.map((s) => (s.umsatzMio ?? 0) / summe))
+    if (maxAnteil < 0.95) score += 10
+  }
+  return score
+}
+
 function mergeJahrEintraege(
   primaer: SecSegmentJahrEintrag[],
   sekundaer: SecSegmentJahrEintrag[],
@@ -1502,21 +1559,24 @@ function mergeJahrEintraege(
   const map = new Map<number, Map<string, SecSegmentRoh>>()
 
   const add = (jahr: number, segmente: SecSegmentRoh[]) => {
+    const clean = filterPeriodenSegmente(segmente).filter((s) => (s.umsatzMio ?? 0) > 0)
+    if (clean.length < 2) return
+
+    const existing = map.get(jahr)
+    if (existing && existing.size > 0) {
+      const existingArr = [...existing.values()]
+      if (scoreSegmentMenge(clean) <= scoreSegmentMenge(existingArr)) return
+      map.set(jahr, new Map())
+    }
+
     let m = map.get(jahr)
     if (!m) {
       m = new Map()
       map.set(jahr, m)
     }
-    for (const s of kanonisereSegmentNamen(segmente)) {
+    for (const s of kanonisereSegmentNamen(clean)) {
       const key = s.name.toLowerCase()
-      const prev = m.get(key)
-      m.set(key, {
-        name: s.name,
-        umsatzMio: s.umsatzMio ?? prev?.umsatzMio ?? null,
-        anteilPct: s.anteilPct ?? prev?.anteilPct ?? null,
-        operatingIncomeMio: s.operatingIncomeMio ?? prev?.operatingIncomeMio ?? null,
-        margePct: s.margePct ?? prev?.margePct ?? null,
-      })
+      m.set(key, { ...s })
     }
   }
 
@@ -1558,12 +1618,15 @@ function parseSpaltenOrientierteMehrjahresSegmente(
         (c) =>
           c &&
           istSegmentLabel(c, false, false) &&
+          !istPeriodenLabel(c) &&
           !FINANCIAL_LINE_ITEM.test(c) &&
           !AUFWAND_ZEILE.test(c) &&
           !istIncomeStatementZeile(c),
       )
       if (potNamen.length >= 2 && z.betraege.length < potNamen.length) {
-        if (potNamen.length >= spaltenNamen.length) spaltenNamen = potNamen
+        if (!sindAllesPeriodenLabels(potNamen) && potNamen.length >= spaltenNamen.length) {
+          spaltenNamen = potNamen
+        }
         continue
       }
 

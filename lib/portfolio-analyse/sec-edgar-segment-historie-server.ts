@@ -36,7 +36,11 @@ import {
   extrahiereDomesticForeignEinkommenSplit,
   extrahiereNarrativeGeoProzent,
 } from '@/lib/portfolio-analyse/sec-edgar-narrative-geo-server'
-import { ergaenzeJahresluecken, interpoliereJahresluecken } from '@/lib/portfolio-analyse/sec-edgar-segment-normalisierung'
+import {
+  bereinigeHistorieGegenJahresumsatz,
+  ergaenzeJahresluecken,
+  interpoliereJahresluecken,
+} from '@/lib/portfolio-analyse/sec-edgar-segment-normalisierung'
 import { extrahiereNarrativeSegmentTabellen } from '@/lib/portfolio-analyse/sec-edgar-narrative-tabellen'
 import {
   extrahiereBeideSegmentartenAus10kHtml,
@@ -58,7 +62,7 @@ import {
 
 const CACHE_MS = 24 * 60 * 60 * 1000
 /** Parser-Version — bei Extraktions-Fixes erhöhen (invalidiert Server- + Cloud-Cache). */
-export const SEC_SEGMENT_HISTORIE_CACHE_VERSION = 13
+export const SEC_SEGMENT_HISTORIE_CACHE_VERSION = 15
 const CACHE_VERSION = SEC_SEGMENT_HISTORIE_CACHE_VERSION
 /** Ziel: mindestens 12 Geschäftsjahre Segmentdaten. */
 const ZIEL_JAHRE = 12
@@ -360,6 +364,20 @@ async function bauePaketAusZustand(
       [],
     )
   }
+
+  const umsatzProJahr = new Map<number, number>()
+  for (const e of kennzahlen?.umsatzMio ?? []) umsatzProJahr.set(e.jahr, e.wert)
+  if (produkt) {
+    produkt = bereinigeHistorieGegenJahresumsatz(
+      produkt,
+      umsatzProJahr,
+      sammleProduktQuellen(kategorien),
+    )
+  }
+  if (geo) {
+    geo = bereinigeHistorieGegenJahresumsatz(geo, umsatzProJahr, sammleGeoQuellen(kategorien))
+  }
+
   if (produkt) produkt = ergaenzeSegmentHistorieMitMargen(produkt, oiJahrEintraege)
   if (geo) geo = ergaenzeSegmentHistorieMitMargen(geo, oiJahrEintraege)
 
