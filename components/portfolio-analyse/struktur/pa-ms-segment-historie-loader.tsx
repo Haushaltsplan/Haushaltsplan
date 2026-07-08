@@ -21,13 +21,12 @@ export function PaMsSegmentHistorieLoader({
   initial?: SecSegmentHistoriePaket | null
 }) {
   const [paket, setPaket] = useState<SecSegmentHistoriePaket | null>(initial ?? null)
-  const [laden, setLaden] = useState(true)
+  const [laden, setLaden] = useState(false)
   const [fehler, setFehler] = useState<string | null>(null)
 
   useEffect(() => {
     if (!isin && !symbolYahoo && !ticker) {
-      setLaden(false)
-      setFehler('Keine ISIN oder kein Symbol für Marketscreener-Abruf.')
+      setFehler('Keine ISIN oder kein Symbol für Segment-Abruf.')
       return
     }
 
@@ -40,6 +39,7 @@ export function PaMsSegmentHistorieLoader({
       if (name) q.set('name', name)
       if (symbolYahoo) q.set('symbol', symbolYahoo)
       if (ticker) q.set('ticker', ticker)
+      q.set('refresh', '1')
 
       try {
         const { data: sessionData } = await supabase.auth.getSession()
@@ -58,11 +58,11 @@ export function PaMsSegmentHistorieLoader({
         }
         if (cancelled) return
         if (!res.ok) {
-          setPaket(null)
+          if (!initial) setPaket(null)
           setFehler(
             res.status === 401
               ? 'Anmeldung erforderlich — bitte neu laden.'
-              : j.fehler ?? `Marketscreener-Abruf fehlgeschlagen (HTTP ${res.status}).`,
+              : j.fehler ?? `Segment-Abruf fehlgeschlagen (HTTP ${res.status}).`,
           )
           return
         }
@@ -71,15 +71,16 @@ export function PaMsSegmentHistorieLoader({
           setFehler(null)
         } else if (initial) {
           setPaket(initial)
-          setFehler(j.fehler ?? 'Marketscreener — Fallback auf zwischengespeicherte Daten.')
+          setFehler(j.fehler ?? 'Live-Abruf fehlgeschlagen — zwischengespeicherte Daten.')
         } else {
           setPaket(null)
-          setFehler(j.fehler ?? 'Keine Segmentdaten (Marketscreener).')
+          setFehler(j.fehler ?? 'Keine Segment- oder Backlog-Daten.')
         }
       } catch {
         if (!cancelled) {
-          setPaket(initial ?? null)
-          setFehler('Marketscreener-Abruf fehlgeschlagen.')
+          if (!initial) setPaket(null)
+          else setPaket(initial)
+          setFehler(initial ? 'Live-Abruf fehlgeschlagen — zwischengespeicherte Daten.' : 'Segment-Abruf fehlgeschlagen.')
         }
       } finally {
         if (!cancelled) setLaden(false)
@@ -92,15 +93,25 @@ export function PaMsSegmentHistorieLoader({
     }
   }, [isin, name, symbolYahoo, ticker, initial])
 
-  if (laden) {
+  if (paket) {
     return (
-      <PaCard variant="elevated" className="p-5 text-sm text-[var(--app-text-muted)]">
-        Geschäftsstruktur wird von Marketscreener geladen …
-      </PaCard>
+      <div className="space-y-2">
+        {laden ? (
+          <p className="text-xs text-[var(--app-text-muted)]">Geschäftsstruktur wird aktualisiert …</p>
+        ) : null}
+        {fehler ? <p className="text-xs text-amber-400/90">{fehler}</p> : null}
+        <PaSecSegmentHistorie paket={paket} />
+      </div>
     )
   }
 
-  if (paket) return <PaSecSegmentHistorie paket={paket} />
+  if (laden) {
+    return (
+      <PaCard variant="elevated" className="p-5 text-sm text-[var(--app-text-muted)]">
+        Geschäftsstruktur wird geladen …
+      </PaCard>
+    )
+  }
 
   return (
     <PaCard variant="elevated" className="p-5 text-sm text-[var(--app-text-muted)]">

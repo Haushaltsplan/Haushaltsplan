@@ -15,10 +15,9 @@ import {
 
 const BASE = 'https://www.marketscreener.com/quote/stock'
 const CACHE_MS = 12 * 60 * 60 * 1000
-const CACHE_VERSION = 8
+const CACHE_VERSION = 9
 const MAX_ZUSAETZLICHE_SLUGS = 4
 const MIN_ABSTAND_MS = 300
-const NULL_CACHE_MS = 5 * 60 * 1000
 
 const USER_AGENT =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'
@@ -35,6 +34,8 @@ const FETCH_HEADERS: Record<string, string> = {
 
 const cache = new Map<string, { at: number; v: number; data: SecSegmentHistoriePaket | null }>()
 let letzterAbruf = 0
+let msCookieHeader = ''
+let msCookieAt = 0
 
 const LEER_ZUSATZ: SecZusatzRisikoFelder = {
   mitarbeiterAnzahl: null,
@@ -63,12 +64,33 @@ function normalisiereName(s: string): string {
     .trim()
 }
 
-async function fetchMsHtml(url: string, retries = 1): Promise<string | null> {
+async function ensureMsCookies(): Promise<string> {
+  if (msCookieHeader && Date.now() - msCookieAt < 30 * 60 * 1000) return msCookieHeader
+  try {
+    const res = await fetch('https://www.marketscreener.com/', {
+      headers: FETCH_HEADERS,
+      cache: 'no-store',
+      redirect: 'follow',
+      signal: AbortSignal.timeout(20_000),
+    })
+    const setCookies = res.headers.getSetCookie?.() ?? []
+    msCookieHeader = setCookies.map((c) => c.split(';')[0]!).filter(Boolean).join('; ')
+    msCookieAt = Date.now()
+  } catch {
+    msCookieHeader = ''
+  }
+  return msCookieHeader
+}
+
+async function fetchMsHtml(url: string, retries = 2): Promise<string | null> {
   await throttle()
+  const cookie = await ensureMsCookies()
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
+      const headers = { ...FETCH_HEADERS }
+      if (cookie) headers.Cookie = cookie
       const res = await fetch(url, {
-        headers: FETCH_HEADERS,
+        headers,
         cache: 'no-store',
         redirect: 'follow',
         signal: AbortSignal.timeout(30_000),
@@ -260,6 +282,7 @@ export async function ladeMarketscreenerSegmentHistorie(opts: {
   name: string
   symbolYahoo?: string | null
   ticker?: string | null
+  refresh?: boolean
 }): Promise<SecSegmentHistoriePaket | null> {
   const isin = loesePortfolioIsin({
     isin: opts.isin,
@@ -272,9 +295,8 @@ export async function ladeMarketscreenerSegmentHistorie(opts: {
 
   const cacheKey = segmentCacheKey(opts)
   const hit = cache.get(cacheKey)
-  if (hit && hit.v === CACHE_VERSION) {
-    const maxAge = hit.data ? CACHE_MS : NULL_CACHE_MS
-    if (Date.now() - hit.at < maxAge) return hit.data
+  if (!opts.refresh && hit && hit.v === CACHE_VERSION && hit.data && Date.now() - hit.at < CACHE_MS) {
+    return hit.data
   }
 
   try {
@@ -285,21 +307,16 @@ export async function ladeMarketscreenerSegmentHistorie(opts: {
       console.warn(
         `[marketscreener-segments] Kein Treffer für ${isinFuerSlug || opts.name} (${opts.symbolYahoo ?? opts.ticker ?? '?'})`,
       )
-      cache.set(cacheKey, { at: Date.now(), v: CACHE_VERSION, data: null })
       return null
     }
 
     const paket = bauePaketAusHtml(treffer.html)
-    if (!paket) {
-      cache.set(cacheKey, { at: Date.now(), v: CACHE_VERSION, data: null })
-      return null
-    }
+    if (!paket) return null
 
     cache.set(cacheKey, { at: Date.now(), v: CACHE_VERSION, data: paket })
     return paket
   } catch (e) {
     console.warn(`[marketscreener-segments] Fehler für ${cacheKey}:`, e)
-    cache.set(cacheKey, { at: Date.now(), v: CACHE_VERSION, data: null })
     return null
   }
 }

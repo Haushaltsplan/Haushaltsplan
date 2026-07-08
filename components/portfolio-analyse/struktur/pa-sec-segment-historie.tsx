@@ -769,13 +769,20 @@ export function PaSecSegmentHistorie({ paket }: { paket: SecSegmentHistoriePaket
   const headerTitel = hatUmsatzmix
     ? 'Geschäftsstruktur — Segment & Region'
     : 'Backlog / RPO'
+  const quelleName =
+    paket.quelle === 'stockanalysis'
+      ? 'StockAnalysis'
+      : paket.quelle === 'mixed'
+        ? 'Marketscreener + StockAnalysis'
+        : 'Marketscreener'
+
   const headerUntertitel = hatUmsatzmix
     ? maxJahre >= 2 && jahresSpanne
-      ? `${maxJahre} Jahre (${jahresSpanne.min}–${jahresSpanne.max}) · Marketscreener`
-      : 'Umsatzmix nach Produktgruppe und Region · Marketscreener'
+      ? `${maxJahre} Jahre (${jahresSpanne.min}–${jahresSpanne.max}) · ${quelleName}`
+      : `Umsatzmix nach Produktgruppe und Region · ${quelleName}`
     : paket.backlog?.quelleTag ?? 'Auftragsbestand'
 
-  const quelleLabel = 'Marketscreener'
+  const quelleLabel = quelleName
 
   return (
     <PaCard variant="elevated" className="space-y-5 p-5 sm:p-6">

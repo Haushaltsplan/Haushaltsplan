@@ -29,12 +29,15 @@ async function fetchFinancialsHtml(exchange: string, ticker: string): Promise<st
 }
 
 /** US-Ticker — probiert NASDAQ, NYSE, AMEX. */
-export async function ladeMarketbeatBacklogHistorie(ticker: string): Promise<SecBacklogHistorie | null> {
+export async function ladeMarketbeatBacklogHistorie(
+  ticker: string,
+  refresh = false,
+): Promise<SecBacklogHistorie | null> {
   const sym = ticker.trim().toUpperCase().split('.')[0]!
   if (!sym || sym.length > 6) return null
 
   const hit = cache.get(sym)
-  if (hit && Date.now() - hit.at < CACHE_MS) return hit.data
+  if (!refresh && hit && Date.now() - hit.at < CACHE_MS) return hit.data
 
   for (const exchange of ['NASDAQ', 'NYSE', 'AMEX'] as const) {
     const html = await fetchFinancialsHtml(exchange, sym)
