@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { useEffect, useRef } from 'react'
 import { PaEarningsTerminRow } from '@/components/portfolio-analyse/pa-earnings-termin-ui'
 import { PaFundamentalQuickLink } from '@/components/portfolio-analyse/pa-fundamental-quick-link'
+import { formatStueck } from '@/lib/portfolio-analyse/berechnung'
 import { heuteIsoUtc } from '@/lib/portfolio-analyse/dividenden-datum-hilfen'
 import { PaDividendEstimateBadge } from '@/components/portfolio-analyse/pa-ui'
 import type {
@@ -103,7 +104,7 @@ export function PaAnkuendigteEarnings({
                       <div className="flex items-center gap-1.5">
                         <PaFundamentalQuickLink isin={e.isin} />
                         <span className="rounded-md bg-[var(--app-surface-muted)]/90 px-1.5 py-0.5 text-[10px] tabular-nums text-[var(--app-text-muted)] ring-1 ring-white/[0.05]">
-                          {e.stueck.toLocaleString('de-DE', { maximumFractionDigits: 4 })}×
+                          {formatStueck(e.stueck)}×
                         </span>
                       </div>
                     }

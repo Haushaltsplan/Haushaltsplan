@@ -4,18 +4,20 @@ import {
   wendeSpinOffsAufMap,
 } from '@/lib/portfolio-analyse/corporate-actions'
 import { gebuehrSteuerIndex, kaufEinstandBetragEur } from '@/lib/portfolio-analyse/parqet-einstand'
+import { rundePositionStueck } from '@/lib/portfolio-analyse/berechnung'
 import { alleKalendertage } from '@/lib/portfolio-analyse/wertentwicklung-tage'
 import type { PortfolioBuchung, PortfolioDbSnapshot, PortfolioPositionSnapshot } from '@/lib/portfolio-analyse/types'
 
 function standZuPositionen(stand: DepotStand): PortfolioPositionSnapshot[] {
   const out: PortfolioPositionSnapshot[] = []
   for (const [isin, h] of stand.byIsin) {
-    if (h.stueck < 1e-8) continue
-    const wertEur = Math.round(h.stueck * h.einstandKurs * 100) / 100
+    const stueck = rundePositionStueck(h.stueck)
+    if (stueck <= 0) continue
+    const wertEur = Math.round(stueck * h.einstandKurs * 100) / 100
     out.push({
       isin,
       name: h.name,
-      stueck: Math.round(h.stueck * 1e6) / 1e6,
+      stueck,
       kursEur: Math.round(h.einstandKurs * 10000) / 10000,
       wertEur,
       assetKlasse: h.assetKlasse,
@@ -44,7 +46,11 @@ export function positionenFuerBewertung(
   const ausBuchungen = bestandAusBuchungen(buchungen)
   const snap = snapshot?.positionen ?? []
   if (snap.length === 0) return ausBuchungen
-  if (ausBuchungen.length === 0) return snap
+  if (ausBuchungen.length === 0) {
+    return snap
+      .map((p) => ({ ...p, stueck: rundePositionStueck(p.stueck) }))
+      .filter((p) => p.stueck > 0)
+  }
 
   const buchMap = new Map(ausBuchungen.map((p) => [p.isin?.toUpperCase() ?? '', p]))
   const merged = new Map<string, PortfolioPositionSnapshot>()
@@ -59,6 +65,8 @@ export function positionenFuerBewertung(
       if (ratio > 8 || ratio < 0.125) stueck = b.stueck
     }
     if (stueck <= 0) stueck = b?.stueck ?? stueck
+    stueck = rundePositionStueck(stueck)
+    if (stueck <= 0) continue
     const wertEur = b?.wertEur ?? p.wertEur
     merged.set(isin, {
       ...p,

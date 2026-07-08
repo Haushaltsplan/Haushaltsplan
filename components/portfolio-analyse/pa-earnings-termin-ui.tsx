@@ -3,7 +3,7 @@
 import type { ReactNode } from 'react'
 import { PortfolioIsinLogo } from '@/components/portfolio-analyse/isin-logo'
 import { PaDividendEstimateBadge } from '@/components/portfolio-analyse/pa-ui'
-import { formatDatumDe } from '@/lib/portfolio-analyse/berechnung'
+import { formatDatumDe, formatStueck } from '@/lib/portfolio-analyse/berechnung'
 import type { AnkuendigtesEarningsEintrag } from '@/lib/portfolio-analyse/ankuendigte-earnings'
 import { heuteIsoUtc } from '@/lib/portfolio-analyse/dividenden-datum-hilfen'
 import {
@@ -25,7 +25,7 @@ function datumSpalte(iso: string) {
 }
 
 function formatStueckTag(stueck: number): string {
-  return `${stueck.toLocaleString('de-DE', { maximumFractionDigits: 4 })}×`
+  return `${formatStueck(stueck)}×`
 }
 
 export function PaEarningsBerichtszeitBadge({

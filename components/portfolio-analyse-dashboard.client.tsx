@@ -7,7 +7,7 @@ import { PaAreaChart } from '@/components/portfolio-analyse/parqet-charts'
 import { PortfolioIsinLogo } from '@/components/portfolio-analyse/isin-logo'
 import { positionenFuerBewertung } from '@/lib/portfolio-analyse/bestand'
 import { dividendenProMonat, sammleIsins } from '@/lib/portfolio-analyse/auswertungen'
-import { formatDatumDe, formatEur, formatProzent, sortiereBuchungenNeuesteZuerst } from '@/lib/portfolio-analyse/berechnung'
+import { formatDatumDe, formatEur, formatProzent, formatStueck, sortiereBuchungenNeuesteZuerst } from '@/lib/portfolio-analyse/berechnung'
 import {
   berechneLivePortfolio,
   ladeLiveKurseClient,
@@ -204,7 +204,7 @@ export function PortfolioAnalyseDashboard({
                           ) : null}
                         </p>
                         <p className="text-[11px] text-[var(--app-text-muted)]">
-                          {p.stueck.toLocaleString('de-DE', { maximumFractionDigits: 4 })} Stk
+                          {formatStueck(p.stueck)} Stk
                           {p.kursLiveEur != null
                             ? ` · ${p.kursLiveEur.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €`
                             : ''}{' '}

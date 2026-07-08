@@ -83,6 +83,22 @@ export function allokationDonutSegmente(positionen: PortfolioPositionSnapshot[])
     }))
 }
 
+/** Stückzahlen offener Positionen — einheitlich 2 Nachkommastellen. */
+export const POSITION_STUECK_DEZIMALEN = 2
+
+export function rundePositionStueck(n: number): number {
+  if (!Number.isFinite(n)) return 0
+  const f = 10 ** POSITION_STUECK_DEZIMALEN
+  return Math.round(n * f) / f
+}
+
+export function formatStueck(n: number): string {
+  return n.toLocaleString('de-DE', {
+    minimumFractionDigits: POSITION_STUECK_DEZIMALEN,
+    maximumFractionDigits: POSITION_STUECK_DEZIMALEN,
+  })
+}
+
 export function formatEur(n: number): string {
   return n.toLocaleString('de-DE', { style: 'currency', currency: 'EUR' })
 }

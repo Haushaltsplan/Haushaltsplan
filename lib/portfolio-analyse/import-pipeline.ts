@@ -1,3 +1,4 @@
+import { rundePositionStueck } from '@/lib/portfolio-analyse/berechnung'
 import type { ImportQuelle, PortfolioBuchung, PortfolioImportErgebnis, PortfolioPositionSnapshot } from '@/lib/portfolio-analyse/types'
 import {
   beschreibungZuPersonenbezogen,
@@ -57,8 +58,11 @@ async function cashZeileZuBuchung(
   const isin = normalisiereIsinFuerDb(isinAusZeile || extrahiereIsin(beschreibung))
   const wertpapierName = sichererWertpapierName(extrahiereWertpapierName(beschreibung, isin), blocklist)
   let stueck = row.stueck ?? extrahiereStueck(beschreibung)
-  if (stueck != null && typ === 'verkauf') stueck = -Math.abs(stueck)
-  if (stueck != null && typ === 'kauf') stueck = Math.abs(stueck)
+  if (stueck != null) {
+    stueck = rundePositionStueck(Math.abs(stueck))
+    if (stueck === 0) stueck = null
+    else if (typ === 'verkauf') stueck = -stueck
+  }
 
   let kursEur: number | null =
     row.kursEur != null && row.kursEur > 0 ? Math.round(row.kursEur * 10000) / 10000 : null
@@ -112,7 +116,7 @@ function positionZuSnapshot(pos: TrRawPosition, blocklist: string[]): PortfolioP
   return {
     isin,
     name: name ?? (isin ? `Wertpapier ${isin}` : 'Wertpapier'),
-    stueck: pos.quantity,
+    stueck: rundePositionStueck(pos.quantity),
     kursEur: pos.pricePerUnit,
     wertEur: Math.round(wertEur * 100) / 100,
     assetKlasse,

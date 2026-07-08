@@ -4,6 +4,7 @@
  * Spin-offs: Kind-Aktien zuführen, Einstand Eltern/Kind anteilig splitten.
  */
 
+import { rundePositionStueck } from '@/lib/portfolio-analyse/berechnung'
 import type { AssetKlasse, PortfolioBuchung } from '@/lib/portfolio-analyse/types'
 
 export type AktienSplit = {
@@ -123,7 +124,7 @@ export function wendeAktienSplitsAufMap(map: StandMap, datumIso: string): void {
   for (const split of splitsAmDatum(datumIso)) {
     const cur = map.get(split.isin.toUpperCase())
     if (!cur || cur.stueck < 1e-8 || split.faktor <= 0 || !Number.isFinite(split.faktor)) continue
-    cur.stueck = Math.round(cur.stueck * split.faktor * 1e6) / 1e6
+    cur.stueck = rundePositionStueck(cur.stueck * split.faktor)
   }
 }
 
@@ -165,7 +166,7 @@ export function wendeSpinOffsAufMap(
     const parent = map.get(parentIsin)
     if (!parent || parent.stueck < 1e-8) continue
 
-    const childStueck = Math.round(parent.stueck * spin.ratio * 1e6) / 1e6
+    const childStueck = rundePositionStueck(parent.stueck * spin.ratio)
     if (childStueck < 1e-8) continue
 
     const anteil = Math.min(0.95, Math.max(0.01, spin.childKostenAnteil ?? 0.05))

@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { useEffect, useMemo, useState } from 'react'
 import { PortfolioIsinLogo } from '@/components/portfolio-analyse/isin-logo'
 import { PaDividendEstimateBadge } from '@/components/portfolio-analyse/pa-ui'
-import { formatDatumDe, formatEur } from '@/lib/portfolio-analyse/berechnung'
+import { formatDatumDe, formatEur, formatStueck } from '@/lib/portfolio-analyse/berechnung'
 import type { AnkuendigteDividendeEintrag, AnkuendigteDividendenErgebnis } from '@/lib/portfolio-analyse/ankuendigte-dividenden'
 import { heuteIsoUtc } from '@/lib/portfolio-analyse/dividenden-datum-hilfen'
 import {
@@ -21,7 +21,7 @@ type Ansicht = 'monat' | 'jahr'
 type Layout = 'kalender' | 'liste'
 
 function formatStueckTag(stueck: number): string {
-  return `${stueck.toLocaleString('de-DE', { maximumFractionDigits: 4 })}x`
+  return `${formatStueck(stueck)}x`
 }
 
 function KalenderTagZeile({

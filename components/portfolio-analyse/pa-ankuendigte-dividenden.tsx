@@ -5,14 +5,13 @@ import { useRouter } from 'next/navigation'
 import { PortfolioIsinLogo } from '@/components/portfolio-analyse/isin-logo'
 import { PaFundamentalQuickLink } from '@/components/portfolio-analyse/pa-fundamental-quick-link'
 import { PaDividendEstimateBadge } from '@/components/portfolio-analyse/pa-ui'
-import { formatDatumDe, formatEur } from '@/lib/portfolio-analyse/berechnung'
+import { formatDatumDe, formatEur, formatStueck } from '@/lib/portfolio-analyse/berechnung'
 import { fundamentaldatenHref } from '@/lib/portfolio-analyse/fundamentaldaten-navigation'
 import type { AnkuendigteDividendenErgebnis } from '@/lib/portfolio-analyse/ankuendigte-dividenden'
 import type { IsinMetadata } from '@/lib/portfolio-analyse/isin-lookup-server'
 
 function formatStueckTag(stueck: number): string {
-  const s = stueck.toLocaleString('de-DE', { maximumFractionDigits: 4 })
-  return `${s}x`
+  return `${formatStueck(stueck)}x`
 }
 
 function formatDivProStueck(eur: number): string {

@@ -1,3 +1,4 @@
+import { rundePositionStueck } from '@/lib/portfolio-analyse/berechnung'
 import { parseGeldBetrag } from '@/lib/portfolio-analyse/parse-geld-betrag'
 import {
   berechneBuchungsHash,
@@ -35,8 +36,9 @@ export async function erstelleManuelleBuchung(input: ManuelleBuchungInput): Prom
 
   let stueck = input.stueck ?? null
   if (stueck != null && Number.isFinite(stueck)) {
-    if (input.typ === 'verkauf') stueck = -Math.abs(stueck)
-    else if (input.typ === 'kauf') stueck = Math.abs(stueck)
+    stueck = rundePositionStueck(Math.abs(stueck))
+    if (stueck === 0) stueck = null
+    else if (input.typ === 'verkauf') stueck = -stueck
   } else {
     stueck = null
   }
