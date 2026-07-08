@@ -65,6 +65,8 @@ export type NachkaufBewertungsSignale = {
    * Für Vergleich im UI: FCF-Yield aktuell vs. Median.
    */
   historischerMedianFcfYield?: number | null
+  /** Quelle der historischen Mediane. */
+  historischQuelle?: 'macrotrends' | 'whitelist' | null
   /** EPS-Beat-Rate letzte ~8 Quartale (%). */
   epsBeatRatePct?: number | null
   /** Capital-Allocation-Score (0–100). */
@@ -273,4 +275,43 @@ export type NachkaufErgebnissePaket = {
   monatsEmpfehlung: MonatsEmpfehlung | null
   gesamtAnzahl?: number
   ausstehend?: number
+}
+
+/** Ein gespeichertes Empfehlungs-Tracking (Forward-Performance). */
+export type NachkaufTrackingEintrag = {
+  monat: string
+  ticker: string
+  name: string
+  empfohlenBetragEur: number
+  score: number
+  kaufTrigger: boolean
+  empfohlenAm: string
+  kursUsd: number | null
+  rendite6mPct: number | null
+  rendite12mPct: number | null
+  spyRendite6mPct: number | null
+  spyRendite12mPct: number | null
+  alpha6mPct: number | null
+  alpha12mPct: number | null
+  status: 'offen' | '6m' | '12m' | 'voll'
+}
+
+export type NachkaufScoreBucketStat = {
+  bucket: string
+  anzahl: number
+  avgAlpha6mPct: number | null
+}
+
+export type NachkaufPerformanceUebersicht = {
+  anzahlEmpfehlungen: number
+  ausgewertet6m: number
+  ausgewertet12m: number
+  avgRendite6mPct: number | null
+  avgAlpha6mPct: number | null
+  avgRendite12mPct: number | null
+  avgAlpha12mPct: number | null
+  trefferquote6mPct: number | null
+  scoreBucketsEmpfehlung: NachkaufScoreBucketStat[]
+  scoreBucketsSignal: NachkaufScoreBucketStat[]
+  eintraege: NachkaufTrackingEintrag[]
 }

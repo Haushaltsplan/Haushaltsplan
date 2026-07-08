@@ -13,6 +13,7 @@ import type {
   NachkaufAmpel,
   NachkaufDeepResearch,
   NachkaufErgebnissePaket,
+  NachkaufPerformanceUebersicht,
   NachkaufScanEintrag,
   NachkaufScanPaket,
   ScoreVerlaufPunkt,
@@ -20,6 +21,133 @@ import type {
   TrimSignal,
   VerkaufPosten,
 } from '@/lib/portfolio-analyse/nachkauf-radar/nachkauf-radar-types'
+
+function historischQuelleLabel(q: NachkaufScanEintrag['bewertung']['historischQuelle']): string {
+  if (q === 'macrotrends') return ' (Macrotrends)'
+  if (q === 'whitelist') return ' (Whitelist)'
+  return ''
+}
+
+function NachkaufPerformancePanel({ daten }: { daten: NachkaufPerformanceUebersicht }) {
+  const buckets =
+    daten.scoreBucketsEmpfehlung.length > 0 ? daten.scoreBucketsEmpfehlung : daten.scoreBucketsSignal
+  const bucketTitel =
+    daten.scoreBucketsEmpfehlung.length > 0 ? 'Alpha nach Score (Empfehlungen)' : 'Alpha nach Score (Signal-Backtest)'
+
+  return (
+    <PaCard variant="elevated" className="p-5">
+      <PaSectionTitle
+        title="Radar-Performance"
+        description="Empfehlungen vs. SPY — Daten werden ab 6 Monaten nach jeder Kaufempfehlung ausgewertet."
+      />
+      <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <div>
+          <p className="text-[11px] text-[var(--app-text-muted)]">Empfehlungen gesamt</p>
+          <p className="text-lg font-semibold text-[var(--app-text)]">{daten.anzahlEmpfehlungen}</p>
+        </div>
+        <div>
+          <p className="text-[11px] text-[var(--app-text-muted)]">Ø Alpha 6M vs. SPY</p>
+          <p
+            className={`text-lg font-semibold ${
+              (daten.avgAlpha6mPct ?? 0) >= 0 ? 'text-emerald-400' : 'text-rose-400'
+            }`}
+          >
+            {daten.avgAlpha6mPct != null ? `${daten.avgAlpha6mPct > 0 ? '+' : ''}${daten.avgAlpha6mPct} %` : '–'}
+          </p>
+          <p className="text-[10px] text-[var(--app-text-muted)]">{daten.ausgewertet6m} ausgewertet</p>
+        </div>
+        <div>
+          <p className="text-[11px] text-[var(--app-text-muted)]">Trefferquote 6M</p>
+          <p className="text-lg font-semibold text-[var(--app-text)]">
+            {daten.trefferquote6mPct != null ? `${daten.trefferquote6mPct} %` : '–'}
+          </p>
+          <p className="text-[10px] text-[var(--app-text-muted)]">Alpha &gt; 0 vs. SPY</p>
+        </div>
+        <div>
+          <p className="text-[11px] text-[var(--app-text-muted)]">Ø Alpha 12M</p>
+          <p className="text-lg font-semibold text-[var(--app-text)]">
+            {daten.avgAlpha12mPct != null ? `${daten.avgAlpha12mPct > 0 ? '+' : ''}${daten.avgAlpha12mPct} %` : '–'}
+          </p>
+          <p className="text-[10px] text-[var(--app-text-muted)]">{daten.ausgewertet12m} ausgewertet</p>
+        </div>
+      </div>
+
+      {buckets.length > 0 && (
+        <div className="mt-4">
+          <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-[var(--app-text-muted)]">
+            {bucketTitel}
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {buckets.map((b) => (
+              <div
+                key={b.bucket}
+                className="rounded-lg border border-white/5 bg-[var(--app-surface-muted)] px-3 py-2 text-xs"
+              >
+                <span className="font-semibold text-[var(--app-text)]">Score {b.bucket}</span>
+                <span className="ml-2 text-[var(--app-text-muted)]">n={b.anzahl}</span>
+                <span
+                  className={`ml-2 font-medium ${
+                    (b.avgAlpha6mPct ?? 0) >= 0 ? 'text-emerald-400' : 'text-rose-400'
+                  }`}
+                >
+                  {b.avgAlpha6mPct != null ? `${b.avgAlpha6mPct > 0 ? '+' : ''}${b.avgAlpha6mPct} % α` : '–'}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {daten.eintraege.length > 0 && (
+        <div className="mt-4 overflow-x-auto">
+          <table className="w-full min-w-[520px] text-left text-xs">
+            <thead>
+              <tr className="text-[var(--app-text-muted)]">
+                <th className="pb-2 pr-3 font-medium">Monat</th>
+                <th className="pb-2 pr-3 font-medium">Ticker</th>
+                <th className="pb-2 pr-3 font-medium">Score</th>
+                <th className="pb-2 pr-3 font-medium">6M</th>
+                <th className="pb-2 font-medium">α vs. SPY</th>
+              </tr>
+            </thead>
+            <tbody>
+              {daten.eintraege.slice(0, 8).map((e) => (
+                <tr key={`${e.monat}-${e.ticker}`} className="border-t border-white/5">
+                  <td className="py-2 pr-3 text-[var(--app-text-muted)]">{e.monat}</td>
+                  <td className="py-2 pr-3 font-medium text-[var(--app-text)]">{e.ticker}</td>
+                  <td className="py-2 pr-3 tabular-nums">
+                    {e.score}
+                    {e.kaufTrigger ? <span className="ml-1 text-amber-400">⚡</span> : null}
+                  </td>
+                  <td className="py-2 pr-3 tabular-nums">
+                    {e.rendite6mPct != null ? `${e.rendite6mPct > 0 ? '+' : ''}${e.rendite6mPct} %` : 'offen'}
+                  </td>
+                  <td
+                    className={`py-2 tabular-nums ${
+                      e.alpha6mPct != null
+                        ? e.alpha6mPct >= 0
+                          ? 'text-emerald-400'
+                          : 'text-rose-400'
+                        : 'text-[var(--app-text-muted)]'
+                    }`}
+                  >
+                    {e.alpha6mPct != null ? `${e.alpha6mPct > 0 ? '+' : ''}${e.alpha6mPct} %` : '–'}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {daten.anzahlEmpfehlungen === 0 && (
+        <p className="mt-3 text-xs text-[var(--app-text-muted)]">
+          Noch keine getrackten Empfehlungen — nach der ersten Kaufempfehlung startet das Tracking automatisch.
+        </p>
+      )}
+    </PaCard>
+  )
+}
 
 function portfolioEmpfehlungBadge(typ: PortfolioEmpfehlungTyp): { badge: string; label: string } {
   switch (typ) {
@@ -967,7 +1095,9 @@ function DetailPanel({
             </p>
           </div>
           <div>
-            <p className="text-[11px] text-[var(--app-text-muted)]">KGV-Median (5J)</p>
+            <p className="text-[11px] text-[var(--app-text-muted)]">
+              KGV-Median (5J){historischQuelleLabel(eintrag.bewertung.historischQuelle)}
+            </p>
             <p className="text-sm font-medium text-[var(--app-text)]">
               {eintrag.bewertung.historischerMedianPe != null
                 ? `${eintrag.bewertung.historischerMedianPe.toFixed(1)}×`
@@ -1258,6 +1388,7 @@ export function NachkaufRadarClient() {
   const [kaufempfehlungAllokation, setKaufempfehlungAllokation] = useState<SparplanPosten[]>([])
   const [verkaufAllokation, setVerkaufAllokation] = useState<VerkaufPosten[]>([])
   const [kaufBudget, setKaufBudget] = useState<number>(500)
+  const [performance, setPerformance] = useState<NachkaufPerformanceUebersicht | null>(null)
   const scanRef = useRef(false)
 
   // Gespeicherte Ergebnisse beim Start laden
@@ -1296,6 +1427,16 @@ export function NachkaufRadarClient() {
     void init()
   }, [])
 
+  useEffect(() => {
+    if (ergebnisse.length === 0) return
+    void fetch('/api/portfolio-analyse/nachkaeufe/performance')
+      .then((r) => r.json())
+      .then((j) => {
+        if (j.ok && j.daten) setPerformance(j.daten as NachkaufPerformanceUebersicht)
+      })
+      .catch(() => {})
+  }, [ergebnisse.length, kaufempfehlungText])
+
   async function starteKaufempfehlung() {
     setKaufempfehlungLaeuft(true)
     setKaufempfehlungText(null)
@@ -1313,6 +1454,11 @@ export function NachkaufRadarClient() {
       }
       setKaufempfehlungText(daten.kiEmpfehlungText)
       setKaufempfehlungAllokation(daten.basisAllokation ?? [])
+      const perfRes = await fetch('/api/portfolio-analyse/nachkaeufe/performance')
+      if (perfRes.ok) {
+        const perf = await perfRes.json()
+        if (perf.ok && perf.daten) setPerformance(perf.daten as NachkaufPerformanceUebersicht)
+      }
       setVerkaufAllokation(daten.basisVerkaufAllokation ?? [])
     } catch (e) {
       setKaufempfehlungText(`Fehler: ${e instanceof Error ? e.message : String(e)}`)
@@ -1611,7 +1757,7 @@ export function NachkaufRadarClient() {
               <span className="font-medium text-teal-400">Neuer Scan</span>, um alle Positionen zu analysieren.
             </p>
             <p className="mt-2 text-xs text-[var(--app-text-muted)]">
-              Der Radar berücksichtigt historische Medianwerte, Kaufzonen-Trigger, Insider-Käufe (US) und Klumpenrisiko.
+              Macrotrends-Mediane, Kaufzonen (Score ≥80), Performance-Tracking vs. SPY, Klumpenrisiko.
             </p>
           </PaCard>
         )}
@@ -1630,7 +1776,7 @@ export function NachkaufRadarClient() {
                 <div>
                   <p className="text-sm font-semibold text-violet-300">Portfolio-Empfehlung</p>
                   <p className="mt-0.5 text-xs text-[var(--app-text-muted)]">
-                    Nachkauf, Halten, Beobachten oder optional Teilverkauf — langfristig, ohne Übertreibung.
+                    Score ≥ 90 oder ≥ 80 mit Kaufzone — langfristig, ohne Übertreibung.
                   </p>
                 </div>
               </div>
@@ -1741,6 +1887,10 @@ export function NachkaufRadarClient() {
               </div>
             )}
           </div>
+        )}
+
+        {performance && ergebnisse.length > 0 && !scanLaeuft && (
+          <NachkaufPerformancePanel daten={performance} />
         )}
 
         {/* Filter- und Sort-Leiste */}

@@ -1,7 +1,7 @@
 /**
  * Nachkauf-Radar — KI-gestützte Kaufempfehlung (Stufe C).
  *
- * Nimmt alle Scan-Ergebnisse mit Score ≥ 90 + vorhandener Deep Research,
+ * Nimmt Scan-Ergebnisse mit Score ≥90 (oder ≥80 + Kaufzone) + Deep Research,
  * kombiniert sie mit der regelbasierten Allokation und lässt Gemini Pro
  * eine finale, begründete Kaufempfehlung für das Monatsbudget erstellen.
  */
@@ -21,7 +21,10 @@ import {
 } from './nachkauf-trim-signal'
 
 const DEFAULT_BUDGET_EUR = 500
-const MIN_SCORE_FUER_KI_EMPFEHLUNG = 90
+/** Standard-Schwelle für Kaufempfehlung ohne aktiven Kauftrigger. */
+export const MIN_SCORE_KAUF_STANDARD = 90
+/** Niedrigere Schwelle wenn Kaufzone (Whitelist-Trigger) aktiv ist. */
+export const MIN_SCORE_KAUF_TRIGGER = 80
 
 /** Maximale monatliche Investition je Risikoklasse. */
 const RISIKO_CAP: Record<RisikoKlasse, number> = {
@@ -44,6 +47,17 @@ function hatAktivesVerkaufSignal(e: NachkaufScanEintrag): boolean {
   if (ts.aktion === 'vollverkauf') return true
   if (ts.aktion === 'teilverkauf' && ts.dringlichkeit === 'hoch') return true
   return false
+}
+
+/** KI-Kaufempfehlung: Score ≥90 oder (Score ≥80 + Kaufzone aktiv). */
+export function istKiKaufKandidat(e: NachkaufScanEintrag): boolean {
+  if (e.ampel === 'rot' || hatAktivesVerkaufSignal(e) || !e.tiefenAnalyse) return false
+  if (e.score >= MIN_SCORE_KAUF_STANDARD) return true
+  return e.score >= MIN_SCORE_KAUF_TRIGGER && e.kaufTriggerAusgeloest
+}
+
+function kaufSchwellenText(): string {
+  return `Score ≥ ${MIN_SCORE_KAUF_STANDARD} oder Score ≥ ${MIN_SCORE_KAUF_TRIGGER} mit aktiver Kaufzone`
 }
 
 function risikoKlasseVon(isin: string): RisikoKlasse {
@@ -203,7 +217,7 @@ ${basisVerkaufText}
 
 ${baueVerkaufKandidatenText(verkaufKandidaten)}
 
-## Kauf-Kandidaten mit Deep Research (Score ≥ ${MIN_SCORE_FUER_KI_EMPFEHLUNG})
+## Kauf-Kandidaten mit Deep Research (${kaufSchwellenText()})
 
 ${baueKandidatenText(kandidaten, budgetEur)}
 
@@ -260,14 +274,9 @@ export async function generiereKaufempfehlung(
   const verkaufKandidaten = filterVerkaufKandidaten(alleErgebnisse)
   const basisVerkaufAllokation = berechneBasisVerkaufAllokation(alleErgebnisse)
 
-  // Kauf-Kandidaten: Score ≥ 90, Ampel nicht rot, kein dringendes Verkaufssignal, Deep Research
+  // Kauf-Kandidaten: Score ≥90 oder Score ≥80 + Kaufzone, Ampel nicht rot, Deep Research
   const kandidaten = alleErgebnisse
-    .filter((e) =>
-      e.score >= MIN_SCORE_FUER_KI_EMPFEHLUNG &&
-      e.ampel !== 'rot' &&
-      !hatAktivesVerkaufSignal(e) &&
-      e.tiefenAnalyse != null,
-    )
+    .filter(istKiKaufKandidat)
     .sort((a, b) => {
       // Priorisiere: Trigger > Score > Nicht-Klumpen
       if (a.kaufTriggerAusgeloest !== b.kaufTriggerAusgeloest) return a.kaufTriggerAusgeloest ? -1 : 1
@@ -277,11 +286,9 @@ export async function generiereKaufempfehlung(
 
   // Fallback ohne KI wenn weder Käufe noch Verkäufe
   if (kandidaten.length === 0 && verkaufKandidaten.length === 0) {
-    const scoreMin = String(MIN_SCORE_FUER_KI_EMPFEHLUNG)
-    const budgetStr = String(budgetEur)
     const sparText =
-      'Keine Positionen mit Score \u2265 ' + scoreMin +
-      ' und Deep Research gefunden. Keine Verkaufs-Signale. ' + budgetStr +
+      'Keine Positionen mit ' + kaufSchwellenText() +
+      ' und Deep Research gefunden. Keine Verkaufs-Signale. ' + String(budgetEur) +
       ' \u20AC auf Trade Republic sparen (2,25\u00A0%\u00A0p.a.).'
     const sparen: MonatsEmpfehlung = { typ: 'sparen', text: sparText }
     return {

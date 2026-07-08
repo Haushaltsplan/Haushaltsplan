@@ -47,11 +47,16 @@ export async function POST(req: Request) {
         premiumDiscountPct: eintrag.bewertung.premiumDiscountPct,
         scoreVerlauf: eintrag.scoreVerlauf,
       }
+      historischerMedianPe =
+        eintrag.bewertung.historischerMedianPe ??
+        NACHKAUF_RADAR_WHITELIST.find((p) => p.isin === eintrag.isin)?.historischerMedianPe ??
+        null
+    } else {
+      const wl = NACHKAUF_RADAR_WHITELIST.find(
+        (p) => p.isin === (anfrage.isin ?? '') || p.name.toLowerCase().includes(ticker.toLowerCase()),
+      )
+      historischerMedianPe = wl?.historischerMedianPe ?? null
     }
-    const wl = NACHKAUF_RADAR_WHITELIST.find(
-      (p) => p.isin === (anfrage.isin ?? '') || p.name.toLowerCase().includes(ticker.toLowerCase()),
-    )
-    historischerMedianPe = wl?.historischerMedianPe ?? null
   } catch {
     // Kontext ist optional — Fehler hier darf Deep Research nicht blockieren
   }

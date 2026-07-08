@@ -106,6 +106,12 @@ export function extrahiereBewertungsSignale(
     historisch?.medianPe5y ?? position?.historischerMedianPe ?? null
   const medianFcfYield =
     historisch?.medianFcfYield5y ?? position?.historischerMedianFcfYield ?? null
+  let historischQuelle: 'macrotrends' | 'whitelist' | null = null
+  if (historisch?.medianPe5y != null || historisch?.medianFcfYield5y != null) {
+    historischQuelle = 'macrotrends'
+  } else if (position?.historischerMedianPe != null || position?.historischerMedianFcfYield != null) {
+    historischQuelle = 'whitelist'
+  }
 
   // Historischer Premium/Discount — KGV und FCF-Median gleichwertig
   let premiumDiscountPct: number | null = null
@@ -127,6 +133,7 @@ export function extrahiereBewertungsSignale(
     premiumDiscountPct,
     historischerMedianPe: medianPe,
     historischerMedianFcfYield: medianFcfYield,
+    historischQuelle,
     epsBeatRatePct: zusatz?.epsBeatRatePct ?? null,
     capitalAllocationScorePct: zusatz?.capitalAllocationScorePct ?? null,
     netDebtEbitda: zusatz?.netDebtEbitda ?? null,

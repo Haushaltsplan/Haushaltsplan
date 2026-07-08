@@ -229,6 +229,9 @@ type DbZeile = {
   premium_discount_pct: number | null
   kauf_trigger_ausgeloest: boolean | null
   kauf_trigger_text: string | null
+  historischer_median_pe: number | null
+  historischer_median_fcf_yield: number | null
+  historisch_quelle: string | null
 }
 
 function dbZeileZuEintrag(r: DbZeile): NachkaufScanEintrag {
@@ -257,6 +260,9 @@ function dbZeileZuEintrag(r: DbZeile): NachkaufScanEintrag {
       forwardPe: r.forward_pe ?? null,
       drawdown52wPct: r.drawdown_52w_pct ?? null,
       premiumDiscountPct: r.premium_discount_pct ?? null,
+      historischerMedianPe: r.historischer_median_pe ?? null,
+      historischerMedianFcfYield: r.historischer_median_fcf_yield ?? null,
+      historischQuelle: (r.historisch_quelle as 'macrotrends' | 'whitelist' | null) ?? null,
     },
     mantraAmpel: r.mantra_ampel ?? null,
     mantraScorePct: r.mantra_score_pct ?? null,
@@ -306,6 +312,9 @@ function eintragZuDbZeile(e: NachkaufScanEintrag): Record<string, unknown> {
     premium_discount_pct: e.bewertung.premiumDiscountPct ?? null,
     kauf_trigger_ausgeloest: e.kaufTriggerAusgeloest,
     kauf_trigger_text: e.kaufTriggerText ?? null,
+    historischer_median_pe: e.bewertung.historischerMedianPe ?? null,
+    historischer_median_fcf_yield: e.bewertung.historischerMedianFcfYield ?? null,
+    historisch_quelle: e.bewertung.historischQuelle ?? null,
   }
 }
 

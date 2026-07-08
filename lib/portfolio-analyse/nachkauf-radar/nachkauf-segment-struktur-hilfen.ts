@@ -98,7 +98,7 @@ export function extrahiereSegmentStrukturSignale(
     auslandsumsatzAnteilPct: secHist?.zusatz?.auslandsumsatzAnteilPct ?? null,
     geoTopRegionName: geoTop?.name ?? null,
     geoTopRegionPct: geoTop?.anteilPct ?? null,
-    backlogWachstumPct: backlogWachstumPct(secHist?.backlog),
+    backlogWachstumPct: backlogWachstumPct(secHist?.backlog ?? null),
     backlogLabel: secHist?.backlog?.label ?? null,
     segmentShiftPct: segmentShiftYoY(secHist?.produkt) ?? segmentShiftYoY(secHist?.geo),
     segmentQuelle: secHist?.quelle ?? secStruktur?.quelle ?? null,
@@ -106,7 +106,7 @@ export function extrahiereSegmentStrukturSignale(
 }
 
 export function backlogTrendSchwach(secHist: SecSegmentHistoriePaket | null | undefined): boolean {
-  return backlogTrendNegativ(secHist?.backlog)
+  return backlogTrendNegativ(secHist?.backlog ?? null)
 }
 
 /** ~10 Zeilen für Deep Research / Kaufempfehlung. */

@@ -11,6 +11,7 @@ import { berechneTrimSignale } from '@/lib/portfolio-analyse/nachkauf-radar/nach
 import { wendeNachkaufDisziplinAn } from '@/lib/portfolio-analyse/nachkauf-radar/nachkauf-disziplin-server'
 import { ergaenzeScoreVerlauf } from '@/lib/portfolio-analyse/nachkauf-radar/nachkauf-radar-verlauf-server'
 import { generiereKaufempfehlung } from '@/lib/portfolio-analyse/nachkauf-radar/nachkauf-kaufempfehlung-server'
+import { speichereEmpfehlungTracking } from '@/lib/portfolio-analyse/nachkauf-radar/nachkauf-performance-server'
 import { createSupabaseAdmin } from '@/lib/supabase-admin'
 
 export const maxDuration = 120
@@ -68,6 +69,13 @@ export async function POST(req: Request) {
           },
           { onConflict: 'owner_user_id,monat' },
         )
+
+      const scanMap = new Map(ergebnisse.map((e) => [e.ticker.toUpperCase(), e]))
+      await speichereEmpfehlungTracking({
+        monat,
+        basisAllokation: ergebnis.basisAllokation,
+        scanMap,
+      })
     } catch (dbErr) {
       console.warn('[kaufempfehlung] Speichern fehlgeschlagen:', dbErr)
       // kein Hard-Fail — Ergebnis trotzdem zurückgeben
