@@ -435,7 +435,9 @@ function parseWertpapierabrechnung(items: PdfTextItem[]): TrRawCashZeile[] {
     (docDatum ? parseDeDatumZuIso(docDatum) : null)
   if (!datum) return []
 
-  const isVerkauf = /Market-Order\s+Verkauf/i.test(joined)
+  const isVerkauf =
+    /(?:Market-Order\s+)?Verkauf\s+am\b/i.test(joined) ||
+    (/\bVerkauf\b/i.test(joined) && !/(?:Market-Order\s+)?Kauf\s+am\b/i.test(joined))
   const isin = joined.match(/ISIN:\s*([A-Z]{2}[A-Z0-9]{10})/)?.[1] ?? undefined
 
   const stkLine = texts.find((t) => /\d+\s*Stk\.?/i.test(t) && /EUR/i.test(t))
@@ -488,9 +490,14 @@ function parseWertpapierabrechnung(items: PdfTextItem[]): TrRawCashZeile[] {
       const feeName = feeMatch[1].trim()
       const feeAmt = Math.abs(parseEuropeanNumber(feeMatch[2]) ?? 0)
       if (feeAmt <= 0) continue
+      const feeTyp = /steuer/i.test(feeName)
+        ? 'Steuer'
+        : /gebühr|entgelt|zuschlag|pauschale|provision|spesen/i.test(feeName)
+          ? 'Gebühr'
+          : feeName
       out.push({
         datum,
-        typ: /steuer/i.test(feeName) ? 'Steuer' : /gebühr|entgelt|zuschlag/i.test(feeName) ? 'Gebühr' : feeName,
+        typ: feeTyp,
         beschreibung: [feeName, name].filter(Boolean).join(' '),
         zahlungseingang: '',
         zahlungsausgang: formatEuroBetrag(feeAmt),
@@ -511,6 +518,7 @@ async function parsePdfDocument(pdf: import('pdfjs-dist').PDFDocumentProxy): Pro
   let isParsingCash = false
   let isParsingPortfolio = false
   const allPageLines: string[] = []
+  let wertpapierAbrechnungItems: PdfTextItem[] = []
 
   for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
     const page = await pdf.getPage(pageNum)
@@ -567,10 +575,13 @@ async function parsePdfDocument(pdf: import('pdfjs-dist').PDFDocumentProxy): Pro
 
     const abrechnungDoc = pageItems.some((i) => i.text.includes('WERTPAPIERABRECHNUNG'))
     if (abrechnungDoc) {
-      allCash = allCash.concat(parseWertpapierabrechnung(pageItems))
+      wertpapierAbrechnungItems = wertpapierAbrechnungItems.concat(pageItems)
     }
   }
 
+  if (wertpapierAbrechnungItems.length > 0) {
+    allCash = allCash.concat(parseWertpapierabrechnung(wertpapierAbrechnungItems))
+  }
 
   // Dividenden-Einzelabrechnung (separate TR-PDF)
   if (allPageLines.some((t) => /\bDIVIDENDE\b/i.test(t)) && !allPageLines.some((t) => /WERTPAPIERABRECHNUNG/i.test(t))) {

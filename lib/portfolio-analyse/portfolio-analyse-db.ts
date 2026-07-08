@@ -357,6 +357,24 @@ export async function speicherePortfolioImport(
   return { ok: true, eingefuegt, hinweis }
 }
 
+export async function loeschePortfolioBuchung(id: string): Promise<{ ok: boolean; message?: string }> {
+  if (!id) return { ok: false, message: 'Keine Buchung angegeben.' }
+  const { error, count } = await supabase
+    .from('portfolio_analyse_buchung')
+    .delete({ count: 'exact' })
+    .eq('id', id)
+  if (error) {
+    return {
+      ok: false,
+      message: error.message,
+    }
+  }
+  if ((count ?? 0) === 0) {
+    return { ok: false, message: 'Buchung nicht gefunden oder keine Berechtigung.' }
+  }
+  return { ok: true }
+}
+
 export async function loescheAllePortfolioAnalyseDaten(): Promise<{ ok: boolean; message?: string }> {
   const { error: bErr } = await supabase
     .from('portfolio_analyse_buchung')

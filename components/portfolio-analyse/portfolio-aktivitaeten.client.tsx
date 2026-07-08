@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useEffect, useMemo, useState } from 'react'
+import toast from 'react-hot-toast'
 import { PortfolioIsinLogo } from '@/components/portfolio-analyse/isin-logo'
 import { usePortfolioAnalyse } from '@/components/portfolio-analyse/pa-data-provider'
 import { PortfolioAnalyseShell } from '@/components/portfolio-analyse/portfolio-analyse-shell.client'
@@ -13,9 +14,10 @@ import {
   filterAktivitaeten,
   gruppiereAktivitaeten,
 } from '@/lib/portfolio-analyse/aktivitaeten-gruppe'
-import { formatDatumDe, formatEur } from '@/lib/portfolio-analyse/berechnung'
+import { formatDatumDe, formatEur, formatStueck } from '@/lib/portfolio-analyse/berechnung'
 import { anzeigeNameFuerIsin, wknFuerIsin } from '@/lib/portfolio-analyse/isin-metadata-client'
 import { fundamentaldatenHref } from '@/lib/portfolio-analyse/fundamentaldaten-navigation'
+import { loeschePortfolioBuchung } from '@/lib/portfolio-analyse/portfolio-analyse-db'
 import {
   ASSET_KLASSE_LABEL,
   BUCHUNGS_TYP_LABEL,
@@ -37,11 +39,12 @@ function formatDatumZeit(iso: string): string {
 }
 
 export function PortfolioAktivitaetenClient() {
-  const { buchungen, meta, hatDaten, laden } = usePortfolioAnalyse()
+  const { buchungen, meta, hatDaten, laden, neuLaden } = usePortfolioAnalyse()
   const [typFilter, setTypFilter] = useState<BuchungsTyp | 'alle'>('alle')
   const [isinFilter, setIsinFilter] = useState<string>('alle')
   const [offenJahre, setOffenJahre] = useState<Set<number>>(() => new Set())
   const [offenMonate, setOffenMonate] = useState<Set<string>>(() => new Set())
+  const [loeschenId, setLoeschenId] = useState<string | null>(null)
 
   const gefiltert = useMemo(
     () => filterAktivitaeten(buchungen, { typ: typFilter, isin: isinFilter }),
@@ -94,6 +97,30 @@ export function PortfolioAktivitaetenClient() {
     a.download = `portfolio-aktivitaeten-${new Date().toISOString().slice(0, 10)}.csv`
     a.click()
     URL.revokeObjectURL(url)
+  }
+
+  async function buchungLoeschen(b: PortfolioDbBuchung) {
+    const name = anzeigeNameFuerIsin(b.isin, b.wertpapierName, meta)
+    const label = `${BUCHUNGS_TYP_LABEL[b.typ]} · ${name} · ${formatDatumDe(b.datum)} · ${formatEur(b.betragEur)}`
+    if (
+      !window.confirm(
+        `Diese Buchung unwiderruflich löschen?\n\n${label}\n\nDer Bestand wird danach neu berechnet.`,
+      )
+    ) {
+      return
+    }
+    setLoeschenId(b.id)
+    try {
+      const res = await loeschePortfolioBuchung(b.id)
+      if (!res.ok) {
+        toast.error(res.message ?? 'Löschen fehlgeschlagen.')
+        return
+      }
+      toast.success('Buchung gelöscht.')
+      await neuLaden()
+    } finally {
+      setLoeschenId(null)
+    }
   }
 
   return (
@@ -190,7 +217,13 @@ export function PortfolioAktivitaetenClient() {
                                 {offenMonate.has(monat.key) ? (
                                   <ul className="divide-y divide-[var(--app-border)]">
                                     {monat.buchungen.map((b) => (
-                                      <AktivitaetenZeile key={b.id} b={b} meta={meta} />
+                                      <AktivitaetenZeile
+                                        key={b.id}
+                                        b={b}
+                                        meta={meta}
+                                        loeschenBusy={loeschenId === b.id}
+                                        onLoeschen={() => void buchungLoeschen(b)}
+                                      />
                                     ))}
                                   </ul>
                                 ) : null}
@@ -212,52 +245,82 @@ export function PortfolioAktivitaetenClient() {
 function AktivitaetenZeile({
   b,
   meta,
+  loeschenBusy,
+  onLoeschen,
 }: {
   b: PortfolioDbBuchung
   meta: ReturnType<typeof usePortfolioAnalyse>['meta']
+  loeschenBusy?: boolean
+  onLoeschen: () => void
 }) {
   const router = useRouter()
   const name = anzeigeNameFuerIsin(b.isin, b.wertpapierName, meta)
   const wkn = b.isin ? wknFuerIsin(b.isin, meta) : null
   const href =
     b.assetKlasse === 'aktie' && b.isin ? fundamentaldatenHref({ isin: b.isin }) : null
+  const stueckAnzeige = b.stueck != null ? Math.abs(b.stueck) : null
 
   return (
     <li
-      className={`flex flex-wrap items-center gap-3 px-5 py-3 sm:flex-nowrap ${href ? 'cursor-pointer hover:bg-white/[0.02]' : ''}`}
-      onClick={href ? () => router.push(href) : undefined}
+      className={`flex flex-wrap items-center gap-3 px-5 py-3 sm:flex-nowrap ${href ? 'hover:bg-white/[0.02]' : ''}`}
     >
-      <div className="flex min-w-[7rem] items-center gap-2">
+      <div
+        className={`flex min-w-[7rem] items-center gap-2 ${href ? 'cursor-pointer' : ''}`}
+        onClick={href ? () => router.push(href) : undefined}
+      >
         <PaBadge variant={badgeVariant(b.typ)}>{BUCHUNGS_TYP_LABEL[b.typ]}</PaBadge>
         <span className="text-xs tabular-nums text-[var(--app-text-muted)]">{formatDatumZeit(b.datum)}</span>
       </div>
-      <PortfolioIsinLogo isin={b.isin} fallbackName={name} meta={meta} groesse="md" />
-      <div className="min-w-0 flex-1">
-        <p className="text-sm font-medium text-[var(--app-text)]">{name}</p>
-        <p className="text-[11px] text-[var(--app-text-muted)]">
-          {ASSET_KLASSE_LABEL[b.assetKlasse]}
-          {b.isin ? (
-            <>
-              {' '}
-              · <span className="font-mono">{b.isin}</span>
-              {wkn ? ` · WKN ${wkn}` : ''}
-            </>
-          ) : null}
-        </p>
-      </div>
-      <div className="ml-auto text-right">
-        <p className="text-sm font-semibold tabular-nums text-[var(--app-text)]">{formatEur(b.betragEur)}</p>
-        {b.stueck != null && b.stueck > 0 ? (
-          <p className="mt-0.5 text-[11px] text-[var(--app-text-muted)]">
-            <span className="rounded-full bg-[var(--app-surface-hover)] px-2 py-0.5">
-              {b.stueck.toLocaleString('de-DE', { maximumFractionDigits: 4 })}×{' '}
-              {b.kursEur != null
-                ? b.kursEur.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-                : '—'}
-              €
-            </span>
+      <div
+        className={`flex min-w-0 flex-1 items-center gap-3 ${href ? 'cursor-pointer' : ''}`}
+        onClick={href ? () => router.push(href) : undefined}
+      >
+        <PortfolioIsinLogo isin={b.isin} fallbackName={name} meta={meta} groesse="md" />
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-medium text-[var(--app-text)]">{name}</p>
+          <p className="text-[11px] text-[var(--app-text-muted)]">
+            {ASSET_KLASSE_LABEL[b.assetKlasse]}
+            {b.isin ? (
+              <>
+                {' '}
+                · <span className="font-mono">{b.isin}</span>
+                {wkn ? ` · WKN ${wkn}` : ''}
+              </>
+            ) : null}
           </p>
-        ) : null}
+        </div>
+      </div>
+      <div className="ml-auto flex items-center gap-2">
+        <div
+          className={`text-right ${href ? 'cursor-pointer' : ''}`}
+          onClick={href ? () => router.push(href) : undefined}
+        >
+          <p className="text-sm font-semibold tabular-nums text-[var(--app-text)]">{formatEur(b.betragEur)}</p>
+          {stueckAnzeige != null && stueckAnzeige > 0 ? (
+            <p className="mt-0.5 text-[11px] text-[var(--app-text-muted)]">
+              <span className="rounded-full bg-[var(--app-surface-hover)] px-2 py-0.5">
+                {formatStueck(stueckAnzeige)}×{' '}
+                {b.kursEur != null
+                  ? b.kursEur.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+                  : '—'}
+                €
+              </span>
+            </p>
+          ) : null}
+        </div>
+        <button
+          type="button"
+          disabled={loeschenBusy}
+          title="Buchung löschen"
+          aria-label={`${BUCHUNGS_TYP_LABEL[b.typ]} ${name} löschen`}
+          onClick={(e) => {
+            e.stopPropagation()
+            onLoeschen()
+          }}
+          className="shrink-0 rounded-lg px-2 py-1 text-[var(--app-text-muted)] hover:bg-rose-950/30 hover:text-rose-300 disabled:opacity-50"
+        >
+          {loeschenBusy ? '…' : '×'}
+        </button>
       </div>
     </li>
   )

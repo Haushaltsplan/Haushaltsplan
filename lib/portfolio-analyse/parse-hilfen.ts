@@ -147,8 +147,9 @@ export function extrahiereStueck(text: string): number | null {
 export function normalisiereTrTyp(raw: string): BuchungsTyp {
   const t = raw.toLowerCase().trim()
   if (t.includes('saveback') || t.includes('round up') || t.includes('roundup')) return 'kauf'
-  if (t.includes('kauf') || t.includes('purchase') || t === 'buy' || t === 'transferin') return 'kauf'
+  // Verkauf vor Kauf — „verkauf“ enthält sonst „kauf“ als Teilstring
   if (t.includes('verkauf') || t.includes('sale') || t === 'sell' || t === 'transferout') return 'verkauf'
+  if (t.includes('kauf') || t.includes('purchase') || t === 'buy' || t === 'transferin') return 'kauf'
   if (t.includes('dividend')) return 'dividende'
   if (t.includes('interest') || t.includes('zins') || t.includes('interest_payment')) return 'zins'
   if (

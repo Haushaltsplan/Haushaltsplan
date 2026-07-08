@@ -253,19 +253,20 @@ function erkenneFormat(headers: string[], map: SpaltenMap): CsvErkanntesFormat {
 function geldRichtungAusTyp(typ: string): 'eingang' | 'ausgang' | null {
   const t = typ.toLowerCase().trim()
   if (!t || t === 'executed' || t === 'cancelled') return null
-  if (
-    /purchase|kauf|buy|saveback|round\s*up|withdrawal|auszahlung|outbound|fee|gebühr|commission|steuer|tax/i.test(
-      t,
-    )
-  ) {
-    return 'ausgang'
-  }
+  // Verkauf vor Kauf — „verkauf“ enthält sonst „kauf“ als Teilstring
   if (
     /sale|verkauf|sell|dividend|dividende|interest|zins|deposit|einzahlung|customer_inbound|inbound|gutschrift|payout/i.test(
       t,
     )
   ) {
     return 'eingang'
+  }
+  if (
+    /purchase|kauf|buy|saveback|round\s*up|withdrawal|auszahlung|outbound|fee|gebühr|commission|steuer|tax/i.test(
+      t,
+    )
+  ) {
+    return 'ausgang'
   }
   return null
 }
@@ -637,8 +638,8 @@ export function parseTradeRepublicCsvText(text: string): TrPdfParseErgebnis & { 
       summeEin += ein
       summeAus += aus
       const t = row.typ.toLowerCase()
-      if (t.includes('purchase') || t.includes('kauf') || t.includes('buy')) kaeufe += aus
       if (t.includes('sale') || t.includes('verkauf') || t.includes('sell')) verkaeufe += ein
+      else if (t.includes('purchase') || t.includes('kauf') || t.includes('buy')) kaeufe += aus
     }
     hinweise.push(
       `CSV-Plausibilität: ${ergebnis.cash.length} Buchungen · Eingänge ${summeEin.toLocaleString('de-DE', { style: 'currency', currency: 'EUR' })} · Ausgänge ${summeAus.toLocaleString('de-DE', { style: 'currency', currency: 'EUR' })}.`,
