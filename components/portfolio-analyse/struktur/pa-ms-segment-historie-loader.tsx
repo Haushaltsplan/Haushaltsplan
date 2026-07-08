@@ -69,9 +69,12 @@ export function PaMsSegmentHistorieLoader({
         if (j.ok && j.paket) {
           setPaket(j.paket)
           setFehler(null)
+        } else if (initial) {
+          setPaket(initial)
+          setFehler(j.fehler ?? 'Marketscreener — Fallback auf zwischengespeicherte Daten.')
         } else {
           setPaket(null)
-          setFehler(j.fehler ?? 'Keine Segmentdaten von Marketscreener.')
+          setFehler(j.fehler ?? 'Keine Segmentdaten (Marketscreener).')
         }
       } catch {
         if (!cancelled) {

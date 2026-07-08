@@ -1,11 +1,11 @@
 import { NextResponse } from 'next/server'
 
-import { ladeMarketscreenerSegmentHistorie } from '@/lib/portfolio-analyse/marketscreener-segment-historie-server'
+import { ladeGescrapteSegmentStruktur } from '@/lib/portfolio-analyse/segment-struktur-scraper-server'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
 
-/** GET ?isin=…&name=…&symbol=GOOGL — Marketscreener-Segment-Historie (Geo/Produkt). */
+/** GET ?isin=…&name=…&symbol=GOOGL — Segment/Region + Backlog (nur Scraper). */
 export async function GET(req: Request) {
   const url = new URL(req.url)
   const isin = url.searchParams.get('isin')?.trim() || null
@@ -18,7 +18,7 @@ export async function GET(req: Request) {
   }
 
   try {
-    const paket = await ladeMarketscreenerSegmentHistorie({
+    const paket = await ladeGescrapteSegmentStruktur({
       isin,
       name,
       symbolYahoo: symbol,

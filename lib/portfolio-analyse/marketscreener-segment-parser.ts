@@ -43,7 +43,7 @@ export function parseMsChart(html: string, chartId: string): MsChartRoh | null {
   if (idPos < 0) return null
   const chunk = html.slice(idPos, idPos + 600_000)
   const attrIdx = chunk.indexOf('data-fct-attr="')
-  if (attrIdx < 0 || attrIdx > 3_000) return null
+  if (attrIdx < 0 || attrIdx > 15_000) return null
   const jsonStart = attrIdx + 'data-fct-attr="'.length
   const jsonEnd = chunk.indexOf('">', jsonStart)
   if (jsonEnd < 0) return null

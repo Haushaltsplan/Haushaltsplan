@@ -763,14 +763,17 @@ export function PaSecSegmentHistorie({ paket }: { paket: SecSegmentHistoriePaket
     return { min: Math.min(...alle), max: Math.max(...alle) }
   }, [produkt, geo])
 
-  if (!hatUmsatzmix) return null
+  if (!hatUmsatzmix && !paket.backlog) return null
 
   const maxJahre = Math.max(produkt?.anzahlJahre ?? 0, geo?.anzahlJahre ?? 0)
-  const headerTitel = 'Geschäftsstruktur — Segment & Region'
-  const headerUntertitel =
-    maxJahre >= 2 && jahresSpanne
+  const headerTitel = hatUmsatzmix
+    ? 'Geschäftsstruktur — Segment & Region'
+    : 'Backlog / RPO'
+  const headerUntertitel = hatUmsatzmix
+    ? maxJahre >= 2 && jahresSpanne
       ? `${maxJahre} Jahre (${jahresSpanne.min}–${jahresSpanne.max}) · Marketscreener`
       : 'Umsatzmix nach Produktgruppe und Region · Marketscreener'
+    : paket.backlog?.quelleTag ?? 'Auftragsbestand'
 
   const quelleLabel = 'Marketscreener'
 
@@ -779,6 +782,8 @@ export function PaSecSegmentHistorie({ paket }: { paket: SecSegmentHistoriePaket
       <PaStrukturSectionHeader titel={headerTitel} untertitel={headerUntertitel} />
 
       <div className="space-y-4">
+        {hatUmsatzmix ? (
+          <>
         {hatProduktTabs && hatGeoTabs ? (
           <div className="flex flex-wrap gap-1.5">
             <button
@@ -813,6 +818,8 @@ export function PaSecSegmentHistorie({ paket }: { paket: SecSegmentHistoriePaket
             <PaSecSegmentEinzeljahr hist={aktiverMix.hist} titel={aktiverMix.titel} />
           )
         ) : null}
+          </>
+        ) : null}
       </div>
 
       {(zusatz.mitarbeiterAnzahl != null || zusatz.auslandsumsatzAnteilPct != null || zusatz.hauptkunden.length > 0) && (
@@ -820,6 +827,13 @@ export function PaSecSegmentHistorie({ paket }: { paket: SecSegmentHistoriePaket
           <PaStrukturKennzahl label="Auslandsanteil Umsatz" wert={zusatz.auslandsumsatzAnteilPct != null ? `${zusatz.auslandsumsatzAnteilPct} %` : null} />
         </div>
       )}
+
+      {paket.backlog ? (
+        <div className="border-t border-[var(--app-border)]/60 pt-5">
+          <PaStrukturSectionHeader titel="Backlog / RPO" untertitel={paket.backlog.quelleTag} />
+          <PaSecBacklogHistorie backlog={paket.backlog} kennzahlen={paket.kennzahlen} />
+        </div>
+      ) : null}
     </PaCard>
   )
 }
