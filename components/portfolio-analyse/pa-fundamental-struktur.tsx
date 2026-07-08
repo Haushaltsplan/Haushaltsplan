@@ -10,8 +10,7 @@ import {
   PaStrukturOwnershipDonut,
   PaStrukturSectionHeader,
 } from '@/components/portfolio-analyse/struktur/pa-struktur-visuals'
-import { PaSecSegmentHistorie } from '@/components/portfolio-analyse/struktur/pa-sec-segment-historie'
-import type { FundamentaldatenErweitert } from '@/lib/portfolio-analyse/fundamentaldaten-erweitert-types'
+import { PaMsSegmentHistorieLoader } from '@/components/portfolio-analyse/struktur/pa-ms-segment-historie-loader'
 import {
   baueBeatBalken,
   baueOwnershipSegmente,
@@ -93,9 +92,6 @@ export function PaFundamentalStruktur({
   const eu = erweitert.euFundamental
   const iv = erweitert.optionsIv
   const ag = erweitert.arbeitgeber
-
-  const hatGeschaeftsstruktur =
-    (secHist?.produkt?.anzahlJahre ?? 0) >= 1 || (secHist?.geo?.anzahlJahre ?? 0) >= 1
 
   return (
     <div className="space-y-5">
@@ -206,18 +202,14 @@ export function PaFundamentalStruktur({
         </div>
       </PaCard>
 
-      {/* Geschäftsstruktur — Marketscreener-Scraper, Geo/Produkt per Tab, bis 10 Jahre */}
-      {hatGeschaeftsstruktur && secHist ? <PaSecSegmentHistorie paket={secHist} /> : null}
-
-      {!hatGeschaeftsstruktur && (sec || erweitert.holders || erweitert.finviz) ? (
-        <PaCard variant="elevated" className="p-5 text-sm text-[var(--app-text-muted)]">
-          <p className="font-medium text-[var(--app-text)]">Geschäftsstruktur (Segment & Region)</p>
-          <p className="mt-2">
-            Für diesen Titel konnten keine Segmentdaten von Marketscreener geladen werden. Prüfe, ob ISIN oder
-            Yahoo-Symbol hinterlegt sind, und lade die Seite neu.
-          </p>
-        </PaCard>
-      ) : null}
+      {/* Geschäftsstruktur — Marketscreener-Scraper (direkt geladen) */}
+      <PaMsSegmentHistorieLoader
+        isin={isin}
+        name={paket.firmenname}
+        symbolYahoo={symbolYahoo ?? paket.symbolYahoo}
+        ticker={ticker}
+        initial={secHist}
+      />
 
       {sec &&
       (sec.pensionVerpflichtungMio != null || sec.leaseVerpflichtungMio != null || sec.ceoVerguetungUsd != null) ? (

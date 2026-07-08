@@ -200,6 +200,7 @@ export function loesePortfolioIsin(opts: {
   firmenname?: string | null
 }): string | null {
   const direct = opts.isin?.trim().toUpperCase()
+  if (direct && direct.length >= 10) return direct
   if (direct && ISIN_KENNTNISSE[direct]) return direct
 
   for (const sym of [opts.symbolYahoo, opts.ticker]) {

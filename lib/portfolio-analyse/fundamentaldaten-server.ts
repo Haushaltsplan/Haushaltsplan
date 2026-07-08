@@ -351,7 +351,7 @@ export async function ladeFundamentaldaten(anfrage: FundamentaldatenAnfrage): Pr
     ladeFundamentaldatenErweitert({
       ticker: ident.ticker,
       symbolYahoo,
-      isin: isinNormEarly,
+      isin: isinNormEarly ?? anfrage.isin?.trim().toUpperCase() ?? null,
       firmenname: anfrage.name ?? ident.firmenname,
     }),
   ])

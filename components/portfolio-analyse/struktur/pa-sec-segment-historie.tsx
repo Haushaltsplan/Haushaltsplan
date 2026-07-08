@@ -732,8 +732,10 @@ export function PaSecSegmentHistorie({ paket }: { paket: SecSegmentHistoriePaket
     () => (paket.geo ? begrenzeSegmentHistorie(paket.geo) : null),
     [paket.geo],
   )
-  const hatProdukt = (produkt?.segmentNamen.length ?? 0) >= 2
-  const hatGeo = (geo?.segmentNamen.length ?? 0) >= 2
+  const hatProdukt = (produkt?.anzahlJahre ?? 0) >= 1 && (produkt?.segmentNamen.length ?? 0) >= 1
+  const hatGeo = (geo?.anzahlJahre ?? 0) >= 1 && (geo?.segmentNamen.length ?? 0) >= 1
+  const hatProduktTabs = (produkt?.segmentNamen.length ?? 0) >= 2
+  const hatGeoTabs = (geo?.segmentNamen.length ?? 0) >= 2
   const hatUmsatzmix = hatProdukt || hatGeo
   const zusatz = paket.zusatz
 
@@ -777,7 +779,7 @@ export function PaSecSegmentHistorie({ paket }: { paket: SecSegmentHistoriePaket
       <PaStrukturSectionHeader titel={headerTitel} untertitel={headerUntertitel} />
 
       <div className="space-y-4">
-        {hatProdukt && hatGeo ? (
+        {hatProduktTabs && hatGeoTabs ? (
           <div className="flex flex-wrap gap-1.5">
             <button
               type="button"
