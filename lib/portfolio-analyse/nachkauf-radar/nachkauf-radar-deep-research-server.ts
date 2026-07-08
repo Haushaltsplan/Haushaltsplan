@@ -17,6 +17,7 @@ import {
   runCoachCompletion,
 } from '@/lib/ki-coach-backend'
 import { NACHKAUF_DEEP_RESEARCH_SYSTEM_PROMPT } from './nachkauf-deep-research-prompt'
+import { formatSegmentStrukturKontext } from './nachkauf-segment-struktur-hilfen'
 import { ergaenzeDepotGewichte, speichereDeepResearch } from './nachkauf-radar-db-server'
 import type { NachkaufDeepResearch, NachkaufDeepResearchAnfrage, NachkaufScanEintrag } from './nachkauf-radar-types'
 
@@ -48,6 +49,7 @@ function baueKontextText(opts: {
   premiumDiscountPct?: number | null
   historischerMedianPe?: number | null
   scoreVerlauf?: Array<{ datum: string; score: number }>
+  segmentStrukturKontext?: string | null
 }): string {
   const gewichtHinweis =
     opts.depotGewichtPct != null
@@ -125,6 +127,12 @@ function baueKontextText(opts: {
     }
   } else {
     teile.push('--- Kein SEC/IR-Bericht-Cache vorhanden ---')
+    teile.push('')
+  }
+
+  if (opts.segmentStrukturKontext) {
+    teile.push('--- GESCHÄFTSSTRUKTUR (Struktur & Daten, gescrapt) ---')
+    teile.push(opts.segmentStrukturKontext)
     teile.push('')
   }
 
@@ -229,6 +237,10 @@ export async function fuhreDeepResearchDurch(
     premiumDiscountPct: anfrage.scanEintrag?.premiumDiscountPct,
     historischerMedianPe: anfrage.historischerMedianPe,
     scoreVerlauf: anfrage.scanEintrag?.scoreVerlauf,
+    segmentStrukturKontext: formatSegmentStrukturKontext(
+      paket.erweitert?.secSegmentHistorie,
+      paket.erweitert?.secStruktur,
+    ),
   })
 
   // LLM-Aufruf mit Gemini Pro

@@ -95,6 +95,9 @@ function baueKandidatenText(kandidaten: NachkaufScanEintrag[], budgetEur: number
       e.datenSignale?.prognoseProfil && e.datenSignale.prognoseProfil.anzahlJahre >= 2
         ? `Prognose (FY0–2027): ${e.datenSignale.prognoseProfil.zusammenfassung}`
         : ''
+    const struktur = e.datenSignale?.segmentStrukturKontext
+      ? `Geschäftsstruktur:\n${e.datenSignale.segmentStrukturKontext}`
+      : ''
 
     return [
       `### ${e.ticker} – ${e.name}`,
@@ -105,6 +108,7 @@ function baueKandidatenText(kandidaten: NachkaufScanEintrag[], budgetEur: number
       `Kaufhistorie: ${formatKaufhistorie(e)}`,
       insider,
       prognose,
+      struktur,
       '',
       dr ? `**Deep Research Kernaussagen:**\n${kuerzerMemo(dr.memo)}` : '_Kein Deep Research vorhanden_',
     ].join('\n')

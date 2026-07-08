@@ -235,6 +235,8 @@ function berechneStrukturPunkte(zusatz: NachkaufZusatzSignale | null | undefined
 
   if (zusatz.goodwillAnteilPct != null && zusatz.goodwillAnteilPct >= 35) pts -= 1
   if (zusatz.segmentKonzentrationPct != null && zusatz.segmentKonzentrationPct >= 55) pts -= 1
+  if (zusatz.segmentShiftPct != null && Math.abs(zusatz.segmentShiftPct) >= 12) pts -= 1
+  if (zusatz.backlogWachstumPct != null && zusatz.backlogWachstumPct <= -8) pts -= 1
 
   const strukturRisiko = (zusatz.pensionVerpflichtungMio ?? 0) + (zusatz.leaseVerpflichtungMio ?? 0)
   if (strukturRisiko > 5_000) pts -= 2

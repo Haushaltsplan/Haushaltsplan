@@ -1062,8 +1062,25 @@ function DetailPanel({
           )}
           {eintrag.datenSignale?.segmentKonzentrationPct != null && (
             <div>
-              <p className="text-[11px] text-[var(--app-text-muted)]">Größtes Segment</p>
+              <p className="text-[11px] text-[var(--app-text-muted)]">
+                Größtes Segment{eintrag.datenSignale.produktTopSegmentName ? ` (${eintrag.datenSignale.produktTopSegmentName})` : ''}
+              </p>
               <p className="text-sm font-medium text-[var(--app-text)]">{eintrag.datenSignale.segmentKonzentrationPct.toFixed(0)} %</p>
+            </div>
+          )}
+          {eintrag.datenSignale?.auslandsumsatzAnteilPct != null && (
+            <div>
+              <p className="text-[11px] text-[var(--app-text-muted)]">Auslandsumsatz</p>
+              <p className="text-sm font-medium text-[var(--app-text)]">{eintrag.datenSignale.auslandsumsatzAnteilPct.toFixed(0)} %</p>
+            </div>
+          )}
+          {eintrag.datenSignale?.backlogWachstumPct != null && (
+            <div>
+              <p className="text-[11px] text-[var(--app-text-muted)]">{eintrag.datenSignale.backlogLabel ?? 'Backlog'} YoY</p>
+              <p className={`text-sm font-medium ${eintrag.datenSignale.backlogWachstumPct >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                {eintrag.datenSignale.backlogWachstumPct > 0 ? '+' : ''}
+                {eintrag.datenSignale.backlogWachstumPct.toFixed(1)} %
+              </p>
             </div>
           )}
           {eintrag.datenSignale?.insiderNettoRichtung && eintrag.datenSignale.insiderNettoRichtung !== 'neutral' && (

@@ -12,6 +12,10 @@ import { FUNDAMENTAL_FY0E_KEY, FUNDAMENTAL_FY1E_KEY } from '@/lib/portfolio-anal
 import type { NachkaufBewertungsSignale } from './nachkauf-radar-types'
 import type { NachkaufPrognoseProfil } from './nachkauf-prognose-server'
 import { extrahierePrognoseProfil } from './nachkauf-prognose-server'
+import {
+  extrahiereSegmentStrukturSignale,
+  formatSegmentStrukturKontext,
+} from './nachkauf-segment-struktur-hilfen'
 
 export type NachkaufZusatzSignale = {
   epsBeatRatePct: number | null
@@ -43,8 +47,17 @@ export type NachkaufZusatzSignale = {
   nettoCashMio: number | null
   /** Goodwill / Gesamtvermögen in %. */
   goodwillAnteilPct: number | null
-  /** Größtes SEC-Geo-Segment in %. */
+  /** Größtes Produkt-/Geo-Segment in % (Struktur & Daten, bevorzugt MS/SA-Historie). */
   segmentKonzentrationPct: number | null
+  produktTopSegmentName: string | null
+  auslandsumsatzAnteilPct: number | null
+  geoTopRegionName: string | null
+  geoTopRegionPct: number | null
+  backlogWachstumPct: number | null
+  backlogLabel: string | null
+  segmentShiftPct: number | null
+  /** Kompakter Struktur-Block für Deep Research. */
+  segmentStrukturKontext: string | null
   /** Capital Allocation — Einzelsäulen (aus Yahoo-Cashflow). */
   capAllocBuyback: CapitalAllocationBewertung | null
   capAllocDividend: CapitalAllocationBewertung | null
@@ -224,6 +237,11 @@ export async function ladeNachkaufZusatzSignale(opts: {
   const prognoseProfil = extrahierePrognoseProfil(opts.paket)
   const erw = opts.paket.erweitert
   const bilanz = bilanzStruktur(opts.paket)
+  const segSig = extrahiereSegmentStrukturSignale(erw?.secSegmentHistorie, erw?.secStruktur)
+  const segmentStrukturKontext = formatSegmentStrukturKontext(
+    erw?.secSegmentHistorie,
+    erw?.secStruktur,
+  )
 
   const capital = await ladeCapitalAllocation({ ticker: opts.ticker, symbolYahoo: sym }).catch(() => null)
 
@@ -292,7 +310,16 @@ export async function ladeNachkaufZusatzSignale(opts: {
     leaseVerpflichtungMio: erw?.secStruktur?.leaseVerpflichtungMio ?? null,
     nettoCashMio: bilanz.nettoCashMio,
     goodwillAnteilPct: bilanz.goodwillAnteilPct,
-    segmentKonzentrationPct: segmentKonzentration(erw?.secStruktur?.segmente),
+    segmentKonzentrationPct:
+      segSig.segmentKonzentrationPct ?? segmentKonzentration(erw?.secStruktur?.segmente),
+    produktTopSegmentName: segSig.produktTopSegmentName,
+    auslandsumsatzAnteilPct: segSig.auslandsumsatzAnteilPct,
+    geoTopRegionName: segSig.geoTopRegionName,
+    geoTopRegionPct: segSig.geoTopRegionPct,
+    backlogWachstumPct: segSig.backlogWachstumPct,
+    backlogLabel: segSig.backlogLabel,
+    segmentShiftPct: segSig.segmentShiftPct,
+    segmentStrukturKontext,
     ...capAlloc,
     sbcVsFcfPct: sbcVsFcfPctAusPaket(opts.paket),
     dsoTrendDelta: trendDeltaAusZeile(opts.paket, 'dso'),
@@ -351,7 +378,20 @@ export function formatZusatzSignaleKurz(z: NachkaufZusatzSignale): string {
     teile.push(`Goodwill ${z.goodwillAnteilPct.toFixed(0)} % der Bilanz`)
   }
   if (z.segmentKonzentrationPct != null && z.segmentKonzentrationPct >= 50) {
-    teile.push(`Segment-Konzentration ${z.segmentKonzentrationPct.toFixed(0)} %`)
+    const name = z.produktTopSegmentName ? ` (${z.produktTopSegmentName})` : ''
+    teile.push(`Segment-Konzentration ${z.segmentKonzentrationPct.toFixed(0)} %${name}`)
+  }
+  if (z.auslandsumsatzAnteilPct != null && z.auslandsumsatzAnteilPct >= 35) {
+    teile.push(`Ausland ${z.auslandsumsatzAnteilPct.toFixed(0)} %`)
+  } else if (z.geoTopRegionPct != null && z.geoTopRegionName) {
+    teile.push(`Top-Region ${z.geoTopRegionName} ${z.geoTopRegionPct.toFixed(0)} %`)
+  }
+  if (z.backlogWachstumPct != null) {
+    const label = z.backlogLabel ?? 'Backlog'
+    teile.push(`${label} ${z.backlogWachstumPct > 0 ? '+' : ''}${z.backlogWachstumPct.toFixed(0)} % YoY`)
+  }
+  if (z.segmentShiftPct != null && Math.abs(z.segmentShiftPct) >= 8) {
+    teile.push(`Segment-Shift ${z.segmentShiftPct > 0 ? '+' : ''}${z.segmentShiftPct.toFixed(0)} PP`)
   }
   if (z.insiderNettoRichtung && z.insiderNettoRichtung !== 'neutral') {
     teile.push(`Insider-Netto 90T: ${z.insiderNettoRichtung}`)
