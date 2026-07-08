@@ -17,7 +17,7 @@ const BASE = 'https://www.marketscreener.com/quote/stock'
 const CACHE_MS = 12 * 60 * 60 * 1000
 const CACHE_VERSION = 12
 const MAX_ZUSAETZLICHE_SLUGS = 8
-const MIN_ABSTAND_MS = 300
+const MIN_ABSTAND_MS = 700
 
 const USER_AGENT =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'
@@ -199,6 +199,10 @@ async function findeGueltigenSlug(
   if (hart) {
     const treffer = await versucheSlug(hart)
     if (treffer) return treffer
+    await pause(2_500)
+    await ensureMsCookies(true)
+    const retry = await versucheSlug(hart)
+    if (retry) return retry
   }
 
   const ausIsinSuche = isin.length >= 10 ? await slugsAusIsinSuche(isin, name) : []

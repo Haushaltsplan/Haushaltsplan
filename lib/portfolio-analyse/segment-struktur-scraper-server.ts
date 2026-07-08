@@ -196,7 +196,7 @@ export async function ladeGescrapteSegmentStruktur(opts: {
   const live = await scrapeLiveSegmentStruktur({ ...opts, isin: isin ?? opts.isin })
   if (live) {
     if (isin && isin.length >= 10) {
-      void speichereSegmentStrukturInCloud({
+      await speichereSegmentStrukturInCloud({
         isin,
         ticker: opts.ticker ?? opts.symbolYahoo,
         firmenname: opts.name,

@@ -5,6 +5,7 @@
  *
  *   npx tsx --require ./scripts/mock-server-only.cjs scripts/seed-segment-struktur-cloud.ts
  *   npx tsx --require ./scripts/mock-server-only.cjs scripts/seed-segment-struktur-cloud.ts MSCI MSFT
+ *   npx tsx --require ./scripts/mock-server-only.cjs scripts/seed-segment-struktur-cloud.ts --retry-fail
  */
 import { readFileSync } from 'fs'
 
@@ -26,6 +27,17 @@ function loadEnv() {
 }
 loadEnv()
 
+function basisTicker(k: ReturnType<typeof isinKenntnis>): string {
+  for (const sym of [k?.logoSymbol, k?.macrotrendsTicker, k?.symbolYahoo, k?.symbolCandidates?.[0]]) {
+    const t = sym?.trim().toUpperCase().split('.')[0]
+    if (t) return t
+  }
+  return ''
+}
+
+const PAUSE_MS = 1_100
+const RETRY_PAUSE_MS = 2_500
+
 async function seedEinen(name: string, isin: string, symbolYahoo: string, ticker: string) {
   const paket = await ladeGescrapteSegmentStruktur({
     isin,
@@ -41,10 +53,10 @@ async function seedEinen(name: string, isin: string, symbolYahoo: string, ticker
   const ok = Boolean(paket && (prod > 0 || geo > 0 || backlog > 0))
   const cloudOk = Boolean(cloud)
   if (ok && !cloudOk) {
-    console.warn(`  ⚠ Cloud-Speichern fehlgeschlagen für ${isin} — Migration segment_struktur_cache ausgeführt?`)
+    console.warn(`  ⚠ Cloud-Speichern fehlgeschlagen für ${isin} — Migration/Service-Role prüfen`)
   }
   console.log(
-    `${ok ? 'OK' : 'FAIL'} ${name.padEnd(22)} live ${prod}/${geo}/${backlog} cloud=${cloudOk ? 'ja' : 'nein'}`,
+    `${ok ? 'OK' : 'FAIL'} ${name.padEnd(24)} live ${prod}/${geo}/${backlog} cloud=${cloudOk ? 'ja' : 'nein'}`,
   )
   return ok
 }
@@ -55,12 +67,15 @@ async function main() {
     process.exit(1)
   }
 
-  const filter = new Set(process.argv.slice(2).map((a) => a.toUpperCase()))
+  const args = process.argv.slice(2)
+  const retryFail = args.includes('--retry-fail')
+  const filter = new Set(args.filter((a) => !a.startsWith('--')).map((a) => a.toUpperCase()))
+
   const liste = NACHKAUF_RADAR_WHITELIST.filter((pos) => {
     if (filter.size === 0) return true
     const k = isinKenntnis(pos.isin)
     const sym = (k?.symbolYahoo ?? '').toUpperCase()
-    const ticker = sym.split('.')[0] ?? ''
+    const ticker = basisTicker(k)
     return (
       filter.has(pos.name.toUpperCase()) ||
       filter.has(pos.isin.toUpperCase()) ||
@@ -70,14 +85,28 @@ async function main() {
   })
 
   console.log(`Seed ${liste.length} Titel …\n`)
+  const fehlgeschlagen: typeof liste = []
   let ok = 0
   for (const pos of liste) {
     const k = isinKenntnis(pos.isin)
     const sym = k?.symbolYahoo ?? ''
-    const ticker = sym.split('.')[0] ?? ''
+    const ticker = basisTicker(k)
     if (await seedEinen(pos.name, pos.isin, sym, ticker)) ok++
-    await new Promise((r) => setTimeout(r, 400))
+    else fehlgeschlagen.push(pos)
+    await new Promise((r) => setTimeout(r, PAUSE_MS))
   }
+
+  if (retryFail && fehlgeschlagen.length > 0) {
+    console.log(`\n--- Retry ${fehlgeschlagen.length} fehlgeschlagene Titel (längere Pause) ---\n`)
+    for (const pos of fehlgeschlagen) {
+      const k = isinKenntnis(pos.isin)
+      const sym = k?.symbolYahoo ?? ''
+      const ticker = basisTicker(k)
+      await new Promise((r) => setTimeout(r, RETRY_PAUSE_MS))
+      if (await seedEinen(pos.name, pos.isin, sym, ticker)) ok++
+    }
+  }
+
   console.log(`\nFertig: ${ok}/${liste.length} mit Daten`)
 }
 
