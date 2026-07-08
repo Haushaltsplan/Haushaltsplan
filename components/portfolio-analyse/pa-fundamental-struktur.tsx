@@ -19,6 +19,7 @@ import {
   strukturKmText,
   usdKompakt,
 } from '@/lib/portfolio-analyse/fundamentaldaten-struktur-hilfen'
+import type { FundamentaldatenErweitert } from '@/lib/portfolio-analyse/fundamentaldaten-erweitert-types'
 import type { FundamentaldatenPaket } from '@/lib/portfolio-analyse/fundamentaldaten-types'
 
 function trendHinweis(delta: number | null, einheit: string): string | undefined {
