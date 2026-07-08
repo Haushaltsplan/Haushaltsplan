@@ -39,7 +39,6 @@ export function PaMsSegmentHistorieLoader({
       if (name) q.set('name', name)
       if (symbolYahoo) q.set('symbol', symbolYahoo)
       if (ticker) q.set('ticker', ticker)
-      q.set('refresh', '1')
 
       try {
         const { data: sessionData } = await supabase.auth.getSession()

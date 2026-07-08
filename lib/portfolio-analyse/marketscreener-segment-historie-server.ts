@@ -15,7 +15,7 @@ import {
 
 const BASE = 'https://www.marketscreener.com/quote/stock'
 const CACHE_MS = 12 * 60 * 60 * 1000
-const CACHE_VERSION = 11
+const CACHE_VERSION = 12
 const MAX_ZUSAETZLICHE_SLUGS = 8
 const MIN_ABSTAND_MS = 300
 
@@ -64,8 +64,9 @@ function normalisiereName(s: string): string {
     .trim()
 }
 
-async function ensureMsCookies(): Promise<string> {
-  if (msCookieHeader && Date.now() - msCookieAt < 30 * 60 * 1000) return msCookieHeader
+async function ensureMsCookies(force = false): Promise<string> {
+  if (!force && msCookieHeader && Date.now() - msCookieAt < 30 * 60 * 1000) return msCookieHeader
+  msCookieHeader = ''
   try {
     const res = await fetch('https://www.marketscreener.com/', {
       headers: FETCH_HEADERS,
@@ -82,9 +83,15 @@ async function ensureMsCookies(): Promise<string> {
   return msCookieHeader
 }
 
-async function fetchMsHtml(url: string, retries = 3): Promise<string | null> {
+function htmlBlockiert(html: string): boolean {
+  if (html.length < 5_000) return true
+  const kopf = html.slice(0, 8_000).toLowerCase()
+  return /access denied|captcha|bot detection|cf-challenge|just a moment/.test(kopf)
+}
+
+async function fetchMsHtml(url: string, retries = 4): Promise<string | null> {
   await throttle()
-  const cookie = await ensureMsCookies()
+  let cookie = await ensureMsCookies()
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
       const headers = { ...FETCH_HEADERS }
@@ -93,22 +100,27 @@ async function fetchMsHtml(url: string, retries = 3): Promise<string | null> {
         headers,
         cache: 'no-store',
         redirect: 'follow',
-        signal: AbortSignal.timeout(30_000),
+        signal: AbortSignal.timeout(35_000),
       })
-      if (!res.ok) continue
-      const html = await res.text()
-      if (html.length > 5_000 && !/access denied|captcha|bot detection/i.test(html.slice(0, 4_000))) {
-        return html
+      if (!res.ok) {
+        if (res.status === 403 || res.status === 429) {
+          cookie = await ensureMsCookies(true)
+        }
+        continue
       }
+      const html = await res.text()
+      if (!htmlBlockiert(html)) return html
+      cookie = await ensureMsCookies(true)
     } catch {
       /* retry */
     }
-    if (attempt < retries) await pause(500)
+    if (attempt < retries) await pause(800 + attempt * 400)
   }
   return null
 }
 
 async function fetchSegmentsHtml(slug: string): Promise<string | null> {
+  await fetchMsHtml(`${BASE}/${slug}/`)
   return fetchMsHtml(`${BASE}/${slug}/finances-segments/`)
 }
 

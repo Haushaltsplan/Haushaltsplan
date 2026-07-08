@@ -28,7 +28,12 @@ export async function GET(req: Request) {
     })
     if (!paket) {
       return NextResponse.json(
-        { ok: false, paket: null, fehler: 'Keine Segment- oder Backlog-Daten gefunden.' },
+        {
+          ok: false,
+          paket: null,
+          fehler:
+            'Keine Segment- oder Backlog-Daten gefunden. Marketscreener blockiert Server-IPs — bitte einmal lokal `npx tsx scripts/seed-segment-struktur-cloud.ts` ausführen.',
+        },
         { headers: { 'Cache-Control': 'no-store' } },
       )
     }

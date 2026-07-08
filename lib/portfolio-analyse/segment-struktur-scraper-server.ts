@@ -9,6 +9,10 @@ import type {
   SecZusatzRisikoFelder,
 } from '@/lib/portfolio-analyse/fundamentaldaten-erweitert-types'
 import { loesePortfolioIsin } from '@/lib/portfolio-analyse/isin-kenntnisse'
+import {
+  ladeSegmentStrukturAusCloud,
+  speichereSegmentStrukturInCloud,
+} from '@/lib/portfolio-analyse/segment-struktur-cloud-server'
 import { ladeMarketbeatBacklogHistorie } from '@/lib/portfolio-analyse/marketbeat-backlog-server'
 import { ladeMarketscreenerSegmentHistorie } from '@/lib/portfolio-analyse/marketscreener-segment-historie-server'
 import { ladeStockanalysisBacklogHistorie } from '@/lib/portfolio-analyse/stockanalysis-backlog-server'
@@ -134,7 +138,7 @@ async function ergaenzeBacklog(
   return { ...paket, backlog }
 }
 
-export async function ladeGescrapteSegmentStruktur(opts: {
+async function scrapeLiveSegmentStruktur(opts: {
   isin?: string | null
   name: string
   symbolYahoo?: string | null
@@ -147,8 +151,6 @@ export async function ladeGescrapteSegmentStruktur(opts: {
     ticker: opts.ticker,
     firmenname: opts.name,
   })
-
-  if (!isin && !opts.name?.trim() && !opts.symbolYahoo && !opts.ticker) return null
 
   const [ms, sa] = await Promise.all([
     ladeMarketscreenerSegmentHistorie({
@@ -173,4 +175,49 @@ export async function ladeGescrapteSegmentStruktur(opts: {
 
   if (!paket.produkt && !paket.geo && !paket.backlog) return null
   return paket
+}
+
+export async function ladeGescrapteSegmentStruktur(opts: {
+  isin?: string | null
+  name: string
+  symbolYahoo?: string | null
+  ticker?: string | null
+  refresh?: boolean
+}): Promise<SecSegmentHistoriePaket | null> {
+  const isin = loesePortfolioIsin({
+    isin: opts.isin,
+    symbolYahoo: opts.symbolYahoo,
+    ticker: opts.ticker,
+    firmenname: opts.name,
+  })
+
+  if (!isin && !opts.name?.trim() && !opts.symbolYahoo && !opts.ticker) return null
+
+  if (!opts.refresh && isin && isin.length >= 10) {
+    const cloud = await ladeSegmentStrukturAusCloud(isin)
+    if (cloud) return cloud
+  }
+
+  const live = await scrapeLiveSegmentStruktur({ ...opts, isin: isin ?? opts.isin })
+  if (live) {
+    if (isin && isin.length >= 10) {
+      void speichereSegmentStrukturInCloud({
+        isin,
+        ticker: opts.ticker ?? opts.symbolYahoo,
+        firmenname: opts.name,
+        paket: live,
+      })
+    }
+    return live
+  }
+
+  if (isin && isin.length >= 10) {
+    const cloud = await ladeSegmentStrukturAusCloud(isin)
+    if (cloud) {
+      console.warn(`[segment-struktur] Live-Scrape leer — Cloud-Fallback für ${isin}`)
+      return cloud
+    }
+  }
+
+  return null
 }
