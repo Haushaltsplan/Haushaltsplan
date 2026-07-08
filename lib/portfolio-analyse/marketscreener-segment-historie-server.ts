@@ -8,12 +8,15 @@ import type {
   SecSegmentHistoriePaket,
   SecZusatzRisikoFelder,
 } from '@/lib/portfolio-analyse/fundamentaldaten-erweitert-types'
-import { isinKenntnis } from '@/lib/portfolio-analyse/isin-kenntnisse'
-import { marketscreenerSlugKandidaten } from '@/lib/portfolio-analyse/marketscreener-slug'
+import { isinAusYahooSymbol, isinKenntnis } from '@/lib/portfolio-analyse/isin-kenntnisse'
+import {
+  bekannterMarketscreenerSlug,
+  marketscreenerSlugKandidaten,
+} from '@/lib/portfolio-analyse/marketscreener-slug'
 
 const BASE = 'https://www.marketscreener.com/quote/stock'
 const CACHE_MS = 12 * 60 * 60 * 1000
-const CACHE_VERSION = 3
+const CACHE_VERSION = 4
 const MIN_ABSTAND_MS = 350
 /** Max. Geschäftsjahre aus dem Marketscreener-Scraper. */
 const MAX_JAHRE = 10
@@ -217,17 +220,46 @@ function parseSegmentTabelle(html: string, marker: RegExp): ChartRoh | null {
   return { start: jahreBegrenzt[0]!, currency: 'USD', segmente }
 }
 
+function parseChartMehrereIds(html: string, ids: string[]): ChartRoh | null {
+  for (const id of ids) {
+    const hit = parseChart(html, id)
+    if (hit) return hit
+  }
+  return null
+}
+
+function waehleReichhaltigereHistorie(
+  a: SecSegmentHistorie | null,
+  b: SecSegmentHistorie | null,
+): SecSegmentHistorie | null {
+  if (!a) return b
+  if (!b) return a
+  return a.anzahlJahre >= b.anzahlJahre ? a : b
+}
+
 function extrahiereHistorien(html: string): { produkt: SecSegmentHistorie | null; geo: SecSegmentHistorie | null } {
-  const produktChart =
-    parseChart(html, 'financialSegmentCA1') ??
-    parseSegmentTabelle(html, /Breakdown by Business Segment/i)
-  const geoChart =
-    parseChart(html, 'financialSegmentCA2') ??
-    parseSegmentTabelle(html, /Geographical breakdown of sales/i)
+  const produktChart = parseChartMehrereIds(html, [
+    'financialSegmentCA1',
+    'financialSegmentLastYearChar1',
+    'financialSegmentRevenueChar1',
+  ])
+  const geoChart = parseChartMehrereIds(html, [
+    'financialSegmentCA2',
+    'financialSegmentLastYearChar2',
+    'financialSegmentRevenueChar2',
+  ])
+  const produktTable = parseSegmentTabelle(html, /Breakdown by Business Segment/i)
+  const geoTable = parseSegmentTabelle(html, /Geographical breakdown of sales/i)
 
   return {
-    produkt: produktChart ? chartZuHistorie('produkt', produktChart) : null,
-    geo: geoChart ? chartZuHistorie('geo', geoChart) : null,
+    produkt: waehleReichhaltigereHistorie(
+      produktChart ? chartZuHistorie('produkt', produktChart) : null,
+      produktTable ? chartZuHistorie('produkt', produktTable) : null,
+    ),
+    geo: waehleReichhaltigereHistorie(
+      geoChart ? chartZuHistorie('geo', geoChart) : null,
+      geoTable ? chartZuHistorie('geo', geoTable) : null,
+    ),
   }
 }
 
@@ -246,7 +278,7 @@ async function fetchSegmentsHtml(slug: string): Promise<string | null> {
     })
     if (!res.ok) return null
     const html = await res.text()
-    return html.length > 50_000 ? html : null
+    return html.length > 15_000 ? html : null
   } catch {
     return null
   }
@@ -307,11 +339,17 @@ async function findeGueltigenSlug(
   name: string,
   symbolYahoo?: string | null,
 ): Promise<{ slug: string; html: string } | null> {
+  const hart = bekannterMarketscreenerSlug(isin)
+  if (hart) {
+    const html = await fetchSegmentsHtml(hart)
+    if (html && hatSegmentDaten(html)) return { slug: hart, html }
+  }
+
   const basis = [
     ...marketscreenerSlugKandidaten(isin, name, symbolYahoo),
     ...(await slugsAusIsinSuche(isin, name)),
   ].flatMap((s) => [s, s.replace(/-CORP-/, '-CORPORATION-'), s.replace(/-INC-/, '-INCORPORATION-')])
-  const kandidaten = [...new Set(basis)]
+  const kandidaten = [...new Set(basis)].filter((s) => s !== hart)
 
   for (const slug of kandidaten) {
     if (!(await slugPasstZuIsin(slug, isin))) continue
@@ -321,14 +359,28 @@ async function findeGueltigenSlug(
   return null
 }
 
+function loeseIsinFuerSegment(opts: {
+  isin?: string | null
+  symbolYahoo?: string | null
+  ticker?: string | null
+}): string | null {
+  const direct = opts.isin?.trim().toUpperCase() ?? ''
+  if (direct.length >= 10) return direct
+  for (const sym of [opts.symbolYahoo, opts.ticker]) {
+    const hit = isinAusYahooSymbol(sym)
+    if (hit) return hit
+  }
+  return null
+}
+
 export async function ladeMarketscreenerSegmentHistorie(opts: {
-  isin: string
+  isin?: string | null
   name: string
   symbolYahoo?: string | null
   ticker?: string | null
 }): Promise<SecSegmentHistoriePaket | null> {
-  const isin = opts.isin.trim().toUpperCase()
-  if (isin.length < 10) return null
+  const isin = loeseIsinFuerSegment(opts)
+  if (!isin) return null
 
   const cacheKey = isin
   const hit = cache.get(cacheKey)
@@ -338,6 +390,7 @@ export async function ladeMarketscreenerSegmentHistorie(opts: {
     const symbol = opts.symbolYahoo?.trim() || opts.ticker?.trim() || isinKenntnis(isin)?.symbolYahoo
     const treffer = await findeGueltigenSlug(isin, opts.name, symbol)
     if (!treffer) {
+      console.warn(`[marketscreener-segments] Kein Treffer für ISIN ${isin} (${opts.name})`)
       cache.set(cacheKey, { at: Date.now(), v: CACHE_VERSION, data: null })
       return null
     }

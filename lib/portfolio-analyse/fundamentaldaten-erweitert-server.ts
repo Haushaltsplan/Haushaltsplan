@@ -48,9 +48,9 @@ export async function ladeFundamentaldatenErweitert(opts: {
     !ticker.includes('.') ? ladeInsiderNettoHandel(ticker) : Promise.resolve(null),
     ticker ? ladeEarningsBeatMissHistorie({ ticker, symbolYahoo: symbol, isin, limit: 8 }) : Promise.resolve(null),
     !ticker.includes('.') ? ladeSecStrukturExtraktion(ticker) : Promise.resolve(null),
-    isin.length >= 10
+    isin.length >= 10 || (!ticker.includes('.') && Boolean(symbol))
       ? ladeMarketscreenerSegmentHistorie({
-          isin,
+          isin: isin || null,
           name: opts.firmenname,
           symbolYahoo: symbol,
           ticker,

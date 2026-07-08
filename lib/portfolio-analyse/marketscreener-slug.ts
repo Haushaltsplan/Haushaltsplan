@@ -48,6 +48,10 @@ const SLUGS: Record<string, string> = {
   DE0006580806: 'MENSCH-UND-MASCHINE-SOFTWARE-436035',
 }
 
+export function bekannterMarketscreenerSlug(isin: string): string | null {
+  return SLUGS[isin.trim().toUpperCase()] ?? null
+}
+
 function slugAusName(name: string): string {
   return name
     .toUpperCase()

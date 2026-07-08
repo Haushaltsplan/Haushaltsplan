@@ -117,6 +117,7 @@ export const ISIN_KENNTNISSE: Record<string, IsinKenntnis> = {
 
   // --- mit Klammern: Umrechnung ---
   US02079K1079: usd('GOOG', "Alphabet 'C'", { divvydiarySlug: 'alphabet-aktie' }),
+  US02079K3059: usd('GOOGL', "Alphabet 'A'", { divvydiarySlug: 'alphabet-aktie' }),
   US57636Q1040: usd('MA', 'Mastercard', { divvydiarySlug: 'mastercard-aktie', macrotrendsSlug: 'mastercard' }),
   US78409V1044: usd('SPGI', 'S&P Global', { divvydiarySlug: 'sp-global-aktie' }),
   US60744M1062: usd('MBGL', 'Mobility Global', { divvydiarySlug: 'mobility-global-aktie' }),
