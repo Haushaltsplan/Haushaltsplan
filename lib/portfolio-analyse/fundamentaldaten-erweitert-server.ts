@@ -10,7 +10,9 @@ import { ladeEarningsBeatMissHistorie } from '@/lib/portfolio-analyse/earnings-b
 import { ladeEuFundamentalKennzahlen } from '@/lib/portfolio-analyse/marketscreener-fundamental-kennzahlen-server'
 import { ladeFinvizKennzahlen } from '@/lib/portfolio-analyse/momentum-trader/momentum-finviz-server'
 import { ladeMarketscreenerSegmentHistorie } from '@/lib/portfolio-analyse/marketscreener-segment-historie-server'
+import { ladeSecSegmentHistorie } from '@/lib/portfolio-analyse/sec-edgar-segment-historie-server'
 import { ladeSecStrukturExtraktion } from '@/lib/portfolio-analyse/sec-edgar-struktur-server'
+import { mergeSecSegmentHistoriePakete } from '@/lib/portfolio-analyse/sec-segment-historie-hilfen'
 import { ladeYahooHolders } from '@/lib/portfolio-analyse/yahoo-holders-server'
 import { ladeYahooOptionsIv } from '@/lib/portfolio-analyse/yahoo-options-iv-server'
 
@@ -87,6 +89,18 @@ export async function ladeFundamentaldatenErweitert(opts: {
         }
       : null
 
+  let segmentHistorie = secSegmentHistorie
+  if (isin.length >= 10 && !ticker.includes('.')) {
+    const msJahre = Math.max(
+      segmentHistorie?.produkt?.anzahlJahre ?? 0,
+      segmentHistorie?.geo?.anzahlJahre ?? 0,
+    )
+    if (msJahre < 10) {
+      const secHist = await ladeSecSegmentHistorie(ticker)
+      segmentHistorie = mergeSecSegmentHistoriePakete(segmentHistorie, secHist)
+    }
+  }
+
   return {
     dividenden,
     holders,
@@ -94,7 +108,7 @@ export async function ladeFundamentaldatenErweitert(opts: {
     insiderNetto,
     beatMiss,
     secStruktur,
-    secSegmentHistorie,
+    secSegmentHistorie: segmentHistorie,
     euFundamental,
     optionsIv,
     arbeitgeber,

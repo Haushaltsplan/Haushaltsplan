@@ -7,6 +7,7 @@ import { PaCard } from '@/components/portfolio-analyse/pa-ui'
 import {
   PaStrukturKennzahl,
   PaStrukturSectionHeader,
+  PaStrukturSegmentDonut,
 } from '@/components/portfolio-analyse/struktur/pa-struktur-visuals'
 import type {
   SecBacklogHistorie,
@@ -14,8 +15,10 @@ import type {
   SecKennzahlenHistorie,
   SecSegmentHistorie,
   SecSegmentHistoriePaket,
+  SecStrukturPaket,
 } from '@/lib/portfolio-analyse/fundamentaldaten-erweitert-types'
-import { segmentFarben } from '@/lib/portfolio-analyse/fundamentaldaten-struktur-hilfen'
+import { segmentFarben, usdKompakt } from '@/lib/portfolio-analyse/fundamentaldaten-struktur-hilfen'
+import { baueEffectiveSegmentPaket } from '@/lib/portfolio-analyse/sec-segment-historie-hilfen'
 
 function alleSegmentNamen(hist: SecSegmentHistorie): string[] {
   const namen = new Set<string>()
@@ -641,13 +644,71 @@ function PaSecKennzahlenPanel({ kz }: { kz: SecKennzahlenHistorie }) {
   )
 }
 
-function PaUmsatzmixBlock({ hist }: { hist: SecSegmentHistorie }) {
+function PaSecSegmentEinzeljahr({
+  hist,
+  titel,
+}: {
+  hist: SecSegmentHistorie
+  titel: string
+}) {
+  const jahr = hist.juengstesJahr
+  const segmente = hist.jahre.find((j) => j.jahr === jahr)?.segmente ?? []
+  const farben = segmentFarben(segmente.length)
+  const donut = segmente.map((s, i) => ({
+    name: s.name,
+    anteilPct: s.anteilPct,
+    farbe: farben[i]!,
+  }))
+
+  return (
+    <div className="space-y-4">
+      <p className="text-xs text-[var(--app-text-muted)]">
+        Geschäftsjahr {jahr} · SEC 10-K
+      </p>
+      <div className="grid gap-6 lg:grid-cols-2">
+        <PaStrukturSegmentDonut segmente={donut} titel={titel} />
+        <div className={appTableScrollClassName}>
+          <table className="app-data-table min-w-full text-left text-xs">
+            <thead className="text-[var(--app-text-muted)]">
+              <tr>
+                <th className="pb-2 pr-3 font-medium">Segment</th>
+                <th className="pb-2 pr-3 text-right font-medium">Umsatz (Mio.)</th>
+                <th className="pb-2 text-right font-medium">Anteil</th>
+              </tr>
+            </thead>
+            <tbody>
+              {segmente.map((s, i) => (
+                <tr key={s.name} className="border-t border-[var(--app-border)]/40">
+                  <td className="py-2 pr-3">
+                    <span
+                      className="mr-2 inline-block h-2 w-2 rounded-sm"
+                      style={{ backgroundColor: farben[i] }}
+                    />
+                    <span className="text-[var(--app-text)]">{s.name}</span>
+                  </td>
+                  <td className="py-2 pr-3 text-right tabular-nums text-[var(--app-text-muted)]">
+                    {s.umsatzMio != null ? s.umsatzMio.toLocaleString('de-DE') : '–'}
+                  </td>
+                  <td className="py-2 text-right tabular-nums font-medium text-[var(--app-text)]">
+                    {s.anteilPct != null ? `${s.anteilPct.toFixed(1)} %` : '–'}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function PaUmsatzmixBlock({ hist, quelleLabel }: { hist: SecSegmentHistorie; quelleLabel: string }) {
   const farben = segmentFarben(alleSegmentNamen(hist).length)
 
   return (
     <div className="space-y-4">
       <p className="text-xs text-[var(--app-text-muted)]">
-        {hist.anzahlJahre} Jahre ({hist.aeltestesJahr}–{hist.juengstesJahr}) · SEC 10-K XBRL
+        {hist.anzahlJahre} Jahre ({hist.aeltestesJahr}–{hist.juengstesJahr}) · {quelleLabel}
       </p>
       <PaSecSegmentStackedChart hist={hist} farben={farben} />
       <div className="flex flex-wrap gap-x-3 gap-y-1">
@@ -663,13 +724,23 @@ function PaUmsatzmixBlock({ hist }: { hist: SecSegmentHistorie }) {
   )
 }
 
-export function PaSecSegmentHistorie({ paket }: { paket: SecSegmentHistoriePaket }) {
-  const produkt = paket.produkt
-  const geo = paket.geo
-  const hatProdukt = (produkt?.anzahlJahre ?? 0) >= 2
-  const hatGeo = (geo?.anzahlJahre ?? 0) >= 2
+export function PaSecSegmentHistorie({
+  paket,
+  secStruktur,
+}: {
+  paket: SecSegmentHistoriePaket | null
+  secStruktur?: SecStrukturPaket | null
+}) {
+  const effective = useMemo(
+    () => baueEffectiveSegmentPaket(secStruktur, paket),
+    [secStruktur, paket],
+  )
+  const produkt = effective.produkt
+  const geo = effective.geo
+  const hatProdukt = (produkt?.segmentNamen.length ?? 0) >= 2
+  const hatGeo = (geo?.segmentNamen.length ?? 0) >= 2
   const hatUmsatzmix = hatProdukt || hatGeo
-  const zusatz = paket.zusatz
+  const zusatz = paket?.zusatz
 
   const [umsatzmixTab, setUmsatzmixTab] = useState<'produkt' | 'geo'>(() =>
     hatProdukt ? 'produkt' : 'geo',
@@ -677,117 +748,151 @@ export function PaSecSegmentHistorie({ paket }: { paket: SecSegmentHistoriePaket
 
   const aktiverMix =
     umsatzmixTab === 'produkt' && hatProdukt && produkt
-      ? { titel: 'Umsatz nach Produktgruppe', hist: produkt }
+      ? { titel: 'Produkt', hist: produkt }
       : umsatzmixTab === 'geo' && hatGeo && geo
-        ? { titel: 'Umsatz nach Region', hist: geo }
+        ? { titel: 'Geo', hist: geo }
         : hatProdukt && produkt
-          ? { titel: 'Umsatz nach Produktgruppe', hist: produkt }
+          ? { titel: 'Produkt', hist: produkt }
           : hatGeo && geo
-            ? { titel: 'Umsatz nach Region', hist: geo }
+            ? { titel: 'Geo', hist: geo }
             : null
 
   const jahresSpanne = useMemo(() => {
     const alle = [
       ...(produkt ? [produkt.aeltestesJahr, produkt.juengstesJahr] : []),
       ...(geo ? [geo.aeltestesJahr, geo.juengstesJahr] : []),
-      ...(paket.kennzahlen ? [paket.kennzahlen.aeltestesJahr, paket.kennzahlen.juengstesJahr] : []),
+      ...(paket?.kennzahlen ? [paket.kennzahlen.aeltestesJahr, paket.kennzahlen.juengstesJahr] : []),
     ]
     if (alle.length === 0) return null
     return { min: Math.min(...alle), max: Math.max(...alle) }
-  }, [produkt, geo, paket.kennzahlen])
+  }, [produkt, geo, paket?.kennzahlen])
 
   if (
     !hatUmsatzmix &&
-    !paket.kennzahlen &&
-    !zusatz.mitarbeiterAnzahl &&
-    !paket.backlog &&
-    zusatz.mitarbeiterHistorie.length < 2
+    !paket?.kennzahlen &&
+    !zusatz?.mitarbeiterAnzahl &&
+    !paket?.backlog &&
+    (zusatz?.mitarbeiterHistorie.length ?? 0) < 2 &&
+    !secStruktur?.pensionVerpflichtungMio &&
+    !secStruktur?.leaseVerpflichtungMio &&
+    !secStruktur?.ceoVerguetungUsd
   ) {
     return null
   }
 
-  const quelleLabel = paket.quelle === 'marketscreener' ? 'Marketscreener' : 'SEC XBRL'
-  const headerTitel =
-    paket.quelle === 'marketscreener' ? 'Umsatzstruktur — Segment & Region' : 'SEC 10-K — Strukturdaten'
-  const headerUntertitel =
-    paket.quelle === 'marketscreener'
-      ? `${Math.max(produkt?.anzahlJahre ?? 0, geo?.anzahlJahre ?? 0)} Jahre Historie · ${jahresSpanne ? `${jahresSpanne.min}–${jahresSpanne.max}` : '–'}`
-      : `${paket.anzahl10k} Jahresberichte · ${jahresSpanne ? `${jahresSpanne.min}–${jahresSpanne.max}` : '–'}`
+  const quelleLabel =
+    effective.quelle === 'marketscreener' ? 'Marketscreener' : 'SEC 10-K XBRL'
+  const berichtJahr = effective.berichtJahr ?? secStruktur?.berichtJahr
+  const maxJahre = Math.max(produkt?.anzahlJahre ?? 0, geo?.anzahlJahre ?? 0)
+
+  const headerTitel = secStruktur
+    ? `Geschäftsstruktur (SEC 10-K${berichtJahr ? ` ${berichtJahr}` : ''})`
+    : effective.quelle === 'marketscreener'
+      ? 'Umsatzstruktur — Segment & Region'
+      : 'SEC 10-K — Strukturdaten'
+  const headerUntertitel = secStruktur?.segmentHinweis
+    ? secStruktur.segmentHinweis
+    : maxJahre >= 2
+      ? `${maxJahre} Jahre Historie · ${jahresSpanne ? `${jahresSpanne.min}–${jahresSpanne.max}` : '–'}`
+      : 'Produkt-/Geschäftssegmente (10-K)'
+
+  const hatSecZusatz =
+    secStruktur?.pensionVerpflichtungMio != null ||
+    secStruktur?.leaseVerpflichtungMio != null ||
+    secStruktur?.ceoVerguetungUsd != null
 
   return (
     <PaCard variant="elevated" className="space-y-5 p-5 sm:p-6">
       <PaStrukturSectionHeader titel={headerTitel} untertitel={headerUntertitel} />
 
-      {(zusatz.mitarbeiterAnzahl != null || zusatz.auslandsumsatzAnteilPct != null || zusatz.hauptkunden.length > 0) && (
-        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-          <PaStrukturKennzahl label="Mitarbeiter (10-K)" wert={zusatz.mitarbeiterAnzahl?.toLocaleString('de-DE') ?? null} />
-          <PaStrukturKennzahl label="Auslandsanteil Umsatz" wert={zusatz.auslandsumsatzAnteilPct != null ? `${zusatz.auslandsumsatzAnteilPct} %` : null} />
-          {zusatz.hauptkunden.slice(0, 3).map((k) => (
+      {hatUmsatzmix ? (
+        <div className="space-y-4">
+          {hatProdukt && hatGeo ? (
+            <div className="flex flex-wrap gap-1.5">
+              <button
+                type="button"
+                onClick={() => setUmsatzmixTab('geo')}
+                className={`rounded-lg px-3 py-1.5 text-[11px] font-medium transition-colors ${
+                  umsatzmixTab === 'geo'
+                    ? 'bg-teal-500/20 text-teal-300 ring-1 ring-teal-500/40'
+                    : 'bg-[var(--app-surface-muted)]/50 text-[var(--app-text-muted)] hover:text-[var(--app-text)]'
+                }`}
+              >
+                Geografie{geo ? ` (${geo.anzahlJahre}J)` : ''}
+              </button>
+              <button
+                type="button"
+                onClick={() => setUmsatzmixTab('produkt')}
+                className={`rounded-lg px-3 py-1.5 text-[11px] font-medium transition-colors ${
+                  umsatzmixTab === 'produkt'
+                    ? 'bg-teal-500/20 text-teal-300 ring-1 ring-teal-500/40'
+                    : 'bg-[var(--app-surface-muted)]/50 text-[var(--app-text-muted)] hover:text-[var(--app-text)]'
+                }`}
+              >
+                Produkt{produkt ? ` (${produkt.anzahlJahre}J)` : ''}
+              </button>
+            </div>
+          ) : null}
+
+          {aktiverMix ? (
+            aktiverMix.hist.anzahlJahre >= 2 ? (
+              <PaUmsatzmixBlock hist={aktiverMix.hist} quelleLabel={quelleLabel} />
+            ) : (
+              <PaSecSegmentEinzeljahr hist={aktiverMix.hist} titel={aktiverMix.titel} />
+            )
+          ) : null}
+        </div>
+      ) : null}
+
+      {hatSecZusatz ? (
+        <div className="grid gap-2 border-t border-[var(--app-border)]/60 pt-4 sm:grid-cols-3">
+          <PaStrukturKennzahl
+            label="Pensionsverpflichtung"
+            wert={
+              secStruktur!.pensionVerpflichtungMio != null
+                ? `$${secStruktur!.pensionVerpflichtungMio.toLocaleString('de-DE')} Mio.`
+                : null
+            }
+          />
+          <PaStrukturKennzahl
+            label="Lease-Verpflichtungen"
+            wert={
+              secStruktur!.leaseVerpflichtungMio != null
+                ? `$${secStruktur!.leaseVerpflichtungMio.toLocaleString('de-DE')} Mio.`
+                : null
+            }
+          />
+          <PaStrukturKennzahl
+            label="CEO-Vergütung (Proxy)"
+            wert={usdKompakt(secStruktur!.ceoVerguetungUsd)}
+            hinweis={secStruktur!.proxyJahr ? `DEF 14A ${secStruktur!.proxyJahr}` : undefined}
+          />
+        </div>
+      ) : null}
+
+      {(zusatz?.mitarbeiterAnzahl != null || zusatz?.auslandsumsatzAnteilPct != null || (zusatz?.hauptkunden.length ?? 0) > 0) && (
+        <div className="grid gap-2 border-t border-[var(--app-border)]/60 pt-4 sm:grid-cols-2 lg:grid-cols-4">
+          <PaStrukturKennzahl label="Mitarbeiter (10-K)" wert={zusatz?.mitarbeiterAnzahl?.toLocaleString('de-DE') ?? null} />
+          <PaStrukturKennzahl label="Auslandsanteil Umsatz" wert={zusatz?.auslandsumsatzAnteilPct != null ? `${zusatz.auslandsumsatzAnteilPct} %` : null} />
+          {zusatz?.hauptkunden.slice(0, 3).map((k) => (
             <PaStrukturKennzahl key={k.name} label={`Kunde: ${k.name}`} wert={`${k.anteilPct} % Umsatz`} />
           ))}
         </div>
       )}
 
-      {paket.kennzahlen ? <PaSecKennzahlenPanel kz={paket.kennzahlen} /> : null}
+      {paket?.kennzahlen ? <PaSecKennzahlenPanel kz={paket.kennzahlen} /> : null}
 
-      {hatUmsatzmix ? (
-        <div className="space-y-4 border-t border-[var(--app-border)]/60 pt-4">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-            <div>
-              <p className="text-sm font-medium text-white">Umsatzmix nach Segment</p>
-              <p className="text-xs text-[var(--app-text-muted)]">
-                Umsatz und YoY-Entwicklung · {quelleLabel}
-              </p>
-            </div>
-            {hatProdukt && hatGeo ? (
-              <div className="flex flex-wrap gap-1.5">
-                <button
-                  type="button"
-                  onClick={() => setUmsatzmixTab('produkt')}
-                  className={`rounded-lg px-2.5 py-1.5 text-[11px] font-medium transition-colors ${
-                    umsatzmixTab === 'produkt'
-                      ? 'bg-teal-500/20 text-teal-300 ring-1 ring-teal-500/40'
-                      : 'bg-[var(--app-surface-muted)]/50 text-[var(--app-text-muted)] hover:text-[var(--app-text)]'
-                  }`}
-                >
-                  Produktgruppe ({produkt!.anzahlJahre}J)
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setUmsatzmixTab('geo')}
-                  className={`rounded-lg px-2.5 py-1.5 text-[11px] font-medium transition-colors ${
-                    umsatzmixTab === 'geo'
-                      ? 'bg-teal-500/20 text-teal-300 ring-1 ring-teal-500/40'
-                      : 'bg-[var(--app-surface-muted)]/50 text-[var(--app-text-muted)] hover:text-[var(--app-text)]'
-                  }`}
-                >
-                  Region ({geo!.anzahlJahre}J)
-                </button>
-              </div>
-            ) : null}
-          </div>
-          {aktiverMix ? (
-            <div className="space-y-1">
-              {!hatProdukt || !hatGeo ? (
-                <p className="text-sm font-medium text-white">{aktiverMix.titel}</p>
-              ) : null}
-              <PaUmsatzmixBlock hist={aktiverMix.hist} />
-            </div>
-          ) : null}
-        </div>
-      ) : null}
-
-      {zusatz.mitarbeiterHistorie.length >= 2 && (
+      {(zusatz?.mitarbeiterHistorie.length ?? 0) >= 2 && (
         <div className="border-t border-[var(--app-border)]/60 pt-4">
           <p className="mb-3 text-sm font-medium text-white">Mitarbeiter (10-K-Historie)</p>
           <p className="mb-3 text-xs text-[var(--app-text-muted)]">
             Headcount aus SEC-10-K-Text · exakte Zahlen je Geschäftsjahr
           </p>
-          <PaSecMitarbeiterHistorie eintraege={zusatz.mitarbeiterHistorie} />
+          <PaSecMitarbeiterHistorie eintraege={zusatz!.mitarbeiterHistorie} />
         </div>
       )}
 
-      {paket.backlog && paket.backlog.eintraege.length >= 2 && (
+      {paket?.backlog && paket.backlog.eintraege.length >= 2 && (
         <div className="border-t border-[var(--app-border)]/60 pt-4">
           <p className="mb-3 text-sm font-medium text-white">Backlog / RPO</p>
           <p className="mb-3 text-xs text-[var(--app-text-muted)]">

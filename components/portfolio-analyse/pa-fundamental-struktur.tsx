@@ -9,7 +9,6 @@ import {
   PaStrukturKennzahl,
   PaStrukturOwnershipDonut,
   PaStrukturSectionHeader,
-  PaStrukturSegmentDonut,
 } from '@/components/portfolio-analyse/struktur/pa-struktur-visuals'
 import { PaSecSegmentHistorie } from '@/components/portfolio-analyse/struktur/pa-sec-segment-historie'
 import type { FundamentaldatenErweitert } from '@/lib/portfolio-analyse/fundamentaldaten-erweitert-types'
@@ -18,7 +17,6 @@ import {
   baueOwnershipSegmente,
   baueStrukturBilanzKennzahlen,
   pctFmt,
-  segmentFarben,
   strukturKmText,
   usdKompakt,
 } from '@/lib/portfolio-analyse/fundamentaldaten-struktur-hilfen'
@@ -96,40 +94,10 @@ export function PaFundamentalStruktur({
   const iv = erweitert.optionsIv
   const ag = erweitert.arbeitgeber
 
-  const hatSecHistorieDetail =
-    (secHist?.kategorien?.length ?? 0) >= 1 ||
-    (secHist?.produkt?.anzahlJahre ?? 0) >= 2 ||
-    (secHist?.geo?.anzahlJahre ?? 0) >= 2
-
-  const segmentFarbenListe = segmentFarben(sec?.segmente.length ?? 0)
-  const segmentDonut = (sec?.segmente ?? []).map((s, i) => ({
-    name: s.name,
-    anteilPct: s.anteilPct,
-    farbe: segmentFarbenListe[i]!,
-  }))
-
-  const produktSeg = sec?.segmenteProdukt ?? []
-  const geoSeg = sec?.segmenteGeo ?? []
-  const produktFarben = segmentFarben(produktSeg.length)
-  const geoFarben = segmentFarben(geoSeg.length)
-  const produktDonut = produktSeg.map((s, i) => ({
-    name: s.name,
-    anteilPct: s.anteilPct,
-    farbe: produktFarben[i]!,
-  }))
-  const geoDonut = geoSeg.map((s, i) => ({
-    name: s.name,
-    anteilPct: s.anteilPct,
-    farbe: geoFarben[i]!,
-  }))
-  const hatBeideSegmente = produktSeg.length >= 2 && geoSeg.length >= 2
-
-  const segmentTitel =
-    sec?.segmentArt === 'geo'
-      ? 'Geo'
-      : sec?.segmentArt === 'produkt'
-        ? 'Produkt'
-        : 'Mix'
+  const hatGeschaeftsstruktur =
+    secHist != null ||
+    (sec != null &&
+      (sec.segmente.length > 0 || sec.segmenteProdukt.length > 0 || sec.segmenteGeo.length > 0))
 
   return (
     <div className="space-y-5">
@@ -240,122 +208,14 @@ export function PaFundamentalStruktur({
         </div>
       </PaCard>
 
-      {/* SEC Segment-Historie (Geo + Produkt über Jahre) */}
-      {secHist ? <PaSecSegmentHistorie paket={secHist} /> : null}
-
-      {/* SEC Segmente (aktuellstes FY) — nur wenn keine Historie mit Detailtabs */}
-      {sec && !hatSecHistorieDetail && (sec.segmente.length > 0 || sec.segmenteProdukt.length > 0 || sec.segmenteGeo.length > 0 || sec.pensionVerpflichtungMio != null) ? (
-        <PaCard variant="elevated" className="space-y-4 p-5 sm:p-6">
-          <PaStrukturSectionHeader
-            titel={`Geschäftsstruktur (SEC 10-K${sec.berichtJahr ? ` ${sec.berichtJahr}` : ''})`}
-            untertitel={sec.segmentHinweis ?? 'Segmente, Verbindlichkeiten & Vergütung aus SEC EDGAR'}
-          />
-          {hatBeideSegmente ? (
-            <div className="grid gap-6 lg:grid-cols-2">
-              <div>
-                <p className="mb-3 text-[11px] font-medium uppercase tracking-wide text-[var(--app-text-muted)]">
-                  Geografie {sec.berichtJahr ?? ''}
-                </p>
-                <PaStrukturSegmentDonut segmente={geoDonut} titel="Geo" />
-              </div>
-              <div>
-                <p className="mb-3 text-[11px] font-medium uppercase tracking-wide text-[var(--app-text-muted)]">
-                  Produkt {sec.berichtJahr ?? ''}
-                </p>
-                <PaStrukturSegmentDonut segmente={produktDonut} titel="Produkt" />
-              </div>
-            </div>
-          ) : sec.segmente.length > 0 ? (
-            <div className="grid gap-6 lg:grid-cols-2">
-              <PaStrukturSegmentDonut segmente={segmentDonut} titel={segmentTitel} />
-              <div className={appTableScrollClassName}>
-                <table className="app-data-table min-w-full text-left text-xs">
-                  <thead className="text-[var(--app-text-muted)]">
-                    <tr>
-                      <th className="pb-2 pr-3 font-medium">Segment</th>
-                      <th className="pb-2 pr-3 text-right font-medium">Umsatz (Mio.)</th>
-                      <th className="pb-2 text-right font-medium">Anteil</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {sec.segmente.map((s, i) => (
-                      <tr key={s.name} className="border-t border-[var(--app-border)]/40">
-                        <td className="py-2 pr-3">
-                          <span className="mr-2 inline-block h-2 w-2 rounded-sm" style={{ backgroundColor: segmentFarbenListe[i] }} />
-                          <span className="text-[var(--app-text)]">{s.name}</span>
-                        </td>
-                        <td className="py-2 pr-3 text-right tabular-nums text-[var(--app-text-muted)]">
-                          {s.umsatzMio != null ? s.umsatzMio.toLocaleString('de-DE') : '–'}
-                        </td>
-                        <td className="py-2 text-right tabular-nums font-medium text-[var(--app-text)]">
-                          {s.anteilPct != null ? `${s.anteilPct.toFixed(1)} %` : '–'}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          ) : null}
-
-          {hatBeideSegmente ? (
-            <div className={appTableScrollClassName}>
-              <table className="app-data-table min-w-full text-left text-xs">
-                <thead className="text-[var(--app-text-muted)]">
-                  <tr>
-                    <th className="pb-2 pr-3 font-medium">Segment</th>
-                    <th className="pb-2 pr-3 text-right font-medium">Typ</th>
-                    <th className="pb-2 pr-3 text-right font-medium">Umsatz (Mio.)</th>
-                    <th className="pb-2 text-right font-medium">Anteil</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {geoSeg.map((s, i) => (
-                    <tr key={`geo-${s.name}`} className="border-t border-[var(--app-border)]/40">
-                      <td className="py-2 pr-3">
-                        <span className="mr-2 inline-block h-2 w-2 rounded-sm" style={{ backgroundColor: geoFarben[i] }} />
-                        {s.name}
-                      </td>
-                      <td className="py-2 pr-3 text-right text-[var(--app-text-muted)]">Geo</td>
-                      <td className="py-2 pr-3 text-right tabular-nums">{s.umsatzMio?.toLocaleString('de-DE') ?? '–'}</td>
-                      <td className="py-2 text-right tabular-nums font-medium">{s.anteilPct != null ? `${s.anteilPct.toFixed(1)} %` : '–'}</td>
-                    </tr>
-                  ))}
-                  {produktSeg.map((s, i) => (
-                    <tr key={`prod-${s.name}`} className="border-t border-[var(--app-border)]/40">
-                      <td className="py-2 pr-3">
-                        <span className="mr-2 inline-block h-2 w-2 rounded-sm" style={{ backgroundColor: produktFarben[i] }} />
-                        {s.name}
-                      </td>
-                      <td className="py-2 pr-3 text-right text-[var(--app-text-muted)]">Produkt</td>
-                      <td className="py-2 pr-3 text-right tabular-nums">{s.umsatzMio?.toLocaleString('de-DE') ?? '–'}</td>
-                      <td className="py-2 text-right tabular-nums font-medium">{s.anteilPct != null ? `${s.anteilPct.toFixed(1)} %` : '–'}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          ) : null}
-
-          <div className="grid gap-2 sm:grid-cols-3">
-            <PaStrukturKennzahl
-              label="Pensionsverpflichtung"
-              wert={sec.pensionVerpflichtungMio != null ? `$${sec.pensionVerpflichtungMio.toLocaleString('de-DE')} Mio.` : null}
-            />
-            <PaStrukturKennzahl
-              label="Lease-Verpflichtungen"
-              wert={sec.leaseVerpflichtungMio != null ? `$${sec.leaseVerpflichtungMio.toLocaleString('de-DE')} Mio.` : null}
-            />
-            <PaStrukturKennzahl
-              label="CEO-Vergütung (Proxy)"
-              wert={usdKompakt(sec.ceoVerguetungUsd)}
-              hinweis={sec.proxyJahr ? `DEF 14A ${sec.proxyJahr}` : undefined}
-            />
-          </div>
-        </PaCard>
+      {/* SEC Geschäftsstruktur — Geo/Produkt per Tab, bis zu 10 Jahre Historie */}
+      {hatGeschaeftsstruktur ? (
+        <PaSecSegmentHistorie paket={secHist} secStruktur={sec} />
       ) : null}
 
-      {sec && hatSecHistorieDetail && (sec.pensionVerpflichtungMio != null || sec.leaseVerpflichtungMio != null || sec.ceoVerguetungUsd != null) ? (
+      {sec &&
+      !hatGeschaeftsstruktur &&
+      (sec.pensionVerpflichtungMio != null || sec.leaseVerpflichtungMio != null || sec.ceoVerguetungUsd != null) ? (
         <PaCard variant="elevated" className="space-y-4 p-5 sm:p-6">
           <PaStrukturSectionHeader
             titel={`SEC 10-K Zusatzdaten${sec.berichtJahr ? ` ${sec.berichtJahr}` : ''}`}
