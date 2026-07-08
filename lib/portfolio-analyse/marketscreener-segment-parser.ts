@@ -4,6 +4,7 @@ import type {
   SecSegmentEintrag,
   SecSegmentHistorie,
 } from '@/lib/portfolio-analyse/fundamentaldaten-erweitert-types'
+import { waehlePlausibleSegmentHistorie } from '@/lib/portfolio-analyse/segment-historie-merge-hilfen'
 import { ergaenzeSegmentHistorieMitMargen } from '@/lib/portfolio-analyse/segment-margen-hilfen'
 
 export const MS_SEGMENT_MAX_JAHRE = 10
@@ -224,15 +225,6 @@ function parseChartMehrereIds(html: string, ids: string[]): MsChartRoh | null {
   return null
 }
 
-function waehleReichhaltigereHistorie(
-  a: SecSegmentHistorie | null,
-  b: SecSegmentHistorie | null,
-): SecSegmentHistorie | null {
-  if (!a) return b
-  if (!b) return a
-  return a.anzahlJahre >= b.anzahlJahre ? a : b
-}
-
 export function extrahiereMsSegmentHistorien(html: string): {
   produkt: SecSegmentHistorie | null
   geo: SecSegmentHistorie | null
@@ -253,20 +245,20 @@ export function extrahiereMsSegmentHistorien(html: string): {
   const produktOiTable = parseMsSegmentTabelle(html, /Operating Income:\s*Breakdown by Business Segment/i)
   const geoOiTable = parseMsSegmentTabelle(html, /Operating Income:\s*Geographical/i)
 
-  let produkt = waehleReichhaltigereHistorie(
+  let produkt = waehlePlausibleSegmentHistorie(
     produktUmsatzChart ? msChartZuHistorie('produkt', produktUmsatzChart) : null,
     produktTable ? msChartZuHistorie('produkt', produktTable) : null,
   )
-  let geo = waehleReichhaltigereHistorie(
+  let geo = waehlePlausibleSegmentHistorie(
     geoUmsatzChart ? msChartZuHistorie('geo', geoUmsatzChart) : null,
     geoTable ? msChartZuHistorie('geo', geoTable) : null,
   )
 
-  const produktOi = waehleReichhaltigereHistorie(
+  const produktOi = waehlePlausibleSegmentHistorie(
     produktOiChart ? msChartZuOiHistorie('produkt', produktOiChart) : null,
     produktOiTable ? msChartZuOiHistorie('produkt', produktOiTable) : null,
   )
-  const geoOi = waehleReichhaltigereHistorie(
+  const geoOi = waehlePlausibleSegmentHistorie(
     geoOiChart ? msChartZuOiHistorie('geo', geoOiChart) : null,
     geoOiTable ? msChartZuOiHistorie('geo', geoOiTable) : null,
   )

@@ -4,14 +4,16 @@
  * Anti-Halluzinations-Prinzip: Zahlen kommen aus dem Code, nicht vom LLM.
  * Das Flash-LLM erklärt anschließend nur, was diese Funktion berechnet.
  *
- * Punkte-Verteilung (Ziel: 0–100, ausgewogen für Nachkauf-Entscheidungen):
+ * Punkte-Verteilung (Ziel: 0–100):
  *  – Mantra-Qualität             0–50
- *  – Bewertung (absolut)         0–35   (kein Gratis-Punkte bei fehlenden Daten)
+ *  – Bewertung (personalisiert)  0–35
  *  – Historischer Bonus/Malus   –10 bis +10
- *  – Momentum (Earnings/CapAlloc) 0–12
+ *  – Momentum                    0–12
  *  – Struktur & Risiko          –10 bis +5
- *  – Drawdown-Chance             0–5   (Rücksetzer bei intakter Qualität)
+ *  – Drawdown-Chance             0–5
  *  – Insider-Käufe               0–4
+ *  – Kauftrigger-Boost           0–7
+ *  – Regime / Earnings / DR     –15 bis +4
  *  – Sell-Trigger               –25 / –10 / 0
  */
 
@@ -31,6 +33,21 @@ import { NACHKAUF_RADAR_WHITELIST, type RisikoKlasse } from './nachkauf-radar-wh
 import type { NachkaufZusatzSignale } from './nachkauf-zusatz-signale-server'
 import { berechnePrognoseMomentumDelta } from './nachkauf-prognose-server'
 import { disziplinSparplanFaktor } from './nachkauf-disziplin-server'
+import {
+  berechneDeepResearchMalus,
+  berechneEarningsFensterMalus,
+  berechneKauftriggerBoost,
+  berechneKombiniertRang,
+  berechnePersonalisierteBewertung,
+  berechneQualitaetsRang,
+  berechneRegimeDelta,
+  berechneTimingRang,
+  gelbSchwelle,
+  istKalibriertesGruen,
+  kalibrierungBonusFuerScore,
+  segmentQualitaetVonQuelle,
+  type NachkaufBatchKontext,
+} from './nachkauf-ranking-optimierung'
 
 // ---------------------------------------------------------------------------
 // Risiko-Hilfsfunktion
@@ -241,8 +258,10 @@ function berechneStrukturPunkte(zusatz: NachkaufZusatzSignale | null | undefined
   }
 
   if (zusatz.goodwillAnteilPct != null && zusatz.goodwillAnteilPct >= 35) pts -= 1
-  if (zusatz.segmentKonzentrationPct != null && zusatz.segmentKonzentrationPct >= 55) pts -= 1
-  if (zusatz.segmentShiftPct != null && Math.abs(zusatz.segmentShiftPct) >= 12) pts -= 1
+  if (zusatz.segmentDatenZuverlaessig !== false) {
+    if (zusatz.segmentKonzentrationPct != null && zusatz.segmentKonzentrationPct >= 55) pts -= 1
+    if (zusatz.segmentShiftPct != null && Math.abs(zusatz.segmentShiftPct) >= 12) pts -= 1
+  }
   if (zusatz.backlogWachstumPct != null && zusatz.backlogWachstumPct <= -8) pts -= 1
 
   const strukturRisiko = (zusatz.pensionVerpflichtungMio ?? 0) + (zusatz.leaseVerpflichtungMio ?? 0)
@@ -290,12 +309,41 @@ export function berechneInsiderPunkte(kaeufe: InsiderKauf[]): number {
 // Score berechnen
 // ---------------------------------------------------------------------------
 
+export type NachkaufScoreOptionen = {
+  kaufTriggerAusgeloest?: boolean
+  batchKontext?: NachkaufBatchKontext | null
+  deepResearchMemo?: string | null
+  tageBisEarnings?: number | null
+  ticker?: string | null
+}
+
+function summeScoreDetail(d: Omit<NachkaufScoreDetail, 'gesamt' | 'datenSignaleDelta' | 'qualitaetsRang' | 'timingRang' | 'kombiniertRang' | 'datenVollstaendigkeitPct' | 'segmentDatenQualitaet'>): number {
+  return (
+    d.mantraScore +
+    d.sellTriggerPenalty +
+    d.bewertungsScore +
+    d.historischerBewertungsBonus +
+    d.momentumPunkte +
+    d.strukturPunkte +
+    d.drawdownBonus +
+    d.insiderPunkte +
+    d.kauftriggerBonus +
+    d.regimeDelta +
+    d.earningsMalus +
+    d.deepResearchMalus +
+    d.klumpenMalus +
+    d.sektorMalus +
+    d.scoreKalibrierung
+  )
+}
+
 export function berechneNachkaufScore(
   paket: FundamentaldatenPaket,
   signale: NachkaufBewertungsSignale,
   position?: WhitelistPosition,
   zusatz?: NachkaufZusatzSignale | null,
   insiderKaeufe: InsiderKauf[] = [],
+  opts: NachkaufScoreOptionen = {},
 ): NachkaufScoreDetail {
   const { mantra } = paket
   const sum = mantra.zusammenfassung
@@ -322,43 +370,7 @@ export function berechneNachkaufScore(
   const hatBeobachten = mantra.sellTriggerWatch.some((w) => w.status === 'beobachten')
   const sellTriggerPenalty = hatWarnung ? -25 : hatBeobachten ? -10 : 0
 
-  // --- Bewertungs-Score (0–35) — FCF, KGV, EV/EBITDA ---
-  const { fcfYieldPct, forwardPe, ntmEvEbitda } = signale
-  const hatFcf = fcfYieldPct != null
-  const hatPe = forwardPe != null
-  const hatEv = ntmEvEbitda != null
-
-  let fcfPunkte = 0
-  if (hatFcf) {
-    if (fcfYieldPct! >= 5) fcfPunkte = 13
-    else if (fcfYieldPct! >= 3.5) fcfPunkte = 10
-    else if (fcfYieldPct! >= 2.5) fcfPunkte = 7
-    else if (fcfYieldPct! >= 1.5) fcfPunkte = 3
-  }
-
-  let kgvPunkte = 0
-  if (hatPe) {
-    if (forwardPe! < 15) kgvPunkte = 11
-    else if (forwardPe! < 20) kgvPunkte = 9
-    else if (forwardPe! < 25) kgvPunkte = 6
-    else if (forwardPe! < 35) kgvPunkte = 2
-  }
-
-  let evPunkte = 0
-  if (hatEv) {
-    if (ntmEvEbitda! < 12) evPunkte = 11
-    else if (ntmEvEbitda! < 16) evPunkte = 8
-    else if (ntmEvEbitda! < 22) evPunkte = 4
-  }
-
-  let bewertungsScore = fcfPunkte + kgvPunkte + evPunkte
-  const metrikAnzahl = [hatFcf, hatPe, hatEv].filter(Boolean).length
-  if (metrikAnzahl === 1 && bewertungsScore > 0) {
-    bewertungsScore = Math.round(bewertungsScore * 0.82)
-  } else if (metrikAnzahl === 2 && bewertungsScore > 24) {
-    bewertungsScore = Math.round(bewertungsScore * 0.9)
-  }
-  bewertungsScore = Math.min(35, bewertungsScore)
+  const bewertungsScore = berechnePersonalisierteBewertung(signale, position)
 
   // --- Historischer Bonus/Malus (–10 bis +10) ---
   // Vergleich des aktuellen KGVs mit dem historischen 5-Jahres-Median.
@@ -382,10 +394,25 @@ export function berechneNachkaufScore(
   const strukturPunkte = berechneStrukturPunkte(zusatz)
   const drawdownBonus = berechneDrawdownBonus(signale.drawdown52wPct, mantraScore)
   const insiderPunkte = berechneInsiderPunkte(insiderKaeufe)
-  const datenSignaleDelta = momentumPunkte + strukturPunkte + drawdownBonus + insiderPunkte
-  const datenVollstaendigkeitPct = zusatz?.datenVollstaendigkeitPct ?? 0
+  const kauftriggerBonus = berechneKauftriggerBoost(opts.kaufTriggerAusgeloest ?? false)
 
-  const roh =
+  const tageBis =
+    opts.tageBisEarnings ??
+    zusatz?.tageBisEarnings ??
+    (opts.ticker && opts.batchKontext
+      ? (opts.batchKontext.tageBisEarningsMap.get(opts.ticker.toUpperCase()) ?? null)
+      : null)
+
+  const regime = opts.batchKontext?.regime ?? null
+  const regimeDelta = berechneRegimeDelta(regime, signale)
+  const earningsMalus = berechneEarningsFensterMalus(
+    tageBis,
+    opts.kaufTriggerAusgeloest ?? false,
+    signale.drawdown52wPct,
+  )
+  const deepResearchMalus = berechneDeepResearchMalus(opts.deepResearchMemo ?? null)
+
+  const rohOhneKalibrierung =
     mantraScore +
     sellTriggerPenalty +
     bewertungsScore +
@@ -393,21 +420,58 @@ export function berechneNachkaufScore(
     momentumPunkte +
     strukturPunkte +
     drawdownBonus +
-    insiderPunkte
-  const gesamt = Math.max(0, Math.min(100, roh))
+    insiderPunkte +
+    kauftriggerBonus +
+    regimeDelta +
+    earningsMalus +
+    deepResearchMalus
 
-  return {
+  const scoreKalibrierung = opts.batchKontext
+    ? kalibrierungBonusFuerScore(Math.max(0, rohOhneKalibrierung), opts.batchKontext)
+    : 0
+
+  const segmentDatenQualitaet = segmentQualitaetVonQuelle(zusatz?.segmentQuelle ?? null)
+  const datenSignaleDelta = momentumPunkte + strukturPunkte + drawdownBonus + insiderPunkte
+  const datenVollstaendigkeitPct = zusatz?.datenVollstaendigkeitPct ?? 0
+
+  const teile = {
     mantraScore,
     bewertungsScore,
     sellTriggerPenalty,
     historischerBewertungsBonus,
-    datenSignaleDelta,
     momentumPunkte,
     strukturPunkte,
     drawdownBonus,
     insiderPunkte,
-    datenVollstaendigkeitPct,
+    kauftriggerBonus,
+    regimeDelta,
+    earningsMalus,
+    deepResearchMalus,
+    klumpenMalus: 0,
+    sektorMalus: 0,
+    scoreKalibrierung,
+  }
+  const gesamt = Math.max(0, Math.min(100, summeScoreDetail(teile)))
+
+  const scoreBasis: NachkaufScoreDetail = {
+    ...teile,
     gesamt,
+    datenSignaleDelta,
+    datenVollstaendigkeitPct,
+    qualitaetsRang: 0,
+    timingRang: 0,
+    kombiniertRang: 0,
+    segmentDatenQualitaet,
+  }
+  const qualitaetsRang = berechneQualitaetsRang(scoreBasis)
+  const timingRang = berechneTimingRang({ ...scoreBasis, qualitaetsRang }, signale)
+  const kombiniertRang = berechneKombiniertRang(qualitaetsRang, timingRang)
+
+  return {
+    ...scoreBasis,
+    qualitaetsRang,
+    timingRang,
+    kombiniertRang,
   }
 }
 
@@ -445,6 +509,7 @@ export function leiteNachkaufAmpelAb(
   paket: FundamentaldatenPaket,
   score: NachkaufScoreDetail,
   signale: NachkaufBewertungsSignale,
+  opts?: { kaufTriggerAusgeloest?: boolean; regime?: NachkaufBatchKontext['regime'] },
 ): NachkaufAmpel {
   const { mantra } = paket
   const hatWarnung = mantra.sellTriggerWatch.some((w) => w.status === 'warnung')
@@ -454,10 +519,13 @@ export function leiteNachkaufAmpelAb(
 
   const { fcfYieldPct, forwardPe } = signale
   const hatDatenFuerBewertung = fcfYieldPct != null || forwardPe != null
+  const trigger = opts?.kaufTriggerAusgeloest ?? false
 
   if (hatDatenFuerBewertung) {
+    const medianPe = signale.historischerMedianPe
+    const teuerGrenze = medianPe != null ? medianPe * 1.35 : 38
     const fcfZuTeuer = fcfYieldPct != null && fcfYieldPct < 1.5
-    const kgvZuTeuer = forwardPe != null && forwardPe > 38
+    const kgvZuTeuer = forwardPe != null && forwardPe > teuerGrenze
     const nurFcfDaten = fcfYieldPct != null && forwardPe == null
     const nurKgvDaten = forwardPe != null && fcfYieldPct == null
 
@@ -466,12 +534,22 @@ export function leiteNachkaufAmpelAb(
       (fcfZuTeuer && nurFcfDaten) ||
       (kgvZuTeuer && nurKgvDaten)
     ) {
-      if (score.mantraScore >= 25) return 'teuer'
+      if (score.mantraScore >= 25 && (score.timingRang ?? 0) < 50) return 'teuer'
     }
   }
 
-  if (score.gesamt >= 62 && (score.datenVollstaendigkeitPct ?? 0) >= 45) return 'gruen'
-  if (score.gesamt >= 38) return 'gelb'
+  if (
+    istKalibriertesGruen({
+      scoreDetail: score,
+      signale,
+      regime: opts?.regime ?? null,
+      kaufTriggerAusgeloest: trigger,
+    })
+  ) {
+    return 'gruen'
+  }
+
+  if (score.gesamt >= gelbSchwelle(trigger)) return 'gelb'
   return 'rot'
 }
 
@@ -559,6 +637,9 @@ export function berechneMonatsEmpfehlung(ergebnisse: NachkaufScanEintrag[]): Mon
       if (diszA !== diszB) return diszA - diszB
       if (a.klumpenrisiko !== b.klumpenrisiko) return a.klumpenrisiko ? 1 : -1
       if (a.kaufTriggerAusgeloest !== b.kaufTriggerAusgeloest) return a.kaufTriggerAusgeloest ? -1 : 1
+      const kombA = a.scoreDetail.kombiniertRang ?? a.score
+      const kombB = b.scoreDetail.kombiniertRang ?? b.score
+      if (kombA !== kombB) return kombB - kombA
       return b.score - a.score
     })
 

@@ -56,6 +56,12 @@ export type NachkaufZusatzSignale = {
   backlogWachstumPct: number | null
   backlogLabel: string | null
   segmentShiftPct: number | null
+  /** Quelle der Segment-Historie (MS/SA/mixed). */
+  segmentQuelle: 'marketscreener' | 'stockanalysis' | 'mixed' | 'sec_edgar' | null
+  /** Segment-Konzentration nur bei validierter Quelle in Score. */
+  segmentDatenZuverlaessig: boolean
+  /** Tage bis nächstes Earnings (Momentum-Kalender). */
+  tageBisEarnings: number | null
   /** Kompakter Struktur-Block für Deep Research. */
   segmentStrukturKontext: string | null
   /** Capital Allocation — Einzelsäulen (aus Yahoo-Cashflow). */
@@ -319,6 +325,9 @@ export async function ladeNachkaufZusatzSignale(opts: {
     backlogWachstumPct: segSig.backlogWachstumPct,
     backlogLabel: segSig.backlogLabel,
     segmentShiftPct: segSig.segmentShiftPct,
+    segmentQuelle: segSig.segmentQuelle,
+    segmentDatenZuverlaessig: segSig.segmentDatenZuverlaessig,
+    tageBisEarnings: null,
     segmentStrukturKontext,
     ...capAlloc,
     sbcVsFcfPct: sbcVsFcfPctAusPaket(opts.paket),

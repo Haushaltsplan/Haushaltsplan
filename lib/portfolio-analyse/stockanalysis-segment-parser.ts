@@ -7,6 +7,7 @@ export const SA_SEGMENT_MAX_JAHRE = 10
 /** Bekannte Geschäftsjahresenden (Monat 0–11). */
 const FY_END_MONAT: Record<string, number> = {
   MSFT: 5,
+  RMD: 5,
   LIN: 11,
 }
 

@@ -7,6 +7,9 @@ import {
   ladeNachkaufScanDatum,
 } from '@/lib/portfolio-analyse/nachkauf-radar/nachkauf-radar-db-server'
 import { berechneMonatsEmpfehlung } from '@/lib/portfolio-analyse/nachkauf-radar/nachkauf-radar-score'
+import { finalisiereNachkaufRanking } from '@/lib/portfolio-analyse/nachkauf-radar/nachkauf-ranking-finalisierung-server'
+import { ladeNachkaufBatchKontext } from '@/lib/portfolio-analyse/nachkauf-radar/nachkauf-ranking-kontext-server'
+import { ladeNachkaufPerformance } from '@/lib/portfolio-analyse/nachkauf-radar/nachkauf-performance-server'
 import { ergaenzeScoreVerlauf } from '@/lib/portfolio-analyse/nachkauf-radar/nachkauf-radar-verlauf-server'
 import { ergaenzeInsiderKaeufe } from '@/lib/portfolio-analyse/nachkauf-radar/insider-kaeufe-server'
 import { berechneTrimSignale } from '@/lib/portfolio-analyse/nachkauf-radar/nachkauf-trim-signal'
@@ -38,9 +41,15 @@ export async function GET() {
       ergaenzeKaufhistorieUndNotizen(mitDeep),
     ])
 
+    const perf = await ladeNachkaufPerformance().catch(() => null)
+    const batchKontext = await ladeNachkaufBatchKontext(
+      NACHKAUF_RADAR_WHITELIST.map((p) => p.isin),
+      perf?.scoreBucketsSignal ?? [],
+    )
+
     wendeNachkaufDisziplinAn(mitDeep)
-    // Trim-Signale nachgelagert (braucht depotGewichtPct + scoreVerlauf)
     berechneTrimSignale(mitDeep)
+    finalisiereNachkaufRanking(mitDeep, batchKontext)
 
     const gesamtAnzahl = NACHKAUF_RADAR_WHITELIST.length
     const ausstehend = Math.max(0, gesamtAnzahl - mitDeep.length)

@@ -29,6 +29,12 @@ import {
   leiteNachkaufAmpelAb,
   pruefKaufTrigger,
 } from './nachkauf-radar-score'
+import { finalisiereNachkaufRanking } from './nachkauf-ranking-finalisierung-server'
+import {
+  ladeNachkaufBatchKontext,
+  type NachkaufBatchKontext,
+} from './nachkauf-ranking-kontext-server'
+import { ladeNachkaufPerformance } from './nachkauf-performance-server'
 import {
   ergaenzeInsiderKaeufe,
   ladeInsiderKaeufeFuerPosition,
@@ -138,6 +144,7 @@ async function generiereKiBegruendung(opts: {
 async function scanneEinenTitel(opts: {
   position: WhitelistPosition
   deepResearchMap: Map<string, import('./nachkauf-radar-types').NachkaufDeepResearch>
+  batchKontext: NachkaufBatchKontext | null
 }): Promise<NachkaufScanEintrag | null> {
   const { position } = opts
   const { isin, name } = position
@@ -173,11 +180,32 @@ async function scanneEinenTitel(opts: {
 
   const bewertungsSignale = extrahiereBewertungsSignale(paket, position, historisch, zusatzRoh)
   const zusatz = ergaenzeDatenVollstaendigkeit(zusatzRoh, bewertungsSignale)
-  const scoreDetail = berechneNachkaufScore(paket, bewertungsSignale, position, zusatz, insiderKaeufe)
-  const ampel = leiteNachkaufAmpelAb(paket, scoreDetail, bewertungsSignale)
 
-  // Kaufzonen-Trigger prüfen
-  const { ausgeloest: kaufTriggerAusgeloest, text: kaufTriggerText } = pruefKaufTrigger(bewertungsSignale, position)
+  const { ausgeloest: kaufTriggerAusgeloest, text: kaufTriggerText } = pruefKaufTrigger(
+    bewertungsSignale,
+    position,
+  )
+
+  const drMemo = opts.deepResearchMap.get(ticker.toUpperCase())?.memo ?? null
+  const scoreDetail = berechneNachkaufScore(
+    paket,
+    bewertungsSignale,
+    position,
+    zusatz,
+    insiderKaeufe,
+    {
+      kaufTriggerAusgeloest,
+      batchKontext: opts.batchKontext,
+      deepResearchMemo: drMemo,
+      ticker,
+    },
+  )
+  const ampel = leiteNachkaufAmpelAb(paket, scoreDetail, bewertungsSignale, {
+    kaufTriggerAusgeloest,
+    regime: opts.batchKontext?.regime ?? null,
+  })
+
+  // Kaufzonen-Trigger bereits oben geprüft
 
   // KI-Summaries aus Caches lesen (nicht neu generieren)
   const earningsMap = await ladeEarningsCallKiCacheFuerTicker(ticker)
@@ -298,6 +326,7 @@ async function scanneEinenTitel(opts: {
 async function reichereErgebnisseAn(
   eintraege: NachkaufScanEintrag[],
   mitInsider: boolean,
+  batchKontext: NachkaufBatchKontext | null = null,
 ): Promise<void> {
   await Promise.allSettled([
     ergaenzeDepotGewichte(eintraege),
@@ -305,10 +334,9 @@ async function reichereErgebnisseAn(
     ergaenzeKaufhistorieUndNotizen(eintraege),
     mitInsider ? ergaenzeInsiderKaeufe(eintraege, NACHKAUF_RADAR_WHITELIST) : Promise.resolve(),
   ])
-  // Disziplin nach Kaufhistorie + Score-Verlauf (Ampel/Sparplan, kein Score-Delta)
   wendeNachkaufDisziplinAn(eintraege)
-  // Trim-Signale nachgelagert (braucht depotGewichtPct und scoreVerlauf)
   berechneTrimSignale(eintraege)
+  finalisiereNachkaufRanking(eintraege, batchKontext)
 }
 
 // ---------------------------------------------------------------------------
@@ -317,6 +345,11 @@ async function reichereErgebnisseAn(
 
 export async function laufeScan(anfrage: NachkaufScanAnfrage): Promise<NachkaufScanPaket> {
   const gesamtAnzahl = NACHKAUF_RADAR_WHITELIST.length
+  const perf = await ladeNachkaufPerformance().catch(() => null)
+  const batchKontext = await ladeNachkaufBatchKontext(
+    NACHKAUF_RADAR_WHITELIST.map((p) => p.isin),
+    perf?.scoreBucketsSignal ?? [],
+  )
 
   // Einzel-Rescan via ISIN (von der Rescan-API-Route)
   if (anfrage.nurEinenTicker) {
@@ -324,11 +357,11 @@ export async function laufeScan(anfrage: NachkaufScanAnfrage): Promise<NachkaufS
     const positionEintrag = NACHKAUF_RADAR_WHITELIST.find((p) => p.isin.toUpperCase() === isinTarget)
     if (!positionEintrag) {
       const gespeicherte = await ladeNachkaufScanAusCloud()
-      await reichereErgebnisseAn(gespeicherte, false)
+      await reichereErgebnisseAn(gespeicherte, false, batchKontext)
       return { ok: false, ergebnisse: gespeicherte, monatsEmpfehlung: berechneMonatsEmpfehlung(gespeicherte), gescannt_am: gespeicherte[0]?.gescannt_am ?? new Date().toISOString(), gesamtAnzahl, gescannt: 0, ausstehend: 0, fehler: `ISIN ${isinTarget} nicht in der Whitelist.` }
     }
     const deepResearchMap = await ladeAlleDeepResearch()
-    const ergebnis = await scanneEinenTitel({ position: positionEintrag, deepResearchMap })
+    const ergebnis = await scanneEinenTitel({ position: positionEintrag, deepResearchMap, batchKontext })
     if (ergebnis) {
       await speichereNachkaufScanEintraege([ergebnis])
       await speichereVerlaufPunkte([ergebnis])
@@ -336,7 +369,7 @@ export async function laufeScan(anfrage: NachkaufScanAnfrage): Promise<NachkaufS
     const alle = await ladeNachkaufScanAusCloud()
     const deepMap = await ladeAlleDeepResearch()
     const mitDeep = alle.map((e) => ({ ...e, tiefenAnalyse: deepMap.get(e.ticker.toUpperCase()) ?? null }))
-    await reichereErgebnisseAn(mitDeep, false)
+    await reichereErgebnisseAn(mitDeep, false, batchKontext)
     mitDeep.sort((a, b) => b.score - a.score)
     return { ok: true, ergebnisse: mitDeep, monatsEmpfehlung: berechneMonatsEmpfehlung(mitDeep), gescannt_am: ergebnis?.gescannt_am ?? new Date().toISOString(), gesamtAnzahl, gescannt: ergebnis ? 1 : 0, ausstehend: 0 }
   }
@@ -351,7 +384,7 @@ export async function laufeScan(anfrage: NachkaufScanAnfrage): Promise<NachkaufS
 
     if (!positionEintrag) {
       const gespeicherte = await ladeNachkaufScanAusCloud()
-      await reichereErgebnisseAn(gespeicherte, false)
+      await reichereErgebnisseAn(gespeicherte, false, batchKontext)
       return {
         ok: false,
         ergebnisse: gespeicherte,
@@ -365,7 +398,7 @@ export async function laufeScan(anfrage: NachkaufScanAnfrage): Promise<NachkaufS
     }
 
     const deepResearchMap = await ladeAlleDeepResearch()
-    const ergebnis = await scanneEinenTitel({ position: positionEintrag, deepResearchMap })
+    const ergebnis = await scanneEinenTitel({ position: positionEintrag, deepResearchMap, batchKontext })
     if (ergebnis) {
       await speichereNachkaufScanEintraege([ergebnis])
       await speichereVerlaufPunkte([ergebnis])
@@ -374,7 +407,7 @@ export async function laufeScan(anfrage: NachkaufScanAnfrage): Promise<NachkaufS
     const alle = await ladeNachkaufScanAusCloud()
     const deepMap = await ladeAlleDeepResearch()
     const mitDeep = alle.map((e) => ({ ...e, tiefenAnalyse: deepMap.get(e.ticker.toUpperCase()) ?? null }))
-    await reichereErgebnisseAn(mitDeep, false)
+    await reichereErgebnisseAn(mitDeep, false, batchKontext)
     mitDeep.sort((a, b) => b.score - a.score)
 
     return {
@@ -412,7 +445,7 @@ export async function laufeScan(anfrage: NachkaufScanAnfrage): Promise<NachkaufS
       ...e,
       tiefenAnalyse: deepMap.get(e.ticker.toUpperCase()) ?? null,
     }))
-    await reichereErgebnisseAn(mitDeep, false)
+    await reichereErgebnisseAn(mitDeep, false, batchKontext)
     mitDeep.sort((a, b) => b.score - a.score)
     return {
       ok: true,
@@ -436,7 +469,7 @@ export async function laufeScan(anfrage: NachkaufScanAnfrage): Promise<NachkaufS
   for (let i = 0; i < zuScannen.length; i += BATCH_SIZE) {
     const batch = zuScannen.slice(i, i + BATCH_SIZE)
     const batchErgebnisse = await Promise.allSettled(
-      batch.map((p) => scanneEinenTitel({ position: p, deepResearchMap })),
+      batch.map((p) => scanneEinenTitel({ position: p, deepResearchMap, batchKontext })),
     )
     const batchOk: NachkaufScanEintrag[] = []
     for (const r of batchErgebnisse) {
@@ -469,7 +502,7 @@ export async function laufeScan(anfrage: NachkaufScanAnfrage): Promise<NachkaufS
   }))
 
   // Alle Anreicherungen parallel (Verlauf, Insider, Depot-Gewichte)
-  await reichereErgebnisseAn(mitDeep, true)
+  await reichereErgebnisseAn(mitDeep, true, batchKontext)
   mitDeep.sort((a, b) => b.score - a.score)
 
   const ausstehend = gesamtAnzahl - alle.length

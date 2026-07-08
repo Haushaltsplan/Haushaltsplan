@@ -958,6 +958,22 @@ function DetailPanel({
           <div className="mt-2">
             <ScoreBar score={eintrag.score} ampel={eintrag.ampel} />
           </div>
+          {(eintrag.scoreDetail.qualitaetsRang ?? 0) > 0 && (
+            <div className="mt-3 grid grid-cols-3 gap-2 text-center text-[11px]">
+              <div className="rounded-lg bg-violet-500/10 px-2 py-1.5 ring-1 ring-violet-500/20">
+                <p className="text-[10px] uppercase tracking-wide text-violet-300/70">Qualität</p>
+                <p className="font-semibold text-violet-200">{eintrag.scoreDetail.qualitaetsRang}</p>
+              </div>
+              <div className="rounded-lg bg-sky-500/10 px-2 py-1.5 ring-1 ring-sky-500/20">
+                <p className="text-[10px] uppercase tracking-wide text-sky-300/70">Timing</p>
+                <p className="font-semibold text-sky-200">{eintrag.scoreDetail.timingRang}</p>
+              </div>
+              <div className="rounded-lg bg-emerald-500/10 px-2 py-1.5 ring-1 ring-emerald-500/20">
+                <p className="text-[10px] uppercase tracking-wide text-emerald-300/70">Kombiniert</p>
+                <p className="font-semibold text-emerald-200">{eintrag.scoreDetail.kombiniertRang ?? eintrag.score}</p>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Score-Zerlegung */}
@@ -1028,6 +1044,38 @@ function DetailPanel({
               }`}
             >
               Daten {eintrag.scoreDetail.datenVollstaendigkeitPct} %
+            </span>
+          ) : null}
+          {eintrag.scoreDetail.kauftriggerBonus > 0 ? (
+            <span className="rounded bg-amber-500/10 px-1.5 py-0.5 text-amber-300 ring-1 ring-amber-500/20">
+              Kaufzone +{eintrag.scoreDetail.kauftriggerBonus}
+            </span>
+          ) : null}
+          {eintrag.scoreDetail.klumpenMalus < 0 ? (
+            <span className="rounded bg-rose-500/10 px-1.5 py-0.5 text-rose-300 ring-1 ring-rose-500/20">
+              Klumpen {eintrag.scoreDetail.klumpenMalus}
+            </span>
+          ) : null}
+          {eintrag.scoreDetail.regimeDelta !== 0 ? (
+            <span
+              className={`rounded px-1.5 py-0.5 ring-1 ${
+                eintrag.scoreDetail.regimeDelta > 0
+                  ? 'bg-sky-500/10 text-sky-300 ring-sky-500/20'
+                  : 'bg-rose-500/10 text-rose-300 ring-rose-500/20'
+              }`}
+            >
+              Regime {eintrag.scoreDetail.regimeDelta > 0 ? '+' : ''}
+              {eintrag.scoreDetail.regimeDelta}
+            </span>
+          ) : null}
+          {eintrag.scoreDetail.earningsMalus < 0 ? (
+            <span className="rounded bg-orange-500/10 px-1.5 py-0.5 text-orange-300 ring-1 ring-orange-500/20">
+              Earnings {eintrag.scoreDetail.earningsMalus}
+            </span>
+          ) : null}
+          {eintrag.scoreDetail.deepResearchMalus < 0 ? (
+            <span className="rounded bg-rose-500/10 px-1.5 py-0.5 text-rose-300 ring-1 ring-rose-500/20">
+              DR-Bear {eintrag.scoreDetail.deepResearchMalus}
             </span>
           ) : null}
           {eintrag.scoreDetail.sellTriggerPenalty !== 0 && (

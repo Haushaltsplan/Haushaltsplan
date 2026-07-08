@@ -18,6 +18,8 @@ export type SegmentStrukturSignale = {
   backlogLabel: string | null
   segmentShiftPct: number | null
   segmentQuelle: 'marketscreener' | 'stockanalysis' | 'mixed' | 'sec_edgar' | null
+  /** false = Segment-Konzentration nicht für Score nutzen (nur MS). */
+  segmentDatenZuverlaessig: boolean
 }
 
 function maxSegmentAusJahr(historie: SecSegmentHistorie | null | undefined): {
@@ -92,6 +94,10 @@ export function extrahiereSegmentStrukturSignale(
     segmentKonzentrationSec(secStruktur?.segmente) ??
     segmentKonzentrationSec(secStruktur?.segmenteGeo)
 
+  const segmentQuelle = secHist?.quelle ?? secStruktur?.quelle ?? null
+  const segmentDatenZuverlaessig =
+    segmentQuelle === 'stockanalysis' || segmentQuelle === 'mixed' || segmentQuelle === 'sec_edgar'
+
   return {
     segmentKonzentrationPct: konzAusHist ?? konzAusSec,
     produktTopSegmentName: produktTop?.name ?? null,
@@ -101,7 +107,8 @@ export function extrahiereSegmentStrukturSignale(
     backlogWachstumPct: backlogWachstumPct(secHist?.backlog ?? null),
     backlogLabel: secHist?.backlog?.label ?? null,
     segmentShiftPct: segmentShiftYoY(secHist?.produkt) ?? segmentShiftYoY(secHist?.geo),
-    segmentQuelle: secHist?.quelle ?? secStruktur?.quelle ?? null,
+    segmentQuelle,
+    segmentDatenZuverlaessig,
   }
 }
 

@@ -15,9 +15,9 @@ export type NachkaufAmpel =
 
 /** Detaillierte Score-Zerlegung (rein regelbasiert, kein LLM). */
 export type NachkaufScoreDetail = {
-  /** Mantra-Qualitäts-Score (0–60). */
+  /** Mantra-Qualitäts-Score (0–50). */
   mantraScore: number
-  /** Bewertungs-Score aus FCF-Yield + Forward-KGV (0–40). */
+  /** Personalisierte Bewertung vs. eigene Kaufzone/Median (0–35). */
   bewertungsScore: number
   /** Sell-Trigger-Abzug (0, -10 oder -25). */
   sellTriggerPenalty: number
@@ -38,6 +38,28 @@ export type NachkaufScoreDetail = {
   drawdownBonus: number
   /** Insider-Käufe Form 4 / OpenInsider (0–4). */
   insiderPunkte: number
+  /** Kaufzonen-Trigger aktiv (+7). */
+  kauftriggerBonus: number
+  /** Markt-Regime SPY/VIX (–3 bis +4). */
+  regimeDelta: number
+  /** Earnings in 0–5 Tagen (–3 bis –1). */
+  earningsMalus: number
+  /** Bear-Case aus Deep Research (–12 bis 0). */
+  deepResearchMalus: number
+  /** Depot-Klumpenrisiko ≥15 % (–6 bis –8). */
+  klumpenMalus: number
+  /** Sektor-Überkonzentration unter Grün-Kandidaten (–4 bis 0). */
+  sektorMalus: number
+  /** Backtest-Kalibrierung aus Performance-Tracking (–3 bis +2). */
+  scoreKalibrierung: number
+  /** Qualitäts-Rang 0–100 (Mantra + Momentum + Struktur). */
+  qualitaetsRang: number
+  /** Timing-Rang 0–100 (Bewertung + Drawdown + Trigger). */
+  timingRang: number
+  /** Kombiniert 42 % Qualität + 58 % Timing. */
+  kombiniertRang: number
+  /** Segment-Datenqualität für Struktur-Gate. */
+  segmentDatenQualitaet?: 'validiert' | 'nur_ms' | 'keine'
   /** Wie vollständig die Entscheidungsdaten sind (0–100 %). */
   datenVollstaendigkeitPct: number
 }

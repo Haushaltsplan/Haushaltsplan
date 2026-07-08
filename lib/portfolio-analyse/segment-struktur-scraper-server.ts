@@ -16,6 +16,7 @@ import {
 import { ladeMarketbeatBacklogHistorie } from '@/lib/portfolio-analyse/marketbeat-backlog-server'
 import { ladeMarketscreenerSegmentHistorie } from '@/lib/portfolio-analyse/marketscreener-segment-historie-server'
 import { ladeStockanalysisBacklogHistorie } from '@/lib/portfolio-analyse/stockanalysis-backlog-server'
+import { besteSegmentHistorieQuellen } from '@/lib/portfolio-analyse/segment-historie-merge-hilfen'
 import { ladeStockanalysisSegmentPaket } from '@/lib/portfolio-analyse/stockanalysis-segment-server'
 
 const LEER_ZUSATZ: SecZusatzRisikoFelder = {
@@ -37,15 +38,6 @@ function usTicker(opts: {
   return null
 }
 
-function besteHistorie(
-  a: SecSegmentHistorie | null | undefined,
-  b: SecSegmentHistorie | null | undefined,
-): SecSegmentHistorie | null {
-  if (!a) return b ?? null
-  if (!b) return a
-  return a.anzahlJahre >= b.anzahlJahre ? a : b
-}
-
 function leeresPaket(quelle: SecSegmentHistoriePaket['quelle'] = 'marketscreener'): SecSegmentHistoriePaket {
   return {
     produkt: null,
@@ -65,17 +57,20 @@ function mergePakete(
   ms: SecSegmentHistoriePaket | null,
   sa: Awaited<ReturnType<typeof ladeStockanalysisSegmentPaket>>,
 ): SecSegmentHistoriePaket | null {
-  const produkt = besteHistorie(ms?.produkt, sa?.produkt)
-  const geo = besteHistorie(ms?.geo, sa?.geo)
+  const produkt = besteSegmentHistorieQuellen(ms?.produkt, sa?.produkt)
+  const geo = besteSegmentHistorieQuellen(ms?.geo, sa?.geo)
   if (!produkt && !geo) return null
 
   const msHatProd = (ms?.produkt?.anzahlJahre ?? 0) > 0
   const msHatGeo = (ms?.geo?.anzahlJahre ?? 0) > 0
   const saHatProd = (sa?.produkt?.anzahlJahre ?? 0) > 0
   const saHatGeo = (sa?.geo?.anzahlJahre ?? 0) > 0
+  const prodAusSa = produkt === sa?.produkt && saHatProd
+  const geoAusSa = geo === sa?.geo && saHatGeo
 
   let quelle: SecSegmentHistoriePaket['quelle'] = 'marketscreener'
-  if ((msHatProd || msHatGeo) && (saHatProd || saHatGeo)) quelle = 'mixed'
+  if ((prodAusSa || geoAusSa) && (msHatProd || msHatGeo)) quelle = 'mixed'
+  else if ((prodAusSa && !msHatProd) || (geoAusSa && !msHatGeo)) quelle = 'stockanalysis'
   else if (!msHatProd && !msHatGeo && (saHatProd || saHatGeo)) quelle = 'stockanalysis'
 
   const berichtJahr = Math.max(produkt?.juengstesJahr ?? 0, geo?.juengstesJahr ?? 0)
