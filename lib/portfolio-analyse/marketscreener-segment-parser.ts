@@ -4,6 +4,7 @@ import type {
   SecSegmentEintrag,
   SecSegmentHistorie,
 } from '@/lib/portfolio-analyse/fundamentaldaten-erweitert-types'
+import { ergaenzeSegmentHistorieMitMargen } from '@/lib/portfolio-analyse/segment-margen-hilfen'
 
 export const MS_SEGMENT_MAX_JAHRE = 10
 
@@ -126,6 +127,42 @@ export function msChartZuHistorie(
   }
 }
 
+/** Operating-Income-Charts (auch negative Werte). */
+export function msChartZuOiHistorie(
+  art: SecSegmentHistorie['art'],
+  chartRoh: MsChartRoh,
+): SecSegmentHistorie | null {
+  const chart = begrenzeChartRoh(chartRoh)
+  const jahre: SecSegmentHistorie['jahre'] = []
+  const jahrAnzahl = Math.max(...chart.segmente.map((s) => s.werte.length))
+  if (jahrAnzahl < 1) return null
+
+  for (let i = 0; i < jahrAnzahl; i++) {
+    const jahr = chart.start + i
+    const segmente: SecSegmentEintrag[] = []
+    for (const s of chart.segmente) {
+      const roh = s.werte[i]
+      if (roh == null || !Number.isFinite(roh) || roh === 0) continue
+      const oiMio = Math.round((roh / 1_000_000) * 10) / 10
+      segmente.push({ name: s.name, umsatzMio: null, anteilPct: null, operatingIncomeMio: oiMio })
+    }
+    if (segmente.length < 1) continue
+    jahre.push({ jahr, segmente })
+  }
+
+  if (jahre.length < 1) return null
+  const segmentNamen = [...new Set(jahre.flatMap((j) => j.segmente.map((s) => s.name)))].sort()
+  const begrenzt = jahre.length > MS_SEGMENT_MAX_JAHRE ? jahre.slice(-MS_SEGMENT_MAX_JAHRE) : jahre
+  return {
+    art,
+    jahre: begrenzt,
+    segmentNamen,
+    anzahlJahre: begrenzt.length,
+    aeltestesJahr: begrenzt[0]!.jahr,
+    juengstesJahr: begrenzt[begrenzt.length - 1]!.jahr,
+  }
+}
+
 function parseWertAusZelle(cellHtml: string): number | null {
   const title = cellHtml.match(/title="([^"]+)"/)?.[1]
   if (title) {
@@ -200,29 +237,44 @@ export function extrahiereMsSegmentHistorien(html: string): {
   produkt: SecSegmentHistorie | null
   geo: SecSegmentHistorie | null
 } {
-  const produktChart = parseChartMehrereIds(html, [
+  const produktUmsatzChart = parseChartMehrereIds(html, [
     'financialSegmentCA1',
-    'financialSegmentLastYearChar1',
     'financialSegmentRevenueChar1',
   ])
-  const geoChart = parseChartMehrereIds(html, [
+  const geoUmsatzChart = parseChartMehrereIds(html, [
     'financialSegmentCA2',
-    'financialSegmentLastYearChar2',
     'financialSegmentRevenueChar2',
   ])
+  const produktOiChart = parseChartMehrereIds(html, ['financialSegmentLastYearChar1'])
+  const geoOiChart = parseChartMehrereIds(html, ['financialSegmentLastYearChar2'])
+
   const produktTable = parseMsSegmentTabelle(html, /Breakdown by Business Segment/i)
   const geoTable = parseMsSegmentTabelle(html, /Geographical breakdown of sales/i)
+  const produktOiTable = parseMsSegmentTabelle(html, /Operating Income:\s*Breakdown by Business Segment/i)
+  const geoOiTable = parseMsSegmentTabelle(html, /Operating Income:\s*Geographical/i)
 
-  return {
-    produkt: waehleReichhaltigereHistorie(
-      produktChart ? msChartZuHistorie('produkt', produktChart) : null,
-      produktTable ? msChartZuHistorie('produkt', produktTable) : null,
-    ),
-    geo: waehleReichhaltigereHistorie(
-      geoChart ? msChartZuHistorie('geo', geoChart) : null,
-      geoTable ? msChartZuHistorie('geo', geoTable) : null,
-    ),
-  }
+  let produkt = waehleReichhaltigereHistorie(
+    produktUmsatzChart ? msChartZuHistorie('produkt', produktUmsatzChart) : null,
+    produktTable ? msChartZuHistorie('produkt', produktTable) : null,
+  )
+  let geo = waehleReichhaltigereHistorie(
+    geoUmsatzChart ? msChartZuHistorie('geo', geoUmsatzChart) : null,
+    geoTable ? msChartZuHistorie('geo', geoTable) : null,
+  )
+
+  const produktOi = waehleReichhaltigereHistorie(
+    produktOiChart ? msChartZuOiHistorie('produkt', produktOiChart) : null,
+    produktOiTable ? msChartZuOiHistorie('produkt', produktOiTable) : null,
+  )
+  const geoOi = waehleReichhaltigereHistorie(
+    geoOiChart ? msChartZuOiHistorie('geo', geoOiChart) : null,
+    geoOiTable ? msChartZuOiHistorie('geo', geoOiTable) : null,
+  )
+
+  if (produkt) produkt = ergaenzeSegmentHistorieMitMargen(produkt, produktOi)
+  if (geo) geo = ergaenzeSegmentHistorieMitMargen(geo, geoOi)
+
+  return { produkt, geo }
 }
 
 export function htmlHatMsSegmentDaten(html: string): boolean {

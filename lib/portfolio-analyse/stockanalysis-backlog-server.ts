@@ -3,19 +3,34 @@
 import 'server-only'
 
 import type { SecBacklogHistorie } from '@/lib/portfolio-analyse/fundamentaldaten-erweitert-types'
-import { isinKenntnis } from '@/lib/portfolio-analyse/isin-kenntnisse'
 import { extrahiereStockanalysisBacklogAusHtml } from '@/lib/portfolio-analyse/stockanalysis-backlog-parser'
+import { saMetricsHauptPfade } from '@/lib/portfolio-analyse/stockanalysis-metrik-pfade'
 
 const BASE = 'https://stockanalysis.com'
 const USER_AGENT =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'
 const CACHE_MS = 12 * 60 * 60 * 1000
+const CACHE_VERSION = 3
 
-const cache = new Map<string, { at: number; data: SecBacklogHistorie | null }>()
+const cache = new Map<string, { at: number; v: number; data: SecBacklogHistorie | null }>()
 
-function saSlug(ticker: string, isin?: string | null): string {
-  const k = isin ? isinKenntnis(isin) : null
-  return (k?.logoSymbol ?? k?.symbolYahoo ?? ticker).trim().toLowerCase().split('.')[0]!
+function cacheKey(opts: {
+  ticker?: string | null
+  symbolYahoo?: string | null
+  isin?: string | null
+}): string {
+  return [opts.isin, opts.symbolYahoo, opts.ticker].map((s) => s?.trim().toUpperCase() ?? '').join('|')
+}
+
+function basisTicker(opts: {
+  ticker?: string | null
+  symbolYahoo?: string | null
+}): string | undefined {
+  for (const sym of [opts.ticker, opts.symbolYahoo]) {
+    const t = sym?.trim().toUpperCase()
+    if (t) return t.split('.')[0]
+  }
+  return undefined
 }
 
 export async function ladeStockanalysisBacklogHistorie(opts: {
@@ -24,14 +39,14 @@ export async function ladeStockanalysisBacklogHistorie(opts: {
   isin?: string | null
   refresh?: boolean
 }): Promise<SecBacklogHistorie | null> {
-  const ticker = (opts.ticker ?? opts.symbolYahoo ?? '').trim().toUpperCase().split('.')[0]
-  if (!ticker) return null
+  if (!opts.isin && !opts.symbolYahoo && !opts.ticker) return null
 
-  const hit = cache.get(ticker)
-  if (!opts.refresh && hit && Date.now() - hit.at < CACHE_MS) return hit.data
+  const key = cacheKey(opts)
+  const hit = cache.get(key)
+  if (!opts.refresh && hit && hit.v === CACHE_VERSION && Date.now() - hit.at < CACHE_MS) return hit.data
 
-  const slug = saSlug(ticker, opts.isin)
-  const paths = [`/stocks/${slug}/metrics/`, `/quote/us/${ticker}/metrics/`]
+  const ticker = basisTicker(opts)
+  const paths = saMetricsHauptPfade({ ...opts, ticker: ticker ?? opts.ticker })
 
   for (const path of paths) {
     try {
@@ -42,9 +57,9 @@ export async function ladeStockanalysisBacklogHistorie(opts: {
         signal: AbortSignal.timeout(25_000),
       })
       if (!res.ok) continue
-      const data = extrahiereStockanalysisBacklogAusHtml(await res.text())
+      const data = extrahiereStockanalysisBacklogAusHtml(await res.text(), ticker)
       if (data) {
-        cache.set(ticker, { at: Date.now(), data })
+        cache.set(key, { at: Date.now(), v: CACHE_VERSION, data })
         return data
       }
     } catch {
@@ -52,6 +67,6 @@ export async function ladeStockanalysisBacklogHistorie(opts: {
     }
   }
 
-  cache.set(ticker, { at: Date.now(), data: null })
+  cache.set(key, { at: Date.now(), v: CACHE_VERSION, data: null })
   return null
 }

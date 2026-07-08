@@ -9,8 +9,9 @@ const BASE = 'https://www.marketbeat.com/stocks'
 const USER_AGENT =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'
 const CACHE_MS = 12 * 60 * 60 * 1000
+const CACHE_VERSION = 2
 
-const cache = new Map<string, { at: number; data: SecBacklogHistorie | null }>()
+const cache = new Map<string, { at: number; v: number; data: SecBacklogHistorie | null }>()
 
 async function fetchFinancialsHtml(exchange: string, ticker: string): Promise<string | null> {
   try {
@@ -37,18 +38,18 @@ export async function ladeMarketbeatBacklogHistorie(
   if (!sym || sym.length > 6) return null
 
   const hit = cache.get(sym)
-  if (!refresh && hit && Date.now() - hit.at < CACHE_MS) return hit.data
+  if (!refresh && hit && hit.v === CACHE_VERSION && Date.now() - hit.at < CACHE_MS) return hit.data
 
   for (const exchange of ['NASDAQ', 'NYSE', 'AMEX'] as const) {
     const html = await fetchFinancialsHtml(exchange, sym)
     if (!html) continue
     const data = extrahiereMarketbeatBacklogAusHtml(html)
     if (data) {
-      cache.set(sym, { at: Date.now(), data })
+      cache.set(sym, { at: Date.now(), v: CACHE_VERSION, data })
       return data
     }
   }
 
-  cache.set(sym, { at: Date.now(), data: null })
+  cache.set(sym, { at: Date.now(), v: CACHE_VERSION, data: null })
   return null
 }

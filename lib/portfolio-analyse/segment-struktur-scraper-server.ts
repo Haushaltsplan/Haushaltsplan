@@ -3,6 +3,8 @@
 import 'server-only'
 
 import type {
+  SecBacklogHistorie,
+  SecSegmentHistorie,
   SecSegmentHistoriePaket,
   SecZusatzRisikoFelder,
 } from '@/lib/portfolio-analyse/fundamentaldaten-erweitert-types'
@@ -10,7 +12,7 @@ import { loesePortfolioIsin } from '@/lib/portfolio-analyse/isin-kenntnisse'
 import { ladeMarketbeatBacklogHistorie } from '@/lib/portfolio-analyse/marketbeat-backlog-server'
 import { ladeMarketscreenerSegmentHistorie } from '@/lib/portfolio-analyse/marketscreener-segment-historie-server'
 import { ladeStockanalysisBacklogHistorie } from '@/lib/portfolio-analyse/stockanalysis-backlog-server'
-import { ladeStockanalysisSegmentHistorie } from '@/lib/portfolio-analyse/stockanalysis-segment-server'
+import { ladeStockanalysisSegmentPaket } from '@/lib/portfolio-analyse/stockanalysis-segment-server'
 
 const LEER_ZUSATZ: SecZusatzRisikoFelder = {
   mitarbeiterAnzahl: null,
@@ -31,6 +33,15 @@ function usTicker(opts: {
   return null
 }
 
+function besteHistorie(
+  a: SecSegmentHistorie | null | undefined,
+  b: SecSegmentHistorie | null | undefined,
+): SecSegmentHistorie | null {
+  if (!a) return b ?? null
+  if (!b) return a
+  return a.anzahlJahre >= b.anzahlJahre ? a : b
+}
+
 function leeresPaket(quelle: SecSegmentHistoriePaket['quelle'] = 'marketscreener'): SecSegmentHistoriePaket {
   return {
     produkt: null,
@@ -48,17 +59,20 @@ function leeresPaket(quelle: SecSegmentHistoriePaket['quelle'] = 'marketscreener
 
 function mergePakete(
   ms: SecSegmentHistoriePaket | null,
-  saProdukt: Awaited<ReturnType<typeof ladeStockanalysisSegmentHistorie>>,
+  sa: Awaited<ReturnType<typeof ladeStockanalysisSegmentPaket>>,
 ): SecSegmentHistoriePaket | null {
-  if (!ms && !saProdukt) return null
+  const produkt = besteHistorie(ms?.produkt, sa?.produkt)
+  const geo = besteHistorie(ms?.geo, sa?.geo)
+  if (!produkt && !geo) return null
 
-  const produkt = ms?.produkt ?? saProdukt
-  const geo = ms?.geo ?? null
-  if (!produkt && !geo) return ms ? { ...ms, produkt: null, geo: null } : null
+  const msHatProd = (ms?.produkt?.anzahlJahre ?? 0) > 0
+  const msHatGeo = (ms?.geo?.anzahlJahre ?? 0) > 0
+  const saHatProd = (sa?.produkt?.anzahlJahre ?? 0) > 0
+  const saHatGeo = (sa?.geo?.anzahlJahre ?? 0) > 0
 
   let quelle: SecSegmentHistoriePaket['quelle'] = 'marketscreener'
-  if (ms && saProdukt && !ms.produkt) quelle = 'mixed'
-  else if (!ms && saProdukt) quelle = 'stockanalysis'
+  if ((msHatProd || msHatGeo) && (saHatProd || saHatGeo)) quelle = 'mixed'
+  else if (!msHatProd && !msHatGeo && (saHatProd || saHatGeo)) quelle = 'stockanalysis'
 
   const berichtJahr = Math.max(produkt?.juengstesJahr ?? 0, geo?.juengstesJahr ?? 0)
   const auslandAnteil =
@@ -74,9 +88,11 @@ function mergePakete(
 
   return {
     produkt: produkt ?? null,
-    geo,
+    geo: geo ?? null,
     kategorien: ms?.kategorien ?? [],
-    zusatz: ms?.zusatz ? { ...ms.zusatz, auslandsumsatzAnteilPct: auslandAnteil ?? ms.zusatz.auslandsumsatzAnteilPct } : { ...LEER_ZUSATZ, auslandsumsatzAnteilPct: auslandAnteil },
+    zusatz: ms?.zusatz
+      ? { ...ms.zusatz, auslandsumsatzAnteilPct: auslandAnteil ?? ms.zusatz.auslandsumsatzAnteilPct }
+      : { ...LEER_ZUSATZ, auslandsumsatzAnteilPct: auslandAnteil },
     backlog: ms?.backlog ?? null,
     kennzahlen: ms?.kennzahlen ?? null,
     berichtJahr: berichtJahr > 0 ? berichtJahr : ms?.berichtJahr ?? null,
@@ -84,6 +100,18 @@ function mergePakete(
     geladenAm: new Date().toISOString(),
     quelle,
   }
+}
+
+function waehleBacklog(
+  sa: SecBacklogHistorie | null,
+  mb: SecBacklogHistorie | null,
+): SecBacklogHistorie | null {
+  if (sa && mb) {
+    if (sa.art === 'rpo' && mb.art !== 'rpo') return sa
+    if (mb.art === 'rpo' && sa.art !== 'rpo') return mb
+    return sa.anzahlJahre >= mb.anzahlJahre ? sa : mb
+  }
+  return sa ?? mb
 }
 
 async function ergaenzeBacklog(
@@ -101,7 +129,7 @@ async function ergaenzeBacklog(
     ticker ? ladeMarketbeatBacklogHistorie(ticker, opts.refresh) : Promise.resolve(null),
     ladeStockanalysisBacklogHistorie({ ...opts, refresh: opts.refresh }),
   ])
-  const backlog = sa && mb ? (sa.anzahlJahre >= mb.anzahlJahre ? sa : mb) : sa ?? mb
+  const backlog = waehleBacklog(sa, mb)
   if (!backlog) return paket
   return { ...paket, backlog }
 }
@@ -122,8 +150,7 @@ export async function ladeGescrapteSegmentStruktur(opts: {
 
   if (!isin && !opts.name?.trim() && !opts.symbolYahoo && !opts.ticker) return null
 
-  const ticker = usTicker(opts)
-  const [ms, saProdukt] = await Promise.all([
+  const [ms, sa] = await Promise.all([
     ladeMarketscreenerSegmentHistorie({
       isin: isin ?? opts.isin,
       name: opts.name,
@@ -131,17 +158,15 @@ export async function ladeGescrapteSegmentStruktur(opts: {
       ticker: opts.ticker,
       refresh: opts.refresh,
     }),
-    ticker
-      ? ladeStockanalysisSegmentHistorie({
-          ticker,
-          symbolYahoo: opts.symbolYahoo,
-          isin: isin ?? opts.isin,
-          refresh: opts.refresh,
-        })
-      : Promise.resolve(null),
+    ladeStockanalysisSegmentPaket({
+      isin: isin ?? opts.isin,
+      symbolYahoo: opts.symbolYahoo,
+      ticker: opts.ticker,
+      refresh: opts.refresh,
+    }),
   ])
 
-  let paket = mergePakete(ms, saProdukt)
+  let paket = mergePakete(ms, sa)
   if (!paket) paket = leeresPaket()
 
   paket = await ergaenzeBacklog(paket, { ...opts, isin, refresh: opts.refresh })

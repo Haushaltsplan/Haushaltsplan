@@ -4,82 +4,157 @@ import type { SecBacklogHistorie } from '@/lib/portfolio-analyse/fundamentaldate
 
 export const SA_BACKLOG_MAX_JAHRE = 10
 
-const LABEL_RE =
-  /remaining performance obligations|total backlog|order backlog|deferred revenue|contract backlog|backlog/i
+const RPO_LABELS = [
+  'Commercial Remaining Performance Obligations',
+  'Remaining Performance Obligations',
+  'Total Backlog',
+  'Order Backlog',
+  'Contract Backlog',
+] as const
 
-function parseUsdKompakt(s: string): number | null {
+function parseUsdZuMio(s: string): number | null {
   const raw = s.replace(/,/g, '').trim()
+  if (!raw || /^upgrade$/i.test(raw) || raw === '-' || raw === '—') return null
   const m = raw.match(/^([\d.]+)\s*([BMK])?$/i)
   if (!m) return null
   let n = Number(m[1])
   if (!Number.isFinite(n) || n <= 0) return null
   const u = (m[2] ?? '').toUpperCase()
-  if (u === 'B') n *= 1_000_000_000
-  else if (u === 'M') n *= 1_000_000
-  else if (u === 'K') n *= 1_000
-  return Math.round((n / 1_000_000) * 10) / 10
+  if (u === 'B') n *= 1_000
+  else if (u === 'M') n *= 1
+  else if (u === 'K') n /= 1_000
+  else n /= 1_000_000
+  return Math.round(n * 10) / 10
 }
 
-function jahreVorLabel(html: string, labelIdx: number): number[] {
-  const block = html.slice(Math.max(0, labelIdx - 12_000), labelIdx)
-  const years: number[] = []
-  for (const m of block.matchAll(/>(20\d{2})</g)) {
-    const y = Number(m[1])
-    if (Number.isFinite(y) && y >= 2000 && y <= 2035 && !years.includes(y)) years.push(y)
-  }
-  if (years.length >= 2) return years.slice(-SA_BACKLOG_MAX_JAHRE - 4)
-  for (const m of block.matchAll(/>(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+'(\d{2})</g)) {
-    const yy = Number(m[2])
-    const y = yy >= 70 ? 1900 + yy : 2000 + yy
-    if (!years.includes(y)) years.push(y)
-  }
-  return years.slice(-SA_BACKLOG_MAX_JAHRE - 4)
+function parseDatum(text: string): Date | null {
+  const d = new Date(text.trim())
+  return Number.isFinite(d.getTime()) ? d : null
 }
 
-export function extrahiereStockanalysisBacklogAusHtml(html: string): SecBacklogHistorie | null {
-  const labelMatch = html.match(LABEL_RE)
-  if (!labelMatch || labelMatch.index == null) return null
-
-  const labelIdx = labelMatch.index
-  const label = labelMatch[0]
-  const rowChunk = html.slice(labelIdx, labelIdx + 12_000)
-  const werteRaw = [...rowChunk.matchAll(/<td[^>]*>([\d.]+[BMK])<\/td>/gi)]
-    .map((m) => parseUsdKompakt(m[1]!))
-    .filter((v): v is number => v != null && v > 0)
-
-  if (werteRaw.length < 2) return null
-
-  const jahre = jahreVorLabel(html, labelIdx)
-  const count = Math.min(Math.max(jahre.length, werteRaw.length), SA_BACKLOG_MAX_JAHRE + 4)
-  const wOffset = Math.max(0, werteRaw.length - count)
-  const jOffset = Math.max(0, jahre.length - count)
-  const eintraege: SecBacklogHistorie['eintraege'] = []
-  for (let i = 0; i < count && i + wOffset < werteRaw.length; i++) {
-    const jahr = jahre[i + jOffset] ?? new Date().getFullYear() - count + i + 1
-    eintraege.push({ jahr, wertMio: werteRaw[i + wOffset]! })
+function findeLabel(html: string): string | null {
+  for (const label of RPO_LABELS) {
+    if (html.includes(label)) return label
   }
-  const begrenzt = eintraege.slice(-SA_BACKLOG_MAX_JAHRE)
-  if (begrenzt.length < 2) return null
+  return null
+}
 
+function parseMetrikTabelle(
+  html: string,
+  label: string,
+): { daten: { date: Date; wertMio: number }[] } | null {
+  const periodIdx = html.indexOf('Period Ending')
+  const labelIdx = html.indexOf(label)
+  if (periodIdx < 0 || labelIdx < 0) return null
+
+  const tableStart = html.lastIndexOf('<table', labelIdx)
+  if (tableStart < 0 || tableStart > labelIdx) return null
+  const tableEnd = html.indexOf('</table>', labelIdx)
+  if (tableEnd < 0) return null
+  const table = html.slice(tableStart, tableEnd + 8)
+
+  const rows = [...table.matchAll(/<tr[\s\S]*?<\/tr>/gi)].map((r) => r[0])
+  const headerRow = rows.find((r) => r.includes('Period Ending'))
+  if (!headerRow) return null
+
+  const dates = [...headerRow.matchAll(/>([A-Z][a-z]{2} \d{1,2}, \d{4})</g)]
+    .map((m) => parseDatum(m[1]!))
+    .filter((d): d is Date => d != null)
+  if (dates.length < 2) return null
+
+  const dataRowHtml = rows.find((r) => r.includes(label) && !/growth/i.test(r.replace(/<[^>]+>/g, ' ')))
+  if (!dataRowHtml) return null
+
+  const zellen = [...dataRowHtml.matchAll(/<td[^>]*>([\s\S]*?)<\/td>/gi)].map((c) =>
+    c[1]!.replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim(),
+  )
+  const werte = zellen.slice(1).map((c) => parseUsdZuMio(c))
+
+  const daten: { date: Date; wertMio: number }[] = []
+  for (let i = 0; i < Math.min(dates.length, werte.length); i++) {
+    const wertMio = werte[i]
+    if (wertMio == null || wertMio <= 0) continue
+    daten.push({ date: dates[i]!, wertMio })
+  }
+  if (daten.length < 2) return null
+  return { daten }
+}
+
+/** Bekannte Geschäftsjahresenden (Monat 0–11) — Whitelist-Ticker mit Nicht-Kalender-FY. */
+const FY_END_MONAT: Record<string, number> = {
+  MSFT: 5,
+}
+
+function fyEndMonatFuerTicker(ticker: string | undefined, daten: { date: Date; wertMio: number }[]): number {
+  const t = ticker?.trim().toUpperCase()
+  if (t && FY_END_MONAT[t] != null) return FY_END_MONAT[t]!
+  return erkenneFyEndMonat(daten)
+}
+
+function erkenneFyEndMonat(daten: { date: Date; wertMio: number }[]): number {
+  const monatJahre = new Map<number, Set<number>>()
+  for (const d of daten) {
+    const m = d.date.getMonth()
+    if (!monatJahre.has(m)) monatJahre.set(m, new Set())
+    monatJahre.get(m)!.add(d.date.getFullYear())
+  }
+  const kandidaten = [{ monat: 11 }, { monat: 5 }, { monat: 8 }, { monat: 2 }]
+  let bestMonat = 11
+  let bestScore = -1
+  for (const k of kandidaten) {
+    const score = monatJahre.get(k.monat)?.size ?? 0
+    if (score > bestScore) {
+      bestScore = score
+      bestMonat = k.monat
+    }
+  }
+  return bestMonat
+}
+
+function zuJahresHistorie(
+  daten: { date: Date; wertMio: number }[],
+  label: string,
+  ticker?: string,
+): SecBacklogHistorie | null {
+  const fyEndMonat = fyEndMonatFuerTicker(ticker, daten)
+  const jahreMap = new Map<number, number>()
+  for (const d of daten) {
+    if (d.date.getMonth() !== fyEndMonat) continue
+    jahreMap.set(d.date.getFullYear(), d.wertMio)
+  }
+  const eintraege = [...jahreMap.entries()]
+    .sort((a, b) => a[0] - b[0])
+    .map(([jahr, wertMio]) => ({ jahr, wertMio }))
+  if (eintraege.length < 2) return null
+
+  const begrenzt = eintraege.length > SA_BACKLOG_MAX_JAHRE ? eintraege.slice(-SA_BACKLOG_MAX_JAHRE) : eintraege
   const art: SecBacklogHistorie['art'] = /remaining performance|rpo/i.test(label)
     ? 'rpo'
-    : /deferred/i.test(label)
-      ? 'deferred_revenue'
-      : 'backlog'
+    : /backlog/i.test(label)
+      ? 'backlog'
+      : 'rpo'
 
-  const titel = /remaining performance/i.test(label)
-    ? 'Verbleibende Leistungsverpflichtungen (RPO)'
-    : /deferred/i.test(label)
-      ? 'Deferred Revenue'
+  const titel = /commercial remaining/i.test(label)
+    ? 'Commercial RPO'
+    : /remaining performance/i.test(label)
+      ? 'Verbleibende Leistungsverpflichtungen (RPO)'
       : 'Auftragsbestand (Backlog)'
 
   return {
     art,
     label: titel,
-    quelleTag: `StockAnalysis · ${label.replace(/\s+/g, ' ').trim()}`,
+    quelleTag: `StockAnalysis · ${label}`,
     eintraege: begrenzt,
     anzahlJahre: begrenzt.length,
     aeltestesJahr: begrenzt[0]!.jahr,
     juengstesJahr: begrenzt[begrenzt.length - 1]!.jahr,
   }
+}
+
+export function extrahiereStockanalysisBacklogAusHtml(html: string, ticker?: string): SecBacklogHistorie | null {
+  const label = findeLabel(html)
+  if (!label) return null
+  const tabelle = parseMetrikTabelle(html, label)
+  if (!tabelle) return null
+  return zuJahresHistorie(tabelle.daten, label, ticker)
 }

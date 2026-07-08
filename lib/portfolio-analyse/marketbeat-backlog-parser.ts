@@ -4,9 +4,9 @@ import type { SecBacklogHistorie } from '@/lib/portfolio-analyse/fundamentaldate
 
 export const MB_BACKLOG_MAX_JAHRE = 10
 
+/** Nur echte Backlog-/RPO-Zeilen — kein Deferred Revenue (irreführend bei Nicht-SaaS). */
 const EXPLICIT_ROW_RE =
   /backlog|order\s*book|remaining\s*performance|contract\s*backlog|total\s*backlog/i
-const DEFERRED_ROW_RE = /deferred\s*revenue/i
 
 type ZeileRoh = { id: string; label: string; werte: number[] }
 
@@ -77,42 +77,19 @@ function mapZuHistorie(
   }
 }
 
-function kombiniereDeferred(current: number[], noncurrent: number[]): number[] {
-  const len = Math.max(current.length, noncurrent.length)
-  const out: number[] = []
-  for (let i = 0; i < len; i++) out.push((current[i] ?? 0) + (noncurrent[i] ?? 0))
-  return out
-}
-
 export function extrahiereMarketbeatBacklogAusHtml(html: string): SecBacklogHistorie | null {
   const jahre = jahreAusAnnualSection(html)
   if (jahre.length < 2) return null
   const rows = parseAnnualRows(html)
 
   const explicit = rows.filter((r) => EXPLICIT_ROW_RE.test(r.id) || EXPLICIT_ROW_RE.test(r.label))
-  if (explicit.length > 0) {
-    const best = explicit.sort((a, b) => b.werte.length - a.werte.length)[0]!
-    const art: SecBacklogHistorie['art'] = /remaining performance|rpo/i.test(best.label) ? 'rpo' : 'backlog'
-    return mapZuHistorie(jahre, best.werte, art, best.label, `MarketBeat · ${best.label}`)
-  }
+  if (explicit.length === 0) return null
 
-  const current = rows.find((r) => r.id === 'row-currentdeferredrevenue-yBal')
-  const noncurrent = rows.find((r) => r.id === 'row-noncurrentdeferredrevenue-yBal')
-  if (current || noncurrent) {
-    return mapZuHistorie(
-      jahre,
-      kombiniereDeferred(current?.werte ?? [], noncurrent?.werte ?? []),
-      'deferred_revenue',
-      'Deferred Revenue (gesamt)',
-      'MarketBeat · Current + Noncurrent Deferred Revenue',
-    )
-  }
+  const best = explicit.sort((a, b) => b.werte.length - a.werte.length)[0]!
+  const art: SecBacklogHistorie['art'] = /remaining performance|rpo/i.test(best.label) ? 'rpo' : 'backlog'
+  const titel = /remaining performance/i.test(best.label)
+    ? 'Verbleibende Leistungsverpflichtungen (RPO)'
+    : best.label
 
-  const deferredAny = rows.filter((r) => DEFERRED_ROW_RE.test(r.label))
-  if (deferredAny.length > 0) {
-    const best = deferredAny.sort((a, b) => b.werte.length - a.werte.length)[0]!
-    return mapZuHistorie(jahre, best.werte, 'deferred_revenue', best.label, `MarketBeat · ${best.label}`)
-  }
-
-  return null
+  return mapZuHistorie(jahre, best.werte, art, titel, `MarketBeat · ${best.label}`)
 }

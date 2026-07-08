@@ -15,8 +15,8 @@ import {
 
 const BASE = 'https://www.marketscreener.com/quote/stock'
 const CACHE_MS = 12 * 60 * 60 * 1000
-const CACHE_VERSION = 9
-const MAX_ZUSAETZLICHE_SLUGS = 4
+const CACHE_VERSION = 11
+const MAX_ZUSAETZLICHE_SLUGS = 8
 const MIN_ABSTAND_MS = 300
 
 const USER_AGENT =
@@ -82,7 +82,7 @@ async function ensureMsCookies(): Promise<string> {
   return msCookieHeader
 }
 
-async function fetchMsHtml(url: string, retries = 2): Promise<string | null> {
+async function fetchMsHtml(url: string, retries = 3): Promise<string | null> {
   await throttle()
   const cookie = await ensureMsCookies()
   for (let attempt = 0; attempt <= retries; attempt++) {

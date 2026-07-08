@@ -35,6 +35,10 @@ function umsatzFuerSegment(hist: SecSegmentHistorie, jahr: number, name: string)
   return hist.jahre.find((j) => j.jahr === jahr)?.segmente.find((s) => s.name === name)?.umsatzMio ?? null
 }
 
+function margeFuerSegment(hist: SecSegmentHistorie, jahr: number, name: string): number | null {
+  return hist.jahre.find((j) => j.jahr === jahr)?.segmente.find((s) => s.name === name)?.margePct ?? null
+}
+
 function umsatzWachstumPct(aktuell: number | null, vorjahr: number | null): number | null {
   if (aktuell == null || vorjahr == null || vorjahr === 0) return null
   return Math.round(((aktuell - vorjahr) / Math.abs(vorjahr)) * 1000) / 10
@@ -43,6 +47,12 @@ function umsatzWachstumPct(aktuell: number | null, vorjahr: number | null): numb
 function wachstumClass(pct: number): string {
   if (pct > 0.5) return 'text-emerald-400'
   if (pct < -0.5) return 'text-red-300'
+  return 'text-[var(--app-text-muted)]'
+}
+
+function margeClass(pct: number): string {
+  if (pct < 0) return 'text-red-300'
+  if (pct >= 25) return 'text-emerald-400'
   return 'text-[var(--app-text-muted)]'
 }
 
@@ -552,6 +562,7 @@ function PaSecSegmentTabelle({ hist, farben }: { hist: SecSegmentHistorie; farbe
                 const vorjahr = ji > 0 ? jahre[ji - 1]! : null
                 const wachstum =
                   vorjahr != null ? umsatzWachstumPct(mio, umsatzFuerSegment(hist, vorjahr, name)) : null
+                const marge = margeFuerSegment(hist, j, name)
                 return (
                   <td key={j} className="px-2 py-2.5 align-top text-right tabular-nums">
                     {mio != null ? (
@@ -571,6 +582,11 @@ function PaSecSegmentTabelle({ hist, farben }: { hist: SecSegmentHistorie; farbe
                       </span>
                     ) : ji > 0 ? (
                       <span className="mt-0.5 block text-[10px] text-[var(--app-text-muted)]">–</span>
+                    ) : null}
+                    {marge != null ? (
+                      <span className={`mt-0.5 block text-[10px] font-medium ${margeClass(marge)}`}>
+                        {marge.toLocaleString('de-DE', { maximumFractionDigits: 1 })} % Marge
+                      </span>
                     ) : null}
                   </td>
                 )
