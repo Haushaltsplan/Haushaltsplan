@@ -10,13 +10,13 @@ import type {
 } from '@/lib/portfolio-analyse/fundamentaldaten-erweitert-types'
 import { isinKenntnis } from '@/lib/portfolio-analyse/isin-kenntnisse'
 import { marketscreenerSlugKandidaten } from '@/lib/portfolio-analyse/marketscreener-slug'
-import { cikFuerTicker } from '@/lib/portfolio-analyse/sec-edgar-common-server'
-import { ladeSecCompanyFacts } from '@/lib/portfolio-analyse/sec-edgar-companyfacts-server'
 
 const BASE = 'https://www.marketscreener.com/quote/stock'
 const CACHE_MS = 12 * 60 * 60 * 1000
-const CACHE_VERSION = 2
+const CACHE_VERSION = 3
 const MIN_ABSTAND_MS = 350
+/** Max. Geschäftsjahre aus dem Marketscreener-Scraper. */
+const MAX_JAHRE = 10
 
 const USER_AGENT =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'
@@ -111,7 +111,22 @@ function normalisiereName(s: string): string {
     .trim()
 }
 
-function chartZuHistorie(art: SecSegmentHistorie['art'], chart: ChartRoh): SecSegmentHistorie | null {
+function begrenzeChartRoh(chart: ChartRoh): ChartRoh {
+  const len = Math.max(...chart.segmente.map((s) => s.werte.length))
+  if (len <= MAX_JAHRE) return chart
+  const offset = len - MAX_JAHRE
+  return {
+    ...chart,
+    start: chart.start + offset,
+    segmente: chart.segmente.map((s) => ({
+      ...s,
+      werte: s.werte.slice(offset),
+    })),
+  }
+}
+
+function chartZuHistorie(art: SecSegmentHistorie['art'], chartRoh: ChartRoh): SecSegmentHistorie | null {
+  const chart = begrenzeChartRoh(chartRoh)
   const jahre: SecSegmentHistorie['jahre'] = []
   const jahrAnzahl = Math.max(...chart.segmente.map((s) => s.werte.length))
   if (jahrAnzahl < 2) return null
@@ -138,13 +153,14 @@ function chartZuHistorie(art: SecSegmentHistorie['art'], chart: ChartRoh): SecSe
 
   if (jahre.length < 2) return null
   const segmentNamen = [...new Set(jahre.flatMap((j) => j.segmente.map((s) => s.name)))].sort()
+  const begrenzt = jahre.length > MAX_JAHRE ? jahre.slice(-MAX_JAHRE) : jahre
   return {
     art,
-    jahre,
+    jahre: begrenzt,
     segmentNamen,
-    anzahlJahre: jahre.length,
-    aeltestesJahr: jahre[0]!.jahr,
-    juengstesJahr: jahre[jahre.length - 1]!.jahr,
+    anzahlJahre: begrenzt.length,
+    aeltestesJahr: begrenzt[0]!.jahr,
+    juengstesJahr: begrenzt[begrenzt.length - 1]!.jahr,
   }
 }
 
@@ -181,6 +197,8 @@ function parseSegmentTabelle(html: string, marker: RegExp): ChartRoh | null {
     if (Number.isFinite(j) && !jahre.includes(j)) jahre.push(j)
   }
   if (jahre.length < 2) return null
+  const offset = Math.max(0, jahre.length - MAX_JAHRE)
+  const jahreBegrenzt = jahre.slice(offset)
 
   const segmente: ChartRoh['segmente'] = []
   for (const tr of table.matchAll(/<tr[^>]*>([\s\S]*?)<\/tr>/gi)) {
@@ -189,14 +207,14 @@ function parseSegmentTabelle(html: string, marker: RegExp): ChartRoh | null {
     const label = bereinigeSegmentname(cells[0]![1].replace(/<[^>]+>/g, ' '))
     if (!label || istIgnoriertSegment(label) || /fiscal period/i.test(label)) continue
     const werte: number[] = []
-    for (let i = 0; i < jahre.length; i++) {
-      const v = parseWertAusZelle(cells[i + 1]![1])
+    for (let i = 0; i < jahreBegrenzt.length; i++) {
+      const v = parseWertAusZelle(cells[offset + i + 1]![1])
       werte.push(v ?? 0)
     }
     if (werte.some((v) => v > 0)) segmente.push({ name: label, werte })
   }
   if (segmente.length < 2) return null
-  return { start: jahre[0]!, currency: 'USD', segmente }
+  return { start: jahreBegrenzt[0]!, currency: 'USD', segmente }
 }
 
 function extrahiereHistorien(html: string): { produkt: SecSegmentHistorie | null; geo: SecSegmentHistorie | null } {
@@ -327,20 +345,7 @@ export async function ladeMarketscreenerSegmentHistorie(opts: {
     const { html } = treffer
     const { produkt, geo } = extrahiereHistorien(html)
 
-    const tickerBasis = (opts.ticker ?? symbol ?? '').trim().toUpperCase().split('.')[0]
-    const kennzahlen =
-      tickerBasis && !tickerBasis.includes('.')
-        ? await (async () => {
-            const cik = await cikFuerTicker(tickerBasis)
-            return cik ? ladeSecCompanyFacts(cik) : null
-          })()
-        : null
-
-    const berichtJahr = Math.max(
-      produkt?.juengstesJahr ?? 0,
-      geo?.juengstesJahr ?? 0,
-      kennzahlen?.juengstesJahr ?? 0,
-    )
+    const berichtJahr = Math.max(produkt?.juengstesJahr ?? 0, geo?.juengstesJahr ?? 0)
 
     const auslandAnteil =
       geo?.jahre.length && geo.jahre[geo.jahre.length - 1]
@@ -359,14 +364,14 @@ export async function ladeMarketscreenerSegmentHistorie(opts: {
       kategorien: [],
       zusatz: { ...LEER_ZUSATZ, auslandsumsatzAnteilPct: auslandAnteil },
       backlog: null,
-      kennzahlen,
+      kennzahlen: null,
       berichtJahr: berichtJahr > 0 ? berichtJahr : null,
       anzahl10k: Math.max(produkt?.anzahlJahre ?? 0, geo?.anzahlJahre ?? 0),
       geladenAm: new Date().toISOString(),
       quelle: 'marketscreener',
     }
 
-    if (!produkt && !geo && !kennzahlen) {
+    if (!produkt && !geo) {
       cache.set(cacheKey, { at: Date.now(), v: CACHE_VERSION, data: null })
       return null
     }

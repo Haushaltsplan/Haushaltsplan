@@ -95,9 +95,7 @@ export function PaFundamentalStruktur({
   const ag = erweitert.arbeitgeber
 
   const hatGeschaeftsstruktur =
-    secHist != null ||
-    (sec != null &&
-      (sec.segmente.length > 0 || sec.segmenteProdukt.length > 0 || sec.segmenteGeo.length > 0))
+    (secHist?.produkt?.anzahlJahre ?? 0) >= 1 || (secHist?.geo?.anzahlJahre ?? 0) >= 1
 
   return (
     <div className="space-y-5">
@@ -208,13 +206,10 @@ export function PaFundamentalStruktur({
         </div>
       </PaCard>
 
-      {/* SEC Geschäftsstruktur — Geo/Produkt per Tab, bis zu 10 Jahre Historie */}
-      {hatGeschaeftsstruktur ? (
-        <PaSecSegmentHistorie paket={secHist} secStruktur={sec} />
-      ) : null}
+      {/* Geschäftsstruktur — Marketscreener-Scraper, Geo/Produkt per Tab, bis 10 Jahre */}
+      {hatGeschaeftsstruktur && secHist ? <PaSecSegmentHistorie paket={secHist} /> : null}
 
       {sec &&
-      !hatGeschaeftsstruktur &&
       (sec.pensionVerpflichtungMio != null || sec.leaseVerpflichtungMio != null || sec.ceoVerguetungUsd != null) ? (
         <PaCard variant="elevated" className="space-y-4 p-5 sm:p-6">
           <PaStrukturSectionHeader
