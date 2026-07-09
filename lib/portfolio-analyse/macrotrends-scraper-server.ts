@@ -12,10 +12,23 @@ const BASE = 'https://www.macrotrends.net'
 const IFRAME_BASE =
   'https://www.macrotrends.net/production/stocks/desktop/PRODUCTION/fundamental_iframe.php'
 const USER_AGENT =
-  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'
 const CACHE_MS = 24 * 60 * 60 * 1000
-const FEHLER_CACHE_MS = 15 * 60 * 1000
-const MIN_ABSTAND_MS = 450
+const FEHLER_CACHE_MS = 3 * 60 * 1000
+/** Bei Live-Fehler: erfolgreichen Cache bis 7 Tage als Fallback (kein Datenverlust). */
+const STALE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000
+const MIN_ABSTAND_MS = 520
+const FETCH_TIMEOUT_MS = 35_000
+const MAX_FETCH_RETRIES = 3
+const RETRY_BASE_MS = 900
+
+const FETCH_HEADERS: Record<string, string> = {
+  'User-Agent': USER_AGENT,
+  Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+  'Accept-Language': 'en-US,en;q=0.9',
+  Referer: 'https://www.macrotrends.net/',
+  'Cache-Control': 'no-cache',
+}
 
 let letzterAbruf = 0
 let warteschlange: Promise<void> = Promise.resolve()
@@ -266,6 +279,23 @@ function pause(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms))
 }
 
+function htmlBlockiertOderLeer(html: string): boolean {
+  if (html.length < 1_500) return true
+  if (html.includes('Oops!')) return true
+  const kopf = html.slice(0, 8_000).toLowerCase()
+  return /access denied|403 forbidden|rate limit|cf-challenge|just a moment|captcha|bot detection/i.test(
+    kopf,
+  )
+}
+
+function htmlHatOriginalData(html: string): boolean {
+  return html.includes('var originalData = ')
+}
+
+function htmlHatChartData(html: string): boolean {
+  return html.includes('var chartData = ')
+}
+
 async function rateLimitedFetch(url: string): Promise<string | null> {
   await warteschlange
   let resolve!: () => void
@@ -273,30 +303,85 @@ async function rateLimitedFetch(url: string): Promise<string | null> {
     resolve = r
   })
   try {
-    const warten = Math.max(0, MIN_ABSTAND_MS - (Date.now() - letzterAbruf))
-    if (warten > 0) await pause(warten)
-    letzterAbruf = Date.now()
-    const res = await fetch(url, {
-      headers: { 'User-Agent': USER_AGENT, Accept: 'text/html,application/json' },
-      cache: 'no-store',
-    })
-    if (!res.ok) return null
-    return await res.text()
-  } catch {
+    for (let attempt = 0; attempt <= MAX_FETCH_RETRIES; attempt++) {
+      const warten = Math.max(0, MIN_ABSTAND_MS - (Date.now() - letzterAbruf))
+      if (warten > 0) await pause(warten)
+      letzterAbruf = Date.now()
+
+      try {
+        const res = await fetch(url, {
+          headers: FETCH_HEADERS,
+          cache: 'no-store',
+          redirect: 'follow',
+          signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+        })
+
+        if (res.status === 429 || res.status === 503 || res.status === 502 || res.status === 403) {
+          if (attempt < MAX_FETCH_RETRIES) {
+            await pause(RETRY_BASE_MS * (attempt + 1) + 400)
+            continue
+          }
+          return null
+        }
+
+        if (!res.ok) {
+          if (res.status >= 500 && attempt < MAX_FETCH_RETRIES) {
+            await pause(RETRY_BASE_MS * (attempt + 1))
+            continue
+          }
+          return null
+        }
+
+        const html = await res.text()
+        if (htmlBlockiertOderLeer(html)) {
+          if (attempt < MAX_FETCH_RETRIES) {
+            await pause(RETRY_BASE_MS * (attempt + 1) + 600)
+            continue
+          }
+          return null
+        }
+        return html
+      } catch {
+        if (attempt < MAX_FETCH_RETRIES) {
+          await pause(RETRY_BASE_MS * (attempt + 1))
+          continue
+        }
+        return null
+      }
+    }
     return null
   } finally {
     resolve()
   }
 }
 
-async function ladeSeite(url: string): Promise<string | null> {
+function staleFallback(url: string): string | null {
   const hit = pageCache.get(url)
-  if (hit && Date.now() - hit.at < (hit.fehler ? FEHLER_CACHE_MS : CACHE_MS)) {
+  if (!hit?.html || hit.fehler) return null
+  const age = Date.now() - hit.at
+  if (age > STALE_MAX_AGE_MS) return null
+  console.warn(`[macrotrends] Stale-Cache-Fallback (${Math.round(age / 3600000)}h alt): ${url}`)
+  return hit.html
+}
+
+async function ladeSeite(url: string, opts?: { forceRefresh?: boolean }): Promise<string | null> {
+  const hit = pageCache.get(url)
+  const now = Date.now()
+  if (!opts?.forceRefresh && hit && now - hit.at < (hit.fehler ? FEHLER_CACHE_MS : CACHE_MS)) {
     return hit.html
   }
+
   const html = await rateLimitedFetch(url)
-  pageCache.set(url, { at: Date.now(), html, fehler: html == null })
-  return html
+  if (html) {
+    pageCache.set(url, { at: now, html, fehler: false })
+    return html
+  }
+
+  const stale = staleFallback(url)
+  if (stale) return stale
+
+  pageCache.set(url, { at: now, html: null, fehler: true })
+  return null
 }
 
 function parseJsonArray<T>(html: string, marker: string): T[] | null {
@@ -502,9 +587,15 @@ async function ladeStatementRoh(
 ): Promise<RohZeile[] | null> {
   const freqParam = frequenz === 'quartal' ? '?freq=Q' : ''
   const url = `${BASE}/stocks/charts/${ident.ticker}/${ident.slug}/${statement}${freqParam}`
-  const html = await ladeSeite(url)
-  if (!html || html.includes('Oops!')) return null
-  return parseOriginalData(html)
+
+  for (let versuch = 0; versuch < 2; versuch++) {
+    const html = await ladeSeite(url, versuch > 0 ? { forceRefresh: true } : undefined)
+    if (!html) continue
+    const roh = parseOriginalData(html)
+    if (roh?.length) return roh
+    pageCache.delete(url)
+  }
+  return null
 }
 
 export async function loeseMacrotrendsIdent(
@@ -537,14 +628,19 @@ export async function loeseMacrotrendsIdent(
 
 async function ladeMacrotrendsSuchergebnisse(q: string): Promise<Array<{ name?: string; url?: string }>> {
   if (!q.trim()) return []
-  const html = await ladeSeite(`${BASE}/assets/php/all_pages_query.php?q=${encodeURIComponent(q.trim())}`)
-  if (!html) return []
-  try {
-    const items = JSON.parse(html) as Array<{ name?: string; url?: string }>
-    return Array.isArray(items) ? items : []
-  } catch {
-    return []
+  const url = `${BASE}/assets/php/all_pages_query.php?q=${encodeURIComponent(q.trim())}`
+
+  for (let versuch = 0; versuch < 2; versuch++) {
+    const html = await ladeSeite(url, versuch > 0 ? { forceRefresh: true } : undefined)
+    if (!html) continue
+    try {
+      const items = JSON.parse(html) as Array<{ name?: string; url?: string }>
+      return Array.isArray(items) ? items : []
+    } catch {
+      pageCache.delete(url)
+    }
   }
+  return []
 }
 
 function firmennameAusSuchtitel(name: string): string {
@@ -761,15 +857,20 @@ export async function ladeMacrotrendsFundamentaldaten(
     })
   }
 
-  const bewertungCharts: Array<{ def: (typeof BEWERTUNG_METRIKEN)[number]; chart: ChartPunkt[] | null }> = []
-
-  for (const def of BEWERTUNG_METRIKEN) {
-    const freqCode = frequenz === 'quartal' ? 'Q' : 'A'
-    const iframeUrl = `${IFRAME_BASE}?t=${encodeURIComponent(ident.ticker)}&type=${encodeURIComponent(def.slug)}&statement=price-ratios&freq=${freqCode}&sub=&yb=15`
-    const iframeHtml = await ladeSeite(iframeUrl)
-    const chart = iframeHtml ? parseChartData(iframeHtml) : null
-    bewertungCharts.push({ def, chart })
-  }
+  const bewertungCharts = await Promise.all(
+    BEWERTUNG_METRIKEN.map(async (def) => {
+      const freqCode = frequenz === 'quartal' ? 'Q' : 'A'
+      const iframeUrl = `${IFRAME_BASE}?t=${encodeURIComponent(ident.ticker)}&type=${encodeURIComponent(def.slug)}&statement=price-ratios&freq=${freqCode}&sub=&yb=15`
+      let iframeHtml = await ladeSeite(iframeUrl)
+      let chart = iframeHtml ? parseChartData(iframeHtml) : null
+      if (!chart?.length && iframeHtml && !htmlHatChartData(iframeHtml)) {
+        pageCache.delete(iframeUrl)
+        iframeHtml = await ladeSeite(iframeUrl, { forceRefresh: true })
+        chart = iframeHtml ? parseChartData(iframeHtml) : null
+      }
+      return { def, chart }
+    }),
+  )
 
   if (mitTtm && bewertungCharts.some((b) => b.chart?.length)) {
     const charts = bewertungCharts.map((b) => b.chart).filter((c): c is ChartPunkt[] => c != null && c.length > 0)
@@ -818,7 +919,7 @@ export async function ladeMacrotrendsFundamentaldaten(
   }
 
   const ratiosUrl = `${BASE}/stocks/charts/${ident.ticker}/${ident.slug}/financial-ratios`
-  const ratiosHtml = await ladeSeite(ratiosUrl)
+  const ratiosHtml = pageCache.get(ratiosUrl)?.html ?? (await ladeSeite(ratiosUrl))
   const metaMatch = ratiosHtml?.match(/<meta name="description" content="([^"]+)"/)
   const beschreibung =
     metaMatch?.[1]?.replace(/&lt;[^&]+&gt;/g, '').replace(/&[^;]+;/g, ' ').trim() ?? null
