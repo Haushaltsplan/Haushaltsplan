@@ -1420,6 +1420,7 @@ export function NachkaufRadarClient() {
   const [ausstehend, setAusstehend] = useState<number>(0)
   const [laden, setLaden] = useState(true)
   const [scanLaeuft, setScanLaeuft] = useState(false)
+  const [scanFortschritt, setScanFortschritt] = useState<string | null>(null)
   const [deepLadenTicker, setDeepLadenTicker] = useState<string | null>(null)
   const [rescanTicker, setRescanTicker] = useState<string | null>(null)
   const [fehler, setFehler] = useState<string | null>(null)
@@ -1515,40 +1516,62 @@ export function NachkaufRadarClient() {
     }
   }
 
-  // Scan starten
+  // Scan starten (Chunking: je 2 Titel pro Request — Vercel-Timeout-Schutz)
   const starteNeuenScan = useCallback(async (erzwingen = true) => {
     if (scanRef.current) return
     scanRef.current = true
     setScanLaeuft(true)
     setFehler(null)
+    setScanFortschritt(null)
+    const CHUNK = 2
+    let offset = 0
+    let letztesPaket: NachkaufScanPaket | null = null
     try {
-      const res = await fetch('/api/portfolio-analyse/nachkaeufe/scan', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ erzwingen }),
-      })
-      if (!res.ok && res.status !== 502) {
-        const text = await res.text().catch(() => `HTTP ${res.status}`)
-        throw new Error(`Scan-API Fehler ${res.status}: ${text.slice(0, 200)}`)
+      while (true) {
+        const res = await fetch('/api/portfolio-analyse/nachkaeufe/scan', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ erzwingen, offset, maxProAufruf: CHUNK }),
+        })
+        if (!res.ok && res.status !== 502) {
+          const text = await res.text().catch(() => `HTTP ${res.status}`)
+          throw new Error(`Scan-API Fehler ${res.status}: ${text.slice(0, 200)}`)
+        }
+        const paket = (await res.json()) as NachkaufScanPaket
+        letztesPaket = paket
+        if (paket.ok && paket.ergebnisse.length > 0) {
+          setErgebnisse(paket.ergebnisse)
+          setMonatsEmpfehlung(paket.monatsEmpfehlung)
+          setGescannt_am(paket.gescannt_am)
+          setGesamtAnzahl(paket.gesamtAnzahl ?? 32)
+          setAusstehend(paket.ausstehend ?? 0)
+          if (!selectedTicker) setSelectedTicker(paket.ergebnisse[0]?.ticker ?? null)
+        } else if (!paket.ok) {
+          setFehler(paket.fehler ?? 'Scan fehlgeschlagen.')
+          break
+        }
+
+        const verbleibend = paket.verbleibend ?? 0
+        const gescannt = paket.gescannt ?? 0
+        const total = paket.gesamtAnzahl ?? 32
+        const fertig = total - verbleibend
+        setScanFortschritt(`${Math.min(fertig, total)}/${total} Positionen`)
+
+        if (verbleibend <= 0 || gescannt === 0) break
+        offset += gescannt
+        await new Promise((r) => setTimeout(r, 400))
       }
-      const paket = (await res.json()) as NachkaufScanPaket
-      if (paket.ok && paket.ergebnisse.length > 0) {
-        setErgebnisse(paket.ergebnisse)
-        setMonatsEmpfehlung(paket.monatsEmpfehlung)
-        setGescannt_am(paket.gescannt_am)
-        setGesamtAnzahl(paket.gesamtAnzahl ?? 32)
-        setAusstehend(paket.ausstehend ?? 0)
-        setSelectedTicker(paket.ergebnisse[0]?.ticker ?? null)
-      } else if (!paket.ok) {
-        setFehler(paket.fehler ?? 'Scan fehlgeschlagen.')
+      if (letztesPaket?.ok && letztesPaket.verbleibend && letztesPaket.verbleibend > 0) {
+        setAusstehend(letztesPaket.verbleibend)
       }
     } catch (e) {
       setFehler(String(e))
     } finally {
       setScanLaeuft(false)
+      setScanFortschritt(null)
       scanRef.current = false
     }
-  }, [])
+  }, [selectedTicker])
 
   // Deep Research
   const starteDeepResearch = useCallback(async (eintrag: NachkaufScanEintrag) => {
@@ -1766,9 +1789,11 @@ export function NachkaufRadarClient() {
             <div className="flex items-center gap-3">
               <div className="h-4 w-4 animate-spin rounded-full border-2 border-teal-500 border-t-transparent" />
               <div className="min-w-0 flex-1">
-                <p className="text-sm font-medium text-teal-300">Scan läuft …</p>
+                <p className="text-sm font-medium text-teal-300">
+                  Scan läuft …{scanFortschritt ? ` (${scanFortschritt})` : ''}
+                </p>
                 <p className="mt-0.5 text-xs text-[var(--app-text-muted)]">
-                  Jede Position wird nach Abschluss sofort gespeichert. Falls der Browser-Tab schließt, kannst du mit
+                  Je 2 Positionen pro Durchlauf — nach jedem Chunk sofort gespeichert. Tab offen lassen oder mit
                   &ldquo;Scan fortsetzen&rdquo; weitermachen.
                 </p>
                 {ergebnisse.length > 0 && (

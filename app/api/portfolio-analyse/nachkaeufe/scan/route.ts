@@ -3,7 +3,7 @@ import { laufeScan } from '@/lib/portfolio-analyse/nachkauf-radar/nachkauf-radar
 import type { NachkaufScanAnfrage } from '@/lib/portfolio-analyse/nachkauf-radar/nachkauf-radar-types'
 
 export const dynamic = 'force-dynamic'
-export const maxDuration = 300
+export const maxDuration = 60
 
 export async function POST(req: Request) {
   let body: unknown
@@ -17,6 +17,14 @@ export async function POST(req: Request) {
   const anfrage: NachkaufScanAnfrage = {
     ticker: row.ticker != null ? String(row.ticker).trim() || null : null,
     erzwingen: row.erzwingen === true,
+    offset: typeof row.offset === 'number' ? row.offset : Number(row.offset) || 0,
+    maxProAufruf:
+      typeof row.maxProAufruf === 'number'
+        ? row.maxProAufruf
+        : Number(row.maxProAufruf) > 0
+          ? Number(row.maxProAufruf)
+          : 2,
+    zeitBudgetMs: 55_000,
   }
 
   try {

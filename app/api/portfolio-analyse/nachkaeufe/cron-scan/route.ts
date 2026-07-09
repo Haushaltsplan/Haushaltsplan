@@ -20,11 +20,31 @@ export async function GET(req: Request) {
   }
 
   try {
-    const ergebnis = await laufeScan({ erzwinge: false, nurFehlende: true })
+    let offset = 0
+    let gescanntGesamt = 0
+    let gesamtAnzahl = 32
+    let runden = 0
+    const MAX_RUNDEN = 12
+
+    while (runden < MAX_RUNDEN) {
+      const ergebnis = await laufeScan({
+        erzwingen: false,
+        offset,
+        maxProAufruf: 3,
+        zeitBudgetMs: 45_000,
+      })
+      gesamtAnzahl = ergebnis.gesamtAnzahl
+      if (ergebnis.gescannt === 0) break
+      gescanntGesamt += ergebnis.gescannt
+      offset += ergebnis.gescannt
+      runden++
+      if ((ergebnis.verbleibend ?? 0) === 0) break
+    }
+
     return NextResponse.json({
       ok: true,
-      gescannt: ergebnis.gescannt,
-      gesamtAnzahl: ergebnis.gesamtAnzahl,
+      gescannt: gescanntGesamt,
+      gesamtAnzahl,
       zeitstempel: new Date().toISOString(),
     })
   } catch (e) {

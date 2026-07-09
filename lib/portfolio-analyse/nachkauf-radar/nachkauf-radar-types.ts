@@ -259,6 +259,10 @@ export type NachkaufScanPaket = {
   gesamtAnzahl: number
   gescannt: number
   ausstehend: number
+  /** Noch zu scannen in diesem Lauf (Chunking). */
+  verbleibend?: number
+  /** Scan wurde wegen Zeitlimit/Chunk vorzeitig beendet. */
+  teilscan?: boolean
   fehler?: string | null
 }
 
@@ -272,6 +276,12 @@ export type NachkaufScanAnfrage = {
   nurFehlende?: boolean
   /** Für Cron: erzwinge false ist default, nurFehlende true. */
   erzwinge?: boolean
+  /** Startindex in der zu scannenden Liste (Chunking). */
+  offset?: number
+  /** Max. Titel pro API-Aufruf (Vercel-Timeout-Schutz). */
+  maxProAufruf?: number
+  /** Server bricht ab, wenn Budget überschritten (ms). */
+  zeitBudgetMs?: number
 }
 
 /** Deep-Research-Memo für einen Titel (Stufe B). */

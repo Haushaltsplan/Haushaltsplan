@@ -461,13 +461,26 @@ export async function laufeScan(anfrage: NachkaufScanAnfrage): Promise<NachkaufS
   // Deep-Research-Cache vorab laden
   const deepResearchMap = await ladeAlleDeepResearch()
 
+  // Chunking: nur einen Teil pro API-Aufruf (Vercel-Timeout-Schutz)
+  const offset = Math.max(0, anfrage.offset ?? 0)
+  const maxProAufruf = Math.max(1, anfrage.maxProAufruf ?? zuScannen.length)
+  const zuScannenJetzt = zuScannen.slice(offset, offset + maxProAufruf)
+  const verbleibendNachChunk = Math.max(0, zuScannen.length - offset - zuScannenJetzt.length)
+  const zeitBudgetMs = anfrage.zeitBudgetMs ?? 240_000
+  const scanStart = Date.now()
+
   // Titel in Batches scannen — nach jedem Batch sofort in Supabase speichern
-  const BATCH_SIZE = 3
+  const BATCH_SIZE = 2
   let neuGescannt = 0
   const neueEintraege: NachkaufScanEintrag[] = []
+  let teilscan = verbleibendNachChunk > 0
 
-  for (let i = 0; i < zuScannen.length; i += BATCH_SIZE) {
-    const batch = zuScannen.slice(i, i + BATCH_SIZE)
+  for (let i = 0; i < zuScannenJetzt.length; i += BATCH_SIZE) {
+    if (Date.now() - scanStart > zeitBudgetMs) {
+      teilscan = true
+      break
+    }
+    const batch = zuScannenJetzt.slice(i, i + BATCH_SIZE)
     const batchErgebnisse = await Promise.allSettled(
       batch.map((p) => scanneEinenTitel({ position: p, deepResearchMap, batchKontext })),
     )
@@ -480,10 +493,15 @@ export async function laufeScan(anfrage: NachkaufScanAnfrage): Promise<NachkaufS
       neuGescannt += batchOk.length
       neueEintraege.push(...batchOk)
     }
-    if (i + BATCH_SIZE < zuScannen.length) {
-      await new Promise((res) => setTimeout(res, 1200))
+    if (i + BATCH_SIZE < zuScannenJetzt.length) {
+      await new Promise((res) => setTimeout(res, 800))
     }
   }
+
+  const verbleibend =
+    teilscan && neuGescannt < zuScannenJetzt.length
+      ? Math.max(0, zuScannen.length - offset - neuGescannt)
+      : verbleibendNachChunk
 
   // Score-Verlauf archivieren + Kaufhistorie-Cache aktualisieren
   if (neueEintraege.length > 0) {
@@ -515,5 +533,7 @@ export async function laufeScan(anfrage: NachkaufScanAnfrage): Promise<NachkaufS
     gesamtAnzahl,
     gescannt: neuGescannt,
     ausstehend,
+    verbleibend,
+    teilscan: verbleibend > 0,
   }
 }

@@ -1,4 +1,12 @@
 {
+  "functions": {
+    "app/api/portfolio-analyse/nachkaeufe/scan/route.ts": {
+      "maxDuration": 60
+    },
+    "app/api/portfolio-analyse/nachkaeufe/cron-scan/route.ts": {
+      "maxDuration": 300
+    }
+  },
   "crons": [
     {
       "path": "/api/portfolio-analyse/nachkaeufe/cron-scan",
