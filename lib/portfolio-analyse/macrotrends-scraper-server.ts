@@ -364,11 +364,19 @@ function staleFallback(url: string): string | null {
   return hit.html
 }
 
-async function ladeSeite(url: string, opts?: { forceRefresh?: boolean }): Promise<string | null> {
+async function ladeSeite(
+  url: string,
+  opts?: { forceRefresh?: boolean; nurCache?: boolean },
+): Promise<string | null> {
   const hit = pageCache.get(url)
   const now = Date.now()
   if (!opts?.forceRefresh && hit && now - hit.at < (hit.fehler ? FEHLER_CACHE_MS : CACHE_MS)) {
     return hit.html
+  }
+
+  if (opts?.nurCache) {
+    if (hit?.html && !hit.fehler) return hit.html
+    return staleFallback(url)
   }
 
   const html = await rateLimitedFetch(url)
@@ -584,16 +592,25 @@ async function ladeStatementRoh(
   ident: MacrotrendsIdent,
   statement: StatementSeite,
   frequenz: FundamentalFrequenz = 'jahr',
+  opts?: { nurCache?: boolean },
 ): Promise<RohZeile[] | null> {
   const freqParam = frequenz === 'quartal' ? '?freq=Q' : ''
   const url = `${BASE}/stocks/charts/${ident.ticker}/${ident.slug}/${statement}${freqParam}`
 
-  for (let versuch = 0; versuch < 2; versuch++) {
-    const html = await ladeSeite(url, versuch > 0 ? { forceRefresh: true } : undefined)
+  const maxVersuche = opts?.nurCache ? 1 : 2
+  for (let versuch = 0; versuch < maxVersuche; versuch++) {
+    const html = await ladeSeite(
+      url,
+      opts?.nurCache
+        ? { nurCache: true }
+        : versuch > 0
+          ? { forceRefresh: true }
+          : undefined,
+    )
     if (!html) continue
     const roh = parseOriginalData(html)
     if (roh?.length) return roh
-    pageCache.delete(url)
+    if (!opts?.nurCache) pageCache.delete(url)
   }
   return null
 }
@@ -779,12 +796,14 @@ export type MacrotrendsFundamentalRoh = {
 export async function ladeMacrotrendsFundamentaldaten(
   ident: MacrotrendsIdent,
   frequenz: FundamentalFrequenz = 'jahr',
+  opts?: { nurCache?: boolean },
 ): Promise<MacrotrendsFundamentalRoh | null> {
+  const mtOpts = opts?.nurCache ? { nurCache: true as const } : undefined
   const [ratiosRoh, incomeRoh, cfRoh, bsRoh] = await Promise.all([
-    ladeStatementRoh(ident, 'financial-ratios', frequenz),
-    ladeStatementRoh(ident, 'income-statement', frequenz),
-    ladeStatementRoh(ident, 'cash-flow-statement', frequenz),
-    ladeStatementRoh(ident, 'balance-sheet', frequenz),
+    ladeStatementRoh(ident, 'financial-ratios', frequenz, mtOpts),
+    ladeStatementRoh(ident, 'income-statement', frequenz, mtOpts),
+    ladeStatementRoh(ident, 'cash-flow-statement', frequenz, mtOpts),
+    ladeStatementRoh(ident, 'balance-sheet', frequenz, mtOpts),
   ])
 
   const ratios = ratiosRoh ?? []

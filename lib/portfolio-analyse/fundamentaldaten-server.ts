@@ -357,6 +357,7 @@ export async function ladeFundamentaldaten(anfrage: FundamentaldatenAnfrage): Pr
       symbolYahoo,
       isin: isinNormEarly ?? anfrage.isin?.trim().toUpperCase() ?? null,
       firmenname: anfrage.name ?? ident.firmenname,
+      segmentNurCloud: anfrage.segmentNurCloud === true,
     }),
   ])
 

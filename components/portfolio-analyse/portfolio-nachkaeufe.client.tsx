@@ -1516,14 +1516,13 @@ export function NachkaufRadarClient() {
     }
   }
 
-  // Scan starten (Chunking: je 2 Titel pro Request — Vercel-Timeout-Schutz)
+  // Scan starten (1 Titel pro Request — Vercel-Timeout-Schutz)
   const starteNeuenScan = useCallback(async (erzwingen = true) => {
     if (scanRef.current) return
     scanRef.current = true
     setScanLaeuft(true)
     setFehler(null)
     setScanFortschritt(null)
-    const CHUNK = 2
     let offset = 0
     let letztesPaket: NachkaufScanPaket | null = null
     try {
@@ -1531,7 +1530,7 @@ export function NachkaufRadarClient() {
         const res = await fetch('/api/portfolio-analyse/nachkaeufe/scan', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ erzwingen, offset, maxProAufruf: CHUNK }),
+          body: JSON.stringify({ erzwingen, offset }),
         })
         if (!res.ok && res.status !== 502) {
           const text = await res.text().catch(() => `HTTP ${res.status}`)
@@ -1539,14 +1538,13 @@ export function NachkaufRadarClient() {
         }
         const paket = (await res.json()) as NachkaufScanPaket
         letztesPaket = paket
-        if (paket.ok && paket.ergebnisse.length > 0) {
+        if (paket.ergebnisse.length > 0) {
           setErgebnisse(paket.ergebnisse)
-          setMonatsEmpfehlung(paket.monatsEmpfehlung)
           setGescannt_am(paket.gescannt_am)
           setGesamtAnzahl(paket.gesamtAnzahl ?? 32)
           setAusstehend(paket.ausstehend ?? 0)
-          if (!selectedTicker) setSelectedTicker(paket.ergebnisse[0]?.ticker ?? null)
-        } else if (!paket.ok) {
+        }
+        if (!paket.ok) {
           setFehler(paket.fehler ?? 'Scan fehlgeschlagen.')
           break
         }
@@ -1559,10 +1557,36 @@ export function NachkaufRadarClient() {
 
         if (verbleibend <= 0 || gescannt === 0) break
         offset += gescannt
-        await new Promise((r) => setTimeout(r, 400))
+        await new Promise((r) => setTimeout(r, 300))
       }
-      if (letztesPaket?.ok && letztesPaket.verbleibend && letztesPaket.verbleibend > 0) {
-        setAusstehend(letztesPaket.verbleibend)
+
+      // Abschließen: Ranking, Insider, Depot-Gewichte
+      if (letztesPaket?.ok) {
+        setScanFortschritt('Abschließen …')
+        const fin = await fetch('/api/portfolio-analyse/nachkaeufe/scan', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ abschliessen: true }),
+        })
+        if (fin.ok) {
+          const paket = (await fin.json()) as NachkaufScanPaket
+          if (paket.ergebnisse.length > 0) {
+            setErgebnisse(paket.ergebnisse)
+            setMonatsEmpfehlung(paket.monatsEmpfehlung)
+            setGescannt_am(paket.gescannt_am)
+            setAusstehend(paket.ausstehend ?? 0)
+            setSelectedTicker((prev) => prev ?? paket.ergebnisse[0]?.ticker ?? null)
+          }
+        } else {
+          const fresh = await fetch('/api/portfolio-analyse/nachkaeufe/ergebnisse')
+          if (fresh.ok) {
+            const paket = (await fresh.json()) as NachkaufErgebnissePaket
+            if (paket.ergebnisse.length > 0) {
+              setErgebnisse(paket.ergebnisse)
+              setMonatsEmpfehlung(paket.monatsEmpfehlung)
+            }
+          }
+        }
       }
     } catch (e) {
       setFehler(String(e))
@@ -1571,7 +1595,7 @@ export function NachkaufRadarClient() {
       setScanFortschritt(null)
       scanRef.current = false
     }
-  }, [selectedTicker])
+  }, [])
 
   // Deep Research
   const starteDeepResearch = useCallback(async (eintrag: NachkaufScanEintrag) => {
@@ -1793,8 +1817,8 @@ export function NachkaufRadarClient() {
                   Scan läuft …{scanFortschritt ? ` (${scanFortschritt})` : ''}
                 </p>
                 <p className="mt-0.5 text-xs text-[var(--app-text-muted)]">
-                  Je 2 Positionen pro Durchlauf — nach jedem Chunk sofort gespeichert. Tab offen lassen oder mit
-                  &ldquo;Scan fortsetzen&rdquo; weitermachen.
+                  Macrotrends-Live + gespeicherte Segment-Daten. Je 1 Position pro Durchlauf — Fortschritt wird
+                  laufend gespeichert. Tab offen lassen oder mit &ldquo;Scan fortsetzen&rdquo; weitermachen.
                 </p>
                 {ergebnisse.length > 0 && (
                   <div className="mt-2 flex items-center gap-2">

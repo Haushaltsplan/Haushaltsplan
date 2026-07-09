@@ -160,6 +160,7 @@ async function scanneEinenTitel(opts: {
       name,
       symbolYahoo,
       symbolCandidates: kenntnis?.symbolCandidates ?? undefined,
+      segmentNurCloud: true,
     })
   } catch (e) {
     console.warn(`[nachkauf-radar] Fundamentaldaten für ${ticker} fehlgeschlagen:`, e)
@@ -173,7 +174,9 @@ async function scanneEinenTitel(opts: {
 
   const [zusatzRoh, insiderKaeufe] = await Promise.all([
     ladeNachkaufZusatzSignale({ paket, ticker, symbolYahoo, isin }),
-    ladeInsiderKaeufeFuerPosition(position, symbolYahoo).catch(() => [] as import('./nachkauf-radar-types').InsiderKauf[]),
+    ladeInsiderKaeufeFuerPosition(position, symbolYahoo).catch(
+      () => [] as import('./nachkauf-radar-types').InsiderKauf[],
+    ),
   ])
 
   const historisch = berechneHistorischeBewertung(paket)
@@ -458,6 +461,32 @@ export async function laufeScan(anfrage: NachkaufScanAnfrage): Promise<NachkaufS
     }
   }
 
+  // Scan abschließen: volle Anreicherung ohne neuen Titel-Scan
+  if (anfrage.abschliessen) {
+    const alle = await ladeNachkaufScanAusCloud()
+    const deepMapAktuell = await ladeAlleDeepResearch()
+    const mitDeep = alle.map((e) => ({
+      ...e,
+      tiefenAnalyse: deepMapAktuell.get(e.ticker.toUpperCase()) ?? null,
+    }))
+    await Promise.allSettled([
+      aktualisiereKaufhistorieCache(NACHKAUF_RADAR_WHITELIST.map((p) => p.isin)),
+    ])
+    await reichereErgebnisseAn(mitDeep, true, batchKontext)
+    mitDeep.sort((a, b) => b.score - a.score)
+    return {
+      ok: true,
+      ergebnisse: mitDeep,
+      monatsEmpfehlung: berechneMonatsEmpfehlung(mitDeep),
+      gescannt_am: mitDeep[0]?.gescannt_am ?? new Date().toISOString(),
+      gesamtAnzahl,
+      gescannt: 0,
+      ausstehend: Math.max(0, gesamtAnzahl - alle.length),
+      verbleibend: 0,
+      teilscan: false,
+    }
+  }
+
   // Deep-Research-Cache vorab laden
   const deepResearchMap = await ladeAlleDeepResearch()
 
@@ -468,9 +497,10 @@ export async function laufeScan(anfrage: NachkaufScanAnfrage): Promise<NachkaufS
   const verbleibendNachChunk = Math.max(0, zuScannen.length - offset - zuScannenJetzt.length)
   const zeitBudgetMs = anfrage.zeitBudgetMs ?? 240_000
   const scanStart = Date.now()
+  const leicht = anfrage.leicht !== false
 
-  // Titel in Batches scannen — nach jedem Batch sofort in Supabase speichern
-  const BATCH_SIZE = 2
+  // Titel scannen — nach jedem Titel sofort in Supabase speichern
+  const BATCH_SIZE = 1
   let neuGescannt = 0
   const neueEintraege: NachkaufScanEintrag[] = []
   let teilscan = verbleibendNachChunk > 0
@@ -503,15 +533,30 @@ export async function laufeScan(anfrage: NachkaufScanAnfrage): Promise<NachkaufS
       ? Math.max(0, zuScannen.length - offset - neuGescannt)
       : verbleibendNachChunk
 
-  // Score-Verlauf archivieren + Kaufhistorie-Cache aktualisieren
+  // Score-Verlauf archivieren (Kaufhistorie erst beim Abschließen)
   if (neueEintraege.length > 0) {
-    await Promise.allSettled([
-      speichereVerlaufPunkte(neueEintraege),
-      aktualisiereKaufhistorieCache(NACHKAUF_RADAR_WHITELIST.map((p) => p.isin)),
-    ]).catch((e) => console.warn('[nachkauf-scan] Post-Scan-Cache fehlgeschlagen:', e))
+    await speichereVerlaufPunkte(neueEintraege).catch((e) =>
+      console.warn('[nachkauf-scan] Verlauf fehlgeschlagen:', e),
+    )
   }
 
-  // Vollständiges, aktuelles Ergebnis aus Supabase laden
+  // Leicht-Modus: Zwischen-Chunks ohne Ranking/Insider-Anreicherung (Datenqualität unverändert)
+  if (leicht) {
+    const alle = await ladeNachkaufScanAusCloud()
+    return {
+      ok: true,
+      ergebnisse: alle,
+      monatsEmpfehlung: berechneMonatsEmpfehlung(alle),
+      gescannt_am: alle[0]?.gescannt_am ?? new Date().toISOString(),
+      gesamtAnzahl,
+      gescannt: neuGescannt,
+      ausstehend: Math.max(0, gesamtAnzahl - alle.length),
+      verbleibend,
+      teilscan: verbleibend > 0,
+    }
+  }
+
+  // Vollständiges Ergebnis mit Anreicherung
   const alle = await ladeNachkaufScanAusCloud()
   const deepMapAktuell = await ladeAlleDeepResearch()
   const mitDeep = alle.map((e) => ({

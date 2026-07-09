@@ -180,6 +180,8 @@ export type FundamentaldatenAnfrage = {
   symbolCandidates?: string[]
   tickerOverride?: string | null
   frequenz?: FundamentalFrequenz
+  /** Segment-Struktur nur aus Supabase-Cache (segment_struktur_cache), kein Live-MS-Scrape. */
+  segmentNurCloud?: boolean
 }
 
 /** Spezial-Schlüssel für TTM- und Schätzungs-Spalten */

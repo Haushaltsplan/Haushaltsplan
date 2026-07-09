@@ -282,6 +282,10 @@ export type NachkaufScanAnfrage = {
   maxProAufruf?: number
   /** Server bricht ab, wenn Budget überschritten (ms). */
   zeitBudgetMs?: number
+  /** Kein Ranking/Insider-Anreichern am Ende des Chunks (nur Orchestrierung, Daten bleiben voll). */
+  leicht?: boolean
+  /** Scan abschließen: Kaufhistorie-Cache + volle Anreicherung. */
+  abschliessen?: boolean
 }
 
 /** Deep-Research-Memo für einen Titel (Stufe B). */

@@ -10,6 +10,7 @@ import { ladeEarningsBeatMissHistorie } from '@/lib/portfolio-analyse/earnings-b
 import { ladeEuFundamentalKennzahlen } from '@/lib/portfolio-analyse/marketscreener-fundamental-kennzahlen-server'
 import { ladeFinvizKennzahlen } from '@/lib/portfolio-analyse/momentum-trader/momentum-finviz-server'
 import { ladeGescrapteSegmentStruktur } from '@/lib/portfolio-analyse/segment-struktur-scraper-server'
+import { ladeSegmentStrukturAusCloud } from '@/lib/portfolio-analyse/segment-struktur-cloud-server'
 import { ladeSecStrukturExtraktion } from '@/lib/portfolio-analyse/sec-edgar-struktur-server'
 import { ladeYahooHolders } from '@/lib/portfolio-analyse/yahoo-holders-server'
 import { ladeYahooOptionsIv } from '@/lib/portfolio-analyse/yahoo-options-iv-server'
@@ -19,16 +20,32 @@ function istEuIsin(isin: string | null | undefined): boolean {
   return i.startsWith('DE') || i.startsWith('NL') || i.startsWith('FR') || i.startsWith('CH') || i.startsWith('GB')
 }
 
-export async function ladeFundamentaldatenErweitert(opts: {
-  ticker: string
-  symbolYahoo: string | null
-  isin: string | null
-  firmenname: string
-}): Promise<FundamentaldatenErweitert> {
+export async function ladeFundamentaldatenErweitert(
+  opts: {
+    ticker: string
+    symbolYahoo: string | null
+    isin: string | null
+    firmenname: string
+    /** Segment-Historie aus segment_struktur_cache (lokal vorgewärmt), kein Live-Scrape. */
+    segmentNurCloud?: boolean
+  },
+): Promise<FundamentaldatenErweitert> {
   const ticker = opts.ticker.trim().toUpperCase()
   const symbol = opts.symbolYahoo?.trim() || ticker
   const isin = opts.isin?.trim().toUpperCase() ?? ''
   const isEu = istEuIsin(isin)
+
+  const segmentPromise =
+    isin.length >= 10 && opts.segmentNurCloud
+      ? ladeSegmentStrukturAusCloud(isin)
+      : isin.length >= 10 || (!ticker.includes('.') && Boolean(symbol))
+        ? ladeGescrapteSegmentStruktur({
+            isin: isin || null,
+            name: opts.firmenname,
+            symbolYahoo: symbol,
+            ticker,
+          })
+        : Promise.resolve(null)
 
   const [
     dividenden,
@@ -48,14 +65,7 @@ export async function ladeFundamentaldatenErweitert(opts: {
     !ticker.includes('.') ? ladeInsiderNettoHandel(ticker) : Promise.resolve(null),
     ticker ? ladeEarningsBeatMissHistorie({ ticker, symbolYahoo: symbol, isin, limit: 8 }) : Promise.resolve(null),
     !ticker.includes('.') ? ladeSecStrukturExtraktion(ticker) : Promise.resolve(null),
-    isin.length >= 10 || (!ticker.includes('.') && Boolean(symbol))
-      ? ladeGescrapteSegmentStruktur({
-          isin: isin || null,
-          name: opts.firmenname,
-          symbolYahoo: symbol,
-          ticker,
-        })
-      : Promise.resolve(null),
+    segmentPromise,
     isEu && isin.length >= 10
       ? ladeEuFundamentalKennzahlen(isin, opts.firmenname, symbol)
       : Promise.resolve(null),
