@@ -105,6 +105,7 @@ function NachkaufPerformancePanel({ daten }: { daten: NachkaufPerformanceUebersi
               <tr className="text-[var(--app-text-muted)]">
                 <th className="pb-2 pr-3 font-medium">Monat</th>
                 <th className="pb-2 pr-3 font-medium">Ticker</th>
+                <th className="pb-2 pr-3 font-medium">Betrag</th>
                 <th className="pb-2 pr-3 font-medium">Score</th>
                 <th className="pb-2 pr-3 font-medium">6M</th>
                 <th className="pb-2 font-medium">α vs. SPY</th>
@@ -115,6 +116,9 @@ function NachkaufPerformancePanel({ daten }: { daten: NachkaufPerformanceUebersi
                 <tr key={`${e.monat}-${e.ticker}`} className="border-t border-white/5">
                   <td className="py-2 pr-3 text-[var(--app-text-muted)]">{e.monat}</td>
                   <td className="py-2 pr-3 font-medium text-[var(--app-text)]">{e.ticker}</td>
+                  <td className="py-2 pr-3 tabular-nums text-[var(--app-text-muted)]">
+                    {e.empfohlenBetragEur} €
+                  </td>
                   <td className="py-2 pr-3 tabular-nums">
                     {e.score}
                     {e.kaufTrigger ? <span className="ml-1 text-amber-400">⚡</span> : null}
@@ -1475,6 +1479,12 @@ export function NachkaufRadarClient() {
             setVerkaufAllokation(daten.verkauf_allokation ?? [])
           }
         }
+
+        const perfRes = await fetch('/api/portfolio-analyse/nachkaeufe/performance')
+        if (perfRes.ok) {
+          const perf = await perfRes.json()
+          if (perf.ok && perf.daten) setPerformance(perf.daten as NachkaufPerformanceUebersicht)
+        }
       } catch {
         // ignorieren — leerer Zustand wird angezeigt
       } finally {
@@ -1485,14 +1495,13 @@ export function NachkaufRadarClient() {
   }, [])
 
   useEffect(() => {
-    if (ergebnisse.length === 0) return
     void fetch('/api/portfolio-analyse/nachkaeufe/performance')
       .then((r) => r.json())
       .then((j) => {
         if (j.ok && j.daten) setPerformance(j.daten as NachkaufPerformanceUebersicht)
       })
       .catch(() => {})
-  }, [ergebnisse.length, kaufempfehlungText])
+  }, [kaufempfehlungText])
 
   async function starteKaufempfehlung() {
     setKaufempfehlungLaeuft(true)
@@ -1997,7 +2006,7 @@ export function NachkaufRadarClient() {
           </div>
         )}
 
-        {performance && (performance.anzahlEmpfehlungen > 0 || ergebnisse.length > 0) && !scanLaeuft && (
+        {performance && performance.anzahlEmpfehlungen > 0 && !scanLaeuft && (
           <NachkaufPerformancePanel daten={performance} />
         )}
 
