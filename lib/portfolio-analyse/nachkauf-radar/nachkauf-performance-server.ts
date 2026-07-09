@@ -8,6 +8,7 @@ import { isinKenntnis } from '@/lib/portfolio-analyse/isin-kenntnisse'
 import { ladeMomentumLiveKurs } from '@/lib/portfolio-analyse/momentum-trader/momentum-yahoo-quote-server'
 import { yahooSchlusskursAm } from '@/lib/portfolio-analyse/yahoo-corporate-actions-client'
 import { createSupabaseAdmin } from '@/lib/supabase-admin'
+import { NACHKAUF_RADAR_WHITELIST } from './nachkauf-radar-whitelist'
 import { ladeNachkaufScanAusCloud } from './nachkauf-radar-db-server'
 import type { NachkaufScanEintrag, SparplanPosten } from './nachkauf-radar-types'
 import type {
@@ -133,6 +134,73 @@ async function yahooSymbol(ticker: string, isin: string | null): Promise<string>
   return k?.symbolYahoo ?? ticker
 }
 
+type TrackingMeta = {
+  ticker: string
+  isin: string | null
+  name: string
+  score: number
+  ampel: string | null
+  kaufTrigger: boolean
+  forwardPe: number | null
+  premiumDiscountPct: number | null
+}
+
+function tickerAusWhitelist(isin: string): string {
+  const k = isinKenntnis(isin)
+  return (k?.symbolYahoo?.replace(/\.[^.]+$/, '') ?? isin).toUpperCase()
+}
+
+/** Scan-Eintrag oder Whitelist-Fallback für Tracking-Snapshot. */
+function metaFuerPosten(
+  posten: SparplanPosten,
+  scanMap: Map<string, NachkaufScanEintrag>,
+): TrackingMeta | null {
+  const key = posten.ticker.toUpperCase()
+  let e =
+    scanMap.get(key) ??
+    [...scanMap.values()].find(
+      (v) =>
+        v.ticker.toUpperCase() === key ||
+        v.isin.toUpperCase() === key ||
+        v.name.toLowerCase() === (posten.name ?? '').toLowerCase(),
+    )
+
+  if (e) {
+    return {
+      ticker: e.ticker.toUpperCase(),
+      isin: e.isin || null,
+      name: e.name,
+      score: e.score,
+      ampel: e.ampel,
+      kaufTrigger: e.kaufTriggerAusgeloest,
+      forwardPe: e.bewertung.forwardPe,
+      premiumDiscountPct: e.bewertung.premiumDiscountPct,
+    }
+  }
+
+  const wl = NACHKAUF_RADAR_WHITELIST.find((p) => {
+    const t = tickerAusWhitelist(p.isin)
+    return t === key || p.isin === posten.ticker || p.name.toLowerCase() === (posten.name ?? '').toLowerCase()
+  })
+  if (!wl) return null
+
+  return {
+    ticker: tickerAusWhitelist(wl.isin),
+    isin: wl.isin,
+    name: wl.name,
+    score: 0,
+    ampel: null,
+    kaufTrigger: false,
+    forwardPe: null,
+    premiumDiscountPct: null,
+  }
+}
+
+export type EmpfehlungTrackingErgebnis = {
+  gespeichert: number
+  fehler?: string
+}
+
 /** Snapshots beim Speichern der Monats-Kaufempfehlung. */
 export async function speichereEmpfehlungTracking(opts: {
   monat: string
@@ -140,68 +208,68 @@ export async function speichereEmpfehlungTracking(opts: {
   scanMap: Map<string, NachkaufScanEintrag>
   ownerUserId?: string | null
   empfohlenAm?: string
-}): Promise<void> {
-  if (!istKonfiguriert() || opts.basisAllokation.length === 0) return
+}): Promise<EmpfehlungTrackingErgebnis> {
+  if (!istKonfiguriert() || opts.basisAllokation.length === 0) {
+    return { gespeichert: 0 }
+  }
 
   const ownerUserId = opts.ownerUserId ?? (await ladePortfolioOwnerUserId())
   if (!ownerUserId) {
-    console.warn('[nachkauf-performance] Kein owner_user_id — Tracking übersprungen')
-    return
+    return { gespeichert: 0, fehler: 'Kein owner_user_id — Tracking übersprungen' }
   }
 
   const jetzt = opts.empfohlenAm ?? new Date().toISOString()
   const zeilen: Record<string, unknown>[] = []
 
   for (const posten of opts.basisAllokation) {
-    const e = opts.scanMap.get(posten.ticker.toUpperCase())
-    if (!e) continue
-    const sym = await yahooSymbol(e.ticker, e.isin)
+    if (posten.betragEur <= 0) continue
+    const meta = metaFuerPosten(posten, opts.scanMap)
+    if (!meta) continue
+    const sym = await yahooSymbol(meta.ticker, meta.isin)
     const live = await ladeMomentumLiveKurs(sym).catch(() => null)
     zeilen.push({
       owner_user_id: ownerUserId,
       monat: opts.monat,
-      ticker: e.ticker.toUpperCase(),
-      isin: e.isin || null,
-      name: e.name,
+      ticker: meta.ticker,
+      isin: meta.isin,
+      name: meta.name,
       empfohlen_betrag_eur: posten.betragEur,
-      score: e.score,
-      ampel: e.ampel,
-      kauf_trigger: e.kaufTriggerAusgeloest,
-      forward_pe: e.bewertung.forwardPe,
-      premium_discount_pct: e.bewertung.premiumDiscountPct,
+      score: meta.score,
+      ampel: meta.ampel,
+      kauf_trigger: meta.kaufTrigger,
+      forward_pe: meta.forwardPe,
+      premium_discount_pct: meta.premiumDiscountPct,
       kurs_usd: live?.preis ?? null,
       empfohlen_am: jetzt,
     })
   }
 
-  if (zeilen.length === 0) return
+  if (zeilen.length === 0) {
+    return { gespeichert: 0, fehler: 'Keine Tracking-Zeilen aus Allokation ableitbar' }
+  }
+
   const { error } = await admin()
     .from(TABLE)
     .upsert(zeilen, { onConflict: 'owner_user_id,monat,ticker' })
-  if (error) console.warn('[nachkauf-performance] Snapshot speichern:', error.message)
+  if (error) {
+    const msg = error.message
+    console.warn('[nachkauf-performance] Snapshot speichern:', msg)
+    return { gespeichert: 0, fehler: msg }
+  }
+  return { gespeichert: zeilen.length }
 }
 
 /**
  * Fehlende Tracking-Zeilen aus gespeicherter Kaufempfehlung nachziehen
  * (z. B. wenn beim ersten Speichern owner_user_id fehlte).
  */
-export async function backfillEmpfehlungTracking(monat?: string): Promise<number> {
-  if (!istKonfiguriert()) return 0
-  const ownerUserId = await ladePortfolioOwnerUserId()
-  if (!ownerUserId) return 0
-
-  const zielMonat = monat ?? new Date().toISOString().slice(0, 7)
-
-  const { data: empRow } = await admin()
-    .from('nachkauf_kaufempfehlung')
-    .select('monat, basis_allokation, erstellt_am')
-    .eq('monat', zielMonat)
-    .order('erstellt_am', { ascending: false })
-    .limit(1)
-    .maybeSingle()
-
-  const allokation = (empRow as { basis_allokation?: SparplanPosten[] } | null)?.basis_allokation
-  if (!allokation?.length) return 0
+async function backfillMonat(
+  zielMonat: string,
+  ownerUserId: string,
+  empRow: { basis_allokation?: SparplanPosten[]; erstellt_am?: string },
+): Promise<number> {
+  const allokation = empRow.basis_allokation?.filter((p) => p.betragEur > 0) ?? []
+  if (allokation.length === 0) return 0
 
   const { data: vorhanden } = await admin()
     .from(TABLE)
@@ -217,17 +285,63 @@ export async function backfillEmpfehlungTracking(monat?: string): Promise<number
 
   const scan = await ladeNachkaufScanAusCloud()
   const scanMap = new Map(scan.map((e) => [e.ticker.toUpperCase(), e]))
-  const erstelltAm =
-    (empRow as { erstellt_am?: string } | null)?.erstellt_am ?? new Date().toISOString()
+  const erstelltAm = empRow.erstellt_am ?? new Date().toISOString()
 
-  await speichereEmpfehlungTracking({
+  const ergebnis = await speichereEmpfehlungTracking({
     monat: zielMonat,
     basisAllokation: fehlend,
     scanMap,
     ownerUserId,
     empfohlenAm: erstelltAm,
   })
-  return fehlend.length
+  return ergebnis.gespeichert
+}
+
+export async function backfillEmpfehlungTracking(opts?: {
+  monat?: string
+  ownerUserId?: string | null
+}): Promise<number> {
+  if (!istKonfiguriert()) return 0
+  const ownerUserId = opts?.ownerUserId ?? (await ladePortfolioOwnerUserId())
+  if (!ownerUserId) return 0
+
+  if (opts?.monat) {
+    const { data: empRow } = await admin()
+      .from('nachkauf_kaufempfehlung')
+      .select('monat, basis_allokation, erstellt_am, owner_user_id')
+      .eq('monat', opts.monat)
+      .order('erstellt_am', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+    if (!empRow) return 0
+    const oid = (empRow as { owner_user_id?: string }).owner_user_id
+      ? String((empRow as { owner_user_id: string }).owner_user_id)
+      : ownerUserId
+    return backfillMonat(opts.monat, oid, empRow as { basis_allokation?: SparplanPosten[]; erstellt_am?: string })
+  }
+
+  const { data: empRows } = await admin()
+    .from('nachkauf_kaufempfehlung')
+    .select('monat, basis_allokation, erstellt_am, owner_user_id')
+    .order('erstellt_am', { ascending: false })
+    .limit(24)
+
+  let gesamt = 0
+  const erledigt = new Set<string>()
+  for (const row of empRows ?? []) {
+    const r = row as {
+      monat: string
+      basis_allokation?: SparplanPosten[]
+      erstellt_am?: string
+      owner_user_id?: string
+    }
+    const oid = r.owner_user_id ? String(r.owner_user_id) : ownerUserId
+    const key = `${oid}:${r.monat}`
+    if (erledigt.has(key)) continue
+    erledigt.add(key)
+    gesamt += await backfillMonat(r.monat, oid, r)
+  }
+  return gesamt
 }
 
 async function aktualisiereEineZeile(row: TrackingRow): Promise<void> {
@@ -375,7 +489,7 @@ async function berechneScoreSignalBacktest(): Promise<NachkaufScoreBucketStat[]>
     })
 }
 
-export async function ladeNachkaufPerformance(): Promise<NachkaufPerformanceUebersicht> {
+export async function ladeNachkaufPerformance(ownerUserId?: string | null): Promise<NachkaufPerformanceUebersicht> {
   if (!istKonfiguriert()) {
     return {
       anzahlEmpfehlungen: 0,
@@ -392,16 +506,18 @@ export async function ladeNachkaufPerformance(): Promise<NachkaufPerformanceUebe
     }
   }
 
-  await backfillEmpfehlungTracking().catch((e) =>
+  const resolvedOwner = ownerUserId ?? (await ladePortfolioOwnerUserId())
+
+  await backfillEmpfehlungTracking({ ownerUserId: resolvedOwner }).catch((e) =>
     console.warn('[nachkauf-performance] Backfill:', e),
   )
 
   await aktualisiereFaelligeOutcomes()
 
-  const ownerUserId = await ladePortfolioOwnerUserId()
   let query = admin().from(TABLE).select('*').order('empfohlen_am', { ascending: false }).limit(48)
-  if (ownerUserId) query = query.eq('owner_user_id', ownerUserId)
-  const { data } = await query
+  if (resolvedOwner) query = query.eq('owner_user_id', resolvedOwner)
+  const { data, error } = await query
+  if (error) console.warn('[nachkauf-performance] Laden:', error.message)
 
   const eintraege = ((data ?? []) as TrackingRow[]).map(rowZuEintrag)
   const mit6m = eintraege.filter((e) => e.rendite6mPct != null)

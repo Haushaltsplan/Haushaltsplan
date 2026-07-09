@@ -7,6 +7,12 @@ export function bearerAusRequest(req: Request): string | null {
   return m ? m[1].trim() : null
 }
 
+/** Von proxy.ts gesetzt nach erfolgreicher Auth-Prüfung. */
+export function ownerUserIdAusRequest(req: Request): string | null {
+  const id = req.headers.get('x-user-id')?.trim()
+  return id || null
+}
+
 /**
  * Supabase-Client, der im Namen des angemeldeten Nutzers arbeitet (sein Access-Token).
  * Dadurch greift Row Level Security normal (owner_user_id = auth.uid()) — KEIN Service-Role,

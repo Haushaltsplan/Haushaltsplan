@@ -142,7 +142,15 @@ function NachkaufPerformancePanel({ daten }: { daten: NachkaufPerformanceUebersi
 
       {daten.anzahlEmpfehlungen === 0 && (
         <p className="mt-3 text-xs text-[var(--app-text-muted)]">
-          Noch keine getrackten Empfehlungen — nach der ersten Kaufempfehlung startet das Tracking automatisch.
+          Noch keine getrackten Empfehlungen — nach jeder Portfolio-Empfehlung (Kauf-Posten) wird das
+          Tracking automatisch befüllt. Seite neu laden, falls die Empfehlung bereits erstellt wurde.
+        </p>
+      )}
+
+      {daten.anzahlEmpfehlungen > 0 && daten.ausgewertet6m === 0 && (
+        <p className="mt-3 text-xs text-[var(--app-text-muted)]">
+          {daten.anzahlEmpfehlungen} Kauf-Empfehlung{daten.anzahlEmpfehlungen === 1 ? '' : 'en'} im Tracking —
+          6M/12M-Alpha vs. SPY wird erst nach Ablauf der Frist berechnet (Status „offen“).
         </p>
       )}
     </PaCard>
@@ -1503,6 +1511,9 @@ export function NachkaufRadarClient() {
       }
       setKaufempfehlungText(daten.kiEmpfehlungText)
       setKaufempfehlungAllokation(daten.basisAllokation ?? [])
+      if (daten.trackingFehler && (daten.basisAllokation?.length ?? 0) > 0) {
+        console.warn('[Nachkauf] Performance-Tracking:', daten.trackingFehler)
+      }
       const perfRes = await fetch('/api/portfolio-analyse/nachkaeufe/performance')
       if (perfRes.ok) {
         const perf = await perfRes.json()
@@ -1986,7 +1997,7 @@ export function NachkaufRadarClient() {
           </div>
         )}
 
-        {performance && ergebnisse.length > 0 && !scanLaeuft && (
+        {performance && (performance.anzahlEmpfehlungen > 0 || ergebnisse.length > 0) && !scanLaeuft && (
           <NachkaufPerformancePanel daten={performance} />
         )}
 

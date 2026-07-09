@@ -1,14 +1,16 @@
 import { NextResponse } from 'next/server'
 
 import { ladeNachkaufPerformance } from '@/lib/portfolio-analyse/nachkauf-radar/nachkauf-performance-server'
+import { ownerUserIdAusRequest } from '@/lib/supabase-user'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 120
 
 /** GET — Empfehlungs-Performance (6M/12M vs. SPY) + Score-Signal-Backtest. */
-export async function GET() {
+export async function GET(req: Request) {
   try {
-    const daten = await ladeNachkaufPerformance()
+    const ownerUserId = ownerUserIdAusRequest(req)
+    const daten = await ladeNachkaufPerformance(ownerUserId)
     return NextResponse.json({ ok: true, daten })
   } catch (e) {
     console.error('[nachkauf-performance]', e)
