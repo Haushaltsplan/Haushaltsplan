@@ -1,7 +1,7 @@
 /**
  * Nachkauf-Radar — KI-gestützte Kaufempfehlung (Stufe C).
  *
- * Nimmt Scan-Ergebnisse mit Score ≥90 (oder ≥80 + Kaufzone) + Deep Research,
+ * Nimmt strenge Kauf-Kandidaten (Grün + Score-Floor, oder Kaufzone) mit Deep Research,
  * kombiniert sie mit der regelbasierten Allokation und lässt Gemini Pro
  * eine finale, begründete Kaufempfehlung für das Monatsbudget erstellen.
  */
@@ -22,10 +22,15 @@ import {
 import { disziplinSparplanFaktor } from './nachkauf-disziplin-server'
 
 const DEFAULT_BUDGET_EUR = 500
-/** Standard-Schwelle für Kaufempfehlung ohne aktiven Kauftrigger. */
-export const MIN_SCORE_KAUF_STANDARD = 90
-/** Niedrigere Schwelle wenn Kaufzone (Whitelist-Trigger) aktiv ist. */
-export const MIN_SCORE_KAUF_TRIGGER = 80
+/**
+ * Stufe C ist bewusst strenger als Scan-Grün (58/68): echtes Geld, nicht nur Beobachtung.
+ * Empfohlene Kalibrierung: ~oberes Grün-Quartil der Whitelist.
+ */
+export const MIN_SCORE_KAUF_GRUEN = 76
+/** Kaufzone + Gelb: Ausnahme nur bei klarer Bewertungschance. */
+export const MIN_SCORE_KAUF_TRIGGER = 74
+/** Score-Fallback ohne Ampel Grün (selten, hohe Hürde). */
+export const MIN_SCORE_KAUF_STANDARD = 82
 
 /** Maximale monatliche Investition je Risikoklasse. */
 const RISIKO_CAP: Record<RisikoKlasse, number> = {
@@ -50,15 +55,64 @@ function hatAktivesVerkaufSignal(e: NachkaufScanEintrag): boolean {
   return false
 }
 
-/** KI-Kaufempfehlung: Score ≥90 oder (Score ≥80 + Kaufzone aktiv). */
+/**
+ * Stufe C — strenger als Scan-Ampel: Grün allein reicht nicht (Score-Floor), Deep Research Pflicht.
+ */
 export function istKiKaufKandidat(e: NachkaufScanEintrag): boolean {
-  if (e.ampel === 'rot' || hatAktivesVerkaufSignal(e) || !e.tiefenAnalyse) return false
-  if (e.score >= MIN_SCORE_KAUF_STANDARD) return true
-  return e.score >= MIN_SCORE_KAUF_TRIGGER && e.kaufTriggerAusgeloest
+  if (e.ampel === 'rot' || e.ampel === 'teuer' || hatAktivesVerkaufSignal(e) || !e.tiefenAnalyse) {
+    return false
+  }
+  if (e.ampel === 'gruen' && e.score >= MIN_SCORE_KAUF_GRUEN) return true
+  if (
+    e.kaufTriggerAusgeloest &&
+    e.ampel === 'gelb' &&
+    e.score >= MIN_SCORE_KAUF_TRIGGER
+  ) {
+    return true
+  }
+  return e.score >= MIN_SCORE_KAUF_STANDARD
 }
 
 function kaufSchwellenText(): string {
-  return `Score ≥ ${MIN_SCORE_KAUF_STANDARD} oder Score ≥ ${MIN_SCORE_KAUF_TRIGGER} mit aktiver Kaufzone`
+  return (
+    `Grün + Score ≥ ${MIN_SCORE_KAUF_GRUEN}, oder Kaufzone + Gelb + Score ≥ ${MIN_SCORE_KAUF_TRIGGER}` +
+    ` (jeweils mit Deep Research)`
+  )
+}
+
+function baueSparHinweis(alle: NachkaufScanEintrag[], budgetEur: number): string {
+  const gruenOhneDr = alle.filter((e) => e.ampel === 'gruen' && !e.tiefenAnalyse)
+  const gruenScoreZuNiedrig = alle.filter(
+    (e) => e.ampel === 'gruen' && e.tiefenAnalyse && e.score < MIN_SCORE_KAUF_GRUEN,
+  )
+  const gelbMitTrigger = alle.filter(
+    (e) => e.ampel === 'gelb' && e.kaufTriggerAusgeloest && !e.tiefenAnalyse,
+  )
+  let text =
+    'Keine Kauf-Kandidaten für Stufe C: ' +
+    kaufSchwellenText() +
+    '. Keine Verkaufs-Signale. ' +
+    String(budgetEur) +
+    ' € auf Trade Republic sparen (2,25 % p.a.).'
+  if (gruenOhneDr.length > 0) {
+    text +=
+      ' Hinweis: ' +
+      gruenOhneDr.map((e) => e.ticker).join(', ') +
+      ' ist/sind grün im Scan — Deep Research fehlt noch.'
+  } else if (gruenScoreZuNiedrig.length > 0) {
+    text +=
+      ' Hinweis: ' +
+      gruenScoreZuNiedrig
+        .map((e) => `${e.ticker} (grün, Score ${e.score} < ${MIN_SCORE_KAUF_GRUEN})`)
+        .join(', ') +
+      ' — für Stufe C noch zu schwach.'
+  } else if (gelbMitTrigger.length > 0) {
+    text +=
+      ' Hinweis: ' +
+      gelbMitTrigger.map((e) => e.ticker).join(', ') +
+      ' hat Kaufzone, aber Deep Research oder Score fehlt.'
+  }
+  return text
 }
 
 function risikoKlasseVon(isin: string): RisikoKlasse {
@@ -277,7 +331,7 @@ export async function generiereKaufempfehlung(
   const verkaufKandidaten = filterVerkaufKandidaten(alleErgebnisse)
   const basisVerkaufAllokation = berechneBasisVerkaufAllokation(alleErgebnisse)
 
-  // Kauf-Kandidaten: Score ≥90 oder Score ≥80 + Kaufzone, Ampel nicht rot, Deep Research
+  // Kauf-Kandidaten: kalibriertes Grün + Deep Research (Score-Fallback s. istKiKaufKandidat)
   const kandidaten = alleErgebnisse
     .filter(istKiKaufKandidat)
     .sort((a, b) => {
@@ -289,10 +343,7 @@ export async function generiereKaufempfehlung(
 
   // Fallback ohne KI wenn weder Käufe noch Verkäufe
   if (kandidaten.length === 0 && verkaufKandidaten.length === 0) {
-    const sparText =
-      'Keine Positionen mit ' + kaufSchwellenText() +
-      ' und Deep Research gefunden. Keine Verkaufs-Signale. ' + String(budgetEur) +
-      ' \u20AC auf Trade Republic sparen (2,25\u00A0%\u00A0p.a.).'
+    const sparText = baueSparHinweis(alleErgebnisse, budgetEur)
     const sparen: MonatsEmpfehlung = { typ: 'sparen', text: sparText }
     return {
       ok: true,
