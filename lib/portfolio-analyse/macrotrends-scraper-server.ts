@@ -598,6 +598,25 @@ async function ladeStatementRoh(
   return null
 }
 
+/** Konzern-Umsatz pro Geschäftsjahr (ISO-Jahreszahl) aus GuV — für Segment-Abgleich. */
+export async function baueUmsatzProJahrAusMacrotrends(
+  ident: MacrotrendsIdent,
+  frequenz: FundamentalFrequenz = 'jahr',
+): Promise<Map<number, number>> {
+  const roh = await ladeStatementRoh(ident, 'income-statement', frequenz)
+  const rev = roh ? zeileFuerSlug(roh, 'revenue') : null
+  const map = new Map<number, number>()
+  if (!rev) return map
+  for (const key of Object.keys(rev)) {
+    if (key === 'field_name' || key === 'popup_icon') continue
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(key)) continue
+    const val = parseZahl(rev[key])
+    if (val == null || val <= 0) continue
+    map.set(parseInt(key.slice(0, 4), 10), val)
+  }
+  return map
+}
+
 export async function loeseMacrotrendsIdent(
   suchbegriff: string,
   nameOrOpts?: string | MacrotrendsIdentOpts,

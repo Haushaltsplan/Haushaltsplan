@@ -5,6 +5,7 @@ import 'server-only'
 import { formatFundamentalPeriodeLabel } from '@/lib/portfolio-analyse/fundamentaldaten-format'
 import { FUNDAMENTAL_TTM_KEY } from '@/lib/portfolio-analyse/fundamentaldaten-types'
 import type { FundamentalMetrikZeile, FundamentalPeriode } from '@/lib/portfolio-analyse/fundamentaldaten-types'
+import { baueUmsatzProJahrAusFinanzzeile } from '@/lib/portfolio-analyse/segment-umsatz-abgleich'
 import {
   EU_GUV_FALLBACK_ISINS,
 } from '@/lib/portfolio-analyse/eu-portfolio-ir-config'
@@ -442,4 +443,12 @@ export async function baueFundamentalRohAusAlternativQuellen(
   const merged = await ergaenzeMacrotrendsMitYahooGuV(shell, symbolYahoo, opts)
   if (merged.zeilen.length === 0) return null
   return merged
+}
+
+/** Konzern-Umsatz pro Jahr aus Yahoo GuV — Fallback wenn Macrotrends leer (EU/ADR). */
+export async function baueUmsatzProJahrAusYahoo(
+  symbolYahoo: string,
+): Promise<Map<number, number>> {
+  const roh = await baueYahooGuVRoh(symbolYahoo.trim().toUpperCase())
+  return baueUmsatzProJahrAusFinanzzeile(roh?.zeilen.find((z) => z.id === 'umsatz'))
 }

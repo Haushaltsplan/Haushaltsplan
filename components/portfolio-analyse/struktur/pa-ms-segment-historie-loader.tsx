@@ -5,6 +5,11 @@ import { useEffect, useState } from 'react'
 import { PaCard } from '@/components/portfolio-analyse/pa-ui'
 import { PaSecSegmentHistorie } from '@/components/portfolio-analyse/struktur/pa-sec-segment-historie'
 import type { SecSegmentHistoriePaket } from '@/lib/portfolio-analyse/fundamentaldaten-erweitert-types'
+import type { FundamentalMetrikZeile } from '@/lib/portfolio-analyse/fundamentaldaten-types'
+import {
+  baueUmsatzProJahrAusFinanzzeile,
+  normalisiereSegmentPaketGegenUmsatz,
+} from '@/lib/portfolio-analyse/segment-umsatz-abgleich'
 import { supabase } from '@/lib/supabase'
 
 export function PaMsSegmentHistorieLoader({
@@ -13,12 +18,14 @@ export function PaMsSegmentHistorieLoader({
   symbolYahoo,
   ticker,
   initial,
+  umsatzZeile,
 }: {
   isin?: string | null
   name: string
   symbolYahoo?: string | null
   ticker?: string | null
   initial?: SecSegmentHistoriePaket | null
+  umsatzZeile?: FundamentalMetrikZeile | null
 }) {
   const [paket, setPaket] = useState<SecSegmentHistoriePaket | null>(initial ?? null)
   const [laden, setLaden] = useState(false)
@@ -66,7 +73,12 @@ export function PaMsSegmentHistorieLoader({
           return
         }
         if (j.ok && j.paket) {
-          setPaket(j.paket)
+          const umsatzMap = baueUmsatzProJahrAusFinanzzeile(umsatzZeile)
+          const norm =
+            umsatzMap.size > 0
+              ? (normalisiereSegmentPaketGegenUmsatz(j.paket, umsatzMap) ?? j.paket)
+              : j.paket
+          setPaket(norm)
           setFehler(null)
         } else if (initial) {
           setPaket(initial)
@@ -90,7 +102,7 @@ export function PaMsSegmentHistorieLoader({
     return () => {
       cancelled = true
     }
-  }, [isin, name, symbolYahoo, ticker, initial])
+  }, [isin, name, symbolYahoo, ticker, initial, umsatzZeile])
 
   if (paket) {
     return (

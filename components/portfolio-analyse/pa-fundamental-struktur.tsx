@@ -210,6 +210,7 @@ export function PaFundamentalStruktur({
         symbolYahoo={symbolYahoo ?? paket.symbolYahoo}
         ticker={ticker}
         initial={secHist}
+        umsatzZeile={paket.zeilen.find((z) => z.id === 'umsatz') ?? null}
       />
 
       {sec &&

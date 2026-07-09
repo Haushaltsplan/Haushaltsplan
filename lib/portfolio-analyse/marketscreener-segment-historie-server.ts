@@ -80,7 +80,8 @@ function htmlPasstZuUnternehmen(
   html: string,
   opts: { name: string; ticker?: string | null },
 ): boolean {
-  const title = (html.match(/<title>([^<]+)/)?.[1] ?? '').toLowerCase()
+  const titleRaw = html.match(/<title>([^<]+)/)?.[1] ?? ''
+  const title = normalisiereName(titleRaw).toLowerCase()
   const parts = normalisiereName(opts.name)
     .split(/\s+/)
     .filter((w) => w.length > 2 && !SLUG_STOPWORDS.has(w))
@@ -89,8 +90,8 @@ function htmlPasstZuUnternehmen(
   if (!kern.every((w) => title.includes(w.toLowerCase()))) return false
 
   const ticker = opts.ticker?.trim().toUpperCase().split('.')[0]
-  if (ticker === 'UNP' && /unitedhealth|optum/i.test(title)) return false
-  if (ticker === 'UNH' && /union pacific/i.test(title)) return false
+  if (ticker === 'UNP' && /unitedhealth|optum/i.test(titleRaw)) return false
+  if (ticker === 'UNH' && /union pacific/i.test(titleRaw)) return false
   return true
 }
 

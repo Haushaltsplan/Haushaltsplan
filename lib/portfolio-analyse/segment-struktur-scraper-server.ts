@@ -8,7 +8,11 @@ import type {
   SecSegmentHistoriePaket,
   SecZusatzRisikoFelder,
 } from '@/lib/portfolio-analyse/fundamentaldaten-erweitert-types'
-import { loesePortfolioIsin } from '@/lib/portfolio-analyse/isin-kenntnisse'
+import { isinKenntnis, loesePortfolioIsin } from '@/lib/portfolio-analyse/isin-kenntnisse'
+import {
+  baueUmsatzProJahrAusMacrotrends,
+  loeseMacrotrendsIdent,
+} from '@/lib/portfolio-analyse/macrotrends-scraper-server'
 import {
   ladeSegmentStrukturAusCloud,
   speichereSegmentStrukturInCloud,
@@ -19,6 +23,8 @@ import { ladeStockanalysisBacklogHistorie } from '@/lib/portfolio-analyse/stocka
 import { besteSegmentHistorieQuellen, bereinigeGeoNachProdukt, segmentPaketPlausibel } from '@/lib/portfolio-analyse/segment-historie-merge-hilfen'
 import { ladeSecSegmentHistorie } from '@/lib/portfolio-analyse/sec-edgar-segment-historie-server'
 import { ladeStockanalysisSegmentPaket } from '@/lib/portfolio-analyse/stockanalysis-segment-server'
+import { normalisiereSegmentPaketGegenUmsatz } from '@/lib/portfolio-analyse/segment-umsatz-abgleich'
+import { baueUmsatzProJahrAusYahoo } from '@/lib/portfolio-analyse/fundamentaldaten-yahoo-guv-server'
 
 const LEER_ZUSATZ: SecZusatzRisikoFelder = {
   mitarbeiterAnzahl: null,
@@ -37,6 +43,29 @@ function usTicker(opts: {
     if (t && !t.includes('.')) return t.split('.')[0]!
   }
   return null
+}
+
+/** Macrotrends-Ticker für Umsatz-Abgleich (auch EU/ADR mit macrotrendsTicker). */
+function macrotrendsTickerFuerUmsatz(opts: {
+  isin?: string | null
+  name: string
+  symbolYahoo?: string | null
+  ticker?: string | null
+}): string | null {
+  const isin = loesePortfolioIsin({
+    isin: opts.isin,
+    symbolYahoo: opts.symbolYahoo,
+    ticker: opts.ticker,
+    firmenname: opts.name,
+  })
+  const k = isin ? isinKenntnis(isin) : null
+  return (
+    k?.macrotrendsTicker?.trim().toUpperCase() ||
+    usTicker(opts) ||
+    opts.ticker?.trim().toUpperCase().split('.')[0] ||
+    opts.symbolYahoo?.trim().toUpperCase().split('.')[0] ||
+    null
+  )
 }
 
 function leeresPaket(quelle: SecSegmentHistoriePaket['quelle'] = 'marketscreener'): SecSegmentHistoriePaket {
@@ -183,6 +212,46 @@ async function ergaenzeSecProduktFallback(
   }
 }
 
+async function ergaenzeUmsatzAbgleich(
+  paket: SecSegmentHistoriePaket,
+  opts: {
+    isin?: string | null
+    name: string
+    symbolYahoo?: string | null
+    ticker?: string | null
+  },
+): Promise<SecSegmentHistoriePaket> {
+  const isin = loesePortfolioIsin({
+    isin: opts.isin,
+    symbolYahoo: opts.symbolYahoo,
+    ticker: opts.ticker,
+    firmenname: opts.name,
+  })
+  const k = isin ? isinKenntnis(isin) : null
+  const mtTicker = macrotrendsTickerFuerUmsatz({ ...opts, isin })
+
+  let umsatzMap = new Map<number, number>()
+
+  if (mtTicker) {
+    const ident = await loeseMacrotrendsIdent(mtTicker, {
+      erwarteterTicker: mtTicker,
+      firmenname: opts.name,
+      slug: k?.macrotrendsSlug,
+      macrotrendsTicker: k?.macrotrendsTicker,
+    })
+    if (ident) {
+      umsatzMap = await baueUmsatzProJahrAusMacrotrends(ident)
+    }
+  }
+
+  if (umsatzMap.size === 0 && opts.symbolYahoo?.trim()) {
+    umsatzMap = await baueUmsatzProJahrAusYahoo(opts.symbolYahoo)
+  }
+  if (umsatzMap.size === 0) return paket
+
+  return normalisiereSegmentPaketGegenUmsatz(paket, umsatzMap) ?? paket
+}
+
 async function scrapeLiveSegmentStruktur(opts: {
   isin?: string | null
   name: string
@@ -223,6 +292,8 @@ async function scrapeLiveSegmentStruktur(opts: {
 
   paket = await ergaenzeBacklog(paket, { ...opts, isin, refresh: opts.refresh })
 
+  paket = await ergaenzeUmsatzAbgleich(paket, { ...opts, isin })
+
   if (!paket.produkt && !paket.geo && !paket.backlog) return null
   return paket
 }
@@ -252,7 +323,7 @@ export async function ladeGescrapteSegmentStruktur(opts: {
         name: opts.name,
       })
     ) {
-      return cloud
+      return ergaenzeUmsatzAbgleich(cloud, { ...opts, isin })
     }
     if (cloud) {
       console.warn(`[segment-struktur] Cloud verworfen (Plausibilität) für ${isin}`)
@@ -276,7 +347,7 @@ export async function ladeGescrapteSegmentStruktur(opts: {
     const cloud = await ladeSegmentStrukturAusCloud(isin)
     if (cloud) {
       console.warn(`[segment-struktur] Live-Scrape leer — Cloud-Fallback für ${isin}`)
-      return cloud
+      return ergaenzeUmsatzAbgleich(cloud, { ...opts, isin })
     }
   }
 

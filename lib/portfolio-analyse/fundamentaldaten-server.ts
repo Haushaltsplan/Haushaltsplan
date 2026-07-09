@@ -23,6 +23,10 @@ import type {
 } from '@/lib/portfolio-analyse/fundamentaldaten-types'
 import type { FundamentaldatenErweitert } from '@/lib/portfolio-analyse/fundamentaldaten-erweitert-types'
 import { ladeFundamentaldatenErweitert } from '@/lib/portfolio-analyse/fundamentaldaten-erweitert-server'
+import {
+  baueUmsatzProJahrAusFinanzzeile,
+  normalisiereSegmentPaketGegenUmsatz,
+} from '@/lib/portfolio-analyse/segment-umsatz-abgleich'
 import { FUNDAMENTAL_NTM_KEY } from '@/lib/portfolio-analyse/fundamentaldaten-types'
 import { isinKenntnis, loesePortfolioIsin } from '@/lib/portfolio-analyse/isin-kenntnisse'
 import {
@@ -454,6 +458,19 @@ export async function ladeFundamentaldaten(anfrage: FundamentaldatenAnfrage): Pr
   })
   const waehrung = (isinNorm && ISIN_WAEHRUNG[isinNorm]) || 'USD'
 
+  let erweitertFinal = erweitert
+  if (erweitert?.secSegmentHistorie) {
+    const umsatzMap = baueUmsatzProJahrAusFinanzzeile(merged.zeilen.find((z) => z.id === 'umsatz'))
+    if (umsatzMap.size > 0) {
+      const norm =
+        normalisiereSegmentPaketGegenUmsatz(erweitert.secSegmentHistorie, umsatzMap) ??
+        erweitert.secSegmentHistorie
+      if (norm !== erweitert.secSegmentHistorie) {
+        erweitertFinal = { ...erweitert, secSegmentHistorie: norm }
+      }
+    }
+  }
+
   return leeresPaket({
     ok: true,
     ticker: ident.ticker,
@@ -480,6 +497,6 @@ export async function ladeFundamentaldaten(anfrage: FundamentaldatenAnfrage): Pr
     news,
     symbolYahoo,
     frequenz,
-    erweitert,
+    erweitert: erweitertFinal,
   })
 }
