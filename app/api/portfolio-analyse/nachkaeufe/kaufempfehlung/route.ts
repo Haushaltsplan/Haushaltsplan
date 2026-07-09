@@ -8,7 +8,7 @@ import {
 } from '@/lib/portfolio-analyse/nachkauf-radar/nachkauf-radar-db-server'
 import { reichereNachkaufEintraegeVoll } from '@/lib/portfolio-analyse/nachkauf-radar/nachkauf-kontext-server'
 import { generiereKaufempfehlung } from '@/lib/portfolio-analyse/nachkauf-radar/nachkauf-kaufempfehlung-server'
-import { speichereEmpfehlungTracking } from '@/lib/portfolio-analyse/nachkauf-radar/nachkauf-performance-server'
+import { speichereEmpfehlungTracking, ladePortfolioOwnerUserId } from '@/lib/portfolio-analyse/nachkauf-radar/nachkauf-performance-server'
 import { createSupabaseAdmin } from '@/lib/supabase-admin'
 
 export const maxDuration = 120
@@ -43,11 +43,13 @@ export async function POST(req: Request) {
 
     try {
       const monat = new Date().toISOString().slice(0, 7)
+      const ownerUserId = await ladePortfolioOwnerUserId()
       const supabase = createSupabaseAdmin()
       await supabase
         .from('nachkauf_kaufempfehlung')
         .upsert(
           {
+            owner_user_id: ownerUserId,
             monat,
             kandidaten: ergebnis.basisAllokation.map((p) => p.ticker),
             basis_allokation: ergebnis.basisAllokation,
@@ -62,6 +64,7 @@ export async function POST(req: Request) {
         monat,
         basisAllokation: ergebnis.basisAllokation,
         scanMap,
+        ownerUserId,
       })
     } catch (dbErr) {
       console.warn('[kaufempfehlung] Speichern fehlgeschlagen:', dbErr)

@@ -8,6 +8,7 @@ import { isinKenntnis } from '@/lib/portfolio-analyse/isin-kenntnisse'
 import { ladeMomentumLiveKurs } from '@/lib/portfolio-analyse/momentum-trader/momentum-yahoo-quote-server'
 import { yahooSchlusskursAm } from '@/lib/portfolio-analyse/yahoo-corporate-actions-client'
 import { createSupabaseAdmin } from '@/lib/supabase-admin'
+import { ladeNachkaufScanAusCloud } from './nachkauf-radar-db-server'
 import type { NachkaufScanEintrag, SparplanPosten } from './nachkauf-radar-types'
 import type {
   NachkaufPerformanceUebersicht,
@@ -27,6 +28,30 @@ function istKonfiguriert(): boolean {
 
 function admin() {
   return createSupabaseAdmin()
+}
+
+/** Service Role hat kein auth.uid() — Owner aus Portfolio-Buchungen ableiten. */
+export async function ladePortfolioOwnerUserId(): Promise<string | null> {
+  if (!istKonfiguriert()) return null
+  try {
+    const { data: buchung } = await admin()
+      .from('portfolio_analyse_buchung')
+      .select('owner_user_id')
+      .not('owner_user_id', 'is', null)
+      .limit(1)
+      .maybeSingle()
+    if (buchung?.owner_user_id) return String(buchung.owner_user_id)
+
+    const { data: emp } = await admin()
+      .from('nachkauf_kaufempfehlung')
+      .select('owner_user_id')
+      .not('owner_user_id', 'is', null)
+      .limit(1)
+      .maybeSingle()
+    return emp?.owner_user_id ? String(emp.owner_user_id) : null
+  } catch {
+    return null
+  }
 }
 
 function addDaysIso(iso: string, tage: number): string {
@@ -113,10 +138,18 @@ export async function speichereEmpfehlungTracking(opts: {
   monat: string
   basisAllokation: SparplanPosten[]
   scanMap: Map<string, NachkaufScanEintrag>
+  ownerUserId?: string | null
+  empfohlenAm?: string
 }): Promise<void> {
   if (!istKonfiguriert() || opts.basisAllokation.length === 0) return
 
-  const jetzt = new Date().toISOString()
+  const ownerUserId = opts.ownerUserId ?? (await ladePortfolioOwnerUserId())
+  if (!ownerUserId) {
+    console.warn('[nachkauf-performance] Kein owner_user_id — Tracking übersprungen')
+    return
+  }
+
+  const jetzt = opts.empfohlenAm ?? new Date().toISOString()
   const zeilen: Record<string, unknown>[] = []
 
   for (const posten of opts.basisAllokation) {
@@ -125,6 +158,7 @@ export async function speichereEmpfehlungTracking(opts: {
     const sym = await yahooSymbol(e.ticker, e.isin)
     const live = await ladeMomentumLiveKurs(sym).catch(() => null)
     zeilen.push({
+      owner_user_id: ownerUserId,
       monat: opts.monat,
       ticker: e.ticker.toUpperCase(),
       isin: e.isin || null,
@@ -145,6 +179,55 @@ export async function speichereEmpfehlungTracking(opts: {
     .from(TABLE)
     .upsert(zeilen, { onConflict: 'owner_user_id,monat,ticker' })
   if (error) console.warn('[nachkauf-performance] Snapshot speichern:', error.message)
+}
+
+/**
+ * Fehlende Tracking-Zeilen aus gespeicherter Kaufempfehlung nachziehen
+ * (z. B. wenn beim ersten Speichern owner_user_id fehlte).
+ */
+export async function backfillEmpfehlungTracking(monat?: string): Promise<number> {
+  if (!istKonfiguriert()) return 0
+  const ownerUserId = await ladePortfolioOwnerUserId()
+  if (!ownerUserId) return 0
+
+  const zielMonat = monat ?? new Date().toISOString().slice(0, 7)
+
+  const { data: empRow } = await admin()
+    .from('nachkauf_kaufempfehlung')
+    .select('monat, basis_allokation, erstellt_am')
+    .eq('monat', zielMonat)
+    .order('erstellt_am', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  const allokation = (empRow as { basis_allokation?: SparplanPosten[] } | null)?.basis_allokation
+  if (!allokation?.length) return 0
+
+  const { data: vorhanden } = await admin()
+    .from(TABLE)
+    .select('ticker')
+    .eq('owner_user_id', ownerUserId)
+    .eq('monat', zielMonat)
+
+  const vorhandenSet = new Set(
+    ((vorhanden ?? []) as Array<{ ticker: string }>).map((r) => r.ticker.toUpperCase()),
+  )
+  const fehlend = allokation.filter((p) => !vorhandenSet.has(p.ticker.toUpperCase()))
+  if (fehlend.length === 0) return 0
+
+  const scan = await ladeNachkaufScanAusCloud()
+  const scanMap = new Map(scan.map((e) => [e.ticker.toUpperCase(), e]))
+  const erstelltAm =
+    (empRow as { erstellt_am?: string } | null)?.erstellt_am ?? new Date().toISOString()
+
+  await speichereEmpfehlungTracking({
+    monat: zielMonat,
+    basisAllokation: fehlend,
+    scanMap,
+    ownerUserId,
+    empfohlenAm: erstelltAm,
+  })
+  return fehlend.length
 }
 
 async function aktualisiereEineZeile(row: TrackingRow): Promise<void> {
@@ -309,13 +392,16 @@ export async function ladeNachkaufPerformance(): Promise<NachkaufPerformanceUebe
     }
   }
 
+  await backfillEmpfehlungTracking().catch((e) =>
+    console.warn('[nachkauf-performance] Backfill:', e),
+  )
+
   await aktualisiereFaelligeOutcomes()
 
-  const { data } = await admin()
-    .from(TABLE)
-    .select('*')
-    .order('empfohlen_am', { ascending: false })
-    .limit(48)
+  const ownerUserId = await ladePortfolioOwnerUserId()
+  let query = admin().from(TABLE).select('*').order('empfohlen_am', { ascending: false }).limit(48)
+  if (ownerUserId) query = query.eq('owner_user_id', ownerUserId)
+  const { data } = await query
 
   const eintraege = ((data ?? []) as TrackingRow[]).map(rowZuEintrag)
   const mit6m = eintraege.filter((e) => e.rendite6mPct != null)

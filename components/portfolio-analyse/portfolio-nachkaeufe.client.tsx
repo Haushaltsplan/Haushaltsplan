@@ -1873,7 +1873,7 @@ export function NachkaufRadarClient() {
                 <div>
                   <p className="text-sm font-semibold text-violet-300">Portfolio-Empfehlung</p>
                   <p className="mt-0.5 text-xs text-[var(--app-text-muted)]">
-                    Score ≥ 90 oder ≥ 80 mit Kaufzone — langfristig, ohne Übertreibung.
+                    Grün + Score ≥ 76 (oder Kaufzone + Gelb ≥ 74) — jeweils mit Deep Research.
                   </p>
                 </div>
               </div>
