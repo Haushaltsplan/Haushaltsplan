@@ -19,6 +19,7 @@ import {
   berechneBasisVerkaufAllokation,
   filterVerkaufKandidaten,
 } from './nachkauf-trim-signal'
+import { disziplinSparplanFaktor } from './nachkauf-disziplin-server'
 
 const DEFAULT_BUDGET_EUR = 500
 /** Standard-Schwelle für Kaufempfehlung ohne aktiven Kauftrigger. */
@@ -121,11 +122,13 @@ function baueKandidatenText(kandidaten: NachkaufScanEintrag[], budgetEur: number
       klumpen,
       `Kaufhistorie: ${formatKaufhistorie(e)}`,
       insider,
+      e.notiz ? `Eigene Notiz: ${e.notiz}` : '',
+      e.disziplinHinweis ? `Disziplin: ${e.disziplinHinweis}` : '',
       prognose,
       struktur,
       '',
       dr ? `**Deep Research Kernaussagen:**\n${kuerzerMemo(dr.memo)}` : '_Kein Deep Research vorhanden_',
-    ].join('\n')
+    ].filter(Boolean).join('\n')
   }).join('\n\n---\n\n')
 }
 
@@ -411,6 +414,7 @@ function berechneBasisAllokation(kandidaten: NachkaufScanEintrag[], budgetEur: n
     let g = e.score
     if (e.kaufTriggerAusgeloest) g *= 1.25
     if (e.klumpenrisiko) g *= 0.4
+    g *= disziplinSparplanFaktor(e)
     // Bewertungsrabatt wirkt als zusätzlicher Bonus
     const disc = e.bewertung.premiumDiscountPct
     if (disc != null && disc < 0) g *= 1 + Math.abs(disc) / 200  // max. +10%

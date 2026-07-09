@@ -2,73 +2,25 @@
 
 import 'server-only'
 
+import { ladeDepotGewichteMap, type DepotGewicht } from '@/lib/portfolio-analyse/depot-gewichte-server'
 import { createSupabaseAdmin } from '@/lib/supabase-admin'
 import type {
   NachkaufAmpel,
   NachkaufDeepResearch,
   NachkaufScanEintrag,
+  NachkaufScoreDetail,
+  TrimSignal,
 } from './nachkauf-radar-types'
+import type { NachkaufZusatzSignale } from './nachkauf-zusatz-signale-server'
 
-// ---------------------------------------------------------------------------
-// Depot-Gewichte aus Buchungen berechnen
-// ---------------------------------------------------------------------------
-
-export type DepotGewicht = {
-  /** Netto investiertes Kapital (Käufe − Verkäufe) in EUR. */
-  investiertEur: number
-  /** Anteil am Gesamt-Depot-Einstandswert (0–100). */
-  anteilPct: number
-}
+export type { DepotGewicht }
 
 /**
- * Lädt die aktuellen Depot-Gewichte aus dem neuesten Portfolio-Snapshot.
- *
- * Der Snapshot enthält für jede Position den aktuellen Marktwert (`wertEur`),
- * sodass die Gewichte den echten Depot-Anteil widerspiegeln — nicht den Einstandswert.
- *
- * Gibt eine Map<ISIN (upper), DepotGewicht> zurück.
+ * Depot-Gewichte pro ISIN — dieselbe Logik wie das Portfolio-Dashboard
+ * (Buchungen + Snapshot-Merge + Live-Kurse, nicht nur letzter PDF-Snapshot).
  */
 export async function ladeDepotGewichte(): Promise<Map<string, DepotGewicht>> {
-  const out = new Map<string, DepotGewicht>()
-  if (!istKonfiguriert()) return out
-
-  try {
-    const { data, error } = await admin()
-      .from('portfolio_analyse_snapshot')
-      .select('depotwert_eur, positionen')
-      .order('erfasst_am', { ascending: false })
-      .limit(1)
-      .maybeSingle()
-
-    if (error || !data) return out
-
-    const snapshot = data as {
-      depotwert_eur: number | null
-      positionen: Array<{ isin?: string | null; wertEur?: number; assetKlasse?: string }>
-    }
-
-    const positionen = snapshot.positionen ?? []
-
-    // Gesamtwert: Snapshot-Wert bevorzugen; Fallback: Summe der Positionen
-    const gesamtEur =
-      snapshot.depotwert_eur ??
-      positionen.reduce((s, p) => s + (p.wertEur ?? 0), 0)
-
-    if (gesamtEur <= 0) return out
-
-    for (const pos of positionen) {
-      const isin = pos.isin?.trim().toUpperCase()
-      if (!isin || !pos.wertEur || pos.wertEur <= 0) continue
-      out.set(isin, {
-        investiertEur: pos.wertEur,
-        anteilPct: Math.round((pos.wertEur / gesamtEur) * 1000) / 10, // 1 Nachkomma
-      })
-    }
-  } catch (e) {
-    console.warn('[nachkauf-radar] Depot-Gewichte laden fehlgeschlagen:', e)
-  }
-
-  return out
+  return ladeDepotGewichteMap()
 }
 
 const TABLE_SCAN = 'nachkauf_radar_scan' as const
@@ -207,6 +159,50 @@ export async function speichereDeepResearch(dr: NachkaufDeepResearch): Promise<v
 // Konvertierung DB ↔ Typ
 // ---------------------------------------------------------------------------
 
+function jsonSpalte<T>(raw: unknown): T | null {
+  if (raw == null) return null
+  if (typeof raw === 'string') {
+    try {
+      return JSON.parse(raw) as T
+    } catch {
+      return null
+    }
+  }
+  if (typeof raw === 'object') return raw as T
+  return null
+}
+
+function scoreDetailAusDb(r: DbZeile): NachkaufScoreDetail {
+  const gesamt = r.score ?? 0
+  const json = jsonSpalte<NachkaufScoreDetail>(r.score_detail)
+  if (json) {
+    return { ...json, gesamt: r.score ?? json.gesamt }
+  }
+  return {
+    mantraScore: r.score_mantra ?? 0,
+    bewertungsScore: r.score_bewertung ?? 0,
+    sellTriggerPenalty: r.score_sell_penalty ?? 0,
+    historischerBewertungsBonus: r.score_hist_bonus ?? 0,
+    datenSignaleDelta: 0,
+    momentumPunkte: 0,
+    strukturPunkte: 0,
+    drawdownBonus: 0,
+    insiderPunkte: 0,
+    kauftriggerBonus: 0,
+    regimeDelta: 0,
+    earningsMalus: 0,
+    deepResearchMalus: 0,
+    klumpenMalus: 0,
+    sektorMalus: 0,
+    scoreKalibrierung: 0,
+    qualitaetsRang: 0,
+    timingRang: 0,
+    kombiniertRang: gesamt,
+    datenVollstaendigkeitPct: 0,
+    gesamt,
+  }
+}
+
 type DbZeile = {
   ticker: string
   isin: string
@@ -232,39 +228,25 @@ type DbZeile = {
   historischer_median_pe: number | null
   historischer_median_fcf_yield: number | null
   historisch_quelle: string | null
+  daten_signale?: unknown
+  score_detail?: unknown
+  trim_signal?: unknown
 }
 
 function dbZeileZuEintrag(r: DbZeile): NachkaufScanEintrag {
-  const gesamt = r.score ?? 0
+  const datenSignale = jsonSpalte<NachkaufZusatzSignale>(r.daten_signale)
+  const trimSignal = jsonSpalte<TrimSignal>(r.trim_signal) ?? undefined
+  const scoreDetail = scoreDetailAusDb(r)
+  if (datenSignale?.datenVollstaendigkeitPct != null) {
+    scoreDetail.datenVollstaendigkeitPct = datenSignale.datenVollstaendigkeitPct
+  }
   return {
     ticker: r.ticker,
     isin: r.isin ?? '',
     name: r.name ?? r.ticker,
     ampel: r.ampel as NachkaufAmpel,
-    score: gesamt,
-    scoreDetail: {
-      mantraScore: r.score_mantra ?? 0,
-      bewertungsScore: r.score_bewertung ?? 0,
-      sellTriggerPenalty: r.score_sell_penalty ?? 0,
-      historischerBewertungsBonus: r.score_hist_bonus ?? 0,
-      datenSignaleDelta: 0,
-      momentumPunkte: 0,
-      strukturPunkte: 0,
-      drawdownBonus: 0,
-      insiderPunkte: 0,
-      kauftriggerBonus: 0,
-      regimeDelta: 0,
-      earningsMalus: 0,
-      deepResearchMalus: 0,
-      klumpenMalus: 0,
-      sektorMalus: 0,
-      scoreKalibrierung: 0,
-      qualitaetsRang: 0,
-      timingRang: 0,
-      kombiniertRang: gesamt,
-      datenVollstaendigkeitPct: 0,
-      gesamt,
-    },
+    score: r.score ?? 0,
+    scoreDetail,
     bewertung: {
       fcfYieldPct: r.fcf_yield_pct ?? null,
       forwardPe: r.forward_pe ?? null,
@@ -286,6 +268,8 @@ function dbZeileZuEintrag(r: DbZeile): NachkaufScanEintrag {
     kaufTriggerText: r.kauf_trigger_text ?? null,
     scoreVerlauf: [],
     insiderKaeufe: [],
+    datenSignale: datenSignale ?? undefined,
+    trimSignal,
   }
 }
 
@@ -325,6 +309,9 @@ function eintragZuDbZeile(e: NachkaufScanEintrag): Record<string, unknown> {
     historischer_median_pe: e.bewertung.historischerMedianPe ?? null,
     historischer_median_fcf_yield: e.bewertung.historischerMedianFcfYield ?? null,
     historisch_quelle: e.bewertung.historischQuelle ?? null,
+    daten_signale: e.datenSignale ?? null,
+    score_detail: e.scoreDetail,
+    trim_signal: e.trimSignal ?? null,
   }
 }
 

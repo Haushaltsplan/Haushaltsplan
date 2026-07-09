@@ -18,7 +18,14 @@ import {
 } from '@/lib/ki-coach-backend'
 import { NACHKAUF_DEEP_RESEARCH_SYSTEM_PROMPT } from './nachkauf-deep-research-prompt'
 import { formatSegmentStrukturKontext } from './nachkauf-segment-struktur-hilfen'
-import { ergaenzeDepotGewichte, speichereDeepResearch } from './nachkauf-radar-db-server'
+import {
+  formatZusatzSignaleKurz,
+  ladeNachkaufZusatzSignale,
+} from './nachkauf-zusatz-signale-server'
+import { reichereNachkaufTickerKontext } from './nachkauf-kontext-server'
+import { wendeNachkaufDisziplinAn } from './nachkauf-disziplin-server'
+import { speichereDeepResearch } from './nachkauf-radar-db-server'
+import { formatDepotDashboardKontext } from '@/lib/portfolio-analyse/depot-gewichte-server'
 import type { NachkaufDeepResearch, NachkaufDeepResearchAnfrage, NachkaufScanEintrag } from './nachkauf-radar-types'
 import type { FundamentaldatenPaket } from '@/lib/portfolio-analyse/fundamentaldaten-types'
 
@@ -50,6 +57,25 @@ function formatRoicKontext(paket: FundamentaldatenPaket): string {
   return `${latest.toFixed(1)} % (Macrotrends)${trend}`
 }
 
+function formatKeyMetricsBlock(paket: FundamentaldatenPaket): string {
+  return paket.keyMetrics.map((m) => `- ${m.label}: ${m.wert}`).join('\n')
+}
+
+function formatKaufhistorieZeile(e: NachkaufScanEintrag | null | undefined): string | null {
+  const kh = e?.kaufhistorie
+  if (!kh || kh.anzahlKaeufe === 0) return 'Noch nie gekauft (laut Buchungen)'
+  const teile = [`${kh.anzahlKaeufe}× gekauft`]
+  if (kh.tageSeitletztemKauf != null) teile.push(`letzter Kauf vor ${kh.tageSeitletztemKauf} Tagen`)
+  if (kh.durchschnittskaufpreisEur != null) teile.push(`Ø ${kh.durchschnittskaufpreisEur.toFixed(2)} €`)
+  return teile.join(', ')
+}
+
+function formatInsiderZeile(e: NachkaufScanEintrag | null | undefined): string | null {
+  const kaeufe = e?.insiderKaeufe ?? []
+  if (kaeufe.length === 0) return null
+  return `${kaeufe.length} Insider-Käufe in den letzten 90 Tagen`
+}
+
 // ---------------------------------------------------------------------------
 // Kontext-Text für Deep Research bauen
 // ---------------------------------------------------------------------------
@@ -68,16 +94,18 @@ function baueKontextText(opts: {
   revWachstum: string
   depotGewichtPct: number | null
   klumpenrisiko: boolean
+  depotDashboardKontext: string
+  kaufhistorie: string | null
+  notiz: string | null
+  scanKiBegruendung: string | null
+  insiderHinweis: string | null
+  disziplinHinweis: string | null
+  keyMetricsBlock: string
+  zusatzSignaleText: string | null
   earningsSummaries: { quartalId: string; text: string }[]
   secSummaries: { berichtId: string; text: string }[]
-  // Nachkauf-Score-Kontext
-  nachkaufScore?: number
-  nachkaufAmpel?: string
-  kaufTriggerAusgeloest?: boolean
-  kaufTriggerText?: string | null
-  premiumDiscountPct?: number | null
+  scanEintrag?: NachkaufScanEintrag | null
   historischerMedianPe?: number | null
-  scoreVerlauf?: Array<{ datum: string; score: number }>
   segmentStrukturKontext?: string | null
 }): string {
   const gewichtHinweis =
@@ -90,30 +118,47 @@ function baueKontextText(opts: {
   const teile: string[] = [
     `=== DEPOT-POSITION: ${opts.name} (${opts.ticker}) — ISIN: ${opts.isin} ===`,
     '',
-    '--- DEPOT-KONTEXT (WICHTIG für Nachkauf-Entscheidung) ---',
-    `Aktueller Depot-Anteil (Marktwert): ${gewichtHinweis}`,
+    '--- DEPOT-KONTEXT (Dashboard — Buchungen + Live-Kurse) ---',
+    opts.depotDashboardKontext,
+    '',
+    `Aktueller Depot-Anteil dieser Position: ${gewichtHinweis}`,
+    opts.kaufhistorie ? `Kaufhistorie: ${opts.kaufhistorie}` : '',
+    opts.notiz ? `Eigene Notiz: ${opts.notiz}` : '',
     opts.klumpenrisiko
-      ? `HINWEIS: Position bereits übergewichtet. Nachkauf nur wenn aussergewöhnlich attraktives Chance/Risiko-Verhältnis — andernfalls auf günstigere Alternativen verweisen.`
+      ? `HINWEIS: Position bereits übergewichtet. Nachkauf nur bei aussergewöhnlichem Chance/Risiko — sonst Alternativen prüfen.`
       : '',
     '',
   ].filter(Boolean)
 
-  // Nachkauf-Radar Score-Kontext (neu)
-  if (opts.nachkaufScore !== undefined) {
-    teile.push('--- NACHKAUF-RADAR SCORE (regelbasiert, kein LLM) ---')
-    teile.push(`Gesamt-Score: ${opts.nachkaufScore}/100 (Ampel: ${opts.nachkaufAmpel ?? 'n/a'})`)
-    if (opts.kaufTriggerAusgeloest) {
-      teile.push(`KAUFZONE AKTIV: ${opts.kaufTriggerText ?? 'Kaufzone wurde ausgelöst'}`)
+  const scan = opts.scanEintrag
+  if (scan) {
+    teile.push('--- NACHKAUF-RADAR SCAN (regelbasiert) ---')
+    teile.push(`Gesamt-Score: ${scan.score}/100 (Ampel: ${scan.ampel})`)
+    if (scan.kaufTriggerAusgeloest) {
+      teile.push(`KAUFZONE AKTIV: ${scan.kaufTriggerText ?? 'Kaufzone ausgelöst'}`)
     }
-    if (opts.premiumDiscountPct != null) {
-      const pd = opts.premiumDiscountPct
+    const pd = scan.bewertung.premiumDiscountPct
+    if (pd != null) {
       const label = pd > 0 ? `${pd.toFixed(1)} % Premium` : `${Math.abs(pd).toFixed(1)} % Discount`
-      teile.push(`Historischer Bewertungsvergleich: ${label} vs. 5J-Median (${opts.historischerMedianPe != null ? `Median KGV: ${opts.historischerMedianPe}×` : 'kein Median'})`)
+      teile.push(
+        `Historischer Bewertungsvergleich: ${label} vs. 5J-Median (${opts.historischerMedianPe != null ? `Median KGV: ${opts.historischerMedianPe}×` : 'kein Median'})`,
+      )
     }
-    if (opts.scoreVerlauf && opts.scoreVerlauf.length >= 2) {
-      const trend = opts.scoreVerlauf.slice(-3).map((v) => `${v.datum.slice(0, 7)}: ${v.score}`).join(' → ')
-      teile.push(`Score-Trend (letzte Monate): ${trend}`)
+    teile.push(
+      `Bewertung: FCF-Yield ${scan.bewertung.fcfYieldPct?.toFixed(1) ?? '?'} % | Fwd-KGV ${scan.bewertung.forwardPe?.toFixed(1) ?? '?'} | Drawdown 52W ${scan.bewertung.drawdown52wPct?.toFixed(0) ?? '?'} %`,
+    )
+    if (scan.scoreVerlauf.length >= 2) {
+      const trend = scan.scoreVerlauf
+        .slice(-3)
+        .map((v) => `${v.datum.slice(0, 7)}: ${v.score}`)
+        .join(' → ')
+      teile.push(`Score-Trend: ${trend}`)
     }
+    if (scan.kiBegruendung) {
+      teile.push(`Scan-KI-Memo (Flash): ${scan.kiBegruendung.slice(0, 1200)}`)
+    }
+    if (opts.disziplinHinweis) teile.push(`Disziplin-Hinweis: ${opts.disziplinHinweis}`)
+    if (opts.insiderHinweis) teile.push(opts.insiderHinweis)
     teile.push('')
   }
 
@@ -131,7 +176,15 @@ function baueKontextText(opts: {
   ].filter(Boolean)
   teile.push(...scoreTeile)
 
-  // Earnings-Summaries (neueste 2)
+  teile.push('--- FUNDAMENTALDATEN (Key Metrics, Macrotrends/Yahoo) ---')
+  teile.push(opts.keyMetricsBlock)
+  teile.push('')
+
+  if (opts.zusatzSignaleText) {
+    teile.push('--- ZUSATZ-SIGNALE (Beat/Miss, Capital Allocation, Struktur) ---')
+    teile.push(opts.zusatzSignaleText)
+    teile.push('')
+  }
   const earnings = opts.earningsSummaries.slice(0, 2)
   if (earnings.length > 0) {
     teile.push('--- EARNINGS CALL ZUSAMMENFASSUNGEN (gecacht) ---')
@@ -176,14 +229,7 @@ function baueKontextText(opts: {
 
 export async function fuhreDeepResearchDurch(
   anfrage: NachkaufDeepResearchAnfrage & {
-    scanEintrag?: {
-      score: number
-      ampel: string
-      kaufTriggerAusgeloest: boolean
-      kaufTriggerText: string | null
-      premiumDiscountPct: number | null
-      scoreVerlauf: Array<{ datum: string; score: number }>
-    }
+    scanEintrag?: NachkaufScanEintrag | null
     historischerMedianPe?: number | null
   },
 ): Promise<{ ok: true; dr: NachkaufDeepResearch } | { ok: false; fehler: string }> {
@@ -192,7 +238,7 @@ export async function fuhreDeepResearchDurch(
   const kenntnis = isin ? isinKenntnis(isin) : null
   const resolvedIsin = isin ?? ''
 
-  // Fundamentaldaten laden
+  // Fundamentaldaten (gleiche Basis wie Scan — Segment aus Cloud-Cache)
   let paket
   try {
     paket = await ladeFundamentaldaten({
@@ -200,10 +246,48 @@ export async function fuhreDeepResearchDurch(
       name: name ?? undefined,
       symbolYahoo: kenntnis?.symbolYahoo ?? ticker ?? null,
       symbolCandidates: kenntnis?.symbolCandidates ?? [ticker],
+      segmentNurCloud: true,
     })
   } catch (e) {
     return { ok: false, fehler: `Fundamentaldaten für ${ticker} nicht ladbar: ${String(e)}` }
   }
+
+  const symbolYahoo = kenntnis?.symbolYahoo ?? ticker
+  const zusatz = await ladeNachkaufZusatzSignale({
+    paket,
+    ticker,
+    symbolYahoo,
+    isin: resolvedIsin,
+  }).catch(() => null)
+
+  // Scan-Eintrag + Depot/Historie/Notizen/Insider anreichern
+  let scanEintrag = anfrage.scanEintrag ?? null
+  const kontextEintraege: NachkaufScanEintrag[] = scanEintrag
+    ? [scanEintrag]
+    : [{
+        ticker, isin: resolvedIsin, name: name ?? ticker,
+        ampel: 'grau', score: 0,
+        scoreDetail: {
+          mantraScore: 0, bewertungsScore: 0, sellTriggerPenalty: 0, historischerBewertungsBonus: 0,
+          datenSignaleDelta: 0, momentumPunkte: 0, strukturPunkte: 0, drawdownBonus: 0, insiderPunkte: 0,
+          kauftriggerBonus: 0, regimeDelta: 0, earningsMalus: 0, deepResearchMalus: 0, klumpenMalus: 0,
+          sektorMalus: 0, scoreKalibrierung: 0, qualitaetsRang: 0, timingRang: 0, kombiniertRang: 0,
+          datenVollstaendigkeitPct: 0, gesamt: 0,
+        },
+        bewertung: { fcfYieldPct: null, forwardPe: null, drawdown52wPct: null, premiumDiscountPct: null },
+        mantraAmpel: null, mantraScorePct: null, sellTriggerOk: true,
+        kiBegruendung: null, gescannt_am: new Date().toISOString(), tiefenAnalyse: null,
+        depotGewichtPct: null, klumpenrisiko: false,
+        kaufTriggerAusgeloest: false, kaufTriggerText: null,
+        scoreVerlauf: [], insiderKaeufe: [],
+      }]
+  await reichereNachkaufTickerKontext(kontextEintraege)
+  wendeNachkaufDisziplinAn(kontextEintraege)
+  scanEintrag = kontextEintraege[0]!
+
+  const [depotDashboardKontext] = await Promise.all([
+    formatDepotDashboardKontext(resolvedIsin),
+  ])
 
   // KI-Summaries aus Caches
   const earningsMap = await ladeEarningsCallKiCacheFuerTicker(ticker)
@@ -226,43 +310,8 @@ export async function fuhreDeepResearchDurch(
     .map((w) => `${w.status === 'warnung' ? 'WARNUNG' : w.status === 'beobachten' ? 'Beobachten' : 'OK'}: ${w.titel}`)
     .join('; ')
 
-  // Depot-Gewicht ermitteln
-  const platzhalter: NachkaufScanEintrag[] = [{
-    ticker, isin: resolvedIsin, name: name ?? ticker,
-    ampel: 'grau', score: 0,
-    scoreDetail: {
-      mantraScore: 0,
-      bewertungsScore: 0,
-      sellTriggerPenalty: 0,
-      historischerBewertungsBonus: 0,
-      datenSignaleDelta: 0,
-      momentumPunkte: 0,
-      strukturPunkte: 0,
-      drawdownBonus: 0,
-      insiderPunkte: 0,
-      kauftriggerBonus: 0,
-      regimeDelta: 0,
-      earningsMalus: 0,
-      deepResearchMalus: 0,
-      klumpenMalus: 0,
-      sektorMalus: 0,
-      scoreKalibrierung: 0,
-      qualitaetsRang: 0,
-      timingRang: 0,
-      kombiniertRang: 0,
-      datenVollstaendigkeitPct: 0,
-      gesamt: 0,
-    },
-    bewertung: { fcfYieldPct: null, forwardPe: null, drawdown52wPct: null, premiumDiscountPct: null },
-    mantraAmpel: null, mantraScorePct: null, sellTriggerOk: true,
-    kiBegruendung: null, gescannt_am: new Date().toISOString(), tiefenAnalyse: null,
-    depotGewichtPct: null, klumpenrisiko: false,
-    kaufTriggerAusgeloest: false, kaufTriggerText: null,
-    scoreVerlauf: [], insiderKaeufe: [],
-  }]
-  await ergaenzeDepotGewichte(platzhalter)
-  const depotGewichtPct = platzhalter[0]!.depotGewichtPct
-  const klumpenrisiko = platzhalter[0]!.klumpenrisiko
+  const depotGewichtPct = scanEintrag.depotGewichtPct
+  const klumpenrisiko = scanEintrag.klumpenrisiko
 
   const kontextText = baueKontextText({
     name: paket.firmenname || name || ticker,
@@ -278,20 +327,21 @@ export async function fuhreDeepResearchDurch(
     revWachstum: fmtOrDash('rev_cagr_3y'),
     depotGewichtPct,
     klumpenrisiko,
+    depotDashboardKontext,
+    kaufhistorie: formatKaufhistorieZeile(scanEintrag),
+    notiz: scanEintrag.notiz ?? null,
+    scanKiBegruendung: scanEintrag.kiBegruendung ?? null,
+    insiderHinweis: formatInsiderZeile(scanEintrag),
+    disziplinHinweis: scanEintrag.disziplinHinweis ?? null,
+    keyMetricsBlock: formatKeyMetricsBlock(paket),
+    zusatzSignaleText: zusatz ? formatZusatzSignaleKurz(zusatz) : null,
     earningsSummaries: earningsList,
     secSummaries: secList,
-    // Nachkauf-Radar Score-Kontext
-    nachkaufScore: anfrage.scanEintrag?.score,
-    nachkaufAmpel: anfrage.scanEintrag?.ampel,
-    kaufTriggerAusgeloest: anfrage.scanEintrag?.kaufTriggerAusgeloest,
-    kaufTriggerText: anfrage.scanEintrag?.kaufTriggerText,
-    premiumDiscountPct: anfrage.scanEintrag?.premiumDiscountPct,
+    scanEintrag,
     historischerMedianPe: anfrage.historischerMedianPe,
-    scoreVerlauf: anfrage.scanEintrag?.scoreVerlauf,
-    segmentStrukturKontext: formatSegmentStrukturKontext(
-      paket.erweitert?.secSegmentHistorie,
-      paket.erweitert?.secStruktur,
-    ),
+    segmentStrukturKontext:
+      zusatz?.segmentStrukturKontext ??
+      formatSegmentStrukturKontext(paket.erweitert?.secSegmentHistorie, paket.erweitert?.secStruktur),
   })
 
   // LLM-Aufruf mit Gemini Pro

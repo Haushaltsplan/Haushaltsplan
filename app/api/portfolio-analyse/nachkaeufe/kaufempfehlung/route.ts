@@ -3,13 +3,10 @@ import 'server-only'
 
 import {
   ladeNachkaufScanAusCloud,
-  ergaenzeKaufhistorieUndNotizen,
-  ergaenzeDepotGewichte,
   ladeAlleDeepResearch,
+  speichereNachkaufScanEintraege,
 } from '@/lib/portfolio-analyse/nachkauf-radar/nachkauf-radar-db-server'
-import { berechneTrimSignale } from '@/lib/portfolio-analyse/nachkauf-radar/nachkauf-trim-signal'
-import { wendeNachkaufDisziplinAn } from '@/lib/portfolio-analyse/nachkauf-radar/nachkauf-disziplin-server'
-import { ergaenzeScoreVerlauf } from '@/lib/portfolio-analyse/nachkauf-radar/nachkauf-radar-verlauf-server'
+import { reichereNachkaufEintraegeVoll } from '@/lib/portfolio-analyse/nachkauf-radar/nachkauf-kontext-server'
 import { generiereKaufempfehlung } from '@/lib/portfolio-analyse/nachkauf-radar/nachkauf-kaufempfehlung-server'
 import { speichereEmpfehlungTracking } from '@/lib/portfolio-analyse/nachkauf-radar/nachkauf-performance-server'
 import { createSupabaseAdmin } from '@/lib/supabase-admin'
@@ -18,14 +15,12 @@ export const maxDuration = 120
 
 export async function POST(req: Request) {
   try {
-    // Budget aus Body lesen (Fallback: 500 €)
     let budgetEur = 500
     try {
       const body = await req.json()
       if (typeof body.budget === 'number' && body.budget >= 100) budgetEur = body.budget
-    } catch { /* kein Body = Standardwert */ }
+    } catch { /* Standardwert */ }
 
-    // 1. Scan-Ergebnisse laden
     let ergebnisse = await ladeNachkaufScanAusCloud()
     if (ergebnisse.length === 0) {
       return NextResponse.json(
@@ -34,26 +29,18 @@ export async function POST(req: Request) {
       )
     }
 
-    // 2. Daten anreichern (parallel)
     const deepMap = await ladeAlleDeepResearch()
-    await Promise.all([
-      ergaenzeKaufhistorieUndNotizen(ergebnisse),
-      ergaenzeDepotGewichte(ergebnisse),
-      ergaenzeScoreVerlauf(ergebnisse),
-    ])
-    wendeNachkaufDisziplinAn(ergebnisse)
-    berechneTrimSignale(ergebnisse)
-
-    // 3. Deep Research einhängen
     for (const e of ergebnisse) {
       const dr = deepMap.get(e.ticker.toUpperCase())
       if (dr) e.tiefenAnalyse = dr
     }
 
-    // 4. Kaufempfehlung generieren
+    // Volle Projekt-Anreicherung: Depot (Dashboard), Historie, Notizen, Insider, Ranking
+    await reichereNachkaufEintraegeVoll(ergebnisse)
+    await speichereNachkaufScanEintraege(ergebnisse)
+
     const ergebnis = await generiereKaufempfehlung(ergebnisse, budgetEur)
 
-    // 5. In Supabase speichern
     try {
       const monat = new Date().toISOString().slice(0, 7)
       const supabase = createSupabaseAdmin()
@@ -78,7 +65,6 @@ export async function POST(req: Request) {
       })
     } catch (dbErr) {
       console.warn('[kaufempfehlung] Speichern fehlgeschlagen:', dbErr)
-      // kein Hard-Fail — Ergebnis trotzdem zurückgeben
     }
 
     return NextResponse.json(ergebnis)
@@ -89,7 +75,6 @@ export async function POST(req: Request) {
   }
 }
 
-// Lade gespeicherte Empfehlung für aktuellen Monat
 export async function GET() {
   try {
     const monat = new Date().toISOString().slice(0, 7)

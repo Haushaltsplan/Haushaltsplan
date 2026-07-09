@@ -1,9 +1,8 @@
 import { NextResponse } from 'next/server'
 import { fuhreDeepResearchDurch } from '@/lib/portfolio-analyse/nachkauf-radar/nachkauf-radar-deep-research-server'
 import { ladeNachkaufScanAusCloud } from '@/lib/portfolio-analyse/nachkauf-radar/nachkauf-radar-db-server'
-import { ergaenzeScoreVerlauf } from '@/lib/portfolio-analyse/nachkauf-radar/nachkauf-radar-verlauf-server'
 import { NACHKAUF_RADAR_WHITELIST } from '@/lib/portfolio-analyse/nachkauf-radar/nachkauf-radar-whitelist'
-import type { NachkaufDeepResearchAnfrage } from '@/lib/portfolio-analyse/nachkauf-radar/nachkauf-radar-types'
+import type { NachkaufDeepResearchAnfrage, NachkaufScanEintrag } from '@/lib/portfolio-analyse/nachkauf-radar/nachkauf-radar-types'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 300
@@ -28,28 +27,20 @@ export async function POST(req: Request) {
     name: row.name != null ? String(row.name).trim() || null : null,
   }
 
-  // Aktuellen Scan-Eintrag als Kontext für das LLM laden
-  let scanKontext: Parameters<typeof fuhreDeepResearchDurch>[0]['scanEintrag'] | undefined
+  let scanEintrag: NachkaufScanEintrag | null = null
   let historischerMedianPe: number | null | undefined
 
   try {
     const alleEintraege = await ladeNachkaufScanAusCloud()
-    const eintrag = alleEintraege.find(
-      (e) => e.ticker.toUpperCase() === ticker.toUpperCase() || e.isin === (anfrage.isin ?? ''),
-    )
-    if (eintrag) {
-      await ergaenzeScoreVerlauf([eintrag])
-      scanKontext = {
-        score: eintrag.score,
-        ampel: eintrag.ampel,
-        kaufTriggerAusgeloest: eintrag.kaufTriggerAusgeloest,
-        kaufTriggerText: eintrag.kaufTriggerText,
-        premiumDiscountPct: eintrag.bewertung.premiumDiscountPct,
-        scoreVerlauf: eintrag.scoreVerlauf,
-      }
+    scanEintrag =
+      alleEintraege.find(
+        (e) => e.ticker.toUpperCase() === ticker.toUpperCase() || e.isin === (anfrage.isin ?? ''),
+      ) ?? null
+
+    if (scanEintrag) {
       historischerMedianPe =
-        eintrag.bewertung.historischerMedianPe ??
-        NACHKAUF_RADAR_WHITELIST.find((p) => p.isin === eintrag.isin)?.historischerMedianPe ??
+        scanEintrag.bewertung.historischerMedianPe ??
+        NACHKAUF_RADAR_WHITELIST.find((p) => p.isin === scanEintrag!.isin)?.historischerMedianPe ??
         null
     } else {
       const wl = NACHKAUF_RADAR_WHITELIST.find(
@@ -58,11 +49,11 @@ export async function POST(req: Request) {
       historischerMedianPe = wl?.historischerMedianPe ?? null
     }
   } catch {
-    // Kontext ist optional — Fehler hier darf Deep Research nicht blockieren
+    // Kontext optional — Deep Research darf nicht blockieren
   }
 
   try {
-    const result = await fuhreDeepResearchDurch({ ...anfrage, scanEintrag: scanKontext, historischerMedianPe })
+    const result = await fuhreDeepResearchDurch({ ...anfrage, scanEintrag, historischerMedianPe })
     if (!result.ok) {
       return NextResponse.json({ ok: false, fehler: result.fehler }, { status: 502 })
     }

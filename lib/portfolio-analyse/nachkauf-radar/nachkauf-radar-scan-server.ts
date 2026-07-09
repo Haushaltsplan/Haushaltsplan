@@ -474,6 +474,7 @@ export async function laufeScan(anfrage: NachkaufScanAnfrage): Promise<NachkaufS
     ])
     await reichereErgebnisseAn(mitDeep, true, batchKontext)
     mitDeep.sort((a, b) => b.score - a.score)
+    await speichereNachkaufScanEintraege(mitDeep)
     return {
       ok: true,
       ergebnisse: mitDeep,
@@ -567,6 +568,7 @@ export async function laufeScan(anfrage: NachkaufScanAnfrage): Promise<NachkaufS
   // Alle Anreicherungen parallel (Verlauf, Insider, Depot-Gewichte)
   await reichereErgebnisseAn(mitDeep, true, batchKontext)
   mitDeep.sort((a, b) => b.score - a.score)
+  await speichereNachkaufScanEintraege(mitDeep)
 
   const ausstehend = gesamtAnzahl - alle.length
 
