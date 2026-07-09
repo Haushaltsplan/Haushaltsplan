@@ -20,6 +20,35 @@ import { NACHKAUF_DEEP_RESEARCH_SYSTEM_PROMPT } from './nachkauf-deep-research-p
 import { formatSegmentStrukturKontext } from './nachkauf-segment-struktur-hilfen'
 import { ergaenzeDepotGewichte, speichereDeepResearch } from './nachkauf-radar-db-server'
 import type { NachkaufDeepResearch, NachkaufDeepResearchAnfrage, NachkaufScanEintrag } from './nachkauf-radar-types'
+import type { FundamentaldatenPaket } from '@/lib/portfolio-analyse/fundamentaldaten-types'
+
+/** ROIC für Deep-Research-Kontext — Key Metric heißt ltm_roic, Macrotrends-Zeile roi. */
+function formatRoicKontext(paket: FundamentaldatenPaket): string {
+  const ltm = paket.keyMetrics.find((m) => m.id === 'ltm_roic')?.wert
+  if (ltm && ltm !== '–' && ltm !== 'n/a') return ltm
+
+  const roiZeile = paket.zeilen.find((z) => z.id === 'roi')
+  if (!roiZeile) return '–'
+
+  const hist: number[] = []
+  for (const p of paket.perioden) {
+    if (p.istSchaetzung || p.istNtm || p.istLtm) continue
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(p.iso)) continue
+    const v = roiZeile.werte[p.iso]
+    if (v != null && Number.isFinite(v)) hist.push(v)
+  }
+  if (hist.length === 0) return '–'
+
+  const latest = hist[hist.length - 1]!
+  const trend =
+    hist.length >= 3
+      ? ` — Verlauf: ${hist
+          .slice(-5)
+          .map((v) => `${v.toFixed(1)} %`)
+          .join(' → ')}`
+      : ''
+  return `${latest.toFixed(1)} % (Macrotrends)${trend}`
+}
 
 // ---------------------------------------------------------------------------
 // Kontext-Text für Deep Research bauen
@@ -244,7 +273,7 @@ export async function fuhreDeepResearchDurch(
     sellTrigger: watchWarnungen || 'Keine aktiven Sell-Trigger',
     fcfYield: fmtOrDash('ntm_mc_fcf') !== '–' ? `NTM MC/FCF ${fmtOrDash('ntm_mc_fcf')}` : fmtOrDash('ltm_pfcf') !== '–' ? `LTM MC/FCF ${fmtOrDash('ltm_pfcf')}` : 'keine Daten',
     forwardPe: fmtOrDash('ntm_pe'),
-    roic: fmtOrDash('roic') !== '–' ? fmtOrDash('roic') : '–',
+    roic: formatRoicKontext(paket),
     netDebtEbitda: fmtOrDash('net_debt_ebitda') !== '–' ? fmtOrDash('net_debt_ebitda') : '–',
     revWachstum: fmtOrDash('rev_cagr_3y'),
     depotGewichtPct,
