@@ -15,7 +15,7 @@ import {
 
 const BASE = 'https://www.marketscreener.com/quote/stock'
 const CACHE_MS = 12 * 60 * 60 * 1000
-const CACHE_VERSION = 12
+const CACHE_VERSION = 13
 const MAX_ZUSAETZLICHE_SLUGS = 8
 const MIN_ABSTAND_MS = 700
 
@@ -62,6 +62,36 @@ function normalisiereName(s: string): string {
     .replace(/[\u0300-\u036f]/g, '')
     .replace(/[^A-Z0-9]+/g, ' ')
     .trim()
+}
+
+const SLUG_STOPWORDS = new Set([
+  'INC',
+  'CORP',
+  'CORPORATION',
+  'PLC',
+  'AG',
+  'GROUP',
+  'HOLDING',
+  'THE',
+  'AND',
+])
+
+function htmlPasstZuUnternehmen(
+  html: string,
+  opts: { name: string; ticker?: string | null },
+): boolean {
+  const title = (html.match(/<title>([^<]+)/)?.[1] ?? '').toLowerCase()
+  const parts = normalisiereName(opts.name)
+    .split(/\s+/)
+    .filter((w) => w.length > 2 && !SLUG_STOPWORDS.has(w))
+  const kern = parts.slice(0, 2)
+  if (kern.length < 1) return true
+  if (!kern.every((w) => title.includes(w.toLowerCase()))) return false
+
+  const ticker = opts.ticker?.trim().toUpperCase().split('.')[0]
+  if (ticker === 'UNP' && /unitedhealth|optum/i.test(title)) return false
+  if (ticker === 'UNH' && /union pacific/i.test(title)) return false
+  return true
 }
 
 async function ensureMsCookies(force = false): Promise<string> {
@@ -179,9 +209,13 @@ async function slugsAusIsinSuche(isin: string, name: string): Promise<string[]> 
   }
 }
 
-async function versucheSlug(slug: string): Promise<{ slug: string; html: string } | null> {
+async function versucheSlug(
+  slug: string,
+  ctx: { name: string; ticker?: string | null },
+): Promise<{ slug: string; html: string } | null> {
   const html = await fetchSegmentsHtml(slug)
   if (!html) return null
+  if (!htmlPasstZuUnternehmen(html, ctx)) return null
   if (!htmlHatMsSegmentDaten(html)) {
     if (!html.includes('financialSegmentCA')) return null
     const { produkt, geo } = extrahiereMsSegmentHistorien(html)
@@ -195,13 +229,18 @@ async function findeGueltigenSlug(
   name: string,
   symbolYahoo?: string | null,
 ): Promise<{ slug: string; html: string } | null> {
+  const ticker =
+    symbolYahoo?.trim().toUpperCase().split('.')[0] ||
+    (isin.length >= 10 ? isinKenntnis(isin)?.symbolYahoo?.trim().toUpperCase().split('.')[0] : undefined)
+  const ctx = { name, ticker: ticker ?? null }
+
   const hart = isin.length >= 10 ? bekannterMarketscreenerSlug(isin) : null
   if (hart) {
-    const treffer = await versucheSlug(hart)
+    const treffer = await versucheSlug(hart, ctx)
     if (treffer) return treffer
     await pause(2_500)
     await ensureMsCookies(true)
-    const retry = await versucheSlug(hart)
+    const retry = await versucheSlug(hart, ctx)
     if (retry) return retry
   }
 
@@ -211,7 +250,7 @@ async function findeGueltigenSlug(
     if (slug === hart) continue
     if (hart && versuche >= MAX_ZUSAETZLICHE_SLUGS) break
     versuche++
-    const treffer = await versucheSlug(slug)
+    const treffer = await versucheSlug(slug, ctx)
     if (treffer) return treffer
   }
 
@@ -220,7 +259,7 @@ async function findeGueltigenSlug(
     if (slug === hart || ausIsinSuche.includes(slug)) continue
     if (hart && versuche >= MAX_ZUSAETZLICHE_SLUGS) break
     versuche++
-    const treffer = await versucheSlug(slug)
+    const treffer = await versucheSlug(slug, ctx)
     if (treffer) return treffer
   }
 
@@ -237,7 +276,7 @@ async function findeGueltigenSlug(
   for (const slug of generiert) {
     if (hart && versuche >= MAX_ZUSAETZLICHE_SLUGS) break
     versuche++
-    const treffer = await versucheSlug(slug)
+    const treffer = await versucheSlug(slug, ctx)
     if (treffer) return treffer
   }
 

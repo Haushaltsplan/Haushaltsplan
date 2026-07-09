@@ -13,6 +13,7 @@ import { isinKenntnis } from '../lib/portfolio-analyse/isin-kenntnisse'
 import { NACHKAUF_RADAR_WHITELIST } from '../lib/portfolio-analyse/nachkauf-radar/nachkauf-radar-whitelist'
 import { ladeGescrapteSegmentStruktur } from '../lib/portfolio-analyse/segment-struktur-scraper-server'
 import { ladeSegmentStrukturAusCloud } from '../lib/portfolio-analyse/segment-struktur-cloud-server'
+import { summeUmsatzMio } from '../lib/portfolio-analyse/segment-historie-merge-hilfen'
 
 function loadEnv() {
   try {
@@ -55,8 +56,10 @@ async function seedEinen(name: string, isin: string, symbolYahoo: string, ticker
   if (ok && !cloudOk) {
     console.warn(`  ⚠ Cloud-Speichern fehlgeschlagen für ${isin} — Migration/Service-Role prüfen`)
   }
+  const prodB = (summeUmsatzMio(paket?.produkt) / 1000).toFixed(1)
+  const geoB = paket?.geo ? (summeUmsatzMio(paket.geo) / 1000).toFixed(1) : '—'
   console.log(
-    `${ok ? 'OK' : 'FAIL'} ${name.padEnd(24)} live ${prod}/${geo}/${backlog} cloud=${cloudOk ? 'ja' : 'nein'}`,
+    `${ok ? 'OK' : 'FAIL'} ${name.padEnd(24)} live ${prod}/${geo}/${backlog} ~${prodB}B/${geoB}B quelle=${paket?.quelle ?? '?'} cloud=${cloudOk ? 'ja' : 'nein'}`,
   )
   return ok
 }

@@ -1,4 +1,4 @@
-/** Orchestrierung: Marketscreener Segmente + StockAnalysis-Fallback + Backlog (kein SEC). */
+/** Orchestrierung: Marketscreener + StockAnalysis + SEC-Produkt-Fallback + Backlog. */
 
 import 'server-only'
 
@@ -16,7 +16,8 @@ import {
 import { ladeMarketbeatBacklogHistorie } from '@/lib/portfolio-analyse/marketbeat-backlog-server'
 import { ladeMarketscreenerSegmentHistorie } from '@/lib/portfolio-analyse/marketscreener-segment-historie-server'
 import { ladeStockanalysisBacklogHistorie } from '@/lib/portfolio-analyse/stockanalysis-backlog-server'
-import { besteSegmentHistorieQuellen } from '@/lib/portfolio-analyse/segment-historie-merge-hilfen'
+import { besteSegmentHistorieQuellen, bereinigeGeoNachProdukt, segmentPaketPlausibel } from '@/lib/portfolio-analyse/segment-historie-merge-hilfen'
+import { ladeSecSegmentHistorie } from '@/lib/portfolio-analyse/sec-edgar-segment-historie-server'
 import { ladeStockanalysisSegmentPaket } from '@/lib/portfolio-analyse/stockanalysis-segment-server'
 
 const LEER_ZUSATZ: SecZusatzRisikoFelder = {
@@ -58,7 +59,8 @@ function mergePakete(
   sa: Awaited<ReturnType<typeof ladeStockanalysisSegmentPaket>>,
 ): SecSegmentHistoriePaket | null {
   const produkt = besteSegmentHistorieQuellen(ms?.produkt, sa?.produkt)
-  const geo = besteSegmentHistorieQuellen(ms?.geo, sa?.geo)
+  let geo = besteSegmentHistorieQuellen(ms?.geo, sa?.geo)
+  geo = bereinigeGeoNachProdukt(produkt, geo, sa?.geo ?? null)
   if (!produkt && !geo) return null
 
   const msHatProd = (ms?.produkt?.anzahlJahre ?? 0) > 0
@@ -133,6 +135,54 @@ async function ergaenzeBacklog(
   return { ...paket, backlog }
 }
 
+function anzahlProduktSegmente(historie: SecSegmentHistorie | null | undefined): number {
+  return historie?.jahre.at(-1)?.segmente.length ?? 0
+}
+
+function brauchtSecProduktFallback(paket: SecSegmentHistoriePaket | null): boolean {
+  return anzahlProduktSegmente(paket?.produkt ?? null) < 2
+}
+
+async function ergaenzeSecProduktFallback(
+  paket: SecSegmentHistoriePaket,
+  ticker: string,
+): Promise<SecSegmentHistoriePaket> {
+  if (!brauchtSecProduktFallback(paket)) return paket
+
+  const sec = await ladeSecSegmentHistorie(ticker)
+  if (!sec?.produkt || anzahlProduktSegmente(sec.produkt) < 2) return paket
+
+  const geo = paket.geo ?? sec.geo ?? null
+  const quelleVorher = paket.quelle
+  let quelle: SecSegmentHistoriePaket['quelle'] = 'sec_edgar'
+  if (geo && quelleVorher !== 'stockanalysis') quelle = 'mixed'
+  else if (quelleVorher === 'mixed') quelle = 'mixed'
+
+  const berichtJahr = Math.max(
+    sec.produkt.juengstesJahr ?? 0,
+    geo?.juengstesJahr ?? 0,
+    paket.berichtJahr ?? 0,
+  )
+
+  return {
+    ...paket,
+    produkt: sec.produkt,
+    geo,
+    kategorien: sec.kategorien.length > 0 ? sec.kategorien : paket.kategorien,
+    zusatz: {
+      ...paket.zusatz,
+      auslandsumsatzAnteilPct:
+        paket.zusatz.auslandsumsatzAnteilPct ?? sec.zusatz.auslandsumsatzAnteilPct,
+      mitarbeiterAnzahl: paket.zusatz.mitarbeiterAnzahl ?? sec.zusatz.mitarbeiterAnzahl,
+      hauptkunden: paket.zusatz.hauptkunden.length > 0 ? paket.zusatz.hauptkunden : sec.zusatz.hauptkunden,
+    },
+    kennzahlen: paket.kennzahlen ?? sec.kennzahlen,
+    berichtJahr: berichtJahr > 0 ? berichtJahr : paket.berichtJahr,
+    anzahl10k: Math.max(sec.produkt.anzahlJahre, geo?.anzahlJahre ?? 0, paket.anzahl10k, sec.anzahl10k),
+    quelle,
+  }
+}
+
 async function scrapeLiveSegmentStruktur(opts: {
   isin?: string | null
   name: string
@@ -166,6 +216,11 @@ async function scrapeLiveSegmentStruktur(opts: {
   let paket = mergePakete(ms, sa)
   if (!paket) paket = leeresPaket()
 
+  const ticker = usTicker(opts)
+  if (ticker) {
+    paket = await ergaenzeSecProduktFallback(paket, ticker)
+  }
+
   paket = await ergaenzeBacklog(paket, { ...opts, isin, refresh: opts.refresh })
 
   if (!paket.produkt && !paket.geo && !paket.backlog) return null
@@ -190,7 +245,18 @@ export async function ladeGescrapteSegmentStruktur(opts: {
 
   if (!opts.refresh && isin && isin.length >= 10) {
     const cloud = await ladeSegmentStrukturAusCloud(isin)
-    if (cloud) return cloud
+    if (
+      cloud &&
+      segmentPaketPlausibel(cloud, {
+        ticker: opts.ticker ?? opts.symbolYahoo,
+        name: opts.name,
+      })
+    ) {
+      return cloud
+    }
+    if (cloud) {
+      console.warn(`[segment-struktur] Cloud verworfen (Plausibilität) für ${isin}`)
+    }
   }
 
   const live = await scrapeLiveSegmentStruktur({ ...opts, isin: isin ?? opts.isin })
