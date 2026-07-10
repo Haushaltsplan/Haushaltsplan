@@ -5,9 +5,9 @@
 import 'server-only'
 
 const CACHE_MS = 6 * 60 * 60 * 1000
-const cache = new Map<string, { at: number; data: MomentumFinvizKennzahlen | null }>()
+const cache = new Map<string, { at: number; data: FinvizKennzahlen | null }>()
 
-export type MomentumFinvizKennzahlen = {
+export type FinvizKennzahlen = {
   symbol: string
   shortFloatPct: number | null
   shortRatio: number | null
@@ -52,7 +52,7 @@ function extrahiereSnapshotMap(html: string): Map<string, string> {
 export async function ladeFinvizKennzahlen(
   symbol: string,
   opts?: { skipCache?: boolean },
-): Promise<MomentumFinvizKennzahlen | null> {
+): Promise<FinvizKennzahlen | null> {
   const sym = symbol.trim().toUpperCase()
   if (!sym) return null
 
@@ -71,7 +71,7 @@ export async function ladeFinvizKennzahlen(
     }
     const html = await res.text()
     const snap = extrahiereSnapshotMap(html)
-    const data: MomentumFinvizKennzahlen = {
+    const data: FinvizKennzahlen = {
       symbol: sym,
       shortFloatPct: parseZahl(snap.get('Short Float') ?? ''),
       shortRatio: parseZahl(snap.get('Short Ratio') ?? ''),
@@ -87,19 +87,4 @@ export async function ladeFinvizKennzahlen(
     cache.set(sym, { at: Date.now(), data: null })
     return null
   }
-}
-
-/** Batch mit Pause — max. n Symbole (Rate-Limit). */
-export async function ladeFinvizKennzahlenBatch(
-  symbole: string[],
-  max = 12,
-): Promise<Map<string, MomentumFinvizKennzahlen>> {
-  const out = new Map<string, MomentumFinvizKennzahlen>()
-  const uniq = [...new Set(symbole.map((s) => s.trim().toUpperCase()).filter(Boolean))].slice(0, max)
-  for (const sym of uniq) {
-    const k = await ladeFinvizKennzahlen(sym)
-    if (k) out.set(sym, k)
-    await new Promise((r) => setTimeout(r, 800))
-  }
-  return out
 }

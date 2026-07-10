@@ -8,7 +8,7 @@ import 'server-only'
 
 import { ladeEuInsiderDealings } from '@/lib/portfolio-analyse/eu-insider-dealing-server'
 import { isinKenntnis } from '@/lib/portfolio-analyse/isin-kenntnisse'
-import { ladeInsiderKauefeFuerSymbol } from '@/lib/portfolio-analyse/momentum-trader/momentum-insider-server'
+import { ladeInsiderKauefeFuerSymbol } from '@/lib/portfolio-analyse/openinsider-server'
 import { ladeSecForm4OpenMarketKaeufe } from '@/lib/portfolio-analyse/sec-edgar-form4-server'
 import type { InsiderKauf, NachkaufScanEintrag } from './nachkauf-radar-types'
 import type { WhitelistPosition } from './nachkauf-radar-whitelist'

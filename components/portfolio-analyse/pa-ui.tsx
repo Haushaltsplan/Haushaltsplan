@@ -122,7 +122,6 @@ const SUB_NAV = [
   { href: '/portfolioanalyse/fundamentaldaten', label: 'Fundamentaldaten' },
   { href: '/portfolioanalyse/analyse', label: 'Analyse' },
   { href: '/portfolioanalyse/nachkaeufe', label: 'Nachkauf-Radar' },
-  { href: '/portfolioanalyse/momentum-trader', label: 'Momentum Trader' },
   { href: '/portfolioanalyse/watchlist', label: 'Watchlist' },
   { href: '/portfolioanalyse/import', label: 'Import' },
 ] as const

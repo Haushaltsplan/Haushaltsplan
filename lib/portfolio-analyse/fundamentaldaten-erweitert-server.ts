@@ -8,7 +8,7 @@ import type { FundamentaldatenErweitert } from '@/lib/portfolio-analyse/fundamen
 import { ladeInsiderNettoHandel } from '@/lib/portfolio-analyse/fundamentaldaten-insider-netto-server'
 import { ladeEarningsBeatMissHistorie } from '@/lib/portfolio-analyse/earnings-beat-miss-historie-server'
 import { ladeEuFundamentalKennzahlen } from '@/lib/portfolio-analyse/marketscreener-fundamental-kennzahlen-server'
-import { ladeFinvizKennzahlen } from '@/lib/portfolio-analyse/momentum-trader/momentum-finviz-server'
+import { ladeFinvizKennzahlen } from '@/lib/portfolio-analyse/finviz-kennzahlen-server'
 import { ladeGescrapteSegmentStruktur } from '@/lib/portfolio-analyse/segment-struktur-scraper-server'
 import { ladeSegmentStrukturAusCloud } from '@/lib/portfolio-analyse/segment-struktur-cloud-server'
 import { ladeSecStrukturExtraktion } from '@/lib/portfolio-analyse/sec-edgar-struktur-server'

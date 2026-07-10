@@ -2,7 +2,6 @@
  * Nachkauf-Radar — Ranking-Optimierungen (rein regelbasiert, ohne server-only).
  */
 
-import type { MomentumMarketRegime } from '@/lib/portfolio-analyse/momentum-trader/momentum-trader-types'
 import type {
   NachkaufBewertungsSignale,
   NachkaufScoreBucketStat,
@@ -10,8 +9,13 @@ import type {
 } from './nachkauf-radar-types'
 import type { WhitelistPosition, WhitelistSektor } from './nachkauf-radar-whitelist'
 
+export type NachkaufMarktRegime = {
+  spyAbove20Ma: boolean | null
+  vixClose: number | null
+}
+
 export type NachkaufBatchKontext = {
-  regime: Pick<MomentumMarketRegime, 'spyAbove20Ma' | 'vixClose'> | null
+  regime: NachkaufMarktRegime | null
   tageBisEarningsMap: Map<string, number>
   scoreBuckets: NachkaufScoreBucketStat[]
 }
@@ -19,7 +23,7 @@ export type NachkaufBatchKontext = {
 export type SegmentDatenQualitaet = 'validiert' | 'nur_ms' | 'keine'
 
 export type NachkaufRankingKontext = {
-  regime: Pick<MomentumMarketRegime, 'spyAbove20Ma' | 'vixClose'> | null
+  regime: NachkaufMarktRegime | null
   tageBisEarnings: number | null
   segmentDatenQualitaet: SegmentDatenQualitaet
   kaufTriggerAusgeloest: boolean

@@ -15,14 +15,6 @@
     {
       "path": "/api/strava/cron-sync",
       "schedule": "0 6 * * 0"
-    },
-    {
-      "path": "/api/portfolio-analyse/momentum-trader/cron-sync",
-      "schedule": "0 7 * * 1-5"
-    },
-    {
-      "path": "/api/portfolio-analyse/momentum-trader/cron-sync",
-      "schedule": "0 22 * * 1-5"
     }
   ]
 }

@@ -4,11 +4,26 @@ import {
   holeYahooFinanceAuth,
   YAHOO_FINANCE_FETCH_HEADERS,
 } from '@/lib/portfolio-analyse/yahoo-finance-auth-server'
-import { momentumEarningsTicker } from '@/lib/portfolio-analyse/momentum-trader/momentum-symbol-hilfen'
-import type { MomentumLiveKurs } from '@/lib/portfolio-analyse/momentum-trader/momentum-trader-types'
+
+const BOERSE_SUFFIX_RE =
+  /^([A-Z0-9-]+)\.(DE|PA|AS|L|SW|HM|F|MI|MC|MU|BE|VI|WA|BR|HE|DU|SG|ST|TO|AX|NZ|US)$/i
+
+function basisTickerOhneBoerse(symbol: string): string {
+  const s = symbol.trim().toUpperCase()
+  const m = BOERSE_SUFFIX_RE.exec(s)
+  return m ? m[1].toUpperCase() : s
+}
+
+export type YahooLiveKurs = {
+  preis: number
+  quelle: 'pre' | 'post' | 'regular'
+  marketState: string | null
+  gapVsPrevClosePct: number | null
+  aktualisiertAm: string
+}
 
 const CACHE_MS = 90_000
-const cache = new Map<string, { at: number; data: MomentumLiveKurs | null }>()
+const cache = new Map<string, { at: number; data: YahooLiveKurs | null }>()
 
 function runde4(n: number): number {
   return Math.round(n * 10_000) / 10_000
@@ -23,11 +38,11 @@ type YahooPriceRow = {
 }
 
 /** Live-/Extended-Hours-Kurs via Yahoo quoteSummary (Pre/Post/Regular). */
-export async function ladeMomentumLiveKurs(
+export async function ladeYahooLiveKurs(
   symbolYahoo: string,
   opts?: { skipCache?: boolean },
-): Promise<MomentumLiveKurs | null> {
-  const sym = momentumEarningsTicker(symbolYahoo.trim().toUpperCase())
+): Promise<YahooLiveKurs | null> {
+  const sym = basisTickerOhneBoerse(symbolYahoo.trim().toUpperCase())
   if (!sym) return null
 
   if (!opts?.skipCache) {
@@ -64,7 +79,7 @@ export async function ladeMomentumLiveKurs(
 
     const state = (row.marketState ?? '').toUpperCase()
     const prevClose = row.regularMarketPreviousClose?.raw ?? null
-    let quelle: MomentumLiveKurs['quelle'] = 'regular'
+    let quelle: YahooLiveKurs['quelle'] = 'regular'
     let preis = row.regularMarketPrice?.raw ?? null
 
     if (state === 'PRE' && row.preMarketPrice?.raw != null) {
@@ -94,7 +109,7 @@ export async function ladeMomentumLiveKurs(
         ? runde4(((preis - prevClose) / prevClose) * 100)
         : null
 
-    const data: MomentumLiveKurs = {
+    const data: YahooLiveKurs = {
       preis: runde4(preis),
       quelle,
       marketState: row.marketState ?? null,

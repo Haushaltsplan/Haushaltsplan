@@ -4,20 +4,23 @@
 
 import 'server-only'
 
-import { heuteIsoUtc, tageZwischenIso } from '@/lib/portfolio-analyse/dividenden-datum-hilfen'
-import {
-  INSIDER_CLUSTER_MAX_TAGE,
-  INSIDER_CLUSTER_MIN_BUYS,
-  INSIDER_CLUSTER_MIN_INSIDERS,
-  INSIDER_MIN_VALUE_USD,
-} from '@/lib/portfolio-analyse/momentum-trader/momentum-constants'
-import type {
-  MomentumInsiderCluster,
-  MomentumInsiderKauf,
-} from '@/lib/portfolio-analyse/momentum-trader/momentum-trader-types'
+const INSIDER_MIN_VALUE_USD = 25_000
+const INSIDER_CLUSTER_MAX_TAGE = 30
 
 const CACHE_MS = 6 * 60 * 60 * 1000
-const pageCache = new Map<string, { at: number; kauefe: MomentumInsiderKauf[] }>()
+const pageCache = new Map<string, { at: number; kauefe: OpenInsiderKauf[] }>()
+
+export type OpenInsiderKauf = {
+  symbol: string
+  tradeDate: string
+  filingDate: string
+  insiderName: string
+  title: string | null
+  tradeType: 'purchase'
+  valueUsd: number | null
+  qty: number | null
+  price: number | null
+}
 
 const FETCH_HEADERS = {
   'User-Agent':
@@ -61,7 +64,7 @@ function parseMenge(text: string): number | null {
   return Number.isFinite(n) ? n : null
 }
 
-function parseTinytableRow(tds: string[], sym: string): MomentumInsiderKauf | null {
+function parseTinytableRow(tds: string[], sym: string): OpenInsiderKauf | null {
   if (tds.length < 10) return null
   if (!tds.some((t) => t.toUpperCase() === sym) && !tds.join(' ').toUpperCase().includes(sym)) return null
 
@@ -94,10 +97,9 @@ function parseTinytableRow(tds: string[], sym: string): MomentumInsiderKauf | nu
   }
 }
 
-/** OpenInsider-Screener-Tabelle parsen. */
-export function parseOpenInsiderKauefe(html: string, symbol: string): MomentumInsiderKauf[] {
+function parseOpenInsiderKauefe(html: string, symbol: string): OpenInsiderKauf[] {
   const sym = symbol.trim().toUpperCase()
-  const out: MomentumInsiderKauf[] = []
+  const out: OpenInsiderKauf[] = []
   const seen = new Set<string>()
 
   const tableHtml = html.match(/<table[^>]*class="tinytable"[^>]*>([\s\S]*?)<\/table>/i)?.[1] ?? html
@@ -127,36 +129,6 @@ export function parseOpenInsiderKauefe(html: string, symbol: string): MomentumIn
   return out.sort((a, b) => b.tradeDate.localeCompare(a.tradeDate))
 }
 
-/** Cluster: mehrere Insider-Käufe im Fenster. */
-export function findeInsiderCluster(
-  kauefe: MomentumInsiderKauf[],
-  fensterTage = INSIDER_CLUSTER_MAX_TAGE,
-): MomentumInsiderCluster | null {
-  const heute = heuteIsoUtc()
-  const recent = kauefe.filter(
-    (k) =>
-      k.tradeType === 'purchase' &&
-      tageZwischenIso(k.tradeDate, heute) <= fensterTage &&
-      (k.valueUsd == null || k.valueUsd >= INSIDER_MIN_VALUE_USD),
-  )
-  if (recent.length < INSIDER_CLUSTER_MIN_BUYS) return null
-
-  const insiderSet = new Set(recent.map((k) => k.insiderName.toLowerCase()))
-  if (insiderSet.size < INSIDER_CLUSTER_MIN_INSIDERS) return null
-
-  const gesamtWertUsd = recent.reduce((s, k) => s + (k.valueUsd ?? 0), 0) || null
-
-  return {
-    symbol: recent[0]!.symbol,
-    fensterTage,
-    kaufAnzahl: recent.length,
-    insiderAnzahl: insiderSet.size,
-    gesamtWertUsd,
-    letzterKauf: recent[0]!.tradeDate,
-    kauefe: recent.slice(0, 8),
-  }
-}
-
 async function ladeOpenInsiderSeite(symbol: string): Promise<string | null> {
   const sym = symbol.trim().toUpperCase()
   const url =
@@ -182,7 +154,7 @@ async function ladeOpenInsiderSeite(symbol: string): Promise<string | null> {
 }
 
 /** Letzte Insider-Käufe für ein Symbol. */
-export async function ladeInsiderKauefeFuerSymbol(symbol: string): Promise<MomentumInsiderKauf[]> {
+export async function ladeInsiderKauefeFuerSymbol(symbol: string): Promise<OpenInsiderKauf[]> {
   const sym = symbol.trim().toUpperCase()
   const cached = pageCache.get(sym)
   if (cached && Date.now() - cached.at < CACHE_MS) return cached.kauefe
@@ -195,19 +167,4 @@ export async function ladeInsiderKauefeFuerSymbol(symbol: string): Promise<Momen
   const kauefe = parseOpenInsiderKauefe(html, sym)
   pageCache.set(sym, { at: Date.now(), kauefe })
   return kauefe
-}
-
-/** Batch — max. n Symbole mit Pause. */
-export async function ladeInsiderKauefeBatch(
-  symbole: string[],
-  max = 8,
-): Promise<Map<string, MomentumInsiderKauf[]>> {
-  const out = new Map<string, MomentumInsiderKauf[]>()
-  const uniq = [...new Set(symbole.map((s) => s.trim().toUpperCase()).filter(Boolean))].slice(0, max)
-  for (const sym of uniq) {
-    const kauefe = await ladeInsiderKauefeFuerSymbol(sym)
-    if (kauefe.length > 0) out.set(sym, kauefe)
-    await new Promise((r) => setTimeout(r, 900))
-  }
-  return out
 }

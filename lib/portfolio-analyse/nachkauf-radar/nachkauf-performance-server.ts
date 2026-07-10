@@ -5,7 +5,7 @@
 import 'server-only'
 
 import { isinKenntnis } from '@/lib/portfolio-analyse/isin-kenntnisse'
-import { ladeMomentumLiveKurs } from '@/lib/portfolio-analyse/momentum-trader/momentum-yahoo-quote-server'
+import { ladeYahooLiveKurs } from '@/lib/portfolio-analyse/yahoo-live-quote-server'
 import { yahooSchlusskursAm } from '@/lib/portfolio-analyse/yahoo-corporate-actions-client'
 import { createSupabaseAdmin } from '@/lib/supabase-admin'
 import { NACHKAUF_RADAR_WHITELIST } from './nachkauf-radar-whitelist'
@@ -226,7 +226,7 @@ export async function speichereEmpfehlungTracking(opts: {
     const meta = metaFuerPosten(posten, opts.scanMap)
     if (!meta) continue
     const sym = await yahooSymbol(meta.ticker, meta.isin)
-    const live = await ladeMomentumLiveKurs(sym).catch(() => null)
+    const live = await ladeYahooLiveKurs(sym).catch(() => null)
     zeilen.push({
       owner_user_id: ownerUserId,
       monat: opts.monat,
