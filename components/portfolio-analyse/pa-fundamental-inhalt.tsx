@@ -146,7 +146,7 @@ export function PaFundamentalInhalt({
     <div className="space-y-4">
       {laden && !daten?.ok ? (
         <PaCard className="p-8 text-center text-sm text-[var(--app-text-muted)]">
-          Fundamentaldaten werden von Macrotrends geladen …
+          Fundamentaldaten werden geladen …
         </PaCard>
       ) : null}
 
@@ -360,7 +360,7 @@ export function PaFundamentalInhalt({
           ) : null}
 
           <p className="text-[10px] text-[var(--app-text-muted)]">
-            Quellen: Macrotrends.net · Yahoo Finance ·{' '}
+            Quellen: {daten.quelle === 'yahoo' ? 'Yahoo Finance' : 'Macrotrends.net · Yahoo Finance'} ·{' '}
             {daten.frequenz === 'quartal' ? 'Quartalsdaten' : 'Jahresdaten'} · Stand{' '}
             {new Date(daten.geladenAm).toLocaleString('de-DE')} · Cache 24h
           </p>

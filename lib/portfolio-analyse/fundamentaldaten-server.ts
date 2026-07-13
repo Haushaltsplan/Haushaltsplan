@@ -329,6 +329,67 @@ export async function ladeFundamentaldaten(anfrage: FundamentaldatenAnfrage): Pr
   }
 
   if (!ident) {
+    // Fallback: Wenn Macrotrends keinen Treffer liefert, dennoch Yahoo-Basisdaten anzeigen,
+    // damit Watchlist immer "Daten" hat (Key-Metrics, Beschreibung, News, ggf. Schätzungen).
+    if (symbolYahoo) {
+      const tickerGuess = macrotrendsTickerAusSymbol(symbolYahoo)
+      const firmenname = anfrage.name?.trim() || tickerGuess || symbolYahoo
+      const [yahooRaw, news, yahooFinanz, schaetzungen] = await Promise.all([
+        ladeYahooFundamentalKennzahlen(symbolYahoo).catch(() => null),
+        ladeFundamentalNews(symbolYahoo, firmenname).catch(() => []),
+        ladeYahooMantraFinanzdaten(symbolYahoo).catch(() => null),
+        frequenz === 'jahr'
+          ? ladeFundamentalSchaetzungen({
+              symbol: symbolYahoo,
+              isin: anfrage.isin,
+              name: firmenname,
+              ticker: tickerGuess || symbolYahoo,
+            }).catch(() => ({ perioden: [], zeilen: [] }))
+          : Promise.resolve({ perioden: [], zeilen: [] }),
+      ])
+
+      const yahooExt = yahooRaw as (YahooFundamentalKennzahlen & {
+        sector?: string
+        industry?: string
+        website?: string
+        longBusinessSummary?: string
+      }) | null
+      const brancheMeta = formatiereBrancheDe({ industry: yahooExt?.industry, sector: yahooExt?.sector })
+      const beschreibungDe = await ladeUnternehmensbeschreibungDe({
+        firmenname,
+        ticker: tickerGuess || symbolYahoo,
+        fallbackEn: yahooExt?.longBusinessSummary,
+      }).catch(() => yahooExt?.longBusinessSummary ?? null)
+
+      const mantraMeta = baueMantraMeta(yahooExt, yahooFinanz)
+
+      return leeresPaket({
+        ok: true,
+        quelle: 'yahoo',
+        ticker: tickerGuess || symbolYahoo,
+        firmenname,
+        slug: '',
+        branche: brancheMeta.branche,
+        sektor: brancheMeta.sektor,
+        website: yahooExt?.website ?? null,
+        beschreibung: beschreibungDe,
+        keyMetrics: baueKeyMetrics(yahooExt, null, schaetzungen, null),
+        mantra: baueMantraAudit(
+          brancheMeta.sektor,
+          brancheMeta.branche,
+          yahooExt,
+          null,
+          schaetzungen,
+          yahooFinanz,
+        ),
+        mantraMeta,
+        news,
+        symbolYahoo,
+        frequenz,
+        fehler: 'Keine Fundamentaldaten auf Macrotrends gefunden (Fallback: Yahoo).',
+      })
+    }
+
     return leeresPaket({
       ok: false,
       ticker: anfrage.tickerOverride?.trim().toUpperCase() ?? '',

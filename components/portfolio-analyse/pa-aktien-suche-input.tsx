@@ -89,15 +89,12 @@ export function PaAktienSucheInput({
         return
       }
       const isin = aufgeloest.isin?.trim().toUpperCase()
+      // Watchlist soll immer möglich sein: ohne ISIN wird über Yahoo-Symbol/Ticker gearbeitet.
       if (!isin || !istGueltigeIsin(isin)) {
-        onFehler?.(
-          'Keine ISIN für „' +
-            t.name +
-            '“ — Treffer mit ISIN wählen, ISIN direkt eingeben oder FINNHUB_API_KEY in .env.local setzen.',
-        )
-        return
+        await onAuswahl({ ...aufgeloest, isin: null })
+      } else {
+        await onAuswahl(aufgeloest)
       }
-      await onAuswahl(aufgeloest)
       setQuery('')
     },
     [onAuswahl, onFehler],

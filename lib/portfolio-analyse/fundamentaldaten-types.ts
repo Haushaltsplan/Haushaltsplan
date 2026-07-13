@@ -166,7 +166,7 @@ export type FundamentaldatenPaket = {
   news: FundamentalNewsArtikel[]
   symbolYahoo: string | null
   geladenAm: string
-  quelle: 'macrotrends'
+  quelle: 'macrotrends' | 'yahoo'
   frequenz?: FundamentalFrequenz
   fehler?: string | null
   /** Tier 1–3: Bilanz-Struktur, Holder, Dividenden, SEC, IV, etc. */
