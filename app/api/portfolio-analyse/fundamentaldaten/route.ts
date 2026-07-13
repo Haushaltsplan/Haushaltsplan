@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { ladeFundamentaldaten } from '@/lib/portfolio-analyse/fundamentaldaten-server'
-import type { FundamentaldatenAnfrage } from '@/lib/portfolio-analyse/fundamentaldaten-types'
+import { baueMantraAudit } from '@/lib/portfolio-analyse/fundamentaldaten-mantra'
+import type { FundamentaldatenAnfrage, FundamentaldatenPaket } from '@/lib/portfolio-analyse/fundamentaldaten-types'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 120
@@ -30,9 +31,28 @@ export async function POST(req: Request) {
     return NextResponse.json(daten)
   } catch (e) {
     console.error('fundamentaldaten', e)
-    return NextResponse.json(
-      { ok: false, message: 'Abruf der Fundamentaldaten fehlgeschlagen.' },
-      { status: 502 },
-    )
+    const msg = e instanceof Error ? e.message : 'Abruf der Fundamentaldaten fehlgeschlagen.'
+    const fehlerPaket: FundamentaldatenPaket = {
+      ok: false,
+      ticker: '',
+      slug: '',
+      firmenname: anfrage.name ?? 'Unbekannt',
+      branche: null,
+      sektor: null,
+      website: null,
+      beschreibung: null,
+      waehrung: 'USD',
+      perioden: [],
+      zeilen: [],
+      keyMetrics: [],
+      mantra: baueMantraAudit(null, null, null, { perioden: [], zeilen: [] }, { perioden: [], zeilen: [] }),
+      mantraMeta: null,
+      news: [],
+      symbolYahoo: anfrage.symbolYahoo ?? null,
+      geladenAm: new Date().toISOString(),
+      quelle: 'yahoo',
+      fehler: msg,
+    }
+    return NextResponse.json({ ...fehlerPaket, message: msg }, { status: 200 })
   }
 }

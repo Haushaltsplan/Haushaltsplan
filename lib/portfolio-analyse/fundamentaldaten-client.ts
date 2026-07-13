@@ -5,7 +5,7 @@ import type {
   FundamentaldatenPaket,
 } from '@/lib/portfolio-analyse/fundamentaldaten-types'
 
-const LS_KEY = 'pa-fundamentaldaten-v37'
+const LS_KEY = 'pa-fundamentaldaten-v38'
 const LS_MAX_AGE_MS = 24 * 60 * 60 * 1000
 
 function cacheKey(anfrage: FundamentaldatenAnfrage): string {
@@ -53,7 +53,15 @@ export async function ladeFundamentaldatenClient(
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(anfrage),
   })
-  const j = (await res.json()) as FundamentaldatenPaket & { message?: string }
+  const raw = await res.text()
+  let j: FundamentaldatenPaket & { message?: string }
+  try {
+    j = JSON.parse(raw) as FundamentaldatenPaket & { message?: string }
+  } catch {
+    throw new Error(
+      raw.trim().slice(0, 180) || 'Fundamentaldaten konnten nicht geladen werden (keine JSON-Antwort).',
+    )
+  }
   if (!res.ok || !j.ok) {
     throw new Error(j.fehler ?? j.message ?? 'Fundamentaldaten konnten nicht geladen werden.')
   }

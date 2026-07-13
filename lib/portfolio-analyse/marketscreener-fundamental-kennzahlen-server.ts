@@ -39,7 +39,7 @@ function txt(html: string): string {
     .trim()
 }
 
-function parseKennzahlenAusHtml(html: string): EuFundamentalPaket['kennzahlen'] {
+export function parseKennzahlenAusHtml(html: string): EuFundamentalPaket['kennzahlen'] {
   // Marketscreener 2026+: viele Kennzahlen stehen als <td label><th value> in einer Tabelle,
   // oft mit Jahres-Suffixen ("EV / Sales 2026 *"). Wir sammeln daher alle Paare und filtern nach Prefix.
   const pairs: Array<{ label: string; wert: string }> = []

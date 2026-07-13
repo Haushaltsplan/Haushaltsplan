@@ -24,6 +24,7 @@ import type {
 import type { FundamentaldatenErweitert } from '@/lib/portfolio-analyse/fundamentaldaten-erweitert-types'
 import { ladeFundamentaldatenErweitert } from '@/lib/portfolio-analyse/fundamentaldaten-erweitert-server'
 import { ladeEuFundamentalAusCloud } from '@/lib/portfolio-analyse/eu-fundamental-cloud-server'
+import { ladeMarketscreenerWatchlistPaket } from '@/lib/portfolio-analyse/marketscreener-fundamentaldaten-server'
 import { lookupIsinMetadaten } from '@/lib/portfolio-analyse/isin-lookup-server'
 import {
   baueUmsatzProJahrAusFinanzzeile,
@@ -351,6 +352,14 @@ export async function ladeFundamentaldaten(anfrage: FundamentaldatenAnfrage): Pr
   }
 
   if (!ident) {
+    // Watchlist: Live-Scrape von Marketscreener (ISIN/Name-Suche — auch PL/EU ohne Macrotrends).
+    const msLive = await ladeMarketscreenerWatchlistPaket({
+      isin: anfrage.isin,
+      name: anfrage.name ?? '',
+      symbolYahoo,
+    }).catch(() => null)
+    if (msLive?.ok) return msLive
+
     // Fallback: Wenn Macrotrends keinen Treffer liefert, dennoch Yahoo-Basisdaten anzeigen,
     // damit Watchlist immer "Daten" hat (Key-Metrics, Beschreibung, News, ggf. Schätzungen).
     const isinKey = anfrage.isin?.trim().toUpperCase() || null
