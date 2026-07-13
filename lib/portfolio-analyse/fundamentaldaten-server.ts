@@ -24,6 +24,7 @@ import type {
 import type { FundamentaldatenErweitert } from '@/lib/portfolio-analyse/fundamentaldaten-erweitert-types'
 import { ladeFundamentaldatenErweitert } from '@/lib/portfolio-analyse/fundamentaldaten-erweitert-server'
 import { ladeEuFundamentalAusCloud } from '@/lib/portfolio-analyse/eu-fundamental-cloud-server'
+import { lookupIsinMetadaten } from '@/lib/portfolio-analyse/isin-lookup-server'
 import {
   baueUmsatzProJahrAusFinanzzeile,
   normalisiereSegmentPaketGegenUmsatz,
@@ -311,6 +312,21 @@ function leeresPaket(partial: Partial<FundamentaldatenPaket> & Pick<Fundamentald
 export async function ladeFundamentaldaten(anfrage: FundamentaldatenAnfrage): Promise<FundamentaldatenPaket> {
   const frequenz = anfrage.frequenz === 'quartal' ? 'quartal' : 'jahr'
   let { ident, symbolYahoo } = await loeseIdent(anfrage)
+
+  // Watchlist-Fallback: Wenn nur ISIN vorhanden ist (z. B. PL/EU Titel) und kein Symbol bekannt ist,
+  // versuchen wir serverseitig Metadaten (Yahoo-Symbol/Name) nachzuladen, damit Yahoo-Fallback greifen kann.
+  if (!symbolYahoo && anfrage.isin?.trim()) {
+    const isin = anfrage.isin.trim().toUpperCase()
+    if (isin.length >= 10) {
+      const [meta] = await lookupIsinMetadaten([isin])
+      if (meta?.symbolYahoo) {
+        symbolYahoo = meta.symbolYahoo
+        if (!anfrage.name?.trim() && meta.name?.trim()) {
+          anfrage = { ...anfrage, name: meta.name }
+        }
+      }
+    }
+  }
 
   const isinNormEarly = loesePortfolioIsin({
     isin: anfrage.isin,
