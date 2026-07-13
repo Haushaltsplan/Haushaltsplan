@@ -360,7 +360,13 @@ export function PaFundamentalInhalt({
           ) : null}
 
           <p className="text-[10px] text-[var(--app-text-muted)]">
-            Quellen: {daten.quelle === 'yahoo' ? 'Yahoo Finance' : 'Macrotrends.net · Yahoo Finance'} ·{' '}
+            Quellen:{' '}
+            {daten.quelle === 'yahoo'
+              ? 'Yahoo Finance'
+              : daten.quelle === 'marketscreener'
+                ? 'Marketscreener'
+                : 'Macrotrends.net · Yahoo Finance'}{' '}
+            ·{' '}
             {daten.frequenz === 'quartal' ? 'Quartalsdaten' : 'Jahresdaten'} · Stand{' '}
             {new Date(daten.geladenAm).toLocaleString('de-DE')} · Cache 24h
           </p>

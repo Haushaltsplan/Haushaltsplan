@@ -23,6 +23,7 @@ import type {
 } from '@/lib/portfolio-analyse/fundamentaldaten-types'
 import type { FundamentaldatenErweitert } from '@/lib/portfolio-analyse/fundamentaldaten-erweitert-types'
 import { ladeFundamentaldatenErweitert } from '@/lib/portfolio-analyse/fundamentaldaten-erweitert-server'
+import { ladeEuFundamentalAusCloud } from '@/lib/portfolio-analyse/eu-fundamental-cloud-server'
 import {
   baueUmsatzProJahrAusFinanzzeile,
   normalisiereSegmentPaketGegenUmsatz,
@@ -47,6 +48,11 @@ import { holeYahooFinanceAuth } from '@/lib/portfolio-analyse/yahoo-finance-auth
 
 const YAHOO_UA =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36'
+
+function istEuIsin(isin: string | null | undefined): boolean {
+  const i = isin?.trim().toUpperCase() ?? ''
+  return i.startsWith('DE') || i.startsWith('NL') || i.startsWith('FR') || i.startsWith('CH') || i.startsWith('GB')
+}
 
 function symboleAusAnfrage(anfrage: FundamentaldatenAnfrage): string[] {
   const out = new Set<string>()
@@ -331,6 +337,34 @@ export async function ladeFundamentaldaten(anfrage: FundamentaldatenAnfrage): Pr
   if (!ident) {
     // Fallback: Wenn Macrotrends keinen Treffer liefert, dennoch Yahoo-Basisdaten anzeigen,
     // damit Watchlist immer "Daten" hat (Key-Metrics, Beschreibung, News, ggf. Schätzungen).
+    const isinKey = anfrage.isin?.trim().toUpperCase() || null
+    if (isinKey && istEuIsin(isinKey)) {
+      const eu = await ladeEuFundamentalAusCloud(isinKey)
+      if (eu?.kennzahlen?.length) {
+        const metriken = eu.kennzahlen.map((k) => {
+          const id = k.label
+            .toLowerCase()
+            .replace(/\d{4}.*/, '')
+            .replace(/[^a-z0-9]+/g, '_')
+            .replace(/^_+|_+$/g, '')
+            .slice(0, 28)
+          const gruppe =
+            /p\/e|ev|yield|market cap|enterprise value/i.test(k.label) ? ('bewertung_ltm' as const) : ('marktdaten' as const)
+          return { id: `ms_${id}`, label: k.label, wert: k.wert, gruppe }
+        })
+        return leeresPaket({
+          ok: true,
+          quelle: 'marketscreener',
+          ticker: '',
+          slug: '',
+          firmenname: anfrage.name ?? 'Unbekannt',
+          symbolYahoo: null,
+          keyMetrics: metriken,
+          fehler: 'Keine Fundamentaldaten auf Macrotrends gefunden (Fallback: Marketscreener Cache).',
+        })
+      }
+    }
+
     if (symbolYahoo) {
       const tickerGuess = macrotrendsTickerAusSymbol(symbolYahoo)
       const firmenname = anfrage.name?.trim() || tickerGuess || symbolYahoo
