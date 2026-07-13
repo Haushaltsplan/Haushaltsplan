@@ -16,32 +16,61 @@ const FETCH_HEADERS = {
   'Accept-Language': 'de-DE,de;q=0.9,en;q=0.8',
 } as const
 
-const LABELS = [
-  'P/E ratio',
+const WANT_PREFIX = [
+  'P/E',
   'EV / Sales',
   'EV / EBITDA',
   'Net debt',
   'ROE',
   'ROA',
   'Dividend yield',
-  'Capitalization',
+  'Yield',
+  'Market Cap',
+  'Enterprise Value',
   'Free-Float',
   '1-year Change',
 ]
 
+function txt(html: string): string {
+  return html
+    .replace(/<sup[\s\S]*?<\/sup>/gi, '')
+    .replace(/<[^>]+>/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
 function parseKennzahlenAusHtml(html: string): EuFundamentalPaket['kennzahlen'] {
-  const out: EuFundamentalPaket['kennzahlen'] = []
-  for (const label of LABELS) {
-    const re = new RegExp(
-      label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '[\\s\\S]{0,120}?<(?:td|span)[^>]*>\\s*([^<]{1,40})\\s*<',
-      'i',
-    )
-    const m = html.match(re)
-    if (m?.[1]) {
-      const wert = m[1].replace(/\s+/g, ' ').trim()
-      if (wert && wert !== '-' && wert !== '—') out.push({ label, wert })
+  // Marketscreener 2026+: viele Kennzahlen stehen als <td label><th value> in einer Tabelle,
+  // oft mit Jahres-Suffixen ("EV / Sales 2026 *"). Wir sammeln daher alle Paare und filtern nach Prefix.
+  const pairs: Array<{ label: string; wert: string }> = []
+  const rows = [...html.matchAll(/<tr[^>]*>([\s\S]*?)<\/tr>/gi)]
+  for (const r of rows) {
+    const row = r[1] ?? ''
+    for (const m of row.matchAll(
+      /<td[^>]*table-child--nowrap[^>]*>\s*([\s\S]*?)\s*<\/td>\s*<t[hd][^>]*table-child--right[^>]*>\s*([\s\S]*?)\s*<\/t[hd]>/gi,
+    )) {
+      const label = txt(m[1] ?? '')
+      const wert = txt(m[2] ?? '')
+      if (!label || !wert || wert === '-' || wert === '—') continue
+      pairs.push({ label, wert })
     }
   }
+
+  const out: EuFundamentalPaket['kennzahlen'] = []
+  const seen = new Set<string>()
+  const want = WANT_PREFIX.map((p) => p.toLowerCase())
+
+  for (const { label, wert } of pairs) {
+    const l = label.toLowerCase()
+    const prefIdx = want.findIndex((p) => l.startsWith(p.toLowerCase()))
+    if (prefIdx < 0) continue
+    const key = label
+    if (seen.has(key)) continue
+    seen.add(key)
+    out.push({ label, wert })
+    if (out.length >= 14) break
+  }
+
   return out
 }
 

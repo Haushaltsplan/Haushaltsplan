@@ -5,6 +5,7 @@ import 'server-only'
 import { ladeArbeitgeberBewertung } from '@/lib/portfolio-analyse/arbeitgeber-bewertung-server'
 import { ladeDividendenHistorieStat } from '@/lib/portfolio-analyse/fundamentaldaten-dividenden-historie-server'
 import type { FundamentaldatenErweitert } from '@/lib/portfolio-analyse/fundamentaldaten-erweitert-types'
+import { ladeEuFundamentalAusCloud, speichereEuFundamentalInCloud } from '@/lib/portfolio-analyse/eu-fundamental-cloud-server'
 import { ladeInsiderNettoHandel } from '@/lib/portfolio-analyse/fundamentaldaten-insider-netto-server'
 import { ladeEarningsBeatMissHistorie } from '@/lib/portfolio-analyse/earnings-beat-miss-historie-server'
 import { ladeEuFundamentalKennzahlen } from '@/lib/portfolio-analyse/marketscreener-fundamental-kennzahlen-server'
@@ -55,7 +56,7 @@ export async function ladeFundamentaldatenErweitert(
     beatMissRaw,
     secStruktur,
     secSegmentHistorie,
-    euFundamental,
+    euFundamentalCloud,
     optionsIv,
     arbeitgeber,
   ] = await Promise.all([
@@ -66,12 +67,24 @@ export async function ladeFundamentaldatenErweitert(
     ticker ? ladeEarningsBeatMissHistorie({ ticker, symbolYahoo: symbol, isin, limit: 8 }) : Promise.resolve(null),
     !ticker.includes('.') ? ladeSecStrukturExtraktion(ticker) : Promise.resolve(null),
     segmentPromise,
-    isEu && isin.length >= 10
-      ? ladeEuFundamentalKennzahlen(isin, opts.firmenname, symbol)
-      : Promise.resolve(null),
+    isEu && isin.length >= 10 ? ladeEuFundamentalAusCloud(isin) : Promise.resolve(null),
     symbol && !symbol.includes('.') ? ladeYahooOptionsIv(symbol) : Promise.resolve(null),
     opts.firmenname.trim() ? ladeArbeitgeberBewertung(opts.firmenname, isEu) : Promise.resolve(null),
   ])
+
+  // EU-Kennzahlen: Cloud-Cache bevorzugen; wenn leer (z. B. lokal), live scrapen und speichern.
+  let euFundamental = euFundamentalCloud
+  if (!euFundamental && isEu && isin.length >= 10) {
+    euFundamental = await ladeEuFundamentalKennzahlen(isin, opts.firmenname, symbol)
+    if (euFundamental) {
+      await speichereEuFundamentalInCloud({
+        isin,
+        ticker,
+        firmenname: opts.firmenname,
+        paket: euFundamental,
+      })
+    }
+  }
 
   const finviz = finvizRaw
     ? {
