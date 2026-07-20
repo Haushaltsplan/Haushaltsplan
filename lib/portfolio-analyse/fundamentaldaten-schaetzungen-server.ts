@@ -5,6 +5,7 @@ import type { EarningsSchaetzungen } from '@/lib/portfolio-analyse/earnings-scha
 import {
   FUNDAMENTAL_FY0E_KEY,
   FUNDAMENTAL_FY1E_KEY,
+  FUNDAMENTAL_TTM_KEY,
   fruehestesSchaetzJahr,
   fundamentalQuartalSchaetzungIso,
   fundamentalSchaetzungIso,
@@ -351,6 +352,96 @@ export function filterSchaetzungenGegenHistorisch(
   })
 
   return { perioden, zeilen, quelle: schaetzungen.quelle }
+}
+
+/**
+ * Fehlende absolute EPS-Schätzungen aus letztem Ist-EPS × EPS-Wachstum ableiten.
+ * Ohne das bleibt Forward-KGV (FY26E/FY27E) leer, obwohl Umsatz (→ KUV) und Wachstum da sind.
+ */
+export function fuelleFehlendeEpsSchaetzungen(opts: {
+  schaetzungen: FundamentalSchaetzungenRoh
+  historisch: Pick<{ perioden: FundamentalPeriode[]; zeilen: FundamentalMetrikZeile[] }, 'perioden' | 'zeilen'>
+  trailingEps?: number | null
+  yahooFy0Eps?: number | null
+  yahooFy1Eps?: number | null
+  yahooFy0Jahr?: number | null
+  yahooFy1Jahr?: number | null
+}): FundamentalSchaetzungenRoh {
+  const { schaetzungen } = opts
+  if (schaetzungen.perioden.length === 0) return schaetzungen
+
+  let epsZeile = schaetzungen.zeilen.find((z) => z.id === 'eps_schaetzung')
+  const wachstumZeile = schaetzungen.zeilen.find((z) => z.id === 'eps_wachstum_schaetzung')
+  const zeilen = schaetzungen.zeilen.map((z) =>
+    z.id === 'eps_schaetzung' ? { ...z, werte: { ...z.werte } } : z,
+  )
+  if (!epsZeile) {
+    epsZeile = {
+      id: 'eps_schaetzung',
+      label: 'EPS (Schätzung)',
+      gruppe: 'schaetzungen',
+      einheit: 'waehrung_usd_aktie',
+      werte: Object.fromEntries(schaetzungen.perioden.map((p) => [p.iso, null])),
+      istSchaetzung: true,
+    }
+    zeilen.push(epsZeile)
+  } else {
+    epsZeile = zeilen.find((z) => z.id === 'eps_schaetzung')!
+  }
+
+  const histEpsZeile = opts.historisch.zeilen.find((z) => z.id === 'eps')
+  const histKeys = opts.historisch.perioden
+    .filter((p) => !p.istLtm && !p.istNtm && !p.istSchaetzung && /^\d{4}-\d{2}-\d{2}$/.test(p.iso))
+    .map((p) => p.iso)
+  const lastHist = histKeys[histKeys.length - 1]
+  const basisEps =
+    (lastHist && histEpsZeile?.werte[lastHist] != null && histEpsZeile.werte[lastHist]! > 0
+      ? histEpsZeile.werte[lastHist]!
+      : null) ??
+    (histEpsZeile?.werte[FUNDAMENTAL_TTM_KEY] != null && histEpsZeile.werte[FUNDAMENTAL_TTM_KEY]! > 0
+      ? histEpsZeile.werte[FUNDAMENTAL_TTM_KEY]!
+      : null) ??
+    (opts.trailingEps != null && opts.trailingEps > 0 ? opts.trailingEps : null)
+
+  // Yahoo-Absolutwerte nach Jahr zuordnen (falls vorhanden)
+  for (const p of schaetzungen.perioden) {
+    if (epsZeile.werte[p.iso] != null && epsZeile.werte[p.iso]! > 0) continue
+    const jahr = jahrAusSchaetzungsLabel(p.label) ?? jahrAusSchaetzungIso(p.iso)
+    if (jahr != null && jahr === opts.yahooFy0Jahr && opts.yahooFy0Eps != null && opts.yahooFy0Eps > 0) {
+      epsZeile.werte[p.iso] = opts.yahooFy0Eps
+    } else if (jahr != null && jahr === opts.yahooFy1Jahr && opts.yahooFy1Eps != null && opts.yahooFy1Eps > 0) {
+      epsZeile.werte[p.iso] = opts.yahooFy1Eps
+    }
+  }
+
+  let prev = basisEps
+  const growthWerte = schaetzungen.perioden
+    .map((p) => wachstumZeile?.werte[p.iso])
+    .filter((v): v is number => v != null && Number.isFinite(v))
+  const avgGrowth =
+    growthWerte.length > 0 ? growthWerte.reduce((a, b) => a + b, 0) / growthWerte.length : null
+  let lastGrowth: number | null = null
+
+  for (const p of schaetzungen.perioden) {
+    const vorhanden = epsZeile.werte[p.iso]
+    if (vorhanden != null && vorhanden > 0) {
+      prev = vorhanden
+      continue
+    }
+    const growthPct = wachstumZeile?.werte[p.iso] ?? lastGrowth ?? avgGrowth
+    if (prev == null || prev <= 0) continue
+    if (growthPct == null || !Number.isFinite(growthPct)) continue
+    lastGrowth = growthPct
+    // Wachstum typisch als Prozent (z. B. 25 = +25 %), selten als Dezimal
+    const faktor = Math.abs(growthPct) <= 3 ? 1 + growthPct : 1 + growthPct / 100
+    if (!Number.isFinite(faktor) || faktor <= 0) continue
+    const next = prev * faktor
+    if (!Number.isFinite(next) || next <= 0) continue
+    epsZeile.werte[p.iso] = next
+    prev = next
+  }
+
+  return { ...schaetzungen, zeilen }
 }
 
 function baueRohAusJahresreihe(

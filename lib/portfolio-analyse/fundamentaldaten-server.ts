@@ -10,7 +10,7 @@ import { baueKontextWerte } from '@/lib/portfolio-analyse/fundamentaldaten-konte
 import { ladeYahooMantraFinanzdaten } from '@/lib/portfolio-analyse/yahoo-fundamentals-timeseries-server'
 import { ladeFundamentalNews } from '@/lib/portfolio-analyse/fundamentaldaten-news-server'
 import { baueNtmBewertungsZeilen } from '@/lib/portfolio-analyse/fundamentaldaten-ntm-bewertung-server'
-import { ladeFundamentalSchaetzungen, filterSchaetzungenGegenHistorisch } from '@/lib/portfolio-analyse/fundamentaldaten-schaetzungen-server'
+import { ladeFundamentalSchaetzungen, filterSchaetzungenGegenHistorisch, fuelleFehlendeEpsSchaetzungen } from '@/lib/portfolio-analyse/fundamentaldaten-schaetzungen-server'
 import {
   formatiereBrancheDe,
   ladeUnternehmensbeschreibungDe,
@@ -599,9 +599,58 @@ export async function ladeFundamentaldaten(anfrage: FundamentaldatenAnfrage): Pr
     })
   }
 
-  const schaetzungenGefiltert = roh
+  const schaetzungenNachFilter = roh
     ? filterSchaetzungenGegenHistorisch(schaetzungen, roh)
     : schaetzungen
+
+  // Absolute EPS für FY-Spalten: Yahoo-Konsens und/oder Ist-EPS × Wachstum
+  // (sonst bleibt Forward-KGV leer, obwohl KUV aus Umsatz-Schätzungen da ist).
+  const schaetzungenGefiltert =
+    frequenz === 'jahr' && roh && schaetzungenNachFilter.perioden.length > 0
+      ? (() => {
+          const mitYahoo = {
+            ...schaetzungenNachFilter,
+            zeilen: schaetzungenNachFilter.zeilen.map((z) =>
+              z.id === 'eps_schaetzung' ? { ...z, werte: { ...z.werte } } : z,
+            ),
+          }
+          let epsZ = mitYahoo.zeilen.find((z) => z.id === 'eps_schaetzung')
+          if (!epsZ) {
+            epsZ = {
+              id: 'eps_schaetzung',
+              label: 'EPS (Schätzung)',
+              gruppe: 'schaetzungen' as const,
+              einheit: 'waehrung_usd_aktie' as const,
+              werte: Object.fromEntries(mitYahoo.perioden.map((p) => [p.iso, null as number | null])),
+              istSchaetzung: true,
+            }
+            mitYahoo.zeilen = [...mitYahoo.zeilen, epsZ]
+          }
+          const p0 = mitYahoo.perioden[0]
+          const p1 = mitYahoo.perioden[1]
+          if (
+            p0 &&
+            (epsZ.werte[p0.iso] == null || !(epsZ.werte[p0.iso]! > 0)) &&
+            yahooExt?.ntmEpsSchaetzung != null &&
+            yahooExt.ntmEpsSchaetzung > 0
+          ) {
+            epsZ.werte[p0.iso] = yahooExt.ntmEpsSchaetzung
+          }
+          if (
+            p1 &&
+            (epsZ.werte[p1.iso] == null || !(epsZ.werte[p1.iso]! > 0)) &&
+            yahooExt?.fy1Eps != null &&
+            yahooExt.fy1Eps > 0
+          ) {
+            epsZ.werte[p1.iso] = yahooExt.fy1Eps
+          }
+          return fuelleFehlendeEpsSchaetzungen({
+            schaetzungen: mitYahoo,
+            historisch: roh,
+            trailingEps: yahooExt?.trailingEps ?? null,
+          })
+        })()
+      : schaetzungenNachFilter
 
   const merged =
     frequenz === 'jahr'
