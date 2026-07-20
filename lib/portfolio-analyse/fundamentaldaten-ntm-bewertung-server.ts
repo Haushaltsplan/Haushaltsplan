@@ -336,14 +336,9 @@ export async function baueNtmBewertungsZeilen(
     evEbitda: ntmEvEbitdaAktuell,
   })
 
-  // Yahoo-/NTM-Aktuell nur als Fallback, wenn Schätzungs-Spalte noch leer
-  for (const sk of schKeys) {
-    if (ntmPe[sk] == null && ntmKgv != null) ntmPe[sk] = ntmKgv
-    if (ntmPs[sk] == null && ntmPsAktuell != null) ntmPs[sk] = ntmPsAktuell
-    if (ntmPfcf[sk] == null && ntmMcFcf != null) ntmPfcf[sk] = ntmMcFcf
-    if (ntmEvRev[sk] == null && ntmEvRevenueAktuell != null) ntmEvRev[sk] = ntmEvRevenueAktuell
-    if (ntmEvEbitda[sk] == null && ntmEvEbitdaAktuell != null) ntmEvEbitda[sk] = ntmEvEbitdaAktuell
-  }
+  // Kein Backfill von Yahoo-NTM in FY-Schätzspalten — sonst springt die Linie
+  // von „Kurs÷FY-EPS“ (~18–20×) auf NTM (~14×) und wirkt wie ein Datenfehler.
+  // Leere Schätzspalten bleiben leer; der aktuelle NTM-Wert steht nur unter __ntm__.
 
   for (const sk of schKeys) {
     for (const map of [ntmPe, ntmPs, ntmPfcf, ntmEvRev, ntmEvEbitda]) {

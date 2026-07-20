@@ -366,11 +366,17 @@ export function PaFundamentalMetrikChart({
   const padLinks = PAD_LINKS_SINGLE
   const plotW = VIEW_W - padLinks - PAD_RECHTS_SINGLE
 
-  const { serien, yAchsen, dualAxis, plotH } = useMemo(() => {
+  const { serien, yAchsen, dualAxis, plotH, xLabels } = useMemo(() => {
     const plotH = HOEHE - PAD_OBEN - PAD_UNTEN
     const ausgewaehlt = zeilen.filter((z) => aktivIds.has(z.id))
     if (ausgewaehlt.length === 0 || gefiltertePerioden.length === 0) {
-      return { serien: [] as ChartSerie[], yAchsen: [] as YAxisScale[], dualAxis: false, plotH }
+      return {
+        serien: [] as ChartSerie[],
+        yAchsen: [] as YAxisScale[],
+        dualAxis: false,
+        plotH,
+        xLabels: [] as { label: string; istSchaetzung: boolean; x: number }[],
+      }
     }
 
     const einheitZuAchse = new Map<string, 0 | 1>()
@@ -381,8 +387,41 @@ export function PaFundamentalMetrikChart({
       }
     }
     const dualAxis = einheitZuAchse.size > 1
-    const padRechts = dualAxis ? PAD_RECHTS_DUAL : PAD_RECHTS_SINGLE
-    const plotW = VIEW_W - (dualAxis ? PAD_LINKS_DUAL : padLinks) - padRechts
+    const padL = dualAxis ? PAD_LINKS_DUAL : padLinks
+    const padR = dualAxis ? PAD_RECHTS_DUAL : PAD_RECHTS_SINGLE
+    const plotW = VIEW_W - padL - padR
+
+    // Gemeinsame X-Achse: Perioden + optional ein „Aktuell“-Slot (TTM/NTM).
+    // Wichtig: Alle Serien nutzen dieselben Indizes — sonst landen KGV-TTM und NTM
+    // an unterschiedlichen X-Positionen (z. B. TTM über „2024“, NTM ganz rechts).
+    type AchsenSlot = {
+      key: string
+      label: string
+      istSchaetzung: boolean
+      istAktuellSlot: boolean
+    }
+    const achsenSlots: AchsenSlot[] = gefiltertePerioden.map((p) => ({
+      key: p.iso,
+      label: p.istSchaetzung ? p.label : jahrAusPeriode(p.iso),
+      istSchaetzung: p.istSchaetzung ?? schaetzIso.has(p.iso),
+      istAktuellSlot: false,
+    }))
+    const hatAktuellWert = ausgewaehlt.some((z) => {
+      const k = aktuellerKeyFuerZeile(z, variant)
+      const v = k ? z.werte[k] : null
+      return v != null && Number.isFinite(v)
+    })
+    if (variant === 'bewertung' && hatAktuellWert) {
+      achsenSlots.push({
+        key: '__aktuell_slot__',
+        label: 'TTM/NTM',
+        istSchaetzung: false,
+        istAktuellSlot: true,
+      })
+    }
+
+    const n = Math.max(achsenSlots.length, 1)
+    const xFuerIdx = (idx: number) => padL + (plotW * idx) / Math.max(1, n - 1)
 
     const roh = ausgewaehlt.map((z, i) => {
       const aktKey = aktuellerKeyFuerZeile(z, variant)
@@ -390,31 +429,43 @@ export function PaFundamentalMetrikChart({
 
       const histWerte = gefiltertePerioden
         .map((p) => ({
+          key: p.iso,
           label: p.istSchaetzung ? p.label : jahrAusPeriode(p.iso),
           wert: z.werte[p.iso],
           istSchaetzung: p.istSchaetzung ?? schaetzIso.has(p.iso),
         }))
-        .filter((pt): pt is { label: string; wert: number; istSchaetzung: boolean } =>
+        .filter((pt): pt is { key: string; label: string; wert: number; istSchaetzung: boolean } =>
           pt.wert != null && Number.isFinite(pt.wert),
         )
 
       const aktWert = aktKey ? z.werte[aktKey] : null
       const aktuell =
         aktWert != null && Number.isFinite(aktWert)
-          ? { label: aktKey === FUNDAMENTAL_NTM_KEY ? 'NTM' : 'TTM', wert: aktWert, istSchaetzung: false }
+          ? {
+              label: aktKey === FUNDAMENTAL_NTM_KEY ? 'NTM' : 'TTM',
+              wert: aktWert,
+              istSchaetzung: false,
+            }
           : null
 
-      const schnitt = variant === 'bewertung' ? berechneZeitraumSchnitt(histWerte.filter((p) => !p.istSchaetzung).map((p) => p.wert)) : null
+      const schnitt =
+        variant === 'bewertung'
+          ? berechneZeitraumSchnitt(histWerte.filter((p) => !p.istSchaetzung).map((p) => p.wert))
+          : null
       const jahreSchnitt =
-        variant === 'bewertung' ? anzahlWerteImZeitraum(histWerte.filter((p) => !p.istSchaetzung).map((p) => p.wert)) : 0
+        variant === 'bewertung'
+          ? anzahlWerteImZeitraum(histWerte.filter((p) => !p.istSchaetzung).map((p) => p.wert))
+          : 0
       const abweichungPct =
-        variant === 'bewertung' && aktuell && schnitt != null ? prozentAbweichung(aktuell.wert, schnitt) : null
+        variant === 'bewertung' && aktuell && schnitt != null
+          ? prozentAbweichung(aktuell.wert, schnitt)
+          : null
 
       return {
-          id: z.id,
-          label: z.label,
+        id: z.id,
+        label: z.label,
         farbe: FARBEN[i % FARBEN.length]!,
-          einheit: z.einheit,
+        einheit: z.einheit,
         yAxis: achse,
         histWerte,
         aktuell,
@@ -454,35 +505,56 @@ export function PaFundamentalMetrikChart({
     })
 
     const skalaFuer = (axis: 0 | 1) => yAchsen[axis] ?? yAchsen[0]!
-
-    const n = Math.max(
-      ...roh.map((s) => s.histWerte.length + (s.aktuell ? 1 : 0)),
-      1,
-    )
+    const slotIndex = new Map(achsenSlots.map((s, i) => [s.key, i]))
+    const aktuellSlotIdx = achsenSlots.findIndex((s) => s.istAktuellSlot)
 
     const serien: ChartSerie[] = roh.map((s) => {
       const skala = skalaFuer(s.yAxis)
-      const allePunkte = [...s.histWerte]
-      if (s.aktuell) allePunkte.push(s.aktuell)
 
-      const pts: ChartPunkt[] = allePunkte.map((p, idx) => {
-        const x = (dualAxis ? PAD_LINKS_DUAL : padLinks) + (plotW * idx) / Math.max(1, n - 1)
-        const y = yAusWert(p.wert, skala.minY, skala.span, plotH)
-        return {
-          x,
-          y,
+      const histPts: ChartPunkt[] = []
+      const schaetzPts: ChartPunkt[] = []
+      for (const p of s.histWerte) {
+        const idx = slotIndex.get(p.key)
+        if (idx == null) continue
+        const pt: ChartPunkt = {
+          x: xFuerIdx(idx),
+          y: yAusWert(p.wert, skala.minY, skala.span, plotH),
           label: p.label,
           wert: p.wert,
           istSchaetzung: p.istSchaetzung,
-          aktuell: s.aktuell != null && idx === allePunkte.length - 1 && p === s.aktuell,
         }
-      })
+        if (p.istSchaetzung) schaetzPts.push(pt)
+        else histPts.push(pt)
+      }
 
-      const histPts = pts.filter((p) => !p.aktuell && !p.istSchaetzung)
-      const schaetzPts = pts.filter((p) => !p.aktuell && p.istSchaetzung)
+      let aktuellPt: ChartPunkt | null = null
+      if (s.aktuell && aktuellSlotIdx >= 0) {
+        aktuellPt = {
+          x: xFuerIdx(aktuellSlotIdx),
+          y: yAusWert(s.aktuell.wert, skala.minY, skala.span, plotH),
+          label: s.aktuell.label,
+          wert: s.aktuell.wert,
+          aktuell: true,
+          istSchaetzung: false,
+        }
+      } else if (s.aktuell && variant !== 'bewertung') {
+        // Standard-Charts: Aktuell-Punkt hinter der letzten Periode
+        const idx = gefiltertePerioden.length
+        const nStd = gefiltertePerioden.length + 1
+        const x = padL + (plotW * idx) / Math.max(1, nStd - 1)
+        aktuellPt = {
+          x,
+          y: yAusWert(s.aktuell.wert, skala.minY, skala.span, plotH),
+          label: s.aktuell.label,
+          wert: s.aktuell.wert,
+          aktuell: true,
+        }
+      }
+
       const letzterHist = histPts[histPts.length - 1]
-
-      const pathHistorisch = histPts.map((pt, i) => `${i === 0 ? 'M' : 'L'} ${pt.x.toFixed(1)} ${pt.y.toFixed(1)}`).join(' ')
+      const pathHistorisch = histPts
+        .map((pt, i) => `${i === 0 ? 'M' : 'L'} ${pt.x.toFixed(1)} ${pt.y.toFixed(1)}`)
+        .join(' ')
       const schaetzMitBruecke =
         letzterHist && schaetzPts.length > 0
           ? [
@@ -505,7 +577,7 @@ export function PaFundamentalMetrikChart({
         yAxis: s.yAxis,
         historisch: histPts,
         schaetzung: schaetzPts,
-        aktuell: pts.find((p) => p.aktuell) ?? null,
+        aktuell: aktuellPt,
         schnitt: s.schnitt,
         jahreSchnitt: s.jahreSchnitt,
         abweichungPct: s.abweichungPct,
@@ -515,26 +587,16 @@ export function PaFundamentalMetrikChart({
       }
     })
 
-    return { serien, yAchsen, dualAxis, plotH }
+    const xLabels = achsenSlots.map((slot, i) => ({
+      label: slot.label,
+      istSchaetzung: slot.istSchaetzung,
+      x: xFuerIdx(i),
+    }))
+
+    return { serien, yAchsen, dualAxis, plotH, xLabels }
   }, [zeilen, aktivIds, gefiltertePerioden, variant, schaetzIso, padLinks])
 
   const effektivePlotW = VIEW_W - (dualAxis ? PAD_LINKS_DUAL : padLinks) - (dualAxis ? PAD_RECHTS_DUAL : PAD_RECHTS_SINGLE)
-
-  const xLabels = useMemo(() => {
-    if (serien.length === 0) return []
-    const ref = serien[0]!
-    const labels = [
-      ...ref.historisch.map((p) => ({ label: p.label, istSchaetzung: false })),
-      ...ref.schaetzung.map((p) => ({ label: p.label, istSchaetzung: true })),
-    ]
-    if (ref.aktuell) labels.push({ label: ref.aktuell.label, istSchaetzung: false })
-    const n = labels.length
-    const x0 = dualAxis ? PAD_LINKS_DUAL : padLinks
-    return labels.map((item, i) => ({
-      ...item,
-      x: x0 + (effektivePlotW * i) / Math.max(1, n - 1),
-    }))
-  }, [serien, effektivePlotW, dualAxis, padLinks])
 
   const hatAktiveSerien = zeilen.some((z) => aktivIds.has(z.id))
 
@@ -577,7 +639,7 @@ export function PaFundamentalMetrikChart({
             </p>
             <p className="mt-0.5 text-[11px] text-[var(--app-text-muted)]">
               {variant === 'bewertung'
-                ? 'Zeitraum wählen · Schätzungen gestrichelt · Schnitt nur Historie · Punkt = aktuell (NTM/TTM)'
+                ? 'Gemeinsame Achse · Schätzungen = Kurs÷FY-EPS · Aktuell = TTM bzw. NTM (Yahoo) am rechten Rand'
                 : 'Zeitraum wählen · Schätzungen gestrichelt · bei zwei Kennzahlen eigene Y-Achse'}
             </p>
           </div>
@@ -790,19 +852,26 @@ export function PaFundamentalMetrikChart({
                 </>
               ) : null}
               {labelsAnzeigen
-                ? [...s.historisch, ...s.schaetzung, ...(s.aktuell ? [s.aktuell] : [])].map((pt, i) => (
+                ? [...s.historisch, ...s.schaetzung, ...(s.aktuell ? [s.aktuell] : [])].map((pt, i) => {
+                    // Bei mehreren „aktuell“-Punkten auf derselben X-Position Labels gestaffelt
+                    const aktuellOffset =
+                      pt.aktuell && serien.filter((x) => x.aktuell).length > 1
+                        ? serien.findIndex((x) => x.id === s.id) * 14
+                        : 0
+                    return (
                     <text
                       key={i}
                       x={pt.x}
-                      y={pt.y - 12}
+                      y={pt.y - 12 - aktuellOffset}
                       textAnchor="middle"
                       fill={pt.aktuell ? AKTUELL_FARBE : pt.istSchaetzung ? SCHÄTZUNG_FARBE : s.farbe}
                       style={{ fontSize: LABEL_FONT, fontWeight: pt.aktuell ? 600 : 400 }}
                     >
                       {formatFundamentalWert(pt.wert, s.einheit)}
-                      {pt.istSchaetzung ? ' · Schätz.' : ''}
+                      {pt.aktuell ? ` · ${pt.label}` : pt.istSchaetzung ? ' · Schätz.' : ''}
                   </text>
-                ))
+                    )
+                  })
               : null}
           </g>
         ))}
