@@ -8,7 +8,7 @@ import type {
   FundamentalMetrikZeile,
   FundamentalPeriode,
 } from '@/lib/portfolio-analyse/fundamentaldaten-types'
-import { FUNDAMENTAL_TTM_KEY } from '@/lib/portfolio-analyse/fundamentaldaten-types'
+import { FUNDAMENTAL_TTM_KEY, FUNDAMENTAL_NTM_KEY } from '@/lib/portfolio-analyse/fundamentaldaten-types'
 import type { FundamentalKontextWerte } from '@/lib/portfolio-analyse/fundamentaldaten-kontext-werte'
 import type { MacrotrendsFundamentalRoh } from '@/lib/portfolio-analyse/macrotrends-scraper-server'
 
@@ -270,6 +270,8 @@ export function baueKeyMetrics(
   const psZeile = roh?.zeilen.find((z) => z.id === 'ps')
   const pbZeile = roh?.zeilen.find((z) => z.id === 'pb')
   const pfcfZeile = roh?.zeilen.find((z) => z.id === 'pfcf')
+  const evRevZeile = roh?.zeilen.find((z) => z.id === 'ev_rev')
+  const evEbitdaZeile = roh?.zeilen.find((z) => z.id === 'ev_ebitda')
 
   const ltmUmsatzUsd =
     letzterGeschaeftsjahresWert(umsatzZeile, perioden) != null
@@ -280,31 +282,36 @@ export function baueKeyMetrics(
       ? yahoo.enterpriseValue / ltmUmsatzUsd
       : null
 
+  // NTM aus gemergter Bewertungstabelle (Konsens), nicht Yahoo-forwardPE
   const ntmKgv =
+    (kgvZeile?.werte[FUNDAMENTAL_NTM_KEY] != null && Number.isFinite(kgvZeile.werte[FUNDAMENTAL_NTM_KEY])
+      ? kgvZeile.werte[FUNDAMENTAL_NTM_KEY]!
+      : null) ??
+    (yahoo?.currentPrice != null && yahoo?.fy1Eps != null && yahoo.fy1Eps > 0
+      ? yahoo.currentPrice / yahoo.fy1Eps
+      : null) ??
     yahoo?.forwardPE ??
-    (yahoo?.currentPrice != null && yahoo?.ntmEpsSchaetzung != null && yahoo.ntmEpsSchaetzung > 0
-      ? yahoo.currentPrice / yahoo.ntmEpsSchaetzung
-      : null)
+    null
 
   const ltmFcfUsd =
     letzterGeschaeftsjahresWert(fcfZeile, perioden) != null
       ? letzterGeschaeftsjahresWert(fcfZeile, perioden)! * 1_000_000
       : null
-  const ntmFcfUsd =
-    ltmFcfUsd != null && yahoo?.revenueGrowth != null ? ltmFcfUsd * (1 + yahoo.revenueGrowth) : ltmFcfUsd
   const ntmMcFcf =
-    yahoo?.marketCap != null && ntmFcfUsd != null && ntmFcfUsd > 0 ? yahoo.marketCap / ntmFcfUsd : null
+    pfcfZeile?.werte[FUNDAMENTAL_NTM_KEY] != null && Number.isFinite(pfcfZeile.werte[FUNDAMENTAL_NTM_KEY])
+      ? pfcfZeile.werte[FUNDAMENTAL_NTM_KEY]!
+      : yahoo?.marketCap != null && ltmFcfUsd != null && ltmFcfUsd > 0 && yahoo?.revenueGrowth != null
+        ? yahoo.marketCap / (ltmFcfUsd * (1 + yahoo.revenueGrowth))
+        : null
 
   const ntmEvRevenue =
-    yahoo?.enterpriseToRevenue ??
-    (yahoo?.enterpriseValue != null && yahoo?.ntmRevenueUsd != null && yahoo.ntmRevenueUsd > 0
-      ? yahoo.enterpriseValue / yahoo.ntmRevenueUsd
-      : null)
+    evRevZeile?.werte[FUNDAMENTAL_NTM_KEY] != null && Number.isFinite(evRevZeile.werte[FUNDAMENTAL_NTM_KEY])
+      ? evRevZeile.werte[FUNDAMENTAL_NTM_KEY]!
+      : yahoo?.enterpriseToRevenue ?? null
   const ntmEvEbitda =
-    yahoo?.enterpriseToEbitda ??
-    (yahoo?.enterpriseValue != null && yahoo?.ntmEbitdaUsd != null && yahoo.ntmEbitdaUsd > 0
-      ? yahoo.enterpriseValue / yahoo.ntmEbitdaUsd
-      : null)
+    evEbitdaZeile?.werte[FUNDAMENTAL_NTM_KEY] != null && Number.isFinite(evEbitdaZeile.werte[FUNDAMENTAL_NTM_KEY])
+      ? evEbitdaZeile.werte[FUNDAMENTAL_NTM_KEY]!
+      : yahoo?.enterpriseToEbitda ?? null
 
   out.push(
     {

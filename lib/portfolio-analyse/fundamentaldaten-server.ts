@@ -611,17 +611,32 @@ export async function ladeFundamentaldaten(anfrage: FundamentaldatenAnfrage): Pr
   const ntm =
     frequenz === 'jahr'
       ? await baueNtmBewertungsZeilen(symbolYahoo, merged.perioden, merged.zeilen, yahooExt)
-      : { zeilen: [] as FundamentalMetrikZeile[], periodenPatch: undefined }
-  if (ntm.zeilen.length > 0) {
-    if (ntm.periodenPatch && !merged.perioden.some((p) => p.iso === FUNDAMENTAL_NTM_KEY)) {
-      const schaetzIdx = merged.perioden.findIndex((p) => p.istSchaetzung)
-      if (schaetzIdx >= 0) merged.perioden.splice(schaetzIdx, 0, ntm.periodenPatch)
-      else merged.perioden.push(ntm.periodenPatch)
+      : { periodenPatch: null as FundamentalPeriode | null, trailingPatches: {}, neueZeilen: [] as FundamentalMetrikZeile[], zeilen: [] as FundamentalMetrikZeile[] }
+  if (ntm.periodenPatch && !merged.perioden.some((p) => p.iso === FUNDAMENTAL_NTM_KEY)) {
+    const schaetzIdx = merged.perioden.findIndex((p) => p.istSchaetzung)
+    if (schaetzIdx >= 0) merged.perioden.splice(schaetzIdx, 0, ntm.periodenPatch)
+    else merged.perioden.push(ntm.periodenPatch)
+  }
+  // Forward (NTM + FY-Schätzungen) in die normalen Bewertungszeilen mergen
+  for (const [zeileId, patch] of Object.entries(ntm.trailingPatches ?? {})) {
+    const z = merged.zeilen.find((r) => r.id === zeileId)
+    if (!z || !patch) continue
+    for (const [iso, v] of Object.entries(patch)) {
+      if (v != null) z.werte[iso] = v
+      else if (!(iso in z.werte)) z.werte[iso] = null
     }
-    for (const z of merged.zeilen) {
-      if (!(FUNDAMENTAL_NTM_KEY in z.werte)) z.werte[FUNDAMENTAL_NTM_KEY] = null
+  }
+  for (const z of merged.zeilen) {
+    if (!(FUNDAMENTAL_NTM_KEY in z.werte)) z.werte[FUNDAMENTAL_NTM_KEY] = null
+  }
+  for (const neu of ntm.neueZeilen ?? []) {
+    if (!merged.zeilen.some((z) => z.id === neu.id)) {
+      // Historische Perioden + TTM mit null auffüllen, damit die Tabelle die Spalten zeigt
+      for (const p of merged.perioden) {
+        if (!(p.iso in neu.werte)) neu.werte[p.iso] = null
+      }
+      merged.zeilen.push(neu)
     }
-    merged.zeilen.push(...ntm.zeilen)
   }
   const sektorFinal = brancheMeta.sektor
   const brancheFinal = brancheMeta.branche ?? roh.branche

@@ -18,7 +18,6 @@ import {
   ladeFundamentaldatenClient,
 } from '@/lib/portfolio-analyse/fundamentaldaten-client'
 import { keyMetricNavZiel } from '@/lib/portfolio-analyse/fundamentaldaten-key-metric-nav'
-import { bewertungForwardTabellenPerioden } from '@/lib/portfolio-analyse/fundamentaldaten-chart-hilfen'
 import type {
   FundamentaldatenAnfrage,
   FundamentaldatenPaket,
@@ -127,11 +126,6 @@ export function PaFundamentalInhalt({
     })
   }, [])
 
-  const bewertungNtmPerioden = useMemo(
-    () => (daten?.perioden ? bewertungForwardTabellenPerioden(daten.perioden) : []),
-    [daten?.perioden],
-  )
-
   if (!anfrage) {
     return (
       <PaCard className="flex min-h-[28rem] items-center justify-center p-8 text-center text-sm text-[var(--app-text-muted)]">
@@ -147,7 +141,17 @@ export function PaFundamentalInhalt({
   const bilanz = daten?.zeilen.filter((z) => z.gruppe === 'bilanz') ?? []
   const cashflow = daten?.zeilen.filter((z) => z.gruppe === 'cashflow') ?? []
   const bewertungLtm = daten?.zeilen.filter((z) => z.gruppe === 'bewertung_trailing') ?? []
-  const bewertungNtm = daten?.zeilen.filter((z) => z.gruppe === 'bewertung_forward') ?? []
+  const bewertungForward =
+    daten?.zeilen.filter((z) => z.gruppe === 'bewertung_forward') ?? []
+  // Neue Pakete: Forward steckt in Trailing-Zeilen. Alte Caches: noch separate ntm_*-Zeilen.
+  const trailingHatForward = bewertungLtm.some(
+    (z) =>
+      (z.werte.__ntm__ != null && Number.isFinite(z.werte.__ntm__)) ||
+      Object.keys(z.werte).some((k) => k.startsWith('__fy') && z.werte[k] != null),
+  )
+  const bewertungZeilen = trailingHatForward
+    ? bewertungLtm
+    : [...bewertungLtm, ...bewertungForward]
   return (
     <div className="space-y-4">
       {laden && !daten?.ok ? (
@@ -309,7 +313,7 @@ export function PaFundamentalInhalt({
                 perioden={daten.perioden}
                 zeilen={
                   unterTab === 'bewertung'
-                    ? [...bewertungLtm, ...bewertungNtm]
+                    ? bewertungZeilen
                     : daten.zeilen
                 }
                 aktivIds={chartAktiv}
@@ -360,22 +364,11 @@ export function PaFundamentalInhalt({
                 />
               ) : null}
 
-              {unterTab === 'bewertung' && bewertungLtm.length > 0 ? (
+              {unterTab === 'bewertung' && bewertungZeilen.length > 0 ? (
                 <PaFundamentalMetrikTabelle
-                  titel="Bewertung LTM (Trailing) · TTM = aktuell"
+                  titel="Bewertung · TTM = Trailing aktuell · NTM = Forward (Konsens) · FY = Schätzung"
                   perioden={daten.perioden}
-                  zeilen={bewertungLtm}
-                  aktivIds={chartAktiv}
-                  onToggleZeile={toggleChartZeile}
-                  labelModus="jahr"
-                />
-              ) : null}
-
-              {unterTab === 'bewertung' && bewertungNtm.length > 0 ? (
-                <PaFundamentalMetrikTabelle
-                  titel="Bewertung NTM (Forward) · NTM = aktuell"
-                  perioden={bewertungNtmPerioden}
-                  zeilen={bewertungNtm}
+                  zeilen={bewertungZeilen}
                   aktivIds={chartAktiv}
                   onToggleZeile={toggleChartZeile}
                   labelModus="jahr"

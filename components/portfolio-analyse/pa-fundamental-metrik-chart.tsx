@@ -76,7 +76,10 @@ type ChartSerie = {
 
 function aktuellerKeyFuerZeile(z: FundamentalMetrikZeile, variant: 'standard' | 'bewertung'): string | null {
   if (variant !== 'bewertung') return null
+  // Eine Bewertungstabelle: Trailing-Kennzahlen → TTM als „aktuell“;
+  // reine Forward-Zeilen (EV) ohne Historie → NTM.
   if (z.gruppe === 'bewertung_forward') return FUNDAMENTAL_NTM_KEY
+  if (z.id === 'ev_rev' || z.id === 'ev_ebitda') return FUNDAMENTAL_NTM_KEY
   if (z.gruppe === 'bewertung_trailing') return FUNDAMENTAL_TTM_KEY
   return FUNDAMENTAL_TTM_KEY
 }
@@ -639,7 +642,7 @@ export function PaFundamentalMetrikChart({
             </p>
             <p className="mt-0.5 text-[11px] text-[var(--app-text-muted)]">
               {variant === 'bewertung'
-                ? 'Gemeinsame Achse · Schätzungen = Kurs÷FY-EPS · Aktuell = TTM bzw. NTM (Yahoo) am rechten Rand'
+                ? 'Historie = Trailing · gestrichelt = FY-Schätzung (Kurs÷Konsens) · Punkt = TTM · NTM steht in der Tabelle'
                 : 'Zeitraum wählen · Schätzungen gestrichelt · bei zwei Kennzahlen eigene Y-Achse'}
             </p>
           </div>
