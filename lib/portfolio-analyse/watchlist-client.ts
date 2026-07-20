@@ -135,7 +135,8 @@ export async function ladeWatchlistMitCloudMerge(): Promise<WatchlistEintrag[]> 
         }))
         .filter((e) => !lokalKeys.has(watchlistSchluessel(e)))
 
-      const merged = neuAusCloud.length > 0 ? [...neuAusCloud, ...lokal] : lokal
+      // Lokale Reihenfolge behalten — Cloud-Neuigkeiten nur anhängen (kein Umsortieren)
+      const merged = neuAusCloud.length > 0 ? [...lokal, ...neuAusCloud] : lokal
       if (neuAusCloud.length > 0) speichereWatchlist(merged)
       syncWatchlistZurCloud(merged)
       return merged

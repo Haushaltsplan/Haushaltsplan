@@ -28,7 +28,9 @@ export function PaFundamentalUebersicht({
             kompakt
           />
         </div>
-        <PaFundamentalKeyMetrics metriken={metriken} onMetricClick={onMetricClick} />
+        <div className="min-h-[320px]">
+          <PaFundamentalKeyMetrics metriken={metriken} onMetricClick={onMetricClick} />
+        </div>
       </div>
     </div>
   )

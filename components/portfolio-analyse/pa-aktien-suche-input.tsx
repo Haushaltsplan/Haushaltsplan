@@ -17,11 +17,14 @@ export function PaAktienSucheInput({
   laden,
   fehler,
   onFehler,
+  kompakt = false,
 }: {
   onAuswahl: (auswahl: AktienSucheAuswahl) => void | Promise<void>
   laden?: boolean
   fehler?: string | null
   onFehler?: (msg: string | null) => void
+  /** Weniger Labels / Hilfstext — für enge Sidebars. */
+  kompakt?: boolean
 }) {
   const listId = useId()
   const wrapRef = useRef<HTMLDivElement>(null)
@@ -153,9 +156,11 @@ export function PaAktienSucheInput({
   return (
     <div className="relative" ref={wrapRef}>
     <form onSubmit={(e) => void onSubmit(e)}>
-      <label className="mb-1 block text-[11px] font-medium uppercase tracking-wide text-[var(--app-text-muted)]">
-        Aktie suchen
-      </label>
+      {!kompakt ? (
+        <label className="mb-1 block text-[11px] font-medium uppercase tracking-wide text-[var(--app-text-muted)]">
+          Aktie suchen
+        </label>
+      ) : null}
       <div className="flex gap-2">
         <div className="relative min-w-0 flex-1">
           <input
@@ -179,12 +184,15 @@ export function PaAktienSucheInput({
                 setOffen(false)
               }
             }}
-            placeholder="Apple, Microsoft, AAPL …"
+            placeholder={kompakt ? 'Name, Ticker, ISIN …' : 'Apple, Microsoft, AAPL …'}
             autoComplete="off"
+            aria-label="Aktie suchen"
             aria-autocomplete="list"
             aria-controls={listId}
             aria-expanded={offen}
-            className="w-full rounded-lg border border-[var(--app-border-strong)] bg-[var(--app-surface-muted)] px-3 py-2 text-sm text-[var(--app-text)] placeholder:text-[var(--app-text-muted)]"
+            className={`w-full rounded-lg border border-[var(--app-border-strong)] bg-[var(--app-surface-muted)] px-3 text-sm text-[var(--app-text)] placeholder:text-[var(--app-text-muted)] ${
+              kompakt ? 'py-1.5' : 'py-2'
+            }`}
           />
           {sucheLaden ? (
             <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-[var(--app-text-muted)]">
@@ -221,16 +229,18 @@ export function PaAktienSucheInput({
         <button
           type="submit"
           disabled={laden || !query.trim()}
-          className="shrink-0 rounded-lg bg-teal-600/90 px-3 py-2 text-sm font-medium text-white hover:bg-teal-500 disabled:opacity-50"
+          className={`shrink-0 rounded-lg bg-teal-600/90 px-3 text-sm font-medium text-white hover:bg-teal-500 disabled:opacity-50 ${
+            kompakt ? 'py-1.5' : 'py-2'
+          }`}
         >
           +
         </button>
       </div>
       {fehler ? (
-        <p className="mt-2 text-[11px] text-amber-400/90">{fehler}</p>
-      ) : (
+        <p className="mt-1.5 text-[11px] text-amber-400/90">{fehler}</p>
+      ) : !kompakt ? (
         <p className="mt-2 text-[10px] text-[var(--app-text-muted)]">Name, Ticker oder ISIN · nur Einzelaktien</p>
-      )}
+      ) : null}
     </form>
     </div>
   )

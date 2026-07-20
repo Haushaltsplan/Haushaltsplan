@@ -84,6 +84,15 @@ function symboleAusAnfrage(anfrage: FundamentaldatenAnfrage): string[] {
   add(anfrage.symbolYahoo)
   for (const s of anfrage.symbolCandidates ?? []) add(s)
 
+  // US-ISIN: immer auch das reine US-Ticker-Symbol aufnehmen (ohne .DE/.F),
+  // sonst landet die Watchlist oft bei AOS.DE ohne Forward-Schätzungen.
+  if (isin?.startsWith('US')) {
+    for (const s of [...out]) {
+      const bare = s.split('.')[0]?.toUpperCase()
+      if (bare && /^[A-Z]{1,5}$/.test(bare)) out.add(bare)
+    }
+  }
+
   const liste = [...out]
 
   // US-Titel ohne Kenntnisse-Eintrag (v. a. Watchlist): US-Listing (ohne Börsen-Suffix)

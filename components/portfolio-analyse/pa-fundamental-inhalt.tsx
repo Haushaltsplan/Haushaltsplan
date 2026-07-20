@@ -78,7 +78,13 @@ export function PaFundamentalInhalt({
       return
     }
     const cached = ladeFundamentaldatenAusLocalCache(effektiveAnfrage)
-    if (cached?.ok) setDaten(cached)
+    if (cached?.ok) {
+      setDaten(cached)
+    } else {
+      // Kein Cache: alten Inhalt sofort weg — verhindert „falsche Firma“ während des Ladens
+      // und springt nicht von winzigem Loader zu vollem Panel (Skeleton hält die Höhe).
+      setDaten(null)
+    }
 
     let cancelled = false
     async function run() {
@@ -128,7 +134,7 @@ export function PaFundamentalInhalt({
 
   if (!anfrage) {
     return (
-      <PaCard className="p-8 text-center text-sm text-[var(--app-text-muted)]">
+      <PaCard className="flex min-h-[28rem] items-center justify-center p-8 text-center text-sm text-[var(--app-text-muted)]">
         Wähle ein Unternehmen, um Fundamentaldaten anzuzeigen.
       </PaCard>
     )
@@ -145,9 +151,29 @@ export function PaFundamentalInhalt({
   return (
     <div className="space-y-4">
       {laden && !daten?.ok ? (
-        <PaCard className="p-8 text-center text-sm text-[var(--app-text-muted)]">
-          Fundamentaldaten werden geladen …
-        </PaCard>
+        <div className="space-y-3" aria-busy="true" aria-label="Fundamentaldaten werden geladen">
+          <div className="flex items-center justify-between gap-3">
+            <div className="h-5 w-48 animate-pulse rounded bg-white/[0.06]" />
+            <div className="h-8 w-64 max-w-[50%] animate-pulse rounded-lg bg-white/[0.06]" />
+          </div>
+          <div className="overflow-hidden rounded-xl border border-[var(--app-border)] bg-[var(--app-surface-muted)] ring-1 ring-white/[0.03]">
+            <div className="grid min-h-[320px] lg:grid-cols-[1.05fr_0.95fr]">
+              <div className="flex items-center justify-center border-b border-[var(--app-border)] p-8 lg:border-b-0 lg:border-r">
+                <p className="text-sm text-[var(--app-text-muted)]">Lade Kurs &amp; Kennzahlen …</p>
+              </div>
+              <div className="grid grid-cols-2 gap-3 p-4">
+                {Array.from({ length: 8 }).map((_, i) => (
+                  <div key={i} className="space-y-2">
+                    <div className="h-3 w-20 animate-pulse rounded bg-amber-500/20" />
+                    <div className="h-2.5 w-full animate-pulse rounded bg-white/[0.05]" />
+                    <div className="h-2.5 w-4/5 animate-pulse rounded bg-white/[0.05]" />
+                    <div className="h-2.5 w-3/5 animate-pulse rounded bg-white/[0.05]" />
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
       ) : null}
 
       {fehler && !daten?.ok ? (

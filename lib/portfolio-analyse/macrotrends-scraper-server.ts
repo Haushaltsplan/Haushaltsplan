@@ -91,6 +91,7 @@ const BEKANNTE_MACROTRENDS_SLUGS: Record<
   CTAS: { slug: 'cintas', firmenname: 'Cintas' },
   UPST: { slug: 'upstart-holdings', firmenname: 'Upstart Holdings' },
   MSCI: { slug: 'msci', firmenname: 'MSCI' },
+  AOS: { slug: 'a-o-smith', firmenname: 'A.O. Smith' },
 }
 
 type RohZeile = Record<string, string | number> & { field_name: string }
@@ -651,14 +652,25 @@ export async function loeseMacrotrendsIdent(
     if (ausSlug) return ausSlug
   }
 
+  // Ticker zuerst suchen (präziser), Firmenname nur als Fallback —
+  // verhindert, dass generische Namensteile (z. B. „Smith") falsche Treffer liefern.
   const suchbegriffe: string[] = []
-  if (firmenname) suchbegriffe.push(firmenname)
+  if (erwartet) suchbegriffe.push(erwartet)
   if (q && !suchbegriffe.includes(q)) suchbegriffe.push(q)
+  if (firmenname && !suchbegriffe.includes(firmenname)) suchbegriffe.push(firmenname)
 
   for (const s of suchbegriffe) {
     const items = await ladeMacrotrendsSuchergebnisse(s)
     const ident = waehleMacrotrendsIdent(items, { erwarteterTicker: erwartet, firmenname })
     if (ident) return ident
+  }
+
+  // Letzter Versuch: Namenssuche ohne Ticker-Zwang (nur wenn kein erwarteter Ticker
+  // oder Ticker-Suche leer blieb und Name eindeutig passt).
+  if (erwartet && firmenname) {
+    const items = await ladeMacrotrendsSuchergebnisse(firmenname)
+    const perName = identsAusSuchergebnis(items).find((k) => namePasstZuIdent(firmenname, k))
+    if (perName) return perName
   }
 
   return null
@@ -718,13 +730,35 @@ function normalisiereName(s: string): string {
     .trim()
 }
 
+/** Wörter, die allein keinen Firmen-Match rechtfertigen (zu generisch). */
+const SCHWACHE_NAMENSWORTER = new Set([
+  'smith', 'group', 'holding', 'holdings', 'corp', 'corporation', 'inc', 'ltd',
+  'limited', 'plc', 'ag', 'sa', 'nv', 'se', 'co', 'company', 'international',
+  'industries', 'systems', 'technologies', 'services', 'capital', 'partners',
+])
+
 function namePasstZuIdent(firmenname: string, ident: MacrotrendsIdent): boolean {
   const n = normalisiereName(firmenname)
   const f = normalisiereName(ident.firmenname)
   if (!n || !f) return false
   if (/hermes|hermès/.test(n) && /federated|federal/.test(f)) return false
   if (/hermes|hermès/.test(n) && ident.slug.includes('federated')) return false
-  return f.includes(n) || n.includes(f) || n.split(' ').filter((w) => w.length > 3).every((w) => f.includes(w))
+  // Volle Zeichenkette enthalten (z. B. „microsoft" in „microsoft corporation")
+  if (f.includes(n) || n.includes(f)) return true
+  // Wortweise: mind. 2 signifikante Wörter müssen passen — sonst z. B.
+  // „A.O. Smith" → nur „smith" → fälschlich „Smith & Nephew".
+  const signifikante = n.split(' ').filter((w) => w.length > 2 && !SCHWACHE_NAMENSWORTER.has(w))
+  if (signifikante.length === 0) {
+    // Nur schwache Wörter (z. B. reine „Smith Corp"): dann ALLE Wörter > 2 Zeichen
+    const alle = n.split(' ').filter((w) => w.length > 2)
+    return alle.length >= 2 && alle.every((w) => f.includes(w))
+  }
+  if (signifikante.length === 1) {
+    // Ein starkes Wort reicht nur, wenn es das dominante Wort im Ident ist
+    // (z. B. „Datadog" → „datadog") — nicht bei Teil-Match in längeren Namen.
+    return f === signifikante[0] || f.startsWith(`${signifikante[0]} `)
+  }
+  return signifikante.every((w) => f.includes(w))
 }
 
 function waehleMacrotrendsIdent(
@@ -736,13 +770,9 @@ function waehleMacrotrendsIdent(
 
   const erwartet = opts.erwarteterTicker?.toUpperCase()
   if (erwartet) {
-    const exakt = kandidaten.find((k) => k.ticker.toUpperCase() === erwartet)
-    if (exakt) return exakt
-    if (opts.firmenname) {
-      const perName = kandidaten.find((k) => namePasstZuIdent(opts.firmenname!, k))
-      if (perName) return perName
-    }
-    return null
+    // Bei bekanntem Ticker: NUR exakter Ticker-Treffer.
+    // Kein Namens-Fallback — sonst landet „A.O. Smith"/AOS bei „Smith & Nephew"/SNN.
+    return kandidaten.find((k) => k.ticker.toUpperCase() === erwartet) ?? null
   }
 
   if (opts.firmenname) {
