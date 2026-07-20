@@ -96,7 +96,38 @@ async function finnhubIsinFuerSymbol(symbol: string): Promise<string | null> {
   return null
 }
 
-/** ISIN für Yahoo-/US-Ticker auflösen (Finnhub → Kenntnisse → Fallback-Map). */
+/** DivvyDiary-Symbolsuche — öffentliche API, liefert ISIN für fast alle Ticker (auch ohne Finnhub-Premium). */
+async function divvydiaryIsinFuerSymbol(symbol: string): Promise<string | null> {
+  const kandidaten = [...new Set([symbol.trim().toUpperCase(), normTicker(symbol)])].filter(Boolean)
+
+  for (const sym of kandidaten) {
+    const u = new URL('https://api.divvydiary.com/symbols')
+    u.searchParams.set('search', sym)
+    try {
+      const res = await fetch(u.toString(), {
+        headers: { 'User-Agent': 'Mozilla/5.0', Accept: 'application/json' },
+        next: { revalidate: 86400 },
+      })
+      if (!res.ok) continue
+      const j = (await res.json()) as {
+        symbols?: Array<{ symbol?: string; isin?: string; securityType?: string }>
+      }
+      const hit = (j.symbols ?? []).find(
+        (s) =>
+          s.symbol?.trim().toUpperCase() === sym &&
+          (s.securityType ?? 'EQUITY').toUpperCase() === 'EQUITY' &&
+          s.isin &&
+          ISIN_RE.test(s.isin.trim().toUpperCase()),
+      )
+      if (hit?.isin) return hit.isin.trim().toUpperCase()
+    } catch {
+      /* nächster Kandidat */
+    }
+  }
+  return null
+}
+
+/** ISIN für Yahoo-/US-Ticker auflösen (Finnhub → Kenntnisse → Fallback-Map → DivvyDiary). */
 export async function loeseIsinFuerTicker(symbol: string): Promise<string | null> {
   const sym = symbol.trim()
   if (!sym) return null
@@ -108,7 +139,9 @@ export async function loeseIsinFuerTicker(symbol: string): Promise<string | null
   if (viaKenntnis) return viaKenntnis
 
   const basis = normTicker(sym)
-  return BEKANNTE_US_TICKER_ISIN[basis] ?? null
+  if (BEKANNTE_US_TICKER_ISIN[basis]) return BEKANNTE_US_TICKER_ISIN[basis]
+
+  return divvydiaryIsinFuerSymbol(sym)
 }
 
 export function istGueltigeIsinFormat(isin: string): boolean {

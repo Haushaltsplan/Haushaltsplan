@@ -157,6 +157,16 @@ async function ladeSecBerichteClient(
     throw new Error(data.fehler ?? 'Abruf fehlgeschlagen')
   }
 
+  // Fehlgeschlagener Refresh darf gespeicherte Berichte + KI-Summaries nicht verwerfen.
+  if (!data.berichte?.length && prevOk?.berichte?.length) {
+    return {
+      ...prevOk,
+      fehler: data.fehler?.trim() || 'Aktualisierung fehlgeschlagen — gespeicherte Berichte behalten.',
+      geladenAm: data.geladenAm || prevOk.geladenAm,
+      ausCache: true,
+    }
+  }
+
   const merged = mergePakete(prevOk, data, anfrage)
   if (merged.berichte.length) speicherePaket(anfrage, merged)
   return merged

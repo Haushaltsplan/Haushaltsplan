@@ -279,8 +279,10 @@ function pause(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms))
 }
 
-function htmlBlockiertOderLeer(html: string): boolean {
-  if (html.length < 1_500) return true
+function htmlBlockiertOderLeer(html: string, erwartetJson = false): boolean {
+  // JSON-Endpunkte (z. B. Suche) liefern legitim sehr kurze Antworten — Längen-Check nur für HTML-Seiten.
+  if (!erwartetJson && html.length < 1_500) return true
+  if (erwartetJson && html.trim().length === 0) return true
   if (html.includes('Oops!')) return true
   const kopf = html.slice(0, 8_000).toLowerCase()
   return /access denied|403 forbidden|rate limit|cf-challenge|just a moment|captcha|bot detection/i.test(
@@ -296,7 +298,7 @@ function htmlHatChartData(html: string): boolean {
   return html.includes('var chartData = ')
 }
 
-async function rateLimitedFetch(url: string): Promise<string | null> {
+async function rateLimitedFetch(url: string, erwartetJson = false): Promise<string | null> {
   await warteschlange
   let resolve!: () => void
   warteschlange = new Promise((r) => {
@@ -333,7 +335,7 @@ async function rateLimitedFetch(url: string): Promise<string | null> {
         }
 
         const html = await res.text()
-        if (htmlBlockiertOderLeer(html)) {
+        if (htmlBlockiertOderLeer(html, erwartetJson)) {
           if (attempt < MAX_FETCH_RETRIES) {
             await pause(RETRY_BASE_MS * (attempt + 1) + 600)
             continue
@@ -366,7 +368,7 @@ function staleFallback(url: string): string | null {
 
 async function ladeSeite(
   url: string,
-  opts?: { forceRefresh?: boolean; nurCache?: boolean },
+  opts?: { forceRefresh?: boolean; nurCache?: boolean; erwartetJson?: boolean },
 ): Promise<string | null> {
   const hit = pageCache.get(url)
   const now = Date.now()
@@ -379,7 +381,7 @@ async function ladeSeite(
     return staleFallback(url)
   }
 
-  const html = await rateLimitedFetch(url)
+  const html = await rateLimitedFetch(url, opts?.erwartetJson)
   if (html) {
     pageCache.set(url, { at: now, html, fehler: false })
     return html
@@ -667,7 +669,7 @@ async function ladeMacrotrendsSuchergebnisse(q: string): Promise<Array<{ name?: 
   const url = `${BASE}/assets/php/all_pages_query.php?q=${encodeURIComponent(q.trim())}`
 
   for (let versuch = 0; versuch < 2; versuch++) {
-    const html = await ladeSeite(url, versuch > 0 ? { forceRefresh: true } : undefined)
+    const html = await ladeSeite(url, { erwartetJson: true, ...(versuch > 0 ? { forceRefresh: true } : {}) })
     if (!html) continue
     try {
       const items = JSON.parse(html) as Array<{ name?: string; url?: string }>
@@ -744,8 +746,9 @@ function waehleMacrotrendsIdent(
   }
 
   if (opts.firmenname) {
-    const perName = kandidaten.find((k) => namePasstZuIdent(opts.firmenname!, k))
-    if (perName) return perName
+    // Kein blinder Erst-Treffer: Bei Namenssuche ohne Übereinstimmung lieber null
+    // (sonst z. B. „RATIONAL Aktiengesellschaft" → „Deutsche Bank Aktiengesellschaft").
+    return kandidaten.find((k) => namePasstZuIdent(opts.firmenname!, k)) ?? null
   }
 
   return kandidaten[0] ?? null

@@ -56,20 +56,44 @@ function istEuIsin(isin: string | null | undefined): boolean {
   return i.startsWith('DE') || i.startsWith('NL') || i.startsWith('FR') || i.startsWith('CH') || i.startsWith('GB')
 }
 
+/** Berichtswährung: Konfig-Eintrag → sonst grobe Ableitung aus dem ISIN-Länderpräfix (Watchlist). */
+function waehrungFuerIsin(isin: string | null | undefined): string {
+  const i = isin?.trim().toUpperCase() ?? ''
+  if (i && ISIN_WAEHRUNG[i]) return ISIN_WAEHRUNG[i]
+  const prefix = i.slice(0, 2)
+  const map: Record<string, string> = {
+    DE: 'EUR', FR: 'EUR', NL: 'EUR', IT: 'EUR', ES: 'EUR', BE: 'EUR', AT: 'EUR',
+    FI: 'EUR', IE: 'EUR', PT: 'EUR', LU: 'EUR',
+    CH: 'CHF', GB: 'GBP', DK: 'DKK', SE: 'SEK', NO: 'NOK', PL: 'PLN',
+    CA: 'CAD', AU: 'AUD', JP: 'JPY',
+  }
+  return map[prefix] ?? 'USD'
+}
+
 function symboleAusAnfrage(anfrage: FundamentaldatenAnfrage): string[] {
   const out = new Set<string>()
   const add = (s?: string | null) => {
     for (const t of brokerSymbolKandidaten(s ?? '')) out.add(t)
   }
   const isin = anfrage.isin?.trim().toUpperCase()
-  if (isin) {
-    const k = isinKenntnis(isin)
-    add(k?.symbolYahoo)
-    for (const s of k?.symbolCandidates ?? []) add(s)
+  const k = isin ? isinKenntnis(isin) : undefined
+  if (k) {
+    add(k.symbolYahoo)
+    for (const s of k.symbolCandidates ?? []) add(s)
   }
   add(anfrage.symbolYahoo)
   for (const s of anfrage.symbolCandidates ?? []) add(s)
-  return [...out]
+
+  const liste = [...out]
+
+  // US-Titel ohne Kenntnisse-Eintrag (v. a. Watchlist): US-Listing (ohne Börsen-Suffix)
+  // bevorzugen — nur dort liefert Yahoo Analysten-Schätzungen (Forward-KGV/NTM) und
+  // USD-Kurse, die zu den USD-Fundamentaldaten von Macrotrends passen.
+  if (isin?.startsWith('US') && !k?.symbolYahoo) {
+    liste.sort((a, b) => Number(a.includes('.')) - Number(b.includes('.')))
+  }
+
+  return liste
 }
 
 function macrotrendsOptsAusAnfrage(
@@ -313,6 +337,8 @@ function leeresPaket(partial: Partial<FundamentaldatenPaket> & Pick<Fundamentald
 export async function ladeFundamentaldaten(anfrage: FundamentaldatenAnfrage): Promise<FundamentaldatenPaket> {
   const frequenz = anfrage.frequenz === 'quartal' ? 'quartal' : 'jahr'
   let { ident, symbolYahoo } = await loeseIdent(anfrage)
+  /** Kein Macrotrends-Treffer, aber GuV-Historie aus StockAnalysis/Yahoo vorhanden (Watchlist). */
+  let altRoh: Awaited<ReturnType<typeof baueFundamentalRohAusAlternativQuellen>> = null
 
   // Watchlist-Fallback: Wenn nur ISIN vorhanden ist (z. B. PL/EU Titel) und kein Symbol bekannt ist,
   // versuchen wir serverseitig Metadaten (Yahoo-Symbol/Name) nachzuladen, damit Yahoo-Fallback greifen kann.
@@ -348,6 +374,27 @@ export async function ladeFundamentaldaten(anfrage: FundamentaldatenAnfrage): Pr
         firmenname: kEarly?.name ?? anfrage.name ?? mt,
       }
       symbolYahoo = sym
+    }
+  }
+
+  // Watchlist-Titel ohne Macrotrends-Seite (z. B. EU-Nebenwerte): volle Pipeline mit
+  // GuV-/Cashflow-Historie aus StockAnalysis + Yahoo timeseries statt dünnem Yahoo-Fallback.
+  if (!ident && symbolYahoo && frequenz === 'jahr') {
+    const tickerGuess = macrotrendsTickerAusSymbol(symbolYahoo)
+    const identGuess: MacrotrendsIdent = {
+      ticker: tickerGuess,
+      slug: '',
+      firmenname: anfrage.name?.trim() || tickerGuess,
+    }
+    altRoh = await baueFundamentalRohAusAlternativQuellen(identGuess, symbolYahoo, {
+      isin: isinNormEarly ?? anfrage.isin,
+      firmenname: anfrage.name ?? identGuess.firmenname,
+      ticker: tickerGuess,
+    }).catch(() => null)
+    if (altRoh && altRoh.zeilen.length > 0) {
+      ident = identGuess
+    } else {
+      altRoh = null
     }
   }
 
@@ -459,7 +506,7 @@ export async function ladeFundamentaldaten(anfrage: FundamentaldatenAnfrage): Pr
   }
 
   const [rohRaw, yahooRaw, schaetzungen, news, yahooFinanz, unitEconomics, erweitert] = await Promise.all([
-    ladeMacrotrendsFundamentaldaten(ident, frequenz),
+    altRoh ? Promise.resolve(altRoh) : ladeMacrotrendsFundamentaldaten(ident, frequenz),
     symbolYahoo ? ladeYahooFundamentalKennzahlen(symbolYahoo) : Promise.resolve(null),
     frequenz === 'jahr' && symbolYahoo
       ? ladeFundamentalSchaetzungen({
@@ -577,7 +624,11 @@ export async function ladeFundamentaldaten(anfrage: FundamentaldatenAnfrage): Pr
     yahooFinanz,
     unitEconomics,
   })
-  const waehrung = (isinNorm && ISIN_WAEHRUNG[isinNorm]) || 'USD'
+  // Macrotrends liefert USD; nur bei Alternativquellen (Yahoo timeseries, Berichtswährung)
+  // die Währung aus Konfig bzw. ISIN-Präfix ableiten.
+  const waehrung = altRoh
+    ? waehrungFuerIsin(isinNorm ?? anfrage.isin)
+    : (isinNorm && ISIN_WAEHRUNG[isinNorm]) || 'USD'
 
   let erweitertFinal = erweitert
   if (erweitert?.secSegmentHistorie) {
@@ -594,6 +645,7 @@ export async function ladeFundamentaldaten(anfrage: FundamentaldatenAnfrage): Pr
 
   return leeresPaket({
     ok: true,
+    quelle: altRoh ? 'yahoo' : 'macrotrends',
     ticker: ident.ticker,
     slug: ident.slug,
     firmenname: ident.firmenname,

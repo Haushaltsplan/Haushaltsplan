@@ -24,8 +24,8 @@ import { resolveCoachProviderFromMode, runCoachCompletion, earningsCallGeminiMod
 const MAX_REPORT_CHARS = 120_000
 const serverCache = new Map<string, { at: number; paket: SecBerichtePaket }>()
 const CACHE_MS = 12 * 60 * 60 * 1000
-/** Cache-Version — bei Parser-Änderungen erhöhen (z. B. XBRL-Fix). */
-const LIST_CACHE_VERSION = 4
+/** Cache-Version — bei Parser-Änderungen erhöhen (z. B. XBRL-Fix / Index-URL). */
+const LIST_CACHE_VERSION = 5
 
 type ListCache = {
   expiresAt: number

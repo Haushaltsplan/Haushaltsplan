@@ -9,10 +9,16 @@ let tickerCikLoadedAt = 0
 const TICKER_CACHE_MS = 24 * 60 * 60 * 1000
 
 export function secUserAgent(): string {
-  const custom = process.env.SEC_EDGAR_USER_AGENT?.trim()
+  const custom =
+    process.env.SEC_EDGAR_USER_AGENT?.trim() || process.env.EDGAR_USER_AGENT?.trim()
   if (custom) return custom
   const email = (process.env.APP_ALLOWED_EMAILS || 'contact@example.com').split(/[,;\s]+/)[0]?.trim()
   return `Omnia Haushalt ${email || 'contact@example.com'}`
+}
+
+/** CIK aus Accession-Nummer (kann Filing-Agent sein, nicht immer Company-CIK). */
+export function cikAusAccession(accession: string): number {
+  return parseInt(accession.split('-')[0]!, 10)
 }
 
 export function normalisiereUsTicker(ticker: string): string[] {
@@ -46,10 +52,13 @@ async function ladeTickerCikMap(): Promise<Map<string, number>> {
   if (tickerCikCache && Date.now() - tickerCikLoadedAt < TICKER_CACHE_MS) return tickerCikCache
   const res = await secFetch('https://www.sec.gov/files/company_tickers.json')
   if (!res.ok) throw new Error(`SEC Ticker-Liste (${res.status})`)
-  const raw = await leseAlsJson<Record<string, { cik_str?: number; ticker?: string }>>(res)
+  const raw = await leseAlsJson<Record<string, { cik_str?: number | string; ticker?: string }>>(res)
   const map = new Map<string, number>()
   for (const row of Object.values(raw ?? {})) {
-    if (row.ticker && row.cik_str) map.set(row.ticker.toUpperCase(), row.cik_str)
+    if (!row.ticker || row.cik_str == null || row.cik_str === '') continue
+    const cik = Number(row.cik_str)
+    if (!Number.isFinite(cik) || cik <= 0) continue
+    map.set(row.ticker.toUpperCase(), cik)
   }
   tickerCikCache = map
   tickerCikLoadedAt = Date.now()

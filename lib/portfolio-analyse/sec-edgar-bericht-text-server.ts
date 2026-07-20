@@ -5,7 +5,11 @@ import 'server-only'
 import { bereinigeIxbrlHtml, filterXbrlMuell, istXbrlMuell } from '@/lib/html/sec-ixbrl-text'
 import { htmlZuFliesstext, linksAusHtml } from '@/lib/html/text-aus-html'
 import { leseAlsJson } from '@/lib/http/safe-json-response'
-import { secFetch } from '@/lib/portfolio-analyse/sec-edgar-common-server'
+import {
+  cikAusAccession,
+  dokumentUrl,
+  secFetch,
+} from '@/lib/portfolio-analyse/sec-edgar-common-server'
 
 export type EdgarIndexItem = {
   name?: string
@@ -18,10 +22,6 @@ type EdgarIndex = {
   directory?: { item?: EdgarIndexItem | EdgarIndexItem[] }
 }
 
-function cikAusAccession(accession: string): number {
-  return parseInt(accession.split('-')[0]!, 10)
-}
-
 function accessionOhneBindestriche(accession: string): string {
   return accession.replace(/-/g, '')
 }
@@ -32,20 +32,14 @@ function dateinameAusHref(href: string): string {
   return parts[parts.length - 1] || clean
 }
 
-function dokumentUrl(cik: number, accession: string, dateiname: string): string {
-  if (/^https?:\/\//i.test(dateiname)) return dateiname
-  const accPath = accessionOhneBindestriche(accession)
-  return `https://www.sec.gov/Archives/edgar/data/${cik}/${accPath}/${dateiname}`
-}
-
 function indexItems(index: EdgarIndex): EdgarIndexItem[] {
   const item = index.directory?.item
   if (!item) return []
   return Array.isArray(item) ? item : [item]
 }
 
-function itemsAusIndexHtml(html: string, accession: string): EdgarIndexItem[] {
-  const base = `https://www.sec.gov/Archives/edgar/data/${cikAusAccession(accession)}/${accessionOhneBindestriche(accession)}/`
+function itemsAusIndexHtml(html: string, baseCik: number, accession: string): EdgarIndexItem[] {
+  const base = `https://www.sec.gov/Archives/edgar/data/${baseCik}/${accessionOhneBindestriche(accession)}/`
   const items: EdgarIndexItem[] = []
   const rowRe = /<tr[^>]*>([\s\S]*?)<\/tr>/gi
   let row: RegExpExecArray | null
@@ -66,20 +60,54 @@ function itemsAusIndexHtml(html: string, accession: string): EdgarIndexItem[] {
   return items
 }
 
-export async function ladeFilingIndexItems(accession: string): Promise<EdgarIndexItem[]> {
-  const filingCik = cikAusAccession(accession)
+function cikKandidaten(companyCik?: number | null, accession?: string): number[] {
+  const out: number[] = []
+  const company = companyCik != null && Number.isFinite(companyCik) && companyCik > 0 ? companyCik : null
+  const filing = accession ? cikAusAccession(accession) : null
+  if (company) out.push(company)
+  if (filing && filing !== company) out.push(filing)
+  return out
+}
+
+/**
+ * Filing-Index laden.
+ * Moderne Filings: `…/{accPath}/index.json` unter Company-CIK.
+ * Legacy: `{accession}-index.json` / `{accession}-index.htm` (Accession-CIK kann Filing-Agent sein).
+ */
+export async function ladeFilingIndexItems(
+  accession: string,
+  companyCik?: number | null,
+): Promise<EdgarIndexItem[]> {
   const accPath = accessionOhneBindestriche(accession)
-  const jsonUrl = `https://www.sec.gov/Archives/edgar/data/${filingCik}/${accPath}/${accession}-index.json`
-  const jsonRes = await secFetch(jsonUrl)
-  if (jsonRes.ok) {
-    const idx = await leseAlsJson<EdgarIndex>(jsonRes)
-    if (idx) return indexItems(idx)
+  const ciks = cikKandidaten(companyCik, accession)
+  if (!ciks.length) return []
+
+  for (const cik of ciks) {
+    const dirJsonUrl = `https://www.sec.gov/Archives/edgar/data/${cik}/${accPath}/index.json`
+    const dirJsonRes = await secFetch(dirJsonUrl)
+    if (dirJsonRes.ok) {
+      const idx = await leseAlsJson<EdgarIndex>(dirJsonRes)
+      const items = idx ? indexItems(idx) : []
+      if (items.length) return items
+    }
+
+    const accJsonUrl = `https://www.sec.gov/Archives/edgar/data/${cik}/${accPath}/${accession}-index.json`
+    const accJsonRes = await secFetch(accJsonUrl)
+    if (accJsonRes.ok) {
+      const idx = await leseAlsJson<EdgarIndex>(accJsonRes)
+      const items = idx ? indexItems(idx) : []
+      if (items.length) return items
+    }
+
+    const accHtmUrl = `https://www.sec.gov/Archives/edgar/data/${cik}/${accPath}/${accession}-index.htm`
+    const accHtmRes = await secFetch(accHtmUrl)
+    if (accHtmRes.ok) {
+      const items = itemsAusIndexHtml(await accHtmRes.text(), cik, accession)
+      if (items.length) return items
+    }
   }
 
-  const htmUrl = `https://www.sec.gov/Archives/edgar/data/${filingCik}/${accPath}/${accession}-index.htm`
-  const htmRes = await secFetch(htmUrl)
-  if (!htmRes.ok) return []
-  return itemsAusIndexHtml(await htmRes.text(), accession)
+  return []
 }
 
 function istXbrlArtefakt(name: string): boolean {
@@ -93,7 +121,8 @@ function istXbrlArtefakt(name: string): boolean {
     n.includes('_pre.') ||
     n.includes('filingsummary') ||
     n.includes('schema') ||
-    n.endsWith('r1.htm')
+    n.includes('index-headers') ||
+    /^r\d+\.htm$/i.test(n)
   )
 }
 
@@ -107,6 +136,8 @@ function parseSizeKb(size?: string): number {
   if (!m) return 0
   const n = parseFloat(m[1]!)
   if (Number.isNaN(n)) return 0
+  // Directory-index.json liefert Bytes ohne Einheit — Werte > 100_000 sind Bytes.
+  if (!m[2] && n >= 100_000) return n / 1024
   const unit = (m[2] ?? 'k').toLowerCase()
   return unit === 'm' ? n * 1024 : n
 }
@@ -117,6 +148,8 @@ export function waehleLesbaresBerichtDokument(
   formular: '10-Q' | '10-K',
   primaryDocument?: string,
 ): string | null {
+  const primaryNorm = primaryDocument?.trim().toLowerCase() ?? ''
+
   const kandidaten = items.filter((i) => {
     const name = (i.name ?? '').trim()
     if (!name) return false
@@ -135,7 +168,8 @@ export function waehleLesbaresBerichtDokument(
     if ((i.type ?? '').toUpperCase() === formular) s += 500
     if (meta.includes(formular.toLowerCase())) s += 300
     if (name.includes('10q') || name.includes('10-q') || name.includes('10k') || name.includes('10-k')) s += 200
-    if (primaryDocument && name === primaryDocument.toLowerCase()) s += 100
+    // Directory-index.json hat type=text.gif — Primary stark bevorzugen.
+    if (primaryNorm && name === primaryNorm) s += 50_000
     return s
   }
 
@@ -158,13 +192,30 @@ function htmlZuBerichtText(html: string): string {
   return filterXbrlMuell(text)
 }
 
-async function ladeRohtext(cik: number, accession: string, dateiname: string): Promise<string> {
-  const url = dokumentUrl(cik, accession, dateiname)
-  const res = await secFetch(url)
-  if (!res.ok) throw new Error(`SEC Dokument (${res.status})`)
-  const raw = await res.text()
-  if (/\.(htm|html)$/i.test(dateiname)) return htmlZuBerichtText(raw)
-  return raw.replace(/\s+/g, ' ').trim()
+async function ladeRohtext(
+  ciks: number[],
+  accession: string,
+  dateiname: string,
+): Promise<{ text: string; url: string }> {
+  let letzterFehler: Error | null = null
+  for (const cik of ciks) {
+    const url = dokumentUrl(cik, accession, dateiname)
+    try {
+      const res = await secFetch(url)
+      if (!res.ok) {
+        letzterFehler = new Error(`SEC Dokument (${res.status})`)
+        continue
+      }
+      const raw = await res.text()
+      const text = /\.(htm|html)$/i.test(dateiname)
+        ? htmlZuBerichtText(raw)
+        : raw.replace(/\s+/g, ' ').trim()
+      return { text, url }
+    } catch (e) {
+      letzterFehler = e instanceof Error ? e : new Error(String(e))
+    }
+  }
+  throw letzterFehler ?? new Error('SEC Dokument nicht erreichbar')
 }
 
 const MAX_VOLLTEXT = 600_000
@@ -176,7 +227,8 @@ export async function ladeLesbarenBerichtText(
   formular: '10-Q' | '10-K',
   primaryDocument: string,
 ): Promise<{ text: string; documentName: string; url: string } | null> {
-  const items = await ladeFilingIndexItems(accession)
+  const ciks = cikKandidaten(cik, accession)
+  const items = await ladeFilingIndexItems(accession, cik)
   const primaryIstHtml = /\.(htm|html)$/i.test(primaryDocument)
   const primaryIstXbrl = !primaryIstHtml || istXbrlArtefakt(primaryDocument)
 
@@ -195,13 +247,14 @@ export async function ladeLesbarenBerichtText(
 
   for (const doc of kandidaten.slice(0, 6)) {
     try {
-      const text = (await ladeRohtext(cik, accession, doc)).slice(0, MAX_VOLLTEXT)
+      const hit = await ladeRohtext(ciks, accession, doc)
+      const text = hit.text.slice(0, MAX_VOLLTEXT)
       if (text.length < 400) continue
       if (istXbrlMuell(text)) continue
       return {
         text,
         documentName: doc,
-        url: dokumentUrl(cik, accession, doc),
+        url: hit.url,
       }
     } catch {
       continue
