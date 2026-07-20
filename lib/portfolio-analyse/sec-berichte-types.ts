@@ -1,6 +1,14 @@
 /** SEC Quartals- & Jahresberichte (10-Q / 10-K). */
 
-export type SecBerichtFormular = '10-Q' | '10-K' | 'IR-Q' | 'IR-HY' | 'IR-FY' | 'IR-AR'
+export type SecBerichtFormular =
+  | '10-Q'
+  | '10-K'
+  /** 8-K Item 2.02 Earnings Release (EX-99), bevor 10-Q/10-K da ist */
+  | '8-K-ER'
+  | 'IR-Q'
+  | 'IR-HY'
+  | 'IR-FY'
+  | 'IR-AR'
 
 export type SecBerichtQuelle = 'sec_edgar' | 'ir_pdf'
 

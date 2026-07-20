@@ -1,9 +1,18 @@
-/** SEC EDGAR — 10-Q / 10-K Primärdokumente (US-Börsen). */
+/** SEC EDGAR — 10-Q / 10-K + 8-K Earnings Releases (US-Börsen). */
 
 import 'server-only'
 
 import { leseAlsJson } from '@/lib/http/safe-json-response'
+import {
+  labelAusReportDate,
+  periodenDedupKeys,
+  periodenKeyAusReportDate,
+} from '@/lib/portfolio-analyse/sec-bericht-periode'
 import { ladeLesbarenBerichtText } from '@/lib/portfolio-analyse/sec-edgar-bericht-text-server'
+import {
+  ladeEarningsReleaseFilings,
+  ladeEarningsReleaseText,
+} from '@/lib/portfolio-analyse/sec-edgar-earnings-release-server'
 import {
   cikFuerTicker,
   dokumentUrl,
@@ -11,14 +20,18 @@ import {
   secFetch,
   type SecSubmissionsRecent,
 } from '@/lib/portfolio-analyse/sec-edgar-common-server'
+import type { SecBerichtFormular } from '@/lib/portfolio-analyse/sec-berichte-types'
 
 export type EdgarFilingRoh = {
-  formular: '10-Q' | '10-K'
+  formular: Extract<SecBerichtFormular, '10-Q' | '10-K' | '8-K-ER'>
   accession: string
   filingDatum: string | null
   berichtszeitraum: string | null
   primaryDocument: string
   firmenname: string
+  /** Explizites Label (v. a. 8-K-ER) */
+  labelOverride?: string | null
+  periodenKey?: string | null
 }
 
 const MAX_FILINGS = 14
@@ -26,24 +39,22 @@ const AUSZUG_ZEICHEN = 4_000
 
 async function ladeDokumentText(
   cik: number,
-  accession: string,
-  formular: '10-Q' | '10-K',
-  dateiname: string,
+  f: EdgarFilingRoh,
 ): Promise<{ text: string; url: string } | null> {
-  const hit = await ladeLesbarenBerichtText(cik, accession, formular, dateiname)
+  if (f.formular === '8-K-ER') {
+    return ladeEarningsReleaseText(cik, f.accession, f.primaryDocument)
+  }
+  const hit = await ladeLesbarenBerichtText(cik, f.accession, f.formular, f.primaryDocument)
   if (hit) return { text: hit.text, url: hit.url }
   return null
 }
 
 function labelAusFiling(f: EdgarFilingRoh): string {
-  const periode = f.berichtszeitraum ?? f.filingDatum ?? ''
-  const jahr = periode.slice(0, 4)
-  if (f.formular === '10-K') return `Jahresbericht ${jahr || f.filingDatum || ''}`
-  const m = periode.match(/-(0[1-9]|1[0-2])-/)
-  const monat = m ? parseInt(m[1], 10) : null
-  const q =
-    monat != null ? (monat <= 3 ? 1 : monat <= 6 ? 2 : monat <= 9 ? 3 : 4) : null
-  return q != null ? `Q${q} ${jahr}` : `Quartalsbericht ${periode || f.filingDatum || ''}`
+  if (f.labelOverride?.trim()) return f.labelOverride.trim()
+  if (f.formular === '10-Q' || f.formular === '10-K') {
+    return labelAusReportDate(f.formular, f.berichtszeitraum)
+  }
+  return `Ergebnisbericht ${f.berichtszeitraum ?? f.filingDatum ?? ''}`
 }
 
 function idAusFiling(f: EdgarFilingRoh): string {
@@ -54,7 +65,11 @@ async function sleep(ms: number): Promise<void> {
   await new Promise((r) => setTimeout(r, ms))
 }
 
-/** SEC-10-Q/10-K-Historie für US-Ticker. */
+function sortiereNachFilingDatum(a: EdgarFilingRoh, b: EdgarFilingRoh): number {
+  return (b.filingDatum ?? '').localeCompare(a.filingDatum ?? '')
+}
+
+/** SEC-10-Q/10-K-Historie + aktuelle 8-K-Ergebnisberichte für US-Ticker. */
 export async function ladeSecEdgarBerichteHistorie(
   tickerRaw: string,
   opts?: { max?: number; accessionVolltext?: string | null },
@@ -88,25 +103,79 @@ export async function ladeSecEdgarBerichteHistorie(
   }
 
   const max = opts?.max ?? MAX_FILINGS
-  const roh: EdgarFilingRoh[] = []
-  const seen = new Set<string>()
+  const zehnQk: EdgarFilingRoh[] = []
+  const seenAcc = new Set<string>()
+  const periodenBelegt = new Set<string>()
 
-  for (let i = 0; i < recent.form.length && roh.length < max; i++) {
+  for (let i = 0; i < recent.form.length && zehnQk.length < max; i++) {
     const form = recent.form[i]
     if (form !== '10-Q' && form !== '10-K') continue
     const accession = recent.accessionNumber?.[i]
     const primary = recent.primaryDocument?.[i]
-    if (!accession || !primary || seen.has(accession)) continue
-    seen.add(accession)
-    roh.push({
+    if (!accession || !primary || seenAcc.has(accession)) continue
+    seenAcc.add(accession)
+    const berichtszeitraum = recent.reportDate?.[i] ?? null
+    const periodenKey = periodenKeyAusReportDate(form, berichtszeitraum)
+    const label10 = labelAusReportDate(form, berichtszeitraum)
+    if (periodenKey) {
+      periodenBelegt.add(periodenKey)
+      if (form === '10-K' && berichtszeitraum && berichtszeitraum.length >= 4) {
+        periodenBelegt.add(`${berichtszeitraum.slice(0, 4)}-FY`)
+      }
+      // Kalender-Q-Key für Dedup gegen 8-K ohne Periodenende (z. B. JPM „Q1 2026“)
+      const qm = label10.match(/^Q([1-4])\s+(\d{4})$/)
+      if (qm) periodenBelegt.add(`${qm[2]}-Q${qm[1]}`)
+    }
+    zehnQk.push({
       formular: form,
       accession,
       filingDatum: recent.filingDate?.[i] ?? null,
-      berichtszeitraum: recent.reportDate?.[i] ?? null,
+      berichtszeitraum,
       primaryDocument: primary,
       firmenname,
+      labelOverride: label10,
+      periodenKey,
     })
   }
+
+  // 8-K Item 2.02 — Perioden-Lücken füllen (Dedup über Periodenende pe:YYYY-MM-DD).
+  let releases: EdgarFilingRoh[] = []
+  try {
+    const er = await ladeEarningsReleaseFilings(recent, cik, firmenname)
+    releases = er
+      .filter((r) => {
+        if (seenAcc.has(r.accession)) return false
+        const keys = periodenDedupKeys({
+          label: r.label,
+          periodenKey: r.periodenKey,
+          berichtszeitraum: r.berichtszeitraum,
+        })
+        return !keys.some((k) => periodenBelegt.has(k))
+      })
+      .map((r) => {
+        for (const k of periodenDedupKeys({
+          label: r.label,
+          periodenKey: r.periodenKey,
+          berichtszeitraum: r.berichtszeitraum,
+        })) {
+          periodenBelegt.add(k)
+        }
+        return {
+          formular: '8-K-ER' as const,
+          accession: r.accession,
+          filingDatum: r.filingDatum,
+          berichtszeitraum: r.berichtszeitraum,
+          primaryDocument: r.primaryDocument,
+          firmenname: r.firmenname,
+          labelOverride: r.label,
+          periodenKey: r.periodenKey,
+        }
+      })
+  } catch {
+    releases = []
+  }
+
+  const roh = [...zehnQk, ...releases].sort(sortiereNachFilingDatum).slice(0, max)
 
   const texte = new Map<string, string>()
   const urls = new Map<string, string>()
@@ -116,7 +185,7 @@ export async function ladeSecEdgarBerichteHistorie(
   for (const f of zuLaden) {
     await sleep(120)
     try {
-      const hit = await ladeDokumentText(cik, f.accession, f.formular, f.primaryDocument)
+      const hit = await ladeDokumentText(cik, f)
       if (hit && hit.text.length > 200) {
         texte.set(f.accession, hit.text)
         urls.set(f.accession, hit.url)

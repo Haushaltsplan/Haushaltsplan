@@ -24,8 +24,8 @@ import { resolveCoachProviderFromMode, runCoachCompletion, earningsCallGeminiMod
 const MAX_REPORT_CHARS = 120_000
 const serverCache = new Map<string, { at: number; paket: SecBerichtePaket }>()
 const CACHE_MS = 12 * 60 * 60 * 1000
-/** Cache-Version — bei Parser-Änderungen erhöhen (z. B. XBRL-Fix / Index-URL). */
-const LIST_CACHE_VERSION = 5
+/** Cache-Version — generische 8-K-ER (Periodenende + Scan trotz 424B2-Flut). */
+const LIST_CACHE_VERSION = 9
 
 type ListCache = {
   expiresAt: number
@@ -261,7 +261,7 @@ export async function ladeSecBerichte(anfrage: SecBerichtAnfrage): Promise<SecBe
           cache.berichte.length === 0
             ? cache.quelle === 'ir_pdf'
               ? 'Keine Finanzberichte auf der IR-Seite gefunden.'
-              : 'Keine 10-Q/10-K bei SEC gefunden.'
+              : 'Keine 10-Q/10-K/Ergebnisberichte bei SEC gefunden.'
             : null,
         hinweis:
           cache.berichte.length > 0

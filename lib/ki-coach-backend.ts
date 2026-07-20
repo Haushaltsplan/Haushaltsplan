@@ -31,13 +31,23 @@ function geminiApiKey() {
   return normalisiereEnvApiKey(
     process.env.GEMINI_API_KEY ||
       process.env.GOOGLE_GENERATIVE_AI_API_KEY ||
-      process.env.GOOGLE_AI_API_KEY,
+      process.env.GOOGLE_AI_API_KEY ||
+      process.env.GEMINI_API_KEY_FREE,
   )
 }
 
-/** Z. B. Kassenzettel-Route, die direkt mit Gemini spricht; nutzt dieselbe Normalisierung wie `resolveCoachProvider`. */
+/**
+ * Key für Free-Tier-Aufrufe (Flash-Modelle): eigener Key aus einem Google-Cloud-Projekt
+ * OHNE Billing (`GEMINI_API_KEY_FREE`) — nur solche Keys haben kostenloses Tageskontingent.
+ * Fallback: normaler `GEMINI_API_KEY` (dann wird wie bisher abgerechnet).
+ */
+function geminiApiKeyFree(): string {
+  return normalisiereEnvApiKey(process.env.GEMINI_API_KEY_FREE) || geminiApiKey()
+}
+
+/** Z. B. Kassenzettel-Route, die direkt mit Gemini spricht (Flash) — bevorzugt den Free-Tier-Key. */
 export function readGeminiApiKeyFromEnv(): string {
-  return geminiApiKey()
+  return geminiApiKeyFree()
 }
 
 /**
@@ -460,6 +470,13 @@ async function callGeminiEinModell(
   return { ok: true, reply: text }
 }
 
+/** Pro-Modelle sind kostenpflichtig → bezahlter Key; Flash/sonstige → Free-Tier-Key (falls gesetzt). */
+function geminiKeyFuerModell(model: string, fallbackKey: string): string {
+  const istPro = /\bpro\b|-pro(?:-|$)/i.test(model)
+  const key = istPro ? geminiApiKey() : geminiApiKeyFree()
+  return key || fallbackKey
+}
+
 async function callGemini(
   apiKey: string,
   systemText: string,
@@ -477,13 +494,14 @@ async function callGemini(
 
   for (let i = 0; i < models.length; i++) {
     const model = models[i]!
-    let r = await callGeminiEinModell(apiKey, model, systemText, userMessages, callOpts)
+    const modellKey = geminiKeyFuerModell(model, apiKey)
+    let r = await callGeminiEinModell(modellKey, model, systemText, userMessages, callOpts)
 
     // Einmal kurz warten und dasselbe Modell bei temporärer Überlastung wiederholen
     if (!r.ok && r.quotaOderRateLimit && (r.httpStatus === 503 || r.httpStatus === 429)) {
       console.warn(`[ki-coach] Gemini „${model}“ (${r.httpStatus}): kurze Pause, ein Retry …`)
       await sleepMs(2000)
-      r = await callGeminiEinModell(apiKey, model, systemText, userMessages, callOpts)
+      r = await callGeminiEinModell(modellKey, model, systemText, userMessages, callOpts)
     }
 
     if (r.ok) {

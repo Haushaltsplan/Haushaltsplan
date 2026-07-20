@@ -12,6 +12,11 @@ import {
 } from '@/lib/portfolio-analyse/sec-berichte-client'
 import type { SecBerichtEintrag, SecBerichtePaket } from '@/lib/portfolio-analyse/sec-berichte-types'
 
+function formularLabel(formular: SecBerichtEintrag['formular']): string {
+  if (formular === '8-K-ER') return 'Ergebnisbericht'
+  return formular
+}
+
 function gruppiereBerichte(list: SecBerichtEintrag[]): { jahr: string; eintraege: SecBerichtEintrag[] }[] {
   const map = new Map<string, SecBerichtEintrag[]>()
   for (const e of list) {
@@ -26,7 +31,11 @@ function gruppiereBerichte(list: SecBerichtEintrag[]): { jahr: string; eintraege
       jahr,
       eintraege: eintraege.sort((a, b) => {
         const prio = (f: SecBerichtEintrag['formular']) =>
-          f === '10-K' || f === 'IR-FY' ? 0 : f === '10-Q' || f === 'IR-Q' ? 1 : 2
+          f === '10-K' || f === 'IR-FY' || f === '8-K-ER'
+            ? 0
+            : f === '10-Q' || f === 'IR-Q'
+              ? 1
+              : 2
         const pa = prio(a.formular)
         const pb = prio(b.formular)
         if (pa !== pb) return pa - pb
@@ -62,7 +71,7 @@ function BerichtZeile({
       <div className="min-w-0">
         <span className={`text-sm font-medium ${offen ? 'text-teal-100' : 'text-[var(--app-text)]'}`}>{b.label}</span>
         <span className="mt-0.5 block truncate text-[11px] text-[var(--app-text-muted)]">
-          {b.formular} · {b.filingDatum ?? '—'}
+          {formularLabel(b.formular)} · {b.filingDatum ?? '—'}
         </span>
       </div>
       <div className="flex shrink-0 items-center gap-1.5">
@@ -219,7 +228,9 @@ export function PaFundamentalSecBerichte({
       <div className="flex flex-wrap items-end justify-between gap-2 border-b border-white/[0.06] pb-3">
         <div>
           <h2 className="text-base font-medium text-[var(--app-text)]">Quartals- & Jahresberichte</h2>
-          <p className="mt-0.5 text-xs text-[var(--app-text-muted)]">Finanzberichte (SEC / IR-PDF) · KI-Analyse (Gemini)</p>
+          <p className="mt-0.5 text-xs text-[var(--app-text-muted)]">
+            Finanzberichte (SEC 10-Q/10-K / Ergebnisbericht) · KI-Analyse (Gemini)
+          </p>
         </div>
         <button
           type="button"
@@ -275,7 +286,8 @@ export function PaFundamentalSecBerichte({
                   <div>
                     <h3 className="text-sm font-medium text-[var(--app-text)]">{offenerBericht.label}</h3>
                     <p className="text-[11px] text-[var(--app-text-muted)]">
-                      {offenerBericht.formular} · {offenerBericht.berichtszeitraum ?? offenerBericht.filingDatum}
+                      {formularLabel(offenerBericht.formular)} ·{' '}
+                      {offenerBericht.berichtszeitraum ?? offenerBericht.filingDatum}
                     </p>
                   </div>
                   <a

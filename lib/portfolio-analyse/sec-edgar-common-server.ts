@@ -80,6 +80,8 @@ export type SecSubmissionsRecent = {
   filingDate?: string[]
   primaryDocument?: string[]
   reportDate?: string[]
+  /** z. B. "2.02,9.01" bei 8-K */
+  items?: string[]
 }
 
 export async function ladeSecSubmissionsRecent(cik: number): Promise<SecSubmissionsRecent | null> {
