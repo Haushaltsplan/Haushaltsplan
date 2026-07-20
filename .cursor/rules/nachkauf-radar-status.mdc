@@ -6,8 +6,22 @@ alwaysApply: true
 # Nachkauf-Radar — Projektstatus
 
 ## Was ist das?
-Emotion-freier Nachkauf-Assistent für 32 festgelegte Qualitätsaktien (Whitelist).
+Emotion-freier Nachkauf-Assistent für 32 festgelegte Qualitätsaktien (Whitelist)
+**plus alle Watchlist-Aktien** (Cloud-Sync, siehe unten).
 Monatsbudget (Standard 500 €) wird per KI risiko-adjustiert auf Kandidaten verteilt.
+
+## Watchlist-Integration (Juli 2026)
+
+- Browser-Watchlist (`pa-watchlist-v1` localStorage) wird von der Watchlist-Seite automatisch
+  nach Supabase gespiegelt: Tabelle `nachkauf_radar_watchlist` via `/api/portfolio-analyse/watchlist-sync`
+  (GET = Cloud-Stand, POST = Vollabgleich; Client-Helfer in `lib/portfolio-analyse/watchlist-client.ts`).
+- `ladeNachkaufKandidaten()` in `nachkauf-watchlist-cloud-server.ts` = Whitelist + Watchlist
+  (Duplikate ignoriert). Watchlist-Kandidaten: `quelle: 'watchlist'`, `risikoKlasse: 'moderat'`,
+  Symbol aus Sync-Eintrag (nicht ISIN_KENNTNISSE), historische Mediane automatisch via Macrotrends.
+- Scan, Rescan, Deep Research, Kaufempfehlung und Cron nutzen die Kandidatenliste.
+  Kaufempfehlung markiert Watchlist-Titel im Prompt als NEUKAUF (höhere Hürde), UI zeigt „☆ Watchlist"-Badge.
+- Beim Entfernen von der Watchlist werden zugehörige Scan-Zeilen gelöscht (Whitelist-ISINs geschützt).
+- Migration: `supabase/migrations/20260720190000_nachkauf_radar_watchlist.sql`
 
 ## 3-stufige Architektur
 

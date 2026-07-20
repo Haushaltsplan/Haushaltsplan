@@ -51,6 +51,18 @@ export type RisikoKlasse = 'konservativ' | 'moderat' | 'spekulativ'
 export type WhitelistPosition = {
   isin: string
   name: string
+  /**
+   * Herkunft des Kandidaten: feste Whitelist (Default) oder Watchlist-Sync aus Supabase.
+   * Watchlist-Kandidaten sind noch NICHT im Depot → Kauf wäre ein Neukauf.
+   */
+  quelle?: 'whitelist' | 'watchlist'
+  /**
+   * Yahoo-Symbol für Watchlist-Kandidaten ohne Eintrag in ISIN_KENNTNISSE.
+   * Whitelist-Positionen brauchen das nicht (dort läuft alles über isinKenntnis()).
+   */
+  symbolYahoo?: string | null
+  /** Symbol-Kandidaten für die Fundamentaldaten-Auflösung (Watchlist). */
+  symbolCandidates?: string[]
   /** Sektor für Konzentrations-Analyse. */
   sektor?: WhitelistSektor
   /**

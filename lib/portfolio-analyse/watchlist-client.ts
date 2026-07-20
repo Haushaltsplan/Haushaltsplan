@@ -78,6 +78,7 @@ export function entferneAusWatchlist(schluessel: string): WatchlistEintrag[] {
   const norm = schluessel.trim().toUpperCase()
   const next = ladeWatchlist().filter((e) => watchlistSchluessel(e) !== norm)
   speichereWatchlist(next)
+  syncWatchlistZurCloud(next)
   return next
 }
 
@@ -86,5 +87,62 @@ export function fuegeZurWatchlistHinzu(eintrag: WatchlistEintrag): WatchlistEint
   const bestehend = ladeWatchlist().filter((e) => watchlistSchluessel(e) !== key)
   const next = [eintrag, ...bestehend]
   speichereWatchlist(next)
+  syncWatchlistZurCloud(next)
   return next
+}
+
+// ---------------------------------------------------------------------------
+// Cloud-Sync (Nachkauf-Radar): Watchlist nach Supabase spiegeln,
+// damit Scan/Deep Research/Kaufempfehlung (auch Cron) die Titel kennen.
+// ---------------------------------------------------------------------------
+
+/** Spiegelt die Watchlist fire-and-forget in die Cloud (nur Einträge mit gültiger ISIN). */
+export function syncWatchlistZurCloud(eintraege: WatchlistEintrag[]): void {
+  if (typeof window === 'undefined') return
+  const mitIsin = eintraege.filter((e) => e.isin && istGueltigeIsin(e.isin))
+  void fetch('/api/portfolio-analyse/watchlist-sync', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ eintraege: mitIsin }),
+  }).catch(() => {
+    /* Sync darf die UI nie blockieren */
+  })
+}
+
+/**
+ * Lädt die lokale Watchlist und vereinigt sie mit dem Cloud-Stand
+ * (Einträge von anderen Geräten kommen dazu). Ergebnis wird lokal
+ * gespeichert und zurück in die Cloud gespiegelt.
+ */
+export async function ladeWatchlistMitCloudMerge(): Promise<WatchlistEintrag[]> {
+  const lokal = ladeWatchlist()
+  try {
+    const res = await fetch('/api/portfolio-analyse/watchlist-sync')
+    const j = (await res.json()) as {
+      ok?: boolean
+      eintraege?: { isin?: string; name?: string; symbolYahoo?: string | null; symbolCandidates?: string[]; hinzugefuegtAm?: string }[]
+    }
+    if (j.ok && Array.isArray(j.eintraege)) {
+      const lokalKeys = new Set(lokal.map(watchlistSchluessel))
+      const neuAusCloud: WatchlistEintrag[] = j.eintraege
+        .filter((e) => e.isin && istGueltigeIsin(e.isin) && e.name)
+        .map((e) => ({
+          isin: e.isin!.trim().toUpperCase(),
+          name: e.name!,
+          symbolYahoo: e.symbolYahoo ?? null,
+          symbolCandidates: Array.isArray(e.symbolCandidates) ? e.symbolCandidates : [],
+          hinzugefuegtAm: e.hinzugefuegtAm ?? new Date().toISOString(),
+        }))
+        .filter((e) => !lokalKeys.has(watchlistSchluessel(e)))
+
+      const merged = neuAusCloud.length > 0 ? [...neuAusCloud, ...lokal] : lokal
+      if (neuAusCloud.length > 0) speichereWatchlist(merged)
+      syncWatchlistZurCloud(merged)
+      return merged
+    }
+  } catch {
+    /* offline / Fehler → lokale Liste reicht */
+  }
+  syncWatchlistZurCloud(lokal)
+  return lokal
 }

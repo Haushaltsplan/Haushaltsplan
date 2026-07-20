@@ -119,6 +119,11 @@ function risikoKlasseVon(isin: string): RisikoKlasse {
   return NACHKAUF_RADAR_WHITELIST.find((p) => p.isin === isin)?.risikoKlasse ?? 'moderat'
 }
 
+/** Watchlist-Kandidaten stehen nicht in der festen Whitelist → Kauf wäre ein Neukauf. */
+function istWatchlistKandidat(isin: string): boolean {
+  return !NACHKAUF_RADAR_WHITELIST.some((p) => p.isin === isin)
+}
+
 // ---------------------------------------------------------------------------
 // Kontext-Builder
 // ---------------------------------------------------------------------------
@@ -168,8 +173,13 @@ function baueKandidatenText(kandidaten: NachkaufScanEintrag[], budgetEur: number
       ? `Geschäftsstruktur:\n${e.datenSignale.segmentStrukturKontext}`
       : ''
 
+    const neukaufHinweis = istWatchlistKandidat(e.isin)
+      ? '⚠️ WATCHLIST-KANDIDAT — noch NICHT im Depot: Kauf wäre ein NEUKAUF (neue Position). Höhere Hürde als Nachkauf: nur bei klar besserem Chance/Risiko als bestehende Kandidaten.'
+      : ''
+
     return [
       `### ${e.ticker} – ${e.name}`,
+      neukaufHinweis,
       `Score: ${e.score}/100 | Ampel: ${e.ampel} | ${trigger}`,
       `Risikoklasse: **${risikoLabel}** | Max. Einzelkauf diesen Monat: ${maxBetrag} €`,
       `Bewertung: ${premium} | FCF-Yield: ${e.bewertung.fcfYieldPct?.toFixed(1) ?? '?'}% | Fwd-KGV: ${e.bewertung.forwardPe?.toFixed(1) ?? '?'}`,
@@ -258,6 +268,7 @@ Ziel: Markt outperformen durch disziplinierte Kapitalallokation — nicht durch 
 - Emotionslos: weder Panik-Verkauf noch FOMO-Kauf
 - Klumpenrisiko-Grenze beim Nachkauf: ≥15 % Depotanteil maximal ${klumpenCap} € zusätzlich
 - Mindestbetrag pro Kauf: 100 €
+- **Watchlist-Kandidaten** (als solche markiert) sind noch nicht im Depot: Ein Kauf eröffnet eine NEUE Position. Das ist erlaubt, aber die Hürde ist höher — bevorzuge bestehende Positionen bei vergleichbarem Chance/Risiko und begründe einen Neukauf explizit.
 
 ## Risiko-adjustierte Positionsobergrenzen (HART, nicht überschreiten)
 - **Konservativ**: max. **${capKonservativ} €** — Mastercard, Visa, Microsoft, …

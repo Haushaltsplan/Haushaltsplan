@@ -100,7 +100,8 @@ export async function ergaenzeInsiderKaeufe(
   const symMap = new Map(
     whitelist.map((p) => {
       const kenntnis = isinKenntnis(p.isin)
-      return [p.isin, kenntnis?.symbolYahoo ?? null] as const
+      // Watchlist-Kandidaten: Symbol kommt aus dem Cloud-Sync-Eintrag statt ISIN_KENNTNISSE
+      return [p.isin, kenntnis?.symbolYahoo ?? p.symbolYahoo ?? null] as const
     }),
   )
 

@@ -563,6 +563,14 @@ function TitelKarte({
       <div className="mt-2 flex flex-wrap gap-1 pl-4">
         <TriggerBadge ausgeloest={eintrag.kaufTriggerAusgeloest} text={eintrag.kaufTriggerText} />
         <InsiderBadge kaeufe={eintrag.insiderKaeufe} />
+        {!NACHKAUF_RADAR_WHITELIST.some((p) => p.isin === eintrag.isin) && (
+          <span
+            className="inline-flex rounded bg-sky-500/10 px-1.5 py-0.5 text-[10px] font-semibold text-sky-300 ring-1 ring-sky-500/20"
+            title="Von der Watchlist — noch nicht im Depot. Ein Kauf wäre ein Neukauf."
+          >
+            ☆ Watchlist
+          </span>
+        )}
         {eintrag.klumpenrisiko && (
           <span className="inline-flex rounded bg-orange-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-orange-300 ring-1 ring-orange-500/20">
             ⚠ Klumpen

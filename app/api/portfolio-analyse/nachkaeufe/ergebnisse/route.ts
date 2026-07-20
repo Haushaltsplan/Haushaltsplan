@@ -8,7 +8,7 @@ import {
 } from '@/lib/portfolio-analyse/nachkauf-radar/nachkauf-radar-db-server'
 import { berechneMonatsEmpfehlung } from '@/lib/portfolio-analyse/nachkauf-radar/nachkauf-radar-score'
 import { reichereNachkaufEintraegeVoll } from '@/lib/portfolio-analyse/nachkauf-radar/nachkauf-kontext-server'
-import { NACHKAUF_RADAR_WHITELIST } from '@/lib/portfolio-analyse/nachkauf-radar/nachkauf-radar-whitelist'
+import { ladeNachkaufKandidaten } from '@/lib/portfolio-analyse/nachkauf-radar/nachkauf-watchlist-cloud-server'
 import type { NachkaufErgebnissePaket } from '@/lib/portfolio-analyse/nachkauf-radar/nachkauf-radar-types'
 
 export const dynamic = 'force-dynamic'
@@ -16,10 +16,11 @@ export const maxDuration = 30
 
 export async function GET() {
   try {
-    const [ergebnisse, deepMap, gescannt_am] = await Promise.all([
+    const [ergebnisse, deepMap, gescannt_am, kandidaten] = await Promise.all([
       ladeNachkaufScanAusCloud(),
       ladeAlleDeepResearch(),
       ladeNachkaufScanDatum(),
+      ladeNachkaufKandidaten(),
     ])
 
     const mitDeep = ergebnisse.map((e) => ({
@@ -29,7 +30,7 @@ export async function GET() {
 
     await reichereNachkaufEintraegeVoll(mitDeep)
 
-    const gesamtAnzahl = NACHKAUF_RADAR_WHITELIST.length
+    const gesamtAnzahl = kandidaten.length
     const ausstehend = Math.max(0, gesamtAnzahl - mitDeep.length)
 
     const paket: NachkaufErgebnissePaket = {

@@ -3,7 +3,6 @@ import 'server-only'
 import type { YahooFundamentalKennzahlen } from '@/lib/portfolio-analyse/fundamentaldaten-key-metrics'
 import {
   FUNDAMENTAL_NTM_KEY,
-  FUNDAMENTAL_TTM_KEY,
   istFundamentalQuartalSchaetzungIso,
   type FundamentalMetrikZeile,
   type FundamentalPeriode,
@@ -140,6 +139,15 @@ function fuelleForwardSchaetzSpalte(
   keys.evEbitda[schaetzKey] = safeDiv(evMio, ebitda)
 }
 
+function ersterGefuellterWert(map: Record<string, number | null>, keys: string[]): number | null {
+  for (const k of keys) {
+    const v = map[k]
+    if (v != null && Number.isFinite(v)) return v
+  }
+  return null
+}
+
+/** Nur die NTM-Spalte setzen — TTM gehört nicht in die Forward-Bewertung. */
 function setzeAktuellNtmSpalten(
   keys: {
     pe: Record<string, number | null>
@@ -156,13 +164,11 @@ function setzeAktuellNtmSpalten(
     evEbitda: number | null
   },
 ): void {
-  for (const iso of [FUNDAMENTAL_NTM_KEY, FUNDAMENTAL_TTM_KEY]) {
-    keys.pe[iso] = aktuell.pe
-    keys.ps[iso] = aktuell.ps
-    keys.pfcf[iso] = aktuell.pfcf
-    keys.evRev[iso] = aktuell.evRev
-    keys.evEbitda[iso] = aktuell.evEbitda
-  }
+  keys.pe[FUNDAMENTAL_NTM_KEY] = aktuell.pe
+  keys.ps[FUNDAMENTAL_NTM_KEY] = aktuell.ps
+  keys.pfcf[FUNDAMENTAL_NTM_KEY] = aktuell.pfcf
+  keys.evRev[FUNDAMENTAL_NTM_KEY] = aktuell.evRev
+  keys.evEbitda[FUNDAMENTAL_NTM_KEY] = aktuell.evEbitda
 }
 
 function safeDiv(a: number | null, b: number | null): number | null {
@@ -277,36 +283,50 @@ export async function baueNtmBewertungsZeilen(
     fuelleForwardSchaetzSpalte(keyMaps, sk, aktuellerKurs, zeilen, letztesHistKey, yahoo)
   }
 
-  const ltmFcf =
-    wert(zeilen, 'fcf', fyKeys[fyKeys.length - 1]!) != null
-      ? wert(zeilen, 'fcf', fyKeys[fyKeys.length - 1]!)! * 1_000_000
-      : null
-  const ntmFcfUsd =
-    ltmFcf != null && yahoo?.revenueGrowth != null ? ltmFcf * (1 + yahoo.revenueGrowth) : ltmFcf
+  const schKeys = schaetzungsPeriodenKeys(perioden)
 
-  const ntmKgv =
+  // NTM-FCF: nächstes Schätzjahr, sonst letztes FY × (1 + Umsatzwachstum)
+  const fcfSchaetzMio = schKeys.map((sk) => wert(zeilen, 'fcf', sk)).find((v) => v != null && v > 0) ?? null
+  const ltmFcfMio = wert(zeilen, 'fcf', fyKeys[fyKeys.length - 1]!)
+  const ntmFcfUsd =
+    fcfSchaetzMio != null
+      ? fcfSchaetzMio * 1_000_000
+      : ltmFcfMio != null && yahoo?.revenueGrowth != null
+        ? ltmFcfMio * 1_000_000 * (1 + yahoo.revenueGrowth)
+        : ltmFcfMio != null
+          ? ltmFcfMio * 1_000_000
+          : null
+
+  let ntmKgv =
     yahoo?.forwardPE ??
     (yahoo?.currentPrice != null && yahoo?.ntmEpsSchaetzung != null && yahoo.ntmEpsSchaetzung > 0
       ? yahoo.currentPrice / yahoo.ntmEpsSchaetzung
       : null)
-  const ntmEvRevenueAktuell =
+  let ntmEvRevenueAktuell =
     yahoo?.enterpriseToRevenue ??
     (yahoo?.enterpriseValue != null && yahoo?.ntmRevenueUsd != null && yahoo.ntmRevenueUsd > 0
       ? yahoo.enterpriseValue / yahoo.ntmRevenueUsd
       : null)
-  const ntmEvEbitdaAktuell =
+  let ntmEvEbitdaAktuell =
     yahoo?.enterpriseToEbitda ??
     (yahoo?.enterpriseValue != null && yahoo?.ntmEbitdaUsd != null && yahoo.ntmEbitdaUsd > 0
       ? yahoo.enterpriseValue / yahoo.ntmEbitdaUsd
       : null)
-  const ntmMcFcf =
+  let ntmMcFcf =
     yahoo?.marketCap != null && ntmFcfUsd != null && ntmFcfUsd > 0
       ? yahoo.marketCap / ntmFcfUsd
       : null
-  const ntmPsAktuell =
+  let ntmPsAktuell =
     yahoo?.marketCap != null && yahoo?.ntmRevenueUsd != null && yahoo.ntmRevenueUsd > 0
       ? yahoo.marketCap / yahoo.ntmRevenueUsd
       : null
+
+  // Wenn Yahoo-NTM fehlt: nächstes FY-Schätz-Multiple als NTM-Proxy
+  if (ntmKgv == null) ntmKgv = ersterGefuellterWert(ntmPe, schKeys)
+  if (ntmPsAktuell == null) ntmPsAktuell = ersterGefuellterWert(ntmPs, schKeys)
+  if (ntmMcFcf == null) ntmMcFcf = ersterGefuellterWert(ntmPfcf, schKeys)
+  if (ntmEvRevenueAktuell == null) ntmEvRevenueAktuell = ersterGefuellterWert(ntmEvRev, schKeys)
+  if (ntmEvEbitdaAktuell == null) ntmEvEbitdaAktuell = ersterGefuellterWert(ntmEvEbitda, schKeys)
 
   setzeAktuellNtmSpalten(keyMaps, {
     pe: ntmKgv,
@@ -316,8 +336,8 @@ export async function baueNtmBewertungsZeilen(
     evEbitda: ntmEvEbitdaAktuell,
   })
 
-  // Yahoo-Forward nur als Fallback, wenn Schätzungs-Spalte noch leer
-  for (const sk of schaetzungsPeriodenKeys(perioden)) {
+  // Yahoo-/NTM-Aktuell nur als Fallback, wenn Schätzungs-Spalte noch leer
+  for (const sk of schKeys) {
     if (ntmPe[sk] == null && ntmKgv != null) ntmPe[sk] = ntmKgv
     if (ntmPs[sk] == null && ntmPsAktuell != null) ntmPs[sk] = ntmPsAktuell
     if (ntmPfcf[sk] == null && ntmMcFcf != null) ntmPfcf[sk] = ntmMcFcf
@@ -325,7 +345,7 @@ export async function baueNtmBewertungsZeilen(
     if (ntmEvEbitda[sk] == null && ntmEvEbitdaAktuell != null) ntmEvEbitda[sk] = ntmEvEbitdaAktuell
   }
 
-  for (const sk of schaetzungsPeriodenKeys(perioden)) {
+  for (const sk of schKeys) {
     for (const map of [ntmPe, ntmPs, ntmPfcf, ntmEvRev, ntmEvEbitda]) {
       if (!(sk in map)) map[sk] = null
     }

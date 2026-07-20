@@ -25,6 +25,7 @@ import {
 import { reichereNachkaufTickerKontext } from './nachkauf-kontext-server'
 import { wendeNachkaufDisziplinAn } from './nachkauf-disziplin-server'
 import { speichereDeepResearch } from './nachkauf-radar-db-server'
+import { ladeNachkaufWatchlistAusCloud } from './nachkauf-watchlist-cloud-server'
 import { formatDepotDashboardKontext } from '@/lib/portfolio-analyse/depot-gewichte-server'
 import type { NachkaufDeepResearch, NachkaufDeepResearchAnfrage, NachkaufScanEintrag } from './nachkauf-radar-types'
 import type { FundamentaldatenPaket } from '@/lib/portfolio-analyse/fundamentaldaten-types'
@@ -238,21 +239,31 @@ export async function fuhreDeepResearchDurch(
   const kenntnis = isin ? isinKenntnis(isin) : null
   const resolvedIsin = isin ?? ''
 
+  // Watchlist-Titel stehen nicht in ISIN_KENNTNISSE → Symbol aus dem Cloud-Sync holen
+  let watchlistEintrag: Awaited<ReturnType<typeof ladeNachkaufWatchlistAusCloud>>[number] | null = null
+  if (!kenntnis && resolvedIsin) {
+    watchlistEintrag =
+      (await ladeNachkaufWatchlistAusCloud().catch(() => []))
+        .find((e) => e.isin.toUpperCase() === resolvedIsin.toUpperCase()) ?? null
+  }
+
+  const symbolYahoo = kenntnis?.symbolYahoo ?? watchlistEintrag?.symbolYahoo ?? ticker
+
   // Fundamentaldaten (gleiche Basis wie Scan — Segment aus Cloud-Cache)
   let paket
   try {
     paket = await ladeFundamentaldaten({
       isin: resolvedIsin || null,
       name: name ?? undefined,
-      symbolYahoo: kenntnis?.symbolYahoo ?? ticker ?? null,
-      symbolCandidates: kenntnis?.symbolCandidates ?? [ticker],
+      symbolYahoo: symbolYahoo ?? null,
+      symbolCandidates:
+        kenntnis?.symbolCandidates ??
+        (watchlistEintrag?.symbolCandidates?.length ? watchlistEintrag.symbolCandidates : [ticker]),
       segmentNurCloud: true,
     })
   } catch (e) {
     return { ok: false, fehler: `Fundamentaldaten für ${ticker} nicht ladbar: ${String(e)}` }
   }
-
-  const symbolYahoo = kenntnis?.symbolYahoo ?? ticker
   const zusatz = await ladeNachkaufZusatzSignale({
     paket,
     ticker,

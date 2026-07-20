@@ -1,11 +1,11 @@
 /**
- * Einzel-Rescan: Scannt einen einzelnen Whitelist-Titel neu und persistiert das Ergebnis.
+ * Einzel-Rescan: Scannt einen einzelnen Whitelist-/Watchlist-Titel neu und persistiert das Ergebnis.
  * POST /api/portfolio-analyse/nachkaeufe/rescan
  * Body: { ticker?: string; isin?: string }
  */
 import { NextResponse } from 'next/server'
 import { laufeScan } from '@/lib/portfolio-analyse/nachkauf-radar/nachkauf-radar-scan-server'
-import { NACHKAUF_RADAR_WHITELIST } from '@/lib/portfolio-analyse/nachkauf-radar/nachkauf-radar-whitelist'
+import { ladeNachkaufKandidaten } from '@/lib/portfolio-analyse/nachkauf-radar/nachkauf-watchlist-cloud-server'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 120
@@ -22,7 +22,8 @@ export async function POST(req: Request) {
   const ticker = row.ticker != null ? String(row.ticker).trim().toUpperCase() : ''
   const isin = row.isin != null ? String(row.isin).trim().toUpperCase() : ''
 
-  const position = NACHKAUF_RADAR_WHITELIST.find(
+  const kandidaten = await ladeNachkaufKandidaten()
+  const position = kandidaten.find(
     (p) =>
       (ticker && p.name.toUpperCase().includes(ticker)) ||
       (isin && p.isin.toUpperCase() === isin),
@@ -30,7 +31,7 @@ export async function POST(req: Request) {
 
   if (!position) {
     return NextResponse.json(
-      { ok: false, fehler: `Kein Whitelist-Eintrag für ticker="${ticker}" oder isin="${isin}" gefunden.` },
+      { ok: false, fehler: `Kein Whitelist-/Watchlist-Eintrag für ticker="${ticker}" oder isin="${isin}" gefunden.` },
       { status: 404 },
     )
   }

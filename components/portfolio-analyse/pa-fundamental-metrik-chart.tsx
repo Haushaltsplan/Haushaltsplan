@@ -5,12 +5,12 @@ import { formatFundamentalWert } from '@/lib/portfolio-analyse/fundamentaldaten-
 import {
   anzahlWerteImZeitraum,
   berechneZeitraumSchnitt,
+  bewertungForwardChartPerioden,
   chartPeriodeKurzlabel,
   chartZeitraumLabel,
   einheitSkalaGruppe,
   filterChartPeriodenZeitraum,
   finanzdatenChartPerioden,
-  historischeChartPerioden,
   jahrAusPeriode,
   letzteNChartPerioden,
   prozentAbweichung,
@@ -19,6 +19,7 @@ import {
 import {
   FUNDAMENTAL_NTM_KEY,
   FUNDAMENTAL_TTM_KEY,
+  istFundamentalQuartalSchaetzungIso,
   type FundamentalMetrikZeile,
   type FundamentalPeriode,
 } from '@/lib/portfolio-analyse/fundamentaldaten-types'
@@ -315,10 +316,18 @@ export function PaFundamentalMetrikChart({
   variant?: 'standard' | 'bewertung'
 }) {
   const alleChartPerioden = useMemo(
-    () => (variant === 'bewertung' ? historischeChartPerioden(perioden) : finanzdatenChartPerioden(perioden)),
+    () => (variant === 'bewertung' ? bewertungForwardChartPerioden(perioden) : finanzdatenChartPerioden(perioden)),
     [perioden, variant],
   )
-  const schaetzIso = useMemo(() => new Set(schaetzungsChartPerioden(perioden).map((p) => p.iso)), [perioden])
+  const schaetzIso = useMemo(
+    () =>
+      new Set(
+        schaetzungsChartPerioden(perioden)
+          .filter((p) => variant !== 'bewertung' || !istFundamentalQuartalSchaetzungIso(p.iso))
+          .map((p) => p.iso),
+      ),
+    [perioden, variant],
+  )
   const [vonIso, setVonIso] = useState('')
   const [bisIso, setBisIso] = useState('')
   const [chartArt, setChartArt] = useState<'linie' | 'balken'>('linie')
@@ -338,8 +347,10 @@ export function PaFundamentalMetrikChart({
 
   const gefiltertePerioden = useMemo(() => {
     const basis = filterChartPeriodenZeitraum(alleChartPerioden, vonIso, bisIso)
-    const schaetz = schaetzungsChartPerioden(perioden).filter((p) => !basis.some((b) => b.iso === p.iso))
-    if (variant === 'standard' && schaetz.length > 0) return [...basis.filter((p) => !p.istSchaetzung), ...schaetz]
+    const schaetz = schaetzungsChartPerioden(perioden)
+      .filter((p) => variant !== 'bewertung' || !istFundamentalQuartalSchaetzungIso(p.iso))
+      .filter((p) => !basis.some((b) => b.iso === p.iso))
+    if (schaetz.length > 0) return [...basis.filter((p) => !p.istSchaetzung), ...schaetz]
     return basis
   }, [alleChartPerioden, vonIso, bisIso, perioden, variant])
 
@@ -566,7 +577,7 @@ export function PaFundamentalMetrikChart({
             </p>
             <p className="mt-0.5 text-[11px] text-[var(--app-text-muted)]">
               {variant === 'bewertung'
-                ? 'Zeitraum wählen · Schnitt nur im gewählten Intervall · Punkt = aktuell (TTM/NTM)'
+                ? 'Zeitraum wählen · Schätzungen gestrichelt · Schnitt nur Historie · Punkt = aktuell (NTM/TTM)'
                 : 'Zeitraum wählen · Schätzungen gestrichelt · bei zwei Kennzahlen eigene Y-Achse'}
             </p>
           </div>

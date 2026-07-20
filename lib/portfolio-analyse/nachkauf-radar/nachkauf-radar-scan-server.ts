@@ -1,7 +1,7 @@
 /**
  * Nachkauf-Radar — Scan-Server (Stufe A).
  *
- * 1. Feste Whitelist (32 Quality-Positionen)
+ * 1. Feste Whitelist (32 Quality-Positionen) + Watchlist-Titel (Cloud-Sync)
  * 2. Für jede Position: Fundamentaldaten + gecachte KI-Summaries
  * 3. Regelbasierter Score inkl. historischer Relative Bewertung + Kaufzonen-Trigger
  * 4. Gemini Flash: kurze Begründung pro Titel
@@ -55,7 +55,7 @@ import {
 import { ergaenzeScoreVerlauf, speichereVerlaufPunkte } from './nachkauf-radar-verlauf-server'
 import { berechneTrimSignale } from './nachkauf-trim-signal'
 import { wendeNachkaufDisziplinAn } from './nachkauf-disziplin-server'
-import { NACHKAUF_RADAR_WHITELIST } from './nachkauf-radar-whitelist'
+import { ladeNachkaufKandidaten } from './nachkauf-watchlist-cloud-server'
 import type { WhitelistPosition } from './nachkauf-radar-whitelist'
 import type { NachkaufScanAnfrage, NachkaufScanEintrag, NachkaufScanPaket } from './nachkauf-radar-types'
 
@@ -149,8 +149,9 @@ async function scanneEinenTitel(opts: {
   const { position } = opts
   const { isin, name } = position
   const kenntnis = isinKenntnis(isin)
-  const ticker = kenntnis?.symbolYahoo?.replace(/\.[^.]+$/, '') ?? isin
-  const symbolYahoo = kenntnis?.symbolYahoo ?? null
+  // Watchlist-Kandidaten fehlen in ISIN_KENNTNISSE → Symbol kommt direkt aus dem Sync-Eintrag
+  const symbolYahoo = kenntnis?.symbolYahoo ?? position.symbolYahoo ?? null
+  const ticker = symbolYahoo?.replace(/\.[^.]+$/, '') ?? isin
 
   // Fundamentaldaten laden (Macrotrends + Yahoo)
   let paket
@@ -159,7 +160,7 @@ async function scanneEinenTitel(opts: {
       isin,
       name,
       symbolYahoo,
-      symbolCandidates: kenntnis?.symbolCandidates ?? undefined,
+      symbolCandidates: kenntnis?.symbolCandidates ?? position.symbolCandidates ?? undefined,
       segmentNurCloud: true,
     })
   } catch (e) {
@@ -330,12 +331,13 @@ async function reichereErgebnisseAn(
   eintraege: NachkaufScanEintrag[],
   mitInsider: boolean,
   batchKontext: NachkaufBatchKontext | null = null,
+  kandidaten: WhitelistPosition[] = [],
 ): Promise<void> {
   await Promise.allSettled([
     ergaenzeDepotGewichte(eintraege),
     ergaenzeScoreVerlauf(eintraege),
     ergaenzeKaufhistorieUndNotizen(eintraege),
-    mitInsider ? ergaenzeInsiderKaeufe(eintraege, NACHKAUF_RADAR_WHITELIST) : Promise.resolve(),
+    mitInsider ? ergaenzeInsiderKaeufe(eintraege, kandidaten) : Promise.resolve(),
   ])
   wendeNachkaufDisziplinAn(eintraege)
   berechneTrimSignale(eintraege)
@@ -347,21 +349,23 @@ async function reichereErgebnisseAn(
 // ---------------------------------------------------------------------------
 
 export async function laufeScan(anfrage: NachkaufScanAnfrage): Promise<NachkaufScanPaket> {
-  const gesamtAnzahl = NACHKAUF_RADAR_WHITELIST.length
+  // Feste Whitelist + Watchlist-Titel aus Supabase (Cloud-Sync der Watchlist-Seite)
+  const kandidaten = await ladeNachkaufKandidaten()
+  const gesamtAnzahl = kandidaten.length
   const perf = await ladeNachkaufPerformance().catch(() => null)
   const batchKontext = await ladeNachkaufBatchKontext(
-    NACHKAUF_RADAR_WHITELIST.map((p) => p.isin),
+    kandidaten.map((p) => p.isin),
     perf?.scoreBucketsSignal ?? [],
   )
 
   // Einzel-Rescan via ISIN (von der Rescan-API-Route)
   if (anfrage.nurEinenTicker) {
     const isinTarget = anfrage.nurEinenTicker.toUpperCase()
-    const positionEintrag = NACHKAUF_RADAR_WHITELIST.find((p) => p.isin.toUpperCase() === isinTarget)
+    const positionEintrag = kandidaten.find((p) => p.isin.toUpperCase() === isinTarget)
     if (!positionEintrag) {
       const gespeicherte = await ladeNachkaufScanAusCloud()
       await reichereErgebnisseAn(gespeicherte, false, batchKontext)
-      return { ok: false, ergebnisse: gespeicherte, monatsEmpfehlung: berechneMonatsEmpfehlung(gespeicherte), gescannt_am: gespeicherte[0]?.gescannt_am ?? new Date().toISOString(), gesamtAnzahl, gescannt: 0, ausstehend: 0, fehler: `ISIN ${isinTarget} nicht in der Whitelist.` }
+      return { ok: false, ergebnisse: gespeicherte, monatsEmpfehlung: berechneMonatsEmpfehlung(gespeicherte), gescannt_am: gespeicherte[0]?.gescannt_am ?? new Date().toISOString(), gesamtAnzahl, gescannt: 0, ausstehend: 0, fehler: `ISIN ${isinTarget} weder in Whitelist noch Watchlist.` }
     }
     const deepResearchMap = await ladeAlleDeepResearch()
     const ergebnis = await scanneEinenTitel({ position: positionEintrag, deepResearchMap, batchKontext })
@@ -379,9 +383,9 @@ export async function laufeScan(anfrage: NachkaufScanAnfrage): Promise<NachkaufS
 
   // Einzelner Ticker → direkt scannen (Legacy-Pfad)
   if (anfrage.ticker) {
-    const positionEintrag = NACHKAUF_RADAR_WHITELIST.find((p) => {
+    const positionEintrag = kandidaten.find((p) => {
       const k = isinKenntnis(p.isin)
-      const ticker = k?.symbolYahoo?.replace(/\.[^.]+$/, '') ?? ''
+      const ticker = (k?.symbolYahoo ?? p.symbolYahoo)?.replace(/\.[^.]+$/, '') ?? ''
       return ticker.toUpperCase() === anfrage.ticker!.toUpperCase() || p.isin === anfrage.ticker
     })
 
@@ -396,7 +400,7 @@ export async function laufeScan(anfrage: NachkaufScanAnfrage): Promise<NachkaufS
         gesamtAnzahl,
         gescannt: 0,
         ausstehend: 0,
-        fehler: `Ticker/ISIN ${anfrage.ticker} nicht in der Whitelist.`,
+        fehler: `Ticker/ISIN ${anfrage.ticker} weder in Whitelist noch Watchlist.`,
       }
     }
 
@@ -431,10 +435,10 @@ export async function laufeScan(anfrage: NachkaufScanAnfrage): Promise<NachkaufS
   // Nicht erzwungen: Positionen aus den letzten 12h überspringen
   const jetzt = Date.now()
   const zuScannen = anfrage.erzwingen
-    ? NACHKAUF_RADAR_WHITELIST
-    : NACHKAUF_RADAR_WHITELIST.filter((p) => {
+    ? kandidaten
+    : kandidaten.filter((p) => {
         const k = isinKenntnis(p.isin)
-        const ticker = (k?.symbolYahoo?.replace(/\.[^.]+$/, '') ?? p.isin).toUpperCase()
+        const ticker = ((k?.symbolYahoo ?? p.symbolYahoo)?.replace(/\.[^.]+$/, '') ?? p.isin).toUpperCase()
         const existing = bereitsMap.get(ticker)
         if (!existing) return true
         const alter = jetzt - new Date(existing.gescannt_am).getTime()
@@ -470,9 +474,9 @@ export async function laufeScan(anfrage: NachkaufScanAnfrage): Promise<NachkaufS
       tiefenAnalyse: deepMapAktuell.get(e.ticker.toUpperCase()) ?? null,
     }))
     await Promise.allSettled([
-      aktualisiereKaufhistorieCache(NACHKAUF_RADAR_WHITELIST.map((p) => p.isin)),
+      aktualisiereKaufhistorieCache(kandidaten.map((p) => p.isin)),
     ])
-    await reichereErgebnisseAn(mitDeep, true, batchKontext)
+    await reichereErgebnisseAn(mitDeep, true, batchKontext, kandidaten)
     mitDeep.sort((a, b) => b.score - a.score)
     await speichereNachkaufScanEintraege(mitDeep)
     return {
@@ -566,7 +570,7 @@ export async function laufeScan(anfrage: NachkaufScanAnfrage): Promise<NachkaufS
   }))
 
   // Alle Anreicherungen parallel (Verlauf, Insider, Depot-Gewichte)
-  await reichereErgebnisseAn(mitDeep, true, batchKontext)
+  await reichereErgebnisseAn(mitDeep, true, batchKontext, kandidaten)
   mitDeep.sort((a, b) => b.score - a.score)
   await speichereNachkaufScanEintraege(mitDeep)
 

@@ -14,6 +14,7 @@ import {
   findeWatchlistIdx,
   fuegeZurWatchlistHinzu,
   ladeWatchlist,
+  ladeWatchlistMitCloudMerge,
   watchlistEintragAusMeta,
   watchlistSchluessel,
   type WatchlistEintrag,
@@ -36,6 +37,14 @@ export function PortfolioWatchlistClient() {
 
   useEffect(() => {
     refresh()
+    // Danach mit dem Cloud-Stand vereinigen (Einträge von anderen Geräten + Radar-Sync)
+    let aktiv = true
+    void ladeWatchlistMitCloudMerge().then((merged) => {
+      if (aktiv) setEintraege(merged)
+    })
+    return () => {
+      aktiv = false
+    }
   }, [refresh])
 
   useEffect(() => {

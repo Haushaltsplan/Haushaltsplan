@@ -18,17 +18,19 @@ import { wendeNachkaufDisziplinAn } from './nachkauf-disziplin-server'
 import { finalisiereNachkaufRanking } from './nachkauf-ranking-finalisierung-server'
 import { ladeNachkaufBatchKontext } from './nachkauf-ranking-kontext-server'
 import { ladeNachkaufPerformance } from './nachkauf-performance-server'
-import { NACHKAUF_RADAR_WHITELIST } from './nachkauf-radar-whitelist'
+import { ladeNachkaufKandidaten } from './nachkauf-watchlist-cloud-server'
 import type { NachkaufScanEintrag } from './nachkauf-radar-types'
 
 /** Depot, Historie, Notizen, Insider, Score-Verlauf — für Deep Research pro Ticker. */
 export async function reichereNachkaufTickerKontext(eintraege: NachkaufScanEintrag[]): Promise<void> {
   if (eintraege.length === 0) return
+  // Whitelist + Watchlist, damit Insider-Käufe auch für Watchlist-Titel aufgelöst werden
+  const kandidaten = await ladeNachkaufKandidaten()
   await Promise.allSettled([
     ergaenzeDepotGewichte(eintraege),
     ergaenzeScoreVerlauf(eintraege),
     ergaenzeKaufhistorieUndNotizen(eintraege),
-    ergaenzeInsiderKaeufe(eintraege, NACHKAUF_RADAR_WHITELIST),
+    ergaenzeInsiderKaeufe(eintraege, kandidaten),
   ])
 }
 
@@ -42,8 +44,9 @@ export async function reichereNachkaufEintraegeVoll(eintraege: NachkaufScanEintr
   await reichereNachkaufTickerKontext(eintraege)
 
   const perf = await ladeNachkaufPerformance().catch(() => null)
+  const kandidaten = await ladeNachkaufKandidaten()
   const batchKontext = await ladeNachkaufBatchKontext(
-    NACHKAUF_RADAR_WHITELIST.map((p) => p.isin),
+    kandidaten.map((p) => p.isin),
     perf?.scoreBucketsSignal ?? [],
   )
 
