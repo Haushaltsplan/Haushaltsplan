@@ -127,6 +127,14 @@ export function PaFundamentalInhalt({
     })
   }, [])
 
+  const verfuegbareZeilenIds = useMemo(() => {
+    const s = new Set<string>()
+    for (const z of daten?.zeilen ?? []) {
+      if (Object.values(z.werte).some((v) => v != null && Number.isFinite(v))) s.add(z.id)
+    }
+    return s
+  }, [daten?.zeilen])
+
   if (!anfrage) {
     return (
       <PaCard className="flex min-h-[28rem] items-center justify-center p-8 text-center text-sm text-[var(--app-text-muted)]">
@@ -232,6 +240,7 @@ export function PaFundamentalInhalt({
               firmenname={daten.firmenname}
               metriken={daten.keyMetrics}
               onMetricClick={navigiereZuMetrik}
+              verfuegbareZeilenIds={verfuegbareZeilenIds}
             />
           ) : null}
 

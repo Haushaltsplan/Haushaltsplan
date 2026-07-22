@@ -49,10 +49,12 @@ function Sektion({
   titel,
   items,
   onMetricClick,
+  verfuegbareZeilenIds,
 }: {
   titel: string
   items: FundamentalKeyMetric[]
   onMetricClick?: (id: string) => void
+  verfuegbareZeilenIds?: Set<string>
 }) {
   if (items.length === 0) return null
   return (
@@ -61,16 +63,21 @@ function Sektion({
         {titel}
       </h4>
       <div className="space-y-0.5">
-        {items.map((m) => (
-          <MetrikZeile
-            key={m.id}
-            id={m.id}
-            label={m.label}
-            wert={m.wert}
-            klickbar={keyMetricNavZiel(m.id) != null}
-            onClick={onMetricClick}
-          />
-        ))}
+        {items.map((m) => {
+          const ziel = keyMetricNavZiel(m.id)
+          const klickbar =
+            ziel != null && (verfuegbareZeilenIds == null || verfuegbareZeilenIds.has(ziel.zeileId))
+          return (
+            <MetrikZeile
+              key={m.id}
+              id={m.id}
+              label={m.label}
+              wert={m.wert}
+              klickbar={klickbar}
+              onClick={onMetricClick}
+            />
+          )
+        })}
       </div>
     </div>
   )
@@ -79,9 +86,11 @@ function Sektion({
 export function PaFundamentalKeyMetrics({
   metriken,
   onMetricClick,
+  verfuegbareZeilenIds,
 }: {
   metriken: FundamentalKeyMetric[]
   onMetricClick?: (metricId: string) => void
+  verfuegbareZeilenIds?: Set<string>
 }) {
   const col0 = SEKTIONEN.filter((s) => s.spalte === 0)
   const col1 = SEKTIONEN.filter((s) => s.spalte === 1)
@@ -95,6 +104,7 @@ export function PaFundamentalKeyMetrics({
             titel={s.titel}
             items={metriken.filter((m) => m.gruppe === s.id)}
             onMetricClick={onMetricClick}
+            verfuegbareZeilenIds={verfuegbareZeilenIds}
           />
         ))}
       </div>
@@ -105,6 +115,7 @@ export function PaFundamentalKeyMetrics({
             titel={s.titel}
             items={metriken.filter((m) => m.gruppe === s.id)}
             onMetricClick={onMetricClick}
+            verfuegbareZeilenIds={verfuegbareZeilenIds}
           />
         ))}
       </div>

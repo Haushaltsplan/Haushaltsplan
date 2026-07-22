@@ -10,6 +10,8 @@ import { baueKontextWerte } from '@/lib/portfolio-analyse/fundamentaldaten-konte
 import { ladeYahooMantraFinanzdaten } from '@/lib/portfolio-analyse/yahoo-fundamentals-timeseries-server'
 import { ladeFundamentalNews } from '@/lib/portfolio-analyse/fundamentaldaten-news-server'
 import { baueNtmBewertungsZeilen } from '@/lib/portfolio-analyse/fundamentaldaten-ntm-bewertung-server'
+import { ergaenzeDividendenHistorieZeilen } from '@/lib/portfolio-analyse/fundamentaldaten-dividenden-historie-zeilen'
+import { ergaenzeNettoverschuldungZeilen } from '@/lib/portfolio-analyse/fundamentaldaten-nettoverschuldung-zeilen'
 import { ladeFundamentalSchaetzungen, filterSchaetzungenGegenHistorisch, fuelleFehlendeEpsSchaetzungen } from '@/lib/portfolio-analyse/fundamentaldaten-schaetzungen-server'
 import {
   formatiereBrancheDe,
@@ -722,6 +724,10 @@ export async function ladeFundamentaldaten(anfrage: FundamentaldatenAnfrage): Pr
       merged.zeilen.push(neu)
     }
   }
+
+  ergaenzeDividendenHistorieZeilen(merged.perioden, merged.zeilen, yahooExt)
+  ergaenzeNettoverschuldungZeilen(merged.perioden, merged.zeilen)
+
   const sektorFinal = brancheMeta.sektor
   const brancheFinal = brancheMeta.branche ?? roh.branche
   const mergedRoh = { ...roh, perioden: merged.perioden, zeilen: merged.zeilen }

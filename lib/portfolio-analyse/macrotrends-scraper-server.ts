@@ -7,6 +7,8 @@ import {
   type FundamentalPeriode,
 } from '@/lib/portfolio-analyse/fundamentaldaten-types'
 import { formatFundamentalPeriodeLabel } from '@/lib/portfolio-analyse/fundamentaldaten-format'
+import { ergaenzeDividendenHistorieZeilen } from '@/lib/portfolio-analyse/fundamentaldaten-dividenden-historie-zeilen'
+import { ergaenzeNettoverschuldungZeilen } from '@/lib/portfolio-analyse/fundamentaldaten-nettoverschuldung-zeilen'
 
 const BASE = 'https://www.macrotrends.net'
 const IFRAME_BASE =
@@ -972,6 +974,18 @@ export async function ladeMacrotrendsFundamentaldaten(
     })
   }
 
+  const peChart = bewertungCharts.find((b) => b.def.id === 'kgv')?.chart
+  const kursByIso: Record<string, number | null> = {}
+  if (peChart?.length) {
+    for (const iso of periodenIso) {
+      kursByIso[iso] = wertAusChartNaehe(peChart, iso, 'v1')
+    }
+    if (mitTtm) {
+      const latest = peChart[peChart.length - 1]
+      kursByIso[FUNDAMENTAL_TTM_KEY] = latest ? wertAusChartPunkt(latest, 'v1') : null
+    }
+  }
+
   const lastFy = [...periodenIso].reverse().find((iso) => {
     for (const z of zeilen) {
       if (z.macrotrendsStatement === 'price-ratios') continue
@@ -988,6 +1002,9 @@ export async function ladeMacrotrendsFundamentaldaten(
       }
     }
   }
+
+  ergaenzeDividendenHistorieZeilen(perioden, zeilen, null, kursByIso)
+  ergaenzeNettoverschuldungZeilen(perioden, zeilen)
 
   const ratiosUrl = `${BASE}/stocks/charts/${ident.ticker}/${ident.slug}/financial-ratios`
   const ratiosHtml = pageCache.get(ratiosUrl)?.html ?? (await ladeSeite(ratiosUrl))

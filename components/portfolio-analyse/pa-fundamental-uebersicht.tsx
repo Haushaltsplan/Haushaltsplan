@@ -10,12 +10,14 @@ export function PaFundamentalUebersicht({
   firmenname,
   metriken,
   onMetricClick,
+  verfuegbareZeilenIds,
 }: {
   symbolYahoo: string | null
   ticker: string
   firmenname: string
   metriken: FundamentalKeyMetric[]
   onMetricClick?: (metricId: string) => void
+  verfuegbareZeilenIds?: Set<string>
 }) {
   return (
     <div className="overflow-hidden rounded-xl border border-[var(--app-border)] bg-[var(--app-surface-muted)] ring-1 ring-white/[0.03]">
@@ -29,7 +31,11 @@ export function PaFundamentalUebersicht({
           />
         </div>
         <div className="min-h-[320px]">
-          <PaFundamentalKeyMetrics metriken={metriken} onMetricClick={onMetricClick} />
+          <PaFundamentalKeyMetrics
+            metriken={metriken}
+            onMetricClick={onMetricClick}
+            verfuegbareZeilenIds={verfuegbareZeilenIds}
+          />
         </div>
       </div>
     </div>
