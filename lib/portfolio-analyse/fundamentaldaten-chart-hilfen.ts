@@ -41,7 +41,7 @@ export function finanzdatenChartPerioden(perioden: FundamentalPeriode[]): Fundam
   return [...historischeChartPerioden(perioden), ...schaetzungsChartPerioden(perioden)]
 }
 
-/** Historische FY-Perioden plus Jahres-Schätzungen (ohne Quartals-Schätzungen) — für NTM-Bewertungs-Charts. */
+/** Historische FY-Perioden plus Jahres-Schätzungen (ohne Quartals-Schätzungen). */
 export function bewertungForwardChartPerioden(perioden: FundamentalPeriode[]): FundamentalPeriode[] {
   const hist = historischeChartPerioden(perioden)
   const schaetz = schaetzungsChartPerioden(perioden).filter(
@@ -50,14 +50,9 @@ export function bewertungForwardChartPerioden(perioden: FundamentalPeriode[]): F
   return [...hist, ...schaetz]
 }
 
-/** Spalten für NTM-Bewertungstabelle: Historie → Jahres-Schätzung → NTM (aktuell). */
+/** Spalten für Bewertungstabelle: Historie → Jahres-Schätzung (kein NTM). */
 export function bewertungForwardTabellenPerioden(perioden: FundamentalPeriode[]): FundamentalPeriode[] {
-  const hist = historischeChartPerioden(perioden)
-  const schaetz = schaetzungsChartPerioden(perioden).filter(
-    (p) => !istFundamentalQuartalSchaetzungIso(p.iso),
-  )
-  const ntm = perioden.find((p) => p.istNtm)
-  return [...hist, ...schaetz, ...(ntm ? [ntm] : [])]
+  return bewertungForwardChartPerioden(perioden)
 }
 
 export function einheitSkalaGruppe(einheit: string): string {

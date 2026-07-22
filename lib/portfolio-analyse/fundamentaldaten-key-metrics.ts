@@ -8,7 +8,10 @@ import type {
   FundamentalMetrikZeile,
   FundamentalPeriode,
 } from '@/lib/portfolio-analyse/fundamentaldaten-types'
-import { FUNDAMENTAL_TTM_KEY, FUNDAMENTAL_NTM_KEY } from '@/lib/portfolio-analyse/fundamentaldaten-types'
+import {
+  FUNDAMENTAL_TTM_KEY,
+  istFundamentalQuartalSchaetzungIso,
+} from '@/lib/portfolio-analyse/fundamentaldaten-types'
 import type { FundamentalKontextWerte } from '@/lib/portfolio-analyse/fundamentaldaten-kontext-werte'
 import type { MacrotrendsFundamentalRoh } from '@/lib/portfolio-analyse/macrotrends-scraper-server'
 
@@ -282,11 +285,22 @@ export function baueKeyMetrics(
       ? yahoo.enterpriseValue / ltmUmsatzUsd
       : null
 
-  // NTM aus gemergter Bewertungstabelle (Konsens), nicht Yahoo-forwardPE
-  const ntmKgv =
-    (kgvZeile?.werte[FUNDAMENTAL_NTM_KEY] != null && Number.isFinite(kgvZeile.werte[FUNDAMENTAL_NTM_KEY])
-      ? kgvZeile.werte[FUNDAMENTAL_NTM_KEY]!
-      : null) ??
+  // Forward = erstes FY-Schätz-Multiple aus der Bewertungstabelle (kein NTM)
+  const ersteFySchaetzKeys =
+    perioden
+      ?.filter((p) => p.istSchaetzung && !istFundamentalQuartalSchaetzungIso(p.iso))
+      .map((p) => p.iso) ?? []
+  const fyWert = (z: FundamentalMetrikZeile | undefined): number | null => {
+    if (!z) return null
+    for (const k of ersteFySchaetzKeys) {
+      const v = z.werte[k]
+      if (v != null && Number.isFinite(v)) return v
+    }
+    return null
+  }
+
+  const fwdKgv =
+    fyWert(kgvZeile) ??
     (yahoo?.currentPrice != null && yahoo?.fy1Eps != null && yahoo.fy1Eps > 0
       ? yahoo.currentPrice / yahoo.fy1Eps
       : null) ??
@@ -297,21 +311,14 @@ export function baueKeyMetrics(
     letzterGeschaeftsjahresWert(fcfZeile, perioden) != null
       ? letzterGeschaeftsjahresWert(fcfZeile, perioden)! * 1_000_000
       : null
-  const ntmMcFcf =
-    pfcfZeile?.werte[FUNDAMENTAL_NTM_KEY] != null && Number.isFinite(pfcfZeile.werte[FUNDAMENTAL_NTM_KEY])
-      ? pfcfZeile.werte[FUNDAMENTAL_NTM_KEY]!
-      : yahoo?.marketCap != null && ltmFcfUsd != null && ltmFcfUsd > 0 && yahoo?.revenueGrowth != null
-        ? yahoo.marketCap / (ltmFcfUsd * (1 + yahoo.revenueGrowth))
-        : null
+  const fwdMcFcf =
+    fyWert(pfcfZeile) ??
+    (yahoo?.marketCap != null && ltmFcfUsd != null && ltmFcfUsd > 0 && yahoo?.revenueGrowth != null
+      ? yahoo.marketCap / (ltmFcfUsd * (1 + yahoo.revenueGrowth))
+      : null)
 
-  const ntmEvRevenue =
-    evRevZeile?.werte[FUNDAMENTAL_NTM_KEY] != null && Number.isFinite(evRevZeile.werte[FUNDAMENTAL_NTM_KEY])
-      ? evRevZeile.werte[FUNDAMENTAL_NTM_KEY]!
-      : yahoo?.enterpriseToRevenue ?? null
-  const ntmEvEbitda =
-    evEbitdaZeile?.werte[FUNDAMENTAL_NTM_KEY] != null && Number.isFinite(evEbitdaZeile.werte[FUNDAMENTAL_NTM_KEY])
-      ? evEbitdaZeile.werte[FUNDAMENTAL_NTM_KEY]!
-      : yahoo?.enterpriseToEbitda ?? null
+  const fwdEvRevenue = fyWert(evRevZeile) ?? yahoo?.enterpriseToRevenue ?? null
+  const fwdEvEbitda = fyWert(evEbitdaZeile) ?? yahoo?.enterpriseToEbitda ?? null
 
   out.push(
     {
@@ -320,10 +327,10 @@ export function baueKeyMetrics(
       wert: zahl(yahoo?.targetMeanPrice, ' $'),
       gruppe: 'bewertung_ntm',
     },
-    { id: 'ntm_ev_rev', label: 'NTM EV / Umsatz', wert: multiple(ntmEvRevenue), gruppe: 'bewertung_ntm' },
-    { id: 'ntm_ev_ebitda', label: 'NTM EV / EBITDA', wert: multiple(ntmEvEbitda), gruppe: 'bewertung_ntm' },
-    { id: 'ntm_pe', label: 'NTM KGV (P/E)', wert: multiple(ntmKgv), gruppe: 'bewertung_ntm' },
-    { id: 'ntm_mc_fcf', label: 'NTM MC / FCF', wert: multiple(ntmMcFcf), gruppe: 'bewertung_ntm' },
+    { id: 'ntm_ev_rev', label: 'FY EV / Umsatz', wert: multiple(fwdEvRevenue), gruppe: 'bewertung_ntm' },
+    { id: 'ntm_ev_ebitda', label: 'FY EV / EBITDA', wert: multiple(fwdEvEbitda), gruppe: 'bewertung_ntm' },
+    { id: 'ntm_pe', label: 'FY KGV (P/E)', wert: multiple(fwdKgv), gruppe: 'bewertung_ntm' },
+    { id: 'ntm_mc_fcf', label: 'FY MC / FCF', wert: multiple(fwdMcFcf), gruppe: 'bewertung_ntm' },
     { id: 'ltm_ev_rev', label: 'LTM EV / Umsatz', wert: multiple(ltmEvRevenue), gruppe: 'bewertung_ltm' },
     {
       id: 'ltm_pe',

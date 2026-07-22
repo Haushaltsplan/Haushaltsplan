@@ -235,7 +235,7 @@ async function ladeYahooFundamentalKennzahlen(symbol: string): Promise<YahooFund
     operatingMargins: rawNum(fd, 'operatingMargins'),
     ebitdaMargins: rawNum(fd, 'ebitdaMargins'),
     profitMargins: rawNum(fd, 'profitMargins'),
-    currentPrice: rawNum(sd, 'regularMarketPrice'),
+    currentPrice: rawNum(sd, 'regularMarketPrice') ?? rawNum(fd, 'currentPrice'),
     targetMeanPrice: rawNum(fd, 'targetMeanPrice'),
     priceToBook: rawNum(dks, 'priceToBook'),
     enterpriseToRevenue: rawNum(dks, 'enterpriseToRevenue'),
@@ -307,7 +307,19 @@ function mergePeriodenUndZeilen(
   for (const sz of schaetzungen.zeilen) {
     const histId = SCHÄTZUNG_ZU_HISTORISCH_ZEILE[sz.id]
     if (histId) {
-      const hz = zeilen.find((z) => z.id === histId)
+      let hz = zeilen.find((z) => z.id === histId)
+      // Manche Titel haben in Macrotrends keine eps-Zeile — dann anlegen,
+      // sonst gehen EPS-Schätzungen verloren und Forward-KGV bleibt leer.
+      if (!hz && histId === 'eps') {
+        hz = {
+          id: 'eps',
+          label: 'EPS',
+          gruppe: 'finanzdaten',
+          einheit: 'waehrung_usd_aktie',
+          werte: Object.fromEntries(perioden.map((p) => [p.iso, null as number | null])),
+        }
+        zeilen.push(hz)
+      }
       if (hz) {
         for (const sp of schaetzungen.perioden) {
           const v = sz.werte[sp.iso]
@@ -315,6 +327,16 @@ function mergePeriodenUndZeilen(
         }
       }
     }
+  }
+
+  // Schätzungs-Zeilen zusätzlich behalten (Fallback, falls Mapping fehlschlägt)
+  for (const sz of schaetzungen.zeilen) {
+    if (zeilen.some((z) => z.id === sz.id)) continue
+    const werte: Record<string, number | null> = { ...sz.werte }
+    for (const p of perioden) {
+      if (!(p.iso in werte)) werte[p.iso] = null
+    }
+    zeilen.push({ ...sz, werte })
   }
 
   return { perioden, zeilen }
@@ -660,30 +682,43 @@ export async function ladeFundamentaldaten(anfrage: FundamentaldatenAnfrage): Pr
   const ntm =
     frequenz === 'jahr'
       ? await baueNtmBewertungsZeilen(symbolYahoo, merged.perioden, merged.zeilen, yahooExt)
-      : { periodenPatch: null as FundamentalPeriode | null, trailingPatches: {}, neueZeilen: [] as FundamentalMetrikZeile[], zeilen: [] as FundamentalMetrikZeile[] }
-  if (ntm.periodenPatch && !merged.perioden.some((p) => p.iso === FUNDAMENTAL_NTM_KEY)) {
-    const schaetzIdx = merged.perioden.findIndex((p) => p.istSchaetzung)
-    if (schaetzIdx >= 0) merged.perioden.splice(schaetzIdx, 0, ntm.periodenPatch)
-    else merged.perioden.push(ntm.periodenPatch)
+      : { periodenPatch: null as null, trailingPatches: {}, neueZeilen: [] as FundamentalMetrikZeile[], zeilen: [] as FundamentalMetrikZeile[] }
+  // Kein NTM-Perioden-Patch mehr — nur FY-Schätz-Multiples in Trailing-Zeilen
+  const trailingLabels: Record<string, string> = {
+    kgv: 'KGV (P/E)',
+    ps: 'KUV (P/S)',
+    pfcf: 'Kurs / FCF',
   }
-  // Forward (NTM + FY-Schätzungen) in die normalen Bewertungszeilen mergen
   for (const [zeileId, patch] of Object.entries(ntm.trailingPatches ?? {})) {
-    const z = merged.zeilen.find((r) => r.id === zeileId)
-    if (!z || !patch) continue
+    if (!patch) continue
+    let z = merged.zeilen.find((r) => r.id === zeileId)
+    if (!z && (zeileId === 'kgv' || zeileId === 'ps' || zeileId === 'pfcf')) {
+      z = {
+        id: zeileId,
+        label: trailingLabels[zeileId] ?? zeileId,
+        gruppe: 'bewertung_trailing',
+        einheit: 'multiple',
+        werte: Object.fromEntries(merged.perioden.map((p) => [p.iso, null as number | null])),
+      }
+      merged.zeilen.push(z)
+    }
+    if (!z) continue
     for (const [iso, v] of Object.entries(patch)) {
       if (v != null) z.werte[iso] = v
       else if (!(iso in z.werte)) z.werte[iso] = null
     }
   }
+  // Alte NTM-Spalte aus Caches/Perioden entfernen
+  merged.perioden = merged.perioden.filter((p) => !p.istNtm && p.iso !== FUNDAMENTAL_NTM_KEY)
   for (const z of merged.zeilen) {
-    if (!(FUNDAMENTAL_NTM_KEY in z.werte)) z.werte[FUNDAMENTAL_NTM_KEY] = null
+    if (FUNDAMENTAL_NTM_KEY in z.werte) delete z.werte[FUNDAMENTAL_NTM_KEY]
   }
   for (const neu of ntm.neueZeilen ?? []) {
     if (!merged.zeilen.some((z) => z.id === neu.id)) {
-      // Historische Perioden + TTM mit null auffüllen, damit die Tabelle die Spalten zeigt
       for (const p of merged.perioden) {
         if (!(p.iso in neu.werte)) neu.werte[p.iso] = null
       }
+      if (FUNDAMENTAL_NTM_KEY in neu.werte) delete neu.werte[FUNDAMENTAL_NTM_KEY]
       merged.zeilen.push(neu)
     }
   }

@@ -22,6 +22,7 @@ import type {
   FundamentaldatenAnfrage,
   FundamentaldatenPaket,
 } from '@/lib/portfolio-analyse/fundamentaldaten-types'
+import { FUNDAMENTAL_NTM_KEY } from '@/lib/portfolio-analyse/fundamentaldaten-types'
 
 const UNTER_TABS = [
   { id: 'uebersicht' as const, label: 'Übersicht' },
@@ -143,15 +144,20 @@ export function PaFundamentalInhalt({
   const bewertungLtm = daten?.zeilen.filter((z) => z.gruppe === 'bewertung_trailing') ?? []
   const bewertungForward =
     daten?.zeilen.filter((z) => z.gruppe === 'bewertung_forward') ?? []
-  // Neue Pakete: Forward steckt in Trailing-Zeilen. Alte Caches: noch separate ntm_*-Zeilen.
-  const trailingHatForward = bewertungLtm.some(
-    (z) =>
-      (z.werte.__ntm__ != null && Number.isFinite(z.werte.__ntm__)) ||
-      Object.keys(z.werte).some((k) => k.startsWith('__fy') && z.werte[k] != null),
+  // Neue Pakete: Forward steckt in Trailing-Zeilen (FY-Keys). Alte Caches: separate Forward-Zeilen.
+  const trailingHatForward = bewertungLtm.some((z) =>
+    Object.keys(z.werte).some((k) => k.startsWith('__fy') && z.werte[k] != null),
   )
-  const bewertungZeilen = trailingHatForward
+  const bewertungZeilen = (trailingHatForward
     ? bewertungLtm
     : [...bewertungLtm, ...bewertungForward]
+  ).map((z) => {
+    if (!(FUNDAMENTAL_NTM_KEY in z.werte)) return z
+    const { [FUNDAMENTAL_NTM_KEY]: _ntm, ...werte } = z.werte
+    return { ...z, werte }
+  })
+  const bewertungPerioden =
+    daten?.perioden.filter((p) => !p.istNtm && p.iso !== FUNDAMENTAL_NTM_KEY) ?? []
   return (
     <div className="space-y-4">
       {laden && !daten?.ok ? (
@@ -310,7 +316,7 @@ export function PaFundamentalInhalt({
               )}
 
               <PaFundamentalMetrikChart
-                perioden={daten.perioden}
+                perioden={unterTab === 'bewertung' ? bewertungPerioden : daten.perioden}
                 zeilen={
                   unterTab === 'bewertung'
                     ? bewertungZeilen
@@ -366,8 +372,8 @@ export function PaFundamentalInhalt({
 
               {unterTab === 'bewertung' && bewertungZeilen.length > 0 ? (
                 <PaFundamentalMetrikTabelle
-                  titel="Bewertung · TTM = Trailing aktuell · NTM = Forward (Konsens) · FY = Schätzung"
-                  perioden={daten.perioden}
+                  titel="Bewertung · TTM = Trailing aktuell · FY = Kurs ÷ Schätzung"
+                  perioden={bewertungPerioden}
                   zeilen={bewertungZeilen}
                   aktivIds={chartAktiv}
                   onToggleZeile={toggleChartZeile}

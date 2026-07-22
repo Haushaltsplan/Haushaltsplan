@@ -8,7 +8,7 @@ const SEKTIONEN: { id: FundamentalKeyMetric['gruppe']; titel: string; spalte: 0 
   { id: 'kapitalstruktur', titel: 'Kapitalstruktur', spalte: 1 },
   { id: 'effizienz', titel: 'Effizienz (LTM)', spalte: 0 },
   { id: 'wachstum', titel: 'Wachstum', spalte: 1 },
-  { id: 'bewertung_ntm', titel: 'Bewertung (NTM)', spalte: 0 },
+  { id: 'bewertung_ntm', titel: 'Bewertung (FY)', spalte: 0 },
   { id: 'bewertung_ltm', titel: 'Bewertung (LTM)', spalte: 1 },
 ]
 

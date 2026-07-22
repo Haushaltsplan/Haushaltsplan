@@ -17,7 +17,6 @@ import {
   schaetzungsChartPerioden,
 } from '@/lib/portfolio-analyse/fundamentaldaten-chart-hilfen'
 import {
-  FUNDAMENTAL_NTM_KEY,
   FUNDAMENTAL_TTM_KEY,
   istFundamentalQuartalSchaetzungIso,
   type FundamentalMetrikZeile,
@@ -76,10 +75,8 @@ type ChartSerie = {
 
 function aktuellerKeyFuerZeile(z: FundamentalMetrikZeile, variant: 'standard' | 'bewertung'): string | null {
   if (variant !== 'bewertung') return null
-  // Eine Bewertungstabelle: Trailing-Kennzahlen → TTM als „aktuell“;
-  // reine Forward-Zeilen (EV) ohne Historie → NTM.
-  if (z.gruppe === 'bewertung_forward') return FUNDAMENTAL_NTM_KEY
-  if (z.id === 'ev_rev' || z.id === 'ev_ebitda') return FUNDAMENTAL_NTM_KEY
+  // EV-Zeilen haben nur FY-Schätzungen (kein TTM-Punkt).
+  if (z.id === 'ev_rev' || z.id === 'ev_ebitda') return null
   if (z.gruppe === 'bewertung_trailing') return FUNDAMENTAL_TTM_KEY
   return FUNDAMENTAL_TTM_KEY
 }
@@ -394,9 +391,7 @@ export function PaFundamentalMetrikChart({
     const padR = dualAxis ? PAD_RECHTS_DUAL : PAD_RECHTS_SINGLE
     const plotW = VIEW_W - padL - padR
 
-    // Gemeinsame X-Achse: Perioden + optional ein „Aktuell“-Slot (TTM/NTM).
-    // Wichtig: Alle Serien nutzen dieselben Indizes — sonst landen KGV-TTM und NTM
-    // an unterschiedlichen X-Positionen (z. B. TTM über „2024“, NTM ganz rechts).
+    // Gemeinsame X-Achse: Perioden + optionaler TTM-Slot.
     type AchsenSlot = {
       key: string
       label: string
@@ -417,7 +412,7 @@ export function PaFundamentalMetrikChart({
     if (variant === 'bewertung' && hatAktuellWert) {
       achsenSlots.push({
         key: '__aktuell_slot__',
-        label: 'TTM/NTM',
+        label: 'TTM',
         istSchaetzung: false,
         istAktuellSlot: true,
       })
@@ -445,7 +440,7 @@ export function PaFundamentalMetrikChart({
       const aktuell =
         aktWert != null && Number.isFinite(aktWert)
           ? {
-              label: aktKey === FUNDAMENTAL_NTM_KEY ? 'NTM' : 'TTM',
+              label: 'TTM',
               wert: aktWert,
               istSchaetzung: false,
             }
@@ -642,7 +637,7 @@ export function PaFundamentalMetrikChart({
             </p>
             <p className="mt-0.5 text-[11px] text-[var(--app-text-muted)]">
               {variant === 'bewertung'
-                ? 'Historie = Trailing · gestrichelt = FY-Schätzung (Kurs÷Konsens) · Punkt = TTM · NTM steht in der Tabelle'
+                ? 'Historie = Trailing · gestrichelt = FY-Schätzung (Kurs÷Konsens) · Punkt = TTM'
                 : 'Zeitraum wählen · Schätzungen gestrichelt · bei zwei Kennzahlen eigene Y-Achse'}
             </p>
           </div>
@@ -887,7 +882,7 @@ export function PaFundamentalMetrikChart({
                 y={HOEHE - 12}
                 textAnchor="middle"
                 fill={
-                  xl.label === 'TTM' || xl.label === 'NTM'
+                  xl.label === 'TTM'
                     ? '#a1a1aa'
                     : xl.istSchaetzung
                       ? SCHÄTZUNG_FARBE
@@ -895,7 +890,7 @@ export function PaFundamentalMetrikChart({
                 }
                 style={{
                   fontSize: ACHSE_FONT,
-                  fontWeight: xl.label === 'TTM' || xl.label === 'NTM' || xl.istSchaetzung ? 600 : 500,
+                  fontWeight: xl.label === 'TTM' || xl.istSchaetzung ? 600 : 500,
                 }}
               >
                 {xl.label}

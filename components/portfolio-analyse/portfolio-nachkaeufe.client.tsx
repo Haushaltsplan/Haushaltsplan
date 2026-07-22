@@ -1141,7 +1141,7 @@ function DetailPanel({
             </p>
           </div>
           <div>
-            <p className="text-[11px] text-[var(--app-text-muted)]">NTM KGV</p>
+            <p className="text-[11px] text-[var(--app-text-muted)]">FY KGV</p>
             <p className="text-sm font-medium text-[var(--app-text)]">
               {eintrag.bewertung.forwardPe != null ? `${eintrag.bewertung.forwardPe.toFixed(1)}×` : '–'}
             </p>

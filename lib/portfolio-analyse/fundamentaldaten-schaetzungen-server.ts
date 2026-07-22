@@ -428,7 +428,7 @@ export function fuelleFehlendeEpsSchaetzungen(opts: {
       prev = vorhanden
       continue
     }
-    const growthPct = wachstumZeile?.werte[p.iso] ?? lastGrowth ?? avgGrowth
+    const growthPct: number | null = wachstumZeile?.werte[p.iso] ?? lastGrowth ?? avgGrowth
     if (prev == null || prev <= 0) continue
     if (growthPct == null || !Number.isFinite(growthPct)) continue
     lastGrowth = growthPct
