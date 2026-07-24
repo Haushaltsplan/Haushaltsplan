@@ -14,6 +14,10 @@ import { PaFundamentalMetrikChart } from '@/components/portfolio-analyse/pa-fund
 import { PaFundamentalMetrikTabelle } from '@/components/portfolio-analyse/pa-fundamental-metrik-tabelle'
 import { PaCard } from '@/components/portfolio-analyse/pa-ui'
 import {
+  downloadFundamentaldatenJson,
+  downloadFundamentaldatenKennzahlenCsv,
+} from '@/lib/portfolio-analyse/fundamentaldaten-export-client'
+import {
   ladeFundamentaldatenAusLocalCache,
   ladeFundamentaldatenClient,
 } from '@/lib/portfolio-analyse/fundamentaldaten-client'
@@ -231,6 +235,26 @@ export function PaFundamentalInhalt({
             activeTab={unterTab}
             onTabChange={setUnterTab}
             kompakt={unterTab === 'uebersicht'}
+            aktionen={
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => downloadFundamentaldatenJson(daten, anfrage)}
+                  className="rounded-md border border-teal-500/25 bg-teal-500/10 px-2 py-1 text-[11px] font-medium text-teal-300 transition hover:bg-teal-500/20"
+                  title="Alle gespeicherten Daten (Fundamental + lokale Earnings/SEC/KI-Caches) als JSON"
+                >
+                  Export JSON
+                </button>
+                <button
+                  type="button"
+                  onClick={() => downloadFundamentaldatenKennzahlenCsv(daten)}
+                  className="rounded-md border border-white/[0.08] bg-[var(--app-surface-muted)] px-2 py-1 text-[11px] font-medium text-[var(--app-text-muted)] transition hover:text-[var(--app-text)]"
+                  title="Finanz-Kennzahlen-Matrix als CSV"
+                >
+                  CSV
+                </button>
+              </div>
+            }
           />
 
           {unterTab === 'uebersicht' ? (

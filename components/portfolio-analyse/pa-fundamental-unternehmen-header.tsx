@@ -16,6 +16,8 @@ type Props<T extends string> = {
   activeTab: T
   onTabChange: (id: T) => void
   kompakt?: boolean
+  /** Optionale Aktionen rechts neben den Tabs (z. B. Export). */
+  aktionen?: ReactNode
 }
 
 function MetaChip({ children }: { children: ReactNode }) {
@@ -37,6 +39,7 @@ export function PaFundamentalUnternehmenHeader<T extends string>({
   activeTab,
   onTabChange,
   kompakt = false,
+  aktionen,
 }: Props<T>) {
   const [beschreibungOffen, setBeschreibungOffen] = useState(false)
   const websiteUrl = website ? (website.startsWith('http') ? website : `https://${website}`) : null
@@ -48,7 +51,10 @@ export function PaFundamentalUnternehmenHeader<T extends string>({
           <span className="text-sm font-bold tabular-nums text-[var(--app-text)]">{ticker}</span>
           <span className="text-sm text-[var(--app-text-muted)]">{firmenname}</span>
         </div>
-        <PaIconTabs tabs={tabs} active={activeTab} onChange={onTabChange} className="shrink-0" />
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          {aktionen}
+          <PaIconTabs tabs={tabs} active={activeTab} onChange={onTabChange} className="shrink-0" />
+        </div>
       </div>
     )
   }
@@ -87,7 +93,10 @@ export function PaFundamentalUnternehmenHeader<T extends string>({
             ) : null}
           </div>
         </div>
-        <PaIconTabs tabs={tabs} active={activeTab} onChange={onTabChange} className="shrink-0 sm:max-w-[34rem]" />
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          {aktionen}
+          <PaIconTabs tabs={tabs} active={activeTab} onChange={onTabChange} className="shrink-0 sm:max-w-[34rem]" />
+        </div>
       </div>
 
       {beschreibung && beschreibungOffen ? (
