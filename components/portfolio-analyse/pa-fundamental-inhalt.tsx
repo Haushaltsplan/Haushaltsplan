@@ -131,6 +131,25 @@ export function PaFundamentalInhalt({
     })
   }, [])
 
+  const [exportLaeuft, setExportLaeuft] = useState(false)
+
+  const starteJsonExport = useCallback(async () => {
+    if (!daten?.ok || exportLaeuft) return
+    setExportLaeuft(true)
+    try {
+      await downloadFundamentaldatenJson(daten, anfrage)
+    } catch (e) {
+      console.error('[fundamentaldaten-export]', e)
+      window.alert(
+        e instanceof Error
+          ? `Export fehlgeschlagen: ${e.message}`
+          : 'Export fehlgeschlagen.',
+      )
+    } finally {
+      setExportLaeuft(false)
+    }
+  }, [daten, anfrage, exportLaeuft])
+
   const verfuegbareZeilenIds = useMemo(() => {
     const s = new Set<string>()
     for (const z of daten?.zeilen ?? []) {
@@ -239,17 +258,19 @@ export function PaFundamentalInhalt({
               <div className="flex items-center gap-1.5">
                 <button
                   type="button"
-                  onClick={() => downloadFundamentaldatenJson(daten, anfrage)}
-                  className="rounded-md border border-teal-500/25 bg-teal-500/10 px-2 py-1 text-[11px] font-medium text-teal-300 transition hover:bg-teal-500/20"
-                  title="Alle gespeicherten Daten (Fundamental + lokale Earnings/SEC/KI-Caches) als JSON"
+                  onClick={() => void starteJsonExport()}
+                  disabled={exportLaeuft}
+                  className="rounded-md border border-teal-500/25 bg-teal-500/10 px-2 py-1 text-[11px] font-medium text-teal-300 transition hover:bg-teal-500/20 disabled:opacity-50"
+                  title="Alle Tabs: Mantra, Bewertung, Struktur, Quartalszahlen, Finanzdaten (+ CapAlloc/Insider/Peer/Beat-Miss/Earnings/SEC)"
                 >
-                  Export JSON
+                  {exportLaeuft ? 'Export …' : 'Export JSON'}
                 </button>
                 <button
                   type="button"
                   onClick={() => downloadFundamentaldatenKennzahlenCsv(daten)}
-                  className="rounded-md border border-white/[0.08] bg-[var(--app-surface-muted)] px-2 py-1 text-[11px] font-medium text-[var(--app-text-muted)] transition hover:text-[var(--app-text)]"
-                  title="Finanz-Kennzahlen-Matrix als CSV"
+                  disabled={exportLaeuft}
+                  className="rounded-md border border-white/[0.08] bg-[var(--app-surface-muted)] px-2 py-1 text-[11px] font-medium text-[var(--app-text-muted)] transition hover:text-[var(--app-text)] disabled:opacity-50"
+                  title="Nur Finanz-Kennzahlen-Matrix als CSV"
                 >
                   CSV
                 </button>
