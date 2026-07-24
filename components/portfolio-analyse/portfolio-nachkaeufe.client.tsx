@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { EarningsCallAnalyseDarstellung } from '@/components/portfolio-analyse/pa-earnings-call-analyse'
 import { PortfolioAnalyseShell } from '@/components/portfolio-analyse/portfolio-analyse-shell.client'
 import { PaCard, PaSectionTitle, PA_SCROLL_ELEGANT } from '@/components/portfolio-analyse/pa-ui'
-import { NACHKAUF_RADAR_WHITELIST, type RisikoKlasse } from '@/lib/portfolio-analyse/nachkauf-radar/nachkauf-radar-whitelist'
+import { istWhitelistIsin, risikoKlasseFuerIsin, type RisikoKlasse } from '@/lib/portfolio-analyse/nachkauf-radar/nachkauf-radar-whitelist'
 import { portfolioEmpfehlungVon, type PortfolioEmpfehlungTyp } from '@/lib/portfolio-analyse/nachkauf-radar/nachkauf-trim-signal'
 import type {
   InsiderKauf,
@@ -38,7 +38,7 @@ function NachkaufPerformancePanel({ daten }: { daten: NachkaufPerformanceUebersi
     <PaCard variant="elevated" className="p-5">
       <PaSectionTitle
         title="Radar-Performance"
-        description="Empfehlungen vs. SPY — Daten werden ab 6 Monaten nach jeder Kaufempfehlung ausgewertet."
+        description="Regelbasierte Allokation vs. SPY — ausgewertet ab 6 Monaten. Ohne Tracking keine Score-Kalibrierung."
       />
       <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <div>
@@ -146,8 +146,8 @@ function NachkaufPerformancePanel({ daten }: { daten: NachkaufPerformanceUebersi
 
       {daten.anzahlEmpfehlungen === 0 && (
         <p className="mt-3 text-xs text-[var(--app-text-muted)]">
-          Noch keine getrackten Empfehlungen — nach jeder Portfolio-Empfehlung (Kauf-Posten) wird das
-          Tracking automatisch befüllt. Seite neu laden, falls die Empfehlung bereits erstellt wurde.
+          Noch keine getrackten Empfehlungen — nach „Allokation + Kommentar“ werden die regelbasierten
+          Euro-Beträge gespeichert und ab Monat 6 gegen SPY gemessen.
         </p>
       )}
 
@@ -204,7 +204,7 @@ function trimKategorieLabel(k: TrimSignal['faktoren'][number]['kategorie']): str
 }
 
 function risikoKlasseVon(isin: string): RisikoKlasse {
-  return NACHKAUF_RADAR_WHITELIST.find((p) => p.isin === isin)?.risikoKlasse ?? 'moderat'
+  return risikoKlasseFuerIsin(isin)
 }
 
 // ---------------------------------------------------------------------------
@@ -563,10 +563,10 @@ function TitelKarte({
       <div className="mt-2 flex flex-wrap gap-1 pl-4">
         <TriggerBadge ausgeloest={eintrag.kaufTriggerAusgeloest} text={eintrag.kaufTriggerText} />
         <InsiderBadge kaeufe={eintrag.insiderKaeufe} />
-        {!NACHKAUF_RADAR_WHITELIST.some((p) => p.isin === eintrag.isin) && (
+        {!istWhitelistIsin(eintrag.isin) && (
           <span
             className="inline-flex rounded bg-sky-500/10 px-1.5 py-0.5 text-[10px] font-semibold text-sky-300 ring-1 ring-sky-500/20"
-            title="Von der Watchlist — noch nicht im Depot. Ein Kauf wäre ein Neukauf."
+            title="Watchlist-Neukauf: Cap spekulativ ≤100 €, Score-Hürde ≥84 + Deep Research."
           >
             ☆ Watchlist
           </span>
@@ -1105,6 +1105,32 @@ function DetailPanel({
           )}
         </div>
 
+        {(eintrag.scoreDetail.strukturSignale?.length ?? 0) > 0 && (
+          <div className="mt-3 rounded-xl border border-white/[0.05] bg-[var(--app-surface-muted)]/60 p-3">
+            <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-[var(--app-text-muted)]">
+              Struktur-Signale (Score-Wirkung)
+            </p>
+            <div className="flex flex-wrap gap-1.5">
+              {eintrag.scoreDetail.strukturSignale!.map((z) => (
+                <span
+                  key={z.id}
+                  className={`rounded px-1.5 py-0.5 text-[10px] ring-1 ${
+                    z.delta > 0
+                      ? 'bg-emerald-500/10 text-emerald-300 ring-emerald-500/20'
+                      : z.delta < 0
+                        ? 'bg-rose-500/10 text-rose-300 ring-rose-500/20'
+                        : 'bg-[var(--app-surface-hover)] text-[var(--app-text-muted)] ring-white/[0.04]'
+                  }`}
+                  title={`${z.label}: ${z.wert}`}
+                >
+                  {z.label} {z.wert}
+                  {z.delta !== 0 ? ` (${z.delta > 0 ? '+' : ''}${z.delta})` : ''}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+
         <div className="mt-4 grid grid-cols-2 gap-x-6 gap-y-2 border-t border-white/[0.05] pt-4 sm:grid-cols-3">
           <div>
             <p className="text-[11px] text-[var(--app-text-muted)]">Mantra-Score</p>
@@ -1290,6 +1316,71 @@ function DetailPanel({
                 }`}
               >
                 {eintrag.datenSignale.insiderNettoRichtung === 'kauf' ? 'Netto-Kauf' : 'Netto-Verkauf'}
+              </p>
+            </div>
+          )}
+          {eintrag.datenSignale?.fcfConversionPct != null && (
+            <div>
+              <p className="text-[11px] text-[var(--app-text-muted)]">FCF-Conversion</p>
+              <p className="text-sm font-medium text-[var(--app-text)]">
+                {eintrag.datenSignale.fcfConversionPct.toFixed(0)} %
+              </p>
+            </div>
+          )}
+          {eintrag.datenSignale?.aktienVerwaesserungJaehrlichPct != null && (
+            <div>
+              <p className="text-[11px] text-[var(--app-text-muted)]">Verwässerung p.a.</p>
+              <p
+                className={`text-sm font-medium ${
+                  eintrag.datenSignale.aktienVerwaesserungJaehrlichPct > 1.5
+                    ? 'text-rose-400'
+                    : eintrag.datenSignale.aktienVerwaesserungJaehrlichPct < -1
+                      ? 'text-emerald-400'
+                      : 'text-[var(--app-text)]'
+                }`}
+              >
+                {eintrag.datenSignale.aktienVerwaesserungJaehrlichPct > 0 ? '+' : ''}
+                {eintrag.datenSignale.aktienVerwaesserungJaehrlichPct.toFixed(1)} %
+              </p>
+            </div>
+          )}
+          {eintrag.datenSignale?.interestCoverage != null && eintrag.datenSignale.interestCoverage > 0 && (
+            <div>
+              <p className="text-[11px] text-[var(--app-text-muted)]">Zinsdeckung</p>
+              <p className="text-sm font-medium text-[var(--app-text)]">
+                {eintrag.datenSignale.interestCoverage.toFixed(1)}×
+              </p>
+            </div>
+          )}
+          {eintrag.datenSignale?.gaapAdjEpsLueckePct != null && eintrag.datenSignale.gaapAdjEpsLueckePct >= 10 && (
+            <div>
+              <p className="text-[11px] text-[var(--app-text-muted)]">GAAP→Adj-Lücke</p>
+              <p className="text-sm font-medium text-amber-300">
+                +{eintrag.datenSignale.gaapAdjEpsLueckePct.toFixed(0)} %
+              </p>
+            </div>
+          )}
+          {(eintrag.datenSignale?.pePerzentil5y ?? eintrag.bewertung.pePerzentil5y) != null && (
+            <div>
+              <p className="text-[11px] text-[var(--app-text-muted)]">KGV-Perzentil 5J</p>
+              <p className="text-sm font-medium text-[var(--app-text)]">
+                {(eintrag.datenSignale?.pePerzentil5y ?? eintrag.bewertung.pePerzentil5y)!.toFixed(0)}
+              </p>
+            </div>
+          )}
+          {eintrag.datenSignale?.nrrPct != null && (
+            <div>
+              <p className="text-[11px] text-[var(--app-text-muted)]">NRR</p>
+              <p className="text-sm font-medium text-[var(--app-text)]">
+                {eintrag.datenSignale.nrrPct.toFixed(0)} %
+              </p>
+            </div>
+          )}
+          {eintrag.datenSignale?.ruleOf40 != null && eintrag.datenSignale.nrrPct == null && (
+            <div>
+              <p className="text-[11px] text-[var(--app-text-muted)]">Rule of 40</p>
+              <p className="text-sm font-medium text-[var(--app-text)]">
+                {eintrag.datenSignale.ruleOf40.toFixed(0)}
               </p>
             </div>
           )}
@@ -1894,14 +1985,14 @@ export function NachkaufRadarClient() {
 
         {/* KI-Portfolio-Empfehlung (Kauf + Verkauf) */}
         {ergebnisse.length > 0 && !scanLaeuft && (
-          <div className="rounded-2xl border border-violet-500/20 bg-gradient-to-br from-violet-950/50 to-[var(--app-surface)] p-5">
+          <div className="rounded-2xl border border-teal-500/20 bg-gradient-to-br from-teal-950/40 to-[var(--app-surface)] p-5">
             <div className="flex items-start justify-between gap-3">
               <div className="flex items-start gap-3">
-                <span className="mt-0.5 text-xl" role="img" aria-hidden>🤖</span>
                 <div>
-                  <p className="text-sm font-semibold text-violet-300">Portfolio-Empfehlung</p>
+                  <p className="text-sm font-semibold text-teal-300">Monatsallokation (regelbasiert)</p>
                   <p className="mt-0.5 text-xs text-[var(--app-text-muted)]">
-                    Grün + Score ≥ 76 (oder Kaufzone + Gelb ≥ 74) — jeweils mit Deep Research.
+                    Euro-Beträge aus Regeln. Whitelist ≥76 / Watchlist-Neukauf ≥84 — jeweils mit Deep Research.
+                    KI erklärt und warnt, ändert keine Beträge nach oben.
                   </p>
                 </div>
               </div>
@@ -1909,9 +2000,9 @@ export function NachkaufRadarClient() {
                 type="button"
                 onClick={starteKaufempfehlung}
                 disabled={kaufempfehlungLaeuft}
-                className="shrink-0 rounded-xl bg-violet-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-violet-500 disabled:opacity-50 transition-colors"
+                className="shrink-0 rounded-xl bg-teal-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-teal-500 disabled:opacity-50 transition-colors"
               >
-                {kaufempfehlungLaeuft ? 'Analysiere…' : kaufempfehlungText ? 'Neu generieren' : 'Empfehlung generieren'}
+                {kaufempfehlungLaeuft ? 'Analysiere…' : kaufempfehlungText ? 'Neu generieren' : 'Allokation + Kommentar'}
               </button>
             </div>
 
@@ -1979,10 +2070,22 @@ export function NachkaufRadarClient() {
                   </div>
                 )}
                 {kaufempfehlungAllokation.length > 0 && (
-                  <div className="rounded-xl border border-violet-500/15 bg-violet-950/20 p-3">
-                    <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-violet-400">
-                      Regelbasierte Basis-Allokation
-                    </p>
+                  <div className="rounded-xl border border-teal-500/20 bg-teal-950/20 p-3">
+                    <div className="mb-2 flex items-center justify-between gap-2">
+                      <p className="text-[11px] font-semibold uppercase tracking-wider text-teal-400">
+                        Verbindliche Euro-Allokation
+                      </p>
+                      <span className="text-[11px] tabular-nums text-[var(--app-text-muted)]">
+                        Investiert {kaufempfehlungAllokation.reduce((s, x) => s + x.betragEur, 0)} €
+                        {' · '}
+                        Gespart{' '}
+                        {Math.max(
+                          0,
+                          kaufBudget - kaufempfehlungAllokation.reduce((s, x) => s + x.betragEur, 0),
+                        )}{' '}
+                        €
+                      </span>
+                    </div>
                     <div className="space-y-1.5">
                       {kaufempfehlungAllokation.map((p) => {
                         const gesamt = kaufempfehlungAllokation.reduce((s, x) => s + x.betragEur, 0)
@@ -1990,13 +2093,13 @@ export function NachkaufRadarClient() {
                           <div key={p.ticker} className="flex items-center justify-between gap-2">
                             <div className="flex items-center gap-2">
                               <div
-                                className="h-1.5 rounded-full bg-violet-500/60"
+                                className="h-1.5 rounded-full bg-teal-500/60"
                                 style={{ width: `${Math.round((p.betragEur / gesamt) * 72)}px` }}
                               />
                               <span className="text-[11px] text-[var(--app-text)]">{p.name}</span>
                               <span className="text-[10px] text-[var(--app-text-muted)]">{p.begruendung}</span>
                             </div>
-                            <span className="text-[12px] font-bold tabular-nums text-violet-300">{p.betragEur} €</span>
+                            <span className="text-[12px] font-bold tabular-nums text-teal-300">{p.betragEur} €</span>
                           </div>
                         )
                       })}
@@ -2004,8 +2107,8 @@ export function NachkaufRadarClient() {
                   </div>
                 )}
                 <div className="rounded-xl border border-white/5 bg-[var(--app-surface-muted)] p-4">
-                  <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-violet-400">
-                    KI-Analyse (Halten/Verkauf vor Käufen, dann Budget)
+                  <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-[var(--app-text-muted)]">
+                    KI-Kommentar (keine Euro-Erhöhung)
                   </p>
                   <KiMdText text={kaufempfehlungText} />
                 </div>
@@ -2014,7 +2117,7 @@ export function NachkaufRadarClient() {
           </div>
         )}
 
-        {performance && performance.anzahlEmpfehlungen > 0 && !scanLaeuft && (
+        {performance && !scanLaeuft && (
           <NachkaufPerformancePanel daten={performance} />
         )}
 

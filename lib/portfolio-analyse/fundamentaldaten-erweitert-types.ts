@@ -136,6 +136,14 @@ export type SecKennzahlenHistorie = {
   assetsMio: SecKennzahlJahr[]
   eigenkapitalMio: SecKennzahlJahr[]
   langfristigeSchuldenMio: SecKennzahlJahr[]
+  /** Zinsaufwand (absolut, Mio. USD). */
+  zinsaufwandMio: SecKennzahlJahr[]
+  /** Kurzfristige Finanzschulden / Current portion of LT debt (Mio.). */
+  kurzfristigeSchuldenMio: SecKennzahlJahr[]
+  /** Verwässerte Durchschnittsaktien (Mio.). */
+  verwässerteAktienMio: SecKennzahlJahr[]
+  /** GAAP Diluted EPS ($/Aktie). */
+  epsGaap: SecKennzahlJahr[]
   mitarbeiter: SecKennzahlJahr[]
   goodwillMio: SecKennzahlJahr[]
   abschreibungMio: SecKennzahlJahr[]

@@ -101,15 +101,22 @@ components/portfolio-analyse/
 - Template-Literals im Fallback-Text durch explizite String-Verkettung ersetzt (PowerShell-Bug-Workaround)
 - `owner_user_id` in `nachkauf_kaufempfehlung` nutzt `DEFAULT auth.uid()` — Insert via Service Role muss `owner_user_id` explizit setzen oder RLS umgehen
 
+## Entscheidungsdisziplin (Juli 2026)
+
+- **Euro-Allokation ist regelbasiert** (`berechneRegelAllokation`); KI darf nur kürzen/streichen, nicht erhöhen.
+- **Struktur-Signale** (Verwässerung, FCF-Conv., NRR/Ro40, Zinsdeckung, GAAP-Lücke, KGV-Perzentil) in `scoreDetail.strukturSignale` + UI.
+- Score: KGV-Perzentil **oder** Median-Premium (nicht additiv); Timing ohne Roh-Drawdown-Doppelung; Kombiniert 55 % Qualität / 45 % Timing.
+- Watchlist-Neukauf: `risikoKlasse spekulativ` (≤100 €), Score ≥ **84** + Deep Research; Whitelist-Kauf ≥76.
+- Performance-Panel immer sichtbar; Tracking speichert regelbasierte Beträge vs. SPY.
+
 ## Prompt-Qualität
 
 - Deep Research: Explizit kritisch zu KI-Disruption, Bear-Case, Strukturrisiken (in `nachkauf-deep-research-prompt.ts`)
-- Kaufempfehlung: Risiko-Caps im Prompt hardcoded + per Kandidat wiederholt, kein Optimismus-Bias
+- Kaufempfehlung: Risiko-Caps im Prompt hardcoded + per Kandidat wiederholt, kein Optimismus-Bias; Euro-Beträge FIX aus Regeln
 
 ## Nächste mögliche Erweiterungen
 
-- Score-Verlauf (Sparkline) automatisch per Cron befüllen
 - Valuation-Alerts wenn Kaufzone ausgelöst wird
 - Insider-Käufe automatisch per Cron laden
-- Radar-Performance-Tracking (waren die Empfehlungen richtig?)
 - PDF-Export der Kaufempfehlung
+- Skip-Monat explizit in Tracking speichern (Budget = 0)

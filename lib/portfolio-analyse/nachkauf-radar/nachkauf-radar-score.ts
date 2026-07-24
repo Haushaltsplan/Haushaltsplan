@@ -7,12 +7,12 @@
  * Punkte-Verteilung (Ziel: 0–100):
  *  – Mantra-Qualität             0–50
  *  – Bewertung (personalisiert)  0–35
- *  – Historischer Bonus/Malus   –10 bis +10
- *  – Momentum                    0–12
- *  – Struktur & Risiko          –10 bis +5
- *  – Drawdown-Chance             0–5
+ *  – Historischer Bonus/Malus   –10 bis +10  (Perzentil ODER Median, nicht beides)
+ *  – Momentum                    0–10  (Langfrist: Beat/Miss gedämpft)
+ *  – Struktur & Risiko          –12 bis +6
+ *  – Drawdown-Chance             0–3
  *  – Insider-Käufe               0–4
- *  – Kauftrigger-Boost           0–7
+ *  – Kauftrigger-Boost           0–5
  *  – Regime / Earnings / DR     –15 bis +4
  *  – Sell-Trigger               –25 / –10 / 0
  */
@@ -29,10 +29,11 @@ import type {
   SparplanPosten,
 } from './nachkauf-radar-types'
 import type { WhitelistPosition } from './nachkauf-radar-whitelist'
-import { NACHKAUF_RADAR_WHITELIST, type RisikoKlasse } from './nachkauf-radar-whitelist'
+import { risikoKlasseFuerIsin, type RisikoKlasse } from './nachkauf-radar-whitelist'
 import type { NachkaufZusatzSignale } from './nachkauf-zusatz-signale-server'
 import { berechnePrognoseMomentumDelta } from './nachkauf-prognose-server'
 import { disziplinSparplanFaktor } from './nachkauf-disziplin-server'
+import { berechneStrukturMitAufschluesselung } from './nachkauf-struktur-aufschluesselung'
 import {
   berechneDeepResearchMalus,
   berechneEarningsFensterMalus,
@@ -61,7 +62,7 @@ const SPARPLAN_RISIKO_CAP: Record<RisikoKlasse, number> = {
 }
 
 function risikoKlasseVon(isin: string): RisikoKlasse {
-  return NACHKAUF_RADAR_WHITELIST.find((p) => p.isin === isin)?.risikoKlasse ?? 'moderat'
+  return risikoKlasseFuerIsin(isin)
 }
 
 // ---------------------------------------------------------------------------
@@ -148,6 +149,8 @@ export function extrahiereBewertungsSignale(
     ntmEvEbitda,
     drawdown52wPct,
     premiumDiscountPct,
+    pePerzentil5y: historisch?.pePerzentil5y ?? zusatz?.pePerzentil5y ?? null,
+    pePerzentil10y: historisch?.pePerzentil10y ?? zusatz?.pePerzentil10y ?? null,
     historischerMedianPe: medianPe,
     historischerMedianFcfYield: medianFcfYield,
     historischQuelle,
@@ -163,31 +166,30 @@ function clamp(n: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, n))
 }
 
-/** Operative Dynamik: Earnings-Treffer, CapAlloc, EPS-Wachstum (0–12). */
+/** Operative Dynamik: Earnings-Treffer, CapAlloc, EPS-Wachstum (0–10, Langfrist-Bias). */
 function berechneMomentumPunkte(zusatz: NachkaufZusatzSignale | null | undefined): number {
-  if (!zusatz) return 6
-  let pts = 6
+  if (!zusatz) return 5
+  let pts = 5
 
   const eps8 = zusatz.epsBeatRatePct
   const eps12 = zusatz.epsBeatRate12Pct
   if (eps8 != null) {
-    if (eps8 >= 75) pts += 2
+    if (eps8 >= 75) pts += 1
     else if (eps8 >= 62) pts += 1
-    else if (eps8 < 42) pts -= 3
+    else if (eps8 < 42) pts -= 2
     else if (eps8 < 52) pts -= 1
   }
   if (eps12 != null) {
     if (eps12 >= 68) pts += 1
-    else if (eps12 < 42) pts -= 2
+    else if (eps12 < 42) pts -= 1
   }
 
-  if (zusatz.epsStreakLaenge >= 3) {
-    if (zusatz.epsStreakArt === 'beat') pts += 2
-    else if (zusatz.epsStreakArt === 'miss') pts -= 2
+  // Streak nur schwach — Quartals-Beats sind kein Langfrist-Alpha
+  if (zusatz.epsStreakLaenge >= 4) {
+    if (zusatz.epsStreakArt === 'beat') pts += 1
+    else if (zusatz.epsStreakArt === 'miss') pts -= 1
   } else if (zusatz.letztesQuartalEpsBeat === false) {
     pts -= 1
-  } else if (zusatz.letztesQuartalEpsBeat === true) {
-    pts += 1
   }
 
   const ums12 = zusatz.umsatzBeatRate12Pct ?? zusatz.umsatzBeatRatePct
@@ -196,6 +198,7 @@ function berechneMomentumPunkte(zusatz: NachkaufZusatzSignale | null | undefined
     else if (ums12 < 40) pts -= 1
   }
 
+  // Capital Allocation bleibt wichtig für Langfrist
   if (zusatz.capitalAllocationScorePct != null) {
     if (zusatz.capitalAllocationScorePct >= 72) pts += 2
     else if (zusatz.capitalAllocationScorePct >= 55) pts += 1
@@ -219,14 +222,12 @@ function berechneMomentumPunkte(zusatz: NachkaufZusatzSignale | null | undefined
   if (zusatz.epsWachstumFy0Pct != null) {
     if (zusatz.epsWachstumFy0Pct < -8) pts -= 2
     else if (zusatz.epsWachstumFy0Pct < 0) pts -= 1
-    else if (zusatz.epsWachstumFy1Pct == null && zusatz.epsWachstumFy0Pct >= 10) pts += 1
   }
 
   if (zusatz.epsWachstumFy1Pct != null) {
     if (zusatz.epsWachstumFy1Pct < -8) pts -= 1
   }
 
-  // Mehrjahres-Prognose (FY0–2027): moderat, max. ±2 über berechnePrognoseMomentumDelta
   pts += berechnePrognoseMomentumDelta(zusatz.prognoseProfil)
 
   if (zusatz.dividendenCagr5yPct != null) {
@@ -234,67 +235,22 @@ function berechneMomentumPunkte(zusatz: NachkaufZusatzSignale | null | undefined
     else if (zusatz.dividendenCagr5yPct < -2) pts -= 1
   }
 
-  return clamp(Math.round(pts), 0, 12)
-}
-
-/** Bilanz, Kapitalstruktur, Markt-Skepsis (–10 bis +5). */
-function berechneStrukturPunkte(zusatz: NachkaufZusatzSignale | null | undefined): number {
-  if (!zusatz) return 0
-  let pts = 0
-
-  const nd = zusatz.netDebtEbitda
-  if (nd != null) {
-    if (nd > 3.5) pts -= 4
-    else if (nd > 2.5) pts -= 2
-    else if (nd < 0.8) pts += 1
-  } else if (zusatz.nettoCashMio != null) {
-    if (zusatz.nettoCashMio > 500) pts += 1
-    else if (zusatz.nettoCashMio < -2_000) pts -= 2
-  }
-
-  if (zusatz.capexDaRatio != null) {
-    if (zusatz.capexDaRatio > 2.8) pts -= 1
-    else if (zusatz.capexDaRatio < 1.15) pts += 1
-  }
-
-  if (zusatz.goodwillAnteilPct != null && zusatz.goodwillAnteilPct >= 35) pts -= 1
-  if (zusatz.segmentDatenZuverlaessig !== false) {
-    if (zusatz.segmentKonzentrationPct != null && zusatz.segmentKonzentrationPct >= 55) pts -= 1
-    if (zusatz.segmentShiftPct != null && Math.abs(zusatz.segmentShiftPct) >= 12) pts -= 1
-  }
-  if (zusatz.backlogWachstumPct != null && zusatz.backlogWachstumPct <= -8) pts -= 1
-
-  const strukturRisiko = (zusatz.pensionVerpflichtungMio ?? 0) + (zusatz.leaseVerpflichtungMio ?? 0)
-  if (strukturRisiko > 5_000) pts -= 2
-  else if (strukturRisiko > 2_000) pts -= 1
-
-  if (zusatz.shortFloatPct != null && zusatz.shortFloatPct >= 12) pts -= 2
-  else if (zusatz.shortFloatPct != null && zusatz.shortFloatPct >= 8) pts -= 1
-
-  if (zusatz.insiderNettoRichtung === 'verkauf') pts -= 2
-  else if (zusatz.insiderNettoRichtung === 'kauf') pts += 1
-
-  if (zusatz.sbcVsFcfPct != null) {
-    if (zusatz.sbcVsFcfPct >= 28) pts -= 2
-    else if (zusatz.sbcVsFcfPct >= 16) pts -= 1
-  }
-
-  if (zusatz.dsoTrendDelta != null && zusatz.dsoTrendDelta >= 8) pts -= 1
-  if (zusatz.dioTrendDelta != null && zusatz.dioTrendDelta >= 12) pts -= 1
-  if (zusatz.dpoTrendDelta != null && zusatz.dpoTrendDelta <= -10) pts -= 1
-
-  return clamp(pts, -10, 5)
+  return clamp(Math.round(pts), 0, 10)
 }
 
 function berechneDrawdownBonus(
   drawdown52wPct: number | null | undefined,
   mantraScore: number,
+  histBonus: number,
 ): number {
   if (drawdown52wPct == null || mantraScore < 28) return 0
-  if (drawdown52wPct >= 28) return 5
-  if (drawdown52wPct >= 18) return 3
-  if (drawdown52wPct >= 12) return 1
-  return 0
+  // Wenn hist. Bewertung schon stark belohnt: Drawdown nur noch schwach (Anti-Doppelzählung)
+  const cap = histBonus >= 6 ? 1 : 3
+  let bonus = 0
+  if (drawdown52wPct >= 28) bonus = 3
+  else if (drawdown52wPct >= 18) bonus = 2
+  else if (drawdown52wPct >= 12) bonus = 1
+  return Math.min(bonus, cap)
 }
 
 export function berechneInsiderPunkte(kaeufe: InsiderKauf[]): number {
@@ -373,27 +329,52 @@ export function berechneNachkaufScore(
   const bewertungsScore = berechnePersonalisierteBewertung(signale, position)
 
   // --- Historischer Bonus/Malus (–10 bis +10) ---
-  // Vergleich des aktuellen KGVs mit dem historischen 5-Jahres-Median.
-  // Günstig vs. eigener Geschichte = Bonus; teuer = Malus.
+  // Entweder KGV-Perzentil ODER Median-Premium — nicht additiv (Anti-Doppelzählung).
   let historischerBewertungsBonus = 0
-  const pd = signale.premiumDiscountPct
-  if (pd !== null) {
-    if (pd <= -20) historischerBewertungsBonus = 10       // ≥20 % Discount
-    else if (pd <= -10) historischerBewertungsBonus = 6   // 10–20 % Discount
-    else if (pd <= -5) historischerBewertungsBonus = 3    // 5–10 % Discount
-    else if (pd <= 5) historischerBewertungsBonus = 0     // Nahe Median
-    else if (pd <= 15) historischerBewertungsBonus = -4   // 5–15 % Premium
-    else if (pd <= 25) historischerBewertungsBonus = -7   // 15–25 % Premium
-    else historischerBewertungsBonus = -10                // >25 % Premium
-  } else if (position?.historischerMedianPe || position?.historischerMedianFcfYield || signale.historischerMedianPe) {
-    // Historischer Median vorhanden, aber aktuelle Daten fehlen → neutral
-    historischerBewertungsBonus = 0
+  const peP = signale.pePerzentil5y ?? signale.pePerzentil10y ?? zusatz?.pePerzentil5y ?? null
+  if (peP != null) {
+    if (peP <= 15) historischerBewertungsBonus = 10
+    else if (peP <= 25) historischerBewertungsBonus = 7
+    else if (peP <= 35) historischerBewertungsBonus = 4
+    else if (peP <= 55) historischerBewertungsBonus = 0
+    else if (peP <= 70) historischerBewertungsBonus = -4
+    else if (peP <= 85) historischerBewertungsBonus = -7
+    else historischerBewertungsBonus = -10
+  } else {
+    const pd = signale.premiumDiscountPct
+    if (pd !== null) {
+      if (pd <= -20) historischerBewertungsBonus = 10
+      else if (pd <= -10) historischerBewertungsBonus = 6
+      else if (pd <= -5) historischerBewertungsBonus = 3
+      else if (pd <= 5) historischerBewertungsBonus = 0
+      else if (pd <= 15) historischerBewertungsBonus = -4
+      else if (pd <= 25) historischerBewertungsBonus = -7
+      else historischerBewertungsBonus = -10
+    }
   }
 
   const momentumPunkte = berechneMomentumPunkte(zusatz)
-  const strukturPunkte = berechneStrukturPunkte(zusatz)
-  const drawdownBonus = berechneDrawdownBonus(signale.drawdown52wPct, mantraScore)
+  const strukturRaw = berechneStrukturMitAufschluesselung(zusatz)
+  let strukturPunkte = strukturRaw.punkte
+  let strukturSignale = strukturRaw.zeilen
   const insiderPunkte = berechneInsiderPunkte(insiderKaeufe)
+  // Form-4-Insider und Netto-Richtung nicht doppelt zählen
+  if (insiderPunkte > 0) {
+    const insiderZeile = strukturSignale.find((z) => z.id === 'insider')
+    if (insiderZeile && insiderZeile.delta !== 0) {
+      strukturPunkte -= insiderZeile.delta
+      strukturSignale = strukturSignale.map((z) =>
+        z.id === 'insider' ? { ...z, delta: 0, wert: `${z.wert} (via Form-4)` } : z,
+      )
+      strukturPunkte = clamp(strukturPunkte, -12, 6)
+    }
+  }
+
+  const drawdownBonus = berechneDrawdownBonus(
+    signale.drawdown52wPct,
+    mantraScore,
+    historischerBewertungsBonus,
+  )
   const kauftriggerBonus = berechneKauftriggerBoost(opts.kaufTriggerAusgeloest ?? false)
 
   const tageBis =
@@ -458,6 +439,7 @@ export function berechneNachkaufScore(
     gesamt,
     datenSignaleDelta,
     datenVollstaendigkeitPct,
+    strukturSignale,
     qualitaetsRang: 0,
     timingRang: 0,
     kombiniertRang: 0,
@@ -560,20 +542,29 @@ export function leiteNachkaufAmpelAb(
 const SPARPLAN_BUDGET_EUR = 500
 
 /**
- * Verteilt das Monatsbudget proportional auf Grün-Kandidaten.
+ * Verteilt das Monatsbudget proportional auf Kandidaten (regelbasiert).
  * - Klumpenrisiko-Positionen erhalten max. 20 % des Budgets.
  * - Risikoklasse begrenzt den Maximalbetrag (konservativ 350 €, moderat 200 €, spekulativ 100 €).
  * - Trigger-Positionen erhalten einen 20 % Bonus-Gewichtung.
  * - Mindestposten: 100 € (sonst weggelassen).
+ * - Bewertungsrabatt wirkt nur schwach (max. +5 %), da Score schon Bewertung enthält.
  */
-function berechneSparplanAllokation(gruenKandidaten: NachkaufScanEintrag[]): SparplanPosten[] {
-  if (gruenKandidaten.length === 0) return []
+export function berechneRegelAllokation(
+  kandidaten: NachkaufScanEintrag[],
+  budgetEur: number,
+): SparplanPosten[] {
+  if (kandidaten.length === 0 || budgetEur < 100) return []
 
-  const gewichte = gruenKandidaten.map((e) => {
+  const MAX_KLUMPEN = budgetEur * 0.2
+  const MIN_POS = 100
+
+  const gewichte = kandidaten.map((e) => {
     let g = e.score
     if (e.kaufTriggerAusgeloest) g *= 1.2
     if (e.klumpenrisiko) g *= 0.5
     g *= disziplinSparplanFaktor(e)
+    const disc = e.bewertung.premiumDiscountPct
+    if (disc != null && disc < 0) g *= 1 + Math.min(0.05, Math.abs(disc) / 400)
     return { eintrag: e, gewicht: g }
   })
 
@@ -581,43 +572,54 @@ function berechneSparplanAllokation(gruenKandidaten: NachkaufScanEintrag[]): Spa
   if (summeGewichte <= 0) return []
 
   const posten: SparplanPosten[] = []
-  let restBudget = SPARPLAN_BUDGET_EUR
-  const maxProKlumpen = SPARPLAN_BUDGET_EUR * 0.2
+  let restBudget = budgetEur
 
   for (const { eintrag, gewicht } of gewichte) {
     const risiko = risikoKlasseVon(eintrag.isin)
     const maxBetrag = eintrag.klumpenrisiko
-      ? Math.min(SPARPLAN_RISIKO_CAP[risiko], maxProKlumpen)
-      : SPARPLAN_RISIKO_CAP[risiko]
+      ? Math.min(SPARPLAN_RISIKO_CAP[risiko], MAX_KLUMPEN)
+      : Math.min(SPARPLAN_RISIKO_CAP[risiko], budgetEur)
 
-    let betrag = (gewicht / summeGewichte) * SPARPLAN_BUDGET_EUR
+    let betrag = (gewicht / summeGewichte) * budgetEur
     betrag = Math.min(betrag, maxBetrag)
     betrag = Math.round(betrag / 10) * 10
 
-    if (betrag < 100) continue
+    if (betrag < MIN_POS) continue
     restBudget -= betrag
 
-    let begruendung = `Score ${eintrag.score}/100 · Risiko: ${risiko}`
-    if (eintrag.kaufTriggerAusgeloest) begruendung += ' · Kaufzone ausgelöst'
-    if (eintrag.klumpenrisiko) begruendung += ' · Klumpenrisiko-Cap'
-    if (eintrag.disziplinHinweis) begruendung += ' · Disziplin: reduziert'
+    const teile: string[] = [`Score ${eintrag.score}`, `Risiko: ${risiko}`]
+    if (eintrag.kaufTriggerAusgeloest) teile.push('Kaufzone')
+    if (eintrag.klumpenrisiko) teile.push('Klumpen-Cap')
+    if (eintrag.disziplinHinweis) teile.push('Disziplin')
 
-    posten.push({ ticker: eintrag.ticker, name: eintrag.name, betragEur: betrag, begruendung })
+    posten.push({
+      ticker: eintrag.ticker,
+      name: eintrag.name,
+      betragEur: betrag,
+      begruendung: teile.join(' · '),
+    })
   }
 
-  // Restbetrag dem besten konservativen Kandidaten ohne Klumpen-Cap gutschreiben
-  if (restBudget >= 100 && posten.length > 0) {
-    const konservativIdx = gruenKandidaten.findIndex(
+  if (restBudget >= MIN_POS && posten.length > 0) {
+    const konservativIdx = kandidaten.findIndex(
       (e, i) => posten[i] && risikoKlasseVon(e.isin) === 'konservativ' && !e.klumpenrisiko,
     )
     const target = konservativIdx >= 0 ? konservativIdx : 0
     if (posten[target]) {
-      const risiko = risikoKlasseVon(gruenKandidaten[target]!.isin)
-      posten[target]!.betragEur = Math.min(posten[target]!.betragEur + restBudget, SPARPLAN_RISIKO_CAP[risiko])
+      const risiko = risikoKlasseVon(kandidaten[target]!.isin)
+      posten[target]!.betragEur = Math.min(
+        posten[target]!.betragEur + restBudget,
+        Math.min(SPARPLAN_RISIKO_CAP[risiko], budgetEur),
+      )
     }
   }
 
   return posten
+}
+
+/** @deprecated Alias — nutze berechneRegelAllokation. */
+function berechneSparplanAllokation(gruenKandidaten: NachkaufScanEintrag[]): SparplanPosten[] {
+  return berechneRegelAllokation(gruenKandidaten, SPARPLAN_BUDGET_EUR)
 }
 
 // ---------------------------------------------------------------------------

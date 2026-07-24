@@ -64,6 +64,8 @@ export type StockanalysisJahresForecastEintrag = {
   freeCashFlowUsd: number | null
   grossProfitUsd: number | null
   eps: number | null
+  /** GAAP Diluted EPS (wenn StockAnalysis beide liefert). */
+  gaapEps: number | null
   adjustedEps: number | null
   grossMarginPct: number | null
   revenueGrowthPct: number | null
@@ -286,6 +288,7 @@ function baueJahresreiheAusAnnual(block: string): StockanalysisJahresForecastEin
       freeCashFlowUsd,
       grossProfitUsd,
       eps: adjEps ?? epsVal,
+      gaapEps: epsVal,
       adjustedEps: adjEps,
       grossMarginPct,
       revenueGrowthPct,
@@ -358,6 +361,7 @@ function leererSaJahresEintrag(jahr: number): StockanalysisJahresForecastEintrag
     freeCashFlowUsd: null,
     grossProfitUsd: null,
     eps: null,
+    gaapEps: null,
     adjustedEps: null,
     grossMarginPct: null,
     revenueGrowthPct: null,
@@ -398,6 +402,7 @@ function ergaenzeJahresreiheAusForecastTriples(
     }
     if (row.eps == null && eps?.this != null) {
       row.eps = eps.this
+      row.gaapEps = eps.this
       row.adjustedEps = eps.this
       if (Number.isFinite(eps.growth)) row.epsGrowthPct = eps.growth
     }

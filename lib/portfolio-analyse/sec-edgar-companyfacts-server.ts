@@ -8,7 +8,7 @@ import { padCik, secFetch } from '@/lib/portfolio-analyse/sec-edgar-common-serve
 
 const CACHE_MS = 24 * 60 * 60 * 1000
 /** Cache-Invalidierung bei Logik-Änderungen (Jahr aus period end, nicht fy). */
-export const SEC_COMPANYFACTS_CACHE_VERSION = 2
+export const SEC_COMPANYFACTS_CACHE_VERSION = 3
 const MIN_JAHRE = 10
 const MAX_JAHRE = 16
 
@@ -35,7 +35,14 @@ type CompanyFactsJson = {
 const TAG_KETTEN: Record<
   Exclude<
     keyof SecKennzahlenHistorie,
-    'aeltestesJahr' | 'juengstesJahr' | 'anzahlJahre' | 'ebitMargePct' | 'nettoMargePct' | 'rndAnteilPct' | 'capexAnteilPct' | 'fcfMio'
+    | 'aeltestesJahr'
+    | 'juengstesJahr'
+    | 'anzahlJahre'
+    | 'ebitMargePct'
+    | 'nettoMargePct'
+    | 'rndAnteilPct'
+    | 'capexAnteilPct'
+    | 'fcfMio'
   >,
   string[]
 > = {
@@ -46,7 +53,10 @@ const TAG_KETTEN: Record<
     'RevenueFromContractWithCustomerIncludingAssessedTax',
   ],
   nettogewinnMio: ['NetIncomeLoss', 'ProfitLoss'],
-  ebitMio: ['OperatingIncomeLoss', 'IncomeLossFromContinuingOperationsBeforeIncomeTaxesExtraordinaryItemsNoncontrollingInterest'],
+  ebitMio: [
+    'OperatingIncomeLoss',
+    'IncomeLossFromContinuingOperationsBeforeIncomeTaxesExtraordinaryItemsNoncontrollingInterest',
+  ],
   rndMio: ['ResearchAndDevelopmentExpense', 'ResearchAndDevelopmentExpenseExcludingAcquiredInProcessCost'],
   capexMio: [
     'PaymentsToAcquirePropertyPlantAndEquipment',
@@ -55,8 +65,34 @@ const TAG_KETTEN: Record<
   ],
   ocfMio: ['NetCashProvidedByUsedInOperatingActivities'],
   assetsMio: ['Assets'],
-  eigenkapitalMio: ['StockholdersEquity', 'StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest'],
-  langfristigeSchuldenMio: ['LongTermDebtNoncurrent', 'LongTermDebt', 'LongTermDebtAndCapitalLeaseObligations'],
+  eigenkapitalMio: [
+    'StockholdersEquity',
+    'StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest',
+  ],
+  langfristigeSchuldenMio: [
+    'LongTermDebtNoncurrent',
+    'LongTermDebt',
+    'LongTermDebtAndCapitalLeaseObligations',
+  ],
+  zinsaufwandMio: [
+    'InterestExpense',
+    'InterestExpenseDebt',
+    'InterestAndDebtExpense',
+    'InterestCostsIncurred',
+  ],
+  kurzfristigeSchuldenMio: [
+    'LongTermDebtCurrent',
+    'LongTermDebtAndCapitalLeaseObligationsCurrent',
+    'ShortTermBorrowings',
+    'DebtCurrent',
+    'CommercialPaper',
+  ],
+  verwässerteAktienMio: [
+    'WeightedAverageNumberOfDilutedSharesOutstanding',
+    'WeightedAverageNumberOfShareOutstandingBasicAndDiluted',
+    'CommonStockSharesOutstanding',
+  ],
+  epsGaap: ['EarningsPerShareDiluted', 'EarningsPerShareBasicAndDiluted', 'EarningsPerShareBasic'],
   mitarbeiter: ['EntityNumberOfEmployees'],
   goodwillMio: ['Goodwill'],
   abschreibungMio: ['DepreciationDepletionAndAmortization', 'DepreciationAndAmortization'],
@@ -234,6 +270,13 @@ export async function ladeSecCompanyFacts(cik: number): Promise<SecKennzahlenHis
     const goodwill = extrahiereJahresreihe(facts, TAG_KETTEN.goodwillMio, { mio: true })
     const da = extrahiereJahresreihe(facts, TAG_KETTEN.abschreibungMio, { mio: true })
     const buyback = extrahiereJahresreihe(facts, TAG_KETTEN.aktienrueckkaufMio, { mio: true, allowNegative: true })
+    const zins = extrahiereJahresreihe(facts, TAG_KETTEN.zinsaufwandMio, { mio: true, allowNegative: true })
+    const kurzSchuld = extrahiereJahresreihe(facts, TAG_KETTEN.kurzfristigeSchuldenMio, {
+      mio: true,
+      allowNegative: true,
+    })
+    const shares = extrahiereJahresreihe(facts, TAG_KETTEN.verwässerteAktienMio, { mio: true })
+    const epsGaap = extrahiereJahresreihe(facts, TAG_KETTEN.epsGaap, { mio: false })
 
     const rndAnteil = berechneQuotient(rnd, umsatz)
     const capexAnteil = berechneQuotient(capex, umsatz)
@@ -248,7 +291,7 @@ export async function ladeSecCompanyFacts(cik: number): Promise<SecKennzahlenHis
     const nettoMarge = berechneQuotient(netto, umsatz)
 
     const alleJahre = new Set<number>()
-    for (const m of [umsatz, netto, ebit, rnd, capex, ocf, ma]) {
+    for (const m of [umsatz, netto, ebit, rnd, capex, ocf, ma, zins, kurzSchuld, shares, epsGaap]) {
       for (const j of m.keys()) alleJahre.add(j)
     }
     if (alleJahre.size < 3) {
@@ -272,6 +315,10 @@ export async function ladeSecCompanyFacts(cik: number): Promise<SecKennzahlenHis
       assetsMio: mapZuArray(assets),
       eigenkapitalMio: mapZuArray(ek),
       langfristigeSchuldenMio: mapZuArray(schuld),
+      zinsaufwandMio: mapZuArray(zins),
+      kurzfristigeSchuldenMio: mapZuArray(kurzSchuld),
+      verwässerteAktienMio: mapZuArray(shares),
+      epsGaap: mapZuArray(epsGaap),
       mitarbeiter: mapZuArray(ma),
       goodwillMio: mapZuArray(goodwill),
       abschreibungMio: mapZuArray(da),

@@ -117,8 +117,8 @@ export async function syncNachkaufWatchlistZurCloud(
 /**
  * Effektive Radar-Kandidaten: feste Whitelist + Watchlist-Titel aus der Cloud.
  * Watchlist-Kandidaten haben keine kuratierten Kauf-Trigger/Mediane und werden
- * als 'moderat' (≤ 200 €/Monat) eingestuft; historische Mediane kommen dann
- * automatisch aus Macrotrends. Duplikate zur Whitelist werden ignoriert.
+ * als 'spekulativ' (≤ 100 €/Monat) eingestuft — Neukauf mit härterer Hürde;
+ * historische Mediane kommen dann automatisch aus Macrotrends. Duplikate zur Whitelist werden ignoriert.
  */
 export async function ladeNachkaufKandidaten(): Promise<WhitelistPosition[]> {
   const whitelist: WhitelistPosition[] = NACHKAUF_RADAR_WHITELIST.map((p) => ({
@@ -138,7 +138,7 @@ export async function ladeNachkaufKandidaten(): Promise<WhitelistPosition[]> {
       quelle: 'watchlist' as const,
       symbolYahoo: w.symbolYahoo,
       symbolCandidates: w.symbolCandidates,
-      risikoKlasse: 'moderat' as const,
+      risikoKlasse: 'spekulativ' as const,
     }))
 
   return [...whitelist, ...zusatz]

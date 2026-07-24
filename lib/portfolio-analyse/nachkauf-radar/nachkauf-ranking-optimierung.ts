@@ -96,7 +96,7 @@ export function berechnePersonalisierteBewertung(
 }
 
 export function berechneKauftriggerBoost(ausgeloest: boolean): number {
-  return ausgeloest ? 7 : 0
+  return ausgeloest ? 5 : 0
 }
 
 export function berechneKlumpenMalus(klumpenrisiko: boolean, depotGewichtPct: number | null): number {
@@ -188,7 +188,7 @@ export function berechneSektorDiversitaetsMalus(
 
 /** Qualität = Mantra + operative Stärke (0–100). */
 export function berechneQualitaetsRang(detail: NachkaufScoreDetail): number {
-  const momentumExtra = Math.max(0, detail.momentumPunkte - 6)
+  const momentumExtra = Math.max(0, detail.momentumPunkte - 5)
   const strukturPos = Math.max(0, detail.strukturPunkte)
   const roh =
     detail.mantraScore * 1.6 +
@@ -199,26 +199,26 @@ export function berechneQualitaetsRang(detail: NachkaufScoreDetail): number {
   return clamp(Math.round(roh), 0, 100)
 }
 
-/** Timing = Bewertung + Einstiegsfenster (0–100). */
+/** Timing = Bewertung + Einstiegsfenster (0–100). Kein Roh-Drawdown — der steckt schon in drawdownBonus. */
 export function berechneTimingRang(
   detail: NachkaufScoreDetail,
-  signale: Pick<NachkaufBewertungsSignale, 'drawdown52wPct'>,
+  _signale: Pick<NachkaufBewertungsSignale, 'drawdown52wPct'>,
 ): number {
   const roh =
     detail.bewertungsScore * 2.2 +
-    detail.historischerBewertungsBonus * 3 +
-    detail.drawdownBonus * 4 +
-    detail.kauftriggerBonus * 3 +
-    detail.regimeDelta * 2 +
+    detail.historischerBewertungsBonus * 2.5 +
+    detail.drawdownBonus * 3 +
+    detail.kauftriggerBonus * 2.5 +
+    detail.regimeDelta * 1.5 +
     detail.scoreKalibrierung * 2 +
-    Math.min(8, (signale.drawdown52wPct ?? 0) * 0.25) +
     detail.earningsMalus * 1.5 +
     detail.deepResearchMalus * 0.8
   return clamp(Math.round(roh), 0, 100)
 }
 
+/** Langfrist-Bias: Qualität wiegt etwas stärker als Timing. */
 export function berechneKombiniertRang(qualitaet: number, timing: number): number {
-  return clamp(Math.round(qualitaet * 0.42 + timing * 0.58), 0, 100)
+  return clamp(Math.round(qualitaet * 0.55 + timing * 0.45), 0, 100)
 }
 
 export function gruenSchwelle(kaufTriggerAusgeloest: boolean): number {

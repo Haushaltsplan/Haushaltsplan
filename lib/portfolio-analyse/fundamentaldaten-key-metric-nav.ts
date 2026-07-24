@@ -13,6 +13,11 @@ const NAV: Record<string, KeyMetricNavZiel> = {
   shares_out: { tab: 'finanzdaten', zeileId: 'aktien' },
   net_debt: { tab: 'finanzdaten', zeileId: 'nettoverschuldung' },
   net_debt_ebitda: { tab: 'bewertung', zeileId: 'net_debt_ebitda' },
+  aktien_verwaesserung: { tab: 'finanzdaten', zeileId: 'aktien' },
+  fcf_conversion: { tab: 'finanzdaten', zeileId: 'fcf' },
+  rule_of_40: { tab: 'finanzdaten', zeileId: 'umsatz' },
+  nrr: { tab: 'finanzdaten', zeileId: 'umsatz' },
+  interest_coverage: { tab: 'finanzdaten', zeileId: 'ebit' },
 
   ltm_brutto: { tab: 'finanzdaten', zeileId: 'bruttomarge' },
   ltm_ebit: { tab: 'finanzdaten', zeileId: 'ebit_marge' },

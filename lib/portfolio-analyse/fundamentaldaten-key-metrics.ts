@@ -365,6 +365,30 @@ export function baueKeyMetrics(
       wert: pctRaw(w?.payoutPct),
       gruppe: 'bewertung_ltm',
     },
+    {
+      id: 'fcf_conversion',
+      label: 'FCF-Conversion',
+      wert: pctRaw(w?.fcfConversion),
+      gruppe: 'effizienz',
+    },
+    {
+      id: 'aktien_verwaesserung',
+      label: 'Aktien-Verwässerung p.a.',
+      wert: pctSigned(w?.aktienVerwaesserungJaehrlichPct),
+      gruppe: 'kapitalstruktur',
+    },
+    {
+      id: 'rule_of_40',
+      label: 'Rule of 40',
+      wert: w?.ruleOf40 != null ? zahl(w.ruleOf40) : '–',
+      gruppe: 'wachstum',
+    },
+    {
+      id: 'nrr',
+      label: 'NRR (Net Retention)',
+      wert: pctRaw(w?.nrrPct),
+      gruppe: 'wachstum',
+    },
   )
 
   return out

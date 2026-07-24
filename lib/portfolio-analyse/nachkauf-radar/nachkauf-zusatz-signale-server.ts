@@ -9,6 +9,11 @@ import { ladeCapitalAllocation, type CapitalAllocationBewertung } from '@/lib/po
 import { ladeEarningsBeatMissHistorie } from '@/lib/portfolio-analyse/earnings-beat-miss-historie-server'
 import type { FundamentaldatenPaket } from '@/lib/portfolio-analyse/fundamentaldaten-types'
 import { FUNDAMENTAL_FY0E_KEY, FUNDAMENTAL_FY1E_KEY } from '@/lib/portfolio-analyse/fundamentaldaten-types'
+import { ladeUnitEconomics } from '@/lib/portfolio-analyse/unit-economics-server'
+import { ladeGaapAdjEpsLuecke } from '@/lib/portfolio-analyse/stockanalysis-gaap-adj-eps-server'
+import { ladeSecCompanyFacts } from '@/lib/portfolio-analyse/sec-edgar-companyfacts-server'
+import { cikFuerTicker } from '@/lib/portfolio-analyse/sec-edgar-common-server'
+import { berechneQualitaetSignaleAusPaket } from './nachkauf-qualitaet-signale'
 import type { NachkaufBewertungsSignale } from './nachkauf-radar-types'
 import type { NachkaufPrognoseProfil } from './nachkauf-prognose-server'
 import { extrahierePrognoseProfil } from './nachkauf-prognose-server'
@@ -80,6 +85,25 @@ export type NachkaufZusatzSignale = {
   dpoTrendDelta: number | null
   /** Aktienrückkäufe letztes FY (Mio. USD, typ. negativ). */
   aktienrueckkaufMio: number | null
+  /** Punkt 2: CAGR ausstehende Aktien (positiv = Verwässerung). */
+  aktienVerwaesserungJaehrlichPct: number | null
+  /** YoY Shares %. */
+  aktienYoYPct: number | null
+  /** Punkt 3: FCF/Nettogewinn %. */
+  fcfConversionPct: number | null
+  fcfConversion3yPct: number | null
+  /** Punkt 4: NRR % / Rule of 40. */
+  nrrPct: number | null
+  ruleOf40: number | null
+  /** Punkt 5: Zinsdeckung + Refi-Druck. */
+  interestCoverage: number | null
+  kurzfristSchuldenAnteilPct: number | null
+  /** Punkt 6: KGV-Perzentil eigene Historie. */
+  pePerzentil5y: number | null
+  pePerzentil10y: number | null
+  /** Punkt 7: GAAP vs Adjusted / Cash-EPS-Lücke. */
+  gaapAdjEpsLueckePct: number | null
+  cashEpsVsGaapLueckePct: number | null
   /** 0–100: wie viele Kern-Signale befüllt sind. */
   datenVollstaendigkeitPct: number
 }
@@ -228,6 +252,8 @@ export function berechneDatenVollstaendigkeit(
     zusatz.insiderNettoRichtung != null || zusatz.insiderOwnershipPct != null,
     zusatz.pensionVerpflichtungMio != null || zusatz.leaseVerpflichtungMio != null,
     zusatz.prognoseProfil != null && zusatz.prognoseProfil.anzahlJahre >= 2,
+    zusatz.aktienVerwaesserungJaehrlichPct != null || zusatz.fcfConversionPct != null,
+    zusatz.interestCoverage != null || zusatz.pePerzentil5y != null,
   ]
   return Math.round((checks.filter(Boolean).length / checks.length) * 100)
 }
@@ -287,6 +313,52 @@ export async function ladeNachkaufZusatzSignale(opts: {
   const holders = erw?.holders
   const capAlloc = capAllocAusPaket(capital)
 
+  const [unitEc, gaapAdj, secKennz] = await Promise.all([
+    ladeUnitEconomics(sym).catch(() => null),
+    ladeGaapAdjEpsLuecke({
+      symbolYahoo: sym,
+      isin: opts.isin,
+      firmenname: opts.paket.firmenname,
+    }).catch(() => null),
+    (async () => {
+      const bestehend = erw?.secSegmentHistorie?.kennzahlen
+      if (bestehend?.zinsaufwandMio?.length || bestehend?.kurzfristigeSchuldenMio?.length) {
+        return bestehend
+      }
+      const cik = await cikFuerTicker(sym).catch(() => null)
+      if (!cik) return null
+      return ladeSecCompanyFacts(cik).catch(() => null)
+    })(),
+  ])
+
+  const kennz = secKennz ?? erw?.secSegmentHistorie?.kennzahlen
+  let kurzfristSchuldenAnteilPct: number | null = null
+  let interestCoverageSec: number | null = null
+  if (kennz) {
+    const lastKurz = kennz.kurzfristigeSchuldenMio[kennz.kurzfristigeSchuldenMio.length - 1]
+    const lastLt = kennz.langfristigeSchuldenMio[kennz.langfristigeSchuldenMio.length - 1]
+    const lastZins = kennz.zinsaufwandMio[kennz.zinsaufwandMio.length - 1]
+    const lastEbit = kennz.ebitMio[kennz.ebitMio.length - 1]
+    if (lastKurz && lastLt && lastLt.wert > 0) {
+      const total = lastLt.wert + lastKurz.wert
+      if (total > 0) kurzfristSchuldenAnteilPct = Math.round((lastKurz.wert / total) * 1000) / 10
+    } else if (lastKurz && lastLt == null && lastKurz.wert > 0) {
+      kurzfristSchuldenAnteilPct = 100
+    }
+    if (lastEbit && lastZins && lastZins.wert > 0) {
+      interestCoverageSec = Math.round((lastEbit.wert / Math.abs(lastZins.wert)) * 100) / 100
+    }
+  }
+
+  const qualitaet = berechneQualitaetSignaleAusPaket(opts.paket, {
+    nrrPct: unitEc?.nrrPct ?? null,
+    interestCoverage: interestCoverageSec,
+    kurzfristSchuldenAnteilPct,
+    gaapAdjEpsLueckePct: gaapAdj?.lueckePct ?? null,
+    gaapEps: gaapAdj?.gaapEps ?? kennz?.epsGaap[kennz.epsGaap.length - 1]?.wert ?? null,
+    adjustedEps: gaapAdj?.adjustedEps ?? null,
+  })
+
   const partial: Omit<NachkaufZusatzSignale, 'datenVollstaendigkeitPct'> = {
     epsBeatRatePct,
     epsBeatRate12Pct,
@@ -335,6 +407,18 @@ export async function ladeNachkaufZusatzSignale(opts: {
     dioTrendDelta: trendDeltaAusZeile(opts.paket, 'dio'),
     dpoTrendDelta: trendDeltaAusZeile(opts.paket, 'dpo'),
     aktienrueckkaufMio: letzterHistorischerWert(opts.paket, 'aktienrueckkauf'),
+    aktienVerwaesserungJaehrlichPct: qualitaet.aktienVerwaesserungJaehrlichPct,
+    aktienYoYPct: qualitaet.aktienYoYPct,
+    fcfConversionPct: qualitaet.fcfConversionPct,
+    fcfConversion3yPct: qualitaet.fcfConversion3yPct,
+    nrrPct: qualitaet.nrrPct,
+    ruleOf40: qualitaet.ruleOf40,
+    interestCoverage: qualitaet.interestCoverage,
+    kurzfristSchuldenAnteilPct: qualitaet.kurzfristSchuldenAnteilPct,
+    pePerzentil5y: qualitaet.pePerzentil5y,
+    pePerzentil10y: qualitaet.pePerzentil10y,
+    gaapAdjEpsLueckePct: qualitaet.gaapAdjEpsLueckePct,
+    cashEpsVsGaapLueckePct: qualitaet.cashEpsVsGaapLueckePct,
   }
 
   return {
@@ -378,6 +462,28 @@ export function formatZusatzSignaleKurz(z: NachkaufZusatzSignale): string {
   }
   if (z.sbcVsFcfPct != null && z.sbcVsFcfPct >= 18) {
     teile.push(`SBC/FCF ${z.sbcVsFcfPct.toFixed(0)} %`)
+  }
+  if (z.aktienVerwaesserungJaehrlichPct != null && z.aktienVerwaesserungJaehrlichPct > 1) {
+    teile.push(`Verwässerung ${z.aktienVerwaesserungJaehrlichPct.toFixed(1)} % p.a.`)
+  } else if (z.aktienYoYPct != null && z.aktienYoYPct < -1) {
+    teile.push(`Shares ${z.aktienYoYPct.toFixed(1)} % YoY`)
+  }
+  if (z.fcfConversionPct != null) {
+    teile.push(`FCF-Conv. ${z.fcfConversionPct.toFixed(0)} %`)
+  }
+  if (z.nrrPct != null) teile.push(`NRR ${z.nrrPct.toFixed(0)} %`)
+  else if (z.ruleOf40 != null) teile.push(`Rule-of-40 ${z.ruleOf40.toFixed(0)}`)
+  if (z.interestCoverage != null && z.interestCoverage < 8) {
+    teile.push(`Zinsdeckung ${z.interestCoverage.toFixed(1)}×`)
+  }
+  if (z.kurzfristSchuldenAnteilPct != null && z.kurzfristSchuldenAnteilPct >= 25) {
+    teile.push(`Kurzfrist-Debt ${z.kurzfristSchuldenAnteilPct.toFixed(0)} %`)
+  }
+  if (z.pePerzentil5y != null) teile.push(`KGV-Perz.5J ${z.pePerzentil5y.toFixed(0)}`)
+  if (z.gaapAdjEpsLueckePct != null && z.gaapAdjEpsLueckePct >= 12) {
+    teile.push(`Adj-EPS-Lücke +${z.gaapAdjEpsLueckePct.toFixed(0)} %`)
+  } else if (z.cashEpsVsGaapLueckePct != null && z.cashEpsVsGaapLueckePct <= -25) {
+    teile.push(`Cash-EPS unter GAAP ${z.cashEpsVsGaapLueckePct.toFixed(0)} %`)
   }
   if (z.dsoTrendDelta != null && z.dsoTrendDelta >= 8) {
     teile.push(`DSO +${z.dsoTrendDelta.toFixed(0)} Tage`)

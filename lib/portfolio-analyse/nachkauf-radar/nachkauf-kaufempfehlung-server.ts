@@ -13,13 +13,17 @@ import {
   resolveCoachProviderFromMode,
   runCoachCompletion,
 } from '@/lib/ki-coach-backend'
-import { NACHKAUF_RADAR_WHITELIST, type RisikoKlasse } from './nachkauf-radar-whitelist'
+import {
+  istWhitelistIsin,
+  risikoKlasseFuerIsin,
+  type RisikoKlasse,
+} from './nachkauf-radar-whitelist'
 import type { NachkaufScanEintrag, MonatsEmpfehlung, SparplanPosten, VerkaufPosten } from './nachkauf-radar-types'
 import {
   berechneBasisVerkaufAllokation,
   filterVerkaufKandidaten,
 } from './nachkauf-trim-signal'
-import { disziplinSparplanFaktor } from './nachkauf-disziplin-server'
+import { berechneRegelAllokation } from './nachkauf-radar-score'
 
 const DEFAULT_BUDGET_EUR = 500
 /**
@@ -31,6 +35,8 @@ export const MIN_SCORE_KAUF_GRUEN = 76
 export const MIN_SCORE_KAUF_TRIGGER = 74
 /** Score-Fallback ohne Ampel Grün (selten, hohe Hürde). */
 export const MIN_SCORE_KAUF_STANDARD = 82
+/** Watchlist-Neukauf: noch höhere Hürde (keine kuratierte Qualitätshistorie). */
+export const MIN_SCORE_WATCHLIST_NEUKAUF = 84
 
 /** Maximale monatliche Investition je Risikoklasse. */
 const RISIKO_CAP: Record<RisikoKlasse, number> = {
@@ -57,10 +63,14 @@ function hatAktivesVerkaufSignal(e: NachkaufScanEintrag): boolean {
 
 /**
  * Stufe C — strenger als Scan-Ampel: Grün allein reicht nicht (Score-Floor), Deep Research Pflicht.
+ * Watchlist-Neukäufe: Score ≥ 84 + Deep Research (kein Gelb-Kaufzone-Shortcut).
  */
 export function istKiKaufKandidat(e: NachkaufScanEintrag): boolean {
   if (e.ampel === 'rot' || e.ampel === 'teuer' || hatAktivesVerkaufSignal(e) || !e.tiefenAnalyse) {
     return false
+  }
+  if (istWatchlistKandidat(e.isin)) {
+    return e.score >= MIN_SCORE_WATCHLIST_NEUKAUF
   }
   if (e.ampel === 'gruen' && e.score >= MIN_SCORE_KAUF_GRUEN) return true
   if (
@@ -75,7 +85,8 @@ export function istKiKaufKandidat(e: NachkaufScanEintrag): boolean {
 
 function kaufSchwellenText(): string {
   return (
-    `Grün + Score ≥ ${MIN_SCORE_KAUF_GRUEN}, oder Kaufzone + Gelb + Score ≥ ${MIN_SCORE_KAUF_TRIGGER}` +
+    `Whitelist: Grün + Score ≥ ${MIN_SCORE_KAUF_GRUEN}, oder Kaufzone + Gelb + Score ≥ ${MIN_SCORE_KAUF_TRIGGER}` +
+    `; Watchlist-Neukauf: Score ≥ ${MIN_SCORE_WATCHLIST_NEUKAUF}` +
     ` (jeweils mit Deep Research)`
   )
 }
@@ -83,10 +94,24 @@ function kaufSchwellenText(): string {
 function baueSparHinweis(alle: NachkaufScanEintrag[], budgetEur: number): string {
   const gruenOhneDr = alle.filter((e) => e.ampel === 'gruen' && !e.tiefenAnalyse)
   const gruenScoreZuNiedrig = alle.filter(
-    (e) => e.ampel === 'gruen' && e.tiefenAnalyse && e.score < MIN_SCORE_KAUF_GRUEN,
+    (e) =>
+      !istWatchlistKandidat(e.isin) &&
+      e.ampel === 'gruen' &&
+      e.tiefenAnalyse &&
+      e.score < MIN_SCORE_KAUF_GRUEN,
+  )
+  const watchlistZuNiedrig = alle.filter(
+    (e) =>
+      istWatchlistKandidat(e.isin) &&
+      e.tiefenAnalyse &&
+      e.score < MIN_SCORE_WATCHLIST_NEUKAUF,
   )
   const gelbMitTrigger = alle.filter(
-    (e) => e.ampel === 'gelb' && e.kaufTriggerAusgeloest && !e.tiefenAnalyse,
+    (e) =>
+      !istWatchlistKandidat(e.isin) &&
+      e.ampel === 'gelb' &&
+      e.kaufTriggerAusgeloest &&
+      !e.tiefenAnalyse,
   )
   let text =
     'Keine Kauf-Kandidaten für Stufe C: ' +
@@ -99,6 +124,13 @@ function baueSparHinweis(alle: NachkaufScanEintrag[], budgetEur: number): string
       ' Hinweis: ' +
       gruenOhneDr.map((e) => e.ticker).join(', ') +
       ' ist/sind grün im Scan — Deep Research fehlt noch.'
+  } else if (watchlistZuNiedrig.length > 0) {
+    text +=
+      ' Hinweis: Watchlist ' +
+      watchlistZuNiedrig
+        .map((e) => `${e.ticker} (Score ${e.score} < ${MIN_SCORE_WATCHLIST_NEUKAUF})`)
+        .join(', ') +
+      ' — Neukauf-Hürde noch nicht erreicht.'
   } else if (gruenScoreZuNiedrig.length > 0) {
     text +=
       ' Hinweis: ' +
@@ -116,12 +148,12 @@ function baueSparHinweis(alle: NachkaufScanEintrag[], budgetEur: number): string
 }
 
 function risikoKlasseVon(isin: string): RisikoKlasse {
-  return NACHKAUF_RADAR_WHITELIST.find((p) => p.isin === isin)?.risikoKlasse ?? 'moderat'
+  return risikoKlasseFuerIsin(isin)
 }
 
 /** Watchlist-Kandidaten stehen nicht in der festen Whitelist → Kauf wäre ein Neukauf. */
-function istWatchlistKandidat(isin: string): boolean {
-  return !NACHKAUF_RADAR_WHITELIST.some((p) => p.isin === isin)
+export function istWatchlistKandidat(isin: string): boolean {
+  return !istWhitelistIsin(isin)
 }
 
 // ---------------------------------------------------------------------------
@@ -255,20 +287,21 @@ function bauePrompt(
 Ziel: Markt outperformen durch disziplinierte Kapitalallokation — nicht durch häufiges Trading.
 
 ## Aufgabe
-1. Verteile das Monatsbudget von **${budgetEur} €** auf Kauf-Kandidaten — oder empfehle zu sparen.
-2. Bewerte oben genannte Verkaufs-Hinweise — aber **übertreibe nicht**: Default ist Halten.
+1. Erkläre und prüfe die **regelbasierte Euro-Allokation** unten — die Beträge sind verbindlich.
+2. Bewerte Verkaufs-Hinweise — aber **übertreibe nicht**: Default ist Halten.
 
 ## Rahmenbedingungen (WICHTIG)
+- **Die Euro-Beträge der Basis-Allokation sind FIX.** Du darfst Positionen nur **streichen oder kürzen** (und den Rest als „Gespart“ ausweisen), niemals Beträge erhöhen oder umverteilen.
 - **Langfrist-Horizont**: Jahre, nicht Monate. Verkäufe sind die Ausnahme, nicht die Regel.
 - **Halten ist der Default**: Auch bei hoher Bewertung oder kurzfristig schwachem Score nicht reflexartig verkaufen.
 - Verkäufe/Teilverkäufe nur bei **kombinierter, klarer Evidenz** (z. B. Klumpenrisiko + teure Bewertung, oder Sell-Trigger-Warnung + Score-Verfall).
-- Kein Zwangskauf: Wenn kein gutes Chancen-Risiko-Verhältnis → sparen (Trade Republic 2,25 % p.a.)
+- Kein Zwangskauf: Wenn die Basis-Allokation leer ist oder Chance/Risiko schwach → sparen (Trade Republic 2,25 % p.a.)
 - Teilverkäufe: typisch 10–25 % der Position, nicht mehr — Rest langfristig halten
 - Vollverkauf: nur wenn die Investmenthypothese fundamental gebrochen ist (Sell-Trigger-Warnung + sehr niedriger Score)
 - Emotionslos: weder Panik-Verkauf noch FOMO-Kauf
 - Klumpenrisiko-Grenze beim Nachkauf: ≥15 % Depotanteil maximal ${klumpenCap} € zusätzlich
 - Mindestbetrag pro Kauf: 100 €
-- **Watchlist-Kandidaten** (als solche markiert) sind noch nicht im Depot: Ein Kauf eröffnet eine NEUE Position. Das ist erlaubt, aber die Hürde ist höher — bevorzuge bestehende Positionen bei vergleichbarem Chance/Risiko und begründe einen Neukauf explizit.
+- **Watchlist-Kandidaten** (als solche markiert) sind noch nicht im Depot: Ein Kauf eröffnet eine NEUE Position. Cap spekulativ (≤ ${capSpekulativ} €). Score-Hürde ≥ ${MIN_SCORE_WATCHLIST_NEUKAUF}. Bevorzuge bestehende Whitelist-Positionen bei vergleichbarem Chance/Risiko.
 
 ## Risiko-adjustierte Positionsobergrenzen (HART, nicht überschreiten)
 - **Konservativ**: max. **${capKonservativ} €** — Mastercard, Visa, Microsoft, …
@@ -303,16 +336,16 @@ Wenn die Evidenz nicht ausreicht: explizit **Halten** empfehlen und begründen.
 Format:
 - TICKER: Halten / ~XX % Teilverkauf / Vollverkauf prüfen — Begründung
 
-**3. Kauf-Ranking:**
-Kaufen (wie viel €) oder überspringen — mit Deep-Research-Bezug.
+**3. Kauf-Kommentar:**
+Für jede Position der Basis-Allokation: übernehmen, kürzen oder streichen — mit Deep-Research-Bezug. Keine neuen Euro-Beträge erfinden.
 
-**4. Finale Kauf-Allokation:**
+**4. Verbindliche Kauf-Allokation (nur ≤ Basis-Beträge):**
 - TICKER (Risikoklasse): XXX € — Begründung
 - Gespart: XXX € (Begründung)
 
 **5. Wichtigste Warnung:** Kritischster Risikofaktor.
 
-Sei direkt, aber **nicht verkaufs-biased**. Ein Langfrist-Investor verkauft selten.`
+Sei direkt, aber **nicht verkaufs-biased**. Ein Langfrist-Investor verkauft selten. Euro-Zahlen kommen aus den Regeln, nicht aus deiner Kreativität.`
 }
 
 // ---------------------------------------------------------------------------
@@ -346,7 +379,10 @@ export async function generiereKaufempfehlung(
   const kandidaten = alleErgebnisse
     .filter(istKiKaufKandidat)
     .sort((a, b) => {
-      // Priorisiere: Trigger > Score > Nicht-Klumpen
+      // Whitelist vor Watchlist-Neukauf
+      const aWl = istWatchlistKandidat(a.isin) ? 1 : 0
+      const bWl = istWatchlistKandidat(b.isin) ? 1 : 0
+      if (aWl !== bWl) return aWl - bWl
       if (a.kaufTriggerAusgeloest !== b.kaufTriggerAusgeloest) return a.kaufTriggerAusgeloest ? -1 : 1
       if (a.klumpenrisiko !== b.klumpenrisiko) return a.klumpenrisiko ? 1 : -1
       return b.score - a.score
@@ -385,8 +421,8 @@ export async function generiereKaufempfehlung(
     }
   }
 
-  // Regelbasierte Basis-Allokation
-  const basisAllokation = berechneBasisAllokation(kandidaten, budgetEur)
+  // Regelbasierte Basis-Allokation (verbindliche Euro-Beträge)
+  const basisAllokation = berechneRegelAllokation(kandidaten, budgetEur)
 
   // Gemini-Synthese (Käufe + Verkäufe)
   const prompt = bauePrompt(kandidaten, verkaufKandidaten, basisAllokation, basisVerkaufAllokation, budgetEur)
@@ -460,72 +496,4 @@ async function rufeKiAuf(prompt: string): Promise<{ text: string; fehler?: strin
   }
 
   return { text: kiText, fehler }
-}
-
-// ---------------------------------------------------------------------------
-// Regelbasierte Basis-Allokation (intern)
-// ---------------------------------------------------------------------------
-
-function berechneBasisAllokation(kandidaten: NachkaufScanEintrag[], budgetEur: number): SparplanPosten[] {
-  if (kandidaten.length === 0) return []
-
-  const MAX_KLUMPEN = budgetEur * 0.2
-  const MIN_POS = 100
-
-  const gewichte = kandidaten.map((e) => {
-    let g = e.score
-    if (e.kaufTriggerAusgeloest) g *= 1.25
-    if (e.klumpenrisiko) g *= 0.4
-    g *= disziplinSparplanFaktor(e)
-    // Bewertungsrabatt wirkt als zusätzlicher Bonus
-    const disc = e.bewertung.premiumDiscountPct
-    if (disc != null && disc < 0) g *= 1 + Math.abs(disc) / 200  // max. +10%
-    return { eintrag: e, gewicht: g }
-  })
-
-  const summe = gewichte.reduce((acc, gw) => acc + gw.gewicht, 0)
-  if (summe <= 0) return []
-
-  const posten: SparplanPosten[] = []
-  let rest = budgetEur
-
-  for (const { eintrag, gewicht } of gewichte) {
-    const risiko = risikoKlasseVon(eintrag.isin)
-    // Risikoklasse begrenzt den Maximalbetrag — Klumpen-Cap greift zusätzlich
-    const maxBetrag = eintrag.klumpenrisiko
-      ? Math.min(RISIKO_CAP[risiko], MAX_KLUMPEN)
-      : RISIKO_CAP[risiko]
-
-    let betrag = (gewicht / summe) * budgetEur
-    betrag = Math.min(betrag, maxBetrag)
-    betrag = Math.round(betrag / 10) * 10
-
-    if (betrag < MIN_POS) continue
-    rest -= betrag
-
-    const teile: string[] = [`Score ${eintrag.score}`, `Risiko: ${risiko}`]
-    if (eintrag.kaufTriggerAusgeloest) teile.push('Kaufzone aktiv')
-    if (eintrag.klumpenrisiko) teile.push('Klumpen-Cap aktiv')
-
-    posten.push({
-      ticker: eintrag.ticker,
-      name: eintrag.name,
-      betragEur: betrag,
-      begruendung: teile.join(' · '),
-    })
-  }
-
-  // Restbetrag dem besten konservativen Kandidaten ohne Klumpen-Cap gutschreiben
-  if (rest >= MIN_POS && posten.length > 0) {
-    const konservativIdx = kandidaten.findIndex(
-      (e, i) => posten[i] && risikoKlasseVon(e.isin) === 'konservativ' && !e.klumpenrisiko,
-    )
-    const target = konservativIdx >= 0 ? konservativIdx : 0
-    if (posten[target]) {
-      const risiko = risikoKlasseVon(kandidaten[target]!.isin)
-      posten[target]!.betragEur = Math.min(posten[target]!.betragEur + rest, RISIKO_CAP[risiko])
-    }
-  }
-
-  return posten
 }

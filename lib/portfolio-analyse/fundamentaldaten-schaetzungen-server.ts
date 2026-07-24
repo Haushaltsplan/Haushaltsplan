@@ -135,6 +135,7 @@ function leererJahresEintrag(jahr: number): StockanalysisJahresForecastEintrag {
     freeCashFlowUsd: null,
     grossProfitUsd: null,
     eps: null,
+    gaapEps: null,
     adjustedEps: null,
     grossMarginPct: null,
     revenueGrowthPct: null,

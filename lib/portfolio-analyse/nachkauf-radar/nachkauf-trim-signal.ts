@@ -23,7 +23,7 @@ import type {
   TrimSignalKategorie,
   VerkaufPosten,
 } from './nachkauf-radar-types'
-import { NACHKAUF_RADAR_WHITELIST, type RisikoKlasse } from './nachkauf-radar-whitelist'
+import { NACHKAUF_RADAR_WHITELIST, risikoKlasseFuerIsin, type RisikoKlasse } from './nachkauf-radar-whitelist'
 
 /** Ziel-Depotgewicht je Risikoklasse (Langfrist-Allokation, nicht aggressiv trimmen). */
 const ZIEL_GEWICHT: Record<RisikoKlasse, number> = {
@@ -39,7 +39,7 @@ const MIN_FAKTOR_GEWICHT = 5
 const MAX_TEILVERKAUF_PCT = 30
 
 function risikoKlasseVon(isin: string): RisikoKlasse {
-  return NACHKAUF_RADAR_WHITELIST.find((p) => p.isin === isin)?.risikoKlasse ?? 'moderat'
+  return risikoKlasseFuerIsin(isin)
 }
 
 function clamp(n: number, min: number, max: number): number {

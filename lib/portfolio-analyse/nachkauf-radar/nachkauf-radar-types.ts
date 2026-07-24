@@ -25,20 +25,25 @@ export type NachkaufScoreDetail = {
   gesamt: number
   /**
    * Bewertungs-Bonus/Malus aus historischem Vergleich (–10 bis +10).
-   * Positiv = günstiger als historischer Median.
+   * Positiv = günstiger als historischer Median / Perzentil.
    */
   historischerBewertungsBonus: number
   /** Beat/Miss, CapAlloc, Struktur, Insider (Summe der Teilpunkte). */
   datenSignaleDelta: number
   /** Operative Dynamik: Earnings, CapAlloc, Wachstum (0–12). */
   momentumPunkte: number
-  /** Bilanz & Risiko: Schulden, CapEx, Short, Pension (–10 bis +5). */
+  /** Bilanz & Risiko: Schulden, CapEx, Short, Qualität 2–7 (–12 bis +6). */
   strukturPunkte: number
-  /** Qualitäts-Titel mit Rücksetzer (0–5). */
+  /**
+   * Lesbare Zerlegung der Struktur-Punkte (persistiert in score_detail JSON).
+   * Fehlt bei älteren Scans → UI fällt auf datenSignale zurück.
+   */
+  strukturSignale?: import('./nachkauf-struktur-aufschluesselung').StrukturSignalZeile[]
+  /** Qualitäts-Titel mit Rücksetzer (0–3, früher bis 5 — Drawdown nicht doppelt belohnen). */
   drawdownBonus: number
   /** Insider-Käufe Form 4 / OpenInsider (0–4). */
   insiderPunkte: number
-  /** Kaufzonen-Trigger aktiv (+7). */
+  /** Kaufzonen-Trigger aktiv (+5). */
   kauftriggerBonus: number
   /** Markt-Regime SPY/VIX (–3 bis +4). */
   regimeDelta: number
@@ -54,9 +59,9 @@ export type NachkaufScoreDetail = {
   scoreKalibrierung: number
   /** Qualitäts-Rang 0–100 (Mantra + Momentum + Struktur). */
   qualitaetsRang: number
-  /** Timing-Rang 0–100 (Bewertung + Drawdown + Trigger). */
+  /** Timing-Rang 0–100 (Bewertung + Einstiegsfenster). */
   timingRang: number
-  /** Kombiniert 42 % Qualität + 58 % Timing. */
+  /** Kombiniert 55 % Qualität + 45 % Timing (Langfrist-Bias). */
   kombiniertRang: number
   /** Segment-Datenqualität für Struktur-Gate. */
   segmentDatenQualitaet?: 'validiert' | 'nur_ms' | 'keine'
@@ -80,6 +85,10 @@ export type NachkaufBewertungsSignale = {
    * null = kein historischer Median verfügbar.
    */
   premiumDiscountPct: number | null
+  /** Aktuelles KGV als Perzentil der eigenen 5J-Historie (0=günstig … 100=teuer). */
+  pePerzentil5y?: number | null
+  /** Aktuelles KGV als Perzentil der eigenen 10J-Historie. */
+  pePerzentil10y?: number | null
   /** Automatisch berechneter 5J-Median-KGV (Macrotrends). */
   historischerMedianPe?: number | null
   /**

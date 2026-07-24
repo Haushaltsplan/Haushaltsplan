@@ -411,3 +411,21 @@ export const NACHKAUF_RADAR_WHITELIST: WhitelistPosition[] = [
     cik: '0001561550',
   },
 ]
+
+/** true wenn ISIN in der festen Qualitäts-Whitelist steht. */
+export function istWhitelistIsin(isin: string): boolean {
+  const key = isin.trim().toUpperCase()
+  return NACHKAUF_RADAR_WHITELIST.some((p) => p.isin.toUpperCase() === key)
+}
+
+/**
+ * Risikoklasse für Caps / Allokation.
+ * Whitelist: hinterlegte Klasse. Alles andere (Watchlist-Neukauf) → spekulativ.
+ */
+export function risikoKlasseFuerIsin(isin: string): RisikoKlasse {
+  const key = isin.trim().toUpperCase()
+  const hit = NACHKAUF_RADAR_WHITELIST.find((p) => p.isin.toUpperCase() === key)
+  if (hit?.risikoKlasse) return hit.risikoKlasse
+  if (!hit) return 'spekulativ'
+  return 'moderat'
+}
