@@ -11,17 +11,24 @@ import { AuthGate } from '@/components/auth-gate'
 import { AppLockGate } from '@/components/app-lock-gate'
 import { installApiAuth } from '@/lib/api-auth-client'
 import { kompaktierenDailyStoreFallsNoetig } from '@/lib/fitnessdaten/daily-records'
+import { sichereSpeicherplatzFuerAuth } from '@/lib/local-storage-safe'
 import { useEffect, type ReactNode } from 'react'
 
 // Token-Anhang für /api-Aufrufe einmalig installieren (vor dem ersten Request).
 if (typeof window !== 'undefined') {
   installApiAuth()
+  try {
+    sichereSpeicherplatzFuerAuth()
+  } catch {
+    /* ignore */
+  }
 }
 
 export function Providers({ children }: { children: ReactNode }) {
   useEffect(() => {
     installApiAuth()
     try {
+      sichereSpeicherplatzFuerAuth()
       kompaktierenDailyStoreFallsNoetig()
     } catch {
       /* ignore */

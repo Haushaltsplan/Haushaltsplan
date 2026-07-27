@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
+import { createSupabaseAuthStorage } from '@/lib/local-storage-safe'
 
 const urlRaw = (process.env.NEXT_PUBLIC_SUPABASE_URL || '').trim()
 const keyRaw = (process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '').trim()
@@ -20,6 +21,8 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
     persistSession: true,
     autoRefreshToken: true,
     detectSessionInUrl: true,
+    // Token-Schreiben: bei vollem Speicher erst Caches/Whoop freigeben, nie still scheitern.
+    ...(typeof window !== 'undefined' ? { storage: createSupabaseAuthStorage() } : {}),
   },
 })
 

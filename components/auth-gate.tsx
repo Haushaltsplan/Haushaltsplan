@@ -153,7 +153,13 @@ export function AuthGate({ children }: { children: ReactNode }) {
     let mounted = true
 
     const init = async () => {
-      // Nur getSession — refreshSession ohne Session kann Magic-Link-Tokens in der URL stören.
+      // Platz für Auth-Token schaffen, bevor getSession/Refresh schreibt
+      try {
+        const { sichereSpeicherplatzFuerAuth } = await import('@/lib/local-storage-safe')
+        sichereSpeicherplatzFuerAuth()
+      } catch {
+        /* ignore */
+      }
       const session: Session | null = (await supabase.auth.getSession()).data.session ?? null
       if (!mounted) return
       uebernehmeSession(session)
