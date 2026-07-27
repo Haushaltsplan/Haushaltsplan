@@ -13,10 +13,10 @@ const FITNESS_KEYS = [
   'mein-haushalt:fitnessdaten-daily',
   'mein-haushalt:fitnessdaten-history',
   'mein-haushalt:fitnessdaten-snapshot',
-  'mein-haushalt:fitness-sync-buffer',
-  'mein-haushalt:fitness-sync-state',
+  'mein-haushalt:fitnessdaten-sync',
+  'mein-haushalt:fitnessdaten-sync-buffer',
   'mein-haushalt:whoop-vo2-trends',
-  'mein-haushalt:whoop-cloud-meta',
+  'mein-haushalt:fitnessdaten-whoop-cloud',
 ] as const
 
 const GROSSE_CACHE_KEYS = [
@@ -29,7 +29,8 @@ const GROSSE_CACHE_KEYS = [
   'pa-isin-metadata-v1',
   'pa-ankuendigte-earnings-v1',
   'pa-ankuendigte-dividenden-v1',
-  ...FITNESS_KEYS.slice(3), // sync buffer/state schon in FITNESS — unten doppelt ok
+  'mein-haushalt:fitnessdaten-sync',
+  'mein-haushalt:fitnessdaten-sync-buffer',
 ] as const
 
 export function istQuotaFehler(err: unknown): boolean {
