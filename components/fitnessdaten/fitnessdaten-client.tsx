@@ -4,6 +4,8 @@ import { WhoopDashboard } from '@/components/fitnessdaten/whoop-dashboard'
 import { useWhoopBle } from '@/components/fitnessdaten/whoop-ble-provider'
 import { PageChrome } from '@/components/page-shell'
 import { ladeFitnessSnapshot, loescheFitnessDaten } from '@/lib/fitnessdaten/history-storage'
+import { kompaktierenDailyStoreFallsNoetig } from '@/lib/fitnessdaten/daily-records'
+import { befreieLocalStorageQuota, istQuotaFehler } from '@/lib/local-storage-safe'
 import { WHOOP_BLE_SNAPSHOT_EVENT } from '@/lib/fitnessdaten/whoop-ble-keepalive'
 import { WHOOP_CLOUD_SYNC_EVENT } from '@/lib/fitnessdaten/whoop-cloud-merge'
 import type { FitnessSnapshot } from '@/lib/fitnessdaten/types'
@@ -20,20 +22,39 @@ class WhoopErrorBoundary extends Component<{ children: ReactNode }, { error: Err
 
   componentDidCatch(error: Error, info: ErrorInfo) {
     console.error('[whoop]', error, info.componentStack)
+    if (istQuotaFehler(error)) {
+      try {
+        befreieLocalStorageQuota()
+        kompaktierenDailyStoreFallsNoetig()
+      } catch {
+        /* ignore */
+      }
+    }
   }
 
   render() {
     if (this.state.error) {
+      const quota = istQuotaFehler(this.state.error)
       return (
         <div className="mx-auto max-w-lg rounded-2xl border border-rose-800/50 bg-rose-950/35 p-6">
           <h1 className="text-lg font-bold text-rose-100">Whoop-Seite abgestürzt</h1>
           <p className="mt-2 text-sm text-[var(--app-text-muted)]">
-            {this.state.error.message || 'Unbekannter Fehler beim Rendern.'}
+            {quota
+              ? 'Browser-Speicher voll. Alte Caches wurden freigegeben — bitte erneut versuchen.'
+              : this.state.error.message || 'Unbekannter Fehler beim Rendern.'}
           </p>
           <button
             type="button"
             className="mt-4 rounded-xl bg-[var(--app-surface-muted)] px-4 py-2.5 text-sm font-bold text-[var(--app-text)]"
-            onClick={() => this.setState({ error: null })}
+            onClick={() => {
+              try {
+                befreieLocalStorageQuota()
+                kompaktierenDailyStoreFallsNoetig()
+              } catch {
+                /* ignore */
+              }
+              this.setState({ error: null })
+            }}
           >
             Erneut versuchen
           </button>

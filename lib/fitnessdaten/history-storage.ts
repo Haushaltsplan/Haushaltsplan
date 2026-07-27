@@ -46,6 +46,7 @@ import {
   FITNESS_HISTORY_STORAGE_KEY,
   FITNESS_SNAPSHOT_STORAGE_KEY,
 } from '@/lib/fitnessdaten/types'
+import { safeLocalStorageSetItem } from '@/lib/local-storage-safe'
 
 const MAX_HR_SERIES = 600
 const MAX_CHART_POINTS = 120
@@ -90,7 +91,14 @@ export function ladeFitnessHistory(): FitnessHistoryState {
 
 export function speichereFitnessHistory(state: FitnessHistoryState): void {
   if (typeof window === 'undefined') return
-  window.localStorage.setItem(FITNESS_HISTORY_STORAGE_KEY, JSON.stringify(state))
+  // Hart kürzen vor dem Schreiben — HR-Serie ist der größte Block
+  const trimmed: FitnessHistoryState = {
+    ...state,
+    hrSeries: (state.hrSeries ?? []).slice(-400),
+    hrvSamples: (state.hrvSamples ?? []).slice(-150),
+    rhrSamples: (state.rhrSamples ?? []).slice(-80),
+  }
+  safeLocalStorageSetItem(FITNESS_HISTORY_STORAGE_KEY, JSON.stringify(trimmed))
 }
 
 export function ladeFitnessSnapshot(): FitnessSnapshot | null {
@@ -106,7 +114,7 @@ export function ladeFitnessSnapshot(): FitnessSnapshot | null {
 
 export function speichereFitnessSnapshot(snapshot: FitnessSnapshot): void {
   if (typeof window === 'undefined') return
-  window.localStorage.setItem(FITNESS_SNAPSHOT_STORAGE_KEY, JSON.stringify(snapshot))
+  safeLocalStorageSetItem(FITNESS_SNAPSHOT_STORAGE_KEY, JSON.stringify(snapshot))
 }
 
 export function parseFitnessSnapshotJson(text: string): FitnessSnapshot {

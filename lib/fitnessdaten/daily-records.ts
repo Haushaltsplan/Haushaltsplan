@@ -15,6 +15,11 @@ import {
 import type { FitnessHistoryState, FitnessScores, FitnessSnapshot, HrZoneMinutes } from '@/lib/fitnessdaten/types'
 import type { LogbuchTagRecord } from '@/lib/fitnessdaten/logbuch'
 import { profilAlter, ladeFitnessProfil, profilMaxHr } from '@/lib/fitnessdaten/user-profile'
+import {
+  befreieLocalStorageQuota,
+  istQuotaFehler,
+  safeLocalStorageSetItem,
+} from '@/lib/local-storage-safe'
 
 export const FITNESS_DAILY_STORAGE_KEY = 'mein-haushalt:fitnessdaten-daily'
 
@@ -199,9 +204,82 @@ export function ladeDailyStore(): WhoopDailyStore {
   }
 }
 
+/** Kürzt Historie, damit localStorage nicht volläuft (Charts brauchen ~90 Tage). */
+function kuerzeDailyStore(store: WhoopDailyStore, aggressiv = false): WhoopDailyStore {
+  const maxDays = aggressiv ? 45 : 120
+  const maxActs = aggressiv ? 80 : 250
+  const maxJournal = aggressiv ? 40 : 120
+  const maxLog = aggressiv ? 40 : 120
+  const maxVitals = aggressiv ? 40 : 120
+  const days = [...(store.days ?? [])].sort((a, b) => a.date.localeCompare(b.date)).slice(-maxDays)
+  const activities = [...(store.activities ?? [])]
+    .sort((a, b) => a.startMs - b.startMs)
+    .slice(-maxActs)
+  return {
+    version: 2,
+    days,
+    activitiesToday: (store.activitiesToday ?? []).slice(-20),
+    activities,
+    journal: (store.journal ?? []).slice(-maxJournal),
+    logbuch: (store.logbuch ?? []).slice(-maxLog),
+    vitals: (store.vitals ?? []).slice(-maxVitals),
+    skinTempBaseline: store.skinTempBaseline ?? null,
+    bffMonthlyAvgs: store.bffMonthlyAvgs ?? null,
+  }
+}
+
 export function speichereDailyStore(store: WhoopDailyStore): void {
   if (typeof window === 'undefined') return
-  window.localStorage.setItem(FITNESS_DAILY_STORAGE_KEY, JSON.stringify({ ...store, version: 2 }))
+  let next = kuerzeDailyStore({ ...store, version: 2 }, false)
+  const payload = () => JSON.stringify(next)
+  if (safeLocalStorageSetItem(FITNESS_DAILY_STORAGE_KEY, payload())) return
+
+  // Noch voll → aggressiver kürzen + große Fremd-Caches löschen
+  befreieLocalStorageQuota()
+  next = kuerzeDailyStore(next, true)
+  if (safeLocalStorageSetItem(FITNESS_DAILY_STORAGE_KEY, payload())) return
+
+  // Notfall: nur letzte 21 Tage, keine Aktivitäten/Journal
+  next = {
+    version: 2,
+    days: next.days.slice(-21),
+    activitiesToday: [],
+    activities: [],
+    journal: [],
+    logbuch: [],
+    vitals: [],
+    skinTempBaseline: next.skinTempBaseline,
+    bffMonthlyAvgs: null,
+  }
+  if (safeLocalStorageSetItem(FITNESS_DAILY_STORAGE_KEY, payload())) return
+
+  try {
+    window.localStorage.removeItem(FITNESS_DAILY_STORAGE_KEY)
+  } catch {
+    /* ignore */
+  }
+}
+
+/** Einmalig zu große Stores beim App-Start verkleinern (ohne Throw). */
+export function kompaktierenDailyStoreFallsNoetig(): void {
+  if (typeof window === 'undefined') return
+  try {
+    const raw = window.localStorage.getItem(FITNESS_DAILY_STORAGE_KEY)
+    if (!raw) return
+    // ~1.5 MB JSON ist riskant; typisches Quota ~5 MB gesamt
+    if (raw.length < 800_000) return
+    const store = migrateStore(JSON.parse(raw))
+    speichereDailyStore(store)
+  } catch (err) {
+    if (istQuotaFehler(err)) {
+      befreieLocalStorageQuota()
+      try {
+        window.localStorage.removeItem(FITNESS_DAILY_STORAGE_KEY)
+      } catch {
+        /* ignore */
+      }
+    }
+  }
 }
 
 function zoneMin13(z: HrZoneMinutes | null | undefined): number {

@@ -125,9 +125,16 @@ export function StartWhoopKompakt() {
     }
   }, [])
 
-  const { heute } = useMemo(() => baueWhoopDashboard(ladeFitnessSnapshot()), [revision])
+  const heute = useMemo(() => {
+    try {
+      return baueWhoopDashboard(ladeFitnessSnapshot()).heute
+    } catch {
+      return null
+    }
+  }, [revision])
   const hasData =
-    heute.sleepScore != null || heute.recoveryPercent != null || heute.strain != null
+    heute != null &&
+    (heute.sleepScore != null || heute.recoveryPercent != null || heute.strain != null)
 
   return (
     <StartSektion
@@ -137,7 +144,7 @@ export function StartWhoopKompakt() {
       akzent="whoop"
       innerClassName={hasData ? 'bg-[#050505]/80' : undefined}
     >
-      {!hasData ? (
+      {!hasData || !heute ? (
         <StartLeer text="Noch keine Daten — WHOOP verbinden oder Cloud-Sync starten." />
       ) : (
         <div className="flex items-end justify-center gap-3 py-1 sm:gap-6">
