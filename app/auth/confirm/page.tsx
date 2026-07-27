@@ -7,7 +7,7 @@
  */
 
 import { supabase } from '@/lib/supabase'
-import type { EmailOtpType } from '@supabase/supabase-js'
+import type { EmailOtpType, Session } from '@supabase/supabase-js'
 import { useEffect, useState } from 'react'
 
 const LS_LAST_EMAIL = 'omnia-auth-last-email'
@@ -74,14 +74,28 @@ export default function AuthConfirmPage() {
           return
         }
 
-        // Implicit flow: Tokens im Hash — createClient mit detectSessionInUrl verarbeitet das.
-        const { data, error } = await supabase.auth.getSession()
-        if (error) {
-          fertig(false, error.message)
-          return
+        // Implicit flow: Tokens im Hash — kurz auf Session warten (detectSessionInUrl).
+        const warteAufSession = async (): Promise<Session | null> => {
+          const first = await supabase.auth.getSession()
+          if (first.data.session) return first.data.session
+          return await new Promise((resolve) => {
+            const timer = window.setTimeout(() => {
+              sub.subscription.unsubscribe()
+              void supabase.auth.getSession().then(({ data }) => resolve(data.session ?? null))
+            }, 2500)
+            const { data: sub } = supabase.auth.onAuthStateChange((event, next) => {
+              if (event === 'SIGNED_IN' || next) {
+                window.clearTimeout(timer)
+                sub.subscription.unsubscribe()
+                resolve(next ?? null)
+              }
+            })
+          })
         }
-        if (data.session) {
-          speichereNachLogin(data.session.user?.email)
+
+        const session = await warteAufSession()
+        if (session) {
+          speichereNachLogin(session.user?.email)
           fertig(true)
           return
         }
