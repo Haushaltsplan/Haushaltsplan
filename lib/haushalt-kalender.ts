@@ -267,8 +267,60 @@ export function listeIsoDatenInklusiv(vonIso: string, bisIso: string): string[] 
   return out
 }
 
+function istSchaltjahr(jahr: number): boolean {
+  return (jahr % 4 === 0 && jahr % 100 !== 0) || jahr % 400 === 0
+}
+
+/**
+ * Geburtstage wiederholen sich jährlich (Monat+Tag).
+ * 29.02. → in Nicht-Schaltjahren am 28.02.
+ */
+export function geburtstagIsoImJahr(seedDatum: string, jahr: number): string | null {
+  const seed = parseIsoDatum(seedDatum)
+  if (!seed) return null
+  let tag = seed.tag
+  if (seed.monat === 2 && seed.tag === 29 && !istSchaltjahr(jahr)) tag = 28
+  return isoDatumAusJahrMonatTag(jahr, seed.monat, tag)
+}
+
+/** True, wenn der Eintrag an diesem Kalendertag sichtbar sein soll. */
+export function eintragTrifftKalenderTag(e: KalenderEintrag, tagIso: string): boolean {
+  if (e.kategorie !== 'geburtstag') return e.datum === tagIso
+  const ziel = parseIsoDatum(tagIso)
+  if (!ziel) return false
+  const projected = geburtstagIsoImJahr(e.datum, ziel.jahr)
+  return projected === tagIso
+}
+
+/**
+ * Einträge für einen Tag — Geburtstage werden auf das Jahr des Abfragetags projiziert
+ * (Anzeige-`datum` = tagIso), Speicherung bleibt die ursprüngliche Seed-Zeile.
+ */
 export function filterEintraegeFuerTag(eintraege: KalenderEintrag[], iso: string): KalenderEintrag[] {
-  return eintraege.filter((e) => e.datum === iso)
+  return eintraege
+    .filter((e) => eintragTrifftKalenderTag(e, iso))
+    .map((e) => (e.kategorie === 'geburtstag' && e.datum !== iso ? { ...e, datum: iso } : e))
+}
+
+/** Einträge im inklusiven Datumsfenster inkl. jährlicher Geburtstage. */
+export function eintraegeImDatumsfenster(
+  eintraege: KalenderEintrag[],
+  vonIso: string,
+  bisIso: string,
+): KalenderEintrag[] {
+  const tage = listeIsoDatenInklusiv(vonIso, bisIso)
+  if (tage.length === 0) return []
+  const out: KalenderEintrag[] = []
+  const seen = new Set<string>()
+  for (const iso of tage) {
+    for (const e of filterEintraegeFuerTag(eintraege, iso)) {
+      const key = `${e.id}|${iso}`
+      if (seen.has(key)) continue
+      seen.add(key)
+      out.push(e)
+    }
+  }
+  return out
 }
 
 export function sortiereEintraegeNachUhrzeitDannTitel(a: KalenderEintrag, b: KalenderEintrag): number {

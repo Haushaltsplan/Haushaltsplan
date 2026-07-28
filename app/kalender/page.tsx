@@ -7,6 +7,7 @@ import {
   baueMonatsZellen,
   filterEintraegeFuerTag,
   formatMonatTitelDe,
+  geburtstagIsoImJahr,
   heuteAlsIsoDatum,
   isoDatumAusJahrMonatTag,
   kalenderKategorieMeta,
@@ -165,18 +166,25 @@ export default function KalenderPage() {
   const proTagEintraege = useMemo(() => {
     const m = new Map<string, KalenderEintrag[]>()
     for (const e of eintraege) {
+      if (e.kategorie === 'geburtstag') {
+        const iso = geburtstagIsoImJahr(e.datum, sicht.jahr)
+        if (!iso) continue
+        const p = parseIsoDatum(iso)
+        if (!p || p.monat !== sicht.monat) continue
+        const list = m.get(iso) || []
+        list.push(iso === e.datum ? e : { ...e, datum: iso })
+        m.set(iso, list)
+        continue
+      }
       const list = m.get(e.datum) || []
       list.push(e)
       m.set(e.datum, list)
     }
     for (const [iso, list] of m) {
-      m.set(
-        iso,
-        [...list].sort(sortiereEintraegeNachUhrzeitDannTitel),
-      )
+      m.set(iso, [...list].sort(sortiereEintraegeNachUhrzeitDannTitel))
     }
     return m
-  }, [eintraege])
+  }, [eintraege, sicht.jahr, sicht.monat])
 
   const listAmTag = useMemo(
     () => filterEintraegeFuerTag(eintraege, ausgewaehltNorm).sort(sortiereEintraegeNachUhrzeitDannTitel),

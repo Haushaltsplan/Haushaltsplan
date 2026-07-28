@@ -14,6 +14,7 @@ import { WHOOP_BLE_SNAPSHOT_EVENT } from '@/lib/fitnessdaten/whoop-ble-keepalive
 import { WHOOP_CLOUD_SYNC_EVENT } from '@/lib/fitnessdaten/whoop-cloud-merge'
 import {
   KALENDER_SYNC_EVENT,
+  eintraegeImDatumsfenster,
   filterEintraegeFuerTag,
   heuteAlsIsoDatum,
   kalenderKategorieMeta,
@@ -67,9 +68,8 @@ export function StartKalenderKompakt() {
     const heute = heuteAlsIsoDatum()
     const in7 = new Date()
     in7.setDate(in7.getDate() + 7)
-    const ende = in7.toISOString().slice(0, 10)
-    return [...eintraege]
-      .filter((e) => e.datum >= heute && e.datum <= ende)
+    const ende = `${in7.getFullYear()}-${String(in7.getMonth() + 1).padStart(2, '0')}-${String(in7.getDate()).padStart(2, '0')}`
+    return eintraegeImDatumsfenster(eintraege, heute, ende)
       .sort((a, b) => a.datum.localeCompare(b.datum) || a.uhrzeit.localeCompare(b.uhrzeit))
       .slice(0, 5)
   }, [eintraege])
@@ -91,8 +91,8 @@ export function StartKalenderKompakt() {
           {liste.map((ev) => {
             const kat = kalenderKategorieMeta(ev.kategorie)
             return (
-              <li
-                key={ev.id}
+                  <li
+                key={`${ev.id}-${ev.datum}`}
                 className={`flex items-start gap-3 rounded-xl border px-3 py-2.5 ${kat.listBorder} ${kat.listBg}`}
               >
                 <span className={`mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full ${kat.dot}`} />

@@ -1,4 +1,4 @@
-import { kalenderKategorieMeta, type KalenderEintrag } from '@/lib/haushalt-kalender'
+import { filterEintraegeFuerTag, kalenderKategorieMeta, type KalenderEintrag } from '@/lib/haushalt-kalender'
 
 export const TERMIN_REMINDER_SETTINGS_KEY = 'mein-haushalt.termin-reminder.v1' as const
 export const TERMIN_REMINDER_EVENT = 'mein-haushalt:termin-reminder' as const
@@ -59,8 +59,7 @@ export function heuteAlsIsoDatumLocal(): string {
 /** Alle Einträge an einem Tag, als Lesetext „Kategorielabel: Titel“ (für die Benachrichtigung). */
 export function sammleKalenderHinweisZeilenFuerTag(eintraege: KalenderEintrag[], iso: string): string[] {
   const rows: { k: string; t: string; line: string }[] = []
-  for (const e of eintraege) {
-    if (e.datum !== iso) continue
+  for (const e of filterEintraegeFuerTag(eintraege, iso)) {
     const title = (e.titel || '').trim() || 'Ohne Titel'
     const label = kalenderKategorieMeta(e.kategorie).label
     rows.push({ k: e.kategorie, t: title, line: `${label}: ${title}` })
