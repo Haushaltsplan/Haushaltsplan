@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
-import { createSupabaseAuthStorage } from '@/lib/local-storage-safe'
+import { createSupabaseAuthIdbStorage } from '@/lib/supabase-auth-idb-storage'
 
 const urlRaw = (process.env.NEXT_PUBLIC_SUPABASE_URL || '').trim()
 const keyRaw = (process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '').trim()
@@ -21,8 +21,8 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
     persistSession: true,
     autoRefreshToken: true,
     detectSessionInUrl: true,
-    // Token-Schreiben: bei vollem Speicher erst Caches/Whoop freigeben, nie still scheitern.
-    ...(typeof window !== 'undefined' ? { storage: createSupabaseAuthStorage() } : {}),
+    // Session in IndexedDB (nicht im vollen Whoop-localStorage) → Gerät bleibt angemeldet.
+    ...(typeof window !== 'undefined' ? { storage: createSupabaseAuthIdbStorage() } : {}),
   },
 })
 

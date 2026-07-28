@@ -14,7 +14,6 @@ const APP_URL = (process.env.NEXT_PUBLIC_APP_URL || '').trim()
 const LS_LAST_EMAIL = 'omnia-auth-last-email'
 const LS_DEVICE_TRUSTED = 'omnia-auth-device-trusted'
 const LS_OTP_COOLDOWN_UNTIL = 'omnia-auth-otp-cooldown-until'
-/** Nach Rate-Limit länger warten (Supabase Free-SMTP ist oft ~stündlich begrenzt). */
 const COOLDOWN_NACH_SEND_MS = 60_000
 const COOLDOWN_NACH_RATE_LIMIT_MS = 15 * 60_000
 
@@ -41,7 +40,6 @@ function setzeCooldown(ms: number) {
   }
 }
 
-/** Erlaubte E-Mail(s) — nur diese Konten dürfen die App nutzen (leer = keine zusätzliche Einschränkung). */
 const ALLOWED_EMAILS = (process.env.NEXT_PUBLIC_ALLOWED_EMAILS || '')
   .split(/[,;\s]+/)
   .map((s) => s.trim().toLowerCase())
@@ -49,13 +47,11 @@ const ALLOWED_EMAILS = (process.env.NEXT_PUBLIC_ALLOWED_EMAILS || '')
 
 function emailErlaubt(email: string | null | undefined): boolean {
   if (ALLOWED_EMAILS.length === 0) return true
-  if (!email) return true // noch keine E-Mail am Token → nicht vorschnell abmelden
+  if (!email) return true
   return ALLOWED_EMAILS.includes(String(email).toLowerCase())
 }
 
 function appOrigin(): string {
-  // Immer die aktuelle Origin — sonst landet der Magic-Link auf einer anderen URL
-  // (z. B. falsches NEXT_PUBLIC_APP_URL) und die Session ist „weg“.
   if (typeof window !== 'undefined' && window.location?.origin) {
     return window.location.origin.replace(/\/+$/, '')
   }
@@ -65,7 +61,6 @@ function appOrigin(): string {
   return ''
 }
 
-/** Ziel nach Klick auf den Magic-Link — Session wird dort in localStorage geschrieben. */
 function magicLinkRedirectUrl(): string {
   const origin = appOrigin()
   return origin ? `${origin}/auth/confirm` : ''
@@ -109,12 +104,10 @@ export function AuthGate({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null)
   const [loading, setLoading] = useState(true)
   const [email, setEmail] = useState('')
-  const [passwort, setPasswort] = useState('')
   const [sending, setSending] = useState(false)
   const [nativeApp] = useState(() => istOmniaNativeApp())
   const [verweigert, setVerweigert] = useState(false)
   const [linkGesendet, setLinkGesendet] = useState(false)
-  const [zeigePasswort, setZeigePasswort] = useState(true)
   const [cooldownSec, setCooldownSec] = useState(0)
 
   const uebernehmeSession = (next: Session | null) => {
@@ -153,13 +146,13 @@ export function AuthGate({ children }: { children: ReactNode }) {
     let mounted = true
 
     const init = async () => {
-      // Platz für Auth-Token schaffen, bevor getSession/Refresh schreibt
       try {
         const { sichereSpeicherplatzFuerAuth } = await import('@/lib/local-storage-safe')
         sichereSpeicherplatzFuerAuth()
       } catch {
         /* ignore */
       }
+      // getSession wartet auf IndexedDB-Storage (async)
       const session: Session | null = (await supabase.auth.getSession()).data.session ?? null
       if (!mounted) return
       uebernehmeSession(session)
@@ -180,34 +173,6 @@ export function AuthGate({ children }: { children: ReactNode }) {
 
   if (oeffentlich) return <>{children}</>
 
-  const loginMitPasswort = async () => {
-    const clean = email.trim()
-    if (!clean || !passwort) {
-      toast.error('E-Mail und Passwort eingeben.')
-      return
-    }
-    if (!emailErlaubt(clean)) {
-      toast.error('Diese E-Mail ist für diese App nicht freigeschaltet.')
-      return
-    }
-    setSending(true)
-    try {
-      const { error } = await supabase.auth.signInWithPassword({
-        email: clean,
-        password: passwort,
-      })
-      if (error) {
-        toast.error(error.message || 'Anmeldung fehlgeschlagen.')
-        return
-      }
-      speichereEmail(clean)
-      markiereGeraetVertraut()
-      toast.success('Angemeldet.')
-    } finally {
-      setSending(false)
-    }
-  }
-
   const sendMagicLink = async () => {
     const clean = email.trim()
     if (!clean) {
@@ -224,7 +189,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
     }
     const redirectTo = magicLinkRedirectUrl()
     if (!redirectTo) {
-      toast.error('Redirect-URL fehlt — Seite neu laden.')
+      toast.error('Seite neu laden und erneut versuchen.')
       return
     }
     setSending(true)
@@ -238,10 +203,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
         if (istRateLimitFehler(msg)) {
           setzeCooldown(COOLDOWN_NACH_RATE_LIMIT_MS)
           setCooldownSec(Math.ceil(COOLDOWN_NACH_RATE_LIMIT_MS / 1000))
-          setZeigePasswort(true)
-          toast.error(
-            'E-Mail-Limit erreicht (Supabase). Ca. 15 Min. warten — oder unten mit Passwort anmelden.',
-          )
+          toast.error('E-Mail-Limit erreicht. Bitte später erneut den Link anfordern.')
           return
         }
         toast.error(msg)
@@ -251,14 +213,18 @@ export function AuthGate({ children }: { children: ReactNode }) {
       setLinkGesendet(true)
       setzeCooldown(COOLDOWN_NACH_SEND_MS)
       setCooldownSec(Math.ceil(COOLDOWN_NACH_SEND_MS / 1000))
-      toast.success('Login-Link gesendet. Bitte denselben Browser öffnen.')
+      toast.success('Login-Link gesendet — im gleichen Browser öffnen.')
     } finally {
       setSending(false)
     }
   }
 
   if (loading) {
-    return <div className="py-10 text-center text-sm text-[var(--app-text-muted)]">Anmeldung wird geprüft …</div>
+    return (
+      <div className="py-10 text-center text-sm text-[var(--app-text-muted)]">
+        Gerät wird erkannt …
+      </div>
+    )
   }
 
   if (!session) {
@@ -268,10 +234,10 @@ export function AuthGate({ children }: { children: ReactNode }) {
         <h2 className="text-lg font-bold text-[var(--app-text)]">Anmeldung erforderlich</h2>
         <p className="mt-2 text-sm text-[var(--app-text-muted)]">
           {schonVertraut
-            ? 'Die gespeicherte Sitzung ist abgelaufen oder wurde gelöscht. Einmalig erneut per Magic-Link anmelden — danach bleibt dieses Gerät wieder angemeldet.'
-            : 'Einmal E-Mail eingeben, Magic-Link bestätigen — danach bleibt dieses Gerät angemeldet (Session im Browser).'}
+            ? 'Die Sitzung auf diesem Gerät ist weg. Einmalig den Magic-Link bestätigen — danach merkt sich dieses Gerät dich wieder dauerhaft.'
+            : 'Einmal E-Mail eingeben und Magic-Link bestätigen. Danach bleibt dieses Gerät angemeldet — ohne erneute Anmeldung.'}
           {nativeApp
-            ? ' Wichtig in der Omnia-App: den Link so öffnen, dass er in der App landet (nicht nur in Chrome), sonst speichert Chrome die Sitzung statt der App.'
+            ? ' In der Omnia-App den Link so öffnen, dass er in der App landet.'
             : null}
         </p>
         {verweigert && (
@@ -281,14 +247,14 @@ export function AuthGate({ children }: { children: ReactNode }) {
         )}
         {linkGesendet && (
           <p className="mt-3 rounded-lg border border-teal-700/40 bg-teal-950/20 px-3 py-2 text-[13px] text-teal-100/90">
-            Link unterwegs. Im <strong className="font-semibold">gleichen Browser</strong> auf den
-            Link tippen — danach wirst du nicht mehr nach der E-Mail gefragt.
+            Link unterwegs. Im <strong className="font-semibold">gleichen Browser</strong> tippen —
+            fertig. Danach kein erneutes Anmelden auf diesem Gerät.
           </p>
         )}
         {cooldownSec > 0 && (
           <p className="mt-3 rounded-lg border border-amber-700/40 bg-amber-950/20 px-3 py-2 text-[13px] text-amber-100/90">
-            Nächster Magic-Link erst in {Math.floor(cooldownSec / 60)}:
-            {String(cooldownSec % 60).padStart(2, '0')} Min. möglich (Supabase E-Mail-Limit).
+            Nächster Link in {Math.floor(cooldownSec / 60)}:
+            {String(cooldownSec % 60).padStart(2, '0')} Min. (Supabase E-Mail-Limit).
           </p>
         )}
         <input
@@ -296,57 +262,24 @@ export function AuthGate({ children }: { children: ReactNode }) {
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           onKeyDown={(e) => {
-            if (e.key === 'Enter') {
-              if (zeigePasswort) void loginMitPasswort()
-              else void sendMagicLink()
-            }
+            if (e.key === 'Enter') void sendMagicLink()
           }}
           placeholder="deine@email.de"
           autoComplete="email"
           className={`${appInputClass} mt-4 focus:ring-cyan-500/40`}
         />
-        {zeigePasswort && (
-          <input
-            type="password"
-            value={passwort}
-            onChange={(e) => setPasswort(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') void loginMitPasswort()
-            }}
-            placeholder="Passwort"
-            autoComplete="current-password"
-            className={`${appInputClass} mt-3 focus:ring-cyan-500/40`}
-          />
-        )}
         <button
           type="button"
-          disabled={sending || (!zeigePasswort && cooldownSec > 0)}
-          onClick={() => void (zeigePasswort ? loginMitPasswort() : sendMagicLink())}
+          disabled={sending || cooldownSec > 0}
+          onClick={() => void sendMagicLink()}
           className="mt-3 w-full rounded-[0.875rem] bg-gradient-to-b from-teal-500 to-teal-600 py-2.5 text-sm font-bold text-white shadow-md shadow-teal-950/25 ring-1 ring-white/10 transition hover:from-teal-400 hover:to-teal-500 disabled:opacity-40"
         >
           {sending
             ? 'Bitte warten …'
-            : zeigePasswort
-              ? 'Mit Passwort anmelden'
-              : cooldownSec > 0
-                ? `Warten (${cooldownSec}s)`
-                : 'Login-Link senden'}
+            : cooldownSec > 0
+              ? `Warten (${cooldownSec}s)`
+              : 'Login-Link senden'}
         </button>
-        <button
-          type="button"
-          onClick={() => setZeigePasswort((v) => !v)}
-          className="mt-3 w-full text-center text-[13px] text-[var(--app-text-muted)] hover:text-[var(--app-text)]"
-        >
-          {zeigePasswort
-            ? 'Stattdessen Magic-Link per E-Mail'
-            : 'Stattdessen mit Passwort anmelden (wenn Limit greift)'}
-        </button>
-        {zeigePasswort && (
-          <p className="mt-2 text-[12px] text-[var(--app-text-muted)]">
-            Passwort einmalig in Supabase setzen: Authentication → Users → dein Konto → Set
-            password.
-          </p>
-        )}
       </div>
     )
   }
