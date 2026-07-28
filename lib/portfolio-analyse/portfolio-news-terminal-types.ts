@@ -37,3 +37,19 @@ export type NewsTerminalPaket = {
   fehler: string | null
   aktualisiertAm: string
 }
+
+/** KI-Tagesfazit für ein Unternehmen (Deutsch, Flash-Free-Tier). */
+export type NewsTerminalKiFazit = {
+  symbol: string
+  name: string
+  fazit: string
+  anzahlMeldungen: number
+  fehler: string | null
+}
+
+export type NewsTerminalKiPaket = {
+  fazite: NewsTerminalKiFazit[]
+  zeitraum: 'heute' | '48h'
+  aktualisiertAm: string
+  modell: string | null
+}
