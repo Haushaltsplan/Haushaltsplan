@@ -8,6 +8,9 @@
     },
     "app/api/portfolio-analyse/quartals-auto-ki/cron/route.ts": {
       "maxDuration": 300
+    },
+    "app/api/portfolio-analyse/news-terminal/summary/route.ts": {
+      "maxDuration": 300
     }
   },
   "crons": [

@@ -54,11 +54,39 @@ async function fetchKiFazite(opts: {
   const res = await fetch('/api/portfolio-analyse/news-terminal/summary', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ zeilen: opts.zeilen, nurHeute: opts.nurHeute }),
+    body: JSON.stringify({
+      // Schlankes Payload — nur Felder, die die KI braucht
+      zeilen: opts.zeilen.map((z) => ({
+        id: z.id,
+        titel: z.titel,
+        quelle: z.quelle,
+        veroeffentlichtAm: z.veroeffentlichtAm,
+        istHeute: z.istHeute,
+        unternehmen: z.unternehmen.slice(0, 1).map((u) => ({
+          id: u.id,
+          name: u.name,
+          symbol: u.symbol,
+          isin: u.isin,
+        })),
+      })),
+      nurHeute: opts.nurHeute,
+    }),
+    signal: AbortSignal.timeout(280_000),
   })
-  const json = (await res.json()) as { ok?: boolean; message?: string } & Partial<NewsTerminalKiPaket>
+  const raw = await res.text()
+  let json: { ok?: boolean; message?: string; error?: string } & Partial<NewsTerminalKiPaket>
+  try {
+    json = JSON.parse(raw) as typeof json
+  } catch {
+    const tipp = raw.slice(0, 120).replace(/\s+/g, ' ')
+    throw new Error(
+      res.status === 401 || res.status === 403
+        ? 'Anmeldung abgelaufen — bitte neu einloggen.'
+        : `Server-Antwort kein JSON (HTTP ${res.status}). ${tipp || 'Timeout oder Deploy-Fehler — bitte erneut versuchen.'}`,
+    )
+  }
   if (!res.ok || !json.ok) {
-    throw new Error(json.message ?? 'KI-Zusammenfassung fehlgeschlagen')
+    throw new Error(json.message || json.error || 'KI-Zusammenfassung fehlgeschlagen')
   }
   return {
     fazite: json.fazite ?? [],
@@ -263,7 +291,7 @@ export function PortfolioNewsTerminalClient() {
                   </h2>
                   <p className="mt-0.5 text-[11px] text-[var(--app-text-muted)]">
                     {kiPaket.fazite.length} Unternehmen · {kiPaket.zeitraum === 'heute' ? 'heute' : '48 Stunden'} ·
-                    kostenloses Gemini Flash
+                    kostenloses Gemini Flash (max. 12 Titel mit den meisten Meldungen)
                     {kiPaket.aktualisiertAm
                       ? ` · ${new Date(kiPaket.aktualisiertAm).toLocaleString('de-DE', {
                           day: '2-digit',

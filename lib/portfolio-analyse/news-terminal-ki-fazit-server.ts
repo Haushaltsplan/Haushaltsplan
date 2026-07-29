@@ -26,7 +26,10 @@ Regeln:
 - Maximal ~80 Wörter.`
 
 const MAX_HEADLINES = 8
-const PARALLEL = 3
+/** Pro Lauf begrenzt — sonst Timeout auf Vercel (Antwort dann kein JSON). */
+const MAX_UNTERNEHMEN = 12
+const PARALLEL = 2
+const ZEIT_BUDGET_MS = 140_000
 
 type Gruppe = {
   symbol: string
@@ -57,9 +60,14 @@ function gruppiereNachUnternehmen(
       datum: z.veroeffentlichtAm,
     })
   }
+  // Zuerst die mit den meisten Meldungen — dann Deckel
   return [...map.values()]
     .filter((g) => g.headlines.length > 0)
-    .sort((a, b) => a.name.localeCompare(b.name, 'de'))
+    .sort(
+      (a, b) =>
+        b.headlines.length - a.headlines.length || a.name.localeCompare(b.name, 'de'),
+    )
+    .slice(0, MAX_UNTERNEHMEN)
 }
 
 async function fazitFuerUnternehmen(g: Gruppe): Promise<NewsTerminalKiFazit> {
@@ -125,9 +133,23 @@ export async function generiereNewsTerminalKiFazite(opts: {
 }): Promise<NewsTerminalKiPaket> {
   const gruppen = gruppiereNachUnternehmen(opts.zeilen, opts.nurHeute)
   const fazite: NewsTerminalKiFazit[] = []
+  const start = Date.now()
+  const batches = teileArray(gruppen, PARALLEL)
 
-  for (const batch of teileArray(gruppen, PARALLEL)) {
-    const parts = await Promise.all(batch.map((g) => fazitFuerUnternehmen(g)))
+  for (let bi = 0; bi < batches.length; bi++) {
+    if (Date.now() - start > ZEIT_BUDGET_MS) {
+      for (const g of batches.slice(bi).flat()) {
+        fazite.push({
+          symbol: g.symbol,
+          name: g.name,
+          fazit: '',
+          anzahlMeldungen: g.headlines.length,
+          fehler: 'Zeitbudget — bitte erneut klicken für weitere Titel.',
+        })
+      }
+      break
+    }
+    const parts = await Promise.all(batches[bi].map((g) => fazitFuerUnternehmen(g)))
     fazite.push(...parts)
   }
 

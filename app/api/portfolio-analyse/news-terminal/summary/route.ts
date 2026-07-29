@@ -3,9 +3,9 @@ import { generiereNewsTerminalKiFazite } from '@/lib/portfolio-analyse/news-term
 import type { NewsTerminalZeile } from '@/lib/portfolio-analyse/portfolio-news-terminal-types'
 
 export const dynamic = 'force-dynamic'
-export const maxDuration = 180
+export const maxDuration = 300
 
-const MAX_ZEILEN = 120
+const MAX_ZEILEN = 80
 
 function parseZeilen(raw: unknown): NewsTerminalZeile[] {
   if (!Array.isArray(raw)) return []
