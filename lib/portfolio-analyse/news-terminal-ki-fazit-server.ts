@@ -1,5 +1,6 @@
 /**
  * News-Terminal — KI-Tagesfazit pro Unternehmen (Deutsch, Gemini Free Flash).
+ * Pro Request bewusst wenige Titel (Client batched alle ~40 in mehreren Calls).
  */
 
 import 'server-only'
@@ -26,10 +27,10 @@ Regeln:
 - Maximal ~80 Wörter.`
 
 const MAX_HEADLINES = 8
-/** Pro Lauf begrenzt — sonst Timeout auf Vercel (Antwort dann kein JSON). */
-const MAX_UNTERNEHMEN = 12
+/** Sicherheit pro Request — der Client schickt Batches. */
+const MAX_UNTERNEHMEN_PRO_REQUEST = 8
 const PARALLEL = 2
-const ZEIT_BUDGET_MS = 140_000
+const ZEIT_BUDGET_MS = 150_000
 
 type Gruppe = {
   symbol: string
@@ -60,14 +61,10 @@ function gruppiereNachUnternehmen(
       datum: z.veroeffentlichtAm,
     })
   }
-  // Zuerst die mit den meisten Meldungen — dann Deckel
   return [...map.values()]
     .filter((g) => g.headlines.length > 0)
-    .sort(
-      (a, b) =>
-        b.headlines.length - a.headlines.length || a.name.localeCompare(b.name, 'de'),
-    )
-    .slice(0, MAX_UNTERNEHMEN)
+    .sort((a, b) => a.name.localeCompare(b.name, 'de'))
+    .slice(0, MAX_UNTERNEHMEN_PRO_REQUEST)
 }
 
 async function fazitFuerUnternehmen(g: Gruppe): Promise<NewsTerminalKiFazit> {
@@ -144,7 +141,7 @@ export async function generiereNewsTerminalKiFazite(opts: {
           name: g.name,
           fazit: '',
           anzahlMeldungen: g.headlines.length,
-          fehler: 'Zeitbudget — bitte erneut klicken für weitere Titel.',
+          fehler: 'Zeitbudget in diesem Batch — bitte erneut versuchen.',
         })
       }
       break

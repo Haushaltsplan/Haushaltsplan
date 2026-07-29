@@ -47,7 +47,7 @@ async function fetchNewsTerminal(opts: {
   }
 }
 
-async function fetchKiFazite(opts: {
+async function fetchKiFaziteBatch(opts: {
   zeilen: NewsTerminalPaket['zeilen']
   nurHeute: boolean
 }): Promise<NewsTerminalKiPaket> {
@@ -55,7 +55,6 @@ async function fetchKiFazite(opts: {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      // Schlankes Payload — nur Felder, die die KI braucht
       zeilen: opts.zeilen.map((z) => ({
         id: z.id,
         titel: z.titel,
@@ -71,7 +70,7 @@ async function fetchKiFazite(opts: {
       })),
       nurHeute: opts.nurHeute,
     }),
-    signal: AbortSignal.timeout(280_000),
+    signal: AbortSignal.timeout(200_000),
   })
   const raw = await res.text()
   let json: { ok?: boolean; message?: string; error?: string } & Partial<NewsTerminalKiPaket>
@@ -82,7 +81,7 @@ async function fetchKiFazite(opts: {
     throw new Error(
       res.status === 401 || res.status === 403
         ? 'Anmeldung abgelaufen — bitte neu einloggen.'
-        : `Server-Antwort kein JSON (HTTP ${res.status}). ${tipp || 'Timeout oder Deploy-Fehler — bitte erneut versuchen.'}`,
+        : `Server-Antwort kein JSON (HTTP ${res.status}). ${tipp || 'Timeout — Batch wird ggf. wiederholt.'}`,
     )
   }
   if (!res.ok || !json.ok) {
@@ -93,6 +92,89 @@ async function fetchKiFazite(opts: {
     zeitraum: json.zeitraum === 'heute' ? 'heute' : '48h',
     aktualisiertAm: json.aktualisiertAm ?? new Date().toISOString(),
     modell: json.modell ?? null,
+  }
+}
+
+const KI_BATCH_GROESSE = 6
+
+function symboleMitNews(
+  zeilen: NewsTerminalPaket['zeilen'],
+  nurHeute: boolean,
+): string[] {
+  const set = new Set<string>()
+  for (const z of zeilen) {
+    if (nurHeute && !z.istHeute) continue
+    const s = (z.unternehmen[0]?.symbol || z.unternehmen[0]?.id || '').trim().toUpperCase()
+    if (s) set.add(s)
+  }
+  return [...set].sort()
+}
+
+/** Alle Titel in mehreren kurzen Server-Batches — vermeidet Vercel-Timeout. */
+async function fetchKiFaziteAlle(opts: {
+  zeilen: NewsTerminalPaket['zeilen']
+  nurHeute: boolean
+  onFortschritt?: (aktuell: number, gesamt: number, bisher: NewsTerminalKiPaket) => void
+}): Promise<NewsTerminalKiPaket> {
+  const symbole = symboleMitNews(opts.zeilen, opts.nurHeute)
+  if (symbole.length === 0) {
+    throw new Error('Keine Meldungen zum Zusammenfassen.')
+  }
+
+  const batches: string[][] = []
+  for (let i = 0; i < symbole.length; i += KI_BATCH_GROESSE) {
+    batches.push(symbole.slice(i, i + KI_BATCH_GROESSE))
+  }
+
+  const alleFazite: NewsTerminalKiPaket['fazite'] = []
+  let zeitraum: 'heute' | '48h' = opts.nurHeute ? 'heute' : '48h'
+  let letzterFehler: Error | null = null
+
+  for (let i = 0; i < batches.length; i++) {
+    const batchSet = new Set(batches[i])
+    const subset = opts.zeilen.filter((z) => {
+      if (opts.nurHeute && !z.istHeute) return false
+      const s = (z.unternehmen[0]?.symbol || z.unternehmen[0]?.id || '').trim().toUpperCase()
+      return Boolean(s && batchSet.has(s))
+    })
+    try {
+      const teil = await fetchKiFaziteBatch({ zeilen: subset, nurHeute: opts.nurHeute })
+      zeitraum = teil.zeitraum
+      alleFazite.push(...teil.fazite)
+    } catch (e) {
+      letzterFehler = e instanceof Error ? e : new Error('Batch fehlgeschlagen')
+      // Fehlgeschlagene Titel markieren, Rest weiterlaufen lassen
+      for (const sym of batches[i]) {
+        const name =
+          opts.zeilen.find(
+            (z) => (z.unternehmen[0]?.symbol || z.unternehmen[0]?.id || '').trim().toUpperCase() === sym,
+          )?.unternehmen[0]?.name || sym
+        alleFazite.push({
+          symbol: sym,
+          name,
+          fazit: '',
+          anzahlMeldungen: 0,
+          fehler: letzterFehler.message,
+        })
+      }
+    }
+    const bisher: NewsTerminalKiPaket = {
+      fazite: [...alleFazite].sort((a, b) => a.name.localeCompare(b.name, 'de')),
+      zeitraum,
+      aktualisiertAm: new Date().toISOString(),
+      modell: 'gemini-flash-free',
+    }
+    opts.onFortschritt?.(i + 1, batches.length, bisher)
+  }
+
+  if (alleFazite.length === 0 && letzterFehler) throw letzterFehler
+
+  alleFazite.sort((a, b) => a.name.localeCompare(b.name, 'de'))
+  return {
+    fazite: alleFazite,
+    zeitraum,
+    aktualisiertAm: new Date().toISOString(),
+    modell: 'gemini-flash-free',
   }
 }
 
@@ -107,6 +189,7 @@ export function PortfolioNewsTerminalClient() {
   const [kiPaket, setKiPaket] = useState<NewsTerminalKiPaket | null>(null)
   const [kiLaden, setKiLaden] = useState(false)
   const [kiFehler, setKiFehler] = useState<string | null>(null)
+  const [kiFortschritt, setKiFortschritt] = useState<string | null>(null)
 
   const depotPositionen = useMemo((): NewsTerminalDepotPosition[] => {
     return (live?.positionen ?? [])
@@ -192,21 +275,30 @@ export function PortfolioNewsTerminalClient() {
       const key = newsKiCacheKey({ nurHeute, tickerKey })
       if (!force) {
         const cached = ladeNewsKiFazitAusCache(key)
-        if (cached) {
+        if (cached?.fazite.length) {
           setKiPaket(cached)
           return
         }
       }
       setKiLaden(true)
       setKiFehler(null)
+      setKiFortschritt('Starte …')
       try {
-        const data = await fetchKiFazite({ zeilen: paket.zeilen, nurHeute })
+        const data = await fetchKiFaziteAlle({
+          zeilen: paket.zeilen,
+          nurHeute,
+          onFortschritt: (aktuell, gesamt, bisher) => {
+            setKiFortschritt(`${aktuell}/${gesamt}`)
+            setKiPaket(bisher)
+          },
+        })
         setKiPaket(data)
         speichereNewsKiFazitImCache(key, data)
       } catch (e) {
         setKiFehler(e instanceof Error ? e.message : 'KI-Zusammenfassung fehlgeschlagen')
       } finally {
         setKiLaden(false)
+        setKiFortschritt(null)
       }
     },
     [paket, nurHeute, tickerKey],
@@ -265,7 +357,11 @@ export function PortfolioNewsTerminalClient() {
                 disabled={kiLaden || laden || !paket?.zeilen.length}
                 className="rounded-lg border border-teal-500/35 bg-teal-500/10 px-3 py-1.5 text-xs font-semibold text-teal-200 transition hover:bg-teal-500/20 disabled:opacity-50"
               >
-                {kiLaden ? 'KI fasst zusammen …' : 'KI-Tagesfazit (DE)'}
+                {kiLaden
+                  ? kiFortschritt
+                    ? `KI … ${kiFortschritt}`
+                    : 'KI fasst zusammen …'
+                  : 'KI-Tagesfazit (DE)'}
               </button>
             </div>
           </div>
@@ -291,7 +387,7 @@ export function PortfolioNewsTerminalClient() {
                   </h2>
                   <p className="mt-0.5 text-[11px] text-[var(--app-text-muted)]">
                     {kiPaket.fazite.length} Unternehmen · {kiPaket.zeitraum === 'heute' ? 'heute' : '48 Stunden'} ·
-                    kostenloses Gemini Flash (max. 12 Titel mit den meisten Meldungen)
+                    alle Titel mit News · Gemini Flash
                     {kiPaket.aktualisiertAm
                       ? ` · ${new Date(kiPaket.aktualisiertAm).toLocaleString('de-DE', {
                           day: '2-digit',
@@ -342,8 +438,8 @@ export function PortfolioNewsTerminalClient() {
           />
 
           <p className="text-[11px] leading-relaxed text-[var(--app-text-muted)]">
-            Quelle: Yahoo Finance + Google News. „KI-Tagesfazit“ verdichtet die Schlagzeilen pro Unternehmen auf
-            Deutsch (Gemini Flash, Free-Tier). Der erste Abruf kann 20–40 Sekunden dauern. Details pro Titel unter{' '}
+            Quelle: Yahoo Finance + Google News. „KI-Tagesfazit“ fasst alle Titel mit Meldungen auf Deutsch
+            zusammen (Gemini Flash, in mehreren kurzen Batches — dauert bei ~40 Titeln oft 2–4 Minuten). Details unter{' '}
             <Link href="/portfolioanalyse/fundamentaldaten" className="text-teal-400 hover:underline">
               Fundamentaldaten → News
             </Link>

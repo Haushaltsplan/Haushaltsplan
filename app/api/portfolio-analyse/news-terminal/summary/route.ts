@@ -5,7 +5,8 @@ import type { NewsTerminalZeile } from '@/lib/portfolio-analyse/portfolio-news-t
 export const dynamic = 'force-dynamic'
 export const maxDuration = 300
 
-const MAX_ZEILEN = 80
+/** Pro Client-Batch (ca. 6 Titel) — genug Headlines, ohne Riesen-Payload. */
+const MAX_ZEILEN = 120
 
 function parseZeilen(raw: unknown): NewsTerminalZeile[] {
   if (!Array.isArray(raw)) return []
