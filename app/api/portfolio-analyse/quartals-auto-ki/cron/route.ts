@@ -33,7 +33,8 @@ export async function GET(req: Request) {
       geprueft: 0,
       secNeu: 0,
       earningsNeu: 0,
-      uebersprungenCache: 0,
+      diffsNeu: 0,
+      uebersprungen: 0,
       fehler: [] as string[],
       details: [] as Awaited<ReturnType<typeof laufeQuartalsAutoKi>>['details'],
     }
@@ -42,26 +43,22 @@ export async function GET(req: Request) {
       const teil = await laufeQuartalsAutoKi({
         offset,
         maxTicker: 3,
-        maxKiJobs: 2,
+        maxKiJobs: 3,
         zeitBudgetMs: 100_000,
       })
       aggregiert.kandidaten = teil.kandidaten
       aggregiert.geprueft += teil.geprueft
       aggregiert.secNeu += teil.secNeu
       aggregiert.earningsNeu += teil.earningsNeu
-      aggregiert.uebersprungenCache += teil.uebersprungenCache
+      aggregiert.diffsNeu += teil.diffsNeu
+      aggregiert.uebersprungen += teil.uebersprungen
       aggregiert.fehler.push(...teil.fehler)
       aggregiert.details.push(...teil.details)
       offset = teil.offset
       runden++
-      // Keine neuen Jobs und nichts mehr übrig → fertig
       if (teil.verbleibend === 0) break
-      // In dieser Runde nichts Neues und wir haben noch viele → weiter wandern
-      if (teil.secNeu + teil.earningsNeu === 0 && teil.geprueft === 0) break
-      // Quota schonen: nach 2 erfolgreichen KI-Jobs pro Invocation pausieren
-      // (nächster Cron-Lauf setzt fort über offset=0 Round-Robin — bewusst von vorne,
-      //  weil Cache-Hits dann schnell übersprungen werden)
-      if (aggregiert.secNeu + aggregiert.earningsNeu >= 4) break
+      if (teil.secNeu + teil.earningsNeu + teil.diffsNeu === 0 && teil.geprueft === 0) break
+      if (aggregiert.secNeu + aggregiert.earningsNeu + aggregiert.diffsNeu >= 5) break
     }
 
     return NextResponse.json({

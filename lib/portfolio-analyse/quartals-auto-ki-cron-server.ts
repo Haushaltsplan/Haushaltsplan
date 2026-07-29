@@ -1,9 +1,10 @@
 /**
- * Automatische Erkennung neuer Quartalsberichte / Earnings Calls
- * und KI-Zusammenfassung (Gemini Free Flash) für Whitelist + Watchlist.
+ * Automatische Erkennung **neuer** Quartalsberichte / Earnings Calls
+ * und KI-Zusammenfassung + Quartals-Diff für Whitelist + Watchlist.
  *
- * Nutzt die bestehenden Orchestratoren (`ladeSecBerichte`, `ladeEarningsCallZusammenfassung`)
- * und deren Cloud-Caches — kein neues Schema.
+ * Wichtig: Kein Backfill alter Perioden — nur Einträge mit Datum innerhalb
+ * des Neu-Fensters (ca. laufendes + Vorquartal). Bewusst, weil ältere Summaries
+ * manuell/selektiv gepflegt werden.
  */
 
 import 'server-only'
@@ -11,15 +12,22 @@ import 'server-only'
 import { ladeEarningsCallZusammenfassung } from '@/lib/portfolio-analyse/earnings-call-server'
 import { ladeEarningsCallKiCacheFuerTicker } from '@/lib/portfolio-analyse/earnings-call-unternehmen-cache-server'
 import { isinKenntnis } from '@/lib/portfolio-analyse/isin-kenntnisse'
+import { ladeQuartalsKiDiff } from '@/lib/portfolio-analyse/quartals-ki-diff-server'
+import { ladeQuartalsKiDiffCache } from '@/lib/portfolio-analyse/quartals-ki-diff-cache-server'
 import { ladeSecBerichte } from '@/lib/portfolio-analyse/sec-berichte-server'
 import { ladeSecBerichtKiCacheFuerTicker } from '@/lib/portfolio-analyse/sec-berichte-ki-cache-server'
 import { ladeNachkaufKandidaten } from '@/lib/portfolio-analyse/nachkauf-radar/nachkauf-watchlist-cloud-server'
 import type { WhitelistPosition } from '@/lib/portfolio-analyse/nachkauf-radar/nachkauf-radar-whitelist'
+import type { EarningsCallQuartalEintrag } from '@/lib/portfolio-analyse/earnings-call-types'
+import type { SecBerichtEintrag } from '@/lib/portfolio-analyse/sec-berichte-types'
+
+/** Nur Meldungen neuer als dieses Alter (Tage) gelten als „neu“ — kein Alt-Backfill. */
+const NEU_MAX_ALTER_TAGE = 100
 
 export type QuartalsAutoKiJobDetail = {
   ticker: string
   name: string
-  art: 'sec' | 'earnings'
+  art: 'sec' | 'earnings' | 'diff_sec' | 'diff_earnings'
   id: string
   ok: boolean
   hinweis?: string
@@ -30,7 +38,8 @@ export type QuartalsAutoKiErgebnis = {
   geprueft: number
   secNeu: number
   earningsNeu: number
-  uebersprungenCache: number
+  diffsNeu: number
+  uebersprungen: number
   fehler: string[]
   details: QuartalsAutoKiJobDetail[]
   offset: number
@@ -50,49 +59,193 @@ function tickerAusPosition(p: WhitelistPosition): { ticker: string; name: string
   }
 }
 
-async function neuerSecBerichtId(opts: {
+function tageSeit(isoDatum: string | null | undefined): number | null {
+  if (!isoDatum || !/^\d{4}-\d{2}-\d{2}/.test(isoDatum)) return null
+  const t = Date.parse(isoDatum.slice(0, 10) + 'T12:00:00Z')
+  if (!Number.isFinite(t)) return null
+  return Math.floor((Date.now() - t) / (24 * 60 * 60 * 1000))
+}
+
+/** Ende des Kalenderquartals als Näherung, wenn kein Call-Datum vorliegt. */
+function naeherungsDatumAusQuartalId(quartalId: string): string | null {
+  const m = /^(\d{4})-Q([1-4])$/i.exec(quartalId.trim())
+  if (!m) return null
+  const jahr = Number(m[1])
+  const q = Number(m[2]) as 1 | 2 | 3 | 4
+  const endeMonat = q * 3
+  const endeTag = endeMonat === 6 || endeMonat === 9 ? 30 : endeMonat === 3 ? 31 : 31
+  return `${jahr}-${String(endeMonat).padStart(2, '0')}-${String(endeTag).padStart(2, '0')}`
+}
+
+function istNeuGenug(isoDatum: string | null | undefined): boolean {
+  const tage = tageSeit(isoDatum)
+  if (tage == null) return false
+  return tage >= 0 && tage <= NEU_MAX_ALTER_TAGE
+}
+
+function secIstNeu(b: SecBerichtEintrag): boolean {
+  return istNeuGenug(b.filingDatum)
+}
+
+function earningsIstNeu(q: EarningsCallQuartalEintrag): boolean {
+  return istNeuGenug(q.callDatum) || istNeuGenug(naeherungsDatumAusQuartalId(q.id))
+}
+
+/** Neuester Bericht im Neu-Fenster ohne KI-Cache (kein Alt-Backfill). */
+async function findeNeuenSecBericht(opts: {
   ticker: string
   isin: string
   name: string
-}): Promise<string | null> {
-  const liste = await ladeSecBerichte({
+}): Promise<{ bericht: SecBerichtEintrag; liste: SecBerichtEintrag[] } | null> {
+  const paket = await ladeSecBerichte({
     ticker: opts.ticker,
     isin: opts.isin,
     firmenname: opts.name,
   })
-  if (!liste.ok || liste.berichte.length === 0) return null
+  if (!paket.ok || paket.berichte.length === 0) return null
+
+  const sorted = [...paket.berichte].sort((a, b) =>
+    (b.filingDatum ?? '').localeCompare(a.filingDatum ?? ''),
+  )
   const cache = await ladeSecBerichtKiCacheFuerTicker(opts.ticker)
-  for (const b of liste.berichte) {
+
+  for (const b of sorted) {
+    if (!secIstNeu(b)) continue
     const hit = cache.get(b.id)
-    if (!hit?.zusammenfassung?.trim()) return b.id
-    if (hit.accession && b.accession && hit.accession !== b.accession) return b.id
+    if (!hit?.zusammenfassung?.trim()) return { bericht: b, liste: sorted }
+    if (hit.accession && b.accession && hit.accession !== b.accession) {
+      return { bericht: b, liste: sorted }
+    }
   }
   return null
 }
 
-async function neuesEarningsQuartalId(opts: {
+/** Neuestes Call-Quartal im Neu-Fenster ohne KI-Cache. */
+async function findeNeuenEarningsCall(opts: {
   ticker: string
   isin: string
   name: string
-}): Promise<string | null> {
-  const liste = await ladeEarningsCallZusammenfassung({
+}): Promise<{ quartal: EarningsCallQuartalEintrag; liste: EarningsCallQuartalEintrag[] } | null> {
+  const paket = await ladeEarningsCallZusammenfassung({
     ticker: opts.ticker,
     isin: opts.isin,
     firmenname: opts.name,
   })
-  if (!liste.ok || liste.quartale.length === 0) return null
+  if (!paket.ok || paket.quartale.length === 0) return null
+
+  const sorted = [...paket.quartale].sort((a, b) => {
+    if (a.jahr !== b.jahr) return b.jahr - a.jahr
+    return b.quartal - a.quartal
+  })
   const cache = await ladeEarningsCallKiCacheFuerTicker(opts.ticker)
-  for (const q of liste.quartale) {
+
+  for (const q of sorted) {
+    if (!earningsIstNeu(q)) continue
     const hit = cache.get(q.id)
-    if (!hit?.zusammenfassung?.trim()) return q.id
-    if (hit.transcriptUrl && q.transcriptUrl && hit.transcriptUrl !== q.transcriptUrl) return q.id
+    if (!hit?.zusammenfassung?.trim()) return { quartal: q, liste: sorted }
+    if (hit.transcriptUrl && q.transcriptUrl && hit.transcriptUrl !== q.transcriptUrl) {
+      return { quartal: q, liste: sorted }
+    }
   }
   return null
+}
+
+function vorherSecMitKi(
+  liste: SecBerichtEintrag[],
+  aktuellId: string,
+  cache: Map<string, { zusammenfassung: string }>,
+): SecBerichtEintrag | null {
+  const sorted = [...liste].sort((a, b) => (b.filingDatum ?? '').localeCompare(a.filingDatum ?? ''))
+  const idx = sorted.findIndex((b) => b.id === aktuellId)
+  if (idx < 0) return null
+  for (let i = idx + 1; i < sorted.length; i++) {
+    const c = cache.get(sorted[i].id)
+    if (c?.zusammenfassung?.trim() || sorted[i].zusammenfassung?.trim()) return sorted[i]
+  }
+  return null
+}
+
+function vorherEarningsMitKi(
+  liste: EarningsCallQuartalEintrag[],
+  aktuellId: string,
+  cache: Map<string, { zusammenfassung: string }>,
+): EarningsCallQuartalEintrag | null {
+  const sorted = [...liste].sort((a, b) => {
+    if (a.jahr !== b.jahr) return b.jahr - a.jahr
+    return b.quartal - a.quartal
+  })
+  const idx = sorted.findIndex((q) => q.id === aktuellId)
+  if (idx < 0) return null
+  for (let i = idx + 1; i < sorted.length; i++) {
+    const c = cache.get(sorted[i].id)
+    if (c?.zusammenfassung?.trim() || sorted[i].zusammenfassung?.trim()) return sorted[i]
+  }
+  return null
+}
+
+async function ggfDiffSec(opts: {
+  ticker: string
+  name: string
+  aktuellId: string
+  liste: SecBerichtEintrag[]
+}): Promise<QuartalsAutoKiJobDetail | null> {
+  const cache = await ladeSecBerichtKiCacheFuerTicker(opts.ticker)
+  const vorher = vorherSecMitKi(opts.liste, opts.aktuellId, cache)
+  if (!vorher) return null
+
+  const cached = await ladeQuartalsKiDiffCache(opts.ticker, 'sec_bericht', opts.aktuellId, vorher.id)
+  if (cached) return null
+
+  const paket = await ladeQuartalsKiDiff({
+    ticker: opts.ticker,
+    firmenname: opts.name,
+    typ: 'sec_bericht',
+    aktuellId: opts.aktuellId,
+    vorherId: vorher.id,
+  })
+  return {
+    ticker: opts.ticker,
+    name: opts.name,
+    art: 'diff_sec',
+    id: `${vorher.id}→${opts.aktuellId}`,
+    ok: Boolean(paket.ok && paket.diff?.trim()),
+    hinweis: paket.ok ? undefined : paket.fehler ?? undefined,
+  }
+}
+
+async function ggfDiffEarnings(opts: {
+  ticker: string
+  name: string
+  aktuellId: string
+  liste: EarningsCallQuartalEintrag[]
+}): Promise<QuartalsAutoKiJobDetail | null> {
+  const cache = await ladeEarningsCallKiCacheFuerTicker(opts.ticker)
+  const vorher = vorherEarningsMitKi(opts.liste, opts.aktuellId, cache)
+  if (!vorher) return null
+
+  const cached = await ladeQuartalsKiDiffCache(opts.ticker, 'earnings_call', opts.aktuellId, vorher.id)
+  if (cached) return null
+
+  const paket = await ladeQuartalsKiDiff({
+    ticker: opts.ticker,
+    firmenname: opts.name,
+    typ: 'earnings_call',
+    aktuellId: opts.aktuellId,
+    vorherId: vorher.id,
+  })
+  return {
+    ticker: opts.ticker,
+    name: opts.name,
+    art: 'diff_earnings',
+    id: `${vorher.id}→${opts.aktuellId}`,
+    ok: Boolean(paket.ok && paket.diff?.trim()),
+    hinweis: paket.ok ? undefined : paket.fehler ?? undefined,
+  }
 }
 
 /**
- * Prüft Kandidaten ab `offset` und fasst fehlende Berichte/Calls zusammen.
- * Budget: max. Ticker und max. neue KI-Jobs pro Aufruf (Free-Tier schonen).
+ * Prüft Kandidaten ab `offset`: nur **neue** Berichte/Calls (≤ NEU_MAX_ALTER_TAGE),
+ * fasst sie zusammen und erzeugt bei Bedarf den Quartals-Diff zum Vorquartal.
  */
 export async function laufeQuartalsAutoKi(opts?: {
   offset?: number
@@ -114,7 +267,8 @@ export async function laufeQuartalsAutoKi(opts?: {
   let geprueft = 0
   let secNeu = 0
   let earningsNeu = 0
-  let uebersprungenCache = 0
+  let diffsNeu = 0
+  let uebersprungen = 0
   let kiJobs = 0
 
   for (const pos of slice) {
@@ -129,34 +283,54 @@ export async function laufeQuartalsAutoKi(opts?: {
     const { ticker, name, isin } = aufgeloest
     geprueft++
 
-    // 1) SEC / IR-Bericht
+    // 1) Neuer SEC / IR-Bericht
     if (kiJobs < maxKiJobs && Date.now() - start <= zeitBudgetMs) {
       try {
-        const berichtId = await neuerSecBerichtId({ ticker, isin, name })
-        if (!berichtId) {
-          uebersprungenCache++
+        const fund = await findeNeuenSecBericht({ ticker, isin, name })
+        if (!fund) {
+          uebersprungen++
         } else {
           const paket = await ladeSecBerichte({
             ticker,
             isin,
             firmenname: name,
-            berichtId,
+            berichtId: fund.bericht.id,
           })
-          const hit = paket.berichte.find((b) => b.id === berichtId)
+          const hit = paket.berichte.find((b) => b.id === fund.bericht.id)
           const ok = Boolean(hit?.zusammenfassung?.trim())
           details.push({
             ticker,
             name,
             art: 'sec',
-            id: berichtId,
+            id: fund.bericht.id,
             ok,
-            hinweis: ok ? undefined : paket.fehler ?? 'Keine Zusammenfassung',
+            hinweis: ok
+              ? `neu (${fund.bericht.filingDatum ?? 'ohne Datum'})`
+              : paket.fehler ?? 'Keine Zusammenfassung',
           })
           if (ok) {
             secNeu++
             kiJobs++
+            // Diff zum vorherigen Bericht mit KI
+            if (kiJobs < maxKiJobs && Date.now() - start <= zeitBudgetMs) {
+              const diff = await ggfDiffSec({
+                ticker,
+                name,
+                aktuellId: fund.bericht.id,
+                liste: fund.liste,
+              })
+              if (diff) {
+                details.push(diff)
+                if (diff.ok) {
+                  diffsNeu++
+                  kiJobs++
+                } else if (diff.hinweis) {
+                  fehler.push(`${ticker} Diff SEC: ${diff.hinweis}`)
+                }
+              }
+            }
           } else if (paket.fehler) {
-            fehler.push(`${ticker} SEC ${berichtId}: ${paket.fehler}`)
+            fehler.push(`${ticker} SEC ${fund.bericht.id}: ${paket.fehler}`)
           }
         }
       } catch (e) {
@@ -164,34 +338,53 @@ export async function laufeQuartalsAutoKi(opts?: {
       }
     }
 
-    // 2) Earnings Call
+    // 2) Neuer Earnings Call
     if (kiJobs < maxKiJobs && Date.now() - start <= zeitBudgetMs) {
       try {
-        const quartalId = await neuesEarningsQuartalId({ ticker, isin, name })
-        if (!quartalId) {
-          uebersprungenCache++
+        const fund = await findeNeuenEarningsCall({ ticker, isin, name })
+        if (!fund) {
+          uebersprungen++
         } else {
           const paket = await ladeEarningsCallZusammenfassung({
             ticker,
             isin,
             firmenname: name,
-            quartalId,
+            quartalId: fund.quartal.id,
           })
-          const hit = paket.quartale.find((q) => q.id === quartalId)
+          const hit = paket.quartale.find((q) => q.id === fund.quartal.id)
           const ok = Boolean(hit?.zusammenfassung?.trim())
           details.push({
             ticker,
             name,
             art: 'earnings',
-            id: quartalId,
+            id: fund.quartal.id,
             ok,
-            hinweis: ok ? undefined : paket.fehler ?? 'Keine Zusammenfassung',
+            hinweis: ok
+              ? `neu (${fund.quartal.callDatum ?? fund.quartal.id})`
+              : paket.fehler ?? 'Keine Zusammenfassung',
           })
           if (ok) {
             earningsNeu++
             kiJobs++
+            if (kiJobs < maxKiJobs && Date.now() - start <= zeitBudgetMs) {
+              const diff = await ggfDiffEarnings({
+                ticker,
+                name,
+                aktuellId: fund.quartal.id,
+                liste: fund.liste,
+              })
+              if (diff) {
+                details.push(diff)
+                if (diff.ok) {
+                  diffsNeu++
+                  kiJobs++
+                } else if (diff.hinweis) {
+                  fehler.push(`${ticker} Diff Call: ${diff.hinweis}`)
+                }
+              }
+            }
           } else if (paket.fehler) {
-            fehler.push(`${ticker} Call ${quartalId}: ${paket.fehler}`)
+            fehler.push(`${ticker} Call ${fund.quartal.id}: ${paket.fehler}`)
           }
         }
       } catch (e) {
@@ -206,7 +399,8 @@ export async function laufeQuartalsAutoKi(opts?: {
     geprueft,
     secNeu,
     earningsNeu,
-    uebersprungenCache,
+    diffsNeu,
+    uebersprungen,
     fehler,
     details,
     offset: nextOffset,
