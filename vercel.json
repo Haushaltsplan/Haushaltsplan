@@ -5,6 +5,9 @@
     },
     "app/api/portfolio-analyse/nachkaeufe/cron-scan/route.ts": {
       "maxDuration": 300
+    },
+    "app/api/portfolio-analyse/quartals-auto-ki/cron/route.ts": {
+      "maxDuration": 300
     }
   },
   "crons": [
@@ -15,6 +18,10 @@
     {
       "path": "/api/strava/cron-sync",
       "schedule": "0 6 * * 0"
+    },
+    {
+      "path": "/api/portfolio-analyse/quartals-auto-ki/cron",
+      "schedule": "0 5 * * 2,5"
     }
   ]
 }

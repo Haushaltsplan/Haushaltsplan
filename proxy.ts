@@ -25,7 +25,7 @@ function jsonError(message: string, status: number) {
   return NextResponse.json({ error: message }, { status })
 }
 
-/** OAuth-Callbacks & Konfig-Checks — Browser-Redirects ohne Bearer-Token. */
+/** OAuth-Callbacks, Pings & Vercel-Crons (Auth prüft die Route selbst via CRON_SECRET). */
 function oeffentlicheApi(pathname: string): boolean {
   return (
     pathname === '/api/fitnessdaten/whoop/auth' ||
@@ -34,7 +34,10 @@ function oeffentlicheApi(pathname: string): boolean {
     pathname === '/api/fitnessdaten/whoop/ping' ||
     pathname === '/api/strava/auth/start' ||
     pathname === '/api/strava/callback' ||
-    pathname === '/api/strava/ping'
+    pathname === '/api/strava/ping' ||
+    pathname === '/api/strava/cron-sync' ||
+    pathname === '/api/portfolio-analyse/nachkaeufe/cron-scan' ||
+    pathname === '/api/portfolio-analyse/quartals-auto-ki/cron'
   )
 }
 
