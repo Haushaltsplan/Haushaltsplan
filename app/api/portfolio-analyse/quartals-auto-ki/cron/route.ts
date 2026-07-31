@@ -1,11 +1,20 @@
 /**
  * Vercel Cron: Neue Quartalsberichte & Earnings Calls erkennen und per KI zusammenfassen.
- * Schedule: Di + Fr 05:00 UTC (siehe vercel.json).
+ * Schedule: täglich 05:00 UTC (siehe vercel.json).
  *
+ * Bei erschöpftem KI-Kontingent wird der Cursor in Supabase gespeichert und
+ * am nächsten Tag exakt dort fortgesetzt.
+ *
+ * Query: ?reset=1 setzt den Fortschritt zurück. ?offset=&phase= überschreibt einmalig.
  * Gesichert durch CRON_SECRET.
  */
 import { NextResponse } from 'next/server'
 import { laufeQuartalsAutoKi } from '@/lib/portfolio-analyse/quartals-auto-ki-cron-server'
+import {
+  ladeQuartalsAutoKiFortschritt,
+  speichereQuartalsAutoKiFortschritt,
+  type QuartalsAutoKiPhase,
+} from '@/lib/portfolio-analyse/quartals-auto-ki-fortschritt-server'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 300
@@ -16,18 +25,40 @@ function cronErlaubt(req: Request): boolean {
   return req.headers.get('authorization') === `Bearer ${secret}`
 }
 
+function parsePhase(raw: string | null): QuartalsAutoKiPhase | null {
+  if (raw === 'sec' || raw === 'earnings') return raw
+  return null
+}
+
 export async function GET(req: Request) {
   if (!cronErlaubt(req)) {
     return NextResponse.json({ ok: false, fehler: 'Unauthorized' }, { status: 401 })
   }
 
   const url = new URL(req.url)
-  const startOffset = Math.max(0, Number(url.searchParams.get('offset')) || 0)
+  const reset = url.searchParams.get('reset') === '1'
+  const offsetParam = url.searchParams.get('offset')
+  const phaseParam = parsePhase(url.searchParams.get('phase'))
 
   try {
-    let offset = startOffset
+    if (reset) {
+      await speichereQuartalsAutoKiFortschritt({
+        resumeOffset: 0,
+        resumePhase: 'earnings',
+        pauseGrund: null,
+      })
+    }
+
+    const gespeichert = reset ? null : await ladeQuartalsAutoKiFortschritt()
+    let resumeOffset =
+      offsetParam != null && offsetParam !== ''
+        ? Math.max(0, Number(offsetParam) || 0)
+        : (gespeichert?.resumeOffset ?? 0)
+    let resumePhase: QuartalsAutoKiPhase =
+      phaseParam ?? gespeichert?.resumePhase ?? 'earnings'
+
     let runden = 0
-    const MAX_RUNDEN = 10
+    const MAX_RUNDEN = 8
     const aggregiert = {
       kandidaten: 0,
       geprueft: 0,
@@ -37,14 +68,18 @@ export async function GET(req: Request) {
       uebersprungen: 0,
       fehler: [] as string[],
       details: [] as Awaited<ReturnType<typeof laufeQuartalsAutoKi>>['details'],
+      quotaErschoepft: false,
+      pauseGrund: null as string | null,
+      durchlaufFertig: false,
     }
 
     while (runden < MAX_RUNDEN) {
       const teil = await laufeQuartalsAutoKi({
-        offset,
-        maxTicker: 3,
-        maxKiJobs: 3,
-        zeitBudgetMs: 100_000,
+        resumeOffset,
+        resumePhase,
+        maxTicker: 6,
+        maxKiJobs: 4,
+        zeitBudgetMs: 110_000,
       })
       aggregiert.kandidaten = teil.kandidaten
       aggregiert.geprueft += teil.geprueft
@@ -54,17 +89,45 @@ export async function GET(req: Request) {
       aggregiert.uebersprungen += teil.uebersprungen
       aggregiert.fehler.push(...teil.fehler)
       aggregiert.details.push(...teil.details)
-      offset = teil.offset
+      resumeOffset = teil.resumeOffset
+      resumePhase = teil.resumePhase
       runden++
-      if (teil.verbleibend === 0) break
+
+      if (teil.quotaErschoepft) {
+        aggregiert.quotaErschoepft = true
+        aggregiert.pauseGrund = teil.pauseGrund
+        break
+      }
+      if (teil.durchlaufFertig) {
+        aggregiert.durchlaufFertig = true
+        break
+      }
       if (teil.secNeu + teil.earningsNeu + teil.diffsNeu === 0 && teil.geprueft === 0) break
-      if (aggregiert.secNeu + aggregiert.earningsNeu + aggregiert.diffsNeu >= 5) break
+      if (aggregiert.secNeu + aggregiert.earningsNeu + aggregiert.diffsNeu >= 8) break
     }
+
+    await speichereQuartalsAutoKiFortschritt({
+      resumeOffset,
+      resumePhase,
+      pauseGrund: aggregiert.quotaErschoepft
+        ? aggregiert.pauseGrund ?? 'KI-Kontingent erschöpft — morgen weiter'
+        : null,
+      kandidatenGesamt: aggregiert.kandidaten,
+    })
 
     return NextResponse.json({
       ok: true,
       ...aggregiert,
       runden,
+      resumeOffset,
+      resumePhase,
+      fortgesetztVon: gespeichert
+        ? {
+            offset: gespeichert.resumeOffset,
+            phase: gespeichert.resumePhase,
+            pauseGrund: gespeichert.pauseGrund,
+          }
+        : null,
       zeitstempel: new Date().toISOString(),
     })
   } catch (e) {

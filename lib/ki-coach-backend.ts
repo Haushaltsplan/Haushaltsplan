@@ -367,6 +367,20 @@ function istGeminiQuotaOderRateLimit(httpStatus: number, message: string, apiSta
   return false
 }
 
+/**
+ * Erkennt erschöpftes Gemini-Kontingent (auch deutsche formatCoachFehlerHint-Texte).
+ * Für Cron: Lauf stoppen und am nächsten Tag genau dort fortsetzen.
+ */
+export function istKiKontingentErschoepft(text: string | null | undefined): boolean {
+  if (!text?.trim()) return false
+  const m = text.toLowerCase()
+  if (m.includes('tageskontingent')) return true
+  if (m.includes('kontingent') && (m.includes('erschöpft') || m.includes('aufgebraucht'))) return true
+  if (m.includes('quota') || m.includes('resource_exhausted') || m.includes('rate limit')) return true
+  if (m.includes('free_tier') && m.includes('limit')) return true
+  return istGeminiQuotaOderRateLimit(0, text)
+}
+
 /** Nutzerfreundliche deutsche Meldung für typische Gemini-Ausfälle. */
 export function formatCoachFehlerHint(hint: string, modelsVersucht = 1): string {
   const m = hint.toLowerCase()

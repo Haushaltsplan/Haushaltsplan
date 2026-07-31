@@ -24,7 +24,7 @@
     },
     {
       "path": "/api/portfolio-analyse/quartals-auto-ki/cron",
-      "schedule": "0 5 * * 2,5"
+      "schedule": "0 5 * * *"
     }
   ]
 }
