@@ -150,9 +150,22 @@ export function spinOffBereitsGebucht(buchungen: PortfolioBuchung[], spin: SpinO
   )
 }
 
+/** Summe Parqet-SpinOffCost auf dem Parent am Spin-Datum (bereits vom Parent abgezogen). */
+export function spinOffCostSummeEur(buchungen: PortfolioBuchung[], spin: SpinOff): number {
+  const parent = spin.parentIsin.toUpperCase()
+  let sum = 0
+  for (const b of buchungen) {
+    if (b.datum !== spin.datum) continue
+    if (b.isin?.toUpperCase() !== parent) continue
+    if (b.parqetTyp === 'SpinOffCost' && b.betragEur > 0) sum += b.betragEur
+  }
+  return Math.round(sum * 100) / 100
+}
+
 /**
- * Fallback ohne synthetische Buchungen: Kind-Anteil direkt im Bestand.
- * Nur wenn noch keine SpinOff-Buchung existiert.
+ * Fallback ohne synthetische Kind-Buchung: Kind-Aktien direkt im Bestand.
+ * Wenn Parqet bereits SpinOffCost gebucht hat: kein zweiter %-Abzug vom Parent
+ * (sonst wird Investiert dauerhaft zu niedrig, sobald das Kind verkauft ist).
  */
 export function wendeSpinOffsAufMap(
   map: StandMap,
@@ -169,9 +182,16 @@ export function wendeSpinOffsAufMap(
     const childStueck = rundePositionStueck(parent.stueck * spin.ratio)
     if (childStueck < 1e-8) continue
 
-    const anteil = Math.min(0.95, Math.max(0.01, spin.childKostenAnteil ?? 0.05))
-    const childKosten = Math.round(parent.kosten * anteil * 100) / 100
-    parent.kosten = Math.round(Math.max(0, parent.kosten - childKosten) * 100) / 100
+    const costFromBooking = spinOffCostSummeEur(buchungen, spin)
+    let childKosten: number
+    if (costFromBooking > 0) {
+      // Parent wurde schon per SpinOffCost-Zeile gekürzt — Kind übernimmt genau diesen Betrag.
+      childKosten = costFromBooking
+    } else {
+      const anteil = Math.min(0.95, Math.max(0.01, spin.childKostenAnteil ?? 0.05))
+      childKosten = Math.round(parent.kosten * anteil * 100) / 100
+      parent.kosten = Math.round(Math.max(0, parent.kosten - childKosten) * 100) / 100
+    }
 
     const childIsin = spin.childIsin.toUpperCase()
     const child = map.get(childIsin) ?? {

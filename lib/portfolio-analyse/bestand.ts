@@ -3,6 +3,7 @@ import {
   wendeAktienSplitsAufMap,
   wendeSpinOffsAufMap,
 } from '@/lib/portfolio-analyse/corporate-actions'
+import { istAktiendividendeAlsKauf } from '@/lib/portfolio-analyse/dividenden-buchung'
 import { gebuehrIndex, kaufEinstandBetragEur } from '@/lib/portfolio-analyse/parqet-einstand'
 import { cashBetragEur } from '@/lib/portfolio-analyse/parqet-handelswerte'
 import { rundePositionStueck } from '@/lib/portfolio-analyse/berechnung'
@@ -153,7 +154,9 @@ function cashDelta(b: PortfolioBuchung): number {
     case 'auszahlung':
       return -cashBetragEur(b)
     case 'kauf':
-      return istCorporateActionOhneCash(b) ? 0 : -cashBetragEur(b)
+      // Aktiendividende/TransferIn: Stücke + Einstand, aber kein Cash-Abfluss
+      if (istCorporateActionOhneCash(b) || istAktiendividendeAlsKauf(b)) return 0
+      return -cashBetragEur(b)
     case 'verkauf':
       return cashBetragEur(b)
     case 'dividende':
