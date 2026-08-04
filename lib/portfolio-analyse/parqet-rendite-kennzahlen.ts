@@ -9,7 +9,8 @@ import {
   istGezahlteBardividende,
   PARQET_DIV_STEUERSATZ,
 } from '@/lib/portfolio-analyse/dividenden-buchung'
-import { gebuehrSteuerIndex, kaufEinstandBetragEur } from '@/lib/portfolio-analyse/parqet-einstand'
+import { gebuehrIndex } from '@/lib/portfolio-analyse/parqet-einstand'
+import { eingebetteteOrdergebuehrEur } from '@/lib/portfolio-analyse/parqet-handelswerte'
 import {
   berechneParqetPeriodKennzahlen,
   parqetInvestiertAmStichtag,
@@ -54,33 +55,24 @@ export function summeDividendenBruttoParqet(buchungen: PortfolioBuchung[]): numb
   return round2(sum)
 }
 
-/** Spread Handelswert vs. Cash (Kauf: Betrag > HW, Verkauf: HW > Erlös). */
-function handelsgebuehrAusKursSpread(b: PortfolioBuchung): number {
-  if (b.typ !== 'kauf' && b.typ !== 'verkauf') return 0
-  const stk = Math.abs(b.stueck ?? 0)
-  if (stk <= 0 || b.kursEur == null || b.kursEur <= 0) return 0
-  const hw = round2(stk * b.kursEur)
-  if (b.typ === 'kauf' && b.betragEur > hw + 0.01) return round2(b.betragEur - hw)
-  if (b.typ === 'verkauf' && hw > b.betragEur + 0.01) return round2(hw - b.betragEur)
-  return 0
-}
-
-/** Explizite Gebühr-Zeilen + eingebettete Ordergebühren (Kauf + Verkauf). */
+/**
+ * Explizite Gebühr-Zeilen + plausible eingebettete Ordergebühren.
+ * Keine Doppelzählung (Spread − schon gebuchte Gebühr derselben ISIN/desselben Tags).
+ */
 export function summeGebuehrenParqet(buchungen: PortfolioBuchung[]): number {
-  const feeIndex = gebuehrSteuerIndex(buchungen)
+  const feeIndex = gebuehrIndex(buchungen)
   let sum = 0
   for (const b of buchungen) {
-    if (b.typ === 'gebuehr') sum += b.betragEur
-    else if (b.typ === 'kauf') {
-      const spread = handelsgebuehrAusKursSpread(b)
-      if (spread > 0) sum += spread
-      else {
-        const einstand = kaufEinstandBetragEur(b, feeIndex)
-        if (b.betragEur > einstand + 0.01) sum += b.betragEur - einstand
-      }
-    } else if (b.typ === 'verkauf') {
-      sum += handelsgebuehrAusKursSpread(b)
+    if (b.typ === 'gebuehr') {
+      sum += b.betragEur
+      continue
     }
+    if (b.typ !== 'kauf' && b.typ !== 'verkauf') continue
+    const spread = eingebetteteOrdergebuehrEur(b)
+    if (spread <= 0) continue
+    const isin = b.isin?.toUpperCase()
+    const schon = isin ? (feeIndex.get(`${b.datum}|${isin}`) ?? 0) : 0
+    sum += Math.max(0, round2(spread - schon))
   }
   return round2(sum)
 }

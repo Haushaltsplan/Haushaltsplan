@@ -3,7 +3,8 @@ import {
   wendeAktienSplitsAufMap,
   wendeSpinOffsAufMap,
 } from '@/lib/portfolio-analyse/corporate-actions'
-import { gebuehrSteuerIndex, kaufEinstandBetragEur } from '@/lib/portfolio-analyse/parqet-einstand'
+import { gebuehrIndex, kaufEinstandBetragEur } from '@/lib/portfolio-analyse/parqet-einstand'
+import { cashBetragEur } from '@/lib/portfolio-analyse/parqet-handelswerte'
 import { rundePositionStueck } from '@/lib/portfolio-analyse/berechnung'
 import { alleKalendertage } from '@/lib/portfolio-analyse/wertentwicklung-tage'
 import type { PortfolioBuchung, PortfolioDbSnapshot, PortfolioPositionSnapshot } from '@/lib/portfolio-analyse/types'
@@ -122,7 +123,8 @@ function wendeBuchungAufStand(
 
   if (b.typ === 'kauf') {
     let stk = b.stueck != null ? Math.abs(b.stueck) : 0
-    if (stk <= 0 && b.kursEur != null && b.kursEur > 0) stk = b.betragEur / b.kursEur
+    const cash = cashBetragEur(b)
+    if (stk <= 0 && b.kursEur != null && b.kursEur > 0) stk = cash / b.kursEur
     if (stk <= 0) return
     cur.stueck += stk
     cur.kosten += kaufEinstandBetragEur(b, feeIndex)
@@ -130,13 +132,14 @@ function wendeBuchungAufStand(
     cur.kosten = Math.round(Math.max(0, cur.kosten - b.betragEur) * 100) / 100
   } else if (b.typ === 'verkauf') {
     let stk = b.stueck != null ? Math.abs(b.stueck) : 0
-    if (stk <= 0 && b.kursEur != null && b.kursEur > 0) stk = b.betragEur / b.kursEur
+    const cash = cashBetragEur(b)
+    if (stk <= 0 && b.kursEur != null && b.kursEur > 0) stk = cash / b.kursEur
     if (cur.stueck > 0 && stk > 0) {
       const anteil = Math.min(1, stk / cur.stueck)
       cur.kosten = Math.round(cur.kosten * (1 - anteil) * 100) / 100
       cur.stueck = Math.max(0, cur.stueck - stk)
     } else {
-      cur.kosten = Math.max(0, cur.kosten - b.betragEur)
+      cur.kosten = Math.max(0, cur.kosten - cash)
     }
   }
   if (b.wertpapierName?.trim()) cur.name = b.wertpapierName.trim()
@@ -146,19 +149,19 @@ function wendeBuchungAufStand(
 function cashDelta(b: PortfolioBuchung): number {
   switch (b.typ) {
     case 'einzahlung':
-      return b.betragEur
+      return cashBetragEur(b)
     case 'auszahlung':
-      return -b.betragEur
+      return -cashBetragEur(b)
     case 'kauf':
-      return istCorporateActionOhneCash(b) ? 0 : -b.betragEur
+      return istCorporateActionOhneCash(b) ? 0 : -cashBetragEur(b)
     case 'verkauf':
-      return b.betragEur
+      return cashBetragEur(b)
     case 'dividende':
     case 'zins':
-      return b.betragEur
+      return cashBetragEur(b)
     case 'steuer':
     case 'gebuehr':
-      return -b.betragEur
+      return -cashBetragEur(b)
     default:
       return 0
   }
@@ -214,7 +217,7 @@ export function depotStandProTag(
   >()
   let cash = 0
   const out = new Map<string, DepotStand>()
-  const feeIndex = gebuehrSteuerIndex(buchungen)
+  const feeIndex = gebuehrIndex(buchungen)
 
   for (const tag of tage) {
     const tagBuchungen = byTag.get(tag) ?? []
@@ -232,31 +235,7 @@ export function depotStandProTag(
 export function cashSaldoAusBuchungen(buchungen: PortfolioBuchung[]): number {
   let cash = 0
   for (const b of buchungen) {
-    switch (b.typ) {
-      case 'einzahlung':
-        cash += b.betragEur
-        break
-      case 'auszahlung':
-        cash -= b.betragEur
-        break
-      case 'kauf':
-        if (istCorporateActionOhneCash(b)) break
-        cash -= b.betragEur
-        break
-      case 'verkauf':
-        cash += b.betragEur
-        break
-      case 'dividende':
-      case 'zins':
-        cash += b.betragEur
-        break
-      case 'steuer':
-      case 'gebuehr':
-        cash -= b.betragEur
-        break
-      default:
-        break
-    }
+    cash += cashDelta(b)
   }
   return Math.round(cash * 100) / 100
 }

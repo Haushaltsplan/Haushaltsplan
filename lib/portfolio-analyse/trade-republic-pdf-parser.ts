@@ -457,8 +457,28 @@ function parseWertpapierabrechnung(items: PdfTextItem[]): TrRawCashZeile[] {
   const eurBetraege =
     stkLine?.match(/-?\d{1,3}(?:\.\d{3})*,\d{2}\s*EUR/gi)?.map((s) => parseEuropeanNumber(s)) ?? []
   const positive = eurBetraege.filter((n): n is number => n != null && n > 0)
-  const kursEur = positive[0] ?? null
-  const handelsBetrag = positive[1] ?? positive[0] ?? null
+
+  // Zeile „10 Stk. 178,92 EUR 1.789,20 EUR“ → Preis + Betrag.
+  // Nur ein EUR-Betrag bei Mehrstück: TR zeigt oft nur den Stückpreis → Gesamt = Stk × Preis.
+  let handelsBetrag: number | null = null
+  let kursEur: number | null = null
+  if (positive.length >= 2) {
+    kursEur = positive[0]!
+    handelsBetrag = positive[1]!
+  } else if (positive.length === 1) {
+    const only = positive[0]!
+    if (stueck != null && stueck > 1.01) {
+      kursEur = only
+      handelsBetrag = Math.round(stueck * only * 100) / 100
+    } else if (stueck != null && stueck > 0) {
+      handelsBetrag = only
+      kursEur = Math.round((only / stueck) * 10000) / 10000
+    } else {
+      handelsBetrag = only
+    }
+  } else if (stueck != null && stueck > 0 && kursEur != null && kursEur > 0) {
+    handelsBetrag = Math.round(stueck * kursEur * 100) / 100
+  }
 
   const out: TrRawCashZeile[] = []
 

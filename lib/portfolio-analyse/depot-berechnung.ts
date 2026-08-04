@@ -7,7 +7,8 @@ import {
   parqetIrrCashflowsAusBuchungen,
   parqetIrrDiagnose,
 } from '@/lib/portfolio-analyse/parqet-xirr'
-import { gebuehrSteuerIndex, kaufEinstandBetragEur } from '@/lib/portfolio-analyse/parqet-einstand'
+import { gebuehrIndex, kaufEinstandBetragEur } from '@/lib/portfolio-analyse/parqet-einstand'
+import { cashBetragEur } from '@/lib/portfolio-analyse/parqet-handelswerte'
 import { summeParqetRealisiertAusBuchungen } from '@/lib/portfolio-analyse/parqet-realisiert'
 import type { PortfolioBuchung } from '@/lib/portfolio-analyse/types'
 import { heuteIso } from '@/lib/portfolio-analyse/wertentwicklung-tage'
@@ -22,23 +23,24 @@ function round2(n: number): number {
 function einstandJeIsin(buchungen: PortfolioBuchung[]): Map<string, { stueck: number; kosten: number }> {
   const map = new Map<string, { stueck: number; kosten: number }>()
   const sortiert = [...buchungen].sort((a, b) => a.datum.localeCompare(b.datum))
-  const feeIndex = gebuehrSteuerIndex(buchungen)
+  const feeIndex = gebuehrIndex(buchungen)
 
   for (const b of sortiert) {
     if (!b.isin) continue
     const isin = b.isin.toUpperCase()
     const cur = map.get(isin) ?? { stueck: 0, kosten: 0 }
+    const cash = cashBetragEur(b)
 
     if (b.typ === 'kauf') {
       let stk = b.stueck != null ? Math.abs(b.stueck) : 0
-      if (stk <= 0 && b.kursEur != null && b.kursEur > 0) stk = b.betragEur / b.kursEur
+      if (stk <= 0 && b.kursEur != null && b.kursEur > 0) stk = cash / b.kursEur
       if (stk > 0) {
         cur.stueck += stk
         cur.kosten += kaufEinstandBetragEur(b, feeIndex)
       }
     } else if (b.typ === 'verkauf') {
       let stk = b.stueck != null ? Math.abs(b.stueck) : 0
-      if (stk <= 0 && b.kursEur != null && b.kursEur > 0) stk = b.betragEur / b.kursEur
+      if (stk <= 0 && b.kursEur != null && b.kursEur > 0) stk = cash / b.kursEur
       if (cur.stueck > 0 && stk > 0) {
         const anteil = Math.min(1, stk / cur.stueck)
         cur.kosten = round2(cur.kosten * (1 - anteil))
@@ -60,7 +62,7 @@ export function baueMonatsVerlauf(
 
   const byMonth = new Map<string, number>()
   let cash = 0
-  const feeIndex = gebuehrSteuerIndex(buchungen)
+  const feeIndex = gebuehrIndex(buchungen)
   const wp = einstandJeIsin(buchungen)
 
   const wpKosten = () => {
@@ -71,19 +73,20 @@ export function baueMonatsVerlauf(
 
   for (const b of sortiert) {
     const isin = b.isin?.toUpperCase()
+    const cashAmt = cashBetragEur(b)
     switch (b.typ) {
       case 'einzahlung':
-        cash += b.betragEur
+        cash += cashAmt
         break
       case 'auszahlung':
-        cash -= b.betragEur
+        cash -= cashAmt
         break
       case 'kauf':
-        cash -= b.betragEur
+        cash -= cashAmt
         if (isin) {
           const cur = wp.get(isin) ?? { stueck: 0, kosten: 0 }
           let stk = b.stueck != null ? Math.abs(b.stueck) : 0
-          if (stk <= 0 && b.kursEur != null && b.kursEur > 0) stk = b.betragEur / b.kursEur
+          if (stk <= 0 && b.kursEur != null && b.kursEur > 0) stk = cashAmt / b.kursEur
           if (stk > 0) {
             cur.stueck += stk
             cur.kosten += kaufEinstandBetragEur(b, feeIndex)
@@ -92,12 +95,12 @@ export function baueMonatsVerlauf(
         }
         break
       case 'verkauf':
-        cash += b.betragEur
+        cash += cashAmt
         if (isin) {
           const cur = wp.get(isin)
           if (cur && cur.stueck > 0) {
             let stk = b.stueck != null ? Math.abs(b.stueck) : 0
-            if (stk <= 0 && b.kursEur != null && b.kursEur > 0) stk = b.betragEur / b.kursEur
+            if (stk <= 0 && b.kursEur != null && b.kursEur > 0) stk = cashAmt / b.kursEur
             if (stk > 0) {
               const anteil = Math.min(1, stk / cur.stueck)
               cur.kosten = round2(cur.kosten * (1 - anteil))
@@ -108,11 +111,11 @@ export function baueMonatsVerlauf(
         break
       case 'dividende':
       case 'zins':
-        cash += b.betragEur
+        cash += cashAmt
         break
       case 'steuer':
       case 'gebuehr':
-        cash -= b.betragEur
+        cash -= cashAmt
         break
       default:
         break

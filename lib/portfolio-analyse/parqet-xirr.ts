@@ -18,6 +18,7 @@ import {
   dividendenZuflussEur,
   istAktiendividendeAlsKauf,
 } from '@/lib/portfolio-analyse/dividenden-buchung'
+import { normalisiereHandelsBuchung } from '@/lib/portfolio-analyse/parqet-handelswerte'
 import type { PortfolioBuchung } from '@/lib/portfolio-analyse/types'
 
 export type IrrCashflow = { date: Date; amount: number }
@@ -61,12 +62,11 @@ export function parqetIrrModus(buchungen: PortfolioBuchung[]): ParqetIrrModus {
 
 /** Investitionsbetrag bei Handels-Modus: Handelswert (amount), nicht Gebühr doppelt. */
 export function irrBetragFuerKauf(b: PortfolioBuchung): number {
-  const stk = b.stueck != null ? Math.abs(b.stueck) : 0
-  if (stk > 0 && b.kursEur != null && b.kursEur > 0) {
-    const handelswert = round2(stk * b.kursEur)
-    if (handelswert > 0 && handelswert <= b.betragEur + 0.02) return handelswert
+  const n = normalisiereHandelsBuchung(b)
+  if (n.handelswertEur != null && n.handelswertEur > 0 && n.handelswertEur <= n.betragEur + 0.02) {
+    return n.handelswertEur
   }
-  return Math.abs(b.betragEur)
+  return n.betragEur
 }
 
 type IrrAktiendivKontext = { paarQuote: number }
