@@ -90,19 +90,20 @@ export type FuehrungWoche = {
 }
 
 /**
- * Plan: Lernwochen 1–2, dann Pause (Urlaub), danach Lernwochen 3–6 weiter.
- * Kalender-Slot 3 = Pause 24.–28.8.; Slot 4 = wieder „Woche 3 · Fokus schützen“.
+ * Plan ab Mo 10.08.2026: Lernwochen 1–2, dann Pause (Urlaub), danach Lernwochen 3–6.
+ * Slot 1 = 10.–16.8. · Slot 2 = 17.–23.8. (Montag Gespräch) · Slot 3 = Pause 24.–28.8.
+ * Slot 4 = wieder „Lernwoche 3 · Fokus schützen“.
  */
 export const FUEHRUNG_WOCHEN: FuehrungWoche[] = [
   {
     nr: 1,
     lernNr: 1,
     titel: 'Wahrnehmen',
-    fokus: 'Du siehst klar, wie oft du benutzt wirst — ohne dich sofort zu ändern.',
+    fokus: 'Mo 10.–So 16.08. — Du siehst klar, wie oft du benutzt wirst, ohne dich sofort zu ändern.',
     aufgaben: [
       'Im Tab „Mitarbeiter“ Fragen zählen und als wichtig oder unnötig einordnen (ohne schon Nein zu üben).',
       'Bei jeder Bitte 3 Sekunden Pause — auch wenn du danach noch hilfst.',
-      'Ende der Woche: Export vorbereiten für das Montagsgespräch in Lernwoche 2.',
+      'Ende der Woche: Export vorbereiten für das Montagsgespräch in Lernwoche 2 (17.08.).',
     ],
   },
   {
@@ -110,9 +111,9 @@ export const FUEHRUNG_WOCHEN: FuehrungWoche[] = [
     lernNr: 2,
     titel: 'Gegenfragen',
     fokus:
-      'Du gibst Denken zurück, bevor du Wissen gibst. Montag: offenes Gespräch mit dem Team — Zahlen und Beispiele offenlegen und erklären, warum du so führst.',
+      'Mo 17.–So 23.08. — Du gibst Denken zurück, bevor du Wissen gibst. Montag 17.08.: offenes Gespräch mit dem Team — Zahlen und Beispiele offenlegen und erklären, warum du so führst.',
     aufgaben: [
-      'Montag: Gespräch mit den Mitarbeitern — Beobachtung offenlegen (wichtig vs. unnötig), Erwartung erklären, Export/PDF als Gesprächsgrundlage nutzen.',
+      'Montag 17.08.: Gespräch mit den Mitarbeitern — Beobachtung offenlegen (wichtig vs. unnötig), Erwartung erklären, Export/PDF als Gesprächsgrundlage nutzen.',
       'Mindestens 5× „Was hast du schon versucht?“ / „Was ist deine Empfehlung?“',
       'Nur bei echten Führungsentscheidungen sofort selbst lösen.',
       'Einen Kollegen bewusst zum ersten Ansprechpartner für ein Thema machen.',

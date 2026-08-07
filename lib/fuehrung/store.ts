@@ -6,8 +6,10 @@ import { FUEHRUNG_MANTRA_DEFAULT } from '@/lib/fuehrung/content'
 
 export const FUEHRUNG_STORAGE_KEY = 'omnia-fuehrung-v2'
 
-/** Challenge startet am Tag des Feedback-Gesprächs. */
-export const FUEHRUNG_CHALLENGE_START = '2026-08-07'
+/** Lernwoche 1 startet Montag, 10.08.2026. */
+export const FUEHRUNG_CHALLENGE_START = '2026-08-10'
+/** Ältere lokale Saves mit Feedback-Datum → auf Lernwochen-Start ziehen. */
+const FUEHRUNG_CHALLENGE_START_ALT = ['2026-08-07'] as const
 /** 6 Lernwochen + 1 Pause-Woche (Urlaub). */
 export const FUEHRUNG_CHALLENGE_TAGE = 49
 export const FUEHRUNG_FOKUS_DEFAULT_MIN = 45
@@ -278,10 +280,20 @@ export function ladeFuehrungState(): FuehrungState {
       typeof parsed.challengeTage === 'number' && parsed.challengeTage >= FUEHRUNG_CHALLENGE_TAGE
         ? parsed.challengeTage
         : FUEHRUNG_CHALLENGE_TAGE
+    const challengeStartRaw =
+      typeof parsed.challengeStart === 'string' && parsed.challengeStart.trim()
+        ? parsed.challengeStart.trim()
+        : FUEHRUNG_CHALLENGE_START
+    const challengeStart = (FUEHRUNG_CHALLENGE_START_ALT as readonly string[]).includes(
+      challengeStartRaw,
+    )
+      ? FUEHRUNG_CHALLENGE_START
+      : challengeStartRaw
     const state: FuehrungState = {
       ...base,
       ...parsed,
       mantra: typeof parsed.mantra === 'string' && parsed.mantra.trim() ? parsed.mantra : base.mantra,
+      challengeStart,
       challengeTage,
       wochenFortschritt: parsed.wochenFortschritt ?? {},
       tage,
