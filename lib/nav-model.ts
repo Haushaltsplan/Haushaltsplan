@@ -14,6 +14,14 @@ export const NAV_LINK_DEFS = [
   },
   { href: '/besitz', label: 'Besitz', shortLabel: 'Besitz', emoji: '👜', color: 'text-amber-400', ring: 'focus-visible:ring-amber-500/50' },
   {
+    href: '/fuehrung',
+    label: 'Führung',
+    shortLabel: 'Führung',
+    emoji: '🧭',
+    color: 'text-slate-400',
+    ring: 'focus-visible:ring-slate-400/50',
+  },
+  {
     href: '/portfolioanalyse',
     label: 'Portfolioanalyse',
     shortLabel: 'Portfolio',

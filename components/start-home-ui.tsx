@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import type { ReactNode } from 'react'
 
-export type StartAkzent = 'sky' | 'rose' | 'whoop' | 'violet' | 'teal'
+export type StartAkzent = 'sky' | 'rose' | 'whoop' | 'violet' | 'teal' | 'slate'
 
 const AKZENT: Record<
   StartAkzent,
@@ -48,6 +48,14 @@ const AKZENT: Record<
     iconText: 'text-teal-300',
     link: 'hover:bg-teal-500/15 hover:text-teal-200',
     border: 'border-teal-500/15',
+  },
+  slate: {
+    ring: 'ring-slate-500/25',
+    glow: 'from-slate-500/12 via-transparent to-stone-500/5',
+    iconBg: 'bg-slate-500/15',
+    iconText: 'text-slate-300',
+    link: 'hover:bg-slate-500/15 hover:text-slate-200',
+    border: 'border-slate-500/20',
   },
 }
 
