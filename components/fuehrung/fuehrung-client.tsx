@@ -30,6 +30,7 @@ import {
   leererTag,
   speichereFuehrungState,
   summeMetriken,
+  summeMitarbeiterFragenAmTag,
   tagHatAbendCheckStoff,
   tageBisEnde,
   type FuehrungState,
@@ -105,7 +106,7 @@ export function FuehrungClient() {
     [state.tage, state.situationen],
   )
   const streak = useMemo(() => berechneAbendCheckStreak(state.tage, heute), [state.tage, heute])
-  const fragenHeute = state.mitarbeiterFragen.filter((f) => f.datum === heute).length
+  const fragenHeute = summeMitarbeiterFragenAmTag(state.mitarbeiterTage, heute)
   const wochenReview = useMemo(() => baueWochenReview(state, heute), [state, heute])
   const sonntagReviewOffen =
     ready && istSonntag() && state.lastWochenReviewKey !== wochenReview.wochenKey

@@ -13,6 +13,8 @@ import {
   aktuelleWochenNr,
   challengeEndeIso,
   mitarbeiterFragenStats,
+  summeMitarbeiterFragenAmTag,
+  summeMitarbeiterFragenSplit,
   summeMetriken,
   type FuehrungState,
 } from '@/lib/fuehrung/store'
@@ -39,14 +41,12 @@ export function baueFuehrungBilanz(state: FuehrungState, heute: string): string 
     .reduce((s, f) => s + f.dauerMin, 0)
   const abendTage = Object.values(state.tage).filter((t) => t.abendCheckErledigt).length
   const streak = berechneAbendCheckStreak(state.tage, heute)
-  const maWoche = mitarbeiterFragenStats(
-    state.mitarbeiter,
-    state.mitarbeiterFragen,
-    wochenStartIso(heute),
-    heute,
-  )
-  const maFragenWoche = maWoche.reduce((s, x) => s + x.anzahl, 0)
-  const maFragenHeute = state.mitarbeiterFragen.filter((f) => f.datum === heute).length
+  const maVon = wochenStartIso(heute)
+  const maWoche = mitarbeiterFragenStats(state.mitarbeiter, state.mitarbeiterTage, maVon, heute)
+  const maSplit = summeMitarbeiterFragenSplit(state.mitarbeiterTage, maVon, heute)
+  const maFragenWoche = maSplit.gesamt
+  const maFragenHeute = summeMitarbeiterFragenAmTag(state.mitarbeiterTage, heute)
+  const maHeuteSplit = summeMitarbeiterFragenSplit(state.mitarbeiterTage, heute, heute)
 
   const typCounts = new Map<string, number>()
   const reakCounts = new Map<string, number>()
@@ -86,6 +86,8 @@ export function baueFuehrungBilanz(state: FuehrungState, heute: string): string 
     `· Tage mit Abend-Check: ${abendTage}`,
     `· Abend-Check-Streak: ${streak} Tag(e)`,
     `· Mitarbeiter-Fragen heute / Woche: ${maFragenHeute} / ${maFragenWoche}`,
+    `· Davon wichtig / unnötig (Woche): ${maSplit.wichtig} / ${maSplit.unnoetig}`,
+    `· Davon wichtig / unnötig (heute): ${maHeuteSplit.wichtig} / ${maHeuteSplit.unnoetig}`,
     `· Aktiver Slot: ${aufgabenStand}${wocheDef ? ` — ${wocheDef.titel}` : ''}`,
     '',
   ]
@@ -93,7 +95,9 @@ export function baueFuehrungBilanz(state: FuehrungState, heute: string): string 
   if (maWoche.some((x) => x.anzahl > 0)) {
     lines.push('MITARBEITER-RANKING (Woche)')
     for (const row of maWoche.filter((x) => x.anzahl > 0).slice(0, 8)) {
-      lines.push(`· ${row.name}: ${row.anzahl}×`)
+      lines.push(
+        `· ${row.name}: ${row.anzahl}× (wichtig ${row.anzahlWichtig} · unnötig ${row.anzahlUnnoetig})`,
+      )
     }
     lines.push('')
   }

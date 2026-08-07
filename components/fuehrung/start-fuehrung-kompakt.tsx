@@ -10,6 +10,7 @@ import {
   aktuelleWochenNr,
   heuteIso,
   ladeFuehrungState,
+  summeMitarbeiterFragenAmTag,
   type FuehrungState,
 } from '@/lib/fuehrung/store'
 import { baueWochenReview, istSonntag } from '@/lib/fuehrung/wochen-review'
@@ -32,7 +33,7 @@ export function StartFuehrungKompakt() {
   const heute = heuteIso()
   const slot = aktuelleWochenNr(state.challengeStart, heute, FUEHRUNG_PLAN_SLOTS)
   const lern = FUEHRUNG_WOCHEN.find((w) => w.nr === slot)?.lernNr
-  const fragenHeute = state.mitarbeiterFragen.filter((f) => f.datum === heute).length
+  const fragenHeute = summeMitarbeiterFragenAmTag(state.mitarbeiterTage, heute)
   const streak = berechneAbendCheckStreak(state.tage, heute)
   const abend = abendCheckOffen(state)
   const review = baueWochenReview(state, heute)

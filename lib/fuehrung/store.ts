@@ -97,12 +97,64 @@ export type FuehrungMitarbeiter = {
   createdAt: string
 }
 
-/** Einzelne Frage / Unterbrechung eines Mitarbeiters. */
+/** Tagesstand pro Mitarbeiter: wichtig vs. unnötig + Notizen. */
+export type FuehrungMitarbeiterTag = {
+  mitarbeiterId: string
+  datum: string
+  /** Wirklich wichtig — brauchte dich / Führung */
+  anzahlWichtig: number
+  /** Unnötig — hätte ohne dich gelöst werden können */
+  anzahlUnnoetig: number
+  notizenWichtig: string
+  notizenUnnoetig: string
+  updatedAt: string
+}
+
+export function tagFragenGesamt(t: Pick<FuehrungMitarbeiterTag, 'anzahlWichtig' | 'anzahlUnnoetig'>): number {
+  return t.anzahlWichtig + t.anzahlUnnoetig
+}
+
+function normalizeMitarbeiterTag(raw: Partial<FuehrungMitarbeiterTag> & {
+  anzahl?: number
+  notizen?: string
+}): FuehrungMitarbeiterTag {
+  const hasSplit =
+    raw.anzahlWichtig != null ||
+    raw.anzahlUnnoetig != null ||
+    typeof raw.notizenWichtig === 'string' ||
+    typeof raw.notizenUnnoetig === 'string'
+  const anzahlWichtig = hasSplit
+    ? Math.max(0, Math.round(Number(raw.anzahlWichtig) || 0))
+    : Math.max(0, Math.round(Number(raw.anzahl) || 0))
+  const anzahlUnnoetig = hasSplit ? Math.max(0, Math.round(Number(raw.anzahlUnnoetig) || 0)) : 0
+  const notizenWichtig = hasSplit
+    ? typeof raw.notizenWichtig === 'string'
+      ? raw.notizenWichtig
+      : ''
+    : typeof raw.notizen === 'string'
+      ? raw.notizen
+      : ''
+  const notizenUnnoetig = hasSplit
+    ? typeof raw.notizenUnnoetig === 'string'
+      ? raw.notizenUnnoetig
+      : ''
+    : ''
+  return {
+    mitarbeiterId: String(raw.mitarbeiterId ?? ''),
+    datum: String(raw.datum ?? ''),
+    anzahlWichtig,
+    anzahlUnnoetig,
+    notizenWichtig,
+    notizenUnnoetig,
+    updatedAt: typeof raw.updatedAt === 'string' ? raw.updatedAt : new Date().toISOString(),
+  }
+}
+
+/** @deprecated Altformat — wird beim Laden migriert. */
 export type FuehrungMitarbeiterFrage = {
   id: string
   mitarbeiterId: string
   datum: string
-  /** Was genau wissen / haben sie gewollt */
   thema: string
   createdAt: string
 }
@@ -124,7 +176,7 @@ export type FuehrungState = {
   lastWochenReviewKey: string | null
   sparring: FuehrungSparringEintrag[]
   mitarbeiter: FuehrungMitarbeiter[]
-  mitarbeiterFragen: FuehrungMitarbeiterFrage[]
+  mitarbeiterTage: FuehrungMitarbeiterTag[]
 }
 
 export function heuteIso(): string {
@@ -164,8 +216,39 @@ export function defaultFuehrungState(): FuehrungState {
     lastWochenReviewKey: null,
     sparring: [],
     mitarbeiter: [],
-    mitarbeiterFragen: [],
+    mitarbeiterTage: [],
   }
+}
+
+function migrateMitarbeiterTage(parsed: Partial<FuehrungState> & { mitarbeiterFragen?: FuehrungMitarbeiterFrage[] }): FuehrungMitarbeiterTag[] {
+  if (Array.isArray(parsed.mitarbeiterTage) && parsed.mitarbeiterTage.length > 0) {
+    return parsed.mitarbeiterTage.map((t) =>
+      normalizeMitarbeiterTag(t as Partial<FuehrungMitarbeiterTag> & { anzahl?: number; notizen?: string }),
+    )
+  }
+  const alt = Array.isArray(parsed.mitarbeiterFragen) ? parsed.mitarbeiterFragen : []
+  if (alt.length === 0) return []
+  const map = new Map<string, FuehrungMitarbeiterTag>()
+  for (const f of alt) {
+    const key = `${f.mitarbeiterId}|${f.datum}`
+    const cur = map.get(key) ?? {
+      mitarbeiterId: f.mitarbeiterId,
+      datum: f.datum,
+      anzahlWichtig: 0,
+      anzahlUnnoetig: 0,
+      notizenWichtig: '',
+      notizenUnnoetig: '',
+      updatedAt: f.createdAt || new Date().toISOString(),
+    }
+    // Altformat ohne Einordnung → erstmal unter „wichtig“, damit nichts verloren geht
+    cur.anzahlWichtig += 1
+    const line = (f.thema || '').trim()
+    if (line) {
+      cur.notizenWichtig = cur.notizenWichtig ? `${cur.notizenWichtig}\n· ${line}` : `· ${line}`
+    }
+    map.set(key, cur)
+  }
+  return [...map.values()]
 }
 
 function migrateTag(raw: Partial<FuehrungTagesEintrag> & { datum?: string }): FuehrungTagesEintrag {
@@ -212,7 +295,7 @@ export function ladeFuehrungState(): FuehrungState {
       lastWochenReviewKey: parsed.lastWochenReviewKey ?? null,
       sparring: Array.isArray(parsed.sparring) ? parsed.sparring : [],
       mitarbeiter: Array.isArray(parsed.mitarbeiter) ? parsed.mitarbeiter : [],
-      mitarbeiterFragen: Array.isArray(parsed.mitarbeiterFragen) ? parsed.mitarbeiterFragen : [],
+      mitarbeiterTage: migrateMitarbeiterTage(parsed as Partial<FuehrungState> & { mitarbeiterFragen?: FuehrungMitarbeiterFrage[] }),
     }
     if (!rawV2 && rawV1) speichereFuehrungState(state)
     return state
@@ -330,27 +413,112 @@ export function newId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
 }
 
-export function fragenFuerMitarbeiterAmTag(
-  fragen: FuehrungMitarbeiterFrage[],
+export function mitarbeiterTagAm(
+  tage: FuehrungMitarbeiterTag[],
   mitarbeiterId: string,
   datum: string,
-): FuehrungMitarbeiterFrage[] {
-  return fragen.filter((f) => f.mitarbeiterId === mitarbeiterId && f.datum === datum)
+): FuehrungMitarbeiterTag | null {
+  return tage.find((t) => t.mitarbeiterId === mitarbeiterId && t.datum === datum) ?? null
+}
+
+export function summeMitarbeiterFragenAmTag(tage: FuehrungMitarbeiterTag[], datum: string): number {
+  return tage.filter((t) => t.datum === datum).reduce((s, t) => s + tagFragenGesamt(t), 0)
+}
+
+export function summeMitarbeiterFragenSplit(
+  tage: FuehrungMitarbeiterTag[],
+  vonIso: string,
+  bisIso: string,
+): { gesamt: number; wichtig: number; unnoetig: number } {
+  let wichtig = 0
+  let unnoetig = 0
+  for (const t of tage) {
+    if (t.datum < vonIso || t.datum > bisIso) continue
+    wichtig += t.anzahlWichtig
+    unnoetig += t.anzahlUnnoetig
+  }
+  return { gesamt: wichtig + unnoetig, wichtig, unnoetig }
 }
 
 export function mitarbeiterFragenStats(
   mitarbeiter: FuehrungMitarbeiter[],
-  fragen: FuehrungMitarbeiterFrage[],
+  tage: FuehrungMitarbeiterTag[],
   vonIso: string,
   bisIso: string,
-): { id: string; name: string; anzahl: number }[] {
+): { id: string; name: string; anzahl: number; anzahlWichtig: number; anzahlUnnoetig: number }[] {
   return mitarbeiter
-    .map((m) => ({
-      id: m.id,
-      name: m.name,
-      anzahl: fragen.filter(
-        (f) => f.mitarbeiterId === m.id && f.datum >= vonIso && f.datum <= bisIso,
-      ).length,
-    }))
+    .map((m) => {
+      const rows = tage.filter(
+        (t) => t.mitarbeiterId === m.id && t.datum >= vonIso && t.datum <= bisIso,
+      )
+      const anzahlWichtig = rows.reduce((s, t) => s + t.anzahlWichtig, 0)
+      const anzahlUnnoetig = rows.reduce((s, t) => s + t.anzahlUnnoetig, 0)
+      return {
+        id: m.id,
+        name: m.name,
+        anzahlWichtig,
+        anzahlUnnoetig,
+        anzahl: anzahlWichtig + anzahlUnnoetig,
+      }
+    })
     .sort((a, b) => b.anzahl - a.anzahl)
+}
+
+export type FuehrungMitarbeiterTagPatch = {
+  anzahlWichtig?: number
+  anzahlUnnoetig?: number
+  notizenWichtig?: string
+  notizenUnnoetig?: string
+}
+
+function tagIstLeer(t: FuehrungMitarbeiterTag): boolean {
+  return (
+    tagFragenGesamt(t) === 0 &&
+    !t.notizenWichtig.trim() &&
+    !t.notizenUnnoetig.trim()
+  )
+}
+
+export function upsertMitarbeiterTag(
+  tage: FuehrungMitarbeiterTag[],
+  mitarbeiterId: string,
+  datum: string,
+  patch: FuehrungMitarbeiterTagPatch,
+): FuehrungMitarbeiterTag[] {
+  const now = new Date().toISOString()
+  const idx = tage.findIndex((t) => t.mitarbeiterId === mitarbeiterId && t.datum === datum)
+  if (idx < 0) {
+    const next = normalizeMitarbeiterTag({
+      mitarbeiterId,
+      datum,
+      anzahlWichtig: patch.anzahlWichtig ?? 0,
+      anzahlUnnoetig: patch.anzahlUnnoetig ?? 0,
+      notizenWichtig: patch.notizenWichtig ?? '',
+      notizenUnnoetig: patch.notizenUnnoetig ?? '',
+      updatedAt: now,
+    })
+    if (tagIstLeer(next)) return tage
+    return [next, ...tage]
+  }
+  const cur = tage[idx]
+  const next: FuehrungMitarbeiterTag = {
+    ...cur,
+    anzahlWichtig:
+      patch.anzahlWichtig != null
+        ? Math.max(0, Math.round(patch.anzahlWichtig))
+        : cur.anzahlWichtig,
+    anzahlUnnoetig:
+      patch.anzahlUnnoetig != null
+        ? Math.max(0, Math.round(patch.anzahlUnnoetig))
+        : cur.anzahlUnnoetig,
+    notizenWichtig: patch.notizenWichtig != null ? patch.notizenWichtig : cur.notizenWichtig,
+    notizenUnnoetig: patch.notizenUnnoetig != null ? patch.notizenUnnoetig : cur.notizenUnnoetig,
+    updatedAt: now,
+  }
+  if (tagIstLeer(next)) {
+    return tage.filter((_, i) => i !== idx)
+  }
+  const copy = [...tage]
+  copy[idx] = next
+  return copy
 }

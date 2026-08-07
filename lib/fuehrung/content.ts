@@ -100,17 +100,19 @@ export const FUEHRUNG_WOCHEN: FuehrungWoche[] = [
     titel: 'Wahrnehmen',
     fokus: 'Du siehst klar, wie oft du benutzt wirst — ohne dich sofort zu ändern.',
     aufgaben: [
-      'Im Tab „Mitarbeiter“ jede Frage mit Name + Thema erfassen (ohne schon Nein zu üben).',
+      'Im Tab „Mitarbeiter“ Fragen zählen und als wichtig oder unnötig einordnen (ohne schon Nein zu üben).',
       'Bei jeder Bitte 3 Sekunden Pause — auch wenn du danach noch hilfst.',
-      'Ende der Woche: Ranking ansehen — wem zeigst du die Zahlen beim Gespräch?',
+      'Ende der Woche: Export vorbereiten für das Montagsgespräch in Lernwoche 2.',
     ],
   },
   {
     nr: 2,
     lernNr: 2,
     titel: 'Gegenfragen',
-    fokus: 'Du gibst Denken zurück, bevor du Wissen gibst.',
+    fokus:
+      'Du gibst Denken zurück, bevor du Wissen gibst. Montag: offenes Gespräch mit dem Team — Zahlen und Beispiele offenlegen und erklären, warum du so führst.',
     aufgaben: [
+      'Montag: Gespräch mit den Mitarbeitern — Beobachtung offenlegen (wichtig vs. unnötig), Erwartung erklären, Export/PDF als Gesprächsgrundlage nutzen.',
       'Mindestens 5× „Was hast du schon versucht?“ / „Was ist deine Empfehlung?“',
       'Nur bei echten Führungsentscheidungen sofort selbst lösen.',
       'Einen Kollegen bewusst zum ersten Ansprechpartner für ein Thema machen.',
