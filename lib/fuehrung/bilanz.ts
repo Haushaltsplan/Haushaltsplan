@@ -2,14 +2,21 @@
  * Text für das Chef-Gespräch / Wochenbilanz.
  */
 
-import { FUEHRUNG_REAKTIONEN, FUEHRUNG_SITUATION_TYPEN, FUEHRUNG_WOCHEN } from '@/lib/fuehrung/content'
+import {
+  FUEHRUNG_PLAN_SLOTS,
+  FUEHRUNG_REAKTIONEN,
+  FUEHRUNG_SITUATION_TYPEN,
+  FUEHRUNG_WOCHEN,
+} from '@/lib/fuehrung/content'
 import { berechneAbendCheckStreak } from '@/lib/fuehrung/streak'
 import {
   aktuelleWochenNr,
   challengeEndeIso,
+  mitarbeiterFragenStats,
   summeMetriken,
   type FuehrungState,
 } from '@/lib/fuehrung/store'
+import { wochenStartIso } from '@/lib/fuehrung/wochen-review'
 
 function formatDe(iso: string): string {
   const [y, m, d] = iso.split('-').map(Number)
@@ -22,7 +29,8 @@ function formatDe(iso: string): string {
 }
 
 export function baueFuehrungBilanz(state: FuehrungState, heute: string): string {
-  const woche = aktuelleWochenNr(state.challengeStart, heute)
+  const slot = aktuelleWochenNr(state.challengeStart, heute, FUEHRUNG_PLAN_SLOTS)
+  const lernNr = FUEHRUNG_WOCHEN.find((w) => w.nr === slot)?.lernNr
   const ende = challengeEndeIso(state.challengeStart, state.challengeTage)
   const m = summeMetriken(state.tage, state.situationen)
   const fokusOk = state.fokusBloecke.filter((f) => f.abgeschlossen).length
@@ -31,6 +39,14 @@ export function baueFuehrungBilanz(state: FuehrungState, heute: string): string 
     .reduce((s, f) => s + f.dauerMin, 0)
   const abendTage = Object.values(state.tage).filter((t) => t.abendCheckErledigt).length
   const streak = berechneAbendCheckStreak(state.tage, heute)
+  const maWoche = mitarbeiterFragenStats(
+    state.mitarbeiter,
+    state.mitarbeiterFragen,
+    wochenStartIso(heute),
+    heute,
+  )
+  const maFragenWoche = maWoche.reduce((s, x) => s + x.anzahl, 0)
+  const maFragenHeute = state.mitarbeiterFragen.filter((f) => f.datum === heute).length
 
   const typCounts = new Map<string, number>()
   const reakCounts = new Map<string, number>()
@@ -47,15 +63,19 @@ export function baueFuehrungBilanz(state: FuehrungState, heute: string): string 
     .sort((a, b) => b.datum.localeCompare(a.datum))
     .slice(0, 8)
 
-  const wocheDef = FUEHRUNG_WOCHEN[woche - 1]
-  const done = new Set(state.wochenFortschritt[String(woche)] ?? [])
+  const wocheDef = FUEHRUNG_WOCHEN.find((w) => w.nr === slot)
+  const done = new Set(state.wochenFortschritt[String(slot)] ?? [])
   const aufgabenStand = wocheDef
-    ? `${done.size}/${wocheDef.aufgaben.length} Aufgaben Woche ${woche}`
+    ? `${done.size}/${wocheDef.aufgaben.length} Aufgaben${
+        wocheDef.lernNr != null ? ` Lernwoche ${wocheDef.lernNr}` : ' (Pause)'
+      }`
     : '—'
 
   const lines: string[] = [
     'FÜHRUNGS-BILANZ — Stellv. Leiter Hartware',
-    `Stand: ${formatDe(heute)} · Challenge bis ${formatDe(ende)} · Woche ${woche}/6`,
+    `Stand: ${formatDe(heute)} · Challenge bis ${formatDe(ende)} · ${
+      lernNr != null ? `Lernwoche ${lernNr}/6` : 'Pause (Urlaub)'
+    }`,
     '',
     'KENNZAHLEN',
     `· Redirects / Gegenfragen: ${m.redirects}`,
@@ -65,9 +85,18 @@ export function baueFuehrungBilanz(state: FuehrungState, heute: string): string 
     `· Fokusblöcke abgeschlossen: ${fokusOk} (${fokusMin} Min)`,
     `· Tage mit Abend-Check: ${abendTage}`,
     `· Abend-Check-Streak: ${streak} Tag(e)`,
-    `· Aktive Woche: ${aufgabenStand}${wocheDef ? ` — ${wocheDef.titel}` : ''}`,
+    `· Mitarbeiter-Fragen heute / Woche: ${maFragenHeute} / ${maFragenWoche}`,
+    `· Aktiver Slot: ${aufgabenStand}${wocheDef ? ` — ${wocheDef.titel}` : ''}`,
     '',
   ]
+
+  if (maWoche.some((x) => x.anzahl > 0)) {
+    lines.push('MITARBEITER-RANKING (Woche)')
+    for (const row of maWoche.filter((x) => x.anzahl > 0).slice(0, 8)) {
+      lines.push(`· ${row.name}: ${row.anzahl}×`)
+    }
+    lines.push('')
+  }
 
   if (typCounts.size) {
     lines.push('SITUATIONSTYPEN')

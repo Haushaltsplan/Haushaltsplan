@@ -1,5 +1,10 @@
 import { NextResponse } from 'next/server'
-import { prepareCoachMessages, resolveCoachProvider, runCoachCompletion } from '@/lib/ki-coach-backend'
+import {
+  geminiFreeTierFlashModelKandidaten,
+  prepareCoachMessages,
+  resolveCoachProvider,
+  runCoachCompletion,
+} from '@/lib/ki-coach-backend'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -107,6 +112,8 @@ export async function POST(req: Request) {
   try {
     const result = await runCoachCompletion(resolved.provider, resolved.apiKey, SYSTEM, userMessages, {
       temperature: 0.45,
+      geminiModels:
+        resolved.provider === 'gemini' ? geminiFreeTierFlashModelKandidaten() : undefined,
     })
     if (!result.ok) {
       return NextResponse.json(

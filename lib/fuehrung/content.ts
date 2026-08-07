@@ -79,25 +79,35 @@ export const FUEHRUNG_SKRIPTE: FuehrungSkript[] = [
 ]
 
 export type FuehrungWoche = {
+  /** Kalender-Slot im Plan (1…n, inkl. Pause). */
   nr: number
+  /** Lern-Woche 1–6; null = Pause (z. B. Urlaub). */
+  lernNr: number | null
   titel: string
   fokus: string
   aufgaben: string[]
+  pause?: boolean
 }
 
+/**
+ * Plan: Lernwochen 1–2, dann Pause (Urlaub), danach Lernwochen 3–6 weiter.
+ * Kalender-Slot 3 = Pause 24.–28.8.; Slot 4 = wieder „Woche 3 · Fokus schützen“.
+ */
 export const FUEHRUNG_WOCHEN: FuehrungWoche[] = [
   {
     nr: 1,
+    lernNr: 1,
     titel: 'Wahrnehmen',
     fokus: 'Du siehst klar, wie oft du benutzt wirst — ohne dich sofort zu ändern.',
     aufgaben: [
-      'Jede Unterbrechung kurz zählen (Strichliste / App).',
+      'Im Tab „Mitarbeiter“ jede Frage mit Name + Thema erfassen (ohne schon Nein zu üben).',
       'Bei jeder Bitte 3 Sekunden Pause — auch wenn du danach noch hilfst.',
-      'Abends: 1 Satz „Wann habe ich mich heute benutzen lassen?“',
+      'Ende der Woche: Ranking ansehen — wem zeigst du die Zahlen beim Gespräch?',
     ],
   },
   {
     nr: 2,
+    lernNr: 2,
     titel: 'Gegenfragen',
     fokus: 'Du gibst Denken zurück, bevor du Wissen gibst.',
     aufgaben: [
@@ -108,8 +118,21 @@ export const FUEHRUNG_WOCHEN: FuehrungWoche[] = [
   },
   {
     nr: 3,
+    lernNr: null,
+    pause: true,
+    titel: 'Pause · Urlaub',
+    fokus: '24.–28. August — Plan pausiert. Danach geht es mit Lernwoche 3 (Fokus schützen) weiter.',
+    aufgaben: [
+      'Vertretung / Ansprechpartner vor Abreise kurz klären.',
+      'Im Urlaub: nicht das Lexikon per Chat sein.',
+      'Optional: notieren, was ohne dich lief.',
+    ],
+  },
+  {
+    nr: 4,
+    lernNr: 3,
     titel: 'Fokus schützen',
-    fokus: 'Deine Arbeit bekommt sichtbare Zeitfenster.',
+    fokus: 'Weiter nach der Pause: Deine Arbeit bekommt sichtbare Zeitfenster.',
     aufgaben: [
       'Täglich 2× 45–60 Min Fokusblock (Kopfhörer / „nicht stören“-Signal).',
       'In Fokuszeiten nur Eskalationen annehmen.',
@@ -117,7 +140,8 @@ export const FUEHRUNG_WOCHEN: FuehrungWoche[] = [
     ],
   },
   {
-    nr: 4,
+    nr: 5,
+    lernNr: 4,
     titel: 'Grenzen normalisieren',
     fokus: 'Nein und Später werden Alltag — nicht Ausnahme.',
     aufgaben: [
@@ -127,7 +151,8 @@ export const FUEHRUNG_WOCHEN: FuehrungWoche[] = [
     ],
   },
   {
-    nr: 5,
+    nr: 6,
+    lernNr: 5,
     titel: 'Team trägt',
     fokus: 'Das Team funktioniert auch ohne dich als Lexikon.',
     aufgaben: [
@@ -137,16 +162,20 @@ export const FUEHRUNG_WOCHEN: FuehrungWoche[] = [
     ],
   },
   {
-    nr: 6,
+    nr: 7,
+    lernNr: 6,
     titel: 'Bilanz mit dem Chef',
     fokus: 'Du machst Fortschritt sichtbar — und holst Feedback.',
     aufgaben: [
-      'Zahlen mitbringen: Redirects, Fokusblöcke, was das Team selbst löst.',
+      'Zahlen mitbringen: Redirects, Mitarbeiter-Fragen, was das Team selbst löst.',
       'Gespräch mit Leiter Hartware: Was ist besser? Was noch nicht?',
       'Nächste 90 Tage: 2–3 Führungsgewohnheiten festziehen.',
     ],
   },
 ]
+
+export const FUEHRUNG_PLAN_SLOTS = FUEHRUNG_WOCHEN.length
+export const FUEHRUNG_LERN_WOCHEN = 6
 
 /** Gesprächs-Kontext (nur Anzeige, nicht speichern nötig). */
 export const FUEHRUNG_KONTEXT = {

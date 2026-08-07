@@ -2,7 +2,12 @@
  * Sonntags-Wochenreview aus lokalen Führungsdaten.
  */
 
-import { FUEHRUNG_REAKTIONEN, FUEHRUNG_SITUATION_TYPEN, FUEHRUNG_WOCHEN } from '@/lib/fuehrung/content'
+import {
+  FUEHRUNG_PLAN_SLOTS,
+  FUEHRUNG_REAKTIONEN,
+  FUEHRUNG_SITUATION_TYPEN,
+  FUEHRUNG_WOCHEN,
+} from '@/lib/fuehrung/content'
 import { berechneAbendCheckStreak } from '@/lib/fuehrung/streak'
 import {
   aktuelleWochenNr,
@@ -93,9 +98,11 @@ export function baueWochenReview(state: FuehrungState, heute = heuteIso()): Fueh
 
   const abendChecks = tageWoche.filter((t) => t.abendCheckErledigt).length
   const fokusMin = fokus.reduce((s, f) => s + f.dauerMin, 0)
-  const challengeWoche = aktuelleWochenNr(state.challengeStart, heute)
+  const challengeWoche = aktuelleWochenNr(state.challengeStart, heute, FUEHRUNG_PLAN_SLOTS)
   const streak = berechneAbendCheckStreak(state.tage, heute)
-  const wocheDef = FUEHRUNG_WOCHEN[challengeWoche - 1]
+  const wocheDef = FUEHRUNG_WOCHEN.find((w) => w.nr === challengeWoche)
+  const lernLabel =
+    wocheDef?.lernNr != null ? `Lernwoche ${wocheDef.lernNr}/6` : 'Pause (Urlaub)'
 
   const reakLines = FUEHRUNG_REAKTIONEN.map((r) => {
     const n = sits.filter((s) => s.reaktion === r.id).length
@@ -104,7 +111,7 @@ export function baueWochenReview(state: FuehrungState, heute = heuteIso()): Fueh
 
   const lines = [
     `WOCHEN-REVIEW ${isoWochenKey(new Date(`${heute}T12:00:00`))}`,
-    `${von} → ${bis} · Challenge-Woche ${challengeWoche}/6${wocheDef ? ` (${wocheDef.titel})` : ''}`,
+    `${von} → ${bis} · ${lernLabel}${wocheDef ? ` — ${wocheDef.titel}` : ''}`,
     '',
     `Redirects: ${m.redirects} · Nein/Später: ${m.neins}`,
     `Situationen: ${m.situationen} · davon ausgenutzt: ${m.ausgenutzt}`,

@@ -8,7 +8,8 @@ export const FUEHRUNG_STORAGE_KEY = 'omnia-fuehrung-v2'
 
 /** Challenge startet am Tag des Feedback-Gesprächs. */
 export const FUEHRUNG_CHALLENGE_START = '2026-08-07'
-export const FUEHRUNG_CHALLENGE_TAGE = 42
+/** 6 Lernwochen + 1 Pause-Woche (Urlaub). */
+export const FUEHRUNG_CHALLENGE_TAGE = 49
 export const FUEHRUNG_FOKUS_DEFAULT_MIN = 45
 
 export type FuehrungSituationTyp = 'unterbrechung' | 'abgeschoben' | 'fuehrung' | 'sonstiges'
@@ -89,6 +90,23 @@ export type FuehrungSparringEintrag = {
   createdAt: string
 }
 
+/** Woche-1: Mitarbeiter, die dich mit Fragen holen. */
+export type FuehrungMitarbeiter = {
+  id: string
+  name: string
+  createdAt: string
+}
+
+/** Einzelne Frage / Unterbrechung eines Mitarbeiters. */
+export type FuehrungMitarbeiterFrage = {
+  id: string
+  mitarbeiterId: string
+  datum: string
+  /** Was genau wissen / haben sie gewollt */
+  thema: string
+  createdAt: string
+}
+
 export type FuehrungState = {
   mantra: string
   challengeStart: string
@@ -105,6 +123,8 @@ export type FuehrungState = {
   /** ISO-Wochenkey, für den das Sonntags-Review schon gesehen wurde */
   lastWochenReviewKey: string | null
   sparring: FuehrungSparringEintrag[]
+  mitarbeiter: FuehrungMitarbeiter[]
+  mitarbeiterFragen: FuehrungMitarbeiterFrage[]
 }
 
 export function heuteIso(): string {
@@ -143,6 +163,8 @@ export function defaultFuehrungState(): FuehrungState {
     erinnerungen: defaultErinnerungen(),
     lastWochenReviewKey: null,
     sparring: [],
+    mitarbeiter: [],
+    mitarbeiterFragen: [],
   }
 }
 
@@ -169,10 +191,15 @@ export function ladeFuehrungState(): FuehrungState {
     for (const [k, v] of Object.entries(parsed.tage ?? {})) {
       tage[k] = migrateTag({ ...v, datum: k })
     }
+    const challengeTage =
+      typeof parsed.challengeTage === 'number' && parsed.challengeTage >= FUEHRUNG_CHALLENGE_TAGE
+        ? parsed.challengeTage
+        : FUEHRUNG_CHALLENGE_TAGE
     const state: FuehrungState = {
       ...base,
       ...parsed,
       mantra: typeof parsed.mantra === 'string' && parsed.mantra.trim() ? parsed.mantra : base.mantra,
+      challengeTage,
       wochenFortschritt: parsed.wochenFortschritt ?? {},
       tage,
       journal: Array.isArray(parsed.journal) ? parsed.journal : [],
@@ -184,6 +211,8 @@ export function ladeFuehrungState(): FuehrungState {
       erinnerungen: { ...base.erinnerungen, ...(parsed.erinnerungen ?? {}) },
       lastWochenReviewKey: parsed.lastWochenReviewKey ?? null,
       sparring: Array.isArray(parsed.sparring) ? parsed.sparring : [],
+      mitarbeiter: Array.isArray(parsed.mitarbeiter) ? parsed.mitarbeiter : [],
+      mitarbeiterFragen: Array.isArray(parsed.mitarbeiterFragen) ? parsed.mitarbeiterFragen : [],
     }
     if (!rawV2 && rawV1) speichereFuehrungState(state)
     return state
@@ -212,12 +241,12 @@ export function tageBisEnde(start: string, tage: number, heute = heuteIso()): nu
   return Math.ceil((ende - now) / 86400000)
 }
 
-export function aktuelleWochenNr(start: string, heute = heuteIso()): number {
+export function aktuelleWochenNr(start: string, heute = heuteIso(), maxSlots = 7): number {
   const a = new Date(`${start}T12:00:00`).getTime()
   const b = new Date(`${heute}T12:00:00`).getTime()
   const diff = Math.floor((b - a) / 86400000)
   if (diff < 0) return 1
-  return Math.min(6, Math.floor(diff / 7) + 1)
+  return Math.min(maxSlots, Math.floor(diff / 7) + 1)
 }
 
 export function leererTag(datum: string): FuehrungTagesEintrag {
@@ -299,4 +328,29 @@ export function formatMmSs(totalSec: number): string {
 
 export function newId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+}
+
+export function fragenFuerMitarbeiterAmTag(
+  fragen: FuehrungMitarbeiterFrage[],
+  mitarbeiterId: string,
+  datum: string,
+): FuehrungMitarbeiterFrage[] {
+  return fragen.filter((f) => f.mitarbeiterId === mitarbeiterId && f.datum === datum)
+}
+
+export function mitarbeiterFragenStats(
+  mitarbeiter: FuehrungMitarbeiter[],
+  fragen: FuehrungMitarbeiterFrage[],
+  vonIso: string,
+  bisIso: string,
+): { id: string; name: string; anzahl: number }[] {
+  return mitarbeiter
+    .map((m) => ({
+      id: m.id,
+      name: m.name,
+      anzahl: fragen.filter(
+        (f) => f.mitarbeiterId === m.id && f.datum >= vonIso && f.datum <= bisIso,
+      ).length,
+    }))
+    .sort((a, b) => b.anzahl - a.anzahl)
 }
