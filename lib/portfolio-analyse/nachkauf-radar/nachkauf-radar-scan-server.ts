@@ -75,6 +75,7 @@ async function generiereKiBegruendung(opts: {
   sellTriggerText: string
   fcfYield: string
   forwardPe: string
+  evMultiples: string
   premiumDiscount: string
   kaufTriggerAusgeloest: boolean
   kaufTriggerText: string | null
@@ -99,7 +100,8 @@ async function generiereKiBegruendung(opts: {
     `Sell-Trigger-Status: ${opts.sellTriggerText}`,
     `FCF-Rendite (NTM/LTM): ${opts.fcfYield}`,
     `Forward-KGV (NTM): ${opts.forwardPe}`,
-    `Historischer Vergleich (Premium/Discount vs. 5J-Median): ${opts.premiumDiscount}`,
+    `EV-Multiples (aktuell vs. 5J-Median): ${opts.evMultiples}`,
+    `Historischer Vergleich (Premium/Discount vs. 5J-Median aus KGV/FCF/EV): ${opts.premiumDiscount}`,
     triggerHinweis,
     '',
     `Beat/Miss-Historie: ${opts.beatMissText}`,
@@ -249,6 +251,25 @@ async function scanneEinenTitel(opts: {
       ? `${bewertungsSignale.forwardPe.toFixed(1)}×`
       : 'keine Daten'
 
+  const evMultiplesText = [
+    bewertungsSignale.ntmEvEbitda != null
+      ? `EV/EBITDA ${bewertungsSignale.ntmEvEbitda.toFixed(1)}×${
+          bewertungsSignale.historischerMedianEvEbitda != null
+            ? ` (Med ${bewertungsSignale.historischerMedianEvEbitda.toFixed(1)}×)`
+            : ''
+        }`
+      : null,
+    bewertungsSignale.ntmEvRev != null
+      ? `EV/Umsatz ${bewertungsSignale.ntmEvRev.toFixed(1)}×${
+          bewertungsSignale.historischerMedianEvRev != null
+            ? ` (Med ${bewertungsSignale.historischerMedianEvRev.toFixed(1)}×)`
+            : ''
+        }`
+      : null,
+  ]
+    .filter(Boolean)
+    .join(' · ')
+
   const premiumDiscountText =
     bewertungsSignale.premiumDiscountPct != null
       ? `${bewertungsSignale.premiumDiscountPct > 0 ? '+' : ''}${bewertungsSignale.premiumDiscountPct.toFixed(1)} % vs. 5J-Median${historisch.quelle === 'macrotrends' ? ' (Macrotrends)' : ''}`
@@ -286,6 +307,7 @@ async function scanneEinenTitel(opts: {
     sellTriggerText,
     fcfYield: fcfYieldText,
     forwardPe: forwardPeText,
+    evMultiples: evMultiplesText || 'keine Daten',
     premiumDiscount: premiumDiscountText,
     kaufTriggerAusgeloest,
     kaufTriggerText,

@@ -97,6 +97,8 @@ export function extrahiereBewertungsSignale(
 
   const evEbitdaMetric = km.find((m) => m.id === 'ntm_ev_ebitda')
   const ntmEvEbitda = evEbitdaMetric ? parseMetricWert(evEbitdaMetric.wert) : null
+  const evRevMetric = km.find((m) => m.id === 'ntm_ev_rev') ?? km.find((m) => m.id === 'ltm_ev_rev')
+  const ntmEvRev = evRevMetric ? parseMetricWert(evRevMetric.wert) : null
 
   // FCF Yield = 1 / (MC / FCF) * 100
   let fcfYieldPct: number | null = null
@@ -124,35 +126,52 @@ export function extrahiereBewertungsSignale(
     historisch?.medianPe5y ?? position?.historischerMedianPe ?? null
   const medianFcfYield =
     historisch?.medianFcfYield5y ?? position?.historischerMedianFcfYield ?? null
+  const medianEvEbitda = historisch?.medianEvEbitda5y ?? null
+  const medianEvRev = historisch?.medianEvRev5y ?? null
   let historischQuelle: 'macrotrends' | 'whitelist' | null = null
-  if (historisch?.medianPe5y != null || historisch?.medianFcfYield5y != null) {
+  if (
+    historisch?.medianPe5y != null ||
+    historisch?.medianFcfYield5y != null ||
+    historisch?.medianEvEbitda5y != null ||
+    historisch?.medianEvRev5y != null
+  ) {
     historischQuelle = 'macrotrends'
   } else if (position?.historischerMedianPe != null || position?.historischerMedianFcfYield != null) {
     historischQuelle = 'whitelist'
   }
 
-  // Historischer Premium/Discount — KGV und FCF-Median gleichwertig
+  // Historischer Premium/Discount — KGV, FCF und EV/EBITDA gleichwertig mitteln
   let premiumDiscountPct: number | null = null
-  let pdPe: number | null = null
-  let pdFcf: number | null = null
-  if (medianPe && forwardPe) pdPe = ((forwardPe - medianPe) / medianPe) * 100
+  const pdTeile: number[] = []
+  if (medianPe && forwardPe) pdTeile.push(((forwardPe - medianPe) / medianPe) * 100)
   if (medianFcfYield && fcfYieldPct) {
-    pdFcf = ((medianFcfYield - fcfYieldPct) / medianFcfYield) * 100
+    pdTeile.push(((medianFcfYield - fcfYieldPct) / medianFcfYield) * 100)
   }
-  if (pdPe != null && pdFcf != null) premiumDiscountPct = (pdPe + pdFcf) / 2
-  else if (pdPe != null) premiumDiscountPct = pdPe
-  else if (pdFcf != null) premiumDiscountPct = pdFcf
+  if (medianEvEbitda && ntmEvEbitda) {
+    pdTeile.push(((ntmEvEbitda - medianEvEbitda) / medianEvEbitda) * 100)
+  } else if (medianEvRev && ntmEvRev) {
+    pdTeile.push(((ntmEvRev - medianEvRev) / medianEvRev) * 100)
+  }
+  if (pdTeile.length > 0) {
+    premiumDiscountPct = pdTeile.reduce((a, b) => a + b, 0) / pdTeile.length
+  }
 
   return {
     fcfYieldPct,
     forwardPe,
     ntmEvEbitda,
+    ntmEvRev,
     drawdown52wPct,
     premiumDiscountPct,
     pePerzentil5y: historisch?.pePerzentil5y ?? zusatz?.pePerzentil5y ?? null,
     pePerzentil10y: historisch?.pePerzentil10y ?? zusatz?.pePerzentil10y ?? null,
+    evEbitdaPerzentil5y: historisch?.evEbitdaPerzentil5y ?? null,
+    evEbitdaPerzentil10y: historisch?.evEbitdaPerzentil10y ?? null,
+    evRevPerzentil5y: historisch?.evRevPerzentil5y ?? null,
     historischerMedianPe: medianPe,
     historischerMedianFcfYield: medianFcfYield,
+    historischerMedianEvEbitda: medianEvEbitda,
+    historischerMedianEvRev: medianEvRev,
     historischQuelle,
     epsBeatRatePct: zusatz?.epsBeatRatePct ?? null,
     capitalAllocationScorePct: zusatz?.capitalAllocationScorePct ?? null,
@@ -329,16 +348,18 @@ export function berechneNachkaufScore(
   const bewertungsScore = berechnePersonalisierteBewertung(signale, position)
 
   // --- Historischer Bonus/Malus (–10 bis +10) ---
-  // Entweder KGV-Perzentil ODER Median-Premium — nicht additiv (Anti-Doppelzählung).
+  // Ein Perzentil-Pfad (KGV bevorzugt, sonst EV/EBITDA) ODER Median-Premium — nicht additiv.
   let historischerBewertungsBonus = 0
   const peP = signale.pePerzentil5y ?? signale.pePerzentil10y ?? zusatz?.pePerzentil5y ?? null
-  if (peP != null) {
-    if (peP <= 15) historischerBewertungsBonus = 10
-    else if (peP <= 25) historischerBewertungsBonus = 7
-    else if (peP <= 35) historischerBewertungsBonus = 4
-    else if (peP <= 55) historischerBewertungsBonus = 0
-    else if (peP <= 70) historischerBewertungsBonus = -4
-    else if (peP <= 85) historischerBewertungsBonus = -7
+  const evP = signale.evEbitdaPerzentil5y ?? signale.evEbitdaPerzentil10y ?? signale.evRevPerzentil5y ?? null
+  const histPerzentil = peP ?? evP
+  if (histPerzentil != null) {
+    if (histPerzentil <= 15) historischerBewertungsBonus = 10
+    else if (histPerzentil <= 25) historischerBewertungsBonus = 7
+    else if (histPerzentil <= 35) historischerBewertungsBonus = 4
+    else if (histPerzentil <= 55) historischerBewertungsBonus = 0
+    else if (histPerzentil <= 70) historischerBewertungsBonus = -4
+    else if (histPerzentil <= 85) historischerBewertungsBonus = -7
     else historischerBewertungsBonus = -10
   } else {
     const pd = signale.premiumDiscountPct

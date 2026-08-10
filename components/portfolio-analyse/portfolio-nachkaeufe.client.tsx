@@ -611,6 +611,18 @@ function TitelKarte({
             KGV <span className="text-[var(--app-text)]">{eintrag.bewertung.forwardPe.toFixed(1)}×</span>
           </span>
         )}
+        {eintrag.bewertung.ntmEvEbitda != null && (
+          <span className="text-[11px] text-[var(--app-text-muted)]">
+            EV/EBITDA{' '}
+            <span className="text-[var(--app-text)]">{eintrag.bewertung.ntmEvEbitda.toFixed(1)}×</span>
+            {eintrag.bewertung.historischerMedianEvEbitda != null ? (
+              <span className="text-[var(--app-text-muted)]">
+                {' '}
+                (Med {eintrag.bewertung.historischerMedianEvEbitda.toFixed(1)})
+              </span>
+            ) : null}
+          </span>
+        )}
         {eintrag.bewertung.premiumDiscountPct != null && (
           <PremiumDiscountBadge pct={eintrag.bewertung.premiumDiscountPct} />
         )}
@@ -1204,6 +1216,34 @@ function DetailPanel({
               {eintrag.bewertung.historischerMedianFcfYield != null
                 ? `${eintrag.bewertung.historischerMedianFcfYield.toFixed(1)} %`
                 : '–'}
+            </p>
+          </div>
+          <div>
+            <p className="text-[11px] text-[var(--app-text-muted)]">EV/EBITDA</p>
+            <p className="text-sm font-medium text-[var(--app-text)]">
+              {eintrag.bewertung.ntmEvEbitda != null
+                ? `${eintrag.bewertung.ntmEvEbitda.toFixed(1)}×`
+                : '–'}
+              {eintrag.bewertung.historischerMedianEvEbitda != null ? (
+                <span className="text-[var(--app-text-muted)]">
+                  {' '}
+                  / Med {eintrag.bewertung.historischerMedianEvEbitda.toFixed(1)}×
+                </span>
+              ) : null}
+            </p>
+          </div>
+          <div>
+            <p className="text-[11px] text-[var(--app-text-muted)]">EV/Umsatz</p>
+            <p className="text-sm font-medium text-[var(--app-text)]">
+              {eintrag.bewertung.ntmEvRev != null
+                ? `${eintrag.bewertung.ntmEvRev.toFixed(1)}×`
+                : '–'}
+              {eintrag.bewertung.historischerMedianEvRev != null ? (
+                <span className="text-[var(--app-text-muted)]">
+                  {' '}
+                  / Med {eintrag.bewertung.historischerMedianEvRev.toFixed(1)}×
+                </span>
+              ) : null}
             </p>
           </div>
           <div>

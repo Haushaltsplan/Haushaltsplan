@@ -214,7 +214,7 @@ function baueKandidatenText(kandidaten: NachkaufScanEintrag[], budgetEur: number
       neukaufHinweis,
       `Score: ${e.score}/100 | Ampel: ${e.ampel} | ${trigger}`,
       `Risikoklasse: **${risikoLabel}** | Max. Einzelkauf diesen Monat: ${maxBetrag} €`,
-      `Bewertung: ${premium} | FCF-Yield: ${e.bewertung.fcfYieldPct?.toFixed(1) ?? '?'}% | Fwd-KGV: ${e.bewertung.forwardPe?.toFixed(1) ?? '?'}`,
+      `Bewertung: ${premium} | FCF-Yield: ${e.bewertung.fcfYieldPct?.toFixed(1) ?? '?'}% | Fwd-KGV: ${e.bewertung.forwardPe?.toFixed(1) ?? '?'} | EV/EBITDA: ${e.bewertung.ntmEvEbitda?.toFixed(1) ?? '?'}× (5J-Med ${e.bewertung.historischerMedianEvEbitda?.toFixed(1) ?? '?'}) | EV/Umsatz: ${e.bewertung.ntmEvRev?.toFixed(1) ?? '?'}×`,
       klumpen,
       `Kaufhistorie: ${formatKaufhistorie(e)}`,
       insider,
@@ -250,7 +250,7 @@ function baueVerkaufKandidatenText(kandidaten: NachkaufScanEintrag[]): string {
         ? `Empfohlener Verkauf: ~${ts.verkaufAnteilPct} % der Position (Ziel: ${ts.zielDepotGewichtPct?.toFixed(1) ?? '?'} % Depot)`
         : 'Kein konkreter Verkaufsanteil — nur Überprüfung',
       `Score: ${e.score}/100 | Ampel: ${e.ampel} | Depot-Anteil: ${e.depotGewichtPct?.toFixed(1) ?? '?'}%`,
-      `Bewertung: ${premium} | FCF-Yield: ${e.bewertung.fcfYieldPct?.toFixed(1) ?? '?'}% | Fwd-KGV: ${e.bewertung.forwardPe?.toFixed(1) ?? '?'}`,
+      `Bewertung: ${premium} | FCF-Yield: ${e.bewertung.fcfYieldPct?.toFixed(1) ?? '?'}% | Fwd-KGV: ${e.bewertung.forwardPe?.toFixed(1) ?? '?'} | EV/EBITDA: ${e.bewertung.ntmEvEbitda?.toFixed(1) ?? '?'}× (5J-Med ${e.bewertung.historischerMedianEvEbitda?.toFixed(1) ?? '?'}) | EV/Umsatz: ${e.bewertung.ntmEvRev?.toFixed(1) ?? '?'}×`,
       `Sell-Trigger: ${e.sellTriggerOk ? 'OK' : 'AKTIV'} | Mantra: ${e.mantraScorePct?.toFixed(0) ?? '?'}%`,
       e.datenSignale?.prognoseProfil && e.datenSignale.prognoseProfil.anzahlJahre >= 2
         ? `Prognose: ${e.datenSignale.prognoseProfil.zusammenfassung}`

@@ -10,10 +10,20 @@ export type HistorischeBewertung = {
   medianPe5y: number | null
   /** Median der FCF-Rendite % (aus Kurs/FCF-Jahreswerten). */
   medianFcfYield5y: number | null
+  /** Median EV/EBITDA (letzte 5 GJ, aus Marktkap + Schulden − Cash). */
+  medianEvEbitda5y: number | null
+  /** Median EV/Umsatz (letzte 5 GJ). */
+  medianEvRev5y: number | null
   /** Aktuelles Trailing-KGV als Perzentil der eigenen 5J-Historie (0=günstig, 100=teuer). */
   pePerzentil5y: number | null
   /** Aktuelles Trailing-KGV als Perzentil der eigenen 10J-Historie. */
   pePerzentil10y: number | null
+  /** Aktuelles EV/EBITDA als Perzentil der 5J-Historie. */
+  evEbitdaPerzentil5y: number | null
+  /** Aktuelles EV/EBITDA als Perzentil der 10J-Historie. */
+  evEbitdaPerzentil10y: number | null
+  /** Aktuelles EV/Umsatz als Perzentil der 5J-Historie. */
+  evRevPerzentil5y: number | null
   /** Datenquelle der Mediane. */
   quelle: 'macrotrends' | null
   /** Anzahl verwendeter Jahrespunkte. */
@@ -57,14 +67,34 @@ function werteAusZeile(
   return out
 }
 
-function aktuellesTrailingPe(paket: FundamentaldatenPaket, peHist: number[]): number | null {
-  const kgv = paket.zeilen.find((z) => z.id === 'kgv')
-  const ttm = kgv?.werte[FUNDAMENTAL_TTM_KEY]
-  if (ttm != null && ttm > 0) return ttm
-  return peHist.length > 0 ? peHist[peHist.length - 1]! : null
+function parseKeyMetricMultiple(paket: FundamentaldatenPaket, id: string): number | null {
+  const raw = paket.keyMetrics.find((m) => m.id === id)?.wert
+  if (!raw || raw === '–' || raw === '-') return null
+  const s = raw
+    .replace(/[x×%\s$€]/g, '')
+    .replace(/\./g, '')
+    .replace(',', '.')
+  const v = parseFloat(s)
+  return Number.isFinite(v) && v > 0 ? v : null
 }
 
-/** 5-/10-Jahres-Median KGV/FCF-Yield + Perzentile aus Macrotrends-Zeitreihen. */
+function aktuellesMultiple(
+  paket: FundamentaldatenPaket,
+  zeilenId: string,
+  keyMetricIds: string[],
+  hist: number[],
+): number | null {
+  const z = paket.zeilen.find((r) => r.id === zeilenId)
+  const ttm = z?.werte[FUNDAMENTAL_TTM_KEY]
+  if (ttm != null && ttm > 0) return ttm
+  for (const id of keyMetricIds) {
+    const km = parseKeyMetricMultiple(paket, id)
+    if (km != null) return km
+  }
+  return hist.length > 0 ? hist[hist.length - 1]! : null
+}
+
+/** 5-/10-Jahres-Median KGV/FCF/EV + Perzentile aus Macrotrends-Zeitreihen. */
 export function berechneHistorischeBewertung(paket: FundamentaldatenPaket): HistorischeBewertung {
   const keys5 = geschaeftsjahresKeys(paket.perioden, 5)
   const keys10 = geschaeftsjahresKeys(paket.perioden, 10)
@@ -72,17 +102,43 @@ export function berechneHistorischeBewertung(paket: FundamentaldatenPaket): Hist
   const peWerte10 = werteAusZeile(paket, 'kgv', keys10)
   const pfcfWerte = werteAusZeile(paket, 'pfcf', keys5)
   const fcfYieldWerte = pfcfWerte.map((m) => (m > 0 ? (1 / m) * 100 : 0)).filter((v) => v > 0)
+  const evEbitda5 = werteAusZeile(paket, 'ev_ebitda', keys5)
+  const evEbitda10 = werteAusZeile(paket, 'ev_ebitda', keys10)
+  const evRev5 = werteAusZeile(paket, 'ev_rev', keys5)
 
   const medianPe5y = median(peWerte5)
   const medianFcfYield5y = median(fcfYieldWerte)
-  const peAktuell = aktuellesTrailingPe(paket, peWerte5)
+  const medianEvEbitda5y = median(evEbitda5)
+  const medianEvRev5y = median(evRev5)
+
+  const peAktuell = aktuellesMultiple(paket, 'kgv', ['ltm_pe', 'ntm_pe'], peWerte5)
+  const evEbitdaAktuell = aktuellesMultiple(
+    paket,
+    'ev_ebitda',
+    ['ntm_ev_ebitda', 'ltm_ev_ebitda'],
+    evEbitda5,
+  )
+  const evRevAktuell = aktuellesMultiple(paket, 'ev_rev', ['ntm_ev_rev', 'ltm_ev_rev'], evRev5)
+
+  const hatDaten =
+    medianPe5y != null ||
+    medianFcfYield5y != null ||
+    medianEvEbitda5y != null ||
+    medianEvRev5y != null
 
   return {
     medianPe5y,
     medianFcfYield5y,
+    medianEvEbitda5y,
+    medianEvRev5y,
     pePerzentil5y: peAktuell != null ? perzentilInSerie(peAktuell, peWerte5) : null,
     pePerzentil10y: peAktuell != null ? perzentilInSerie(peAktuell, peWerte10) : null,
-    quelle: medianPe5y != null || medianFcfYield5y != null ? 'macrotrends' : null,
-    jahre: Math.max(peWerte5.length, fcfYieldWerte.length),
+    evEbitdaPerzentil5y:
+      evEbitdaAktuell != null ? perzentilInSerie(evEbitdaAktuell, evEbitda5) : null,
+    evEbitdaPerzentil10y:
+      evEbitdaAktuell != null ? perzentilInSerie(evEbitdaAktuell, evEbitda10) : null,
+    evRevPerzentil5y: evRevAktuell != null ? perzentilInSerie(evRevAktuell, evRev5) : null,
+    quelle: hatDaten ? 'macrotrends' : null,
+    jahre: Math.max(peWerte5.length, fcfYieldWerte.length, evEbitda5.length, evRev5.length),
   }
 }

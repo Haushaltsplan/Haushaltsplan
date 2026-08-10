@@ -106,8 +106,20 @@ export type NachkaufBewertungsSignale = {
   netDebtEbitda?: number | null
   /** Short Float % (Finviz, US). */
   shortFloatPct?: number | null
-  /** NTM EV / EBITDA. */
+  /** NTM / FY EV / EBITDA. */
   ntmEvEbitda?: number | null
+  /** NTM / FY EV / Umsatz. */
+  ntmEvRev?: number | null
+  /** 5J-Median EV/EBITDA (Macrotrends-Rekonstruktion). */
+  historischerMedianEvEbitda?: number | null
+  /** 5J-Median EV/Umsatz. */
+  historischerMedianEvRev?: number | null
+  /** Aktuelles EV/EBITDA als Perzentil der 5J-Historie (0=günstig … 100=teuer). */
+  evEbitdaPerzentil5y?: number | null
+  /** Aktuelles EV/EBITDA als Perzentil der 10J-Historie. */
+  evEbitdaPerzentil10y?: number | null
+  /** Aktuelles EV/Umsatz als Perzentil der 5J-Historie. */
+  evRevPerzentil5y?: number | null
   /** Datenabdeckung für Entscheidung (0–100 %). */
   datenVollstaendigkeitPct?: number | null
 }

@@ -51,7 +51,16 @@ export function berechnePersonalisierteBewertung(
   signale: NachkaufBewertungsSignale,
   position?: WhitelistPosition,
 ): number {
-  const { forwardPe, fcfYieldPct, ntmEvEbitda, historischerMedianPe, historischerMedianFcfYield } = signale
+  const {
+    forwardPe,
+    fcfYieldPct,
+    ntmEvEbitda,
+    ntmEvRev,
+    historischerMedianPe,
+    historischerMedianFcfYield,
+    historischerMedianEvEbitda,
+    historischerMedianEvRev,
+  } = signale
   const trigger = position?.kaufTrigger
   let pts = 0
 
@@ -82,13 +91,31 @@ export function berechnePersonalisierteBewertung(
     else if (fcfYieldPct >= 2) pts += 3
   }
 
+  // EV: zuerst vs. eigener 5J-Median, sonst absolute Buckets / EV/Sales-Fallback
   if (ntmEvEbitda != null) {
-    if (ntmEvEbitda < 12) pts += 9
+    const ref = historischerMedianEvEbitda
+    if (ref != null && ref > 0) {
+      const ratio = ntmEvEbitda / ref
+      if (ratio <= 0.75) pts += 9
+      else if (ratio <= 0.9) pts += 7
+      else if (ratio <= 1.0) pts += 5
+      else if (ratio <= 1.15) pts += 2
+    } else if (ntmEvEbitda < 12) pts += 9
     else if (ntmEvEbitda < 16) pts += 6
     else if (ntmEvEbitda < 22) pts += 3
+  } else if (ntmEvRev != null) {
+    const ref = historischerMedianEvRev
+    if (ref != null && ref > 0) {
+      const ratio = ntmEvRev / ref
+      if (ratio <= 0.75) pts += 7
+      else if (ratio <= 0.9) pts += 5
+      else if (ratio <= 1.0) pts += 3
+      else if (ratio <= 1.15) pts += 1
+    } else if (ntmEvRev < 4) pts += 6
+    else if (ntmEvRev < 7) pts += 3
   }
 
-  const metrikAnzahl = [forwardPe, fcfYieldPct, ntmEvEbitda].filter((v) => v != null).length
+  const metrikAnzahl = [forwardPe, fcfYieldPct, ntmEvEbitda ?? ntmEvRev].filter((v) => v != null).length
   if (metrikAnzahl === 1 && pts > 0) pts = Math.round(pts * 0.85)
   else if (metrikAnzahl === 2 && pts > 22) pts = Math.round(pts * 0.92)
 

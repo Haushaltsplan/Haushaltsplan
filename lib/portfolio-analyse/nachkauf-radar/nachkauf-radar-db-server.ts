@@ -227,6 +227,11 @@ type DbZeile = {
   kauf_trigger_text: string | null
   historischer_median_pe: number | null
   historischer_median_fcf_yield: number | null
+  ntm_ev_ebitda: number | null
+  ntm_ev_rev: number | null
+  historischer_median_ev_ebitda: number | null
+  historischer_median_ev_rev: number | null
+  ev_ebitda_perzentil_5y: number | null
   historisch_quelle: string | null
   daten_signale?: unknown
   score_detail?: unknown
@@ -255,6 +260,11 @@ function dbZeileZuEintrag(r: DbZeile): NachkaufScanEintrag {
       historischerMedianPe: r.historischer_median_pe ?? null,
       historischerMedianFcfYield: r.historischer_median_fcf_yield ?? null,
       historischQuelle: (r.historisch_quelle as 'macrotrends' | 'whitelist' | null) ?? null,
+      ntmEvEbitda: r.ntm_ev_ebitda ?? null,
+      ntmEvRev: r.ntm_ev_rev ?? null,
+      historischerMedianEvEbitda: r.historischer_median_ev_ebitda ?? null,
+      historischerMedianEvRev: r.historischer_median_ev_rev ?? null,
+      evEbitdaPerzentil5y: r.ev_ebitda_perzentil_5y ?? null,
     },
     mantraAmpel: r.mantra_ampel ?? null,
     mantraScorePct: r.mantra_score_pct ?? null,
@@ -309,6 +319,11 @@ function eintragZuDbZeile(e: NachkaufScanEintrag): Record<string, unknown> {
     historischer_median_pe: e.bewertung.historischerMedianPe ?? null,
     historischer_median_fcf_yield: e.bewertung.historischerMedianFcfYield ?? null,
     historisch_quelle: e.bewertung.historischQuelle ?? null,
+    ntm_ev_ebitda: e.bewertung.ntmEvEbitda ?? null,
+    ntm_ev_rev: e.bewertung.ntmEvRev ?? null,
+    historischer_median_ev_ebitda: e.bewertung.historischerMedianEvEbitda ?? null,
+    historischer_median_ev_rev: e.bewertung.historischerMedianEvRev ?? null,
+    ev_ebitda_perzentil_5y: e.bewertung.evEbitdaPerzentil5y ?? null,
     daten_signale: e.datenSignale ?? null,
     score_detail: e.scoreDetail,
     trim_signal: e.trimSignal ?? null,

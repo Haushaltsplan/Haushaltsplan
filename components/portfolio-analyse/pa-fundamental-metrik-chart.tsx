@@ -75,8 +75,6 @@ type ChartSerie = {
 
 function aktuellerKeyFuerZeile(z: FundamentalMetrikZeile, variant: 'standard' | 'bewertung'): string | null {
   if (variant !== 'bewertung') return null
-  // EV-Zeilen haben nur FY-Schätzungen (kein TTM-Punkt).
-  if (z.id === 'ev_rev' || z.id === 'ev_ebitda') return null
   if (z.gruppe === 'bewertung_trailing') return FUNDAMENTAL_TTM_KEY
   return FUNDAMENTAL_TTM_KEY
 }

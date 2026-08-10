@@ -94,6 +94,14 @@ components/portfolio-analyse/
 - URL im Browser öffnen → triggert Vercel Build von Branch `main`
 - Nach Deploy: DB-Eintrag ggf. löschen + "Neu generieren" klicken
 
+## EV-Multiples (Aug 2026)
+
+- Historische `ev_rev` / `ev_ebitda`: `Marktkap (Macrotrends) + Yahoo Total Debt − Cash+STI`
+- Yahoo liefert kurzfristige Schulden + Capital Leases (`annualTotalDebt` = Current+LT inkl. Leases)
+- Fallback ohne Yahoo: Macrotrends langfristige Schulden
+- Nachkauf-Score: Median/Perzentil wie beim KGV; Premium/Discount mittelt KGV + FCF + EV
+- Migration: `20260810210000_nachkauf_radar_ev_multiples.sql`
+
 ## Bekannte Quirks
 
 - `tiefenAnalyse` ist nach `ladeNachkaufScanAusCloud()` immer `null` → muss manuell per `ladeAlleDeepResearch()` befüllt werden

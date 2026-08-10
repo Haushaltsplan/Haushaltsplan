@@ -11,7 +11,9 @@ import { ladeYahooMantraFinanzdaten } from '@/lib/portfolio-analyse/yahoo-fundam
 import { ladeFundamentalNews } from '@/lib/portfolio-analyse/fundamentaldaten-news-server'
 import { baueNtmBewertungsZeilen } from '@/lib/portfolio-analyse/fundamentaldaten-ntm-bewertung-server'
 import { ergaenzeDividendenHistorieZeilen } from '@/lib/portfolio-analyse/fundamentaldaten-dividenden-historie-zeilen'
+import { ergaenzeEvMultiplesZeilen } from '@/lib/portfolio-analyse/fundamentaldaten-ev-multiples-zeilen'
 import { ergaenzeNettoverschuldungZeilen } from '@/lib/portfolio-analyse/fundamentaldaten-nettoverschuldung-zeilen'
+import { ergaenzeYahooSchuldenZeilen } from '@/lib/portfolio-analyse/fundamentaldaten-yahoo-schulden-zeilen'
 import { ladeFundamentalSchaetzungen, filterSchaetzungenGegenHistorisch, fuelleFehlendeEpsSchaetzungen } from '@/lib/portfolio-analyse/fundamentaldaten-schaetzungen-server'
 import {
   formatiereBrancheDe,
@@ -681,6 +683,13 @@ export async function ladeFundamentaldaten(anfrage: FundamentaldatenAnfrage): Pr
       ? mergePeriodenUndZeilen(roh, schaetzungenGefiltert)
       : { perioden: roh.perioden, zeilen: roh.zeilen }
 
+  // Yahoo Total Debt (inkl. kurzfristig + Leases) vor Nettoverschuldung/EV.
+  if (frequenz === 'jahr' && symbolYahoo) {
+    await ergaenzeYahooSchuldenZeilen(symbolYahoo, merged.perioden, merged.zeilen)
+  }
+  ergaenzeNettoverschuldungZeilen(merged.perioden, merged.zeilen)
+  ergaenzeEvMultiplesZeilen(merged.perioden, merged.zeilen)
+
   const ntm =
     frequenz === 'jahr'
       ? await baueNtmBewertungsZeilen(symbolYahoo, merged.perioden, merged.zeilen, yahooExt)
@@ -716,17 +725,22 @@ export async function ladeFundamentaldaten(anfrage: FundamentaldatenAnfrage): Pr
     if (FUNDAMENTAL_NTM_KEY in z.werte) delete z.werte[FUNDAMENTAL_NTM_KEY]
   }
   for (const neu of ntm.neueZeilen ?? []) {
-    if (!merged.zeilen.some((z) => z.id === neu.id)) {
-      for (const p of merged.perioden) {
-        if (!(p.iso in neu.werte)) neu.werte[p.iso] = null
+    if (FUNDAMENTAL_NTM_KEY in neu.werte) delete neu.werte[FUNDAMENTAL_NTM_KEY]
+    const existing = merged.zeilen.find((z) => z.id === neu.id)
+    if (existing) {
+      for (const [iso, v] of Object.entries(neu.werte)) {
+        if (v != null) existing.werte[iso] = v
+        else if (!(iso in existing.werte)) existing.werte[iso] = null
       }
-      if (FUNDAMENTAL_NTM_KEY in neu.werte) delete neu.werte[FUNDAMENTAL_NTM_KEY]
-      merged.zeilen.push(neu)
+      continue
     }
+    for (const p of merged.perioden) {
+      if (!(p.iso in neu.werte)) neu.werte[p.iso] = null
+    }
+    merged.zeilen.push(neu)
   }
 
   ergaenzeDividendenHistorieZeilen(merged.perioden, merged.zeilen, yahooExt)
-  ergaenzeNettoverschuldungZeilen(merged.perioden, merged.zeilen)
 
   const sektorFinal = brancheMeta.sektor
   const brancheFinal = brancheMeta.branche ?? roh.branche

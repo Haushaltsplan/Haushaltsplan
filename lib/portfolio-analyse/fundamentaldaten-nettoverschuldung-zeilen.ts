@@ -8,14 +8,28 @@ function wert(zeilen: FundamentalMetrikZeile[], id: string, key: string): number
   return v != null && Number.isFinite(v) ? v : null
 }
 
+function upsert(
+  zeilen: FundamentalMetrikZeile[],
+  id: string,
+  label: string,
+  gruppe: FundamentalMetrikZeile['gruppe'],
+  einheit: FundamentalMetrikZeile['einheit'],
+  werte: Record<string, number | null>,
+): void {
+  const existing = zeilen.find((z) => z.id === id)
+  if (existing) {
+    existing.werte = { ...existing.werte, ...werte }
+    existing.label = label
+    return
+  }
+  zeilen.push({ id, label, gruppe, einheit, werte })
+}
+
 export function ergaenzeNettoverschuldungZeilen(
   perioden: FundamentalPeriode[],
   zeilen: FundamentalMetrikZeile[],
 ): void {
   if (perioden.length === 0) return
-  if (zeilen.some((z) => z.id === 'nettoverschuldung') && zeilen.some((z) => z.id === 'net_debt_ebitda')) {
-    return
-  }
 
   const ndWerte: Record<string, number | null> = {}
   const ndEbitdaWerte: Record<string, number | null> = {}
@@ -40,22 +54,17 @@ export function ergaenzeNettoverschuldungZeilen(
     }
   }
 
-  if (hatNd && !zeilen.some((z) => z.id === 'nettoverschuldung')) {
-    zeilen.push({
-      id: 'nettoverschuldung',
-      label: 'Nettoverschuldung',
-      gruppe: 'bilanz',
-      einheit: 'waehrung_usd_mio',
-      werte: ndWerte,
-    })
+  if (hatNd) {
+    upsert(zeilen, 'nettoverschuldung', 'Nettoverschuldung', 'bilanz', 'waehrung_usd_mio', ndWerte)
   }
-  if (hatNdE && !zeilen.some((z) => z.id === 'net_debt_ebitda')) {
-    zeilen.push({
-      id: 'net_debt_ebitda',
-      label: 'Net Debt / EBITDA',
-      gruppe: 'bewertung_trailing',
-      einheit: 'multiple',
-      werte: ndEbitdaWerte,
-    })
+  if (hatNdE) {
+    upsert(
+      zeilen,
+      'net_debt_ebitda',
+      'Net Debt / EBITDA',
+      'bewertung_trailing',
+      'multiple',
+      ndEbitdaWerte,
+    )
   }
 }

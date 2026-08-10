@@ -8,6 +8,7 @@ import {
 } from '@/lib/portfolio-analyse/fundamentaldaten-types'
 import { formatFundamentalPeriodeLabel } from '@/lib/portfolio-analyse/fundamentaldaten-format'
 import { ergaenzeDividendenHistorieZeilen } from '@/lib/portfolio-analyse/fundamentaldaten-dividenden-historie-zeilen'
+import { ergaenzeEvMultiplesZeilen } from '@/lib/portfolio-analyse/fundamentaldaten-ev-multiples-zeilen'
 import { ergaenzeNettoverschuldungZeilen } from '@/lib/portfolio-analyse/fundamentaldaten-nettoverschuldung-zeilen'
 
 const BASE = 'https://www.macrotrends.net'
@@ -214,7 +215,19 @@ const BALANCE_SHEET_METRIKEN: MetrikDef[] = [
     statement: 'balance-sheet',
     aliases: ['total-stockholders-equity'],
   },
-  { slug: 'total-debt', id: 'gesamtverschuldung', label: 'Gesamtverschuldung', gruppe: 'bilanz', einheit: 'waehrung_usd_mio', statement: 'balance-sheet' },
+  /**
+   * Macrotrends hat kein „total-debt“ (404) — nur langfristig.
+   * Gesamtverschuldung (inkl. kurzfristig + Leases) kommt später von Yahoo.
+   */
+  {
+    slug: 'long-term-debt',
+    id: 'gesamtverschuldung',
+    label: 'Langfristige Schulden (Macrotrends-Fallback)',
+    gruppe: 'bilanz',
+    einheit: 'waehrung_usd_mio',
+    statement: 'balance-sheet',
+    aliases: ['total-debt'],
+  },
   { slug: 'cash-on-hand', id: 'bargeld', label: 'Bargeld & Äquivalente', gruppe: 'bilanz', einheit: 'waehrung_usd_mio', statement: 'balance-sheet' },
   { slug: 'net-receivables', id: 'forderungen', label: 'Forderungen (netto)', gruppe: 'bilanz', einheit: 'waehrung_usd_mio', statement: 'balance-sheet' },
   { slug: 'inventory', id: 'vorraete', label: 'Vorräte', gruppe: 'bilanz', einheit: 'waehrung_usd_mio', statement: 'balance-sheet' },
@@ -270,12 +283,28 @@ const FINANCIAL_RATIOS_METRIKEN: MetrikDef[] = [
 ]
 
 const BEWERTUNG_METRIKEN: Array<
-  MetrikDef & { wertFeld: 'v3' | 'v1' | 'value'; ttmFeld?: 'v3' | 'v1' }
+  MetrikDef & {
+    wertFeld: 'v3' | 'v1' | 'value'
+    ttmFeld?: 'v3' | 'v1'
+    /** Chart-Rohwert multiplizieren (market-cap: v3 in Mrd. USD → Mio.) */
+    scale?: number
+  }
 > = [
   { slug: 'pe-ratio', id: 'kgv', label: 'KGV (P/E)', gruppe: 'bewertung_trailing', einheit: 'multiple', statement: 'price-ratios', wertFeld: 'v3', ttmFeld: 'v3' },
-  { slug: 'price-sales', id: 'ps', label: 'KGV/Umsatz (P/S)', gruppe: 'bewertung_trailing', einheit: 'multiple', statement: 'price-ratios', wertFeld: 'v3', ttmFeld: 'v3' },
+  { slug: 'price-sales', id: 'ps', label: 'KUV (P/S)', gruppe: 'bewertung_trailing', einheit: 'multiple', statement: 'price-ratios', wertFeld: 'v3', ttmFeld: 'v3' },
   { slug: 'price-book', id: 'pb', label: 'KBV (P/B)', gruppe: 'bewertung_trailing', einheit: 'multiple', statement: 'price-ratios', wertFeld: 'v3', ttmFeld: 'v3' },
   { slug: 'price-fcf', id: 'pfcf', label: 'Kurs/FCF', gruppe: 'bewertung_trailing', einheit: 'multiple', statement: 'price-ratios', wertFeld: 'v3', ttmFeld: 'v3' },
+  {
+    slug: 'market-cap',
+    id: 'marktkapitalisierung',
+    label: 'Marktkapitalisierung',
+    gruppe: 'bilanz',
+    einheit: 'waehrung_usd_mio',
+    statement: 'price-ratios',
+    wertFeld: 'v3',
+    ttmFeld: 'v3',
+    scale: 1000,
+  },
 ]
 
 function pause(ms: number): Promise<void> {
@@ -961,14 +990,21 @@ export async function ladeMacrotrendsFundamentaldaten(
   }
 
   for (const { def, chart } of bewertungCharts) {
+    const rohWerte = chart
+      ? werteAusChartExakt(chart, periodenIso, def.wertFeld, mitTtm)
+      : Object.fromEntries([...periodenIso, ...(mitTtm ? [FUNDAMENTAL_TTM_KEY] : [])].map((p) => [p, null]))
+    const scale = def.scale && def.scale !== 1 ? def.scale : null
+    const werte = scale
+      ? Object.fromEntries(
+          Object.entries(rohWerte).map(([k, v]) => [k, v != null && Number.isFinite(v) ? v * scale : v]),
+        )
+      : rohWerte
     zeilen.push({
       id: def.id,
       label: def.label,
       gruppe: def.gruppe,
       einheit: def.einheit,
-      werte: chart
-        ? werteAusChartExakt(chart, periodenIso, def.wertFeld, mitTtm)
-        : Object.fromEntries([...periodenIso, ...(mitTtm ? [FUNDAMENTAL_TTM_KEY] : [])].map((p) => [p, null])),
+      werte,
       macrotrendsSlug: def.slug,
       macrotrendsStatement: 'price-ratios',
     })
@@ -1005,6 +1041,7 @@ export async function ladeMacrotrendsFundamentaldaten(
 
   ergaenzeDividendenHistorieZeilen(perioden, zeilen, null, kursByIso)
   ergaenzeNettoverschuldungZeilen(perioden, zeilen)
+  ergaenzeEvMultiplesZeilen(perioden, zeilen)
 
   const ratiosUrl = `${BASE}/stocks/charts/${ident.ticker}/${ident.slug}/financial-ratios`
   const ratiosHtml = pageCache.get(ratiosUrl)?.html ?? (await ladeSeite(ratiosUrl))

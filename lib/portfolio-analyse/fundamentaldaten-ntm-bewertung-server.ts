@@ -1,12 +1,11 @@
 /**
- * Forward-Bewertung (FY-Schätzungen) — wird in die normalen Trailing-Zeilen
- * (KGV, P/S, Kurs/FCF, EV/…) geschrieben. Kein NTM.
- *
- * Forward-KGV = aktueller Kurs ÷ geschätztes EPS des jeweiligen FY.
- * EPS-Quellen (in dieser Reihenfolge): eps-Zeile, eps_schaetzung, Nettogewinn÷Aktien.
+ * Forward-Bewertung (FY-Schätzungen) + TTM-EV aus Yahoo.
+ * Historische EV-Multiples kommen aus ergaenzeEvMultiplesZeilen
+ * (Marktkap-Chart + Schulden − Cash).
  */
 import 'server-only'
 
+import { ergaenzeEvMultiplesZeilen } from '@/lib/portfolio-analyse/fundamentaldaten-ev-multiples-zeilen'
 import type { YahooFundamentalKennzahlen } from '@/lib/portfolio-analyse/fundamentaldaten-key-metrics'
 import {
   FUNDAMENTAL_TTM_KEY,
@@ -29,7 +28,6 @@ function aktuellerKursAusQuellen(
 ): number | null {
   if (yahoo?.currentPrice != null && yahoo.currentPrice > 0) return yahoo.currentPrice
 
-  // Stabilster Fallback: TTM-KGV × TTM-EPS (beide aus derselben Tabelle)
   const ttmPe = wert(zeilen, 'kgv', FUNDAMENTAL_TTM_KEY)
   const ttmEps = wert(zeilen, 'eps', FUNDAMENTAL_TTM_KEY)
   if (ttmPe != null && ttmPe > 0 && ttmEps != null && ttmEps > 0) return ttmPe * ttmEps
@@ -138,6 +136,24 @@ function zeileTrailing(
   }
 }
 
+function mergeWerteInZeile(
+  zeilen: FundamentalMetrikZeile[],
+  id: string,
+  label: string,
+  patch: Record<string, number | null>,
+): FundamentalMetrikZeile | null {
+  if (!Object.values(patch).some((v) => v != null)) return null
+  const existing = zeilen.find((z) => z.id === id)
+  if (existing) {
+    for (const [k, v] of Object.entries(patch)) {
+      if (v != null) existing.werte[k] = v
+      else if (!(k in existing.werte)) existing.werte[k] = null
+    }
+    return null
+  }
+  return zeileTrailing(id, label, { ...patch })
+}
+
 export type ForwardBewertungErgebnis = {
   periodenPatch: null
   trailingPatches: Partial<Record<'kgv' | 'ps' | 'pfcf', Record<string, number | null>>>
@@ -146,7 +162,7 @@ export type ForwardBewertungErgebnis = {
 }
 
 /**
- * FY-Forward-Multiples für die Bewertungstabelle (ohne NTM).
+ * FY-Forward-Multiples + Yahoo-TTM für EV; Historie via ergaenzeEvMultiplesZeilen.
  */
 export async function baueNtmBewertungsZeilen(
   _symbolYahoo: string | null,
@@ -154,11 +170,11 @@ export async function baueNtmBewertungsZeilen(
   zeilen: FundamentalMetrikZeile[],
   yahoo: YahooFundamentalKennzahlen | null,
 ): Promise<ForwardBewertungErgebnis> {
+  // Historie zuerst (Marktkap-Chart + LTD − Cash)
+  ergaenzeEvMultiplesZeilen(perioden, zeilen)
+
   const fyKeys = historischeFyKeys(perioden)
   const schKeys = schaetzungsPeriodenKeys(perioden)
-  if (schKeys.length === 0) {
-    return { periodenPatch: null, trailingPatches: {}, neueZeilen: [], zeilen: [] }
-  }
 
   const letztesHistKey = fyKeys[fyKeys.length - 1] ?? null
   const sharesMio =
@@ -167,15 +183,32 @@ export async function baueNtmBewertungsZeilen(
     (yahoo?.sharesOutstanding != null ? yahoo.sharesOutstanding / 1_000_000 : null)
 
   const aktuellerKurs = aktuellerKursAusQuellen(zeilen, yahoo, sharesMio)
-
   const mcMio = marktCapMio(aktuellerKurs, sharesMio, yahoo)
-  const evMio = enterpriseValueMio(yahoo, mcMio)
+  const evMioAktuell = enterpriseValueMio(yahoo, mcMio)
 
   const pePatch = leereWerteFuerKeys(schKeys)
   const psPatch = leereWerteFuerKeys(schKeys)
   const pfcfPatch = leereWerteFuerKeys(schKeys)
-  const evRevWerte = leereWerteFuerKeys(schKeys)
-  const evEbitdaWerte = leereWerteFuerKeys(schKeys)
+  const evRevPatch: Record<string, number | null> = {}
+  const evEbitdaPatch: Record<string, number | null> = {}
+
+  // TTM: Yahoo-Multiples bevorzugen (gleiche Definition wie Key Metrics)
+  if (yahoo?.enterpriseToRevenue != null && yahoo.enterpriseToRevenue > 0) {
+    evRevPatch[FUNDAMENTAL_TTM_KEY] = yahoo.enterpriseToRevenue
+  } else {
+    const ttmRev =
+      umsatzAusZeilen(zeilen, FUNDAMENTAL_TTM_KEY) ??
+      (letztesHistKey ? umsatzAusZeilen(zeilen, letztesHistKey) : null)
+    evRevPatch[FUNDAMENTAL_TTM_KEY] = safeDiv(evMioAktuell, ttmRev)
+  }
+  if (yahoo?.enterpriseToEbitda != null && yahoo.enterpriseToEbitda > 0) {
+    evEbitdaPatch[FUNDAMENTAL_TTM_KEY] = yahoo.enterpriseToEbitda
+  } else {
+    const ttmEbitda =
+      ebitdaAusZeilen(zeilen, FUNDAMENTAL_TTM_KEY) ??
+      (letztesHistKey ? ebitdaAusZeilen(zeilen, letztesHistKey) : null)
+    evEbitdaPatch[FUNDAMENTAL_TTM_KEY] = safeDiv(evMioAktuell, ttmEbitda)
+  }
 
   for (const sk of schKeys) {
     const eps = epsFuerSpalte(zeilen, sk, sharesMio)
@@ -186,37 +219,39 @@ export async function baueNtmBewertungsZeilen(
     pePatch[sk] = safeDiv(aktuellerKurs, eps)
     psPatch[sk] = safeDiv(mcMio, rev)
     pfcfPatch[sk] = safeDiv(mcMio, fcf)
-    evRevWerte[sk] = safeDiv(evMio, rev)
-    evEbitdaWerte[sk] = safeDiv(evMio, ebitda)
+    evRevPatch[sk] = safeDiv(evMioAktuell, rev)
+    evEbitdaPatch[sk] = safeDiv(evMioAktuell, ebitda)
   }
 
-  const hatIrgendwas = schKeys.some(
+  const hatForward = schKeys.some(
     (sk) =>
       pePatch[sk] != null ||
       psPatch[sk] != null ||
       pfcfPatch[sk] != null ||
-      evRevWerte[sk] != null ||
-      evEbitdaWerte[sk] != null,
+      evRevPatch[sk] != null ||
+      evEbitdaPatch[sk] != null,
   )
-  if (!hatIrgendwas) {
-    return { periodenPatch: null, trailingPatches: {}, neueZeilen: [], zeilen: [] }
-  }
 
   const neueZeilen: FundamentalMetrikZeile[] = []
-  if (Object.values(evRevWerte).some((v) => v != null)) {
-    neueZeilen.push(zeileTrailing('ev_rev', 'EV / Umsatz', evRevWerte))
-  }
-  if (Object.values(evEbitdaWerte).some((v) => v != null)) {
-    neueZeilen.push(zeileTrailing('ev_ebitda', 'EV / EBITDA', evEbitdaWerte))
+  const evRevNeu = mergeWerteInZeile(zeilen, 'ev_rev', 'EV / Umsatz', evRevPatch)
+  if (evRevNeu) neueZeilen.push(evRevNeu)
+  const evEbitdaNeu = mergeWerteInZeile(zeilen, 'ev_ebitda', 'EV / EBITDA', evEbitdaPatch)
+  if (evEbitdaNeu) neueZeilen.push(evEbitdaNeu)
+
+  if (!hatForward && neueZeilen.length === 0) {
+    // Historie kann bereits in zeilen stehen — kein Fehler
+    return { periodenPatch: null, trailingPatches: {}, neueZeilen: [], zeilen: [] }
   }
 
   return {
     periodenPatch: null,
-    trailingPatches: {
-      kgv: pePatch,
-      ps: psPatch,
-      pfcf: pfcfPatch,
-    },
+    trailingPatches: hatForward
+      ? {
+          kgv: pePatch,
+          ps: psPatch,
+          pfcf: pfcfPatch,
+        }
+      : {},
     neueZeilen,
     zeilen: [],
   }
