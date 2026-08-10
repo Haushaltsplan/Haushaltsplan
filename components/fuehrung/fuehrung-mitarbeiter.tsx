@@ -2,7 +2,12 @@
 
 import { useMemo, useState, type Dispatch, type SetStateAction } from 'react'
 import { PageSection, PageSectionPanel } from '@/components/page-shell'
-import { printMitarbeiterGespraech } from '@/lib/fuehrung/mitarbeiter-export'
+import {
+  addDaysIso,
+  FUEHRUNG_WOCHENTAGE_MO_DO,
+  printMitarbeiterGespraech,
+  sammleFragenAusTage,
+} from '@/lib/fuehrung/mitarbeiter-export'
 import {
   heuteIso,
   mitarbeiterFragenStats,
@@ -10,21 +15,11 @@ import {
   newId,
   summeMitarbeiterFragenAmTag,
   summeMitarbeiterFragenSplit,
-  tagFragenGesamt,
   upsertMitarbeiterTag,
   type FuehrungState,
 } from '@/lib/fuehrung/store'
 import { wochenStartIso } from '@/lib/fuehrung/wochen-review'
 import { appInputClass, appSecondaryBtnClass } from '@/lib/app-ui'
-
-function formatDe(iso: string): string {
-  const [y, m, d] = iso.split('-').map(Number)
-  if (!y || !m || !d) return iso
-  return new Date(y, m - 1, d).toLocaleDateString('de-DE', {
-    day: 'numeric',
-    month: 'short',
-  })
-}
 
 function AnzahlStepper({
   value,
@@ -35,10 +30,7 @@ function AnzahlStepper({
   onChange: (n: number) => void
   accent: 'ok' | 'warn'
 }) {
-  const plusClass =
-    accent === 'ok'
-      ? 'bg-teal-600 text-white'
-      : 'bg-amber-600 text-white'
+  const plusClass = accent === 'ok' ? 'bg-teal-600 text-white' : 'bg-amber-600 text-white'
   return (
     <div className="mt-1 flex items-center gap-2">
       <button
@@ -66,6 +58,16 @@ function AnzahlStepper({
   )
 }
 
+function defaultTagOffset(heute: string, montag: string): number {
+  for (const t of FUEHRUNG_WOCHENTAGE_MO_DO) {
+    if (addDaysIso(montag, t.offset) === heute) return t.offset
+  }
+  if (heute < montag) return 0
+  const donnerstag = addDaysIso(montag, 3)
+  if (heute > donnerstag) return 3
+  return 0
+}
+
 export function FuehrungMitarbeiterPanel({
   state,
   setState,
@@ -74,22 +76,30 @@ export function FuehrungMitarbeiterPanel({
   setState: Dispatch<SetStateAction<FuehrungState>>
 }) {
   const heute = heuteIso()
-  const von = wochenStartIso(heute)
+  const montag = wochenStartIso(heute)
+  const donnerstag = addDaysIso(montag, 3)
+  const exportBis = heute < donnerstag ? heute : donnerstag
+
+  const [tagOffset, setTagOffset] = useState(() => defaultTagOffset(heute, montag))
   const [neuerName, setNeuerName] = useState('')
   const [kiFrage, setKiFrage] = useState('')
   const [kiReply, setKiReply] = useState<string | null>(null)
   const [kiLoading, setKiLoading] = useState(false)
   const [kiError, setKiError] = useState<string | null>(null)
 
-  const heuteTotal = summeMitarbeiterFragenAmTag(state.mitarbeiterTage, heute)
-  const heuteSplit = summeMitarbeiterFragenSplit(state.mitarbeiterTage, heute, heute)
+  const aktivDatum = addDaysIso(montag, tagOffset)
+  const aktivLabel =
+    FUEHRUNG_WOCHENTAGE_MO_DO.find((t) => t.offset === tagOffset)?.label ?? 'Tag'
+  const istHeute = aktivDatum === heute
+
+  const tagSplit = summeMitarbeiterFragenSplit(state.mitarbeiterTage, aktivDatum, aktivDatum)
   const wocheStats = useMemo(
-    () => mitarbeiterFragenStats(state.mitarbeiter, state.mitarbeiterTage, von, heute),
-    [state.mitarbeiter, state.mitarbeiterTage, von, heute],
+    () => mitarbeiterFragenStats(state.mitarbeiter, state.mitarbeiterTage, montag, exportBis),
+    [state.mitarbeiter, state.mitarbeiterTage, montag, exportBis],
   )
   const wocheSplit = useMemo(
-    () => summeMitarbeiterFragenSplit(state.mitarbeiterTage, von, heute),
-    [state.mitarbeiterTage, von, heute],
+    () => summeMitarbeiterFragenSplit(state.mitarbeiterTage, montag, exportBis),
+    [state.mitarbeiterTage, montag, exportBis],
   )
 
   function addMitarbeiter() {
@@ -120,7 +130,7 @@ export function FuehrungMitarbeiterPanel({
   ) {
     setState((s) => ({
       ...s,
-      mitarbeiterTage: upsertMitarbeiterTag(s.mitarbeiterTage, mitarbeiterId, heute, patch),
+      mitarbeiterTage: upsertMitarbeiterTag(s.mitarbeiterTage, mitarbeiterId, aktivDatum, patch),
     }))
   }
 
@@ -130,42 +140,17 @@ export function FuehrungMitarbeiterPanel({
     setKiLoading(true)
     setKiError(null)
     setKiReply(null)
+    const fragen = sammleFragenAusTage(state.mitarbeiterTage, montag, exportBis)
     const context = {
       heute,
-      wochenStart: von,
-      fragenHeute: heuteTotal,
-      fragenHeuteWichtig: heuteSplit.wichtig,
-      fragenHeuteUnnoetig: heuteSplit.unnoetig,
+      wochenStart: montag,
+      aktiverTag: aktivDatum,
       fragenWoche: wocheSplit.gesamt,
       fragenWocheWichtig: wocheSplit.wichtig,
       fragenWocheUnnoetig: wocheSplit.unnoetig,
+      fragenGebuendeltWichtig: fragen.wichtig,
+      fragenGebuendeltUnnoetig: fragen.unnoetig,
       rankingWoche: wocheStats.filter((x) => x.anzahl > 0),
-      heuteProPerson: state.mitarbeiter.map((m) => {
-        const t = mitarbeiterTagAm(state.mitarbeiterTage, m.id, heute)
-        return {
-          name: m.name,
-          anzahlWichtig: t?.anzahlWichtig ?? 0,
-          anzahlUnnoetig: t?.anzahlUnnoetig ?? 0,
-          notizenWichtig: t?.notizenWichtig ?? '',
-          notizenUnnoetig: t?.notizenUnnoetig ?? '',
-        }
-      }),
-      wocheMitNotizen: state.mitarbeiterTage
-        .filter(
-          (t) =>
-            t.datum >= von &&
-            t.datum <= heute &&
-            (tagFragenGesamt(t) > 0 || t.notizenWichtig.trim() || t.notizenUnnoetig.trim()),
-        )
-        .slice(0, 40)
-        .map((t) => ({
-          name: state.mitarbeiter.find((m) => m.id === t.mitarbeiterId)?.name ?? '?',
-          datum: t.datum,
-          anzahlWichtig: t.anzahlWichtig,
-          anzahlUnnoetig: t.anzahlUnnoetig,
-          notizenWichtig: t.notizenWichtig,
-          notizenUnnoetig: t.notizenUnnoetig,
-        })),
     }
     try {
       const res = await fetch('/api/fuehrung/mitarbeiter-ki', {
@@ -186,36 +171,28 @@ export function FuehrungMitarbeiterPanel({
     }
   }
 
-  function copyRanking() {
+  function copyFuerGespraech() {
+    const fragen = sammleFragenAusTage(state.mitarbeiterTage, montag, exportBis)
     const lines = [
-      `MITARBEITER-FRAGEN · Woche ab ${von}`,
+      `FRAGEN AN DIE FÜHRUNG · ${montag} – ${exportBis}`,
       `Gesamt: ${wocheSplit.gesamt} (wichtig ${wocheSplit.wichtig} · unnötig ${wocheSplit.unnoetig})`,
-      `Heute: ${heuteTotal} (wichtig ${heuteSplit.wichtig} · unnötig ${heuteSplit.unnoetig})`,
       '',
-      ...wocheStats
-        .filter((x) => x.anzahl > 0)
-        .map(
-          (x, i) =>
-            `${i + 1}. ${x.name}: ${x.anzahl}× (wichtig ${x.anzahlWichtig} · unnötig ${x.anzahlUnnoetig})`,
-        ),
+      ...FUEHRUNG_WOCHENTAGE_MO_DO.map((t) => {
+        const d = addDaysIso(montag, t.offset)
+        if (d > exportBis) return `${t.label}: —`
+        const s = summeMitarbeiterFragenSplit(state.mitarbeiterTage, d, d)
+        return `${t.label}: ${s.gesamt} (wichtig ${s.wichtig} · unnötig ${s.unnoetig})`
+      }),
       '',
       'Wichtig:',
-      ...state.mitarbeiterTage
-        .filter((t) => t.datum >= von && t.datum <= heute && t.notizenWichtig.trim())
-        .slice(0, 30)
-        .map((t) => {
-          const name = state.mitarbeiter.find((m) => m.id === t.mitarbeiterId)?.name ?? '?'
-          return `· ${formatDe(t.datum)} ${name}:\n${t.notizenWichtig}`
-        }),
+      ...(fragen.wichtig.length
+        ? fragen.wichtig.map((f) => `· ${f.text}${f.anzahl > 1 ? ` ×${f.anzahl}` : ''}`)
+        : ['· —']),
       '',
       'Unnötig / ohne mich lösbar:',
-      ...state.mitarbeiterTage
-        .filter((t) => t.datum >= von && t.datum <= heute && t.notizenUnnoetig.trim())
-        .slice(0, 30)
-        .map((t) => {
-          const name = state.mitarbeiter.find((m) => m.id === t.mitarbeiterId)?.name ?? '?'
-          return `· ${formatDe(t.datum)} ${name}:\n${t.notizenUnnoetig}`
-        }),
+      ...(fragen.unnoetig.length
+        ? fragen.unnoetig.map((f) => `· ${f.text}${f.anzahl > 1 ? ` ×${f.anzahl}` : ''}`)
+        : ['· —']),
     ]
     void navigator.clipboard.writeText(lines.join('\n'))
   }
@@ -224,16 +201,16 @@ export function FuehrungMitarbeiterPanel({
     <div className="space-y-3">
       <div className="rounded-[var(--app-radius-lg)] border border-teal-500/25 bg-teal-500/5 px-4 py-3">
         <p className="text-[10px] font-bold uppercase tracking-wide text-teal-700 dark:text-teal-300">
-          Wahrnehmen · Gespräch vorbereiten
+          Wahrnehmen · Mo–Do
         </p>
         <p className="mt-1 text-sm text-[var(--app-text)]">
-          Pro Person heute: <strong>wichtig</strong> vs. <strong>unnötig</strong> zählen und Notizen
-          machen. Montag Lernwoche 2: offen mit dem Team besprechen — Export als PDF zum Ausdrucken.
+          Wird lokal gespeichert. Pro Tag: <strong>wichtig</strong> vs. <strong>unnötig</strong>. Der
+          PDF-Export zeigt nur Gesamtstatistik und Fragen — ohne Namen.
         </p>
         <div className="mt-3 grid grid-cols-3 gap-2">
           <div className="rounded-xl bg-[var(--app-surface-muted)] px-2 py-2 text-center ring-1 ring-[var(--app-border)]">
             <p className="text-xl font-bold tabular-nums text-[var(--app-text)]">{wocheSplit.gesamt}</p>
-            <p className="text-[10px] text-[var(--app-text-muted)]">Woche gesamt</p>
+            <p className="text-[10px] text-[var(--app-text-muted)]">Mo–Do gesamt</p>
           </div>
           <div className="rounded-xl bg-teal-500/10 px-2 py-2 text-center ring-1 ring-teal-500/25">
             <p className="text-xl font-bold tabular-nums text-teal-800 dark:text-teal-200">
@@ -248,23 +225,50 @@ export function FuehrungMitarbeiterPanel({
             <p className="text-[10px] text-[var(--app-text-muted)]">Unnötig</p>
           </div>
         </div>
-        <p className="mt-2 text-xs text-[var(--app-text-muted)]">
-          Heute: {heuteTotal} ({heuteSplit.wichtig} wichtig · {heuteSplit.unnoetig} unnötig)
-        </p>
         <div className="mt-3 flex flex-wrap gap-2">
           <button
             type="button"
             className="rounded-xl bg-teal-600 px-3 py-2 text-sm font-semibold text-white hover:bg-teal-500"
-            onClick={() => printMitarbeiterGespraech(state, von, heute)}
+            onClick={() => printMitarbeiterGespraech(state, montag, exportBis)}
           >
             PDF / Drucken für Gespräch
           </button>
           {wocheSplit.gesamt > 0 ? (
-            <button type="button" className={appSecondaryBtnClass} onClick={copyRanking}>
-              Ranking kopieren
+            <button type="button" className={appSecondaryBtnClass} onClick={copyFuerGespraech}>
+              Statistik kopieren
             </button>
           ) : null}
         </div>
+      </div>
+
+      <div className="grid grid-cols-4 gap-1.5">
+        {FUEHRUNG_WOCHENTAGE_MO_DO.map((t) => {
+          const datum = addDaysIso(montag, t.offset)
+          const n = summeMitarbeiterFragenAmTag(state.mitarbeiterTage, datum)
+          const aktiv = tagOffset === t.offset
+          const heuteTag = datum === heute
+          return (
+            <button
+              key={t.offset}
+              type="button"
+              onClick={() => setTagOffset(t.offset)}
+              className={`rounded-xl px-1 py-2.5 text-center ring-1 transition ${
+                aktiv
+                  ? 'bg-teal-600 text-white ring-teal-600'
+                  : 'bg-[var(--app-surface)] text-[var(--app-text)] ring-[var(--app-border)] hover:bg-[var(--app-surface-muted)]'
+              }`}
+            >
+              <p className={`text-[10px] font-bold uppercase tracking-wide ${aktiv ? 'text-white/80' : 'text-[var(--app-text-muted)]'}`}>
+                {t.kurz}
+                {heuteTag ? ' · heute' : ''}
+              </p>
+              <p className="mt-0.5 text-sm font-semibold">{t.label}</p>
+              <p className={`mt-0.5 text-xs tabular-nums ${aktiv ? 'text-white/90' : 'text-[var(--app-text-muted)]'}`}>
+                {n > 0 ? `${n} Fragen` : '—'}
+              </p>
+            </button>
+          )
+        })}
       </div>
 
       <PageSection titleId="fuehrung-ma-add" title="Mitarbeiter" density="compact">
@@ -291,17 +295,26 @@ export function FuehrungMitarbeiterPanel({
         </PageSectionPanel>
       </PageSection>
 
+      <p className="text-sm font-medium text-[var(--app-text)]">
+        Einträge für {aktivLabel}
+        {istHeute ? ' (heute)' : ''}
+        <span className="font-normal text-[var(--app-text-muted)]">
+          {' '}
+          · {tagSplit.gesamt} Fragen ({tagSplit.wichtig} wichtig · {tagSplit.unnoetig} unnötig)
+        </span>
+      </p>
+
       {state.mitarbeiter.length === 0 ? (
         <PageSection titleId="fuehrung-ma-empty" title="Noch niemand" density="compact">
           <PageSectionPanel density="compact">
             <p className="text-sm italic text-[var(--app-text-muted)]">
-              Mitarbeiter anlegen → wichtig / unnötig zählen → Fragen in den Notizen festhalten.
+              Mitarbeiter anlegen → Tag wählen → wichtig / unnötig zählen und Notizen festhalten.
             </p>
           </PageSectionPanel>
         </PageSection>
       ) : (
         state.mitarbeiter.map((m) => {
-          const tag = mitarbeiterTagAm(state.mitarbeiterTage, m.id, heute)
+          const tag = mitarbeiterTagAm(state.mitarbeiterTage, m.id, aktivDatum)
           const wichtig = tag?.anzahlWichtig ?? 0
           const unnoetig = tag?.anzahlUnnoetig ?? 0
           const notizenWichtig = tag?.notizenWichtig ?? ''
@@ -312,10 +325,12 @@ export function FuehrungMitarbeiterPanel({
               <PageSectionPanel density="compact" className="space-y-3">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <p className="text-xs text-[var(--app-text-muted)]">
-                    Woche:{' '}
+                    Mo–Do:{' '}
                     <span className="font-bold text-[var(--app-text)]">{woche?.anzahl ?? 0}</span>
                     {' · '}
-                    <span className="text-teal-700 dark:text-teal-300">{woche?.anzahlWichtig ?? 0} wichtig</span>
+                    <span className="text-teal-700 dark:text-teal-300">
+                      {woche?.anzahlWichtig ?? 0} wichtig
+                    </span>
                     {' · '}
                     <span className="text-amber-800 dark:text-amber-300">
                       {woche?.anzahlUnnoetig ?? 0} unnötig
@@ -333,7 +348,7 @@ export function FuehrungMitarbeiterPanel({
                 <div className="grid gap-3 sm:grid-cols-2">
                   <div className="rounded-xl bg-teal-500/5 p-3 ring-1 ring-teal-500/20">
                     <p className="app-eyebrow text-[10px] text-teal-800 dark:text-teal-200">
-                      Wirklich wichtig · heute
+                      Wirklich wichtig · {aktivLabel}
                     </p>
                     <p className="mt-0.5 text-[11px] text-[var(--app-text-muted)]">
                       Brauchte dich / Führung
@@ -357,7 +372,7 @@ export function FuehrungMitarbeiterPanel({
 
                   <div className="rounded-xl bg-amber-500/5 p-3 ring-1 ring-amber-500/20">
                     <p className="app-eyebrow text-[10px] text-amber-900 dark:text-amber-200">
-                      Unnötig · heute
+                      Unnötig · {aktivLabel}
                     </p>
                     <p className="mt-0.5 text-[11px] text-[var(--app-text-muted)]">
                       Hätte ohne dich gelöst werden können

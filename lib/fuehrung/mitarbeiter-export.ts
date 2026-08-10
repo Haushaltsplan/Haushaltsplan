@@ -1,12 +1,11 @@
 /**
  * Mitarbeiter-Fragen als druckbares HTML (Browser → PDF).
- * Für das offene Teamgespräch (Lernwoche 2 · Montag).
+ * Nur Gesamtstatistik + gebündelte Fragen — ohne Personen-Aufschlüsselung.
  */
 
 import {
-  mitarbeiterFragenStats,
   summeMitarbeiterFragenSplit,
-  tagFragenGesamt,
+  type FuehrungMitarbeiterTag,
   type FuehrungState,
 } from '@/lib/fuehrung/store'
 
@@ -28,22 +27,80 @@ function formatDe(iso: string): string {
   })
 }
 
-function formatKurz(iso: string): string {
-  const [y, m, d] = iso.split('-').map(Number)
-  if (!y || !m || !d) return iso
-  return new Date(y, m - 1, d).toLocaleDateString('de-DE', {
-    day: 'numeric',
-    month: 'short',
-  })
+export function addDaysIso(iso: string, delta: number): string {
+  const d = new Date(`${iso}T12:00:00`)
+  d.setDate(d.getDate() + delta)
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
 }
 
-function notizenAlsListenHtml(text: string): string {
-  const lines = text
+/** Mo–Do der Woche ab Montag-ISO. */
+export const FUEHRUNG_WOCHENTAGE_MO_DO = [
+  { offset: 0, label: 'Montag', kurz: 'Mo' },
+  { offset: 1, label: 'Dienstag', kurz: 'Di' },
+  { offset: 2, label: 'Mittwoch', kurz: 'Mi' },
+  { offset: 3, label: 'Donnerstag', kurz: 'Do' },
+] as const
+
+export function frageZeilenAusNotizen(text: string): string[] {
+  return text
     .split(/\r?\n/)
-    .map((l) => l.replace(/^[·\-–•]\s*/, '').trim())
+    .map((l) => l.replace(/^[·\-–•*]\s*/, '').trim())
     .filter(Boolean)
-  if (lines.length === 0) return ''
-  return `<ul>${lines.map((l) => `<li>${esc(l)}</li>`).join('')}</ul>`
+}
+
+function normalizeFrage(line: string): string {
+  return line
+    .toLowerCase()
+    .normalize('NFKC')
+    .replace(/\s+/g, ' ')
+    .replace(/[.!?…]+$/g, '')
+    .trim()
+}
+
+export type GebuendelteFrage = { text: string; anzahl: number }
+
+/** Gleiche / sehr ähnliche Zeilen zusammenfassen → ×2, ×3 … */
+export function buendelFragen(zeilen: string[]): GebuendelteFrage[] {
+  const map = new Map<string, GebuendelteFrage>()
+  for (const raw of zeilen) {
+    const key = normalizeFrage(raw)
+    if (!key) continue
+    const cur = map.get(key)
+    if (cur) cur.anzahl += 1
+    else map.set(key, { text: raw, anzahl: 1 })
+  }
+  return [...map.values()].sort((a, b) => b.anzahl - a.anzahl || a.text.localeCompare(b.text, 'de'))
+}
+
+export function sammleFragenAusTage(
+  tage: FuehrungMitarbeiterTag[],
+  vonIso: string,
+  bisIso: string,
+): { wichtig: GebuendelteFrage[]; unnoetig: GebuendelteFrage[] } {
+  const wichtigZeilen: string[] = []
+  const unnoetigZeilen: string[] = []
+  for (const t of tage) {
+    if (t.datum < vonIso || t.datum > bisIso) continue
+    wichtigZeilen.push(...frageZeilenAusNotizen(t.notizenWichtig))
+    unnoetigZeilen.push(...frageZeilenAusNotizen(t.notizenUnnoetig))
+  }
+  return {
+    wichtig: buendelFragen(wichtigZeilen),
+    unnoetig: buendelFragen(unnoetigZeilen),
+  }
+}
+
+function fragenListeHtml(items: GebuendelteFrage[]): string {
+  if (items.length === 0) return '<p class="muted">Noch keine Notizen.</p>'
+  return `<ul>${items
+    .map((f) => {
+      const mark = f.anzahl > 1 ? ` <span class="x">×${f.anzahl}</span>` : ''
+      return `<li>${esc(f.text)}${mark}</li>`
+    })
+    .join('')}</ul>`
 }
 
 export function buildMitarbeiterGespraechHtml(
@@ -52,55 +109,31 @@ export function buildMitarbeiterGespraechHtml(
   bisIso: string,
 ): string {
   const split = summeMitarbeiterFragenSplit(state.mitarbeiterTage, vonIso, bisIso)
-  const ranking = mitarbeiterFragenStats(state.mitarbeiter, state.mitarbeiterTage, vonIso, bisIso).filter(
-    (x) => x.anzahl > 0,
-  )
+  const fragen = sammleFragenAusTage(state.mitarbeiterTage, vonIso, bisIso)
   const erstellt = new Date().toLocaleDateString('de-DE', {
     day: 'numeric',
     month: 'long',
     year: 'numeric',
   })
 
-  const rankingRows = ranking
-    .map(
-      (r, i) =>
-        `<tr>
-          <td class="rank">${i + 1}</td>
-          <td class="name">${esc(r.name)}</td>
-          <td class="num">${r.anzahl}</td>
-          <td class="num ok">${r.anzahlWichtig}</td>
-          <td class="num warn">${r.anzahlUnnoetig}</td>
-        </tr>`,
-    )
-    .join('')
-
-  const personBlocks = ranking
-    .map((r) => {
-      const tage = state.mitarbeiterTage
-        .filter((t) => t.mitarbeiterId === r.id && t.datum >= vonIso && t.datum <= bisIso)
-        .filter((t) => tagFragenGesamt(t) > 0 || t.notizenWichtig.trim() || t.notizenUnnoetig.trim())
-        .sort((a, b) => a.datum.localeCompare(b.datum))
-
-      const dayBits = tage
-        .map((t) => {
-          const w = notizenAlsListenHtml(t.notizenWichtig)
-          const u = notizenAlsListenHtml(t.notizenUnnoetig)
-          if (!w && !u && tagFragenGesamt(t) === 0) return ''
-          return `<div class="day">
-            <p class="day-label">${esc(formatKurz(t.datum))} · ${t.anzahlWichtig} wichtig · ${t.anzahlUnnoetig} unnötig</p>
-            ${w ? `<div class="box ok"><p class="box-label">Wirklich wichtig</p>${w}</div>` : ''}
-            ${u ? `<div class="box warn"><p class="box-label">Könnte ohne Führung gelöst werden</p>${u}</div>` : ''}
-          </div>`
-        })
-        .filter(Boolean)
-        .join('')
-
-      return `<section class="person">
-        <h3>${esc(r.name)} <span>${r.anzahl} Fragen · ${r.anzahlWichtig} wichtig · ${r.anzahlUnnoetig} unnötig</span></h3>
-        ${dayBits || '<p class="muted">Keine Notizen — nur Zählung.</p>'}
-      </section>`
-    })
-    .join('')
+  const tagRows = FUEHRUNG_WOCHENTAGE_MO_DO.map((tag) => {
+    const datum = addDaysIso(vonIso, tag.offset)
+    if (datum > bisIso) {
+      return `<tr>
+        <td>${esc(tag.label)}</td>
+        <td class="num muted-cell">—</td>
+        <td class="num muted-cell">—</td>
+        <td class="num muted-cell">—</td>
+      </tr>`
+    }
+    const s = summeMitarbeiterFragenSplit(state.mitarbeiterTage, datum, datum)
+    return `<tr>
+      <td>${esc(tag.label)} <span class="day-date">${esc(formatDe(datum))}</span></td>
+      <td class="num">${s.gesamt}</td>
+      <td class="num ok">${s.wichtig}</td>
+      <td class="num warn">${s.unnoetig}</td>
+    </tr>`
+  }).join('')
 
   return `<!DOCTYPE html>
 <html lang="de">
@@ -171,11 +204,11 @@ export function buildMitarbeiterGespraechHtml(
     table { width: 100%; border-collapse: collapse; margin-top: 4px; }
     th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid #e2e8f0; }
     th { font-size: 9px; text-transform: uppercase; letter-spacing: 0.06em; color: #64748b; }
-    td.rank { width: 28px; color: #94a3b8; font-weight: 600; }
-    td.name { font-weight: 600; }
-    td.num { text-align: right; font-variant-numeric: tabular-nums; width: 64px; }
+    td.num { text-align: right; font-variant-numeric: tabular-nums; width: 72px; }
     td.ok { color: #0f766e; font-weight: 600; }
     td.warn { color: #b45309; font-weight: 600; }
+    .day-date { color: #94a3b8; font-weight: 400; font-size: 10px; margin-left: 6px; }
+    .muted-cell { color: #cbd5e1; }
     .legend {
       display: grid;
       grid-template-columns: 1fr 1fr;
@@ -190,31 +223,35 @@ export function buildMitarbeiterGespraechHtml(
     .legend .ok { background: #f0fdfa; border-color: #99f6e4; }
     .legend .warn { background: #fffbeb; border-color: #fde68a; }
     .legend strong { display: block; margin-bottom: 2px; }
-    .person {
-      break-inside: avoid;
-      margin: 14px 0;
-      padding: 12px 14px;
-      border: 1px solid #e2e8f0;
+    .box {
       border-radius: 12px;
+      padding: 12px 14px;
+      margin-top: 8px;
+      break-inside: avoid;
     }
-    .person h3 {
+    .box.ok { background: #f0fdfa; border: 1px solid #99f6e4; }
+    .box.warn { background: #fffbeb; border: 1px solid #fde68a; }
+    .box-label {
       margin: 0 0 8px;
-      font-size: 14px;
-      display: flex;
-      flex-wrap: wrap;
-      gap: 8px;
-      align-items: baseline;
-      justify-content: space-between;
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      font-weight: 700;
+      color: #475569;
     }
-    .person h3 span { font-size: 11px; font-weight: 500; color: #64748b; }
-    .day { margin-top: 8px; }
-    .day-label { margin: 0 0 4px; font-size: 10px; color: #64748b; font-weight: 600; }
-    .box { border-radius: 8px; padding: 8px 10px; margin-top: 4px; }
-    .box.ok { background: #f0fdfa; }
-    .box.warn { background: #fffbeb; }
-    .box-label { margin: 0 0 4px; font-size: 9px; text-transform: uppercase; letter-spacing: 0.06em; font-weight: 700; color: #475569; }
-    ul { margin: 0; padding-left: 1.1rem; }
-    li { margin: 2px 0; }
+    ul { margin: 0; padding-left: 1.15rem; }
+    li { margin: 4px 0; }
+    .x {
+      display: inline-block;
+      margin-left: 4px;
+      padding: 0 6px;
+      border-radius: 999px;
+      background: #e2e8f0;
+      font-size: 10px;
+      font-weight: 700;
+      color: #334155;
+      vertical-align: middle;
+    }
     .muted { color: #94a3b8; font-style: italic; margin: 0; }
     .outro {
       margin-top: 24px;
@@ -228,7 +265,7 @@ export function buildMitarbeiterGespraechHtml(
     .footer { margin-top: 28px; color: #94a3b8; font-size: 10px; }
     @media print {
       body { padding: 0; }
-      .person { break-inside: avoid; }
+      .box { break-inside: avoid; }
     }
   </style>
 </head>
@@ -258,26 +295,28 @@ export function buildMitarbeiterGespraechHtml(
     </div>
   </div>
 
-  <h2>Ranking im Zeitraum</h2>
-  ${
-    rankingRows
-      ? `<table>
+  <h2>Nach Wochentag</h2>
+  <table>
     <thead>
       <tr>
-        <th>#</th>
-        <th>Mitarbeiter</th>
+        <th>Tag</th>
         <th style="text-align:right">Gesamt</th>
         <th style="text-align:right">Wichtig</th>
         <th style="text-align:right">Unnötig</th>
       </tr>
     </thead>
-    <tbody>${rankingRows}</tbody>
-  </table>`
-      : '<p class="muted">Noch keine Einträge im Zeitraum.</p>'
-  }
+    <tbody>${tagRows}</tbody>
+  </table>
 
-  <h2>Details &amp; Beispiele</h2>
-  ${personBlocks || '<p class="muted">Noch keine Details.</p>'}
+  <h2>Die Fragen</h2>
+  <div class="box ok">
+    <p class="box-label">Wirklich wichtig</p>
+    ${fragenListeHtml(fragen.wichtig)}
+  </div>
+  <div class="box warn">
+    <p class="box-label">Könnte ohne Führung gelöst werden</p>
+    ${fragenListeHtml(fragen.unnoetig)}
+  </div>
 
   <div class="outro">
     <p><strong>Was ich mir von uns wünsche</strong></p>
@@ -288,24 +327,66 @@ export function buildMitarbeiterGespraechHtml(
     </p>
   </div>
 
-  <p class="footer">Internes Arbeitsdokument · freundlich gemeint, klar gemeint</p>
+  <p class="footer">Internes Arbeitsdokument · ohne Namensnennung · freundlich gemeint, klar gemeint</p>
 </body>
 </html>`
 }
 
+/** Drucken ohne Popup-Fenster (iframe im selben Tab → Browser „Als PDF speichern“). */
 export function printMitarbeiterGespraech(
   state: FuehrungState,
   vonIso: string,
   bisIso: string,
 ): void {
   const html = buildMitarbeiterGespraechHtml(state, vonIso, bisIso)
-  const w = window.open('', '_blank', 'noopener,noreferrer')
-  if (!w) {
-    alert('Popup blockiert — bitte Popups für diese Seite erlauben und erneut versuchen.')
+  const prev = document.getElementById('fuehrung-ma-print-frame')
+  if (prev) prev.remove()
+
+  const iframe = document.createElement('iframe')
+  iframe.id = 'fuehrung-ma-print-frame'
+  iframe.setAttribute('aria-hidden', 'true')
+  iframe.style.cssText =
+    'position:fixed;right:0;bottom:0;width:0;height:0;border:0;opacity:0;pointer-events:none;'
+  document.body.appendChild(iframe)
+
+  const doc = iframe.contentDocument ?? iframe.contentWindow?.document
+  if (!doc) {
+    // Fallback: HTML-Datei herunterladen (öffenbar / druckbar)
+    const blob = new Blob([html], { type: 'text/html;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `fuehrung-fragen-${vonIso}.html`
+    a.click()
+    URL.revokeObjectURL(url)
     return
   }
-  w.document.write(html)
-  w.document.close()
-  w.focus()
-  setTimeout(() => w.print(), 400)
+
+  doc.open()
+  doc.write(html)
+  doc.close()
+
+  const win = iframe.contentWindow
+  if (!win) return
+
+  const cleanup = () => {
+    setTimeout(() => iframe.remove(), 500)
+  }
+  win.addEventListener('afterprint', cleanup, { once: true })
+  // falls afterprint ausbleibt
+  setTimeout(() => {
+    try {
+      win.focus()
+      win.print()
+    } catch {
+      const blob = new Blob([html], { type: 'text/html;charset=utf-8' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `fuehrung-fragen-${vonIso}.html`
+      a.click()
+      URL.revokeObjectURL(url)
+      cleanup()
+    }
+  }, 250)
 }
