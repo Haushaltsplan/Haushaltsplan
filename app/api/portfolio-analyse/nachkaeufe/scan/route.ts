@@ -17,6 +17,7 @@ export async function POST(req: Request) {
   const anfrage: NachkaufScanAnfrage = {
     ticker: row.ticker != null ? String(row.ticker).trim() || null : null,
     erzwingen: row.erzwingen === true,
+    nurFehlende: row.nurFehlende === true,
     offset: typeof row.offset === 'number' ? row.offset : Number(row.offset) || 0,
     maxProAufruf: 1,
     zeitBudgetMs: 110_000,

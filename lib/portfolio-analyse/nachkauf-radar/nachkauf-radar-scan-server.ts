@@ -62,6 +62,44 @@ import type { NachkaufScanAnfrage, NachkaufScanEintrag, NachkaufScanPaket } from
 /** Positionen, die innerhalb dieser Zeit bereits gescannt wurden, werden übersprungen. */
 const SKIP_WENN_JUENGER_MS = 12 * 60 * 60 * 1000 // 12 Stunden
 
+/** Positionen → Ticker-Key (wie beim Speichern). */
+function tickerFuerPosition(p: WhitelistPosition): string {
+  const k = isinKenntnis(p.isin)
+  return ((k?.symbolYahoo ?? p.symbolYahoo)?.replace(/\.[^.]+$/, '') ?? p.isin).toUpperCase()
+}
+
+/** Neuestes Scan-Datum über alle Einträge (nicht Score-Sortierung!). */
+function neuestesGescanntAm(eintraege: NachkaufScanEintrag[]): string {
+  let best = ''
+  for (const e of eintraege) {
+    if (e.gescannt_am && e.gescannt_am > best) best = e.gescannt_am
+  }
+  return best || new Date().toISOString()
+}
+
+/** Kandidaten ohne gespeicherten Scan (ISIN oder Ticker). */
+function fehlendeKandidaten(
+  kandidaten: WhitelistPosition[],
+  gespeichert: NachkaufScanEintrag[],
+): WhitelistPosition[] {
+  const byIsin = new Set(
+    gespeichert.map((e) => e.isin?.trim().toUpperCase()).filter((x): x is string => Boolean(x)),
+  )
+  const byTicker = new Set(gespeichert.map((e) => e.ticker.trim().toUpperCase()))
+  return kandidaten.filter((p) => {
+    if (byIsin.has(p.isin.toUpperCase())) return false
+    if (byTicker.has(tickerFuerPosition(p))) return false
+    return true
+  })
+}
+
+function ausstehendAnzahl(
+  kandidaten: WhitelistPosition[],
+  gespeichert: NachkaufScanEintrag[],
+): number {
+  return fehlendeKandidaten(kandidaten, gespeichert).length
+}
+
 // ---------------------------------------------------------------------------
 // KI-Begründung via Flash
 // ---------------------------------------------------------------------------
@@ -402,7 +440,7 @@ export async function laufeScan(anfrage: NachkaufScanAnfrage): Promise<NachkaufS
     const mitDeep = alle.map((e) => ({ ...e, tiefenAnalyse: deepMap.get(e.ticker.toUpperCase()) ?? null }))
     await reichereErgebnisseAn(mitDeep, false, batchKontext)
     mitDeep.sort((a, b) => b.score - a.score)
-    return { ok: true, ergebnisse: mitDeep, monatsEmpfehlung: berechneMonatsEmpfehlung(mitDeep), gescannt_am: ergebnis?.gescannt_am ?? new Date().toISOString(), gesamtAnzahl, gescannt: ergebnis ? 1 : 0, ausstehend: 0 }
+    return { ok: true, ergebnisse: mitDeep, monatsEmpfehlung: berechneMonatsEmpfehlung(mitDeep), gescannt_am: neuestesGescanntAm(mitDeep), gesamtAnzahl, gescannt: ergebnis ? 1 : 0, ausstehend: ausstehendAnzahl(kandidaten, alle) }
   }
 
   // Einzelner Ticker → direkt scannen (Legacy-Pfad)
@@ -445,10 +483,10 @@ export async function laufeScan(anfrage: NachkaufScanAnfrage): Promise<NachkaufS
       ok: true,
       ergebnisse: mitDeep,
       monatsEmpfehlung: berechneMonatsEmpfehlung(mitDeep),
-      gescannt_am: ergebnis?.gescannt_am ?? new Date().toISOString(),
+      gescannt_am: neuestesGescanntAm(mitDeep),
       gesamtAnzahl,
       gescannt: ergebnis ? 1 : 0,
-      ausstehend: 0,
+      ausstehend: ausstehendAnzahl(kandidaten, alle),
     }
   }
 
@@ -456,18 +494,27 @@ export async function laufeScan(anfrage: NachkaufScanAnfrage): Promise<NachkaufS
   const bereitsGespeichert = await ladeNachkaufScanAusCloud()
   const bereitsMap = new Map(bereitsGespeichert.map((e) => [e.ticker.toUpperCase(), e]))
 
-  // Nicht erzwungen: Positionen aus den letzten 12h überspringen
+  // Was scannen?
+  // - erzwingen: alle Kandidaten
+  // - nurFehlende / Fortsetzen: nur fehlende (kein 12h-Re-Scan der vorhandenen)
+  // - sonst: fehlende + älter als 12h
   const jetzt = Date.now()
-  const zuScannen = anfrage.erzwingen
-    ? kandidaten
-    : kandidaten.filter((p) => {
-        const k = isinKenntnis(p.isin)
-        const ticker = ((k?.symbolYahoo ?? p.symbolYahoo)?.replace(/\.[^.]+$/, '') ?? p.isin).toUpperCase()
-        const existing = bereitsMap.get(ticker)
-        if (!existing) return true
-        const alter = jetzt - new Date(existing.gescannt_am).getTime()
-        return alter > SKIP_WENN_JUENGER_MS
-      })
+  let zuScannen: WhitelistPosition[]
+  if (anfrage.erzwingen) {
+    zuScannen = kandidaten
+  } else if (anfrage.nurFehlende) {
+    zuScannen = fehlendeKandidaten(kandidaten, bereitsGespeichert)
+  } else {
+    const fehlend = new Set(fehlendeKandidaten(kandidaten, bereitsGespeichert).map((p) => p.isin))
+    zuScannen = kandidaten.filter((p) => {
+      if (fehlend.has(p.isin)) return true
+      const ticker = tickerFuerPosition(p)
+      const existing = bereitsMap.get(ticker)
+      if (!existing) return true
+      const alter = jetzt - new Date(existing.gescannt_am).getTime()
+      return alter > SKIP_WENN_JUENGER_MS
+    })
+  }
 
   // Nichts zu tun
   if (zuScannen.length === 0) {
@@ -482,10 +529,10 @@ export async function laufeScan(anfrage: NachkaufScanAnfrage): Promise<NachkaufS
       ok: true,
       ergebnisse: mitDeep,
       monatsEmpfehlung: berechneMonatsEmpfehlung(mitDeep),
-      gescannt_am: bereitsGespeichert[0]?.gescannt_am ?? new Date().toISOString(),
+      gescannt_am: neuestesGescanntAm(mitDeep),
       gesamtAnzahl,
       gescannt: 0,
-      ausstehend: 0,
+      ausstehend: ausstehendAnzahl(kandidaten, bereitsGespeichert),
     }
   }
 
@@ -502,17 +549,18 @@ export async function laufeScan(anfrage: NachkaufScanAnfrage): Promise<NachkaufS
     ])
     await reichereErgebnisseAn(mitDeep, true, batchKontext, kandidaten)
     mitDeep.sort((a, b) => b.score - a.score)
-    await speichereNachkaufScanEintraege(mitDeep)
+    const saveFin = await speichereNachkaufScanEintraege(mitDeep)
     return {
-      ok: true,
+      ok: saveFin.ok,
       ergebnisse: mitDeep,
       monatsEmpfehlung: berechneMonatsEmpfehlung(mitDeep),
-      gescannt_am: mitDeep[0]?.gescannt_am ?? new Date().toISOString(),
+      gescannt_am: neuestesGescanntAm(mitDeep),
       gesamtAnzahl,
       gescannt: 0,
-      ausstehend: Math.max(0, gesamtAnzahl - alle.length),
+      ausstehend: ausstehendAnzahl(kandidaten, alle),
       verbleibend: 0,
       teilscan: false,
+      fehler: saveFin.ok ? null : saveFin.fehler,
     }
   }
 
@@ -523,7 +571,6 @@ export async function laufeScan(anfrage: NachkaufScanAnfrage): Promise<NachkaufS
   const offset = Math.max(0, anfrage.offset ?? 0)
   const maxProAufruf = Math.max(1, anfrage.maxProAufruf ?? zuScannen.length)
   const zuScannenJetzt = zuScannen.slice(offset, offset + maxProAufruf)
-  const verbleibendNachChunk = Math.max(0, zuScannen.length - offset - zuScannenJetzt.length)
   const zeitBudgetMs = anfrage.zeitBudgetMs ?? 240_000
   const scanStart = Date.now()
   const leicht = anfrage.leicht !== false
@@ -532,11 +579,11 @@ export async function laufeScan(anfrage: NachkaufScanAnfrage): Promise<NachkaufS
   const BATCH_SIZE = 1
   let neuGescannt = 0
   const neueEintraege: NachkaufScanEintrag[] = []
-  let teilscan = verbleibendNachChunk > 0
+  let speicherFehler: string | null = null
+  const fehlgeschlagen: string[] = []
 
   for (let i = 0; i < zuScannenJetzt.length; i += BATCH_SIZE) {
     if (Date.now() - scanStart > zeitBudgetMs) {
-      teilscan = true
       break
     }
     const batch = zuScannenJetzt.slice(i, i + BATCH_SIZE)
@@ -544,23 +591,41 @@ export async function laufeScan(anfrage: NachkaufScanAnfrage): Promise<NachkaufS
       batch.map((p) => scanneEinenTitel({ position: p, deepResearchMap, batchKontext })),
     )
     const batchOk: NachkaufScanEintrag[] = []
-    for (const r of batchErgebnisse) {
-      if (r.status === 'fulfilled' && r.value) batchOk.push(r.value)
+    for (let bi = 0; bi < batchErgebnisse.length; bi++) {
+      const r = batchErgebnisse[bi]!
+      const pos = batch[bi]!
+      if (r.status === 'fulfilled' && r.value) {
+        batchOk.push(r.value)
+      } else {
+        const name = `${pos.name} (${tickerFuerPosition(pos)})`
+        fehlgeschlagen.push(name)
+        const grund =
+          r.status === 'rejected'
+            ? r.reason instanceof Error
+              ? r.reason.message
+              : String(r.reason)
+            : 'keine Fundamentaldaten'
+        console.warn(`[nachkauf-radar] Scan fehlgeschlagen: ${name} — ${grund}`)
+      }
     }
     if (batchOk.length > 0) {
-      await speichereNachkaufScanEintraege(batchOk)
-      neuGescannt += batchOk.length
-      neueEintraege.push(...batchOk)
+      const save = await speichereNachkaufScanEintraege(batchOk)
+      if (!save.ok) {
+        speicherFehler = save.fehler ?? 'Speichern fehlgeschlagen'
+        console.error('[nachkauf-radar] Speichern fehlgeschlagen:', speicherFehler)
+      } else {
+        neuGescannt += batchOk.length
+        neueEintraege.push(...batchOk)
+      }
     }
     if (i + BATCH_SIZE < zuScannenJetzt.length) {
       await new Promise((res) => setTimeout(res, 800))
     }
   }
 
-  const verbleibend =
-    teilscan && neuGescannt < zuScannenJetzt.length
-      ? Math.max(0, zuScannen.length - offset - neuGescannt)
-      : verbleibendNachChunk
+  // Offset-Logik: immer den Chunk als „abgearbeitet“ zählen (auch bei Fehlschlag),
+  // sonst hängt der Client ewig auf denselben Titeln.
+  const verbleibend = Math.max(0, zuScannen.length - offset - zuScannenJetzt.length)
 
   // Score-Verlauf archivieren (Kaufhistorie erst beim Abschließen)
   if (neueEintraege.length > 0) {
@@ -569,19 +634,26 @@ export async function laufeScan(anfrage: NachkaufScanAnfrage): Promise<NachkaufS
     )
   }
 
+  const fehlerText =
+    speicherFehler ??
+    (fehlgeschlagen.length > 0
+      ? `Nicht gescannt: ${fehlgeschlagen.slice(0, 5).join(', ')}${fehlgeschlagen.length > 5 ? ' …' : ''}`
+      : null)
+
   // Leicht-Modus: Zwischen-Chunks ohne Ranking/Insider-Anreicherung (Datenqualität unverändert)
   if (leicht) {
     const alle = await ladeNachkaufScanAusCloud()
     return {
-      ok: true,
+      ok: !speicherFehler,
       ergebnisse: alle,
       monatsEmpfehlung: berechneMonatsEmpfehlung(alle),
-      gescannt_am: alle[0]?.gescannt_am ?? new Date().toISOString(),
+      gescannt_am: neuestesGescanntAm(alle),
       gesamtAnzahl,
-      gescannt: neuGescannt,
-      ausstehend: Math.max(0, gesamtAnzahl - alle.length),
+      gescannt: Math.max(1, neuGescannt), // Client-Offset weiterbewegen auch bei 0 Erfolgen
+      ausstehend: ausstehendAnzahl(kandidaten, alle),
       verbleibend,
       teilscan: verbleibend > 0,
+      fehler: fehlerText,
     }
   }
 
@@ -598,17 +670,16 @@ export async function laufeScan(anfrage: NachkaufScanAnfrage): Promise<NachkaufS
   mitDeep.sort((a, b) => b.score - a.score)
   await speichereNachkaufScanEintraege(mitDeep)
 
-  const ausstehend = gesamtAnzahl - alle.length
-
   return {
-    ok: true,
+    ok: !speicherFehler,
     ergebnisse: mitDeep,
     monatsEmpfehlung: berechneMonatsEmpfehlung(mitDeep),
-    gescannt_am: mitDeep[0]?.gescannt_am ?? new Date().toISOString(),
+    gescannt_am: neuestesGescanntAm(mitDeep),
     gesamtAnzahl,
-    gescannt: neuGescannt,
-    ausstehend,
+    gescannt: Math.max(1, neuGescannt),
+    ausstehend: ausstehendAnzahl(kandidaten, alle),
     verbleibend,
     teilscan: verbleibend > 0,
+    fehler: fehlerText,
   }
 }

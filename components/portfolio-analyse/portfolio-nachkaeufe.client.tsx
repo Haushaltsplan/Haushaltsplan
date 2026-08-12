@@ -1686,10 +1686,13 @@ export function NachkaufRadarClient() {
     let letztesPaket: NachkaufScanPaket | null = null
     try {
       while (true) {
+        const body: Record<string, unknown> = erzwingen
+          ? { erzwingen: true, offset }
+          : { nurFehlende: true, offset }
         const res = await fetch('/api/portfolio-analyse/nachkaeufe/scan', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ erzwingen, offset }),
+          body: JSON.stringify(body),
         })
         if (!res.ok && res.status !== 502) {
           const text = await res.text().catch(() => `HTTP ${res.status}`)
@@ -1703,19 +1706,20 @@ export function NachkaufRadarClient() {
           setGesamtAnzahl(paket.gesamtAnzahl ?? 32)
           setAusstehend(paket.ausstehend ?? 0)
         }
-        if (!paket.ok) {
-          setFehler(paket.fehler ?? 'Scan fehlgeschlagen.')
-          break
-        }
+        if (paket.fehler) setFehler(paket.fehler)
+        if (!paket.ok) break
 
         const verbleibend = paket.verbleibend ?? 0
         const gescannt = paket.gescannt ?? 0
         const total = paket.gesamtAnzahl ?? 32
-        const fertig = total - verbleibend
-        setScanFortschritt(`${Math.min(fertig, total)}/${total} Positionen`)
+        const fertig = Math.min(total, total - (paket.ausstehend ?? 0))
+        setScanFortschritt(
+          erzwingen
+            ? `${Math.min(offset + Math.max(1, gescannt), total)}/${total} Positionen`
+            : `${fertig}/${total} Positionen`,
+        )
 
         if (verbleibend <= 0) break
-        // Einzelner Titel fehlgeschlagen → Offset trotzdem weiter, sonst hängt der Scan
         offset += Math.max(1, gescannt)
         await new Promise((r) => setTimeout(r, 300))
       }

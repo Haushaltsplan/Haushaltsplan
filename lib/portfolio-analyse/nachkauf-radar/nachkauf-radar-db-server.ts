@@ -75,16 +75,50 @@ export async function ladeNachkaufScanDatum(): Promise<string | null> {
 // Scan — schreiben
 // ---------------------------------------------------------------------------
 
-export async function speichereNachkaufScanEintraege(eintraege: NachkaufScanEintrag[]): Promise<void> {
-  if (!istKonfiguriert() || eintraege.length === 0) return
+export async function speichereNachkaufScanEintraege(
+  eintraege: NachkaufScanEintrag[],
+): Promise<{ ok: boolean; fehler?: string }> {
+  if (!istKonfiguriert() || eintraege.length === 0) return { ok: true }
   try {
     const zeilen = eintraege.map(eintragZuDbZeile)
     const { error } = await admin()
       .from(TABLE_SCAN)
       .upsert(zeilen, { onConflict: 'ticker' })
-    if (error) console.warn('[nachkauf-radar] Scan speichern:', error.message)
+    if (error) {
+      // Fallback: EV-Spalten fehlen (Migration noch nicht angewendet)
+      const msg = error.message || ''
+      if (/ntm_ev_|historischer_median_ev_|ev_ebitda_perzentil/i.test(msg)) {
+        const ohneEv = zeilen.map((z) => {
+          const {
+            ntm_ev_ebitda: _a,
+            ntm_ev_rev: _b,
+            historischer_median_ev_ebitda: _c,
+            historischer_median_ev_rev: _d,
+            ev_ebitda_perzentil_5y: _e,
+            ...rest
+          } = z as Record<string, unknown>
+          return rest
+        })
+        const { error: err2 } = await admin()
+          .from(TABLE_SCAN)
+          .upsert(ohneEv, { onConflict: 'ticker' })
+        if (err2) {
+          console.warn('[nachkauf-radar] Scan speichern (ohne EV):', err2.message)
+          return { ok: false, fehler: err2.message }
+        }
+        console.warn(
+          '[nachkauf-radar] Scan ohne EV-Spalten gespeichert — bitte Migration 20260810210000 anwenden.',
+        )
+        return { ok: true }
+      }
+      console.warn('[nachkauf-radar] Scan speichern:', msg)
+      return { ok: false, fehler: msg }
+    }
+    return { ok: true }
   } catch (e) {
-    console.warn('[nachkauf-radar] Scan speichern fehlgeschlagen:', e)
+    const fehler = e instanceof Error ? e.message : String(e)
+    console.warn('[nachkauf-radar] Scan speichern fehlgeschlagen:', fehler)
+    return { ok: false, fehler }
   }
 }
 

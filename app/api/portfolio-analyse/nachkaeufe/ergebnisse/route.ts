@@ -35,7 +35,17 @@ export async function GET() {
     }
 
     const gesamtAnzahl = kandidaten.length
-    const ausstehend = Math.max(0, gesamtAnzahl - mitDeep.length)
+    const gespeicherteIsins = new Set(
+      mitDeep.map((e) => e.isin?.trim().toUpperCase()).filter(Boolean),
+    )
+    const gespeicherteTicker = new Set(mitDeep.map((e) => e.ticker.trim().toUpperCase()))
+    const ausstehend = kandidaten.filter((p) => {
+      const isin = p.isin.toUpperCase()
+      if (gespeicherteIsins.has(isin)) return false
+      const k = p.symbolYahoo?.replace(/\.[^.]+$/, '')?.toUpperCase()
+      if (k && gespeicherteTicker.has(k)) return false
+      return true
+    }).length
 
     const paket: NachkaufErgebnissePaket = {
       ok: true,
