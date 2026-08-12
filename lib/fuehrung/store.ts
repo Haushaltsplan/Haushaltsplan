@@ -1,5 +1,5 @@
 /**
- * Persistenz für den Führungspfad (localStorage).
+ * Persistenz für den Führungspfad (localStorage + Cloud-Sync).
  */
 
 import { FUEHRUNG_MANTRA_DEFAULT } from '@/lib/fuehrung/content'
@@ -179,6 +179,8 @@ export type FuehrungState = {
   sparring: FuehrungSparringEintrag[]
   mitarbeiter: FuehrungMitarbeiter[]
   mitarbeiterTage: FuehrungMitarbeiterTag[]
+  /** Letzte lokale/Cloud-Änderung (ISO) — für Sync Last-Write-Wins */
+  aktualisiertAm?: string
 }
 
 export function heuteIso(): string {
@@ -263,6 +265,54 @@ function migrateTag(raw: Partial<FuehrungTagesEintrag> & { datum?: string }): Fu
   }
 }
 
+/** Normalisiert Roh-JSON (localStorage oder Cloud) zu einem gültigen State. */
+export function parseFuehrungState(raw: unknown): FuehrungState {
+  const base = defaultFuehrungState()
+  if (!raw || typeof raw !== 'object') return base
+  const parsed = raw as Partial<FuehrungState> & { mitarbeiterFragen?: FuehrungMitarbeiterFrage[] }
+  const tage: Record<string, FuehrungTagesEintrag> = {}
+  for (const [k, v] of Object.entries(parsed.tage ?? {})) {
+    tage[k] = migrateTag({ ...v, datum: k })
+  }
+  const challengeTage =
+    typeof parsed.challengeTage === 'number' && parsed.challengeTage >= FUEHRUNG_CHALLENGE_TAGE
+      ? parsed.challengeTage
+      : FUEHRUNG_CHALLENGE_TAGE
+  const challengeStartRaw =
+    typeof parsed.challengeStart === 'string' && parsed.challengeStart.trim()
+      ? parsed.challengeStart.trim()
+      : FUEHRUNG_CHALLENGE_START
+  const challengeStart = (FUEHRUNG_CHALLENGE_START_ALT as readonly string[]).includes(
+    challengeStartRaw,
+  )
+    ? FUEHRUNG_CHALLENGE_START
+    : challengeStartRaw
+  return {
+    ...base,
+    ...parsed,
+    mantra: typeof parsed.mantra === 'string' && parsed.mantra.trim() ? parsed.mantra : base.mantra,
+    challengeStart,
+    challengeTage,
+    wochenFortschritt: parsed.wochenFortschritt ?? {},
+    tage,
+    journal: Array.isArray(parsed.journal) ? parsed.journal : [],
+    notizen: Array.isArray(parsed.notizen) ? parsed.notizen : [],
+    situationen: Array.isArray(parsed.situationen) ? parsed.situationen : [],
+    personen: Array.isArray(parsed.personen) ? parsed.personen : [],
+    fokusBloecke: Array.isArray(parsed.fokusBloecke) ? parsed.fokusBloecke : [],
+    aktiverFokus: parsed.aktiverFokus ?? null,
+    erinnerungen: { ...base.erinnerungen, ...(parsed.erinnerungen ?? {}) },
+    lastWochenReviewKey: parsed.lastWochenReviewKey ?? null,
+    sparring: Array.isArray(parsed.sparring) ? parsed.sparring : [],
+    mitarbeiter: Array.isArray(parsed.mitarbeiter) ? parsed.mitarbeiter : [],
+    mitarbeiterTage: migrateMitarbeiterTage(parsed),
+    aktualisiertAm:
+      typeof parsed.aktualisiertAm === 'string' && parsed.aktualisiertAm.trim()
+        ? parsed.aktualisiertAm.trim()
+        : undefined,
+  }
+}
+
 export function ladeFuehrungState(): FuehrungState {
   if (typeof window === 'undefined') return defaultFuehrungState()
   try {
@@ -270,45 +320,7 @@ export function ladeFuehrungState(): FuehrungState {
     const rawV1 = localStorage.getItem('omnia-fuehrung-v1')
     const raw = rawV2 ?? rawV1
     if (!raw) return defaultFuehrungState()
-    const parsed = JSON.parse(raw) as Partial<FuehrungState>
-    const base = defaultFuehrungState()
-    const tage: Record<string, FuehrungTagesEintrag> = {}
-    for (const [k, v] of Object.entries(parsed.tage ?? {})) {
-      tage[k] = migrateTag({ ...v, datum: k })
-    }
-    const challengeTage =
-      typeof parsed.challengeTage === 'number' && parsed.challengeTage >= FUEHRUNG_CHALLENGE_TAGE
-        ? parsed.challengeTage
-        : FUEHRUNG_CHALLENGE_TAGE
-    const challengeStartRaw =
-      typeof parsed.challengeStart === 'string' && parsed.challengeStart.trim()
-        ? parsed.challengeStart.trim()
-        : FUEHRUNG_CHALLENGE_START
-    const challengeStart = (FUEHRUNG_CHALLENGE_START_ALT as readonly string[]).includes(
-      challengeStartRaw,
-    )
-      ? FUEHRUNG_CHALLENGE_START
-      : challengeStartRaw
-    const state: FuehrungState = {
-      ...base,
-      ...parsed,
-      mantra: typeof parsed.mantra === 'string' && parsed.mantra.trim() ? parsed.mantra : base.mantra,
-      challengeStart,
-      challengeTage,
-      wochenFortschritt: parsed.wochenFortschritt ?? {},
-      tage,
-      journal: Array.isArray(parsed.journal) ? parsed.journal : [],
-      notizen: Array.isArray(parsed.notizen) ? parsed.notizen : [],
-      situationen: Array.isArray(parsed.situationen) ? parsed.situationen : [],
-      personen: Array.isArray(parsed.personen) ? parsed.personen : [],
-      fokusBloecke: Array.isArray(parsed.fokusBloecke) ? parsed.fokusBloecke : [],
-      aktiverFokus: parsed.aktiverFokus ?? null,
-      erinnerungen: { ...base.erinnerungen, ...(parsed.erinnerungen ?? {}) },
-      lastWochenReviewKey: parsed.lastWochenReviewKey ?? null,
-      sparring: Array.isArray(parsed.sparring) ? parsed.sparring : [],
-      mitarbeiter: Array.isArray(parsed.mitarbeiter) ? parsed.mitarbeiter : [],
-      mitarbeiterTage: migrateMitarbeiterTage(parsed as Partial<FuehrungState> & { mitarbeiterFragen?: FuehrungMitarbeiterFrage[] }),
-    }
+    const state = parseFuehrungState(JSON.parse(raw))
     if (!rawV2 && rawV1) speichereFuehrungState(state)
     return state
   } catch {

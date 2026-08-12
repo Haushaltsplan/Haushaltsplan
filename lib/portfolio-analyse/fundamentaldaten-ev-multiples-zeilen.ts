@@ -4,13 +4,17 @@
  * EV = Marktkap + Schulden − Cash
  * Primär: Macrotrends market-cap Chart (v3 in Mrd. → Mio.)
  * Fallback: P/S × Umsatz, dann KGV × EPS × Aktien
+ *
+ * Werte werden periodennahe gematcht (±45 Tage / gleiches Jahr), weil nach dem
+ * Yahoo/SA-GuV-Merge Umsatz auf neuen FY-ISOs liegt, Marktkap/P/S oft noch auf
+ * Macrotrends-Daten — exakter Key-Match ließ die Historie leer.
  */
 import type { FundamentalMetrikZeile, FundamentalPeriode } from '@/lib/portfolio-analyse/fundamentaldaten-types'
 import { FUNDAMENTAL_TTM_KEY } from '@/lib/portfolio-analyse/fundamentaldaten-types'
+import { wertAusMapFuerIso } from '@/lib/portfolio-analyse/fundamentaldaten-wert-fuer-iso'
 
 function wert(zeilen: FundamentalMetrikZeile[], id: string, key: string): number | null {
-  const v = zeilen.find((z) => z.id === id)?.werte[key]
-  return v != null && Number.isFinite(v) ? v : null
+  return wertAusMapFuerIso(zeilen.find((z) => z.id === id)?.werte, key)
 }
 
 function safeDiv(a: number | null, b: number | null): number | null {

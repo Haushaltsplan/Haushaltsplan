@@ -17,7 +17,7 @@ import { isinKenntnis } from '@/lib/portfolio-analyse/isin-kenntnisse'
 import { ladeSecBerichtKiCacheFuerTicker } from '@/lib/portfolio-analyse/sec-berichte-ki-cache-server'
 import { ladeEarningsCallKiCacheFuerTicker } from '@/lib/portfolio-analyse/earnings-call-unternehmen-cache-server'
 import {
-  geminiFreeTierFlashModelKandidaten,
+  geminiPaidFlashModelKandidaten,
   resolveCoachProviderFromMode,
   runCoachCompletion,
 } from '@/lib/ki-coach-backend'
@@ -130,8 +130,10 @@ async function generiereKiBegruendung(opts: {
     {
       temperature: 0.25,
       skipMessageTrim: true,
-      geminiModels: geminiFreeTierFlashModelKandidaten({
-        primaryEnvKeys: ['NACHKAUF_SCAN_GEMINI_MODEL', 'FINANCE_COACH_GEMINI_MODEL', 'GEMINI_MODEL'],
+      /** Stufe A: bezahltes Gemini 3.5 Flash — nicht Free-Tier-Key. */
+      geminiForcePaidApiKey: true,
+      geminiModels: geminiPaidFlashModelKandidaten({
+        primaryEnvKeys: ['NACHKAUF_SCAN_GEMINI_MODEL', 'GEMINI_MODEL'],
       }),
     },
   )

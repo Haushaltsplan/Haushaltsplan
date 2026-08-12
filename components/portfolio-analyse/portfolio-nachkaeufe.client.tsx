@@ -1714,8 +1714,9 @@ export function NachkaufRadarClient() {
         const fertig = total - verbleibend
         setScanFortschritt(`${Math.min(fertig, total)}/${total} Positionen`)
 
-        if (verbleibend <= 0 || gescannt === 0) break
-        offset += gescannt
+        if (verbleibend <= 0) break
+        // Einzelner Titel fehlgeschlagen → Offset trotzdem weiter, sonst hängt der Scan
+        offset += Math.max(1, gescannt)
         await new Promise((r) => setTimeout(r, 300))
       }
 

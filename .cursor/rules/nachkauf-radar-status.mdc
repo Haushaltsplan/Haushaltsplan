@@ -27,9 +27,11 @@ Monatsbudget (Standard 500 €) wird per KI risiko-adjustiert auf Kandidaten ver
 
 | Stufe | Modell | Trigger | Output |
 |-------|--------|---------|--------|
-| A – Scan | `gemini-3.5-flash` | Manuell / Vercel Cron | Score 0–100, Ampel, KI-Begründung |
-| B – Deep Research | `gemini-3.1-pro-preview` | Manuell pro Position | Langes Memo (~2000 Wörter) |
-| C – Kaufempfehlung | `gemini-3.1-pro-preview` | Manuell | Budget-Allokation mit Begründung |
+| A – Scan | `gemini-3.5-flash` (**Billing-Key**, `geminiForcePaidApiKey`) | Manuell / Vercel Cron | Score 0–100, Ampel, KI-Begründung |
+| B – Deep Research | `gemini-3.1-pro-preview` (Billing) | Manuell pro Position | Langes Memo (~2000 Wörter) |
+| C – Kaufempfehlung | `gemini-3.1-pro-preview` (Billing) | Manuell | Budget-Allokation mit Begründung |
+
+**Wichtig:** Scan darf **nicht** über `GEMINI_API_KEY_FREE` laufen — sonst Free-Tier-Quota und leere/abbrüchige Läufe.
 
 ## Wichtigste Dateien
 

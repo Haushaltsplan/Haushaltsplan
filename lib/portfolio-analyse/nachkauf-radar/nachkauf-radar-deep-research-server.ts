@@ -369,6 +369,7 @@ export async function fuhreDeepResearchDurch(
     {
       temperature: 0.3,
       skipMessageTrim: true,
+      geminiForcePaidApiKey: true,
       geminiModels: geminiProPaidModelKandidaten(),
     },
   )

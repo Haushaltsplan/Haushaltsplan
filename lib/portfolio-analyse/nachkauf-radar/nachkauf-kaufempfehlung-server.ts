@@ -482,7 +482,13 @@ async function rufeKiAuf(prompt: string): Promise<{ text: string; fehler?: strin
         {
           temperature: 0.3,
           skipMessageTrim: true,
-          geminiModels: geminiProPaidModelKandidaten(),
+          geminiForcePaidApiKey: true,
+          geminiModels: geminiProPaidModelKandidaten({
+            primaryEnvKeys: [
+              'NACHKAUF_KAUFEMPFEHLUNG_GEMINI_MODEL',
+              'NACHKAUF_DEEP_RESEARCH_GEMINI_MODEL',
+            ],
+          }),
         },
       )
       if (result.ok && result.reply?.trim()) {

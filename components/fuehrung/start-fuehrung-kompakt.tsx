@@ -13,6 +13,7 @@ import {
   summeMitarbeiterFragenAmTag,
   type FuehrungState,
 } from '@/lib/fuehrung/store'
+import { ladeFuehrungMitCloudMerge } from '@/lib/fuehrung/fuehrung-sync-client'
 import { baueWochenReview, istSonntag } from '@/lib/fuehrung/wochen-review'
 
 export function StartFuehrungKompakt() {
@@ -20,6 +21,13 @@ export function StartFuehrungKompakt() {
 
   useEffect(() => {
     setState(ladeFuehrungState())
+    let cancelled = false
+    void ladeFuehrungMitCloudMerge().then((merged) => {
+      if (!cancelled) setState(merged)
+    })
+    return () => {
+      cancelled = true
+    }
   }, [])
 
   if (!state) {

@@ -314,10 +314,30 @@ export function geminiFreeTierFlashModelKandidaten(opts?: {
   })
 }
 
-/** Nur Gemini 3.1 Pro — kostenpflichtig; ausschließlich Deep Research & Kaufempfehlung. */
+/**
+ * Bezahltes Flash (Nachkauf-Radar Stufe A): immer Billing-Key, kein Free-Tier-Hopping.
+ * Primär gemini-3.5-flash — Fallbacks nur andere Flash-Modelle (kein Pro).
+ */
+export function geminiPaidFlashModelKandidaten(opts?: {
+  primaryEnvKeys?: string[]
+  fallbackEnvKey?: string
+}): string[] {
+  return buildGeminiModelChain({
+    primaryEnvKeys: opts?.primaryEnvKeys ?? ['NACHKAUF_SCAN_GEMINI_MODEL', 'GEMINI_MODEL'],
+    fallbackEnvKey: opts?.fallbackEnvKey ?? 'NACHKAUF_SCAN_GEMINI_MODEL_FALLBACKS',
+    defaultPrimary: 'gemini-3.5-flash',
+    defaultFallbacks: ['gemini-flash-latest', 'gemini-2.5-flash', 'gemini-3-flash-preview'],
+  })
+}
+
+/** Nur Gemini 3.1 Pro — kostenpflichtig; Deep Research & Kaufempfehlung. */
 export function geminiProPaidModelKandidaten(opts?: { primaryEnvKeys?: string[] }): string[] {
   return buildGeminiModelChain({
-    primaryEnvKeys: opts?.primaryEnvKeys ?? ['NACHKAUF_DEEP_RESEARCH_GEMINI_MODEL'],
+    primaryEnvKeys:
+      opts?.primaryEnvKeys ?? [
+        'NACHKAUF_DEEP_RESEARCH_GEMINI_MODEL',
+        'NACHKAUF_KAUFEMPFEHLUNG_GEMINI_MODEL',
+      ],
     fallbackEnvKey: 'NACHKAUF_DEEP_RESEARCH_GEMINI_MODEL_FALLBACKS',
     defaultPrimary: 'gemini-3.1-pro-preview',
     defaultFallbacks: ['gemini-3.1-pro-preview-customtools', 'gemini-3.1-pro-exp'],
@@ -485,9 +505,13 @@ async function callGeminiEinModell(
 }
 
 /** Pro-Modelle sind kostenpflichtig → bezahlter Key; Flash/sonstige → Free-Tier-Key (falls gesetzt). */
-function geminiKeyFuerModell(model: string, fallbackKey: string): string {
+function geminiKeyFuerModell(
+  model: string,
+  fallbackKey: string,
+  opts?: { forcePaid?: boolean },
+): string {
   const istPro = /\bpro\b|-pro(?:-|$)/i.test(model)
-  const key = istPro ? geminiApiKey() : geminiApiKeyFree()
+  const key = opts?.forcePaid || istPro ? geminiApiKey() : geminiApiKeyFree()
   return key || fallbackKey
 }
 
@@ -497,6 +521,7 @@ async function callGemini(
   userMessages: CoachMessage[],
   callOpts: CallGeminiEinModellOptions,
   modelChain?: string[],
+  forcePaidKey?: boolean,
 ): Promise<{ ok: true; reply: string } | { ok: false; status: number; hint: string }> {
   const models = modelChain?.length ? modelChain : geminiModelKandidaten()
   if (!models.length) {
@@ -508,7 +533,7 @@ async function callGemini(
 
   for (let i = 0; i < models.length; i++) {
     const model = models[i]!
-    const modellKey = geminiKeyFuerModell(model, apiKey)
+    const modellKey = geminiKeyFuerModell(model, apiKey, { forcePaid: forcePaidKey })
     let r = await callGeminiEinModell(modellKey, model, systemText, userMessages, callOpts)
 
     // Einmal kurz warten und dasselbe Modell bei temporärer Überlastung wiederholen
@@ -563,6 +588,11 @@ export type RunCoachCompletionOptions = {
   skipMessageTrim?: boolean
   /** Nur Gemini: eigene Modell-Kette (Primär + Fallbacks bei Quota/429). */
   geminiModels?: string[]
+  /**
+   * Nur Gemini: immer `GEMINI_API_KEY` (Billing), auch für Flash.
+   * Nachkauf-Radar Scan — nicht Free-Tier.
+   */
+  geminiForcePaidApiKey?: boolean
 }
 
 export async function runCoachCompletion(
@@ -585,6 +615,7 @@ export async function runCoachCompletion(
         geminiGoogleSearch: options?.geminiGoogleSearch,
       },
       options?.geminiModels,
+      options?.geminiForcePaidApiKey === true,
     )
     if (gemini.ok) return gemini
 

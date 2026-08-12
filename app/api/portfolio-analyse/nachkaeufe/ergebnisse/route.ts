@@ -28,7 +28,11 @@ export async function GET() {
       tiefenAnalyse: deepMap.get(e.ticker.toUpperCase()) ?? null,
     }))
 
-    await reichereNachkaufEintraegeVoll(mitDeep)
+    try {
+      await reichereNachkaufEintraegeVoll(mitDeep)
+    } catch (e) {
+      console.warn('[api/nachkaeufe/ergebnisse] Anreicherung fehlgeschlagen — Roh-Scan wird trotzdem geliefert:', e)
+    }
 
     const gesamtAnzahl = kandidaten.length
     const ausstehend = Math.max(0, gesamtAnzahl - mitDeep.length)

@@ -35,6 +35,10 @@ import {
   tageBisEnde,
   type FuehrungState,
 } from '@/lib/fuehrung/store'
+import {
+  ladeFuehrungMitCloudMerge,
+  syncFuehrungZurCloud,
+} from '@/lib/fuehrung/fuehrung-sync-client'
 import { baueWochenReview, istSonntag } from '@/lib/fuehrung/wochen-review'
 import { appInputClass, appSecondaryBtnClass } from '@/lib/app-ui'
 
@@ -78,6 +82,13 @@ export function FuehrungClient() {
   useEffect(() => {
     setState(ladeFuehrungState())
     setReady(true)
+    let cancelled = false
+    void ladeFuehrungMitCloudMerge().then((merged) => {
+      if (!cancelled) setState(merged)
+    })
+    return () => {
+      cancelled = true
+    }
   }, [])
 
   useEffect(() => {
@@ -87,7 +98,9 @@ export function FuehrungClient() {
 
   useEffect(() => {
     if (!ready) return
-    speichereFuehrungState(state)
+    const next = { ...state, aktualisiertAm: new Date().toISOString() }
+    speichereFuehrungState(next)
+    syncFuehrungZurCloud(next)
   }, [state, ready])
 
   function selectTab(id: TabId) {

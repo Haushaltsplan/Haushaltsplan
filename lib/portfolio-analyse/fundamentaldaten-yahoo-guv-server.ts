@@ -5,6 +5,7 @@ import 'server-only'
 import { formatFundamentalPeriodeLabel } from '@/lib/portfolio-analyse/fundamentaldaten-format'
 import { FUNDAMENTAL_TTM_KEY } from '@/lib/portfolio-analyse/fundamentaldaten-types'
 import type { FundamentalMetrikZeile, FundamentalPeriode } from '@/lib/portfolio-analyse/fundamentaldaten-types'
+import { wertAusMapFuerIso } from '@/lib/portfolio-analyse/fundamentaldaten-wert-fuer-iso'
 import { baueUmsatzProJahrAusFinanzzeile } from '@/lib/portfolio-analyse/segment-umsatz-abgleich'
 import {
   EU_GUV_FALLBACK_ISINS,
@@ -399,7 +400,11 @@ export async function ergaenzeMacrotrendsMitYahooGuV(
       const yz = yahooById.get(z.id)
       const werte: Record<string, number | null> = {}
       for (const iso of histIso) {
-        werte[iso] = pickWert(sz?.werte[iso], yz?.werte[iso], z.werte[iso])
+        werte[iso] = pickWert(
+          sz?.werte[iso],
+          yz?.werte[iso],
+          wertAusMapFuerIso(z.werte, iso),
+        )
       }
       if (ttm) {
         werte[FUNDAMENTAL_TTM_KEY] = pickWert(
@@ -411,9 +416,13 @@ export async function ergaenzeMacrotrendsMitYahooGuV(
       saById.delete(z.id)
       yahooById.delete(z.id)
     } else {
-      const werte = { ...z.werte }
+      // Bewertungs-/Bilanz-Zeilen auf die gemergten FY-ISOs ziehen
+      // (Macrotrends-Daten weichen oft um Wochen von Yahoo/SA ab).
+      const werte: Record<string, number | null> = { ...z.werte }
       for (const iso of histIso) {
-        if (!(iso in werte)) werte[iso] = null
+        const nah = wertAusMapFuerIso(z.werte, iso)
+        if (nah != null) werte[iso] = nah
+        else if (!(iso in werte)) werte[iso] = null
       }
       mergedZeilen.push({ ...z, werte })
     }
