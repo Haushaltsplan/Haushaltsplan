@@ -23,15 +23,35 @@ Monatsbudget (Standard 500 €) wird per KI risiko-adjustiert auf Kandidaten ver
 - Beim Entfernen von der Watchlist werden zugehörige Scan-Zeilen gelöscht (Whitelist-ISINs geschützt).
 - Migration: `supabase/migrations/20260720190000_nachkauf_radar_watchlist.sql`
 
+## Ampel-Kalibrierung (Aug 2026 — geometrisches Kern-Modell)
+
+| Regel | Wert |
+|-------|------|
+| Kern | √(Q·T) — Q=Mantra/Sell/DR, T=Bewertung×Hist±10%×Struktur |
+| Gate G1 | Mantra ≥ **38**/50 — Fail → Score-Cap **45**, max. Gelb |
+| Gate G2 | Trigger **oder** Premium≤−10% / Hist-P≤30 / PE≤0,85× — Fail → Cap **60**, keine Nebenpunkte |
+| Gate G3 | Premium>0 ∧ DD<12% ∧ kein Trigger → **teuer** |
+| Relativ-Grün | Bei ≥4 Kandidaten: Top **10%** ∧ Median+**10**; bei 1–3 Einzelchancen nur Cap |
+| Cap Grün | max. **5** (Risk-on: **3**) |
+| Momentum-Floor | **0** (kein Geschenk ohne Daten) |
+
+Grün = Quality **und** Titel-Discount (nicht Markt-Regime). ATH-Markt kann 1–3 Einzelchancen haben.
+
+## Qualitäts-Texte → Score (Aug 2026)
+
+Earnings-Call- und SEC-KI-Zusammenfassungen aus dem Cache fließen **in Score + Ampel**
+(nicht nur in die Flash-Begründung): `berechneKiBerichtMalus` / `berechneQualitaetsTextMalus`
+in `nachkauf-ranking-optimierung.ts`. Scan lädt Caches **vor** `berechneNachkaufScore`;
+Texte liegen in `datenSignale.earningsKiZusammenfassung` / `secKiZusammenfassung`.
+Stark negativ (≤ −6) blockiert Grün ohne Kauftrigger.
+
 ## 3-stufige Architektur
 
 | Stufe | Modell | Trigger | Output |
 |-------|--------|---------|--------|
-| A – Scan | `gemini-3.5-flash` (**Billing-Key**, `geminiForcePaidApiKey`) | Manuell / Vercel Cron | Score 0–100, Ampel, KI-Begründung |
+| A – Scan | `gemini-3.5-flash` (**Billing-Key**) | Manuell / Vercel Cron | Score 0–100, Ampel, KI-Begründung |
 | B – Deep Research | `gemini-3.1-pro-preview` (Billing) | Manuell pro Position | Langes Memo (~2000 Wörter) |
 | C – Kaufempfehlung | `gemini-3.1-pro-preview` (Billing) | Manuell | Budget-Allokation mit Begründung |
-
-**Wichtig:** Scan darf **nicht** über `GEMINI_API_KEY_FREE` laufen — sonst Free-Tier-Quota und leere/abbrüchige Läufe.
 
 ## Wichtigste Dateien
 

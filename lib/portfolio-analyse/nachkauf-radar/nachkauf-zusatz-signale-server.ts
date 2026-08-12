@@ -104,6 +104,10 @@ export type NachkaufZusatzSignale = {
   /** Punkt 7: GAAP vs Adjusted / Cash-EPS-Lücke. */
   gaapAdjEpsLueckePct: number | null
   cashEpsVsGaapLueckePct: number | null
+  /** Earnings-Call-KI-Text (Cache) — wirkt auf Score/Ampel. */
+  earningsKiZusammenfassung?: string | null
+  /** SEC/IR-KI-Text (Cache) — wirkt auf Score/Ampel. */
+  secKiZusammenfassung?: string | null
   /** 0–100: wie viele Kern-Signale befüllt sind. */
   datenVollstaendigkeitPct: number
 }

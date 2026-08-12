@@ -50,7 +50,8 @@ export async function reichereNachkaufEintraegeVoll(eintraege: NachkaufScanEintr
     perf?.scoreBucketsSignal ?? [],
   )
 
+  finalisiereNachkaufRanking(eintraege, batchKontext)
+  // Disziplin NACH Ampel-Finalisierung — sonst wird Grün→Gelb überschrieben
   wendeNachkaufDisziplinAn(eintraege)
   berechneTrimSignale(eintraege)
-  finalisiereNachkaufRanking(eintraege, batchKontext)
 }

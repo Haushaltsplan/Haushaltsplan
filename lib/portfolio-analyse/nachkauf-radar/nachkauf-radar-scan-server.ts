@@ -232,6 +232,25 @@ async function scanneEinenTitel(opts: {
     position,
   )
 
+  // KI-Caches VOR dem Score laden — wirken auf Ampel, nicht nur auf den Text
+  const [earningsMap, secMap] = await Promise.all([
+    ladeEarningsCallKiCacheFuerTicker(ticker),
+    ladeSecBerichtKiCacheFuerTicker(ticker),
+  ])
+
+  const neuesteEarnings =
+    [...earningsMap.values()]
+      .sort((a, b) => b.transcriptUrl.localeCompare(a.transcriptUrl))
+      .at(0)?.zusammenfassung ?? ''
+
+  const neuesteSec =
+    [...secMap.values()]
+      .sort((a, b) => b.aktualisiertAm.localeCompare(a.aktualisiertAm))
+      .at(0)?.zusammenfassung ?? ''
+
+  zusatz.earningsKiZusammenfassung = neuesteEarnings || null
+  zusatz.secKiZusammenfassung = neuesteSec || null
+
   const drMemo = opts.deepResearchMap.get(ticker.toUpperCase())?.memo ?? null
   const scoreDetail = berechneNachkaufScore(
     paket,
@@ -243,6 +262,8 @@ async function scanneEinenTitel(opts: {
       kaufTriggerAusgeloest,
       batchKontext: opts.batchKontext,
       deepResearchMemo: drMemo,
+      earningsZusammenfassung: neuesteEarnings || null,
+      secZusammenfassung: neuesteSec || null,
       ticker,
     },
   )
@@ -250,20 +271,6 @@ async function scanneEinenTitel(opts: {
     kaufTriggerAusgeloest,
     regime: opts.batchKontext?.regime ?? null,
   })
-
-  // Kaufzonen-Trigger bereits oben geprüft
-
-  // KI-Summaries aus Caches lesen (nicht neu generieren)
-  const earningsMap = await ladeEarningsCallKiCacheFuerTicker(ticker)
-  const secMap = await ladeSecBerichtKiCacheFuerTicker(ticker)
-
-  const neuesteEarnings = [...earningsMap.values()]
-    .sort((a, b) => b.transcriptUrl.localeCompare(a.transcriptUrl))
-    .at(0)?.zusammenfassung ?? ''
-
-  const neuesteSec = [...secMap.values()]
-    .sort((a, b) => b.aktualisiertAm.localeCompare(a.aktualisiertAm))
-    .at(0)?.zusammenfassung ?? ''
 
   // Sell-Trigger-Text für LLM
   const mantra = paket.mantra
@@ -401,9 +408,9 @@ async function reichereErgebnisseAn(
     ergaenzeKaufhistorieUndNotizen(eintraege),
     mitInsider ? ergaenzeInsiderKaeufe(eintraege, kandidaten) : Promise.resolve(),
   ])
+  finalisiereNachkaufRanking(eintraege, batchKontext)
   wendeNachkaufDisziplinAn(eintraege)
   berechneTrimSignale(eintraege)
-  finalisiereNachkaufRanking(eintraege, batchKontext)
 }
 
 // ---------------------------------------------------------------------------

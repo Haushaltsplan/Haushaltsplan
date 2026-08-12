@@ -38,6 +38,163 @@ function clamp(n: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, n))
 }
 
+/** Mantra-Minimum für Quality-Compounder (Gate G1). */
+export const GATE_G1_MANTRA_MIN = 38
+/** Score-Cap wenn G1 fehlschlägt. */
+export const GATE_G1_SCORE_CAP = 45
+/** Score-Cap wenn G2 fehlschlägt. */
+export const GATE_G2_SCORE_CAP = 60
+/** Relativ-Filter: Kern muss Median + X erreichen (nur bei vielen Kandidaten). */
+export const RELATIV_KERN_MEDIAN_DELTA = 10
+/** Relativ-Filter: nur Top-X-Anteil des Scans (nur bei vielen Kandidaten). */
+export const RELATIV_TOP_ANTEIL = 0.1
+/**
+ * Ab so vielen vorläufigen Grün-Kandidaten greift der strenge Relativ-Filter.
+ * Darunter = „einzelne Chancen“ (auch im ATH-Markt) → nur Cap, kein Median+10.
+ */
+export const RELATIV_FILTER_MIN_KANDIDATEN = 4
+
+
+/**
+ * Historie als Feintuning in Prozent (−10…+10), nicht als zweiter voller Bonus.
+ * Wird als Multiplikator `(1 + pct/100)` auf die Timing-Achse angewandt.
+ */
+export function berechneHistFeintuningPct(
+  signale: NachkaufBewertungsSignale,
+  pePerzentilFallback?: number | null,
+): number {
+  const peP = signale.pePerzentil5y ?? signale.pePerzentil10y ?? pePerzentilFallback ?? null
+  const evP =
+    signale.evEbitdaPerzentil5y ?? signale.evEbitdaPerzentil10y ?? signale.evRevPerzentil5y ?? null
+  const histPerzentil = peP ?? evP
+  if (histPerzentil != null) {
+    if (histPerzentil <= 15) return 10
+    if (histPerzentil <= 25) return 7
+    if (histPerzentil <= 35) return 3
+    if (histPerzentil <= 45) return -2
+    if (histPerzentil <= 55) return -4
+    if (histPerzentil <= 70) return -7
+    if (histPerzentil <= 85) return -9
+    return -10
+  }
+  const pd = signale.premiumDiscountPct
+  if (pd == null) return 0
+  if (pd <= -20) return 10
+  if (pd <= -10) return 6
+  if (pd <= -5) return 2
+  if (pd <= 0) return -1
+  if (pd <= 8) return -4
+  if (pd <= 15) return -7
+  if (pd <= 25) return -9
+  return -10
+}
+
+/** Struktur → Multiplikator auf T-Achse. */
+export function berechneStrukturMultiplikator(strukturPunkte: number): number {
+  if (strukturPunkte >= 2) return 1.02
+  if (strukturPunkte >= -3) return 0.9
+  return 0.75
+}
+
+/** Echte Unterbewertung für Gate G2 (ohne Kauftrigger). */
+export function istEchteUnterbewertung(signale: NachkaufBewertungsSignale): boolean {
+  const premium = signale.premiumDiscountPct
+  if (premium != null && premium <= -10) return true
+
+  const peP = signale.pePerzentil5y ?? signale.pePerzentil10y ?? null
+  const evP =
+    signale.evEbitdaPerzentil5y ?? signale.evEbitdaPerzentil10y ?? signale.evRevPerzentil5y ?? null
+  const histP = peP ?? evP
+  if (histP != null && histP <= 30) return true
+
+  const pe = signale.forwardPe
+  const median = signale.historischerMedianPe
+  if (pe != null && median != null && median > 0 && pe <= median * 0.85) return true
+
+  return false
+}
+
+export function pruefGateG1(mantraScore: number, sellWarnung: boolean): boolean {
+  return mantraScore >= GATE_G1_MANTRA_MIN && !sellWarnung
+}
+
+export function pruefGateG2(
+  kaufTriggerAusgeloest: boolean,
+  signale: NachkaufBewertungsSignale,
+): boolean {
+  return kaufTriggerAusgeloest || istEchteUnterbewertung(signale)
+}
+
+/** G3: Quality @ ATH / Überbewertung → Teuer. */
+export function pruefGateG3Teuer(
+  kaufTriggerAusgeloest: boolean,
+  signale: NachkaufBewertungsSignale,
+): boolean {
+  if (kaufTriggerAusgeloest) return false
+  const premium = signale.premiumDiscountPct ?? 0
+  const dd = signale.drawdown52wPct ?? 0
+  return premium > 0 && dd < 12
+}
+
+/** Q-Achse 0–100 aus Mantra + Sell + Qualitäts-Text-Malus. */
+export function berechneQualitaetsAchse(opts: {
+  mantraScore: number
+  sellTriggerPenalty: number
+  deepResearchMalus: number
+}): number {
+  const basis = (opts.mantraScore / 50) * 100
+  // Sell −25/−10 auf 0–50-Skala → auf 0–100 verdoppeln
+  return clamp(basis + opts.sellTriggerPenalty * 2 + opts.deepResearchMalus, 0, 100)
+}
+
+/** T-Achse 0–100: Bewertung × Hist-Feintuning × Struktur (± Trigger-Boost). */
+export function berechneTimingAchse(opts: {
+  bewertungsScore: number
+  histFeintuningPct: number
+  strukturMultiplikator: number
+  kaufTriggerAusgeloest: boolean
+  regimeDelta: number
+}): number {
+  const basis = (opts.bewertungsScore / 35) * 100
+  const mitHist = basis * (1 + opts.histFeintuningPct / 100)
+  const mitStruktur = mitHist * opts.strukturMultiplikator
+  const mitTrigger = opts.kaufTriggerAusgeloest ? mitStruktur + 8 : mitStruktur
+  // Regime leicht auf Timing (nicht als additive Score-Polsterung)
+  return clamp(mitTrigger + opts.regimeDelta * 1.5, 0, 100)
+}
+
+export function berechneGeometrischenKern(q: number, t: number): number {
+  return clamp(Math.round(Math.sqrt(Math.max(0, q) * Math.max(0, t))), 0, 100)
+}
+
+/**
+ * Nebenpunkte (Insider/Drawdown/Momentum) nur bei offenen Gates;
+ * Earnings-Malus + Klumpen/Sektor/Kalibrierung immer.
+ */
+export function berechneGesamtAusKern(opts: {
+  kern: number
+  gateG1: boolean
+  gateG2: boolean
+  nebenPunkte: number
+  earningsMalus: number
+  klumpenMalus: number
+  sektorMalus: number
+  scoreKalibrierung: number
+}): number {
+  const neben = opts.gateG1 && opts.gateG2 ? opts.nebenPunkte : 0
+  let gesamt = opts.kern + neben + opts.earningsMalus + opts.klumpenMalus + opts.sektorMalus + opts.scoreKalibrierung
+  if (!opts.gateG1) gesamt = Math.min(gesamt, GATE_G1_SCORE_CAP)
+  if (!opts.gateG2) gesamt = Math.min(gesamt, GATE_G2_SCORE_CAP)
+  return clamp(Math.round(gesamt), 0, 100)
+}
+
+export function medianZahl(werte: number[]): number {
+  if (werte.length === 0) return 0
+  const s = [...werte].sort((a, b) => a - b)
+  const mid = Math.floor(s.length / 2)
+  return s.length % 2 === 0 ? (s[mid - 1]! + s[mid]!) / 2 : s[mid]!
+}
+
 export function segmentQualitaetVonQuelle(
   quelle: 'marketscreener' | 'stockanalysis' | 'mixed' | 'sec_edgar' | null | undefined,
 ): SegmentDatenQualitaet {
@@ -70,25 +227,25 @@ export function berechnePersonalisierteBewertung(
       const ratio = forwardPe / ref
       if (ratio <= 0.75) pts += 14
       else if (ratio <= 0.9) pts += 11
-      else if (ratio <= 1.0) pts += 8
-      else if (ratio <= 1.15) pts += 4
-      else if (ratio <= 1.3) pts += 1
-    } else if (forwardPe < 18) pts += 10
-    else if (forwardPe < 25) pts += 6
-    else if (forwardPe < 35) pts += 2
+      else if (ratio <= 1.0) pts += 5
+      else if (ratio <= 1.1) pts += 1
+      // >1.1× Median/Trigger: 0 — kein Fair-Value-Bonus nahe ATH
+    } else if (forwardPe < 16) pts += 10
+    else if (forwardPe < 22) pts += 5
+    else if (forwardPe < 28) pts += 1
   }
 
   if (fcfYieldPct != null) {
     const ref = trigger?.fcfYieldMin ?? historischerMedianFcfYield
     if (ref != null && ref > 0) {
       const ratio = fcfYieldPct / ref
-      if (ratio >= 1.2) pts += 12
-      else if (ratio >= 1.0) pts += 9
-      else if (ratio >= 0.85) pts += 6
-      else if (ratio >= 0.7) pts += 3
-    } else if (fcfYieldPct >= 4.5) pts += 9
-    else if (fcfYieldPct >= 3) pts += 6
-    else if (fcfYieldPct >= 2) pts += 3
+      if (ratio >= 1.25) pts += 12
+      else if (ratio >= 1.1) pts += 9
+      else if (ratio >= 1.0) pts += 5
+      else if (ratio >= 0.9) pts += 2
+    } else if (fcfYieldPct >= 5) pts += 9
+    else if (fcfYieldPct >= 3.5) pts += 5
+    else if (fcfYieldPct >= 2.5) pts += 2
   }
 
   // EV: zuerst vs. eigener 5J-Median, sonst absolute Buckets / EV/Sales-Fallback
@@ -98,21 +255,20 @@ export function berechnePersonalisierteBewertung(
       const ratio = ntmEvEbitda / ref
       if (ratio <= 0.75) pts += 9
       else if (ratio <= 0.9) pts += 7
-      else if (ratio <= 1.0) pts += 5
-      else if (ratio <= 1.15) pts += 2
-    } else if (ntmEvEbitda < 12) pts += 9
-    else if (ntmEvEbitda < 16) pts += 6
-    else if (ntmEvEbitda < 22) pts += 3
+      else if (ratio <= 1.0) pts += 3
+      else if (ratio <= 1.1) pts += 1
+    } else if (ntmEvEbitda < 11) pts += 9
+    else if (ntmEvEbitda < 15) pts += 5
+    else if (ntmEvEbitda < 18) pts += 2
   } else if (ntmEvRev != null) {
     const ref = historischerMedianEvRev
     if (ref != null && ref > 0) {
       const ratio = ntmEvRev / ref
       if (ratio <= 0.75) pts += 7
       else if (ratio <= 0.9) pts += 5
-      else if (ratio <= 1.0) pts += 3
-      else if (ratio <= 1.15) pts += 1
-    } else if (ntmEvRev < 4) pts += 6
-    else if (ntmEvRev < 7) pts += 3
+      else if (ratio <= 1.0) pts += 2
+    } else if (ntmEvRev < 3.5) pts += 6
+    else if (ntmEvRev < 6) pts += 2
   }
 
   const metrikAnzahl = [forwardPe, fcfYieldPct, ntmEvEbitda ?? ntmEvRev].filter((v) => v != null).length
@@ -141,13 +297,28 @@ export function berechneRegimeDelta(
   let delta = 0
   const vix = regime.vixClose ?? 0
   const spyRiskOff = regime.spyAbove20Ma === false
+  const spyRiskOn = regime.spyAbove20Ma === true
+  const premium = signale.premiumDiscountPct ?? 0
+  const dd = signale.drawdown52wPct ?? 0
 
-  if (spyRiskOff && (signale.drawdown52wPct ?? 0) >= 10) delta += 2
-  if (vix >= 25 && (signale.drawdown52wPct ?? 0) >= 8) delta += 2
-  if (vix < 15 && (signale.premiumDiscountPct ?? 0) > 12) delta -= 2
-  if (spyRiskOff && vix < 18 && (signale.premiumDiscountPct ?? 0) <= 0) delta += 1
+  // Risk-off / Volatilität: Einstiege belohnen
+  if (spyRiskOff && dd >= 10) delta += 2
+  if (vix >= 25 && dd >= 8) delta += 2
+  if (spyRiskOff && vix < 18 && premium <= 0) delta += 1
 
-  return clamp(delta, -3, 4)
+  // Risk-on / ATH-nah: teure Titel abstrafen
+  if (spyRiskOn && vix > 0 && vix < 18 && premium > 5) delta -= 3
+  if (spyRiskOn && vix > 0 && vix < 15 && premium > 0) delta -= 2
+  if (spyRiskOn && vix > 0 && vix < 18 && dd < 5 && premium > -5) delta -= 1
+
+  return clamp(delta, -5, 4)
+}
+
+/** Risk-on = SPY über 20d-MA und VIX < 18. */
+export function istRiskOnRegime(regime: NachkaufRankingKontext['regime']): boolean {
+  if (!regime) return false
+  const vix = regime.vixClose
+  return regime.spyAbove20Ma === true && vix != null && vix > 0 && vix < 18
 }
 
 export function berechneEarningsFensterMalus(
@@ -177,6 +348,36 @@ const DR_BEAR_MITTEL = [
   /caution/i,
 ]
 
+/** Earnings-Call / SEC-Bericht — kritische operative Signale. */
+const BERICHT_BEAR_STARK = [
+  /guidance.*(senk|cut|reduzier|zurück|lower|slash)/i,
+  /outlook.*(senk|schwächer|worse|lower)/i,
+  /warnung|warning|profit.?warn/i,
+  /restrukturierung|restructuring|lay.?off|stellenabbau/i,
+  /goodwill.?abschreibung|impairment/i,
+  /going.?concern|liquidit[aä]tsrisiko/i,
+  /untersuchung|investigation|sec.?probe|klage|lawsuit/i,
+  /accounting.*(issue|problem|restatement)|bilanzkorrekt/i,
+  /nachfrage.*(einbruch|rückgang|schwäche)|demand.*(weak|soft|declin)/i,
+]
+const BERICHT_BEAR_MITTEL = [
+  /vorsichtig|cautious|headwind/i,
+  /margen.*(druck|kompression)|margin.*(pressure|compress)/i,
+  /verzöger|delay|push(ed)?\s+out/i,
+  /kosten.*(steig|höher)|cost.*(inflat|press)/i,
+  /wettbewerb|competitive.?pressure/i,
+  /unsicher|uncertainty|volatil/i,
+  /unter.?erwartung|miss(ed)?\s+(estimates|consensus)/i,
+  /schwächeres?\s+wachstum|slower\s+growth/i,
+]
+const BERICHT_BULL = [
+  /anheb.*guidance|raised?\s+guidance|guidance.*(anheb|erhöh|raised)/i,
+  /beat(s|en)?\s+(estimates|consensus|erwart)/i,
+  /rekord|record\s+(revenue|quarter)/i,
+  /stärkeres?\s+wachstum|accelerat(ing|ed)\s+growth/i,
+  /margin.*(expand|ausweit)/i,
+]
+
 export function berechneDeepResearchMalus(memo: string | null | undefined): number {
   if (!memo || memo.length < 80) return 0
   const stark = DR_BEAR_STARK.filter((re) => re.test(memo)).length
@@ -186,6 +387,53 @@ export function berechneDeepResearchMalus(memo: string | null | undefined): numb
   if (mittel >= 2) return -4
   if (mittel >= 1) return -2
   return 0
+}
+
+/**
+ * Malus/Bonus aus Earnings-Call- und SEC-KI-Zusammenfassungen (Cache).
+ * Wirkt auf Score + Ampel — nicht nur auf den Fließtext.
+ */
+export function berechneKiBerichtMalus(
+  earningsZusammenfassung: string | null | undefined,
+  secZusammenfassung: string | null | undefined,
+): number {
+  const texte = [earningsZusammenfassung, secZusammenfassung]
+    .map((t) => (t ?? '').trim())
+    .filter((t) => t.length >= 60)
+  if (texte.length === 0) return 0
+
+  let stark = 0
+  let mittel = 0
+  let bull = 0
+  for (const t of texte) {
+    stark += BERICHT_BEAR_STARK.filter((re) => re.test(t)).length
+    mittel += BERICHT_BEAR_MITTEL.filter((re) => re.test(t)).length
+    bull += BERICHT_BULL.filter((re) => re.test(t)).length
+  }
+
+  let delta = 0
+  if (stark >= 2) delta -= 10
+  else if (stark >= 1) delta -= 6
+  else if (mittel >= 3) delta -= 4
+  else if (mittel >= 1) delta -= 2
+
+  if (bull >= 2 && stark === 0) delta += 2
+  else if (bull >= 1 && stark === 0 && mittel === 0) delta += 1
+
+  return clamp(delta, -10, 2)
+}
+
+/**
+ * Kombiniert Deep Research + Earnings/SEC-Cache für den Score-Slot `deepResearchMalus`.
+ */
+export function berechneQualitaetsTextMalus(opts: {
+  deepResearchMemo?: string | null
+  earningsZusammenfassung?: string | null
+  secZusammenfassung?: string | null
+}): number {
+  const dr = berechneDeepResearchMalus(opts.deepResearchMemo)
+  const berichte = berechneKiBerichtMalus(opts.earningsZusammenfassung, opts.secZusammenfassung)
+  return clamp(dr + berichte, -15, 2)
 }
 
 export function berechneScoreKalibrierungBonus(
@@ -208,52 +456,63 @@ export function berechneSektorDiversitaetsMalus(
 ): number {
   if (!eintragSektor) return 0
   const anzahl = grueneSektoren.get(eintragSektor) ?? 0
-  if (anzahl >= 4) return -4
-  if (anzahl >= 3) return -2
+  if (anzahl >= 3) return -6
+  if (anzahl >= 2) return -3
   return 0
 }
 
-/** Qualität = Mantra + operative Stärke (0–100). */
+/** Qualität = Q-Achse (0–100), neu berechnet aus Score-Feldern. */
 export function berechneQualitaetsRang(detail: NachkaufScoreDetail): number {
-  const momentumExtra = Math.max(0, detail.momentumPunkte - 5)
-  const strukturPos = Math.max(0, detail.strukturPunkte)
-  const roh =
-    detail.mantraScore * 1.6 +
-    momentumExtra * 2.5 +
-    strukturPos * 2 +
-    detail.insiderPunkte * 3 +
-    Math.max(0, detail.sellTriggerPenalty + 25) * 0.3
-  return clamp(Math.round(roh), 0, 100)
+  return Math.round(
+    berechneQualitaetsAchse({
+      mantraScore: detail.mantraScore,
+      sellTriggerPenalty: detail.sellTriggerPenalty,
+      deepResearchMalus: detail.deepResearchMalus,
+    }),
+  )
 }
 
-/** Timing = Bewertung + Einstiegsfenster (0–100). Kein Roh-Drawdown — der steckt schon in drawdownBonus. */
+/** Timing = T-Achse (0–100), neu berechnet aus Score-Feldern. */
 export function berechneTimingRang(
   detail: NachkaufScoreDetail,
   _signale: Pick<NachkaufBewertungsSignale, 'drawdown52wPct'>,
 ): number {
-  const roh =
-    detail.bewertungsScore * 2.2 +
-    detail.historischerBewertungsBonus * 2.5 +
-    detail.drawdownBonus * 3 +
-    detail.kauftriggerBonus * 2.5 +
-    detail.regimeDelta * 1.5 +
-    detail.scoreKalibrierung * 2 +
-    detail.earningsMalus * 1.5 +
-    detail.deepResearchMalus * 0.8
-  return clamp(Math.round(roh), 0, 100)
+  const m = detail.strukturMultiplikator ?? berechneStrukturMultiplikator(detail.strukturPunkte)
+  return Math.round(
+    berechneTimingAchse({
+      bewertungsScore: detail.bewertungsScore,
+      histFeintuningPct: detail.historischerBewertungsBonus,
+      strukturMultiplikator: m,
+      kaufTriggerAusgeloest: detail.kauftriggerBonus > 0,
+      regimeDelta: detail.regimeDelta,
+    }),
+  )
 }
 
-/** Langfrist-Bias: Qualität wiegt etwas stärker als Timing. */
+/** Langfrist: geometrischer Kern √(Q·T). */
 export function berechneKombiniertRang(qualitaet: number, timing: number): number {
-  return clamp(Math.round(qualitaet * 0.55 + timing * 0.45), 0, 100)
+  return berechneGeometrischenKern(qualitaet, timing)
 }
 
-export function gruenSchwelle(kaufTriggerAusgeloest: boolean): number {
-  return kaufTriggerAusgeloest ? 58 : 68
+/**
+ * Grün-Schwelle (Legacy-Hilfsgröße). Absolute Grün-Entscheidung läuft über Gates + Relativ-Filter.
+ */
+export function gruenSchwelle(
+  kaufTriggerAusgeloest: boolean,
+  regime?: NachkaufRankingKontext['regime'],
+): number {
+  let base = kaufTriggerAusgeloest ? 68 : 78
+  if (istRiskOnRegime(regime ?? null)) base += 6
+  return base
 }
 
 export function gelbSchwelle(kaufTriggerAusgeloest: boolean): number {
-  return kaufTriggerAusgeloest ? 38 : 42
+  return kaufTriggerAusgeloest ? 52 : 58
+}
+
+/** Max. Anzahl „Nachkauf-Kandidaten“ (Grün) — Fokus statt Streuung. */
+export function maxGruenKandidaten(regime?: NachkaufRankingKontext['regime']): number {
+  return istRiskOnRegime(regime ?? null) ? 3 : 5
 }
 
 export type AmpelKalibrierungInput = {
@@ -263,26 +522,31 @@ export type AmpelKalibrierungInput = {
   kaufTriggerAusgeloest: boolean
 }
 
-/** Kalibrierte Ampel-Schwellen inkl. Regime- und Dual-Ranking-Check. */
+/**
+ * Absolute Grün-Voraussetzung (Gates). Relativ-Filter (Top 10% / Median+10) kommt in Finalisierung.
+ */
 export function istKalibriertesGruen(input: AmpelKalibrierungInput): boolean {
   const { scoreDetail, signale, regime, kaufTriggerAusgeloest } = input
-  const schwelle = gruenSchwelle(kaufTriggerAusgeloest)
-  const vollstaendig = (scoreDetail.datenVollstaendigkeitPct ?? 0) >= 45
-  const qualOk = (scoreDetail.qualitaetsRang ?? 0) >= 48
-  const timingOk = (scoreDetail.timingRang ?? 0) >= 52
 
-  if (scoreDetail.gesamt < schwelle || !vollstaendig || !qualOk || !timingOk) return false
+  const g1 = scoreDetail.gateG1 ?? pruefGateG1(scoreDetail.mantraScore, scoreDetail.sellTriggerPenalty <= -25)
+  const g2 = scoreDetail.gateG2 ?? pruefGateG2(kaufTriggerAusgeloest, signale)
+  if (!g1 || !g2) return false
+
+  if (pruefGateG3Teuer(kaufTriggerAusgeloest, signale)) return false
+
+  const vollstaendig = (scoreDetail.datenVollstaendigkeitPct ?? 0) >= 55
+  if (!vollstaendig) return false
+
+  const q = scoreDetail.qualitaetsRang ?? 0
+  const t = scoreDetail.timingRang ?? 0
+  if (q < 60 || t < 55) return false
+
+  if ((scoreDetail.deepResearchMalus ?? 0) <= -6 && !kaufTriggerAusgeloest) return false
 
   const vix = regime?.vixClose ?? 0
-  if (
-    vix > 0 &&
-    vix < 15 &&
-    !kaufTriggerAusgeloest &&
-    scoreDetail.gesamt < 75 &&
-    (signale.premiumDiscountPct ?? 0) > 8
-  ) {
-    return false
-  }
+  const premium = signale.premiumDiscountPct ?? 0
+  if (vix > 0 && vix < 18 && !kaufTriggerAusgeloest && premium > 0) return false
+
   return true
 }
 

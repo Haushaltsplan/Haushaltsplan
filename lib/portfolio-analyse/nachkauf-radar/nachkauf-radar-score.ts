@@ -1,20 +1,17 @@
 /**
- * Regelbasierter Nachkauf-Score.
+ * Regelbasierter Nachkauf-Score — Quality-Compounder.
  *
- * Anti-Halluzinations-Prinzip: Zahlen kommen aus dem Code, nicht vom LLM.
- * Das Flash-LLM erklärt anschließend nur, was diese Funktion berechnet.
+ * Geometrisches Kern-Modell:
+ *   Q = Mantra + Sell + DR/SEC (0–100)
+ *   T = Bewertung × Hist-Feintuning(±10%) × Struktur-Multiplikator (0–100)
+ *   Kern = √(Q·T)
  *
- * Punkte-Verteilung (Ziel: 0–100):
- *  – Mantra-Qualität             0–50
- *  – Bewertung (personalisiert)  0–35
- *  – Historischer Bonus/Malus   –10 bis +10  (Perzentil ODER Median, nicht beides)
- *  – Momentum                    0–10  (Langfrist: Beat/Miss gedämpft)
- *  – Struktur & Risiko          –12 bis +6
- *  – Drawdown-Chance             0–3
- *  – Insider-Käufe               0–4
- *  – Kauftrigger-Boost           0–5
- *  – Regime / Earnings / DR     –15 bis +4
- *  – Sell-Trigger               –25 / –10 / 0
+ * Gates:
+ *   G1 Mantra ≥ 38 → sonst Score-Cap 45
+ *   G2 Trigger oder echte Unterbewertung → sonst keine Nebenpunkte, Cap 60
+ *   G3 Premium>0 ∧ DD<12% ∧ kein Trigger → Ampel teuer
+ *
+ * Nebenpunkte (Insider/Drawdown/Momentum) nur bei G1∧G2.
  */
 
 import type { FundamentaldatenPaket } from '@/lib/portfolio-analyse/fundamentaldaten-types'
@@ -35,17 +32,23 @@ import { berechnePrognoseMomentumDelta } from './nachkauf-prognose-server'
 import { disziplinSparplanFaktor } from './nachkauf-disziplin-server'
 import { berechneStrukturMitAufschluesselung } from './nachkauf-struktur-aufschluesselung'
 import {
-  berechneDeepResearchMalus,
   berechneEarningsFensterMalus,
   berechneKauftriggerBoost,
-  berechneKombiniertRang,
+  berechneGeometrischenKern,
+  berechneGesamtAusKern,
+  berechneHistFeintuningPct,
   berechnePersonalisierteBewertung,
-  berechneQualitaetsRang,
+  berechneQualitaetsAchse,
+  berechneQualitaetsTextMalus,
   berechneRegimeDelta,
-  berechneTimingRang,
+  berechneStrukturMultiplikator,
+  berechneTimingAchse,
   gelbSchwelle,
   istKalibriertesGruen,
   kalibrierungBonusFuerScore,
+  pruefGateG1,
+  pruefGateG2,
+  pruefGateG3Teuer,
   segmentQualitaetVonQuelle,
   type NachkaufBatchKontext,
 } from './nachkauf-ranking-optimierung'
@@ -181,14 +184,10 @@ export function extrahiereBewertungsSignale(
   }
 }
 
-function clamp(n: number, min: number, max: number): number {
-  return Math.max(min, Math.min(max, n))
-}
-
-/** Operative Dynamik: Earnings-Treffer, CapAlloc, EPS-Wachstum (0–10, Langfrist-Bias). */
+/** Operative Dynamik: Earnings-Treffer, CapAlloc, EPS-Wachstum (0–10, Zero-Noise-Floor). */
 function berechneMomentumPunkte(zusatz: NachkaufZusatzSignale | null | undefined): number {
-  if (!zusatz) return 5
-  let pts = 5
+  if (!zusatz) return 0
+  let pts = 0
 
   const eps8 = zusatz.epsBeatRatePct
   const eps12 = zusatz.epsBeatRate12Pct
@@ -254,17 +253,17 @@ function berechneMomentumPunkte(zusatz: NachkaufZusatzSignale | null | undefined
     else if (zusatz.dividendenCagr5yPct < -2) pts -= 1
   }
 
-  return clamp(Math.round(pts), 0, 10)
+  return Math.max(0, Math.min(10, Math.round(pts)))
 }
 
 function berechneDrawdownBonus(
   drawdown52wPct: number | null | undefined,
   mantraScore: number,
-  histBonus: number,
+  histFeintuningPct: number,
 ): number {
-  if (drawdown52wPct == null || mantraScore < 28) return 0
-  // Wenn hist. Bewertung schon stark belohnt: Drawdown nur noch schwach (Anti-Doppelzählung)
-  const cap = histBonus >= 6 ? 1 : 3
+  if (drawdown52wPct == null || mantraScore < 38) return 0
+  // Wenn Hist-Feintuning schon stark belohnt: Drawdown nur noch schwach
+  const cap = histFeintuningPct >= 6 ? 1 : 3
   let bonus = 0
   if (drawdown52wPct >= 28) bonus = 3
   else if (drawdown52wPct >= 18) bonus = 2
@@ -288,28 +287,12 @@ export type NachkaufScoreOptionen = {
   kaufTriggerAusgeloest?: boolean
   batchKontext?: NachkaufBatchKontext | null
   deepResearchMemo?: string | null
+  /** Earnings-Call-KI-Zusammenfassung aus Cache. */
+  earningsZusammenfassung?: string | null
+  /** SEC/IR-KI-Zusammenfassung aus Cache. */
+  secZusammenfassung?: string | null
   tageBisEarnings?: number | null
   ticker?: string | null
-}
-
-function summeScoreDetail(d: Omit<NachkaufScoreDetail, 'gesamt' | 'datenSignaleDelta' | 'qualitaetsRang' | 'timingRang' | 'kombiniertRang' | 'datenVollstaendigkeitPct' | 'segmentDatenQualitaet'>): number {
-  return (
-    d.mantraScore +
-    d.sellTriggerPenalty +
-    d.bewertungsScore +
-    d.historischerBewertungsBonus +
-    d.momentumPunkte +
-    d.strukturPunkte +
-    d.drawdownBonus +
-    d.insiderPunkte +
-    d.kauftriggerBonus +
-    d.regimeDelta +
-    d.earningsMalus +
-    d.deepResearchMalus +
-    d.klumpenMalus +
-    d.sektorMalus +
-    d.scoreKalibrierung
-  )
 }
 
 export function berechneNachkaufScore(
@@ -340,46 +323,19 @@ export function berechneNachkaufScore(
       mantra.ampel === 'gruen' ? 34 : mantra.ampel === 'gelb' ? 24 : mantra.ampel === 'grau' ? 18 : 8
   }
 
-  // --- Sell-Trigger-Penalty ---
   const hatWarnung = mantra.sellTriggerWatch.some((w) => w.status === 'warnung')
   const hatBeobachten = mantra.sellTriggerWatch.some((w) => w.status === 'beobachten')
   const sellTriggerPenalty = hatWarnung ? -25 : hatBeobachten ? -10 : 0
 
   const bewertungsScore = berechnePersonalisierteBewertung(signale, position)
+  const historischerBewertungsBonus = berechneHistFeintuningPct(signale, zusatz?.pePerzentil5y)
 
-  // --- Historischer Bonus/Malus (–10 bis +10) ---
-  // Ein Perzentil-Pfad (KGV bevorzugt, sonst EV/EBITDA) ODER Median-Premium — nicht additiv.
-  let historischerBewertungsBonus = 0
-  const peP = signale.pePerzentil5y ?? signale.pePerzentil10y ?? zusatz?.pePerzentil5y ?? null
-  const evP = signale.evEbitdaPerzentil5y ?? signale.evEbitdaPerzentil10y ?? signale.evRevPerzentil5y ?? null
-  const histPerzentil = peP ?? evP
-  if (histPerzentil != null) {
-    if (histPerzentil <= 15) historischerBewertungsBonus = 10
-    else if (histPerzentil <= 25) historischerBewertungsBonus = 7
-    else if (histPerzentil <= 35) historischerBewertungsBonus = 4
-    else if (histPerzentil <= 55) historischerBewertungsBonus = 0
-    else if (histPerzentil <= 70) historischerBewertungsBonus = -4
-    else if (histPerzentil <= 85) historischerBewertungsBonus = -7
-    else historischerBewertungsBonus = -10
-  } else {
-    const pd = signale.premiumDiscountPct
-    if (pd !== null) {
-      if (pd <= -20) historischerBewertungsBonus = 10
-      else if (pd <= -10) historischerBewertungsBonus = 6
-      else if (pd <= -5) historischerBewertungsBonus = 3
-      else if (pd <= 5) historischerBewertungsBonus = 0
-      else if (pd <= 15) historischerBewertungsBonus = -4
-      else if (pd <= 25) historischerBewertungsBonus = -7
-      else historischerBewertungsBonus = -10
-    }
-  }
-
-  const momentumPunkte = berechneMomentumPunkte(zusatz)
   const strukturRaw = berechneStrukturMitAufschluesselung(zusatz)
   let strukturPunkte = strukturRaw.punkte
   let strukturSignale = strukturRaw.zeilen
-  const insiderPunkte = berechneInsiderPunkte(insiderKaeufe)
-  // Form-4-Insider und Netto-Richtung nicht doppelt zählen
+
+  let momentumPunkte = berechneMomentumPunkte(zusatz)
+  let insiderPunkte = berechneInsiderPunkte(insiderKaeufe)
   if (insiderPunkte > 0) {
     const insiderZeile = strukturSignale.find((z) => z.id === 'insider')
     if (insiderZeile && insiderZeile.delta !== 0) {
@@ -387,11 +343,11 @@ export function berechneNachkaufScore(
       strukturSignale = strukturSignale.map((z) =>
         z.id === 'insider' ? { ...z, delta: 0, wert: `${z.wert} (via Form-4)` } : z,
       )
-      strukturPunkte = clamp(strukturPunkte, -12, 6)
+      strukturPunkte = Math.max(-12, Math.min(6, strukturPunkte))
     }
   }
 
-  const drawdownBonus = berechneDrawdownBonus(
+  const drawdownBonusRoh = berechneDrawdownBonus(
     signale.drawdown52wPct,
     mantraScore,
     historischerBewertungsBonus,
@@ -412,37 +368,67 @@ export function berechneNachkaufScore(
     opts.kaufTriggerAusgeloest ?? false,
     signale.drawdown52wPct,
   )
-  const deepResearchMalus = berechneDeepResearchMalus(opts.deepResearchMemo ?? null)
+  const deepResearchMalus = berechneQualitaetsTextMalus({
+    deepResearchMemo: opts.deepResearchMemo ?? null,
+    earningsZusammenfassung: opts.earningsZusammenfassung ?? null,
+    secZusammenfassung: opts.secZusammenfassung ?? null,
+  })
 
-  const rohOhneKalibrierung =
-    mantraScore +
-    sellTriggerPenalty +
-    bewertungsScore +
-    historischerBewertungsBonus +
-    momentumPunkte +
-    strukturPunkte +
-    drawdownBonus +
-    insiderPunkte +
-    kauftriggerBonus +
-    regimeDelta +
-    earningsMalus +
-    deepResearchMalus
+  const gateG1 = pruefGateG1(mantraScore, hatWarnung)
+  const gateG2 = pruefGateG2(opts.kaufTriggerAusgeloest ?? false, signale)
+  const gateG3Teuer = pruefGateG3Teuer(opts.kaufTriggerAusgeloest ?? false, signale)
+
+  // G2 Fail → keine Nebenpunkte (Insider / Drawdown / Momentum)
+  let drawdownBonus = drawdownBonusRoh
+  if (!gateG2) {
+    momentumPunkte = 0
+    insiderPunkte = 0
+    drawdownBonus = 0
+  }
+
+  const strukturMultiplikator = berechneStrukturMultiplikator(strukturPunkte)
+  const qualitaetsRang = Math.round(
+    berechneQualitaetsAchse({ mantraScore, sellTriggerPenalty, deepResearchMalus }),
+  )
+  const timingRang = Math.round(
+    berechneTimingAchse({
+      bewertungsScore,
+      histFeintuningPct: historischerBewertungsBonus,
+      strukturMultiplikator,
+      kaufTriggerAusgeloest: opts.kaufTriggerAusgeloest ?? false,
+      regimeDelta,
+    }),
+  )
+  const kombiniertRang = berechneGeometrischenKern(qualitaetsRang, timingRang)
 
   const scoreKalibrierung = opts.batchKontext
-    ? kalibrierungBonusFuerScore(Math.max(0, rohOhneKalibrierung), opts.batchKontext)
+    ? kalibrierungBonusFuerScore(kombiniertRang, opts.batchKontext)
     : 0
+
+  const nebenPunkte = momentumPunkte + drawdownBonus + insiderPunkte
+  const gesamt = berechneGesamtAusKern({
+    kern: kombiniertRang,
+    gateG1,
+    gateG2,
+    nebenPunkte,
+    earningsMalus,
+    klumpenMalus: 0,
+    sektorMalus: 0,
+    scoreKalibrierung,
+  })
 
   const segmentDatenQualitaet = segmentQualitaetVonQuelle(zusatz?.segmentQuelle ?? null)
   const datenSignaleDelta = momentumPunkte + strukturPunkte + drawdownBonus + insiderPunkte
   const datenVollstaendigkeitPct = zusatz?.datenVollstaendigkeitPct ?? 0
 
-  const teile = {
+  return {
     mantraScore,
     bewertungsScore,
     sellTriggerPenalty,
     historischerBewertungsBonus,
     momentumPunkte,
     strukturPunkte,
+    strukturSignale,
     drawdownBonus,
     insiderPunkte,
     kauftriggerBonus,
@@ -452,29 +438,17 @@ export function berechneNachkaufScore(
     klumpenMalus: 0,
     sektorMalus: 0,
     scoreKalibrierung,
-  }
-  const gesamt = Math.max(0, Math.min(100, summeScoreDetail(teile)))
-
-  const scoreBasis: NachkaufScoreDetail = {
-    ...teile,
     gesamt,
     datenSignaleDelta,
     datenVollstaendigkeitPct,
-    strukturSignale,
-    qualitaetsRang: 0,
-    timingRang: 0,
-    kombiniertRang: 0,
-    segmentDatenQualitaet,
-  }
-  const qualitaetsRang = berechneQualitaetsRang(scoreBasis)
-  const timingRang = berechneTimingRang({ ...scoreBasis, qualitaetsRang }, signale)
-  const kombiniertRang = berechneKombiniertRang(qualitaetsRang, timingRang)
-
-  return {
-    ...scoreBasis,
     qualitaetsRang,
     timingRang,
     kombiniertRang,
+    gateG1,
+    gateG2,
+    gateG3Teuer,
+    strukturMultiplikator,
+    segmentDatenQualitaet,
   }
 }
 
@@ -516,29 +490,47 @@ export function leiteNachkaufAmpelAb(
 ): NachkaufAmpel {
   const { mantra } = paket
   const hatWarnung = mantra.sellTriggerWatch.some((w) => w.status === 'warnung')
+  const trigger = opts?.kaufTriggerAusgeloest ?? false
 
   if (hatWarnung || mantra.ampel === 'rot') return 'rot'
   if (mantra.ampel === 'grau' && mantra.zusammenfassung.bewertbar === 0) return 'grau'
 
+  // G3: Quality @ ATH / Überbewertung — unabhängig von Q
+  if (score.gateG3Teuer ?? pruefGateG3Teuer(trigger, signale)) return 'teuer'
+
+  // G1 Fail: max. Gelb (nie Grün)
+  const g1 = score.gateG1 ?? pruefGateG1(score.mantraScore, hatWarnung)
+  if (!g1) {
+    return score.gesamt >= gelbSchwelle(trigger) ? 'gelb' : 'rot'
+  }
+
+  // Ergänzender Teuer-Pfad (sehr teuer + nahe Hoch)
   const { fcfYieldPct, forwardPe } = signale
   const hatDatenFuerBewertung = fcfYieldPct != null || forwardPe != null
-  const trigger = opts?.kaufTriggerAusgeloest ?? false
+  const premium = signale.premiumDiscountPct ?? 0
+  const dd = signale.drawdown52wPct ?? 0
+  const peP = signale.pePerzentil5y ?? signale.pePerzentil10y ?? null
+  const evP = signale.evEbitdaPerzentil5y ?? signale.evRevPerzentil5y ?? null
+  const histP = peP ?? evP
+  const medianPe = signale.historischerMedianPe
+  const teuerGrenze = medianPe != null ? medianPe * 1.18 : 32
+  const fcfZuTeuer = fcfYieldPct != null && fcfYieldPct < 2.5
+  const kgvZuTeuer = forwardPe != null && forwardPe > teuerGrenze
+  const histTeuer = histP != null && histP > 65
+  const premiumTeuer = premium > 8
+  const naheHoch = dd < 12
 
-  if (hatDatenFuerBewertung) {
-    const medianPe = signale.historischerMedianPe
-    const teuerGrenze = medianPe != null ? medianPe * 1.35 : 38
-    const fcfZuTeuer = fcfYieldPct != null && fcfYieldPct < 1.5
-    const kgvZuTeuer = forwardPe != null && forwardPe > teuerGrenze
-    const nurFcfDaten = fcfYieldPct != null && forwardPe == null
-    const nurKgvDaten = forwardPe != null && fcfYieldPct == null
-
-    if (
+  if (
+    score.mantraScore >= 38 &&
+    naheHoch &&
+    hatDatenFuerBewertung &&
+    (premiumTeuer ||
+      histTeuer ||
       (fcfZuTeuer && kgvZuTeuer) ||
-      (fcfZuTeuer && nurFcfDaten) ||
-      (kgvZuTeuer && nurKgvDaten)
-    ) {
-      if (score.mantraScore >= 25 && (score.timingRang ?? 0) < 50) return 'teuer'
-    }
+      (fcfZuTeuer && forwardPe == null) ||
+      (kgvZuTeuer && fcfYieldPct == null))
+  ) {
+    return 'teuer'
   }
 
   if (

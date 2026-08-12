@@ -57,12 +57,25 @@ export type NachkaufScoreDetail = {
   sektorMalus: number
   /** Backtest-Kalibrierung aus Performance-Tracking (–3 bis +2). */
   scoreKalibrierung: number
-  /** Qualitäts-Rang 0–100 (Mantra + Momentum + Struktur). */
+  /**
+   * Qualitäts-Achse Q (0–100): Mantra + Sell + DR/SEC.
+   * Alias für Ranking/UI — geometrisches Modell.
+   */
   qualitaetsRang: number
-  /** Timing-Rang 0–100 (Bewertung + Einstiegsfenster). */
+  /**
+   * Timing-Achse T (0–100): Bewertung × Hist-Feintuning × Struktur-Multiplikator.
+   */
   timingRang: number
-  /** Kombiniert 55 % Qualität + 45 % Timing (Langfrist-Bias). */
+  /** Geometrischer Kern √(Q·T), primäres Ranking-Maß. */
   kombiniertRang: number
+  /** Gate G1: Mantra ≥ 38, kein Sell-Warn. */
+  gateG1?: boolean
+  /** Gate G2: Trigger oder echte Unterbewertung. */
+  gateG2?: boolean
+  /** Gate G3: Premium>0 ∧ DD<12% ∧ kein Trigger → Teuer. */
+  gateG3Teuer?: boolean
+  /** Struktur-Multiplikator auf T (1.02 / 0.90 / 0.75). */
+  strukturMultiplikator?: number
   /** Segment-Datenqualität für Struktur-Gate. */
   segmentDatenQualitaet?: 'validiert' | 'nur_ms' | 'keine'
   /** Wie vollständig die Entscheidungsdaten sind (0–100 %). */
