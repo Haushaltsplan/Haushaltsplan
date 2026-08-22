@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { ladeFundamentaldaten } from '@/lib/portfolio-analyse/fundamentaldaten-server'
 import { baueMantraAudit } from '@/lib/portfolio-analyse/fundamentaldaten-mantra'
+import { speichereMantraVerlaufSnapshot } from '@/lib/portfolio-analyse/mantra-verlauf-server'
 import type { FundamentaldatenAnfrage, FundamentaldatenPaket } from '@/lib/portfolio-analyse/fundamentaldaten-types'
 
 export const dynamic = 'force-dynamic'
@@ -28,6 +29,13 @@ export async function POST(req: Request) {
 
   try {
     const daten = await ladeFundamentaldaten(anfrage)
+    if (daten.ok && daten.ticker && daten.mantra) {
+      void speichereMantraVerlaufSnapshot({
+        ticker: daten.ticker,
+        isin: anfrage.isin,
+        mantra: daten.mantra,
+      })
+    }
     return NextResponse.json(daten)
   } catch (e) {
     console.error('fundamentaldaten', e)

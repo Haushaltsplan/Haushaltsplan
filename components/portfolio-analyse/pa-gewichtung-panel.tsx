@@ -110,6 +110,7 @@ export function PaGewichtungPanel({
   meta,
   etfBreakdowns,
   etfBreakdownLaden,
+  sektorLookup: sektorLookupProp,
 }: {
   positionen: LivePosition[]
   depotwertEur: number
@@ -117,6 +118,7 @@ export function PaGewichtungPanel({
   meta: Map<string, IsinMetadata>
   etfBreakdowns: Map<string, EtfBreakdown>
   etfBreakdownLaden: boolean
+  sektorLookup?: FundamentalSektorLookup
 }) {
   const router = useRouter()
   const [dimension, setDimension] = useState<GewichtungDimension>('asset')
@@ -138,7 +140,7 @@ export function PaGewichtungPanel({
 
   useEffect(() => {
     if (sektorAnfragen.length === 0) {
-      setFundamentalSektoren(LEERER_SEKTOR_LOOKUP)
+      setFundamentalSektoren(sektorLookupProp ?? LEERER_SEKTOR_LOOKUP)
       return
     }
 
@@ -146,7 +148,16 @@ export function PaGewichtungPanel({
     setSektorNachladen(true)
     void ladeFundamentalSektoren(sektorAnfragen)
       .then((lookup) => {
-        if (!cancelled) setFundamentalSektoren(lookup)
+        if (cancelled) return
+        if (!sektorLookupProp || sektorLookupProp.byIsin.size === 0) {
+          setFundamentalSektoren(lookup)
+          return
+        }
+        const merged: FundamentalSektorLookup = {
+          byIsin: new Map([...sektorLookupProp.byIsin, ...lookup.byIsin]),
+          bySymbol: new Map([...sektorLookupProp.bySymbol, ...lookup.bySymbol]),
+        }
+        setFundamentalSektoren(merged)
       })
       .finally(() => {
         if (!cancelled) setSektorNachladen(false)
@@ -155,7 +166,7 @@ export function PaGewichtungPanel({
     return () => {
       cancelled = true
     }
-  }, [sektorAnfragenKey, sektorAnfragen.length])
+  }, [sektorAnfragenKey, sektorAnfragen.length, sektorLookupProp])
 
   useEffect(() => {
     setEuroKey(null)

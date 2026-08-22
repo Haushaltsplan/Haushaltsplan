@@ -25,6 +25,12 @@ import { ladePortfolioAnalyseDaten } from '@/lib/portfolio-analyse/portfolio-ana
 import { aktualisiereYahooSplitsFuerDepot } from '@/lib/portfolio-analyse/corporate-actions-verbuchung'
 import { parqetReportAusDepot } from '@/lib/portfolio-analyse/parqet-adapter'
 import { ladeEtfBreakdownsFuerPositionen } from '@/lib/portfolio-analyse/etf-breakdown-client'
+import {
+  LEERER_SEKTOR_LOOKUP,
+  ladeFundamentalSektoren,
+  sammleSektorAnfragen,
+  type FundamentalSektorLookup,
+} from '@/lib/portfolio-analyse/sektor-fundamental-client'
 import type { EtfBreakdown } from '@/lib/portfolio-analyse/parqet-core/types'
 import type { SinglePortfolioReport } from '@/lib/portfolio-analyse/parqet-core/types'
 import type { IsinMetadata } from '@/lib/portfolio-analyse/isin-lookup-server'
@@ -44,6 +50,8 @@ type PaContextValue = {
   report: SinglePortfolioReport | null
   etfBreakdowns: Map<string, EtfBreakdown>
   etfBreakdownLaden: boolean
+  sektorLookup: FundamentalSektorLookup
+  sektorLaden: boolean
   hatDaten: boolean
   neuLaden: () => Promise<void>
 }
@@ -70,6 +78,8 @@ export function PaDataProvider({ children }: { children: ReactNode }) {
   const [kursFehler, setKursFehler] = useState(false)
   const [etfBreakdowns, setEtfBreakdowns] = useState<Map<string, EtfBreakdown>>(new Map())
   const [etfBreakdownLaden, setEtfBreakdownLaden] = useState(false)
+  const [sektorLookup, setSektorLookup] = useState<FundamentalSektorLookup>(LEERER_SEKTOR_LOOKUP)
+  const [sektorLaden, setSektorLaden] = useState(false)
 
   const neuLaden = useCallback(async () => {
     setLaden(true)
@@ -177,6 +187,34 @@ export function PaDataProvider({ children }: { children: ReactNode }) {
     }
   }, [etfIsinKey, live, meta])
 
+  const sektorAnfragenKey = useMemo(() => {
+    if (!live?.positionen.length) return ''
+    return sammleSektorAnfragen(live.positionen, meta, null, false)
+      .map((a) => `${a.isin ?? ''}|${a.symbolYahoo ?? ''}`)
+      .join(';')
+  }, [live?.positionen, meta])
+
+  useEffect(() => {
+    if (!sektorAnfragenKey) {
+      setSektorLookup(LEERER_SEKTOR_LOOKUP)
+      setSektorLaden(false)
+      return
+    }
+    let cancelled = false
+    setSektorLaden(true)
+    const items = sammleSektorAnfragen(live!.positionen, meta, null, false)
+    void ladeFundamentalSektoren(items)
+      .then((lookup) => {
+        if (!cancelled) setSektorLookup(lookup)
+      })
+      .finally(() => {
+        if (!cancelled) setSektorLaden(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [sektorAnfragenKey, live, meta])
+
   const report = useMemo(() => {
     if (!live || live.positionen.length === 0) return null
     try {
@@ -185,12 +223,12 @@ export function PaDataProvider({ children }: { children: ReactNode }) {
         live.positionen,
         live.kennzahlen.depotwertEur,
         live.kennzahlen.cashEur,
-        { etfBreakdowns, meta },
+        { etfBreakdowns, meta, sektorLookup },
       )
     } catch {
       return null
     }
-  }, [buchungen, live, etfBreakdowns, meta])
+  }, [buchungen, live, etfBreakdowns, meta, sektorLookup])
 
   const hatDaten = buchungen.length > 0 || (snapshot?.positionen.length ?? 0) > 0
 
@@ -208,6 +246,8 @@ export function PaDataProvider({ children }: { children: ReactNode }) {
     report,
     etfBreakdowns,
     etfBreakdownLaden,
+    sektorLookup,
+    sektorLaden,
     hatDaten,
     neuLaden,
   }

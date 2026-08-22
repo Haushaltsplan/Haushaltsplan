@@ -291,7 +291,7 @@ export function PaFundamentalInhalt({
 
           {unterTab === 'mantra' && daten.mantra ? (
             <div className="space-y-4">
-              <PaFundamentalMantra audit={daten.mantra} />
+              <PaFundamentalMantra audit={daten.mantra} ticker={daten.ticker} />
               <PaFundamentalCapitalAllocation
                 ticker={daten.ticker}
                 symbolYahoo={daten.symbolYahoo}

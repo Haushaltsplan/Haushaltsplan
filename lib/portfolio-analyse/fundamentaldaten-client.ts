@@ -68,3 +68,27 @@ export async function ladeFundamentaldatenClient(
   schreibeLocalCache(anfrage, j)
   return j
 }
+
+export type MantraVerlaufPunktClient = {
+  periodeIso: string
+  periodeLabel: string
+  ampel: string
+  ampelScorePct: number | null
+  scoreMantra: number | null
+  sellTriggerOk: boolean
+  erfuellt: number
+  nichtErfuellt: number
+  erfasstAm: string
+}
+
+export async function ladeMantraVerlaufClient(ticker: string): Promise<MantraVerlaufPunktClient[]> {
+  const t = ticker.trim().toUpperCase()
+  if (!t) return []
+  const res = await fetch(
+    `/api/portfolio-analyse/fundamentaldaten/mantra-verlauf?ticker=${encodeURIComponent(t)}`,
+    { cache: 'no-store' },
+  )
+  const j = (await res.json()) as { ok?: boolean; verlauf?: MantraVerlaufPunktClient[] }
+  if (!res.ok || !j.ok || !j.verlauf) return []
+  return j.verlauf
+}

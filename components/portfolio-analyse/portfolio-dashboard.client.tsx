@@ -41,7 +41,7 @@ function badgeVariant(typ: BuchungsTyp): 'buy' | 'sell' | 'dividend' | 'neutral'
 
 export function PortfolioDashboardClient() {
   const router = useRouter()
-  const { live, liveLaden, kursFehler, buchungen, meta, report, hatDaten, laden, neuLaden } =
+  const { live, liveLaden, kursFehler, buchungen, meta, report, hatDaten, laden, neuLaden, sektorLaden } =
     usePortfolioAnalyse()
   const [periodKey, setPeriodKey] = useState<PeriodPerformance['periodKey']>('MAX')
   const [kursHistorie, setKursHistorie] = useState<Map<string, Map<string, number>>>(new Map())
@@ -175,6 +175,8 @@ export function PortfolioDashboardClient() {
           irr={irr}
           periodKennzahlen={periodKennzahlen}
           onPeriodKeyChange={setPeriodKey}
+          report={report}
+          sektorLaden={sektorLaden}
         />
       ) : null}
 

@@ -20,7 +20,8 @@ import type {
   PortfolioData,
   SinglePortfolioReport,
 } from '@/lib/portfolio-analyse/parqet-core/types'
-import { isinSektorName } from '@/lib/portfolio-analyse/isin-sektoren'
+import { isinSektorName, sektorAusLookup } from '@/lib/portfolio-analyse/isin-sektoren'
+import type { FundamentalSektorLookup } from '@/lib/portfolio-analyse/sektor-fundamental-client'
 import type { LivePosition } from '@/lib/portfolio-analyse/live-bewertung'
 import type { AssetKlasse, PortfolioBuchung, PortfolioDbBuchung } from '@/lib/portfolio-analyse/types'
 
@@ -52,6 +53,7 @@ export function portfolioDataAusBuchungen(
   opts?: {
     etfBreakdowns?: Map<string, EtfBreakdown>
     meta?: Map<string, IsinMetadata>
+    sektorLookup?: FundamentalSektorLookup
   },
 ): PortfolioData {
   const byIsin = new Map<string, AssetHolding>()
@@ -62,6 +64,9 @@ export function portfolioDataAusBuchungen(
     const isin = p.isin?.trim().toUpperCase()
     const m = isin ? opts?.meta?.get(isin) : undefined
     const yahooSymbol = m?.symbolYahoo ?? m?.symbolCandidates?.[0] ?? undefined
+    const sectorName =
+      sektorAusLookup(isin, p.symbolYahoo ?? yahooSymbol ?? null, opts?.sektorLookup) ??
+      isinSektorName(p.isin, opts?.sektorLookup)
     const stk = p.stueck
     const avg = stk > 0 ? p.einstandEur / stk : 0
     const cur = stk > 0 ? p.wertLiveEur / stk : avg
@@ -69,7 +74,7 @@ export function portfolioDataAusBuchungen(
       assetId: id,
       assetName: p.anzeigeName,
       assetType: assetTyp(p.assetKlasse),
-      sectorName: isinSektorName(p.isin),
+      sectorName: sectorName ?? undefined,
       yahooSymbol,
       etfBreakdown: isin && p.assetKlasse === 'etf' ? opts?.etfBreakdowns?.get(isin) : undefined,
       quantity: stk,
@@ -123,11 +128,16 @@ export function portfolioDataAusBuchungen(
 
     let holding = byIsin.get(isin)
     if (!holding) {
+      const m = opts?.meta?.get(isin)
+      const sym = m?.symbolYahoo ?? m?.symbolCandidates?.[0] ?? undefined
       holding = {
         assetId: isin,
         assetName: b.wertpapierName ?? isin,
         assetType: assetTyp(b.assetKlasse),
-        sectorName: isinSektorName(isin),
+        sectorName:
+          sektorAusLookup(isin, sym ?? null, opts?.sektorLookup) ??
+          isinSektorName(isin, opts?.sektorLookup) ??
+          undefined,
         quantity: 0,
         averagePrice: 0,
         currentPrice: 0,
@@ -200,6 +210,7 @@ export function parqetReportAusDepot(
   opts?: {
     etfBreakdowns?: Map<string, EtfBreakdown>
     meta?: Map<string, IsinMetadata>
+    sektorLookup?: FundamentalSektorLookup
   },
 ): SinglePortfolioReport {
   const terminal = depotwertEur ?? positionen.reduce((s, p) => s + p.wertLiveEur, 0) + cashEur

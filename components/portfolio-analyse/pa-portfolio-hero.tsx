@@ -1,14 +1,14 @@
 'use client'
 
 import Link from 'next/link'
-import { useMemo, type ReactNode } from 'react'
+import { useMemo, useState, type ReactNode } from 'react'
 import { DonutChart } from '@/components/finanzen/donut-chart'
 import { PaBadge, PaCard } from '@/components/portfolio-analyse/pa-ui'
 import { formatDatumDe, formatEur, formatProzent } from '@/lib/portfolio-analyse/berechnung'
-import { eintraegeZuDonut, gewichtungNachAsset } from '@/lib/portfolio-analyse/gewichtung'
+import { eintraegeZuDonut, gewichtungAusSlices, gewichtungNachAsset } from '@/lib/portfolio-analyse/gewichtung'
 import type { LivePosition } from '@/lib/portfolio-analyse/live-bewertung'
 import type { ParqetPeriodKennzahlen } from '@/lib/portfolio-analyse/parqet-period-kennzahlen'
-import type { PortfolioScopeMetrics } from '@/lib/portfolio-analyse/parqet-core/types'
+import type { PortfolioScopeMetrics, SinglePortfolioReport } from '@/lib/portfolio-analyse/parqet-core/types'
 import type { PeriodPerformance } from '@/lib/portfolio-analyse/parqet-core/types'
 import { ASSET_KLASSE_LABEL, type AssetKlasse } from '@/lib/portfolio-analyse/types'
 
@@ -95,6 +95,8 @@ export function PaPortfolioHero({
   irr,
   periodKennzahlen,
   onPeriodKeyChange,
+  report,
+  sektorLaden,
 }: {
   positionen: LivePosition[]
   kennzahlen: {
@@ -106,11 +108,27 @@ export function PaPortfolioHero({
   irr: number | null | undefined
   periodKennzahlen: ParqetPeriodKennzahlen
   onPeriodKeyChange: (key: PeriodPerformance['periodKey']) => void
+  report?: SinglePortfolioReport | null
+  sektorLaden?: boolean
 }) {
+  const [donutModus, setDonutModus] = useState<'asset' | 'sektor'>('asset')
+
+  const sektorEintraege = useMemo(() => {
+    const slices = (report?.allocation.bySector ?? []).filter(
+      (s) => s.valueEUR > 0 && s.label !== 'Unbekannt' && s.label !== 'Sonstige',
+    )
+    return slices.length > 0 ? gewichtungAusSlices(slices) : []
+  }, [report?.allocation.bySector])
+
+  const sektorDonutMoeglich = sektorEintraege.length > 1
+
   const donut = useMemo(() => {
+    if (donutModus === 'sektor' && sektorEintraege.length > 0) {
+      return eintraegeZuDonut(sektorEintraege, 12)
+    }
     const eintraege = gewichtungNachAsset(positionen)
     return eintraegeZuDonut(eintraege, 24)
-  }, [positionen])
+  }, [donutModus, positionen, sektorEintraege])
 
   const assetklassen = useMemo(() => new Set(positionen.map((p) => p.assetKlasse)).size, [positionen])
   const holdings = positionen.filter((p) => p.wertLiveEur > 0).length
@@ -139,7 +157,28 @@ export function PaPortfolioHero({
   return (
     <PaCard variant="elevated" className="overflow-hidden">
       <div className="flex flex-col gap-5 p-4 sm:gap-8 sm:p-6 lg:flex-row lg:items-stretch lg:gap-10">
-        <div className="flex shrink-0 justify-center lg:w-[min(42%,280px)] lg:justify-start lg:pt-1">
+        <div className="flex shrink-0 flex-col items-center gap-2 lg:w-[min(42%,280px)] lg:items-start lg:pt-1">
+          {sektorDonutMoeglich ? (
+            <div className="flex rounded-lg border border-white/[0.06] bg-[var(--app-surface-muted)]/30 p-0.5 text-xs">
+              {(['asset', 'sektor'] as const).map((m) => (
+                <button
+                  key={m}
+                  type="button"
+                  onClick={() => setDonutModus(m)}
+                  className={`rounded-md px-3 py-1 font-medium transition ${
+                    donutModus === m
+                      ? 'bg-[var(--app-surface-muted)] text-white'
+                      : 'text-[var(--app-text-muted)] hover:text-[var(--app-text)]'
+                  }`}
+                >
+                  {m === 'asset' ? 'Assets' : 'Sektoren'}
+                </button>
+              ))}
+            </div>
+          ) : sektorLaden ? (
+            <p className="text-[11px] text-[var(--app-text-muted)]">Sektoren werden geladen …</p>
+          ) : null}
+          <div className="flex justify-center lg:justify-start">
           <div className="sm:hidden">
             <DonutChart
               segmente={donut}
@@ -163,6 +202,7 @@ export function PaPortfolioHero({
               dicke={32}
               mitte={{ wert: formatEurKompakt(depotwert) }}
             />
+          </div>
           </div>
         </div>
 

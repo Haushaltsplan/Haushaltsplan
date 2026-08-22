@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { PaCard } from '@/components/portfolio-analyse/pa-ui'
 import { formatProzent } from '@/lib/portfolio-analyse/berechnung'
 import { fundamentaldatenHref } from '@/lib/portfolio-analyse/fundamentaldaten-navigation'
+import { usePortfolioAnalyse } from '@/components/portfolio-analyse/pa-data-provider'
 import {
   bauePerformanceMap,
   performanceFarbe,
@@ -18,8 +19,12 @@ export function PaPerformanceMap({
   positionen: LivePosition[]
 }) {
   const router = useRouter()
+  const { sektorLookup } = usePortfolioAnalyse()
   const [groesse, setGroesse] = useState<PerformanceGroesse>('markt')
-  const sektoren = useMemo(() => bauePerformanceMap(positionen, groesse), [positionen, groesse])
+  const sektoren = useMemo(
+    () => bauePerformanceMap(positionen, groesse, sektorLookup),
+    [positionen, groesse, sektorLookup],
+  )
 
   if (sektoren.length === 0) {
     return <p className="py-12 text-center text-sm text-[var(--app-text-muted)]">Keine Positionen für die Performance Map.</p>

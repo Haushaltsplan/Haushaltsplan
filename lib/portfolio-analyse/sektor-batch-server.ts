@@ -4,6 +4,10 @@ import { brokerSymbolKandidaten } from '@/lib/portfolio-analyse/dividenden-datum
 import { formatiereBrancheDe } from '@/lib/portfolio-analyse/fundamentaldaten-unternehmen-de'
 import { isinKenntnis } from '@/lib/portfolio-analyse/isin-kenntnisse'
 import {
+  ladeSektorenAusCloud,
+  speichereSektorenInCloud,
+} from '@/lib/portfolio-analyse/sektor-cache-cloud-server'
+import {
   holeYahooFinanceAuth,
   YAHOO_FINANCE_FETCH_HEADERS,
 } from '@/lib/portfolio-analyse/yahoo-finance-auth-server'
@@ -82,30 +86,64 @@ async function yahooBrancheFuerSymbol(basisSymbol: string): Promise<SektorBatchE
   }
 }
 
-/** Gleiche Sektor/Branche-Quelle wie Fundamentaldaten (Yahoo assetProfile + DE-Labels). */
+async function yahooBrancheFuerSymbole(symbole: string[]): Promise<SektorBatchEintrag> {
+  for (const sym of symbole) {
+    const data = await yahooBrancheFuerSymbol(sym)
+    if (data.sektor || data.branche) return data
+  }
+  return { sektor: null, branche: null }
+}
+
+/** Yahoo assetProfile (GICS) + DE-Labels; Cloud-Cache + In-Memory. */
 export async function holeSektorenBatch(
   items: SektorBatchItem[],
 ): Promise<Record<string, SektorBatchEintrag>> {
   const result: Record<string, SektorBatchEintrag> = {}
   const symbolZuItems = new Map<string, SektorBatchItem[]>()
 
+  const isins = items
+    .map((i) => i.isin?.trim().toUpperCase())
+    .filter((i): i is string => Boolean(i && i.length >= 12))
+
+  const cloud = await ladeSektorenAusCloud(isins)
+  for (const [isin, data] of cloud) {
+    result[isin] = data
+    for (const sym of symboleFuerItem({ isin })) {
+      result[sym] = data
+      result[sym.split('.')[0]!] = data
+    }
+  }
+
   for (const item of items.slice(0, 120)) {
+    const isin = item.isin?.trim().toUpperCase()
+    if (isin && result[isin]?.sektor) continue
+
     const symbole = symboleFuerItem(item)
-    const basis = symbole[0]
-    if (!basis) continue
+    if (symbole.length === 0) continue
+
+    const basis = symbole[0]!
     const list = symbolZuItems.get(basis) ?? []
     list.push(item)
     symbolZuItems.set(basis, list)
   }
 
-  for (let i = 0; i < [...symbolZuItems.entries()].length; i += 12) {
-    const chunk = [...symbolZuItems.entries()].slice(i, i + 12)
+  const cloudWrites: Array<{ isin: string; data: SektorBatchEintrag; symbolYahoo?: string | null }> = []
+
+  const entries = [...symbolZuItems.entries()]
+  for (let i = 0; i < entries.length; i += 8) {
+    const chunk = entries.slice(i, i + 8)
     await Promise.all(
       chunk.map(async ([basis, related]) => {
-        const data = await yahooBrancheFuerSymbol(basis)
+        const symbole = [...new Set(related.flatMap((item) => symboleFuerItem(item)))]
+        const data = await yahooBrancheFuerSymbole(symbole.length > 0 ? symbole : [basis])
         for (const item of related) {
           const isin = item.isin?.trim().toUpperCase()
-          if (isin) result[isin] = data
+          if (isin) {
+            result[isin] = data
+            if (data.sektor || data.branche) {
+              cloudWrites.push({ isin, data, symbolYahoo: item.symbolYahoo })
+            }
+          }
           for (const sym of symboleFuerItem(item)) {
             result[sym] = data
             result[sym.split('.')[0]!] = data
@@ -113,6 +151,10 @@ export async function holeSektorenBatch(
         }
       }),
     )
+  }
+
+  if (cloudWrites.length > 0) {
+    void speichereSektorenInCloud(cloudWrites)
   }
 
   return result

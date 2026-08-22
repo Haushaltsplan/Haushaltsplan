@@ -1,6 +1,11 @@
 'use client'
 
+import { useEffect, useMemo, useState } from 'react'
 import { appTableScrollClassName } from '@/components/page-shell'
+import {
+  ladeMantraVerlaufClient,
+  type MantraVerlaufPunktClient,
+} from '@/lib/portfolio-analyse/fundamentaldaten-client'
 import type {
   FundamentalMantraAudit,
   MantraAuditErgebnis,
@@ -197,7 +202,196 @@ function ZusammenfassungLeiste({ audit }: { audit: FundamentalMantraAudit }) {
   )
 }
 
-export function PaFundamentalMantra({ audit }: { audit: FundamentalMantraAudit }) {
+function MantraVerlaufSparkline({
+  verlauf,
+  breite = 280,
+  hoehe = 56,
+}: {
+  verlauf: MantraVerlaufPunktClient[]
+  breite?: number
+  hoehe?: number
+}) {
+  const scores = verlauf.map((v) => v.ampelScorePct ?? v.scoreMantra ?? 0)
+  const min = Math.min(...scores)
+  const max = Math.max(...scores)
+  const range = max - min || 1
+  const pad = 4
+  const w = breite - pad * 2
+  const h = hoehe - pad * 2
+
+  const punkte = verlauf.map((v, i) => {
+    const score = v.ampelScorePct ?? v.scoreMantra ?? 0
+    const x = pad + (i / Math.max(1, verlauf.length - 1)) * w
+    const y = pad + h - ((score - min) / range) * h
+    return `${x.toFixed(1)},${y.toFixed(1)}`
+  })
+
+  const letzter = scores.at(-1) ?? 0
+  const erster = scores.at(0) ?? 0
+  const trend = letzter > erster ? '↑' : letzter < erster ? '↓' : '→'
+  const trendClass =
+    letzter > erster ? 'text-emerald-400' : letzter < erster ? 'text-rose-400' : 'text-[var(--app-text-muted)]'
+
+  return (
+    <div className="flex items-center gap-3">
+      <svg width={breite} height={hoehe} className="shrink-0 overflow-visible" aria-hidden>
+        <polyline
+          fill="none"
+          stroke="currentColor"
+          strokeWidth={2}
+          strokeLinejoin="round"
+          strokeLinecap="round"
+          className="text-teal-400"
+          points={punkte.join(' ')}
+        />
+        {verlauf.map((v, i) => {
+          const score = v.ampelScorePct ?? v.scoreMantra ?? 0
+          const x = pad + (i / Math.max(1, verlauf.length - 1)) * w
+          const y = pad + h - ((score - min) / range) * h
+          const fill =
+            v.ampel === 'gruen'
+              ? '#34d399'
+              : v.ampel === 'gelb'
+                ? '#fbbf24'
+                : v.ampel === 'rot'
+                  ? '#f87171'
+                  : '#71717a'
+          return <circle key={v.periodeIso} cx={x} cy={y} r={3.5} fill={fill} />
+        })}
+      </svg>
+      <span className={`text-lg font-semibold tabular-nums ${trendClass}`}>{trend}</span>
+    </div>
+  )
+}
+
+function MantraVerlaufSektion({ ticker }: { ticker: string }) {
+  const [verlauf, setVerlauf] = useState<MantraVerlaufPunktClient[]>([])
+  const [laden, setLaden] = useState(true)
+
+  useEffect(() => {
+    let cancelled = false
+    setLaden(true)
+    void ladeMantraVerlaufClient(ticker)
+      .then((punkte) => {
+        if (!cancelled) setVerlauf(punkte)
+      })
+      .finally(() => {
+        if (!cancelled) setLaden(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [ticker])
+
+  const fruehwarnung = useMemo(() => {
+    if (verlauf.length < 2) return null
+    const scores = verlauf.map((v) => v.ampelScorePct ?? v.scoreMantra).filter((s): s is number => s != null)
+    if (scores.length < 2) return null
+    const delta = scores.at(-1)! - scores[0]!
+    const sellTriggerOffen = verlauf.some((v) => !v.sellTriggerOk)
+    if (delta <= -8 || (delta <= -5 && sellTriggerOffen)) {
+      return 'Sinkender Mantra-Score bei intakter oder steigender Bewertung ist ein klassisches Ausstiegssignal — Sell-Triggers und Moat prüfen.'
+    }
+    return null
+  }, [verlauf])
+
+  if (laden) {
+    return (
+      <p className="text-sm text-[var(--app-text-muted)]">Mantra-Verlauf wird geladen …</p>
+    )
+  }
+
+  if (verlauf.length === 0) {
+    return (
+      <p className="rounded-xl border border-[var(--app-border)] bg-[var(--app-surface-muted)] px-4 py-3 text-sm text-[var(--app-text-muted)]">
+        Noch kein Quartals-Verlauf gespeichert. Beim nächsten Abruf der Fundamentaldaten wird ein Snapshot angelegt —
+        über mehrere Quartale entsteht so die Historie.
+      </p>
+    )
+  }
+
+  const aktuell = verlauf.at(-1)!
+  const scores = verlauf.map((v) => v.ampelScorePct ?? v.scoreMantra).filter((s): s is number => s != null)
+
+  return (
+    <section className="space-y-3 rounded-xl border border-[var(--app-border)] bg-[var(--app-surface-muted)] p-4">
+      <div>
+        <h3 className="text-sm font-semibold tracking-tight text-white">Mantra-Score über Quartale</h3>
+        <p className="mt-1 text-sm text-[var(--app-text-muted)]">
+          Dashboard-Score (0–100) pro Quartal — sinkende Qualität bei steigendem Kurs als Frühwarnsignal nutzen.
+        </p>
+      </div>
+
+      {fruehwarnung ? (
+        <p className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-100">
+          {fruehwarnung}
+        </p>
+      ) : null}
+
+      {verlauf.length >= 2 ? (
+        <MantraVerlaufSparkline verlauf={verlauf} />
+      ) : (
+        <p className="text-sm text-[var(--app-text-muted)]">Erster Snapshot — ab dem nächsten Quartal erscheint der Verlauf.</p>
+      )}
+
+      <div className="flex flex-wrap gap-4 text-sm">
+        <div>
+          <p className="text-[11px] text-[var(--app-text-muted)]">Aktuell ({aktuell.periodeLabel})</p>
+          <p className="font-semibold text-white">
+            {aktuell.ampelScorePct != null ? `${aktuell.ampelScorePct}%` : '–'}{' '}
+            <span className="text-[var(--app-text-muted)]">· {AMPEL_LABEL[aktuell.ampel as MantraAmpel] ?? aktuell.ampel}</span>
+          </p>
+        </div>
+        {scores.length >= 2 ? (
+          <>
+            <div>
+              <p className="text-[11px] text-[var(--app-text-muted)]">Min / Max</p>
+              <p className="font-semibold text-white">
+                {Math.min(...scores)} / {Math.max(...scores)}
+              </p>
+            </div>
+            <div>
+              <p className="text-[11px] text-[var(--app-text-muted)]">Erster Snapshot</p>
+              <p className="font-semibold text-white">{verlauf[0]!.periodeLabel}</p>
+            </div>
+          </>
+        ) : null}
+      </div>
+
+      {verlauf.length >= 2 ? (
+        <div className={`hidden ${appTableScrollClassName} rounded-lg border border-[var(--app-border)] md:block`}>
+          <table className="app-data-table min-w-full text-left text-sm">
+            <thead className="bg-[var(--app-surface-muted)] text-xs uppercase tracking-wide text-[var(--app-text-muted)]">
+              <tr>
+                <th className="px-3 py-2 font-semibold">Periode</th>
+                <th className="px-3 py-2 font-semibold">Score</th>
+                <th className="px-3 py-2 font-semibold">Ampel</th>
+                <th className="px-3 py-2 font-semibold">Erfüllt</th>
+                <th className="px-3 py-2 font-semibold">Sell-Trigger</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-[var(--app-border)]">
+              {[...verlauf].reverse().map((v) => (
+                <tr key={v.periodeIso}>
+                  <td className="px-3 py-2 text-white">{v.periodeLabel}</td>
+                  <td className="px-3 py-2 tabular-nums">{v.ampelScorePct ?? v.scoreMantra ?? '–'}</td>
+                  <td className="px-3 py-2">{AMPEL_LABEL[v.ampel as MantraAmpel] ?? v.ampel}</td>
+                  <td className="px-3 py-2 tabular-nums">
+                    {v.erfuellt}
+                    {v.nichtErfuellt > 0 ? ` / ${v.nichtErfuellt} offen` : ''}
+                  </td>
+                  <td className="px-3 py-2">{v.sellTriggerOk ? 'OK' : 'Warnung'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : null}
+    </section>
+  )
+}
+
+export function PaFundamentalMantra({ audit, ticker }: { audit: FundamentalMantraAudit; ticker: string }) {
   return (
     <div className="space-y-6 overflow-hidden rounded-xl border border-[var(--app-border)] bg-[var(--app-surface-muted)] p-4 ring-1 ring-white/[0.03] sm:p-5">
       <div>
@@ -215,6 +409,8 @@ export function PaFundamentalMantra({ audit }: { audit: FundamentalMantraAudit }
       </blockquote>
 
       <ZusammenfassungLeiste audit={audit} />
+
+      <MantraVerlaufSektion ticker={ticker} />
 
       <MantraAuditTabelle
         titel="2. Quantitatives Dashboard"

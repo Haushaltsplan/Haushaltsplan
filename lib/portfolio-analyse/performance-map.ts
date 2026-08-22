@@ -1,6 +1,7 @@
 import type { LivePosition } from '@/lib/portfolio-analyse/live-bewertung'
 import type { AssetKlasse } from '@/lib/portfolio-analyse/types'
 import { sektorFuerPosition } from '@/lib/portfolio-analyse/isin-sektoren'
+import type { FundamentalSektorLookup } from '@/lib/portfolio-analyse/sektor-fundamental-client'
 
 export type PerformanceMapTile = {
   id: string
@@ -45,6 +46,7 @@ export function performanceFarbe(prozent: number | null): { background: string; 
 export function bauePerformanceMap(
   positionen: LivePosition[],
   groesse: PerformanceGroesse = 'markt',
+  sektorLookup?: FundamentalSektorLookup,
 ): PerformanceMapSektor[] {
   const summe = positionen.reduce((s, p) => s + (groesse === 'markt' ? p.wertLiveEur : p.einstandEur), 0) || 1
   const bySektor = new Map<string, PerformanceMapTile[]>()
@@ -52,7 +54,7 @@ export function bauePerformanceMap(
   for (const p of positionen) {
     const wert = groesse === 'markt' ? p.wertLiveEur : p.einstandEur
     if (wert <= 0) continue
-    const sektor = sektorFuerPosition(p)
+    const sektor = sektorFuerPosition(p, sektorLookup)
     const perf =
       p.aenderungTagProzent != null && p.hatLiveKurs
         ? p.aenderungTagProzent
