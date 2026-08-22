@@ -152,7 +152,14 @@ async function fetchMsHtml(url: string, retries = 4): Promise<string | null> {
 
 async function fetchSegmentsHtml(slug: string): Promise<string | null> {
   await fetchMsHtml(`${BASE}/${slug}/`)
-  return fetchMsHtml(`${BASE}/${slug}/finances-segments/`)
+  const finances = await fetchMsHtml(`${BASE}/${slug}/finances-segments/`)
+  if (finances && htmlHatMsSegmentDaten(finances)) return finances
+  // Fallback: /company/ enthält oft „Sales by Activity/Region“-Tabellen (EU)
+  const company = await fetchMsHtml(`${BASE}/${slug}/company/`)
+  if (company && (htmlHatMsSegmentDaten(company) || /Sales by Activity|Sales by Region|horizontalFinancialTableN\d+_segments/i.test(company))) {
+    return company
+  }
+  return finances ?? company
 }
 
 function slugsAusIsinSucheHtml(html: string, name: string): string[] {

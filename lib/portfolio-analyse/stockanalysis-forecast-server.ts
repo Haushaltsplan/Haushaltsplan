@@ -26,12 +26,15 @@ const YAHOO_SUFFIX_TO_EXCHANGE: Record<string, string> = {
 
 /** Bekannte StockAnalysis /quote/{börse}/{ticker}/financials/ — vor Yahoo-Suffix (H11.SG → falsch). */
 const SA_QUOTE_FINANCIALS: Record<string, string> = {
-  HLMA: '/quote/lon/HLMA/financials/',
-  MUM: '/quote/etr/MUM/financials/',
-  ATD: '/quote/tsx/ATD/financials/',
-  SIKA: '/quote/swx/SIKA/financials/',
-  WKL: '/quote/ams/WKL/financials/',
-  STMN: '/quote/swx/STMN/financials/',
+  HLMA: '/quote/lon/HLMA/financials/income-statement/',
+  MUM: '/quote/etr/MUM/financials/income-statement/',
+  ATD: '/quote/tsx/ATD/financials/income-statement/',
+  SIKA: '/quote/swx/SIKA/financials/income-statement/',
+  WKL: '/quote/ams/WKL/financials/income-statement/',
+  STMN: '/quote/swx/STMN/financials/income-statement/',
+  RMS: '/quote/epa/RMS/financials/income-statement/',
+  ASML: '/quote/ams/ASML/financials/income-statement/',
+  HESAY: '/quote/otc/HESAY/financials/income-statement/',
 }
 
 function saFinanzPfadeAusKenntnisUndTicker(opts: {
@@ -60,6 +63,7 @@ export type StockanalysisJahresForecastEintrag = {
   periodenEnde: string
   umsatzUsd: number | null
   operatingIncomeUsd: number | null
+  ebitdaUsd: number | null
   netIncomeUsd: number | null
   freeCashFlowUsd: number | null
   grossProfitUsd: number | null
@@ -189,6 +193,8 @@ function extrahiereAnnualBlock(html: string): string | null {
   const anchor = 'fiscalYear:["'
   const idx = html.indexOf(anchor)
   if (idx < 0) return null
+
+  // Klassisches Format: annual:{ fiscalYear:… }
   const start = html.lastIndexOf('annual:{', idx)
   if (start >= 0) {
     let depth = 0
@@ -200,6 +206,15 @@ function extrahiereAnnualBlock(html: string): string | null {
       }
     }
   }
+
+  // Neues SvelteKit-Format (2025+): sections[].data mit gp:/revenue:/opinc: …
+  // Kein annual:{ — Block um fiscalYear + Datenarrays schneiden.
+  if (/gp:\[|revenue:\[|opinc:\[|grossProfit:\[/.test(html.slice(idx, idx + 8_000))) {
+    const from = Math.max(0, idx - 20)
+    const to = Math.min(html.length, idx + 30_000)
+    return html.slice(from, to)
+  }
+
   const end =
     html.indexOf('},annual:{', idx) >= 0
       ? html.indexOf('},annual:{', idx) + 1
@@ -226,21 +241,31 @@ function dedupeJahresreiheNachJahr(
   return [...byYear.values()].sort((a, b) => a.jahr - b.jahr)
 }
 
+function parseArrayMitAliases(block: string, ...keys: string[]): unknown[] {
+  for (const key of keys) {
+    const hit = parseArrayLiteral(block, key)
+    if (hit && hit.length > 0) return hit
+  }
+  return []
+}
+
 function baueJahresreiheAusAnnual(block: string): StockanalysisJahresForecastEintrag[] {
-  const years = (parseArrayLiteral(block, 'fiscalYear') ?? [])
+  const years = parseArrayMitAliases(block, 'fiscalYear')
     .map((y) => Number(parseString(y)))
     .filter((y) => Number.isFinite(y) && y > 2000)
-  const dates = (parseArrayLiteral(block, 'dates') ?? []).map((d) => parseString(d))
-  const revenue = parseArrayLiteral(block, 'revenue') ?? []
-  const operatingIncome = parseArrayLiteral(block, 'operatingIncome') ?? []
-  const netIncome = parseArrayLiteral(block, 'netIncome') ?? []
-  const freeCashFlow = parseArrayLiteral(block, 'freeCashFlow') ?? []
-  const grossProfit = parseArrayLiteral(block, 'grossProfit') ?? []
-  const eps = parseArrayLiteral(block, 'eps') ?? []
-  const adjustedEps = parseArrayLiteral(block, 'adjustedEps') ?? []
-  const grossMargin = parseArrayLiteral(block, 'grossMargin') ?? []
-  const revenueGrowth = parseArrayLiteral(block, 'revenueGrowth') ?? []
-  const epsGrowth = parseArrayLiteral(block, 'epsGrowth') ?? []
+  const dates = parseArrayMitAliases(block, 'datekey', 'dates').map((d) => parseString(d))
+  const quarters = parseArrayMitAliases(block, 'fiscalQuarter').map((q) => parseString(q))
+  const revenue = parseArrayMitAliases(block, 'revenue')
+  const operatingIncome = parseArrayMitAliases(block, 'opinc', 'operatingIncome', 'ebit')
+  const ebitda = parseArrayMitAliases(block, 'ebitda')
+  const netIncome = parseArrayMitAliases(block, 'netinccmn', 'netIncome', 'netIncomeCommon')
+  const freeCashFlow = parseArrayMitAliases(block, 'fcf', 'freeCashFlow')
+  const grossProfit = parseArrayMitAliases(block, 'gp', 'grossProfit')
+  const eps = parseArrayMitAliases(block, 'epsdil', 'eps')
+  const adjustedEps = parseArrayMitAliases(block, 'adjustedEps')
+  const grossMargin = parseArrayMitAliases(block, 'grossMargin')
+  const revenueGrowth = parseArrayMitAliases(block, 'revenueGrowth')
+  const epsGrowth = parseArrayMitAliases(block, 'epsGrowth')
 
   const n = years.length
   if (n === 0) return []
@@ -255,20 +280,39 @@ function baueJahresreiheAusAnnual(block: string): StockanalysisJahresForecastEin
   const out: StockanalysisJahresForecastEintrag[] = []
   for (let i = 0; i < n; i++) {
     const jahr = years[i]!
+    const q = (quarters[i] ?? '').toUpperCase()
+    // Halbjahr/Zwischenbericht (H1, Q1–Q3) nicht als FY-Historie
+    if (q && !/^Q4$|^H2$|^FY/i.test(q) && !/^$/.test(q)) {
+      if (/^H1$|^Q[123]$/i.test(q)) continue
+    }
+
     const umsatzUsd = parseZahl(revenue[i])
     const operatingIncomeUsd = parseZahl(operatingIncome[i])
+    const ebitdaUsd = parseZahl(ebitda[i])
     const netIncomeUsd = parseZahl(netIncome[i])
     const freeCashFlowUsd = parseZahl(freeCashFlow[i])
-    const grossProfitUsd = parseZahl(grossProfit[i])
+    let grossProfitUsd = parseZahl(grossProfit[i])
     const epsVal = parseZahl(eps[i])
     const adjEps = parseZahl(adjustedEps[i])
     const grossMarginPct = parseZahl(grossMargin[i])
     const revenueGrowthPct = parseZahl(revenueGrowth[i])
     const epsGrowthPct = parseZahl(epsGrowth[i])
 
+    // Forecast: GP oft [PRO], Marge aber numerisch → GP = Umsatz × Marge
+    if (
+      grossProfitUsd == null &&
+      umsatzUsd != null &&
+      grossMarginPct != null &&
+      Number.isFinite(grossMarginPct)
+    ) {
+      const m = grossMarginPct > 1.5 ? grossMarginPct / 100 : grossMarginPct
+      if (m > 0 && m < 1) grossProfitUsd = umsatzUsd * m
+    }
+
     const hatWert =
       umsatzUsd != null ||
       operatingIncomeUsd != null ||
+      ebitdaUsd != null ||
       netIncomeUsd != null ||
       freeCashFlowUsd != null ||
       grossProfitUsd != null ||
@@ -284,6 +328,7 @@ function baueJahresreiheAusAnnual(block: string): StockanalysisJahresForecastEin
       periodenEnde,
       umsatzUsd,
       operatingIncomeUsd,
+      ebitdaUsd,
       netIncomeUsd,
       freeCashFlowUsd,
       grossProfitUsd,
@@ -318,8 +363,13 @@ function kandidatenFinanzPfade(opts: {
   if (sym.includes('.')) {
     const [base, suf] = sym.split('.')
     const ex = YAHOO_SUFFIX_TO_EXCHANGE[suf ?? '']
-    if (ex && base) add(`/quote/${ex}/${base}/financials/`)
+    if (ex && base) {
+      // income-statement zuerst — vollständige GuV inkl. Gross Profit (neues SA-Format)
+      add(`/quote/${ex}/${base}/financials/income-statement/`)
+      add(`/quote/${ex}/${base}/financials/`)
+    }
   } else if (sym) {
+    add(`/stocks/${sym.toLowerCase()}/financials/income-statement/`)
     add(`/stocks/${sym.toLowerCase()}/financials/`)
   }
 
@@ -357,6 +407,7 @@ function leererSaJahresEintrag(jahr: number): StockanalysisJahresForecastEintrag
     periodenEnde: `${jahr}-12-31`,
     umsatzUsd: null,
     operatingIncomeUsd: null,
+    ebitdaUsd: null,
     netIncomeUsd: null,
     freeCashFlowUsd: null,
     grossProfitUsd: null,

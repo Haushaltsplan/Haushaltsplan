@@ -56,7 +56,8 @@ export function parseEuKeyFiguresHistorieAusText(text: string): EuUrdHistorieRoh
       id: 'ebit',
       label: 'EBIT',
       gruppe: 'finanzdaten',
-      re: /\b(?:Recurring )?Operating (?:income|profit|result)|EBIT\b(?:\s+\d)?([^%]{0,100}?)(?=in % of|Operating income|Net income|EBITDA|$)/i,
+      // Wichtig: Capture nach ALLEN Alternativen (sonst matcht „Recurring operating income“ ohne Zahlen)
+      re: /\b(?:(?:Recurring )?Operating (?:income|profit|result)|EBIT)\b(?:\s+\d)?([^%]{0,120}?)(?=in % of|Operating income|Net income|EBITDA|$)/i,
     },
     {
       id: 'nettogewinn',
@@ -68,7 +69,7 @@ export function parseEuKeyFiguresHistorieAusText(text: string): EuUrdHistorieRoh
       id: 'fcf',
       label: 'Free Cashflow (FCF)',
       gruppe: 'cashflow',
-      re: /(?:Adjusted )?free cash flows?|Free Cashflow|Cashflow aus laufender Geschäftstätigkeit abzüglich Investition([^A-Za-z]{0,100}?)(?=Equity|Net cash|Headcount|Eigenkapital|$)/i,
+      re: /(?:(?:Adjusted )?free cash flows?|Free Cashflow|Cashflow aus laufender Geschäftstätigkeit abzüglich Investition)([^A-Za-z%]{0,120}?)(?=Equity|Net cash|Headcount|Eigenkapital|$)/i,
     },
     {
       id: 'eigenkapital',

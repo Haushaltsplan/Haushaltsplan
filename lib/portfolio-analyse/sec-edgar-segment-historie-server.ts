@@ -901,6 +901,21 @@ export function extrahiereSecZusatzRisiko(text: string, html: string): SecZusatz
   }
 
   const hauptkunden: SecZusatzRisikoFelder['hauptkunden'] = []
+  const kundenMuell =
+    /^(the|our|we|a|an|one|each|no|all|this|that|and|or|from|for|with|to|of|in|on)\b/i
+  const kundenKeinName =
+    /revenue|sales|organization|outside|north america|venues?|customer|customers|approximately|accounted|total|operations?|segment|geographic|international|domestic|government|commercial|direct sales|subscription|services?|products?|regions?|countries|rest of|other\b/i
+
+  const istPlausiblerKundenname = (name: string, pct: number) => {
+    if (!name || name.length < 3 || name.length > 48) return false
+    if (pct <= 0 || pct > 55) return false
+    if (kundenMuell.test(name)) return false
+    if (kundenKeinName.test(name)) return false
+    if (!/[A-Z]/.test(name[0]!)) return false
+    if ((name.match(/\s/g) ?? []).length >= 6) return false
+    return true
+  }
+
   const kundenRe =
     /([A-Z][A-Za-z0-9&.\- ]{2,40}?)\s+(?:accounted\s+for|represented)\s+(?:approximately\s+)?(\d{1,2}(?:\.\d+)?)\s*%/gi
   let km: RegExpExecArray | null
@@ -908,8 +923,7 @@ export function extrahiereSecZusatzRisiko(text: string, html: string): SecZusatz
   while ((km = kundenRe.exec(fenster)) !== null && hauptkunden.length < 8) {
     const name = km[1]?.trim().replace(/\s+/g, ' ')
     const pct = parseFloat(km[2]!)
-    if (!name || name.length < 3 || pct <= 0 || pct > 80) continue
-    if (/^(the|our|we|a|an|one|each|no|all|this|that)\b/i.test(name)) continue
+    if (!name || !istPlausiblerKundenname(name, pct)) continue
     const key = name.toLowerCase()
     if (seenK.has(key)) continue
     seenK.add(key)
@@ -921,7 +935,7 @@ export function extrahiereSecZusatzRisiko(text: string, html: string): SecZusatz
   while ((km = kundenRe2.exec(fenster)) !== null && hauptkunden.length < 8) {
     const pct = parseFloat(km[1]!)
     const name = km[2]?.trim().replace(/\s+/g, ' ')
-    if (!name || pct <= 5 || pct > 80) continue
+    if (!name || !istPlausiblerKundenname(name, pct) || pct <= 5) continue
     const key = name.toLowerCase()
     if (seenK.has(key)) continue
     seenK.add(key)
@@ -940,7 +954,7 @@ export function extrahiereSecZusatzRisiko(text: string, html: string): SecZusatz
       [n1, p1],
       [n2, p2],
     ] as const) {
-      if (!name || !(pct > 0) || pct > 80) continue
+      if (!name || !istPlausiblerKundenname(name, pct)) continue
       const key = name.toLowerCase()
       if (seenK.has(key)) continue
       seenK.add(key)
@@ -951,13 +965,22 @@ export function extrahiereSecZusatzRisiko(text: string, html: string): SecZusatz
   // Fallback: einzelner größter Kunde aus Heuristik
   if (hauptkunden.length === 0) {
     const single = extrahiereKundenKonzentration(text)
-    if (single) {
+    if (single && istPlausiblerKundenname(single.name ?? 'Größter Kunde', single.anteilPct)) {
       hauptkunden.push({
         name: single.name ?? 'Größter Kunde',
         anteilPct: single.anteilPct,
       })
     }
   }
+
+  // Top-3 > 100 % = Parser-Müll (NOW: „direct sales organization“ etc.)
+  const top3Sum = hauptkunden
+    .slice()
+    .sort((a, b) => b.anteilPct - a.anteilPct)
+    .slice(0, 3)
+    .reduce((s, k) => s + k.anteilPct, 0)
+  if (top3Sum > 100) hauptkunden.length = 0
+
 
   return {
     mitarbeiterAnzahl,

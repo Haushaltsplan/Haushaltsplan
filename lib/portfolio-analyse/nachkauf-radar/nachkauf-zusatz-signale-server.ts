@@ -609,11 +609,14 @@ export async function ladeNachkaufZusatzSignale(opts: {
     })(),
     ...(() => {
       const mnaMio = capital?.saeulen.find((s) => s.id === 'mna')?.betragMioUsd ?? null
-      const r = berechneReinvestition(opts.paket.perioden, opts.paket.zeilen, mnaMio)
+      const r = berechneReinvestition(opts.paket.perioden, opts.paket.zeilen, mnaMio, null, null)
       const eq = berechneEarningsQuality(opts.paket.perioden, opts.paket.zeilen)
+      // Incremental ROIC aus Key Metrics (bereits Yahoo/Nasdaq), sonst null
+      const kmIncr = opts.paket.keyMetrics.find((m) => m.id === 'incremental_roic')
+      const incrAusKm = kmIncr ? parseMetricZahl(kmIncr.wert) : null
       return {
         reinvestitionsquotePct: r.reinvestitionsquotePct,
-        incrementalRoicPct: r.incrementalRoicPct,
+        incrementalRoicPct: incrAusKm ?? r.incrementalRoicPct,
         sloanRatio: eq.sloanRatio,
         beneishMScore: eq.beneishMScore,
         beneishRisiko: eq.beneishRisiko,

@@ -144,12 +144,12 @@ export async function ladeMarketscreenerJahresForecast(
   if (!forecast || forecast.jahresreihe.length === 0) return null
 
   const jahresreihe = forecast.jahresreihe.map(
-    ({ jahr, umsatzUsd, netIncomeUsd, operatingIncomeUsd }) => ({
+    ({ jahr, umsatzUsd, netIncomeUsd, operatingIncomeUsd, ebitdaUsd }) => ({
       jahr,
       umsatzUsd,
       netIncomeUsd,
       operatingIncomeUsd: operatingIncomeUsd ?? null,
-      ebitdaUsd: null,
+      ebitdaUsd: ebitdaUsd ?? null,
     }),
   )
 

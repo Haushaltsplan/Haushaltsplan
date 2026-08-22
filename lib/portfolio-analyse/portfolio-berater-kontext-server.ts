@@ -29,6 +29,7 @@ import type { WhitelistPosition } from '@/lib/portfolio-analyse/nachkauf-radar/n
 import type { NachkaufScanEintrag } from '@/lib/portfolio-analyse/nachkauf-radar/nachkauf-radar-types'
 import {
   ladeFundamentaldatenFuerBerater,
+  baueQuartalsDiffFuerBerater,
   type FundamentalBeraterZiel,
 } from '@/lib/portfolio-analyse/portfolio-berater-fundamentaldaten-server'
 
@@ -331,6 +332,19 @@ function baueFundamentalZiele(opts: {
     })
   }
 
+  // Whitelist-/Scan-Kandidaten (auch ohne Depot-Position), sonst bleibt fundamentaldaten oft leer
+  for (const k of kandidaten) {
+    add({
+      isin: k.isin,
+      name: k.name,
+      symbolYahoo: k.symbolYahoo ?? null,
+      symbolCandidates: k.symbolCandidates,
+      fokus: k.isin.toUpperCase() === focusIsin,
+      gewichtPct: null,
+      ticker: k.symbolYahoo?.split('.')[0] ?? null,
+    })
+  }
+
   return out
 }
 
@@ -393,18 +407,24 @@ export async function bauePortfolioBeraterKontext(opts?: PortfolioBeraterAnfrage
 
   const kiCache = baueKiCacheBlock(earningsKi, secKi, relevanteTicker, focusTicker, depotTicker)
 
-  const quartalsDiff = quartalsDiffs
-    .filter((d) => istRelevantTicker(d.ticker, relevanteTicker))
-    .map((d) => ({
-      ticker: d.ticker,
-      typ: d.typ,
-      aktuellId: d.aktuellId,
-      vorherId: d.vorherId,
-      diff: kuerze(
-        d.diff,
-        focusTicker && d.ticker.toUpperCase() === focusTicker ? 1200 : 600,
-      ),
-    }))
+  const quartalsDiffRaw = await baueQuartalsDiffFuerBerater({
+    bestehende: quartalsDiffs,
+    secKi,
+    earningsKi,
+    relevanteTicker,
+    focusTicker,
+    maxNeuGenerieren: focusTicker ? 2 : 1,
+  })
+  const quartalsDiff = quartalsDiffRaw.map((d) => ({
+    ticker: d.ticker,
+    typ: d.typ,
+    aktuellId: d.aktuellId,
+    vorherId: d.vorherId,
+    diff: kuerze(
+      d.diff,
+      focusTicker && d.ticker.toUpperCase() === focusTicker ? 1400 : 700,
+    ),
+  }))
 
   const quelleByIsin = new Map(
     kandidaten.map((k: WhitelistPosition) => [k.isin.toUpperCase(), k.quelle ?? 'whitelist']),
@@ -422,8 +442,10 @@ export async function bauePortfolioBeraterKontext(opts?: PortfolioBeraterAnfrage
       erstelltAm: dr.erstellt_am,
     }))
 
+  const scanByIsin = new Map(scan.map((e) => [e.isin.toUpperCase(), e]))
   const fundamentaldaten = await ladeFundamentaldatenFuerBerater(
     baueFundamentalZiele({ depotPaket, focusIsin, watchlist, kandidaten }),
+    { scanByIsin },
   )
 
   if (!depotPaket) {

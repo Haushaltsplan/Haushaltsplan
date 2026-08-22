@@ -21,7 +21,7 @@ export type ReinvestitionKennzahlen = {
    * Hoch = kann Gewinne produktiv reinvestieren; niedrig = Ausschütter.
    */
   reinvestitionsquotePct: number | null
-  /** ΔNOPAT / ΔInvested Capital über das letzte Jahr, in %. */
+  /** ΔNOPAT / ΔInvested Capital — bitte über `ladeIncrementalRoic` / Yahoo-Historie setzen. */
   incrementalRoicPct: number | null
   /** CapEx + M&A (Mio.), positiv = Investition. */
   bruttoReinvestMio: number | null
@@ -29,22 +29,30 @@ export type ReinvestitionKennzahlen = {
 
 /**
  * @param mnaMio optionale M&A-Ausgaben (positiv, Mio. USD) aus Yahoo CapAlloc
+ * @param daMioFallback D&A in Mio. wenn GuV-Zeile `da` fehlt
+ * @param incrementalRoicPctOverride aus Yahoo/Nasdaq-ROIIC (bevorzugt)
  */
 export function berechneReinvestition(
   perioden: FundamentalPeriode[],
   zeilen: FundamentalMetrikZeile[],
   mnaMio: number | null = null,
+  daMioFallback: number | null = null,
+  incrementalRoicPctOverride: number | null = null,
 ): ReinvestitionKennzahlen {
   const keys = histKeys(perioden)
   if (keys.length < 1) {
-    return { reinvestitionsquotePct: null, incrementalRoicPct: null, bruttoReinvestMio: null }
+    return {
+      reinvestitionsquotePct: null,
+      incrementalRoicPct: incrementalRoicPctOverride,
+      bruttoReinvestMio: null,
+    }
   }
 
   const t = keys[keys.length - 1]!
-  const t1 = keys.length >= 2 ? keys[keys.length - 2]! : null
 
   const capex = w(zeilen, 'capex', t)
-  const da = w(zeilen, 'da', t)
+  const daZeile = w(zeilen, 'da', t)
+  const da = daZeile ?? daMioFallback
   const fcf = w(zeilen, 'fcf', t)
 
   const capexAbs = capex != null ? Math.abs(capex) : null
@@ -62,35 +70,11 @@ export function berechneReinvestition(
     reinvestitionsquotePct = Math.round((nettoReinvest / Math.abs(fcf)) * 1000) / 10
   }
 
-  let incrementalRoicPct: number | null = null
-  if (t1) {
-    const ebit = w(zeilen, 'ebit', t)
-    const ebit1 = w(zeilen, 'ebit', t1)
-    const equity = w(zeilen, 'eigenkapital', t)
-    const equity1 = w(zeilen, 'eigenkapital', t1)
-    const debt = w(zeilen, 'gesamtverschuldung', t)
-    const debt1 = w(zeilen, 'gesamtverschuldung', t1)
-    const cash = w(zeilen, 'bargeld', t)
-    const cash1 = w(zeilen, 'bargeld', t1)
-
-    if (ebit != null && ebit1 != null && equity != null && equity1 != null) {
-      const tax = 0.21
-      const nopat = ebit * (1 - tax)
-      const nopat1 = ebit1 * (1 - tax)
-      const ic = equity + (debt ?? 0) - (cash ?? 0)
-      const ic1 = equity1 + (debt1 ?? 0) - (cash1 ?? 0)
-      const dNopat = nopat - nopat1
-      const dIc = ic - ic1
-      if (Math.abs(dIc) >= 1) {
-        const incr = (dNopat / dIc) * 100
-        if (Number.isFinite(incr) && Math.abs(incr) <= 400) {
-          incrementalRoicPct = Math.round(incr * 10) / 10
-        }
-      }
-    }
+  return {
+    reinvestitionsquotePct,
+    incrementalRoicPct: incrementalRoicPctOverride,
+    bruttoReinvestMio,
   }
-
-  return { reinvestitionsquotePct, incrementalRoicPct, bruttoReinvestMio }
 }
 
 /** PEG = Forward-KGV / erwartetes EPS-Wachstum (%). */

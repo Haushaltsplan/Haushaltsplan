@@ -1,0 +1,23 @@
+---
+description: Beispiel-Aktien (Hermès, TMO, …) immer als Klasse generalisieren
+alwaysApply: true
+---
+
+# Portfolio-Fixes: Beispiel ≠ Sonderlocke
+
+Wenn der Nutzer eine **Beispiel-Aktie** nennt (Hermès, TMO, ASML, …), gilt der Fehler
+für **alle betroffenen Titel derselben Klasse** — nicht nur für das Beispiel.
+
+| Beispiel | Klasse / Scope |
+|----------|----------------|
+| Hermès / FR-ISIN / leere GuV | **alle EU/CH/UK** (`istEuIsin` / `brauchtEuGuVFallback`) + URD/Yahoo/ADR-Merge |
+| TMO / Übersicht-Kennzahl | **alle Aktien** (Formatierung, Ampel, Formeln in Key Metrics) |
+| SEC/Form-4-Lücke | alle Nicht-US bzw. EU-URD/AMF-Pfade |
+| Watchlist-Titel | Whitelist **und** Watchlist |
+
+## Umsetzung
+
+- Keine Hardcodes nur auf eine ISIN/Ticker, außer echte Emittenten-IR-URLs (z. B. Hermès-PDF-Fallback).
+- EU-Logik über `brauchtEuGuVFallback` / `istEuIsin` / `yahooKennzahlenSymbolKandidaten`, nicht `FR0000052292 === …`.
+- UI-/Formel-Bugs in Übersicht, Score, Formatierung immer titelübergreifend fixen.
+- Nach dem Fix kurz prüfen: gilt der Pfad für Präfix/Whitelist, nicht nur für den genannten Ticker?

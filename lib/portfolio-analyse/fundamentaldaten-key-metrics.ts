@@ -96,6 +96,15 @@ function pctSigned(v: number | null | undefined): string {
   return formatFundamentalWert(v, 'prozent')
 }
 
+/** Minuszeichen statt Klammern — für Kennzahlen, bei denen negativ gut sein kann (Rückkäufe). */
+function pctMitVorzeichen(v: number | null | undefined): string {
+  if (v == null || !Number.isFinite(v)) return '–'
+  const abs = formatFundamentalWert(Math.abs(v), 'prozent')
+  if (v < 0) return `−${abs}`
+  if (v > 0) return `+${abs}`
+  return abs
+}
+
 export function baueKeyMetrics(
   yahoo: YahooFundamentalKennzahlen | null,
   roh: MacrotrendsFundamentalRoh | null,
@@ -237,17 +246,23 @@ export function baueKeyMetrics(
       id: 'ltm_value_spread',
       label: 'Value Spread (ROIC − WACC)',
       wert: pctSigned(w?.valueSpread),
+      ton:
+        w?.valueSpread == null
+          ? undefined
+          : w.valueSpread >= 0
+            ? 'positiv'
+            : 'negativ',
       gruppe: 'effizienz',
     },
     {
       id: 'reinvest_quote',
       label: 'Reinvestitionsquote (CapEx+M&A−D&A)/FCF',
-      wert: pctRaw(w?.reinvestitionsquotePct),
+      wert: pctMitVorzeichen(w?.reinvestitionsquotePct),
       gruppe: 'effizienz',
     },
     {
       id: 'incremental_roic',
-      label: 'Incremental ROIC (ΔNOPAT/ΔIC)',
+      label: 'Incremental ROIC (ΔNOPAT/ΔIC, 5J)',
       wert: pctRaw(w?.incrementalRoicPct),
       gruppe: 'effizienz',
     },
@@ -270,6 +285,7 @@ export function baueKeyMetrics(
 
   const umsatzSchaetz0 = schaetzungen.zeilen.find((z) => z.id === 'umsatz_schaetzung')
   const epsSchaetz0 = schaetzungen.zeilen.find((z) => z.id === 'eps_schaetzung')
+  const ebitdaSchaetz0 = schaetzungen.zeilen.find((z) => z.id === 'ebitda_schaetzung')
   const fy0Key = schaetzungen.perioden[0]?.iso
   const fy1Key = schaetzungen.perioden[1]?.iso
 
@@ -293,10 +309,20 @@ export function baueKeyMetrics(
         )
       : null
 
-  const ebitdaCagr2 =
+  const ebitdaCagr2Yahoo =
     yahoo?.ntmEbitdaUsd != null && yahoo?.fy1EbitdaUsd != null && yahoo.ntmEbitdaUsd > 0 && yahoo.fy1EbitdaUsd > 0
       ? cagrProzent([yahoo.ntmEbitdaUsd, yahoo.fy1EbitdaUsd], 1)
       : null
+  const ebitdaCagr2Ms =
+    fy0Key && fy1Key && ebitdaSchaetz0
+      ? cagrProzent(
+          [wertAnPeriode(ebitdaSchaetz0, fy0Key), wertAnPeriode(ebitdaSchaetz0, fy1Key)].filter(
+            (v): v is number => v != null && v > 0,
+          ),
+          1,
+        )
+      : null
+  const ebitdaCagr2 = ebitdaCagr2Yahoo ?? ebitdaCagr2Ms
 
   out.push(
     { id: 'fwd_rev_cagr_2y', label: 'Erw. Umsatz-CAGR (2J)', wert: pctRaw(revCagr2), gruppe: 'wachstum' },
@@ -426,14 +452,22 @@ export function baueKeyMetrics(
     },
     {
       id: 'fcf_conversion',
-      label: 'FCF-Conversion',
+      label: 'FCF-Conversion (FCF/Nettogewinn)',
       wert: pctRaw(w?.fcfConversion),
       gruppe: 'effizienz',
     },
     {
       id: 'aktien_verwaesserung',
       label: 'Aktien-Verwässerung p.a.',
-      wert: pctSigned(w?.aktienVerwaesserungJaehrlichPct),
+      wert: pctMitVorzeichen(w?.aktienVerwaesserungJaehrlichPct),
+      ton:
+        w?.aktienVerwaesserungJaehrlichPct == null
+          ? undefined
+          : w.aktienVerwaesserungJaehrlichPct <= 0
+            ? 'positiv'
+            : w.aktienVerwaesserungJaehrlichPct >= 1.5
+              ? 'negativ'
+              : 'neutral',
       gruppe: 'kapitalstruktur',
     },
     {

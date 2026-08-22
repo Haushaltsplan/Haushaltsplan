@@ -1,4 +1,5 @@
 import type { FundamentaldatenErweitert } from '@/lib/portfolio-analyse/fundamentaldaten-erweitert-types'
+import { formatFundamentalWert } from '@/lib/portfolio-analyse/fundamentaldaten-format'
 import type { FundamentalKeyMetric } from '@/lib/portfolio-analyse/fundamentaldaten-types'
 
 function pctRaw(v: number | null | undefined): string {
@@ -6,9 +7,10 @@ function pctRaw(v: number | null | undefined): string {
   return `${v.toLocaleString('de-DE', { maximumFractionDigits: 1 })} %`
 }
 
+/** due24mMio ist bereits in Mio. USD — nie roh mit de-DE-Tausenderpunkt als „Mio.“ ausgeben. */
 function mioUsd(v: number | null | undefined): string {
   if (v == null || !Number.isFinite(v)) return '–'
-  return `$${v.toLocaleString('de-DE', { maximumFractionDigits: 0 })} Mio.`
+  return formatFundamentalWert(v, 'waehrung_usd_mio')
 }
 
 /** Ergänzt Key Metrics um SEC-Schuldenfälligkeit, F&E-Aktivierung, Kundenkonzentration. */
@@ -27,7 +29,7 @@ export function ergaenzeKeyMetricsAusErweitert(
       label: 'Schulden fällig ≤24M',
       wert:
         debt.due24mMio != null
-          ? `${mioUsd(debt.due24mMio)}${debt.refiAnteil24mPct != null ? ` (${debt.refiAnteil24mPct} %)` : ''}`
+          ? `${mioUsd(debt.due24mMio)}${debt.refiAnteil24mPct != null ? ` (${debt.refiAnteil24mPct.toLocaleString('de-DE', { maximumFractionDigits: 1 })} %)` : ''}`
           : pctRaw(debt.refiAnteil24mPct),
       gruppe: 'kapitalstruktur',
     })
@@ -55,23 +57,30 @@ export function ergaenzeKeyMetricsAusErweitert(
     })
   }
 
-  const kunden = erweitert.secSegmentHistorie?.zusatz?.hauptkunden ?? []
+  const kunden = (erweitert.secSegmentHistorie?.zusatz?.hauptkunden ?? []).filter(
+    (k) =>
+      k.anteilPct > 0 &&
+      k.anteilPct <= 55 &&
+      !/revenue|sales|organization|outside|venues?/i.test(k.name),
+  )
   if (kunden.length > 0) {
     const top3 = kunden.slice(0, 3)
     const sum = Math.round(top3.reduce((s, k) => s + k.anteilPct, 0) * 10) / 10
-    out.push({
-      id: 'kunden_top3',
-      label: 'Umsatzanteil Top-3-Kunden',
-      wert: `${sum.toFixed(0)} % (${top3.map((k) => k.name).join(', ')})`,
-      gruppe: 'effizienz',
-    })
-    if (kunden[0]) {
+    if (sum > 0 && sum <= 100) {
       out.push({
-        id: 'kunden_top1',
-        label: 'Umsatzanteil Top-Kunde',
-        wert: `${kunden[0].anteilPct} % (${kunden[0].name})`,
+        id: 'kunden_top3',
+        label: 'Umsatzanteil Top-3-Kunden',
+        wert: `${sum.toFixed(0)} % (${top3.map((k) => k.name).join(', ')})`,
         gruppe: 'effizienz',
       })
+      if (kunden[0]) {
+        out.push({
+          id: 'kunden_top1',
+          label: 'Umsatzanteil Top-Kunde',
+          wert: `${kunden[0].anteilPct} % (${kunden[0].name})`,
+          gruppe: 'effizienz',
+        })
+      }
     }
   }
 

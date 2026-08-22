@@ -106,7 +106,16 @@ export function euPortfolioIrConfig(isin: string | null | undefined): EuPortfoli
 
 export const EU_PORTFOLIO_IR_ISINS = new Set(ISIN_ZU_CONFIG.keys())
 
-/** ISINs mit StockAnalysis/Yahoo-GuV-Merge statt rein Macrotrends. */
+/**
+ * Europäische (inkl. CH/UK) Emittenten — GuV/URD/Insider-Fallbacks gelten für ALLE
+ * dieser Präfixe, nicht nur für einzelne Beispiel-ISINs (Hermès etc.).
+ */
+export function istEuIsin(isin: string | null | undefined): boolean {
+  const i = isin?.trim().toUpperCase() ?? ''
+  return /^(DE|NL|FR|CH|GB|IE|AT|BE|LU|SE|DK|FI|NO|ES|IT|PT|PL)/.test(i)
+}
+
+/** Kuratierte Extra-ISINs (CA, …) + Referenzliste; alle EU-Präfixe deckt `istEuIsin` ab. */
 export const EU_GUV_FALLBACK_ISINS = new Set([
   'DE0006580806',
   'DE0005785802',
@@ -122,6 +131,15 @@ export const EU_GUV_FALLBACK_ISINS = new Set([
   'CA015DM1098',
   'FR0000052292',
 ])
+
+/** EU + kuratierte CA-Portfolio-Titel die denselben GuV-/IR-Pfad brauchen. */
+export function brauchtEuGuVFallback(isin: string | null | undefined): boolean {
+  const norm = isin?.trim().toUpperCase() ?? ''
+  if (!norm) return false
+  if (istEuIsin(norm)) return true
+  if (EU_GUV_FALLBACK_ISINS.has(norm)) return true
+  return norm.startsWith('CA')
+}
 
 export const ISIN_WAEHRUNG: Record<string, string> = {
   DE0006580806: 'EUR',

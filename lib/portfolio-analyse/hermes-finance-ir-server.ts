@@ -34,6 +34,11 @@ const BASE = 'https://finance.hermes.com'
 
 const SEED_URLS = [`${BASE}/en/`, `${BASE}/en/publications/`, `${BASE}/fr/publications/`]
 
+/** Bekannte URD-PDFs — falls Drupal-Crawl die Assets nicht findet. */
+export const HERMES_URD_PDF_FALLBACKS = [
+  'https://assets-finance.hermes.com/s3fs-public/node/pdf_file/2026-04/1777391712/260320_hermes_urd2025_en.pdf',
+] as const
+
 const SLUG_MUSTER =
   /revenue|message|half|annual|webcast|result|publishing|executive|quarter|semest|financial|conf/i
 
@@ -183,6 +188,17 @@ async function sammlePdfKandidaten(nurBerichte = false): Promise<PdfKandidat[]> 
           score,
         })
       }
+    }
+  }
+
+  if (nurBerichte) {
+    for (const url of HERMES_URD_PDF_FALLBACKS) {
+      if (byUrl.has(url)) continue
+      byUrl.set(url, {
+        url,
+        titel: titelAusBerichtPdf(url, 'universal-registration-document'),
+        score: 20,
+      })
     }
   }
 

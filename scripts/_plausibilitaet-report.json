@@ -1,0 +1,101 @@
+{
+  "ok": [
+    "Hermès umsatz",
+    "Hermès ebit",
+    "Hermès nettogewinn",
+    "Hermès fcf",
+    "ROIIC NOW",
+    "ROIIC TMO",
+    "ROIIC MSFT",
+    "ROIIC AAPL",
+    "Schulden-Format Mrd",
+    "Kundenfilter venues from our dire",
+    "Kundenfilter Microsoft",
+    "Kundenfilter Sales outside of Nor"
+  ],
+  "fail": [],
+  "hermes": {
+    "jahre": [
+      2025,
+      2024,
+      2023,
+      2022,
+      2021
+    ],
+    "out": {
+      "umsatz": [
+        16002,
+        15170,
+        13427,
+        11602,
+        8982
+      ],
+      "ebit": [
+        6569,
+        6150,
+        5650,
+        4697,
+        3530
+      ],
+      "nettogewinn": [
+        4524,
+        4603,
+        4311,
+        3367,
+        2445
+      ],
+      "fcf": [
+        3880,
+        3767,
+        3192,
+        3404,
+        2661
+      ]
+    }
+  },
+  "roiic": [
+    {
+      "sym": "NOW",
+      "y1": 18.8,
+      "y3": 20.4,
+      "n": 4
+    },
+    {
+      "sym": "TMO",
+      "y1": 6.8,
+      "y3": -3.4,
+      "n": 4
+    },
+    {
+      "sym": "MSFT",
+      "y1": 21.3,
+      "y3": 22.1,
+      "n": 4
+    },
+    {
+      "sym": "AAPL",
+      "y1": 230.5,
+      "y3": null,
+      "n": 4
+    }
+  ],
+  "format": {
+    "6782 Mio raw wrong": "$6.782 Mio.",
+    "6782 correct": "6,78 Mrd. $",
+    "6.782 wrong lookalike": "6,78 Mio. $"
+  },
+  "kunden": {
+    "venues from our direct sales organization": {
+      "got": false,
+      "expect": false
+    },
+    "Microsoft": {
+      "got": true,
+      "expect": true
+    },
+    "Sales outside of North America": {
+      "got": false,
+      "expect": false
+    }
+  }
+}

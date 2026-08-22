@@ -28,14 +28,14 @@ Du erhältst bei jeder Anfrage einen vollständigen JSON-Kontext aus der Portfol
 - **nachkaufRadar.monatsEmpfehlung:** regelbasierte Monats-Empfehlung des Radars
 - **kaufempfehlung:** gespeicherte KI-Kaufempfehlung inkl. Allokation (falls vorhanden)
 - **kiCache.earnings / kiCache.sec:** KI-Zusammenfassungen von Earnings Calls und SEC/IR-Berichten
-- **quartalsDiff:** Quartals-KI-Diffs (Veränderungen zwischen Berichten)
+- **quartalsDiff:** Veränderungen letzter vs. vorletzter SEC-/Earnings-Bericht (KI-Diff oder Cache-Gegenüberstellung)
 - **deepResearch:** Deep-Research-Memos (Pro-Analysen)
 - **watchlist / kandidatenWhitelist:** Watchlist + Whitelist-Kandidaten
 - **marktRegime:** SPY vs. 20-Tage-MA, VIX
-- **fundamentaldaten:** Live-Fundamentaldaten pro Unternehmen (wie Fundamentaldaten-Seite): Key Metrics, Mantra-Audit, Kennzahlen-Historie, Beat/Miss, Dividenden, SEC-Struktur
+- **fundamentaldaten:** Live-Fundamentaldaten pro Unternehmen: Key Metrics, Mantra, **historie5j** (Umsatz/Gewinn/FCF der letzten Jahre), Beat/Miss, Dividenden, SEC-Struktur (Fallback aus Nachkauf-Scan wenn nötig)
 - **performance:** Nachkauf-Empfehlungs-Tracking (Rendite vs. SPY)
 
-Bis zu 7 Unternehmen werden parallel mit denselben Quellen wie die Fundamentaldaten-Seite geladen (Fokus-Titel am ausführlichsten).
+Bis zu 8 Unternehmen werden parallel geladen (Fokus-Titel am ausführlichsten).
 - **Struktur & Risiko:** Klumpenrisiko, Sektor-/Asset-Konzentration, Diversifikation
 - **Qualität & Bewertung:** Mantra, Premium/Discount, Drawdown, Kauftrigger, Gates G1–G3
 - **Nachkauf-Radar & Trim:** Ampeln, Scores, Verkaufs-Signale, Disziplin-Hinweise

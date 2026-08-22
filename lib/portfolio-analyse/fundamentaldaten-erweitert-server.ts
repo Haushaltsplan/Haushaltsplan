@@ -23,16 +23,12 @@ import { ladeYahooHolders } from '@/lib/portfolio-analyse/yahoo-holders-server'
 import { ladeYahooOptionsIv } from '@/lib/portfolio-analyse/yahoo-options-iv-server'
 import { ladeSecBacklogHistorie } from '@/lib/portfolio-analyse/sec-edgar-backlog-server'
 import { cikFuerTicker } from '@/lib/portfolio-analyse/sec-edgar-common-server'
+import { istEuIsin } from '@/lib/portfolio-analyse/eu-portfolio-ir-config'
 import type {
   InsiderNettoPaket,
   SecSegmentHistoriePaket,
   SecStrukturPaket,
 } from '@/lib/portfolio-analyse/fundamentaldaten-erweitert-types'
-
-function istEuIsin(isin: string | null | undefined): boolean {
-  const i = isin?.trim().toUpperCase() ?? ''
-  return /^(DE|NL|FR|CH|GB|IE|AT|BE|LU|SE|DK|FI|NO|ES|IT|PT|PL)/.test(i)
-}
 
 function secStrukturAusSegmentHistorie(hist: SecSegmentHistoriePaket | null): SecStrukturPaket | null {
   if (!hist) return null

@@ -183,16 +183,21 @@ export function yahooKennzahlenSymbolKandidaten(opts: {
   add(k?.macrotrendsTicker)
   add(opts.macrotrendsTicker)
 
-  // Bekannte EU/UK-Listings mit dünnen Yahoo-Daten → liquide Alternativen
+  // Bekannte Local-Listings mit dünnen Yahoo-Daten → liquide ADR/Alternativen
   const primary = out[0] ?? ''
-  if (primary === 'H11.SG' || primary.startsWith('H11')) {
+  const bare = primary.split('.')[0] ?? primary
+  if (primary === 'H11.SG' || primary.startsWith('H11') || bare === 'HLMA') {
     add('HLMA.L')
     add('HLMA')
   }
-  if (primary === 'RMS.PA') add('HESAY')
-  if (primary === 'SIKA.SW') add('SXYAY')
-  if (primary === 'STMN.SW') add('SAUHY')
-  if (primary === 'ATD.TO') add('ANCUF')
+  if (primary === 'RMS.PA' || bare === 'RMS' || bare === 'HESAY') add('HESAY')
+  if (primary === 'MC.PA' || bare === 'MC' || bare === 'LVMUY') add('LVMUY')
+  if (primary === 'SIKA.SW' || bare === 'SIKA' || bare === 'SXYAY') add('SXYAY')
+  if (primary === 'STMN.SW' || bare === 'STMN' || bare === 'SAUHY') add('SAUHY')
+  if (primary === 'WKL.AS' || bare === 'WKL' || bare === 'WTKWY') add('WTKWY')
+  if (primary === 'ASML.AS' || bare === 'ASML') add('ASML')
+  if (primary === 'LIN.DE' || bare === 'LIN') add('LIN')
+  if (primary === 'ATD.TO' || bare === 'ATD') add('ANCUF')
 
   return out.slice(0, 5)
 }

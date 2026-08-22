@@ -51,6 +51,11 @@ export type FundamentalKeyMetric = {
   id: string
   label: string
   wert: string
+  /**
+   * Semantische Farbe (statt „Klammer = rot“):
+   * positiv = gut (z. B. Aktienrückkauf), negativ = schlecht, neutral = keine Ampel.
+   */
+  ton?: 'positiv' | 'negativ' | 'neutral'
   gruppe:
     | 'marktdaten'
     | 'kapitalstruktur'

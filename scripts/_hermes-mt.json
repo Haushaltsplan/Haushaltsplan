@@ -1,0 +1,26 @@
+{
+  "revenue": {
+    "status": 200,
+    "len": 67299,
+    "points": 0,
+    "hasData": false
+  },
+  "net-income": {
+    "status": 200,
+    "len": 67029,
+    "points": 0,
+    "hasData": false
+  },
+  "operating-income": {
+    "status": 200,
+    "len": 67616,
+    "points": 0,
+    "hasData": false
+  },
+  "free-cash-flow": {
+    "status": 200,
+    "len": 66946,
+    "points": 0,
+    "hasData": false
+  }
+}

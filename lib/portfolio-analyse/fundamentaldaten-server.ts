@@ -50,18 +50,13 @@ import {
   nutzeYahooGuVFuerIsin,
   brauchtGuVErgaenzung,
 } from '@/lib/portfolio-analyse/fundamentaldaten-yahoo-guv-server'
-import { ISIN_WAEHRUNG } from '@/lib/portfolio-analyse/eu-portfolio-ir-config'
+import { ISIN_WAEHRUNG, istEuIsin } from '@/lib/portfolio-analyse/eu-portfolio-ir-config'
 import { ladeUnitEconomics } from '@/lib/portfolio-analyse/unit-economics-server'
 import { ladeYahooFundamentalKennzahlenMitFallback } from '@/lib/portfolio-analyse/yahoo-kennzahlen-fallback-server'
 import { ergaenzeRoicAusBilanz } from '@/lib/portfolio-analyse/fundamentaldaten-roic-berechnung'
 import { ergaenzeWorkingCapitalTageZeilen } from '@/lib/portfolio-analyse/fundamentaldaten-working-capital-zeilen'
+import { ladeIncrementalRoic } from '@/lib/portfolio-analyse/incremental-roic-server'
 
-function istEuIsin(isin: string | null | undefined): boolean {
-  const i = isin?.trim().toUpperCase() ?? ''
-  return /^(DE|NL|FR|CH|GB|IE|AT|BE|LU|SE|DK|FI|NO|ES|IT|PT|PL)/.test(i)
-}
-
-/** Berichtswährung: Konfig-Eintrag → sonst grobe Ableitung aus dem ISIN-Länderpräfix (Watchlist). */
 function waehrungFuerIsin(isin: string | null | undefined): string {
   const i = isin?.trim().toUpperCase() ?? ''
   if (i && ISIN_WAEHRUNG[i]) return ISIN_WAEHRUNG[i]
@@ -201,6 +196,7 @@ const SCHÄTZUNG_ZU_HISTORISCH_ZEILE: Record<string, string> = {
   umsatz_schaetzung: 'umsatz',
   eps_schaetzung: 'eps',
   ebit_schaetzung: 'ebit',
+  ebitda_schaetzung: 'ebitda',
   nettogewinn_schaetzung: 'nettogewinn',
   fcf_schaetzung: 'fcf',
   bruttogewinn_schaetzung: 'bruttogewinn',
@@ -698,12 +694,23 @@ export async function ladeFundamentaldaten(anfrage: FundamentaldatenAnfrage): Pr
   const sektorFinal = brancheMeta.sektor
   const brancheFinal = brancheMeta.branche ?? roh.branche
   const mergedRoh = { ...roh, perioden: merged.perioden, zeilen: merged.zeilen }
+  const [roiicPaket] = await Promise.all([
+    ladeIncrementalRoic({
+      symbolYahoo: symbolYahoo ?? ident.ticker,
+      yahooHistorie: yahooFinanz?.annualHistorie ?? null,
+      isin: isinNorm ?? anfrage.isin,
+      ticker: ident.ticker,
+      firmenname: anfrage.name ?? ident.firmenname,
+    }),
+  ])
+
   const kontextWerte = baueKontextWerte({
     yahoo: yahooExt,
     roh: rohFuerMantra(merged),
     schaetzungen: schaetzungenGefiltert,
     yahooFinanz,
     unitEconomics,
+    incrementalRoicPct: roiicPaket.incrementalRoicPct,
   })
   // Macrotrends liefert USD; nur bei Alternativquellen (Yahoo timeseries, Berichtswährung)
   // die Währung aus Konfig bzw. ISIN-Präfix ableiten.

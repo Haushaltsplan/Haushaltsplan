@@ -1,30 +1,60 @@
-/** Fundamentaldaten-Kompakt für den Portfolio-Berater (serverseitig wie Fundamentaldaten-Seite). */
+/**
+ * Portfolio-Berater: Fundamentaldaten kompakt + Historie-5J + Quartals-Diff-Fallback.
+ */
 
 import 'server-only'
 
 import { ladeFundamentaldaten } from '@/lib/portfolio-analyse/fundamentaldaten-server'
 import type { FundamentaldatenPaket } from '@/lib/portfolio-analyse/fundamentaldaten-types'
+import type { NachkaufScanEintrag } from '@/lib/portfolio-analyse/nachkauf-radar/nachkauf-radar-types'
+import {
+  ladeQuartalsKiDiffCache,
+  type QuartalsKiDiffCloudZeile,
+} from '@/lib/portfolio-analyse/quartals-ki-diff-cache-server'
+import type {
+  EarningsCallKiCloudZeile,
+  SecBerichtKiCloudZeile,
+} from '@/lib/portfolio-analyse/portfolio-ki-cache-cloud-server'
+import { ladeQuartalsKiDiff } from '@/lib/portfolio-analyse/quartals-ki-diff-server'
 
-const MAX_LADEN = 7
+const MAX_LADEN = 8
+const LOAD_TIMEOUT_MS = 28_000
+
+/** Deutsche Zeilen-IDs (Macrotrends/Yahoo) — früher fälschlich englische IDs → leere Historie. */
 const ZEILEN_HIGHLIGHT = [
-  'revenue',
-  'gross_margin',
-  'operating_margin',
-  'net_margin',
+  'umsatz',
+  'bruttogewinn',
+  'ebit',
+  'nettogewinn',
+  'eps',
   'fcf',
-  'fcf_per_share',
-  'eps_diluted',
-  'pe_ratio',
-  'ev_ebitda',
-  'ev_fcf',
-  'roic',
+  'ocf',
+  'capex',
+  'bruttomarge',
+  'ebit_marge',
+  'nettomarge',
   'roe',
-  'debt_equity',
-  'interest_coverage',
-  'dividend_yield',
-  'revenue_growth',
-  'eps_growth',
-]
+  'roa',
+  'roic',
+  'kgv',
+  'ps',
+  'ev_ebitda',
+  'ev_rev',
+  'eigenkapital',
+  'gesamtverschuldung',
+  'bargeld',
+] as const
+
+const HISTORIE_KERN = [
+  'umsatz',
+  'nettogewinn',
+  'eps',
+  'fcf',
+  'ebit',
+  'bruttomarge',
+  'roe',
+  'kgv',
+] as const
 
 export type FundamentalBeraterZiel = {
   isin: string
@@ -33,6 +63,7 @@ export type FundamentalBeraterZiel = {
   symbolCandidates?: string[]
   fokus: boolean
   gewichtPct?: number | null
+  ticker?: string | null
 }
 
 function kuerze(text: string | null | undefined, max: number): string | null {
@@ -42,21 +73,60 @@ function kuerze(text: string | null | undefined, max: number): string | null {
   return t.slice(0, max - 1).trimEnd() + '…'
 }
 
-function zeilenHighlights(p: FundamentaldatenPaket, fokus: boolean) {
-  const perioden = p.perioden
-    .filter((pe) => !pe.istNtm && !pe.istSchaetzung)
-    .slice(0, fokus ? 5 : 3)
-    .map((pe) => pe.iso)
+function mitTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const t = setTimeout(() => reject(new Error(`Timeout ${label} (${ms}ms)`)), ms)
+    p.then(
+      (v) => {
+        clearTimeout(t)
+        resolve(v)
+      },
+      (e) => {
+        clearTimeout(t)
+        reject(e)
+      },
+    )
+  })
+}
 
+function periodenIso(p: FundamentaldatenPaket, max: number): string[] {
+  return p.perioden
+    .filter((pe) => !pe.istNtm && !pe.istSchaetzung && !pe.istLtm)
+    .map((pe) => pe.iso)
+    .sort()
+    .reverse()
+    .slice(0, max)
+    .reverse()
+}
+
+function zeilenHighlights(p: FundamentaldatenPaket, fokus: boolean) {
+  const perioden = periodenIso(p, fokus ? 6 : 5)
+  const want = new Set<string>(ZEILEN_HIGHLIGHT)
   return p.zeilen
-    .filter((z) => ZEILEN_HIGHLIGHT.includes(z.id))
+    .filter((z) => want.has(z.id))
     .map((z) => ({
       id: z.id,
       label: z.label,
-      werte: Object.fromEntries(
-        perioden.map((iso) => [iso, z.werte[iso] ?? null]),
-      ),
+      werte: Object.fromEntries(perioden.map((iso) => [iso, z.werte[iso] ?? null])),
     }))
+    .filter((z) => Object.values(z.werte).some((v) => v != null))
+}
+
+/** Explizite 5-Jahres-Historie für den Berater (Umsatz/Gewinn/FCF/…). */
+function historie5j(p: FundamentaldatenPaket, fokus: boolean) {
+  const perioden = periodenIso(p, fokus ? 6 : 5)
+  if (perioden.length === 0) return null
+  const byId = new Map(p.zeilen.map((z) => [z.id, z]))
+  const reihen: Record<string, Array<{ iso: string; wert: number | null }>> = {}
+  for (const id of HISTORIE_KERN) {
+    const z = byId.get(id)
+    if (!z) continue
+    const serie = perioden.map((iso) => ({ iso, wert: z.werte[iso] ?? null }))
+    if (serie.every((s) => s.wert == null)) continue
+    reihen[id] = serie
+  }
+  if (Object.keys(reihen).length === 0) return null
+  return { perioden, reihen }
 }
 
 function erweitertKompakt(p: FundamentaldatenPaket, fokus: boolean) {
@@ -77,6 +147,8 @@ function erweitertKompakt(p: FundamentaldatenPaket, fokus: boolean) {
         }
       : null,
     insiderNetto: e.insiderNetto?.nettoRichtung ?? null,
+    debtRefi24mPct: e.debtMaturity?.refiAnteil24mPct ?? null,
+    rdAktivierungsquotePct: e.rdKapitalisierung?.aktivierungsquotePct ?? null,
     secStruktur: e.secStruktur
       ? {
           segmentKonzentration: e.secStruktur.segmente?.[0]?.anteilPct ?? null,
@@ -86,7 +158,61 @@ function erweitertKompakt(p: FundamentaldatenPaket, fokus: boolean) {
   }
 }
 
-export function fundamentalPaketKompakt(p: FundamentaldatenPaket, fokus: boolean) {
+export type BeraterFundamentalKompakt = {
+  ok: boolean
+  ticker: string
+  firmenname: string
+  sektor: string | null
+  branche: string | null
+  quelle: string | null
+  fehler: string | null
+  beschreibung: string | null
+  keyMetrics: Array<{ label: string; wert: string; gruppe: string }>
+  historie5j: {
+    perioden: string[]
+    reihen: Record<string, Array<{ iso: string; wert: number | null }>>
+  } | null
+  mantra: {
+    ampel: string
+    ampelScorePct: number | null
+    ampelHinweis: string | null
+    zusammenfassung: unknown
+    standard: Array<{
+      kategorie: string
+      kennzahl: string
+      zielwert: string
+      istWert: string | null
+      status: string
+    }>
+    sektor: Array<{
+      kategorie: string
+      kennzahl: string
+      istWert: string | null
+      status: string
+    }>
+    sellTriggerWatch: Array<{ titel: string; status: string; begruendung: string | null }>
+  }
+  zeilenHighlights: Array<{
+    id: string
+    label: string
+    werte: Record<string, number | null>
+  }>
+  erweitert: {
+    beatMiss: {
+      epsBeatRatePct: number | null
+      epsBeatRate12Pct: number | null
+      streak: string | null
+    } | null
+    dividenden: { cagr5yPct: number | null; jahreOhneSenkung: number | null } | null
+    insiderNetto: string | null
+    debtRefi24mPct: number | null
+    rdAktivierungsquotePct: number | null
+    secStruktur: { segmentKonzentration: number | null; pensionMio: number | null } | null
+  } | null
+  news: Array<{ titel: string; quelle: string | null }>
+}
+
+export function fundamentalPaketKompakt(p: FundamentaldatenPaket, fokus: boolean): BeraterFundamentalKompakt {
   const m = p.mantra
   return {
     ok: p.ok,
@@ -102,6 +228,7 @@ export function fundamentalPaketKompakt(p: FundamentaldatenPaket, fokus: boolean
       wert: k.wert,
       gruppe: k.gruppe,
     })),
+    historie5j: historie5j(p, fokus),
     mantra: {
       ampel: m.ampel,
       ampelScorePct: m.ampelScorePct,
@@ -134,14 +261,81 @@ export function fundamentalPaketKompakt(p: FundamentaldatenPaket, fokus: boolean
   }
 }
 
+/** Fallback wenn Live-Fundamentaldaten scheitern — aus Scan-Kennzahlen. */
+export function fundamentalAusScanFallback(
+  e: NachkaufScanEintrag,
+  fokus: boolean,
+): BeraterFundamentalKompakt {
+  const b = e.bewertung
+  const d = e.datenSignale
+  const keyMetrics: BeraterFundamentalKompakt['keyMetrics'] = [
+    b?.forwardPe != null ? { label: 'Forward-KGV', wert: `${b.forwardPe.toFixed(1)}×`, gruppe: 'bewertung_ntm' } : null,
+    b?.fcfYieldPct != null ? { label: 'FCF-Rendite', wert: `${b.fcfYieldPct.toFixed(1)} %`, gruppe: 'bewertung_ltm' } : null,
+    b?.premiumDiscountPct != null
+      ? { label: 'Premium/Discount', wert: `${b.premiumDiscountPct.toFixed(0)} %`, gruppe: 'bewertung_ntm' }
+      : null,
+    d?.epsBeatRate12Pct != null
+      ? { label: 'EPS-Beat 12Q', wert: `${d.epsBeatRate12Pct} %`, gruppe: 'effizienz' }
+      : null,
+    d?.debtRefi24mPct != null
+      ? { label: 'Refi ≤24M', wert: `${d.debtRefi24mPct.toFixed(0)} %`, gruppe: 'kapitalstruktur' }
+      : null,
+    d?.rdAktivierungsquotePct != null
+      ? { label: 'F&E-Aktivierung', wert: `${d.rdAktivierungsquotePct.toFixed(0)} %`, gruppe: 'effizienz' }
+      : null,
+    d?.umsatzanteilTop1KundenPct != null
+      ? { label: 'Top-Kunde', wert: `${d.umsatzanteilTop1KundenPct.toFixed(0)} %`, gruppe: 'kapitalstruktur' }
+      : null,
+  ].filter((x): x is NonNullable<typeof x> => x != null)
+
+  return {
+    ok: false,
+    ticker: e.ticker,
+    firmenname: e.name,
+    sektor: null,
+    branche: null,
+    quelle: 'nachkauf_scan_fallback',
+    fehler: 'Live-Fundamentalhistorie nicht geladen — Kennzahlen aus Nachkauf-Scan.',
+    beschreibung: null,
+    keyMetrics,
+    historie5j: null,
+    mantra: {
+      ampel: e.mantraAmpel ?? 'grau',
+      ampelScorePct: e.mantraScorePct,
+      ampelHinweis: null,
+      zusammenfassung: e.kiBegruendung ? kuerze(e.kiBegruendung, fokus ? 400 : 200) : null,
+      standard: [],
+      sektor: [],
+      sellTriggerWatch: [],
+    },
+    zeilenHighlights: [],
+    erweitert: {
+      beatMiss: d
+        ? {
+            epsBeatRatePct: d.epsBeatRatePct,
+            epsBeatRate12Pct: d.epsBeatRate12Pct,
+            streak: null,
+          }
+        : null,
+      dividenden: null,
+      insiderNetto: d?.insiderNettoRichtung ?? null,
+      debtRefi24mPct: d?.debtRefi24mPct ?? null,
+      rdAktivierungsquotePct: d?.rdAktivierungsquotePct ?? null,
+      secStruktur: null,
+    },
+    news: [],
+  }
+}
+
 export async function ladeFundamentaldatenFuerBerater(
   ziele: FundamentalBeraterZiel[],
+  opts?: { scanByIsin?: Map<string, NachkaufScanEintrag> },
 ): Promise<
   Array<{
     isin: string
     fokus: boolean
     gewichtPct: number | null
-    daten: ReturnType<typeof fundamentalPaketKompakt>
+    daten: BeraterFundamentalKompakt
   }>
 > {
   if (ziele.length === 0) return []
@@ -155,19 +349,70 @@ export async function ladeFundamentaldatenFuerBerater(
 
   const ergebnisse = await Promise.allSettled(
     sortiert.map(async (z) => {
-      const paket = await ladeFundamentaldaten({
-        isin: z.isin,
-        name: z.name,
-        symbolYahoo: z.symbolYahoo,
-        symbolCandidates: z.symbolCandidates,
-        frequenz: 'jahr',
-        segmentNurCloud: true,
-      })
+      try {
+        const paket = await mitTimeout(
+          ladeFundamentaldaten({
+            isin: z.isin,
+            name: z.name,
+            symbolYahoo: z.symbolYahoo,
+            symbolCandidates: z.symbolCandidates,
+            frequenz: 'jahr',
+            segmentNurCloud: true,
+          }),
+          LOAD_TIMEOUT_MS,
+          z.isin,
+        )
+        const hatHistorie = periodenIso(paket, 5).length >= 2 && paket.zeilen.length > 0
+        if (hatHistorie || paket.ok) {
+          return {
+            isin: z.isin,
+            fokus: z.fokus,
+            gewichtPct: z.gewichtPct ?? null,
+            daten: fundamentalPaketKompakt(paket, z.fokus),
+          }
+        }
+      } catch (e) {
+        console.warn('[portfolio-berater] Fundamentaldaten', z.isin, e)
+      }
+
+      const scan = opts?.scanByIsin?.get(z.isin.toUpperCase())
+      if (scan) {
+        return {
+          isin: z.isin,
+          fokus: z.fokus,
+          gewichtPct: z.gewichtPct ?? null,
+          daten: fundamentalAusScanFallback(scan, z.fokus),
+        }
+      }
+
       return {
         isin: z.isin,
         fokus: z.fokus,
         gewichtPct: z.gewichtPct ?? null,
-        daten: fundamentalPaketKompakt(paket, z.fokus),
+        daten: {
+          ok: false,
+          ticker: z.ticker ?? z.symbolYahoo?.split('.')[0] ?? z.isin,
+          firmenname: z.name,
+          sektor: null,
+          branche: null,
+          quelle: null,
+          fehler: 'Fundamentaldaten nicht verfügbar',
+          beschreibung: null,
+          keyMetrics: [],
+          historie5j: null,
+          mantra: {
+            ampel: 'grau',
+            ampelScorePct: null,
+            ampelHinweis: null,
+            zusammenfassung: null,
+            standard: [],
+            sektor: [],
+            sellTriggerWatch: [],
+          },
+          zeilenHighlights: [],
+          erweitert: null,
+          news: [],
+        } satisfies BeraterFundamentalKompakt,
       }
     }),
   )
@@ -176,7 +421,7 @@ export async function ladeFundamentaldatenFuerBerater(
     isin: string
     fokus: boolean
     gewichtPct: number | null
-    daten: ReturnType<typeof fundamentalPaketKompakt>
+    daten: BeraterFundamentalKompakt
   }> = []
 
   for (const r of ergebnisse) {
@@ -185,4 +430,143 @@ export async function ladeFundamentaldatenFuerBerater(
   }
 
   return out
+}
+
+function sortiereSecIds(map: Map<string, SecBerichtKiCloudZeile>): string[] {
+  return [...map.entries()]
+    .sort((a, b) => b[1].aktualisiertAm.localeCompare(a[1].aktualisiertAm))
+    .map(([id]) => id)
+}
+
+function sortiereEarningsIds(map: Map<string, EarningsCallKiCloudZeile>): string[] {
+  return [...map.entries()]
+    .sort((a, b) => b[1].aktualisiertAm.localeCompare(a[1].aktualisiertAm))
+    .map(([id]) => id)
+}
+
+function textDiffFallback(
+  aktuellId: string,
+  vorherId: string,
+  aktuell: string,
+  vorher: string,
+): string {
+  return [
+    `## Vergleich ${vorherId} → ${aktuellId}`,
+    '',
+    '### Aktuelle Periode',
+    aktuell.slice(0, 900).trim(),
+    '',
+    '### Vorperiode',
+    vorher.slice(0, 900).trim(),
+    '',
+    '_Hinweis: Kein KI-Diff im Cache — Gegenüberstellung der vorhandenen Zusammenfassungen. Für den detaillierten KI-Diff Fundamentaldaten → Quartals-Diff öffnen._',
+  ].join('\n')
+}
+
+/**
+ * Füllt quartalsDiff aus Cloud-Cache; fehlende Paare aus SEC/Earnings-KI-Cache
+ * (Fokus: KI-Diff wenn möglich, sonst Text-Gegenüberstellung).
+ */
+export async function baueQuartalsDiffFuerBerater(opts: {
+  bestehende: QuartalsKiDiffCloudZeile[]
+  secKi: Map<string, Map<string, SecBerichtKiCloudZeile>>
+  earningsKi: Map<string, Map<string, EarningsCallKiCloudZeile>>
+  relevanteTicker: Set<string>
+  focusTicker: string | null
+  maxNeuGenerieren?: number
+}): Promise<
+  Array<{
+    ticker: string
+    typ: string
+    aktuellId: string
+    vorherId: string
+    diff: string
+  }>
+> {
+  const maxGen = opts.maxNeuGenerieren ?? 3
+  const out = new Map<string, { ticker: string; typ: string; aktuellId: string; vorherId: string; diff: string }>()
+
+  for (const d of opts.bestehende) {
+    const t = d.ticker.toUpperCase()
+    if (!opts.relevanteTicker.has(t)) continue
+    const key = `${t}|${d.typ}|${d.aktuellId}|${d.vorherId}`
+    out.set(key, {
+      ticker: t,
+      typ: d.typ,
+      aktuellId: d.aktuellId,
+      vorherId: d.vorherId,
+      diff: d.diff,
+    })
+  }
+
+  const tickerListe = [...opts.relevanteTicker].sort((a, b) => {
+    if (opts.focusTicker && a === opts.focusTicker) return -1
+    if (opts.focusTicker && b === opts.focusTicker) return 1
+    return a.localeCompare(b)
+  })
+
+  let generiert = 0
+  for (const ticker of tickerListe) {
+    for (const typ of ['sec_bericht', 'earnings_call'] as const) {
+      const map =
+        typ === 'sec_bericht' ? opts.secKi.get(ticker) : opts.earningsKi.get(ticker)
+      if (!map || map.size < 2) continue
+      const ids = typ === 'sec_bericht' ? sortiereSecIds(map as Map<string, SecBerichtKiCloudZeile>) : sortiereEarningsIds(map as Map<string, EarningsCallKiCloudZeile>)
+      const aktuellId = ids[0]!
+      const vorherId = ids[1]!
+      const key = `${ticker}|${typ}|${aktuellId}|${vorherId}`
+      if (out.has(key)) continue
+
+      const cached = await ladeQuartalsKiDiffCache(ticker, typ, aktuellId, vorherId)
+      if (cached) {
+        out.set(key, { ticker, typ, aktuellId, vorherId, diff: cached })
+        continue
+      }
+
+      const aktuellText = map.get(aktuellId)?.zusammenfassung?.trim() ?? ''
+      const vorherText = map.get(vorherId)?.zusammenfassung?.trim() ?? ''
+      if (!aktuellText || !vorherText) continue
+
+      const istFokus = opts.focusTicker != null && ticker === opts.focusTicker
+      if (istFokus && generiert < maxGen) {
+        try {
+          const paket = await mitTimeout(
+            ladeQuartalsKiDiff({
+              ticker,
+              typ,
+              aktuellId,
+              vorherId,
+              firmenname: ticker,
+              force: false,
+            }),
+            22_000,
+            `diff-${ticker}`,
+          )
+          if (paket.ok && paket.diff) {
+            out.set(key, { ticker, typ, aktuellId, vorherId, diff: paket.diff })
+            generiert++
+            continue
+          }
+        } catch {
+          /* Fallback unten */
+        }
+      }
+
+      out.set(key, {
+        ticker,
+        typ,
+        aktuellId,
+        vorherId,
+        diff: textDiffFallback(aktuellId, vorherId, aktuellText, vorherText),
+      })
+    }
+  }
+
+  return [...out.values()].sort((a, b) => {
+    if (opts.focusTicker) {
+      if (a.ticker === opts.focusTicker && b.ticker !== opts.focusTicker) return -1
+      if (b.ticker === opts.focusTicker && a.ticker !== opts.focusTicker) return 1
+    }
+    return a.ticker.localeCompare(b.ticker)
+  })
 }

@@ -131,6 +131,7 @@ function leererJahresEintrag(jahr: number): StockanalysisJahresForecastEintrag {
     periodenEnde: `${jahr}-12-31`,
     umsatzUsd: null,
     operatingIncomeUsd: null,
+    ebitdaUsd: null,
     netIncomeUsd: null,
     freeCashFlowUsd: null,
     grossProfitUsd: null,
@@ -148,6 +149,7 @@ function hatJahresWert(e: StockanalysisJahresForecastEintrag): boolean {
   return (
     e.umsatzUsd != null ||
     e.operatingIncomeUsd != null ||
+    e.ebitdaUsd != null ||
     e.netIncomeUsd != null ||
     e.freeCashFlowUsd != null ||
     e.grossProfitUsd != null ||
@@ -164,6 +166,27 @@ function ergaenzeWachstumAusReihe(eintraege: StockanalysisJahresForecastEintrag[
     }
     if (cur.epsGrowthPct == null) {
       cur.epsGrowthPct = wachstumPct(cur.eps, prev.eps)
+    }
+  }
+}
+
+/** Bruttogewinn-Schätzung aus Umsatz × letzter bekannter Bruttomarge. */
+function ergaenzeBruttogewinnAusMarge(eintraege: StockanalysisJahresForecastEintrag[]): void {
+  let lastMargin: number | null = null
+  for (const e of eintraege) {
+    if (e.grossMarginPct != null && Number.isFinite(e.grossMarginPct)) {
+      lastMargin = e.grossMarginPct > 1.5 ? e.grossMarginPct / 100 : e.grossMarginPct
+    } else if (
+      e.grossProfitUsd != null &&
+      e.umsatzUsd != null &&
+      e.umsatzUsd > 0 &&
+      e.grossProfitUsd > 0
+    ) {
+      lastMargin = e.grossProfitUsd / e.umsatzUsd
+    }
+    if (e.grossProfitUsd == null && e.umsatzUsd != null && lastMargin != null && lastMargin > 0 && lastMargin < 1) {
+      e.grossProfitUsd = e.umsatzUsd * lastMargin
+      if (e.grossMarginPct == null) e.grossMarginPct = lastMargin * 100
     }
   }
 }
@@ -219,13 +242,16 @@ function mergeJahresSchaetzungen(opts: {
     if (ms.jahr <= 2000 || ms.jahr < minJahr) continue
     const umsatzOk =
       ms.umsatzUsd == null || marketscreenerUmsatzPlausibel(ms.umsatzUsd, saReferenzUmsatz)
-    if (!umsatzOk && ms.netIncomeUsd == null && ms.operatingIncomeUsd == null) continue
+    if (!umsatzOk && ms.netIncomeUsd == null && ms.operatingIncomeUsd == null && ms.ebitdaUsd == null) {
+      continue
+    }
     const cur = byJahr.get(ms.jahr) ?? leererJahresEintrag(ms.jahr)
     if (umsatzOk && cur.umsatzUsd == null && ms.umsatzUsd != null) cur.umsatzUsd = ms.umsatzUsd
     if (cur.netIncomeUsd == null && ms.netIncomeUsd != null) cur.netIncomeUsd = ms.netIncomeUsd
     if (cur.operatingIncomeUsd == null && ms.operatingIncomeUsd != null) {
       cur.operatingIncomeUsd = ms.operatingIncomeUsd
     }
+    if (cur.ebitdaUsd == null && ms.ebitdaUsd != null) cur.ebitdaUsd = ms.ebitdaUsd
     byJahr.set(ms.jahr, cur)
   }
 
@@ -276,6 +302,7 @@ function mergeJahresSchaetzungen(opts: {
     .sort((a, b) => a.jahr - b.jahr)
   ergaenzeEpsAusNetIncome(reihe)
   ergaenzeWachstumAusReihe(reihe)
+  ergaenzeBruttogewinnAusMarge(reihe)
   return reihe
 }
 
@@ -522,6 +549,14 @@ function baueRohAusStockanalysisReihe(
       istSchaetzung: true,
     },
     {
+      id: 'ebitda_schaetzung',
+      label: 'EBITDA (Schätzung)',
+      gruppe: 'schaetzungen',
+      einheit: 'waehrung_usd_mio',
+      werte: werteMap((e) => e.ebitdaUsd, (v) => v / 1_000_000),
+      istSchaetzung: true,
+    },
+    {
       id: 'eps_schaetzung',
       label: 'EPS (Schätzung)',
       gruppe: 'schaetzungen',
@@ -589,6 +624,14 @@ function baueRohAusQuartalsSchaetzungen(
       gruppe: 'schaetzungen',
       einheit: 'waehrung_usd_mio',
       werte: werteMap((e) => e.operatingIncomeUsd, (v) => v / 1_000_000),
+      istSchaetzung: true,
+    },
+    {
+      id: 'ebitda_schaetzung',
+      label: 'EBITDA (Schätzung)',
+      gruppe: 'schaetzungen',
+      einheit: 'waehrung_usd_mio',
+      werte: werteMap((e) => e.ebitdaUsd, (v) => v / 1_000_000),
       istSchaetzung: true,
     },
     {

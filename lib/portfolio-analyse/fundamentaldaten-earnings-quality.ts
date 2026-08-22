@@ -116,7 +116,8 @@ export function berechneEarningsQuality(
 
   const vars = [dsri, gmi, aqi, sgi, depi, sgai, tata, lvgi]
   const verwendbar = vars.filter((v) => v != null).length
-  if (verwendbar < 5) {
+  // Mit 4 Kern-Indizes (DSRI/GMI/SGI/TATA) schon aussagekräftig; 5+ ideal
+  if (verwendbar < 4) {
     return {
       sloanRatio,
       beneishMScore: null,

@@ -16,16 +16,25 @@ function MetrikZeile({
   id,
   label,
   wert,
+  ton,
   klickbar,
   onClick,
 }: {
   id: string
   label: string
   wert: string
+  ton?: 'positiv' | 'negativ' | 'neutral'
   klickbar: boolean
   onClick?: (id: string) => void
 }) {
-  const negativ = wert.startsWith('(')
+  const farbe =
+    ton === 'positiv'
+      ? 'text-emerald-400/90'
+      : ton === 'negativ'
+        ? 'text-rose-400/90'
+        : wert.startsWith('(')
+          ? 'text-rose-400/90'
+          : 'text-[var(--app-text)]'
   return (
     <button
       type="button"
@@ -36,11 +45,7 @@ function MetrikZeile({
       }`}
     >
       <span className={`text-[10px] ${klickbar ? 'text-[var(--app-text-muted)]' : 'text-[var(--app-text-muted)]'}`}>{label}</span>
-      <span
-        className={`text-right text-[10px] font-semibold tabular-nums ${negativ ? 'text-rose-400/90' : 'text-[var(--app-text)]'}`}
-      >
-        {wert}
-      </span>
+      <span className={`text-right text-[10px] font-semibold tabular-nums ${farbe}`}>{wert}</span>
     </button>
   )
 }
@@ -73,6 +78,7 @@ function Sektion({
               id={m.id}
               label={m.label}
               wert={m.wert}
+              ton={m.ton}
               klickbar={klickbar}
               onClick={onMetricClick}
             />

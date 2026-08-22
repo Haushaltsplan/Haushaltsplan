@@ -15,9 +15,62 @@ import {
   berechnePegRatio,
   berechneReinvestition,
 } from '@/lib/portfolio-analyse/fundamentaldaten-reinvestition'
+import { berechneIncrementalRoicAusYahoo } from '@/lib/portfolio-analyse/incremental-roic'
 import type { MacrotrendsFundamentalRoh } from '@/lib/portfolio-analyse/macrotrends-scraper-server'
 import type { MantraYahooFinanzdaten } from '@/lib/portfolio-analyse/yahoo-fundamentals-timeseries-server'
 import type { UnitEconomicsTreffer } from '@/lib/portfolio-analyse/unit-economics-extraktion'
+
+function mnaMioAusYahoo(yf: MantraYahooFinanzdaten | null | undefined): number | null {
+  const hist = yf?.annualHistorie
+  if (!hist?.length) return null
+  for (let i = hist.length - 1; i >= 0; i--) {
+    const raw = hist[i]?.purchaseOfBusinessUsd
+    if (raw != null && Number.isFinite(raw) && Math.abs(raw) >= 1) {
+      return Math.round((Math.abs(raw) / 1_000_000) * 10) / 10
+    }
+  }
+  return null
+}
+
+function daMioAusYahoo(yf: MantraYahooFinanzdaten | null | undefined): number | null {
+  const hist = yf?.annualHistorie
+  if (!hist?.length) return null
+  for (let i = hist.length - 1; i >= 0; i--) {
+    const raw = hist[i]?.depreciationAmortizationUsd
+    if (raw != null && Number.isFinite(raw) && Math.abs(raw) >= 1) {
+      return Math.round((Math.abs(raw) / 1_000_000) * 10) / 10
+    }
+  }
+  return null
+}
+
+/** ROIC ex Goodwill aus Yahoo-Jahresabschluss (wenn Macrotrends-Zeile fehlt). */
+function roicExGoodwillAusYahoo(yf: MantraYahooFinanzdaten | null | undefined): number | null {
+  const hist = yf?.annualHistorie
+  if (!hist?.length) return null
+  for (let i = hist.length - 1; i >= 0; i--) {
+    const s = hist[i]!
+    if (s.operatingIncomeUsd == null || s.stockholdersEquityUsd == null) continue
+    const tax = 0.21
+    if (s.pretaxIncomeUsd != null && s.pretaxIncomeUsd > 0 && s.taxProvisionUsd != null && s.taxProvisionUsd >= 0) {
+      // effektiver Satz grob
+    }
+    const t =
+      s.pretaxIncomeUsd != null && s.pretaxIncomeUsd > 0 && s.taxProvisionUsd != null && s.taxProvisionUsd >= 0
+        ? Math.min(0.5, Math.max(0, s.taxProvisionUsd / s.pretaxIncomeUsd))
+        : tax
+    const nopat = s.operatingIncomeUsd * (1 - t)
+    const ic =
+      s.stockholdersEquityUsd + (s.totalDebtUsd ?? 0) - (s.cashAndEquivalentsUsd ?? 0)
+    const gw = s.goodwillUsd ?? 0
+    const denom = gw > 0 ? ic - gw : ic
+    if (denom <= 0) continue
+    const pct = (nopat / denom) * 100
+    if (!Number.isFinite(pct) || Math.abs(pct) > 800) continue
+    return Math.round(pct * 10) / 10
+  }
+  return null
+}
 
 export type FundamentalKontextInput = {
   yahoo: YahooFundamentalKennzahlen | null
@@ -26,6 +79,8 @@ export type FundamentalKontextInput = {
   yahooFinanz: MantraYahooFinanzdaten | null
   /** LTV/CAC, NRR — aus SEC/Earnings Call extrahiert (falls genannt). */
   unitEconomics?: UnitEconomicsTreffer | null
+  /** Vorberechnetes Incremental ROIC (Yahoo/Nasdaq), sonst aus yahooFinanz. */
+  incrementalRoicPct?: number | null
 }
 
 function historischeWerte(
@@ -185,7 +240,10 @@ export function baueKontextWerte(ctx: FundamentalKontextInput) {
     nettoMio != null && fcfMio != null && nettoMio > 0 ? (fcfMio / nettoMio) * 100 : null
 
   const roic = letzterWert(roiZeile, perioden)
-  const roicExGoodwill = letzterWert(zeile('roi_ex_goodwill'), perioden)
+  let roicExGoodwill = letzterWert(zeile('roi_ex_goodwill'), perioden)
+  if (roicExGoodwill == null) {
+    roicExGoodwill = roicExGoodwillAusYahoo(ctx.yahooFinanz) ?? (roic != null ? roic : null)
+  }
   const roicQuelle =
     roic != null
       ? 'ROIC (Macrotrends/Bilanz)'
@@ -235,9 +293,20 @@ export function baueKontextWerte(ctx: FundamentalKontextInput) {
   const ebitdaCagr3 =
     ebitdaHist.length >= 2 ? cagrProzent(ebitdaHist.slice(-4), Math.min(3, ebitdaHist.length - 1)) : null
 
+  const roiic =
+    ctx.incrementalRoicPct != null
+      ? ctx.incrementalRoicPct
+      : berechneIncrementalRoicAusYahoo(ctx.yahooFinanz?.annualHistorie).incrementalRoicPct
+
   const reinvest = perioden
-    ? berechneReinvestition(perioden, ctx.roh?.zeilen ?? [])
-    : { reinvestitionsquotePct: null, incrementalRoicPct: null, bruttoReinvestMio: null }
+    ? berechneReinvestition(
+        perioden,
+        ctx.roh?.zeilen ?? [],
+        mnaMioAusYahoo(ctx.yahooFinanz),
+        daMioAusYahoo(ctx.yahooFinanz),
+        roiic,
+      )
+    : { reinvestitionsquotePct: null, incrementalRoicPct: roiic, bruttoReinvestMio: null }
   const eq = perioden
     ? berechneEarningsQuality(perioden, ctx.roh?.zeilen ?? [])
     : { sloanRatio: null, beneishMScore: null, beneishRisiko: null }

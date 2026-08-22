@@ -130,13 +130,10 @@ const MATURITY_TAGS = {
 } as const
 
 const RD_CAP_TAGS = [
-  'CapitalizedComputerSoftwareNet',
-  'CapitalizedComputerSoftwareGross',
-  'CapitalizedSoftwareCosts',
-  'CapitalizedComputerSoftwareAdditions',
-  'SoftwareDevelopmentCosts',
-  'CapitalizedSoftwareAndWebsiteDevelopmentCosts',
+  // Nur echte F&E-Aktiva — NICHT Capitalized Software (SaaS/NOW → Fake 99 %-Quote)
   'ResearchAndDevelopmentAssetNet',
+  'CapitalizedResearchAndDevelopment',
+  'DeferredResearchAndDevelopmentCosts',
 ]
 
 const RD_EXP_TAGS = [
@@ -219,8 +216,9 @@ export async function ladeRdKapitalisierung(ticker: string): Promise<RdKapitalis
   if (kapitalisiertMio != null && aufwandMio != null && kapitalisiertMio + aufwandMio > 0) {
     aktivierungsquotePct =
       Math.round((kapitalisiertMio / (kapitalisiertMio + aufwandMio)) * 1000) / 10
+    // Unplausible XBRL-Mischung (z. B. Software-Cap vs. R&D) verwerfen
+    if (aktivierungsquotePct > 80) aktivierungsquotePct = null
   } else if (kapitalisiertMio != null && kapitalisiertMio > 0 && aufwandMio == null) {
-    // Nur Aktivierung bekannt — Quote unklar, aber Signal setzen
     aktivierungsquotePct = null
   }
 

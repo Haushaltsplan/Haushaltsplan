@@ -167,7 +167,8 @@ export function msChartZuOiHistorie(
 function parseWertAusZelle(cellHtml: string): number | null {
   const title = cellHtml.match(/title="([^"]+)"/)?.[1]
   if (title) {
-    const n = Number(title.replace(/,/g, ''))
+    const cleaned = title.replace(/,/g, '').replace(/\s*(EUR|USD|CHF|GBP|¥|€|\$)\s*$/i, '').trim()
+    const n = Number(cleaned)
     if (Number.isFinite(n)) return n
   }
   const txt = cellHtml.replace(/<[^>]+>/g, '').trim()
@@ -192,7 +193,7 @@ export function parseMsSegmentTabelle(html: string, marker: RegExp): MsChartRoh 
 
   const jahre: number[] = []
   const thead = table.match(/<thead[\s\S]*?<\/thead>/i)?.[0] ?? ''
-  for (const m of thead.matchAll(/>\s*(\d{4})\s*</g)) {
+  for (const m of thead.matchAll(/\b(20[12]\d)\b/g)) {
     const j = Number(m[1])
     if (Number.isFinite(j) && !jahre.includes(j)) jahre.push(j)
   }
@@ -240,18 +241,31 @@ export function extrahiereMsSegmentHistorien(html: string): {
   const produktOiChart = parseChartMehrereIds(html, ['financialSegmentLastYearChar1'])
   const geoOiChart = parseChartMehrereIds(html, ['financialSegmentLastYearChar2'])
 
-  const produktTable = parseMsSegmentTabelle(html, /Breakdown by Business Segment/i)
-  const geoTable = parseMsSegmentTabelle(html, /Geographical breakdown of sales/i)
+  const produktTable = parseMsSegmentTabelle(html, /Breakdown by Business Segment|Sales by Activity/i)
+  const geoTable = parseMsSegmentTabelle(html, /Geographical breakdown of sales|Sales by Region|Asia-Pacific \(Excl\. Japan\)/i)
   const produktOiTable = parseMsSegmentTabelle(html, /Operating Income:\s*Breakdown by Business Segment/i)
   const geoOiTable = parseMsSegmentTabelle(html, /Operating Income:\s*Geographical/i)
 
+  // Company-Page: „Sales by Activity“ ist bei Luxus oft Geo — wenn Segmente geo-typisch → geo
+  const activityAlsGeo =
+    !geoTable &&
+    produktTable &&
+    produktTable.segmente.some((s) =>
+      /asia|america|europe|japan|france|china|emea|rest of/i.test(s.name),
+    )
+      ? produktTable
+      : null
+  const produktUmsatz =
+    activityAlsGeo ? null : produktTable
+  const geoUmsatz = geoTable ?? activityAlsGeo
+
   let produkt = waehlePlausibleSegmentHistorie(
     produktUmsatzChart ? msChartZuHistorie('produkt', produktUmsatzChart) : null,
-    produktTable ? msChartZuHistorie('produkt', produktTable) : null,
+    produktUmsatz ? msChartZuHistorie('produkt', produktUmsatz) : null,
   )
   let geo = waehlePlausibleSegmentHistorie(
     geoUmsatzChart ? msChartZuHistorie('geo', geoUmsatzChart) : null,
-    geoTable ? msChartZuHistorie('geo', geoTable) : null,
+    geoUmsatz ? msChartZuHistorie('geo', geoUmsatz) : null,
   )
 
   const produktOi = waehlePlausibleSegmentHistorie(

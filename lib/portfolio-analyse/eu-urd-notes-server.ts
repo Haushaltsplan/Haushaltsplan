@@ -403,7 +403,15 @@ async function ladeEuJahresberichtText(opts: {
     }
   }
 
-  const best = berichte.find((b) => b.text.length >= 5_000) ?? berichte[0]
+  const best =
+    berichte.find(
+      (b) =>
+        b.text.length >= 5_000 &&
+        /In millions of (?:euros?|CHF)|EUR million|CHF million|in Mio\.?\s*€/i.test(b.text) &&
+        /\b(?:Revenue|Net sales|Umsatz)\b/i.test(b.text),
+    ) ??
+    berichte.find((b) => b.text.length >= 5_000) ??
+    berichte[0]
   if (!best) return null
 
   textCache.set(cacheKey, { at: Date.now(), text: best.text, titel: best.titel })

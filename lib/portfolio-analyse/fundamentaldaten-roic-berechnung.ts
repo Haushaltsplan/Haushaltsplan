@@ -93,7 +93,7 @@ export function ergaenzeRoicAusBilanz(
 
     if (invested > 0) {
       const roic = (nopat / invested) * 100
-      if (Number.isFinite(roic) && Math.abs(roic) <= 200) {
+      if (Number.isFinite(roic) && Math.abs(roic) <= 500) {
         roiWerte[key] = Math.round(roic * 10) / 10
         hatRoi = true
       } else {
@@ -107,13 +107,14 @@ export function ergaenzeRoicAusBilanz(
       goodwill != null && goodwill > 0 ? invested - goodwill : invested
     if (investedExGw > 0 && goodwill != null && goodwill > 0) {
       const roicX = (nopat / investedExGw) * 100
-      if (Number.isFinite(roicX) && Math.abs(roicX) <= 400) {
+      if (Number.isFinite(roicX) && Math.abs(roicX) <= 800) {
         roiExGw[key] = Math.round(roicX * 10) / 10
         hatExGw = true
       } else {
         roiExGw[key] = null
       }
     } else if (invested > 0 && (goodwill == null || goodwill <= 0)) {
+      // Kein Goodwill → ex Goodwill = klassischer ROIC (nicht leer lassen)
       roiExGw[key] = roiWerte[key]
       if (roiExGw[key] != null) hatExGw = true
     } else {
@@ -126,6 +127,19 @@ export function ergaenzeRoicAusBilanz(
   }
   if (hatExGw) {
     upsertZeile(zeilen, 'roi_ex_goodwill', 'ROIC ex Goodwill %', roiExGw, false)
+  } else {
+    // Macrotrends liefert oft nur `roi` — dann ex Goodwill nicht leer lassen
+    const roiZ = zeilen.find((r) => r.id === 'roi')
+    if (roiZ) {
+      const spiegel: Record<string, number | null> = {}
+      for (const key of keys) {
+        const v = roiZ.werte[key]
+        if (v != null && Number.isFinite(v)) spiegel[key] = v
+      }
+      if (Object.keys(spiegel).length > 0) {
+        upsertZeile(zeilen, 'roi_ex_goodwill', 'ROIC ex Goodwill %', spiegel, true)
+      }
+    }
   }
 }
 
