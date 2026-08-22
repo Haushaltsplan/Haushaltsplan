@@ -132,3 +132,67 @@ export async function speichereQuartalsKiDiffCache(opts: {
     console.warn('Quartals-KI-Diff Cloud: Speichern fehlgeschlagen', e)
   }
 }
+
+export type QuartalsKiDiffCloudZeile = {
+  ticker: string
+  typ: string
+  aktuellId: string
+  vorherId: string
+  diff: string
+  aktualisiertAm: string
+}
+
+/** Alle gespeicherten Quartals-KI-Diffs (Cloud + Datei-Fallback). */
+export async function ladeAlleQuartalsKiDiffAusCloud(): Promise<QuartalsKiDiffCloudZeile[]> {
+  const out = new Map<string, QuartalsKiDiffCloudZeile>()
+
+  if (istCloudOk()) {
+    try {
+      const { data, error } = await createSupabaseAdmin()
+        .from(TABLE)
+        .select('cache_key, ticker, typ, aktuell_id, vorher_id, diff, aktualisiert_am')
+      if (!error && data) {
+        for (const row of data) {
+          const r = row as {
+            cache_key: string
+            ticker: string
+            typ: string
+            aktuell_id: string
+            vorher_id: string
+            diff: string
+            aktualisiert_am: string
+          }
+          if (!r.diff?.trim()) continue
+          out.set(r.cache_key, {
+            ticker: r.ticker,
+            typ: r.typ,
+            aktuellId: r.aktuell_id,
+            vorherId: r.vorher_id,
+            diff: r.diff,
+            aktualisiertAm: r.aktualisiert_am,
+          })
+        }
+      }
+    } catch (e) {
+      console.warn('Quartals-KI-Diff Cloud: Alle laden fehlgeschlagen', e)
+    }
+  }
+
+  const datei = await leseDatei()
+  for (const [key, row] of Object.entries(datei.byKey)) {
+    if (!row.diff?.trim() || out.has(key)) continue
+    const parts = key.split('|')
+    if (parts.length < 4) continue
+    const [ticker, typ, aktuellId, vorherId] = parts
+    out.set(key, {
+      ticker,
+      typ,
+      aktuellId,
+      vorherId,
+      diff: row.diff,
+      aktualisiertAm: row.aktualisiertAm,
+    })
+  }
+
+  return [...out.values()].sort((a, b) => b.aktualisiertAm.localeCompare(a.aktualisiertAm))
+}

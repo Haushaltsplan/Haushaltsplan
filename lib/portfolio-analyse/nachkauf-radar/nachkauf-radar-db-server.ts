@@ -438,6 +438,46 @@ export async function ladeKaufhistorie(): Promise<Map<string, KaufhistorieEintra
   return out
 }
 
+const TABLE_KAUFEMPFEHLUNG = 'nachkauf_kaufempfehlung' as const
+
+/** Gespeicherte KI-Kaufempfehlung für den laufenden Monat. */
+export async function ladeKaufempfehlungAktuell(): Promise<{
+  monat: string
+  kiText: string
+  kandidaten: string[]
+  basisAllokation: unknown
+  verkaufAllokation: unknown
+} | null> {
+  if (!istKonfiguriert()) return null
+  try {
+    const monat = new Date().toISOString().slice(0, 7)
+    const { data, error } = await admin()
+      .from(TABLE_KAUFEMPFEHLUNG)
+      .select('monat, ki_text, kandidaten, basis_allokation, verkauf_allokation')
+      .eq('monat', monat)
+      .order('erstellt_am', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+    if (error || !data) return null
+    const r = data as {
+      monat: string
+      ki_text: string
+      kandidaten: unknown
+      basis_allokation: unknown
+      verkauf_allokation: unknown
+    }
+    return {
+      monat: r.monat,
+      kiText: r.ki_text ?? '',
+      kandidaten: Array.isArray(r.kandidaten) ? r.kandidaten.map(String) : [],
+      basisAllokation: r.basis_allokation ?? null,
+      verkaufAllokation: r.verkauf_allokation ?? null,
+    }
+  } catch {
+    return null
+  }
+}
+
 /**
  * Aktualisiert den Kaufhistorie-Cache aus portfolio_analyse_buchung.
  * Wird nach jedem Scan einmal aufgerufen.

@@ -9,7 +9,9 @@ import {
   berechneLivePortfolio,
   symboleAusMeta,
   type LiveKursePaket,
+  type LivePortfolio,
 } from '@/lib/portfolio-analyse/live-bewertung'
+import type { IsinMetadata } from '@/lib/portfolio-analyse/isin-lookup-server'
 import { sammleIsins } from '@/lib/portfolio-analyse/auswertungen'
 import { lookupIsinMetadaten } from '@/lib/portfolio-analyse/isin-lookup-server'
 import {
@@ -137,10 +139,13 @@ async function ladeLiveKurseServer(symbols: string[]): Promise<LiveKursePaket> {
   }
 }
 
-/**
- * Live-Depot wie Dashboard (Buchungen + Snapshot + Live-Kurse).
- */
-async function ladeLiveDepotPaket(): Promise<LiveDepotPaket | null> {
+export type LivePortfolioServerPaket = {
+  live: LivePortfolio
+  meta: Map<string, IsinMetadata>
+}
+
+/** Live-Portfolio wie Dashboard — volle Positionen + Kennzahlen (serverseitig). */
+export async function ladeLivePortfolioServer(): Promise<LivePortfolioServerPaket | null> {
   if (!istKonfiguriert()) return null
 
   try {
@@ -156,20 +161,31 @@ async function ladeLiveDepotPaket(): Promise<LiveDepotPaket | null> {
     const { kurse, stand, fx, stooqEur } = await ladeLiveKurseServer(symbole)
 
     const live = berechneLivePortfolio(buchungen, snapshot, meta, kurse, stand, fx, stooqEur)
-    return {
-      depotwertEur: live.kennzahlen.depotwertEur,
-      positionen: live.positionen
-        .filter((p) => p.isin && p.wertLiveEur > 0)
-        .map((p) => ({
-          isin: p.isin!.toUpperCase(),
-          name: p.anzeigeName ?? p.name,
-          gewichtProzent: p.gewichtProzent,
-          wertLiveEur: p.wertLiveEur,
-        })),
-    }
+    return { live, meta }
   } catch (e) {
-    console.warn('[depot-gewichte] Live-Depot laden fehlgeschlagen:', e)
+    console.warn('[depot-gewichte] Live-Portfolio laden fehlgeschlagen:', e)
     return null
+  }
+}
+
+/**
+ * Live-Depot wie Dashboard (Buchungen + Snapshot + Live-Kurse).
+ */
+async function ladeLiveDepotPaket(): Promise<LiveDepotPaket | null> {
+  const paket = await ladeLivePortfolioServer()
+  if (!paket) return null
+
+  const { live } = paket
+  return {
+    depotwertEur: live.kennzahlen.depotwertEur,
+    positionen: live.positionen
+      .filter((p) => p.isin && p.wertLiveEur > 0)
+      .map((p) => ({
+        isin: p.isin!.toUpperCase(),
+        name: p.anzeigeName ?? p.name,
+        gewichtProzent: p.gewichtProzent,
+        wertLiveEur: p.wertLiveEur,
+      })),
   }
 }
 

@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { PaFundamentalInhalt } from '@/components/portfolio-analyse/pa-fundamental-inhalt'
 import { usePortfolioAnalyse } from '@/components/portfolio-analyse/pa-data-provider'
+import { usePortfolioBeraterFocus } from '@/components/portfolio-analyse/portfolio-berater'
 import { PortfolioAnalyseShell } from '@/components/portfolio-analyse/portfolio-analyse-shell.client'
 import { PaCard } from '@/components/portfolio-analyse/pa-ui'
 import {
@@ -22,6 +23,7 @@ export function PortfolioFundamentaldatenClient() {
   const isinParam = searchParams.get('isin')
   const symbolParam = searchParams.get('symbol')
   const { live, meta, hatDaten, laden: paLaden } = usePortfolioAnalyse()
+  const setBeraterFocus = usePortfolioBeraterFocus()
   const [selectedIdx, setSelectedIdx] = useState(0)
   const [watchlistVersion, setWatchlistVersion] = useState(0)
 
@@ -66,6 +68,18 @@ export function PortfolioFundamentaldatenClient() {
   }, [live?.positionen, meta, watchlistVersion])
 
   const selected = kandidaten[selectedIdx] ?? null
+
+  useEffect(() => {
+    if (!selected) {
+      setBeraterFocus(null)
+      return
+    }
+    setBeraterFocus({
+      isin: selected.isin,
+      ticker: selected.symbolYahoo?.split('.')[0] ?? null,
+    })
+    return () => setBeraterFocus(null)
+  }, [selected, setBeraterFocus])
 
   useEffect(() => {
     if (kandidaten.length === 0 || (!isinParam && !symbolParam)) return

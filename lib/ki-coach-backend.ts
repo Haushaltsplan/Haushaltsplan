@@ -50,6 +50,11 @@ export function readGeminiApiKeyFromEnv(): string {
   return geminiApiKeyFree()
 }
 
+/** Ob ein dedizierter Free-Tier-Key gesetzt ist (Google AI Studio ohne Billing). */
+export function geminiApiKeyFreeConfigured(): boolean {
+  return Boolean(normalisiereEnvApiKey(process.env.GEMINI_API_KEY_FREE))
+}
+
 /**
  * Welcher KI-Anbieter genutzt wird (gleiche Logik wie `resolveCoachProvider`, aber mit frei wählbarem Modus-String).
  * `mode`: `auto` | `gemini` | `openai` (case-insensitive).
@@ -346,6 +351,14 @@ export function geminiProPaidModelKandidaten(opts?: { primaryEnvKeys?: string[] 
 
 function geminiModelKandidaten(): string[] {
   return geminiFreeTierFlashModelKandidaten()
+}
+
+/** Portfolio-KI-Berater — Free-Tier Flash (Google AI Studio). */
+export function portfolioBeraterGeminiModelKandidaten(): string[] {
+  return geminiFreeTierFlashModelKandidaten({
+    primaryEnvKeys: ['PORTFOLIO_BERATER_GEMINI_MODEL', 'FINANCE_COACH_GEMINI_MODEL', 'GEMINI_MODEL'],
+    fallbackEnvKey: 'PORTFOLIO_BERATER_GEMINI_MODEL_FALLBACKS',
+  })
 }
 
 /** Earnings Call — lange Transkripte, bevorzugt neuestes Flash mit Free-Tier-Fallbacks. */
