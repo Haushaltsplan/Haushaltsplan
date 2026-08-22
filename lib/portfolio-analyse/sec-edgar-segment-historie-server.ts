@@ -928,6 +928,37 @@ export function extrahiereSecZusatzRisiko(text: string, html: string): SecZusatz
     hauptkunden.push({ name, anteilPct: Math.round(pct * 10) / 10 })
   }
 
+  // „Microsoft and Meta accounted for 15% and 12% …“ / „two customers … 18% and 14%“
+  const multi =
+    /([A-Z][A-Za-z0-9&.\- ]{2,30}?)\s+and\s+([A-Z][A-Za-z0-9&.\- ]{2,30}?)\s+(?:accounted\s+for|represented)\s+(?:approximately\s+)?(\d{1,2}(?:\.\d+)?)\s*%\s+and\s+(\d{1,2}(?:\.\d+)?)\s*%/gi
+  while ((km = multi.exec(fenster)) !== null && hauptkunden.length < 8) {
+    const n1 = km[1]?.trim()
+    const n2 = km[2]?.trim()
+    const p1 = parseFloat(km[3]!)
+    const p2 = parseFloat(km[4]!)
+    for (const [name, pct] of [
+      [n1, p1],
+      [n2, p2],
+    ] as const) {
+      if (!name || !(pct > 0) || pct > 80) continue
+      const key = name.toLowerCase()
+      if (seenK.has(key)) continue
+      seenK.add(key)
+      hauptkunden.push({ name, anteilPct: Math.round(pct * 10) / 10 })
+    }
+  }
+
+  // Fallback: einzelner größter Kunde aus Heuristik
+  if (hauptkunden.length === 0) {
+    const single = extrahiereKundenKonzentration(text)
+    if (single) {
+      hauptkunden.push({
+        name: single.name ?? 'Größter Kunde',
+        anteilPct: single.anteilPct,
+      })
+    }
+  }
+
   return {
     mitarbeiterAnzahl,
     auslandsumsatzAnteilPct,

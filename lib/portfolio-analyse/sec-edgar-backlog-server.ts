@@ -87,8 +87,9 @@ function mapZuHistorie(
   art: SecBacklogHistorie['art'],
   label: string,
   quelleTag: string,
+  minJahre = 1,
 ): SecBacklogHistorie | null {
-  if (map.size < 2) return null
+  if (map.size < minJahre) return null
   const eintraege = [...map.entries()]
     .sort((a, b) => a[0] - b[0])
     .slice(-MAX_JAHRE)
@@ -113,13 +114,26 @@ export function extrahiereBacklogAusCompanyFacts(facts: CompanyFactsJson): SecBa
     const best = explizit
       .map((tag) => ({ tag, map: extrahiereJahresreiheMio(facts, [tag]) }))
       .sort((a, b) => b.map.size - a.map.size)[0]
-    if (best && best.map.size >= 2) {
+    if (best && best.map.size >= 1) {
       return mapZuHistorie(best.map, 'backlog', 'Auftragsbestand (Backlog)', best.tag)
     }
   }
 
-  const rpo = extrahiereJahresreiheMio(facts, ['RevenueRemainingPerformanceObligation'])
-  if (rpo.size >= 2) {
+  let rpo = extrahiereJahresreiheMio(facts, ['RevenueRemainingPerformanceObligation'])
+  // Auch Custom-/verwandte Tags mit RPO im Namen
+  if (rpo.size < 2) {
+    const gaap = facts.facts?.['us-gaap'] ?? {}
+    for (const tag of Object.keys(gaap)) {
+      if (
+        /remainingperformanceobligation/i.test(tag) &&
+        !/percentage|timing|yearone|yeartwo|expected/i.test(tag)
+      ) {
+        const m = extrahiereJahresreiheMio(facts, [tag])
+        if (m.size > rpo.size) rpo = m
+      }
+    }
+  }
+  if (rpo.size >= 1) {
     return mapZuHistorie(
       rpo,
       'rpo',
@@ -128,13 +142,13 @@ export function extrahiereBacklogAusCompanyFacts(facts: CompanyFactsJson): SecBa
     )
   }
 
-  const deferred = extrahiereJahresreiheMio(facts, ['DeferredRevenue'])
-  if (deferred.size >= 2) {
+  const deferred = extrahiereJahresreiheMio(facts, ['DeferredRevenue', 'ContractWithCustomerLiability'])
+  if (deferred.size >= 1) {
     return mapZuHistorie(deferred, 'deferred_revenue', 'Deferred Revenue', 'DeferredRevenue')
   }
 
   const contractTotal = extrahiereJahresreiheMio(facts, ['ContractWithCustomerLiability'])
-  if (contractTotal.size >= 2) {
+  if (contractTotal.size >= 1) {
     return mapZuHistorie(
       contractTotal,
       'deferred_revenue',
@@ -151,7 +165,7 @@ export function extrahiereBacklogAusCompanyFacts(facts: CompanyFactsJson): SecBa
       contractLiab.set(jahr, Math.round(((contractLiab.get(jahr) ?? 0) + wert) * 10) / 10)
     }
   }
-  if (contractLiab.size >= 2) {
+  if (contractLiab.size >= 1) {
     return mapZuHistorie(
       contractLiab,
       'deferred_revenue',

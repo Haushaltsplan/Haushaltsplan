@@ -81,6 +81,17 @@ export const EU_PORTFOLIO_IR_CONFIGS: EuPortfolioIrConfig[] = [
       'https://corporate.couche-tard.com/financial-reporting?cat=29',
     ],
   },
+  {
+    isins: ['NL0010273215'],
+    origin: 'https://www.asml.com',
+    referer: 'https://www.asml.com/en/investors',
+    seedUrls: [
+      'https://www.asml.com/en/investors/annual-report',
+      'https://www.asml.com/en/investors/financials',
+      'https://www.asml.com/en/investors/financials/annual-reports',
+      'https://www.asml.com/en/investors/financial-results',
+    ],
+  },
 ]
 
 const ISIN_ZU_CONFIG = new Map<string, EuPortfolioIrConfig>()
@@ -104,6 +115,8 @@ export const EU_GUV_FALLBACK_ISINS = new Set([
   'CH0418792922',
   'GB0004052071',
   'NL0000395903',
+  'NL0010273215', // ASML
+  'IE000S9YS762', // Linde
   'CA01626P1484',
   'CA15135U1093',
   'CA015DM1098',
@@ -118,6 +131,8 @@ export const ISIN_WAEHRUNG: Record<string, string> = {
   CH0418792922: 'CHF',
   GB0004052071: 'GBP',
   NL0000395903: 'EUR',
+  NL0010273215: 'EUR',
+  IE000S9YS762: 'USD',
   CA01626P1484: 'CAD',
   CA15135U1093: 'CAD',
   CA015DM1098: 'CAD',

@@ -110,6 +110,15 @@ async function ladeOpenInsiderNetto(symbol: string): Promise<InsiderNettoPaket |
   }
 }
 
+function symbolAliase(symbol: string): string[] {
+  const sym = symbol.trim().toUpperCase()
+  const out = [sym]
+  if (sym === 'GOOG') out.push('GOOGL')
+  if (sym === 'GOOGL') out.push('GOOG')
+  if (sym === 'BRK.B' || sym === 'BRK-B') out.push('BRK.B', 'BRK-B')
+  return [...new Set(out)]
+}
+
 export async function ladeInsiderNettoHandel(symbol: string): Promise<InsiderNettoPaket | null> {
   const sym = symbol.trim().toUpperCase()
   if (!sym || sym.includes('.')) return null
@@ -118,16 +127,31 @@ export async function ladeInsiderNettoHandel(symbol: string): Promise<InsiderNet
   if (hit && Date.now() - hit.at < CACHE_MS) return hit.data
 
   try {
-    const sec = await ladeSecInsiderNetto90d(sym)
-    if (sec && (sec.kaeufe90d > 0 || sec.verkaeufe90d > 0)) {
-      cache.set(sym, { at: Date.now(), data: sec })
-      return sec
+    for (const kandidat of symbolAliase(sym)) {
+      const sec = await ladeSecInsiderNetto90d(kandidat)
+      if (sec && (sec.kaeufe90d > 0 || sec.verkaeufe90d > 0)) {
+        cache.set(sym, { at: Date.now(), data: sec })
+        return sec
+      }
+
+      const oi = await ladeOpenInsiderNetto(kandidat)
+      if (oi && (oi.kaeufe90d > 0 || oi.verkaeufe90d > 0)) {
+        cache.set(sym, { at: Date.now(), data: oi })
+        return oi
+      }
     }
 
-    const oi = await ladeOpenInsiderNetto(sym)
-    const data = oi ?? sec
-    cache.set(sym, { at: Date.now(), data })
-    return data
+    // Erfolgreich abgefragt, aber keine Open-Market-Trades im Fenster → explizit neutral
+    const leer: InsiderNettoPaket = {
+      kaeufe90d: 0,
+      verkaeufe90d: 0,
+      nettoWertUsd90d: 0,
+      nettoRichtung: 'neutral',
+      letzterTrade: null,
+      quelle: 'sec_form4',
+    }
+    cache.set(sym, { at: Date.now(), data: leer })
+    return leer
   } catch {
     cache.set(sym, { at: Date.now(), data: null })
     return null

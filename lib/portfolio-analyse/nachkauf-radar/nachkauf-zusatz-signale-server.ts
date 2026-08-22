@@ -21,6 +21,20 @@ import {
   extrahiereSegmentStrukturSignale,
   formatSegmentStrukturKontext,
 } from './nachkauf-segment-struktur-hilfen'
+import { berechneEarningsQuality } from '@/lib/portfolio-analyse/fundamentaldaten-earnings-quality'
+import {
+  berechnePegRatio,
+  berechneReinvestition,
+} from '@/lib/portfolio-analyse/fundamentaldaten-reinvestition'
+import {
+  berechneBruttomargenStabilitaet,
+  berechneKundenKonzentrationTop3,
+} from '@/lib/portfolio-analyse/fundamentaldaten-pricing-power'
+import {
+  ladeDebtMaturityProfil,
+  ladeRdKapitalisierung,
+} from '@/lib/portfolio-analyse/sec-edgar-debt-rd-server'
+import { ladeEuUrdNotes } from '@/lib/portfolio-analyse/eu-urd-notes-server'
 
 export type NachkaufZusatzSignale = {
   epsBeatRatePct: number | null
@@ -38,6 +52,19 @@ export type NachkaufZusatzSignale = {
   capitalAllocationScorePct: number | null
   capitalAllocationLabel: string | null
   netDebtEbitda: number | null
+  /** Net Debt / FCF — reale Schuldentragfähigkeit. */
+  netDebtFcf: number | null
+  /** PEG = Fwd-KGV / EPS-Wachstum. */
+  pegRatio: number | null
+  /** (CapEx+M&A−D&A)/|FCF| %. */
+  reinvestitionsquotePct: number | null
+  /** Incremental ROIC %. */
+  incrementalRoicPct: number | null
+  /** Sloan Accruals-Ratio. */
+  sloanRatio: number | null
+  /** Beneish M-Score. */
+  beneishMScore: number | null
+  beneishRisiko: 'niedrig' | 'erhoeht' | 'hoch' | null
   shortFloatPct: number | null
   shortRatio: number | null
   insiderOwnershipPct: number | null
@@ -62,9 +89,23 @@ export type NachkaufZusatzSignale = {
   backlogLabel: string | null
   segmentShiftPct: number | null
   /** Quelle der Segment-Historie (MS/SA/mixed). */
-  segmentQuelle: 'marketscreener' | 'stockanalysis' | 'mixed' | 'sec_edgar' | null
+  segmentQuelle: 'marketscreener' | 'stockanalysis' | 'mixed' | 'sec_edgar' | 'eu_urd' | null
   /** Segment-Konzentration nur bei validierter Quelle in Score. */
   segmentDatenZuverlaessig: boolean
+  /** Umsatzanteil größter Kunde %. */
+  umsatzanteilTop1KundenPct: number | null
+  /** Umsatzanteil Top-3-Kunden %. */
+  umsatzanteilTop3KundenPct: number | null
+  topKundenNamen: string[]
+  /** Bruttomarge StdAbw. über bis zu 10 Jahre (Pp.). */
+  bruttoMargeStd10y: number | null
+  pricingPowerOk: boolean | null
+  /** Schulden fällig in 24 Monaten (Mio.). */
+  debtDue24mMio: number | null
+  /** Anteil der Schulden mit Refi in 24 Monaten %. */
+  debtRefi24mPct: number | null
+  /** F&E-Aktivierungsquote %. */
+  rdAktivierungsquotePct: number | null
   /** Tage bis nächstes Earnings (Momentum-Kalender). */
   tageBisEarnings: number | null
   /** Kompakter Struktur-Block für Deep Research. */
@@ -83,6 +124,10 @@ export type NachkaufZusatzSignale = {
   dioTrendDelta: number | null
   /** DPO-Trend (negativ = schneller zahlen = schlechter). */
   dpoTrendDelta: number | null
+  /** Cash Conversion Cycle-Trend (DSO+DIO−DPO) — Kapitalbindung inkl. Finanz. */
+  cccTrendDelta: number | null
+  /** industrie = Lager relevant; finanz = DSO/CCC statt DIO. */
+  wcProfil: 'industrie' | 'finanz' | null
   /** Aktienrückkäufe letztes FY (Mio. USD, typ. negativ). */
   aktienrueckkaufMio: number | null
   /** Punkt 2: CAGR ausstehende Aktien (positiv = Verwässerung). */
@@ -108,6 +153,8 @@ export type NachkaufZusatzSignale = {
   earningsKiZusammenfassung?: string | null
   /** SEC/IR-KI-Text (Cache) — wirkt auf Score/Ampel. */
   secKiZusammenfassung?: string | null
+  /** Management-Sentiment −100…+100 aus Earnings-Call-KI. */
+  earningsSentimentScore?: number | null
   /** 0–100: wie viele Kern-Signale befüllt sind. */
   datenVollstaendigkeitPct: number
 }
@@ -151,6 +198,24 @@ function netDebtEbitdaAusPaket(paket: FundamentaldatenPaket): number | null {
   return km ? parseMetricZahl(km.wert) : null
 }
 
+function netDebtFcfAusPaket(paket: FundamentaldatenPaket): number | null {
+  const km = paket.keyMetrics.find((m) => m.id === 'net_debt_fcf')
+  if (km) {
+    const v = parseMetricZahl(km.wert)
+    if (v != null) return v
+  }
+  const netDebt = paket.keyMetrics.find((m) => m.id === 'net_debt')
+  const debtUsd = netDebt ? parseMetricZahl(netDebt.wert) : null
+  // Fallback: nettoverschuldung / fcf aus Zeilen
+  const ndMio = letzterHistorischerWert(paket, 'nettoverschuldung')
+  const fcfMio = letzterHistorischerWert(paket, 'fcf')
+  if (ndMio != null && fcfMio != null && Math.abs(fcfMio) >= 1) {
+    return Math.round((ndMio / Math.abs(fcfMio)) * 100) / 100
+  }
+  void debtUsd
+  return null
+}
+
 function bilanzStruktur(paket: FundamentaldatenPaket): {
   nettoCashMio: number | null
   goodwillAnteilPct: number | null
@@ -179,15 +244,25 @@ function segmentKonzentration(
   return max > 0 ? max : null
 }
 
-/** Letzte zwei historische Werte: jüngstes minus älteres. */
+/** Letzte zwei historische Werte: jüngstes minus älteres (fuzzy ISO-Match). */
 function trendDeltaAusZeile(paket: FundamentaldatenPaket, zeilenId: string): number | null {
   const z = paket.zeilen.find((r) => r.id === zeilenId)
   if (!z) return null
   const werte: number[] = []
   for (let i = paket.perioden.length - 1; i >= 0 && werte.length < 2; i--) {
     const p = paket.perioden[i]!
-    if (p.istSchaetzung || p.istNtm) continue
-    const v = z.werte[p.iso]
+    if (p.istSchaetzung || p.istNtm || p.istLtm) continue
+    // Fuzzy: exakter Key oder gleicher Jahrgang
+    let v = z.werte[p.iso]
+    if (v == null || !Number.isFinite(v)) {
+      const jahr = p.iso.slice(0, 4)
+      for (const [k, val] of Object.entries(z.werte)) {
+        if (k.startsWith(jahr) && val != null && Number.isFinite(val)) {
+          v = val
+          break
+        }
+      }
+    }
     if (v != null && Number.isFinite(v)) werte.push(v)
   }
   if (werte.length < 2) return null
@@ -197,8 +272,17 @@ function trendDeltaAusZeile(paket: FundamentaldatenPaket, zeilenId: string): num
 function sbcVsFcfPctAusPaket(paket: FundamentaldatenPaket): number | null {
   const sbc = letzterHistorischerWert(paket, 'sbc')
   const fcf = letzterHistorischerWert(paket, 'fcf')
-  if (sbc == null || fcf == null || Math.abs(fcf) < 1) return null
-  return Math.round((Math.abs(sbc) / Math.abs(fcf)) * 1000) / 10
+  if (sbc != null && fcf != null && Math.abs(fcf) >= 1) {
+    return Math.round((Math.abs(sbc) / Math.abs(fcf)) * 1000) / 10
+  }
+
+  // Fallback: Key-Metric / Kontext-ähnliche Yahoo-SBC-Ratio falls Zeile fehlt
+  const km = paket.keyMetrics.find((m) => m.id === 'sbc_fcf_ratio' || m.id === 'sbc_vs_fcf')
+  if (km) {
+    const v = parseMetricZahl(km.wert)
+    if (v != null && v > 0) return v
+  }
+  return null
 }
 
 function capAllocAusPaket(capital: Awaited<ReturnType<typeof ladeCapitalAllocation>> | null): {
@@ -218,6 +302,86 @@ function capAllocAusPaket(capital: Awaited<ReturnType<typeof ladeCapitalAllocati
     capAllocCapex: vonId('capex'),
     capAllocMna: vonId('mna'),
     capAllocWarnungen,
+  }
+}
+
+/** Wenn Yahoo/SEC CapAlloc leer: CapEx/Buyback/Dividende aus Macrotrends-Zeilen ableiten. */
+function capAllocAusFundamentalPaket(paket: FundamentaldatenPaket): {
+  capAllocBuyback: CapitalAllocationBewertung | null
+  capAllocDividend: CapitalAllocationBewertung | null
+  capAllocCapex: CapitalAllocationBewertung | null
+  capAllocMna: CapitalAllocationBewertung | null
+  capAllocWarnungen: number
+  capitalAllocationScorePct: number | null
+  capitalAllocationLabel: string | null
+} | null {
+  const ocf = letzterHistorischerWert(paket, 'ocf')
+  const fcf = letzterHistorischerWert(paket, 'fcf')
+  const capex = letzterHistorischerWert(paket, 'capex')
+  const div = letzterHistorischerWert(paket, 'dividenden_gezahlt')
+  const buy = letzterHistorischerWert(paket, 'aktienrueckkauf')
+  if (ocf == null || !(Math.abs(ocf) > 0)) return null
+
+  const pctOf = (teil: number | null) =>
+    teil == null ? null : Math.round((Math.abs(teil) / Math.abs(ocf)) * 1000) / 10
+
+  const bewerte = (
+    id: 'capex' | 'dividend' | 'buyback' | 'mna',
+    p: number | null,
+  ): CapitalAllocationBewertung => {
+    if (p == null) return 'keine_daten'
+    if (id === 'capex') {
+      if (p >= 5 && p <= 30) return 'gut'
+      if (p > 45) return 'warnung'
+      return 'neutral'
+    }
+    if (id === 'dividend') {
+      if (p <= 40) return 'gut'
+      if (p > 60 || (fcf != null && fcf < 0)) return 'warnung'
+      return 'neutral'
+    }
+    if (id === 'buyback') {
+      if (p === 0) return 'neutral'
+      if (fcf != null && fcf > 0 && p <= 50) return 'gut'
+      if (fcf != null && fcf < 0 && p > 20) return 'warnung'
+      return 'neutral'
+    }
+    // mna: ohne Daten → 0 = gut (geringe M&A)
+    if (p <= 10) return 'gut'
+    if (p > 35) return 'warnung'
+    return 'neutral'
+  }
+
+  const capexPct = pctOf(capex)
+  const divPct = pctOf(div ?? 0)
+  const buyPct = pctOf(buy ?? 0)
+  const mnaPct = 0 // Macrotrends hat selten purchaseOfBusiness — als 0 behandeln wenn OCF da
+
+  const saeulen = [
+    bewerte('capex', capexPct),
+    bewerte('dividend', divPct),
+    bewerte('buyback', buyPct),
+    bewerte('mna', mnaPct),
+  ]
+  let score = 50
+  if (fcf != null && fcf > 0) score += 15
+  if (fcf != null && fcf < 0) score -= 15
+  for (const s of saeulen) {
+    if (s === 'gut') score += 8
+    if (s === 'warnung') score -= 10
+  }
+  score = Math.max(0, Math.min(100, score))
+  const label =
+    score >= 75 ? 'stark' : score >= 55 ? 'solide' : score >= 35 ? 'beobachten' : 'schwach'
+
+  return {
+    capAllocCapex: bewerte('capex', capexPct),
+    capAllocDividend: bewerte('dividend', divPct),
+    capAllocBuyback: bewerte('buyback', buyPct),
+    capAllocMna: bewerte('mna', mnaPct),
+    capAllocWarnungen: saeulen.filter((s) => s === 'warnung').length,
+    capitalAllocationScorePct: score,
+    capitalAllocationLabel: label,
   }
 }
 
@@ -279,7 +443,11 @@ export async function ladeNachkaufZusatzSignale(opts: {
     erw?.secStruktur,
   )
 
-  const capital = await ladeCapitalAllocation({ ticker: opts.ticker, symbolYahoo: sym }).catch(() => null)
+  const capital = await ladeCapitalAllocation({
+    ticker: opts.ticker,
+    symbolYahoo: sym,
+    isin: opts.isin,
+  }).catch(() => null)
 
   let epsBeatRatePct = erw?.beatMiss?.epsBeatRatePct ?? null
   let epsBeatRate12Pct = erw?.beatMiss?.agg12?.epsBeatRatePct ?? null
@@ -315,10 +483,27 @@ export async function ladeNachkaufZusatzSignale(opts: {
 
   const finviz = erw?.finviz
   const holders = erw?.holders
-  const capAlloc = capAllocAusPaket(capital)
+  let capAlloc = capAllocAusPaket(capital)
+  let capitalAllocationScorePct = capital?.scorePct ?? null
+  let capitalAllocationLabel: string | null = capital?.scoreLabel ?? null
+  if (capAlloc.capAllocCapex == null || capitalAllocationScorePct == null) {
+    const mt = capAllocAusFundamentalPaket(opts.paket)
+    if (mt) {
+      capAlloc = {
+        capAllocBuyback: capAlloc.capAllocBuyback ?? mt.capAllocBuyback,
+        capAllocDividend: capAlloc.capAllocDividend ?? mt.capAllocDividend,
+        capAllocCapex: capAlloc.capAllocCapex ?? mt.capAllocCapex,
+        capAllocMna: capAlloc.capAllocMna ?? mt.capAllocMna,
+        capAllocWarnungen: Math.max(capAlloc.capAllocWarnungen, mt.capAllocWarnungen),
+      }
+      capitalAllocationScorePct = capitalAllocationScorePct ?? mt.capitalAllocationScorePct
+      capitalAllocationLabel = capitalAllocationLabel ?? mt.capitalAllocationLabel
+    }
+  }
 
-  const [unitEc, gaapAdj, secKennz] = await Promise.all([
-    ladeUnitEconomics(sym).catch(() => null),
+  const [unitEc, gaapAdj, secKennz, debtMatRaw, rdKapRaw] = await Promise.all([
+  // Unit Economics mit US-Bare-Ticker (nicht H11/RMS.PA)
+  ladeUnitEconomics(opts.ticker.split('.')[0]!).catch(() => null),
     ladeGaapAdjEpsLuecke({
       symbolYahoo: sym,
       isin: opts.isin,
@@ -333,7 +518,36 @@ export async function ladeNachkaufZusatzSignale(opts: {
       if (!cik) return null
       return ladeSecCompanyFacts(cik).catch(() => null)
     })(),
+    erw?.debtMaturity
+      ? Promise.resolve(erw.debtMaturity)
+      : ladeDebtMaturityProfil(sym.split('.')[0]!).catch(() => null),
+    erw?.rdKapitalisierung
+      ? Promise.resolve(erw.rdKapitalisierung)
+      : ladeRdKapitalisierung(sym.split('.')[0]!).catch(() => null),
   ])
+
+  let debtMat = debtMatRaw
+  let rdKap = rdKapRaw
+  let urdHauptkunden: Array<{ name: string; anteilPct: number }> | null = null
+  const isinU = (opts.isin ?? '').trim().toUpperCase()
+  const isEu =
+    /^(DE|NL|FR|CH|GB|IE|AT|BE|LU|SE|DK|FI|NO|ES|IT|PT|PL)/.test(isinU)
+  if (
+    isEu &&
+    isinU.length >= 10 &&
+    (!debtMat || !rdKap || !(erw?.secSegmentHistorie?.zusatz?.hauptkunden?.length))
+  ) {
+    const urd = await ladeEuUrdNotes({
+      isin: isinU,
+      ticker: opts.ticker,
+      firmenname: opts.paket.firmenname,
+    }).catch(() => null)
+    if (urd) {
+      if (!debtMat && urd.debtMaturity) debtMat = urd.debtMaturity
+      if (!rdKap && urd.rdKapitalisierung) rdKap = urd.rdKapitalisierung
+      if (urd.hauptkunden.length > 0) urdHauptkunden = urd.hauptkunden
+    }
+  }
 
   const kennz = secKennz ?? erw?.secSegmentHistorie?.kennzahlen
   let kurzfristSchuldenAnteilPct: number | null = null
@@ -375,9 +589,36 @@ export async function ladeNachkaufZusatzSignale(opts: {
     epsWachstumFy0Pct: wachstum.fy0,
     epsWachstumFy1Pct: wachstum.fy1,
     prognoseProfil,
-    capitalAllocationScorePct: capital?.scorePct ?? null,
-    capitalAllocationLabel: capital?.scoreLabel ?? null,
+    capitalAllocationScorePct,
+    capitalAllocationLabel,
     netDebtEbitda: netDebtEbitdaAusPaket(opts.paket),
+    netDebtFcf: netDebtFcfAusPaket(opts.paket),
+    pegRatio: (() => {
+      const fwdPe = opts.paket.keyMetrics.find((m) => m.id === 'ntm_pe')
+      const pe = fwdPe ? parseMetricZahl(fwdPe.wert) : null
+      const wachstum =
+        schaetzungsWachstum(opts.paket).fy1 ??
+        schaetzungsWachstum(opts.paket).fy0 ??
+        null
+      const kmPeg = opts.paket.keyMetrics.find((m) => m.id === 'peg_ratio')
+      const ausKm = kmPeg ? parseMetricZahl(kmPeg.wert) : null
+      return (
+        ausKm ??
+        berechnePegRatio(pe, wachstum, erw?.finviz?.peg ?? null)
+      )
+    })(),
+    ...(() => {
+      const mnaMio = capital?.saeulen.find((s) => s.id === 'mna')?.betragMioUsd ?? null
+      const r = berechneReinvestition(opts.paket.perioden, opts.paket.zeilen, mnaMio)
+      const eq = berechneEarningsQuality(opts.paket.perioden, opts.paket.zeilen)
+      return {
+        reinvestitionsquotePct: r.reinvestitionsquotePct,
+        incrementalRoicPct: r.incrementalRoicPct,
+        sloanRatio: eq.sloanRatio,
+        beneishMScore: eq.beneishMScore,
+        beneishRisiko: eq.beneishRisiko,
+      }
+    })(),
     shortFloatPct: finviz?.shortFloatPct ?? null,
     shortRatio: finviz?.shortRatio ?? null,
     insiderOwnershipPct:
@@ -403,6 +644,33 @@ export async function ladeNachkaufZusatzSignale(opts: {
     segmentShiftPct: segSig.segmentShiftPct,
     segmentQuelle: segSig.segmentQuelle,
     segmentDatenZuverlaessig: segSig.segmentDatenZuverlaessig,
+    ...(() => {
+      const kunden = berechneKundenKonzentrationTop3(
+        erw?.secSegmentHistorie?.zusatz?.hauptkunden?.length
+          ? erw.secSegmentHistorie.zusatz.hauptkunden
+          : urdHauptkunden,
+      )
+      const bruttoHist = opts.paket.zeilen.find((z) => z.id === 'bruttomarge')
+      const histVals: number[] = []
+      if (bruttoHist) {
+        for (const p of opts.paket.perioden) {
+          if (p.istSchaetzung || p.istNtm || p.istLtm) continue
+          const v = bruttoHist.werte[p.iso]
+          if (v != null && Number.isFinite(v)) histVals.push(v)
+        }
+      }
+      const stab = berechneBruttomargenStabilitaet(histVals)
+      return {
+        umsatzanteilTop1KundenPct: kunden.umsatzanteilTop1KundenPct,
+        umsatzanteilTop3KundenPct: kunden.umsatzanteilTop3KundenPct,
+        topKundenNamen: kunden.topKundenNamen,
+        bruttoMargeStd10y: stab.bruttoMargeStd10y,
+        pricingPowerOk: stab.pricingPowerOk,
+        debtDue24mMio: debtMat?.due24mMio ?? null,
+        debtRefi24mPct: debtMat?.refiAnteil24mPct ?? null,
+        rdAktivierungsquotePct: rdKap?.aktivierungsquotePct ?? null,
+      }
+    })(),
     tageBisEarnings: null,
     segmentStrukturKontext,
     ...capAlloc,
@@ -410,6 +678,18 @@ export async function ladeNachkaufZusatzSignale(opts: {
     dsoTrendDelta: trendDeltaAusZeile(opts.paket, 'dso'),
     dioTrendDelta: trendDeltaAusZeile(opts.paket, 'dio'),
     dpoTrendDelta: trendDeltaAusZeile(opts.paket, 'dpo'),
+    cccTrendDelta: trendDeltaAusZeile(opts.paket, 'ccc'),
+    wcProfil: (() => {
+      const hatDio = opts.paket.zeilen.some(
+        (z) => z.id === 'dio' && Object.values(z.werte).some((v) => v != null && Number.isFinite(v)),
+      )
+      const hatDso = opts.paket.zeilen.some(
+        (z) => z.id === 'dso' && Object.values(z.werte).some((v) => v != null && Number.isFinite(v)),
+      )
+      if (hatDio) return 'industrie'
+      if (hatDso) return 'finanz'
+      return null
+    })(),
     aktienrueckkaufMio: letzterHistorischerWert(opts.paket, 'aktienrueckkauf'),
     aktienVerwaesserungJaehrlichPct: qualitaet.aktienVerwaesserungJaehrlichPct,
     aktienYoYPct: qualitaet.aktienYoYPct,
@@ -514,6 +794,23 @@ export function formatZusatzSignaleKurz(z: NachkaufZusatzSignale): string {
   }
   if (z.insiderNettoRichtung && z.insiderNettoRichtung !== 'neutral') {
     teile.push(`Insider-Netto 90T: ${z.insiderNettoRichtung}`)
+  }
+  if (z.umsatzanteilTop1KundenPct != null) {
+    const name = z.topKundenNamen?.[0] ? ` (${z.topKundenNamen[0]})` : ''
+    teile.push(`Top-Kunde ${z.umsatzanteilTop1KundenPct.toFixed(0)} %${name}`)
+  }
+  if (z.debtRefi24mPct != null) {
+    teile.push(
+      `Refi≤24M ${z.debtRefi24mPct.toFixed(0)} %${
+        z.debtDue24mMio != null ? ` (${z.debtDue24mMio.toLocaleString('de-DE')} Mio.)` : ''
+      }`,
+    )
+  }
+  if (z.rdAktivierungsquotePct != null) {
+    teile.push(`F&E-Aktivierung ${z.rdAktivierungsquotePct.toFixed(0)} %`)
+  }
+  if (z.bruttoMargeStd10y != null) {
+    teile.push(`Bruttomarge-Std ±${z.bruttoMargeStd10y.toFixed(1)} Pp.`)
   }
   if (z.shortFloatPct != null && z.shortFloatPct >= 8) {
     teile.push(`Short Float ${z.shortFloatPct.toFixed(1)} %`)

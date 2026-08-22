@@ -7,6 +7,8 @@ Analyse-Struktur (alle Abschnitte ausführlich, mit konkreten Zahlen und Zitaten
 1. Executive Summary (Das Wichtigste in Kürze)
 - Stimmung (Sentiment) des Managements
 - Die drei wichtigsten Takeaways
+- Pflicht: Am Ende von ## Executive Summary eine eigene Zeile genau so: SENTIMENT_SCORE: N
+  wobei N eine ganze Zahl von -100 (Krise/sehr pessimistisch) bis +100 (sehr optimistisch) ist.
 
 2. Finanzielle Performance & Guidance
 - Revenue, EPS, Margen vs. Erwartungen/Konsens
@@ -51,6 +53,8 @@ Analyse-Struktur (alle Abschnitte ausführlich, mit konkreten Zahlen wo möglich
 1. Executive Summary (Das Wichtigste in Kürze)
 - Stimmung (Sentiment) des Managements
 - Die drei wichtigsten Takeaways
+- Pflicht: Am Ende von ## Executive Summary eine eigene Zeile genau so: SENTIMENT_SCORE: N
+  wobei N eine ganze Zahl von -100 (Krise/sehr pessimistisch) bis +100 (sehr optimistisch) ist.
 
 2. Finanzielle Performance & Guidance
 - Umsatz, Ergebnis, Margen — Vergleich zu Vorjahr/Vorquartal wenn genannt

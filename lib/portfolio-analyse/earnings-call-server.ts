@@ -39,6 +39,7 @@ import { ladeInvestorRelationsUrl } from '@/lib/portfolio-analyse/investor-relat
 import { ladeSecEdgarTranskriptHistorie } from '@/lib/portfolio-analyse/sec-edgar-earnings-transcript-server'
 import { resolveCoachProviderFromMode, runCoachCompletion, earningsCallGeminiModelKandidaten } from '@/lib/ki-coach-backend'
 import { zusammenfassungMitMarktkontext } from '@/lib/portfolio-analyse/marktkontext-ki-server'
+import { sentimentScoreAusZusammenfassung } from '@/lib/portfolio-analyse/earnings-call-sentiment'
 
 const MAX_TRANSCRIPT_CHARS = 100_000
 const CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000
@@ -52,10 +53,15 @@ type RohesTranskript = {
   quelle: EarningsCallQuelle
 }
 
+type SummaryCacheZeile = {
+  text: string
+  sentimentScore: number | null
+}
+
 type DiscoveryCache = {
   expiresAt: number
   roh: RohesTranskript[]
-  summaries: Map<string, string>
+  summaries: Map<string, SummaryCacheZeile>
 }
 
 const discoveryCache = new Map<string, DiscoveryCache>()
@@ -86,7 +92,11 @@ async function ladePersistenteSummaries(ticker: string, cache: DiscoveryCache): 
   const gespeichert = await ladeEarningsCallKiCacheFuerTicker(ticker)
   for (const [quartalId, eintrag] of gespeichert) {
     if (!cache.summaries.has(quartalId)) {
-      cache.summaries.set(quartalId, eintrag.zusammenfassung)
+      cache.summaries.set(quartalId, {
+        text: eintrag.zusammenfassung,
+        sentimentScore:
+          eintrag.sentimentScore ?? sentimentScoreAusZusammenfassung(eintrag.zusammenfassung),
+      })
     }
   }
 }
@@ -96,7 +106,7 @@ async function summaryAusPersistenz(
   quartalId: string,
   transcriptUrl: string,
   forceKi?: boolean,
-): Promise<string | null> {
+): Promise<SummaryCacheZeile | null> {
   if (forceKi) return null
   const hit = await ladeEarningsCallKiCacheEintrag(ticker, quartalId)
   if (!hit) return null
@@ -104,7 +114,10 @@ async function summaryAusPersistenz(
     await loescheEarningsCallKiCacheEintrag(ticker, quartalId)
     return null
   }
-  return hit.zusammenfassung
+  return {
+    text: hit.zusammenfassung,
+    sentimentScore: hit.sentimentScore ?? sentimentScoreAusZusammenfassung(hit.zusammenfassung),
+  }
 }
 
 function mappeRohe(
@@ -396,10 +409,14 @@ function bauePaket(
   ausCache: boolean,
   hinweis?: string | null,
 ): EarningsCallPaket {
-  const quartale = rohZuQuartale(cache.roh).map((q) => ({
-    ...q,
-    zusammenfassung: cache.summaries.get(q.id) ?? null,
-  }))
+  const quartale = rohZuQuartale(cache.roh).map((q) => {
+    const s = cache.summaries.get(q.id)
+    return {
+      ...q,
+      zusammenfassung: s?.text ?? null,
+      sentimentScore: s?.sentimentScore ?? null,
+    }
+  })
 
   return {
     ok: quartale.length > 0,
@@ -441,9 +458,13 @@ export async function ladeEarningsCallZusammenfassung(anfrage: EarningsCallAnfra
     const persisted = await ladeUnternehmenCache(ticker)
     if (persisted?.roh.length) {
       persistedIrUrl = persisted.investorRelationsUrl
-      const summaries = new Map<string, string>()
+      const summaries = new Map<string, SummaryCacheZeile>()
       for (const [quartalId, row] of Object.entries(persisted.summaries)) {
-        summaries.set(quartalId, row.zusammenfassung)
+        summaries.set(quartalId, {
+          text: row.zusammenfassung,
+          sentimentScore:
+            row.sentimentScore ?? sentimentScoreAusZusammenfassung(row.zusammenfassung),
+        })
       }
       cache = {
         expiresAt: Date.now() + CACHE_TTL_MS,
@@ -527,13 +548,18 @@ export async function ladeEarningsCallZusammenfassung(anfrage: EarningsCallAnfra
           label: meta.label,
           firmenname: anfrage.firmenname,
         })
-        cache.summaries.set(zielId, summary)
+        const zeile: SummaryCacheZeile = {
+          text: summary,
+          sentimentScore: sentimentScoreAusZusammenfassung(summary),
+        }
+        cache.summaries.set(zielId, zeile)
         try {
           await speichereEarningsCallKiCache({
             ticker,
             quartalId: zielId,
             transcriptUrl: roh.url,
             zusammenfassung: summary,
+            sentimentScore: zeile.sentimentScore,
           })
         } catch (persistErr) {
           console.warn('Earnings-Call KI-Cache nicht schreibbar', persistErr)

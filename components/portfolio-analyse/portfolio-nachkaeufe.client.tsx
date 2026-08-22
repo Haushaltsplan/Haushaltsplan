@@ -541,7 +541,23 @@ function TitelKarte({
             <div className={`h-2 w-2 shrink-0 rounded-full ${cfg.dot}`} />
             <p className="truncate text-sm font-semibold text-[var(--app-text)]">{eintrag.name}</p>
           </div>
-          <p className="mt-0.5 pl-4 text-[11px] font-mono text-[var(--app-text-muted)]">{eintrag.ticker}</p>
+          <p className="mt-0.5 pl-4 text-[11px] font-mono text-[var(--app-text-muted)]">
+            {eintrag.ticker}
+            {eintrag.datenSignale?.earningsSentimentScore != null ? (
+              <span
+                className={`ml-2 font-sans tabular-nums ${
+                  eintrag.datenSignale.earningsSentimentScore <= -25
+                    ? 'text-rose-400'
+                    : eintrag.datenSignale.earningsSentimentScore >= 25
+                      ? 'text-emerald-400'
+                      : ''
+                }`}
+              >
+                Sent. {eintrag.datenSignale.earningsSentimentScore > 0 ? '+' : ''}
+                {eintrag.datenSignale.earningsSentimentScore}
+              </span>
+            ) : null}
+          </p>
         </div>
         <div className="shrink-0 text-right space-y-1">
           <span className={`inline-flex rounded-md px-2 py-0.5 text-[10px] font-semibold tracking-wide ${portfolioBadge.badge}`}>
@@ -1274,6 +1290,128 @@ function DetailPanel({
                 : '–'}
             </p>
           </div>
+          <div>
+            <p className="text-[11px] text-[var(--app-text-muted)]">Net Debt / FCF</p>
+            <p
+              className={`text-sm font-medium ${
+                (eintrag.bewertung.netDebtFcf ?? 0) > 5 ? 'text-rose-400' : 'text-[var(--app-text)]'
+              }`}
+            >
+              {eintrag.bewertung.netDebtFcf != null
+                ? `${eintrag.bewertung.netDebtFcf.toFixed(1)}×`
+                : '–'}
+            </p>
+          </div>
+          <div>
+            <p className="text-[11px] text-[var(--app-text-muted)]">PEG-Ratio</p>
+            <p
+              className={`text-sm font-medium ${
+                eintrag.bewertung.pegRatio != null && eintrag.bewertung.pegRatio < 1.8
+                  ? 'text-emerald-400'
+                  : 'text-[var(--app-text)]'
+              }`}
+            >
+              {eintrag.bewertung.pegRatio != null ? `${eintrag.bewertung.pegRatio.toFixed(2)}×` : '–'}
+            </p>
+          </div>
+          {eintrag.datenSignale?.reinvestitionsquotePct != null && (
+            <div>
+              <p className="text-[11px] text-[var(--app-text-muted)]">Reinvestitionsquote</p>
+              <p className="text-sm font-medium text-[var(--app-text)]">
+                {eintrag.datenSignale.reinvestitionsquotePct.toFixed(0)} %
+                {eintrag.datenSignale.incrementalRoicPct != null
+                  ? ` · Incr. ROIC ${eintrag.datenSignale.incrementalRoicPct.toFixed(0)} %`
+                  : ''}
+              </p>
+            </div>
+          )}
+          {eintrag.datenSignale?.sloanRatio != null && (
+            <div>
+              <p className="text-[11px] text-[var(--app-text-muted)]">Sloan-Ratio</p>
+              <p
+                className={`text-sm font-medium ${
+                  eintrag.datenSignale.sloanRatio > 0.08 ? 'text-rose-400' : 'text-[var(--app-text)]'
+                }`}
+              >
+                {eintrag.datenSignale.sloanRatio.toFixed(3)}
+              </p>
+            </div>
+          )}
+          {eintrag.datenSignale?.beneishMScore != null && (
+            <div>
+              <p className="text-[11px] text-[var(--app-text-muted)]">Beneish M-Score</p>
+              <p
+                className={`text-sm font-medium ${
+                  eintrag.datenSignale.beneishRisiko === 'hoch'
+                    ? 'text-rose-400'
+                    : eintrag.datenSignale.beneishRisiko === 'erhoeht'
+                      ? 'text-amber-400'
+                      : 'text-[var(--app-text)]'
+                }`}
+              >
+                {eintrag.datenSignale.beneishMScore.toFixed(2)}
+                {eintrag.datenSignale.beneishRisiko ? ` (${eintrag.datenSignale.beneishRisiko})` : ''}
+              </p>
+            </div>
+          )}
+          {eintrag.datenSignale?.bruttoMargeStd10y != null && (
+            <div>
+              <p className="text-[11px] text-[var(--app-text-muted)]">Bruttomarge StdAbw.</p>
+              <p
+                className={`text-sm font-medium ${
+                  eintrag.datenSignale.bruttoMargeStd10y > 2 ? 'text-rose-400' : 'text-emerald-400'
+                }`}
+              >
+                ±{eintrag.datenSignale.bruttoMargeStd10y.toFixed(1)} Pp.
+              </p>
+            </div>
+          )}
+          {eintrag.datenSignale?.umsatzanteilTop1KundenPct != null && (
+            <div>
+              <p className="text-[11px] text-[var(--app-text-muted)]">Top-Kunde Umsatz</p>
+              <p
+                className={`text-sm font-medium ${
+                  eintrag.datenSignale.umsatzanteilTop1KundenPct >= 10
+                    ? 'text-rose-400'
+                    : 'text-[var(--app-text)]'
+                }`}
+              >
+                {eintrag.datenSignale.umsatzanteilTop1KundenPct.toFixed(0)} %
+                {eintrag.datenSignale.topKundenNamen?.[0]
+                  ? ` (${eintrag.datenSignale.topKundenNamen[0]})`
+                  : ''}
+              </p>
+            </div>
+          )}
+          {eintrag.datenSignale?.debtRefi24mPct != null && (
+            <div>
+              <p className="text-[11px] text-[var(--app-text-muted)]">Refi ≤24M</p>
+              <p
+                className={`text-sm font-medium ${
+                  eintrag.datenSignale.debtRefi24mPct >= 25 ? 'text-rose-400' : 'text-[var(--app-text)]'
+                }`}
+              >
+                {eintrag.datenSignale.debtRefi24mPct.toFixed(0)} %
+                {eintrag.datenSignale.debtDue24mMio != null
+                  ? ` · ${eintrag.datenSignale.debtDue24mMio.toLocaleString('de-DE')} Mio.`
+                  : ''}
+              </p>
+            </div>
+          )}
+          {eintrag.datenSignale?.rdAktivierungsquotePct != null && (
+            <div>
+              <p className="text-[11px] text-[var(--app-text-muted)]">F&E-Aktivierung</p>
+              <p
+                className={`text-sm font-medium ${
+                  eintrag.datenSignale.rdAktivierungsquotePct >= 15
+                    ? 'text-amber-400'
+                    : 'text-[var(--app-text)]'
+                }`}
+              >
+                {eintrag.datenSignale.rdAktivierungsquotePct.toFixed(0)} %
+              </p>
+            </div>
+          )}
           {eintrag.datenSignale?.epsBeatRate12Pct != null && (
             <div>
               <p className="text-[11px] text-[var(--app-text-muted)]">EPS-Beat 12Q</p>
@@ -1508,7 +1646,7 @@ function DetailPanel({
 // ---------------------------------------------------------------------------
 
 type FilterAmpel = 'alle' | 'gruen' | 'gelb' | 'rot' | 'teuer'
-type SortKey = 'score' | 'name' | 'ampel' | 'depot' | 'trigger'
+type SortKey = 'score' | 'name' | 'ampel' | 'depot' | 'trigger' | 'sentiment'
 
 // ---------------------------------------------------------------------------
 // Einfacher Markdown-Renderer (bold, italic, headings, lists)
@@ -1851,6 +1989,12 @@ export function NachkaufRadarClient() {
       }
       case 'depot': return [...liste].sort((a, b) => (b.depotGewichtPct ?? 0) - (a.depotGewichtPct ?? 0))
       case 'trigger': return [...liste].sort((a, b) => Number(b.kaufTriggerAusgeloest) - Number(a.kaufTriggerAusgeloest) || b.score - a.score)
+      case 'sentiment':
+        return [...liste].sort(
+          (a, b) =>
+            (a.datenSignale?.earningsSentimentScore ?? 999) -
+              (b.datenSignale?.earningsSentimentScore ?? 999) || b.score - a.score,
+        )
       default: return [...liste].sort((a, b) => b.score - a.score)
     }
   })()
@@ -2184,7 +2328,7 @@ export function NachkaufRadarClient() {
               )
             })}
             <span className="ml-auto text-[11px] text-[var(--app-text-muted)]">Sort:</span>
-            {([['score', 'Score'], ['name', 'A–Z'], ['depot', 'Depot %'], ['trigger', 'Trigger'], ['ampel', 'Ampel']] as [SortKey, string][]).map(([k, label]) => (
+            {([['score', 'Score'], ['name', 'A–Z'], ['depot', 'Depot %'], ['trigger', 'Trigger'], ['ampel', 'Ampel'], ['sentiment', 'Sentiment ↑']] as [SortKey, string][]).map(([k, label]) => (
               <button
                 key={k}
                 type="button"

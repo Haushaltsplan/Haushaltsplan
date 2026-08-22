@@ -179,6 +179,8 @@ export function extrahiereBewertungsSignale(
     epsBeatRatePct: zusatz?.epsBeatRatePct ?? null,
     capitalAllocationScorePct: zusatz?.capitalAllocationScorePct ?? null,
     netDebtEbitda: zusatz?.netDebtEbitda ?? null,
+    netDebtFcf: zusatz?.netDebtFcf ?? null,
+    pegRatio: zusatz?.pegRatio ?? null,
     shortFloatPct: zusatz?.shortFloatPct ?? null,
     datenVollstaendigkeitPct: zusatz?.datenVollstaendigkeitPct ?? null,
   }
@@ -463,14 +465,20 @@ export function pruefKaufTrigger(
   const trigger = position.kaufTrigger
   if (!trigger) return { ausgeloest: false, text: null }
 
-  const { fcfYieldPct, forwardPe } = signale
+  const { fcfYieldPct, forwardPe, pegRatio } = signale
   const bedingungen: string[] = []
 
   const peTrigger = trigger.peMax != null && forwardPe != null && forwardPe < trigger.peMax
   const fcfTrigger = trigger.fcfYieldMin != null && fcfYieldPct != null && fcfYieldPct >= trigger.fcfYieldMin
+  const pegSchwelle = trigger.pegMax ?? (trigger.peMax != null ? 1.8 : undefined)
+  const pegTrigger =
+    pegSchwelle != null && pegRatio != null && pegRatio > 0 && pegRatio < pegSchwelle
 
   if (peTrigger) bedingungen.push(`Forward P/E ${forwardPe?.toFixed(1)}× < Schwelle ${trigger.peMax}×`)
   if (fcfTrigger) bedingungen.push(`FCF-Rendite ${fcfYieldPct?.toFixed(1)} % > Schwelle ${trigger.fcfYieldMin} %`)
+  if (pegTrigger) {
+    bedingungen.push(`PEG ${pegRatio?.toFixed(2)}× < Schwelle ${pegSchwelle}× (Wachstum zum Preis)`)
+  }
 
   if (bedingungen.length === 0) return { ausgeloest: false, text: null }
 

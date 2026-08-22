@@ -43,7 +43,7 @@ export type InsiderNettoPaket = {
   nettoWertUsd90d: number | null
   nettoRichtung: 'kauf' | 'verkauf' | 'neutral' | null
   letzterTrade: string | null
-  quelle: 'sec_edgar' | 'openinsider'
+  quelle: 'sec_edgar' | 'openinsider' | 'sec_form4' | 'eu_amf' | 'eu_directors_dealing' | 'eu_dgap'
 }
 
 export type SecSegmentEintrag = {
@@ -165,7 +165,7 @@ export type SecSegmentHistoriePaket = {
   berichtJahr: number | null
   anzahl10k: number
   geladenAm: string
-  quelle: 'sec_edgar' | 'marketscreener' | 'stockanalysis' | 'mixed'
+  quelle: 'sec_edgar' | 'marketscreener' | 'stockanalysis' | 'mixed' | 'eu_urd'
 }
 
 export type EuFundamentalKennzahl = {
@@ -217,5 +217,9 @@ export type FundamentaldatenErweitert = {
   euFundamental: EuFundamentalPaket | null
   optionsIv: YahooOptionsIvPaket | null
   arbeitgeber: ArbeitgeberBewertungPaket | null
+  /** Schulden-Fälligkeitsprofil (SEC XBRL). */
+  debtMaturity: import('./sec-edgar-debt-rd-server').DebtMaturityProfil | null
+  /** F&E-Aktivierung (SEC XBRL). */
+  rdKapitalisierung: import('./sec-edgar-debt-rd-server').RdKapitalisierung | null
   geladenAm: string
 }

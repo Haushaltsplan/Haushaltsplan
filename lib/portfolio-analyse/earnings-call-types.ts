@@ -24,6 +24,8 @@ export type EarningsCallQuartalEintrag = {
   quelle: EarningsCallQuelle
   transcriptZeichen: number
   zusammenfassung: string | null
+  /** Management-Optimismus −100…+100 (aus KI oder Heuristik). */
+  sentimentScore?: number | null
   /** Webcast-/Ergebnis-PDF statt vollem Conference-Call-Transkript */
   istWebcastPdf?: boolean
 }

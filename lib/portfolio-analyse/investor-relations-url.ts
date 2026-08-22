@@ -26,6 +26,7 @@ export const IR_NACH_ISIN: Record<string, string> = {
   CH1175448666: 'https://www.straumann.com/group/en/home/investors.html',
   CH0012221716: 'https://www.straumann.com/group/en/home/investors.html',
   GB0004052071: 'https://www.halma.com/investors',
+  IE000S9YS762: 'https://www.linde.com/investors',
   CA01626P1484: 'https://corporate.couche-tard.com/investors',
   CA15135U1093: 'https://corporate.couche-tard.com/investors',
   CA015DM1098: 'https://corporate.couche-tard.com/investors',

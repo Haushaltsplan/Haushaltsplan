@@ -162,39 +162,65 @@ async function ladeTimeseriesResult(symbol: string, types: readonly string[]): P
   return j.timeseries?.result ?? []
 }
 
-export async function ladeYahooMantraFinanzdaten(symbol: string): Promise<MantraYahooFinanzdaten | null> {
-  const sym = symbol.trim().toUpperCase()
-  if (!sym) return null
+export async function ladeYahooMantraFinanzdaten(
+  symbol: string,
+  opts?: { isin?: string | null; alternateSymbols?: string[] },
+): Promise<MantraYahooFinanzdaten | null> {
+  const { yahooKennzahlenSymbolKandidaten } = await import(
+    '@/lib/portfolio-analyse/yahoo-kennzahlen-fallback-server'
+  )
+  const kandidaten = [
+    ...yahooKennzahlenSymbolKandidaten({
+      symbolYahoo: symbol,
+      isin: opts?.isin,
+    }),
+    ...(opts?.alternateSymbols ?? []).map((s) => s.trim().toUpperCase()),
+  ]
+  const unique = [...new Set(kandidaten.filter(Boolean))]
 
-  const cached = cache.get(sym)
-  if (cached && Date.now() - cached.at < CACHE_MS) return cached.daten
+  for (const sym of unique.slice(0, 4)) {
+    const cached = cache.get(sym)
+    if (cached && Date.now() - cached.at < CACHE_MS) {
+      if (cached.daten?.stockBasedCompensationUsd != null || cached.daten?.freeCashFlowUsd != null) {
+        return cached.daten
+      }
+      if (cached.daten) continue
+    }
 
-  try {
-    const result = await ladeTimeseriesResult(sym, [...TRAILING_TYPES, ...ANNUAL_TYPES])
-    if (result.length === 0) {
+    try {
+      const result = await ladeTimeseriesResult(sym, [...TRAILING_TYPES, ...ANNUAL_TYPES])
+      if (result.length === 0) {
+        cache.set(sym, { at: Date.now(), daten: null })
+        continue
+      }
+
+      const daten: MantraYahooFinanzdaten = {
+        stockBasedCompensationUsd: letzterWert(blockFuerTyp(result, 'trailingStockBasedCompensation')),
+        interestExpenseUsd: letzterWert(blockFuerTyp(result, 'trailingInterestExpense')),
+        researchDevelopmentUsd: letzterWert(blockFuerTyp(result, 'trailingResearchAndDevelopment')),
+        sgaUsd: letzterWert(blockFuerTyp(result, 'trailingSellingGeneralAndAdministration')),
+        freeCashFlowUsd: letzterWert(blockFuerTyp(result, 'trailingFreeCashFlow')),
+        operatingIncomeUsd: letzterWert(blockFuerTyp(result, 'trailingOperatingIncome')),
+        revenueUsd: letzterWert(blockFuerTyp(result, 'trailingTotalRevenue')),
+        netIncomeUsd: letzterWert(blockFuerTyp(result, 'trailingNetIncome')),
+        pretaxIncomeUsd: letzterWert(blockFuerTyp(result, 'trailingPretaxIncome')),
+        taxProvisionUsd: letzterWert(blockFuerTyp(result, 'trailingTaxProvision')),
+        operatingCashFlowUsd: letzterWert(blockFuerTyp(result, 'trailingOperatingCashFlow')),
+        annualHistorie: baueAnnualHistorie(result),
+      }
+
+      cache.set(sym, { at: Date.now(), daten })
+      if (
+        daten.stockBasedCompensationUsd != null ||
+        daten.freeCashFlowUsd != null ||
+        daten.operatingCashFlowUsd != null
+      ) {
+        return daten
+      }
+    } catch {
       cache.set(sym, { at: Date.now(), daten: null })
-      return null
     }
-
-    const daten: MantraYahooFinanzdaten = {
-      stockBasedCompensationUsd: letzterWert(blockFuerTyp(result, 'trailingStockBasedCompensation')),
-      interestExpenseUsd: letzterWert(blockFuerTyp(result, 'trailingInterestExpense')),
-      researchDevelopmentUsd: letzterWert(blockFuerTyp(result, 'trailingResearchAndDevelopment')),
-      sgaUsd: letzterWert(blockFuerTyp(result, 'trailingSellingGeneralAndAdministration')),
-      freeCashFlowUsd: letzterWert(blockFuerTyp(result, 'trailingFreeCashFlow')),
-      operatingIncomeUsd: letzterWert(blockFuerTyp(result, 'trailingOperatingIncome')),
-      revenueUsd: letzterWert(blockFuerTyp(result, 'trailingTotalRevenue')),
-      netIncomeUsd: letzterWert(blockFuerTyp(result, 'trailingNetIncome')),
-      pretaxIncomeUsd: letzterWert(blockFuerTyp(result, 'trailingPretaxIncome')),
-      taxProvisionUsd: letzterWert(blockFuerTyp(result, 'trailingTaxProvision')),
-      operatingCashFlowUsd: letzterWert(blockFuerTyp(result, 'trailingOperatingCashFlow')),
-      annualHistorie: baueAnnualHistorie(result),
-    }
-
-    cache.set(sym, { at: Date.now(), daten })
-    return daten
-  } catch {
-    cache.set(sym, { at: Date.now(), daten: null })
-    return null
   }
+
+  return null
 }

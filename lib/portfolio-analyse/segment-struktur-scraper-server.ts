@@ -20,6 +20,8 @@ import {
 import { ladeMarketbeatBacklogHistorie } from '@/lib/portfolio-analyse/marketbeat-backlog-server'
 import { ladeMarketscreenerSegmentHistorie } from '@/lib/portfolio-analyse/marketscreener-segment-historie-server'
 import { ladeStockanalysisBacklogHistorie } from '@/lib/portfolio-analyse/stockanalysis-backlog-server'
+import { ladeSecBacklogHistorie } from '@/lib/portfolio-analyse/sec-edgar-backlog-server'
+import { cikFuerTicker } from '@/lib/portfolio-analyse/sec-edgar-common-server'
 import { besteSegmentHistorieQuellen, bereinigeGeoNachProdukt, segmentPaketPlausibel } from '@/lib/portfolio-analyse/segment-historie-merge-hilfen'
 import { ladeSecSegmentHistorie } from '@/lib/portfolio-analyse/sec-edgar-segment-historie-server'
 import { ladeStockanalysisSegmentPaket } from '@/lib/portfolio-analyse/stockanalysis-segment-server'
@@ -159,7 +161,22 @@ async function ergaenzeBacklog(
     ticker ? ladeMarketbeatBacklogHistorie(ticker, opts.refresh) : Promise.resolve(null),
     ladeStockanalysisBacklogHistorie({ ...opts, refresh: opts.refresh }),
   ])
-  const backlog = waehleBacklog(sa, mb)
+  let backlog = waehleBacklog(sa, mb)
+
+  // SEC XBRL RPO / Deferred Revenue — US-Filer, wenn SA/MB leer
+  if (!backlog && ticker) {
+    try {
+      const cik = await cikFuerTicker(ticker)
+      if (cik) {
+        const sec = await ladeSecBacklogHistorie(cik)
+        // Auch 1 Jahr reicht für backlogLabel (Nachkauf braucht Label + ggf. Wachstum)
+        if (sec && sec.eintraege.length >= 1) backlog = sec
+      }
+    } catch {
+      /* SEC optional */
+    }
+  }
+
   if (!backlog) return paket
   return { ...paket, backlog }
 }

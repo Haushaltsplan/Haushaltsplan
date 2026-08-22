@@ -1,0 +1,48 @@
+{
+  "rms": {
+    "ok": false,
+    "status": 401
+  },
+  "hesay": {
+    "ok": false,
+    "status": 401
+  },
+  "tsRms": {
+    "ok": true,
+    "summary": {
+      "annualFreeCashFlow": 4,
+      "annualTotalRevenue": 4,
+      "annualNetIncome": 4
+    },
+    "keys": [
+      [
+        "annualFreeCashFlow"
+      ],
+      [
+        "annualTotalRevenue"
+      ],
+      [
+        "annualNetIncome"
+      ]
+    ]
+  },
+  "tsH": {
+    "ok": true,
+    "summary": {
+      "annualFreeCashFlow": 4,
+      "annualTotalRevenue": 4,
+      "annualNetIncome": 4
+    },
+    "keys": [
+      [
+        "annualFreeCashFlow"
+      ],
+      [
+        "annualTotalRevenue"
+      ],
+      [
+        "annualNetIncome"
+      ]
+    ]
+  }
+}

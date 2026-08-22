@@ -196,7 +196,7 @@ export function medianZahl(werte: number[]): number {
 }
 
 export function segmentQualitaetVonQuelle(
-  quelle: 'marketscreener' | 'stockanalysis' | 'mixed' | 'sec_edgar' | null | undefined,
+  quelle: 'marketscreener' | 'stockanalysis' | 'mixed' | 'sec_edgar' | 'eu_urd' | null | undefined,
 ): SegmentDatenQualitaet {
   if (!quelle) return 'keine'
   if (quelle === 'marketscreener') return 'nur_ms'

@@ -69,6 +69,7 @@ export function waehleSektorMantraId(_sektor: string | null, _branche: string | 
 function evaluiereRoic(w: FundamentalKontextWerte) {
   const roic = w.roic
   const hist = w.roicHist
+  const roicExGw = w.roicExGoodwill
   const quelleSuffix = w.roicQuelle ? ` ${w.roicQuelle}.` : ''
 
   // Primär: Macrotrends ROI/ROIC
@@ -80,10 +81,29 @@ function evaluiereRoic(w: FundamentalKontextWerte) {
         `ROIC aus Macrotrends.${quelleSuffix} Etabliert: konstant hoch.`,
       )
     }
+    // Goodwill-Falle (IHS Markit, Patheon, …): operativer ROIC ohne Akquisitions-Prämien
+    if (roicExGw != null && roicExGw >= 15 && roicExGw > roic + 3) {
+      return erfuellt(
+        pct(roicExGw),
+        roicExGw,
+        `ROIC ex Goodwill ${pct(roicExGw)} (klassisch ${pct(roic)}). Akquisitions-Prämien verzerren den Standard-ROIC — Kerngeschäft über Hürde.`,
+      )
+    }
     if (w.istWachstumsfirma && w.roicSteigend) {
       return qualitativ(pct(roic), 'erfuellt', `ROIC (Macrotrends). Wachstumsfirma: steigende Kurve.`)
     }
-    return nichtErfuellt(pct(roic), roic, `ROIC (Macrotrends).${quelleSuffix}`)
+    const gwHinweis =
+      roicExGw != null && roicExGw > roic
+        ? ` ROIC ex Goodwill: ${pct(roicExGw)}.`
+        : ''
+    return nichtErfuellt(pct(roic), roic, `ROIC (Macrotrends).${quelleSuffix}${gwHinweis}`)
+  }
+
+  if (roicExGw != null) {
+    if (roicExGw >= 15) {
+      return erfuellt(pct(roicExGw), roicExGw, 'ROIC ex Goodwill (berechnet aus Bilanz).')
+    }
+    return nichtErfuellt(pct(roicExGw), roicExGw, 'ROIC ex Goodwill unter 15 %.')
   }
 
   // Fallback 1: ROE aus Yahoo Finance (wenn kein Macrotrends-ROIC)
@@ -319,6 +339,13 @@ function evaluiereVerschuldungVerwaesserung(w: FundamentalKontextWerte) {
     schuldOk = w.netDebtEbitda < 2
     teile.push(`Net Debt/EBITDA ${mult(w.netDebtEbitda)}`)
   }
+  if (w.netDebtFcf != null) {
+    // FCF-Tragfähigkeit: >5× FCF = gelähmt bei Zinsanstieg
+    const fcfOk = w.netDebtFcf < 5
+    if (schuldOk == null) schuldOk = fcfOk
+    else schuldOk = schuldOk && fcfOk
+    teile.push(`Net Debt/FCF ${mult(w.netDebtFcf)}`)
+  }
 
   if (w.aktienVerwaesserungJaehrlichPct != null) {
     dilOk = w.aktienVerwaesserungJaehrlichPct < 2
@@ -328,12 +355,18 @@ function evaluiereVerschuldungVerwaesserung(w: FundamentalKontextWerte) {
     teile.push('Sinkende Aktienanzahl')
   }
 
-  if (schuldOk == null && dilOk == null) return keineDaten('Net Debt/EBITDA und Aktienanzahl-Zeitreihe benötigt.')
+  if (schuldOk == null && dilOk == null) return keineDaten('Net Debt/EBITDA bzw. /FCF und Aktienanzahl-Zeitreihe benötigt.')
 
   const istWert = teile.join(' · ') || '–'
 
   if (schuldOk === true && dilOk === true) return erfuellt(istWert)
-  if (schuldOk === false) return nichtErfuellt(istWert, w.netDebtEbitda ?? undefined, 'Verschuldung ≥2× EBITDA.')
+  if (schuldOk === false) {
+    return nichtErfuellt(
+      istWert,
+      w.netDebtFcf ?? w.netDebtEbitda ?? undefined,
+      'Verschuldung zu hoch (≥2× EBITDA oder ≥5× FCF).',
+    )
+  }
   if (dilOk === false) {
     return nichtErfuellt(
       istWert,
@@ -392,12 +425,18 @@ function evaluiereSellTriggers(w: FundamentalKontextWerte): SellTriggerWatch[] {
     w.ebitMargeHist[w.ebitMargeHist.length - 1]! < w.ebitMargeHist[0]! - 2
   const wachstumSchwach = w.revGrowthPct != null && w.revGrowthPct < 3
 
-  if (margenDruck && wachstumSchwach) {
+  if (w.pricingPowerOk === false && w.bruttoMargeStd10y != null) {
+    moatStatus = 'warnung'
+    moatBegr = `Bruttomarge schwankt ±${w.bruttoMargeStd10y.toFixed(1)} Pp. (10J) — Preissetzungsmacht fraglich (KO >2 Pp.).`
+  } else if (margenDruck && wachstumSchwach) {
     moatStatus = 'beobachten'
     moatBegr = 'EBIT-Marge unter Druck bei schwachem Umsatzwachstum — Peer-Vergleich und NRR prüfen.'
   } else if (margenDruck) {
     moatStatus = 'beobachten'
     moatBegr = 'EBIT-Marge historisch gesunken — Preissetzungsmacht/Moat im Auge behalten.'
+  } else if (w.pricingPowerOk === true) {
+    moatStatus = 'ok'
+    moatBegr = `Stabile Bruttomarge (StdAbw. ${w.bruttoMargeStd10y?.toFixed(1)} Pp.) — Pricing Power intakt.`
   } else if (w.revGrowthPct != null || w.ebitMarge != null) {
     moatStatus = 'ok'
     moatBegr = 'Keine automatische Moat-Erosion erkannt.'

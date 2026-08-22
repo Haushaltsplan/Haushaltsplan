@@ -1,0 +1,47 @@
+{
+  "jahre": [
+    2025,
+    2024,
+    2023,
+    2022,
+    2021
+  ],
+  "out": {
+    "umsatz": [
+      16002,
+      15170,
+      13427,
+      11602,
+      8982
+    ],
+    "ebit": [
+      6569,
+      6150,
+      5650,
+      4697,
+      3530
+    ],
+    "nettogewinn": [
+      4524,
+      4603,
+      4311,
+      3367,
+      2445
+    ],
+    "fcf": [
+      3880,
+      3767,
+      3192,
+      3404,
+      2661
+    ],
+    "eigenkapital": [
+      18840,
+      17327,
+      15201,
+      12440,
+      9400
+    ]
+  },
+  "sample": "In millions of euros 2025 2024 2023 2022 2021 Revenue 16,002 15,170 13,427 11,602 8,982 Growth at current exchange rates vs. n‑1 5.5% 13% 16% 29% 41% Growth at constant exchange rates vs. n‑1 1 8.9% 15% 21% 23% 42% Recurring operating income 2 6,569 6,150 5,650 4,697 3,530 in % of revenue 41.0% 40.5% 42.1% 40.5% 39.3% Operating income 6,569 6,150 5,650 4,697 3,530 in % of revenue 41.0% 40.5% 42.1%"
+}

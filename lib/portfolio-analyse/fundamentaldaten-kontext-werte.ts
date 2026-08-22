@@ -7,6 +7,14 @@ import {
   letzterVerfuegbarerWert,
   schaetzeWaccPct,
 } from '@/lib/portfolio-analyse/fundamentaldaten-roic-hilfen'
+import {
+  berechneBruttomargenStabilitaet,
+} from '@/lib/portfolio-analyse/fundamentaldaten-pricing-power'
+import { berechneEarningsQuality } from '@/lib/portfolio-analyse/fundamentaldaten-earnings-quality'
+import {
+  berechnePegRatio,
+  berechneReinvestition,
+} from '@/lib/portfolio-analyse/fundamentaldaten-reinvestition'
 import type { MacrotrendsFundamentalRoh } from '@/lib/portfolio-analyse/macrotrends-scraper-server'
 import type { MantraYahooFinanzdaten } from '@/lib/portfolio-analyse/yahoo-fundamentals-timeseries-server'
 import type { UnitEconomicsTreffer } from '@/lib/portfolio-analyse/unit-economics-extraktion'
@@ -177,7 +185,13 @@ export function baueKontextWerte(ctx: FundamentalKontextInput) {
     nettoMio != null && fcfMio != null && nettoMio > 0 ? (fcfMio / nettoMio) * 100 : null
 
   const roic = letzterWert(roiZeile, perioden)
-  const roicQuelle = roic != null ? 'ROIC (Macrotrends)' : undefined
+  const roicExGoodwill = letzterWert(zeile('roi_ex_goodwill'), perioden)
+  const roicQuelle =
+    roic != null
+      ? 'ROIC (Macrotrends/Bilanz)'
+      : roicExGoodwill != null
+        ? 'ROIC ex Goodwill'
+        : undefined
 
   const wacc = schaetzeWaccPct({
     beta: ctx.yahoo?.beta,
@@ -201,6 +215,11 @@ export function baueKontextWerte(ctx: FundamentalKontextInput) {
   const netDebtEbitda =
     netDebt != null && ebitdaMio != null && ebitdaMio > 0 ? netDebt / (ebitdaMio * 1_000_000) : null
 
+  const fcfUsdAbs =
+    fcfMio != null ? Math.abs(fcfMio) * 1_000_000 : fcfUsd != null ? Math.abs(fcfUsd) : null
+  const netDebtFcf =
+    netDebt != null && fcfUsdAbs != null && fcfUsdAbs > 0 ? netDebt / fcfUsdAbs : null
+
   const umsatzHist = historischeWerte(umsatzZeile, perioden)
   const epsHist = historischeWerte(epsZeile, perioden)
   const ebitdaHist = historischeWerte(ebitdaZeile, perioden)
@@ -215,6 +234,21 @@ export function baueKontextWerte(ctx: FundamentalKontextInput) {
   const epsCagr3 = epsHist.length >= 2 ? cagrProzent(epsHist.slice(-4), Math.min(3, epsHist.length - 1)) : null
   const ebitdaCagr3 =
     ebitdaHist.length >= 2 ? cagrProzent(ebitdaHist.slice(-4), Math.min(3, ebitdaHist.length - 1)) : null
+
+  const reinvest = perioden
+    ? berechneReinvestition(perioden, ctx.roh?.zeilen ?? [])
+    : { reinvestitionsquotePct: null, incrementalRoicPct: null, bruttoReinvestMio: null }
+  const eq = perioden
+    ? berechneEarningsQuality(perioden, ctx.roh?.zeilen ?? [])
+    : { sloanRatio: null, beneishMScore: null, beneishRisiko: null }
+
+  const bruttoHist = historischeWerte(bruttoMargeZeile, perioden)
+  const margeStab = berechneBruttomargenStabilitaet(bruttoHist)
+
+  const fwdPe = ctx.yahoo?.forwardPE ?? ctx.yahoo?.trailingPE ?? null
+  const epsWachstumPct =
+    ctx.yahoo?.earningsGrowth != null ? ctx.yahoo.earningsGrowth * 100 : epsCagr3
+  const pegRatio = berechnePegRatio(fwdPe, epsWachstumPct, null)
 
   const revGrowthPct =
     ctx.yahoo?.revenueGrowth != null ? ctx.yahoo.revenueGrowth * 100 : umsatzCagr3
@@ -279,6 +313,7 @@ export function baueKontextWerte(ctx: FundamentalKontextInput) {
     capexSales,
     fcfConversion,
     roic,
+    roicExGoodwill,
     roicQuelle,
     wacc,
     valueSpread,
@@ -286,6 +321,13 @@ export function baueKontextWerte(ctx: FundamentalKontextInput) {
     roa,
     netDebt,
     netDebtEbitda,
+    netDebtFcf,
+    reinvestitionsquotePct: reinvest.reinvestitionsquotePct,
+    incrementalRoicPct: reinvest.incrementalRoicPct,
+    pegRatio,
+    sloanRatio: eq.sloanRatio,
+    beneishMScore: eq.beneishMScore,
+    beneishRisiko: eq.beneishRisiko,
     umsatzCagr3,
     epsCagr3,
     ebitdaCagr3,
@@ -304,7 +346,10 @@ export function baueKontextWerte(ctx: FundamentalKontextInput) {
     sgaDegressiv,
     aktienVerwaesserungJaehrlichPct,
     ebitMargeHist,
-    bruttoMargeHist: historischeWerte(bruttoMargeZeile, perioden),
+    bruttoMargeHist: bruttoHist,
+    bruttoMargeStd10y: margeStab.bruttoMargeStd10y,
+    bruttoMargeJahre: margeStab.bruttoMargeJahre,
+    pricingPowerOk: margeStab.pricingPowerOk,
     sbcAdjFcfMargin,
     sbcFcfRatio,
     sbcAdjFcfConversion,

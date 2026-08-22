@@ -46,7 +46,14 @@ export function berechneStrukturMitAufschluesselung(
     else if (nd > 2.5) d = -2
     else if (nd < 0.8) d = 1
     pts += push(zeilen, 'net_debt', 'Net Debt / EBITDA', `${nd.toFixed(1)}×`, d)
-  } else if (zusatz.nettoCashMio != null) {
+  }
+  if (zusatz.netDebtFcf != null) {
+    let d = 0
+    if (zusatz.netDebtFcf > 8) d = -3
+    else if (zusatz.netDebtFcf > 5) d = -2
+    else if (zusatz.netDebtFcf < 1) d = 1
+    pts += push(zeilen, 'net_debt_fcf', 'Net Debt / FCF', `${zusatz.netDebtFcf.toFixed(1)}×`, d)
+  } else if (zusatz.nettoCashMio != null && nd == null) {
     let d = 0
     if (zusatz.nettoCashMio > 500) d = 1
     else if (zusatz.nettoCashMio < -2_000) d = -2
@@ -56,6 +63,37 @@ export function berechneStrukturMitAufschluesselung(
       'Netto-Cash',
       `$${zusatz.nettoCashMio.toLocaleString('de-DE')} Mio.`,
       d,
+    )
+  }
+
+  if (zusatz.reinvestitionsquotePct != null) {
+    let d = 0
+    if (zusatz.reinvestitionsquotePct >= 50 && (zusatz.incrementalRoicPct == null || zusatz.incrementalRoicPct >= 12)) {
+      d = 1
+    } else if (zusatz.reinvestitionsquotePct < 10 && (zusatz.incrementalRoicPct == null || zusatz.incrementalRoicPct < 8)) {
+      d = -1
+    }
+    pts += push(
+      zeilen,
+      'reinvest',
+      'Reinvestitionsquote',
+      `${zusatz.reinvestitionsquotePct.toFixed(0)} %${zusatz.incrementalRoicPct != null ? ` · Incr. ROIC ${zusatz.incrementalRoicPct.toFixed(0)} %` : ''}`,
+      d,
+    )
+  }
+
+  if (zusatz.sloanRatio != null && zusatz.sloanRatio > 0.08) {
+    pts += push(zeilen, 'sloan', 'Sloan-Ratio', zusatz.sloanRatio.toFixed(3), -2)
+  }
+  if (zusatz.beneishMScore != null && zusatz.beneishMScore > -1.78) {
+    pts += push(zeilen, 'beneish', 'Beneish M-Score', `${zusatz.beneishMScore.toFixed(2)} (Risiko)`, -3)
+  } else if (zusatz.beneishRisiko === 'erhoeht') {
+    pts += push(
+      zeilen,
+      'beneish',
+      'Beneish M-Score',
+      zusatz.beneishMScore != null ? zusatz.beneishMScore.toFixed(2) : 'erhöht',
+      -1,
     )
   }
 
@@ -95,6 +133,90 @@ export function berechneStrukturMitAufschluesselung(
         -1,
       )
     }
+  }
+
+  if (zusatz.umsatzanteilTop1KundenPct != null && zusatz.umsatzanteilTop1KundenPct >= 10) {
+    pts += push(
+      zeilen,
+      'kunde_top1',
+      'Top-Kunde Umsatzanteil',
+      `${zusatz.umsatzanteilTop1KundenPct.toFixed(0)} %${zusatz.topKundenNamen[0] ? ` (${zusatz.topKundenNamen[0]})` : ''}`,
+      zusatz.umsatzanteilTop1KundenPct >= 20 ? -3 : -2,
+    )
+  } else if (zusatz.umsatzanteilTop3KundenPct != null && zusatz.umsatzanteilTop3KundenPct >= 35) {
+    pts += push(
+      zeilen,
+      'kunde_top3',
+      'Top-3-Kunden Umsatzanteil',
+      `${zusatz.umsatzanteilTop3KundenPct.toFixed(0)} %`,
+      -1,
+    )
+  } else if (
+    zusatz.umsatzanteilTop1KundenPct != null &&
+    zusatz.umsatzanteilTop1KundenPct > 0 &&
+    zusatz.umsatzanteilTop1KundenPct < 10
+  ) {
+    pts += push(
+      zeilen,
+      'kunde_divers',
+      'Kunden diversifiziert',
+      `Top-1 ${zusatz.umsatzanteilTop1KundenPct.toFixed(0)} %`,
+      1,
+    )
+  }
+
+  if (zusatz.bruttoMargeStd10y != null && zusatz.bruttoMargeStd10y > 2) {
+    pts += push(
+      zeilen,
+      'brutto_std',
+      'Bruttomarge-Volatilität',
+      `±${zusatz.bruttoMargeStd10y.toFixed(1)} Pp.`,
+      -3,
+    )
+  } else if (zusatz.bruttoMargeStd10y != null && zusatz.pricingPowerOk === true) {
+    pts += push(
+      zeilen,
+      'pricing_power',
+      'Pricing-Power (Bruttomarge stabil)',
+      `±${zusatz.bruttoMargeStd10y.toFixed(1)} Pp.`,
+      1,
+    )
+  }
+
+  if (zusatz.debtRefi24mPct != null && zusatz.debtRefi24mPct >= 25) {
+    pts += push(
+      zeilen,
+      'debt_refi',
+      'Refi-Risiko 24M',
+      `${zusatz.debtRefi24mPct.toFixed(0)} %${zusatz.debtDue24mMio != null ? ` (${zusatz.debtDue24mMio.toLocaleString('de-DE')} Mio.)` : ''}`,
+      zusatz.debtRefi24mPct >= 40 ? -3 : -2,
+    )
+  } else if (zusatz.debtRefi24mPct != null && zusatz.debtRefi24mPct >= 0 && zusatz.debtRefi24mPct < 15) {
+    pts += push(
+      zeilen,
+      'debt_refi_ok',
+      'Refi-Risiko 24M niedrig',
+      `${zusatz.debtRefi24mPct.toFixed(0)} %`,
+      1,
+    )
+  }
+
+  if (zusatz.rdAktivierungsquotePct != null && zusatz.rdAktivierungsquotePct >= 15) {
+    pts += push(
+      zeilen,
+      'rd_cap',
+      'F&E-Aktivierungsquote',
+      `${zusatz.rdAktivierungsquotePct.toFixed(0)} %`,
+      zusatz.rdAktivierungsquotePct >= 30 ? -2 : -1,
+    )
+  } else if (zusatz.rdAktivierungsquotePct != null && zusatz.rdAktivierungsquotePct <= 5) {
+    pts += push(
+      zeilen,
+      'rd_cap_ok',
+      'F&E konservativ (kaum aktiviert)',
+      `${zusatz.rdAktivierungsquotePct.toFixed(0)} %`,
+      1,
+    )
   }
 
   if (zusatz.backlogWachstumPct != null && zusatz.backlogWachstumPct <= -8) {
@@ -282,6 +404,18 @@ export function berechneStrukturMitAufschluesselung(
   }
   if (zusatz.dioTrendDelta != null && zusatz.dioTrendDelta >= 12) {
     pts += push(zeilen, 'dio', 'DIO-Trend', `+${zusatz.dioTrendDelta.toFixed(0)} Tage`, -1)
+  } else if (
+    zusatz.wcProfil === 'finanz' &&
+    zusatz.cccTrendDelta != null &&
+    zusatz.cccTrendDelta >= 12
+  ) {
+    pts += push(
+      zeilen,
+      'ccc',
+      'CCC-Trend (Finanz)',
+      `+${zusatz.cccTrendDelta.toFixed(0)} Tage Kapitalbindung`,
+      -1,
+    )
   }
   if (zusatz.dpoTrendDelta != null && zusatz.dpoTrendDelta <= -10) {
     pts += push(zeilen, 'dpo', 'DPO-Trend', `${zusatz.dpoTrendDelta.toFixed(0)} Tage`, -1)

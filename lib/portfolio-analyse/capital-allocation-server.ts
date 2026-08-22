@@ -4,6 +4,8 @@ import 'server-only'
 
 import { ladeSecCapitalAllocation } from '@/lib/portfolio-analyse/sec-edgar-companyfacts-server'
 import { cikFuerTicker } from '@/lib/portfolio-analyse/sec-edgar-common-server'
+import { isinKenntnis } from '@/lib/portfolio-analyse/isin-kenntnisse'
+import { yahooKennzahlenSymbolKandidaten } from '@/lib/portfolio-analyse/yahoo-kennzahlen-fallback-server'
 import {
   holeYahooFinanceAuth,
   YAHOO_FINANCE_FETCH_HEADERS,
@@ -228,6 +230,7 @@ async function ladeCashflowLtmYahoo(symbol: string): Promise<{
 export async function ladeCapitalAllocation(opts: {
   ticker: string
   symbolYahoo?: string | null
+  isin?: string | null
   force?: boolean
 }): Promise<CapitalAllocationPaket> {
   const ticker = opts.ticker.trim().toUpperCase()
@@ -264,8 +267,18 @@ export async function ladeCapitalAllocation(opts: {
     }
 
     if (!cf?.ocfUsd) {
-      const yahoo = await ladeCashflowLtmYahoo(sym)
-      if (yahoo.ocfUsd != null) cf = yahoo
+      const symbole = yahooKennzahlenSymbolKandidaten({
+        symbolYahoo: sym,
+        isin: opts.isin,
+        macrotrendsTicker: opts.isin ? isinKenntnis(opts.isin)?.macrotrendsTicker : null,
+      })
+      for (const s of symbole) {
+        const yahoo = await ladeCashflowLtmYahoo(s)
+        if (yahoo.ocfUsd != null) {
+          cf = yahoo
+          break
+        }
+      }
     }
 
     if (!cf) {

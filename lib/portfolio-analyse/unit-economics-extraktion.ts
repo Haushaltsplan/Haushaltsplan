@@ -72,13 +72,19 @@ const LTV_CAC_PATTERNS = [
 
 const NRR_PATTERNS = [
   /net\s*revenue\s*retention\s*(?:rate\s*)?(?:of\s*|was\s*|is\s*|at\s*|of\s*)?\s*(\d+(?:\.\d+)?)\s*%/gi,
-  /NRR\s*(?:of\s*|was\s*|is\s*|at\s*)?\s*(\d+(?:\.\d+)?)\s*%/gi,
-  /dollar[- ]based\s*net\s*retention\s*(?:of\s*|was\s*|is\s*|at\s*)?\s*(\d+(?:\.\d+)?)\s*%/gi,
+  /net\s*retention\s*(?:rate\s*)?(?:of\s*|was\s*|is\s*|at\s*)?\s*(\d+(?:\.\d+)?)\s*%/gi,
+  /NRR\s*(?:of\s*|was\s*|is\s*|at\s*|rate\s*)?\s*(?:of\s*)?(\d+(?:\.\d+)?)\s*%/gi,
+  /dollar[- ]based\s*net\s*retention\s*(?:rate\s*)?(?:of\s*|was\s*|is\s*|at\s*)?\s*(\d+(?:\.\d+)?)\s*%/gi,
+  /dollar[- ]based\s*retention\s*(?:rate\s*)?(?:of\s*|was\s*|is\s*|at\s*)?\s*(\d+(?:\.\d+)?)\s*%/gi,
+  /subscription\s*net\s*retention\s*(?:rate\s*)?(?:of\s*|was\s*|is\s*|at\s*)?\s*(\d+(?:\.\d+)?)\s*%/gi,
+  /(\d+(?:\.\d+)?)\s*%\s*(?:dollar[- ]based\s*)?net\s*(?:revenue\s*)?retention/gi,
 ]
 
 const GRR_PATTERNS = [
   /gross\s*revenue\s*retention\s*(?:rate\s*)?(?:of\s*|was\s*|is\s*|at\s*)?\s*(\d+(?:\.\d+)?)\s*%/gi,
   /GRR\s*(?:of\s*|was\s*|is\s*|at\s*)?\s*(\d+(?:\.\d+)?)\s*%/gi,
+  /subscription\s*renewal\s*rate\s*(?:of\s*|was\s*|is\s*|at\s*)?\s*(\d+(?:\.\d+)?)\s*%/gi,
+  /renewal\s*rate\s*(?:of\s*|was\s*|is\s*|at\s*)?\s*(\d+(?:\.\d+)?)\s*%/gi,
 ]
 
 /** Extrahiert freiwillig genannte SaaS-Kennzahlen aus Fließtext. */
@@ -125,12 +131,68 @@ export function extrahiereUnitEconomicsAusText(
 export function mergeUnitEconomicsTreffer(
   kandidaten: UnitEconomicsTreffer[],
 ): UnitEconomicsTreffer {
-  const mitLtv = kandidaten.filter((k) => k.ltvCac != null)
-  if (mitLtv.length) return mitLtv[0]!
+  if (kandidaten.length === 0) {
+    return { ...LEER, hinweis: 'Keine Unit-Metrics in SEC oder Earnings Call gefunden.' }
+  }
 
-  const mitNrr = kandidaten.filter((k) => k.nrrPct != null)
-  if (mitNrr.length) return mitNrr[0]!
+  // Felder aus allen Treffern kombinieren (nicht ersten LTV-Hit allein nehmen).
+  let ltvCac: number | null = null
+  let nrrPct: number | null = null
+  let grossRetentionPct: number | null = null
+  let quelle: UnitEconomicsTreffer['quelle'] = null
+  let periode: string | null = null
+  let snippet: string | null = null
+  const hinweise: string[] = []
 
-  const mitHinweis = kandidaten.find((k) => k.hinweis)
-  return mitHinweis ?? { ...LEER, hinweis: 'Keine Unit-Metrics in SEC oder Earnings Call gefunden.' }
+  for (const k of kandidaten) {
+    if (ltvCac == null && k.ltvCac != null) {
+      ltvCac = k.ltvCac
+      quelle = k.quelle
+      periode = k.periode
+      snippet = k.snippet
+    }
+    if (nrrPct == null && k.nrrPct != null) {
+      nrrPct = k.nrrPct
+      if (!quelle) {
+        quelle = k.quelle
+        periode = k.periode
+        snippet = k.snippet
+      }
+    }
+    if (grossRetentionPct == null && k.grossRetentionPct != null) {
+      grossRetentionPct = k.grossRetentionPct
+      if (!quelle) {
+        quelle = k.quelle
+        periode = k.periode
+        snippet = k.snippet
+      }
+    }
+    if (k.hinweis) hinweise.push(k.hinweis)
+  }
+
+  if (ltvCac == null && nrrPct == null && grossRetentionPct == null) {
+    return (
+      kandidaten.find((k) => k.hinweis) ?? {
+        ...LEER,
+        hinweis: 'Keine Unit-Metrics in SEC oder Earnings Call gefunden.',
+      }
+    )
+  }
+
+  const teile: string[] = []
+  if (ltvCac != null) teile.push(`LTV/CAC ${ltvCac}×`)
+  if (nrrPct != null) teile.push(`NRR ${nrrPct} %`)
+  if (grossRetentionPct != null) teile.push(`GRR/Renewal ${grossRetentionPct} %`)
+
+  return {
+    ltvCac,
+    nrrPct,
+    grossRetentionPct,
+    quelle,
+    periode,
+    snippet,
+    hinweis: teile.length
+      ? `Aus Text extrahiert: ${teile.join(', ')}.`
+      : hinweise[0] ?? null,
+  }
 }

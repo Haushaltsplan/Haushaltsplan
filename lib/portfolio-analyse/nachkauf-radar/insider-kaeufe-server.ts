@@ -1,11 +1,13 @@
 /**
  * Insider-Käufe für den Nachkauf-Radar.
  * US: SEC Form 4 (Open Market, Code P) — primär; OpenInsider Fallback.
- * EU: Directors' Dealings via IR-Scrape.
+ * EU: AMF (FR) → DGAP → IR Directors' Dealings.
  */
 
 import 'server-only'
 
+import { ladeAmfInsiderTransaktionen } from '@/lib/portfolio-analyse/eu-amf-insider-server'
+import { ladeDgapInsiderTransaktionen } from '@/lib/portfolio-analyse/eu-insider-aggregate-server'
 import { ladeEuInsiderDealings } from '@/lib/portfolio-analyse/eu-insider-dealing-server'
 import { isinKenntnis } from '@/lib/portfolio-analyse/isin-kenntnisse'
 import { ladeInsiderKauefeFuerSymbol } from '@/lib/portfolio-analyse/openinsider-server'
@@ -49,18 +51,48 @@ function ausOpenInsider(symbol: string): Promise<InsiderKauf[]> {
   )
 }
 
-function ausEuDealings(ticker: string, isin: string, name: string): Promise<InsiderKauf[]> {
-  return ladeEuInsiderDealings({ ticker, isin, firmenname: name }).then((txs) =>
-    txs
-      .filter((t) => t.typ === 'kauf' && t.datum && innerhalbFenster(t.datum.slice(0, 10)))
-      .map((t) => ({
-        datum: t.datum!.slice(0, 10),
-        name: t.person,
-        titel: t.titel ?? '',
-        anteile: t.aktien ?? 0,
-        wertUsd: t.wertUsd ?? 0,
-      })),
-  )
+function txsZuKaeufen(
+  txs: Array<{
+    typ: string
+    datum: string | null
+    person: string
+    titel: string | null
+    aktien: number | null
+    wertUsd: number | null
+  }>,
+): InsiderKauf[] {
+  return txs
+    .filter((t) => t.typ === 'kauf' && t.datum && innerhalbFenster(t.datum.slice(0, 10)))
+    .map((t) => ({
+      datum: t.datum!.slice(0, 10),
+      name: t.person,
+      titel: t.titel ?? '',
+      anteile: Math.round(t.aktien ?? 0),
+      wertUsd: Math.round(t.wertUsd ?? 0),
+    }))
+}
+
+async function ausEuRegister(ticker: string, isin: string, name: string): Promise<InsiderKauf[]> {
+  const isinU = isin.trim().toUpperCase()
+
+  if (isinU.startsWith('FR')) {
+    const amf = await ladeAmfInsiderTransaktionen({ isin: isinU, firmenname: name }).catch(() => [])
+    const kaeufe = txsZuKaeufen(amf)
+    if (kaeufe.length > 0) return kaeufe
+  }
+
+  // Linde (IE) = US-SEC-Filer
+  if (isinU.startsWith('IE') || isinU === 'IE000S9YS762') {
+    const sec = await ausSecKaeufe(ticker).catch(() => [])
+    if (sec.length > 0) return sec
+  }
+
+  const dgap = await ladeDgapInsiderTransaktionen({ isin: isinU, firmenname: name }).catch(() => [])
+  const dgapKaeufe = txsZuKaeufen(dgap)
+  if (dgapKaeufe.length > 0) return dgapKaeufe
+
+  const ir = await ladeEuInsiderDealings({ ticker, isin: isinU, firmenname: name }).catch(() => [])
+  return txsZuKaeufen(ir)
 }
 
 /** Insider-Käufe für eine Whitelist-Position (US + EU). */
@@ -78,7 +110,7 @@ export async function ladeInsiderKaeufeFuerPosition(
     return ausOpenInsider(sym).catch(() => [])
   }
 
-  return ausEuDealings(sym, position.isin, position.name).catch(() => [])
+  return ausEuRegister(sym, position.isin, position.name).catch(() => [])
 }
 
 export function berechneInsiderScoreDelta(kaeufe: InsiderKauf[]): number {

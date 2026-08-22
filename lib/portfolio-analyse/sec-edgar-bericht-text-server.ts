@@ -142,10 +142,10 @@ function parseSizeKb(size?: string): number {
   return unit === 'm' ? n * 1024 : n
 }
 
-/** Wählt das lesbare Haupt-HTML (10-Q/10-K), nicht XBRL-Instance/XML. */
+/** Wählt das lesbare Haupt-HTML (10-Q/10-K/20-F), nicht XBRL-Instance/XML. */
 export function waehleLesbaresBerichtDokument(
   items: EdgarIndexItem[],
-  formular: '10-Q' | '10-K',
+  formular: '10-Q' | '10-K' | '20-F',
   primaryDocument?: string,
 ): string | null {
   const primaryNorm = primaryDocument?.trim().toLowerCase() ?? ''
@@ -167,7 +167,16 @@ export function waehleLesbaresBerichtDokument(
     let s = parseSizeKb(i.size)
     if ((i.type ?? '').toUpperCase() === formular) s += 500
     if (meta.includes(formular.toLowerCase())) s += 300
-    if (name.includes('10q') || name.includes('10-q') || name.includes('10k') || name.includes('10-k')) s += 200
+    if (
+      name.includes('10q') ||
+      name.includes('10-q') ||
+      name.includes('10k') ||
+      name.includes('10-k') ||
+      name.includes('20f') ||
+      name.includes('20-f')
+    ) {
+      s += 200
+    }
     // Directory-index.json hat type=text.gif — Primary stark bevorzugen.
     if (primaryNorm && name === primaryNorm) s += 50_000
     return s
@@ -224,7 +233,7 @@ const MAX_VOLLTEXT = 600_000
 export async function ladeLesbarenBerichtText(
   cik: number,
   accession: string,
-  formular: '10-Q' | '10-K',
+  formular: '10-Q' | '10-K' | '20-F',
   primaryDocument: string,
 ): Promise<{ text: string; documentName: string; url: string } | null> {
   const ciks = cikKandidaten(cik, accession)

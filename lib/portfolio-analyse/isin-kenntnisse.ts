@@ -110,6 +110,7 @@ export const ISIN_KENNTNISSE: Record<string, IsinKenntnis> = {
   }),
   GB0004052071: direkt('H11.SG', 'Halma', {
     logoSymbol: 'HLMA',
+    /** Depot-Kurs nur H11.SG; HLMA.L wird intern für Kennzahlen-Fallback genutzt. */
     verboteneSymbole: ['H11.MU', 'HLMA.L'],
     macrotrendsTicker: 'HLMA',
     macrotrendsSlug: 'halma',

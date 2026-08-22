@@ -1,0 +1,70 @@
+{
+  "ok": true,
+  "debt": {
+    "due12mMio": 325,
+    "dueYear2Mio": 404.2,
+    "dueAfter5yMio": 1616.8,
+    "due24mMio": 729.2,
+    "gesamtSchuldenMio": 2346,
+    "refiAnteil24mPct": 31.1,
+    "hits": 4
+  },
+  "rd": {
+    "aktivierungsquotePct": 0,
+    "quelle": "eu_urd"
+  },
+  "cust": [
+    {
+      "name": "Keine wesentliche Kreditrisiko-Konzentration",
+      "anteilPct": 5
+    }
+  ],
+  "amfCount": 15,
+  "amfSample": [
+    {
+      "nature": "Acquisition",
+      "datum": "2026-07-31",
+      "cells": [
+        "HERMES INTERNATIONAL",
+        "18/08/2026",
+        "31/07/2026",
+        "Acquisition",
+        "Action",
+        "FR0000052292",
+        "3 000.0000",
+        "1 543.9700",
+        "4 631 924.1000 &euro;"
+      ]
+    },
+    {
+      "nature": "Acquisition",
+      "datum": "2026-06-12",
+      "cells": [
+        "HERMES INTERNATIONAL",
+        "16/06/2026",
+        "12/06/2026",
+        "Acquisition",
+        "Action",
+        "FR0000052292",
+        "1 100.0000",
+        "1 616.4700",
+        "1 778 117.0000 &euro;"
+      ]
+    },
+    {
+      "nature": "Acquisition déf...",
+      "datum": "2026-06-04",
+      "cells": [
+        "HERMES INTERNATIONAL",
+        "04/06/2026",
+        "04/06/2026",
+        "Acquisition déf...",
+        "Action",
+        "FR0000052292",
+        "188.0000",
+        "0.0000",
+        "0.0000 &euro;"
+      ]
+    }
+  ]
+}

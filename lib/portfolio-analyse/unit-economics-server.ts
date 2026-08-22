@@ -9,6 +9,7 @@ import {
   mergeUnitEconomicsTreffer,
   type UnitEconomicsTreffer,
 } from '@/lib/portfolio-analyse/unit-economics-extraktion'
+import { curatedSaasRetention } from '@/lib/portfolio-analyse/saas-retention-curated'
 
 const CACHE_MS = 24 * 60 * 60 * 1000
 const cache = new Map<string, { at: number; daten: UnitEconomicsTreffer }>()
@@ -25,19 +26,37 @@ async function ausEarningsCall(ticker: string): Promise<UnitEconomicsTreffer | n
 }
 
 async function ausSecBericht(ticker: string): Promise<UnitEconomicsTreffer | null> {
-  const { cik, berichte } = await ladeSecEdgarBerichteHistorie(ticker, { max: 6 })
+  const { cik, berichte } = await ladeSecEdgarBerichteHistorie(ticker, { max: 8 })
   if (cik === 0 || !berichte.length) return null
 
-  const ziel = berichte.find((b) => b.formular === '10-Q') ?? berichte[0]
-  const hit = await ladeSecEdgarBerichtVolltext(ticker, ziel.accession)
-  if (!hit?.text || hit.text.length < 200) return null
+  const kandidaten: UnitEconomicsTreffer[] = []
+  const priorisiert = [
+    ...berichte.filter((b) => b.formular === '10-Q'),
+    ...berichte.filter((b) => b.formular === '10-K'),
+    ...berichte.filter((b) => b.formular !== '10-Q' && b.formular !== '10-K'),
+  ].slice(0, 4)
 
-  const quelle = ziel.formular === '10-K' ? 'sec_10k' : 'sec_10q'
-  return extrahiereUnitEconomicsAusText(
-    hit.text,
-    quelle,
-    ziel.berichtszeitraum ?? ziel.filingDatum,
-  )
+  for (const ziel of priorisiert) {
+    try {
+      const hit = await ladeSecEdgarBerichtVolltext(ticker, ziel.accession)
+      if (!hit?.text || hit.text.length < 200) continue
+      const quelle = ziel.formular === '10-K' ? 'sec_10k' : 'sec_10q'
+      const treffer = extrahiereUnitEconomicsAusText(
+        hit.text,
+        quelle,
+        ziel.berichtszeitraum ?? ziel.filingDatum,
+      )
+      if (treffer.nrrPct != null || treffer.ltvCac != null || treffer.grossRetentionPct != null) {
+        kandidaten.push(treffer)
+        if (treffer.nrrPct != null) break
+      }
+    } catch {
+      /* nächster Filing */
+    }
+  }
+
+  if (kandidaten.length === 0) return null
+  return mergeUnitEconomicsTreffer(kandidaten)
 }
 
 /**
@@ -70,8 +89,8 @@ export async function ladeUnitEconomics(tickerRaw: string): Promise<UnitEconomic
     /* SEC */
   }
 
-  const hatLtv = kandidaten.some((k) => k.ltvCac != null)
-  if (!hatLtv) {
+  const hatNrrOderLtv = kandidaten.some((k) => k.ltvCac != null || k.nrrPct != null)
+  if (!hatNrrOderLtv) {
     try {
       const sec = await ausSecBericht(ticker)
       if (sec) kandidaten.push(sec)
@@ -80,7 +99,20 @@ export async function ladeUnitEconomics(tickerRaw: string): Promise<UnitEconomic
     }
   }
 
-  const daten = mergeUnitEconomicsTreffer(kandidaten)
+  let daten = mergeUnitEconomicsTreffer(kandidaten)
+
+  // Kuratierter Fallback nur wenn Scrape weder NRR noch GRR liefert
+  if (daten.nrrPct == null && daten.grossRetentionPct == null) {
+    const curated = curatedSaasRetention(ticker)
+    if (curated && (curated.nrrPct != null || curated.grossRetentionPct != null)) {
+      daten = mergeUnitEconomicsTreffer([daten, curated])
+    } else if (curated?.hinweis && !daten.hinweis) {
+      daten = { ...daten, hinweis: curated.hinweis, periode: curated.periode }
+    }
+  }
+
+  // Für Scoring: wenn nur GRR/Renewal da ist und kein NRR — nicht still null lassen bei SaaS,
+  // die kein Dollar-NRR berichten (NOW). NRR bleibt null; GRR fließt über kontext.
   cache.set(ticker, { at: Date.now(), daten })
   return daten
 }

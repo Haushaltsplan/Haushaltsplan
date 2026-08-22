@@ -1,0 +1,12 @@
+{
+  "ok": true,
+  "amf": 45,
+  "dgapAsml": 6,
+  "dgapSika": 6,
+  "asmlIr": {
+    "status": 200,
+    "pdfs": 33,
+    "len": 210423
+  },
+  "errors": []
+}

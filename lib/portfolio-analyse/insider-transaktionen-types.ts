@@ -11,7 +11,7 @@ export type InsiderTransaktion = {
   aktien: number | null
   preisUsd: number | null
   wertUsd: number | null
-  quelle: 'sec_form4' | 'eu_directors_dealing'
+  quelle: 'sec_form4' | 'eu_directors_dealing' | 'eu_amf' | 'eu_dgap'
   url: string
   hinweis: string | null
 }

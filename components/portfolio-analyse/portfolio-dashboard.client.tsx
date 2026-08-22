@@ -10,6 +10,7 @@ import { PaWertpapiereListe } from '@/components/portfolio-analyse/pa-wertpapier
 import { PaRenditePanel } from '@/components/portfolio-analyse/pa-rendite-panel'
 import { PaBadge, PaCard, PaScrollList } from '@/components/portfolio-analyse/pa-ui'
 import { PaNewsTerminalTeaser } from '@/components/portfolio-analyse/pa-news-terminal-teaser'
+import { PaKorrelationPanel } from '@/components/portfolio-analyse/pa-korrelation-panel'
 import {
   formatDatumDe,
   formatEur,
@@ -189,6 +190,18 @@ export function PortfolioDashboardClient() {
             symbolYahoo: p.symbolYahoo,
           }))}
       />
+
+      {(() => {
+        const aktien = (live?.positionen ?? [])
+          .filter((p) => p.assetKlasse === 'aktie' && p.stueck > 0 && p.symbolYahoo)
+          .sort((a, b) => b.gewichtProzent - a.gewichtProzent)
+          .slice(0, 14)
+        const ticker = aktien
+          .map((p) => p.symbolYahoo!.split('.')[0]!.toUpperCase())
+          .filter(Boolean)
+        if (ticker.length < 2) return null
+        return <PaKorrelationPanel ticker={ticker} />
+      })()}
 
       <div className="grid gap-6 lg:grid-cols-3 lg:items-stretch">
         {renditeKennzahlen ? (

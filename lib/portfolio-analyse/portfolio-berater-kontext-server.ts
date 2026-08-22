@@ -199,15 +199,30 @@ function baueKiCacheBlock(
   focusTicker: string | null,
   depotTicker: Set<string>,
 ) {
-  const earnings: Array<{ ticker: string; quartalId: string; auszug: string }> = []
+  const earnings: Array<{
+    ticker: string
+    quartalId: string
+    auszug: string
+    sentimentScore: number | null
+  }> = []
   const sec: Array<{ ticker: string; berichtId: string; auszug: string }> = []
 
   for (const [ticker, rows] of earningsKi) {
     if (!istRelevantTicker(ticker, relevanteTicker)) continue
-    let best: { id: string; z: string; am: string } | null = null
+    let best: {
+      id: string
+      z: string
+      am: string
+      sentimentScore: number | null
+    } | null = null
     for (const [id, row] of rows) {
       if (!best || row.aktualisiertAm > best.am) {
-        best = { id, z: row.zusammenfassung, am: row.aktualisiertAm }
+        best = {
+          id,
+          z: row.zusammenfassung,
+          am: row.aktualisiertAm,
+          sentimentScore: row.sentimentScore ?? null,
+        }
       }
     }
     if (best) {
@@ -218,6 +233,7 @@ function baueKiCacheBlock(
           best.z,
           excerptLimit(ticker, focusTicker, depotTicker.has(ticker)),
         ),
+        sentimentScore: best.sentimentScore,
       })
     }
   }

@@ -94,16 +94,26 @@ export async function ladeSecStrukturExtraktion(ticker: string): Promise<SecStru
   }
 
   try {
-    const [filing10k, filingProxy] = await Promise.all([
+    const [filing10k, filing20f, filingProxy] = await Promise.all([
       neuestesFiling(cik, '10-K'),
+      neuestesFiling(cik, '20-F'),
       neuestesFiling(cik, 'DEF 14A'),
     ])
+
+    // ASML u. a. Foreign Issuers: 20-F statt 10-K
+    const filingJahres = filing10k ?? filing20f
+    const formularLabel = filing10k ? '10-K' : '20-F'
 
     let text10k = ''
     let html10k = ''
     let textProxy = ''
-    if (filing10k) {
-      const bericht = await ladeLesbarenBerichtText(cik, filing10k.accession, '10-K', filing10k.primaryDocument)
+    if (filingJahres) {
+      const bericht = await ladeLesbarenBerichtText(
+        cik,
+        filingJahres.accession,
+        formularLabel,
+        filingJahres.primaryDocument,
+      )
       text10k = bericht?.text ?? ''
       if (bericht?.url) {
         const hres = await secFetch(bericht.url)
@@ -162,7 +172,7 @@ export async function ladeSecStrukturExtraktion(ticker: string): Promise<SecStru
       leaseVerpflichtungMio: lease,
       ceoVerguetungUsd: ceo.usd,
       proxyJahr: ceo.jahr,
-      berichtJahr: filing10k?.reportDate ? parseInt(filing10k.reportDate.slice(0, 4), 10) : null,
+      berichtJahr: filingJahres?.reportDate ? parseInt(filingJahres.reportDate.slice(0, 4), 10) : null,
       quelle: 'sec_edgar',
     }
 

@@ -166,6 +166,17 @@ export function baueKeyMetrics(
       gruppe: 'kapitalstruktur',
     },
     {
+      id: 'net_debt_fcf',
+      label: 'Net Debt / FCF (LTM)',
+      wert:
+        w?.netDebtFcf != null
+          ? w.netDebtFcf < 0
+            ? `(${multiple(Math.abs(w.netDebtFcf))})`
+            : multiple(w.netDebtFcf)
+          : '–',
+      gruppe: 'kapitalstruktur',
+    },
+    {
       id: 'interest_coverage',
       label: 'Zinsdeckung (EBIT/Zins)',
       wert: w?.interestCoverage != null ? multiple(w.interestCoverage) : '–',
@@ -181,6 +192,15 @@ export function baueKeyMetrics(
       id: 'ltm_brutto',
       label: 'LTM Bruttomarge',
       wert: pctRaw(w?.bruttoMarge),
+      gruppe: 'effizienz',
+    },
+    {
+      id: 'brutto_std_10y',
+      label: 'Bruttomarge StdAbw. (≤10J)',
+      wert:
+        w?.bruttoMargeStd10y != null
+          ? `${zahl(w.bruttoMargeStd10y)} Pp.${w.pricingPowerOk === false ? ' ⚠' : w.pricingPowerOk ? ' ✓' : ''}`
+          : '–',
       gruppe: 'effizienz',
     },
     {
@@ -208,9 +228,42 @@ export function baueKeyMetrics(
       gruppe: 'effizienz',
     },
     {
+      id: 'ltm_roic_ex_gw',
+      label: 'LTM ROIC ex Goodwill',
+      wert: pctRaw(w?.roicExGoodwill),
+      gruppe: 'effizienz',
+    },
+    {
       id: 'ltm_value_spread',
       label: 'Value Spread (ROIC − WACC)',
       wert: pctSigned(w?.valueSpread),
+      gruppe: 'effizienz',
+    },
+    {
+      id: 'reinvest_quote',
+      label: 'Reinvestitionsquote (CapEx+M&A−D&A)/FCF',
+      wert: pctRaw(w?.reinvestitionsquotePct),
+      gruppe: 'effizienz',
+    },
+    {
+      id: 'incremental_roic',
+      label: 'Incremental ROIC (ΔNOPAT/ΔIC)',
+      wert: pctRaw(w?.incrementalRoicPct),
+      gruppe: 'effizienz',
+    },
+    {
+      id: 'sloan_ratio',
+      label: 'Sloan-Ratio (Accruals)',
+      wert: w?.sloanRatio != null ? zahl(w.sloanRatio) : '–',
+      gruppe: 'effizienz',
+    },
+    {
+      id: 'beneish_m',
+      label: 'Beneish M-Score',
+      wert:
+        w?.beneishMScore != null
+          ? `${zahl(w.beneishMScore)}${w.beneishRisiko ? ` (${w.beneishRisiko})` : ''}`
+          : '–',
       gruppe: 'effizienz',
     },
   )
@@ -330,6 +383,12 @@ export function baueKeyMetrics(
     { id: 'ntm_ev_rev', label: 'FY EV / Umsatz', wert: multiple(fwdEvRevenue), gruppe: 'bewertung_ntm' },
     { id: 'ntm_ev_ebitda', label: 'FY EV / EBITDA', wert: multiple(fwdEvEbitda), gruppe: 'bewertung_ntm' },
     { id: 'ntm_pe', label: 'FY KGV (P/E)', wert: multiple(fwdKgv), gruppe: 'bewertung_ntm' },
+    {
+      id: 'peg_ratio',
+      label: 'PEG (Fwd-KGV / EPS-Wachstum)',
+      wert: multiple(w?.pegRatio),
+      gruppe: 'bewertung_ntm',
+    },
     { id: 'ntm_mc_fcf', label: 'FY MC / FCF', wert: multiple(fwdMcFcf), gruppe: 'bewertung_ntm' },
     { id: 'ltm_ev_rev', label: 'LTM EV / Umsatz', wert: multiple(ltmEvRevenue), gruppe: 'bewertung_ltm' },
     {
@@ -382,6 +441,12 @@ export function baueKeyMetrics(
       label: 'Rule of 40',
       wert: w?.ruleOf40 != null ? zahl(w.ruleOf40) : '–',
       gruppe: 'wachstum',
+    },
+    {
+      id: 'sbc_fcf_ratio',
+      label: 'SBC / FCF',
+      wert: pctRaw(w?.sbcFcfRatio),
+      gruppe: 'effizienz',
     },
     {
       id: 'nrr',

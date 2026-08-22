@@ -3,6 +3,7 @@
 import 'server-only'
 
 import { createSupabaseAdmin } from '@/lib/supabase-admin'
+import { sentimentScoreAusZusammenfassung } from '@/lib/portfolio-analyse/earnings-call-sentiment'
 
 const TABLE_SEC = 'portfolio_sec_bericht_ki' as const
 const TABLE_EARNINGS = 'portfolio_earnings_call_ki' as const
@@ -17,6 +18,7 @@ export type EarningsCallKiCloudZeile = {
   zusammenfassung: string
   transcriptUrl: string
   aktualisiertAm: string
+  sentimentScore?: number | null
 }
 
 function tickerNorm(ticker: string): string {
@@ -74,7 +76,7 @@ export async function ladeAlleEarningsCallKiAusCloud(): Promise<
   try {
     const { data, error } = await adminClient()
       .from(TABLE_EARNINGS)
-      .select('ticker, quartal_id, transcript_url, zusammenfassung, aktualisiert_am')
+      .select('ticker, quartal_id, transcript_url, zusammenfassung, aktualisiert_am, sentiment_score')
     if (error) {
       console.warn('Earnings-Call-KI-Cloud: Alle laden', error.message)
       return out
@@ -86,6 +88,7 @@ export async function ladeAlleEarningsCallKiAusCloud(): Promise<
         transcript_url: string
         zusammenfassung: string
         aktualisiert_am: string
+        sentiment_score?: number | null
       }
       const t = tickerNorm(r.ticker)
       if (!out.has(t)) out.set(t, new Map())
@@ -93,6 +96,9 @@ export async function ladeAlleEarningsCallKiAusCloud(): Promise<
         zusammenfassung: r.zusammenfassung,
         transcriptUrl: r.transcript_url ?? '',
         aktualisiertAm: r.aktualisiert_am,
+        sentimentScore:
+          r.sentiment_score ??
+          (r.zusammenfassung ? sentimentScoreAusZusammenfassung(r.zusammenfassung) : null),
       })
     }
   } catch (e) {
@@ -188,10 +194,32 @@ export async function ladeEarningsCallKiAusCloud(
   try {
     const { data, error } = await adminClient()
       .from(TABLE_EARNINGS)
-      .select('quartal_id, transcript_url, zusammenfassung, aktualisiert_am')
+      .select('quartal_id, transcript_url, zusammenfassung, aktualisiert_am, sentiment_score')
       .eq('ticker', tickerNorm(ticker))
     if (error) {
-      console.warn('Earnings-Call-KI-Cloud: Laden', error.message)
+      // Fallback falls Migration noch nicht gelaufen
+      const fallback = await adminClient()
+        .from(TABLE_EARNINGS)
+        .select('quartal_id, transcript_url, zusammenfassung, aktualisiert_am')
+        .eq('ticker', tickerNorm(ticker))
+      if (fallback.error) {
+        console.warn('Earnings-Call-KI-Cloud: Laden', error.message)
+        return out
+      }
+      for (const row of fallback.data ?? []) {
+        const r = row as {
+          quartal_id: string
+          transcript_url: string
+          zusammenfassung: string
+          aktualisiert_am: string
+        }
+        out.set(r.quartal_id, {
+          zusammenfassung: r.zusammenfassung,
+          transcriptUrl: r.transcript_url ?? '',
+          aktualisiertAm: r.aktualisiert_am,
+          sentimentScore: null,
+        })
+      }
       return out
     }
     for (const row of data ?? []) {
@@ -200,11 +228,15 @@ export async function ladeEarningsCallKiAusCloud(
         transcript_url: string
         zusammenfassung: string
         aktualisiert_am: string
+        sentiment_score?: number | null
       }
       out.set(r.quartal_id, {
         zusammenfassung: r.zusammenfassung,
         transcriptUrl: r.transcript_url ?? '',
         aktualisiertAm: r.aktualisiert_am,
+        sentimentScore:
+          r.sentiment_score ??
+          (r.zusammenfassung ? sentimentScoreAusZusammenfassung(r.zusammenfassung) : null),
       })
     }
   } catch (e) {
@@ -226,21 +258,21 @@ export async function speichereEarningsCallKiInCloud(eintrag: {
   quartalId: string
   transcriptUrl: string
   zusammenfassung: string
+  sentimentScore?: number | null
 }): Promise<void> {
   if (!istCloudKonfiguriert()) return
   try {
+    const row: Record<string, unknown> = {
+      ticker: tickerNorm(eintrag.ticker),
+      quartal_id: eintrag.quartalId.trim(),
+      transcript_url: eintrag.transcriptUrl,
+      zusammenfassung: eintrag.zusammenfassung,
+      aktualisiert_am: new Date().toISOString(),
+    }
+    if (eintrag.sentimentScore != null) row.sentiment_score = eintrag.sentimentScore
     const { error } = await adminClient()
       .from(TABLE_EARNINGS)
-      .upsert(
-        {
-          ticker: tickerNorm(eintrag.ticker),
-          quartal_id: eintrag.quartalId.trim(),
-          transcript_url: eintrag.transcriptUrl,
-          zusammenfassung: eintrag.zusammenfassung,
-          aktualisiert_am: new Date().toISOString(),
-        },
-        { onConflict: 'ticker,quartal_id' },
-      )
+      .upsert(row, { onConflict: 'ticker,quartal_id' })
     if (error) console.warn('Earnings-Call-KI-Cloud: Speichern', error.message)
   } catch (e) {
     console.warn('Earnings-Call-KI-Cloud: Speichern fehlgeschlagen', e)

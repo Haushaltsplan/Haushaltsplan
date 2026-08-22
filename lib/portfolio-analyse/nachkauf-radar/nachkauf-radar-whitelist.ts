@@ -13,6 +13,11 @@ export type KaufTrigger = {
   peMax?: number
   /** Kaufen wenn FCF-Rendite ÜBER diesem Wert (%). */
   fcfYieldMin?: number
+  /**
+   * Kaufen wenn PEG UNTER diesem Wert (Default 1,8 wenn peMax gesetzt).
+   * PEG = Forward-KGV / erwartetes EPS-Wachstum.
+   */
+  pegMax?: number
   /** Freitext-Beschreibung der Kaufzone. */
   notiz?: string
 }

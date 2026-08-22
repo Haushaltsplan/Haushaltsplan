@@ -117,6 +117,10 @@ export type NachkaufBewertungsSignale = {
   capitalAllocationScorePct?: number | null
   /** Net Debt / EBITDA (LTM). */
   netDebtEbitda?: number | null
+  /** Net Debt / Free Cashflow (LTM). */
+  netDebtFcf?: number | null
+  /** PEG-Ratio (Forward P/E ÷ EPS-Wachstum). */
+  pegRatio?: number | null
   /** Short Float % (Finviz, US). */
   shortFloatPct?: number | null
   /** NTM / FY EV / EBITDA. */

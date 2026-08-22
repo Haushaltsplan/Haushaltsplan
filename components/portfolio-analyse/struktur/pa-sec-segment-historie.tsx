@@ -845,9 +845,39 @@ export function PaSecSegmentHistorie({ paket }: { paket: SecSegmentHistoriePaket
         ) : null}
       </div>
 
-      {(zusatz.mitarbeiterAnzahl != null || zusatz.auslandsumsatzAnteilPct != null || zusatz.hauptkunden.length > 0) && (
+      {(zusatz.mitarbeiterAnzahl != null ||
+        zusatz.auslandsumsatzAnteilPct != null ||
+        zusatz.hauptkunden.length > 0) && (
         <div className="grid gap-2 border-t border-[var(--app-border)]/60 pt-4 sm:grid-cols-2 lg:grid-cols-4">
-          <PaStrukturKennzahl label="Auslandsanteil Umsatz" wert={zusatz.auslandsumsatzAnteilPct != null ? `${zusatz.auslandsumsatzAnteilPct} %` : null} />
+          <PaStrukturKennzahl
+            label="Auslandsanteil Umsatz"
+            wert={zusatz.auslandsumsatzAnteilPct != null ? `${zusatz.auslandsumsatzAnteilPct} %` : null}
+          />
+          {zusatz.hauptkunden[0] ? (
+            <PaStrukturKennzahl
+              label="Top-Kunde Umsatzanteil"
+              wert={`${zusatz.hauptkunden[0].anteilPct} %`}
+              hinweis={zusatz.hauptkunden[0].name}
+            />
+          ) : null}
+          {zusatz.hauptkunden.length >= 2 ? (
+            <PaStrukturKennzahl
+              label="Top-3-Kunden Umsatzanteil"
+              wert={`${Math.round(
+                zusatz.hauptkunden.slice(0, 3).reduce((s, k) => s + k.anteilPct, 0) * 10,
+              ) / 10} %`}
+              hinweis={zusatz.hauptkunden
+                .slice(0, 3)
+                .map((k) => k.name)
+                .join(', ')}
+            />
+          ) : null}
+          {zusatz.mitarbeiterAnzahl != null ? (
+            <PaStrukturKennzahl
+              label="Mitarbeiter"
+              wert={zusatz.mitarbeiterAnzahl.toLocaleString('de-DE')}
+            />
+          ) : null}
         </div>
       )}
 

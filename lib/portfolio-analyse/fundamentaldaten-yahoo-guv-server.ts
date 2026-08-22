@@ -16,6 +16,7 @@ import {
   ladeStockanalysisGuVHistorie,
   type StockanalysisJahresForecastEintrag,
 } from '@/lib/portfolio-analyse/stockanalysis-forecast-server'
+import { ladeEuUrdHistorie } from '@/lib/portfolio-analyse/eu-urd-historie-server'
 import { holeYahooFinanceAuth, YAHOO_FINANCE_FETCH_HEADERS } from '@/lib/portfolio-analyse/yahoo-finance-auth-server'
 
 export const HERMES_YAHOO_ISIN = 'FR0000052292'
@@ -39,6 +40,9 @@ const GUV_ANNUAL_TYPES = [
   'annualFreeCashFlow',
   'annualDilutedAverageShares',
   'annualBasicAverageShares',
+  'annualStockholdersEquity',
+  'annualTotalStockholderEquity',
+  'annualGoodwill',
   'trailingTotalRevenue',
   'trailingGrossProfit',
   'trailingEBITDA',
@@ -64,6 +68,9 @@ const YAHOO_GUV_ZEILEN_IDS = new Set([
   'ocf',
   'capex',
   'fcf',
+  'eigenkapital',
+  'roe',
+  'goodwill',
 ])
 
 type TimeseriesBlock = {
@@ -201,8 +208,12 @@ async function baueYahooGuVRoh(symbol: string): Promise<YahooGuVRoh | null> {
   const shares = werteNachDatum(
     punkteAusTypen(result, 'annualDilutedAverageShares', 'annualBasicAverageShares'),
   )
+  const equity = werteNachDatum(
+    punkteAusTypen(result, 'annualStockholdersEquity', 'annualTotalStockholderEquity'),
+  )
+  const goodwillRaw = werteNachDatum(punkteAusTypen(result, 'annualGoodwill'))
 
-  const periodenIso = [...new Set([...revenue.keys(), ...ebit.keys(), ...net.keys()])].sort()
+  const periodenIso = [...new Set([...revenue.keys(), ...ebit.keys(), ...net.keys(), ...equity.keys()])].sort()
   if (periodenIso.length < 2) {
     cache.set(sym, { at: Date.now(), daten: null })
     return null
@@ -220,6 +231,9 @@ async function baueYahooGuVRoh(symbol: string): Promise<YahooGuVRoh | null> {
   const capexMio = new Map<string, number>()
   const fcfMio = new Map<string, number>()
   const aktienMio = new Map<string, number>()
+  const equityMio = new Map<string, number>()
+  const goodwillMio = new Map<string, number>()
+  const roeMap = new Map<string, number>()
 
   for (const iso of periodenIso) {
     const u = zuMio(revenue.get(iso))
@@ -250,6 +264,14 @@ async function baueYahooGuVRoh(symbol: string): Promise<YahooGuVRoh | null> {
     }
     const sh = zuAktienMio(shares.get(iso))
     if (sh != null) aktienMio.set(iso, sh)
+    const eq = zuMio(equity.get(iso))
+    if (eq != null) equityMio.set(iso, eq)
+    const gw = zuMio(goodwillRaw.get(iso))
+    if (gw != null) goodwillMio.set(iso, gw)
+    if (ni != null && eq != null && eq > 0) {
+      const roe = (ni / eq) * 100
+      if (Number.isFinite(roe) && Math.abs(roe) < 500) roeMap.set(iso, Math.round(roe * 10) / 10)
+    }
   }
 
   const ttmUmsatz = zuMio(letzterTrailing(result, 'trailingTotalRevenue'))
@@ -285,6 +307,22 @@ async function baueYahooGuVRoh(symbol: string): Promise<YahooGuVRoh | null> {
     baueZeile('aktien', 'Ausstehende Aktien', 'finanzdaten', 'aktien_mio', periodenIso, aktienMio, null),
   ]
 
+  if (equityMio.size > 0) {
+    zeilen.push(
+      baueZeile('eigenkapital', 'Eigenkapital', 'bilanz', 'waehrung_usd_mio', periodenIso, equityMio, null),
+    )
+  }
+  if (roeMap.size > 0) {
+    zeilen.push(
+      baueZeile('roe', 'Eigenkapitalrendite (ROE %)', 'rentabilitaet', 'prozent', periodenIso, roeMap, null),
+    )
+  }
+  if (goodwillMio.size > 0) {
+    zeilen.push(
+      baueZeile('goodwill', 'Goodwill', 'bilanz', 'waehrung_usd_mio', periodenIso, goodwillMio, null),
+    )
+  }
+
   if (rdMio.size > 0) {
     zeilen.splice(6, 0, baueZeile('rd', 'Forschung & Entwicklung (R&D)', 'finanzdaten', 'waehrung_usd_mio', periodenIso, rdMio, null))
   }
@@ -297,6 +335,33 @@ async function baueYahooGuVRoh(symbol: string): Promise<YahooGuVRoh | null> {
 export function nutzeYahooGuVFuerIsin(isin: string | null | undefined): boolean {
   const norm = loesePortfolioIsin({ isin }) ?? isin?.trim().toUpperCase()
   return norm != null && EU_GUV_FALLBACK_ISINS.has(norm)
+}
+
+/**
+ * True wenn Macrotrends-GuV/Cashflow/ROE zu dünn oder veraltet ist
+ * → Yahoo/StockAnalysis-Merge für alle Titel (auch US).
+ */
+export function brauchtGuVErgaenzung(roh: MacrotrendsFundamentalRoh | null | undefined): boolean {
+  if (!roh || roh.zeilen.length === 0) return true
+  const hist = roh.perioden.filter((p) => !p.istLtm && !p.istSchaetzung && !p.istNtm)
+  if (hist.length < 5) return true
+
+  const aktuellesJahr = new Date().getUTCFullYear()
+  const letzteJahre = hist.map((p) => parseInt(p.iso.slice(0, 4), 10)).filter(Number.isFinite)
+  const maxJahr = letzteJahre.length ? Math.max(...letzteJahre) : 0
+  if (maxJahr < aktuellesJahr - 2) return true
+
+  const zaehle = (id: string) => {
+    const z = roh.zeilen.find((r) => r.id === id)
+    if (!z) return 0
+    return hist.filter((p) => z.werte[p.iso] != null && Number.isFinite(z.werte[p.iso]!)).length
+  }
+
+  // 12-Jahre-Lücke typischerweise: viele PE-Jahre, aber FCF/ROE nur bis ~2013
+  if (zaehle('fcf') < 8) return true
+  if (zaehle('roe') < 8) return true
+  if (zaehle('umsatz') < 8) return true
+  return false
 }
 
 function pickWert(...kandidaten: Array<number | null | undefined>): number | null {
@@ -357,7 +422,8 @@ export async function ergaenzeMacrotrendsMitYahooGuV(
   symbolYahoo: string,
   opts?: { isin?: string | null; firmenname?: string | null; ticker?: string | null },
 ): Promise<MacrotrendsFundamentalRoh> {
-  const [saReihe, yahooRoh] = await Promise.all([
+  const isin = opts?.isin?.trim().toUpperCase() ?? ''
+  const [saReihe, yahooRoh, urdHist] = await Promise.all([
     ladeStockanalysisGuVHistorie({
       symbolYahoo,
       isin: opts?.isin,
@@ -365,17 +431,30 @@ export async function ergaenzeMacrotrendsMitYahooGuV(
       ticker: opts?.ticker,
     }),
     baueYahooGuVRoh(symbolYahoo),
+    isin.length >= 12
+      ? ladeEuUrdHistorie({
+          isin,
+          ticker: opts?.ticker ?? symbolYahoo,
+          firmenname: opts?.firmenname,
+        }).catch(() => null)
+      : Promise.resolve(null),
   ])
   const saRoh = guvRohAusStockanalysis(saReihe)
 
-  if (!saRoh && !yahooRoh) return roh
+  if (!saRoh && !yahooRoh && !urdHist) return roh
 
   const saHist = saRoh?.perioden.filter((p) => !p.istLtm && !p.istSchaetzung && !p.istNtm) ?? []
   const yahooHist = yahooRoh?.perioden.filter((p) => !p.istLtm && !p.istSchaetzung && !p.istNtm) ?? []
+  const urdHistP = urdHist?.perioden.filter((p) => !p.istLtm && !p.istSchaetzung && !p.istNtm) ?? []
   const mtHist = roh.perioden.filter((p) => !p.istLtm && !p.istSchaetzung && !p.istNtm)
 
   const histIso = [
-    ...new Set([...saHist.map((p) => p.iso), ...yahooHist.map((p) => p.iso), ...mtHist.map((p) => p.iso)]),
+    ...new Set([
+      ...saHist.map((p) => p.iso),
+      ...yahooHist.map((p) => p.iso),
+      ...urdHistP.map((p) => p.iso),
+      ...mtHist.map((p) => p.iso),
+    ]),
   ].sort()
 
   const ttm =
@@ -385,6 +464,7 @@ export async function ergaenzeMacrotrendsMitYahooGuV(
     const hit =
       saHist.find((p) => p.iso === iso) ??
       yahooHist.find((p) => p.iso === iso) ??
+      urdHistP.find((p) => p.iso === iso) ??
       mtHist.find((p) => p.iso === iso)
     return hit ?? { iso, label: formatFundamentalPeriodeLabel(iso, 'jahr') }
   })
@@ -392,17 +472,20 @@ export async function ergaenzeMacrotrendsMitYahooGuV(
 
   const saById = new Map(saRoh?.zeilen.map((z) => [z.id, z]) ?? [])
   const yahooById = new Map(yahooRoh?.zeilen.map((z) => [z.id, z]) ?? [])
+  const urdById = new Map(urdHist?.zeilen.map((z) => [z.id, z]) ?? [])
   const mergedZeilen: FundamentalMetrikZeile[] = []
 
   for (const z of roh.zeilen) {
     if (YAHOO_GUV_ZEILEN_IDS.has(z.id)) {
       const sz = saById.get(z.id)
       const yz = yahooById.get(z.id)
+      const uz = urdById.get(z.id)
       const werte: Record<string, number | null> = {}
       for (const iso of histIso) {
         werte[iso] = pickWert(
           sz?.werte[iso],
           yz?.werte[iso],
+          uz?.werte[iso],
           wertAusMapFuerIso(z.werte, iso),
         )
       }
@@ -415,6 +498,7 @@ export async function ergaenzeMacrotrendsMitYahooGuV(
       mergedZeilen.push({ ...z, werte })
       saById.delete(z.id)
       yahooById.delete(z.id)
+      urdById.delete(z.id)
     } else {
       // Bewertungs-/Bilanz-Zeilen auf die gemergten FY-ISOs ziehen
       // (Macrotrends-Daten weichen oft um Wochen von Yahoo/SA ab).
@@ -428,7 +512,7 @@ export async function ergaenzeMacrotrendsMitYahooGuV(
     }
   }
 
-  for (const z of [...saById.values(), ...yahooById.values()]) {
+  for (const z of [...saById.values(), ...yahooById.values(), ...urdById.values()]) {
     if (mergedZeilen.some((m) => m.id === z.id)) continue
     mergedZeilen.push(z)
   }

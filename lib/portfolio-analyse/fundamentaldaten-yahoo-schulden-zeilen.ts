@@ -44,10 +44,23 @@ export async function ergaenzeYahooSchuldenZeilen(
   symbolYahoo: string | null | undefined,
   perioden: FundamentalPeriode[],
   zeilen: FundamentalMetrikZeile[],
+  opts?: { isin?: string | null },
 ): Promise<number> {
   if (!symbolYahoo?.trim() || perioden.length === 0) return 0
 
-  const historie = await ladeYahooSchuldenHistorie(symbolYahoo)
+  const { yahooKennzahlenSymbolKandidaten } = await import(
+    '@/lib/portfolio-analyse/yahoo-kennzahlen-fallback-server'
+  )
+  const symbole = yahooKennzahlenSymbolKandidaten({
+    symbolYahoo,
+    isin: opts?.isin,
+  })
+
+  let historie: Awaited<ReturnType<typeof ladeYahooSchuldenHistorie>> = []
+  for (const sym of symbole) {
+    historie = await ladeYahooSchuldenHistorie(sym)
+    if (historie.length >= 2) break
+  }
   if (historie.length === 0) return 0
 
   const fyKeys = perioden

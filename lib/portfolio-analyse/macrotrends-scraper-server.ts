@@ -556,7 +556,16 @@ function wertAusChartNaehe(
       best = p
     }
   }
-  return best ? wertAusChartPunkt(best, feld) : null
+  if (best) return wertAusChartPunkt(best, feld)
+
+  // Same-year Fallback (FY-Ende driftet >45 Tage zwischen Charts und GuV)
+  const jahr = iso.slice(0, 4)
+  let bestJahr: ChartPunkt | null = null
+  for (const p of chart) {
+    if (p.date.slice(0, 4) !== jahr) continue
+    if (!bestJahr || p.date > bestJahr.date) bestJahr = p
+  }
+  return bestJahr ? wertAusChartPunkt(bestJahr, feld) : null
 }
 
 /** Geschäftsjahres-Enddaten mit ±45-Tage-Toleranz zum Chart; letzter Chart-Punkt = TTM. */

@@ -17,7 +17,7 @@ export type SegmentStrukturSignale = {
   backlogWachstumPct: number | null
   backlogLabel: string | null
   segmentShiftPct: number | null
-  segmentQuelle: 'marketscreener' | 'stockanalysis' | 'mixed' | 'sec_edgar' | null
+  segmentQuelle: 'marketscreener' | 'stockanalysis' | 'mixed' | 'sec_edgar' | 'eu_urd' | null
   /** false = Segment-Konzentration nicht für Score nutzen (nur MS). */
   segmentDatenZuverlaessig: boolean
 }

@@ -71,7 +71,21 @@ function QuartalZeile({
         </span>
       </div>
       <div className="flex shrink-0 items-center gap-1.5">
-        {hatAnalyse ? (
+        {q.sentimentScore != null ? (
+          <span
+            className={`rounded-full px-1.5 py-0.5 text-[9px] font-medium tabular-nums ${
+              q.sentimentScore >= 25
+                ? 'bg-emerald-500/15 text-emerald-300'
+                : q.sentimentScore <= -25
+                  ? 'bg-rose-500/15 text-rose-300'
+                  : 'bg-white/10 text-[var(--app-text-muted)]'
+            }`}
+            title="Management-Sentiment (−100…+100)"
+          >
+            {q.sentimentScore > 0 ? '+' : ''}
+            {q.sentimentScore}
+          </span>
+        ) : hatAnalyse ? (
           <span className="rounded-full bg-teal-500/15 px-1.5 py-0.5 text-[9px] font-medium text-teal-300">KI</span>
         ) : null}
         {laden ? (

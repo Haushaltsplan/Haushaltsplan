@@ -8,6 +8,7 @@ import {
   loescheEarningsCallKiCloudEintrag,
   speichereEarningsCallKiInCloud,
 } from '@/lib/portfolio-analyse/portfolio-ki-cache-cloud-server'
+import { sentimentScoreAusZusammenfassung } from '@/lib/portfolio-analyse/earnings-call-sentiment'
 import type { EarningsCallQuelle } from '@/lib/portfolio-analyse/earnings-call-types'
 import { promises as fs } from 'fs'
 import path from 'path'
@@ -28,6 +29,8 @@ export type PersistierteKiZeile = {
   zusammenfassung: string
   transcriptUrl: string
   aktualisiertAm: string
+  /** Management-Optimismus −100…+100 (aus KI oder Heuristik). */
+  sentimentScore?: number | null
 }
 
 export type UnternehmenCacheEintrag = {
@@ -173,21 +176,51 @@ export async function speichereUnternehmenTranskripte(
 
 export async function ladeEarningsCallKiCacheFuerTicker(
   ticker: string,
-): Promise<Map<string, { zusammenfassung: string; transcriptUrl: string }>> {
+): Promise<
+  Map<
+    string,
+    {
+      zusammenfassung: string
+      transcriptUrl: string
+      aktualisiertAm: string
+      sentimentScore: number | null
+    }
+  >
+> {
   const t = tickerNorm(ticker)
   const cloud = await ladeEarningsCallKiAusCloud(t)
   const hit = await ladeUnternehmenCache(ticker)
-  const out = new Map<string, { zusammenfassung: string; transcriptUrl: string }>()
+  const out = new Map<
+    string,
+    {
+      zusammenfassung: string
+      transcriptUrl: string
+      aktualisiertAm: string
+      sentimentScore: number | null
+    }
+  >()
   if (hit) {
     for (const [quartalId, row] of Object.entries(hit.summaries)) {
-      out.set(quartalId, { zusammenfassung: row.zusammenfassung, transcriptUrl: row.transcriptUrl })
+      out.set(quartalId, {
+        zusammenfassung: row.zusammenfassung,
+        transcriptUrl: row.transcriptUrl,
+        aktualisiertAm: row.aktualisiertAm,
+        sentimentScore:
+          row.sentimentScore ?? sentimentScoreAusZusammenfassung(row.zusammenfassung),
+      })
     }
   }
   for (const [quartalId, row] of cloud) {
     const prev = out.get(quartalId)
     const fileRow = hit?.summaries[quartalId]
     if (!prev || row.aktualisiertAm >= (fileRow?.aktualisiertAm ?? '')) {
-      out.set(quartalId, { zusammenfassung: row.zusammenfassung, transcriptUrl: row.transcriptUrl })
+      out.set(quartalId, {
+        zusammenfassung: row.zusammenfassung,
+        transcriptUrl: row.transcriptUrl,
+        aktualisiertAm: row.aktualisiertAm,
+        sentimentScore:
+          row.sentimentScore ?? sentimentScoreAusZusammenfassung(row.zusammenfassung),
+      })
     }
   }
   return out
@@ -196,7 +229,12 @@ export async function ladeEarningsCallKiCacheFuerTicker(
 export async function ladeEarningsCallKiCacheEintrag(
   ticker: string,
   quartalId: string,
-): Promise<{ zusammenfassung: string; transcriptUrl: string } | null> {
+): Promise<{
+  zusammenfassung: string
+  transcriptUrl: string
+  aktualisiertAm: string
+  sentimentScore: number | null
+} | null> {
   const map = await ladeEarningsCallKiCacheFuerTicker(ticker)
   return map.get(quartalId.trim()) ?? null
 }
@@ -206,6 +244,7 @@ export async function speichereEarningsCallKiCache(eintrag: {
   quartalId: string
   transcriptUrl: string
   zusammenfassung: string
+  sentimentScore?: number | null
 }): Promise<void> {
   const t = tickerNorm(eintrag.ticker)
   const datei = await ladeDateiMitMigration()
@@ -220,15 +259,22 @@ export async function speichereEarningsCallKiCache(eintrag: {
     summaries: {},
   }
 
+  const sentimentScore =
+    eintrag.sentimentScore ?? sentimentScoreAusZusammenfassung(eintrag.zusammenfassung)
+
   prev.summaries[eintrag.quartalId.trim()] = {
     zusammenfassung: eintrag.zusammenfassung,
     transcriptUrl: eintrag.transcriptUrl,
     aktualisiertAm: now,
+    sentimentScore,
   }
 
   datei.byTicker[t] = prev
   await schreibeDatei(datei)
-  await speichereEarningsCallKiInCloud(eintrag)
+  await speichereEarningsCallKiInCloud({
+    ...eintrag,
+    sentimentScore,
+  })
 }
 
 export async function loescheEarningsCallKiCacheEintrag(ticker: string, quartalId: string): Promise<void> {

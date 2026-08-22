@@ -5,6 +5,7 @@ import {
   baueKeyMetrics,
   type YahooFundamentalKennzahlen,
 } from '@/lib/portfolio-analyse/fundamentaldaten-key-metrics'
+import { ergaenzeKeyMetricsAusErweitert } from '@/lib/portfolio-analyse/fundamentaldaten-key-metrics-erweitert'
 import { baueMantraAudit } from '@/lib/portfolio-analyse/fundamentaldaten-mantra'
 import { baueKontextWerte } from '@/lib/portfolio-analyse/fundamentaldaten-kontext-werte'
 import { ladeYahooMantraFinanzdaten } from '@/lib/portfolio-analyse/yahoo-fundamentals-timeseries-server'
@@ -47,17 +48,17 @@ import {
   baueFundamentalRohAusAlternativQuellen,
   ergaenzeMacrotrendsMitYahooGuV,
   nutzeYahooGuVFuerIsin,
+  brauchtGuVErgaenzung,
 } from '@/lib/portfolio-analyse/fundamentaldaten-yahoo-guv-server'
 import { ISIN_WAEHRUNG } from '@/lib/portfolio-analyse/eu-portfolio-ir-config'
 import { ladeUnitEconomics } from '@/lib/portfolio-analyse/unit-economics-server'
-import { holeYahooFinanceAuth } from '@/lib/portfolio-analyse/yahoo-finance-auth-server'
-
-const YAHOO_UA =
-  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36'
+import { ladeYahooFundamentalKennzahlenMitFallback } from '@/lib/portfolio-analyse/yahoo-kennzahlen-fallback-server'
+import { ergaenzeRoicAusBilanz } from '@/lib/portfolio-analyse/fundamentaldaten-roic-berechnung'
+import { ergaenzeWorkingCapitalTageZeilen } from '@/lib/portfolio-analyse/fundamentaldaten-working-capital-zeilen'
 
 function istEuIsin(isin: string | null | undefined): boolean {
   const i = isin?.trim().toUpperCase() ?? ''
-  return i.startsWith('DE') || i.startsWith('NL') || i.startsWith('FR') || i.startsWith('CH') || i.startsWith('GB')
+  return /^(DE|NL|FR|CH|GB|IE|AT|BE|LU|SE|DK|FI|NO|ES|IT|PT|PL)/.test(i)
 }
 
 /** Berichtswährung: Konfig-Eintrag → sonst grobe Ableitung aus dem ISIN-Länderpräfix (Watchlist). */
@@ -166,103 +167,15 @@ async function loeseIdent(anfrage: FundamentaldatenAnfrage): Promise<{
   return { ident: null, symbolYahoo }
 }
 
-function rawNum(o: Record<string, { raw?: number }> | undefined, k: string): number | undefined {
-  const v = o?.[k]?.raw
-  return v != null && Number.isFinite(v) ? v : undefined
-}
-
-async function ladeYahooFundamentalKennzahlen(symbol: string): Promise<YahooFundamentalKennzahlen | null> {
-  const auth = await holeYahooFinanceAuth()
-  if (!auth) return null
-  const u = new URL(`https://query2.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(symbol)}`)
-  u.searchParams.set('modules', 'defaultKeyStatistics,summaryDetail,assetProfile,financialData,earningsTrend')
-  u.searchParams.set('crumb', auth.crumb)
-  const res = await fetch(u.toString(), {
-    headers: {
-      'User-Agent': YAHOO_UA,
-      Cookie: auth.cookie,
-      Accept: 'application/json',
-    },
-    cache: 'no-store',
+async function ladeYahooFundamentalKennzahlen(
+  symbol: string,
+  opts?: { isin?: string | null; macrotrendsTicker?: string | null },
+): Promise<YahooFundamentalKennzahlen | null> {
+  return ladeYahooFundamentalKennzahlenMitFallback({
+    symbolYahoo: symbol,
+    isin: opts?.isin,
+    macrotrendsTicker: opts?.macrotrendsTicker,
   })
-  if (!res.ok) return null
-  const j = (await res.json()) as {
-    quoteSummary?: {
-      result?: Array<{
-        defaultKeyStatistics?: Record<string, { raw?: number }>
-        summaryDetail?: Record<string, { raw?: number }>
-        assetProfile?: Record<string, unknown>
-        financialData?: Record<string, { raw?: number }>
-        earningsTrend?: { trend?: Array<Record<string, unknown> & { period?: string }> }
-      }>
-    }
-  }
-  const row = j.quoteSummary?.result?.[0]
-  if (!row) return null
-  const dks = row.defaultKeyStatistics
-  const sd = row.summaryDetail
-  const fd = row.financialData
-  const ap = row.assetProfile as Record<string, unknown> | undefined
-  const fy0 = row.earningsTrend?.trend?.find((t) => t.period === '0y')
-  const fy1 = row.earningsTrend?.trend?.find((t) => t.period === '+1y')
-  const epsEst0 = fy0?.earningsEstimate as Record<string, unknown> | undefined
-  const revEst0 = fy0?.revenueEstimate as Record<string, unknown> | undefined
-  const revEst1 = fy1?.revenueEstimate as Record<string, unknown> | undefined
-  const ebitdaEst0 = fy0?.ebitdaEstimate as Record<string, unknown> | undefined
-  const ebitdaEst1 = fy1?.ebitdaEstimate as Record<string, unknown> | undefined
-  const epsEst1 = fy1?.earningsEstimate as Record<string, unknown> | undefined
-  const rawObj = (o: Record<string, unknown> | undefined, k: string) => {
-    const v = o?.[k] as { raw?: number } | undefined
-    return v?.raw != null && Number.isFinite(v.raw) ? v.raw : undefined
-  }
-
-  return {
-    fiftyTwoWeekHigh: rawNum(sd, 'fiftyTwoWeekHigh'),
-    fiftyTwoWeekLow: rawNum(sd, 'fiftyTwoWeekLow'),
-    beta: rawNum(dks, 'beta'),
-    marketCap: rawNum(sd, 'marketCap'),
-    sharesOutstanding: rawNum(dks, 'sharesOutstanding'),
-    floatShares: rawNum(dks, 'floatShares'),
-    enterpriseValue: rawNum(dks, 'enterpriseValue'),
-    trailingPE: rawNum(sd, 'trailingPE'),
-    forwardPE: rawNum(sd, 'forwardPE'),
-    dividendYield: rawNum(sd, 'dividendYield'),
-    payoutRatio: rawNum(dks, 'payoutRatio') ?? rawNum(sd, 'payoutRatio'),
-    trailingEps: rawNum(sd, 'trailingEps') ?? rawNum(dks, 'trailingEps'),
-    trailingAnnualDividendRate:
-      rawNum(sd, 'trailingAnnualDividendRate') ?? rawNum(dks, 'trailingAnnualDividendRate'),
-    returnOnEquity: rawNum(fd, 'returnOnEquity'),
-    returnOnAssets: rawNum(fd, 'returnOnAssets'),
-    revenueGrowth: rawNum(fd, 'revenueGrowth'),
-    earningsGrowth: rawNum(fd, 'earningsGrowth'),
-    grossMargins: rawNum(fd, 'grossMargins'),
-    operatingMargins: rawNum(fd, 'operatingMargins'),
-    ebitdaMargins: rawNum(fd, 'ebitdaMargins'),
-    profitMargins: rawNum(fd, 'profitMargins'),
-    currentPrice: rawNum(sd, 'regularMarketPrice') ?? rawNum(fd, 'currentPrice'),
-    targetMeanPrice: rawNum(fd, 'targetMeanPrice'),
-    priceToBook: rawNum(dks, 'priceToBook'),
-    enterpriseToRevenue: rawNum(dks, 'enterpriseToRevenue'),
-    enterpriseToEbitda: rawNum(dks, 'enterpriseToEbitda'),
-    totalDebt: rawNum(fd, 'totalDebt'),
-    totalCash: rawNum(fd, 'totalCash'),
-    averageVolume: rawNum(sd, 'averageDailyVolume3Month') ?? rawNum(sd, 'averageVolume10days'),
-    ntmEpsSchaetzung: rawObj(epsEst0, 'avg'),
-    ntmRevenueUsd: rawObj(revEst0, 'avg'),
-    ntmEbitdaUsd: rawObj(ebitdaEst0, 'avg'),
-    fy1RevenueUsd: rawObj(revEst1, 'avg'),
-    fy1EbitdaUsd: rawObj(ebitdaEst1, 'avg'),
-    fy1Eps: rawObj(epsEst1, 'avg'),
-    sector: typeof ap?.sector === 'string' ? ap.sector : undefined,
-    industry: typeof ap?.industry === 'string' ? ap.industry : undefined,
-    website: typeof ap?.website === 'string' ? ap.website : undefined,
-    longBusinessSummary: typeof ap?.longBusinessSummary === 'string' ? ap.longBusinessSummary : undefined,
-  } as YahooFundamentalKennzahlen & {
-    sector?: string
-    industry?: string
-    website?: string
-    longBusinessSummary?: string
-  }
 }
 
 function baueMantraMeta(
@@ -476,7 +389,10 @@ export async function ladeFundamentaldaten(anfrage: FundamentaldatenAnfrage): Pr
       const tickerGuess = macrotrendsTickerAusSymbol(symbolYahoo)
       const firmenname = anfrage.name?.trim() || tickerGuess || symbolYahoo
       const [yahooRaw, news, yahooFinanz, schaetzungen] = await Promise.all([
-        ladeYahooFundamentalKennzahlen(symbolYahoo).catch(() => null),
+        ladeYahooFundamentalKennzahlen(symbolYahoo, {
+          isin: anfrage.isin,
+          macrotrendsTicker: isinKenntnis(anfrage.isin)?.macrotrendsTicker,
+        }).catch(() => null),
         ladeFundamentalNews(symbolYahoo, firmenname).catch(() => []),
         ladeYahooMantraFinanzdaten(symbolYahoo).catch(() => null),
         frequenz === 'jahr'
@@ -542,7 +458,12 @@ export async function ladeFundamentaldaten(anfrage: FundamentaldatenAnfrage): Pr
 
   const [rohRaw, yahooRaw, schaetzungen, news, yahooFinanz, unitEconomics, erweitert] = await Promise.all([
     altRoh ? Promise.resolve(altRoh) : ladeMacrotrendsFundamentaldaten(ident, frequenz),
-    symbolYahoo ? ladeYahooFundamentalKennzahlen(symbolYahoo) : Promise.resolve(null),
+    symbolYahoo
+      ? ladeYahooFundamentalKennzahlen(symbolYahoo, {
+          isin: anfrage.isin,
+          macrotrendsTicker: ident.ticker !== macrotrendsTickerAusSymbol(symbolYahoo) ? ident.ticker : isinKenntnis(anfrage.isin)?.macrotrendsTicker,
+        })
+      : Promise.resolve(null),
     frequenz === 'jahr' && symbolYahoo
       ? ladeFundamentalSchaetzungen({
           symbol: symbolYahoo,
@@ -552,7 +473,7 @@ export async function ladeFundamentaldaten(anfrage: FundamentaldatenAnfrage): Pr
         })
       : Promise.resolve({ perioden: [], zeilen: [] }),
     symbolYahoo ? ladeFundamentalNews(symbolYahoo, ident.firmenname) : Promise.resolve([]),
-    symbolYahoo ? ladeYahooMantraFinanzdaten(symbolYahoo) : Promise.resolve(null),
+    symbolYahoo ? ladeYahooMantraFinanzdaten(symbolYahoo, { isin: anfrage.isin }) : Promise.resolve(null),
     ladeUnitEconomics(ident.ticker).catch(() => null),
     ladeFundamentaldatenErweitert({
       ticker: ident.ticker,
@@ -573,7 +494,7 @@ export async function ladeFundamentaldaten(anfrage: FundamentaldatenAnfrage): Pr
     (!roh || roh.zeilen.length === 0) &&
     symbolYahoo &&
     frequenz === 'jahr' &&
-    nutzeYahooGuVFuerIsin(isinNorm ?? anfrage.isin)
+    (nutzeYahooGuVFuerIsin(isinNorm ?? anfrage.isin) || brauchtGuVErgaenzung(roh))
   ) {
     const fallback = await baueFundamentalRohAusAlternativQuellen(ident, symbolYahoo, {
       isin: isinNorm ?? anfrage.isin,
@@ -581,7 +502,12 @@ export async function ladeFundamentaldaten(anfrage: FundamentaldatenAnfrage): Pr
       ticker: ident.ticker,
     })
     if (fallback) roh = fallback
-  } else if (roh && symbolYahoo && frequenz === 'jahr' && nutzeYahooGuVFuerIsin(isinNorm ?? anfrage.isin)) {
+  } else if (
+    roh &&
+    symbolYahoo &&
+    frequenz === 'jahr' &&
+    (nutzeYahooGuVFuerIsin(isinNorm ?? anfrage.isin) || brauchtGuVErgaenzung(roh))
+  ) {
     roh = await ergaenzeMacrotrendsMitYahooGuV(roh, symbolYahoo, {
       isin: isinNorm ?? anfrage.isin,
       firmenname: anfrage.name ?? ident.firmenname,
@@ -685,10 +611,37 @@ export async function ladeFundamentaldaten(anfrage: FundamentaldatenAnfrage): Pr
 
   // Yahoo Total Debt (inkl. kurzfristig + Leases) vor Nettoverschuldung/EV.
   if (frequenz === 'jahr' && symbolYahoo) {
-    await ergaenzeYahooSchuldenZeilen(symbolYahoo, merged.perioden, merged.zeilen)
+    await ergaenzeYahooSchuldenZeilen(symbolYahoo, merged.perioden, merged.zeilen, {
+      isin: isinNorm ?? anfrage.isin,
+    })
   }
   ergaenzeNettoverschuldungZeilen(merged.perioden, merged.zeilen)
   ergaenzeEvMultiplesZeilen(merged.perioden, merged.zeilen)
+  ergaenzeRoicAusBilanz(merged.perioden, merged.zeilen)
+  ergaenzeWorkingCapitalTageZeilen(merged.perioden, merged.zeilen)
+
+  // SBC aus Yahoo Timeseries nachziehen, wenn Macrotrends-Zeile leer (EU/ADR)
+  if (yahooFinanz?.stockBasedCompensationUsd != null) {
+    const sbcMio = yahooFinanz.stockBasedCompensationUsd / 1_000_000
+    const histKeys = merged.perioden
+      .filter((p) => !p.istLtm && !p.istNtm && !p.istSchaetzung)
+      .map((p) => p.iso)
+    const lastKey = histKeys[histKeys.length - 1]
+    let sbcZ = merged.zeilen.find((z) => z.id === 'sbc')
+    if (!sbcZ) {
+      sbcZ = {
+        id: 'sbc',
+        label: 'Stock-Based Compensation (SBC)',
+        gruppe: 'cashflow',
+        einheit: 'waehrung_usd_mio',
+        werte: {},
+      }
+      merged.zeilen.push(sbcZ)
+    }
+    if (lastKey && sbcZ.werte[lastKey] == null) {
+      sbcZ.werte[lastKey] = Math.round(sbcMio * 10) / 10
+    }
+  }
 
   const ntm =
     frequenz === 'jahr'
@@ -784,7 +737,10 @@ export async function ladeFundamentaldaten(anfrage: FundamentaldatenAnfrage): Pr
     waehrung,
     perioden: merged.perioden,
     zeilen: merged.zeilen,
-    keyMetrics: baueKeyMetrics(yahooExt, mergedRoh, schaetzungenGefiltert, kontextWerte),
+    keyMetrics: ergaenzeKeyMetricsAusErweitert(
+      baueKeyMetrics(yahooExt, mergedRoh, schaetzungenGefiltert, kontextWerte),
+      erweitertFinal,
+    ),
     mantra: baueMantraAudit(
       sektorFinal,
       brancheFinal,

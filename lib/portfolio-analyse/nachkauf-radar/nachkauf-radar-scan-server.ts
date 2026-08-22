@@ -16,6 +16,7 @@ import { ladeFundamentaldaten } from '@/lib/portfolio-analyse/fundamentaldaten-s
 import { isinKenntnis } from '@/lib/portfolio-analyse/isin-kenntnisse'
 import { ladeSecBerichtKiCacheFuerTicker } from '@/lib/portfolio-analyse/sec-berichte-ki-cache-server'
 import { ladeEarningsCallKiCacheFuerTicker } from '@/lib/portfolio-analyse/earnings-call-unternehmen-cache-server'
+import { sentimentScoreAusZusammenfassung } from '@/lib/portfolio-analyse/earnings-call-sentiment'
 import {
   geminiPaidFlashModelKandidaten,
   resolveCoachProviderFromMode,
@@ -238,10 +239,12 @@ async function scanneEinenTitel(opts: {
     ladeSecBerichtKiCacheFuerTicker(ticker),
   ])
 
-  const neuesteEarnings =
-    [...earningsMap.values()]
-      .sort((a, b) => b.transcriptUrl.localeCompare(a.transcriptUrl))
-      .at(0)?.zusammenfassung ?? ''
+  const neuesteEarningsZeile = [...earningsMap.entries()]
+    .map(([id, z]) => ({ id, ...z }))
+    .sort((a, b) => b.aktualisiertAm.localeCompare(a.aktualisiertAm))
+    .at(0)
+
+  const neuesteEarnings = neuesteEarningsZeile?.zusammenfassung ?? ''
 
   const neuesteSec =
     [...secMap.values()]
@@ -250,6 +253,9 @@ async function scanneEinenTitel(opts: {
 
   zusatz.earningsKiZusammenfassung = neuesteEarnings || null
   zusatz.secKiZusammenfassung = neuesteSec || null
+  zusatz.earningsSentimentScore =
+    neuesteEarningsZeile?.sentimentScore ??
+    (neuesteEarnings ? sentimentScoreAusZusammenfassung(neuesteEarnings) : null)
 
   const drMemo = opts.deepResearchMap.get(ticker.toUpperCase())?.memo ?? null
   const scoreDetail = berechneNachkaufScore(
