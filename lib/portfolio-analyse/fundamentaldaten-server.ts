@@ -55,6 +55,7 @@ import { ISIN_WAEHRUNG, istEuIsin } from '@/lib/portfolio-analyse/eu-portfolio-i
 import { ladeUnitEconomics } from '@/lib/portfolio-analyse/unit-economics-server'
 import { ladeYahooFundamentalKennzahlenMitFallback } from '@/lib/portfolio-analyse/yahoo-kennzahlen-fallback-server'
 import { ergaenzeFehlendeStatementZeilen } from '@/lib/portfolio-analyse/fundamentaldaten-zeilen-backfill-server'
+import { ergaenzeRoicAusBilanz } from '@/lib/portfolio-analyse/fundamentaldaten-roic-berechnung'
 import { ergaenzeWorkingCapitalTageZeilen } from '@/lib/portfolio-analyse/fundamentaldaten-working-capital-zeilen'
 import { ladeIncrementalRoic } from '@/lib/portfolio-analyse/incremental-roic-server'
 
