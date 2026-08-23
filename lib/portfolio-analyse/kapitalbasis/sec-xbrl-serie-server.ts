@@ -175,8 +175,12 @@ const TAG_KETTEN: Record<KapitalbasisRohfeld, string[]> = {
     'PaymentsToAcquireOtherPropertyPlantAndEquipment',
     'PurchaseOfPropertyPlantAndEquipment',
   ],
+  // `PaymentsForSoftware` nutzen MSCI und Veeva; ohne das Tag fehlte deren kapitalisierte
+  // Software (MSCI 2025: 91 Mio.) im Nenner der Brutto-Reinvestition und der ROIIC lief
+  // dadurch zu hoch in den Deckel.
   softwareCapexMio: [
     'PaymentsToDevelopSoftware',
+    'PaymentsForSoftware',
     'PaymentsToAcquireIntangibleAssets',
     'PaymentsToAcquireSoftware',
   ],

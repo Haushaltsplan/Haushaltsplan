@@ -180,3 +180,78 @@ export async function ladeYahooHistorieBatch(
   }
   return out
 }
+
+export type YahooKursPunkt = { datum: string; kurs: number }
+
+/**
+ * Monatliche **Roh**-Schlusskurse (nicht dividendenbereinigt).
+ *
+ * Für historische Multiples darf nicht `adjclose` verwendet werden: die Dividendenbereinigung
+ * drückt alte Kurse, während GuV-EPS unbereinigt bleibt — KGV würde bei Ausschüttern
+ * systematisch zu niedrig. Splits stecken bereits im Rohkurs.
+ */
+export async function ladeYahooMonatsRohkurse(
+  symbol: string,
+  vonDatum: string,
+  bisDatum: string,
+): Promise<YahooKursPunkt[]> {
+  const sym = symbol.trim().toUpperCase()
+  if (!sym) return []
+
+  const u = new URL(`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(sym)}`)
+  u.searchParams.set('interval', '1mo')
+  u.searchParams.set('period1', String(unixTagStart(vonDatum)))
+  u.searchParams.set('period2', String(unixTagEnde(bisDatum)))
+  u.searchParams.set('events', 'div,split')
+
+  const hosts = ['query1.finance.yahoo.com', 'query2.finance.yahoo.com']
+  for (const host of hosts) {
+    const url = u.toString().replace('query1.finance.yahoo.com', host)
+    try {
+      const res = await fetch(url, {
+        headers: YAHOO_FETCH_HEADERS,
+        cache: 'no-store',
+      })
+      if (!res.ok) continue
+      const j = (await res.json()) as YahooChartJson
+      const result = j.chart?.result?.[0]
+      if (!result?.timestamp?.length) continue
+      const closes = result.indicators?.quote?.[0]?.close ?? []
+      const out: YahooKursPunkt[] = []
+      for (let i = 0; i < result.timestamp.length; i++) {
+        const datum = tagAusUnix(result.timestamp[i]!)
+        const kurs = closes[i]
+        if (!datum || kurs == null || !Number.isFinite(kurs) || kurs <= 0) continue
+        out.push({ datum, kurs: Math.round(kurs * 10000) / 10000 })
+      }
+      if (out.length > 0) return out
+    } catch {
+      continue
+    }
+  }
+  return []
+}
+
+/** Nächster Kurs zu einem ISO-Datum, sonst null wenn weiter weg als `toleranzTage`. */
+export function kursNaheDatum(
+  serie: YahooKursPunkt[],
+  iso: string,
+  toleranzTage = 45,
+): number | null {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(iso) || serie.length === 0) return null
+  const ziel = Date.parse(`${iso}T12:00:00Z`)
+  if (!Number.isFinite(ziel)) return null
+  const maxDiff = toleranzTage * 86_400_000
+  let best: number | null = null
+  let bestDiff = Infinity
+  for (const p of serie) {
+    const t = Date.parse(`${p.datum}T12:00:00Z`)
+    if (!Number.isFinite(t)) continue
+    const diff = Math.abs(t - ziel)
+    if (diff < bestDiff && diff <= maxDiff) {
+      bestDiff = diff
+      best = p.kurs
+    }
+  }
+  return best
+}

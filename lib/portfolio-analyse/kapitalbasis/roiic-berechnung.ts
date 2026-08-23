@@ -216,48 +216,6 @@ function summeReinvest(
   return summe
 }
 
-/**
- * Zuwachs über das Fenster, geglättet über die Regressionssteigung aller Jahre statt über
- * die Differenz zweier Stichjahre.
- *
- * Ein einzelnes Anfangs- oder Endjahr entscheidet sonst über das Ergebnis. Bei S&P Global
- * war 2023 ein Ergebnistief und blähte den Zuwachs auf, bei Thermo Fisher ist 2022 ein
- * Corona-Hoch und erzeugte einen Rückgang. Die Steigung nutzt jeden Punkt im Fenster und
- * ist gegen solche Ausschläge deutlich robuster.
- *
- * Bei nur drei Stützstellen ist die Steigung mathematisch identisch mit der
- * Endpunktdifferenz — die Glättung greift also erst ab vier Jahren im Fenster.
- */
-function geglaetteterZuwachs(
-  punkte: Array<{ jahr: number; wert: number }>,
-  spanne: number,
-): number | null {
-  if (punkte.length < 2) return null
-  if (punkte.length === 2) return punkte[1]!.wert - punkte[0]!.wert
-
-  const mittelX = punkte.reduce((s, p) => s + p.jahr, 0) / punkte.length
-  const mittelY = punkte.reduce((s, p) => s + p.wert, 0) / punkte.length
-  let zaehler = 0
-  let nenner = 0
-  for (const p of punkte) {
-    zaehler += (p.jahr - mittelX) * (p.wert - mittelY)
-    nenner += (p.jahr - mittelX) ** 2
-  }
-  if (nenner === 0) return null
-  return (zaehler / nenner) * spanne
-}
-
-function reiheImFenster(
-  zeilen: Zeile[],
-  feld: 'nopatMio' | 'icNettoMio' | 'icTangibleNettoMio',
-  vonJahr: number,
-  bisJahr: number,
-): Array<{ jahr: number; wert: number }> {
-  return zeilen
-    .filter((z) => z.jahr >= vonJahr && z.jahr <= bisJahr && z[feld] != null)
-    .map((z) => ({ jahr: z.jahr, wert: z[feld]! }))
-}
-
 function begrenze(pct: number, deckel: number): { pct: number; gedeckelt: boolean } {
   if (pct > deckel) return { pct: deckel, gedeckelt: true }
   if (pct < BODEN) return { pct: BODEN, gedeckelt: true }
@@ -293,14 +251,8 @@ function berechneVariante(
   // von 146 % gegen 12,8 % auf Buchbasis.
   const groessenMassstab = Math.abs(icBis.icMio ?? icBisWert ?? 0)
 
-  const deltaNopat =
-    geglaetteterZuwachs(reiheImFenster(zeilen, 'nopatMio', nopatVon.jahr, nopatBis.jahr), spanne) ??
-    nopatBis.nopatMio - nopatVon.nopatMio
-  const deltaIc =
-    icBisWert != null && icVonWert != null
-      ? (geglaetteterZuwachs(reiheImFenster(zeilen, icFeld, icVon.jahr, icBis.jahr), spanne) ??
-        icBisWert - icVonWert)
-      : null
+  const deltaNopat = nopatBis.nopatMio - nopatVon.nopatMio
+  const deltaIc = icBisWert != null && icVonWert != null ? icBisWert - icVonWert : null
 
   const gemeinsam = {
     art,
@@ -409,42 +361,24 @@ function berechneVariante(
 }
 
 /**
- * Fenster, die eine Großakquisition überspannen, sind für die organische Variante
- * unbrauchbar: der zugekaufte Gewinn steckt im Zähler, das zugekaufte Kapital ist aus dem
- * Nenner herausgerechnet. Bei S&P Global ergäbe das eine Reinvestitionsrendite, die nur
- * den IHS-Markit-Zukauf spiegelt.
- *
- * Zulässig ist ein Fenster, dessen Kapital-Startjahr auf oder nach dem Dealjahr liegt —
- * die Eröffnungsbilanz enthält die Akquisition dann bereits.
- */
-function fensterErlaubt(variante: RoiicVariante, art: RoiicArt): boolean {
-  return art !== 'organisch' || !variante.fensterUeberspanntMa
-}
-
-/**
- * Bestes Fenster je Variante: längstes Fenster mit belastbarem Ergebnis, dealfreie Fenster
- * zuerst.
- *
- * Der Rückfall auf ein Fenster mit Deal ist nötig, weil sonst genau die Titel mit dem
- * frischesten Zukauf keinen Wert bekämen — bei Home Depot (Deal 2025) oder ServiceNow
- * (2025) liegt zwischen Abschluss und letztem Berichtsjahr kein volles Jahr. Ein
- * gekennzeichneter Wert ist dort aussagekräftiger als `null`.
+ * Festes Drei-Jahres-Fenster für beide Varianten. Organisch darf nicht heimlich auf
+ * zwei Jahre verkürzen, nur weil ein Deal im Fenster liegt — sonst vergleicht man
+ * bei Rollins 11 % (2J, dealfrei) mit 88 % Buch (3J inkl. Deal). Der Deal wird
+ * gekennzeichnet, nicht umgangen. Kürzer nur, wenn die Historie für drei Jahre fehlt.
  */
 function waehleVariante(zeilen: Zeile[], art: RoiicArt, maJahre: number[]): RoiicVariante | null {
-  const kandidaten: RoiicVariante[] = []
   for (const spanne of FENSTER_PRAEFERENZ) {
     const v = berechneVariante(zeilen, art, spanne, maJahre)
-    if (v) kandidaten.push(v)
+    if (!v || v.pct == null || v.regime === 'unzureichend') continue
+    if (art === 'organisch' && v.fensterUeberspanntMa) {
+      return {
+        ...v,
+        begruendung: `${v.begruendung} Akquisition im Zeitraum — organischer Wert nach oben verzerrt.`,
+      }
+    }
+    return v
   }
-  const brauchbar = kandidaten.filter((v) => v.pct != null && v.regime !== 'unzureichend')
-  const dealfrei = brauchbar.filter((v) => fensterErlaubt(v, art))
-  if (dealfrei.length > 0) return dealfrei[0]!
-  const ersatz = brauchbar[0] ?? kandidaten[0] ?? null
-  if (ersatz == null || !ersatz.fensterUeberspanntMa || art !== 'organisch') return ersatz
-  return {
-    ...ersatz,
-    begruendung: `${ersatz.begruendung} Kein dealfreies Fenster verfügbar — Akquisition im Zeitraum, Wert nach oben verzerrt.`,
-  }
+  return berechneVariante(zeilen, art, FENSTER_PRAEFERENZ[0]!, maJahre)
 }
 
 export function berechneRoiic(

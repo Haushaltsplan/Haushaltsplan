@@ -58,6 +58,7 @@ import { ergaenzeFehlendeStatementZeilen } from '@/lib/portfolio-analyse/fundame
 import { ergaenzeRoicAusBilanz } from '@/lib/portfolio-analyse/fundamentaldaten-roic-berechnung'
 import { ergaenzeWorkingCapitalTageZeilen } from '@/lib/portfolio-analyse/fundamentaldaten-working-capital-zeilen'
 import { ladeIncrementalRoic } from '@/lib/portfolio-analyse/incremental-roic-server'
+import { ergaenzeHistorischeMultiplesZeilen } from '@/lib/portfolio-analyse/fundamentaldaten-historische-multiples-server'
 
 function waehrungFuerIsin(isin: string | null | undefined): string {
   const i = isin?.trim().toUpperCase() ?? ''
@@ -703,6 +704,17 @@ export async function ladeFundamentaldaten(anfrage: FundamentaldatenAnfrage): Pr
       if (!(p.iso in neu.werte)) neu.werte[p.iso] = null
     }
     merged.zeilen.push(neu)
+  }
+
+  if (frequenz === 'jahr') {
+    await ergaenzeHistorischeMultiplesZeilen({
+      perioden: merged.perioden,
+      zeilen: merged.zeilen,
+      yahoo: yahooExt,
+      symbolYahoo: symbolYahoo ?? ident.ticker,
+      isin: isinNorm ?? anfrage.isin,
+      ticker: ident.ticker,
+    })
   }
 
   ergaenzeDividendenHistorieZeilen(merged.perioden, merged.zeilen, yahooExt)

@@ -316,7 +316,8 @@ export function baueKeyMetrics(
     },
     {
       id: 'incremental_roic',
-      label: 'Incremental ROIC (ΔNOPAT/ΔIC, Lag 1J)',
+      // Fensterlänge zuerst: „Lag 1J“ allein wurde als Einjahresfenster gelesen.
+      label: 'Incremental ROIC (ΔNOPAT/ΔIC, 3J, ΔIC 1J versetzt)',
       wert: roiicAnzeige(w),
       zahl: w?.incrementalRoicPct ?? null,
       gruppe: 'effizienz',
