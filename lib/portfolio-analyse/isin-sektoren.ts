@@ -1,6 +1,7 @@
 import type { LivePosition } from '@/lib/portfolio-analyse/live-bewertung'
 import type { FundamentalSektorLookup } from '@/lib/portfolio-analyse/sektor-fundamental-client'
 import { ASSET_KLASSE_LABEL, type AssetKlasse } from '@/lib/portfolio-analyse/types'
+import { NACHKAUF_RADAR_WHITELIST } from '@/lib/portfolio-analyse/nachkauf-radar/nachkauf-radar-whitelist'
 
 /** Manuelle Sektor-Zuordnung (GICS-ähnlich) — erweiterbar. */
 const ISIN_SEKTOR: Record<string, string> = {
@@ -20,6 +21,13 @@ const KLASSE_FALLBACK: Record<AssetKlasse, string> = {
   crypto: 'Krypto',
   geldmarkt: 'Geldmarkt',
   sonstiges: 'Andere',
+}
+
+function sektorAusWhitelist(isin: string | null | undefined): string | null {
+  if (!isin) return null
+  const key = isin.trim().toUpperCase()
+  const hit = NACHKAUF_RADAR_WHITELIST.find((p) => p.isin.toUpperCase() === key)
+  return hit?.sektor?.trim() || null
 }
 
 export function sektorAusLookup(
@@ -53,5 +61,7 @@ export function sektorFuerPosition(p: LivePosition, lookup?: FundamentalSektorLo
   if (ausLookup) return ausLookup
   const isin = p.isin?.toUpperCase()
   if (isin && ISIN_SEKTOR[isin]) return ISIN_SEKTOR[isin]
+  const whitelist = sektorAusWhitelist(p.isin)
+  if (whitelist) return whitelist
   return KLASSE_FALLBACK[p.assetKlasse] ?? ASSET_KLASSE_LABEL[p.assetKlasse]
 }

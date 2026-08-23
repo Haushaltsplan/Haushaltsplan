@@ -40,7 +40,7 @@ function NachkaufPerformancePanel({ daten }: { daten: NachkaufPerformanceUebersi
         title="Radar-Performance"
         description="Regelbasierte Allokation vs. SPY — ausgewertet ab 6 Monaten. Ohne Tracking keine Score-Kalibrierung."
       />
-      <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
         <div>
           <p className="text-[11px] text-[var(--app-text-muted)]">Empfehlungen gesamt</p>
           <p className="text-lg font-semibold text-[var(--app-text)]">{daten.anzahlEmpfehlungen}</p>
@@ -49,12 +49,25 @@ function NachkaufPerformancePanel({ daten }: { daten: NachkaufPerformanceUebersi
           <p className="text-[11px] text-[var(--app-text-muted)]">Ø Alpha 6M vs. SPY</p>
           <p
             className={`text-lg font-semibold ${
-              (daten.avgAlpha6mPct ?? 0) >= 0 ? 'text-emerald-400' : 'text-rose-400'
+              daten.avgAlpha6mPct == null
+                ? 'text-[var(--app-text-muted)]'
+                : daten.avgAlpha6mPct >= 0
+                  ? 'text-emerald-400'
+                  : 'text-rose-400'
             }`}
           >
             {daten.avgAlpha6mPct != null ? `${daten.avgAlpha6mPct > 0 ? '+' : ''}${daten.avgAlpha6mPct} %` : '–'}
           </p>
           <p className="text-[10px] text-[var(--app-text-muted)]">{daten.ausgewertet6m} ausgewertet</p>
+        </div>
+        <div>
+          <p className="text-[11px] text-[var(--app-text-muted)]">Ø Rendite 6M</p>
+          <p className="text-lg font-semibold text-[var(--app-text)]">
+            {daten.avgRendite6mPct != null
+              ? `${daten.avgRendite6mPct > 0 ? '+' : ''}${daten.avgRendite6mPct} %`
+              : '–'}
+          </p>
+          <p className="text-[10px] text-[var(--app-text-muted)]">Absolut, ohne Benchmark</p>
         </div>
         <div>
           <p className="text-[11px] text-[var(--app-text-muted)]">Trefferquote 6M</p>
@@ -65,7 +78,15 @@ function NachkaufPerformancePanel({ daten }: { daten: NachkaufPerformanceUebersi
         </div>
         <div>
           <p className="text-[11px] text-[var(--app-text-muted)]">Ø Alpha 12M</p>
-          <p className="text-lg font-semibold text-[var(--app-text)]">
+          <p
+            className={`text-lg font-semibold ${
+              daten.avgAlpha12mPct == null
+                ? 'text-[var(--app-text-muted)]'
+                : daten.avgAlpha12mPct >= 0
+                  ? 'text-emerald-400'
+                  : 'text-rose-400'
+            }`}
+          >
             {daten.avgAlpha12mPct != null ? `${daten.avgAlpha12mPct > 0 ? '+' : ''}${daten.avgAlpha12mPct} %` : '–'}
           </p>
           <p className="text-[10px] text-[var(--app-text-muted)]">{daten.ausgewertet12m} ausgewertet</p>
@@ -87,7 +108,11 @@ function NachkaufPerformancePanel({ daten }: { daten: NachkaufPerformanceUebersi
                 <span className="ml-2 text-[var(--app-text-muted)]">n={b.anzahl}</span>
                 <span
                   className={`ml-2 font-medium ${
-                    (b.avgAlpha6mPct ?? 0) >= 0 ? 'text-emerald-400' : 'text-rose-400'
+                    b.avgAlpha6mPct == null
+                      ? 'text-[var(--app-text-muted)]'
+                      : b.avgAlpha6mPct >= 0
+                        ? 'text-emerald-400'
+                        : 'text-rose-400'
                   }`}
                 >
                   {b.avgAlpha6mPct != null ? `${b.avgAlpha6mPct > 0 ? '+' : ''}${b.avgAlpha6mPct} % α` : '–'}
@@ -1104,6 +1129,22 @@ function DetailPanel({
               Klumpen {eintrag.scoreDetail.klumpenMalus}
             </span>
           ) : null}
+          {(eintrag.scoreDetail.sektorMalus ?? 0) < 0 ? (
+            <span
+              className="rounded bg-amber-500/10 px-1.5 py-0.5 text-amber-300 ring-1 ring-amber-500/20"
+              title="Diversifikations-Malus: mehrere starke Kandidaten im gleichen Whitelist-Sektor"
+            >
+              Sektor {eintrag.scoreDetail.sektorMalus}
+            </span>
+          ) : null}
+          {eintrag.scoreDetail.gateG1 === false ? (
+            <span
+              className="rounded bg-rose-500/10 px-1.5 py-0.5 text-rose-300 ring-1 ring-rose-500/20"
+              title={`G1: Mantra ${eintrag.scoreDetail.mantraScore}/50 < 38 (Cap Score ≤45). Prozent-Anzeige = Score×2.`}
+            >
+              G1 fail ({eintrag.scoreDetail.mantraScore}/50)
+            </span>
+          ) : null}
           {eintrag.scoreDetail.regimeDelta !== 0 ? (
             <span
               className={`rounded px-1.5 py-0.5 ring-1 ${
@@ -1163,8 +1204,15 @@ function DetailPanel({
           <div>
             <p className="text-[11px] text-[var(--app-text-muted)]">Mantra-Score</p>
             <p className="text-sm font-medium text-[var(--app-text)]">
-              {eintrag.mantraScorePct != null ? `${eintrag.mantraScorePct} %` : '–'}
+              {eintrag.scoreDetail.mantraScore != null
+                ? `${eintrag.scoreDetail.mantraScore}/50${
+                    eintrag.mantraScorePct != null ? ` (${eintrag.mantraScorePct} %)` : ''
+                  }`
+                : eintrag.mantraScorePct != null
+                  ? `${eintrag.mantraScorePct} %`
+                  : '–'}
             </p>
+            <p className="text-[10px] text-[var(--app-text-muted)]">G1 ≥ 38/50 (= 76 %)</p>
           </div>
           <div>
             <p className="text-[11px] text-[var(--app-text-muted)]">Mantra-Ampel</p>

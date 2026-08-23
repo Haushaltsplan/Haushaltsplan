@@ -2,7 +2,7 @@
 
 import 'server-only'
 
-import { ladeDepotGewichteMap, type DepotGewicht } from '@/lib/portfolio-analyse/depot-gewichte-server'
+import { ladeDepotGewichteMap, ladeLivePortfolioServer, type DepotGewicht } from '@/lib/portfolio-analyse/depot-gewichte-server'
 import { createSupabaseAdmin } from '@/lib/supabase-admin'
 import type {
   NachkaufAmpel,
@@ -320,10 +320,24 @@ function dbZeileZuEintrag(r: DbZeile): NachkaufScanEintrag {
 /** Reichert Scan-Einträge mit aktuellen Depot-Gewichten an (In-place). */
 export async function ergaenzeDepotGewichte(eintraege: NachkaufScanEintrag[]): Promise<void> {
   const gewichte = await ladeDepotGewichte()
+  const paket = await ladeLivePortfolioServer().catch(() => null)
+  const byTicker = new Map<string, number>()
+  if (paket) {
+    for (const p of paket.live.positionen) {
+      if (!(p.wertLiveEur > 0)) continue
+      const sym = (p.symbolYahoo ?? '').trim().toUpperCase().split('.')[0]
+      if (sym) byTicker.set(sym, p.gewichtProzent)
+      const isin = p.isin?.trim().toUpperCase()
+      if (isin && !gewichte.has(isin)) {
+        gewichte.set(isin, { investiertEur: p.wertLiveEur, anteilPct: p.gewichtProzent })
+      }
+    }
+  }
   for (const e of eintraege) {
     const g = gewichte.get(e.isin.toUpperCase())
-    e.depotGewichtPct = g?.anteilPct ?? null
-    e.klumpenrisiko = (g?.anteilPct ?? 0) >= 15
+    const tickerPct = byTicker.get(e.ticker.trim().toUpperCase())
+    e.depotGewichtPct = g?.anteilPct ?? tickerPct ?? null
+    e.klumpenrisiko = (e.depotGewichtPct ?? 0) >= 15
   }
 }
 

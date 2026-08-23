@@ -24,6 +24,7 @@ import { ladeYahooOptionsIv } from '@/lib/portfolio-analyse/yahoo-options-iv-ser
 import { ladeSecBacklogHistorie } from '@/lib/portfolio-analyse/sec-edgar-backlog-server'
 import { cikFuerTicker } from '@/lib/portfolio-analyse/sec-edgar-common-server'
 import { istEuIsin } from '@/lib/portfolio-analyse/eu-portfolio-ir-config'
+import { isinKenntnis } from '@/lib/portfolio-analyse/isin-kenntnisse'
 import type {
   InsiderNettoPaket,
   SecSegmentHistoriePaket,
@@ -65,22 +66,26 @@ async function ladeInsiderNettoMitEuFallback(opts: {
   firmenname: string
   isEu: boolean
 }): Promise<InsiderNettoPaket | null> {
-  const usTicker = opts.symbol.includes('.') ? opts.ticker.replace(/\..*$/, '') : opts.symbol
-  // US/ADR: Form 4 + OpenInsider (GOOG↔GOOGL Alias intern)
-  if (!opts.symbol.includes('.') || /^[A-Z]{1,5}$/.test(usTicker)) {
-    const us = await ladeInsiderNettoHandel(usTicker === 'RMS' ? 'HESAY' : usTicker)
-    if (us && (us.kaeufe90d > 0 || us.verkaeufe90d > 0 || us.nettoRichtung != null)) {
-      return us
-    }
+  // EU zuerst (AMF/DGAP) — sonst blockiert leeres ADR/US-„neutral“ den EU-Pfad (Hermès/HESAY).
+  if (opts.isEu && opts.isin.length >= 10) {
+    const eu = await ladeEuInsiderNettoAggregiert({
+      ticker: opts.ticker,
+      isin: opts.isin,
+      firmenname: opts.firmenname,
+    })
+    if (eu && (eu.kaeufe90d > 0 || eu.verkaeufe90d > 0)) return eu
   }
 
-  if (!opts.isEu || opts.isin.length < 10) return null
+  const usTicker = opts.symbol.includes('.') ? opts.ticker.replace(/\..*$/, '') : opts.symbol
+  const adr = isinKenntnis(opts.isin)?.macrotrendsTicker?.trim().toUpperCase()
+  const usSym = adr && adr !== usTicker ? adr : usTicker === 'RMS' ? 'HESAY' : usTicker
+  if (!opts.symbol.includes('.') || /^[A-Z]{1,5}$/.test(usTicker) || opts.isEu) {
+    const us = await ladeInsiderNettoHandel(usSym)
+    // Nur bei echter Aktivität — leeres „neutral“ darf EU nicht verdecken
+    if (us && (us.kaeufe90d > 0 || us.verkaeufe90d > 0)) return us
+  }
 
-  return ladeEuInsiderNettoAggregiert({
-    ticker: opts.ticker,
-    isin: opts.isin,
-    firmenname: opts.firmenname,
-  })
+  return null
 }
 
 export async function ladeFundamentaldatenErweitert(

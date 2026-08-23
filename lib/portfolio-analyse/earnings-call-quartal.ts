@@ -8,10 +8,11 @@ export type QuartalInfo = {
 }
 
 const Q_PATTERNS = [
-  /\bq\s*([1-4])\s*(?:fy)?\s*['']?(\d{2,4})\b/i,
+  /\bq\s*([1-4])\s*[-_/]?\s*(?:fy)?\s*['']?(\d{2,4})\b/i,
   /\b([1-4])(?:st|nd|rd|th)?\s*quarter\s*(?:fy)?\s*['']?(\d{2,4})\b/i,
   /\bquarter\s*([1-4])\s*(?:fy)?\s*['']?(\d{2,4})\b/i,
-  /\bQ([1-4])\s*(\d{4})\b/,
+  /\bQ([1-4])[-_\s]?(\d{4})\b/,
+  /\bFY\s*(\d{4})\s*Q\s*([1-4])\b/i,
   /\bH1\s*(\d{4})\b/i,
   /\bH2\s*(\d{4})\b/i,
 ]
@@ -23,7 +24,15 @@ function jahrAusZweistellig(y: string): number {
 }
 
 export function parseQuartalAusText(titel: string, datumIso?: string | null): QuartalInfo | null {
-  const text = titel.trim()
+  let text = titel.trim()
+  try {
+    text = decodeURIComponent(text.replace(/\+/g, ' '))
+  } catch {
+    /* raw lassen */
+  }
+  // Dateinamen: unknown--Q1-2026.pdf → Q1-2026
+  text = text.replace(/\.pdf$/i, ' ').replace(/[_-]+/g, ' ')
+
   for (const re of Q_PATTERNS) {
     const m = text.match(re)
     if (!m) continue
@@ -35,8 +44,17 @@ export function parseQuartalAusText(titel: string, datumIso?: string | null): Qu
       const jahr = Number(m[1])
       return { id: `${jahr}-Q4`, jahr, quartal: 4, label: `H2 ${jahr}` }
     }
+    // FY2026Q1: Gruppe 1 = Jahr, Gruppe 2 = Q
+    if (/^FY/i.test(m[0]) && m[2]) {
+      const jahr = jahrAusZweistellig(m[1]!)
+      const q = Number(m[2]) as 1 | 2 | 3 | 4
+      if (q >= 1 && q <= 4 && jahr > 1990 && jahr < 2100) {
+        return { id: `${jahr}-Q${q}`, jahr, quartal: q, label: `Q${q} ${jahr}` }
+      }
+      continue
+    }
     const q = Number(m[1]) as 1 | 2 | 3 | 4
-    const jahr = jahrAusZweistellig(m[2])
+    const jahr = jahrAusZweistellig(m[2]!)
     if (q >= 1 && q <= 4 && jahr > 1990 && jahr < 2100) {
       return { id: `${jahr}-Q${q}`, jahr, quartal: q, label: `Q${q} ${jahr}` }
     }

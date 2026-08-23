@@ -32,12 +32,20 @@ const AMF_SOCIETE_BY_ISIN: Record<string, string> = {
 }
 
 function parseFrDatum(raw: string): string | null {
-  const m = raw.trim().match(/^(\d{2})\/(\d{2})\/(\d{4})$/)
+  const t = raw.trim()
+  const m = t.match(/^(\d{1,2})[./](\d{1,2})[./](\d{4})$/)
   if (!m) return null
-  return `${m[3]}-${m[2]}-${m[1]}`
+  const dd = m[1]!.padStart(2, '0')
+  const mm = m[2]!.padStart(2, '0')
+  return `${m[3]}-${mm}-${dd}`
+}
+
+function istFrDatumZelle(raw: string): boolean {
+  return parseFrDatum(raw) != null
 }
 
 function parseFrZahl(raw: string): number | null {
+  if (istFrDatumZelle(raw)) return null
   const n = Number(
     raw
       .replace(/\u00a0/g, ' ')
@@ -91,16 +99,34 @@ export function parseAmfTransaktionenHtml(html: string, isin: string): InsiderTr
     // Pub- + Op-Datum → früheres Datum = Operation
     const daten = cells.map((c) => parseFrDatum(c)).filter((d): d is string => d != null)
     const datumOp = daten.length >= 2 ? daten.sort()[0]! : (daten[0] ?? null)
+    // Datumszellen und ISINs nie als Betrag parsen (31/07/2026 → 31.072.026; FR… → Restziffern).
     const zahlen = cells
+      .filter((c) => !istFrDatumZelle(c) && !/^[A-Z]{2}[A-Z0-9]{9}\d$/i.test(c.trim()))
       .map((c) => parseFrZahl(c))
-      .filter((n): n is number => n != null && Number.isFinite(n))
+      .filter((n): n is number => n != null && Number.isFinite(n) && n !== 0)
     // Volume (Aktien), Preis (€), Montant (€) — typisch steigend in Magnitude außer Preis
     const volume =
       zahlen.find((n) => n >= 1 && n < 500_000 && Number.isInteger(Math.round(n))) ??
       zahlen.find((n) => n >= 1 && n < 500_000) ??
       null
     const preis = zahlen.find((n) => n > 5 && n < 20_000) ?? null
-    const montant = [...zahlen].sort((a, b) => b - a).find((n) => n >= 1_000) ?? null
+    let montant = [...zahlen].sort((a, b) => b - a).find((n) => n >= 1_000) ?? null
+    // Montant = Volume × Preis, wenn Spalte fehlt oder Datum fälschlich als Montant wirkte
+    if (
+      (montant == null || (volume != null && preis != null && montant === volume)) &&
+      volume != null &&
+      preis != null
+    ) {
+      montant = Math.round(volume * preis * 100) / 100
+    }
+    // Sanity: Betrag der wie DDMMYYYY aussieht verwerfen
+    if (montant != null && datumOp) {
+      const [y, m, d] = datumOp.split('-')
+      const alsZahl = Number(`${Number(d)}${m}${y}`)
+      if (montant === alsZahl) {
+        montant = volume != null && preis != null ? Math.round(volume * preis * 100) / 100 : null
+      }
+    }
 
     const detId = row.match(/data-target="#(DET[^"]+)"/i)?.[1]
     let person = 'Dirigeant / PDMR'

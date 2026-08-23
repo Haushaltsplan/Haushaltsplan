@@ -1,6 +1,7 @@
 /**
  * Yahoo-Kennzahlen mit Fallback auf Alternativ-Symbole (z. B. H11.SG → HLMA.L / HLMA).
- * Füllt nur fehlende Felder — Primärsymbol bleibt Kurs-/FX-Anker.
+ * Listing-Felder (Kurs, Aktien, Marktkap, 52w) bleiben atomar — kein EUR/ADR-Mix.
+ * Bei Macrotrends-ADR (HESAY, SXYAY, …) hat das ADR Vorrang vor der Heimatbörse.
  */
 
 import 'server-only'
@@ -15,6 +16,26 @@ import {
 const YAHOO_UA =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36'
 
+/** Kurs/Marktkap/Aktien/52w — nie über verschiedene Listings mergen. */
+const LISTING_FELDER = [
+  'currentPrice',
+  'fiftyTwoWeekHigh',
+  'fiftyTwoWeekLow',
+  'marketCap',
+  'sharesOutstanding',
+  'floatShares',
+  'impliedSharesOutstanding',
+  'enterpriseValue',
+  'averageVolume',
+  'trailingEps',
+  'trailingAnnualDividendRate',
+  'targetMeanPrice',
+  'currency',
+  // Debt/Cash nur als Paar vom selben Listing — sonst Net-Debt-Zwitter
+  'totalDebt',
+  'totalCash',
+] as const satisfies ReadonlyArray<keyof YahooFundamentalKennzahlen>
+
 function rawNum(o: Record<string, { raw?: number }> | undefined, k: string): number | undefined {
   const v = o?.[k]?.raw
   return v != null && Number.isFinite(v) ? v : undefined
@@ -27,7 +48,10 @@ async function ladeYahooQuoteSummaryEinmal(
   if (!auth) return null
 
   const u = new URL(`https://query2.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(symbol)}`)
-  u.searchParams.set('modules', 'defaultKeyStatistics,summaryDetail,assetProfile,financialData,earningsTrend')
+  u.searchParams.set(
+    'modules',
+    'defaultKeyStatistics,summaryDetail,assetProfile,financialData,earningsTrend,price',
+  )
   u.searchParams.set('crumb', auth.crumb)
 
   const res = await fetch(u.toString(), {
@@ -49,6 +73,7 @@ async function ladeYahooQuoteSummaryEinmal(
         assetProfile?: Record<string, unknown>
         financialData?: Record<string, { raw?: number }>
         earningsTrend?: { trend?: Array<Record<string, unknown> & { period?: string }> }
+        price?: { currency?: string; regularMarketPrice?: { raw?: number } }
       }>
     }
   }
@@ -59,6 +84,7 @@ async function ladeYahooQuoteSummaryEinmal(
   const sd = row.summaryDetail
   const fd = row.financialData
   const ap = row.assetProfile as Record<string, unknown> | undefined
+  const priceMod = row.price
   const fy0 = row.earningsTrend?.trend?.find((t) => t.period === '0y')
   const fy1 = row.earningsTrend?.trend?.find((t) => t.period === '+1y')
   const epsEst0 = fy0?.earningsEstimate as Record<string, unknown> | undefined
@@ -71,6 +97,10 @@ async function ladeYahooQuoteSummaryEinmal(
     const v = o?.[k] as { raw?: number } | undefined
     return v?.raw != null && Number.isFinite(v.raw) ? v.raw : undefined
   }
+  const currency =
+    typeof priceMod?.currency === 'string' && priceMod.currency.trim()
+      ? priceMod.currency.trim().toUpperCase()
+      : undefined
 
   return {
     fiftyTwoWeekHigh: rawNum(sd, 'fiftyTwoWeekHigh'),
@@ -79,6 +109,7 @@ async function ladeYahooQuoteSummaryEinmal(
     marketCap: rawNum(sd, 'marketCap'),
     sharesOutstanding: rawNum(dks, 'sharesOutstanding'),
     floatShares: rawNum(dks, 'floatShares'),
+    impliedSharesOutstanding: rawNum(dks, 'impliedSharesOutstanding'),
     enterpriseValue: rawNum(dks, 'enterpriseValue'),
     trailingPE: rawNum(sd, 'trailingPE'),
     forwardPE: rawNum(sd, 'forwardPE'),
@@ -94,7 +125,11 @@ async function ladeYahooQuoteSummaryEinmal(
     grossMargins: rawNum(fd, 'grossMargins'),
     operatingMargins: rawNum(fd, 'operatingMargins'),
     ebitdaMargins: rawNum(fd, 'ebitdaMargins'),
-    currentPrice: rawNum(sd, 'regularMarketPrice') ?? rawNum(fd, 'currentPrice'),
+    currentPrice:
+      priceMod?.regularMarketPrice?.raw ??
+      rawNum(sd, 'regularMarketPrice') ??
+      rawNum(fd, 'currentPrice'),
+    currency,
     targetMeanPrice: rawNum(fd, 'targetMeanPrice'),
     priceToBook: rawNum(dks, 'priceToBook'),
     enterpriseToRevenue: rawNum(dks, 'enterpriseToRevenue'),
@@ -125,6 +160,10 @@ function fehlendeKernfelder(y: YahooFundamentalKennzahlen | null): boolean {
   )
 }
 
+function istListingFeld(k: keyof YahooFundamentalKennzahlen): boolean {
+  return (LISTING_FELDER as readonly string[]).includes(k)
+}
+
 function mergeYahooKennzahlen(
   primary: YahooFundamentalKennzahlen | null,
   secondary: YahooFundamentalKennzahlen | null,
@@ -134,33 +173,32 @@ function mergeYahooKennzahlen(
 
   const out: YahooFundamentalKennzahlen = { ...primary }
   const keys = Object.keys(secondary) as (keyof YahooFundamentalKennzahlen)[]
+
+  // Primärlisting hat bereits Kurs → Listing-Felder atomar behalten (kein EUR↔ADR-Mix).
+  if (primary.currentPrice != null) {
+    for (const k of keys) {
+      if (istListingFeld(k)) continue
+      if (out[k] == null && secondary[k] != null) {
+        ;(out as Record<string, unknown>)[k] = secondary[k]
+      }
+    }
+    return out
+  }
+
+  // Primär ohne Kurs: komplettes Listing-Bundle vom Sekundär übernehmen.
+  if (secondary.currentPrice != null) {
+    for (const k of LISTING_FELDER) {
+      if (secondary[k] != null) {
+        ;(out as Record<string, unknown>)[k] = secondary[k]
+      }
+    }
+  }
   for (const k of keys) {
+    if (istListingFeld(k)) continue
     if (out[k] == null && secondary[k] != null) {
       ;(out as Record<string, unknown>)[k] = secondary[k]
     }
   }
-
-  // Drawdown: 52w-Hoch und Kurs müssen gleiche Währung/Listing sein.
-  // Wenn Primärkurs da ist aber 52w fehlt → 52w vom Sekundär nur nutzen, wenn Primärpreis fehlt
-  // oder Sekundär-Preis ≈ Primär (gleiche Währung, ±15%).
-  if (
-    primary.currentPrice != null &&
-    primary.fiftyTwoWeekHigh == null &&
-    secondary.fiftyTwoWeekHigh != null &&
-    secondary.currentPrice != null
-  ) {
-    const ratio = secondary.currentPrice / primary.currentPrice
-    if (ratio > 0.85 && ratio < 1.15) {
-      out.fiftyTwoWeekHigh = secondary.fiftyTwoWeekHigh
-      out.fiftyTwoWeekLow = out.fiftyTwoWeekLow ?? secondary.fiftyTwoWeekLow
-    } else {
-      // Unterschiedliche Währung: Drawdown über Sekundär-Listing berechnen
-      out.fiftyTwoWeekHigh = secondary.fiftyTwoWeekHigh
-      out.fiftyTwoWeekLow = secondary.fiftyTwoWeekLow ?? out.fiftyTwoWeekLow
-      out.currentPrice = secondary.currentPrice
-    }
-  }
-
   return out
 }
 
@@ -176,29 +214,37 @@ export function yahooKennzahlenSymbolKandidaten(opts: {
     if (t && !out.includes(t)) out.push(t)
   }
 
-  add(opts.symbolYahoo)
   const k = opts.isin ? isinKenntnis(opts.isin) : null
+  const mt = (opts.macrotrendsTicker ?? k?.macrotrendsTicker)?.trim().toUpperCase() ?? null
+
+  // ADR / Macrotrends-Ticker zuerst → Kurs in USD wie die GuV-Zeitreihen.
+  add(mt)
+  add(opts.symbolYahoo)
   add(k?.symbolYahoo)
   for (const s of k?.symbolCandidates ?? []) add(s)
-  add(k?.macrotrendsTicker)
-  add(opts.macrotrendsTicker)
 
   // Bekannte Local-Listings mit dünnen Yahoo-Daten → liquide ADR/Alternativen
   const primary = out[0] ?? ''
   const bare = primary.split('.')[0] ?? primary
-  if (primary === 'H11.SG' || primary.startsWith('H11') || bare === 'HLMA') {
+  const local = (opts.symbolYahoo ?? k?.symbolYahoo ?? '').trim().toUpperCase()
+  const localBare = local.split('.')[0] ?? local
+  if (local === 'H11.SG' || local.startsWith('H11') || localBare === 'HLMA' || bare === 'HLMA') {
     add('HLMA.L')
     add('HLMA')
   }
-  if (primary === 'RMS.PA' || bare === 'RMS' || bare === 'HESAY') add('HESAY')
-  if (primary === 'MC.PA' || bare === 'MC' || bare === 'LVMUY') add('LVMUY')
-  if (primary === 'SIKA.SW' || bare === 'SIKA' || bare === 'SXYAY') add('SXYAY')
-  if (primary === 'STMN.SW' || bare === 'STMN' || bare === 'SAUHY') add('SAUHY')
-  if (primary === 'WKL.AS' || bare === 'WKL' || bare === 'WTKWY') add('WTKWY')
-  if (primary === 'ASML.AS' || bare === 'ASML') add('ASML')
-  if (primary === 'LIN.DE' || bare === 'LIN') add('LIN')
-  if (primary === 'ATD.TO' || bare === 'ATD') add('ANCUF')
+  if (local === 'RMS.PA' || localBare === 'RMS' || bare === 'RMS' || bare === 'HESAY') add('HESAY')
+  if (local === 'MC.PA' || localBare === 'MC' || bare === 'MC' || bare === 'LVMUY') add('LVMUY')
+  if (local === 'SIKA.SW' || localBare === 'SIKA' || bare === 'SIKA' || bare === 'SXYAY') add('SXYAY')
+  if (local === 'STMN.SW' || localBare === 'STMN' || bare === 'STMN' || bare === 'SAUHY') add('SAUHY')
+  if (local === 'WKL.AS' || localBare === 'WKL' || bare === 'WKL' || bare === 'WTKWY') add('WTKWY')
+  if (local === 'ASML.AS' || localBare === 'ASML' || bare === 'ASML') add('ASML')
+  if (local === 'LIN.DE' || localBare === 'LIN' || bare === 'LIN') add('LIN')
+  if (local === 'ATD.TO' || localBare === 'ATD' || bare === 'ATD') add('ANCUF')
 
+  // Nochmals ADR an den Anfang, falls es erst über die Local-Map hinzukam.
+  if (mt && out.includes(mt) && out[0] !== mt) {
+    return [mt, ...out.filter((s) => s !== mt)].slice(0, 5)
+  }
   return out.slice(0, 5)
 }
 

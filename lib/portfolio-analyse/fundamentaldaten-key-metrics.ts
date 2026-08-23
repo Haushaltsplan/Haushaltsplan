@@ -22,6 +22,8 @@ export type YahooFundamentalKennzahlen = {
   marketCap?: number
   sharesOutstanding?: number
   floatShares?: number
+  /** Alle Klassen (Dual-Class) — besserer Nenner für Free Float. */
+  impliedSharesOutstanding?: number
   enterpriseValue?: number
   trailingPE?: number
   forwardPE?: number
@@ -37,6 +39,8 @@ export type YahooFundamentalKennzahlen = {
   operatingMargins?: number
   ebitdaMargins?: number
   currentPrice?: number
+  /** ISO-Währung des Listing-Kurses (USD, EUR, …). */
+  currency?: string
   targetMeanPrice?: number
   priceToBook?: number
   enterpriseToRevenue?: number
@@ -84,6 +88,15 @@ function zahl(v: number | null | undefined, suffix = ''): string {
   return v != null && Number.isFinite(v) ? `${v.toLocaleString('de-DE', { maximumFractionDigits: 2 })}${suffix}` : '–'
 }
 
+function kursSuffix(currency?: string | null): string {
+  const c = currency?.trim().toUpperCase()
+  if (!c || c === 'USD') return ' $'
+  if (c === 'EUR') return ' €'
+  if (c === 'GBP') return ' £'
+  if (c === 'CHF') return ' CHF'
+  return ` ${c}`
+}
+
 function waehrungNegativ(v: number | null | undefined): string {
   if (v == null || !Number.isFinite(v)) return '–'
   const s = formatFundamentalWert(Math.abs(v), 'waehrung_usd')
@@ -115,20 +128,29 @@ export function baueKeyMetrics(
   const perioden = roh?.perioden
   const w = kontextWerte
 
-  const floatPct =
-    yahoo?.floatShares != null && yahoo?.sharesOutstanding != null && yahoo.sharesOutstanding > 0
-      ? (yahoo.floatShares / yahoo.sharesOutstanding) * 100
+  const sharesDenom = Math.max(
+    yahoo?.sharesOutstanding ?? 0,
+    yahoo?.impliedSharesOutstanding ?? 0,
+  )
+  let floatPct: number | null =
+    yahoo?.floatShares != null && sharesDenom > 0
+      ? (yahoo.floatShares / sharesDenom) * 100
       : null
+  // Dual-Class / Datenfehler: >100 % ist unmöglich
+  if (floatPct != null && (floatPct <= 0 || floatPct > 100.5)) floatPct = null
+  else if (floatPct != null && floatPct > 100) floatPct = 100
 
   const volMio = yahoo?.averageVolume != null ? yahoo.averageVolume / 1_000_000 : null
 
+  const kursEinheit = kursSuffix(yahoo?.currency)
+
   out.push(
-    { id: '52w_hoch', label: '52-Wochen-Hoch', wert: zahl(yahoo?.fiftyTwoWeekHigh, ' $'), gruppe: 'marktdaten' },
-    { id: '52w_tief', label: '52-Wochen-Tief', wert: zahl(yahoo?.fiftyTwoWeekLow, ' $'), gruppe: 'marktdaten' },
+    { id: '52w_hoch', label: '52-Wochen-Hoch', wert: zahl(yahoo?.fiftyTwoWeekHigh, kursEinheit), gruppe: 'marktdaten' },
+    { id: '52w_tief', label: '52-Wochen-Tief', wert: zahl(yahoo?.fiftyTwoWeekLow, kursEinheit), gruppe: 'marktdaten' },
     {
       id: 'kurs_aktuell',
       label: 'Aktueller Kurs',
-      wert: zahl(yahoo?.currentPrice, ' $'),
+      wert: zahl(yahoo?.currentPrice, kursEinheit),
       gruppe: 'marktdaten',
     },
     { id: 'vol_3m', label: 'Ø Volumen (3M)', wert: volMio != null ? `${zahl(volMio)} Mio.` : '–', gruppe: 'marktdaten' },
@@ -262,7 +284,7 @@ export function baueKeyMetrics(
     },
     {
       id: 'incremental_roic',
-      label: 'Incremental ROIC (ΔNOPAT/ΔIC, 5J)',
+      label: 'Incremental ROIC (organisch ΔNOPAT/CapEx)',
       wert: pctRaw(w?.incrementalRoicPct),
       gruppe: 'effizienz',
     },

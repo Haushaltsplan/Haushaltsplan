@@ -221,7 +221,9 @@ export async function ladeDepotGewichteMap(): Promise<Map<string, DepotGewicht>>
   if (!depot) return out
 
   for (const p of depot.positionen) {
-    out.set(p.isin, {
+    const isin = p.isin?.trim().toUpperCase()
+    if (!isin) continue
+    out.set(isin, {
       investiertEur: p.wertLiveEur,
       anteilPct: p.gewichtProzent,
     })

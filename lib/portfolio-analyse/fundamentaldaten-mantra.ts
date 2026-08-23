@@ -72,13 +72,15 @@ function evaluiereRoic(w: FundamentalKontextWerte) {
   const roicExGw = w.roicExGoodwill
   const quelleSuffix = w.roicQuelle ? ` ${w.roicQuelle}.` : ''
 
-  // Primär: Macrotrends ROI/ROIC
+  // Primär: Macrotrends ROI/ROIC — Ist-Wert muss die Hürde erfüllen (kein Pass nur über Historie).
   if (roic != null && hist.length > 0) {
-    if (w.roicKonstantHoch || roic >= 15) {
+    if (roic >= 15) {
       return erfuellt(
         pct(roic),
         roic,
-        `ROIC aus Macrotrends.${quelleSuffix} Etabliert: konstant hoch.`,
+        w.roicKonstantHoch
+          ? `ROIC aus Macrotrends.${quelleSuffix} Etabliert: konstant hoch.`
+          : `ROIC aus Macrotrends.${quelleSuffix}`,
       )
     }
     // Goodwill-Falle (IHS Markit, Patheon, …): operativer ROIC ohne Akquisitions-Prämien
@@ -302,17 +304,50 @@ function evaluiereMargenSkalierung(w: FundamentalKontextWerte) {
 // ---------------------------------------------------------------------------
 
 function evaluiereFcfRuleOf40(w: FundamentalKontextWerte) {
+  const fcfOk = w.fcfConversion != null && w.fcfConversion >= 90
+  const ro40Ok = w.ruleOf40 != null && w.ruleOf40 >= 40
+
+  // Zielwert: FCF/NI >90 % ODER Rule of 40 >40 % — gilt für Wachstum und Etabliert.
+  if (fcfOk || ro40Ok) {
+    if (fcfOk && ro40Ok) {
+      return erfuellt(
+        `FCF/NI ${pct(w.fcfConversion!)} · Ro40 ${pct(w.ruleOf40!)}`,
+        w.fcfConversion ?? w.ruleOf40,
+        'FCF-Konvertierung und Rule of 40 erfüllt.',
+      )
+    }
+    if (fcfOk) {
+      return erfuellt(pct(w.fcfConversion!), w.fcfConversion, 'FCF/Nettogewinn ≥ 90 %.')
+    }
+    return erfuellt(
+      pct(w.ruleOf40!),
+      w.ruleOf40,
+      w.istWachstumsfirma ? 'Rule of 40 (Wachstums-Pfad).' : 'Rule of 40 (Umsatzwachstum + Marge).',
+    )
+  }
+
   if (w.istWachstumsfirma) {
-    if (w.ruleOf40 == null) return keineDaten('Wachstumsfirma: Umsatzwachstum + FCF-Marge benötigt.')
-    return w.ruleOf40 >= 40
-      ? erfuellt(pct(w.ruleOf40), w.ruleOf40, 'Rule of 40 (Wachstums-Pfad).')
-      : nichtErfuellt(pct(w.ruleOf40), w.ruleOf40, 'Rule of 40 (Wachstums-Pfad).')
+    if (w.ruleOf40 == null && w.fcfConversion == null) {
+      return keineDaten('Wachstumsfirma: Umsatzwachstum + FCF-/EBIT-Marge oder FCF/NI benötigt.')
+    }
+    if (w.ruleOf40 != null) {
+      return nichtErfuellt(pct(w.ruleOf40), w.ruleOf40, 'Rule of 40 unter 40 %.')
+    }
+    return nichtErfuellt(
+      pct(w.fcfConversion!),
+      w.fcfConversion,
+      'FCF/NI unter 90 % und Rule of 40 fehlt.',
+    )
   }
 
   if (w.fcfConversion != null) {
-    return w.fcfConversion >= 90
-      ? erfuellt(pct(w.fcfConversion), w.fcfConversion, 'Etablierte Firma: FCF/Nettogewinn.')
-      : nichtErfuellt(pct(w.fcfConversion), w.fcfConversion, 'Etablierte Firma: FCF/Nettogewinn.')
+    const ro40Hinweis =
+      w.ruleOf40 != null ? ` Rule of 40: ${pct(w.ruleOf40)} (ebenfalls unter 40 %).` : ''
+    return nichtErfuellt(
+      pct(w.fcfConversion),
+      w.fcfConversion,
+      `Etablierte Firma: FCF/Nettogewinn unter 90 %.${ro40Hinweis}`,
+    )
   }
 
   // Fallback: FCF-Marge aus Yahoo/Macrotrends als Näherung
@@ -323,7 +358,7 @@ function evaluiereFcfRuleOf40(w: FundamentalKontextWerte) {
     return nichtErfuellt(pct(w.fcfMarge), w.fcfMarge, 'FCF-Marge unter 5 % — schwache Cash-Generierung.')
   }
 
-  return keineDaten('FCF-Konvertierung (FCF ÷ Nettogewinn) und FCF-Marge nicht verfügbar.')
+  return keineDaten('FCF-Konvertierung (FCF ÷ Nettogewinn) und Rule of 40 nicht verfügbar.')
 }
 
 // ---------------------------------------------------------------------------

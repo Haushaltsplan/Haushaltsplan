@@ -206,7 +206,7 @@ export async function ladeEarningsCallKiCacheFuerTicker(
         transcriptUrl: row.transcriptUrl,
         aktualisiertAm: row.aktualisiertAm,
         sentimentScore:
-          row.sentimentScore ?? sentimentScoreAusZusammenfassung(row.zusammenfassung),
+          sentimentScoreAusZusammenfassung(row.zusammenfassung, row.sentimentScore),
       })
     }
   }
@@ -219,7 +219,7 @@ export async function ladeEarningsCallKiCacheFuerTicker(
         transcriptUrl: row.transcriptUrl,
         aktualisiertAm: row.aktualisiertAm,
         sentimentScore:
-          row.sentimentScore ?? sentimentScoreAusZusammenfassung(row.zusammenfassung),
+          sentimentScoreAusZusammenfassung(row.zusammenfassung, row.sentimentScore),
       })
     }
   }
@@ -259,8 +259,10 @@ export async function speichereEarningsCallKiCache(eintrag: {
     summaries: {},
   }
 
-  const sentimentScore =
-    eintrag.sentimentScore ?? sentimentScoreAusZusammenfassung(eintrag.zusammenfassung)
+  const sentimentScore = sentimentScoreAusZusammenfassung(
+    eintrag.zusammenfassung,
+    eintrag.sentimentScore,
+  )
 
   prev.summaries[eintrag.quartalId.trim()] = {
     zusammenfassung: eintrag.zusammenfassung,

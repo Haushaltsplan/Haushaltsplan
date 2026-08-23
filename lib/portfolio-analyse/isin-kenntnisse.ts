@@ -178,6 +178,30 @@ export function isinKenntnis(isin: string | null | undefined): IsinKenntnis | nu
   return ISIN_KENNTNISSE[isin.trim().toUpperCase()] ?? null
 }
 
+/**
+ * Analyse-Ticker für Macrotrends/Yahoo/Scan — nicht Kurs-Listing.
+ * Priorität: macrotrendsTicker → logoSymbol → US-Bare (ohne .DE/.F) → Suffix strip.
+ */
+export function analyseTickerFuerPosition(
+  isin: string | null | undefined,
+  symbolYahoo?: string | null,
+): string {
+  const k = isinKenntnis(isin)
+  const mt = k?.macrotrendsTicker?.trim().toUpperCase()
+  if (mt) return mt
+  const logo = k?.logoSymbol?.trim().toUpperCase()
+  if (logo) return logo
+
+  const sym = (symbolYahoo ?? k?.symbolYahoo ?? '').trim().toUpperCase()
+  if (!sym) return (isin ?? '').trim().toUpperCase()
+
+  const bare = sym.includes('.') ? sym.split('.')[0]! : sym
+  const isinU = isin?.trim().toUpperCase() ?? ''
+  // US: Analyse immer auf NYSE/Nasdaq-Bare, nicht Xetra (.DE/.F)
+  if (isinU.startsWith('US') && /^[A-Z0-9.]{1,6}$/.test(bare)) return bare
+  return bare
+}
+
 /** ISIN aus Yahoo/Xetra-Symbol (manuelle Kenntnisse). */
 export function isinAusYahooSymbol(symbol: string | null | undefined): string | null {
   const s = symbol?.trim().toUpperCase()

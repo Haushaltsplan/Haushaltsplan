@@ -97,8 +97,9 @@ export async function ladeAlleEarningsCallKiAusCloud(): Promise<
         transcriptUrl: r.transcript_url ?? '',
         aktualisiertAm: r.aktualisiert_am,
         sentimentScore:
-          r.sentiment_score ??
-          (r.zusammenfassung ? sentimentScoreAusZusammenfassung(r.zusammenfassung) : null),
+          r.zusammenfassung
+            ? sentimentScoreAusZusammenfassung(r.zusammenfassung, r.sentiment_score)
+            : (r.sentiment_score ?? null),
       })
     }
   } catch (e) {
@@ -235,8 +236,9 @@ export async function ladeEarningsCallKiAusCloud(
         transcriptUrl: r.transcript_url ?? '',
         aktualisiertAm: r.aktualisiert_am,
         sentimentScore:
-          r.sentiment_score ??
-          (r.zusammenfassung ? sentimentScoreAusZusammenfassung(r.zusammenfassung) : null),
+          r.zusammenfassung
+            ? sentimentScoreAusZusammenfassung(r.zusammenfassung, r.sentiment_score)
+            : (r.sentiment_score ?? null),
       })
     }
   } catch (e) {

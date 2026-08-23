@@ -136,41 +136,34 @@ async function ladeCashflowLtmYahoo(symbol: string): Promise<{
   mnaUsd: number | null
   revenueUsd: number | null
 }> {
-  const auth = await holeYahooFinanceAuth()
-  if (!auth) {
-    return {
-      periodeLabel: null,
-      ocfUsd: null,
-      capexUsd: null,
-      dividendUsd: null,
-      buybackUsd: null,
-      mnaUsd: null,
-      revenueUsd: null,
-    }
+  const leer = {
+    periodeLabel: null,
+    ocfUsd: null,
+    capexUsd: null,
+    dividendUsd: null,
+    buybackUsd: null,
+    mnaUsd: null,
+    revenueUsd: null,
   }
+  const auth = await holeYahooFinanceAuth()
+  if (!auth) return leer
 
+  // Korrekte Yahoo-v10-Module (nicht „cashflowStatement“ — liefert für EU oft leer).
   const u = new URL(`https://query2.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(symbol)}`)
-  u.searchParams.set('modules', 'cashflowStatement,financialData,incomeStatementHistory')
+  u.searchParams.set(
+    'modules',
+    'cashflowStatementHistory,cashflowStatementHistoryQuarterly,financialData,incomeStatementHistory',
+  )
   u.searchParams.set('crumb', auth.crumb)
 
   const res = await fetch(u.toString(), {
     headers: { ...YAHOO_FINANCE_FETCH_HEADERS, Cookie: auth.cookie },
     cache: 'no-store',
   })
-  if (!res.ok) {
-    return {
-      periodeLabel: null,
-      ocfUsd: null,
-      capexUsd: null,
-      dividendUsd: null,
-      buybackUsd: null,
-      mnaUsd: null,
-      revenueUsd: null,
-    }
-  }
+  if (!res.ok) return leer
 
   const result = (await res.json()).quoteSummary?.result?.[0] ?? {}
-  const quarterly = (result.cashflowStatement?.cashflowStatements?.quarterly ?? []) as Array<
+  const quarterly = (result.cashflowStatementHistoryQuarterly?.cashflowStatements ?? []) as Array<
     CfRow & { endDate?: { raw?: number; fmt?: string } }
   >
 
@@ -183,9 +176,9 @@ async function ladeCashflowLtmYahoo(symbol: string): Promise<{
       }, 0)
 
     const ocf = sum('totalCashFromOperatingActivities')
-    const capex = sum('capitalExpenditure')
+    const capex = sum('capitalExpenditures') || sum('capitalExpenditure')
     const div = sum('dividendsPaid')
-    const buyback = sum('commonStockRepurchased') || sum('repurchaseOfCapitalStock')
+    const buyback = sum('repurchaseOfCapitalStock') || sum('commonStockRepurchased')
     const mna = sum('purchaseOfBusiness') || sum('paymentsToAcquireBusinesses')
 
     const endFmt = q[0]?.endDate?.fmt ?? null
@@ -200,30 +193,67 @@ async function ladeCashflowLtmYahoo(symbol: string): Promise<{
     }
   }
 
-  const annual = (result.cashflowStatement?.cashflowStatements?.annual?.[0] ?? null) as
+  const annual = (result.cashflowStatementHistory?.cashflowStatements?.[0] ?? null) as
     | (CfRow & { endDate?: { fmt?: string } })
     | null
 
-  if (!annual) {
-    return {
-      periodeLabel: null,
-      ocfUsd: null,
-      capexUsd: null,
-      dividendUsd: null,
-      buybackUsd: null,
-      mnaUsd: null,
-      revenueUsd: null,
-    }
-  }
+  if (!annual) return leer
 
   return {
     periodeLabel: annual.endDate?.fmt ? `GJ ${annual.endDate.fmt}` : 'Letztes GJ',
     ocfUsd: rawNum(annual, 'totalCashFromOperatingActivities'),
-    capexUsd: rawNum(annual, 'capitalExpenditure'),
+    capexUsd: rawNum(annual, 'capitalExpenditures') ?? rawNum(annual, 'capitalExpenditure'),
     dividendUsd: rawNum(annual, 'dividendsPaid'),
-    buybackUsd: rawNum(annual, 'commonStockRepurchased') ?? rawNum(annual, 'repurchaseOfCapitalStock'),
+    buybackUsd:
+      rawNum(annual, 'repurchaseOfCapitalStock') ?? rawNum(annual, 'commonStockRepurchased'),
     mnaUsd: rawNum(annual, 'purchaseOfBusiness') ?? rawNum(annual, 'paymentsToAcquireBusinesses'),
     revenueUsd: result.financialData?.totalRevenue?.raw ?? null,
+  }
+}
+
+async function ladeCashflowViaTimeseries(symbol: string): Promise<{
+  periodeLabel: string | null
+  ocfUsd: number | null
+  capexUsd: number | null
+  dividendUsd: number | null
+  buybackUsd: number | null
+  mnaUsd: number | null
+  revenueUsd: number | null
+}> {
+  const leer = {
+    periodeLabel: null,
+    ocfUsd: null,
+    capexUsd: null,
+    dividendUsd: null,
+    buybackUsd: null,
+    mnaUsd: null,
+    revenueUsd: null,
+  }
+  try {
+    const { ladeYahooMantraFinanzdaten } = await import(
+      '@/lib/portfolio-analyse/yahoo-fundamentals-timeseries-server'
+    )
+    const daten = await ladeYahooMantraFinanzdaten(symbol)
+    if (!daten) return leer
+
+    const last = daten.annualHistorie[daten.annualHistorie.length - 1]
+    const ocf = daten.operatingCashFlowUsd ?? last?.operatingCashFlowUsd ?? null
+    const capex = last?.capitalExpenditureUsd ?? null
+    const mna = last?.purchaseOfBusinessUsd ?? null
+    const revenue = daten.revenueUsd ?? null
+
+    if (ocf == null) return leer
+    return {
+      periodeLabel: last?.datum ? `GJ ${last.datum}` : 'Trailing / letztes GJ',
+      ocfUsd: ocf,
+      capexUsd: capex,
+      dividendUsd: null,
+      buybackUsd: null,
+      mnaUsd: mna,
+      revenueUsd: revenue,
+    }
+  } catch {
+    return leer
   }
 }
 
@@ -276,6 +306,21 @@ export async function ladeCapitalAllocation(opts: {
         const yahoo = await ladeCashflowLtmYahoo(s)
         if (yahoo.ocfUsd != null) {
           cf = yahoo
+          break
+        }
+      }
+    }
+
+    if (!cf?.ocfUsd) {
+      const symbole = yahooKennzahlenSymbolKandidaten({
+        symbolYahoo: sym,
+        isin: opts.isin,
+        macrotrendsTicker: opts.isin ? isinKenntnis(opts.isin)?.macrotrendsTicker : null,
+      })
+      for (const s of symbole) {
+        const ts = await ladeCashflowViaTimeseries(s)
+        if (ts.ocfUsd != null) {
+          cf = ts
           break
         }
       }

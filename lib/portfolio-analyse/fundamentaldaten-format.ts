@@ -27,8 +27,9 @@ export function formatFundamentalWert(
       return wert.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
     case 'waehrung_usd_mio': {
       const usd = wert * 1_000_000
+      // DE: Bio. = 10¹² (Trillion), Mrd. = 10⁹ (Billion) — nicht vertauschen.
       if (Math.abs(usd) >= 1e12) {
-        return `${(usd / 1e12).toLocaleString('de-DE', { maximumFractionDigits: 2 })} Mrd. $`
+        return `${(usd / 1e12).toLocaleString('de-DE', { maximumFractionDigits: 2 })} Bio. $`
       }
       if (Math.abs(usd) >= 1e9) {
         return `${(usd / 1e9).toLocaleString('de-DE', { maximumFractionDigits: 2 })} Mrd. $`
@@ -44,7 +45,7 @@ export function formatFundamentalWert(
       return `${wert.toLocaleString('de-DE', { maximumFractionDigits: 2 })} Mio.`
     case 'waehrung_usd':
       if (Math.abs(wert) >= 1e12) {
-        return `${(wert / 1e12).toLocaleString('de-DE', { maximumFractionDigits: 2 })} Mrd. $`
+        return `${(wert / 1e12).toLocaleString('de-DE', { maximumFractionDigits: 2 })} Bio. $`
       }
       if (Math.abs(wert) >= 1e9) {
         return `${(wert / 1e9).toLocaleString('de-DE', { maximumFractionDigits: 2 })} Mrd. $`

@@ -1,6 +1,6 @@
 /** Peer-Gruppen für Sektor-Benchmark (Portfolio + typische Wettbewerber). */
 
-import { isinKenntnis } from '@/lib/portfolio-analyse/isin-kenntnisse'
+import { analyseTickerFuerPosition } from '@/lib/portfolio-analyse/isin-kenntnisse'
 
 const BOERSEN_SUFFIX = /\.(PA|AS|DE|SW|L|TO|HM|SG|MU|BR|MI|MC|HE|VI|ST|CO|OL|STU|F|BE|HA|DU|PR|WA)$/i
 
@@ -13,13 +13,10 @@ export function peerLookupKey(ticker: string): string {
  * Symbol für Datenabruf (Macrotrends/Yahoo) — berücksichtigt ISIN-Kenntnisse.
  */
 export function loesePeerDatenTicker(ticker: string, isin?: string | null): string {
-  const t = ticker.trim().toUpperCase()
-  const k = isin ? isinKenntnis(isin.trim().toUpperCase()) : null
-  if (k?.macrotrendsTicker) return k.macrotrendsTicker.trim().toUpperCase()
-  if (k?.logoSymbol) return k.logoSymbol.trim().toUpperCase()
-  if (k?.symbolYahoo) return k.symbolYahoo.trim().toUpperCase()
-
-  const key = peerLookupKey(t)
+  if (isin?.trim()) {
+    return analyseTickerFuerPosition(isin, ticker)
+  }
+  const key = peerLookupKey(ticker)
   const alias: Record<string, string> = {
     H11: 'HLMA',
     MC: 'LVMUY',
@@ -29,7 +26,7 @@ export function loesePeerDatenTicker(ticker: string, isin?: string | null): stri
     SIKA: 'SXYAY',
     OSP2: 'USU',
   }
-  return alias[key] ?? t
+  return alias[key] ?? key
 }
 
 /** Kuratierte Peer-Listen je Lookup-Key (ohne Börsensuffix). */

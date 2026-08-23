@@ -5,10 +5,11 @@
 /** Explizite Score-Zeile aus dem Prompt (bevorzugt). */
 export function parseSentimentScoreAusText(text: string): number | null {
   if (!text) return null
+  // LLMs schreiben oft „SENTIMENT_SCORE: +50“ — Pluszeichen muss erlaubt sein.
   const patterns = [
-    /SENTIMENT[_\s-]*SCORE\s*[:=]\s*(-?\d{1,3})/i,
-    /Sentiment(?:-Score)?\s*[:=]\s*(-?\d{1,3})\s*(?:\/\s*100)?/i,
-    /Stimmung(?:sscore)?\s*[:=]\s*(-?\d{1,3})/i,
+    /SENTIMENT[_\s-]*SCORE\s*[:=]\s*([+-]?\d{1,3})/i,
+    /Sentiment(?:-Score)?\s*[:=]\s*([+-]?\d{1,3})\s*(?:\/\s*100)?/i,
+    /Stimmung(?:sscore)?\s*[:=]\s*([+-]?\d{1,3})/i,
   ]
   for (const re of patterns) {
     const m = text.match(re)
@@ -28,11 +29,19 @@ export function heuristikSentimentScore(text: string): number {
   const positiv = [
     'optimistisch',
     'zuversichtlich',
+    'herausragend',
+    'außerordentlich',
+    'ausserordentlich',
+    'exzellent',
     'starkes wachstum',
     'über den erwartungen',
+    'ueber den erwartungen',
+    'übertrifft',
+    'uebertrifft',
     'beat',
     'anhebung',
     'guidance angehoben',
+    'prognose angehoben',
     'rekord',
     'robuste nachfrage',
     'margin expansion',
@@ -41,7 +50,10 @@ export function heuristikSentimentScore(text: string): number {
     'confident',
     'raised guidance',
     'strong demand',
+    'vervierfacht',
+    'selbstbewusst',
   ]
+  // Kein nacktes „risiko“ — steht in jedem kritischen Memo und invertiert sonst starke Calls.
   const negativ = [
     'vorsichtig',
     'enttäusch',
@@ -49,13 +61,15 @@ export function heuristikSentimentScore(text: string): number {
     'miss',
     'senkung',
     'guidance gesenkt',
+    'prognose gesenkt',
     'kostenüberschreitung',
     'kostenexplosion',
     'abschreibung',
     'klage',
-    'risiko',
+    'katastrophal',
     'herausfordernd',
     'schwäche',
+    'schwaeche',
     'lowered guidance',
     'headwind',
     'uncertainty',
@@ -70,18 +84,29 @@ export function heuristikSentimentScore(text: string): number {
     if (t.includes(w)) score -= 14
   }
 
-  // Executive Summary stärker gewichten
+  // Executive Summary stärker gewichten (erste ~1200 Zeichen)
   const exec = t.slice(0, Math.min(1200, t.length))
   for (const w of positiv) {
-    if (exec.includes(w)) score += 6
+    if (exec.includes(w)) score += 8
   }
   for (const w of negativ) {
-    if (exec.includes(w)) score -= 8
+    if (exec.includes(w)) score -= 6
   }
 
   return Math.max(-100, Math.min(100, Math.round(score)))
 }
 
-export function sentimentScoreAusZusammenfassung(text: string): number {
-  return parseSentimentScoreAusText(text) ?? heuristikSentimentScore(text)
+export function sentimentScoreAusZusammenfassung(
+  text: string,
+  gespeichert?: number | null,
+): number {
+  const parsed = parseSentimentScoreAusText(text)
+  if (parsed != null) return parsed
+  const heur = heuristikSentimentScore(text)
+  if (gespeichert != null && Number.isFinite(gespeichert)) {
+    // Alte Invertierungen: Store stark negativ, Text/Heuristik positiv → Heuristik
+    if (gespeichert <= -25 && heur >= 5) return heur
+    return Math.max(-100, Math.min(100, Math.round(gespeichert)))
+  }
+  return heur
 }

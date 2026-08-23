@@ -9,7 +9,7 @@ import 'server-only'
 import { ladeAmfInsiderTransaktionen } from '@/lib/portfolio-analyse/eu-amf-insider-server'
 import { ladeDgapInsiderTransaktionen } from '@/lib/portfolio-analyse/eu-insider-aggregate-server'
 import { ladeEuInsiderDealings } from '@/lib/portfolio-analyse/eu-insider-dealing-server'
-import { isinKenntnis } from '@/lib/portfolio-analyse/isin-kenntnisse'
+import { analyseTickerFuerPosition, isinKenntnis } from '@/lib/portfolio-analyse/isin-kenntnisse'
 import { ladeInsiderKauefeFuerSymbol } from '@/lib/portfolio-analyse/openinsider-server'
 import { ladeSecForm4OpenMarketKaeufe } from '@/lib/portfolio-analyse/sec-edgar-form4-server'
 import type { InsiderKauf, NachkaufScanEintrag } from './nachkauf-radar-types'
@@ -101,7 +101,8 @@ export async function ladeInsiderKaeufeFuerPosition(
   symbolYahoo: string | null,
 ): Promise<InsiderKauf[]> {
   const k = isinKenntnis(position.isin)
-  const sym = (symbolYahoo ?? k?.symbolYahoo ?? position.isin).split('.')[0]!.toUpperCase()
+  const symRaw = symbolYahoo ?? k?.symbolYahoo ?? position.isin
+  const sym = analyseTickerFuerPosition(position.isin, symRaw)
   const isUs = position.isin.startsWith('US')
 
   if (isUs) {

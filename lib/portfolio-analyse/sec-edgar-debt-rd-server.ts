@@ -62,20 +62,22 @@ function jahrAus(e: FactsUnit): number | null {
 }
 
 function zuMio(val: number): number {
-  const abs = Math.abs(val)
-  if (abs >= 10_000_000) return Math.round((val / 1_000_000) * 10) / 10
-  return Math.round(val * 10) / 10
+  // SEC Company Facts: Roh-USD → Mio.
+  return Math.round((val / 1_000_000) * 10) / 10
 }
 
-/** Neuester 10-K/FY-Wert für Tag-Kette. */
-function letzterWert(
+/**
+ * Erster Tag in der Kette mit FY-Wert (Priorität), nicht „neuester über alle Tags“
+ * (sonst gewinnt oft DebtInstrumentCarryingAmount ≪ LongTermDebt).
+ */
+function ersterTagWert(
   facts: CompanyFactsJson,
   tags: string[],
 ): { wertMio: number; jahr: number } | null {
-  let best: { wertMio: number; jahr: number; filed: string } | null = null
   for (const tag of tags) {
     const units = facts.facts?.['us-gaap']?.[tag]?.units
     if (!units) continue
+    let best: { wertMio: number; jahr: number; filed: string } | null = null
     for (const liste of Object.values(units)) {
       for (const e of liste ?? []) {
         if (e.form && e.form !== '10-K' && e.form !== '20-F') continue
@@ -84,14 +86,16 @@ function letzterWert(
         const val = e.val
         if (jahr == null || val == null || !Number.isFinite(val)) continue
         const wertMio = zuMio(Math.abs(val))
+        if (wertMio < 0.1) continue
         const filed = e.filed ?? e.end ?? ''
         if (!best || jahr > best.jahr || (jahr === best.jahr && filed > best.filed)) {
           best = { wertMio, jahr, filed }
         }
       }
     }
+    if (best) return { wertMio: best.wertMio, jahr: best.jahr }
   }
-  return best ? { wertMio: best.wertMio, jahr: best.jahr } : null
+  return null
 }
 
 const MATURITY_TAGS = {
@@ -125,7 +129,7 @@ const MATURITY_TAGS = {
     'LongTermDebt',
     'LongTermDebtAndCapitalLeaseObligations',
     'LongTermDebtNoncurrent',
-    'DebtInstrumentCarryingAmount',
+    // DebtInstrumentCarryingAmount absichtlich nicht — oft Einzelinstrument ≪ Gesamtverschuldung
   ],
 } as const
 
@@ -147,13 +151,13 @@ export async function ladeDebtMaturityProfil(ticker: string): Promise<DebtMaturi
   const facts = await ladeCompanyFactsJson(cik)
   if (!facts) return null
 
-  const y1 = letzterWert(facts, [...MATURITY_TAGS.y1])
-  const y2 = letzterWert(facts, [...MATURITY_TAGS.y2])
-  const y3 = letzterWert(facts, [...MATURITY_TAGS.y3])
-  const y4 = letzterWert(facts, [...MATURITY_TAGS.y4])
-  const y5 = letzterWert(facts, [...MATURITY_TAGS.y5])
-  const after = letzterWert(facts, [...MATURITY_TAGS.after])
-  const total = letzterWert(facts, [...MATURITY_TAGS.total])
+  const y1 = ersterTagWert(facts, [...MATURITY_TAGS.y1])
+  const y2 = ersterTagWert(facts, [...MATURITY_TAGS.y2])
+  const y3 = ersterTagWert(facts, [...MATURITY_TAGS.y3])
+  const y4 = ersterTagWert(facts, [...MATURITY_TAGS.y4])
+  const y5 = ersterTagWert(facts, [...MATURITY_TAGS.y5])
+  const after = ersterTagWert(facts, [...MATURITY_TAGS.after])
+  const total = ersterTagWert(facts, [...MATURITY_TAGS.total])
 
   if (!y1 && !y2 && !total) return null
 
@@ -165,21 +169,27 @@ export async function ladeDebtMaturityProfil(ticker: string): Promise<DebtMaturi
       : null
 
   let gesamt = total?.wertMio ?? null
-  if (gesamt == null) {
-    const sum =
-      (due12 ?? 0) +
-      (dueY2 ?? 0) +
-      (y3?.wertMio ?? 0) +
-      (y4?.wertMio ?? 0) +
-      (y5?.wertMio ?? 0) +
-      (after?.wertMio ?? 0)
-    gesamt = sum > 0 ? Math.round(sum * 10) / 10 : null
+  const bucketSum =
+    (due12 ?? 0) +
+    (dueY2 ?? 0) +
+    (y3?.wertMio ?? 0) +
+    (y4?.wertMio ?? 0) +
+    (y5?.wertMio ?? 0) +
+    (after?.wertMio ?? 0)
+  if (gesamt == null && bucketSum > 0) {
+    gesamt = Math.round(bucketSum * 10) / 10
+  }
+  // Sanity: Gesamt muss mind. die Fälligkeits-Buckets decken
+  if (gesamt != null && bucketSum > gesamt * 1.15) {
+    gesamt = Math.round(bucketSum * 10) / 10
   }
 
-  const refiAnteil24mPct =
+  let refiAnteil24mPct =
     due24 != null && gesamt != null && gesamt > 0
       ? Math.round((due24 / gesamt) * 1000) / 10
       : null
+  // >100 % ist Datenfehler (Einheiten-Mix) — lieber null als 22900 %
+  if (refiAnteil24mPct != null && refiAnteil24mPct > 100) refiAnteil24mPct = null
 
   const jahre = [y1, y2, y3, y4, y5, after, total]
     .map((x) => x?.jahr ?? null)
@@ -206,8 +216,8 @@ export async function ladeRdKapitalisierung(ticker: string): Promise<RdKapitalis
   const facts = await ladeCompanyFactsJson(cik)
   if (!facts) return null
 
-  const cap = letzterWert(facts, RD_CAP_TAGS)
-  const exp = letzterWert(facts, RD_EXP_TAGS)
+  const cap = ersterTagWert(facts, RD_CAP_TAGS)
+  const exp = ersterTagWert(facts, RD_EXP_TAGS)
   if (!cap && !exp) return null
 
   const kapitalisiertMio = cap?.wertMio ?? null

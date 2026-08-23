@@ -18,7 +18,9 @@ import type {
 import { ladeQuartalsKiDiff } from '@/lib/portfolio-analyse/quartals-ki-diff-server'
 
 const MAX_LADEN = 8
-const LOAD_TIMEOUT_MS = 28_000
+/** Über Macrotrends-FETCH_TIMEOUT (35s) — sonst landen alle Titel im Scan-Fallback. */
+const LOAD_TIMEOUT_MS = 55_000
+const PARALLEL_FUNDAMENTAL = 3
 
 /** Deutsche Zeilen-IDs (Macrotrends/Yahoo) — früher fälschlich englische IDs → leere Historie. */
 const ZEILEN_HIGHLIGHT = [
@@ -147,6 +149,8 @@ function erweitertKompakt(p: FundamentaldatenPaket, fokus: boolean) {
         }
       : null,
     insiderNetto: e.insiderNetto?.nettoRichtung ?? null,
+    insiderKaeufe90d: e.insiderNetto?.kaeufe90d ?? null,
+    insiderVerkaeufe90d: e.insiderNetto?.verkaeufe90d ?? null,
     debtRefi24mPct: e.debtMaturity?.refiAnteil24mPct ?? null,
     rdAktivierungsquotePct: e.rdKapitalisierung?.aktivierungsquotePct ?? null,
     secStruktur: e.secStruktur
@@ -205,6 +209,8 @@ export type BeraterFundamentalKompakt = {
     } | null
     dividenden: { cagr5yPct: number | null; jahreOhneSenkung: number | null } | null
     insiderNetto: string | null
+    insiderKaeufe90d: number | null
+    insiderVerkaeufe90d: number | null
     debtRefi24mPct: number | null
     rdAktivierungsquotePct: number | null
     secStruktur: { segmentKonzentration: number | null; pensionMio: number | null } | null
@@ -319,6 +325,8 @@ export function fundamentalAusScanFallback(
         : null,
       dividenden: null,
       insiderNetto: d?.insiderNettoRichtung ?? null,
+      insiderKaeufe90d: null,
+      insiderVerkaeufe90d: null,
       debtRefi24mPct: d?.debtRefi24mPct ?? null,
       rdAktivierungsquotePct: d?.rdAktivierungsquotePct ?? null,
       secStruktur: null,
@@ -347,75 +355,84 @@ export async function ladeFundamentaldatenFuerBerater(
     })
     .slice(0, MAX_LADEN)
 
-  const ergebnisse = await Promise.allSettled(
-    sortiert.map(async (z) => {
-      try {
-        const paket = await mitTimeout(
-          ladeFundamentaldaten({
-            isin: z.isin,
-            name: z.name,
-            symbolYahoo: z.symbolYahoo,
-            symbolCandidates: z.symbolCandidates,
-            frequenz: 'jahr',
-            segmentNurCloud: true,
-          }),
-          LOAD_TIMEOUT_MS,
-          z.isin,
-        )
-        const hatHistorie = periodenIso(paket, 5).length >= 2 && paket.zeilen.length > 0
-        if (hatHistorie || paket.ok) {
-          return {
-            isin: z.isin,
-            fokus: z.fokus,
-            gewichtPct: z.gewichtPct ?? null,
-            daten: fundamentalPaketKompakt(paket, z.fokus),
-          }
-        }
-      } catch (e) {
-        console.warn('[portfolio-berater] Fundamentaldaten', z.isin, e)
-      }
-
-      const scan = opts?.scanByIsin?.get(z.isin.toUpperCase())
-      if (scan) {
+  const ladenEines = async (z: FundamentalBeraterZiel) => {
+    try {
+      const paket = await mitTimeout(
+        ladeFundamentaldaten({
+          isin: z.isin,
+          name: z.name,
+          symbolYahoo: z.symbolYahoo,
+          symbolCandidates: z.symbolCandidates,
+          frequenz: 'jahr',
+          segmentNurCloud: true,
+        }),
+        LOAD_TIMEOUT_MS,
+        z.isin,
+      )
+      const hatHistorie = periodenIso(paket, 5).length >= 2 && paket.zeilen.length > 0
+      const hatTeil =
+        paket.keyMetrics.length > 0 || paket.zeilen.length > 0 || paket.mantra != null
+      // Teilpaket behalten — besser als Scan-Fallback ohne Historie
+      if (hatHistorie || paket.ok || hatTeil) {
         return {
           isin: z.isin,
           fokus: z.fokus,
           gewichtPct: z.gewichtPct ?? null,
-          daten: fundamentalAusScanFallback(scan, z.fokus),
+          daten: fundamentalPaketKompakt(paket, z.fokus),
         }
       }
+    } catch (e) {
+      console.warn('[portfolio-berater] Fundamentaldaten', z.isin, e)
+    }
 
+    const scan = opts?.scanByIsin?.get(z.isin.toUpperCase())
+    if (scan) {
       return {
         isin: z.isin,
         fokus: z.fokus,
         gewichtPct: z.gewichtPct ?? null,
-        daten: {
-          ok: false,
-          ticker: z.ticker ?? z.symbolYahoo?.split('.')[0] ?? z.isin,
-          firmenname: z.name,
-          sektor: null,
-          branche: null,
-          quelle: null,
-          fehler: 'Fundamentaldaten nicht verfügbar',
-          beschreibung: null,
-          keyMetrics: [],
-          historie5j: null,
-          mantra: {
-            ampel: 'grau',
-            ampelScorePct: null,
-            ampelHinweis: null,
-            zusammenfassung: null,
-            standard: [],
-            sektor: [],
-            sellTriggerWatch: [],
-          },
-          zeilenHighlights: [],
-          erweitert: null,
-          news: [],
-        } satisfies BeraterFundamentalKompakt,
+        daten: fundamentalAusScanFallback(scan, z.fokus),
       }
-    }),
-  )
+    }
+
+    return {
+      isin: z.isin,
+      fokus: z.fokus,
+      gewichtPct: z.gewichtPct ?? null,
+      daten: {
+        ok: false,
+        ticker: z.ticker ?? z.symbolYahoo?.split('.')[0] ?? z.isin,
+        firmenname: z.name,
+        sektor: null,
+        branche: null,
+        quelle: null,
+        fehler: 'Fundamentaldaten nicht verfügbar',
+        beschreibung: null,
+        keyMetrics: [],
+        historie5j: null,
+        mantra: {
+          ampel: 'grau',
+          ampelScorePct: null,
+          ampelHinweis: null,
+          zusammenfassung: null,
+          standard: [],
+          sektor: [],
+          sellTriggerWatch: [],
+        },
+        zeilenHighlights: [],
+        erweitert: null,
+        news: [],
+      } satisfies BeraterFundamentalKompakt,
+    }
+  }
+
+  const settled: PromiseSettledResult<Awaited<ReturnType<typeof ladenEines>>>[] = []
+  for (let i = 0; i < sortiert.length; i += PARALLEL_FUNDAMENTAL) {
+    const batch = sortiert.slice(i, i + PARALLEL_FUNDAMENTAL)
+    const batchRes = await Promise.allSettled(batch.map(ladenEines))
+    settled.push(...batchRes)
+  }
+  const ergebnisse = settled
 
   const out: Array<{
     isin: string
@@ -433,33 +450,18 @@ export async function ladeFundamentaldatenFuerBerater(
 }
 
 function sortiereSecIds(map: Map<string, SecBerichtKiCloudZeile>): string[] {
-  return [...map.entries()]
-    .sort((a, b) => b[1].aktualisiertAm.localeCompare(a[1].aktualisiertAm))
-    .map(([id]) => id)
+  return [...map.keys()].sort((a, b) => b.localeCompare(a))
 }
 
 function sortiereEarningsIds(map: Map<string, EarningsCallKiCloudZeile>): string[] {
-  return [...map.entries()]
-    .sort((a, b) => b[1].aktualisiertAm.localeCompare(a[1].aktualisiertAm))
-    .map(([id]) => id)
+  return [...map.keys()].sort((a, b) => b.localeCompare(a))
 }
 
-function textDiffFallback(
-  aktuellId: string,
-  vorherId: string,
-  aktuell: string,
-  vorher: string,
-): string {
+function textDiffFallback(aktuellId: string, vorherId: string): string {
   return [
     `## Vergleich ${vorherId} → ${aktuellId}`,
     '',
-    '### Aktuelle Periode',
-    aktuell.slice(0, 900).trim(),
-    '',
-    '### Vorperiode',
-    vorher.slice(0, 900).trim(),
-    '',
-    '_Hinweis: Kein KI-Diff im Cache — Gegenüberstellung der vorhandenen Zusammenfassungen. Für den detaillierten KI-Diff Fundamentaldaten → Quartals-Diff öffnen._',
+    '_Kein KI-Diff im Cache — Summaries liegen separat unter kiCache. Für den echten Quartals-Vergleich: Fundamentaldaten → Quartals-Diff öffnen (nicht Executive Summary als Diff verwenden)._',
   ].join('\n')
 }
 
@@ -557,7 +559,7 @@ export async function baueQuartalsDiffFuerBerater(opts: {
         typ,
         aktuellId,
         vorherId,
-        diff: textDiffFallback(aktuellId, vorherId, aktuellText, vorherText),
+        diff: textDiffFallback(aktuellId, vorherId),
       })
     }
   }

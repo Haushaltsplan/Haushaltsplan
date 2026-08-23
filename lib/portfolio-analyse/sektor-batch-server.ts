@@ -44,46 +44,56 @@ function symboleFuerItem(item: SektorBatchItem): string[] {
 }
 
 async function yahooBrancheFuerSymbol(basisSymbol: string): Promise<SektorBatchEintrag> {
-  const sym = basisSymbol.trim().toUpperCase().split('.')[0]!
-  if (!sym) return { sektor: null, branche: null }
+  // Volle Yahoo-Symbole zuerst (WKL.AS, SIKA.SW, H11.SG) — kein blindes Strippen der Börse.
+  const raw = basisSymbol.trim().toUpperCase()
+  if (!raw) return { sektor: null, branche: null }
+  const bare = raw.split('.')[0]!
+  const kandidaten = raw.includes('.') && bare !== raw ? [raw, bare] : [raw]
 
-  const hit = cache.get(sym)
-  if (hit && Date.now() - hit.at < CACHE_MS) return hit.data
+  for (const sym of kandidaten) {
+    const hit = cache.get(sym)
+    if (hit && Date.now() - hit.at < CACHE_MS) {
+      if (hit.data.sektor || hit.data.branche) return hit.data
+      continue
+    }
 
-  const auth = await holeYahooFinanceAuth()
-  if (!auth) {
-    const leer = { sektor: null, branche: null }
-    cache.set(sym, { at: Date.now(), data: leer })
-    return leer
-  }
-
-  const u = new URL(`https://query2.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(sym)}`)
-  u.searchParams.set('modules', 'assetProfile')
-  u.searchParams.set('crumb', auth.crumb)
-
-  try {
-    const res = await fetch(u.toString(), {
-      headers: { ...YAHOO_FINANCE_FETCH_HEADERS, Cookie: auth.cookie },
-      cache: 'no-store',
-    })
-    if (!res.ok) {
+    const auth = await holeYahooFinanceAuth()
+    if (!auth) {
       const leer = { sektor: null, branche: null }
       cache.set(sym, { at: Date.now(), data: leer })
-      return leer
+      continue
     }
-    const j = (await res.json()) as {
-      quoteSummary?: { result?: Array<{ assetProfile?: { sector?: string; industry?: string } }> }
+
+    const u = new URL(
+      `https://query2.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(sym)}`,
+    )
+    u.searchParams.set('modules', 'assetProfile')
+    u.searchParams.set('crumb', auth.crumb)
+
+    try {
+      const res = await fetch(u.toString(), {
+        headers: { ...YAHOO_FINANCE_FETCH_HEADERS, Cookie: auth.cookie },
+        cache: 'no-store',
+      })
+      if (!res.ok) {
+        const leer = { sektor: null, branche: null }
+        cache.set(sym, { at: Date.now(), data: leer })
+        continue
+      }
+      const j = (await res.json()) as {
+        quoteSummary?: { result?: Array<{ assetProfile?: { sector?: string; industry?: string } }> }
+      }
+      const ap = j.quoteSummary?.result?.[0]?.assetProfile
+      const meta = formatiereBrancheDe({ sector: ap?.sector, industry: ap?.industry })
+      const data: SektorBatchEintrag = { sektor: meta.sektor, branche: meta.branche }
+      cache.set(sym, { at: Date.now(), data })
+      if (data.sektor || data.branche) return data
+    } catch {
+      const leer = { sektor: null, branche: null }
+      cache.set(sym, { at: Date.now(), data: leer })
     }
-    const ap = j.quoteSummary?.result?.[0]?.assetProfile
-    const meta = formatiereBrancheDe({ sector: ap?.sector, industry: ap?.industry })
-    const data: SektorBatchEintrag = { sektor: meta.sektor, branche: meta.branche }
-    cache.set(sym, { at: Date.now(), data })
-    return data
-  } catch {
-    const leer = { sektor: null, branche: null }
-    cache.set(sym, { at: Date.now(), data: leer })
-    return leer
   }
+  return { sektor: null, branche: null }
 }
 
 async function yahooBrancheFuerSymbole(symbole: string[]): Promise<SektorBatchEintrag> {

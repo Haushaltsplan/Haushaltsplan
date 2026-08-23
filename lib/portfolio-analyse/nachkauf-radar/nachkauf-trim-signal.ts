@@ -435,3 +435,18 @@ export function filterVerkaufKandidaten(eintraege: NachkaufScanEintrag[]): Nachk
     })
     .sort((a, b) => (b.trimSignal?.prioritaet ?? 0) - (a.trimSignal?.prioritaet ?? 0))
 }
+
+/**
+ * Qualitäts-Beobachtung (aktion „ueberpruefen“) — kein Euro-Verkauf,
+ * aber Muss-Kontext für die KI (nicht als „keine Verkaufssignale“ verschweigen).
+ */
+export function filterBeobachtungsKandidaten(eintraege: NachkaufScanEintrag[]): NachkaufScanEintrag[] {
+  return eintraege
+    .filter((e) => {
+      const ts = e.trimSignal
+      if (!ts || ts.aktion !== 'ueberpruefen') return false
+      if ((e.depotGewichtPct ?? 0) < 2) return false
+      return true
+    })
+    .sort((a, b) => (b.trimSignal?.prioritaet ?? 0) - (a.trimSignal?.prioritaet ?? 0))
+}

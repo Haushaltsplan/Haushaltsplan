@@ -95,7 +95,7 @@ async function ladePersistenteSummaries(ticker: string, cache: DiscoveryCache): 
       cache.summaries.set(quartalId, {
         text: eintrag.zusammenfassung,
         sentimentScore:
-          eintrag.sentimentScore ?? sentimentScoreAusZusammenfassung(eintrag.zusammenfassung),
+          sentimentScoreAusZusammenfassung(eintrag.zusammenfassung, eintrag.sentimentScore),
       })
     }
   }
@@ -116,7 +116,7 @@ async function summaryAusPersistenz(
   }
   return {
     text: hit.zusammenfassung,
-    sentimentScore: hit.sentimentScore ?? sentimentScoreAusZusammenfassung(hit.zusammenfassung),
+    sentimentScore: sentimentScoreAusZusammenfassung(hit.zusammenfassung, hit.sentimentScore),
   }
 }
 
@@ -310,11 +310,23 @@ function rohZuQuartale(roh: RohesTranskript[]): EarningsCallQuartalEintrag[] {
   const usedIds = new Set<string>()
 
   for (const r of roh) {
-    const q = parseQuartalAusText(r.titel, r.callDatum)
-    let id = q?.id ?? `unknown-${r.url.slice(-12)}`
+    let urlTail = ''
+    try {
+      urlTail = decodeURIComponent((r.url.split('/').pop() ?? r.url).replace(/\+/g, ' '))
+    } catch {
+      urlTail = r.url.split('/').pop() ?? r.url
+    }
+    const q =
+      parseQuartalAusText(r.titel, r.callDatum) ??
+      parseQuartalAusText(urlTail, r.callDatum)
+    let id =
+      q?.id ??
+      (r.callDatum
+        ? `unknown-${r.callDatum.slice(0, 10)}`
+        : `unknown-${Buffer.from(r.url).toString('base64url').slice(0, 10)}`)
     let jahr = q?.jahr ?? (r.callDatum ? new Date(r.callDatum).getFullYear() : new Date().getFullYear())
     let quartal = q?.quartal ?? (1 as const)
-    let label = q?.label ?? r.titel.slice(0, 40)
+    let label = q?.label ?? `Call ${jahr}`
 
     if (usedIds.has(id)) {
       id = `${id}-${eintraege.length}`
@@ -463,7 +475,7 @@ export async function ladeEarningsCallZusammenfassung(anfrage: EarningsCallAnfra
         summaries.set(quartalId, {
           text: row.zusammenfassung,
           sentimentScore:
-            row.sentimentScore ?? sentimentScoreAusZusammenfassung(row.zusammenfassung),
+            sentimentScoreAusZusammenfassung(row.zusammenfassung, row.sentimentScore),
         })
       }
       cache = {

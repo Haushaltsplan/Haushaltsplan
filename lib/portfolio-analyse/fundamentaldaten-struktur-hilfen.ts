@@ -444,6 +444,7 @@ export function strukturKmZahl(paket: FundamentaldatenPaket, id: string): number
 
 export function usdKompakt(v: number | null | undefined): string | null {
   if (v == null || !Number.isFinite(v)) return null
+  if (Math.abs(v) >= 1e12) return `$${(v / 1e12).toFixed(2)} Bio.`
   if (Math.abs(v) >= 1_000_000_000) return `$${(v / 1_000_000_000).toFixed(2)} Mrd.`
   if (Math.abs(v) >= 1_000_000) return `$${(v / 1_000_000).toFixed(1)} Mio.`
   if (Math.abs(v) >= 1_000) return `$${(v / 1_000).toFixed(0)}k`

@@ -78,6 +78,21 @@ function cagrPct(a0: number, a1: number, jahre: number): number | null {
   return Number.isFinite(r) ? r : null
 }
 
+/**
+ * Extreme Multiples (z. B. Early-Growth-KGV 900×) verzerren Median/Discount/Perzentile.
+ * Bevorzugt gefilterte Serie; wenn zu wenig Punkte: Winsorize auf [min, max].
+ */
+export function bereinigeBewertungsSerie(
+  werte: number[],
+  maxSinnvoll: number,
+  minSinnvoll = 1,
+): number[] {
+  if (werte.length === 0) return []
+  const gefiltert = werte.filter((v) => v >= minSinnvoll && v <= maxSinnvoll)
+  if (gefiltert.length >= 2) return gefiltert
+  return werte.map((v) => Math.min(maxSinnvoll, Math.max(minSinnvoll, v)))
+}
+
 /** Perzentil von `aktuell` in der sortierten Historie (0 = günstigstes, 100 = teuerstes). */
 export function perzentilInSerie(aktuell: number, historie: number[]): number | null {
   const vals = historie.filter((v) => Number.isFinite(v) && v > 0)
@@ -148,7 +163,13 @@ export function berechneQualitaetSignaleAusPaket(
   const fcfMarge =
     fcfLast != null && umsatzLast != null && umsatzLast > 0 ? (fcfLast / umsatzLast) * 100 : null
   const ruleOf40 =
-    revGrowthPct != null && fcfMarge != null ? revGrowthPct + fcfMarge : null
+    revGrowthPct != null
+      ? (() => {
+          const ebitM = letzteWerte(paket, 'ebit_marge', 1)[0] ?? null
+          const marge = Math.max(fcfMarge ?? Number.NEGATIVE_INFINITY, ebitM ?? Number.NEGATIVE_INFINITY)
+          return Number.isFinite(marge) ? revGrowthPct + marge : null
+        })()
+      : null
 
   const interestCoverageKm = paket.keyMetrics.find((m) => m.id === 'interest_coverage')
   const interestCoverageRaw =
@@ -159,11 +180,18 @@ export function berechneQualitaetSignaleAusPaket(
 
   const peKeys5 = histKeys(paket.perioden, 5)
   const peKeys10 = histKeys(paket.perioden, 10)
-  const peHist5 = peKeys5.map((k) => wert(paket, 'kgv', k)).filter((v): v is number => v != null && v > 0)
-  const peHist10 = peKeys10.map((k) => wert(paket, 'kgv', k)).filter((v): v is number => v != null && v > 0)
+  const peHist5Roh = peKeys5
+    .map((k) => wert(paket, 'kgv', k))
+    .filter((v): v is number => v != null && v > 0)
+  const peHist10Roh = peKeys10
+    .map((k) => wert(paket, 'kgv', k))
+    .filter((v): v is number => v != null && v > 0)
+  const peHist5 = bereinigeBewertungsSerie(peHist5Roh, 100, 3)
+  const peHist10 = bereinigeBewertungsSerie(peHist10Roh, 100, 3)
   const peTtm = wert(paket, 'kgv', FUNDAMENTAL_TTM_KEY)
   const peKm = paket.keyMetrics.find((m) => m.id === 'ltm_pe')
-  const peAktuell = peTtm ?? (peKm ? parseMetricZahl(peKm.wert) : null) ?? peHist5[peHist5.length - 1] ?? null
+  const peAktuell =
+    peTtm ?? (peKm ? parseMetricZahl(peKm.wert) : null) ?? peHist5Roh[peHist5Roh.length - 1] ?? null
   const pePerzentil5y = peAktuell != null ? perzentilInSerie(peAktuell, peHist5) : null
   const pePerzentil10y = peAktuell != null ? perzentilInSerie(peAktuell, peHist10) : null
 

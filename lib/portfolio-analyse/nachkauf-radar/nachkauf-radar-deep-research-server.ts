@@ -27,6 +27,7 @@ import { wendeNachkaufDisziplinAn } from './nachkauf-disziplin-server'
 import { speichereDeepResearch } from './nachkauf-radar-db-server'
 import { ladeNachkaufWatchlistAusCloud } from './nachkauf-watchlist-cloud-server'
 import { formatDepotDashboardKontext } from '@/lib/portfolio-analyse/depot-gewichte-server'
+import { risikoKlasseFuerIsin } from './nachkauf-radar-whitelist'
 import type { NachkaufDeepResearch, NachkaufDeepResearchAnfrage, NachkaufScanEintrag } from './nachkauf-radar-types'
 import type { FundamentaldatenPaket } from '@/lib/portfolio-analyse/fundamentaldaten-types'
 
@@ -114,10 +115,12 @@ function baueKontextText(opts: {
       ? opts.klumpenrisiko
         ? `${opts.depotGewichtPct.toFixed(1)} % des Depots (KLUMPENRISIKO — bereits übergewichtet)`
         : `${opts.depotGewichtPct.toFixed(1)} % des Depots`
-      : 'Keine Depot-Buchungen vorhanden (Position ggf. noch nicht im Depot)'
+      : 'Depot-Anteil unbekannt (ISIN/Ticker-Zuordnung fehlgeschlagen — Dashboard-Kontext prüfen, nicht als „nicht im Depot“ interpretieren)'
 
   const teile: string[] = [
     `=== DEPOT-POSITION: ${opts.name} (${opts.ticker}) — ISIN: ${opts.isin} ===`,
+    '',
+    `Risikoklasse (Whitelist, verbindlich): ${risikoKlasseFuerIsin(opts.isin)}. Nicht als spekulativ/Turnaround bezeichnen, wenn die Klasse konservativ oder moderat ist.`,
     '',
     '--- DEPOT-KONTEXT (Dashboard — Buchungen + Live-Kurse) ---',
     opts.depotDashboardKontext,

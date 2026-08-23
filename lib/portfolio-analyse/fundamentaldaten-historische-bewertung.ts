@@ -3,7 +3,10 @@ import {
   type FundamentaldatenPaket,
   type FundamentalPeriode,
 } from '@/lib/portfolio-analyse/fundamentaldaten-types'
-import { perzentilInSerie } from '@/lib/portfolio-analyse/nachkauf-radar/nachkauf-qualitaet-signale'
+import {
+  bereinigeBewertungsSerie,
+  perzentilInSerie,
+} from '@/lib/portfolio-analyse/nachkauf-radar/nachkauf-qualitaet-signale'
 
 export type HistorischeBewertung = {
   /** Median des jährlichen KGV (Macrotrends, letzte 5 Geschäftsjahre). */
@@ -36,6 +39,12 @@ function median(werte: number[]): number | null {
   const m = Math.floor(s.length / 2)
   return s.length % 2 === 1 ? s[m]! : (s[m - 1]! + s[m]!) / 2
 }
+
+/** Sinnvolle Obergrenzen für hist. Mediane / Perzentile (keine Einzeltitel-Locke). */
+const MAX_PE = 100
+const MAX_EV_EBITDA = 45
+const MAX_EV_REV = 30
+const MAX_PFCF = 80
 
 function geschaeftsjahresKeys(perioden: FundamentalPeriode[], max = 5): string[] {
   return perioden
@@ -98,27 +107,42 @@ function aktuellesMultiple(
 export function berechneHistorischeBewertung(paket: FundamentaldatenPaket): HistorischeBewertung {
   const keys5 = geschaeftsjahresKeys(paket.perioden, 5)
   const keys10 = geschaeftsjahresKeys(paket.perioden, 10)
-  const peWerte5 = werteAusZeile(paket, 'kgv', keys5)
-  const peWerte10 = werteAusZeile(paket, 'kgv', keys10)
-  const pfcfWerte = werteAusZeile(paket, 'pfcf', keys5)
+  const peWerte5Roh = werteAusZeile(paket, 'kgv', keys5)
+  const peWerte10Roh = werteAusZeile(paket, 'kgv', keys10)
+  const peWerte5 = bereinigeBewertungsSerie(peWerte5Roh, MAX_PE, 3)
+  const peWerte10 = bereinigeBewertungsSerie(peWerte10Roh, MAX_PE, 3)
+  const pfcfWerte = bereinigeBewertungsSerie(werteAusZeile(paket, 'pfcf', keys5), MAX_PFCF, 3)
   const fcfYieldWerte = pfcfWerte.map((m) => (m > 0 ? (1 / m) * 100 : 0)).filter((v) => v > 0)
-  const evEbitda5 = werteAusZeile(paket, 'ev_ebitda', keys5)
-  const evEbitda10 = werteAusZeile(paket, 'ev_ebitda', keys10)
-  const evRev5 = werteAusZeile(paket, 'ev_rev', keys5)
+  const evEbitda5 = bereinigeBewertungsSerie(
+    werteAusZeile(paket, 'ev_ebitda', keys5),
+    MAX_EV_EBITDA,
+    1,
+  )
+  const evEbitda10 = bereinigeBewertungsSerie(
+    werteAusZeile(paket, 'ev_ebitda', keys10),
+    MAX_EV_EBITDA,
+    1,
+  )
+  const evRev5 = bereinigeBewertungsSerie(werteAusZeile(paket, 'ev_rev', keys5), MAX_EV_REV, 0.2)
 
   const medianPe5y = median(peWerte5)
   const medianFcfYield5y = median(fcfYieldWerte)
   const medianEvEbitda5y = median(evEbitda5)
   const medianEvRev5y = median(evRev5)
 
-  const peAktuell = aktuellesMultiple(paket, 'kgv', ['ltm_pe', 'ntm_pe'], peWerte5)
+  const peAktuell = aktuellesMultiple(paket, 'kgv', ['ltm_pe', 'ntm_pe'], peWerte5Roh)
   const evEbitdaAktuell = aktuellesMultiple(
     paket,
     'ev_ebitda',
     ['ntm_ev_ebitda', 'ltm_ev_ebitda'],
-    evEbitda5,
+    werteAusZeile(paket, 'ev_ebitda', keys5),
   )
-  const evRevAktuell = aktuellesMultiple(paket, 'ev_rev', ['ntm_ev_rev', 'ltm_ev_rev'], evRev5)
+  const evRevAktuell = aktuellesMultiple(
+    paket,
+    'ev_rev',
+    ['ntm_ev_rev', 'ltm_ev_rev'],
+    werteAusZeile(paket, 'ev_rev', keys5),
+  )
 
   const hatDaten =
     medianPe5y != null ||

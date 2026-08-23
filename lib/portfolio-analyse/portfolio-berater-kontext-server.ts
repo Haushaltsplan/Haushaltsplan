@@ -4,6 +4,8 @@ import 'server-only'
 
 import { ladeLivePortfolioServer, type LivePortfolioServerPaket } from '@/lib/portfolio-analyse/depot-gewichte-server'
 import { sektorFuerPosition } from '@/lib/portfolio-analyse/isin-sektoren'
+import { holeSektorenBatch } from '@/lib/portfolio-analyse/sektor-batch-server'
+import { lookupAusSektorBatch } from '@/lib/portfolio-analyse/sektor-fundamental-client'
 import {
   ladeAlleEarningsCallKiAusCloud,
   ladeAlleSecBerichtKiAusCloud,
@@ -76,6 +78,57 @@ function excerptLimit(ticker: string, focusTicker: string | null, imDepot: boole
   return 500
 }
 
+/**
+ * Numerische Kernsignale als Objekt — niemals mid-JSON abschneiden
+ * (sonst stürzt JSON.parse am Frontend mit SyntaxError ab).
+ */
+function datenSignaleKompakt(
+  z: NonNullable<NachkaufScanEintrag['datenSignale']>,
+  fokus: boolean,
+): Record<string, unknown> {
+  const out: Record<string, unknown> = {
+    nrrPct: z.nrrPct ?? null,
+    ruleOf40: z.ruleOf40 ?? null,
+    shortRatio: z.shortRatio ?? null,
+    shortFloatPct: z.shortFloatPct ?? null,
+    pePerzentil5y: z.pePerzentil5y ?? null,
+    fcfConversionPct: z.fcfConversionPct ?? null,
+    aktienVerwaesserungJaehrlichPct: z.aktienVerwaesserungJaehrlichPct ?? null,
+    interestCoverage: z.interestCoverage ?? null,
+    gaapAdjEpsLueckePct: z.gaapAdjEpsLueckePct ?? null,
+    epsBeatRate12Pct: z.epsBeatRate12Pct ?? null,
+    umsatzBeatRate12Pct: z.umsatzBeatRate12Pct ?? null,
+    capitalAllocationScorePct: z.capitalAllocationScorePct ?? null,
+    capitalAllocationLabel: z.capitalAllocationLabel ?? null,
+    netDebtEbitda: z.netDebtEbitda ?? null,
+    pegRatio: z.pegRatio ?? null,
+    reinvestitionsquotePct: z.reinvestitionsquotePct ?? null,
+    incrementalRoicPct: z.incrementalRoicPct ?? null,
+    insiderNettoRichtung: z.insiderNettoRichtung ?? null,
+    debtRefi24mPct: z.debtRefi24mPct ?? null,
+    rdAktivierungsquotePct: z.rdAktivierungsquotePct ?? null,
+    umsatzanteilTop1KundenPct: z.umsatzanteilTop1KundenPct ?? null,
+    datenVollstaendigkeitPct: z.datenVollstaendigkeitPct ?? null,
+    earningsSentimentScore: z.earningsSentimentScore ?? null,
+    tageBisEarnings: z.tageBisEarnings ?? null,
+  }
+  if (fokus) {
+    out.sloanRatio = z.sloanRatio ?? null
+    out.beneishMScore = z.beneishMScore ?? null
+    out.beneishRisiko = z.beneishRisiko ?? null
+    out.bruttoMargeStd10y = z.bruttoMargeStd10y ?? null
+    out.segmentKonzentrationPct = z.segmentKonzentrationPct ?? null
+    out.nettoCashMio = z.nettoCashMio ?? null
+    out.goodwillAnteilPct = z.goodwillAnteilPct ?? null
+    out.dsoTrendDelta = z.dsoTrendDelta ?? null
+    out.dioTrendDelta = z.dioTrendDelta ?? null
+    if (z.prognoseProfil?.zusammenfassung) {
+      out.prognoseKurz = kuerze(z.prognoseProfil.zusammenfassung, 180)
+    }
+  }
+  return out
+}
+
 function scanZeileVoll(
   e: NachkaufScanEintrag,
   imDepot: boolean,
@@ -143,9 +196,7 @@ function scanZeileVoll(
         }
       : null,
     notiz: e.notiz ? kuerze(e.notiz, 400) : null,
-    datenSignale: e.datenSignale
-      ? kuerze(JSON.stringify(e.datenSignale), fokus ? 600 : 250)
-      : null,
+    datenSignale: e.datenSignale ? datenSignaleKompakt(e.datenSignale, fokus) : null,
     deepResearchAuszug: e.tiefenAnalyse?.memo
       ? kuerze(e.tiefenAnalyse.memo, fokus ? 2500 : imDepot ? 800 : 400)
       : null,
@@ -486,6 +537,22 @@ export async function bauePortfolioBeraterKontext(opts?: PortfolioBeraterAnfrage
 
   const { live, meta } = depotPaket
 
+  const sektorBatch = await holeSektorenBatch(
+    live.positionen
+      .filter((p) => p.wertLiveEur > 0)
+      .slice(0, 120)
+      .map((p) => {
+        const isin = p.isin?.toUpperCase() ?? null
+        const m = isin ? meta.get(isin) : undefined
+        return {
+          isin,
+          symbolYahoo: m?.symbolYahoo ?? p.symbolYahoo ?? null,
+          name: p.anzeigeName ?? p.name,
+        }
+      }),
+  ).catch(() => ({} as Record<string, { sektor: string | null; branche: string | null }>))
+  const sektorLookup = lookupAusSektorBatch(sektorBatch)
+
   const positionen = live.positionen
     .filter((p) => p.wertLiveEur > 0)
     .sort((a, b) => b.gewichtProzent - a.gewichtProzent)
@@ -503,7 +570,7 @@ export async function bauePortfolioBeraterKontext(opts?: PortfolioBeraterAnfrage
         gewinnVerlustPct:
           p.gewinnVerlustProzent != null ? round1(p.gewinnVerlustProzent) : null,
         assetKlasse: p.assetKlasse,
-        sektor: sektorFuerPosition(p),
+        sektor: sektorFuerPosition(p, sektorLookup),
         stueck: round1(p.stueck),
         einstandEur: round0(p.einstandEur),
         kursLiveEur: p.kursLiveEur != null ? round1(p.kursLiveEur) : null,

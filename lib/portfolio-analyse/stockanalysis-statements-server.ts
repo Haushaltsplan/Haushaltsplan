@@ -197,7 +197,7 @@ function istZwischenbericht(q: string): boolean {
 function mappeSerie(
   meta: SpaltenMeta,
   values: unknown[],
-  absNegativAlsPositiv = false,
+  modus: 'raw' | 'abfluss' = 'raw',
 ): Map<string, number> {
   const out = new Map<string, number>()
   for (let i = 0; i < meta.jahre.length; i++) {
@@ -205,7 +205,8 @@ function mappeSerie(
     const jahr = meta.jahre[i]!
     const raw = parseZahl(values[i])
     if (raw == null) continue
-    const usd = absNegativAlsPositiv ? Math.abs(raw) : raw
+    // CapEx/Investitionen: Cash-Abfluss immer ≤ 0 (wie Macrotrends/Yahoo), nie abs().
+    const usd = modus === 'abfluss' ? (raw > 0 ? -raw : raw) : raw
     const mio = zuMio(usd)
     if (mio == null) continue
     const iso =
@@ -339,6 +340,13 @@ function parseBsBlock(block: string): FundamentalMetrikZeile[] {
       isos,
       mappeSerie(meta, parseArrayMitAliases(block, 'goodwill')),
     ),
+    baueZeile(
+      'intangibles',
+      'Immaterielle Vermögenswerte',
+      'bilanz',
+      isos,
+      mappeSerie(meta, parseArrayMitAliases(block, 'otherIntangibles', 'intangibles')),
+    ),
   ]
   return zeilen.filter((z): z is FundamentalMetrikZeile => z != null)
 }
@@ -364,7 +372,7 @@ function parseCfBlock(block: string): FundamentalMetrikZeile[] {
       'CapEx (Investitionen)',
       'cashflow',
       isos,
-      mappeSerie(meta, parseArrayMitAliases(block, 'capex'), true),
+      mappeSerie(meta, parseArrayMitAliases(block, 'capex'), 'abfluss'),
     ),
     baueZeile(
       'fcf',
@@ -490,9 +498,15 @@ export async function ladeStockanalysisStatementsRoh(opts: {
 }
 
 /** Snapshots für Incremental ROIC aus SA-Statements. */
-export function snapsFuerIncrementalRoic(
-  roh: StockanalysisStatementsRoh | null,
-): Array<{ jahr: number; nopatMio: number; icMio: number; capexMio: number | null; daMio: number | null }> {
+export function snapsFuerIncrementalRoic(roh: StockanalysisStatementsRoh | null): Array<{
+  jahr: number
+  nopatMio: number
+  icMio: number
+  capexMio: number | null
+  daMio: number | null
+  goodwillMio: number | null
+  intangiblesMio: number | null
+}> {
   if (!roh) return []
   const ebit = roh.zeilen.find((z) => z.id === 'ebit')
   const equity = roh.zeilen.find((z) => z.id === 'eigenkapital')
@@ -500,19 +514,22 @@ export function snapsFuerIncrementalRoic(
   const cash = roh.zeilen.find((z) => z.id === 'bargeld')
   const capex = roh.zeilen.find((z) => z.id === 'capex')
   const da = roh.zeilen.find((z) => z.id === 'da')
+  const gw = roh.zeilen.find((z) => z.id === 'goodwill')
+  const inta = roh.zeilen.find((z) => z.id === 'intangibles')
   const out: Array<{
     jahr: number
     nopatMio: number
     icMio: number
     capexMio: number | null
     daMio: number | null
+    goodwillMio: number | null
+    intangiblesMio: number | null
   }> = []
   for (const p of roh.perioden) {
     const jahr = parseInt(p.iso.slice(0, 4), 10)
     const oi = ebit?.werte[p.iso]
     const eq = equity?.werte[p.iso]
     if (oi == null || eq == null || !Number.isFinite(jahr)) continue
-    // NOPAT ≈ EBIT × (1 − 21 %) wenn kein Steuersatz
     const nopatMio = oi * 0.79
     const icMio = eq + (debt?.werte[p.iso] ?? 0) - (cash?.werte[p.iso] ?? 0)
     if (!Number.isFinite(nopatMio) || !Number.isFinite(icMio)) continue
@@ -522,6 +539,8 @@ export function snapsFuerIncrementalRoic(
       icMio,
       capexMio: capex?.werte[p.iso] ?? null,
       daMio: da?.werte[p.iso] ?? null,
+      goodwillMio: gw?.werte[p.iso] ?? null,
+      intangiblesMio: inta?.werte[p.iso] ?? null,
     })
   }
   return out.sort((a, b) => a.jahr - b.jahr)

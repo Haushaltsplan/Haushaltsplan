@@ -4,7 +4,7 @@
 
 import 'server-only'
 
-import { isinKenntnis } from '@/lib/portfolio-analyse/isin-kenntnisse'
+import { analyseTickerFuerPosition, isinKenntnis } from '@/lib/portfolio-analyse/isin-kenntnisse'
 import { ladeYahooLiveKurs } from '@/lib/portfolio-analyse/yahoo-live-quote-server'
 import { yahooSchlusskursAm } from '@/lib/portfolio-analyse/yahoo-corporate-actions-client'
 import { createSupabaseAdmin } from '@/lib/supabase-admin'
@@ -146,8 +146,7 @@ type TrackingMeta = {
 }
 
 function tickerAusWhitelist(isin: string): string {
-  const k = isinKenntnis(isin)
-  return (k?.symbolYahoo?.replace(/\.[^.]+$/, '') ?? isin).toUpperCase()
+  return analyseTickerFuerPosition(isin).toUpperCase() || isin.toUpperCase()
 }
 
 /** Scan-Eintrag oder Whitelist-Fallback für Tracking-Snapshot. */

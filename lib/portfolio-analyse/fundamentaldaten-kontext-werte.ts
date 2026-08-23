@@ -266,10 +266,17 @@ export function baueKontextWerte(ctx: FundamentalKontextInput) {
 
   const roa = letzterWert(roaZeile, perioden)
 
-  const netDebt =
-    ctx.yahoo?.totalDebt != null && ctx.yahoo?.totalCash != null
-      ? ctx.yahoo.totalDebt - ctx.yahoo.totalCash
-      : null
+  const bilanzDebtMio = letzterWert(zeile('gesamtverschuldung'), perioden)
+  const bilanzCashMio = letzterWert(zeile('bargeld'), perioden)
+  const bilanzNdMio = letzterWert(zeile('nettoverschuldung'), perioden)
+  let netDebt: number | null = null
+  if (bilanzNdMio != null) {
+    netDebt = bilanzNdMio * 1_000_000
+  } else if (bilanzDebtMio != null && bilanzCashMio != null) {
+    netDebt = (bilanzDebtMio - bilanzCashMio) * 1_000_000
+  } else if (ctx.yahoo?.totalDebt != null && ctx.yahoo?.totalCash != null) {
+    netDebt = ctx.yahoo.totalDebt - ctx.yahoo.totalCash
+  }
   const netDebtEbitda =
     netDebt != null && ebitdaMio != null && ebitdaMio > 0 ? netDebt / (ebitdaMio * 1_000_000) : null
 
@@ -323,7 +330,12 @@ export function baueKontextWerte(ctx: FundamentalKontextInput) {
     ctx.yahoo?.revenueGrowth != null ? ctx.yahoo.revenueGrowth * 100 : umsatzCagr3
 
   const ruleOf40 =
-    revGrowthPct != null && fcfMarge != null ? revGrowthPct + fcfMarge : null
+    revGrowthPct != null
+      ? (() => {
+          const marge = Math.max(fcfMarge ?? Number.NEGATIVE_INFINITY, ebitMarge ?? Number.NEGATIVE_INFINITY)
+          return Number.isFinite(marge) ? revGrowthPct + marge : null
+        })()
+      : null
 
   const assetTurnover = letzterWert(kapitalumschlagZeile, perioden)
 

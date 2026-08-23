@@ -13,7 +13,7 @@ import 'server-only'
 
 import { berechneHistorischeBewertung } from '@/lib/portfolio-analyse/fundamentaldaten-historische-bewertung'
 import { ladeFundamentaldaten } from '@/lib/portfolio-analyse/fundamentaldaten-server'
-import { isinKenntnis } from '@/lib/portfolio-analyse/isin-kenntnisse'
+import { analyseTickerFuerPosition, isinKenntnis } from '@/lib/portfolio-analyse/isin-kenntnisse'
 import { ladeSecBerichtKiCacheFuerTicker } from '@/lib/portfolio-analyse/sec-berichte-ki-cache-server'
 import { ladeEarningsCallKiCacheFuerTicker } from '@/lib/portfolio-analyse/earnings-call-unternehmen-cache-server'
 import { sentimentScoreAusZusammenfassung } from '@/lib/portfolio-analyse/earnings-call-sentiment'
@@ -63,10 +63,9 @@ import type { NachkaufScanAnfrage, NachkaufScanEintrag, NachkaufScanPaket } from
 /** Positionen, die innerhalb dieser Zeit bereits gescannt wurden, werden übersprungen. */
 const SKIP_WENN_JUENGER_MS = 12 * 60 * 60 * 1000 // 12 Stunden
 
-/** Positionen → Ticker-Key (wie beim Speichern). */
+/** Positionen → Analyse-Ticker (Macrotrends/US-Bare, nicht H11.SG / NFLX.DE). */
 function tickerFuerPosition(p: WhitelistPosition): string {
-  const k = isinKenntnis(p.isin)
-  return ((k?.symbolYahoo ?? p.symbolYahoo)?.replace(/\.[^.]+$/, '') ?? p.isin).toUpperCase()
+  return analyseTickerFuerPosition(p.isin, p.symbolYahoo ?? isinKenntnis(p.isin)?.symbolYahoo)
 }
 
 /** Neuestes Scan-Datum über alle Einträge (nicht Score-Sortierung!). */
@@ -194,7 +193,8 @@ async function scanneEinenTitel(opts: {
   const kenntnis = isinKenntnis(isin)
   // Watchlist-Kandidaten fehlen in ISIN_KENNTNISSE → Symbol kommt direkt aus dem Sync-Eintrag
   const symbolYahoo = kenntnis?.symbolYahoo ?? position.symbolYahoo ?? null
-  const ticker = symbolYahoo?.replace(/\.[^.]+$/, '') ?? isin
+  // Analyse-Ticker: HLMA statt H11, NFLX statt NFLX.DE (Kurs-Listing bleibt symbolYahoo)
+  const ticker = analyseTickerFuerPosition(isin, symbolYahoo)
 
   // Fundamentaldaten laden (Macrotrends + Yahoo)
   let paket
@@ -459,8 +459,7 @@ export async function laufeScan(anfrage: NachkaufScanAnfrage): Promise<NachkaufS
   // Einzelner Ticker → direkt scannen (Legacy-Pfad)
   if (anfrage.ticker) {
     const positionEintrag = kandidaten.find((p) => {
-      const k = isinKenntnis(p.isin)
-      const ticker = (k?.symbolYahoo ?? p.symbolYahoo)?.replace(/\.[^.]+$/, '') ?? ''
+      const ticker = analyseTickerFuerPosition(p.isin, p.symbolYahoo ?? isinKenntnis(p.isin)?.symbolYahoo)
       return ticker.toUpperCase() === anfrage.ticker!.toUpperCase() || p.isin === anfrage.ticker
     })
 

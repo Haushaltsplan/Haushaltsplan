@@ -14,6 +14,7 @@ import { baueNtmBewertungsZeilen } from '@/lib/portfolio-analyse/fundamentaldate
 import { ergaenzeDividendenHistorieZeilen } from '@/lib/portfolio-analyse/fundamentaldaten-dividenden-historie-zeilen'
 import { ergaenzeEvMultiplesZeilen } from '@/lib/portfolio-analyse/fundamentaldaten-ev-multiples-zeilen'
 import { ergaenzeNettoverschuldungZeilen } from '@/lib/portfolio-analyse/fundamentaldaten-nettoverschuldung-zeilen'
+import { ergaenzeMargenZeilen } from '@/lib/portfolio-analyse/fundamentaldaten-margen-zeilen'
 import { ergaenzeYahooSchuldenZeilen } from '@/lib/portfolio-analyse/fundamentaldaten-yahoo-schulden-zeilen'
 import { ladeFundamentalSchaetzungen, filterSchaetzungenGegenHistorisch, fuelleFehlendeEpsSchaetzungen } from '@/lib/portfolio-analyse/fundamentaldaten-schaetzungen-server'
 import {
@@ -612,6 +613,7 @@ export async function ladeFundamentaldaten(anfrage: FundamentaldatenAnfrage): Pr
     })
   }
   ergaenzeNettoverschuldungZeilen(merged.perioden, merged.zeilen)
+  ergaenzeMargenZeilen(merged.perioden, merged.zeilen)
   ergaenzeEvMultiplesZeilen(merged.perioden, merged.zeilen)
   ergaenzeRoicAusBilanz(merged.perioden, merged.zeilen)
   ergaenzeWorkingCapitalTageZeilen(merged.perioden, merged.zeilen)

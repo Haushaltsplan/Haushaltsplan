@@ -21,9 +21,10 @@ import {
 import type { NachkaufScanEintrag, MonatsEmpfehlung, SparplanPosten, VerkaufPosten } from './nachkauf-radar-types'
 import {
   berechneBasisVerkaufAllokation,
+  filterBeobachtungsKandidaten,
   filterVerkaufKandidaten,
 } from './nachkauf-trim-signal'
-import { berechneRegelAllokation } from './nachkauf-radar-score'
+import { berechneRegelAllokation, waehleMonatsNachkaufKandidaten } from './nachkauf-radar-score'
 
 const DEFAULT_BUDGET_EUR = 500
 /**
@@ -91,7 +92,11 @@ function kaufSchwellenText(): string {
   )
 }
 
-function baueSparHinweis(alle: NachkaufScanEintrag[], budgetEur: number): string {
+function baueSparHinweis(
+  alle: NachkaufScanEintrag[],
+  budgetEur: number,
+  beobachtung: NachkaufScanEintrag[] = [],
+): string {
   const gruenOhneDr = alle.filter((e) => e.ampel === 'gruen' && !e.tiefenAnalyse)
   const gruenScoreZuNiedrig = alle.filter(
     (e) =>
@@ -113,10 +118,17 @@ function baueSparHinweis(alle: NachkaufScanEintrag[], budgetEur: number): string
       e.kaufTriggerAusgeloest &&
       !e.tiefenAnalyse,
   )
+  const verkaufHinweis =
+    beobachtung.length > 0
+      ? `Keine Euro-Verkaufs-Allokation; Qualitäts-Beobachtung aktiv: ${beobachtung
+          .map((e) => e.ticker)
+          .join(', ')}. `
+      : 'Keine Teil-/Vollverkaufs-Signale. '
   let text =
     'Keine Kauf-Kandidaten für Stufe C: ' +
     kaufSchwellenText() +
-    '. Keine Verkaufs-Signale. ' +
+    '. ' +
+    verkaufHinweis +
     String(budgetEur) +
     ' € auf Trade Republic sparen (2,25 % p.a.).'
   if (gruenOhneDr.length > 0) {
@@ -233,7 +245,7 @@ function baueKandidatenText(kandidaten: NachkaufScanEintrag[], budgetEur: number
 // ---------------------------------------------------------------------------
 
 function baueVerkaufKandidatenText(kandidaten: NachkaufScanEintrag[]): string {
-  if (kandidaten.length === 0) return '_Keine Verkaufs-Kandidaten identifiziert._'
+  if (kandidaten.length === 0) return '_Keine Teil-/Vollverkaufs-Kandidaten (Euro-Allokation)._'
 
   return kandidaten.map((e) => {
     const ts = e.trimSignal!
@@ -264,9 +276,31 @@ function baueVerkaufKandidatenText(kandidaten: NachkaufScanEintrag[]): string {
   }).join('\n\n---\n\n')
 }
 
+function baueBeobachtungsKandidatenText(kandidaten: NachkaufScanEintrag[]): string {
+  if (kandidaten.length === 0) return '_Keine aktiven Qualitäts-Beobachtungen._'
+
+  return kandidaten.map((e) => {
+    const ts = e.trimSignal!
+    const faktoren = ts.faktoren.map((f) => `  - [${f.kategorie}] ${f.text}`).join('\n')
+    return [
+      `### ${e.ticker} – ${e.name}`,
+      `Aktion: **ueberpruefen** (kein Euro-Verkauf) | Dringlichkeit: ${ts.dringlichkeit} | Priorität: ${ts.prioritaet}/100`,
+      `Score: ${e.score}/100 | Ampel: ${e.ampel} | Depot-Anteil: ${e.depotGewichtPct?.toFixed(1) ?? '?'}%`,
+      `Sell-Trigger: ${e.sellTriggerOk ? 'OK' : 'AKTIV'} | Mantra: ${e.mantraScorePct?.toFixed(0) ?? '?'}%`,
+      ts.grund ? `Grund: ${ts.grund}` : '',
+      '',
+      '**Faktoren:**',
+      faktoren || '  - (keine)',
+    ]
+      .filter(Boolean)
+      .join('\n')
+  }).join('\n\n---\n\n')
+}
+
 function bauePrompt(
   kandidaten: NachkaufScanEintrag[],
   verkaufKandidaten: NachkaufScanEintrag[],
+  beobachtungsKandidaten: NachkaufScanEintrag[],
   basisAllokation: SparplanPosten[],
   basisVerkauf: VerkaufPosten[],
   budgetEur: number,
@@ -281,7 +315,7 @@ function bauePrompt(
 
   const basisVerkaufText = basisVerkauf.length > 0
     ? basisVerkauf.map((p) => `  • ${p.ticker}: ~${p.verkaufAnteilPct} % verkaufen (${p.dringlichkeit}) — ${p.begruendung}`).join('\n')
-    : '  • Regelbasiert: kein Verkauf empfohlen'
+    : '  • Regelbasiert: kein Euro-Verkauf empfohlen'
 
   return `Du bist ein rationaler Investment-Assistent für einen **langfristigen** Quality-Investor.
 Ziel: Markt outperformen durch disziplinierte Kapitalallokation — nicht durch häufiges Trading.
@@ -289,12 +323,14 @@ Ziel: Markt outperformen durch disziplinierte Kapitalallokation — nicht durch 
 ## Aufgabe
 1. Erkläre und prüfe die **regelbasierte Euro-Allokation** unten — die Beträge sind verbindlich.
 2. Bewerte Verkaufs-Hinweise — aber **übertreibe nicht**: Default ist Halten.
+3. Nenne Qualitäts-Beobachtungen explizit (WM/UNP/ATD-ähnlich) — **nicht** behaupten „keine Verkaufs-Kandidaten“, wenn Beobachtungen existieren.
 
 ## Rahmenbedingungen (WICHTIG)
 - **Die Euro-Beträge der Basis-Allokation sind FIX.** Du darfst Positionen nur **streichen oder kürzen** (und den Rest als „Gespart“ ausweisen), niemals Beträge erhöhen oder umverteilen.
 - **Langfrist-Horizont**: Jahre, nicht Monate. Verkäufe sind die Ausnahme, nicht die Regel.
 - **Halten ist der Default**: Auch bei hoher Bewertung oder kurzfristig schwachem Score nicht reflexartig verkaufen.
 - Verkäufe/Teilverkäufe nur bei **kombinierter, klarer Evidenz** (z. B. Klumpenrisiko + teure Bewertung, oder Sell-Trigger-Warnung + Score-Verfall).
+- **aktion „ueberpruefen“** = Beobachtung/These prüfen, **kein** Verkaufsauftrag. Im Text: „Beobachten“ + warum — nicht „Gesamtdepot: Halten“ ohne Erwähnung.
 - Kein Zwangskauf: Wenn die Basis-Allokation leer ist oder Chance/Risiko schwach → sparen (Trade Republic 2,25 % p.a.)
 - Teilverkäufe: typisch 10–25 % der Position, nicht mehr — Rest langfristig halten
 - Vollverkauf: nur wenn die Investmenthypothese fundamental gebrochen ist (Sell-Trigger-Warnung + sehr niedriger Score)
@@ -311,12 +347,16 @@ Ziel: Markt outperformen durch disziplinierte Kapitalallokation — nicht durch 
 ## Regelbasierte Basis-Allokation (Käufe)
 ${basisText}
 
-## Regelbasierte Verkaufs-Hinweise (selten — nur klare Fälle)
+## Regelbasierte Verkaufs-Hinweise (Euro — selten, nur klare Fälle)
 ${basisVerkaufText}
 
-## Verkaufs-Kandidaten (falls vorhanden — kritisch prüfen, nicht automatisch umsetzen)
+## Verkaufs-Kandidaten Teil-/Vollverkauf (kritisch prüfen, nicht automatisch umsetzen)
 
 ${baueVerkaufKandidatenText(verkaufKandidaten)}
+
+## Qualitäts-Beobachtung (ueberpruefen — kein Euro-Verkauf, aber erwähnen!)
+
+${baueBeobachtungsKandidatenText(beobachtungsKandidaten)}
 
 ## Kauf-Kandidaten mit Deep Research (${kaufSchwellenText()})
 
@@ -328,13 +368,13 @@ ${baueKandidatenText(kandidaten, budgetEur)}
 
 Beantworte folgende Punkte **auf Deutsch**:
 
-**1. Gesamtbewertung:** Marktlage + gibt es ernsthafte Verkaufsfälle? (2–3 Sätze, zurückhaltend bei Verkäufen)
+**1. Gesamtbewertung:** Marktlage + gibt es ernsthafte Verkaufsfälle oder Beobachtungen? (2–3 Sätze). Wenn Beobachtungen existieren: nenne die Ticker — nicht „keine Verkaufs-Kandidaten / Gesamtdepot Halten“ ohne sie.
 
 **2. Positions-Bewertung (Verkauf/Halten/Beobachten):**
-Für jeden Verkaufs-Kandidaten: Halten, optional Teilverkauf (wie viel %), oder Vollverkauf — und warum.
-Wenn die Evidenz nicht ausreicht: explizit **Halten** empfehlen und begründen.
+Für jeden Verkaufs- und Beobachtungs-Kandidaten: Halten, Beobachten, optional Teilverkauf (wie viel %), oder Vollverkauf — und warum.
+Wenn die Evidenz für Verkauf nicht ausreicht: explizit **Beobachten** oder **Halten** empfehlen und begründen.
 Format:
-- TICKER: Halten / ~XX % Teilverkauf / Vollverkauf prüfen — Begründung
+- TICKER: Halten / Beobachten / ~XX % Teilverkauf / Vollverkauf prüfen — Begründung
 
 **3. Kauf-Kommentar:**
 Für jede Position der Basis-Allokation: übernehmen, kürzen oder streichen — mit Deep-Research-Bezug. Keine neuen Euro-Beträge erfinden.
@@ -371,26 +411,24 @@ export async function generiereKaufempfehlung(
 ): Promise<KaufempfehlungErgebnis> {
   const jetzt = new Date().toISOString()
 
-  // Verkaufs-Kandidaten (unabhängig von Kauf-Score)
+  // Verkaufs-/Beobachtungs-Kandidaten (unabhängig von Kauf-Score)
   const verkaufKandidaten = filterVerkaufKandidaten(alleErgebnisse)
+  const beobachtungsKandidaten = filterBeobachtungsKandidaten(alleErgebnisse)
   const basisVerkaufAllokation = berechneBasisVerkaufAllokation(alleErgebnisse)
 
-  // Kauf-Kandidaten: kalibriertes Grün + Deep Research (Score-Fallback s. istKiKaufKandidat)
-  const kandidaten = alleErgebnisse
-    .filter(istKiKaufKandidat)
-    .sort((a, b) => {
-      // Whitelist vor Watchlist-Neukauf
-      const aWl = istWatchlistKandidat(a.isin) ? 1 : 0
-      const bWl = istWatchlistKandidat(b.isin) ? 1 : 0
-      if (aWl !== bWl) return aWl - bWl
-      if (a.kaufTriggerAusgeloest !== b.kaufTriggerAusgeloest) return a.kaufTriggerAusgeloest ? -1 : 1
-      if (a.klumpenrisiko !== b.klumpenrisiko) return a.klumpenrisiko ? 1 : -1
-      return b.score - a.score
-    })
+  // Kauf-Kandidaten = dieselben Top-N Grün wie Radar-Banner (kein Drift zu Extra-Titeln).
+  // Score-/DR-Filter nur als Hinweis im Prompt; Euro-Basis bleibt die Monats-Liste.
+  const monatsKandidaten = waehleMonatsNachkaufKandidaten(alleErgebnisse)
+  const kandidaten = monatsKandidaten.filter(istKiKaufKandidat)
+  const allokationQuelle = kandidaten.length > 0 ? kandidaten : monatsKandidaten
 
-  // Fallback ohne KI wenn weder Käufe noch Verkäufe
-  if (kandidaten.length === 0 && verkaufKandidaten.length === 0) {
-    const sparText = baueSparHinweis(alleErgebnisse, budgetEur)
+  // Fallback ohne KI wenn weder Käufe noch Verkäufe noch Beobachtungen
+  if (
+    allokationQuelle.length === 0 &&
+    verkaufKandidaten.length === 0 &&
+    beobachtungsKandidaten.length === 0
+  ) {
+    const sparText = baueSparHinweis(alleErgebnisse, budgetEur, beobachtungsKandidaten)
     const sparen: MonatsEmpfehlung = { typ: 'sparen', text: sparText }
     return {
       ok: true,
@@ -404,9 +442,16 @@ export async function generiereKaufempfehlung(
     }
   }
 
-  // Nur Verkäufe, keine Käufe — trotzdem KI-Synthese
-  if (kandidaten.length === 0) {
-    const prompt = bauePrompt([], verkaufKandidaten, [], basisVerkaufAllokation, budgetEur)
+  // Nur Verkäufe/Beobachtung, keine Käufe — trotzdem KI-Synthese
+  if (allokationQuelle.length === 0) {
+    const prompt = bauePrompt(
+      [],
+      verkaufKandidaten,
+      beobachtungsKandidaten,
+      [],
+      basisVerkaufAllokation,
+      budgetEur,
+    )
     const kiText = await rufeKiAuf(prompt)
     return {
       ok: true,
@@ -421,11 +466,18 @@ export async function generiereKaufempfehlung(
     }
   }
 
-  // Regelbasierte Basis-Allokation (verbindliche Euro-Beträge)
-  const basisAllokation = berechneRegelAllokation(kandidaten, budgetEur)
+  // Regelbasierte Basis-Allokation (verbindliche Euro-Beträge) — identisch zum Radar-Banner
+  const basisAllokation = berechneRegelAllokation(allokationQuelle, budgetEur)
 
-  // Gemini-Synthese (Käufe + Verkäufe)
-  const prompt = bauePrompt(kandidaten, verkaufKandidaten, basisAllokation, basisVerkaufAllokation, budgetEur)
+  // Gemini-Synthese (Käufe + Verkäufe + Beobachtung) — KI darf nur kürzen/streichen, nicht erhöhen/erweitern
+  const prompt = bauePrompt(
+    allokationQuelle,
+    verkaufKandidaten,
+    beobachtungsKandidaten,
+    basisAllokation,
+    basisVerkaufAllokation,
+    budgetEur,
+  )
   const kiResult = await rufeKiAuf(prompt)
   let kiText = kiResult.text
   const fehler = kiResult.fehler
@@ -444,7 +496,7 @@ export async function generiereKaufempfehlung(
   const monatsEmpfehlung: MonatsEmpfehlung = basisAllokation.length > 0
     ? {
         typ: 'nachkauf',
-        tickers: kandidaten.map((e) => e.ticker),
+        tickers: allokationQuelle.map((e) => e.ticker),
         text: kiText,
         sparplanAllokation: basisAllokation,
       }
@@ -454,7 +506,7 @@ export async function generiereKaufempfehlung(
 
   return {
     ok: !fehler,
-    kandidatenAnzahl: kandidaten.length,
+    kandidatenAnzahl: allokationQuelle.length,
     verkaufKandidatenAnzahl: verkaufKandidaten.length,
     basisAllokation,
     basisVerkaufAllokation,

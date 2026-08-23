@@ -486,18 +486,30 @@ export async function ladeNachkaufZusatzSignale(opts: {
   let capAlloc = capAllocAusPaket(capital)
   let capitalAllocationScorePct = capital?.scorePct ?? null
   let capitalAllocationLabel: string | null = capital?.scoreLabel ?? null
-  if (capAlloc.capAllocCapex == null || capitalAllocationScorePct == null) {
+  const capAllocFehlt =
+    capitalAllocationScorePct == null ||
+    !capital?.ok ||
+    capAlloc.capAllocCapex == null ||
+    capAlloc.capAllocCapex === 'keine_daten' ||
+    capAlloc.capAllocMna == null ||
+    capAlloc.capAllocMna === 'keine_daten'
+  if (capAllocFehlt) {
     const mt = capAllocAusFundamentalPaket(opts.paket)
     if (mt) {
+      const nimm = <T extends string>(a: T | null, b: T | null): T | null =>
+        a != null && a !== 'keine_daten' ? a : b
       capAlloc = {
-        capAllocBuyback: capAlloc.capAllocBuyback ?? mt.capAllocBuyback,
-        capAllocDividend: capAlloc.capAllocDividend ?? mt.capAllocDividend,
-        capAllocCapex: capAlloc.capAllocCapex ?? mt.capAllocCapex,
-        capAllocMna: capAlloc.capAllocMna ?? mt.capAllocMna,
+        capAllocBuyback: nimm(capAlloc.capAllocBuyback, mt.capAllocBuyback),
+        capAllocDividend: nimm(capAlloc.capAllocDividend, mt.capAllocDividend),
+        capAllocCapex: nimm(capAlloc.capAllocCapex, mt.capAllocCapex),
+        capAllocMna: nimm(capAlloc.capAllocMna, mt.capAllocMna),
         capAllocWarnungen: Math.max(capAlloc.capAllocWarnungen, mt.capAllocWarnungen),
       }
       capitalAllocationScorePct = capitalAllocationScorePct ?? mt.capitalAllocationScorePct
-      capitalAllocationLabel = capitalAllocationLabel ?? mt.capitalAllocationLabel
+      capitalAllocationLabel =
+        capitalAllocationLabel && capitalAllocationLabel !== 'keine_daten'
+          ? capitalAllocationLabel
+          : mt.capitalAllocationLabel
     }
   }
 

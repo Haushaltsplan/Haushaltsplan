@@ -40,8 +40,9 @@ export function ergaenzeNettoverschuldungZeilen(
     const d = wert(zeilen, 'gesamtverschuldung', p.iso)
     const c = wert(zeilen, 'bargeld', p.iso)
     const e = wert(zeilen, 'ebitda', p.iso)
-    if (d != null || c != null) {
-      const nd = (d ?? 0) - (c ?? 0)
+    // Beide Seiten nötig — fehlendes Cash nicht als 0 behandeln (sonst Gross Debt als Net Debt).
+    if (d != null && c != null) {
+      const nd = d - c
       ndWerte[p.iso] = nd
       hatNd = true
       if (e != null && e > 0) {

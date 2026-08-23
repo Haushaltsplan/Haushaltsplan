@@ -535,6 +535,12 @@ function wertAusChartPunkt(p: ChartPunkt, feld: 'v3' | 'v1' | 'value'): number |
   return parseZahl(v)
 }
 
+/** Price-Ratio-Multiples ≤ 0 sind Platzhalter (Macrotrends) → null. */
+function normalisiereMultipleWert(v: number | null): number | null {
+  if (v == null || !Number.isFinite(v) || v <= 0) return null
+  return v
+}
+
 const CHART_DATUM_TOLERANZ_MS = 45 * 24 * 3600 * 1000
 
 function wertAusChartNaehe(
@@ -1003,11 +1009,18 @@ export async function ladeMacrotrendsFundamentaldaten(
       ? werteAusChartExakt(chart, periodenIso, def.wertFeld, mitTtm)
       : Object.fromEntries([...periodenIso, ...(mitTtm ? [FUNDAMENTAL_TTM_KEY] : [])].map((p) => [p, null]))
     const scale = def.scale && def.scale !== 1 ? def.scale : null
-    const werte = scale
+    const skaliert = scale
       ? Object.fromEntries(
           Object.entries(rohWerte).map(([k, v]) => [k, v != null && Number.isFinite(v) ? v * scale : v]),
         )
       : rohWerte
+    // KGV/KUV/…: 0 ist kein gültiges Multiple (häufig Macrotrends-Placeholder bei EU).
+    const werte =
+      def.einheit === 'multiple'
+        ? Object.fromEntries(
+            Object.entries(skaliert).map(([k, v]) => [k, normalisiereMultipleWert(v)]),
+          )
+        : skaliert
     zeilen.push({
       id: def.id,
       label: def.label,

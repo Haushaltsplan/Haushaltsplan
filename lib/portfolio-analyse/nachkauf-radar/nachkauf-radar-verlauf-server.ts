@@ -15,10 +15,35 @@ function admin() {
   return createSupabaseAdmin()
 }
 
-/** Speichert einen Scan-Snapshot in der Verlauf-Tabelle (einmal pro Scan-Lauf). */
+/** Speichert einen Scan-Snapshot — max. ein Punkt pro Ticker und Kalendertag (UTC). */
 export async function speichereVerlaufPunkte(eintraege: NachkaufScanEintrag[]): Promise<void> {
   if (!istKonfiguriert() || eintraege.length === 0) return
   try {
+    const tickers = [...new Set(eintraege.map((e) => e.ticker.trim().toUpperCase()))]
+    const tage = [
+      ...new Set(
+        eintraege.map((e) => {
+          const iso = e.gescannt_am?.slice(0, 10)
+          return iso && /^\d{4}-\d{2}-\d{2}$/.test(iso)
+            ? iso
+            : new Date().toISOString().slice(0, 10)
+        }),
+      ),
+    ]
+
+    // Alte Duplikate / heutige Rescans für dieselben Ticker+Tage entfernen
+    for (const tag of tage) {
+      const tagStart = `${tag}T00:00:00.000Z`
+      const tagEnd = new Date(Date.parse(tagStart) + 24 * 60 * 60 * 1000).toISOString()
+      const { error: delErr } = await admin()
+        .from(TABLE)
+        .delete()
+        .in('ticker', tickers)
+        .gte('gescannt_am', tagStart)
+        .lt('gescannt_am', tagEnd)
+      if (delErr) console.warn('[nachkauf-verlauf] Dedup-Delete:', delErr.message)
+    }
+
     const zeilen = eintraege.map((e) => ({
       ticker: e.ticker.trim().toUpperCase(),
       score: e.score,
@@ -35,7 +60,7 @@ export async function speichereVerlaufPunkte(eintraege: NachkaufScanEintrag[]): 
   }
 }
 
-/** Lädt den Score-Verlauf für alle Ticker der letzten 13 Monate. */
+/** Lädt den Score-Verlauf für alle Ticker der letzten 13 Monate (1 Punkt/Tag). */
 export async function ladeScoreVerlauf(): Promise<Map<string, ScoreVerlaufPunkt[]>> {
   const out = new Map<string, ScoreVerlaufPunkt[]>()
   if (!istKonfiguriert()) return out
@@ -54,12 +79,20 @@ export async function ladeScoreVerlauf(): Promise<Map<string, ScoreVerlaufPunkt[
 
     for (const row of data as Array<{ ticker: string; score: number; ampel: string; gescannt_am: string }>) {
       const key = row.ticker.toUpperCase()
+      const datum = row.gescannt_am.slice(0, 10)
       const arr = out.get(key) ?? []
-      arr.push({
-        datum: row.gescannt_am.slice(0, 10),
-        score: row.score,
-        ampel: row.ampel as ScoreVerlaufPunkt['ampel'],
-      })
+      const last = arr[arr.length - 1]
+      if (last && last.datum === datum) {
+        // Späterer Insert am selben Tag überschreibt (Dedup für Altbestand)
+        last.score = row.score
+        last.ampel = row.ampel as ScoreVerlaufPunkt['ampel']
+      } else {
+        arr.push({
+          datum,
+          score: row.score,
+          ampel: row.ampel as ScoreVerlaufPunkt['ampel'],
+        })
+      }
       out.set(key, arr)
     }
   } catch (e) {

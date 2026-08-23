@@ -143,20 +143,27 @@ export function extrahiereBewertungsSignale(
     historischQuelle = 'whitelist'
   }
 
-  // Historischer Premium/Discount — KGV, FCF und EV/EBITDA gleichwertig mitteln
+  // Historischer Premium/Discount — KGV, FCF und EV gleichwertig mitteln; nie < −100 %.
   let premiumDiscountPct: number | null = null
   const pdTeile: number[] = []
-  if (medianPe && forwardPe) pdTeile.push(((forwardPe - medianPe) / medianPe) * 100)
-  if (medianFcfYield && fcfYieldPct) {
-    pdTeile.push(((medianFcfYield - fcfYieldPct) / medianFcfYield) * 100)
+  const pushPd = (aktuell: number | null | undefined, median: number | null | undefined, invert = false) => {
+    if (aktuell == null || median == null || !(aktuell > 0) || !(median > 0)) return
+    const raw = invert
+      ? ((median - aktuell) / median) * 100
+      : ((aktuell - median) / median) * 100
+    if (!Number.isFinite(raw)) return
+    // FCF-Yield-Pfad kann bei sehr hoher aktueller Yield < −100 % liefern — clampen.
+    pdTeile.push(Math.max(-95, Math.min(400, raw)))
   }
-  if (medianEvEbitda && ntmEvEbitda) {
-    pdTeile.push(((ntmEvEbitda - medianEvEbitda) / medianEvEbitda) * 100)
-  } else if (medianEvRev && ntmEvRev) {
-    pdTeile.push(((ntmEvRev - medianEvRev) / medianEvRev) * 100)
-  }
+  pushPd(forwardPe, medianPe)
+  pushPd(fcfYieldPct, medianFcfYield, true)
+  if (medianEvEbitda && ntmEvEbitda) pushPd(ntmEvEbitda, medianEvEbitda)
+  else pushPd(ntmEvRev, medianEvRev)
   if (pdTeile.length > 0) {
-    premiumDiscountPct = pdTeile.reduce((a, b) => a + b, 0) / pdTeile.length
+    premiumDiscountPct = Math.max(
+      -95,
+      Math.min(400, pdTeile.reduce((a, b) => a + b, 0) / pdTeile.length),
+    )
   }
 
   return {
@@ -503,14 +510,14 @@ export function leiteNachkaufAmpelAb(
   if (hatWarnung || mantra.ampel === 'rot') return 'rot'
   if (mantra.ampel === 'grau' && mantra.zusammenfassung.bewertbar === 0) return 'grau'
 
-  // G3: Quality @ ATH / Überbewertung — unabhängig von Q
-  if (score.gateG3Teuer ?? pruefGateG3Teuer(trigger, signale)) return 'teuer'
-
-  // G1 Fail: max. Gelb (nie Grün)
+  // G1 Fail: max. Gelb (nie Grün) — vor G3, sonst Score 0 fälschlich „teuer“
   const g1 = score.gateG1 ?? pruefGateG1(score.mantraScore, hatWarnung)
   if (!g1) {
     return score.gesamt >= gelbSchwelle(trigger) ? 'gelb' : 'rot'
   }
+
+  // G3: Quality @ ATH / Überbewertung — nur wenn Qualität (G1) ok
+  if (score.gateG3Teuer ?? pruefGateG3Teuer(trigger, signale)) return 'teuer'
 
   // Ergänzender Teuer-Pfad (sehr teuer + nahe Hoch)
   const { fcfYieldPct, forwardPe } = signale
@@ -647,6 +654,35 @@ function berechneSparplanAllokation(gruenKandidaten: NachkaufScanEintrag[]): Spa
 // Monatliche Empfehlung
 // ---------------------------------------------------------------------------
 
+/** Max. Titel in der verbindlichen Monats-Allokation (Radar-Banner = Stufe C). */
+export const MAX_MONATS_KAUF_TITEL = 3
+
+function sortiereGruenNachkauf(gruen: NachkaufScanEintrag[]): NachkaufScanEintrag[] {
+  return [...gruen].sort((a, b) => {
+    const diszA = a.disziplinHinweis ? 1 : 0
+    const diszB = b.disziplinHinweis ? 1 : 0
+    if (diszA !== diszB) return diszA - diszB
+    if (a.klumpenrisiko !== b.klumpenrisiko) return a.klumpenrisiko ? 1 : -1
+    if (a.kaufTriggerAusgeloest !== b.kaufTriggerAusgeloest) return a.kaufTriggerAusgeloest ? -1 : 1
+    const kombA = a.scoreDetail.kombiniertRang ?? a.score
+    const kombB = b.scoreDetail.kombiniertRang ?? b.score
+    if (kombA !== kombB) return kombB - kombA
+    return b.score - a.score
+  })
+}
+
+/**
+ * Dieselbe Kandidatenliste für Radar-Banner und Stufe-C-Euro-Allokation
+ * (Top-N Grün) — verhindert Drift RMD/WKL/ROL vs. zusätzliches MSCI.
+ */
+export function waehleMonatsNachkaufKandidaten(
+  ergebnisse: NachkaufScanEintrag[],
+  max = MAX_MONATS_KAUF_TITEL,
+): NachkaufScanEintrag[] {
+  const gruen = ergebnisse.filter((e) => e.ampel === 'gruen')
+  return sortiereGruenNachkauf(gruen).slice(0, max)
+}
+
 export function berechneMonatsEmpfehlung(ergebnisse: NachkaufScanEintrag[]): MonatsEmpfehlung {
   const gruen = ergebnisse.filter((e) => e.ampel === 'gruen')
   const teuer = ergebnisse.filter((e) => e.ampel === 'teuer')
@@ -654,19 +690,8 @@ export function berechneMonatsEmpfehlung(ergebnisse: NachkaufScanEintrag[]): Mon
   const rot = ergebnisse.filter((e) => e.ampel === 'rot')
 
   if (gruen.length > 0) {
-    const sortiertGruen = [...gruen].sort((a, b) => {
-      const diszA = a.disziplinHinweis ? 1 : 0
-      const diszB = b.disziplinHinweis ? 1 : 0
-      if (diszA !== diszB) return diszA - diszB
-      if (a.klumpenrisiko !== b.klumpenrisiko) return a.klumpenrisiko ? 1 : -1
-      if (a.kaufTriggerAusgeloest !== b.kaufTriggerAusgeloest) return a.kaufTriggerAusgeloest ? -1 : 1
-      const kombA = a.scoreDetail.kombiniertRang ?? a.score
-      const kombB = b.scoreDetail.kombiniertRang ?? b.score
-      if (kombA !== kombB) return kombB - kombA
-      return b.score - a.score
-    })
-
-    const kandidaten = sortiertGruen.slice(0, 3)
+    const sortiertGruen = sortiereGruenNachkauf(gruen)
+    const kandidaten = waehleMonatsNachkaufKandidaten(ergebnisse)
     const kandidatenTicker = kandidaten.map((e) => e.ticker)
     const klumpen = sortiertGruen.filter((e) => e.klumpenrisiko).map((e) => e.ticker)
     const trigger = sortiertGruen.filter((e) => e.kaufTriggerAusgeloest).map((e) => e.ticker)
