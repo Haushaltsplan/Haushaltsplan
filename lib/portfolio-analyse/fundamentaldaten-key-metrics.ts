@@ -110,6 +110,38 @@ function pctSigned(v: number | null | undefined): string {
 }
 
 /** Minuszeichen statt Klammern — für Kennzahlen, bei denen negativ gut sein kann (Rückkäufe). */
+/**
+ * ROIIC mit Regime-Hinweis. Ohne den Zusatz wäre der Wert irreführend: im kapitalleichten
+ * Regime steht im Nenner die Brutto-Reinvestition statt ΔIC, und bei einer Großakquisition
+ * im Fenster ist der organische Wert nach oben verzerrt. Der Buchwert daneben zeigt, wie
+ * teuer der Zukauf war — genau der Kontrast, um den es bei ROIC gegen ROIIC geht.
+ */
+function roiicAnzeige(
+  w:
+    | {
+        incrementalRoicPct?: number | null
+        incrementalRoicRegime?: string | null
+        incrementalRoicBuchPct?: number | null
+      }
+    | null
+    | undefined,
+): string {
+  const basis = pctRaw(w?.incrementalRoicPct)
+  if (basis === '–') return basis
+
+  const zusatz: string[] = []
+  if (w?.incrementalRoicRegime === 'kapitalleicht') zusatz.push('kapitalleicht')
+  if (w?.incrementalRoicRegime === 'schrumpfend') zusatz.push('NOPAT rückläufig')
+  if (
+    w?.incrementalRoicBuchPct != null &&
+    w.incrementalRoicPct != null &&
+    Math.abs(w.incrementalRoicBuchPct - w.incrementalRoicPct) >= 5
+  ) {
+    zusatz.push(`Buch ${pctRaw(w.incrementalRoicBuchPct)}`)
+  }
+  return zusatz.length > 0 ? `${basis} (${zusatz.join(', ')})` : basis
+}
+
 function pctMitVorzeichen(v: number | null | undefined): string {
   if (v == null || !Number.isFinite(v)) return '–'
   const abs = formatFundamentalWert(Math.abs(v), 'prozent')
@@ -284,8 +316,9 @@ export function baueKeyMetrics(
     },
     {
       id: 'incremental_roic',
-      label: 'Incremental ROIC (ΔNOPAT/ΔIC, 5J)',
-      wert: pctRaw(w?.incrementalRoicPct),
+      label: 'Incremental ROIC (ΔNOPAT/ΔIC, Lag 1J)',
+      wert: roiicAnzeige(w),
+      zahl: w?.incrementalRoicPct ?? null,
       gruppe: 'effizienz',
     },
     {

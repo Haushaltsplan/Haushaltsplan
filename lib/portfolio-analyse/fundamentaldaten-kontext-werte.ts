@@ -78,8 +78,15 @@ export type FundamentalKontextInput = {
   yahooFinanz: MantraYahooFinanzdaten | null
   /** LTV/CAC, NRR — aus SEC/Earnings Call extrahiert (falls genannt). */
   unitEconomics?: UnitEconomicsTreffer | null
-  /** Vorberechnetes Incremental ROIC (Yahoo/Nasdaq), sonst aus yahooFinanz. */
+  /** Vorberechnetes Incremental ROIC (Kapitalbasis, sonst Altquellen). */
   incrementalRoicPct?: number | null
+  /**
+   * Regime der ROIIC-Berechnung. Ohne diese Angabe ist der Wert nicht interpretierbar:
+   * im kapitalleichten Regime ist der Nenner die Brutto-Reinvestition, nicht ΔIC.
+   */
+  incrementalRoicRegime?: 'normal' | 'kapitalleicht' | 'schrumpfend' | 'unzureichend' | null
+  /** ROIIC inkl. akquiriertem Kapital — Kontrast zum organischen Wert. */
+  incrementalRoicBuchPct?: number | null
 }
 
 function historischeWerte(
@@ -429,6 +436,8 @@ export function baueKontextWerte(ctx: FundamentalKontextInput) {
     netDebtFcf,
     reinvestitionsquotePct: reinvest.reinvestitionsquotePct,
     incrementalRoicPct: reinvest.incrementalRoicPct,
+    incrementalRoicRegime: ctx.incrementalRoicRegime ?? null,
+    incrementalRoicBuchPct: ctx.incrementalRoicBuchPct ?? null,
     pegRatio,
     sloanRatio: eq.sloanRatio,
     beneishMScore: eq.beneishMScore,

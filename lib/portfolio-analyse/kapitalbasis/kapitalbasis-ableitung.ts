@@ -138,6 +138,7 @@ export function baueAbleitungen(jahre: KapitalbasisJahr[]): KapitalbasisAbleitun
 
     const immateriell = (j.goodwillMio ?? 0) + (j.intangiblesMio ?? 0)
     const icTangible = ic != null ? ic - immateriell : null
+    const icTangibleNetto = icTangible != null ? icTangible - liquiditaet : null
 
     const wc =
       j.umlaufvermoegenMio != null && j.kurzfristigeVerbindlichkeitenMio != null
@@ -157,6 +158,7 @@ export function baueAbleitungen(jahre: KapitalbasisJahr[]): KapitalbasisAbleitun
       icMio: rundeOderNull(ic),
       icNettoMio: rundeOderNull(icNetto),
       icTangibleMio: rundeOderNull(icTangible),
+      icTangibleNettoMio: rundeOderNull(icTangibleNetto),
       workingCapitalMio: rundeOderNull(wc),
       bruttoReinvestMio: rundeOderNull(bruttoReinvest),
       roicPct: nopat != null && ic != null && ic > 0 ? rundeOderNull((nopat / ic) * 100) : null,

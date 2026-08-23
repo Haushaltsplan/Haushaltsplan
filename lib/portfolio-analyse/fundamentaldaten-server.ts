@@ -727,6 +727,8 @@ export async function ladeFundamentaldaten(anfrage: FundamentaldatenAnfrage): Pr
     yahooFinanz,
     unitEconomics,
     incrementalRoicPct: roiicPaket.incrementalRoicPct,
+    incrementalRoicRegime: roiicPaket.regime ?? null,
+    incrementalRoicBuchPct: roiicPaket.buchPct ?? null,
   })
   // Macrotrends liefert USD; nur bei Alternativquellen (Yahoo timeseries, Berichtswährung)
   // die Währung aus Konfig bzw. ISIN-Präfix ableiten.

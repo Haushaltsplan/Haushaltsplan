@@ -12,10 +12,12 @@
  *
  *  1. **Ein Jahr Lag.** Kapital, das in t investiert wird, verdient erst in t+1. ΔNOPAT
  *     läuft über (T−n → T), ΔIC über (T−n−1 → T−1).
- *  2. **Zwei Varianten.** `buch` misst, ob sich auch das per Akquisition zugekaufte
- *     Kapital verzinst. `organisch` rechnet Goodwill und Intangibles heraus und misst die
- *     Reinvestitionsrendite des laufenden Geschäfts. Bei S&P Global ist der Kontrast
- *     zwischen ROIC (~10 %) und organischem ROIIC die eigentliche Aussage.
+ *  2. **Zwei Varianten, beide ohne Liquidität.** `buch` misst, ob sich auch das per
+ *     Akquisition zugekaufte Kapital verzinst. `organisch` rechnet zusätzlich Goodwill und
+ *     Intangibles heraus und misst die Reinvestitionsrendite des laufenden Geschäfts. Bei
+ *     S&P Global ist der Kontrast zwischen ROIC (~10 %) und organischem ROIIC die
+ *     eigentliche Aussage. Anders als beim ROIC-Niveau wird der Cash-Bestand abgezogen:
+ *     einbehaltener Gewinn, der in der Bilanz liegt, ist keine Reinvestition.
  *  3. **Regime statt `null`.** Schrumpft die Kapitalbasis bei steigendem NOPAT, ist der
  *     ökonomisch richtige Nenner nicht ΔIC, sondern die tatsächlich getätigte
  *     Reinvestition: CapEx + kapitalisierte Software + Aufbau von Working Capital, M&A
@@ -38,15 +40,34 @@ const DECKEL_KAPITALLEICHT = 60
  */
 const DECKEL_NORMAL = 100
 const BODEN = -100
-/** Fenster in Präferenzreihenfolge (längere Fenster glätten Einmaleffekte). */
-const FENSTER_PRAEFERENZ = [5, 4, 3, 2]
+/**
+ * Fenster: **drei Geschäftsjahre**, fest für alle Titel.
+ *
+ * `spanne` ist der Abstand zwischen erstem und letztem Jahr, drei Geschäftsjahre
+ * entsprechen also `spanne = 2` — genau das Fenster der Referenzrechnung für S&P Global
+ * (ΔNOPAT 2023→2025, ΔIC 2022→2024).
+ *
+ * Längere Fenster verwässern: sie ziehen Jahre herein, in denen ein anderes Geschäft
+ * gemessen wird. Bei Thermo Fisher reichte ein Vier-Jahres-Fenster bis 2022 zurück und
+ * damit ins Corona-Testgeschäft, das es heute nicht mehr gibt — der Titel wies dadurch
+ * Stagnation aus, obwohl NOPAT seit 2023 um 942 Mio. gestiegen ist.
+ *
+ * Der Rückfall auf zwei Geschäftsjahre greift nur, wenn die Historie für drei nicht reicht.
+ */
+const SPANNE_STANDARD = 2
+const FENSTER_PRAEFERENZ = [SPANNE_STANDARD, 1]
+/** Nur für den Audit-Pfad: zeigt, wie das Ergebnis über andere Fenster aussähe. */
+const FENSTER_AUDIT = [5, 4, 3, 2, 1]
 
 export type RoiicRegime =
   /** ΔIC deutlich positiv — klassisches ΔNOPAT/ΔIC. */
   | 'normal'
   /** Kapitalbasis stagniert oder schrumpft bei steigendem NOPAT. */
   | 'kapitalleicht'
-  /** NOPAT rückläufig. */
+  /**
+   * NOPAT liegt unter dem Ausgangsniveau. Der ausgewiesene Wert ist dann 0 und nicht
+   * negativ — siehe Begründung in `berechneVariante`.
+   */
   | 'schrumpfend'
   /** Datenlage reicht nicht. */
   | 'unzureichend'
@@ -108,7 +129,8 @@ type Zeile = {
   jahr: number
   nopatMio: number | null
   icMio: number | null
-  icTangibleMio: number | null
+  icNettoMio: number | null
+  icTangibleNettoMio: number | null
   bruttoReinvestMio: number | null
   workingCapitalMio: number | null
   goodwillMio: number | null
@@ -125,7 +147,8 @@ function baueZeilen(jahre: KapitalbasisJahr[], ableitungen: KapitalbasisAbleitun
         jahr: j.jahr,
         nopatMio: a?.nopatMio ?? null,
         icMio: a?.icMio ?? null,
-        icTangibleMio: a?.icTangibleMio ?? null,
+        icNettoMio: a?.icNettoMio ?? null,
+        icTangibleNettoMio: a?.icTangibleNettoMio ?? null,
         bruttoReinvestMio: a?.bruttoReinvestMio ?? null,
         workingCapitalMio: a?.workingCapitalMio ?? null,
         goodwillMio: j.goodwillMio,
@@ -160,6 +183,10 @@ function findeMaJahre(zeilen: Zeile[]): number[] {
  * Tatsächlich eingesetztes Wachstumskapital im Fenster: CapEx + kapitalisierte Software
  * + Aufbau von Working Capital + **Bolt-on-Zukäufe**.
  *
+ * Summiert wird über die Jahre des NOPAT-Fensters, nicht über das um ein Jahr versetzte
+ * Kapitalfenster: gefragt ist, wie viel Kapital das Unternehmen in den drei gemessenen
+ * Geschäftsjahren eingesetzt hat, während der Gewinn um den gemessenen Betrag stieg.
+ *
  * Kleine Zukäufe gehören in den Nenner — bei Seriell-Akquirierern wie Halma, Balchem oder
  * Wolters Kluwer ist Zukauf das Wachstumsmodell, und ein Nenner aus reinem CapEx würde sie
  * fälschlich als kapitalleicht ausweisen. Ausgenommen bleiben nur die als Großdeal
@@ -189,6 +216,48 @@ function summeReinvest(
   return summe
 }
 
+/**
+ * Zuwachs über das Fenster, geglättet über die Regressionssteigung aller Jahre statt über
+ * die Differenz zweier Stichjahre.
+ *
+ * Ein einzelnes Anfangs- oder Endjahr entscheidet sonst über das Ergebnis. Bei S&P Global
+ * war 2023 ein Ergebnistief und blähte den Zuwachs auf, bei Thermo Fisher ist 2022 ein
+ * Corona-Hoch und erzeugte einen Rückgang. Die Steigung nutzt jeden Punkt im Fenster und
+ * ist gegen solche Ausschläge deutlich robuster.
+ *
+ * Bei nur drei Stützstellen ist die Steigung mathematisch identisch mit der
+ * Endpunktdifferenz — die Glättung greift also erst ab vier Jahren im Fenster.
+ */
+function geglaetteterZuwachs(
+  punkte: Array<{ jahr: number; wert: number }>,
+  spanne: number,
+): number | null {
+  if (punkte.length < 2) return null
+  if (punkte.length === 2) return punkte[1]!.wert - punkte[0]!.wert
+
+  const mittelX = punkte.reduce((s, p) => s + p.jahr, 0) / punkte.length
+  const mittelY = punkte.reduce((s, p) => s + p.wert, 0) / punkte.length
+  let zaehler = 0
+  let nenner = 0
+  for (const p of punkte) {
+    zaehler += (p.jahr - mittelX) * (p.wert - mittelY)
+    nenner += (p.jahr - mittelX) ** 2
+  }
+  if (nenner === 0) return null
+  return (zaehler / nenner) * spanne
+}
+
+function reiheImFenster(
+  zeilen: Zeile[],
+  feld: 'nopatMio' | 'icNettoMio' | 'icTangibleNettoMio',
+  vonJahr: number,
+  bisJahr: number,
+): Array<{ jahr: number; wert: number }> {
+  return zeilen
+    .filter((z) => z.jahr >= vonJahr && z.jahr <= bisJahr && z[feld] != null)
+    .map((z) => ({ jahr: z.jahr, wert: z[feld]! }))
+}
+
 function begrenze(pct: number, deckel: number): { pct: number; gedeckelt: boolean } {
   if (pct > deckel) return { pct: deckel, gedeckelt: true }
   if (pct < BODEN) return { pct: BODEN, gedeckelt: true }
@@ -211,7 +280,10 @@ function berechneVariante(
   if (!nopatVon || !icBis || !icVon) return null
   if (nopatBis.nopatMio == null || nopatVon.nopatMio == null) return null
 
-  const icFeld = art === 'organisch' ? 'icTangibleMio' : 'icMio'
+  // Beide Varianten rechnen Liquidität heraus. ROIIC misst die Rendite auf *neu
+  // eingesetztes* Kapital; ein wachsender Cash-Bestand ist kein Einsatz, sondern
+  // Zurückhaltung, und blähte den Nenner bei liquiditätsstarken Titeln auf.
+  const icFeld = art === 'organisch' ? 'icTangibleNettoMio' : 'icNettoMio'
   const icBisWert = icBis[icFeld]
   const icVonWert = icVon[icFeld]
   // Signifikanzmaßstab ist immer das Buch-IC, also die tatsächliche Unternehmensgröße.
@@ -221,8 +293,14 @@ function berechneVariante(
   // von 146 % gegen 12,8 % auf Buchbasis.
   const groessenMassstab = Math.abs(icBis.icMio ?? icBisWert ?? 0)
 
-  const deltaNopat = nopatBis.nopatMio - nopatVon.nopatMio
-  const deltaIc = icBisWert != null && icVonWert != null ? icBisWert - icVonWert : null
+  const deltaNopat =
+    geglaetteterZuwachs(reiheImFenster(zeilen, 'nopatMio', nopatVon.jahr, nopatBis.jahr), spanne) ??
+    nopatBis.nopatMio - nopatVon.nopatMio
+  const deltaIc =
+    icBisWert != null && icVonWert != null
+      ? (geglaetteterZuwachs(reiheImFenster(zeilen, icFeld, icVon.jahr, icBis.jahr), spanne) ??
+        icBisWert - icVonWert)
+      : null
 
   const gemeinsam = {
     art,
@@ -259,25 +337,33 @@ function berechneVariante(
   if (deltaNopat <= 0) {
     if (kapitalWaechst) {
       const rohPct = (deltaNopat / deltaIc) * 100
-      const { pct, gedeckelt } = begrenze(rohPct, DECKEL_NORMAL)
       return {
         ...gemeinsam,
-        pct,
+        // Null, nicht negativ. Der Quotient aus Gewinnrückgang und Kapitalzuwachs ist keine
+        // Rendite: der Rückgang stammt aus dem Altgeschäft, nicht aus dem neuen Kapital.
+        // Thermo Fisher wies so −10,2 % aus, obwohl das heißen würde, das investierte
+        // Kapital vernichte jährlich ein Zehntel seines Werts. Richtig ist: die
+        // Reinvestition hat bisher keine messbare Zusatzrendite gebracht. Die Größe des
+        // Rückgangs bleibt in `pctRoh` erhalten.
+        pct: 0,
         pctRoh: Math.round(rohPct * 10) / 10,
         regime: 'schrumpfend',
         nennerMio: Math.round(deltaIc * 10) / 10,
-        gedeckelt,
-        begruendung: 'NOPAT rückläufig trotz Kapitalaufbau — negative Grenzrendite.',
+        gedeckelt: false,
+        begruendung: `NOPAT liegt ${Math.abs(Math.round(deltaNopat))} Mio. unter dem Ausgangsniveau, obwohl ${Math.round(deltaIc)} Mio. Kapital zugeflossen sind — die Reinvestition hat noch keine Zusatzrendite erbracht.`,
       }
     }
+    // Auch hier 0 statt `null`: Gewinn und Kapitalbasis gehen zugleich zurück, es gibt also
+    // kein zusätzlich eingesetztes Kapital, dem eine Rendite zuzuordnen wäre. Vorher fielen
+    // Home Depot und Datadog dadurch komplett aus der Kennzahl.
     return {
       ...gemeinsam,
-      pct: null,
+      pct: 0,
       pctRoh: null,
       regime: 'schrumpfend',
       nennerMio: null,
       gedeckelt: false,
-      begruendung: 'NOPAT und Kapitalbasis schrumpfen zugleich — Quotient ohne Aussage.',
+      begruendung: `NOPAT liegt ${Math.abs(Math.round(deltaNopat))} Mio. unter dem Ausgangsniveau, die Kapitalbasis schrumpft ebenfalls — keine Reinvestitionsrendite messbar.`,
     }
   }
 
@@ -296,7 +382,7 @@ function berechneVariante(
   }
 
   // Kapitalleicht: Nenner ist die tatsächliche Reinvestition, nicht die Bilanzveränderung.
-  const reinvest = summeReinvest(zeilen, icVon.jahr, icBis.jahr, maJahre)
+  const reinvest = summeReinvest(zeilen, nopatVon.jahr - 1, nopatBis.jahr, maJahre)
   if (reinvest == null || reinvest <= 0) {
     return {
       ...gemeinsam,
@@ -374,7 +460,7 @@ export function berechneRoiic(
 
   const alleVarianten: RoiicVariante[] = []
   for (const art of ['organisch', 'buch'] as RoiicArt[]) {
-    for (const spanne of FENSTER_PRAEFERENZ) {
+    for (const spanne of FENSTER_AUDIT) {
       const v = berechneVariante(zeilen, art, spanne, maJahre)
       if (v) alleVarianten.push(v)
     }

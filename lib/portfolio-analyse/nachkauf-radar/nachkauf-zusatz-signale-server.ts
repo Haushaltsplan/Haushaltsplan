@@ -623,9 +623,10 @@ export async function ladeNachkaufZusatzSignale(opts: {
       const mnaMio = capital?.saeulen.find((s) => s.id === 'mna')?.betragMioUsd ?? null
       const r = berechneReinvestition(opts.paket.perioden, opts.paket.zeilen, mnaMio, null, null)
       const eq = berechneEarningsQuality(opts.paket.perioden, opts.paket.zeilen)
-      // Incremental ROIC aus Key Metrics (bereits Yahoo/Nasdaq), sonst null
+      // Incremental ROIC aus Key Metrics. Der Zahlenwert hängt direkt an der Kennzahl; der
+      // Text-Parser bleibt nur als Rückfall, weil die Anzeige Regime-Zusätze enthalten kann.
       const kmIncr = opts.paket.keyMetrics.find((m) => m.id === 'incremental_roic')
-      const incrAusKm = kmIncr ? parseMetricZahl(kmIncr.wert) : null
+      const incrAusKm = kmIncr?.zahl ?? (kmIncr ? parseMetricZahl(kmIncr.wert) : null)
       return {
         reinvestitionsquotePct: r.reinvestitionsquotePct,
         incrementalRoicPct: incrAusKm ?? r.incrementalRoicPct,

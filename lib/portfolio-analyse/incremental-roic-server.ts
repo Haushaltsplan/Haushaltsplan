@@ -1,6 +1,10 @@
 /**
- * Incremental ROIC — GuruFocus-Formel (ΔNOPAT/ΔIC, 5J) aus SA/Nasdaq/Yahoo.
- * Optional: GuruFocus HTML/API wenn erreichbar.
+ * Incremental ROIC (ROIIC).
+ *
+ * Führend ist die kanonische Kapitalbasis: eine feldweise aus SEC XBRL, Yahoo,
+ * StockAnalysis und Macrotrends gemergte Jahresreihe mit Ein-Jahres-Lag,
+ * Regime-Klassifikation und getrennter Buch-/Organisch-Variante. Die Altquellen bleiben
+ * als Rückfall, weil sie einzelne Titel abdecken können, für die keine Serie zustande kommt.
  */
 
 import 'server-only'
@@ -14,6 +18,7 @@ import {
   type JahrSnapErweitert,
 } from '@/lib/portfolio-analyse/incremental-roic'
 import { ladeIncrementalRoicVonGuruFocus } from '@/lib/portfolio-analyse/gurufocus-incremental-roic-server'
+import { ladeIncrementalRoicAusKapitalbasis } from '@/lib/portfolio-analyse/kapitalbasis/roiic-paket-adapter'
 import {
   ladeStockanalysisStatementsRoh,
   snapsFuerIncrementalRoic,
@@ -164,15 +169,25 @@ function hatWert(p: IncrementalRoicPaket | null | undefined): p is IncrementalRo
   return p != null && p.incrementalRoicPct != null
 }
 
-/** GuruFocus (Scrape/API) → StockAnalysis → Nasdaq → Yahoo. */
+/** Kapitalbasis → GuruFocus (Scrape/API) → StockAnalysis → Nasdaq → Yahoo. */
 export async function ladeIncrementalRoic(opts: {
   symbolYahoo: string
   yahooHistorie?: YahooJahresSnapshot[] | null
   isin?: string | null
   ticker?: string | null
   firmenname?: string | null
+  cik?: string | number | null
 }): Promise<IncrementalRoicPaket> {
   const bare = opts.symbolYahoo.trim().toUpperCase().split('.')[0] ?? ''
+
+  const ausKapitalbasis = await ladeIncrementalRoicAusKapitalbasis({
+    symbolYahoo: opts.symbolYahoo,
+    isin: opts.isin,
+    ticker: opts.ticker,
+    firmenname: opts.firmenname,
+    cik: opts.cik,
+  })
+  if (hatWert(ausKapitalbasis)) return ausKapitalbasis
 
   const [ausGuruFocus, ausYahoo, ausNasdaq, saRoh] = await Promise.all([
     ladeIncrementalRoicVonGuruFocus({

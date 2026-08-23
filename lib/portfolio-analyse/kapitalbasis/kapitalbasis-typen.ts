@@ -122,6 +122,15 @@ export type KapitalbasisAbleitung = {
   icNettoMio: number | null
   /** IC abzüglich Goodwill und Intangibles — Kapital ohne M&A-Aufschläge. */
   icTangibleMio: number | null
+  /**
+   * IC abzüglich Goodwill, Intangibles **und** Liquidität — Nenner für ROIIC.
+   *
+   * Bei einer Veränderungsgröße verzerrt gehortetes Cash das Ergebnis: jeder nicht
+   * ausgeschüttete Gewinn erhöht die Kapitalbasis, ohne Rendite zu erzeugen. Hermès kam so
+   * auf einen ΔIC von 9.929 Mio. über drei Jahre, überwiegend angesammelte Liquidität,
+   * und damit auf 10 % statt eines Werts, der die Reinvestition abbildet.
+   */
+  icTangibleNettoMio: number | null
   /** Working Capital (Umlaufvermögen − kurzfristige Verbindlichkeiten). */
   workingCapitalMio: number | null
   /** Brutto-Reinvestition des Jahres ohne M&A: CapEx + kapitalisierte Software. */

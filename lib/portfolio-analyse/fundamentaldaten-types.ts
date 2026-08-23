@@ -52,6 +52,12 @@ export type FundamentalKeyMetric = {
   label: string
   wert: string
   /**
+   * Numerischer Wert, wenn die Kennzahl einen hat. `wert` ist eine deutsch formatierte
+   * Anzeige inklusive Einheiten und Zusätzen; Verbraucher, die rechnen wollen, sollen den
+   * String nicht zurückparsen müssen.
+   */
+  zahl?: number | null
+  /**
    * Semantische Farbe (statt „Klammer = rot“):
    * positiv = gut (z. B. Aktienrückkauf), negativ = schlecht, neutral = keine Ampel.
    */

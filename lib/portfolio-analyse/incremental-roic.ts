@@ -13,6 +13,8 @@ export type IncrementalRoicQuelle =
   | 'yahoo'
   | 'nasdaq'
   | 'stockanalysis'
+  /** Kanonische Kapitalbasis (SEC XBRL + Yahoo + StockAnalysis + Macrotrends, feldweise gemergt). */
+  | 'kapitalbasis'
   | 'organic'
   | 'tangible'
   | null
@@ -24,6 +26,18 @@ export type IncrementalRoicPaket = {
   fensterJahre: number | null
   quelle: IncrementalRoicQuelle
   methode: 'organic_capex' | 'tangible_ic' | 'book_ic' | null
+  /**
+   * Zusatzangaben aus der Kapitalbasis-Berechnung. Optional, weil die Altquellen
+   * (GuruFocus, Nasdaq, Yahoo) sie nicht liefern können.
+   */
+  regime?: 'normal' | 'kapitalleicht' | 'schrumpfend' | 'unzureichend' | null
+  /** ROIIC inkl. akquiriertem Kapital — der Kontrast zum organischen Wert ist die Aussage. */
+  buchPct?: number | null
+  /** Wert vor Deckelung, für Ranking und Transparenz. */
+  rohPct?: number | null
+  /** Fenster überspannt eine Großakquisition — Wert nach oben verzerrt. */
+  maImFenster?: boolean
+  begruendung?: string | null
 }
 
 export type JahrSnap = {
