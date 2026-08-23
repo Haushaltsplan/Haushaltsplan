@@ -15,7 +15,6 @@ import {
   berechnePegRatio,
   berechneReinvestition,
 } from '@/lib/portfolio-analyse/fundamentaldaten-reinvestition'
-import { berechneIncrementalRoicAusYahoo } from '@/lib/portfolio-analyse/incremental-roic'
 import type { MacrotrendsFundamentalRoh } from '@/lib/portfolio-analyse/macrotrends-scraper-server'
 import type { MantraYahooFinanzdaten } from '@/lib/portfolio-analyse/yahoo-fundamentals-timeseries-server'
 import type { UnitEconomicsTreffer } from '@/lib/portfolio-analyse/unit-economics-extraktion'
@@ -188,7 +187,11 @@ export function baueKontextWerte(ctx: FundamentalKontextInput) {
   const sbcUsd =
     yt?.stockBasedCompensationUsd ??
     (letzterWert(sbcZeile, perioden) != null ? letzterWert(sbcZeile, perioden)! * 1_000_000 : null)
-  const interestUsd = yt?.interestExpenseUsd ?? null
+  const interestUsd =
+    yt?.interestExpenseUsd ??
+    (ctx.yahoo?.totalDebt != null && ctx.yahoo.totalDebt > 0
+      ? ctx.yahoo.totalDebt * 0.045
+      : null)
   const opIncomeUsd = yt?.operatingIncomeUsd ?? (ebitMio != null ? ebitMio * 1_000_000 : null)
   const rdUsd =
     yt?.researchDevelopmentUsd ??
@@ -223,7 +226,9 @@ export function baueKontextWerte(ctx: FundamentalKontextInput) {
       ? (sbcAdjFcfUsd / revenueUsd) * 100
       : null
   const sbcFcfRatio =
-    fcfUsd != null && sbcUsd != null && fcfUsd > 0 ? (sbcUsd / fcfUsd) * 100 : null
+    fcfUsd != null && sbcUsd != null && Math.abs(fcfUsd) > 0
+      ? (sbcUsd / Math.abs(fcfUsd)) * 100
+      : null
   const sbcAdjFcfConversion =
     netIncomeUsd != null && sbcAdjFcfUsd != null && netIncomeUsd > 0
       ? (sbcAdjFcfUsd / netIncomeUsd) * 100
@@ -244,6 +249,7 @@ export function baueKontextWerte(ctx: FundamentalKontextInput) {
   if (roicExGoodwill == null) {
     roicExGoodwill = roicExGoodwillAusYahoo(ctx.yahooFinanz) ?? (roic != null ? roic : null)
   }
+  const roicAnzeige = roic ?? roicExGoodwill
   const roicQuelle =
     roic != null
       ? 'ROIC (Macrotrends/Bilanz)'
@@ -255,16 +261,22 @@ export function baueKontextWerte(ctx: FundamentalKontextInput) {
     beta: ctx.yahoo?.beta,
     marketCapUsd: ctx.yahoo?.marketCap,
     totalDebtUsd: ctx.yahoo?.totalDebt,
-    interestExpenseUsd: yt?.interestExpenseUsd,
+    interestExpenseUsd: interestUsd,
     pretaxIncomeUsd: yt?.pretaxIncomeUsd,
     taxProvisionUsd: yt?.taxProvisionUsd,
   })
 
-  const valueSpread = roic != null && wacc != null ? roic - wacc : null
+  const valueSpread = roicAnzeige != null && wacc != null ? roicAnzeige - wacc : null
 
-  const roe = letzterWert(roeZeile, perioden)
+  let roe = letzterWert(roeZeile, perioden)
+  if (roe == null && ctx.yahoo?.returnOnEquity != null && Number.isFinite(ctx.yahoo.returnOnEquity)) {
+    roe = Math.round(ctx.yahoo.returnOnEquity * 1000) / 10
+  }
 
-  const roa = letzterWert(roaZeile, perioden)
+  let roa = letzterWert(roaZeile, perioden)
+  if (roa == null && ctx.yahoo?.returnOnAssets != null && Number.isFinite(ctx.yahoo.returnOnAssets)) {
+    roa = Math.round(ctx.yahoo.returnOnAssets * 1000) / 10
+  }
 
   const bilanzDebtMio = letzterWert(zeile('gesamtverschuldung'), perioden)
   const bilanzCashMio = letzterWert(zeile('bargeld'), perioden)
@@ -300,10 +312,7 @@ export function baueKontextWerte(ctx: FundamentalKontextInput) {
   const ebitdaCagr3 =
     ebitdaHist.length >= 2 ? cagrProzent(ebitdaHist.slice(-4), Math.min(3, ebitdaHist.length - 1)) : null
 
-  const roiic =
-    ctx.incrementalRoicPct != null
-      ? ctx.incrementalRoicPct
-      : berechneIncrementalRoicAusYahoo(ctx.yahooFinanz?.annualHistorie).incrementalRoicPct
+  const roiic = ctx.incrementalRoicPct ?? null
 
   const reinvest = perioden
     ? berechneReinvestition(
@@ -332,7 +341,11 @@ export function baueKontextWerte(ctx: FundamentalKontextInput) {
   const ruleOf40 =
     revGrowthPct != null
       ? (() => {
-          const marge = Math.max(fcfMarge ?? Number.NEGATIVE_INFINITY, ebitMarge ?? Number.NEGATIVE_INFINITY)
+          const marge = Math.max(
+            fcfMarge ?? Number.NEGATIVE_INFINITY,
+            ebitMarge ?? Number.NEGATIVE_INFINITY,
+            ebitdaMarge ?? Number.NEGATIVE_INFINITY,
+          )
           return Number.isFinite(marge) ? revGrowthPct + marge : null
         })()
       : null
@@ -340,6 +353,16 @@ export function baueKontextWerte(ctx: FundamentalKontextInput) {
   const assetTurnover = letzterWert(kapitalumschlagZeile, perioden)
 
   const payoutPct = berechneAusschuettungsquotePct(ctx)
+  const divYieldPct =
+    ctx.yahoo?.dividendYield != null && ctx.yahoo.dividendYield > 0
+      ? Math.round(ctx.yahoo.dividendYield * 1000) / 10
+      : ctx.yahoo?.trailingAnnualDividendRate != null &&
+          ctx.yahoo?.currentPrice != null &&
+          ctx.yahoo.currentPrice > 0
+        ? Math.round((ctx.yahoo.trailingAnnualDividendRate / ctx.yahoo.currentPrice) * 1000) / 10
+        : payoutPct != null && fwdPe != null && fwdPe > 0
+          ? Math.round((payoutPct / fwdPe) * 1000) / 10
+          : null
   const pb = ctx.yahoo?.priceToBook ?? null
 
   const aktienSinkend =
@@ -394,6 +417,7 @@ export function baueKontextWerte(ctx: FundamentalKontextInput) {
     capexSales,
     fcfConversion,
     roic,
+    roicAnzeige,
     roicExGoodwill,
     roicQuelle,
     wacc,
@@ -416,6 +440,7 @@ export function baueKontextWerte(ctx: FundamentalKontextInput) {
     ruleOf40,
     assetTurnover,
     payoutPct,
+    divYieldPct,
     pb,
     aktienSinkend,
     roicHist,

@@ -255,7 +255,7 @@ export function baueKeyMetrics(
     {
       id: 'ltm_roic',
       label: 'LTM ROIC',
-      wert: pctRaw(w?.roic),
+      wert: pctRaw(w?.roicAnzeige ?? w?.roic ?? w?.roicExGoodwill),
       gruppe: 'effizienz',
     },
     {
@@ -284,7 +284,7 @@ export function baueKeyMetrics(
     },
     {
       id: 'incremental_roic',
-      label: 'Incremental ROIC (organisch ΔNOPAT/CapEx)',
+      label: 'Incremental ROIC (inkr., post-M&A)',
       wert: pctRaw(w?.incrementalRoicPct),
       gruppe: 'effizienz',
     },
@@ -465,7 +465,7 @@ export function baueKeyMetrics(
       ),
       gruppe: 'bewertung_ltm',
     },
-    { id: 'div_yield', label: 'Dividendenrendite', wert: yahoo?.dividendYield != null ? pctRaw(yahoo.dividendYield * 100) : '–', gruppe: 'bewertung_ltm' },
+    { id: 'div_yield', label: 'Dividendenrendite', wert: pctRaw(w?.divYieldPct ?? (yahoo?.dividendYield != null ? yahoo.dividendYield * 100 : null)), gruppe: 'bewertung_ltm' },
     {
       id: 'payout',
       label: 'Ausschüttungsquote',

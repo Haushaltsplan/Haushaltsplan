@@ -195,7 +195,12 @@ async function ergaenzeSecProduktFallback(
 ): Promise<SecSegmentHistoriePaket> {
   if (!brauchtSecProduktFallback(paket)) return paket
 
-  const sec = await ladeSecSegmentHistorie(ticker)
+  let sec: SecSegmentHistoriePaket | null
+  try {
+    sec = await ladeSecSegmentHistorie(ticker)
+  } catch {
+    return paket
+  }
   if (!sec?.produkt || anzahlProduktSegmente(sec.produkt) < 2) return paket
 
   const geo = paket.geo ?? sec.geo ?? null

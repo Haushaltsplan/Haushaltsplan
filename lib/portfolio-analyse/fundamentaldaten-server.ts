@@ -54,7 +54,7 @@ import {
 import { ISIN_WAEHRUNG, istEuIsin } from '@/lib/portfolio-analyse/eu-portfolio-ir-config'
 import { ladeUnitEconomics } from '@/lib/portfolio-analyse/unit-economics-server'
 import { ladeYahooFundamentalKennzahlenMitFallback } from '@/lib/portfolio-analyse/yahoo-kennzahlen-fallback-server'
-import { ergaenzeRoicAusBilanz } from '@/lib/portfolio-analyse/fundamentaldaten-roic-berechnung'
+import { ergaenzeFehlendeStatementZeilen } from '@/lib/portfolio-analyse/fundamentaldaten-zeilen-backfill-server'
 import { ergaenzeWorkingCapitalTageZeilen } from '@/lib/portfolio-analyse/fundamentaldaten-working-capital-zeilen'
 import { ladeIncrementalRoic } from '@/lib/portfolio-analyse/incremental-roic-server'
 
@@ -478,6 +478,9 @@ export async function ladeFundamentaldaten(anfrage: FundamentaldatenAnfrage): Pr
       isin: isinNormEarly ?? anfrage.isin?.trim().toUpperCase() ?? null,
       firmenname: anfrage.name ?? ident.firmenname,
       segmentNurCloud: anfrage.segmentNurCloud === true,
+    }).catch((e) => {
+      console.warn('[fundamentaldaten] erweitert optional fehlgeschlagen:', e instanceof Error ? e.message : e)
+      return null
     }),
   ])
 
@@ -617,6 +620,16 @@ export async function ladeFundamentaldaten(anfrage: FundamentaldatenAnfrage): Pr
   ergaenzeEvMultiplesZeilen(merged.perioden, merged.zeilen)
   ergaenzeRoicAusBilanz(merged.perioden, merged.zeilen)
   ergaenzeWorkingCapitalTageZeilen(merged.perioden, merged.zeilen)
+
+  await ergaenzeFehlendeStatementZeilen({
+    perioden: merged.perioden,
+    zeilen: merged.zeilen,
+    symbolYahoo: symbolYahoo ?? ident.ticker,
+    isin: isinNorm ?? anfrage.isin,
+    ticker: ident.ticker,
+    firmenname: anfrage.name ?? ident.firmenname,
+    yahooFinanz,
+  })
 
   // SBC aus Yahoo Timeseries nachziehen, wenn Macrotrends-Zeile leer (EU/ADR)
   if (yahooFinanz?.stockBasedCompensationUsd != null) {

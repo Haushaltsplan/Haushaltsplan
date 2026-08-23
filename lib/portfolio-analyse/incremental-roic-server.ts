@@ -1,6 +1,6 @@
 /**
- * Incremental ROIC — Yahoo / Nasdaq / StockAnalysis.
- * Methodik: organisch (ΔNOPAT/CapEx) vor tangible/book; M&A-Goodwill-Fenster verwerfen.
+ * Incremental ROIC — gescrapte Fundamentals + GuruFocus-Formel (ΔNOPAT/ΔIC).
+ * Optional: GuruFocus HTML/API wenn erreichbar.
  */
 
 import 'server-only'
@@ -8,11 +8,12 @@ import 'server-only'
 import { effektiverSteuersatz } from '@/lib/portfolio-analyse/fundamentaldaten-roic-hilfen'
 import type { YahooJahresSnapshot } from '@/lib/portfolio-analyse/fundamentaldaten-roic-hilfen'
 import {
+  berechneRoiicAusSnaps,
   berechneIncrementalRoicAusYahoo,
-  paketAusSnaps,
   type IncrementalRoicPaket,
   type JahrSnapErweitert,
 } from '@/lib/portfolio-analyse/incremental-roic'
+import { ladeIncrementalRoicVonGuruFocus } from '@/lib/portfolio-analyse/gurufocus-incremental-roic-server'
 import {
   ladeStockanalysisStatementsRoh,
   snapsFuerIncrementalRoic,
@@ -27,11 +28,22 @@ const nasdaqCache = new Map<string, { at: number; data: JahrSnapErweitert[] | nu
 const UA =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'
 
+function leer(): IncrementalRoicPaket {
+  return {
+    incrementalRoicPct: null,
+    incrementalRoic1yPct: null,
+    incrementalRoic5yPct: null,
+    fensterJahre: null,
+    quelle: null,
+    methode: null,
+  }
+}
+
 function parseNasdaqZahl(raw: string | null | undefined): number | null {
   if (!raw || raw === '--' || raw === '-') return null
   const n = Number(String(raw).replace(/[$,\s]/g, ''))
   if (!Number.isFinite(n)) return null
-  return n / 1000 // Nasdaq: Tausend USD → Mio.
+  return n / 1000
 }
 
 type NasdaqTable = {
@@ -58,18 +70,7 @@ function zeile(
   return rows.find((r) => labels.some((l) => (r.value1 ?? '').toLowerCase() === l.toLowerCase()))
 }
 
-function leerPaket(): IncrementalRoicPaket {
-  return {
-    incrementalRoicPct: null,
-    incrementalRoic1yPct: null,
-    incrementalRoic5yPct: null,
-    fensterJahre: null,
-    quelle: null,
-    methode: null,
-  }
-}
-
-/** Nasdaq.com Company Financials — inkl. Goodwill/Intangibles/CapEx. */
+/** Nasdaq.com Company Financials — US-Titel, ohne API-Key. */
 export async function ladeIncrementalRoicVonNasdaq(
   symbol: string,
 ): Promise<IncrementalRoicPaket | null> {
@@ -78,7 +79,7 @@ export async function ladeIncrementalRoicVonNasdaq(
 
   const hit = nasdaqCache.get(sym)
   if (hit && Date.now() - hit.at < CACHE_MS) {
-    return hit.data ? paketAusSnaps(hit.data, 'nasdaq') : null
+    return hit.data ? berechneRoiicAusSnaps(hit.data, 'nasdaq') : null
   }
 
   try {
@@ -106,7 +107,6 @@ export async function ladeIncrementalRoicVonNasdaq(
     }
     const inc = j.data?.incomeStatementTable
     const bal = j.data?.balanceSheetTable
-    const cf = j.data?.cashFlowTable
     const jahre = jahrAusHeader(inc?.headers)
     if (jahre.size < 2) {
       nasdaqCache.set(sym, { at: Date.now(), data: null })
@@ -117,28 +117,11 @@ export async function ladeIncrementalRoicVonNasdaq(
     const pretax = zeile(inc?.rows, 'Income Before Tax', 'Income Before Taxes', 'Pre-Tax Income')
     const tax = zeile(inc?.rows, 'Income Tax', 'Income Taxes', 'Provision for Income Taxes')
     const equity = zeile(bal?.rows, 'Total Equity', 'Total Stockholders Equity')
-    const debt = zeile(
-      bal?.rows,
-      'Total Debt',
-      'Long-Term Debt',
-      'Long Term Debt',
-      'Long-term Debt',
-    )
+    const debt = zeile(bal?.rows, 'Long-Term Debt', 'Long Term Debt')
     const cash = zeile(bal?.rows, 'Cash and Cash Equivalents', 'Cash')
-    const gw = zeile(bal?.rows, 'Goodwill')
-    const inta = zeile(bal?.rows, 'Intangible Assets', 'Intangibles')
-    const capex = zeile(
-      cf?.rows,
-      'Capital Expenditures',
-      'Capital Expenditure',
-      'Purchases of Property, Plant and Equipment',
-    )
-    const da = zeile(
-      cf?.rows,
-      'Depreciation and Amortization',
-      'Depreciation/Amortization',
-      'Depreciation & Amortization',
-    )
+    const goodwill = zeile(bal?.rows, 'Goodwill')
+    const intangibles = zeile(bal?.rows, 'Intangible Assets')
+    const capex = zeile(j.data?.cashFlowTable?.rows, 'Capital Expenditures', 'Capital Expenditure')
 
     const snaps: JahrSnapErweitert[] = []
     for (const [col, jahr] of jahre) {
@@ -158,36 +141,30 @@ export async function ladeIncrementalRoicVonNasdaq(
         jahr,
         nopatMio: Math.round(oiV * (1 - t) * 10) / 10,
         icMio: Math.round((eq + (d ?? 0) - (c ?? 0)) * 10) / 10,
+        goodwillMio: parseNasdaqZahl(goodwill?.[col]),
+        intangiblesMio: parseNasdaqZahl(intangibles?.[col]),
         capexMio: (() => {
           const v = parseNasdaqZahl(capex?.[col])
           return v != null ? Math.abs(v) : null
         })(),
-        daMio: (() => {
-          const v = parseNasdaqZahl(da?.[col])
-          return v != null ? Math.abs(v) : null
-        })(),
-        goodwillMio: parseNasdaqZahl(gw?.[col]),
-        intangiblesMio: parseNasdaqZahl(inta?.[col]),
+        daMio: null,
       })
     }
 
     snaps.sort((a, b) => a.jahr - b.jahr)
     nasdaqCache.set(sym, { at: Date.now(), data: snaps.length >= 2 ? snaps : null })
-    return snaps.length >= 2 ? paketAusSnaps(snaps, 'nasdaq') : null
+    return snaps.length >= 2 ? berechneRoiicAusSnaps(snaps, 'nasdaq') : null
   } catch {
     nasdaqCache.set(sym, { at: Date.now(), data: null })
     return null
   }
 }
 
-function methodePrio(p: IncrementalRoicPaket): number {
-  if (p.methode === 'organic_capex') return 0
-  if (p.methode === 'tangible_ic') return 1
-  if (p.methode === 'book_ic') return 2
-  return 3
+function hatWert(p: IncrementalRoicPaket | null | undefined): p is IncrementalRoicPaket {
+  return p != null && p.incrementalRoicPct != null
 }
 
-/** Yahoo + Nasdaq + StockAnalysis — organische Methode bevorzugt. */
+/** GuruFocus (Scrape/API) → StockAnalysis → Nasdaq → Yahoo. */
 export async function ladeIncrementalRoic(opts: {
   symbolYahoo: string
   yahooHistorie?: YahooJahresSnapshot[] | null
@@ -196,7 +173,13 @@ export async function ladeIncrementalRoic(opts: {
   firmenname?: string | null
 }): Promise<IncrementalRoicPaket> {
   const bare = opts.symbolYahoo.trim().toUpperCase().split('.')[0] ?? ''
-  const [ausYahoo, ausNasdaq, saRoh] = await Promise.all([
+
+  const [ausGuruFocus, ausYahoo, ausNasdaq, saRoh] = await Promise.all([
+    ladeIncrementalRoicVonGuruFocus({
+      symbolYahoo: opts.symbolYahoo,
+      isin: opts.isin,
+      ticker: opts.ticker,
+    }),
     Promise.resolve(berechneIncrementalRoicAusYahoo(opts.yahooHistorie)),
     ladeIncrementalRoicVonNasdaq(bare),
     ladeStockanalysisStatementsRoh({
@@ -207,32 +190,25 @@ export async function ladeIncrementalRoic(opts: {
     }),
   ])
 
-  const saSnaps: JahrSnapErweitert[] = snapsFuerIncrementalRoic(saRoh).map((s) => ({
-    jahr: s.jahr,
-    nopatMio: s.nopatMio,
-    icMio: s.icMio,
-    capexMio: s.capexMio,
-    daMio: s.daMio,
-    goodwillMio: s.goodwillMio,
-    intangiblesMio: s.intangiblesMio,
-  }))
-  const ausSa = saSnaps.length >= 2 ? paketAusSnaps(saSnaps, 'stockanalysis') : null
+  if (hatWert(ausGuruFocus)) return ausGuruFocus
 
-  const kandidaten = [ausYahoo, ausNasdaq, ausSa].filter(
-    (p): p is IncrementalRoicPaket => p != null && p.incrementalRoicPct != null,
-  )
-  if (kandidaten.length === 0) return leerPaket()
+  const saSnaps = snapsFuerIncrementalRoic(saRoh)
+  const ausSa =
+    saSnaps.length >= 2 ? berechneRoiicAusSnaps(saSnaps, 'stockanalysis') : leer()
+
+  const kandidaten = [ausSa, ausNasdaq, ausYahoo].filter(hatWert)
+  if (kandidaten.length === 0) return leer()
+
+  const prio = (q: IncrementalRoicPaket['quelle']) =>
+    q === 'stockanalysis' ? 0 : q === 'nasdaq' ? 1 : 2
 
   kandidaten.sort((a, b) => {
-    const ma = methodePrio(a)
-    const mb = methodePrio(b)
-    if (ma !== mb) return ma - mb
+    const pa = prio(a.quelle)
+    const pb = prio(b.quelle)
+    if (pa !== pb) return pa - pb
     const fa = a.fensterJahre ?? 0
     const fb = b.fensterJahre ?? 0
-    // 3–5J bevorzugen
-    const score = (f: number) => (f >= 3 && f <= 5 ? 0 : f === 2 ? 1 : f === 1 ? 3 : 2)
-    if (score(fa) !== score(fb)) return score(fa) - score(fb)
-    return Math.abs(a.incrementalRoicPct!) - Math.abs(b.incrementalRoicPct!)
+    return fb - fa
   })
   return kandidaten[0]!
 }

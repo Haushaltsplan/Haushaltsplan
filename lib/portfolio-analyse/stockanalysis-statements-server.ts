@@ -9,6 +9,8 @@ import { formatFundamentalPeriodeLabel } from '@/lib/portfolio-analyse/fundament
 import type { FundamentalMetrikZeile, FundamentalPeriode } from '@/lib/portfolio-analyse/fundamentaldaten-types'
 import { isinKenntnis } from '@/lib/portfolio-analyse/isin-kenntnisse'
 
+import { effektiverSteuersatz } from '@/lib/portfolio-analyse/fundamentaldaten-roic-hilfen'
+
 const BASE = 'https://stockanalysis.com'
 const USER_AGENT =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'
@@ -530,7 +532,8 @@ export function snapsFuerIncrementalRoic(roh: StockanalysisStatementsRoh | null)
     const oi = ebit?.werte[p.iso]
     const eq = equity?.werte[p.iso]
     if (oi == null || eq == null || !Number.isFinite(jahr)) continue
-    const nopatMio = oi * 0.79
+    const t = effektiverSteuersatz(null, null)
+    const nopatMio = oi * (1 - t)
     const icMio = eq + (debt?.werte[p.iso] ?? 0) - (cash?.werte[p.iso] ?? 0)
     if (!Number.isFinite(nopatMio) || !Number.isFinite(icMio)) continue
     out.push({

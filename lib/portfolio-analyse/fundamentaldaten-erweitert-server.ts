@@ -172,12 +172,16 @@ export async function ladeFundamentaldatenErweitert(
       firmenname: opts.firmenname,
       isEu,
     }),
-    ticker ? ladeEarningsBeatMissHistorie({ ticker, symbolYahoo: symbol, isin, limit: 8 }) : Promise.resolve(null),
-    // ASML (NL) = 20-F; US = 10-K; Ticker ohne Punkt oder ADR-Basis
-    !symbol.includes('.') || isEu
-      ? ladeSecStrukturExtraktion(symbol.includes('.') ? ticker.replace(/\..*$/, '') : symbol)
+    ticker
+      ? ladeEarningsBeatMissHistorie({ ticker, symbolYahoo: symbol, isin, limit: 8 }).catch(() => null)
       : Promise.resolve(null),
-    segmentPromise,
+    // ASML (NL) = 20-F; US = 10-K; Ticker ohne Punkt oder ADR-Basis — SEC optional (429 darf EU nicht blockieren)
+    !symbol.includes('.') || isEu
+      ? ladeSecStrukturExtraktion(symbol.includes('.') ? ticker.replace(/\..*$/, '') : symbol).catch(
+          () => null,
+        )
+      : Promise.resolve(null),
+    segmentPromise.catch(() => null),
     isEu && isin.length >= 10 ? ladeEuFundamentalAusCloud(isin) : Promise.resolve(null),
     symbol && !symbol.includes('.') ? ladeYahooOptionsIv(symbol) : Promise.resolve(null),
     opts.firmenname.trim() ? ladeArbeitgeberBewertung(opts.firmenname, isEu) : Promise.resolve(null),

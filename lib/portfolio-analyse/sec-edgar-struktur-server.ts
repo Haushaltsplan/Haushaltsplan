@@ -87,7 +87,12 @@ export async function ladeSecStrukturExtraktion(ticker: string): Promise<SecStru
   const hit = cache.get(sym)
   if (hit && Date.now() - hit.at < CACHE_MS) return hit.data
 
-  const cik = await cikFuerTicker(sym)
+  let cik: number | null
+  try {
+    cik = await cikFuerTicker(sym)
+  } catch {
+    cik = null
+  }
   if (!cik) {
     cache.set(sym, { at: Date.now(), data: null })
     return null

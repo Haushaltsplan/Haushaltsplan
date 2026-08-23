@@ -21,7 +21,7 @@ export type ReinvestitionKennzahlen = {
    * Hoch = kann Gewinne produktiv reinvestieren; niedrig = Ausschütter.
    */
   reinvestitionsquotePct: number | null
-  /** ΔNOPAT / ΔInvested Capital — bitte über `ladeIncrementalRoic` / Yahoo-Historie setzen. */
+  /** M&A-bereinigter ROIIC (organisch/tangible/book) aus gescrapten Statements. */
   incrementalRoicPct: number | null
   /** CapEx + M&A (Mio.), positiv = Investition. */
   bruttoReinvestMio: number | null
@@ -30,7 +30,7 @@ export type ReinvestitionKennzahlen = {
 /**
  * @param mnaMio optionale M&A-Ausgaben (positiv, Mio. USD) aus Yahoo CapAlloc
  * @param daMioFallback D&A in Mio. wenn GuV-Zeile `da` fehlt
- * @param incrementalRoicPctOverride aus Yahoo/Nasdaq-ROIIC (bevorzugt)
+ * @param incrementalRoicPctOverride GuruFocus ROIIC (bevorzugt)
  */
 export function berechneReinvestition(
   perioden: FundamentalPeriode[],

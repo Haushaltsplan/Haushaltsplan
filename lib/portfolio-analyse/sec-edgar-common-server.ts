@@ -51,7 +51,16 @@ export async function secFetch(url: string): Promise<Response> {
 async function ladeTickerCikMap(): Promise<Map<string, number>> {
   if (tickerCikCache && Date.now() - tickerCikLoadedAt < TICKER_CACHE_MS) return tickerCikCache
   const res = await secFetch('https://www.sec.gov/files/company_tickers.json')
-  if (!res.ok) throw new Error(`SEC Ticker-Liste (${res.status})`)
+  if (!res.ok) {
+    // Rate-Limit (429) oder SEC-Ausfall — veralteten Cache weiter nutzen statt alles zu blockieren
+    if (tickerCikCache && (res.status === 429 || res.status === 503 || res.status >= 500)) {
+      console.warn(
+        `[sec-edgar] Ticker-Liste HTTP ${res.status} — nutze veralteten Cache (${tickerCikCache.size} Ticker).`,
+      )
+      return tickerCikCache
+    }
+    throw new Error(`SEC Ticker-Liste (${res.status})`)
+  }
   const raw = await leseAlsJson<Record<string, { cik_str?: number | string; ticker?: string }>>(res)
   const map = new Map<string, number>()
   for (const row of Object.values(raw ?? {})) {
@@ -66,12 +75,17 @@ async function ladeTickerCikMap(): Promise<Map<string, number>> {
 }
 
 export async function cikFuerTicker(ticker: string): Promise<number | null> {
-  const map = await ladeTickerCikMap()
-  for (const variant of normalisiereUsTicker(ticker)) {
-    const hit = map.get(variant)
-    if (hit) return hit
+  try {
+    const map = await ladeTickerCikMap()
+    for (const variant of normalisiereUsTicker(ticker)) {
+      const hit = map.get(variant)
+      if (hit) return hit
+    }
+    return null
+  } catch (e) {
+    console.warn('[sec-edgar] cikFuerTicker fehlgeschlagen:', e instanceof Error ? e.message : e)
+    return null
   }
-  return null
 }
 
 export type SecSubmissionsRecent = {

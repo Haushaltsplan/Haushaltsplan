@@ -478,6 +478,9 @@ export function brauchtGuVErgaenzung(roh: MacrotrendsFundamentalRoh | null | und
   // Dünne GuV-Zeilen (häufig EU): Umsatz da, EBIT/NI leer → mergen
   if (zaehle('ebit') < 3) return true
   if (zaehle('nettogewinn') < 3) return true
+  if (zaehle('capex') < 3) return true
+  if (zaehle('da') < 2) return true
+  if (zaehle('sbc') < 1) return true
   return false
 }
 

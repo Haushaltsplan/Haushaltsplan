@@ -37,11 +37,13 @@ function main() {
 
   const gemini = (map.get('GEMINI_API_KEY') || map.get('GOOGLE_GENERATIVE_AI_API_KEY') || '').trim()
   const openai = (map.get('OPENAI_API_KEY') || map.get('AI_API_KEY') || '').trim()
+  const gurufocus = (map.get('GURUFOCUS_API_KEY') || map.get('GURUFOCUS_API_TOKEN') || '').trim()
   const provider = (map.get('FINANCE_COACH_PROVIDER') || 'auto').trim().toLowerCase()
 
   console.log('KI-Konfiguration (.env.local, nur Anwesenheit — keine Secret-Werte):\n')
   console.log(`  GEMINI_API_KEY:         ${gemini ? 'gesetzt (' + gemini.length + ' Zeichen)' : '— leer —'}`)
   console.log(`  OPENAI_API_KEY:         ${openai ? 'gesetzt (' + openai.length + ' Zeichen)' : '— leer —'}`)
+  console.log(`  GURUFOCUS_API_KEY:      ${gurufocus ? 'gesetzt (' + gurufocus.length + ' Zeichen, optional)' : '— leer (Incremental ROIC via StockAnalysis/Nasdaq-Scrape)'}`)
   console.log(`  FINANCE_COACH_PROVIDER: ${provider || 'auto'}`)
 
   const ok =
@@ -54,6 +56,7 @@ function main() {
     process.exit(1)
   }
   console.log('\n→ Lokal sollte resolveCoachProvider mindestens einen Anbieter finden. Dev-Server neu starten nach Änderungen.\n')
+  console.log('→ Incremental ROIC: ohne GuruFocus-Key aus gescrapten Fundamentals (StockAnalysis/Nasdaq/Yahoo).\n')
   console.log('→ Online (Vercel & Co.): dieselben Variablen im Hosting-Dashboard setzen — .env.local wird nicht deployt.\n')
   process.exit(0)
 }

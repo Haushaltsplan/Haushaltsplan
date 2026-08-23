@@ -219,7 +219,11 @@ export function PaFundamentalInhalt({
 
       {fehler && !daten?.ok ? (
         <PaCard className="space-y-4 p-6">
-          <p className="text-sm text-amber-200/90">{fehler}</p>
+          <p className="text-sm text-amber-200/90">
+            {/SEC Ticker-Liste \(429\)/i.test(fehler)
+              ? 'SEC.gov ist gerade rate-limitiert (429). Bitte in 1–2 Minuten erneut laden — Macrotrends/Yahoo-Daten sollten dann wieder verfügbar sein.'
+              : fehler}
+          </p>
           <div>
             <label className="mb-1 block text-xs text-[var(--app-text-muted)]">Macrotrends-Ticker manuell (z. B. AAPL, ASML)</label>
             <div className="flex gap-2">
