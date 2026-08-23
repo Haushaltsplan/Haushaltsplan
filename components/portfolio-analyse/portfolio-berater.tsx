@@ -48,6 +48,7 @@ export function PortfolioBeraterProvider({ children }: { children: ReactNode }) 
   const [freeTierKey, setFreeTierKey] = useState<boolean | null>(null)
   const [depotKurz, setDepotKurz] = useState<{ positionen: number; wertEur: number } | null>(null)
   const [kiHostedNote, setKiHostedNote] = useState<string | null>(null)
+  const [kiStatusFehler, setKiStatusFehler] = useState<string | null>(null)
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
   const [messages, setMessages] = useState<ChatTurn[]>([])
@@ -66,25 +67,39 @@ export function PortfolioBeraterProvider({ children }: { children: ReactNode }) 
       setFreeTierKey(null)
       setDepotKurz(null)
       setKiHostedNote(null)
+      setKiStatusFehler(null)
     })
     void fetch('/api/portfolio-berater')
-      .then((r) => r.json())
-      .then(
-        (d: {
+      .then(async (r) => {
+        const d = (await r.json().catch(() => ({}))) as {
           configured?: boolean
           freeTierKey?: boolean
           depotKurz?: { positionen: number; wertEur: number } | null
           hostedNote?: string
-        }) => {
-          if (cancelled) return
-          setKiConfigured(d.configured === true)
-          setFreeTierKey(d.freeTierKey === true)
-          setDepotKurz(d.depotKurz ?? null)
-          setKiHostedNote(typeof d.hostedNote === 'string' && d.hostedNote.trim() ? d.hostedNote.trim() : null)
-        },
-      )
+          error?: string
+        }
+        if (cancelled) return
+        if (!r.ok) {
+          setKiConfigured(null)
+          setKiStatusFehler(
+            typeof d.error === 'string' && d.error.trim()
+              ? d.error
+              : r.status === 401
+                ? 'Anmeldung erforderlich — bitte neu einloggen und das Panel erneut öffnen.'
+                : `Statusprüfung fehlgeschlagen (${r.status}).`,
+          )
+          return
+        }
+        setKiConfigured(d.configured === true)
+        setFreeTierKey(d.freeTierKey === true)
+        setDepotKurz(d.depotKurz ?? null)
+        setKiHostedNote(typeof d.hostedNote === 'string' && d.hostedNote.trim() ? d.hostedNote.trim() : null)
+      })
       .catch(() => {
-        if (!cancelled) setKiConfigured(false)
+        if (!cancelled) {
+          setKiConfigured(null)
+          setKiStatusFehler('Statusprüfung fehlgeschlagen (Netzwerk). Panel schließen und erneut öffnen.')
+        }
       })
     return () => {
       cancelled = true
@@ -216,9 +231,14 @@ export function PortfolioBeraterProvider({ children }: { children: ReactNode }) 
             </div>
 
             <div className="app-scroll-panel min-h-0 flex-1 space-y-3 px-4 py-3">
-              {kiConfigured === null && open && (
+              {kiConfigured === null && open && !kiStatusFehler && (
                 <p className="rounded-xl border border-[var(--app-border-strong)] bg-[var(--app-surface-muted)] p-3 text-xs text-[var(--app-text-muted)]">
                   Konfiguration wird geprüft …
+                </p>
+              )}
+              {kiStatusFehler && (
+                <p className="rounded-xl border border-rose-700/50 bg-rose-950/40 p-3 text-xs leading-relaxed text-rose-100">
+                  {kiStatusFehler}
                 </p>
               )}
               {kiConfigured === false && (

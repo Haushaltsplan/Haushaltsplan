@@ -58,31 +58,19 @@ function resolvePortfolioBeraterProvider() {
 }
 
 export async function GET() {
+  // Nur Key-Check. Der volle Kontext (8× Fundamentaldaten inkl. Kapitalbasis) gehört
+  // ausschließlich in POST — sonst läuft genau dieser Status-Call in den Timeout, und
+  // das Panel zeigt fälschlich „KI ist noch nicht eingerichtet“.
   const resolved = resolvePortfolioBeraterProvider()
   const diag = coachProviderSchluesselDiagnose()
   const isVercel = Boolean(process.env.VERCEL)
-
-  let depotKurz: { positionen: number; wertEur: number } | null = null
-  if (resolved) {
-    try {
-      const ctx = await bauePortfolioBeraterKontext()
-      if (ctx.depot) {
-        depotKurz = {
-          positionen: ctx.depot.positionenAnzahl,
-          wertEur: ctx.depot.wertEur,
-        }
-      }
-    } catch {
-      // ignore — Konfigurationscheck soll nicht scheitern
-    }
-  }
 
   return NextResponse.json({
     configured: Boolean(resolved),
     provider: resolved?.provider ?? 'gemini',
     freeTierKey: geminiApiKeyFreeConfigured(),
     schluessel: diag,
-    depotKurz,
+    depotKurz: null,
     ...(!resolved && isVercel
       ? {
           hostedNote:
