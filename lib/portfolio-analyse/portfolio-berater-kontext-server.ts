@@ -30,8 +30,8 @@ import {
 import type { WhitelistPosition } from '@/lib/portfolio-analyse/nachkauf-radar/nachkauf-radar-whitelist'
 import type { NachkaufScanEintrag } from '@/lib/portfolio-analyse/nachkauf-radar/nachkauf-radar-types'
 import {
-  ladeFundamentaldatenFuerBerater,
   baueQuartalsDiffFuerBerater,
+  ladeFundamentaldatenFuerBerater,
   type FundamentalBeraterZiel,
 } from '@/lib/portfolio-analyse/portfolio-berater-fundamentaldaten-server'
 
@@ -458,25 +458,6 @@ export async function bauePortfolioBeraterKontext(opts?: PortfolioBeraterAnfrage
 
   const kiCache = baueKiCacheBlock(earningsKi, secKi, relevanteTicker, focusTicker, depotTicker)
 
-  const quartalsDiffRaw = await baueQuartalsDiffFuerBerater({
-    bestehende: quartalsDiffs,
-    secKi,
-    earningsKi,
-    relevanteTicker,
-    focusTicker,
-    maxNeuGenerieren: focusTicker ? 2 : 1,
-  })
-  const quartalsDiff = quartalsDiffRaw.map((d) => ({
-    ticker: d.ticker,
-    typ: d.typ,
-    aktuellId: d.aktuellId,
-    vorherId: d.vorherId,
-    diff: kuerze(
-      d.diff,
-      focusTicker && d.ticker.toUpperCase() === focusTicker ? 1400 : 700,
-    ),
-  }))
-
   const quelleByIsin = new Map(
     kandidaten.map((k: WhitelistPosition) => [k.isin.toUpperCase(), k.quelle ?? 'whitelist']),
   )
@@ -494,10 +475,31 @@ export async function bauePortfolioBeraterKontext(opts?: PortfolioBeraterAnfrage
     }))
 
   const scanByIsin = new Map(scan.map((e) => [e.isin.toUpperCase(), e]))
-  const fundamentaldaten = await ladeFundamentaldatenFuerBerater(
-    baueFundamentalZiele({ depotPaket, focusIsin, watchlist, kandidaten }),
-    { scanByIsin },
-  )
+  const [quartalsDiffRaw, fundamentaldaten] = await Promise.all([
+    baueQuartalsDiffFuerBerater({
+      bestehende: quartalsDiffs,
+      secKi,
+      earningsKi,
+      relevanteTicker,
+      focusTicker,
+      // Cache zuerst; höchstens ein Live-Diff für den Fokus-Titel.
+      maxNeuGenerieren: 1,
+    }),
+    ladeFundamentaldatenFuerBerater(
+      baueFundamentalZiele({ depotPaket, focusIsin, watchlist, kandidaten }),
+      { scanByIsin },
+    ),
+  ])
+  const quartalsDiff = quartalsDiffRaw.map((d) => ({
+    ticker: d.ticker,
+    typ: d.typ,
+    aktuellId: d.aktuellId,
+    vorherId: d.vorherId,
+    diff: kuerze(
+      d.diff,
+      focusTicker && d.ticker.toUpperCase() === focusTicker ? 1400 : 700,
+    ),
+  }))
 
   if (!depotPaket) {
     return {

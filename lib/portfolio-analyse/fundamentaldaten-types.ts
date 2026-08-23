@@ -193,6 +193,12 @@ export type FundamentaldatenAnfrage = {
   frequenz?: FundamentalFrequenz
   /** Segment-Struktur nur aus Supabase-Cache (segment_struktur_cache), kein Live-MS-Scrape. */
   segmentNurCloud?: boolean
+  /**
+   * `immer` (Default): Cloud-Cache, Scrape nur wenn älter als ~20h oder GuV geändert.
+   * `nur-lesen`: nur Cache, kein Scrape (Chat/Radar).
+   * `erneuern`: Scrape erzwingen und Cache überschreiben.
+   */
+  cacheModus?: 'immer' | 'nur-lesen' | 'erneuern'
 }
 
 /** Spezial-Schlüssel für TTM- und Schätzungs-Spalten */

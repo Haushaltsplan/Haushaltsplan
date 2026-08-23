@@ -142,9 +142,22 @@ export function PortfolioBeraterProvider({ children }: { children: ReactNode }) 
             focusTicker: focus?.ticker ?? undefined,
           }),
         })
-        const data = await res.json().catch(() => ({}))
+        const raw = await res.text()
+        let data: { error?: string; reply?: string } = {}
+        try {
+          data = JSON.parse(raw) as { error?: string; reply?: string }
+        } catch {
+          data = {}
+        }
         if (!res.ok) {
-          toast.error(typeof data.error === 'string' ? data.error : 'KI-Anfrage fehlgeschlagen.')
+          const htmlTimeout = /^\s*</.test(raw) || res.status === 504 || res.status === 408
+          toast.error(
+            typeof data.error === 'string'
+              ? data.error
+              : htmlTimeout
+                ? `Die Anfrage ist am Zeitlimit hängen geblieben (${res.status}). Bitte nochmal senden.`
+                : `KI-Anfrage fehlgeschlagen (${res.status}).`,
+          )
           setMessages((p) => p.slice(0, -1))
           return
         }

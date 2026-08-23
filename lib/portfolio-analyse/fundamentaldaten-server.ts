@@ -59,6 +59,13 @@ import { ergaenzeRoicAusBilanz } from '@/lib/portfolio-analyse/fundamentaldaten-
 import { ergaenzeWorkingCapitalTageZeilen } from '@/lib/portfolio-analyse/fundamentaldaten-working-capital-zeilen'
 import { ladeIncrementalRoic } from '@/lib/portfolio-analyse/incremental-roic-server'
 import { ergaenzeHistorischeMultiplesZeilen } from '@/lib/portfolio-analyse/fundamentaldaten-historische-multiples-server'
+import {
+  fundamentaldatenCacheKey,
+  fundamentaldatenFingerprint,
+  istFundamentalCacheFrisch,
+  ladeFundamentaldatenPaketCache,
+  speichereFundamentaldatenPaketCache,
+} from '@/lib/portfolio-analyse/fundamentaldaten-paket-cache-server'
 
 function waehrungFuerIsin(isin: string | null | undefined): string {
   const i = isin?.trim().toUpperCase() ?? ''
@@ -281,7 +288,7 @@ function leeresPaket(partial: Partial<FundamentaldatenPaket> & Pick<Fundamentald
   }
 }
 
-export async function ladeFundamentaldaten(anfrage: FundamentaldatenAnfrage): Promise<FundamentaldatenPaket> {
+async function ladeFundamentaldatenLive(anfrage: FundamentaldatenAnfrage): Promise<FundamentaldatenPaket> {
   const frequenz = anfrage.frequenz === 'quartal' ? 'quartal' : 'jahr'
   let { ident, symbolYahoo } = await loeseIdent(anfrage)
   /** Kein Macrotrends-Treffer, aber GuV-Historie aus StockAnalysis/Yahoo vorhanden (Watchlist). */
@@ -793,4 +800,46 @@ export async function ladeFundamentaldaten(anfrage: FundamentaldatenAnfrage): Pr
     frequenz,
     erweitert: erweitertFinal,
   })
+}
+
+export async function ladeFundamentaldaten(anfrage: FundamentaldatenAnfrage): Promise<FundamentaldatenPaket> {
+  const modus = anfrage.cacheModus ?? 'immer'
+  const cacheKey = fundamentaldatenCacheKey(anfrage)
+  const cached = modus === 'erneuern' ? null : await ladeFundamentaldatenPaketCache(cacheKey)
+
+  if (cached && (modus === 'nur-lesen' || istFundamentalCacheFrisch(cached.aktualisiertAm))) {
+    return cached.paket
+  }
+  if (modus === 'nur-lesen') {
+    return leeresPaket({
+      ok: false,
+      ticker: anfrage.tickerOverride ?? anfrage.symbolYahoo ?? '',
+      firmenname: anfrage.name ?? 'Unbekannt',
+      symbolYahoo: anfrage.symbolYahoo ?? null,
+      fehler: 'Kein Fundamental-Cache — Scrape übersprungen.',
+    })
+  }
+
+  const live = await ladeFundamentaldatenLive(anfrage)
+  if (live.ok && cacheKey) {
+    const fp = fundamentaldatenFingerprint(live)
+    if (cached && cached.fingerprint === fp) {
+      await speichereFundamentaldatenPaketCache({
+        cacheKey,
+        anfrage,
+        paket: cached.paket,
+        fingerprint: fp,
+      })
+      return cached.paket
+    }
+    await speichereFundamentaldatenPaketCache({
+      cacheKey,
+      anfrage,
+      paket: live,
+      fingerprint: fp,
+    })
+  } else if (cached?.paket.ok) {
+    return cached.paket
+  }
+  return live
 }

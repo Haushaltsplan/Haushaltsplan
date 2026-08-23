@@ -17,10 +17,21 @@ import type {
 } from '@/lib/portfolio-analyse/portfolio-ki-cache-cloud-server'
 import { ladeQuartalsKiDiff } from '@/lib/portfolio-analyse/quartals-ki-diff-server'
 
-const MAX_LADEN = 8
-/** Über Macrotrends-FETCH_TIMEOUT (35s) — sonst landen alle Titel im Scan-Fallback. */
-const LOAD_TIMEOUT_MS = 55_000
-const PARALLEL_FUNDAMENTAL = 3
+const MAX_LADEN = 40
+/** Fokus-Titel bei Cache-Miss: ≥ Macrotrends FETCH_TIMEOUT_MS + 5s. */
+const LOAD_TIMEOUT_MS = 40_000
+const TIMEOUT_CACHE_MS = 6_000
+const PARALLEL_FUNDAMENTAL = 6
+
+const KEY_METRIC_PRIORITAET = [
+  'incremental_roic',
+  'ltm_pe',
+  'ntm_pe',
+  'ltm_pfcf',
+  'ltm_pb',
+  'ltm_roic',
+  'value_spread',
+] as const
 
 /** Deutsche Zeilen-IDs (Macrotrends/Yahoo) — früher fälschlich englische IDs → leere Historie. */
 const ZEILEN_HIGHLIGHT = [
@@ -40,6 +51,8 @@ const ZEILEN_HIGHLIGHT = [
   'roic',
   'kgv',
   'ps',
+  'pb',
+  'pfcf',
   'ev_ebitda',
   'ev_rev',
   'eigenkapital',
@@ -56,6 +69,11 @@ const HISTORIE_KERN = [
   'bruttomarge',
   'roe',
   'kgv',
+  'ps',
+  'pb',
+  'pfcf',
+  'ev_ebitda',
+  'ev_rev',
 ] as const
 
 export type FundamentalBeraterZiel = {
@@ -216,10 +234,30 @@ export type BeraterFundamentalKompakt = {
     secStruktur: { segmentKonzentration: number | null; pensionMio: number | null } | null
   } | null
   news: Array<{ titel: string; quelle: string | null }>
+  /** Incremental ROIC — eigene Zeile, damit der Coach sie nicht in 14 Key-Metrics übersieht. */
+  roiic: { anzeige: string; pct: number | null } | null
+}
+
+function keyMetricsKompakt(
+  p: FundamentaldatenPaket,
+  fokus: boolean,
+): BeraterFundamentalKompakt['keyMetrics'] {
+  const max = fokus ? 24 : 16
+  const seen = new Set<string>()
+  const out: BeraterFundamentalKompakt['keyMetrics'] = []
+  const push = (k: (typeof p.keyMetrics)[number] | undefined) => {
+    if (!k || seen.has(k.id) || out.length >= max) return
+    seen.add(k.id)
+    out.push({ label: k.label, wert: k.wert, gruppe: k.gruppe })
+  }
+  for (const id of KEY_METRIC_PRIORITAET) push(p.keyMetrics.find((k) => k.id === id))
+  for (const k of p.keyMetrics) push(k)
+  return out
 }
 
 export function fundamentalPaketKompakt(p: FundamentaldatenPaket, fokus: boolean): BeraterFundamentalKompakt {
   const m = p.mantra
+  const roiicKm = p.keyMetrics.find((k) => k.id === 'incremental_roic')
   return {
     ok: p.ok,
     ticker: p.ticker,
@@ -229,11 +267,11 @@ export function fundamentalPaketKompakt(p: FundamentaldatenPaket, fokus: boolean
     quelle: p.quelle,
     fehler: p.fehler ?? null,
     beschreibung: kuerze(p.beschreibung, fokus ? 500 : 220),
-    keyMetrics: p.keyMetrics.slice(0, fokus ? 22 : 14).map((k) => ({
-      label: k.label,
-      wert: k.wert,
-      gruppe: k.gruppe,
-    })),
+    keyMetrics: keyMetricsKompakt(p, fokus),
+    roiic:
+      roiicKm != null
+        ? { anzeige: roiicKm.wert, pct: roiicKm.zahl ?? null }
+        : null,
     historie5j: historie5j(p, fokus),
     mantra: {
       ampel: m.ampel,
@@ -332,12 +370,19 @@ export function fundamentalAusScanFallback(
       secStruktur: null,
     },
     news: [],
+    roiic:
+      d?.incrementalRoicPct != null
+        ? { anzeige: `${d.incrementalRoicPct.toFixed(1)} %`, pct: d.incrementalRoicPct }
+        : null,
   }
 }
 
 export async function ladeFundamentaldatenFuerBerater(
   ziele: FundamentalBeraterZiel[],
-  opts?: { scanByIsin?: Map<string, NachkaufScanEintrag> },
+  opts?: {
+    scanByIsin?: Map<string, NachkaufScanEintrag>
+    cacheModus?: 'immer' | 'nur-lesen' | 'erneuern'
+  },
 ): Promise<
   Array<{
     isin: string
@@ -356,6 +401,8 @@ export async function ladeFundamentaldatenFuerBerater(
     .slice(0, MAX_LADEN)
 
   const ladenEines = async (z: FundamentalBeraterZiel) => {
+    const modus = opts?.cacheModus ?? (z.fokus ? 'immer' : 'nur-lesen')
+    const timeoutMs = z.fokus && modus !== 'nur-lesen' ? LOAD_TIMEOUT_MS : TIMEOUT_CACHE_MS
     try {
       const paket = await mitTimeout(
         ladeFundamentaldaten({
@@ -365,8 +412,9 @@ export async function ladeFundamentaldatenFuerBerater(
           symbolCandidates: z.symbolCandidates,
           frequenz: 'jahr',
           segmentNurCloud: true,
+          cacheModus: modus,
         }),
-        LOAD_TIMEOUT_MS,
+        timeoutMs,
         z.isin,
       )
       const hatHistorie = periodenIso(paket, 5).length >= 2 && paket.zeilen.length > 0
@@ -422,6 +470,7 @@ export async function ladeFundamentaldatenFuerBerater(
         zeilenHighlights: [],
         erweitert: null,
         news: [],
+        roiic: null,
       } satisfies BeraterFundamentalKompakt,
     }
   }

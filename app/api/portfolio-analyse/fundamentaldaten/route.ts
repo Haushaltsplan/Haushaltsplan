@@ -25,6 +25,10 @@ export async function POST(req: Request) {
       : undefined,
     tickerOverride: row.tickerOverride != null ? String(row.tickerOverride).trim() || null : null,
     frequenz: row.frequenz === 'quartal' ? 'quartal' : 'jahr',
+    cacheModus:
+      row.cacheModus === 'nur-lesen' || row.cacheModus === 'erneuern' || row.cacheModus === 'immer'
+        ? row.cacheModus
+        : undefined,
   }
 
   try {

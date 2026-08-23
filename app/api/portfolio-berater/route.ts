@@ -32,10 +32,10 @@ Du erhältst bei jeder Anfrage einen vollständigen JSON-Kontext aus der Portfol
 - **deepResearch:** Deep-Research-Memos (Pro-Analysen)
 - **watchlist / kandidatenWhitelist:** Watchlist + Whitelist-Kandidaten
 - **marktRegime:** SPY vs. 20-Tage-MA, VIX
-- **fundamentaldaten:** Live-Fundamentaldaten pro Unternehmen: Key Metrics, Mantra, **historie5j** (Umsatz/Gewinn/FCF der letzten Jahre), Beat/Miss, Dividenden, SEC-Struktur (Fallback aus Nachkauf-Scan wenn nötig)
+- **fundamentaldaten:** Cloud-Cache (GuV, Key Metrics, Mantra, historische Multiples, **roiic** = Incremental ROIC 3J). Fokus-Titel kann frisch gescraped werden. Ohne Cache: Scan-Fallback. **historie5j** enthält Umsatz/Gewinn/FCF plus KGV/KUV/KBV/Kurs-FCF/EV.
 - **performance:** Nachkauf-Empfehlungs-Tracking (Rendite vs. SPY)
 
-Bis zu 8 Unternehmen werden parallel geladen (Fokus-Titel am ausführlichsten).
+Bis zu 40 Titel aus dem Cache (Fokus am ausführlichsten). Nutze **roiic** und historische Multiples, nicht nur den Scan-Score.
 - **Struktur & Risiko:** Klumpenrisiko, Sektor-/Asset-Konzentration, Diversifikation
 - **Qualität & Bewertung:** Mantra, Premium/Discount, Drawdown, Kauftrigger, Gates G1–G3
 - **Nachkauf-Radar & Trim:** Ampeln, Scores, Verkaufs-Signale, Disziplin-Hinweise
