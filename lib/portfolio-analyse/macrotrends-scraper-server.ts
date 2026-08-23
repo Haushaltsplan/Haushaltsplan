@@ -99,7 +99,7 @@ const BEKANNTE_MACROTRENDS_SLUGS: Record<
 
 type RohZeile = Record<string, string | number> & { field_name: string }
 
-type StatementSeite =
+export type StatementSeite =
   | 'financial-ratios'
   | 'income-statement'
   | 'cash-flow-statement'
@@ -665,6 +665,37 @@ async function ladeStatementRoh(
 }
 
 /** Konzern-Umsatz pro Geschäftsjahr (ISO-Jahreszahl) aus GuV — für Segment-Abgleich. */
+/**
+ * Alle Positionen eines Statements als `slug → ISO-Datum → Wert` (Mio. Berichtswährung).
+ *
+ * Die Kapitalbasis braucht Positionen, die `FUNDAMENTAL_METRIKEN` nicht abbildet
+ * (Vorsteuerergebnis, Steueraufwand, immaterielle Vermögenswerte). Macrotrends liefert
+ * pro Statement-Seite ohnehin **alle** Zeilen über 10+ Jahre — deutlich mehr Historie als
+ * StockAnalysis bei Nicht-US-Titeln freigibt.
+ */
+export async function ladeMacrotrendsStatementSerien(
+  ident: MacrotrendsIdent,
+  statement: StatementSeite,
+  frequenz: FundamentalFrequenz = 'jahr',
+): Promise<Map<string, Map<string, number>> | null> {
+  const roh = await ladeStatementRoh(ident, statement, frequenz)
+  if (!roh) return null
+
+  const out = new Map<string, Map<string, number>>()
+  for (const zeile of roh) {
+    const slug = slugAusFieldName(String(zeile.field_name))
+    if (!slug) continue
+    const serie = out.get(slug) ?? new Map<string, number>()
+    for (const [key, wert] of Object.entries(zeile)) {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(key)) continue
+      const zahl = parseZahl(wert)
+      if (zahl != null) serie.set(key, zahl)
+    }
+    if (serie.size > 0) out.set(slug, serie)
+  }
+  return out.size > 0 ? out : null
+}
+
 export async function baueUmsatzProJahrAusMacrotrends(
   ident: MacrotrendsIdent,
   frequenz: FundamentalFrequenz = 'jahr',

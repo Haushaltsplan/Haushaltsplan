@@ -1,5 +1,5 @@
 /**
- * Incremental ROIC — gescrapte Fundamentals + GuruFocus-Formel (ΔNOPAT/ΔIC).
+ * Incremental ROIC — GuruFocus-Formel (ΔNOPAT/ΔIC, 5J) aus SA/Nasdaq/Yahoo.
  * Optional: GuruFocus HTML/API wenn erreichbar.
  */
 

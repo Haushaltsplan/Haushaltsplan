@@ -97,9 +97,26 @@ function parseZahl(v: unknown): number | null {
   return Number.isFinite(n) ? n : null
 }
 
+/**
+ * Position von `key:` — aber nur als eigenständiger Schlüssel. Ohne diese Prüfung träfe
+ * `revenue:` auch `deferredrevenue:` und `debt:` auch `netdebt:`, wodurch eine völlig
+ * andere Reihe in die Kennzahl liefe.
+ */
+function schluesselPosition(block: string, key: string): number {
+  const marker = `${key}:`
+  let from = 0
+  for (;;) {
+    const idx = block.indexOf(marker, from)
+    if (idx < 0) return -1
+    const davor = idx > 0 ? block[idx - 1]! : ' '
+    if (!/[A-Za-z0-9_$]/.test(davor)) return idx
+    from = idx + 1
+  }
+}
+
 function parseArrayLiteral(block: string, key: string): unknown[] | null {
   const marker = `${key}:`
-  const idx = block.indexOf(marker)
+  const idx = schluesselPosition(block, key)
   if (idx < 0) return null
   const start = block.indexOf('[', idx + marker.length - 1)
   if (start < 0) return null
@@ -134,11 +151,15 @@ function parseArrayLiteral(block: string, key: string): unknown[] | null {
 }
 
 function parseArrayMitAliases(block: string, ...keys: string[]): unknown[] {
+  let ersatz: unknown[] | null = null
   for (const key of keys) {
     const hit = parseArrayLiteral(block, key)
-    if (hit && hit.length > 0) return hit
+    if (!hit || hit.length === 0) continue
+    // Eine Reihe aus reinen `null`/`[PRO]`-Einträgen darf den nächsten Alias nicht verdecken.
+    if (hit.some((v) => parseZahl(v) != null)) return hit
+    ersatz ??= hit
   }
-  return []
+  return ersatz ?? []
 }
 
 function extrahiereAnnualBlock(html: string): string | null {
@@ -433,27 +454,35 @@ function basisPfade(opts: {
   symbolYahoo?: string | null
   ticker?: string | null
   isin?: string | null
+  /**
+   * Heimatnotierung zuerst. ADR-Seiten (`/quote/otc/HESAY`) führen bei StockAnalysis
+   * deutlich kürzere Bilanzhistorien als die Primärbörse (`/quote/epa/RMS`), deshalb
+   * dreht die Kapitalbasis die Reihenfolge.
+   */
+  bevorzugeHeimatnotierung?: boolean
 }): string[] {
-  const out: string[] = []
-  const add = (p: string) => {
-    if (p && !out.includes(p)) out.push(p)
+  const adr: string[] = []
+  const heimat: string[] = []
+  const add = (liste: string[], p: string) => {
+    if (p && !adr.includes(p) && !heimat.includes(p)) liste.push(p)
   }
   const k = isinKenntnis(opts.isin?.trim().toUpperCase() ?? '')
-  for (const key of [k?.logoSymbol, k?.macrotrendsTicker, opts.ticker]) {
-    const sym = key?.trim().toUpperCase()
-    if (sym && SA_QUOTE_BASE[sym]) add(SA_QUOTE_BASE[sym]!)
-  }
   const sym = opts.symbolYahoo?.trim().toUpperCase() ?? ''
+
   if (sym.includes('.')) {
     const [base, suf] = sym.split('.')
     const ex = YAHOO_SUFFIX_TO_EXCHANGE[suf ?? '']
-    if (ex && base) add(`/quote/${ex}/${base}`)
-  } else if (sym) {
-    add(`/stocks/${sym.toLowerCase()}`)
+    if (ex && base) add(heimat, `/quote/${ex}/${base}`)
   }
+  for (const key of [k?.logoSymbol, k?.macrotrendsTicker, opts.ticker]) {
+    const s = key?.trim().toUpperCase()
+    if (s && SA_QUOTE_BASE[s]) add(SA_QUOTE_BASE[s]!.includes('/otc/') ? adr : heimat, SA_QUOTE_BASE[s]!)
+  }
+  if (!sym.includes('.') && sym) add(heimat, `/stocks/${sym.toLowerCase()}`)
   const ticker = opts.ticker?.trim().toUpperCase()
-  if (ticker && !sym.includes(ticker)) add(`/stocks/${ticker.toLowerCase()}`)
-  return out
+  if (ticker && !sym.includes(ticker)) add(adr, `/stocks/${ticker.toLowerCase()}`)
+
+  return opts.bevorzugeHeimatnotierung ? [...heimat, ...adr] : [...adr, ...heimat]
 }
 
 export async function ladeStockanalysisStatementsRoh(opts: {
@@ -497,6 +526,80 @@ export async function ladeStockanalysisStatementsRoh(opts: {
 
   cache.set(cacheKey, { at: Date.now(), daten: null })
   return null
+}
+
+export type StockanalysisAnnualBloecke = {
+  incomeStatement: string | null
+  balanceSheet: string | null
+  cashFlow: string | null
+  url: string
+}
+
+const bloeckeCache = new Map<string, { at: number; daten: StockanalysisAnnualBloecke | null }>()
+
+/**
+ * Rohe Jahres-Datenblöcke (eingebettete JS-Arrays) je Statement.
+ *
+ * Die Kapitalbasis braucht Felder, die `ladeStockanalysisStatementsRoh` nicht in
+ * `FundamentalMetrikZeile`n abbildet — Vorsteuerergebnis, Steueraufwand, kurzfristige
+ * Verbindlichkeiten, Rückkäufe. Statt dort neue Zeilen einzuführen (was den Merge in
+ * `fundamentaldaten-server` verändern würde) liefert diese Funktion die Rohblöcke, aus
+ * denen sich beliebige Schlüssel lesen lassen.
+ */
+export async function ladeStockanalysisAnnualBloecke(opts: {
+  symbolYahoo?: string | null
+  ticker?: string | null
+  isin?: string | null
+  bevorzugeHeimatnotierung?: boolean
+}): Promise<StockanalysisAnnualBloecke | null> {
+  const cacheKey = `bloecke|${opts.isin ?? ''}|${opts.symbolYahoo ?? ''}|${opts.ticker ?? ''}|${
+    opts.bevorzugeHeimatnotierung ? 'heimat' : 'adr'
+  }`
+  const hit = bloeckeCache.get(cacheKey)
+  if (hit && Date.now() - hit.at < CACHE_MS) return hit.daten
+
+  let beste: StockanalysisAnnualBloecke | null = null
+  let besteJahre = 0
+
+  for (const basis of basisPfade(opts)) {
+    const [isHtml, bsHtml, cfHtml] = await Promise.all([
+      fetchHtml(`${basis}/financials/income-statement/`),
+      fetchHtml(`${basis}/financials/balance-sheet/`),
+      fetchHtml(`${basis}/financials/cash-flow-statement/`),
+    ])
+    const daten: StockanalysisAnnualBloecke = {
+      incomeStatement: isHtml ? extrahiereAnnualBlock(isHtml) : null,
+      balanceSheet: bsHtml ? extrahiereAnnualBlock(bsHtml) : null,
+      cashFlow: cfHtml ? extrahiereAnnualBlock(cfHtml) : null,
+      url: `${BASE}${basis}/financials/`,
+    }
+    if (!daten.incomeStatement && !daten.balanceSheet && !daten.cashFlow) continue
+
+    // Nicht die erste erreichbare Seite gewinnt, sondern die mit der längsten Jahresreihe.
+    const jahre = Math.max(
+      ...[daten.incomeStatement, daten.balanceSheet, daten.cashFlow].map((b) =>
+        b ? spaltenMeta(b).jahre.length : 0,
+      ),
+    )
+    if (jahre > besteJahre) {
+      beste = daten
+      besteJahre = jahre
+    }
+    if (besteJahre >= 10) break
+  }
+
+  bloeckeCache.set(cacheKey, { at: Date.now(), daten: beste })
+  return beste
+}
+
+/** Jahresreihe (ISO-Datum → Mio.) für beliebige StockAnalysis-Schlüssel aus einem Rohblock. */
+export function serieAusStockanalysisBlock(
+  block: string | null,
+  keys: string[],
+  modus: 'raw' | 'abfluss' = 'raw',
+): Map<string, number> {
+  if (!block) return new Map()
+  return mappeSerie(spaltenMeta(block), parseArrayMitAliases(block, ...keys), modus)
 }
 
 /** Snapshots für Incremental ROIC aus SA-Statements. */

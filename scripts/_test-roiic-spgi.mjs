@@ -4,6 +4,7 @@
  */
 import {
   berechneRoiicAusSnaps,
+  berechneGuruFocusRoiicAusSnaps,
   roiicBookPct,
   roiicOrganicPct,
 } from '../lib/portfolio-analyse/incremental-roic.ts'
@@ -20,8 +21,9 @@ const spgiSnaps = [
 const paket = berechneRoiicAusSnaps(spgiSnaps, 'stockanalysis')
 
 // Book über M&A-Fenster (2021→2025) muss wertlos sein
-const bookMa = roiicBookPct(spgiSnaps[4], spgiSnaps[0])
+const book4y = roiicBookPct(spgiSnaps[4], spgiSnaps[0])
 const orgPost = roiicOrganicPct(spgiSnaps[4], spgiSnaps[2], spgiSnaps.slice(2))
+const gf = berechneGuruFocusRoiicAusSnaps(spgiSnaps, 'stockanalysis')
 
 console.log('SPGI ROIIC Paket:', {
   pct: paket.incrementalRoicPct,
@@ -29,14 +31,16 @@ console.log('SPGI ROIIC Paket:', {
   fenster: paket.fensterJahre,
   quelle: paket.quelle,
 })
-console.log('Book über M&A (soll null):', bookMa)
-console.log('Organic 2023→2025 (soll >>10%):', orgPost)
+console.log('GuruFocus-Book:', gf)
+console.log('Book 4J (GuruFocus-ähnlich):', book4y)
+console.log('Organic 2023→2025 (soll null — CapEx zu klein):', orgPost)
 
 const ok =
   paket.incrementalRoicPct != null &&
-  paket.incrementalRoicPct > 15 &&
-  paket.methode === 'organic_capex' &&
-  bookMa == null
+  paket.incrementalRoicPct > 1 &&
+  paket.incrementalRoicPct < 30 &&
+  paket.methode === 'book_ic' &&
+  orgPost == null
 
 console.log(ok ? '✓ SPGI ROIIC-Test bestanden' : '✗ SPGI ROIIC-Test FEHLGESCHLAGEN')
 process.exit(ok ? 0 : 1)

@@ -1,13 +1,8 @@
 /**
- * Incremental ROIC (ROIIC) vs. klassischer ROIC.
+ * Incremental ROIC (ROIIC) — GuruFocus-Standard: ΔNOPAT / ΔInvested Capital.
  *
- * ROIC = NOPAT / IC (Status quo) — fällt nach Mega-M&A oft künstlich (z. B. SPGI 38 % → 10 %).
- * ROIIC = inkrementelle Verzinsung: ΔNOPAT / Reinvestition — ideal post-Deal-Fenster.
- *
- * Methoden (Priorität):
- * 1) Organisch: ΔNOPAT / Σ CapEx — asset-light, ΔIC ≈ 0 (Buybacks, GW-Abbau)
- * 2) Tangible: ΔNOPAT / Δ(IC − Goodwill − Intangibles) — post-M&A ohne Bilanz-Sprung
- * 3) Book: ΔNOPAT / ΔIC — nur ohne Mega-M&A im Fenster
+ * Primär 5-Jahres-, dann 3-/2-Jahres-Fenster (wie GuruFocus ROIIC 5Y/3Y).
+ * CapEx-only-Heuristik erzeugt bei asset-light Titeln 400 %+ → nur Fallback.
  */
 
 import type { YahooJahresSnapshot } from '@/lib/portfolio-analyse/fundamentaldaten-roic-hilfen'
@@ -63,9 +58,17 @@ export function icMioAusBilanz(
   return (equityUsd + (debtUsd ?? 0) - (cashUsd ?? 0)) / 1_000_000
 }
 
-function clampPct(pct: number | null): number | null {
+function clampPct(pct: number | null, maxAbs = 150): number | null {
   if (pct == null || !Number.isFinite(pct)) return null
-  if (Math.abs(pct) > 2_000) return null
+  if (Math.abs(pct) > maxAbs) return null
+  return Math.round(pct * 10) / 10
+}
+
+/** GuruFocus-Book: negative ROIIC zulassen, nur extreme Positive filtern. */
+function clampBookPct(pct: number | null): number | null {
+  if (pct == null || !Number.isFinite(pct)) return null
+  if (pct > 120) return null
+  if (pct < -250) return null
   return Math.round(pct * 10) / 10
 }
 
@@ -150,7 +153,7 @@ export function roiicBookPct(aktuell: JahrSnapErweitert, basis: JahrSnapErweiter
   return clampPct((dNopat / dIc) * 100)
 }
 
-/** Tangible ROIIC: Δ(IC − GW − Intangibles) — post-M&A-Fenster ohne Bilanz-Sprung. */
+/** Tangible ROIIC: Δ(IC − GW − Intangibles) — Standard post-M&A. */
 export function roiicTangiblePct(aktuell: JahrSnapErweitert, basis: JahrSnapErweitert): number | null {
   const a = tangibleIcMio(aktuell)
   const b = tangibleIcMio(basis)
@@ -158,8 +161,7 @@ export function roiicTangiblePct(aktuell: JahrSnapErweitert, basis: JahrSnapErwe
   const dNopat = aktuell.nopatMio - basis.nopatMio
   if (dNopat <= 0) return null
   const dIc = a - b
-  if (icStagniertPostDeal(aktuell, basis)) return null
-  const minIcDelta = Math.max(5, Math.abs(a) * 0.01)
+  const minIcDelta = Math.max(20, Math.abs(a) * 0.005)
   if (Math.abs(dIc) < minIcDelta) return null
   return clampPct((dNopat / dIc) * 100)
 }
@@ -194,7 +196,11 @@ export function roiicOrganicPct(
     sumDa > 2.5 * sumCapex ? sumCapex : Math.max(sumCapex - sumDa, sumCapex * 0.25)
 
   if (denom < 1) return null
-  return clampPct((dNopat / denom) * 100)
+  // Asset-light: wenig CapEx vs. Gewinnwachstum → Nenner zu klein, Werte >100 % sind irreführend
+  if (sumCapex < dNopat * 0.2) return null
+  const pct = (dNopat / denom) * 100
+  if (pct > 100) return null
+  return clampPct(pct)
 }
 
 type Kandidat = {
@@ -213,42 +219,40 @@ function kandidatenFuerFenster(
   if (span < 1) return []
   const dazwischen = snaps.filter((s) => s.jahr >= basis.jahr && s.jahr <= last.jahr)
   const out: Kandidat[] = []
-  const assetLight = icStagniertPostDeal(last, basis)
 
-  const org = roiicOrganicPct(last, basis, dazwischen)
-  if (org != null) out.push({ pct: org, fensterJahre: span, methode: 'organic_capex' })
+  const tang = roiicTangiblePct(last, basis)
+  if (tang != null) out.push({ pct: tang, fensterJahre: span, methode: 'tangible_ic' })
 
-  if (!assetLight) {
-    const tang = roiicTangiblePct(last, basis)
-    if (tang != null) out.push({ pct: tang, fensterJahre: span, methode: 'tangible_ic' })
-  }
-
-  if (!postDealModus && !fensterEnthaeltMegaMa(basis, last, snaps)) {
+  if (!fensterEnthaeltMegaMa(basis, last, snaps)) {
     const book = roiicBookPct(last, basis)
     if (book != null) out.push({ pct: book, fensterJahre: span, methode: 'book_ic' })
   }
 
+  const org = roiicOrganicPct(last, basis, dazwischen)
+  if (org != null) out.push({ pct: org, fensterJahre: span, methode: 'organic_capex' })
+
+  void postDealModus
   return out
 }
 
-/**
- * Post-M&A: organische/CapEx-Methode bevorzugen; 2–3J-Fenster nach Deal.
- * Normal: tangible vor book; 3–5J.
- */
+/** Nur Tangible-Fallback wenn Book-ΔIC zu klein (asset-light, kein M&A-Sprung). */
+function kandidatenTangibleOnly(
+  snaps: JahrSnapErweitert[],
+  last: JahrSnapErweitert,
+  basis: JahrSnapErweitert,
+): Kandidat[] {
+  const span = last.jahr - basis.jahr
+  if (span < 2) return []
+  const tang = roiicTangiblePct(last, basis)
+  if (tang == null) return []
+  return [{ pct: tang, fensterJahre: span, methode: 'tangible_ic' }]
+}
+
+/** Tangible > Book > Organic; 2–3J post-M&A; Extremwerte >100 % abwerten. */
 function waehleBesten(kandidaten: Kandidat[], postDealModus: boolean): Kandidat | null {
   if (kandidaten.length === 0) return null
   const prio = (m: Kandidat['methode']) =>
-    postDealModus
-      ? m === 'organic_capex'
-        ? 0
-        : m === 'tangible_ic'
-          ? 1
-          : 2
-      : m === 'organic_capex'
-        ? 0
-        : m === 'tangible_ic'
-          ? 1
-          : 2
+    m === 'tangible_ic' ? 0 : m === 'book_ic' ? 1 : 2
 
   const scored = kandidaten.map((k) => {
     const fensterScore = postDealModus
@@ -264,7 +268,8 @@ function waehleBesten(kandidaten: Kandidat[], postDealModus: boolean): Kandidat 
           : k.fensterJahre === 1
             ? 3
             : 2
-    const extrem = Math.abs(k.pct) > 500 ? 2 : Math.abs(k.pct) > 300 ? 1 : 0
+    const extrem =
+      Math.abs(k.pct) > 100 ? 4 : Math.abs(k.pct) > 80 ? 2 : Math.abs(k.pct) > 60 ? 1 : 0
     return { k, score: prio(k.methode) * 10 + fensterScore + extrem }
   })
   scored.sort((a, b) => a.score - b.score || Math.abs(a.k.pct) - Math.abs(b.k.pct))
@@ -312,7 +317,7 @@ export function paketAusSnaps(
   const incrementalRoicPct =
     best != null
       ? best.pct
-      : y1Best != null && Math.abs(y1Best.pct) <= 300
+      : y1Best != null && Math.abs(y1Best.pct) <= 100
         ? y1Best.pct
         : null
 
@@ -373,17 +378,46 @@ export function berechneIncrementalRoicAusYahoo(
 }
 
 /**
- * ROIIC aus gescrapten Snaps — M&A-bewusst:
- * 1) Organisch (ΔNOPAT/Σ CapEx) wenn Übernahme-Goodwill den Nenner verzerrt
- * 2) Tangible (ΔNOPAT/Δ(IC−GW−Intangibles)) bei M&A
- * 3) Book (GuruFocus-Standard ΔNOPAT/ΔIC) nur ohne Goodwill-Sprung
+ * ROIIC aus gescrapten Snaps — GuruFocus-Standard (ΔNOPAT/ΔIC, 5J) zuerst.
  */
 export function berechneRoiicAusSnaps(
   snaps: JahrSnapErweitert[],
   quelle: 'yahoo' | 'nasdaq' | 'stockanalysis',
 ): IncrementalRoicPaket {
   if (snaps.length < 2) return leeresIncrementalRoicPaket()
-  return paketAusSnaps(snaps, quelle)
+
+  const book = berechneGuruFocusRoiicAusSnaps(snaps, quelle)
+  if (book.incrementalRoicPct != null) return book
+
+  return paketAusSnapsTangibleFallback(snaps, quelle)
+}
+
+function paketAusSnapsTangibleFallback(
+  snaps: JahrSnapErweitert[],
+  quelle: 'yahoo' | 'nasdaq' | 'stockanalysis',
+): IncrementalRoicPaket {
+  const sorted = [...snaps].sort((a, b) => a.jahr - b.jahr)
+  const last = sorted[sorted.length - 1]!
+  const earliestBasis = fruehestesBasisJahr(sorted)
+
+  const alle: Kandidat[] = []
+  for (const span of [2, 3, 4, 5]) {
+    const basis = sorted.find((s) => s.jahr === last.jahr - span)
+    if (!basis || basis.jahr < earliestBasis) continue
+    alle.push(...kandidatenTangibleOnly(sorted, last, basis))
+  }
+
+  const best = waehleBesten(alle, false)
+  if (best == null) return leeresIncrementalRoicPaket()
+
+  return {
+    incrementalRoicPct: best.pct,
+    incrementalRoic1yPct: null,
+    incrementalRoic5yPct: best.fensterJahre >= 3 ? best.pct : null,
+    fensterJahre: best.fensterJahre,
+    quelle: 'tangible',
+    methode: 'tangible_ic',
+  }
 }
 
 function leeresIncrementalRoicPaket(): IncrementalRoicPaket {
@@ -403,7 +437,7 @@ function leeresIncrementalRoicPaket(): IncrementalRoicPaket {
  * @see https://www.gurufocus.com/term/roiic-5y
  */
 export function berechneGuruFocusRoiicAusSnaps(
-  snaps: JahrSnap[],
+  snaps: JahrSnapErweitert[],
   quelle: Exclude<IncrementalRoicQuelle, 'gurufocus' | 'organic' | 'tangible' | null>,
 ): IncrementalRoicPaket {
   if (snaps.length < 2) return leeresIncrementalRoicPaket()
@@ -416,13 +450,13 @@ export function berechneGuruFocusRoiicAusSnaps(
     if (!basis) return null
     const dNopat = last.nopatMio - basis.nopatMio
     const dIc = last.icMio - basis.icMio
-    // Mindest-ΔIC: 5 Mio USD oder 1 % des aktuellen IC
     const minIcDelta = Math.max(5, Math.abs(last.icMio) * 0.01)
     if (Math.abs(dIc) < minIcDelta) return null
-    return clampPct((dNopat / dIc) * 100)
+    return clampBookPct((dNopat / dIc) * 100)
   }
 
   const incrementalRoic1yPct = roiicFuerSpan(1)
+  const y2 = roiicFuerSpan(2)
   const y3 = roiicFuerSpan(3)
   const incrementalRoic5yPct = roiicFuerSpan(5)
 
@@ -434,6 +468,9 @@ export function berechneGuruFocusRoiicAusSnaps(
   } else if (y3 != null) {
     incrementalRoicPct = y3
     fensterJahre = 3
+  } else if (y2 != null) {
+    incrementalRoicPct = y2
+    fensterJahre = 2
   } else if (incrementalRoic1yPct != null) {
     incrementalRoicPct = incrementalRoic1yPct
     fensterJahre = 1
@@ -447,6 +484,6 @@ export function berechneGuruFocusRoiicAusSnaps(
     incrementalRoic5yPct,
     fensterJahre,
     quelle,
-    methode: null,
+    methode: 'book_ic',
   }
 }

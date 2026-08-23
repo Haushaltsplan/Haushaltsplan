@@ -284,7 +284,7 @@ export function baueKeyMetrics(
     },
     {
       id: 'incremental_roic',
-      label: 'Incremental ROIC (inkr., post-M&A)',
+      label: 'Incremental ROIC (ΔNOPAT/ΔIC, 5J)',
       wert: pctRaw(w?.incrementalRoicPct),
       gruppe: 'effizienz',
     },
