@@ -161,12 +161,13 @@ export function PortfolioBeraterProvider({ children }: { children: ReactNode }) 
           setMessages((p) => p.slice(0, -1))
           return
         }
-        if (typeof data.reply !== 'string') {
+        const reply = data.reply
+        if (typeof reply !== 'string') {
           toast.error('Unerwartete Antwort.')
           setMessages((p) => p.slice(0, -1))
           return
         }
-        setMessages((p) => [...p, { role: 'assistant', content: data.reply }])
+        setMessages((p) => [...p, { role: 'assistant', content: reply }])
       } catch {
         toast.error('Netzwerkfehler.')
         setMessages((p) => p.slice(0, -1))
