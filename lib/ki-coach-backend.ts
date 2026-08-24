@@ -56,6 +56,16 @@ export function geminiApiKeyFreeConfigured(): boolean {
   return Boolean(normalisiereEnvApiKey(process.env.GEMINI_API_KEY_FREE))
 }
 
+/** Nur `GEMINI_API_KEY_FREE` — kein Fallback auf den Billing-Key. */
+export function resolveGeminiFreeTierProvider(): { provider: 'gemini'; apiKey: string } | null {
+  const key = normalisiereEnvApiKey(process.env.GEMINI_API_KEY_FREE)
+  return key ? { provider: 'gemini', apiKey: key } : null
+}
+
+function istGeminiProModell(model: string): boolean {
+  return /\bpro\b|-pro(?:-|$)/i.test(model)
+}
+
 /**
  * Welcher KI-Anbieter genutzt wird (gleiche Logik wie `resolveCoachProvider`, aber mit frei wählbarem Modus-String).
  * `mode`: `auto` | `gemini` | `openai` (case-insensitive).
@@ -354,12 +364,13 @@ function geminiModelKandidaten(): string[] {
   return geminiFreeTierFlashModelKandidaten()
 }
 
-/** Portfolio-KI-Berater — Free-Tier Flash (Google AI Studio). */
+/** Portfolio-KI-Berater — Free-Tier Flash (Google AI Studio). Nie Pro (das wäre Billing). */
 export function portfolioBeraterGeminiModelKandidaten(): string[] {
-  return geminiFreeTierFlashModelKandidaten({
+  const chain = geminiFreeTierFlashModelKandidaten({
     primaryEnvKeys: ['PORTFOLIO_BERATER_GEMINI_MODEL', 'FINANCE_COACH_GEMINI_MODEL', 'GEMINI_MODEL'],
     fallbackEnvKey: 'PORTFOLIO_BERATER_GEMINI_MODEL_FALLBACKS',
-  })
+  }).filter((m) => !istGeminiProModell(m))
+  return chain.length > 0 ? chain : ['gemini-3.5-flash', 'gemini-flash-latest', 'gemini-2.5-flash']
 }
 
 /** Earnings Call — lange Transkripte, bevorzugt neuestes Flash mit Free-Tier-Fallbacks. */
@@ -540,9 +551,12 @@ async function callGeminiEinModell(
 function geminiKeyFuerModell(
   model: string,
   fallbackKey: string,
-  opts?: { forcePaid?: boolean },
+  opts?: { forcePaid?: boolean; forceFree?: boolean },
 ): string {
-  const istPro = /\bpro\b|-pro(?:-|$)/i.test(model)
+  if (opts?.forceFree) {
+    return normalisiereEnvApiKey(process.env.GEMINI_API_KEY_FREE) || fallbackKey
+  }
+  const istPro = istGeminiProModell(model)
   const key = opts?.forcePaid || istPro ? geminiApiKey() : geminiApiKeyFree()
   return key || fallbackKey
 }
@@ -554,10 +568,18 @@ async function callGemini(
   callOpts: CallGeminiEinModellOptions,
   modelChain?: string[],
   forcePaidKey?: boolean,
+  forceFreeKey?: boolean,
 ): Promise<{ ok: true; reply: string } | { ok: false; status: number; hint: string }> {
   const models = modelChain?.length ? modelChain : geminiModelKandidaten()
   if (!models.length) {
     return { ok: false, status: 501, hint: 'Kein Gemini-Modell konfiguriert (GEMINI_MODEL / FINANCE_COACH_GEMINI_MODEL).' }
+  }
+  if (forceFreeKey && !geminiApiKeyFreeConfigured()) {
+    return {
+      ok: false,
+      status: 501,
+      hint: 'GEMINI_API_KEY_FREE fehlt — dieser Dienst darf den Billing-Key nicht nutzen.',
+    }
   }
 
   let lastHint = 'Unbekannter Fehler.'
@@ -565,7 +587,7 @@ async function callGemini(
 
   for (let i = 0; i < models.length; i++) {
     const model = models[i]!
-    const modellKey = geminiKeyFuerModell(model, apiKey, { forcePaid: forcePaidKey })
+    const modellKey = geminiKeyFuerModell(model, apiKey, { forcePaid: forcePaidKey, forceFree: forceFreeKey })
     let r = await callGeminiEinModell(modellKey, model, systemText, userMessages, callOpts)
 
     // Einmal kurz warten und dasselbe Modell bei temporärer Überlastung wiederholen
@@ -622,9 +644,15 @@ export type RunCoachCompletionOptions = {
   geminiModels?: string[]
   /**
    * Nur Gemini: immer `GEMINI_API_KEY` (Billing), auch für Flash.
-   * Nachkauf-Radar Scan — nicht Free-Tier.
+   * Nachkauf-Radar Scan/DR/Kaufempfehlung — nicht Free-Tier.
+   * Niemals am Portfolio-Berater / Mode / Coach setzen.
    */
   geminiForcePaidApiKey?: boolean
+  /**
+   * Nur Gemini: immer `GEMINI_API_KEY_FREE`, nie Billing, nie OpenAI-Fallback.
+   * Portfolio-Berater.
+   */
+  geminiForceFreeApiKey?: boolean
   /** Gemini-HTTP-Timeout in ms. */
   timeoutMs?: number
 }
@@ -639,6 +667,9 @@ export async function runCoachCompletion(
   const t = options?.temperature ?? 0.55
   const messages = options?.skipMessageTrim ? userMessages : prepareCoachMessages(userMessages)
   if (provider === 'gemini') {
+    if (options?.geminiForcePaidApiKey && options?.geminiForceFreeApiKey) {
+      return { ok: false, status: 500, hint: 'Intern: Paid- und Free-Gemini-Key dürfen nicht gleichzeitig erzwungen werden.' }
+    }
     const gemini = await callGemini(
       apiKey,
       systemText,
@@ -651,12 +682,14 @@ export async function runCoachCompletion(
       },
       options?.geminiModels,
       options?.geminiForcePaidApiKey === true,
+      options?.geminiForceFreeApiKey === true,
     )
     if (gemini.ok) return gemini
 
     const oKey = openAiApiKey()
     const kannOpenAiFallback =
       oKey &&
+      !options?.geminiForceFreeApiKey &&
       !options?.jsonResponse &&
       !options?.geminiGoogleSearch &&
       !messages.some((m) => m.images?.length)

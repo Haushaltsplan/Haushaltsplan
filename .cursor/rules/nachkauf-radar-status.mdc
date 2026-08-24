@@ -53,6 +53,15 @@ Stark negativ (≤ −6) blockiert Grün ohne Kauftrigger.
 | B – Deep Research | `gemini-3.1-pro-preview` (Billing) | Manuell pro Position | Langes Memo (~2000 Wörter) |
 | C – Kaufempfehlung | `gemini-3.1-pro-preview` (Billing) | Manuell | Budget-Allokation mit Begründung |
 
+## Gemini-Keys — nicht vermischen
+
+| Feature | Key | `geminiForcePaidApiKey` |
+|---------|-----|-------------------------|
+| **Portfolio-Berater**, Modeberater, Finanz-Coach, News-Fazit | nur `GEMINI_API_KEY_FREE` | **verboten** |
+| Nachkauf Scan / Deep Research / Kaufempfehlung | `GEMINI_API_KEY` (Billing) | `true` |
+
+Niemals den Billing-Flag vom Radar auf den Portfolio-Berater kopieren.
+
 ## Wichtigste Dateien
 
 ```

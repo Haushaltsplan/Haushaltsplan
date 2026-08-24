@@ -284,10 +284,6 @@ export function PortfolioBeraterProvider({ children }: { children: ReactNode }) 
                         Key aus einem Google-Cloud-Projekt ohne Billing — kostenloses Tageskontingent.
                       </span>
                     </li>
-                    <li>
-                      Alternativ <code className="rounded bg-[var(--app-surface-muted)] px-1 text-[10px]">GEMINI_API_KEY</code>{' '}
-                      (mit Billing).
-                    </li>
                     <li>Dev-Server neu starten, Panel erneut öffnen.</li>
                   </ol>
                 </div>

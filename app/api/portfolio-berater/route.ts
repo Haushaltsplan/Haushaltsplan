@@ -5,8 +5,7 @@ import {
   geminiApiKeyFreeConfigured,
   portfolioBeraterGeminiModelKandidaten,
   prepareCoachMessages,
-  readGeminiApiKeyFromEnv,
-  resolveCoachProviderFromMode,
+  resolveGeminiFreeTierProvider,
   runCoachCompletion,
 } from '@/lib/ki-coach-backend'
 
@@ -52,9 +51,7 @@ Regeln:
 }
 
 function resolvePortfolioBeraterProvider() {
-  const key = readGeminiApiKeyFromEnv()
-  if (!key) return null
-  return resolveCoachProviderFromMode('gemini')
+  return resolveGeminiFreeTierProvider()
 }
 
 export async function GET() {
@@ -74,7 +71,7 @@ export async function GET() {
     ...(!resolved && isVercel
       ? {
           hostedNote:
-            'Auf Vercel: GEMINI_API_KEY_FREE (kostenlos) oder GEMINI_API_KEY in Environment Variables setzen, Deployment neu bauen.',
+            'Auf Vercel: GEMINI_API_KEY_FREE (kostenloses Google-AI-Studio-Kontingent) in Environment Variables setzen, Deployment neu bauen.',
         }
       : {}),
   })
@@ -86,7 +83,7 @@ export async function POST(req: Request) {
     return NextResponse.json(
       {
         error:
-          'KI ist nicht konfiguriert. Setze GEMINI_API_KEY_FREE (kostenloses Google-AI-Studio-Kontingent) oder GEMINI_API_KEY in .env.local, Dev-Server neu starten.',
+          'KI ist nicht konfiguriert. Setze GEMINI_API_KEY_FREE (kostenloses Google-AI-Studio-Kontingent, Projekt ohne Billing) in .env.local, Dev-Server neu starten.',
       },
       { status: 501 },
     )
@@ -136,7 +133,8 @@ export async function POST(req: Request) {
     const result = await runCoachCompletion(resolved.provider, resolved.apiKey, systemText, userMessages, {
       temperature: 0.45,
       geminiModels: portfolioBeraterGeminiModelKandidaten(),
-      geminiForcePaidApiKey: true,
+      /** Nur Free-Tier — niemals GEMINI_API_KEY (Billing). Nachkauf-Radar bleibt separat auf Paid. */
+      geminiForceFreeApiKey: true,
       timeoutMs: 55_000,
     })
 
