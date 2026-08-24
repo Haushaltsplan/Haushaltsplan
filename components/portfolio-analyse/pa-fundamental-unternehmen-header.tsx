@@ -3,7 +3,7 @@
 import { useState, type ReactNode } from 'react'
 import { PaIconTabs } from '@/components/portfolio-analyse/pa-ui'
 
-type Tab<T extends string> = { id: T; label: string }
+type Tab<T extends string> = { id: T; label: string; shortLabel?: string }
 
 type Props<T extends string> = {
   firmenname: string

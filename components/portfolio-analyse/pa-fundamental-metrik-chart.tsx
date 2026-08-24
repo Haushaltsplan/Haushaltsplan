@@ -25,7 +25,45 @@ import {
   type FundamentalPeriode,
 } from '@/lib/portfolio-analyse/fundamentaldaten-types'
 
-const FARBEN = ['#f59e0b', '#2dd4bf', '#818cf8', '#f472b6', '#a3e635', '#38bdf8']
+const FARBEN = ['#43a047', '#7cb342', '#5c6bc0', '#f9a825', '#26a69a', '#8d6e63']
+const METRIK_FARBE: Record<string, string> = {
+  nettogewinn: '#43a047',
+  fcf: '#9ccc65',
+  ocf: '#c5e1a5',
+  eps: '#2e7d32',
+  dividenden_gezahlt: '#5c6bc0',
+  umsatz: '#66bb6a',
+  bruttomarge: '#e53935',
+  ebit_marge: '#1b5e20',
+  ebitda_marge: '#558b2f',
+  nettomarge: '#81c784',
+  kgv: '#43a047',
+  ps: '#f9a825',
+  pfcf: '#80cbc4',
+  pb: '#8d6e63',
+  ev_ebitda: '#6d4c41',
+  ev_rev: '#ffb74d',
+  aktienrueckkauf: '#43a047',
+  aktien: '#d4d4d8',
+  nettoverschuldung: '#ef5350',
+  bargeld: '#26a69a',
+  eigenkapital: '#ffcc80',
+}
+
+export function farbeFuerMetrik(id: string, fallbackIndex = 0): string {
+  return METRIK_FARBE[id] ?? FARBEN[fallbackIndex % FARBEN.length]!
+}
+
+function serieDarstellung(
+  id: string,
+  einheit: FundamentalMetrikZeile['einheit'],
+): 'flaeche' | 'linie' | 'balken' {
+  if (id === 'dividenden_gezahlt' || id === 'aktienrueckkauf') return 'balken'
+  if (einheit === 'prozent' || einheit === 'multiple' || einheit === 'ratio' || einheit === 'aktien_mio') {
+    return 'linie'
+  }
+  return 'flaeche'
+}
 const AKTUELL_FARBE = '#fafafa'
 const SCHÄTZUNG_FARBE = '#38bdf8'
 const ACHSE_FONT = 13
@@ -64,6 +102,8 @@ type ChartSerie = {
   farbe: string
   einheit: FundamentalMetrikZeile['einheit']
   yAxis: 0 | 1
+  darstellung: 'flaeche' | 'linie' | 'balken'
+  letzterWert: number | null
   historisch: ChartPunkt[]
   schaetzung: ChartPunkt[]
   aktuell: ChartPunkt | null
@@ -213,6 +253,7 @@ function ChartZeitraumWahl({
   onVonChange,
   onBisChange,
   onPreset,
+  nurPresets = false,
 }: {
   allePerioden: FundamentalPeriode[]
   vonIso: string
@@ -220,6 +261,7 @@ function ChartZeitraumWahl({
   onVonChange: (iso: string) => void
   onBisChange: (iso: string) => void
   onPreset: (von: string, bis: string) => void
+  nurPresets?: boolean
 }) {
   if (allePerioden.length < 2) return null
 
@@ -231,7 +273,8 @@ function ChartZeitraumWahl({
   const letzte5MitSchaetz = [...letzte5, ...schaetz.filter((s) => !letzte5.some((h) => h.iso === s.iso))]
 
   return (
-    <div className="mt-3 flex flex-wrap items-end gap-3 border-t border-white/[0.04] pt-3">
+    <div className={`flex flex-wrap items-end gap-3 ${nurPresets ? 'justify-center' : 'mt-3 border-t border-white/[0.04] pt-3'}`}>
+      {nurPresets ? null : (
       <div className="flex flex-wrap items-end gap-2">
         <label className="block">
           <span className="mb-1 block text-[10px] font-medium uppercase tracking-wide text-[var(--app-text-muted)]">Von</span>
@@ -266,12 +309,13 @@ function ChartZeitraumWahl({
           </select>
         </label>
       </div>
-      <div className="flex flex-wrap gap-1.5">
+      )}
+      <div className="flex flex-wrap gap-1">
         {[
-          { label: '5 Jahre', von: letzte5MitSchaetz[0]?.iso, bis: letzte5MitSchaetz[letzte5MitSchaetz.length - 1]?.iso },
-          { label: '10 Jahre', von: letzte10MitSchaetz[0]?.iso, bis: letzte10MitSchaetz[letzte10MitSchaetz.length - 1]?.iso },
+          { label: '5J', von: letzte5MitSchaetz[0]?.iso, bis: letzte5MitSchaetz[letzte5MitSchaetz.length - 1]?.iso },
+          { label: '10J', von: letzte10MitSchaetz[0]?.iso, bis: letzte10MitSchaetz[letzte10MitSchaetz.length - 1]?.iso },
           {
-            label: 'Gesamt',
+            label: 'Max',
             von: allePerioden.find((p) => !p.istSchaetzung)?.iso,
             bis: allePerioden[allePerioden.length - 1]?.iso,
           },
@@ -281,10 +325,10 @@ function ChartZeitraumWahl({
               key={preset.label}
               type="button"
               onClick={() => onPreset(preset.von!, preset.bis!)}
-              className={`rounded-lg border px-2.5 py-1.5 text-[11px] transition ${
+              className={`rounded px-2 py-1 text-[11px] font-medium transition ${
                 vonIso === preset.von && bisIso === preset.bis
-                  ? 'border-amber-500/40 bg-amber-500/10 text-amber-200'
-                  : 'border-[var(--app-border-strong)] bg-[var(--app-surface-muted)] text-[var(--app-text-muted)] hover:border-[var(--app-border-strong)] hover:text-[var(--app-text)]'
+                  ? 'bg-sky-600/90 text-white'
+                  : 'bg-[var(--app-surface-hover)] text-[var(--app-text-muted)] hover:text-[var(--app-text)]'
               }`}
             >
               {preset.label}
@@ -307,6 +351,9 @@ export function PaFundamentalMetrikChart({
   variant = 'standard',
   eingebettet = false,
   werkzeugLeiste,
+  titel,
+  kompakt = false,
+  chartId,
 }: {
   perioden: FundamentalPeriode[]
   zeilen: FundamentalMetrikZeile[]
@@ -318,6 +365,9 @@ export function PaFundamentalMetrikChart({
   variant?: 'standard' | 'bewertung'
   eingebettet?: boolean
   werkzeugLeiste?: ReactNode
+  titel?: string
+  kompakt?: boolean
+  chartId?: string
 }) {
   const zeilenClean = useMemo(
     () => bereinigeSchaetzungsniveausInZeilen(perioden, zeilen),
@@ -450,25 +500,20 @@ export function PaFundamentalMetrikChart({
             }
           : null
 
-      const schnitt =
-        variant === 'bewertung'
-          ? berechneZeitraumSchnitt(histWerte.filter((p) => !p.istSchaetzung).map((p) => p.wert))
-          : null
-      const jahreSchnitt =
-        variant === 'bewertung'
-          ? anzahlWerteImZeitraum(histWerte.filter((p) => !p.istSchaetzung).map((p) => p.wert))
-          : 0
+      const schnitt = berechneZeitraumSchnitt(histWerte.filter((p) => !p.istSchaetzung).map((p) => p.wert))
+      const jahreSchnitt = anzahlWerteImZeitraum(histWerte.filter((p) => !p.istSchaetzung).map((p) => p.wert))
       const abweichungPct =
-        variant === 'bewertung' && aktuell && schnitt != null
-          ? prozentAbweichung(aktuell.wert, schnitt)
-          : null
+        aktuell && schnitt != null ? prozentAbweichung(aktuell.wert, schnitt) : null
+      const letzterHist = histWerte.filter((p) => !p.istSchaetzung).at(-1)?.wert ?? histWerte.at(-1)?.wert ?? null
 
       return {
         id: z.id,
         label: z.label,
-        farbe: FARBEN[i % FARBEN.length]!,
+        farbe: farbeFuerMetrik(z.id, i),
         einheit: z.einheit,
         yAxis: achse,
+        darstellung: serieDarstellung(z.id, z.einheit),
+        letzterWert: aktuell?.wert ?? letzterHist,
         histWerte,
         aktuell,
         schnitt,
@@ -577,6 +622,8 @@ export function PaFundamentalMetrikChart({
         farbe: s.farbe,
         einheit: s.einheit,
         yAxis: s.yAxis,
+        darstellung: s.darstellung,
+        letzterWert: s.letzterWert,
         historisch: histPts,
         schaetzung: schaetzPts,
         aktuell: aktuellPt,
@@ -604,24 +651,25 @@ export function PaFundamentalMetrikChart({
 
   const kastenKlasse = eingebettet
     ? 'bg-transparent'
-    : 'overflow-hidden rounded-2xl border border-[var(--app-border)]/70 bg-gradient-to-br from-[var(--app-surface-muted)] via-[var(--app-surface-muted)] to-[var(--app-surface)] shadow-lg shadow-black/20'
+    : kompakt
+      ? 'overflow-hidden border-b border-[var(--app-border)] bg-[var(--app-surface-muted)]'
+      : 'overflow-hidden rounded-2xl border border-[var(--app-border)]/70 bg-gradient-to-br from-[var(--app-surface-muted)] via-[var(--app-surface-muted)] to-[var(--app-surface)] shadow-lg shadow-black/20'
+
+  const ankerId = chartId ?? 'fundamental-metrik-chart'
 
   if (!hatAktiveSerien) {
     return (
       <div
-        id="fundamental-metrik-chart"
+        id={ankerId}
         className={
-          eingebettet
-            ? 'px-4 py-10 text-center'
+          eingebettet || kompakt
+            ? 'px-4 py-8 text-center'
             : 'rounded-2xl border border-dashed border-[var(--app-border)] bg-gradient-to-b from-[var(--app-surface-muted)] to-[var(--app-surface)] px-4 py-12 text-center'
         }
       >
         {werkzeugLeiste}
-        <p className="text-sm text-[var(--app-text-muted)]">
-          {variant === 'bewertung'
-            ? 'Klicke auf eine Bewertungskennzahl, um den Verlauf mit Zeitraum-Schnitt anzuzeigen.'
-            : 'Klicke auf eine Kennzahl in der Tabelle, um den Verlauf anzuzeigen.'}
-        </p>
+        {titel ? <p className="mb-2 text-sm font-medium text-[var(--app-text)]">{titel}</p> : null}
+        <p className="text-sm text-[var(--app-text-muted)]">Keine Daten für diesen Chart.</p>
       </div>
     )
   }
@@ -629,8 +677,8 @@ export function PaFundamentalMetrikChart({
   if (serien.length === 0) {
     return (
       <div
-        id="fundamental-metrik-chart"
-        className={eingebettet ? 'px-4 py-8 text-center' : 'rounded-2xl border border-[var(--app-border)]/70 bg-[var(--app-surface-muted)] px-4 py-8 text-center'}
+        id={ankerId}
+        className={eingebettet || kompakt ? 'px-4 py-8 text-center' : 'rounded-2xl border border-[var(--app-border)]/70 bg-[var(--app-surface-muted)] px-4 py-8 text-center'}
       >
         {werkzeugLeiste}
         <p className="text-sm text-[var(--app-text-muted)]">Keine Daten im gewählten Zeitraum.</p>
@@ -640,25 +688,35 @@ export function PaFundamentalMetrikChart({
 
   const x0 = dualAxis ? PAD_LINKS_DUAL : padLinks
   const x1 = VIEW_W - (dualAxis ? PAD_RECHTS_DUAL : PAD_RECHTS_SINGLE)
+  const ersterSchaetzIdx = xLabels.findIndex((xl) => xl.istSchaetzung)
+  const prognoseX =
+    ersterSchaetzIdx < 0
+      ? null
+      : ersterSchaetzIdx === 0
+        ? x0
+        : (xLabels[ersterSchaetzIdx - 1]!.x + xLabels[ersterSchaetzIdx]!.x) / 2
 
   return (
     <div
-      id="fundamental-metrik-chart"
+      id={ankerId}
       className={kastenKlasse}
     >
-      <div className="border-b border-white/[0.05] px-4 py-3">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div>
+      <div className="px-4 py-3">
+        <div className="flex flex-wrap items-start justify-between gap-2">
+          <div className="min-w-0 flex-1">
             {werkzeugLeiste}
-            <p className="text-sm font-medium text-[var(--app-text)]">
-              {variant === 'bewertung' ? 'Bewertungsverlauf' : 'Historischer Kennzahlenverlauf'}
+            <p className="text-center text-sm font-medium text-[var(--app-text)]">
+              {titel ?? (variant === 'bewertung' ? 'Bewertungsverlauf' : 'Historischer Kennzahlenverlauf')}
             </p>
-            <p className="mt-0.5 text-[11px] text-[var(--app-text-muted)]">
-              {variant === 'bewertung'
-                ? 'Historie = Trailing · gestrichelt = FY-Schätzung (Kurs÷Konsens) · Punkt = TTM'
-                : 'Zeitraum wählen · Schätzungen gestrichelt · bei zwei Kennzahlen eigene Y-Achse'}
-            </p>
+            {!kompakt ? (
+              <p className="mt-0.5 text-center text-[11px] text-[var(--app-text-muted)]">
+                {variant === 'bewertung'
+                  ? 'Historie = Trailing · gestrichelt = FY-Schätzung · grauer Bereich = Prognose'
+                  : 'Grauer Bereich = Prognose · Flächen = Beträge · Linien = Margen/Multiples'}
+              </p>
+            ) : null}
           </div>
+          {kompakt ? null : (
           <div className="flex flex-wrap gap-2">
             {variant === 'standard' ? (
               <div className="flex rounded-lg border border-[var(--app-border-strong)] bg-[var(--app-surface-muted)] p-0.5">
@@ -691,65 +749,74 @@ export function PaFundamentalMetrikChart({
               Leeren
           </button>
           </div>
+          )}
         </div>
 
-        <ChartZeitraumWahl
-          allePerioden={alleChartPerioden}
-          vonIso={vonIso}
-          bisIso={bisIso}
-          onVonChange={setVonIso}
-          onBisChange={setBisIso}
-          onPreset={(von, bis) => {
-            setVonIso(von)
-            setBisIso(bis)
-          }}
-        />
+        <div className="mt-2">
+          <ChartZeitraumWahl
+            allePerioden={alleChartPerioden}
+            vonIso={vonIso}
+            bisIso={bisIso}
+            onVonChange={setVonIso}
+            onBisChange={setBisIso}
+            nurPresets={kompakt}
+            onPreset={(von, bis) => {
+              setVonIso(von)
+              setBisIso(bis)
+            }}
+          />
+        </div>
 
-        {variant === 'standard' && serien.length > 0 ? (
-          <div className="mt-3 flex flex-wrap items-center gap-2">
-            <span className="text-[10px] font-medium uppercase tracking-wide text-[var(--app-text-muted)]">Im Chart</span>
-            {serien.map((s) => (
-              <ChartSerieChip
-                key={s.id}
-                label={s.label}
-                farbe={s.farbe}
-                dualAxis={dualAxis}
-                yAxis={s.yAxis}
-                onRemove={() => onToggleSerie(s.id)}
-              />
-            ))}
-          </div>
-        ) : null}
-
-        {variant === 'bewertung' ? (
-          <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-            {serien.map((s) => (
-              <SchnittBadge
-                key={s.id}
-                label={s.label}
-                zeitraum={zeitraumLabel}
-                schnitt={s.schnitt}
-                aktuell={s.aktuell?.wert ?? null}
-                abweichungPct={s.abweichungPct}
-                jahre={s.jahreSchnitt}
-                einheit={s.einheit}
-                onRemove={() => onToggleSerie(s.id)}
-              />
-            ))}
-          </div>
-        ) : null}
+        <div className="mt-2 flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-[11px]">
+          {serien.map((s) => (
+            <span key={s.id} className="inline-flex items-baseline gap-1.5 text-[var(--app-text-muted)]">
+              <span className="inline-block h-2 w-3.5 shrink-0 rounded-[2px]" style={{ background: s.farbe }} aria-hidden />
+              <span>{s.label}</span>
+              {s.letzterWert != null ? (
+                <span className="font-semibold tabular-nums text-[var(--app-text)]">
+                  {formatFundamentalWert(s.letzterWert, s.einheit)}
+                </span>
+              ) : null}
+              {s.schnitt != null ? (
+                <span className="tabular-nums">
+                  (Ø {formatFundamentalWert(s.schnitt, s.einheit)})
+                </span>
+              ) : null}
+            </span>
+          ))}
+        </div>
       </div>
 
       <div className="px-2 pb-3 pt-1 sm:px-4">
         <svg viewBox={`0 0 ${VIEW_W} ${HOEHE}`} className="w-full" role="img" aria-label="Kennzahlen-Chart">
           <defs>
             {serien.map((s) => (
-              <linearGradient key={`grad-${s.id}`} id={`area-${s.id}`} x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor={s.farbe} stopOpacity={0.28} />
-                <stop offset="100%" stopColor={s.farbe} stopOpacity={0.02} />
+              <linearGradient key={`grad-${s.id}`} id={`area-${ankerId}-${s.id}`} x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor={s.farbe} stopOpacity={0.45} />
+                <stop offset="100%" stopColor={s.farbe} stopOpacity={0.04} />
               </linearGradient>
             ))}
           </defs>
+
+          {prognoseX != null ? (
+            <g>
+              <rect
+                x={prognoseX}
+                y={PAD_OBEN}
+                width={Math.max(0, x1 - prognoseX)}
+                height={plotH}
+                fill="rgba(148,163,184,0.12)"
+              />
+              <text
+                x={prognoseX + 10}
+                y={PAD_OBEN + 16}
+                fill="#94a3b8"
+                style={{ fontSize: 11, fontWeight: 600 }}
+              >
+                Prognose
+              </text>
+            </g>
+          ) : null}
 
           {yAchsen.map((achse, ai) =>
             achse.ticks.map((tick, i) => {
@@ -761,14 +828,15 @@ export function PaFundamentalMetrikChart({
                     y1={y}
                     x2={x1}
                     y2={y}
-                    stroke="#27272a"
-                    strokeDasharray={i === 0 && ai === 0 ? undefined : '4 6'}
+                    stroke="#3f3f46"
+                    strokeOpacity={0.55}
+                    strokeDasharray={i === 0 && ai === 0 ? undefined : '3 5'}
                   />
                   <text
                     x={achse.side === 'left' ? x0 - 10 : x1 + 10}
                     y={y + 5}
                     textAnchor={achse.side === 'left' ? 'end' : 'start'}
-                    fill={ai === 1 ? '#a78bfa' : '#71717a'}
+                    fill={ai === 1 ? '#a3e635' : '#a1a1aa'}
                     style={{ fontSize: ACHSE_FONT, fontWeight: 500 }}
                   >
                     {formatAchse(tick, achse.einheit)}
@@ -778,92 +846,95 @@ export function PaFundamentalMetrikChart({
             }),
           )}
 
-          <line x1={x0} y1={PAD_OBEN + plotH} x2={x1} y2={PAD_OBEN + plotH} stroke="#3f3f46" strokeWidth={1.2} />
+          <line x1={x0} y1={PAD_OBEN + plotH} x2={x1} y2={PAD_OBEN + plotH} stroke="#52525b" strokeWidth={1.2} />
 
-          {variant === 'bewertung'
-            ? serien.map((s) => {
-                const skala = yAchsen[s.yAxis]!
-                return s.schnitt != null ? (
-                  <line
-                    key={`avg-${s.id}`}
-                    x1={x0}
-                    y1={yAusWert(s.schnitt, skala.minY, skala.span, plotH)}
-                    x2={x1}
-                    y2={yAusWert(s.schnitt, skala.minY, skala.span, plotH)}
-                    stroke={s.farbe}
-                    strokeWidth={1.5}
-                    strokeDasharray="8 6"
-                    opacity={0.55}
-                  />
-                ) : null
-              })
-            : null}
+          {serien.map((s) => {
+            const skala = yAchsen[s.yAxis]
+            return s.schnitt != null && skala ? (
+              <line
+                key={`avg-${s.id}`}
+                x1={x0}
+                y1={yAusWert(s.schnitt, skala.minY, skala.span, plotH)}
+                x2={x1}
+                y2={yAusWert(s.schnitt, skala.minY, skala.span, plotH)}
+                stroke={s.farbe}
+                strokeWidth={1.2}
+                strokeDasharray="5 5"
+                opacity={0.45}
+              />
+            ) : null
+          })}
 
-          {serien.map((s) => (
+          {serien.map((s) => {
+            const art = chartArt === 'balken' && !kompakt ? 'balken' : s.darstellung
+            const barW = Math.max(6, (effektivePlotW / Math.max(s.historisch.length + s.schaetzung.length, 1)) * 0.28)
+            const baseY = PAD_OBEN + plotH
+            return (
             <g key={s.id}>
-              {chartArt === 'linie' && s.areaD ? <path d={s.areaD} fill={`url(#area-${s.id})`} /> : null}
-              {chartArt === 'linie' && s.pathHistorisch ? (
+              {art === 'flaeche' && s.areaD ? <path d={s.areaD} fill={`url(#area-${ankerId}-${s.id})`} /> : null}
+              {art !== 'balken' && s.pathHistorisch ? (
                 <path
                   d={s.pathHistorisch}
                   fill="none"
                   stroke={s.farbe}
-                  strokeWidth={2.5}
+                  strokeWidth={art === 'linie' ? 2 : 2.2}
+                  strokeDasharray={art === 'linie' && s.einheit === 'prozent' ? '6 4' : undefined}
                   strokeLinejoin="round"
                   strokeLinecap="round"
                 />
               ) : null}
-              {chartArt === 'linie' && s.pathSchaetzung ? (
+              {art !== 'balken' && s.pathSchaetzung ? (
                 <path
                   d={s.pathSchaetzung}
                   fill="none"
-                  stroke={SCHÄTZUNG_FARBE}
-                  strokeWidth={2.5}
-                  strokeDasharray="7 5"
+                  stroke={s.farbe}
+                  strokeWidth={2}
+                  strokeDasharray="6 5"
                   strokeLinejoin="round"
                   strokeLinecap="round"
-                  opacity={0.9}
+                  opacity={0.85}
                 />
               ) : null}
-              {chartArt === 'balken'
+              {art === 'balken'
                 ? [...s.historisch, ...s.schaetzung].map((pt, i) => {
-                    const barW = Math.max(8, (effektivePlotW / Math.max(serien[0]!.historisch.length + serien[0]!.schaetzung.length, 1)) * 0.35)
-                    const baseY = PAD_OBEN + plotH
                     const h = baseY - pt.y
                     return (
                       <rect
                         key={i}
                         x={pt.x - barW / 2}
-                        y={pt.y}
+                        y={h >= 0 ? pt.y : baseY}
                         width={barW}
-                        height={Math.max(0, h)}
-                        fill={pt.istSchaetzung ? SCHÄTZUNG_FARBE : s.farbe}
-                        opacity={pt.istSchaetzung ? 0.75 : 0.85}
-                        rx={2}
+                        height={Math.abs(h)}
+                        fill={s.farbe}
+                        opacity={pt.istSchaetzung ? 0.55 : 0.9}
+                        rx={1}
                       />
                     )
                   })
                 : null}
-              {[...s.historisch, ...s.schaetzung].map((pt, i) => (
-                <circle
-                  key={i}
-                  cx={pt.x}
-                  cy={pt.y}
-                  r={3.5}
-                  fill="#09090b"
-                  stroke={pt.istSchaetzung ? SCHÄTZUNG_FARBE : s.farbe}
-                  strokeWidth={2}
-                />
-              ))}
+              {kompakt || art === 'flaeche'
+                ? null
+                : [...s.historisch, ...s.schaetzung].map((pt, i) => (
+                    <circle
+                      key={i}
+                      cx={pt.x}
+                      cy={pt.y}
+                      r={2.5}
+                      fill="#09090b"
+                      stroke={s.farbe}
+                      strokeWidth={1.6}
+                    />
+                  ))}
               {s.aktuell ? (
                 <>
-                  <circle cx={s.aktuell.x} cy={s.aktuell.y} r={9} fill={s.farbe} opacity={0.2} />
+                  <circle cx={s.aktuell.x} cy={s.aktuell.y} r={7} fill={s.farbe} opacity={0.2} />
                   <circle
                     cx={s.aktuell.x}
                     cy={s.aktuell.y}
-                    r={5.5}
+                    r={4.5}
                     fill={AKTUELL_FARBE}
                     stroke={s.farbe}
-                    strokeWidth={2.5}
+                    strokeWidth={2}
                   />
                 </>
               ) : null}
@@ -889,8 +960,9 @@ export function PaFundamentalMetrikChart({
                     )
                   })
               : null}
-          </g>
-        ))}
+            </g>
+            )
+          })}
 
           {xLabels.map((xl, i) =>
             i % Math.max(1, Math.floor(xLabels.length / 8)) === 0 || i === xLabels.length - 1 ? (
@@ -917,6 +989,7 @@ export function PaFundamentalMetrikChart({
           )}
       </svg>
 
+      {kompakt ? null : (
         <ul className="mt-1 flex flex-wrap gap-x-3 gap-y-1.5 px-1 text-[10px] text-[var(--app-text-muted)]">
           {serien.map((s) => (
             <li key={s.id}>
@@ -928,33 +1001,17 @@ export function PaFundamentalMetrikChart({
               >
                 <span className="h-2 w-4 shrink-0 rounded-full" style={{ background: s.farbe }} aria-hidden />
                 <span className="text-[var(--app-text-muted)]">
-            {s.label}
+                  {s.label}
                   {dualAxis ? (s.yAxis === 1 ? ' (rechts)' : ' (links)') : ''}
                 </span>
-                {variant === 'bewertung' && s.schnitt != null ? (
-                  <span className="text-[var(--app-text-muted)]">
-                    · Schnitt {zeitraumLabel} {formatFundamentalWert(s.schnitt, s.einheit)}
-                  </span>
-                ) : null}
                 <span className="text-[var(--app-text-muted)]" aria-hidden>
                   ×
                 </span>
               </button>
-          </li>
-        ))}
-          {variant === 'standard' ? (
-            <li className="flex items-center gap-1.5 text-sky-400/80">
-              <span className="h-0 w-4 border-t border-dashed border-sky-400" />
-              Schätzung
             </li>
-          ) : null}
-          {variant === 'bewertung' ? (
-            <li className="flex items-center gap-1.5 text-[var(--app-text-muted)]">
-              <span className="h-0 w-4 border-t border-dashed border-[var(--app-border-strong)]" />
-              Zeitraum-Schnitt
-            </li>
-          ) : null}
-      </ul>
+          ))}
+        </ul>
+      )}
       </div>
     </div>
   )
