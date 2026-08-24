@@ -67,7 +67,9 @@ function jahresSchaetzKeys(perioden: FundamentalPeriode[]): string[] {
 }
 
 /** Erwartetes 2J-Wachstum: darüber liegt fast immer Einheiten-Mix, nicht Consensus. */
-const FWD_CAGR_ABS_MAX = 55
+/** Erw. 2J: echte High-Growth-Jahre durchlassen; 3–4×-Sprünge bleiben Einheiten-Mix. */
+const FWD_CAGR_ABS_MAX = 90
+const FWD_CAGR_NIVEAU_FAKTOR = 2.2
 
 /**
  * YoY aus den ersten zwei Jahres-Schätzungen.
@@ -91,7 +93,7 @@ function fwdCagrZweiJahre(
   const niveausMix =
     ausNiveau != null &&
     (Math.abs(ausNiveau) > FWD_CAGR_ABS_MAX ||
-      (a != null && b != null && a > 0 && b > 0 && (b / a > 1.6 || a / b > 1.6)) ||
+      (a != null && b != null && a > 0 && b > 0 && (b / a > FWD_CAGR_NIVEAU_FAKTOR || a / b > FWD_CAGR_NIVEAU_FAKTOR)) ||
       (ausNiveau < -35 && referenzCagr != null && referenzCagr > 0))
   if (ausNiveau != null && !niveausMix) return ausNiveau
   if (feldOk) return ausFeld

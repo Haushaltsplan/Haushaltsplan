@@ -3,8 +3,6 @@ import 'server-only'
 import { ladeFinnhubJahresForecast } from '@/lib/portfolio-analyse/finnhub-jahres-schaetzungen-server'
 import type { EarningsSchaetzungen } from '@/lib/portfolio-analyse/earnings-schaetzungen'
 import {
-  FUNDAMENTAL_FY0E_KEY,
-  FUNDAMENTAL_FY1E_KEY,
   FUNDAMENTAL_TTM_KEY,
   fruehestesSchaetzJahr,
   fundamentalQuartalSchaetzungIso,
@@ -43,7 +41,7 @@ export type FundamentalSchaetzungenAnfrage = {
 export type FundamentalSchaetzungenRoh = {
   perioden: FundamentalPeriode[]
   zeilen: FundamentalMetrikZeile[]
-  /** Primäre Schätzungsquelle (Yahoo nur bei Fallback). */
+  /** Eine Quelle: StockAnalysis, sonst MS → Finnhub → Wallstreet → Yahoo. */
   quelle?: 'stockanalysis' | 'marketscreener' | 'wallstreet' | 'finnhub' | 'yahoo' | 'kombiniert'
 }
 
@@ -56,13 +54,6 @@ function rawUnix(v: unknown): number | null {
 function periodEndLabel(jahr: number | null, fallback: string): string {
   if (jahr != null && jahr > 2000) return `FY${String(jahr).slice(2)}E`
   return fallback
-}
-
-function pick<T>(...vals: (T | null | undefined)[]): T | null {
-  for (const v of vals) {
-    if (v != null) return v
-  }
-  return null
 }
 
 function wachstumPct(neu: number | null, alt: number | null): number | null {
@@ -219,7 +210,7 @@ function wsKennzahlMio(ws: EarningsSchaetzungen | null, schluessel: string): num
   return v != null && Number.isFinite(v) ? v : null
 }
 
-/** StockAnalysis-Basis + Marketscreener/Finnhub/Wallstreet/Yahoo — nur echte Scrapes, keine Fortschreibung. */
+/** Eine Quelle → eine Jahresreihe. Kein Feld-Mix über Anbieter. */
 function mergeJahresSchaetzungen(opts: {
   stockanalysis: StockanalysisJahresForecast | null
   marketscreener: MarketscreenerJahresForecast | null
@@ -685,84 +676,44 @@ function mitQuartalsSchaetzungen(
   return mergeSchaetzungenRoh(annual, baueRohAusQuartalsSchaetzungen(quartals))
 }
 
-function baueRohAusMerge(
-  fy0: MergeFy,
-  fy1: MergeFy,
-  quelle: FundamentalSchaetzungenRoh['quelle'],
+function schaetzReiheAusSa(sa: StockanalysisJahresForecast | null): StockanalysisJahresForecastEintrag[] {
+  const minJahr = fruehestesSchaetzJahr()
+  const ausSerie = (sa?.jahresreihe ?? []).filter(
+    (e) => e.istSchätzung && e.jahr >= minJahr && hatJahresWert(e),
+  )
+  if (ausSerie.length > 0) return ausSerie.map((e) => ({ ...e }))
+  if (!sa) return []
+  const kopf: StockanalysisJahresForecastEintrag[] = []
+  if (sa.fy0Jahr != null && sa.fy0Jahr >= minJahr) {
+    const e = leererJahresEintrag(sa.fy0Jahr)
+    e.umsatzUsd = sa.umsatzUsdFy0
+    e.eps = sa.epsFy0
+    e.revenueGrowthPct = sa.umsatzWachstumFy0Pct
+    e.epsGrowthPct = sa.epsWachstumFy0Pct
+    if (hatJahresWert(e)) kopf.push(e)
+  }
+  if (sa.fy1Jahr != null && sa.fy1Jahr >= minJahr) {
+    const e = leererJahresEintrag(sa.fy1Jahr)
+    e.umsatzUsd = sa.umsatzUsdFy1
+    e.eps = sa.epsFy1
+    e.revenueGrowthPct = sa.umsatzWachstumFy1Pct
+    e.epsGrowthPct = sa.epsWachstumFy1Pct
+    if (hatJahresWert(e)) kopf.push(e)
+  }
+  return kopf
+}
+
+function rohAusEinerQuelle(
+  reihe: StockanalysisJahresForecastEintrag[],
+  quelle: NonNullable<FundamentalSchaetzungenRoh['quelle']>,
+  quartals: MarketscreenerQuartalsForecastEintrag[] | null,
 ): FundamentalSchaetzungenRoh {
-  const perioden: FundamentalPeriode[] = []
-  const hatFy0 = fy0.umsatzMio != null || fy0.eps != null
-  const hatFy1 = fy1.umsatzMio != null || fy1.eps != null
-
-  if (hatFy0) {
-    perioden.push({
-      iso: FUNDAMENTAL_FY0E_KEY,
-      label: periodEndLabel(fy0.jahr, 'FY0E'),
-      istSchaetzung: true,
-    })
+  if (reihe.length === 0) return { perioden: [], zeilen: [] }
+  const annual = baueRohAusJahresreihe(reihe, quelle)
+  if (quelle === 'marketscreener' && quartals?.length) {
+    return mitQuartalsSchaetzungen(annual, quartals)
   }
-  if (hatFy1) {
-    perioden.push({
-      iso: FUNDAMENTAL_FY1E_KEY,
-      label: periodEndLabel(fy1.jahr, 'FY1E'),
-      istSchaetzung: true,
-    })
-  }
-
-  const umsatzWerte: Record<string, number | null> = {}
-  const epsWerte: Record<string, number | null> = {}
-  const umsatzWachstum: Record<string, number | null> = {}
-  const epsWachstum: Record<string, number | null> = {}
-
-  if (hatFy0) {
-    umsatzWerte[FUNDAMENTAL_FY0E_KEY] = fy0.umsatzMio
-    epsWerte[FUNDAMENTAL_FY0E_KEY] = fy0.eps
-    umsatzWachstum[FUNDAMENTAL_FY0E_KEY] = fy0.umsatzWachstumPct
-    epsWachstum[FUNDAMENTAL_FY0E_KEY] = fy0.epsWachstumPct
-  }
-  if (hatFy1) {
-    umsatzWerte[FUNDAMENTAL_FY1E_KEY] = fy1.umsatzMio
-    epsWerte[FUNDAMENTAL_FY1E_KEY] = fy1.eps
-    umsatzWachstum[FUNDAMENTAL_FY1E_KEY] = fy1.umsatzWachstumPct
-    epsWachstum[FUNDAMENTAL_FY1E_KEY] = fy1.epsWachstumPct
-  }
-
-  const zeilen: FundamentalMetrikZeile[] = [
-    {
-      id: 'umsatz_schaetzung',
-      label: 'Umsatz (Schätzung)',
-      gruppe: 'schaetzungen',
-      einheit: 'waehrung_usd_mio',
-      werte: umsatzWerte,
-      istSchaetzung: true,
-    },
-    {
-      id: 'eps_schaetzung',
-      label: 'EPS (Schätzung)',
-      gruppe: 'schaetzungen',
-      einheit: 'waehrung_usd_aktie',
-      werte: epsWerte,
-      istSchaetzung: true,
-    },
-    {
-      id: 'umsatz_wachstum_schaetzung',
-      label: 'Umsatz-Wachstum (Schätzung)',
-      gruppe: 'schaetzungen',
-      einheit: 'prozent',
-      werte: umsatzWachstum,
-      istSchaetzung: true,
-    },
-    {
-      id: 'eps_wachstum_schaetzung',
-      label: 'EPS-Wachstum (Schätzung)',
-      gruppe: 'schaetzungen',
-      einheit: 'prozent',
-      werte: epsWachstum,
-      istSchaetzung: true,
-    },
-  ]
-
-  return { perioden, zeilen, quelle }
+  return annual
 }
 
 export async function ladeFundamentalSchaetzungen(
@@ -777,144 +728,43 @@ export async function ladeFundamentalSchaetzungen(
   const name = opts.name?.trim() ?? ''
   const ticker = opts.ticker?.trim() ?? ''
 
-  const [stockanalysis, marketscreener, wallstreet, finnhub, yahoo, quartalsReihe] = await Promise.all([
-    ladeStockanalysisJahresForecast({
-      symbolYahoo: symbol,
-      ticker: ticker || undefined,
-      firmenname: name || undefined,
-      isin: isin || undefined,
-    }),
-    isin.length >= 10
-      ? ladeMarketscreenerJahresForecast(isin, name, symbol)
-      : Promise.resolve(null),
-    isin.length >= 10 ? ladeWallstreetEarningsSchaetzungen(isin, name) : Promise.resolve(null),
-    ladeFinnhubJahresForecast(symbol),
-    ladeYahooTrend(symbol),
-    isin.length >= 10
-      ? ladeMarketscreenerQuartalsForecastReihe(isin, name, symbol)
-      : Promise.resolve(null),
+  const leer = { stockanalysis: null, marketscreener: null, finnhub: null, wallstreet: null, yahoo: null }
+
+  const stockanalysis = await ladeStockanalysisJahresForecast({
+    symbolYahoo: symbol,
+    ticker: ticker || undefined,
+    firmenname: name || undefined,
+    isin: isin || undefined,
+  }).catch(() => null)
+  const saReihe = schaetzReiheAusSa(stockanalysis)
+  if (saReihe.length > 0) return rohAusEinerQuelle(saReihe, 'stockanalysis', null)
+
+  let quartalsReihe: MarketscreenerQuartalsForecastEintrag[] | null = null
+  if (isin.length >= 10) {
+    const [marketscreener, quartals] = await Promise.all([
+      ladeMarketscreenerJahresForecast(isin, name, symbol).catch(() => null),
+      ladeMarketscreenerQuartalsForecastReihe(isin, name, symbol).catch(() => null),
+    ])
+    quartalsReihe = quartals
+    const msReihe = mergeJahresSchaetzungen({ ...leer, marketscreener })
+    if (msReihe.length > 0) return rohAusEinerQuelle(msReihe, 'marketscreener', quartalsReihe)
+  }
+
+  const [finnhub, wallstreet, yahoo] = await Promise.all([
+    ladeFinnhubJahresForecast(symbol).catch(() => null),
+    isin.length >= 10 ? ladeWallstreetEarningsSchaetzungen(isin, name).catch(() => null) : Promise.resolve(null),
+    ladeYahooTrend(symbol).catch(() => null),
   ])
 
-  const wsEpsFy0 = wallstreet?.kennzahlen.find((k) => k.schluessel === 'eps')
-  const wsUmsatzMio =
-    wallstreet?.umsatz.average != null && wallstreet.umsatz.average > 1e6
-      ? wallstreet.umsatz.average / 1_000_000
-      : wallstreet?.umsatz.average
+  const fhReihe = mergeJahresSchaetzungen({ ...leer, finnhub })
+  if (fhReihe.length > 0) return rohAusEinerQuelle(fhReihe, 'finnhub', null)
 
-  const fy0: MergeFy = {
-    jahr: pick(stockanalysis?.fy0Jahr, marketscreener?.fy0Jahr, finnhub?.fy0Jahr, wallstreet?.jahr, yahoo?.fy0.jahr),
-    umsatzMio: pick(
-      stockanalysis?.umsatzUsdFy0 != null ? stockanalysis.umsatzUsdFy0 / 1_000_000 : null,
-      marketscreener?.umsatzUsdFy0 != null ? marketscreener.umsatzUsdFy0 / 1_000_000 : null,
-      finnhub?.umsatzUsdFy0 != null ? finnhub.umsatzUsdFy0 / 1_000_000 : null,
-      wsUmsatzMio ?? null,
-      yahoo?.fy0.umsatzMio,
-    ),
-    eps: pick(
-      stockanalysis?.epsFy0,
-      finnhub?.epsFy0,
-      wsEpsFy0?.spanne.average,
-      yahoo?.fy0.eps,
-    ),
-    umsatzWachstumPct: pick(
-      stockanalysis?.umsatzWachstumFy0Pct,
-      marketscreener?.umsatzWachstumFy0Pct,
-      wachstumPct(
-        pick(stockanalysis?.umsatzUsdFy0, marketscreener?.umsatzUsdFy0, finnhub?.umsatzUsdFy0),
-        marketscreener?.umsatzBasisUsd ?? null,
-      ),
-      yahoo?.fy0.umsatzWachstumPct,
-    ),
-    epsWachstumPct: pick(stockanalysis?.epsWachstumFy0Pct, wsEpsFy0?.wachstumProzent, yahoo?.fy0.epsWachstumPct),
-  }
+  const wsReihe = mergeJahresSchaetzungen({ ...leer, wallstreet })
+  if (wsReihe.length > 0) return rohAusEinerQuelle(wsReihe, 'wallstreet', null)
 
-  const fy1: MergeFy = {
-    jahr: pick(stockanalysis?.fy1Jahr, marketscreener?.fy1Jahr, finnhub?.fy1Jahr, yahoo?.fy1.jahr),
-    umsatzMio: pick(
-      stockanalysis?.umsatzUsdFy1 != null ? stockanalysis.umsatzUsdFy1 / 1_000_000 : null,
-      marketscreener?.umsatzUsdFy1 != null ? marketscreener.umsatzUsdFy1 / 1_000_000 : null,
-      finnhub?.umsatzUsdFy1 != null ? finnhub.umsatzUsdFy1 / 1_000_000 : null,
-      yahoo?.fy1.umsatzMio,
-    ),
-    eps: pick(stockanalysis?.epsFy1, finnhub?.epsFy1, yahoo?.fy1.eps),
-    umsatzWachstumPct: pick(
-      stockanalysis?.umsatzWachstumFy1Pct,
-      marketscreener?.umsatzWachstumFy1Pct,
-      wachstumPct(
-        pick(stockanalysis?.umsatzUsdFy1, marketscreener?.umsatzUsdFy1, finnhub?.umsatzUsdFy1),
-        pick(stockanalysis?.umsatzUsdFy0, marketscreener?.umsatzUsdFy0, finnhub?.umsatzUsdFy0),
-      ),
-      yahoo?.fy1.umsatzWachstumPct,
-    ),
-    epsWachstumPct: pick(stockanalysis?.epsWachstumFy1Pct, yahoo?.fy1.epsWachstumPct),
-  }
+  const yReihe = mergeJahresSchaetzungen({ ...leer, yahoo })
+  if (yReihe.length > 0) return rohAusEinerQuelle(yReihe, 'yahoo', null)
 
-  const quellen: NonNullable<FundamentalSchaetzungenRoh['quelle']>[] = []
-  if (stockanalysis) quellen.push('stockanalysis')
-  if (marketscreener) quellen.push('marketscreener')
-  if (wallstreet) quellen.push('wallstreet')
-  if (finnhub) quellen.push('finnhub')
-  const yahooNurFallback =
-    !stockanalysis &&
-    !marketscreener &&
-    !wallstreet &&
-    !finnhub &&
-    (yahoo?.fy0.umsatzMio != null || yahoo?.fy0.eps != null || yahoo?.fy1.umsatzMio != null || yahoo?.fy1.eps != null)
-  if (yahooNurFallback) quellen.push('yahoo')
-  else if (yahoo && (fy0.umsatzMio == null || fy0.eps == null || fy1.umsatzMio == null || fy1.eps == null)) {
-    /* Yahoo füllt Lücken — zählt als kombiniert */
-  }
-
-  const saSchaetz = mergeJahresSchaetzungen({
-    stockanalysis,
-    marketscreener,
-    finnhub,
-    wallstreet,
-    yahoo,
-  })
-  if (saSchaetz.length > 0) {
-    const quellenUsed: NonNullable<FundamentalSchaetzungenRoh['quelle']>[] = []
-    if (stockanalysis?.jahresreihe?.some((e) => e.istSchätzung)) quellenUsed.push('stockanalysis')
-    if (marketscreener?.jahresreihe?.length) quellenUsed.push('marketscreener')
-    if (finnhub?.jahresreihe?.length) quellenUsed.push('finnhub')
-    if (wallstreet) quellenUsed.push('wallstreet')
-    if (
-      yahoo &&
-      saSchaetz.some(
-        (e) =>
-          (e.jahr === yahoo.fy0.jahr && (yahoo.fy0.umsatzMio != null || yahoo.fy0.eps != null)) ||
-          (e.jahr === yahoo.fy1.jahr && (yahoo.fy1.umsatzMio != null || yahoo.fy1.eps != null)),
-      ) &&
-      !quellenUsed.includes('yahoo')
-    ) {
-      quellenUsed.push('yahoo')
-    }
-    const mergedQuelle: FundamentalSchaetzungenRoh['quelle'] =
-      quellenUsed.length === 0
-        ? 'kombiniert'
-        : quellenUsed.length === 1
-          ? quellenUsed[0]!
-          : 'kombiniert'
-    return mitQuartalsSchaetzungen(baueRohAusJahresreihe(saSchaetz, mergedQuelle), quartalsReihe)
-  }
-
-  if (
-    fy0.umsatzMio == null &&
-    fy0.eps == null &&
-    fy1.umsatzMio == null &&
-    fy1.eps == null
-  ) {
-    return mitQuartalsSchaetzungen({ perioden: [], zeilen: [] }, quartalsReihe)
-  }
-
-  const quelle: FundamentalSchaetzungenRoh['quelle'] =
-    quellen.length === 0
-      ? 'yahoo'
-      : quellen.length === 1
-        ? quellen[0]!
-        : yahoo && !yahooNurFallback
-          ? 'kombiniert'
-          : 'kombiniert'
-
-  return mitQuartalsSchaetzungen(baueRohAusMerge(fy0, fy1, quelle), quartalsReihe)
+  if (quartalsReihe?.length) return baueRohAusQuartalsSchaetzungen(quartalsReihe)
+  return { perioden: [], zeilen: [] }
 }

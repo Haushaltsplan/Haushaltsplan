@@ -30,7 +30,7 @@ import type {
   FundamentaldatenAnfrage,
   FundamentaldatenPaket,
 } from '@/lib/portfolio-analyse/fundamentaldaten-types'
-import { FUNDAMENTAL_NTM_KEY } from '@/lib/portfolio-analyse/fundamentaldaten-types'
+import { fundamentalQuellenZeile } from '@/lib/portfolio-analyse/fundamentaldaten-quellen'
 
 const UNTER_TABS = [
   { id: 'uebersicht' as const, label: 'Übersicht' },
@@ -435,6 +435,9 @@ export function PaFundamentalInhalt({
               metriken={daten.keyMetrics}
               onMetricClick={navigiereZuMetrik}
               verfuegbareZeilenIds={verfuegbareZeilenIds}
+              guvQuelle={daten.guvQuelle}
+              schaetzungQuelle={daten.schaetzungQuelle}
+              fallbackPaketQuelle={daten.quelle}
             />
           ) : null}
 
@@ -588,15 +591,18 @@ export function PaFundamentalInhalt({
           ) : null}
 
           <p className="text-[10px] text-[var(--app-text-muted)]">
-            Quellen:{' '}
-            {daten.quelle === 'yahoo'
-              ? 'Yahoo Finance'
-              : daten.quelle === 'marketscreener'
-                ? 'Marketscreener'
-                : 'Macrotrends.net · Yahoo Finance'}{' '}
-            ·{' '}
-            {daten.frequenz === 'quartal' ? 'Quartalsdaten' : 'Jahresdaten'} · Stand{' '}
-            {new Date(daten.geladenAm).toLocaleString('de-DE')} · Cache 24h
+            {fundamentalQuellenZeile({
+              guvQuelle: daten.guvQuelle,
+              schaetzungQuelle: daten.schaetzungQuelle,
+              fallbackPaketQuelle: daten.quelle,
+            }) ??
+              (daten.quelle === 'yahoo'
+                ? 'GuV: Yahoo'
+                : daten.quelle === 'marketscreener'
+                  ? 'GuV: MarketScreener'
+                  : 'GuV: Macrotrends')}{' '}
+            · {daten.frequenz === 'quartal' ? 'Quartalsdaten' : 'Jahresdaten'} · Stand{' '}
+            {new Date(daten.geladenAm).toLocaleString('de-DE')}
           </p>
         </>
       ) : null}

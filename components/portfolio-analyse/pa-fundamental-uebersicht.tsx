@@ -2,7 +2,11 @@
 
 import { PaFundamentalKursChart } from '@/components/portfolio-analyse/pa-fundamental-kurs-chart'
 import { PaFundamentalKeyMetrics } from '@/components/portfolio-analyse/pa-fundamental-key-metrics'
-import type { FundamentalKeyMetric } from '@/lib/portfolio-analyse/fundamentaldaten-types'
+import type {
+  FundamentalGuvQuelle,
+  FundamentalKeyMetric,
+  FundamentalSchaetzungQuelle,
+} from '@/lib/portfolio-analyse/fundamentaldaten-types'
 
 export function PaFundamentalUebersicht({
   symbolYahoo,
@@ -11,6 +15,9 @@ export function PaFundamentalUebersicht({
   metriken,
   onMetricClick,
   verfuegbareZeilenIds,
+  guvQuelle,
+  schaetzungQuelle,
+  fallbackPaketQuelle,
 }: {
   symbolYahoo: string | null
   ticker: string
@@ -18,6 +25,9 @@ export function PaFundamentalUebersicht({
   metriken: FundamentalKeyMetric[]
   onMetricClick?: (metricId: string) => void
   verfuegbareZeilenIds?: Set<string>
+  guvQuelle?: FundamentalGuvQuelle | null
+  schaetzungQuelle?: FundamentalSchaetzungQuelle | null
+  fallbackPaketQuelle?: 'macrotrends' | 'yahoo' | 'marketscreener' | null
 }) {
   return (
     <div className="overflow-hidden rounded-xl border border-[var(--app-border)] bg-[var(--app-surface-muted)] ring-1 ring-white/[0.03]">
@@ -35,6 +45,9 @@ export function PaFundamentalUebersicht({
             metriken={metriken}
             onMetricClick={onMetricClick}
             verfuegbareZeilenIds={verfuegbareZeilenIds}
+            guvQuelle={guvQuelle}
+            schaetzungQuelle={schaetzungQuelle}
+            fallbackPaketQuelle={fallbackPaketQuelle}
           />
         </div>
       </div>

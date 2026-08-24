@@ -24,6 +24,16 @@ export type FundamentalPeriode = {
 
 export type FundamentalFrequenz = 'jahr' | 'quartal'
 
+export type FundamentalGuvQuelle = 'macrotrends' | 'eu' | 'yahoo' | 'marketscreener'
+
+export type FundamentalSchaetzungQuelle =
+  | 'stockanalysis'
+  | 'marketscreener'
+  | 'wallstreet'
+  | 'finnhub'
+  | 'yahoo'
+  | 'kombiniert'
+
 export type FundamentalMetrikZeile = {
   id: string
   label: string
@@ -178,6 +188,10 @@ export type FundamentaldatenPaket = {
   symbolYahoo: string | null
   geladenAm: string
   quelle: 'macrotrends' | 'yahoo' | 'marketscreener'
+  /** Abschluss-Historie (Übersicht). */
+  guvQuelle?: FundamentalGuvQuelle | null
+  /** Consensus-Schätzungen (Übersicht). */
+  schaetzungQuelle?: FundamentalSchaetzungQuelle | null
   frequenz?: FundamentalFrequenz
   fehler?: string | null
   /** Tier 1–3: Bilanz-Struktur, Holder, Dividenden, SEC, IV, etc. */

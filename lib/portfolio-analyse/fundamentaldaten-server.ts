@@ -51,7 +51,6 @@ import {
   baueFundamentalRohAusAlternativQuellen,
   ergaenzeMacrotrendsMitYahooGuV,
   nutzeYahooGuVFuerIsin,
-  brauchtGuVErgaenzung,
 } from '@/lib/portfolio-analyse/fundamentaldaten-yahoo-guv-server'
 import { ISIN_WAEHRUNG, istEuIsin } from '@/lib/portfolio-analyse/eu-portfolio-ir-config'
 import { ladeUnitEconomics } from '@/lib/portfolio-analyse/unit-economics-server'
@@ -382,6 +381,7 @@ async function ladeFundamentaldatenLive(anfrage: FundamentaldatenAnfrage): Promi
         return leeresPaket({
           ok: true,
           quelle: 'marketscreener',
+          guvQuelle: 'marketscreener',
           ticker: '',
           slug: '',
           firmenname: anfrage.name ?? 'Unbekannt',
@@ -430,6 +430,8 @@ async function ladeFundamentaldatenLive(anfrage: FundamentaldatenAnfrage): Promi
       return leeresPaket({
         ok: true,
         quelle: 'yahoo',
+        guvQuelle: 'yahoo',
+        schaetzungQuelle: schaetzungen.quelle ?? null,
         ticker: tickerGuess || symbolYahoo,
         firmenname,
         slug: '',
@@ -500,24 +502,15 @@ async function ladeFundamentaldatenLive(anfrage: FundamentaldatenAnfrage): Promi
     symbolYahoo: symbolYahoo ?? anfrage.symbolYahoo,
     firmenname: anfrage.name ?? ident.firmenname,
   })
-  if (
-    (!roh || roh.zeilen.length === 0) &&
-    symbolYahoo &&
-    frequenz === 'jahr' &&
-    (nutzeYahooGuVFuerIsin(isinNorm ?? anfrage.isin) || brauchtGuVErgaenzung(roh))
-  ) {
+  const euGuV = nutzeYahooGuVFuerIsin(isinNorm ?? anfrage.isin)
+  if ((!roh || roh.zeilen.length === 0) && symbolYahoo && frequenz === 'jahr' && euGuV) {
     const fallback = await baueFundamentalRohAusAlternativQuellen(ident, symbolYahoo, {
       isin: isinNorm ?? anfrage.isin,
       firmenname: anfrage.name ?? ident.firmenname,
       ticker: ident.ticker,
     })
     if (fallback) roh = fallback
-  } else if (
-    roh &&
-    symbolYahoo &&
-    frequenz === 'jahr' &&
-    (nutzeYahooGuVFuerIsin(isinNorm ?? anfrage.isin) || brauchtGuVErgaenzung(roh))
-  ) {
+  } else if (roh && symbolYahoo && frequenz === 'jahr' && euGuV) {
     roh = await ergaenzeMacrotrendsMitYahooGuV(roh, symbolYahoo, {
       isin: isinNorm ?? anfrage.isin,
       firmenname: anfrage.name ?? ident.firmenname,
@@ -565,53 +558,15 @@ async function ladeFundamentaldatenLive(anfrage: FundamentaldatenAnfrage): Promi
     ? filterSchaetzungenGegenHistorisch(schaetzungen, roh)
     : schaetzungen
 
-  // Absolute EPS für FY-Spalten: Yahoo-Konsens und/oder Ist-EPS × Wachstum
-  // (sonst bleibt Forward-KGV leer, obwohl KUV aus Umsatz-Schätzungen da ist).
+  // Fehlende EPS-Jahre derselben Quelle: Ist-EPS × Consensus-Wachstum (kein Quell-Mix).
   const schaetzungenGefiltert =
     frequenz === 'jahr' && roh && schaetzungenNachFilter.perioden.length > 0
-      ? (() => {
-          const mitYahoo = {
-            ...schaetzungenNachFilter,
-            zeilen: schaetzungenNachFilter.zeilen.map((z) =>
-              z.id === 'eps_schaetzung' ? { ...z, werte: { ...z.werte } } : z,
-            ),
-          }
-          let epsZ = mitYahoo.zeilen.find((z) => z.id === 'eps_schaetzung')
-          if (!epsZ) {
-            epsZ = {
-              id: 'eps_schaetzung',
-              label: 'EPS (Schätzung)',
-              gruppe: 'schaetzungen' as const,
-              einheit: 'waehrung_usd_aktie' as const,
-              werte: Object.fromEntries(mitYahoo.perioden.map((p) => [p.iso, null as number | null])),
-              istSchaetzung: true,
-            }
-            mitYahoo.zeilen = [...mitYahoo.zeilen, epsZ]
-          }
-          const p0 = mitYahoo.perioden[0]
-          const p1 = mitYahoo.perioden[1]
-          if (
-            p0 &&
-            (epsZ.werte[p0.iso] == null || !(epsZ.werte[p0.iso]! > 0)) &&
-            yahooExt?.ntmEpsSchaetzung != null &&
-            yahooExt.ntmEpsSchaetzung > 0
-          ) {
-            epsZ.werte[p0.iso] = yahooExt.ntmEpsSchaetzung
-          }
-          if (
-            p1 &&
-            (epsZ.werte[p1.iso] == null || !(epsZ.werte[p1.iso]! > 0)) &&
-            yahooExt?.fy1Eps != null &&
-            yahooExt.fy1Eps > 0
-          ) {
-            epsZ.werte[p1.iso] = yahooExt.fy1Eps
-          }
-          return fuelleFehlendeEpsSchaetzungen({
-            schaetzungen: mitYahoo,
-            historisch: roh,
-            trailingEps: yahooExt?.trailingEps ?? null,
-          })
-        })()
+      ? fuelleFehlendeEpsSchaetzungen({
+          schaetzungen: schaetzungenNachFilter,
+          historisch: roh,
+          trailingEps:
+            schaetzungenNachFilter.quelle === 'yahoo' ? (yahooExt?.trailingEps ?? null) : null,
+        })
       : schaetzungenNachFilter
 
   const merged =
@@ -631,18 +586,20 @@ async function ladeFundamentaldatenLive(anfrage: FundamentaldatenAnfrage): Promi
   ergaenzeRoicAusBilanz(merged.perioden, merged.zeilen)
   ergaenzeWorkingCapitalTageZeilen(merged.perioden, merged.zeilen)
 
-  await ergaenzeFehlendeStatementZeilen({
-    perioden: merged.perioden,
-    zeilen: merged.zeilen,
-    symbolYahoo: symbolYahoo ?? ident.ticker,
-    isin: isinNorm ?? anfrage.isin,
-    ticker: ident.ticker,
-    firmenname: anfrage.name ?? ident.firmenname,
-    yahooFinanz,
-  })
+  if (euGuV) {
+    await ergaenzeFehlendeStatementZeilen({
+      perioden: merged.perioden,
+      zeilen: merged.zeilen,
+      symbolYahoo: symbolYahoo ?? ident.ticker,
+      isin: isinNorm ?? anfrage.isin,
+      ticker: ident.ticker,
+      firmenname: anfrage.name ?? ident.firmenname,
+      yahooFinanz,
+    })
+  }
 
-  // SBC aus Yahoo Timeseries nachziehen, wenn Macrotrends-Zeile leer (EU/ADR)
-  if (yahooFinanz?.stockBasedCompensationUsd != null) {
+  // SBC aus Yahoo Timeseries nachziehen, wenn Macrotrends-Zeile leer (nur EU/ADR)
+  if (euGuV && yahooFinanz?.stockBasedCompensationUsd != null) {
     const sbcMio = yahooFinanz.stockBasedCompensationUsd / 1_000_000
     const histKeys = merged.perioden
       .filter((p) => !p.istLtm && !p.istNtm && !p.istSchaetzung)
@@ -772,6 +729,8 @@ async function ladeFundamentaldatenLive(anfrage: FundamentaldatenAnfrage): Promi
   return leeresPaket({
     ok: true,
     quelle: altRoh ? 'yahoo' : 'macrotrends',
+    guvQuelle: euGuV ? 'eu' : altRoh ? 'yahoo' : 'macrotrends',
+    schaetzungQuelle: schaetzungenGefiltert.quelle ?? null,
     ticker: ident.ticker,
     slug: ident.slug,
     firmenname: ident.firmenname,

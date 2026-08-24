@@ -1,7 +1,8 @@
 'use client'
 
 import { keyMetricNavZiel } from '@/lib/portfolio-analyse/fundamentaldaten-key-metric-nav'
-import type { FundamentalKeyMetric } from '@/lib/portfolio-analyse/fundamentaldaten-types'
+import type { FundamentalGuvQuelle, FundamentalKeyMetric, FundamentalSchaetzungQuelle } from '@/lib/portfolio-analyse/fundamentaldaten-types'
+import { fundamentalQuellenZeile } from '@/lib/portfolio-analyse/fundamentaldaten-quellen'
 
 const SEKTIONEN: { id: FundamentalKeyMetric['gruppe']; titel: string; spalte: 0 | 1 }[] = [
   { id: 'marktdaten', titel: 'Marktdaten', spalte: 0 },
@@ -93,13 +94,24 @@ export function PaFundamentalKeyMetrics({
   metriken,
   onMetricClick,
   verfuegbareZeilenIds,
+  guvQuelle,
+  schaetzungQuelle,
+  fallbackPaketQuelle,
 }: {
   metriken: FundamentalKeyMetric[]
   onMetricClick?: (metricId: string) => void
   verfuegbareZeilenIds?: Set<string>
+  guvQuelle?: FundamentalGuvQuelle | null
+  schaetzungQuelle?: FundamentalSchaetzungQuelle | null
+  fallbackPaketQuelle?: 'macrotrends' | 'yahoo' | 'marketscreener' | null
 }) {
   const col0 = SEKTIONEN.filter((s) => s.spalte === 0)
   const col1 = SEKTIONEN.filter((s) => s.spalte === 1)
+  const quellen = fundamentalQuellenZeile({
+    guvQuelle,
+    schaetzungQuelle,
+    fallbackPaketQuelle,
+  })
 
   return (
     <div className="grid h-full grid-cols-2 gap-x-4 gap-y-3 p-3 sm:gap-x-5 sm:p-4">
@@ -125,6 +137,9 @@ export function PaFundamentalKeyMetrics({
           />
         ))}
       </div>
+      {quellen ? (
+        <p className="col-span-2 text-[10px] leading-snug text-[var(--app-text-muted)]">{quellen}</p>
+      ) : null}
     </div>
   )
 }

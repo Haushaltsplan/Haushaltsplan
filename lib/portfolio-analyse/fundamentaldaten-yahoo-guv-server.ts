@@ -452,8 +452,8 @@ export function nutzeYahooGuVFuerIsin(isin: string | null | undefined): boolean 
 }
 
 /**
- * True wenn Macrotrends-GuV/Cashflow/ROE zu dünn oder veraltet ist
- * → Yahoo/StockAnalysis-Merge für alle Titel (auch US).
+ * True wenn Macrotrends-GuV/Cashflow/ROE zu dünn oder veraltet ist.
+ * Nur noch Diagnose — US-Titel werden nicht mehr mit Yahoo/SA nachgefüllt.
  */
 export function brauchtGuVErgaenzung(roh: MacrotrendsFundamentalRoh | null | undefined): boolean {
   if (!roh || roh.zeilen.length === 0) return true
