@@ -454,30 +454,61 @@ function parseWertpapierabrechnung(items: PdfTextItem[]): TrRawCashZeile[] {
   }
   if (!name && stkLine) name = stkLine.split(/\d+\s*Stk\.?/i)[0]?.trim() ?? ''
 
+  // 2–4 Nachkommastellen: TR-Stückpreise oft 25,815 EUR (3 Stellen) neben 154,89 EUR.
   const eurBetraege =
-    stkLine?.match(/-?\d{1,3}(?:\.\d{3})*,\d{2}\s*EUR/gi)?.map((s) => parseEuropeanNumber(s)) ?? []
+    stkLine?.match(/-?\d{1,3}(?:\.\d{3})*,\d{2,4}\s*EUR/gi)?.map((s) => parseEuropeanNumber(s)) ?? []
   const positive = eurBetraege.filter((n): n is number => n != null && n > 0)
+  const gesamtAbrechnung = parseEuropeanNumber(
+    joined.match(/\bGESAMT\s+(-?\d{1,3}(?:\.\d{3})*,\d{2})\s*EUR/i)?.[1],
+  )
+  const round2 = (n: number) => Math.round(n * 100) / 100
+  const round4 = (n: number) => Math.round(n * 10000) / 10000
+  const nahe = (a: number, b: number) => Math.abs(a - b) <= Math.max(1.02, b * 0.015)
 
-  // Zeile „10 Stk. 178,92 EUR 1.789,20 EUR“ → Preis + Betrag.
-  // Nur ein EUR-Betrag bei Mehrstück: TR zeigt oft nur den Stückpreis → Gesamt = Stk × Preis.
+  // Zeile „6 Stk. 25,815 EUR 154,89 EUR“ → Preis + Betrag.
+  // Ein Betrag bei Mehrstück: nicht pauschal × Stück (sonst Gesamt als Kurs → 6× zu hoch).
   let handelsBetrag: number | null = null
   let kursEur: number | null = null
-  if (positive.length >= 2) {
+  if (positive.length >= 2 && stueck != null && stueck > 0) {
+    const a = positive[0]!
+    const b = positive[1]!
+    const prodA = round2(stueck * a)
+    const prodB = round2(stueck * b)
+    if (nahe(prodA, b)) {
+      kursEur = a
+      handelsBetrag = b
+    } else if (nahe(prodB, a)) {
+      kursEur = b
+      handelsBetrag = a
+    } else {
+      kursEur = a
+      handelsBetrag = b
+    }
+  } else if (positive.length >= 2) {
     kursEur = positive[0]!
     handelsBetrag = positive[1]!
   } else if (positive.length === 1) {
     const only = positive[0]!
     if (stueck != null && stueck > 1.01) {
-      kursEur = only
-      handelsBetrag = Math.round(stueck * only * 100) / 100
+      const alsGesamtMalStk = round2(stueck * only)
+      if (gesamtAbrechnung != null && nahe(only, Math.abs(gesamtAbrechnung))) {
+        handelsBetrag = only
+        kursEur = round4(only / stueck)
+      } else if (gesamtAbrechnung != null && nahe(alsGesamtMalStk, Math.abs(gesamtAbrechnung))) {
+        kursEur = only
+        handelsBetrag = alsGesamtMalStk
+      } else {
+        handelsBetrag = only
+        kursEur = round4(only / stueck)
+      }
     } else if (stueck != null && stueck > 0) {
       handelsBetrag = only
-      kursEur = Math.round((only / stueck) * 10000) / 10000
+      kursEur = round4(only / stueck)
     } else {
       handelsBetrag = only
     }
   } else if (stueck != null && stueck > 0 && kursEur != null && kursEur > 0) {
-    handelsBetrag = Math.round(stueck * kursEur * 100) / 100
+    handelsBetrag = round2(stueck * kursEur)
   }
 
   const out: TrRawCashZeile[] = []

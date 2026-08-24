@@ -8,8 +8,11 @@ import {
   parqetIrrDiagnose,
 } from '@/lib/portfolio-analyse/parqet-xirr'
 import { gebuehrIndex, kaufEinstandBetragEur } from '@/lib/portfolio-analyse/parqet-einstand'
-import { cashBetragEur } from '@/lib/portfolio-analyse/parqet-handelswerte'
-import { summeParqetRealisiertAusBuchungen } from '@/lib/portfolio-analyse/parqet-realisiert'
+import { cashBetragEur, normalisiereHandelsBuchung } from '@/lib/portfolio-analyse/parqet-handelswerte'
+import {
+  buchungZaehltFuerParqetRealisiert,
+  istParqetTransferUmbuchung,
+} from '@/lib/portfolio-analyse/parqet-realisiert'
 import type { PortfolioBuchung } from '@/lib/portfolio-analyse/types'
 import { heuteIso } from '@/lib/portfolio-analyse/wertentwicklung-tage'
 
@@ -278,10 +281,10 @@ export function summenAusBuchungen(buchungen: PortfolioBuchung[]) {
         auszahlungen += b.betragEur
         break
       case 'kauf':
-        kaeufe += b.betragEur
+        kaeufe += cashBetragEur(b)
         break
       case 'verkauf':
-        verkaeufe += b.betragEur
+        verkaeufe += cashBetragEur(b)
         break
       default:
         break
@@ -303,27 +306,32 @@ export function summenAusBuchungen(buchungen: PortfolioBuchung[]) {
 type EinstandLot = { stueck: number; kosten: number }
 
 function stueckAusBuchung(b: PortfolioBuchung, fallbackStueck?: number): number {
-  let stk = b.stueck != null ? Math.abs(b.stueck) : 0
-  if (stk <= 0 && b.kursEur != null && b.kursEur > 0 && b.betragEur > 0) {
-    stk = b.betragEur / b.kursEur
+  const n = normalisiereHandelsBuchung(b)
+  let stk = n.stueck
+  if (stk <= 0 && n.kursEur != null && n.kursEur > 0 && n.betragEur > 0) {
+    stk = n.betragEur / n.kursEur
   }
   if (stk <= 0 && fallbackStueck != null && fallbackStueck > 0) stk = fallbackStueck
   return stk
 }
 
 /**
- * Verkaufserlös wie Parqet: Stück × Kurs (Brutto „amount“), sonst Netto-Zufluss + Steuer am selben Tag.
+ * Verkaufserlös: Cash der Buchung, plus Steuer am selben Tag.
+ * Stück×Kurs nur wenn es knapp über dem Cash liegt (Brutto vs. Netto) — nicht bei PDF
+ * „Betrag = Kurs“-Fehlheilung (sonst 10× zu hoher Erlös).
  */
 function verkaufErloesEur(
   b: PortfolioBuchung,
   stk: number,
   steuerZurueckEur: number,
 ): number {
-  if (stk > 0 && b.kursEur != null && b.kursEur > 0) {
-    const brutto = round2(stk * b.kursEur)
-    if (brutto > b.betragEur * 1.001) return brutto
+  const n = normalisiereHandelsBuchung(b)
+  const cash = round2(n.betragEur + steuerZurueckEur)
+  if (stk > 0 && n.kursEur != null && n.kursEur > 0) {
+    const brutto = round2(stk * n.kursEur)
+    if (brutto > cash * 1.001 && brutto <= cash * 1.35) return brutto
   }
-  return round2(b.betragEur + steuerZurueckEur)
+  return cash
 }
 
 function fifoKosten(lots: EinstandLot[], stkVerk: number): number {
@@ -346,16 +354,22 @@ function fifoKosten(lots: EinstandLot[], stkVerk: number): number {
   return round2(kosten)
 }
 
-/**
- * Kumulierter realisierter Gewinn/Verlust.
- * Parqet-CSV: Summe der importierten `realizedgains` (nur Sell-Zeilen).
- * Sonst: FIFO aus Buchungen (PDF / ältere Imports).
- */
-export function realisierterGewinnAusVerkaeufen(buchungen: PortfolioBuchung[]): number {
-  const parqetSumme = summeParqetRealisiertAusBuchungen(buchungen)
-  if (parqetSumme != null) return parqetSumme
+export type RealisiertZeitraum = {
+  /** Exclusive — analog Periodenfilter `datum > start`. */
+  nachDatumExclusive?: string
+  bisDatumInclusive?: string
+}
 
+/**
+ * Realisierte Gewinne/Verluste je Verkaufstag.
+ * Parqet-Sell mit `realizedgains` → importierter Wert; sonst FIFO (PDF/manuell).
+ * TransferOut nur Lots verbrauchen, kein P/L (wie Parqet).
+ */
+export function realisiertPnlEreignisse(
+  buchungen: PortfolioBuchung[],
+): { datum: string; pnl: number }[] {
   const sortiert = [...buchungen].sort((a, b) => a.datum.localeCompare(b.datum))
+  const feeIndex = gebuehrIndex(buchungen)
 
   const steuerProTag = new Map<string, number>()
   const verkaeufeProTag = new Map<string, number>()
@@ -371,7 +385,7 @@ export function realisierterGewinnAusVerkaeufen(buchungen: PortfolioBuchung[]): 
   }
 
   const lotsByIsin = new Map<string, EinstandLot[]>()
-  let sum = 0
+  const ereignisse: { datum: string; pnl: number; fifoPnl: number; parqetPnl: number | null; isin: string }[] = []
 
   for (const b of sortiert) {
     if (!b.isin) continue
@@ -382,26 +396,55 @@ export function realisierterGewinnAusVerkaeufen(buchungen: PortfolioBuchung[]): 
       const stk = stueckAusBuchung(b)
       if (stk <= 0) continue
       const lots = lotsByIsin.get(isin) ?? []
-      lots.push({ stueck: stk, kosten: b.betragEur })
+      lots.push({ stueck: stk, kosten: kaufEinstandBetragEur(b, feeIndex) })
       lotsByIsin.set(isin, lots)
-    } else if (b.typ === 'verkauf') {
-      const lots = lotsByIsin.get(isin) ?? []
-      const restStueck = lots.reduce((s, l) => s + l.stueck, 0)
-      let stk = stueckAusBuchung(b, restStueck > 0 ? restStueck : undefined)
-      if (stk <= 0 && b.betragEur > 0 && restStueck <= 0) {
-        sum += b.betragEur
-        continue
-      }
-      if (stk <= 0) continue
+      continue
+    }
 
+    if (b.typ !== 'verkauf') continue
+
+    const lots = lotsByIsin.get(isin) ?? []
+    const restStueck = lots.reduce((s, l) => s + l.stueck, 0)
+    let stk = stueckAusBuchung(b, restStueck > 0 ? restStueck : undefined)
+    const n = normalisiereHandelsBuchung(b)
+    let fifoPnl = 0
+
+    if (stk <= 0 && n.betragEur > 0 && restStueck <= 0) {
+      fifoPnl = round2(n.betragEur)
+    } else if (stk > 0) {
       const nVerk = verkaeufeProTag.get(tagKey) ?? 1
       const steuerAnteil = round2((steuerProTag.get(tagKey) ?? 0) / nVerk)
       const erloes = verkaufErloesEur(b, stk, steuerAnteil)
       const kosten = fifoKosten(lots, stk)
-      sum += erloes - kosten
+      fifoPnl = round2(erloes - kosten)
       lotsByIsin.set(isin, lots)
+    }
+
+    if (istParqetTransferUmbuchung(b)) continue
+
+    const parqetPnl = buchungZaehltFuerParqetRealisiert(b) ? (b.realisierterGewinnEur ?? 0) : null
+    const pnl = parqetPnl != null ? parqetPnl : fifoPnl
+    if (pnl !== 0 || fifoPnl !== 0) {
+      ereignisse.push({ datum: b.datum, pnl, fifoPnl, parqetPnl, isin })
     }
   }
 
+  return ereignisse
+}
+
+/**
+ * Kumulierter realisierter Gewinn/Verlust.
+ * Parqet-CSV-Sells: importierte `realizedgains`; PDF/manuelle Verkäufe: FIFO.
+ */
+export function realisierterGewinnAusVerkaeufen(
+  buchungen: PortfolioBuchung[],
+  zeitraum?: RealisiertZeitraum,
+): number {
+  let sum = 0
+  for (const e of realisiertPnlEreignisse(buchungen)) {
+    if (zeitraum?.nachDatumExclusive != null && e.datum <= zeitraum.nachDatumExclusive) continue
+    if (zeitraum?.bisDatumInclusive != null && e.datum > zeitraum.bisDatumInclusive) continue
+    sum += e.pnl
+  }
   return round2(sum)
 }

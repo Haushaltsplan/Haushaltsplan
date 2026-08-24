@@ -1,3 +1,4 @@
+import { cashBetragEur, anzeigeHandelsBuchung } from '@/lib/portfolio-analyse/parqet-handelswerte'
 import type { BuchungsTyp, PortfolioBuchung, PortfolioDbBuchung } from '@/lib/portfolio-analyse/types'
 
 export type AktivitaetenStatistik = {
@@ -47,8 +48,8 @@ function summenAusBuchungen(buchungen: PortfolioBuchung[]) {
   const isins = new Set<string>()
   for (const b of buchungen) {
     if (b.isin) isins.add(b.isin.toUpperCase())
-    if (b.typ === 'kauf') kaeufeSumme += b.betragEur
-    else if (b.typ === 'verkauf') verkaeufeSumme += b.betragEur
+    if (b.typ === 'kauf') kaeufeSumme += cashBetragEur(b)
+    else if (b.typ === 'verkauf') verkaeufeSumme += cashBetragEur(b)
     else if (b.typ === 'dividende' || b.typ === 'zins') dividendenSumme += b.betragEur
   }
   return {
@@ -137,17 +138,18 @@ export function buchungenZuCsv(buchungen: PortfolioDbBuchung[]): string {
   const header = 'datum;typ;isin;name;stueck;kurs_eur;betrag_eur;assetklasse'
   const rows = [...buchungen]
     .sort((a, b) => b.datum.localeCompare(a.datum))
-    .map((b) =>
-      [
+    .map((b) => {
+      const n = anzeigeHandelsBuchung(b)
+      return [
         b.datum,
         b.typ,
         b.isin ?? '',
         (b.wertpapierName ?? '').replace(/;/g, ','),
         b.stueck ?? '',
-        b.kursEur ?? '',
-        b.betragEur.toFixed(2).replace('.', ','),
+        n.kursEur ?? '',
+        n.betragEur.toFixed(2).replace('.', ','),
         b.assetKlasse,
-      ].join(';'),
-    )
+      ].join(';')
+    })
   return [header, ...rows].join('\n')
 }

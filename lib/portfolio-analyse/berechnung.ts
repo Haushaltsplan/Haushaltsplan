@@ -103,6 +103,11 @@ export function formatEur(n: number): string {
   return n.toLocaleString('de-DE', { style: 'currency', currency: 'EUR' })
 }
 
+/** Stückpreis — TR oft 3 Nachkommastellen (25,815). */
+export function formatKursEur(n: number): string {
+  return n.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 4 })
+}
+
 export function formatProzent(n: number | null): string {
   if (n == null || !Number.isFinite(n)) return '—'
   const vorzeichen = n > 0 ? '+' : ''

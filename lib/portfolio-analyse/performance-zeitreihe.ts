@@ -8,7 +8,7 @@
  */
 
 import { hatExterneDepotEinAus } from '@/lib/portfolio-analyse/parqet-xirr'
-import { buchungZaehltFuerParqetRealisiert } from '@/lib/portfolio-analyse/parqet-realisiert'
+import { realisiertPnlEreignisse } from '@/lib/portfolio-analyse/depot-berechnung'
 import type { PortfolioBuchung } from '@/lib/portfolio-analyse/types'
 import type { WertentwicklungPunkt } from '@/lib/portfolio-analyse/wertentwicklung'
 import { tagLabel } from '@/lib/portfolio-analyse/wertentwicklung-tage'
@@ -45,12 +45,15 @@ function externerCashflowAmTag(buchungen: PortfolioBuchung[], datumIso: string):
   return sum
 }
 
-function ertraegeAmTag(buchungen: PortfolioBuchung[], datumIso: string): number {
-  let sum = 0
+function ertraegeAmTag(
+  buchungen: PortfolioBuchung[],
+  datumIso: string,
+  realByTag: Map<string, number>,
+): number {
+  let sum = realByTag.get(datumIso) ?? 0
   for (const b of buchungen) {
     if (b.datum !== datumIso) continue
     if (b.typ === 'dividende' || b.typ === 'zins') sum += b.betragEur
-    else if (buchungZaehltFuerParqetRealisiert(b)) sum += b.realisierterGewinnEur ?? 0
   }
   return sum
 }
@@ -92,6 +95,10 @@ export function berechnePerformanceZeitreihe(
   if (wertentwicklung.length === 0) return []
 
   const extern = hatExterneDepotEinAus(buchungen)
+  const realByTag = new Map<string, number>()
+  for (const e of realisiertPnlEreignisse(buchungen)) {
+    realByTag.set(e.datum, (realByTag.get(e.datum) ?? 0) + e.pnl)
+  }
   const out: PerformanceZeitPunkt[] = []
   let cumulativeMultiplier = 1
   let hasStarted = false
@@ -113,7 +120,7 @@ export function berechnePerformanceZeitreihe(
 
     let endValue = cur.portfoliowertEur
     if (!mitDivUndRealisiert) {
-      endValue -= ertraegeAmTag(buchungen, cur.datumIso)
+      endValue -= ertraegeAmTag(buchungen, cur.datumIso, realByTag)
     }
 
     const denominator = prev.portfoliowertEur + cf

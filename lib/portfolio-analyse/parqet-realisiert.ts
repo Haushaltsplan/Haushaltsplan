@@ -8,8 +8,14 @@ function round2(n: number): number {
  * Parqet-Dashboard „Realisiert“ = Summe `realizedgains` nur bei type=Sell.
  * TransferOut/Umbuchungen haben eigene realizedgains, zählen dort nicht mit.
  */
+export function istParqetTransferUmbuchung(b: PortfolioBuchung): boolean {
+  const pt = (b.parqetTyp ?? '').trim().toLowerCase()
+  return pt === 'transferout' || pt === 'transferin' || pt === 'transfer'
+}
+
 export function buchungZaehltFuerParqetRealisiert(b: PortfolioBuchung): boolean {
   if (b.typ !== 'verkauf') return false
+  if (istParqetTransferUmbuchung(b)) return false
   if (b.realisierterGewinnEur == null || !Number.isFinite(b.realisierterGewinnEur)) return false
 
   const pt = b.parqetTyp?.trim().toLowerCase()

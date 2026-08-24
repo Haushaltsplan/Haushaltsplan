@@ -10,7 +10,7 @@
  */
 
 import type { PeriodPerformance } from '@/lib/portfolio-analyse/parqet-core/types'
-import { buchungZaehltFuerParqetRealisiert } from '@/lib/portfolio-analyse/parqet-realisiert'
+import { realisiertPnlEreignisse } from '@/lib/portfolio-analyse/depot-berechnung'
 import { depotStandBisDatum, einstandWertpapiereEur } from '@/lib/portfolio-analyse/bestand'
 import { gezahlteDividendeEur } from '@/lib/portfolio-analyse/dividenden-buchung'
 import type { PortfolioBuchung } from '@/lib/portfolio-analyse/types'
@@ -27,6 +27,8 @@ export type ParqetPeriodKennzahlen = {
   performanceProzent: number | null
   dividendenImZeitraum: number
   realisiertImZeitraum: number
+  realisiertGewinneImZeitraum: number
+  realisiertVerlusteImZeitraum: number
 }
 
 function round2(n: number): number {
@@ -192,16 +194,17 @@ function realisiertImZeitraum(
   buchungen: PortfolioBuchung[],
   startDatumIso: string,
   endDatumIso: string,
-): number {
-  let sum = 0
-  let hat = false
-  for (const b of buchungen) {
-    if (b.datum <= startDatumIso || b.datum > endDatumIso) continue
-    if (!buchungZaehltFuerParqetRealisiert(b)) continue
-    sum += b.realisierterGewinnEur ?? 0
-    hat = true
+): { net: number; gewinne: number; verluste: number } {
+  let net = 0
+  let gewinne = 0
+  let verluste = 0
+  for (const e of realisiertPnlEreignisse(buchungen)) {
+    if (e.datum <= startDatumIso || e.datum > endDatumIso) continue
+    net += e.pnl
+    if (e.pnl > 0) gewinne += e.pnl
+    else if (e.pnl < 0) verluste += e.pnl
   }
-  return hat ? round2(sum) : 0
+  return { net: round2(net), gewinne: round2(gewinne), verluste: round2(verluste) }
 }
 
 export function berechneParqetPeriodKennzahlen(
@@ -245,6 +248,8 @@ export function berechneParqetPeriodKennzahlen(
   const performanceProzent =
     perfBasis > 0 ? round2((kursgewinn / perfBasis) * 100) : null
 
+  const realisiert = realisiertImZeitraum(buchungen, zuflussAb, heute)
+
   return {
     periodKey,
     periodStartDatumIso: startDatumIso,
@@ -254,6 +259,8 @@ export function berechneParqetPeriodKennzahlen(
     kursgewinn,
     performanceProzent,
     dividendenImZeitraum: dividendenImZeitraum(buchungen, zuflussAb, heute),
-    realisiertImZeitraum: realisiertImZeitraum(buchungen, zuflussAb, heute),
+    realisiertImZeitraum: realisiert.net,
+    realisiertGewinneImZeitraum: realisiert.gewinne,
+    realisiertVerlusteImZeitraum: realisiert.verluste,
   }
 }

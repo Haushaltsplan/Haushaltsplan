@@ -6,8 +6,8 @@
 import { depotStandProTag, einstandWertpapiereEur } from '@/lib/portfolio-analyse/bestand'
 import { dividendenZuflussEur } from '@/lib/portfolio-analyse/dividenden-buchung'
 import { berechneIrrAnnualizedPercent } from '@/lib/portfolio-analyse/parqet-core/math-utils'
+import { realisiertPnlEreignisse } from '@/lib/portfolio-analyse/depot-berechnung'
 import { parqetIrrCashflowsAusBuchungen } from '@/lib/portfolio-analyse/parqet-xirr'
-import { buchungZaehltFuerParqetRealisiert } from '@/lib/portfolio-analyse/parqet-realisiert'
 import {
   metrikEinheit,
   PortfolioMetric,
@@ -59,9 +59,9 @@ function kumulierteBetraegeProTag(
     if (zufluss > 0) {
       divByTag.set(b.datum, (divByTag.get(b.datum) ?? 0) + zufluss)
     }
-    if (buchungZaehltFuerParqetRealisiert(b)) {
-      realByTag.set(b.datum, (realByTag.get(b.datum) ?? 0) + (b.realisierterGewinnEur ?? 0))
-    }
+  }
+  for (const e of realisiertPnlEreignisse(buchungen)) {
+    realByTag.set(e.datum, (realByTag.get(e.datum) ?? 0) + e.pnl)
   }
 
   let kumDiv = 0

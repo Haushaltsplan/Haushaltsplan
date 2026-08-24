@@ -141,6 +141,8 @@ export function PaPortfolioHero({
   const perfPct = periodKennzahlen.performanceProzent
   const dividenden = periodKennzahlen.dividendenImZeitraum
   const realisiert = periodKennzahlen.realisiertImZeitraum
+  const realisiertGewinne = periodKennzahlen.realisiertGewinneImZeitraum
+  const realisiertVerluste = periodKennzahlen.realisiertVerlusteImZeitraum
 
   const perfBadge =
     perfPct != null ? (
@@ -289,6 +291,11 @@ export function PaPortfolioHero({
                 >
                   {formatEur(realisiert)}
                 </p>
+                {realisiertGewinne > 0 || realisiertVerluste < 0 ? (
+                  <p className="mt-0.5 text-[11px] tabular-nums text-[var(--app-text-muted)]">
+                    {formatEur(realisiertGewinne)} Gewinne · {formatEur(realisiertVerluste)} Verluste
+                  </p>
+                ) : null}
               </div>
             </div>
           </div>

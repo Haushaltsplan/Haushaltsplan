@@ -1,11 +1,13 @@
 /**
  * Handelswert / Cash-Betrag / eingebettete Ordergebühr — mit Heilung typischer Import-Fehler.
  *
- * Bekannter PDF-Bug (TR Wertpapierabrechnung): nur der Stückpreis landet in betragEur,
- * während stueck korrekt ist → Scheingebühren von Tausenden € und falsches Investiert.
+ * PDF-Bugs (TR Wertpapierabrechnung):
+ * - Nur der Stückpreis landet in betragEur → Scheingebühren / falsches Investiert.
+ * - Inverse: 3-Nachkomma-Stückpreis (25,815 €) wird nicht gelesen, der Gesamtbetrag
+ *   landet als Kurs, oft nochmal × Stück (6×154,89 statt 6×25,815).
  */
 
-import type { PortfolioBuchung } from '@/lib/portfolio-analyse/types'
+import type { ImportQuelle, PortfolioBuchung } from '@/lib/portfolio-analyse/types'
 
 function round2(n: number): number {
   return Math.round(n * 100) / 100
@@ -13,6 +15,18 @@ function round2(n: number): number {
 
 function round4(n: number): number {
   return Math.round(n * 10000) / 10000
+}
+
+function istZweiDezimalen(n: number): boolean {
+  return Math.abs(n * 100 - Math.round(n * 100)) < 1e-6
+}
+
+/** TR-FX-Stückpreis: genau 3 Nachkommastellen, letzte Stelle ≠ 0 (z. B. 25,815). */
+function istTrMillStueckpreis(unit: number): boolean {
+  if (!(unit > 0) || !Number.isFinite(unit)) return false
+  const mill = Math.round(unit * 1000)
+  if (Math.abs(unit * 1000 - mill) > 1e-6) return false
+  return mill % 10 !== 0
 }
 
 export type NormalisierteHandelswerte = {
@@ -24,21 +38,37 @@ export type NormalisierteHandelswerte = {
   geheilt: boolean
 }
 
+type HandelsBuchungFelder = Pick<PortfolioBuchung, 'typ' | 'stueck' | 'kursEur' | 'betragEur'> & {
+  quelle?: ImportQuelle | null
+}
+
 /**
  * Korrigiert offensichtliche Stück/Kurs/Betrag-Inkonsistenzen einer Kauf-/Verkauf-Buchung.
  * Andere Typen: unveränderte Beträge.
  */
-export function normalisiereHandelsBuchung(
-  b: Pick<PortfolioBuchung, 'typ' | 'stueck' | 'kursEur' | 'betragEur'>,
-): NormalisierteHandelswerte {
+export function normalisiereHandelsBuchung(b: HandelsBuchungFelder): NormalisierteHandelswerte {
   const stueck = Math.abs(b.stueck ?? 0)
   let kursEur = b.kursEur != null && b.kursEur > 0 ? b.kursEur : null
   let betragEur = round2(Math.abs(b.betragEur))
   let geheilt = false
 
   if ((b.typ === 'kauf' || b.typ === 'verkauf') && stueck > 0 && kursEur != null && betragEur > 0) {
+    const ganzzahlig = Math.abs(stueck - Math.round(stueck)) < 0.001
+    // Fall C vor A: gespeicherter „Kurs“ ist der Gesamtbetrag (3-Nachkomma-Preis verschluckt).
+    if (
+      b.quelle === 'pdf' &&
+      ganzzahlig &&
+      stueck > 1.01 &&
+      istZweiDezimalen(kursEur) &&
+      istTrMillStueckpreis(kursEur / stueck)
+    ) {
+      const echterBetrag = round2(kursEur)
+      kursEur = round4(kursEur / stueck)
+      betragEur = echterBetrag
+      geheilt = true
+    }
     // Fall A: Mehrstück, Betrag == Stückpreis → Betrag war nur der Kurs (PDF)
-    if (stueck > 1.01 && Math.abs(betragEur - kursEur) <= 0.05) {
+    else if (stueck > 1.01 && Math.abs(betragEur - kursEur) <= 0.05) {
       betragEur = round2(stueck * kursEur)
       geheilt = true
     }
@@ -91,4 +121,21 @@ export function eingebetteteOrdergebuehrEur(b: PortfolioBuchung): number {
   if (gap > 80) return 0
 
   return gap
+}
+
+/** Anzeige von Kauf/Verkauf: geheilt (Stückpreis + Gesamt), sonst Rohbetrag. */
+export function anzeigeHandelsBuchung(b: HandelsBuchungFelder): {
+  betragEur: number
+  kursEur: number | null
+  stueck: number
+} {
+  if (b.typ === 'kauf' || b.typ === 'verkauf') {
+    const n = normalisiereHandelsBuchung(b)
+    return { betragEur: n.betragEur, kursEur: n.kursEur, stueck: n.stueck }
+  }
+  return {
+    betragEur: round2(Math.abs(b.betragEur)),
+    kursEur: b.kursEur,
+    stueck: Math.abs(b.stueck ?? 0),
+  }
 }

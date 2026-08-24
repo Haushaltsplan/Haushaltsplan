@@ -14,7 +14,8 @@ import {
   filterAktivitaeten,
   gruppiereAktivitaeten,
 } from '@/lib/portfolio-analyse/aktivitaeten-gruppe'
-import { formatDatumDe, formatEur, formatStueck } from '@/lib/portfolio-analyse/berechnung'
+import { formatDatumDe, formatEur, formatKursEur, formatStueck } from '@/lib/portfolio-analyse/berechnung'
+import { anzeigeHandelsBuchung } from '@/lib/portfolio-analyse/parqet-handelswerte'
 import { anzeigeNameFuerIsin, wknFuerIsin } from '@/lib/portfolio-analyse/isin-metadata-client'
 import { fundamentaldatenHref } from '@/lib/portfolio-analyse/fundamentaldaten-navigation'
 import { loeschePortfolioBuchung } from '@/lib/portfolio-analyse/portfolio-analyse-db'
@@ -101,7 +102,7 @@ export function PortfolioAktivitaetenClient() {
 
   async function buchungLoeschen(b: PortfolioDbBuchung) {
     const name = anzeigeNameFuerIsin(b.isin, b.wertpapierName, meta)
-    const label = `${BUCHUNGS_TYP_LABEL[b.typ]} · ${name} · ${formatDatumDe(b.datum)} · ${formatEur(b.betragEur)}`
+    const label = `${BUCHUNGS_TYP_LABEL[b.typ]} · ${name} · ${formatDatumDe(b.datum)} · ${formatEur(anzeigeHandelsBuchung(b).betragEur)}`
     if (
       !window.confirm(
         `Diese Buchung unwiderruflich löschen?\n\n${label}\n\nDer Bestand wird danach neu berechnet.`,
@@ -258,7 +259,8 @@ function AktivitaetenZeile({
   const wkn = b.isin ? wknFuerIsin(b.isin, meta) : null
   const href =
     b.assetKlasse === 'aktie' && b.isin ? fundamentaldatenHref({ isin: b.isin }) : null
-  const stueckAnzeige = b.stueck != null ? Math.abs(b.stueck) : null
+  const handel = anzeigeHandelsBuchung(b)
+  const stueckAnzeige = handel.stueck > 0 ? handel.stueck : null
 
   return (
     <li
@@ -295,15 +297,12 @@ function AktivitaetenZeile({
           className={`text-right ${href ? 'cursor-pointer' : ''}`}
           onClick={href ? () => router.push(href) : undefined}
         >
-          <p className="text-sm font-semibold tabular-nums text-[var(--app-text)]">{formatEur(b.betragEur)}</p>
+          <p className="text-sm font-semibold tabular-nums text-[var(--app-text)]">{formatEur(handel.betragEur)}</p>
           {stueckAnzeige != null && stueckAnzeige > 0 ? (
             <p className="mt-0.5 text-[11px] text-[var(--app-text-muted)]">
               <span className="rounded-full bg-[var(--app-surface-hover)] px-2 py-0.5">
                 {formatStueck(stueckAnzeige)}×{' '}
-                {b.kursEur != null
-                  ? b.kursEur.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-                  : '—'}
-                €
+                {handel.kursEur != null ? formatKursEur(handel.kursEur) : '—'}€
               </span>
             </p>
           ) : null}

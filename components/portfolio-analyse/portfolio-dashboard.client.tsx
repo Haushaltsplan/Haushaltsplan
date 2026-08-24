@@ -17,6 +17,7 @@ import {
   formatProzent,
   sortiereBuchungenNeuesteZuerst,
 } from '@/lib/portfolio-analyse/berechnung'
+import { anzeigeHandelsBuchung } from '@/lib/portfolio-analyse/parqet-handelswerte'
 import { anzeigeNameFuerIsin } from '@/lib/portfolio-analyse/isin-metadata-client'
 import { fundamentaldatenHref } from '@/lib/portfolio-analyse/fundamentaldaten-navigation'
 import { depotwertVorBoersenbeginn, ladeHistorischeKurseClient } from '@/lib/portfolio-analyse/live-bewertung'
@@ -243,7 +244,9 @@ export function PortfolioDashboardClient() {
                 </div>
                 <div className="text-right">
                   <PaBadge variant={badgeVariant(b.typ)}>{BUCHUNGS_TYP_LABEL[b.typ]}</PaBadge>
-                  <p className="mt-1 text-sm tabular-nums text-[var(--app-text)]">{formatEur(b.betragEur)}</p>
+                  <p className="mt-1 text-sm tabular-nums text-[var(--app-text)]">
+                    {formatEur(anzeigeHandelsBuchung(b).betragEur)}
+                  </p>
                 </div>
               </li>
             )})}
