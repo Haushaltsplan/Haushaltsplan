@@ -1,8 +1,10 @@
 'use client'
 
+import type { ReactNode } from 'react'
 import { appTableScrollClassName } from '@/components/page-shell'
 import { PaFundamentalCapitalAllocation } from '@/components/portfolio-analyse/pa-fundamental-capital-allocation'
 import { PaFundamentalPeerVergleich } from '@/components/portfolio-analyse/pa-fundamental-peer-vergleich'
+import { PaFundamentalInsider } from '@/components/portfolio-analyse/pa-fundamental-insider'
 import { PaCard } from '@/components/portfolio-analyse/pa-ui'
 import {
   PaStrukturHorizontalBars,
@@ -95,14 +97,9 @@ export function PaFundamentalStruktur({
   const ag = erweitert.arbeitgeber
 
   return (
-    <div className="space-y-5">
-      <div className="grid gap-5 lg:grid-cols-2">
-        {/* Marktdaten */}
-        <PaCard variant="elevated" className="space-y-4 p-5">
-          <PaStrukturSectionHeader
-            titel="Marktdaten"
-            untertitel="Beta, Volatilität, Short Interest, Momentum"
-          />
+    <div className="overflow-hidden rounded-xl border border-[var(--app-border)] bg-[var(--app-surface-muted)] p-4 ring-1 ring-white/[0.03] sm:p-5">
+      <div className="grid gap-8 lg:grid-cols-2">
+        <Sektion titel="Marktdaten" untertitel="Beta, Volatilität, Short Interest, Momentum">
           <div className="grid gap-2 sm:grid-cols-2">
             <PaStrukturKennzahl label="5-Jahres-Beta" wert={strukturKmText(paket, 'beta')} />
             <PaStrukturKennzahl label="Drawdown vs. 52W-Hoch" wert={pctFmt(bilanz.drawdown52wPct)} />
@@ -117,14 +114,9 @@ export function PaFundamentalStruktur({
             <PaStrukturKennzahl label="Rel. Volumen" wert={f?.relVolume != null ? `${f.relVolume.toFixed(2)}×` : null} />
             <PaStrukturKennzahl label="PEG (Finviz)" wert={f?.peg?.toFixed(2) ?? null} />
           </div>
-        </PaCard>
+        </Sektion>
 
-        {/* Eigentümerstruktur */}
-        <PaCard variant="elevated" className="space-y-4 p-5">
-          <PaStrukturSectionHeader
-            titel="Eigentümerstruktur"
-            untertitel="Yahoo Holders · Finviz Short Interest"
-          />
+        <Sektion titel="Eigentümerstruktur" untertitel="Yahoo Holders · Finviz Short Interest">
           <PaStrukturOwnershipDonut segmente={ownership} />
           <div className="grid gap-2 sm:grid-cols-2">
             <PaStrukturKennzahl
@@ -137,15 +129,14 @@ export function PaFundamentalStruktur({
             />
             <PaStrukturKennzahl label="Ausstehende Aktien" wert={strukturKmText(paket, 'shares_out')} />
           </div>
-        </PaCard>
+        </Sektion>
       </div>
 
-      {/* Kapitalstruktur & Bilanz */}
-      <PaCard variant="elevated" className="space-y-4 p-5 sm:p-6">
-        <PaStrukturSectionHeader
-          titel="Kapitalstruktur & Bilanz"
-          untertitel="Verschuldung, Working Capital, SBC — aus Macrotrends GuV/Bilanz/CF"
-        />
+      <Sektion
+        titel="Kapitalstruktur & Bilanz"
+        untertitel="Verschuldung, Working Capital, SBC — aus Macrotrends GuV/Bilanz/CF"
+        klasse="mt-8"
+      >
         <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
           <PaStrukturKennzahl label="Market Cap" wert={strukturKmText(paket, 'market_cap')} />
           <PaStrukturKennzahl label="Enterprise Value" wert={strukturKmText(paket, 'enterprise_value')} />
@@ -201,25 +192,26 @@ export function PaFundamentalStruktur({
             }
           />
         </div>
-      </PaCard>
+      </Sektion>
 
-      {/* Geschäftsstruktur — Marketscreener-Scraper (direkt geladen) */}
-      <PaMsSegmentHistorieLoader
-        isin={isin}
-        name={paket.firmenname}
-        symbolYahoo={symbolYahoo ?? paket.symbolYahoo}
-        ticker={ticker}
-        initial={secHist}
-        umsatzZeile={paket.zeilen.find((z) => z.id === 'umsatz') ?? null}
-      />
+      <Sektion titel="Geschäftsstruktur" klasse="mt-8">
+        <PaMsSegmentHistorieLoader
+          isin={isin}
+          name={paket.firmenname}
+          symbolYahoo={symbolYahoo ?? paket.symbolYahoo}
+          ticker={ticker}
+          initial={secHist}
+          umsatzZeile={paket.zeilen.find((z) => z.id === 'umsatz') ?? null}
+        />
+      </Sektion>
 
       {sec &&
       (sec.pensionVerpflichtungMio != null || sec.leaseVerpflichtungMio != null || sec.ceoVerguetungUsd != null) ? (
-        <PaCard variant="elevated" className="space-y-4 p-5 sm:p-6">
-          <PaStrukturSectionHeader
-            titel={`SEC 10-K Zusatzdaten${sec.berichtJahr ? ` ${sec.berichtJahr}` : ''}`}
-            untertitel="Pensionsverpflichtungen, Leases, CEO-Vergütung"
-          />
+        <Sektion
+          titel={`SEC 10-K Zusatzdaten${sec.berichtJahr ? ` ${sec.berichtJahr}` : ''}`}
+          untertitel="Pensionsverpflichtungen, Leases, CEO-Vergütung"
+          klasse="mt-8"
+        >
           <div className="grid gap-2 sm:grid-cols-3">
             <PaStrukturKennzahl
               label="Pensionsverpflichtung"
@@ -235,17 +227,12 @@ export function PaFundamentalStruktur({
               hinweis={sec.proxyJahr ? `DEF 14A ${sec.proxyJahr}` : undefined}
             />
           </div>
-        </PaCard>
+        </Sektion>
       ) : null}
 
-      <div className="grid gap-5 lg:grid-cols-2">
-        {/* Earnings & Insider */}
+      <div className="mt-8 grid gap-8 lg:grid-cols-2">
         {(bm || ins) && (
-          <PaCard variant="elevated" className="space-y-4 p-5">
-            <PaStrukturSectionHeader
-              titel="Earnings-Qualität & Insider"
-              untertitel="Beat-Raten · Streaks · SEC/OpenInsider 90 Tage"
-            />
+          <Sektion titel="Earnings-Qualität & Insider" untertitel="Beat-Raten · Streaks · SEC/OpenInsider 90 Tage">
             {beatBalken.length > 0 ? (
               <div>
                 <p className="mb-3 text-[11px] font-medium text-[var(--app-text-muted)]">Trefferquote (% Beat)</p>
@@ -285,16 +272,11 @@ export function PaFundamentalStruktur({
                 }
               />
             </div>
-          </PaCard>
+          </Sektion>
         )}
 
-        {/* Dividenden-Stabilität */}
         {d && (
-          <PaCard variant="elevated" className="space-y-4 p-5">
-            <PaStrukturSectionHeader
-              titel="Dividenden-Stabilität"
-              untertitel="DivvyDiary — Wachstum, Kontinuität, Ausschüttungsmuster"
-            />
+          <Sektion titel="Dividenden-Stabilität" untertitel="DivvyDiary — Wachstum, Kontinuität, Ausschüttungsmuster">
             <div className="grid gap-2 sm:grid-cols-2">
               <PaStrukturKennzahl label="CAGR 5J" wert={pctFmt(d.cagr5yPct)} />
               <PaStrukturKennzahl label="CAGR 10J" wert={pctFmt(d.cagr10yPct)} />
@@ -313,26 +295,35 @@ export function PaFundamentalStruktur({
               <PaStrukturKennzahl label="Ausschüttungsquote" wert={strukturKmText(paket, 'payout')} />
               <PaStrukturKennzahl label="Div-Rendite (LTM)" wert={strukturKmText(paket, 'div_yield')} />
             </div>
-          </PaCard>
+          </Sektion>
         )}
       </div>
 
-      {/* Capital Allocation + Peer */}
-      <div className="grid gap-5 lg:grid-cols-2">
+      <div className="mt-8 grid gap-8 lg:grid-cols-2">
         <PaFundamentalCapitalAllocation
           ticker={ticker}
           symbolYahoo={symbolYahoo}
           selectionKey={selectionKey}
+          ohneRahmen
         />
-        <PaFundamentalPeerVergleich ticker={ticker} isin={isin} />
+        <PaFundamentalPeerVergleich ticker={ticker} isin={isin} ohneRahmen />
       </div>
 
-      {/* EU + Kultur */}
+      <Sektion titel="Insider-Transaktionen" untertitel="US: SEC Form 4 · EU: Directors Dealings" klasse="mt-8">
+        <PaFundamentalInsider
+          ticker={ticker}
+          symbolYahoo={symbolYahoo}
+          firmenname={paket.firmenname}
+          isin={isin}
+          selectionKey={selectionKey}
+          ohneRahmen
+        />
+      </Sektion>
+
       {(eu?.kennzahlen.length || ag || iv) ? (
-        <div className="grid gap-5 lg:grid-cols-2">
+        <div className="mt-8 grid gap-8 lg:grid-cols-2">
           {eu && eu.kennzahlen.length > 0 ? (
-            <PaCard variant="elevated" className="space-y-4 p-5">
-              <PaStrukturSectionHeader titel="EU-Kennzahlen" untertitel="Marketscreener — Bewertung & Rentabilität" />
+            <Sektion titel="EU-Kennzahlen" untertitel="Marketscreener — Bewertung & Rentabilität">
               <div className={appTableScrollClassName}>
                 <table className="app-data-table min-w-full text-left text-xs">
                   <tbody>
@@ -345,12 +336,11 @@ export function PaFundamentalStruktur({
                   </tbody>
                 </table>
               </div>
-            </PaCard>
+            </Sektion>
           ) : null}
 
           {(ag || iv) && (
-            <PaCard variant="elevated" className="space-y-4 p-5">
-              <PaStrukturSectionHeader titel="Unternehmenskultur & Stimmung" untertitel="Glassdoor · Kununu · Options-IV" />
+            <Sektion titel="Unternehmenskultur & Stimmung" untertitel="Glassdoor · Kununu · Options-IV">
               <div className="grid gap-2 sm:grid-cols-2">
                 {ag?.glassdoor?.score != null ? (
                   <PaStrukturKennzahl
@@ -396,13 +386,32 @@ export function PaFundamentalStruktur({
                 </div>
               )}
               {ag?.hinweis ? <p className="text-[10px] text-[var(--app-text-muted)]">{ag.hinweis}</p> : null}
-            </PaCard>
+            </Sektion>
           )}
         </div>
       ) : null}
 
       <QuellenFusszeile erweitert={erweitert} />
     </div>
+  )
+}
+
+function Sektion({
+  titel,
+  untertitel,
+  children,
+  klasse = '',
+}: {
+  titel: string
+  untertitel?: string
+  children: ReactNode
+  klasse?: string
+}) {
+  return (
+    <section className={`space-y-3 ${klasse}`}>
+      <PaStrukturSectionHeader titel={titel} untertitel={untertitel} />
+      {children}
+    </section>
   )
 }
 

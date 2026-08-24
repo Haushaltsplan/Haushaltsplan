@@ -4,9 +4,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { PaFundamentalQuartalszahlen } from '@/components/portfolio-analyse/pa-fundamental-quartalszahlen'
 import { PaFundamentalMantra } from '@/components/portfolio-analyse/pa-fundamental-mantra'
 import { PaFundamentalNews } from '@/components/portfolio-analyse/pa-fundamental-news'
-import { PaFundamentalPeerVergleich } from '@/components/portfolio-analyse/pa-fundamental-peer-vergleich'
-import { PaFundamentalInsider } from '@/components/portfolio-analyse/pa-fundamental-insider'
-import { PaFundamentalCapitalAllocation } from '@/components/portfolio-analyse/pa-fundamental-capital-allocation'
 import { PaFundamentalUebersicht } from '@/components/portfolio-analyse/pa-fundamental-uebersicht'
 import { PaFundamentalStruktur } from '@/components/portfolio-analyse/pa-fundamental-struktur'
 import { PaFundamentalUnternehmenHeader } from '@/components/portfolio-analyse/pa-fundamental-unternehmen-header'
@@ -39,13 +36,14 @@ import {
 
 const UNTER_TABS = [
   { id: 'uebersicht' as const, label: 'Übersicht' },
+  { id: 'kennzahlen' as const, label: 'Kennzahlen' },
   { id: 'mantra' as const, label: 'Mantra' },
-  { id: 'finanzdaten' as const, label: 'Finanzdaten' },
-  { id: 'bewertung' as const, label: 'Bewertung' },
-  { id: 'struktur' as const, label: 'Struktur & Daten' },
+  { id: 'struktur' as const, label: 'Struktur' },
   { id: 'quartalszahlen' as const, label: 'Quartalszahlen' },
   { id: 'news' as const, label: 'News' },
 ]
+
+const KENNZAHLEN_DEFAULT_ZEILEN = ['umsatz', 'fcf', 'nettogewinn'] as const
 
 export function PaFundamentalInhalt({
   anfrage,
@@ -65,6 +63,7 @@ export function PaFundamentalInhalt({
   const [frequenz, setFrequenz] = useState<'jahr' | 'quartal'>('jahr')
   const [chartAktiv, setChartAktiv] = useState<Set<string>>(new Set())
   const [labelsAnzeigen, setLabelsAnzeigen] = useState(true)
+  const kennzahlenAutoKey = useRef<string | null>(null)
 
   const effektiveAnfrage = useMemo(
     () =>
@@ -86,6 +85,7 @@ export function PaFundamentalInhalt({
 
   useEffect(() => {
     setChartAktiv(new Set())
+    kennzahlenAutoKey.current = null
   }, [selectionKey, tickerOverride])
 
   useEffect(() => {
@@ -266,6 +266,20 @@ export function PaFundamentalInhalt({
     return s
   }, [daten?.zeilen])
 
+  useEffect(() => {
+    if (unterTab !== 'kennzahlen') return
+    const key = selectionKey ?? ''
+    if (kennzahlenAutoKey.current === key) return
+    if (chartAktiv.size > 0) {
+      kennzahlenAutoKey.current = key
+      return
+    }
+    const ids = KENNZAHLEN_DEFAULT_ZEILEN.filter((id) => verfuegbareZeilenIds.has(id))
+    if (ids.length === 0) return
+    kennzahlenAutoKey.current = key
+    setChartAktiv(new Set(ids))
+  }, [unterTab, selectionKey, verfuegbareZeilenIds, chartAktiv])
+
   const zeilenBereinigt = useMemo(
     () =>
       daten?.ok ? bereinigeSchaetzungsniveausInZeilen(daten.perioden, daten.zeilen) : (daten?.zeilen ?? []),
@@ -306,6 +320,14 @@ export function PaFundamentalInhalt({
   })
   const bewertungPerioden =
     periodenBereinigt.filter((p) => !p.istNtm && p.iso !== FUNDAMENTAL_NTM_KEY)
+  const chartIstBewertung = [...chartAktiv].some((id) => bewertungZeilen.some((z) => z.id === id))
+  const kennzahlenGruppen = [
+    { id: 'guv', titel: `GuV (Mio. ${daten?.waehrung ?? 'USD'})`, zeilen: finanzdaten },
+    { id: 'cashflow', titel: 'Cashflow', zeilen: cashflow },
+    { id: 'bilanz', titel: 'Bilanz', zeilen: bilanz },
+    { id: 'rentabilitaet', titel: 'Rentabilität & Margen', zeilen: [...rentabilitaet, ...margen, ...umschlag] },
+    { id: 'bewertung', titel: 'Bewertung', zeilen: bewertungZeilen },
+  ]
   return (
     <div className="space-y-4">
       {laden && !daten?.ok ? (
@@ -411,7 +433,7 @@ export function PaFundamentalInhalt({
                   onClick={() => void starteJsonExport()}
                   disabled={exportLaeuft}
                   className="rounded-md border border-teal-500/25 bg-teal-500/10 px-2 py-1 text-[11px] font-medium text-teal-300 transition hover:bg-teal-500/20 disabled:opacity-50"
-                  title="Alle Tabs: Mantra, Bewertung, Struktur, Quartalszahlen, Finanzdaten (+ CapAlloc/Insider/Peer/Beat-Miss/Earnings/SEC)"
+                  title="Alle Tabs: Mantra, Kennzahlen, Struktur, Quartalszahlen (+ CapAlloc/Insider/Peer/Beat-Miss/Earnings/SEC)"
                 >
                   {exportLaeuft ? 'Export …' : 'Export JSON'}
                 </button>
@@ -456,22 +478,7 @@ export function PaFundamentalInhalt({
           ) : null}
 
           {unterTab === 'mantra' && daten.mantra ? (
-            <div className="space-y-4">
-              <PaFundamentalMantra audit={daten.mantra} ticker={daten.ticker} />
-              <PaFundamentalCapitalAllocation
-                ticker={daten.ticker}
-                symbolYahoo={daten.symbolYahoo}
-                selectionKey={selectionKey}
-              />
-              <PaFundamentalInsider
-                ticker={daten.ticker}
-                symbolYahoo={daten.symbolYahoo}
-                firmenname={daten.firmenname}
-                isin={anfrage.isin ?? null}
-                selectionKey={selectionKey}
-              />
-              <PaFundamentalPeerVergleich ticker={daten.ticker} isin={anfrage.isin ?? null} />
-            </div>
+            <PaFundamentalMantra audit={daten.mantra} ticker={daten.ticker} />
           ) : null}
 
           {unterTab === 'quartalszahlen' ? (
@@ -496,107 +503,65 @@ export function PaFundamentalInhalt({
 
           {unterTab === 'news' ? <PaFundamentalNews artikel={daten.news} /> : null}
 
-          {unterTab !== 'uebersicht' &&
-          unterTab !== 'news' &&
-          unterTab !== 'mantra' &&
-          unterTab !== 'quartalszahlen' &&
-          unterTab !== 'struktur' ? (
-            <div className="space-y-4">
-              {(unterTab === 'finanzdaten' || unterTab === 'bewertung') && (
-                <div className="flex items-center gap-2">
-                  <span className="text-xs text-[var(--app-text-muted)]">Periode:</span>
-                  <div className="inline-flex rounded-lg border border-[var(--app-border-strong)] bg-[var(--app-surface-muted)] p-0.5">
-                    <button
-                      type="button"
-                      onClick={() => setFrequenz('jahr')}
-                      className={`rounded-md px-3 py-1.5 text-xs font-medium transition ${
-                        frequenz === 'jahr'
-                          ? 'bg-amber-600/90 text-white'
-                          : 'text-[var(--app-text-muted)] hover:text-[var(--app-text)]'
-                      }`}
-                    >
-                      Jahr
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setFrequenz('quartal')}
-                      className={`rounded-md px-3 py-1.5 text-xs font-medium transition ${
-                        frequenz === 'quartal'
-                          ? 'bg-amber-600/90 text-white'
-                          : 'text-[var(--app-text-muted)] hover:text-[var(--app-text)]'
-                      }`}
-                    >
-                      Quartal
-                    </button>
-                  </div>
-                  {laden && daten?.frequenz !== frequenz ? (
-                    <span className="text-xs text-[var(--app-text-muted)]">Lade {frequenz === 'quartal' ? 'Quartals' : 'Jahres'}daten …</span>
-                  ) : null}
-                </div>
-              )}
-
+          {unterTab === 'kennzahlen' ? (
+            <div className="overflow-hidden rounded-xl border border-[var(--app-border)] bg-[var(--app-surface-muted)] ring-1 ring-white/[0.03]">
               <PaFundamentalMetrikChart
-                perioden={unterTab === 'bewertung' ? bewertungPerioden : periodenBereinigt}
-                zeilen={unterTab === 'bewertung' ? bewertungZeilen : zeilenBereinigt}
+                perioden={chartIstBewertung ? bewertungPerioden : periodenBereinigt}
+                zeilen={chartIstBewertung ? bewertungZeilen : zeilenBereinigt}
                 aktivIds={chartAktiv}
                 labelsAnzeigen={labelsAnzeigen}
-                variant={unterTab === 'bewertung' ? 'bewertung' : 'standard'}
+                variant={chartIstBewertung ? 'bewertung' : 'standard'}
+                eingebettet
+                werkzeugLeiste={
+                  <div className="mb-2 flex flex-wrap items-center gap-2">
+                    <span className="text-[10px] font-medium uppercase tracking-wide text-[var(--app-text-muted)]">
+                      Periode
+                    </span>
+                    <div className="inline-flex rounded-lg border border-[var(--app-border-strong)] bg-[var(--app-bg)] p-0.5">
+                      <button
+                        type="button"
+                        onClick={() => setFrequenz('jahr')}
+                        className={`rounded-md px-2.5 py-1 text-[11px] font-medium transition ${
+                          frequenz === 'jahr'
+                            ? 'bg-amber-600/90 text-white'
+                            : 'text-[var(--app-text-muted)] hover:text-[var(--app-text)]'
+                        }`}
+                      >
+                        Jahr
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setFrequenz('quartal')}
+                        className={`rounded-md px-2.5 py-1 text-[11px] font-medium transition ${
+                          frequenz === 'quartal'
+                            ? 'bg-amber-600/90 text-white'
+                            : 'text-[var(--app-text-muted)] hover:text-[var(--app-text)]'
+                        }`}
+                      >
+                        Quartal
+                      </button>
+                    </div>
+                    {laden && daten.frequenz !== frequenz ? (
+                      <span className="text-[11px] text-[var(--app-text-muted)]">
+                        Lade {frequenz === 'quartal' ? 'Quartals' : 'Jahres'}daten …
+                      </span>
+                    ) : null}
+                  </div>
+                }
                 onClear={() => setChartAktiv(new Set())}
                 onToggleSerie={toggleChartZeile}
                 onToggleLabels={() => setLabelsAnzeigen((v) => !v)}
               />
-
-              {unterTab === 'finanzdaten' && finanzdaten.length > 0 ? (
+              <div className="border-t border-[var(--app-border)]">
                 <PaFundamentalMetrikTabelle
-                  titel={`GuV / Finanzdaten (Mio. ${daten.waehrung ?? 'USD'})`}
-                  perioden={periodenBereinigt}
-                  zeilen={finanzdaten}
+                  gruppen={kennzahlenGruppen}
+                  perioden={frequenz === 'jahr' ? bewertungPerioden : periodenBereinigt}
                   aktivIds={chartAktiv}
                   onToggleZeile={toggleChartZeile}
+                  labelModus={frequenz === 'jahr' ? 'jahr' : 'datum'}
+                  eingebettet
                 />
-              ) : null}
-
-              {unterTab === 'finanzdaten' && cashflow.length > 0 ? (
-                <PaFundamentalMetrikTabelle
-                  titel={`Cashflow (Mio. ${daten.waehrung ?? 'USD'})`}
-                  perioden={periodenBereinigt}
-                  zeilen={cashflow}
-                  aktivIds={chartAktiv}
-                  onToggleZeile={toggleChartZeile}
-                />
-              ) : null}
-
-              {unterTab === 'finanzdaten' && bilanz.length > 0 ? (
-                <PaFundamentalMetrikTabelle
-                  titel={`Bilanz (Mio. ${daten.waehrung ?? 'USD'})`}
-                  perioden={periodenBereinigt}
-                  zeilen={bilanz}
-                  aktivIds={chartAktiv}
-                  onToggleZeile={toggleChartZeile}
-                />
-              ) : null}
-
-              {unterTab === 'finanzdaten' && rentabilitaet.length + margen.length + umschlag.length > 0 ? (
-                <PaFundamentalMetrikTabelle
-                  titel="Rentabilitätskennzahlen & Margenanalyse"
-                  perioden={periodenBereinigt}
-                  zeilen={[...rentabilitaet, ...margen, ...umschlag]}
-                  aktivIds={chartAktiv}
-                  onToggleZeile={toggleChartZeile}
-                />
-              ) : null}
-
-              {unterTab === 'bewertung' && bewertungZeilen.length > 0 ? (
-                <PaFundamentalMetrikTabelle
-                  titel="Bewertung · TTM = Trailing aktuell · FY = Kurs ÷ Schätzung"
-                  perioden={bewertungPerioden}
-                  zeilen={bewertungZeilen}
-                  aktivIds={chartAktiv}
-                  onToggleZeile={toggleChartZeile}
-                  labelModus="jahr"
-                />
-              ) : null}
-
+              </div>
             </div>
           ) : null}
 

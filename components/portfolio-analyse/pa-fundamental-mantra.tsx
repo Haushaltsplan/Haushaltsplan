@@ -426,20 +426,17 @@ export function PaFundamentalMantra({ audit, ticker }: { audit: FundamentalMantr
             Nicht automatisch bewertbar — in Earnings Calls, Quartalsreports und Deep Research prüfen.
           </p>
         </div>
-        <div className="space-y-3">
+        <div className="divide-y divide-[var(--app-border)]">
           {audit.moatCheck.map((p) => (
-            <article
-              key={p.id}
-              className="rounded-xl border border-[var(--app-border)] bg-[var(--app-surface-muted)] px-4 py-3"
-            >
+            <div key={p.id} className="py-3 first:pt-0 last:pb-0">
               <p className="text-sm font-medium text-white">{p.titel}</p>
-              <p className="mt-2 text-sm leading-relaxed text-[var(--app-text-muted)]">{p.beschreibung}</p>
-              <p className="mt-2 text-sm text-amber-200/90">
+              <p className="mt-1 text-sm leading-relaxed text-[var(--app-text-muted)]">{p.beschreibung}</p>
+              <p className="mt-1 text-sm text-amber-200/90">
                 Killer-Frage: <span className="text-[var(--app-text)]">{p.killerFrage}</span>
               </p>
-            </article>
+            </div>
           ))}
-          <p className="rounded-xl border border-teal-500/20 bg-teal-500/5 px-4 py-3 text-sm text-[var(--app-text)]">
+          <p className="pt-3 text-sm text-[var(--app-text)]">
             <span className="font-medium text-teal-300">Junge Plattformen: </span>
             {audit.moatPlattformZusatz}
           </p>
@@ -453,12 +450,9 @@ export function PaFundamentalMantra({ audit, ticker }: { audit: FundamentalMantr
             Regelbasiert aus LTM-Daten — ohne monatlichen LLM-Scan. Fließt in die Ampel ein.
           </p>
         </div>
-        <div className="space-y-2">
+        <div className="divide-y divide-[var(--app-border)]">
           {audit.sellTriggerWatch.map((w) => (
-            <article
-              key={w.id}
-              className="rounded-xl border border-[var(--app-border)] bg-[var(--app-surface-muted)] px-4 py-3"
-            >
+            <div key={w.id} className="py-3 first:pt-0 last:pb-0">
               <div className="flex flex-wrap items-center gap-2">
                 <p className="text-sm font-medium text-white">{w.titel}</p>
                 <span
@@ -468,8 +462,8 @@ export function PaFundamentalMantra({ audit, ticker }: { audit: FundamentalMantr
                 </span>
               </div>
               <p className="mt-1 text-sm text-[var(--app-text-muted)]">{w.beschreibung}</p>
-              <p className="mt-2 text-sm text-[var(--app-text)]">{w.begruendung}</p>
-            </article>
+              <p className="mt-1 text-sm text-[var(--app-text)]">{w.begruendung}</p>
+            </div>
           ))}
         </div>
       </section>

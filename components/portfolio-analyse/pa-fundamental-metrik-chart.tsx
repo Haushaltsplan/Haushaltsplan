@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import {
   bereinigeSchaetzungsniveausInZeilen,
   formatFundamentalWert,
@@ -305,6 +305,8 @@ export function PaFundamentalMetrikChart({
   onToggleSerie,
   onToggleLabels,
   variant = 'standard',
+  eingebettet = false,
+  werkzeugLeiste,
 }: {
   perioden: FundamentalPeriode[]
   zeilen: FundamentalMetrikZeile[]
@@ -314,6 +316,8 @@ export function PaFundamentalMetrikChart({
   onToggleSerie: (id: string) => void
   onToggleLabels: () => void
   variant?: 'standard' | 'bewertung'
+  eingebettet?: boolean
+  werkzeugLeiste?: ReactNode
 }) {
   const zeilenClean = useMemo(
     () => bereinigeSchaetzungsniveausInZeilen(perioden, zeilen),
@@ -598,12 +602,21 @@ export function PaFundamentalMetrikChart({
 
   const hatAktiveSerien = zeilen.some((z) => aktivIds.has(z.id))
 
+  const kastenKlasse = eingebettet
+    ? 'bg-transparent'
+    : 'overflow-hidden rounded-2xl border border-[var(--app-border)]/70 bg-gradient-to-br from-[var(--app-surface-muted)] via-[var(--app-surface-muted)] to-[var(--app-surface)] shadow-lg shadow-black/20'
+
   if (!hatAktiveSerien) {
     return (
       <div
         id="fundamental-metrik-chart"
-        className="rounded-2xl border border-dashed border-[var(--app-border)] bg-gradient-to-b from-[var(--app-surface-muted)] to-[var(--app-surface)] px-4 py-12 text-center"
+        className={
+          eingebettet
+            ? 'px-4 py-10 text-center'
+            : 'rounded-2xl border border-dashed border-[var(--app-border)] bg-gradient-to-b from-[var(--app-surface-muted)] to-[var(--app-surface)] px-4 py-12 text-center'
+        }
       >
+        {werkzeugLeiste}
         <p className="text-sm text-[var(--app-text-muted)]">
           {variant === 'bewertung'
             ? 'Klicke auf eine Bewertungskennzahl, um den Verlauf mit Zeitraum-Schnitt anzuzeigen.'
@@ -615,7 +628,11 @@ export function PaFundamentalMetrikChart({
 
   if (serien.length === 0) {
     return (
-      <div id="fundamental-metrik-chart" className="rounded-2xl border border-[var(--app-border)]/70 bg-[var(--app-surface-muted)] px-4 py-8 text-center">
+      <div
+        id="fundamental-metrik-chart"
+        className={eingebettet ? 'px-4 py-8 text-center' : 'rounded-2xl border border-[var(--app-border)]/70 bg-[var(--app-surface-muted)] px-4 py-8 text-center'}
+      >
+        {werkzeugLeiste}
         <p className="text-sm text-[var(--app-text-muted)]">Keine Daten im gewählten Zeitraum.</p>
       </div>
     )
@@ -627,11 +644,12 @@ export function PaFundamentalMetrikChart({
   return (
     <div
       id="fundamental-metrik-chart"
-      className="overflow-hidden rounded-2xl border border-[var(--app-border)]/70 bg-gradient-to-br from-[var(--app-surface-muted)] via-[var(--app-surface-muted)] to-[var(--app-surface)] shadow-lg shadow-black/20"
+      className={kastenKlasse}
     >
       <div className="border-b border-white/[0.05] px-4 py-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
+            {werkzeugLeiste}
             <p className="text-sm font-medium text-[var(--app-text)]">
               {variant === 'bewertung' ? 'Bewertungsverlauf' : 'Historischer Kennzahlenverlauf'}
             </p>

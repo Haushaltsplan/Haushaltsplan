@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
+import { appTableScrollClassName } from '@/components/page-shell'
 import { PaCard } from '@/components/portfolio-analyse/pa-ui'
 import type {
   CapitalAllocationPaket,
@@ -34,10 +35,12 @@ export function PaFundamentalCapitalAllocation({
   ticker,
   symbolYahoo,
   selectionKey,
+  ohneRahmen = false,
 }: {
   ticker: string
   symbolYahoo?: string | null
   selectionKey?: string
+  ohneRahmen?: boolean
 }) {
   const [daten, setDaten] = useState<CapitalAllocationPaket | null>(null)
   const [laden, setLaden] = useState(false)
@@ -65,8 +68,11 @@ export function PaFundamentalCapitalAllocation({
     if (ticker?.trim()) void lade()
   }, [selectionKey, ticker, lade])
 
+  const Wrap = ohneRahmen ? 'div' : PaCard
+  const wrapClass = ohneRahmen ? 'space-y-3' : 'space-y-3 p-4'
+
   return (
-    <PaCard className="space-y-3 p-4">
+    <Wrap className={wrapClass}>
       <div>
         <h3 className="text-sm font-semibold text-white">Capital-Allocation-Score</h3>
         <p className="text-xs text-[var(--app-text-muted)]">
@@ -103,38 +109,52 @@ export function PaFundamentalCapitalAllocation({
       {daten?.scoreHinweis ? <p className="text-sm text-[var(--app-text-muted)]">{daten.scoreHinweis}</p> : null}
 
       {daten?.saeulen.length ? (
-        <div className="space-y-2">
-          {daten.saeulen.map((s) => (
-            <article key={s.id} className="rounded-xl border border-[var(--app-border)] bg-[var(--app-surface-muted)] px-3 py-2.5">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <p className="text-sm font-medium text-white">{s.label}</p>
-                <span
-                  className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ring-1 ${BEWERTUNG_CLASS[s.bewertung]}`}
-                >
-                  {s.bewertung === 'gut'
-                    ? 'Gut'
-                    : s.bewertung === 'warnung'
-                      ? 'Warnung'
-                      : s.bewertung === 'neutral'
-                        ? 'Neutral'
-                        : 'Keine Daten'}
-                </span>
-              </div>
-              <p className="mt-1 text-xs text-[var(--app-text-muted)]">
-                {s.betragMioUsd != null
-                  ? `${s.betragMioUsd.toLocaleString('de-DE')} Mio. USD`
-                  : '–'}
-                {s.pctVonOcf != null ? ` · ${s.pctVonOcf.toLocaleString('de-DE')}% vom OCF` : ''}
-              </p>
-              <p className="mt-1 text-xs text-[var(--app-text-muted)]">{s.hinweis}</p>
-            </article>
-          ))}
+        <div className={appTableScrollClassName}>
+          <table className="app-data-table min-w-full text-left text-xs">
+            <thead className="text-[10px] uppercase tracking-wide text-[var(--app-text-muted)]">
+              <tr>
+                <th className="px-2 py-1.5 font-semibold">Säule</th>
+                <th className="px-2 py-1.5 text-right font-semibold">Betrag</th>
+                <th className="px-2 py-1.5 text-right font-semibold">% OCF</th>
+                <th className="px-2 py-1.5 font-semibold">Lage</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-[var(--app-border)]">
+              {daten.saeulen.map((s) => (
+                <tr key={s.id}>
+                  <td className="px-2 py-2">
+                    <p className="font-medium text-[var(--app-text)]">{s.label}</p>
+                    <p className="mt-0.5 text-[10px] text-[var(--app-text-muted)]">{s.hinweis}</p>
+                  </td>
+                  <td className="whitespace-nowrap px-2 py-2 text-right tabular-nums text-[var(--app-text)]">
+                    {s.betragMioUsd != null ? `${s.betragMioUsd.toLocaleString('de-DE')} Mio.` : '–'}
+                  </td>
+                  <td className="whitespace-nowrap px-2 py-2 text-right tabular-nums text-[var(--app-text-muted)]">
+                    {s.pctVonOcf != null ? `${s.pctVonOcf.toLocaleString('de-DE')} %` : '–'}
+                  </td>
+                  <td className="px-2 py-2">
+                    <span
+                      className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ring-1 ${BEWERTUNG_CLASS[s.bewertung]}`}
+                    >
+                      {s.bewertung === 'gut'
+                        ? 'Gut'
+                        : s.bewertung === 'warnung'
+                          ? 'Warnung'
+                          : s.bewertung === 'neutral'
+                            ? 'Neutral'
+                            : 'Keine Daten'}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       ) : null}
 
       {daten?.fehler && !daten.ok ? (
         <p className="text-sm text-amber-200/90">{daten.fehler}</p>
       ) : null}
-    </PaCard>
+    </Wrap>
   )
 }

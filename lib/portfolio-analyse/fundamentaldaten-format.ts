@@ -230,3 +230,23 @@ export function formatYahooUmsatzUsd(wert: number | null | undefined): string {
   if (wert == null || !Number.isFinite(wert)) return '–'
   return formatFundamentalWert(wert, 'waehrung_usd')
 }
+
+/** Vorjahresveränderung in Prozent; `null` wenn nicht berechenbar. */
+export function yoyAenderungPct(
+  aktuell: number | null | undefined,
+  vorjahr: number | null | undefined,
+): number | null {
+  if (aktuell == null || vorjahr == null || !Number.isFinite(aktuell) || !Number.isFinite(vorjahr)) return null
+  if (vorjahr === 0) return null
+  const pct = ((aktuell - vorjahr) / Math.abs(vorjahr)) * 100
+  return Number.isFinite(pct) ? pct : null
+}
+
+export function formatYoyPct(pct: number): string {
+  const abs = Math.abs(pct)
+  const v =
+    abs >= 100
+      ? pct.toLocaleString('de-DE', { maximumFractionDigits: 0 })
+      : pct.toLocaleString('de-DE', { minimumFractionDigits: 1, maximumFractionDigits: 1 })
+  return `${pct > 0 ? '+' : ''}${v} %`
+}

@@ -51,10 +51,12 @@ export function PaFundamentalPeerVergleich({
   ticker,
   isin,
   subject,
+  ohneRahmen = false,
 }: {
   ticker: string
   isin?: string | null
   subject?: PeerKennzahlen | null
+  ohneRahmen?: boolean
 }) {
   const [daten, setDaten] = useState<PeerVergleichPaket | null>(null)
   const [laden, setLaden] = useState(false)
@@ -86,23 +88,25 @@ export function PaFundamentalPeerVergleich({
   }, [ticker, isin, subject])
 
   if (laden && !daten) {
-    return (
+    return ohneRahmen ? (
+      <p className="text-sm text-[var(--app-text-muted)]">Peer-Benchmark wird geladen …</p>
+    ) : (
       <PaCard className="p-4 text-sm text-[var(--app-text-muted)]">Peer-Benchmark wird geladen …</PaCard>
     )
   }
 
   if (!daten?.ok) {
-    return (
-      <PaCard className="p-4 text-sm text-[var(--app-text-muted)]">
-        {daten?.fehler ?? 'Peer-Vergleich nicht verfügbar.'}
-      </PaCard>
+    const msg = daten?.fehler ?? 'Peer-Vergleich nicht verfügbar.'
+    return ohneRahmen ? (
+      <p className="text-sm text-[var(--app-text-muted)]">{msg}</p>
+    ) : (
+      <PaCard className="p-4 text-sm text-[var(--app-text-muted)]">{msg}</PaCard>
     )
   }
 
   const m = daten.median
-
-  return (
-    <PaCard className="space-y-3 overflow-hidden p-4">
+  const inner = (
+    <>
       <div>
         <h3 className="text-sm font-semibold text-white">Peer-Vergleich (Sektor-Benchmark)</h3>
         <p className="text-xs text-[var(--app-text-muted)]">
@@ -110,7 +114,7 @@ export function PaFundamentalPeerVergleich({
         </p>
       </div>
 
-      <div className={`${appTableScrollClassName} rounded-xl border border-[var(--app-border)]`}>
+      <div className={`${appTableScrollClassName} ${ohneRahmen ? '' : 'rounded-xl border border-[var(--app-border)]'}`}>
         <table className="app-data-table min-w-full text-left text-sm">
           <thead className="bg-[var(--app-surface-muted)] text-xs uppercase tracking-wide text-[var(--app-text-muted)]">
             <tr>
@@ -133,6 +137,12 @@ export function PaFundamentalPeerVergleich({
           </tbody>
         </table>
       </div>
-    </PaCard>
+    </>
+  )
+
+  return ohneRahmen ? (
+    <div className="space-y-3 overflow-hidden">{inner}</div>
+  ) : (
+    <PaCard className="space-y-3 overflow-hidden p-4">{inner}</PaCard>
   )
 }

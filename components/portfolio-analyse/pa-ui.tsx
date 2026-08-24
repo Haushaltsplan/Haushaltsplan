@@ -114,6 +114,44 @@ export function PaIconTabs<T extends string>({
   )
 }
 
+/** Flache Unterstrich-Tabs — für Seiteninhalte statt verschachtelter Pill-Leisten. */
+export function PaTextTabs<T extends string>({
+  tabs,
+  active,
+  onChange,
+  className = '',
+}: {
+  tabs: { id: T; label: string; shortLabel?: string }[]
+  active: T
+  onChange: (id: T) => void
+  className?: string
+}) {
+  return (
+    <nav className={`${scrollTabsClass} border-b border-[var(--app-border)] ${className}`}>
+      <div className="flex w-max min-w-full flex-nowrap gap-0">
+        {tabs.map((t) => {
+          const on = active === t.id
+          return (
+            <button
+              key={t.id}
+              type="button"
+              onClick={() => onChange(t.id)}
+              className={`shrink-0 whitespace-nowrap border-b-2 px-3 py-2 text-xs font-medium transition sm:px-4 sm:text-sm ${
+                on
+                  ? '-mb-px border-amber-500 text-[var(--app-text)]'
+                  : 'border-transparent text-[var(--app-text-muted)] hover:text-[var(--app-text)]'
+              }`}
+            >
+              <span className="sm:hidden">{t.shortLabel ?? t.label}</span>
+              <span className="hidden sm:inline">{t.label}</span>
+            </button>
+          )
+        })}
+      </div>
+    </nav>
+  )
+}
+
 const SUB_NAV = [
   { href: '/portfolioanalyse/dashboard', label: 'Dashboard' },
   { href: '/portfolioanalyse/news', label: 'News' },

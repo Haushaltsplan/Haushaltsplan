@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import { PaFundamentalEarningsCallSpalte } from '@/components/portfolio-analyse/pa-fundamental-earnings-call-spalte'
 import { PaFundamentalSecBerichte } from '@/components/portfolio-analyse/pa-fundamental-sec-berichte'
 import { PaFundamentalBeatMiss } from '@/components/portfolio-analyse/pa-fundamental-beat-miss'
-import { PaIconTabs } from '@/components/portfolio-analyse/pa-ui'
+import { PaTextTabs } from '@/components/portfolio-analyse/pa-ui'
 
 const QUARTALSZAHLEN_UNTER_TABS = [
   { id: 'earnings_call' as const, label: 'Earnings Call' },
@@ -33,7 +33,7 @@ export function PaFundamentalQuartalszahlen({
 
   return (
     <div className="space-y-4">
-      <PaIconTabs tabs={QUARTALSZAHLEN_UNTER_TABS} active={unterTab} onChange={setUnterTab} />
+      <PaTextTabs tabs={QUARTALSZAHLEN_UNTER_TABS} active={unterTab} onChange={setUnterTab} />
 
       {unterTab === 'earnings_call' ? (
         <PaFundamentalEarningsCallSpalte
