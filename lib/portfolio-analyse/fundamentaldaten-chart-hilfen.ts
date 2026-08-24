@@ -33,7 +33,7 @@ export function historischeChartPerioden(perioden: FundamentalPeriode[]): Fundam
 }
 
 export function schaetzungsChartPerioden(perioden: FundamentalPeriode[]): FundamentalPeriode[] {
-  return perioden.filter((p) => p.istSchaetzung)
+  return perioden.filter((p) => p.istSchaetzung && !istFundamentalQuartalSchaetzungIso(p.iso))
 }
 
 /** Historische FY-Perioden plus Schätzungs-Spalten am Ende (für Finanzdaten-Charts). */

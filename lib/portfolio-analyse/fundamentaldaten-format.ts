@@ -1,4 +1,10 @@
-import type { FundamentalEinheit, FundamentalFrequenz } from '@/lib/portfolio-analyse/fundamentaldaten-types'
+import {
+  istFundamentalQuartalSchaetzungIso,
+  type FundamentalEinheit,
+  type FundamentalFrequenz,
+  type FundamentalMetrikZeile,
+  type FundamentalPeriode,
+} from '@/lib/portfolio-analyse/fundamentaldaten-types'
 
 export function formatFundamentalPeriodeLabel(iso: string, frequenz?: FundamentalFrequenz): string {
   const m = iso.match(/^(\d{4})-(\d{2})-(\d{2})$/)
@@ -93,6 +99,131 @@ export function cagr3AusSerie(werte: number[]): number | null {
   const clean = werteOhneNiveauSprung(werte)
   if (clean.length < 2) return null
   return cagrProzent(clean.slice(-4), Math.min(3, clean.length - 1))
+}
+
+/** Consensus vs. letztes Ist: Sprung >75 % YoY ist fast immer Einheiten- oder Perioden-Mix. */
+export const SCHAETZUNG_VS_IST_MAX_FAKTOR = 1.75
+
+export function istSchaetzungZumVorjahrPlausibel(
+  aktuell: number,
+  vorjahr: number,
+  maxFaktor = SCHAETZUNG_VS_IST_MAX_FAKTOR,
+): boolean {
+  if (!(aktuell > 0) || !(vorjahr > 0)) return false
+  const r = aktuell / vorjahr
+  return r <= maxFaktor && r >= 1 / maxFaktor
+}
+
+function istNiveauSchaetzZeile(z: FundamentalMetrikZeile): boolean {
+  return z.einheit === 'waehrung_usd_aktie' || z.einheit === 'waehrung_usd_mio' || z.einheit === 'waehrung_usd'
+}
+
+const NIVEAU_ZU_ABHAENGIGEN_ZEILEN: Record<string, string[]> = {
+  eps: ['eps_wachstum_schaetzung', 'kgv'],
+  umsatz: ['umsatz_wachstum_schaetzung', 'ps'],
+  fcf: ['pfcf'],
+  ebitda: ['ev_ebitda'],
+  ebit: ['ev_ebit'],
+}
+
+function abhaengigeZeilenFuerNiveau(niveauId: string): string[] {
+  const basis = niveauId.replace(/_schaetzung$/, '')
+  return NIVEAU_ZU_ABHAENGIGEN_ZEILEN[basis] ?? [`${basis}_wachstum_schaetzung`]
+}
+
+function keysZumNullenFuerZeile(
+  zeileId: string,
+  nulledKeysById: Map<string, Set<string>>,
+): Set<string> {
+  const out = new Set<string>()
+  for (const [niveauId, keys] of nulledKeysById) {
+    if (!abhaengigeZeilenFuerNiveau(niveauId).includes(zeileId)) continue
+    for (const k of keys) out.add(k)
+  }
+  return out
+}
+
+/**
+ * Nullt Schätzwerte, die nicht zum letzten Ist passen (Quartal vs. GJ, Split, Mix).
+ * Gilt für alle Titel — Chart, Tabelle und Cache-Lesen.
+ */
+export function bereinigeSchaetzungsniveausInZeilen(
+  perioden: FundamentalPeriode[],
+  zeilen: FundamentalMetrikZeile[],
+): FundamentalMetrikZeile[] {
+  const histKeys = perioden.filter((p) => !p.istLtm && !p.istNtm && !p.istSchaetzung).map((p) => p.iso)
+  const jahresSchaetzKeys = perioden
+    .filter((p) => p.istSchaetzung && !istFundamentalQuartalSchaetzungIso(p.iso))
+    .map((p) => p.iso)
+  const quartalSchaetzKeys = perioden.filter((p) => istFundamentalQuartalSchaetzungIso(p.iso)).map((p) => p.iso)
+  const hatJahresSchaetz = jahresSchaetzKeys.length > 0
+  const nulledKeysById = new Map<string, Set<string>>()
+
+  const cleaned = zeilen.map((z) => {
+    if (!istNiveauSchaetzZeile(z)) return z
+    const werte = { ...z.werte }
+    let changed = false
+    const nulled = new Set<string>()
+    if (hatJahresSchaetz) {
+      for (const k of quartalSchaetzKeys) {
+        if (werte[k] != null) {
+          werte[k] = null
+          changed = true
+          nulled.add(k)
+        }
+      }
+    }
+    let lastHist: number | null = null
+    for (let i = histKeys.length - 1; i >= 0; i--) {
+      const v = werte[histKeys[i]!]
+      if (v != null && Number.isFinite(v) && v > 0) {
+        lastHist = v
+        break
+      }
+    }
+    let prev = lastHist
+    for (const k of jahresSchaetzKeys) {
+      const v = werte[k]
+      if (v == null || !Number.isFinite(v) || v <= 0) continue
+      if (prev != null && !istSchaetzungZumVorjahrPlausibel(v, prev)) {
+        werte[k] = null
+        changed = true
+        nulled.add(k)
+        continue
+      }
+      prev = v
+    }
+    if (nulled.size > 0) nulledKeysById.set(z.id, nulled)
+    return changed ? { ...z, werte } : z
+  })
+
+  return cleaned.map((z) => {
+    const keys = keysZumNullenFuerZeile(z.id, nulledKeysById)
+    if (keys.size === 0) return z
+    const werte = { ...z.werte }
+    let changed = false
+    for (const k of keys) {
+      if (werte[k] != null) {
+        werte[k] = null
+        changed = true
+      }
+    }
+    return changed ? { ...z, werte } : z
+  })
+}
+
+/** Schätz-Spalten ohne jeden Restwert (nach Niveau-Bereinigung) nicht mehr auf die Achse. */
+export function periodenOhneLeereSchaetzungen(
+  perioden: FundamentalPeriode[],
+  zeilen: FundamentalMetrikZeile[],
+): FundamentalPeriode[] {
+  return perioden.filter((p) => {
+    if (!p.istSchaetzung) return true
+    return zeilen.some((z) => {
+      const v = z.werte[p.iso]
+      return v != null && Number.isFinite(v)
+    })
+  })
 }
 
 export function formatYahooUmsatzUsd(wert: number | null | undefined): string {

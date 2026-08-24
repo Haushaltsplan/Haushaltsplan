@@ -10,6 +10,7 @@ import {
   type FundamentalMetrikZeile,
   type FundamentalPeriode,
 } from '@/lib/portfolio-analyse/fundamentaldaten-types'
+import { istSchaetzungZumVorjahrPlausibel } from '@/lib/portfolio-analyse/fundamentaldaten-format'
 import { ladeMarketscreenerJahresForecast } from '@/lib/portfolio-analyse/marketscreener-jahres-consensus-server'
 import {
   ladeMarketscreenerQuartalsForecastReihe,
@@ -451,12 +452,15 @@ export function fuelleFehlendeEpsSchaetzungen(opts: {
     const growthPct: number | null = wachstumZeile?.werte[p.iso] ?? lastGrowth ?? avgGrowth
     if (prev == null || prev <= 0) continue
     if (growthPct == null || !Number.isFinite(growthPct)) continue
+    // Wachstum: |x|≤1 → Dezimal (Yahoo 0,12 = 12 %), sonst Prozent (StockAnalysis 12 = 12 %).
+    const pct = Math.abs(growthPct) <= 1 ? growthPct * 100 : growthPct
+    if (!Number.isFinite(pct) || Math.abs(pct) > 75) continue
     lastGrowth = growthPct
-    // Wachstum typisch als Prozent (z. B. 25 = +25 %), selten als Dezimal
-    const faktor = Math.abs(growthPct) <= 3 ? 1 + growthPct : 1 + growthPct / 100
+    const faktor = 1 + pct / 100
     if (!Number.isFinite(faktor) || faktor <= 0) continue
     const next = prev * faktor
     if (!Number.isFinite(next) || next <= 0) continue
+    if (!istSchaetzungZumVorjahrPlausibel(next, prev)) continue
     epsZeile.werte[p.iso] = next
     prev = next
   }

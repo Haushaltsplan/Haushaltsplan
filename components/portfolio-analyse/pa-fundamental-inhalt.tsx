@@ -26,11 +26,16 @@ import {
   type AlleAktualisierenFortschritt,
 } from '@/lib/portfolio-analyse/fundamentaldaten-client'
 import { keyMetricNavZiel } from '@/lib/portfolio-analyse/fundamentaldaten-key-metric-nav'
-import type {
-  FundamentaldatenAnfrage,
-  FundamentaldatenPaket,
+import {
+  FUNDAMENTAL_NTM_KEY,
+  type FundamentaldatenAnfrage,
+  type FundamentaldatenPaket,
 } from '@/lib/portfolio-analyse/fundamentaldaten-types'
 import { fundamentalQuellenZeile } from '@/lib/portfolio-analyse/fundamentaldaten-quellen'
+import {
+  bereinigeSchaetzungsniveausInZeilen,
+  periodenOhneLeereSchaetzungen,
+} from '@/lib/portfolio-analyse/fundamentaldaten-format'
 
 const UNTER_TABS = [
   { id: 'uebersicht' as const, label: 'Übersicht' },
@@ -261,6 +266,16 @@ export function PaFundamentalInhalt({
     return s
   }, [daten?.zeilen])
 
+  const zeilenBereinigt = useMemo(
+    () =>
+      daten?.ok ? bereinigeSchaetzungsniveausInZeilen(daten.perioden, daten.zeilen) : (daten?.zeilen ?? []),
+    [daten],
+  )
+  const periodenBereinigt = useMemo(
+    () => (daten?.ok ? periodenOhneLeereSchaetzungen(daten.perioden, zeilenBereinigt) : (daten?.perioden ?? [])),
+    [daten, zeilenBereinigt],
+  )
+
   if (!anfrage) {
     return (
       <PaCard className="flex min-h-[28rem] items-center justify-center p-8 text-center text-sm text-[var(--app-text-muted)]">
@@ -269,15 +284,14 @@ export function PaFundamentalInhalt({
     )
   }
 
-  const rentabilitaet = daten?.zeilen.filter((z) => z.gruppe === 'rentabilitaet') ?? []
-  const margen = daten?.zeilen.filter((z) => z.gruppe === 'margen') ?? []
-  const umschlag = daten?.zeilen.filter((z) => z.gruppe === 'umschlag') ?? []
-  const finanzdaten = daten?.zeilen.filter((z) => z.gruppe === 'finanzdaten') ?? []
-  const bilanz = daten?.zeilen.filter((z) => z.gruppe === 'bilanz') ?? []
-  const cashflow = daten?.zeilen.filter((z) => z.gruppe === 'cashflow') ?? []
-  const bewertungLtm = daten?.zeilen.filter((z) => z.gruppe === 'bewertung_trailing') ?? []
-  const bewertungForward =
-    daten?.zeilen.filter((z) => z.gruppe === 'bewertung_forward') ?? []
+  const rentabilitaet = zeilenBereinigt.filter((z) => z.gruppe === 'rentabilitaet')
+  const margen = zeilenBereinigt.filter((z) => z.gruppe === 'margen')
+  const umschlag = zeilenBereinigt.filter((z) => z.gruppe === 'umschlag')
+  const finanzdaten = zeilenBereinigt.filter((z) => z.gruppe === 'finanzdaten')
+  const bilanz = zeilenBereinigt.filter((z) => z.gruppe === 'bilanz')
+  const cashflow = zeilenBereinigt.filter((z) => z.gruppe === 'cashflow')
+  const bewertungLtm = zeilenBereinigt.filter((z) => z.gruppe === 'bewertung_trailing')
+  const bewertungForward = zeilenBereinigt.filter((z) => z.gruppe === 'bewertung_forward')
   // Neue Pakete: Forward steckt in Trailing-Zeilen (FY-Keys). Alte Caches: separate Forward-Zeilen.
   const trailingHatForward = bewertungLtm.some((z) =>
     Object.keys(z.werte).some((k) => k.startsWith('__fy') && z.werte[k] != null),
@@ -291,7 +305,7 @@ export function PaFundamentalInhalt({
     return { ...z, werte }
   })
   const bewertungPerioden =
-    daten?.perioden.filter((p) => !p.istNtm && p.iso !== FUNDAMENTAL_NTM_KEY) ?? []
+    periodenBereinigt.filter((p) => !p.istNtm && p.iso !== FUNDAMENTAL_NTM_KEY)
   return (
     <div className="space-y-4">
       {laden && !daten?.ok ? (
@@ -522,12 +536,8 @@ export function PaFundamentalInhalt({
               )}
 
               <PaFundamentalMetrikChart
-                perioden={unterTab === 'bewertung' ? bewertungPerioden : daten.perioden}
-                zeilen={
-                  unterTab === 'bewertung'
-                    ? bewertungZeilen
-                    : daten.zeilen
-                }
+                perioden={unterTab === 'bewertung' ? bewertungPerioden : periodenBereinigt}
+                zeilen={unterTab === 'bewertung' ? bewertungZeilen : zeilenBereinigt}
                 aktivIds={chartAktiv}
                 labelsAnzeigen={labelsAnzeigen}
                 variant={unterTab === 'bewertung' ? 'bewertung' : 'standard'}
@@ -539,7 +549,7 @@ export function PaFundamentalInhalt({
               {unterTab === 'finanzdaten' && finanzdaten.length > 0 ? (
                 <PaFundamentalMetrikTabelle
                   titel={`GuV / Finanzdaten (Mio. ${daten.waehrung ?? 'USD'})`}
-                  perioden={daten.perioden}
+                  perioden={periodenBereinigt}
                   zeilen={finanzdaten}
                   aktivIds={chartAktiv}
                   onToggleZeile={toggleChartZeile}
@@ -549,7 +559,7 @@ export function PaFundamentalInhalt({
               {unterTab === 'finanzdaten' && cashflow.length > 0 ? (
                 <PaFundamentalMetrikTabelle
                   titel={`Cashflow (Mio. ${daten.waehrung ?? 'USD'})`}
-                  perioden={daten.perioden}
+                  perioden={periodenBereinigt}
                   zeilen={cashflow}
                   aktivIds={chartAktiv}
                   onToggleZeile={toggleChartZeile}
@@ -559,7 +569,7 @@ export function PaFundamentalInhalt({
               {unterTab === 'finanzdaten' && bilanz.length > 0 ? (
                 <PaFundamentalMetrikTabelle
                   titel={`Bilanz (Mio. ${daten.waehrung ?? 'USD'})`}
-                  perioden={daten.perioden}
+                  perioden={periodenBereinigt}
                   zeilen={bilanz}
                   aktivIds={chartAktiv}
                   onToggleZeile={toggleChartZeile}
@@ -569,7 +579,7 @@ export function PaFundamentalInhalt({
               {unterTab === 'finanzdaten' && rentabilitaet.length + margen.length + umschlag.length > 0 ? (
                 <PaFundamentalMetrikTabelle
                   titel="Rentabilitätskennzahlen & Margenanalyse"
-                  perioden={daten.perioden}
+                  perioden={periodenBereinigt}
                   zeilen={[...rentabilitaet, ...margen, ...umschlag]}
                   aktivIds={chartAktiv}
                   onToggleZeile={toggleChartZeile}

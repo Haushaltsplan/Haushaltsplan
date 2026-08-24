@@ -1,7 +1,11 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { formatFundamentalWert } from '@/lib/portfolio-analyse/fundamentaldaten-format'
+import {
+  bereinigeSchaetzungsniveausInZeilen,
+  formatFundamentalWert,
+  periodenOhneLeereSchaetzungen,
+} from '@/lib/portfolio-analyse/fundamentaldaten-format'
 import {
   anzahlWerteImZeitraum,
   berechneZeitraumSchnitt,
@@ -14,11 +18,9 @@ import {
   jahrAusPeriode,
   letzteNChartPerioden,
   prozentAbweichung,
-  schaetzungsChartPerioden,
 } from '@/lib/portfolio-analyse/fundamentaldaten-chart-hilfen'
 import {
   FUNDAMENTAL_TTM_KEY,
-  istFundamentalQuartalSchaetzungIso,
   type FundamentalMetrikZeile,
   type FundamentalPeriode,
 } from '@/lib/portfolio-analyse/fundamentaldaten-types'
@@ -313,18 +315,20 @@ export function PaFundamentalMetrikChart({
   onToggleLabels: () => void
   variant?: 'standard' | 'bewertung'
 }) {
-  const alleChartPerioden = useMemo(
-    () => (variant === 'bewertung' ? bewertungForwardChartPerioden(perioden) : finanzdatenChartPerioden(perioden)),
-    [perioden, variant],
+  const zeilenClean = useMemo(
+    () => bereinigeSchaetzungsniveausInZeilen(perioden, zeilen),
+    [perioden, zeilen],
   )
+  const alleChartPerioden = useMemo(() => {
+    const base =
+      variant === 'bewertung' ? bewertungForwardChartPerioden(perioden) : finanzdatenChartPerioden(perioden)
+    const aktiv = zeilenClean.filter((z) => aktivIds.has(z.id))
+    const check = aktiv.length > 0 ? aktiv : zeilenClean
+    return periodenOhneLeereSchaetzungen(base, check)
+  }, [perioden, variant, zeilenClean, aktivIds])
   const schaetzIso = useMemo(
-    () =>
-      new Set(
-        schaetzungsChartPerioden(perioden)
-          .filter((p) => variant !== 'bewertung' || !istFundamentalQuartalSchaetzungIso(p.iso))
-          .map((p) => p.iso),
-      ),
-    [perioden, variant],
+    () => new Set(alleChartPerioden.filter((p) => p.istSchaetzung).map((p) => p.iso)),
+    [alleChartPerioden],
   )
   const [vonIso, setVonIso] = useState('')
   const [bisIso, setBisIso] = useState('')
@@ -345,12 +349,10 @@ export function PaFundamentalMetrikChart({
 
   const gefiltertePerioden = useMemo(() => {
     const basis = filterChartPeriodenZeitraum(alleChartPerioden, vonIso, bisIso)
-    const schaetz = schaetzungsChartPerioden(perioden)
-      .filter((p) => variant !== 'bewertung' || !istFundamentalQuartalSchaetzungIso(p.iso))
-      .filter((p) => !basis.some((b) => b.iso === p.iso))
+    const schaetz = alleChartPerioden.filter((p) => p.istSchaetzung && !basis.some((b) => b.iso === p.iso))
     if (schaetz.length > 0) return [...basis.filter((p) => !p.istSchaetzung), ...schaetz]
     return basis
-  }, [alleChartPerioden, vonIso, bisIso, perioden, variant])
+  }, [alleChartPerioden, vonIso, bisIso])
 
   const zeitraumLabel = useMemo(
     () =>
@@ -366,7 +368,7 @@ export function PaFundamentalMetrikChart({
 
   const { serien, yAchsen, dualAxis, plotH, xLabels } = useMemo(() => {
     const plotH = HOEHE - PAD_OBEN - PAD_UNTEN
-    const ausgewaehlt = zeilen.filter((z) => aktivIds.has(z.id))
+    const ausgewaehlt = zeilenClean.filter((z) => aktivIds.has(z.id))
     if (ausgewaehlt.length === 0 || gefiltertePerioden.length === 0) {
       return {
         serien: [] as ChartSerie[],
@@ -590,7 +592,7 @@ export function PaFundamentalMetrikChart({
     }))
 
     return { serien, yAchsen, dualAxis, plotH, xLabels }
-  }, [zeilen, aktivIds, gefiltertePerioden, variant, schaetzIso, padLinks])
+  }, [zeilenClean, aktivIds, gefiltertePerioden, variant, schaetzIso, padLinks])
 
   const effektivePlotW = VIEW_W - (dualAxis ? PAD_LINKS_DUAL : padLinks) - (dualAxis ? PAD_RECHTS_DUAL : PAD_RECHTS_SINGLE)
 

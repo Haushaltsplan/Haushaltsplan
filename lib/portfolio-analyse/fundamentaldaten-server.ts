@@ -2,6 +2,10 @@ import 'server-only'
 
 import { brokerSymbolKandidaten } from '@/lib/portfolio-analyse/dividenden-datum-hilfen'
 import {
+  bereinigeSchaetzungsniveausInZeilen,
+  periodenOhneLeereSchaetzungen,
+} from '@/lib/portfolio-analyse/fundamentaldaten-format'
+import {
   baueKeyMetrics,
   korrigiereFwdWachstumKeyMetrics,
   schaetzungenRohAusPaket,
@@ -18,7 +22,12 @@ import { ergaenzeEvMultiplesZeilen } from '@/lib/portfolio-analyse/fundamentalda
 import { ergaenzeNettoverschuldungZeilen } from '@/lib/portfolio-analyse/fundamentaldaten-nettoverschuldung-zeilen'
 import { ergaenzeMargenZeilen } from '@/lib/portfolio-analyse/fundamentaldaten-margen-zeilen'
 import { ergaenzeYahooSchuldenZeilen } from '@/lib/portfolio-analyse/fundamentaldaten-yahoo-schulden-zeilen'
-import { ladeFundamentalSchaetzungen, filterSchaetzungenGegenHistorisch, fuelleFehlendeEpsSchaetzungen } from '@/lib/portfolio-analyse/fundamentaldaten-schaetzungen-server'
+import {
+  ladeFundamentalSchaetzungen,
+  filterSchaetzungenGegenHistorisch,
+  fuelleFehlendeEpsSchaetzungen,
+  type FundamentalSchaetzungenRoh,
+} from '@/lib/portfolio-analyse/fundamentaldaten-schaetzungen-server'
 import {
   formatiereBrancheDe,
   ladeUnternehmensbeschreibungDe,
@@ -66,6 +75,8 @@ import {
   ladeFundamentaldatenPaketCacheFuerAnfrage,
   speichereFundamentaldatenPaketCache,
 } from '@/lib/portfolio-analyse/fundamentaldaten-paket-cache-server'
+
+const LEERE_SCHAETZUNGEN: FundamentalSchaetzungenRoh = { perioden: [], zeilen: [] }
 
 function waehrungFuerIsin(isin: string | null | undefined): string {
   const i = isin?.trim().toUpperCase() ?? ''
@@ -262,7 +273,8 @@ function mergePeriodenUndZeilen(
     zeilen.push({ ...sz, werte })
   }
 
-  return { perioden, zeilen }
+  const zeilenClean = bereinigeSchaetzungsniveausInZeilen(perioden, zeilen)
+  return { perioden: periodenOhneLeereSchaetzungen(perioden, zeilenClean), zeilen: zeilenClean }
 }
 
 function leeresPaket(partial: Partial<FundamentaldatenPaket> & Pick<FundamentaldatenPaket, 'ok' | 'ticker' | 'firmenname'>): FundamentaldatenPaket {
@@ -408,8 +420,8 @@ async function ladeFundamentaldatenLive(anfrage: FundamentaldatenAnfrage): Promi
               isin: anfrage.isin,
               name: firmenname,
               ticker: tickerGuess || symbolYahoo,
-            }).catch(() => ({ perioden: [], zeilen: [] }))
-          : Promise.resolve({ perioden: [], zeilen: [] }),
+            }).catch(() => LEERE_SCHAETZUNGEN)
+          : Promise.resolve(LEERE_SCHAETZUNGEN),
       ])
 
       const yahooExt = yahooRaw as (YahooFundamentalKennzahlen & {
@@ -480,7 +492,7 @@ async function ladeFundamentaldatenLive(anfrage: FundamentaldatenAnfrage): Promi
           name: anfrage.name ?? ident.firmenname,
           ticker: ident.ticker,
         })
-      : Promise.resolve({ perioden: [], zeilen: [] }),
+      : Promise.resolve(LEERE_SCHAETZUNGEN),
     symbolYahoo ? ladeFundamentalNews(symbolYahoo, ident.firmenname) : Promise.resolve([]),
     symbolYahoo ? ladeYahooMantraFinanzdaten(symbolYahoo, { isin: anfrage.isin }) : Promise.resolve(null),
     ladeUnitEconomics(ident.ticker).catch(() => null),
@@ -763,10 +775,18 @@ async function ladeFundamentaldatenLive(anfrage: FundamentaldatenAnfrage): Promi
 }
 
 function paketMitKorrigiertemFwdWachstum(p: FundamentaldatenPaket): FundamentaldatenPaket {
-  if (!p.ok || p.keyMetrics.length === 0) return p
+  if (!p.ok) return p
+  const zeilen = bereinigeSchaetzungsniveausInZeilen(p.perioden, p.zeilen)
+  const perioden = periodenOhneLeereSchaetzungen(p.perioden, zeilen)
+  const cleaned = { ...p, perioden, zeilen }
+  if (cleaned.keyMetrics.length === 0) return cleaned
   return {
-    ...p,
-    keyMetrics: korrigiereFwdWachstumKeyMetrics(p.keyMetrics, schaetzungenRohAusPaket(p), p),
+    ...cleaned,
+    keyMetrics: korrigiereFwdWachstumKeyMetrics(
+      cleaned.keyMetrics,
+      schaetzungenRohAusPaket(cleaned),
+      cleaned,
+    ),
   }
 }
 
