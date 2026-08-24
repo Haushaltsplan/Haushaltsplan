@@ -10,7 +10,7 @@ export const QUALITAET_PANELS = [
   {
     id: 'gewinn',
     titel: 'Gewinne, Cashflows und Dividenden',
-    ids: ['nettogewinn', 'fcf', 'ocf', 'dividenden_gezahlt', 'eps'],
+    ids: ['ocf', 'fcf', 'nettogewinn', 'dividenden_gezahlt', 'eps'],
     variant: 'standard' as const,
   },
   {
@@ -28,7 +28,7 @@ export const QUALITAET_PANELS = [
   {
     id: 'verschuldung',
     titel: 'Verschuldung und Kapital',
-    ids: ['nettoverschuldung', 'bargeld', 'eigenkapital', 'gesamtverschuldung'],
+    ids: ['gesamtverschuldung', 'nettoverschuldung', 'bargeld', 'eigenkapital'],
     variant: 'standard' as const,
   },
   {

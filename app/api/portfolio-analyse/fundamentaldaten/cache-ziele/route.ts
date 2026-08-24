@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { isinKenntnis } from '@/lib/portfolio-analyse/isin-kenntnisse'
 import { ladeNachkaufKandidaten } from '@/lib/portfolio-analyse/nachkauf-radar/nachkauf-watchlist-cloud-server'
+import { ladeDepotAktieAnfragen } from '@/lib/portfolio-analyse/depot-gewichte-server'
 import type { FundamentaldatenAnfrage } from '@/lib/portfolio-analyse/fundamentaldaten-types'
 
 export const runtime = 'nodejs'
@@ -23,6 +24,7 @@ function unique(werte: Array<string | null | undefined>): string[] {
 export async function GET() {
   try {
     const kandidaten = await ladeNachkaufKandidaten()
+    const depot = await ladeDepotAktieAnfragen()
     const ziele: FundamentaldatenAnfrage[] = kandidaten.map((k) => {
       const ken = isinKenntnis(k.isin)
       return {
@@ -38,6 +40,13 @@ export async function GET() {
         cacheModus: 'erneuern',
       }
     })
+    const gesehen = new Set(ziele.map((z) => z.isin?.trim().toUpperCase()).filter(Boolean) as string[])
+    for (const d of depot) {
+      const isin = d.isin?.trim().toUpperCase()
+      if (!isin || gesehen.has(isin)) continue
+      gesehen.add(isin)
+      ziele.push({ ...d, cacheModus: 'erneuern' })
+    }
     return NextResponse.json({ ok: true, ziele, anzahl: ziele.length })
   } catch (e) {
     console.error('[fundamentaldaten/cache-ziele]', e)

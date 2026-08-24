@@ -26,30 +26,41 @@ import {
   type FundamentalPeriode,
 } from '@/lib/portfolio-analyse/fundamentaldaten-types'
 
-const FARBEN = ['#43a047', '#7cb342', '#5c6bc0', '#f9a825', '#26a69a', '#8d6e63']
+/** Fallback: Hue-Sprünge, keine Helligkeitsrampe derselben Farbe. */
+const FARBEN = ['#34d399', '#38bdf8', '#fbbf24', '#a78bfa', '#fb7185', '#2dd4bf']
+
+/** Pro Kennzahl ein eigener Hue — Serien im selben Panel müssen auf den ersten Blick trennbar sein. */
 const METRIK_FARBE: Record<string, string> = {
-  nettogewinn: '#43a047',
-  fcf: '#9ccc65',
-  ocf: '#c5e1a5',
-  eps: '#2e7d32',
-  dividenden_gezahlt: '#5c6bc0',
-  umsatz: '#66bb6a',
-  bruttomarge: '#e53935',
-  ebit_marge: '#1b5e20',
-  ebitda_marge: '#558b2f',
-  nettomarge: '#81c784',
-  kgv: '#43a047',
-  ps: '#f9a825',
-  pfcf: '#80cbc4',
-  pb: '#8d6e63',
-  ev_ebitda: '#6d4c41',
-  ev_rev: '#ffb74d',
-  aktienrueckkauf: '#43a047',
-  aktien: '#d4d4d8',
-  nettoverschuldung: '#ef5350',
-  bargeld: '#26a69a',
-  eigenkapital: '#ffcc80',
+  ocf: '#38bdf8',
+  fcf: '#fbbf24',
+  nettogewinn: '#34d399',
+  eps: '#e879f9',
+  dividenden_gezahlt: '#818cf8',
+  umsatz: '#38bdf8',
+  bruttogewinn: '#2dd4bf',
+  ebit: '#4ade80',
+  ebitda: '#a3e635',
+  capex: '#fb923c',
+  bruttomarge: '#fb7185',
+  ebit_marge: '#fbbf24',
+  ebitda_marge: '#a78bfa',
+  nettomarge: '#34d399',
+  kgv: '#34d399',
+  ps: '#fbbf24',
+  pfcf: '#22d3ee',
+  pb: '#fb7185',
+  ev_ebitda: '#a78bfa',
+  ev_rev: '#fb923c',
+  aktienrueckkauf: '#c084fc',
+  aktien: '#a1a1aa',
+  nettoverschuldung: '#f43f5e',
+  gesamtverschuldung: '#fb7185',
+  bargeld: '#2dd4bf',
+  eigenkapital: '#fbbf24',
 }
+
+/** Nur 1–2 „Hüllen“ als Fläche — sonst überlagern sich die Fills zu einem Brei. */
+const FLAECHE_SERIEN = new Set(['ocf', 'umsatz'])
 
 export function farbeFuerMetrik(id: string, fallbackIndex = 0): string {
   return METRIK_FARBE[id] ?? FARBEN[fallbackIndex % FARBEN.length]!
@@ -58,12 +69,82 @@ export function farbeFuerMetrik(id: string, fallbackIndex = 0): string {
 function serieDarstellung(
   id: string,
   einheit: FundamentalMetrikZeile['einheit'],
+  extraFlaecheId?: string | null,
 ): 'flaeche' | 'linie' | 'balken' {
   if (id === 'dividenden_gezahlt' || id === 'aktienrueckkauf') return 'balken'
+  if (FLAECHE_SERIEN.has(id) || id === extraFlaecheId) return 'flaeche'
   if (einheit === 'prozent' || einheit === 'multiple' || einheit === 'ratio' || einheit === 'aktien_mio') {
     return 'linie'
   }
-  return 'flaeche'
+  return 'linie'
+}
+
+function linieStrichMuster(id: string, einheit: FundamentalMetrikZeile['einheit']): string | undefined {
+  if (einheit === 'prozent') return '6 4'
+  if (einheit === 'aktien_mio' || id === 'aktien') return '2 3.5'
+  return undefined
+}
+
+function zeichnungRang(s: { id: string; darstellung: 'flaeche' | 'linie' | 'balken' }): number {
+  const typ = s.darstellung === 'flaeche' ? 0 : s.darstellung === 'linie' ? 1 : 2
+  const idBoost: Record<string, number> = {
+    ocf: 0,
+    umsatz: 0,
+    gesamtverschuldung: 0,
+    bargeld: 1,
+    fcf: 2,
+    nettoverschuldung: 2,
+    nettogewinn: 3,
+    eigenkapital: 3,
+    eps: 4,
+    aktien: 4,
+    dividenden_gezahlt: 5,
+    aktienrueckkauf: 5,
+  }
+  return typ * 10 + (idBoost[s.id] ?? 5)
+}
+
+function SerieMark({
+  art,
+  farbe,
+  aktiv,
+}: {
+  art: 'flaeche' | 'linie' | 'balken'
+  farbe: string
+  aktiv: boolean
+}) {
+  const c = aktiv ? farbe : '#52525b'
+  if (art === 'balken') {
+    return (
+      <span className="inline-flex h-3 w-3.5 shrink-0 items-end justify-center gap-px" aria-hidden>
+        <span className="h-2 w-[3px] rounded-[1px]" style={{ background: c }} />
+        <span className="h-2.5 w-[3px] rounded-[1px]" style={{ background: c }} />
+        <span className="h-[7px] w-[3px] rounded-[1px]" style={{ background: c }} />
+      </span>
+    )
+  }
+  if (art === 'linie') {
+    return (
+      <span className="inline-flex h-3 w-4 shrink-0 items-center" aria-hidden>
+        <span className="h-[2.5px] w-full rounded-full" style={{ background: c }} />
+      </span>
+    )
+  }
+  return (
+    <span
+      className="inline-block h-2.5 w-4 shrink-0 rounded-sm"
+      style={{ background: `linear-gradient(180deg, ${c} 0%, ${c}55 100%)` }}
+      aria-hidden
+    />
+  )
+}
+
+/** Cash-Abflüsse (Dividende, Buybacks) liegen in der GuV/CF oft negativ — im Chart Betrag nach oben. */
+const CHART_BETRAG_POSITIV = new Set(['dividenden_gezahlt', 'aktienrueckkauf'])
+
+function chartWert(id: string, wert: number): number {
+  if (CHART_BETRAG_POSITIV.has(id) && wert < 0) return Math.abs(wert)
+  return wert
 }
 const AKTUELL_FARBE = '#fafafa'
 const SCHÄTZUNG_FARBE = '#38bdf8'
@@ -96,6 +177,7 @@ type YAxisScale = {
   span: number
   einheit: FundamentalMetrikZeile['einheit']
   ticks: number[]
+  farbe: string
 }
 
 type ChartSerie = {
@@ -105,6 +187,7 @@ type ChartSerie = {
   einheit: FundamentalMetrikZeile['einheit']
   yAxis: 0 | 1
   darstellung: 'flaeche' | 'linie' | 'balken'
+  strichMuster?: string
   letzterWert: number | null
   historisch: ChartPunkt[]
   schaetzung: ChartPunkt[]
@@ -393,7 +476,7 @@ export function PaFundamentalMetrikChart({
   const [hover, setHover] = useState<ChartHoverLayout | null>(null)
   const svgWrapRef = useRef<HTMLDivElement>(null)
 
-  const legendKey = [...aktivIds].sort().join(',')
+  const legendKey = [...aktivIds].join(',')
   const legendIds = useMemo(() => (legendKey ? legendKey.split(',') : []), [legendKey])
 
   useEffect(() => {
@@ -509,6 +592,12 @@ export function PaFundamentalMetrikChart({
     const n = Math.max(achsenSlots.length, 1)
     const xFuerIdx = (idx: number) => padL + (plotW * idx) / Math.max(1, n - 1)
 
+    const flaecheKandidaten = ausgewaehlt.filter((z) => {
+      if (z.id === 'dividenden_gezahlt' || z.id === 'aktienrueckkauf') return false
+      return einheitSkalaGruppe(z.einheit) === 'waehrung_betrag'
+    })
+    const extraFlaecheId = flaecheKandidaten.length === 1 ? flaecheKandidaten[0]!.id : null
+
     const roh = ausgewaehlt.map((z, i) => {
       const aktKey = aktuellerKeyFuerZeile(z, variant)
       const achse = einheitZuAchse.get(einheitSkalaGruppe(z.einheit)) ?? 0
@@ -517,14 +606,15 @@ export function PaFundamentalMetrikChart({
         .map((p) => ({
           key: p.iso,
           label: p.istSchaetzung ? p.label : jahrAusPeriode(p.iso),
-          wert: z.werte[p.iso],
+          wert: z.werte[p.iso] != null && Number.isFinite(z.werte[p.iso]!) ? chartWert(z.id, z.werte[p.iso]!) : z.werte[p.iso],
           istSchaetzung: p.istSchaetzung ?? schaetzIso.has(p.iso),
         }))
         .filter((pt): pt is { key: string; label: string; wert: number; istSchaetzung: boolean } =>
           pt.wert != null && Number.isFinite(pt.wert),
         )
 
-      const aktWert = aktKey ? z.werte[aktKey] : null
+      const aktRoh = aktKey ? z.werte[aktKey] : null
+      const aktWert = aktRoh != null && Number.isFinite(aktRoh) ? chartWert(z.id, aktRoh) : null
       const aktuell =
         aktWert != null && Number.isFinite(aktWert)
           ? {
@@ -546,7 +636,8 @@ export function PaFundamentalMetrikChart({
         farbe: farbeFuerMetrik(z.id, i),
         einheit: z.einheit,
         yAxis: achse,
-        darstellung: serieDarstellung(z.id, z.einheit),
+        darstellung: serieDarstellung(z.id, z.einheit, extraFlaecheId),
+        strichMuster: linieStrichMuster(z.id, z.einheit),
         letzterWert: aktuell?.wert ?? letzterHist,
         histWerte,
         aktuell,
@@ -580,9 +671,10 @@ export function PaFundamentalMetrikChart({
       }
     }
 
-    const yAchsen: YAxisScale[] = achsenRoh.map((a) => {
+    const yAchsen: YAxisScale[] = achsenRoh.map((a, ai) => {
       const { minY, maxY, span, ticks } = berechneSkala(a.werte)
-      return { side: a.side, minY, maxY, span, einheit: a.einheit, ticks }
+      const achsenFarbe = roh.find((s) => s.yAxis === ai)?.farbe ?? '#a1a1aa'
+      return { side: a.side, minY, maxY, span, einheit: a.einheit, ticks, farbe: achsenFarbe }
     })
 
     const skalaFuer = (axis: 0 | 1) => yAchsen[axis] ?? yAchsen[0]!
@@ -647,10 +739,10 @@ export function PaFundamentalMetrikChart({
             ].join(' ')
           : schaetzPts.map((pt, i) => `${i === 0 ? 'M' : 'L'} ${pt.x.toFixed(1)} ${pt.y.toFixed(1)}`).join(' ')
 
-      const baseY = PAD_OBEN + plotH
+      const yNull = yAusWert(0, skala.minY, skala.span, plotH)
       const areaD =
         histPts.length > 0
-          ? `${pathHistorisch} L ${histPts[histPts.length - 1]!.x.toFixed(1)} ${baseY} L ${histPts[0]!.x.toFixed(1)} ${baseY} Z`
+          ? `${pathHistorisch} L ${histPts[histPts.length - 1]!.x.toFixed(1)} ${yNull.toFixed(1)} L ${histPts[0]!.x.toFixed(1)} ${yNull.toFixed(1)} Z`
           : ''
 
       return {
@@ -660,6 +752,7 @@ export function PaFundamentalMetrikChart({
         einheit: s.einheit,
         yAxis: s.yAxis,
         darstellung: s.darstellung,
+        strichMuster: s.strichMuster,
         letzterWert: s.letzterWert,
         historisch: histPts,
         schaetzung: schaetzPts,
@@ -672,6 +765,8 @@ export function PaFundamentalMetrikChart({
         areaD,
       }
     })
+
+    serien.sort((a, b) => zeichnungRang(a) - zeichnungRang(b))
 
     const xLabels = achsenSlots.map((slot, i) => ({
       label: slot.label,
@@ -720,6 +815,7 @@ export function PaFundamentalMetrikChart({
       label: z?.label ?? s?.label ?? id,
       farbe: farbeFuerMetrik(id, i),
       einheit: z?.einheit ?? s?.einheit ?? ('zahl' as const),
+      darstellung: s?.darstellung ?? serieDarstellung(id, z?.einheit ?? 'zahl'),
       anzeigeWert: hoverPt?.wert ?? s?.letzterWert ?? null,
       schnitt: s?.schnitt ?? null,
       aktiv: !hiddenIds.has(id),
@@ -792,7 +888,7 @@ export function PaFundamentalMetrikChart({
               <p className="mt-0.5 text-center text-[11px] text-[var(--app-text-muted)]">
                 {variant === 'bewertung'
                   ? 'Historie = Trailing · gestrichelt = FY-Schätzung · grauer Bereich = Prognose'
-                  : 'Grauer Bereich = Prognose · Flächen = Beträge · Linien = Margen/Multiples'}
+                  : 'Grauer Bereich = Prognose · Fläche = Cashflow/Umsatz · Linien = Gewinn/FCF · Balken = Dividende/Buybacks'}
               </p>
             ) : null}
           </div>
@@ -847,30 +943,33 @@ export function PaFundamentalMetrikChart({
           />
         </div>
 
-        <div className="mt-2 flex flex-wrap items-center justify-center gap-x-1 gap-y-1 text-[11px]">
+        <div className="mt-2.5 flex flex-wrap items-center justify-center gap-x-2 gap-y-1.5 text-[11px]">
           {legendMeta.map((s) => (
             <button
               key={s.id}
               type="button"
               onClick={() => toggleSerie(s.id)}
               title={s.aktiv ? `${s.label} ausblenden` : `${s.label} einblenden`}
-              className={`inline-flex max-w-full items-baseline gap-1.5 rounded-md px-1.5 py-0.5 transition hover:bg-[var(--app-surface-hover)] ${
-                s.aktiv ? 'text-[var(--app-text-muted)]' : 'text-[var(--app-text-muted)]/45 line-through'
+              className={`inline-flex max-w-full items-center gap-1.5 rounded-md px-1.5 py-0.5 transition hover:bg-[var(--app-surface-hover)] ${
+                s.aktiv ? '' : 'opacity-45'
               }`}
             >
-              <span
-                className="inline-block h-2 w-3.5 shrink-0 rounded-[2px]"
-                style={{ background: s.aktiv ? s.farbe : '#52525b' }}
-                aria-hidden
-              />
-              <span>{s.label}</span>
+              <SerieMark art={s.darstellung} farbe={s.farbe} aktiv={s.aktiv} />
+              <span className={s.aktiv ? 'text-[var(--app-text-muted)]' : 'text-[var(--app-text-muted)] line-through'}>
+                {s.label}
+              </span>
               {s.anzeigeWert != null ? (
-                <span className={`font-semibold tabular-nums ${s.aktiv ? 'text-[var(--app-text)]' : ''}`}>
+                <span
+                  className="font-semibold tabular-nums"
+                  style={{ color: s.aktiv ? s.farbe : undefined }}
+                >
                   {formatFundamentalWert(s.anzeigeWert, s.einheit)}
                 </span>
               ) : null}
               {s.aktiv && s.schnitt != null && hoverSlot == null ? (
-                <span className="tabular-nums">(Ø {formatFundamentalWert(s.schnitt, s.einheit)})</span>
+                <span className="tabular-nums text-[var(--app-text-muted)]">
+                  Ø {formatFundamentalWert(s.schnitt, s.einheit)}
+                </span>
               ) : null}
             </button>
           ))}
@@ -899,8 +998,8 @@ export function PaFundamentalMetrikChart({
           <defs>
             {serien.map((s) => (
               <linearGradient key={`grad-${s.id}`} id={`area-${ankerId}-${s.id}`} x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor={s.farbe} stopOpacity={0.45} />
-                <stop offset="100%" stopColor={s.farbe} stopOpacity={0.04} />
+                <stop offset="0%" stopColor={s.farbe} stopOpacity={0.28} />
+                <stop offset="100%" stopColor={s.farbe} stopOpacity={0.03} />
               </linearGradient>
             ))}
           </defs>
@@ -912,7 +1011,7 @@ export function PaFundamentalMetrikChart({
                 y={PAD_OBEN}
                 width={Math.max(0, x1 - prognoseX)}
                 height={plotH}
-                fill="rgba(148,163,184,0.12)"
+                fill="rgba(148,163,184,0.10)"
               />
               <text
                 x={prognoseX + 10}
@@ -930,20 +1029,22 @@ export function PaFundamentalMetrikChart({
               const y = yAusWert(tick, achse.minY, achse.span, plotH)
               return (
                 <g key={`${ai}-${i}`}>
-                  <line
-                    x1={x0}
-                    y1={y}
-                    x2={x1}
-                    y2={y}
-                    stroke="#3f3f46"
-                    strokeOpacity={0.55}
-                    strokeDasharray={i === 0 && ai === 0 ? undefined : '3 5'}
-                  />
+                  {ai === 0 ? (
+                    <line
+                      x1={x0}
+                      y1={y}
+                      x2={x1}
+                      y2={y}
+                      stroke="#3f3f46"
+                      strokeOpacity={0.4}
+                      strokeDasharray={i === 0 ? undefined : '3 5'}
+                    />
+                  ) : null}
                   <text
                     x={achse.side === 'left' ? x0 - 10 : x1 + 10}
                     y={y + 5}
                     textAnchor={achse.side === 'left' ? 'end' : 'start'}
-                    fill={ai === 1 ? '#a3e635' : '#a1a1aa'}
+                    fill={achse.side === 'right' ? achse.farbe : '#a1a1aa'}
                     style={{ fontSize: ACHSE_FONT, fontWeight: 500 }}
                   >
                     {formatAchse(tick, achse.einheit)}
@@ -953,83 +1054,112 @@ export function PaFundamentalMetrikChart({
             }),
           )}
 
+          {yAchsen[0] && yAchsen[0].minY < 0 && yAchsen[0].maxY > 0 ? (
+            <line
+              x1={x0}
+              y1={yAusWert(0, yAchsen[0].minY, yAchsen[0].span, plotH)}
+              x2={x1}
+              y2={yAusWert(0, yAchsen[0].minY, yAchsen[0].span, plotH)}
+              stroke="#71717a"
+              strokeWidth={1}
+              strokeOpacity={0.7}
+            />
+          ) : null}
+
           <line x1={x0} y1={PAD_OBEN + plotH} x2={x1} y2={PAD_OBEN + plotH} stroke="#52525b" strokeWidth={1.2} />
 
-          {serien.map((s) => {
-            const skala = yAchsen[s.yAxis]
-            return s.schnitt != null && skala ? (
-              <line
-                key={`avg-${s.id}`}
-                x1={x0}
-                y1={yAusWert(s.schnitt, skala.minY, skala.span, plotH)}
-                x2={x1}
-                y2={yAusWert(s.schnitt, skala.minY, skala.span, plotH)}
-                stroke={s.farbe}
-                strokeWidth={1.2}
-                strokeDasharray="5 5"
-                opacity={0.45}
-              />
-            ) : null
-          })}
+          {!kompakt && serien.length <= 2
+            ? serien.map((s) => {
+                const skala = yAchsen[s.yAxis]
+                return s.schnitt != null && skala ? (
+                  <line
+                    key={`avg-${s.id}`}
+                    x1={x0}
+                    y1={yAusWert(s.schnitt, skala.minY, skala.span, plotH)}
+                    x2={x1}
+                    y2={yAusWert(s.schnitt, skala.minY, skala.span, plotH)}
+                    stroke={s.farbe}
+                    strokeWidth={1.2}
+                    strokeDasharray="5 5"
+                    opacity={0.4}
+                  />
+                ) : null
+              })
+            : null}
 
           {serien.map((s) => {
             const art = chartArt === 'balken' && !kompakt ? 'balken' : s.darstellung
-            const barW = Math.max(6, (effektivePlotW / Math.max(s.historisch.length + s.schaetzung.length, 1)) * 0.28)
-            const baseY = PAD_OBEN + plotH
+            const barW = Math.max(7, (effektivePlotW / Math.max(s.historisch.length + s.schaetzung.length, 1)) * 0.34)
+            const skala = yAchsen[s.yAxis]
+            const yNull = skala ? yAusWert(0, skala.minY, skala.span, plotH) : PAD_OBEN + plotH
+            const strich = art === 'linie' ? 2.7 : 2.3
             return (
             <g key={s.id}>
               {art === 'flaeche' && s.areaD ? <path d={s.areaD} fill={`url(#area-${ankerId}-${s.id})`} /> : null}
               {art !== 'balken' && s.pathHistorisch ? (
-                <path
-                  d={s.pathHistorisch}
-                  fill="none"
-                  stroke={s.farbe}
-                  strokeWidth={art === 'linie' ? 2 : 2.2}
-                  strokeDasharray={art === 'linie' && s.einheit === 'prozent' ? '6 4' : undefined}
-                  strokeLinejoin="round"
-                  strokeLinecap="round"
-                />
+                <>
+                  <path
+                    d={s.pathHistorisch}
+                    fill="none"
+                    stroke="#09090b"
+                    strokeWidth={strich + 1.8}
+                    strokeLinejoin="round"
+                    strokeLinecap="round"
+                    opacity={0.85}
+                  />
+                  <path
+                    d={s.pathHistorisch}
+                    fill="none"
+                    stroke={s.farbe}
+                    strokeWidth={strich}
+                    strokeDasharray={s.strichMuster}
+                    strokeLinejoin="round"
+                    strokeLinecap="round"
+                  />
+                </>
               ) : null}
               {art !== 'balken' && s.pathSchaetzung ? (
                 <path
                   d={s.pathSchaetzung}
                   fill="none"
                   stroke={s.farbe}
-                  strokeWidth={2}
+                  strokeWidth={strich - 0.3}
                   strokeDasharray="6 5"
                   strokeLinejoin="round"
                   strokeLinecap="round"
-                  opacity={0.85}
+                  opacity={0.8}
                 />
               ) : null}
               {art === 'balken'
                 ? [...s.historisch, ...s.schaetzung].map((pt, i) => {
-                    const h = baseY - pt.y
+                    const h = yNull - pt.y
                     return (
                       <rect
                         key={i}
                         x={pt.x - barW / 2}
-                        y={h >= 0 ? pt.y : baseY}
+                        y={h >= 0 ? pt.y : yNull}
                         width={barW}
                         height={Math.abs(h)}
                         fill={s.farbe}
-                        opacity={pt.istSchaetzung ? 0.55 : 0.9}
-                        rx={1}
+                        stroke="#09090b"
+                        strokeWidth={0.7}
+                        opacity={pt.istSchaetzung ? 0.5 : 0.95}
+                        rx={1.5}
                       />
                     )
                   })
                 : null}
-              {kompakt || art === 'flaeche'
+              {kompakt || art === 'flaeche' || art === 'balken'
                 ? null
                 : [...s.historisch, ...s.schaetzung].map((pt, i) => (
                     <circle
                       key={i}
                       cx={pt.x}
                       cy={pt.y}
-                      r={2.5}
+                      r={2.4}
                       fill="#09090b"
                       stroke={s.farbe}
-                      strokeWidth={1.6}
+                      strokeWidth={1.5}
                     />
                   ))}
               {s.aktuell ? (
@@ -1141,12 +1271,12 @@ export function PaFundamentalMetrikChart({
               {legendMeta
                 .filter((s) => s.aktiv && s.anzeigeWert != null)
                 .map((s) => (
-                  <li key={s.id} className="flex items-baseline justify-between gap-3 text-[11px]">
+                  <li key={s.id} className="flex items-center justify-between gap-3 text-[11px]">
                     <span className="flex min-w-0 items-center gap-1.5 text-[var(--app-text-muted)]">
-                      <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: s.farbe }} />
+                      <SerieMark art={s.darstellung} farbe={s.farbe} aktiv />
                       <span className="truncate">{s.label}</span>
                     </span>
-                    <span className="tabular-nums text-[var(--app-text)]">
+                    <span className="font-semibold tabular-nums" style={{ color: s.farbe }}>
                       {formatFundamentalWert(s.anzeigeWert, s.einheit)}
                     </span>
                   </li>
@@ -1166,11 +1296,7 @@ export function PaFundamentalMetrikChart({
                 className="flex max-w-full items-center gap-1.5 rounded-md px-1 py-0.5 text-left transition hover:bg-[var(--app-surface-hover)]"
                 title={s.aktiv ? `${s.label} ausblenden` : `${s.label} einblenden`}
               >
-                <span
-                  className="h-2 w-4 shrink-0 rounded-full"
-                  style={{ background: s.aktiv ? s.farbe : '#52525b' }}
-                  aria-hidden
-                />
+                <SerieMark art={s.darstellung} farbe={s.farbe} aktiv={s.aktiv} />
                 <span className={s.aktiv ? 'text-[var(--app-text-muted)]' : 'text-[var(--app-text-muted)]/45 line-through'}>
                   {s.label}
                 </span>

@@ -22,6 +22,8 @@ import { PORTFOLIO_DB_SEITEN_GROESSE, PORTFOLIO_MAX_BUCHUNGEN } from '@/lib/port
 import { ladeStooqSchlusskurs } from '@/lib/portfolio-analyse/stooq-kurs'
 import type { PortfolioBuchung, PortfolioDbSnapshot } from '@/lib/portfolio-analyse/types'
 import { ladeYahooKurse, type YahooKursZeile } from '@/lib/portfolio-analyse/yahoo-kurse-server'
+import { isinKenntnis } from '@/lib/portfolio-analyse/isin-kenntnisse'
+import type { FundamentaldatenAnfrage } from '@/lib/portfolio-analyse/fundamentaldaten-types'
 
 export type DepotGewicht = {
   /** Aktueller Marktwert der Position in EUR. */
@@ -88,6 +90,37 @@ async function ladeBuchungenAdmin(): Promise<PortfolioBuchung[]> {
   }
 
   return buchungen
+}
+
+/** Depot-Aktien für Fundamental-Cache (Whitelist deckt die nicht alle ab, z. B. LVMH). */
+export async function ladeDepotAktieAnfragen(): Promise<FundamentaldatenAnfrage[]> {
+  if (!istKonfiguriert()) return []
+  try {
+    const snap = await ladeSnapshotAdmin()
+    const out: FundamentaldatenAnfrage[] = []
+    const seen = new Set<string>()
+    for (const p of snap?.positionen ?? []) {
+      const isin = p.isin?.trim().toUpperCase()
+      if (!isin || seen.has(isin)) continue
+      if (p.assetKlasse === 'etf' || p.assetKlasse === 'anleihe' || p.assetKlasse === 'crypto' || p.assetKlasse === 'geldmarkt') {
+        continue
+      }
+      const ken = isinKenntnis(isin)
+      if (p.assetKlasse !== 'aktie' && !ken) continue
+      seen.add(isin)
+      out.push({
+        isin,
+        name: p.name || ken?.name || isin,
+        symbolYahoo: ken?.symbolYahoo ?? null,
+        symbolCandidates: ken?.symbolCandidates,
+        frequenz: 'jahr',
+      })
+    }
+    return out
+  } catch (e) {
+    console.warn('[depot-aktie-anfragen]', e)
+    return []
+  }
 }
 
 async function ladeSnapshotAdmin(): Promise<PortfolioDbSnapshot | null> {

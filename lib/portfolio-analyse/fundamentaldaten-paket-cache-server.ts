@@ -7,7 +7,7 @@ import type {
   FundamentaldatenAnfrage,
   FundamentaldatenPaket,
 } from '@/lib/portfolio-analyse/fundamentaldaten-types'
-import { loesePortfolioIsin } from '@/lib/portfolio-analyse/isin-kenntnisse'
+import { isinKenntnis, loesePortfolioIsin } from '@/lib/portfolio-analyse/isin-kenntnisse'
 
 const TABLE = 'fundamentaldaten_paket_cache' as const
 export const FUNDAMENTALDATEN_CACHE_VERSION = 1
@@ -116,11 +116,17 @@ export async function ladeFundamentaldatenPaketCacheFuerAnfrage(
   const primary = fundamentaldatenCacheKey(anfrage)
   if (primary) keys.add(primary)
   if (isin && isin.length >= 12) keys.add(`${isin}|${freq}`)
-  const sym = (anfrage.tickerOverride || anfrage.symbolYahoo || '').trim().toUpperCase()
+  const ken = isinKenntnis(isin)
+  const mt = ken?.macrotrendsTicker?.trim().toUpperCase()
+  if (mt) keys.add(`${mt}|${freq}`)
+  const sym = (anfrage.tickerOverride || anfrage.symbolYahoo || ken?.symbolYahoo || '').trim().toUpperCase()
   if (sym) {
     keys.add(`${sym}|${freq}`)
-    const basis = sym.split('.')[0]
-    if (basis) keys.add(`${basis}|${freq}`)
+    // Bare-Ticker nur ohne Börsen-Suffix — sonst landet MC.PA bei US-Moelis (MC).
+    if (!sym.includes('.')) {
+      const basis = sym.split('-')[0]
+      if (basis) keys.add(`${basis}|${freq}`)
+    }
   }
   for (const key of keys) {
     const hit = await ladeFundamentaldatenPaketCache(key)

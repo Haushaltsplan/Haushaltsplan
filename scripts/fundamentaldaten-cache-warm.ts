@@ -16,6 +16,7 @@ import {
   ladeFundamentaldatenPaketCache,
 } from '../lib/portfolio-analyse/fundamentaldaten-paket-cache-server'
 import { ladeNachkaufKandidaten } from '../lib/portfolio-analyse/nachkauf-radar/nachkauf-watchlist-cloud-server'
+import { ladeDepotAktieAnfragen } from '../lib/portfolio-analyse/depot-gewichte-server'
 import type { WhitelistPosition } from '../lib/portfolio-analyse/nachkauf-radar/nachkauf-radar-whitelist'
 
 function loadEnv() {
@@ -125,7 +126,23 @@ async function main() {
     process.exit(1)
   }
 
-  const kandidaten = await ladeNachkaufKandidaten()
+  const radar = await ladeNachkaufKandidaten()
+  const depot = await ladeDepotAktieAnfragen()
+  const gesehen = new Set(radar.map((k) => k.isin.toUpperCase()))
+  const extra: WhitelistPosition[] = []
+  for (const d of depot) {
+    const isin = d.isin?.trim().toUpperCase()
+    if (!isin || gesehen.has(isin)) continue
+    gesehen.add(isin)
+    extra.push({
+      isin,
+      name: d.name ?? isin,
+      symbolYahoo: d.symbolYahoo,
+      symbolCandidates: d.symbolCandidates,
+      quelle: 'watchlist',
+    })
+  }
+  const kandidaten = [...radar, ...extra]
   const liste = kandidaten.filter((k) => {
     if (filter.size === 0) return true
     const t = tickerVon(k)
@@ -139,7 +156,7 @@ async function main() {
   const schnell = liste.filter((k) => !istEuIsin(k.isin))
   const langsam = liste.filter((k) => istEuIsin(k.isin))
   console.log(
-    `Warmup ${liste.length} Titel (Whitelist+Watchlist)${erneuern ? ', erneuern' : ''} — ${schnell.length} parallel, ${langsam.length} EU nacheinander`,
+    `Warmup ${liste.length} Titel (Whitelist+Watchlist+Depot)${erneuern ? ', erneuern' : ''} — ${schnell.length} parallel, ${langsam.length} EU nacheinander`,
   )
 
   let ok = 0

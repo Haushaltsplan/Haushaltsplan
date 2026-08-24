@@ -48,7 +48,7 @@ import {
   normalisiereSegmentPaketGegenUmsatz,
 } from '@/lib/portfolio-analyse/segment-umsatz-abgleich'
 import { FUNDAMENTAL_NTM_KEY } from '@/lib/portfolio-analyse/fundamentaldaten-types'
-import { isinKenntnis, loesePortfolioIsin } from '@/lib/portfolio-analyse/isin-kenntnisse'
+import { analyseTickerFuerPosition, isinKenntnis, loesePortfolioIsin } from '@/lib/portfolio-analyse/isin-kenntnisse'
 import {
   ladeMacrotrendsFundamentaldaten,
   loeseMacrotrendsIdent,
@@ -170,7 +170,7 @@ async function loeseIdent(anfrage: FundamentaldatenAnfrage): Promise<{
   }
 
   for (const sym of symbole) {
-    const ticker = macrotrendsTickerAusSymbol(sym)
+    const ticker = analyseTickerFuerPosition(isin, sym)
     const ident = await loeseMacrotrendsIdent(ticker, macrotrendsOptsAusAnfrage(anfrage, ticker))
     if (ident) return { ident, symbolYahoo: sym }
   }

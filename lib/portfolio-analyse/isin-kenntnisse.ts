@@ -237,6 +237,21 @@ export function loesePortfolioIsin(opts: {
   if (name && /hermes|hermès/.test(name) && !/federated|federal/.test(name)) {
     return 'FR0000052292'
   }
+  if (name && (/\blvmh\b/.test(name) || /louis[\s-]?vuitton/.test(name))) {
+    return 'FR0000121014'
+  }
+  if (name && name.length >= 3) {
+    let hit: string | null = null
+    for (const [isin, k] of Object.entries(ISIN_KENNTNISSE)) {
+      const kn = k.name?.trim().toLowerCase().normalize('NFD').replace(/\p{M}/gu, '') ?? ''
+      if (kn.length < 3) continue
+      if (name === kn) {
+        if (hit && hit !== isin) return null
+        hit = isin
+      }
+    }
+    if (hit) return hit
+  }
 
   return direct ?? null
 }

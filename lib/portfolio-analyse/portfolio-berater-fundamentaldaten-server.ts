@@ -111,6 +111,14 @@ function mitTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
   })
 }
 
+function paketHatNutzbareDaten(p: FundamentaldatenPaket): boolean {
+  if (p.zeilen.some((z) => Object.values(z.werte).some((v) => v != null && Number.isFinite(v)))) return true
+  if (p.keyMetrics.some((m) => (m.wert && m.wert !== '–') || (m.zahl != null && Number.isFinite(m.zahl)))) {
+    return true
+  }
+  return false
+}
+
 function periodenIso(p: FundamentaldatenPaket, max: number): string[] {
   return p.perioden
     .filter((pe) => !pe.istNtm && !pe.istSchaetzung && !pe.istLtm)
@@ -406,25 +414,38 @@ export async function ladeFundamentaldatenFuerBerater(
   const ladenEines = async (z: FundamentalBeraterZiel) => {
     const modus = opts?.cacheModus ?? (z.fokus ? 'immer' : 'nur-lesen')
     const timeoutMs = z.fokus && modus !== 'nur-lesen' ? LOAD_TIMEOUT_MS : TIMEOUT_CACHE_MS
+    const anfrage = {
+      isin: z.isin,
+      name: z.name,
+      symbolYahoo: z.symbolYahoo,
+      symbolCandidates: z.symbolCandidates,
+      frequenz: 'jahr' as const,
+      segmentNurCloud: true,
+    }
+    const depotRelevant = z.fokus || (z.gewichtPct != null && z.gewichtPct >= 0.35)
+
+    const lade = (cacheModus: 'immer' | 'nur-lesen' | 'erneuern', ms: number) =>
+      mitTimeout(ladeFundamentaldaten({ ...anfrage, cacheModus }), ms, z.isin)
+
+    let paket: FundamentaldatenPaket | null = null
     try {
-      const paket = await mitTimeout(
-        ladeFundamentaldaten({
-          isin: z.isin,
-          name: z.name,
-          symbolYahoo: z.symbolYahoo,
-          symbolCandidates: z.symbolCandidates,
-          frequenz: 'jahr',
-          segmentNurCloud: true,
-          cacheModus: modus,
-        }),
-        timeoutMs,
-        z.isin,
-      )
-      const hatHistorie = periodenIso(paket, 5).length >= 2 && paket.zeilen.length > 0
-      const hatTeil =
-        paket.keyMetrics.length > 0 || paket.zeilen.length > 0 || paket.mantra != null
-      // Teilpaket behalten — besser als Scan-Fallback ohne Historie
-      if (hatHistorie || paket.ok || hatTeil) {
+      paket = await lade(modus, timeoutMs)
+    } catch (e) {
+      console.warn('[portfolio-berater] Fundamentaldaten', z.isin, e)
+    }
+
+    // Cache-Miss (typisch: Depot-Titel außerhalb Whitelist/Watchlist) nicht als „Daten“ verkaufen.
+    // Leeres Paket hat immer ein Mantra-Objekt — das ist kein Treffer.
+    if ((!paket || !paketHatNutzbareDaten(paket)) && modus === 'nur-lesen' && depotRelevant) {
+      try {
+        paket = await lade('immer', LOAD_TIMEOUT_MS)
+      } catch (e) {
+        console.warn('[portfolio-berater] Live-Fallback', z.isin, e)
+      }
+    }
+
+    try {
+      if (paket && paketHatNutzbareDaten(paket)) {
         return {
           isin: z.isin,
           fokus: z.fokus,
@@ -433,7 +454,7 @@ export async function ladeFundamentaldatenFuerBerater(
         }
       }
     } catch (e) {
-      console.warn('[portfolio-berater] Fundamentaldaten', z.isin, e)
+      console.warn('[portfolio-berater] Fundamentaldaten kompakt', z.isin, e)
     }
 
     const scan = opts?.scanByIsin?.get(z.isin.toUpperCase())
@@ -452,7 +473,7 @@ export async function ladeFundamentaldatenFuerBerater(
       gewichtPct: z.gewichtPct ?? null,
       daten: {
         ok: false,
-        ticker: z.ticker ?? z.symbolYahoo?.split('.')[0] ?? z.isin,
+        ticker: z.ticker ?? z.symbolYahoo ?? z.isin,
         firmenname: z.name,
         sektor: null,
         branche: null,
