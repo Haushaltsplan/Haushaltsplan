@@ -181,6 +181,12 @@ export function PortfolioFundamentaldatenClient() {
           <PaFundamentalInhalt
             anfrage={anfrage}
             selectionKey={selected ? `${selected.quelle}:${selected.isin ?? selected.name}` : undefined}
+            alleScrapZiele={kandidaten.map((k) => ({
+              isin: k.isin,
+              name: k.name,
+              symbolYahoo: k.symbolYahoo,
+              symbolCandidates: k.symbolCandidates,
+            }))}
           />
         </div>
       )}

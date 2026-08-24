@@ -1,7 +1,9 @@
 import {
+  cagr3AusSerie,
   cagrProzent,
   formatFundamentalWert,
 } from '@/lib/portfolio-analyse/fundamentaldaten-format'
+import { historischeWerteAusZeile } from '@/lib/portfolio-analyse/fundamentaldaten-roic-hilfen'
 import type { FundamentalSchaetzungenRoh } from '@/lib/portfolio-analyse/fundamentaldaten-schaetzungen-server'
 import type {
   FundamentalKeyMetric,
@@ -58,6 +60,42 @@ export type YahooFundamentalKennzahlen = {
 
 function wertAnPeriode(z: FundamentalMetrikZeile | undefined, key: string): number | null {
   return z?.werte[key] ?? null
+}
+
+function jahresSchaetzKeys(perioden: FundamentalPeriode[]): string[] {
+  return perioden.filter((p) => !istFundamentalQuartalSchaetzungIso(p.iso)).map((p) => p.iso)
+}
+
+/** Erwartetes 2J-Wachstum: darüber liegt fast immer Einheiten-Mix, nicht Consensus. */
+const FWD_CAGR_ABS_MAX = 55
+
+/**
+ * YoY aus den ersten zwei Jahres-Schätzungen.
+ * Quartals-Spalten und Einheiten-Mix (z. B. Jahres-EPS vs. Quartals-EPS → −80 %)
+ * werden verworfen; Fallback: Consensus-Wachstumsfeld derselben Spalte.
+ */
+function fwdCagrZweiJahre(
+  niveau: FundamentalMetrikZeile | undefined,
+  wachstum: FundamentalMetrikZeile | undefined,
+  jahresKeys: string[],
+  referenzCagr: number | null,
+): number | null {
+  const k0 = jahresKeys[0]
+  const k1 = jahresKeys[1]
+  const a = k0 ? wertAnPeriode(niveau, k0) : null
+  const b = k1 ? wertAnPeriode(niveau, k1) : null
+  const ausNiveau = a != null && b != null && a > 0 && b > 0 ? cagrProzent([a, b], 1) : null
+  const ausFeld = k1 ? wertAnPeriode(wachstum, k1) : k0 ? wertAnPeriode(wachstum, k0) : null
+  const feldOk = ausFeld != null && Number.isFinite(ausFeld) && Math.abs(ausFeld) <= FWD_CAGR_ABS_MAX
+
+  const niveausMix =
+    ausNiveau != null &&
+    (Math.abs(ausNiveau) > FWD_CAGR_ABS_MAX ||
+      (a != null && b != null && a > 0 && b > 0 && (b / a > 1.6 || a / b > 1.6)) ||
+      (ausNiveau < -35 && referenzCagr != null && referenzCagr > 0))
+  if (ausNiveau != null && !niveausMix) return ausNiveau
+  if (feldOk) return ausFeld
+  return null
 }
 
 function letzterGeschaeftsjahresKey(perioden: FundamentalPeriode[] | undefined): string | null {
@@ -342,43 +380,21 @@ export function baueKeyMetrics(
   const umsatzSchaetz0 = schaetzungen.zeilen.find((z) => z.id === 'umsatz_schaetzung')
   const epsSchaetz0 = schaetzungen.zeilen.find((z) => z.id === 'eps_schaetzung')
   const ebitdaSchaetz0 = schaetzungen.zeilen.find((z) => z.id === 'ebitda_schaetzung')
-  const fy0Key = schaetzungen.perioden[0]?.iso
-  const fy1Key = schaetzungen.perioden[1]?.iso
+  const umsatzWachstumZ = schaetzungen.zeilen.find((z) => z.id === 'umsatz_wachstum_schaetzung')
+  const epsWachstumZ = schaetzungen.zeilen.find((z) => z.id === 'eps_wachstum_schaetzung')
+  const jahresKeys = jahresSchaetzKeys(schaetzungen.perioden)
 
-  const revCagr2 =
-    fy0Key && fy1Key && umsatzSchaetz0
-      ? cagrProzent(
-          [wertAnPeriode(umsatzSchaetz0, fy0Key), wertAnPeriode(umsatzSchaetz0, fy1Key)].filter(
-            (v): v is number => v != null && v > 0,
-          ),
-          1,
-        )
-      : null
-
-  const epsCagr2 =
-    fy0Key && fy1Key && epsSchaetz0
-      ? cagrProzent(
-          [wertAnPeriode(epsSchaetz0, fy0Key), wertAnPeriode(epsSchaetz0, fy1Key)].filter(
-            (v): v is number => v != null && v > 0,
-          ),
-          1,
-        )
-      : null
+  const revCagr2 = fwdCagrZweiJahre(umsatzSchaetz0, umsatzWachstumZ, jahresKeys, null)
+  const epsCagr2 = fwdCagrZweiJahre(epsSchaetz0, epsWachstumZ, jahresKeys, revCagr2)
 
   const ebitdaCagr2Yahoo =
     yahoo?.ntmEbitdaUsd != null && yahoo?.fy1EbitdaUsd != null && yahoo.ntmEbitdaUsd > 0 && yahoo.fy1EbitdaUsd > 0
       ? cagrProzent([yahoo.ntmEbitdaUsd, yahoo.fy1EbitdaUsd], 1)
       : null
-  const ebitdaCagr2Ms =
-    fy0Key && fy1Key && ebitdaSchaetz0
-      ? cagrProzent(
-          [wertAnPeriode(ebitdaSchaetz0, fy0Key), wertAnPeriode(ebitdaSchaetz0, fy1Key)].filter(
-            (v): v is number => v != null && v > 0,
-          ),
-          1,
-        )
-      : null
-  const ebitdaCagr2 = ebitdaCagr2Yahoo ?? ebitdaCagr2Ms
+  const ebitdaCagr2YahooOk =
+    ebitdaCagr2Yahoo != null && Math.abs(ebitdaCagr2Yahoo) <= FWD_CAGR_ABS_MAX ? ebitdaCagr2Yahoo : null
+  const ebitdaCagr2Ms = fwdCagrZweiJahre(ebitdaSchaetz0, undefined, jahresKeys, revCagr2)
+  const ebitdaCagr2 = ebitdaCagr2YahooOk ?? ebitdaCagr2Ms
 
   out.push(
     { id: 'fwd_rev_cagr_2y', label: 'Erw. Umsatz-CAGR (2J)', wert: pctRaw(revCagr2), gruppe: 'wachstum' },
@@ -547,4 +563,74 @@ export function baueKeyMetrics(
   )
 
   return out
+}
+
+/** Schätzungs-Zeilen aus einem gespeicherten Paket — für Caches ohne erneuten Scrape. */
+export function schaetzungenRohAusPaket(p: {
+  perioden: FundamentalPeriode[]
+  zeilen: FundamentalMetrikZeile[]
+}): FundamentalSchaetzungenRoh {
+  const perioden = p.perioden.filter((x) => x.istSchaetzung)
+  const zeilen = p.zeilen.filter((z) => z.gruppe === 'schaetzungen' || z.id.endsWith('_schaetzung'))
+  if (zeilen.some((z) => z.id === 'eps_schaetzung' || z.id === 'umsatz_schaetzung')) {
+    return { perioden, zeilen }
+  }
+  const synth: FundamentalMetrikZeile[] = []
+  for (const [id, src] of [
+    ['umsatz_schaetzung', 'umsatz'],
+    ['eps_schaetzung', 'eps'],
+    ['ebitda_schaetzung', 'ebitda'],
+  ] as const) {
+    const z = p.zeilen.find((r) => r.id === src)
+    if (z) synth.push({ ...z, id, gruppe: 'schaetzungen', istSchaetzung: true })
+  }
+  return { perioden, zeilen: synth }
+}
+
+function cagr3AusPaketZeile(
+  zeileId: string,
+  historisch: { perioden: FundamentalPeriode[]; zeilen: FundamentalMetrikZeile[] } | undefined,
+): number | null {
+  if (!historisch) return null
+  const z = historisch.zeilen.find((r) => r.id === zeileId)
+  return cagr3AusSerie(historischeWerteAusZeile(z, historisch.perioden))
+}
+
+/** Korrigiert Erw.-CAGR und 3J-CAGR in gespeicherten Key Metrics (Quartal/Einheiten-Mix). */
+export function korrigiereFwdWachstumKeyMetrics(
+  keyMetrics: FundamentalKeyMetric[],
+  schaetzungen: FundamentalSchaetzungenRoh,
+  historisch?: { perioden: FundamentalPeriode[]; zeilen: FundamentalMetrikZeile[] },
+): FundamentalKeyMetric[] {
+  const jahresKeys = jahresSchaetzKeys(schaetzungen.perioden)
+  const rev = fwdCagrZweiJahre(
+    schaetzungen.zeilen.find((z) => z.id === 'umsatz_schaetzung'),
+    schaetzungen.zeilen.find((z) => z.id === 'umsatz_wachstum_schaetzung'),
+    jahresKeys,
+    null,
+  )
+  const eps = fwdCagrZweiJahre(
+    schaetzungen.zeilen.find((z) => z.id === 'eps_schaetzung'),
+    schaetzungen.zeilen.find((z) => z.id === 'eps_wachstum_schaetzung'),
+    jahresKeys,
+    rev,
+  )
+  const ebitda = fwdCagrZweiJahre(
+    schaetzungen.zeilen.find((z) => z.id === 'ebitda_schaetzung'),
+    undefined,
+    jahresKeys,
+    rev,
+  )
+  const rev3 = cagr3AusPaketZeile('umsatz', historisch)
+  const ebitda3 = cagr3AusPaketZeile('ebitda', historisch)
+  const eps3 = cagr3AusPaketZeile('eps', historisch)
+  return keyMetrics.map((k) => {
+    if (k.id === 'fwd_rev_cagr_2y') return { ...k, wert: pctRaw(rev) }
+    if (k.id === 'fwd_eps_cagr_2y') return { ...k, wert: pctRaw(eps) }
+    if (k.id === 'fwd_ebitda_cagr_2y' && ebitda != null) return { ...k, wert: pctRaw(ebitda) }
+    if (k.id === 'rev_cagr_3y' && historisch) return { ...k, wert: pctRaw(rev3) }
+    if (k.id === 'ebitda_cagr_3y' && historisch) return { ...k, wert: pctRaw(ebitda3) }
+    if (k.id === 'eps_cagr_3y' && historisch) return { ...k, wert: pctRaw(eps3) }
+    return k
+  })
 }

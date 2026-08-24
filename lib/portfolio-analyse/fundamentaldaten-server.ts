@@ -3,6 +3,8 @@ import 'server-only'
 import { brokerSymbolKandidaten } from '@/lib/portfolio-analyse/dividenden-datum-hilfen'
 import {
   baueKeyMetrics,
+  korrigiereFwdWachstumKeyMetrics,
+  schaetzungenRohAusPaket,
   type YahooFundamentalKennzahlen,
 } from '@/lib/portfolio-analyse/fundamentaldaten-key-metrics'
 import { ergaenzeKeyMetricsAusErweitert } from '@/lib/portfolio-analyse/fundamentaldaten-key-metrics-erweitert'
@@ -801,18 +803,26 @@ async function ladeFundamentaldatenLive(anfrage: FundamentaldatenAnfrage): Promi
   })
 }
 
+function paketMitKorrigiertemFwdWachstum(p: FundamentaldatenPaket): FundamentaldatenPaket {
+  if (!p.ok || p.keyMetrics.length === 0) return p
+  return {
+    ...p,
+    keyMetrics: korrigiereFwdWachstumKeyMetrics(p.keyMetrics, schaetzungenRohAusPaket(p), p),
+  }
+}
+
 export async function ladeFundamentaldaten(anfrage: FundamentaldatenAnfrage): Promise<FundamentaldatenPaket> {
   const modus = anfrage.cacheModus ?? 'immer'
   const cacheKey = fundamentaldatenCacheKey(anfrage)
   const cached = modus === 'erneuern' ? null : await ladeFundamentaldatenPaketCacheFuerAnfrage(anfrage)
 
-  if (cached && modus === 'nur-lesen') return cached.paket
+  if (cached && modus === 'nur-lesen') return paketMitKorrigiertemFwdWachstum(cached.paket)
   // Seite/Coach: gespeichertes Paket sofort — nicht erst 40s scrapen.
   if (cached && modus !== 'erneuern') {
     console.info(
       `[fundamental-cache] hit ${cacheKey || anfrage.isin} alter=${Math.round((Date.now() - cached.aktualisiertAm) / 60000)}min`,
     )
-    return cached.paket
+    return paketMitKorrigiertemFwdWachstum(cached.paket)
   }
   if (modus === 'nur-lesen') {
     return leeresPaket({
@@ -826,7 +836,8 @@ export async function ladeFundamentaldaten(anfrage: FundamentaldatenAnfrage): Pr
 
   const live = await ladeFundamentaldatenLive(anfrage)
   if (live.ok && cacheKey) {
-    const fp = fundamentaldatenFingerprint(live)
+    const liveKorr = paketMitKorrigiertemFwdWachstum(live)
+    const fp = fundamentaldatenFingerprint(liveKorr)
     if (cached && cached.fingerprint === fp) {
       await speichereFundamentaldatenPaketCache({
         cacheKey,
@@ -834,16 +845,17 @@ export async function ladeFundamentaldaten(anfrage: FundamentaldatenAnfrage): Pr
         paket: cached.paket,
         fingerprint: fp,
       })
-      return cached.paket
+      return paketMitKorrigiertemFwdWachstum(cached.paket)
     }
     await speichereFundamentaldatenPaketCache({
       cacheKey,
       anfrage,
-      paket: live,
+      paket: liveKorr,
       fingerprint: fp,
     })
+    return liveKorr
   } else if (cached?.paket.ok) {
-    return cached.paket
+    return paketMitKorrigiertemFwdWachstum(cached.paket)
   }
-  return live
+  return live.ok ? paketMitKorrigiertemFwdWachstum(live) : live
 }

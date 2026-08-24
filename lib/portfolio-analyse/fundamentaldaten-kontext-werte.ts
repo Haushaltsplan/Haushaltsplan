@@ -1,4 +1,4 @@
-import { cagrProzent } from '@/lib/portfolio-analyse/fundamentaldaten-format'
+import { cagr3AusSerie } from '@/lib/portfolio-analyse/fundamentaldaten-format'
 import type { YahooFundamentalKennzahlen } from '@/lib/portfolio-analyse/fundamentaldaten-key-metrics'
 import type { FundamentalSchaetzungenRoh } from '@/lib/portfolio-analyse/fundamentaldaten-schaetzungen-server'
 import type { FundamentalMetrikZeile, FundamentalPeriode } from '@/lib/portfolio-analyse/fundamentaldaten-types'
@@ -313,11 +313,9 @@ export function baueKontextWerte(ctx: FundamentalKontextInput) {
   const ebitHist = historischeWerte(ebitZeile, perioden)
   const sgaHist = historischeWerte(sgaZeile, perioden)
 
-  const umsatzCagr3 =
-    umsatzHist.length >= 2 ? cagrProzent(umsatzHist.slice(-4), Math.min(3, umsatzHist.length - 1)) : null
-  const epsCagr3 = epsHist.length >= 2 ? cagrProzent(epsHist.slice(-4), Math.min(3, epsHist.length - 1)) : null
-  const ebitdaCagr3 =
-    ebitdaHist.length >= 2 ? cagrProzent(ebitdaHist.slice(-4), Math.min(3, ebitdaHist.length - 1)) : null
+  const umsatzCagr3 = cagr3AusSerie(umsatzHist)
+  const epsCagr3 = cagr3AusSerie(epsHist)
+  const ebitdaCagr3 = cagr3AusSerie(ebitdaHist)
 
   const roiic = ctx.incrementalRoicPct ?? null
 

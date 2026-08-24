@@ -68,6 +68,33 @@ export function cagrProzent(werte: number[], jahre: number): number | null {
   return Number.isFinite(cagr) ? cagr : null
 }
 
+/**
+ * Aufeinanderfolgende Jahre mit Sprung > `maxFaktor` sind typisch Einheiten-/Perioden-Mix
+ * (Mio. vs. USD, Quartal vs. GJ). Behält die jüngste zusammenhängende Reihe.
+ */
+export function werteOhneNiveauSprung(werte: number[], maxFaktor = 2.8): number[] {
+  const roh = werte.filter((v) => Number.isFinite(v) && v > 0)
+  if (roh.length < 2) return roh
+  const out: number[] = []
+  for (let i = roh.length - 1; i >= 0; i--) {
+    const cur = roh[i]!
+    if (out.length === 0) {
+      out.unshift(cur)
+      continue
+    }
+    const ratio = out[0]! / cur
+    if (ratio > maxFaktor || ratio < 1 / maxFaktor) break
+    out.unshift(cur)
+  }
+  return out
+}
+
+export function cagr3AusSerie(werte: number[]): number | null {
+  const clean = werteOhneNiveauSprung(werte)
+  if (clean.length < 2) return null
+  return cagrProzent(clean.slice(-4), Math.min(3, clean.length - 1))
+}
+
 export function formatYahooUmsatzUsd(wert: number | null | undefined): string {
   if (wert == null || !Number.isFinite(wert)) return '–'
   return formatFundamentalWert(wert, 'waehrung_usd')

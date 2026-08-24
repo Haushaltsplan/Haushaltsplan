@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { PaFundamentalQuartalszahlen } from '@/components/portfolio-analyse/pa-fundamental-quartalszahlen'
 import { PaFundamentalMantra } from '@/components/portfolio-analyse/pa-fundamental-mantra'
 import { PaFundamentalNews } from '@/components/portfolio-analyse/pa-fundamental-news'
@@ -18,8 +18,12 @@ import {
   downloadFundamentaldatenKennzahlenCsv,
 } from '@/lib/portfolio-analyse/fundamentaldaten-export-client'
 import {
+  aktualisiereAlleFundamentaldaten,
   ladeFundamentaldatenAusLocalCache,
+  ladeFundamentaldatenCacheZiele,
   ladeFundamentaldatenClient,
+  mergenFundamentaldatenZiele,
+  type AlleAktualisierenFortschritt,
 } from '@/lib/portfolio-analyse/fundamentaldaten-client'
 import { keyMetricNavZiel } from '@/lib/portfolio-analyse/fundamentaldaten-key-metric-nav'
 import type {
@@ -41,9 +45,12 @@ const UNTER_TABS = [
 export function PaFundamentalInhalt({
   anfrage,
   selectionKey,
+  alleScrapZiele,
 }: {
   anfrage: FundamentaldatenAnfrage | null
   selectionKey?: string
+  /** Zusätzliche Titel (Depot-Dropdown / Watchlist), mergen mit Whitelist+Cloud-Watchlist. */
+  alleScrapZiele?: FundamentaldatenAnfrage[] | null
 }) {
   const [unterTab, setUnterTab] = useState<(typeof UNTER_TABS)[number]['id']>('uebersicht')
   const [daten, setDaten] = useState<FundamentaldatenPaket | null>(null)
@@ -133,13 +140,18 @@ export function PaFundamentalInhalt({
 
   const [exportLaeuft, setExportLaeuft] = useState(false)
   const [aktualisiere, setAktualisiere] = useState(false)
+  const [alleLaeuft, setAlleLaeuft] = useState(false)
+  const [alleFortschritt, setAlleFortschritt] = useState<AlleAktualisierenFortschritt | null>(null)
+  const alleAbortRef = useRef<AbortController | null>(null)
+  const effektiveAnfrageRef = useRef(effektiveAnfrage)
+  effektiveAnfrageRef.current = effektiveAnfrage
 
   const ladePaket = useCallback(async (ziel: FundamentaldatenAnfrage, erneuern: boolean) => {
     return ladeFundamentaldatenClient(erneuern ? { ...ziel, cacheModus: 'erneuern' } : ziel)
   }, [])
 
   const aktualisierePaket = useCallback(async () => {
-    if (!effektiveAnfrage || aktualisiere) return
+    if (!effektiveAnfrage || aktualisiere || alleLaeuft) return
     setAktualisiere(true)
     setFehler(null)
     try {
@@ -149,7 +161,80 @@ export function PaFundamentalInhalt({
     } finally {
       setAktualisiere(false)
     }
-  }, [effektiveAnfrage, aktualisiere, ladePaket])
+  }, [effektiveAnfrage, aktualisiere, alleLaeuft, ladePaket])
+
+  const brichAlleAb = useCallback(() => {
+    alleAbortRef.current?.abort()
+  }, [])
+
+  useEffect(() => {
+    return () => {
+      alleAbortRef.current?.abort()
+    }
+  }, [])
+
+  const aktualisiereAllePakete = useCallback(async () => {
+    if (alleLaeuft || aktualisiere) return
+    const extra = alleScrapZiele ?? []
+    let serverZiele: FundamentaldatenAnfrage[] = []
+    try {
+      serverZiele = await ladeFundamentaldatenCacheZiele()
+    } catch (e) {
+      setFehler(e instanceof Error ? e.message : 'Cache-Ziele fehlgeschlagen')
+      return
+    }
+    const ziele = mergenFundamentaldatenZiele(serverZiele, extra, effektiveAnfrage ? [effektiveAnfrage] : [])
+    if (ziele.length === 0) {
+      setFehler('Keine Titel zum Aktualisieren.')
+      return
+    }
+    const okStart = window.confirm(
+      `${ziele.length} Titel neu scrapen und den Cloud-Cache überschreiben?\n\n` +
+        'Whitelist, Watchlist und sichtbare Depot-Titel. Dauert oft 20–40 Minuten — die Seite kann offen bleiben.',
+    )
+    if (!okStart) return
+
+    const ac = new AbortController()
+    alleAbortRef.current = ac
+    setAlleLaeuft(true)
+    setFehler(null)
+    setAlleFortschritt({ index: 0, gesamt: ziele.length, name: 'Starte …', ok: true, fehlgeschlagen: 0 })
+    try {
+      const res = await aktualisiereAlleFundamentaldaten(ziele, {
+        signal: ac.signal,
+        onFortschritt: setAlleFortschritt,
+        onPaket: (ziel, paket) => {
+          const aktuell = effektiveAnfrageRef.current
+          const gleicheIsin =
+            aktuell?.isin &&
+            ziel.isin &&
+            aktuell.isin.trim().toUpperCase() === ziel.isin.trim().toUpperCase()
+          const gleichesSymbol =
+            !gleicheIsin &&
+            aktuell?.symbolYahoo &&
+            ziel.symbolYahoo &&
+            aktuell.symbolYahoo.trim().toUpperCase() === ziel.symbolYahoo.trim().toUpperCase()
+          if ((gleicheIsin || gleichesSymbol) && (aktuell?.frequenz ?? 'jahr') === 'jahr') {
+            setDaten(paket)
+          }
+        },
+      })
+      if (res.abgebrochen) {
+        setAlleFortschritt((prev) =>
+          prev ? { ...prev, abgebrochen: true, name: 'Abgebrochen' } : prev,
+        )
+      } else if (res.fehlgeschlagen > 0) {
+        setFehler(`${res.ok} aktualisiert, ${res.fehlgeschlagen} fehlgeschlagen (z. B. Timeout bei EU-Titeln).`)
+      }
+    } catch (e) {
+      if (!(e instanceof DOMException && e.name === 'AbortError')) {
+        setFehler(e instanceof Error ? e.message : 'Alle aktualisieren fehlgeschlagen')
+      }
+    } finally {
+      setAlleLaeuft(false)
+      alleAbortRef.current = null
+    }
+  }, [alleLaeuft, aktualisiere, alleScrapZiele, effektiveAnfrage])
 
   const starteJsonExport = useCallback(async () => {
     if (!daten?.ok || exportLaeuft) return
@@ -277,16 +362,36 @@ export function PaFundamentalInhalt({
             onTabChange={setUnterTab}
             kompakt={unterTab === 'uebersicht'}
             aktionen={
-              <div className="flex items-center gap-1.5">
+              <div className="flex flex-wrap items-center gap-1.5">
                 <button
                   type="button"
                   onClick={() => void aktualisierePaket()}
-                  disabled={aktualisiere || laden}
+                  disabled={aktualisiere || alleLaeuft || laden}
                   className="rounded-md border border-amber-500/25 bg-amber-500/10 px-2 py-1 text-[11px] font-medium text-amber-200 transition hover:bg-amber-500/20 disabled:opacity-50"
-                  title="Neu scrapen und Cloud-Cache überschreiben"
+                  title="Nur dieses Unternehmen neu scrapen und Cloud-Cache überschreiben"
                 >
                   {aktualisiere ? 'Aktualisiere …' : 'Aktualisieren'}
                 </button>
+                {alleLaeuft ? (
+                  <button
+                    type="button"
+                    onClick={brichAlleAb}
+                    className="rounded-md border border-red-500/30 bg-red-500/10 px-2 py-1 text-[11px] font-medium text-red-200 transition hover:bg-red-500/20"
+                    title="Laufenden Komplett-Scrape abbrechen"
+                  >
+                    Abbrechen
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => void aktualisiereAllePakete()}
+                    disabled={aktualisiere || laden}
+                    className="rounded-md border border-amber-500/40 bg-amber-500/20 px-2 py-1 text-[11px] font-medium text-amber-100 transition hover:bg-amber-500/30 disabled:opacity-50"
+                    title="Whitelist, Watchlist und Depot neu scrapen — Cache überschreiben"
+                  >
+                    Alle aktualisieren
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={() => void starteJsonExport()}
@@ -308,6 +413,19 @@ export function PaFundamentalInhalt({
               </div>
             }
           />
+
+          {alleFortschritt ? (
+            <p className="text-[11px] text-amber-200/80" aria-live="polite">
+              {alleLaeuft
+                ? `Scrape ${alleFortschritt.index}/${alleFortschritt.gesamt}: ${alleFortschritt.name}`
+                : alleFortschritt.abgebrochen
+                  ? `Abgebrochen bei ${alleFortschritt.index}/${alleFortschritt.gesamt}`
+                  : `Fertig: ${alleFortschritt.gesamt - alleFortschritt.fehlgeschlagen}/${alleFortschritt.gesamt} im Cache`}
+              {alleFortschritt.fehlgeschlagen > 0 && !alleLaeuft
+                ? ` · ${alleFortschritt.fehlgeschlagen} fehlgeschlagen`
+                : ''}
+            </p>
+          ) : null}
 
           {unterTab === 'uebersicht' ? (
             <PaFundamentalUebersicht

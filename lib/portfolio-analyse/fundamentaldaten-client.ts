@@ -63,11 +63,13 @@ function schreibeLocalCache(anfrage: FundamentaldatenAnfrage, daten: Fundamental
 
 export async function ladeFundamentaldatenClient(
   anfrage: FundamentaldatenAnfrage,
+  opts?: { signal?: AbortSignal },
 ): Promise<FundamentaldatenPaket> {
   const res = await fetch('/api/portfolio-analyse/fundamentaldaten', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(anfrage),
+    signal: opts?.signal,
   })
   const raw = await res.text()
   let j: FundamentaldatenPaket & { message?: string }
@@ -83,6 +85,117 @@ export async function ladeFundamentaldatenClient(
   }
   schreibeLocalCache(anfrage, j)
   return j
+}
+
+function zielSchluessel(z: FundamentaldatenAnfrage): string | null {
+  const isin = z.isin?.trim().toUpperCase()
+  if (isin) return `isin:${isin}`
+  const sym = z.symbolYahoo?.trim().toUpperCase()
+  if (sym) return `sym:${sym}`
+  const name = z.name?.trim().toUpperCase()
+  return name ? `name:${name}` : null
+}
+
+export function mergenFundamentaldatenZiele(
+  ...listen: Array<FundamentaldatenAnfrage[] | null | undefined>
+): FundamentaldatenAnfrage[] {
+  const map = new Map<string, FundamentaldatenAnfrage>()
+  for (const liste of listen) {
+    for (const z of liste ?? []) {
+      const key = zielSchluessel(z)
+      if (!key) continue
+      const prev = map.get(key)
+      if (!prev) {
+        map.set(key, { ...z, frequenz: 'jahr', cacheModus: 'erneuern' })
+        continue
+      }
+      const candidates = [...(prev.symbolCandidates ?? []), ...(z.symbolCandidates ?? [])]
+      map.set(key, {
+        ...prev,
+        name: prev.name || z.name,
+        symbolYahoo: prev.symbolYahoo || z.symbolYahoo,
+        symbolCandidates: [...new Set(candidates.filter(Boolean))],
+      })
+    }
+  }
+  return [...map.values()]
+}
+
+export async function ladeFundamentaldatenCacheZiele(opts?: {
+  signal?: AbortSignal
+}): Promise<FundamentaldatenAnfrage[]> {
+  const res = await fetch('/api/portfolio-analyse/fundamentaldaten/cache-ziele', {
+    cache: 'no-store',
+    signal: opts?.signal,
+  })
+  const j = (await res.json()) as { ok?: boolean; ziele?: FundamentaldatenAnfrage[]; message?: string }
+  if (!res.ok || !j.ok || !Array.isArray(j.ziele)) {
+    throw new Error(j.message ?? 'Cache-Ziele konnten nicht geladen werden.')
+  }
+  return j.ziele
+}
+
+export type AlleAktualisierenFortschritt = {
+  index: number
+  gesamt: number
+  name: string
+  ok: boolean
+  abgebrochen?: boolean
+  fehlgeschlagen: number
+}
+
+export async function aktualisiereAlleFundamentaldaten(
+  ziele: FundamentaldatenAnfrage[],
+  opts: {
+    signal?: AbortSignal
+    onFortschritt?: (info: AlleAktualisierenFortschritt) => void
+    onPaket?: (anfrage: FundamentaldatenAnfrage, paket: FundamentaldatenPaket) => void
+  },
+): Promise<{ ok: number; fehlgeschlagen: number; abgebrochen: boolean }> {
+  let ok = 0
+  let fehlgeschlagen = 0
+  for (let i = 0; i < ziele.length; i++) {
+    if (opts.signal?.aborted) {
+      return { ok, fehlgeschlagen, abgebrochen: true }
+    }
+    const ziel = ziele[i]!
+    const name = ziel.name ?? ziel.symbolYahoo ?? ziel.isin ?? 'Unbekannt'
+    try {
+      const paket = await ladeFundamentaldatenClient(
+        { ...ziel, frequenz: 'jahr', cacheModus: 'erneuern' },
+        { signal: opts.signal },
+      )
+      if (paket.ok) {
+        ok += 1
+        opts.onPaket?.(ziel, paket)
+      } else {
+        fehlgeschlagen += 1
+      }
+      opts.onFortschritt?.({
+        index: i + 1,
+        gesamt: ziele.length,
+        name,
+        ok: paket.ok,
+        fehlgeschlagen,
+      })
+    } catch (e) {
+      if (opts.signal?.aborted || (e instanceof DOMException && e.name === 'AbortError')) {
+        return { ok, fehlgeschlagen, abgebrochen: true }
+      }
+      fehlgeschlagen += 1
+      opts.onFortschritt?.({
+        index: i + 1,
+        gesamt: ziele.length,
+        name,
+        ok: false,
+        fehlgeschlagen,
+      })
+    }
+    if (i < ziele.length - 1) {
+      await new Promise((r) => setTimeout(r, 400))
+    }
+  }
+  return { ok, fehlgeschlagen, abgebrochen: false }
 }
 
 export type MantraVerlaufPunktClient = {

@@ -208,6 +208,7 @@ function ergaenzeEpsAusNetIncome(eintraege: StockanalysisJahresForecastEintrag[]
     if (e.eps != null || e.netIncomeUsd == null || e.netIncomeUsd <= 0) continue
     const eps = e.netIncomeUsd / aktien
     if (!Number.isFinite(eps) || eps <= 0) continue
+    if (ref.eps > 0 && (eps < ref.eps * 0.4 || eps > ref.eps * 2.5)) continue
     e.eps = eps
     e.adjustedEps = eps
   }
