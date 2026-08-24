@@ -12,7 +12,7 @@ export const NAV_LINK_DEFS = [
     color: 'text-orange-400',
     ring: 'focus-visible:ring-orange-500/50',
   },
-  { href: '/besitz', label: 'Besitz', shortLabel: 'Besitz', emoji: '👜', color: 'text-amber-400', ring: 'focus-visible:ring-amber-500/50' },
+  { href: '/mode', label: 'Modeberater', shortLabel: 'Mode', emoji: '👔', color: 'text-amber-400', ring: 'focus-visible:ring-amber-500/50' },
   {
     href: '/fuehrung',
     label: 'Führung',
@@ -48,7 +48,8 @@ export function mergePersistedWithKnown(saved: string[] | null | undefined): str
   const next: string[] = []
   if (Array.isArray(saved)) {
     for (const h of saved) {
-      if (known.has(h) && !next.includes(h)) next.push(h)
+      const href = h === '/besitz' ? '/mode' : h
+      if (known.has(href) && !next.includes(href)) next.push(href)
     }
   }
   for (const h of DEFAULT_HREF_ORDER) {

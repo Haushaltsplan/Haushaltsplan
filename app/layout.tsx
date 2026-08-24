@@ -20,7 +20,7 @@ export const viewport: Viewport = {
 export const metadata: Metadata = {
   title: { default: "Omnia", template: "%s · Omnia" },
   description:
-    "Omnia — Finanzen, Speisekammer, Kalender, Besitz, Markt & Prompts und mehr an einem Ort.",
+    "Omnia — Finanzen, Speisekammer, Kalender, Modeberater, Markt & Prompts und mehr an einem Ort.",
   applicationName: "Omnia",
   // app/apple-icon.png = 180×180 PNG fürs Home-Screen-Icon (nicht im icons-Array duplizieren)
   icons: {

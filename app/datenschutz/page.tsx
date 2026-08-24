@@ -60,7 +60,8 @@ export default function DatenschutzPage() {
             </li>
             <li>
               <strong className="text-[var(--app-text)]">App-Inhalte:</strong> persönliche Einträge (z. B. Finanzen,
-              Speisekammer, Kalender, Besitz, Portfolio) in Supabase, jeweils nur für den angemeldeten Nutzer.
+              Speisekammer, Kalender, Modeberater, Portfolio) — Inhalte je nach Bereich in Supabase oder nur lokal
+              im Browser, jeweils nur für dich.
             </li>
             <li>
               <strong className="text-[var(--app-text)]">Fitness &amp; WHOOP (optional):</strong> Herzfrequenz, Schlaf,
@@ -111,7 +112,7 @@ export default function DatenschutzPage() {
           <ul className="list-disc space-y-2 pl-5">
             <li>
               <strong className="text-[var(--app-text)]">Browser (localStorage):</strong> Fitness-Snapshots, Tagesarchive,
-              Profil, Import-Metadaten.
+              Profil, Modeberater (Profil und Fotos nur lokal), Import-Metadaten.
             </li>
             <li>
               <strong className="text-[var(--app-text)]">Supabase (EU/Hosting nach Projekt-Konfiguration):</strong>{' '}
@@ -130,7 +131,7 @@ export default function DatenschutzPage() {
           <ul className="list-disc space-y-2 pl-5">
             <li>Supabase (Authentifizierung &amp; Datenbank)</li>
             <li>WHOOP (Cloud-Fitnessdaten, falls verbunden)</li>
-            <li>Google Gemini / OpenAI (KI-Funktionen, z. B. Kassenbon, Besitz-Foto — nur bei aktiver Nutzung)</li>
+            <li>Google Gemini / OpenAI (KI-Funktionen, z. B. Kassenbon, Modeberater-Fotos — nur bei aktiver Nutzung)</li>
             <li>Finnhub, Yahoo u. a. (Markt-/Portfolio-Kursdaten)</li>
           </ul>
           <p>Es findet kein Verkauf personenbezogener Daten statt.</p>

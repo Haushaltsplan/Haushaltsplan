@@ -1,8 +1,9 @@
-/** Gemeinsame KI-Aufrufe (Gemini/OpenAI) für Finanz-Coach und Lager-Rezept-Coach. */
+/** Gemeinsame KI-Aufrufe (Gemini/OpenAI) für Finanz-Coach, Rezept-Coach und Modeberater. */
 
 export const COACH_MAX_MESSAGES = 24
 export const COACH_MAX_CONTENT = 8000
-export const COACH_MAX_IMAGES_PER_MESSAGE = 4
+/** Pro User-Nachricht; Modeberater hängt Person- + Kleidungsfotos an dieselbe Nachricht. */
+export const COACH_MAX_IMAGES_PER_MESSAGE = 8
 export const COACH_MAX_BASE64_CHARS_PER_IMAGE = 3_600_000
 
 export type CoachImagePart = { mimeType: string; base64: string }
