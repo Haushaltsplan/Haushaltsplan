@@ -2,7 +2,12 @@
 
 import 'server-only'
 
-import { ladeDepotGewichteMap, ladeLivePortfolioServer, type DepotGewicht } from '@/lib/portfolio-analyse/depot-gewichte-server'
+import {
+  ladeDepotGewichteMap,
+  ladeLivePortfolioServer,
+  type DepotGewicht,
+  type LivePortfolioServerPaket,
+} from '@/lib/portfolio-analyse/depot-gewichte-server'
 import { createSupabaseAdmin } from '@/lib/supabase-admin'
 import type {
   NachkaufAmpel,
@@ -318,9 +323,15 @@ function dbZeileZuEintrag(r: DbZeile): NachkaufScanEintrag {
 }
 
 /** Reichert Scan-Einträge mit aktuellen Depot-Gewichten an (In-place). */
-export async function ergaenzeDepotGewichte(eintraege: NachkaufScanEintrag[]): Promise<void> {
-  const gewichte = await ladeDepotGewichte()
-  const paket = await ladeLivePortfolioServer().catch(() => null)
+export async function ergaenzeDepotGewichte(
+  eintraege: NachkaufScanEintrag[],
+  paketVorgegeben?: LivePortfolioServerPaket | null,
+): Promise<void> {
+  const paket =
+    paketVorgegeben !== undefined
+      ? paketVorgegeben
+      : await ladeLivePortfolioServer().catch(() => null)
+  const gewichte = new Map<string, DepotGewicht>()
   const byTicker = new Map<string, number>()
   if (paket) {
     for (const p of paket.live.positionen) {

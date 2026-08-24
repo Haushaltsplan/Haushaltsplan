@@ -194,8 +194,8 @@ export type FundamentaldatenAnfrage = {
   /** Segment-Struktur nur aus Supabase-Cache (segment_struktur_cache), kein Live-MS-Scrape. */
   segmentNurCloud?: boolean
   /**
-   * `immer` (Default): Cloud-Cache, Scrape nur wenn älter als ~20h oder GuV geändert.
-   * `nur-lesen`: nur Cache, kein Scrape (Chat/Radar).
+   * `immer` (Default): Cloud-Cache sofort, Scrape nur wenn kein Paket liegt.
+   * `nur-lesen`: nur Cache, kein Scrape (Chat).
    * `erneuern`: Scrape erzwingen und Cache überschreiben.
    */
   cacheModus?: 'immer' | 'nur-lesen' | 'erneuern'

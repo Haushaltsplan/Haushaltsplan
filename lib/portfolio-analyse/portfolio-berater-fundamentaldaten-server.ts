@@ -60,7 +60,7 @@ const ZEILEN_HIGHLIGHT = [
   'bargeld',
 ] as const
 
-const HISTORIE_KERN = [
+const HISTORIE_KERN_FOKUS = [
   'umsatz',
   'nettogewinn',
   'eps',
@@ -75,6 +75,8 @@ const HISTORIE_KERN = [
   'ev_ebitda',
   'ev_rev',
 ] as const
+
+const HISTORIE_KERN_KURZ = ['umsatz', 'eps', 'fcf', 'kgv', 'ev_ebitda'] as const
 
 export type FundamentalBeraterZiel = {
   isin: string
@@ -138,7 +140,8 @@ function historie5j(p: FundamentaldatenPaket, fokus: boolean) {
   if (perioden.length === 0) return null
   const byId = new Map(p.zeilen.map((z) => [z.id, z]))
   const reihen: Record<string, Array<{ iso: string; wert: number | null }>> = {}
-  for (const id of HISTORIE_KERN) {
+  const kern = fokus ? HISTORIE_KERN_FOKUS : HISTORIE_KERN_KURZ
+  for (const id of kern) {
     const z = byId.get(id)
     if (!z) continue
     const serie = perioden.map((iso) => ({ iso, wert: z.werte[iso] ?? null }))
@@ -568,9 +571,13 @@ export async function baueQuartalsDiffFuerBerater(opts: {
       const key = `${ticker}|${typ}|${aktuellId}|${vorherId}`
       if (out.has(key)) continue
 
-      const cached = await ladeQuartalsKiDiffCache(ticker, typ, aktuellId, vorherId)
-      if (cached) {
-        out.set(key, { ticker, typ, aktuellId, vorherId, diff: cached })
+      if (maxGen > 0) {
+        const cached = await ladeQuartalsKiDiffCache(ticker, typ, aktuellId, vorherId)
+        if (cached) {
+          out.set(key, { ticker, typ, aktuellId, vorherId, diff: cached })
+          continue
+        }
+      } else {
         continue
       }
 

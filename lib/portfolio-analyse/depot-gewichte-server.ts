@@ -144,28 +144,45 @@ export type LivePortfolioServerPaket = {
   meta: Map<string, IsinMetadata>
 }
 
+const DEPOT_CACHE_MS = 3 * 60 * 1000
+let depotCache: { at: number; paket: LivePortfolioServerPaket | null } | null = null
+let depotInflight: Promise<LivePortfolioServerPaket | null> | null = null
+
+async function ladeLivePortfolioServerUncached(): Promise<LivePortfolioServerPaket | null> {
+  const [buchungen, snapshot] = await Promise.all([ladeBuchungenAdmin(), ladeSnapshotAdmin()])
+  if (buchungen.length === 0 && !snapshot?.positionen?.length) return null
+
+  const isins = sammleIsins(buchungen, snapshot)
+  const metaList = isins.length > 0 ? await lookupIsinMetadaten(isins) : []
+  const meta = new Map(metaList.map((m) => [m.isin.toUpperCase(), m]))
+
+  const positionen = positionenFuerBewertung(buchungen, snapshot)
+  const symbole = symboleAusMeta(positionen, meta)
+  const { kurse, stand, fx, stooqEur } = await ladeLiveKurseServer(symbole)
+
+  const live = berechneLivePortfolio(buchungen, snapshot, meta, kurse, stand, fx, stooqEur)
+  return { live, meta }
+}
+
 /** Live-Portfolio wie Dashboard — volle Positionen + Kennzahlen (serverseitig). */
 export async function ladeLivePortfolioServer(): Promise<LivePortfolioServerPaket | null> {
   if (!istKonfiguriert()) return null
-
-  try {
-    const [buchungen, snapshot] = await Promise.all([ladeBuchungenAdmin(), ladeSnapshotAdmin()])
-    if (buchungen.length === 0 && !snapshot?.positionen?.length) return null
-
-    const isins = sammleIsins(buchungen, snapshot)
-    const metaList = isins.length > 0 ? await lookupIsinMetadaten(isins) : []
-    const meta = new Map(metaList.map((m) => [m.isin.toUpperCase(), m]))
-
-    const positionen = positionenFuerBewertung(buchungen, snapshot)
-    const symbole = symboleAusMeta(positionen, meta)
-    const { kurse, stand, fx, stooqEur } = await ladeLiveKurseServer(symbole)
-
-    const live = berechneLivePortfolio(buchungen, snapshot, meta, kurse, stand, fx, stooqEur)
-    return { live, meta }
-  } catch (e) {
-    console.warn('[depot-gewichte] Live-Portfolio laden fehlgeschlagen:', e)
-    return null
+  if (depotCache && Date.now() - depotCache.at < DEPOT_CACHE_MS) return depotCache.paket
+  if (!depotInflight) {
+    depotInflight = ladeLivePortfolioServerUncached()
+      .then((paket) => {
+        depotCache = { at: Date.now(), paket }
+        return paket
+      })
+      .catch((e) => {
+        console.warn('[depot-gewichte] Live-Portfolio laden fehlgeschlagen:', e)
+        return null
+      })
+      .finally(() => {
+        depotInflight = null
+      })
   }
+  return depotInflight
 }
 
 /**

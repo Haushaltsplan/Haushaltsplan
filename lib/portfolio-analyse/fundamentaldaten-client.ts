@@ -5,43 +5,59 @@ import type {
   FundamentaldatenPaket,
 } from '@/lib/portfolio-analyse/fundamentaldaten-types'
 
-const LS_KEY = 'pa-fundamentaldaten-v55'
+const LS_KEY = 'pa-fundamentaldaten-v56'
 const LS_MAX_AGE_MS = 24 * 60 * 60 * 1000
+const LS_MAX_TITEL = 8
 
-function cacheKey(anfrage: FundamentaldatenAnfrage): string {
+function anfrageCacheKey(anfrage: FundamentaldatenAnfrage): string {
   return [
     anfrage.isin ?? '',
     anfrage.symbolYahoo ?? '',
     anfrage.tickerOverride ?? '',
-    anfrage.name ?? '',
     anfrage.frequenz ?? 'jahr',
   ].join('|')
+}
+
+type StoreEintrag = { paket: FundamentaldatenPaket; cachedAt: number }
+type Store = Record<string, StoreEintrag>
+
+function leseStore(): Store {
+  if (typeof window === 'undefined') return {}
+  try {
+    const raw = localStorage.getItem(LS_KEY)
+    if (!raw) return {}
+    const j = JSON.parse(raw) as Store
+    return j && typeof j === 'object' ? j : {}
+  } catch {
+    return {}
+  }
 }
 
 export function ladeFundamentaldatenAusLocalCache(
   anfrage: FundamentaldatenAnfrage,
 ): FundamentaldatenPaket | null {
-  if (typeof window === 'undefined') return null
-  try {
-    const raw = localStorage.getItem(LS_KEY)
-    if (!raw) return null
-    const j = JSON.parse(raw) as FundamentaldatenPaket & { cacheKey?: string; cachedAt?: number }
-    if (j.cacheKey !== cacheKey(anfrage) || !j.cachedAt || Date.now() - j.cachedAt > LS_MAX_AGE_MS) return null
-    return j
-  } catch {
-    return null
-  }
+  const e = leseStore()[anfrageCacheKey(anfrage)]
+  if (!e?.paket?.ok || !e.cachedAt || Date.now() - e.cachedAt > LS_MAX_AGE_MS) return null
+  return e.paket
 }
 
 function schreibeLocalCache(anfrage: FundamentaldatenAnfrage, daten: FundamentaldatenPaket): void {
-  if (typeof window === 'undefined') return
+  if (typeof window === 'undefined' || !daten.ok) return
   try {
-    localStorage.setItem(
-      LS_KEY,
-      JSON.stringify({ ...daten, cacheKey: cacheKey(anfrage), cachedAt: Date.now() }),
-    )
+    const store = leseStore()
+    store[anfrageCacheKey(anfrage)] = { paket: daten, cachedAt: Date.now() }
+    const keys = Object.keys(store)
+    if (keys.length > LS_MAX_TITEL) {
+      const sortiert = keys.sort((a, b) => (store[a]?.cachedAt ?? 0) - (store[b]?.cachedAt ?? 0))
+      for (const k of sortiert.slice(0, keys.length - LS_MAX_TITEL)) delete store[k]
+    }
+    localStorage.setItem(LS_KEY, JSON.stringify(store))
   } catch {
-    /* Speicher voll */
+    try {
+      localStorage.removeItem(LS_KEY)
+    } catch {
+      /* Speicher voll */
+    }
   }
 }
 

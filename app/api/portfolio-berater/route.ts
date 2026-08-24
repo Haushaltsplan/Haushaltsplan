@@ -115,6 +115,7 @@ export async function POST(req: Request) {
   }
 
   let context: unknown
+  const t0 = Date.now()
   try {
     context = await bauePortfolioBeraterKontext({
       focusIsin: body.focusIsin,
@@ -127,11 +128,16 @@ export async function POST(req: Request) {
   }
 
   const systemText = buildSystemPrompt(context)
+  console.info(
+    `[portfolio-berater] kontext ${Date.now() - t0}ms, prompt ${systemText.length} Zeichen`,
+  )
 
   try {
     const result = await runCoachCompletion(resolved.provider, resolved.apiKey, systemText, userMessages, {
       temperature: 0.45,
       geminiModels: portfolioBeraterGeminiModelKandidaten(),
+      geminiForcePaidApiKey: true,
+      timeoutMs: 55_000,
     })
 
     if (!result.ok) {

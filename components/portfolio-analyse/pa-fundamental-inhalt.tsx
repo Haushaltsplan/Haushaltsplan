@@ -132,6 +132,24 @@ export function PaFundamentalInhalt({
   }, [])
 
   const [exportLaeuft, setExportLaeuft] = useState(false)
+  const [aktualisiere, setAktualisiere] = useState(false)
+
+  const ladePaket = useCallback(async (ziel: FundamentaldatenAnfrage, erneuern: boolean) => {
+    return ladeFundamentaldatenClient(erneuern ? { ...ziel, cacheModus: 'erneuern' } : ziel)
+  }, [])
+
+  const aktualisierePaket = useCallback(async () => {
+    if (!effektiveAnfrage || aktualisiere) return
+    setAktualisiere(true)
+    setFehler(null)
+    try {
+      setDaten(await ladePaket(effektiveAnfrage, true))
+    } catch (e) {
+      setFehler(e instanceof Error ? e.message : 'Aktualisieren fehlgeschlagen')
+    } finally {
+      setAktualisiere(false)
+    }
+  }, [effektiveAnfrage, aktualisiere, ladePaket])
 
   const starteJsonExport = useCallback(async () => {
     if (!daten?.ok || exportLaeuft) return
@@ -260,6 +278,15 @@ export function PaFundamentalInhalt({
             kompakt={unterTab === 'uebersicht'}
             aktionen={
               <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => void aktualisierePaket()}
+                  disabled={aktualisiere || laden}
+                  className="rounded-md border border-amber-500/25 bg-amber-500/10 px-2 py-1 text-[11px] font-medium text-amber-200 transition hover:bg-amber-500/20 disabled:opacity-50"
+                  title="Neu scrapen und Cloud-Cache überschreiben"
+                >
+                  {aktualisiere ? 'Aktualisiere …' : 'Aktualisieren'}
+                </button>
                 <button
                   type="button"
                   onClick={() => void starteJsonExport()}

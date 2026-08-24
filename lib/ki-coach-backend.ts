@@ -442,6 +442,8 @@ type CallGeminiEinModellOptions = {
   jsonResponse?: CoachJsonResponseConfig
   /** Grounding mit Google Search — siehe https://ai.google.dev/gemini-api/docs/google-search */
   geminiGoogleSearch?: boolean
+  /** Abbruch der Gemini-HTTP-Anfrage (Default 90s). */
+  timeoutMs?: number
 }
 
 async function callGeminiEinModell(
@@ -476,11 +478,27 @@ async function callGeminiEinModell(
     body.tools = [{ google_search: {} }]
   }
 
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  })
+  let res: Response
+  try {
+    res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(opts.timeoutMs ?? 90_000),
+    })
+  } catch (e) {
+    const timeout = e instanceof Error && (e.name === 'TimeoutError' || e.name === 'AbortError')
+    return {
+      ok: false,
+      httpStatus: timeout ? 504 : 502,
+      hint: timeout
+        ? 'Gemini hat das Zeitlimit überschritten. Bitte nochmal senden.'
+        : e instanceof Error
+          ? e.message
+          : 'Verbindung zu Gemini fehlgeschlagen.',
+      quotaOderRateLimit: false,
+    }
+  }
 
   const raw = await res.text()
   if (!res.ok) {
@@ -606,6 +624,8 @@ export type RunCoachCompletionOptions = {
    * Nachkauf-Radar Scan — nicht Free-Tier.
    */
   geminiForcePaidApiKey?: boolean
+  /** Gemini-HTTP-Timeout in ms. */
+  timeoutMs?: number
 }
 
 export async function runCoachCompletion(
@@ -626,6 +646,7 @@ export async function runCoachCompletion(
         temperature: t,
         jsonResponse: options?.jsonResponse,
         geminiGoogleSearch: options?.geminiGoogleSearch,
+        timeoutMs: options?.timeoutMs,
       },
       options?.geminiModels,
       options?.geminiForcePaidApiKey === true,

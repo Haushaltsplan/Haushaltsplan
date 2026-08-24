@@ -11,7 +11,11 @@ import {
   ladeAlleSecBerichtKiAusCloud,
 } from '@/lib/portfolio-analyse/portfolio-ki-cache-cloud-server'
 import { ladeAlleQuartalsKiDiffAusCloud } from '@/lib/portfolio-analyse/quartals-ki-diff-cache-server'
-import { reichereNachkaufTickerKontext } from '@/lib/portfolio-analyse/nachkauf-radar/nachkauf-kontext-server'
+import {
+  ergaenzeDepotGewichte,
+  ergaenzeKaufhistorieUndNotizen,
+} from '@/lib/portfolio-analyse/nachkauf-radar/nachkauf-radar-db-server'
+import { ergaenzeScoreVerlauf } from '@/lib/portfolio-analyse/nachkauf-radar/nachkauf-radar-verlauf-server'
 import {
   ladeAlleDeepResearch,
   ladeKaufempfehlungAktuell,
@@ -213,8 +217,11 @@ async function ladeScanAngereichert(): Promise<{
     tiefenAnalyse: deepMap.get(e.ticker.toUpperCase()) ?? null,
   }))
   try {
-    await reichereNachkaufTickerKontext(mitDeep)
-    berechneTrimSignale(mitDeep)
+    // Nur Cloud/DB — kein Live-Insider-Scrape (sonst stirbt jeder Chat am Timeout).
+    await Promise.allSettled([
+      ergaenzeScoreVerlauf(mitDeep),
+      ergaenzeKaufhistorieUndNotizen(mitDeep),
+    ])
   } catch (e) {
     console.warn('[portfolio-berater] Scan-Anreicherung fehlgeschlagen:', e)
   }
@@ -403,6 +410,15 @@ export async function bauePortfolioBeraterKontext(opts?: PortfolioBeraterAnfrage
   const focusIsin = opts?.focusIsin?.trim().toUpperCase() || null
   const focusTicker = opts?.focusTicker?.trim().toUpperCase() || null
 
+  const timed = async <T>(name: string, p: Promise<T>): Promise<T> => {
+    const t = Date.now()
+    try {
+      return await p
+    } finally {
+      console.info(`[portfolio-berater] ${name} ${Date.now() - t}ms`)
+    }
+  }
+
   const [
     depotPaket,
     { scan, deepMap },
@@ -416,18 +432,21 @@ export async function bauePortfolioBeraterKontext(opts?: PortfolioBeraterAnfrage
     marktRegime,
     performance,
   ] = await Promise.all([
-    ladeLivePortfolioServer(),
-    ladeScanAngereichert(),
-    ladeNachkaufScanDatum(),
-    ladeNachkaufWatchlistAusCloud(),
-    ladeNachkaufKandidaten(),
-    ladeAlleEarningsCallKiAusCloud(),
-    ladeAlleSecBerichtKiAusCloud(),
-    ladeAlleQuartalsKiDiffAusCloud(),
-    ladeKaufempfehlungAktuell(),
-    ladeNachkaufMarktRegime().catch(() => null),
-    ladePerformanceKompakt(),
+    timed('depot', ladeLivePortfolioServer()),
+    timed('scan', ladeScanAngereichert()),
+    timed('scanDatum', ladeNachkaufScanDatum()),
+    timed('watchlist', ladeNachkaufWatchlistAusCloud()),
+    timed('kandidaten', ladeNachkaufKandidaten()),
+    timed('earningsKi', ladeAlleEarningsCallKiAusCloud()),
+    timed('secKi', ladeAlleSecBerichtKiAusCloud()),
+    timed('quartalsDiffs', ladeAlleQuartalsKiDiffAusCloud()),
+    timed('kaufempfehlung', ladeKaufempfehlungAktuell()),
+    timed('marktRegime', ladeNachkaufMarktRegime().catch(() => null)),
+    timed('performance', ladePerformanceKompakt()),
   ])
+
+  await ergaenzeDepotGewichte(scan, depotPaket)
+  berechneTrimSignale(scan)
 
   const depotIsins = new Set(
     depotPaket?.live.positionen.filter((p) => p.isin).map((p) => p.isin!.toUpperCase()) ?? [],
@@ -476,18 +495,23 @@ export async function bauePortfolioBeraterKontext(opts?: PortfolioBeraterAnfrage
 
   const scanByIsin = new Map(scan.map((e) => [e.isin.toUpperCase(), e]))
   const [quartalsDiffRaw, fundamentaldaten] = await Promise.all([
-    baueQuartalsDiffFuerBerater({
-      bestehende: quartalsDiffs,
-      secKi,
-      earningsKi,
-      relevanteTicker,
-      focusTicker,
-      // Cache zuerst; höchstens ein Live-Diff für den Fokus-Titel.
-      maxNeuGenerieren: 1,
-    }),
-    ladeFundamentaldatenFuerBerater(
-      baueFundamentalZiele({ depotPaket, focusIsin, watchlist, kandidaten }),
-      { scanByIsin },
+    timed(
+      'quartalsDiff',
+      baueQuartalsDiffFuerBerater({
+        bestehende: quartalsDiffs,
+        secKi,
+        earningsKi,
+        relevanteTicker,
+        focusTicker,
+        maxNeuGenerieren: 0,
+      }),
+    ),
+    timed(
+      'fundamentaldaten',
+      ladeFundamentaldatenFuerBerater(
+        baueFundamentalZiele({ depotPaket, focusIsin, watchlist, kandidaten }),
+        { scanByIsin, cacheModus: 'nur-lesen' },
+      ),
     ),
   ])
   const quartalsDiff = quartalsDiffRaw.map((d) => ({

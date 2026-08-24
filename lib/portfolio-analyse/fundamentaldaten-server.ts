@@ -62,8 +62,7 @@ import { ergaenzeHistorischeMultiplesZeilen } from '@/lib/portfolio-analyse/fund
 import {
   fundamentaldatenCacheKey,
   fundamentaldatenFingerprint,
-  istFundamentalCacheFrisch,
-  ladeFundamentaldatenPaketCache,
+  ladeFundamentaldatenPaketCacheFuerAnfrage,
   speichereFundamentaldatenPaketCache,
 } from '@/lib/portfolio-analyse/fundamentaldaten-paket-cache-server'
 
@@ -805,9 +804,14 @@ async function ladeFundamentaldatenLive(anfrage: FundamentaldatenAnfrage): Promi
 export async function ladeFundamentaldaten(anfrage: FundamentaldatenAnfrage): Promise<FundamentaldatenPaket> {
   const modus = anfrage.cacheModus ?? 'immer'
   const cacheKey = fundamentaldatenCacheKey(anfrage)
-  const cached = modus === 'erneuern' ? null : await ladeFundamentaldatenPaketCache(cacheKey)
+  const cached = modus === 'erneuern' ? null : await ladeFundamentaldatenPaketCacheFuerAnfrage(anfrage)
 
-  if (cached && (modus === 'nur-lesen' || istFundamentalCacheFrisch(cached.aktualisiertAm))) {
+  if (cached && modus === 'nur-lesen') return cached.paket
+  // Seite/Coach: gespeichertes Paket sofort — nicht erst 40s scrapen.
+  if (cached && modus !== 'erneuern') {
+    console.info(
+      `[fundamental-cache] hit ${cacheKey || anfrage.isin} alter=${Math.round((Date.now() - cached.aktualisiertAm) / 60000)}min`,
+    )
     return cached.paket
   }
   if (modus === 'nur-lesen') {

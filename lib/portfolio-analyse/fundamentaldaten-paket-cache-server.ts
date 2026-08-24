@@ -64,6 +64,23 @@ export function istFundamentalCacheFrisch(aktualisiertAm: number): boolean {
   return Number.isFinite(age) && age >= 0 && age < FRISCH_MS
 }
 
+function trefferAusRow(data: unknown): PaketCacheTreffer | null {
+  const row = data as {
+    cache_version: number
+    fingerprint: string
+    paket_json: FundamentaldatenPaket
+    aktualisiert_am: string
+  }
+  if (row.cache_version !== FUNDAMENTALDATEN_CACHE_VERSION) return null
+  if (!row.paket_json?.ok || !row.paket_json.zeilen?.length) return null
+  const at = Date.parse(row.aktualisiert_am)
+  return {
+    paket: row.paket_json,
+    fingerprint: row.fingerprint,
+    aktualisiertAm: Number.isFinite(at) ? at : Date.now(),
+  }
+}
+
 export async function ladeFundamentaldatenPaketCache(
   cacheKey: string,
 ): Promise<PaketCacheTreffer | null> {
@@ -78,19 +95,54 @@ export async function ladeFundamentaldatenPaketCache(
       if (error) console.warn('[fundamental-cache] laden', cacheKey, error.message)
       return null
     }
-    const row = data as {
-      cache_version: number
-      fingerprint: string
-      paket_json: FundamentaldatenPaket
-      aktualisiert_am: string
-    }
-    if (row.cache_version !== FUNDAMENTALDATEN_CACHE_VERSION) return null
-    if (!row.paket_json?.ok || !row.paket_json.zeilen?.length) return null
-    const at = Date.parse(row.aktualisiert_am)
-    if (!Number.isFinite(at)) return null
-    return { paket: row.paket_json, fingerprint: row.fingerprint, aktualisiertAm: at }
+    return trefferAusRow(data)
   } catch (e) {
     console.warn('[fundamental-cache] laden fehlgeschlagen', cacheKey, e)
+    return null
+  }
+}
+
+/** ISIN-Key, Ticker-Key, danach ISIN-Spalte — damit die UI denselben Warmup-Stand trifft. */
+export async function ladeFundamentaldatenPaketCacheFuerAnfrage(
+  anfrage: FundamentaldatenAnfrage,
+): Promise<PaketCacheTreffer | null> {
+  const freq = anfrage.frequenz === 'quartal' ? 'quartal' : 'jahr'
+  const isin = loesePortfolioIsin({
+    isin: anfrage.isin,
+    symbolYahoo: anfrage.symbolYahoo,
+    firmenname: anfrage.name,
+  })
+  const keys = new Set<string>()
+  const primary = fundamentaldatenCacheKey(anfrage)
+  if (primary) keys.add(primary)
+  if (isin && isin.length >= 12) keys.add(`${isin}|${freq}`)
+  const sym = (anfrage.tickerOverride || anfrage.symbolYahoo || '').trim().toUpperCase()
+  if (sym) {
+    keys.add(`${sym}|${freq}`)
+    const basis = sym.split('.')[0]
+    if (basis) keys.add(`${basis}|${freq}`)
+  }
+  for (const key of keys) {
+    const hit = await ladeFundamentaldatenPaketCache(key)
+    if (hit) return hit
+  }
+  if (!cloudOk() || !isin || isin.length < 12) return null
+  try {
+    const { data, error } = await createSupabaseAdmin()
+      .from(TABLE)
+      .select('cache_version, fingerprint, paket_json, aktualisiert_am')
+      .eq('isin', isin)
+      .eq('frequenz', freq)
+      .order('aktualisiert_am', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+    if (error) {
+      console.warn('[fundamental-cache] laden isin', isin, error.message)
+      return null
+    }
+    return data ? trefferAusRow(data) : null
+  } catch (e) {
+    console.warn('[fundamental-cache] laden isin fehlgeschlagen', isin, e)
     return null
   }
 }
