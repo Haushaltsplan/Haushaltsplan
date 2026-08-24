@@ -307,50 +307,58 @@ export function knotenBeschriftung(k: GewinnflussKnoten): string {
   return `${name} · ${fmtMio(k.wertMio)}`
 }
 
+export const GEWINNFLUSS_VIEW_W = 1120
+export const GEWINNFLUSS_VIEW_H = 480
+
 function ribbonPath(x0: number, y0: number, h0: number, x1: number, y1: number, h1: number): string {
   const mid = (x0 + x1) / 2
+  const h0c = Math.max(1.5, h0)
+  const h1c = Math.max(1.5, h1)
   return [
     `M ${x0} ${y0}`,
     `C ${mid} ${y0}, ${mid} ${y1}, ${x1} ${y1}`,
-    `L ${x1} ${y1 + h1}`,
-    `C ${mid} ${y1 + h1}, ${mid} ${y0 + h0}, ${x0} ${y0 + h0}`,
+    `L ${x1} ${y1 + h1c}`,
+    `C ${mid} ${y1 + h1c}, ${mid} ${y0 + h0c}, ${x0} ${y0 + h0c}`,
     'Z',
   ].join(' ')
 }
 
 export function layoutGewinnfluss(
   modell: GewinnflussModell,
-  width: number,
-  height: number,
+  width = GEWINNFLUSS_VIEW_W,
+  height = GEWINNFLUSS_VIEW_H,
 ): { knoten: GewinnflussLayoutKnoten[]; kanten: GewinnflussLayoutKante[] } {
-  const padL = modell.hatSegmente ? 168 : 96
-  const padR = 168
-  const padY = 18
-  const nodeW = 14
-  const gapY = 10
+  const padL = modell.hatSegmente ? 210 : 150
+  const padR = 200
+  const padY = 20
+  const nodeW = 16
+  const gapY = 5
   const spalten = [...new Set(modell.knoten.map((k) => k.spalte))].sort((a, b) => a - b)
-  const innerW = Math.max(240, width - padL - padR)
+  if (spalten.length === 0) return { knoten: [], kanten: [] }
+
+  const innerW = Math.max(200, width - padL - padR - nodeW)
   const colGap = spalten.length > 1 ? innerW / (spalten.length - 1) : 0
   const innerH = Math.max(80, height - padY * 2)
 
+  const colCounts = new Map<number, number>()
   const colSum = new Map<number, number>()
   for (const k of modell.knoten) {
+    colCounts.set(k.spalte, (colCounts.get(k.spalte) ?? 0) + 1)
     colSum.set(k.spalte, (colSum.get(k.spalte) ?? 0) + k.wertMio)
   }
+  const maxGaps = Math.max(0, ...[...colCounts.values()].map((n) => n - 1))
   const maxSum = Math.max(...colSum.values(), modell.umsatzMio, 1)
-  const scale = innerH / maxSum
+  const scale = (innerH - maxGaps * gapY) / maxSum
 
   const layoutKnoten: GewinnflussLayoutKnoten[] = []
   const byId = new Map<string, GewinnflussLayoutKnoten>()
 
   for (const sp of spalten) {
     const nodes = modell.knoten.filter((k) => k.spalte === sp)
-    const nGaps = Math.max(0, nodes.length - 1)
-    const colH = nodes.reduce((s, n) => s + n.wertMio * scale, 0) + nGaps * gapY
-    let y = padY + Math.max(0, (innerH - colH) / 6)
+    let y = padY
     const x = padL + (sp - spalten[0]!) * colGap
     for (const n of nodes) {
-      const hoehe = Math.max(6, n.wertMio * scale)
+      const hoehe = Math.max(2, n.wertMio * scale)
       const lk: GewinnflussLayoutKnoten = { ...n, x, y, hoehe, breite: nodeW }
       layoutKnoten.push(lk)
       byId.set(n.id, lk)
@@ -372,8 +380,10 @@ export function layoutGewinnfluss(
     const src = byId.get(k.von)
     const tgt = byId.get(k.nach)
     if (!src || !tgt) continue
-    const h0 = Math.max(2, k.wertMio * scale)
-    const h1 = h0
+    const srcLeft = Math.max(0, src.hoehe - (srcUsed.get(src.id) ?? 0))
+    const tgtLeft = Math.max(0, tgt.hoehe - (tgtUsed.get(tgt.id) ?? 0))
+    const h0 = Math.min(Math.max(1.5, k.wertMio * scale), srcLeft || src.hoehe)
+    const h1 = Math.min(Math.max(1.5, k.wertMio * scale), tgtLeft || tgt.hoehe)
     const y0 = src.y + (srcUsed.get(src.id) ?? 0)
     const y1 = tgt.y + (tgtUsed.get(tgt.id) ?? 0)
     srcUsed.set(src.id, (srcUsed.get(src.id) ?? 0) + h0)

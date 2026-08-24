@@ -1,6 +1,7 @@
 'use client'
 
-import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { chartHoverFromClientX, type ChartHoverLayout } from '@/components/portfolio-analyse/chart-hover'
 import {
   bereinigeSchaetzungsniveausInZeilen,
   formatFundamentalWert,
@@ -85,6 +86,7 @@ type ChartPunkt = {
   wert: number
   aktuell?: boolean
   istSchaetzung?: boolean
+  slotIdx?: number
 }
 
 type YAxisScale = {
@@ -387,6 +389,38 @@ export function PaFundamentalMetrikChart({
   const [vonIso, setVonIso] = useState('')
   const [bisIso, setBisIso] = useState('')
   const [chartArt, setChartArt] = useState<'linie' | 'balken'>('linie')
+  const [hiddenIds, setHiddenIds] = useState<Set<string>>(() => new Set())
+  const [hover, setHover] = useState<ChartHoverLayout | null>(null)
+  const svgWrapRef = useRef<HTMLDivElement>(null)
+
+  const legendKey = [...aktivIds].sort().join(',')
+  const legendIds = useMemo(() => (legendKey ? legendKey.split(',') : []), [legendKey])
+
+  useEffect(() => {
+    setHiddenIds(new Set())
+    setHover(null)
+  }, [legendKey])
+
+  const effektivAktiv = useMemo(() => {
+    const next = new Set<string>()
+    for (const id of legendIds) {
+      if (!hiddenIds.has(id)) next.add(id)
+    }
+    return next
+  }, [legendIds, hiddenIds])
+
+  const toggleSerie = useCallback(
+    (id: string) => {
+      onToggleSerie(id)
+      setHiddenIds((prev) => {
+        const next = new Set(prev)
+        if (next.has(id)) next.delete(id)
+        else next.add(id)
+        return next
+      })
+    },
+    [onToggleSerie],
+  )
 
   useEffect(() => {
     if (alleChartPerioden.length === 0) {
@@ -422,7 +456,7 @@ export function PaFundamentalMetrikChart({
 
   const { serien, yAchsen, dualAxis, plotH, xLabels } = useMemo(() => {
     const plotH = HOEHE - PAD_OBEN - PAD_UNTEN
-    const ausgewaehlt = zeilenClean.filter((z) => aktivIds.has(z.id))
+    const ausgewaehlt = zeilenClean.filter((z) => effektivAktiv.has(z.id))
     if (ausgewaehlt.length === 0 || gefiltertePerioden.length === 0) {
       return {
         serien: [] as ChartSerie[],
@@ -569,6 +603,7 @@ export function PaFundamentalMetrikChart({
           label: p.label,
           wert: p.wert,
           istSchaetzung: p.istSchaetzung,
+          slotIdx: idx,
         }
         if (p.istSchaetzung) schaetzPts.push(pt)
         else histPts.push(pt)
@@ -583,6 +618,7 @@ export function PaFundamentalMetrikChart({
           wert: s.aktuell.wert,
           aktuell: true,
           istSchaetzung: false,
+          slotIdx: aktuellSlotIdx,
         }
       } else if (s.aktuell && variant !== 'bewertung') {
         // Standard-Charts: Aktuell-Punkt hinter der letzten Periode
@@ -595,6 +631,7 @@ export function PaFundamentalMetrikChart({
           label: s.aktuell.label,
           wert: s.aktuell.wert,
           aktuell: true,
+          slotIdx: idx,
         }
       }
 
@@ -643,11 +680,54 @@ export function PaFundamentalMetrikChart({
     }))
 
     return { serien, yAchsen, dualAxis, plotH, xLabels }
-  }, [zeilenClean, aktivIds, gefiltertePerioden, variant, schaetzIso, padLinks])
+  }, [zeilenClean, effektivAktiv, gefiltertePerioden, variant, schaetzIso, padLinks])
 
   const effektivePlotW = VIEW_W - (dualAxis ? PAD_LINKS_DUAL : padLinks) - (dualAxis ? PAD_RECHTS_DUAL : PAD_RECHTS_SINGLE)
+  const padLHover = dualAxis ? PAD_LINKS_DUAL : padLinks
+  const padRHover = dualAxis ? PAD_RECHTS_DUAL : PAD_RECHTS_SINGLE
 
-  const hatAktiveSerien = zeilen.some((z) => aktivIds.has(z.id))
+  const onChartMove = useCallback(
+    (clientX: number) => {
+      const el = svgWrapRef.current
+      if (!el || xLabels.length === 0) return
+      setHover(
+        chartHoverFromClientX(
+          clientX,
+          el.getBoundingClientRect(),
+          VIEW_W,
+          HOEHE,
+          padLHover,
+          padRHover,
+          xLabels.length,
+        ),
+      )
+    },
+    [xLabels.length, padLHover, padRHover],
+  )
+
+  const hoverSlot = hover != null ? xLabels[hover.index] ?? null : null
+  const legendMeta = legendIds.map((id, i) => {
+    const z = zeilenClean.find((r) => r.id === id)
+    const s = serien.find((x) => x.id === id)
+    const hoverPt =
+      hover != null
+        ? [...(s?.historisch ?? []), ...(s?.schaetzung ?? []), ...(s?.aktuell ? [s.aktuell] : [])].find(
+            (p) => p.slotIdx === hover.index,
+          )
+        : null
+    return {
+      id,
+      label: z?.label ?? s?.label ?? id,
+      farbe: farbeFuerMetrik(id, i),
+      einheit: z?.einheit ?? s?.einheit ?? ('zahl' as const),
+      anzeigeWert: hoverPt?.wert ?? s?.letzterWert ?? null,
+      schnitt: s?.schnitt ?? null,
+      aktiv: !hiddenIds.has(id),
+      hoverIstSchaetzung: hoverPt?.istSchaetzung ?? false,
+    }
+  })
+
+  const hatLegend = legendIds.some((id) => zeilen.some((z) => z.id === id))
 
   const kastenKlasse = eingebettet
     ? 'bg-transparent'
@@ -657,7 +737,7 @@ export function PaFundamentalMetrikChart({
 
   const ankerId = chartId ?? 'fundamental-metrik-chart'
 
-  if (!hatAktiveSerien) {
+  if (!hatLegend) {
     return (
       <div
         id={ankerId}
@@ -674,7 +754,7 @@ export function PaFundamentalMetrikChart({
     )
   }
 
-  if (serien.length === 0) {
+  if (serien.length === 0 && hiddenIds.size === 0) {
     return (
       <div
         id={ankerId}
@@ -767,28 +847,55 @@ export function PaFundamentalMetrikChart({
           />
         </div>
 
-        <div className="mt-2 flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-[11px]">
-          {serien.map((s) => (
-            <span key={s.id} className="inline-flex items-baseline gap-1.5 text-[var(--app-text-muted)]">
-              <span className="inline-block h-2 w-3.5 shrink-0 rounded-[2px]" style={{ background: s.farbe }} aria-hidden />
+        <div className="mt-2 flex flex-wrap items-center justify-center gap-x-1 gap-y-1 text-[11px]">
+          {legendMeta.map((s) => (
+            <button
+              key={s.id}
+              type="button"
+              onClick={() => toggleSerie(s.id)}
+              title={s.aktiv ? `${s.label} ausblenden` : `${s.label} einblenden`}
+              className={`inline-flex max-w-full items-baseline gap-1.5 rounded-md px-1.5 py-0.5 transition hover:bg-[var(--app-surface-hover)] ${
+                s.aktiv ? 'text-[var(--app-text-muted)]' : 'text-[var(--app-text-muted)]/45 line-through'
+              }`}
+            >
+              <span
+                className="inline-block h-2 w-3.5 shrink-0 rounded-[2px]"
+                style={{ background: s.aktiv ? s.farbe : '#52525b' }}
+                aria-hidden
+              />
               <span>{s.label}</span>
-              {s.letzterWert != null ? (
-                <span className="font-semibold tabular-nums text-[var(--app-text)]">
-                  {formatFundamentalWert(s.letzterWert, s.einheit)}
+              {s.anzeigeWert != null ? (
+                <span className={`font-semibold tabular-nums ${s.aktiv ? 'text-[var(--app-text)]' : ''}`}>
+                  {formatFundamentalWert(s.anzeigeWert, s.einheit)}
                 </span>
               ) : null}
-              {s.schnitt != null ? (
-                <span className="tabular-nums">
-                  (Ø {formatFundamentalWert(s.schnitt, s.einheit)})
-                </span>
+              {s.aktiv && s.schnitt != null && hoverSlot == null ? (
+                <span className="tabular-nums">(Ø {formatFundamentalWert(s.schnitt, s.einheit)})</span>
               ) : null}
-            </span>
+            </button>
           ))}
         </div>
       </div>
 
       <div className="px-2 pb-3 pt-1 sm:px-4">
-        <svg viewBox={`0 0 ${VIEW_W} ${HOEHE}`} className="w-full" role="img" aria-label="Kennzahlen-Chart">
+        <div
+          ref={svgWrapRef}
+          className="relative cursor-crosshair"
+          onMouseMove={(e) => onChartMove(e.clientX)}
+          onMouseLeave={() => setHover(null)}
+        >
+        {serien.length === 0 ? (
+          <p className="py-16 text-center text-sm text-[var(--app-text-muted)]">
+            Kennzahl in der Legende anklicken, um sie wieder einzublenden.
+          </p>
+        ) : (
+        <svg
+          viewBox={`0 0 ${VIEW_W} ${HOEHE}`}
+          preserveAspectRatio="xMidYMid meet"
+          className="w-full select-none"
+          role="img"
+          aria-label="Kennzahlen-Chart"
+        >
           <defs>
             {serien.map((s) => (
               <linearGradient key={`grad-${s.id}`} id={`area-${ankerId}-${s.id}`} x1="0" y1="0" x2="0" y2="1">
@@ -964,6 +1071,38 @@ export function PaFundamentalMetrikChart({
             )
           })}
 
+          {hoverSlot ? (
+            <g pointerEvents="none">
+              <line
+                x1={hoverSlot.x}
+                y1={PAD_OBEN}
+                x2={hoverSlot.x}
+                y2={PAD_OBEN + plotH}
+                stroke="#a1a1aa"
+                strokeWidth={1}
+                strokeDasharray="4 3"
+                strokeOpacity={0.8}
+              />
+              {serien.map((s) => {
+                const pt = [...s.historisch, ...s.schaetzung, ...(s.aktuell ? [s.aktuell] : [])].find(
+                  (p) => p.slotIdx === hover?.index,
+                )
+                if (!pt) return null
+                return (
+                  <circle
+                    key={`h-${s.id}`}
+                    cx={pt.x}
+                    cy={pt.y}
+                    r={4}
+                    fill={s.farbe}
+                    stroke="#09090b"
+                    strokeWidth={1.4}
+                  />
+                )
+              })}
+            </g>
+          ) : null}
+
           {xLabels.map((xl, i) =>
             i % Math.max(1, Math.floor(xLabels.length / 8)) === 0 || i === xLabels.length - 1 ? (
               <text
@@ -988,24 +1127,52 @@ export function PaFundamentalMetrikChart({
             ) : null,
           )}
       </svg>
+        )}
+        {hover && hoverSlot && serien.length > 0 ? (
+          <div
+            className="pointer-events-none absolute top-2 z-10 min-w-[11rem] max-w-[16rem] rounded-lg border border-[var(--app-border)] bg-[var(--app-bg)]/95 px-2.5 py-2 shadow-lg shadow-black/40 ring-1 ring-white/[0.06]"
+            style={{ left: `${hover.tooltipLeftPct}%`, transform: 'translateX(-50%)' }}
+          >
+            <p className="mb-1 text-[11px] font-semibold text-[var(--app-text)]">
+              {hoverSlot.label}
+              {hoverSlot.istSchaetzung ? ' · Schätzung' : ''}
+            </p>
+            <ul className="space-y-0.5">
+              {legendMeta
+                .filter((s) => s.aktiv && s.anzeigeWert != null)
+                .map((s) => (
+                  <li key={s.id} className="flex items-baseline justify-between gap-3 text-[11px]">
+                    <span className="flex min-w-0 items-center gap-1.5 text-[var(--app-text-muted)]">
+                      <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: s.farbe }} />
+                      <span className="truncate">{s.label}</span>
+                    </span>
+                    <span className="tabular-nums text-[var(--app-text)]">
+                      {formatFundamentalWert(s.anzeigeWert, s.einheit)}
+                    </span>
+                  </li>
+                ))}
+            </ul>
+          </div>
+        ) : null}
+        </div>
 
       {kompakt ? null : (
         <ul className="mt-1 flex flex-wrap gap-x-3 gap-y-1.5 px-1 text-[10px] text-[var(--app-text-muted)]">
-          {serien.map((s) => (
+          {legendMeta.map((s) => (
             <li key={s.id}>
               <button
                 type="button"
-                onClick={() => onToggleSerie(s.id)}
+                onClick={() => toggleSerie(s.id)}
                 className="flex max-w-full items-center gap-1.5 rounded-md px-1 py-0.5 text-left transition hover:bg-[var(--app-surface-hover)]"
-                title={`${s.label} aus Chart entfernen`}
+                title={s.aktiv ? `${s.label} ausblenden` : `${s.label} einblenden`}
               >
-                <span className="h-2 w-4 shrink-0 rounded-full" style={{ background: s.farbe }} aria-hidden />
-                <span className="text-[var(--app-text-muted)]">
+                <span
+                  className="h-2 w-4 shrink-0 rounded-full"
+                  style={{ background: s.aktiv ? s.farbe : '#52525b' }}
+                  aria-hidden
+                />
+                <span className={s.aktiv ? 'text-[var(--app-text-muted)]' : 'text-[var(--app-text-muted)]/45 line-through'}>
                   {s.label}
-                  {dualAxis ? (s.yAxis === 1 ? ' (rechts)' : ' (links)') : ''}
-                </span>
-                <span className="text-[var(--app-text-muted)]" aria-hidden>
-                  ×
                 </span>
               </button>
             </li>
