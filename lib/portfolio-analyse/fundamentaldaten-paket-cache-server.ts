@@ -81,6 +81,35 @@ function trefferAusRow(data: unknown): PaketCacheTreffer | null {
   }
 }
 
+/** Mehrere Jahres-Pakete in einem Query (Depot-als-Firma). */
+export async function ladeFundamentaldatenPaketCacheViele(
+  isins: string[],
+): Promise<Map<string, FundamentaldatenPaket>> {
+  const out = new Map<string, FundamentaldatenPaket>()
+  const keys = [...new Set(isins.map((s) => s.trim().toUpperCase()).filter((s) => s.length >= 12))]
+  if (!cloudOk() || keys.length === 0) return out
+  try {
+    const { data, error } = await createSupabaseAdmin()
+      .from(TABLE)
+      .select('isin, cache_version, fingerprint, paket_json, aktualisiert_am')
+      .eq('frequenz', 'jahr')
+      .in('isin', keys)
+    if (error) {
+      console.warn('[fundamental-cache] batch', error.message)
+      return out
+    }
+    for (const row of data ?? []) {
+      const isin = String((row as { isin?: string }).isin ?? '').toUpperCase()
+      const treffer = trefferAusRow(row)
+      if (!isin || !treffer) continue
+      if (!out.has(isin)) out.set(isin, treffer.paket)
+    }
+  } catch (e) {
+    console.warn('[fundamental-cache] batch fehlgeschlagen', e)
+  }
+  return out
+}
+
 export async function ladeFundamentaldatenPaketCache(
   cacheKey: string,
 ): Promise<PaketCacheTreffer | null> {

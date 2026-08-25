@@ -170,6 +170,9 @@ function StrategieSpalte({ strategie }: { strategie: ScorecardStrategie }) {
             {strategie.score != null ? strategie.score : '–'}
           </p>
           <p className="text-[10px] uppercase tracking-wide text-[var(--app-text-muted)]">Qualität 1–10</p>
+          {strategie.hinweis ? (
+            <p className="mt-1 text-[10px] text-[var(--app-text-muted)]">{strategie.hinweis}</p>
+          ) : null}
         </div>
       </div>
     </div>
@@ -269,8 +272,8 @@ export function PaFundamentalScorecard({
         ))}
       </div>
       <p className="border-t border-[var(--app-border)] px-4 py-2 text-[10px] text-[var(--app-text-muted)]">
-        Balken und 1–10-Werte aus eigenen Fundamentaldaten (KGV-Perzentil, CAGR, Dividendenhistorie, RSI/52W) —
-        nicht die proprietären Aktienfinder-Scores.
+        Jede Spalte hat eigene Punkte zur Strategie. Qualität 1–10 nur aus diesen Balken — nicht die
+        proprietären Aktienfinder-Scores.
       </p>
     </div>
   )

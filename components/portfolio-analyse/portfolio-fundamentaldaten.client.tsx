@@ -8,6 +8,7 @@ import { usePortfolioAnalyse } from '@/components/portfolio-analyse/pa-data-prov
 import { usePortfolioBeraterFocus } from '@/components/portfolio-analyse/portfolio-berater'
 import { PortfolioAnalyseShell } from '@/components/portfolio-analyse/portfolio-analyse-shell.client'
 import { PaCard } from '@/components/portfolio-analyse/pa-ui'
+import { PaFundamentalBereichTabs } from '@/components/portfolio-analyse/pa-fundamental-bereich-tabs'
 import {
   findeFundamentalPositionIdx,
   fundamentaldatenHref,
@@ -135,6 +136,7 @@ export function PortfolioFundamentaldatenClient() {
         </PaCard>
       ) : (
         <div className="space-y-4">
+          <PaFundamentalBereichTabs aktiv="titel" />
           <PaCard className="p-3 sm:p-4">
             <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
               <label className="text-[11px] font-medium uppercase tracking-wide text-[var(--app-text-muted)]">

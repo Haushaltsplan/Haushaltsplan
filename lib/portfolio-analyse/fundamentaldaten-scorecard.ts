@@ -15,6 +15,8 @@ export type ScorecardBalkenId =
   | 'dividendenrendite'
   | 'dividendenstabilitaet'
   | 'dividendenwachstum'
+  | 'ausschuettung'
+  | 'roic'
 
 export type ScorecardStrategieId = 'dividendenertrag' | 'dividendenwachstum' | 'gewinnwachstum'
 
@@ -31,6 +33,8 @@ export type ScorecardStrategie = {
   titel: string
   score: number | null
   balken: ScorecardBalken[]
+  /** z. B. „Keine Dividende“ — Score bewusst 0, keine fehlenden Daten. */
+  hinweis: string | null
 }
 
 export type ScorecardFirma = {
@@ -51,48 +55,47 @@ export type ScorecardModell = {
   strategien: ScorecardStrategie[]
 }
 
-const BALKEN_REIHENFOLGE: ScorecardBalkenId[] = [
-  'gewinnstabilitaet',
-  'gewinnwachstum',
-  'tilgungsjahre',
-  'momentum',
-  'discount',
-  'dividendenrendite',
-  'dividendenstabilitaet',
-  'dividendenwachstum',
-]
+/** Spalten-Punkte: nur die Kennzahlen der jeweiligen Strategie, wichtigste zuerst. */
+const ANZEIGE_BALKEN: Record<ScorecardStrategieId, ScorecardBalkenId[]> = {
+  dividendenertrag: [
+    'dividendenrendite',
+    'ausschuettung',
+    'dividendenstabilitaet',
+    'tilgungsjahre',
+    'dividendenwachstum',
+  ],
+  dividendenwachstum: [
+    'dividendenwachstum',
+    'gewinnwachstum',
+    'dividendenstabilitaet',
+    'gewinnstabilitaet',
+    'discount',
+  ],
+  gewinnwachstum: ['gewinnwachstum', 'gewinnstabilitaet', 'roic', 'momentum', 'discount'],
+}
 
-/** Gewicht je Strategie — gleiche Balken, andere Betonung. Summe je Strategie = 1. */
-const GEWICHTE: Record<ScorecardStrategieId, Record<ScorecardBalkenId, number>> = {
+/** Gewicht nur der angezeigten Balken — Summe je Strategie = 1. */
+const GEWICHTE: Record<ScorecardStrategieId, Partial<Record<ScorecardBalkenId, number>>> = {
   dividendenertrag: {
-    gewinnstabilitaet: 0.12,
-    gewinnwachstum: 0.08,
-    tilgungsjahre: 0.15,
-    momentum: 0.05,
-    discount: 0.1,
-    dividendenrendite: 0.25,
-    dividendenstabilitaet: 0.15,
-    dividendenwachstum: 0.1,
+    dividendenrendite: 0.28,
+    ausschuettung: 0.2,
+    dividendenstabilitaet: 0.2,
+    tilgungsjahre: 0.16,
+    dividendenwachstum: 0.16,
   },
   dividendenwachstum: {
-    gewinnstabilitaet: 0.12,
-    gewinnwachstum: 0.18,
-    tilgungsjahre: 0.08,
-    momentum: 0.08,
-    discount: 0.1,
-    dividendenrendite: 0.08,
-    dividendenstabilitaet: 0.14,
-    dividendenwachstum: 0.22,
+    dividendenwachstum: 0.28,
+    gewinnwachstum: 0.24,
+    dividendenstabilitaet: 0.18,
+    gewinnstabilitaet: 0.16,
+    discount: 0.14,
   },
   gewinnwachstum: {
-    gewinnstabilitaet: 0.2,
-    gewinnwachstum: 0.28,
-    tilgungsjahre: 0.1,
-    momentum: 0.14,
+    gewinnwachstum: 0.3,
+    gewinnstabilitaet: 0.22,
+    roic: 0.18,
+    momentum: 0.16,
     discount: 0.14,
-    dividendenrendite: 0.04,
-    dividendenstabilitaet: 0.04,
-    dividendenwachstum: 0.06,
   },
 }
 
@@ -164,13 +167,63 @@ function fmtPct(v: number | null | undefined, digits = 1): string {
   return `${vz}${v.toLocaleString('de-DE', { minimumFractionDigits: digits, maximumFractionDigits: digits })} %`
 }
 
-function score1bis10(balken: ScorecardBalken[], gewichte: Record<ScorecardBalkenId, number>): number | null {
+/** Unter dieser Rendite gilt die Aktie als Nichtzahler (Rauschen / 0,0 %). */
+const DIVIDENDEN_MIN_YIELD_PCT = 0.05
+
+function letzterDividendenCashflowMio(paket: FundamentaldatenPaket): number | null {
+  const v = letzterVerfuegbarerWert(zeile(paket, 'dividenden_gezahlt'), paket.perioden)
+  return v != null && Number.isFinite(v) ? Math.abs(v) : null
+}
+
+function exDateIstAktuell(iso: string | null | undefined, maxTage = 420): boolean {
+  if (!iso) return false
+  const t = Date.parse(iso)
+  if (!Number.isFinite(t)) return false
+  return Date.now() - t <= maxTage * 86_400_000
+}
+
+/**
+ * Zahlt das Unternehmen aktuell eine Dividende?
+ * Explizite 0-%-Rendite schlägt alte Cashflow-Reste; fehlende Rendite + Historie zählt als Zahler.
+ */
+function zahltDividende(
+  paket: FundamentaldatenPaket,
+  divYieldZahl: number | null,
+  payoutZahl: number | null,
+): boolean {
+  if (divYieldZahl != null && divYieldZahl > DIVIDENDEN_MIN_YIELD_PCT) return true
+  if (divYieldZahl != null && divYieldZahl <= DIVIDENDEN_MIN_YIELD_PCT) return false
+
+  const div = paket.erweitert?.dividenden
+  if (div && (div.letzteDividendeUsd ?? 0) > 0 && exDateIstAktuell(div.letzteExDate)) return true
+  if (div && (div.anzahlZahlungen ?? 0) > 0 && (div.cagr5yPct != null || div.cagr10yPct != null)) {
+    return true
+  }
+
+  const cf = letzterDividendenCashflowMio(paket)
+  if (cf != null && cf > 0.05) return true
+  if (payoutZahl != null && payoutZahl > 1) return true
+
+  return false
+}
+
+function keineDividendePaket(paket: FundamentaldatenPaket): boolean {
+  const y = kmZahl(paket, 'div_yield')
+  const p = kmZahl(paket, 'payout')
+  return !zahltDividende(paket, y, p)
+}
+
+function score1bis10(
+  balken: ScorecardBalken[],
+  gewichte: Partial<Record<ScorecardBalkenId, number>>,
+): number | null {
   let acc = 0
   let wSum = 0
   let n = 0
   for (const b of balken) {
     if (b.position == null) continue
-    const w = gewichte[b.id]
+    const w = gewichte[b.id] ?? 0
+    if (w <= 0) continue
     acc += b.position * w
     wSum += w
     n++
@@ -230,11 +283,18 @@ function baueBalken(paket: FundamentaldatenPaket): ScorecardBalken[] {
       : '–'
 
   const divYield = paket.keyMetrics.find((m) => m.id === 'div_yield')
-  const divYieldZahl = divYield ? parseMetricZahl(divYield.wert) : null
+  const divYieldZahl = divYield ? (kmZahl(paket, 'div_yield') ?? parseMetricZahl(divYield.wert)) : null
   const div = paket.erweitert?.dividenden ?? null
-  const divStabJahre = div?.jahreOhneSenkung ?? null
-  const divCagr = div?.cagr10yPct ?? div?.cagr5yPct ?? null
-  const divCagrJahre = div?.cagr10yPct != null ? 10 : div?.cagr5yPct != null ? 5 : null
+  const payoutZahl = kmZahl(paket, 'payout')
+  const payoutText = kmText(paket, 'payout')
+  const keineDividende = keineDividendePaket(paket)
+
+  const divStabJahre = keineDividende ? 0 : (div?.jahreOhneSenkung ?? null)
+  const divCagr = keineDividende ? 0 : (div?.cagr10yPct ?? div?.cagr5yPct ?? null)
+  const divCagrJahre = keineDividende ? null : div?.cagr10yPct != null ? 10 : div?.cagr5yPct != null ? 5 : null
+
+  const roicZahl = kmZahl(paket, 'ltm_roic') ?? kmZahl(paket, 'roic')
+  const roicText = kmText(paket, 'ltm_roic') ?? kmText(paket, 'roic')
 
   const wachstumJahre = wachstum?.jahre ?? null
 
@@ -266,22 +326,41 @@ function baueBalken(paket: FundamentaldatenPaket): ScorecardBalken[] {
     },
     dividendenrendite: {
       label: 'Dividendenrendite',
-      wertText: divYield?.wert && divYield.wert !== '–' ? divYield.wert : '–',
-      position: divYieldZahl != null ? linear(divYieldZahl, 0, 5) : null,
+      wertText: keineDividende
+        ? 'keine Dividende'
+        : divYield?.wert && divYield.wert !== '–'
+          ? divYield.wert
+          : '–',
+      position: keineDividende ? 0 : divYieldZahl != null ? linear(divYieldZahl, 0, 5) : null,
     },
     dividendenstabilitaet: {
       label: 'Dividendenstabilität',
-      wertText: divStabJahre != null ? `${divStabJahre} J. ohne Senkung` : '–',
-      position: divStabJahre != null ? linear(divStabJahre, 0, 25) : null,
+      wertText: keineDividende
+        ? 'keine Dividende'
+        : divStabJahre != null
+          ? `${divStabJahre} J. ohne Senkung`
+          : '–',
+      position: keineDividende ? 0 : divStabJahre != null ? linear(divStabJahre, 0, 25) : null,
     },
     dividendenwachstum: {
       label: divCagrJahre === 5 ? 'Dividendenwachstum 5J' : 'Dividendenwachstum 10J',
-      wertText: fmtPct(divCagr),
-      position: divCagr != null ? linear(divCagr, -5, 15) : null,
+      wertText: keineDividende ? 'keine Dividende' : fmtPct(divCagr),
+      position: keineDividende ? 0 : divCagr != null ? linear(divCagr, -5, 15) : null,
+    },
+    ausschuettung: {
+      label: 'Ausschüttungsquote',
+      wertText: keineDividende ? 'keine Dividende' : (payoutText ?? '–'),
+      // 0 % ohne Dividende ist kein Plus; sonst niedrige Quote = nachhaltiger.
+      position: keineDividende ? 0 : payoutZahl != null ? linear(payoutZahl, 75, 15) : null,
+    },
+    roic: {
+      label: 'ROIC',
+      wertText: roicText ?? '–',
+      position: roicZahl != null ? linear(roicZahl, 8, 30) : null,
     },
   }
 
-  return BALKEN_REIHENFOLGE.map((id) => ({ id, ...werte[id] }))
+  return (Object.keys(werte) as ScorecardBalkenId[]).map((id) => ({ id, ...werte[id] }))
 }
 
 const STRATEGIE_TITEL: Record<ScorecardStrategieId, string> = {
@@ -291,15 +370,25 @@ const STRATEGIE_TITEL: Record<ScorecardStrategieId, string> = {
 }
 
 export function baueScorecard(paket: FundamentaldatenPaket, isin?: string | null): ScorecardModell {
-  const balken = baueBalken(paket)
+  const alle = baueBalken(paket)
+  const byId = new Map(alle.map((b) => [b.id, b]))
+  const keineDiv = keineDividendePaket(paket)
   const strategien: ScorecardStrategie[] = (
     ['dividendenertrag', 'dividendenwachstum', 'gewinnwachstum'] as const
-  ).map((id) => ({
-    id,
-    titel: STRATEGIE_TITEL[id],
-    score: score1bis10(balken, GEWICHTE[id]),
-    balken,
-  }))
+  ).map((id) => {
+    const balken = ANZEIGE_BALKEN[id].flatMap((bid) => {
+      const b = byId.get(bid)
+      return b ? [b] : []
+    })
+    const dividendenspalte = id === 'dividendenertrag' || id === 'dividendenwachstum'
+    return {
+      id,
+      titel: STRATEGIE_TITEL[id],
+      score: keineDiv && dividendenspalte ? 0 : score1bis10(balken, GEWICHTE[id]),
+      balken,
+      hinweis: keineDiv && dividendenspalte ? 'Keine Dividende' : null,
+    }
+  })
 
   return {
     firma: {
