@@ -517,7 +517,19 @@ export function baueKeyMetrics(
       ),
       gruppe: 'bewertung_ltm',
     },
-    { id: 'div_yield', label: 'Dividendenrendite', wert: pctRaw(w?.divYieldPct ?? (yahoo?.dividendYield != null ? yahoo.dividendYield * 100 : null)), gruppe: 'bewertung_ltm' },
+    {
+      id: 'div_yield',
+      label: 'Dividendenrendite',
+      wert: pctRaw(
+        w?.divYieldPct ??
+          (yahoo?.dividendYield != null && yahoo.dividendYield > 0
+            ? yahoo.dividendYield < 0.2
+              ? yahoo.dividendYield * 100
+              : yahoo.dividendYield
+            : null),
+      ),
+      gruppe: 'bewertung_ltm',
+    },
     {
       id: 'payout',
       label: 'Ausschüttungsquote',

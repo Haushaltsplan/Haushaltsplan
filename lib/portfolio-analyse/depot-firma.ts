@@ -290,6 +290,15 @@ function nettoMargeAusPaket(paket: FundamentaldatenPaket): number | null {
   return (ni / umsatz) * 100
 }
 
+/** Trailing-Yield; >12 % ist fast immer Payout/KGV-Einheitenfehler (z. B. USU 163 %). */
+function divYieldAusPaket(paket: FundamentaldatenPaket): number | null {
+  const v = kmZahl(paket, 'div_yield')
+  if (v == null || v < 0) return null
+  const pct = v > 0 && v < 0.2 ? v * 100 : v
+  if (pct > 12) return null
+  return pct
+}
+
 /** 3J wie Key Metric; 5J/10J nur mit voller Spanne, gleiche Serie wie die Einzelaktie. */
 function cagrAusPaket(
   paket: FundamentaldatenPaket,
@@ -338,12 +347,15 @@ export function baueDepotFirmaModell(opts: {
   const epsCagr3Acc = leerAcc()
   const epsCagr5Acc = leerAcc()
   const epsCagr10Acc = leerAcc()
+  let indicatedDivMio = 0
 
   for (const p of aktien) {
     const paket = opts.pakete.get(p.isin.toUpperCase())
     const w = opts.modus === 'gleichgewicht' ? (n > 0 ? 1 / n : 0) : depotwertEur > 0 ? p.wertEur / depotwertEur : 0
     if (!paket?.ok || w <= 0) continue
 
+    const positionUsd = opts.modus === 'gleichgewicht' ? depotUsd / n : p.wertEur * eurUsd
+    const divY = divYieldAusPaket(paket)
     addMittel(umsatzCagr3Acc, cagrAusPaket(paket, 'umsatz', 3, 'rev_cagr_3y'), w)
     addMittel(umsatzCagr5Acc, cagrAusPaket(paket, 'umsatz', 5), w)
     addMittel(umsatzCagr10Acc, cagrAusPaket(paket, 'umsatz', 10), w)
@@ -358,9 +370,9 @@ export function baueDepotFirmaModell(opts: {
     addMittel(fcfMAcc, fcfMargeAusPaket(paket), w)
     addMittel(roicAcc, kmZahl(paket, 'ltm_roic') ?? roicPctAusPaket(paket), w)
     addMittel(ndEbitdaAcc, kmZahl(paket, 'net_debt_ebitda'), w)
-    addMittel(divYieldAcc, kmZahl(paket, 'div_yield'), w)
+    addMittel(divYieldAcc, divY, w)
+    if (divY != null && divY > 0) indicatedDivMio += (positionUsd * divY) / 100 / 1_000_000
 
-    const positionUsd = opts.modus === 'gleichgewicht' ? depotUsd / n : p.wertEur * eurUsd
     const mcap = marketCapUsd(paket, fx)
     // Marktkapitalisierung (Listing-Währung → USD) ist robuster als Stückzahl:
     // Dual-Class, EUR-Titel und Macrotrends-Aktienzahl weichen oft um den Faktor 10 ab.
@@ -514,9 +526,9 @@ export function baueDepotFirmaModell(opts: {
         kz(
           'div_abs',
           'Dividenden (Anteil)',
-          formatFundamentalWert(lt.div > 0 ? lt.div : 0, 'waehrung_usd_mio'),
-          lt.wDiv,
-          lt.nDiv,
+          formatFundamentalWert(indicatedDivMio > 0 ? indicatedDivMio : 0, 'waehrung_usd_mio'),
+          divYieldAcc.w,
+          divYieldAcc.n,
         ),
       ],
     },

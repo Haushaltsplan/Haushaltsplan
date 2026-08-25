@@ -358,16 +358,26 @@ export function baueKontextWerte(ctx: FundamentalKontextInput) {
   const assetTurnover = letzterWert(kapitalumschlagZeile, perioden)
 
   const payoutPct = berechneAusschuettungsquotePct(ctx)
+  const yahooYld = ctx.yahoo?.dividendYield
+  const yahooYldPct =
+    yahooYld != null && yahooYld > 0
+      ? yahooYld < 0.2
+        ? yahooYld * 100
+        : yahooYld
+      : null
+  const kursYldPct =
+    ctx.yahoo?.trailingAnnualDividendRate != null &&
+    ctx.yahoo?.currentPrice != null &&
+    ctx.yahoo.currentPrice > 0
+      ? (ctx.yahoo.trailingAnnualDividendRate / ctx.yahoo.currentPrice) * 100
+      : null
+  const payoutYldPct =
+    payoutPct != null && fwdPe != null && fwdPe > 0 ? payoutPct / fwdPe : null
+  const divYieldRoh = yahooYldPct ?? kursYldPct ?? payoutYldPct
   const divYieldPct =
-    ctx.yahoo?.dividendYield != null && ctx.yahoo.dividendYield > 0
-      ? Math.round(ctx.yahoo.dividendYield * 1000) / 10
-      : ctx.yahoo?.trailingAnnualDividendRate != null &&
-          ctx.yahoo?.currentPrice != null &&
-          ctx.yahoo.currentPrice > 0
-        ? Math.round((ctx.yahoo.trailingAnnualDividendRate / ctx.yahoo.currentPrice) * 1000) / 10
-        : payoutPct != null && fwdPe != null && fwdPe > 0
-          ? Math.round((payoutPct / fwdPe) * 1000) / 10
-          : null
+    divYieldRoh != null && Number.isFinite(divYieldRoh) && divYieldRoh > 0 && divYieldRoh <= 15
+      ? Math.round(divYieldRoh * 10) / 10
+      : null
   const pb = ctx.yahoo?.priceToBook ?? null
 
   const aktienSinkend =
