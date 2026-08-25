@@ -17,33 +17,11 @@ function formatEurKompakt(n: number): string {
 }
 
 function labelFuerPeriodKey(key: PeriodPerformance['periodKey']): string {
-  switch (key) {
-    case '1T':
-      return 'Heute'
-    case '1W':
-      return '7 Tage'
-    case '1M':
-      return '30 Tage'
-    case '3M':
-      return '3 Monate'
-    case '6M':
-      return '6 Monate'
-    case 'MTD':
-      return 'MTD'
-    case 'YTD':
-      return 'YTD'
-    case '1J':
-      return '1 Jahr'
-    case '3J':
-      return '3 Jahre'
-    case '5J':
-      return '5 Jahre'
-    case 'MAX':
-      return 'Seit Kauf'
-    default:
-      return 'Heute'
-  }
+  if (key === 'MAX') return 'Seit Kauf'
+  return 'Heute'
 }
+
+const DASHBOARD_ZEITRAEUME = ['1T', 'MAX'] as const satisfies ReadonlyArray<PeriodPerformance['periodKey']>
 
 function portfolioTitel(positionen: LivePosition[]): string {
   const klassen = [...new Set(positionen.map((p) => p.assetKlasse))]
@@ -227,9 +205,7 @@ export function PaPortfolioHero({
                 className="rounded-lg border border-white/[0.06] bg-[var(--app-surface-muted)]/30 px-3 py-1.5 text-sm text-[var(--app-text)] outline-none transition hover:border-white/[0.12] focus:ring-2 focus:ring-cyan-500/40"
                 aria-label="Zeitraum wählen"
               >
-                {(
-                  ['1T', '1W', '1M', '3M', '6M', '1J', '3J', '5J', 'MTD', 'YTD', 'MAX'] as const
-                ).map((k) => (
+                {DASHBOARD_ZEITRAEUME.map((k) => (
                   <option key={k} value={k}>
                     {labelFuerPeriodKey(k)}
                   </option>
