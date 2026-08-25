@@ -3,8 +3,8 @@
  * ETFs/Anleihen/Crypto gehören nicht hierher — nur assetKlasse aktie.
  */
 
-import { cagrProzent, formatFundamentalWert } from '@/lib/portfolio-analyse/fundamentaldaten-format'
-import { letzterVerfuegbarerWert } from '@/lib/portfolio-analyse/fundamentaldaten-roic-hilfen'
+import { cagr3AusSerie, cagrProzent, formatFundamentalWert, werteOhneNiveauSprung } from '@/lib/portfolio-analyse/fundamentaldaten-format'
+import { historischeWerteAusZeile, letzterVerfuegbarerWert } from '@/lib/portfolio-analyse/fundamentaldaten-roic-hilfen'
 import type { FxKurse } from '@/lib/portfolio-analyse/kurs-aufloesung'
 import type { FundamentaldatenPaket } from '@/lib/portfolio-analyse/fundamentaldaten-types'
 
@@ -50,7 +50,6 @@ export type DepotFirmaAntwort = {
   fehlend: Array<{ isin: string; name: string }>
 }
 
-const STEUER = 0.21
 const MIN_ABDECKUNG = 0.45
 
 function round1(n: number): number {
@@ -131,44 +130,27 @@ function marketCapUsd(paket: FundamentaldatenPaket, fx: FxKurse): number | null 
   return nachUsd(raw, listingWaehrung(paket), fx)
 }
 
+/** Dieselbe ROIC-%-Quelle wie die Aktien-Übersicht (Zeile `roi` / Key Metric `ltm_roic`). */
+function roicPctAusPaket(paket: FundamentaldatenPaket): number | null {
+  for (const id of ['roi', 'roi_ex_goodwill'] as const) {
+    const v = snapshotMio(paket, id)
+    if (v != null && Number.isFinite(v) && Math.abs(v) < 400) return v
+  }
+  for (const id of ['ltm_roic', 'ltm_roic_ex_gw'] as const) {
+    const km = paket.keyMetrics.find((m) => m.id === id)
+    if (km?.zahl != null && Number.isFinite(km.zahl) && Math.abs(km.zahl) < 400) return km.zahl
+    const parsed = parseDeZahl(km?.wert)
+    if (parsed != null && Math.abs(parsed) < 400) return parsed
+  }
+  return null
+}
+
 function sharesOut(paket: FundamentaldatenPaket): number | null {
   const mio = snapshotMio(paket, 'aktien')
   if (mio != null && mio > 0) return mio * 1_000_000
   const km = paket.keyMetrics.find((m) => m.id === 'shares_out')
   const parsed = parseDeZahl(km?.wert)
   return parsed != null && parsed > 0 ? parsed : null
-}
-
-function jahrVonIso(iso: string): number | null {
-  const y = Number(iso.slice(0, 4))
-  return Number.isFinite(y) && y >= 1990 && y <= 2100 ? y : null
-}
-
-type HistPunkt = { umsatz: number | null; gewinn: number | null; fcf: number | null }
-
-function historieNachJahr(paket: FundamentaldatenPaket): Map<number, HistPunkt> {
-  const map = new Map<number, HistPunkt>()
-  const perioden = paket.perioden.filter((p) => !p.istLtm && !p.istNtm && !p.istSchaetzung && !p.iso.startsWith('__'))
-  const u = zeile(paket, 'umsatz')
-  const ni = zeile(paket, 'nettogewinn')
-  const fcf = zeile(paket, 'fcf')
-  for (const p of perioden) {
-    const jahr = jahrVonIso(p.iso)
-    if (jahr == null) continue
-    const punkt: HistPunkt = {
-      umsatz: u?.werte[p.iso] ?? null,
-      gewinn: ni?.werte[p.iso] ?? null,
-      fcf: fcf?.werte[p.iso] ?? null,
-    }
-    const prev = map.get(jahr)
-    if (!prev) {
-      map.set(jahr, punkt)
-      continue
-    }
-    // Späteres GJ-Ende im selben Kalenderjahr gewinnt.
-    map.set(jahr, punkt)
-  }
-  return map
 }
 
 type Lookthrough = {
@@ -196,8 +178,6 @@ type Lookthrough = {
   nDiv: number
   nNd: number
   nEk: number
-  histUmsatz: Map<number, { sum: number; w: number }>
-  histGewinn: Map<number, { sum: number; w: number }>
 }
 
 function leerLt(): Lookthrough {
@@ -226,16 +206,7 @@ function leerLt(): Lookthrough {
     nDiv: 0,
     nNd: 0,
     nEk: 0,
-    histUmsatz: new Map(),
-    histGewinn: new Map(),
   }
-}
-
-function addHist(map: Map<number, { sum: number; w: number }>, jahr: number, add: number, w: number) {
-  const cur = map.get(jahr) ?? { sum: 0, w: 0 }
-  cur.sum += add
-  cur.w += w
-  map.set(jahr, cur)
 }
 
 function kz(
@@ -248,7 +219,6 @@ function kz(
   return { id, label, wertText, abdeckungPct: round1(abdeckung * 100), n }
 }
 
-
 function pctText(v: number | null, mitVorzeichen = false): string {
   if (v == null || !Number.isFinite(v)) return '–'
   const vz = mitVorzeichen && v > 0 ? '+' : ''
@@ -260,24 +230,82 @@ function multipleText(v: number | null): string {
   return `${v.toLocaleString('de-DE', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}×`
 }
 
-function cagrAusLookthrough(hist: Map<number, { sum: number; w: number }>, jahre: number): number | null {
-  const rows = [...hist.entries()]
-    .filter(([, v]) => v.w >= MIN_ABDECKUNG && v.sum > 0)
-    .sort((a, b) => a[0] - b[0])
-  if (rows.length < 2) return null
-  const last = rows[rows.length - 1]!
-  const targetJahr = last[0] - jahre
-  let start: (typeof rows)[number] | null = null
-  let best = Infinity
-  for (const r of rows) {
-    const d = Math.abs(r[0] - targetJahr)
-    if (d < best || (d === best && start != null && r[0] < start[0])) {
-      best = d
-      start = r
-    }
+type GewichtAcc = { gewichtet: number; w: number; n: number }
+
+function leerAcc(): GewichtAcc {
+  return { gewichtet: 0, w: 0, n: 0 }
+}
+
+function addMittel(acc: GewichtAcc, wert: number | null, w: number) {
+  if (wert == null || !Number.isFinite(wert) || w <= 0) return
+  acc.gewichtet += wert * w
+  acc.w += w
+  acc.n += 1
+}
+
+function mittel(acc: GewichtAcc): number | null {
+  if (acc.n === 0 || acc.w < MIN_ABDECKUNG) return null
+  return acc.gewichtet / acc.w
+}
+
+function kmZahl(paket: FundamentaldatenPaket, id: string): number | null {
+  const km = paket.keyMetrics.find((m) => m.id === id)
+  if (!km) return null
+  if (km.zahl != null && Number.isFinite(km.zahl)) return km.zahl
+  const t = km.wert?.trim()
+  if (!t || t === '–' || t === '-' || t === 'NM') return null
+  return parseDeZahl(t)
+}
+
+function kgvAusPaket(paket: FundamentaldatenPaket): number | null {
+  const v = kmZahl(paket, 'ltm_pe')
+  return v != null && v > 0 ? v : null
+}
+
+function kcvAusPaket(paket: FundamentaldatenPaket): number | null {
+  const v = kmZahl(paket, 'ltm_pfcf')
+  return v != null && v > 0 ? v : null
+}
+
+function kuvAusPaket(paket: FundamentaldatenPaket): number | null {
+  const v = kmZahl(paket, 'ltm_ps')
+  return v != null && v > 0 ? v : null
+}
+
+function fcfMargeAusPaket(paket: FundamentaldatenPaket): number | null {
+  const z = snapshotMio(paket, 'fcf_marge')
+  if (z != null && Number.isFinite(z)) return z
+  const fcf = snapshotMio(paket, 'fcf')
+  const umsatz = snapshotMio(paket, 'umsatz')
+  if (fcf == null || umsatz == null || umsatz <= 0) return null
+  return (fcf / umsatz) * 100
+}
+
+function nettoMargeAusPaket(paket: FundamentaldatenPaket): number | null {
+  const z = snapshotMio(paket, 'nettomarge')
+  if (z != null && Number.isFinite(z)) return z
+  const ni = snapshotMio(paket, 'nettogewinn')
+  const umsatz = snapshotMio(paket, 'umsatz')
+  if (ni == null || umsatz == null || umsatz <= 0) return null
+  return (ni / umsatz) * 100
+}
+
+/** 3J wie Key Metric; 5J/10J nur mit voller Spanne, gleiche Serie wie die Einzelaktie. */
+function cagrAusPaket(
+  paket: FundamentaldatenPaket,
+  zeileId: string,
+  jahre: number,
+  kmId?: string,
+): number | null {
+  if (jahre === 3 && kmId) {
+    const fromKm = kmZahl(paket, kmId)
+    if (fromKm != null) return fromKm
   }
-  if (!start || start[0] >= last[0] || best > 1) return null
-  return cagrProzent([start[1].sum, last[1].sum], last[0] - start[0])
+  const hist = historischeWerteAusZeile(zeile(paket, zeileId), paket.perioden)
+  if (jahre <= 3) return cagr3AusSerie(hist)
+  const slice = werteOhneNiveauSprung(hist).slice(-(jahre + 1))
+  if (slice.length < jahre + 1) return null
+  return cagrProzent(slice, jahre)
 }
 
 export function baueDepotFirmaModell(opts: {
@@ -295,11 +323,42 @@ export function baueDepotFirmaModell(opts: {
   const lt = leerLt()
   let lookthroughGewicht = 0
   let mitLookthrough = 0
+  const peAcc = leerAcc()
+  const kcvAcc = leerAcc()
+  const kuvAcc = leerAcc()
+  const ebitMAcc = leerAcc()
+  const nettoMAcc = leerAcc()
+  const fcfMAcc = leerAcc()
+  const roicAcc = leerAcc()
+  const ndEbitdaAcc = leerAcc()
+  const divYieldAcc = leerAcc()
+  const umsatzCagr3Acc = leerAcc()
+  const umsatzCagr5Acc = leerAcc()
+  const umsatzCagr10Acc = leerAcc()
+  const epsCagr3Acc = leerAcc()
+  const epsCagr5Acc = leerAcc()
+  const epsCagr10Acc = leerAcc()
 
   for (const p of aktien) {
     const paket = opts.pakete.get(p.isin.toUpperCase())
     const w = opts.modus === 'gleichgewicht' ? (n > 0 ? 1 / n : 0) : depotwertEur > 0 ? p.wertEur / depotwertEur : 0
     if (!paket?.ok || w <= 0) continue
+
+    addMittel(umsatzCagr3Acc, cagrAusPaket(paket, 'umsatz', 3, 'rev_cagr_3y'), w)
+    addMittel(umsatzCagr5Acc, cagrAusPaket(paket, 'umsatz', 5), w)
+    addMittel(umsatzCagr10Acc, cagrAusPaket(paket, 'umsatz', 10), w)
+    addMittel(epsCagr3Acc, cagrAusPaket(paket, 'eps', 3, 'eps_cagr_3y'), w)
+    addMittel(epsCagr5Acc, cagrAusPaket(paket, 'eps', 5), w)
+    addMittel(epsCagr10Acc, cagrAusPaket(paket, 'eps', 10), w)
+    addMittel(peAcc, kgvAusPaket(paket), w)
+    addMittel(kcvAcc, kcvAusPaket(paket), w)
+    addMittel(kuvAcc, kuvAusPaket(paket), w)
+    addMittel(ebitMAcc, kmZahl(paket, 'ltm_ebit') ?? snapshotMio(paket, 'ebit_marge'), w)
+    addMittel(nettoMAcc, nettoMargeAusPaket(paket), w)
+    addMittel(fcfMAcc, fcfMargeAusPaket(paket), w)
+    addMittel(roicAcc, kmZahl(paket, 'ltm_roic') ?? roicPctAusPaket(paket), w)
+    addMittel(ndEbitdaAcc, kmZahl(paket, 'net_debt_ebitda'), w)
+    addMittel(divYieldAcc, kmZahl(paket, 'div_yield'), w)
 
     const positionUsd = opts.modus === 'gleichgewicht' ? depotUsd / n : p.wertEur * eurUsd
     const mcap = marketCapUsd(paket, fx)
@@ -360,44 +419,9 @@ export function baueDepotFirmaModell(opts: {
       lt.wEk += w
       lt.nEk += 1
     }
-
-    const hist = historieNachJahr(paket)
-    for (const [jahr, punkt] of hist) {
-      if (punkt.umsatz != null && punkt.umsatz > 0) {
-        addHist(lt.histUmsatz, jahr, ownership * nachUsd(punkt.umsatz, repW, fx), w)
-      }
-      if (punkt.gewinn != null) {
-        addHist(lt.histGewinn, jahr, ownership * nachUsd(punkt.gewinn, repW, fx), w)
-      }
-    }
   }
 
-  const umsatzUsd = lt.umsatz * 1_000_000
-  const gewinnUsd = lt.gewinn * 1_000_000
-  const fcfUsd = lt.fcf * 1_000_000
-  const divUsd = lt.div * 1_000_000
-  const ebitUsd = lt.ebit * 1_000_000
-
-  const pe =
-    gewinnUsd > 0 && lt.wGewinn > 0 ? (depotUsd * lt.wGewinn) / gewinnUsd : null
-  const pfcf = fcfUsd > 0 && lt.wFcf > 0 ? (depotUsd * lt.wFcf) / fcfUsd : null
-  const ps = umsatzUsd > 0 && lt.wUmsatz > 0 ? (depotUsd * lt.wUmsatz) / umsatzUsd : null
-  const ebitMarge = umsatzUsd > 0 ? (ebitUsd / umsatzUsd) * 100 : null
-  const nettoMarge = umsatzUsd > 0 ? (gewinnUsd / umsatzUsd) * 100 : null
-  const fcfMarge = umsatzUsd > 0 ? (fcfUsd / umsatzUsd) * 100 : null
-  const divYield = depotUsd > 0 && lt.wDiv > 0 ? (divUsd / (depotUsd * lt.wDiv)) * 100 : lt.nDiv === 0 ? 0 : null
-  const fcfYield = depotUsd > 0 && lt.wFcf > 0 ? (fcfUsd / (depotUsd * lt.wFcf)) * 100 : null
-  const ndEbitda = lt.wEbitda >= MIN_ABDECKUNG && lt.ebitda !== 0 ? lt.nd / lt.ebitda : null
-  const ic = lt.ek + lt.nd
-  const nopat = lt.ebit * (1 - STEUER)
-  const roic = ic > 0 && lt.wEk >= MIN_ABDECKUNG ? (nopat / ic) * 100 : null
-
-  const umsatzCagr3 = cagrAusLookthrough(lt.histUmsatz, 3)
-  const umsatzCagr5 = cagrAusLookthrough(lt.histUmsatz, 5)
-  const umsatzCagr10 = cagrAusLookthrough(lt.histUmsatz, 10)
-  const gewinnCagr3 = cagrAusLookthrough(lt.histGewinn, 3)
-  const gewinnCagr5 = cagrAusLookthrough(lt.histGewinn, 5)
-
+  const kcvMittel = mittel(kcvAcc)
   const groesste = [...aktien]
     .map((p) => ({
       name: p.name,
@@ -438,33 +462,34 @@ export function baueDepotFirmaModell(opts: {
     },
     {
       id: 'bewertung',
-      titel: 'Bewertung',
+      titel: 'Bewertung (Mittel der Aktien)',
       kennzahlen: [
-        kz('pe', 'KGV', gewinnUsd > 0 ? multipleText(pe) : 'NM', lt.wGewinn, lt.nGewinn),
-        kz('pfcf', 'KCV (Kurs/FCF)', fcfUsd > 0 ? multipleText(pfcf) : 'NM', lt.wFcf, lt.nFcf),
-        kz('ps', 'KUV', umsatzUsd > 0 ? multipleText(ps) : '–', lt.wUmsatz, lt.nUmsatz),
-        kz('fcf_yield', 'FCF-Rendite', pctText(fcfYield), lt.wFcf, lt.nFcf),
+        kz('pe', 'KGV', multipleText(mittel(peAcc)), peAcc.w, peAcc.n),
+        kz('pfcf', 'KCV (Kurs/FCF)', multipleText(kcvMittel), kcvAcc.w, kcvAcc.n),
+        kz('ps', 'KUV', multipleText(mittel(kuvAcc)), kuvAcc.w, kuvAcc.n),
+        kz('fcf_yield', 'FCF-Rendite', pctText(kcvMittel != null && kcvMittel > 0 ? 100 / kcvMittel : null), kcvAcc.w, kcvAcc.n),
       ],
     },
     {
       id: 'wachstum',
-      titel: 'Wachstum (aufsummierte Historie)',
+      titel: 'Wachstum (Mittel der Aktien)',
       kennzahlen: [
-        kz('u3', 'Umsatz-CAGR 3J', pctText(umsatzCagr3, true), lt.wUmsatz, lt.nUmsatz),
-        kz('u5', 'Umsatz-CAGR 5J', pctText(umsatzCagr5, true), lt.wUmsatz, lt.nUmsatz),
-        kz('u10', 'Umsatz-CAGR 10J', pctText(umsatzCagr10, true), lt.wUmsatz, lt.nUmsatz),
-        kz('g3', 'Gewinn-CAGR 3J', pctText(gewinnCagr3, true), lt.wGewinn, lt.nGewinn),
-        kz('g5', 'Gewinn-CAGR 5J', pctText(gewinnCagr5, true), lt.wGewinn, lt.nGewinn),
+        kz('u3', 'Umsatz-CAGR 3J', pctText(mittel(umsatzCagr3Acc), true), umsatzCagr3Acc.w, umsatzCagr3Acc.n),
+        kz('u5', 'Umsatz-CAGR 5J', pctText(mittel(umsatzCagr5Acc), true), umsatzCagr5Acc.w, umsatzCagr5Acc.n),
+        kz('u10', 'Umsatz-CAGR 10J', pctText(mittel(umsatzCagr10Acc), true), umsatzCagr10Acc.w, umsatzCagr10Acc.n),
+        kz('e3', 'EPS-CAGR 3J', pctText(mittel(epsCagr3Acc), true), epsCagr3Acc.w, epsCagr3Acc.n),
+        kz('e5', 'EPS-CAGR 5J', pctText(mittel(epsCagr5Acc), true), epsCagr5Acc.w, epsCagr5Acc.n),
+        kz('e10', 'EPS-CAGR 10J', pctText(mittel(epsCagr10Acc), true), epsCagr10Acc.w, epsCagr10Acc.n),
       ],
     },
     {
       id: 'qualitaet',
-      titel: 'Rentabilität',
+      titel: 'Rentabilität (Mittel der Aktien)',
       kennzahlen: [
-        kz('ebit_m', 'EBIT-Marge', pctText(ebitMarge), Math.min(lt.wEbit, lt.wUmsatz), Math.min(lt.nEbit, lt.nUmsatz)),
-        kz('netto_m', 'Nettomarge', pctText(nettoMarge), Math.min(lt.wGewinn, lt.wUmsatz), Math.min(lt.nGewinn, lt.nUmsatz)),
-        kz('fcf_m', 'FCF-Marge', pctText(fcfMarge), Math.min(lt.wFcf, lt.wUmsatz), Math.min(lt.nFcf, lt.nUmsatz)),
-        kz('roic', 'ROIC (Look-through)', pctText(roic), Math.min(lt.wEbit, lt.wEk), Math.min(lt.nEbit, lt.nEk)),
+        kz('ebit_m', 'EBIT-Marge', pctText(mittel(ebitMAcc)), ebitMAcc.w, ebitMAcc.n),
+        kz('netto_m', 'Nettomarge', pctText(mittel(nettoMAcc)), nettoMAcc.w, nettoMAcc.n),
+        kz('fcf_m', 'FCF-Marge', pctText(mittel(fcfMAcc)), fcfMAcc.w, fcfMAcc.n),
+        kz('roic', 'ROIC', pctText(mittel(roicAcc)), roicAcc.w, roicAcc.n),
       ],
     },
     {
@@ -478,14 +503,14 @@ export function baueDepotFirmaModell(opts: {
           lt.wNd,
           lt.nNd,
         ),
-        kz('nd_ebitda', 'Net Debt / EBITDA', multipleText(ndEbitda), Math.min(lt.wNd, lt.wEbitda), Math.min(lt.nNd, lt.nEbitda)),
+        kz('nd_ebitda', 'Net Debt / EBITDA', multipleText(mittel(ndEbitdaAcc)), ndEbitdaAcc.w, ndEbitdaAcc.n),
       ],
     },
     {
       id: 'div',
       titel: 'Dividende',
       kennzahlen: [
-        kz('div_yield', 'Dividendenrendite', pctText(divYield), lt.wDiv, lt.nDiv),
+        kz('div_yield', 'Dividendenrendite', pctText(mittel(divYieldAcc)), divYieldAcc.w, divYieldAcc.n),
         kz(
           'div_abs',
           'Dividenden (Anteil)',

@@ -126,8 +126,8 @@ export function PortfolioDepotFirmaClient() {
           </div>
           <p className="text-[11px] text-[var(--app-text-muted)]">
             {modus === 'depotgewicht'
-              ? 'Look-through: Depotwert ÷ Marktkapitalisierung (gleiche Währung), dann GuV addiert. KGV nur über Titel mit Gewinn. Dual-Class (z. B. Alphabet) kann vom Einzel-KGV abweichen.'
-              : 'Gleiches Prinzip, aber so tun als wäre jede Aktie gleich schwer — kleine Titel zählen voll.'}
+              ? 'Kennzahlen = depotgewichtetes Mittel derselben Werte wie auf der Aktien-Seite. Umsatz/Gewinn/FCF unten sind dein Anteil an den Konzernen. Dual-Class (Alphabet) kann beim Einzel-KGV abweichen.'
+              : 'Kennzahlen = einfacher Durchschnitt der Aktien. Kleine Titel zählen voll.'}
           </p>
           <FirmaAnsicht modell={modell} />
           {daten.fehlend.length > 0 ? (
