@@ -7,6 +7,7 @@ import {
   parqetIrrCashflowsAusBuchungen,
   parqetIrrDiagnose,
 } from '@/lib/portfolio-analyse/parqet-xirr'
+import { wendeCorporateActionsAufLots, type EinstandLot } from '@/lib/portfolio-analyse/corporate-actions'
 import { gebuehrIndex, kaufEinstandBetragEur } from '@/lib/portfolio-analyse/parqet-einstand'
 import { cashBetragEur, normalisiereHandelsBuchung } from '@/lib/portfolio-analyse/parqet-handelswerte'
 import {
@@ -14,7 +15,7 @@ import {
   istParqetTransferUmbuchung,
 } from '@/lib/portfolio-analyse/parqet-realisiert'
 import type { PortfolioBuchung } from '@/lib/portfolio-analyse/types'
-import { heuteIso } from '@/lib/portfolio-analyse/wertentwicklung-tage'
+import { alleKalendertage, heuteIso } from '@/lib/portfolio-analyse/wertentwicklung-tage'
 
 export type MonatsPunkt = { label: string; wert: number; monat: string }
 
@@ -303,7 +304,14 @@ export function summenAusBuchungen(buchungen: PortfolioBuchung[]) {
   }
 }
 
-type EinstandLot = { stueck: number; kosten: number }
+function kuerzeLotsKosten(lots: EinstandLot[], betragEur: number): void {
+  if (betragEur <= 0 || lots.length === 0) return
+  const sum = lots.reduce((s, l) => s + l.kosten, 0)
+  if (sum <= 0.005) return
+  const take = Math.min(betragEur, sum)
+  const f = 1 - take / sum
+  for (const lot of lots) lot.kosten = round2(lot.kosten * f)
+}
 
 function stueckAusBuchung(b: PortfolioBuchung, fallbackStueck?: number): number {
   const n = normalisiereHandelsBuchung(b)
@@ -364,6 +372,7 @@ export type RealisiertZeitraum = {
  * Realisierte Gewinne/Verluste je Verkaufstag.
  * Parqet-Sell mit `realizedgains` → importierter Wert; sonst FIFO (PDF/manuell).
  * TransferOut nur Lots verbrauchen, kein P/L (wie Parqet).
+ * Spin-offs/Splits wie der Bestand — sonst zählen Kind-Verkäufe als 100 % Gewinn.
  */
 export function realisiertPnlEreignisse(
   buchungen: PortfolioBuchung[],
@@ -373,7 +382,11 @@ export function realisiertPnlEreignisse(
 
   const steuerProTag = new Map<string, number>()
   const verkaeufeProTag = new Map<string, number>()
+  const byTag = new Map<string, PortfolioBuchung[]>()
   for (const b of sortiert) {
+    const tagListe = byTag.get(b.datum) ?? []
+    tagListe.push(b)
+    byTag.set(b.datum, tagListe)
     if (!b.isin) continue
     const key = `${b.datum}|${b.isin.toUpperCase()}`
     if (b.typ === 'steuer') {
@@ -386,47 +399,65 @@ export function realisiertPnlEreignisse(
 
   const lotsByIsin = new Map<string, EinstandLot[]>()
   const ereignisse: { datum: string; pnl: number; fifoPnl: number; parqetPnl: number | null; isin: string }[] = []
+  const tage = [...byTag.keys()].sort()
+  let vorigerTag: string | null = null
 
-  for (const b of sortiert) {
-    if (!b.isin) continue
-    const isin = b.isin.toUpperCase()
-    const tagKey = `${b.datum}|${isin}`
+  for (const tag of tage) {
+    if (vorigerTag) {
+      for (const d of alleKalendertage(vorigerTag, tag)) {
+        if (d === vorigerTag || d === tag) continue
+        wendeCorporateActionsAufLots(lotsByIsin, d, buchungen)
+      }
+    }
+    for (const b of byTag.get(tag) ?? []) {
+      if (!b.isin) continue
+      const isin = b.isin.toUpperCase()
+      const tagKey = `${b.datum}|${isin}`
 
-    if (b.typ === 'kauf') {
-      const stk = stueckAusBuchung(b)
-      if (stk <= 0) continue
+      if (b.typ === 'kauf') {
+        const stk = stueckAusBuchung(b)
+        if (stk <= 0) continue
+        const lots = lotsByIsin.get(isin) ?? []
+        lots.push({ stueck: stk, kosten: kaufEinstandBetragEur(b, feeIndex) })
+        lotsByIsin.set(isin, lots)
+        continue
+      }
+
+      if ((b.parqetTyp ?? '') === 'SpinOffCost' && b.betragEur > 0) {
+        kuerzeLotsKosten(lotsByIsin.get(isin) ?? [], b.betragEur)
+        continue
+      }
+
+      if (b.typ !== 'verkauf') continue
+
       const lots = lotsByIsin.get(isin) ?? []
-      lots.push({ stueck: stk, kosten: kaufEinstandBetragEur(b, feeIndex) })
-      lotsByIsin.set(isin, lots)
-      continue
+      const restStueck = lots.reduce((s, l) => s + l.stueck, 0)
+      const stk = stueckAusBuchung(b, restStueck > 0 ? restStueck : undefined)
+      let fifoPnl = 0
+
+      if (stk > 0) {
+        const matched = Math.min(stk, restStueck)
+        if (matched > 1e-8) {
+          const nVerk = verkaeufeProTag.get(tagKey) ?? 1
+          const steuerAnteil = round2((steuerProTag.get(tagKey) ?? 0) / nVerk)
+          const erloes = verkaufErloesEur(b, stk, steuerAnteil)
+          const kosten = fifoKosten(lots, matched)
+          const erloesMatched = matched + 1e-8 < stk ? round2(erloes * (matched / stk)) : erloes
+          fifoPnl = round2(erloesMatched - kosten)
+          lotsByIsin.set(isin, lots)
+        }
+      }
+
+      if (istParqetTransferUmbuchung(b)) continue
+
+      const parqetPnl = buchungZaehltFuerParqetRealisiert(b) ? (b.realisierterGewinnEur ?? 0) : null
+      const pnl = parqetPnl != null ? parqetPnl : fifoPnl
+      if (pnl !== 0 || fifoPnl !== 0) {
+        ereignisse.push({ datum: b.datum, pnl, fifoPnl, parqetPnl, isin })
+      }
     }
-
-    if (b.typ !== 'verkauf') continue
-
-    const lots = lotsByIsin.get(isin) ?? []
-    const restStueck = lots.reduce((s, l) => s + l.stueck, 0)
-    let stk = stueckAusBuchung(b, restStueck > 0 ? restStueck : undefined)
-    const n = normalisiereHandelsBuchung(b)
-    let fifoPnl = 0
-
-    if (stk <= 0 && n.betragEur > 0 && restStueck <= 0) {
-      fifoPnl = round2(n.betragEur)
-    } else if (stk > 0) {
-      const nVerk = verkaeufeProTag.get(tagKey) ?? 1
-      const steuerAnteil = round2((steuerProTag.get(tagKey) ?? 0) / nVerk)
-      const erloes = verkaufErloesEur(b, stk, steuerAnteil)
-      const kosten = fifoKosten(lots, stk)
-      fifoPnl = round2(erloes - kosten)
-      lotsByIsin.set(isin, lots)
-    }
-
-    if (istParqetTransferUmbuchung(b)) continue
-
-    const parqetPnl = buchungZaehltFuerParqetRealisiert(b) ? (b.realisierterGewinnEur ?? 0) : null
-    const pnl = parqetPnl != null ? parqetPnl : fifoPnl
-    if (pnl !== 0 || fifoPnl !== 0) {
-      ereignisse.push({ datum: b.datum, pnl, fifoPnl, parqetPnl, isin })
-    }
+    wendeCorporateActionsAufLots(lotsByIsin, tag, buchungen)
+    vorigerTag = tag
   }
 
   return ereignisse

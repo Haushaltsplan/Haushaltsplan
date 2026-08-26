@@ -210,3 +210,73 @@ export function wendeSpinOffsAufMap(
 export function istCorporateActionOhneCash(b: PortfolioBuchung): boolean {
   return b.parqetTyp === 'SpinOff' || b.parqetTyp === 'Spinoff' || b.parqetTyp === 'SpinOffCost'
 }
+
+export type EinstandLot = { stueck: number; kosten: number }
+
+function standMapAusLots(lotsByIsin: Map<string, EinstandLot[]>): StandMap {
+  const map: StandMap = new Map()
+  for (const [isin, lots] of lotsByIsin) {
+    let stueck = 0
+    let kosten = 0
+    for (const l of lots) {
+      stueck += l.stueck
+      kosten += l.kosten
+    }
+    if (stueck < 1e-8 && kosten < 0.005) continue
+    map.set(isin, { stueck, kosten, name: isin, assetKlasse: 'aktie' })
+  }
+  return map
+}
+
+function snapshotStand(map: StandMap): Map<string, { stueck: number; kosten: number }> {
+  const out = new Map<string, { stueck: number; kosten: number }>()
+  for (const [isin, cur] of map) {
+    out.set(isin, { stueck: cur.stueck, kosten: cur.kosten })
+  }
+  return out
+}
+
+/** FIFO-Lots an den Stand nach Spin-off/Split angleichen (gleiche Regeln wie der Bestand). */
+function syncLotsMitStand(
+  lotsByIsin: Map<string, EinstandLot[]>,
+  before: Map<string, { stueck: number; kosten: number }>,
+  after: StandMap,
+): void {
+  for (const [isin, cur] of after) {
+    const prev = before.get(isin)
+    if (!prev || (prev.stueck < 1e-8 && prev.kosten < 0.005)) {
+      lotsByIsin.set(isin, [{ stueck: cur.stueck, kosten: cur.kosten }])
+      continue
+    }
+    const lots = lotsByIsin.get(isin) ?? []
+    if (prev.stueck > 1e-8 && Math.abs(cur.stueck - prev.stueck) > 1e-8) {
+      const f = cur.stueck / prev.stueck
+      for (const lot of lots) lot.stueck *= f
+    }
+    if (prev.kosten > 0.005 && Math.abs(cur.kosten - prev.kosten) > 0.005) {
+      const f = cur.kosten / prev.kosten
+      for (const lot of lots) lot.kosten = Math.round(lot.kosten * f * 100) / 100
+    }
+    lotsByIsin.set(isin, lots)
+  }
+}
+
+/**
+ * Spin-offs und Splits auf FIFO-Lots — gleiche Reihenfolge wie `depotStandProTag`
+ * (nach allen Buchungen des Tages).
+ */
+export function wendeCorporateActionsAufLots(
+  lotsByIsin: Map<string, EinstandLot[]>,
+  datumIso: string,
+  buchungen: PortfolioBuchung[],
+): void {
+  const map = standMapAusLots(lotsByIsin)
+  const vorSpin = snapshotStand(map)
+  wendeSpinOffsAufMap(map, datumIso, buchungen)
+  syncLotsMitStand(lotsByIsin, vorSpin, map)
+
+  const nachSpin = standMapAusLots(lotsByIsin)
+  const vorSplit = snapshotStand(nachSpin)
+  wendeAktienSplitsAufMap(nachSpin, datumIso)
+  syncLotsMitStand(lotsByIsin, vorSplit, nachSpin)
+}
