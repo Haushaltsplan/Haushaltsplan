@@ -2,12 +2,20 @@ import 'server-only'
 
 import type { EtfBreakdown } from '@/lib/portfolio-analyse/parqet-core/types'
 import { ladeAmundiEtfBreakdown } from '@/lib/portfolio-analyse/etf-scraper/amundi-breakdown-server'
-import { etfBenchmarkFuerIsin } from '@/lib/portfolio-analyse/etf-scraper/etf-benchmark-mapping'
+import { etfBenchmarkFuerIsin, type EtfBenchmark } from '@/lib/portfolio-analyse/etf-scraper/etf-benchmark-mapping'
 import { ladeNasdaq100Breakdown } from '@/lib/portfolio-analyse/etf-scraper/nasdaq100-holdings-server'
+import { ladeRizeCybersecurityBreakdown } from '@/lib/portfolio-analyse/etf-scraper/rize-cybersecurity-holdings-server'
 import {
   ladeSp500CapBreakdown,
   ladeSp500EqualBreakdown,
 } from '@/lib/portfolio-analyse/etf-scraper/ssga-holdings-server'
+
+const MIN_HOLDINGS: Record<EtfBenchmark, number> = {
+  SP500_CAP: 400,
+  SP500_EQUAL: 400,
+  NASDAQ100: 80,
+  RIZE_CYBER: 20,
+}
 
 function mergeSektorLaender(
   basis: EtfBreakdown,
@@ -37,9 +45,14 @@ export async function ladeIndexEtfBreakdown(isin: string): Promise<EtfBreakdown 
     case 'NASDAQ100':
       basis = await ladeNasdaq100Breakdown()
       break
+    case 'RIZE_CYBER':
+      basis = await ladeRizeCybersecurityBreakdown()
+      break
   }
 
-  if (!basis || basis.topHoldings.length < 50) return null
+  if (!basis || basis.topHoldings.length < MIN_HOLDINGS[benchmark]) return null
+
+  if (benchmark === 'RIZE_CYBER') return basis
 
   const amundi = await ladeAmundiEtfBreakdown(isin)
   return mergeSektorLaender(basis, amundi)
