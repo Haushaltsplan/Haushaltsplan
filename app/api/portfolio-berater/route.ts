@@ -11,12 +11,12 @@ import {
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
-export const maxDuration = 120
+export const maxDuration = 180
 
 function buildSystemPrompt(context: unknown): string {
   const contextBlock =
     context != null
-      ? `\n\n--- Portfolio-Kontext (live aus der App, Stand siehe \`stand\`) ---\n${JSON.stringify(context, null, 2)}\n---`
+      ? `\n\n--- Portfolio-Kontext (live aus der App, Stand siehe \`stand\`) ---\n${JSON.stringify(context)}\n---`
       : ''
 
   return `Du bist ein erfahrener Portfolio-Berater für einen privaten Qualitätsinvestor in Deutschland.
@@ -135,7 +135,9 @@ export async function POST(req: Request) {
       geminiModels: portfolioBeraterGeminiModelKandidaten(),
       /** Nur Free-Tier — niemals GEMINI_API_KEY (Billing). Nachkauf-Radar bleibt separat auf Paid. */
       geminiForceFreeApiKey: true,
-      timeoutMs: 55_000,
+      timeoutMs: 85_000,
+      geminiTotalBudgetMs: 125_000,
+      maxOutputTokens: 2048,
     })
 
     if (!result.ok) {

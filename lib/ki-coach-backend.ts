@@ -456,6 +456,8 @@ type CallGeminiEinModellOptions = {
   geminiGoogleSearch?: boolean
   /** Abbruch der Gemini-HTTP-Anfrage (Default 90s). */
   timeoutMs?: number
+  /** Caps die Antwortlänge — kürzere Generierung, weniger Timeouts. */
+  maxOutputTokens?: number
 }
 
 async function callGeminiEinModell(
@@ -476,6 +478,9 @@ async function callGeminiEinModell(
   }))
 
   const generationConfig: Record<string, unknown> = { temperature: opts.temperature }
+  if (opts.maxOutputTokens != null && opts.maxOutputTokens > 0) {
+    generationConfig.maxOutputTokens = opts.maxOutputTokens
+  }
   if (opts.jsonResponse?.schema) {
     generationConfig.responseMimeType = 'application/json'
     generationConfig.responseSchema = opts.jsonResponse.schema
@@ -569,6 +574,7 @@ async function callGemini(
   modelChain?: string[],
   forcePaidKey?: boolean,
   forceFreeKey?: boolean,
+  totalBudgetMs?: number,
 ): Promise<{ ok: true; reply: string } | { ok: false; status: number; hint: string }> {
   const models = modelChain?.length ? modelChain : geminiModelKandidaten()
   if (!models.length) {
@@ -584,22 +590,40 @@ async function callGemini(
 
   let lastHint = 'Unbekannter Fehler.'
   let lastHttp = 502
+  const perModelTimeout = callOpts.timeoutMs ?? 90_000
+  const started = Date.now()
+  const deadline = started + (totalBudgetMs ?? perModelTimeout)
+  const restMs = () => deadline - Date.now()
 
   for (let i = 0; i < models.length; i++) {
+    const remaining = restMs()
+    if (remaining < 10_000) {
+      lastHttp = 504
+      lastHint = 'Gemini-Zeitbudget aufgebraucht. Bitte nochmal senden.'
+      break
+    }
     const model = models[i]!
+    const thisTimeout = Math.min(perModelTimeout, remaining)
     const modellKey = geminiKeyFuerModell(model, apiKey, { forcePaid: forcePaidKey, forceFree: forceFreeKey })
-    let r = await callGeminiEinModell(modellKey, model, systemText, userMessages, callOpts)
+    const optsMitTimeout = { ...callOpts, timeoutMs: thisTimeout }
+    let r = await callGeminiEinModell(modellKey, model, systemText, userMessages, optsMitTimeout)
 
     // Einmal kurz warten und dasselbe Modell bei temporärer Überlastung wiederholen
-    if (!r.ok && r.quotaOderRateLimit && (r.httpStatus === 503 || r.httpStatus === 429)) {
+    if (!r.ok && r.quotaOderRateLimit && (r.httpStatus === 503 || r.httpStatus === 429) && restMs() > 12_000) {
       console.warn(`[ki-coach] Gemini „${model}“ (${r.httpStatus}): kurze Pause, ein Retry …`)
       await sleepMs(2000)
-      r = await callGeminiEinModell(modellKey, model, systemText, userMessages, callOpts)
+      const retryTimeout = Math.min(perModelTimeout, restMs())
+      if (retryTimeout >= 8_000) {
+        r = await callGeminiEinModell(modellKey, model, systemText, userMessages, {
+          ...callOpts,
+          timeoutMs: retryTimeout,
+        })
+      }
     }
 
     if (r.ok) {
       if (i > 0) {
-        console.warn(`[ki-coach] Gemini: automatisch auf Modell „${model}“ gewechselt (${i} vorherige(r) Modell(e): Quota, Rate-Limit, 404 oder ähnlich).`)
+        console.warn(`[ki-coach] Gemini: automatisch auf Modell „${model}“ gewechselt (${i} vorherige(r) Modell(e): Quota, Rate-Limit, 404, Timeout oder ähnlich).`)
       }
       return { ok: true, reply: r.reply }
     }
@@ -607,9 +631,11 @@ async function callGemini(
     lastHttp = r.httpStatus
 
     const naechstes = models[i + 1]
-    /** 404 / Quota / 503 / High demand — nächstes Modell (eigenes Kontingent). */
+    /** 404 / Quota / 503 / Timeout — nächstes Flash-Modell (eigenes Kontingent). */
     const naechstesModellMoeglich =
-      Boolean(naechstes) && (r.quotaOderRateLimit || r.httpStatus === 404 || r.httpStatus === 503)
+      Boolean(naechstes) &&
+      restMs() >= 12_000 &&
+      (r.quotaOderRateLimit || r.httpStatus === 404 || r.httpStatus === 503 || r.httpStatus === 504)
     if (naechstesModellMoeglich) {
       console.warn(`[ki-coach] Gemini „${model}“ (${r.httpStatus}): ${r.hint.slice(0, 220)} — versuche „${naechstes}“.`)
       if (r.quotaOderRateLimit || r.httpStatus === 503) await sleepMs(800)
@@ -653,8 +679,12 @@ export type RunCoachCompletionOptions = {
    * Portfolio-Berater.
    */
   geminiForceFreeApiKey?: boolean
-  /** Gemini-HTTP-Timeout in ms. */
+  /** Gemini-HTTP-Timeout je Modell in ms. */
   timeoutMs?: number
+  /** Gesamtes Zeitbudget über die Modell-Kette (Timeouts dürfen hoppen). */
+  geminiTotalBudgetMs?: number
+  /** Gemini generationConfig.maxOutputTokens. */
+  maxOutputTokens?: number
 }
 
 export async function runCoachCompletion(
@@ -679,10 +709,12 @@ export async function runCoachCompletion(
         jsonResponse: options?.jsonResponse,
         geminiGoogleSearch: options?.geminiGoogleSearch,
         timeoutMs: options?.timeoutMs,
+        maxOutputTokens: options?.maxOutputTokens,
       },
       options?.geminiModels,
       options?.geminiForcePaidApiKey === true,
       options?.geminiForceFreeApiKey === true,
+      options?.geminiTotalBudgetMs,
     )
     if (gemini.ok) return gemini
 

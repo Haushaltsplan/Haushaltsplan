@@ -77,9 +77,9 @@ function istRelevantTicker(ticker: string, relevant: Set<string>): boolean {
 
 function excerptLimit(ticker: string, focusTicker: string | null, imDepot: boolean): number {
   const t = ticker.toUpperCase()
-  if (focusTicker && t === focusTicker) return 1400
-  if (imDepot) return 900
-  return 500
+  if (focusTicker && t === focusTicker) return 1100
+  if (imDepot) return 600
+  return 320
 }
 
 /**
@@ -202,7 +202,7 @@ function scanZeileVoll(
     notiz: e.notiz ? kuerze(e.notiz, 400) : null,
     datenSignale: e.datenSignale ? datenSignaleKompakt(e.datenSignale, fokus) : null,
     deepResearchAuszug: e.tiefenAnalyse?.memo
-      ? kuerze(e.tiefenAnalyse.memo, fokus ? 2500 : imDepot ? 800 : 400)
+      ? kuerze(e.tiefenAnalyse.memo, fokus ? 1800 : imDepot ? 500 : 220)
       : null,
   }
 }
@@ -481,14 +481,15 @@ export async function bauePortfolioBeraterKontext(opts?: PortfolioBeraterAnfrage
     kandidaten.map((k: WhitelistPosition) => [k.isin.toUpperCase(), k.quelle ?? 'whitelist']),
   )
 
+  const scanTicker = new Set(scan.map((e) => e.ticker.toUpperCase()))
   const deepResearchOhneScan = [...deepMap.entries()]
-    .filter(([t]) => istRelevantTicker(t, relevanteTicker))
+    .filter(([t]) => istRelevantTicker(t, relevanteTicker) && !scanTicker.has(t.toUpperCase()))
     .map(([ticker, dr]) => ({
       ticker,
       isin: dr.isin,
       auszug: kuerze(
         dr.memo,
-        focusTicker && ticker === focusTicker ? 2500 : depotTicker.has(ticker) ? 800 : 400,
+        focusTicker && ticker.toUpperCase() === focusTicker ? 2500 : depotTicker.has(ticker) ? 600 : 280,
       ),
       erstelltAm: dr.erstellt_am,
     }))
@@ -521,9 +522,19 @@ export async function bauePortfolioBeraterKontext(opts?: PortfolioBeraterAnfrage
     vorherId: d.vorherId,
     diff: kuerze(
       d.diff,
-      focusTicker && d.ticker.toUpperCase() === focusTicker ? 1400 : 700,
+      focusTicker && d.ticker.toUpperCase() === focusTicker ? 1100 : 480,
     ),
   }))
+
+  const kaufempfehlungKompakt = kaufempfehlung
+    ? {
+        monat: kaufempfehlung.monat,
+        kiText: kuerze(kaufempfehlung.kiText ?? '', 1600),
+        kandidaten: kaufempfehlung.kandidaten,
+        basisAllokation: kaufempfehlung.basisAllokation,
+        verkaufAllokation: kaufempfehlung.verkaufAllokation,
+      }
+    : null
 
   if (!depotPaket) {
     return {
@@ -553,7 +564,7 @@ export async function bauePortfolioBeraterKontext(opts?: PortfolioBeraterAnfrage
       })),
       kiCache,
       quartalsDiff,
-      kaufempfehlung,
+      kaufempfehlung: kaufempfehlungKompakt,
       marktRegime,
       performance,
       deepResearch: deepResearchOhneScan,
@@ -669,15 +680,7 @@ export async function bauePortfolioBeraterKontext(opts?: PortfolioBeraterAnfrage
     })),
     kiCache,
     quartalsDiff,
-    kaufempfehlung: kaufempfehlung
-      ? {
-          monat: kaufempfehlung.monat,
-          kiText: kaufempfehlung.kiText,
-          kandidaten: kaufempfehlung.kandidaten,
-          basisAllokation: kaufempfehlung.basisAllokation,
-          verkaufAllokation: kaufempfehlung.verkaufAllokation,
-        }
-      : null,
+    kaufempfehlung: kaufempfehlungKompakt,
     marktRegime,
     performance,
     deepResearch: deepResearchOhneScan,

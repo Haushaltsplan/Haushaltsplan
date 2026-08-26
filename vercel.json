@@ -1,5 +1,8 @@
 {
   "functions": {
+    "app/api/portfolio-berater/route.ts": {
+      "maxDuration": 180
+    },
     "app/api/portfolio-analyse/nachkaeufe/scan/route.ts": {
       "maxDuration": 300
     },

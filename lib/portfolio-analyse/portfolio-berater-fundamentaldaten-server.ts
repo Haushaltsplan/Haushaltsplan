@@ -422,7 +422,6 @@ export async function ladeFundamentaldatenFuerBerater(
       frequenz: 'jahr' as const,
       segmentNurCloud: true,
     }
-    const depotRelevant = z.fokus || (z.gewichtPct != null && z.gewichtPct >= 0.35)
 
     const lade = (cacheModus: 'immer' | 'nur-lesen' | 'erneuern', ms: number) =>
       mitTimeout(ladeFundamentaldaten({ ...anfrage, cacheModus }), ms, z.isin)
@@ -434,9 +433,10 @@ export async function ladeFundamentaldatenFuerBerater(
       console.warn('[portfolio-berater] Fundamentaldaten', z.isin, e)
     }
 
-    // Cache-Miss (typisch: Depot-Titel außerhalb Whitelist/Watchlist) nicht als „Daten“ verkaufen.
+    // Cache-Miss: Live-Scrape nur für den Fokus-Titel. Weitere Depot-Titel
+    // würden sonst 40s-Batches stapeln und Gemini in den 504 treiben.
     // Leeres Paket hat immer ein Mantra-Objekt — das ist kein Treffer.
-    if ((!paket || !paketHatNutzbareDaten(paket)) && modus === 'nur-lesen' && depotRelevant) {
+    if ((!paket || !paketHatNutzbareDaten(paket)) && modus === 'nur-lesen' && z.fokus) {
       try {
         paket = await lade('immer', LOAD_TIMEOUT_MS)
       } catch (e) {
