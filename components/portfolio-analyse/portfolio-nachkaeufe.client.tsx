@@ -28,6 +28,16 @@ function historischQuelleLabel(q: NachkaufScanEintrag['bewertung']['historischQu
   return ''
 }
 
+function pctFarbe(v: number | null): string {
+  if (v == null) return 'text-[var(--app-text-muted)]'
+  return v >= 0 ? 'text-emerald-400' : 'text-rose-400'
+}
+
+function pctText(v: number | null, leer = '–'): string {
+  if (v == null) return leer
+  return `${v > 0 ? '+' : ''}${v} %`
+}
+
 function NachkaufPerformancePanel({ daten }: { daten: NachkaufPerformanceUebersicht }) {
   const buckets =
     daten.scoreBucketsEmpfehlung.length > 0 ? daten.scoreBucketsEmpfehlung : daten.scoreBucketsSignal
@@ -38,36 +48,33 @@ function NachkaufPerformancePanel({ daten }: { daten: NachkaufPerformanceUebersi
     <PaCard variant="elevated" className="p-5">
       <PaSectionTitle
         title="Radar-Performance"
-        description="Regelbasierte Allokation vs. SPY — ausgewertet ab 6 Monaten. Ohne Tracking keine Score-Kalibrierung."
+        description="Live seit Empfehlung vs. S&P 500 (SPY). 6M/12M bleiben die Kalibrierung nach Frist."
       />
-      <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+      <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-6">
         <div>
           <p className="text-[11px] text-[var(--app-text-muted)]">Empfehlungen gesamt</p>
           <p className="text-lg font-semibold text-[var(--app-text)]">{daten.anzahlEmpfehlungen}</p>
         </div>
         <div>
-          <p className="text-[11px] text-[var(--app-text-muted)]">Ø Alpha 6M vs. SPY</p>
-          <p
-            className={`text-lg font-semibold ${
-              daten.avgAlpha6mPct == null
-                ? 'text-[var(--app-text-muted)]'
-                : daten.avgAlpha6mPct >= 0
-                  ? 'text-emerald-400'
-                  : 'text-rose-400'
-            }`}
-          >
-            {daten.avgAlpha6mPct != null ? `${daten.avgAlpha6mPct > 0 ? '+' : ''}${daten.avgAlpha6mPct} %` : '–'}
+          <p className="text-[11px] text-[var(--app-text-muted)]">Ø seit Empfehlung</p>
+          <p className={`text-lg font-semibold ${pctFarbe(daten.avgLiveRenditePct)}`}>
+            {pctText(daten.avgLiveRenditePct)}
           </p>
-          <p className="text-[10px] text-[var(--app-text-muted)]">{daten.ausgewertet6m} ausgewertet</p>
+          <p className="text-[10px] text-[var(--app-text-muted)]">Live, ohne Benchmark</p>
         </div>
         <div>
-          <p className="text-[11px] text-[var(--app-text-muted)]">Ø Rendite 6M</p>
-          <p className="text-lg font-semibold text-[var(--app-text)]">
-            {daten.avgRendite6mPct != null
-              ? `${daten.avgRendite6mPct > 0 ? '+' : ''}${daten.avgRendite6mPct} %`
-              : '–'}
+          <p className="text-[11px] text-[var(--app-text-muted)]">Ø α live vs. SPY</p>
+          <p className={`text-lg font-semibold ${pctFarbe(daten.avgLiveAlphaPct)}`}>
+            {pctText(daten.avgLiveAlphaPct)}
           </p>
-          <p className="text-[10px] text-[var(--app-text-muted)]">Absolut, ohne Benchmark</p>
+          <p className="text-[10px] text-[var(--app-text-muted)]">Aktie minus S&P 500</p>
+        </div>
+        <div>
+          <p className="text-[11px] text-[var(--app-text-muted)]">Ø Alpha 6M vs. SPY</p>
+          <p className={`text-lg font-semibold ${pctFarbe(daten.avgAlpha6mPct)}`}>
+            {pctText(daten.avgAlpha6mPct)}
+          </p>
+          <p className="text-[10px] text-[var(--app-text-muted)]">{daten.ausgewertet6m} ausgewertet</p>
         </div>
         <div>
           <p className="text-[11px] text-[var(--app-text-muted)]">Trefferquote 6M</p>
@@ -78,16 +85,8 @@ function NachkaufPerformancePanel({ daten }: { daten: NachkaufPerformanceUebersi
         </div>
         <div>
           <p className="text-[11px] text-[var(--app-text-muted)]">Ø Alpha 12M</p>
-          <p
-            className={`text-lg font-semibold ${
-              daten.avgAlpha12mPct == null
-                ? 'text-[var(--app-text-muted)]'
-                : daten.avgAlpha12mPct >= 0
-                  ? 'text-emerald-400'
-                  : 'text-rose-400'
-            }`}
-          >
-            {daten.avgAlpha12mPct != null ? `${daten.avgAlpha12mPct > 0 ? '+' : ''}${daten.avgAlpha12mPct} %` : '–'}
+          <p className={`text-lg font-semibold ${pctFarbe(daten.avgAlpha12mPct)}`}>
+            {pctText(daten.avgAlpha12mPct)}
           </p>
           <p className="text-[10px] text-[var(--app-text-muted)]">{daten.ausgewertet12m} ausgewertet</p>
         </div>
@@ -125,19 +124,21 @@ function NachkaufPerformancePanel({ daten }: { daten: NachkaufPerformanceUebersi
 
       {daten.eintraege.length > 0 && (
         <div className="mt-4 overflow-x-auto">
-          <table className="w-full min-w-[520px] text-left text-xs">
+          <table className="w-full min-w-[640px] text-left text-xs">
             <thead>
               <tr className="text-[var(--app-text-muted)]">
                 <th className="pb-2 pr-3 font-medium">Monat</th>
                 <th className="pb-2 pr-3 font-medium">Ticker</th>
                 <th className="pb-2 pr-3 font-medium">Betrag</th>
                 <th className="pb-2 pr-3 font-medium">Score</th>
+                <th className="pb-2 pr-3 font-medium">seit Empf.</th>
+                <th className="pb-2 pr-3 font-medium">α live vs. SPY</th>
                 <th className="pb-2 pr-3 font-medium">6M</th>
-                <th className="pb-2 font-medium">α vs. SPY</th>
+                <th className="pb-2 font-medium">α 6M</th>
               </tr>
             </thead>
             <tbody>
-              {daten.eintraege.slice(0, 8).map((e) => (
+              {daten.eintraege.slice(0, 12).map((e) => (
                 <tr key={`${e.monat}-${e.ticker}`} className="border-t border-white/5">
                   <td className="py-2 pr-3 text-[var(--app-text-muted)]">{e.monat}</td>
                   <td className="py-2 pr-3 font-medium text-[var(--app-text)]">{e.ticker}</td>
@@ -148,19 +149,20 @@ function NachkaufPerformancePanel({ daten }: { daten: NachkaufPerformanceUebersi
                     {e.score}
                     {e.kaufTrigger ? <span className="ml-1 text-amber-400">⚡</span> : null}
                   </td>
-                  <td className="py-2 pr-3 tabular-nums">
-                    {e.rendite6mPct != null ? `${e.rendite6mPct > 0 ? '+' : ''}${e.rendite6mPct} %` : 'offen'}
+                  <td className={`py-2 pr-3 tabular-nums ${pctFarbe(e.liveRenditePct)}`}>
+                    {pctText(e.liveRenditePct)}
+                    {e.liveTage != null ? (
+                      <span className="ml-1 text-[10px] text-[var(--app-text-muted)]">{e.liveTage}d</span>
+                    ) : null}
                   </td>
-                  <td
-                    className={`py-2 tabular-nums ${
-                      e.alpha6mPct != null
-                        ? e.alpha6mPct >= 0
-                          ? 'text-emerald-400'
-                          : 'text-rose-400'
-                        : 'text-[var(--app-text-muted)]'
-                    }`}
-                  >
-                    {e.alpha6mPct != null ? `${e.alpha6mPct > 0 ? '+' : ''}${e.alpha6mPct} %` : '–'}
+                  <td className={`py-2 pr-3 tabular-nums ${pctFarbe(e.liveAlphaPct)}`}>
+                    {pctText(e.liveAlphaPct)}
+                  </td>
+                  <td className="py-2 pr-3 tabular-nums">
+                    {e.rendite6mPct != null ? pctText(e.rendite6mPct) : 'offen'}
+                  </td>
+                  <td className={`py-2 tabular-nums ${pctFarbe(e.alpha6mPct)}`}>
+                    {pctText(e.alpha6mPct)}
                   </td>
                 </tr>
               ))}
@@ -172,14 +174,17 @@ function NachkaufPerformancePanel({ daten }: { daten: NachkaufPerformanceUebersi
       {daten.anzahlEmpfehlungen === 0 && (
         <p className="mt-3 text-xs text-[var(--app-text-muted)]">
           Noch keine getrackten Empfehlungen — nach „Allokation + Kommentar“ werden die regelbasierten
-          Euro-Beträge gespeichert und ab Monat 6 gegen SPY gemessen.
+          Euro-Beträge gespeichert. Live vs. S&P 500 erscheint sofort, 6M/12M nach Frist.
         </p>
       )}
 
-      {daten.anzahlEmpfehlungen > 0 && daten.ausgewertet6m === 0 && (
+      {daten.anzahlEmpfehlungen > 0 && (
         <p className="mt-3 text-xs text-[var(--app-text-muted)]">
-          {daten.anzahlEmpfehlungen} Kauf-Empfehlung{daten.anzahlEmpfehlungen === 1 ? '' : 'en'} im Tracking —
-          6M/12M-Alpha vs. SPY wird erst nach Ablauf der Frist berechnet (Status „offen“).
+          Live = Kursentwicklung seit Empfehlung, α live = Unterschied zur SPY-Entwicklung im selben
+          Zeitraum.
+          {daten.ausgewertet6m === 0
+            ? ' 6M/12M-Kalibrierung bleibt „offen“, bis die Frist abgelaufen ist.'
+            : ''}
         </p>
       )}
     </PaCard>

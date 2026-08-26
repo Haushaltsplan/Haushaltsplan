@@ -267,6 +267,8 @@ async function ladePerformanceKompakt() {
     const perf = await ladeNachkaufPerformance()
     return {
       anzahlEmpfehlungen: perf.anzahlEmpfehlungen,
+      avgLiveRenditePct: perf.avgLiveRenditePct,
+      avgLiveAlphaPct: perf.avgLiveAlphaPct,
       avgAlpha6mPct: perf.avgAlpha6mPct,
       avgRendite6mPct: perf.avgRendite6mPct,
       trefferquote6mPct: perf.trefferquote6mPct,
@@ -276,6 +278,8 @@ async function ladePerformanceKompakt() {
         ticker: e.ticker,
         empfohlenBetragEur: e.empfohlenBetragEur,
         score: e.score,
+        liveRenditePct: e.liveRenditePct,
+        liveAlphaPct: e.liveAlphaPct,
         rendite6mPct: e.rendite6mPct,
         alpha6mPct: e.alpha6mPct,
       })),

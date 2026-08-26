@@ -367,6 +367,12 @@ export type NachkaufTrackingEintrag = {
   spyRendite12mPct: number | null
   alpha6mPct: number | null
   alpha12mPct: number | null
+  /** Prozententwicklung seit Empfehlung bis Live-Kurs. */
+  liveRenditePct: number | null
+  liveSpyRenditePct: number | null
+  /** Live-Rendite minus SPY-Rendite im selben Zeitraum. */
+  liveAlphaPct: number | null
+  liveTage: number | null
   status: 'offen' | '6m' | '12m' | 'voll'
 }
 
@@ -385,6 +391,8 @@ export type NachkaufPerformanceUebersicht = {
   avgRendite12mPct: number | null
   avgAlpha12mPct: number | null
   trefferquote6mPct: number | null
+  avgLiveRenditePct: number | null
+  avgLiveAlphaPct: number | null
   scoreBucketsEmpfehlung: NachkaufScoreBucketStat[]
   scoreBucketsSignal: NachkaufScoreBucketStat[]
   eintraege: NachkaufTrackingEintrag[]

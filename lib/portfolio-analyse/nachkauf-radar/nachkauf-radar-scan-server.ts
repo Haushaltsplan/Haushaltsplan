@@ -427,7 +427,7 @@ export async function laufeScan(anfrage: NachkaufScanAnfrage): Promise<NachkaufS
   // Feste Whitelist + Watchlist-Titel aus Supabase (Cloud-Sync der Watchlist-Seite)
   const kandidaten = await ladeNachkaufKandidaten()
   const gesamtAnzahl = kandidaten.length
-  const perf = await ladeNachkaufPerformance().catch(() => null)
+  const perf = await ladeNachkaufPerformance(undefined, { mitLive: false }).catch(() => null)
   const batchKontext = await ladeNachkaufBatchKontext(
     kandidaten.map((p) => p.isin),
     perf?.scoreBucketsSignal ?? [],

@@ -125,8 +125,78 @@ function rowZuEintrag(r: TrackingRow): NachkaufTrackingEintrag {
     spyRendite12mPct: r.spy_rendite_12m_pct,
     alpha6mPct: alpha6m,
     alpha12mPct: alpha12m,
+    liveRenditePct: null,
+    liveSpyRenditePct: null,
+    liveAlphaPct: null,
+    liveTage: null,
     status,
   }
+}
+
+function leerePerformance(): NachkaufPerformanceUebersicht {
+  return {
+    anzahlEmpfehlungen: 0,
+    ausgewertet6m: 0,
+    ausgewertet12m: 0,
+    avgRendite6mPct: null,
+    avgAlpha6mPct: null,
+    avgRendite12mPct: null,
+    avgAlpha12mPct: null,
+    trefferquote6mPct: null,
+    avgLiveRenditePct: null,
+    avgLiveAlphaPct: null,
+    scoreBucketsEmpfehlung: [],
+    scoreBucketsSignal: [],
+    eintraege: [],
+  }
+}
+
+function tageSeit(isoTag: string, heute: string): number {
+  const a = Date.parse(`${isoTag.slice(0, 10)}T12:00:00Z`)
+  const b = Date.parse(`${heute.slice(0, 10)}T12:00:00Z`)
+  if (!Number.isFinite(a) || !Number.isFinite(b)) return 0
+  return Math.max(0, Math.round((b - a) / 86_400_000))
+}
+
+/** Live-Rendite seit Empfehlung vs. SPY — nicht persistiert, bei jedem Laden neu. */
+async function ergaenzeLiveStand(rows: TrackingRow[], eintraege: NachkaufTrackingEintrag[]): Promise<void> {
+  if (rows.length === 0) return
+  const heute = new Date().toISOString().slice(0, 10)
+  const spyLive = await ladeYahooLiveKurs(SPY)
+  const spyStartCache = new Map<string, Promise<number | null>>()
+
+  const spyStart = (tag: string) => {
+    const hit = spyStartCache.get(tag)
+    if (hit) return hit
+    const p = yahooSchlusskursAm(SPY, tag)
+    spyStartCache.set(tag, p)
+    return p
+  }
+
+  await Promise.all(
+    rows.map(async (row, i) => {
+      const e = eintraege[i]
+      if (!e) return
+      const basisTag = row.empfohlen_am.slice(0, 10)
+      e.liveTage = tageSeit(basisTag, heute)
+      const sym = await yahooSymbol(row.ticker, row.isin)
+      const startVorhanden = row.kurs_usd != null && row.kurs_usd > 0 ? row.kurs_usd : null
+      const [live, startFallback, spyVon] = await Promise.all([
+        ladeYahooLiveKurs(sym),
+        startVorhanden != null ? Promise.resolve(null) : yahooSchlusskursAm(sym, basisTag),
+        spyStart(basisTag),
+      ])
+      const start = startVorhanden ?? startFallback
+      const livePreis = live?.preis ?? null
+      e.liveRenditePct = start != null && livePreis != null ? renditePct(start, livePreis) : null
+      e.liveSpyRenditePct =
+        spyVon != null && spyLive?.preis != null ? renditePct(spyVon, spyLive.preis) : null
+      e.liveAlphaPct =
+        e.liveRenditePct != null && e.liveSpyRenditePct != null
+          ? Math.round((e.liveRenditePct - e.liveSpyRenditePct) * 10) / 10
+          : null
+    }),
+  )
 }
 
 async function yahooSymbol(ticker: string, isin: string | null): Promise<string> {
@@ -488,22 +558,11 @@ async function berechneScoreSignalBacktest(): Promise<NachkaufScoreBucketStat[]>
     })
 }
 
-export async function ladeNachkaufPerformance(ownerUserId?: string | null): Promise<NachkaufPerformanceUebersicht> {
-  if (!istKonfiguriert()) {
-    return {
-      anzahlEmpfehlungen: 0,
-      ausgewertet6m: 0,
-      ausgewertet12m: 0,
-      avgRendite6mPct: null,
-      avgAlpha6mPct: null,
-      avgRendite12mPct: null,
-      avgAlpha12mPct: null,
-      trefferquote6mPct: null,
-      scoreBucketsEmpfehlung: [],
-      scoreBucketsSignal: [],
-      eintraege: [],
-    }
-  }
+export async function ladeNachkaufPerformance(
+  ownerUserId?: string | null,
+  opts?: { mitLive?: boolean },
+): Promise<NachkaufPerformanceUebersicht> {
+  if (!istKonfiguriert()) return leerePerformance()
 
   const resolvedOwner = ownerUserId ?? (await ladePortfolioOwnerUserId())
 
@@ -518,9 +577,15 @@ export async function ladeNachkaufPerformance(ownerUserId?: string | null): Prom
   const { data, error } = await query
   if (error) console.warn('[nachkauf-performance] Laden:', error.message)
 
-  const eintraege = ((data ?? []) as TrackingRow[]).map(rowZuEintrag)
+  const rows = (data ?? []) as TrackingRow[]
+  const eintraege = rows.map(rowZuEintrag)
+  if (opts?.mitLive !== false) {
+    await ergaenzeLiveStand(rows, eintraege)
+  }
+
   const mit6m = eintraege.filter((e) => e.rendite6mPct != null)
   const mit12m = eintraege.filter((e) => e.rendite12mPct != null)
+  const mitLive = eintraege.filter((e) => e.liveRenditePct != null)
   const avg = (vals: number[]) =>
     vals.length ? Math.round((vals.reduce((a, b) => a + b, 0) / vals.length) * 10) / 10 : null
 
@@ -543,6 +608,10 @@ export async function ladeNachkaufPerformance(ownerUserId?: string | null): Prom
       mit12m.map((e) => e.alpha12mPct).filter((v): v is number => v != null),
     ),
     trefferquote6mPct: treffer6m,
+    avgLiveRenditePct: avg(mitLive.map((e) => e.liveRenditePct!)),
+    avgLiveAlphaPct: avg(
+      eintraege.map((e) => e.liveAlphaPct).filter((v): v is number => v != null),
+    ),
     scoreBucketsEmpfehlung: aggregiereBuckets(eintraege),
     scoreBucketsSignal: signalBuckets,
     eintraege,

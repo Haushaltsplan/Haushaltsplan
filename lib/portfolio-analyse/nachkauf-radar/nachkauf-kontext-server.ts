@@ -43,7 +43,7 @@ export async function reichereNachkaufEintraegeVoll(eintraege: NachkaufScanEintr
 
   await reichereNachkaufTickerKontext(eintraege)
 
-  const perf = await ladeNachkaufPerformance().catch(() => null)
+  const perf = await ladeNachkaufPerformance(undefined, { mitLive: false }).catch(() => null)
   const kandidaten = await ladeNachkaufKandidaten()
   const batchKontext = await ladeNachkaufBatchKontext(
     kandidaten.map((p) => p.isin),
