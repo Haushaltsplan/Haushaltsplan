@@ -3,10 +3,12 @@
 import Link from 'next/link'
 import { useMemo, useState, type ReactNode } from 'react'
 import { DonutChart } from '@/components/finanzen/donut-chart'
+import { PortfolioIsinLogo } from '@/components/portfolio-analyse/isin-logo'
 import { PaBadge, PaCard } from '@/components/portfolio-analyse/pa-ui'
 import { formatDatumDe, formatEur, formatProzent } from '@/lib/portfolio-analyse/berechnung'
 import { eintraegeZuDonut, gewichtungAusSlices, gewichtungNachAsset } from '@/lib/portfolio-analyse/gewichtung'
 import type { LivePosition } from '@/lib/portfolio-analyse/live-bewertung'
+import type { IsinMetadata } from '@/lib/portfolio-analyse/isin-lookup-server'
 import type { ParqetPeriodKennzahlen } from '@/lib/portfolio-analyse/parqet-period-kennzahlen'
 import type { PortfolioScopeMetrics, SinglePortfolioReport } from '@/lib/portfolio-analyse/parqet-core/types'
 import type { PeriodPerformance } from '@/lib/portfolio-analyse/parqet-core/types'
@@ -35,9 +37,9 @@ function portfolioTitel(positionen: LivePosition[]): string {
 
 function MetricSecondary({ label, value }: { label: string; value: string }) {
   return (
-    <div className="flex items-baseline justify-between gap-4 border-b border-white/[0.04] py-2.5 last:border-0">
-      <span className="text-sm text-[var(--app-text-muted)]">{label}</span>
-      <span className="text-sm font-medium tabular-nums text-[var(--app-text)]">{value}</span>
+    <div className="flex items-baseline justify-between gap-3 border-b border-white/[0.04] py-1.5 last:border-0">
+      <span className="text-xs text-[var(--app-text-muted)]">{label}</span>
+      <span className="text-xs font-medium tabular-nums text-[var(--app-text)]">{value}</span>
     </div>
   )
 }
@@ -56,10 +58,10 @@ function MetricPrimary({
   return (
     <div>
       <div className="flex flex-wrap items-center gap-2">
-        <span className="text-sm text-[var(--app-text-muted)]">{label}</span>
+        <span className="text-xs text-[var(--app-text-muted)]">{label}</span>
         {badge}
       </div>
-      <p className={`mt-1 text-xl font-semibold tabular-nums tracking-tight sm:text-[1.65rem] ${valueClass}`}>
+      <p className={`mt-1 text-lg font-semibold tabular-nums tracking-tight sm:text-xl ${valueClass}`}>
         {value}
       </p>
     </div>
@@ -75,6 +77,7 @@ export function PaPortfolioHero({
   onPeriodKeyChange,
   report,
   sektorLaden,
+  meta,
 }: {
   positionen: LivePosition[]
   kennzahlen: {
@@ -88,6 +91,7 @@ export function PaPortfolioHero({
   onPeriodKeyChange: (key: PeriodPerformance['periodKey']) => void
   report?: SinglePortfolioReport | null
   sektorLaden?: boolean
+  meta?: Map<string, IsinMetadata>
 }) {
   const [donutModus, setDonutModus] = useState<'asset' | 'sektor'>('asset')
 
@@ -105,8 +109,24 @@ export function PaPortfolioHero({
       return eintraegeZuDonut(sektorEintraege, 12)
     }
     const eintraege = gewichtungNachAsset(positionen)
-    return eintraegeZuDonut(eintraege, 24)
+    return eintraegeZuDonut(eintraege, 40)
   }, [donutModus, positionen, sektorEintraege])
+
+  const logoFuerSegment = useMemo(() => {
+    if (donutModus !== 'asset' || !meta) return undefined
+    return (seg: { key: string; label: string }) => {
+      if (seg.key === 'rest' || !/^[A-Z]{2}[A-Z0-9]{10}$/.test(seg.key)) return null
+      return (
+        <PortfolioIsinLogo
+          isin={seg.key}
+          fallbackName={seg.label}
+          meta={meta}
+          groesse="sm"
+          className="h-full w-full rounded-full border-0 bg-white object-contain p-[2px]"
+        />
+      )
+    }
+  }, [donutModus, meta])
 
   const assetklassen = useMemo(() => new Set(positionen.map((p) => p.assetKlasse)).size, [positionen])
   const holdings = positionen.filter((p) => p.wertLiveEur > 0).length
@@ -136,8 +156,8 @@ export function PaPortfolioHero({
 
   return (
     <PaCard variant="elevated" className="overflow-hidden">
-      <div className="flex flex-col gap-5 p-4 sm:gap-8 sm:p-6 lg:flex-row lg:items-stretch lg:gap-10">
-        <div className="flex shrink-0 flex-col items-center gap-2 lg:w-[min(42%,280px)] lg:items-start lg:pt-1">
+      <div className="flex flex-col gap-4 p-4 sm:gap-5 sm:p-5 lg:flex-row lg:items-center lg:gap-6">
+        <div className="flex shrink-0 flex-col items-center gap-2 lg:w-[min(56%,440px)] lg:items-start lg:pt-0">
           {sektorDonutMoeglich ? (
             <div className="flex rounded-lg border border-white/[0.06] bg-[var(--app-surface-muted)]/30 p-0.5 text-xs">
               {(['asset', 'sektor'] as const).map((m) => (
@@ -158,29 +178,32 @@ export function PaPortfolioHero({
           ) : sektorLaden ? (
             <p className="text-[11px] text-[var(--app-text-muted)]">Sektoren werden geladen …</p>
           ) : null}
-          <div className="flex justify-center lg:justify-start">
+          <div className="flex w-full justify-center lg:justify-start">
           <div className="sm:hidden">
             <DonutChart
               segmente={donut}
-              groesse={200}
-              dicke={26}
+              groesse={260}
+              dicke={40}
               mitte={{ wert: formatEurKompakt(depotwert) }}
+              renderLogo={logoFuerSegment}
             />
           </div>
           <div className="hidden sm:block lg:hidden">
             <DonutChart
               segmente={donut}
-              groesse={240}
-              dicke={28}
+              groesse={340}
+              dicke={48}
               mitte={{ wert: formatEurKompakt(depotwert) }}
+              renderLogo={logoFuerSegment}
             />
           </div>
           <div className="hidden lg:block">
             <DonutChart
               segmente={donut}
-              groesse={280}
-              dicke={32}
+              groesse={420}
+              dicke={56}
               mitte={{ wert: formatEurKompakt(depotwert) }}
+              renderLogo={logoFuerSegment}
             />
           </div>
           </div>
@@ -189,7 +212,7 @@ export function PaPortfolioHero({
         <div className="min-w-0 flex-1">
           <div className="flex flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-start sm:justify-between">
             <div className="min-w-0">
-              <h1 className="text-xl font-semibold tracking-tight text-[var(--app-text)] sm:text-2xl">
+              <h1 className="text-lg font-semibold tracking-tight text-[var(--app-text)] sm:text-xl">
                 {portfolioTitel(positionen)}
               </h1>
               <p className="mt-1 text-sm text-[var(--app-text-muted)]">
@@ -228,18 +251,18 @@ export function PaPortfolioHero({
             </div>
           </div>
 
-          <hr className="mt-4 border-white/[0.06] sm:mt-5" />
+          <hr className="mt-3 border-white/[0.06] sm:mt-4" />
 
-          <div className="mt-4 grid gap-6 sm:mt-6 sm:gap-8 md:grid-cols-2">
+          <div className="mt-3 grid gap-4 sm:mt-4 sm:gap-5 md:grid-cols-2">
             <div>
               <MetricPrimary label="Portfoliowert" value={formatEur(depotwert)} badge={perfBadge} />
-              <div className="mt-4">
+              <div className="mt-3">
                 <MetricSecondary label={wertAmLabel} value={formatEur(wertAmPeriodenstart)} />
                 <MetricSecondary label="Investiert" value={formatEur(investiertImZeitraum)} />
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-x-6 gap-y-6">
+            <div className="grid grid-cols-2 gap-x-4 gap-y-4">
               <MetricPrimary
                 label="Kursgewinn"
                 value={formatEur(kursgewinn)}
@@ -253,15 +276,15 @@ export function PaPortfolioHero({
                 }
               />
               <div>
-                <p className="text-sm text-[var(--app-text-muted)]">Dividenden</p>
-                <p className="mt-1 text-lg font-semibold tabular-nums text-emerald-400/95">
+                <p className="text-xs text-[var(--app-text-muted)]">Dividenden</p>
+                <p className="mt-1 text-base font-semibold tabular-nums text-emerald-400/95 sm:text-lg">
                   {formatEur(dividenden)}
                 </p>
               </div>
               <div>
-                <p className="text-sm text-[var(--app-text-muted)]">Realisiert</p>
+                <p className="text-xs text-[var(--app-text-muted)]">Realisiert</p>
                 <p
-                  className={`mt-1 text-lg font-semibold tabular-nums ${
+                  className={`mt-1 text-base font-semibold tabular-nums sm:text-lg ${
                     realisiert >= 0 ? 'text-emerald-400/95' : 'text-rose-400'
                   }`}
                 >

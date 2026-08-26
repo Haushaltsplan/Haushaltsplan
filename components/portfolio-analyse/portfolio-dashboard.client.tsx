@@ -190,6 +190,7 @@ export function PortfolioDashboardClient() {
           onPeriodKeyChange={setPeriodKey}
           report={report}
           sektorLaden={sektorLaden}
+          meta={meta}
         />
       ) : null}
 

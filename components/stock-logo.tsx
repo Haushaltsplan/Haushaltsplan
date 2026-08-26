@@ -31,7 +31,11 @@ export function StockLogo({
   if (step >= urls.length) {
     return (
       <div
-        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-[var(--app-border)] bg-[var(--app-surface-muted)] font-mono text-[10px] font-bold uppercase leading-none text-[var(--app-text-muted)]"
+        className={
+          className
+            ? `flex items-center justify-center font-mono text-[8px] font-bold uppercase leading-none text-[var(--app-text-muted)] ${className}`
+            : 'flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-[var(--app-border)] bg-[var(--app-surface-muted)] font-mono text-[10px] font-bold uppercase leading-none text-[var(--app-text-muted)]'
+        }
         title={symbol}
         aria-label={symbol}
       >

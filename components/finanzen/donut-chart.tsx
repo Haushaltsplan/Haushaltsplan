@@ -1,7 +1,7 @@
 'use client'
 
 import { CHART_TRACK } from '@/lib/chart-theme'
-import { useMemo, useState } from 'react'
+import { useMemo, useState, type ReactNode } from 'react'
 
 export type DonutSegment = {
   key: string
@@ -37,6 +37,7 @@ export function DonutChart({
   dicke = 22,
   mitte,
   interaktiv = true,
+  renderLogo,
 }: {
   segmente: DonutSegment[]
   groesse?: number
@@ -45,6 +46,8 @@ export function DonutChart({
   mitte?: { wert: string; label?: string }
   /** Hover: Segment springt hervor, Mitte zeigt Position (Standard: an). */
   interaktiv?: boolean
+  /** Optional: Logo in der Ringmitte des Segments (nur bei ausreichend breitem Bogen). */
+  renderLogo?: (seg: DonutSegment) => ReactNode
 }) {
   const [hoverKey, setHoverKey] = useState<string | null>(null)
 
@@ -84,6 +87,8 @@ export function DonutChart({
   const zweiZeilenMitte = Boolean(ruheLabel || (hoverSeg && centerAnteil))
   const wertY = zweiZeilenMitte ? center + 12 : center + 5
   const labelY = center - (hoverSeg && centerAnteil ? 10 : 6)
+  const logoGroesse = Math.min(40, Math.max(16, Math.round(dicke * 0.7)))
+  const mitteWertFont = hoverSeg ? Math.round(groesse * 0.042) : mitte && !mitte.label ? Math.round(groesse * 0.072) : Math.round(groesse * 0.055)
 
   if (gesamt <= 0) {
     return (
@@ -97,13 +102,14 @@ export function DonutChart({
   }
 
   return (
+    <div className="relative shrink-0" style={{ width: groesse, height: groesse }}>
     <svg
       width={groesse}
       height={groesse}
       viewBox={`0 0 ${groesse} ${groesse}`}
       role="img"
       aria-label="Verteilung nach Kategorie"
-      className={`shrink-0 ${interaktiv ? 'cursor-default' : ''}`}
+      className={`absolute inset-0 ${interaktiv ? 'cursor-default' : ''}`}
       onMouseLeave={interaktiv ? () => setHoverKey(null) : undefined}
     >
       <circle cx={center} cy={center} r={radius} fill="none" stroke={CHART_TRACK} strokeWidth={dicke} />
@@ -201,7 +207,7 @@ export function DonutChart({
           textAnchor="middle"
           className="fill-[var(--app-text)]"
           style={{
-            fontSize: hoverSeg ? 15 : mitte && !mitte.label ? 20 : 17,
+            fontSize: mitteWertFont,
             fontWeight: 700,
             transition: 'font-size 0.1s ease-out',
           }}
@@ -221,5 +227,41 @@ export function DonutChart({
         ) : null}
       </g>
     </svg>
+    {renderLogo ? (
+      <div className="pointer-events-none absolute inset-0">
+        {anteile.map((s) => {
+          const logo = renderLogo(s)
+          if (!logo) return null
+          const bogenPx = s.anteil * umfang
+          const size = Math.min(logoGroesse, Math.max(14, Math.round(bogenPx * 0.72)))
+          if (bogenPx < 14) return null
+          const t = s.offset + s.anteil / 2
+          const theta = t * 2 * Math.PI
+          const x = center + radius * Math.sin(theta)
+          const y = center - radius * Math.cos(theta)
+          const aktiv = hoverKey === s.key
+          const gedimmt = irgendwasHover && !aktiv
+          return (
+            <div
+              key={`${s.key}-logo`}
+              className="absolute overflow-hidden rounded-full bg-white shadow-[0_0_0_1px_rgba(255,255,255,0.35)]"
+              style={{
+                width: size,
+                height: size,
+                left: x,
+                top: y,
+                transform: `translate(-50%, -50%) scale(${aktiv ? 1.12 : 1})`,
+                opacity: gedimmt ? 0.38 : 1,
+                transition: 'opacity 0.1s ease-out, transform 0.1s ease-out',
+                zIndex: aktiv ? 2 : 1,
+              }}
+            >
+              {logo}
+            </div>
+          )
+        })}
+      </div>
+    ) : null}
+    </div>
   )
 }
