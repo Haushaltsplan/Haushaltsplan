@@ -35,11 +35,24 @@ function portfolioTitel(positionen: LivePosition[]): string {
   return 'Portfolio'
 }
 
-function MetricSecondary({ label, value }: { label: string; value: string }) {
+function MetricSecondary({
+  label,
+  value,
+  valueClass = 'text-[var(--app-text)]',
+  extra,
+}: {
+  label: string
+  value: string
+  valueClass?: string
+  extra?: ReactNode
+}) {
   return (
-    <div className="flex items-baseline justify-between gap-3 border-b border-white/[0.04] py-1.5 last:border-0">
-      <span className="text-xs text-[var(--app-text-muted)]">{label}</span>
-      <span className="text-xs font-medium tabular-nums text-[var(--app-text)]">{value}</span>
+    <div className="border-b border-white/[0.04] py-1.5 last:border-0">
+      <div className="flex items-baseline justify-between gap-3">
+        <span className="text-xs text-[var(--app-text-muted)]">{label}</span>
+        <span className={`text-xs font-medium tabular-nums sm:text-sm ${valueClass}`}>{value}</span>
+      </div>
+      {extra}
     </div>
   )
 }
@@ -156,8 +169,8 @@ export function PaPortfolioHero({
 
   return (
     <PaCard variant="elevated" className="overflow-hidden">
-      <div className="flex flex-col gap-4 p-4 sm:gap-5 sm:p-5 lg:flex-row lg:items-center lg:gap-6">
-        <div className="flex shrink-0 flex-col items-center gap-2 lg:w-[min(56%,440px)] lg:items-start lg:pt-0">
+      <div className="grid grid-cols-1 gap-4 p-4 sm:gap-5 sm:p-5 lg:grid-cols-2 lg:items-center lg:gap-8">
+        <div className="flex min-w-0 flex-col items-center gap-2">
           {sektorDonutMoeglich ? (
             <div className="flex rounded-lg border border-white/[0.06] bg-[var(--app-surface-muted)]/30 p-0.5 text-xs">
               {(['asset', 'sektor'] as const).map((m) => (
@@ -178,34 +191,14 @@ export function PaPortfolioHero({
           ) : sektorLaden ? (
             <p className="text-[11px] text-[var(--app-text-muted)]">Sektoren werden geladen …</p>
           ) : null}
-          <div className="flex w-full justify-center lg:justify-start">
-          <div className="sm:hidden">
+          <div className="flex w-full justify-center">
             <DonutChart
               segmente={donut}
-              groesse={260}
-              dicke={40}
+              groesse={560}
+              dicke={72}
               mitte={{ wert: formatEurKompakt(depotwert) }}
               renderLogo={logoFuerSegment}
             />
-          </div>
-          <div className="hidden sm:block lg:hidden">
-            <DonutChart
-              segmente={donut}
-              groesse={340}
-              dicke={48}
-              mitte={{ wert: formatEurKompakt(depotwert) }}
-              renderLogo={logoFuerSegment}
-            />
-          </div>
-          <div className="hidden lg:block">
-            <DonutChart
-              segmente={donut}
-              groesse={420}
-              dicke={56}
-              mitte={{ wert: formatEurKompakt(depotwert) }}
-              renderLogo={logoFuerSegment}
-            />
-          </div>
           </div>
         </div>
 
@@ -253,49 +246,44 @@ export function PaPortfolioHero({
 
           <hr className="mt-3 border-white/[0.06] sm:mt-4" />
 
-          <div className="mt-3 grid gap-4 sm:mt-4 sm:gap-5 md:grid-cols-2">
-            <div>
-              <MetricPrimary label="Portfoliowert" value={formatEur(depotwert)} badge={perfBadge} />
-              <div className="mt-3">
-                <MetricSecondary label={wertAmLabel} value={formatEur(wertAmPeriodenstart)} />
-                <MetricSecondary label="Investiert" value={formatEur(investiertImZeitraum)} />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-x-4 gap-y-4">
-              <MetricPrimary
+          <div className="mt-3 sm:mt-4">
+            <MetricPrimary label="Portfoliowert" value={formatEur(depotwert)} badge={perfBadge} />
+            <div className="mt-3">
+              <MetricSecondary label={wertAmLabel} value={formatEur(wertAmPeriodenstart)} />
+              <MetricSecondary label="Investiert" value={formatEur(investiertImZeitraum)} />
+              <MetricSecondary
                 label="Kursgewinn"
                 value={formatEur(kursgewinn)}
                 valueClass={kursgewinn >= 0 ? 'text-emerald-400' : 'text-rose-400'}
               />
-              <MetricPrimary
+              <MetricSecondary
+                label="Dividenden"
+                value={formatEur(dividenden)}
+                valueClass="text-emerald-400/95"
+              />
+              <MetricSecondary
                 label="IZF"
                 value={irr != null ? formatProzent(irr) : '—'}
                 valueClass={
-                  irr != null && irr >= 0 ? 'text-emerald-400' : irr != null ? 'text-rose-400' : 'text-[var(--app-text)]'
+                  irr != null && irr >= 0
+                    ? 'text-emerald-400'
+                    : irr != null
+                      ? 'text-rose-400'
+                      : 'text-[var(--app-text)]'
                 }
               />
-              <div>
-                <p className="text-xs text-[var(--app-text-muted)]">Dividenden</p>
-                <p className="mt-1 text-base font-semibold tabular-nums text-emerald-400/95 sm:text-lg">
-                  {formatEur(dividenden)}
-                </p>
-              </div>
-              <div>
-                <p className="text-xs text-[var(--app-text-muted)]">Realisiert</p>
-                <p
-                  className={`mt-1 text-base font-semibold tabular-nums sm:text-lg ${
-                    realisiert >= 0 ? 'text-emerald-400/95' : 'text-rose-400'
-                  }`}
-                >
-                  {formatEur(realisiert)}
-                </p>
-                {realisiertGewinne > 0 || realisiertVerluste < 0 ? (
-                  <p className="mt-0.5 text-[11px] tabular-nums text-[var(--app-text-muted)]">
-                    {formatEur(realisiertGewinne)} Gewinne · {formatEur(realisiertVerluste)} Verluste
-                  </p>
-                ) : null}
-              </div>
+              <MetricSecondary
+                label="Realisiert"
+                value={formatEur(realisiert)}
+                valueClass={realisiert >= 0 ? 'text-emerald-400/95' : 'text-rose-400'}
+                extra={
+                  realisiertGewinne > 0 || realisiertVerluste < 0 ? (
+                    <p className="mt-0.5 text-right text-[11px] tabular-nums text-[var(--app-text-muted)]">
+                      {formatEur(realisiertGewinne)} Gewinne · {formatEur(realisiertVerluste)} Verluste
+                    </p>
+                  ) : null
+                }
+              />
             </div>
           </div>
         </div>

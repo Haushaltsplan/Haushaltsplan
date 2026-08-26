@@ -94,7 +94,7 @@ export function DonutChart({
     return (
       <div
         className="flex items-center justify-center rounded-full border border-dashed border-[var(--app-border-strong)] bg-[var(--app-surface-muted)] text-[11px] text-[var(--app-text-muted)]"
-        style={{ width: groesse, height: groesse }}
+        style={{ width: '100%', maxWidth: groesse, aspectRatio: '1' }}
       >
         Keine Daten
       </div>
@@ -102,14 +102,14 @@ export function DonutChart({
   }
 
   return (
-    <div className="relative shrink-0" style={{ width: groesse, height: groesse }}>
+    <div className="relative mx-auto w-full shrink-0" style={{ maxWidth: groesse, aspectRatio: '1' }}>
     <svg
-      width={groesse}
-      height={groesse}
+      width="100%"
+      height="100%"
       viewBox={`0 0 ${groesse} ${groesse}`}
       role="img"
       aria-label="Verteilung nach Kategorie"
-      className={`absolute inset-0 ${interaktiv ? 'cursor-default' : ''}`}
+      className={`absolute inset-0 h-full w-full ${interaktiv ? 'cursor-default' : ''}`}
       onMouseLeave={interaktiv ? () => setHoverKey(null) : undefined}
     >
       <circle cx={center} cy={center} r={radius} fill="none" stroke={CHART_TRACK} strokeWidth={dicke} />
@@ -246,10 +246,10 @@ export function DonutChart({
               key={`${s.key}-logo`}
               className="absolute overflow-hidden rounded-full bg-white shadow-[0_0_0_1px_rgba(255,255,255,0.35)]"
               style={{
-                width: size,
-                height: size,
-                left: x,
-                top: y,
+                left: `${(x / groesse) * 100}%`,
+                top: `${(y / groesse) * 100}%`,
+                width: `${(size / groesse) * 100}%`,
+                height: `${(size / groesse) * 100}%`,
                 transform: `translate(-50%, -50%) scale(${aktiv ? 1.12 : 1})`,
                 opacity: gedimmt ? 0.38 : 1,
                 transition: 'opacity 0.1s ease-out, transform 0.1s ease-out',
