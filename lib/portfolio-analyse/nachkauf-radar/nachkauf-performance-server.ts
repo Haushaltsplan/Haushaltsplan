@@ -145,10 +145,33 @@ function leerePerformance(): NachkaufPerformanceUebersicht {
     trefferquote6mPct: null,
     avgLiveRenditePct: null,
     avgLiveAlphaPct: null,
+    avgLiveRenditeUngewichtetPct: null,
+    avgLiveAlphaUngewichtetPct: null,
     scoreBucketsEmpfehlung: [],
     scoreBucketsSignal: [],
     eintraege: [],
   }
+}
+
+function avgEinfach(vals: number[]): number | null {
+  return vals.length ? Math.round((vals.reduce((a, b) => a + b, 0) / vals.length) * 10) / 10 : null
+}
+
+function avgKapital(
+  eintraege: NachkaufTrackingEintrag[],
+  wert: (e: NachkaufTrackingEintrag) => number | null,
+): number | null {
+  let sum = 0
+  let gewicht = 0
+  for (const e of eintraege) {
+    const v = wert(e)
+    const w = e.empfohlenBetragEur
+    if (v == null || !Number.isFinite(v) || w <= 0) continue
+    sum += v * w
+    gewicht += w
+  }
+  if (gewicht > 0) return Math.round((sum / gewicht) * 10) / 10
+  return avgEinfach(eintraege.map(wert).filter((v): v is number => v != null))
 }
 
 function tageSeit(isoTag: string, heute: string): number {
@@ -478,14 +501,15 @@ export async function aktualisiereFaelligeOutcomes(): Promise<void> {
 }
 
 function aggregiereBuckets(eintraege: NachkaufTrackingEintrag[]): NachkaufScoreBucketStat[] {
-  const map = new Map<string, { n: number; alphaSum: number; alphaN: number }>()
+  const map = new Map<string, { n: number; alphaGewicht: number; gewicht: number }>()
   for (const e of eintraege) {
     if (e.alpha6mPct == null) continue
+    const w = e.empfohlenBetragEur > 0 ? e.empfohlenBetragEur : 1
     const b = scoreBucket(e.score)
-    const cur = map.get(b) ?? { n: 0, alphaSum: 0, alphaN: 0 }
+    const cur = map.get(b) ?? { n: 0, alphaGewicht: 0, gewicht: 0 }
     cur.n++
-    cur.alphaSum += e.alpha6mPct
-    cur.alphaN++
+    cur.alphaGewicht += e.alpha6mPct * w
+    cur.gewicht += w
     map.set(b, cur)
   }
   const order = ['90+', '80–89', '70–79', '<70']
@@ -496,7 +520,7 @@ function aggregiereBuckets(eintraege: NachkaufTrackingEintrag[]): NachkaufScoreB
       return {
         bucket: b,
         anzahl: v.n,
-        avgAlpha6mPct: v.alphaN > 0 ? Math.round((v.alphaSum / v.alphaN) * 10) / 10 : null,
+        avgAlpha6mPct: v.gewicht > 0 ? Math.round((v.alphaGewicht / v.gewicht) * 10) / 10 : null,
       }
     })
 }
@@ -585,10 +609,6 @@ export async function ladeNachkaufPerformance(
 
   const mit6m = eintraege.filter((e) => e.rendite6mPct != null)
   const mit12m = eintraege.filter((e) => e.rendite12mPct != null)
-  const mitLive = eintraege.filter((e) => e.liveRenditePct != null)
-  const avg = (vals: number[]) =>
-    vals.length ? Math.round((vals.reduce((a, b) => a + b, 0) / vals.length) * 10) / 10 : null
-
   const alphas6m = mit6m.map((e) => e.alpha6mPct).filter((v): v is number => v != null)
   const treffer6m =
     alphas6m.length > 0
@@ -601,15 +621,17 @@ export async function ladeNachkaufPerformance(
     anzahlEmpfehlungen: eintraege.length,
     ausgewertet6m: mit6m.length,
     ausgewertet12m: mit12m.length,
-    avgRendite6mPct: avg(mit6m.map((e) => e.rendite6mPct!)),
-    avgAlpha6mPct: avg(alphas6m),
-    avgRendite12mPct: avg(mit12m.map((e) => e.rendite12mPct!)),
-    avgAlpha12mPct: avg(
-      mit12m.map((e) => e.alpha12mPct).filter((v): v is number => v != null),
-    ),
+    avgRendite6mPct: avgKapital(mit6m, (e) => e.rendite6mPct),
+    avgAlpha6mPct: avgKapital(mit6m, (e) => e.alpha6mPct),
+    avgRendite12mPct: avgKapital(mit12m, (e) => e.rendite12mPct),
+    avgAlpha12mPct: avgKapital(mit12m, (e) => e.alpha12mPct),
     trefferquote6mPct: treffer6m,
-    avgLiveRenditePct: avg(mitLive.map((e) => e.liveRenditePct!)),
-    avgLiveAlphaPct: avg(
+    avgLiveRenditePct: avgKapital(eintraege, (e) => e.liveRenditePct),
+    avgLiveAlphaPct: avgKapital(eintraege, (e) => e.liveAlphaPct),
+    avgLiveRenditeUngewichtetPct: avgEinfach(
+      eintraege.map((e) => e.liveRenditePct).filter((v): v is number => v != null),
+    ),
+    avgLiveAlphaUngewichtetPct: avgEinfach(
       eintraege.map((e) => e.liveAlphaPct).filter((v): v is number => v != null),
     ),
     scoreBucketsEmpfehlung: aggregiereBuckets(eintraege),

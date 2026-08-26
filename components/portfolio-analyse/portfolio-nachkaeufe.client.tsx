@@ -38,6 +38,12 @@ function pctText(v: number | null, leer = '–'): string {
   return `${v > 0 ? '+' : ''}${v} %`
 }
 
+function gewichtetHinweis(gewichtet: number | null, ungewichtet: number | null): string {
+  if (gewichtet == null) return 'kapitalgewichtet'
+  if (ungewichtet == null || ungewichtet === gewichtet) return 'kapitalgewichtet nach Betrag'
+  return `kapitalgewichtet · ungewichtet ${pctText(ungewichtet)}`
+}
+
 function NachkaufPerformancePanel({ daten }: { daten: NachkaufPerformanceUebersicht }) {
   const buckets =
     daten.scoreBucketsEmpfehlung.length > 0 ? daten.scoreBucketsEmpfehlung : daten.scoreBucketsSignal
@@ -48,7 +54,7 @@ function NachkaufPerformancePanel({ daten }: { daten: NachkaufPerformanceUebersi
     <PaCard variant="elevated" className="p-5">
       <PaSectionTitle
         title="Radar-Performance"
-        description="Live seit Empfehlung vs. S&P 500 (SPY). 6M/12M bleiben die Kalibrierung nach Frist."
+        description="Ø-Kennzahlen kapitalgewichtet nach empfohlenem Betrag. Zeilen = einzelne Titel. 6M/12M nach Frist."
       />
       <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-6">
         <div>
@@ -60,35 +66,43 @@ function NachkaufPerformancePanel({ daten }: { daten: NachkaufPerformanceUebersi
           <p className={`text-lg font-semibold ${pctFarbe(daten.avgLiveRenditePct)}`}>
             {pctText(daten.avgLiveRenditePct)}
           </p>
-          <p className="text-[10px] text-[var(--app-text-muted)]">Live, ohne Benchmark</p>
+          <p className="text-[10px] text-[var(--app-text-muted)]">
+            {gewichtetHinweis(daten.avgLiveRenditePct, daten.avgLiveRenditeUngewichtetPct)}
+          </p>
         </div>
         <div>
           <p className="text-[11px] text-[var(--app-text-muted)]">Ø α live vs. SPY</p>
           <p className={`text-lg font-semibold ${pctFarbe(daten.avgLiveAlphaPct)}`}>
             {pctText(daten.avgLiveAlphaPct)}
           </p>
-          <p className="text-[10px] text-[var(--app-text-muted)]">Aktie minus S&P 500</p>
+          <p className="text-[10px] text-[var(--app-text-muted)]">
+            {gewichtetHinweis(daten.avgLiveAlphaPct, daten.avgLiveAlphaUngewichtetPct)}
+          </p>
         </div>
         <div>
           <p className="text-[11px] text-[var(--app-text-muted)]">Ø Alpha 6M vs. SPY</p>
           <p className={`text-lg font-semibold ${pctFarbe(daten.avgAlpha6mPct)}`}>
             {pctText(daten.avgAlpha6mPct)}
           </p>
-          <p className="text-[10px] text-[var(--app-text-muted)]">{daten.ausgewertet6m} ausgewertet</p>
+          <p className="text-[10px] text-[var(--app-text-muted)]">
+            kapitalgewichtet · {daten.ausgewertet6m} ausgewertet
+          </p>
         </div>
         <div>
           <p className="text-[11px] text-[var(--app-text-muted)]">Trefferquote 6M</p>
           <p className="text-lg font-semibold text-[var(--app-text)]">
             {daten.trefferquote6mPct != null ? `${daten.trefferquote6mPct} %` : '–'}
           </p>
-          <p className="text-[10px] text-[var(--app-text-muted)]">Alpha &gt; 0 vs. SPY</p>
+          <p className="text-[10px] text-[var(--app-text-muted)]">Anteil der Titel, Alpha &gt; 0</p>
         </div>
         <div>
           <p className="text-[11px] text-[var(--app-text-muted)]">Ø Alpha 12M</p>
           <p className={`text-lg font-semibold ${pctFarbe(daten.avgAlpha12mPct)}`}>
             {pctText(daten.avgAlpha12mPct)}
           </p>
-          <p className="text-[10px] text-[var(--app-text-muted)]">{daten.ausgewertet12m} ausgewertet</p>
+          <p className="text-[10px] text-[var(--app-text-muted)]">
+            kapitalgewichtet · {daten.ausgewertet12m} ausgewertet
+          </p>
         </div>
       </div>
 
@@ -181,7 +195,7 @@ function NachkaufPerformancePanel({ daten }: { daten: NachkaufPerformanceUebersi
       {daten.anzahlEmpfehlungen > 0 && (
         <p className="mt-3 text-xs text-[var(--app-text-muted)]">
           Live = Kursentwicklung seit Empfehlung, α live = Unterschied zur SPY-Entwicklung im selben
-          Zeitraum.
+          Zeitraum. Die Ø-Werte gewichten 200 € stärker als 120 €; die Zeilen bleiben je Titel.
           {daten.ausgewertet6m === 0
             ? ' 6M/12M-Kalibrierung bleibt „offen“, bis die Frist abgelaufen ist.'
             : ''}

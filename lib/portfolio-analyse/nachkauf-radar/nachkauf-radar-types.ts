@@ -393,6 +393,8 @@ export type NachkaufPerformanceUebersicht = {
   trefferquote6mPct: number | null
   avgLiveRenditePct: number | null
   avgLiveAlphaPct: number | null
+  avgLiveRenditeUngewichtetPct: number | null
+  avgLiveAlphaUngewichtetPct: number | null
   scoreBucketsEmpfehlung: NachkaufScoreBucketStat[]
   scoreBucketsSignal: NachkaufScoreBucketStat[]
   eintraege: NachkaufTrackingEintrag[]
