@@ -28,6 +28,7 @@ import {
   bauePositionPerfMap,
   berechnePositionPerfFuerPeriode,
   topMoverUntertitel,
+  type TopMoverRichtung,
 } from '@/lib/portfolio-analyse/position-period-performance'
 import { heuteIso } from '@/lib/portfolio-analyse/wertentwicklung-tage'
 import { baueWertentwicklung } from '@/lib/portfolio-analyse/wertentwicklung'
@@ -46,6 +47,7 @@ export function PortfolioDashboardClient() {
   const { live, liveLaden, kursFehler, buchungen, meta, report, hatDaten, laden, neuLaden, sektorLaden } =
     usePortfolioAnalyse()
   const [periodKey, setPeriodKey] = useState<PeriodPerformance['periodKey']>('MAX')
+  const [topMoverRichtung, setTopMoverRichtung] = useState<TopMoverRichtung>('gewinner')
   const [kursHistorie, setKursHistorie] = useState<Map<string, Map<string, number>>>(new Map())
 
   const k = live?.kennzahlen
@@ -126,19 +128,28 @@ export function PortfolioDashboardClient() {
     [positionen, periodKey, kursHistorie, startDatumIso],
   )
 
-  const topMover = useMemo(
-    () =>
-      [...positionen]
-        .map((p) => {
-          const key = p.isin?.toUpperCase() ?? p.name
-          const perf = positionPerfMap.get(key) ?? berechnePositionPerfFuerPeriode(p, periodKey, kursHistorie, startDatumIso)
-          return { p, perf }
-        })
-        .filter(({ p, perf }) => p.hatLiveKurs && perf.gewinnVerlustProzent != null)
-        .sort((a, b) => (b.perf.gewinnVerlustProzent ?? 0) - (a.perf.gewinnVerlustProzent ?? 0))
-        .slice(0, 6),
-    [positionen, positionPerfMap, periodKey, kursHistorie, startDatumIso],
-  )
+  const topMover = useMemo(() => {
+    const rows = [...positionen]
+      .map((p) => {
+        const key = p.isin?.toUpperCase() ?? p.name
+        const perf =
+          positionPerfMap.get(key) ??
+          berechnePositionPerfFuerPeriode(p, periodKey, kursHistorie, startDatumIso)
+        return { p, perf }
+      })
+      .filter(({ p, perf }) => p.hatLiveKurs && perf.gewinnVerlustProzent != null)
+      .filter(({ perf }) =>
+        topMoverRichtung === 'gewinner'
+          ? (perf.gewinnVerlustProzent ?? 0) >= 0
+          : (perf.gewinnVerlustProzent ?? 0) < 0,
+      )
+    rows.sort((a, b) => {
+      const ap = a.perf.gewinnVerlustProzent ?? 0
+      const bp = b.perf.gewinnVerlustProzent ?? 0
+      return topMoverRichtung === 'gewinner' ? bp - ap : ap - bp
+    })
+    return rows
+  }, [positionen, positionPerfMap, periodKey, kursHistorie, startDatumIso, topMoverRichtung])
 
   const startDatum = startDatumIso ? formatDatumDe(startDatumIso) : null
 
@@ -206,19 +217,20 @@ export function PortfolioDashboardClient() {
 
       <div className="grid gap-6 lg:grid-cols-3 lg:items-stretch">
         {renditeKennzahlen ? (
-          <div className="min-h-0">
+          <div className="min-h-0 lg:h-full">
             <PaRenditePanel kennzahlen={renditeKennzahlen} startDatum={startDatum} />
             {kursFehler ? (
               <p className="mt-2 text-[11px] text-amber-500/90">Live-Kurse teilweise nicht verfügbar.</p>
             ) : null}
           </div>
         ) : (
-          <PaCard variant="elevated" className="p-5">
+          <PaCard variant="elevated" className="h-full p-5">
             <p className="text-sm text-[var(--app-text-muted)]">Rendite wird berechnet …</p>
           </PaCard>
         )}
 
-        <PaCard variant="elevated" className="flex min-h-0 flex-col">
+        <div className="relative min-h-[28rem] lg:min-h-0">
+          <PaCard variant="elevated" className="flex min-h-[28rem] flex-col overflow-hidden lg:absolute lg:inset-0 lg:min-h-0">
           <div className="flex shrink-0 items-center justify-between border-b border-white/[0.04] px-5 py-3">
             <h2 className="text-sm font-semibold text-[var(--app-text)]">Letzte Aktivitäten</h2>
             <Link href="/portfolioanalyse/aktivitaeten" className="text-xs text-teal-400 hover:underline">
@@ -252,15 +264,38 @@ export function PortfolioDashboardClient() {
             )})}
           </PaScrollList>
         </PaCard>
+        </div>
 
-        <PaCard variant="elevated" className="flex min-h-0 flex-col">
-          <div className="shrink-0 border-b border-white/[0.04] px-5 py-3">
-            <h2 className="text-sm font-semibold text-[var(--app-text)]">Top Mover</h2>
-            <p className="text-[11px] text-[var(--app-text-muted)]">{topMoverUntertitel(periodKey)}</p>
+        <div className="relative min-h-[28rem] lg:min-h-0">
+        <PaCard variant="elevated" className="flex min-h-[28rem] flex-col overflow-hidden lg:absolute lg:inset-0 lg:min-h-0">
+          <div className="flex shrink-0 items-start justify-between gap-3 border-b border-white/[0.04] px-5 py-3">
+            <div className="min-w-0">
+              <h2 className="text-sm font-semibold text-[var(--app-text)]">Top Mover</h2>
+              <button
+                type="button"
+                onClick={() =>
+                  setTopMoverRichtung((r) => (r === 'gewinner' ? 'verlierer' : 'gewinner'))
+                }
+                className="mt-0.5 flex items-center gap-1 rounded-md text-[11px] text-[var(--app-text-muted)] transition-colors hover:text-[var(--app-text)]"
+                aria-label={
+                  topMoverRichtung === 'gewinner'
+                    ? 'Nach größten Verlierern sortieren'
+                    : 'Nach größten Gewinnern sortieren'
+                }
+                title="Gewinner / Verlierer umschalten"
+              >
+                <span className="text-sm leading-none" aria-hidden>
+                  {topMoverRichtung === 'gewinner' ? '↑' : '↓'}
+                </span>
+                <span>{topMoverUntertitel(periodKey, topMoverRichtung)}</span>
+              </button>
+            </div>
           </div>
           <PaScrollList className="divide-y divide-[var(--app-border)]">
             {topMover.length === 0 ? (
-              <li className="px-5 py-8 text-center text-sm text-[var(--app-text-muted)]">Keine Live-Performance.</li>
+              <li className="px-5 py-8 text-center text-sm text-[var(--app-text-muted)]">
+                {topMoverRichtung === 'verlierer' ? 'Keine Verlierer in diesem Zeitraum.' : 'Keine Live-Performance.'}
+              </li>
             ) : (
               topMover.map(({ p, perf }) => {
                 const fundamentalHref =
@@ -303,6 +338,7 @@ export function PortfolioDashboardClient() {
             )}
           </PaScrollList>
         </PaCard>
+        </div>
       </div>
 
       <PaWertpapiereListe

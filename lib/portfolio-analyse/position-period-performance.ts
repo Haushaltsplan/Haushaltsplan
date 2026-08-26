@@ -18,10 +18,16 @@ export function spaltenLabelKursgewinn(periodKey: PeriodPerformance['periodKey']
   return 'Performance / in %'
 }
 
-export function topMoverUntertitel(periodKey: PeriodPerformance['periodKey']): string {
-  if (periodKey === '1T') return '↑ Gewinner heute'
-  if (periodKey === 'MAX') return '↑ Gewinner (seit Kauf)'
-  return '↑ Gewinner im Zeitraum'
+export type TopMoverRichtung = 'gewinner' | 'verlierer'
+
+export function topMoverUntertitel(
+  periodKey: PeriodPerformance['periodKey'],
+  richtung: TopMoverRichtung = 'gewinner',
+): string {
+  const wer = richtung === 'gewinner' ? 'Gewinner' : 'Verlierer'
+  if (periodKey === '1T') return `${wer} heute`
+  if (periodKey === 'MAX') return `${wer} (seit Kauf)`
+  return `${wer} im Zeitraum`
 }
 
 /** Letzter Schlusskurs an oder vor Stichtag. */

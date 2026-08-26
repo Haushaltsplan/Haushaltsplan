@@ -41,7 +41,7 @@ export function PaRenditePanel({
   const k = kennzahlen
 
   return (
-    <PaCard variant="elevated" className="p-5">
+    <PaCard variant="elevated" className="h-full p-5">
       <h2 className="text-sm font-semibold tracking-tight text-[var(--app-text)]">Rendite</h2>
       {startDatum ? (
         <p className="mt-0.5 text-[11px] text-[var(--app-text-muted)]">seit {startDatum} · in EUR</p>
