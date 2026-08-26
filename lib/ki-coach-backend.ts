@@ -456,8 +456,19 @@ type CallGeminiEinModellOptions = {
   geminiGoogleSearch?: boolean
   /** Abbruch der Gemini-HTTP-Anfrage (Default 90s). */
   timeoutMs?: number
-  /** Caps die Antwortlänge — kürzere Generierung, weniger Timeouts. */
+  /** Caps die sichtbare Antwortlänge. Bei Thinking-Modellen zählt Denken mit — nicht zu knapp setzen. */
   maxOutputTokens?: number
+  /**
+   * Wenig/kein Thinking, damit Free-Flash nicht das Tokenbudget im Denken verbraucht
+   * und die sichtbare Antwort mitten im Satz abbricht.
+   */
+  thinkingMinimal?: boolean
+}
+
+function geminiThinkingConfig(model: string): Record<string, unknown> {
+  const m = model.toLowerCase()
+  if (/gemini-2\.5/.test(m)) return { thinkingBudget: 0 }
+  return { thinkingLevel: 'minimal' }
 }
 
 async function callGeminiEinModell(
@@ -480,6 +491,9 @@ async function callGeminiEinModell(
   const generationConfig: Record<string, unknown> = { temperature: opts.temperature }
   if (opts.maxOutputTokens != null && opts.maxOutputTokens > 0) {
     generationConfig.maxOutputTokens = opts.maxOutputTokens
+  }
+  if (opts.thinkingMinimal) {
+    generationConfig.thinkingConfig = geminiThinkingConfig(model)
   }
   if (opts.jsonResponse?.schema) {
     generationConfig.responseMimeType = 'application/json'
@@ -526,7 +540,7 @@ async function callGeminiEinModell(
 
   let data: {
     candidates?: Array<{
-      content?: { parts?: Array<{ text?: string }> }
+      content?: { parts?: Array<{ text?: string; thought?: boolean }> }
       finishReason?: string
     }>
     promptFeedback?: { blockReason?: string }
@@ -537,15 +551,33 @@ async function callGeminiEinModell(
     return { ok: false, httpStatus: 502, hint: 'Ungültige JSON-Antwort von Gemini.', quotaOderRateLimit: false }
   }
 
-  const parts = data.candidates?.[0]?.content?.parts
-  const text = parts?.map((p) => p.text ?? '').join('').trim()
+  const cand = data.candidates?.[0]
+  const parts = cand?.content?.parts ?? []
+  const text = parts
+    .filter((p) => !p.thought)
+    .map((p) => p.text ?? '')
+    .join('')
+    .trim()
+  const finish = cand?.finishReason
   if (!text) {
-    const block = data.promptFeedback?.blockReason || data.candidates?.[0]?.finishReason
+    const block = data.promptFeedback?.blockReason || finish
     const extra = block ? ` (${block})` : ''
     return {
       ok: false,
-      httpStatus: 502,
-      hint: `Keine nutzbare Antwort von Gemini${extra}.`,
+      httpStatus: finish === 'MAX_TOKENS' ? 504 : 502,
+      hint:
+        finish === 'MAX_TOKENS'
+          ? 'Gemini hat nur intern nachgedacht, die Antwort wurde abgeschnitten. Bitte nochmal senden.'
+          : `Keine nutzbare Antwort von Gemini${extra}.`,
+      quotaOderRateLimit: false,
+    }
+  }
+  if (finish === 'MAX_TOKENS' && text.length < 1600) {
+    console.warn(`[ki-coach] Gemini „${model}“ MAX_TOKENS nach ${text.length} Zeichen — zu kurz, nächstes Modell.`)
+    return {
+      ok: false,
+      httpStatus: 504,
+      hint: 'Gemini hat die Antwort mitten im Satz abgeschnitten. Bitte nochmal senden.',
       quotaOderRateLimit: false,
     }
   }
@@ -607,6 +639,16 @@ async function callGemini(
     const modellKey = geminiKeyFuerModell(model, apiKey, { forcePaid: forcePaidKey, forceFree: forceFreeKey })
     const optsMitTimeout = { ...callOpts, timeoutMs: thisTimeout }
     let r = await callGeminiEinModell(modellKey, model, systemText, userMessages, optsMitTimeout)
+
+    // thinkingConfig unbekannt beim Modell → einmal ohne Thinking-Flag
+    if (!r.ok && r.httpStatus === 400 && callOpts.thinkingMinimal && restMs() > 10_000) {
+      console.warn(`[ki-coach] Gemini „${model}“ 400 mit thinkingConfig — Retry ohne Thinking-Flag.`)
+      r = await callGeminiEinModell(modellKey, model, systemText, userMessages, {
+        ...callOpts,
+        thinkingMinimal: false,
+        timeoutMs: Math.min(perModelTimeout, restMs()),
+      })
+    }
 
     // Einmal kurz warten und dasselbe Modell bei temporärer Überlastung wiederholen
     if (!r.ok && r.quotaOderRateLimit && (r.httpStatus === 503 || r.httpStatus === 429) && restMs() > 12_000) {
@@ -685,6 +727,8 @@ export type RunCoachCompletionOptions = {
   geminiTotalBudgetMs?: number
   /** Gemini generationConfig.maxOutputTokens. */
   maxOutputTokens?: number
+  /** Wenig Thinking (3.x: thinkingLevel minimal, 2.5: thinkingBudget 0). */
+  thinkingMinimal?: boolean
 }
 
 export async function runCoachCompletion(
@@ -710,6 +754,7 @@ export async function runCoachCompletion(
         geminiGoogleSearch: options?.geminiGoogleSearch,
         timeoutMs: options?.timeoutMs,
         maxOutputTokens: options?.maxOutputTokens,
+        thinkingMinimal: options?.thinkingMinimal,
       },
       options?.geminiModels,
       options?.geminiForcePaidApiKey === true,

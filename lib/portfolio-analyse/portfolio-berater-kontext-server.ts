@@ -38,6 +38,8 @@ import {
   ladeFundamentaldatenFuerBerater,
   type FundamentalBeraterZiel,
 } from '@/lib/portfolio-analyse/portfolio-berater-fundamentaldaten-server'
+import { ladeDepotFirmaAntwort } from '@/lib/portfolio-analyse/depot-firma-server'
+import type { DepotFirmaModell } from '@/lib/portfolio-analyse/depot-firma'
 
 export type PortfolioBeraterAnfrageOpts = {
   focusIsin?: string | null
@@ -80,6 +82,38 @@ function excerptLimit(ticker: string, focusTicker: string | null, imDepot: boole
   if (focusTicker && t === focusTicker) return 1100
   if (imDepot) return 600
   return 320
+}
+
+function kompaktDepotFirmaModell(m: DepotFirmaModell) {
+  return {
+    modus: m.modus,
+    aktienAnzahl: m.aktienAnzahl,
+    mitLookthrough: m.mitLookthrough,
+    depotwertEur: round0(m.depotwertEur),
+    abdeckungPct: round1(m.abdeckungPct),
+    groesste: m.groesste,
+    kennzahlen: m.sektionen.flatMap((s) =>
+      s.kennzahlen.map((k) => ({
+        bereich: s.titel,
+        label: k.label,
+        wert: k.wertText,
+        abdeckungPct: round1(k.abdeckungPct),
+        n: k.n,
+      })),
+    ),
+  }
+}
+
+function kompaktDepotAlsFirma(raw: Awaited<ReturnType<typeof ladeDepotFirmaAntwort>> | null) {
+  if (!raw || !raw.ok) return null
+  return {
+    eurUsd: raw.eurUsd,
+    hinweis:
+      'Fertige Look-through-Zahlen der Seite Depot-als-Firma (Aktien ohne ETFs). Nicht nachrechnen.',
+    depotgewicht: kompaktDepotFirmaModell(raw.depotgewicht),
+    gleichgewicht: kompaktDepotFirmaModell(raw.gleichgewicht),
+    fehlend: raw.fehlend.slice(0, 12),
+  }
 }
 
 /**
@@ -431,6 +465,7 @@ export async function bauePortfolioBeraterKontext(opts?: PortfolioBeraterAnfrage
     kaufempfehlung,
     marktRegime,
     performance,
+    depotAlsFirmaRaw,
   ] = await Promise.all([
     timed('depot', ladeLivePortfolioServer()),
     timed('scan', ladeScanAngereichert()),
@@ -443,6 +478,7 @@ export async function bauePortfolioBeraterKontext(opts?: PortfolioBeraterAnfrage
     timed('kaufempfehlung', ladeKaufempfehlungAktuell()),
     timed('marktRegime', ladeNachkaufMarktRegime().catch(() => null)),
     timed('performance', ladePerformanceKompakt()),
+    timed('depotAlsFirma', ladeDepotFirmaAntwort().catch(() => null)),
   ])
 
   await ergaenzeDepotGewichte(scan, depotPaket)
@@ -535,6 +571,7 @@ export async function bauePortfolioBeraterKontext(opts?: PortfolioBeraterAnfrage
         verkaufAllokation: kaufempfehlung.verkaufAllokation,
       }
     : null
+  const depotAlsFirma = kompaktDepotAlsFirma(depotAlsFirmaRaw)
 
   if (!depotPaket) {
     return {
@@ -567,6 +604,7 @@ export async function bauePortfolioBeraterKontext(opts?: PortfolioBeraterAnfrage
       kaufempfehlung: kaufempfehlungKompakt,
       marktRegime,
       performance,
+      depotAlsFirma,
       deepResearch: deepResearchOhneScan,
       fundamentaldaten,
     }
@@ -683,6 +721,7 @@ export async function bauePortfolioBeraterKontext(opts?: PortfolioBeraterAnfrage
     kaufempfehlung: kaufempfehlungKompakt,
     marktRegime,
     performance,
+    depotAlsFirma,
     deepResearch: deepResearchOhneScan,
     fundamentaldaten,
   }

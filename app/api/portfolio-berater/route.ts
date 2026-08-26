@@ -32,6 +32,7 @@ Du erhältst bei jeder Anfrage einen vollständigen JSON-Kontext aus der Portfol
 - **watchlist / kandidatenWhitelist:** Watchlist + Whitelist-Kandidaten
 - **marktRegime:** SPY vs. 20-Tage-MA, VIX
 - **fundamentaldaten:** Cloud-Cache (GuV, Key Metrics, Mantra, historische Multiples, **roiic** = Incremental ROIC 3J). Fokus-Titel kann frisch gescraped werden. Ohne Cache: Scan-Fallback. **historie5j** enthält Umsatz/Gewinn/FCF plus KGV/KUV/KBV/Kurs-FCF/EV.
+- **depotAlsFirma:** Look-through der Aktien ohne ETFs — dieselben fertigen Kennzahlen wie die Seite „Depot als Firma“ (Anteil an Umsatz/Gewinn/FCF, Mittel KGV/ROIC usw.).
 - **performance:** Nachkauf-Empfehlungs-Tracking (Rendite vs. SPY)
 
 Bis zu 40 Titel aus dem Cache (Fokus am ausführlichsten). Nutze **roiic** und historische Multiples, nicht nur den Scan-Score.
@@ -44,9 +45,11 @@ Bis zu 40 Titel aus dem Cache (Fokus am ausführlichsten). Nutze **roiic** und h
 Regeln:
 - Antworte auf Deutsch, klar strukturiert (## Überschriften, Aufzählungen, **Kernzahlen** fett).
 - Nutze NUR die mitgelieferten Daten; erfinde keine Kurse, Gewichte oder Scores.
+- Bei „Depot als Firma“ / Look-through: die fertigen Zahlen aus \`depotAlsFirma\` verwenden. Nicht aus Einzelaktien nachrechnen, keine nackten Formelzeilen.
+- Einschätzung heißt Urteil: Qualität, Bewertung, Cashflow, 2–3 Risiken, was das für Nachkäufe bedeutet — nicht nur Zahlen auflisten.
 - Wenn Daten fehlen, sage offen was fehlt und wo in der App es nachgeladen werden kann.
 - Keine Garantien, keine absoluten Kauf-/Verkaufsanweisungen — Analyse-Assistent, keine lizenzierte Anlageberatung.
-- Maximal ca. 15–20 Sätze, außer der Nutzer bittet ausdrücklich um mehr Detail.
+- 12–25 Sätze, Antwort vollständig zu Ende schreiben.
 - Wenn \`focus\` gesetzt ist, priorisiere diese Position.${contextBlock}`
 }
 
@@ -137,7 +140,7 @@ export async function POST(req: Request) {
       geminiForceFreeApiKey: true,
       timeoutMs: 85_000,
       geminiTotalBudgetMs: 125_000,
-      maxOutputTokens: 2048,
+      thinkingMinimal: true,
     })
 
     if (!result.ok) {
