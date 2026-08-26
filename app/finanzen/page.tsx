@@ -21,6 +21,7 @@ import {
   appSectionCardClass,
 } from '@/components/finanzen/finanzen-ui'
 import { AnalyseSection } from '@/components/finanzen/analyse-section'
+import { GeldflussSection } from '@/components/finanzen/geldfluss-section'
 import { AboSection } from '@/components/finanzen/abo-section'
 import { SparenSection } from '@/components/finanzen/sparen-section'
 import { FinanzenMonatswahl } from '@/components/finanzen/finanzen-monatswahl'
@@ -1056,13 +1057,17 @@ export default function FinanzenPage() {
   const finanzListe = useMemo(() => buildFinanzListe(), [einnahmen, ausgaben, dauerauftraege, ansichtMonat])
 
   /** Noch offene (geplante) Daueraufträge im Ansichtsmonat — für die Cashflow-Prognose. */
-  const geplanteEinnahmen = useMemo(
-    () => finanzListe.filter((r: any) => r.__geplant && r.isIn).reduce((a: number, r: any) => a + Number(r.betrag || 0), 0),
+  const geplanteZeilen = useMemo(
+    () => finanzListe.filter((r: any) => r.__geplant),
     [finanzListe],
   )
+  const geplanteEinnahmen = useMemo(
+    () => geplanteZeilen.filter((r: any) => r.isIn).reduce((a: number, r: any) => a + Number(r.betrag || 0), 0),
+    [geplanteZeilen],
+  )
   const geplanteAusgaben = useMemo(
-    () => finanzListe.filter((r: any) => r.__geplant && !r.isIn).reduce((a: number, r: any) => a + Number(r.betrag || 0), 0),
-    [finanzListe],
+    () => geplanteZeilen.filter((r: any) => !r.isIn).reduce((a: number, r: any) => a + Number(r.betrag || 0), 0),
+    [geplanteZeilen],
   )
 
   const finanzListeAngezeigt = useMemo(() => {
@@ -1306,6 +1311,13 @@ export default function FinanzenPage() {
           </div>
         </PageSectionPanel>
       </PageSection>
+
+      <GeldflussSection
+        einnahmen={einnahmenAnsicht}
+        ausgaben={ausgabenAnsicht}
+        geplant={geplanteZeilen}
+        ansichtMonat={ansichtMonat}
+      />
 
       <AnalyseSection
         einnahmen={einnahmen}
