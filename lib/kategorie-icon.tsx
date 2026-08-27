@@ -18,6 +18,16 @@ function deutschLower(s: string) {
  */
 const FRAGMENT_HOST: ReadonlyArray<[string, string]> = [
   ['aktien', 'traderepublic.com'],
+  ['trade republic', 'traderepublic.com'],
+  ['traderepublic', 'traderepublic.com'],
+  ['mintos', 'mintos.com'],
+  ['bondora', 'bondora.com'],
+  ['peerberry', 'peerberry.com'],
+  ['auxmoney', 'auxmoney.com'],
+  ['estateguru', 'estateguru.co'],
+  ['twino', 'twino.eu'],
+  ['robocash', 'robocash.com'],
+  ['scalable', 'scalable.capital'],
   ['uniprofirente', 'union-investment.de'],
   ['uniglobal fond', 'union-investment.de'],
   ['uniglobal', 'union-investment.de'],

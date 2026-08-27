@@ -70,6 +70,7 @@ export const FINANZ_KATEGORIEN: readonly FinanzKategorieDef[] = [
       'rente', 'uniprofirente', 'uniprofi', 'uniglobal', 'union investment', 'altersvorsorge',
       'betriebsrente', 'ruerup', 'riester', 'bausparer', 'bauspar', 'schwaebisch hall', 'wuestenrot',
       'lbs', 'vermoegenswirksame', 'vwl', 'festgeld', 'tagesgeld',
+      'p2p', 'mintos', 'bondora', 'peerberry', 'auxmoney', 'estateguru', 'twino', 'robocash',
     ],
   },
   {

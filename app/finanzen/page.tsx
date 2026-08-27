@@ -1155,6 +1155,8 @@ export default function FinanzenPage() {
 
       {finanzTab === 'uebersicht' && (
       <>
+      <VermoegenSection puffer={topfStand} />
+
       <PageSection titleId="finanzen-monatsuebersicht" title="Monatsübersicht" density="compact">
         <PageSectionPanel density="compact">
           <div className="flex flex-col justify-between gap-3 text-center sm:flex-row sm:items-stretch sm:gap-4 lg:text-left">
