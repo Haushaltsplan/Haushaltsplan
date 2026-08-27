@@ -1976,7 +1976,7 @@ export default function FinanzenPage() {
       </>
       )}
 
-      {finanzTab === 'vermoegen' && <VermoegenSection ausgaben={ausgaben} />}
+      {finanzTab === 'vermoegen' && <VermoegenSection ausgaben={ausgaben} einnahmen={einnahmen} />}
 
       {buchungEdit && (
         <div

@@ -1,9 +1,11 @@
 import { supabase } from '@/lib/supabase'
 import {
   effektiveVermoegenKlasse,
+  istGirokontoPosten,
   istGueltigeIsin,
   istVermoegenKlasse,
   naechsterIsoMonat,
+  naechsterIsoTag,
   normalisiereIsinEingabe,
   type VermoegenKlasse,
 } from '@/lib/finanz-vermoegen'
@@ -32,6 +34,8 @@ export type VermoegenRow = {
   anzahl: number | null
   kursEur: number | null
   autoAbMonat: string | null
+  cashflowAbDatum: string | null
+  erstelltAm: string | null
 }
 
 export type LadeVermoegenErgebnis = LadeErgebnis<VermoegenRow> & { klasseSpalteOk: boolean; extraSpaltenOk: boolean }
@@ -39,6 +43,10 @@ export type LadeVermoegenErgebnis = LadeErgebnis<VermoegenRow> & { klasseSpalteO
 function mapVermoegenRow(r: Record<string, unknown>): VermoegenRow {
   const titel = String(r.titel ?? '')
   const isinRaw = r.isin != null ? String(r.isin).trim().toUpperCase() : ''
+  const cashflow =
+    typeof r.cashflow_ab_datum === 'string' && /^\d{4}-\d{2}-\d{2}/.test(r.cashflow_ab_datum)
+      ? String(r.cashflow_ab_datum).slice(0, 10)
+      : null
   return {
     id: String(r.id),
     titel,
@@ -48,12 +56,14 @@ function mapVermoegenRow(r: Record<string, unknown>): VermoegenRow {
     anzahl: r.anzahl != null && Number.isFinite(Number(r.anzahl)) ? Number(r.anzahl) : null,
     kursEur: r.kurs_eur != null && Number.isFinite(Number(r.kurs_eur)) ? Number(r.kurs_eur) : null,
     autoAbMonat: typeof r.auto_ab_monat === 'string' && /^\d{4}-\d{2}$/.test(r.auto_ab_monat) ? r.auto_ab_monat : null,
+    cashflowAbDatum: cashflow,
+    erstelltAm: r.erstellt_am != null ? String(r.erstellt_am) : null,
   }
 }
 
-const SELECT_VOLL = 'id, titel, betrag, klasse, isin, anzahl, kurs_eur, auto_ab_monat'
-const SELECT_KLASSE = 'id, titel, betrag, klasse'
-const SELECT_BASIS = 'id, titel, betrag'
+const SELECT_VOLL = 'id, titel, betrag, klasse, isin, anzahl, kurs_eur, auto_ab_monat, cashflow_ab_datum, erstellt_am'
+const SELECT_KLASSE = 'id, titel, betrag, klasse, erstellt_am'
+const SELECT_BASIS = 'id, titel, betrag, erstellt_am'
 
 export async function ladeVermoegen(): Promise<LadeVermoegenErgebnis> {
   const voll = await supabase.from('finanz_vermoegen').select(SELECT_VOLL).order('erstellt_am', { ascending: true })
@@ -101,6 +111,7 @@ export type SpeichereVermoegenInput = {
   anzahl?: number | null
   kursEur?: number | null
   autoAbMonat?: string | null
+  cashflowAbDatum?: string | null
 }
 
 function payloadVoll(input: SpeichereVermoegenInput) {
@@ -109,6 +120,7 @@ function payloadVoll(input: SpeichereVermoegenInput) {
     : effektiveVermoegenKlasse(input.titel)
   const isin =
     input.isin && istGueltigeIsin(input.isin) ? normalisiereIsinEingabe(input.isin) : null
+  const giro = istGirokontoPosten(input.titel, klasse)
   return {
     titel: input.titel,
     betrag: input.betrag,
@@ -118,6 +130,7 @@ function payloadVoll(input: SpeichereVermoegenInput) {
     kurs_eur: input.kursEur ?? null,
     auto_ab_monat:
       klasse === 'bausparer' ? input.autoAbMonat || naechsterIsoMonat() : input.autoAbMonat ?? null,
+    cashflow_ab_datum: giro ? input.cashflowAbDatum || naechsterIsoTag() : input.cashflowAbDatum ?? null,
   }
 }
 
@@ -133,6 +146,7 @@ export async function speichereVermoegenPosten(input: SpeichereVermoegenInput) {
     spalteFehlt(mitExtra.error, 'isin') ||
     spalteFehlt(mitExtra.error, 'anzahl') ||
     spalteFehlt(mitExtra.error, 'auto_ab_monat') ||
+    spalteFehlt(mitExtra.error, 'cashflow_ab_datum') ||
     spalteFehlt(mitExtra.error, 'kurs_eur')
   ) {
     const nurKlasse = input.id

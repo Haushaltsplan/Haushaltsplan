@@ -26,10 +26,15 @@ import {
   effektiveVermoegenKlasse,
   fondsWertEur,
   formatIsoMonatKurz,
+  formatIsoTagDe,
+  giroAbDatumFuerPosten,
+  giroCashflowAbDatum,
   gruppiereVermoegen,
   inferiereVermoegenKlasse,
+  istGirokontoPosten,
   istGueltigeIsin,
   naechsterIsoMonat,
+  naechsterIsoTag,
   normalisiereIsinEingabe,
   summeBausparerAusgabenAbMonat,
   type BausparerAusgabe,
@@ -83,7 +88,13 @@ type LiveKurs = { name: string | null; kursEur: number | null; aenderungTagProze
  * Gesamtvermögen: Depot aus der Portfolio-Analyse, restliche Klassen manuell.
  * Fonds mit ISIN werden live bewertet; Bausparer-Ausgaben ab dem Folgemonat addiert.
  */
-export function VermoegenSection({ ausgaben = [] }: { ausgaben?: BausparerAusgabe[] }) {
+export function VermoegenSection({
+  ausgaben = [],
+  einnahmen = [],
+}: {
+  ausgaben?: BausparerAusgabe[]
+  einnahmen?: BausparerAusgabe[]
+}) {
   const [schemaOk, setSchemaOk] = useState<boolean | null>(null)
   const [posten, setPosten] = useState<VermoegenRow[]>([])
   const [form, setForm] = useState<FormState>(LEER)
@@ -176,6 +187,15 @@ export function VermoegenSection({ ausgaben = [] }: { ausgaben?: BausparerAusgab
             ? `Start ${eur(Number(p.betrag) || 0)} + ${eur(sparrate)} Sparrate ab ${formatIsoMonatKurz(ab)}`
             : `Ab ${formatIsoMonatKurz(ab)} werden Bausparer-Ausgaben automatisch addiert`
       }
+      if (istGirokontoPosten(p.titel, klasse)) {
+        const ab = giroAbDatumFuerPosten(p.cashflowAbDatum, p.erstelltAm)
+        const cf = giroCashflowAbDatum(einnahmen, ausgaben, ab)
+        betrag = Math.round((Number(p.betrag) + cf.saldo) * 100) / 100
+        hinweis =
+          cf.ein === 0 && cf.aus === 0
+            ? `Start ${eur(Number(p.betrag) || 0)} · ab ${formatIsoTagDe(ab)} zählen Einnahmen + und Ausgaben −`
+            : `Start ${eur(Number(p.betrag) || 0)} · +${eur(cf.ein)} Einnahmen − ${eur(cf.aus)} Ausgaben ab ${formatIsoTagDe(ab)}`
+      }
       return {
         id: p.id,
         titel: p.titel,
@@ -204,7 +224,7 @@ export function VermoegenSection({ ausgaben = [] }: { ausgaben?: BausparerAusgab
       })
     }
     return rows
-  }, [posten, depot, liveKurse, ausgaben])
+  }, [posten, depot, liveKurse, ausgaben, einnahmen])
 
   const { gesamt, klassenMitWert } = useMemo(() => gruppiereVermoegen(anzeigePosten), [anzeigePosten])
 
@@ -312,6 +332,14 @@ export function VermoegenSection({ ausgaben = [] }: { ausgaben?: BausparerAusgab
         anzahl: brauchtFondsIsin(klasse) ? anzahl : null,
         kursEur: brauchtFondsIsin(klasse) ? kurs : null,
         autoAbMonat: klasse === 'bausparer' ? form.autoAbMonat || naechsterIsoMonat() : null,
+        cashflowAbDatum: istGirokontoPosten(titel, klasse)
+          ? (() => {
+              const raw = form.id ? posten.find((r) => r.id === form.id) : undefined
+              const neu = Math.round(betrag * 100) / 100
+              if (!raw || Math.round(raw.betrag * 100) / 100 !== neu) return naechsterIsoTag()
+              return giroAbDatumFuerPosten(raw.cashflowAbDatum, raw.erstelltAm)
+            })()
+          : null,
       })
       if (error) {
         toast.error(error.message || 'Posten konnte nicht gespeichert werden.')
@@ -368,8 +396,9 @@ export function VermoegenSection({ ausgaben = [] }: { ausgaben?: BausparerAusgab
                 {eur(gesamt)}
               </p>
               <p className="mt-1 text-[11px] leading-relaxed text-[var(--app-text-muted)]">
-                Aktien aus der Portfolio-Analyse, Fonds per ISIN-Kurs, Bausparer-Sparrate ab {naechsterMonatLabel}. Bank,
-                P2P und Rest trägst du selbst ein.
+                Aktien aus der Portfolio-Analyse, Fonds per ISIN-Kurs, Bausparer-Sparrate ab {naechsterMonatLabel}.
+                Girokonto: Einnahmen +, Ausgaben − (ab morgen nach dem Setzen des Stands). P2P und Rest trägst du selbst
+                ein.
               </p>
 
               {donutSegmente.length > 0 && (
@@ -426,7 +455,7 @@ export function VermoegenSection({ ausgaben = [] }: { ausgaben?: BausparerAusgab
 
             <div className="flex flex-wrap items-center justify-between gap-2">
               <p className="text-[11px] text-[var(--app-text-muted)]">
-                Bank, P2P, Bausparer und Fonds hier anlegen — Aktien kommen automatisch.
+                Girokonto anlegen — danach zählen Einnahmen + und Ausgaben −. Aktien kommen aus der Portfolio-Analyse.
               </p>
               {!formOffen && (
                 <button
@@ -569,6 +598,12 @@ export function VermoegenSection({ ausgaben = [] }: { ausgaben?: BausparerAusgab
                       <p className="mt-1.5 text-[11px] leading-relaxed text-[var(--app-text-muted)]">
                         Das ist der Stand heute. Ab {formatIsoMonatKurz(form.autoAbMonat || naechsterIsoMonat())} werden
                         alle Bausparer-Ausgaben (z. B. Schwäbisch Hall) automatisch draufgerechnet.
+                      </p>
+                    )}
+                    {istGirokontoPosten(form.titel, form.klasse) && (
+                      <p className="mt-1.5 text-[11px] leading-relaxed text-[var(--app-text-muted)]">
+                        Das ist der heutige Kontostand. Ab {formatIsoTagDe(naechsterIsoTag())} werden Gehalt und alle
+                        anderen Einnahmen addiert, alle gebuchten Ausgaben abgezogen.
                       </p>
                     )}
                   </div>

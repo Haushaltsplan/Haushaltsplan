@@ -318,6 +318,60 @@ export type BausparerAusgabe = {
   datum?: string | null
 }
 
+export type FinanzCashflowBuchung = BausparerAusgabe
+
+export function naechsterIsoTag(jetzt = new Date()): string {
+  const d = new Date(jetzt.getFullYear(), jetzt.getMonth(), jetzt.getDate() + 1)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+export function isoTagAusDatum(iso?: string | null): string | null {
+  if (!iso) return null
+  const m = String(iso).slice(0, 10)
+  if (/^\d{4}-\d{2}-\d{2}$/.test(m)) return m
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return null
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+export function formatIsoTagDe(isoTag: string): string {
+  const m = isoTag.match(/^(\d{4})-(\d{2})-(\d{2})$/)
+  if (!m) return isoTag
+  return `${m[3]}.${m[2]}.${m[1]}`
+}
+
+export function istGirokontoPosten(titel: string, klasse?: VermoegenKlasse | null): boolean {
+  if (klasse && klasse !== 'bank') return false
+  const t = deutschLower(titel)
+  if (hatWort(t, 'tagesgeld', 'festgeld', 'sparbuch', 'bargeld')) return false
+  return hatWort(t, 'girokonto', 'giro ') || t.includes('giro') || t.endsWith('giro')
+}
+
+export function giroAbDatumFuerPosten(cashflowAbDatum?: string | null, _erstelltAm?: string | null): string {
+  if (cashflowAbDatum && /^\d{4}-\d{2}-\d{2}$/.test(cashflowAbDatum)) return cashflowAbDatum
+  return naechsterIsoTag()
+}
+
+export function giroCashflowAbDatum(
+  einnahmen: FinanzCashflowBuchung[],
+  ausgaben: FinanzCashflowBuchung[],
+  abDatum: string,
+): { ein: number; aus: number; saldo: number } {
+  const summe = (rows: FinanzCashflowBuchung[]) => {
+    let s = 0
+    for (const r of rows) {
+      const tag = isoTagAusDatum(r.datum)
+      if (!tag || tag < abDatum) continue
+      const b = Number(r.betrag)
+      if (Number.isFinite(b)) s += b
+    }
+    return Math.round(s * 100) / 100
+  }
+  const ein = summe(einnahmen)
+  const aus = summe(ausgaben)
+  return { ein, aus, saldo: Math.round((ein - aus) * 100) / 100 }
+}
+
 export function istBausparerBuchung(kategorie?: string | null, beschreibung?: string | null): boolean {
   return inferiereVermoegenKlasse(`${kategorie ?? ''} ${beschreibung ?? ''}`) === 'bausparer'
 }
