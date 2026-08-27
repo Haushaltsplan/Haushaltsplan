@@ -1,11 +1,12 @@
 'use client'
 
-export type FinanzenTab = 'uebersicht' | 'buchen' | 'planen'
+export type FinanzenTab = 'uebersicht' | 'buchen' | 'planen' | 'vermoegen'
 
 const TABS: { id: FinanzenTab; label: string }[] = [
   { id: 'uebersicht', label: 'Übersicht' },
   { id: 'buchen', label: 'Buchen' },
   { id: 'planen', label: 'Planen' },
+  { id: 'vermoegen', label: 'Gesamtvermögen' },
 ]
 
 export function FinanzenTabs({
@@ -28,7 +29,7 @@ export function FinanzenTabs({
           role="tab"
           aria-selected={active === t.id}
           onClick={() => onChange(t.id)}
-          className={`flex-1 rounded-lg py-2.5 text-xs font-semibold transition-all sm:text-sm ${
+          className={`flex-1 rounded-lg px-1 py-2.5 text-[10px] font-semibold leading-tight transition-all sm:text-sm ${
             active === t.id
               ? 'bg-sky-600/90 text-white shadow-sm'
               : 'text-[var(--app-text-muted)] hover:text-[var(--app-text)]'

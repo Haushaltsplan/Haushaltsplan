@@ -227,6 +227,25 @@ export function effektiveVermoegenKlasse(titel: string, gespeichert?: string | n
   return istVermoegenKlasse(gespeichert) ? gespeichert : 'sonstiges'
 }
 
+/** Manuell erfassbar — Aktien kommen aus der Portfolio-Analyse. */
+export const MANUELLE_VERMOEGEN_KLASSEN: readonly VermoegenKlasseDef[] = VERMOEGEN_KLASSEN.filter(
+  (k) => k.key !== 'aktien',
+)
+
+export function brauchtFondsIsin(klasse: VermoegenKlasse): boolean {
+  return klasse === 'fonds'
+}
+
+export const ISIN_MUSTER = /^[A-Z]{2}[A-Z0-9]{10}$/
+
+export function normalisiereIsinEingabe(raw: string): string {
+  return raw.replace(/[\s-]/g, '').toUpperCase()
+}
+
+export function istGueltigeIsin(raw: string): boolean {
+  return ISIN_MUSTER.test(normalisiereIsinEingabe(raw))
+}
+
 export type VermoegenAnzeigePosten = {
   id: string
   titel: string
@@ -234,6 +253,13 @@ export type VermoegenAnzeigePosten = {
   klasse: VermoegenKlasse
   /** Virtual: Depotwert aus Portfolio-Analyse, nicht in finanz_vermoegen. */
   quelle: 'manuell' | 'depot'
+  isin?: string | null
+  anzahl?: number | null
+  kursEur?: number | null
+  kursAenderungTagProzent?: number | null
+  autoAbMonat?: string | null
+  bausparerSparrateEur?: number
+  hinweis?: string | null
 }
 
 export function gruppiereVermoegen(posten: VermoegenAnzeigePosten[]) {
@@ -261,4 +287,83 @@ export function gruppiereVermoegen(posten: VermoegenAnzeigePosten[]) {
   return { gesamt, klassenMitWert, listen, summeJeKlasse }
 }
 
-export const FINANZEN_DEPOT_EINBEZIEHEN_LS = 'finanzen-depot-einbeziehen-v1'
+export function naechsterIsoMonat(jetzt = new Date()): string {
+  const d = new Date(jetzt.getFullYear(), jetzt.getMonth() + 1, 1)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+}
+
+export function isoMonatAusDatum(iso?: string | null): string | null {
+  if (!iso) return null
+  const m = String(iso).slice(0, 10).match(/^(\d{4})-(\d{2})-\d{2}$/)
+  if (m) return `${m[1]}-${m[2]}`
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return null
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+}
+
+export function formatIsoMonatKurz(yyyymm: string): string {
+  const [y, mo] = yyyymm.split('-').map((x) => Number.parseInt(x, 10))
+  if (!y || !mo) return yyyymm
+  try {
+    return new Date(y, mo - 1, 1).toLocaleDateString('de-DE', { month: 'long', year: 'numeric' })
+  } catch {
+    return yyyymm
+  }
+}
+
+export type BausparerAusgabe = {
+  kategorie?: string | null
+  beschreibung?: string | null
+  betrag?: number | string | null
+  datum?: string | null
+}
+
+export function istBausparerBuchung(kategorie?: string | null, beschreibung?: string | null): boolean {
+  return inferiereVermoegenKlasse(`${kategorie ?? ''} ${beschreibung ?? ''}`) === 'bausparer'
+}
+
+function bausparerSchluessel(titel: string): string {
+  const t = titel
+    .trim()
+    .toLowerCase()
+    .replace(/ä/g, 'ae')
+    .replace(/ö/g, 'oe')
+    .replace(/ü/g, 'ue')
+    .replace(/ß/g, 'ss')
+  if (t.includes('schwaebisch') || t.includes('hall')) return 'schwaebisch-hall'
+  if (t.includes('wuestenrot')) return 'wuestenrot'
+  if (/\blbs\b/.test(t)) return 'lbs'
+  return 'allgemein'
+}
+
+/** Summe der Bausparer-Ausgaben ab `abMonat` (YYYY-MM), einem Posten zugeordnet. */
+export function summeBausparerAusgabenAbMonat(
+  ausgaben: BausparerAusgabe[],
+  abMonat: string,
+  postenTitel: string,
+  alleBausparerTitel: string[],
+): number {
+  const eigene = bausparerSchluessel(postenTitel)
+  const fremdeKeys = new Set(
+    alleBausparerTitel.filter((t) => t !== postenTitel).map((t) => bausparerSchluessel(t)),
+  )
+  let summe = 0
+  for (const a of ausgaben) {
+    if (!istBausparerBuchung(a.kategorie, a.beschreibung)) continue
+    const monat = isoMonatAusDatum(a.datum)
+    if (!monat || monat < abMonat) continue
+    const buchungKey = bausparerSchluessel(`${a.kategorie ?? ''} ${a.beschreibung ?? ''}`)
+    if (buchungKey !== eigene && fremdeKeys.has(buchungKey)) continue
+    if (eigene !== 'allgemein' && buchungKey !== 'allgemein' && buchungKey !== eigene) continue
+    const b = Number(a.betrag)
+    if (Number.isFinite(b)) summe += b
+  }
+  return Math.round(summe * 100) / 100
+}
+
+export function fondsWertEur(anzahl: number | null | undefined, kursEur: number | null | undefined, fallbackBetrag: number): number {
+  if (anzahl != null && anzahl > 0 && kursEur != null && kursEur > 0) {
+    return Math.round(anzahl * kursEur * 100) / 100
+  }
+  return Math.round((Number(fallbackBetrag) || 0) * 100) / 100
+}
