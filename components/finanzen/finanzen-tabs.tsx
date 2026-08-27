@@ -3,10 +3,10 @@
 export type FinanzenTab = 'uebersicht' | 'buchen' | 'planen' | 'vermoegen'
 
 const TABS: { id: FinanzenTab; label: string }[] = [
+  { id: 'vermoegen', label: 'Gesamtvermögen' },
   { id: 'uebersicht', label: 'Übersicht' },
   { id: 'buchen', label: 'Buchen' },
   { id: 'planen', label: 'Planen' },
-  { id: 'vermoegen', label: 'Gesamtvermögen' },
 ]
 
 export function FinanzenTabs({

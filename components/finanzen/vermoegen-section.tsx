@@ -16,7 +16,7 @@ import {
   ladeVermoegen,
   speichereVermoegenPosten,
   loescheVermoegenPosten,
-  ladeLetztesDepotSnapshot,
+  ladeDepotwertFuerVermoegen,
   ladeFondsKurseClient,
   type VermoegenRow,
 } from '@/lib/finanz-extra-db'
@@ -94,47 +94,53 @@ export function VermoegenSection({ ausgaben = [] }: { ausgaben?: BausparerAusgab
     wert: null,
     erfasstAm: null,
   })
+  const [depotLaden, setDepotLaden] = useState(true)
   const [liveKurse, setLiveKurse] = useState<Record<string, LiveKurs>>({})
 
   async function laden() {
-    const [v, snap] = await Promise.all([ladeVermoegen(), ladeLetztesDepotSnapshot()])
-    setSchemaOk(v.schemaOk)
-    setPosten(v.rows)
-    setDepot({ wert: snap.depotwertEur, erfasstAm: snap.erfasstAm })
-    const isins = v.rows.map((r) => r.isin).filter((x): x is string => Boolean(x))
-    if (isins.length === 0) {
-      setLiveKurse({})
-      return
-    }
-    const kurse = await ladeFondsKurseClient(isins)
-    const map: Record<string, LiveKurs> = {}
-    for (const k of kurse) {
-      map[k.isin] = {
-        name: k.name,
-        kursEur: k.kursEur,
-        aenderungTagProzent: k.aenderungTagProzent,
+    setDepotLaden(true)
+    try {
+      const [v, snap] = await Promise.all([ladeVermoegen(), ladeDepotwertFuerVermoegen()])
+      setSchemaOk(v.schemaOk)
+      setPosten(v.rows)
+      setDepot({ wert: snap.depotwertEur, erfasstAm: snap.erfasstAm })
+      const isins = v.rows.map((r) => r.isin).filter((x): x is string => Boolean(x))
+      if (isins.length === 0) {
+        setLiveKurse({})
+        return
       }
+      const kurse = await ladeFondsKurseClient(isins)
+      const map: Record<string, LiveKurs> = {}
+      for (const k of kurse) {
+        map[k.isin] = {
+          name: k.name,
+          kursEur: k.kursEur,
+          aenderungTagProzent: k.aenderungTagProzent,
+        }
+      }
+      setLiveKurse(map)
+      const updates = v.rows.filter((r) => {
+        if (!r.isin) return false
+        const live = map[r.isin]?.kursEur
+        return live != null && live > 0 && (r.kursEur == null || Math.abs(live - r.kursEur) / live > 0.001)
+      })
+      await Promise.all(
+        updates.map((r) =>
+          speichereVermoegenPosten({
+            id: r.id,
+            titel: r.titel,
+            betrag: r.betrag,
+            klasse: r.klasse,
+            isin: r.isin,
+            anzahl: r.anzahl,
+            kursEur: map[r.isin!]?.kursEur ?? r.kursEur,
+            autoAbMonat: r.autoAbMonat,
+          }),
+        ),
+      )
+    } finally {
+      setDepotLaden(false)
     }
-    setLiveKurse(map)
-    const updates = v.rows.filter((r) => {
-      if (!r.isin) return false
-      const live = map[r.isin]?.kursEur
-      return live != null && live > 0 && (r.kursEur == null || Math.abs(live - r.kursEur) / live > 0.001)
-    })
-    await Promise.all(
-      updates.map((r) =>
-        speichereVermoegenPosten({
-          id: r.id,
-          titel: r.titel,
-          betrag: r.betrag,
-          klasse: r.klasse,
-          isin: r.isin,
-          anzahl: r.anzahl,
-          kursEur: map[r.isin!]?.kursEur ?? r.kursEur,
-          autoAbMonat: r.autoAbMonat,
-        }),
-      ),
-    )
   }
 
   useEffect(() => {
@@ -403,7 +409,12 @@ export function VermoegenSection({ ausgaben = [] }: { ausgaben?: BausparerAusgab
               )}
             </div>
 
-            {depot.wert == null && (
+            {depotLaden && depot.wert == null && (
+              <p className="rounded-xl border border-[var(--app-border)] bg-[var(--app-surface-muted)] px-3 py-2.5 text-[12px] text-[var(--app-text-muted)]">
+                Aktienvermögen wird aus der Portfolio-Analyse geladen …
+              </p>
+            )}
+            {!depotLaden && depot.wert == null && (
               <p className="rounded-xl border border-[var(--app-border)] bg-[var(--app-surface-muted)] px-3 py-2.5 text-[12px] text-[var(--app-text-muted)]">
                 Noch kein Depotwert.{' '}
                 <Link href="/portfolioanalyse" className="font-semibold text-indigo-300 hover:text-indigo-200">

@@ -158,25 +158,111 @@ export type DepotSnapshotKurz = {
   erfasstAm: string | null
 }
 
-/** Letzter gespeicherter Depotwert aus der Portfolio-Analyse (ohne alle Buchungen zu laden). */
-export async function ladeLetztesDepotSnapshot(): Promise<DepotSnapshotKurz> {
+function wertAusPositionen(positionen: unknown): number | null {
+  if (!Array.isArray(positionen) || positionen.length === 0) return null
+  let summe = 0
+  let hat = false
+  for (const p of positionen) {
+    if (!p || typeof p !== 'object') continue
+    const r = p as Record<string, unknown>
+    const w = Number(r.wertEur ?? r.wert_eur ?? r.wertLiveEur)
+    if (Number.isFinite(w)) {
+      summe += w
+      hat = true
+    }
+  }
+  return hat ? Math.round(summe * 100) / 100 : null
+}
+
+/** Snapshot, sonst Live-Bewertung wie auf der Startseite. */
+export async function ladeDepotwertFuerVermoegen(): Promise<DepotSnapshotKurz> {
   const { data, error } = await supabase
     .from('portfolio_analyse_snapshot')
-    .select('depotwert_eur, erfasst_am')
+    .select('depotwert_eur, erfasst_am, positionen')
     .order('erfasst_am', { ascending: false })
     .limit(1)
     .maybeSingle()
-  if (error) {
-    if (!tabelleFehlt(error)) console.warn('[portfolio_analyse_snapshot] vermoegen', error.message)
-    return { ok: false, depotwertEur: null, erfasstAm: null }
+
+  if (error && !tabelleFehlt(error)) {
+    console.warn('[portfolio_analyse_snapshot] vermoegen', error.message)
   }
-  if (!data) return { ok: true, depotwertEur: null, erfasstAm: null }
-  const wert = data.depotwert_eur != null ? Number(data.depotwert_eur) : null
-  return {
-    ok: true,
-    depotwertEur: wert != null && Number.isFinite(wert) ? wert : null,
-    erfasstAm: data.erfasst_am != null ? String(data.erfasst_am) : null,
+
+  const snapWert =
+    data && !error
+      ? data.depotwert_eur != null && Number.isFinite(Number(data.depotwert_eur))
+        ? Number(data.depotwert_eur)
+        : wertAusPositionen(data.positionen)
+      : null
+  const snapAm = data?.erfasst_am != null ? String(data.erfasst_am) : null
+  if (snapWert != null && snapWert !== 0) {
+    return { ok: true, depotwertEur: snapWert, erfasstAm: snapAm }
   }
+
+  try {
+    const { ladePortfolioAnalyseDaten } = await import('@/lib/portfolio-analyse/portfolio-analyse-db')
+    const { sammleIsins } = await import('@/lib/portfolio-analyse/auswertungen')
+    const { positionenFuerBewertung } = await import('@/lib/portfolio-analyse/bestand')
+    const { ladeIsinMetadaten } = await import('@/lib/portfolio-analyse/isin-metadata-client')
+    const { berechneLivePortfolio, ladeLiveKurseClient, symboleAusMeta } = await import(
+      '@/lib/portfolio-analyse/live-bewertung'
+    )
+    const { berechneKennzahlen } = await import('@/lib/portfolio-analyse/berechnung')
+
+    const res = await ladePortfolioAnalyseDaten()
+    if (!res.ok || res.buchungen.length === 0) {
+      return { ok: true, depotwertEur: snapWert, erfasstAm: snapAm }
+    }
+
+    const kz = berechneKennzahlen(res.buchungen, res.snapshot)
+    if (kz.depotwertEur > 0) {
+      try {
+        const isins = sammleIsins(res.buchungen, res.snapshot)
+        const meta = isins.length > 0 ? await ladeIsinMetadaten(isins) : new Map()
+        const pos = positionenFuerBewertung(res.buchungen, res.snapshot)
+        const { kurse, stand, fx, stooqEur } = await ladeLiveKurseClient(symboleAusMeta(pos, meta))
+        const live = berechneLivePortfolio(res.buchungen, res.snapshot, meta, kurse, stand, fx, stooqEur)
+        if (live.kennzahlen.depotwertEur > 0) {
+          return {
+            ok: true,
+            depotwertEur: live.kennzahlen.depotwertEur,
+            erfasstAm: stand ?? res.snapshot?.erfasst_am ?? snapAm,
+          }
+        }
+      } catch (e) {
+        console.warn('[vermoegen] live-depot', e)
+      }
+      return {
+        ok: true,
+        depotwertEur: kz.depotwertEur,
+        erfasstAm: res.snapshot?.erfasst_am ?? snapAm,
+      }
+    }
+
+    const pos = positionenFuerBewertung(res.buchungen, res.snapshot)
+    const einstand = Math.round(pos.reduce((s, p) => s + (Number(p.wertEur) || 0), 0) * 100) / 100
+    if (einstand > 0) {
+      try {
+        const isins = sammleIsins(res.buchungen, res.snapshot)
+        const meta = isins.length > 0 ? await ladeIsinMetadaten(isins) : new Map()
+        const { kurse, stand, fx, stooqEur } = await ladeLiveKurseClient(symboleAusMeta(pos, meta))
+        const live = berechneLivePortfolio(res.buchungen, res.snapshot, meta, kurse, stand, fx, stooqEur)
+        if (live.kennzahlen.depotwertEur > 0) {
+          return {
+            ok: true,
+            depotwertEur: live.kennzahlen.depotwertEur,
+            erfasstAm: stand ?? res.snapshot?.erfasst_am ?? snapAm,
+          }
+        }
+      } catch (e) {
+        console.warn('[vermoegen] live-depot', e)
+      }
+      return { ok: true, depotwertEur: einstand, erfasstAm: res.snapshot?.erfasst_am ?? snapAm }
+    }
+  } catch (e) {
+    console.warn('[vermoegen] depot laden', e)
+  }
+
+  return { ok: true, depotwertEur: snapWert, erfasstAm: snapAm }
 }
 
 export type FondsKursClient = {

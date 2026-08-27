@@ -255,7 +255,7 @@ export default function FinanzenPage() {
   }>({ modus: 'datum', dir: 'desc' })
   /** Liste zeigt zunächst nur die letzten 5 Buchungen; Rest per Klick aufklappen. */
   const [alleBuchungenZeigen, setAlleBuchungenZeigen] = useState(false)
-  const [finanzTab, setFinanzTab] = useState<FinanzenTab>('uebersicht')
+  const [finanzTab, setFinanzTab] = useState<FinanzenTab>('vermoegen')
 
   type TopfMonatRow = { monat: string; saldo_monat: number; gebucht_am: string; automatisch?: boolean | null }
   const [topfMeta, setTopfMeta] = useState({ stand_offset: 0 })
