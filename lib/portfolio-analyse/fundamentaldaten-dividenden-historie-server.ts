@@ -3,6 +3,7 @@
 import 'server-only'
 
 import { cagrProzent } from '@/lib/portfolio-analyse/fundamentaldaten-format'
+import { adaptiverCagr } from '@/lib/portfolio-analyse/fundamentaldaten-scorecard-horizont'
 import type { DividendenHistorieStat } from '@/lib/portfolio-analyse/fundamentaldaten-erweitert-types'
 import {
   dividendenHistoriePlausibel,
@@ -117,6 +118,7 @@ export async function ladeDividendenHistorieStat(
           10,
         )
       : null
+  const cagrAdaptiv = adaptiverCagr(jahreVergleich.map((j) => j.summe))
 
   return {
     anzahlZahlungen: real.length,
@@ -126,6 +128,8 @@ export async function ladeDividendenHistorieStat(
     frequenz: roh.earnings?.dividendFrequency ?? null,
     cagr5yPct: cagr5,
     cagr10yPct: cagr10,
+    cagrVerfuegbarPct: cagrAdaptiv?.pct ?? null,
+    cagrJahre: cagrAdaptiv?.jahre ?? null,
     jahreOhneSenkung: streak,
     letzteSenkungJahr: letzteSenkung,
     durchschnittWachstum3yPct: durchschnittWachstum(jahreVergleich, 3),

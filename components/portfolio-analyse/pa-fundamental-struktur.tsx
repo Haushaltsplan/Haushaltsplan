@@ -278,8 +278,20 @@ export function PaFundamentalStruktur({
         {d && (
           <Sektion titel="Dividenden-Stabilität" untertitel="DivvyDiary — Wachstum, Kontinuität, Ausschüttungsmuster">
             <div className="grid gap-2 sm:grid-cols-2">
-              <PaStrukturKennzahl label="CAGR 5J" wert={pctFmt(d.cagr5yPct)} />
-              <PaStrukturKennzahl label="CAGR 10J" wert={pctFmt(d.cagr10yPct)} />
+              <PaStrukturKennzahl
+                label={
+                  d.cagrJahre != null
+                    ? `CAGR ${d.cagrJahre}J`
+                    : d.cagr10yPct != null
+                      ? 'CAGR 10J'
+                      : d.cagr5yPct != null
+                        ? 'CAGR 5J'
+                        : 'CAGR verfügbar'
+                }
+                wert={pctFmt(d.cagrVerfuegbarPct ?? d.cagr10yPct ?? d.cagr5yPct ?? d.durchschnittWachstum3yPct)}
+              />
+              <PaStrukturKennzahl label="CAGR 5J" wert={d.cagrJahre === 5 ? null : pctFmt(d.cagr5yPct)} />
+              <PaStrukturKennzahl label="CAGR 10J" wert={d.cagrJahre === 10 ? null : pctFmt(d.cagr10yPct)} />
               <PaStrukturKennzahl label="Ø Wachstum 3J" wert={pctFmt(d.durchschnittWachstum3yPct)} />
               <PaStrukturKennzahl
                 label="Jahre ohne Senkung"

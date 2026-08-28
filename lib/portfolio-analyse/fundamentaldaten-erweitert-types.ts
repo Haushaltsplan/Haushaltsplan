@@ -10,6 +10,9 @@ export type DividendenHistorieStat = {
   frequenz: string | null
   cagr5yPct: number | null
   cagr10yPct: number | null
+  /** Längstes sauberes Fenster (3–10J), unabhängig von 5/10J-Pflicht. */
+  cagrVerfuegbarPct?: number | null
+  cagrJahre?: number | null
   jahreOhneSenkung: number | null
   letzteSenkungJahr: number | null
   durchschnittWachstum3yPct: number | null

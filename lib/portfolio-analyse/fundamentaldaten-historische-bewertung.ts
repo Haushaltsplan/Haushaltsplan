@@ -21,6 +21,9 @@ export type HistorischeBewertung = {
   pePerzentil5y: number | null
   /** Aktuelles Trailing-KGV als Perzentil der eigenen 10J-Historie. */
   pePerzentil10y: number | null
+  /** Anzahl KGV-Jahre hinter dem 5J- bzw. 10J-Perzentil (kann kürzer sein als das Label). */
+  peJahre5: number
+  peJahre10: number
   /** Aktuelles EV/EBITDA als Perzentil der 5J-Historie. */
   evEbitdaPerzentil5y: number | null
   /** Aktuelles EV/EBITDA als Perzentil der 10J-Historie. */
@@ -157,6 +160,8 @@ export function berechneHistorischeBewertung(paket: FundamentaldatenPaket): Hist
     medianEvRev5y,
     pePerzentil5y: peAktuell != null ? perzentilInSerie(peAktuell, peWerte5) : null,
     pePerzentil10y: peAktuell != null ? perzentilInSerie(peAktuell, peWerte10) : null,
+    peJahre5: peWerte5.length,
+    peJahre10: peWerte10.length,
     evEbitdaPerzentil5y:
       evEbitdaAktuell != null ? perzentilInSerie(evEbitdaAktuell, evEbitda5) : null,
     evEbitdaPerzentil10y:

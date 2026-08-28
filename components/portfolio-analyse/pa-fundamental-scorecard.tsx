@@ -62,6 +62,9 @@ function ScoreBalken({ balken, tint }: { balken: ScorecardBalken; tint: string }
           />
         ))}
       </div>
+      {balken.position == null && balken.leergrund ? (
+        <p className="text-[9px] leading-tight text-[var(--app-text-muted)]/80">{balken.leergrund}</p>
+      ) : null}
     </div>
   )
 }
@@ -94,9 +97,11 @@ function FirmenLogo({ ticker, website }: { ticker: string; website: string | nul
 function FirmaSpalte({
   firma,
   renditen,
+  historieBadge,
 }: {
   firma: ScorecardFirma
-  renditen: { j1: number | null; j5: number | null; j10: number | null }
+  renditen: { label: string; pct: number }[]
+  historieBadge: string
 }) {
   const metaZeilen: { label: string; wert: string }[] = [
     { label: 'Branche', wert: firma.branche ?? '–' },
@@ -104,12 +109,6 @@ function FirmaSpalte({
     { label: 'ISIN', wert: firma.isin ?? '–' },
     { label: 'Börsenwert', wert: firma.boersenwertText ?? '–' },
     { label: 'Kurs', wert: firma.kursText ?? '–' },
-  ]
-
-  const renditeZeilen: { label: string; pct: number | null }[] = [
-    { label: '1 Jahr', pct: renditen.j1 },
-    { label: '5 Jahre', pct: renditen.j5 },
-    { label: '10 Jahre', pct: renditen.j10 },
   ]
 
   return (
@@ -128,20 +127,18 @@ function FirmaSpalte({
             <dd className="truncate text-right tabular-nums text-[var(--app-text)]">{z.wert}</dd>
           </div>
         ))}
-        {renditeZeilen.map((z) => {
-          const text =
-            z.pct == null
-              ? '–'
-              : `${z.pct > 0 ? '+' : ''}${z.pct.toLocaleString('de-DE', { maximumFractionDigits: 1 })} %`
-          const ton = z.pct == null ? '' : z.pct >= 0 ? 'text-emerald-400' : 'text-red-300'
+        {renditen.map((z) => {
+          const text = `${z.pct > 0 ? '+' : ''}${z.pct.toLocaleString('de-DE', { maximumFractionDigits: 1 })} %`
+          const ton = z.pct >= 0 ? 'text-emerald-400' : 'text-red-300'
           return (
             <div key={z.label} className="flex items-baseline justify-between gap-3">
               <dt className="text-[var(--app-text-muted)]">{z.label}</dt>
-              <dd className={`tabular-nums ${ton || 'text-[var(--app-text)]'}`}>{text}</dd>
+              <dd className={`tabular-nums ${ton}`}>{text}</dd>
             </div>
           )
         })}
       </dl>
+      <p className="text-[10px] text-[var(--app-text-muted)]">{historieBadge}</p>
       {firma.mantraAmpel ? (
         <div className="mt-auto">
           <span
@@ -161,7 +158,7 @@ function StrategieSpalte({ strategie }: { strategie: ScorecardStrategie }) {
   return (
     <div className="flex flex-col">
       <div className={`px-4 py-2.5 text-center text-sm font-semibold ${tint.head}`}>{strategie.titel}</div>
-      <div className="flex flex-1 flex-col gap-3 px-4 py-3">
+      <div className="flex flex-1 flex-col gap-2 px-4 py-3">
         {strategie.balken.map((b) => (
           <ScoreBalken key={b.id} balken={b} tint={tint.bar} />
         ))}
@@ -202,6 +199,42 @@ function renditePct(start: number | null, ende: number | null): number | null {
   return ((ende - start) / start) * 100
 }
 
+function baueRenditeZeilen(
+  serie: Record<string, number>,
+  bis: Date,
+): { label: string; pct: number }[] {
+  const keys = Object.keys(serie).sort()
+  const lastKey = keys[keys.length - 1]
+  const firstKey = keys[0]
+  if (!lastKey || !firstKey) return []
+  const ende = serie[lastKey] ?? null
+  const iso = (jahre: number) => {
+    const d = new Date(bis)
+    d.setFullYear(d.getFullYear() - jahre)
+    return d.toISOString().slice(0, 10)
+  }
+  const spanJahre =
+    (Date.parse(`${lastKey}T12:00:00Z`) - Date.parse(`${firstKey}T12:00:00Z`)) / (365.25 * 86_400_000)
+
+  const out: { label: string; pct: number }[] = []
+  const add = (jahre: number, label: string, maxTage: number) => {
+    const pct = renditePct(preisNahe(serie, iso(jahre), maxTage), ende)
+    if (pct != null) out.push({ label, pct })
+  }
+  add(1, '1 Jahr', 21)
+  if (spanJahre >= 2.6) add(3, '3 Jahre', 45)
+  if (spanJahre >= 4.5) add(5, '5 Jahre', 60)
+  if (spanJahre >= 9.0) add(10, '10 Jahre', 90)
+  if (spanJahre < 9.0) {
+    const seit = renditePct(serie[firstKey] ?? null, ende)
+    if (seit != null) {
+      const n = Math.max(1, Math.round(spanJahre))
+      out.push({ label: n <= 1 ? 'seit Listing' : `seit Listing (~${n}J)`, pct: seit })
+    }
+  }
+  return out
+}
+
 export function PaFundamentalScorecard({
   paket,
   isin,
@@ -210,20 +243,16 @@ export function PaFundamentalScorecard({
   isin?: string | null
 }) {
   const modell = useMemo(() => baueScorecard(paket, isin), [paket, isin])
-  const [renditen, setRenditen] = useState<{ j1: number | null; j5: number | null; j10: number | null }>({
-    j1: null,
-    j5: null,
-    j10: null,
-  })
+  const [renditen, setRenditen] = useState<{ label: string; pct: number }[]>([])
 
   useEffect(() => {
     const sym = paket.symbolYahoo
     if (!sym) {
-      setRenditen({ j1: null, j5: null, j10: null })
+      setRenditen([])
       return
     }
     let cancelled = false
-    setRenditen({ j1: null, j5: null, j10: null })
+    setRenditen([])
     const bis = new Date()
     const von = new Date(bis)
     von.setFullYear(von.getFullYear() - 10)
@@ -241,21 +270,9 @@ export function PaFundamentalScorecard({
         const j = (await res.json()) as { ok?: boolean; serien?: Record<string, Record<string, number>> }
         const serie = j.ok ? j.serien?.[sym] ?? j.serien?.[sym.toUpperCase()] : undefined
         if (!serie || cancelled) return
-        const keys = Object.keys(serie).sort()
-        const lastKey = keys[keys.length - 1]
-        const ende = lastKey ? serie[lastKey]! : null
-        const iso = (jahre: number) => {
-          const d = new Date(bis)
-          d.setFullYear(d.getFullYear() - jahre)
-          return d.toISOString().slice(0, 10)
-        }
-        setRenditen({
-          j1: renditePct(preisNahe(serie, iso(1), 21), ende),
-          j5: renditePct(preisNahe(serie, iso(5), 60), ende),
-          j10: renditePct(preisNahe(serie, iso(10), 90), ende),
-        })
+        setRenditen(baueRenditeZeilen(serie, bis))
       } catch {
-        if (!cancelled) setRenditen({ j1: null, j5: null, j10: null })
+        if (!cancelled) setRenditen([])
       }
     })()
     return () => {
@@ -266,14 +283,15 @@ export function PaFundamentalScorecard({
   return (
     <div className="overflow-hidden rounded-xl border border-[var(--app-border)] bg-[var(--app-surface-muted)] ring-1 ring-white/[0.03]">
       <div className="grid divide-y divide-[var(--app-border)] lg:grid-cols-4 lg:divide-x lg:divide-y-0">
-        <FirmaSpalte firma={modell.firma} renditen={renditen} />
+        <FirmaSpalte firma={modell.firma} renditen={renditen} historieBadge={modell.historie.badge} />
         {modell.strategien.map((s) => (
           <StrategieSpalte key={s.id} strategie={s} />
         ))}
       </div>
       <p className="border-t border-[var(--app-border)] px-4 py-2 text-[10px] text-[var(--app-text-muted)]">
-        Jede Spalte hat eigene Punkte zur Strategie. Qualität 1–10 nur aus diesen Balken — nicht die
-        proprietären Aktienfinder-Scores.
+        {modell.historie.fussnote} Qualität 1–10 nur aus vorhandenen Balken der jeweiligen
+        Strategie (Ertrag: Rendite + FCF-Deckung + Bilanz; Wachstum: Conversion + Verwässerung;
+        Gewinn: Umsatz/ROIC/Forward). Fehlende Werte zählen nicht als 0.
       </p>
     </div>
   )
