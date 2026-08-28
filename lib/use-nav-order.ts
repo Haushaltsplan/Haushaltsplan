@@ -51,6 +51,9 @@ export function useNavOrder() {
     } catch {
       /* ignore */
     }
+    void import('@/lib/client-state/client-state-sync').then(({ pushClientState }) => {
+      pushClientState('nav-order', next)
+    })
     if (typeof window !== 'undefined') {
       window.dispatchEvent(new Event(NAV_ORDER_CHANGED_EVENT))
     }

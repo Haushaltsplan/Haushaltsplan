@@ -9,6 +9,7 @@ import {
   LABEL_ZUKLAPPEN,
 } from '@/components/collapsible-ui'
 import { SYSTEM_PROMPTS_UEBERSICHT } from '@/lib/portfolio-analyse/system-prompts-uebersicht'
+import { CLIENT_STATE_APPLIED_EVENT, CLIENT_STATE_KEYS, RESEARCH_PROMPTS_STORAGE_KEY } from '@/lib/client-state/client-state-keys'
 
 type PromptStep = {
   id: string
@@ -16,7 +17,7 @@ type PromptStep = {
   text: string
 }
 
-const STORAGE_KEY = 'mein-haushalt.investments.research-prompts.v3'
+const STORAGE_KEY = RESEARCH_PROMPTS_STORAGE_KEY
 /** Ältere Installationen ohne strukturierte Liste */
 const STORAGE_KEY_LEGACY = 'mein-haushalt.investments.research-prompts.v1'
 
@@ -474,7 +475,11 @@ function loadStepsFromStorage(): PromptStep[] {
 }
 
 function persistSteps(steps: PromptStep[]) {
-  window.localStorage.setItem(STORAGE_KEY, JSON.stringify({ v: 3, steps } satisfies PersistFileV2))
+  const payload = { v: 3, steps } satisfies PersistFileV2
+  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(payload))
+  void import('@/lib/client-state/client-state-sync').then(({ pushClientState }) => {
+    pushClientState(CLIENT_STATE_KEYS.researchPrompts, payload)
+  })
 }
 
 // ---------------------------------------------------------------------------
@@ -597,8 +602,15 @@ export function InvestmentResearchPrompts({ embedded = false }: { embedded?: boo
       setSteps(loadStepsFromStorage())
       setLoaded(true)
     })
+    const onApplied = (ev: Event) => {
+      const schluessel = (ev as CustomEvent<{ schluessel?: string }>).detail?.schluessel
+      if (schluessel !== CLIENT_STATE_KEYS.researchPrompts) return
+      setSteps(loadStepsFromStorage())
+    }
+    window.addEventListener(CLIENT_STATE_APPLIED_EVENT, onApplied)
     return () => {
       cancelled = true
+      window.removeEventListener(CLIENT_STATE_APPLIED_EVENT, onApplied)
     }
   }, [])
 

@@ -264,6 +264,10 @@ export async function ladeModeStandVollstaendig(): Promise<ModeBeraterStand> {
 export async function speichereModeStandVollstaendig(stand: ModeBeraterStand): Promise<boolean> {
   const okLs = speichereModeStand(stand)
   await speichereModeFotoBundle(bundleAusStand(stand))
+  void import('@/lib/client-state/client-state-sync').then(({ pushClientState }) => {
+    pushClientState('modeberater', { stand: standOhneFotoBytes(stand), chat: ladeModeChat() })
+    pushClientState('modeberater-fotos', bundleAusStand(stand))
+  })
   return okLs
 }
 
@@ -318,6 +322,9 @@ export function ladeModeChat(): ModeChatTurn[] {
 
 export function speichereModeChat(messages: ModeChatTurn[]): void {
   safeLocalStorageSetItem(MODEBERATER_CHAT_KEY, JSON.stringify(messages.slice(-40)))
+  void import('@/lib/client-state/client-state-sync').then(({ pushClientState }) => {
+    pushClientState('modeberater', { stand: standOhneFotoBytes(ladeModeStand()), chat: messages.slice(-40) })
+  })
 }
 
 export function loescheModeChat(): void {
@@ -326,6 +333,9 @@ export function loescheModeChat(): void {
   } catch {
     /* ignore */
   }
+  void import('@/lib/client-state/client-state-sync').then(({ pushClientState }) => {
+    pushClientState('modeberater', { stand: standOhneFotoBytes(ladeModeStand()), chat: [] })
+  })
 }
 
 export function urlsAusFreitext(text: string): string[] {

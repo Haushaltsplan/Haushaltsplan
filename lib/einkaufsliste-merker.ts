@@ -1,54 +1,84 @@
 /**
- * Kleiner geteilter Speicher für manuell „auf die Einkaufsliste gesetzte" Artikel.
- * Entkoppelt Übersicht/Bestandsliste (setzen) von der Einkaufsliste (anzeigen)
- * über sessionStorage + ein window-Event, ohne globalen State-Container.
+ * Geteilter Speicher für manuell „auf die Einkaufsliste gesetzte" Artikel.
+ * localStorage + Cloud, damit Laptop und Handy denselben Stand haben.
  */
 
-const KEY = 'mein-haushalt:einkauf-merker-v1'
-const NAMEN_KEY = 'mein-haushalt:einkauf-merker-namen-v1'
-const EVENT = 'einkauf-merker-geaendert'
+import {
+  EINKAUF_MERKER_EVENT,
+  EINKAUF_MERKER_IDS_KEY,
+  EINKAUF_MERKER_NAMEN_KEY,
+} from '@/lib/client-state/client-state-keys'
+
+const KEY = EINKAUF_MERKER_IDS_KEY
+const NAMEN_KEY = EINKAUF_MERKER_NAMEN_KEY
+const EVENT = EINKAUF_MERKER_EVENT
+
+function speicher(): Storage | null {
+  if (typeof window === 'undefined') return null
+  try {
+    return window.localStorage
+  } catch {
+    return null
+  }
+}
+
+function leseJsonArray(key: string): string[] {
+  const store = speicher()
+  if (!store) return []
+  try {
+    let raw = store.getItem(key)
+    if (!raw) {
+      try {
+        raw = sessionStorage.getItem(key)
+        if (raw) store.setItem(key, raw)
+      } catch {
+        /* ignore */
+      }
+    }
+    if (!raw) return []
+    const arr = JSON.parse(raw) as unknown
+    if (!Array.isArray(arr)) return []
+    return arr.filter((x): x is string => typeof x === 'string')
+  } catch {
+    return []
+  }
+}
 
 function lese(): Set<string> {
-  if (typeof window === 'undefined') return new Set()
-  try {
-    const raw = sessionStorage.getItem(KEY)
-    if (!raw) return new Set()
-    const arr = JSON.parse(raw) as unknown
-    if (!Array.isArray(arr)) return new Set()
-    return new Set(arr.filter((x): x is string => typeof x === 'string'))
-  } catch {
-    return new Set()
-  }
+  return new Set(leseJsonArray(KEY))
 }
 
 function leseNamen(): Set<string> {
-  if (typeof window === 'undefined') return new Set()
-  try {
-    const raw = sessionStorage.getItem(NAMEN_KEY)
-    if (!raw) return new Set()
-    const arr = JSON.parse(raw) as unknown
-    if (!Array.isArray(arr)) return new Set()
-    return new Set(arr.filter((x): x is string => typeof x === 'string'))
-  } catch {
-    return new Set()
-  }
+  return new Set(leseJsonArray(NAMEN_KEY))
+}
+
+function pushEinkaufCloud() {
+  void import('@/lib/client-state/client-state-local').then(({ leseEinkaufslisteLokal }) => {
+    void import('@/lib/client-state/client-state-sync').then(({ pushClientState }) => {
+      pushClientState('einkaufsliste', leseEinkaufslisteLokal())
+    })
+  })
 }
 
 function schreibeNamen(set: Set<string>) {
-  if (typeof window === 'undefined') return
+  const store = speicher()
+  if (!store) return
   try {
-    sessionStorage.setItem(NAMEN_KEY, JSON.stringify([...set]))
+    store.setItem(NAMEN_KEY, JSON.stringify([...set]))
     window.dispatchEvent(new CustomEvent(EVENT))
+    pushEinkaufCloud()
   } catch {
     /* ignore */
   }
 }
 
 function schreibe(set: Set<string>) {
-  if (typeof window === 'undefined') return
+  const store = speicher()
+  if (!store) return
   try {
-    sessionStorage.setItem(KEY, JSON.stringify([...set]))
+    store.setItem(KEY, JSON.stringify([...set]))
     window.dispatchEvent(new CustomEvent(EVENT))
+    pushEinkaufCloud()
   } catch {
     /* ignore */
   }
@@ -104,7 +134,7 @@ export function toggleMerker(id: string): boolean {
   return nun
 }
 
-/** Abonniert Änderungen (auch aus anderen Komponenten/Tabs der gleichen Sitzung). */
+/** Abonniert Änderungen (andere Komponenten, Tabs, Cloud-Apply). */
 export function abonniereMerker(cb: () => void): () => void {
   if (typeof window === 'undefined') return () => {}
   const handler = () => cb()

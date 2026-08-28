@@ -41,6 +41,7 @@ import {
   type ModePersonFoto,
   type ModeProfil,
 } from '@/lib/modeberater/mode-profil'
+import { CLIENT_STATE_APPLIED_EVENT, CLIENT_STATE_KEYS } from '@/lib/client-state/client-state-keys'
 
 const DEFAULT_FRAGE =
   'Bitte berate mich: Was steht mir? Bewerte die hochgeladene Kleidung und schlage passende Teile im Budget vor.'
@@ -93,8 +94,18 @@ export function ModeBerater() {
       setKleidungOffen(leer)
       setGeladen(true)
     })()
+    const onApplied = (ev: Event) => {
+      const k = (ev as CustomEvent<{ schluessel?: string }>).detail?.schluessel
+      if (k !== CLIENT_STATE_KEYS.modeberater && k !== CLIENT_STATE_KEYS.modeberaterFotos) return
+      void ladeModeStandVollstaendig().then((s) => {
+        if (!cancelled) setStand(s)
+      })
+      setMessages(ladeModeChat())
+    }
+    window.addEventListener(CLIENT_STATE_APPLIED_EVENT, onApplied)
     return () => {
       cancelled = true
+      window.removeEventListener(CLIENT_STATE_APPLIED_EVENT, onApplied)
     }
   }, [])
 
@@ -661,7 +672,7 @@ export function ModeBerater() {
               </button>
             </div>
             <p className="text-[11px] leading-relaxed text-[var(--app-text-muted)]">
-              Chat und Profil bleiben in diesem Browser. Fotos liegen in IndexedDB, nicht in der Omnia-Cloud.
+              Profil, Kleidung, Fotos und Chat gleichen sich zwischen Laptop und Handy ab (Omnia-Cloud).
             </p>
           </div>
         </section>

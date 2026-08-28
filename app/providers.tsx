@@ -1,6 +1,5 @@
 'use client'
 
-import { KalenderCloudBootstrap } from '@/components/kalender-cloud-bootstrap'
 import { OmniaNativeBoot } from '@/components/omnia-native-boot'
 import { WhoopBleProvider } from '@/components/fitnessdaten/whoop-ble-provider'
 import { WhoopCloudAutoSyncRunner } from '@/components/fitnessdaten/whoop-cloud-auto-sync'
@@ -10,6 +9,8 @@ import { FuehrungErinnerungenWatcher } from '@/components/fuehrung/fuehrung-erin
 import { TerminMorgenReminderRunner } from '@/components/termin-morgen-reminder'
 import { AuthGate } from '@/components/auth-gate'
 import { AppLockGate } from '@/components/app-lock-gate'
+import { ClientStateBootstrap } from '@/components/client-state-bootstrap'
+import { ClientStateThemeSync } from '@/components/client-state-theme-sync'
 import { installApiAuth } from '@/lib/api-auth-client'
 import { kompaktierenDailyStoreFallsNoetig } from '@/lib/fitnessdaten/daily-records'
 import { sichereSpeicherplatzFuerAuth } from '@/lib/local-storage-safe'
@@ -41,11 +42,14 @@ export function Providers({ children }: { children: ReactNode }) {
       <OmniaNativeBoot />
       <WhoopBleProvider>
       <AuthGate>
-        <AppLockGate>{children}</AppLockGate>
+        <AppLockGate>
+          <ClientStateBootstrap />
+          <ClientStateThemeSync />
+          {children}
+        </AppLockGate>
       </AuthGate>
       <PwaServiceWorkerRegister />
       <WhoopBleBackgroundSyncRegister />
-      <KalenderCloudBootstrap />
       <WhoopCloudAutoSyncRunner />
       <TerminMorgenReminderRunner />
       <FuehrungErinnerungenWatcher />

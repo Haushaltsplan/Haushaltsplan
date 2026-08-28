@@ -46,6 +46,9 @@ export function speichereTerminReminderEinstellungen(s: TerminReminderSettings) 
   try {
     window.localStorage.setItem(TERMIN_REMINDER_SETTINGS_KEY, JSON.stringify(s))
     window.dispatchEvent(new CustomEvent(TERMIN_REMINDER_EVENT))
+    void import('@/lib/client-state/client-state-sync').then(({ pushClientState }) => {
+      pushClientState('termin-reminder', { stunde: s.stunde, enabled: s.enabled })
+    })
   } catch {
     // ignore
   }

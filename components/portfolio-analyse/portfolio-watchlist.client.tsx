@@ -17,6 +17,7 @@ import {
   ladeWatchlistMitCloudMerge,
   watchlistEintragAusMeta,
   watchlistSchluessel,
+  WATCHLIST_CHANGED_EVENT,
   type WatchlistEintrag,
 } from '@/lib/portfolio-analyse/watchlist-client'
 
@@ -47,8 +48,11 @@ export function PortfolioWatchlistClient() {
     void ladeWatchlistMitCloudMerge().then((merged) => {
       if (aktiv) setEintraege(merged)
     })
+    const onChanged = () => refresh()
+    window.addEventListener(WATCHLIST_CHANGED_EVENT, onChanged)
     return () => {
       aktiv = false
+      window.removeEventListener(WATCHLIST_CHANGED_EVENT, onChanged)
     }
   }, [refresh])
 

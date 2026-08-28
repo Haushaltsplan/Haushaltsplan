@@ -15,6 +15,16 @@ import { appModalBackdropClassName, appModalPanelCoachClassName } from '@/lib/ap
 import { CoachFormattedReply } from '@/components/coach-formatted-reply'
 import { KiBrandChip, KiSparklesIcon } from '@/components/ki-brand'
 import { KI_ASSISTANT_BUBBLE } from '@/lib/ki-ui'
+import { ladeDepotwertFuerVermoegen, ladeVermoegen } from '@/lib/finanz-extra-db'
+import { ordneKategorieZu } from '@/lib/finanz-kategorisierung'
+import { VERMOEGEN_KLASSEN, gruppiereVermoegen, type VermoegenAnzeigePosten } from '@/lib/finanz-vermoegen'
+
+export type FinanceCoachVermoegenKlasse = {
+  klasse: string
+  label: string
+  betragEur: number
+  anteilProzent: number
+}
 
 export type FinanceCoachContextSnapshot = {
   saldo: number
@@ -25,6 +35,17 @@ export type FinanceCoachContextSnapshot = {
   anzahlEinnahmen: number
   anzahlAusgaben: number
   anzahlDauerauftraege: number
+  ansichtMonat?: string
+  restTopfEur?: number | null
+  dauerauftraege: Array<{ typ: string; kategorie: string; betrag: number }>
+  sparrateMonatEur: number
+  sparratePosten: Array<{ kategorie: string; betrag: number }>
+  vermoegen?: {
+    gesamtEur: number
+    depotEur: number | null
+    nachKlasse: FinanceCoachVermoegenKlasse[]
+    posten: Array<{ titel: string; klasse: string; betragEur: number }>
+  } | null
   /** ISO-Zeitpunkt der letzten Aktualisierung (Client) */
   stand: string
 } | null
@@ -63,10 +84,20 @@ function summeJeKategorie(
 export function buildFinanceCoachSnapshot(
   einnahmen: Array<{ kategorie?: string; betrag?: number }>,
   ausgaben: Array<{ kategorie?: string; betrag?: number }>,
-  dauerauftraege: unknown[],
+  dauerauftraege: Array<{ typ?: string; kategorie?: string; betrag?: number | string }>,
+  extra?: { restTopfEur?: number | null; ansichtMonat?: string },
 ): FinanceCoachContextSnapshot {
   const gesEin = einnahmen.reduce((a, r) => a + (Number.isFinite(Number(r.betrag)) ? Number(r.betrag) : 0), 0)
   const gesAus = ausgaben.reduce((a, r) => a + (Number.isFinite(Number(r.betrag)) ? Number(r.betrag) : 0), 0)
+  const daCompact = dauerauftraege.slice(0, 40).map((d) => ({
+    typ: String(d.typ || 'ausgabe').toLowerCase().trim() === 'einnahme' ? 'einnahme' : 'ausgabe',
+    kategorie: String(d.kategorie ?? 'Ohne Bezeichnung').trim() || 'Ohne Bezeichnung',
+    betrag: Math.round((Number(d.betrag) || 0) * 100) / 100,
+  }))
+  const sparratePosten = daCompact
+    .filter((d) => d.typ === 'ausgabe' && ordneKategorieZu(d.kategorie, null, false) === 'sparen')
+    .sort((a, b) => b.betrag - a.betrag)
+  const sparrateMonatEur = Math.round(sparratePosten.reduce((a, p) => a + p.betrag, 0) * 100) / 100
   return {
     saldo: Math.round((gesEin - gesAus) * 100) / 100,
     summeEinnahmen: Math.round(gesEin * 100) / 100,
@@ -76,12 +107,72 @@ export function buildFinanceCoachSnapshot(
     anzahlEinnahmen: einnahmen.length,
     anzahlAusgaben: ausgaben.length,
     anzahlDauerauftraege: dauerauftraege.length,
+    ansichtMonat: extra?.ansichtMonat,
+    restTopfEur: extra?.restTopfEur ?? null,
+    dauerauftraege: daCompact,
+    sparrateMonatEur,
+    sparratePosten,
     stand: new Date().toISOString(),
   }
 }
 
+async function ladeVermoegenFuerCoach(): Promise<NonNullable<FinanceCoachContextSnapshot>['vermoegen']> {
+  try {
+    const [v, depot] = await Promise.all([ladeVermoegen(), ladeDepotwertFuerVermoegen()])
+    const rows: VermoegenAnzeigePosten[] = v.rows.map((p) => ({
+      id: p.id,
+      titel: p.titel,
+      betrag: Number(p.betrag) || 0,
+      klasse: p.klasse,
+      quelle: 'manuell',
+    }))
+    if (depot.depotwertEur != null && depot.depotwertEur !== 0) {
+      rows.push({
+        id: '__depot',
+        titel: 'Depot (Portfolio-Analyse)',
+        betrag: depot.depotwertEur,
+        klasse: 'aktien',
+        quelle: 'depot',
+      })
+    }
+    const { gesamt, klassenMitWert } = gruppiereVermoegen(rows)
+    return {
+      gesamtEur: gesamt,
+      depotEur: depot.depotwertEur,
+      nachKlasse: klassenMitWert
+        .filter((k) => k.betrag !== 0)
+        .map((k) => ({
+          klasse: k.key,
+          label: k.label,
+          betragEur: k.betrag,
+          anteilProzent: Math.round(k.anteil * 1000) / 10,
+        })),
+      posten: rows
+        .filter((p) => (Number(p.betrag) || 0) !== 0)
+        .sort((a, b) => b.betrag - a.betrag)
+        .slice(0, 30)
+        .map((p) => ({
+          titel: p.titel,
+          klasse: VERMOEGEN_KLASSEN.find((k) => k.key === p.klasse)?.label ?? p.klasse,
+          betragEur: Math.round(p.betrag * 100) / 100,
+        })),
+    }
+  } catch {
+    return null
+  }
+}
+
+const VORSCHLAEGE = [
+  { id: 'vermoegen', text: 'Wie kann ich mein Gesamtvermögen sinnvoller aufteilen?' },
+  { id: 'haus', text: 'Was sollte ich für einen Hausbau oder -kauf vorbereiten?' },
+  { id: 'vorsorge', text: 'Wie steht es um meine Altersvorsorge — was fehlt noch?' },
+  { id: 'notgroschen', text: 'Reicht mein Notgroschen, und wo liegt zu viel ungenutzt auf dem Konto?' },
+  { id: 'invest', text: 'In was könnte ich als Nächstes investieren — ohne Einzelaktien-Tipps?' },
+] as const
+
 export function FinanceCoachProvider({ children }: { children: ReactNode }) {
   const [snapshot, setSnapshot] = useState<FinanceCoachContextSnapshot | null>(null)
+  const [vermoegen, setVermoegen] = useState<NonNullable<FinanceCoachContextSnapshot>['vermoegen']>(null)
   const [open, setOpen] = useState(false)
   const [kiConfigured, setKiConfigured] = useState<boolean | null>(null)
   const [, setKiProvider] = useState<'gemini' | 'openai' | null>(null)
@@ -90,6 +181,27 @@ export function FinanceCoachProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(false)
   const [messages, setMessages] = useState<ChatTurn[]>([])
   const endRef = useRef<HTMLDivElement | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    void ladeVermoegenFuerCoach().then((v) => {
+      if (!cancelled) setVermoegen(v)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!open) return
+    let cancelled = false
+    void ladeVermoegenFuerCoach().then((v) => {
+      if (!cancelled) setVermoegen(v)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [open])
 
   useEffect(() => {
     if (!open) return
@@ -133,8 +245,8 @@ export function FinanceCoachProvider({ children }: { children: ReactNode }) {
     endRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages, open, loading])
 
-  const send = useCallback(async () => {
-    const text = input.trim()
+  const send = useCallback(async (vorgabe?: string) => {
+    const text = (vorgabe ?? input).trim()
     if (!text || loading || kiConfigured !== true) return
 
     setInput('')
@@ -144,13 +256,15 @@ export function FinanceCoachProvider({ children }: { children: ReactNode }) {
     const next: ChatTurn[] = [...messages, userTurn]
     setMessages(next)
 
+    const context = snapshot ? { ...snapshot, vermoegen: vermoegen ?? snapshot.vermoegen ?? null } : { vermoegen }
+
     try {
       const res = await fetch('/api/finance-coach', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           messages: next,
-          context: snapshot,
+          context,
         }),
       })
       const data = await res.json().catch(() => ({}))
@@ -171,7 +285,7 @@ export function FinanceCoachProvider({ children }: { children: ReactNode }) {
     } finally {
       setLoading(false)
     }
-  }, [input, loading, messages, snapshot, kiConfigured])
+  }, [input, loading, messages, snapshot, vermoegen, kiConfigured])
 
   const ctxValue = useMemo(() => ({ setSnapshot }), [])
 
@@ -183,8 +297,8 @@ export function FinanceCoachProvider({ children }: { children: ReactNode }) {
         type="button"
         onClick={() => setOpen(true)}
         className="fixed z-[60] flex h-14 w-14 items-center justify-center rounded-2xl border border-violet-500/50 bg-violet-600 text-white shadow-xl shadow-violet-950/50 transition-transform hover:scale-105 hover:bg-violet-500 active:scale-95 bottom-[max(5.25rem,calc(env(safe-area-inset-bottom)+4.5rem))] right-[max(1rem,env(safe-area-inset-right))] md:bottom-8 md:right-8"
-        title="Finanz-Coach: Fragen zu Einnahmen, Ausgaben und Saldo"
-        aria-label="Finanz-Coach öffnen"
+        title="Finanz- & Lebensberater: Vermögen, Vorsorge, Haushalt, Hausbau"
+        aria-label="Finanz- und Lebensberater öffnen"
       >
         <KiSparklesIcon size={28} className="drop-shadow-sm" />
       </button>
@@ -210,7 +324,7 @@ export function FinanceCoachProvider({ children }: { children: ReactNode }) {
                   id="finance-coach-title"
                   className="min-w-0 text-sm font-black uppercase tracking-wide text-violet-200"
                 >
-                  Finanz-Coach
+                  Finanz- & Lebensberater
                 </h2>
               </div>
               <button
@@ -290,11 +404,27 @@ export function FinanceCoachProvider({ children }: { children: ReactNode }) {
                 </div>
               )}
               {messages.length === 0 && (
-                <p className="rounded-xl border border-[var(--app-border-strong)] bg-[var(--app-surface-muted)] p-3 text-xs leading-relaxed text-[var(--app-text-muted)]">
-                  Stell Fragen zu <strong className="text-[var(--app-text)]">Einnahmen, Ausgaben, Daueraufträgen</strong> oder
-                  deinem Geld-Alltag. Die aktuellen <strong className="text-[var(--app-text)]">Summen und Top-Kategorien</strong> von dieser
-                  Seite werden dem Modell mitgegeben, damit Antworten passen.
-                </p>
+                <div className="space-y-2">
+                  <p className="rounded-xl border border-[var(--app-border-strong)] bg-[var(--app-surface-muted)] p-3 text-xs leading-relaxed text-[var(--app-text-muted)]">
+                    Ich kenne deinen <strong className="text-[var(--app-text)]">Cashflow</strong>, das{' '}
+                    <strong className="text-[var(--app-text)]">Gesamtvermögen</strong>, Sparraten und den Rest-Topf.
+                    Frag nach Optimierung, Vorsorge, Hausbau oder dem nächsten sinnvollen Schritt. Es gibt keine
+                    konkreten Aktienkäufe, nur grobe Anlageklassen und Checklisten.
+                  </p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {VORSCHLAEGE.map((v) => (
+                      <button
+                        key={v.id}
+                        type="button"
+                        disabled={loading || kiConfigured !== true}
+                        onClick={() => void send(v.text)}
+                        className="rounded-lg border border-violet-700/50 bg-violet-950/40 px-2.5 py-1.5 text-left text-[11px] font-medium leading-snug text-violet-100/90 hover:border-violet-500/70 hover:bg-violet-900/50 disabled:opacity-40"
+                      >
+                        {v.text}
+                      </button>
+                    ))}
+                  </div>
+                </div>
               )}
               {messages.map((m, i) => (
                 <div
@@ -333,7 +463,7 @@ export function FinanceCoachProvider({ children }: { children: ReactNode }) {
                 placeholder={
                   kiConfigured === false
                     ? 'Zuerst GEMINI_API_KEY oder OPENAI_API_KEY in .env.local …'
-                    : 'Frage zu deinen Finanzen, z. B. größte Kosten, Spar-Tipps …'
+                    : 'Vermögen, Vorsorge, Hausbau, Spar-Tipps …'
                 }
                 className="mb-2 w-full resize-none rounded-xl border border-[var(--app-border-strong)] bg-[var(--app-surface-muted)] p-3 text-sm text-[var(--app-text)] outline-none focus:ring-2 focus:ring-violet-500/40 disabled:cursor-not-allowed disabled:opacity-50"
               />
@@ -359,7 +489,7 @@ export function FinanceCoachProvider({ children }: { children: ReactNode }) {
               </div>
               <p className="mt-2 text-[10px] text-[var(--app-text-muted)]">
                 Text und Kennzahlen gehen an den konfigurierten KI-Dienst (Verarbeitung außerhalb der App). Keine
-                Rechts- oder Anlageberatung.
+                Steuer-, Rechts- oder individuelle Anlageberatung.
               </p>
             </div>
           </div>

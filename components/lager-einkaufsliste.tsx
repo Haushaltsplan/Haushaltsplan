@@ -12,8 +12,9 @@ import {
 import { basisEinheitFuerPreisanzeige, istLagerBasisEinheit, produktEinheitZuBasis, type LagerBasisEinheit } from '@/lib/lager-einheiten'
 import { istUnterMindestbestand, mhdStatus } from '@/lib/lager-mhd'
 import { abonniereMerker, entferneMerker, entferneNamensMerker, gemerkteIds, gemerkteNamen } from '@/lib/einkaufsliste-merker'
+import { EINKAUFSLISTE_PERSIST_KEY } from '@/lib/client-state/client-state-keys'
 
-const SESSION_KEY = 'mein-haushalt:einkaufsliste-v1'
+const SESSION_KEY = EINKAUFSLISTE_PERSIST_KEY
 
 type PersistShape = {
   /** Aus der Liste entfernte Produkt-IDs (bis wieder Bestand > 0 war). */
@@ -69,7 +70,15 @@ function formatMengeDe(n: number) {
 function loadPersist(): PersistShape {
   if (typeof window === 'undefined') return { hidden: [], mengen: {} }
   try {
-    const raw = sessionStorage.getItem(SESSION_KEY)
+    let raw = window.localStorage.getItem(SESSION_KEY)
+    if (!raw) {
+      try {
+        raw = sessionStorage.getItem(SESSION_KEY)
+        if (raw) window.localStorage.setItem(SESSION_KEY, raw)
+      } catch {
+        /* ignore */
+      }
+    }
     if (!raw) return { hidden: [], mengen: {} }
     const o = JSON.parse(raw) as unknown
     if (!o || typeof o !== 'object') return { hidden: [], mengen: {} }
@@ -90,7 +99,12 @@ function loadPersist(): PersistShape {
 
 function savePersist(p: PersistShape) {
   try {
-    sessionStorage.setItem(SESSION_KEY, JSON.stringify(p))
+    window.localStorage.setItem(SESSION_KEY, JSON.stringify(p))
+    void import('@/lib/client-state/client-state-local').then(({ leseEinkaufslisteLokal }) => {
+      void import('@/lib/client-state/client-state-sync').then(({ pushClientState }) => {
+        pushClientState('einkaufsliste', leseEinkaufslisteLokal())
+      })
+    })
   } catch {
     /* ignore */
   }
@@ -127,12 +141,16 @@ export function LagerEinkaufsliste({ produkte, verbrauchHistorie, refreshKey }: 
   }, [hidden, mengen])
 
   useEffect(() => {
-    setGemerkt(gemerkteIds())
-    setGemerkteNamenListe(gemerkteNamen())
-    return abonniereMerker(() => {
+    const reload = () => {
       setGemerkt(gemerkteIds())
       setGemerkteNamenListe(gemerkteNamen())
-    })
+      skipPersistOnce.current = true
+      const p = loadPersist()
+      setHidden(p.hidden)
+      setMengen(p.mengen)
+    }
+    reload()
+    return abonniereMerker(reload)
   }, [refreshKey])
 
   const idsMitBestand = useMemo(() => {

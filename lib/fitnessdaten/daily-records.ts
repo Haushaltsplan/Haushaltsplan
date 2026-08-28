@@ -228,16 +228,28 @@ function kuerzeDailyStore(store: WhoopDailyStore, aggressiv = false): WhoopDaily
   }
 }
 
+function pushDailyStoreZurCloud(store: WhoopDailyStore): void {
+  void import('@/lib/client-state/client-state-sync').then(({ pushClientState }) => {
+    pushClientState('fitness-daily', store)
+  })
+}
+
 export function speichereDailyStore(store: WhoopDailyStore): void {
   if (typeof window === 'undefined') return
   let next = kuerzeDailyStore({ ...store, version: 2 }, false)
   const payload = () => JSON.stringify(next)
-  if (safeLocalStorageSetItem(FITNESS_DAILY_STORAGE_KEY, payload())) return
+  if (safeLocalStorageSetItem(FITNESS_DAILY_STORAGE_KEY, payload())) {
+    pushDailyStoreZurCloud(next)
+    return
+  }
 
   // Noch voll → aggressiver kürzen + große Fremd-Caches löschen
   befreieLocalStorageQuota()
   next = kuerzeDailyStore(next, true)
-  if (safeLocalStorageSetItem(FITNESS_DAILY_STORAGE_KEY, payload())) return
+  if (safeLocalStorageSetItem(FITNESS_DAILY_STORAGE_KEY, payload())) {
+    pushDailyStoreZurCloud(next)
+    return
+  }
 
   // Notfall: nur letzte 21 Tage, keine Aktivitäten/Journal
   next = {
@@ -251,7 +263,10 @@ export function speichereDailyStore(store: WhoopDailyStore): void {
     skinTempBaseline: next.skinTempBaseline,
     bffMonthlyAvgs: null,
   }
-  if (safeLocalStorageSetItem(FITNESS_DAILY_STORAGE_KEY, payload())) return
+  if (safeLocalStorageSetItem(FITNESS_DAILY_STORAGE_KEY, payload())) {
+    pushDailyStoreZurCloud(next)
+    return
+  }
 
   try {
     window.localStorage.removeItem(FITNESS_DAILY_STORAGE_KEY)

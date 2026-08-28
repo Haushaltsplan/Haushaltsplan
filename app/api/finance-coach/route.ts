@@ -1,26 +1,47 @@
 import { NextResponse } from 'next/server'
-import { prepareCoachMessages, resolveCoachProvider, runCoachCompletion } from '@/lib/ki-coach-backend'
+import {
+  geminiApiKeyFreeConfigured,
+  geminiFreeTierFlashModelKandidaten,
+  prepareCoachMessages,
+  resolveCoachProvider,
+  resolveGeminiFreeTierProvider,
+  runCoachCompletion,
+} from '@/lib/ki-coach-backend'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
+function resolveFinanceCoachProvider() {
+  return resolveGeminiFreeTierProvider() ?? resolveCoachProvider()
+}
+
 function buildSystemPrompt(context: unknown): string {
   const contextBlock =
     context != null
-      ? `\n\n--- Aktuelle Kennzahlen aus der Finanzen-Seite (nur zur Einordnung, keine Steuer-/Rechtsberatung) ---\n${JSON.stringify(context, null, 2)}\n---`
+      ? `\n\n--- Deine aktuellen Zahlen aus der App (nur zur Einordnung; keine erfundenen Beträge) ---\n${JSON.stringify(context, null, 2)}\n---`
       : ''
-  return `Du bist ein freundlicher, pragmatischer Finanz-Coach für private Haushaltsführung in Deutschland.
-Dein Fokus: Einnahmen und Ausgaben, Kategorien, Saldo, Daueraufträge, Ausgabeverhalten, einfache Routinen und Motivation — immer konkret und ohne Moralpredigt.
-Nutze die mitgelieferten Kennzahlen, um Antworten passend einzuordnen; erfinde keine Beträge.
-Dieser Chat ist ausschließlich Text: keine Kassenzettel, keine Belegfotos, keine Fragen zum Lebensmittel-Lager. Wenn jemand Kassenbons oder die Speisekammer erwähnt, sage kurz, dass dafür andere Bereiche in der App vorgesehen sind, und bleibe bei Finanzthemen.
-Wenn wichtige Zahlen in der Anfrage fehlen, frage knapp nach oder arbeite mit dem, was im Kontext steht.
-Keine Anlageberatung, keine Steuer- oder Rechtsberatung; verweise bei Bedarf auf Fachleute.
-Antworte auf Deutsch, knapp strukturiert, maximal etwa 12–15 Sätze pro Antwort, außer der Nutzer bittet ausdrücklich um mehr Detail.
-Formatiere für gute Lesbarkeit im Chat: optional kurze Zwischenüberschriften mit Zeilen, die mit \`## \` oder \`### \` beginnen; Aufzählungen mit \`- \` oder nummeriert mit \`1. \`; wichtige Beträge oder Kernaussagen mit \`**doppeltem Stern**\` hervorheben.${contextBlock}`
+  return `Du bist ein freundlicher, klarer Finanz-, Vorsorge- und Lebensberater für eine Privatperson in Deutschland.
+Du denkst ganzheitlich: Haushalt (Einnahmen/Ausgaben), Gesamtvermögen, Liquidität, Sparen, grobe Anlageklassen, Altersvorsorge, Absicherung und große Lebensziele (Hausbau/Kauf, Familie, Jobwechsel, große Anschaffungen).
+
+## Was du darfst und sollst
+- Konkrete, umsetzbare Tipps aus den mitgelieferten Zahlen: wo zu viel Cash liegt, ob ein Notgroschen fehlt, ob die Sparrate zum Ziel passt, welche Lücken (z. B. Bausparen/Eigenkapital, Vorsorge, Diversifikation) auffallen.
+- Szenarien und Checklisten: Hausbau/Kauf (Eigenkapital, Nebenkosten ~10–15 %, Zins/Tilgung, Puffer, Fördermittel nur grob nennen), Notgroschen (typisch 3–6 Monatsausgaben), Reihenfolge „teure Schulden → Puffer → Ziele → langfristig anlegen“.
+- Anlageklassen auf Deutsch erklären (Tagesgeld, ETF-Sparplan, Aktien-Depot, Fonds, Bausparer, P2P, Rente) — immer passend zum vorhandenen Mix, ohne Einzelaktien oder konkrete Produkte zu empfehlen.
+- Vorsorge und Leben: grob Riester/Rürup/bAV/BU als Themen nennen, Prioritäten setzen, Fragen stellen wenn Daten fehlen (Alter, Wunschimmobilie, Zeithorizont, Risikobereitschaft).
+- Motivation ohne Moralpredigt. Zahlen aus dem Kontext verwenden, fehlende Werte nachfragen.
+
+## Grenzen (unbedingt)
+- Keine individuelle Anlage-, Steuer- oder Rechtsberatung und keine konkreten Wertpapierkäufe/-verkäufe.
+- Keine Garantien, keine „du musst jetzt XY-Aktie kaufen“. Verweise bei Verträgen, Steuern, Kredit und Versicherung auf Fachleute (Steuerberatung, Bank, unabhängige Beratung).
+- Keine Kassenzettel, keine Speisekammer: kurz auf die anderen App-Bereiche verweisen.
+- Erfinde keine Kontostände. Wenn Vermögen leer ist, sage das und arbeite mit Cashflow.
+
+Antworte auf Deutsch, gut lesbar: kurze \`## \`-Abschnitte, Aufzählungen mit \`- \`, Kernbeträge mit \`**fett**\`.
+Standardlänge: 2–5 knappe Abschnitte (ca. 15–22 Sätze). Mehr nur, wenn ausdrücklich nach Tiefe gefragt wird.${contextBlock}`
 }
 
 export async function GET() {
-  const resolved = resolveCoachProvider()
+  const resolved = resolveFinanceCoachProvider()
   const isVercel = Boolean(process.env.VERCEL)
   return NextResponse.json({
     configured: Boolean(resolved),
@@ -28,20 +49,20 @@ export async function GET() {
     ...(!resolved && isVercel
       ? {
           hostedNote:
-            'Auf Vercel: Project Settings → Environment Variables → GEMINI_API_KEY (oder OPENAI_API_KEY) für Production setzen, Deployment neu bauen. .env.local wird nicht mit deployt.',
+            'Auf Vercel: Project Settings → Environment Variables → GEMINI_API_KEY_FREE (oder GEMINI_API_KEY / OPENAI_API_KEY) für Production setzen, Deployment neu bauen. .env.local wird nicht mit deployt.',
         }
       : {}),
   })
 }
 
 export async function POST(req: Request) {
-  const resolved = resolveCoachProvider()
+  const resolved = resolveFinanceCoachProvider()
   if (!resolved) {
     return NextResponse.json(
       {
         error:
           'KI ist nicht konfiguriert: Lege in .env.local im Projektroot einen API-Schlüssel an, speichere, starte den Dev-Server neu (npm run dev). ' +
-          'Option A — Gemini (Google AI Studio): GEMINI_API_KEY=… (oder GOOGLE_GENERATIVE_AI_API_KEY). ' +
+          'Option A — Gemini (Google AI Studio): GEMINI_API_KEY_FREE=… oder GEMINI_API_KEY=…. ' +
           'Option B — OpenAI: OPENAI_API_KEY=… (oder AI_API_KEY). ' +
           'Optional: FINANCE_COACH_PROVIDER=auto|gemini|openai (Standard: auto = Gemini bevorzugt, falls Schlüssel da).',
       },
@@ -70,7 +91,11 @@ export async function POST(req: Request) {
 
   try {
     const result = await runCoachCompletion(resolved.provider, resolved.apiKey, systemText, userMessages, {
-      temperature: 0.55,
+      temperature: 0.5,
+      geminiModels: resolved.provider === 'gemini' ? geminiFreeTierFlashModelKandidaten() : undefined,
+      geminiForceFreeApiKey: resolved.provider === 'gemini' && geminiApiKeyFreeConfigured(),
+      maxOutputTokens: 4096,
+      thinkingMinimal: true,
     })
 
     if (!result.ok) {

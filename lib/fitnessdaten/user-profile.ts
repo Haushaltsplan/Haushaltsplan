@@ -78,7 +78,11 @@ export function ladeFitnessProfil(): FitnessUserProfile {
 
 export function speichereFitnessProfil(profile: FitnessUserProfile): void {
   if (typeof window === 'undefined') return
-  window.localStorage.setItem(FITNESS_PROFILE_STORAGE_KEY, JSON.stringify(normalisiereProfil(profile)))
+  const next = normalisiereProfil(profile)
+  window.localStorage.setItem(FITNESS_PROFILE_STORAGE_KEY, JSON.stringify(next))
+  void import('@/lib/client-state/client-state-sync').then(({ pushClientState }) => {
+    pushClientState('fitness-profil', next)
+  })
 }
 
 function normalisiereProfil(p: FitnessUserProfile): FitnessUserProfile {

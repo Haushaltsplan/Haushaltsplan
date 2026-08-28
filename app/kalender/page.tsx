@@ -83,7 +83,7 @@ export default function KalenderPage() {
     }
   }, [])
 
-  /** Wenn `KalenderCloudBootstrap` o.ä. nachträglich in localStorage schreibt, während der erste Render leer war. */
+  /** Wenn der Cloud-Abgleich nachträglich in localStorage schreibt, während der erste Render leer war. */
   useEffect(() => {
     const onSync = () => {
       setEintraege(ladeKalenderEintraege())

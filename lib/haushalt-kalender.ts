@@ -164,6 +164,16 @@ export async function ladeKalenderEintraegeVonQuelleMitMeta(): Promise<LadeKalen
   }
   const cloud = res.rows
   if (cloud.length === 0 && local.length > 0) {
+    const { holeClientStateCache } = await import('@/lib/client-state/client-state-sync')
+    const meta = holeClientStateCache('kalender-meta')
+    const anzahl =
+      meta && meta.payload && typeof meta.payload === 'object' && 'anzahl' in meta.payload
+        ? Number((meta.payload as { anzahl?: unknown }).anzahl)
+        : null
+    if (anzahl === 0) {
+      speichereKalenderEintraege([])
+      return { eintraege: [], warnung: null }
+    }
     const r = await speichereKalenderInCloud(local)
     if (r.ok) {
       speichereKalenderEintraege(local)
@@ -188,6 +198,9 @@ export async function speichereKalenderEintraegeMitCloud(
   if (!istSupabaseClientKonfiguriert()) return { cloudOk: true }
   const { speichereKalenderInCloud } = await import('@/lib/haushalt-kalender-cloud')
   const r = await speichereKalenderInCloud(eintraege)
+  void import('@/lib/client-state/client-state-sync').then(({ pushClientState }) => {
+    pushClientState('kalender-meta', { anzahl: eintraege.length })
+  })
   if (r.ok) return { cloudOk: true }
   return { cloudOk: false, message: r.message }
 }

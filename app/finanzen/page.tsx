@@ -366,11 +366,6 @@ export default function FinanzenPage() {
     return monatsSpannenListe(sorted[0]!, sorted[sorted.length - 1]!)
   }, [einnahmen, ausgaben, ansichtMonat])
 
-  useEffect(() => {
-    setCoachContext(buildFinanceCoachSnapshot(einnahmenAnsicht, ausgabenAnsicht, dauerauftraege))
-    return () => setCoachContext(null)
-  }, [einnahmenAnsicht, ausgabenAnsicht, dauerauftraege, setCoachContext])
-
   function formatDateDDMMYYYY(value?: string) {
     if (!value) return ''
     const date = new Date(value)
@@ -1048,6 +1043,16 @@ export default function FinanzenPage() {
     const sum = topfMonate.reduce((a, r) => a + Number(r.saldo_monat || 0), 0)
     return Math.round(((Number(topfMeta.stand_offset) || 0) + sum) * 100) / 100
   }, [topfMeta, topfMonate])
+
+  useEffect(() => {
+    setCoachContext(
+      buildFinanceCoachSnapshot(einnahmenAnsicht, ausgabenAnsicht, dauerauftraege, {
+        restTopfEur: topfStand,
+        ansichtMonat,
+      }),
+    )
+    return () => setCoachContext(null)
+  }, [einnahmenAnsicht, ausgabenAnsicht, dauerauftraege, topfStand, ansichtMonat, setCoachContext])
 
   const topfMonatEintrag = useMemo(
     () => topfMonate.find((r) => r.monat === ansichtMonat) ?? null,

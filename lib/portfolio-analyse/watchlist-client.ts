@@ -9,7 +9,9 @@ export type WatchlistEintrag = {
   hinzugefuegtAm: string
 }
 
-const LS_KEY = 'pa-watchlist-v1'
+export const WATCHLIST_STORAGE_KEY = 'pa-watchlist-v1'
+const LS_KEY = WATCHLIST_STORAGE_KEY
+export const WATCHLIST_CHANGED_EVENT = 'omnia-watchlist-changed'
 const ISIN_RE = /^[A-Z]{2}[A-Z0-9]{10}$/
 
 export function istGueltigeIsin(isin: string): boolean {
@@ -42,6 +44,13 @@ export function speichereWatchlist(eintraege: WatchlistEintrag[]): void {
   } catch {
     /* ignore */
   }
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new Event(WATCHLIST_CHANGED_EVENT))
+  }
+  syncWatchlistZurCloud(eintraege)
+  void import('@/lib/client-state/client-state-sync').then((m) => {
+    m.pushClientState('watchlist', eintraege)
+  })
 }
 
 export function watchlistEintragAusMeta(m: IsinMetadata, isin: string | null): WatchlistEintrag {
@@ -78,7 +87,6 @@ export function entferneAusWatchlist(schluessel: string): WatchlistEintrag[] {
   const norm = schluessel.trim().toUpperCase()
   const next = ladeWatchlist().filter((e) => watchlistSchluessel(e) !== norm)
   speichereWatchlist(next)
-  syncWatchlistZurCloud(next)
   return next
 }
 
@@ -87,7 +95,6 @@ export function fuegeZurWatchlistHinzu(eintrag: WatchlistEintrag): WatchlistEint
   const bestehend = ladeWatchlist().filter((e) => watchlistSchluessel(e) !== key)
   const next = [eintrag, ...bestehend]
   speichereWatchlist(next)
-  syncWatchlistZurCloud(next)
   return next
 }
 
@@ -115,6 +122,11 @@ export function syncWatchlistZurCloud(eintraege: WatchlistEintrag[]): void {
  * gespeichert und zurück in die Cloud gespiegelt.
  */
 export async function ladeWatchlistMitCloudMerge(): Promise<WatchlistEintrag[]> {
+  const { holeClientStateCache, pullClientState } = await import('@/lib/client-state/client-state-sync')
+  await pullClientState()
+  const ausState = holeClientStateCache('watchlist')
+  if (ausState) return ladeWatchlist()
+
   const lokal = ladeWatchlist()
   try {
     const res = await fetch('/api/portfolio-analyse/watchlist-sync')
@@ -123,8 +135,7 @@ export async function ladeWatchlistMitCloudMerge(): Promise<WatchlistEintrag[]> 
       eintraege?: { isin?: string; name?: string; symbolYahoo?: string | null; symbolCandidates?: string[]; hinzugefuegtAm?: string }[]
     }
     if (j.ok && Array.isArray(j.eintraege)) {
-      const lokalKeys = new Set(lokal.map(watchlistSchluessel))
-      const neuAusCloud: WatchlistEintrag[] = j.eintraege
+      const cloud: WatchlistEintrag[] = j.eintraege
         .filter((e) => e.isin && istGueltigeIsin(e.isin) && e.name)
         .map((e) => ({
           isin: e.isin!.trim().toUpperCase(),
@@ -133,17 +144,20 @@ export async function ladeWatchlistMitCloudMerge(): Promise<WatchlistEintrag[]> 
           symbolCandidates: Array.isArray(e.symbolCandidates) ? e.symbolCandidates : [],
           hinzugefuegtAm: e.hinzugefuegtAm ?? new Date().toISOString(),
         }))
-        .filter((e) => !lokalKeys.has(watchlistSchluessel(e)))
-
-      // Lokale Reihenfolge behalten — Cloud-Neuigkeiten nur anhängen (kein Umsortieren)
-      const merged = neuAusCloud.length > 0 ? [...lokal, ...neuAusCloud] : lokal
-      if (neuAusCloud.length > 0) speichereWatchlist(merged)
-      syncWatchlistZurCloud(merged)
-      return merged
+      // Cloud ist die volle Liste (Löschen muss ankommen). Leere Cloud + lokale Daten = Erst-Upload.
+      if (cloud.length > 0) {
+        speichereWatchlist(cloud)
+        return cloud
+      }
+      if (lokal.length > 0) {
+        speichereWatchlist(lokal)
+        return lokal
+      }
+      return lokal
     }
   } catch {
     /* offline / Fehler → lokale Liste reicht */
   }
-  syncWatchlistZurCloud(lokal)
+  if (lokal.length > 0) syncWatchlistZurCloud(lokal)
   return lokal
 }
