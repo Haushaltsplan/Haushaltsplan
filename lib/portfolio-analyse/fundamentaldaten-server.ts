@@ -35,6 +35,7 @@ import {
 import type {
   FundamentaldatenAnfrage,
   FundamentaldatenPaket,
+  FundamentalFrequenz,
   FundamentalMetrikZeile,
   FundamentalPeriode,
 } from '@/lib/portfolio-analyse/fundamentaldaten-types'
@@ -60,6 +61,7 @@ import {
   baueFundamentalRohAusAlternativQuellen,
   ergaenzeMacrotrendsMitYahooGuV,
   nutzeYahooGuVFuerIsin,
+  type YahooGuVMergeOpts,
 } from '@/lib/portfolio-analyse/fundamentaldaten-yahoo-guv-server'
 import { ISIN_WAEHRUNG, istEuIsin } from '@/lib/portfolio-analyse/eu-portfolio-ir-config'
 import { ladeUnitEconomics } from '@/lib/portfolio-analyse/unit-economics-server'
@@ -277,6 +279,18 @@ function mergePeriodenUndZeilen(
   return { perioden: periodenOhneLeereSchaetzungen(perioden, zeilenClean), zeilen: zeilenClean }
 }
 
+function quartalsGuVDuen(roh: { perioden: FundamentalPeriode[]; zeilen: FundamentalMetrikZeile[] } | null | undefined): boolean {
+  if (!roh || roh.zeilen.length === 0) return true
+  const hist = roh.perioden.filter((p) => !p.istLtm && !p.istSchaetzung && !p.istNtm)
+  if (hist.length < 4) return true
+  const umsatz = roh.zeilen.find((z) => z.id === 'umsatz')
+  const n = hist.filter((p) => {
+    const v = umsatz?.werte[p.iso]
+    return v != null && Number.isFinite(v)
+  }).length
+  return n < 4
+}
+
 function leeresPaket(partial: Partial<FundamentaldatenPaket> & Pick<FundamentaldatenPaket, 'ok' | 'ticker' | 'firmenname'>): FundamentaldatenPaket {
   return {
     slug: '',
@@ -301,7 +315,7 @@ function leeresPaket(partial: Partial<FundamentaldatenPaket> & Pick<Fundamentald
 }
 
 async function ladeFundamentaldatenLive(anfrage: FundamentaldatenAnfrage): Promise<FundamentaldatenPaket> {
-  const frequenz = anfrage.frequenz === 'quartal' ? 'quartal' : 'jahr'
+  const frequenz: FundamentalFrequenz = anfrage.frequenz === 'quartal' ? 'quartal' : 'jahr'
   let { ident, symbolYahoo } = await loeseIdent(anfrage)
   /** Kein Macrotrends-Treffer, aber GuV-Historie aus StockAnalysis/Yahoo vorhanden (Watchlist). */
   let altRoh: Awaited<ReturnType<typeof baueFundamentalRohAusAlternativQuellen>> = null
@@ -345,7 +359,7 @@ async function ladeFundamentaldatenLive(anfrage: FundamentaldatenAnfrage): Promi
 
   // Watchlist-Titel ohne Macrotrends-Seite (z. B. EU-Nebenwerte): volle Pipeline mit
   // GuV-/Cashflow-Historie aus StockAnalysis + Yahoo timeseries statt dünnem Yahoo-Fallback.
-  if (!ident && symbolYahoo && frequenz === 'jahr') {
+  if (!ident && symbolYahoo) {
     const tickerGuess = macrotrendsTickerAusSymbol(symbolYahoo)
     const identGuess: MacrotrendsIdent = {
       ticker: tickerGuess,
@@ -356,6 +370,7 @@ async function ladeFundamentaldatenLive(anfrage: FundamentaldatenAnfrage): Promi
       isin: isinNormEarly ?? anfrage.isin,
       firmenname: anfrage.name ?? identGuess.firmenname,
       ticker: tickerGuess,
+      frequenz,
     }).catch(() => null)
     if (altRoh && altRoh.zeilen.length > 0) {
       ident = identGuess
@@ -515,19 +530,23 @@ async function ladeFundamentaldatenLive(anfrage: FundamentaldatenAnfrage): Promi
     firmenname: anfrage.name ?? ident.firmenname,
   })
   const euGuV = nutzeYahooGuVFuerIsin(isinNorm ?? anfrage.isin)
-  if ((!roh || roh.zeilen.length === 0) && symbolYahoo && frequenz === 'jahr' && euGuV) {
-    const fallback = await baueFundamentalRohAusAlternativQuellen(ident, symbolYahoo, {
-      isin: isinNorm ?? anfrage.isin,
-      firmenname: anfrage.name ?? ident.firmenname,
-      ticker: ident.ticker,
-    })
-    if (fallback) roh = fallback
+  const mergeOpts: YahooGuVMergeOpts = {
+    isin: isinNorm ?? anfrage.isin,
+    firmenname: anfrage.name ?? ident.firmenname,
+    ticker: ident.ticker,
+    frequenz,
+  }
+  let yahooAlsGuV = Boolean(altRoh)
+  if ((!roh || roh.zeilen.length === 0) && symbolYahoo && (frequenz === 'jahr' ? euGuV : true)) {
+    const fallback = await baueFundamentalRohAusAlternativQuellen(ident, symbolYahoo, mergeOpts)
+    if (fallback) {
+      roh = fallback
+      yahooAlsGuV = true
+    }
   } else if (roh && symbolYahoo && frequenz === 'jahr' && euGuV) {
-    roh = await ergaenzeMacrotrendsMitYahooGuV(roh, symbolYahoo, {
-      isin: isinNorm ?? anfrage.isin,
-      firmenname: anfrage.name ?? ident.firmenname,
-      ticker: ident.ticker,
-    })
+    roh = await ergaenzeMacrotrendsMitYahooGuV(roh, symbolYahoo, mergeOpts)
+  } else if (roh && symbolYahoo && frequenz === 'quartal' && (euGuV || quartalsGuVDuen(roh))) {
+    roh = await ergaenzeMacrotrendsMitYahooGuV(roh, symbolYahoo, mergeOpts)
   }
 
   const yahooExt = yahooRaw as (YahooFundamentalKennzahlen & {
@@ -592,13 +611,17 @@ async function ladeFundamentaldatenLive(anfrage: FundamentaldatenAnfrage): Promi
       isin: isinNorm ?? anfrage.isin,
     })
   }
-  ergaenzeNettoverschuldungZeilen(merged.perioden, merged.zeilen)
+  ergaenzeNettoverschuldungZeilen(merged.perioden, merged.zeilen, {
+    ohneEbitdaMultiple: frequenz === 'quartal',
+  })
   ergaenzeMargenZeilen(merged.perioden, merged.zeilen)
-  ergaenzeEvMultiplesZeilen(merged.perioden, merged.zeilen)
-  ergaenzeRoicAusBilanz(merged.perioden, merged.zeilen)
-  ergaenzeWorkingCapitalTageZeilen(merged.perioden, merged.zeilen)
+  if (frequenz === 'jahr') {
+    ergaenzeEvMultiplesZeilen(merged.perioden, merged.zeilen)
+    ergaenzeRoicAusBilanz(merged.perioden, merged.zeilen)
+    ergaenzeWorkingCapitalTageZeilen(merged.perioden, merged.zeilen)
+  }
 
-  if (euGuV) {
+  if (euGuV && frequenz === 'jahr') {
     await ergaenzeFehlendeStatementZeilen({
       perioden: merged.perioden,
       zeilen: merged.zeilen,
@@ -611,7 +634,7 @@ async function ladeFundamentaldatenLive(anfrage: FundamentaldatenAnfrage): Promi
   }
 
   // SBC aus Yahoo Timeseries nachziehen, wenn Macrotrends-Zeile leer (nur EU/ADR)
-  if (euGuV && yahooFinanz?.stockBasedCompensationUsd != null) {
+  if (euGuV && frequenz === 'jahr' && yahooFinanz?.stockBasedCompensationUsd != null) {
     const sbcMio = yahooFinanz.stockBasedCompensationUsd / 1_000_000
     const histKeys = merged.perioden
       .filter((p) => !p.istLtm && !p.istNtm && !p.istSchaetzung)
@@ -721,7 +744,7 @@ async function ladeFundamentaldatenLive(anfrage: FundamentaldatenAnfrage): Promi
   })
   // Macrotrends liefert USD; nur bei Alternativquellen (Yahoo timeseries, Berichtswährung)
   // die Währung aus Konfig bzw. ISIN-Präfix ableiten.
-  const waehrung = altRoh
+  const waehrung = yahooAlsGuV
     ? waehrungFuerIsin(isinNorm ?? anfrage.isin)
     : (isinNorm && ISIN_WAEHRUNG[isinNorm]) || 'USD'
 
@@ -740,8 +763,17 @@ async function ladeFundamentaldatenLive(anfrage: FundamentaldatenAnfrage): Promi
 
   return leeresPaket({
     ok: true,
-    quelle: altRoh ? 'yahoo' : 'macrotrends',
-    guvQuelle: euGuV ? 'eu' : altRoh ? 'yahoo' : 'macrotrends',
+    quelle: yahooAlsGuV ? 'yahoo' : 'macrotrends',
+    guvQuelle:
+      frequenz === 'quartal'
+        ? yahooAlsGuV
+          ? 'yahoo'
+          : 'macrotrends'
+        : euGuV
+          ? 'eu'
+          : yahooAlsGuV
+            ? 'yahoo'
+            : 'macrotrends',
     schaetzungQuelle: schaetzungenGefiltert.quelle ?? null,
     ticker: ident.ticker,
     slug: ident.slug,

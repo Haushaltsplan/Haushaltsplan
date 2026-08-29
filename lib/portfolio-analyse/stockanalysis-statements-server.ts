@@ -221,10 +221,11 @@ function mappeSerie(
   meta: SpaltenMeta,
   values: unknown[],
   modus: 'raw' | 'abfluss' = 'raw',
+  spalten: 'jahr' | 'quartal' = 'jahr',
 ): Map<string, number> {
   const out = new Map<string, number>()
   for (let i = 0; i < meta.jahre.length; i++) {
-    if (istZwischenbericht(meta.quarters[i] ?? '')) continue
+    if (spalten === 'jahr' && istZwischenbericht(meta.quarters[i] ?? '')) continue
     const jahr = meta.jahre[i]!
     const raw = parseZahl(values[i])
     if (raw == null) continue
@@ -241,181 +242,110 @@ function mappeSerie(
   return out
 }
 
-function parseIsBlock(block: string): FundamentalMetrikZeile[] {
+function parseIsBlock(block: string, spalten: 'jahr' | 'quartal' = 'jahr'): FundamentalMetrikZeile[] {
   const meta = spaltenMeta(block)
   if (meta.jahre.length === 0) return []
-  const sample = mappeSerie(meta, parseArrayMitAliases(block, 'revenue', 'gp', 'ebitda'))
+  const serie = (keys: string[], modus: 'raw' | 'abfluss' = 'raw') =>
+    mappeSerie(meta, parseArrayMitAliases(block, ...keys), modus, spalten)
+  const sample = serie(['revenue', 'gp', 'ebitda'])
   const isos = [...sample.keys()].sort()
   if (isos.length === 0) return []
 
   const zeilen = [
+    baueZeile('umsatz', 'Umsatz', 'finanzdaten', isos, serie(['revenue', 'sales', 'totalRevenue'])),
     baueZeile(
-      'da',
-      'Abschreibungen (D&A)',
+      'nettogewinn',
+      'Nettogewinn',
       'finanzdaten',
       isos,
-      mappeSerie(meta, parseArrayMitAliases(block, 'depAmorEbitda')),
+      serie(['netinc', 'netIncome', 'netIncomeCommon']),
     ),
-    baueZeile(
-      'sga',
-      'SG&A (Vertrieb & Verwaltung)',
-      'finanzdaten',
-      isos,
-      mappeSerie(meta, parseArrayMitAliases(block, 'sgna', 'sga')),
-    ),
+    baueZeile('da', 'Abschreibungen (D&A)', 'finanzdaten', isos, serie(['depAmorEbitda'])),
+    baueZeile('sga', 'SG&A (Vertrieb & Verwaltung)', 'finanzdaten', isos, serie(['sgna', 'sga'])),
     baueZeile(
       'rd',
       'Forschung & Entwicklung (R&D)',
       'finanzdaten',
       isos,
-      mappeSerie(meta, parseArrayMitAliases(block, 'rnd', 'rd', 'researchDevelopment')),
+      serie(['rnd', 'rd', 'researchDevelopment']),
     ),
-    baueZeile(
-      'bruttogewinn',
-      'Bruttogewinn',
-      'finanzdaten',
-      isos,
-      mappeSerie(meta, parseArrayMitAliases(block, 'gp', 'grossProfit')),
-    ),
-    baueZeile(
-      'ebitda',
-      'EBITDA',
-      'finanzdaten',
-      isos,
-      mappeSerie(meta, parseArrayMitAliases(block, 'ebitda')),
-    ),
+    baueZeile('bruttogewinn', 'Bruttogewinn', 'finanzdaten', isos, serie(['gp', 'grossProfit'])),
+    baueZeile('ebitda', 'EBITDA', 'finanzdaten', isos, serie(['ebitda'])),
     baueZeile(
       'ebit',
       'EBIT',
       'finanzdaten',
       isos,
-      mappeSerie(meta, parseArrayMitAliases(block, 'opinc', 'ebit', 'operatingIncome')),
+      serie(['opinc', 'ebit', 'operatingIncome']),
     ),
   ]
   return zeilen.filter((z): z is FundamentalMetrikZeile => z != null)
 }
 
-function parseBsBlock(block: string): FundamentalMetrikZeile[] {
+function parseBsBlock(block: string, spalten: 'jahr' | 'quartal' = 'jahr'): FundamentalMetrikZeile[] {
   const meta = spaltenMeta(block)
   if (meta.jahre.length === 0) return []
-  const sample = mappeSerie(meta, parseArrayMitAliases(block, 'assets', 'equity'))
+  const serie = (keys: string[], modus: 'raw' | 'abfluss' = 'raw') =>
+    mappeSerie(meta, parseArrayMitAliases(block, ...keys), modus, spalten)
+  const sample = serie(['assets', 'equity'])
   const isos = [...sample.keys()].sort()
   if (isos.length === 0) {
     for (let i = 0; i < meta.jahre.length; i++) {
-      if (!istZwischenbericht(meta.quarters[i] ?? '')) isos.push(`${meta.jahre[i]}-12-31`)
+      if (spalten === 'jahr' && istZwischenbericht(meta.quarters[i] ?? '')) continue
+      const iso =
+        meta.dates[i]?.match(/^\d{4}-\d{2}-\d{2}$/) ? meta.dates[i]! : `${meta.jahre[i]}-12-31`
+      isos.push(iso)
     }
   }
 
   const zeilen = [
-    baueZeile(
-      'forderungen',
-      'Forderungen (netto)',
-      'bilanz',
-      isos,
-      mappeSerie(meta, parseArrayMitAliases(block, 'receivables', 'accountsReceivable')),
-    ),
-    baueZeile(
-      'vorraete',
-      'Vorräte',
-      'bilanz',
-      isos,
-      mappeSerie(meta, parseArrayMitAliases(block, 'inventory')),
-    ),
+    baueZeile('forderungen', 'Forderungen (netto)', 'bilanz', isos, serie(['receivables', 'accountsReceivable'])),
+    baueZeile('vorraete', 'Vorräte', 'bilanz', isos, serie(['inventory'])),
     baueZeile(
       'bargeld',
       'Bargeld & Äquivalente',
       'bilanz',
       isos,
-      mappeSerie(meta, parseArrayMitAliases(block, 'cashneq', 'totalcash', 'cashnshortterminvest')),
+      serie(['cashneq', 'totalcash', 'cashnshortterminvest']),
     ),
-    baueZeile(
-      'umlaufvermoegen',
-      'Umlaufvermögen',
-      'bilanz',
-      isos,
-      mappeSerie(meta, parseArrayMitAliases(block, 'assetsc', 'totalcurrentassets')),
-    ),
-    baueZeile(
-      'gesamtvermoegen',
-      'Gesamtvermögen',
-      'bilanz',
-      isos,
-      mappeSerie(meta, parseArrayMitAliases(block, 'assets', 'totalassets')),
-    ),
-    baueZeile(
-      'gesamtverschuldung',
-      'Gesamtverschuldung',
-      'bilanz',
-      isos,
-      mappeSerie(meta, parseArrayMitAliases(block, 'debt', 'totaldebt')),
-    ),
-    baueZeile(
-      'eigenkapital',
-      'Eigenkapital',
-      'bilanz',
-      isos,
-      mappeSerie(meta, parseArrayMitAliases(block, 'equity', 'totalCommonEquity')),
-    ),
-    baueZeile(
-      'goodwill',
-      'Goodwill',
-      'bilanz',
-      isos,
-      mappeSerie(meta, parseArrayMitAliases(block, 'goodwill')),
-    ),
+    baueZeile('umlaufvermoegen', 'Umlaufvermögen', 'bilanz', isos, serie(['assetsc', 'totalcurrentassets'])),
+    baueZeile('gesamtvermoegen', 'Gesamtvermögen', 'bilanz', isos, serie(['assets', 'totalassets'])),
+    baueZeile('gesamtverschuldung', 'Gesamtverschuldung', 'bilanz', isos, serie(['debt', 'totaldebt'])),
+    baueZeile('eigenkapital', 'Eigenkapital', 'bilanz', isos, serie(['equity', 'totalCommonEquity'])),
+    baueZeile('goodwill', 'Goodwill', 'bilanz', isos, serie(['goodwill'])),
     baueZeile(
       'intangibles',
       'Immaterielle Vermögenswerte',
       'bilanz',
       isos,
-      mappeSerie(meta, parseArrayMitAliases(block, 'otherIntangibles', 'intangibles')),
+      serie(['otherIntangibles', 'intangibles']),
     ),
   ]
   return zeilen.filter((z): z is FundamentalMetrikZeile => z != null)
 }
 
-function parseCfBlock(block: string): FundamentalMetrikZeile[] {
+function parseCfBlock(block: string, spalten: 'jahr' | 'quartal' = 'jahr'): FundamentalMetrikZeile[] {
   const meta = spaltenMeta(block)
   if (meta.jahre.length === 0) return []
-  const sample = mappeSerie(meta, parseArrayMitAliases(block, 'ncfo', 'fcf'))
+  const serie = (keys: string[], modus: 'raw' | 'abfluss' = 'raw') =>
+    mappeSerie(meta, parseArrayMitAliases(block, ...keys), modus, spalten)
+  const sample = serie(['ncfo', 'fcf'])
   const isos = [...sample.keys()].sort()
 
-  const daCf = mappeSerie(meta, parseArrayMitAliases(block, 'totalDepAmorCF', 'depAmor', 'depamor'))
   const zeilen = [
-    baueZeile('da', 'Abschreibungen (D&A)', 'cashflow', isos, daCf),
-    baueZeile(
-      'ocf',
-      'Operativer Cashflow',
-      'cashflow',
-      isos,
-      mappeSerie(meta, parseArrayMitAliases(block, 'ncfo', 'operatingCashFlow')),
-    ),
-    baueZeile(
-      'capex',
-      'CapEx (Investitionen)',
-      'cashflow',
-      isos,
-      mappeSerie(meta, parseArrayMitAliases(block, 'capex'), 'abfluss'),
-    ),
-    baueZeile(
-      'fcf',
-      'Free Cashflow (FCF)',
-      'cashflow',
-      isos,
-      mappeSerie(meta, parseArrayMitAliases(block, 'fcf', 'freeCashFlow')),
-    ),
-    baueZeile(
-      'sbc',
-      'Aktienbasierte Vergütung (SBC)',
-      'cashflow',
-      isos,
-      mappeSerie(meta, parseArrayMitAliases(block, 'sbcomp', 'sbc')),
-    ),
+    baueZeile('da', 'Abschreibungen (D&A)', 'cashflow', isos, serie(['totalDepAmorCF', 'depAmor', 'depamor'])),
+    baueZeile('ocf', 'Operativer Cashflow', 'cashflow', isos, serie(['ncfo', 'operatingCashFlow'])),
+    baueZeile('capex', 'CapEx (Investitionen)', 'cashflow', isos, serie(['capex'], 'abfluss')),
+    baueZeile('fcf', 'Free Cashflow (FCF)', 'cashflow', isos, serie(['fcf', 'freeCashFlow'])),
+    baueZeile('sbc', 'Aktienbasierte Vergütung (SBC)', 'cashflow', isos, serie(['sbcomp', 'sbc'])),
   ]
   return zeilen.filter((z): z is FundamentalMetrikZeile => z != null)
 }
 
-function mergeZeilen(teile: FundamentalMetrikZeile[][]): {
+function mergeZeilen(
+  teile: FundamentalMetrikZeile[][],
+  frequenz: 'jahr' | 'quartal' = 'jahr',
+): {
   perioden: FundamentalPeriode[]
   zeilen: FundamentalMetrikZeile[]
 } {
@@ -439,7 +369,7 @@ function mergeZeilen(teile: FundamentalMetrikZeile[][]): {
   const periodenIso = [...isos].sort()
   const perioden = periodenIso.map((iso) => ({
     iso,
-    label: formatFundamentalPeriodeLabel(iso, 'jahr'),
+    label: formatFundamentalPeriodeLabel(iso, frequenz),
   }))
   // Normalisiere auf gemeinsame Perioden
   const zeilen = [...byId.values()].map((z) => {
@@ -491,33 +421,39 @@ export async function ladeStockanalysisStatementsRoh(opts: {
   firmenname?: string | null
   isin?: string | null
   refresh?: boolean
+  frequenz?: 'jahr' | 'quartal'
 }): Promise<StockanalysisStatementsRoh | null> {
-  const cacheKey = `${opts.isin ?? ''}|${opts.symbolYahoo ?? ''}|${opts.ticker ?? ''}`
+  const frequenz = opts.frequenz === 'quartal' ? 'quartal' : 'jahr'
+  const cacheKey = `${opts.isin ?? ''}|${opts.symbolYahoo ?? ''}|${opts.ticker ?? ''}|${frequenz}`
   if (!opts.refresh) {
     const hit = cache.get(cacheKey)
     if (hit && Date.now() - hit.at < CACHE_MS) return hit.daten
   }
 
+  const suffix = frequenz === 'quartal' ? '?p=quarterly' : ''
   const basen = basisPfade(opts)
   for (const basis of basen) {
     const [isHtml, bsHtml, cfHtml] = await Promise.all([
-      fetchHtml(`${basis}/financials/income-statement/`),
-      fetchHtml(`${basis}/financials/balance-sheet/`),
-      fetchHtml(`${basis}/financials/cash-flow-statement/`),
+      fetchHtml(`${basis}/financials/income-statement/${suffix}`),
+      fetchHtml(`${basis}/financials/balance-sheet/${suffix}`),
+      fetchHtml(`${basis}/financials/cash-flow-statement/${suffix}`),
     ])
     const isBlock = isHtml ? extrahiereAnnualBlock(isHtml) : null
     const bsBlock = bsHtml ? extrahiereAnnualBlock(bsHtml) : null
     const cfBlock = cfHtml ? extrahiereAnnualBlock(cfHtml) : null
-    const merged = mergeZeilen([
-      isBlock ? parseIsBlock(isBlock) : [],
-      bsBlock ? parseBsBlock(bsBlock) : [],
-      cfBlock ? parseCfBlock(cfBlock) : [],
-    ])
+    const merged = mergeZeilen(
+      [
+        isBlock ? parseIsBlock(isBlock, frequenz) : [],
+        bsBlock ? parseBsBlock(bsBlock, frequenz) : [],
+        cfBlock ? parseCfBlock(cfBlock, frequenz) : [],
+      ],
+      frequenz,
+    )
     if (merged.zeilen.length >= 3 && merged.perioden.length >= 2) {
       const daten: StockanalysisStatementsRoh = {
         ...merged,
         quelle: 'stockanalysis',
-        url: `${BASE}${basis}/financials/`,
+        url: `${BASE}${basis}/financials/${suffix}`,
       }
       cache.set(cacheKey, { at: Date.now(), daten })
       return daten

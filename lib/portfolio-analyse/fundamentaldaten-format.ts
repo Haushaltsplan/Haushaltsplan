@@ -242,6 +242,100 @@ export function yoyAenderungPct(
   return Number.isFinite(pct) ? pct : null
 }
 
+function kalenderQuartalAusIso(iso: string): { jahr: number; q: 1 | 2 | 3 | 4 } | null {
+  const m = iso.match(/^(\d{4})-(\d{2})-\d{2}$/)
+  if (!m) return null
+  const month = Number(m[2])
+  const q = month <= 3 ? 1 : month <= 6 ? 2 : month <= 9 ? 3 : 4
+  return { jahr: Number(m[1]), q }
+}
+
+function medianTageabstand(isos: string[]): number | null {
+  if (isos.length < 3) return null
+  const gaps: number[] = []
+  for (let i = 1; i < isos.length; i++) {
+    const d =
+      (Date.parse(`${isos[i]}T00:00:00Z`) - Date.parse(`${isos[i - 1]}T00:00:00Z`)) / 86_400_000
+    if (Number.isFinite(d) && d > 20) gaps.push(d)
+  }
+  if (gaps.length === 0) return null
+  const s = [...gaps].sort((a, b) => a - b)
+  return s[Math.floor(s.length / 2)] ?? null
+}
+
+/**
+ * ISO der Vorjahresperiode — nie Vorquartal.
+ * Quartal/Halbjahr: gleiches Q/H im Vorjahr (über Label oder Kalenderquartal).
+ * Geschäftsjahr: Datum − 1 Jahr (±20 Tage).
+ */
+export function yoyVorperiodeIso(
+  iso: string,
+  perioden: { iso: string; label?: string }[],
+): string | null {
+  const self = perioden.find((p) => p.iso === iso)
+  const lab = self?.label?.trim().toUpperCase() ?? ''
+  const qLab = /^(Q[1-4]|H[12])\s+(\d{2})$/.exec(lab)
+  if (qLab) {
+    const yy = Number(qLab[2]) - 1
+    if (yy >= 0) {
+      const zielLabel = `${qLab[1]} ${String(yy).padStart(2, '0')}`
+      const hit = perioden.find((p) => p.iso !== iso && p.label?.trim().toUpperCase() === zielLabel)
+      if (hit) return hit.iso
+    }
+  }
+
+  const curQ = kalenderQuartalAusIso(iso)
+  if (curQ) {
+    const sameQ = perioden.filter((p) => {
+      if (p.iso === iso) return false
+      const o = kalenderQuartalAusIso(p.iso)
+      return o != null && o.q === curQ.q && o.jahr === curQ.jahr - 1
+    })
+    if (sameQ.length === 1) return sameQ[0]!.iso
+    if (sameQ.length > 1) {
+      const zielMs = Date.parse(`${curQ.jahr - 1}${iso.slice(4)}T00:00:00Z`)
+      let best = sameQ[0]!.iso
+      let bestDiff = Infinity
+      for (const p of sameQ) {
+        const d = Math.abs(Date.parse(`${p.iso}T00:00:00Z`) - zielMs)
+        if (d < bestDiff) {
+          bestDiff = d
+          best = p.iso
+        }
+      }
+      return best
+    }
+  }
+
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(iso)) return null
+  const ziel = `${Number(iso.slice(0, 4)) - 1}${iso.slice(4)}`
+  if (perioden.some((p) => p.iso === ziel)) return ziel
+  const zielMs = Date.parse(`${ziel}T00:00:00Z`)
+  if (Number.isFinite(zielMs)) {
+    let best: string | null = null
+    let bestDiff = Infinity
+    for (const p of perioden) {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(p.iso) || p.iso === iso) continue
+      const d = Math.abs(Date.parse(`${p.iso}T00:00:00Z`) - zielMs)
+      if (d < bestDiff && d <= 20 * 24 * 60 * 60 * 1000) {
+        bestDiff = d
+        best = p.iso
+      }
+    }
+    if (best) return best
+  }
+
+  const dates = perioden
+    .map((p) => p.iso)
+    .filter((x) => /^\d{4}-\d{2}-\d{2}$/.test(x))
+    .sort()
+  const idx = dates.indexOf(iso)
+  if (idx < 0) return null
+  const gap = medianTageabstand(dates)
+  const schritte = gap != null && gap < 120 ? 4 : gap != null && gap < 220 ? 2 : 1
+  return idx >= schritte ? dates[idx - schritte]! : null
+}
+
 export function formatYoyPct(pct: number): string {
   const abs = Math.abs(pct)
   const v =

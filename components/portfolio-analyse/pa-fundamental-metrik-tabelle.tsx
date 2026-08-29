@@ -6,6 +6,7 @@ import {
   formatFundamentalWert,
   formatYoyPct,
   yoyAenderungPct,
+  yoyVorperiodeIso,
 } from '@/lib/portfolio-analyse/fundamentaldaten-format'
 import type {
   FundamentalMetrikZeile,
@@ -87,6 +88,7 @@ export function PaFundamentalMetrikTabelle({
   onToggleZeile,
   labelModus = 'datum',
   yoy = true,
+  yoyVergleich = 'vorjahr',
   eingebettet = false,
 }: {
   gruppen: MetrikTabellenGruppe[]
@@ -96,6 +98,8 @@ export function PaFundamentalMetrikTabelle({
   /** Bewertung/Jahresansicht: Jahreszahl (z. B. 2025) statt Geschäftsjahresende */
   labelModus?: 'jahr' | 'datum'
   yoy?: boolean
+  /** quartal: vs. Vorjahresquartal; jahr: vs. vorherige Spalte */
+  yoyVergleich?: 'vorjahr' | 'vorperiode'
   eingebettet?: boolean
 }) {
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -156,6 +160,7 @@ export function PaFundamentalMetrikTabelle({
                   aktivIds={aktivIds}
                   onToggleZeile={onToggleZeile}
                   yoy={yoy}
+                  yoyVergleich={yoyVergleich}
                   startIndex={startIndex}
                 />
               )
@@ -173,6 +178,7 @@ function GruppeZeilen({
   aktivIds,
   onToggleZeile,
   yoy,
+  yoyVergleich,
   startIndex,
 }: {
   gruppe: MetrikTabellenGruppe
@@ -180,6 +186,7 @@ function GruppeZeilen({
   aktivIds: Set<string>
   onToggleZeile: (id: string) => void
   yoy: boolean
+  yoyVergleich: 'vorjahr' | 'vorperiode'
   startIndex: number
 }) {
   return (
@@ -213,10 +220,20 @@ function GruppeZeilen({
                 {z.label}
               </span>
             </td>
-            {perioden.map((p, pi) => {
+            {perioden.map((p) => {
               const wert = z.werte[p.iso]
-              const vorjahr = pi > 0 ? z.werte[perioden[pi - 1]!.iso] : null
+              const vorIso =
+                yoyVergleich === 'vorperiode' && !/^(Q[1-4]|H[12])\b/i.test(p.label)
+                  ? (() => {
+                      const i = perioden.findIndex((x) => x.iso === p.iso)
+                      return i > 0 ? perioden[i - 1]!.iso : null
+                    })()
+                  : yoyVorperiodeIso(p.iso, perioden)
+              const vorjahr = vorIso ? z.werte[vorIso] : null
               const pct = yoy ? yoyAenderungPct(wert, vorjahr) : null
+              const vsLabel = vorIso
+                ? perioden.find((x) => x.iso === vorIso)?.label ?? vorIso
+                : null
               return (
                 <td
                   key={p.iso}
@@ -236,7 +253,10 @@ function GruppeZeilen({
                     })}
                   </span>
                   {pct != null ? (
-                    <span className={`block text-[9px] font-medium leading-tight ${yoyKlasse(pct, polaritaet)}`}>
+                    <span
+                      className={`block text-[9px] font-medium leading-tight ${yoyKlasse(pct, polaritaet)}`}
+                      title={vsLabel ? `vs. ${vsLabel}` : undefined}
+                    >
                       {formatYoyPct(pct)}
                     </span>
                   ) : null}

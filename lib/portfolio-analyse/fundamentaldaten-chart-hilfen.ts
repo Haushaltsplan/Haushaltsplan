@@ -106,6 +106,10 @@ export function jahreImSchnitt(werte: number[], maxJahre = 10): number {
 }
 
 export function chartPeriodeKurzlabel(p: FundamentalPeriode): string {
+  if (p.istLtm) return 'TTM'
+  if (p.istNtm) return p.label
+  if (/^(Q[1-4]|H[12])\b/i.test(p.label.trim())) return p.label
+  if (p.istSchaetzung) return p.label
   const jahr = jahrAusPeriode(p.iso)
   return jahr.length === 4 ? jahr : p.label
 }

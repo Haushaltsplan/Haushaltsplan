@@ -16,7 +16,6 @@ import {
   einheitSkalaGruppe,
   filterChartPeriodenZeitraum,
   finanzdatenChartPerioden,
-  jahrAusPeriode,
   letzteNChartPerioden,
   prozentAbweichung,
 } from '@/lib/portfolio-analyse/fundamentaldaten-chart-hilfen'
@@ -474,7 +473,7 @@ export function PaFundamentalMetrikChart({
   const [chartArt, setChartArt] = useState<'linie' | 'balken'>('linie')
   const [hiddenIds, setHiddenIds] = useState<Set<string>>(() => new Set())
   const [hover, setHover] = useState<ChartHoverLayout | null>(null)
-  const svgWrapRef = useRef<HTMLDivElement>(null)
+  const svgWrapRef = useRef<SVGSVGElement>(null)
 
   const legendKey = [...aktivIds].join(',')
   const legendIds = useMemo(() => (legendKey ? legendKey.split(',') : []), [legendKey])
@@ -571,7 +570,7 @@ export function PaFundamentalMetrikChart({
     }
     const achsenSlots: AchsenSlot[] = gefiltertePerioden.map((p) => ({
       key: p.iso,
-      label: p.istSchaetzung ? p.label : jahrAusPeriode(p.iso),
+      label: p.istSchaetzung ? p.label : chartPeriodeKurzlabel(p),
       istSchaetzung: p.istSchaetzung ?? schaetzIso.has(p.iso),
       istAktuellSlot: false,
     }))
@@ -605,7 +604,7 @@ export function PaFundamentalMetrikChart({
       const histWerte = gefiltertePerioden
         .map((p) => ({
           key: p.iso,
-          label: p.istSchaetzung ? p.label : jahrAusPeriode(p.iso),
+          label: p.istSchaetzung ? p.label : chartPeriodeKurzlabel(p),
           wert: z.werte[p.iso] != null && Number.isFinite(z.werte[p.iso]!) ? chartWert(z.id, z.werte[p.iso]!) : z.werte[p.iso],
           istSchaetzung: p.istSchaetzung ?? schaetzIso.has(p.iso),
         }))
@@ -816,7 +815,7 @@ export function PaFundamentalMetrikChart({
       farbe: farbeFuerMetrik(id, i),
       einheit: z?.einheit ?? s?.einheit ?? ('zahl' as const),
       darstellung: s?.darstellung ?? serieDarstellung(id, z?.einheit ?? 'zahl'),
-      anzeigeWert: hoverPt?.wert ?? s?.letzterWert ?? null,
+      anzeigeWert: hover != null ? (hoverPt?.wert ?? null) : (s?.letzterWert ?? null),
       schnitt: s?.schnitt ?? null,
       aktiv: !hiddenIds.has(id),
       hoverIstSchaetzung: hoverPt?.istSchaetzung ?? false,
@@ -977,23 +976,21 @@ export function PaFundamentalMetrikChart({
       </div>
 
       <div className="px-2 pb-3 pt-1 sm:px-4">
-        <div
-          ref={svgWrapRef}
-          className="relative cursor-crosshair"
-          onMouseMove={(e) => onChartMove(e.clientX)}
-          onMouseLeave={() => setHover(null)}
-        >
         {serien.length === 0 ? (
           <p className="py-16 text-center text-sm text-[var(--app-text-muted)]">
             Kennzahl in der Legende anklicken, um sie wieder einzublenden.
           </p>
         ) : (
+        <div className="relative">
         <svg
+          ref={svgWrapRef}
           viewBox={`0 0 ${VIEW_W} ${HOEHE}`}
           preserveAspectRatio="xMidYMid meet"
-          className="w-full select-none"
+          className="w-full cursor-crosshair select-none"
           role="img"
           aria-label="Kennzahlen-Chart"
+          onMouseMove={(e) => onChartMove(e.clientX)}
+          onMouseLeave={() => setHover(null)}
         >
           <defs>
             {serien.map((s) => (
@@ -1003,6 +1000,7 @@ export function PaFundamentalMetrikChart({
               </linearGradient>
             ))}
           </defs>
+          <rect x={0} y={0} width={VIEW_W} height={HOEHE} fill="transparent" />
 
           {prognoseX != null ? (
             <g>
@@ -1234,7 +1232,7 @@ export function PaFundamentalMetrikChart({
           ) : null}
 
           {xLabels.map((xl, i) =>
-            i % Math.max(1, Math.floor(xLabels.length / 8)) === 0 || i === xLabels.length - 1 ? (
+            i % Math.max(1, Math.ceil(xLabels.length / 8)) === 0 || i === xLabels.length - 1 ? (
               <text
                 key={i}
                 x={xl.x}
@@ -1257,7 +1255,6 @@ export function PaFundamentalMetrikChart({
             ) : null,
           )}
       </svg>
-        )}
         {hover && hoverSlot && serien.length > 0 ? (
           <div
             className="pointer-events-none absolute top-2 z-10 min-w-[11rem] max-w-[16rem] rounded-lg border border-[var(--app-border)] bg-[var(--app-bg)]/95 px-2.5 py-2 shadow-lg shadow-black/40 ring-1 ring-white/[0.06]"
@@ -1285,6 +1282,7 @@ export function PaFundamentalMetrikChart({
           </div>
         ) : null}
         </div>
+        )}
 
       {kompakt ? null : (
         <ul className="mt-1 flex flex-wrap gap-x-3 gap-y-1.5 px-1 text-[10px] text-[var(--app-text-muted)]">

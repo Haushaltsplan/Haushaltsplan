@@ -529,6 +529,10 @@ export function PaFundamentalInhalt({
                   <span className="text-[11px] text-[var(--app-text-muted)]">
                     Lade {frequenz === 'quartal' ? 'Quartals' : 'Jahres'}daten …
                   </span>
+                ) : frequenz === 'quartal' ? (
+                  <span className="text-[11px] text-[var(--app-text-muted)]">
+                    GuV · Cashflow · Bilanz je Quartal (EU oft Halbjahr) · Δ vs. Vorjahr
+                  </span>
                 ) : null}
               </div>
               <PaFundamentalQualitaetsCharts
@@ -544,6 +548,7 @@ export function PaFundamentalInhalt({
                   aktivIds={chartAktiv}
                   onToggleZeile={toggleChartZeile}
                   labelModus={frequenz === 'jahr' ? 'jahr' : 'datum'}
+                  yoyVergleich={frequenz === 'quartal' ? 'vorjahr' : 'vorperiode'}
                   eingebettet
                 />
               </div>

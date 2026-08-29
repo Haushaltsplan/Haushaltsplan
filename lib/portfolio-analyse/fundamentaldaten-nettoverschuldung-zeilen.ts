@@ -28,6 +28,7 @@ function upsert(
 export function ergaenzeNettoverschuldungZeilen(
   perioden: FundamentalPeriode[],
   zeilen: FundamentalMetrikZeile[],
+  opts?: { ohneEbitdaMultiple?: boolean },
 ): void {
   if (perioden.length === 0) return
 
@@ -58,7 +59,7 @@ export function ergaenzeNettoverschuldungZeilen(
   if (hatNd) {
     upsert(zeilen, 'nettoverschuldung', 'Nettoverschuldung', 'bilanz', 'waehrung_usd_mio', ndWerte)
   }
-  if (hatNdE) {
+  if (hatNdE && !opts?.ohneEbitdaMultiple) {
     upsert(
       zeilen,
       'net_debt_ebitda',

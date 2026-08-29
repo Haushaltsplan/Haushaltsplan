@@ -4,7 +4,11 @@ import 'server-only'
 
 import { formatFundamentalPeriodeLabel } from '@/lib/portfolio-analyse/fundamentaldaten-format'
 import { FUNDAMENTAL_TTM_KEY } from '@/lib/portfolio-analyse/fundamentaldaten-types'
-import type { FundamentalMetrikZeile, FundamentalPeriode } from '@/lib/portfolio-analyse/fundamentaldaten-types'
+import type {
+  FundamentalFrequenz,
+  FundamentalMetrikZeile,
+  FundamentalPeriode,
+} from '@/lib/portfolio-analyse/fundamentaldaten-types'
 import { wertAusMapFuerIso } from '@/lib/portfolio-analyse/fundamentaldaten-wert-fuer-iso'
 import { baueUmsatzProJahrAusFinanzzeile } from '@/lib/portfolio-analyse/segment-umsatz-abgleich'
 import {
@@ -69,6 +73,18 @@ const GUV_ANNUAL_TYPES = [
   'trailingCapitalExpenditure',
   'trailingFreeCashFlow',
 ] as const
+
+function guvTimeseriesTypen(frequenz: FundamentalFrequenz): string[] {
+  if (frequenz !== 'quartal') return [...GUV_ANNUAL_TYPES]
+  return GUV_ANNUAL_TYPES.filter((t) => t.startsWith('annual')).map(
+    (t) => `quarterly${t.slice('annual'.length)}`,
+  )
+}
+
+function yfTyp(frequenz: FundamentalFrequenz, annualName: string): string {
+  if (frequenz !== 'quartal' || !annualName.startsWith('annual')) return annualName
+  return `quarterly${annualName.slice('annual'.length)}`
+}
 
 const YAHOO_GUV_ZEILEN_IDS = new Set([
   'umsatz',
@@ -152,7 +168,10 @@ function zuAktienMio(raw: number | null | undefined): number | null {
   return raw / 1_000_000
 }
 
-async function ladeTimeseriesResult(symbol: string): Promise<TimeseriesBlock[]> {
+async function ladeTimeseriesResult(
+  symbol: string,
+  frequenz: FundamentalFrequenz = 'jahr',
+): Promise<TimeseriesBlock[]> {
   const auth = await holeYahooFinanceAuth()
   if (!auth) return []
 
@@ -162,7 +181,7 @@ async function ladeTimeseriesResult(symbol: string): Promise<TimeseriesBlock[]> 
     `https://query1.finance.yahoo.com/ws/fundamentals-timeseries/v1/finance/timeseries/${encodeURIComponent(symbol)}`,
   )
   u.searchParams.set('symbol', symbol)
-  u.searchParams.set('type', GUV_ANNUAL_TYPES.join(','))
+  u.searchParams.set('type', guvTimeseriesTypen(frequenz).join(','))
   u.searchParams.set('period1', String(period1))
   u.searchParams.set('period2', String(period2))
   u.searchParams.set('crumb', auth.crumb)
@@ -207,61 +226,64 @@ function baueZeile(
   }
 }
 
-async function baueYahooGuVRoh(symbol: string): Promise<YahooGuVRoh | null> {
+async function baueYahooGuVRoh(
+  symbol: string,
+  frequenz: FundamentalFrequenz = 'jahr',
+): Promise<YahooGuVRoh | null> {
   const sym = symbol.trim().toUpperCase()
-  const cached = cache.get(sym)
+  const cacheKey = `${sym}|${frequenz}`
+  const cached = cache.get(cacheKey)
   if (cached && Date.now() - cached.at < CACHE_MS) return cached.daten
 
-  const result = await ladeTimeseriesResult(sym)
+  const result = await ladeTimeseriesResult(sym, frequenz)
   if (result.length === 0) {
-    cache.set(sym, { at: Date.now(), daten: null })
+    cache.set(cacheKey, { at: Date.now(), daten: null })
     return null
   }
 
-  const revenue = werteNachDatum(punkteAusTypen(result, 'annualTotalRevenue'))
-  const gross = werteNachDatum(punkteAusTypen(result, 'annualGrossProfit'))
+  const t = (...annualNames: string[]) => annualNames.map((n) => yfTyp(frequenz, n))
+  const revenue = werteNachDatum(punkteAusTypen(result, ...t('annualTotalRevenue')))
+  const gross = werteNachDatum(punkteAusTypen(result, ...t('annualGrossProfit')))
   const ebitda = werteNachDatum(
-    punkteAusTypen(result, 'annualNormalizedEBITDA', 'annualEBITDA'),
+    punkteAusTypen(result, ...t('annualNormalizedEBITDA', 'annualEBITDA')),
   )
-  const ebit = werteNachDatum(punkteAusTypen(result, 'annualOperatingIncome'))
+  const ebit = werteNachDatum(punkteAusTypen(result, ...t('annualOperatingIncome')))
   const net = werteNachDatum(
-    punkteAusTypen(result, 'annualNetIncomeCommonStockholders', 'annualNetIncome'),
+    punkteAusTypen(result, ...t('annualNetIncomeCommonStockholders', 'annualNetIncome')),
   )
-  const eps = werteNachDatum(punkteAusTypen(result, 'annualDilutedEPS'))
-  const sga = werteNachDatum(punkteAusTypen(result, 'annualSellingGeneralAndAdministration'))
-  const rd = werteNachDatum(punkteAusTypen(result, 'annualResearchAndDevelopment'))
+  const eps = werteNachDatum(punkteAusTypen(result, ...t('annualDilutedEPS')))
+  const sga = werteNachDatum(punkteAusTypen(result, ...t('annualSellingGeneralAndAdministration')))
+  const rd = werteNachDatum(punkteAusTypen(result, ...t('annualResearchAndDevelopment')))
   const daRaw = werteNachDatum(
     punkteAusTypen(
       result,
-      'annualDepreciationAmortizationInIncomeStatement',
-      'annualDepreciationAndAmortization',
+      ...t('annualDepreciationAmortizationInIncomeStatement', 'annualDepreciationAndAmortization'),
     ),
   )
-  const ocf = werteNachDatum(punkteAusTypen(result, 'annualOperatingCashFlow'))
-  const capex = werteNachDatum(punkteAusTypen(result, 'annualCapitalExpenditure'))
-  const fcfRaw = werteNachDatum(punkteAusTypen(result, 'annualFreeCashFlow'))
-  const sbcRaw = werteNachDatum(punkteAusTypen(result, 'annualStockBasedCompensation'))
+  const ocf = werteNachDatum(punkteAusTypen(result, ...t('annualOperatingCashFlow')))
+  const capex = werteNachDatum(punkteAusTypen(result, ...t('annualCapitalExpenditure')))
+  const fcfRaw = werteNachDatum(punkteAusTypen(result, ...t('annualFreeCashFlow')))
+  const sbcRaw = werteNachDatum(punkteAusTypen(result, ...t('annualStockBasedCompensation')))
   const shares = werteNachDatum(
-    punkteAusTypen(result, 'annualDilutedAverageShares', 'annualBasicAverageShares'),
+    punkteAusTypen(result, ...t('annualDilutedAverageShares', 'annualBasicAverageShares')),
   )
   const equity = werteNachDatum(
-    punkteAusTypen(result, 'annualStockholdersEquity', 'annualTotalStockholderEquity'),
+    punkteAusTypen(result, ...t('annualStockholdersEquity', 'annualTotalStockholderEquity')),
   )
-  const goodwillRaw = werteNachDatum(punkteAusTypen(result, 'annualGoodwill'))
+  const goodwillRaw = werteNachDatum(punkteAusTypen(result, ...t('annualGoodwill')))
   const recv = werteNachDatum(
-    punkteAusTypen(result, 'annualAccountsReceivable', 'annualNetAccountsReceivable'),
+    punkteAusTypen(result, ...t('annualAccountsReceivable', 'annualNetAccountsReceivable')),
   )
-  const inv = werteNachDatum(punkteAusTypen(result, 'annualInventory'))
+  const inv = werteNachDatum(punkteAusTypen(result, ...t('annualInventory')))
   const cash = werteNachDatum(
     punkteAusTypen(
       result,
-      'annualCashAndCashEquivalents',
-      'annualCashCashEquivalentsAndShortTermInvestments',
+      ...t('annualCashAndCashEquivalents', 'annualCashCashEquivalentsAndShortTermInvestments'),
     ),
   )
-  const ca = werteNachDatum(punkteAusTypen(result, 'annualCurrentAssets'))
-  const assets = werteNachDatum(punkteAusTypen(result, 'annualTotalAssets'))
-  const debt = werteNachDatum(punkteAusTypen(result, 'annualTotalDebt'))
+  const ca = werteNachDatum(punkteAusTypen(result, ...t('annualCurrentAssets')))
+  const assets = werteNachDatum(punkteAusTypen(result, ...t('annualTotalAssets')))
+  const debt = werteNachDatum(punkteAusTypen(result, ...t('annualTotalDebt')))
 
   const periodenIso = [
     ...new Set([
@@ -273,7 +295,7 @@ async function baueYahooGuVRoh(symbol: string): Promise<YahooGuVRoh | null> {
     ]),
   ].sort()
   if (periodenIso.length < 2) {
-    cache.set(sym, { at: Date.now(), daten: null })
+    cache.set(cacheKey, { at: Date.now(), daten: null })
     return null
   }
 
@@ -337,30 +359,32 @@ async function baueYahooGuVRoh(symbol: string): Promise<YahooGuVRoh | null> {
     putMio(schuldMio, iso, debt.get(iso))
     const ni = nettoMio.get(iso)
     const eq = equityMio.get(iso)
-    if (ni != null && eq != null && eq > 0) {
+    // Quartals-NI / EK ist kein Jahres-ROE — nur bei GJ rechnen.
+    if (frequenz !== 'quartal' && ni != null && eq != null && eq > 0) {
       const roe = (ni / eq) * 100
       if (Number.isFinite(roe) && Math.abs(roe) < 500) roeMap.set(iso, Math.round(roe * 10) / 10)
     }
   }
 
-  const ttmUmsatz = zuMio(letzterTrailing(result, 'trailingTotalRevenue'))
-  const ttmBrutto = zuMio(letzterTrailing(result, 'trailingGrossProfit'))
-  const ttmEbitda = zuMio(letzterTrailing(result, 'trailingEBITDA', 'trailingNormalizedEBITDA'))
-  const ttmEbit = zuMio(letzterTrailing(result, 'trailingOperatingIncome'))
-  const ttmNetto = zuMio(letzterTrailing(result, 'trailingNetIncome'))
-  const ttmEps = letzterTrailing(result, 'trailingDilutedEPS')
-  const ttmSga = zuMio(letzterTrailing(result, 'trailingSellingGeneralAndAdministration'))
-  const ttmOcf = zuMio(letzterTrailing(result, 'trailingOperatingCashFlow'))
-  const ttmCapex = zuMio(letzterTrailing(result, 'trailingCapitalExpenditure'))
-  const ttmFcfRaw = zuMio(letzterTrailing(result, 'trailingFreeCashFlow'))
+  const mitTtm = frequenz !== 'quartal'
+  const ttmUmsatz = mitTtm ? zuMio(letzterTrailing(result, 'trailingTotalRevenue')) : null
+  const ttmBrutto = mitTtm ? zuMio(letzterTrailing(result, 'trailingGrossProfit')) : null
+  const ttmEbitda = mitTtm ? zuMio(letzterTrailing(result, 'trailingEBITDA', 'trailingNormalizedEBITDA')) : null
+  const ttmEbit = mitTtm ? zuMio(letzterTrailing(result, 'trailingOperatingIncome')) : null
+  const ttmNetto = mitTtm ? zuMio(letzterTrailing(result, 'trailingNetIncome')) : null
+  const ttmEps = mitTtm ? letzterTrailing(result, 'trailingDilutedEPS') : null
+  const ttmSga = mitTtm ? zuMio(letzterTrailing(result, 'trailingSellingGeneralAndAdministration')) : null
+  const ttmOcf = mitTtm ? zuMio(letzterTrailing(result, 'trailingOperatingCashFlow')) : null
+  const ttmCapex = mitTtm ? zuMio(letzterTrailing(result, 'trailingCapitalExpenditure')) : null
+  const ttmFcfRaw = mitTtm ? zuMio(letzterTrailing(result, 'trailingFreeCashFlow')) : null
   const ttmFcf =
     ttmFcfRaw ?? (ttmOcf != null && ttmCapex != null ? ttmOcf + ttmCapex : null)
 
   const perioden: FundamentalPeriode[] = periodenIso.map((iso) => ({
     iso,
-    label: formatFundamentalPeriodeLabel(iso, 'jahr'),
+    label: formatFundamentalPeriodeLabel(iso, frequenz),
   }))
-  perioden.push({ iso: FUNDAMENTAL_TTM_KEY, label: 'TTM', istLtm: true })
+  if (mitTtm) perioden.push({ iso: FUNDAMENTAL_TTM_KEY, label: 'TTM', istLtm: true })
 
   const zeilen: FundamentalMetrikZeile[] = [
     baueZeile('umsatz', 'Umsatz', 'finanzdaten', 'waehrung_usd_mio', periodenIso, umsatzMio, ttmUmsatz),
@@ -442,7 +466,7 @@ async function baueYahooGuVRoh(symbol: string): Promise<YahooGuVRoh | null> {
   }
 
   const daten = { perioden, zeilen }
-  cache.set(sym, { at: Date.now(), daten })
+  cache.set(cacheKey, { at: Date.now(), daten })
   return daten
 }
 
@@ -614,12 +638,20 @@ function guvRohAusMsChart(paket: MarketscreenerGuVChartPaket | null): YahooGuVRo
   return { perioden, zeilen }
 }
 
+export type YahooGuVMergeOpts = {
+  isin?: string | null
+  firmenname?: string | null
+  ticker?: string | null
+  frequenz?: FundamentalFrequenz
+}
+
 /** Macrotrends-GuV/Cashflow durch StockAnalysis, Yahoo & EU-URD ergänzen (alle dünnen/EU-Titel). */
 export async function ergaenzeMacrotrendsMitYahooGuV(
   roh: MacrotrendsFundamentalRoh,
   symbolYahoo: string,
-  opts?: { isin?: string | null; firmenname?: string | null; ticker?: string | null },
+  opts?: YahooGuVMergeOpts,
 ): Promise<MacrotrendsFundamentalRoh> {
+  const frequenz: FundamentalFrequenz = opts?.frequenz === 'quartal' ? 'quartal' : 'jahr'
   const isin = opts?.isin?.trim().toUpperCase() ?? ''
   const sym = symbolYahoo.trim().toUpperCase()
   // EU-Local + ADR parallel (kenntnisse / bekannte Paare) — nicht nur Hermès
@@ -628,6 +660,29 @@ export async function ergaenzeMacrotrendsMitYahooGuV(
     isin: isin || null,
     macrotrendsTicker: opts?.ticker,
   }).slice(0, 3)
+
+  if (frequenz === 'quartal') {
+    const [saStatements, ...yahooRohs] = await Promise.all([
+      ladeStockanalysisStatementsRoh({
+        symbolYahoo: sym,
+        isin: opts?.isin,
+        firmenname: opts?.firmenname,
+        ticker: opts?.ticker,
+        frequenz: 'quartal',
+      }).catch(() => null),
+      ...yahooSymbole.map((s) => baueYahooGuVRoh(s, 'quartal')),
+    ])
+    const extras: YahooGuVRoh[] = []
+    if (saStatements?.zeilen.length) {
+      extras.push({ perioden: saStatements.perioden, zeilen: saStatements.zeilen })
+    }
+    const yahooRoh =
+      yahooRohs.find((y) => y && y.zeilen.some((z) => Object.values(z.werte).some((v) => v != null))) ??
+      null
+    if (yahooRoh) extras.push(yahooRoh)
+    if (extras.length === 0) return roh
+    return mergeQuartalsQuellen(roh, extras)
+  }
 
   const [saReihe, msChart, saStatements, ...yahooRohs] = await Promise.all([
     ladeStockanalysisGuVHistorie({
@@ -777,11 +832,70 @@ export async function ergaenzeMacrotrendsMitYahooGuV(
   return { ...roh, perioden, zeilen: mergedZeilen }
 }
 
+/**
+ * Quartals-/Halbjahres-Quellen in Macrotrends mergen — ohne Jahres-URD/SA/MS
+ * (sonst landen GJ-Umsätze in Q-Spalten).
+ */
+function mergeQuartalsQuellen(
+  roh: MacrotrendsFundamentalRoh,
+  extras: YahooGuVRoh[],
+): MacrotrendsFundamentalRoh {
+  const extraHist = extras.flatMap((e) =>
+    e.perioden.filter((p) => !p.istLtm && !p.istSchaetzung && !p.istNtm),
+  )
+  const mtHist = roh.perioden.filter((p) => !p.istLtm && !p.istSchaetzung && !p.istNtm)
+  const histIso = [...new Set([...extraHist.map((p) => p.iso), ...mtHist.map((p) => p.iso)])].sort()
+  if (histIso.length === 0) return roh
+
+  const perioden: FundamentalPeriode[] = histIso.map((iso) => {
+    const hit = extraHist.find((p) => p.iso === iso) ?? mtHist.find((p) => p.iso === iso)
+    return hit ?? { iso, label: formatFundamentalPeriodeLabel(iso, 'quartal') }
+  })
+
+  const extraById = extras.map((e) => new Map(e.zeilen.map((z) => [z.id, z])))
+  const mergedZeilen: FundamentalMetrikZeile[] = []
+  const gesehen = new Set<string>()
+
+  for (const z of roh.zeilen) {
+    gesehen.add(z.id)
+    if (YAHOO_GUV_ZEILEN_IDS.has(z.id)) {
+      const fremd = extraById.map((m) => m.get(z.id)?.werte)
+      const werte: Record<string, number | null> = {}
+      for (const iso of histIso) {
+        werte[iso] = pickWertFuerIso(iso, z.werte, ...fremd)
+      }
+      mergedZeilen.push({ ...z, werte })
+    } else {
+      const werte: Record<string, number | null> = { ...z.werte }
+      for (const iso of histIso) {
+        const nah = wertAusMapFuerIso(z.werte, iso)
+        if (nah != null) werte[iso] = nah
+        else if (!(iso in werte)) werte[iso] = null
+      }
+      mergedZeilen.push({ ...z, werte })
+    }
+  }
+
+  for (const extra of extras) {
+    for (const z of extra.zeilen) {
+      if (gesehen.has(z.id)) continue
+      gesehen.add(z.id)
+      const werte: Record<string, number | null> = {}
+      for (const iso of histIso) {
+        werte[iso] = wertAusMapFuerIso(z.werte, iso)
+      }
+      mergedZeilen.push({ ...z, werte })
+    }
+  }
+
+  return { ...roh, perioden, zeilen: mergedZeilen }
+}
+
 /** Fallback wenn Macrotrends leer/404 — StockAnalysis + Yahoo (EU-Portfolio). */
 export async function baueFundamentalRohAusAlternativQuellen(
   ident: MacrotrendsIdent,
   symbolYahoo: string,
-  opts?: { isin?: string | null; firmenname?: string | null; ticker?: string | null },
+  opts?: YahooGuVMergeOpts,
 ): Promise<MacrotrendsFundamentalRoh | null> {
   const shell: MacrotrendsFundamentalRoh = {
     ident,
