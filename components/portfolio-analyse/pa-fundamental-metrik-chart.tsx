@@ -210,6 +210,39 @@ type ChartSerie = {
   areaD: string
 }
 
+function punkteEinerSerie(s: ChartSerie): ChartPunkt[] {
+  return [...s.historisch, ...s.schaetzung, ...(s.aktuell ? [s.aktuell] : [])]
+}
+
+function wertAmSlot(s: ChartSerie | undefined, index: number): number | null {
+  if (!s) return null
+  const pt = punkteEinerSerie(s).find((p) => p.slotIdx === index)
+  return pt != null && Number.isFinite(pt.wert) ? pt.wert : null
+}
+
+function hoverIndexAusSvg(
+  svg: SVGSVGElement,
+  clientX: number,
+  padLinks: number,
+  padRechts: number,
+  pointCount: number,
+): { index: number; tooltipLeftPct: number } | null {
+  if (pointCount <= 0) return null
+  const ctm = svg.getScreenCTM()
+  if (!ctm) return null
+  const viewX = new DOMPoint(clientX, 0).matrixTransform(ctm.inverse()).x
+  const plotW = VIEW_W - padLinks - padRechts
+  if (plotW <= 0) return null
+  const rel = Math.min(1, Math.max(0, (viewX - padLinks) / plotW))
+  const index = Math.round(rel * Math.max(0, pointCount - 1))
+  const dataCenterX = padLinks + (index / Math.max(1, pointCount - 1)) * plotW
+  const screenX = new DOMPoint(dataCenterX, 0).matrixTransform(ctm).x
+  const rect = svg.getBoundingClientRect()
+  if (rect.width <= 0) return null
+  const tooltipLeftPct = Math.min(98, Math.max(2, ((screenX - rect.left) / rect.width) * 100))
+  return { index, tooltipLeftPct }
+}
+
 function aktuellerKeyFuerZeile(z: FundamentalMetrikZeile, variant: 'standard' | 'bewertung'): string | null {
   if (variant !== 'bewertung') return null
   if (z.gruppe === 'bewertung_trailing') return FUNDAMENTAL_TTM_KEY
@@ -796,6 +829,17 @@ export function PaFundamentalMetrikChart({
     (clientX: number) => {
       const el = svgWrapRef.current
       if (!el || xLabels.length === 0) return
+      const viaSvg = hoverIndexAusSvg(el, clientX, padLHover, padRHover, xLabels.length)
+      if (viaSvg) {
+        setHover({
+          index: viaSvg.index,
+          tooltipLeftPct: viaSvg.tooltipLeftPct,
+          dataCenterX: 0,
+          scale: 1,
+          offsetX: 0,
+        })
+        return
+      }
       setHover(
         chartHoverFromClientX(
           clientX,
@@ -815,13 +859,14 @@ export function PaFundamentalMetrikChart({
   const legendMeta = legendIds.map((id, i) => {
     const z = zeilenClean.find((r) => r.id === id)
     const s = serien.find((x) => x.id === id)
+    const hoverWert = hover != null ? wertAmSlot(s, hover.index) : null
     return {
       id,
       label: z?.label ?? s?.label ?? id,
       farbe: farbeFuerMetrik(id, i),
       einheit: z?.einheit ?? s?.einheit ?? ('zahl' as const),
       darstellung: s?.darstellung ?? serieDarstellung(id, z?.einheit ?? 'zahl'),
-      anzeigeWert: s?.letzterWert ?? null,
+      anzeigeWert: hover != null ? hoverWert : (s?.letzterWert ?? null),
       schnitt: s?.schnitt ?? null,
       aktiv: !hiddenIds.has(id),
     }
@@ -962,16 +1007,14 @@ export function PaFundamentalMetrikChart({
               <span className={s.aktiv ? 'text-[var(--app-text-muted)]' : 'text-[var(--app-text-muted)] line-through'}>
                 {s.label}
               </span>
-              {s.anzeigeWert != null ? (
-                <span
-                  className="font-semibold tabular-nums"
-                  style={{ color: s.aktiv ? s.farbe : undefined }}
-                >
-                  {formatFundamentalWert(s.anzeigeWert, s.einheit)}
-                </span>
-              ) : null}
-              {s.aktiv && s.schnitt != null ? (
-                <span className="tabular-nums text-[var(--app-text-muted)]">
+              <span
+                className="inline-block min-w-[4.25rem] text-right font-semibold tabular-nums"
+                style={{ color: s.aktiv && s.anzeigeWert != null ? s.farbe : undefined }}
+              >
+                {s.anzeigeWert != null ? formatFundamentalWert(s.anzeigeWert, s.einheit) : '–'}
+              </span>
+              {s.schnitt != null ? (
+                <span className={`tabular-nums text-[var(--app-text-muted)] ${s.aktiv ? '' : 'opacity-45'}`}>
                   Ø {formatFundamentalWert(s.schnitt, s.einheit)}
                 </span>
               ) : null}
@@ -986,16 +1029,18 @@ export function PaFundamentalMetrikChart({
             Kennzahl in der Legende anklicken, um sie wieder einzublenden.
           </p>
         ) : (
-        <div className="relative aspect-[1000/320]">
+        <div
+          className="relative aspect-[1000/320]"
+          onMouseMove={(e) => onChartMove(e.clientX)}
+          onMouseLeave={() => setHover(null)}
+        >
         <svg
           ref={svgWrapRef}
           viewBox={`0 0 ${VIEW_W} ${HOEHE}`}
           preserveAspectRatio="xMidYMid meet"
-          className="w-full cursor-crosshair select-none"
+          className="absolute inset-0 h-full w-full cursor-crosshair select-none"
           role="img"
           aria-label="Kennzahlen-Chart"
-          onMouseMove={(e) => onChartMove(e.clientX)}
-          onMouseLeave={() => setHover(null)}
         >
           <defs>
             {serien.map((s) => (
@@ -1271,15 +1316,18 @@ export function PaFundamentalMetrikChart({
             </p>
             <ul className="space-y-0.5">
               {legendMeta
-                .filter((s) => s.aktiv && s.anzeigeWert != null)
+                .filter((s) => s.aktiv)
                 .map((s) => (
                   <li key={s.id} className="flex items-center justify-between gap-3 text-[11px]">
                     <span className="flex min-w-0 items-center gap-1.5 text-[var(--app-text-muted)]">
                       <SerieMark art={s.darstellung} farbe={s.farbe} aktiv />
                       <span className="truncate">{s.label}</span>
                     </span>
-                    <span className="font-semibold tabular-nums" style={{ color: s.farbe }}>
-                      {formatFundamentalWert(s.anzeigeWert, s.einheit)}
+                    <span
+                      className="min-w-[3.5rem] text-right font-semibold tabular-nums"
+                      style={{ color: s.anzeigeWert != null ? s.farbe : undefined }}
+                    >
+                      {s.anzeigeWert != null ? formatFundamentalWert(s.anzeigeWert, s.einheit) : '–'}
                     </span>
                   </li>
                 ))}
