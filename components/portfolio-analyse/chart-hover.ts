@@ -67,3 +67,40 @@ export function chartHoverFromClientX(
 
   return { index, tooltipLeftPct, dataCenterX, scale, offsetX }
 }
+
+/**
+ * Client-Pixel → SVG-ViewBox bei preserveAspectRatio="xMidYMid meet"
+ * (inkl. Letterbox oben/unten oder links/rechts).
+ */
+export function clientToSvgViewBox(
+  svg: SVGSVGElement,
+  clientX: number,
+  clientY: number,
+  viewW: number,
+  viewH: number,
+): { x: number; y: number; scale: number } | null {
+  const rect = svg.getBoundingClientRect()
+  if (rect.width <= 0 || rect.height <= 0 || viewW <= 0 || viewH <= 0) return null
+
+  const viewAspect = viewW / viewH
+  const containerAspect = rect.width / rect.height
+  let scale: number
+  let offsetX: number
+  let offsetY: number
+
+  if (containerAspect > viewAspect) {
+    scale = rect.height / viewH
+    offsetX = (rect.width - viewW * scale) / 2
+    offsetY = 0
+  } else {
+    scale = rect.width / viewW
+    offsetX = 0
+    offsetY = (rect.height - viewH * scale) / 2
+  }
+
+  return {
+    x: (clientX - rect.left - offsetX) / scale,
+    y: (clientY - rect.top - offsetY) / scale,
+    scale,
+  }
+}

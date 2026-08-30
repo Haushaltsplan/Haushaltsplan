@@ -15,6 +15,10 @@ export type ChartAnalyseArt =
   | 'vline'
   | 'rect'
   | 'fib'
+  | 'fib_retrace'
+  | 'fib_extend'
+  | 'support'
+  | 'resistance'
   | 'text'
   | 'measure'
 
@@ -58,6 +62,10 @@ function istArt(v: unknown): v is ChartAnalyseArt {
     v === 'vline' ||
     v === 'rect' ||
     v === 'fib' ||
+    v === 'fib_retrace' ||
+    v === 'fib_extend' ||
+    v === 'support' ||
+    v === 'resistance' ||
     v === 'text' ||
     v === 'measure'
   )

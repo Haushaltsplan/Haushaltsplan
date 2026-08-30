@@ -5,6 +5,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -13,10 +14,18 @@ import {
 } from 'react'
 import { lockAppScroll } from '@/lib/app-scroll-lock'
 import { CLIENT_STATE_APPLIED_EVENT, CLIENT_STATE_KEYS } from '@/lib/client-state/client-state-keys'
+import { clientToSvgViewBox } from '@/components/portfolio-analyse/chart-hover'
+import {
+  autoArtErsetzt,
+  baueAutoZeichnung,
+  type ChartAutoArt,
+  type ChartSnapPunkt,
+  FIB_EXTEND_LEVELS,
+  FIB_RETRACE_LEVELS,
+} from '@/lib/portfolio-analyse/chart-analyse-auto'
 import {
   CHART_ANALYSE_EVENT,
   CHART_ANALYSE_FARBEN,
-  FIB_LEVELS,
   ladeChartAnalyseEintrag,
   neueZeichnungId,
   normZuPlot,
@@ -29,7 +38,7 @@ import {
   type ChartAnalyseZeichnung,
 } from '@/lib/portfolio-analyse/chart-analyse-store'
 
-export type ChartAnalyseWerkzeug = 'cursor' | ChartAnalyseArt
+export type ChartAnalyseWerkzeug = 'cursor' | 'trend' | 'ray' | 'hline' | 'vline' | 'rect' | 'measure' | 'text'
 
 type AnalyseCtx = {
   vollbild: boolean
@@ -50,6 +59,8 @@ type AnalyseCtx = {
   setAusgewaehltId: (id: string | null) => void
   loescheAuswahl: () => void
   titel: string
+  registerSnap: (pts: ChartSnapPunkt[], plot: ChartAnalysePlot) => void
+  applyAuto: (art: ChartAutoArt) => void
 }
 
 const Ctx = createContext<AnalyseCtx | null>(null)
@@ -58,7 +69,7 @@ export function useChartAnalyseVollbild(): boolean {
   return useContext(Ctx)?.vollbild ?? false
 }
 
-const PUNKTE_PRO_ART: Record<ChartAnalyseArt, number> = {
+const PUNKTE_PRO_ART: Partial<Record<ChartAnalyseArt, number>> = {
   trend: 2,
   ray: 2,
   hline: 1,
@@ -98,14 +109,14 @@ function trefferZeichnung(
   if (z.art === 'hline' && pts[0]) return Math.abs(view.y - pts[0].y) <= tol
   if (z.art === 'vline' && pts[0]) return Math.abs(view.x - pts[0].x) <= tol
   if (z.art === 'text' && pts[0]) return dist(view, pts[0]) <= tol * 1.4
-  if ((z.art === 'rect' || z.art === 'fib' || z.art === 'measure') && pts[0] && pts[1]) {
+  if ((z.art === 'support' || z.art === 'resistance' || z.art === 'rect') && pts[0] && pts[1]) {
     const x0 = Math.min(pts[0].x, pts[1].x)
     const x1 = Math.max(pts[0].x, pts[1].x)
     const y0 = Math.min(pts[0].y, pts[1].y)
     const y1 = Math.max(pts[0].y, pts[1].y)
-    if (z.art === 'rect') {
-      return view.x >= x0 - tol && view.x <= x1 + tol && view.y >= y0 - tol && view.y <= y1 + tol
-    }
+    return view.x >= x0 - tol && view.x <= x1 + tol && view.y >= y0 - tol && view.y <= y1 + tol
+  }
+  if ((z.art === 'fib' || z.art === 'fib_retrace' || z.art === 'fib_extend' || z.art === 'measure') && pts[0] && pts[1]) {
     return distZuStrecke(view, pts[0], pts[1]) <= tol
   }
   if (pts[0] && pts[1]) return distZuStrecke(view, pts[0], pts[1]) <= tol
@@ -136,12 +147,12 @@ function rayEnde(
   return { x: a.x + dx * tMax, y: a.y + dy * tMax }
 }
 
-function viewAusClient(svg: SVGSVGElement, clientX: number, clientY: number): { x: number; y: number } | null {
-  const ctm = svg.getScreenCTM()
-  if (!ctm) return null
-  const p = new DOMPoint(clientX, clientY).matrixTransform(ctm.inverse())
-  return { x: p.x, y: p.y }
-}
+const AUTO_WERKZEUGE: { id: ChartAutoArt; label: string; hint: string }[] = [
+  { id: 'support', label: 'Support', hint: 'Unterstützungszone aus Tiefs' },
+  { id: 'resistance', label: 'Widerst.', hint: 'Widerstandszone aus Hochs' },
+  { id: 'fib_retrace', label: 'Fib R', hint: 'Fibonacci-Retracement automatisch' },
+  { id: 'fib_extend', label: 'Fib E', hint: 'Fibonacci-Extension automatisch' },
+]
 
 const WERKZEUGE: { id: ChartAnalyseWerkzeug; label: string; hint: string }[] = [
   { id: 'cursor', label: 'Maus', hint: 'Auswählen · Entf löscht' },
@@ -150,7 +161,6 @@ const WERKZEUGE: { id: ChartAnalyseWerkzeug; label: string; hint: string }[] = [
   { id: 'hline', label: 'H-Linie', hint: 'Waagrechte' },
   { id: 'vline', label: 'V-Linie', hint: 'Senkrechte' },
   { id: 'rect', label: 'Rechteck', hint: 'Bereich markieren' },
-  { id: 'fib', label: 'Fib', hint: 'Fibonacci · zwei Klicks' },
   { id: 'measure', label: 'Maß', hint: 'Abstand messen' },
   { id: 'text', label: 'Text', hint: 'Beschriftung' },
 ]
@@ -189,6 +199,7 @@ export function PaChartAnalyseProvider({
   const [notizenOffen, setNotizenOffen] = useState(true)
   const undoStack = useRef<ChartAnalyseEintrag[]>([])
   const redoStack = useRef<ChartAnalyseEintrag[]>([])
+  const snapRef = useRef<{ pts: ChartSnapPunkt[]; plot: ChartAnalysePlot | null }>({ pts: [], plot: null })
   const [, tick] = useState(0)
 
   useEffect(() => {
@@ -263,6 +274,26 @@ export function PaChartAnalyseProvider({
     setAusgewaehltId(null)
   }, [ausgewaehltId, eintrag, persist])
 
+  const registerSnap = useCallback((pts: ChartSnapPunkt[], plot: ChartAnalysePlot) => {
+    snapRef.current = { pts, plot }
+  }, [])
+
+  const applyAuto = useCallback(
+    (art: ChartAutoArt) => {
+      const { pts, plot } = snapRef.current
+      if (!plot || pts.length < 2) return
+      const neu = baueAutoZeichnung(art, pts, plot, farbe)
+      if (!neu) return
+      persist({
+        ...eintrag,
+        zeichnungen: [...eintrag.zeichnungen.filter((z) => !autoArtErsetzt(z.art, art)), neu],
+      })
+      setAusgewaehltId(neu.id)
+      setWerkzeug('cursor')
+    },
+    [eintrag, farbe, persist],
+  )
+
   useEffect(() => {
     if (!vollbild) return
     const onKey = (e: KeyboardEvent) => {
@@ -315,6 +346,8 @@ export function PaChartAnalyseProvider({
       setAusgewaehltId,
       loescheAuswahl,
       titel,
+      registerSnap,
+      applyAuto,
     }),
     [
       vollbild,
@@ -328,6 +361,8 @@ export function PaChartAnalyseProvider({
       ausgewaehltId,
       loescheAuswahl,
       titel,
+      registerSnap,
+      applyAuto,
     ],
   )
 
@@ -393,6 +428,24 @@ function AnalyseWerkzeugLeiste() {
   if (!ctx) return null
   return (
     <div className="flex w-14 shrink-0 flex-col items-center gap-0.5 overflow-y-auto border-r border-[var(--app-border)] bg-[var(--app-surface-muted)] py-2">
+      <p className="mb-1 w-11 text-center text-[8px] font-semibold uppercase tracking-wide text-[var(--app-text-muted)]">
+        Auto
+      </p>
+      {AUTO_WERKZEUGE.map((w) => (
+        <button
+          key={w.id}
+          type="button"
+          title={w.hint}
+          onClick={() => ctx.applyAuto(w.id)}
+          className="w-11 rounded-md px-1 py-1.5 text-[9px] font-medium leading-tight text-[var(--app-text-muted)] hover:bg-amber-500/15 hover:text-amber-200"
+        >
+          {w.label}
+        </button>
+      ))}
+      <div className="my-1 h-px w-8 bg-[var(--app-border)]" />
+      <p className="mb-1 w-11 text-center text-[8px] font-semibold uppercase tracking-wide text-[var(--app-text-muted)]">
+        Zeichnen
+      </p>
       {WERKZEUGE.map((w) => (
         <button
           key={w.id}
@@ -506,13 +559,51 @@ export function PaChartAnalyseOverlay({
   snapPunkte?: { x: number; y: number }[]
 }) {
   const ctx = useContext(Ctx)
-  const overlayRef = useRef<SVGSVGElement>(null)
+  const hostRef = useRef<HTMLDivElement>(null)
+  const [frame, setFrame] = useState({ left: 0, top: 0, width: 0, height: 0 })
   const [entwurf, setEntwurf] = useState<ChartAnalysePunkt[]>([])
   const [cursor, setCursor] = useState<ChartAnalysePunkt | null>(null)
   const [textPos, setTextPos] = useState<{ nx: number; ny: number } | null>(null)
   const [textWert, setTextWert] = useState('')
 
+  useLayoutEffect(() => {
+    if (!ctx?.vollbild) return
+    ctx.registerSnap(snapPunkte, plot)
+  }, [ctx, ctx?.vollbild, plot, snapPunkte])
+
+  useLayoutEffect(() => {
+    if (!ctx?.vollbild) return
+    const host = hostRef.current
+    const svg = svgRef.current
+    if (!host || !svg) return
+    const sync = () => {
+      const hr = host.getBoundingClientRect()
+      const sr = svg.getBoundingClientRect()
+      setFrame({
+        left: sr.left - hr.left,
+        top: sr.top - hr.top,
+        width: sr.width,
+        height: sr.height,
+      })
+    }
+    sync()
+    const ro = new ResizeObserver(sync)
+    ro.observe(host)
+    ro.observe(svg)
+    window.addEventListener('resize', sync)
+    return () => {
+      ro.disconnect()
+      window.removeEventListener('resize', sync)
+    }
+  }, [ctx?.vollbild, plot.viewW, plot.viewH, snapPunkte.length])
+
   if (!ctx?.vollbild) return null
+
+  const mapClient = (clientX: number, clientY: number) => {
+    const svg = svgRef.current
+    if (!svg) return null
+    return clientToSvgViewBox(svg, clientX, clientY, plot.viewW, plot.viewH)
+  }
 
   const snap = (view: { x: number; y: number }): { x: number; y: number } => {
     if (!ctx.magnet || snapPunkte.length === 0) return view
@@ -544,9 +635,7 @@ export function PaChartAnalyseOverlay({
   }
 
   const onPointer = (e: ReactPointerEvent<SVGSVGElement>, kind: 'move' | 'down') => {
-    const svg = overlayRef.current ?? svgRef.current
-    if (!svg) return
-    const raw = viewAusClient(svg, e.clientX, e.clientY)
+    const raw = mapClient(e.clientX, e.clientY)
     if (!raw) return
     const view = snap(raw)
     const norm = plotZuNorm(plot, view.x, view.y)
@@ -565,7 +654,7 @@ export function PaChartAnalyseOverlay({
       return
     }
     const art = ctx.werkzeug
-    const braucht = PUNKTE_PRO_ART[art]
+    const braucht = PUNKTE_PRO_ART[art] ?? 2
     const next = [...entwurf, norm]
     if (next.length >= braucht) {
       commit(next.slice(0, braucht), art)
@@ -578,14 +667,18 @@ export function PaChartAnalyseOverlay({
   const previewArt = ctx.werkzeug === 'cursor' || ctx.werkzeug === 'text' ? null : ctx.werkzeug
 
   return (
-    <>
+    <div ref={hostRef} className="pointer-events-none absolute inset-0 z-[12]">
       <svg
-        ref={overlayRef}
         viewBox={`0 0 ${plot.viewW} ${plot.viewH}`}
         preserveAspectRatio="xMidYMid meet"
-        className={`absolute inset-0 h-full w-full ${
-          ctx.werkzeug === 'cursor' ? 'pointer-events-none' : 'cursor-crosshair'
-        }`}
+        className={ctx.werkzeug === 'cursor' ? 'pointer-events-none' : 'pointer-events-auto cursor-crosshair'}
+        style={{
+          position: 'absolute',
+          left: frame.left,
+          top: frame.top,
+          width: frame.width,
+          height: frame.height,
+        }}
         onPointerMove={(e) => {
           if (ctx.werkzeug === 'cursor') return
           onPointer(e, 'move')
@@ -632,10 +725,10 @@ export function PaChartAnalyseOverlay({
       </svg>
       {textPos ? (
         <form
-          className="absolute z-20 rounded-md border border-[var(--app-border)] bg-[var(--app-bg)] p-1.5 shadow-lg"
+          className="pointer-events-auto absolute z-20 rounded-md border border-[var(--app-border)] bg-[var(--app-bg)] p-1.5 shadow-lg"
           style={{
-            left: `${(plot.padL + textPos.nx * (plot.viewW - plot.padL - plot.padR)) / plot.viewW * 100}%`,
-            top: `${(plot.padT + textPos.ny * (plot.viewH - plot.padT - plot.padB)) / plot.viewH * 100}%`,
+            left: frame.left + ((plot.padL + textPos.nx * (plot.viewW - plot.padL - plot.padR)) / plot.viewW) * frame.width,
+            top: frame.top + ((plot.padT + textPos.ny * (plot.viewH - plot.padT - plot.padB)) / plot.viewH) * frame.height,
           }}
           onSubmit={(e) => {
             e.preventDefault()
@@ -661,7 +754,7 @@ export function PaChartAnalyseOverlay({
           />
         </form>
       ) : null}
-    </>
+    </div>
   )
 }
 
@@ -738,34 +831,62 @@ function ZeichnungSvg({
   if (!b) {
     return wrap(<circle cx={a.x} cy={a.y} r={3} fill={stroke} />)
   }
-  if (z.art === 'rect') {
-    const x = Math.min(a.x, b.x)
+  if (z.art === 'rect' || z.art === 'support' || z.art === 'resistance') {
+    const x = z.art === 'rect' ? Math.min(a.x, b.x) : plot.padL
     const y = Math.min(a.y, b.y)
-    return wrap(
-      <rect
-        x={x}
-        y={y}
-        width={Math.abs(b.x - a.x)}
-        height={Math.abs(b.y - a.y)}
-        fill={stroke}
-        fillOpacity={0.12}
-        stroke={stroke}
-        strokeWidth={sw}
-      />,
-    )
-  }
-  if (z.art === 'fib') {
+    const w = z.art === 'rect' ? Math.abs(b.x - a.x) : plot.viewW - plot.padL - plot.padR
     return wrap(
       <>
-        {FIB_LEVELS.map((lvl) => {
+        <rect
+          x={x}
+          y={y}
+          width={w}
+          height={Math.abs(b.y - a.y)}
+          fill={stroke}
+          fillOpacity={z.art === 'rect' ? 0.12 : 0.16}
+          stroke={stroke}
+          strokeWidth={sw}
+        />
+        {z.text ? (
+          <text x={x + 6} y={y - 4} fill={stroke} style={{ fontSize: 11, fontWeight: 600 }}>
+            {z.text}
+          </text>
+        ) : null}
+      </>,
+    )
+  }
+  if (z.art === 'fib' || z.art === 'fib_retrace' || z.art === 'fib_extend') {
+    const levels = z.art === 'fib_extend' ? FIB_EXTEND_LEVELS : FIB_RETRACE_LEVELS
+    const xStart = z.art === 'fib_extend' ? b.x : Math.min(a.x, b.x)
+    const xEnd = z.art === 'fib_extend' ? plot.viewW - plot.padR : Math.max(a.x, b.x, xStart + 40)
+    const yClip0 = plot.padT
+    const yClip1 = plot.viewH - plot.padB
+    return wrap(
+      <>
+        {z.text ? (
+          <text x={xStart} y={Math.min(a.y, b.y) - 8} fill={stroke} style={{ fontSize: 11, fontWeight: 600 }}>
+            {z.text}
+          </text>
+        ) : null}
+        {levels.map((lvl) => {
           const y = a.y + (b.y - a.y) * lvl
-          const x0 = Math.min(a.x, b.x)
-          const x1 = Math.max(a.x, b.x)
+          if (y < yClip0 - 8 || y > yClip1 + 8) return null
+          const yDraw = Math.min(yClip1, Math.max(yClip0, y))
+          const pct = lvl * 100
+          const label = Number.isInteger(pct) ? `${pct.toFixed(0)}%` : `${pct.toFixed(1)}%`
           return (
             <g key={lvl}>
-              <line x1={x0} y1={y} x2={x1} y2={y} stroke={stroke} strokeWidth={lvl === 0 || lvl === 1 ? sw : 1} />
-              <text x={x1 + 4} y={y + 3} fill={stroke} style={{ fontSize: 10 }}>
-                {(lvl * 100).toFixed(lvl === 0.5 ? 0 : 1)}%
+              <line
+                x1={xStart}
+                y1={yDraw}
+                x2={xEnd}
+                y2={yDraw}
+                stroke={stroke}
+                strokeWidth={lvl === 0 || lvl === 1 ? sw : 1}
+                opacity={lvl > 1 ? 0.9 : 0.85}
+              />
+              <text x={xEnd + 4} y={yDraw + 3} fill={stroke} style={{ fontSize: 10 }}>
+                {label}
               </text>
             </g>
           )
