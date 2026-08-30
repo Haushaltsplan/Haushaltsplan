@@ -81,6 +81,45 @@ export function letzteNChartPerioden(perioden: FundamentalPeriode[], n: number):
   return perioden.slice(-n)
 }
 
+/** True wenn die Reihe Quartale/Halbjahre sind (nicht Geschäftsjahre). */
+export function chartSerieIstUnterjaehrig(perioden: FundamentalPeriode[]): boolean {
+  const hist = perioden.filter((p) => /^\d{4}-\d{2}-\d{2}$/.test(p.iso) && !p.istSchaetzung && !p.istLtm && !p.istNtm)
+  if (hist.some((p) => /^(Q[1-4]|H[12])\b/i.test(p.label.trim()))) return true
+  if (hist.length < 3) return false
+  const gaps: number[] = []
+  for (let i = 1; i < hist.length; i++) {
+    const d =
+      (Date.parse(`${hist[i]!.iso}T00:00:00Z`) - Date.parse(`${hist[i - 1]!.iso}T00:00:00Z`)) /
+      86_400_000
+    if (Number.isFinite(d) && d > 20) gaps.push(d)
+  }
+  if (gaps.length === 0) return false
+  const s = [...gaps].sort((a, b) => a - b)
+  const med = s[Math.floor(s.length / 2)]
+  return med != null && med < 200
+}
+
+/**
+ * Letzte `jahre` Kalenderjahre — bei Quartalsreihen nicht die letzten N Spalten.
+ * Jahresreihen bleiben last-N-Geschäftsjahre (wie bisher 5J/10J).
+ */
+export function letzteJahreChartPerioden(
+  perioden: FundamentalPeriode[],
+  jahre: number,
+): FundamentalPeriode[] {
+  if (perioden.length === 0 || jahre <= 0) return perioden
+  if (!chartSerieIstUnterjaehrig(perioden)) {
+    return letzteNChartPerioden(perioden, jahre)
+  }
+  const hist = perioden.filter((p) => /^\d{4}-\d{2}-\d{2}$/.test(p.iso))
+  const letzte = hist[hist.length - 1]
+  if (!letzte) return letzteNChartPerioden(perioden, jahre)
+  const y = Number(letzte.iso.slice(0, 4)) - jahre
+  const cutoff = `${String(y).padStart(4, '0')}${letzte.iso.slice(4)}`
+  const sliced = perioden.filter((p) => p.iso >= cutoff)
+  return sliced.length > 0 ? sliced : perioden
+}
+
 /** Mittel aller gültigen Werte im (bereits gefilterten) Zeitraum. */
 export function berechneZeitraumSchnitt(werte: number[]): number | null {
   const gueltig = werte.filter((v) => Number.isFinite(v))

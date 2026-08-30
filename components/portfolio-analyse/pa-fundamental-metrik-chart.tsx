@@ -16,7 +16,7 @@ import {
   einheitSkalaGruppe,
   filterChartPeriodenZeitraum,
   finanzdatenChartPerioden,
-  letzteNChartPerioden,
+  letzteJahreChartPerioden,
   prozentAbweichung,
 } from '@/lib/portfolio-analyse/fundamentaldaten-chart-hilfen'
 import {
@@ -40,6 +40,10 @@ const METRIK_FARBE: Record<string, string> = {
   ebit: '#4ade80',
   ebitda: '#a3e635',
   capex: '#fb923c',
+  da: '#94a3b8',
+  sga: '#f97316',
+  rd: '#c084fc',
+  sbc: '#e879f9',
   bruttomarge: '#fb7185',
   ebit_marge: '#fbbf24',
   ebitda_marge: '#a78bfa',
@@ -56,6 +60,13 @@ const METRIK_FARBE: Record<string, string> = {
   gesamtverschuldung: '#fb7185',
   bargeld: '#2dd4bf',
   eigenkapital: '#fbbf24',
+  roe: '#34d399',
+  roi: '#38bdf8',
+  roi_ex_goodwill: '#2dd4bf',
+  dso: '#fb923c',
+  dio: '#fbbf24',
+  dpo: '#a78bfa',
+  net_debt_ebitda: '#f43f5e',
 }
 
 /** Nur 1–2 „Hüllen“ als Fläche — sonst überlagern sich die Fills zu einem Brei. */
@@ -350,10 +361,11 @@ function ChartZeitraumWahl({
   if (allePerioden.length < 2) return null
 
   const bisOptionen = allePerioden.filter((p) => p.iso >= vonIso)
-  const letzte10 = letzteNChartPerioden(allePerioden.filter((p) => !p.istSchaetzung), 10)
+  const hist = allePerioden.filter((p) => !p.istSchaetzung)
+  const letzte10 = letzteJahreChartPerioden(hist, 10)
   const schaetz = allePerioden.filter((p) => p.istSchaetzung)
   const letzte10MitSchaetz = [...letzte10, ...schaetz.filter((s) => !letzte10.some((h) => h.iso === s.iso))]
-  const letzte5 = letzteNChartPerioden(allePerioden.filter((p) => !p.istSchaetzung), 5)
+  const letzte5 = letzteJahreChartPerioden(hist, 5)
   const letzte5MitSchaetz = [...letzte5, ...schaetz.filter((s) => !letzte5.some((h) => h.iso === s.iso))]
 
   return (
@@ -511,7 +523,7 @@ export function PaFundamentalMetrikChart({
       return
     }
     const hist = alleChartPerioden.filter((p) => !p.istSchaetzung)
-    const letzte10 = letzteNChartPerioden(hist, 10)
+    const letzte10 = letzteJahreChartPerioden(hist, 10)
     const schaetz = alleChartPerioden.filter((p) => p.istSchaetzung)
     setVonIso(letzte10[0]?.iso ?? '')
     setBisIso(schaetz[schaetz.length - 1]?.iso ?? letzte10[letzte10.length - 1]?.iso ?? '')
@@ -803,22 +815,15 @@ export function PaFundamentalMetrikChart({
   const legendMeta = legendIds.map((id, i) => {
     const z = zeilenClean.find((r) => r.id === id)
     const s = serien.find((x) => x.id === id)
-    const hoverPt =
-      hover != null
-        ? [...(s?.historisch ?? []), ...(s?.schaetzung ?? []), ...(s?.aktuell ? [s.aktuell] : [])].find(
-            (p) => p.slotIdx === hover.index,
-          )
-        : null
     return {
       id,
       label: z?.label ?? s?.label ?? id,
       farbe: farbeFuerMetrik(id, i),
       einheit: z?.einheit ?? s?.einheit ?? ('zahl' as const),
       darstellung: s?.darstellung ?? serieDarstellung(id, z?.einheit ?? 'zahl'),
-      anzeigeWert: hover != null ? (hoverPt?.wert ?? null) : (s?.letzterWert ?? null),
+      anzeigeWert: s?.letzterWert ?? null,
       schnitt: s?.schnitt ?? null,
       aktiv: !hiddenIds.has(id),
-      hoverIstSchaetzung: hoverPt?.istSchaetzung ?? false,
     }
   })
 
@@ -965,7 +970,7 @@ export function PaFundamentalMetrikChart({
                   {formatFundamentalWert(s.anzeigeWert, s.einheit)}
                 </span>
               ) : null}
-              {s.aktiv && s.schnitt != null && hoverSlot == null ? (
+              {s.aktiv && s.schnitt != null ? (
                 <span className="tabular-nums text-[var(--app-text-muted)]">
                   Ø {formatFundamentalWert(s.schnitt, s.einheit)}
                 </span>
@@ -981,7 +986,7 @@ export function PaFundamentalMetrikChart({
             Kennzahl in der Legende anklicken, um sie wieder einzublenden.
           </p>
         ) : (
-        <div className="relative">
+        <div className="relative aspect-[1000/320]">
         <svg
           ref={svgWrapRef}
           viewBox={`0 0 ${VIEW_W} ${HOEHE}`}

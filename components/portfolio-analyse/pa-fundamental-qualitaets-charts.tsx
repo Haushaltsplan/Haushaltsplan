@@ -16,7 +16,25 @@ export const QUALITAET_PANELS = [
   {
     id: 'umsatz',
     titel: 'Umsatz und Margen',
-    ids: ['umsatz', 'bruttomarge', 'ebit_marge', 'nettomarge'],
+    ids: ['umsatz', 'bruttomarge', 'ebitda_marge', 'ebit_marge', 'nettomarge'],
+    variant: 'standard' as const,
+  },
+  {
+    id: 'guv',
+    titel: 'GuV: Umsatz bis Nettogewinn',
+    ids: ['umsatz', 'bruttogewinn', 'ebitda', 'ebit', 'nettogewinn'],
+    variant: 'standard' as const,
+  },
+  {
+    id: 'kosten',
+    titel: 'Kosten und Reinvestition',
+    ids: ['sga', 'rd', 'sbc', 'capex', 'da'],
+    variant: 'standard' as const,
+  },
+  {
+    id: 'rendite',
+    titel: 'Renditen (ROE / ROIC)',
+    ids: ['roe', 'roi', 'roi_ex_goodwill'],
     variant: 'standard' as const,
   },
   {
@@ -28,7 +46,13 @@ export const QUALITAET_PANELS = [
   {
     id: 'verschuldung',
     titel: 'Verschuldung und Kapital',
-    ids: ['gesamtverschuldung', 'nettoverschuldung', 'bargeld', 'eigenkapital'],
+    ids: ['gesamtverschuldung', 'nettoverschuldung', 'bargeld', 'eigenkapital', 'net_debt_ebitda'],
+    variant: 'standard' as const,
+  },
+  {
+    id: 'working_capital',
+    titel: 'Working Capital (Tage)',
+    ids: ['dso', 'dio', 'dpo'],
     variant: 'standard' as const,
   },
   {
