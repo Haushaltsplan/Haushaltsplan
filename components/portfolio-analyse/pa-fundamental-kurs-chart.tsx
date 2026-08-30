@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
-import { chartHoverFromClientX } from '@/components/portfolio-analyse/chart-hover'
+import { chartHoverFromClientX, clientToSvgViewBox } from '@/components/portfolio-analyse/chart-hover'
 import {
   PaChartAnalyseExpandButton,
   PaChartAnalyseOverlay,
@@ -373,12 +373,21 @@ function KursChartBody({
   }, [gefiltert, drawdownSerie, modus, kompakt, padLinks, padOben, plotH, plotW, zeitraum])
 
   const onMove = useCallback(
-    (clientX: number) => {
-      const el = containerRef.current
-      if (!el || plotPts.length === 0) return
+    (clientX: number, clientY: number) => {
+      const svg = svgRef.current
+      if (!svg || plotPts.length === 0) return
+      const view = clientToSvgViewBox(svg, clientX, clientY, VIEW_W, hoehe)
+      if (view) {
+        const plotWInner = VIEW_W - padLinks - padRechts
+        if (plotWInner > 0) {
+          const rel = Math.min(1, Math.max(0, (view.x - padLinks) / plotWInner))
+          setHoverIndex(Math.round(rel * Math.max(0, plotPts.length - 1)))
+          return
+        }
+      }
       const layout = chartHoverFromClientX(
         clientX,
-        el.getBoundingClientRect(),
+        svg.getBoundingClientRect(),
         VIEW_W,
         hoehe,
         padLinks,
@@ -495,7 +504,7 @@ function KursChartBody({
       <div
         ref={containerRef}
         className="relative min-h-0 flex-1 w-full cursor-crosshair overflow-hidden px-1"
-        onMouseMove={(e) => onMove(e.clientX)}
+        onMouseMove={(e) => onMove(e.clientX, e.clientY)}
         onMouseLeave={() => setHoverIndex(null)}
       >
         {laden ? (
@@ -594,7 +603,18 @@ function KursChartBody({
               </text>
             ))}
           </svg>
-          <PaChartAnalyseOverlay svgRef={svgRef} plot={analysePlot} snapPunkte={snapPunkte} />
+          <PaChartAnalyseOverlay
+            svgRef={svgRef}
+            plot={analysePlot}
+            snapPunkte={snapPunkte}
+            onChartPointer={(pt) => {
+              if (!pt) {
+                setHoverIndex(null)
+                return
+              }
+              onMove(pt.x, pt.y)
+            }}
+          />
           </div>
         )}
       </div>

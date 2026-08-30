@@ -1373,7 +1373,18 @@ function MetrikChartBody({
             </ul>
           </div>
         ) : null}
-        <PaChartAnalyseOverlay svgRef={svgWrapRef} plot={analysePlot} snapPunkte={snapPunkte} />
+        <PaChartAnalyseOverlay
+          svgRef={svgWrapRef}
+          plot={analysePlot}
+          snapPunkte={snapPunkte}
+          onChartPointer={(pt) => {
+            if (!pt) {
+              setHover(null)
+              return
+            }
+            onChartMove(pt.x)
+          }}
+        />
         </div>
         )}
 

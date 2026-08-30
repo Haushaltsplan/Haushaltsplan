@@ -19,6 +19,7 @@ export type ChartAnalyseArt =
   | 'fib_extend'
   | 'support'
   | 'resistance'
+  | 'channel'
   | 'text'
   | 'measure'
 
@@ -66,6 +67,7 @@ function istArt(v: unknown): v is ChartAnalyseArt {
     v === 'fib_extend' ||
     v === 'support' ||
     v === 'resistance' ||
+    v === 'channel' ||
     v === 'text' ||
     v === 'measure'
   )

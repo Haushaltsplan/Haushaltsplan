@@ -17,7 +17,7 @@ import { CLIENT_STATE_APPLIED_EVENT, CLIENT_STATE_KEYS } from '@/lib/client-stat
 import { clientToSvgViewBox } from '@/components/portfolio-analyse/chart-hover'
 import {
   autoArtErsetzt,
-  baueAutoZeichnung,
+  baueAutoZeichnungen,
   type ChartAutoArt,
   type ChartSnapPunkt,
   FIB_EXTEND_LEVELS,
@@ -116,7 +116,25 @@ function trefferZeichnung(
     const y1 = Math.max(pts[0].y, pts[1].y)
     return view.x >= x0 - tol && view.x <= x1 + tol && view.y >= y0 - tol && view.y <= y1 + tol
   }
-  if ((z.art === 'fib' || z.art === 'fib_retrace' || z.art === 'fib_extend' || z.art === 'measure') && pts[0] && pts[1]) {
+  if (z.art === 'channel' && pts[0] && pts[1] && pts[2] && pts[3]) {
+    return distZuStrecke(view, pts[0], pts[1]) <= tol * 1.2 || distZuStrecke(view, pts[2], pts[3]) <= tol * 1.2
+  }
+  if (z.art === 'fib_extend' && pts[0] && pts[1]) {
+    const c = pts[2]
+    if (c) {
+      if (distZuStrecke(view, pts[0], pts[1]) <= tol || distZuStrecke(view, pts[1], c) <= tol) return true
+      const dy = pts[1].y - pts[0].y
+      for (const lvl of FIB_EXTEND_LEVELS) {
+        const y = c.y + dy * lvl
+        if (Math.abs(view.y - y) <= tol && view.x >= plot.padL - tol && view.x <= plot.viewW - plot.padR + tol) {
+          return true
+        }
+      }
+      return false
+    }
+    return distZuStrecke(view, pts[0], pts[1]) <= tol
+  }
+  if ((z.art === 'fib' || z.art === 'fib_retrace' || z.art === 'measure') && pts[0] && pts[1]) {
     return distZuStrecke(view, pts[0], pts[1]) <= tol
   }
   if (pts[0] && pts[1]) return distZuStrecke(view, pts[0], pts[1]) <= tol
@@ -148,10 +166,10 @@ function rayEnde(
 }
 
 const AUTO_WERKZEUGE: { id: ChartAutoArt; label: string; hint: string }[] = [
-  { id: 'support', label: 'Support', hint: 'Unterstützungszone aus Tiefs' },
-  { id: 'resistance', label: 'Widerst.', hint: 'Widerstandszone aus Hochs' },
-  { id: 'fib_retrace', label: 'Fib R', hint: 'Fibonacci-Retracement automatisch' },
-  { id: 'fib_extend', label: 'Fib E', hint: 'Fibonacci-Extension automatisch' },
+  { id: 'sr', label: 'S / R', hint: 'Alle Unterstützungs- und Widerstandszonen' },
+  { id: 'channel', label: 'Kanäle', hint: 'Alle erkennbaren Trendkanäle' },
+  { id: 'fib_retrace', label: 'Fib R', hint: 'Fibonacci-Retracement der letzten Schwünge' },
+  { id: 'fib_extend', label: 'Fib E', hint: 'A-B-C Extension: Ziele ab dem Retrace (61.8–261.8%)' },
 ]
 
 const WERKZEUGE: { id: ChartAnalyseWerkzeug; label: string; hint: string }[] = [
@@ -282,13 +300,13 @@ export function PaChartAnalyseProvider({
     (art: ChartAutoArt) => {
       const { pts, plot } = snapRef.current
       if (!plot || pts.length < 2) return
-      const neu = baueAutoZeichnung(art, pts, plot, farbe)
-      if (!neu) return
+      const neu = baueAutoZeichnungen(art, pts, plot, farbe)
+      if (neu.length === 0) return
       persist({
         ...eintrag,
-        zeichnungen: [...eintrag.zeichnungen.filter((z) => !autoArtErsetzt(z.art, art)), neu],
+        zeichnungen: [...eintrag.zeichnungen.filter((z) => !autoArtErsetzt(z.art, art)), ...neu],
       })
-      setAusgewaehltId(neu.id)
+      setAusgewaehltId(neu[0]?.id ?? null)
       setWerkzeug('cursor')
     },
     [eintrag, farbe, persist],
@@ -553,10 +571,12 @@ export function PaChartAnalyseOverlay({
   svgRef,
   plot,
   snapPunkte = [],
+  onChartPointer,
 }: {
   svgRef: { current: SVGSVGElement | null }
   plot: ChartAnalysePlot
   snapPunkte?: { x: number; y: number }[]
+  onChartPointer?: (pt: { x: number; y: number } | null) => void
 }) {
   const ctx = useContext(Ctx)
   const hostRef = useRef<HTMLDivElement>(null)
@@ -671,7 +691,7 @@ export function PaChartAnalyseOverlay({
       <svg
         viewBox={`0 0 ${plot.viewW} ${plot.viewH}`}
         preserveAspectRatio="xMidYMid meet"
-        className={ctx.werkzeug === 'cursor' ? 'pointer-events-none' : 'pointer-events-auto cursor-crosshair'}
+        className="pointer-events-auto cursor-crosshair"
         style={{
           position: 'absolute',
           left: frame.left,
@@ -680,14 +700,17 @@ export function PaChartAnalyseOverlay({
           height: frame.height,
         }}
         onPointerMove={(e) => {
-          if (ctx.werkzeug === 'cursor') return
+          onChartPointer?.({ x: e.clientX, y: e.clientY })
           onPointer(e, 'move')
         }}
         onPointerDown={(e) => {
-          if (e.button !== 0 || ctx.werkzeug === 'cursor') return
+          if (e.button !== 0) return
           onPointer(e, 'down')
         }}
-        onPointerLeave={() => setCursor(null)}
+        onPointerLeave={() => {
+          setCursor(null)
+          onChartPointer?.(null)
+        }}
       >
         <rect
           x={plot.padL}
@@ -697,17 +720,7 @@ export function PaChartAnalyseOverlay({
           fill="transparent"
         />
         {ctx.eintrag.zeichnungen.map((z) => (
-          <ZeichnungSvg
-            key={z.id}
-            z={z}
-            plot={plot}
-            aktiv={z.id === ctx.ausgewaehltId}
-            onSelect={
-              ctx.werkzeug === 'cursor'
-                ? () => ctx.setAusgewaehltId(z.id)
-                : undefined
-            }
-          />
+          <ZeichnungSvg key={z.id} z={z} plot={plot} aktiv={z.id === ctx.ausgewaehltId} />
         ))}
         {previewArt && previewPts.length > 0 ? (
           <ZeichnungSvg
@@ -763,13 +776,11 @@ function ZeichnungSvg({
   plot,
   aktiv,
   preview = false,
-  onSelect,
 }: {
   z: ChartAnalyseZeichnung
   plot: ChartAnalysePlot
   aktiv: boolean
   preview?: boolean
-  onSelect?: () => void
 }) {
   const pts = z.punkte.map((p) => normZuPlot(plot, p))
   const a = pts[0]
@@ -777,19 +788,10 @@ function ZeichnungSvg({
   const op = preview ? 0.7 : 1
   const stroke = z.farbe
   const sw = aktiv ? 2.2 : 1.5
-  const pick = onSelect
-    ? {
-        pointerEvents: 'auto' as const,
-        onPointerDown: (e: ReactPointerEvent) => {
-          e.stopPropagation()
-          onSelect()
-        },
-      }
-    : {}
   if (!a) return null
 
   const wrap = (node: ReactNode) => (
-    <g opacity={op} {...pick}>
+    <g opacity={op}>
       {node}
     </g>
   )
@@ -828,6 +830,29 @@ function ZeichnungSvg({
       </>,
     )
   }
+  if (z.art === 'channel' && pts[0] && pts[1] && pts[2] && pts[3]) {
+    const p1 = pts[0]
+    const p2 = pts[1]
+    const p3 = pts[2]
+    const p4 = pts[3]
+    return wrap(
+      <>
+        <polygon
+          points={`${p1.x},${p1.y} ${p2.x},${p2.y} ${p4.x},${p4.y} ${p3.x},${p3.y}`}
+          fill={stroke}
+          fillOpacity={0.08}
+          stroke="none"
+        />
+        <line x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y} stroke={stroke} strokeWidth={sw} />
+        <line x1={p3.x} y1={p3.y} x2={p4.x} y2={p4.y} stroke={stroke} strokeWidth={sw} />
+        {z.text ? (
+          <text x={Math.min(p1.x, p3.x) + 6} y={Math.min(p1.y, p3.y) - 4} fill={stroke} style={{ fontSize: 11, fontWeight: 600 }}>
+            {z.text}
+          </text>
+        ) : null}
+      </>,
+    )
+  }
   if (!b) {
     return wrap(<circle cx={a.x} cy={a.y} r={3} fill={stroke} />)
   }
@@ -848,7 +873,7 @@ function ZeichnungSvg({
           strokeWidth={sw}
         />
         {z.text ? (
-          <text x={x + 6} y={y - 4} fill={stroke} style={{ fontSize: 11, fontWeight: 600 }}>
+          <text x={x + 6} y={y + 11} fill={stroke} style={{ fontSize: 11, fontWeight: 600 }}>
             {z.text}
           </text>
         ) : null}
@@ -856,37 +881,90 @@ function ZeichnungSvg({
     )
   }
   if (z.art === 'fib' || z.art === 'fib_retrace' || z.art === 'fib_extend') {
-    const levels = z.art === 'fib_extend' ? FIB_EXTEND_LEVELS : FIB_RETRACE_LEVELS
-    const xStart = z.art === 'fib_extend' ? b.x : Math.min(a.x, b.x)
-    const xEnd = z.art === 'fib_extend' ? plot.viewW - plot.padR : Math.max(a.x, b.x, xStart + 40)
+    const c = pts[2]
+    const istExtend = z.art === 'fib_extend'
+    const levels = istExtend ? FIB_EXTEND_LEVELS : FIB_RETRACE_LEVELS
     const yClip0 = plot.padT
     const yClip1 = plot.viewH - plot.padB
+    const xRight = plot.viewW - plot.padR
+    const xLeft = plot.padL
+    const xStart = istExtend
+      ? Math.min(a.x, b.x, c?.x ?? b.x)
+      : Math.min(a.x, b.x)
+    const xEnd = istExtend ? xRight : Math.max(a.x, b.x, xStart + 40)
+    const titelY = Math.min(a.y, b.y, c?.y ?? b.y) - 10
+    const levelY = (lvl: number) => {
+      if (istExtend && c) return c.y + (b.y - a.y) * lvl
+      return a.y + (b.y - a.y) * lvl
+    }
+    const pctLabel = (lvl: number) => {
+      const pct = lvl * 100
+      const basis = Number.isInteger(pct) ? `${pct.toFixed(0)}%` : `${pct.toFixed(1)}%`
+      if (istExtend && lvl === 0) return '0 · C'
+      if (istExtend && lvl === 1) return '100% MM'
+      return basis
+    }
     return wrap(
       <>
         {z.text ? (
-          <text x={xStart} y={Math.min(a.y, b.y) - 8} fill={stroke} style={{ fontSize: 11, fontWeight: 600 }}>
+          <text x={xStart} y={titelY} fill={stroke} style={{ fontSize: 11, fontWeight: 600 }}>
             {z.text}
           </text>
         ) : null}
+        {istExtend && c ? (
+          <>
+            <polyline
+              points={`${a.x},${a.y} ${b.x},${b.y} ${c.x},${c.y}`}
+              fill="none"
+              stroke={stroke}
+              strokeWidth={1}
+              strokeDasharray="5 4"
+              opacity={0.7}
+            />
+            {(
+              [
+                [a, 'A'],
+                [b, 'B'],
+                [c, 'C'],
+              ] as const
+            ).map(([p, lab]) => (
+              <g key={lab}>
+                <circle cx={p.x} cy={p.y} r={3.2} fill={stroke} />
+                <text x={p.x + 6} y={p.y - 6} fill={stroke} style={{ fontSize: 10, fontWeight: 700 }}>
+                  {lab}
+                </text>
+              </g>
+            ))}
+          </>
+        ) : (
+          <line
+            x1={a.x}
+            y1={a.y}
+            x2={b.x}
+            y2={b.y}
+            stroke={stroke}
+            strokeWidth={1}
+            strokeDasharray="4 3"
+            opacity={0.55}
+          />
+        )}
         {levels.map((lvl) => {
-          const y = a.y + (b.y - a.y) * lvl
-          if (y < yClip0 - 8 || y > yClip1 + 8) return null
-          const yDraw = Math.min(yClip1, Math.max(yClip0, y))
-          const pct = lvl * 100
-          const label = Number.isInteger(pct) ? `${pct.toFixed(0)}%` : `${pct.toFixed(1)}%`
+          const y = levelY(lvl)
+          if (y < yClip0 || y > yClip1) return null
           return (
             <g key={lvl}>
               <line
-                x1={xStart}
-                y1={yDraw}
+                x1={istExtend ? xLeft : xStart}
+                y1={y}
                 x2={xEnd}
-                y2={yDraw}
+                y2={y}
                 stroke={stroke}
                 strokeWidth={lvl === 0 || lvl === 1 ? sw : 1}
-                opacity={lvl > 1 ? 0.9 : 0.85}
+                opacity={lvl === 0 ? 0.55 : lvl > 1 ? 0.95 : 0.85}
+                strokeDasharray={lvl === 0 ? '3 3' : undefined}
               />
-              <text x={xEnd + 4} y={yDraw + 3} fill={stroke} style={{ fontSize: 10 }}>
-                {label}
+              <text x={xEnd + 4} y={y + 3} fill={stroke} style={{ fontSize: 10 }}>
+                {pctLabel(lvl)}
               </text>
             </g>
           )
