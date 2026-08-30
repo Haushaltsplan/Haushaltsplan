@@ -4,7 +4,7 @@
 
 import 'server-only'
 
-import { analyseTickerFuerPosition, isinKenntnis } from '@/lib/portfolio-analyse/isin-kenntnisse'
+import { analyseTickerFuerPosition, isinAusYahooSymbol, isinKenntnis } from '@/lib/portfolio-analyse/isin-kenntnisse'
 import { ladeYahooLiveKurs } from '@/lib/portfolio-analyse/yahoo-live-quote-server'
 import { yahooSchlusskursAm } from '@/lib/portfolio-analyse/yahoo-corporate-actions-client'
 import { createSupabaseAdmin } from '@/lib/supabase-admin'
@@ -202,15 +202,28 @@ async function ergaenzeLiveStand(rows: TrackingRow[], eintraege: NachkaufTrackin
       if (!e) return
       const basisTag = row.empfohlen_am.slice(0, 10)
       e.liveTage = tageSeit(basisTag, heute)
-      const sym = await yahooSymbol(row.ticker, row.isin)
+      const symbole = kursSymboleFuerTracking(row.ticker, row.isin)
       const startVorhanden = row.kurs_usd != null && row.kurs_usd > 0 ? row.kurs_usd : null
-      const [live, startFallback, spyVon] = await Promise.all([
-        ladeYahooLiveKurs(sym),
-        startVorhanden != null ? Promise.resolve(null) : yahooSchlusskursAm(sym, basisTag),
-        spyStart(basisTag),
-      ])
+      let livePreis: number | null = null
+      let usedSym: string | null = null
+      for (const sym of symbole) {
+        const live = await ladeYahooLiveKurs(sym)
+        if (live?.preis != null && live.preis > 0) {
+          livePreis = live.preis
+          usedSym = sym
+          break
+        }
+      }
+      const startFallback =
+        startVorhanden != null
+          ? null
+          : usedSym
+            ? await yahooSchlusskursAm(usedSym, basisTag)
+            : (
+                await Promise.all(symbole.map((sym) => yahooSchlusskursAm(sym, basisTag)))
+              ).find((v) => v != null && v > 0) ?? null
+      const spyVon = await spyStart(basisTag)
       const start = startVorhanden ?? startFallback
-      const livePreis = live?.preis ?? null
       e.liveRenditePct = start != null && livePreis != null ? renditePct(start, livePreis) : null
       e.liveSpyRenditePct =
         spyVon != null && spyLive?.preis != null ? renditePct(spyVon, spyLive.preis) : null
@@ -222,9 +235,21 @@ async function ergaenzeLiveStand(rows: TrackingRow[], eintraege: NachkaufTrackin
   )
 }
 
-async function yahooSymbol(ticker: string, isin: string | null): Promise<string> {
-  const k = isin ? isinKenntnis(isin) : null
-  return k?.symbolYahoo ?? ticker
+/** Yahoo-Listing für Kurse (WKL.AS), nicht nacktes WKL / Analyse-ADR. */
+function kursSymboleFuerTracking(ticker: string, isin: string | null): string[] {
+  const resolvedIsin = isin?.trim() || isinAusYahooSymbol(ticker)
+  const k = resolvedIsin ? isinKenntnis(resolvedIsin) : null
+  const out: string[] = []
+  const add = (s?: string | null) => {
+    const t = s?.trim().toUpperCase()
+    if (t && !out.includes(t)) out.push(t)
+  }
+  add(k?.symbolYahoo)
+  add(k?.kursNurSymbol)
+  add(ticker)
+  for (const c of k?.symbolCandidates ?? []) add(c)
+  add(k?.macrotrendsTicker)
+  return out
 }
 
 type TrackingMeta = {
@@ -317,8 +342,15 @@ export async function speichereEmpfehlungTracking(opts: {
     if (posten.betragEur <= 0) continue
     const meta = metaFuerPosten(posten, opts.scanMap)
     if (!meta) continue
-    const sym = await yahooSymbol(meta.ticker, meta.isin)
-    const live = await ladeYahooLiveKurs(sym).catch(() => null)
+    const symbole = kursSymboleFuerTracking(meta.ticker, meta.isin)
+    let livePreis: number | null = null
+    for (const sym of symbole) {
+      const live = await ladeYahooLiveKurs(sym).catch(() => null)
+      if (live?.preis != null && live.preis > 0) {
+        livePreis = live.preis
+        break
+      }
+    }
     zeilen.push({
       owner_user_id: ownerUserId,
       monat: opts.monat,
@@ -331,7 +363,7 @@ export async function speichereEmpfehlungTracking(opts: {
       kauf_trigger: meta.kaufTrigger,
       forward_pe: meta.forwardPe,
       premium_discount_pct: meta.premiumDiscountPct,
-      kurs_usd: live?.preis ?? null,
+      kurs_usd: livePreis,
       empfohlen_am: jetzt,
     })
   }
@@ -441,9 +473,19 @@ async function aktualisiereEineZeile(row: TrackingRow): Promise<void> {
   const heute = new Date().toISOString().slice(0, 10)
   const tag6m = addDaysIso(basisTag, TAGE_6M)
   const tag12m = addDaysIso(basisTag, TAGE_12M)
-  const sym = await yahooSymbol(row.ticker, row.isin)
-  const startKurs = row.kurs_usd ?? (await yahooSchlusskursAm(sym, basisTag))
-  if (!startKurs || startKurs <= 0) return
+  const symbole = kursSymboleFuerTracking(row.ticker, row.isin)
+  const startHit =
+    row.kurs_usd != null && row.kurs_usd > 0
+      ? { sym: symbole[0] ?? row.ticker, kurs: row.kurs_usd }
+      : await (async () => {
+          for (const s of symbole) {
+            const kurs = await yahooSchlusskursAm(s, basisTag)
+            if (kurs != null && kurs > 0) return { sym: s, kurs }
+          }
+          return null
+        })()
+  if (!startHit) return
+  const { sym, kurs: startKurs } = startHit
 
   const updates: Record<string, unknown> = {}
 
@@ -555,9 +597,14 @@ async function berechneScoreSignalBacktest(): Promise<NachkaufScoreBucketStat[]>
 
   const bucketMap = new Map<string, { n: number; alphaSum: number }>()
   for (const p of punkte) {
-    const sym = p.ticker
-    const start = await yahooSchlusskursAm(sym, p.datum)
-    const end = await yahooSchlusskursAm(sym, addDaysIso(p.datum, TAGE_6M))
+    const symbole = kursSymboleFuerTracking(p.ticker, null)
+    let start: number | null = null
+    let end: number | null = null
+    for (const s of symbole) {
+      start = await yahooSchlusskursAm(s, p.datum)
+      end = await yahooSchlusskursAm(s, addDaysIso(p.datum, TAGE_6M))
+      if (start && end) break
+    }
     const spyStart = await yahooSchlusskursAm(SPY, p.datum)
     const spyEnd = await yahooSchlusskursAm(SPY, addDaysIso(p.datum, TAGE_6M))
     if (!start || !end || !spyStart || !spyEnd) continue

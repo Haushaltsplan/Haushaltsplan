@@ -123,6 +123,30 @@ export const RULES = [
     },
   },
   {
+    id: 'yahoo-live-boerse-suffix',
+    severity: 'error',
+    category: 'ticker-chaos',
+    description:
+      'Live-Kurs darf EU-Suffix (.AS/.PA/.SW) nicht vor dem Fetch streichen — WKL.AS ≠ WKL.',
+    hint: 'liveKursSymbolKandidaten: zuerst volles Listing, Bare nur als Fallback (MSFT.DE → MSFT).',
+    test(filePath, content) {
+      if (!filePath.endsWith('yahoo-live-quote-server.ts')) return []
+      if (!content.includes('liveKursSymbolKandidaten')) {
+        return [{ line: 1, excerpt: 'liveKursSymbolKandidaten fehlt' }]
+      }
+      const load = content.indexOf('export async function ladeYahooLiveKurs')
+      if (load < 0) return [{ line: 1, excerpt: 'ladeYahooLiveKurs fehlt' }]
+      const body = content.slice(load, load + 1200)
+      if (!body.includes('liveKursSymbolKandidaten')) {
+        return [{ line: 1, excerpt: 'ladeYahooLiveKurs holt nicht über liveKursSymbolKandidaten' }]
+      }
+      if (/const\s+sym\s*=\s*basisTickerOhneBoerse/.test(body)) {
+        return [{ line: 1, excerpt: 'Live-Kurs streicht Börsen-Suffix vor dem Fetch' }]
+      }
+      return []
+    },
+  },
+  {
     id: 'hardcoded-isin-logik',
     severity: 'info',
     category: 'klasse-statt-beispiel',

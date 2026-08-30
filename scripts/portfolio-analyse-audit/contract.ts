@@ -2,9 +2,8 @@
  * Vertrags-Tests (Ticker, Whitelist) — lädt echte Module.
  * npx tsx scripts/portfolio-analyse-audit/contract.ts
  */
-import { analyseTickerFuerPosition } from '../../lib/portfolio-analyse/isin-kenntnisse'
+import { analyseTickerFuerPosition, isinAusYahooSymbol, isinKenntnis } from '../../lib/portfolio-analyse/isin-kenntnisse'
 import { NACHKAUF_RADAR_WHITELIST } from '../../lib/portfolio-analyse/nachkauf-radar/nachkauf-radar-whitelist'
-import { isinKenntnis } from '../../lib/portfolio-analyse/isin-kenntnisse'
 
 type Case = { isin: string; symbol?: string | null; expect: string; label: string }
 
@@ -52,6 +51,23 @@ export function runContractTests(): ContractFinding[] {
       findings.push({
         severity: 'error',
         message: `[whitelist] ${pos.name}: macrotrendsTicker ${k.macrotrendsTicker} ≠ analyse ${ticker}`,
+      })
+    }
+  }
+
+  const kursListing: Array<{ ticker: string; expect: string; label: string }> = [
+    { ticker: 'WKL', expect: 'WKL.AS', label: 'Wolters Kluwer Listing' },
+    { ticker: 'SIKA', expect: 'SIKA.SW', label: 'Sika Listing' },
+    { ticker: 'RMS', expect: 'RMS.PA', label: 'Hermès Listing' },
+  ]
+  for (const c of kursListing) {
+    const isin = isinAusYahooSymbol(c.ticker)
+    const got = isin ? isinKenntnis(isin)?.symbolYahoo?.toUpperCase() : null
+    if (got !== c.expect) {
+      findings.push({
+        severity: 'error',
+        message: `[kurs] ${c.label}: ${c.ticker} → erwartet ${c.expect}, erhalten ${got ?? 'null'}`,
+        hint: 'isinAusYahooSymbol + symbolYahoo — Live-Performance braucht das Börsen-Suffix.',
       })
     }
   }
