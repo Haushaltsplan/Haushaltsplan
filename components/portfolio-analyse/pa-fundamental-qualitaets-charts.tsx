@@ -1,6 +1,7 @@
 'use client'
 
 import { PaFundamentalMetrikChart } from '@/components/portfolio-analyse/pa-fundamental-metrik-chart'
+import { chartAnalyseSchluessel } from '@/lib/portfolio-analyse/chart-analyse-store'
 import type {
   FundamentalMetrikZeile,
   FundamentalPeriode,
@@ -79,11 +80,13 @@ export function PaFundamentalQualitaetsCharts({
   bewertungPerioden,
   zeilen,
   bewertungZeilen,
+  ticker,
 }: {
   perioden: FundamentalPeriode[]
   bewertungPerioden: FundamentalPeriode[]
   zeilen: FundamentalMetrikZeile[]
   bewertungZeilen: FundamentalMetrikZeile[]
+  ticker?: string
 }) {
   return (
     <div className="divide-y divide-[var(--app-border)]">
@@ -106,6 +109,8 @@ export function PaFundamentalQualitaetsCharts({
             onClear={() => undefined}
             onToggleSerie={() => undefined}
             onToggleLabels={() => undefined}
+            analyseSchluessel={ticker ? chartAnalyseSchluessel(ticker, `qualitaet-${panel.id}`) : undefined}
+            analyseTitel={ticker ? `${ticker} · ${panel.titel}` : panel.titel}
           />
         )
       })}

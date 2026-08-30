@@ -11,6 +11,7 @@ export const CLIENT_STATE_KEYS = {
   terminReminder: 'termin-reminder',
   watchlist: 'watchlist',
   kalenderMeta: 'kalender-meta',
+  chartAnalyse: 'chart-analyse',
 } as const
 
 export type ClientStateKey = (typeof CLIENT_STATE_KEYS)[keyof typeof CLIENT_STATE_KEYS]

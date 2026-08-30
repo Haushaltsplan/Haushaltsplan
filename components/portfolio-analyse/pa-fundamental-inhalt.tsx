@@ -540,6 +540,7 @@ export function PaFundamentalInhalt({
                 bewertungPerioden={bewertungPerioden}
                 zeilen={zeilenBereinigt}
                 bewertungZeilen={bewertungZeilen}
+                ticker={daten.ticker}
               />
               <div id="fundamental-metrik-tabelle" className="border-t border-[var(--app-border)]">
                 <PaFundamentalMetrikTabelle

@@ -2,6 +2,13 @@
 
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import { chartHoverFromClientX } from '@/components/portfolio-analyse/chart-hover'
+import {
+  PaChartAnalyseExpandButton,
+  PaChartAnalyseOverlay,
+  PaChartAnalyseProvider,
+  useChartAnalyseVollbild,
+} from '@/components/portfolio-analyse/pa-chart-analyse'
+import { chartAnalyseSchluessel } from '@/lib/portfolio-analyse/chart-analyse-store'
 import { formatDatumDe } from '@/lib/portfolio-analyse/berechnung'
 
 const TIKR_ACCENT = '#d97706'
@@ -148,6 +155,27 @@ export function PaFundamentalKursChart({
   firmenname: string
   kompakt?: boolean
 }) {
+  return (
+    <PaChartAnalyseProvider
+      schluessel={chartAnalyseSchluessel(ticker, 'kurs')}
+      titel={`${ticker} · ${firmenname}`}
+    >
+      <KursChartBody symbolYahoo={symbolYahoo} ticker={ticker} firmenname={firmenname} kompakt={kompakt} />
+    </PaChartAnalyseProvider>
+  )
+}
+
+function KursChartBody({
+  symbolYahoo,
+  ticker,
+  firmenname,
+  kompakt = false,
+}: {
+  symbolYahoo: string | null
+  ticker: string
+  firmenname: string
+  kompakt?: boolean
+}) {
   const areaGradId = useId()
   const ddGradId = useId()
   const [modus, setModus] = useState<KursChartModus>('kurs')
@@ -156,7 +184,9 @@ export function PaFundamentalKursChart({
   const [laden, setLaden] = useState(false)
   const [range, setRange] = useState<[number, number]>([0, 100])
   const containerRef = useRef<HTMLDivElement>(null)
+  const svgRef = useRef<SVGSVGElement>(null)
   const [hoverIndex, setHoverIndex] = useState<number | null>(null)
+  const vollbild = useChartAnalyseVollbild()
 
   useEffect(() => {
     if (!symbolYahoo) {
@@ -215,7 +245,7 @@ export function PaFundamentalKursChart({
     return Math.min(...drawdownSerie.map((p) => p.drawdownProzent))
   }, [drawdownSerie])
 
-  const hoehe = kompakt ? 268 : 360
+  const hoehe = vollbild ? 520 : kompakt ? 268 : 360
   const padLinks = 12
   const padRechts = 54
   const padOben = kompakt ? 16 : 24
@@ -366,13 +396,24 @@ export function PaFundamentalKursChart({
     ? (hover?.dd ?? letzterKurs)
     : (hover?.p.kurs ?? letzterKurs)
   const chartFarbe = istDrawdown ? DRAWDOWN_ACCENT : TIKR_ACCENT
+  const analysePlot = {
+    viewW: VIEW_W,
+    viewH: hoehe,
+    padL: padLinks,
+    padR: padRechts,
+    padT: padOben,
+    padB: padUnten,
+  }
+  const snapPunkte = useMemo(() => plotPts.map((p) => ({ x: p.x, y: p.y })), [plotPts])
 
   return (
     <div
       className={
-        kompakt
-          ? 'flex h-full min-h-[320px] flex-col'
-          : 'flex min-h-[420px] flex-col overflow-hidden rounded-xl border border-[var(--app-border)] bg-[var(--app-surface-muted)]/70 ring-1 ring-white/[0.03]'
+        vollbild
+          ? 'flex h-full min-h-0 flex-col'
+          : kompakt
+            ? 'flex h-full min-h-[320px] flex-col'
+            : 'flex min-h-[420px] flex-col overflow-hidden rounded-xl border border-[var(--app-border)] bg-[var(--app-surface-muted)]/70 ring-1 ring-white/[0.03]'
       }
     >
       <div className={`border-b border-[var(--app-border)] ${kompakt ? 'px-3 py-2.5' : 'px-4 py-3'}`}>
@@ -446,6 +487,7 @@ export function PaFundamentalKursChart({
                 {z.label}
               </button>
             ))}
+            <PaChartAnalyseExpandButton />
           </div>
         </div>
       </div>
@@ -461,7 +503,9 @@ export function PaFundamentalKursChart({
         ) : gefiltert.length === 0 ? (
           <p className="py-16 text-center text-xs text-[var(--app-text-muted)]">Kein Kursverlauf verfügbar.</p>
         ) : (
+          <div className="relative">
           <svg
+            ref={svgRef}
             width="100%"
             height={hoehe}
             viewBox={`0 0 ${VIEW_W} ${hoehe}`}
@@ -550,6 +594,8 @@ export function PaFundamentalKursChart({
               </text>
             ))}
           </svg>
+          <PaChartAnalyseOverlay svgRef={svgRef} plot={analysePlot} snapPunkte={snapPunkte} />
+          </div>
         )}
       </div>
 

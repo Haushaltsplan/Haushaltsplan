@@ -204,6 +204,12 @@ export async function leseLocalPayload(schluessel: ClientStateKey): Promise<unkn
       if (w.length === 0 && !leseClientStateRev(CLIENT_STATE_KEYS.watchlist)) return null
       return w
     }
+    case CLIENT_STATE_KEYS.chartAnalyse: {
+      const { leseChartAnalyseKarte } = await import('@/lib/portfolio-analyse/chart-analyse-store')
+      const k = leseChartAnalyseKarte()
+      if (Object.keys(k).length === 0 && !leseClientStateRev(CLIENT_STATE_KEYS.chartAnalyse)) return null
+      return k
+    }
     case CLIENT_STATE_KEYS.kalenderMeta:
       return null
     default:
@@ -291,6 +297,13 @@ export async function wendeClientStateAn(eintrag: ClientStateEintrag): Promise<v
         speichereWatchlist(parseWatchlistPayload(payload))
         break
       }
+      case CLIENT_STATE_KEYS.chartAnalyse: {
+        const { parseChartAnalyseKarte, schreibeChartAnalyseKarte } = await import(
+          '@/lib/portfolio-analyse/chart-analyse-store'
+        )
+        schreibeChartAnalyseKarte(parseChartAnalyseKarte(payload))
+        break
+      }
       default:
         break
     }
@@ -309,4 +322,5 @@ export const ALLE_UPLOAD_KEYS: ClientStateKey[] = [
   CLIENT_STATE_KEYS.fitnessDaily,
   CLIENT_STATE_KEYS.terminReminder,
   CLIENT_STATE_KEYS.watchlist,
+  CLIENT_STATE_KEYS.chartAnalyse,
 ]

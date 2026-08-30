@@ -3,6 +3,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { chartHoverFromClientX, type ChartHoverLayout } from '@/components/portfolio-analyse/chart-hover'
 import {
+  PaChartAnalyseExpandButton,
+  PaChartAnalyseOverlay,
+  PaChartAnalyseProvider,
+  useChartAnalyseVollbild,
+} from '@/components/portfolio-analyse/pa-chart-analyse'
+import {
   bereinigeSchaetzungsniveausInZeilen,
   formatFundamentalWert,
   periodenOhneLeereSchaetzungen,
@@ -469,21 +475,20 @@ function ChartZeitraumWahl({
   )
 }
 
-export function PaFundamentalMetrikChart({
-  perioden,
-  zeilen,
-  aktivIds,
-  labelsAnzeigen,
-  onClear,
-  onToggleSerie,
-  onToggleLabels,
-  variant = 'standard',
-  eingebettet = false,
-  werkzeugLeiste,
-  titel,
-  kompakt = false,
-  chartId,
-}: {
+export function PaFundamentalMetrikChart(props: MetrikChartProps) {
+  const inner = <MetrikChartBody {...props} />
+  if (!props.analyseSchluessel) return inner
+  return (
+    <PaChartAnalyseProvider
+      schluessel={props.analyseSchluessel}
+      titel={props.analyseTitel ?? props.titel ?? 'Kennzahlen'}
+    >
+      {inner}
+    </PaChartAnalyseProvider>
+  )
+}
+
+type MetrikChartProps = {
   perioden: FundamentalPeriode[]
   zeilen: FundamentalMetrikZeile[]
   aktivIds: Set<string>
@@ -497,7 +502,25 @@ export function PaFundamentalMetrikChart({
   titel?: string
   kompakt?: boolean
   chartId?: string
-}) {
+  analyseSchluessel?: string
+  analyseTitel?: string
+}
+
+function MetrikChartBody({
+  perioden,
+  zeilen,
+  aktivIds,
+  labelsAnzeigen,
+  onClear,
+  onToggleSerie,
+  onToggleLabels,
+  variant = 'standard',
+  eingebettet = false,
+  werkzeugLeiste,
+  titel,
+  kompakt = false,
+  chartId,
+}: MetrikChartProps) {
   const zeilenClean = useMemo(
     () => bereinigeSchaetzungsniveausInZeilen(perioden, zeilen),
     [perioden, zeilen],
@@ -519,6 +542,7 @@ export function PaFundamentalMetrikChart({
   const [hiddenIds, setHiddenIds] = useState<Set<string>>(() => new Set())
   const [hover, setHover] = useState<ChartHoverLayout | null>(null)
   const svgWrapRef = useRef<SVGSVGElement>(null)
+  const vollbild = useChartAnalyseVollbild()
 
   const legendKey = [...aktivIds].join(',')
   const legendIds = useMemo(() => (legendKey ? legendKey.split(',') : []), [legendKey])
@@ -824,6 +848,18 @@ export function PaFundamentalMetrikChart({
   const effektivePlotW = VIEW_W - (dualAxis ? PAD_LINKS_DUAL : padLinks) - (dualAxis ? PAD_RECHTS_DUAL : PAD_RECHTS_SINGLE)
   const padLHover = dualAxis ? PAD_LINKS_DUAL : padLinks
   const padRHover = dualAxis ? PAD_RECHTS_DUAL : PAD_RECHTS_SINGLE
+  const analysePlot = {
+    viewW: VIEW_W,
+    viewH: HOEHE,
+    padL: padLHover,
+    padR: padRHover,
+    padT: PAD_OBEN,
+    padB: PAD_UNTEN,
+  }
+  const snapPunkte = useMemo(
+    () => serien.flatMap((s) => punkteEinerSerie(s).map((p) => ({ x: p.x, y: p.y }))),
+    [serien],
+  )
 
   const onChartMove = useCallback(
     (clientX: number) => {
@@ -924,15 +960,18 @@ export function PaFundamentalMetrikChart({
   return (
     <div
       id={ankerId}
-      className={kastenKlasse}
+      className={vollbild ? `${kastenKlasse} flex h-full min-h-0 flex-col`.trim() : kastenKlasse}
     >
       <div className="px-4 py-3">
         <div className="flex flex-wrap items-start justify-between gap-2">
           <div className="min-w-0 flex-1">
             {werkzeugLeiste}
-            <p className="text-center text-sm font-medium text-[var(--app-text)]">
-              {titel ?? (variant === 'bewertung' ? 'Bewertungsverlauf' : 'Historischer Kennzahlenverlauf')}
-            </p>
+            <div className="flex items-start justify-center gap-1">
+              <p className="text-center text-sm font-medium text-[var(--app-text)]">
+                {titel ?? (variant === 'bewertung' ? 'Bewertungsverlauf' : 'Historischer Kennzahlenverlauf')}
+              </p>
+              <PaChartAnalyseExpandButton />
+            </div>
             {!kompakt ? (
               <p className="mt-0.5 text-center text-[11px] text-[var(--app-text-muted)]">
                 {variant === 'bewertung'
@@ -1023,14 +1062,14 @@ export function PaFundamentalMetrikChart({
         </div>
       </div>
 
-      <div className="px-2 pb-3 pt-1 sm:px-4">
+      <div className={vollbild ? 'flex min-h-0 flex-1 flex-col px-2 pb-3 pt-1 sm:px-4' : 'px-2 pb-3 pt-1 sm:px-4'}>
         {serien.length === 0 ? (
           <p className="py-16 text-center text-sm text-[var(--app-text-muted)]">
             Kennzahl in der Legende anklicken, um sie wieder einzublenden.
           </p>
         ) : (
         <div
-          className="relative aspect-[1000/320]"
+          className={vollbild ? 'relative h-full min-h-[280px]' : 'relative aspect-[1000/320]'}
           onMouseMove={(e) => onChartMove(e.clientX)}
           onMouseLeave={() => setHover(null)}
         >
@@ -1334,6 +1373,7 @@ export function PaFundamentalMetrikChart({
             </ul>
           </div>
         ) : null}
+        <PaChartAnalyseOverlay svgRef={svgWrapRef} plot={analysePlot} snapPunkte={snapPunkte} />
         </div>
         )}
 
