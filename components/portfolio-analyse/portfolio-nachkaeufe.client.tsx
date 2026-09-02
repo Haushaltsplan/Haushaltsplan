@@ -4,7 +4,8 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { EarningsCallAnalyseDarstellung } from '@/components/portfolio-analyse/pa-earnings-call-analyse'
 import { PortfolioAnalyseShell } from '@/components/portfolio-analyse/portfolio-analyse-shell.client'
 import { PaCard, PaSectionTitle, PA_SCROLL_ELEGANT } from '@/components/portfolio-analyse/pa-ui'
-import { istWhitelistIsin, risikoKlasseFuerIsin, type RisikoKlasse } from '@/lib/portfolio-analyse/nachkauf-radar/nachkauf-radar-whitelist'
+import { istWatchlistNeukauf, risikoKlasseFuerIsin, type RisikoKlasse } from '@/lib/portfolio-analyse/nachkauf-radar/nachkauf-radar-whitelist'
+import { clientZugriffRolle } from '@/lib/zugriff-client'
 import { portfolioEmpfehlungVon, type PortfolioEmpfehlungTyp } from '@/lib/portfolio-analyse/nachkauf-radar/nachkauf-trim-signal'
 import type {
   InsiderKauf,
@@ -247,8 +248,8 @@ function trimKategorieLabel(k: TrimSignal['faktoren'][number]['kategorie']): str
   return map[k] ?? k
 }
 
-function risikoKlasseVon(isin: string): RisikoKlasse {
-  return risikoKlasseFuerIsin(isin)
+function risikoKlasseVon(eintrag: NachkaufScanEintrag): RisikoKlasse {
+  return risikoKlasseFuerIsin(eintrag.isin, eintrag.depotGewichtPct, eintrag.kandidatenQuelle)
 }
 
 // ---------------------------------------------------------------------------
@@ -623,7 +624,7 @@ function TitelKarte({
       <div className="mt-2 flex flex-wrap gap-1 pl-4">
         <TriggerBadge ausgeloest={eintrag.kaufTriggerAusgeloest} text={eintrag.kaufTriggerText} />
         <InsiderBadge kaeufe={eintrag.insiderKaeufe} />
-        {!istWhitelistIsin(eintrag.isin) && (
+        {istWatchlistNeukauf(eintrag.isin, eintrag.depotGewichtPct, eintrag.kandidatenQuelle) && (
           <span
             className="inline-flex rounded bg-sky-500/10 px-1.5 py-0.5 text-[10px] font-semibold text-sky-300 ring-1 ring-sky-500/20"
             title="Watchlist-Neukauf: Cap spekulativ ≤100 €, Score-Hürde ≥84 + Deep Research."
@@ -637,7 +638,7 @@ function TitelKarte({
           </span>
         )}
         {(() => {
-          const rk = risikoKlasseVon(eintrag.isin)
+          const rk = risikoKlasseVon(eintrag)
           const cfg =
             rk === 'konservativ'
               ? 'bg-emerald-500/10 text-emerald-400 ring-emerald-500/20'
@@ -1772,7 +1773,7 @@ export function NachkaufRadarClient() {
   const [ergebnisse, setErgebnisse] = useState<NachkaufScanEintrag[]>([])
   const [monatsEmpfehlung, setMonatsEmpfehlung] = useState<MonatsEmpfehlung | null>(null)
   const [gescannt_am, setGescannt_am] = useState<string | null>(null)
-  const [gesamtAnzahl, setGesamtAnzahl] = useState<number>(32)
+  const [gesamtAnzahl, setGesamtAnzahl] = useState<number | null>(null)
   const [ausstehend, setAusstehend] = useState<number>(0)
   const [laden, setLaden] = useState(true)
   const [scanLaeuft, setScanLaeuft] = useState(false)
@@ -1804,7 +1805,7 @@ export function NachkaufRadarClient() {
         const res = await fetch('/api/portfolio-analyse/nachkaeufe/ergebnisse')
         if (res.ok) {
           const paket = (await res.json()) as NachkaufErgebnissePaket
-          if (paket.gesamtAnzahl) setGesamtAnzahl(paket.gesamtAnzahl)
+          if (typeof paket.gesamtAnzahl === 'number') setGesamtAnzahl(paket.gesamtAnzahl)
           if (paket.ausstehend != null) setAusstehend(paket.ausstehend)
           if (paket.ergebnisse.length > 0) {
             setErgebnisse(paket.ergebnisse)
@@ -1905,18 +1906,19 @@ export function NachkaufRadarClient() {
         }
         const paket = (await res.json()) as NachkaufScanPaket
         letztesPaket = paket
+        if (typeof paket.gesamtAnzahl === 'number') setGesamtAnzahl(paket.gesamtAnzahl)
+        if (paket.ausstehend != null) setAusstehend(paket.ausstehend)
         if (paket.ergebnisse.length > 0) {
           setErgebnisse(paket.ergebnisse)
           setGescannt_am(paket.gescannt_am)
-          setGesamtAnzahl(paket.gesamtAnzahl ?? 32)
-          setAusstehend(paket.ausstehend ?? 0)
         }
         if (paket.fehler) setFehler(paket.fehler)
         if (!paket.ok) break
 
         const verbleibend = paket.verbleibend ?? 0
         const gescannt = paket.gescannt ?? 0
-        const total = paket.gesamtAnzahl ?? 32
+        const total = paket.gesamtAnzahl ?? 0
+        if (total <= 0) break
         const fertig = Math.min(total, total - (paket.ausstehend ?? 0))
         setScanFortschritt(
           erzwingen
@@ -1930,7 +1932,7 @@ export function NachkaufRadarClient() {
       }
 
       // Abschließen: Ranking, Insider, Depot-Gewichte
-      if (letztesPaket?.ok) {
+      if (letztesPaket?.ok && (letztesPaket.gesamtAnzahl ?? 0) > 0) {
         setScanFortschritt('Abschließen …')
         const fin = await fetch('/api/portfolio-analyse/nachkaeufe/scan', {
           method: 'POST',
@@ -1939,6 +1941,7 @@ export function NachkaufRadarClient() {
         })
         if (fin.ok) {
           const paket = (await fin.json()) as NachkaufScanPaket
+          if (typeof paket.gesamtAnzahl === 'number') setGesamtAnzahl(paket.gesamtAnzahl)
           if (paket.ergebnisse.length > 0) {
             setErgebnisse(paket.ergebnisse)
             setMonatsEmpfehlung(paket.monatsEmpfehlung)
@@ -2067,6 +2070,8 @@ export function NachkaufRadarClient() {
   })()
 
   const selected = ergebnisse.find((e) => e.ticker === selectedTicker) ?? null
+  const gastRadar = clientZugriffRolle() === 'portfolio_gast'
+  const radarLeer = !laden && gesamtAnzahl === 0
 
   // Statistiken
   const gruen = ergebnisse.filter((e) => e.ampel === 'gruen').length
@@ -2093,7 +2098,11 @@ export function NachkaufRadarClient() {
         <div className="flex flex-wrap items-start justify-between gap-4">
           <PaSectionTitle
             title="Nachkauf-Radar"
-            description="Monatliche Priorisierung: Wo neues Kapital hin — und wo Positionen reduziert werden sollten?"
+            description={
+              gastRadar
+                ? 'Scannt dein Depot und deine Watchlist — eigene Empfehlungen, unabhängig vom Eigentümer-Radar.'
+                : 'Monatliche Priorisierung: Wo neues Kapital hin — und wo Positionen reduziert werden sollten?'
+            }
           />
           <div className="flex flex-wrap items-center gap-2">
             {gescannt_am && (
@@ -2108,13 +2117,13 @@ export function NachkaufRadarClient() {
                 disabled={scanLaeuft || laden}
                 className="rounded-xl bg-amber-500/15 px-4 py-2 text-sm font-medium text-amber-300 ring-1 ring-amber-500/25 transition-all hover:bg-amber-500/20 disabled:opacity-50"
               >
-                Scan fortsetzen ({ergebnisse.length}/{gesamtAnzahl})
+                Scan fortsetzen ({ergebnisse.length}/{gesamtAnzahl ?? ergebnisse.length})
               </button>
             )}
             <button
               type="button"
               onClick={() => starteNeuenScan(true)}
-              disabled={scanLaeuft || laden}
+              disabled={scanLaeuft || laden || radarLeer}
               className="rounded-xl bg-teal-500/15 px-4 py-2 text-sm font-medium text-teal-300 ring-1 ring-teal-500/25 transition-all hover:bg-teal-500/20 disabled:opacity-50"
             >
               {scanLaeuft ? 'Scan läuft …' : 'Neuer Scan'}
@@ -2200,11 +2209,17 @@ export function NachkaufRadarClient() {
                     <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-[var(--app-surface-muted)]">
                       <div
                         className="h-full rounded-full bg-teal-500 transition-all"
-                        style={{ width: `${Math.round((ergebnisse.length / gesamtAnzahl) * 100)}%` }}
+                        style={{
+                          width: `${
+                            gesamtAnzahl && gesamtAnzahl > 0
+                              ? Math.round((ergebnisse.length / gesamtAnzahl) * 100)
+                              : 0
+                          }%`,
+                        }}
                       />
                     </div>
                     <span className="text-[11px] tabular-nums text-[var(--app-text-muted)]">
-                      {ergebnisse.length}/{gesamtAnzahl}
+                      {ergebnisse.length}/{gesamtAnzahl ?? ergebnisse.length}
                     </span>
                   </div>
                 )}
@@ -2224,13 +2239,29 @@ export function NachkaufRadarClient() {
         {/* Erster Start */}
         {!laden && !scanLaeuft && ergebnisse.length === 0 && (
           <PaCard className="p-8 text-center">
-            <p className="text-sm text-[var(--app-text-muted)]">
-              Noch kein Scan durchgeführt. Klicke auf{' '}
-              <span className="font-medium text-teal-400">Neuer Scan</span>, um alle Positionen zu analysieren.
-            </p>
-            <p className="mt-2 text-xs text-[var(--app-text-muted)]">
-              Macrotrends-Mediane, Kaufzonen (Score ≥80), Performance-Tracking vs. SPY, Klumpenrisiko.
-            </p>
+            {radarLeer ? (
+              <>
+                <p className="text-sm text-[var(--app-text-muted)]">
+                  Noch keine Aktien zum Scannen. Importiere dein Depot oder füge Titel zur{' '}
+                  <span className="font-medium text-teal-400">Watchlist</span> hinzu — der Radar
+                  analysiert nur deine Unternehmen, nicht die Liste des Eigentümers.
+                </p>
+                <p className="mt-2 text-xs text-[var(--app-text-muted)]">
+                  Danach „Neuer Scan“ starten. Depot-Positionen sind Nachkäufe; Watchlist-Titel
+                  gelten als Neukauf (höhere Hürde).
+                </p>
+              </>
+            ) : (
+              <>
+                <p className="text-sm text-[var(--app-text-muted)]">
+                  Noch kein Scan durchgeführt. Klicke auf{' '}
+                  <span className="font-medium text-teal-400">Neuer Scan</span>, um alle Positionen zu analysieren.
+                </p>
+                <p className="mt-2 text-xs text-[var(--app-text-muted)]">
+                  Macrotrends-Mediane, Kaufzonen (Score ≥80), Performance-Tracking vs. SPY, Klumpenrisiko.
+                </p>
+              </>
+            )}
           </PaCard>
         )}
 
@@ -2247,7 +2278,7 @@ export function NachkaufRadarClient() {
                 <div>
                   <p className="text-sm font-semibold text-teal-300">Monatsallokation (regelbasiert)</p>
                   <p className="mt-0.5 text-xs text-[var(--app-text-muted)]">
-                    Euro-Beträge aus Regeln. Whitelist ≥76 / Watchlist-Neukauf ≥84 — jeweils mit Deep Research.
+                    Euro-Beträge aus Regeln. Depot-Nachkauf ≥76 / Watchlist-Neukauf ≥84 — jeweils mit Deep Research.
                     KI erklärt und warnt, ändert keine Beträge nach oben.
                   </p>
                 </div>

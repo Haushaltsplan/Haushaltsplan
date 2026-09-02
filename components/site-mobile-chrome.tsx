@@ -23,9 +23,11 @@ import {
 import { CSS } from '@dnd-kit/utilities'
 import { NavLinkList } from '@/components/nav-link-list'
 import { ThemeToggle } from '@/components/theme-toggle'
+import { useOmniaRolle } from '@/components/zugriff-gate'
 import { lockAppScroll } from '@/lib/app-scroll-lock'
 import { istInvestmentsGesperrt, investmentsSperreNavTitle } from '@/lib/investments-sperre'
 import { HREF_TO_DEF, type NavItem as OmniaNavItem, linkActive, navHrefForPathname } from '@/lib/nav-model'
+import { supabase } from '@/lib/supabase'
 import { useNavOrder } from '@/lib/use-nav-order'
 
 const BOTTOM_TAB_COUNT = 4
@@ -126,6 +128,8 @@ function SortableDrawerRow({ def, pathname }: { def: OmniaNavItem; pathname: str
 export function SiteMobileChrome() {
   const pathname = usePathname()
   const { order, orderedDefs, persistOrder } = useNavOrder()
+  const rolle = useOmniaRolle()
+  const gast = rolle === 'portfolio_gast'
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [editOrder, setEditOrder] = useState(false)
 
@@ -181,7 +185,7 @@ export function SiteMobileChrome() {
 
           <div className="min-w-0 flex-1">
             <p className="truncate app-eyebrow text-[10px]">
-              Omnia
+              {gast ? 'Portfolioanalyse' : 'Omnia'}
             </p>
             <p className="truncate text-base font-semibold text-[var(--app-text)]">
               {currentDef?.label ?? 'Start'}
@@ -196,11 +200,12 @@ export function SiteMobileChrome() {
         className="app-glass-bar fixed inset-x-0 bottom-0 z-50 border-t pb-[env(safe-area-inset-bottom,0px)] shadow-[0_-8px_32px_-12px_var(--app-shadow-lg)] md:hidden"
         aria-label="Schnellnavigation"
       >
-        <div className="grid h-[3.75rem] grid-cols-5">
+        <div className={`grid h-[3.75rem] ${gast ? 'grid-cols-1' : 'grid-cols-5'}`}>
           {bottomTabs.map((tab) => (
             <MobileBottomTab key={tab.href} tab={tab} pathname={pathname} />
           ))}
 
+          {gast ? null : (
           <button
             type="button"
             onClick={() => setDrawerOpen(true)}
@@ -220,6 +225,7 @@ export function SiteMobileChrome() {
             </span>
             <span>Mehr</span>
           </button>
+          )}
         </div>
       </nav>
 
@@ -234,12 +240,14 @@ export function SiteMobileChrome() {
           <aside className="app-glass-bar absolute inset-y-0 left-0 flex w-[min(100vw-3rem,320px)] max-w-full flex-col border-r shadow-2xl shadow-black/40">
             <div className="flex shrink-0 items-center justify-between gap-2 border-b border-[var(--app-border)] px-4 py-4 pt-[max(1rem,env(safe-area-inset-top))]">
               <Link
-                href="/"
+                href={gast ? '/portfolioanalyse' : '/'}
                 onClick={closeDrawer}
                 className="flex min-w-0 items-center gap-2.5 rounded-lg outline-none transition hover:opacity-90 focus-visible:ring-2 focus-visible:ring-teal-500/40"
               >
                 <Image src="/icon.svg" alt="" width={72} height={72} unoptimized className="h-9 w-9 object-contain" />
-                <span className="truncate text-[15px] font-semibold text-[var(--app-text)]">Omnia</span>
+                <span className="truncate text-[15px] font-semibold text-[var(--app-text)]">
+                  {gast ? 'Portfolioanalyse' : 'Omnia'}
+                </span>
               </Link>
               <button
                 type="button"
@@ -251,6 +259,7 @@ export function SiteMobileChrome() {
               </button>
             </div>
 
+            {gast ? null : (
             <div className="flex shrink-0 items-center justify-between gap-2 border-b border-[var(--app-border)] px-4 py-2">
               <p className="text-xs font-medium text-[var(--app-text-muted)]">
                 {editOrder ? 'Reihenfolge per Ziehen ändern' : 'Alle Bereiche'}
@@ -263,6 +272,7 @@ export function SiteMobileChrome() {
                 {editOrder ? 'Fertig' : 'Anordnen'}
               </button>
             </div>
+            )}
 
             <nav className="flex flex-1 flex-col gap-0.5 overflow-y-auto overscroll-contain px-2 py-3" aria-label="Hauptnavigation">
               {editOrder ? (
@@ -279,6 +289,18 @@ export function SiteMobileChrome() {
             </nav>
 
             <div className="shrink-0 space-y-2 border-t border-[var(--app-border)] px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+              {rolle !== 'none' && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    closeDrawer()
+                    void supabase.auth.signOut()
+                  }}
+                  className="block text-[11px] text-[var(--app-text-muted)] transition hover:text-[var(--app-text)]"
+                >
+                  Abmelden
+                </button>
+              )}
               <Link
                 href="/datenschutz"
                 onClick={closeDrawer}

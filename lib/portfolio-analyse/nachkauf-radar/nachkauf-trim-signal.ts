@@ -38,8 +38,8 @@ const MIN_FAKTOR_GEWICHT = 5
 /** Maximaler Teilverkauf in % — Langfrist-Investor, kein Komplett-Umschichten. */
 const MAX_TEILVERKAUF_PCT = 30
 
-function risikoKlasseVon(isin: string): RisikoKlasse {
-  return risikoKlasseFuerIsin(isin)
+function risikoKlasseVon(e: NachkaufScanEintrag): RisikoKlasse {
+  return risikoKlasseFuerIsin(e.isin, e.depotGewichtPct, e.kandidatenQuelle)
 }
 
 function clamp(n: number, min: number, max: number): number {
@@ -128,7 +128,7 @@ function berechneTrimSignalFuerEintrag(
 
   const position = whitelistMap.get(e.isin.toUpperCase())
   const verlauf = e.scoreVerlauf
-  const risiko = risikoKlasseVon(e.isin)
+  const risiko = risikoKlasseVon(e)
   const zielGewicht = ZIEL_GEWICHT[risiko]
   const faktoren: TrimFaktor[] = []
 
@@ -349,7 +349,7 @@ function bestimmeAktion(
   }
 
   // Teilverkauf nur bei klarer Evidenz
-  if (hatKlumpen && depotUeberschussRelevant(e.depotGewichtPct ?? 0, risikoKlasseVon(e.isin))) {
+  if (hatKlumpen && depotUeberschussRelevant(e.depotGewichtPct ?? 0, risikoKlasseVon(e))) {
     if (prioritaet >= 55) return { aktion: 'teilverkauf', dringlichkeit: 'mittel' }
     return { aktion: 'teilverkauf', dringlichkeit: 'niedrig' }
   }

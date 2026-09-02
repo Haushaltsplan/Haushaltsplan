@@ -60,7 +60,7 @@ export type WhitelistPosition = {
    * Herkunft des Kandidaten: feste Whitelist (Default) oder Watchlist-Sync aus Supabase.
    * Watchlist-Kandidaten sind noch NICHT im Depot → Kauf wäre ein Neukauf.
    */
-  quelle?: 'whitelist' | 'watchlist'
+  quelle?: 'whitelist' | 'watchlist' | 'depot'
   /**
    * Yahoo-Symbol für Watchlist-Kandidaten ohne Eintrag in ISIN_KENNTNISSE.
    * Whitelist-Positionen brauchen das nicht (dort läuft alles über isinKenntnis()).
@@ -423,14 +423,32 @@ export function istWhitelistIsin(isin: string): boolean {
   return NACHKAUF_RADAR_WHITELIST.some((p) => p.isin.toUpperCase() === key)
 }
 
+export type KandidatenQuelle = NonNullable<WhitelistPosition['quelle']>
+
+/** Watchlist-Neukauf: nicht im Depot und nicht auf der festen Whitelist. */
+export function istWatchlistNeukauf(
+  isin: string,
+  depotGewichtPct?: number | null,
+  quelle?: KandidatenQuelle | null,
+): boolean {
+  if (quelle === 'depot' || quelle === 'whitelist') return false
+  if ((depotGewichtPct ?? 0) > 0) return false
+  if (quelle === 'watchlist') return true
+  return !istWhitelistIsin(isin)
+}
+
 /**
  * Risikoklasse für Caps / Allokation.
- * Whitelist: hinterlegte Klasse. Alles andere (Watchlist-Neukauf) → spekulativ.
+ * Whitelist: hinterlegte Klasse. Depot-Titel ohne Whitelist → moderat. Watchlist-Neukauf → spekulativ.
  */
-export function risikoKlasseFuerIsin(isin: string): RisikoKlasse {
+export function risikoKlasseFuerIsin(
+  isin: string,
+  depotGewichtPct?: number | null,
+  quelle?: KandidatenQuelle | null,
+): RisikoKlasse {
   const key = isin.trim().toUpperCase()
   const hit = NACHKAUF_RADAR_WHITELIST.find((p) => p.isin.toUpperCase() === key)
   if (hit?.risikoKlasse) return hit.risikoKlasse
-  if (!hit) return 'spekulativ'
-  return 'moderat'
+  if (quelle === 'depot' || (depotGewichtPct ?? 0) > 0) return 'moderat'
+  return 'spekulativ'
 }

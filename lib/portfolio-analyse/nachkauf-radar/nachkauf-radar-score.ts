@@ -64,8 +64,8 @@ const SPARPLAN_RISIKO_CAP: Record<RisikoKlasse, number> = {
   spekulativ: 100,
 }
 
-function risikoKlasseVon(isin: string): RisikoKlasse {
-  return risikoKlasseFuerIsin(isin)
+function risikoKlasseVon(e: NachkaufScanEintrag): RisikoKlasse {
+  return risikoKlasseFuerIsin(e.isin, e.depotGewichtPct, e.kandidatenQuelle)
 }
 
 // ---------------------------------------------------------------------------
@@ -603,7 +603,7 @@ export function berechneRegelAllokation(
   let restBudget = budgetEur
 
   for (const { eintrag, gewicht } of gewichte) {
-    const risiko = risikoKlasseVon(eintrag.isin)
+    const risiko = risikoKlasseVon(eintrag)
     const maxBetrag = eintrag.klumpenrisiko
       ? Math.min(SPARPLAN_RISIKO_CAP[risiko], MAX_KLUMPEN)
       : Math.min(SPARPLAN_RISIKO_CAP[risiko], budgetEur)
@@ -630,11 +630,11 @@ export function berechneRegelAllokation(
 
   if (restBudget >= MIN_POS && posten.length > 0) {
     const konservativIdx = kandidaten.findIndex(
-      (e, i) => posten[i] && risikoKlasseVon(e.isin) === 'konservativ' && !e.klumpenrisiko,
+      (e, i) => posten[i] && risikoKlasseVon(e) === 'konservativ' && !e.klumpenrisiko,
     )
     const target = konservativIdx >= 0 ? konservativIdx : 0
     if (posten[target]) {
-      const risiko = risikoKlasseVon(kandidaten[target]!.isin)
+      const risiko = risikoKlasseVon(kandidaten[target]!)
       posten[target]!.betragEur = Math.min(
         posten[target]!.betragEur + restBudget,
         Math.min(SPARPLAN_RISIKO_CAP[risiko], budgetEur),

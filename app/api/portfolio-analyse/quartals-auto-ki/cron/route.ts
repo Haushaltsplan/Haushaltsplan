@@ -9,6 +9,7 @@
  * Gesichert durch CRON_SECRET.
  */
 import { NextResponse } from 'next/server'
+import { runWithPrimaeremOwner } from '@/lib/request-owner'
 import { laufeQuartalsAutoKi } from '@/lib/portfolio-analyse/quartals-auto-ki-cron-server'
 import {
   ladeQuartalsAutoKiFortschritt,
@@ -41,6 +42,7 @@ export async function GET(req: Request) {
   const phaseParam = parsePhase(url.searchParams.get('phase'))
 
   try {
+    return await runWithPrimaeremOwner(async () => {
     if (reset) {
       await speichereQuartalsAutoKiFortschritt({
         resumeOffset: 0,
@@ -129,6 +131,7 @@ export async function GET(req: Request) {
           }
         : null,
       zeitstempel: new Date().toISOString(),
+    })
     })
   } catch (e) {
     console.error('[quartals-auto-ki-cron]', e)

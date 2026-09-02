@@ -4,6 +4,8 @@ import { istOeffentlicheRoute } from '@/lib/public-routes'
 import { appInputClass, appSectionCardClass } from '@/lib/app-ui'
 import { istOmniaNativeApp } from '@/lib/fitnessdaten/omnia-native'
 import { supabase } from '@/lib/supabase'
+import { setzeClientZugriff } from '@/lib/zugriff-client'
+import { omniaRolleAusUser, ownerEmailsPublic } from '@/lib/zugriff-rollen'
 import type { Session } from '@supabase/supabase-js'
 import { usePathname } from 'next/navigation'
 import type { ReactNode } from 'react'
@@ -38,17 +40,6 @@ function setzeCooldown(ms: number) {
   } catch {
     /* ignore */
   }
-}
-
-const ALLOWED_EMAILS = (process.env.NEXT_PUBLIC_ALLOWED_EMAILS || '')
-  .split(/[,;\s]+/)
-  .map((s) => s.trim().toLowerCase())
-  .filter(Boolean)
-
-function emailErlaubt(email: string | null | undefined): boolean {
-  if (ALLOWED_EMAILS.length === 0) return true
-  if (!email) return true
-  return ALLOWED_EMAILS.includes(String(email).toLowerCase())
 }
 
 function appOrigin(): string {
@@ -112,19 +103,23 @@ export function AuthGate({ children }: { children: ReactNode }) {
 
   const uebernehmeSession = (next: Session | null) => {
     if (next) {
-      const mail = next.user?.email
-      if (mail && !emailErlaubt(mail)) {
+      const rolle = omniaRolleAusUser(next.user, ownerEmailsPublic())
+      if (rolle === 'none') {
+        setzeClientZugriff({ userId: null, rolle: 'none' })
         setVerweigert(true)
         setSession(null)
         void supabase.auth.signOut()
         return
       }
+      setzeClientZugriff({ userId: next.user.id, rolle })
       setVerweigert(false)
       setSession(next)
       markiereGeraetVertraut()
+      const mail = next.user?.email
       if (mail) speichereEmail(mail)
       return
     }
+    setzeClientZugriff({ userId: null, rolle: 'none' })
     setSession(null)
   }
 
@@ -177,10 +172,6 @@ export function AuthGate({ children }: { children: ReactNode }) {
     const clean = email.trim()
     if (!clean) {
       toast.error('Bitte E-Mail eingeben.')
-      return
-    }
-    if (!emailErlaubt(clean)) {
-      toast.error('Diese E-Mail ist für diese App nicht freigeschaltet.')
       return
     }
     if (cooldownSec > 0) {

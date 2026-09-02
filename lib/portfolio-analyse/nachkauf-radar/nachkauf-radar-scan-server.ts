@@ -1,7 +1,7 @@
 /**
  * Nachkauf-Radar — Scan-Server (Stufe A).
  *
- * 1. Feste Whitelist (32 Quality-Positionen) + Watchlist-Titel (Cloud-Sync)
+ * 1. Eigentümer: feste Whitelist + Watchlist. Gast: eigenes Depot + eigene Watchlist.
  * 2. Für jede Position: Fundamentaldaten + gecachte KI-Summaries
  * 3. Regelbasierter Score inkl. historischer Relative Bewertung + Kaufzonen-Trigger
  * 4. Gemini Flash: kurze Begründung pro Titel
@@ -56,7 +56,11 @@ import {
 import { ergaenzeScoreVerlauf, speichereVerlaufPunkte } from './nachkauf-radar-verlauf-server'
 import { berechneTrimSignale } from './nachkauf-trim-signal'
 import { wendeNachkaufDisziplinAn } from './nachkauf-disziplin-server'
-import { ladeNachkaufKandidaten } from './nachkauf-watchlist-cloud-server'
+import {
+  behalteGastKandidatenInPlace,
+  ladeNachkaufKandidaten,
+  setzeKandidatenQuelle,
+} from './nachkauf-watchlist-cloud-server'
 import type { WhitelistPosition } from './nachkauf-radar-whitelist'
 import type { NachkaufScanAnfrage, NachkaufScanEintrag, NachkaufScanPaket } from './nachkauf-radar-types'
 
@@ -389,6 +393,7 @@ async function scanneEinenTitel(opts: {
     gescannt_am: new Date().toISOString(),
     tiefenAnalyse: opts.deepResearchMap.get(ticker.toUpperCase()) ?? null,
     depotGewichtPct: null,
+    kandidatenQuelle: position.quelle ?? null,
     klumpenrisiko: false,
     kaufTriggerAusgeloest,
     kaufTriggerText,
@@ -408,6 +413,11 @@ async function reichereErgebnisseAn(
   batchKontext: NachkaufBatchKontext | null = null,
   kandidaten: WhitelistPosition[] = [],
 ): Promise<void> {
+  if (kandidaten.length > 0) {
+    behalteGastKandidatenInPlace(eintraege, kandidaten)
+    setzeKandidatenQuelle(eintraege, kandidaten)
+  }
+  if (eintraege.length === 0) return
   await Promise.allSettled([
     ergaenzeDepotGewichte(eintraege),
     ergaenzeScoreVerlauf(eintraege),
@@ -424,9 +434,21 @@ async function reichereErgebnisseAn(
 // ---------------------------------------------------------------------------
 
 export async function laufeScan(anfrage: NachkaufScanAnfrage): Promise<NachkaufScanPaket> {
-  // Feste Whitelist + Watchlist-Titel aus Supabase (Cloud-Sync der Watchlist-Seite)
   const kandidaten = await ladeNachkaufKandidaten()
   const gesamtAnzahl = kandidaten.length
+  if (gesamtAnzahl === 0) {
+    return {
+      ok: true,
+      ergebnisse: [],
+      monatsEmpfehlung: null,
+      gescannt_am: new Date().toISOString(),
+      gesamtAnzahl: 0,
+      gescannt: 0,
+      ausstehend: 0,
+      verbleibend: 0,
+      teilscan: false,
+    }
+  }
   const perf = await ladeNachkaufPerformance(undefined, { mitLive: false }).catch(() => null)
   const batchKontext = await ladeNachkaufBatchKontext(
     kandidaten.map((p) => p.isin),
@@ -439,8 +461,8 @@ export async function laufeScan(anfrage: NachkaufScanAnfrage): Promise<NachkaufS
     const positionEintrag = kandidaten.find((p) => p.isin.toUpperCase() === isinTarget)
     if (!positionEintrag) {
       const gespeicherte = await ladeNachkaufScanAusCloud()
-      await reichereErgebnisseAn(gespeicherte, false, batchKontext)
-      return { ok: false, ergebnisse: gespeicherte, monatsEmpfehlung: berechneMonatsEmpfehlung(gespeicherte), gescannt_am: gespeicherte[0]?.gescannt_am ?? new Date().toISOString(), gesamtAnzahl, gescannt: 0, ausstehend: 0, fehler: `ISIN ${isinTarget} weder in Whitelist noch Watchlist.` }
+      await reichereErgebnisseAn(gespeicherte, false, batchKontext, kandidaten)
+      return { ok: false, ergebnisse: gespeicherte, monatsEmpfehlung: berechneMonatsEmpfehlung(gespeicherte), gescannt_am: gespeicherte[0]?.gescannt_am ?? new Date().toISOString(), gesamtAnzahl, gescannt: 0, ausstehend: 0, fehler: `ISIN ${isinTarget} nicht in der Radar-Liste.` }
     }
     const deepResearchMap = await ladeAlleDeepResearch()
     const ergebnis = await scanneEinenTitel({ position: positionEintrag, deepResearchMap, batchKontext })
@@ -451,7 +473,7 @@ export async function laufeScan(anfrage: NachkaufScanAnfrage): Promise<NachkaufS
     const alle = await ladeNachkaufScanAusCloud()
     const deepMap = await ladeAlleDeepResearch()
     const mitDeep = alle.map((e) => ({ ...e, tiefenAnalyse: deepMap.get(e.ticker.toUpperCase()) ?? null }))
-    await reichereErgebnisseAn(mitDeep, false, batchKontext)
+    await reichereErgebnisseAn(mitDeep, false, batchKontext, kandidaten)
     mitDeep.sort((a, b) => b.score - a.score)
     return { ok: true, ergebnisse: mitDeep, monatsEmpfehlung: berechneMonatsEmpfehlung(mitDeep), gescannt_am: neuestesGescanntAm(mitDeep), gesamtAnzahl, gescannt: ergebnis ? 1 : 0, ausstehend: ausstehendAnzahl(kandidaten, alle) }
   }
@@ -465,7 +487,7 @@ export async function laufeScan(anfrage: NachkaufScanAnfrage): Promise<NachkaufS
 
     if (!positionEintrag) {
       const gespeicherte = await ladeNachkaufScanAusCloud()
-      await reichereErgebnisseAn(gespeicherte, false, batchKontext)
+      await reichereErgebnisseAn(gespeicherte, false, batchKontext, kandidaten)
       return {
         ok: false,
         ergebnisse: gespeicherte,
@@ -474,7 +496,7 @@ export async function laufeScan(anfrage: NachkaufScanAnfrage): Promise<NachkaufS
         gesamtAnzahl,
         gescannt: 0,
         ausstehend: 0,
-        fehler: `Ticker/ISIN ${anfrage.ticker} weder in Whitelist noch Watchlist.`,
+        fehler: `Ticker/ISIN ${anfrage.ticker} nicht in der Radar-Liste.`,
       }
     }
 
@@ -488,7 +510,7 @@ export async function laufeScan(anfrage: NachkaufScanAnfrage): Promise<NachkaufS
     const alle = await ladeNachkaufScanAusCloud()
     const deepMap = await ladeAlleDeepResearch()
     const mitDeep = alle.map((e) => ({ ...e, tiefenAnalyse: deepMap.get(e.ticker.toUpperCase()) ?? null }))
-    await reichereErgebnisseAn(mitDeep, false, batchKontext)
+    await reichereErgebnisseAn(mitDeep, false, batchKontext, kandidaten)
     mitDeep.sort((a, b) => b.score - a.score)
 
     return {
@@ -535,7 +557,7 @@ export async function laufeScan(anfrage: NachkaufScanAnfrage): Promise<NachkaufS
       ...e,
       tiefenAnalyse: deepMap.get(e.ticker.toUpperCase()) ?? null,
     }))
-    await reichereErgebnisseAn(mitDeep, false, batchKontext)
+    await reichereErgebnisseAn(mitDeep, false, batchKontext, kandidaten)
     mitDeep.sort((a, b) => b.score - a.score)
     return {
       ok: true,

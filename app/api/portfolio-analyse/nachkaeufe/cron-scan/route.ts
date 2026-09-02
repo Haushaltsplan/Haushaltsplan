@@ -5,6 +5,7 @@
  * Gesichert durch CRON_SECRET-Header-Validierung.
  */
 import { NextResponse } from 'next/server'
+import { runWithPrimaeremOwner } from '@/lib/request-owner'
 import { laufeScan } from '@/lib/portfolio-analyse/nachkauf-radar/nachkauf-radar-scan-server'
 
 export const dynamic = 'force-dynamic'
@@ -20,9 +21,10 @@ export async function GET(req: Request) {
   }
 
   try {
+    return await runWithPrimaeremOwner(async () => {
     let offset = 0
     let gescanntGesamt = 0
-    let gesamtAnzahl = 32
+    let gesamtAnzahl = 0
     let runden = 0
     const MAX_RUNDEN = 12
 
@@ -46,6 +48,7 @@ export async function GET(req: Request) {
       gescannt: gescanntGesamt,
       gesamtAnzahl,
       zeitstempel: new Date().toISOString(),
+    })
     })
   } catch (e) {
     console.error('[cron-scan] Fehler:', e)

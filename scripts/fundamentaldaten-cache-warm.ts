@@ -17,6 +17,7 @@ import {
 } from '../lib/portfolio-analyse/fundamentaldaten-paket-cache-server'
 import { ladeNachkaufKandidaten } from '../lib/portfolio-analyse/nachkauf-radar/nachkauf-watchlist-cloud-server'
 import { ladeDepotAktieAnfragen } from '../lib/portfolio-analyse/depot-gewichte-server'
+import { runWithPrimaeremOwner } from '../lib/request-owner'
 import type { WhitelistPosition } from '../lib/portfolio-analyse/nachkauf-radar/nachkauf-radar-whitelist'
 
 function loadEnv() {
@@ -126,8 +127,10 @@ async function main() {
     process.exit(1)
   }
 
-  const radar = await ladeNachkaufKandidaten()
-  const depot = await ladeDepotAktieAnfragen()
+  const { radar, depot } = await runWithPrimaeremOwner(async () => ({
+    radar: await ladeNachkaufKandidaten(),
+    depot: await ladeDepotAktieAnfragen(),
+  }))
   const gesehen = new Set(radar.map((k) => k.isin.toUpperCase()))
   const extra: WhitelistPosition[] = []
   for (const d of depot) {

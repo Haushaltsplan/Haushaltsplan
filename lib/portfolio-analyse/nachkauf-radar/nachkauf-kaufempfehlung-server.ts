@@ -14,7 +14,7 @@ import {
   runCoachCompletion,
 } from '@/lib/ki-coach-backend'
 import {
-  istWhitelistIsin,
+  istWatchlistNeukauf,
   risikoKlasseFuerIsin,
   type RisikoKlasse,
 } from './nachkauf-radar-whitelist'
@@ -70,7 +70,7 @@ export function istKiKaufKandidat(e: NachkaufScanEintrag): boolean {
   if (e.ampel === 'rot' || e.ampel === 'teuer' || hatAktivesVerkaufSignal(e) || !e.tiefenAnalyse) {
     return false
   }
-  if (istWatchlistKandidat(e.isin)) {
+  if (istWatchlistNeukauf(e.isin, e.depotGewichtPct, e.kandidatenQuelle)) {
     return e.score >= MIN_SCORE_WATCHLIST_NEUKAUF
   }
   if (e.ampel === 'gruen' && e.score >= MIN_SCORE_KAUF_GRUEN) return true
@@ -86,7 +86,7 @@ export function istKiKaufKandidat(e: NachkaufScanEintrag): boolean {
 
 function kaufSchwellenText(): string {
   return (
-    `Whitelist: Grün + Score ≥ ${MIN_SCORE_KAUF_GRUEN}, oder Kaufzone + Gelb + Score ≥ ${MIN_SCORE_KAUF_TRIGGER}` +
+    `Depot-Nachkauf: Grün + Score ≥ ${MIN_SCORE_KAUF_GRUEN}, oder Kaufzone + Gelb + Score ≥ ${MIN_SCORE_KAUF_TRIGGER}` +
     `; Watchlist-Neukauf: Score ≥ ${MIN_SCORE_WATCHLIST_NEUKAUF}` +
     ` (jeweils mit Deep Research)`
   )
@@ -100,20 +100,20 @@ function baueSparHinweis(
   const gruenOhneDr = alle.filter((e) => e.ampel === 'gruen' && !e.tiefenAnalyse)
   const gruenScoreZuNiedrig = alle.filter(
     (e) =>
-      !istWatchlistKandidat(e.isin) &&
+      !istWatchlistNeukauf(e.isin, e.depotGewichtPct, e.kandidatenQuelle) &&
       e.ampel === 'gruen' &&
       e.tiefenAnalyse &&
       e.score < MIN_SCORE_KAUF_GRUEN,
   )
   const watchlistZuNiedrig = alle.filter(
     (e) =>
-      istWatchlistKandidat(e.isin) &&
+      istWatchlistNeukauf(e.isin, e.depotGewichtPct, e.kandidatenQuelle) &&
       e.tiefenAnalyse &&
       e.score < MIN_SCORE_WATCHLIST_NEUKAUF,
   )
   const gelbMitTrigger = alle.filter(
     (e) =>
-      !istWatchlistKandidat(e.isin) &&
+      !istWatchlistNeukauf(e.isin, e.depotGewichtPct, e.kandidatenQuelle) &&
       e.ampel === 'gelb' &&
       e.kaufTriggerAusgeloest &&
       !e.tiefenAnalyse,
@@ -159,13 +159,17 @@ function baueSparHinweis(
   return text
 }
 
-function risikoKlasseVon(isin: string): RisikoKlasse {
-  return risikoKlasseFuerIsin(isin)
+function risikoKlasseVon(e: NachkaufScanEintrag): RisikoKlasse {
+  return risikoKlasseFuerIsin(e.isin, e.depotGewichtPct, e.kandidatenQuelle)
 }
 
-/** Watchlist-Kandidaten stehen nicht in der festen Whitelist → Kauf wäre ein Neukauf. */
-export function istWatchlistKandidat(isin: string): boolean {
-  return !istWhitelistIsin(isin)
+/** Watchlist-Neukauf: nicht im Depot und nicht auf der festen Whitelist. */
+export function istWatchlistKandidat(
+  isin: string,
+  depotGewichtPct?: number | null,
+  quelle?: NachkaufScanEintrag['kandidatenQuelle'],
+): boolean {
+  return istWatchlistNeukauf(isin, depotGewichtPct, quelle)
 }
 
 // ---------------------------------------------------------------------------
@@ -203,7 +207,7 @@ function baueKandidatenText(kandidaten: NachkaufScanEintrag[], budgetEur: number
     const insider = e.insiderKaeufe?.length > 0
       ? `${e.insiderKaeufe.length} Insider-Käufe in letzten 90 Tagen`
       : 'keine Insider-Käufe'
-    const risiko = risikoKlasseVon(e.isin)
+    const risiko = risikoKlasseVon(e)
     const risikoLabel = RISIKO_LABEL[risiko]
     const maxBetrag = e.klumpenrisiko
       ? Math.min(Math.min(RISIKO_CAP[risiko], budgetEur), Math.round(budgetEur * 0.2))
@@ -217,7 +221,7 @@ function baueKandidatenText(kandidaten: NachkaufScanEintrag[], budgetEur: number
       ? `Geschäftsstruktur:\n${e.datenSignale.segmentStrukturKontext}`
       : ''
 
-    const neukaufHinweis = istWatchlistKandidat(e.isin)
+    const neukaufHinweis = istWatchlistNeukauf(e.isin, e.depotGewichtPct, e.kandidatenQuelle)
       ? '⚠️ WATCHLIST-KANDIDAT — noch NICHT im Depot: Kauf wäre ein NEUKAUF (neue Position). Höhere Hürde als Nachkauf: nur bei klar besserem Chance/Risiko als bestehende Kandidaten.'
       : ''
 
@@ -337,7 +341,7 @@ Ziel: Markt outperformen durch disziplinierte Kapitalallokation — nicht durch 
 - Emotionslos: weder Panik-Verkauf noch FOMO-Kauf
 - Klumpenrisiko-Grenze beim Nachkauf: ≥15 % Depotanteil maximal ${klumpenCap} € zusätzlich
 - Mindestbetrag pro Kauf: 100 €
-- **Watchlist-Kandidaten** (als solche markiert) sind noch nicht im Depot: Ein Kauf eröffnet eine NEUE Position. Cap spekulativ (≤ ${capSpekulativ} €). Score-Hürde ≥ ${MIN_SCORE_WATCHLIST_NEUKAUF}. Bevorzuge bestehende Whitelist-Positionen bei vergleichbarem Chance/Risiko.
+- **Watchlist-Kandidaten** (als solche markiert) sind noch nicht im Depot: Ein Kauf eröffnet eine NEUE Position. Cap spekulativ (≤ ${capSpekulativ} €). Score-Hürde ≥ ${MIN_SCORE_WATCHLIST_NEUKAUF}. Bevorzuge bestehende Depot-Positionen bei vergleichbarem Chance/Risiko.
 
 ## Risiko-adjustierte Positionsobergrenzen (HART, nicht überschreiten)
 - **Konservativ**: max. **${capKonservativ} €** — Mastercard, Visa, Microsoft, …

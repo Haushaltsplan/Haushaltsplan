@@ -120,7 +120,7 @@ function baueKontextText(opts: {
   const teile: string[] = [
     `=== DEPOT-POSITION: ${opts.name} (${opts.ticker}) — ISIN: ${opts.isin} ===`,
     '',
-    `Risikoklasse (Whitelist, verbindlich): ${risikoKlasseFuerIsin(opts.isin)}. Nicht als spekulativ/Turnaround bezeichnen, wenn die Klasse konservativ oder moderat ist.`,
+    `Risikoklasse (verbindlich): ${risikoKlasseFuerIsin(opts.isin, opts.depotGewichtPct, opts.scanEintrag?.kandidatenQuelle)}. Nicht als spekulativ/Turnaround bezeichnen, wenn die Klasse konservativ oder moderat ist.`,
     '',
     '--- DEPOT-KONTEXT (Dashboard — Buchungen + Live-Kurse) ---',
     opts.depotDashboardKontext,

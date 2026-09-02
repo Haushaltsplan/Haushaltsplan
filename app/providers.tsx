@@ -8,6 +8,7 @@ import { PwaServiceWorkerRegister } from '@/components/pwa-service-worker-regist
 import { FuehrungErinnerungenWatcher } from '@/components/fuehrung/fuehrung-erinnerungen-watcher'
 import { TerminMorgenReminderRunner } from '@/components/termin-morgen-reminder'
 import { AuthGate } from '@/components/auth-gate'
+import { ZugriffGate } from '@/components/zugriff-gate'
 import { AppLockGate } from '@/components/app-lock-gate'
 import { ClientStateBootstrap } from '@/components/client-state-bootstrap'
 import { ClientStateThemeSync } from '@/components/client-state-theme-sync'
@@ -43,9 +44,11 @@ export function Providers({ children }: { children: ReactNode }) {
       <WhoopBleProvider>
       <AuthGate>
         <AppLockGate>
+          <ZugriffGate>
           <ClientStateBootstrap />
           <ClientStateThemeSync />
           {children}
+          </ZugriffGate>
         </AppLockGate>
       </AuthGate>
       <PwaServiceWorkerRegister />

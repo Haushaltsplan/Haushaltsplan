@@ -4,6 +4,7 @@
  */
 
 import { CLIENT_STATE_KEYS } from '@/lib/client-state/client-state-keys'
+import { lesePersonlichenStorage, schreibePersonlichenStorage } from '@/lib/zugriff-client'
 
 export const CHART_ANALYSE_STORAGE_KEY = 'pa-chart-analyse-v1'
 export const CHART_ANALYSE_EVENT = 'pa-chart-analyse-geaendert'
@@ -125,7 +126,7 @@ export function parseChartAnalyseKarte(raw: unknown): ChartAnalyseKarte {
 export function leseChartAnalyseKarte(): ChartAnalyseKarte {
   if (typeof window === 'undefined') return {}
   try {
-    const raw = window.localStorage.getItem(CHART_ANALYSE_STORAGE_KEY)
+    const raw = lesePersonlichenStorage(CHART_ANALYSE_STORAGE_KEY)
     if (!raw) return {}
     return parseChartAnalyseKarte(JSON.parse(raw) as unknown)
   } catch {
@@ -136,7 +137,7 @@ export function leseChartAnalyseKarte(): ChartAnalyseKarte {
 export function schreibeChartAnalyseKarte(karte: ChartAnalyseKarte): void {
   if (typeof window === 'undefined') return
   try {
-    window.localStorage.setItem(CHART_ANALYSE_STORAGE_KEY, JSON.stringify(karte))
+    schreibePersonlichenStorage(CHART_ANALYSE_STORAGE_KEY, JSON.stringify(karte))
     window.dispatchEvent(new CustomEvent(CHART_ANALYSE_EVENT))
   } catch {
     /* quota */

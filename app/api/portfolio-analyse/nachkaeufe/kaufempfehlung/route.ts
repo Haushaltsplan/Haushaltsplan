@@ -14,10 +14,12 @@ import {
 } from '@/lib/portfolio-analyse/nachkauf-radar/nachkauf-performance-server'
 import { createSupabaseAdmin } from '@/lib/supabase-admin'
 import { ownerUserIdAusRequest } from '@/lib/supabase-user'
+import { jsonMitOwner } from '@/lib/request-owner'
 
 export const maxDuration = 120
 
 export async function POST(req: Request) {
+  return jsonMitOwner(req, async () => {
   try {
     let budgetEur = 500
     try {
@@ -41,6 +43,16 @@ export async function POST(req: Request) {
 
     // Volle Projekt-Anreicherung: Depot (Dashboard), Historie, Notizen, Insider, Ranking
     await reichereNachkaufEintraegeVoll(ergebnisse)
+    if (ergebnisse.length === 0) {
+      return NextResponse.json(
+        {
+          ok: false,
+          fehler:
+            'Keine Aktien im aktuellen Radar. Importiere dein Depot oder füge Titel zur Watchlist hinzu, dann scanne erneut.',
+        },
+        { status: 400 },
+      )
+    }
     await speichereNachkaufScanEintraege(ergebnisse)
 
     const ergebnis = await generiereKaufempfehlung(ergebnisse, budgetEur)
@@ -100,20 +112,29 @@ export async function POST(req: Request) {
     console.error('[kaufempfehlung] Fehler:', msg)
     return NextResponse.json({ ok: false, fehler: msg }, { status: 500 })
   }
+  })
 }
 
 export async function GET(req: Request) {
+  return jsonMitOwner(req, async () => {
   try {
     const monat = new Date().toISOString().slice(0, 7)
-    const ownerUserId = req.headers.get('x-user-id')?.trim() || null
+    const ownerUserId = ownerUserIdAusRequest(req)
+    if (!ownerUserId) {
+      return NextResponse.json({ ok: false, daten: null }, { status: 401 })
+    }
     const supabase = createSupabaseAdmin()
-    let query = supabase.from('nachkauf_kaufempfehlung').select('*').eq('monat', monat)
-    if (ownerUserId) query = query.eq('owner_user_id', ownerUserId)
-    const { data, error } = await query.maybeSingle()
+    const { data, error } = await supabase
+      .from('nachkauf_kaufempfehlung')
+      .select('*')
+      .eq('monat', monat)
+      .eq('owner_user_id', ownerUserId)
+      .maybeSingle()
 
     if (error || !data) return NextResponse.json({ ok: false, daten: null })
     return NextResponse.json({ ok: true, daten: data })
   } catch (e) {
     return NextResponse.json({ ok: false, daten: null })
   }
+  })
 }

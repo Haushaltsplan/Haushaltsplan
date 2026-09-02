@@ -8,6 +8,7 @@ import { analyseTickerFuerPosition, isinAusYahooSymbol, isinKenntnis } from '@/l
 import { ladeYahooLiveKurs } from '@/lib/portfolio-analyse/yahoo-live-quote-server'
 import { yahooSchlusskursAm } from '@/lib/portfolio-analyse/yahoo-corporate-actions-client'
 import { createSupabaseAdmin } from '@/lib/supabase-admin'
+import { ownerUserIdAusKontext, requireOwnerUserId, runWithOwnerUserId } from '@/lib/request-owner'
 import { NACHKAUF_RADAR_WHITELIST } from './nachkauf-radar-whitelist'
 import { ladeNachkaufScanAusCloud } from './nachkauf-radar-db-server'
 import type { NachkaufScanEintrag, SparplanPosten } from './nachkauf-radar-types'
@@ -31,28 +32,9 @@ function admin() {
   return createSupabaseAdmin()
 }
 
-/** Service Role hat kein auth.uid() — Owner aus Portfolio-Buchungen ableiten. */
+/** Owner aus dem Request-Kontext — nie „irgendeine“ Buchungszeile (Datenleck). */
 export async function ladePortfolioOwnerUserId(): Promise<string | null> {
-  if (!istKonfiguriert()) return null
-  try {
-    const { data: buchung } = await admin()
-      .from('portfolio_analyse_buchung')
-      .select('owner_user_id')
-      .not('owner_user_id', 'is', null)
-      .limit(1)
-      .maybeSingle()
-    if (buchung?.owner_user_id) return String(buchung.owner_user_id)
-
-    const { data: emp } = await admin()
-      .from('nachkauf_kaufempfehlung')
-      .select('owner_user_id')
-      .not('owner_user_id', 'is', null)
-      .limit(1)
-      .maybeSingle()
-    return emp?.owner_user_id ? String(emp.owner_user_id) : null
-  } catch {
-    return null
-  }
+  return ownerUserIdAusKontext() ?? null
 }
 
 function addDaysIso(iso: string, tage: number): string {
@@ -433,6 +415,7 @@ export async function backfillEmpfehlungTracking(opts?: {
     const { data: empRow } = await admin()
       .from('nachkauf_kaufempfehlung')
       .select('monat, basis_allokation, erstellt_am, owner_user_id')
+      .eq('owner_user_id', ownerUserId)
       .eq('monat', opts.monat)
       .order('erstellt_am', { ascending: false })
       .limit(1)
@@ -447,6 +430,7 @@ export async function backfillEmpfehlungTracking(opts?: {
   const { data: empRows } = await admin()
     .from('nachkauf_kaufempfehlung')
     .select('monat, basis_allokation, erstellt_am, owner_user_id')
+    .eq('owner_user_id', ownerUserId)
     .order('erstellt_am', { ascending: false })
     .limit(24)
 
@@ -527,6 +511,7 @@ export async function aktualisiereFaelligeOutcomes(): Promise<void> {
   const { data } = await admin()
     .from(TABLE)
     .select('*')
+    .eq('owner_user_id', requireOwnerUserId())
     .order('empfohlen_am', { ascending: true })
     .limit(100)
 
@@ -576,6 +561,7 @@ async function berechneScoreSignalBacktest(): Promise<NachkaufScoreBucketStat[]>
   const { data } = await admin()
     .from(VERLAUF_TABLE)
     .select('ticker, score, gescannt_am')
+    .eq('owner_user_id', requireOwnerUserId())
     .gte('gescannt_am', seit + 'T00:00:00Z')
     .order('gescannt_am', { ascending: true })
     .limit(400)
@@ -635,54 +621,60 @@ export async function ladeNachkaufPerformance(
 ): Promise<NachkaufPerformanceUebersicht> {
   if (!istKonfiguriert()) return leerePerformance()
 
-  const resolvedOwner = ownerUserId ?? (await ladePortfolioOwnerUserId())
+  const resolvedOwner = (ownerUserId || '').trim() || ownerUserIdAusKontext()
+  if (!resolvedOwner) return leerePerformance()
 
-  await backfillEmpfehlungTracking({ ownerUserId: resolvedOwner }).catch((e) =>
-    console.warn('[nachkauf-performance] Backfill:', e),
-  )
+  return runWithOwnerUserId(resolvedOwner, async () => {
+    await backfillEmpfehlungTracking({ ownerUserId: resolvedOwner }).catch((e) =>
+      console.warn('[nachkauf-performance] Backfill:', e),
+    )
 
-  await aktualisiereFaelligeOutcomes()
+    await aktualisiereFaelligeOutcomes()
 
-  let query = admin().from(TABLE).select('*').order('empfohlen_am', { ascending: false }).limit(48)
-  if (resolvedOwner) query = query.eq('owner_user_id', resolvedOwner)
-  const { data, error } = await query
-  if (error) console.warn('[nachkauf-performance] Laden:', error.message)
+    const { data, error } = await admin()
+      .from(TABLE)
+      .select('*')
+      .eq('owner_user_id', resolvedOwner)
+      .order('empfohlen_am', { ascending: false })
+      .limit(48)
+    if (error) console.warn('[nachkauf-performance] Laden:', error.message)
 
-  const rows = (data ?? []) as TrackingRow[]
-  const eintraege = rows.map(rowZuEintrag)
-  if (opts?.mitLive !== false) {
-    await ergaenzeLiveStand(rows, eintraege)
-  }
+    const rows = (data ?? []) as TrackingRow[]
+    const eintraege = rows.map(rowZuEintrag)
+    if (opts?.mitLive !== false) {
+      await ergaenzeLiveStand(rows, eintraege)
+    }
 
-  const mit6m = eintraege.filter((e) => e.rendite6mPct != null)
-  const mit12m = eintraege.filter((e) => e.rendite12mPct != null)
-  const alphas6m = mit6m.map((e) => e.alpha6mPct).filter((v): v is number => v != null)
-  const treffer6m =
-    alphas6m.length > 0
-      ? Math.round((alphas6m.filter((a) => a > 0).length / alphas6m.length) * 1000) / 10
-      : null
+    const mit6m = eintraege.filter((e) => e.rendite6mPct != null)
+    const mit12m = eintraege.filter((e) => e.rendite12mPct != null)
+    const alphas6m = mit6m.map((e) => e.alpha6mPct).filter((v): v is number => v != null)
+    const treffer6m =
+      alphas6m.length > 0
+        ? Math.round((alphas6m.filter((a) => a > 0).length / alphas6m.length) * 1000) / 10
+        : null
 
-  const signalBuckets = await berechneScoreSignalBacktest()
+    const signalBuckets = await berechneScoreSignalBacktest()
 
-  return {
-    anzahlEmpfehlungen: eintraege.length,
-    ausgewertet6m: mit6m.length,
-    ausgewertet12m: mit12m.length,
-    avgRendite6mPct: avgKapital(mit6m, (e) => e.rendite6mPct),
-    avgAlpha6mPct: avgKapital(mit6m, (e) => e.alpha6mPct),
-    avgRendite12mPct: avgKapital(mit12m, (e) => e.rendite12mPct),
-    avgAlpha12mPct: avgKapital(mit12m, (e) => e.alpha12mPct),
-    trefferquote6mPct: treffer6m,
-    avgLiveRenditePct: avgKapital(eintraege, (e) => e.liveRenditePct),
-    avgLiveAlphaPct: avgKapital(eintraege, (e) => e.liveAlphaPct),
-    avgLiveRenditeUngewichtetPct: avgEinfach(
-      eintraege.map((e) => e.liveRenditePct).filter((v): v is number => v != null),
-    ),
-    avgLiveAlphaUngewichtetPct: avgEinfach(
-      eintraege.map((e) => e.liveAlphaPct).filter((v): v is number => v != null),
-    ),
-    scoreBucketsEmpfehlung: aggregiereBuckets(eintraege),
-    scoreBucketsSignal: signalBuckets,
-    eintraege,
-  }
+    return {
+      anzahlEmpfehlungen: eintraege.length,
+      ausgewertet6m: mit6m.length,
+      ausgewertet12m: mit12m.length,
+      avgRendite6mPct: avgKapital(mit6m, (e) => e.rendite6mPct),
+      avgAlpha6mPct: avgKapital(mit6m, (e) => e.alpha6mPct),
+      avgRendite12mPct: avgKapital(mit12m, (e) => e.rendite12mPct),
+      avgAlpha12mPct: avgKapital(mit12m, (e) => e.alpha12mPct),
+      trefferquote6mPct: treffer6m,
+      avgLiveRenditePct: avgKapital(eintraege, (e) => e.liveRenditePct),
+      avgLiveAlphaPct: avgKapital(eintraege, (e) => e.liveAlphaPct),
+      avgLiveRenditeUngewichtetPct: avgEinfach(
+        eintraege.map((e) => e.liveRenditePct).filter((v): v is number => v != null),
+      ),
+      avgLiveAlphaUngewichtetPct: avgEinfach(
+        eintraege.map((e) => e.liveAlphaPct).filter((v): v is number => v != null),
+      ),
+      scoreBucketsEmpfehlung: aggregiereBuckets(eintraege),
+      scoreBucketsSignal: signalBuckets,
+      eintraege,
+    }
+  })
 }

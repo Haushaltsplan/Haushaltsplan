@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { jsonMitOwner } from '@/lib/request-owner'
 import { isinKenntnis } from '@/lib/portfolio-analyse/isin-kenntnisse'
 import { ladeNachkaufKandidaten } from '@/lib/portfolio-analyse/nachkauf-radar/nachkauf-watchlist-cloud-server'
 import { ladeDepotAktieAnfragen } from '@/lib/portfolio-analyse/depot-gewichte-server'
@@ -21,7 +22,8 @@ function unique(werte: Array<string | null | undefined>): string[] {
   return out
 }
 
-export async function GET() {
+export async function GET(req: Request) {
+  return jsonMitOwner(req, async () => {
   try {
     const kandidaten = await ladeNachkaufKandidaten()
     const depot = await ladeDepotAktieAnfragen()
@@ -55,4 +57,5 @@ export async function GET() {
       { status: 502 },
     )
   }
+  })
 }

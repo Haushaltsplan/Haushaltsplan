@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from 'next/server'
+import { gastApiErlaubt, omniaRolleAusUser } from '@/lib/zugriff-rollen'
 
 /**
  * Zentrale Absicherung ALLER /api-Routen (Next.js 16 „Proxy", früher Middleware):
@@ -58,6 +59,7 @@ export async function proxy(req: NextRequest) {
 
   let email = ''
   let userId = ''
+  let appMetadata: Record<string, unknown> = {}
   try {
     const res = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
       headers: { apikey: SUPABASE_ANON, Authorization: `Bearer ${token}` },
@@ -66,9 +68,14 @@ export async function proxy(req: NextRequest) {
     if (!res.ok) {
       return jsonError('Sitzung ungültig oder abgelaufen.', 401)
     }
-    const user = (await res.json()) as { id?: string; email?: string }
+    const user = (await res.json()) as {
+      id?: string
+      email?: string
+      app_metadata?: Record<string, unknown>
+    }
     userId = String(user.id || '')
     email = String(user.email || '').toLowerCase()
+    appMetadata = user.app_metadata && typeof user.app_metadata === 'object' ? user.app_metadata : {}
     if (!userId) {
       return jsonError('Sitzung ungültig.', 401)
     }
@@ -76,16 +83,21 @@ export async function proxy(req: NextRequest) {
     return jsonError('Authentifizierung fehlgeschlagen.', 401)
   }
 
-  const allow = erlaubteEmails()
-  if (allow.length > 0 && !allow.includes(email)) {
+  const rolle = omniaRolleAusUser({ id: userId, email, app_metadata: appMetadata }, erlaubteEmails())
+  if (rolle === 'none') {
     return jsonError('Kein Zugriff für dieses Konto.', 403)
+  }
+  if (rolle === 'portfolio_gast' && !gastApiErlaubt(req.nextUrl.pathname)) {
+    return jsonError('Dieser Bereich ist für den Portfolio-Gast nicht verfügbar.', 403)
   }
 
   // Bereinigte Header weiterreichen (potenzielles Client-Spoofing entfernen).
   const headers = new Headers(req.headers)
   headers.delete('x-user-id')
   headers.delete('x-user-email')
+  headers.delete('x-user-rolle')
   headers.set('x-user-id', userId)
+  headers.set('x-user-rolle', rolle)
   if (email) headers.set('x-user-email', email)
 
   return NextResponse.next({ request: { headers } })

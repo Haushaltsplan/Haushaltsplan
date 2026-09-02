@@ -4,6 +4,7 @@
  * Body: { ticker?: string; isin?: string }
  */
 import { NextResponse } from 'next/server'
+import { jsonMitOwner } from '@/lib/request-owner'
 import { laufeScan } from '@/lib/portfolio-analyse/nachkauf-radar/nachkauf-radar-scan-server'
 import { ladeNachkaufKandidaten } from '@/lib/portfolio-analyse/nachkauf-radar/nachkauf-watchlist-cloud-server'
 
@@ -11,6 +12,7 @@ export const dynamic = 'force-dynamic'
 export const maxDuration = 120
 
 export async function POST(req: Request) {
+  return jsonMitOwner(req, async () => {
   let body: unknown
   try {
     body = await req.json()
@@ -52,4 +54,5 @@ export async function POST(req: Request) {
     console.error('[api/nachkaeufe/rescan]', e)
     return NextResponse.json({ ok: false, fehler: String(e) }, { status: 500 })
   }
+  })
 }

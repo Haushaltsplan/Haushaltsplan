@@ -3,6 +3,7 @@
 import 'server-only'
 
 import { createSupabaseAdmin } from '@/lib/supabase-admin'
+import { requireOwnerUserId } from '@/lib/request-owner'
 import type { NachkaufScanEintrag, ScoreVerlaufPunkt } from './nachkauf-radar-types'
 
 const TABLE = 'nachkauf_radar_scan_verlauf' as const
@@ -38,6 +39,7 @@ export async function speichereVerlaufPunkte(eintraege: NachkaufScanEintrag[]): 
       const { error: delErr } = await admin()
         .from(TABLE)
         .delete()
+        .eq('owner_user_id', requireOwnerUserId())
         .in('ticker', tickers)
         .gte('gescannt_am', tagStart)
         .lt('gescannt_am', tagEnd)
@@ -45,6 +47,7 @@ export async function speichereVerlaufPunkte(eintraege: NachkaufScanEintrag[]): 
     }
 
     const zeilen = eintraege.map((e) => ({
+      owner_user_id: requireOwnerUserId(),
       ticker: e.ticker.trim().toUpperCase(),
       score: e.score,
       ampel: e.ampel,
@@ -72,6 +75,7 @@ export async function ladeScoreVerlauf(): Promise<Map<string, ScoreVerlaufPunkt[
     const { data, error } = await admin()
       .from(TABLE)
       .select('ticker, score, ampel, gescannt_am')
+      .eq('owner_user_id', requireOwnerUserId())
       .gte('gescannt_am', vor13Monaten.toISOString())
       .order('gescannt_am', { ascending: true })
 

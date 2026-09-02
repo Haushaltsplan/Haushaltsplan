@@ -1,3 +1,4 @@
+import { lesePersonlichenStorage, schreibePersonlichenStorage } from '@/lib/zugriff-client'
 import type { IsinMetadata } from '@/lib/portfolio-analyse/isin-lookup-server'
 import { isinKenntnis } from '@/lib/portfolio-analyse/isin-kenntnisse'
 
@@ -27,7 +28,7 @@ export function watchlistSchluessel(e: WatchlistEintrag): string {
 export function ladeWatchlist(): WatchlistEintrag[] {
   if (typeof window === 'undefined') return []
   try {
-    const raw = localStorage.getItem(LS_KEY)
+    const raw = lesePersonlichenStorage(LS_KEY)
     if (!raw) return []
     const j = JSON.parse(raw) as WatchlistEintrag[]
     if (!Array.isArray(j)) return []
@@ -40,7 +41,7 @@ export function ladeWatchlist(): WatchlistEintrag[] {
 export function speichereWatchlist(eintraege: WatchlistEintrag[]): void {
   if (typeof window === 'undefined') return
   try {
-    localStorage.setItem(LS_KEY, JSON.stringify(eintraege))
+    schreibePersonlichenStorage(LS_KEY, JSON.stringify(eintraege))
   } catch {
     /* ignore */
   }

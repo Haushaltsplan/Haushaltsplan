@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
 import { AppLockEinstellungen } from '@/components/app-lock-einstellungen'
+import { PortfolioGastEinstellungen } from '@/components/portfolio-gast-einstellungen'
 import { PageChrome, PageHero, PageSection, PageSectionPanel } from '@/components/page-shell'
 
 export const metadata: Metadata = {
@@ -14,12 +15,18 @@ export default function EinstellungenPage() {
         density="compact"
         eyebrow="Omnia"
         title="Einstellungen"
-        description="Sicherheit, App-Sperre und rechtliche Hinweise."
+        description="Sicherheit, App-Sperre, Portfolio-Gast und rechtliche Hinweise."
       />
 
       <PageSection titleId="einstellungen-sicherheit" title="Sicherheit">
         <PageSectionPanel density="compact">
           <AppLockEinstellungen />
+        </PageSectionPanel>
+      </PageSection>
+
+      <PageSection titleId="einstellungen-portfolio-gast" title="Portfolioanalyse-Gast">
+        <PageSectionPanel density="compact">
+          <PortfolioGastEinstellungen />
         </PageSectionPanel>
       </PageSection>
 

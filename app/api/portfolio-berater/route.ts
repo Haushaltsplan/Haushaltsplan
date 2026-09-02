@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { jsonMitOwner } from '@/lib/request-owner'
 import { bauePortfolioBeraterKontext } from '@/lib/portfolio-analyse/portfolio-berater-kontext-server'
 import {
   coachProviderSchluesselDiagnose,
@@ -117,11 +118,14 @@ export async function POST(req: Request) {
   let context: unknown
   const t0 = Date.now()
   try {
-    context = await bauePortfolioBeraterKontext({
-      focusIsin: body.focusIsin,
-      focusTicker: body.focusTicker,
-      seite: body.seite,
-    })
+    context = await jsonMitOwner(req, () =>
+      bauePortfolioBeraterKontext({
+        focusIsin: body.focusIsin,
+        focusTicker: body.focusTicker,
+        seite: body.seite,
+      }),
+    )
+    if (context instanceof NextResponse) return context
   } catch (e) {
     console.error('portfolio-berater kontext', e)
     return NextResponse.json({ error: 'Portfolio-Kontext konnte nicht geladen werden.' }, { status: 500 })

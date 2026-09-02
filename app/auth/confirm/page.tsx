@@ -6,6 +6,7 @@
  * Ohne diese Seite landet der Mail-Link oft „irgendwo“ — ohne dauerhafte Sitzung.
  */
 
+import { loginZielFuerRolle, omniaRolleAusUser, ownerEmailsPublic } from '@/lib/zugriff-rollen'
 import { supabase } from '@/lib/supabase'
 import type { EmailOtpType, Session } from '@supabase/supabase-js'
 import { useEffect, useState } from 'react'
@@ -30,7 +31,7 @@ export default function AuthConfirmPage() {
   useEffect(() => {
     let cancelled = false
 
-    const fertig = (ok: boolean, message?: string) => {
+    const fertig = (ok: boolean, message?: string, session?: Session | null) => {
       if (cancelled) return
       if (!ok) {
         setFehler(message || 'Anmeldung fehlgeschlagen.')
@@ -38,8 +39,8 @@ export default function AuthConfirmPage() {
         return
       }
       setStatus('Angemeldet — Sitzung gespeichert. Weiterleitung …')
-      // replace: Hash/Query mit Tokens aus der History entfernen
-      window.location.replace('/')
+      const ziel = loginZielFuerRolle(omniaRolleAusUser(session?.user, ownerEmailsPublic()))
+      window.location.replace(ziel)
     }
 
     const run = async () => {
@@ -59,7 +60,7 @@ export default function AuthConfirmPage() {
             return
           }
           speichereNachLogin(data.session?.user?.email ?? data.user?.email)
-          fertig(true)
+          fertig(true, undefined, data.session ?? null)
           return
         }
 
@@ -70,7 +71,7 @@ export default function AuthConfirmPage() {
             return
           }
           speichereNachLogin(data.session?.user?.email)
-          fertig(true)
+          fertig(true, undefined, data.session)
           return
         }
 
@@ -96,7 +97,7 @@ export default function AuthConfirmPage() {
         const session = await warteAufSession()
         if (session) {
           speichereNachLogin(session.user?.email)
-          fertig(true)
+          fertig(true, undefined, session)
           return
         }
 

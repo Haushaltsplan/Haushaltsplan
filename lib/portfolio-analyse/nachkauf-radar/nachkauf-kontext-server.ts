@@ -18,14 +18,20 @@ import { wendeNachkaufDisziplinAn } from './nachkauf-disziplin-server'
 import { finalisiereNachkaufRanking } from './nachkauf-ranking-finalisierung-server'
 import { ladeNachkaufBatchKontext } from './nachkauf-ranking-kontext-server'
 import { ladeNachkaufPerformance } from './nachkauf-performance-server'
-import { ladeNachkaufKandidaten } from './nachkauf-watchlist-cloud-server'
+import {
+  behalteGastKandidatenInPlace,
+  ladeNachkaufKandidaten,
+  setzeKandidatenQuelle,
+} from './nachkauf-watchlist-cloud-server'
 import type { NachkaufScanEintrag } from './nachkauf-radar-types'
 
 /** Depot, Historie, Notizen, Insider, Score-Verlauf — für Deep Research pro Ticker. */
 export async function reichereNachkaufTickerKontext(eintraege: NachkaufScanEintrag[]): Promise<void> {
   if (eintraege.length === 0) return
-  // Whitelist + Watchlist, damit Insider-Käufe auch für Watchlist-Titel aufgelöst werden
   const kandidaten = await ladeNachkaufKandidaten()
+  behalteGastKandidatenInPlace(eintraege, kandidaten)
+  setzeKandidatenQuelle(eintraege, kandidaten)
+  if (eintraege.length === 0) return
   await Promise.allSettled([
     ergaenzeDepotGewichte(eintraege),
     ergaenzeScoreVerlauf(eintraege),
@@ -42,6 +48,7 @@ export async function reichereNachkaufEintraegeVoll(eintraege: NachkaufScanEintr
   if (eintraege.length === 0) return
 
   await reichereNachkaufTickerKontext(eintraege)
+  if (eintraege.length === 0) return
 
   const perf = await ladeNachkaufPerformance(undefined, { mitLive: false }).catch(() => null)
   const kandidaten = await ladeNachkaufKandidaten()

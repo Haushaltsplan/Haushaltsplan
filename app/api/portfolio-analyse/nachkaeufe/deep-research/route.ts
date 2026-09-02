@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { jsonMitOwner } from '@/lib/request-owner'
 import { fuhreDeepResearchDurch } from '@/lib/portfolio-analyse/nachkauf-radar/nachkauf-radar-deep-research-server'
 import { ladeNachkaufScanAusCloud } from '@/lib/portfolio-analyse/nachkauf-radar/nachkauf-radar-db-server'
 import { NACHKAUF_RADAR_WHITELIST } from '@/lib/portfolio-analyse/nachkauf-radar/nachkauf-radar-whitelist'
@@ -8,6 +9,7 @@ export const dynamic = 'force-dynamic'
 export const maxDuration = 300
 
 export async function POST(req: Request) {
+  return jsonMitOwner(req, async () => {
   let body: unknown
   try {
     body = await req.json()
@@ -62,4 +64,5 @@ export async function POST(req: Request) {
     console.error('[api/nachkaeufe/deep-research]', e)
     return NextResponse.json({ ok: false, fehler: 'Deep Research fehlgeschlagen.' }, { status: 502 })
   }
+  })
 }

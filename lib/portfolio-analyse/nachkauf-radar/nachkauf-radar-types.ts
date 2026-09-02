@@ -238,6 +238,11 @@ export type NachkaufScanEintrag = {
    * Dynamisch berechnet — nicht in der DB gespeichert.
    */
   depotGewichtPct: number | null
+  /**
+   * Herkunft im aktuellen Radar-Universum (Depot / Watchlist / feste Whitelist).
+   * Dynamisch gesetzt — nicht in der DB gespeichert.
+   */
+  kandidatenQuelle?: 'whitelist' | 'watchlist' | 'depot' | null
   /** true wenn depotGewichtPct >= 15 % (Klumpenrisiko). */
   klumpenrisiko: boolean
   /**
@@ -292,7 +297,7 @@ export type MonatsEmpfehlung =
 export type NachkaufScanPaket = {
   ok: boolean
   ergebnisse: NachkaufScanEintrag[]
-  monatsEmpfehlung: MonatsEmpfehlung
+  monatsEmpfehlung: MonatsEmpfehlung | null
   gescannt_am: string
   gesamtAnzahl: number
   gescannt: number

@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { jsonMitOwner } from '@/lib/request-owner'
 import { laufeScan } from '@/lib/portfolio-analyse/nachkauf-radar/nachkauf-radar-scan-server'
 import type { NachkaufScanAnfrage } from '@/lib/portfolio-analyse/nachkauf-radar/nachkauf-radar-types'
 
@@ -26,8 +27,10 @@ export async function POST(req: Request) {
   }
 
   try {
-    const paket = await laufeScan(anfrage)
-    return NextResponse.json(paket)
+    return await jsonMitOwner(req, async () => {
+      const paket = await laufeScan(anfrage)
+      return NextResponse.json(paket)
+    })
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e)
     console.error('[api/nachkaeufe/scan]', msg)
@@ -38,9 +41,9 @@ export async function POST(req: Request) {
         ergebnisse: [],
         monatsEmpfehlung: null,
         gescannt_am: new Date().toISOString(),
-        gesamtAnzahl: 32,
+        gesamtAnzahl: 0,
         gescannt: 0,
-        ausstehend: 32,
+        ausstehend: 0,
       },
       { status: 502 },
     )

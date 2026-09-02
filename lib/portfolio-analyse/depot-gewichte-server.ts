@@ -19,6 +19,7 @@ import {
   fxKurseAusYahooMap,
 } from '@/lib/portfolio-analyse/kurs-aufloesung'
 import { PORTFOLIO_DB_SEITEN_GROESSE, PORTFOLIO_MAX_BUCHUNGEN } from '@/lib/portfolio-analyse/limits'
+import { requireOwnerUserId } from '@/lib/request-owner'
 import { ladeStooqSchlusskurs } from '@/lib/portfolio-analyse/stooq-kurs'
 import type { PortfolioBuchung, PortfolioDbSnapshot } from '@/lib/portfolio-analyse/types'
 import { ladeYahooKurse, type YahooKursZeile } from '@/lib/portfolio-analyse/yahoo-kurse-server'
@@ -68,6 +69,7 @@ function mapBuchungRow(row: Record<string, unknown>): PortfolioBuchung {
 }
 
 async function ladeBuchungenAdmin(): Promise<PortfolioBuchung[]> {
+  const ownerUserId = requireOwnerUserId()
   const buchungen: PortfolioBuchung[] = []
   let offset = 0
 
@@ -76,6 +78,7 @@ async function ladeBuchungenAdmin(): Promise<PortfolioBuchung[]> {
     const { data, error } = await createSupabaseAdmin()
       .from('portfolio_analyse_buchung')
       .select('*')
+      .eq('owner_user_id', ownerUserId)
       .order('datum', { ascending: false })
       .range(offset, bis)
 
@@ -123,10 +126,65 @@ export async function ladeDepotAktieAnfragen(): Promise<FundamentaldatenAnfrage[
   }
 }
 
+export type DepotRadarAktie = {
+  isin: string
+  name: string
+  symbolYahoo: string | null
+  symbolCandidates: string[]
+}
+
+function istRadarAktieKlasse(klasse: string | undefined): boolean {
+  return klasse !== 'etf' && klasse !== 'anleihe' && klasse !== 'crypto' && klasse !== 'geldmarkt'
+}
+
+/** Aktienpositionen des aktuellen Kontos für den Nachkauf-Radar (Live-Depot, Snapshot-Fallback). */
+export async function ladeDepotRadarAktien(): Promise<DepotRadarAktie[]> {
+  if (!istKonfiguriert()) return []
+  const seen = new Set<string>()
+  const out: DepotRadarAktie[] = []
+
+  const push = (isinRoh: string, name: string, symbolYahoo?: string | null, symbolCandidates?: string[]) => {
+    const isin = isinRoh.trim().toUpperCase()
+    if (!/^[A-Z]{2}[A-Z0-9]{10}$/.test(isin) || seen.has(isin)) return
+    const ken = isinKenntnis(isin)
+    seen.add(isin)
+    out.push({
+      isin,
+      name: name.trim() || ken?.name || isin,
+      symbolYahoo: symbolYahoo ?? ken?.symbolYahoo ?? null,
+      symbolCandidates: symbolCandidates?.length ? symbolCandidates : ken?.symbolCandidates ?? [],
+    })
+  }
+
+  try {
+    const paket = await ladeLivePortfolioServer()
+    for (const p of paket?.live.positionen ?? []) {
+      const isin = p.isin?.trim().toUpperCase()
+      if (!isin) continue
+      if (!(p.stueck > 0 || p.wertLiveEur > 0)) continue
+      if (!istRadarAktieKlasse(p.assetKlasse)) continue
+      const ken = isinKenntnis(isin)
+      if (p.assetKlasse !== 'aktie' && !ken) continue
+      push(isin, p.anzeigeName || p.name, p.symbolYahoo ?? ken?.symbolYahoo, ken?.symbolCandidates)
+    }
+  } catch (e) {
+    console.warn('[depot-radar-aktien] Live-Depot:', e)
+  }
+
+  if (out.length === 0) {
+    for (const d of await ladeDepotAktieAnfragen()) {
+      if (!d.isin) continue
+      push(d.isin, d.name ?? d.isin, d.symbolYahoo, d.symbolCandidates)
+    }
+  }
+  return out
+}
+
 async function ladeSnapshotAdmin(): Promise<PortfolioDbSnapshot | null> {
   const { data, error } = await createSupabaseAdmin()
     .from('portfolio_analyse_snapshot')
     .select('*')
+    .eq('owner_user_id', requireOwnerUserId())
     .order('erfasst_am', { ascending: false })
     .limit(1)
     .maybeSingle()
@@ -178,8 +236,8 @@ export type LivePortfolioServerPaket = {
 }
 
 const DEPOT_CACHE_MS = 3 * 60 * 1000
-let depotCache: { at: number; paket: LivePortfolioServerPaket | null } | null = null
-let depotInflight: Promise<LivePortfolioServerPaket | null> | null = null
+const depotCache = new Map<string, { at: number; paket: LivePortfolioServerPaket | null }>()
+const depotInflight = new Map<string, Promise<LivePortfolioServerPaket | null>>()
 
 async function ladeLivePortfolioServerUncached(): Promise<LivePortfolioServerPaket | null> {
   const [buchungen, snapshot] = await Promise.all([ladeBuchungenAdmin(), ladeSnapshotAdmin()])
@@ -200,22 +258,25 @@ async function ladeLivePortfolioServerUncached(): Promise<LivePortfolioServerPak
 /** Live-Portfolio wie Dashboard — volle Positionen + Kennzahlen (serverseitig). */
 export async function ladeLivePortfolioServer(): Promise<LivePortfolioServerPaket | null> {
   if (!istKonfiguriert()) return null
-  if (depotCache && Date.now() - depotCache.at < DEPOT_CACHE_MS) return depotCache.paket
-  if (!depotInflight) {
-    depotInflight = ladeLivePortfolioServerUncached()
-      .then((paket) => {
-        depotCache = { at: Date.now(), paket }
-        return paket
-      })
-      .catch((e) => {
-        console.warn('[depot-gewichte] Live-Portfolio laden fehlgeschlagen:', e)
-        return null
-      })
-      .finally(() => {
-        depotInflight = null
-      })
-  }
-  return depotInflight
+  const ownerUserId = requireOwnerUserId()
+  const cached = depotCache.get(ownerUserId)
+  if (cached && Date.now() - cached.at < DEPOT_CACHE_MS) return cached.paket
+  const laufend = depotInflight.get(ownerUserId)
+  if (laufend) return laufend
+  const job = ladeLivePortfolioServerUncached()
+    .then((paket) => {
+      depotCache.set(ownerUserId, { at: Date.now(), paket })
+      return paket
+    })
+    .catch((e) => {
+      console.warn('[depot-gewichte] Live-Portfolio laden fehlgeschlagen:', e)
+      return null
+    })
+    .finally(() => {
+      depotInflight.delete(ownerUserId)
+    })
+  depotInflight.set(ownerUserId, job)
+  return job
 }
 
 /**

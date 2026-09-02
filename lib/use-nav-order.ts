@@ -1,5 +1,6 @@
 'use client'
 
+import { useOmniaRolle } from '@/components/zugriff-gate'
 import { startTransition, useCallback, useEffect, useLayoutEffect, useMemo, useState } from 'react'
 import {
   DEFAULT_HREF_ORDER,
@@ -12,6 +13,7 @@ import {
 
 export function useNavOrder() {
   const [order, setOrder] = useState<string[]>(DEFAULT_HREF_ORDER)
+  const rolle = useOmniaRolle()
 
   const reloadOrderFromStorage = useCallback(() => {
     try {
@@ -39,10 +41,14 @@ export function useNavOrder() {
   }, [reloadOrderFromStorage])
 
   const orderedDefs: NavItem[] = useMemo(() => {
-    return order
+    const defs = order
       .map((href) => HREF_TO_DEF.get(href as NavItem['href']))
       .filter((d): d is NavItem => Boolean(d))
-  }, [order])
+    if (rolle === 'portfolio_gast') {
+      return defs.filter((d) => d.href === '/portfolioanalyse')
+    }
+    return defs
+  }, [order, rolle])
 
   const persistOrder = useCallback((next: string[]) => {
     setOrder(next)

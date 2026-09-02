@@ -8,6 +8,7 @@
  * angehängt durch installApiAuth im Client).
  */
 import { NextResponse } from 'next/server'
+import { jsonMitOwner } from '@/lib/request-owner'
 import {
   ladeNachkaufWatchlistAusCloud,
   syncNachkaufWatchlistZurCloud,
@@ -17,12 +18,15 @@ import {
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
-export async function GET() {
-  const eintraege = await ladeNachkaufWatchlistAusCloud()
-  return NextResponse.json({ ok: true, eintraege })
+export async function GET(req: Request) {
+  return jsonMitOwner(req, async () => {
+    const eintraege = await ladeNachkaufWatchlistAusCloud()
+    return NextResponse.json({ ok: true, eintraege })
+  })
 }
 
 export async function POST(req: Request) {
+  return jsonMitOwner(req, async () => {
   let body: unknown
   try {
     body = await req.json()
@@ -58,4 +62,5 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: false, fehler: result.fehler }, { status: 502 })
   }
   return NextResponse.json({ ok: true, anzahl: eintraege.length })
+  })
 }

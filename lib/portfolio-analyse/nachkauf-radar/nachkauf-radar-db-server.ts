@@ -9,6 +9,7 @@ import {
   type LivePortfolioServerPaket,
 } from '@/lib/portfolio-analyse/depot-gewichte-server'
 import { createSupabaseAdmin } from '@/lib/supabase-admin'
+import { requireOwnerUserId } from '@/lib/request-owner'
 import type {
   NachkaufAmpel,
   NachkaufDeepResearch,
@@ -49,6 +50,7 @@ export async function ladeNachkaufScanAusCloud(): Promise<NachkaufScanEintrag[]>
     const { data, error } = await admin()
       .from(TABLE_SCAN)
       .select('*')
+      .eq('owner_user_id', requireOwnerUserId())
       .order('score', { ascending: false })
     if (error) {
       console.warn('[nachkauf-radar] Scan laden:', error.message)
@@ -67,6 +69,7 @@ export async function ladeNachkaufScanDatum(): Promise<string | null> {
     const { data, error } = await admin()
       .from(TABLE_SCAN)
       .select('gescannt_am')
+      .eq('owner_user_id', requireOwnerUserId())
       .order('gescannt_am', { ascending: false })
       .limit(1)
     if (error || !data?.length) return null
@@ -88,7 +91,7 @@ export async function speichereNachkaufScanEintraege(
     const zeilen = eintraege.map(eintragZuDbZeile)
     const { error } = await admin()
       .from(TABLE_SCAN)
-      .upsert(zeilen, { onConflict: 'ticker' })
+      .upsert(zeilen, { onConflict: 'owner_user_id,ticker' })
     if (error) {
       // Fallback: EV-Spalten fehlen (Migration noch nicht angewendet)
       const msg = error.message || ''
@@ -106,7 +109,7 @@ export async function speichereNachkaufScanEintraege(
         })
         const { error: err2 } = await admin()
           .from(TABLE_SCAN)
-          .upsert(ohneEv, { onConflict: 'ticker' })
+          .upsert(ohneEv, { onConflict: 'owner_user_id,ticker' })
         if (err2) {
           console.warn('[nachkauf-radar] Scan speichern (ohne EV):', err2.message)
           return { ok: false, fehler: err2.message }
@@ -137,6 +140,7 @@ export async function ladeDeepResearchFuerTicker(ticker: string): Promise<Nachka
     const { data, error } = await admin()
       .from(TABLE_DEEP)
       .select('ticker, isin, memo, erstellt_am')
+      .eq('owner_user_id', requireOwnerUserId())
       .eq('ticker', ticker.trim().toUpperCase())
       .maybeSingle()
     if (error || !data) return null
@@ -154,6 +158,7 @@ export async function ladeAlleDeepResearch(): Promise<Map<string, NachkaufDeepRe
     const { data, error } = await admin()
       .from(TABLE_DEEP)
       .select('ticker, isin, memo, erstellt_am')
+      .eq('owner_user_id', requireOwnerUserId())
     if (error) return out
     for (const r of data ?? []) {
       const row = r as { ticker: string; isin: string; memo: string; erstellt_am: string }
@@ -181,12 +186,13 @@ export async function speichereDeepResearch(dr: NachkaufDeepResearch): Promise<v
       .from(TABLE_DEEP)
       .upsert(
         {
+          owner_user_id: requireOwnerUserId(),
           ticker: dr.ticker.trim().toUpperCase(),
           isin: dr.isin ?? '',
           memo: dr.memo,
           erstellt_am: dr.erstellt_am,
         },
-        { onConflict: 'ticker' },
+        { onConflict: 'owner_user_id,ticker' },
       )
     if (error) console.warn('[nachkauf-radar] Deep Research speichern:', error.message)
   } catch (e) {
@@ -354,6 +360,7 @@ export async function ergaenzeDepotGewichte(
 
 function eintragZuDbZeile(e: NachkaufScanEintrag): Record<string, unknown> {
   return {
+    owner_user_id: requireOwnerUserId(),
     ticker: e.ticker.trim().toUpperCase(),
     isin: e.isin ?? '',
     name: e.name,
@@ -399,7 +406,7 @@ export async function ladeNotizen(): Promise<Map<string, string>> {
   const out = new Map<string, string>()
   if (!istKonfiguriert()) return out
   try {
-    const { data, error } = await admin().from(TABLE_NOTIZEN).select('ticker, notiz')
+    const { data, error } = await admin().from(TABLE_NOTIZEN).select('ticker, notiz').eq('owner_user_id', requireOwnerUserId())
     if (error || !data) return out
     for (const r of data as Array<{ ticker: string; notiz: string }>) {
       out.set(r.ticker.toUpperCase(), r.notiz)
@@ -414,8 +421,8 @@ export async function speichereNotiz(ticker: string, notiz: string): Promise<voi
     const { error } = await admin()
       .from(TABLE_NOTIZEN)
       .upsert(
-        { ticker: ticker.trim().toUpperCase(), notiz, aktualisiert_am: new Date().toISOString() },
-        { onConflict: 'ticker' },
+        { ticker: ticker.trim().toUpperCase(), notiz, aktualisiert_am: new Date().toISOString(), owner_user_id: requireOwnerUserId() },
+        { onConflict: 'owner_user_id,ticker' },
       )
     if (error) console.warn('[nachkauf-notiz] Speichern fehlgeschlagen:', error.message)
   } catch (e) {
@@ -444,6 +451,7 @@ export async function ladeKaufhistorie(): Promise<Map<string, KaufhistorieEintra
     const { data, error } = await admin()
       .from(TABLE_KAUFHIST)
       .select('ticker, letzter_kauf_am, anzahl_kaeufe, avg_kaufpreis_eur')
+      .eq('owner_user_id', requireOwnerUserId())
     if (error || !data) return out
     const heute = Date.now()
     for (const r of data as Array<{ ticker: string; letzter_kauf_am: string | null; anzahl_kaeufe: number; avg_kaufpreis_eur: number | null }>) {
@@ -479,6 +487,7 @@ export async function ladeKaufempfehlungAktuell(): Promise<{
     const { data, error } = await admin()
       .from(TABLE_KAUFEMPFEHLUNG)
       .select('monat, ki_text, kandidaten, basis_allokation, verkauf_allokation')
+      .eq('owner_user_id', requireOwnerUserId())
       .eq('monat', monat)
       .order('erstellt_am', { ascending: false })
       .limit(1)
@@ -515,6 +524,7 @@ export async function aktualisiereKaufhistorieCache(isins: string[]): Promise<vo
     const { data, error } = await admin()
       .from('portfolio_analyse_buchung')
       .select('isin, datum, kurs_eur, anzahl, typ')
+      .eq('owner_user_id', requireOwnerUserId())
       .in('isin', isins)
       .in('typ', ['kauf', 'verkauf'])
       .order('datum', { ascending: false })
@@ -555,6 +565,7 @@ export async function aktualisiereKaufhistorieCache(isins: string[]): Promise<vo
 
       // Ticker für ISIN nachschlagen (lazy — wir nutzen den ISIN selbst als Fallback)
       zeilen.push({
+        owner_user_id: requireOwnerUserId(),
         ticker: isin, // wird im UI durch ISIN-Lookup ergänzt
         isin,
         letzter_kauf_am: letzterKauf.datum,
@@ -565,7 +576,7 @@ export async function aktualisiereKaufhistorieCache(isins: string[]): Promise<vo
     }
 
     if (zeilen.length > 0) {
-      await admin().from(TABLE_KAUFHIST).upsert(zeilen, { onConflict: 'ticker' })
+      await admin().from(TABLE_KAUFHIST).upsert(zeilen, { onConflict: 'owner_user_id,ticker' })
     }
   } catch (e) {
     console.warn('[kaufhistorie-cache] Aktualisierung fehlgeschlagen:', e)
