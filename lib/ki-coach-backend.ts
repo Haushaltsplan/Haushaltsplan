@@ -321,12 +321,8 @@ export function geminiFreeTierFlashModelKandidaten(opts?: {
     fallbackEnvKey: opts?.fallbackEnvKey ?? 'GEMINI_MODEL_FALLBACKS',
     defaultPrimary: 'gemini-3.5-flash',
     /** Quota oft pro Modell — nächstes Modell = neues Free-Tier-Kontingent. Kein Pro / kein 3.1-flash-lite. */
-    defaultFallbacks: [
-      'gemini-flash-latest',
-      'gemini-2.5-flash',
-      'gemini-2.5-flash-lite',
-      'gemini-3-flash-preview',
-    ],
+    /** Nur Modelle, die im aktuellen Free-Projekt (3.5 Flash) existieren. 2.5/3-preview oft Limit 0. */
+    defaultFallbacks: ['gemini-flash-latest'],
   })
 }
 
@@ -370,7 +366,7 @@ export function portfolioBeraterGeminiModelKandidaten(): string[] {
     primaryEnvKeys: ['PORTFOLIO_BERATER_GEMINI_MODEL', 'FINANCE_COACH_GEMINI_MODEL', 'GEMINI_MODEL'],
     fallbackEnvKey: 'PORTFOLIO_BERATER_GEMINI_MODEL_FALLBACKS',
   }).filter((m) => !istGeminiProModell(m))
-  return chain.length > 0 ? chain : ['gemini-3.5-flash', 'gemini-flash-latest', 'gemini-2.5-flash']
+  return chain.length > 0 ? chain : ['gemini-3.5-flash', 'gemini-flash-latest']
 }
 
 /** Earnings Call — lange Transkripte, bevorzugt neuestes Flash mit Free-Tier-Fallbacks. */
@@ -390,6 +386,26 @@ function parseGeminiFehlerBody(raw: string): { message: string; apiStatus?: stri
   } catch {
     return { message: raw.slice(0, 500) }
   }
+}
+
+export type GeminiLimitArt = 'limit_zero' | 'per_day' | 'per_minute' | 'capacity' | 'generic_429' | 'sonst'
+
+/** Trennt Limit-0 / Minuten-Limit / echtes Tageskontingent — 429 ≠ automatisch „Tag leer“. */
+export function klassifiziereGeminiLimit(hint: string): GeminiLimitArt {
+  const m = hint.toLowerCase()
+  if (m.includes('high demand') || m.includes('try again later') || m.includes('overload')) return 'capacity'
+  if (/limit:\s*0\b/.test(m) || (m.includes('limit: 0') && m.includes('quota'))) return 'limit_zero'
+  if (
+    /\bper day\b|\brpd\b|daily quota|per day per model/.test(m) ||
+    (m.includes('tageskontingent') && (m.includes('erschöpft') || m.includes('aufgebraucht')))
+  ) {
+    return 'per_day'
+  }
+  if (/\bper minute\b|\brpm\b|per minute per model|retry.?after/.test(m)) return 'per_minute'
+  if (m.includes('quota') || m.includes('resource_exhausted') || m.includes('rate limit') || m.includes('too many requests')) {
+    return 'generic_429'
+  }
+  return 'sonst'
 }
 
 function sleepMs(ms: number): Promise<void> {
@@ -418,32 +434,36 @@ function istGeminiQuotaOderRateLimit(httpStatus: number, message: string, apiSta
  */
 export function istKiKontingentErschoepft(text: string | null | undefined): boolean {
   if (!text?.trim()) return false
-  const m = text.toLowerCase()
-  if (m.includes('tageskontingent')) return true
-  if (m.includes('kontingent') && (m.includes('erschöpft') || m.includes('aufgebraucht'))) return true
-  if (m.includes('quota') || m.includes('resource_exhausted') || m.includes('rate limit')) return true
-  if (m.includes('free_tier') && m.includes('limit')) return true
-  return istGeminiQuotaOderRateLimit(0, text)
+  return klassifiziereGeminiLimit(text) === 'per_day'
 }
 
 /** Nutzerfreundliche deutsche Meldung für typische Gemini-Ausfälle. */
 export function formatCoachFehlerHint(hint: string, modelsVersucht = 1): string {
-  const m = hint.toLowerCase()
-  if (m.includes('high demand') || m.includes('try again later') || m.includes('overload')) {
-    const mehr =
-      modelsVersucht > 1
-        ? ` Es wurden bereits ${modelsVersucht} Gemini-Modelle probiert.`
-        : ''
+  const art = klassifiziereGeminiLimit(hint)
+  const mehr =
+    modelsVersucht > 1 ? ` Es wurden ${modelsVersucht} Gemini-Modelle probiert.` : ''
+  if (art === 'capacity') {
     return (
       `Die KI ist gerade stark ausgelastet (Google Gemini). Bitte in 1–2 Minuten erneut versuchen.${mehr} ` +
       'Das ist meist nur kurzzeitig — kein Fehler in deiner App.'
     )
   }
-  if (m.includes('quota') || m.includes('rate limit') || m.includes('resource_exhausted')) {
+  if (art === 'limit_zero') {
     return (
-      'Das kostenlose Gemini-Tageskontingent ist gerade erschöpft. ' +
-      'Kurz warten (Reset meist um Mitternacht Pacific Time) oder morgen erneut versuchen. ' +
-      'Nur Deep Research / Kaufempfehlung nutzen kostenpflichtiges 3.1 Pro.'
+      'Google hat dieses Modell im kostenlosen Projekt nicht freigeschaltet (Limit 0). ' +
+      '3.5 Flash in „Haushaltsplan kostenlos“ hat in der Regel noch Kontingent — bitte gleich nochmal senden.'
+    )
+  }
+  if (art === 'per_day') {
+    return (
+      'Das kostenlose Gemini-Tageskontingent für dieses Modell ist erschöpft. ' +
+      'Reset meist um Mitternacht Pacific Time. Deep Research / Kaufempfehlung nutzen den bezahlten Key.'
+    )
+  }
+  if (art === 'per_minute' || art === 'generic_429') {
+    return (
+      'Gemini hat die Anfrage gerade mit einem kurzen Rate-Limit beantwortet — das Tageskontingent von 3.5 Flash ist dafür oft noch frei. ' +
+      `Bitte 30–60 Sekunden warten und erneut senden.${mehr}`
     )
   }
   return hint
@@ -646,6 +666,21 @@ async function callGemini(
       r = await callGeminiEinModell(modellKey, model, systemText, userMessages, {
         ...callOpts,
         thinkingMinimal: false,
+        timeoutMs: Math.min(perModelTimeout, restMs()),
+      })
+    }
+
+    // Google Search hat oft ein eigenes, winziges Free-Kontingent — ohne Search erneut versuchen
+    if (
+      !r.ok &&
+      r.quotaOderRateLimit &&
+      callOpts.geminiGoogleSearch &&
+      restMs() > 12_000
+    ) {
+      console.warn(`[ki-coach] Gemini „${model}“ (${r.httpStatus}) mit Google Search — Retry ohne Search.`)
+      r = await callGeminiEinModell(modellKey, model, systemText, userMessages, {
+        ...optsMitTimeout,
+        geminiGoogleSearch: false,
         timeoutMs: Math.min(perModelTimeout, restMs()),
       })
     }

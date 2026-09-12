@@ -3,8 +3,7 @@ import {
   geminiApiKeyFreeConfigured,
   geminiFreeTierFlashModelKandidaten,
   prepareCoachMessages,
-  readGeminiApiKeyFromEnv,
-  resolveCoachProviderFromMode,
+  resolveGeminiFreeTierProvider,
   runCoachCompletion,
   type CoachImagePart,
   type CoachMessage,
@@ -22,9 +21,7 @@ const MAX_IMAGES = 8
 const MAX_B64 = 3_600_000
 
 function resolveModeberaterProvider() {
-  const key = readGeminiApiKeyFromEnv()
-  if (!key) return null
-  return resolveCoachProviderFromMode('gemini')
+  return resolveGeminiFreeTierProvider()
 }
 
 function kleidungUrlsAusStand(stand: ReturnType<typeof parseModeStand>): string[] {
@@ -133,8 +130,9 @@ export async function POST(req: Request) {
   try {
     const result = await runCoachCompletion(resolved.provider, resolved.apiKey, systemText, userMessages, {
       temperature: 0.5,
-      geminiModels: resolved.provider === 'gemini' ? geminiFreeTierFlashModelKandidaten() : undefined,
-      geminiGoogleSearch: resolved.provider === 'gemini' && willWeb,
+      geminiModels: geminiFreeTierFlashModelKandidaten(),
+      geminiForceFreeApiKey: true,
+      geminiGoogleSearch: willWeb,
       timeoutMs: 70_000,
     })
     if (!result.ok) {
