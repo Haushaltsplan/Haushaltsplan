@@ -38,6 +38,8 @@ export function DonutChart({
   mitte,
   interaktiv = true,
   renderLogo,
+  onSegmentClick,
+  istSegmentKlickbar,
 }: {
   segmente: DonutSegment[]
   groesse?: number
@@ -48,6 +50,8 @@ export function DonutChart({
   interaktiv?: boolean
   /** Optional: Logo in der Ringmitte des Segments (nur bei ausreichend breitem Bogen). */
   renderLogo?: (seg: DonutSegment) => ReactNode
+  onSegmentClick?: (seg: DonutSegment) => void
+  istSegmentKlickbar?: (seg: DonutSegment) => boolean
 }) {
   const [hoverKey, setHoverKey] = useState<string | null>(null)
 
@@ -140,7 +144,9 @@ export function DonutChart({
           )
         })}
         {interaktiv
-          ? anteile.map((s) => (
+          ? anteile.map((s) => {
+              const klickbar = Boolean(onSegmentClick) && (istSegmentKlickbar ? istSegmentKlickbar(s) : true)
+              return (
               <circle
                 key={`${s.key}-hit`}
                 cx={center}
@@ -152,15 +158,31 @@ export function DonutChart({
                 strokeDasharray={`${s.anteil * umfang} ${umfang}`}
                 strokeDashoffset={-s.offset * umfang}
                 strokeLinecap="butt"
-                className="cursor-pointer"
+                className={klickbar ? 'cursor-pointer' : 'cursor-default'}
                 onMouseEnter={() => setHoverKey(s.key)}
                 onTouchStart={() => setHoverKey(s.key)}
                 onFocus={() => setHoverKey(s.key)}
                 onBlur={() => setHoverKey(null)}
+                onClick={klickbar ? () => onSegmentClick?.(s) : undefined}
+                onKeyDown={
+                  klickbar
+                    ? (e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault()
+                          onSegmentClick?.(s)
+                        }
+                      }
+                    : undefined
+                }
                 tabIndex={0}
-                aria-label={`${s.label}: ${formatMitteWert(s.betrag)}`}
+                aria-label={
+                  klickbar
+                    ? `${s.label}: ${formatMitteWert(s.betrag)} — Fundamentaldaten öffnen`
+                    : `${s.label}: ${formatMitteWert(s.betrag)}`
+                }
               />
-            ))
+              )
+            })
           : anteile.map((s) => (
               <circle
                 key={s.key}

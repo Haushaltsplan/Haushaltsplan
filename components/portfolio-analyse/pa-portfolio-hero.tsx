@@ -1,8 +1,9 @@
 'use client'
 
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { useMemo, useState, type ReactNode } from 'react'
-import { DonutChart } from '@/components/finanzen/donut-chart'
+import { DonutChart, type DonutSegment } from '@/components/finanzen/donut-chart'
 import { PortfolioIsinLogo } from '@/components/portfolio-analyse/isin-logo'
 import { PaBadge, PaCard } from '@/components/portfolio-analyse/pa-ui'
 import { formatDatumDe, formatEur, formatProzent } from '@/lib/portfolio-analyse/berechnung'
@@ -13,6 +14,9 @@ import type { ParqetPeriodKennzahlen } from '@/lib/portfolio-analyse/parqet-peri
 import type { PortfolioScopeMetrics, SinglePortfolioReport } from '@/lib/portfolio-analyse/parqet-core/types'
 import type { PeriodPerformance } from '@/lib/portfolio-analyse/parqet-core/types'
 import { ASSET_KLASSE_LABEL, type AssetKlasse } from '@/lib/portfolio-analyse/types'
+import { fundamentaldatenHref } from '@/lib/portfolio-analyse/fundamentaldaten-navigation'
+
+const ISIN_RE = /^[A-Z]{2}[A-Z0-9]{10}$/
 
 function formatEurKompakt(n: number): string {
   return `${Math.round(n).toLocaleString('de-DE')}€`
@@ -106,6 +110,7 @@ export function PaPortfolioHero({
   sektorLaden?: boolean
   meta?: Map<string, IsinMetadata>
 }) {
+  const router = useRouter()
   const [donutModus, setDonutModus] = useState<'asset' | 'sektor'>('asset')
 
   const sektorEintraege = useMemo(() => {
@@ -128,7 +133,7 @@ export function PaPortfolioHero({
   const logoFuerSegment = useMemo(() => {
     if (donutModus !== 'asset' || !meta) return undefined
     return (seg: { key: string; label: string }) => {
-      if (seg.key === 'rest' || !/^[A-Z]{2}[A-Z0-9]{10}$/.test(seg.key)) return null
+      if (seg.key === 'rest' || !ISIN_RE.test(seg.key)) return null
       return (
         <PortfolioIsinLogo
           isin={seg.key}
@@ -140,6 +145,13 @@ export function PaPortfolioHero({
       )
     }
   }, [donutModus, meta])
+
+  const hrefFuerDonutSegment = (seg: DonutSegment): string | null => {
+    if (donutModus !== 'asset' || seg.key === 'rest' || !ISIN_RE.test(seg.key)) return null
+    const pos = positionen.find((p) => p.isin?.toUpperCase() === seg.key)
+    if (pos && pos.assetKlasse !== 'aktie') return null
+    return fundamentaldatenHref({ isin: seg.key })
+  }
 
   const assetklassen = useMemo(() => new Set(positionen.map((p) => p.assetKlasse)).size, [positionen])
   const holdings = positionen.filter((p) => p.wertLiveEur > 0).length
@@ -198,6 +210,11 @@ export function PaPortfolioHero({
               dicke={72}
               mitte={{ wert: formatEurKompakt(depotwert) }}
               renderLogo={logoFuerSegment}
+              istSegmentKlickbar={(seg) => hrefFuerDonutSegment(seg) != null}
+              onSegmentClick={(seg) => {
+                const href = hrefFuerDonutSegment(seg)
+                if (href) router.push(href)
+              }}
             />
           </div>
         </div>
