@@ -47,6 +47,7 @@ const STATUS_LABEL: Record<MantraAuditStatus, string> = {
   nicht_erfuellt: 'Nicht erfüllt',
   keine_daten: 'Keine Daten',
   qualitativ: 'Qualitativ',
+  nicht_anwendbar: 'Nicht anwendbar',
 }
 
 const STATUS_CLASS: Record<MantraAuditStatus, string> = {
@@ -54,6 +55,7 @@ const STATUS_CLASS: Record<MantraAuditStatus, string> = {
   nicht_erfuellt: 'bg-red-500/15 text-red-300 ring-red-500/30',
   keine_daten: 'bg-[var(--app-surface-muted)]/40 text-[var(--app-text-muted)] ring-[var(--app-border-strong)]/40',
   qualitativ: 'bg-amber-500/15 text-amber-200 ring-amber-500/30',
+  nicht_anwendbar: 'bg-sky-500/15 text-sky-200 ring-sky-500/30',
 }
 
 function StatusBadge({ status }: { status: MantraAuditStatus }) {
@@ -195,6 +197,11 @@ function ZusammenfassungLeiste({ audit }: { audit: FundamentalMantraAudit }) {
       {z.qualitativ > 0 ? (
         <span className="rounded-full bg-amber-500/10 px-2.5 py-0.5 text-xs font-medium text-amber-200">
           {z.qualitativ} qualitativ
+        </span>
+      ) : null}
+      {(z.nichtAnwendbar ?? 0) > 0 ? (
+        <span className="rounded-full bg-sky-500/10 px-2.5 py-0.5 text-xs font-medium text-sky-200">
+          {z.nichtAnwendbar} nicht anwendbar
         </span>
       ) : null}
       </div>
@@ -407,6 +414,13 @@ export function PaFundamentalMantra({ audit, ticker }: { audit: FundamentalMantr
       <blockquote className="rounded-xl border border-[var(--app-border)] bg-[var(--app-surface-muted)] px-4 py-3 text-sm italic leading-relaxed text-[var(--app-text)]">
         {audit.anker}
       </blockquote>
+
+      {audit.kapitalProfil && audit.kapitalProfil !== 'quality_default' && audit.kapitalProfilHinweis ? (
+        <p className="rounded-xl border border-sky-500/25 bg-sky-500/10 px-4 py-3 text-sm leading-relaxed text-sky-100">
+          <span className="font-semibold text-sky-200">Kapital-Profil: </span>
+          {audit.kapitalProfilHinweis}
+        </p>
+      ) : null}
 
       <ZusammenfassungLeiste audit={audit} />
 

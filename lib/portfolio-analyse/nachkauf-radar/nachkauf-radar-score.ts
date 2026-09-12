@@ -31,6 +31,7 @@ import type { NachkaufZusatzSignale } from './nachkauf-zusatz-signale-server'
 import { berechnePrognoseMomentumDelta } from './nachkauf-prognose-server'
 import { disziplinSparplanFaktor } from './nachkauf-disziplin-server'
 import { berechneStrukturMitAufschluesselung } from './nachkauf-struktur-aufschluesselung'
+import type { KapitalProfil } from '@/lib/portfolio-analyse/kapital-profil'
 import {
   berechneEarningsFensterMalus,
   berechneKauftriggerBoost,
@@ -339,7 +340,11 @@ export function berechneNachkaufScore(
   const bewertungsScore = berechnePersonalisierteBewertung(signale, position)
   const historischerBewertungsBonus = berechneHistFeintuningPct(signale, zusatz?.pePerzentil5y)
 
-  const strukturRaw = berechneStrukturMitAufschluesselung(zusatz)
+  const kapitalProfil: KapitalProfil =
+    paket.mantra.kapitalProfil ?? zusatz?.kapitalProfil ?? 'quality_default'
+  if (zusatz) zusatz.kapitalProfil = kapitalProfil
+
+  const strukturRaw = berechneStrukturMitAufschluesselung(zusatz, kapitalProfil)
   let strukturPunkte = strukturRaw.punkte
   let strukturSignale = strukturRaw.zeilen
 
@@ -458,6 +463,7 @@ export function berechneNachkaufScore(
     gateG3Teuer,
     strukturMultiplikator,
     segmentDatenQualitaet,
+    kapitalProfil,
   }
 }
 

@@ -741,6 +741,8 @@ async function ladeFundamentaldatenLive(anfrage: FundamentaldatenAnfrage): Promi
     incrementalRoicPct: roiicPaket.incrementalRoicPct,
     incrementalRoicRegime: roiicPaket.regime ?? null,
     incrementalRoicBuchPct: roiicPaket.buchPct ?? null,
+    sektor: sektorFinal,
+    branche: brancheFinal,
   })
   // Macrotrends liefert USD; nur bei Alternativquellen (Yahoo timeseries, Berichtswährung)
   // die Währung aus Konfig bzw. ISIN-Präfix ableiten.

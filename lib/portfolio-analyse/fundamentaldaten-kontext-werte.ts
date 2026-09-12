@@ -18,6 +18,7 @@ import {
 import type { MacrotrendsFundamentalRoh } from '@/lib/portfolio-analyse/macrotrends-scraper-server'
 import type { MantraYahooFinanzdaten } from '@/lib/portfolio-analyse/yahoo-fundamentals-timeseries-server'
 import type { UnitEconomicsTreffer } from '@/lib/portfolio-analyse/unit-economics-extraktion'
+import { erkenneKapitalProfil } from '@/lib/portfolio-analyse/kapital-profil'
 
 function mnaMioAusYahoo(yf: MantraYahooFinanzdaten | null | undefined): number | null {
   const hist = yf?.annualHistorie
@@ -87,6 +88,9 @@ export type FundamentalKontextInput = {
   incrementalRoicRegime?: 'normal' | 'kapitalleicht' | 'schrumpfend' | 'unzureichend' | null
   /** ROIIC inkl. akquiriertem Kapital — Kontrast zum organischen Wert. */
   incrementalRoicBuchPct?: number | null
+  /** Sektor/Branche für Kapital-Profil (keine Ticker-Logik). */
+  sektor?: string | null
+  branche?: string | null
 }
 
 function historischeWerte(
@@ -424,6 +428,54 @@ export function baueKontextWerte(ctx: FundamentalKontextInput) {
     }
   }
 
+  const eigenkapitalMio = letzterWert(zeile('eigenkapital'), perioden)
+  let stockholdersEquityUsd: number | null = null
+  const hist = ctx.yahooFinanz?.annualHistorie
+  if (hist?.length) {
+    for (let i = hist.length - 1; i >= 0; i--) {
+      const eq = hist[i]?.stockholdersEquityUsd
+      if (eq != null && Number.isFinite(eq)) {
+        stockholdersEquityUsd = eq
+        break
+      }
+    }
+  }
+  if (stockholdersEquityUsd == null && eigenkapitalMio != null) {
+    stockholdersEquityUsd = eigenkapitalMio * 1_000_000
+  }
+
+  const industrie =
+    (ctx.yahoo && 'industry' in ctx.yahoo && typeof ctx.yahoo.industry === 'string'
+      ? ctx.yahoo.industry
+      : null) ??
+    ctx.branche ??
+    null
+  const sektor = ctx.sektor ?? (ctx.yahoo && 'sector' in ctx.yahoo && typeof ctx.yahoo.sector === 'string'
+    ? ctx.yahoo.sector
+    : null)
+
+  const kapitalProfilErkennung = erkenneKapitalProfil({
+    stockholdersEquityUsd,
+    roePct: roe,
+    roicPct: roicAnzeige,
+    fcfConversionPct: fcfConversion,
+    fcfMargePct: fcfMarge,
+    capexSalesPct: capexSales,
+    assetTurnover,
+    nrrPct: ctx.unitEconomics?.nrrPct ?? null,
+    bruttoMargePct: bruttoMarge,
+    revGrowthPct,
+    sbcFcfRatio,
+    aktienSinkend,
+    incrementalRoicRegime: ctx.incrementalRoicRegime ?? null,
+    interestCoverage,
+    netDebtEbitda,
+    industrie,
+    sektor,
+    branche: ctx.branche ?? null,
+    istWachstumsfirma,
+  })
+
   return {
     bruttoMarge,
     ebitMarge,
@@ -489,6 +541,12 @@ export function baueKontextWerte(ctx: FundamentalKontextInput) {
     ltvCacPeriode: ctx.unitEconomics?.periode ?? null,
     ltvCacHinweis: ctx.unitEconomics?.hinweis ?? null,
     ltvCacSnippet: ctx.unitEconomics?.snippet ?? null,
+    stockholdersEquityUsd,
+    industrie,
+    sektor,
+    branche: ctx.branche ?? null,
+    kapitalProfil: kapitalProfilErkennung.profil,
+    kapitalProfilErkennung,
   }
 }
 

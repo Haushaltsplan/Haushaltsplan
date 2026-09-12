@@ -157,6 +157,8 @@ export type NachkaufZusatzSignale = {
   earningsSentimentScore?: number | null
   /** 0–100: wie viele Kern-Signale befüllt sind. */
   datenVollstaendigkeitPct: number
+  /** Erkanntes Kapital-System — steuert Anwendbarkeit der Struktur-Kennzahlen. */
+  kapitalProfil?: import('@/lib/portfolio-analyse/kapital-profil').KapitalProfil | null
 }
 
 function wertAusZeile(paket: FundamentaldatenPaket, zeilenId: string, key: string): number | null {
@@ -741,6 +743,9 @@ export function ergaenzeDatenVollstaendigkeit(
 /** Kompakte Zeile für Flash-KI. */
 export function formatZusatzSignaleKurz(z: NachkaufZusatzSignale): string {
   const teile: string[] = []
+  if (z.kapitalProfil && z.kapitalProfil !== 'quality_default') {
+    teile.push(`Profil ${z.kapitalProfil}`)
+  }
   if (z.epsBeatRate12Pct != null) teile.push(`EPS-Beat 12Q ${z.epsBeatRate12Pct} %`)
   if (z.umsatzBeatRate12Pct != null) teile.push(`Umsatz-Beat 12Q ${z.umsatzBeatRate12Pct} %`)
   if (z.epsStreakLaenge >= 2 && z.epsStreakArt) {

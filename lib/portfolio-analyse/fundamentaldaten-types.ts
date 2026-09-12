@@ -89,7 +89,7 @@ export type FundamentalNewsArtikel = {
   zusammenfassung: string | null
 }
 
-export type MantraAuditStatus = 'erfuellt' | 'nicht_erfuellt' | 'keine_daten' | 'qualitativ'
+export type MantraAuditStatus = 'erfuellt' | 'nicht_erfuellt' | 'keine_daten' | 'qualitativ' | 'nicht_anwendbar'
 
 export type MantraAuditErgebnis = {
   kategorie: string
@@ -146,7 +146,12 @@ export type FundamentalMantraAudit = {
     keineDaten: number
     qualitativ: number
     bewertbar: number
+    /** Kennzahlen, die für das Kapital-Profil nicht in den Nenner gehören. */
+    nichtAnwendbar: number
   }
+  /** Erkanntes Kapital-System (keine Ticker-Sonderlocke). */
+  kapitalProfil?: import('@/lib/portfolio-analyse/kapital-profil').KapitalProfil | null
+  kapitalProfilHinweis?: string | null
   /** Quality Investing Framework — Abschnitt 1 */
   anker: string
   frameworkTitel: string

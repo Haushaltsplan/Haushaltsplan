@@ -5,6 +5,7 @@ import { EarningsCallAnalyseDarstellung } from '@/components/portfolio-analyse/p
 import { PortfolioAnalyseShell } from '@/components/portfolio-analyse/portfolio-analyse-shell.client'
 import { PaCard, PaSectionTitle, PA_SCROLL_ELEGANT } from '@/components/portfolio-analyse/pa-ui'
 import { istWatchlistNeukauf, risikoKlasseFuerIsin, type RisikoKlasse } from '@/lib/portfolio-analyse/nachkauf-radar/nachkauf-radar-whitelist'
+import { KAPITAL_PROFIL_HINWEIS, KAPITAL_PROFIL_LABEL } from '@/lib/portfolio-analyse/kapital-profil'
 import { clientZugriffRolle } from '@/lib/zugriff-client'
 import { portfolioEmpfehlungVon, type PortfolioEmpfehlungTyp } from '@/lib/portfolio-analyse/nachkauf-radar/nachkauf-trim-signal'
 import type {
@@ -1155,6 +1156,15 @@ function DetailPanel({
               title="Diversifikations-Malus: mehrere starke Kandidaten im gleichen Whitelist-Sektor"
             >
               Sektor {eintrag.scoreDetail.sektorMalus}
+            </span>
+          ) : null}
+          {eintrag.scoreDetail.kapitalProfil &&
+          eintrag.scoreDetail.kapitalProfil !== 'quality_default' ? (
+            <span
+              className="rounded bg-sky-500/10 px-1.5 py-0.5 text-sky-200 ring-1 ring-sky-500/20"
+              title={KAPITAL_PROFIL_HINWEIS[eintrag.scoreDetail.kapitalProfil]}
+            >
+              {KAPITAL_PROFIL_LABEL[eintrag.scoreDetail.kapitalProfil]}
             </span>
           ) : null}
           {eintrag.scoreDetail.gateG1 === false ? (

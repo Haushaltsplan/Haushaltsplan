@@ -231,6 +231,7 @@ async function scanneEinenTitel(opts: {
 
   const bewertungsSignale = extrahiereBewertungsSignale(paket, position, historisch, zusatzRoh)
   const zusatz = ergaenzeDatenVollstaendigkeit(zusatzRoh, bewertungsSignale)
+  zusatz.kapitalProfil = paket.mantra.kapitalProfil ?? zusatz.kapitalProfil ?? null
 
   const { ausgeloest: kaufTriggerAusgeloest, text: kaufTriggerText } = pruefKaufTrigger(
     bewertungsSignale,

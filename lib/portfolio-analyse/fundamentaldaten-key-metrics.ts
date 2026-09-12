@@ -56,6 +56,8 @@ export type YahooFundamentalKennzahlen = {
   fy1RevenueUsd?: number
   fy1EbitdaUsd?: number
   fy1Eps?: number
+  sector?: string
+  industry?: string
 }
 
 function wertAnPeriode(z: FundamentalMetrikZeile | undefined, key: string): number | null {

@@ -80,6 +80,8 @@ export type NachkaufScoreDetail = {
   segmentDatenQualitaet?: 'validiert' | 'nur_ms' | 'keine'
   /** Wie vollständig die Entscheidungsdaten sind (0–100 %). */
   datenVollstaendigkeitPct: number
+  /** Kapital-System — steuert welche Kennzahlen in Q/Struktur zählen. */
+  kapitalProfil?: import('@/lib/portfolio-analyse/kapital-profil').KapitalProfil
 }
 
 /** Bewertungssignale, die für Score und Anzeige verwendet werden. */

@@ -29,6 +29,17 @@ import type {
 } from '@/lib/portfolio-analyse/fundamentaldaten-types'
 import type { MacrotrendsFundamentalRoh } from '@/lib/portfolio-analyse/macrotrends-scraper-server'
 import type { MantraYahooFinanzdaten } from '@/lib/portfolio-analyse/yahoo-fundamentals-timeseries-server'
+import {
+  KAPITAL_PROFIL_HINWEIS,
+  KAPITAL_PROFIL_LABEL,
+  fcfConversionSchwelle,
+  fcfMargeSchwelle,
+  istBuchRenditeUnbrauchbar,
+  netDebtEbitdaOk,
+  roicHuerdePct,
+  verwässerungMaxPct,
+  type KapitalProfil,
+} from '@/lib/portfolio-analyse/kapital-profil'
 
 type MantraRohdaten = Pick<MacrotrendsFundamentalRoh, 'perioden' | 'zeilen'> | null
 type MantraKontext = FundamentalKontextInput
@@ -57,6 +68,14 @@ function qualitativ(istWert: string | null, status: MantraAuditStatus, hinweis?:
   return { istWert, status, hinweis }
 }
 
+function nichtAnwendbar(istWert: string | null, hinweis: string) {
+  return { istWert, status: 'nicht_anwendbar' as MantraAuditStatus, hinweis }
+}
+
+function profilVon(w: FundamentalKontextWerte): KapitalProfil {
+  return w.kapitalProfil ?? 'quality_default'
+}
+
 /** @deprecated Sektor-Mantras durch universelles Framework ersetzt. */
 export function waehleSektorMantraId(_sektor: string | null, _branche: string | null): string | null {
   return null
@@ -66,25 +85,97 @@ export function waehleSektorMantraId(_sektor: string | null, _branche: string | 
 // ROIC — mit ROE/ROA als Fallback für EU-Unternehmen ohne Macrotrends
 // ---------------------------------------------------------------------------
 
+function evaluiereRentabilitaetErsatzFcf(w: FundamentalKontextWerte, grund: string) {
+  if (w.fcfConversion != null && w.fcfConversion >= 90) {
+    return erfuellt(
+      `FCF/NI ${pct(w.fcfConversion)}`,
+      w.fcfConversion,
+      `${grund} Ersatzmaß FCF-Conversion ≥ 90 %.`,
+    )
+  }
+  if (w.fcfMarge != null && w.fcfMarge >= 15) {
+    return erfuellt(
+      `FCF-Marge ${pct(w.fcfMarge)}`,
+      w.fcfMarge,
+      `${grund} Ersatzmaß FCF-Marge ≥ 15 %.`,
+    )
+  }
+  if (
+    (w.fcfConversion != null && w.fcfConversion >= 75) ||
+    (w.fcfMarge != null && w.fcfMarge >= 10)
+  ) {
+    return qualitativ(
+      w.fcfConversion != null ? `FCF/NI ${pct(w.fcfConversion)}` : `FCF-Marge ${pct(w.fcfMarge)}`,
+      'qualitativ',
+      `${grund} Ersatzmaß vorhanden, aber unter der klaren Hürde.`,
+    )
+  }
+  if (w.fcfConversion != null || w.fcfMarge != null) {
+    return nichtErfuellt(
+      w.fcfConversion != null ? `FCF/NI ${pct(w.fcfConversion)}` : `FCF-Marge ${pct(w.fcfMarge)}`,
+      w.fcfConversion ?? w.fcfMarge,
+      `${grund} Ersatzmaß FCF schwach — Qualität nicht über Cashflow belegt.`,
+    )
+  }
+  return keineDaten(`${grund} Weder brauchbarer ROIC noch FCF-Ersatzmaß verfügbar.`)
+}
+
 function evaluiereRoic(w: FundamentalKontextWerte) {
+  const profil = profilVon(w)
   const roic = w.roic
   const hist = w.roicHist
   const roicExGw = w.roicExGoodwill
   const quelleSuffix = w.roicQuelle ? ` ${w.roicQuelle}.` : ''
+  const huerde = roicHuerdePct(profil)
+
+  if (profil === 'capital_return' && istBuchRenditeUnbrauchbar({
+    stockholdersEquityUsd: w.stockholdersEquityUsd,
+    roePct: w.roe,
+    roicPct: w.roicAnzeige ?? roic,
+    fcfConversionPct: w.fcfConversion,
+    fcfMargePct: w.fcfMarge,
+  })) {
+    return evaluiereRentabilitaetErsatzFcf(
+      w,
+      `Profil ${KAPITAL_PROFIL_LABEL.capital_return}: Buch-ROE/ROIC nicht anwendbar.`,
+    )
+  }
+
+  if (profil === 'float_finance' && (w.roe != null || roic != null)) {
+    if (w.roe != null && w.roe >= 12) {
+      return erfuellt(pct(w.roe), w.roe, 'Float-Profil: ROE ist hier das Renditemaß (nicht Industrie-ROIC).')
+    }
+    if (roic != null && roic >= 10) {
+      return erfuellt(pct(roic), roic, 'Float-Profil: ROIC als Ergänzung zum ROE über Hürde.')
+    }
+    if (w.roe != null && w.roe >= 8) {
+      return qualitativ(pct(w.roe), 'qualitativ', 'Float-Profil: ROE unter 12 %, aber nicht zerstört.')
+    }
+    if (w.roe != null) {
+      return nichtErfuellt(pct(w.roe), w.roe, 'Float-Profil: ROE unter 8 % — Underwriting/Kapitalrendite prüfen.')
+    }
+  }
 
   // Primär: Macrotrends ROI/ROIC — Ist-Wert muss die Hürde erfüllen (kein Pass nur über Historie).
   if (roic != null && hist.length > 0) {
-    if (roic >= 15) {
+    if (roic >= huerde) {
       return erfuellt(
         pct(roic),
         roic,
         w.roicKonstantHoch
-          ? `ROIC aus Macrotrends.${quelleSuffix} Etabliert: konstant hoch.`
-          : `ROIC aus Macrotrends.${quelleSuffix}`,
+          ? `ROIC aus Macrotrends.${quelleSuffix} Etabliert: konstant hoch (Hürde ${huerde} %, Profil ${KAPITAL_PROFIL_LABEL[profil]}).`
+          : `ROIC aus Macrotrends.${quelleSuffix} Hürde ${huerde} % (${KAPITAL_PROFIL_LABEL[profil]}).`,
+      )
+    }
+    if (profil === 'asset_heavy' && w.valueSpread != null && w.valueSpread >= 0 && roic >= 7) {
+      return erfuellt(
+        pct(roic),
+        roic,
+        `Kapitalintensiv: ROIC ${pct(roic)} über WACC (Spread ${pct(w.valueSpread)}) — 15-%-Software-Hürde gilt hier nicht.`,
       )
     }
     // Goodwill-Falle (IHS Markit, Patheon, …): operativer ROIC ohne Akquisitions-Prämien
-    if (roicExGw != null && roicExGw >= 15 && roicExGw > roic + 3) {
+    if (roicExGw != null && roicExGw >= huerde && roicExGw > roic + 3) {
       return erfuellt(
         pct(roicExGw),
         roicExGw,
@@ -98,26 +189,32 @@ function evaluiereRoic(w: FundamentalKontextWerte) {
       roicExGw != null && roicExGw > roic
         ? ` ROIC ex Goodwill: ${pct(roicExGw)}.`
         : ''
-    return nichtErfuellt(pct(roic), roic, `ROIC (Macrotrends).${quelleSuffix}${gwHinweis}`)
+    return nichtErfuellt(pct(roic), roic, `ROIC (Macrotrends) unter ${huerde} % (${KAPITAL_PROFIL_LABEL[profil]}).${quelleSuffix}${gwHinweis}`)
   }
 
   if (roicExGw != null) {
-    if (roicExGw >= 15) {
+    if (roicExGw >= huerde) {
       return erfuellt(pct(roicExGw), roicExGw, 'ROIC ex Goodwill (berechnet aus Bilanz).')
     }
-    return nichtErfuellt(pct(roicExGw), roicExGw, 'ROIC ex Goodwill unter 15 %.')
+    return nichtErfuellt(pct(roicExGw), roicExGw, `ROIC ex Goodwill unter ${huerde} %.`)
   }
 
-  // Fallback 1: ROE aus Yahoo Finance (wenn kein Macrotrends-ROIC)
+  // ROE-Fallback: bei Kapitalrückgabe verboten, bei Float erwünscht, sonst nur Näherung.
+  if (profil === 'capital_return') {
+    return evaluiereRentabilitaetErsatzFcf(
+      w,
+      'Kapitalrückgabe-Profil: ROE-Fallback unzulässig.',
+    )
+  }
+
   if (w.roe != null) {
     const proxy = w.roe
     const hinweis = 'Macrotrends-ROI nicht verfügbar — ROE (Yahoo) als Näherungswert. ROE überschätzt Kapitaleffizienz bei Unternehmen mit negativem Buchwert oder hohem Goodwill.'
-    if (proxy >= 15) return qualitativ(pct(proxy), 'erfuellt', hinweis)
-    if (proxy >= 10) return qualitativ(pct(proxy), 'qualitativ', hinweis)
+    if (proxy >= huerde) return qualitativ(pct(proxy), 'erfuellt', hinweis)
+    if (proxy >= huerde - 5) return qualitativ(pct(proxy), 'qualitativ', hinweis)
     return nichtErfuellt(pct(proxy), proxy, hinweis)
   }
 
-  // Fallback 2: ROA aus Yahoo Finance
   if (w.roa != null) {
     const hinweis = 'Macrotrends-ROI und ROE nicht verfügbar — ROA (Yahoo) als vereinfachter Proxy.'
     if (w.roa >= 8) return qualitativ(pct(w.roa), 'qualitativ', hinweis)
@@ -213,8 +310,10 @@ function evaluiereLtvCac(w: FundamentalKontextWerte) {
       )
     }
 
-    // Zu wenig Daten für qualitative Einschätzung
-    return keineDaten('LTV/CAC: Nicht direkt anwendbar für diesen Unternehmenstyp. Bruttomarge/EBIT-Daten fehlen für Proxy-Bewertung.')
+    return nichtAnwendbar(
+      null,
+      `LTV/CAC gilt nicht für Profil ${KAPITAL_PROFIL_LABEL[profilVon(w)]} — kein Abo-Reporting, keine Strafbewertung.`,
+    )
   }
 
   // SaaS-Unternehmen ohne Daten = echtes Datenproblem
@@ -304,8 +403,25 @@ function evaluiereMargenSkalierung(w: FundamentalKontextWerte) {
 // ---------------------------------------------------------------------------
 
 function evaluiereFcfRuleOf40(w: FundamentalKontextWerte) {
-  const fcfOk = w.fcfConversion != null && w.fcfConversion >= 90
+  const profil = profilVon(w)
+  const convSchwelle = fcfConversionSchwelle(profil)
+  const margeSchwelle = fcfMargeSchwelle(profil)
+  const fcfOk = w.fcfConversion != null && w.fcfConversion >= convSchwelle
   const ro40Ok = w.ruleOf40 != null && w.ruleOf40 >= 40
+
+  if (profil === 'float_finance' && (w.fcfConversion == null || w.fcfConversion < 0 || w.fcfConversion > 300)) {
+    if (w.fcfMarge != null && w.fcfMarge >= margeSchwelle.qualitativ) {
+      return qualitativ(
+        `FCF-Marge ${pct(w.fcfMarge)}`,
+        'qualitativ',
+        'Float-Profil: klassische FCF/NI-Conversion oft unbrauchbar — FCF-Marge als Ersatz.',
+      )
+    }
+    return nichtAnwendbar(
+      w.fcfConversion != null ? pct(w.fcfConversion) : null,
+      'Float-Profil: FCF/Nettogewinn ist kein sinnvolles Underwriting-Maß.',
+    )
+  }
 
   // Zielwert: FCF/NI >90 % ODER Rule of 40 >40 % — gilt für Wachstum und Etabliert.
   if (fcfOk || ro40Ok) {
@@ -317,7 +433,11 @@ function evaluiereFcfRuleOf40(w: FundamentalKontextWerte) {
       )
     }
     if (fcfOk) {
-      return erfuellt(pct(w.fcfConversion!), w.fcfConversion, 'FCF/Nettogewinn ≥ 90 %.')
+      return erfuellt(
+        pct(w.fcfConversion!),
+        w.fcfConversion,
+        `FCF/Nettogewinn ≥ ${convSchwelle} % (${KAPITAL_PROFIL_LABEL[profil]}).`,
+      )
     }
     return erfuellt(
       pct(w.ruleOf40!),
@@ -336,7 +456,7 @@ function evaluiereFcfRuleOf40(w: FundamentalKontextWerte) {
     return nichtErfuellt(
       pct(w.fcfConversion!),
       w.fcfConversion,
-      'FCF/NI unter 90 % und Rule of 40 fehlt.',
+      `FCF/NI unter ${convSchwelle} % und Rule of 40 fehlt.`,
     )
   }
 
@@ -346,16 +466,16 @@ function evaluiereFcfRuleOf40(w: FundamentalKontextWerte) {
     return nichtErfuellt(
       pct(w.fcfConversion),
       w.fcfConversion,
-      `Etablierte Firma: FCF/Nettogewinn unter 90 %.${ro40Hinweis}`,
+      `Etablierte Firma: FCF/Nettogewinn unter ${convSchwelle} % (${KAPITAL_PROFIL_LABEL[profil]}).${ro40Hinweis}`,
     )
   }
 
   // Fallback: FCF-Marge aus Yahoo/Macrotrends als Näherung
   if (w.fcfMarge != null) {
-    const hinweis = 'FCF-Konvertierung nicht direkt berechenbar — FCF-Marge als Proxy.'
-    if (w.fcfMarge >= 12) return qualitativ(pct(w.fcfMarge), 'qualitativ', hinweis)
-    if (w.fcfMarge >= 5) return qualitativ(pct(w.fcfMarge), 'qualitativ', hinweis)
-    return nichtErfuellt(pct(w.fcfMarge), w.fcfMarge, 'FCF-Marge unter 5 % — schwache Cash-Generierung.')
+    const hinweis = `FCF-Konvertierung nicht direkt berechenbar — FCF-Marge als Proxy (${KAPITAL_PROFIL_LABEL[profil]}).`
+    if (w.fcfMarge >= margeSchwelle.erfuellt) return qualitativ(pct(w.fcfMarge), 'qualitativ', hinweis)
+    if (w.fcfMarge >= margeSchwelle.qualitativ) return qualitativ(pct(w.fcfMarge), 'qualitativ', hinweis)
+    return nichtErfuellt(pct(w.fcfMarge), w.fcfMarge, `FCF-Marge unter ${margeSchwelle.qualitativ} % — schwache Cash-Generierung.`)
   }
 
   return keineDaten('FCF-Konvertierung (FCF ÷ Nettogewinn) und Rule of 40 nicht verfügbar.')
@@ -366,47 +486,77 @@ function evaluiereFcfRuleOf40(w: FundamentalKontextWerte) {
 // ---------------------------------------------------------------------------
 
 function evaluiereVerschuldungVerwaesserung(w: FundamentalKontextWerte) {
+  const profil = profilVon(w)
   const teile: string[] = []
   let schuldOk: boolean | null = null
   let dilOk: boolean | null = null
+  const dilMax = verwässerungMaxPct(profil)
 
-  if (w.netDebtEbitda != null) {
-    schuldOk = w.netDebtEbitda < 2
-    teile.push(`Net Debt/EBITDA ${mult(w.netDebtEbitda)}`)
-  }
-  if (w.netDebtFcf != null) {
-    // FCF-Tragfähigkeit: >5× FCF = gelähmt bei Zinsanstieg
-    const fcfOk = w.netDebtFcf < 5
-    if (schuldOk == null) schuldOk = fcfOk
-    else schuldOk = schuldOk && fcfOk
-    teile.push(`Net Debt/FCF ${mult(w.netDebtFcf)}`)
+  if (profil === 'float_finance') {
+    teile.push('Net Debt/EBITDA nicht anwendbar (Float)')
+  } else if (profil === 'capital_return' && w.interestCoverage != null) {
+    teile.push(`Zinsdeckung ${mult(w.interestCoverage)}`)
+    if (w.netDebtEbitda != null) teile.push(`Net Debt/EBITDA ${mult(w.netDebtEbitda)} (info)`)
+    if (w.interestCoverage >= 6) schuldOk = true
+    else if (w.interestCoverage < 4) schuldOk = false
+    // 4–6×: weder Fail noch klar erfüllt → qualitativ weiter unten
+  } else {
+    const ndOk = netDebtEbitdaOk(w.netDebtEbitda, profil, w.interestCoverage)
+    if (w.netDebtEbitda != null) {
+      teile.push(`Net Debt/EBITDA ${mult(w.netDebtEbitda)}`)
+    }
+    if (ndOk != null) schuldOk = ndOk
+    else if (w.netDebtEbitda != null) {
+      schuldOk = w.netDebtEbitda < (profil === 'asset_heavy' ? 3.5 : 2)
+    }
+    if (w.netDebtFcf != null && profil !== 'capital_return') {
+      const fcfLimit = profil === 'asset_heavy' ? 8 : 5
+      const fcfOk = w.netDebtFcf < fcfLimit
+      if (schuldOk == null) schuldOk = fcfOk
+      else schuldOk = schuldOk && fcfOk
+      teile.push(`Net Debt/FCF ${mult(w.netDebtFcf)}`)
+    }
+    if (profil === 'capital_return' && w.interestCoverage == null && w.netDebtEbitda != null) {
+      schuldOk = w.netDebtEbitda <= 4.5
+    }
   }
 
   if (w.aktienVerwaesserungJaehrlichPct != null) {
-    dilOk = w.aktienVerwaesserungJaehrlichPct < 2
+    dilOk = w.aktienVerwaesserungJaehrlichPct < dilMax
     teile.push(`Verwässerung ${pct(w.aktienVerwaesserungJaehrlichPct)} p.a.`)
   } else if (w.aktienSinkend === true) {
     dilOk = true
     teile.push('Sinkende Aktienanzahl')
   }
 
-  if (schuldOk == null && dilOk == null) return keineDaten('Net Debt/EBITDA bzw. /FCF und Aktienanzahl-Zeitreihe benötigt.')
+  if (schuldOk == null && dilOk == null) {
+    if (profil === 'float_finance') {
+      return nichtAnwendbar(teile.join(' · ') || null, 'Float-Profil: Net Debt/EBITDA kein Sicherheitsmaß.')
+    }
+    return keineDaten('Net Debt/EBITDA bzw. /FCF und Aktienanzahl-Zeitreihe benötigt.')
+  }
 
   const istWert = teile.join(' · ') || '–'
 
   if (schuldOk === true && dilOk === true) return erfuellt(istWert)
   if (schuldOk === false) {
+    const grund =
+      profil === 'capital_return'
+        ? 'Zinsdeckung trägt den Hebel nicht mehr (Kapitalrückgabe ohne Tragfähigkeit).'
+        : profil === 'asset_heavy'
+          ? 'Verschuldung zu hoch für kapitalintensives Modell (Net Debt/EBITDA ≥3,5× und schwache Deckung).'
+          : 'Verschuldung zu hoch (≥2× EBITDA oder ≥5× FCF).'
     return nichtErfuellt(
       istWert,
-      w.netDebtFcf ?? w.netDebtEbitda ?? undefined,
-      'Verschuldung zu hoch (≥2× EBITDA oder ≥5× FCF).',
+      w.interestCoverage ?? w.netDebtFcf ?? w.netDebtEbitda ?? undefined,
+      grund,
     )
   }
   if (dilOk === false) {
     return nichtErfuellt(
       istWert,
       w.aktienVerwaesserungJaehrlichPct ?? undefined,
-      'Jährliche SBC-Verwässerung ≥2 %.',
+      `Jährliche SBC-Verwässerung ≥${dilMax} % (${KAPITAL_PROFIL_LABEL[profil]}).`,
     )
   }
   if (schuldOk === true && dilOk == null) {
@@ -445,8 +595,11 @@ function evaluiereSellTriggers(w: FundamentalKontextWerte): SellTriggerWatch[] {
       renditeStatus = 'ok'
       renditeBegr = 'Kein struktureller ROIC-Verfall über 3 Jahre erkennbar.'
     }
+  } else if (profilVon(w) === 'capital_return') {
+    renditeStatus = 'ok'
+    renditeBegr = 'Kapitalrückgabe-Profil: ROE-Fallback für Rendite-Verfall nicht anwendbar — FCF/Zinsdeckung im Dashboard.'
   } else if (w.roe != null) {
-    // Fallback: ROE-Trend wenn ROIC nicht verfügbar
+    // Fallback: ROE-Trend wenn ROIC nicht verfügbar (Float: ROE ist das Maß)
     renditeStatus = w.roe >= 10 ? 'ok' : 'beobachten'
     renditeBegr = w.roe >= 10
       ? `ROE ${pct(w.roe)} als Rendite-Proxy (ROIC-Zeitreihe nicht verfügbar).`
@@ -482,7 +635,8 @@ function evaluiereSellTriggers(w: FundamentalKontextWerte): SellTriggerWatch[] {
   const revStagniert = w.revGrowthPct != null && w.revGrowthPct < 4
   const epsSteigend = w.epsCagr3 != null && w.epsCagr3 > 5
   const hoheVerwaesserung =
-    w.aktienVerwaesserungJaehrlichPct != null && w.aktienVerwaesserungJaehrlichPct > 2
+    w.aktienVerwaesserungJaehrlichPct != null &&
+    w.aktienVerwaesserungJaehrlichPct > verwässerungMaxPct(profilVon(w))
 
   if (revStagniert && epsSteigend && hoheVerwaesserung) {
     wachstumStatus = 'warnung'
@@ -591,6 +745,7 @@ function zusammenfassung(zeilen: MantraAuditErgebnis[]) {
     nichtErfuellt: zeilen.filter((z) => z.status === 'nicht_erfuellt').length,
     keineDaten: zeilen.filter((z) => z.status === 'keine_daten').length,
     qualitativ: zeilen.filter((z) => z.status === 'qualitativ').length,
+    nichtAnwendbar: zeilen.filter((z) => z.status === 'nicht_anwendbar').length,
     bewertbar: zeilen.filter((z) => z.status === 'erfuellt' || z.status === 'nicht_erfuellt').length,
   }
 }
@@ -608,13 +763,21 @@ export function baueMantraAudit(
   yahooFinanz: MantraYahooFinanzdaten | null = null,
   kontextWerte?: FundamentalKontextWerte | null,
 ): FundamentalMantraAudit {
-  const ctx: MantraKontext = { yahoo, roh, schaetzungen, yahooFinanz }
+  const ctx: MantraKontext = {
+    yahoo,
+    roh,
+    schaetzungen,
+    yahooFinanz,
+    sektor: _sektor,
+    branche: _branche,
+  }
   const w = kontextWerte ?? baueKontextWerte(ctx)
 
   const standard = auditZeilen(INVESTMENT_MANTRA, ctx, w)
   const sum = zusammenfassung(standard)
   const sellTriggerWatch = evaluiereSellTriggers(w)
   const ampelInfo = berechneAmpel(sum, sellTriggerWatch)
+  const profil = profilVon(w)
 
   return {
     sektorMantraId: null,
@@ -634,6 +797,11 @@ export function baueMantraAudit(
     ampel: ampelInfo.ampel,
     ampelScorePct: ampelInfo.scorePct,
     ampelHinweis: ampelInfo.hinweis,
+    kapitalProfil: profil,
+    kapitalProfilHinweis:
+      profil === 'quality_default'
+        ? null
+        : `${KAPITAL_PROFIL_LABEL[profil]}: ${KAPITAL_PROFIL_HINWEIS[profil]}`,
   }
 }
 
