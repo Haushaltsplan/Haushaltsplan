@@ -143,6 +143,10 @@ async function fetchKiFaziteAlle(opts: {
       alleFazite.push(...teil.fazite)
     } catch (e) {
       letzterFehler = e instanceof Error ? e : new Error('Batch fehlgeschlagen')
+      const batchHinweis =
+        /failed to fetch|load failed|networkerror|timeout/i.test(letzterFehler.message)
+          ? 'Verbindung zum Server abgebrochen (Timeout oder Netz). Bitte Fazit erneut starten.'
+          : letzterFehler.message
       // Fehlgeschlagene Titel markieren, Rest weiterlaufen lassen
       for (const sym of batches[i]) {
         const name =
@@ -154,7 +158,7 @@ async function fetchKiFaziteAlle(opts: {
           name,
           fazit: '',
           anzahlMeldungen: 0,
-          fehler: letzterFehler.message,
+          fehler: batchHinweis,
         })
       }
     }

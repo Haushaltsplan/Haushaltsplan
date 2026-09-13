@@ -7,7 +7,7 @@ import 'server-only'
 
 import {
   geminiFreeTierFlashModelKandidaten,
-  resolveCoachProviderFromMode,
+  resolveGeminiFreeTierProvider,
   runCoachCompletion,
 } from '@/lib/ki-coach-backend'
 import { teileArray } from '@/lib/portfolio-analyse/batch-hilfen'
@@ -68,14 +68,14 @@ function gruppiereNachUnternehmen(
 }
 
 async function fazitFuerUnternehmen(g: Gruppe): Promise<NewsTerminalKiFazit> {
-  const provider = resolveCoachProviderFromMode('gemini')
-  if (!provider || provider.provider !== 'gemini') {
+  const provider = resolveGeminiFreeTierProvider()
+  if (!provider) {
     return {
       symbol: g.symbol,
       name: g.name,
       fazit: '',
       anzahlMeldungen: g.headlines.length,
-      fehler: 'Gemini nicht konfiguriert.',
+      fehler: 'GEMINI_API_KEY_FREE fehlt — News-Fazit darf den Billing-Key nicht nutzen.',
     }
   }
 
@@ -102,7 +102,7 @@ async function fazitFuerUnternehmen(g: Gruppe): Promise<NewsTerminalKiFazit> {
     provider.apiKey,
     SYSTEM_PROMPT,
     [{ role: 'user', content: userText }],
-    { temperature: 0.3, geminiModels: models },
+    { temperature: 0.3, geminiModels: models, geminiForceFreeApiKey: true },
   )
 
   if (!result.ok) {

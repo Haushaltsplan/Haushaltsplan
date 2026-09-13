@@ -277,6 +277,20 @@ export type CoachJsonResponseConfig = {
   schema: Record<string, unknown>
 }
 
+/**
+ * Google hat 2.5-Flash-Lite für neue AI-Studio-Projekte abgeschaltet
+ * („no longer available to new users“ → 3.5-Flash-Lite).
+ */
+export function normalisiereGeminiModellId(raw: string): string {
+  const id = raw.replace(/^models\//, '').trim()
+  if (!id) return id
+  const klein = id.toLowerCase()
+  if (klein === 'gemini-2.5-flash-lite' || klein === 'gemini-2.0-flash-lite' || klein === 'gemini-flash-lite-latest') {
+    return 'gemini-3.5-flash-lite'
+  }
+  return id
+}
+
 /** Primärmodell + Fallbacks (ohne Duplikate). Reihenfolge: ENV primär, GEMINI_MODEL_FALLBACKS, dann sinnvolle Defaults. */
 function buildGeminiModelChain(opts: {
   primaryEnvKeys: string[]
@@ -303,7 +317,7 @@ function buildGeminiModelChain(opts: {
   const seen = new Set<string>()
   const out: string[] = []
   for (const m of chain) {
-    const id = m.replace(/^models\//, '').trim()
+    const id = normalisiereGeminiModellId(m)
     if (!id || seen.has(id)) continue
     seen.add(id)
     out.push(id)
@@ -316,14 +330,18 @@ export function geminiFreeTierFlashModelKandidaten(opts?: {
   primaryEnvKeys?: string[]
   fallbackEnvKey?: string
 }): string[] {
-  return buildGeminiModelChain({
+  const chain = buildGeminiModelChain({
     primaryEnvKeys: opts?.primaryEnvKeys ?? ['FINANCE_COACH_GEMINI_MODEL', 'GEMINI_MODEL'],
     fallbackEnvKey: opts?.fallbackEnvKey ?? 'GEMINI_MODEL_FALLBACKS',
     defaultPrimary: 'gemini-3.5-flash',
     /** Quota oft pro Modell — nächstes Modell = neues Free-Tier-Kontingent. Kein Pro / kein 3.1-flash-lite. */
     /** Nur Modelle, die im aktuellen Free-Projekt (3.5 Flash) existieren. 2.5/3-preview oft Limit 0. */
-    defaultFallbacks: ['gemini-flash-latest'],
+    defaultFallbacks: ['gemini-3.5-flash-lite', 'gemini-flash-latest'],
+  }).filter((m) => {
+    const k = m.toLowerCase()
+    return !k.startsWith('gemini-2.5') && !k.startsWith('gemini-2.0')
   })
+  return chain.length > 0 ? chain : ['gemini-3.5-flash', 'gemini-3.5-flash-lite', 'gemini-flash-latest']
 }
 
 /**
@@ -442,6 +460,13 @@ export function formatCoachFehlerHint(hint: string, modelsVersucht = 1): string 
   const art = klassifiziereGeminiLimit(hint)
   const mehr =
     modelsVersucht > 1 ? ` Es wurden ${modelsVersucht} Gemini-Modelle probiert.` : ''
+  const raw = hint.toLowerCase()
+  if (raw.includes('no longer available') || raw.includes('not longer available')) {
+    return (
+      'Google hat dieses Gemini-Modell für neue Free-Projekte abgeschaltet (2.5 Flash Lite). ' +
+      'Die App nutzt jetzt 3.5 Flash / 3.5 Flash Lite — bitte KI-Fazit erneut starten.'
+    )
+  }
   if (art === 'capacity') {
     return (
       `Die KI ist gerade stark ausgelastet (Google Gemini). Bitte in 1–2 Minuten erneut versuchen.${mehr} ` +
@@ -708,11 +733,16 @@ async function callGemini(
     lastHttp = r.httpStatus
 
     const naechstes = models[i + 1]
-    /** 404 / Quota / 503 / Timeout — nächstes Flash-Modell (eigenes Kontingent). */
+    const modellAbgeschaltet = /no longer available|not longer available/i.test(r.hint)
+    /** 404 / Quota / 503 / Timeout / abgekündigtes Modell — nächstes Flash (eigenes Kontingent). */
     const naechstesModellMoeglich =
       Boolean(naechstes) &&
       restMs() >= 12_000 &&
-      (r.quotaOderRateLimit || r.httpStatus === 404 || r.httpStatus === 503 || r.httpStatus === 504)
+      (r.quotaOderRateLimit ||
+        r.httpStatus === 404 ||
+        r.httpStatus === 503 ||
+        r.httpStatus === 504 ||
+        modellAbgeschaltet)
     if (naechstesModellMoeglich) {
       console.warn(`[ki-coach] Gemini „${model}“ (${r.httpStatus}): ${r.hint.slice(0, 220)} — versuche „${naechstes}“.`)
       if (r.quotaOderRateLimit || r.httpStatus === 503) await sleepMs(800)
