@@ -121,7 +121,7 @@ function istNiveauSchaetzZeile(z: FundamentalMetrikZeile): boolean {
 const NIVEAU_ZU_ABHAENGIGEN_ZEILEN: Record<string, string[]> = {
   eps: ['eps_wachstum_schaetzung', 'kgv'],
   umsatz: ['umsatz_wachstum_schaetzung', 'ps'],
-  fcf: ['pfcf'],
+  fcf: ['pfcf', 'fcf_rendite'],
   ebitda: ['ev_ebitda'],
   ebit: ['ev_ebit'],
 }

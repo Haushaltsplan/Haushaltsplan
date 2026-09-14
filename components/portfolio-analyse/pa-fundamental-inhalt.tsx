@@ -8,13 +8,23 @@ import { PaFundamentalUebersicht } from '@/components/portfolio-analyse/pa-funda
 import { PaFundamentalStruktur } from '@/components/portfolio-analyse/pa-fundamental-struktur'
 import { PaFundamentalUnternehmenHeader } from '@/components/portfolio-analyse/pa-fundamental-unternehmen-header'
 import { PaFundamentalMetrikTabelle } from '@/components/portfolio-analyse/pa-fundamental-metrik-tabelle'
+import { PaFundamentalMetrikChart } from '@/components/portfolio-analyse/pa-fundamental-metrik-chart'
 import { PaFundamentalScorecard } from '@/components/portfolio-analyse/pa-fundamental-scorecard'
 import { PaFundamentalGewinnfluss } from '@/components/portfolio-analyse/pa-fundamental-gewinnfluss'
 import {
+  PaFundamentalChartWahl,
   PaFundamentalQualitaetsCharts,
+  QUALITAET_CHART_INFO,
+  alleChartWahlIds,
+  CHART_WAHL_EIGEN,
+  leseSichtbareCharts,
   qualitaetPanelIdFuerZeile,
+  qualitaetPanelWahlIdFuerZeile,
+  schreibeSichtbareCharts,
+  type FundamentalChartWahlId,
 } from '@/components/portfolio-analyse/pa-fundamental-qualitaets-charts'
 import { PaCard } from '@/components/portfolio-analyse/pa-ui'
+import { chartAnalyseSchluessel } from '@/lib/portfolio-analyse/chart-analyse-store'
 import {
   downloadFundamentaldatenJson,
   downloadFundamentaldatenKennzahlenCsv,
@@ -38,6 +48,7 @@ import {
   bereinigeSchaetzungsniveausInZeilen,
   periodenOhneLeereSchaetzungen,
 } from '@/lib/portfolio-analyse/fundamentaldaten-format'
+import { ergaenzeFcfRenditeZeilen } from '@/lib/portfolio-analyse/fundamentaldaten-fcf-rendite-zeilen'
 
 const UNTER_TABS = [
   { id: 'uebersicht' as const, label: 'Übersicht', shortLabel: 'Übers.' },
@@ -66,6 +77,11 @@ export function PaFundamentalInhalt({
   const [fehler, setFehler] = useState<string | null>(null)
   const [tickerOverride, setTickerOverride] = useState('')
   const [chartAktiv, setChartAktiv] = useState<Set<string>>(new Set())
+  const [chartLabels, setChartLabels] = useState(false)
+  const [sichtbareCharts, setSichtbareCharts] = useState<Set<FundamentalChartWahlId>>(
+    () => new Set(alleChartWahlIds()),
+  )
+  const [chartWahlBereit, setChartWahlBereit] = useState(false)
   const [frequenz, setFrequenz] = useState<'jahr' | 'quartal'>('jahr')
 
   const effektiveAnfrage = useMemo(
@@ -88,7 +104,18 @@ export function PaFundamentalInhalt({
 
   useEffect(() => {
     setChartAktiv(new Set())
+    setChartLabels(false)
   }, [selectionKey, tickerOverride])
+
+  useEffect(() => {
+    setSichtbareCharts(leseSichtbareCharts())
+    setChartWahlBereit(true)
+  }, [])
+
+  useEffect(() => {
+    if (!chartWahlBereit) return
+    schreibeSichtbareCharts(sichtbareCharts)
+  }, [sichtbareCharts, chartWahlBereit])
 
   useEffect(() => {
     if (!effektiveAnfrage) {
@@ -129,10 +156,32 @@ export function PaFundamentalInhalt({
   const toggleChartZeile = useCallback((id: string) => {
     setChartAktiv((prev) => {
       const next = new Set(prev)
+      if (next.has(id)) {
+        next.delete(id)
+      } else {
+        next.add(id)
+        setSichtbareCharts((s) => {
+          if (s.has(CHART_WAHL_EIGEN)) return s
+          const n = new Set(s)
+          n.add(CHART_WAHL_EIGEN)
+          return n
+        })
+      }
+      return next
+    })
+  }, [])
+
+  const toggleSichtbarenChart = useCallback((id: FundamentalChartWahlId) => {
+    setSichtbareCharts((prev) => {
+      const next = new Set(prev)
       if (next.has(id)) next.delete(id)
       else next.add(id)
       return next
     })
+  }, [])
+
+  const zeigeAlleCharts = useCallback(() => {
+    setSichtbareCharts(new Set(alleChartWahlIds()))
   }, [])
 
   const navigiereZuMetrik = useCallback((metricId: string) => {
@@ -140,6 +189,13 @@ export function PaFundamentalInhalt({
     if (!ziel) return
     setUnterTab(ziel.tab)
     setChartAktiv(new Set([ziel.zeileId]))
+    const panel = qualitaetPanelWahlIdFuerZeile(ziel.zeileId)
+    setSichtbareCharts((prev) => {
+      const next = new Set(prev)
+      if (panel) next.add(panel)
+      next.add(CHART_WAHL_EIGEN)
+      return next
+    })
     requestAnimationFrame(() => {
       const anker = qualitaetPanelIdFuerZeile(ziel.zeileId)
       document.getElementById(anker)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
@@ -261,23 +317,23 @@ export function PaFundamentalInhalt({
     }
   }, [daten, anfrage, exportLaeuft])
 
-  const verfuegbareZeilenIds = useMemo(() => {
-    const s = new Set<string>()
-    for (const z of daten?.zeilen ?? []) {
-      if (Object.values(z.werte).some((v) => v != null && Number.isFinite(v))) s.add(z.id)
-    }
-    return s
-  }, [daten?.zeilen])
-
-  const zeilenBereinigt = useMemo(
-    () =>
-      daten?.ok ? bereinigeSchaetzungsniveausInZeilen(daten.perioden, daten.zeilen) : (daten?.zeilen ?? []),
-    [daten],
-  )
+  const zeilenBereinigt = useMemo(() => {
+    if (!daten?.ok) return daten?.zeilen ?? []
+    const z = bereinigeSchaetzungsniveausInZeilen(daten.perioden, daten.zeilen)
+    ergaenzeFcfRenditeZeilen(daten.perioden, z)
+    return z
+  }, [daten])
   const periodenBereinigt = useMemo(
     () => (daten?.ok ? periodenOhneLeereSchaetzungen(daten.perioden, zeilenBereinigt) : (daten?.perioden ?? [])),
     [daten, zeilenBereinigt],
   )
+  const verfuegbareZeilenIds = useMemo(() => {
+    const s = new Set<string>()
+    for (const z of zeilenBereinigt) {
+      if (Object.values(z.werte).some((v) => v != null && Number.isFinite(v))) s.add(z.id)
+    }
+    return s
+  }, [zeilenBereinigt])
 
   if (!anfrage) {
     return (
@@ -497,7 +553,8 @@ export function PaFundamentalInhalt({
 
           {unterTab === 'kennzahlen' ? (
             <div className="overflow-hidden rounded-xl border border-[var(--app-border)] bg-[var(--app-surface-muted)] ring-1 ring-white/[0.03]">
-              <div className="flex flex-wrap items-center gap-2 border-b border-[var(--app-border)] px-4 py-2.5">
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-[var(--app-border)] px-4 py-2.5">
+                <div className="flex flex-wrap items-center gap-2">
                 <span className="text-[10px] font-medium uppercase tracking-wide text-[var(--app-text-muted)]">
                   Periode
                 </span>
@@ -534,6 +591,12 @@ export function PaFundamentalInhalt({
                     GuV · Cashflow · Bilanz je Quartal (EU oft Halbjahr) · Δ vs. Vorjahr
                   </span>
                 ) : null}
+                </div>
+                <PaFundamentalChartWahl
+                  sichtbar={sichtbareCharts}
+                  onToggle={toggleSichtbarenChart}
+                  onAlle={zeigeAlleCharts}
+                />
               </div>
               <PaFundamentalQualitaetsCharts
                 perioden={periodenBereinigt}
@@ -541,7 +604,38 @@ export function PaFundamentalInhalt({
                 zeilen={zeilenBereinigt}
                 bewertungZeilen={bewertungZeilen}
                 ticker={daten.ticker}
+                sichtbarIds={sichtbareCharts}
               />
+              {sichtbareCharts.has(CHART_WAHL_EIGEN) ? (
+              <div className="border-t border-[var(--app-border)]">
+                <PaFundamentalMetrikChart
+                  chartId="fundamental-eigenes-chart"
+                  titel="Eigene Auswahl"
+                  eingebettet
+                  variant={
+                    chartAktiv.size > 0 &&
+                    [...chartAktiv].every((id) => bewertungZeilen.some((z) => z.id === id))
+                      ? 'bewertung'
+                      : 'standard'
+                  }
+                  perioden={frequenz === 'jahr' ? bewertungPerioden : periodenBereinigt}
+                  zeilen={[
+                    ...zeilenBereinigt.filter((z) => !bewertungZeilen.some((b) => b.id === z.id)),
+                    ...bewertungZeilen,
+                  ]}
+                  aktivIds={chartAktiv}
+                  labelsAnzeigen={chartLabels}
+                  onClear={() => setChartAktiv(new Set())}
+                  onToggleSerie={toggleChartZeile}
+                  onToggleLabels={() => setChartLabels((v) => !v)}
+                  serieKlickModus="entfernen"
+                  leerHinweis="Klicke eine Zeile in der Tabelle, um sie hier im Chart zu sehen. Nochmal klicken entfernt sie. Mehrere Zeilen = Vergleich."
+                  analyseSchluessel={chartAnalyseSchluessel(daten.ticker, 'eigen')}
+                  analyseTitel={`${daten.ticker} · Eigene Auswahl`}
+                  info={QUALITAET_CHART_INFO.eigen}
+                />
+              </div>
+              ) : null}
               <div id="fundamental-metrik-tabelle" className="border-t border-[var(--app-border)]">
                 <PaFundamentalMetrikTabelle
                   gruppen={kennzahlenGruppen}

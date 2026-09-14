@@ -8,6 +8,7 @@ import {
   PaChartAnalyseProvider,
   useChartAnalyseVollbild,
 } from '@/components/portfolio-analyse/pa-chart-analyse'
+import { PaInfoHint, type PaInfoHintInhalt } from '@/components/portfolio-analyse/pa-info-hint'
 import {
   bereinigeSchaetzungsniveausInZeilen,
   formatFundamentalWert,
@@ -57,6 +58,7 @@ const METRIK_FARBE: Record<string, string> = {
   kgv: '#34d399',
   ps: '#fbbf24',
   pfcf: '#22d3ee',
+  fcf_rendite: '#4ade80',
   pb: '#fb7185',
   ev_ebitda: '#a78bfa',
   ev_rev: '#fb923c',
@@ -93,6 +95,61 @@ function serieDarstellung(
     return 'linie'
   }
   return 'linie'
+}
+
+function effektiveDarstellung(
+  chartArt: 'linie' | 'balken',
+  darstellung: 'flaeche' | 'linie' | 'balken',
+): 'flaeche' | 'linie' | 'balken' {
+  if (chartArt === 'balken') return 'balken'
+  if (darstellung === 'balken') return 'linie'
+  return darstellung
+}
+
+function balkenRect(
+  centerX: number,
+  seriesIndex: number,
+  seriesCount: number,
+  slotGap: number,
+): { x: number; width: number } {
+  const count = Math.max(seriesCount, 1)
+  const groupW = Math.min(Math.max(slotGap * 0.72, 8), 42)
+  const slot = groupW / count
+  const width = Math.max(2.5, slot * 0.82)
+  const x = centerX - groupW / 2 + seriesIndex * slot + (slot - width) / 2
+  return { x, width }
+}
+
+function ChartArtWahl({
+  chartArt,
+  onChange,
+}: {
+  chartArt: 'linie' | 'balken'
+  onChange: (art: 'linie' | 'balken') => void
+}) {
+  return (
+    <div
+      className="flex rounded-lg border border-[var(--app-border-strong)] bg-[var(--app-surface-muted)] p-0.5"
+      role="group"
+      aria-label="Chart-Darstellung"
+    >
+      {(['linie', 'balken'] as const).map((art) => (
+        <button
+          key={art}
+          type="button"
+          aria-pressed={chartArt === art}
+          onClick={() => onChange(art)}
+          className={`rounded-md px-2.5 py-1 text-[11px] font-medium transition ${
+            chartArt === art
+              ? 'bg-amber-500/20 text-amber-200'
+              : 'text-[var(--app-text-muted)] hover:text-[var(--app-text)]'
+          }`}
+        >
+          {art === 'linie' ? 'Linie' : 'Balken'}
+        </button>
+      ))}
+    </div>
+  )
 }
 
 function linieStrichMuster(id: string, einheit: FundamentalMetrikZeile['einheit']): string | undefined {
@@ -504,6 +561,10 @@ type MetrikChartProps = {
   chartId?: string
   analyseSchluessel?: string
   analyseTitel?: string
+  leerHinweis?: string
+  /** Legende: Serie nur ausblenden oder aus der Auswahl nehmen. */
+  serieKlickModus?: 'verstecken' | 'entfernen'
+  info?: PaInfoHintInhalt | null
 }
 
 function MetrikChartBody({
@@ -520,6 +581,9 @@ function MetrikChartBody({
   titel,
   kompakt = false,
   chartId,
+  leerHinweis,
+  serieKlickModus = 'verstecken',
+  info,
 }: MetrikChartProps) {
   const zeilenClean = useMemo(
     () => bereinigeSchaetzungsniveausInZeilen(perioden, zeilen),
@@ -563,6 +627,7 @@ function MetrikChartBody({
   const toggleSerie = useCallback(
     (id: string) => {
       onToggleSerie(id)
+      if (serieKlickModus === 'entfernen') return
       setHiddenIds((prev) => {
         const next = new Set(prev)
         if (next.has(id)) next.delete(id)
@@ -570,7 +635,7 @@ function MetrikChartBody({
         return next
       })
     },
-    [onToggleSerie],
+    [onToggleSerie, serieKlickModus],
   )
 
   useEffect(() => {
@@ -901,7 +966,10 @@ function MetrikChartBody({
       label: z?.label ?? s?.label ?? id,
       farbe: farbeFuerMetrik(id, i),
       einheit: z?.einheit ?? s?.einheit ?? ('zahl' as const),
-      darstellung: s?.darstellung ?? serieDarstellung(id, z?.einheit ?? 'zahl'),
+      darstellung: effektiveDarstellung(
+        chartArt,
+        s?.darstellung ?? serieDarstellung(id, z?.einheit ?? 'zahl'),
+      ),
       anzeigeWert: hover != null ? hoverWert : (s?.letzterWert ?? null),
       schnitt: s?.schnitt ?? null,
       aktiv: !hiddenIds.has(id),
@@ -929,8 +997,15 @@ function MetrikChartBody({
         }
       >
         {werkzeugLeiste}
-        {titel ? <p className="mb-2 text-sm font-medium text-[var(--app-text)]">{titel}</p> : null}
-        <p className="text-sm text-[var(--app-text-muted)]">Keine Daten für diesen Chart.</p>
+        {titel ? (
+          <span className="mb-2 inline-flex items-center justify-center gap-1.5 text-sm font-medium text-[var(--app-text)]">
+            {titel}
+            {info ? <PaInfoHint info={info} /> : null}
+          </span>
+        ) : null}
+        <p className="text-sm text-[var(--app-text-muted)]">
+          {leerHinweis ?? 'Keine Daten für diesen Chart.'}
+        </p>
       </div>
     )
   }
@@ -956,6 +1031,10 @@ function MetrikChartBody({
       : ersterSchaetzIdx === 0
         ? x0
         : (xLabels[ersterSchaetzIdx - 1]!.x + xLabels[ersterSchaetzIdx]!.x) / 2
+  const balkenSerienIds = legendIds.filter((id) =>
+    serien.some((s) => s.id === id && effektiveDarstellung(chartArt, s.darstellung) === 'balken'),
+  )
+  const slotGap = xLabels.length > 1 ? effektivePlotW / (xLabels.length - 1) : effektivePlotW
 
   return (
     <div
@@ -970,34 +1049,20 @@ function MetrikChartBody({
               <p className="text-center text-sm font-medium text-[var(--app-text)]">
                 {titel ?? (variant === 'bewertung' ? 'Bewertungsverlauf' : 'Historischer Kennzahlenverlauf')}
               </p>
+              {info ? <PaInfoHint info={info} /> : null}
               <PaChartAnalyseExpandButton />
             </div>
             {!kompakt ? (
               <p className="mt-0.5 text-center text-[11px] text-[var(--app-text-muted)]">
                 {variant === 'bewertung'
                   ? 'Historie = Trailing · gestrichelt = FY-Schätzung · grauer Bereich = Prognose'
-                  : 'Grauer Bereich = Prognose · Fläche = Cashflow/Umsatz · Linien = Gewinn/FCF · Balken = Dividende/Buybacks'}
+                  : 'Grauer Bereich = Prognose · Linie oder Balken wählbar'}
               </p>
             ) : null}
           </div>
           {kompakt ? null : (
           <div className="flex flex-wrap gap-2">
-            {variant === 'standard' ? (
-              <div className="flex rounded-lg border border-[var(--app-border-strong)] bg-[var(--app-surface-muted)] p-0.5">
-                {(['linie', 'balken'] as const).map((art) => (
-                  <button
-                    key={art}
-                    type="button"
-                    onClick={() => setChartArt(art)}
-                    className={`rounded-md px-2.5 py-1 text-[11px] transition ${
-                      chartArt === art ? 'bg-amber-500/20 text-amber-200' : 'text-[var(--app-text-muted)] hover:text-[var(--app-text)]'
-                    }`}
-                  >
-                    {art === 'linie' ? 'Linie' : 'Balken'}
-                  </button>
-                ))}
-              </div>
-            ) : null}
+            <ChartArtWahl chartArt={chartArt} onChange={setChartArt} />
           <button
             type="button"
             onClick={onToggleLabels}
@@ -1016,7 +1081,7 @@ function MetrikChartBody({
           )}
         </div>
 
-        <div className="mt-2">
+        <div className={`mt-2 flex flex-wrap items-center gap-3 ${kompakt ? 'justify-center' : ''}`}>
           <ChartZeitraumWahl
             allePerioden={alleChartPerioden}
             vonIso={vonIso}
@@ -1029,6 +1094,7 @@ function MetrikChartBody({
               setBisIso(bis)
             }}
           />
+          {kompakt ? <ChartArtWahl chartArt={chartArt} onChange={setChartArt} /> : null}
         </div>
 
         <div className="mt-2.5 flex flex-wrap items-center justify-center gap-x-2 gap-y-1.5 text-[11px]">
@@ -1037,7 +1103,13 @@ function MetrikChartBody({
               key={s.id}
               type="button"
               onClick={() => toggleSerie(s.id)}
-              title={s.aktiv ? `${s.label} ausblenden` : `${s.label} einblenden`}
+              title={
+                serieKlickModus === 'entfernen'
+                  ? `${s.label} aus der Auswahl nehmen`
+                  : s.aktiv
+                    ? `${s.label} ausblenden`
+                    : `${s.label} einblenden`
+              }
               className={`inline-flex max-w-full items-center gap-1.5 rounded-md px-1.5 py-0.5 transition hover:bg-[var(--app-surface-hover)] ${
                 s.aktiv ? '' : 'opacity-45'
               }`}
@@ -1175,11 +1247,11 @@ function MetrikChartBody({
             : null}
 
           {serien.map((s) => {
-            const art = chartArt === 'balken' && !kompakt ? 'balken' : s.darstellung
-            const barW = Math.max(7, (effektivePlotW / Math.max(s.historisch.length + s.schaetzung.length, 1)) * 0.34)
+            const art = effektiveDarstellung(chartArt, s.darstellung)
             const skala = yAchsen[s.yAxis]
             const yNull = skala ? yAusWert(0, skala.minY, skala.span, plotH) : PAD_OBEN + plotH
             const strich = art === 'linie' ? 2.7 : 2.3
+            const balkenIdx = balkenSerienIds.indexOf(s.id)
             return (
             <g key={s.id}>
               {art === 'flaeche' && s.areaD ? <path d={s.areaD} fill={`url(#area-${ankerId}-${s.id})`} /> : null}
@@ -1218,19 +1290,25 @@ function MetrikChartBody({
                 />
               ) : null}
               {art === 'balken'
-                ? [...s.historisch, ...s.schaetzung].map((pt, i) => {
+                ? punkteEinerSerie(s).map((pt, i) => {
                     const h = yNull - pt.y
+                    const { x, width } = balkenRect(
+                      pt.x,
+                      Math.max(0, balkenIdx),
+                      Math.max(balkenSerienIds.length, 1),
+                      slotGap,
+                    )
                     return (
                       <rect
                         key={i}
-                        x={pt.x - barW / 2}
+                        x={x}
                         y={h >= 0 ? pt.y : yNull}
-                        width={barW}
+                        width={width}
                         height={Math.abs(h)}
                         fill={s.farbe}
                         stroke="#09090b"
                         strokeWidth={0.7}
-                        opacity={pt.istSchaetzung ? 0.5 : 0.95}
+                        opacity={pt.istSchaetzung ? 0.5 : pt.aktuell ? 0.85 : 0.95}
                         rx={1.5}
                       />
                     )
@@ -1249,7 +1327,7 @@ function MetrikChartBody({
                       strokeWidth={1.5}
                     />
                   ))}
-              {s.aktuell ? (
+              {s.aktuell && art !== 'balken' ? (
                 <>
                   <circle cx={s.aktuell.x} cy={s.aktuell.y} r={7} fill={s.farbe} opacity={0.2} />
                   <circle
@@ -1396,7 +1474,13 @@ function MetrikChartBody({
                 type="button"
                 onClick={() => toggleSerie(s.id)}
                 className="flex max-w-full items-center gap-1.5 rounded-md px-1 py-0.5 text-left transition hover:bg-[var(--app-surface-hover)]"
-                title={s.aktiv ? `${s.label} ausblenden` : `${s.label} einblenden`}
+                title={
+                  serieKlickModus === 'entfernen'
+                    ? `${s.label} aus der Auswahl nehmen`
+                    : s.aktiv
+                      ? `${s.label} ausblenden`
+                      : `${s.label} einblenden`
+                }
               >
                 <SerieMark art={s.darstellung} farbe={s.farbe} aktiv={s.aktiv} />
                 <span className={s.aktiv ? 'text-[var(--app-text-muted)]' : 'text-[var(--app-text-muted)]/45 line-through'}>

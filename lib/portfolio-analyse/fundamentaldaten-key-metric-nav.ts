@@ -37,11 +37,13 @@ const NAV: Record<string, KeyMetricNavZiel> = {
   ntm_ev_ebitda: { tab: 'kennzahlen', zeileId: 'ev_ebitda' },
   ntm_pe: { tab: 'kennzahlen', zeileId: 'kgv' },
   ntm_mc_fcf: { tab: 'kennzahlen', zeileId: 'pfcf' },
+  ntm_fcf_rendite: { tab: 'kennzahlen', zeileId: 'fcf_rendite' },
   ltm_ev_rev: { tab: 'kennzahlen', zeileId: 'ev_rev' },
   ltm_pe: { tab: 'kennzahlen', zeileId: 'kgv' },
   ltm_pb: { tab: 'kennzahlen', zeileId: 'pb' },
   ltm_ps: { tab: 'kennzahlen', zeileId: 'ps' },
   ltm_pfcf: { tab: 'kennzahlen', zeileId: 'pfcf' },
+  ltm_fcf_rendite: { tab: 'kennzahlen', zeileId: 'fcf_rendite' },
 
   div_yield: { tab: 'kennzahlen', zeileId: 'dividendenrendite' },
   payout: { tab: 'kennzahlen', zeileId: 'ausschuettungsquote' },

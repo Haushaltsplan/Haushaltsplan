@@ -60,7 +60,10 @@ function yoyKlasse(
   return gut ? 'text-emerald-400/90' : 'text-rose-400/90'
 }
 
+const YOY_RENDITE = new Set(['fcf_rendite', 'dividendenrendite'])
+
 function yoyPolaritaet(z: FundamentalMetrikZeile): 'wachstum' | 'kosten' | 'neutral' {
+  if (YOY_RENDITE.has(z.id)) return 'wachstum'
   if (z.gruppe === 'bewertung_trailing' || z.gruppe === 'bewertung_forward') return 'kosten'
   if (YOY_KOSTEN.has(z.id)) return 'kosten'
   if (
@@ -127,8 +130,12 @@ export function PaFundamentalMetrikTabelle({
             <tr className="text-[var(--app-text-muted)]">
               <th
                 className={`${STICKY_SPALTE} z-20 min-w-[200px] bg-[var(--app-bg)] px-3 py-2 text-left font-medium`}
+                title="Zeile anklicken, um die Kennzahl im eigenen Chart zu zeigen"
               >
                 Kennzahl
+                <span className="mt-0.5 block text-[10px] font-normal normal-case tracking-normal text-[var(--app-text-muted)]">
+                  Klick → eigener Chart
+                </span>
               </th>
               {perioden.map((p) => (
                 <th
@@ -209,6 +216,7 @@ function GruppeZeilen({
           <tr
             key={z.id}
             id={`metrik-zeile-${z.id}`}
+            title={aktiv ? `${z.label} aus eigenem Chart entfernen` : `${z.label} im eigenen Chart zeigen`}
             className={`cursor-pointer border-t border-[var(--app-border)]/70 transition hover:bg-amber-500/[0.06] ${
               ri % 2 === 1 ? 'bg-[var(--app-surface-muted)]/30' : 'bg-transparent'
             } ${aktiv ? 'bg-amber-500/[0.08]' : ''}`}

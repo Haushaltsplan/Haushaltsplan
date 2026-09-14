@@ -5,6 +5,7 @@ import {
   bereinigeSchaetzungsniveausInZeilen,
   periodenOhneLeereSchaetzungen,
 } from '@/lib/portfolio-analyse/fundamentaldaten-format'
+import { ergaenzeFcfRenditeKeyMetrics, ergaenzeFcfRenditeZeilen } from '@/lib/portfolio-analyse/fundamentaldaten-fcf-rendite-zeilen'
 import {
   baueKeyMetrics,
   korrigiereFwdWachstumKeyMetrics,
@@ -718,6 +719,7 @@ async function ladeFundamentaldatenLive(anfrage: FundamentaldatenAnfrage): Promi
   }
 
   ergaenzeDividendenHistorieZeilen(merged.perioden, merged.zeilen, yahooExt)
+  ergaenzeFcfRenditeZeilen(merged.perioden, merged.zeilen)
 
   const sektorFinal = brancheMeta.sektor
   const brancheFinal = brancheMeta.branche ?? roh.branche
@@ -811,14 +813,18 @@ async function ladeFundamentaldatenLive(anfrage: FundamentaldatenAnfrage): Promi
 function paketMitKorrigiertemFwdWachstum(p: FundamentaldatenPaket): FundamentaldatenPaket {
   if (!p.ok) return p
   const zeilen = bereinigeSchaetzungsniveausInZeilen(p.perioden, p.zeilen)
+  ergaenzeFcfRenditeZeilen(p.perioden, zeilen)
   const perioden = periodenOhneLeereSchaetzungen(p.perioden, zeilen)
   const cleaned = { ...p, perioden, zeilen }
   if (cleaned.keyMetrics.length === 0) return cleaned
   return {
     ...cleaned,
-    keyMetrics: korrigiereFwdWachstumKeyMetrics(
-      cleaned.keyMetrics,
-      schaetzungenRohAusPaket(cleaned),
+    keyMetrics: ergaenzeFcfRenditeKeyMetrics(
+      korrigiereFwdWachstumKeyMetrics(
+        cleaned.keyMetrics,
+        schaetzungenRohAusPaket(cleaned),
+        cleaned,
+      ),
       cleaned,
     ),
   }

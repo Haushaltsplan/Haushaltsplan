@@ -3,6 +3,9 @@ import {
   cagrProzent,
   formatFundamentalWert,
 } from '@/lib/portfolio-analyse/fundamentaldaten-format'
+import {
+  fcfRenditeAusPfcf,
+} from '@/lib/portfolio-analyse/fundamentaldaten-fcf-rendite-zeilen'
 import { historischeWerteAusZeile } from '@/lib/portfolio-analyse/fundamentaldaten-roic-hilfen'
 import type { FundamentalSchaetzungenRoh } from '@/lib/portfolio-analyse/fundamentaldaten-schaetzungen-server'
 import type {
@@ -474,6 +477,12 @@ export function baueKeyMetrics(
 
   const fwdEvRevenue = fyWert(evRevZeile) ?? yahoo?.enterpriseToRevenue ?? null
   const fwdEvEbitda = fyWert(evEbitdaZeile) ?? yahoo?.enterpriseToEbitda ?? null
+  const ltmPfcf =
+    yahoo?.marketCap != null && ltmFcfUsd != null && ltmFcfUsd > 0
+      ? yahoo.marketCap / ltmFcfUsd
+      : letzterGeschaeftsjahresWert(pfcfZeile, perioden)
+  const fyFcfRendite = fcfRenditeAusPfcf(fwdMcFcf)
+  const ltmFcfRendite = fcfRenditeAusPfcf(ltmPfcf)
 
   out.push(
     {
@@ -492,6 +501,13 @@ export function baueKeyMetrics(
       gruppe: 'bewertung_ntm',
     },
     { id: 'ntm_mc_fcf', label: 'FY MC / FCF', wert: multiple(fwdMcFcf), gruppe: 'bewertung_ntm' },
+    {
+      id: 'ntm_fcf_rendite',
+      label: 'FY FCF-Rendite',
+      wert: pctRaw(fyFcfRendite),
+      zahl: fyFcfRendite,
+      gruppe: 'bewertung_ntm',
+    },
     { id: 'ltm_ev_rev', label: 'LTM EV / Umsatz', wert: multiple(ltmEvRevenue), gruppe: 'bewertung_ltm' },
     {
       id: 'ltm_pe',
@@ -514,9 +530,14 @@ export function baueKeyMetrics(
     {
       id: 'ltm_pfcf',
       label: 'LTM MC / FCF',
-      wert: multiple(
-        yahoo?.marketCap != null && ltmFcfUsd != null && ltmFcfUsd > 0 ? yahoo.marketCap / ltmFcfUsd : letzterGeschaeftsjahresWert(pfcfZeile, perioden),
-      ),
+      wert: multiple(ltmPfcf),
+      gruppe: 'bewertung_ltm',
+    },
+    {
+      id: 'ltm_fcf_rendite',
+      label: 'LTM FCF-Rendite',
+      wert: pctRaw(ltmFcfRendite),
+      zahl: ltmFcfRendite,
       gruppe: 'bewertung_ltm',
     },
     {

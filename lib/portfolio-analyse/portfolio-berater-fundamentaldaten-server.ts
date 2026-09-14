@@ -28,6 +28,7 @@ const KEY_METRIC_PRIORITAET = [
   'ltm_pe',
   'ntm_pe',
   'ltm_pfcf',
+  'ltm_fcf_rendite',
   'ltm_pb',
   'ltm_roic',
   'value_spread',
@@ -53,6 +54,7 @@ const ZEILEN_HIGHLIGHT = [
   'ps',
   'pb',
   'pfcf',
+  'fcf_rendite',
   'ev_ebitda',
   'ev_rev',
   'eigenkapital',
@@ -72,6 +74,7 @@ const HISTORIE_KERN_FOKUS = [
   'ps',
   'pb',
   'pfcf',
+  'fcf_rendite',
   'ev_ebitda',
   'ev_rev',
 ] as const

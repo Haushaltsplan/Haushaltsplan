@@ -4,6 +4,7 @@ import type {
   FundamentaldatenAnfrage,
   FundamentaldatenPaket,
 } from '@/lib/portfolio-analyse/fundamentaldaten-types'
+import { ergaenzeFcfRenditeKeyMetrics, ergaenzeFcfRenditeZeilen } from '@/lib/portfolio-analyse/fundamentaldaten-fcf-rendite-zeilen'
 
 const LS_KEY = 'pa-fundamentaldaten-v56'
 const LS_MAX_AGE_MS = 24 * 60 * 60 * 1000
@@ -38,7 +39,16 @@ export function ladeFundamentaldatenAusLocalCache(
 ): FundamentaldatenPaket | null {
   const e = leseStore()[anfrageCacheKey(anfrage)]
   if (!e?.paket?.ok || !e.cachedAt || Date.now() - e.cachedAt > LS_MAX_AGE_MS) return null
-  return e.paket
+  const zeilen = [...e.paket.zeilen]
+  ergaenzeFcfRenditeZeilen(e.paket.perioden, zeilen)
+  return {
+    ...e.paket,
+    zeilen,
+    keyMetrics: ergaenzeFcfRenditeKeyMetrics(e.paket.keyMetrics, {
+      perioden: e.paket.perioden,
+      zeilen,
+    }),
+  }
 }
 
 function schreibeLocalCache(anfrage: FundamentaldatenAnfrage, daten: FundamentaldatenPaket): void {
