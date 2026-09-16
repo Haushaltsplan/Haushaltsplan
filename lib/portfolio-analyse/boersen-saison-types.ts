@@ -40,6 +40,35 @@ export type BoersenSaisonMonat = {
   maxPct: number
 }
 
+export type BoersenWahlPhase = 'nachwahl' | 'midterm' | 'vorwahl' | 'wahljahr'
+
+export type BoersenWahlJahrStats = {
+  phase: BoersenWahlPhase
+  jahrImZyklus: 1 | 2 | 3 | 4
+  label: string
+  kurz: string
+  hinweis: string
+  durchschnittJahrPct: number
+  medianJahrPct: number
+  trefferquotePct: number
+  anzahl: number
+}
+
+export type BoersenWahlFenster = {
+  label: string
+  durchschnittPct: number
+  trefferquotePct: number
+  anzahl: number
+}
+
+export type BoersenWahlZyklus = {
+  phasen: BoersenWahlJahrStats[]
+  midtermVorher: BoersenWahlFenster
+  midtermDanach: BoersenWahlFenster
+  wahljahrVorher: BoersenWahlFenster
+  wahljahrDanach: BoersenWahlFenster
+}
+
 export type BoersenSaisonIndex = {
   id: string
   name: string
@@ -48,6 +77,7 @@ export type BoersenSaisonIndex = {
   bisJahr: number | null
   hinweis: string
   monate: BoersenSaisonMonat[]
+  wahlZyklus: BoersenWahlZyklus | null
 }
 
 export type BoersenSaisonPaket = {
