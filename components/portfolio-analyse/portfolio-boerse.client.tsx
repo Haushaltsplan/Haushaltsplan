@@ -188,20 +188,20 @@ function JahrFeld({
 }) {
   return (
     <label className="flex flex-col gap-1">
-      <span className="text-[10px] font-semibold uppercase tracking-wide text-[var(--app-text-muted)]">{label}</span>
+      <span className="text-[11px] font-semibold uppercase tracking-wide text-teal-200/90">{label}</span>
       <input
         type="number"
         inputMode="numeric"
         min={min}
         max={max}
         step={1}
-        value={value}
+        value={Number.isFinite(value) ? value : min}
         onChange={(e) => {
           const n = Number.parseInt(e.target.value, 10)
           if (!Number.isFinite(n)) return
           onChange(Math.min(max, Math.max(min, n)))
         }}
-        className="w-[6.75rem] rounded-lg border border-[var(--app-border-strong)] bg-[var(--app-bg)] px-2.5 py-1.5 text-sm tabular-nums text-[var(--app-text)] outline-none focus:ring-1 focus:ring-teal-500/40"
+        className="h-10 w-[7.5rem] rounded-md border-2 border-teal-400/70 bg-zinc-950 px-3 text-base font-semibold tabular-nums text-white outline-none focus:border-teal-300"
       />
     </label>
   )
@@ -313,12 +313,93 @@ export function PortfolioBoerseClient({ initial }: { initial?: BoersenSaisonPake
       <PaCard className="space-y-5 p-4 sm:p-5">
         <div>
           <h2 className="text-base font-semibold text-[var(--app-text)]">Monatsrenditen im Schnitt</h2>
-          <p className="mt-1 max-w-2xl text-[13px] leading-relaxed text-[var(--app-text-muted)]">
-            Jeder Balken ist der arithmetische Durchschnitt aller abgeschlossenen {aktiv?.name ?? 'Index'}-Monate
-            {zeitraumEff.von && zeitraumEff.bis ? ` von ${zeitraumEff.von} bis ${zeitraumEff.bis}` : ' in der Historie'}.
-            Das ist keine Prognose — nur was der Kalender in diesem Zeitraum geliefert hat.
-          </p>
         </div>
+
+        <div className="rounded-xl border-2 border-teal-400/50 bg-teal-950/40 p-3 sm:p-4">
+          <p className="text-sm font-semibold text-teal-100">Zeitraum</p>
+          <p className="mt-0.5 text-[12px] text-teal-100/70">
+            Nur Monate in diesem Fenster zählen — z. B. 1940 bis 1950.
+          </p>
+          <div className="mt-3 flex flex-wrap items-end gap-3">
+            <JahrFeld
+              label="Von"
+              value={zeitraumEff.von ?? aktiv?.vonJahr ?? 1871}
+              min={aktiv?.vonJahr ?? 1871}
+              max={aktiv?.bisJahr ?? new Date().getUTCFullYear()}
+              onChange={(jahr) =>
+                setZeitraum((z) => {
+                  const bis = z.bis ?? aktiv?.bisJahr ?? new Date().getUTCFullYear()
+                  return { von: jahr, bis: jahr > bis ? jahr : bis }
+                })
+              }
+            />
+            <JahrFeld
+              label="Bis"
+              value={zeitraumEff.bis ?? aktiv?.bisJahr ?? new Date().getUTCFullYear()}
+              min={aktiv?.vonJahr ?? 1871}
+              max={aktiv?.bisJahr ?? new Date().getUTCFullYear()}
+              onChange={(jahr) =>
+                setZeitraum((z) => {
+                  const von = z.von ?? aktiv?.vonJahr ?? 1871
+                  return { von: jahr < von ? jahr : von, bis: jahr }
+                })
+              }
+            />
+            <div className="flex flex-wrap gap-1.5 pb-0.5">
+              {[
+                { id: 'all', label: 'Gesamt', von: null as number | null, bis: null as number | null },
+                {
+                  id: '10',
+                  label: '10 J',
+                  von: aktiv?.vonJahr != null && aktiv.bisJahr != null ? Math.max(aktiv.vonJahr, aktiv.bisJahr - 9) : null,
+                  bis: aktiv?.bisJahr ?? null,
+                },
+                {
+                  id: '20',
+                  label: '20 J',
+                  von: aktiv?.vonJahr != null && aktiv.bisJahr != null ? Math.max(aktiv.vonJahr, aktiv.bisJahr - 19) : null,
+                  bis: aktiv?.bisJahr ?? null,
+                },
+                {
+                  id: '30',
+                  label: '30 J',
+                  von: aktiv?.vonJahr != null && aktiv.bisJahr != null ? Math.max(aktiv.vonJahr, aktiv.bisJahr - 29) : null,
+                  bis: aktiv?.bisJahr ?? null,
+                },
+              ]
+                .filter((p) => p.id === 'all' || (p.von != null && p.bis != null))
+                .map((p) => {
+                  const an =
+                    p.von == null
+                      ? zeitraumEff.gesamt
+                      : !zeitraumEff.gesamt && zeitraumEff.von === p.von && zeitraumEff.bis === p.bis
+                  return (
+                    <button
+                      key={p.id}
+                      type="button"
+                      onClick={() => setZeitraum({ von: p.von, bis: p.bis })}
+                      className={`rounded-lg px-3 py-2 text-xs font-semibold transition ${
+                        an
+                          ? 'bg-teal-400 text-zinc-950'
+                          : 'bg-zinc-950/60 text-teal-100 ring-1 ring-teal-400/30 hover:bg-zinc-900'
+                      }`}
+                    >
+                      {p.label}
+                    </button>
+                  )
+                })}
+            </div>
+          </div>
+          {!(aktiv?.renditen?.length) && aktiv ? (
+            <p className="mt-2 text-[11px] text-teal-100/60">Monatsreihe für den Filter wird geladen …</p>
+          ) : null}
+        </div>
+
+        <p className="max-w-2xl text-[13px] leading-relaxed text-[var(--app-text-muted)]">
+          Jeder Balken ist der arithmetische Durchschnitt aller abgeschlossenen {aktiv?.name ?? 'Index'}-Monate
+          {zeitraumEff.von && zeitraumEff.bis ? ` von ${zeitraumEff.von} bis ${zeitraumEff.bis}` : ' in der Historie'}.
+          Das ist keine Prognose — nur was der Kalender in diesem Zeitraum geliefert hat.
+        </p>
 
         {paket && paket.indezes.length > 1 ? (
           <div className="flex flex-wrap gap-1.5">
@@ -339,66 +420,6 @@ export function PortfolioBoerseClient({ initial }: { initial?: BoersenSaisonPake
                 </button>
               )
             })}
-          </div>
-        ) : null}
-
-        {aktiv?.vonJahr != null && aktiv.bisJahr != null ? (
-          <div className="flex flex-wrap items-end gap-3 rounded-lg border border-[var(--app-border)] bg-[var(--app-surface-muted)]/25 px-3 py-2.5">
-            <p className="w-full text-[11px] font-semibold text-[var(--app-text)] sm:w-auto sm:pb-1.5">Zeitraum</p>
-            <JahrFeld
-              label="Von"
-              value={zeitraumEff.von ?? aktiv.vonJahr}
-              min={aktiv.vonJahr}
-              max={aktiv.bisJahr}
-              onChange={(jahr) =>
-                setZeitraum((z) => {
-                  const bis = z.bis ?? aktiv.bisJahr!
-                  return { von: jahr, bis: jahr > bis ? jahr : bis }
-                })
-              }
-            />
-            <JahrFeld
-              label="Bis"
-              value={zeitraumEff.bis ?? aktiv.bisJahr}
-              min={aktiv.vonJahr}
-              max={aktiv.bisJahr}
-              onChange={(jahr) =>
-                setZeitraum((z) => {
-                  const von = z.von ?? aktiv.vonJahr!
-                  return { von: jahr < von ? jahr : von, bis: jahr }
-                })
-              }
-            />
-            <div className="flex flex-wrap gap-1.5 pb-0.5">
-              {[
-                { id: 'all', label: 'Gesamt', von: null as number | null, bis: null as number | null },
-                { id: '10', label: '10 J', von: Math.max(aktiv.vonJahr, aktiv.bisJahr - 9), bis: aktiv.bisJahr },
-                { id: '20', label: '20 J', von: Math.max(aktiv.vonJahr, aktiv.bisJahr - 19), bis: aktiv.bisJahr },
-                { id: '30', label: '30 J', von: Math.max(aktiv.vonJahr, aktiv.bisJahr - 29), bis: aktiv.bisJahr },
-              ].map((p) => {
-                const an =
-                  p.von == null
-                    ? zeitraumEff.gesamt
-                    : !zeitraumEff.gesamt && zeitraumEff.von === p.von && zeitraumEff.bis === p.bis
-                return (
-                  <button
-                    key={p.id}
-                    type="button"
-                    onClick={() => setZeitraum({ von: p.von, bis: p.bis })}
-                    className={`rounded-lg px-2.5 py-1.5 text-[11px] font-medium transition ${
-                      an
-                        ? 'bg-teal-500/15 text-teal-300 ring-1 ring-teal-500/30'
-                        : 'text-[var(--app-text-muted)] hover:bg-[var(--app-surface-hover)] hover:text-[var(--app-text)]'
-                    }`}
-                  >
-                    {p.label}
-                  </button>
-                )
-              })}
-            </div>
-            {!(aktiv.renditen?.length) ? (
-              <p className="w-full text-[11px] text-[var(--app-text-muted)]">Monatsreihe für den Filter wird geladen …</p>
-            ) : null}
           </div>
         ) : null}
 
