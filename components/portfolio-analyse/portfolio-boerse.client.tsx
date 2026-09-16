@@ -3,10 +3,14 @@
 import { useEffect, useMemo, useState } from 'react'
 import { PortfolioAnalyseShell } from '@/components/portfolio-analyse/portfolio-analyse-shell.client'
 import { PaCard, PA_TABLE } from '@/components/portfolio-analyse/pa-ui'
-import { usWahlPhase } from '@/lib/portfolio-analyse/boersen-saison-logik'
+import {
+  filterRenditenNachJahren,
+  saisonAusRenditen,
+  usWahlPhase,
+  wahlZyklusAusRenditen,
+} from '@/lib/portfolio-analyse/boersen-saison-logik'
 import { formatProzent } from '@/lib/portfolio-analyse/berechnung'
 import type {
-  BoersenSaisonMonat,
   BoersenSaisonPaket,
   BoersenWahlJahrStats,
 } from '@/lib/portfolio-analyse/boersen-saison-types'
@@ -169,10 +173,44 @@ function FensterZeile({
   )
 }
 
+function JahrSelect({
+  label,
+  value,
+  min,
+  max,
+  onChange,
+}: {
+  label: string
+  value: number
+  min: number
+  max: number
+  onChange: (jahr: number) => void
+}) {
+  const jahre: number[] = []
+  for (let y = min; y <= max; y++) jahre.push(y)
+  return (
+    <label className="flex flex-col gap-1">
+      <span className="text-[10px] font-semibold uppercase tracking-wide text-[var(--app-text-muted)]">{label}</span>
+      <select
+        value={value}
+        onChange={(e) => onChange(Number(e.target.value))}
+        className="rounded-lg border border-[var(--app-border)] bg-[var(--app-surface)] px-2 py-1.5 text-xs tabular-nums text-[var(--app-text)]"
+      >
+        {jahre.map((y) => (
+          <option key={y} value={y}>
+            {y}
+          </option>
+        ))}
+      </select>
+    </label>
+  )
+}
+
 export function PortfolioBoerseClient({ initial }: { initial?: BoersenSaisonPaket | null }) {
   const [paket, setPaket] = useState<BoersenSaisonPaket | null>(initial ?? null)
   const [laden, setLaden] = useState(!(initial?.ok && (initial.indezes?.length ?? 0) > 0))
   const [indexId, setIndexId] = useState(initial?.indezes[0]?.id ?? 'sp500')
+  const [zeitraum, setZeitraum] = useState<{ von: number | null; bis: number | null }>({ von: null, bis: null })
 
   useEffect(() => {
     if (initial?.ok && initial.indezes.length > 0) return
@@ -210,17 +248,48 @@ export function PortfolioBoerseClient({ initial }: { initial?: BoersenSaisonPake
     [paket, indexId],
   )
 
+  const zeitraumEff = useMemo(() => {
+    const min = aktiv?.vonJahr
+    const max = aktiv?.bisJahr
+    if (min == null || max == null) return { von: null as number | null, bis: null as number | null, gesamt: true, keinOverlap: false }
+    if (zeitraum.von == null && zeitraum.bis == null) return { von: min, bis: max, gesamt: true, keinOverlap: false }
+    const v = zeitraum.von ?? min
+    const b = zeitraum.bis ?? max
+    if (b < min || v > max) return { von: min, bis: max, gesamt: true, keinOverlap: true }
+    return {
+      von: Math.max(min, Math.min(v, b)),
+      bis: Math.min(max, Math.max(v, b)),
+      gesamt: false,
+      keinOverlap: false,
+    }
+  }, [aktiv, zeitraum])
+
+  const gefiltert = useMemo(() => {
+    const rets = aktiv?.renditen ?? []
+    if (!rets.length || zeitraumEff.von == null || zeitraumEff.bis == null) return rets
+    return filterRenditenNachJahren(rets, zeitraumEff.von, zeitraumEff.bis)
+  }, [aktiv, zeitraumEff])
+
+  const saison = useMemo(() => {
+    if (aktiv?.renditen?.length) return saisonAusRenditen(gefiltert)
+    return {
+      monate: aktiv?.monate ?? [],
+      vonJahr: aktiv?.vonJahr ?? null,
+      bisJahr: aktiv?.bisJahr ?? null,
+    }
+  }, [gefiltert, aktiv])
+  const wahlZyklus = useMemo(() => wahlZyklusAusRenditen(gefiltert), [gefiltert])
+
   const ranking = useMemo(() => {
-    if (!aktiv) return { best: null as BoersenSaisonMonat | null, worst: null as BoersenSaisonMonat | null }
-    const sortiert = [...aktiv.monate].sort((a, b) => b.durchschnittPct - a.durchschnittPct)
+    const sortiert = [...saison.monate].sort((a, b) => b.durchschnittPct - a.durchschnittPct)
     return { best: sortiert[0] ?? null, worst: sortiert[sortiert.length - 1] ?? null }
-  }, [aktiv])
+  }, [saison])
 
   const staerkstePhase = useMemo(() => {
-    const phasen = aktiv?.wahlZyklus?.phasen.filter((p) => p.anzahl > 0) ?? []
+    const phasen = wahlZyklus?.phasen.filter((p) => p.anzahl > 0) ?? []
     if (!phasen.length) return null
     return [...phasen].sort((a, b) => b.durchschnittJahrPct - a.durchschnittJahrPct)[0] ?? null
-  }, [aktiv])
+  }, [wahlZyklus])
 
   const aktuellesJahr = new Date().getUTCFullYear()
   const aktuellePhaseLabel =
@@ -240,8 +309,9 @@ export function PortfolioBoerseClient({ initial }: { initial?: BoersenSaisonPake
         <div>
           <h2 className="text-base font-semibold text-[var(--app-text)]">Monatsrenditen im Schnitt</h2>
           <p className="mt-1 max-w-2xl text-[13px] leading-relaxed text-[var(--app-text-muted)]">
-            Jeder Balken ist der arithmetische Durchschnitt aller abgeschlossenen {aktiv?.name ?? 'Index'}-Monate in
-            der Historie. Das ist keine Prognose — nur was der Kalender bisher geliefert hat.
+            Jeder Balken ist der arithmetische Durchschnitt aller abgeschlossenen {aktiv?.name ?? 'Index'}-Monate
+            {zeitraumEff.von && zeitraumEff.bis ? ` von ${zeitraumEff.von} bis ${zeitraumEff.bis}` : ' in der Historie'}.
+            Das ist keine Prognose — nur was der Kalender in diesem Zeitraum geliefert hat.
           </p>
         </div>
 
@@ -267,6 +337,68 @@ export function PortfolioBoerseClient({ initial }: { initial?: BoersenSaisonPake
           </div>
         ) : null}
 
+        {aktiv?.vonJahr && aktiv.bisJahr ? (
+          <div className="flex flex-wrap items-end gap-2">
+            <JahrSelect
+              label="Von"
+              value={zeitraumEff.von ?? aktiv.vonJahr}
+              min={aktiv.vonJahr}
+              max={aktiv.bisJahr}
+              onChange={(jahr) =>
+                setZeitraum((z) => {
+                  const bis = z.bis ?? aktiv.bisJahr!
+                  return { von: jahr, bis: jahr > bis ? jahr : bis }
+                })
+              }
+            />
+            <JahrSelect
+              label="Bis"
+              value={zeitraumEff.bis ?? aktiv.bisJahr}
+              min={aktiv.vonJahr}
+              max={aktiv.bisJahr}
+              onChange={(jahr) =>
+                setZeitraum((z) => {
+                  const von = z.von ?? aktiv.vonJahr!
+                  return { von: jahr < von ? jahr : von, bis: jahr }
+                })
+              }
+            />
+            <div className="flex flex-wrap gap-1.5 pb-0.5">
+              {[
+                { id: 'all', label: 'Gesamt', von: null as number | null, bis: null as number | null },
+                { id: '10', label: '10 J', von: Math.max(aktiv.vonJahr, aktiv.bisJahr - 9), bis: aktiv.bisJahr },
+                { id: '20', label: '20 J', von: Math.max(aktiv.vonJahr, aktiv.bisJahr - 19), bis: aktiv.bisJahr },
+                { id: '30', label: '30 J', von: Math.max(aktiv.vonJahr, aktiv.bisJahr - 29), bis: aktiv.bisJahr },
+              ].map((p) => {
+                const an =
+                  p.von == null
+                    ? zeitraumEff.gesamt
+                    : !zeitraumEff.gesamt && zeitraumEff.von === p.von && zeitraumEff.bis === p.bis
+                return (
+                  <button
+                    key={p.id}
+                    type="button"
+                    onClick={() => setZeitraum({ von: p.von, bis: p.bis })}
+                    className={`rounded-lg px-2.5 py-1.5 text-[11px] font-medium transition ${
+                      an
+                        ? 'bg-teal-500/15 text-teal-300 ring-1 ring-teal-500/30'
+                        : 'text-[var(--app-text-muted)] hover:bg-[var(--app-surface-hover)] hover:text-[var(--app-text)]'
+                    }`}
+                  >
+                    {p.label}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        ) : null}
+
+        {zeitraumEff.keinOverlap && aktiv ? (
+          <p className="text-[12px] text-amber-200/90">
+            {aktiv.name} hat in {zeitraum.von}–{zeitraum.bis} keine Kurse — es gilt die volle Historie ab {aktiv.vonJahr}.
+          </p>
+        ) : null}
+
         {laden ? (
           <p className="py-10 text-center text-sm text-[var(--app-text-muted)]">Historie wird geladen …</p>
         ) : null}
@@ -279,7 +411,7 @@ export function PortfolioBoerseClient({ initial }: { initial?: BoersenSaisonPake
           <>
             <p className="text-[11px] text-[var(--app-text-muted)]">
               {aktiv.name} ({aktiv.symbol})
-              {aktiv.vonJahr && aktiv.bisJahr ? ` · ${aktiv.vonJahr}–${aktiv.bisJahr}` : ''} · {aktiv.hinweis}
+              {zeitraumEff.von && zeitraumEff.bis ? ` · ${zeitraumEff.von}–${zeitraumEff.bis}` : ''} · {aktiv.hinweis}
             </p>
 
             {ranking.best && ranking.worst ? (
@@ -303,7 +435,7 @@ export function PortfolioBoerseClient({ initial }: { initial?: BoersenSaisonPake
               </div>
             ) : null}
 
-            <SaisonBalken monate={aktiv.monate} />
+            <SaisonBalken monate={saison.monate} />
 
             <div className="overflow-x-auto">
               <table className={PA_TABLE}>
@@ -319,7 +451,7 @@ export function PortfolioBoerseClient({ initial }: { initial?: BoersenSaisonPake
                   </tr>
                 </thead>
                 <tbody>
-                  {aktiv.monate.map((m) => {
+                  {saison.monate.map((m) => {
                     const pos = m.durchschnittPct >= 0
                     return (
                       <tr key={m.monat}>
@@ -348,17 +480,17 @@ export function PortfolioBoerseClient({ initial }: { initial?: BoersenSaisonPake
         ) : null}
       </PaCard>
 
-      {aktiv?.wahlZyklus ? (
+      {wahlZyklus ? (
         <PaCard className="mt-4 space-y-5 p-4 sm:p-5">
           <div>
             <h2 className="text-base font-semibold text-[var(--app-text)]">US-Wahlzyklus</h2>
             <p className="mt-1 max-w-2xl text-[13px] leading-relaxed text-[var(--app-text-muted)]">
               US-Präsidentschaftswahlen alle vier Jahre, dazwischen die Midterms. {aktuellesJahr} ist ein{' '}
-              {aktuellePhaseLabel}. Die Zahlen sind die durchschnittliche Jahresrendite des {aktiv.name} in
+              {aktuellePhaseLabel}. Die Zahlen sind die durchschnittliche Jahresrendite des {aktiv?.name} in
               dieser Zyklusphase
-              {aktiv.vonJahr && aktiv.bisJahr ? ` (${aktiv.vonJahr}–${aktiv.bisJahr})` : ''}. Kein Fahrplan — 2008 war
-              ein Wahljahr und trotzdem ein Crash-Jahr.
-              {aktiv.id === 'dax'
+              {zeitraumEff.von && zeitraumEff.bis ? ` (${zeitraumEff.von}–${zeitraumEff.bis})` : ''}. Kein Fahrplan —
+              2008 war ein Wahljahr und trotzdem ein Crash-Jahr.
+              {aktiv?.id === 'dax'
                 ? ' Beim DAX ist das ein Mitzieheffekt über den US-Risikoappetit, kein eigener deutscher Wahlkalender.'
                 : ''}
             </p>
@@ -366,7 +498,7 @@ export function PortfolioBoerseClient({ initial }: { initial?: BoersenSaisonPake
 
           <RenditeBalken
             ariaLabel="Durchschnittliche Jahresrendite im US-Wahlzyklus"
-            eintraege={aktiv.wahlZyklus.phasen.map((p) => ({
+            eintraege={wahlZyklus.phasen.map((p) => ({
               key: p.phase,
               label: p.kurz,
               wert: p.durchschnittJahrPct,
@@ -374,7 +506,7 @@ export function PortfolioBoerseClient({ initial }: { initial?: BoersenSaisonPake
           />
 
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            {aktiv.wahlZyklus.phasen.map((p) => (
+            {wahlZyklus.phasen.map((p) => (
               <WahlPhaseKarte key={p.phase} phase={p} aktiv={p.phase === staerkstePhase?.phase} />
             ))}
           </div>
@@ -382,15 +514,15 @@ export function PortfolioBoerseClient({ initial }: { initial?: BoersenSaisonPake
           <div className="grid gap-3 sm:grid-cols-2">
             <FensterZeile
               titel="Midterms: oft schwach bis zum Herbst, dann Erholung"
-              vorher={aktiv.wahlZyklus.midtermVorher}
-              danach={aktiv.wahlZyklus.midtermDanach}
+              vorher={wahlZyklus.midtermVorher}
+              danach={wahlZyklus.midtermDanach}
               vorherLabel="Jan–Okt"
               danachLabel="Nov–Dez"
             />
             <FensterZeile
               titel="Wahljahr: oft Rückenwind nach dem Wahltag"
-              vorher={aktiv.wahlZyklus.wahljahrVorher}
-              danach={aktiv.wahlZyklus.wahljahrDanach}
+              vorher={wahlZyklus.wahljahrVorher}
+              danach={wahlZyklus.wahljahrDanach}
               vorherLabel="Jan–Okt"
               danachLabel="Nov–Dez"
             />

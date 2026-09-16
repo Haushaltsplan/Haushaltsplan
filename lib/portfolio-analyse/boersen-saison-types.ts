@@ -69,6 +69,12 @@ export type BoersenWahlZyklus = {
   wahljahrDanach: BoersenWahlFenster
 }
 
+export type BoersenMonatRendite = {
+  jahr: number
+  monat: number
+  retPct: number
+}
+
 export type BoersenSaisonIndex = {
   id: string
   name: string
@@ -78,6 +84,7 @@ export type BoersenSaisonIndex = {
   hinweis: string
   monate: BoersenSaisonMonat[]
   wahlZyklus: BoersenWahlZyklus | null
+  renditen: BoersenMonatRendite[]
 }
 
 export type BoersenSaisonPaket = {

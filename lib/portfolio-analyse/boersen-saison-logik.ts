@@ -11,7 +11,7 @@ import {
 export type KursPunkt = { datum: string; kurs: number }
 
 export type MonatRendite = {
-  ym: string
+  ym?: string
   jahr: number
   monat: number
   retPct: number
@@ -121,7 +121,15 @@ export function fuellePreisLoecher(primaer: KursPunkt[], ...fallbacks: KursPunkt
   return [...map.values()].sort((a, b) => a.datum.localeCompare(b.datum))
 }
 
-export function saisonAusRenditen(rets: MonatRendite[]): {
+export function filterRenditenNachJahren(
+  rets: MonatRendite[],
+  vonJahr: number,
+  bisJahr: number,
+): MonatRendite[] {
+  const von = Math.min(vonJahr, bisJahr)
+  const bis = Math.max(vonJahr, bisJahr)
+  return rets.filter((r) => r.jahr >= von && r.jahr <= bis)
+}
   monate: BoersenSaisonMonat[]
   vonJahr: number | null
   bisJahr: number | null

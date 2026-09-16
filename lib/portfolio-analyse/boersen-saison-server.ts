@@ -16,8 +16,9 @@ const USER_AGENT =
 
 const FETCH_TIMEOUT_MS = 7_000
 const CACHE_MS = 6 * 60 * 60 * 1000
+const PAKET_CACHE_VERSION = 2
 
-let paketCache: { at: number; paket: BoersenSaisonPaket } | null = null
+let paketCache: { at: number; version: number; paket: BoersenSaisonPaket } | null = null
 
 async function fetchMitTimeout(url: string, init: RequestInit = {}): Promise<Response | null> {
   const ac = new AbortController()
@@ -291,7 +292,9 @@ async function ladeMonatsserie(cfg: (typeof INDEX_LIST)[number]): Promise<KursPu
 }
 
 export async function ladeBoersenSaison(): Promise<BoersenSaisonPaket> {
-  if (paketCache && Date.now() - paketCache.at < CACHE_MS) return paketCache.paket
+  if (paketCache && paketCache.version === PAKET_CACHE_VERSION && Date.now() - paketCache.at < CACHE_MS) {
+    return paketCache.paket
+  }
 
   const indezes: BoersenSaisonIndex[] = []
   await Promise.all(
@@ -310,6 +313,7 @@ export async function ladeBoersenSaison(): Promise<BoersenSaisonPaket> {
           hinweis: cfg.hinweis,
           monate,
           wahlZyklus: wahlZyklusAusRenditen(rets),
+          renditen: rets.map(({ jahr, monat, retPct }) => ({ jahr, monat, retPct })),
         })
       } catch (e) {
         console.error('[boerse-saison]', cfg.id, e)
@@ -325,6 +329,6 @@ export async function ladeBoersenSaison(): Promise<BoersenSaisonPaket> {
     geladenAm: new Date().toISOString(),
     fehler: indezes.length === 0 ? 'Keine Indexhistorie geladen.' : undefined,
   }
-  if (paket.ok) paketCache = { at: Date.now(), paket }
+  if (paket.ok) paketCache = { at: Date.now(), version: PAKET_CACHE_VERSION, paket }
   return paket
 }
