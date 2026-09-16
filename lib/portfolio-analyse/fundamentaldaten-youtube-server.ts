@@ -24,18 +24,15 @@ export type { YoutubeVideoPaket, YoutubeVideoTreffer }
 const USER_AGENT =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36'
 
-const INNERTUBE_CLIENT = {
-  clientName: 'WEB',
-  clientVersion: '2.20250323.01.00',
-  hl: 'en',
-  gl: 'US',
-} as const
+const INNERTUBE_VERSION = '2.20250323.01.00'
+/** Alte Caches mit englisch übersetzten DE-Titeln neu ziehen. */
+const TITEL_ORIGINAL_AB = Date.parse('2026-09-16T18:00:00+02:00')
 
 const JAHR_MS = 365 * 24 * 60 * 60 * 1000
 const SYNC_FRISCH_MS = 6 * 60 * 60 * 1000
 const MAX_SEITEN_JAHR = 16
 const MAX_SEITEN_BACKFILL_PRO_LAUF = 2
-const MAX_VIDEOS = 6
+const MAX_VIDEOS_PRO_KANAL = 8
 
 /** Kurze/allgemeine Tickersymbole — nie als nacktes Wort in der Beschreibung matchen. */
 const MEHRDEUTIGE_TICKER = new Set([
@@ -404,16 +401,27 @@ function parseInnertubeSeite(
   return { videos, continuation }
 }
 
-async function innertubeBrowse(body: Record<string, unknown>): Promise<unknown> {
+function kanalSprache(creator: YoutubeCreator): 'de' | 'en' {
+  return creator.sprache === 'de' ? 'de' : 'en'
+}
+
+function innertubeClient(sprache: 'de' | 'en') {
+  return sprache === 'de'
+    ? { clientName: 'WEB' as const, clientVersion: INNERTUBE_VERSION, hl: 'de', gl: 'DE' }
+    : { clientName: 'WEB' as const, clientVersion: INNERTUBE_VERSION, hl: 'en', gl: 'US' }
+}
+
+async function innertubeBrowse(body: Record<string, unknown>, sprache: 'de' | 'en'): Promise<unknown> {
   const res = await fetch('https://www.youtube.com/youtubei/v1/browse?prettyPrint=false', {
     method: 'POST',
     headers: {
       'User-Agent': USER_AGENT,
       'Content-Type': 'application/json',
+      'Accept-Language': sprache === 'de' ? 'de-DE,de;q=0.9' : 'en-US,en;q=0.9',
       Origin: 'https://www.youtube.com',
       Referer: 'https://www.youtube.com/',
     },
-    body: JSON.stringify({ context: { client: INNERTUBE_CLIENT }, ...body }),
+    body: JSON.stringify({ context: { client: innertubeClient(sprache) }, ...body }),
   })
   if (!res.ok) return null
   return res.json()
@@ -425,7 +433,11 @@ function istAelterAlsEinJahr(publishedAt: string | null, now: number): boolean {
   return Number.isFinite(t) && now - t > JAHR_MS
 }
 
-async function ladeKanalRss(channelId: string, creatorName: string): Promise<YoutubeKanalVideo[]> {
+async function ladeKanalRss(
+  channelId: string,
+  creatorName: string,
+  sprache: 'de' | 'en',
+): Promise<YoutubeKanalVideo[]> {
   const id = channelId.trim()
   if (!/^UC[\w-]{20,}$/.test(id)) return []
   const url = `https://www.youtube.com/feeds/videos.xml?channel_id=${encodeURIComponent(id)}`
@@ -434,6 +446,7 @@ async function ladeKanalRss(channelId: string, creatorName: string): Promise<You
       headers: {
         'User-Agent': USER_AGENT,
         Accept: 'application/atom+xml, application/xml, text/xml;q=0.9, */*;q=0.8',
+        'Accept-Language': sprache === 'de' ? 'de-DE,de;q=0.9' : 'en-US,en;q=0.9',
       },
       next: { revalidate: 6 * 60 * 60 },
     })
@@ -475,10 +488,11 @@ async function ladeInnertubeSeite(
   channelId: string,
   creatorName: string,
   continuation: string | null,
+  sprache: 'de' | 'en',
 ): Promise<{ videos: YoutubeKanalVideo[]; continuation: string | null; ok: boolean }> {
   const data = continuation
-    ? await innertubeBrowse({ continuation })
-    : await innertubeBrowse({ browseId: uploadsPlaylistBrowseId(channelId) })
+    ? await innertubeBrowse({ continuation }, sprache)
+    : await innertubeBrowse({ browseId: uploadsPlaylistBrowseId(channelId) }, sprache)
   if (!data) return { videos: [], continuation: null, ok: false }
   const parsed = parseInnertubeSeite(data, channelId, creatorName)
   return { ...parsed, ok: true }
@@ -486,6 +500,7 @@ async function ladeInnertubeSeite(
 
 async function syncKanalJahrUndBackfill(creator: YoutubeCreator, now: number): Promise<YoutubeKanalVideo[]> {
   const channelId = creator.channelId.trim()
+  const sprache = kanalSprache(creator)
   const gesammelt: YoutubeKanalVideo[] = []
   const sync = (await ladeYoutubeKanalSync(channelId)) ?? {
     channelId,
@@ -495,7 +510,10 @@ async function syncKanalJahrUndBackfill(creator: YoutubeCreator, now: number): P
     backfillContinuation: null,
   }
 
-  const jahrFrisch = sync.letzterJahrSyncAm != null && now - sync.letzterJahrSyncAm < SYNC_FRISCH_MS
+  const jahrFrisch =
+    sync.letzterJahrSyncAm != null &&
+    now - sync.letzterJahrSyncAm < SYNC_FRISCH_MS &&
+    sync.letzterJahrSyncAm >= TITEL_ORIGINAL_AB
   let backfillContinuation = sync.backfillContinuation
   let backfillFertig = sync.backfillFertig
   let jahrSyncAm = sync.letzterJahrSyncAm
@@ -509,7 +527,7 @@ async function syncKanalJahrUndBackfill(creator: YoutubeCreator, now: number): P
     let aelterGesehen = false
     let jahrOk = false
     while (seiten < MAX_SEITEN_JAHR && !aelterGesehen) {
-      const seite = await ladeInnertubeSeite(channelId, creator.name, erste ? null : continuation)
+      const seite = await ladeInnertubeSeite(channelId, creator.name, erste ? null : continuation, sprache)
       erste = false
       seiten++
       if (!seite.ok) break
@@ -537,7 +555,7 @@ async function syncKanalJahrUndBackfill(creator: YoutubeCreator, now: number): P
     let continuation: string | null = backfillContinuation
     let seiten = 0
     while (continuation && seiten < MAX_SEITEN_BACKFILL_PRO_LAUF) {
-      const seite = await ladeInnertubeSeite(channelId, creator.name, continuation)
+      const seite = await ladeInnertubeSeite(channelId, creator.name, continuation, sprache)
       seiten++
       if (!seite.ok) break
       gesammelt.push(...seite.videos)
@@ -552,7 +570,7 @@ async function syncKanalJahrUndBackfill(creator: YoutubeCreator, now: number): P
   }
 
   if (!jahrFrisch) {
-    const rss = await ladeKanalRss(channelId, creator.name)
+    const rss = await ladeKanalRss(channelId, creator.name, sprache)
     gesammelt.push(...rss)
   }
 
@@ -595,7 +613,27 @@ function trefferAusVideos(
     const tb = b.publishedAt ? Date.parse(b.publishedAt) : 0
     return tb - ta
   })
-  return treffer.slice(0, MAX_VIDEOS)
+
+  const jeKanal = new Map<string, YoutubeVideoTreffer[]>()
+  for (const t of treffer) {
+    const list = jeKanal.get(t.channelId) ?? []
+    if (list.length >= MAX_VIDEOS_PRO_KANAL) continue
+    list.push(t)
+    jeKanal.set(t.channelId, list)
+  }
+  const geordnet: YoutubeVideoTreffer[] = []
+  const gesehen = new Set<string>()
+  for (const c of YOUTUBE_CREATORS) {
+    const list = jeKanal.get(c.channelId)
+    if (!list?.length) continue
+    gesehen.add(c.channelId)
+    geordnet.push(...list)
+  }
+  for (const [id, list] of jeKanal) {
+    if (gesehen.has(id)) continue
+    geordnet.push(...list)
+  }
+  return geordnet
 }
 
 export async function ladeYoutubeVideosFuerTitel(opts: {
@@ -637,6 +675,7 @@ export async function ladeYoutubeVideosFuerTitel(opts: {
     byId.set(v.videoId, {
       ...prev,
       ...v,
+      titel: v.titel.trim() || prev.titel,
       beschreibung: v.beschreibung.trim() || prev.beschreibung,
       publishedAt: v.publishedAt ?? prev.publishedAt,
     })

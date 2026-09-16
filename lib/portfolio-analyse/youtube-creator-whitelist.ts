@@ -11,6 +11,8 @@ export type YoutubeCreator = {
   channelId: string
   name: string
   handle?: string
+  /** Originalsprache der Videos — steuert Innertube-hl, damit Titel nicht übersetzt werden. */
+  sprache?: 'de' | 'en'
 }
 
 export const YOUTUBE_CREATORS: readonly YoutubeCreator[] = [
@@ -18,31 +20,37 @@ export const YOUTUBE_CREATORS: readonly YoutubeCreator[] = [
     channelId: 'UC8a0K6N5RIyI5-O7RZ1JqhQ',
     name: 'Maximilian Gamperling',
     handle: '@MaximilianGamperling',
+    sprache: 'de',
   },
   {
     channelId: 'UCfCT7SSFEWyG4th9ZmaGYqQ',
     name: 'Joseph Carlson After Hours',
     handle: '@JosephCarlsonAfterHours',
+    sprache: 'en',
   },
   {
     channelId: 'UCbta0n8i6Rljh0obO7HzG9A',
     name: 'Joseph Carlson',
     handle: '@JosephCarlsonShow',
+    sprache: 'en',
   },
   {
     channelId: 'UC0IhDpNR4NizZ3UPFJXEm1A',
     name: 'Wealth Value Passion | Nico Santura',
     handle: '@Wealth-Value-Passion',
+    sprache: 'de',
   },
   {
     channelId: 'UCs60_Z83HU76uygzHRQl0kA',
     name: 'Brian Feroldi',
     handle: '@BrianFeroldiYT',
+    sprache: 'en',
   },
   {
     channelId: 'UCEhigSJQgvj9ADwYRYLkapA',
     name: 'Brian Stoffel',
     handle: '@brianstoffelyt',
+    sprache: 'en',
   },
 ]
 
