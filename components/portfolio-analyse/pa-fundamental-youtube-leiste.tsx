@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, type MouseEvent } from 'react'
 import { hatYoutubeCreators, YOUTUBE_CREATORS } from '@/lib/portfolio-analyse/youtube-creator-whitelist'
 import type { YoutubeVideoTreffer } from '@/lib/portfolio-analyse/fundamentaldaten-youtube-types'
 
@@ -21,8 +21,32 @@ function kanalName(channelId: string, fallback: string): string {
   return YOUTUBE_CREATORS.find((c) => c.channelId === channelId)?.name ?? fallback
 }
 
-function kanalHl(channelId: string): 'de' | 'en' {
-  return YOUTUBE_CREATORS.find((c) => c.channelId === channelId)?.sprache === 'de' ? 'de' : 'en'
+function youtubeWatchUrl(videoId: string): string {
+  return `https://www.youtube.com/watch?v=${encodeURIComponent(videoId)}`
+}
+
+function istHandy(): boolean {
+  if (typeof navigator === 'undefined') return false
+  const ua = navigator.userAgent
+  if (/iPhone|iPod|Android/i.test(ua)) return true
+  if (/iPad/i.test(ua)) return true
+  return navigator.maxTouchPoints > 1 && /Mac/i.test(ua)
+}
+
+function oeffneYoutubeVideo(videoId: string, ev: MouseEvent<HTMLAnchorElement>) {
+  if (!istHandy()) return
+  ev.preventDefault()
+  const web = youtubeWatchUrl(videoId)
+  const ua = navigator.userAgent
+  if (/Android/i.test(ua)) {
+    window.location.href =
+      `intent://www.youtube.com/watch?v=${encodeURIComponent(videoId)}#Intent;scheme=https;package=com.google.android.youtube;S.browser_fallback_url=${encodeURIComponent(web)};end`
+    return
+  }
+  window.location.href = `youtube://watch?v=${encodeURIComponent(videoId)}`
+  window.setTimeout(() => {
+    if (!document.hidden) window.location.href = web
+  }, 800)
 }
 
 function gruppiereNachKanal(videos: YoutubeVideoTreffer[]): { channelId: string; name: string; videos: YoutubeVideoTreffer[] }[] {
@@ -59,7 +83,6 @@ export function PaFundamentalYoutubeLeiste({
   selectionKey?: string
 }) {
   const [videos, setVideos] = useState<YoutubeVideoTreffer[]>([])
-  const [aktivId, setAktivId] = useState<string | null>(null)
 
   useEffect(() => {
     if (!hatYoutubeCreators() || !ticker.trim()) return
@@ -80,7 +103,6 @@ export function PaFundamentalYoutubeLeiste({
   }, [ticker, firmenname, symbolYahoo, selectionKey])
 
   const gruppen = useMemo(() => gruppiereNachKanal(videos), [videos])
-  const aktiv = videos.find((v) => v.videoId === aktivId) ?? null
 
   if (gruppen.length === 0) return null
 
@@ -89,7 +111,7 @@ export function PaFundamentalYoutubeLeiste({
       <div className="border-b border-white/[0.05] px-4 py-3">
         <h3 className="text-sm font-semibold text-[var(--app-text)]">Videos</h3>
         <p className="mt-0.5 text-[11px] text-[var(--app-text-muted)]">
-          Ausgewählte Kanäle · Originaltitel · Klick startet den Player
+          Ausgewählte Kanäle · Originaltitel · öffnet YouTube (am Handy die App)
         </p>
       </div>
       <div className="divide-y divide-white/[0.05]">
@@ -97,19 +119,14 @@ export function PaFundamentalYoutubeLeiste({
           <div key={g.channelId} className="px-4 py-3">
             <h4 className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-teal-300/90">{g.name}</h4>
             <ul className="space-y-1.5">
-              {g.videos.map((v) => {
-                const an = v.videoId === aktivId
-                return (
+              {g.videos.map((v) => (
                   <li key={v.videoId}>
-                    <button
-                      type="button"
-                      aria-pressed={an}
-                      onClick={() => setAktivId((id) => (id === v.videoId ? null : v.videoId))}
-                      className={`flex w-full items-start gap-3 rounded-lg border p-1.5 text-left transition ${
-                        an
-                          ? 'border-teal-500/50 bg-teal-500/[0.07] ring-1 ring-teal-400/40'
-                          : 'border-transparent hover:border-[var(--app-border)] hover:bg-[var(--app-surface-hover)]'
-                      }`}
+                    <a
+                      href={youtubeWatchUrl(v.videoId)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={(e) => oeffneYoutubeVideo(v.videoId, e)}
+                      className="flex w-full items-start gap-3 rounded-lg border border-transparent p-1.5 text-left transition hover:border-[var(--app-border)] hover:bg-[var(--app-surface-hover)]"
                     >
                       <span className="relative w-[7.5rem] shrink-0 overflow-hidden rounded-md bg-black/40 sm:w-36">
                         <span className="relative block aspect-video">
@@ -139,27 +156,13 @@ export function PaFundamentalYoutubeLeiste({
                           </span>
                         ) : null}
                       </span>
-                    </button>
+                    </a>
                   </li>
-                )
-              })}
+                ))}
             </ul>
           </div>
         ))}
       </div>
-      {aktiv ? (
-        <div className="border-t border-white/[0.05] px-4 py-3">
-          <div className="mx-auto aspect-video max-w-3xl overflow-hidden rounded-lg bg-black">
-            <iframe
-              src={`https://www.youtube-nocookie.com/embed/${encodeURIComponent(aktiv.videoId)}?autoplay=1&hl=${kanalHl(aktiv.channelId)}`}
-              title={aktiv.titel}
-              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-              allowFullScreen
-              className="h-full w-full border-0"
-            />
-          </div>
-        </div>
-      ) : null}
     </section>
   )
 }
