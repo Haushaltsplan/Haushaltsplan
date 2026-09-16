@@ -161,6 +161,8 @@ const SUB_NAV = [
   { href: '/portfolioanalyse/analyse', label: 'Analyse' },
   { href: '/portfolioanalyse/nachkaeufe', label: 'Nachkauf-Radar' },
   { href: '/portfolioanalyse/watchlist', label: 'Watchlist' },
+  { href: '/portfolioanalyse/dcf', label: 'DCF' },
+  { href: '/portfolioanalyse/screener', label: 'Screener' },
   { href: '/portfolioanalyse/import', label: 'Import' },
 ] as const
 
