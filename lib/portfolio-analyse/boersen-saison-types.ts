@@ -84,7 +84,8 @@ export type BoersenSaisonIndex = {
   hinweis: string
   monate: BoersenSaisonMonat[]
   wahlZyklus: BoersenWahlZyklus | null
-  renditen: BoersenMonatRendite[]
+  /** Monatliche Renditen für die Jahresfilterung; kann in der Erstansicht leer sein. */
+  renditen?: BoersenMonatRendite[]
 }
 
 export type BoersenSaisonPaket = {

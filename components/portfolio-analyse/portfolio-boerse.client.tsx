@@ -173,7 +173,7 @@ function FensterZeile({
   )
 }
 
-function JahrSelect({
+function JahrFeld({
   label,
   value,
   min,
@@ -186,22 +186,23 @@ function JahrSelect({
   max: number
   onChange: (jahr: number) => void
 }) {
-  const jahre: number[] = []
-  for (let y = min; y <= max; y++) jahre.push(y)
   return (
     <label className="flex flex-col gap-1">
       <span className="text-[10px] font-semibold uppercase tracking-wide text-[var(--app-text-muted)]">{label}</span>
-      <select
+      <input
+        type="number"
+        inputMode="numeric"
+        min={min}
+        max={max}
+        step={1}
         value={value}
-        onChange={(e) => onChange(Number(e.target.value))}
-        className="rounded-lg border border-[var(--app-border)] bg-[var(--app-surface)] px-2 py-1.5 text-xs tabular-nums text-[var(--app-text)]"
-      >
-        {jahre.map((y) => (
-          <option key={y} value={y}>
-            {y}
-          </option>
-        ))}
-      </select>
+        onChange={(e) => {
+          const n = Number.parseInt(e.target.value, 10)
+          if (!Number.isFinite(n)) return
+          onChange(Math.min(max, Math.max(min, n)))
+        }}
+        className="w-[6.75rem] rounded-lg border border-[var(--app-border-strong)] bg-[var(--app-bg)] px-2.5 py-1.5 text-sm tabular-nums text-[var(--app-text)] outline-none focus:ring-1 focus:ring-teal-500/40"
+      />
     </label>
   )
 }
@@ -213,13 +214,16 @@ export function PortfolioBoerseClient({ initial }: { initial?: BoersenSaisonPake
   const [zeitraum, setZeitraum] = useState<{ von: number | null; bis: number | null }>({ von: null, bis: null })
 
   useEffect(() => {
-    if (initial?.ok && initial.indezes.length > 0) return
     const ac = new AbortController()
     let weg = false
     void fetch('/api/portfolio-analyse/boerse-saison', { signal: ac.signal })
       .then(async (res) => {
         const json = (await res.json()) as BoersenSaisonPaket
         if (weg) return
+        if (!json?.indezes?.length) {
+          if (!initial?.indezes?.length) setPaket(json)
+          return
+        }
         setPaket(json)
         const first = json.indezes[0]?.id
         if (first) setIndexId((prev) => (json.indezes.some((i) => i.id === prev) ? prev : first))
@@ -227,6 +231,7 @@ export function PortfolioBoerseClient({ initial }: { initial?: BoersenSaisonPake
       .catch((e: unknown) => {
         if (weg) return
         if (e instanceof DOMException && e.name === 'AbortError') return
+        if (initial?.indezes?.length) return
         setPaket({
           ok: false,
           indezes: [],
@@ -337,9 +342,10 @@ export function PortfolioBoerseClient({ initial }: { initial?: BoersenSaisonPake
           </div>
         ) : null}
 
-        {aktiv?.vonJahr && aktiv.bisJahr ? (
-          <div className="flex flex-wrap items-end gap-2">
-            <JahrSelect
+        {aktiv?.vonJahr != null && aktiv.bisJahr != null ? (
+          <div className="flex flex-wrap items-end gap-3 rounded-lg border border-[var(--app-border)] bg-[var(--app-surface-muted)]/25 px-3 py-2.5">
+            <p className="w-full text-[11px] font-semibold text-[var(--app-text)] sm:w-auto sm:pb-1.5">Zeitraum</p>
+            <JahrFeld
               label="Von"
               value={zeitraumEff.von ?? aktiv.vonJahr}
               min={aktiv.vonJahr}
@@ -351,7 +357,7 @@ export function PortfolioBoerseClient({ initial }: { initial?: BoersenSaisonPake
                 })
               }
             />
-            <JahrSelect
+            <JahrFeld
               label="Bis"
               value={zeitraumEff.bis ?? aktiv.bisJahr}
               min={aktiv.vonJahr}
@@ -390,6 +396,9 @@ export function PortfolioBoerseClient({ initial }: { initial?: BoersenSaisonPake
                 )
               })}
             </div>
+            {!(aktiv.renditen?.length) ? (
+              <p className="w-full text-[11px] text-[var(--app-text-muted)]">Monatsreihe für den Filter wird geladen …</p>
+            ) : null}
           </div>
         ) : null}
 

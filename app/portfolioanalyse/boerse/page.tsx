@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import { PortfolioBoerseClient } from '@/components/portfolio-analyse/portfolio-boerse.client'
 import { ladeBoersenSaison } from '@/lib/portfolio-analyse/boersen-saison-server'
+import type { BoersenSaisonPaket } from '@/lib/portfolio-analyse/boersen-saison-types'
 
 export const metadata: Metadata = {
   title: 'Börse · Portfolioanalyse',
@@ -9,17 +10,27 @@ export const metadata: Metadata = {
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
 
+function ohneMonatsliste(paket: BoersenSaisonPaket): BoersenSaisonPaket {
+  return {
+    ...paket,
+    indezes: paket.indezes.map((idx) => ({ ...idx, renditen: [] })),
+  }
+}
+
 export default async function PortfolioBoersePage() {
-  let paket = null
+  let paket: BoersenSaisonPaket = {
+    ok: false,
+    indezes: [],
+    geladenAm: new Date().toISOString(),
+    fehler: 'Saisondaten konnten nicht geladen werden.',
+  }
   try {
-    paket = await ladeBoersenSaison()
+    paket = ohneMonatsliste(await ladeBoersenSaison())
   } catch (e) {
     console.error('boerse-saison page', e)
     paket = {
-      ok: false,
-      indezes: [],
-      geladenAm: new Date().toISOString(),
-      fehler: e instanceof Error ? e.message : 'Saisondaten konnten nicht geladen werden.',
+      ...paket,
+      fehler: e instanceof Error ? e.message : paket.fehler,
     }
   }
   return <PortfolioBoerseClient initial={paket} />
