@@ -187,20 +187,44 @@ function JahrFeld({
   max: number
   onChange: (jahr: number) => void
 }) {
+  const [draft, setDraft] = useState(String(value))
+
+  useEffect(() => {
+    setDraft(String(value))
+  }, [value])
+
+  function uebernehmen(raw: string) {
+    const n = Number.parseInt(raw, 10)
+    if (!Number.isFinite(n)) {
+      setDraft(String(value))
+      return
+    }
+    const clamped = Math.min(max, Math.max(min, n))
+    setDraft(String(clamped))
+    if (clamped !== value) onChange(clamped)
+  }
+
   return (
     <label className="flex flex-col gap-1">
       <span className="text-[11px] font-semibold uppercase tracking-wide text-teal-200/90">{label}</span>
       <input
-        type="number"
+        type="text"
         inputMode="numeric"
-        min={min}
-        max={max}
-        step={1}
-        value={Number.isFinite(value) ? value : min}
+        autoComplete="off"
+        spellCheck={false}
+        maxLength={4}
+        value={draft}
         onChange={(e) => {
-          const n = Number.parseInt(e.target.value, 10)
-          if (!Number.isFinite(n)) return
-          onChange(Math.min(max, Math.max(min, n)))
+          const next = e.target.value.replace(/\D/g, '').slice(0, 4)
+          setDraft(next)
+          if (next.length === 4) {
+            const n = Number.parseInt(next, 10)
+            if (n >= min && n <= max && n !== value) onChange(n)
+          }
+        }}
+        onBlur={() => uebernehmen(draft)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') e.currentTarget.blur()
         }}
         className="h-10 w-[7.5rem] rounded-md border-2 border-teal-400/70 bg-zinc-950 px-3 text-base font-semibold tabular-nums text-white outline-none focus:border-teal-300"
       />
@@ -319,7 +343,7 @@ export function PortfolioBoerseClient({ initial }: { initial?: BoersenSaisonPake
         <div className="rounded-xl border-2 border-teal-400/50 bg-teal-950/40 p-3 sm:p-4">
           <p className="text-sm font-semibold text-teal-100">Zeitraum</p>
           <p className="mt-0.5 text-[12px] text-teal-100/70">
-            Nur Monate in diesem Fenster zählen — z. B. 1940 bis 1950.
+            Jahr eintippen, z. B. 1940 und 1950 — gilt nach der vierten Ziffer.
           </p>
           <div className="mt-3 flex flex-wrap items-end gap-3">
             <JahrFeld
