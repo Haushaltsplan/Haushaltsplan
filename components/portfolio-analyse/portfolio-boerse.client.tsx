@@ -176,16 +176,18 @@ export function PortfolioBoerseClient() {
 
   useEffect(() => {
     const ac = new AbortController()
+    let weg = false
+    const timer = window.setTimeout(() => ac.abort(), 25_000)
     void fetch('/api/portfolio-analyse/boerse-saison', { signal: ac.signal })
       .then(async (res) => {
         const json = (await res.json()) as BoersenSaisonPaket
-        if (ac.signal.aborted) return
+        if (weg) return
         setPaket(json)
         const first = json.indezes[0]?.id
         if (first) setIndexId((prev) => (json.indezes.some((i) => i.id === prev) ? prev : first))
       })
       .catch(() => {
-        if (!ac.signal.aborted) {
+        if (!weg) {
           setPaket({
             ok: false,
             indezes: [],
@@ -195,9 +197,14 @@ export function PortfolioBoerseClient() {
         }
       })
       .finally(() => {
-        if (!ac.signal.aborted) setLaden(false)
+        window.clearTimeout(timer)
+        if (!weg) setLaden(false)
       })
-    return () => ac.abort()
+    return () => {
+      weg = true
+      window.clearTimeout(timer)
+      ac.abort()
+    }
   }, [])
 
   const aktiv = useMemo(
