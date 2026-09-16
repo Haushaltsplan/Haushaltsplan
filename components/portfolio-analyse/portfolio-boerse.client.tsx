@@ -11,6 +11,7 @@ import {
 } from '@/lib/portfolio-analyse/boersen-saison-logik'
 import { formatProzent } from '@/lib/portfolio-analyse/berechnung'
 import type {
+  BoersenSaisonMonat,
   BoersenSaisonPaket,
   BoersenWahlJahrStats,
 } from '@/lib/portfolio-analyse/boersen-saison-types'
