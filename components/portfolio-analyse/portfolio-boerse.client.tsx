@@ -169,15 +169,15 @@ function FensterZeile({
   )
 }
 
-export function PortfolioBoerseClient() {
-  const [paket, setPaket] = useState<BoersenSaisonPaket | null>(null)
-  const [laden, setLaden] = useState(true)
-  const [indexId, setIndexId] = useState('sp500')
+export function PortfolioBoerseClient({ initial }: { initial?: BoersenSaisonPaket | null }) {
+  const [paket, setPaket] = useState<BoersenSaisonPaket | null>(initial ?? null)
+  const [laden, setLaden] = useState(!(initial?.ok && (initial.indezes?.length ?? 0) > 0))
+  const [indexId, setIndexId] = useState(initial?.indezes[0]?.id ?? 'sp500')
 
   useEffect(() => {
+    if (initial?.ok && initial.indezes.length > 0) return
     const ac = new AbortController()
     let weg = false
-    const timer = window.setTimeout(() => ac.abort(), 25_000)
     void fetch('/api/portfolio-analyse/boerse-saison', { signal: ac.signal })
       .then(async (res) => {
         const json = (await res.json()) as BoersenSaisonPaket
@@ -186,26 +186,24 @@ export function PortfolioBoerseClient() {
         const first = json.indezes[0]?.id
         if (first) setIndexId((prev) => (json.indezes.some((i) => i.id === prev) ? prev : first))
       })
-      .catch(() => {
-        if (!weg) {
-          setPaket({
-            ok: false,
-            indezes: [],
-            geladenAm: new Date().toISOString(),
-            fehler: 'Saisondaten konnten nicht geladen werden.',
-          })
-        }
+      .catch((e: unknown) => {
+        if (weg) return
+        if (e instanceof DOMException && e.name === 'AbortError') return
+        setPaket({
+          ok: false,
+          indezes: [],
+          geladenAm: new Date().toISOString(),
+          fehler: 'Saisondaten konnten nicht geladen werden.',
+        })
       })
       .finally(() => {
-        window.clearTimeout(timer)
         if (!weg) setLaden(false)
       })
     return () => {
       weg = true
-      window.clearTimeout(timer)
       ac.abort()
     }
-  }, [])
+  }, [initial])
 
   const aktiv = useMemo(
     () => paket?.indezes.find((i) => i.id === indexId) ?? paket?.indezes[0] ?? null,

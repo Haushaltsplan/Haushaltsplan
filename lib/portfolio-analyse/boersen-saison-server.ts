@@ -14,17 +14,20 @@ export type { BoersenSaisonPaket }
 const USER_AGENT =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'
 
-const REVALIDATE = 43_200
 const FETCH_TIMEOUT_MS = 7_000
 const CACHE_MS = 6 * 60 * 60 * 1000
 
 let paketCache: { at: number; paket: BoersenSaisonPaket } | null = null
 
-async function fetchMitTimeout(url: string, init: RequestInit): Promise<Response | null> {
+async function fetchMitTimeout(url: string, init: RequestInit = {}): Promise<Response | null> {
+  const ac = new AbortController()
+  const timer = setTimeout(() => ac.abort(), FETCH_TIMEOUT_MS)
   try {
-    return await fetch(url, { ...init, signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) })
+    return await fetch(url, { ...init, cache: 'no-store', signal: ac.signal })
   } catch {
     return null
+  } finally {
+    clearTimeout(timer)
   }
 }
 
@@ -126,7 +129,7 @@ async function yahooChart(
   } as const
   const parse = async (host: string): Promise<KursPunkt[]> => {
     const url = u.toString().replace('query1.finance.yahoo.com', host)
-    const res = await fetchMitTimeout(url, { headers, next: { revalidate: REVALIDATE } })
+    const res = await fetchMitTimeout(url, { headers })
     if (!res?.ok) return []
     const j = (await res.json()) as YahooChartJson
     const result = j.chart?.result?.[0]
@@ -166,7 +169,6 @@ async function ladeMacrotrendsMonatlich(pageId: string): Promise<KursPunkt[]> {
         Referer: 'https://www.macrotrends.net/',
         Accept: 'application/json',
       },
-      next: { revalidate: REVALIDATE },
     })
     if (!res?.ok) return []
     const j = (await res.json()) as { data?: Array<[number, number]> }
@@ -193,7 +195,6 @@ async function ladeShillerSp500(): Promise<KursPunkt[]> {
   try {
     const res = await fetchMitTimeout('https://raw.githubusercontent.com/datasets/s-and-p-500/master/data/data.csv', {
       headers: { 'User-Agent': USER_AGENT, Accept: 'text/csv,*/*' },
-      next: { revalidate: REVALIDATE },
     })
     if (!res?.ok) return []
     const text = await res.text()
@@ -226,7 +227,6 @@ async function ladeFredCsv(seriesId: string): Promise<KursPunkt[]> {
       `https://fred.stlouisfed.org/graph/fredgraph.csv?id=${encodeURIComponent(seriesId)}`,
       {
         headers: { 'User-Agent': USER_AGENT, Accept: 'text/csv,*/*' },
-        next: { revalidate: REVALIDATE },
       },
     )
     if (!res?.ok) return []
