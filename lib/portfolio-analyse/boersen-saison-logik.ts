@@ -130,6 +130,8 @@ export function filterRenditenNachJahren(
   const bis = Math.max(vonJahr, bisJahr)
   return rets.filter((r) => r.jahr >= von && r.jahr <= bis)
 }
+
+export function saisonAusRenditen(rets: MonatRendite[]): {
   monate: BoersenSaisonMonat[]
   vonJahr: number | null
   bisJahr: number | null
