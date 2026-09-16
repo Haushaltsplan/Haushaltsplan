@@ -5,6 +5,7 @@ import { PaFundamentalQuartalszahlen } from '@/components/portfolio-analyse/pa-f
 import { PaFundamentalMantra } from '@/components/portfolio-analyse/pa-fundamental-mantra'
 import { PaFundamentalNews } from '@/components/portfolio-analyse/pa-fundamental-news'
 import { PaFundamentalUebersicht } from '@/components/portfolio-analyse/pa-fundamental-uebersicht'
+import { PaFundamentalYoutubeLeiste } from '@/components/portfolio-analyse/pa-fundamental-youtube-leiste'
 import { PaFundamentalStruktur } from '@/components/portfolio-analyse/pa-fundamental-struktur'
 import { PaFundamentalUnternehmenHeader } from '@/components/portfolio-analyse/pa-fundamental-unternehmen-header'
 import { PaFundamentalMetrikTabelle } from '@/components/portfolio-analyse/pa-fundamental-metrik-tabelle'
@@ -508,17 +509,26 @@ export function PaFundamentalInhalt({
           ) : null}
 
           {unterTab === 'uebersicht' ? (
-            <PaFundamentalUebersicht
-              symbolYahoo={daten.symbolYahoo}
-              ticker={daten.ticker}
-              firmenname={daten.firmenname}
-              metriken={daten.keyMetrics}
-              onMetricClick={navigiereZuMetrik}
-              verfuegbareZeilenIds={verfuegbareZeilenIds}
-              guvQuelle={daten.guvQuelle}
-              schaetzungQuelle={daten.schaetzungQuelle}
-              fallbackPaketQuelle={daten.quelle}
-            />
+            <>
+              <PaFundamentalUebersicht
+                symbolYahoo={daten.symbolYahoo}
+                ticker={daten.ticker}
+                firmenname={daten.firmenname}
+                metriken={daten.keyMetrics}
+                onMetricClick={navigiereZuMetrik}
+                verfuegbareZeilenIds={verfuegbareZeilenIds}
+                guvQuelle={daten.guvQuelle}
+                schaetzungQuelle={daten.schaetzungQuelle}
+                fallbackPaketQuelle={daten.quelle}
+              />
+              <PaFundamentalYoutubeLeiste
+                key={selectionKey ?? daten.ticker}
+                ticker={daten.ticker}
+                firmenname={daten.firmenname}
+                symbolYahoo={daten.symbolYahoo}
+                selectionKey={selectionKey}
+              />
+            </>
           ) : null}
 
           {unterTab === 'scorecard' ? <PaFundamentalScorecard paket={daten} isin={anfrage.isin} /> : null}
