@@ -4,8 +4,20 @@ export const ETSY_SCOPES = ['listings_r', 'listings_w', 'shops_r'].join(' ')
 
 export const ETSY_API_BASE = 'https://openapi.etsy.com/v3'
 
-/** Häufige Kategorie: Home & Living › Kitchen › Serveware › Bowls (ggf. überschreiben). */
+/** Fallback: Home & Living › Kitchen › Serveware › Bowls */
 export const ETSY_DEFAULT_TAXONOMY_ID = 2078
+
+export const ETSY_DEFAULT_STANDORT = 'Niederbayern'
+
+export const ETSY_DEFAULT_FINISH =
+  '2x lebensmittelechtes Walnussöl (natürlicher Schutz, mattglänzend)'
+
+/** Bekannte Formen → Taxonomy-Fallback, falls die KI keine ID liefert. */
+export const ETSY_FORM_TAXONOMY: Record<string, { id: number; label: string }> = {
+  schale: { id: 2078, label: 'Schalen' },
+  schuessel: { id: 2078, label: 'Schalen' },
+  teller: { id: 2078, label: 'Teller / flache Gefäße' },
+}
 
 export type EtsyStoredTokens = {
   accessToken: string
@@ -33,14 +45,24 @@ export type EtsyWhenMade =
 export type EtsyListingBasis = {
   holzart?: string
   masse?: string
-  preisEur: number
+  /** Optionaler Wunschpreis — KI schlägt Spanne vor. */
+  preisEur?: number
   quantity?: number
-  shippingProfileId: number
+  shippingProfileId?: number
   taxonomyId?: number
   readinessStateId?: number
   whoMade?: EtsyWhoMade
   whenMade?: EtsyWhenMade
   materials?: string[]
+  standortText?: string
+  finishText?: string
+}
+
+export type EtsyFotoCheck = {
+  hatHauptbild: boolean
+  hatDetailMaserung: boolean
+  hatMassstab: boolean
+  warnungen: string[]
 }
 
 export type EtsyGeneratedListing = {
@@ -48,6 +70,40 @@ export type EtsyGeneratedListing = {
   description: string
   tags: string[]
   warenkorbZusammenfassung: string
+  preisMinEur: number
+  preisEmpfohlenEur: number
+  preisMaxEur: number
+  preisBegruendung: string
+  produktForm: string
+  taxonomyId: number
+  taxonomyLabel: string
+  fotoCheck: EtsyFotoCheck
+}
+
+export type EtsyListingVorlage = {
+  shippingProfileId: number | null
+  readinessStateId: number | null
+  taxonomyId: number | null
+  standortText: string
+  finishText: string
+  whoMade: EtsyWhoMade
+  whenMade: EtsyWhenMade
+}
+
+export type EtsyDraftHistorieEintrag = {
+  id: string
+  listingId: number
+  shopId: number
+  title: string
+  tags: string[]
+  preisMinEur: number | null
+  preisEmpfohlenEur: number | null
+  preisMaxEur: number | null
+  preisVerwendetEur: number
+  taxonomyId: number | null
+  holzart: string | null
+  listingUrl: string | null
+  createdAt: string
 }
 
 function oauthBasisUrl(requestOrigin?: string): string {
@@ -88,4 +144,16 @@ export function etsyClientSecret(): string {
 /** Header `x-api-key: keystring:shared_secret` */
 export function etsyApiKeyHeader(): string {
   return `${etsyClientId()}:${etsyClientSecret()}`
+}
+
+export function defaultEtsyVorlage(): EtsyListingVorlage {
+  return {
+    shippingProfileId: null,
+    readinessStateId: null,
+    taxonomyId: ETSY_DEFAULT_TAXONOMY_ID,
+    standortText: ETSY_DEFAULT_STANDORT,
+    finishText: ETSY_DEFAULT_FINISH,
+    whoMade: 'i_did',
+    whenMade: 'made_to_order',
+  }
 }

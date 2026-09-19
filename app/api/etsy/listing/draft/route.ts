@@ -1,6 +1,11 @@
 import { legeEtsyDraftAn } from '@/lib/etsy/etsy-listing-create'
-import { generiereEtsyListingTexte } from '@/lib/etsy/etsy-listing-generator'
-import type { EtsyListingBasis, EtsyWhenMade, EtsyWhoMade } from '@/lib/etsy/etsy-types'
+import { speichereEtsyDraftHistorie } from '@/lib/etsy/etsy-vorlage-historie'
+import type {
+  EtsyGeneratedListing,
+  EtsyListingBasis,
+  EtsyWhenMade,
+  EtsyWhoMade,
+} from '@/lib/etsy/etsy-types'
 import { COACH_IMAGE_MIME, type CoachImagePart } from '@/lib/finance-coach-images'
 import { createSupabaseFuerRequest } from '@/lib/supabase-user'
 import { NextResponse } from 'next/server'
@@ -21,7 +26,12 @@ type Body = {
   whoMade?: string
   whenMade?: string
   materials?: string[]
-  dryRun?: boolean
+  /** Freigegebener / nachbearbeiteter Entwurf aus Schritt 1 */
+  listing?: Partial<EtsyGeneratedListing> & {
+    title?: string
+    description?: string
+    tags?: string[]
+  }
 }
 
 function parseImages(raw: Body['images']): CoachImagePart[] {
@@ -38,18 +48,51 @@ function parseImages(raw: Body['images']): CoachImagePart[] {
   return out
 }
 
+function parseFreigabe(raw: Body['listing']): EtsyGeneratedListing | null {
+  if (!raw || typeof raw !== 'object') return null
+  const title = typeof raw.title === 'string' ? raw.title.trim() : ''
+  const description = typeof raw.description === 'string' ? raw.description.trim() : ''
+  const tags = Array.isArray(raw.tags)
+    ? raw.tags.map((t) => String(t).trim()).filter(Boolean).slice(0, 13)
+    : []
+  if (!title || !description || tags.length < 1) return null
+
+  const preisMinEur = Number(raw.preisMinEur) || Number(raw.preisEmpfohlenEur) || 0
+  const preisEmpfohlenEur = Number(raw.preisEmpfohlenEur) || preisMinEur
+  const preisMaxEur = Number(raw.preisMaxEur) || preisEmpfohlenEur
+  if (preisEmpfohlenEur < 1) return null
+
+  return {
+    title: title.slice(0, 140),
+    description,
+    tags,
+    warenkorbZusammenfassung:
+      typeof raw.warenkorbZusammenfassung === 'string' ? raw.warenkorbZusammenfassung : '',
+    preisMinEur: Math.round(preisMinEur),
+    preisEmpfohlenEur: Math.round(preisEmpfohlenEur),
+    preisMaxEur: Math.round(preisMaxEur),
+    preisBegruendung: typeof raw.preisBegruendung === 'string' ? raw.preisBegruendung : '',
+    produktForm: typeof raw.produktForm === 'string' ? raw.produktForm : 'Schale',
+    taxonomyId: Number(raw.taxonomyId) || 2078,
+    taxonomyLabel: typeof raw.taxonomyLabel === 'string' ? raw.taxonomyLabel : 'Schalen',
+    fotoCheck: raw.fotoCheck ?? {
+      hatHauptbild: true,
+      hatDetailMaserung: false,
+      hatMassstab: false,
+      warnungen: [],
+    },
+  }
+}
+
+/** Schritt 2: Freigegebenen Entwurf als Etsy-Draft anlegen (+ Historie). */
 export async function POST(req: Request) {
   const sb = createSupabaseFuerRequest(req)
-  if (!sb) {
-    return NextResponse.json({ error: 'Anmeldung erforderlich.' }, { status: 401 })
-  }
+  if (!sb) return NextResponse.json({ error: 'Anmeldung erforderlich.' }, { status: 401 })
 
   const {
     data: { user },
   } = await sb.auth.getUser()
-  if (!user?.id) {
-    return NextResponse.json({ error: 'Sitzung ungültig.' }, { status: 401 })
-  }
+  if (!user?.id) return NextResponse.json({ error: 'Sitzung ungültig.' }, { status: 401 })
 
   let body: Body
   try {
@@ -60,20 +103,25 @@ export async function POST(req: Request) {
 
   const images = parseImages(body.images)
   if (images.length === 0) {
-    return NextResponse.json({ error: 'Mindestens ein gültiges Produktfoto (JPEG/PNG/WebP/GIF) nötig.' }, { status: 400 })
+    return NextResponse.json({ error: 'Mindestens ein gültiges Produktfoto nötig.' }, { status: 400 })
   }
 
-  const preisEur = Number(body.preisEur)
-  const shippingProfileId = Number(body.shippingProfileId)
-  if (!Number.isFinite(preisEur) || preisEur <= 0) {
-    return NextResponse.json({ error: 'preisEur muss > 0 sein.' }, { status: 400 })
-  }
-  if (!Number.isFinite(shippingProfileId) || shippingProfileId <= 0) {
+  const listing = parseFreigabe(body.listing)
+  if (!listing) {
     return NextResponse.json(
-      { error: 'shippingProfileId fehlt. Im Shop ein Versandprofil anlegen und hier auswählen.' },
+      { error: 'Freigegebener Entwurf fehlt (title, description, tags, Preis).' },
       { status: 400 },
     )
   }
+
+  const shippingProfileId = Number(body.shippingProfileId)
+  if (!Number.isFinite(shippingProfileId) || shippingProfileId <= 0) {
+    return NextResponse.json({ error: 'Versandprofil wählen.' }, { status: 400 })
+  }
+
+  const preisRoh = Number(body.preisEur)
+  const preisEur =
+    Number.isFinite(preisRoh) && preisRoh > 0 ? Math.round(preisRoh) : listing.preisEmpfohlenEur
 
   const basis: EtsyListingBasis = {
     holzart: typeof body.holzart === 'string' ? body.holzart : undefined,
@@ -81,7 +129,7 @@ export async function POST(req: Request) {
     preisEur,
     quantity: typeof body.quantity === 'number' ? body.quantity : 1,
     shippingProfileId,
-    taxonomyId: typeof body.taxonomyId === 'number' ? body.taxonomyId : undefined,
+    taxonomyId: typeof body.taxonomyId === 'number' ? body.taxonomyId : listing.taxonomyId,
     readinessStateId: typeof body.readinessStateId === 'number' ? body.readinessStateId : undefined,
     whoMade: (body.whoMade as EtsyWhoMade | undefined) || 'i_did',
     whenMade: (body.whenMade as EtsyWhenMade | undefined) || 'made_to_order',
@@ -89,12 +137,6 @@ export async function POST(req: Request) {
   }
 
   try {
-    const listing = await generiereEtsyListingTexte(images, basis)
-
-    if (body.dryRun === true) {
-      return NextResponse.json({ ok: true, dryRun: true, listing })
-    }
-
     const draft = await legeEtsyDraftAn({
       ownerUserId: user.id,
       basis,
@@ -102,10 +144,25 @@ export async function POST(req: Request) {
       images,
     })
 
+    try {
+      await speichereEtsyDraftHistorie({
+        ownerUserId: user.id,
+        listingId: draft.listingId,
+        shopId: draft.shopId,
+        listing,
+        preisVerwendetEur: preisEur,
+        holzart: basis.holzart,
+        listingUrl: draft.listingUrl,
+      })
+    } catch (e) {
+      console.warn('[etsy historie]', e instanceof Error ? e.message : e)
+    }
+
     return NextResponse.json({
       ok: true,
-      listing,
       draft,
+      verwendeterPreisEur: preisEur,
+      listing,
     })
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'Draft fehlgeschlagen'

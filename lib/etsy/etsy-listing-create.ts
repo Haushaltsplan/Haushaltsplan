@@ -71,8 +71,16 @@ export async function legeEtsyDraftAn(opts: {
   const shopId = await stelleShopIdSicher(opts.ownerUserId, tokens)
 
   const quantity = Math.max(1, Math.floor(opts.basis.quantity ?? 1))
-  const price = Number(opts.basis.preisEur)
+  const price =
+    opts.basis.preisEur != null && opts.basis.preisEur > 0
+      ? Number(opts.basis.preisEur)
+      : opts.listing.preisEmpfohlenEur
   if (!Number.isFinite(price) || price <= 0) throw new Error('Preis muss größer als 0 sein.')
+
+  const shippingProfileId = Number(opts.basis.shippingProfileId)
+  if (!Number.isFinite(shippingProfileId) || shippingProfileId <= 0) {
+    throw new Error('shippingProfileId fehlt.')
+  }
 
   const body = new URLSearchParams()
   body.set('quantity', String(quantity))
@@ -81,9 +89,12 @@ export async function legeEtsyDraftAn(opts: {
   body.set('price', String(price))
   body.set('who_made', opts.basis.whoMade ?? 'i_did')
   body.set('when_made', opts.basis.whenMade ?? 'made_to_order')
-  body.set('taxonomy_id', String(opts.basis.taxonomyId ?? ETSY_DEFAULT_TAXONOMY_ID))
+  body.set(
+    'taxonomy_id',
+    String(opts.basis.taxonomyId ?? opts.listing.taxonomyId ?? ETSY_DEFAULT_TAXONOMY_ID),
+  )
   body.set('type', 'physical')
-  body.set('shipping_profile_id', String(opts.basis.shippingProfileId))
+  body.set('shipping_profile_id', String(shippingProfileId))
   body.set('should_auto_renew', 'true')
   body.set('is_supply', 'false')
   body.set('is_customizable', 'false')

@@ -39,6 +39,7 @@ function oeffentlicheApi(pathname: string): boolean {
     pathname === '/api/strava/cron-sync' ||
     pathname === '/api/etsy/auth/start' ||
     pathname === '/api/etsy/callback' ||
+    pathname === '/api/etsy/seo-cron' ||
     pathname === '/api/portfolio-analyse/nachkaeufe/cron-scan' ||
     pathname === '/api/portfolio-analyse/quartals-auto-ki/cron'
   )

@@ -3,7 +3,15 @@
 import { PageChrome, PageHero, PageSection, PageSectionPanel } from '@/components/page-shell'
 import { compressImageFileForCoach, coachImageDataUrl, type CoachImagePart } from '@/lib/finance-coach-images'
 import { oeffneEtsyOAuthUrl } from '@/lib/etsy/etsy-oauth-open'
-import { ETSY_DEFAULT_TAXONOMY_ID } from '@/lib/etsy/etsy-types'
+import {
+  ETSY_DEFAULT_FINISH,
+  ETSY_DEFAULT_STANDORT,
+  ETSY_DEFAULT_TAXONOMY_ID,
+  type EtsyDraftHistorieEintrag,
+  type EtsyFotoCheck,
+  type EtsyGeneratedListing,
+  type EtsyListingVorlage,
+} from '@/lib/etsy/etsy-types'
 import { useCallback, useEffect, useState } from 'react'
 import toast from 'react-hot-toast'
 
@@ -17,13 +25,6 @@ type Status = {
 type ShippingProfile = { shippingProfileId: number; title: string }
 type ReadinessState = { readinessStateId: number; readinessState: string }
 
-type GeneratedListing = {
-  title: string
-  description: string
-  tags: string[]
-  warenkorbZusammenfassung: string
-}
-
 type DraftResult = {
   listingId: number
   shopId: number
@@ -32,28 +33,62 @@ type DraftResult = {
   listingUrl: string | null
 }
 
-export function EtsyKiAgentClient() {
+type Schritt = 'aufnahme' | 'freigabe'
+
+type EtsyKiAgentClientProps = {
+  /** Eingebettet im Etsy-Hub (ohne eigenen Chrome/Connect). */
+  hubModus?: boolean
+  verbunden?: boolean
+  onStatusRefresh?: () => void
+}
+
+export function EtsyKiAgentClient({
+  hubModus = false,
+  verbunden: verbundenProp,
+  onStatusRefresh,
+}: EtsyKiAgentClientProps = {}) {
   const [status, setStatus] = useState<Status | null>(null)
-  const [statusLoading, setStatusLoading] = useState(true)
+  const [statusLoading, setStatusLoading] = useState(!hubModus)
   const [connecting, setConnecting] = useState(false)
 
   const [shippingProfiles, setShippingProfiles] = useState<ShippingProfile[]>([])
   const [readinessStates, setReadinessStates] = useState<ReadinessState[]>([])
+  const [vorlage, setVorlage] = useState<EtsyListingVorlage | null>(null)
+  const [historie, setHistorie] = useState<EtsyDraftHistorieEintrag[]>([])
 
   const [images, setImages] = useState<CoachImagePart[]>([])
   const [holzart, setHolzart] = useState('')
   const [masse, setMasse] = useState('')
-  const [preisEur, setPreisEur] = useState('49')
   const [quantity, setQuantity] = useState('1')
   const [shippingProfileId, setShippingProfileId] = useState('')
-  const [taxonomyId, setTaxonomyId] = useState(String(ETSY_DEFAULT_TAXONOMY_ID))
   const [readinessStateId, setReadinessStateId] = useState('')
+  const [standortText, setStandortText] = useState(ETSY_DEFAULT_STANDORT)
+  const [finishText, setFinishText] = useState(ETSY_DEFAULT_FINISH)
 
+  const [schritt, setSchritt] = useState<Schritt>('aufnahme')
   const [busy, setBusy] = useState(false)
-  const [lastListing, setLastListing] = useState<GeneratedListing | null>(null)
+
+  const [editTitle, setEditTitle] = useState('')
+  const [editDescription, setEditDescription] = useState('')
+  const [editTags, setEditTags] = useState('')
+  const [editPreis, setEditPreis] = useState('')
+  const [preisMin, setPreisMin] = useState(0)
+  const [preisEmpfohlen, setPreisEmpfohlen] = useState(0)
+  const [preisMax, setPreisMax] = useState(0)
+  const [preisBegruendung, setPreisBegruendung] = useState('')
+  const [taxonomyId, setTaxonomyId] = useState(String(ETSY_DEFAULT_TAXONOMY_ID))
+  const [taxonomyLabel, setTaxonomyLabel] = useState('Schalen')
+  const [produktForm, setProduktForm] = useState('Schale')
+  const [fotoCheck, setFotoCheck] = useState<EtsyFotoCheck | null>(null)
+  const [draftListing, setDraftListing] = useState<EtsyGeneratedListing | null>(null)
+
   const [lastDraft, setLastDraft] = useState<DraftResult | null>(null)
 
   const ladeStatus = useCallback(async () => {
+    if (hubModus) {
+      onStatusRefresh?.()
+      return
+    }
     setStatusLoading(true)
     try {
       const res = await fetch('/api/etsy/status', { cache: 'no-store' })
@@ -61,12 +96,37 @@ export function EtsyKiAgentClient() {
         setStatus({ configured: false, connected: false, shopId: null, shopName: null })
         return
       }
-      const s = (await res.json()) as Status
-      setStatus(s)
+      setStatus((await res.json()) as Status)
     } catch {
       toast.error('Etsy-Status konnte nicht geladen werden.')
     } finally {
       setStatusLoading(false)
+    }
+  }, [hubModus, onStatusRefresh])
+
+  const ladeVorlageUndHistorie = useCallback(async () => {
+    try {
+      const [vRes, hRes] = await Promise.all([
+        fetch('/api/etsy/vorlage', { cache: 'no-store' }),
+        fetch('/api/etsy/historie', { cache: 'no-store' }),
+      ])
+      if (vRes.ok) {
+        const j = (await vRes.json()) as { vorlage?: EtsyListingVorlage }
+        if (j.vorlage) {
+          setVorlage(j.vorlage)
+          setStandortText(j.vorlage.standortText || ETSY_DEFAULT_STANDORT)
+          setFinishText(j.vorlage.finishText || ETSY_DEFAULT_FINISH)
+          if (j.vorlage.shippingProfileId) setShippingProfileId(String(j.vorlage.shippingProfileId))
+          if (j.vorlage.readinessStateId) setReadinessStateId(String(j.vorlage.readinessStateId))
+          if (j.vorlage.taxonomyId) setTaxonomyId(String(j.vorlage.taxonomyId))
+        }
+      }
+      if (hRes.ok) {
+        const j = (await hRes.json()) as { historie?: EtsyDraftHistorieEintrag[] }
+        setHistorie(j.historie ?? [])
+      }
+    } catch {
+      /* optional */
     }
   }, [])
 
@@ -81,27 +141,33 @@ export function EtsyKiAgentClient() {
       const profiles = j.shippingProfiles ?? []
       setShippingProfiles(profiles)
       setReadinessStates(j.readinessStates ?? [])
-      if (profiles.length === 1) {
-        setShippingProfileId(String(profiles[0].shippingProfileId))
-      }
+      setShippingProfileId((prev) => {
+        if (prev) return prev
+        if (profiles.length === 1) return String(profiles[0].shippingProfileId)
+        return prev
+      })
       if (j.readinessStates?.length === 1) {
-        setReadinessStateId(String(j.readinessStates[0].readinessStateId))
+        setReadinessStateId((prev) => prev || String(j.readinessStates![0].readinessStateId))
       }
     } catch {
-      /* Shop ggf. noch unvollständig */
+      /* Shop ggf. unvollständig */
     }
   }, [])
 
   useEffect(() => {
+    if (hubModus) return
     void ladeStatus()
-  }, [ladeStatus])
+  }, [hubModus, ladeStatus])
 
   useEffect(() => {
-    if (!status?.connected) return
+    const verbundenEffektiv = hubModus ? Boolean(verbundenProp) : Boolean(status?.connected)
+    if (!verbundenEffektiv) return
     void ladeShop()
-  }, [status?.connected, ladeShop])
+    void ladeVorlageUndHistorie()
+  }, [hubModus, verbundenProp, status?.connected, ladeShop, ladeVorlageUndHistorie])
 
   useEffect(() => {
+    if (hubModus) return
     const sp = new URLSearchParams(window.location.search)
     if (sp.get('etsy') === 'connected') {
       toast.success('Etsy verbunden.')
@@ -113,7 +179,7 @@ export function EtsyKiAgentClient() {
       toast.error(`Etsy-Verbindung: ${err}`)
       window.history.replaceState({}, '', window.location.pathname)
     }
-  }, [ladeStatus])
+  }, [hubModus, ladeStatus])
 
   async function verbinden() {
     setConnecting(true)
@@ -139,9 +205,31 @@ export function EtsyKiAgentClient() {
       return
     }
     toast.success('Etsy getrennt.')
-    setShippingProfiles([])
-    setReadinessStates([])
     void ladeStatus()
+  }
+
+  async function speichereVorlage() {
+    const payload: EtsyListingVorlage = {
+      shippingProfileId: Number(shippingProfileId) || null,
+      readinessStateId: Number(readinessStateId) || null,
+      taxonomyId: Number(taxonomyId) || ETSY_DEFAULT_TAXONOMY_ID,
+      standortText: standortText.trim() || ETSY_DEFAULT_STANDORT,
+      finishText: finishText.trim() || ETSY_DEFAULT_FINISH,
+      whoMade: vorlage?.whoMade || 'i_did',
+      whenMade: vorlage?.whenMade || 'made_to_order',
+    }
+    const res = await fetch('/api/etsy/vorlage', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    })
+    const j = (await res.json()) as { error?: string; vorlage?: EtsyListingVorlage }
+    if (!res.ok) {
+      toast.error(j.error ?? 'Vorlage speichern fehlgeschlagen.')
+      return
+    }
+    setVorlage(j.vorlage ?? payload)
+    toast.success('Vorlage gespeichert.')
   }
 
   async function onFotos(files: FileList | null) {
@@ -150,59 +238,60 @@ export function EtsyKiAgentClient() {
     for (const file of Array.from(files)) {
       if (next.length >= 8) break
       try {
-        const part = await compressImageFileForCoach(file, { maxEdge: 1600, quality: 0.85 })
-        next.push(part)
+        next.push(await compressImageFileForCoach(file, { maxEdge: 1600, quality: 0.85 }))
       } catch (e) {
-        toast.error(e instanceof Error ? e.message : 'Bild konnte nicht gelesen werden.')
+        toast.error(e instanceof Error ? e.message : 'Bildfehler')
       }
     }
     setImages(next)
   }
 
-  async function sendeDraft(dryRun: boolean) {
+  function uebernehmeListing(listing: EtsyGeneratedListing) {
+    setDraftListing(listing)
+    setEditTitle(listing.title)
+    setEditDescription(listing.description)
+    setEditTags(listing.tags.join(', '))
+    setEditPreis(String(listing.preisEmpfohlenEur))
+    setPreisMin(listing.preisMinEur)
+    setPreisEmpfohlen(listing.preisEmpfohlenEur)
+    setPreisMax(listing.preisMaxEur)
+    setPreisBegruendung(listing.preisBegruendung)
+    setTaxonomyId(String(listing.taxonomyId))
+    setTaxonomyLabel(listing.taxonomyLabel)
+    setProduktForm(listing.produktForm)
+    setFotoCheck(listing.fotoCheck)
+    setSchritt('freigabe')
+  }
+
+  async function analysieren() {
     if (images.length === 0) {
       toast.error('Mindestens ein Foto hochladen.')
       return
     }
-    const spId = Number(shippingProfileId)
-    if (!Number.isFinite(spId) || spId <= 0) {
-      toast.error('Versandprofil wählen (im Etsy-Shop anlegen, dann Seite neu laden).')
-      return
-    }
-
     setBusy(true)
     setLastDraft(null)
     try {
-      const res = await fetch('/api/etsy/listing/draft', {
+      const res = await fetch('/api/etsy/listing/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           images,
           holzart: holzart.trim() || undefined,
           masse: masse.trim() || undefined,
-          preisEur: Number(preisEur),
-          quantity: Number(quantity) || 1,
-          shippingProfileId: spId,
-          taxonomyId: Number(taxonomyId) || ETSY_DEFAULT_TAXONOMY_ID,
-          readinessStateId: readinessStateId ? Number(readinessStateId) : undefined,
-          dryRun,
+          standortText: standortText.trim() || undefined,
+          finishText: finishText.trim() || undefined,
         }),
       })
-      const j = (await res.json()) as {
-        error?: string
-        listing?: GeneratedListing
-        draft?: DraftResult
-      }
-      if (!res.ok) {
-        toast.error(j.error ?? 'Anfrage fehlgeschlagen.')
+      const j = (await res.json()) as { error?: string; listing?: EtsyGeneratedListing }
+      if (!res.ok || !j.listing) {
+        toast.error(j.error ?? 'Analyse fehlgeschlagen.')
         return
       }
-      if (j.listing) setLastListing(j.listing)
-      if (j.draft) {
-        setLastDraft(j.draft)
-        toast.success(`Draft #${j.draft.listingId} angelegt.`)
-      } else if (dryRun) {
-        toast.success('Texte generiert (ohne Upload).')
+      uebernehmeListing(j.listing)
+      if (j.listing.fotoCheck.warnungen.length) {
+        toast(`Foto-Hinweise: ${j.listing.fotoCheck.warnungen.length}`, { icon: '📷' })
+      } else {
+        toast.success('Entwurf bereit — bitte prüfen und freigeben.')
       }
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Fehler')
@@ -211,124 +300,152 @@ export function EtsyKiAgentClient() {
     }
   }
 
-  const verbunden = Boolean(status?.connected)
+  function baueFreigabeListing(): EtsyGeneratedListing | null {
+    if (!draftListing) return null
+    const tags = editTags
+      .split(',')
+      .map((t) => t.trim())
+      .filter(Boolean)
+      .slice(0, 13)
+    if (!editTitle.trim() || !editDescription.trim() || tags.length < 1) return null
+    const preis = Number(editPreis)
+    if (!Number.isFinite(preis) || preis < 1) return null
+    return {
+      ...draftListing,
+      title: editTitle.trim().slice(0, 140),
+      description: editDescription.trim(),
+      tags,
+      preisEmpfohlenEur: Math.round(preis),
+      taxonomyId: Number(taxonomyId) || draftListing.taxonomyId,
+      taxonomyLabel,
+      produktForm,
+    }
+  }
 
-  return (
-    <PageChrome density="compact" className="max-w-2xl">
-      <PageHero
-        density="compact"
-        eyebrow="Omnia"
-        title="Etsy KI Agent"
-        description="Fotos + Basisdaten → SEO-Texte (dein Gem) → Draft im Shop. Zahlung im Shop kann später freigeschaltet werden; Drafts gehen vorher."
-      />
+  async function draftAnlegen() {
+    const listing = baueFreigabeListing()
+    if (!listing) {
+      toast.error('Titel, Beschreibung, Tags und Preis prüfen.')
+      return
+    }
+    const spId = Number(shippingProfileId)
+    if (!spId) {
+      toast.error('Versandprofil wählen.')
+      return
+    }
+    setBusy(true)
+    try {
+      const res = await fetch('/api/etsy/listing/draft', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          images,
+          holzart: holzart.trim() || undefined,
+          masse: masse.trim() || undefined,
+          preisEur: listing.preisEmpfohlenEur,
+          quantity: Number(quantity) || 1,
+          shippingProfileId: spId,
+          taxonomyId: listing.taxonomyId,
+          readinessStateId: readinessStateId ? Number(readinessStateId) : undefined,
+          listing,
+        }),
+      })
+      const j = (await res.json()) as {
+        error?: string
+        draft?: DraftResult
+        verwendeterPreisEur?: number
+      }
+      if (!res.ok || !j.draft) {
+        toast.error(j.error ?? 'Draft fehlgeschlagen.')
+        return
+      }
+      setLastDraft(j.draft)
+      toast.success(`Draft #${j.draft.listingId} · ${j.verwendeterPreisEur ?? listing.preisEmpfohlenEur} €`)
+      void ladeVorlageUndHistorie()
+      setSchritt('aufnahme')
+      setDraftListing(null)
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Fehler')
+    } finally {
+      setBusy(false)
+    }
+  }
 
-      <PageSection titleId="etsy-connect" title="Shop verbinden">
-        <PageSectionPanel density="compact" className="space-y-3">
-          {statusLoading ? (
-            <p className="text-sm text-[var(--app-text-muted)]">Status wird geladen…</p>
-          ) : !status?.configured ? (
-            <p className="text-sm text-[var(--app-text-muted)]">
-              Noch nicht konfiguriert. In <code className="text-xs">.env.local</code> und Vercel:{' '}
-              <code className="text-xs">ETSY_CLIENT_ID</code>, <code className="text-xs">ETSY_CLIENT_SECRET</code>,{' '}
-              optional <code className="text-xs">ETSY_REDIRECT_URI</code> / <code className="text-xs">NEXT_PUBLIC_APP_URL</code>.
-              Außerdem Migration <code className="text-xs">etsy_oauth</code> in Supabase ausführen.
-            </p>
-          ) : verbunden ? (
-            <div className="flex flex-wrap items-center gap-3">
-              <p className="text-sm text-[var(--app-text)]">
-                Verbunden{status?.shopName ? `: ${status.shopName}` : ''}
-                {status?.shopId ? ` (Shop ${status.shopId})` : ''}
-              </p>
-              <button
-                type="button"
-                onClick={() => void trennen()}
-                className="rounded-lg border border-[var(--app-border)] px-3 py-1.5 text-sm text-[var(--app-text-muted)] hover:text-[var(--app-text)]"
-              >
-                Trennen
-              </button>
-            </div>
-          ) : (
-            <button
-              type="button"
-              disabled={connecting}
-              onClick={() => void verbinden()}
-              className="rounded-xl bg-amber-600 px-4 py-2 text-sm font-medium text-white hover:bg-amber-500 disabled:opacity-60"
-            >
-              {connecting ? 'Weiterleitung…' : 'Mit Etsy verbinden'}
-            </button>
-          )}
-        </PageSectionPanel>
-      </PageSection>
+  const verbunden = hubModus ? Boolean(verbundenProp) : Boolean(status?.connected)
 
-      <PageSection titleId="etsy-form" title="Neuer Draft">
-        <PageSectionPanel density="compact" className="space-y-4">
-          <div>
-            <label className="mb-1 block text-xs font-medium text-[var(--app-text-muted)]">Produktfotos (bis 8)</label>
-            <input
-              type="file"
-              accept="image/*"
-              multiple
-              disabled={!verbunden || busy}
-              onChange={(e) => void onFotos(e.target.files)}
-              className="block w-full text-sm text-[var(--app-text-muted)]"
-            />
-            {images.length > 0 && (
-              <div className="mt-3 flex flex-wrap gap-2">
-                {images.map((img, i) => (
+  const inhalt = (
+    <>
+      {!hubModus && (
+        <>
+          <PageHero
+            density="compact"
+            eyebrow="Omnia"
+            title="Etsy KI Agent"
+            description="Zwei Schritte: 1) Fotos analysieren & Entwurf prüfen · 2) Freigeben → Draft. Preisspanne, Taxonomy und Vorlagen inklusive."
+          />
+
+          <PageSection titleId="etsy-connect" title="Shop verbinden">
+            <PageSectionPanel density="compact" className="space-y-3">
+              {statusLoading ? (
+                <p className="text-sm text-[var(--app-text-muted)]">Status wird geladen…</p>
+              ) : !status?.configured ? (
+                <p className="text-sm text-[var(--app-text-muted)]">
+                  ETSY_CLIENT_ID / SECRET + Migrationen (OAuth, Vorlage/Historie) prüfen.
+                </p>
+              ) : verbunden ? (
+                <div className="flex flex-wrap items-center gap-3">
+                  <p className="text-sm text-[var(--app-text)]">
+                    Verbunden{status?.shopName ? `: ${status.shopName}` : ''}
+                    {status?.shopId ? ` (${status.shopId})` : ''}
+                  </p>
                   <button
-                    key={`${i}-${img.base64.slice(0, 12)}`}
                     type="button"
-                    title="Entfernen"
-                    onClick={() => setImages((prev) => prev.filter((_, j) => j !== i))}
-                    className="relative h-16 w-16 overflow-hidden rounded-lg border border-[var(--app-border)]"
+                    onClick={() => void trennen()}
+                    className="rounded-lg border border-[var(--app-border)] px-3 py-1.5 text-sm text-[var(--app-text-muted)]"
                   >
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={coachImageDataUrl(img)} alt="" className="h-full w-full object-cover" />
+                    Trennen
                   </button>
-                ))}
-              </div>
-            )}
-          </div>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  disabled={connecting}
+                  onClick={() => void verbinden()}
+                  className="rounded-xl bg-amber-600 px-4 py-2 text-sm font-medium text-white hover:bg-amber-500 disabled:opacity-60"
+                >
+                  {connecting ? 'Weiterleitung…' : 'Mit Etsy verbinden'}
+                </button>
+              )}
+            </PageSectionPanel>
+          </PageSection>
+        </>
+      )}
 
+      <PageSection titleId="etsy-vorlage" title="Vorlage (Defaults)">
+        <PageSectionPanel density="compact" className="space-y-3">
+          <p className="text-xs text-[var(--app-text-muted)]">
+            Einmal setzen — gilt für Standort im Titel, Finish-Text und Standard-Versand.
+          </p>
           <div className="grid gap-3 sm:grid-cols-2">
-            <label className="block text-sm">
-              <span className="mb-1 block text-xs text-[var(--app-text-muted)]">Holzart</span>
+            <label className="block text-sm sm:col-span-2">
+              <span className="mb-1 block text-xs text-[var(--app-text-muted)]">Standort (Titel)</span>
               <input
-                value={holzart}
-                onChange={(e) => setHolzart(e.target.value)}
-                placeholder="z. B. Eiche"
-                className="w-full rounded-lg border border-[var(--app-border)] bg-[var(--app-surface)] px-3 py-2"
-              />
-            </label>
-            <label className="block text-sm">
-              <span className="mb-1 block text-xs text-[var(--app-text-muted)]">Maße</span>
-              <input
-                value={masse}
-                onChange={(e) => setMasse(e.target.value)}
-                placeholder="z. B. Ø 18 cm × H 6 cm"
-                className="w-full rounded-lg border border-[var(--app-border)] bg-[var(--app-surface)] px-3 py-2"
-              />
-            </label>
-            <label className="block text-sm">
-              <span className="mb-1 block text-xs text-[var(--app-text-muted)]">Preis (€)</span>
-              <input
-                value={preisEur}
-                onChange={(e) => setPreisEur(e.target.value)}
-                inputMode="decimal"
-                className="w-full rounded-lg border border-[var(--app-border)] bg-[var(--app-surface)] px-3 py-2"
-              />
-            </label>
-            <label className="block text-sm">
-              <span className="mb-1 block text-xs text-[var(--app-text-muted)]">Stückzahl</span>
-              <input
-                value={quantity}
-                onChange={(e) => setQuantity(e.target.value)}
-                inputMode="numeric"
+                value={standortText}
+                onChange={(e) => setStandortText(e.target.value)}
                 className="w-full rounded-lg border border-[var(--app-border)] bg-[var(--app-surface)] px-3 py-2"
               />
             </label>
             <label className="block text-sm sm:col-span-2">
-              <span className="mb-1 block text-xs text-[var(--app-text-muted)]">Versandprofil</span>
+              <span className="mb-1 block text-xs text-[var(--app-text-muted)]">Finish-Text</span>
+              <textarea
+                value={finishText}
+                onChange={(e) => setFinishText(e.target.value)}
+                rows={2}
+                className="w-full rounded-lg border border-[var(--app-border)] bg-[var(--app-surface)] px-3 py-2 text-sm"
+              />
+            </label>
+            <label className="block text-sm sm:col-span-2">
+              <span className="mb-1 block text-xs text-[var(--app-text-muted)]">Standard-Versandprofil</span>
               {shippingProfiles.length > 0 ? (
                 <select
                   value={shippingProfileId}
@@ -346,14 +463,14 @@ export function EtsyKiAgentClient() {
                 <input
                   value={shippingProfileId}
                   onChange={(e) => setShippingProfileId(e.target.value)}
-                  placeholder="ID manuell (Shop → Versandprofile)"
+                  placeholder="Profil-ID"
                   className="w-full rounded-lg border border-[var(--app-border)] bg-[var(--app-surface)] px-3 py-2"
                 />
               )}
             </label>
             {readinessStates.length > 0 && (
               <label className="block text-sm sm:col-span-2">
-                <span className="mb-1 block text-xs text-[var(--app-text-muted)]">Bearbeitungszeit (Readiness)</span>
+                <span className="mb-1 block text-xs text-[var(--app-text-muted)]">Bearbeitungszeit</span>
                 <select
                   value={readinessStateId}
                   onChange={(e) => setReadinessStateId(e.target.value)}
@@ -368,84 +485,272 @@ export function EtsyKiAgentClient() {
                 </select>
               </label>
             )}
-            <label className="block text-sm sm:col-span-2">
-              <span className="mb-1 block text-xs text-[var(--app-text-muted)]">
-                Taxonomy-ID (Standard Schalen ≈ {ETSY_DEFAULT_TAXONOMY_ID})
-              </span>
-              <input
-                value={taxonomyId}
-                onChange={(e) => setTaxonomyId(e.target.value)}
-                className="w-full rounded-lg border border-[var(--app-border)] bg-[var(--app-surface)] px-3 py-2"
-              />
-            </label>
           </div>
-
-          <div className="flex flex-wrap gap-2">
-            <button
-              type="button"
-              disabled={!verbunden || busy}
-              onClick={() => void sendeDraft(true)}
-              className="rounded-xl border border-[var(--app-border)] px-4 py-2 text-sm font-medium text-[var(--app-text)] hover:bg-[var(--app-surface-muted)] disabled:opacity-50"
-            >
-              {busy ? 'Arbeitet…' : 'Nur Texte generieren'}
-            </button>
-            <button
-              type="button"
-              disabled={!verbunden || busy}
-              onClick={() => void sendeDraft(false)}
-              className="rounded-xl bg-amber-600 px-4 py-2 text-sm font-medium text-white hover:bg-amber-500 disabled:opacity-50"
-            >
-              {busy ? 'Arbeitet…' : 'Als Draft auf Etsy anlegen'}
-            </button>
-          </div>
+          <button
+            type="button"
+            disabled={!verbunden}
+            onClick={() => void speichereVorlage()}
+            className="rounded-xl border border-[var(--app-border)] px-4 py-2 text-sm font-medium disabled:opacity-50"
+          >
+            Vorlage speichern
+          </button>
         </PageSectionPanel>
       </PageSection>
 
-      {(lastListing || lastDraft) && (
-        <PageSection titleId="etsy-result" title="Ergebnis">
-          <PageSectionPanel density="compact" className="space-y-3">
-            {lastDraft && (
-              <p className="text-sm text-[var(--app-text)]">
-                Draft-ID <strong>{lastDraft.listingId}</strong>
-                {lastDraft.listingUrl ? (
-                  <>
-                    {' '}
-                    —{' '}
-                    <a
-                      href={lastDraft.listingUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-amber-600 underline-offset-2 hover:underline dark:text-amber-400"
+      {schritt === 'aufnahme' && (
+        <PageSection titleId="etsy-step1" title="Schritt 1 · Aufnahme & Analyse">
+          <PageSectionPanel density="compact" className="space-y-4">
+            <p className="text-xs text-[var(--app-text-muted)]">
+              Ideal: Hauptbild + Detail (Maserung) + Maßstab (Hand/Münze). Die KI warnt, wenn etwas fehlt.
+            </p>
+            <div>
+              <label className="mb-1 block text-xs font-medium text-[var(--app-text-muted)]">
+                Produktfotos (bis 8)
+              </label>
+              <input
+                type="file"
+                accept="image/*"
+                multiple
+                disabled={!verbunden || busy}
+                onChange={(e) => void onFotos(e.target.files)}
+                className="block w-full text-sm text-[var(--app-text-muted)]"
+              />
+              {images.length > 0 && (
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {images.map((img, i) => (
+                    <button
+                      key={`${i}-${img.base64.slice(0, 8)}`}
+                      type="button"
+                      title="Entfernen"
+                      onClick={() => setImages((prev) => prev.filter((_, j) => j !== i))}
+                      className="relative h-16 w-16 overflow-hidden rounded-lg border border-[var(--app-border)]"
                     >
-                      auf Etsy öffnen
-                    </a>
-                  </>
-                ) : (
-                  ' — im Shop Manager unter Entwürfe prüfen'
-                )}
-              </p>
-            )}
-            {lastListing && (
-              <>
-                <div>
-                  <p className="text-xs font-medium text-[var(--app-text-muted)]">Titel</p>
-                  <p className="text-sm text-[var(--app-text)]">{lastListing.title}</p>
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={coachImageDataUrl(img)} alt="" className="h-full w-full object-cover" />
+                    </button>
+                  ))}
                 </div>
-                <div>
-                  <p className="text-xs font-medium text-[var(--app-text-muted)]">Tags</p>
-                  <p className="text-sm text-[var(--app-text-muted)]">{lastListing.tags.join(', ')}</p>
-                </div>
-                <div>
-                  <p className="text-xs font-medium text-[var(--app-text-muted)]">Beschreibung</p>
-                  <pre className="mt-1 max-h-80 overflow-auto whitespace-pre-wrap rounded-lg bg-[var(--app-surface-muted)] p-3 text-xs leading-relaxed text-[var(--app-text)]">
-                    {lastListing.description}
-                  </pre>
-                </div>
-              </>
-            )}
+              )}
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="block text-sm">
+                <span className="mb-1 block text-xs text-[var(--app-text-muted)]">Holzart</span>
+                <input
+                  value={holzart}
+                  onChange={(e) => setHolzart(e.target.value)}
+                  placeholder="z. B. Eiche"
+                  className="w-full rounded-lg border border-[var(--app-border)] bg-[var(--app-surface)] px-3 py-2"
+                />
+              </label>
+              <label className="block text-sm">
+                <span className="mb-1 block text-xs text-[var(--app-text-muted)]">Maße</span>
+                <input
+                  value={masse}
+                  onChange={(e) => setMasse(e.target.value)}
+                  placeholder="Ø × H"
+                  className="w-full rounded-lg border border-[var(--app-border)] bg-[var(--app-surface)] px-3 py-2"
+                />
+              </label>
+              <label className="block text-sm">
+                <span className="mb-1 block text-xs text-[var(--app-text-muted)]">Stückzahl</span>
+                <input
+                  value={quantity}
+                  onChange={(e) => setQuantity(e.target.value)}
+                  inputMode="numeric"
+                  className="w-full rounded-lg border border-[var(--app-border)] bg-[var(--app-surface)] px-3 py-2"
+                />
+              </label>
+            </div>
+            <button
+              type="button"
+              disabled={!verbunden || busy}
+              onClick={() => void analysieren()}
+              className="rounded-xl bg-amber-600 px-4 py-2 text-sm font-medium text-white hover:bg-amber-500 disabled:opacity-50"
+            >
+              {busy ? 'Analysiert…' : 'Analysieren & Entwurf erzeugen'}
+            </button>
           </PageSectionPanel>
         </PageSection>
       )}
+
+      {schritt === 'freigabe' && draftListing && (
+        <PageSection titleId="etsy-step2" title="Schritt 2 · Nachbearbeitung & Freigabe">
+          <PageSectionPanel density="compact" className="space-y-4">
+            {fotoCheck && fotoCheck.warnungen.length > 0 && (
+              <div className="rounded-xl border border-amber-500/40 bg-amber-500/10 p-3 text-sm">
+                <p className="font-medium text-[var(--app-text)]">Foto-Hinweise</p>
+                <ul className="mt-1 list-disc space-y-0.5 pl-5 text-[var(--app-text-muted)]">
+                  {fotoCheck.warnungen.map((w) => (
+                    <li key={w}>{w}</li>
+                  ))}
+                </ul>
+                <p className="mt-2 text-xs text-[var(--app-text-muted)]">
+                  Du kannst trotzdem freigeben — oder zurück und Fotos ergänzen.
+                </p>
+              </div>
+            )}
+
+            <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-3">
+              <p className="text-xs font-medium text-[var(--app-text-muted)]">Preisspanne</p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {[
+                  { label: 'Min', v: preisMin },
+                  { label: 'Empfohlen', v: preisEmpfohlen },
+                  { label: 'Max', v: preisMax },
+                ].map((x) => (
+                  <button
+                    key={x.label}
+                    type="button"
+                    onClick={() => setEditPreis(String(x.v))}
+                    className={`rounded-lg border px-3 py-1.5 text-sm ${
+                      Number(editPreis) === x.v
+                        ? 'border-amber-600 bg-amber-600 text-white'
+                        : 'border-[var(--app-border)] text-[var(--app-text)]'
+                    }`}
+                  >
+                    {x.label}: {x.v} €
+                  </button>
+                ))}
+              </div>
+              <p className="mt-2 text-sm leading-relaxed text-[var(--app-text-muted)]">{preisBegruendung}</p>
+              <label className="mt-3 block text-sm">
+                <span className="mb-1 block text-xs text-[var(--app-text-muted)]">Dein Preis (€)</span>
+                <input
+                  value={editPreis}
+                  onChange={(e) => setEditPreis(e.target.value)}
+                  inputMode="decimal"
+                  className="w-full max-w-xs rounded-lg border border-[var(--app-border)] bg-[var(--app-surface)] px-3 py-2"
+                />
+              </label>
+            </div>
+
+            <p className="text-sm text-[var(--app-text-muted)]">
+              Form: <strong className="text-[var(--app-text)]">{produktForm}</strong>
+              {' · '}
+              Kategorie: {taxonomyLabel} ({taxonomyId})
+            </p>
+
+            <label className="block text-sm">
+              <span className="mb-1 block text-xs text-[var(--app-text-muted)]">Titel</span>
+              <input
+                value={editTitle}
+                onChange={(e) => setEditTitle(e.target.value)}
+                maxLength={140}
+                className="w-full rounded-lg border border-[var(--app-border)] bg-[var(--app-surface)] px-3 py-2"
+              />
+            </label>
+            <label className="block text-sm">
+              <span className="mb-1 block text-xs text-[var(--app-text-muted)]">Beschreibung</span>
+              <textarea
+                value={editDescription}
+                onChange={(e) => setEditDescription(e.target.value)}
+                rows={12}
+                className="w-full rounded-lg border border-[var(--app-border)] bg-[var(--app-surface)] px-3 py-2 text-sm leading-relaxed"
+              />
+            </label>
+            <label className="block text-sm">
+              <span className="mb-1 block text-xs text-[var(--app-text-muted)]">Tags (kommagetrennt, max. 13)</span>
+              <textarea
+                value={editTags}
+                onChange={(e) => setEditTags(e.target.value)}
+                rows={2}
+                className="w-full rounded-lg border border-[var(--app-border)] bg-[var(--app-surface)] px-3 py-2 text-sm"
+              />
+            </label>
+            <label className="block text-sm">
+              <span className="mb-1 block text-xs text-[var(--app-text-muted)]">Taxonomy-ID</span>
+              <input
+                value={taxonomyId}
+                onChange={(e) => setTaxonomyId(e.target.value)}
+                className="w-full max-w-xs rounded-lg border border-[var(--app-border)] bg-[var(--app-surface)] px-3 py-2"
+              />
+            </label>
+
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => {
+                  setSchritt('aufnahme')
+                  setDraftListing(null)
+                }}
+                className="rounded-xl border border-[var(--app-border)] px-4 py-2 text-sm"
+              >
+                Zurück
+              </button>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => void draftAnlegen()}
+                className="rounded-xl bg-amber-600 px-4 py-2 text-sm font-medium text-white hover:bg-amber-500 disabled:opacity-50"
+              >
+                {busy ? 'Lädt hoch…' : 'Freigeben → Draft auf Etsy'}
+              </button>
+            </div>
+          </PageSectionPanel>
+        </PageSection>
+      )}
+
+      {lastDraft && (
+        <PageSection titleId="etsy-last" title="Letzter Draft">
+          <PageSectionPanel density="compact">
+            <p className="text-sm text-[var(--app-text)]">
+              #{lastDraft.listingId}
+              {lastDraft.listingUrl ? (
+                <>
+                  {' '}
+                  —{' '}
+                  <a
+                    href={lastDraft.listingUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-amber-600 underline-offset-2 hover:underline dark:text-amber-400"
+                  >
+                    auf Etsy öffnen
+                  </a>
+                </>
+              ) : (
+                ' — im Shop Manager unter Entwürfe'
+              )}
+            </p>
+          </PageSectionPanel>
+        </PageSection>
+      )}
+
+      {historie.length > 0 && (
+        <PageSection titleId="etsy-hist" title="Draft-Historie">
+          <PageSectionPanel density="compact" className="space-y-2">
+            {historie.slice(0, 15).map((h) => (
+              <div
+                key={h.id}
+                className="flex flex-wrap items-baseline justify-between gap-2 border-b border-[var(--app-border)] py-2 text-sm last:border-0"
+              >
+                <div className="min-w-0">
+                  <p className="truncate font-medium text-[var(--app-text)]">{h.title}</p>
+                  <p className="text-xs text-[var(--app-text-muted)]">
+                    #{h.listingId}
+                    {h.holzart ? ` · ${h.holzart}` : ''}
+                    {h.preisEmpfohlenEur != null
+                      ? ` · Spanne ${h.preisMinEur}–${h.preisMaxEur} €`
+                      : ''}
+                    {' · '}
+                    {new Date(h.createdAt).toLocaleString('de-DE')}
+                  </p>
+                </div>
+                <p className="shrink-0 font-semibold text-[var(--app-text)]">{h.preisVerwendetEur} €</p>
+              </div>
+            ))}
+          </PageSectionPanel>
+        </PageSection>
+      )}
+    </>
+  )
+
+  if (hubModus) return inhalt
+
+  return (
+    <PageChrome density="compact" className="max-w-2xl">
+      {inhalt}
     </PageChrome>
   )
 }

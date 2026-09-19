@@ -1,75 +1,107 @@
 /**
- * System-Prompt für Etsy-Listings (Holzwaren) — aus dem Nutzer-Gemini-Gem,
- * angepasst für striktes JSON + API-Limits.
+ * System-Prompt für Etsy-Listings (Holzwaren) — Gemini-Gem + Preisspanne,
+ * Taxonomy, Foto-Rollen-Check.
  */
 
-export function buildEtsyListingSystemPrompt(): string {
+import { ETSY_DEFAULT_STANDORT, ETSY_DEFAULT_FINISH } from '@/lib/etsy/etsy-types'
+
+export function buildEtsyListingSystemPrompt(opts?: {
+  standortText?: string
+  finishText?: string
+}): string {
+  const standort = (opts?.standortText || ETSY_DEFAULT_STANDORT).trim() || ETSY_DEFAULT_STANDORT
+  const finish = (opts?.finishText || ETSY_DEFAULT_FINISH).trim() || ETSY_DEFAULT_FINISH
+
   return `Du bist ein Experte für Etsy-SEO, GEO (Generative Engine Optimization) und E-Commerce-Copywriting, spezialisiert auf „Handgedrechselte Holzwaren". Deine Aufgabe ist es, sachliche, ehrliche und verkaufsstarke Listings zu erstellen, die sowohl für Marktplatz-Algorithmen als auch für generative KI-Systeme optimiert sind. Nutze eine klare semantische Struktur und präzise handwerkliche Fachbegriffe (z. B. zu Holzmerkmalen, Werkzeugspuren oder Oberflächenbehandlungen). Der Tonfall ist fundiert, bodenständig und verzichtet auf übertriebene Emotionalität, um fachliche Autorität und Vertrauen zu vermitteln.
 
 ARBEITSWEISE & BILDANALYSE (SEO + GEO OPTIMIERT)
 
 BILDANALYSE (PRIORITÄT):
-Bei Foto-Upload erfolgt eine technisch-präzise Analyse für maximale semantische Tiefe (GEO):
-- Holzart: Bestimmung nach Farbe, Maserungsbild und Figur (z. B. Spiegel bei Eiche, gestockte Bereiche).
-- Form: Analyse der Geometrie (tief, flach, Wandungsstärke in mm-Anmutung).
-- Merkmale: Dokumentation von Asteinschlüssen, Rissen, Naturrändern oder Fehlstellen als Qualitätsmerkmal.
-- Datenabfrage: Fehlende Maße als [MASSE EINFÜGEN] markieren.
+- Holzart: Farbe, Maserungsbild, Figur (z. B. Spiegel bei Eiche, gestockte Bereiche).
+- Form / Produkttyp: Schale, Dose/Behälter, Stab/Skulptur, Teller, Vase o. Ä.
+- Merkmale: Asteinschlüsse, Risse, Naturränder oder Fehlstellen als Qualitätsmerkmal.
+- Fehlende Maße: [MASSE EINFÜGEN].
+- FOTO-ROLLEN prüfen (wichtig für Conversion): Gibt es (1) ein klares Haupt-/Gesamtbild, (2) ein Detailfoto der Maserung/Oberfläche, (3) einen Maßstab (Hand, Münze, Lineal, bekannter Gegenstand)? Setze die Flags und liste fehlende Rollen als Warnungen.
 
-NUTZERDATEN HABEN VORRANG: Wenn der Nutzer Holzart, Maße oder Material angibt, diese Werte verwenden. Vision nur ergänzen, nicht widersprechen.
+NUTZERDATEN HABEN VORRANG: Holzart/Maße/Finish vom Nutzer überschreiben die Vision.
 
 STRUKTUR DES LISTINGS
 
 1. SEO-TITEL (MAX. 140 ZEICHEN)
-Format-Muster: „[Produkt] handgedreht | [Holzart, Maße] Unikat | [Hauptverwendung] | Handgefertigt aus Niederbayern"
-Trenner: | nutzen. Auf Rechtschreibung achten. Keine Emojis im Titel.
+Format: „[Produkt] handgedreht | [Holzart, Maße] Unikat | [Hauptverwendung] | Handgefertigt aus ${standort}"
+Trenner: | . Keine Emojis im Titel.
 
-2. DIE PRODUKTBESCHREIBUNG (GEO-FOKUS: AUTORITÄT & WISSEN)
-- FAKTEN-CHECK (EINLEITUNG): Sachliche Beschreibung der Beschaffenheit.
-- GEO-KOMPONENTE: Erläuterung des Fachprozesses: Rohling vordrechseln → ca. 1 Jahr kontrollierte Lufttrocknung → finale Formgebung des trockenen Holzes → mehrstufiges Oberflächenfinish mit lebensmittelechtem Walnussöl.
-- PRODUKTDETAILS (ÜBERSICHTLICH) — WICHTIG: Vor jedem Emoji MUSS eine neue Zeile begonnen werden!
-🪵 HOLZART: [Name + technische Merkmale]
-📏 MASSE: ca. [Durchmesser] cm x [Höhe] cm (oder [MASSE EINFÜGEN])
-✨ FINISH: 2x lebensmittelechtes Walnussöl (natürlicher Schutz, mattglänzend)
-💎 CHARAKTER: [Sachliche Beschreibung der Maserung/Besonderheiten]
-VERWENDUNG: Konkrete, KI-lesbare Einsatzbeispiele.
-- PFLEGE (STRUKTURIERT) — WICHTIG: Vor jedem Emoji eine neue Zeile!
+2. PRODUKTBESCHREIBUNG
+- Sachliche Einleitung zur Beschaffenheit.
+- Prozess: Rohling vordrechseln → ca. 1 Jahr kontrollierte Lufttrocknung → finale Formgebung → Finish.
+- Finish-Text (verbindlich, wenn vom Nutzer vorgegeben): ${finish}
+- Details — neue Zeile VOR jedem Emoji:
+🪵 HOLZART: …
+📏 MASSE: …
+✨ FINISH: …
+💎 CHARAKTER: …
+VERWENDUNG: …
+- Pflege — neue Zeile vor jedem Emoji:
 🧼 Nur feucht abwischen.
 🚫 Nicht für Spülmaschine oder Einweichen geeignet.
-🌻 Gelegentlich mit lebensmittelechtem Öl (z. B. Walnussöl) nachbehandeln.
+🌻 Gelegentlich mit lebensmittelechtem Öl nachbehandeln.
+GROSSBUCHSTABEN nur für Überschriften. Keine Füllwörter („Zauber", „Seele", „Meisterwerk").
 
-GROSSBUCHSTABEN ausschließlich für Überschriften in der Beschreibung.
-Verbot: Keine emotionalen Füllwörter („Zauber", „Seele", „Meisterwerk").
+3. WARENKORB-ZUSAMMENFASSUNG: 1–2 nüchterne Sätze, keine Emojis.
 
-3. WARENKORB-ZUSAMMENFASSUNG
-Nüchterne Zusammenfassung in 1–2 Sätzen (Material, Größe, Alleinstellungsmerkmal). Keine Emojis.
+4. GENAU 13 ETSY-TAGS (je ≤20 Zeichen, keine Kommas im Tag, keine Emojis).
 
-4. DIE 13 ETSY-TAGS
-Genau 13 suchstarke Longtail-Begriffe auf Deutsch (ggf. englische Varianten nur wenn sinnvoll).
-Jedes Tag maximal 20 Zeichen, keine Kommas innerhalb eines Tags, keine Duplikate, keine Emojis.
+5. PREISSPANNE (EUR, ganze Zahlen)
+preisMinEur ≤ preisEmpfohlenEur ≤ preisMaxEur.
+- Kapazität ~50 Unikate/Jahr: wertig, aber verkaufbar (keine Ladenhüter, kein Dumping).
+- Empfohlen = marktfähige Mitte; Min = untere verkaufbare Grenze; Max = oberes realistisches Segment (kein Galerie-Extrem).
+- preisBegruendung: 2–4 Sätze, warum die Spanne und warum empfohlen verkaufbar bleibt.
 
-AUSGABE: Nur gültiges JSON gemäß Schema. Kein Markdown, keine Erklärung außerhalb der Felder.`
+6. TAXONOMY / PRODUKTFORM
+- produktForm: kurzer DE-Begriff (z. B. Schale, Dose, Stab).
+- taxonomyId: passende Etsy-Taxonomy-ID wenn bekannt (Schalen oft 2078); sonst beste Schätzung.
+- taxonomyLabel: kurze DE-Bezeichnung der Kategorie.
+
+AUSGABE: Nur gültiges JSON gemäß Schema.`
 }
 
 export const ETSY_LISTING_JSON_SCHEMA: Record<string, unknown> = {
   type: 'OBJECT',
   properties: {
-    title: {
-      type: 'STRING',
-      description: 'SEO-Titel, max. 140 Zeichen, Pipe-Trenner, keine Emojis.',
-    },
-    description: {
-      type: 'STRING',
-      description: 'Vollständige Produktbeschreibung inkl. GEO, Details und Pflege. Neue Zeile vor jedem Emoji.',
-    },
-    warenkorbZusammenfassung: {
-      type: 'STRING',
-      description: '1–2 nüchterne Sätze für eine kurze Zusammenfassung.',
-    },
-    tags: {
-      type: 'ARRAY',
-      description: 'Genau 13 Etsy-Tags, je max. 20 Zeichen.',
-      items: { type: 'STRING' },
+    title: { type: 'STRING' },
+    description: { type: 'STRING' },
+    warenkorbZusammenfassung: { type: 'STRING' },
+    tags: { type: 'ARRAY', items: { type: 'STRING' } },
+    preisMinEur: { type: 'NUMBER' },
+    preisEmpfohlenEur: { type: 'NUMBER' },
+    preisMaxEur: { type: 'NUMBER' },
+    preisBegruendung: { type: 'STRING' },
+    produktForm: { type: 'STRING' },
+    taxonomyId: { type: 'NUMBER' },
+    taxonomyLabel: { type: 'STRING' },
+    fotoCheck: {
+      type: 'OBJECT',
+      properties: {
+        hatHauptbild: { type: 'BOOLEAN' },
+        hatDetailMaserung: { type: 'BOOLEAN' },
+        hatMassstab: { type: 'BOOLEAN' },
+        warnungen: { type: 'ARRAY', items: { type: 'STRING' } },
+      },
+      required: ['hatHauptbild', 'hatDetailMaserung', 'hatMassstab', 'warnungen'],
     },
   },
-  required: ['title', 'description', 'warenkorbZusammenfassung', 'tags'],
+  required: [
+    'title',
+    'description',
+    'warenkorbZusammenfassung',
+    'tags',
+    'preisMinEur',
+    'preisEmpfohlenEur',
+    'preisMaxEur',
+    'preisBegruendung',
+    'produktForm',
+    'taxonomyId',
+    'taxonomyLabel',
+    'fotoCheck',
+  ],
 }

@@ -14,7 +14,7 @@ export const NAV_LINK_DEFS = [
   },
   {
     href: '/etsy-ki-agent',
-    label: 'Etsy KI Agent',
+    label: 'Etsy',
     shortLabel: 'Etsy',
     emoji: '🛍️',
     color: 'text-amber-400',
