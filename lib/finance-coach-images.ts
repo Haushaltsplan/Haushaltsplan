@@ -7,9 +7,6 @@ const MAX_EDGE = 1600
 const JPEG_QUALITY = 0.82
 
 export const COACH_MAX_IMAGES_PER_SEND = 4
-/** Person- + Kleidungsfotos in einer Modeberater-Anfrage. */
-export const MODEBERATER_MAX_PERSON_FOTOS = 4
-export const MODEBERATER_MAX_KLEIDUNG_FOTOS = 4
 
 /** Kassenbon / Foto fürs Canvas; Ausgabe meist JPEG für kleinere Payloads. */
 export async function compressImageFileForCoach(

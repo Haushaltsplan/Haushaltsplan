@@ -1,7 +1,6 @@
 import type { Metadata } from 'next'
 import { Suspense } from 'react'
 import { PageChrome } from '@/components/page-shell'
-import { StartFuehrungKompakt } from '@/components/fuehrung/start-fuehrung-kompakt'
 import {
   StartFinanzenKompakt,
   StartKalenderKompakt,
@@ -40,7 +39,6 @@ export default async function StartUebersichtPage({ searchParams }: StartPagePro
       </Suspense>
 
       <StartKalenderKompakt />
-      <StartFuehrungKompakt />
       <StartWhoopKompakt />
 
       <Suspense fallback={<StartBlockSkeleton />}>

@@ -1,4 +1,4 @@
--- Geräteübergreifender Client-State (Nav, Theme, Modeberater, Einkaufsliste, …).
+-- Geräteübergreifender Client-State (Nav, Theme, Einkaufsliste, …).
 -- localStorage bleibt Offline-Cache; Sync über /api/client-state/sync.
 -- Letzter Schreibzeitpunkt gewinnt pro Schlüssel (kein Union-Merge, damit Löschen hält).
 

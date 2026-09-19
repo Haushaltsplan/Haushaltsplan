@@ -2,8 +2,6 @@
 export const CLIENT_STATE_KEYS = {
   navOrder: 'nav-order',
   theme: 'theme',
-  modeberater: 'modeberater',
-  modeberaterFotos: 'modeberater-fotos',
   einkaufsliste: 'einkaufsliste',
   researchPrompts: 'research-prompts',
   fitnessProfil: 'fitness-profil',
@@ -40,11 +38,6 @@ export type EinkaufslistePayload = {
   mengen: Record<string, number>
   merkerIds: string[]
   merkerNamen: string[]
-}
-
-export type ModeberaterPayload = {
-  stand: unknown
-  chat: unknown
 }
 
 export type TerminReminderPayload = {

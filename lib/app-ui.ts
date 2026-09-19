@@ -1,5 +1,5 @@
 /**
- * App-weite, theme-konforme UI-Klassen — für Finanzen, Lager, Modeberater, Kalender, Auth, …
+ * App-weite, theme-konforme UI-Klassen — für Finanzen, Lager, Kalender, Auth, …
  * Nutzt CSS-Variablen + Premium-Oberflächen aus globals.css (Light + Dark).
  */
 

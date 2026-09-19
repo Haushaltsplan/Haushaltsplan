@@ -14,7 +14,6 @@ import {
   type ClientStateEintrag,
   type ClientStateKey,
   type EinkaufslistePayload,
-  type ModeberaterPayload,
   type TerminReminderPayload,
 } from '@/lib/client-state/client-state-keys'
 import { mergeFitnessDailyStores } from '@/lib/client-state/fitness-daily-merge'
@@ -22,18 +21,6 @@ import { mitCloudApply } from '@/lib/client-state/client-state-guard'
 import { leseClientStateRev } from '@/lib/client-state/client-state-rev'
 import { ladeDailyStore, speichereDailyStore, type WhoopDailyStore } from '@/lib/fitnessdaten/daily-records'
 import { ladeFitnessProfil, speichereFitnessProfil, type FitnessUserProfile } from '@/lib/fitnessdaten/user-profile'
-import {
-  bundleAusStand,
-  ladeModeChat,
-  ladeModeStandVollstaendig,
-  parseModeStand,
-  speichereModeChat,
-  speichereModeStand,
-  standOhneFotoBytes,
-  type ModeChatTurn,
-  type ModeBeraterStand,
-} from '@/lib/modeberater/mode-profil'
-import { speichereModeFotoBundle, type ModeFotoBundle } from '@/lib/modeberater/mode-fotos-idb'
 import { NAV_ORDER_CHANGED_EVENT, NAV_ORDER_KEY, mergePersistedWithKnown } from '@/lib/nav-model'
 import { ladeWatchlist, speichereWatchlist, type WatchlistEintrag } from '@/lib/portfolio-analyse/watchlist-client'
 import { TERMIN_REMINDER_EVENT, ladeTerminReminderEinstellungen, speichereTerminReminderEinstellungen } from '@/lib/termin-morgen-reminder'
@@ -144,25 +131,6 @@ export async function leseLocalPayload(schluessel: ClientStateKey): Promise<unkn
       const t = window.localStorage.getItem(THEME_KEY)
       return t === 'light' || t === 'dark' ? t : null
     }
-    case CLIENT_STATE_KEYS.modeberater: {
-      const stand = await ladeModeStandVollstaendig()
-      const chat = ladeModeChat()
-      const leer =
-        !stand.profil ||
-        (Object.values(stand.profil).every((v) => (Array.isArray(v) ? v.length === 0 : !String(v || '').trim())) &&
-          stand.personFotos.length === 0 &&
-          stand.kleidung.length === 0 &&
-          chat.length === 0)
-      if (leer) return null
-      const payload: ModeberaterPayload = { stand: standOhneFotoBytes(stand), chat }
-      return payload
-    }
-    case CLIENT_STATE_KEYS.modeberaterFotos: {
-      const stand = await ladeModeStandVollstaendig()
-      const bundle = bundleAusStand(stand)
-      if (bundle.person.length === 0 && Object.keys(bundle.kleidung).length === 0) return null
-      return bundle
-    }
     case CLIENT_STATE_KEYS.einkaufsliste: {
       const p = leseEinkaufslisteLokal()
       const leer =
@@ -236,23 +204,6 @@ export async function wendeClientStateAn(eintrag: ClientStateEintrag): Promise<v
         }
         break
       }
-      case CLIENT_STATE_KEYS.modeberater: {
-        const p = (payload ?? {}) as ModeberaterPayload
-        const stand: ModeBeraterStand = parseModeStand(p.stand)
-        speichereModeStand(stand)
-        if (Array.isArray(p.chat)) speichereModeChat(p.chat as ModeChatTurn[])
-        break
-      }
-      case CLIENT_STATE_KEYS.modeberaterFotos: {
-        const bundle = payload as ModeFotoBundle | null
-        if (bundle && typeof bundle === 'object') {
-          await speichereModeFotoBundle({
-            person: Array.isArray(bundle.person) ? bundle.person : [],
-            kleidung: bundle.kleidung && typeof bundle.kleidung === 'object' ? bundle.kleidung : {},
-          })
-        }
-        break
-      }
       case CLIENT_STATE_KEYS.einkaufsliste: {
         const p = (payload ?? {}) as Partial<EinkaufslistePayload>
         schreibeEinkaufslisteLokal({
@@ -314,8 +265,6 @@ export async function wendeClientStateAn(eintrag: ClientStateEintrag): Promise<v
 export const ALLE_UPLOAD_KEYS: ClientStateKey[] = [
   CLIENT_STATE_KEYS.navOrder,
   CLIENT_STATE_KEYS.theme,
-  CLIENT_STATE_KEYS.modeberater,
-  CLIENT_STATE_KEYS.modeberaterFotos,
   CLIENT_STATE_KEYS.einkaufsliste,
   CLIENT_STATE_KEYS.researchPrompts,
   CLIENT_STATE_KEYS.fitnessProfil,

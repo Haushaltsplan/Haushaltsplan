@@ -18,8 +18,6 @@ import {
 
 const DEFAULT_DEBOUNCE_MS: Record<string, number> = {
   [CLIENT_STATE_KEYS.fitnessDaily]: 8000,
-  [CLIENT_STATE_KEYS.modeberaterFotos]: 1600,
-  [CLIENT_STATE_KEYS.modeberater]: 700,
 }
 
 let cloudCache = new Map<string, ClientStateEintrag>()
@@ -109,11 +107,8 @@ export function pullClientState(): Promise<void> {
 
       cloudCache = new Map(j.eintraege.map((e) => [e.schluessel, e]))
       const gesehen = new Set<string>()
-      const rang = (s: string) =>
-        s === CLIENT_STATE_KEYS.modeberater ? 0 : s === CLIENT_STATE_KEYS.modeberaterFotos ? 1 : 2
-      const geordnet = [...j.eintraege].sort((a, b) => rang(a.schluessel) - rang(b.schluessel))
 
-      for (const e of geordnet) {
+      for (const e of j.eintraege) {
         gesehen.add(e.schluessel)
         const lokalAm = leseClientStateRev(e.schluessel)
         const immerMerge = e.schluessel === CLIENT_STATE_KEYS.fitnessDaily

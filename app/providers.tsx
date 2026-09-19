@@ -5,7 +5,6 @@ import { WhoopBleProvider } from '@/components/fitnessdaten/whoop-ble-provider'
 import { WhoopCloudAutoSyncRunner } from '@/components/fitnessdaten/whoop-cloud-auto-sync'
 import { WhoopBleBackgroundSyncRegister } from '@/components/fitnessdaten/whoop-ble-background-sync'
 import { PwaServiceWorkerRegister } from '@/components/pwa-service-worker-register'
-import { FuehrungErinnerungenWatcher } from '@/components/fuehrung/fuehrung-erinnerungen-watcher'
 import { TerminMorgenReminderRunner } from '@/components/termin-morgen-reminder'
 import { AuthGate } from '@/components/auth-gate'
 import { ZugriffGate } from '@/components/zugriff-gate'
@@ -55,7 +54,6 @@ export function Providers({ children }: { children: ReactNode }) {
       <WhoopBleBackgroundSyncRegister />
       <WhoopCloudAutoSyncRunner />
       <TerminMorgenReminderRunner />
-      <FuehrungErinnerungenWatcher />
       </WhoopBleProvider>
     </>
   )
