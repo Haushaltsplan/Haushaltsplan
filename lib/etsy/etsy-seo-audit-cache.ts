@@ -171,3 +171,49 @@ export async function speichereEtsyRankErgebnisse(opts: {
     })
   }
 }
+
+export type EtsyRankKurz = {
+  listingId: number
+  bestPage: number | null
+  bestPosition: number | null
+  keyword: string
+  found: boolean
+  checkedAt: string
+}
+
+/** Beste gefundene Position je Listing (niedrigste Seite, dann Position). */
+export async function ladeEtsyRankMap(ownerUserId: string): Promise<Map<number, EtsyRankKurz>> {
+  const { data, error } = await createSupabaseAdmin()
+    .from('etsy_seo_rank_cache')
+    .select('listing_id, keyword, page, position, found, checked_at')
+    .eq('owner_user_id', ownerUserId)
+    .eq('found', true)
+  const map = new Map<number, EtsyRankKurz>()
+  if (error || !data) return map
+  for (const r of data) {
+    const listingId = Number(r.listing_id)
+    if (!Number.isFinite(listingId)) continue
+    const page = r.page != null ? Number(r.page) : null
+    const position = r.position != null ? Number(r.position) : null
+    const prev = map.get(listingId)
+    const better =
+      !prev ||
+      (page != null &&
+        (prev.bestPage == null ||
+          page < prev.bestPage ||
+          (page === prev.bestPage &&
+            position != null &&
+            (prev.bestPosition == null || position < prev.bestPosition))))
+    if (better) {
+      map.set(listingId, {
+        listingId,
+        bestPage: page,
+        bestPosition: position,
+        keyword: String(r.keyword || ''),
+        found: true,
+        checkedAt: String(r.checked_at),
+      })
+    }
+  }
+  return map
+}

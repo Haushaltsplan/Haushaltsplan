@@ -25,9 +25,15 @@ import toast from 'react-hot-toast'
 type ListingRow = EtsyShopListingKurz & {
   cachedScore?: number | null
   cachedAt?: string | null
+  rankPage?: number | null
+  rankPosition?: number | null
+  rankKeyword?: string | null
+  rankCheckedAt?: string | null
 }
 
 type HistoriePunkt = { id: string; overallScore: number; createdAt: string }
+
+type ListFilter = 'alle' | 'schwach' | 'schlecht-rank'
 
 type Props = { verbunden: boolean }
 
@@ -39,8 +45,17 @@ function scoreBadgeClass(score: number | null | undefined) {
   return 'bg-emerald-500/20 text-emerald-300'
 }
 
+function istSchwach(l: ListingRow): boolean {
+  return l.cachedScore == null || l.cachedScore < 80
+}
+
+function istSchlechtGerankt(l: ListingRow): boolean {
+  return l.rankPage != null && l.rankPage >= 3
+}
+
 export function EtsySeoUeberwachung({ verbunden }: Props) {
   const [stateFilter, setStateFilter] = useState('active')
+  const [listFilter, setListFilter] = useState<ListFilter>('alle')
   const [listings, setListings] = useState<ListingRow[]>([])
   const [loadingList, setLoadingList] = useState(false)
   const [batchBusy, setBatchBusy] = useState(false)
@@ -48,6 +63,7 @@ export function EtsySeoUeberwachung({ verbunden }: Props) {
 
   const [selectedId, setSelectedId] = useState<number | null>(null)
   const [busy, setBusy] = useState(false)
+  const [busyKind, setBusyKind] = useState<'audit' | 'optimize' | 'push' | 'rank' | null>(null)
   const [fromCache, setFromCache] = useState(false)
   const [auditedAt, setAuditedAt] = useState<string | null>(null)
 
@@ -60,10 +76,16 @@ export function EtsySeoUeberwachung({ verbunden }: Props) {
   const [editTags, setEditTags] = useState('')
   const [editIntro, setEditIntro] = useState('')
   const [showDiff, setShowDiff] = useState(true)
-  const [confirmPush, setConfirmPush] = useState<'title' | 'tags' | 'intro' | null>(null)
+  const [confirmPush, setConfirmPush] = useState<'title' | 'tags' | 'intro' | 'all' | null>(null)
 
   const [rank, setRank] = useState<EtsyRankTrackingResult | null>(null)
   const [rankKeywords, setRankKeywords] = useState('')
+
+  const sichtbareListings = useMemo(() => {
+    if (listFilter === 'schwach') return listings.filter(istSchwach)
+    if (listFilter === 'schlecht-rank') return listings.filter(istSchlechtGerankt)
+    return listings
+  }, [listings, listFilter])
 
   const liveRegeln = useMemo(() => {
     if (!editTitle && !editTags) return null
@@ -163,6 +185,7 @@ export function EtsySeoUeberwachung({ verbunden }: Props) {
   async function starteAudit(listingId: number, force = false) {
     setSelectedId(listingId)
     setBusy(true)
+    setBusyKind(force ? 'optimize' : 'audit')
     setRank(null)
     try {
       const res = await fetch(`/api/etsy/listings/${listingId}/audit`, {
@@ -192,15 +215,22 @@ export function EtsySeoUeberwachung({ verbunden }: Props) {
         historie: j.historie,
       })
       toast.success(
-        j.fromCache
-          ? `Cache · Score ${j.audit.overall_score}/100`
-          : `Frisch · Score ${j.audit.overall_score}/100`,
+        force
+          ? `Neu optimiert · Score ${j.audit.overall_score}/100 — Diff prüfen & pushen`
+          : j.fromCache
+            ? `Cache · Score ${j.audit.overall_score}/100`
+            : `Frisch · Score ${j.audit.overall_score}/100`,
       )
       void ladeListings()
+      // Detail-Panel in den Viewport scrollen
+      requestAnimationFrame(() => {
+        document.getElementById('seo-detail')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      })
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Fehler')
     } finally {
       setBusy(false)
+      setBusyKind(null)
     }
   }
 
@@ -233,7 +263,7 @@ export function EtsySeoUeberwachung({ verbunden }: Props) {
     }
   }
 
-  async function pushUpdate(kind: 'title' | 'tags' | 'intro') {
+  async function pushUpdate(kind: 'title' | 'tags' | 'intro' | 'all') {
     if (!selectedId || !listing) return
     if (confirmPush !== kind) {
       setConfirmPush(kind)
@@ -241,6 +271,7 @@ export function EtsySeoUeberwachung({ verbunden }: Props) {
       return
     }
     setBusy(true)
+    setBusyKind('push')
     try {
       const tags = editTags
         .split(',')
@@ -251,10 +282,11 @@ export function EtsySeoUeberwachung({ verbunden }: Props) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          title: kind === 'title' ? editTitle.trim() : undefined,
-          tags: kind === 'tags' ? tags : undefined,
-          prependIntro: kind === 'intro',
-          optimizedIntro: kind === 'intro' ? editIntro.trim() : undefined,
+          title: kind === 'title' || kind === 'all' ? editTitle.trim() : undefined,
+          tags: kind === 'tags' || kind === 'all' ? tags : undefined,
+          prependIntro: kind === 'intro' || kind === 'all',
+          optimizedIntro:
+            kind === 'intro' || kind === 'all' ? editIntro.trim() : undefined,
           existingDescription: listing.description,
         }),
       })
@@ -265,20 +297,21 @@ export function EtsySeoUeberwachung({ verbunden }: Props) {
       }
       if (j.listing) setListing(j.listing)
       setConfirmPush(null)
-      toast.success('Auf Etsy gespeichert — Cache wird beim nächsten Audit neu berechnet.')
+      toast.success('Auf Etsy gespeichert.')
       void ladeListings()
-      // Force re-audit nach Push, damit Score/Historie stimmen
       void starteAudit(selectedId, true)
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Fehler')
     } finally {
       setBusy(false)
+      setBusyKind(null)
     }
   }
 
   async function rankCheck() {
     if (!selectedId) return
     setBusy(true)
+    setBusyKind('rank')
     try {
       const keywords = rankKeywords
         .split(',')
@@ -297,10 +330,12 @@ export function EtsySeoUeberwachung({ verbunden }: Props) {
       setRank(j.rank)
       const found = j.rank.results.filter((r) => r.found).length
       toast.success(`Rank (${j.rank.provider}): ${found}/${j.rank.results.length} gefunden`)
+      void ladeListings()
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Fehler')
     } finally {
       setBusy(false)
+      setBusyKind(null)
     }
   }
 
@@ -355,6 +390,28 @@ export function EtsySeoUeberwachung({ verbunden }: Props) {
               Force-Rescan
             </button>
           </div>
+          <div className="flex flex-wrap gap-1.5">
+            {(
+              [
+                ['alle', 'Alle'],
+                ['schwach', 'Schwach (Score)'],
+                ['schlecht-rank', 'Schlecht gerankt (≥S.3)'],
+              ] as const
+            ).map(([id, label]) => (
+              <button
+                key={id}
+                type="button"
+                onClick={() => setListFilter(id)}
+                className={`rounded-lg px-2.5 py-1 text-xs ${
+                  listFilter === id
+                    ? 'bg-teal-700 text-white'
+                    : 'border border-[var(--app-border)] text-[var(--app-text-muted)]'
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
           {batchProgress && <p className="text-xs text-[var(--app-text-muted)]">{batchProgress}</p>}
           <div className="flex flex-wrap gap-2 text-xs">
             <span className={`rounded-md px-2 py-0.5 font-semibold ${scoreBadgeClass(scoreStats.avg)}`}>
@@ -376,14 +433,18 @@ export function EtsySeoUeberwachung({ verbunden }: Props) {
             )}
           </div>
           <p className="text-xs text-[var(--app-text-muted)]">
-            Sortiert nach Score (schwach zuerst). Rot &lt;60 · Gelb &lt;80 · Grün ≥80. Cache spart Gemini-Kosten.
+            Aktive Listings · Stift = bearbeiten/neu optimieren. Schlecht gerankt = nach Rank-Check Seite ≥3.
           </p>
 
-          {listings.length === 0 ? (
-            <p className="text-sm text-[var(--app-text-muted)]">Keine Listings in diesem Status.</p>
+          {sichtbareListings.length === 0 ? (
+            <p className="text-sm text-[var(--app-text-muted)]">
+              {listings.length === 0
+                ? 'Keine Listings in diesem Status.'
+                : 'Keine Treffer in diesem Filter.'}
+            </p>
           ) : (
             <ul className="divide-y divide-[var(--app-border)]">
-              {listings.map((l) => (
+              {sichtbareListings.map((l) => (
                 <li
                   key={l.listingId}
                   className={`flex flex-wrap items-center justify-between gap-2 py-2 ${
@@ -401,10 +462,12 @@ export function EtsySeoUeberwachung({ verbunden }: Props) {
                       <p className="text-xs text-[var(--app-text-muted)]">
                         #{l.listingId}
                         {l.priceEur != null ? ` · ${l.priceEur} €` : ''}
-                        {` · ${l.tags.length}/${ETSY_SEO_TAG_COUNT} Tags`}
+                        {l.rankPage != null
+                          ? ` · Rank S.${l.rankPage}${l.rankPosition != null ? ` #${l.rankPosition}` : ''}${l.rankKeyword ? ` („${l.rankKeyword}“)` : ''}`
+                          : ' · noch kein Rank'}
                         {l.cachedAt
                           ? ` · Audit ${new Date(l.cachedAt).toLocaleDateString('de-DE')}`
-                          : ' · noch kein Audit'}
+                          : ''}
                       </p>
                     </div>
                   </div>
@@ -412,10 +475,20 @@ export function EtsySeoUeberwachung({ verbunden }: Props) {
                     <button
                       type="button"
                       disabled={busy || batchBusy}
+                      title="Bearbeiten / Keywords & Text neu optimieren"
+                      onClick={() => void starteAudit(l.listingId, istSchwach(l) || istSchlechtGerankt(l))}
+                      className="rounded-xl border border-[var(--app-border)] px-2.5 py-1.5 text-sm hover:bg-[var(--app-surface-muted)] disabled:opacity-50"
+                      aria-label="Bearbeiten"
+                    >
+                      {busy && selectedId === l.listingId ? '…' : '✎'}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={busy || batchBusy}
                       onClick={() => void starteAudit(l.listingId, false)}
                       className="rounded-xl bg-teal-700 px-3 py-1.5 text-sm font-medium text-white hover:bg-teal-600 disabled:opacity-50"
                     >
-                      {busy && selectedId === l.listingId ? '…' : 'Öffnen'}
+                      Öffnen
                     </button>
                   </div>
                 </li>
@@ -438,13 +511,35 @@ export function EtsySeoUeberwachung({ verbunden }: Props) {
                 type="button"
                 disabled={busy}
                 onClick={() => selectedId && void starteAudit(selectedId, true)}
-                className="underline underline-offset-2"
+                className="rounded-lg bg-teal-700 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50"
               >
-                Neu auditen (Force)
+                {busyKind === 'optimize'
+                  ? 'Generiert…'
+                  : 'Keywords & Beschreibung neu generieren'}
               </button>
             </div>
 
             {audit.summary && <p className="text-sm text-[var(--app-text-muted)]">{audit.summary}</p>}
+
+            <div className="rounded-xl border border-teal-500/30 bg-teal-500/5 p-3">
+              <p className="text-xs text-[var(--app-text-muted)]">
+                Nach Neu-Generierung: Diff prüfen, dann alles auf einmal pushen (Titel + Tags + GEO-Intro).
+              </p>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => void pushUpdate('all')}
+                className={`mt-2 rounded-lg px-3 py-1.5 text-xs font-medium ${
+                  confirmPush === 'all'
+                    ? 'bg-amber-600 text-white'
+                    : 'bg-teal-800 text-white disabled:opacity-50'
+                }`}
+              >
+                {confirmPush === 'all'
+                  ? 'Jetzt Titel + Tags + Intro pushen'
+                  : 'Alles übernehmen (mit Diff-Check)'}
+              </button>
+            </div>
 
             {/* Regel-Checks live */}
             <div className="rounded-xl border border-[var(--app-border)] p-3">

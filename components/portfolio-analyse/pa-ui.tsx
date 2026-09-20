@@ -154,12 +154,12 @@ export function PaTextTabs<T extends string>({
 
 const SUB_NAV = [
   { href: '/portfolioanalyse/dashboard', label: 'Dashboard' },
+  { href: '/portfolioanalyse/analyse', label: 'Analyse' },
   { href: '/portfolioanalyse/boerse', label: 'Börse' },
   { href: '/portfolioanalyse/news', label: 'News' },
   { href: '/portfolioanalyse/dividenden', label: 'Dividenden' },
   { href: '/portfolioanalyse/earnings', label: 'Quartalszahlen' },
   { href: '/portfolioanalyse/fundamentaldaten', label: 'Fundamentaldaten' },
-  { href: '/portfolioanalyse/analyse', label: 'Analyse' },
   { href: '/portfolioanalyse/nachkaeufe', label: 'Nachkauf-Radar' },
   { href: '/portfolioanalyse/watchlist', label: 'Watchlist' },
   { href: '/portfolioanalyse/dcf', label: 'DCF' },
