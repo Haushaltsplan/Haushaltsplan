@@ -2,11 +2,13 @@
 
 import { PaFundamentalMetrikChart } from '@/components/portfolio-analyse/pa-fundamental-metrik-chart'
 import { chartAnalyseSchluessel } from '@/lib/portfolio-analyse/chart-analyse-store'
+import { bewerteChartInfoFuerAktie } from '@/lib/portfolio-analyse/fundamental-chart-info-check'
 import { lesePersonlichenStorage, schreibePersonlichenStorage } from '@/lib/zugriff-client'
 import type {
   FundamentalMetrikZeile,
   FundamentalPeriode,
 } from '@/lib/portfolio-analyse/fundamentaldaten-types'
+import type { PaInfoHintInhalt } from '@/components/portfolio-analyse/pa-info-hint'
 
 export const QUALITAET_PANELS = [
   {
@@ -78,7 +80,7 @@ export const CHART_WAHL_EIGEN = 'eigen' as const
 export type QualitaetPanelId = (typeof QUALITAET_PANELS)[number]['id']
 export type FundamentalChartWahlId = QualitaetPanelId | typeof CHART_WAHL_EIGEN
 
-export const QUALITAET_CHART_INFO: Record<FundamentalChartWahlId, import('@/components/portfolio-analyse/pa-info-hint').PaInfoHintInhalt> = {
+export const QUALITAET_CHART_INFO: Record<FundamentalChartWahlId, PaInfoHintInhalt> = {
   gewinn: {
     schauen:
       'Ob der ausgewiesene Gewinn auch als Cash ankommt: operativer Cashflow, Free Cashflow, Nettogewinn, EPS und Dividenden über die Jahre.',
@@ -266,8 +268,14 @@ export function PaFundamentalQualitaetsCharts({
     <div className="divide-y divide-[var(--app-border)]">
       {panels.map((panel) => {
         const quelle = panel.variant === 'bewertung' ? bewertungZeilen : zeilen
+        const periodenPanel = panel.variant === 'bewertung' ? bewertungPerioden : perioden
         const ids = panel.ids.filter((id) => quelle.some((z) => z.id === id && hatWerte(z)))
         if (ids.length === 0) return null
+        const basis = QUALITAET_CHART_INFO[panel.id]
+        const info: PaInfoHintInhalt = {
+          ...basis,
+          urteil: bewerteChartInfoFuerAktie(panel.id, quelle, periodenPanel),
+        }
         return (
           <PaFundamentalMetrikChart
             key={panel.id}
@@ -276,7 +284,7 @@ export function PaFundamentalQualitaetsCharts({
             kompakt
             eingebettet
             variant={panel.variant}
-            perioden={panel.variant === 'bewertung' ? bewertungPerioden : perioden}
+            perioden={periodenPanel}
             zeilen={quelle}
             aktivIds={new Set(ids)}
             labelsAnzeigen={false}
@@ -285,7 +293,7 @@ export function PaFundamentalQualitaetsCharts({
             onToggleLabels={() => undefined}
             analyseSchluessel={ticker ? chartAnalyseSchluessel(ticker, `qualitaet-${panel.id}`) : undefined}
             analyseTitel={ticker ? `${ticker} · ${panel.titel}` : panel.titel}
-            info={QUALITAET_CHART_INFO[panel.id]}
+            info={info}
           />
         )
       })}

@@ -26,6 +26,7 @@ import {
 } from '@/components/portfolio-analyse/pa-fundamental-qualitaets-charts'
 import { PaCard } from '@/components/portfolio-analyse/pa-ui'
 import { chartAnalyseSchluessel } from '@/lib/portfolio-analyse/chart-analyse-store'
+import { bewerteChartInfoFuerAktie } from '@/lib/portfolio-analyse/fundamental-chart-info-check'
 import {
   downloadFundamentaldatenJson,
   downloadFundamentaldatenKennzahlenCsv,
@@ -642,7 +643,17 @@ export function PaFundamentalInhalt({
                   leerHinweis="Klicke eine Zeile in der Tabelle, um sie hier im Chart zu sehen. Nochmal klicken entfernt sie. Mehrere Zeilen = Vergleich."
                   analyseSchluessel={chartAnalyseSchluessel(daten.ticker, 'eigen')}
                   analyseTitel={`${daten.ticker} · Eigene Auswahl`}
-                  info={QUALITAET_CHART_INFO.eigen}
+                  info={{
+                    ...QUALITAET_CHART_INFO.eigen,
+                    urteil: bewerteChartInfoFuerAktie(
+                      'eigen',
+                      [
+                        ...zeilenBereinigt.filter((z) => !bewertungZeilen.some((b) => b.id === z.id)),
+                        ...bewertungZeilen,
+                      ].filter((z) => chartAktiv.has(z.id)),
+                      frequenz === 'jahr' ? bewertungPerioden : periodenBereinigt,
+                    ),
+                  }}
                 />
               </div>
               ) : null}

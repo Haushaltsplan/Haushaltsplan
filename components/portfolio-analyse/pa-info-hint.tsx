@@ -2,11 +2,27 @@
 
 import { useEffect, useId, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
+import type { ChartInfoUrteil } from '@/lib/portfolio-analyse/fundamental-chart-info-check'
 
 export type PaInfoHintInhalt = {
   schauen: string
   gut: string
   schlecht: string
+  /** Regelbasierte Ampel für die aktuelle Aktie (optional). */
+  urteil?: ChartInfoUrteil | null
+}
+
+function urteilKlassen(status: ChartInfoUrteil['status']): string {
+  switch (status) {
+    case 'gut':
+      return 'border-emerald-500/30 bg-emerald-500/10 text-emerald-200'
+    case 'gemischt':
+      return 'border-amber-500/30 bg-amber-500/10 text-amber-100'
+    case 'achtung':
+      return 'border-rose-500/30 bg-rose-500/10 text-rose-200'
+    default:
+      return 'border-white/10 bg-white/[0.04] text-[var(--app-text-muted)]'
+  }
 }
 
 export function PaInfoHint({
@@ -43,7 +59,7 @@ export function PaInfoHint({
     const r = el.getBoundingClientRect()
     const width = 320
     const left = Math.min(window.innerWidth - width - 8, Math.max(8, r.left + r.width / 2 - width / 2))
-    const flip = window.innerHeight - r.bottom < 250
+    const flip = window.innerHeight - r.bottom < 280
     setPos({ top: flip ? r.top - 8 : r.bottom + 8, left, flip })
   }
 
@@ -76,6 +92,8 @@ export function PaInfoHint({
   }, [open])
 
   useEffect(() => () => clearHide(), [])
+
+  const urteil = info.urteil
 
   return (
     <span className="relative inline-flex shrink-0">
@@ -128,6 +146,14 @@ export function PaInfoHint({
                 transform: pos.flip ? 'translateY(-100%)' : undefined,
               }}
             >
+              {urteil ? (
+                <div className={`mb-2 rounded-lg border px-2.5 py-2 ${urteilKlassen(urteil.status)}`}>
+                  <p className="text-[10px] font-semibold uppercase tracking-wide opacity-90">
+                    Diese Aktie · {urteil.label}
+                  </p>
+                  <p className="mt-0.5 text-[11px] leading-relaxed">{urteil.text}</p>
+                </div>
+              ) : null}
               <p className="text-[11px] leading-relaxed text-[var(--app-text)]">{info.schauen}</p>
               <p className="mt-2 text-[10px] font-semibold uppercase tracking-wide text-emerald-400/90">Gut</p>
               <p className="mt-0.5 text-[11px] leading-relaxed text-[var(--app-text-muted)]">{info.gut}</p>
