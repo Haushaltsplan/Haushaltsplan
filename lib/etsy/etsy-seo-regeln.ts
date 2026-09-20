@@ -359,7 +359,7 @@ export function pruefeEtsySeoRegeln(input: {
     scorePenalty += 8
   }
 
-  // Exact Match: relevante Titel-Keywords in Tags (Standort/Prozess-Füllwörter auslassen)
+  // Exact Match: relevante Titel-Keywords in Tags (Maße, Standort, Prozess-Füllwörter auslassen)
   const TITLE_TAG_SKIP = new Set([
     'handgedreht',
     'handgefertigt',
@@ -374,11 +374,30 @@ export function pruefeEtsySeoRegeln(input: {
     'ca',
     'fuer',
     'für',
+    'grosse',
+    'große',
+    'gross',
+    'groß',
+    'kleine',
+    'klein',
+    'schoene',
+    'schöne',
+    'moderne',
+    'modern',
+    'edle',
+    'edel',
   ])
   const titleWords = title
     .toLowerCase()
     .split(/[^a-zäöüß0-9]+/i)
-    .filter((w) => w.length >= 5 && !TITLE_TAG_SKIP.has(norm(w)))
+    .filter((w) => {
+      if (w.length < 5) return false
+      if (TITLE_TAG_SKIP.has(norm(w))) return false
+      // Maße / Zahlen (29x12, 29, 12) gehören nicht in Tags
+      if (/^\d/.test(w) || /\d/.test(w)) return false
+      if (/^\d+x\d+$/i.test(w)) return false
+      return true
+    })
   const tagBlob = tags.join(' ').toLowerCase()
   const missing = titleWords
     .filter((w) => !tagBlob.includes(w) && !tags.some((t) => norm(t).includes(norm(w))))
@@ -516,10 +535,21 @@ export function berechneEtsyDraftSeoGeoScore(input: {
     'oder',
     'cm',
     'ca',
+    'grosse',
+    'große',
+    'gross',
+    'groß',
+    'kleine',
+    'klein',
   ])
   const titleWords = titleLower
     .split(/[^a-zäöüß0-9]+/i)
-    .filter((w) => w.length >= 5 && !TITLE_TAG_SKIP.has(norm(w)))
+    .filter((w) => {
+      if (w.length < 5) return false
+      if (TITLE_TAG_SKIP.has(norm(w))) return false
+      if (/^\d/.test(w) || /\d/.test(w)) return false
+      return true
+    })
   const tagBlob = tags.join(' ').toLowerCase()
   const exactMatchOk =
     titleWords.length === 0 ||

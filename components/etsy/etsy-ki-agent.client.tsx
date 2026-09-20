@@ -819,7 +819,8 @@ export function EtsyKiAgentClient({
                     </ul>
                   </div>
                 )}
-                {(liveScore.regel.issues.length > 0 || liveScore.geoNotes.length > 0) && (
+                {liveScore.overall < 100 &&
+                  (liveScore.regel.issues.length > 0 || liveScore.geoNotes.length > 0) && (
                   <ul className="max-h-28 space-y-0.5 overflow-auto text-xs text-[var(--app-text-muted)]">
                     {liveScore.regel.issues.slice(0, 5).map((i, idx) => (
                       <li key={`r-${idx}`}>
@@ -831,17 +832,22 @@ export function EtsyKiAgentClient({
                     ))}
                   </ul>
                 )}
-                <button
-                  type="button"
-                  disabled={busy}
-                  onClick={() => void optimiertNeuGenerieren()}
-                  className="rounded-lg bg-teal-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-teal-600 disabled:opacity-50"
-                >
-                  {busyKind === 'optimize' ? 'Optimiert…' : 'Auf 100 optimieren'}
-                </button>
+                {liveScore.overall < 100 ? (
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => void optimiertNeuGenerieren()}
+                    className="rounded-lg bg-teal-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-teal-600 disabled:opacity-50"
+                  >
+                    {busyKind === 'optimize' ? 'Optimiert…' : 'Auf 100 optimieren'}
+                  </button>
+                ) : (
+                  <p className="text-xs font-medium text-emerald-300">On-Page-Ziel erreicht (100).</p>
+                )}
                 <p className="text-[10px] text-[var(--app-text-muted)]">
                   SEO-Score = On-Page-Checklist (Relevanz + GEO + Fotos Haupt/Detail). 100 = alles grün.
-                  Maßstab-Fotos sind optional und zählen nicht. 1 Free-Gemini-Call.
+                  Maßstab-Fotos sind optional und zählen nicht.
+                  {liveScore.overall < 100 ? ' Optimieren: 1 Free-Gemini-Call.' : ''}
                 </p>
               </div>
             )}
