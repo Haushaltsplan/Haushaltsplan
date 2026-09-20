@@ -11,6 +11,9 @@ import type {
 import {
   ETSY_SEO_TAG_COUNT,
   ETSY_SEO_TAG_MAX,
+  ETSY_SEO_TITLE_FRONTLOAD,
+  ETSY_SEO_TITLE_IDEAL_MAX,
+  ETSY_SEO_TITLE_IDEAL_MIN,
   ETSY_SEO_TITLE_MAX,
   pruefeEtsySeoRegeln,
   scoreFarbe,
@@ -68,8 +71,10 @@ export function EtsySeoUeberwachung({ verbunden }: Props) {
       title: editTitle,
       tags: editTags.split(',').map((t) => t.trim()).filter(Boolean),
       description: editIntro || listing?.description || '',
+      materials: listing?.materials,
+      taxonomyId: listing?.taxonomyId,
     })
-  }, [editTitle, editTags, editIntro, listing?.description])
+  }, [editTitle, editTags, editIntro, listing?.description, listing?.materials, listing?.taxonomyId])
 
   const scoreStats = useMemo(() => {
     let rot = 0
@@ -444,16 +449,25 @@ export function EtsySeoUeberwachung({ verbunden }: Props) {
             {/* Regel-Checks live */}
             <div className="rounded-xl border border-[var(--app-border)] p-3">
               <p className="text-xs font-medium text-[var(--app-text-muted)]">
-                Regel-Checks (Titel ≤{ETSY_SEO_TITLE_MAX}, {ETSY_SEO_TAG_COUNT} Tags ≤{ETSY_SEO_TAG_MAX})
+                Regel-Checks (Guide: Front-Load ≤{ETSY_SEO_TITLE_FRONTLOAD}, Titel Ideal{' '}
+                {ETSY_SEO_TITLE_IDEAL_MIN}–{ETSY_SEO_TITLE_IDEAL_MAX}, {ETSY_SEO_TAG_COUNT} Long-Tail-Tags ≤
+                {ETSY_SEO_TAG_MAX})
               </p>
               <div className="mt-2 flex flex-wrap gap-2 text-xs">
                 {(liveRegeln || regelReport) &&
-                  [
-                    ['Titel', (liveRegeln || regelReport)!.titleOk],
-                    ['Tag-Anzahl', (liveRegeln || regelReport)!.tagsCountOk],
-                    ['Tag-Länge', (liveRegeln || regelReport)!.tagsLengthOk],
-                    ['Beschreibung', (liveRegeln || regelReport)!.descriptionOk],
-                  ].map(([label, ok]) => (
+                  (
+                    [
+                      ['Titel', (liveRegeln || regelReport)!.titleOk],
+                      ['Front-Load', (liveRegeln || regelReport)!.titleFrontloadOk],
+                      ['Titel-Länge', (liveRegeln || regelReport)!.titleLengthIdeal],
+                      ['Tag-Anzahl', (liveRegeln || regelReport)!.tagsCountOk],
+                      ['Tag-Länge', (liveRegeln || regelReport)!.tagsLengthOk],
+                      ['Long-Tail', (liveRegeln || regelReport)!.tagsLongtailOk],
+                      ['Stemming', (liveRegeln || regelReport)!.tagsStemOk],
+                      ['Attr-Duplikat', (liveRegeln || regelReport)!.tagsAttrOk],
+                      ['Beschreibung', (liveRegeln || regelReport)!.descriptionOk],
+                    ] as const
+                  ).map(([label, ok]) => (
                     <span
                       key={String(label)}
                       className={`rounded-md px-2 py-0.5 ${ok ? 'bg-emerald-500/15 text-emerald-300' : 'bg-rose-500/15 text-rose-300'}`}

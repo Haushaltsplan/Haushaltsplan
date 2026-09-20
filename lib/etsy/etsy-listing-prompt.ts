@@ -27,9 +27,11 @@ NUTZERDATEN HABEN VORRANG: Holzart/Maße/Finish vom Nutzer überschreiben die Vi
 
 STRUKTUR DES LISTINGS
 
-1. SEO-TITEL (MAX. 140 ZEICHEN)
+1. SEO-TITEL (MAX. 140 ZEICHEN, Ideal 70–120)
 Format: „[Produkt] handgedreht | [Holzart, Maße] Unikat | [Hauptverwendung] | Handgefertigt aus ${standort}"
 Trenner: | . Keine Emojis im Titel.
+- Primär-Keyword (Produkt + Holz/Handwerk) in den ersten 30–50 Zeichen (Mobile).
+- Keine Füllwörter vorne (beautiful, amazing, wunderbar, traumhaft).
 
 2. PRODUKTBESCHREIBUNG
 - Sachliche Einleitung zur Beschaffenheit.
@@ -50,6 +52,9 @@ GROSSBUCHSTABEN nur für Überschriften. Keine Füllwörter („Zauber", „Seel
 3. WARENKORB-ZUSAMMENFASSUNG: 1–2 nüchterne Sätze, keine Emojis.
 
 4. GENAU 13 ETSY-TAGS (je ≤20 Zeichen, keine Kommas im Tag, keine Emojis).
+- Long-Tail bevorzugen (mehrere Wörter, z. B. „hand turned oak bowl").
+- Keine Stemming-Duplikate (bowl + bowls, Schale + Schalen) — Etsy erkennt Stämme.
+- Keine reinen Kategorie-/Material-Wiederholungen als Tag (z. B. nur „wood", nur „bowl"), wenn das schon in Taxonomy/Material steckt — lieber Attribute stacken.
 
 5. PREISSPANNE (EUR, ganze Zahlen)
 preisMinEur ≤ preisEmpfohlenEur ≤ preisMaxEur.

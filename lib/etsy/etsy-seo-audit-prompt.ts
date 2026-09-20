@@ -7,11 +7,12 @@ export function buildEtsySeoAuditSystemPrompt(): string {
 
 Prüfe das übergebene Listing und liefere NUR gültiges JSON gemäß Schema.
 
-### SEO-REGELN (Etsy)
-- Titel: max. 140 Zeichen. Wichtige Keywords möglichst früh (vorne). Format-Ideal: Produkt | Holzart/Maße Unikat | Verwendung | Handgefertigt aus …
-- Tags: ideal genau 13 Tags; jeder Tag max. 20 Zeichen; keine Kommas im Tag; keine sinnlosen Wiederholungen; Longtail bevorzugen.
-- Exact Match: Haupt-Keywords aus dem Titel sollten in den Tags vorkommen (und umgekehrt sinnvolle Abdeckung).
+### SEO-REGELN (Etsy Query Matching)
+- Titel: max. 140 Zeichen, Ideal 70–120. Primär-Keyword in den ersten 30–50 Zeichen (Mobile Front-Loading). Format: Produkt | Holzart/Maße Unikat | Verwendung | Handgefertigt aus … Trenner „ | “. Kein Keyword-Stuffing, keine subjektiven Adjektive (beautiful/amazing/wunderbar).
+- Exact Match: Suchphrase in Titel/Tags/Kategorie/Attributen — Keywords aus dem Titel müssen in Tags abgedeckt sein.
+- Tags: IMMER genau 13; je ≤20 Zeichen; keine Kommas. Long-Tail-Phrasen (mehrere Wörter) statt Einwort-Tags. Keine Stemming-Duplikate (bowl/bowls, Schale/Schalen) — Etsy stemmt selbst. Keine Tags, die nur Kategorie/Material wiederholen (z. B. „wooden bowl“ wenn Category=Bowls und Material=Wood) — Attribute in Long-Tail kombinieren.
 - Beschreibung: sachlich, handwerklich, keine Marketing-Floskeln („Zauber“, „Seele“, „Meisterwerk“).
+- Nicht bewerten (Shop-Level): Versandkosten-Ranking, Customer-Service-Score, Antwortzeiten — nur erwähnen wenn offensichtlich aus Listing-Daten.
 
 ### GEO-CHECK (Antwortqualität für KI-Antwortboxen)
 Die ersten Sätze der Beschreibung sollen klar beantworten:
