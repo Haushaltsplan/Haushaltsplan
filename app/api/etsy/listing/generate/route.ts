@@ -26,6 +26,12 @@ type OptimizeBody = {
   preisEmpfohlenEur?: number
   preisMaxEur?: number
   preisBegruendung?: string
+  fotoCheck?: {
+    hatHauptbild?: boolean
+    hatDetailMaserung?: boolean
+    hatMassstab?: boolean
+    warnungen?: string[]
+  }
 }
 
 type Body = {
@@ -61,6 +67,7 @@ function scoreFuerListing(listing: {
   taxonomyId: number
   taxonomyLabel: string
   materials?: string[]
+  fotoCheck?: { hatHauptbild: boolean; hatDetailMaserung: boolean; hatMassstab: boolean; warnungen?: string[] }
 }) {
   return berechneEtsyDraftSeoGeoScore({
     title: listing.title,
@@ -69,6 +76,7 @@ function scoreFuerListing(listing: {
     materials: listing.materials,
     taxonomyId: listing.taxonomyId,
     taxonomyLabel: listing.taxonomyLabel,
+    fotoCheck: listing.fotoCheck ?? null,
   })
 }
 
@@ -138,12 +146,23 @@ export async function POST(req: Request) {
             preisEmpfohlenEur: body.optimize.preisEmpfohlenEur,
             preisMaxEur: body.optimize.preisMaxEur,
             preisBegruendung: body.optimize.preisBegruendung,
+            fotoCheck: body.optimize.fotoCheck
+              ? {
+                  hatHauptbild: Boolean(body.optimize.fotoCheck.hatHauptbild),
+                  hatDetailMaserung: Boolean(body.optimize.fotoCheck.hatDetailMaserung),
+                  hatMassstab: Boolean(body.optimize.fotoCheck.hatMassstab),
+                  warnungen: Array.isArray(body.optimize.fotoCheck.warnungen)
+                    ? body.optimize.fotoCheck.warnungen.map(String)
+                    : [],
+                }
+              : null,
           })
         : await generiereEtsyListingTexte(images, basis)
 
     const score = scoreFuerListing({
       ...listing,
       materials: materials ?? (basis.holzart ? [basis.holzart] : undefined),
+      fotoCheck: listing.fotoCheck,
     })
 
     return NextResponse.json({
@@ -151,9 +170,14 @@ export async function POST(req: Request) {
       listing,
       vorlage,
       score: {
+        overall: score.overall,
         seoScore: score.seoScore,
         geoScore: score.geoScore,
-        overall: score.overall,
+        fotoScore: score.fotoScore,
+        einschaetzung: score.einschaetzung,
+        limitierer: score.limitierer,
+        punkteErreicht: score.punkteErreicht,
+        punkteMax: score.punkteMax,
         issues: score.regel.issues,
         geoNotes: score.geoNotes,
       },

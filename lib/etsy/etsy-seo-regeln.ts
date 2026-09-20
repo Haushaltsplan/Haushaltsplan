@@ -429,15 +429,41 @@ export function scoreFarbe(score: number): 'rot' | 'gelb' | 'gruen' {
   return 'gruen'
 }
 
-/** Live-Score für KI-Agent Schritt 2 (ohne Gemini) — SEO-Regeln + GEO-Heuristik. */
+/** Listing-Qualität wie bei SEO-Tools: gewichtete Checklist, 100 = alle Checks grün. */
 export type EtsyDraftSeoGeoScore = {
-  seoScore: number
-  geoScore: number
+  /** 0–100 — erreichbar, wenn alle gewichteten Checks erfüllt sind */
   overall: number
+  /** Such-Relevanz (Titel/Tags) 0–100 */
+  seoScore: number
+  /** GEO 0–100 */
+  geoScore: number
+  /** Foto-Rollen 0–100; null wenn keine Foto-Daten */
+  fotoScore: number | null
   regel: EtsySeoRegelReport
   geoNotes: string[]
+  einschaetzung: string
+  /** Offene Punkte bis 100 */
+  limitierer: string[]
+  /** Erfüllte / mögliche Punkte (Transparenz) */
+  punkteErreicht: number
+  punkteMax: number
 }
 
+export type EtsyFotoScoreInput = {
+  hatHauptbild: boolean
+  hatDetailMaserung: boolean
+  hatMassstab: boolean
+  warnungen?: string[]
+}
+
+type Check = { id: string; label: string; ok: boolean; weight: number; group: 'seo' | 'geo' | 'foto' }
+
+/**
+ * On-Page-Score nach SEO-Tool-Logik (Yoast/Surfer-ähnlich):
+ * Summe erfüllter Gewichte / Summe aller Gewichte × 100.
+ * 100 = alle Checks grün — das ist das Optimierungsziel für Ranking-Relevanz.
+ * (Live-Platzierung hängt weiter von Wettbewerb/CTR/Shop ab — der Score selbst ist aber erreichbar.)
+ */
 export function berechneEtsyDraftSeoGeoScore(input: {
   title: string
   tags: string[]
@@ -445,75 +471,159 @@ export function berechneEtsyDraftSeoGeoScore(input: {
   materials?: string[]
   taxonomyId?: number | null
   taxonomyLabel?: string | null
+  fotoCheck?: EtsyFotoScoreInput | null
 }): EtsyDraftSeoGeoScore {
   const regel = pruefeEtsySeoRegeln(input)
-  const seoScore = Math.max(0, Math.min(100, 100 - regel.scorePenalty))
-
   const desc = (input.description || '').trim()
   const lower = desc.toLowerCase()
-  const titleLower = (input.title || '').toLowerCase()
+  const title = (input.title || '').trim()
+  const titleLower = title.toLowerCase()
+  const tags = (input.tags || []).map((t) => t.trim()).filter(Boolean)
   const geoNotes: string[] = []
-
-  // GEO als Aufbau-Score (nicht nur Abzüge): klare Antworten für KI-Antwortboxen
-  let geo = 55
 
   const cutEmoji = desc.search(/\n[🪵📏✨💎🧼🚫🌻]/)
   const intro = (cutEmoji > 40 ? desc.slice(0, cutEmoji) : desc.slice(0, 500)).trim()
+  const longtailCount = tags.filter((t) => istTagLongtail(t)).length
 
   const hasWhat =
-    /(schale|schüssel|schuessel|dose|vase|teller|stab|unikat|holz|esche|eiche|ahorn|walnuss|handgedreht|gedreht|naturrand|holzware)/i.test(
+    /(schale|schüssel|schuessel|dose|vase|teller|stab|unikat|holz|esche|eiche|ahorn|walnuss|birne|handgedreht|gedreht|naturrand|holzware)/i.test(
       `${intro} ${titleLower}`,
     )
-  if (hasWhat) {
-    geo += 15
-  } else {
-    geoNotes.push('WAS unklar: Produkt/Holzart in Intro oder Titel nennen.')
-  }
-
-  // VERWENDUNG:-Block zählt voll als FÜR WEN (auch ohne Keyword-Hit im Fließtext)
   const verwendungMatch = /verwendung\s*:\s*([^\n🪵📏✨💎]+)/i.exec(desc)
   const verwendungText = (verwendungMatch?.[1] || '').trim()
   const hasWho =
     verwendungText.length >= 12 ||
-    /(sammler|geschenk|küche|kueche|obst|deko|tisch|sideboard|galerie|wohn|einzug|solitär|solitaer|repräsentativ|repraesentativ|sammlerstück|sammlerstueck|esstisch|obstschale|aufbewahrung|präsentation|praesentation)/i.test(
+    /(sammler|geschenk|küche|kueche|obst|deko|tisch|sideboard|galerie|wohn|einzug|solitär|solitaer|repräsentativ|sammlerstück|esstisch|obstschale|aufbewahrung)/i.test(
       lower,
     )
-  if (hasWho) {
-    geo += 18
-  } else {
-    geoNotes.push('FÜR WEN fehlt: VERWENDUNG-Zeile oder Zielgruppe (Obstschale, Geschenk, Sammler…).')
-  }
-
   const hasOccasion =
-    /(hochzeit|holzhochzeit|geburtstag|jubiläum|jubilaeum|einzug|weihnachten|vaterstag|muttertag|anlass|geschenk|jubilaeum)/i.test(
+    /(hochzeit|holzhochzeit|geburtstag|jubiläum|jubilaeum|einzug|weihnachten|vaterstag|muttertag|\banlass\b)/i.test(
       lower,
     )
-  if (hasOccasion) {
-    geo += 8
-  } else if (hasWho) {
-    // Optional — nur Hinweis, kein harter Abzug wenn Verwendung klar ist
-    geoNotes.push('Tipp: ANLASS erwähnen (Holzhochzeit, Einzug, Geschenk) für noch stärkeres GEO.')
+  const hasStructure = /🪵/.test(desc) && /📏/.test(desc) && /verwendung\s*:/i.test(desc)
+  const descLang = desc.length >= 280
+  const introStark = intro.length >= 100
+
+  const TITLE_TAG_SKIP = new Set([
+    'handgedreht',
+    'handgefertigt',
+    'unikat',
+    'niederbayern',
+    'deutschland',
+    'aus',
+    'mit',
+    'und',
+    'oder',
+    'cm',
+    'ca',
+  ])
+  const titleWords = titleLower
+    .split(/[^a-zäöüß0-9]+/i)
+    .filter((w) => w.length >= 5 && !TITLE_TAG_SKIP.has(norm(w)))
+  const tagBlob = tags.join(' ').toLowerCase()
+  const exactMatchOk =
+    titleWords.length === 0 ||
+    titleWords.filter((w) => tagBlob.includes(w) || tags.some((t) => norm(t).includes(norm(w))))
+      .length >= Math.min(2, titleWords.length)
+
+  const checks: Check[] = [
+    // SEO / Relevanz (Summe Gewichte = 50)
+    { id: 'title', label: 'Titel vorhanden ≤140', ok: regel.titleOk, weight: 6, group: 'seo' },
+    {
+      id: 'frontload',
+      label: 'Primär-Keyword in ersten 50 Zeichen',
+      ok: regel.titleFrontloadOk,
+      weight: 8,
+      group: 'seo',
+    },
+    {
+      id: 'titleLen',
+      label: `Titel Ideal ${ETSY_SEO_TITLE_IDEAL_MIN}–${ETSY_SEO_TITLE_IDEAL_MAX} Zeichen`,
+      ok: regel.titleLengthIdeal,
+      weight: 5,
+      group: 'seo',
+    },
+    { id: 'tags13', label: 'Genau 13 Tags', ok: regel.tagsCountOk, weight: 7, group: 'seo' },
+    { id: 'tagLen', label: 'Tags je ≤20 Zeichen', ok: regel.tagsLengthOk, weight: 4, group: 'seo' },
+    {
+      id: 'longtail',
+      label: 'Long-Tail-Tags (≥8 stark)',
+      ok: regel.tagsLongtailOk && longtailCount >= 8,
+      weight: 8,
+      group: 'seo',
+    },
+    { id: 'stem', label: 'Keine Stemming-Duplikate', ok: regel.tagsStemOk, weight: 4, group: 'seo' },
+    { id: 'attr', label: 'Keine reinen Kategorie/Material-Tags', ok: regel.tagsAttrOk, weight: 3, group: 'seo' },
+    { id: 'exact', label: 'Titel-Keywords in Tags abgedeckt', ok: exactMatchOk, weight: 5, group: 'seo' },
+
+    // GEO (Summe = 30)
+    { id: 'what', label: 'GEO: WAS klar', ok: hasWhat, weight: 8, group: 'geo' },
+    { id: 'who', label: 'GEO: FÜR WEN / VERWENDUNG', ok: hasWho, weight: 8, group: 'geo' },
+    { id: 'occasion', label: 'GEO: ANLASS genannt', ok: hasOccasion, weight: 6, group: 'geo' },
+    { id: 'intro', label: 'GEO-Intro ≥100 Zeichen', ok: introStark, weight: 4, group: 'geo' },
+    { id: 'structure', label: 'Struktur (Holz/Maße/Verwendung)', ok: hasStructure, weight: 2, group: 'geo' },
+    { id: 'descLen', label: 'Beschreibung ausreichend lang', ok: descLang && regel.descriptionOk, weight: 2, group: 'geo' },
+  ]
+
+  if (!hasWhat) geoNotes.push('WAS unklar im Intro/Titel.')
+  if (!hasWho) geoNotes.push('FÜR WEN fehlt (VERWENDUNG / Zielgruppe).')
+  if (!hasOccasion) geoNotes.push('ANLASS fehlt — z. B. Holzhochzeit, Einzug, Geburtstag.')
+  if (!introStark) geoNotes.push('GEO-Intro vor den Detail-Emojis verlängern.')
+
+  // Fotos (Summe = 20) — ohne Daten: Gewichte entfallen, Score nur über SEO+GEO normiert
+  const hasFoto = Boolean(input.fotoCheck)
+  if (input.fotoCheck) {
+    const f = input.fotoCheck
+    checks.push(
+      { id: 'foto1', label: 'Foto: Hauptbild', ok: f.hatHauptbild, weight: 8, group: 'foto' },
+      { id: 'foto2', label: 'Foto: Detail/Maserung', ok: f.hatDetailMaserung, weight: 6, group: 'foto' },
+      { id: 'foto3', label: 'Foto: Maßstab', ok: f.hatMassstab, weight: 6, group: 'foto' },
+    )
+  }
+
+  const sumGroup = (g: Check['group']) => {
+    const list = checks.filter((c) => c.group === g)
+    const max = list.reduce((s, c) => s + c.weight, 0)
+    const got = list.reduce((s, c) => s + (c.ok ? c.weight : 0), 0)
+    return { got, max, score: max > 0 ? Math.round((got / max) * 100) : 0 }
+  }
+
+  const seoPart = sumGroup('seo')
+  const geoPart = sumGroup('geo')
+  const fotoPart = hasFoto ? sumGroup('foto') : null
+
+  const punkteErreicht = checks.reduce((s, c) => s + (c.ok ? c.weight : 0), 0)
+  const punkteMax = checks.reduce((s, c) => s + c.weight, 0)
+  const overall = punkteMax > 0 ? Math.round((punkteErreicht / punkteMax) * 100) : 0
+
+  const limitierer = checks.filter((c) => !c.ok).map((c) => c.label)
+
+  let einschaetzung: string
+  if (overall >= 100) {
+    einschaetzung =
+      'On-Page-Score 100: alle Checks grün. Für Top-Ranking weiter CTR/Shop/Wettbewerb beobachten.'
+  } else if (overall >= 90) {
+    einschaetzung = `Fast perfekt — noch ${limitierer.length} Punkt(e) bis 100.`
+  } else if (overall >= 75) {
+    einschaetzung = 'Gute On-Page-Basis — offene Checks kosten Relevanz.'
+  } else if (overall >= 60) {
+    einschaetzung = 'Mittel: mehrere Ranking-relevante Checks offen.'
   } else {
-    geoNotes.push('ANLASS fehlt — zusammen mit FÜR WEN ergänzen.')
+    einschaetzung = 'Schwach — vor Publish die offenen Checks schließen.'
   }
 
-  if (intro.length >= 80) geo += 4
-  else if (intro.length < 40 && desc.length > 0) {
-    geoNotes.push('Intro vor den Detail-Emojis etwas länger halten (2–3 Sätze).')
+  return {
+    overall,
+    seoScore: seoPart.score,
+    geoScore: geoPart.score,
+    fotoScore: fotoPart ? fotoPart.score : null,
+    regel,
+    geoNotes,
+    einschaetzung,
+    limitierer: limitierer.slice(0, 10),
+    punkteErreicht,
+    punkteMax,
   }
-
-  if (/🪵|📏|✨|verwendung\s*:/i.test(desc)) geo += 4
-  if (desc.length >= 250) geo += 4
-  else if (desc.length < 120) {
-    geo -= 8
-    geoNotes.push('Beschreibung insgesamt sehr kurz.')
-  }
-
-  const geoScore = Math.max(0, Math.min(100, Math.round(geo)))
-  // SEO etwas stärker gewichtet — Marktplatz-Relevanz; GEO als Qualitäts-Bonus
-  const overall = Math.round(0.6 * seoScore + 0.4 * geoScore)
-
-  return { seoScore, geoScore, overall, regel, geoNotes }
 }
 
 /**
@@ -584,7 +694,10 @@ export function haerteEtsyListingFuerScore(input: {
     !/(sammler|geschenk|küche|kueche|obst|deko|tisch|sideboard|verwendung|sammlerstück|obstschale|esstisch)/i.test(
       lower,
     )
-  const needsOccasion = !/(hochzeit|geburtstag|einzug|weihnachten|anlass|geschenk|jubiläum)/i.test(lower)
+  const needsOccasion =
+    !/(hochzeit|holzhochzeit|geburtstag|jubiläum|jubilaeum|einzug|weihnachten|vaterstag|muttertag|\banlass\b)/i.test(
+      lower,
+    )
 
   if (needsWho || needsOccasion) {
     const geoZeile = [

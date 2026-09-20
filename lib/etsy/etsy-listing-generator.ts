@@ -267,6 +267,7 @@ export type EtsyListingOptimizeInput = {
   preisEmpfohlenEur?: number
   preisMaxEur?: number
   preisBegruendung?: string
+  fotoCheck?: EtsyFotoCheck | null
 }
 
 /** SEO/GEO-Nachzieh: bestehender Entwurf + Issues → verbesserte Version (Fotos bleiben Referenz). */
@@ -289,6 +290,7 @@ export async function optimiereEtsyListingTexte(
     materials: basis.holzart ? [basis.holzart] : basis.materials,
     taxonomyId: draft.taxonomyId ?? null,
     taxonomyLabel: draft.taxonomyLabel ?? null,
+    fotoCheck: draft.fotoCheck ?? null,
   })
 
   const issuesBlock =
@@ -298,13 +300,13 @@ export async function optimiereEtsyListingTexte(
 
   const content = [
     'Optimiere den Entwurf. Liefere vollständiges JSON gemäß Schema.',
-    'PFLICHT (sonst ungültig):',
-    '1) Genau 13 Tags, je ≤20 Zeichen. Mindestens 8 davon Long-Tail (2+ Wörter ODER DE-Kompositum ≥8 Zeichen wie „naturrandschale“, „esche holzschale“).',
-    '2) Beschreibung: In den ERSTEN 2–3 Sätzen klar WAS (Produkt+Holz), FÜR WEN (z. B. Obstschale/Sammler/Geschenk/Esstisch) und ANLASS (Holzhochzeit/Einzug/Geburtstag/Geschenk).',
-    '3) Titel: Primär-Keyword in den ersten 50 Zeichen, Ideal 70–120 Zeichen.',
-    '4) Keine Stemming-Duplikate (Schale/Schalen). Keine reinen Einwort-Stops nur „holz“/„schale“.',
-    '5) Fakten (Holzart, Maße, Finish, Preis-Spanne) unverändert lassen — nur SEO/GEO-Formulierung verbessern.',
-    '6) Bestehende starke Formulierungen und Emoji-Struktur behalten, nur Mängel schließen.',
+    'PFLICHT für On-Page-Score 100:',
+    '1) Genau 13 Tags, je ≤20 Zeichen. Mindestens 8 Long-Tail (2+ Wörter oder starkes DE-Kompositum).',
+    '2) Beschreibung: ERSTE 2–3 Sätze mit WAS (Produkt+Holz), FÜR WEN (Obstschale/Sammler/Geschenk/Esstisch) und ANLASS (Holzhochzeit/Einzug/Geburtstag — konkret, nicht nur „Geschenk“).',
+    '3) Titel: Primär-Keyword in den ersten 50 Zeichen, Ideal 70–120 Zeichen, max. 140.',
+    '4) Keine Stemming-Duplikate. Titel-Keywords in Tags abdecken.',
+    '5) Struktur beibehalten: 🪵 📏 ✨ 💎 VERWENDUNG + Pflege.',
+    '6) Fakten (Holzart, Maße, Finish, Preis) unverändert — nur Formulierungen für Score 100.',
     '',
     'Bekannte Mängel:',
     issuesBlock,
@@ -389,6 +391,7 @@ export async function optimiereEtsyListingTexte(
     materials: basis.holzart ? [basis.holzart] : basis.materials,
     taxonomyId: neu.taxonomyId,
     taxonomyLabel: neu.taxonomyLabel,
+    fotoCheck: neu.fotoCheck ?? draft.fotoCheck ?? null,
   })
 
   // Regression verhindern: alten Entwurf behalten, wenn Score nicht steigt
@@ -407,6 +410,7 @@ export async function optimiereEtsyListingTexte(
       materials: basis.holzart ? [basis.holzart] : basis.materials,
       taxonomyId: draft.taxonomyId ?? null,
       taxonomyLabel: draft.taxonomyLabel ?? null,
+      fotoCheck: draft.fotoCheck ?? null,
     })
     // Nimm das bessere aus: gehärteter Alt vs. KI-Neu
     if (altScore.overall >= afterScore.overall) {

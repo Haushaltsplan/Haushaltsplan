@@ -402,8 +402,20 @@ export function EtsyKiAgentClient({
       materials: holzart.trim() ? [holzart.trim()] : undefined,
       taxonomyId: Number(taxonomyId) || draftListing?.taxonomyId,
       taxonomyLabel,
+      fotoCheck: fotoCheck ?? draftListing?.fotoCheck ?? null,
     })
-  }, [schritt, editTitle, editTags, editDescription, holzart, taxonomyId, taxonomyLabel, draftListing?.taxonomyId])
+  }, [
+    schritt,
+    editTitle,
+    editTags,
+    editDescription,
+    holzart,
+    taxonomyId,
+    taxonomyLabel,
+    draftListing?.taxonomyId,
+    draftListing?.fotoCheck,
+    fotoCheck,
+  ])
 
   async function optimiertNeuGenerieren() {
     if (images.length === 0) {
@@ -446,6 +458,7 @@ export function EtsyKiAgentClient({
             preisEmpfohlenEur: preisEmpfohlen,
             preisMaxEur: preisMax,
             preisBegruendung: preisBegruendung,
+            fotoCheck: fotoCheck ?? draftListing?.fotoCheck ?? undefined,
           },
         }),
       })
@@ -740,24 +753,35 @@ export function EtsyKiAgentClient({
               <div className="rounded-xl border border-teal-500/30 bg-teal-500/5 p-3 space-y-2">
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="text-xs font-medium text-[var(--app-text-muted)]">
-                    SEO & GEO (live)
+                    On-Page-Score
                   </span>
                   <span
                     className={`rounded-md px-2 py-0.5 text-xs font-semibold tabular-nums ${scoreBadgeClass(liveScore.overall)}`}
                   >
-                    Gesamt {liveScore.overall}
+                    {liveScore.overall}/100
+                  </span>
+                  <span className="text-[10px] text-[var(--app-text-muted)]">
+                    {liveScore.punkteErreicht}/{liveScore.punkteMax} Pkt
                   </span>
                   <span
                     className={`rounded-md px-2 py-0.5 text-xs font-semibold tabular-nums ${scoreBadgeClass(liveScore.seoScore)}`}
                   >
-                    SEO {liveScore.seoScore}
+                    Relevanz {liveScore.seoScore}
                   </span>
                   <span
                     className={`rounded-md px-2 py-0.5 text-xs font-semibold tabular-nums ${scoreBadgeClass(liveScore.geoScore)}`}
                   >
                     GEO {liveScore.geoScore}
                   </span>
+                  {liveScore.fotoScore != null && (
+                    <span
+                      className={`rounded-md px-2 py-0.5 text-xs font-semibold tabular-nums ${scoreBadgeClass(liveScore.fotoScore)}`}
+                    >
+                      Fotos {liveScore.fotoScore}
+                    </span>
+                  )}
                 </div>
+                <p className="text-xs leading-relaxed text-[var(--app-text)]">{liveScore.einschaetzung}</p>
                 <div className="flex flex-wrap gap-1.5 text-[10px]">
                   {(
                     [
@@ -777,14 +801,26 @@ export function EtsyKiAgentClient({
                     </span>
                   ))}
                 </div>
+                {liveScore.limitierer.length > 0 && (
+                  <div>
+                    <p className="text-[10px] font-medium text-[var(--app-text-muted)]">
+                      Offen bis 100
+                    </p>
+                    <ul className="mt-0.5 space-y-0.5 text-xs text-amber-200/90">
+                      {liveScore.limitierer.map((l) => (
+                        <li key={l}>· {l}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
                 {(liveScore.regel.issues.length > 0 || liveScore.geoNotes.length > 0) && (
                   <ul className="max-h-28 space-y-0.5 overflow-auto text-xs text-[var(--app-text-muted)]">
-                    {liveScore.regel.issues.slice(0, 6).map((i, idx) => (
+                    {liveScore.regel.issues.slice(0, 5).map((i, idx) => (
                       <li key={`r-${idx}`}>
                         [{i.severity}] {i.message}
                       </li>
                     ))}
-                    {liveScore.geoNotes.slice(0, 4).map((n, idx) => (
+                    {liveScore.geoNotes.slice(0, 3).map((n, idx) => (
                       <li key={`g-${idx}`}>{n}</li>
                     ))}
                   </ul>
@@ -795,10 +831,11 @@ export function EtsyKiAgentClient({
                   onClick={() => void optimiertNeuGenerieren()}
                   className="rounded-lg bg-teal-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-teal-600 disabled:opacity-50"
                 >
-                  {busyKind === 'optimize' ? 'Optimiert…' : 'SEO/GEO optimiert neu generieren'}
+                  {busyKind === 'optimize' ? 'Optimiert…' : 'Auf 100 optimieren'}
                 </button>
                 <p className="text-[10px] text-[var(--app-text-muted)]">
-                  Nutzt 1 Free-Gemini-Call · Fakten (Holz/Maße/Preis) bleiben, Mängel werden gezielt behoben.
+                  Wie SEO-Tools: 100 = alle On-Page-Checks grün (Ziel für Ranking-Relevanz). Offen-Liste zeigt
+                  genau, was noch fehlt. 1 Free-Gemini-Call.
                 </p>
               </div>
             )}
