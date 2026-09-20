@@ -4,6 +4,11 @@ import { PageChrome, PageHero, PageSection, PageSectionPanel } from '@/component
 import { compressImageFileForCoach, coachImageDataUrl, type CoachImagePart } from '@/lib/finance-coach-images'
 import { oeffneEtsyOAuthUrl } from '@/lib/etsy/etsy-oauth-open'
 import {
+  berechneEtsyDraftSeoGeoScore,
+  ETSY_SEO_TAG_COUNT,
+  scoreFarbe,
+} from '@/lib/etsy/etsy-seo-regeln'
+import {
   ETSY_DEFAULT_FINISH,
   ETSY_DEFAULT_STANDORT,
   ETSY_DEFAULT_TAXONOMY_ID,
@@ -12,7 +17,7 @@ import {
   type EtsyGeneratedListing,
   type EtsyListingVorlage,
 } from '@/lib/etsy/etsy-types'
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import toast from 'react-hot-toast'
 
 type Status = {
@@ -67,6 +72,7 @@ export function EtsyKiAgentClient({
 
   const [schritt, setSchritt] = useState<Schritt>('aufnahme')
   const [busy, setBusy] = useState(false)
+  const [busyKind, setBusyKind] = useState<'analyse' | 'optimize' | 'draft' | null>(null)
 
   const [editTitle, setEditTitle] = useState('')
   const [editDescription, setEditDescription] = useState('')
@@ -269,6 +275,7 @@ export function EtsyKiAgentClient({
       return
     }
     setBusy(true)
+    setBusyKind('analyse')
     setLastDraft(null)
     try {
       const res = await fetch('/api/etsy/listing/generate', {
@@ -297,6 +304,7 @@ export function EtsyKiAgentClient({
       toast.error(e instanceof Error ? e.message : 'Fehler')
     } finally {
       setBusy(false)
+      setBusyKind(null)
     }
   }
 
@@ -334,6 +342,7 @@ export function EtsyKiAgentClient({
       return
     }
     setBusy(true)
+    setBusyKind('draft')
     try {
       const res = await fetch('/api/etsy/listing/draft', {
         method: 'POST',
@@ -368,6 +377,96 @@ export function EtsyKiAgentClient({
       toast.error(e instanceof Error ? e.message : 'Fehler')
     } finally {
       setBusy(false)
+      setBusyKind(null)
+    }
+  }
+
+  function scoreBadgeClass(score: number) {
+    const f = scoreFarbe(score)
+    if (f === 'rot') return 'bg-rose-500/20 text-rose-300'
+    if (f === 'gelb') return 'bg-amber-500/20 text-amber-300'
+    return 'bg-emerald-500/20 text-emerald-300'
+  }
+
+  const liveScore = useMemo(() => {
+    if (schritt !== 'freigabe') return null
+    const tags = editTags
+      .split(',')
+      .map((t) => t.trim())
+      .filter(Boolean)
+      .slice(0, ETSY_SEO_TAG_COUNT)
+    return berechneEtsyDraftSeoGeoScore({
+      title: editTitle,
+      tags,
+      description: editDescription,
+      materials: holzart.trim() ? [holzart.trim()] : undefined,
+      taxonomyId: Number(taxonomyId) || draftListing?.taxonomyId,
+      taxonomyLabel,
+    })
+  }, [schritt, editTitle, editTags, editDescription, holzart, taxonomyId, taxonomyLabel, draftListing?.taxonomyId])
+
+  async function optimiertNeuGenerieren() {
+    if (images.length === 0) {
+      toast.error('Fotos fehlen für die Neugenerierung.')
+      return
+    }
+    const tags = editTags
+      .split(',')
+      .map((t) => t.trim())
+      .filter(Boolean)
+      .slice(0, ETSY_SEO_TAG_COUNT)
+    const issues = [
+      ...(liveScore?.regel.issues.map((i) => `[${i.severity}] ${i.field}: ${i.message}`) ?? []),
+      ...(liveScore?.geoNotes ?? []),
+    ].slice(0, 16)
+
+    setBusy(true)
+    setBusyKind('optimize')
+    try {
+      const res = await fetch('/api/etsy/listing/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          images,
+          holzart: holzart.trim() || undefined,
+          masse: masse.trim() || undefined,
+          standortText: standortText.trim() || undefined,
+          finishText: finishText.trim() || undefined,
+          optimize: {
+            title: editTitle.trim(),
+            description: editDescription.trim(),
+            tags,
+            produktForm,
+            taxonomyId: Number(taxonomyId) || undefined,
+            taxonomyLabel,
+            warenkorbZusammenfassung: draftListing?.warenkorbZusammenfassung,
+            issues,
+            preisMinEur: preisMin,
+            preisEmpfohlenEur: preisEmpfohlen,
+            preisMaxEur: preisMax,
+            preisBegruendung: preisBegruendung,
+          },
+        }),
+      })
+      const j = (await res.json()) as {
+        error?: string
+        listing?: EtsyGeneratedListing
+        score?: { overall: number; seoScore: number; geoScore: number }
+      }
+      if (!res.ok || !j.listing) {
+        toast.error(j.error ?? 'Optimierung fehlgeschlagen.')
+        return
+      }
+      uebernehmeListing(j.listing)
+      const o = j.score?.overall
+      toast.success(
+        o != null ? `Optimiert · Gesamtscore ${o}/100` : 'Optimierter Entwurf geladen.',
+      )
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Fehler')
+    } finally {
+      setBusy(false)
+      setBusyKind(null)
     }
   }
 
@@ -630,8 +729,77 @@ export function EtsyKiAgentClient({
               Kategorie: {taxonomyLabel} ({taxonomyId})
             </p>
 
+            {liveScore && (
+              <div className="rounded-xl border border-teal-500/30 bg-teal-500/5 p-3 space-y-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-xs font-medium text-[var(--app-text-muted)]">
+                    SEO & GEO (live)
+                  </span>
+                  <span
+                    className={`rounded-md px-2 py-0.5 text-xs font-semibold tabular-nums ${scoreBadgeClass(liveScore.overall)}`}
+                  >
+                    Gesamt {liveScore.overall}
+                  </span>
+                  <span
+                    className={`rounded-md px-2 py-0.5 text-xs font-semibold tabular-nums ${scoreBadgeClass(liveScore.seoScore)}`}
+                  >
+                    SEO {liveScore.seoScore}
+                  </span>
+                  <span
+                    className={`rounded-md px-2 py-0.5 text-xs font-semibold tabular-nums ${scoreBadgeClass(liveScore.geoScore)}`}
+                  >
+                    GEO {liveScore.geoScore}
+                  </span>
+                </div>
+                <div className="flex flex-wrap gap-1.5 text-[10px]">
+                  {(
+                    [
+                      ['Front-Load', liveScore.regel.titleFrontloadOk],
+                      ['Titel-Länge', liveScore.regel.titleLengthIdeal],
+                      ['13 Tags', liveScore.regel.tagsCountOk],
+                      ['Long-Tail', liveScore.regel.tagsLongtailOk],
+                      ['Stemming', liveScore.regel.tagsStemOk],
+                      ['Attr', liveScore.regel.tagsAttrOk],
+                    ] as const
+                  ).map(([label, ok]) => (
+                    <span
+                      key={label}
+                      className={`rounded px-1.5 py-0.5 ${ok ? 'bg-emerald-500/15 text-emerald-300' : 'bg-rose-500/15 text-rose-300'}`}
+                    >
+                      {label}
+                    </span>
+                  ))}
+                </div>
+                {(liveScore.regel.issues.length > 0 || liveScore.geoNotes.length > 0) && (
+                  <ul className="max-h-28 space-y-0.5 overflow-auto text-xs text-[var(--app-text-muted)]">
+                    {liveScore.regel.issues.slice(0, 6).map((i, idx) => (
+                      <li key={`r-${idx}`}>
+                        [{i.severity}] {i.message}
+                      </li>
+                    ))}
+                    {liveScore.geoNotes.slice(0, 4).map((n, idx) => (
+                      <li key={`g-${idx}`}>{n}</li>
+                    ))}
+                  </ul>
+                )}
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => void optimiertNeuGenerieren()}
+                  className="rounded-lg bg-teal-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-teal-600 disabled:opacity-50"
+                >
+                  {busyKind === 'optimize' ? 'Optimiert…' : 'SEO/GEO optimiert neu generieren'}
+                </button>
+                <p className="text-[10px] text-[var(--app-text-muted)]">
+                  Nutzt 1 Free-Gemini-Call · Fakten (Holz/Maße/Preis) bleiben, Mängel werden gezielt behoben.
+                </p>
+              </div>
+            )}
+
             <label className="block text-sm">
-              <span className="mb-1 block text-xs text-[var(--app-text-muted)]">Titel</span>
+              <span className="mb-1 block text-xs text-[var(--app-text-muted)]">
+                Titel ({editTitle.length}/140)
+              </span>
               <input
                 value={editTitle}
                 onChange={(e) => setEditTitle(e.target.value)}
@@ -684,7 +852,7 @@ export function EtsyKiAgentClient({
                 onClick={() => void draftAnlegen()}
                 className="rounded-xl bg-amber-600 px-4 py-2 text-sm font-medium text-white hover:bg-amber-500 disabled:opacity-50"
               >
-                {busy ? 'Lädt hoch…' : 'Freigeben → Draft auf Etsy'}
+                {busyKind === 'draft' ? 'Lädt hoch…' : 'Freigeben → Draft auf Etsy'}
               </button>
             </div>
           </PageSectionPanel>

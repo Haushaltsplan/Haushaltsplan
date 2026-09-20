@@ -395,3 +395,72 @@ export function scoreFarbe(score: number): 'rot' | 'gelb' | 'gruen' {
   if (score < 80) return 'gelb'
   return 'gruen'
 }
+
+/** Live-Score für KI-Agent Schritt 2 (ohne Gemini) — SEO-Regeln + GEO-Heuristik. */
+export type EtsyDraftSeoGeoScore = {
+  seoScore: number
+  geoScore: number
+  overall: number
+  regel: EtsySeoRegelReport
+  geoNotes: string[]
+}
+
+export function berechneEtsyDraftSeoGeoScore(input: {
+  title: string
+  tags: string[]
+  description: string
+  materials?: string[]
+  taxonomyId?: number | null
+  taxonomyLabel?: string | null
+}): EtsyDraftSeoGeoScore {
+  const regel = pruefeEtsySeoRegeln(input)
+  const seoScore = Math.max(0, Math.min(100, 100 - regel.scorePenalty))
+
+  const desc = (input.description || '').trim()
+  const lower = desc.toLowerCase()
+  const geoNotes: string[] = []
+  let geo = 100
+
+  // GEO: erste ~400 Zeichen / Text vor Detail-Emojis
+  const cutEmoji = desc.search(/\n[🪵📏✨💎🧼🚫🌻]/)
+  const intro = (cutEmoji > 40 ? desc.slice(0, cutEmoji) : desc.slice(0, 400)).trim()
+  if (intro.length < 80) {
+    geo -= 18
+    geoNotes.push('GEO-Intro zu kurz — WAS/FÜR WEN/ANLASS in den ersten Sätzen klären.')
+  }
+
+  const hasWhat =
+    /\b(schale|schüssel|dose|vase|teller|stab|unikat|holz|esche|eiche|ahorn|walnuss|handgedreht|gedreht)\b/i.test(
+      intro,
+    )
+  if (!hasWhat) {
+    geo -= 20
+    geoNotes.push('WAS unklar: Produkt/Holzart fehlt im Intro.')
+  }
+
+  const hasWho =
+    /\b(sammler|geschenk|küche|kueche|obst|deko|tisch|sideboard|galerie|wohn|einzug)\b/i.test(lower)
+  if (!hasWho) {
+    geo -= 16
+    geoNotes.push('FÜR WEN unklar: Zielgruppe/Verwendung fehlt.')
+  }
+
+  const hasOccasion =
+    /\b(hochzeit|holzhochzeit|geburtstag|jubiläum|jubilaeum|einzug|weihnachten|vaterstag|muttertag|anlass)\b/i.test(
+      lower,
+    )
+  if (!hasOccasion) {
+    geo -= 10
+    geoNotes.push('ANLASS fehlt (optional, aber GEO-stärker mit Anlass).')
+  }
+
+  if (desc.length < 200) {
+    geo -= 12
+    geoNotes.push('Beschreibung insgesamt sehr kurz.')
+  }
+
+  const geoScore = Math.max(0, Math.min(100, Math.round(geo)))
+  const overall = Math.round(0.55 * seoScore + 0.45 * geoScore)
+
+  return { seoScore, geoScore, overall, regel, geoNotes }
+}

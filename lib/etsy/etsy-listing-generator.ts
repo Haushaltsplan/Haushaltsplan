@@ -249,3 +249,93 @@ export async function generiereEtsyListingTexte(
   if (!parsed) throw new Error('KI-Antwort war kein gültiges JSON.')
   return validiereListing(parsed, images.length)
 }
+
+export type EtsyListingOptimizeInput = {
+  title: string
+  description: string
+  tags: string[]
+  produktForm?: string
+  taxonomyId?: number
+  taxonomyLabel?: string
+  warenkorbZusammenfassung?: string
+  issues: string[]
+  preisMinEur?: number
+  preisEmpfohlenEur?: number
+  preisMaxEur?: number
+  preisBegruendung?: string
+}
+
+/** SEO/GEO-Nachzieh: bestehender Entwurf + Issues → verbesserte Version (Fotos bleiben Referenz). */
+export async function optimiereEtsyListingTexte(
+  images: CoachImagePart[],
+  basis: EtsyListingBasis,
+  draft: EtsyListingOptimizeInput,
+): Promise<EtsyGeneratedListing> {
+  if (images.length === 0) throw new Error('Mindestens ein Produktfoto ist erforderlich.')
+
+  const resolved = resolveGeminiFreeTierProvider()
+  if (!resolved) {
+    throw new Error('GEMINI_API_KEY_FREE fehlt — der Etsy-Agent nutzt nur den Free-Tier-Key.')
+  }
+
+  const issuesBlock =
+    draft.issues.length > 0
+      ? draft.issues.map((i) => `- ${i}`).join('\n')
+      : '- Score verbessern: Front-Load, Long-Tail-Tags, GEO-Intro (WAS/FÜR WEN/ANLASS).'
+
+  const content = [
+    'Optimiere diesen Etsy-Listing-Entwurf für SEO + GEO. Liefere vollständiges JSON (Schema).',
+    'Fakten aus Fotos/Nutzerdaten und aktuellem Entwurf beibehalten (Holzart, Maße, Finish, Preis-Logik).',
+    'Behebe gezielt diese Mängel:',
+    issuesBlock,
+    '',
+    '--- AKTUELLER ENTWURF ---',
+    `title: ${draft.title}`,
+    `tags (${draft.tags.length}): ${draft.tags.join(', ')}`,
+    `produktForm: ${draft.produktForm || ''}`,
+    `taxonomyId: ${draft.taxonomyId ?? ''}`,
+    `taxonomyLabel: ${draft.taxonomyLabel || ''}`,
+    draft.warenkorbZusammenfassung
+      ? `warenkorbZusammenfassung: ${draft.warenkorbZusammenfassung}`
+      : '',
+    draft.preisEmpfohlenEur != null
+      ? `Preis-Hinweis Min/Empfohlen/Max: ${draft.preisMinEur}/${draft.preisEmpfohlenEur}/${draft.preisMaxEur}`
+      : '',
+    '--- BESCHREIBUNG ---',
+    draft.description.slice(0, 10000),
+    '',
+    baueUserPrompt(basis),
+  ]
+    .filter(Boolean)
+    .join('\n')
+
+  const messages: CoachMessage[] = [
+    {
+      role: 'user',
+      content,
+      images: images.slice(0, 8),
+    },
+  ]
+
+  const result = await runCoachCompletion(
+    'gemini',
+    resolved.apiKey,
+    buildEtsyListingSystemPrompt({
+      standortText: basis.standortText,
+      finishText: basis.finishText,
+    }),
+    messages,
+    {
+      temperature: 0.35,
+      geminiForceFreeApiKey: true,
+      thinkingMinimal: true,
+      maxOutputTokens: 4096,
+      jsonResponse: { schema: ETSY_LISTING_JSON_SCHEMA },
+    },
+  )
+
+  if (!result.ok) throw new Error(result.hint || 'SEO-Optimierung fehlgeschlagen.')
+  const parsed = parseJsonObject(result.reply)
+  if (!parsed) throw new Error('Optimierungs-Antwort war kein gültiges JSON.')
+  return validiereListing(parsed, images.length)
+}

@@ -1,4 +1,8 @@
-import { generiereEtsyListingTexte } from '@/lib/etsy/etsy-listing-generator'
+import {
+  generiereEtsyListingTexte,
+  optimiereEtsyListingTexte,
+} from '@/lib/etsy/etsy-listing-generator'
+import { berechneEtsyDraftSeoGeoScore } from '@/lib/etsy/etsy-seo-regeln'
 import { ladeEtsyVorlage } from '@/lib/etsy/etsy-vorlage-historie'
 import type { EtsyListingBasis } from '@/lib/etsy/etsy-types'
 import { COACH_IMAGE_MIME, type CoachImagePart } from '@/lib/finance-coach-images'
@@ -9,6 +13,21 @@ export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 export const maxDuration = 120
 
+type OptimizeBody = {
+  title: string
+  description: string
+  tags: string[]
+  produktForm?: string
+  taxonomyId?: number
+  taxonomyLabel?: string
+  warenkorbZusammenfassung?: string
+  issues?: string[]
+  preisMinEur?: number
+  preisEmpfohlenEur?: number
+  preisMaxEur?: number
+  preisBegruendung?: string
+}
+
 type Body = {
   images?: Array<{ mimeType?: string; base64?: string }>
   holzart?: string
@@ -17,6 +36,8 @@ type Body = {
   materials?: string[]
   standortText?: string
   finishText?: string
+  /** Wenn gesetzt: SEO/GEO-Nachoptimierung statt Frischgenerierung. */
+  optimize?: OptimizeBody
 }
 
 function parseImages(raw: Body['images']): CoachImagePart[] {
@@ -33,7 +54,25 @@ function parseImages(raw: Body['images']): CoachImagePart[] {
   return out
 }
 
-/** Schritt 1: KI-Analyse + Entwurf (kein Etsy-Upload). */
+function scoreFuerListing(listing: {
+  title: string
+  tags: string[]
+  description: string
+  taxonomyId: number
+  taxonomyLabel: string
+  materials?: string[]
+}) {
+  return berechneEtsyDraftSeoGeoScore({
+    title: listing.title,
+    tags: listing.tags,
+    description: listing.description,
+    materials: listing.materials,
+    taxonomyId: listing.taxonomyId,
+    taxonomyLabel: listing.taxonomyLabel,
+  })
+}
+
+/** Schritt 1: KI-Analyse + Entwurf (kein Etsy-Upload). Optional: optimize. */
 export async function POST(req: Request) {
   const sb = createSupabaseFuerRequest(req)
   if (!sb) return NextResponse.json({ error: 'Anmeldung erforderlich.' }, { status: 401 })
@@ -58,11 +97,17 @@ export async function POST(req: Request) {
   try {
     const vorlage = await ladeEtsyVorlage(user.id)
     const preisRoh = Number(body.preisEur)
+    const materials = Array.isArray(body.materials)
+      ? body.materials.map(String)
+      : body.holzart?.trim()
+        ? [body.holzart.trim()]
+        : undefined
+
     const basis: EtsyListingBasis = {
       holzart: typeof body.holzart === 'string' ? body.holzart : undefined,
       masse: typeof body.masse === 'string' ? body.masse : undefined,
       preisEur: Number.isFinite(preisRoh) && preisRoh > 0 ? preisRoh : undefined,
-      materials: Array.isArray(body.materials) ? body.materials.map(String) : undefined,
+      materials,
       standortText:
         typeof body.standortText === 'string' && body.standortText.trim()
           ? body.standortText.trim()
@@ -76,8 +121,44 @@ export async function POST(req: Request) {
       taxonomyId: vorlage.taxonomyId ?? undefined,
     }
 
-    const listing = await generiereEtsyListingTexte(images, basis)
-    return NextResponse.json({ ok: true, listing, vorlage })
+    const listing =
+      body.optimize?.title && body.optimize.description
+        ? await optimiereEtsyListingTexte(images, basis, {
+            title: String(body.optimize.title),
+            description: String(body.optimize.description),
+            tags: Array.isArray(body.optimize.tags) ? body.optimize.tags.map(String) : [],
+            produktForm: body.optimize.produktForm,
+            taxonomyId: body.optimize.taxonomyId,
+            taxonomyLabel: body.optimize.taxonomyLabel,
+            warenkorbZusammenfassung: body.optimize.warenkorbZusammenfassung,
+            issues: Array.isArray(body.optimize.issues)
+              ? body.optimize.issues.map(String).slice(0, 20)
+              : [],
+            preisMinEur: body.optimize.preisMinEur,
+            preisEmpfohlenEur: body.optimize.preisEmpfohlenEur,
+            preisMaxEur: body.optimize.preisMaxEur,
+            preisBegruendung: body.optimize.preisBegruendung,
+          })
+        : await generiereEtsyListingTexte(images, basis)
+
+    const score = scoreFuerListing({
+      ...listing,
+      materials: materials ?? (basis.holzart ? [basis.holzart] : undefined),
+    })
+
+    return NextResponse.json({
+      ok: true,
+      listing,
+      vorlage,
+      score: {
+        seoScore: score.seoScore,
+        geoScore: score.geoScore,
+        overall: score.overall,
+        issues: score.regel.issues,
+        geoNotes: score.geoNotes,
+      },
+      optimized: Boolean(body.optimize),
+    })
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'Generierung fehlgeschlagen'
     console.error('[etsy generate]', msg)
