@@ -570,14 +570,19 @@ export function berechneEtsyDraftSeoGeoScore(input: {
   if (!hasOccasion) geoNotes.push('ANLASS fehlt — z. B. Holzhochzeit, Einzug, Geburtstag.')
   if (!introStark) geoNotes.push('GEO-Intro vor den Detail-Emojis verlängern.')
 
-  // Fotos (Summe = 20) — ohne Daten: Gewichte entfallen, Score nur über SEO+GEO normiert
+  // Fotos (Summe = 20) — nur Hauptbild + Detail (kein Maßstab: wirkt oft störend auf Unikat-Fotos)
   const hasFoto = Boolean(input.fotoCheck)
   if (input.fotoCheck) {
     const f = input.fotoCheck
     checks.push(
-      { id: 'foto1', label: 'Foto: Hauptbild', ok: f.hatHauptbild, weight: 8, group: 'foto' },
-      { id: 'foto2', label: 'Foto: Detail/Maserung', ok: f.hatDetailMaserung, weight: 6, group: 'foto' },
-      { id: 'foto3', label: 'Foto: Maßstab', ok: f.hatMassstab, weight: 6, group: 'foto' },
+      { id: 'foto1', label: 'Foto: Hauptbild', ok: f.hatHauptbild, weight: 10, group: 'foto' },
+      {
+        id: 'foto2',
+        label: 'Foto: Detail/Maserung',
+        ok: f.hatDetailMaserung,
+        weight: 10,
+        group: 'foto',
+      },
     )
   }
 
@@ -599,11 +604,12 @@ export function berechneEtsyDraftSeoGeoScore(input: {
   const limitierer = checks.filter((c) => !c.ok).map((c) => c.label)
 
   let einschaetzung: string
+  const offen = limitierer.length
   if (overall >= 100) {
     einschaetzung =
-      'On-Page-Score 100: alle Checks grün. Für Top-Ranking weiter CTR/Shop/Wettbewerb beobachten.'
+      'SEO-Score 100: alle On-Page-Checks grün. Für Top-Ranking weiter CTR/Shop/Wettbewerb beobachten.'
   } else if (overall >= 90) {
-    einschaetzung = `Fast perfekt — noch ${limitierer.length} Punkt(e) bis 100.`
+    einschaetzung = `Fast perfekt — noch ${offen} Check${offen === 1 ? '' : 's'} offen (${punkteMax - punkteErreicht} Pkt bis 100).`
   } else if (overall >= 75) {
     einschaetzung = 'Gute On-Page-Basis — offene Checks kosten Relevanz.'
   } else if (overall >= 60) {

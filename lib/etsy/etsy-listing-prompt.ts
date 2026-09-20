@@ -21,7 +21,7 @@ BILDANALYSE (PRIORITÄT):
 - Form / Produkttyp: Schale, Dose/Behälter, Stab/Skulptur, Teller, Vase o. Ä.
 - Merkmale: Asteinschlüsse, Risse, Naturränder oder Fehlstellen als Qualitätsmerkmal.
 - Fehlende Maße: [MASSE EINFÜGEN].
-- FOTO-ROLLEN prüfen (wichtig für Conversion): Gibt es (1) ein klares Haupt-/Gesamtbild, (2) ein Detailfoto der Maserung/Oberfläche, (3) einen Maßstab (Hand, Münze, Lineal, bekannter Gegenstand)? Setze die Flags und liste fehlende Rollen als Warnungen.
+- FOTO-ROLLEN prüfen: (1) klares Haupt-/Gesamtbild, (2) Detailfoto Maserung/Oberfläche. Maßstab (Hand/Münze) ist OPTIONAL — für Unikate oft unnötig, Flag nur setzen wenn klar erkennbar, keine Warnung wenn fehlend.
 
 NUTZERDATEN HABEN VORRANG: Holzart/Maße/Finish vom Nutzer überschreiben die Vision.
 

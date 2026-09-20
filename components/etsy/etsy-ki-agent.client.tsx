@@ -12,6 +12,7 @@ import {
   ETSY_DEFAULT_FINISH,
   ETSY_DEFAULT_STANDORT,
   ETSY_DEFAULT_TAXONOMY_ID,
+  filterFotoWarnungen,
   type EtsyDraftHistorieEintrag,
   type EtsyFotoCheck,
   type EtsyGeneratedListing,
@@ -265,7 +266,10 @@ export function EtsyKiAgentClient({
     setTaxonomyId(String(listing.taxonomyId))
     setTaxonomyLabel(listing.taxonomyLabel)
     setProduktForm(listing.produktForm)
-    setFotoCheck(listing.fotoCheck)
+    setFotoCheck({
+      ...listing.fotoCheck,
+      warnungen: filterFotoWarnungen(listing.fotoCheck.warnungen),
+    })
     setSchritt('freigabe')
   }
 
@@ -295,8 +299,10 @@ export function EtsyKiAgentClient({
         return
       }
       uebernehmeListing(j.listing)
-      if (j.listing.fotoCheck.warnungen.length) {
-        toast(`Foto-Hinweise: ${j.listing.fotoCheck.warnungen.length}`, { icon: '📷' })
+      if (filterFotoWarnungen(j.listing.fotoCheck.warnungen).length) {
+        toast(`Foto-Hinweise: ${filterFotoWarnungen(j.listing.fotoCheck.warnungen).length}`, {
+          icon: '📷',
+        })
       } else {
         toast.success('Entwurf bereit — bitte prüfen und freigeben.')
       }
@@ -695,11 +701,11 @@ export function EtsyKiAgentClient({
       {schritt === 'freigabe' && draftListing && (
         <PageSection titleId="etsy-step2" title="Schritt 2 · Nachbearbeitung & Freigabe">
           <PageSectionPanel density="compact" className="space-y-4">
-            {fotoCheck && fotoCheck.warnungen.length > 0 && (
+            {fotoCheck && filterFotoWarnungen(fotoCheck.warnungen).length > 0 && (
               <div className="rounded-xl border border-amber-500/40 bg-amber-500/10 p-3 text-sm">
                 <p className="font-medium text-[var(--app-text)]">Foto-Hinweise</p>
                 <ul className="mt-1 list-disc space-y-0.5 pl-5 text-[var(--app-text-muted)]">
-                  {fotoCheck.warnungen.map((w) => (
+                  {filterFotoWarnungen(fotoCheck.warnungen).map((w) => (
                     <li key={w}>{w}</li>
                   ))}
                 </ul>
@@ -753,7 +759,7 @@ export function EtsyKiAgentClient({
               <div className="rounded-xl border border-teal-500/30 bg-teal-500/5 p-3 space-y-2">
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="text-xs font-medium text-[var(--app-text-muted)]">
-                    On-Page-Score
+                    SEO-Score
                   </span>
                   <span
                     className={`rounded-md px-2 py-0.5 text-xs font-semibold tabular-nums ${scoreBadgeClass(liveScore.overall)}`}
@@ -834,8 +840,8 @@ export function EtsyKiAgentClient({
                   {busyKind === 'optimize' ? 'Optimiert…' : 'Auf 100 optimieren'}
                 </button>
                 <p className="text-[10px] text-[var(--app-text-muted)]">
-                  Wie SEO-Tools: 100 = alle On-Page-Checks grün (Ziel für Ranking-Relevanz). Offen-Liste zeigt
-                  genau, was noch fehlt. 1 Free-Gemini-Call.
+                  SEO-Score = On-Page-Checklist (Relevanz + GEO + Fotos Haupt/Detail). 100 = alles grün.
+                  Maßstab-Fotos sind optional und zählen nicht. 1 Free-Gemini-Call.
                 </p>
               </div>
             )}

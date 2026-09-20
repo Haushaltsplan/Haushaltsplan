@@ -13,6 +13,8 @@ import {
 import {
   ETSY_DEFAULT_TAXONOMY_ID,
   ETSY_FORM_TAXONOMY,
+  filterFotoWarnungen,
+  istMassstabHinweis,
   type EtsyFotoCheck,
   type EtsyGeneratedListing,
   type EtsyListingBasis,
@@ -125,20 +127,19 @@ function normalisiereFotoCheck(raw: unknown, imageCount: number): EtsyFotoCheck 
   if (Array.isArray(o.warnungen)) {
     for (const w of o.warnungen) {
       const s = String(w || '').trim()
-      if (s) warnungen.push(s.slice(0, 200))
+      if (s && !istMassstabHinweis(s)) warnungen.push(s.slice(0, 200))
     }
   }
   if (!hatHauptbild) warnungen.push('Kein klares Haupt-/Gesamtbild erkannt.')
   if (!hatDetailMaserung) warnungen.push('Detailfoto der Maserung/Oberfläche fehlt oder unklar.')
-  if (!hatMassstab) warnungen.push('Maßstab fehlt (Hand, Münze oder Lineal empfohlen).')
-  if (imageCount < 3) {
-    warnungen.push(`Nur ${imageCount} Foto(s) — ideal: Hauptbild + Detail + Maßstab.`)
+  if (imageCount < 2) {
+    warnungen.push(`Nur ${imageCount} Foto — ideal: Hauptbild + Detail der Maserung.`)
   }
   return {
     hatHauptbild,
     hatDetailMaserung,
     hatMassstab,
-    warnungen: [...new Set(warnungen)].slice(0, 8),
+    warnungen: filterFotoWarnungen([...new Set(warnungen)]).slice(0, 8),
   }
 }
 
@@ -197,7 +198,7 @@ function baueUserPrompt(basis: EtsyListingBasis): string {
   const zeilen = [
     'Erstelle ein Etsy-Listing (JSON) für dieses handgedrechselte Holzprodukt.',
     'Kapazität ~50 Unikate/Jahr — Preisspanne marktfähig und verkaufbar (weder Dumping noch Ladenhüter).',
-    'Prüfe Foto-Rollen: Hauptbild, Detail Maserung, Maßstab.',
+    'Prüfe Foto-Rollen: Hauptbild, Detail Maserung (Maßstab optional, keine Warnung).',
   ]
   if (basis.preisEur != null && basis.preisEur > 0) {
     zeilen.push(`Nutzer-Wunschpreis (Hinweis): ${basis.preisEur} €`)

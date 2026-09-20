@@ -65,6 +65,17 @@ export type EtsyFotoCheck = {
   warnungen: string[]
 }
 
+/** Maßstab-Hinweise filtern (optional — oft unschön auf Unikat-Fotos). */
+export function istMassstabHinweis(text: string): boolean {
+  return /maßstab|massstab|lineal|\bmünze\b|\bmuenze\b|apfel in der|größe von \d|groesse von \d|visuell.*(?:größe|groesse|erfassbar)|hand, münze|hand, muenze/i.test(
+    text,
+  )
+}
+
+export function filterFotoWarnungen(warnungen: string[]): string[] {
+  return warnungen.filter((w) => w.trim() && !istMassstabHinweis(w))
+}
+
 export type EtsyGeneratedListing = {
   title: string
   description: string
