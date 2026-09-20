@@ -410,6 +410,7 @@ export function EtsyKiAgentClient({
       toast.error('Fotos fehlen für die Neugenerierung.')
       return
     }
+    const scoreVorher = liveScore?.overall ?? 0
     const tags = editTags
       .split(',')
       .map((t) => t.trim())
@@ -459,9 +460,15 @@ export function EtsyKiAgentClient({
       }
       uebernehmeListing(j.listing)
       const o = j.score?.overall
-      toast.success(
-        o != null ? `Optimiert · Gesamtscore ${o}/100` : 'Optimierter Entwurf geladen.',
-      )
+      if (o != null && o > scoreVorher) {
+        toast.success(`Score ${scoreVorher} → ${o}`)
+      } else if (o != null && o === scoreVorher) {
+        toast.success(`Score gehalten (${o}) — Entwurf gehärtet`)
+      } else if (o != null) {
+        toast(`Score ${scoreVorher} → ${o} — bessere Variante gewählt`, { icon: '↩️' })
+      } else {
+        toast.success('Optimierter Entwurf geladen.')
+      }
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Fehler')
     } finally {

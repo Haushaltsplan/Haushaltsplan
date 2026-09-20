@@ -34,15 +34,15 @@ Trenner: | . Keine Emojis im Titel.
 - Keine Füllwörter vorne (beautiful, amazing, wunderbar, traumhaft).
 
 2. PRODUKTBESCHREIBUNG
-- Sachliche Einleitung zur Beschaffenheit.
-- Prozess: Rohling vordrechseln → ca. 1 Jahr kontrollierte Lufttrocknung → finale Formgebung → Finish.
+- GEO zuerst (2–3 Sätze): WAS (Produkt, Unikat, Holzart) · FÜR WEN (z. B. Obstschale, Sammler, Geschenk, Esstisch/Sideboard) · optional ANLASS (Holzhochzeit, Einzug, Geburtstag).
+- Dann Prozess: Rohling vordrechseln → ca. 1 Jahr kontrollierte Lufttrocknung → finale Formgebung → Finish.
 - Finish-Text (verbindlich, wenn vom Nutzer vorgegeben): ${finish}
 - Details — neue Zeile VOR jedem Emoji:
 🪵 HOLZART: …
 📏 MASSE: …
 ✨ FINISH: …
 💎 CHARAKTER: …
-VERWENDUNG: …
+VERWENDUNG: … (Zielgruppe/Ort klar, mind. ein konkreter Nutzen)
 - Pflege — neue Zeile vor jedem Emoji:
 🧼 Nur feucht abwischen.
 🚫 Nicht für Spülmaschine oder Einweichen geeignet.

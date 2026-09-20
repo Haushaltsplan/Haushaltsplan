@@ -7,6 +7,10 @@ import {
   ETSY_LISTING_JSON_SCHEMA,
 } from '@/lib/etsy/etsy-listing-prompt'
 import {
+  berechneEtsyDraftSeoGeoScore,
+  haerteEtsyListingFuerScore,
+} from '@/lib/etsy/etsy-seo-regeln'
+import {
   ETSY_DEFAULT_TAXONOMY_ID,
   ETSY_FORM_TAXONOMY,
   type EtsyFotoCheck,
@@ -278,15 +282,31 @@ export async function optimiereEtsyListingTexte(
     throw new Error('GEMINI_API_KEY_FREE fehlt — der Etsy-Agent nutzt nur den Free-Tier-Key.')
   }
 
+  const beforeScore = berechneEtsyDraftSeoGeoScore({
+    title: draft.title,
+    tags: draft.tags,
+    description: draft.description,
+    materials: basis.holzart ? [basis.holzart] : basis.materials,
+    taxonomyId: draft.taxonomyId ?? null,
+    taxonomyLabel: draft.taxonomyLabel ?? null,
+  })
+
   const issuesBlock =
     draft.issues.length > 0
       ? draft.issues.map((i) => `- ${i}`).join('\n')
-      : '- Score verbessern: Front-Load, Long-Tail-Tags, GEO-Intro (WAS/FÜR WEN/ANLASS).'
+      : '- Score verbessern: Long-Tail-Tags, GEO (FÜR WEN + ANLASS).'
 
   const content = [
-    'Optimiere diesen Etsy-Listing-Entwurf für SEO + GEO. Liefere vollständiges JSON (Schema).',
-    'Fakten aus Fotos/Nutzerdaten und aktuellem Entwurf beibehalten (Holzart, Maße, Finish, Preis-Logik).',
-    'Behebe gezielt diese Mängel:',
+    'Optimiere den Entwurf. Liefere vollständiges JSON gemäß Schema.',
+    'PFLICHT (sonst ungültig):',
+    '1) Genau 13 Tags, je ≤20 Zeichen. Mindestens 8 davon Long-Tail (2+ Wörter ODER DE-Kompositum ≥8 Zeichen wie „naturrandschale“, „esche holzschale“).',
+    '2) Beschreibung: In den ERSTEN 2–3 Sätzen klar WAS (Produkt+Holz), FÜR WEN (z. B. Obstschale/Sammler/Geschenk/Esstisch) und ANLASS (Holzhochzeit/Einzug/Geburtstag/Geschenk).',
+    '3) Titel: Primär-Keyword in den ersten 50 Zeichen, Ideal 70–120 Zeichen.',
+    '4) Keine Stemming-Duplikate (Schale/Schalen). Keine reinen Einwort-Stops nur „holz“/„schale“.',
+    '5) Fakten (Holzart, Maße, Finish, Preis-Spanne) unverändert lassen — nur SEO/GEO-Formulierung verbessern.',
+    '6) Bestehende starke Formulierungen und Emoji-Struktur behalten, nur Mängel schließen.',
+    '',
+    'Bekannte Mängel:',
     issuesBlock,
     '',
     '--- AKTUELLER ENTWURF ---',
@@ -299,12 +319,14 @@ export async function optimiereEtsyListingTexte(
       ? `warenkorbZusammenfassung: ${draft.warenkorbZusammenfassung}`
       : '',
     draft.preisEmpfohlenEur != null
-      ? `Preis-Hinweis Min/Empfohlen/Max: ${draft.preisMinEur}/${draft.preisEmpfohlenEur}/${draft.preisMaxEur}`
+      ? `Preis Min/Empfohlen/Max: ${draft.preisMinEur}/${draft.preisEmpfohlenEur}/${draft.preisMaxEur}`
       : '',
+    draft.preisBegruendung ? `preisBegruendung: ${draft.preisBegruendung}` : '',
     '--- BESCHREIBUNG ---',
     draft.description.slice(0, 10000),
-    '',
-    baueUserPrompt(basis),
+    basis.holzart?.trim() ? `Holzart (verbindlich): ${basis.holzart.trim()}` : '',
+    basis.masse?.trim() ? `Maße (verbindlich): ${basis.masse.trim()}` : '',
+    basis.finishText?.trim() ? `Finish (verbindlich): ${basis.finishText.trim()}` : '',
   ]
     .filter(Boolean)
     .join('\n')
@@ -326,7 +348,7 @@ export async function optimiereEtsyListingTexte(
     }),
     messages,
     {
-      temperature: 0.35,
+      temperature: 0.25,
       geminiForceFreeApiKey: true,
       thinkingMinimal: true,
       maxOutputTokens: 4096,
@@ -337,5 +359,74 @@ export async function optimiereEtsyListingTexte(
   if (!result.ok) throw new Error(result.hint || 'SEO-Optimierung fehlgeschlagen.')
   const parsed = parseJsonObject(result.reply)
   if (!parsed) throw new Error('Optimierungs-Antwort war kein gültiges JSON.')
-  return validiereListing(parsed, images.length)
+
+  let neu = validiereListing(parsed, images.length)
+
+  // Deterministisch nachhärten (Tags/GEO), dann Score-Gate gegen Vorversion
+  const gehaertet = haerteEtsyListingFuerScore({
+    title: neu.title,
+    tags: neu.tags,
+    description: neu.description,
+    holzart: basis.holzart,
+    produktForm: neu.produktForm || draft.produktForm,
+  })
+  neu = {
+    ...neu,
+    title: gehaertet.title,
+    tags: gehaertet.tags,
+    description: gehaertet.description,
+    // Preis aus Entwurf behalten, wenn KI abweicht
+    preisMinEur: draft.preisMinEur ?? neu.preisMinEur,
+    preisEmpfohlenEur: draft.preisEmpfohlenEur ?? neu.preisEmpfohlenEur,
+    preisMaxEur: draft.preisMaxEur ?? neu.preisMaxEur,
+    preisBegruendung: draft.preisBegruendung || neu.preisBegruendung,
+  }
+
+  const afterScore = berechneEtsyDraftSeoGeoScore({
+    title: neu.title,
+    tags: neu.tags,
+    description: neu.description,
+    materials: basis.holzart ? [basis.holzart] : basis.materials,
+    taxonomyId: neu.taxonomyId,
+    taxonomyLabel: neu.taxonomyLabel,
+  })
+
+  // Regression verhindern: alten Entwurf behalten, wenn Score nicht steigt
+  if (afterScore.overall < beforeScore.overall) {
+    const altGehaertet = haerteEtsyListingFuerScore({
+      title: draft.title,
+      tags: draft.tags,
+      description: draft.description,
+      holzart: basis.holzart,
+      produktForm: draft.produktForm,
+    })
+    const altScore = berechneEtsyDraftSeoGeoScore({
+      title: altGehaertet.title,
+      tags: altGehaertet.tags,
+      description: altGehaertet.description,
+      materials: basis.holzart ? [basis.holzart] : basis.materials,
+      taxonomyId: draft.taxonomyId ?? null,
+      taxonomyLabel: draft.taxonomyLabel ?? null,
+    })
+    // Nimm das bessere aus: gehärteter Alt vs. KI-Neu
+    if (altScore.overall >= afterScore.overall) {
+      return {
+        ...neu,
+        title: altGehaertet.title,
+        description: altGehaertet.description,
+        tags: altGehaertet.tags,
+        produktForm: draft.produktForm || neu.produktForm,
+        taxonomyId: draft.taxonomyId ?? neu.taxonomyId,
+        taxonomyLabel: draft.taxonomyLabel || neu.taxonomyLabel,
+        warenkorbZusammenfassung:
+          draft.warenkorbZusammenfassung || neu.warenkorbZusammenfassung,
+        preisMinEur: draft.preisMinEur ?? neu.preisMinEur,
+        preisEmpfohlenEur: draft.preisEmpfohlenEur ?? neu.preisEmpfohlenEur,
+        preisMaxEur: draft.preisMaxEur ?? neu.preisMaxEur,
+        preisBegruendung: draft.preisBegruendung || neu.preisBegruendung,
+      }
+    }
+  }
+
+  return neu
 }

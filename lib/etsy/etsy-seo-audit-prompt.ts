@@ -17,8 +17,8 @@ Prüfe das übergebene Listing und liefere NUR gültiges JSON gemäß Schema.
 ### GEO-CHECK (Antwortqualität für KI-Antwortboxen)
 Die ersten Sätze der Beschreibung sollen klar beantworten:
 1) WAS ist es (Produkt, Unikat, Holzart)?
-2) FÜR WEN (Sammler, Küche, Galerie, Geschenk)?
-3) WELCHEN ANLASS (z. B. Holzhochzeit / 5. Hochzeitstag, Einzug, Geburtstag) — falls sinnvoll?
+2) FÜR WEN (Sammler, Küche, Galerie, Geschenk) — auch über VERWENDUNG:-Zeile ok?
+3) WELCHEN ANLASS (Holzhochzeit / Einzug / Geburtstag) — Bonus, nicht Pflicht wenn 1+2 stark sind?
 Handwerkliche Besonderheiten (Figur, Asteinschlüsse, gesicherte Risse, Finish, Pflege) müssen erkennbar sein.
 
 ### BEWERTUNG
