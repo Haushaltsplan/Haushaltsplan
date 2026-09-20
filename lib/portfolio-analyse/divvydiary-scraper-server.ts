@@ -172,6 +172,8 @@ export type DivvydiaryRohZeile = {
   payDate: string
   amount: number
   forecast: boolean
+  /** ISO-Währungscode der Ausschüttung (DivvyDiary); fehlt → später per ISIN schätzen. */
+  currency?: string
 }
 
 const DIV_JSON_PATTERNS = [
@@ -184,20 +186,31 @@ function parseDivvydiaryRowsAusBlock(block: string): DivvydiaryRohZeile[] {
   const seen = new Set<string>()
   const rows: DivvydiaryRohZeile[] = []
 
-  const push = (ex: string, pay: string, amount: number, forecast: boolean) => {
+  const push = (ex: string, pay: string, amount: number, forecast: boolean, currency?: string) => {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(ex) || !/^\d{4}-\d{2}-\d{2}$/.test(pay)) return
     if (!Number.isFinite(amount) || amount <= 0) return
-    const key = `${ex}|${pay}|${amount}|${forecast}`
+    const cur = currency?.trim().toUpperCase()
+    const key = `${ex}|${pay}|${amount}|${forecast}|${cur ?? ''}`
     if (seen.has(key)) return
     seen.add(key)
-    rows.push({ exDate: ex, payDate: pay, amount, forecast })
+    rows.push({
+      exDate: ex,
+      payDate: pay,
+      amount,
+      forecast,
+      ...(cur && /^[A-Z]{3}$/.test(cur) ? { currency: cur } : {}),
+    })
   }
 
   for (const re of DIV_JSON_PATTERNS) {
     const local = new RegExp(re.source, re.flags)
     let m: RegExpExecArray | null
     while ((m = local.exec(block)) !== null) {
-      push(m[1], m[2], Number(m[3]), m[5] === 'true')
+      // Mit currency: m[4]=Währung, m[5]=forecast; ohne: m[4]=forecast
+      const hatWaehrung = m[5] != null
+      const forecast = (hatWaehrung ? m[5] : m[4]) === 'true'
+      const currency = hatWaehrung ? m[4] : undefined
+      push(m[1], m[2], Number(m[3]), forecast, currency)
     }
   }
 

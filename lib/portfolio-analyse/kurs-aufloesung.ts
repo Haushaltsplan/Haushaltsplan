@@ -79,6 +79,28 @@ export function istEurGelistet(symbol: string): boolean {
   return boersenWaehrung(symbol) === 'EUR'
 }
 
+/** Betrag in Währungscode → EUR (Yahoo EUR*=X: Fremdwährung pro 1 EUR). */
+export function betragWaehrungInEur(betrag: number, waehrung: string | null | undefined, fx: FxKurse): number {
+  if (!Number.isFinite(betrag) || betrag <= 0) return 0
+  const w = (waehrung ?? 'EUR').trim().toUpperCase()
+  switch (w) {
+    case 'EUR':
+      return betrag
+    case 'USD':
+      return betrag / fx.eurUsd
+    case 'GBP':
+      return betrag / fx.eurGbp
+    case 'CHF':
+      return betrag / fx.eurChf
+    case 'CAD':
+      return betrag / fx.eurCad
+    case 'SGD':
+      return betrag / fx.eurSgd
+    default:
+      return betrag
+  }
+}
+
 /** Rohkurs → EUR; null wenn Währung unbekannt oder kein FX. */
 export function preisInEur(
   preis: number,
@@ -87,22 +109,10 @@ export function preisInEur(
   waehrungOverride?: BoersenWaehrung | null,
 ): number | null {
   if (!Number.isFinite(preis) || preis <= 0) return null
-  switch (boersenWaehrung(symbol, waehrungOverride)) {
-    case 'EUR':
-      return preis
-    case 'USD':
-      return preis / fx.eurUsd
-    case 'GBP':
-      return preis / fx.eurGbp
-    case 'CHF':
-      return preis / fx.eurChf
-    case 'CAD':
-      return preis / fx.eurCad
-    case 'SGD':
-      return preis / fx.eurSgd
-    default:
-      return null
-  }
+  const w = boersenWaehrung(symbol, waehrungOverride)
+  if (w === 'SONST') return null
+  const eur = betragWaehrungInEur(preis, w, fx)
+  return eur > 0 ? eur : null
 }
 
 export type KursWahl = {

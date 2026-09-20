@@ -1,5 +1,10 @@
 import { heuteIsoUtc, isoEndeNaechstesKalenderjahr } from '@/lib/portfolio-analyse/dividenden-datum-hilfen'
 import { listeDividendenTermine } from '@/lib/portfolio-analyse/dividenden-prognose'
+import {
+  dividendeInEur,
+  dividendenWaehrungAusIsin,
+  ladeDividendenFxKurse,
+} from '@/lib/portfolio-analyse/dividenden-fx-server'
 import { istEuEwrIsin } from '@/lib/portfolio-analyse/dividend-isin-region'
 import { ladeDivvydiaryRohdaten } from '@/lib/portfolio-analyse/divvydiary-scraper-server'
 import { isinKenntnis } from '@/lib/portfolio-analyse/isin-kenntnisse'
@@ -17,20 +22,6 @@ export type DivvydiaryAnkuendigteDividende = {
 export type DivvydiaryAnkuendigteDividendeListe = DivvydiaryAnkuendigteDividende[]
 
 const termineCache = new Map<string, { at: number; hits: DivvydiaryAnkuendigteDividendeListe }>()
-
-function trefferZuEintrag(hit: {
-  payDate: string
-  exDate: string
-  amount: number
-  bestaetigt: boolean
-}): DivvydiaryAnkuendigteDividende {
-  return {
-    zahlungsdatumIso: hit.payDate,
-    exDatumIso: hit.exDate,
-    dividendeProStueckEur: hit.amount,
-    bestaetigt: hit.bestaetigt,
-  }
-}
 
 /** Alle Termine im Horizont (angekündigt + Prognose je Zahlungsmuster). */
 export async function ladeDivvydiaryAnkuendigteDividenden(
@@ -50,7 +41,17 @@ export async function ladeDivvydiaryAnkuendigteDividenden(
   const roh = await ladeDivvydiaryRohdaten(isinNorm, anzeigeName, heute)
   if (!roh || roh.rows.length === 0) return []
 
-  const termine = listeDividendenTermine(roh.rows, heute, bis).map(trefferZuEintrag)
+  const waehrung =
+    roh.rows.map((r) => r.currency).find((c) => c && /^[A-Z]{3}$/.test(c)) ??
+    dividendenWaehrungAusIsin(isinNorm)
+  const fx = await ladeDividendenFxKurse()
+
+  const termine = listeDividendenTermine(roh.rows, heute, bis).map((hit) => ({
+    zahlungsdatumIso: hit.payDate,
+    exDatumIso: hit.exDate,
+    dividendeProStueckEur: dividendeInEur(hit.amount, waehrung, fx),
+    bestaetigt: hit.bestaetigt,
+  }))
 
   if (termine.length > 0) {
     termineCache.set(isinNorm, { at: Date.now(), hits: termine })

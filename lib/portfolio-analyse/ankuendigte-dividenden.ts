@@ -192,29 +192,6 @@ function bereinigeTrefferProPosition(treffer: RohTreffer[]): RohTreffer[] {
   })
 }
 
-function mergeRohTreffer(primary: RohTreffer[], extra: RohTreffer[]): RohTreffer[] {
-  const merged = [...primary]
-  for (const t of extra) {
-    const clashIdx = merged.findIndex(
-      (m) =>
-        Math.abs(tageZwischenIso(m.zahlungsdatumIso, t.zahlungsdatumIso)) <
-        MIN_TAGE_PROGNOSE_NACH_BESTAETIGT,
-    )
-    if (clashIdx >= 0) {
-      const prev = merged[clashIdx]
-      if (!prev.bestaetigt && t.bestaetigt) {
-        merged[clashIdx] = t
-        continue
-      }
-      if (prev.bestaetigt) continue
-      if (!t.bestaetigt) continue
-      continue
-    }
-    merged.push(t)
-  }
-  return bereinigeTrefferProPosition(merged)
-}
-
 function rohAusCacheTreffer(t: DividendenIsinCacheTreffer): RohTreffer {
   return {
     zahlungsdatumIso: t.zahlungsdatumIso,
@@ -260,19 +237,7 @@ async function ladeFuerPosition(pos: DepotPositionAnfrage): Promise<RohTreffer[]
       bestaetigt: t.bestaetigt,
     }))
 
-    if (!istEuEwrIsin(isin) && symbole.length > 0) {
-      const yahoo = await ladeYahooAnkuendigteDividenden(symbole[0], { erlaubeExSchaetzung: true })
-      const yRoh = yahoo.map((t) => ({
-        zahlungsdatumIso: t.zahlungsdatumIso,
-        exDatumIso: t.exDatumIso,
-        dividendeProStueckEur: t.dividendeProStueckEur,
-        symbol: t.symbol,
-        quelle: (t.bestaetigt ? 'yahoo' : 'divvydiary-prognose') as AnkuendigteDividendeQuelle,
-        bestaetigt: t.bestaetigt,
-      }))
-      roh = mergeRohTreffer(roh, yRoh)
-    }
-
+    // DivvyDiary hat Vorrang — kein Yahoo-Merge, der USD-Beträge / schlechte Termine reinmischt.
     if (roh.length > 0) {
       const bereinigt = bereinigeTrefferProPosition(roh)
       if (bereinigt.some((t) => t.bestaetigt)) {
@@ -453,7 +418,7 @@ export async function berechneAnkuendigteDividendenDepot(
   }
 
   hinweise.push(
-    'Angekündigte Termine von DivvyDiary; ohne Termin Prognose aus Historie + Wachstum (wird ersetzt sobald offiziell).',
+    'Quelle: DivvyDiary (brutto, Fremdwährung → EUR). Ohne Termin: Prognose aus Historie + Wachstum. Yahoo/Finnhub nur als Notfall-Fallback.',
   )
   hinweise.push('Fest angekündigte Termine werden server- und browserseitig gecacht (schnellere Wiederholung).')
   if (finnhubDividendKalenderGesperrt()) {

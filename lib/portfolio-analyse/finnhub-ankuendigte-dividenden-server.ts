@@ -4,6 +4,11 @@ import {
   heuteIsoUtc,
   isoEndeNaechstesKalenderjahr,
 } from '@/lib/portfolio-analyse/dividenden-datum-hilfen'
+import {
+  dividendeInEur,
+  dividendenWaehrungAusSymbol,
+  ladeDividendenFxKurse,
+} from '@/lib/portfolio-analyse/dividenden-fx-server'
 
 const CACHE_REVALIDATE = 86400
 
@@ -24,6 +29,7 @@ type DividendRow = {
   amount?: number
   payDate?: string
   adjustedAmount?: number
+  currency?: string
 }
 
 function parseRow(
@@ -33,18 +39,21 @@ function parseRow(
 ): {
   zahlungsdatumIso: string
   exDatumIso: string | null
-  dividendeProStueckEur: number
+  amount: number
+  currency?: string
 } | null {
   const ex = (r.date ?? '').slice(0, 10)
   const pay = (r.payDate ?? '').slice(0, 10)
   const amount = r.adjustedAmount ?? r.amount
   if (amount == null || !Number.isFinite(amount) || amount <= 0) return null
+  const currency = r.currency?.trim().toUpperCase()
 
   if (pay && pay >= heute && pay <= bis) {
     return {
       zahlungsdatumIso: pay,
       exDatumIso: ex && ex.length === 10 && ex <= bis ? ex : null,
-      dividendeProStueckEur: amount,
+      amount,
+      currency,
     }
   }
   if (ex && ex >= heute && ex <= bis) {
@@ -53,7 +62,8 @@ function parseRow(
     return {
       zahlungsdatumIso: zahlung,
       exDatumIso: ex,
-      dividendeProStueckEur: amount,
+      amount,
+      currency,
     }
   }
   return null
@@ -100,6 +110,7 @@ export async function ladeFinnhubAnkuendigteDividende(
 
   const heute = heuteIsoUtc()
   const bis = isoEndeNaechstesKalenderjahr()
+  const fx = await ladeDividendenFxKurse()
 
   for (const sym of brokerSymbolKandidaten(symbol)) {
     try {
@@ -114,11 +125,12 @@ export async function ladeFinnhubAnkuendigteDividende(
       const hit = zukunft[0]
       if (!hit) continue
 
+      const waehrung = hit.currency ?? dividendenWaehrungAusSymbol(sym)
       return {
         symbol: sym,
         zahlungsdatumIso: hit.zahlungsdatumIso,
         exDatumIso: hit.exDatumIso,
-        dividendeProStueckEur: Math.round(hit.dividendeProStueckEur * 10000) / 10000,
+        dividendeProStueckEur: dividendeInEur(hit.amount, waehrung, fx),
       }
     } catch {
       continue

@@ -116,7 +116,7 @@ export function PaAnkuendigteDividenden({
           <PaDividendEstimateBadge title="Geschätzt" />
           <span>= Prognose aus Historie und Wachstum (ersetzt bei offiziellem Termin).</span>
         </span>{' '}
-        Angekündigte Termine ohne E. Max. 1 Jahr voraus.
+        Beträge brutto (vor Steuern), in EUR. Max. 1 Jahr voraus.
       </p>
       <Link
         href="/portfolioanalyse/dividenden/kalender"

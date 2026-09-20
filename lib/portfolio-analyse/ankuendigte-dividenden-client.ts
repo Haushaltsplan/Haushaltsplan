@@ -5,7 +5,7 @@ import { isinAusYahooSymbol, isinKenntnis } from '@/lib/portfolio-analyse/isin-k
 import type { IsinMetadata } from '@/lib/portfolio-analyse/isin-lookup-server'
 import type { AnkuendigteDividendenErgebnis } from '@/lib/portfolio-analyse/ankuendigte-dividenden'
 
-const LS_KEY = 'pa-dividenden-ankuendig-v1'
+const LS_KEY = 'pa-dividenden-ankuendig-v2'
 const LS_MAX_AGE_MS = 6 * 60 * 60 * 1000
 
 function depotKeyAusPayload(

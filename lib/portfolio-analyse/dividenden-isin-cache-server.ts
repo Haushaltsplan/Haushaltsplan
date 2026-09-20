@@ -5,7 +5,7 @@ import path from 'path'
 import { dateiCachePfad } from '@/lib/datei-cache-pfad'
 
 const DATEIPFAD = dateiCachePfad('portfolio-dividenden-isin.json')
-const CACHE_VERSION = 1
+const CACHE_VERSION = 2
 /** Fest angekündigte Termine — länger gültig. */
 export const DIVIDENDEN_BESTAETIGT_CACHE_MS = 7 * 24 * 60 * 60 * 1000
 /** Gemischt mit Prognosen. */

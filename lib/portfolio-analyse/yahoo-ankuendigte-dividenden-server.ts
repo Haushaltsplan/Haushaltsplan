@@ -8,6 +8,11 @@ import {
   schaetzeZahlungsdatumNachEx,
 } from '@/lib/portfolio-analyse/dividenden-datum-hilfen'
 import {
+  dividendeInEur,
+  dividendenWaehrungAusSymbol,
+  ladeDividendenFxKurse,
+} from '@/lib/portfolio-analyse/dividenden-fx-server'
+import {
   holeYahooFinanceAuth,
   YAHOO_FINANCE_FETCH_HEADERS,
 } from '@/lib/portfolio-analyse/yahoo-finance-auth-server'
@@ -100,11 +105,13 @@ async function ladeChartDividendenHistorie(symbol: string, heute: string): Promi
 
 function chartZuRohZeilen(events: DivEvent[], symbol: string): DivvydiaryRohZeile[] {
   const sym = symbol.trim().toUpperCase()
+  const currency = dividendenWaehrungAusSymbol(sym)
   return events.map((e) => ({
     exDate: e.datumIso,
     payDate: schaetzeZahlungsdatumNachEx(e.datumIso, sym),
     amount: e.amount,
     forecast: false,
+    currency,
   }))
 }
 
@@ -250,11 +257,13 @@ export async function ladeYahooAnkuendigteDividenden(
   const heute = heuteIsoUtc()
   const bis = isoEndeNaechstesKalenderjahr()
   const erlaubeExSchaetzung = opts?.erlaubeExSchaetzung !== false
+  const waehrung = dividendenWaehrungAusSymbol(sym)
 
-  const [kalender, events, historie] = await Promise.all([
+  const [kalender, events, historie, fx] = await Promise.all([
     ladeQuoteSummaryKalender(sym, heute, bis, erlaubeExSchaetzung),
     ladeChartDividendenZukunft(sym, heute, bis),
     ladeChartDividendenHistorie(sym, heute),
+    ladeDividendenFxKurse(),
   ])
 
   const rows: DivvydiaryRohZeile[] = chartZuRohZeilen(historie, sym)
@@ -271,6 +280,7 @@ export async function ladeYahooAnkuendigteDividenden(
         payDate: kalender.zahlungsdatumIso,
         amount: amt,
         forecast: false,
+        currency: waehrung,
       })
     }
   }
@@ -281,6 +291,7 @@ export async function ladeYahooAnkuendigteDividenden(
       payDate: e.datumIso,
       amount: e.amount,
       forecast: false,
+      currency: waehrung,
     })
   }
 
@@ -289,7 +300,7 @@ export async function ladeYahooAnkuendigteDividenden(
     symbol: sym,
     zahlungsdatumIso: t.payDate,
     exDatumIso: t.exDate,
-    dividendeProStueckEur: t.amount,
+    dividendeProStueckEur: dividendeInEur(t.amount, waehrung, fx),
     bestaetigt: t.bestaetigt,
   }))
 }
