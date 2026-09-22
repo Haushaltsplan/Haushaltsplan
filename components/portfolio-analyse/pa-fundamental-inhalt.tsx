@@ -256,7 +256,7 @@ export function PaFundamentalInhalt({
     }
     const okStart = window.confirm(
       `${ziele.length} Titel neu scrapen und den Cloud-Cache überschreiben?\n\n` +
-        'Whitelist, Watchlist und sichtbare Depot-Titel. Dauert oft 20–40 Minuten — die Seite kann offen bleiben.',
+        'Whitelist, Watchlist und Depot. Langsamer Batch mit Retries (oft 45–90 Min) — Seite offen lassen.',
     )
     if (!okStart) return
 
@@ -264,7 +264,15 @@ export function PaFundamentalInhalt({
     alleAbortRef.current = ac
     setAlleLaeuft(true)
     setFehler(null)
-    setAlleFortschritt({ index: 0, gesamt: ziele.length, name: 'Starte …', ok: true, fehlgeschlagen: 0 })
+    setAlleFortschritt({
+      index: 0,
+      gesamt: ziele.length,
+      name: 'Starte …',
+      ok: true,
+      fehlgeschlagen: 0,
+      erfolgreich: 0,
+      fehlende: [],
+    })
     try {
       const res = await aktualisiereAlleFundamentaldaten(ziele, {
         signal: ac.signal,
@@ -290,7 +298,13 @@ export function PaFundamentalInhalt({
           prev ? { ...prev, abgebrochen: true, name: 'Abgebrochen' } : prev,
         )
       } else if (res.fehlgeschlagen > 0) {
-        setFehler(`${res.ok} aktualisiert, ${res.fehlgeschlagen} fehlgeschlagen (z. B. Timeout bei EU-Titeln).`)
+        const liste = res.fehlende.slice(0, 8).join(', ')
+        const mehr = res.fehlende.length > 8 ? ` (+${res.fehlende.length - 8})` : ''
+        setFehler(
+          `${res.ok} aktualisiert, ${res.fehlgeschlagen} weiterhin fehlgeschlagen` +
+            (liste ? `: ${liste}${mehr}` : '') +
+            '. Später erneut „Alle“ — oft nach Pause ok.',
+        )
       }
     } catch (e) {
       if (!(e instanceof DOMException && e.name === 'AbortError')) {
@@ -499,12 +513,17 @@ export function PaFundamentalInhalt({
           {alleFortschritt ? (
             <p className="text-[11px] text-amber-200/80" aria-live="polite">
               {alleLaeuft
-                ? `Scrape ${alleFortschritt.index}/${alleFortschritt.gesamt}: ${alleFortschritt.name}`
+                ? `Scrape ${alleFortschritt.index}/${alleFortschritt.gesamt}: ${alleFortschritt.name}` +
+                  (alleFortschritt.hinweis ? ` · ${alleFortschritt.hinweis}` : '') +
+                  ` · ok ${alleFortschritt.erfolgreich ?? alleFortschritt.gesamt - alleFortschritt.fehlgeschlagen}`
                 : alleFortschritt.abgebrochen
                   ? `Abgebrochen bei ${alleFortschritt.index}/${alleFortschritt.gesamt}`
-                  : `Fertig: ${alleFortschritt.gesamt - alleFortschritt.fehlgeschlagen}/${alleFortschritt.gesamt} im Cache`}
+                  : `Fertig: ${alleFortschritt.erfolgreich ?? alleFortschritt.gesamt - alleFortschritt.fehlgeschlagen}/${alleFortschritt.gesamt} aktualisiert`}
               {alleFortschritt.fehlgeschlagen > 0 && !alleLaeuft
-                ? ` · ${alleFortschritt.fehlgeschlagen} fehlgeschlagen`
+                ? ` · ${alleFortschritt.fehlgeschlagen} fehlgeschlagen` +
+                  (alleFortschritt.fehlende?.length
+                    ? ` (${alleFortschritt.fehlende.slice(0, 6).join(', ')}${alleFortschritt.fehlende.length > 6 ? '…' : ''})`
+                    : '')
                 : ''}
             </p>
           ) : null}

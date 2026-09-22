@@ -20,10 +20,10 @@ const CACHE_MS = 24 * 60 * 60 * 1000
 const FEHLER_CACHE_MS = 3 * 60 * 1000
 /** Bei Live-Fehler: erfolgreichen Cache bis 7 Tage als Fallback (kein Datenverlust). */
 const STALE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000
-const MIN_ABSTAND_MS = 520
-const FETCH_TIMEOUT_MS = 35_000
-const MAX_FETCH_RETRIES = 3
-const RETRY_BASE_MS = 900
+const MIN_ABSTAND_MS = 900
+const FETCH_TIMEOUT_MS = 40_000
+const MAX_FETCH_RETRIES = 5
+const RETRY_BASE_MS = 2_000
 
 const FETCH_HEADERS: Record<string, string> = {
   'User-Agent': USER_AGENT,
@@ -352,7 +352,8 @@ async function rateLimitedFetch(url: string, erwartetJson = false): Promise<stri
 
         if (res.status === 429 || res.status === 503 || res.status === 502 || res.status === 403) {
           if (attempt < MAX_FETCH_RETRIES) {
-            await pause(RETRY_BASE_MS * (attempt + 1) + 400)
+            const extra = res.status === 403 || res.status === 429 ? 4_000 : 0
+            await pause(RETRY_BASE_MS * Math.pow(1.6, attempt) + extra + Math.floor(Math.random() * 800))
             continue
           }
           return null
@@ -360,7 +361,7 @@ async function rateLimitedFetch(url: string, erwartetJson = false): Promise<stri
 
         if (!res.ok) {
           if (res.status >= 500 && attempt < MAX_FETCH_RETRIES) {
-            await pause(RETRY_BASE_MS * (attempt + 1))
+            await pause(RETRY_BASE_MS * Math.pow(1.5, attempt) + Math.floor(Math.random() * 500))
             continue
           }
           return null
@@ -369,7 +370,7 @@ async function rateLimitedFetch(url: string, erwartetJson = false): Promise<stri
         const html = await res.text()
         if (htmlBlockiertOderLeer(html, erwartetJson)) {
           if (attempt < MAX_FETCH_RETRIES) {
-            await pause(RETRY_BASE_MS * (attempt + 1) + 600)
+            await pause(RETRY_BASE_MS * Math.pow(1.7, attempt) + 1_200 + Math.floor(Math.random() * 900))
             continue
           }
           return null
@@ -377,7 +378,7 @@ async function rateLimitedFetch(url: string, erwartetJson = false): Promise<stri
         return html
       } catch {
         if (attempt < MAX_FETCH_RETRIES) {
-          await pause(RETRY_BASE_MS * (attempt + 1))
+          await pause(RETRY_BASE_MS * Math.pow(1.5, attempt) + Math.floor(Math.random() * 600))
           continue
         }
         return null
