@@ -12,13 +12,13 @@ import { ergaenzeEvMultiplesZeilen } from '@/lib/portfolio-analyse/fundamentalda
 import { ergaenzeNettoverschuldungZeilen } from '@/lib/portfolio-analyse/fundamentaldaten-nettoverschuldung-zeilen'
 import {
   ensureMacrotrendsCookies,
-  fetchMacrotrendsHtmlViaBrowser,
   invalidateMacrotrendsCookies,
   macrotrendsCdpVerfuegbar,
   macrotrendsPreferBrowser,
   macrotrendsUserAgent,
   markMacrotrendsBrowserRequired,
 } from '@/lib/portfolio-analyse/macrotrends-browser-auth-server'
+import { fetchMacrotrendsHtml } from '@/lib/portfolio-analyse/macrotrends-remote-fetch-server'
 
 const BASE = 'https://www.macrotrends.net'
 const IFRAME_BASE =
@@ -27,11 +27,11 @@ const CACHE_MS = 24 * 60 * 60 * 1000
 const FEHLER_CACHE_MS = 3 * 60 * 1000
 /** Bei Live-Fehler: erfolgreichen Cache bis 7 Tage als Fallback (kein Datenverlust). */
 const STALE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000
-const MIN_ABSTAND_MS = 650
+const MIN_ABSTAND_MS = 200
 const FETCH_TIMEOUT_MS = 35_000
 const MAX_FETCH_RETRIES = 3
 const MAX_BLOCK_RETRIES = 2
-const RETRY_BASE_MS = 1_000
+const RETRY_BASE_MS = 800
 
 function bauFetchHeaders(cookie?: string): Record<string, string> {
   const h: Record<string, string> = {
@@ -353,79 +353,43 @@ async function rateLimitedFetch(url: string, erwartetJson = false): Promise<stri
     resolve = r
   })
   try {
-    // CDP schon da → sofort Browser (Node-fetch ist hinter Turnstile immer 403).
-    if (!macrotrendsPreferBrowser() && (await macrotrendsCdpVerfuegbar())) {
-      markMacrotrendsBrowserRequired()
-    }
-
     for (let attempt = 0; attempt <= MAX_FETCH_RETRIES; attempt++) {
       const warten = Math.max(0, MIN_ABSTAND_MS - (Date.now() - letzterAbruf))
       if (warten > 0) await pause(warten)
       letzterAbruf = Date.now()
 
-      if (macrotrendsPreferBrowser() || attempt > 0) {
-        const viaBrowser = await fetchMacrotrendsHtmlViaBrowser(url)
-        if (viaBrowser && !htmlBlockiertOderLeer(viaBrowser, erwartetJson)) return viaBrowser
-        if (attempt < MAX_BLOCK_RETRIES) {
-          await pause(RETRY_BASE_MS * (attempt + 1) + 1_500)
-          continue
-        }
-        return null
-      }
+      // Produktionspfad: Relay / ZenRows / ScrapingBee / lokales CDP
+      const viaRemote = await fetchMacrotrendsHtml(url)
+      if (viaRemote && !htmlBlockiertOderLeer(viaRemote, erwartetJson)) return viaRemote
 
-      try {
-        const cookie = await ensureMacrotrendsCookies()
-        const res = await fetch(url, {
-          headers: bauFetchHeaders(cookie || undefined),
-          cache: 'no-store',
-          redirect: 'follow',
-          signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
-        })
-
-        if (res.status === 429 || res.status === 503 || res.status === 502 || res.status === 403) {
-          const block = res.status === 403 || res.status === 429
-          if (block) {
+      // Legacy Node-fetch (meist 403 hinter Turnstile) — nur als schneller Versuch ohne Remote
+      if (attempt === 0 && !(await macrotrendsCdpVerfuegbar())) {
+        try {
+          const cookie = await ensureMacrotrendsCookies()
+          const res = await fetch(url, {
+            headers: bauFetchHeaders(cookie || undefined),
+            cache: 'no-store',
+            redirect: 'follow',
+            signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+          })
+          if (res.ok) {
+            const html = await res.text()
+            if (!htmlBlockiertOderLeer(html, erwartetJson)) return html
+          }
+          if (res.status === 403 || res.status === 429) {
             markMacrotrendsBrowserRequired()
             invalidateMacrotrendsCookies()
-            const viaBrowser = await fetchMacrotrendsHtmlViaBrowser(url)
-            if (viaBrowser && !htmlBlockiertOderLeer(viaBrowser, erwartetJson)) return viaBrowser
           }
-          const maxR = block ? MAX_BLOCK_RETRIES : MAX_FETCH_RETRIES
-          if (attempt < maxR) {
-            await pause(RETRY_BASE_MS * (attempt + 1) + (block ? 2_500 : 0))
-            continue
-          }
-          return null
+        } catch {
+          /* ignore */
         }
-
-        if (!res.ok) {
-          if (res.status >= 500 && attempt < MAX_FETCH_RETRIES) {
-            await pause(RETRY_BASE_MS * (attempt + 1))
-            continue
-          }
-          return null
-        }
-
-        const html = await res.text()
-        if (htmlBlockiertOderLeer(html, erwartetJson)) {
-          markMacrotrendsBrowserRequired()
-          invalidateMacrotrendsCookies()
-          const viaBrowser = await fetchMacrotrendsHtmlViaBrowser(url)
-          if (viaBrowser && !htmlBlockiertOderLeer(viaBrowser, erwartetJson)) return viaBrowser
-          if (attempt < MAX_BLOCK_RETRIES) {
-            await pause(RETRY_BASE_MS * (attempt + 1) + 2_000)
-            continue
-          }
-          return null
-        }
-        return html
-      } catch {
-        if (attempt < MAX_FETCH_RETRIES) {
-          await pause(RETRY_BASE_MS * (attempt + 1))
-          continue
-        }
-        return null
       }
+
+      if (attempt < MAX_BLOCK_RETRIES) {
+        await pause(RETRY_BASE_MS * (attempt + 1) + (macrotrendsPreferBrowser() ? 800 : 1_500))
+        continue
+      }
+      return null
     }
     return null
   } finally {

@@ -51,6 +51,10 @@ function state(): MtState {
   return g.__macrotrendsMt
 }
 
+function isServerless(): boolean {
+  return Boolean(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME)
+}
+
 function cdpPort(): number {
   const n = Number(process.env.MACROTRENDS_CDP_PORT ?? DEFAULT_CDP_PORT)
   return Number.isFinite(n) && n > 0 ? n : DEFAULT_CDP_PORT
@@ -179,6 +183,13 @@ async function scrapePage(context: BrowserContext): Promise<Page> {
 
 /** Stellt CDP-Chrome bereit (verbindet oder startet). */
 export async function ensureMacrotrendsBrowser(): Promise<BrowserContext | null> {
+  if (isServerless()) {
+    console.warn(
+      '[macrotrends-auth] Vercel/Serverless — Chrome-CDP nicht möglich. Lokal scrapen: npm run macrotrends:chrome + npm run dev.',
+    )
+    return null
+  }
+
   const st = state()
   if (st.context) {
     try {

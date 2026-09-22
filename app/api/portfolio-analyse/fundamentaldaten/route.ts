@@ -5,7 +5,7 @@ import { speichereMantraVerlaufSnapshot } from '@/lib/portfolio-analyse/mantra-v
 import type { FundamentaldatenAnfrage, FundamentaldatenPaket } from '@/lib/portfolio-analyse/fundamentaldaten-types'
 
 export const dynamic = 'force-dynamic'
-export const maxDuration = 120
+export const maxDuration = 300
 
 export async function POST(req: Request) {
   let body: unknown

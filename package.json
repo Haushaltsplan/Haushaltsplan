@@ -16,6 +16,7 @@
     "check:hooks": "node scripts/verify-cursor-hooks.mjs",
     "playwright:install": "playwright install chromium",
     "macrotrends:chrome": "node scripts/macrotrends-chrome.mjs",
+    "macrotrends:relay": "node scripts/macrotrends-relay.mjs",
     "db:lager": "node scripts/apply-lager-schema.cjs",
     "db:investment-portfolio": "node scripts/apply-investment-portfolio-schema.cjs",
     "db:portfolio-analyse": "node scripts/apply-portfolio-analyse-schema.cjs",
