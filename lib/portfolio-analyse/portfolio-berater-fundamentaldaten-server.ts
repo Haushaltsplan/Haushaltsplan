@@ -18,8 +18,8 @@ import type {
 import { ladeQuartalsKiDiff } from '@/lib/portfolio-analyse/quartals-ki-diff-server'
 
 const MAX_LADEN = 40
-/** Fokus-Titel bei Cache-Miss: ≥ Macrotrends FETCH_TIMEOUT_MS (40s) + 5s. */
-const LOAD_TIMEOUT_MS = 45_000
+/** Fokus-Titel bei Cache-Miss: ≥ Macrotrends FETCH_TIMEOUT_MS (35s) + 5s. */
+const LOAD_TIMEOUT_MS = 40_000
 const TIMEOUT_CACHE_MS = 6_000
 const PARALLEL_FUNDAMENTAL = 6
 

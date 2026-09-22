@@ -833,10 +833,11 @@ function paketMitKorrigiertemFwdWachstum(p: FundamentaldatenPaket): Fundamentald
 export async function ladeFundamentaldaten(anfrage: FundamentaldatenAnfrage): Promise<FundamentaldatenPaket> {
   const modus = anfrage.cacheModus ?? 'immer'
   const cacheKey = fundamentaldatenCacheKey(anfrage)
-  const cached = modus === 'erneuern' ? null : await ladeFundamentaldatenPaketCacheFuerAnfrage(anfrage)
+  // Auch bei „erneuern“ Cache laden — Fallback wenn Macrotrends/Live blockiert.
+  const cached = await ladeFundamentaldatenPaketCacheFuerAnfrage(anfrage)
 
   if (cached && modus === 'nur-lesen') return paketMitKorrigiertemFwdWachstum(cached.paket)
-  // Seite/Coach: gespeichertes Paket sofort — nicht erst 40s scrapen.
+  // Seite/Coach: gespeichertes Paket sofort — nicht erst scrapen.
   if (cached && modus !== 'erneuern') {
     console.info(
       `[fundamental-cache] hit ${cacheKey || anfrage.isin} alter=${Math.round((Date.now() - cached.aktualisiertAm) / 60000)}min`,
@@ -873,8 +874,18 @@ export async function ladeFundamentaldaten(anfrage: FundamentaldatenAnfrage): Pr
       fingerprint: fp,
     })
     return liveKorr
-  } else if (cached?.paket.ok) {
-    return paketMitKorrigiertemFwdWachstum(cached.paket)
+  }
+  if (cached?.paket.ok) {
+    console.warn(
+      `[fundamental-cache] live fail → stale ${cacheKey || anfrage.isin}: ${live.fehler ?? 'unbekannt'}`,
+    )
+    return paketMitKorrigiertemFwdWachstum({
+      ...cached.paket,
+      fehler:
+        live.fehler != null
+          ? `Live-Scrape fehlgeschlagen (${live.fehler}) — Cache belassen.`
+          : 'Live-Scrape fehlgeschlagen — Cache belassen.',
+    })
   }
   return live.ok ? paketMitKorrigiertemFwdWachstum(live) : live
 }

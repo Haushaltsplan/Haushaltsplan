@@ -159,14 +159,14 @@ export type AlleAktualisierenFortschritt = {
   hinweis?: string
 }
 
-const BATCH_PAUSE_MS = 2_800
-const BATCH_PAUSE_NACH_FEHLER_MS = 10_000
-const BATCH_PAUSE_EU_EXTRA_MS = 1_800
-const TITEL_MAX_VERSUCHE = 3
-const TITEL_RETRY_PAUSE_MS = [10_000, 25_000, 50_000] as const
-const STREAK_COOLDOWN_AB = 2
-const STREAK_COOLDOWN_MS = 75_000
-const NACHLAUF_PAUSE_MS = 20_000
+const BATCH_PAUSE_MS = 1_600
+const BATCH_PAUSE_NACH_FEHLER_MS = 5_000
+const BATCH_PAUSE_EU_EXTRA_MS = 1_200
+const TITEL_MAX_VERSUCHE = 2
+const TITEL_RETRY_PAUSE_MS = [8_000, 20_000] as const
+const STREAK_COOLDOWN_AB = 3
+const STREAK_COOLDOWN_MS = 45_000
+const NACHLAUF_PAUSE_MS = 12_000
 
 function pauseMs(ms: number, signal?: AbortSignal): Promise<void> {
   return new Promise((resolve, reject) => {

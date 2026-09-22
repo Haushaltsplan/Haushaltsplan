@@ -10,27 +10,43 @@ import { formatFundamentalPeriodeLabel } from '@/lib/portfolio-analyse/fundament
 import { ergaenzeDividendenHistorieZeilen } from '@/lib/portfolio-analyse/fundamentaldaten-dividenden-historie-zeilen'
 import { ergaenzeEvMultiplesZeilen } from '@/lib/portfolio-analyse/fundamentaldaten-ev-multiples-zeilen'
 import { ergaenzeNettoverschuldungZeilen } from '@/lib/portfolio-analyse/fundamentaldaten-nettoverschuldung-zeilen'
+import {
+  ensureMacrotrendsCookies,
+  fetchMacrotrendsHtmlViaBrowser,
+  invalidateMacrotrendsCookies,
+  macrotrendsCdpVerfuegbar,
+  macrotrendsPreferBrowser,
+  macrotrendsUserAgent,
+  markMacrotrendsBrowserRequired,
+} from '@/lib/portfolio-analyse/macrotrends-browser-auth-server'
 
 const BASE = 'https://www.macrotrends.net'
 const IFRAME_BASE =
   'https://www.macrotrends.net/production/stocks/desktop/PRODUCTION/fundamental_iframe.php'
-const USER_AGENT =
-  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'
 const CACHE_MS = 24 * 60 * 60 * 1000
 const FEHLER_CACHE_MS = 3 * 60 * 1000
 /** Bei Live-Fehler: erfolgreichen Cache bis 7 Tage als Fallback (kein Datenverlust). */
 const STALE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000
-const MIN_ABSTAND_MS = 900
-const FETCH_TIMEOUT_MS = 40_000
-const MAX_FETCH_RETRIES = 5
-const RETRY_BASE_MS = 2_000
+const MIN_ABSTAND_MS = 650
+const FETCH_TIMEOUT_MS = 35_000
+const MAX_FETCH_RETRIES = 3
+const MAX_BLOCK_RETRIES = 2
+const RETRY_BASE_MS = 1_000
 
-const FETCH_HEADERS: Record<string, string> = {
-  'User-Agent': USER_AGENT,
-  Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-  'Accept-Language': 'en-US,en;q=0.9',
-  Referer: 'https://www.macrotrends.net/',
-  'Cache-Control': 'no-cache',
+function bauFetchHeaders(cookie?: string): Record<string, string> {
+  const h: Record<string, string> = {
+    'User-Agent': macrotrendsUserAgent(),
+    Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+    'Accept-Language': 'en-US,en;q=0.9',
+    Referer: 'https://www.macrotrends.net/',
+    'Cache-Control': 'no-cache',
+    'Sec-Fetch-Dest': 'document',
+    'Sec-Fetch-Mode': 'navigate',
+    'Sec-Fetch-Site': 'same-origin',
+    'Upgrade-Insecure-Requests': '1',
+  }
+  if (cookie) h.Cookie = cookie
+  return h
 }
 
 let letzterAbruf = 0
@@ -337,23 +353,46 @@ async function rateLimitedFetch(url: string, erwartetJson = false): Promise<stri
     resolve = r
   })
   try {
+    // CDP schon da → sofort Browser (Node-fetch ist hinter Turnstile immer 403).
+    if (!macrotrendsPreferBrowser() && (await macrotrendsCdpVerfuegbar())) {
+      markMacrotrendsBrowserRequired()
+    }
+
     for (let attempt = 0; attempt <= MAX_FETCH_RETRIES; attempt++) {
       const warten = Math.max(0, MIN_ABSTAND_MS - (Date.now() - letzterAbruf))
       if (warten > 0) await pause(warten)
       letzterAbruf = Date.now()
 
+      if (macrotrendsPreferBrowser() || attempt > 0) {
+        const viaBrowser = await fetchMacrotrendsHtmlViaBrowser(url)
+        if (viaBrowser && !htmlBlockiertOderLeer(viaBrowser, erwartetJson)) return viaBrowser
+        if (attempt < MAX_BLOCK_RETRIES) {
+          await pause(RETRY_BASE_MS * (attempt + 1) + 1_500)
+          continue
+        }
+        return null
+      }
+
       try {
+        const cookie = await ensureMacrotrendsCookies()
         const res = await fetch(url, {
-          headers: FETCH_HEADERS,
+          headers: bauFetchHeaders(cookie || undefined),
           cache: 'no-store',
           redirect: 'follow',
           signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
         })
 
         if (res.status === 429 || res.status === 503 || res.status === 502 || res.status === 403) {
-          if (attempt < MAX_FETCH_RETRIES) {
-            const extra = res.status === 403 || res.status === 429 ? 4_000 : 0
-            await pause(RETRY_BASE_MS * Math.pow(1.6, attempt) + extra + Math.floor(Math.random() * 800))
+          const block = res.status === 403 || res.status === 429
+          if (block) {
+            markMacrotrendsBrowserRequired()
+            invalidateMacrotrendsCookies()
+            const viaBrowser = await fetchMacrotrendsHtmlViaBrowser(url)
+            if (viaBrowser && !htmlBlockiertOderLeer(viaBrowser, erwartetJson)) return viaBrowser
+          }
+          const maxR = block ? MAX_BLOCK_RETRIES : MAX_FETCH_RETRIES
+          if (attempt < maxR) {
+            await pause(RETRY_BASE_MS * (attempt + 1) + (block ? 2_500 : 0))
             continue
           }
           return null
@@ -361,7 +400,7 @@ async function rateLimitedFetch(url: string, erwartetJson = false): Promise<stri
 
         if (!res.ok) {
           if (res.status >= 500 && attempt < MAX_FETCH_RETRIES) {
-            await pause(RETRY_BASE_MS * Math.pow(1.5, attempt) + Math.floor(Math.random() * 500))
+            await pause(RETRY_BASE_MS * (attempt + 1))
             continue
           }
           return null
@@ -369,8 +408,12 @@ async function rateLimitedFetch(url: string, erwartetJson = false): Promise<stri
 
         const html = await res.text()
         if (htmlBlockiertOderLeer(html, erwartetJson)) {
-          if (attempt < MAX_FETCH_RETRIES) {
-            await pause(RETRY_BASE_MS * Math.pow(1.7, attempt) + 1_200 + Math.floor(Math.random() * 900))
+          markMacrotrendsBrowserRequired()
+          invalidateMacrotrendsCookies()
+          const viaBrowser = await fetchMacrotrendsHtmlViaBrowser(url)
+          if (viaBrowser && !htmlBlockiertOderLeer(viaBrowser, erwartetJson)) return viaBrowser
+          if (attempt < MAX_BLOCK_RETRIES) {
+            await pause(RETRY_BASE_MS * (attempt + 1) + 2_000)
             continue
           }
           return null
@@ -378,7 +421,7 @@ async function rateLimitedFetch(url: string, erwartetJson = false): Promise<stri
         return html
       } catch {
         if (attempt < MAX_FETCH_RETRIES) {
-          await pause(RETRY_BASE_MS * Math.pow(1.5, attempt) + Math.floor(Math.random() * 600))
+          await pause(RETRY_BASE_MS * (attempt + 1))
           continue
         }
         return null

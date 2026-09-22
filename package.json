@@ -15,6 +15,7 @@
     "audit:portfolio:strict": "node scripts/portfolio-analyse-audit/run.mjs --strict --fix-hints",
     "check:hooks": "node scripts/verify-cursor-hooks.mjs",
     "playwright:install": "playwright install chromium",
+    "macrotrends:chrome": "node scripts/macrotrends-chrome.mjs",
     "db:lager": "node scripts/apply-lager-schema.cjs",
     "db:investment-portfolio": "node scripts/apply-investment-portfolio-schema.cjs",
     "db:portfolio-analyse": "node scripts/apply-portfolio-analyse-schema.cjs",
