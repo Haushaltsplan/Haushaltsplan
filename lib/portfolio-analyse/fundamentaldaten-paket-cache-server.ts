@@ -53,6 +53,58 @@ export function fundamentaldatenFingerprint(p: FundamentaldatenPaket): string {
   })
 }
 
+/** Anzahl historischer Werte einer Zeile (ohne TTM/Schätzung). */
+export function fundamentalHistorikTiefe(p: FundamentaldatenPaket, id: string): number {
+  const z = p.zeilen.find((r) => r.id === id)
+  if (!z) return 0
+  const hist = p.perioden.filter((x) => !x.istSchaetzung && !x.istNtm && !x.istLtm)
+  let n = 0
+  for (const per of hist) {
+    const v = z.werte[per.iso]
+    if (v != null && Number.isFinite(v)) n++
+  }
+  return n
+}
+
+/**
+ * True wenn Live-Scrape die GuV-/Cashflow-Historie klar dünner macht als der Cache.
+ * Verhindert, dass ein teilweiser Macrotrends-Abruf (CF/Timeout) gute CAGRs überschreibt.
+ *
+ * Strikt: schon wenn eine Kernserie spürbar kürzer wird ODER 3J-CAGRs verschwinden.
+ */
+export function liveFundamentalIstDuennemAlsCache(
+  live: FundamentaldatenPaket,
+  cached: FundamentaldatenPaket,
+): boolean {
+  if (!live.ok || !cached.ok) return false
+  const ids = ['umsatz', 'eps', 'ebitda', 'fcf', 'eigenkapital'] as const
+  let liveSum = 0
+  let cacheSum = 0
+  for (const id of ids) {
+    const l = fundamentalHistorikTiefe(live, id)
+    const c = fundamentalHistorikTiefe(cached, id)
+    liveSum += l
+    cacheSum += c
+    // Einzelserie: Cache hat ≥6 Jahre, Live verliert >25 % → ablehnen
+    if (c >= 6 && l < c * 0.75) return true
+  }
+  if (cacheSum >= 10 && liveSum < cacheSum) return true
+
+  const cagrIds = ['rev_cagr_3y', 'ebitda_cagr_3y', 'eps_cagr_3y'] as const
+  for (const id of cagrIds) {
+    const c = cached.keyMetrics.find((m) => m.id === id)
+    const l = live.keyMetrics.find((m) => m.id === id)
+    const cOk = c?.zahl != null && Number.isFinite(c.zahl)
+    const lOk = l?.zahl != null && Number.isFinite(l.zahl)
+    if (cOk && !lOk) return true
+  }
+
+  // Deutlich weniger Zeilen (Ratios/CF fehlen) → Cache behalten
+  if (cached.zeilen.length >= 20 && live.zeilen.length < cached.zeilen.length * 0.7) return true
+
+  return false
+}
+
 export type PaketCacheTreffer = {
   paket: FundamentaldatenPaket
   fingerprint: string

@@ -299,14 +299,15 @@ export function baueKeyMetrics(
     {
       id: 'ltm_brutto',
       label: 'LTM Bruttomarge',
-      wert: pctRaw(w?.bruttoMarge),
+      wert: w?.bruttoMargeSchein ? '– (kein COGS)' : pctRaw(w?.bruttoMarge),
       gruppe: 'effizienz',
     },
     {
       id: 'brutto_std_10y',
       label: 'Bruttomarge StdAbw. (≤10J)',
-      wert:
-        w?.bruttoMargeStd10y != null
+      wert: w?.bruttoMargeSchein
+        ? '–'
+        : w?.bruttoMargeStd10y != null
           ? `${zahl(w.bruttoMargeStd10y)} Pp.${w.pricingPowerOk === false ? ' ⚠' : w.pricingPowerOk ? ' ✓' : ''}`
           : '–',
       gruppe: 'effizienz',
@@ -668,6 +669,66 @@ export function korrigiereFwdWachstumKeyMetrics(
     if (k.id === 'rev_cagr_3y' && historisch) return { ...k, wert: pctRaw(rev3) }
     if (k.id === 'ebitda_cagr_3y' && historisch) return { ...k, wert: pctRaw(ebitda3) }
     if (k.id === 'eps_cagr_3y' && historisch) return { ...k, wert: pctRaw(eps3) }
+    return k
+  })
+}
+
+/**
+ * Effizienz-Kennzahlen aus GuV/Bilanz neu ableiten (Cache-Read).
+ * Behebt Schein-Bruttomarge 100 %, ROIC≈ROE und unsinniges ROIC-ex-Goodwill
+ * ohne erneuten Macrotrends-Scrape — gilt für alle Titel.
+ */
+export function korrigiereEffizienzKeyMetrics(
+  keyMetrics: FundamentalKeyMetric[],
+  historisch: { perioden: FundamentalPeriode[]; zeilen: FundamentalMetrikZeile[] },
+  kontextWerte: FundamentalKontextWerte | null,
+): FundamentalKeyMetric[] {
+  if (!kontextWerte) return keyMetrics
+  const w = kontextWerte
+  return keyMetrics.map((k) => {
+    if (k.id === 'ltm_brutto') {
+      return {
+        ...k,
+        wert: w.bruttoMargeSchein ? '– (kein COGS)' : pctRaw(w.bruttoMarge),
+      }
+    }
+    if (k.id === 'brutto_std_10y') {
+      return {
+        ...k,
+        wert: w.bruttoMargeSchein
+          ? '–'
+          : w.bruttoMargeStd10y != null
+            ? `${zahl(w.bruttoMargeStd10y)} Pp.${w.pricingPowerOk === false ? ' ⚠' : w.pricingPowerOk ? ' ✓' : ''}`
+            : '–',
+      }
+    }
+    if (k.id === 'ltm_ebit') return { ...k, wert: pctRaw(w.ebitMarge) }
+    if (k.id === 'ltm_roa') return { ...k, wert: pctRaw(w.roa) }
+    if (k.id === 'ltm_roe') return { ...k, wert: pctRaw(w.roe) }
+    if (k.id === 'ltm_roic') return { ...k, wert: pctRaw(w.roicAnzeige ?? w.roic) }
+    if (k.id === 'ltm_roic_ex_gw') return { ...k, wert: pctRaw(w.roicExGoodwill) }
+    if (k.id === 'ltm_value_spread') {
+      return {
+        ...k,
+        wert: pctSigned(w.valueSpread),
+        ton:
+          w.valueSpread == null ? undefined : w.valueSpread >= 0 ? 'positiv' : 'negativ',
+      }
+    }
+    if (k.id === 'fcf_conversion') return { ...k, wert: pctRaw(w.fcfConversion) }
+    if (k.id === 'sloan_ratio') {
+      return { ...k, wert: w.sloanRatio != null ? zahl(w.sloanRatio) : '–' }
+    }
+    if (k.id === 'beneish_m') {
+      return {
+        ...k,
+        wert:
+          w.beneishMScore != null
+            ? `${zahl(w.beneishMScore)}${w.beneishRisiko ? ` (${w.beneishRisiko})` : ''}`
+            : '–',
+      }
+    }
+    if (k.id === 'reinvest_quote') return { ...k, wert: pctMitVorzeichen(w.reinvestitionsquotePct) }
     return k
   })
 }

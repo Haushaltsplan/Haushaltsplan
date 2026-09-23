@@ -103,18 +103,21 @@ export function ergaenzeRoicAusBilanz(
       roiWerte[key] = null
     }
 
-    const investedExGw =
-      goodwill != null && goodwill > 0 ? invested - goodwill : invested
-    if (investedExGw > 0 && goodwill != null && goodwill > 0) {
+    const hatGoodwill = goodwill != null && goodwill > 0
+    // Goodwill ≥ IC (typisch MA/V nach Buybacks): tangibles Kapital ~0 → Quotient unsinnig.
+    const investedExGw = hatGoodwill ? invested - goodwill : invested
+    const gwDominiert = hatGoodwill && invested > 0 && goodwill! >= invested * 0.85
+    if (hatGoodwill && investedExGw > 0 && !gwDominiert) {
       const roicX = (nopat / investedExGw) * 100
-      if (Number.isFinite(roicX) && Math.abs(roicX) <= 800) {
+      // >150 % bei ex-GW ist fast immer Nenner-Artefakt, kein sinnvolles Renditemaß
+      if (Number.isFinite(roicX) && roicX > 0 && roicX <= 150) {
         roiExGw[key] = Math.round(roicX * 10) / 10
         hatExGw = true
       } else {
         roiExGw[key] = null
       }
-    } else if (invested > 0 && (goodwill == null || goodwill <= 0)) {
-      // Kein Goodwill → ex Goodwill = klassischer ROIC (nicht leer lassen)
+    } else if (invested > 0 && !hatGoodwill) {
+      // Kein Goodwill → ex Goodwill = klassischer ROIC
       roiExGw[key] = roiWerte[key]
       if (roiExGw[key] != null) hatExGw = true
     } else {
@@ -128,16 +131,24 @@ export function ergaenzeRoicAusBilanz(
   if (hatExGw) {
     upsertZeile(zeilen, 'roi_ex_goodwill', 'ROIC ex Goodwill %', roiExGw, false)
   } else {
-    // Macrotrends liefert oft nur `roi` — dann ex Goodwill nicht leer lassen
-    const roiZ = zeilen.find((r) => r.id === 'roi')
-    if (roiZ) {
-      const spiegel: Record<string, number | null> = {}
+    // Alte Artefakte (z. B. ROE als „ex Goodwill“) löschen, wenn Goodwill das IC dominiert
+    const gwN = anzahlNonNull(zeilen, 'goodwill', histOnly)
+    const existing = zeilen.find((r) => r.id === 'roi_ex_goodwill')
+    if (gwN > 0 && existing) {
       for (const key of keys) {
-        const v = roiZ.werte[key]
-        if (v != null && Number.isFinite(v)) spiegel[key] = v
+        existing.werte[key] = null
       }
-      if (Object.keys(spiegel).length > 0) {
-        upsertZeile(zeilen, 'roi_ex_goodwill', 'ROIC ex Goodwill %', spiegel, true)
+    } else if (gwN === 0) {
+      const roiZ = zeilen.find((r) => r.id === 'roi')
+      if (roiZ) {
+        const spiegel: Record<string, number | null> = {}
+        for (const key of keys) {
+          const v = roiZ.werte[key]
+          if (v != null && Number.isFinite(v)) spiegel[key] = v
+        }
+        if (Object.keys(spiegel).length > 0) {
+          upsertZeile(zeilen, 'roi_ex_goodwill', 'ROIC ex Goodwill %', spiegel, true)
+        }
       }
     }
   }

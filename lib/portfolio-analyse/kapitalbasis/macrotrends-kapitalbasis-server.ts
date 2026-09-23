@@ -76,7 +76,7 @@ const FELD_SLUGS: Array<{
     slugs: ['long-term-debt'],
   },
   { feld: 'bargeldMio', statement: 'balance-sheet', slugs: ['cash-on-hand'] },
-  { feld: 'goodwillMio', statement: 'balance-sheet', slugs: ['goodwill'] },
+  { feld: 'goodwillMio', statement: 'balance-sheet', slugs: ['goodwill', 'goodwill-intangible-assets-total'] },
   {
     feld: 'intangiblesMio',
     statement: 'balance-sheet',

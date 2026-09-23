@@ -9,6 +9,7 @@ import {
 } from '@/lib/portfolio-analyse/fundamentaldaten-roic-hilfen'
 import {
   berechneBruttomargenStabilitaet,
+  istScheinBruttomargeSerie,
 } from '@/lib/portfolio-analyse/fundamentaldaten-pricing-power'
 import { berechneEarningsQuality } from '@/lib/portfolio-analyse/fundamentaldaten-earnings-quality'
 import {
@@ -65,8 +66,10 @@ function roicExGoodwillAusYahoo(yf: MantraYahooFinanzdaten | null | undefined): 
     const gw = s.goodwillUsd ?? 0
     const denom = gw > 0 ? ic - gw : ic
     if (denom <= 0) continue
+    // Goodwill dominiert IC → Quotient nicht aussagekräftig (MA/V u. a.)
+    if (gw > 0 && ic > 0 && gw >= ic * 0.85) continue
     const pct = (nopat / denom) * 100
-    if (!Number.isFinite(pct) || Math.abs(pct) > 800) continue
+    if (!Number.isFinite(pct) || pct <= 0 || pct > 150) continue
     return Math.round(pct * 10) / 10
   }
   return null
@@ -213,10 +216,21 @@ export function baueKontextWerte(ctx: FundamentalKontextInput) {
 
   const sbcAdjFcfUsd = fcfUsd != null && sbcUsd != null ? fcfUsd - sbcUsd : null
 
-  const bruttoMarge =
+  const bruttoMargeRoh =
     letzterWert(bruttoMargeZeile, perioden) ??
     berechneMargePct(letzterWert(bruttoGewinnZeile, perioden), umsatzMio) ??
     (ctx.yahoo?.grossMargins != null ? ctx.yahoo.grossMargins * 100 : null)
+
+  const bruttoHistRoh = historischeWerte(bruttoMargeZeile, perioden)
+  // Macrotrends setzt bei Payment-Networks oft Bruttogewinn = Umsatz → 100 % Schein-Marge
+  const scheinBrutto =
+    istScheinBruttomargeSerie(bruttoHistRoh) ||
+    (bruttoMargeRoh != null &&
+      bruttoMargeRoh >= 99.5 &&
+      letzterWert(bruttoGewinnZeile, perioden) != null &&
+      umsatzMio != null &&
+      Math.abs(letzterWert(bruttoGewinnZeile, perioden)! - umsatzMio) / umsatzMio < 0.005)
+  const bruttoMarge = scheinBrutto ? null : bruttoMargeRoh
 
   const ebitMarge =
     letzterWert(ebitMargeZeile, perioden) ??
@@ -256,15 +270,27 @@ export function baueKontextWerte(ctx: FundamentalKontextInput) {
     nettoMio != null && fcfMio != null && nettoMio > 0 ? (fcfMio / nettoMio) * 100 : null
 
   const roic = letzterWert(roiZeile, perioden)
+  const hatGoodwillZeile =
+    (historischeWerte(zeile('goodwill'), perioden).filter((v) => v > 0).length >= 1) ||
+    (letzterWert(zeile('goodwill'), perioden) != null && (letzterWert(zeile('goodwill'), perioden) ?? 0) > 0)
+
   let roicExGoodwill = letzterWert(zeile('roi_ex_goodwill'), perioden)
-  if (roicExGoodwill == null) {
-    roicExGoodwill = roicExGoodwillAusYahoo(ctx.yahooFinanz) ?? (roic != null ? roic : null)
+  if (roicExGoodwill != null && (roicExGoodwill <= 0 || roicExGoodwill > 150)) {
+    roicExGoodwill = null
   }
-  const roicAnzeige = roic ?? roicExGoodwill
+  if (roicExGoodwill == null && !hatGoodwillZeile) {
+    // Nur ohne Goodwill: Yahoo/Spiegel erlauben
+    roicExGoodwill = roicExGoodwillAusYahoo(ctx.yahooFinanz) ?? (roic != null ? roic : null)
+  } else if (roicExGoodwill == null) {
+    // Mit Goodwill: Yahoo nur wenn Quotient sinnvoll (Filter in Helfer)
+    roicExGoodwill = roicExGoodwillAusYahoo(ctx.yahooFinanz)
+  }
+  // Nie ex-GW als Haupt-ROIC verwenden, wenn Macrotrends/Bilanz-ROIC fehlt und ex-GW Artefakt wäre
+  const roicAnzeige = roic ?? (!hatGoodwillZeile ? roicExGoodwill : null)
   const roicQuelle =
     roic != null
       ? 'ROIC (Macrotrends/Bilanz)'
-      : roicExGoodwill != null
+      : roicAnzeige != null
         ? 'ROIC ex Goodwill'
         : undefined
 
@@ -336,8 +362,8 @@ export function baueKontextWerte(ctx: FundamentalKontextInput) {
     ? berechneEarningsQuality(perioden, ctx.roh?.zeilen ?? [])
     : { sloanRatio: null, beneishMScore: null, beneishRisiko: null }
 
-  const bruttoHist = historischeWerte(bruttoMargeZeile, perioden)
-  const margeStab = berechneBruttomargenStabilitaet(bruttoHist)
+  const bruttoHist = scheinBrutto ? [] : bruttoHistRoh
+  const margeStab = berechneBruttomargenStabilitaet(bruttoHistRoh)
 
   const fwdPe = ctx.yahoo?.forwardPE ?? ctx.yahoo?.trailingPE ?? null
   const epsWachstumPct =
@@ -478,6 +504,7 @@ export function baueKontextWerte(ctx: FundamentalKontextInput) {
 
   return {
     bruttoMarge,
+    bruttoMargeSchein: scheinBrutto,
     ebitMarge,
     ebitdaMarge,
     fcfMarge,

@@ -14,8 +14,20 @@ export function standardabweichung(werte: number[]): number | null {
 }
 
 /**
+ * True wenn Bruttogewinn ≈ Umsatz (Macrotrends/SA ohne COGS, z. B. MA/V).
+ * Dann ist „Bruttomarge 100 %“ keine echte Pricing-Power-Messgröße.
+ */
+export function istScheinBruttomargeSerie(hist: number[]): boolean {
+  const xs = hist.filter((v) => Number.isFinite(v))
+  if (xs.length < 3) return false
+  const nahe100 = xs.filter((v) => v >= 99.5).length
+  return nahe100 / xs.length >= 0.8
+}
+
+/**
  * Bruttomargen-Stabilität über bis zu 10 Jahre.
  * > 2 Pp. StdAbw. = schwache Pricing Power (KO für Outperformance).
+ * Schein-100-%-Serien (kein COGS) → null, sonst Fake-✓ bei StdAbw. 0.
  */
 export function berechneBruttomargenStabilitaet(hist: number[]): {
   bruttoMargeStd10y: number | null
@@ -23,6 +35,9 @@ export function berechneBruttomargenStabilitaet(hist: number[]): {
   pricingPowerOk: boolean | null
 } {
   const last10 = hist.filter((v) => Number.isFinite(v)).slice(-10)
+  if (istScheinBruttomargeSerie(last10)) {
+    return { bruttoMargeStd10y: null, bruttoMargeJahre: last10.length, pricingPowerOk: null }
+  }
   const sd = standardabweichung(last10)
   return {
     bruttoMargeStd10y: sd,

@@ -128,22 +128,30 @@ function extractJsonArray(html, start) {
   return null
 }
 
-/** Nur die Chart-/Statement-JSON-Nutzlast — ~50–200 KB statt 1 MB HTML. */
+function hatChartPayload(html) {
+  return (
+    html.includes('var originalData = ') ||
+    html.includes('var chartData = ') ||
+    html.includes('var dataDaily = ')
+  )
+}
+
+/**
+ * Nur Chart-/Statement-JSON — nie Meta-only ohne Daten.
+ * Früher: leere Meta-HTML als „ok“ → dünne GuV überschrieb den Cache (SPGI/MA).
+ */
 function compactMacrotrendsHtml(html) {
+  const meta = html.match(/<meta name="description" content="[^"]*"/)
+  const parts = []
   for (const marker of ['var originalData = ', 'var chartData = ', 'var dataDaily = ']) {
     const idx = html.indexOf(marker)
     if (idx < 0) continue
     const json = extractJsonArray(html, idx + marker.length)
-    if (json) {
-      return `<!DOCTYPE html><html><body><script>${marker}${json};</script></body></html>`
-    }
+    if (json) parts.push(`${marker}${json};`)
   }
-  // Meta-Beschreibung für financial-ratios behalten
-  const meta = html.match(/<meta name="description" content="[^"]*"/)
-  if (meta && html.length > 8_000) {
-    return `<!DOCTYPE html><html><head>${meta[0]}></head><body></body></html>`
-  }
-  return html.length > 200_000 ? html.slice(0, 200_000) : html
+  if (parts.length === 0) return null
+  const head = meta ? `<head>${meta[0]}></head>` : ''
+  return `<!DOCTYPE html><html>${head}<body><script>${parts.join('\n')}</script></body></html>`
 }
 
 async function fetchHtml(url) {
@@ -160,7 +168,7 @@ async function fetchHtml(url) {
       const msg = String(e?.message || e)
       if (!/ERR_ABORTED|interrupted/i.test(msg)) throw e
     }
-    const deadline = Date.now() + 20_000
+    const deadline = Date.now() + 35_000
     while (Date.now() < deadline) {
       const title = await p.title().catch(() => '')
       const html = await p.content().catch(() => '')
@@ -171,21 +179,22 @@ async function fetchHtml(url) {
         await new Promise((r) => setTimeout(r, 800))
         continue
       }
-      if (
-        html.includes('var originalData') ||
-        html.includes('var chartData') ||
-        html.includes('var dataDaily')
-      ) {
-        return compactMacrotrendsHtml(html)
+      if (hatChartPayload(html)) {
+        const compact = compactMacrotrendsHtml(html)
+        if (compact) return compact
       }
-      if (html.length > 8_000) return compactMacrotrendsHtml(html)
+      // Kein early-return bei großem HTML ohne Payload — warten bis originalData da ist.
       await new Promise((r) => setTimeout(r, 400))
     }
     const html = await p.content()
     if (/just a moment/i.test(html.slice(0, 2000))) {
       throw new Error('Cloudflare noch aktiv — Checkbox im Chrome-Fenster bestätigen')
     }
-    return compactMacrotrendsHtml(html)
+    const compact = hatChartPayload(html) ? compactMacrotrendsHtml(html) : null
+    if (!compact) {
+      throw new Error(`Keine Macrotrends-Payload (originalData/chartData) für ${url}`)
+    }
+    return compact
   } finally {
     release()
   }

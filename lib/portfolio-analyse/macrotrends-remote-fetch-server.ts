@@ -64,7 +64,7 @@ async function fetchViaRelay(url: string): Promise<string | null> {
       ...(cred.secret ? { Authorization: `Bearer ${cred.secret}` } : {}),
     },
     body: JSON.stringify({ url }),
-    signal: AbortSignal.timeout(120_000),
+    signal: AbortSignal.timeout(45_000),
     cache: 'no-store',
   })
   if (!res.ok) {
@@ -116,6 +116,14 @@ export async function fetchMacrotrendsHtmlBatch(urls: string[]): Promise<Map<str
       }
       if (out.size > 0) {
         console.info(`[macrotrends-fetch] Batch ${out.size}/${unique.length} via Relay`)
+        // Fehlende URLs einzeln nachladen — aber nur Relay, kein CDP-Parallelkampf
+        if (out.size < unique.length) {
+          for (const u of unique) {
+            if (out.has(u)) continue
+            const html = await fetchViaRelay(u)
+            if (html) out.set(u, html)
+          }
+        }
         return out
       }
     } catch (e) {
@@ -126,7 +134,8 @@ export async function fetchMacrotrendsHtmlBatch(urls: string[]): Promise<Map<str
     }
   }
 
-  // Fallback: einzeln (lokal CDP / ZenRows)
+  // Ohne Relay: einzeln (lokal CDP / ZenRows)
+  if (await relayCredentials()) return out
   for (const u of unique) {
     const html = await fetchMacrotrendsHtml(u)
     if (html) out.set(u, html)
@@ -183,10 +192,16 @@ async function fetchViaScrapingBee(url: string): Promise<string | null> {
 /**
  * Eine Macrotrends-URL als HTML — Reihenfolge für öffentliche App.
  * Wirft nicht; null = alle Provider fehlgeschlagen.
+ *
+ * Wichtig: Wenn ein Heim-Relay konfiguriert ist, kein lokales CDP parallel —
+ * beide teilen sich denselben Chrome (:9222) und erzeugen sonst 502/Deadlocks.
  */
 export async function fetchMacrotrendsHtml(url: string): Promise<string | null> {
-  const viaRelay = await fetchViaRelay(url)
-  if (viaRelay) return viaRelay
+  const cred = await relayCredentials()
+  if (cred) {
+    const viaRelay = await fetchViaRelay(url)
+    return viaRelay
+  }
 
   const viaZen = await fetchViaZenrows(url)
   if (viaZen) return viaZen

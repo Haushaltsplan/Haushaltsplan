@@ -223,13 +223,14 @@ const BALANCE_SHEET_METRIKEN: MetrikDef[] = [
   { slug: 'total-assets', id: 'gesamtvermoegen', label: 'Gesamtvermögen', gruppe: 'bilanz', einheit: 'waehrung_usd_mio', statement: 'balance-sheet' },
   { slug: 'total-liabilities', id: 'gesamtverbindlichkeiten', label: 'Gesamtverbindlichkeiten', gruppe: 'bilanz', einheit: 'waehrung_usd_mio', statement: 'balance-sheet' },
   {
-    slug: 'total-stockholder-equity',
+    // Macrotrends 2026: „total-share-holder-equity“ (Bindestrich share-holder)
+    slug: 'total-share-holder-equity',
     id: 'eigenkapital',
     label: 'Eigenkapital',
     gruppe: 'bilanz',
     einheit: 'waehrung_usd_mio',
     statement: 'balance-sheet',
-    aliases: ['total-stockholders-equity'],
+    aliases: ['total-stockholder-equity', 'total-stockholders-equity', 'total-shareholders-equity'],
   },
   /**
    * Macrotrends hat kein „total-debt“ (404) — nur langfristig.
@@ -245,9 +246,25 @@ const BALANCE_SHEET_METRIKEN: MetrikDef[] = [
     aliases: ['total-debt'],
   },
   { slug: 'cash-on-hand', id: 'bargeld', label: 'Bargeld & Äquivalente', gruppe: 'bilanz', einheit: 'waehrung_usd_mio', statement: 'balance-sheet' },
-  { slug: 'net-receivables', id: 'forderungen', label: 'Forderungen (netto)', gruppe: 'bilanz', einheit: 'waehrung_usd_mio', statement: 'balance-sheet' },
+  {
+    slug: 'receivables-total',
+    id: 'forderungen',
+    label: 'Forderungen (netto)',
+    gruppe: 'bilanz',
+    einheit: 'waehrung_usd_mio',
+    statement: 'balance-sheet',
+    aliases: ['net-receivables'],
+  },
   { slug: 'inventory', id: 'vorraete', label: 'Vorräte', gruppe: 'bilanz', einheit: 'waehrung_usd_mio', statement: 'balance-sheet' },
-  { slug: 'goodwill', id: 'goodwill', label: 'Goodwill', gruppe: 'bilanz', einheit: 'waehrung_usd_mio', statement: 'balance-sheet' },
+  {
+    slug: 'goodwill',
+    id: 'goodwill',
+    label: 'Goodwill',
+    gruppe: 'bilanz',
+    einheit: 'waehrung_usd_mio',
+    statement: 'balance-sheet',
+    aliases: ['goodwill-intangible-assets-total'],
+  },
   { slug: 'total-current-assets', id: 'umlaufvermoegen', label: 'Umlaufvermögen', gruppe: 'bilanz', einheit: 'waehrung_usd_mio', statement: 'balance-sheet' },
   { slug: 'total-current-liabilities', id: 'kurzfrist_verbindl', label: 'Kurzfristige Verbindlichkeiten', gruppe: 'bilanz', einheit: 'waehrung_usd_mio', statement: 'balance-sheet' },
 ]
@@ -923,11 +940,7 @@ async function praefetchSeiten(urls: string[]): Promise<void> {
   for (const [url, html] of pages) {
     pageCache.set(url, { at: now, html, fehler: false })
   }
-  for (const url of fehlend) {
-    if (!pages.has(url)) {
-      pageCache.set(url, { at: now, html: null, fehler: true })
-    }
-  }
+  // Fehlende URLs NICHT als Fehler cachen — sonst blockiert ein Teil-Batch den GuV-Retry.
 }
 
 function statementUrlsFuer(ident: MacrotrendsIdent, frequenz: FundamentalFrequenz): string[] {
@@ -1015,6 +1028,34 @@ export async function ladeMacrotrendsFundamentaldaten(
   metrikenAusDefs(CASH_FLOW_METRIKEN)
   metrikenAusDefs(BALANCE_SHEET_METRIKEN)
   metrikenAusDefs(FINANCIAL_RATIOS_METRIKEN)
+
+  // Ohne volle Statements kein „ok“-Paket — sonst überschreibt Teil-Scrape den guten Cache.
+  const umsatzZeile = zeilen.find((z) => z.id === 'umsatz')
+  const epsZeile = zeilen.find((z) => z.id === 'eps')
+  const ekZeile = zeilen.find((z) => z.id === 'eigenkapital')
+  const zaehleJahre = (z: FundamentalMetrikZeile | undefined) =>
+    z
+      ? periodenIso.filter((iso) => {
+          const v = z.werte[iso]
+          return v != null && Number.isFinite(v)
+        }).length
+      : 0
+  const umsatzJahre = zaehleJahre(umsatzZeile)
+  const epsJahre = zaehleJahre(epsZeile)
+  const ekJahre = zaehleJahre(ekZeile)
+  if (
+    income.length === 0 ||
+    cf.length === 0 ||
+    bs.length === 0 ||
+    umsatzJahre < 6 ||
+    epsJahre < 4 ||
+    ekJahre < 4
+  ) {
+    console.warn(
+      `[macrotrends] Statements zu dünn für ${ident.ticker} (income=${income.length} cf=${cf.length} bs=${bs.length} umsatzJ=${umsatzJahre} epsJ=${epsJahre} ekJ=${ekJahre}) — verwerfe Paket`,
+    )
+    return null
+  }
 
   const ocfRow = zeileFuerSlug(cf, 'cash-flow-from-operating-activities')
   const capexRow = zeileFuerSlug(cf, 'net-change-in-property-plant-equipment')

@@ -8,6 +8,7 @@ import {
 import { ergaenzeFcfRenditeKeyMetrics, ergaenzeFcfRenditeZeilen } from '@/lib/portfolio-analyse/fundamentaldaten-fcf-rendite-zeilen'
 import {
   baueKeyMetrics,
+  korrigiereEffizienzKeyMetrics,
   korrigiereFwdWachstumKeyMetrics,
   schaetzungenRohAusPaket,
   type YahooFundamentalKennzahlen,
@@ -76,6 +77,7 @@ import {
   fundamentaldatenCacheKey,
   fundamentaldatenFingerprint,
   ladeFundamentaldatenPaketCacheFuerAnfrage,
+  liveFundamentalIstDuennemAlsCache,
   speichereFundamentaldatenPaketCache,
 } from '@/lib/portfolio-analyse/fundamentaldaten-paket-cache-server'
 
@@ -814,18 +816,27 @@ function paketMitKorrigiertemFwdWachstum(p: FundamentaldatenPaket): Fundamentald
   if (!p.ok) return p
   const zeilen = bereinigeSchaetzungsniveausInZeilen(p.perioden, p.zeilen)
   ergaenzeFcfRenditeZeilen(p.perioden, zeilen)
+  ergaenzeMargenZeilen(p.perioden, zeilen)
+  ergaenzeRoicAusBilanz(p.perioden, zeilen)
   const perioden = periodenOhneLeereSchaetzungen(p.perioden, zeilen)
   const cleaned = { ...p, perioden, zeilen }
   if (cleaned.keyMetrics.length === 0) return cleaned
+  const schaetz = schaetzungenRohAusPaket(cleaned)
+  const kontext = baueKontextWerte({
+    yahoo: null,
+    roh: { perioden: cleaned.perioden, zeilen: cleaned.zeilen },
+    schaetzungen: schaetz,
+    yahooFinanz: null,
+  })
   return {
     ...cleaned,
-    keyMetrics: ergaenzeFcfRenditeKeyMetrics(
-      korrigiereFwdWachstumKeyMetrics(
-        cleaned.keyMetrics,
-        schaetzungenRohAusPaket(cleaned),
+    keyMetrics: korrigiereEffizienzKeyMetrics(
+      ergaenzeFcfRenditeKeyMetrics(
+        korrigiereFwdWachstumKeyMetrics(cleaned.keyMetrics, schaetz, cleaned),
         cleaned,
       ),
       cleaned,
+      kontext,
     ),
   }
 }
@@ -866,6 +877,17 @@ export async function ladeFundamentaldaten(anfrage: FundamentaldatenAnfrage): Pr
         fingerprint: fp,
       })
       return paketMitKorrigiertemFwdWachstum(cached.paket)
+    }
+    // Teil-Scrape (CF/Timeout) darf volle Historie + CAGRs nicht überschreiben.
+    if (cached?.paket.ok && liveFundamentalIstDuennemAlsCache(liveKorr, cached.paket)) {
+      console.warn(
+        `[fundamental-cache] live dünner als Cache → behalten ${cacheKey || anfrage.isin}`,
+      )
+      return paketMitKorrigiertemFwdWachstum({
+        ...cached.paket,
+        fehler:
+          'Live-Scrape unvollständig (weniger Historie als Cache) — Cache belassen. Relay/Chrome prüfen und erneut scrapen.',
+      })
     }
     await speichereFundamentaldatenPaketCache({
       cacheKey,
