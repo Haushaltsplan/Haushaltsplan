@@ -222,8 +222,24 @@ export function sortiereFundamentaldatenBatchZiele(
   return [...ziele].sort((a, b) => Number(istEuZiel(a)) - Number(istEuZiel(b)))
 }
 
+/** Yahoo-Listing → Anzeige-Ticker ohne Börsen-Suffix (SAP.DE → SAP). Macrotrends nutzt dieselben Kurz-Ticker. */
+function anzeigeTicker(symbol: string | null | undefined): string | null {
+  const s = symbol?.trim().toUpperCase()
+  if (!s) return null
+  const m =
+    /^([A-Z0-9-]+)\.(DE|PA|AS|L|SW|HM|F|MI|MC|MU|BE|VI|WA|BR|HE|DU|SG|ST|TO|AX|NZ|US)$/i.exec(s)
+  if (m?.[1]) return m[1].toUpperCase()
+  return s
+}
+
+/** Fortschritt/Fehlerliste: klarer Ticker oder Name — keine Yahoo-Endungen wie .DE/.PA. */
 function kurzName(z: FundamentaldatenAnfrage): string {
-  return (z.symbolYahoo ?? z.name ?? z.isin ?? 'Unbekannt').trim()
+  const ticker =
+    anzeigeTicker(z.tickerOverride) ?? anzeigeTicker(z.symbolYahoo) ?? anzeigeTicker(z.symbolCandidates?.[0])
+  const name = z.name?.trim()
+  if (ticker) return ticker
+  if (name) return name
+  return (z.isin ?? 'Unbekannt').trim()
 }
 
 async function ladeTitelMitRetry(
