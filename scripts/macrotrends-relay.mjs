@@ -103,6 +103,49 @@ async function ensurePage() {
   return page
 }
 
+function extractJsonArray(html, start) {
+  let depth = 0
+  let inStr = false
+  let esc = false
+  for (let i = start; i < html.length; i++) {
+    const ch = html[i]
+    if (inStr) {
+      if (esc) esc = false
+      else if (ch === '\\') esc = true
+      else if (ch === '"') inStr = false
+      continue
+    }
+    if (ch === '"') {
+      inStr = true
+      continue
+    }
+    if (ch === '[') depth++
+    if (ch === ']') {
+      depth--
+      if (depth === 0) return html.slice(start, i + 1)
+    }
+  }
+  return null
+}
+
+/** Nur die Chart-/Statement-JSON-Nutzlast — ~50–200 KB statt 1 MB HTML. */
+function compactMacrotrendsHtml(html) {
+  for (const marker of ['var originalData = ', 'var chartData = ', 'var dataDaily = ']) {
+    const idx = html.indexOf(marker)
+    if (idx < 0) continue
+    const json = extractJsonArray(html, idx + marker.length)
+    if (json) {
+      return `<!DOCTYPE html><html><body><script>${marker}${json};</script></body></html>`
+    }
+  }
+  // Meta-Beschreibung für financial-ratios behalten
+  const meta = html.match(/<meta name="description" content="[^"]*"/)
+  if (meta && html.length > 8_000) {
+    return `<!DOCTYPE html><html><head>${meta[0]}></head><body></body></html>`
+  }
+  return html.length > 200_000 ? html.slice(0, 200_000) : html
+}
+
 async function fetchHtml(url) {
   await nav
   let release
@@ -112,34 +155,53 @@ async function fetchHtml(url) {
   try {
     const p = await ensurePage()
     try {
-      await p.goto(url, { waitUntil: 'domcontentloaded', timeout: 90_000 })
+      await p.goto(url, { waitUntil: 'domcontentloaded', timeout: 45_000 })
     } catch (e) {
       const msg = String(e?.message || e)
       if (!/ERR_ABORTED|interrupted/i.test(msg)) throw e
     }
-    const deadline = Date.now() + 45_000
+    const deadline = Date.now() + 20_000
     while (Date.now() < deadline) {
       const title = await p.title().catch(() => '')
       const html = await p.content().catch(() => '')
-      const cf = /just a moment|nur einen moment/i.test(title) || /just a moment|turnstile/i.test(html.slice(0, 4000))
-      const ok =
-        !cf &&
-        (html.includes('var originalData') ||
-          html.includes('var chartData') ||
-          html.includes('var dataDaily') ||
-          html.length > 40_000)
-      if (ok) return html
-      if (!cf && html.length > 8_000) return html
-      await new Promise((r) => setTimeout(r, 1000))
+      const cf =
+        /just a moment|nur einen moment/i.test(title) ||
+        /just a moment|turnstile/i.test(html.slice(0, 4000))
+      if (cf) {
+        await new Promise((r) => setTimeout(r, 800))
+        continue
+      }
+      if (
+        html.includes('var originalData') ||
+        html.includes('var chartData') ||
+        html.includes('var dataDaily')
+      ) {
+        return compactMacrotrendsHtml(html)
+      }
+      if (html.length > 8_000) return compactMacrotrendsHtml(html)
+      await new Promise((r) => setTimeout(r, 400))
     }
     const html = await p.content()
     if (/just a moment/i.test(html.slice(0, 2000))) {
       throw new Error('Cloudflare noch aktiv — Checkbox im Chrome-Fenster bestätigen')
     }
-    return html
+    return compactMacrotrendsHtml(html)
   } finally {
     release()
   }
+}
+
+async function fetchHtmlBatch(urls) {
+  const pages = {}
+  const errors = {}
+  for (const url of urls) {
+    try {
+      pages[url] = await fetchHtml(url)
+    } catch (e) {
+      errors[url] = e instanceof Error ? e.message : String(e)
+    }
+  }
+  return { pages, errors }
 }
 
 function startServer(secret) {
@@ -151,7 +213,7 @@ function startServer(secret) {
     if (req.method === 'GET' && req.url === '/health') {
       return send(200, { ok: true })
     }
-    if (req.method !== 'POST' || req.url !== '/fetch') {
+    if (req.method !== 'POST' || (req.url !== '/fetch' && req.url !== '/fetch-batch')) {
       return send(404, { ok: false, error: 'not found' })
     }
     const auth = req.headers.authorization || ''
@@ -160,13 +222,30 @@ function startServer(secret) {
     }
     let body = ''
     for await (const chunk of req) body += chunk
-    let url
+    let parsed
     try {
-      url = JSON.parse(body).url
+      parsed = JSON.parse(body)
     } catch {
       return send(400, { ok: false, error: 'bad json' })
     }
-    if (!url || typeof url !== 'string' || !url.startsWith('https://www.macrotrends.net/')) {
+
+    const isMacro = (u) => typeof u === 'string' && u.startsWith('https://www.macrotrends.net/')
+
+    if (req.url === '/fetch-batch') {
+      const urls = Array.isArray(parsed.urls) ? parsed.urls.filter(isMacro) : []
+      if (urls.length === 0) return send(400, { ok: false, error: 'urls required' })
+      if (urls.length > 40) return send(400, { ok: false, error: 'max 40 urls' })
+      try {
+        const { pages, errors } = await fetchHtmlBatch(urls)
+        const okCount = Object.keys(pages).length
+        return send(200, { ok: okCount > 0, pages, errors, okCount, total: urls.length })
+      } catch (e) {
+        return send(502, { ok: false, error: e instanceof Error ? e.message : String(e) })
+      }
+    }
+
+    const url = parsed.url
+    if (!isMacro(url)) {
       return send(400, { ok: false, error: 'url must be macrotrends.net https' })
     }
     try {

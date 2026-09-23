@@ -18,7 +18,7 @@ import {
   macrotrendsUserAgent,
   markMacrotrendsBrowserRequired,
 } from '@/lib/portfolio-analyse/macrotrends-browser-auth-server'
-import { fetchMacrotrendsHtml } from '@/lib/portfolio-analyse/macrotrends-remote-fetch-server'
+import { fetchMacrotrendsHtml, fetchMacrotrendsHtmlBatch } from '@/lib/portfolio-analyse/macrotrends-remote-fetch-server'
 
 const BASE = 'https://www.macrotrends.net'
 const IFRAME_BASE =
@@ -911,12 +911,51 @@ export type MacrotrendsFundamentalRoh = {
   branche: string | null
 }
 
+async function praefetchSeiten(urls: string[]): Promise<void> {
+  const unique = [...new Set(urls)]
+  const fehlend = unique.filter((u) => {
+    const hit = pageCache.get(u)
+    return !hit?.html || hit.fehler
+  })
+  if (fehlend.length === 0) return
+  const pages = await fetchMacrotrendsHtmlBatch(fehlend)
+  const now = Date.now()
+  for (const [url, html] of pages) {
+    pageCache.set(url, { at: now, html, fehler: false })
+  }
+  for (const url of fehlend) {
+    if (!pages.has(url)) {
+      pageCache.set(url, { at: now, html: null, fehler: true })
+    }
+  }
+}
+
+function statementUrlsFuer(ident: MacrotrendsIdent, frequenz: FundamentalFrequenz): string[] {
+  const freqParam = frequenz === 'quartal' ? '?freq=Q' : ''
+  return (['financial-ratios', 'income-statement', 'cash-flow-statement', 'balance-sheet'] as const).map(
+    (s) => `${BASE}/stocks/charts/${ident.ticker}/${ident.slug}/${s}${freqParam}`,
+  )
+}
+
+function bewertungUrlsFuer(ident: MacrotrendsIdent, frequenz: FundamentalFrequenz): string[] {
+  const freqCode = frequenz === 'quartal' ? 'Q' : 'A'
+  return BEWERTUNG_METRIKEN.map(
+    (def) =>
+      `${IFRAME_BASE}?t=${encodeURIComponent(ident.ticker)}&type=${encodeURIComponent(def.slug)}&statement=price-ratios&freq=${freqCode}&sub=&yb=15`,
+  )
+}
+
 export async function ladeMacrotrendsFundamentaldaten(
   ident: MacrotrendsIdent,
   frequenz: FundamentalFrequenz = 'jahr',
   opts?: { nurCache?: boolean },
 ): Promise<MacrotrendsFundamentalRoh | null> {
   const mtOpts = opts?.nurCache ? { nurCache: true as const } : undefined
+
+  if (!opts?.nurCache) {
+    await praefetchSeiten([...statementUrlsFuer(ident, frequenz), ...bewertungUrlsFuer(ident, frequenz)])
+  }
+
   const [ratiosRoh, incomeRoh, cfRoh, bsRoh] = await Promise.all([
     ladeStatementRoh(ident, 'financial-ratios', frequenz, mtOpts),
     ladeStatementRoh(ident, 'income-statement', frequenz, mtOpts),

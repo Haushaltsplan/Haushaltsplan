@@ -4,6 +4,9 @@
  * 2) ZENROWS_API_KEY → ZenRows (js_render + premium_proxy)
  * 3) SCRAPINGBEE_API_KEY → ScrapingBee (stealth)
  * 4) lokales Chrome-CDP (nur Dev)
+ *
+ * Wichtig: Batch-Abruf (/fetch-batch) — ein Tunnel-Request für viele Seiten,
+ * sonst bricht Vercel bei 9× Einzel-Roundtrips ab.
  */
 
 import 'server-only'
@@ -28,7 +31,7 @@ function istChallenge(html: string): boolean {
   return /just a moment|cf-mitigated|challenge-platform|turnstile/i.test(k)
 }
 
-async function fetchViaRelay(url: string): Promise<string | null> {
+async function relayCredentials(): Promise<{ base: string; secret: string } | null> {
   let base = (process.env.MACROTRENDS_RELAY_URL ?? '').trim().replace(/\/$/, '')
   let secret = (process.env.MACROTRENDS_RELAY_SECRET ?? '').trim()
 
@@ -47,12 +50,18 @@ async function fetchViaRelay(url: string): Promise<string | null> {
     }
   }
   if (!base) return null
+  return { base, secret }
+}
 
-  const res = await fetch(`${base}/fetch`, {
+async function fetchViaRelay(url: string): Promise<string | null> {
+  const cred = await relayCredentials()
+  if (!cred) return null
+
+  const res = await fetch(`${cred.base}/fetch`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      ...(secret ? { Authorization: `Bearer ${secret}` } : {}),
+      ...(cred.secret ? { Authorization: `Bearer ${cred.secret}` } : {}),
     },
     body: JSON.stringify({ url }),
     signal: AbortSignal.timeout(120_000),
@@ -68,6 +77,61 @@ async function fetchViaRelay(url: string): Promise<string | null> {
     return null
   }
   return j.html
+}
+
+/** Viele URLs in einem Relay-Request (vermeidet Vercel-Timeouts). */
+export async function fetchMacrotrendsHtmlBatch(urls: string[]): Promise<Map<string, string>> {
+  const unique = [...new Set(urls.filter((u) => u.startsWith('https://www.macrotrends.net/')))]
+  const out = new Map<string, string>()
+  if (unique.length === 0) return out
+
+  const cred = await relayCredentials()
+  if (cred) {
+    // Quick-Tunnel bricht ~100s ab — daher Chunks à 3 Seiten.
+    const CHUNK = 3
+    try {
+      for (let i = 0; i < unique.length; i += CHUNK) {
+        const chunk = unique.slice(i, i + CHUNK)
+        const res = await fetch(`${cred.base}/fetch-batch`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(cred.secret ? { Authorization: `Bearer ${cred.secret}` } : {}),
+          },
+          body: JSON.stringify({ urls: chunk }),
+          signal: AbortSignal.timeout(90_000),
+          cache: 'no-store',
+        })
+        if (!res.ok) {
+          console.warn(`[macrotrends-fetch] Relay-Batch HTTP ${res.status} (chunk ${i / CHUNK + 1})`)
+          continue
+        }
+        const j = (await res.json()) as {
+          pages?: Record<string, string>
+          ok?: boolean
+        }
+        for (const [u, html] of Object.entries(j.pages ?? {})) {
+          if (html && !istChallenge(html) && hatDaten(html)) out.set(u, html)
+        }
+      }
+      if (out.size > 0) {
+        console.info(`[macrotrends-fetch] Batch ${out.size}/${unique.length} via Relay`)
+        return out
+      }
+    } catch (e) {
+      console.warn(
+        '[macrotrends-fetch] Relay-Batch fehlgeschlagen:',
+        e instanceof Error ? e.message : e,
+      )
+    }
+  }
+
+  // Fallback: einzeln (lokal CDP / ZenRows)
+  for (const u of unique) {
+    const html = await fetchMacrotrendsHtml(u)
+    if (html) out.set(u, html)
+  }
+  return out
 }
 
 async function fetchViaZenrows(url: string): Promise<string | null> {
@@ -130,7 +194,6 @@ export async function fetchMacrotrendsHtml(url: string): Promise<string | null> 
   const viaBee = await fetchViaScrapingBee(url)
   if (viaBee) return viaBee
 
-  // Lokal / Dev: Chrome-CDP
   if (await macrotrendsCdpVerfuegbar()) {
     markMacrotrendsBrowserRequired()
     const viaCdp = await fetchMacrotrendsHtmlViaBrowser(url)
