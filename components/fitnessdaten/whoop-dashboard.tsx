@@ -179,10 +179,8 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange, ini
   useEffect(() => {
     migriereStalenVo2AusDaily()
     migriereStalenSchritteAusDaily()
-    // Gedrosselt syncen — Force nur wenn Schritte/Kalorien heute fehlen
-    const heute = ladeDailyStore().days.find((d) => d.date === heuteIsoLocal())
-    const brauchtForce = !heute?.stepsFromCloud || !heute?.caloriesFromCloud
-    void versucheWhoopCloudAutoSync(brauchtForce).then((ok) => {
+    // Force-Sync: Cycle-Daten neu datieren (Sleep-Onset → App-Tag)
+    void versucheWhoopCloudAutoSync(true).then((ok) => {
       if (ok) setDataRevision((r) => r + 1)
     })
     const onSync = () => setDataRevision((r) => r + 1)

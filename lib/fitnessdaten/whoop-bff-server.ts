@@ -8,7 +8,7 @@ import type {
 import {
   heuteIsoInZeitzone,
   isoAddDaysKalender,
-  trendTageAusPunkten,
+  trendTageAusEndDatum,
 } from '@/lib/fitnessdaten/iso-date'
 
 const BFF_BASE = 'https://api.prod.whoop.com'
@@ -186,7 +186,11 @@ function extrahiereGraphPunkte(segment: unknown, endDate: string): { date: strin
   }
 
   if (raw.length === 0) return []
-  return trendTageAusPunkten(raw, endDate)
+  // Nur position_x → endDate. Labels = Sleep-Onset = 1 Tag zu früh (wie Cycle-Start).
+  return trendTageAusEndDatum(
+    raw.map((r) => ({ value: r.value, x: r.x })),
+    endDate,
+  )
 }
 
 function segmentAvg(segment: unknown): number | null {

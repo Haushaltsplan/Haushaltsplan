@@ -14,7 +14,7 @@ import {
   whoopRedirectUri,
 } from '@/lib/fitnessdaten/whoop-cloud-types'
 import { ladeWhoopBffSync } from '@/lib/fitnessdaten/whoop-bff-server'
-import { heuteIsoInZeitzone, isoAusApiZeitstempel } from '@/lib/fitnessdaten/iso-date'
+import { heuteIsoInZeitzone, isoAddDaysKalender, isoAusApiZeitstempel, defaultWhoopZeitzone } from '@/lib/fitnessdaten/iso-date'
 import { ladeWhoopHealthMonitorBff } from '@/lib/fitnessdaten/whoop-health-bff-server'
 import {
   leseWhoopTokensDb,
@@ -77,6 +77,7 @@ type SleepRec = {
 type CycleRec = {
   start?: string
   end?: string | null
+  timezone_offset?: string | null
   score_state?: string
   score?: {
     strain?: number
@@ -266,6 +267,56 @@ function datumAusIso(iso: string): string {
   return isoAusApiZeitstempel(iso)
 }
 
+/**
+ * Lokales Datum + Stunde aus API-Zeitstempel.
+ * Nutzt cycle.timezone_offset (Whoop Member-TZ), sonst Europe/Berlin.
+ */
+function lokalDatumUndStunde(
+  iso: string,
+  tzOffset?: string | null,
+): { date: string; hour: number } {
+  const ms = Date.parse(iso)
+  if (!Number.isFinite(ms)) {
+    return { date: heuteIsoInZeitzone(), hour: 12 }
+  }
+  if (tzOffset && /^[+-]\d{2}:\d{2}$/.test(tzOffset)) {
+    const sign = tzOffset[0] === '-' ? -1 : 1
+    const [hh, mm] = tzOffset.slice(1).split(':').map(Number)
+    const offsetMs = sign * ((hh ?? 0) * 3_600_000 + (mm ?? 0) * 60_000)
+    const wall = new Date(ms + offsetMs)
+    const y = wall.getUTCFullYear()
+    const m = String(wall.getUTCMonth() + 1).padStart(2, '0')
+    const d = String(wall.getUTCDate()).padStart(2, '0')
+    return { date: `${y}-${m}-${d}`, hour: wall.getUTCHours() }
+  }
+  const date = isoAusApiZeitstempel(iso)
+  const hourStr = new Intl.DateTimeFormat('en-GB', {
+    timeZone: defaultWhoopZeitzone(),
+    hour: '2-digit',
+    hour12: false,
+  }).format(new Date(ms))
+  return { date, hour: parseInt(hourStr, 10) || 12 }
+}
+
+/**
+ * Whoop-Cycle startet typischerweise mit Sleep-Onset (Abend), nicht mit dem Aufwachen.
+ * Die Whoop-App zeigt Strain/Kalorien am darauffolgenden Wach-Tag.
+ * Ohne diese Korrektur landet Mittwoch auf Dienstag usw.
+ */
+function cycleAppKalenderTag(
+  startIso: string,
+  endIso: string | null | undefined,
+  tzOffset: string | null | undefined,
+  heute: string,
+): string {
+  if (!endIso) return heute
+  const { date, hour } = lokalDatumUndStunde(startIso, tzOffset)
+  // Sleep-Onset ab Mittag/Abend → App-Tag = Folgetag (Mi-Schlaf 23:00 → Do-Wachtag… bzw. Di 23:00 → Mi)
+  if (hour >= 12) return isoAddDaysKalender(date, 1)
+  // Onset nach Mitternacht (0–11) oder Wake-artiger Start → Kalendertag von start
+  return date
+}
+
 function msAusIso(iso: string | undefined): number | null {
   if (!iso) return null
   const t = Date.parse(iso)
@@ -362,9 +413,7 @@ function parseCycleRow(rec: CycleRec, heute: string): WhoopCloudCycleRow | null 
   if (rec.score_state === 'UNSCORABLE') return null
   const s = rec.score
   if (s.strain == null && s.kilojoule == null) return null
-  // Whoop-Tag = Kalendertag des Cycle-Starts (Wake). Offener Cycle → heute.
-  // Nicht End-Datum: End = nächster Wake (= Folgetag) würde alles 1 Tag zu spät legen.
-  const date = rec.end ? datumAusIso(rec.start) : heute
+  const date = cycleAppKalenderTag(rec.start, rec.end, rec.timezone_offset, heute)
   return {
     date,
     strain: s.strain != null ? Math.round(s.strain * 10) / 10 : null,

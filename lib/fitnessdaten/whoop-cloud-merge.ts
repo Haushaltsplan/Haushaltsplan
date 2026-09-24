@@ -111,28 +111,23 @@ function mergeDay(
     stepsFromCloud = false
   }
 
-  // Kalorien: Cycle-API ist tagesrichtig (Start=Wake). BFF-Trends waren oft 1 Tag verschoben.
-  const bffCal =
-    bffRow?.calories != null && Number.isFinite(bffRow.calories) && bffRow.calories > 0
-      ? Math.round(bffRow.calories)
-      : null
+  // Kalorien: NUR Cycle-API (korrektes App-Datum nach Sleep-Onset-Korrektur).
+  // BFF-Trends sind oft 1 Tag verschoben (gleiche Sleep-Onset-Labels) — nicht verwenden.
   const cycleCal =
     cycle?.calories != null && cycle.calories > 0 ? Math.round(cycle.calories) : null
-  const istHeute = date === heuteIsoLocal()
   let calories: number | null
   let caloriesFromCloud: boolean
-  // Cycle hat Vorrang (korrektes Kalenderdatum). BFF nur als Lücke-Füller.
-  const cloudCal = cycleCal ?? bffCal
-  if (cloudCal != null) {
-    calories =
-      istHeute && cycleCal != null && bffCal != null
-        ? Math.max(cycleCal, bffCal)
-        : cloudCal
+  if (cycleCal != null) {
+    calories = cycleCal
     caloriesFromCloud = true
-  } else if (prev.caloriesFromCloud && prev.calories != null && prev.calories > 0) {
+  } else if (prev.caloriesFromCloud && prev.calories != null && prev.calories > 0 && cycle != null) {
+    // Cycle-Zeile existiert ohne kcal → alten Cloud-Wert nur behalten wenn kein neuer Cycle
+    calories = null
+    caloriesFromCloud = false
+  } else if (cycle == null && bffRow == null && prev.caloriesFromCloud && prev.calories != null) {
     calories = prev.calories
     caloriesFromCloud = true
-  } else if (bffRow == null && cycle == null) {
+  } else if (cycle == null && bffRow == null) {
     calories = prev.calories
     caloriesFromCloud = Boolean(prev.caloriesFromCloud)
   } else {
@@ -235,6 +230,17 @@ export function mergeCloudPayload(payload: WhoopCloudSyncPayload): WhoopCloudSyn
   }
 
   const store = ladeDailyStore()
+  // Alte, um 1 Tag verschobene Cycle-/BFF-Kalorien verwerfen — werden neu aus Cycles gesetzt
+  if (payload.cycles.length > 0) {
+    for (const d of store.days) {
+      d.calories = null
+      d.caloriesFromCloud = false
+      if (d.strainFromCloud) {
+        d.strain = null
+        d.strainFromCloud = false
+      }
+    }
+  }
   const byDate = new Map(store.days.map((d) => [d.date, d]))
   const skinCtx = { baseline: store.skinTempBaseline, days: store.days }
   for (const date of dates) {

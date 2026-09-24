@@ -73,9 +73,8 @@ export function isoAddDaysKalender(iso: string, days: number): string {
 }
 
 /**
- * WHOOP-Trend-Balken → Tageswerte.
- * Preferiert geparste Achsen-/Scrubber-Labels (Kalendertag in der App).
- * Fallback: rechter Balken = endDate (position_x).
+ * WHOOP-Trend: Punkte nach position_x, rechter Balken = endDate.
+ * Achsen-Labels nicht verwenden — die folgen oft dem Cycle-Sleep-Onset (= 1 Tag zu früh).
  */
 export function trendTageAusEndDatum(
   punkte: { value: number; x: number }[],
@@ -89,25 +88,4 @@ export function trendTageAusEndDatum(
     d.setDate(d.getDate() - (sorted.length - 1 - i))
     return { date: isoAusDate(d), value: r.value }
   })
-}
-
-/** Punkte mit optional schon bekanntem Kalendertag. */
-export function trendTageAusPunkten(
-  punkte: { value: number; x: number; date?: string | null }[],
-  endDate: string,
-): { date: string; value: number }[] {
-  if (punkte.length === 0) return []
-  const mitDatum = punkte.filter((p) => p.date && /^\d{4}-\d{2}-\d{2}$/.test(p.date))
-  // Genug Labels → App-Kalender vertrauen (vermeidet Off-by-one durch endDate-Packing)
-  if (mitDatum.length >= Math.ceil(punkte.length * 0.5)) {
-    const byDate = new Map<string, number>()
-    for (const p of mitDatum) byDate.set(p.date!, p.value)
-    return [...byDate.entries()]
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([date, value]) => ({ date, value }))
-  }
-  return trendTageAusEndDatum(
-    punkte.map((p) => ({ value: p.value, x: p.x })),
-    endDate,
-  )
 }
