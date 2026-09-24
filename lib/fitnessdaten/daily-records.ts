@@ -23,6 +23,21 @@ import {
 
 export const FITNESS_DAILY_STORAGE_KEY = 'mein-haushalt:fitnessdaten-daily'
 
+const WHOOP_CLOUD_META_LS_KEY = 'mein-haushalt:fitnessdaten-whoop-cloud'
+
+/** true = Nutzer hat mindestens einmal erfolgreich mit WHOOP Cloud synchronisiert */
+function hatWhoopCloudSync(): boolean {
+  if (typeof window === 'undefined') return false
+  try {
+    const raw = window.localStorage.getItem(WHOOP_CLOUD_META_LS_KEY)
+    if (!raw) return false
+    const m = JSON.parse(raw) as { lastSyncedAt?: string | null }
+    return Boolean(m.lastSyncedAt)
+  } catch {
+    return false
+  }
+}
+
 export type WhoopDayRecord = {
   date: string
   recoveryPercent: number | null
@@ -57,8 +72,12 @@ export type WhoopDayRecord = {
   zoneMinutes?: HrZoneMinutes | null
   /** true = Erholung für heute fest (WHOOP Cloud oder Morgen-Messung) */
   recoveryLocked?: boolean
-  /** true = Schritte/Kalorien/Vitals aus WHOOP-App-BFF (nicht überschreiben) */
+  /** true = mind. ein BFF-Vital (HRV/RHR/…) — nicht gleichbedeutend mit Schritten/Kalorien */
   bffMetrics?: boolean
+  /** true = steps stammen aus WHOOP-BFF — keine Strain-/BLE-Schätzung */
+  stepsFromCloud?: boolean
+  /** true = calories aus BFF oder Cycle-API — kein HR-Max-Merge */
+  caloriesFromCloud?: boolean
   /** true = Strain aus WHOOP Cloud Zyklus-API — lokale BLE-Schätzung nicht überschreiben */
   strainFromCloud?: boolean
 }
@@ -198,7 +217,7 @@ export function ladeDailyStore(): WhoopDailyStore {
   try {
     const raw = window.localStorage.getItem(FITNESS_DAILY_STORAGE_KEY)
     if (!raw) return defaultStore()
-    return migrateStore(JSON.parse(raw))
+    return bereinigeActivitiesToday(migrateStore(JSON.parse(raw)))
   } catch {
     return defaultStore()
   }
@@ -215,10 +234,13 @@ function kuerzeDailyStore(store: WhoopDailyStore, aggressiv = false): WhoopDaily
   const activities = [...(store.activities ?? [])]
     .sort((a, b) => a.startMs - b.startMs)
     .slice(-maxActs)
+  const heute = heuteIsoLocal()
   return {
     version: 2,
     days,
-    activitiesToday: (store.activitiesToday ?? []).slice(-20),
+    activitiesToday: (store.activitiesToday ?? [])
+      .filter((a) => aktivitaetDatum(a) === heute)
+      .slice(-20),
     activities,
     journal: (store.journal ?? []).slice(-maxJournal),
     logbuch: (store.logbuch ?? []).slice(-maxLog),
@@ -318,8 +340,25 @@ function schaetzeKraftzeit(z: HrZoneMinutes | null | undefined): number {
   return Math.round((z.z4 ?? 0) * 0.3 + (z.z5 ?? 0) * 0.5)
 }
 
+export function aktivitaetDatum(a: WhoopActivity): string {
+  return a.date ?? isoAusMs(a.startMs)
+}
+
+/** Nur Aktivitäten, die an diesem Kalendertag stattfanden (Cloud + Legacy today). */
 export function aktivitaetenFuerDatum(date: string, store = ladeDailyStore()): WhoopActivity[] {
-  return store.activities.filter((a) => (a.date ?? isoAusMs(a.startMs)) === date)
+  const byId = new Map<string, WhoopActivity>()
+  for (const a of [...(store.activities ?? []), ...(store.activitiesToday ?? [])]) {
+    if (aktivitaetDatum(a) !== date) continue
+    byId.set(a.id, a)
+  }
+  return [...byId.values()].sort((a, b) => a.startMs - b.startMs)
+}
+
+/** Veraltete „heute“-Einträge entfernen (Mitternacht / Sync ohne Workouts). */
+export function bereinigeActivitiesToday(store: WhoopDailyStore, heute = heuteIsoLocal()): WhoopDailyStore {
+  const clean = (store.activitiesToday ?? []).filter((a) => aktivitaetDatum(a) === heute)
+  if (clean.length === (store.activitiesToday ?? []).length) return store
+  return { ...store, activitiesToday: clean }
 }
 
 export function journalFuerDatum(date: string, store = ladeDailyStore()): WhoopJournalEntry[] {
@@ -334,12 +373,13 @@ function mergeKalorien(
   live: number | null | undefined,
   prev: number | null,
   historyToday: number,
-  bffAutoritativ: boolean,
+  cloudAutoritativ: boolean,
 ): number | null {
+  if (cloudAutoritativ && prev != null && prev > 0) return prev
   const kandidaten = [
     prev,
     live,
-    !bffAutoritativ && historyToday > 0 ? historyToday : null,
+    historyToday > 0 ? historyToday : null,
   ].filter((v): v is number => v != null && v > 0)
   if (kandidaten.length === 0) return prev
   return Math.round(Math.max(...kandidaten))
@@ -367,17 +407,23 @@ export function ergaenzeZonenUndVitals(
     (hrPoints.length >= 3
       ? Math.round(hrPoints.reduce((a, p) => a + p.bpm, 0) / hrPoints.length)
       : null)
+
+  // Cloud-Schritte (BFF) nie durch Strain-Schätzung überschreiben.
+  // Mit Whoop-Cloud: lieber leer als falsche Schätzung.
+  const cloudVerbunden = hatWhoopCloudSync()
   const steps =
-    record.bffMetrics && record.steps != null
+    record.stepsFromCloud
       ? record.steps
-      : mergeTagesSchritte(
-          record.steps,
-          record.date === heuteIsoLocal() ? schritteHeuteAusDaily() : 0,
-          record.strain,
-          (z.z1 ?? 0) + (z.z2 ?? 0) + (z.z3 ?? 0),
-          record.avgHr,
-          rhr,
-        )
+      : cloudVerbunden
+        ? record.steps
+        : mergeTagesSchritte(
+            record.steps,
+            record.date === heuteIsoLocal() ? schritteHeuteAusDaily() : 0,
+            record.strain,
+            (z.z1 ?? 0) + (z.z2 ?? 0) + (z.z3 ?? 0),
+            record.avgHr,
+            rhr,
+          )
 
   const vo2Max =
     record.bffMetrics && record.vo2Max != null
@@ -468,25 +514,31 @@ export function aktualisiereHeuteAusSnapshot(
         skinTempC: snapshot.live?.skinTempC ?? prevHeute.skinTempC,
         skinTempDelta: skinDelta ?? prevHeute.skinTempDelta,
         calories:
-          prevHeute.bffMetrics && prevHeute.calories != null
+          prevHeute.caloriesFromCloud && prevHeute.calories != null
             ? prevHeute.calories
-            : mergeKalorien(
-                scores?.caloriesKcal,
-                prevHeute.calories,
-                history.caloriesToday,
-                Boolean(prevHeute.bffMetrics && prevHeute.calories != null),
-              ),
+            : hatWhoopCloudSync()
+              ? prevHeute.calories
+              : mergeKalorien(
+                  scores?.caloriesKcal,
+                  prevHeute.calories,
+                  history.caloriesToday,
+                  false,
+                ),
+        caloriesFromCloud: prevHeute.caloriesFromCloud,
         steps:
-          prevHeute.bffMetrics && prevHeute.steps != null
+          prevHeute.stepsFromCloud && prevHeute.steps != null
             ? prevHeute.steps
-            : mergeTagesSchritte(
-                prevHeute.steps,
-                Math.max(history.stepsToday ?? 0, schritteHeuteAusDaily()),
-                strain,
-                zoneMin13(z),
-                scores?.avgHrSession ?? prevHeute.avgHr,
-                scores?.restingHrBpm ?? prevHeute.restingHr ?? history.baselines.restingHrBpm,
-              ),
+            : hatWhoopCloudSync()
+              ? prevHeute.steps
+              : mergeTagesSchritte(
+                  prevHeute.steps,
+                  Math.max(history.stepsToday ?? 0, schritteHeuteAusDaily()),
+                  strain,
+                  zoneMin13(z),
+                  scores?.avgHrSession ?? prevHeute.avgHr,
+                  scores?.restingHrBpm ?? prevHeute.restingHr ?? history.baselines.restingHrBpm,
+                ),
+        stepsFromCloud: prevHeute.stepsFromCloud,
         maxHr: scores?.maxHrToday ?? prevHeute.maxHr,
         avgHr:
           prevHeute.bffMetrics && prevHeute.avgHr != null
@@ -519,10 +571,11 @@ export function aktivitaetenLetzteTage(tage = 14, store = ladeDailyStore()): Who
   const cutoff = new Date()
   cutoff.setDate(cutoff.getDate() - tage)
   const cutoffMs = cutoff.getTime()
-  return [...store.activities, ...store.activitiesToday]
-    .filter((a) => a.startMs >= cutoffMs)
-    .sort((a, b) => b.startMs - a.startMs)
-    .slice(0, 40)
+  const byId = new Map<string, WhoopActivity>()
+  for (const a of [...store.activities, ...store.activitiesToday]) {
+    if (a.startMs >= cutoffMs) byId.set(a.id, a)
+  }
+  return [...byId.values()].sort((a, b) => b.startMs - a.startMs).slice(0, 40)
 }
 
 export function letzte7Tage(): WhoopDayRecord[] {

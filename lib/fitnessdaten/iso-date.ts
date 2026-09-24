@@ -13,6 +13,31 @@ export function isoAusMs(ms: number): string {
   return isoAusDate(new Date(ms))
 }
 
+/**
+ * ISO-Datum aus Instant in fester Zeitzone (Server: Europe/Berlin).
+ * Verhindert UTC-Tagesdrift bei WHOOP Cycle/Recovery/Sleep auf Vercel.
+ */
+export function isoAusMsInZeitzone(ms: number, timeZone = defaultWhoopZeitzone()): string {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(new Date(ms))
+  const y = parts.find((p) => p.type === 'year')?.value
+  const m = parts.find((p) => p.type === 'month')?.value
+  const day = parts.find((p) => p.type === 'day')?.value
+  if (!y || !m || !day) return isoAusMs(ms)
+  return `${y}-${m}-${day}`
+}
+
+/** ISO-String (API) → Kalendertag in WHOOP_TZ. */
+export function isoAusApiZeitstempel(iso: string, timeZone = defaultWhoopZeitzone()): string {
+  const t = Date.parse(iso)
+  if (!Number.isFinite(t)) return isoAusMs(Date.now())
+  return isoAusMsInZeitzone(t, timeZone)
+}
+
 /** Heute als Kalendertag (Browser: Nutzer-TZ). */
 export function heuteIsoKalender(): string {
   return isoAusDate(new Date())

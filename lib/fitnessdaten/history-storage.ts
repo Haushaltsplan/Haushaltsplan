@@ -270,13 +270,15 @@ export function mergeLiveSnapshot(
     )
     history.strainScore = strainAusStrainLoad(history.strainLoad)
     history.lastStrainTick = now
-    history.caloriesToday += kalorienDelta(
-      bpm,
-      dtSec,
-      profilGewichtKg(profile),
-      history.userAge,
-      profilMaennlich(profile),
-    )
+    if (!prevHeute.caloriesFromCloud) {
+      history.caloriesToday += kalorienDelta(
+        bpm,
+        dtSec,
+        profilGewichtKg(profile),
+        history.userAge,
+        profilMaennlich(profile),
+      )
+    }
 
     const rmssd = partial.scores?.hrvRmssdMs
     if (rmssd != null && rmssd > 0) {
@@ -324,7 +326,7 @@ export function mergeLiveSnapshot(
     }
   }
 
-  if (partial.live?.accel) {
+  if (partial.live?.accel && !prevHeuteRecord.stepsFromCloud) {
     registriereMotion(now, partial.live.accel)
     if (verarbeiteAccelSchritt(partial.live.accel, now, heute)) {
       history.stepsToday = Math.max(history.stepsToday + 1, 0)
@@ -337,6 +339,12 @@ export function mergeLiveSnapshot(
   const dayStrain = mergeTagesStrain(sessionStrain, prevHeuteRecord.strain)
   history.dayStrain = dayStrain ?? sessionStrain
 
+  const cloudKcal =
+    prevHeuteRecord.caloriesFromCloud && prevHeuteRecord.calories != null
+      ? prevHeuteRecord.calories
+      : null
+  if (cloudKcal != null) history.caloriesToday = cloudKcal
+
   const scores = {
     ...partial.scores,
     hrvRmssdMs: rmssd,
@@ -348,7 +356,7 @@ export function mergeLiveSnapshot(
     sleepScore: schlaf.sleepMinutes > 0 ? schlaf.sleepScore : null,
     sleepMinutes: schlaf.sleepMinutes > 0 ? schlaf.sleepMinutes : null,
     sleepEfficiency: schlaf.sleepMinutes > 0 ? schlaf.efficiency : null,
-    caloriesKcal: Math.round(history.caloriesToday),
+    caloriesKcal: cloudKcal ?? Math.round(history.caloriesToday),
     maxHrToday: maxHr(history.hrSeries.filter((p) => isoAusMs(p.t) === heute)),
     avgHrSession: avgHr(sessionHistory),
     zoneMinutes: sekundenZuMinuten(history.zoneSecondsToday),

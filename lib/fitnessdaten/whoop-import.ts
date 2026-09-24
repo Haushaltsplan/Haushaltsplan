@@ -314,6 +314,8 @@ function mapZuRecords(map: TagMap): WhoopDayRecord[] {
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([date, partial]) => {
       const base = { ...leeresTag(date), ...partial, date }
+      if (base.steps != null && base.steps > 0) base.stepsFromCloud = true
+      if (base.calories != null && base.calories > 0) base.caloriesFromCloud = true
       return ergaenzeSchlafDetails(base, base.strain)
     })
 }
@@ -338,6 +340,12 @@ function mergeTag(a: WhoopDayRecord, b: WhoopDayRecord): WhoopDayRecord {
       spo2Percent: pick('spo2Percent'),
       calories: pick('calories'),
       steps: pick('steps'),
+      stepsFromCloud: Boolean(
+        (b.steps != null && b.steps > 0) || a.stepsFromCloud || b.stepsFromCloud,
+      ),
+      caloriesFromCloud: Boolean(
+        (b.calories != null && b.calories > 0) || a.caloriesFromCloud || b.caloriesFromCloud,
+      ),
       maxHr: pick('maxHr'),
       remMinutes: pick('remMinutes'),
       deepMinutes: pick('deepMinutes'),

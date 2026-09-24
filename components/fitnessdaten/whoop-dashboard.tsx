@@ -158,21 +158,6 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange, ini
     if (initialTab) setTab(initialTab)
   }, [initialTab])
 
-  useEffect(() => {
-    // Beim ersten Render: alte Schätz-Werte aus localStorage entfernen
-    migriereStalenVo2AusDaily()
-    migriereStalenSchritteAusDaily()
-    const onSync = () => setDataRevision((r) => r + 1)
-    window.addEventListener(WHOOP_CLOUD_SYNC_EVENT, onSync)
-    const strainTick = window.setInterval(() => {
-      if (aktualisiereStrainFuerAnzeige()) setDataRevision((r) => r + 1)
-    }, 60_000)
-    return () => {
-      window.removeEventListener(WHOOP_CLOUD_SYNC_EVENT, onSync)
-      window.clearInterval(strainTick)
-    }
-  }, [])
-
   const isLive = phase === 'live'
   const isConnecting = phase === 'connecting' || phase === 'waiting_hr'
 
@@ -189,6 +174,22 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange, ini
     }
     return false
   }, [])
+
+  useEffect(() => {
+    // Beim ersten Render: alte Schätz-Werte entfernen, dann BFF nachladen
+    migriereStalenVo2AusDaily()
+    migriereStalenSchritteAusDaily()
+    void cloudSync(false)
+    const onSync = () => setDataRevision((r) => r + 1)
+    window.addEventListener(WHOOP_CLOUD_SYNC_EVENT, onSync)
+    const strainTick = window.setInterval(() => {
+      if (aktualisiereStrainFuerAnzeige()) setDataRevision((r) => r + 1)
+    }, 60_000)
+    return () => {
+      window.removeEventListener(WHOOP_CLOUD_SYNC_EVENT, onSync)
+      window.clearInterval(strainTick)
+    }
+  }, [cloudSync])
 
   const onStatusTap = useCallback(async () => {
     if (statusBusy || isConnecting) return
@@ -1012,7 +1013,7 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange, ini
                 onInfo={() => showInfo('calories')}
               />
               <p className="border-t border-white/[0.06] py-2 text-[9px] text-[var(--app-text-muted)]">
-                ▲ ▼ Heute im Vergleich zu den letzten 30 Tagen · Schritte geschätzt
+                ▲ ▼ Heute im Vergleich zu den letzten 30 Tagen · Schritte & Kalorien aus WHOOP
               </p>
             </div>
 

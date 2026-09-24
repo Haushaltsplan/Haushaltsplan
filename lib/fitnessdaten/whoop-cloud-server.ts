@@ -14,7 +14,7 @@ import {
   whoopRedirectUri,
 } from '@/lib/fitnessdaten/whoop-cloud-types'
 import { ladeWhoopBffSync } from '@/lib/fitnessdaten/whoop-bff-server'
-import { heuteIsoInZeitzone } from '@/lib/fitnessdaten/iso-date'
+import { heuteIsoInZeitzone, isoAusApiZeitstempel } from '@/lib/fitnessdaten/iso-date'
 import { ladeWhoopHealthMonitorBff } from '@/lib/fitnessdaten/whoop-health-bff-server'
 import {
   leseWhoopTokensDb,
@@ -261,12 +261,9 @@ export async function holeGueltigenAccessToken(sb: SupabaseClient | null = null)
   }
 }
 
+/** Kalendertag in Europe/Berlin — nicht Server-UTC (Vercel). */
 function datumAusIso(iso: string): string {
-  const d = new Date(iso)
-  const y = d.getFullYear()
-  const m = String(d.getMonth() + 1).padStart(2, '0')
-  const day = String(d.getDate()).padStart(2, '0')
-  return `${y}-${m}-${day}`
+  return isoAusApiZeitstempel(iso)
 }
 
 function msAusIso(iso: string | undefined): number | null {

@@ -2,7 +2,9 @@
  * Merge für WHOOP-Tagesarchive: pro Tag/ID das vollständigere bzw. neuere gewinnt.
  * Verhindert, dass BLE-Daten vom Handy Cloud-Tage vom Laptop überschreiben (und umgekehrt).
  */
-import type { WhoopDailyStore, WhoopDayRecord, WhoopJournalEntry } from '@/lib/fitnessdaten/daily-records'
+import type { WhoopActivity, WhoopDailyStore, WhoopDayRecord, WhoopJournalEntry } from '@/lib/fitnessdaten/daily-records'
+import { aktivitaetDatum } from '@/lib/fitnessdaten/daily-records'
+import { heuteIsoLocal } from '@/lib/fitnessdaten/scores'
 import type { LogbuchTagRecord } from '@/lib/fitnessdaten/logbuch'
 
 function nichtLeer(v: unknown): boolean {
@@ -16,8 +18,39 @@ function nichtLeer(v: unknown): boolean {
 
 function mergeDay(a: WhoopDayRecord, b: WhoopDayRecord): WhoopDayRecord {
   const out: WhoopDayRecord = { ...a }
+
+  // Schritte/Kalorien: Cloud-Provenance gewinnt immer gegen Schätzung
+  if (b.stepsFromCloud && b.steps != null) {
+    out.steps = b.steps
+    out.stepsFromCloud = true
+  } else if (a.stepsFromCloud && a.steps != null) {
+    out.steps = a.steps
+    out.stepsFromCloud = true
+  } else {
+    out.steps = a.steps ?? b.steps ?? null
+    out.stepsFromCloud = Boolean(a.stepsFromCloud || b.stepsFromCloud)
+  }
+
+  if (b.caloriesFromCloud && b.calories != null) {
+    out.calories = b.calories
+    out.caloriesFromCloud = true
+  } else if (a.caloriesFromCloud && a.calories != null) {
+    out.calories = a.calories
+    out.caloriesFromCloud = true
+  } else {
+    out.calories = a.calories ?? b.calories ?? null
+    out.caloriesFromCloud = Boolean(a.caloriesFromCloud || b.caloriesFromCloud)
+  }
+
+  const skip = new Set<keyof WhoopDayRecord>([
+    'steps',
+    'calories',
+    'stepsFromCloud',
+    'caloriesFromCloud',
+  ])
   const keys = Object.keys(b) as (keyof WhoopDayRecord)[]
   for (const k of keys) {
+    if (skip.has(k)) continue
     const bv = b[k]
     const av = out[k]
     if (!nichtLeer(av) && nichtLeer(bv)) {
@@ -63,10 +96,14 @@ export function mergeFitnessDailyStores(lokal: WhoopDailyStore, cloud: WhoopDail
     const cur = days.get(d.date)
     days.set(d.date, cur ? mergeDay(cur, d) : d)
   }
+  const heute = heuteIsoLocal()
+  const activitiesToday = mergeById(lokal.activitiesToday ?? [], cloud.activitiesToday ?? []).filter(
+    (a: WhoopActivity) => aktivitaetDatum(a) === heute,
+  )
   return {
     version: 2,
     days: [...days.values()].sort((x, y) => x.date.localeCompare(y.date)),
-    activitiesToday: mergeById(lokal.activitiesToday ?? [], cloud.activitiesToday ?? []),
+    activitiesToday,
     activities: mergeById(lokal.activities ?? [], cloud.activities ?? []),
     journal: mergeJournal(lokal.journal ?? [], cloud.journal ?? []),
     logbuch: mergeLogbuch(lokal.logbuch ?? [], cloud.logbuch ?? []),

@@ -112,22 +112,18 @@ export function baueWhoopDashboard(
   }
 
   const tagIso = tagRecord.date
-  const cloudActs = aktivitaetenFuerDatum(tagIso, store)
+  const tagActs = aktivitaetenFuerDatum(tagIso, store)
   const detected =
-    istHeute
+    istHeute && tagActs.length === 0
       ? erkenneAktivitaeten(
           history.hrSeries,
           tagRecord.restingHr ?? history.baselines.restingHrBpm,
+          180,
+          tagIso,
         )
       : []
-  const aktivitaeten =
-    cloudActs.length > 0
-      ? cloudActs
-      : detected.length > 0
-        ? detected
-        : istHeute
-          ? store.activitiesToday
-          : []
+  // Nur Aktivitäten dieses Kalendertags — kein Fallback auf veraltetes activitiesToday
+  const aktivitaeten = tagActs.length > 0 ? tagActs : detected
   const journal = journalFuerDatum(tagIso, store)
 
   const hrvHeute = tagRecord.hrvRmssd

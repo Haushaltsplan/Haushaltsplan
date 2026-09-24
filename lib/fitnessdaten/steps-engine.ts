@@ -74,7 +74,8 @@ export function verarbeiteAccelSchritt(
     rec = createEmptyDayRecord(isoDate)
     store.days.push(rec)
   }
-  if (rec.bffMetrics) return true
+  // WHOOP-BFF-Schritte nicht mit BLE vermischen
+  if (rec.stepsFromCloud || rec.bffMetrics) return true
   rec.steps = (rec.steps ?? 0) + 1
   store.days.sort((a, b) => a.date.localeCompare(b.date))
   if (store.days.length > 365) store.days = store.days.slice(-365)
@@ -92,21 +93,20 @@ export function schritteHeuteAusDaily(): number {
 }
 
 /**
- * Migration: Löscht alle Schritte aus Tagen ohne BFF-Datenstempel.
- * Historische Schätz-Werte (aus der alten schaetzeSchritteAusStrain-Logik)
- * werden so entfernt — nur BFF-verifizierte Daten bleiben.
+ * Entfernt Schätz-Schritte/-Kalorien ohne Cloud-Provenance.
+ * Nur BFF-/Cycle-Werte bleiben — verhindert „falsche“ Whoop-Zahlen.
  */
 export function migriereStalenSchritteAusDaily(): void {
   if (typeof window === 'undefined') return
   const store = ladeDailyStore()
-  const heute = heuteIsoLocal()
   let changed = false
   for (const d of store.days) {
-    // Heute: Schätz-Schritte erlaubt (werden live aktualisiert)
-    if (d.date === heute) continue
-    // Vergangene Tage: nur BFF-verifizierte Schritte behalten
-    if (!d.bffMetrics && d.steps != null) {
+    if (!d.stepsFromCloud && d.steps != null) {
       d.steps = null
+      changed = true
+    }
+    if (!d.caloriesFromCloud && d.calories != null) {
+      d.calories = null
       changed = true
     }
   }

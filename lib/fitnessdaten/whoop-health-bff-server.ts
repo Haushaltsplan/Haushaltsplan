@@ -2,14 +2,14 @@
 
 import type { WhoopHealthMonitorRow } from '@/lib/fitnessdaten/whoop-cloud-types'
 import { parseWhoopNumber } from '@/lib/fitnessdaten/whoop-bff-server'
+import { heuteIsoInZeitzone } from '@/lib/fitnessdaten/iso-date'
 
 const BFF_BASE = 'https://api.prod.whoop.com'
 
 export type { WhoopHealthMonitorRow }
 
 function heuteIso(): string {
-  const d = new Date()
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  return heuteIsoInZeitzone()
 }
 
 async function fetchBffJson(accessToken: string, path: string): Promise<unknown | null> {

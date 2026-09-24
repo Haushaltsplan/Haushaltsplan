@@ -149,13 +149,13 @@ export const METRIC_INFO: Record<MetricInfoId, MetricInfo> = {
   },
   steps: {
     title: 'Schritte',
-    body: 'WHOOP zählt Schritte am Handgelenk über Beschleunigungssensoren. Omnia zählt primär per BLE/Gen5-IMU; ohne Band-Daten wird aus Strain und Herzfrequenz-Zonen geschätzt — nicht aus Gesamt-Kalorien.',
-    source: 'BLE-IMU · Strain-Schätzung · CSV',
+    body: 'Schritte kommen aus der WHOOP-App (BFF Deep-Dive / Trends) — dieselben Werte wie in WHOOP. Ohne Cloud-Verbindung kann Omnia hilfsweise per BLE zählen oder schätzen.',
+    source: 'WHOOP Cloud (BFF)',
   },
   calories: {
     title: 'Kalorien',
-    body: 'Geschätzter Energieverbrauch — WHOOP liefert Kilojoule aus dem Zyklus (Cloud), Omnia ergänzt live per Herzfrequenz-Formel.',
-    source: 'WHOOP Cloud + HR-Formel',
+    body: 'Tages-Kalorien aus der WHOOP-App (BFF) bzw. dem physiologischen Zyklus (Kilojoule). Live-HF-Schätzung nur ohne Cloud.',
+    source: 'WHOOP Cloud (BFF / Cycle)',
   },
   activities: {
     title: 'Aktivitäten heute',

@@ -88,6 +88,53 @@ function mergeDay(
         bffRow.vo2Max != null),
   )
 
+  // Schritte: nur BFF (Deep-Dive/Trends). Nie Schätzung als Cloud speichern.
+  const bffSteps =
+    bffRow?.steps != null && Number.isFinite(bffRow.steps) && bffRow.steps > 0
+      ? Math.round(bffRow.steps)
+      : null
+  let steps: number | null
+  let stepsFromCloud: boolean
+  if (bffSteps != null) {
+    steps = bffSteps
+    stepsFromCloud = true
+  } else if (prev.stepsFromCloud && prev.steps != null && prev.steps > 0) {
+    steps = prev.steps
+    stepsFromCloud = true
+  } else {
+    // Alte Schätzwerte verwerfen — bessere Quelle kommt vom nächsten Sync / bleibt leer
+    steps = null
+    stepsFromCloud = false
+  }
+
+  // Kalorien: Historisch BFF (App), heute Cycle (live kJ) vor BFF-Trend
+  const bffCal =
+    bffRow?.calories != null && Number.isFinite(bffRow.calories) && bffRow.calories > 0
+      ? Math.round(bffRow.calories)
+      : null
+  const cycleCal =
+    cycle?.calories != null && cycle.calories > 0 ? Math.round(cycle.calories) : null
+  const istHeute = date === heuteIsoLocal()
+  let calories: number | null
+  let caloriesFromCloud: boolean
+  const cloudCal = istHeute
+    ? cycleCal ?? bffCal
+    : bffCal ?? cycleCal
+  if (cloudCal != null) {
+    // Am Lauftag: höheren Wert nehmen (Cycle live vs. ggf. älterer BFF-Balken)
+    calories =
+      istHeute && cycleCal != null && bffCal != null
+        ? Math.max(cycleCal, bffCal)
+        : cloudCal
+    caloriesFromCloud = true
+  } else if (prev.caloriesFromCloud && prev.calories != null && prev.calories > 0) {
+    calories = prev.calories
+    caloriesFromCloud = true
+  } else {
+    calories = null
+    caloriesFromCloud = false
+  }
+
   let skinTempC = prev.skinTempC
   let skinTempDelta = prev.skinTempDelta
   if (rec?.skinTempC != null) {
@@ -102,6 +149,8 @@ function mergeDay(
     recoveryPercent: cloudRecovery ?? prev.recoveryPercent,
     recoveryLocked,
     bffMetrics: hatBff ? true : prev.bffMetrics,
+    stepsFromCloud,
+    caloriesFromCloud,
     hrvRmssd: pickBff(bffRow?.hrvRmssd, rec?.hrvRmssd, prev.hrvRmssd),
     restingHr: pickBff(bffRow?.restingHr, rec?.restingHr, prev.restingHr),
     spo2Percent: pick(rec?.spo2Percent, prev.spo2Percent),
@@ -123,14 +172,8 @@ function mergeDay(
     strainFromCloud: cycle?.strain != null ? true : prev.strainFromCloud,
     avgHr: pickBff(bffRow?.avgHr, cycle?.avgHr, prev.avgHr),
     maxHr: pick(cycle?.maxHr, prev.maxHr) ?? prev.maxHr,
-    calories:
-      bffRow?.calories ??
-      (cycle?.calories != null && cycle.calories > 0 ? cycle.calories : prev.calories),
-    steps: bffRow?.steps != null && bffRow.steps > 0
-      ? bffRow.steps
-      : prev.bffMetrics && prev.steps != null && prev.steps > 0
-        ? prev.steps
-        : null,
+    calories,
+    steps,
     vo2Max: pickBff(bffRow?.vo2Max, null, prev.vo2Max),
     bpSystolic:
       payload.healthMonitor?.date === date && payload.healthMonitor.bpSystolic != null
@@ -219,12 +262,11 @@ export function mergeCloudPayload(payload: WhoopCloudSyncPayload): WhoopCloudSyn
   for (const a of workoutActivities) byId.set(a.id, a)
   store.activities = [...byId.values()].sort((a, b) => a.startMs - b.startMs).slice(-500)
 
-  const heuteActs = workoutActivities.filter((a) => a.date === heuteIsoLocal())
-  if (heuteActs.length > 0) {
-    const todayById = new Map(store.activitiesToday.map((a) => [a.id, a]))
-    for (const a of heuteActs) todayById.set(a.id, a)
-    store.activitiesToday = [...todayById.values()].sort((a, b) => a.startMs - b.startMs)
-  }
+  // Immer nur heutige Workouts behalten — sonst bleiben gestrige Einträge in der UI
+  const heute = heuteIsoLocal()
+  store.activitiesToday = workoutActivities
+    .filter((a) => a.date === heute)
+    .sort((a, b) => a.startMs - b.startMs)
 
   speichereDailyStore(store)
 
@@ -236,7 +278,6 @@ export function mergeCloudPayload(payload: WhoopCloudSyncPayload): WhoopCloudSyn
     aktualisiereVo2MaxWennFaellig()
   }
 
-  const heute = heuteIsoLocal()
   const heuteRecord = store.days.find((d) => d.date === heute)
   if (heuteRecord?.strain != null) {
     const history = ladeFitnessHistory()
@@ -271,6 +312,22 @@ export function mergeCloudPayload(payload: WhoopCloudSyncPayload): WhoopCloudSyn
           }
         : snapshot.live,
     })
+  }
+
+  // Live-History an Cloud-Schritte/Kalorien angleichen (kein HR-Drift)
+  if (heuteRecord) {
+    const history = ladeFitnessHistory()
+    let histChanged = false
+    if (heuteRecord.caloriesFromCloud && heuteRecord.calories != null) {
+      history.caloriesToday = heuteRecord.calories
+      histChanged = true
+    }
+    if (heuteRecord.stepsFromCloud && heuteRecord.steps != null) {
+      history.stepsToday = heuteRecord.steps
+      history.stepsDate = heute
+      histChanged = true
+    }
+    if (histChanged) speichereFitnessHistory(history)
   }
 
   wendeBodyMeasurementsAn(payload.body)
