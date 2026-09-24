@@ -17,6 +17,7 @@ import {
   profilMaxHr,
   speichereFitnessProfil,
 } from '@/lib/fitnessdaten/user-profile'
+import { berechneVo2MaxAusWhoopVitals } from '@/lib/fitnessdaten/vo2max-from-vitals'
 
 export const WHOOP_VO2_TRENDS_KEY = 'mein-haushalt:whoop-vo2-trends'
 
@@ -123,6 +124,34 @@ export function setzeVo2MaxAusCloud(wert: number): void {
   s.manuell = null // Cloud-Wert übernimmt Priorität
   speichereVo2Trends(s)
   spiegeleVo2AufTagesrecords(Math.round(wert))
+}
+
+/**
+ * Wenn noch kein Cloud-/Manuell-VO₂: aus bereits gesyncten Tages-RHR + Max-HF ableiten.
+ * Sofortige Anzeige ohne neuen Sync (BFF VO2_MAX ist mit Developer-OAuth nicht erreichbar).
+ */
+export function stelleVo2MaxAusGesynctenVitalenSicher(): number | null {
+  const s = ladeVo2Trends()
+  if ((s.quelle === 'cloud' || s.quelle === 'manuell') && s.vo2Max != null) return s.vo2Max
+
+  const daily = ladeDailyStore()
+  const profil = ladeFitnessProfil()
+  // Nur echte Whoop-Max-HF (Body-Override), kein Alters-Fallback — sonst VO₂ verzerrt
+  const bodyMhr =
+    profil.maxHrOverride != null && profil.maxHrOverride >= 120 && profil.maxHrOverride <= 220
+      ? Math.round(profil.maxHrOverride)
+      : null
+  const vo2 = berechneVo2MaxAusWhoopVitals({
+    restingHrs: daily.days.map((d) => d.restingHr),
+    maxHr: bodyMhr,
+    cycleMaxHrs: daily.days.map((d) => d.maxHr),
+  })
+  if (vo2 == null) {
+    aktualisiereVo2MaxWennFaellig()
+    return aktuellesVo2Max()
+  }
+  setzeVo2MaxAusCloud(vo2)
+  return vo2
 }
 
 /** ISO-Kalenderwoche (Montag = Wochenstart, WHOOP-ähnlich). */
@@ -299,14 +328,15 @@ function spiegeleVo2AufTagesrecords(vo2: number): void {
 }
 
 /**
- * Gibt den bestätigten VO2max zurück (cloud oder manuell).
- * Gibt KEINE lokale Schätzung zurück — nur für Dashboard-Anzeige.
+ * Bestätigter VO₂max fürs Dashboard: Cloud (BFF oder aus Whoop-Vitalen) / Manuell.
+ * Lokale Uth-Schätzung nur als letzter Fallback (nicht leer lassen).
  */
 export function aktuellesVo2Max(): number | null {
   const s = ladeVo2Trends()
   if (s.quelle === 'cloud' || s.quelle === 'manuell') return s.vo2Max
   if (s.manuell != null) return s.manuell // Legacy
-  return null
+  if (s.vo2Max != null && s.vo2Max > 0) return s.vo2Max
+  return s.schaetzung
 }
 
 /**
@@ -324,3 +354,5 @@ export function vo2MaxQuelle(): Vo2Quelle | null {
   if (s.manuell != null) return 'manuell'
   return s.quelle
 }
+
+export { berechneVo2MaxAusWhoopVitals } from '@/lib/fitnessdaten/vo2max-from-vitals'

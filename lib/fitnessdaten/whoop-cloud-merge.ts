@@ -9,6 +9,7 @@ import {
   type WhoopDayRecord,
 } from '@/lib/fitnessdaten/daily-records'
 import { aktualisiereVo2MaxWennFaellig, setzeVo2MaxAusCloud } from '@/lib/fitnessdaten/vo2max-engine'
+import { berechneVo2MaxAusWhoopVitals } from '@/lib/fitnessdaten/vo2max-from-vitals'
 import { loadAusStrain } from '@/lib/fitnessdaten/strain-engine'
 import { heuteIsoLocal, recoveryLabelAusProzent } from '@/lib/fitnessdaten/scores'
 import { berechneSkinTempDelta } from '@/lib/fitnessdaten/skin-temp'
@@ -88,25 +89,30 @@ function mergeDay(
         bffRow.vo2Max != null),
   )
 
-  // Schritte: BFF-Wert setzen; ohne BFF-Row bestehende Cloud-Schritte NICHT löschen
+  // Schritte: 1) offizielle Cycle-API step_count  2) BFF Deep-Dive/Trends
+  const cycleSteps =
+    cycle?.steps != null && Number.isFinite(cycle.steps) && cycle.steps > 0
+      ? Math.round(cycle.steps)
+      : null
   const bffSteps =
     bffRow?.steps != null && Number.isFinite(bffRow.steps) && bffRow.steps > 0
       ? Math.round(bffRow.steps)
       : null
   let steps: number | null
   let stepsFromCloud: boolean
-  if (bffSteps != null) {
+  if (cycleSteps != null) {
+    steps = cycleSteps
+    stepsFromCloud = true
+  } else if (bffSteps != null) {
     steps = bffSteps
     stepsFromCloud = true
   } else if (prev.stepsFromCloud && prev.steps != null && prev.steps > 0) {
     steps = prev.steps
     stepsFromCloud = true
-  } else if (bffRow == null) {
-    // Tag nur aus Cycle/Sleep — Schritte unangetastet lassen
+  } else if (bffRow == null && cycle == null) {
     steps = prev.steps
     stepsFromCloud = Boolean(prev.stepsFromCloud)
   } else {
-    // BFF-Row da, aber ohne Schritte
     steps = null
     stepsFromCloud = false
   }
@@ -230,11 +236,13 @@ export function mergeCloudPayload(payload: WhoopCloudSyncPayload): WhoopCloudSyn
   }
 
   const store = ladeDailyStore()
-  // Alte, um 1 Tag verschobene Cycle-/BFF-Kalorien verwerfen — werden neu aus Cycles gesetzt
+  // Alte, falsch datierte Cycle-/BFF-Werte verwerfen — neu aus Cycle-API (inkl. step_count)
   if (payload.cycles.length > 0) {
     for (const d of store.days) {
       d.calories = null
       d.caloriesFromCloud = false
+      d.steps = null
+      d.stepsFromCloud = false
       if (d.strainFromCloud) {
         d.strain = null
         d.strainFromCloud = false
@@ -281,11 +289,20 @@ export function mergeCloudPayload(payload: WhoopCloudSyncPayload): WhoopCloudSyn
 
   speichereDailyStore(store)
 
-  if (payload.bff?.monthlyAvgs.vo2Max != null) {
-    // Cloud Sync liefert Monatsdurchschnitt — als verifizierte Quelle speichern
-    setzeVo2MaxAusCloud(payload.bff.monthlyAvgs.vo2Max)
+  const bffVo2 = payload.bff?.monthlyAvgs.vo2Max
+  const latestDailyVo2 = [...(payload.bff?.daily ?? [])]
+    .filter((d) => d.vo2Max != null && d.vo2Max > 0)
+    .sort((a, b) => a.date.localeCompare(b.date))
+    .at(-1)?.vo2Max
+  const vitalsVo2 = berechneVo2MaxAusWhoopVitals({
+    restingHrs: payload.recoveries.map((r) => r.restingHr),
+    maxHr: payload.body?.maxHr ?? null,
+    cycleMaxHrs: payload.cycles.map((c) => c.maxHr),
+  })
+  const vo2Cloud = payload.vo2Max ?? bffVo2 ?? latestDailyVo2 ?? vitalsVo2
+  if (vo2Cloud != null && vo2Cloud > 0) {
+    setzeVo2MaxAusCloud(vo2Cloud)
   } else {
-    // Kein Cloud-Wert: lokale Uth-Schätzung aktualisieren (nur für Omnia Age, nicht für Anzeige)
     aktualisiereVo2MaxWennFaellig()
   }
 
@@ -367,12 +384,13 @@ export function mergeCloudPayload(payload: WhoopCloudSyncPayload): WhoopCloudSyn
   const bffInfo = payload.bff?.debug
     ? ` · BFF: ${payload.bff.debug.strainDays} Schritt-Tage, ${payload.bff.debug.trendsOk}/7 Trends`
     : ''
+  const vo2Info = payload.vo2Max != null ? ` · VO₂ ${payload.vo2Max}` : ''
 
   return {
     ok: true,
     payload,
     syncedAt,
-    message: `${dates.size} Tage · ${payload.sleeps.length} Schlaf · ${payload.workouts.length} Workouts · ${mitSpo2} mit SpO₂${bffInfo}`,
+    message: `${dates.size} Tage · ${payload.sleeps.length} Schlaf · ${payload.workouts.length} Workouts · ${mitSpo2} mit SpO₂${bffInfo}${vo2Info}`,
     stats: {
       recoveries: payload.recoveries.length,
       sleeps: payload.sleeps.length,

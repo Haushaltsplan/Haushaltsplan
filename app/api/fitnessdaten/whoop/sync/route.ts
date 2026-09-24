@@ -23,17 +23,19 @@ export async function POST(req: Request) {
         : heuteIsoInZeitzone()
     const payload = await ladeVollstaendigerCloudSync(token, 35, { endDate })
     const mitSpo2 = payload.recoveries.filter((r) => r.spo2Percent != null).length
+    const stepTage = payload.cycles.filter((c) => c.steps != null && c.steps > 0).length
     return NextResponse.json({
       ok: true,
       payload,
       syncedAt: new Date().toISOString(),
-      message: `Recovery ${payload.recoveries.length}, Schlaf ${payload.sleeps.length}, Workouts ${payload.workouts.length}`,
+      message: `Recovery ${payload.recoveries.length}, Schlaf ${payload.sleeps.length}, Workouts ${payload.workouts.length}, Schritte ${stepTage} Tage`,
       stats: {
         recoveries: payload.recoveries.length,
         sleeps: payload.sleeps.length,
         cycles: payload.cycles.length,
         workouts: payload.workouts.length,
         mitSpo2,
+        stepTage,
       },
     })
   } catch (e) {

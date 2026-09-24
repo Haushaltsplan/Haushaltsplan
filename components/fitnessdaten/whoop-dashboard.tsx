@@ -76,7 +76,7 @@ import { useWhoopBle } from '@/components/fitnessdaten/whoop-ble-provider'
 import { setzeWhoopBleAlwaysOn } from '@/lib/fitnessdaten/whoop-ble-keepalive'
 import { syncWhoopCloudVomServer, WHOOP_CLOUD_SYNC_EVENT } from '@/lib/fitnessdaten/whoop-cloud-merge'
 import { versucheWhoopCloudAutoSync } from '@/lib/fitnessdaten/whoop-cloud-auto-sync'
-import { migriereStalenVo2AusDaily, vo2MaxQuelle } from '@/lib/fitnessdaten/vo2max-engine'
+import { migriereStalenVo2AusDaily, stelleVo2MaxAusGesynctenVitalenSicher, vo2MaxQuelle } from '@/lib/fitnessdaten/vo2max-engine'
 import { migriereStalenSchritteAusDaily } from '@/lib/fitnessdaten/steps-engine'
 
 type Tab = WhoopTab
@@ -178,10 +178,16 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange, ini
 
   useEffect(() => {
     migriereStalenVo2AusDaily()
+    if (stelleVo2MaxAusGesynctenVitalenSicher() != null) {
+      setDataRevision((r) => r + 1)
+    }
     migriereStalenSchritteAusDaily()
     // Force-Sync: Cycle-Daten neu datieren (Sleep-Onset → App-Tag)
     void versucheWhoopCloudAutoSync(true).then((ok) => {
-      if (ok) setDataRevision((r) => r + 1)
+      if (ok) {
+        stelleVo2MaxAusGesynctenVitalenSicher()
+        setDataRevision((r) => r + 1)
+      }
     })
     const onSync = () => setDataRevision((r) => r + 1)
     window.addEventListener(WHOOP_CLOUD_SYNC_EVENT, onSync)

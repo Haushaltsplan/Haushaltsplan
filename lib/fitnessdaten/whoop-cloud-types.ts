@@ -31,6 +31,8 @@ export type WhoopCloudCycleRow = {
   avgHr: number | null
   maxHr: number | null
   calories: number | null
+  /** Offizielle WHOOP Cycle-API (step_count) — Quelle der Wahrheit für Schritte */
+  steps: number | null
 }
 
 export type WhoopCloudWorkoutRow = {
@@ -92,6 +94,11 @@ export type WhoopCloudSyncPayload = {
   body: WhoopCloudBodyMeasurements | null
   bff?: WhoopBffSyncPayload | null
   healthMonitor?: WhoopHealthMonitorRow | null
+  /**
+   * VO₂max aus offiziellen Whoop-Vitalen (RHR + Max-HF), wenn BFF-Trend fehlt.
+   * Gleiche Größenordnung wie Whoop-App (z. B. 56).
+   */
+  vo2Max?: number | null
 }
 
 export type WhoopHealthMonitorRow = {

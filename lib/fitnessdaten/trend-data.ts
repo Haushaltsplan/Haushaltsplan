@@ -9,7 +9,6 @@ import {
 import { isoAddDaysKalender } from '@/lib/fitnessdaten/iso-date'
 import { heuteIsoLocal } from '@/lib/fitnessdaten/scores'
 import { aktuellesVo2Max, ladeVo2Trends } from '@/lib/fitnessdaten/vo2max-engine'
-// aktuellesVo2Max gibt nur cloud/manuell zurück — keine Schätzungen für die UI
 import type { MetricInfoId } from '@/lib/fitnessdaten/metric-explanations'
 
 export type TrendZeitraum = 'woche' | 'monat' | '6monate'
@@ -135,9 +134,11 @@ export function trendInsight(
 
 export function heuteWert(metricId: HomeMetricId, heute: WhoopDayRecord): number | null {
   if (metricId === 'vo2max') {
-    // NUR bestätigte Werte zeigen (cloud oder manuell).
-    // heute.vo2Max NICHT als Fallback — könnte stale Schätz-Daten aus localStorage enthalten.
-    return aktuellesVo2Max()
+    const cloud = aktuellesVo2Max()
+    if (cloud != null && cloud > 0) return cloud
+    // Sync noch nicht gelaufen: wöchentliche Berechnung aus lokalen Whoop-Vitalen
+    const s = ladeVo2Trends()
+    return s.vo2Max ?? s.schaetzung
   }
   const v = wertFuerMetrik(heute, metricId)
   return v > 0 ? v : null

@@ -149,8 +149,8 @@ export const METRIC_INFO: Record<MetricInfoId, MetricInfo> = {
   },
   steps: {
     title: 'Schritte',
-    body: 'Schritte kommen aus der WHOOP-App (BFF Deep-Dive / Trends) — dieselben Werte wie in WHOOP. Ohne Cloud-Verbindung kann Omnia hilfsweise per BLE zählen oder schätzen.',
-    source: 'WHOOP Cloud (BFF)',
+    body: 'Schritte kommen aus der offiziellen WHOOP Cycle-API (step_count) — derselbe Tageswert wie in der WHOOP-App. Zusätzlich kann der BFF Deep-Dive ergänzen, falls verfügbar.',
+    source: 'WHOOP Cloud (Cycle step_count)',
   },
   calories: {
     title: 'Kalorien',
@@ -195,8 +195,8 @@ export const METRIC_INFO: Record<MetricInfoId, MetricInfo> = {
   vo2max: {
     title: 'VO₂ Max',
     body:
-      'Maximale Sauerstoffaufnahme — langsam veränderliche Fitnessmetrik. WHOOP aktualisiert wöchentlich aus 30 Tagen Recovery, Workout-Max-HF, HFV und Profil. Omnia berechnet einmal pro Woche (nicht täglich) mit derselben Logik.',
-    source: 'Wöchentlich · 30-Tage-Baseline',
+      'Maximale Sauerstoffaufnahme — langsam veränderliche Fitnessmetrik. WHOOP aktualisiert wöchentlich. Omnia übernimmt den Whoop-Trend wenn verfügbar, sonst Uth aus Whoop-Ruhepuls und Max-HF (gleiche Größenordnung wie in der Whoop-App).',
+    source: 'Whoop Trends / RHR+Max-HF · wöchentlich',
   },
   health_monitor: {
     title: 'Gesundheitsmonitor',

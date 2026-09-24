@@ -216,6 +216,36 @@ async function fetchBffJson(accessToken: string, path: string): Promise<{ data: 
   }
 }
 
+function trendAktuellerWert(
+  d: {
+    month_time_segment?: unknown
+    week_time_segment?: unknown
+    six_month_time_segment?: unknown
+  },
+  endDate: string,
+): { daily: { date: string; value: number }[]; monthlyAvg: number | null } {
+  const segs = [d.month_time_segment, d.week_time_segment, d.six_month_time_segment]
+  let daily: { date: string; value: number }[] = []
+  for (const seg of segs) {
+    const pts = extrahiereGraphPunkte(seg, endDate)
+    if (pts.length > daily.length) daily = pts
+  }
+
+  let monthlyAvg: number | null = null
+  for (const seg of segs) {
+    const avg = segmentAvg(seg)
+    if (avg != null) {
+      monthlyAvg = avg
+      break
+    }
+  }
+  // VO₂_MAX ist wöchentlich — oft nur Graph-Punkte, kein metrics[].current_metric_value
+  if (monthlyAvg == null && daily.length > 0) {
+    monthlyAvg = daily[daily.length - 1]!.value
+  }
+  return { daily, monthlyAvg }
+}
+
 async function ladeTrend(
   accessToken: string,
   metric: TrendMetric,
@@ -232,13 +262,12 @@ async function ladeTrend(
     week_time_segment?: unknown
     six_month_time_segment?: unknown
   }
-  const monthSeg = d.month_time_segment ?? d.week_time_segment
-  const daily = extrahiereGraphPunkte(monthSeg, endDate)
+  const { daily, monthlyAvg } = trendAktuellerWert(d, endDate)
 
   return {
     daily,
-    monthlyAvg: segmentAvg(monthSeg),
-    ok: status === 200 && (daily.length > 0 || segmentAvg(monthSeg) != null),
+    monthlyAvg,
+    ok: status === 200 && (daily.length > 0 || monthlyAvg != null),
   }
 }
 

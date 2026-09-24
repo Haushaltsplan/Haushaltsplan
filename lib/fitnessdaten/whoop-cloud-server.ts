@@ -16,6 +16,7 @@ import {
 import { ladeWhoopBffSync } from '@/lib/fitnessdaten/whoop-bff-server'
 import { heuteIsoInZeitzone, isoAddDaysKalender, isoAusApiZeitstempel, defaultWhoopZeitzone } from '@/lib/fitnessdaten/iso-date'
 import { ladeWhoopHealthMonitorBff } from '@/lib/fitnessdaten/whoop-health-bff-server'
+import { berechneVo2MaxAusWhoopVitals } from '@/lib/fitnessdaten/vo2max-from-vitals'
 import {
   leseWhoopTokensDb,
   loescheWhoopTokensDb,
@@ -79,11 +80,14 @@ type CycleRec = {
   end?: string | null
   timezone_offset?: string | null
   score_state?: string
+  /** Offizielle API: Schritte pro physiologischem Zyklus */
+  step_count?: number | null
   score?: {
     strain?: number
     kilojoule?: number
     average_heart_rate?: number
     max_heart_rate?: number
+    step_count?: number
   }
 }
 
@@ -409,17 +413,21 @@ function parseSleepRow(rec: SleepRec): WhoopCloudSleepRow | null {
 
 
 function parseCycleRow(rec: CycleRec, heute: string): WhoopCloudCycleRow | null {
-  if (!rec.score || !rec.start) return null
+  if (!rec.start) return null
   if (rec.score_state === 'UNSCORABLE') return null
   const s = rec.score
-  if (s.strain == null && s.kilojoule == null) return null
+  const rawSteps = rec.step_count ?? s?.step_count ?? null
+  if (s?.strain == null && s?.kilojoule == null && (rawSteps == null || rawSteps <= 0)) {
+    return null
+  }
   const date = cycleAppKalenderTag(rec.start, rec.end, rec.timezone_offset, heute)
   return {
     date,
-    strain: s.strain != null ? Math.round(s.strain * 10) / 10 : null,
-    avgHr: s.average_heart_rate != null ? Math.round(s.average_heart_rate) : null,
-    maxHr: s.max_heart_rate != null ? Math.round(s.max_heart_rate) : null,
-    calories: s.kilojoule != null ? Math.round(s.kilojoule / 4.184) : null,
+    strain: s?.strain != null ? Math.round(s.strain * 10) / 10 : null,
+    avgHr: s?.average_heart_rate != null ? Math.round(s.average_heart_rate) : null,
+    maxHr: s?.max_heart_rate != null ? Math.round(s.max_heart_rate) : null,
+    calories: s?.kilojoule != null ? Math.round(s.kilojoule / 4.184) : null,
+    steps: rawSteps != null && Number.isFinite(rawSteps) && rawSteps > 0 ? Math.round(rawSteps) : null,
   }
 }
 
@@ -502,14 +510,31 @@ export async function ladeVollstaendigerCloudSync(
     if (w) workoutMap.set(w.id, w)
   }
 
+  const recoveries = dedupeByDate(recoveryRaw.map(parseRecoveryRow))
+  const cycles = dedupeByDate(cycleRaw.map((r) => parseCycleRow(r, endDate)))
+  const bffVo2 = bff?.monthlyAvgs.vo2Max ?? null
+  const latestBffDailyVo2 = [...(bff?.daily ?? [])]
+    .filter((d) => d.vo2Max != null && d.vo2Max > 0)
+    .sort((a, b) => a.date.localeCompare(b.date))
+    .at(-1)?.vo2Max
+  const derivedVo2 =
+    bffVo2 ??
+    latestBffDailyVo2 ??
+    berechneVo2MaxAusWhoopVitals({
+      restingHrs: recoveries.map((r) => r.restingHr),
+      maxHr: body?.maxHr ?? null,
+      cycleMaxHrs: cycles.map((c) => c.maxHr),
+    })
+
   return {
-    recoveries: dedupeByDate(recoveryRaw.map(parseRecoveryRow)),
+    recoveries,
     sleeps: dedupeByDate(sleepRaw.map(parseSleepRow)),
-    cycles: dedupeByDate(cycleRaw.map((r) => parseCycleRow(r, endDate))),
+    cycles,
     workouts: [...workoutMap.values()].sort((a, b) => a.startMs - b.startMs),
     body,
     bff,
     healthMonitor,
+    vo2Max: derivedVo2,
   }
 }
 
