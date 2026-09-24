@@ -8,7 +8,7 @@ import type {
 import {
   heuteIsoInZeitzone,
   isoAddDaysKalender,
-  trendTageAusEndDatum,
+  trendTageAusPunkten,
 } from '@/lib/fitnessdaten/iso-date'
 
 const BFF_BASE = 'https://api.prod.whoop.com'
@@ -71,19 +71,51 @@ function isoVorTagen(tage: number, endDate: string): string {
 
 function parseContextDate(display: string, refIso: string): string | null {
   if (!display) return null
+  const ref = new Date(refIso + 'T12:00:00')
 
-  const deMatch = display.match(/(\d{1,2})\.\s*([A-ZÄÖÜ]{3,4})\.?/i)
+  // "23. SEP" / "23. Sept." / "23. SEPTEMBER"
+  const deMatch = display.match(/(\d{1,2})\.\s*([A-ZÄÖÜ]{3,9})\.?/i)
   if (deMatch) {
     const day = parseInt(deMatch[1], 10)
     const monKey = deMatch[2].slice(0, 3).toUpperCase().replace('Ä', 'A')
     const month = MONTHS[monKey]
     if (month != null && Number.isFinite(day)) {
-      const ref = new Date(refIso + 'T12:00:00')
       let year = ref.getFullYear()
       const refMonth = ref.getMonth()
       if (month > refMonth + 2) year -= 1
       if (month < refMonth - 10) year += 1
       return `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+    }
+  }
+
+  // "22.9." / "22.09." / "22.9.2026"
+  const deNum = display.match(/(\d{1,2})\.(\d{1,2})\.(\d{2,4})?/)
+  if (deNum) {
+    const day = parseInt(deNum[1], 10)
+    const month = parseInt(deNum[2], 10) - 1
+    let year = ref.getFullYear()
+    if (deNum[3]) {
+      year = parseInt(deNum[3], 10)
+      if (year < 100) year += 2000
+    } else if (month > ref.getMonth() + 2) year -= 1
+    if (month >= 0 && month <= 11 && day >= 1 && day <= 31) {
+      return `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+    }
+  }
+
+  // "Di., 22." / "Di 22" — Wochentag + Tag, Monat aus Position relativ zu endDate
+  const wdDay = display.match(/(?:Mo|Di|Mi|Do|Fr|Sa|So)[a-zä.]*\s*,?\s*(\d{1,2})\.?/i)
+  if (wdDay) {
+    const day = parseInt(wdDay[1], 10)
+    if (day >= 1 && day <= 31) {
+      // Nächstes Vorkommen dieses Tages ≤ endDate (max. 40 Tage zurück)
+      for (let back = 0; back < 40; back++) {
+        const d = new Date(ref)
+        d.setDate(d.getDate() - back)
+        if (d.getDate() === day) {
+          return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+        }
+      }
     }
   }
 
@@ -93,7 +125,6 @@ function parseContextDate(display: string, refIso: string): string | null {
   const day = parseInt(enMatch[2], 10)
   const month = MONTHS[monKey]
   if (month == null || !Number.isFinite(day)) return null
-  const ref = new Date(refIso + 'T12:00:00')
   let year = ref.getFullYear()
   const refMonth = ref.getMonth()
   if (month > refMonth + 2) year -= 1
@@ -155,10 +186,7 @@ function extrahiereGraphPunkte(segment: unknown, endDate: string): { date: strin
   }
 
   if (raw.length === 0) return []
-  return trendTageAusEndDatum(
-    raw.map((r) => ({ value: r.value, x: r.x })),
-    endDate,
-  )
+  return trendTageAusPunkten(raw, endDate)
 }
 
 function segmentAvg(segment: unknown): number | null {
@@ -396,7 +424,7 @@ export async function ladeWhoopBffSync(
     )
 
     const [strainHistorie, strainToday, recoveryToday] = await Promise.all([
-      ladeSchritteHistorie(accessToken, tag, 35),
+      ladeSchritteHistorie(accessToken, tag, 14),
       ladeStrainDeepDive(accessToken, tag),
       ladeRecoveryDeepDive(accessToken, tag),
     ])

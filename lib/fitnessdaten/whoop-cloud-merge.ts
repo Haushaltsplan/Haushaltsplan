@@ -88,7 +88,7 @@ function mergeDay(
         bffRow.vo2Max != null),
   )
 
-  // Schritte: nur BFF (Deep-Dive/Trends). Nie Schätzung als Cloud speichern.
+  // Schritte: BFF-Wert setzen; ohne BFF-Row bestehende Cloud-Schritte NICHT löschen
   const bffSteps =
     bffRow?.steps != null && Number.isFinite(bffRow.steps) && bffRow.steps > 0
       ? Math.round(bffRow.steps)
@@ -101,13 +101,17 @@ function mergeDay(
   } else if (prev.stepsFromCloud && prev.steps != null && prev.steps > 0) {
     steps = prev.steps
     stepsFromCloud = true
+  } else if (bffRow == null) {
+    // Tag nur aus Cycle/Sleep — Schritte unangetastet lassen
+    steps = prev.steps
+    stepsFromCloud = Boolean(prev.stepsFromCloud)
   } else {
-    // Alte Schätzwerte verwerfen — bessere Quelle kommt vom nächsten Sync / bleibt leer
+    // BFF-Row da, aber ohne Schritte
     steps = null
     stepsFromCloud = false
   }
 
-  // Kalorien: Historisch BFF (App), heute Cycle (live kJ) vor BFF-Trend
+  // Kalorien: Cycle-API ist tagesrichtig (Start=Wake). BFF-Trends waren oft 1 Tag verschoben.
   const bffCal =
     bffRow?.calories != null && Number.isFinite(bffRow.calories) && bffRow.calories > 0
       ? Math.round(bffRow.calories)
@@ -117,11 +121,9 @@ function mergeDay(
   const istHeute = date === heuteIsoLocal()
   let calories: number | null
   let caloriesFromCloud: boolean
-  const cloudCal = istHeute
-    ? cycleCal ?? bffCal
-    : bffCal ?? cycleCal
+  // Cycle hat Vorrang (korrektes Kalenderdatum). BFF nur als Lücke-Füller.
+  const cloudCal = cycleCal ?? bffCal
   if (cloudCal != null) {
-    // Am Lauftag: höheren Wert nehmen (Cycle live vs. ggf. älterer BFF-Balken)
     calories =
       istHeute && cycleCal != null && bffCal != null
         ? Math.max(cycleCal, bffCal)
@@ -130,6 +132,9 @@ function mergeDay(
   } else if (prev.caloriesFromCloud && prev.calories != null && prev.calories > 0) {
     calories = prev.calories
     caloriesFromCloud = true
+  } else if (bffRow == null && cycle == null) {
+    calories = prev.calories
+    caloriesFromCloud = Boolean(prev.caloriesFromCloud)
   } else {
     calories = null
     caloriesFromCloud = false

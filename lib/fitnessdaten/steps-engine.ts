@@ -93,19 +93,34 @@ export function schritteHeuteAusDaily(): number {
 }
 
 /**
- * Entfernt Schätz-Schritte/-Kalorien ohne Cloud-Provenance.
- * Nur BFF-/Cycle-Werte bleiben — verhindert „falsche“ Whoop-Zahlen.
+ * Heilt Cloud-Provenance und entfernt nur klar lokale Schätzwerte.
+ * Wichtig: Nicht alle Schritte löschen — sonst bleiben sie weg, wenn BFF kurz fehlschlägt.
  */
 export function migriereStalenSchritteAusDaily(): void {
   if (typeof window === 'undefined') return
   const store = ladeDailyStore()
   let changed = false
   for (const d of store.days) {
-    if (!d.stepsFromCloud && d.steps != null) {
+    // Alte Datensätze: BFF/Cycle-Werte als Cloud markieren (Flag gab es früher nicht)
+    if (d.steps != null && d.steps > 0 && d.bffMetrics && !d.stepsFromCloud) {
+      d.stepsFromCloud = true
+      changed = true
+    }
+    if (
+      d.calories != null &&
+      d.calories > 0 &&
+      (d.bffMetrics || d.strainFromCloud) &&
+      !d.caloriesFromCloud
+    ) {
+      d.caloriesFromCloud = true
+      changed = true
+    }
+    // Nur echte Schätzungen ohne jeden Cloud-Hinweis entfernen
+    if (!d.stepsFromCloud && !d.bffMetrics && d.steps != null) {
       d.steps = null
       changed = true
     }
-    if (!d.caloriesFromCloud && d.calories != null) {
+    if (!d.caloriesFromCloud && !d.strainFromCloud && !d.bffMetrics && d.calories != null) {
       d.calories = null
       changed = true
     }

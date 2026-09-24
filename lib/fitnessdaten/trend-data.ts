@@ -2,9 +2,12 @@
 
 import {
   baseline30,
+  createEmptyDayRecord,
   ladeDailyStore,
   type WhoopDayRecord,
 } from '@/lib/fitnessdaten/daily-records'
+import { isoAddDaysKalender } from '@/lib/fitnessdaten/iso-date'
+import { heuteIsoLocal } from '@/lib/fitnessdaten/scores'
 import { aktuellesVo2Max, ladeVo2Trends } from '@/lib/fitnessdaten/vo2max-engine'
 // aktuellesVo2Max gibt nur cloud/manuell zurück — keine Schätzungen für die UI
 import type { MetricInfoId } from '@/lib/fitnessdaten/metric-explanations'
@@ -38,7 +41,16 @@ export const HOME_METRICS: {
 
 export function tageFuerZeitraum(zeitraum: TrendZeitraum): WhoopDayRecord[] {
   const n = zeitraum === 'woche' ? 7 : zeitraum === 'monat' ? 30 : 180
-  return ladeDailyStore().days.slice(-n)
+  const store = ladeDailyStore()
+  const byDate = new Map(store.days.map((d) => [d.date, d]))
+  const ende = heuteIsoLocal()
+  // Kontinuierliche Kalendertage — fehlende Tage (z. B. Mittwoch) als Lücke sichtbar
+  const out: WhoopDayRecord[] = []
+  for (let i = n - 1; i >= 0; i--) {
+    const date = isoAddDaysKalender(ende, -i)
+    out.push(byDate.get(date) ?? createEmptyDayRecord(date))
+  }
+  return out
 }
 
 function wertFuerMetrik(d: WhoopDayRecord, id: HomeMetricId): number {

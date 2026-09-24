@@ -362,6 +362,8 @@ function parseCycleRow(rec: CycleRec, heute: string): WhoopCloudCycleRow | null 
   if (rec.score_state === 'UNSCORABLE') return null
   const s = rec.score
   if (s.strain == null && s.kilojoule == null) return null
+  // Whoop-Tag = Kalendertag des Cycle-Starts (Wake). Offener Cycle → heute.
+  // Nicht End-Datum: End = nächster Wake (= Folgetag) würde alles 1 Tag zu spät legen.
   const date = rec.end ? datumAusIso(rec.start) : heute
   return {
     date,

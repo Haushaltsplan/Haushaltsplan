@@ -36,8 +36,8 @@ export function WhoopTrendChart({
   const svgRef = useRef<SVGSVGElement>(null)
   const [activeIdx, setActiveIdx] = useState(() => Math.max(0, points.length - 1))
 
-  const sichtbar = useMemo(() => points.filter((p) => p.value > 0), [points])
-  const daten = sichtbar.length > 0 ? sichtbar : points
+  // Alle Kalendertage behalten (auch 0) — sonst fehlen Tage wie „Mittwoch“ komplett
+  const daten = points
   const idx = Math.min(activeIdx, Math.max(0, daten.length - 1))
   const aktiv = daten[idx]
 

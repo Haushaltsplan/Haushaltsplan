@@ -75,6 +75,7 @@ import toast from 'react-hot-toast'
 import { useWhoopBle } from '@/components/fitnessdaten/whoop-ble-provider'
 import { setzeWhoopBleAlwaysOn } from '@/lib/fitnessdaten/whoop-ble-keepalive'
 import { syncWhoopCloudVomServer, WHOOP_CLOUD_SYNC_EVENT } from '@/lib/fitnessdaten/whoop-cloud-merge'
+import { versucheWhoopCloudAutoSync } from '@/lib/fitnessdaten/whoop-cloud-auto-sync'
 import { migriereStalenVo2AusDaily, vo2MaxQuelle } from '@/lib/fitnessdaten/vo2max-engine'
 import { migriereStalenSchritteAusDaily } from '@/lib/fitnessdaten/steps-engine'
 
@@ -176,10 +177,14 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange, ini
   }, [])
 
   useEffect(() => {
-    // Beim ersten Render: alte Schätz-Werte entfernen, dann BFF nachladen
     migriereStalenVo2AusDaily()
     migriereStalenSchritteAusDaily()
-    void cloudSync(false)
+    // Gedrosselt syncen — Force nur wenn Schritte/Kalorien heute fehlen
+    const heute = ladeDailyStore().days.find((d) => d.date === heuteIsoLocal())
+    const brauchtForce = !heute?.stepsFromCloud || !heute?.caloriesFromCloud
+    void versucheWhoopCloudAutoSync(brauchtForce).then((ok) => {
+      if (ok) setDataRevision((r) => r + 1)
+    })
     const onSync = () => setDataRevision((r) => r + 1)
     window.addEventListener(WHOOP_CLOUD_SYNC_EVENT, onSync)
     const strainTick = window.setInterval(() => {
@@ -189,7 +194,7 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange, ini
       window.removeEventListener(WHOOP_CLOUD_SYNC_EVENT, onSync)
       window.clearInterval(strainTick)
     }
-  }, [cloudSync])
+  }, [])
 
   const onStatusTap = useCallback(async () => {
     if (statusBusy || isConnecting) return
