@@ -8,6 +8,7 @@ import {
   ladeDailyStore,
   speichereDailyStore,
 } from '@/lib/fitnessdaten/daily-records'
+import { ladeCalibrationParams } from '@/lib/fitnessdaten/calibration/calibration-params'
 import { isoAusMs } from '@/lib/fitnessdaten/iso-date'
 import { heuteIsoLocal } from '@/lib/fitnessdaten/scores'
 import { zaehleSchrittAusAccel } from '@/lib/fitnessdaten/steps-tracker'
@@ -19,6 +20,7 @@ export function schaetzeSchritteAusStrain(
   avgHr: number | null,
   restingHr: number,
 ): number {
+  const p = ladeCalibrationParams()
   const s = strain ?? 0
   const basis = 2200
   const ausStrain = s * 380
@@ -27,7 +29,7 @@ export function schaetzeSchritteAusStrain(
   if (avgHr != null && restingHr > 0 && avgHr > restingHr + 12) {
     hrBonus = Math.round((avgHr - restingHr) * 18)
   }
-  return Math.round(basis + ausStrain + ausZonen + hrBonus)
+  return Math.round((basis + ausStrain + ausZonen + hrBonus) * p.stepsScale)
 }
 
 export function mergeTagesSchritte(

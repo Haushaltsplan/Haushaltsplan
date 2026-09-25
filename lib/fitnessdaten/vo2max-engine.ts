@@ -18,6 +18,7 @@ import {
   speichereFitnessProfil,
 } from '@/lib/fitnessdaten/user-profile'
 import { berechneVo2MaxAusWhoopVitals } from '@/lib/fitnessdaten/vo2max-from-vitals'
+import { ladeCalibrationParams } from '@/lib/fitnessdaten/calibration/calibration-params'
 
 export const WHOOP_VO2_TRENDS_KEY = 'mein-haushalt:whoop-vo2-trends'
 
@@ -145,6 +146,7 @@ export function stelleVo2MaxAusGesynctenVitalenSicher(): number | null {
     restingHrs: daily.days.map((d) => d.restingHr),
     maxHr: bodyMhr,
     cycleMaxHrs: daily.days.map((d) => d.maxHr),
+    scale: ladeCalibrationParams().vo2Scale,
   })
   if (vo2 == null) {
     aktualisiereVo2MaxWennFaellig()
@@ -261,6 +263,7 @@ export function berechneVo2MaxLangfristig(days = ladeDailyStore().days): number 
   if (alter > 45) vo2 *= 1 - Math.min(0.08, (alter - 45) * 0.004)
   if (gewicht > 0 && gewicht < 72) vo2 *= 1.02
 
+  vo2 *= ladeCalibrationParams().vo2Scale
   return Math.round(Math.min(75, Math.max(28, vo2)))
 }
 

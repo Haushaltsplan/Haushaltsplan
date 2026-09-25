@@ -195,8 +195,8 @@ export const METRIC_INFO: Record<MetricInfoId, MetricInfo> = {
   vo2max: {
     title: 'VO₂ Max',
     body:
-      'Maximale Sauerstoffaufnahme — langsam veränderliche Fitnessmetrik. WHOOP aktualisiert wöchentlich. Omnia übernimmt den Whoop-Trend wenn verfügbar, sonst Uth aus Whoop-Ruhepuls und Max-HF (gleiche Größenordnung wie in der Whoop-App).',
-    source: 'Whoop Trends / RHR+Max-HF · wöchentlich',
+      'Maximale Sauerstoffaufnahme — langsam veränderliche Fitnessmetrik. WHOOP aktualisiert wöchentlich. Omnia übernimmt den Whoop-Trend wenn verfügbar, sonst Uth aus Whoop-Ruhepuls und Max-HF (kalibriert gegen Cloud solange Abo aktiv).',
+    source: 'Whoop Trends / RHR+Max-HF · Offline-Kalibrierung',
   },
   health_monitor: {
     title: 'Gesundheitsmonitor',

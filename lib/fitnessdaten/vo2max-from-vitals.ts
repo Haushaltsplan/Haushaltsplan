@@ -1,17 +1,19 @@
 /** VO₂max aus Whoop-Vitalen — rein, ohne localStorage (Server + Client). */
 
+import { DEFAULT_CALIBRATION_PARAMS } from '@/lib/fitnessdaten/calibration/calibration-params'
+
 const MIN_RECOVERY_TAGE = 7
 
 /**
- * WHOOP-VO₂ aus offiziellen Cloud-Vitalen (Developer-API).
- * BFF `VO2_MAX`-Trends brauchen App-Cognito-Tokens und liefern mit OAuth 401 —
- * daher Uth aus Whoop-RHR (Recovery) + Whoop-Max-HF (Body/Cycle).
- * Bei RHR≈52 / MHR≈190 → ~56.
+ * WHOOP-VO₂ aus offiziellen Cloud-Vitalen (Developer-API) / lokalen RHR+Max-HF.
+ * Uth × Kalibrierungs-Scale (Server: Default; Client kann Scale übergeben).
  */
 export function berechneVo2MaxAusWhoopVitals(input: {
   restingHrs: Array<number | null | undefined>
   maxHr: number | null | undefined
   cycleMaxHrs?: Array<number | null | undefined>
+  /** Optional: Scale überschreiben (Server: Default 1.0). */
+  scale?: number
 }): number | null {
   const rhrs = input.restingHrs.filter((v): v is number => v != null && v >= 35 && v <= 100)
   if (rhrs.length < MIN_RECOVERY_TAGE) return null
@@ -28,5 +30,6 @@ export function berechneVo2MaxAusWhoopVitals(input: {
   const mhr = bodyMhr ?? peakMhr
   if (mhr == null || mhr <= rhr30) return null
 
-  return Math.round(Math.min(75, Math.max(28, 15.3 * (mhr / rhr30))))
+  const scale = input.scale ?? DEFAULT_CALIBRATION_PARAMS.vo2Scale
+  return Math.round(Math.min(75, Math.max(28, 15.3 * (mhr / rhr30) * scale)))
 }

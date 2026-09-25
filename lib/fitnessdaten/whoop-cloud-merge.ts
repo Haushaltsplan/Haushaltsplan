@@ -8,8 +8,8 @@ import {
   type WhoopActivity,
   type WhoopDayRecord,
 } from '@/lib/fitnessdaten/daily-records'
-import { aktualisiereVo2MaxWennFaellig, setzeVo2MaxAusCloud } from '@/lib/fitnessdaten/vo2max-engine'
-import { berechneVo2MaxAusWhoopVitals } from '@/lib/fitnessdaten/vo2max-from-vitals'
+import { kalibriereGegenCloudPayload } from '@/lib/fitnessdaten/calibration/calibration-compare'
+import { ladeCalibrationParams } from '@/lib/fitnessdaten/calibration/calibration-params'
 import { loadAusStrain } from '@/lib/fitnessdaten/strain-engine'
 import { heuteIsoLocal, recoveryLabelAusProzent } from '@/lib/fitnessdaten/scores'
 import { berechneSkinTempDelta } from '@/lib/fitnessdaten/skin-temp'
@@ -22,6 +22,8 @@ import {
 } from '@/lib/fitnessdaten/user-profile'
 import { ladeFitnessHistory, ladeFitnessSnapshot, speichereFitnessHistory, speichereFitnessSnapshot } from '@/lib/fitnessdaten/history-storage'
 import { whoopApiFetch } from '@/lib/fitnessdaten/whoop-api-fetch'
+import { aktualisiereVo2MaxWennFaellig, setzeVo2MaxAusCloud } from '@/lib/fitnessdaten/vo2max-engine'
+import { berechneVo2MaxAusWhoopVitals } from '@/lib/fitnessdaten/vo2max-from-vitals'
 
 export const WHOOP_CLOUD_META_KEY = 'mein-haushalt:fitnessdaten-whoop-cloud'
 export const WHOOP_CLOUD_SYNC_EVENT = 'mein-haushalt:whoop-cloud-sync'
@@ -298,6 +300,7 @@ export function mergeCloudPayload(payload: WhoopCloudSyncPayload): WhoopCloudSyn
     restingHrs: payload.recoveries.map((r) => r.restingHr),
     maxHr: payload.body?.maxHr ?? null,
     cycleMaxHrs: payload.cycles.map((c) => c.maxHr),
+    scale: ladeCalibrationParams().vo2Scale,
   })
   const vo2Cloud = payload.vo2Max ?? bffVo2 ?? latestDailyVo2 ?? vitalsVo2
   if (vo2Cloud != null && vo2Cloud > 0) {
@@ -385,6 +388,13 @@ export function mergeCloudPayload(payload: WhoopCloudSyncPayload): WhoopCloudSyn
     ? ` · BFF: ${payload.bff.debug.strainDays} Schritt-Tage, ${payload.bff.debug.trendsOk}/7 Trends`
     : ''
   const vo2Info = payload.vo2Max != null ? ` · VO₂ ${payload.vo2Max}` : ''
+
+  // Dual-Lauf: lokale Engines vs Whoop — nur Kalibrierungs-Log, UI bleibt Cloud
+  try {
+    kalibriereGegenCloudPayload(payload)
+  } catch {
+    /* Kalibrierung darf Sync nie blockieren */
+  }
 
   return {
     ok: true,

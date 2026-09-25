@@ -1,5 +1,6 @@
 /** Schlaf-Schätzung aus IMU-Ruhe + Nachtfenster (ohne WHOOP-Cloud). */
 
+import { ladeCalibrationParams } from '@/lib/fitnessdaten/calibration/calibration-params'
 import type { FitnessHistoryState } from '@/lib/fitnessdaten/types'
 import { registriereSchlafFenster } from '@/lib/fitnessdaten/sleep-detail'
 
@@ -33,8 +34,9 @@ function bewegungsVarianz(windowMs = 120_000): number {
 
 /** Ruhe am Handgelenk ≈ Schlaf (grob). */
 export function aktualisiereSchlafSchaetzung(): { sleepMinutes: number; sleepScore: number; efficiency: number } {
+  const p = ladeCalibrationParams()
   const now = Date.now()
-  if (istNachtfenster() && bewegungsVarianz() < 0.08) {
+  if (istNachtfenster() && bewegungsVarianz() < p.sleepStillVariance) {
     if (lastSleepTick > 0) {
       sleepMinutesAccum += Math.min(2, (now - lastSleepTick) / 60_000)
     }
@@ -45,16 +47,19 @@ export function aktualisiereSchlafSchaetzung(): { sleepMinutes: number; sleepSco
     lastSleepTick = 0
   }
 
-  const sleepMinutes = Math.round(sleepMinutesAccum)
-  const target = 480
+  const sleepMinutes = Math.round(sleepMinutesAccum * p.sleepMinutesScale)
+  const target = p.sleepTargetMinutes
   const durationScore = Math.min(100, (sleepMinutes / target) * 100)
-  const efficiency = bewegungsVarianz() < 0.15 ? 92 : bewegungsVarianz() < 0.25 ? 78 : 65
-  const sleepScore = Math.round(Math.min(100, durationScore * 0.6 + efficiency * 0.4))
+  const v = bewegungsVarianz()
+  const efficiency = v < 0.15 ? 92 : v < 0.25 ? 78 : 65
+  const sleepScore = Math.round(
+    Math.min(100, durationScore * p.sleepDurationWeight + efficiency * p.sleepEfficiencyWeight),
+  )
 
   return { sleepMinutes, sleepScore, efficiency }
 }
 
-export function ladeSchlafAusHistory(history: FitnessHistoryState): {
+export function ladeSchlafAusHistory(_history: FitnessHistoryState): {
   sleepMinutes: number
   sleepScore: number
 } {

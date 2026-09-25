@@ -6,6 +6,7 @@ import { FitnessWhoopBlePanel } from '@/components/fitnessdaten/fitness-whoop-bl
 import { FitnessWhoopImportPanel } from '@/components/fitnessdaten/fitness-whoop-import-panel'
 import { FitnessUserProfilePanel } from '@/components/fitnessdaten/fitness-user-profile-panel'
 import { FitnessWhoopCloudPanel } from '@/components/fitnessdaten/fitness-whoop-cloud-panel'
+import { WhoopCalibrationPanel } from '@/components/fitnessdaten/whoop-calibration-panel'
 import { FitnessVitalsPanel } from '@/components/fitnessdaten/fitness-vitals-panel'
 import { WhoopBigRing } from '@/components/fitnessdaten/whoop-big-ring'
 import {
@@ -74,7 +75,7 @@ import { useMemo, useState, useEffect, useCallback } from 'react'
 import toast from 'react-hot-toast'
 import { useWhoopBle } from '@/components/fitnessdaten/whoop-ble-provider'
 import { setzeWhoopBleAlwaysOn } from '@/lib/fitnessdaten/whoop-ble-keepalive'
-import { syncWhoopCloudVomServer, WHOOP_CLOUD_SYNC_EVENT } from '@/lib/fitnessdaten/whoop-cloud-merge'
+import { ladeWhoopCloudMeta, syncWhoopCloudVomServer, WHOOP_CLOUD_SYNC_EVENT } from '@/lib/fitnessdaten/whoop-cloud-merge'
 import { versucheWhoopCloudAutoSync } from '@/lib/fitnessdaten/whoop-cloud-auto-sync'
 import { migriereStalenVo2AusDaily, stelleVo2MaxAusGesynctenVitalenSicher, vo2MaxQuelle } from '@/lib/fitnessdaten/vo2max-engine'
 import { migriereStalenSchritteAusDaily } from '@/lib/fitnessdaten/steps-engine'
@@ -1274,6 +1275,7 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange, ini
           <section className="mt-6 space-y-4">
             <FitnessUserProfilePanel embedded onSaved={() => setDataRevision((r) => r + 1)} />
             <FitnessWhoopCloudPanel embedded onSyncComplete={() => setDataRevision((r) => r + 1)} />
+            <WhoopCalibrationPanel cloudConnected={Boolean(ladeWhoopCloudMeta()?.lastSyncedAt)} />
             <FitnessVitalsPanel embedded onSaved={() => setDataRevision((r) => r + 1)} />
             <FitnessWhoopBlePanel embedded />
             <FitnessWhoopImportPanel embedded onImportComplete={() => setDataRevision((r) => r + 1)} />
