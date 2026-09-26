@@ -74,6 +74,7 @@ public class OmniaBleKeepalivePlugin extends Plugin {
         WhoopBleForegroundService.setKeepaliveActive(getContext(), true);
 
         Intent intent = new Intent(getContext(), WhoopBleForegroundService.class);
+        intent.putExtra("action", WhoopBleForegroundService.ACTION_KEEP_PROCESS);
         intent.putExtra("title", title);
         intent.putExtra("body", body);
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -81,7 +82,28 @@ public class OmniaBleKeepalivePlugin extends Plugin {
         } else {
             getContext().startService(intent);
         }
+
+        // Einmalig Akku-Optimierung abschalten (sonst killt Android den BLE-Dienst)
+        tryPromptIgnoreBatteryOptimizations();
+
         call.resolve();
+    }
+
+    private void tryPromptIgnoreBatteryOptimizations() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
+            return;
+        }
+        try {
+            PowerManager pm =
+                (PowerManager) getContext().getSystemService(android.content.Context.POWER_SERVICE);
+            if (pm == null || pm.isIgnoringBatteryOptimizations(getContext().getPackageName())) {
+                return;
+            }
+            Intent request = new Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS);
+            request.setData(Uri.parse("package:" + getContext().getPackageName()));
+            request.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            getContext().startActivity(request);
+        } catch (Exception ignored) {}
     }
 
     @PluginMethod

@@ -11,19 +11,24 @@ import android.content.pm.ServiceInfo;
 import android.os.Build;
 import android.os.IBinder;
 import android.os.PowerManager;
+import android.util.Log;
 import androidx.core.app.NotificationCompat;
 
 /**
- * Foreground Service: hält Omnia + native WHOOP-BLE auch nach Schließen der App-Oberfläche aktiv.
- * Wichtig: Jeder Start über startForegroundService() MUSS startForeground() aufrufen — sonst Absturz.
+ * Foreground Service hält den Omnia-Prozess am Leben (Capgo-BLE bleibt verbunden).
+ * Native GATT nur nach Task-Entfernen / Boot (wenn WebView tot ist).
  */
 public class WhoopBleForegroundService extends Service {
+
+    private static final String TAG = "OmniaWhoopFg";
 
     public static final String CHANNEL_ID = "omnia_whoop_ble";
     public static final String ACTION_ARM_NATIVE = "de.omnia.haushalt.ARM_NATIVE";
     public static final String ACTION_RELEASE_NATIVE = "de.omnia.haushalt.RELEASE_NATIVE";
     public static final String ACTION_APP_FOREGROUND = "de.omnia.haushalt.APP_FOREGROUND";
     public static final String ACTION_APP_BACKGROUND = "de.omnia.haushalt.APP_BACKGROUND";
+    /** Nur Prozess + Notification halten — kein zweiter GATT. */
+    public static final String ACTION_KEEP_PROCESS = "de.omnia.haushalt.KEEP_PROCESS";
     public static final String PREFS = "omnia_ble_keepalive";
     public static final String PREF_DEVICE_ID = "whoop_device_id";
     public static final String PREF_KEEPALIVE = "keepalive_active";
@@ -58,7 +63,6 @@ public class WhoopBleForegroundService extends Service {
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
-        // Immer zuerst Notification — sonst: ForegroundServiceDidNotStartInTimeException
         startForegroundWithNotification(intent);
         acquireWakeLock();
 
@@ -66,31 +70,37 @@ public class WhoopBleForegroundService extends Service {
         if (action == null && intent != null) {
             action = intent.getAction();
         }
+        Log.i(TAG, "onStartCommand action=" + action + " keepalive=" + isKeepaliveActive(this));
 
         if (ACTION_RELEASE_NATIVE.equals(action)) {
             linkHolder().release();
             return START_STICKY;
         }
 
-        if (ACTION_APP_FOREGROUND.equals(action)) {
-            linkHolder().setAppForeground(true);
+        if (ACTION_APP_FOREGROUND.equals(action) || ACTION_KEEP_PROCESS.equals(action)) {
+            // Capgo hält den Link — nativen GATT freigeben, falls er von Task-Remove kam
+            if (ACTION_APP_FOREGROUND.equals(action)) {
+                linkHolder().release();
+            }
             return START_STICKY;
         }
 
-        if (ACTION_APP_BACKGROUND.equals(action) || ACTION_ARM_NATIVE.equals(action)) {
-            linkHolder().setAppForeground(false);
+        if (ACTION_APP_BACKGROUND.equals(action)) {
+            // Minimieren / Display aus: Prozess am Leben, Capgo-GATT behalten
+            return START_STICKY;
+        }
+
+        if (ACTION_ARM_NATIVE.equals(action)) {
             String deviceId = loadDeviceId(this);
             if (deviceId != null && !deviceId.isEmpty()) {
                 linkHolder().arm(this, deviceId);
             }
+            return START_STICKY;
         }
 
+        // Default-Start (connect): nur Prozess halten
         if (isKeepaliveActive(this)) {
-            String deviceId = loadDeviceId(this);
-            if (deviceId != null && !deviceId.isEmpty() && !linkHolder().isArmed()) {
-                linkHolder().setAppForeground(false);
-                linkHolder().arm(this, deviceId);
-            }
+            return START_STICKY;
         }
 
         return START_STICKY;
@@ -109,7 +119,7 @@ public class WhoopBleForegroundService extends Service {
         ensureChannel();
 
         Intent open = new Intent(this, MainActivity.class);
-        open.setFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP);
+        open.setFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_REORDER_TO_FRONT);
         PendingIntent pending = PendingIntent.getActivity(
             this,
             0,
@@ -123,8 +133,9 @@ public class WhoopBleForegroundService extends Service {
             .setSmallIcon(R.mipmap.ic_launcher)
             .setContentIntent(pending)
             .setOngoing(true)
+            .setOnlyAlertOnce(true)
             .setCategory(NotificationCompat.CATEGORY_SERVICE)
-            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+            .setPriority(NotificationCompat.PRIORITY_LOW)
             .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
             .build();
 
@@ -149,6 +160,7 @@ public class WhoopBleForegroundService extends Service {
         }
         wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "Omnia:WhoopBle");
         wakeLock.setReferenceCounted(false);
+        // Ohne Timeout — FGS hält den Prozess; Lock verhindert Doze-Lücken
         wakeLock.acquire();
     }
 
@@ -166,10 +178,11 @@ public class WhoopBleForegroundService extends Service {
         NotificationChannel channel = new NotificationChannel(
             CHANNEL_ID,
             getString(R.string.whoop_fg_channel),
-            NotificationManager.IMPORTANCE_DEFAULT
+            NotificationManager.IMPORTANCE_LOW
         );
         channel.setDescription(getString(R.string.whoop_fg_channel_desc));
         channel.setShowBadge(false);
+        channel.setSound(null, null);
         NotificationManager manager = getSystemService(NotificationManager.class);
         if (manager != null) {
             manager.createNotificationChannel(channel);
@@ -178,6 +191,7 @@ public class WhoopBleForegroundService extends Service {
 
     @Override
     public void onTaskRemoved(Intent rootIntent) {
+        Log.i(TAG, "onTaskRemoved — arm native GATT");
         if (isKeepaliveActive(this)) {
             String deviceId = loadDeviceId(this);
             if (deviceId != null && !deviceId.isEmpty()) {
@@ -197,7 +211,21 @@ public class WhoopBleForegroundService extends Service {
 
     @Override
     public void onDestroy() {
-        releaseWakeLock();
+        Log.w(TAG, "onDestroy");
+        // Bei Keepalive: sofort neu starten
+        if (isKeepaliveActive(this)) {
+            Intent restart = new Intent(getApplicationContext(), WhoopBleForegroundService.class);
+            restart.putExtra("action", ACTION_ARM_NATIVE);
+            restart.putExtra("title", getString(R.string.whoop_fg_title));
+            restart.putExtra("body", getString(R.string.whoop_fg_body));
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                getApplicationContext().startForegroundService(restart);
+            } else {
+                getApplicationContext().startService(restart);
+            }
+        } else {
+            releaseWakeLock();
+        }
         super.onDestroy();
     }
 

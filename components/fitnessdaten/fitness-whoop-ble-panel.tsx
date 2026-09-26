@@ -78,7 +78,7 @@ export function FitnessWhoopBlePanel({ embedded = false }: Props) {
           </p>
           <p className="mt-1 text-[11px] leading-relaxed text-[var(--app-text-muted)]">
             {native
-              ? 'Native App: Foreground-Dienst hält WHOOP bei Standby/Minimieren. Dauerhaft an + Akku „Uneingeschränkt“.'
+              ? 'Native App: Foreground-Dienst hält WHOOP bei Standby/Minimieren. Dauerhaft an + bei Abfrage „Akku-Optimierung ignorieren“ erlauben. Gelbe/stille Benachrichtigung muss sichtbar bleiben.'
               : 'Im Browser/PWA beendet Android BLE, sobald die App zu ist. Für Dauer-Verbindung: native Omnia-App.'}
           </p>
         </div>

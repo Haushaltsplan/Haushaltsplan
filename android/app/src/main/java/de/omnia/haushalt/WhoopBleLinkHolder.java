@@ -10,25 +10,28 @@ import android.content.Context;
 import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
+import android.util.Log;
 import androidx.annotation.RequiresPermission;
 
 /**
- * Hält die WHOOP-BLE-Verbindung nativ aufrecht, wenn die Omnia-UI geschlossen ist.
+ * Nativer WHOOP-GATT, wenn Capgo/WebView tot ist (App aus Recents, Neustart).
+ * Solange die App nur minimiert / Display aus ist, hält Capgo den Link — dieser
+ * Holder darf dann NICHT disconnecten.
  */
 public class WhoopBleLinkHolder {
+
+    private static final String TAG = "OmniaWhoopBle";
+    private static final long RECONNECT_MS = 2500L;
 
     private final Handler handler = new Handler(Looper.getMainLooper());
     private BluetoothGatt gatt;
     private String deviceId;
     private boolean armed;
-    private boolean appForeground = true;
     private Context appContext;
 
+    /** Nur Flag — kein Disconnect (sonst killt Resume den Hintergrund-Link). */
     public void setAppForeground(boolean foreground) {
-        appForeground = foreground;
-        if (foreground) {
-            release();
-        }
+        /* no-op for disconnect; kept for API compat */
     }
 
     @RequiresPermission(allOf = { android.Manifest.permission.BLUETOOTH_CONNECT })
@@ -36,11 +39,15 @@ public class WhoopBleLinkHolder {
         appContext = context.getApplicationContext();
         deviceId = address;
         armed = true;
+        Log.i(TAG, "arm native GATT " + address);
         connectIfNeeded();
+        handler.removeCallbacks(watchdog);
+        handler.postDelayed(watchdog, RECONNECT_MS);
     }
 
     @RequiresPermission(android.Manifest.permission.BLUETOOTH_CONNECT)
     public void release() {
+        Log.i(TAG, "release native GATT");
         armed = false;
         handler.removeCallbacksAndMessages(null);
         if (gatt != null) {
@@ -60,11 +67,13 @@ public class WhoopBleLinkHolder {
 
     @RequiresPermission(allOf = { android.Manifest.permission.BLUETOOTH_CONNECT })
     private void connectIfNeeded() {
-        if (!armed || appForeground || deviceId == null || appContext == null) {
+        if (!armed || deviceId == null || appContext == null) {
             return;
         }
-        BluetoothManager manager = (BluetoothManager) appContext.getSystemService(Context.BLUETOOTH_SERVICE);
+        BluetoothManager manager =
+            (BluetoothManager) appContext.getSystemService(Context.BLUETOOTH_SERVICE);
         if (manager == null) {
+            scheduleReconnect();
             return;
         }
         BluetoothAdapter adapter = manager.getAdapter();
@@ -84,22 +93,32 @@ public class WhoopBleLinkHolder {
                 } catch (Exception ignored) {}
                 gatt = null;
             }
+            // autoConnect=true → Android hält/reconnectet aggressiver im Hintergrund
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                gatt = device.connectGatt(appContext, true, gattCallback, BluetoothDevice.TRANSPORT_LE);
+                gatt = device.connectGatt(
+                    appContext,
+                    true,
+                    gattCallback,
+                    BluetoothDevice.TRANSPORT_LE
+                );
             } else {
                 gatt = device.connectGatt(appContext, true, gattCallback);
             }
-        } catch (Exception ignored) {
+        } catch (SecurityException se) {
+            Log.e(TAG, "BLUETOOTH_CONNECT fehlt", se);
+            scheduleReconnect();
+        } catch (Exception e) {
+            Log.e(TAG, "connectGatt failed", e);
             scheduleReconnect();
         }
     }
 
     private void scheduleReconnect() {
-        if (!armed || appForeground) {
+        if (!armed) {
             return;
         }
         handler.removeCallbacks(reconnectRunnable);
-        handler.postDelayed(reconnectRunnable, 3000);
+        handler.postDelayed(reconnectRunnable, RECONNECT_MS);
     }
 
     private final Runnable reconnectRunnable = new Runnable() {
@@ -109,21 +128,46 @@ public class WhoopBleLinkHolder {
         }
     };
 
+    /** Periodischer Check, falls Disconnect-Callback ausbleibt. */
+    private final Runnable watchdog = new Runnable() {
+        @Override
+        public void run() {
+            if (!armed) {
+                return;
+            }
+            connectIfNeeded();
+            handler.postDelayed(this, 15_000L);
+        }
+    };
+
     private final BluetoothGattCallback gattCallback =
         new BluetoothGattCallback() {
             @Override
             public void onConnectionStateChange(BluetoothGatt g, int status, int newState) {
                 if (newState == BluetoothProfile.STATE_CONNECTED) {
+                    Log.i(TAG, "native GATT connected status=" + status);
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
                         try {
-                            g.requestConnectionPriority(BluetoothGatt.CONNECTION_PRIORITY_HIGH);
+                            // Balanced hält besser im Doze als HIGH
+                            g.requestConnectionPriority(BluetoothGatt.CONNECTION_PRIORITY_BALANCED);
                         } catch (Exception ignored) {}
                     }
+                    try {
+                        g.discoverServices();
+                    } catch (Exception ignored) {}
                     return;
                 }
-                if (newState == BluetoothProfile.STATE_DISCONNECTED && armed && !appForeground) {
-                    gatt = null;
-                    scheduleReconnect();
+                if (newState == BluetoothProfile.STATE_DISCONNECTED) {
+                    Log.w(TAG, "native GATT disconnected status=" + status);
+                    if (gatt == g) {
+                        gatt = null;
+                    }
+                    try {
+                        g.close();
+                    } catch (Exception ignored) {}
+                    if (armed) {
+                        scheduleReconnect();
+                    }
                 }
             }
         };

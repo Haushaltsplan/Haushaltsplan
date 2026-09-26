@@ -278,9 +278,8 @@ export function WhoopBleProvider({ children }: Props) {
         phaseRef.current === 'connecting'
       void nativeHintergrundHandoff(live).then((ok) => {
         if (!ok) return
-        disconnectRef.current = null
-        setPhaseBoth('live')
-        setStatusHint('Hintergrund · Band gehalten')
+        // Capgo bleibt verbunden — nur Hinweis, kein Fake-„getrennt“
+        setStatusHint('Hintergrund aktiv · Band bleibt verbunden')
         setFehler(null)
       })
     }

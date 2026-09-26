@@ -1,17 +1,19 @@
 /**
- * Native Omnia: WHOOP-BLE von Capgo (WebView) an den Android Foreground Service übergeben,
- * wenn die App geschlossen/minimiert wird — Verbindung bleibt auf Radio-Ebene aktiv.
+ * Native Omnia: Bei Minimieren/Display-aus Capgo-BLE NICHT trennen —
+ * nur Foreground-Service am Leben halten. Native GATT nur wenn WebView tot ist.
  */
 
 import { istOmniaNativeApp } from '@/lib/fitnessdaten/omnia-native'
 import {
   armeNativeWhoopLink,
   gebeNativeWhoopLinkFrei,
+  starteOmniaBleKeepalive,
 } from '@/lib/fitnessdaten/omnia-ble-keepalive-native'
 import { istWhoopBleAlwaysOn } from '@/lib/fitnessdaten/whoop-ble-keepalive'
 import { WHOOP_BLE_DEVICE_ID_KEY } from '@/lib/fitnessdaten/web-bluetooth-whoop'
 
 let capgoDisconnect: (() => void) | null = null
+/** true nur wenn wir Capgo absichtlich für nativen GATT abgegeben haben (selten). */
 let handoffAktiv = false
 
 export function registriereCapgoDisconnect(fn: () => void): void {
@@ -27,11 +29,29 @@ function ladeGeraetId(): string | null {
   return window.localStorage.getItem(WHOOP_BLE_DEVICE_ID_KEY)
 }
 
+/**
+ * Display aus / App minimiert: Keepalive-Service sichern, Capgo-Verbindung behalten.
+ */
 export async function nativeHintergrundHandoff(live: boolean): Promise<boolean> {
-  if (!istOmniaNativeApp() || !istWhoopBleAlwaysOn() || !live || handoffAktiv) return false
+  if (!istOmniaNativeApp() || !istWhoopBleAlwaysOn()) return false
+  const deviceId = ladeGeraetId()
+  try {
+    await starteOmniaBleKeepalive(deviceId ?? undefined)
+    // Wichtig: Capgo NICHT disconnecten — das war die Ursache für Verbindungsverlust.
+    return live || Boolean(deviceId)
+  } catch {
+    return false
+  }
+}
+
+/**
+ * Harter Handoff (App aus Recents / Capgo tot): Capgo trennen, nativer GATT.
+ * Wird nur manuell/selten genutzt — Standard ist Keep-Process ohne Disconnect.
+ */
+export async function nativeHarterGattHandoff(): Promise<boolean> {
+  if (!istOmniaNativeApp() || !istWhoopBleAlwaysOn()) return false
   const deviceId = ladeGeraetId()
   if (!deviceId) return false
-  // Flag vor Capgo-Disconnect setzen, damit Auto-Reconnect nicht gegen nativen GATT läuft.
   handoffAktiv = true
   try {
     const disc = capgoDisconnect
@@ -56,9 +76,9 @@ export async function nativeVordergrundUebernahme(
   } catch {
     /* ignore */
   }
-  if (warHandoff || istWhoopBleAlwaysOn()) {
-    await reconnect()
-  }
+  // Nach hartem Handoff Capgo neu verbinden; sonst nur nachziehen falls nötig
+  await reconnect()
+  void warHandoff
 }
 
 export function istNativeHandoffAktiv(): boolean {

@@ -11,40 +11,39 @@ public class MainActivity extends BridgeActivity {
     protected void onCreate(Bundle savedInstanceState) {
         registerPlugin(OmniaBleKeepalivePlugin.class);
         super.onCreate(savedInstanceState);
-        notifyAppForeground();
+        notifyKeepProcess(WhoopBleForegroundService.ACTION_APP_FOREGROUND);
     }
 
     @Override
     public void onResume() {
         super.onResume();
-        notifyAppForeground();
+        // UI wieder da: nativen GATT freigeben, Capgo übernimmt
+        notifyKeepProcess(WhoopBleForegroundService.ACTION_APP_FOREGROUND);
+    }
+
+    @Override
+    public void onPause() {
+        // Display aus / andere App: Prozess + Capgo-GATT halten (kein Disconnect!)
+        if (WhoopBleForegroundService.isKeepaliveActive(this)) {
+            notifyKeepProcess(WhoopBleForegroundService.ACTION_APP_BACKGROUND);
+        }
+        super.onPause();
     }
 
     @Override
     public void onStop() {
         if (!isChangingConfigurations() && WhoopBleForegroundService.isKeepaliveActive(this)) {
-            notifyAppBackground();
+            notifyKeepProcess(WhoopBleForegroundService.ACTION_KEEP_PROCESS);
         }
         super.onStop();
     }
 
-    private void notifyAppForeground() {
-        WhoopBleForegroundService.linkHolder().setAppForeground(true);
+    private void notifyKeepProcess(String action) {
         if (!WhoopBleForegroundService.isKeepaliveActive(this)) {
             return;
         }
         Intent intent = new Intent(this, WhoopBleForegroundService.class);
-        intent.putExtra("action", WhoopBleForegroundService.ACTION_APP_FOREGROUND);
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            startForegroundService(intent);
-        } else {
-            startService(intent);
-        }
-    }
-
-    private void notifyAppBackground() {
-        Intent intent = new Intent(this, WhoopBleForegroundService.class);
-        intent.putExtra("action", WhoopBleForegroundService.ACTION_APP_BACKGROUND);
+        intent.putExtra("action", action);
         intent.putExtra("title", getString(R.string.whoop_fg_title));
         intent.putExtra("body", getString(R.string.whoop_fg_body));
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
