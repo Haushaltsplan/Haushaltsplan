@@ -7,10 +7,6 @@ import android.os.Handler;
 import android.os.Looper;
 import com.getcapacitor.BridgeActivity;
 
-/**
- * UI-Prozess. BLE bleibt im :whoopble-Prozess — auch wenn diese Activity stirbt.
- * Resume gibt natives GATT NICHT mehr frei (WHOOP-App-Modell).
- */
 public class MainActivity extends BridgeActivity {
 
     private final Handler handler = new Handler(Looper.getMainLooper());
@@ -25,7 +21,6 @@ public class MainActivity extends BridgeActivity {
     @Override
     public void onResume() {
         super.onResume();
-        // Native Link behalten — Capgo nicht zurückholen
         ensureBleArmed();
     }
 
@@ -51,6 +46,10 @@ public class MainActivity extends BridgeActivity {
             () -> {
                 Intent intent = new Intent(this, WhoopBleForegroundService.class);
                 intent.putExtra("action", WhoopBleForegroundService.ACTION_ARM_NATIVE);
+                String id = WhoopBleForegroundService.loadDeviceId(this);
+                if (id != null) {
+                    intent.putExtra("deviceId", id);
+                }
                 intent.putExtra("title", getString(R.string.whoop_fg_title));
                 intent.putExtra("body", getString(R.string.whoop_fg_body));
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -59,7 +58,7 @@ public class MainActivity extends BridgeActivity {
                     startService(intent);
                 }
             },
-            200
+            150
         );
     }
 }

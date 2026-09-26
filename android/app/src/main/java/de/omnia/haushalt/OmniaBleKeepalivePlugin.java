@@ -131,6 +131,14 @@ public class OmniaBleKeepalivePlugin extends Plugin {
         intent.putExtra("action", WhoopBleForegroundService.ACTION_ARM_NATIVE);
         intent.putExtra("title", title);
         intent.putExtra("body", body);
+        if (deviceId != null && !deviceId.isEmpty()) {
+            intent.putExtra("deviceId", deviceId);
+        } else {
+            String saved = WhoopBleForegroundService.loadDeviceId(getContext());
+            if (saved != null) {
+                intent.putExtra("deviceId", saved);
+            }
+        }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             getContext().startForegroundService(intent);
         } else {
@@ -172,9 +180,22 @@ public class OmniaBleKeepalivePlugin extends Plugin {
         String deviceId = call.getString("deviceId");
         if (deviceId != null && !deviceId.isEmpty()) {
             WhoopBleForegroundService.saveDeviceId(getContext(), deviceId);
+        } else {
+            deviceId = WhoopBleForegroundService.loadDeviceId(getContext());
         }
         WhoopBleForegroundService.setKeepaliveActive(getContext(), true);
-        sendServiceAction(WhoopBleForegroundService.ACTION_ARM_NATIVE);
+        Intent intent = new Intent(getContext(), WhoopBleForegroundService.class);
+        intent.putExtra("action", WhoopBleForegroundService.ACTION_ARM_NATIVE);
+        intent.putExtra("title", "Omnia");
+        intent.putExtra("body", "WHOOP bleibt verbunden");
+        if (deviceId != null && !deviceId.isEmpty()) {
+            intent.putExtra("deviceId", deviceId);
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            getContext().startForegroundService(intent);
+        } else {
+            getContext().startService(intent);
+        }
         call.resolve();
     }
 

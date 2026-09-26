@@ -14,7 +14,8 @@ import android.util.Log;
 import androidx.core.app.NotificationCompat;
 
 /**
- * Eigenständiger Prozess :whoopble — besitzt WHOOP-BLE dauerhaft (wie WHOOP-App).
+ * Foreground Service im Hauptprozess: hält Prozess + natives WHOOP-GATT,
+ * auch wenn die Activity geschlossen wurde (stopWithTask=false).
  */
 public class WhoopBleForegroundService extends Service {
 
@@ -27,9 +28,6 @@ public class WhoopBleForegroundService extends Service {
     public static final String ACTION_APP_BACKGROUND = "de.omnia.haushalt.APP_BACKGROUND";
     public static final String ACTION_KEEP_PROCESS = "de.omnia.haushalt.KEEP_PROCESS";
     public static final String ACTION_UPDATE_NOTIFY = "de.omnia.haushalt.UPDATE_NOTIFY";
-    public static final String PREFS = "omnia_ble_keepalive";
-    public static final String PREF_DEVICE_ID = "whoop_device_id";
-    public static final String PREF_KEEPALIVE = "keepalive_active";
 
     private static final int NOTIFICATION_ID = 10042;
 
@@ -44,35 +42,30 @@ public class WhoopBleForegroundService extends Service {
     }
 
     public static void saveDeviceId(android.content.Context ctx, String deviceId) {
-        ctx.getApplicationContext()
-            .getSharedPreferences(PREFS, MODE_PRIVATE)
-            .edit()
-            .putString(PREF_DEVICE_ID, deviceId)
-            .apply();
+        WhoopBleStore.setDeviceId(ctx, deviceId);
     }
 
     public static String loadDeviceId(android.content.Context ctx) {
-        return ctx.getApplicationContext()
-            .getSharedPreferences(PREFS, MODE_PRIVATE)
-            .getString(PREF_DEVICE_ID, null);
+        return WhoopBleStore.loadDeviceId(ctx);
     }
 
     public static void setKeepaliveActive(android.content.Context ctx, boolean active) {
-        ctx.getApplicationContext()
-            .getSharedPreferences(PREFS, MODE_PRIVATE)
-            .edit()
-            .putBoolean(PREF_KEEPALIVE, active)
-            .apply();
+        WhoopBleStore.setKeepalive(ctx, active);
     }
 
     public static boolean isKeepaliveActive(android.content.Context ctx) {
-        return ctx.getApplicationContext()
-            .getSharedPreferences(PREFS, MODE_PRIVATE)
-            .getBoolean(PREF_KEEPALIVE, false);
+        return WhoopBleStore.isKeepaliveActive(ctx);
     }
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
+        if (intent != null) {
+            String id = intent.getStringExtra("deviceId");
+            if (id != null && !id.isEmpty()) {
+                WhoopBleStore.setDeviceId(this, id);
+            }
+        }
+
         startForegroundWithNotification(intent);
         acquireWakeLock();
 
@@ -80,9 +73,8 @@ public class WhoopBleForegroundService extends Service {
         if (action == null && intent != null) {
             action = intent.getAction();
         }
-        Log.i(TAG, "action=" + action);
+        Log.i(TAG, "onStartCommand action=" + action + " id=" + loadDeviceId(this));
 
-        // Dauerhaft nativ: RELEASE nur bei explizitem User-Trennen (stop), nicht bei UI-Resume
         if (ACTION_RELEASE_NATIVE.equals(action)) {
             linkHolder().release();
             return START_STICKY;
@@ -92,16 +84,17 @@ public class WhoopBleForegroundService extends Service {
             return START_STICKY;
         }
 
-        // Alles andere: armen und halten — auch FOREGROUND/BACKGROUND
         armIfPossible();
         return START_STICKY;
     }
 
     private void armIfPossible() {
         if (!isKeepaliveActive(this)) {
+            Log.w(TAG, "keepalive inaktiv");
             return;
         }
         String deviceId = loadDeviceId(this);
+        Log.i(TAG, "arm deviceId=" + deviceId);
         linkHolder().arm(this, deviceId);
     }
 
@@ -114,7 +107,7 @@ public class WhoopBleForegroundService extends Service {
         if (body == null || body.isEmpty()) {
             int bpm = linkHolder().getLastBpm();
             body = bpm > 0
-                ? ("WHOOP · " + bpm + " bpm · verbunden")
+                ? ("WHOOP · " + bpm + " bpm")
                 : getString(R.string.whoop_fg_body);
         }
 
@@ -146,7 +139,11 @@ public class WhoopBleForegroundService extends Service {
             if (Build.VERSION.SDK_INT >= 34) {
                 type |= ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC;
             }
-            startForeground(NOTIFICATION_ID, notification, type);
+            try {
+                startForeground(NOTIFICATION_ID, notification, type);
+            } catch (Exception e) {
+                startForeground(NOTIFICATION_ID, notification);
+            }
         } else {
             startForeground(NOTIFICATION_ID, notification);
         }
@@ -192,15 +189,37 @@ public class WhoopBleForegroundService extends Service {
 
     @Override
     public void onTaskRemoved(Intent rootIntent) {
-        armIfPossible();
+        Log.i(TAG, "onTaskRemoved — re-arm");
+        // Prozess kann weiterleben dank FGS; trotzdem hart neu armen
+        if (isKeepaliveActive(this)) {
+            armIfPossible();
+            Intent restart = new Intent(getApplicationContext(), WhoopBleForegroundService.class);
+            restart.putExtra("action", ACTION_ARM_NATIVE);
+            String id = loadDeviceId(this);
+            if (id != null) {
+                restart.putExtra("deviceId", id);
+            }
+            restart.putExtra("title", getString(R.string.whoop_fg_title));
+            restart.putExtra("body", getString(R.string.whoop_fg_body));
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                getApplicationContext().startForegroundService(restart);
+            } else {
+                getApplicationContext().startService(restart);
+            }
+        }
         super.onTaskRemoved(rootIntent);
     }
 
     @Override
     public void onDestroy() {
+        Log.w(TAG, "onDestroy");
         if (isKeepaliveActive(this)) {
             Intent restart = new Intent(getApplicationContext(), WhoopBleForegroundService.class);
             restart.putExtra("action", ACTION_ARM_NATIVE);
+            String id = loadDeviceId(this);
+            if (id != null) {
+                restart.putExtra("deviceId", id);
+            }
             restart.putExtra("title", getString(R.string.whoop_fg_title));
             restart.putExtra("body", getString(R.string.whoop_fg_body));
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {

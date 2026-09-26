@@ -1,6 +1,6 @@
 /**
- * Nach Capgo-Erstverbindung: nativer :whoopble-Dienst übernimmt DAUERHAFT
- * (WHOOP-App-Modell). Capgo wird getrennt — UI bekommt HR über Plugin-Events.
+ * Nach Capgo-Connect: nativer Dienst übernimmt dauerhaft.
+ * Handoff-Reihenfolge: ID speichern → Service armen → Capgo trennen → erneut armen.
  */
 
 import { istOmniaNativeApp } from '@/lib/fitnessdaten/omnia-native'
@@ -36,14 +36,19 @@ function sleep(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms))
 }
 
-/** Einmal nach erfolgreichem Capgo-Connect: für immer an nativen Dienst übergeben. */
+/** Einmal nach Capgo-Connect: nativer GATT übernimmt für immer. */
 export async function uebergibBleDauerhaftAnNative(): Promise<boolean> {
   if (!istOmniaNativeApp() || !istWhoopBleAlwaysOn()) return false
   const deviceId = ladeGeraetId()
   handoffAktiv = true
   permanentNative = true
   try {
+    // 1) Service starten + ID setzen (noch während Capgo hält)
     await starteOmniaBleKeepalive(deviceId ?? undefined)
+    await armeNativeWhoopLink(deviceId ?? undefined)
+    await sleep(300)
+
+    // 2) Capgo freigeben
     const disc = capgoDisconnect
     capgoDisconnect = null
     try {
@@ -51,6 +56,10 @@ export async function uebergibBleDauerhaftAnNative(): Promise<boolean> {
     } catch {
       /* ignore */
     }
+
+    // 3) Nach Capgo-Disconnect hart reconnecten
+    await sleep(600)
+    await armeNativeWhoopLink(deviceId ?? undefined)
     await sleep(400)
     await armeNativeWhoopLink(deviceId ?? undefined)
     return true
@@ -61,18 +70,14 @@ export async function uebergibBleDauerhaftAnNative(): Promise<boolean> {
   }
 }
 
-export async function nativeHintergrundHandoff(live: boolean): Promise<boolean> {
+export async function nativeHintergrundHandoff(_live: boolean): Promise<boolean> {
   if (!istOmniaNativeApp() || !istWhoopBleAlwaysOn()) return false
-  // Bereits dauerhaft nativ — nur Service anstupsen
-  if (permanentNative || handoffAktiv) {
-    try {
-      await armeNativeWhoopLink(ladeGeraetId() ?? undefined)
-      return true
-    } catch {
-      return false
-    }
+  try {
+    await armeNativeWhoopLink(ladeGeraetId() ?? undefined)
+    return true
+  } catch {
+    return false
   }
-  return uebergibBleDauerhaftAnNative().then((ok) => ok && live)
 }
 
 export async function nativeHarterGattHandoff(): Promise<boolean> {
@@ -80,19 +85,14 @@ export async function nativeHarterGattHandoff(): Promise<boolean> {
 }
 
 export async function nativeVordergrundUebernahme(
-  reconnect: () => Promise<void>,
+  _reconnect: () => Promise<void>,
 ): Promise<void> {
   if (!istOmniaNativeApp()) return
-  // Native behält GATT — kein Capgo-Reconnect nötig wenn permanent
-  if (permanentNative || handoffAktiv) {
-    try {
-      await armeNativeWhoopLink(ladeGeraetId() ?? undefined)
-    } catch {
-      /* ignore */
-    }
-    return
+  try {
+    await armeNativeWhoopLink(ladeGeraetId() ?? undefined)
+  } catch {
+    /* ignore */
   }
-  await reconnect()
 }
 
 export function istNativeHandoffAktiv(): boolean {
