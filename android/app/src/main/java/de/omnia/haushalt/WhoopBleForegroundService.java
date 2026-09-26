@@ -24,8 +24,6 @@ public class WhoopBleForegroundService extends Service {
     public static final String CHANNEL_ID = "omnia_whoop_ble";
     public static final String ACTION_ARM_NATIVE = "de.omnia.haushalt.ARM_NATIVE";
     public static final String ACTION_RELEASE_NATIVE = "de.omnia.haushalt.RELEASE_NATIVE";
-    public static final String ACTION_APP_FOREGROUND = "de.omnia.haushalt.APP_FOREGROUND";
-    public static final String ACTION_APP_BACKGROUND = "de.omnia.haushalt.APP_BACKGROUND";
     public static final String ACTION_KEEP_PROCESS = "de.omnia.haushalt.KEEP_PROCESS";
     public static final String ACTION_UPDATE_NOTIFY = "de.omnia.haushalt.UPDATE_NOTIFY";
 
@@ -73,6 +71,11 @@ public class WhoopBleForegroundService extends Service {
         if (action == null && intent != null) {
             action = intent.getAction();
         }
+        // Sticky-Restart ohne Intent → erneut armen
+        if (action == null && intent == null) {
+            action = ACTION_ARM_NATIVE;
+        }
+
         Log.i(TAG, "onStartCommand action=" + action + " id=" + loadDeviceId(this));
 
         if (ACTION_RELEASE_NATIVE.equals(action)) {
@@ -80,10 +83,12 @@ public class WhoopBleForegroundService extends Service {
             return START_STICKY;
         }
 
-        if (ACTION_UPDATE_NOTIFY.equals(action)) {
+        if (ACTION_UPDATE_NOTIFY.equals(action) || ACTION_KEEP_PROCESS.equals(action)) {
+            // Nur Notification / Prozess halten — noch kein GATT (Capgo kann noch halten)
             return START_STICKY;
         }
 
+        // ARM_NATIVE oder unbekannt → verbinden
         armIfPossible();
         return START_STICKY;
     }
@@ -142,6 +147,7 @@ public class WhoopBleForegroundService extends Service {
             try {
                 startForeground(NOTIFICATION_ID, notification, type);
             } catch (Exception e) {
+                Log.e(TAG, "startForeground typed failed", e);
                 startForeground(NOTIFICATION_ID, notification);
             }
         } else {
@@ -159,12 +165,18 @@ public class WhoopBleForegroundService extends Service {
         }
         wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "Omnia:WhoopBle");
         wakeLock.setReferenceCounted(false);
-        wakeLock.acquire();
+        try {
+            wakeLock.acquire(4 * 60 * 60 * 1000L); // 4h max, Watchdog hält neu
+        } catch (Exception e) {
+            Log.e(TAG, "wakelock", e);
+        }
     }
 
     private void releaseWakeLock() {
         if (wakeLock != null && wakeLock.isHeld()) {
-            wakeLock.release();
+            try {
+                wakeLock.release();
+            } catch (Exception ignored) {}
         }
         wakeLock = null;
     }
@@ -189,8 +201,7 @@ public class WhoopBleForegroundService extends Service {
 
     @Override
     public void onTaskRemoved(Intent rootIntent) {
-        Log.i(TAG, "onTaskRemoved — re-arm");
-        // Prozess kann weiterleben dank FGS; trotzdem hart neu armen
+        Log.i(TAG, "onTaskRemoved — FGS bleibt, re-arm");
         if (isKeepaliveActive(this)) {
             armIfPossible();
             Intent restart = new Intent(getApplicationContext(), WhoopBleForegroundService.class);
@@ -201,10 +212,14 @@ public class WhoopBleForegroundService extends Service {
             }
             restart.putExtra("title", getString(R.string.whoop_fg_title));
             restart.putExtra("body", getString(R.string.whoop_fg_body));
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                getApplicationContext().startForegroundService(restart);
-            } else {
-                getApplicationContext().startService(restart);
+            try {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    getApplicationContext().startForegroundService(restart);
+                } else {
+                    getApplicationContext().startService(restart);
+                }
+            } catch (Exception e) {
+                Log.e(TAG, "re-arm after task remove failed", e);
             }
         }
         super.onTaskRemoved(rootIntent);
@@ -222,10 +237,14 @@ public class WhoopBleForegroundService extends Service {
             }
             restart.putExtra("title", getString(R.string.whoop_fg_title));
             restart.putExtra("body", getString(R.string.whoop_fg_body));
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                getApplicationContext().startForegroundService(restart);
-            } else {
-                getApplicationContext().startService(restart);
+            try {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    getApplicationContext().startForegroundService(restart);
+                } else {
+                    getApplicationContext().startService(restart);
+                }
+            } catch (Exception e) {
+                Log.e(TAG, "restart onDestroy failed", e);
             }
         } else {
             linkHolder().release();

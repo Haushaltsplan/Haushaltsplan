@@ -15,50 +15,63 @@ public class MainActivity extends BridgeActivity {
     protected void onCreate(Bundle savedInstanceState) {
         registerPlugin(OmniaBleKeepalivePlugin.class);
         super.onCreate(savedInstanceState);
-        ensureBleArmed();
+        // Nur Prozess halten — GATT-Arm läuft über JS-Handoff / Service.onTaskRemoved
+        ensureFgAlive(false);
     }
 
     @Override
     public void onResume() {
         super.onResume();
-        ensureBleArmed();
+        // Nach Rückkehr: falls Keepalive, native Link erneut anstupsen
+        ensureFgAlive(true);
     }
 
     @Override
     public void onPause() {
-        ensureBleArmed();
+        // Wichtig: NICHT armen — Capgo könnte noch halten / Handoff läuft
+        ensureFgAlive(false);
         super.onPause();
     }
 
     @Override
     public void onStop() {
         if (!isChangingConfigurations()) {
-            ensureBleArmed();
+            ensureFgAlive(false);
         }
         super.onStop();
     }
 
-    private void ensureBleArmed() {
+    /**
+     * @param armNative true = GATT verbinden (nur wenn Activity wieder sichtbar)
+     */
+    private void ensureFgAlive(boolean armNative) {
         if (!WhoopBleForegroundService.isKeepaliveActive(this)) {
             return;
         }
         handler.postDelayed(
             () -> {
                 Intent intent = new Intent(this, WhoopBleForegroundService.class);
-                intent.putExtra("action", WhoopBleForegroundService.ACTION_ARM_NATIVE);
+                intent.putExtra(
+                    "action",
+                    armNative
+                        ? WhoopBleForegroundService.ACTION_ARM_NATIVE
+                        : WhoopBleForegroundService.ACTION_KEEP_PROCESS
+                );
                 String id = WhoopBleForegroundService.loadDeviceId(this);
                 if (id != null) {
                     intent.putExtra("deviceId", id);
                 }
                 intent.putExtra("title", getString(R.string.whoop_fg_title));
                 intent.putExtra("body", getString(R.string.whoop_fg_body));
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                    startForegroundService(intent);
-                } else {
-                    startService(intent);
-                }
+                try {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                        startForegroundService(intent);
+                    } else {
+                        startService(intent);
+                    }
+                } catch (Exception ignored) {}
             },
-            150
+            armNative ? 400 : 80
         );
     }
 }

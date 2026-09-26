@@ -68,17 +68,27 @@ export async function verbindeWhoopBle(
   if (istOmniaNativeApp()) {
     await startNativeForegroundService()
     const handoff = await import('@/lib/fitnessdaten/omnia-ble-background-handoff')
-    handoff.registriereCapgoDisconnect(session.disconnect)
-    // Wie WHOOP-App: natives GATT übernimmt dauerhaft (überlebt App-Schließen)
-    void handoff.uebergibBleDauerhaftAnNative()
-    const origDisconnect = session.disconnect
+    // Nur Capgo-Disconnect registrieren (ohne FGS-Stop)
+    const capgoOnlyDisconnect = session.disconnect
+    handoff.registriereCapgoDisconnect(capgoOnlyDisconnect)
+
+    // KRITISCH: await — sonst schließt User die App bevor Native übernommen hat
+    const ok = await handoff.uebergibBleDauerhaftAnNative()
+    if (!ok) {
+      console.warn('[omnia-ble] Native-Handoff nicht gelungen — Capgo bleibt aktiv')
+    }
+
     return {
       ...session,
       disconnect: () => {
         handoff.entferneCapgoDisconnect()
         handoff.setzePermanentNative(false)
         void stopNativeForegroundService()
-        origDisconnect()
+        try {
+          capgoOnlyDisconnect()
+        } catch {
+          /* already disconnected */
+        }
       },
     }
   }

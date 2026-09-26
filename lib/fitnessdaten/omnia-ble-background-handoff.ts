@@ -1,6 +1,6 @@
 /**
- * Nach Capgo-Connect: nativer Dienst übernimmt dauerhaft.
- * Handoff-Reihenfolge: ID speichern → Service armen → Capgo trennen → erneut armen.
+ * Nach Capgo-Connect: ZUERST Capgo trennen, DANN natives GATT — sonst Konflikt.
+ * Handoff wird awaited (nicht void), damit vor App-Schließen fertig.
  */
 
 import { istOmniaNativeApp } from '@/lib/fitnessdaten/omnia-native'
@@ -36,19 +36,23 @@ function sleep(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms))
 }
 
-/** Einmal nach Capgo-Connect: nativer GATT übernimmt für immer. */
+/** Einmal nach Capgo-Connect: natives GATT übernimmt dauerhaft. */
 export async function uebergibBleDauerhaftAnNative(): Promise<boolean> {
   if (!istOmniaNativeApp() || !istWhoopBleAlwaysOn()) return false
   const deviceId = ladeGeraetId()
+  if (!deviceId) {
+    console.warn('[omnia-ble] keine deviceId — Handoff abgebrochen')
+    return false
+  }
+
   handoffAktiv = true
   permanentNative = true
-  try {
-    // 1) Service starten + ID setzen (noch während Capgo hält)
-    await starteOmniaBleKeepalive(deviceId ?? undefined)
-    await armeNativeWhoopLink(deviceId ?? undefined)
-    await sleep(300)
 
-    // 2) Capgo freigeben
+  try {
+    // FGS + ID speichern (noch bevor Capgo weg ist)
+    await starteOmniaBleKeepalive(deviceId)
+
+    // 1) Capgo ZUERST trennen — sonst blockiert natives connectGatt
     const disc = capgoDisconnect
     capgoDisconnect = null
     try {
@@ -57,13 +61,19 @@ export async function uebergibBleDauerhaftAnNative(): Promise<boolean> {
       /* ignore */
     }
 
-    // 3) Nach Capgo-Disconnect hart reconnecten
-    await sleep(600)
-    await armeNativeWhoopLink(deviceId ?? undefined)
-    await sleep(400)
-    await armeNativeWhoopLink(deviceId ?? undefined)
+    // 2) WHOOP braucht kurz, bis der alte Link weg ist
+    await sleep(1500)
+
+    // 3) Native verbinden (mehrfach anstupsen)
+    await armeNativeWhoopLink(deviceId)
+    await sleep(1000)
+    await armeNativeWhoopLink(deviceId)
+    await sleep(1000)
+    await armeNativeWhoopLink(deviceId)
+
     return true
-  } catch {
+  } catch (e) {
+    console.error('[omnia-ble] Handoff fehlgeschlagen', e)
     handoffAktiv = false
     permanentNative = false
     return false
@@ -72,8 +82,12 @@ export async function uebergibBleDauerhaftAnNative(): Promise<boolean> {
 
 export async function nativeHintergrundHandoff(_live: boolean): Promise<boolean> {
   if (!istOmniaNativeApp() || !istWhoopBleAlwaysOn()) return false
+  const id = ladeGeraetId()
   try {
-    await armeNativeWhoopLink(ladeGeraetId() ?? undefined)
+    if (!permanentNative) {
+      return uebergibBleDauerhaftAnNative()
+    }
+    await armeNativeWhoopLink(id ?? undefined)
     return true
   } catch {
     return false

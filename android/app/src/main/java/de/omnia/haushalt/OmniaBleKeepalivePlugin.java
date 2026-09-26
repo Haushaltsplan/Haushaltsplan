@@ -127,8 +127,9 @@ public class OmniaBleKeepalivePlugin extends Plugin {
         }
         WhoopBleForegroundService.setKeepaliveActive(getContext(), true);
 
+        // Nur Prozess + Notification — GATT erst nach Capgo-Disconnect via armNativeLink
         Intent intent = new Intent(getContext(), WhoopBleForegroundService.class);
-        intent.putExtra("action", WhoopBleForegroundService.ACTION_ARM_NATIVE);
+        intent.putExtra("action", WhoopBleForegroundService.ACTION_KEEP_PROCESS);
         intent.putExtra("title", title);
         intent.putExtra("body", body);
         if (deviceId != null && !deviceId.isEmpty()) {

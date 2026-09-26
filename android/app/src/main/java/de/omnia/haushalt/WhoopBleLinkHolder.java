@@ -23,13 +23,12 @@ import android.util.Log;
 import java.util.UUID;
 
 /**
- * Dauerhafter WHOOP-GATT im :whoopble-Prozess (wie die echte WHOOP-App):
- * verbindet, subscribed Heart-Rate, reconnectet aggressiv — unabhängig von der UI.
+ * Dauerhafter WHOOP-GATT im Hauptprozess (Foreground Service hält den Prozess).
  */
 public class WhoopBleLinkHolder {
 
     private static final String TAG = "OmniaWhoopBle";
-    private static final long RECONNECT_MS = 2000L;
+    private static final long RECONNECT_MS = 2500L;
     private static final UUID HR_SERVICE = UUID.fromString("0000180d-0000-1000-8000-00805f9b34fb");
     private static final UUID HR_MEASUREMENT = UUID.fromString("00002a37-0000-1000-8000-00805f9b34fb");
     private static final UUID CCCD = UUID.fromString("00002902-0000-1000-8000-00805f9b34fb");
@@ -42,6 +41,8 @@ public class WhoopBleLinkHolder {
     private String deviceId;
     private boolean armed;
     private boolean scanning;
+    private boolean connected;
+    private boolean connecting;
     private Context appContext;
     private int lastBpm;
 
@@ -52,10 +53,14 @@ public class WhoopBleLinkHolder {
     public void arm(Context context, String address) {
         appContext = context.getApplicationContext();
         if (address != null && !address.isEmpty()) {
-            deviceId = address;
+            deviceId = normalizeAddress(address);
         }
         armed = true;
-        Log.i(TAG, "arm " + deviceId);
+        Log.i(TAG, "arm id=" + deviceId + " connected=" + connected);
+        if (connected && gatt != null) {
+            broadcastState(true, "verbunden");
+            return;
+        }
         connectOrScan();
         handler.removeCallbacks(watchdog);
         handler.postDelayed(watchdog, RECONNECT_MS);
@@ -64,6 +69,8 @@ public class WhoopBleLinkHolder {
     public void release() {
         Log.i(TAG, "release");
         armed = false;
+        connected = false;
+        connecting = false;
         stopScan();
         handler.removeCallbacksAndMessages(null);
         closeGatt();
@@ -75,19 +82,42 @@ public class WhoopBleLinkHolder {
     }
 
     public boolean isConnected() {
-        return gatt != null;
+        return connected;
     }
 
     public int getLastBpm() {
         return lastBpm;
     }
 
+    private static String normalizeAddress(String raw) {
+        if (raw == null) {
+            return null;
+        }
+        String t = raw.trim();
+        // Manche Shims liefern MAC ohne Doppelpunkte
+        if (t.matches("(?i)[0-9A-F]{12}")) {
+            StringBuilder sb = new StringBuilder();
+            for (int i = 0; i < 12; i += 2) {
+                if (i > 0) {
+                    sb.append(':');
+                }
+                sb.append(t.substring(i, i + 2));
+            }
+            return sb.toString().toUpperCase();
+        }
+        return t.toUpperCase();
+    }
+
+    private boolean looksLikeMac(String id) {
+        return id != null && id.matches("(?i)([0-9A-F]{2}:){5}[0-9A-F]{2}");
+    }
+
     private void connectOrScan() {
-        if (!armed || appContext == null) {
+        if (!armed || appContext == null || connecting) {
             return;
         }
-        if (deviceId != null && deviceId.contains(":")) {
-            connectAddress(deviceId, false);
+        if (looksLikeMac(deviceId)) {
+            connectAddress(deviceId, true);
             return;
         }
         startWhoopScan();
@@ -111,18 +141,17 @@ public class WhoopBleLinkHolder {
         try {
             BluetoothDevice device = adapter.getRemoteDevice(address);
             int state = manager.getConnectionState(device, BluetoothProfile.GATT);
-            if (state == BluetoothProfile.STATE_CONNECTED && gatt != null) {
+            if (state == BluetoothProfile.STATE_CONNECTED && gatt != null && connected) {
                 broadcastState(true, "verbunden");
                 return;
             }
-            closeGatt();
-            try {
-                if (device.getBondState() == BluetoothDevice.BOND_NONE) {
-                    device.createBond();
-                }
-            } catch (Exception ignored) {}
 
+            closeGatt();
+            connecting = true;
+            connected = false;
             broadcastState(false, "verbinde…");
+
+            // autoConnect=true: Android reconnectet auch nach App-Schließen zuverlässiger
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                 gatt = device.connectGatt(
                     appContext,
@@ -133,19 +162,13 @@ public class WhoopBleLinkHolder {
             } else {
                 gatt = device.connectGatt(appContext, autoConnect, gattCallback);
             }
-            // Falls Direktconnect scheitert: später autoConnect + Scan
-            handler.postDelayed(
-                () -> {
-                    if (armed && gatt == null) {
-                        connectAddress(address, true);
-                    }
-                },
-                8000
-            );
+            Log.i(TAG, "connectGatt auto=" + autoConnect + " addr=" + address);
         } catch (SecurityException se) {
+            connecting = false;
             Log.e(TAG, "permission", se);
             scheduleReconnect();
         } catch (Exception e) {
+            connecting = false;
             Log.e(TAG, "connect failed", e);
             startWhoopScan();
         }
@@ -178,7 +201,15 @@ public class WhoopBleLinkHolder {
             .build();
         try {
             scanner.startScan(null, settings, scanCallback);
-            handler.postDelayed(this::stopScan, 12_000);
+            handler.postDelayed(
+                () -> {
+                    stopScan();
+                    if (armed && !connected) {
+                        scheduleReconnect();
+                    }
+                },
+                15_000
+            );
         } catch (SecurityException se) {
             scanning = false;
             scheduleReconnect();
@@ -206,7 +237,7 @@ public class WhoopBleLinkHolder {
         new ScanCallback() {
             @Override
             public void onScanResult(int callbackType, ScanResult result) {
-                if (!armed) {
+                if (!armed || connected) {
                     return;
                 }
                 BluetoothDevice device = result.getDevice();
@@ -230,21 +261,24 @@ public class WhoopBleLinkHolder {
                 if (!isWhoop && !hasHr) {
                     return;
                 }
-                String addr = device.getAddress();
+                String addr = normalizeAddress(device.getAddress());
                 deviceId = addr;
-                WhoopBleForegroundService.saveDeviceId(appContext, addr);
+                WhoopBleStore.setDeviceId(appContext, addr);
                 stopScan();
-                connectAddress(addr, false);
+                connectAddress(addr, true);
             }
 
             @Override
             public void onScanFailed(int errorCode) {
                 scanning = false;
+                Log.w(TAG, "scan failed " + errorCode);
                 scheduleReconnect();
             }
         };
 
     private void closeGatt() {
+        connecting = false;
+        connected = false;
         if (gatt != null) {
             try {
                 gatt.disconnect();
@@ -264,25 +298,48 @@ public class WhoopBleLinkHolder {
         handler.postDelayed(reconnectRunnable, RECONNECT_MS);
     }
 
-    private final Runnable reconnectRunnable = () -> connectOrScan();
+    private final Runnable reconnectRunnable =
+        () -> {
+            connecting = false;
+            connectOrScan();
+        };
 
-    private final Runnable watchdog = new Runnable() {
-        @Override
-        public void run() {
-            if (!armed) {
-                return;
+    private final Runnable watchdog =
+        new Runnable() {
+            @Override
+            public void run() {
+                if (!armed) {
+                    return;
+                }
+                if (!connected || gatt == null) {
+                    Log.i(TAG, "watchdog reconnect");
+                    connecting = false;
+                    connectOrScan();
+                } else {
+                    // Zusätzlich OS-State prüfen
+                    try {
+                        BluetoothManager manager =
+                            (BluetoothManager) appContext.getSystemService(Context.BLUETOOTH_SERVICE);
+                        if (manager != null && looksLikeMac(deviceId)) {
+                            BluetoothDevice device = manager.getAdapter().getRemoteDevice(deviceId);
+                            int state = manager.getConnectionState(device, BluetoothProfile.GATT);
+                            if (state != BluetoothProfile.STATE_CONNECTED) {
+                                connected = false;
+                                closeGatt();
+                                connectOrScan();
+                            }
+                        }
+                    } catch (Exception ignored) {}
+                }
+                handler.postDelayed(this, 10_000L);
             }
-            if (gatt == null) {
-                connectOrScan();
-            }
-            handler.postDelayed(this, 12_000L);
-        }
-    };
+        };
 
     private void enableHrNotify(BluetoothGatt g) {
         BluetoothGattService service = g.getService(HR_SERVICE);
         if (service == null) {
-            Log.w(TAG, "kein HR-Service");
+            Log.w(TAG, "kein HR-Service — Scan/Reconnect");
+            scheduleReconnect();
             return;
         }
         BluetoothGattCharacteristic hr = service.getCharacteristic(HR_MEASUREMENT);
@@ -290,7 +347,8 @@ public class WhoopBleLinkHolder {
             Log.w(TAG, "keine HR-Characteristic");
             return;
         }
-        g.setCharacteristicNotification(hr, true);
+        boolean ok = g.setCharacteristicNotification(hr, true);
+        Log.i(TAG, "HR notify enable=" + ok);
         BluetoothGattDescriptor cccd = hr.getDescriptor(CCCD);
         if (cccd != null) {
             cccd.setValue(BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE);
@@ -308,25 +366,33 @@ public class WhoopBleLinkHolder {
         i.putExtra("bpm", bpm);
         i.putExtra("connected", true);
         appContext.sendBroadcast(i);
-        // Notification aktualisieren
+
         Intent svc = new Intent(appContext, WhoopBleForegroundService.class);
         svc.putExtra("action", WhoopBleForegroundService.ACTION_UPDATE_NOTIFY);
         svc.putExtra("title", appContext.getString(R.string.whoop_fg_title));
         svc.putExtra("body", "WHOOP · " + bpm + " bpm · verbunden");
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            appContext.startForegroundService(svc);
-        } else {
-            appContext.startService(svc);
+        String id = deviceId;
+        if (id != null) {
+            svc.putExtra("deviceId", id);
+        }
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                appContext.startForegroundService(svc);
+            } else {
+                appContext.startService(svc);
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "notify update failed", e);
         }
     }
 
-    private void broadcastState(boolean connected, String label) {
+    private void broadcastState(boolean isConnected, String label) {
         if (appContext == null) {
             return;
         }
         Intent i = new Intent(ACTION_STATE);
         i.setPackage(appContext.getPackageName());
-        i.putExtra("connected", connected);
+        i.putExtra("connected", isConnected);
         i.putExtra("label", label);
         appContext.sendBroadcast(i);
     }
@@ -335,19 +401,24 @@ public class WhoopBleLinkHolder {
         new BluetoothGattCallback() {
             @Override
             public void onConnectionStateChange(BluetoothGatt g, int status, int newState) {
+                connecting = false;
                 if (newState == BluetoothProfile.STATE_CONNECTED) {
                     Log.i(TAG, "CONNECTED status=" + status);
+                    gatt = g;
+                    connected = true;
                     broadcastState(true, "verbunden");
                     try {
                         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
                             g.requestConnectionPriority(BluetoothGatt.CONNECTION_PRIORITY_BALANCED);
                         }
                     } catch (Exception ignored) {}
-                    g.discoverServices();
+                    boolean disc = g.discoverServices();
+                    Log.i(TAG, "discoverServices=" + disc);
                     return;
                 }
                 if (newState == BluetoothProfile.STATE_DISCONNECTED) {
                     Log.w(TAG, "DISCONNECTED status=" + status);
+                    connected = false;
                     if (gatt == g) {
                         gatt = null;
                     }
@@ -363,8 +434,11 @@ public class WhoopBleLinkHolder {
 
             @Override
             public void onServicesDiscovered(BluetoothGatt g, int status) {
+                Log.i(TAG, "services status=" + status);
                 if (status == BluetoothGatt.GATT_SUCCESS) {
                     enableHrNotify(g);
+                } else if (armed) {
+                    scheduleReconnect();
                 }
             }
 

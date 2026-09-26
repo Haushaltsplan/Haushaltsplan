@@ -32,6 +32,7 @@ public class WhoopBleBootReceiver extends BroadcastReceiver {
 
         Intent svc = new Intent(context, WhoopBleForegroundService.class);
         svc.putExtra("action", WhoopBleForegroundService.ACTION_ARM_NATIVE);
+        svc.putExtra("deviceId", deviceId);
         svc.putExtra("title", context.getString(R.string.whoop_fg_title));
         svc.putExtra("body", context.getString(R.string.whoop_fg_body));
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
