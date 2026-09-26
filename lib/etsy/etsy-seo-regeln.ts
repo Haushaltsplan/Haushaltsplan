@@ -707,21 +707,26 @@ export function haerteEtsyListingFuerScore(input: {
 
   const extras = [
     holz ? `${holz} holzschale` : 'holzschale unikat',
-    'handgedreht holz',
+    'handgedrehte schale',
     `${form.toLowerCase()} naturrand`.slice(0, ETSY_SEO_TAG_MAX),
     'rustikale holzdeko',
-    'geschenk holz unik',
+    'holzgeschenk unikat',
     'obstschale holz',
-    'drechselarbeit de',
-    'unikat holzdeko',
+    'drechselarbeit',
+    'esstisch deko',
+    'massivholz schale',
+    'niederbayern holz',
+    'naturrand schale',
+    'walnussöl finish',
   ]
   for (const e of extras) {
     if (tags.length >= ETSY_SEO_TAG_COUNT) break
     pushTag(e)
   }
   while (tags.length > ETSY_SEO_TAG_COUNT) tags.pop()
-  while (tags.length < ETSY_SEO_TAG_COUNT) {
-    pushTag(`holzunikat ${tags.length + 1}`)
+  let pad = 0
+  while (tags.length < ETSY_SEO_TAG_COUNT && pad < extras.length) {
+    pushTag(extras[pad++]!)
   }
 
   let description = input.description.trim()

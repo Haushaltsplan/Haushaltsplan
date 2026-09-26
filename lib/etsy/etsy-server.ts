@@ -189,11 +189,17 @@ export type EtsyReadinessStateKurz = {
   readinessState: string
 }
 
+export type EtsyShopSectionKurz = {
+  shopSectionId: number
+  title: string
+}
+
 export async function ladeEtsyShopKontext(ownerUserId: string): Promise<{
   shopId: number
   shopName: string | null
   shippingProfiles: EtsyShippingProfileKurz[]
   readinessStates: EtsyReadinessStateKurz[]
+  shopSections: EtsyShopSectionKurz[]
 }> {
   const tokens = await holeGueltigenEtsyAccessToken(ownerUserId)
   const shopId = await stelleShopIdSicher(ownerUserId, tokens)
@@ -234,11 +240,27 @@ export async function ladeEtsyShopKontext(ownerUserId: string): Promise<{
     console.warn('[etsy] readiness-states:', e instanceof Error ? e.message : e)
   }
 
+  let shopSections: EtsyShopSectionKurz[] = []
+  try {
+    const sec = await etsyFetchJson<{
+      results?: Array<{ shop_section_id?: number; title?: string }>
+    }>(tokens.accessToken, `/application/shops/${shopId}/sections`)
+    shopSections = (sec.results ?? [])
+      .filter((r) => typeof r.shop_section_id === 'number')
+      .map((r) => ({
+        shopSectionId: Number(r.shop_section_id),
+        title: String(r.title || `Sektion ${r.shop_section_id}`),
+      }))
+  } catch (e) {
+    console.warn('[etsy] shop-sections:', e instanceof Error ? e.message : e)
+  }
+
   return {
     shopId,
     shopName: shop.shop_name ?? null,
     shippingProfiles,
     readinessStates,
+    shopSections,
   }
 }
 

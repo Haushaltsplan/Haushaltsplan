@@ -52,9 +52,11 @@ GROSSBUCHSTABEN nur für Überschriften. Keine Füllwörter („Zauber", „Seel
 3. WARENKORB-ZUSAMMENFASSUNG: 1–2 nüchterne Sätze, keine Emojis.
 
 4. GENAU 13 ETSY-TAGS (je ≤20 Zeichen, keine Kommas im Tag, keine Emojis).
-- Long-Tail bevorzugen (mehrere Wörter, z. B. „hand turned oak bowl").
+- PRIMÄR DEUTSCH (Zielmarkt DACH). Long-Tail mit 2+ Wörtern, z. B. „handgedrehte schale", „obstschale eiche", „holzschale unikat".
+- Englisch nur als Ergänzung, wenn noch Slots frei (max. 2–3 Tags).
 - Keine Stemming-Duplikate (bowl + bowls, Schale + Schalen) — Etsy erkennt Stämme.
-- Keine reinen Kategorie-/Material-Wiederholungen als Tag (z. B. nur „wood", nur „bowl"), wenn das schon in Taxonomy/Material steckt — lieber Attribute stacken.
+- Keine reinen Kategorie-/Material-Wiederholungen als Tag (z. B. nur „wood", nur „bowl"), wenn das schon in Taxonomy/Material steckt — lieber Attribute stacken (Holzart + Form + Nutzung + Region).
+- Mindestens 3 Nutzungs-/GEO-Tags (Obst, Deko, Geschenk, Esstisch, Niederbayern o. Ä.).
 
 5. PREISSPANNE (EUR, ganze Zahlen)
 preisMinEur ≤ preisEmpfohlenEur ≤ preisMaxEur.
@@ -66,6 +68,8 @@ preisMinEur ≤ preisEmpfohlenEur ≤ preisMaxEur.
 - produktForm: kurzer DE-Begriff (z. B. Schale, Dose, Stab).
 - taxonomyId: passende Etsy-Taxonomy-ID wenn bekannt (Schalen oft 2078); sonst beste Schätzung.
 - taxonomyLabel: kurze DE-Bezeichnung der Kategorie.
+
+7. MASSE: Wenn der Nutzer Maße angibt, exakt übernehmen. Fehlen Maße und sie sind auf Fotos nicht ablesbar: schreibe in 📏 MASSE exakt den Platzhalter [MASSE EINFÜGEN] — sonst echte Maße.
 
 AUSGABE: Nur gültiges JSON gemäß Schema.`
 }

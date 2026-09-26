@@ -3,9 +3,9 @@ import { speichereEtsyDraftHistorie } from '@/lib/etsy/etsy-vorlage-historie'
 import type {
   EtsyGeneratedListing,
   EtsyListingBasis,
-  EtsyWhenMade,
   EtsyWhoMade,
 } from '@/lib/etsy/etsy-types'
+import { normalisiereEtsyWhenMade } from '@/lib/etsy/etsy-types'
 import { COACH_IMAGE_MIME, type CoachImagePart } from '@/lib/finance-coach-images'
 import { createSupabaseFuerRequest } from '@/lib/supabase-user'
 import { NextResponse } from 'next/server'
@@ -23,6 +23,7 @@ type Body = {
   shippingProfileId?: number
   taxonomyId?: number
   readinessStateId?: number
+  shopSectionId?: number
   whoMade?: string
   whenMade?: string
   materials?: string[]
@@ -55,7 +56,8 @@ function parseFreigabe(raw: Body['listing']): EtsyGeneratedListing | null {
   const tags = Array.isArray(raw.tags)
     ? raw.tags.map((t) => String(t).trim()).filter(Boolean).slice(0, 13)
     : []
-  if (!title || !description || tags.length < 1) return null
+  if (!title || !description || tags.length < 13) return null
+  if (/\[MASSE EINFÜGEN\]/i.test(description)) return null
 
   const preisMinEur = Number(raw.preisMinEur) || Number(raw.preisEmpfohlenEur) || 0
   const preisEmpfohlenEur = Number(raw.preisEmpfohlenEur) || preisMinEur
@@ -109,7 +111,27 @@ export async function POST(req: Request) {
   const listing = parseFreigabe(body.listing)
   if (!listing) {
     return NextResponse.json(
-      { error: 'Freigegebener Entwurf fehlt (title, description, tags, Preis).' },
+      {
+        error:
+          'Freigegebener Entwurf unvollständig (Titel, Beschreibung, genau 13 Tags, Preis; keine Platzhalter [MASSE EINFÜGEN]).',
+      },
+      { status: 400 },
+    )
+  }
+
+  const holzart =
+    typeof body.holzart === 'string' && body.holzart.trim() ? body.holzart.trim() : undefined
+  if (!holzart) {
+    return NextResponse.json(
+      { error: 'Holzart angeben — wird als Etsy-Material gespeichert.' },
+      { status: 400 },
+    )
+  }
+  const masse =
+    typeof body.masse === 'string' && body.masse.trim() ? body.masse.trim() : undefined
+  if (!masse) {
+    return NextResponse.json(
+      { error: 'Maße angeben (z. B. Ø 18 cm, H 7 cm) — Pflicht für Unikat-Schalen.' },
       { status: 400 },
     )
   }
@@ -124,16 +146,19 @@ export async function POST(req: Request) {
     Number.isFinite(preisRoh) && preisRoh > 0 ? Math.round(preisRoh) : listing.preisEmpfohlenEur
 
   const basis: EtsyListingBasis = {
-    holzart: typeof body.holzart === 'string' ? body.holzart : undefined,
-    masse: typeof body.masse === 'string' ? body.masse : undefined,
+    holzart,
+    masse,
     preisEur,
-    quantity: typeof body.quantity === 'number' ? body.quantity : 1,
+    quantity: 1,
     shippingProfileId,
     taxonomyId: typeof body.taxonomyId === 'number' ? body.taxonomyId : listing.taxonomyId,
     readinessStateId: typeof body.readinessStateId === 'number' ? body.readinessStateId : undefined,
+    shopSectionId: typeof body.shopSectionId === 'number' ? body.shopSectionId : undefined,
     whoMade: (body.whoMade as EtsyWhoMade | undefined) || 'i_did',
-    whenMade: (body.whenMade as EtsyWhenMade | undefined) || 'made_to_order',
-    materials: Array.isArray(body.materials) ? body.materials.map(String) : undefined,
+    whenMade: normalisiereEtsyWhenMade(body.whenMade),
+    materials: Array.isArray(body.materials)
+      ? body.materials.map(String)
+      : [holzart],
   }
 
   try {

@@ -52,6 +52,8 @@ export async function POST(req: Request) {
     readinessStateId:
       typeof body.readinessStateId === 'number' ? body.readinessStateId : base.readinessStateId,
     taxonomyId: typeof body.taxonomyId === 'number' ? body.taxonomyId : base.taxonomyId,
+    shopSectionId:
+      typeof body.shopSectionId === 'number' ? body.shopSectionId : base.shopSectionId,
     standortText:
       typeof body.standortText === 'string' && body.standortText.trim()
         ? body.standortText.trim()

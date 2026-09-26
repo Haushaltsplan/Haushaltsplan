@@ -33,14 +33,27 @@ export type EtsyPendingRow = {
 }
 
 export type EtsyWhoMade = 'i_did' | 'collective' | 'someone_else'
+/** Aktuelle Etsy-API-Enums (jährlich aktualisiert — 2026: 2020_2026). */
 export type EtsyWhenMade =
   | 'made_to_order'
-  | '2020_2025'
+  | '2020_2026'
   | '2010_2019'
-  | '2000_2009'
-  | 'before_2000'
+  | '2007_2009'
+  | 'before_2007'
+  | '2000_2006'
   | '1990s'
   | '1980s'
+  | '1970s'
+  | '1960s'
+  | '1950s'
+  | '1940s'
+  | '1930s'
+  | '1920s'
+  | '1910s'
+  | '1900s'
+  | '1800s'
+  | '1700s'
+  | 'before_1700'
 
 export type EtsyListingBasis = {
   holzart?: string
@@ -51,6 +64,7 @@ export type EtsyListingBasis = {
   shippingProfileId?: number
   taxonomyId?: number
   readinessStateId?: number
+  shopSectionId?: number
   whoMade?: EtsyWhoMade
   whenMade?: EtsyWhenMade
   materials?: string[]
@@ -95,6 +109,7 @@ export type EtsyListingVorlage = {
   shippingProfileId: number | null
   readinessStateId: number | null
   taxonomyId: number | null
+  shopSectionId: number | null
   standortText: string
   finishText: string
   whoMade: EtsyWhoMade
@@ -162,9 +177,20 @@ export function defaultEtsyVorlage(): EtsyListingVorlage {
     shippingProfileId: null,
     readinessStateId: null,
     taxonomyId: ETSY_DEFAULT_TAXONOMY_ID,
+    shopSectionId: null,
     standortText: ETSY_DEFAULT_STANDORT,
     finishText: ETSY_DEFAULT_FINISH,
     whoMade: 'i_did',
-    whenMade: 'made_to_order',
+    /** Fertige Unikate (handgedreht) — nicht Auftragfertigung. */
+    whenMade: '2020_2026',
   }
+}
+
+/** Legacy-Enums (z. B. 2020_2025) → aktuelle Etsy-API-Werte. */
+export function normalisiereEtsyWhenMade(raw: string | null | undefined): EtsyWhenMade {
+  const s = String(raw || '').trim()
+  if (!s || s === '2020_2025') return '2020_2026'
+  if (s === '2000_2009' || s === '2000_2005') return '2000_2006'
+  if (s === 'before_2000' || s === 'before_2006') return 'before_2007'
+  return s as EtsyWhenMade
 }

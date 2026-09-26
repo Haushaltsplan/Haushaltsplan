@@ -67,19 +67,19 @@ function normalisiereTags(raw: unknown): string[] {
     if (out.length >= TAG_COUNT) break
   }
   const fallbacks = [
-    'holzschale',
-    'handgedreht',
-    'unikat holz',
+    'handgedrehte schale',
+    'holzschale unikat',
+    'obstschale holz',
     'drechselarbeit',
     'holzschale deko',
     'walnussöl finish',
-    'handgemacht',
-    'niederbayern',
-    'holzschale obst',
-    'massivholz',
-    'holzschale modern',
-    'naturrand',
+    'massivholz schale',
     'holzgeschenk',
+    'niederbayern',
+    'esstisch deko',
+    'naturrand schale',
+    'holzschale modern',
+    'unikat holz',
   ]
   for (const f of fallbacks) {
     if (out.length >= TAG_COUNT) break
@@ -257,7 +257,27 @@ export async function generiereEtsyListingTexte(
 
   const parsed = parseJsonObject(result.reply)
   if (!parsed) throw new Error('KI-Antwort war kein gültiges JSON.')
-  return validiereListing(parsed, images.length)
+  const listing = validiereListing(parsed, images.length)
+
+  const gehaertet = haerteEtsyListingFuerScore({
+    title: listing.title,
+    tags: listing.tags,
+    description: listing.description,
+    holzart: basis.holzart,
+    produktForm: listing.produktForm,
+  })
+  let description = gehaertet.description
+  const masse = basis.masse?.trim()
+  if (masse && /\[MASSE EINFÜGEN\]/i.test(description)) {
+    description = description.replace(/\[MASSE EINFÜGEN\]/gi, masse)
+  }
+
+  return {
+    ...listing,
+    title: gehaertet.title,
+    tags: gehaertet.tags,
+    description,
+  }
 }
 
 export type EtsyListingOptimizeInput = {
@@ -385,7 +405,12 @@ export async function optimiereEtsyListingTexte(
     ...neu,
     title: gehaertet.title,
     tags: gehaertet.tags,
-    description: gehaertet.description,
+    description: (() => {
+      let d = gehaertet.description
+      const masse = basis.masse?.trim()
+      if (masse && /\[MASSE EINFÜGEN\]/i.test(d)) d = d.replace(/\[MASSE EINFÜGEN\]/gi, masse)
+      return d
+    })(),
     // Preis aus Entwurf behalten, wenn KI abweicht
     preisMinEur: draft.preisMinEur ?? neu.preisMinEur,
     preisEmpfohlenEur: draft.preisEmpfohlenEur ?? neu.preisEmpfohlenEur,

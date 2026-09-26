@@ -5,10 +5,10 @@ import 'server-only'
 import { createSupabaseAdmin } from '@/lib/supabase-admin'
 import {
   defaultEtsyVorlage,
+  normalisiereEtsyWhenMade,
   type EtsyDraftHistorieEintrag,
   type EtsyGeneratedListing,
   type EtsyListingVorlage,
-  type EtsyWhenMade,
   type EtsyWhoMade,
 } from '@/lib/etsy/etsy-types'
 
@@ -16,7 +16,7 @@ export async function ladeEtsyVorlage(ownerUserId: string): Promise<EtsyListingV
   const { data, error } = await createSupabaseAdmin()
     .from('etsy_listing_vorlage')
     .select(
-      'shipping_profile_id, readiness_state_id, taxonomy_id, standort_text, finish_text, who_made, when_made',
+      'shipping_profile_id, readiness_state_id, taxonomy_id, shop_section_id, standort_text, finish_text, who_made, when_made',
     )
     .eq('owner_user_id', ownerUserId)
     .maybeSingle()
@@ -28,10 +28,12 @@ export async function ladeEtsyVorlage(ownerUserId: string): Promise<EtsyListingV
     readinessStateId:
       data.readiness_state_id != null ? Number(data.readiness_state_id) : base.readinessStateId,
     taxonomyId: data.taxonomy_id != null ? Number(data.taxonomy_id) : base.taxonomyId,
+    shopSectionId:
+      data.shop_section_id != null ? Number(data.shop_section_id) : base.shopSectionId,
     standortText: String(data.standort_text || base.standortText),
     finishText: String(data.finish_text || base.finishText),
     whoMade: (String(data.who_made || base.whoMade) as EtsyWhoMade) || base.whoMade,
-    whenMade: (String(data.when_made || base.whenMade) as EtsyWhenMade) || base.whenMade,
+    whenMade: normalisiereEtsyWhenMade(String(data.when_made || base.whenMade)),
   }
 }
 
@@ -44,10 +46,11 @@ export async function speichereEtsyVorlage(
     shipping_profile_id: vorlage.shippingProfileId,
     readiness_state_id: vorlage.readinessStateId,
     taxonomy_id: vorlage.taxonomyId,
+    shop_section_id: vorlage.shopSectionId,
     standort_text: vorlage.standortText.slice(0, 80),
     finish_text: vorlage.finishText.slice(0, 500),
     who_made: vorlage.whoMade,
-    when_made: vorlage.whenMade,
+    when_made: normalisiereEtsyWhenMade(vorlage.whenMade),
     updated_at: new Date().toISOString(),
   })
   if (error) throw new Error(`Vorlage speichern: ${error.message}`)

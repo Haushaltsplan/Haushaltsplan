@@ -68,12 +68,28 @@ function normalisiereTags(raw: unknown): string[] {
     out.push(t)
     if (out.length >= TAG_COUNT) break
   }
-  while (out.length < TAG_COUNT) {
-    const pad = `holzunikat${out.length + 1}`.slice(0, TAG_MAX)
-    if (!seen.has(pad)) {
-      seen.add(pad)
-      out.push(pad)
-    } else break
+  const fallbacks = [
+    'handgedrehte schale',
+    'holzschale unikat',
+    'obstschale holz',
+    'drechselarbeit',
+    'holzschale deko',
+    'walnussöl finish',
+    'massivholz schale',
+    'holzgeschenk',
+    'niederbayern',
+    'esstisch deko',
+    'naturrand schale',
+    'holzschale modern',
+    'unikat holz',
+  ]
+  for (const f of fallbacks) {
+    if (out.length >= TAG_COUNT) break
+    const t = normalisiereTag(f)
+    const k = t.toLowerCase()
+    if (!t || seen.has(k)) continue
+    seen.add(k)
+    out.push(t)
   }
   return out.slice(0, TAG_COUNT)
 }

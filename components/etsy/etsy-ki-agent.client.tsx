@@ -13,10 +13,13 @@ import {
   ETSY_DEFAULT_STANDORT,
   ETSY_DEFAULT_TAXONOMY_ID,
   filterFotoWarnungen,
+  normalisiereEtsyWhenMade,
   type EtsyDraftHistorieEintrag,
   type EtsyFotoCheck,
   type EtsyGeneratedListing,
   type EtsyListingVorlage,
+  type EtsyWhenMade,
+  type EtsyWhoMade,
 } from '@/lib/etsy/etsy-types'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import toast from 'react-hot-toast'
@@ -30,6 +33,7 @@ type Status = {
 
 type ShippingProfile = { shippingProfileId: number; title: string }
 type ReadinessState = { readinessStateId: number; readinessState: string }
+type ShopSection = { shopSectionId: number; title: string }
 
 type DraftResult = {
   listingId: number
@@ -59,15 +63,18 @@ export function EtsyKiAgentClient({
 
   const [shippingProfiles, setShippingProfiles] = useState<ShippingProfile[]>([])
   const [readinessStates, setReadinessStates] = useState<ReadinessState[]>([])
+  const [shopSections, setShopSections] = useState<ShopSection[]>([])
   const [vorlage, setVorlage] = useState<EtsyListingVorlage | null>(null)
   const [historie, setHistorie] = useState<EtsyDraftHistorieEintrag[]>([])
 
   const [images, setImages] = useState<CoachImagePart[]>([])
   const [holzart, setHolzart] = useState('')
   const [masse, setMasse] = useState('')
-  const [quantity, setQuantity] = useState('1')
   const [shippingProfileId, setShippingProfileId] = useState('')
   const [readinessStateId, setReadinessStateId] = useState('')
+  const [shopSectionId, setShopSectionId] = useState('')
+  const [whoMade, setWhoMade] = useState<EtsyWhoMade>('i_did')
+  const [whenMade, setWhenMade] = useState<EtsyWhenMade>('2020_2026')
   const [standortText, setStandortText] = useState(ETSY_DEFAULT_STANDORT)
   const [finishText, setFinishText] = useState(ETSY_DEFAULT_FINISH)
 
@@ -126,6 +133,9 @@ export function EtsyKiAgentClient({
           if (j.vorlage.shippingProfileId) setShippingProfileId(String(j.vorlage.shippingProfileId))
           if (j.vorlage.readinessStateId) setReadinessStateId(String(j.vorlage.readinessStateId))
           if (j.vorlage.taxonomyId) setTaxonomyId(String(j.vorlage.taxonomyId))
+          if (j.vorlage.shopSectionId) setShopSectionId(String(j.vorlage.shopSectionId))
+          if (j.vorlage.whoMade) setWhoMade(j.vorlage.whoMade)
+          if (j.vorlage.whenMade) setWhenMade(normalisiereEtsyWhenMade(j.vorlage.whenMade))
         }
       }
       if (hRes.ok) {
@@ -144,18 +154,38 @@ export function EtsyKiAgentClient({
       const j = (await res.json()) as {
         shippingProfiles?: ShippingProfile[]
         readinessStates?: ReadinessState[]
+        shopSections?: ShopSection[]
       }
       const profiles = j.shippingProfiles ?? []
       setShippingProfiles(profiles)
       setReadinessStates(j.readinessStates ?? [])
+      setShopSections(j.shopSections ?? [])
       setShippingProfileId((prev) => {
         if (prev) return prev
         if (profiles.length === 1) return String(profiles[0].shippingProfileId)
         return prev
       })
-      if (j.readinessStates?.length === 1) {
-        setReadinessStateId((prev) => prev || String(j.readinessStates![0].readinessStateId))
-      }
+      const sections = j.shopSections ?? []
+      setShopSectionId((prev) => {
+        if (prev) return prev
+        if (sections.length === 1) return String(sections[0].shopSectionId)
+        return prev
+      })
+      const states = j.readinessStates ?? []
+      setReadinessStateId((prev) => {
+        if (prev) return prev
+        if (states.length === 0) return prev
+        const prefer = states.find((r) => {
+          const s = r.readinessState.toLowerCase()
+          return (
+            s.includes('ready_to_ship') ||
+            s.includes('ready') ||
+            s.includes('versandfertig') ||
+            s.includes('fertig')
+          )
+        })
+        return String((prefer ?? states[0]!).readinessStateId)
+      })
     } catch {
       /* Shop ggf. unvollständig */
     }
@@ -215,15 +245,37 @@ export function EtsyKiAgentClient({
     void ladeStatus()
   }
 
-  async function speichereVorlage() {
+  function readinessPasstZuWhenMade(state: string, wm: EtsyWhenMade): boolean {
+    const s = state.toLowerCase()
+    if (wm === 'made_to_order') {
+      return s.includes('made_to_order') || s.includes('auftrag') || s.includes('order')
+    }
+    return (
+      s.includes('ready_to_ship') ||
+      s.includes('ready') ||
+      s.includes('versandfertig') ||
+      s.includes('fertig')
+    )
+  }
+
+  useEffect(() => {
+    if (readinessStates.length === 0) return
+    const current = readinessStates.find((r) => String(r.readinessStateId) === readinessStateId)
+    if (current && readinessPasstZuWhenMade(current.readinessState, whenMade)) return
+    const prefer = readinessStates.find((r) => readinessPasstZuWhenMade(r.readinessState, whenMade))
+    if (prefer) setReadinessStateId(String(prefer.readinessStateId))
+  }, [whenMade, readinessStates, readinessStateId])
+
+  async function speichereVorlage(opts?: { silent?: boolean }) {
     const payload: EtsyListingVorlage = {
       shippingProfileId: Number(shippingProfileId) || null,
       readinessStateId: Number(readinessStateId) || null,
       taxonomyId: Number(taxonomyId) || ETSY_DEFAULT_TAXONOMY_ID,
+      shopSectionId: Number(shopSectionId) || null,
       standortText: standortText.trim() || ETSY_DEFAULT_STANDORT,
       finishText: finishText.trim() || ETSY_DEFAULT_FINISH,
-      whoMade: vorlage?.whoMade || 'i_did',
-      whenMade: vorlage?.whenMade || 'made_to_order',
+      whoMade,
+      whenMade,
     }
     const res = await fetch('/api/etsy/vorlage', {
       method: 'POST',
@@ -232,11 +284,12 @@ export function EtsyKiAgentClient({
     })
     const j = (await res.json()) as { error?: string; vorlage?: EtsyListingVorlage }
     if (!res.ok) {
-      toast.error(j.error ?? 'Vorlage speichern fehlgeschlagen.')
-      return
+      if (!opts?.silent) toast.error(j.error ?? 'Vorlage speichern fehlgeschlagen.')
+      return false
     }
     setVorlage(j.vorlage ?? payload)
-    toast.success('Vorlage gespeichert.')
+    if (!opts?.silent) toast.success('Vorlage gespeichert.')
+    return true
   }
 
   async function onFotos(files: FileList | null) {
@@ -284,6 +337,14 @@ export function EtsyKiAgentClient({
       toast.error('Mindestens ein Foto hochladen.')
       return
     }
+    if (!holzart.trim()) {
+      toast.error('Holzart angeben (wird als Etsy-Material gespeichert).')
+      return
+    }
+    if (!masse.trim()) {
+      toast.error('Maße angeben (Ø × H) — sonst bleibt [MASSE EINFÜGEN] in der Beschreibung.')
+      return
+    }
     setBusy(true)
     setBusyKind('analyse')
     setLastDraft(null)
@@ -293,8 +354,9 @@ export function EtsyKiAgentClient({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           images,
-          holzart: holzart.trim() || undefined,
-          masse: masse.trim() || undefined,
+          holzart: holzart.trim(),
+          masse: masse.trim(),
+          materials: [holzart.trim()],
           standortText: standortText.trim() || undefined,
           finishText: finishText.trim() || undefined,
         }),
@@ -326,8 +388,10 @@ export function EtsyKiAgentClient({
       .split(',')
       .map((t) => t.trim())
       .filter(Boolean)
-      .slice(0, 13)
-    if (!editTitle.trim() || !editDescription.trim() || tags.length < 1) return null
+      .slice(0, ETSY_SEO_TAG_COUNT)
+    if (!editTitle.trim() || !editDescription.trim()) return null
+    if (tags.length !== ETSY_SEO_TAG_COUNT) return null
+    if (/\[MASSE EINFÜGEN\]/i.test(editDescription)) return null
     const preis = Number(editPreis)
     if (!Number.isFinite(preis) || preis < 1) return null
     return {
@@ -343,8 +407,28 @@ export function EtsyKiAgentClient({
   }
 
   async function draftAnlegen() {
+    if (!holzart.trim()) {
+      toast.error('Holzart fehlt.')
+      return
+    }
+    if (!masse.trim()) {
+      toast.error('Maße fehlen.')
+      return
+    }
     const listing = baueFreigabeListing()
     if (!listing) {
+      const tagN = editTags
+        .split(',')
+        .map((t) => t.trim())
+        .filter(Boolean).length
+      if (tagN !== ETSY_SEO_TAG_COUNT) {
+        toast.error(`Genau ${ETSY_SEO_TAG_COUNT} Tags nötig (aktuell ${tagN}).`)
+        return
+      }
+      if (/\[MASSE EINFÜGEN\]/i.test(editDescription)) {
+        toast.error('Maße in der Beschreibung ersetzen ([MASSE EINFÜGEN]).')
+        return
+      }
       toast.error('Titel, Beschreibung, Tags und Preis prüfen.')
       return
     }
@@ -353,21 +437,31 @@ export function EtsyKiAgentClient({
       toast.error('Versandprofil wählen.')
       return
     }
+    const rsId = Number(readinessStateId)
+    if (!rsId && readinessStates.length > 0) {
+      toast.error('Bearbeitungszeit wählen (Pflicht für physische Listings).')
+      return
+    }
     setBusy(true)
     setBusyKind('draft')
     try {
+      await speichereVorlage({ silent: true })
       const res = await fetch('/api/etsy/listing/draft', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           images,
-          holzart: holzart.trim() || undefined,
-          masse: masse.trim() || undefined,
+          holzart: holzart.trim(),
+          masse: masse.trim(),
           preisEur: listing.preisEmpfohlenEur,
-          quantity: Number(quantity) || 1,
+          quantity: 1,
           shippingProfileId: spId,
           taxonomyId: listing.taxonomyId,
-          readinessStateId: readinessStateId ? Number(readinessStateId) : undefined,
+          readinessStateId: rsId || undefined,
+          shopSectionId: Number(shopSectionId) || undefined,
+          whoMade,
+          whenMade,
+          materials: [holzart.trim()],
           listing,
         }),
       })
@@ -385,6 +479,7 @@ export function EtsyKiAgentClient({
       void ladeVorlageUndHistorie()
       setSchritt('aufnahme')
       setDraftListing(null)
+      setImages([])
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Fehler')
     } finally {
@@ -455,6 +550,7 @@ export function EtsyKiAgentClient({
           images,
           holzart: holzart.trim() || undefined,
           masse: masse.trim() || undefined,
+          materials: holzart.trim() ? [holzart.trim()] : undefined,
           standortText: standortText.trim() || undefined,
           finishText: finishText.trim() || undefined,
           optimize: {
@@ -555,7 +651,8 @@ export function EtsyKiAgentClient({
       <PageSection titleId="etsy-vorlage" title="Vorlage (Defaults)">
         <PageSectionPanel density="compact" className="space-y-3">
           <p className="text-xs text-[var(--app-text-muted)]">
-            Einmal setzen — gilt für Standort im Titel, Finish-Text und Standard-Versand.
+            Für handgedrechselte Unikat-Schalen: „Selbst gemacht“ + Herstellungszeitraum (nicht
+            Auftragsfertigung), Bearbeitungszeit „versandfertig“.
           </p>
           <div className="grid gap-3 sm:grid-cols-2">
             <label className="block text-sm sm:col-span-2">
@@ -565,6 +662,32 @@ export function EtsyKiAgentClient({
                 onChange={(e) => setStandortText(e.target.value)}
                 className="w-full rounded-lg border border-[var(--app-border)] bg-[var(--app-surface)] px-3 py-2"
               />
+            </label>
+            <label className="block text-sm">
+              <span className="mb-1 block text-xs text-[var(--app-text-muted)]">Wer hat es gemacht?</span>
+              <select
+                value={whoMade}
+                onChange={(e) => setWhoMade(e.target.value as EtsyWhoMade)}
+                className="w-full rounded-lg border border-[var(--app-border)] bg-[var(--app-surface)] px-3 py-2"
+              >
+                <option value="i_did">Ich (handgedreht)</option>
+                <option value="collective">Kollektiv / mit anderen</option>
+                <option value="someone_else">Jemand anderes</option>
+              </select>
+            </label>
+            <label className="block text-sm">
+              <span className="mb-1 block text-xs text-[var(--app-text-muted)]">Wann gemacht?</span>
+              <select
+                value={whenMade}
+                onChange={(e) => setWhenMade(e.target.value as EtsyWhenMade)}
+                className="w-full rounded-lg border border-[var(--app-border)] bg-[var(--app-surface)] px-3 py-2"
+              >
+                <option value="2020_2026">2020–2026 (fertiges Unikat)</option>
+                <option value="made_to_order">Auf Bestellung</option>
+                <option value="2010_2019">2010–2019</option>
+                <option value="2007_2009">2007–2009</option>
+                <option value="before_2007">Vor 2007</option>
+              </select>
             </label>
             <label className="block text-sm sm:col-span-2">
               <span className="mb-1 block text-xs text-[var(--app-text-muted)]">Finish-Text</span>
@@ -599,15 +722,18 @@ export function EtsyKiAgentClient({
                 />
               )}
             </label>
-            {readinessStates.length > 0 && (
+            {readinessStates.length > 0 ? (
               <label className="block text-sm sm:col-span-2">
-                <span className="mb-1 block text-xs text-[var(--app-text-muted)]">Bearbeitungszeit</span>
+                <span className="mb-1 block text-xs text-[var(--app-text-muted)]">
+                  Bearbeitungszeit (Pflicht)
+                </span>
                 <select
                   value={readinessStateId}
                   onChange={(e) => setReadinessStateId(e.target.value)}
                   className="w-full rounded-lg border border-[var(--app-border)] bg-[var(--app-surface)] px-3 py-2"
+                  required
                 >
-                  <option value="">— optional —</option>
+                  <option value="">— wählen —</option>
                   {readinessStates.map((r) => (
                     <option key={r.readinessStateId} value={r.readinessStateId}>
                       {r.readinessState || r.readinessStateId}
@@ -615,7 +741,31 @@ export function EtsyKiAgentClient({
                   ))}
                 </select>
               </label>
+            ) : (
+              <p className="text-xs text-amber-200/90 sm:col-span-2">
+                Keine Bearbeitungszeit vom Shop geladen — beim Draft wird versucht, eine aus Etsy zu
+                übernehmen. Sonst bitte in Etsy unter Versand → Bearbeitungszeit anlegen.
+              </p>
             )}
+            {shopSections.length > 0 ? (
+              <label className="block text-sm sm:col-span-2">
+                <span className="mb-1 block text-xs text-[var(--app-text-muted)]">
+                  Shop-Sektion (optional)
+                </span>
+                <select
+                  value={shopSectionId}
+                  onChange={(e) => setShopSectionId(e.target.value)}
+                  className="w-full rounded-lg border border-[var(--app-border)] bg-[var(--app-surface)] px-3 py-2"
+                >
+                  <option value="">— keine —</option>
+                  {shopSections.map((s) => (
+                    <option key={s.shopSectionId} value={s.shopSectionId}>
+                      {s.title}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : null}
           </div>
           <button
             type="button"
@@ -665,7 +815,9 @@ export function EtsyKiAgentClient({
             </div>
             <div className="grid gap-3 sm:grid-cols-2">
               <label className="block text-sm">
-                <span className="mb-1 block text-xs text-[var(--app-text-muted)]">Holzart</span>
+                <span className="mb-1 block text-xs text-[var(--app-text-muted)]">
+                  Holzart (Pflicht · Material)
+                </span>
                 <input
                   value={holzart}
                   onChange={(e) => setHolzart(e.target.value)}
@@ -674,23 +826,19 @@ export function EtsyKiAgentClient({
                 />
               </label>
               <label className="block text-sm">
-                <span className="mb-1 block text-xs text-[var(--app-text-muted)]">Maße</span>
+                <span className="mb-1 block text-xs text-[var(--app-text-muted)]">
+                  Maße Ø × H (Pflicht)
+                </span>
                 <input
                   value={masse}
                   onChange={(e) => setMasse(e.target.value)}
-                  placeholder="Ø × H"
+                  placeholder="z. B. 22 × 8 cm"
                   className="w-full rounded-lg border border-[var(--app-border)] bg-[var(--app-surface)] px-3 py-2"
                 />
               </label>
-              <label className="block text-sm">
-                <span className="mb-1 block text-xs text-[var(--app-text-muted)]">Stückzahl</span>
-                <input
-                  value={quantity}
-                  onChange={(e) => setQuantity(e.target.value)}
-                  inputMode="numeric"
-                  className="w-full rounded-lg border border-[var(--app-border)] bg-[var(--app-surface)] px-3 py-2"
-                />
-              </label>
+              <p className="text-xs text-[var(--app-text-muted)] sm:col-span-2">
+                Unikat: Stückzahl fest 1 — kein Überverkauf.
+              </p>
             </div>
             <button
               type="button"
@@ -879,7 +1027,16 @@ export function EtsyKiAgentClient({
               />
             </label>
             <label className="block text-sm">
-              <span className="mb-1 block text-xs text-[var(--app-text-muted)]">Tags (kommagetrennt, max. 13)</span>
+              <span className="mb-1 block text-xs text-[var(--app-text-muted)]">
+                Tags (kommagetrennt, genau {ETSY_SEO_TAG_COUNT}) ·{' '}
+                {
+                  editTags
+                    .split(',')
+                    .map((t) => t.trim())
+                    .filter(Boolean).length
+                }
+                /{ETSY_SEO_TAG_COUNT}
+              </span>
               <textarea
                 value={editTags}
                 onChange={(e) => setEditTags(e.target.value)}
