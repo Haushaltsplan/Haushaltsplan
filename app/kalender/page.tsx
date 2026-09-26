@@ -299,25 +299,34 @@ export default function KalenderPage() {
           </div>
 
           <div className="border-b border-[var(--app-border)] bg-[var(--app-surface-muted)] px-2 py-2 sm:px-3">
-            <p className="mb-1.5 text-[9px] font-bold uppercase tracking-wide text-[var(--app-text-muted)] sm:text-[10px]">
-              Kategorie auf einen Tag ziehen
+            <p className="mb-1.5 text-[10px] font-bold uppercase tracking-wide text-[var(--app-text-muted)] sm:text-[10px]">
+              Kategorie tippen, dann Tag wählen — oder auf Desktop ziehen
             </p>
-            <div className="flex flex-wrap gap-1.5" role="list" aria-label="Kategorien zum Ziehen">
+            <div className="flex flex-wrap gap-1.5" role="list" aria-label="Kategorien">
               {KALENDER_KATEGORIEN.map((k) => (
-                <div
+                <button
                   key={k.id}
+                  type="button"
                   role="listitem"
                   draggable
                   onDragStart={(e) => {
                     e.dataTransfer.setData(KALENDER_DND_MIME, k.id)
                     e.dataTransfer.effectAllowed = 'copy'
                   }}
-                  className={`flex cursor-grab select-none items-center gap-1.5 rounded-lg border border-[var(--app-border)] bg-[var(--app-surface-muted)] px-2 py-1 text-[10px] font-bold text-[var(--app-text)] shadow-sm active:cursor-grabbing sm:text-xs ${k.listBorder}`}
-                  title={`${k.label} auf Kalendertag ziehen (Desktop)`}
+                  onClick={() => {
+                    // Mobile: Kategorie vormerken → nächster Tag-Tap öffnet Neu mit Kategorie
+                    try {
+                      sessionStorage.setItem('omnia-kalender-pending-kat', k.id)
+                    } catch {
+                      /* ignore */
+                    }
+                  }}
+                  className={`app-touch-target app-press flex cursor-grab select-none items-center gap-1.5 rounded-lg border border-[var(--app-border)] bg-[var(--app-surface-muted)] px-2.5 py-2 text-[11px] font-bold text-[var(--app-text)] shadow-sm active:cursor-grabbing sm:text-xs ${k.listBorder}`}
+                  title={`${k.label}: tippen + Tag, oder ziehen (Desktop)`}
                 >
                   <span className={`h-2 w-2 shrink-0 rounded-full ${k.dot}`} aria-hidden />
                   {k.label}
-                </div>
+                </button>
               ))}
             </div>
           </div>
@@ -345,9 +354,24 @@ export default function KalenderPage() {
                   key={iso}
                   type="button"
                   onClick={() => {
+                    let pending: string | null = null
+                    try {
+                      pending = sessionStorage.getItem('omnia-kalender-pending-kat')
+                      if (pending) sessionStorage.removeItem('omnia-kalender-pending-kat')
+                    } catch {
+                      /* ignore */
+                    }
+                    if (pending) {
+                      legeKategorieAufTag(iso, pending)
+                      return
+                    }
                     waehleDatum(iso)
                   }}
                   onDoubleClick={(e) => {
+                    e.preventDefault()
+                    oeffneNeuFuerTag(z)
+                  }}
+                  onContextMenu={(e) => {
                     e.preventDefault()
                     oeffneNeuFuerTag(z)
                   }}
@@ -394,7 +418,7 @@ export default function KalenderPage() {
                         return (
                           <div key={ev.id} className="mt-0.5 flex min-w-0 items-start gap-0.5 sm:mt-0.5">
                             <span className={`mt-0.5 h-1.5 w-1.5 flex-shrink-0 rounded-full ${st.dot}`} title={st.label} />
-                            <span className="line-clamp-2 min-w-0 break-words text-left text-[7px] leading-tight text-[var(--app-text)] sm:text-[8px]">
+                            <span className="line-clamp-2 min-w-0 break-words text-left text-[10px] leading-tight text-[var(--app-text)] sm:text-[11px]">
                               {ev.uhrzeit.trim() ? (
                                 <>
                                   <span className="whitespace-nowrap font-mono text-[var(--app-text-muted)]">{ev.uhrzeit}</span>
@@ -427,12 +451,12 @@ export default function KalenderPage() {
                       ) : null}
                       {n > 2 ? (
                         n === 3 ? (
-                          <p className="mt-0.5 pl-1 text-[7px] font-bold leading-tight text-[var(--app-text-muted)] sm:hidden">
+                          <p className="mt-0.5 pl-1 text-[10px] font-bold leading-tight text-[var(--app-text-muted)] sm:hidden">
                             +1 weiterer
                           </p>
                         ) : (
                           <>
-                            <p className="mt-0.5 pl-1 text-[7px] font-bold leading-tight text-[var(--app-text-muted)] sm:hidden">
+                            <p className="mt-0.5 pl-1 text-[10px] font-bold leading-tight text-[var(--app-text-muted)] sm:hidden">
                               +{n - 2} weitere
                             </p>
                             <p className="mt-0.5 hidden pl-1 text-[7px] font-bold leading-tight text-[var(--app-text-muted)] sm:block">

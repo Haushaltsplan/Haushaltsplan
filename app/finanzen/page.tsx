@@ -990,7 +990,13 @@ export default function FinanzenPage() {
       return
     }
     const buchungstext = `${item.kategorie} (${item.betrag.toFixed(2)} €)`
-    const bestaetigt = window.confirm(`Buchung wirklich löschen?\n\n${buchungstext}`)
+    const { appConfirm } = await import('@/components/app-confirm')
+    const bestaetigt = await appConfirm({
+      title: 'Buchung löschen?',
+      message: buchungstext,
+      confirmLabel: 'Löschen',
+      danger: true,
+    })
     if (!bestaetigt) return
 
     const zielTabelle = item.isIn ? 'einnahmen' : 'ausgaben'
@@ -1532,7 +1538,7 @@ export default function FinanzenPage() {
                   <button
                     type="button"
                     onClick={() => setFinanzListenFilter('alle')}
-                    className={`min-w-0 px-1.5 py-2 text-[9px] font-bold uppercase leading-tight tracking-wide transition lg:px-3 lg:text-[11px] ${
+                    className={`min-w-0 px-2 py-2.5 text-[11px] font-bold uppercase leading-tight tracking-wide transition lg:px-3 lg:text-[11px] ${
                       finanzListenFilter === 'alle' ? 'rounded-md bg-[var(--app-border-strong)] text-[var(--app-text)]' : `rounded-md ${finanzToggleInactiveClass}`
                     }`}
                   >
@@ -1541,7 +1547,7 @@ export default function FinanzenPage() {
                   <button
                     type="button"
                     onClick={() => setFinanzListenFilter('einnahme')}
-                    className={`min-w-0 px-1.5 py-2 text-[9px] font-bold uppercase leading-tight tracking-wide transition lg:px-3 lg:text-[11px] ${
+                    className={`min-w-0 px-2 py-2.5 text-[11px] font-bold uppercase leading-tight tracking-wide transition lg:px-3 lg:text-[11px] ${
                       finanzListenFilter === 'einnahme' ? 'rounded-md bg-emerald-600 text-white' : 'rounded-md text-emerald-400/90 hover:bg-emerald-950/50'
                     }`}
                   >
@@ -1551,7 +1557,7 @@ export default function FinanzenPage() {
                   <button
                     type="button"
                     onClick={() => setFinanzListenFilter('ausgabe')}
-                    className={`min-w-0 px-1.5 py-2 text-[9px] font-bold uppercase leading-tight tracking-wide transition lg:px-3 lg:text-[11px] ${
+                    className={`min-w-0 px-2 py-2.5 text-[11px] font-bold uppercase leading-tight tracking-wide transition lg:px-3 lg:text-[11px] ${
                       finanzListenFilter === 'ausgabe' ? 'rounded-md bg-rose-600 text-white' : 'rounded-md text-rose-400/90 hover:bg-rose-950/50'
                     }`}
                   >

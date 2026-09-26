@@ -79,10 +79,19 @@ export function AppLockEinstellungen() {
   }, [sync])
 
   const sperreDeaktivieren = useCallback(() => {
-    if (!window.confirm('App-Sperre wirklich deaktivieren? Dann öffnet die App ohne Fingerabdruck/PIN.')) return
-    entferneAppLock()
-    toast.success('App-Sperre deaktiviert.')
-    sync()
+    void (async () => {
+      const { appConfirm } = await import('@/components/app-confirm')
+      const ok = await appConfirm({
+        title: 'App-Sperre deaktivieren?',
+        message: 'Dann öffnet die App ohne Fingerabdruck/PIN.',
+        confirmLabel: 'Deaktivieren',
+        danger: true,
+      })
+      if (!ok) return
+      entferneAppLock()
+      toast.success('App-Sperre deaktiviert.')
+      sync()
+    })()
   }, [sync])
 
   if (!bereit) {

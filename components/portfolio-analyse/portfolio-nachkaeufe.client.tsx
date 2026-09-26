@@ -1796,6 +1796,7 @@ export function NachkaufRadarClient() {
   const [filterTrigger, setFilterTrigger] = useState(false)
   const [filterInsider, setFilterInsider] = useState(false)
   const [filterTrim, setFilterTrim] = useState(false)
+  const [tickerSuche, setTickerSuche] = useState('')
   const [sortKey, setSortKey] = useState<SortKey>('score')
   const [notizEdit, setNotizEdit] = useState<{ ticker: string; text: string } | null>(null)
   const [notizSpeichern, setNotizSpeichern] = useState(false)
@@ -2061,6 +2062,15 @@ export function NachkaufRadarClient() {
     if (filterTrigger) liste = liste.filter((e) => e.kaufTriggerAusgeloest)
     if (filterInsider) liste = liste.filter((e) => e.insiderKaeufe.length > 0)
     if (filterTrim) liste = liste.filter((e) => !!e.trimSignal)
+    const q = tickerSuche.trim().toLowerCase()
+    if (q) {
+      liste = liste.filter(
+        (e) =>
+          e.ticker.toLowerCase().includes(q) ||
+          (e.name?.toLowerCase().includes(q) ?? false) ||
+          (e.isin?.toLowerCase().includes(q) ?? false),
+      )
+    }
     switch (sortKey) {
       case 'name': return [...liste].sort((a, b) => a.name.localeCompare(b.name))
       case 'ampel': {
@@ -2143,6 +2153,19 @@ export function NachkaufRadarClient() {
 
         {/* Schnell-Stats */}
         {ergebnisse.length > 0 && !scanLaeuft && (
+          <div className="space-y-3">
+            <label className="block">
+              <span className="sr-only">Ticker suchen</span>
+              <input
+                type="search"
+                inputMode="search"
+                placeholder="Ticker / Name suchen …"
+                value={tickerSuche}
+                onChange={(e) => setTickerSuche(e.target.value)}
+                className="app-touch-target w-full rounded-xl border border-[var(--app-border)] bg-[var(--app-surface)] px-3 text-sm text-[var(--app-text)] outline-none ring-teal-500/30 placeholder:text-[var(--app-text-muted)] focus:ring-2"
+                data-no-swipe-nav
+              />
+            </label>
           <div className="flex flex-wrap gap-3">
             {gruen > 0 && (
               <button
@@ -2184,6 +2207,7 @@ export function NachkaufRadarClient() {
                 <p className="text-lg font-bold text-orange-300">{mitTrim}</p>
               </button>
             )}
+          </div>
           </div>
         )}
 

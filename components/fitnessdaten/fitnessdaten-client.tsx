@@ -90,10 +90,19 @@ export function FitnessdatenClient() {
   }, [])
 
   const loescheDaten = useCallback(() => {
-    if (!window.confirm('Alle WHOOP-Daten in diesem Browser löschen?')) return
-    loescheFitnessDaten()
-    setSnapshot(null)
-    toast.success('Daten gelöscht.')
+    void (async () => {
+      const { appConfirm } = await import('@/components/app-confirm')
+      const ok = await appConfirm({
+        title: 'Alle WHOOP-Daten löschen?',
+        message: 'Gespeicherte Fitness-Daten in dieser App werden entfernt.',
+        confirmLabel: 'Löschen',
+        danger: true,
+      })
+      if (!ok) return
+      loescheFitnessDaten()
+      setSnapshot(null)
+      toast.success('Daten gelöscht.')
+    })()
   }, [])
 
   return (

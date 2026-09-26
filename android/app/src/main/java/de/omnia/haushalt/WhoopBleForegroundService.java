@@ -120,6 +120,9 @@ public class WhoopBleForegroundService extends Service {
 
         Intent open = new Intent(this, MainActivity.class);
         open.setFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_REORDER_TO_FRONT);
+        open.putExtra("omnia_open_fitness", true);
+        open.putExtra("omnia_path", "/fitnessdaten");
+        open.setData(android.net.Uri.parse("de.omnia.haushalt://app/fitnessdaten"));
         PendingIntent pending = PendingIntent.getActivity(
             this,
             0,

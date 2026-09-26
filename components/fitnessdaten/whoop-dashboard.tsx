@@ -277,7 +277,7 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange, ini
   })
 
   return (
-    <div className="relative flex max-h-[calc(100dvh-var(--app-nav-offset)-var(--app-mobile-bottom-nav)-2.5rem)] flex-col overflow-hidden rounded-2xl border border-white/[0.05] bg-black text-white shadow-2xl shadow-black/80 sm:max-h-none sm:rounded-3xl md:min-h-[calc(100dvh-4rem)] md:max-h-[calc(100dvh-4rem)]">
+    <div className="relative flex flex-col rounded-2xl border border-white/[0.05] bg-black text-white shadow-2xl shadow-black/80 sm:rounded-3xl md:min-h-[calc(100dvh-4rem)] md:max-h-[calc(100dvh-4rem)] md:overflow-hidden">
       <div
         className="pointer-events-none absolute -left-32 -top-32 h-64 w-64 rounded-full opacity-20 blur-3xl"
         style={{ background: recoveryColor(heute.recoveryPercent) }}
@@ -285,9 +285,10 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange, ini
       <div className="pointer-events-none absolute -right-24 top-1/3 h-48 w-48 rounded-full bg-[#00E5FF]/[0.06] blur-3xl" />
 
       <div
-        className={`min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 pb-4 pt-4 sm:px-6 sm:pb-6 sm:pt-6 ${appModalScrollHiddenClassName}`}
+        className={`min-h-0 flex-1 px-3 pb-4 pt-4 sm:overflow-y-auto sm:overscroll-contain sm:px-6 sm:pb-6 sm:pt-6 md:overflow-y-auto ${appModalScrollHiddenClassName}`}
         data-no-swipe-nav
       >
+        <WhoopBottomNav tab={tab} onTabChange={setTab} variant="pills" />
         <header className="flex items-center justify-between gap-2">
           {/* Avatar + Streak */}
           <button
@@ -1340,7 +1341,7 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange, ini
         )}
       </div>
 
-      <WhoopBottomNav tab={tab} onTabChange={setTab} />
+      <WhoopBottomNav tab={tab} onTabChange={setTab} variant="bottom" />
 
       <WhoopInfoModal info={info} onClose={() => setInfo(null)} />
       <WhoopMetricTrendModal metricId={trendMetric} heute={heute} onClose={() => setTrendMetric(null)} />

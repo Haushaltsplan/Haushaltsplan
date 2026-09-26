@@ -5,6 +5,9 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.view.WindowManager;
+import androidx.core.view.WindowCompat;
+import androidx.core.view.WindowInsetsControllerCompat;
 import com.getcapacitor.BridgeActivity;
 
 public class MainActivity extends BridgeActivity {
@@ -15,20 +18,72 @@ public class MainActivity extends BridgeActivity {
     protected void onCreate(Bundle savedInstanceState) {
         registerPlugin(OmniaBleKeepalivePlugin.class);
         super.onCreate(savedInstanceState);
-        // Nur Prozess halten — GATT-Arm läuft über JS-Handoff / Service.onTaskRemoved
+
+        WindowCompat.setDecorFitsSystemWindows(getWindow(), false);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            WindowManager.LayoutParams lp = getWindow().getAttributes();
+            lp.layoutInDisplayCutoutMode =
+                WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES;
+            getWindow().setAttributes(lp);
+        }
+        WindowInsetsControllerCompat bars =
+            WindowCompat.getInsetsController(getWindow(), getWindow().getDecorView());
+        if (bars != null) {
+            bars.setAppearanceLightStatusBars(false);
+            bars.setAppearanceLightNavigationBars(false);
+        }
+
+        handleNotificationDeepLink(getIntent());
         ensureFgAlive(false);
+    }
+
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        handleNotificationDeepLink(intent);
+    }
+
+    private void handleNotificationDeepLink(Intent intent) {
+        if (intent == null) {
+            return;
+        }
+        String path = intent.getStringExtra("omnia_path");
+        if (path == null || path.isEmpty()) {
+            if (intent.getBooleanExtra("omnia_open_fitness", false)) {
+                path = "/fitnessdaten";
+            }
+        }
+        if (path == null || path.isEmpty()) {
+            return;
+        }
+        final String target = path.startsWith("/") ? path : "/" + path;
+        handler.postDelayed(
+            () -> {
+                try {
+                    if (getBridge() != null && getBridge().getWebView() != null) {
+                        String js =
+                            "(function(){try{if(window.location.pathname!=='" +
+                            target +
+                            "'){window.location.href='" +
+                            target +
+                            "';}}catch(e){}})();";
+                        getBridge().getWebView().evaluateJavascript(js, null);
+                    }
+                } catch (Exception ignored) {}
+            },
+            600
+        );
     }
 
     @Override
     public void onResume() {
         super.onResume();
-        // Nach Rückkehr: falls Keepalive, native Link erneut anstupsen
         ensureFgAlive(true);
     }
 
     @Override
     public void onPause() {
-        // Wichtig: NICHT armen — Capgo könnte noch halten / Handoff läuft
         ensureFgAlive(false);
         super.onPause();
     }
@@ -41,9 +96,6 @@ public class MainActivity extends BridgeActivity {
         super.onStop();
     }
 
-    /**
-     * @param armNative true = GATT verbinden (nur wenn Activity wieder sichtbar)
-     */
     private void ensureFgAlive(boolean armNative) {
         if (!WhoopBleForegroundService.isKeepaliveActive(this)) {
             return;

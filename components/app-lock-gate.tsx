@@ -14,7 +14,7 @@ import {
 } from '@/lib/app-lock'
 
 /** Nach so viel Zeit im Hintergrund wird beim Zurückkehren erneut gesperrt. */
-const SPERRE_NACH_MS = 15000
+const SPERRE_NACH_MS = 180_000 // 3 Minuten — kurze Task-Wechsel sperren nicht sofort
 
 export function AppLockGate({ children }: { children: ReactNode }) {
   const pathname = usePathname()
@@ -95,9 +95,17 @@ export function AppLockGate({ children }: { children: ReactNode }) {
     }
   }, [pin])
 
-  // Biometrie beim Anzeigen der Sperre einmal automatisch anbieten (Tap startet sie sicher).
+  // Biometrie beim Anzeigen der Sperre einmal automatisch anbieten.
   const hatBiometrie = mounted && appLockHatBiometrie()
   const hatPin = mounted && appLockHatPin()
+
+  useEffect(() => {
+    if (!mounted || !aktiv || !gesperrt || pinModus || !hatBiometrie) return
+    const t = window.setTimeout(() => {
+      void biometrieEntsperren()
+    }, 350)
+    return () => window.clearTimeout(t)
+  }, [mounted, aktiv, gesperrt, pinModus, hatBiometrie, biometrieEntsperren])
 
   const overlay =
     mounted && aktiv && gesperrt && !istOeffentlicheRoute(pathname)

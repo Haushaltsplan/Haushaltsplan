@@ -111,6 +111,33 @@ Für **nur Omnia**:
 | `npm run cap:open` | Android Studio öffnen |
 | `npm run omnia:android` | Sync + Studio |
 
+## App-Polish (Native Chrome + Web)
+
+| Thema | APK nötig? | Hinweis |
+|-------|------------|---------|
+| StatusBar, Splash, Keyboard, Haptics, Keep-Awake | **Ja** (einmal) | Plugins in Capacitor 8 |
+| Edge-to-edge / CAMERA / Notification → `/fitnessdaten` | **Ja** | Manifest + MainActivity |
+| Scroll, Whoop-Nav, Charts, Confirms, Offline | **Nein** | Deploy + in App **Aktualisieren** |
+| Android-Zurück | **Nein** | `@capacitor/app` schon in APK |
+
+### Anzeige-Regeln (No-Clip)
+
+- Nur `#app-main` scrollt auf Mobile (Whoop ohne nested max-h).
+- Inhalt endet über Bottom-Nav + `safe-area-inset-bottom`.
+- Toasts über der Bottom-Nav.
+- Modals: Safe-Area, Buttons erreichbar.
+- Tabellen: `.app-table-scroll` mit Hint bis letzte Spalte.
+
+### Pixel-Kurzcheck
+
+1. Splash → Shell ohne Browser-Ränder  
+2. Whoop: Pill-Tabs oben, eine App-Bottom-Nav, Scroll OK  
+3. Recents → Notification bleibt → Tap öffnet Whoop  
+4. Zurück: Modal → History → Root (doppelt = Beenden)  
+5. Tastatur: Feld + Speichern sichtbar  
+6. Kalender: Kategorie tippen + Tag / Long-press neuer Eintrag  
+7. Offline-Banner bei Airplane-Mode  
+
 ## Troubleshooting
 
 | Problem | Lösung |
@@ -119,6 +146,7 @@ Für **nur Omnia**:
 | WHOOP nicht gefunden | Band am Handgelenk, Bluetooth an, 10 s warten, erneut „Verbinden“ |
 | BLE bricht ab | Akku uneingeschränkt, Foreground-Notification nicht wegwischen |
 | Cloud-Sync 401 | In der **App** (nicht Browser) WHOOP Cloud neu verbinden |
+| Inhalt abgeschnitten | App aktualisieren; ggf. neue APK mit edge-to-edge/plugins |
 
 ## Nächste Schritte (optional)
 

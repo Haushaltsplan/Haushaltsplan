@@ -10,6 +10,10 @@ export function ThemeToaster() {
   return (
     <Toaster
       position="bottom-center"
+      containerStyle={{
+        bottom: 'max(5.5rem, calc(env(safe-area-inset-bottom, 0px) + 4.75rem))',
+        zIndex: 80,
+      }}
       toastOptions={{
         style: isLight
           ? { background: '#ffffff', color: '#1e293b', border: '1px solid #e2e8f0' }

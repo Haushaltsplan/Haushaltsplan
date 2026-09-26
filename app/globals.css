@@ -66,6 +66,8 @@ html {
   overflow-x: clip;
   height: 100%;
   -webkit-text-size-adjust: 100%;
+  --omnia-keyboard-height: 0px;
+  touch-action: manipulation;
 }
 
 body {
@@ -85,12 +87,70 @@ body {
   font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
+  overscroll-behavior: none;
+  -webkit-tap-highlight-color: transparent;
 }
 
 /* Ein Scroll-Container: #app-main in layout.tsx */
 #app-main {
   -webkit-overflow-scrolling: touch;
   overscroll-behavior: contain;
+  padding-bottom: max(
+    5.25rem,
+    calc(env(safe-area-inset-bottom, 0px) + 4.5rem + var(--omnia-keyboard-height, 0px))
+  );
+}
+
+@media (min-width: 768px) {
+  #app-main {
+    padding-bottom: max(1.25rem, env(safe-area-inset-bottom, 0px));
+  }
+}
+
+html.omnia-keyboard-open #app-main {
+  scroll-padding-bottom: calc(var(--omnia-keyboard-height, 0px) + 1rem);
+}
+
+/** Mindesthöhe für Touch-Targets */
+.app-touch-target {
+  min-height: 44px;
+  min-width: 44px;
+}
+
+.app-press {
+  transition: transform 0.12s ease, opacity 0.12s ease;
+}
+.app-press:active {
+  transform: scale(0.98);
+  opacity: 0.92;
+}
+
+/** Horizontale Tabellen: Scroll-Hinweis rechts */
+.app-table-scroll {
+  position: relative;
+  max-width: 100%;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  -webkit-overflow-scrolling: touch;
+}
+.app-table-scroll::after {
+  content: '';
+  pointer-events: none;
+  position: sticky;
+  right: 0;
+  top: 0;
+  display: block;
+  float: right;
+  width: 1.25rem;
+  height: 100%;
+  margin-left: -1.25rem;
+  background: linear-gradient(to left, color-mix(in srgb, var(--app-bg) 85%, transparent), transparent);
+}
+
+button,
+a,
+[role='button'] {
+  touch-action: manipulation;
 }
 
 /** Horizontales Scrollen in Tabellen, Tabs, Karussells */

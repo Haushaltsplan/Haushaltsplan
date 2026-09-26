@@ -356,7 +356,14 @@ export function VermoegenSection({
 
   async function entfernen(p: VermoegenAnzeigePosten) {
     if (p.quelle !== 'manuell') return
-    if (!window.confirm(`Posten wirklich löschen?\n\n${p.titel}`)) return
+    const { appConfirm } = await import('@/components/app-confirm')
+    const ok = await appConfirm({
+      title: 'Posten löschen?',
+      message: p.titel,
+      confirmLabel: 'Löschen',
+      danger: true,
+    })
+    if (!ok) return
     const { error } = await loescheVermoegenPosten(p.id)
     if (error) {
       toast.error('Löschen fehlgeschlagen.')

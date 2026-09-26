@@ -24,11 +24,6 @@ function ladeEnvLocal(): Record<string, string> {
 
 const envLocal = ladeEnvLocal()
 
-/**
- * Omnia Native — lädt die gehostete Next.js-App.
- * Lokal: OMNIA_CAPACITOR_SERVER_URL=http://192.168.x.x:3000
- * Produktion: deine öffentliche HTTPS-URL (Vercel o. ä.)
- */
 const serverUrl = (
   process.env.OMNIA_CAPACITOR_SERVER_URL ||
   envLocal.OMNIA_CAPACITOR_SERVER_URL ||
@@ -41,16 +36,31 @@ const config: CapacitorConfig = {
   webDir: 'capacitor-www',
   android: {
     allowMixedContent: Boolean(serverUrl?.startsWith('http://')),
-    /** WHOOP-OAuth: „; wv)“ vermeiden, Capacitor-Bridge bleibt erhalten (nicht overrideUserAgent). */
     appendUserAgent: ' OmniaCapacitor/1.0',
   },
-  plugins: {},
+  plugins: {
+    SplashScreen: {
+      launchAutoHide: false,
+      backgroundColor: '#08090d',
+      showSpinner: false,
+      androidSplashResourceName: 'splash',
+      splashFullScreen: true,
+      splashImmersive: true,
+    },
+    StatusBar: {
+      style: 'DARK',
+      backgroundColor: '#08090d',
+      overlaysWebView: true,
+    },
+    Keyboard: {
+      resizeOnFullScreen: true,
+    },
+  },
   ...(serverUrl
     ? {
         server: {
           url: serverUrl,
           cleartext: serverUrl.startsWith('http://'),
-          /** WHOOP-OAuth in der WebView (Fallback, wenn Browser-Plugin fehlt). */
           allowNavigation: [
             'api.prod.whoop.com',
             '*.whoop.com',

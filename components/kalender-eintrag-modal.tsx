@@ -235,7 +235,12 @@ export function KalenderEintragModal(props: Props) {
                 className="mr-auto rounded-lg border border-rose-700/60 bg-rose-950/40 px-3 py-2 text-xs font-bold text-rose-200 transition hover:bg-rose-900/50"
                 onClick={async () => {
                   if (props.modus.art !== 'bearbeiten') return
-                  const ok = window.confirm('Diesen Eintrag wirklich löschen?')
+                  const { appConfirm } = await import('@/components/app-confirm')
+                  const ok = await appConfirm({
+                    title: 'Eintrag löschen?',
+                    confirmLabel: 'Löschen',
+                    danger: true,
+                  })
                   if (ok) await props.onLoeschen(props.modus.eintrag.id)
                 }}
               >

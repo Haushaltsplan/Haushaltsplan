@@ -11,17 +11,21 @@ import {
   mergePersistedWithKnown,
 } from '@/lib/nav-model'
 
-/** Normales Wischen: etwas niedriger = schneller „greift“. */
-const SWIPE_MIN_DX = 48
-/** Kurzer Flick: weniger Weg nötig, wenn Bewegung schnell genug. */
-const FLICK_MIN_DX = 32
-const FLICK_MAX_MS = 340
-/** Mindestgeschwindigkeit in px/ms für Flick-Erkennung. */
-const FLICK_MIN_VX = 0.2
+/** Nur von Screen-Rand starten (System-Back / Listen nicht stören). */
+const EDGE_ZONE_PX = 28
+/** Höherer Threshold gegen versehentliche Tab-Wechsel. */
+const SWIPE_MIN_DX = 72
+const FLICK_MIN_DX = 56
+const FLICK_MAX_MS = 280
+const FLICK_MIN_VX = 0.35
 
 function swipeTargetIgnored(el: EventTarget | null): boolean {
   if (!(el instanceof Element)) return false
-  return Boolean(el.closest('input, textarea, select, [role="slider"], [data-no-swipe-nav]'))
+  return Boolean(
+    el.closest(
+      'input, textarea, select, [role="slider"], [data-no-swipe-nav], .app-table-scroll, .app-h-scroll, canvas, svg',
+    ),
+  )
 }
 
 function startsInsideHorizontalScroller(el: Element | null): boolean {
@@ -91,6 +95,7 @@ export function MobileSwipePageNav({ children }: { children: ReactNode }) {
     x: number
     y: number
     t0: number
+    fromEdge: boolean
   } | null>(null)
 
   const onPointerDown = useCallback(
@@ -101,11 +106,16 @@ export function MobileSwipePageNav({ children }: { children: ReactNode }) {
       const el = e.target instanceof Element ? e.target : null
       if (startsInsideHorizontalScroller(el)) return
 
+      const w = window.innerWidth
+      const fromEdge = e.clientX <= EDGE_ZONE_PX || e.clientX >= w - EDGE_ZONE_PX
+      if (!fromEdge) return
+
       gestureRef.current = {
         pointerId: e.pointerId,
         x: e.clientX,
         y: e.clientY,
         t0: typeof performance !== 'undefined' ? performance.now() : Date.now(),
+        fromEdge: true,
       }
     },
     [mobileNav],
@@ -115,7 +125,7 @@ export function MobileSwipePageNav({ children }: { children: ReactNode }) {
     (e: React.PointerEvent) => {
       const g = gestureRef.current
       gestureRef.current = null
-      if (!g || g.pointerId !== e.pointerId || !mobileNav) return
+      if (!g || g.pointerId !== e.pointerId || !mobileNav || !g.fromEdge) return
 
       const dx = e.clientX - g.x
       const dy = e.clientY - g.y
@@ -123,15 +133,15 @@ export function MobileSwipePageNav({ children }: { children: ReactNode }) {
       const ady = Math.abs(dy)
 
       if (adx < 1 && ady < 1) return
-
-      if (ady > adx * 1.06) return
+      // Deutlich horizontal
+      if (ady > adx * 0.75) return
 
       const t1 = typeof performance !== 'undefined' ? performance.now() : Date.now()
       const dt = Math.max(8, t1 - g.t0)
       const vx = adx / dt
 
-      const flick = dt <= FLICK_MAX_MS && vx >= FLICK_MIN_VX && adx >= FLICK_MIN_DX && adx >= ady * 0.92
-      const pull = adx >= SWIPE_MIN_DX && adx > ady * 1.02
+      const flick = dt <= FLICK_MAX_MS && vx >= FLICK_MIN_VX && adx >= FLICK_MIN_DX
+      const pull = adx >= SWIPE_MIN_DX && adx > ady * 1.15
 
       if (!flick && !pull) return
 
@@ -148,7 +158,7 @@ export function MobileSwipePageNav({ children }: { children: ReactNode }) {
 
   return (
     <div
-      className="min-h-full min-w-0"
+      className="min-h-full min-w-0 animate-in fade-in duration-300 motion-reduce:animate-none"
       onPointerDown={onPointerDown}
       onPointerUp={endGesture}
       onPointerCancel={endGesture}

@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { usePathname, useRouter } from 'next/navigation'
+import { usePathname } from 'next/navigation'
 import type { ReactNode } from 'react'
 
 export const PA_ACCENT = 'rgb(45, 212, 191)'
@@ -177,36 +177,34 @@ function paSubNavAktiv(pathname: string, href: string) {
 
 export function PaSubNav() {
   const pathname = usePathname()
-  const router = useRouter()
   const aktivHref =
     SUB_NAV.find((item) => paSubNavAktiv(pathname, item.href))?.href ?? '/portfolioanalyse/dashboard'
 
   return (
     <>
       <div className="sm:hidden">
-        <label htmlFor="pa-subnav-select" className="sr-only">
-          Portfolio-Bereich
-        </label>
-        <div className="relative">
-          <select
-            id="pa-subnav-select"
-            value={aktivHref}
-            onChange={(e) => router.push(e.target.value)}
-            className="w-full appearance-none rounded-2xl border border-[var(--app-border-strong)] bg-[var(--app-surface)] py-3.5 pl-4 pr-10 text-sm font-medium text-[var(--app-text)] shadow-sm outline-none focus-visible:ring-2 focus-visible:ring-teal-500/40"
-          >
-            {SUB_NAV.map((item) => (
-              <option key={item.href} value={item.href}>
+        <nav
+          className="app-h-scroll -mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1"
+          aria-label="Portfolio-Bereich"
+          data-no-swipe-nav
+        >
+          {SUB_NAV.map((item) => {
+            const aktiv = paSubNavAktiv(pathname, item.href)
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                className={`app-touch-target app-press shrink-0 rounded-full px-3.5 text-[12px] font-semibold whitespace-nowrap transition ${
+                  aktiv || item.href === aktivHref
+                    ? 'bg-teal-500/20 text-teal-300 ring-1 ring-teal-400/40'
+                    : 'bg-[var(--app-surface)] text-[var(--app-text-muted)] ring-1 ring-[var(--app-border)]'
+                }`}
+              >
                 {item.label}
-              </option>
-            ))}
-          </select>
-          <span
-            className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[var(--app-text-muted)]"
-            aria-hidden
-          >
-            ▾
-          </span>
-        </div>
+              </Link>
+            )
+          })}
+        </nav>
       </div>
 
       <nav

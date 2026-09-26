@@ -22,6 +22,7 @@ import {
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { NavLinkList } from '@/components/nav-link-list'
+import { OmniaNativeVersionLabel } from '@/components/omnia-native-version'
 import { ThemeToggle } from '@/components/theme-toggle'
 import { useOmniaRolle } from '@/components/zugriff-gate'
 import { lockAppScroll } from '@/lib/app-scroll-lock'
@@ -150,6 +151,14 @@ export function SiteMobileChrome() {
 
   useEffect(() => {
     if (!drawerOpen) return
+    document.body.classList.add('omnia-drawer-open')
+    return () => {
+      document.body.classList.remove('omnia-drawer-open')
+    }
+  }, [drawerOpen])
+
+  useEffect(() => {
+    if (!drawerOpen) return
     return lockAppScroll()
   }, [drawerOpen])
 
@@ -251,8 +260,9 @@ export function SiteMobileChrome() {
               </Link>
               <button
                 type="button"
+                data-omnia-drawer-close
                 onClick={closeDrawer}
-                className="flex h-10 w-10 items-center justify-center rounded-xl text-[var(--app-text-muted)] hover:bg-[var(--app-surface-hover)] hover:text-[var(--app-text)]"
+                className="app-touch-target flex h-11 w-11 items-center justify-center rounded-xl text-[var(--app-text-muted)] hover:bg-[var(--app-surface-hover)] hover:text-[var(--app-text)]"
                 aria-label="Menü schließen"
               >
                 ✕
@@ -293,10 +303,20 @@ export function SiteMobileChrome() {
                 <button
                   type="button"
                   onClick={() => {
-                    closeDrawer()
-                    void supabase.auth.signOut()
+                    void (async () => {
+                      const { appConfirm } = await import('@/components/app-confirm')
+                      const ok = await appConfirm({
+                        title: 'Abmelden?',
+                        message: 'Du musst dich danach erneut anmelden.',
+                        confirmLabel: 'Abmelden',
+                        danger: true,
+                      })
+                      if (!ok) return
+                      closeDrawer()
+                      void supabase.auth.signOut()
+                    })()
                   }}
-                  className="block text-[11px] text-[var(--app-text-muted)] transition hover:text-[var(--app-text)]"
+                  className="app-touch-target app-press flex w-full items-center rounded-xl px-3 text-left text-sm font-medium text-[var(--app-text-muted)] transition hover:bg-[var(--app-surface-hover)] hover:text-[var(--app-text)]"
                 >
                   Abmelden
                 </button>
@@ -304,11 +324,11 @@ export function SiteMobileChrome() {
               <Link
                 href="/datenschutz"
                 onClick={closeDrawer}
-                className="block text-[11px] text-[var(--app-text-muted)] transition hover:text-[var(--app-text)]"
+                className="app-touch-target flex items-center rounded-xl px-3 text-sm text-[var(--app-text-muted)] transition hover:text-[var(--app-text)]"
               >
                 Datenschutz
               </Link>
-              <p className="font-mono text-[10px] text-[var(--app-text-muted)]">v1.1.0</p>
+              <OmniaNativeVersionLabel />
             </div>
           </aside>
         </div>

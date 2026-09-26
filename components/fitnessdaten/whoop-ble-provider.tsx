@@ -271,6 +271,19 @@ export function WhoopBleProvider({ children }: Props) {
 
   useEffect(() => {
     if (!istOmniaNativeApp()) return
+    const live = phase === 'live' || phase === 'waiting_hr'
+    void import('@/lib/fitnessdaten/omnia-native-ux').then(({ omniaKeepAwake }) => {
+      void omniaKeepAwake(live)
+    })
+    return () => {
+      void import('@/lib/fitnessdaten/omnia-native-ux').then(({ omniaKeepAwake }) => {
+        void omniaKeepAwake(false)
+      })
+    }
+  }, [phase])
+
+  useEffect(() => {
+    if (!istOmniaNativeApp()) return
     let remove: (() => void) | undefined
     void (async () => {
       try {

@@ -1,17 +1,18 @@
 /**
  * Einheitliche Modal-/Overlay-Schale über Seiten hinweg (Lager, Finanzen, KI-Coach).
  * Mobil: Panel von unten; ab `sm`: vertikal zentriert.
- * `z-[70]` liegt über dem KI-Floating-Button (`z-[60]`) und der mobilen Navigation (`z-40`).
+ * Safe-Area: nichts unter Gesture-Bar / Notch abschneiden.
  */
 export const appModalBackdropClassName =
-  'fixed inset-0 z-[70] flex items-end justify-center bg-black/55 p-3 backdrop-blur-sm sm:items-center sm:p-4'
+  'fixed inset-0 z-[70] flex items-end justify-center bg-black/55 p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] backdrop-blur-sm sm:items-center sm:p-4'
 
 /** Kompakte Dialoge (Formulare, Bestätigungen). */
-export const appModalPanelClassName = 'app-surface-card w-full max-w-md'
+export const appModalPanelClassName =
+  'app-surface-card w-full max-w-md max-h-[min(92dvh,calc(100dvh-env(safe-area-inset-top)-env(safe-area-inset-bottom)-2rem))] overflow-y-auto'
 
 /** Breiteres, scrollbares Panel (z. B. manuelle Mahlzeit). */
 export const appModalPanelWideScrollClassName =
-  'app-surface-card app-scroll-panel max-h-[min(92vh,40rem)] w-full max-w-lg'
+  'app-surface-card app-scroll-panel max-h-[min(92dvh,40rem)] w-full max-w-lg'
 
 /** Unsichtbare Scrollbar — Touch-/Trackpad-Scroll bleibt. */
 export const appModalScrollHiddenClassName =
@@ -19,11 +20,11 @@ export const appModalScrollHiddenClassName =
 
 /** WHOOP/Omnia — edler Overlay-Dialog. */
 export const whoopModalBackdropClassName =
-  'fixed inset-0 z-[100] flex items-end justify-center sm:items-center sm:p-6'
+  'fixed inset-0 z-[100] flex items-end justify-center pb-[max(0px,env(safe-area-inset-bottom))] sm:items-center sm:p-6'
 
 export const whoopModalPanelClassName =
-  'relative flex max-h-[min(88dvh,32rem)] w-full max-w-md flex-col overflow-hidden rounded-t-[1.75rem] border border-white/[0.08] bg-gradient-to-b from-[#1a1c1f] via-[#121416] to-[#0a0b0d] shadow-[0_-12px_48px_rgba(0,0,0,0.55)] ring-1 ring-white/[0.05] sm:max-h-[min(85vh,28rem)] sm:rounded-[1.75rem] sm:shadow-2xl'
+  'relative flex max-h-[min(88dvh,calc(100dvh-env(safe-area-inset-top)-2rem))] w-full max-w-md flex-col overflow-hidden rounded-t-[1.75rem] border border-white/[0.08] bg-gradient-to-b from-[#1a1c1f] via-[#121416] to-[#0a0b0d] shadow-[0_-12px_48px_rgba(0,0,0,0.55)] ring-1 ring-white/[0.05] sm:max-h-[min(85vh,28rem)] sm:rounded-[1.75rem] sm:shadow-2xl'
 
 /** KI-Coach: fester Rahmen, Inhalt scrollt innen (KI-erkennbar: Violett-Akzent). */
 export const appModalPanelCoachClassName =
-  'flex max-h-[min(92vh,44rem)] w-full max-w-lg flex-col overflow-hidden rounded-2xl border-2 border-violet-500/45 bg-gradient-to-b from-violet-950/45 to-[var(--app-surface)] shadow-2xl shadow-violet-950/25 ring-1 ring-violet-400/15'
+  'flex max-h-[min(92dvh,44rem)] w-full max-w-lg flex-col overflow-hidden rounded-2xl border-2 border-violet-500/45 bg-gradient-to-b from-violet-950/45 to-[var(--app-surface)] shadow-2xl shadow-violet-950/25 ring-1 ring-violet-400/15'

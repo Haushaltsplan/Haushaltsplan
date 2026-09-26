@@ -1,7 +1,13 @@
 'use client'
 
 import { OmniaNativeBoot } from '@/components/omnia-native-boot'
+import { OmniaNativeChrome } from '@/components/omnia-native-chrome'
 import { OmniaAuthDeeplink } from '@/components/omnia-auth-deeplink'
+import { OmniaAndroidBack } from '@/components/omnia-android-back'
+import { OmniaOfflineBanner } from '@/components/omnia-offline-banner'
+import { OmniaErrorBoundary } from '@/components/omnia-error-boundary'
+import { OmniaExternalLinks } from '@/components/omnia-external-links'
+import { AppConfirmProvider } from '@/components/app-confirm'
 import { WhoopBleProvider } from '@/components/fitnessdaten/whoop-ble-provider'
 import { WhoopCloudAutoSyncRunner } from '@/components/fitnessdaten/whoop-cloud-auto-sync'
 import { WhoopBleBackgroundSyncRegister } from '@/components/fitnessdaten/whoop-ble-background-sync'
@@ -41,17 +47,25 @@ export function Providers({ children }: { children: ReactNode }) {
   return (
     <>
       <OmniaNativeBoot />
+      <OmniaNativeChrome />
       <OmniaAuthDeeplink />
+      <OmniaAndroidBack />
+      <OmniaExternalLinks />
       <WhoopBleProvider>
+      <OmniaErrorBoundary>
+      <AppConfirmProvider>
       <AuthGate>
         <AppLockGate>
           <ZugriffGate>
           <ClientStateBootstrap />
           <ClientStateThemeSync />
+          <OmniaOfflineBanner />
           {children}
           </ZugriffGate>
         </AppLockGate>
       </AuthGate>
+      </AppConfirmProvider>
+      </OmniaErrorBoundary>
       <PwaServiceWorkerRegister />
       <WhoopBleBackgroundSyncRegister />
       <WhoopCloudAutoSyncRunner />
