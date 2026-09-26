@@ -14,8 +14,7 @@ import android.util.Log;
 import androidx.core.app.NotificationCompat;
 
 /**
- * Läuft in Prozess :whoopble — überlebt Schließen der UI.
- * Hält nativen WHOOP-GATT + Foreground-Notification.
+ * Eigenständiger Prozess :whoopble — besitzt WHOOP-BLE dauerhaft (wie WHOOP-App).
  */
 public class WhoopBleForegroundService extends Service {
 
@@ -27,6 +26,7 @@ public class WhoopBleForegroundService extends Service {
     public static final String ACTION_APP_FOREGROUND = "de.omnia.haushalt.APP_FOREGROUND";
     public static final String ACTION_APP_BACKGROUND = "de.omnia.haushalt.APP_BACKGROUND";
     public static final String ACTION_KEEP_PROCESS = "de.omnia.haushalt.KEEP_PROCESS";
+    public static final String ACTION_UPDATE_NOTIFY = "de.omnia.haushalt.UPDATE_NOTIFY";
     public static final String PREFS = "omnia_ble_keepalive";
     public static final String PREF_DEVICE_ID = "whoop_device_id";
     public static final String PREF_KEEPALIVE = "keepalive_active";
@@ -80,28 +80,20 @@ public class WhoopBleForegroundService extends Service {
         if (action == null && intent != null) {
             action = intent.getAction();
         }
-        Log.i(TAG, "action=" + action + " pid=" + android.os.Process.myPid());
+        Log.i(TAG, "action=" + action);
 
-        if (ACTION_RELEASE_NATIVE.equals(action) || ACTION_APP_FOREGROUND.equals(action)) {
+        // Dauerhaft nativ: RELEASE nur bei explizitem User-Trennen (stop), nicht bei UI-Resume
+        if (ACTION_RELEASE_NATIVE.equals(action)) {
             linkHolder().release();
             return START_STICKY;
         }
 
-        // Hintergrund / Schließen / Default: nativen GATT halten
-        if (
-            ACTION_ARM_NATIVE.equals(action) ||
-            ACTION_APP_BACKGROUND.equals(action) ||
-            ACTION_KEEP_PROCESS.equals(action) ||
-            action == null
-        ) {
-            armIfPossible();
+        if (ACTION_UPDATE_NOTIFY.equals(action)) {
             return START_STICKY;
         }
 
-        if (isKeepaliveActive(this)) {
-            armIfPossible();
-        }
-
+        // Alles andere: armen und halten — auch FOREGROUND/BACKGROUND
+        armIfPossible();
         return START_STICKY;
     }
 
@@ -110,10 +102,6 @@ public class WhoopBleForegroundService extends Service {
             return;
         }
         String deviceId = loadDeviceId(this);
-        if (deviceId == null || deviceId.isEmpty()) {
-            Log.w(TAG, "kein deviceId — kann nicht armen");
-            return;
-        }
         linkHolder().arm(this, deviceId);
     }
 
@@ -124,7 +112,10 @@ public class WhoopBleForegroundService extends Service {
             title = getString(R.string.whoop_fg_title);
         }
         if (body == null || body.isEmpty()) {
-            body = getString(R.string.whoop_fg_body);
+            int bpm = linkHolder().getLastBpm();
+            body = bpm > 0
+                ? ("WHOOP · " + bpm + " bpm · verbunden")
+                : getString(R.string.whoop_fg_body);
         }
 
         ensureChannel();
@@ -151,11 +142,11 @@ public class WhoopBleForegroundService extends Service {
             .build();
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            startForeground(
-                NOTIFICATION_ID,
-                notification,
-                ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE
-            );
+            int type = ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE;
+            if (Build.VERSION.SDK_INT >= 34) {
+                type |= ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC;
+            }
+            startForeground(NOTIFICATION_ID, notification, type);
         } else {
             startForeground(NOTIFICATION_ID, notification);
         }
@@ -201,15 +192,12 @@ public class WhoopBleForegroundService extends Service {
 
     @Override
     public void onTaskRemoved(Intent rootIntent) {
-        // UI-Task weg — wir sind ggf. anderer Prozess, trotzdem nacharmen
-        Log.i(TAG, "onTaskRemoved");
         armIfPossible();
         super.onTaskRemoved(rootIntent);
     }
 
     @Override
     public void onDestroy() {
-        Log.w(TAG, "onDestroy keepalive=" + isKeepaliveActive(this));
         if (isKeepaliveActive(this)) {
             Intent restart = new Intent(getApplicationContext(), WhoopBleForegroundService.class);
             restart.putExtra("action", ACTION_ARM_NATIVE);

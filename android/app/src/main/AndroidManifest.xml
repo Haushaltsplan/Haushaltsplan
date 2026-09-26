@@ -41,13 +41,12 @@
 
         </activity>
 
-        <!-- Eigener Prozess: überlebt App-Schließen / Recents-Wischen -->
         <service
             android:name=".WhoopBleForegroundService"
             android:exported="false"
             android:stopWithTask="false"
             android:process=":whoopble"
-            android:foregroundServiceType="connectedDevice" />
+            android:foregroundServiceType="connectedDevice|dataSync" />
 
         <receiver
             android:name=".WhoopBleBootReceiver"

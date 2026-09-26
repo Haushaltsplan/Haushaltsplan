@@ -7,6 +7,10 @@ export type OmniaBleKeepalivePlugin = {
   releaseNativeLink(): Promise<void>
   openBatterySettings(): Promise<void>
   isBatteryOptimized(): Promise<{ ignored: boolean }>
+  addListener(
+    eventName: 'hrUpdate' | 'connectionState',
+    listener: (data: { bpm?: number; connected?: boolean; label?: string }) => void,
+  ): Promise<{ remove: () => Promise<void> }>
 }
 
 const OmniaBleKeepalive = registerPlugin<OmniaBleKeepalivePlugin>('OmniaBleKeepalive', {
@@ -18,6 +22,7 @@ const OmniaBleKeepalive = registerPlugin<OmniaBleKeepalivePlugin>('OmniaBleKeepa
       releaseNativeLink: async () => {},
       openBatterySettings: async () => {},
       isBatteryOptimized: async () => ({ ignored: true }),
+      addListener: async () => ({ remove: async () => {} }),
     }),
 })
 
@@ -43,4 +48,8 @@ export async function gebeNativeWhoopLinkFrei(): Promise<void> {
 
 export async function oeffneAkkuEinstellungen(): Promise<void> {
   await OmniaBleKeepalive.openBatterySettings()
+}
+
+export function omniaBleKeepalivePlugin() {
+  return OmniaBleKeepalive
 }

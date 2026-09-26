@@ -1,13 +1,17 @@
 package de.omnia.haushalt;
 
 import android.Manifest;
+import android.content.BroadcastReceiver;
+import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.content.pm.PackageManager;
 import android.net.Uri;
 import android.os.Build;
 import android.os.PowerManager;
 import android.provider.Settings;
 import androidx.core.app.ActivityCompat;
+import androidx.core.content.ContextCompat;
 import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
@@ -28,6 +32,52 @@ import com.getcapacitor.annotation.PermissionCallback;
 public class OmniaBleKeepalivePlugin extends Plugin {
 
     private PluginCall pendingStartCall;
+    private BroadcastReceiver hrReceiver;
+
+    @Override
+    public void load() {
+        super.load();
+        hrReceiver =
+            new BroadcastReceiver() {
+                @Override
+                public void onReceive(Context context, Intent intent) {
+                    if (intent == null) {
+                        return;
+                    }
+                    String action = intent.getAction();
+                    JSObject data = new JSObject();
+                    if (WhoopBleLinkHolder.ACTION_HR.equals(action)) {
+                        data.put("bpm", intent.getIntExtra("bpm", 0));
+                        data.put("connected", true);
+                        notifyListeners("hrUpdate", data);
+                    } else if (WhoopBleLinkHolder.ACTION_STATE.equals(action)) {
+                        data.put("connected", intent.getBooleanExtra("connected", false));
+                        data.put("label", intent.getStringExtra("label"));
+                        notifyListeners("connectionState", data);
+                    }
+                }
+            };
+        IntentFilter filter = new IntentFilter();
+        filter.addAction(WhoopBleLinkHolder.ACTION_HR);
+        filter.addAction(WhoopBleLinkHolder.ACTION_STATE);
+        ContextCompat.registerReceiver(
+            getContext(),
+            hrReceiver,
+            filter,
+            ContextCompat.RECEIVER_NOT_EXPORTED
+        );
+    }
+
+    @Override
+    protected void handleOnDestroy() {
+        if (hrReceiver != null) {
+            try {
+                getContext().unregisterReceiver(hrReceiver);
+            } catch (Exception ignored) {}
+            hrReceiver = null;
+        }
+        super.handleOnDestroy();
+    }
 
     @PluginMethod
     public void start(PluginCall call) {
@@ -36,7 +86,8 @@ public class OmniaBleKeepalivePlugin extends Plugin {
                 ActivityCompat.checkSelfPermission(
                     getContext(),
                     Manifest.permission.POST_NOTIFICATIONS
-                ) != PackageManager.PERMISSION_GRANTED
+                ) !=
+                PackageManager.PERMISSION_GRANTED
             ) {
                 pendingStartCall = call;
                 requestPermissionForAlias("notifications", call, "notificationStartCallback");
@@ -55,7 +106,10 @@ public class OmniaBleKeepalivePlugin extends Plugin {
         }
         if (
             Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
-            ActivityCompat.checkSelfPermission(getContext(), Manifest.permission.POST_NOTIFICATIONS) !=
+            ActivityCompat.checkSelfPermission(
+                getContext(),
+                Manifest.permission.POST_NOTIFICATIONS
+            ) !=
             PackageManager.PERMISSION_GRANTED
         ) {
             next.reject("Benachrichtigungs-Berechtigung nötig für Hintergrund-BLE.");
@@ -66,7 +120,7 @@ public class OmniaBleKeepalivePlugin extends Plugin {
 
     private void launchService(PluginCall call) {
         String title = call.getString("title", "Omnia");
-        String body = call.getString("body", "WHOOP verbunden — Live-Daten aktiv");
+        String body = call.getString("body", "WHOOP bleibt verbunden");
         String deviceId = call.getString("deviceId");
         if (deviceId != null && !deviceId.isEmpty()) {
             WhoopBleForegroundService.saveDeviceId(getContext(), deviceId);
@@ -74,7 +128,7 @@ public class OmniaBleKeepalivePlugin extends Plugin {
         WhoopBleForegroundService.setKeepaliveActive(getContext(), true);
 
         Intent intent = new Intent(getContext(), WhoopBleForegroundService.class);
-        intent.putExtra("action", WhoopBleForegroundService.ACTION_KEEP_PROCESS);
+        intent.putExtra("action", WhoopBleForegroundService.ACTION_ARM_NATIVE);
         intent.putExtra("title", title);
         intent.putExtra("body", body);
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -83,9 +137,7 @@ public class OmniaBleKeepalivePlugin extends Plugin {
             getContext().startService(intent);
         }
 
-        // Einmalig Akku-Optimierung abschalten (sonst killt Android den BLE-Dienst)
         tryPromptIgnoreBatteryOptimizations();
-
         call.resolve();
     }
 
@@ -95,7 +147,7 @@ public class OmniaBleKeepalivePlugin extends Plugin {
         }
         try {
             PowerManager pm =
-                (PowerManager) getContext().getSystemService(android.content.Context.POWER_SERVICE);
+                (PowerManager) getContext().getSystemService(Context.POWER_SERVICE);
             if (pm == null || pm.isIgnoringBatteryOptimizations(getContext().getPackageName())) {
                 return;
             }
@@ -109,7 +161,6 @@ public class OmniaBleKeepalivePlugin extends Plugin {
     @PluginMethod
     public void stop(PluginCall call) {
         WhoopBleForegroundService.setKeepaliveActive(getContext(), false);
-        // LinkHolder lebt im :whoopble-Prozess — nur per Intent freigeben
         sendServiceAction(WhoopBleForegroundService.ACTION_RELEASE_NATIVE);
         Intent intent = new Intent(getContext(), WhoopBleForegroundService.class);
         getContext().stopService(intent);
@@ -119,32 +170,26 @@ public class OmniaBleKeepalivePlugin extends Plugin {
     @PluginMethod
     public void armNativeLink(PluginCall call) {
         String deviceId = call.getString("deviceId");
-        if (deviceId == null || deviceId.isEmpty()) {
-            deviceId = WhoopBleForegroundService.loadDeviceId(getContext());
+        if (deviceId != null && !deviceId.isEmpty()) {
+            WhoopBleForegroundService.saveDeviceId(getContext(), deviceId);
         }
-        if (deviceId == null || deviceId.isEmpty()) {
-            call.reject("Kein WHOOP-Gerät gespeichert.");
-            return;
-        }
-        WhoopBleForegroundService.saveDeviceId(getContext(), deviceId);
         WhoopBleForegroundService.setKeepaliveActive(getContext(), true);
         sendServiceAction(WhoopBleForegroundService.ACTION_ARM_NATIVE);
         call.resolve();
     }
 
+    /** No-op: natives GATT bleibt bewusst auch bei UI-Resume. */
     @PluginMethod
     public void releaseNativeLink(PluginCall call) {
-        sendServiceAction(WhoopBleForegroundService.ACTION_APP_FOREGROUND);
         call.resolve();
     }
 
     @PluginMethod
     public void openBatterySettings(PluginCall call) {
         try {
-            // Direkt-Dialog „Akku-Optimierung ignorieren?“ für Omnia (ein Tap).
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                 PowerManager pm =
-                    (PowerManager) getContext().getSystemService(android.content.Context.POWER_SERVICE);
+                    (PowerManager) getContext().getSystemService(Context.POWER_SERVICE);
                 if (pm != null && !pm.isIgnoringBatteryOptimizations(getContext().getPackageName())) {
                     Intent request = new Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS);
                     request.setData(Uri.parse("package:" + getContext().getPackageName()));
@@ -159,14 +204,7 @@ public class OmniaBleKeepalivePlugin extends Plugin {
             getContext().startActivity(fallback);
             call.resolve();
         } catch (Exception e) {
-            try {
-                Intent fallback = new Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS);
-                fallback.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-                getContext().startActivity(fallback);
-                call.resolve();
-            } catch (Exception e2) {
-                call.reject("Akku-Einstellungen konnten nicht geöffnet werden.");
-            }
+            call.reject("Akku-Einstellungen konnten nicht geöffnet werden.");
         }
     }
 
@@ -174,7 +212,8 @@ public class OmniaBleKeepalivePlugin extends Plugin {
     public void isBatteryOptimized(PluginCall call) {
         JSObject ret = new JSObject();
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            PowerManager pm = (PowerManager) getContext().getSystemService(android.content.Context.POWER_SERVICE);
+            PowerManager pm =
+                (PowerManager) getContext().getSystemService(Context.POWER_SERVICE);
             boolean ignored =
                 pm != null && pm.isIgnoringBatteryOptimizations(getContext().getPackageName());
             ret.put("ignored", ignored);
@@ -188,7 +227,7 @@ public class OmniaBleKeepalivePlugin extends Plugin {
         Intent intent = new Intent(getContext(), WhoopBleForegroundService.class);
         intent.putExtra("action", action);
         intent.putExtra("title", "Omnia");
-        intent.putExtra("body", "WHOOP verbunden — Hintergrund aktiv");
+        intent.putExtra("body", "WHOOP bleibt verbunden");
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             getContext().startForegroundService(intent);
         } else {

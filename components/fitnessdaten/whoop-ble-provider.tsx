@@ -270,6 +270,43 @@ export function WhoopBleProvider({ children }: Props) {
   }, [])
 
   useEffect(() => {
+    if (!istOmniaNativeApp()) return
+    let remove: (() => void) | undefined
+    void (async () => {
+      try {
+        const { omniaBleKeepalivePlugin } = await import(
+          '@/lib/fitnessdaten/omnia-ble-keepalive-native'
+        )
+        const P = omniaBleKeepalivePlugin()
+        const handle = await P.addListener('hrUpdate', (data) => {
+          const bpm = data.bpm
+          if (bpm == null || bpm <= 0) return
+          setPhaseBoth('live')
+          setStatusHint('Native BLE · Band verbunden')
+          setFehler(null)
+          const prev = ladeFitnessSnapshot()
+          const live = {
+            ...(prev?.live ?? {}),
+            heartRateBpm: bpm,
+            recordedAt: new Date().toISOString(),
+          }
+          const snap = mergeLiveSnapshot(
+            { ...(prev ?? { version: 1 }), live } as FitnessSnapshot,
+            prev?.deviceInfo,
+          )
+          if (snap) publishSnapshot(snap)
+        })
+        remove = () => {
+          void handle.remove()
+        }
+      } catch {
+        /* Plugin fehlt */
+      }
+    })()
+    return () => remove?.()
+  }, [publishSnapshot, setPhaseBoth])
+
+  useEffect(() => {
     const starteHandoff = () => {
       if (!istOmniaNativeApp() || !istWhoopBleAlwaysOn()) return
       const live =
