@@ -49,7 +49,7 @@ VERWENDUNG: … (Zielgruppe/Ort klar, mind. ein konkreter Nutzen)
 🌻 Gelegentlich mit lebensmittelechtem Öl nachbehandeln.
 GROSSBUCHSTABEN nur für Überschriften. Keine Füllwörter („Zauber", „Seele", „Meisterwerk").
 
-3. WARENKORB-ZUSAMMENFASSUNG: 1–2 nüchterne Sätze, keine Emojis.
+3. WARENKORB-ZUSAMMENFASSUNG (warenkorbZusammenfassung): IMMER 1–2 nüchterne Sätze (max. ~180 Zeichen) mit Produkt, Holzart, Maßen, Finish — ohne Emojis. Pflicht für DE-Shops (manuell ins Etsy-Feld; API kann es nicht setzen).
 
 4. GENAU 13 ETSY-TAGS (je ≤20 Zeichen, keine Kommas im Tag, keine Emojis).
 - PRIMÄR DEUTSCH (Zielmarkt DACH). Long-Tail mit 2+ Wörtern, z. B. „handgedrehte schale", „obstschale eiche", „holzschale unikat".
@@ -62,11 +62,16 @@ GROSSBUCHSTABEN nur für Überschriften. Keine Füllwörter („Zauber", „Seel
 preisMinEur ≤ preisEmpfohlenEur ≤ preisMaxEur.
 - Kapazität ~50 Unikate/Jahr: wertig, aber verkaufbar (keine Ladenhüter, kein Dumping).
 - Empfohlen = marktfähige Mitte; Min = untere verkaufbare Grenze; Max = oberes realistisches Segment (kein Galerie-Extrem).
-- preisBegruendung: 2–4 Sätze, warum die Spanne und warum empfohlen verkaufbar bleibt.
+- Preislogik IMMER aus vier Faktoren (alle nennen):
+  1) Schalengröße / Maße (Durchmesser × Höhe) — größere Schalen höher, kleine kompakter günstiger;
+  2) Holzart / Materialwert;
+  3) Optik (Maserung, Form, Naturrand, Charakter);
+  4) sorgfältige Handarbeit (Drechseln, Trocknung, Finish).
+- preisBegruendung: 2–4 Sätze — MUSS die konkreten Maße/Größe ansprechen (z. B. „Ø 22 cm“) und zusätzlich Material, Optik und Arbeit; nie nur Material/Optik ohne Größe.
 
 6. TAXONOMY / PRODUKTFORM
 - produktForm: kurzer DE-Begriff (z. B. Schale, Dose, Stab).
-- taxonomyId: passende Etsy-Taxonomy-ID wenn bekannt (Schalen oft 2078); sonst beste Schätzung.
+- taxonomyId: passende Etsy-Taxonomy-ID — für dekorative Holzschalen IMMER 1003 (Decorative Bowls / Dekorative Schalen); taxonomyLabel „Dekorative Schalen“.
 - taxonomyLabel: kurze DE-Bezeichnung der Kategorie.
 
 7. MASSE: Wenn der Nutzer Maße angibt, exakt übernehmen. Fehlen Maße und sie sind auf Fotos nicht ablesbar: schreibe in 📏 MASSE exakt den Platzhalter [MASSE EINFÜGEN] — sonst echte Maße.

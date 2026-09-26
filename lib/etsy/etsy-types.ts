@@ -4,8 +4,8 @@ export const ETSY_SCOPES = ['listings_r', 'listings_w', 'shops_r'].join(' ')
 
 export const ETSY_API_BASE = 'https://openapi.etsy.com/v3'
 
-/** Fallback: Home & Living › Kitchen › Serveware › Bowls */
-export const ETSY_DEFAULT_TAXONOMY_ID = 2078
+/** Fallback: Home & Living › Home Decor › Decorative Bowls */
+export const ETSY_DEFAULT_TAXONOMY_ID = 1003
 
 export const ETSY_DEFAULT_STANDORT = 'Niederbayern'
 
@@ -14,9 +14,9 @@ export const ETSY_DEFAULT_FINISH =
 
 /** Bekannte Formen → Taxonomy-Fallback, falls die KI keine ID liefert. */
 export const ETSY_FORM_TAXONOMY: Record<string, { id: number; label: string }> = {
-  schale: { id: 2078, label: 'Schalen' },
-  schuessel: { id: 2078, label: 'Schalen' },
-  teller: { id: 2078, label: 'Teller / flache Gefäße' },
+  schale: { id: 1003, label: 'Dekorative Schalen' },
+  schuessel: { id: 1003, label: 'Dekorative Schalen' },
+  teller: { id: 1003, label: 'Dekorative Schalen' },
 }
 
 export type EtsyStoredTokens = {

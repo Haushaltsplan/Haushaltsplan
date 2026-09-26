@@ -41,6 +41,8 @@ type DraftResult = {
   title: string
   tags: string[]
   listingUrl: string | null
+  warenkorbZusammenfassung?: string
+  manuellHinweise?: string[]
 }
 
 type Schritt = 'aufnahme' | 'freigabe'
@@ -168,7 +170,9 @@ export function EtsyKiAgentClient({
       const sections = j.shopSections ?? []
       setShopSectionId((prev) => {
         if (prev) return prev
-        if (sections.length === 1) return String(sections[0].shopSectionId)
+        const schale = sections.find((s) => /schale/i.test(s.title))
+        if (schale) return String(schale.shopSectionId)
+        if (sections.length === 1) return String(sections[0]!.shopSectionId)
         return prev
       })
       const states = j.readinessStates ?? []
@@ -322,8 +326,8 @@ export function EtsyKiAgentClient({
     setPreisEmpfohlen(listing.preisEmpfohlenEur)
     setPreisMax(listing.preisMaxEur)
     setPreisBegruendung(listing.preisBegruendung)
-    setTaxonomyId(String(listing.taxonomyId))
-    setTaxonomyLabel(listing.taxonomyLabel)
+    setTaxonomyId(String(listing.taxonomyId || ETSY_DEFAULT_TAXONOMY_ID))
+    setTaxonomyLabel(listing.taxonomyLabel || 'Dekorative Schalen')
     setProduktForm(listing.produktForm)
     setFotoCheck({
       ...listing.fotoCheck,
@@ -399,9 +403,15 @@ export function EtsyKiAgentClient({
       title: editTitle.trim().slice(0, 140),
       description: editDescription.trim(),
       tags,
+      warenkorbZusammenfassung:
+        draftListing.warenkorbZusammenfassung?.trim() ||
+        `Handgedrehte ${produktForm} · ${holzart.trim() || 'Holz'} · ${masse.trim() || ''}`.slice(
+          0,
+          200,
+        ),
       preisEmpfohlenEur: Math.round(preis),
-      taxonomyId: Number(taxonomyId) || draftListing.taxonomyId,
-      taxonomyLabel,
+      taxonomyId: Number(taxonomyId) || ETSY_DEFAULT_TAXONOMY_ID,
+      taxonomyLabel: taxonomyLabel || 'Dekorative Schalen',
       produktForm,
     }
   }
@@ -435,6 +445,10 @@ export function EtsyKiAgentClient({
     const spId = Number(shippingProfileId)
     if (!spId) {
       toast.error('Versandprofil wählen.')
+      return
+    }
+    if (!shopSectionId) {
+      toast.error('Shop-Abteilung wählen (z. B. Schalen).')
       return
     }
     const rsId = Number(readinessStateId)
@@ -475,7 +489,9 @@ export function EtsyKiAgentClient({
         return
       }
       setLastDraft(j.draft)
-      toast.success(`Draft #${j.draft.listingId} · ${j.verwendeterPreisEur ?? listing.preisEmpfohlenEur} €`)
+      toast.success(
+        `Draft #${j.draft.listingId} · ${j.verwendeterPreisEur ?? listing.preisEmpfohlenEur} € · ${j.draft.tags?.length ?? 0} Tags`,
+      )
       void ladeVorlageUndHistorie()
       setSchritt('aufnahme')
       setDraftListing(null)
@@ -750,14 +766,15 @@ export function EtsyKiAgentClient({
             {shopSections.length > 0 ? (
               <label className="block text-sm sm:col-span-2">
                 <span className="mb-1 block text-xs text-[var(--app-text-muted)]">
-                  Shop-Sektion (optional)
+                  Shop-Abteilung (Pflicht · z. B. Schalen)
                 </span>
                 <select
                   value={shopSectionId}
                   onChange={(e) => setShopSectionId(e.target.value)}
                   className="w-full rounded-lg border border-[var(--app-border)] bg-[var(--app-surface)] px-3 py-2"
+                  required
                 >
-                  <option value="">— keine —</option>
+                  <option value="">— wählen —</option>
                   {shopSections.map((s) => (
                     <option key={s.shopSectionId} value={s.shopSectionId}>
                       {s.title}
@@ -765,7 +782,11 @@ export function EtsyKiAgentClient({
                   ))}
                 </select>
               </label>
-            ) : null}
+            ) : (
+              <p className="text-xs text-amber-200/90 sm:col-span-2">
+                Keine Shop-Abteilung geladen — bitte in Etsy eine Sektion „Schalen“ anlegen.
+              </p>
+            )}
           </div>
           <button
             type="button"
@@ -1028,6 +1049,22 @@ export function EtsyKiAgentClient({
             </label>
             <label className="block text-sm">
               <span className="mb-1 block text-xs text-[var(--app-text-muted)]">
+                Warenkorbzusammenfassung (DE-Pflicht · API kann das Feld nicht setzen — nach Draft
+                kopieren)
+              </span>
+              <textarea
+                value={draftListing.warenkorbZusammenfassung || ''}
+                onChange={(e) =>
+                  setDraftListing((prev) =>
+                    prev ? { ...prev, warenkorbZusammenfassung: e.target.value } : prev,
+                  )
+                }
+                rows={2}
+                className="w-full rounded-lg border border-[var(--app-border)] bg-[var(--app-surface)] px-3 py-2 text-sm"
+              />
+            </label>
+            <label className="block text-sm">
+              <span className="mb-1 block text-xs text-[var(--app-text-muted)]">
                 Tags (kommagetrennt, genau {ETSY_SEO_TAG_COUNT}) ·{' '}
                 {
                   editTags
@@ -1080,7 +1117,7 @@ export function EtsyKiAgentClient({
 
       {lastDraft && (
         <PageSection titleId="etsy-last" title="Letzter Draft">
-          <PageSectionPanel density="compact">
+          <PageSectionPanel density="compact" className="space-y-3">
             <p className="text-sm text-[var(--app-text)]">
               #{lastDraft.listingId}
               {lastDraft.listingUrl ? (
@@ -1100,6 +1137,36 @@ export function EtsyKiAgentClient({
                 ' — im Shop Manager unter Entwürfe'
               )}
             </p>
+            {lastDraft.warenkorbZusammenfassung ? (
+              <div className="rounded-xl border border-amber-500/40 bg-amber-500/10 p-3 space-y-2">
+                <p className="text-xs font-medium text-[var(--app-text)]">
+                  Warenkorbzusammenfassung — in Etsy einfügen
+                </p>
+                <p className="text-sm text-[var(--app-text)]">{lastDraft.warenkorbZusammenfassung}</p>
+                <button
+                  type="button"
+                  className="rounded-lg border border-[var(--app-border)] px-3 py-1.5 text-xs"
+                  onClick={() => {
+                    void navigator.clipboard.writeText(lastDraft.warenkorbZusammenfassung || '')
+                    toast.success('Kopiert')
+                  }}
+                >
+                  Kopieren
+                </button>
+              </div>
+            ) : null}
+            {lastDraft.manuellHinweise && lastDraft.manuellHinweise.length > 0 ? (
+              <ul className="list-disc space-y-1 pl-5 text-xs text-[var(--app-text-muted)]">
+                {lastDraft.manuellHinweise.map((h) => (
+                  <li key={h}>{h}</li>
+                ))}
+              </ul>
+            ) : null}
+            {lastDraft.tags?.length ? (
+              <p className="text-xs text-[var(--app-text-muted)]">
+                Tags ({lastDraft.tags.length}): {lastDraft.tags.join(', ')}
+              </p>
+            ) : null}
           </PageSectionPanel>
         </PageSection>
       )}

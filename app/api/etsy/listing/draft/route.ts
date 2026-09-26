@@ -1,4 +1,5 @@
 import { legeEtsyDraftAn } from '@/lib/etsy/etsy-listing-create'
+import { baueUnikatMaterials } from '@/lib/etsy/etsy-listing-attrs'
 import { speichereEtsyDraftHistorie } from '@/lib/etsy/etsy-vorlage-historie'
 import type {
   EtsyGeneratedListing,
@@ -75,8 +76,9 @@ function parseFreigabe(raw: Body['listing']): EtsyGeneratedListing | null {
     preisMaxEur: Math.round(preisMaxEur),
     preisBegruendung: typeof raw.preisBegruendung === 'string' ? raw.preisBegruendung : '',
     produktForm: typeof raw.produktForm === 'string' ? raw.produktForm : 'Schale',
-    taxonomyId: Number(raw.taxonomyId) || 2078,
-    taxonomyLabel: typeof raw.taxonomyLabel === 'string' ? raw.taxonomyLabel : 'Schalen',
+    taxonomyId: Number(raw.taxonomyId) || 1003,
+    taxonomyLabel:
+      typeof raw.taxonomyLabel === 'string' ? raw.taxonomyLabel : 'Dekorative Schalen',
     fotoCheck: raw.fotoCheck ?? {
       hatHauptbild: true,
       hatDetailMaserung: false,
@@ -156,9 +158,7 @@ export async function POST(req: Request) {
     shopSectionId: typeof body.shopSectionId === 'number' ? body.shopSectionId : undefined,
     whoMade: (body.whoMade as EtsyWhoMade | undefined) || 'i_did',
     whenMade: normalisiereEtsyWhenMade(body.whenMade),
-    materials: Array.isArray(body.materials)
-      ? body.materials.map(String)
-      : [holzart],
+    materials: baueUnikatMaterials(holzart),
   }
 
   try {

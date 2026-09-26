@@ -1,10 +1,20 @@
-/** Etsy Draft anlegen + Bilder hochladen. */
+/** Etsy Draft anlegen + Bilder hochladen + Attribute setzen. */
 
 import 'server-only'
 
 import {
+  baueUnikatMaterials,
+  baueWarenkorbZusammenfassung,
+  leseListingTags,
+  parseEtsyMasse,
+  resolveSchalenShopSectionId,
+  sanitisiereEtsyMaterial,
+  sanitisiereEtsyTag,
+  setzeEtsyUnikatAttribute,
+  ETSY_DEKORATIVE_SCHALE_TAXONOMY_ID,
+} from '@/lib/etsy/etsy-listing-attrs'
+import {
   etsyFetchJson,
-  stelleShopIdSicher,
   holeGueltigenEtsyAccessToken,
   ladeEtsyShopKontext,
 } from '@/lib/etsy/etsy-server'
@@ -24,6 +34,9 @@ export type EtsyDraftErgebnis = {
   title: string
   tags: string[]
   listingUrl: string | null
+  warenkorbZusammenfassung: string
+  /** Manuelle Schritte, die die API nicht setzen kann. */
+  manuellHinweise: string[]
 }
 
 function mimeToExt(mime: string): string {
@@ -31,15 +44,6 @@ function mimeToExt(mime: string): string {
   if (mime.includes('webp')) return 'webp'
   if (mime.includes('gif')) return 'gif'
   return 'jpg'
-}
-
-/** Etsy materials: nur Buchstaben/Zahlen/Leerzeichen, max 45. */
-function sanitisiereMaterial(raw: string): string {
-  return raw
-    .replace(/[^a-zA-ZäöüÄÖÜß0-9\s\-]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .slice(0, 45)
 }
 
 function readinessPasstZuWhenMade(readinessState: string, whenMade: string): boolean {
@@ -56,7 +60,6 @@ function readinessPasstZuWhenMade(readinessState: string, whenMade: string): boo
   )
 }
 
-/** Physische Listings brauchen readiness_state_id — passend zu when_made. */
 async function resolveReadinessStateId(
   ownerUserId: string,
   preferred: number | undefined,
@@ -125,9 +128,9 @@ export async function legeEtsyDraftAn(opts: {
   images: CoachImagePart[]
 }): Promise<EtsyDraftErgebnis> {
   const tokens = await holeGueltigenEtsyAccessToken(opts.ownerUserId)
-  const shopId = await stelleShopIdSicher(opts.ownerUserId, tokens)
+  const shopCtx = await ladeEtsyShopKontext(opts.ownerUserId)
+  const shopId = shopCtx.shopId
 
-  /** Unikate: immer Stückzahl 1 — nie überverkaufbar. */
   const quantity = 1
   const price =
     opts.basis.preisEur != null && opts.basis.preisEur > 0
@@ -140,6 +143,11 @@ export async function legeEtsyDraftAn(opts: {
     throw new Error('shippingProfileId fehlt.')
   }
 
+  const shopSectionId = resolveSchalenShopSectionId(
+    shopCtx.shopSections,
+    opts.basis.shopSectionId,
+  )
+
   const whenMade = normalisiereEtsyWhenMade(opts.basis.whenMade)
   const readinessStateId = await resolveReadinessStateId(
     opts.ownerUserId,
@@ -147,53 +155,88 @@ export async function legeEtsyDraftAn(opts: {
     whenMade,
   )
 
-  const materialsRaw =
-    opts.basis.materials?.filter(Boolean) ??
-    (opts.basis.holzart?.trim() ? [opts.basis.holzart.trim()] : [])
-  const materials = materialsRaw.map(sanitisiereMaterial).filter(Boolean)
-  if (materials.length === 0) {
-    throw new Error('Holzart/Material fehlt — für Etsy-Materials Pflicht bei Unikat-Schalen.')
+  const holzart = opts.basis.holzart?.trim()
+  if (!holzart) throw new Error('Holzart fehlt.')
+  const masseRaw = opts.basis.masse?.trim()
+  if (!masseRaw) throw new Error('Maße fehlen.')
+  const masseParsed = parseEtsyMasse(masseRaw)
+  if (!masseParsed) {
+    throw new Error(
+      `Maße nicht lesbar („${masseRaw}“). Bitte z. B. „22 × 8 cm“ oder „Ø 17 cm, H 5,5 cm“.`,
+    )
+  }
+
+  const materials = baueUnikatMaterials(holzart)
+    .map(sanitisiereEtsyMaterial)
+    .filter(Boolean)
+  if (materials.length < 2) {
+    throw new Error('Materials: Holzart + lebensmittelechtes Walnussöl nötig.')
   }
 
   if (/\[MASSE EINFÜGEN\]/i.test(opts.listing.description)) {
-    throw new Error('Maße fehlen noch ([MASSE EINFÜGEN] in der Beschreibung). Bitte Maße eintragen.')
+    throw new Error('Maße fehlen noch ([MASSE EINFÜGEN] in der Beschreibung).')
   }
-  if (opts.listing.tags.length < 13) {
-    throw new Error(`Genau 13 Tags nötig — aktuell ${opts.listing.tags.length}.`)
+
+  const tags = [
+    ...new Set(
+      opts.listing.tags
+        .map(sanitisiereEtsyTag)
+        .filter(Boolean)
+        .map((t) => t.slice(0, 20)),
+    ),
+  ].slice(0, 13)
+  if (tags.length < 13) {
+    throw new Error(`Genau 13 gültige Tags nötig — aktuell ${tags.length}.`)
   }
+
+  const warenkorb =
+    opts.listing.warenkorbZusammenfassung?.trim() ||
+    baueWarenkorbZusammenfassung({
+      holzart,
+      masse: masseRaw,
+      produktForm: opts.listing.produktForm,
+      preisEur: price,
+    })
+
+  /** Warenkorb-Text in Beschreibung belassen (API hat kein eigenes Feld). */
+  let description = opts.listing.description.trim()
+  if (!description.includes(warenkorb.slice(0, 40))) {
+    description = `${warenkorb}\n\n${description}`.trim()
+  }
+
+  const taxonomyId =
+    opts.basis.taxonomyId && opts.basis.taxonomyId > 0
+      ? opts.basis.taxonomyId
+      : opts.listing.taxonomyId > 0
+        ? opts.listing.taxonomyId
+        : ETSY_DEKORATIVE_SCHALE_TAXONOMY_ID
 
   const body = new URLSearchParams()
   body.set('quantity', String(quantity))
   body.set('title', opts.listing.title.slice(0, 140))
-  body.set('description', opts.listing.description)
+  body.set('description', description)
   body.set('price', String(price))
   body.set('who_made', opts.basis.whoMade ?? 'i_did')
   body.set('when_made', whenMade)
-  body.set(
-    'taxonomy_id',
-    String(opts.basis.taxonomyId ?? opts.listing.taxonomyId ?? ETSY_DEFAULT_TAXONOMY_ID),
-  )
+  body.set('taxonomy_id', String(taxonomyId || ETSY_DEFAULT_TAXONOMY_ID))
   body.set('type', 'physical')
   body.set('shipping_profile_id', String(shippingProfileId))
   body.set('readiness_state_id', String(readinessStateId))
+  body.set('shop_section_id', String(shopSectionId))
   body.set('should_auto_renew', 'true')
   body.set('is_supply', 'false')
   body.set('is_customizable', 'false')
   body.set('is_personalizable', 'false')
+  /** Maße auch auf Listing-Ebene (zusätzlich zu Attribute-Properties). */
+  body.set('item_width', String(masseParsed.breiteCm))
+  body.set('item_height', String(masseParsed.hoeheCm))
+  body.set('item_length', String(masseParsed.tiefeCm))
+  body.set('item_dimensions_unit', 'cm')
+  /** Komma-getrennt — Etsy erwartet eine Liste, nicht nur den letzten append. */
+  body.set('tags', tags.join(','))
+  body.set('materials', materials.join(','))
 
-  if (opts.basis.shopSectionId && opts.basis.shopSectionId > 0) {
-    body.set('shop_section_id', String(opts.basis.shopSectionId))
-  }
-
-  for (const tag of opts.listing.tags.slice(0, 13)) {
-    body.append('tags', tag)
-  }
-
-  for (const m of materials.slice(0, 13)) {
-    body.append('materials', m)
-  }
-
-  const created = await etsyFetchJson<{ listing_id?: number; url?: string }>(
+  const created = await etsyFetchJson<{ listing_id?: number; url?: string; tags?: string[] }>(
     tokens.accessToken,
     `/application/shops/${shopId}/listings`,
     {
@@ -208,9 +251,43 @@ export async function legeEtsyDraftAn(opts: {
     throw new Error('Etsy lieferte keine listing_id.')
   }
 
-  const holz = opts.basis.holzart?.trim() || materials[0] || 'Holz'
-  const masse = opts.basis.masse?.trim() || ''
-  const altBasis = [holz, 'Schale handgedreht', masse || null, 'Unikat']
+  /** Tags nachziehen, falls Create nicht alle übernommen hat. */
+  let savedTags = Array.isArray(created.tags) ? created.tags.map(String) : []
+  if (savedTags.length < 13) {
+    try {
+      savedTags = await leseListingTags(tokens.accessToken, listingId)
+    } catch {
+      /* ignore */
+    }
+  }
+  if (savedTags.length < 13) {
+    const fix = new URLSearchParams()
+    fix.set('tags', tags.join(','))
+    await etsyFetchJson(tokens.accessToken, `/application/shops/${shopId}/listings/${listingId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: fix,
+    })
+    try {
+      savedTags = await leseListingTags(tokens.accessToken, listingId)
+    } catch {
+      savedTags = tags
+    }
+  }
+
+  try {
+    await setzeEtsyUnikatAttribute({
+      accessToken: tokens.accessToken,
+      shopId,
+      listingId,
+      holzart,
+      masse: masseParsed,
+    })
+  } catch (e) {
+    console.warn('[etsy] attribute set:', e instanceof Error ? e.message : e)
+  }
+
+  const altBasis = [materials[0], 'Schale handgedreht', masseRaw, 'Unikat']
     .filter(Boolean)
     .join(' · ')
     .slice(0, 250)
@@ -220,7 +297,7 @@ export async function legeEtsyDraftAn(opts: {
     const altText =
       rank === 1
         ? altBasis
-        : `${holz} Detail Maserung · handgedrehte Schale`.slice(0, 250)
+        : `${materials[0]} Detail Maserung · handgedrehte Schale`.slice(0, 250)
     await uploadListingImage({
       accessToken: tokens.accessToken,
       shopId,
@@ -236,7 +313,13 @@ export async function legeEtsyDraftAn(opts: {
     listingId,
     shopId,
     title: opts.listing.title,
-    tags: opts.listing.tags,
+    tags: savedTags.length >= 13 ? savedTags : tags,
     listingUrl: typeof created.url === 'string' ? created.url : null,
+    warenkorbZusammenfassung: warenkorb,
+    manuellHinweise: [
+      'Warenkorbzusammenfassung: in Etsy manuell einfügen (API unterstützt das DE-Pflichtfeld nicht) — Text unten kopieren.',
+      'Herstellung: „Wird von Grund auf neu hergestellt“ in Etsy setzen (API-Lücke).',
+      'Werkzeuge: „Handgeführte oder handgehaltene Werkzeuge“ in Etsy setzen (API-Lücke).',
+    ],
   }
 }

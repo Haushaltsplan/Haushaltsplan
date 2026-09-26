@@ -150,9 +150,30 @@ function validiereListing(raw: Record<string, unknown>, imageCount: number): Ets
   if (!title) throw new Error('KI lieferte keinen gültigen Titel.')
 
   let description = typeof raw.description === 'string' ? raw.description.trim() : ''
-  const warenkorb =
+
+  const tax = normalisiereTaxonomy(
+    typeof raw.produktForm === 'string' ? raw.produktForm : 'Schale',
+    raw.taxonomyId,
+    raw.taxonomyLabel,
+  )
+  // Dekorative Holzschalen: feste Kategorie Decorative Bowls
+  if (/schale|schüssel|schuessel|teller|dose|vase/i.test(tax.produktForm)) {
+    tax.taxonomyId = ETSY_DEFAULT_TAXONOMY_ID
+    tax.taxonomyLabel = 'Dekorative Schalen'
+  }
+
+  let warenkorb =
     typeof raw.warenkorbZusammenfassung === 'string' ? raw.warenkorbZusammenfassung.trim() : ''
-  if (warenkorb) description = `${description}\n\n${warenkorb}`.trim()
+  if (!warenkorb) {
+    warenkorb = [
+      `Handgedrehte ${tax.produktForm}`,
+      'Unikat aus Massivholz',
+      'Finish Walnussöl',
+    ].join(' · ')
+  }
+  if (warenkorb && !description.includes(warenkorb.slice(0, 24))) {
+    description = `${description}\n\n${warenkorb}`.trim()
+  }
   if (!description) throw new Error('KI lieferte keine Beschreibung.')
 
   const tags = normalisiereTags(raw.tags)
@@ -172,12 +193,6 @@ function validiereListing(raw: Record<string, unknown>, imageCount: number): Ets
   const preisBegruendung =
     typeof raw.preisBegruendung === 'string' ? raw.preisBegruendung.trim() : ''
   if (!preisBegruendung) throw new Error('KI lieferte keine Preisbegründung.')
-
-  const tax = normalisiereTaxonomy(
-    typeof raw.produktForm === 'string' ? raw.produktForm : 'Schale',
-    raw.taxonomyId,
-    raw.taxonomyLabel,
-  )
 
   return {
     title,
@@ -199,13 +214,18 @@ function baueUserPrompt(basis: EtsyListingBasis): string {
   const zeilen = [
     'Erstelle ein Etsy-Listing (JSON) für dieses handgedrechselte Holzprodukt.',
     'Kapazität ~50 Unikate/Jahr — Preisspanne marktfähig und verkaufbar (weder Dumping noch Ladenhüter).',
+    'Preisbegründung MUSS Schalengröße/Maße + Holzart + Optik + sorgfältige Handarbeit nennen.',
     'Prüfe Foto-Rollen: Hauptbild, Detail Maserung (Maßstab optional, keine Warnung).',
   ]
   if (basis.preisEur != null && basis.preisEur > 0) {
     zeilen.push(`Nutzer-Wunschpreis (Hinweis): ${basis.preisEur} €`)
   }
   if (basis.holzart?.trim()) zeilen.push(`Holzart (verbindlich): ${basis.holzart.trim()}`)
-  if (basis.masse?.trim()) zeilen.push(`Maße (verbindlich): ${basis.masse.trim()}`)
+  if (basis.masse?.trim()) {
+    zeilen.push(`Maße (verbindlich, für Preis zentral): ${basis.masse.trim()}`)
+  } else {
+    zeilen.push('Maße unbekannt — Größe aus Fotos schätzen und in preisBegruendung nennen.')
+  }
   if (basis.finishText?.trim()) zeilen.push(`Finish (verbindlich): ${basis.finishText.trim()}`)
   if (basis.standortText?.trim()) zeilen.push(`Standort-Text: ${basis.standortText.trim()}`)
   if (basis.materials?.length) zeilen.push(`Materialien: ${basis.materials.join(', ')}`)
