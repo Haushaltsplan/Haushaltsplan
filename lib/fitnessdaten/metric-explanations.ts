@@ -84,8 +84,8 @@ export const METRIC_INFO: Record<MetricInfoId, MetricInfo> = {
   },
   restorative_sleep: {
     title: 'Erholsamer Schlaf',
-    body: 'Tiefschlaf (körperliche Regeneration) und REM-Schlaf (mentale Verarbeitung). WHOOP misst das am Handgelenk; hier geschätzt aus Ruhephasen der IMU.',
-    source: 'Geschätzt (~40 % REM, ~25 % Tief)',
+    body: 'Tiefschlaf und REM. WHOOP misst Stages optisch; Omnia schätzt REM/Tief/Leicht/Wach aus kalibrierten Anteilen (Fit gegen Cloud). Umschalter Whoop/Omnia zum Vergleich.',
+    source: 'Whoop Cloud Stages · Omnia-Schätzung (fitbar)',
   },
   sleep_consistency: {
     title: 'Schlafregelmäßigkeit',
@@ -129,8 +129,8 @@ export const METRIC_INFO: Record<MetricInfoId, MetricInfo> = {
   },
   behavior: {
     title: 'Verhaltenseinblicke',
-    body: 'WHOOP korreliert manuell getrackte Gewohnheiten (Alkohol, Koffein, Meditation …) mit Recovery. Das erfordert die WHOOP-App und Cloud — in Omnia nicht verfügbar.',
-    source: 'Nur WHOOP Cloud',
+    body: 'Korreliert deine Logbuch-Antworten (Alkohol, Koffein, Essen …) mit Recovery, HFV und Schlaf am Folgetag — lokal berechnet, analog zu WHOOP Behavior Insights.',
+    source: 'Logbuch × Folgetag-Metriken (lokal)',
   },
   zones_13: {
     title: 'HF-Zonen 1–3',
@@ -164,8 +164,8 @@ export const METRIC_INFO: Record<MetricInfoId, MetricInfo> = {
   },
   spo2: {
     title: 'Sauerstoffsättigung (SpO₂)',
-    body: 'Anteil des sauerstoffgesättigten Blutes. WHOOP misst das nachts/am Morgen — der fertige Wert kommt aus der WHOOP-Cloud (Recovery), nicht aus dem Live-BLE-Stream. In Omnia: WHOOP-Konto verbinden und Cloud-Sync.',
-    source: 'WHOOP Cloud Recovery (OAuth)',
+    body: 'Anteil des sauerstoffgesättigten Blutes. Das Band misst nachts — den fertigen Wert liefert die WHOOP-Cloud (kein Live-BLE). Omnia speichert jeden Sync als Cache und zeigt ihn in beiden Ansichten. Zusätzlich: manueller Eintrag unter Vitalwerte.',
+    source: 'WHOOP Cloud Sync (Cache) · optional manuell',
   },
   skin_temp: {
     title: 'Hauttemperatur',
@@ -173,9 +173,9 @@ export const METRIC_INFO: Record<MetricInfoId, MetricInfo> = {
     source: 'Gen5-Events (fd4b)',
   },
   whoop_age: {
-    title: 'WHOOP Age',
-    body: 'Biologisches Alter basierend auf Schlaf, Belastung, Fitness und Gesundheitsdaten — proprietäres WHOOP-Cloud-Modell.',
-    source: 'Nur WHOOP Cloud',
+    title: 'WHOOP Age / Omnia Age',
+    body: 'Biologisches Alter. WHOOP Age ist Cloud-proprietär. Omnia Age ist unser lokales Modell aus Schlaf, Belastung, HFV und Fitness — unter Gesundheit immer sichtbar.',
+    source: 'Omnia Age lokal · Whoop Age nur mit Abo/Cloud',
   },
   sync: {
     title: 'Daten-Synchronisation',

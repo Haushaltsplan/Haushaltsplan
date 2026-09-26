@@ -94,9 +94,26 @@ export type FitnessHistoryState = {
   strainLoad?: number
   /** Letzter Strain-Tick (ms) für Zeit-Abklingen ohne HF-Daten. */
   lastStrainTick?: number
+  /**
+   * Unabhängiger Offline-Schatten: läuft immer aus BLE, auch wenn UI-Strain cloud-locked.
+   * Nie mit loadAusStrain(Cloud) überschreiben.
+   */
+  localStrainLoad?: number
+  localStrain?: number
+  localStrainDate?: string
+  localLastStrainTick?: number
+  /** Lokale Morgen-Erholung (Shadow) — nicht recoveryLocked/Cloud. */
+  localRecoveryPercent?: number | null
+  localRhr?: number | null
+  localHrv?: number | null
+  localRecoveryDate?: string | null
   zoneSecondsToday: HrZoneMinutes
   caloriesToday: number
+  /** Keytel-Shadow — läuft parallel zu Cloud-Kalorien. */
+  localCaloriesToday?: number
   stepsToday: number
+  /** IMU-Schritte-Shadow — parallel zu Cloud-Schritten. */
+  localStepsToday?: number
   stepsDate: string
   baselines: {
     hrvRmssdMs: number

@@ -28,6 +28,8 @@ export function berechneStressDetail(
   rec: number | null,
   hrvHeute: number | null,
   hrvBase: number | null,
+  liveHr: number | null = null,
+  restingHr: number | null = null,
 ): StressDetail {
   const recoveryStress = rec != null ? stressAusRecovery(rec) : null
   const hrvStress =
@@ -35,6 +37,21 @@ export function berechneStressDetail(
       ? stressAusHrv(hrvHeute, hrvBase)
       : null
 
+  // Live-HF über RHR → kurzfristiges Stress-Signal (Whoop Stress Monitor ähnlich)
+  let liveStress: number | null = null
+  if (liveHr != null && restingHr != null && restingHr > 40 && liveHr > restingHr) {
+    const elev = (liveHr - restingHr) / Math.max(30, restingHr)
+    liveStress = Math.round(Math.max(0.1, Math.min(3, 0.8 + elev * 2.2)) * 10) / 10
+  }
+
+  if (liveStress != null && (recoveryStress == null || liveStress > recoveryStress)) {
+    return {
+      score: liveStress,
+      quelle: 'hrv',
+      recoveryStress,
+      hrvStress: liveStress,
+    }
+  }
   if (recoveryStress != null) {
     return { score: recoveryStress, quelle: 'recovery', recoveryStress, hrvStress }
   }
@@ -48,8 +65,10 @@ export function berechneStressScore(
   rec: number | null,
   hrvHeute: number | null,
   hrvBase: number | null,
+  liveHr: number | null = null,
+  restingHr: number | null = null,
 ): number | null {
-  return berechneStressDetail(rec, hrvHeute, hrvBase).score
+  return berechneStressDetail(rec, hrvHeute, hrvBase, liveHr, restingHr).score
 }
 
 export function stressLabel(s: number | null): string {

@@ -32,7 +32,7 @@ function bewegungsVarianz(windowMs = 120_000): number {
   return Math.sqrt(varSum)
 }
 
-/** Ruhe am Handgelenk ≈ Schlaf (grob). */
+/** Ruhe am Handgelenk ≈ Schlaf (grob). Score ≈ Whoop Sleep Performance (Dauer/Bedarf). */
 export function aktualisiereSchlafSchaetzung(): { sleepMinutes: number; sleepScore: number; efficiency: number } {
   const p = ladeCalibrationParams()
   const now = Date.now()
@@ -48,8 +48,9 @@ export function aktualisiereSchlafSchaetzung(): { sleepMinutes: number; sleepSco
   }
 
   const sleepMinutes = Math.round(sleepMinutesAccum * p.sleepMinutesScale)
-  const target = p.sleepTargetMinutes
-  const durationScore = Math.min(100, (sleepMinutes / target) * 100)
+  const target = p.sleepNeedBaseMin || p.sleepTargetMinutes
+  // Whoop Sleep Performance ≈ geschlafen / Bedarf
+  const durationScore = Math.min(100, (sleepMinutes / Math.max(1, target)) * 100)
   const v = bewegungsVarianz()
   const efficiency = v < 0.15 ? 92 : v < 0.25 ? 78 : 65
   const sleepScore = Math.round(

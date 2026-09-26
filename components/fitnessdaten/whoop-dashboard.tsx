@@ -29,7 +29,11 @@ import {
   WhoopHealthspanBar,
 } from '@/components/fitnessdaten/whoop-healthspan'
 import { WhoopGesundheitsmonitorPanel } from '@/components/fitnessdaten/whoop-gesundheitsmonitor-panel'
-import { WhoopInsightCard, WhoopMetricRow } from '@/components/fitnessdaten/whoop-metric-row'
+import { WhoopInsightCard, WhoopMetricRow, MetricSourceBadge } from '@/components/fitnessdaten/whoop-metric-row'
+import { FitnessDisplaySourceToggle } from '@/components/fitnessdaten/fitness-display-source-toggle'
+import { metricSourceFuer } from '@/lib/fitnessdaten/calibration/metric-source'
+import { DISPLAY_SOURCE_EVENT } from '@/lib/fitnessdaten/calibration/display-source'
+import { OMNIA_OFFLINE_MODE_EVENT } from '@/lib/fitnessdaten/calibration/omnia-offline-mode'
 import {
   recoveryColor,
   recoveryLabelDe,
@@ -192,11 +196,15 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange, ini
     })
     const onSync = () => setDataRevision((r) => r + 1)
     window.addEventListener(WHOOP_CLOUD_SYNC_EVENT, onSync)
+    window.addEventListener(OMNIA_OFFLINE_MODE_EVENT, onSync)
+    window.addEventListener(DISPLAY_SOURCE_EVENT, onSync)
     const strainTick = window.setInterval(() => {
       if (aktualisiereStrainFuerAnzeige()) setDataRevision((r) => r + 1)
     }, 60_000)
     return () => {
       window.removeEventListener(WHOOP_CLOUD_SYNC_EVENT, onSync)
+      window.removeEventListener(OMNIA_OFFLINE_MODE_EVENT, onSync)
+      window.removeEventListener(DISPLAY_SOURCE_EVENT, onSync)
       window.clearInterval(strainTick)
     }
   }, [])
@@ -299,7 +307,9 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange, ini
           </button>
 
           {/* Datum-Navigation */}
-          <div className="flex items-center gap-0.5">
+          <div className="flex flex-col items-center gap-1">
+            <FitnessDisplaySourceToggle />
+            <div className="flex items-center gap-0.5">
             <button
               type="button"
               onClick={tagZurueck}
@@ -325,6 +335,7 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange, ini
             >
               ›
             </button>
+            </div>
           </div>
 
           {/* Akku + Connect */}
@@ -367,7 +378,13 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange, ini
         />
 
         {tab === 'home' && (() => {
-          const stress = berechneStressScore(heute.recoveryPercent, heute.hrvRmssd, baselines.hrv)
+          const stress = berechneStressScore(
+            heute.recoveryPercent,
+            heute.hrvRmssd,
+            baselines.hrv,
+            model.liveHr,
+            heute.restingHr,
+          )
           const vitals = vitalsStatus(heute)
           const vo2Quelle = vo2MaxQuelle() // 'cloud' | 'manuell' | 'berechnet' | null
 
@@ -403,8 +420,11 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange, ini
                       </span>
                     </div>
                   </div>
-                  <span className="flex items-center gap-1 text-[11px] font-bold uppercase tracking-[0.12em] text-[#00E5FF]">
-                    SCHLAF <span className="text-[var(--app-text-muted)]">›</span>
+                  <span className="flex flex-col items-center gap-0.5">
+                    <span className="flex items-center gap-1 text-[11px] font-bold uppercase tracking-[0.12em] text-[#00E5FF]">
+                      SCHLAF <span className="text-[var(--app-text-muted)]">›</span>
+                    </span>
+                    <MetricSourceBadge kind={metricSourceFuer('sleep', heute)} />
                   </span>
                 </button>
 
@@ -436,8 +456,11 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange, ini
                       </span>
                     </div>
                   </div>
-                  <span className="flex items-center gap-1 text-[11px] font-bold uppercase tracking-[0.12em]" style={{ color: recoveryColor(heute.recoveryPercent) }}>
-                    ERHOLUNG <span className="text-[var(--app-text-muted)]">›</span>
+                  <span className="flex flex-col items-center gap-0.5">
+                    <span className="flex items-center gap-1 text-[11px] font-bold uppercase tracking-[0.12em]" style={{ color: recoveryColor(heute.recoveryPercent) }}>
+                      ERHOLUNG <span className="text-[var(--app-text-muted)]">›</span>
+                    </span>
+                    <MetricSourceBadge kind={metricSourceFuer('recovery', heute)} />
                   </span>
                 </button>
 
@@ -469,8 +492,11 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange, ini
                       </span>
                     </div>
                   </div>
-                  <span className="flex items-center gap-1 text-[11px] font-bold uppercase tracking-[0.12em] text-[#009dff]">
-                    BELASTUNG <span className="text-[var(--app-text-muted)]">›</span>
+                  <span className="flex flex-col items-center gap-0.5">
+                    <span className="flex items-center gap-1 text-[11px] font-bold uppercase tracking-[0.12em] text-[#009dff]">
+                      BELASTUNG <span className="text-[var(--app-text-muted)]">›</span>
+                    </span>
+                    <MetricSourceBadge kind={metricSourceFuer('strain', heute)} />
                   </span>
                 </button>
               </div>
@@ -546,7 +572,7 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange, ini
                   </div>
 
                   {/* Täglicher Ausblick / Coach */}
-                  {model.insightRecovery || model.insightStrain || model.coachSchlaf ? (
+                  {model.insightRecovery || model.insightStrain || model.coachSchlaf || model.insightBehavior ? (
                     <button
                       type="button"
                       onClick={() => setCoachExpanded(!coachExpanded)}
@@ -923,10 +949,34 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange, ini
             />
 
             <div className="rounded-2xl border border-white/[0.06] bg-[#111113] px-4">
-              <WhoopMetricRow icon="〰" label="Herzfrequenzvariabilität" m={metriken.hrv} unit="ms" onPress={() => setTrendMetric('hrv')} onInfo={() => showInfo('hrv')} />
-              <WhoopMetricRow icon="♥" label="Ruheherzfrequenz" m={metriken.rhr} onPress={() => setTrendMetric('rhr')} onInfo={() => showInfo('rhr')} />
-              <WhoopMetricRow icon="◎" label="Atemfrequenz" m={metriken.respiratory} decimals={1} onPress={() => setTrendMetric('respiratory')} onInfo={() => showInfo('respiratory')} />
-              <WhoopMetricRow icon="☾" label="Schlafleistung" m={metriken.sleepPerformance} unit="%" onInfo={() => showInfo('sleep_performance')} />
+              <WhoopMetricRow icon="〰" label="Herzfrequenzvariabilität" m={metriken.hrv} unit="ms" onPress={() => setTrendMetric('hrv')} onInfo={() => showInfo('hrv')} sourceKey="hrv" day={heute} />
+              <WhoopMetricRow icon="♥" label="Ruheherzfrequenz" m={metriken.rhr} onPress={() => setTrendMetric('rhr')} onInfo={() => showInfo('rhr')} sourceKey="rhr" day={heute} />
+              <WhoopMetricRow icon="◎" label="Atemfrequenz" m={metriken.respiratory} decimals={1} onPress={() => setTrendMetric('respiratory')} onInfo={() => showInfo('respiratory')} sourceKey="respiratory" day={heute} />
+              <WhoopMetricRow icon="☾" label="Schlafleistung" m={metriken.sleepPerformance} unit="%" onInfo={() => showInfo('sleep_performance')} sourceKey="sleep" day={heute} />
+              <WhoopMetricRow
+                icon="O₂"
+                label="Sauerstoffsättigung"
+                m={{
+                  heute: heute.spo2Percent,
+                  baseline30: baseline30('spo2Percent'),
+                  trend: trendMetricRow(heute.spo2Percent, baseline30('spo2Percent')),
+                }}
+                unit="%"
+                onInfo={() => showInfo('spo2')}
+              />
+              <WhoopMetricRow
+                icon="🌡"
+                label="Hauttemperatur"
+                m={{
+                  heute: heute.skinTempDelta,
+                  baseline30: baseline30('skinTempDelta'),
+                  trend: trendMetricRow(heute.skinTempDelta, baseline30('skinTempDelta')),
+                  invertiert: true,
+                }}
+                decimals={1}
+                unit="°"
+                onInfo={() => showInfo('skin_temp')}
+              />
               <p className="border-t border-white/[0.06] py-2 text-[9px] text-[var(--app-text-muted)]">
                 ▲ ▼ Heute im Vergleich zu den letzten 30 Tagen
               </p>
@@ -934,6 +984,9 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange, ini
 
             {model.insightRecovery ? (
               <WhoopInsightCard text={model.insightRecovery} link="Erkunde deine Erholungsdaten" />
+            ) : null}
+            {model.insightBehavior ? (
+              <WhoopInsightCard text={model.insightBehavior} link="Verhaltenseinblicke" />
             ) : null}
 
             <WhoopWeeklyBarChart
@@ -1009,6 +1062,8 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange, ini
                 }}
                 onPress={() => setTrendMetric('steps')}
                 onInfo={() => showInfo('steps')}
+                sourceKey="steps"
+                day={heute}
               />
               <WhoopMetricRow
                 icon="🔥"
@@ -1021,6 +1076,8 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange, ini
                 unit="kcal"
                 onPress={() => setTrendMetric('calories')}
                 onInfo={() => showInfo('calories')}
+                sourceKey="calories"
+                day={heute}
               />
               <p className="border-t border-white/[0.06] py-2 text-[9px] text-[var(--app-text-muted)]">
                 ▲ ▼ Heute im Vergleich zu den letzten 30 Tagen · Schritte & Kalorien aus WHOOP

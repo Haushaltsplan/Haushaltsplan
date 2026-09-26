@@ -13,8 +13,9 @@ import { verarbeiteAccelSchritt } from '@/lib/fitnessdaten/steps-engine'
 import { ladeFitnessHistory, ladeFitnessSnapshot, mergeLiveSnapshot, speichereFitnessHistory, speichereFitnessSnapshot } from '@/lib/fitnessdaten/history-storage'
 import { isoAusMs } from '@/lib/fitnessdaten/iso-date'
 import { heuteIsoLocal, maxHr, ruhepulsSchaetzung, zoneFuerBpm } from '@/lib/fitnessdaten/scores'
-import { profilMaxHr, ladeFitnessProfil } from '@/lib/fitnessdaten/user-profile'
+import { profilMaxHr, ladeFitnessProfil, profilMaennlich } from '@/lib/fitnessdaten/user-profile'
 import { berechneSkinTempDelta } from '@/lib/fitnessdaten/skin-temp'
+import { strainAusStrainLoad, tickStrainLoad } from '@/lib/fitnessdaten/strain-engine'
 import type { FitnessSnapshot } from '@/lib/fitnessdaten/types'
 import type { Gen5EventSample, R22Sample } from '@/lib/fitnessdaten/whoop-gen5-protocol'
 
@@ -161,6 +162,7 @@ export function mergeHistoricalR22(
   const tagPoints = history.hrSeries.filter((p) => isoAusMs(p.t) === isoDate)
   const rhr = ruhepulsSchaetzung(tagPoints) ?? history.baselines.restingHrBpm
   const mhr = profilMaxHr(ladeFitnessProfil())
+  const maennlich = profilMaennlich(ladeFitnessProfil())
   if (tagPoints.length >= 2) {
     const prev = tagPoints[tagPoints.length - 2]!
     const dt = Math.min(300, Math.max(1, (t - prev.t) / 1000))
@@ -168,6 +170,33 @@ export function mergeHistoricalR22(
     if (isoDate === heuteIsoLocal()) {
       history.zoneSecondsToday[zone] += dt
     }
+
+    // Shadow-Strain aus historischer Gen5-HF (auch für vergangene Tage)
+    if (history.localStrainDate !== isoDate) {
+      history.localStrainDate = isoDate
+      history.localStrainLoad = 0
+      history.localStrain = 0
+      history.localLastStrainTick = t
+    }
+    history.localStrainLoad = tickStrainLoad(
+      history.localStrainLoad ?? 0,
+      sample.heartRateBpm,
+      mhr,
+      rhr,
+      dt,
+      maennlich,
+    )
+    history.localStrain = strainAusStrainLoad(history.localStrainLoad)
+    history.localLastStrainTick = t
+
+    const store = ladeDailyStore()
+    let rec = store.days.find((d) => d.date === isoDate)
+    if (!rec) {
+      rec = createEmptyDayRecord(isoDate)
+      store.days.push(rec)
+    }
+    rec.localStrain = history.localStrain
+    speichereDailyStore(store)
   }
 
   speichereFitnessHistory(history)

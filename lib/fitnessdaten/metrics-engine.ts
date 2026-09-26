@@ -19,6 +19,8 @@ import {
   type WhoopJournalEntry,
 } from '@/lib/fitnessdaten/daily-records'
 import { ladeFitnessHistory, aktualisiereStrainFuerAnzeige } from '@/lib/fitnessdaten/history-storage'
+import { projektDisplayFuerQuelle } from '@/lib/fitnessdaten/calibration/display-source'
+import { topBehaviorInsight } from '@/lib/fitnessdaten/behavior-insights'
 import { heuteIsoLocal, zoneFuerBpm } from '@/lib/fitnessdaten/scores'
 import { profilMaxHr, ladeFitnessProfil } from '@/lib/fitnessdaten/user-profile'
 import type { FitnessSnapshot } from '@/lib/fitnessdaten/types'
@@ -61,6 +63,7 @@ export type WhoopDashboardModel = {
   insightRecovery: string | null
   insightStrain: string | null
   insightSchlaf: string | null
+  insightBehavior: string | null
   liveHr: number | null
   hrZone: number
   battery: number | null
@@ -97,9 +100,10 @@ export function baueWhoopDashboard(
   const history = ladeFitnessHistory()
   const store = ladeDailyStore()
 
-  const tagRecord = istHeute && snapshot
+  const tagRecordRaw = istHeute && snapshot
     ? aktualisiereHeuteAusSnapshot(snapshot, history)
     : ergaenzeZonenUndVitals(tagRecordFuerDatum(selectedDate, store), history, store)
+  const tagRecord = projektDisplayFuerQuelle(tagRecordRaw)
 
   const woche = fenster7TageUmDatum(selectedDate)
   const baselines = {
@@ -169,6 +173,9 @@ export function baueWhoopDashboard(
         ? 'Dein Schlaf wurde in dieser Nacht nicht von der Qualität im Bett gebremst — Effizienz sieht solide aus.'
         : null
 
+  const behavior = topBehaviorInsight()
+  const insightBehavior = behavior?.deltaRecovery != null ? behavior.summary : null
+
   return {
     selectedDate,
     istHeute,
@@ -192,6 +199,7 @@ export function baueWhoopDashboard(
       tagRecord.sleepScore != null && tagRecord.sleepScore < 50
         ? 'Schlaf an diesem Tag unter dem üblichen Niveau — früh ins Bett kann die Recovery verbessern.'
         : null,
+    insightBehavior,
     liveHr,
     hrZone,
     battery: snapshot?.deviceInfo?.batteryPercent ?? null,

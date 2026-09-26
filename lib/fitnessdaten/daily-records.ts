@@ -1,6 +1,8 @@
 /** Tages-Aggregate für WHOOP-ähnliche Trends (7 / 30 Tage). */
 
 import { heuteIsoLocal, istMorgenFenster, mergeTagesStrain } from '@/lib/fitnessdaten/scores'
+import { istOmniaOfflineMode } from '@/lib/fitnessdaten/calibration/omnia-offline-mode'
+import { ladeCalibrationParams } from '@/lib/fitnessdaten/calibration/calibration-params'
 import { isoAddDaysKalender, isoAusMs } from '@/lib/fitnessdaten/iso-date'
 import { ergaenzeSchlafDetails } from '@/lib/fitnessdaten/sleep-detail'
 import { speichereZonenImTag } from '@/lib/fitnessdaten/healthspan-engine'
@@ -80,6 +82,27 @@ export type WhoopDayRecord = {
   caloriesFromCloud?: boolean
   /** true = Strain aus WHOOP Cloud Zyklus-API — lokale BLE-Schätzung nicht überschreiben */
   strainFromCloud?: boolean
+  /** Unabhängige Offline-Schattenwerte (Kalibrierung gegen Cloud). */
+  localStrain?: number | null
+  localRecoveryPercent?: number | null
+  localRhr?: number | null
+  localHrv?: number | null
+  localSleepMinutes?: number | null
+  localSleepScore?: number | null
+  localSleepEfficiency?: number | null
+  localSteps?: number | null
+  localCalories?: number | null
+  /** Lokale Atemfrequenz-Schätzung (Shadow). */
+  localRespiratoryRate?: number | null
+  localSleepNeedMinutes?: number | null
+  localRemMinutes?: number | null
+  localDeepMinutes?: number | null
+  localLightMinutes?: number | null
+  localAwakeMinutes?: number | null
+  localSleepConsistency?: number | null
+  /** Letzter SpO₂ aus Cloud-Sync (Cache) — Band liefert SpO₂ nicht per Live-BLE. */
+  spo2FromCloud?: boolean
+  spo2CachedAt?: string | null
 }
 
 export type WhoopActivity = {
@@ -329,10 +352,11 @@ function zoneMin45(z: HrZoneMinutes | null | undefined): number {
   return (z.z4 ?? 0) + (z.z5 ?? 0)
 }
 
-function schaetzeAtemfrequenz(rhr: number | null, baselineRhr: number): number | null {
+export function schaetzeAtemfrequenz(rhr: number | null, baselineRhr: number): number | null {
   if (rhr == null) return null
-  const v = 14.7 + (rhr - baselineRhr) * 0.08
-  return Math.round(Math.min(20, Math.max(12, v)) * 10) / 10
+  const p = ladeCalibrationParams()
+  const v = p.respiratoryBaseline + (rhr - baselineRhr) * p.respiratoryRhrCoef
+  return Math.round(Math.min(22, Math.max(10, v)) * 10) / 10
 }
 
 function schaetzeKraftzeit(z: HrZoneMinutes | null | undefined): number {
@@ -452,6 +476,7 @@ export function aktualisiereHeuteAusSnapshot(
   const heute = heuteIsoLocal()
   const scores = snapshot.scores
   const store = ladeDailyStore()
+  const offline = istOmniaOfflineMode()
 
   if (snapshot.live?.skinTempC != null) {
     if (store.skinTempBaseline == null) store.skinTempBaseline = snapshot.live.skinTempC
@@ -469,21 +494,37 @@ export function aktualisiereHeuteAusSnapshot(
   const liveRecovery = scores?.recoveryPercent ?? null
   let recoveryPercent = prevHeute.recoveryPercent
   let recoveryLocked = prevHeute.recoveryLocked ?? false
-  if (recoveryLocked && prevHeute.recoveryPercent != null) {
-    recoveryPercent = prevHeute.recoveryPercent
-  } else if (liveRecovery != null && liveRecovery > 0 && istMorgenFenster()) {
+  if (!offline) {
+    if (recoveryLocked && prevHeute.recoveryPercent != null) {
+      recoveryPercent = prevHeute.recoveryPercent
+    } else if (liveRecovery != null && liveRecovery > 0 && istMorgenFenster()) {
+      recoveryPercent = Math.round(liveRecovery)
+      recoveryLocked = true
+    } else if (liveRecovery != null && prevHeute.recoveryPercent == null && istMorgenFenster()) {
+      recoveryPercent = Math.round(liveRecovery)
+      recoveryLocked = true
+    }
+  } else if (prevHeute.localRecoveryPercent != null) {
+    recoveryPercent = prevHeute.localRecoveryPercent
+  } else if (liveRecovery != null) {
     recoveryPercent = Math.round(liveRecovery)
-    recoveryLocked = true
-  } else if (liveRecovery != null && prevHeute.recoveryPercent == null && istMorgenFenster()) {
-    recoveryPercent = Math.round(liveRecovery)
-    recoveryLocked = true
   }
 
   const liveStrain = scores?.dayStrain ?? scores?.strain ?? null
   const strain =
-    prevHeute.strainFromCloud && prevHeute.strain != null
+    !offline && prevHeute.strainFromCloud && prevHeute.strain != null
       ? prevHeute.strain
-      : mergeTagesStrain(liveStrain, prevHeute.strain)
+      : offline && prevHeute.localStrain != null
+        ? prevHeute.localStrain
+        : mergeTagesStrain(liveStrain, prevHeute.strain)
+
+  const localResp: number | null =
+    schaetzeAtemfrequenz(
+      scores?.restingHrBpm ?? prevHeute.localRhr ?? prevHeute.restingHr,
+      history.baselines.restingHrBpm,
+    ) ??
+    prevHeute.localRespiratoryRate ??
+    null
 
   const record: WhoopDayRecord = speichereZonenImTag(
     ergaenzeSchlafDetails(
@@ -491,54 +532,73 @@ export function aktualisiereHeuteAusSnapshot(
         ...prevHeute,
         date: heute,
         recoveryPercent,
-        recoveryLocked,
+        recoveryLocked: offline ? false : recoveryLocked,
         strain,
-        sleepScore: scores?.sleepScore ?? prevHeute.sleepScore,
-        sleepMinutes: scores?.sleepMinutes ?? prevHeute.sleepMinutes,
-        sleepEfficiency: scores?.sleepEfficiency ?? prevHeute.sleepEfficiency,
+        sleepScore:
+          offline && prevHeute.localSleepScore != null
+            ? prevHeute.localSleepScore
+            : (scores?.sleepScore ?? prevHeute.sleepScore),
+        sleepMinutes:
+          offline && prevHeute.localSleepMinutes != null
+            ? prevHeute.localSleepMinutes
+            : (scores?.sleepMinutes ?? prevHeute.sleepMinutes),
+        sleepEfficiency:
+          offline && prevHeute.localSleepEfficiency != null
+            ? prevHeute.localSleepEfficiency
+            : (scores?.sleepEfficiency ?? prevHeute.sleepEfficiency),
         hrvRmssd:
-          prevHeute.bffMetrics && prevHeute.hrvRmssd != null
-            ? prevHeute.hrvRmssd
-            : (scores?.hrvRmssdMs ?? prevHeute.hrvRmssd),
+          offline && prevHeute.localHrv != null
+            ? prevHeute.localHrv
+            : prevHeute.bffMetrics && prevHeute.hrvRmssd != null
+              ? prevHeute.hrvRmssd
+              : (scores?.hrvRmssdMs ?? prevHeute.hrvRmssd),
         restingHr:
-          prevHeute.bffMetrics && prevHeute.restingHr != null
-            ? prevHeute.restingHr
-            : recoveryLocked && prevHeute.restingHr != null
+          offline && prevHeute.localRhr != null
+            ? prevHeute.localRhr
+            : prevHeute.bffMetrics && prevHeute.restingHr != null
               ? prevHeute.restingHr
-              : (scores?.restingHrBpm ?? prevHeute.restingHr),
+              : recoveryLocked && prevHeute.restingHr != null
+                ? prevHeute.restingHr
+                : (scores?.restingHrBpm ?? prevHeute.restingHr),
         respiratoryRate:
-          prevHeute.bffMetrics && prevHeute.respiratoryRate != null
-            ? prevHeute.respiratoryRate
-            : prevHeute.respiratoryRate ??
-              schaetzeAtemfrequenz(scores?.restingHrBpm ?? null, history.baselines.restingHrBpm),
+          offline && localResp != null
+            ? localResp
+            : prevHeute.bffMetrics && prevHeute.respiratoryRate != null
+              ? prevHeute.respiratoryRate
+              : prevHeute.respiratoryRate ?? localResp,
+        localRespiratoryRate: localResp,
         skinTempC: snapshot.live?.skinTempC ?? prevHeute.skinTempC,
         skinTempDelta: skinDelta ?? prevHeute.skinTempDelta,
         calories:
-          prevHeute.caloriesFromCloud && prevHeute.calories != null
-            ? prevHeute.calories
-            : hatWhoopCloudSync()
+          offline && prevHeute.localCalories != null
+            ? prevHeute.localCalories
+            : prevHeute.caloriesFromCloud && prevHeute.calories != null
               ? prevHeute.calories
-              : mergeKalorien(
-                  scores?.caloriesKcal,
-                  prevHeute.calories,
-                  history.caloriesToday,
-                  false,
-                ),
-        caloriesFromCloud: prevHeute.caloriesFromCloud,
+              : hatWhoopCloudSync() && !offline
+                ? prevHeute.calories
+                : mergeKalorien(
+                    scores?.caloriesKcal,
+                    prevHeute.calories,
+                    history.caloriesToday,
+                    false,
+                  ),
+        caloriesFromCloud: offline ? false : prevHeute.caloriesFromCloud,
         steps:
-          prevHeute.stepsFromCloud && prevHeute.steps != null
-            ? prevHeute.steps
-            : hatWhoopCloudSync()
+          offline && prevHeute.localSteps != null
+            ? prevHeute.localSteps
+            : prevHeute.stepsFromCloud && prevHeute.steps != null
               ? prevHeute.steps
-              : mergeTagesSchritte(
-                  prevHeute.steps,
-                  Math.max(history.stepsToday ?? 0, schritteHeuteAusDaily()),
-                  strain,
-                  zoneMin13(z),
-                  scores?.avgHrSession ?? prevHeute.avgHr,
-                  scores?.restingHrBpm ?? prevHeute.restingHr ?? history.baselines.restingHrBpm,
-                ),
-        stepsFromCloud: prevHeute.stepsFromCloud,
+              : hatWhoopCloudSync() && !offline
+                ? prevHeute.steps
+                : mergeTagesSchritte(
+                    prevHeute.steps,
+                    Math.max(history.stepsToday ?? 0, schritteHeuteAusDaily()),
+                    strain,
+                    zoneMin13(z),
+                    scores?.avgHrSession ?? prevHeute.avgHr,
+                    scores?.restingHrBpm ?? prevHeute.restingHr ?? history.baselines.restingHrBpm,
+                  ),
+        stepsFromCloud: offline ? false : prevHeute.stepsFromCloud,
         maxHr: scores?.maxHrToday ?? prevHeute.maxHr,
         avgHr:
           prevHeute.bffMetrics && prevHeute.avgHr != null

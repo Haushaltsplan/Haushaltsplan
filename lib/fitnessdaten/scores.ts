@@ -38,12 +38,24 @@ export function recoveryAusBaseline(
   restingHr: number | null,
   baselineHrv: number,
   baselineRhr: number,
+  sleepPerformance: number | null = null,
 ): { percent: number; label: FitnessScores['recoveryLabel'] } | null {
   if (hrvRmssd == null || hrvRmssd <= 0) return null
   const p = ladeCalibrationParams()
   const hrvRatio = hrvRmssd / Math.max(baselineHrv, 15)
   const rhrPart = restingHr != null && restingHr > 0 ? baselineRhr / restingHr : 1
-  const raw = (hrvRatio * p.recoveryHrvWeight + rhrPart * p.recoveryRhrWeight) * 100 * p.recoveryScale
+  const sleepW = Math.max(0, Math.min(0.25, p.recoverySleepWeight))
+  const vitalsW = 1 - sleepW
+  const hrvW = p.recoveryHrvWeight
+  const rhrW = p.recoveryRhrWeight
+  const vitalsSum = Math.max(0.01, hrvW + rhrW)
+  const vitals =
+    (hrvRatio * (hrvW / vitalsSum) + rhrPart * (rhrW / vitalsSum)) * vitalsW
+  const sleepPart =
+    sleepPerformance != null && sleepPerformance > 0
+      ? (sleepPerformance / 100) * sleepW
+      : 0.75 * sleepW // neutrale Annahme ohne Schlafdaten
+  const raw = (vitals + sleepPart) * 100 * p.recoveryScale
   const percent = Math.max(0, Math.min(100, Math.round(raw)))
   let label: FitnessScores['recoveryLabel'] = 'niedrig'
   if (percent >= 67) label = 'optimal'

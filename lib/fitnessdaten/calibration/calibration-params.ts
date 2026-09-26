@@ -13,9 +13,11 @@ export type CalibrationParams = {
   strainTauRestSec: number
   strainTauMaxSec: number
 
-  /** Recovery: Gewicht HRV vs RHR (Summe ≈ 1). */
+  /** Recovery: Gewicht HRV vs RHR (Summe ≈ 1 vor Sleep-Anteil). */
   recoveryHrvWeight: number
   recoveryRhrWeight: number
+  /** Optionaler Anteil Schlafleistung an Recovery (0–0.25). */
+  recoverySleepWeight: number
   /** Recovery: Multiplikator auf Roh-% vor Clamp. */
   recoveryScale: number
 
@@ -29,6 +31,13 @@ export type CalibrationParams = {
   sleepEfficiencyWeight: number
   /** Sleep-Minuten-Akkumulation Scale (lokal vs Whoop). */
   sleepMinutesScale: number
+  /** Sleep-Need: Basis + Strain-Faktor + Defizit-Faktor. */
+  sleepNeedBaseMin: number
+  sleepNeedStrainFactor: number
+  sleepNeedDebtFactor: number
+  /** Stage-Anteile (REM / Deep) wenn kein Cloud-Wert. */
+  sleepRemRatio: number
+  sleepDeepRatio: number
 
   /** Schritte: Peak-Schwellen Scale (höher = empfindlicher). */
   stepsSensitivity: number
@@ -39,6 +48,10 @@ export type CalibrationParams = {
 
   /** Kalorien: Multiplikator auf Keytel. */
   caloriesScale: number
+
+  /** Atemfrequenz: Baseline + RHR-Koeffizient. */
+  respiratoryBaseline: number
+  respiratoryRhrCoef: number
 }
 
 export const DEFAULT_CALIBRATION_PARAMS: CalibrationParams = {
@@ -47,19 +60,27 @@ export const DEFAULT_CALIBRATION_PARAMS: CalibrationParams = {
   strainLogBase: 7201,
   strainTauRestSec: 4000,
   strainTauMaxSec: 14_400,
-  recoveryHrvWeight: 0.68,
-  recoveryRhrWeight: 0.32,
+  recoveryHrvWeight: 0.62,
+  recoveryRhrWeight: 0.28,
+  recoverySleepWeight: 0.1,
   recoveryScale: 1.02,
   rhrLowPercentile: 0.12,
   sleepTargetMinutes: 480,
   sleepStillVariance: 0.08,
-  sleepDurationWeight: 0.55,
-  sleepEfficiencyWeight: 0.45,
+  sleepDurationWeight: 0.7,
+  sleepEfficiencyWeight: 0.3,
   sleepMinutesScale: 1.0,
+  sleepNeedBaseMin: 480,
+  sleepNeedStrainFactor: 8,
+  sleepNeedDebtFactor: 0.5,
+  sleepRemRatio: 0.22,
+  sleepDeepRatio: 0.18,
   stepsSensitivity: 1.0,
   stepsScale: 1.0,
   vo2Scale: 1.0,
   caloriesScale: 1.08,
+  respiratoryBaseline: 14.7,
+  respiratoryRhrCoef: 0.08,
 }
 
 const STORAGE_KEY = 'mein-haushalt:whoop-calibration-params'

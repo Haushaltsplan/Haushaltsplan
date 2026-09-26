@@ -9,9 +9,16 @@ export type CalibrationMetric =
   | 'sleep_minutes'
   | 'sleep_score'
   | 'sleep_efficiency'
+  | 'sleep_need'
+  | 'sleep_rem'
+  | 'sleep_deep'
+  | 'sleep_consistency'
   | 'steps'
   | 'vo2max'
   | 'calories'
+  | 'skin_temp'
+  | 'spo2'
+  | 'avg_hr'
 
 export type CalibrationPair = {
   date: string
@@ -20,6 +27,8 @@ export type CalibrationPair = {
   whoop: number
   delta: number
   recordedAt: string
+  /** Nur 'shadow' zählt für Phase-A-Ziele (echte Dual-Lauf-Paare). */
+  source?: 'shadow' | 'formula' | 'echo'
 }
 
 export type CalibrationMetricStats = {

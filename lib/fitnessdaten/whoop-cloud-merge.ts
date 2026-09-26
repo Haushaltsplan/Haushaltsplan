@@ -10,6 +10,7 @@ import {
 } from '@/lib/fitnessdaten/daily-records'
 import { kalibriereGegenCloudPayload } from '@/lib/fitnessdaten/calibration/calibration-compare'
 import { ladeCalibrationParams } from '@/lib/fitnessdaten/calibration/calibration-params'
+import { istOmniaOfflineMode } from '@/lib/fitnessdaten/calibration/omnia-offline-mode'
 import { loadAusStrain } from '@/lib/fitnessdaten/strain-engine'
 import { heuteIsoLocal, recoveryLabelAusProzent } from '@/lib/fitnessdaten/scores'
 import { berechneSkinTempDelta } from '@/lib/fitnessdaten/skin-temp'
@@ -162,6 +163,8 @@ function mergeDay(
     hrvRmssd: pickBff(bffRow?.hrvRmssd, rec?.hrvRmssd, prev.hrvRmssd),
     restingHr: pickBff(bffRow?.restingHr, rec?.restingHr, prev.restingHr),
     spo2Percent: pick(rec?.spo2Percent, prev.spo2Percent),
+    spo2FromCloud: rec?.spo2Percent != null ? true : prev.spo2FromCloud,
+    spo2CachedAt: rec?.spo2Percent != null ? date : prev.spo2CachedAt,
     skinTempC,
     skinTempDelta,
     sleepScore: pick(sleep?.sleepScore, prev.sleepScore),
@@ -310,7 +313,8 @@ export function mergeCloudPayload(payload: WhoopCloudSyncPayload): WhoopCloudSyn
   }
 
   const heuteRecord = store.days.find((d) => d.date === heute)
-  if (heuteRecord?.strain != null) {
+  const offline = istOmniaOfflineMode()
+  if (!offline && heuteRecord?.strain != null) {
     const history = ladeFitnessHistory()
     history.dayStrain = heuteRecord.strain
     history.dayStrainDate = heute
@@ -321,7 +325,7 @@ export function mergeCloudPayload(payload: WhoopCloudSyncPayload): WhoopCloudSyn
   }
 
   const snapshot = ladeFitnessSnapshot()
-  if (snapshot && heuteRecord) {
+  if (snapshot && heuteRecord && !offline) {
     const scores = { ...snapshot.scores }
     if (heuteRecord.strain != null) {
       scores.strain = heuteRecord.strain
@@ -345,8 +349,8 @@ export function mergeCloudPayload(payload: WhoopCloudSyncPayload): WhoopCloudSyn
     })
   }
 
-  // Live-History an Cloud-Schritte/Kalorien angleichen (kein HR-Drift)
-  if (heuteRecord) {
+  // Live-History an Cloud-Schritte/Kalorien angleichen (kein HR-Drift) — nicht im Offline-Modus
+  if (heuteRecord && !offline) {
     const history = ladeFitnessHistory()
     let histChanged = false
     if (heuteRecord.caloriesFromCloud && heuteRecord.calories != null) {

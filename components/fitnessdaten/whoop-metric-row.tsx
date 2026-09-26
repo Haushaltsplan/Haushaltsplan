@@ -1,6 +1,13 @@
 'use client'
 
 import type { MetricMitBaseline } from '@/lib/fitnessdaten/metrics-engine'
+import {
+  metricSourceFuer,
+  metricSourceLabel,
+  type MetricSourceKey,
+  type MetricSourceKind,
+} from '@/lib/fitnessdaten/calibration/metric-source'
+import type { WhoopDayRecord } from '@/lib/fitnessdaten/daily-records'
 
 function formatVal(v: number | null, dec = 0): string {
   if (v == null) return '—'
@@ -14,6 +21,25 @@ function TrendIcon({ trend, invertiert }: { trend: MetricMitBaseline['trend']; i
   return <span style={{ color: good ? '#00E676' : '#FF1744' }}>{sym}</span>
 }
 
+export function MetricSourceBadge({
+  kind,
+  className = '',
+}: {
+  kind: MetricSourceKind
+  className?: string
+}) {
+  const cloud = kind === 'whoop-cloud'
+  return (
+    <span
+      className={`inline-block rounded px-1.5 py-0.5 text-[8px] font-bold uppercase tracking-wide ${
+        cloud ? 'bg-sky-500/15 text-sky-300' : 'bg-emerald-500/15 text-emerald-300'
+      } ${className}`}
+    >
+      {metricSourceLabel(kind)}
+    </span>
+  )
+}
+
 export function WhoopMetricRow({
   icon,
   label,
@@ -22,6 +48,8 @@ export function WhoopMetricRow({
   decimals = 0,
   onPress,
   onInfo,
+  sourceKey,
+  day,
 }: {
   icon: string
   label: string
@@ -30,7 +58,10 @@ export function WhoopMetricRow({
   decimals?: number
   onPress?: () => void
   onInfo?: () => void
+  sourceKey?: MetricSourceKey
+  day?: WhoopDayRecord | null
 }) {
+  const source = sourceKey && day ? metricSourceFuer(sourceKey, day) : null
   return (
     <button
       type="button"
@@ -40,6 +71,7 @@ export function WhoopMetricRow({
       <span className="w-6 text-center text-lg opacity-80">{icon}</span>
       <div className="min-w-0 flex-1">
         <p className="text-[10px] font-semibold uppercase tracking-wide text-[var(--app-text-muted)]">{label}</p>
+        {source ? <MetricSourceBadge kind={source} className="mt-0.5" /> : null}
       </div>
       <div className="text-right">
         <p className="text-xl font-bold tabular-nums text-white">
