@@ -1,6 +1,6 @@
 /**
  * Anzeige-Quelle: Whoop Cloud vs Omnia — Umschalten zum Vergleich.
- * Unabhängig vom Abo-Ende-Modus (omniaOfflineMode erzwingt Omnia).
+ * Omnia = streng lokal (kein Cloud-Fallback), damit die Qualität sichtbar ist.
  */
 
 import { istOmniaOfflineMode } from '@/lib/fitnessdaten/calibration/omnia-offline-mode'
@@ -51,29 +51,45 @@ export function projektWhoopDisplay(day: WhoopDayRecord): WhoopDayRecord {
   return { ...day }
 }
 
-/** Omnia-Ansicht: Shadows als Primärwerte (Cloud bleibt im Store unberührt). */
+/**
+ * Omnia-Ansicht: NUR lokale Shadows / BLE / manuell.
+ * Fehlende Werte → null (kein Cloud-Fallback), damit die Lücken sichtbar bleiben.
+ */
 export function projektOmniaDisplay(day: WhoopDayRecord): WhoopDayRecord {
   const manualSpo2 = letzteManuelleSpo2(day.date)
   return {
     ...day,
-    strain: day.localStrain ?? day.strain,
-    recoveryPercent: day.localRecoveryPercent ?? day.recoveryPercent,
-    sleepScore: day.localSleepScore ?? day.sleepScore,
-    sleepMinutes: day.localSleepMinutes ?? day.sleepMinutes,
-    sleepEfficiency: day.localSleepEfficiency ?? day.sleepEfficiency,
-    sleepNeedMinutes: day.localSleepNeedMinutes ?? day.sleepNeedMinutes,
-    remMinutes: day.localRemMinutes ?? day.remMinutes,
-    deepMinutes: day.localDeepMinutes ?? day.deepMinutes,
-    lightMinutes: day.localLightMinutes ?? day.lightMinutes,
-    awakeMinutes: day.localAwakeMinutes ?? day.awakeMinutes,
-    sleepConsistency: day.localSleepConsistency ?? day.sleepConsistency,
-    steps: day.localSteps ?? day.steps,
-    calories: day.localCalories ?? day.calories,
-    restingHr: day.localRhr ?? day.restingHr,
-    hrvRmssd: day.localHrv ?? day.hrvRmssd,
-    respiratoryRate: day.localRespiratoryRate ?? day.respiratoryRate,
-    // SpO₂: manueller Eintrag > Cloud-Cache (Band streamt SpO₂ nicht per Live-BLE)
-    spo2Percent: manualSpo2 ?? day.spo2Percent,
+    strainFromCloud: false,
+    recoveryLocked: false,
+    stepsFromCloud: false,
+    caloriesFromCloud: false,
+    bffMetrics: false,
+    spo2FromCloud: false,
+
+    strain: day.localStrain ?? null,
+    recoveryPercent: day.localRecoveryPercent ?? null,
+    sleepScore: day.localSleepScore ?? null,
+    sleepMinutes: day.localSleepMinutes ?? null,
+    sleepEfficiency: day.localSleepEfficiency ?? null,
+    sleepNeedMinutes: day.localSleepNeedMinutes ?? null,
+    remMinutes: day.localRemMinutes ?? null,
+    deepMinutes: day.localDeepMinutes ?? null,
+    lightMinutes: day.localLightMinutes ?? null,
+    awakeMinutes: day.localAwakeMinutes ?? null,
+    sleepConsistency: day.localSleepConsistency ?? null,
+    steps: day.localSteps ?? null,
+    calories: day.localCalories ?? null,
+    restingHr: day.localRhr ?? null,
+    hrvRmssd: day.localHrv ?? null,
+    respiratoryRate: day.localRespiratoryRate ?? null,
+    // SpO₂ nur manuell — Cloud-Cache bewusst ausgeblendet
+    spo2Percent: manualSpo2,
+    // Cloud-VO₂ / Cycle-AvgHR nicht in Omnia-Ansicht
+    vo2Max: null,
+    avgHr: null,
+    // Cycle-/BFF-Kalorien/Schritte schon oben lokal
+    // Hauttemp: Gen5/BLE — behalten wenn vorhanden
+    // Zonen: lokal aus BLE — behalten
   }
 }
 

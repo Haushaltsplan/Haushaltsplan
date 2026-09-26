@@ -32,10 +32,14 @@ export function WhoopAgeOrb({
         </div>
       </div>
       <div className="relative mt-4 flex justify-between px-2 text-xs">
-        <span className="text-emerald-400">
-          {yearsYounger != null && yearsYounger > 0
-            ? `${yearsYounger.toFixed(1).replace('.', ',')} Jahre jünger`
-            : '—'}
+        <span className={yearsYounger != null && yearsYounger < 0 ? 'text-amber-400' : 'text-emerald-400'}>
+          {yearsYounger == null
+            ? '—'
+            : yearsYounger > 0
+              ? `${yearsYounger.toFixed(1).replace('.', ',')} Jahre jünger`
+              : yearsYounger < 0
+                ? `${Math.abs(yearsYounger).toFixed(1).replace('.', ',')} Jahre älter`
+                : 'gleich chronologisch'}
         </span>
         <span className="text-[var(--app-text-muted)]">
           {agingProcess != null ? `${agingProcess.toFixed(1).replace('.', ',')}× Alterungsprozess` : '—'}

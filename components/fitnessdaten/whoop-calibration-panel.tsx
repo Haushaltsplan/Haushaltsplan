@@ -142,7 +142,7 @@ export function WhoopCalibrationPanel({ cloudConnected }: Props) {
               Offline-Kalibrierung
             </p>
             <p className="mt-1 text-[12px] text-[var(--app-text-muted)]">
-              Shadow vs Cloud. Oben im Header: Whoop ↔ Omnia umschalten. SpO₂ nur per Cloud-Cache (kein Live-BLE).
+        Omnia = nur lokal (Lücken als —). Whoop = Cloud. SpO₂ in Omnia nur manuell.
             </p>
           </div>
           <div className="flex shrink-0 flex-col gap-1">

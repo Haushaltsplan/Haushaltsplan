@@ -1,9 +1,10 @@
 /** WHOOP-Age / Healthspan — lokal aus BLE-Daten approximiert (kein Cloud-Modell). */
 
+import { istOmniaAnzeige, projektOmniaDisplay } from '@/lib/fitnessdaten/calibration/display-source'
 import { baseline30, letzte7Tage, type WhoopDayRecord } from '@/lib/fitnessdaten/daily-records'
 import { ladeFitnessHistory } from '@/lib/fitnessdaten/history-storage'
 import { ladeFitnessProfil, profilAlter } from '@/lib/fitnessdaten/user-profile'
-import { vo2MaxFuerHealthspan } from '@/lib/fitnessdaten/vo2max-engine'
+import { ladeVo2Trends, vo2MaxFuerHealthspan } from '@/lib/fitnessdaten/vo2max-engine'
 import type { HrZoneMinutes } from '@/lib/fitnessdaten/types'
 
 export type HealthspanMetricId =
@@ -71,31 +72,47 @@ function wochenSumme(field: keyof WhoopDayRecord, woche = letzte7Tage()): number
 export function baueHealthspanModel(heute: WhoopDayRecord): HealthspanModel {
   const history = ladeFitnessHistory()
   const age = profilAlter(ladeFitnessProfil())
-  const woche = letzte7Tage()
+  const omnia = istOmniaAnzeige()
+  // In Omnia-Ansicht: Woche/Baselines ebenfalls ohne Cloud-Fallback
+  const wocheRaw = letzte7Tage()
+  const woche = omnia ? wocheRaw.map(projektOmniaDisplay) : wocheRaw
+  const heuteP = omnia ? projektOmniaDisplay(heute) : heute
 
-  const consistency = heute.sleepConsistency ?? baseline30('sleepConsistency') ?? 70
-  const sleepMin = heute.sleepMinutes ?? 0
+  const consistency =
+    heuteP.sleepConsistency ??
+    (omnia
+      ? baseline30('localSleepConsistency' as keyof WhoopDayRecord, wocheRaw)
+      : baseline30('sleepConsistency')) ??
+    null
+  const sleepMin = heuteP.sleepMinutes ?? 0
   const zone13Week = wochenSumme('zoneMin13', woche)
   const zone45Week = wochenSumme('zoneMin45', woche)
-  // Nur echte Step-Daten verwenden — keine 0-Schätzung für Omnia-Age-Berechnung
-  const stepsRaw = baseline30('steps', woche) ?? heute.steps ?? null
+  const stepsRaw = omnia
+    ? (baseline30('localSteps' as keyof WhoopDayRecord, wocheRaw) ?? heuteP.steps)
+    : (baseline30('steps', woche) ?? heuteP.steps ?? null)
   const stepsAvg = stepsRaw != null && stepsRaw > 200 ? stepsRaw : null
   const strengthWeek = wochenSumme('strengthMin', woche)
-  // Nur echten Messwert für Omnia-Age nutzen — Fallback auf 30-Tage-Baseline
-  const rhrBase = baseline30('restingHr') ?? history.baselines.restingHrBpm
-  const rhr = heute.restingHr ?? rhrBase
-  const vo2 = vo2MaxFuerHealthspan() ?? heute.vo2Max
+  const rhrBase = omnia
+    ? (baseline30('localRhr' as keyof WhoopDayRecord, wocheRaw) ?? history.baselines.restingHrBpm)
+    : (baseline30('restingHr') ?? history.baselines.restingHrBpm)
+  const rhr = heuteP.restingHr ?? rhrBase
+  // Omnia Age: nur lokale Uth-Schätzung / Manuell — nie Cloud-VO₂
+  const vo2 = omnia
+    ? (ladeVo2Trends().schaetzung ??
+        (ladeVo2Trends().quelle === 'manuell' ? ladeVo2Trends().vo2Max : null))
+    : vo2MaxFuerHealthspan() ?? heuteP.vo2Max
 
   const metrics: HealthspanMetric[] = [
     {
       id: 'sleep_consistency',
       label: 'Schlafregelmäßigkeit',
-      value: `${Math.round(consistency)} %`,
-      valueNum: consistency,
+      value: consistency != null ? `${Math.round(consistency)} %` : '—',
+      valueNum: consistency ?? 0,
       min: 40,
       max: 100,
-      position: posLinear(consistency, 40, 100),
-      impactYears: impactFromPosition(posLinear(consistency, 40, 100), 2),
+      position: consistency != null ? posLinear(consistency, 40, 100) : 0.5,
+      impactYears:
+        consistency != null ? impactFromPosition(posLinear(consistency, 40, 100), 2) : 0,
     },
     {
       id: 'sleep_hours',
@@ -104,8 +121,8 @@ export function baueHealthspanModel(heute: WhoopDayRecord): HealthspanModel {
       valueNum: sleepMin,
       min: 300,
       max: 480,
-      position: posLinear(sleepMin, 300, 480),
-      impactYears: impactFromPosition(posLinear(sleepMin, 300, 480), 1.5),
+      position: sleepMin > 0 ? posLinear(sleepMin, 300, 480) : 0.5,
+      impactYears: sleepMin > 0 ? impactFromPosition(posLinear(sleepMin, 300, 480), 1.5) : 0,
     },
     {
       id: 'zones_13_weekly',
@@ -116,7 +133,7 @@ export function baueHealthspanModel(heute: WhoopDayRecord): HealthspanModel {
       max: 420,
       position: posLinear(zone13Week, 0, 420),
       impactYears: impactFromPosition(posLinear(zone13Week, 0, 420), 2),
-      avg30: formatStdMin(wochenSumme('zoneMin13') * 4),
+      avg30: formatStdMin(wochenSumme('zoneMin13', woche) * 4),
     },
     {
       id: 'zones_45_weekly',
@@ -131,7 +148,7 @@ export function baueHealthspanModel(heute: WhoopDayRecord): HealthspanModel {
         zone45Week >= 30
           ? 'Überdurchschnittlich — moderate Zeit in hohen Zonen unterstützt langfristige Fitness.'
           : undefined,
-      avg30: formatStdMin(wochenSumme('zoneMin45') * 4),
+      avg30: formatStdMin(wochenSumme('zoneMin45', woche) * 4),
     },
     {
       id: 'strength',
@@ -179,29 +196,31 @@ export function baueHealthspanModel(heute: WhoopDayRecord): HealthspanModel {
   metrics.push({
     id: 'rhr',
     label: 'RHF',
-    value: `${Math.round(rhr)} S/min`,
-    valueNum: rhr,
+    value: rhr != null ? `${Math.round(rhr)} S/min` : '—',
+    valueNum: rhr ?? 60,
     min: 40,
     max: 80,
-    position: posLinear(rhr, 40, 80, true),
+    position: rhr != null ? posLinear(rhr, 40, 80, true) : 0.5,
     invertScale: true,
-    impactYears: impactFromPosition(posLinear(rhr, 40, 80, true), 2),
+    impactYears: rhr != null ? impactFromPosition(posLinear(rhr, 40, 80, true), 2) : 0,
   })
 
   const totalImpact = metrics.reduce((a, m) => a + m.impactYears, 0)
   /**
-   * WHOOP Age: keine harte Deckelung auf ±8 Jahre — WHOOP-Formel erlaubt bis zu
-   * ~15 Jahre jünger (Top-Athleten). Realistischer Bereich: age ± 15 Jahre.
-   * Minimales Alter: 18 (biologisch sinnvoll).
+   * Omnia Age = chronologisches Alter + Summe der Impacts.
+   * impactFromPosition: p=1 (gut) → negativ (jünger), p=0 (schlecht) → positiv (älter).
+   * Früher fälschlich `age - totalImpact` → gute Werte machten das Alter älter.
    */
   const whoopAge =
     metrics.length > 0
-      ? Math.round(Math.max(18, Math.min(age + 10, age - totalImpact)) * 10) / 10
+      ? Math.round(Math.max(18, Math.min(age + 15, age + totalImpact)) * 10) / 10
       : null
   const yearsYounger = whoopAge != null ? Math.round((age - whoopAge) * 10) / 10 : null
 
-  const recoveryAvg = baseline30('recoveryPercent') ?? 65
-  const recoveryHeute = heute.recoveryPercent ?? recoveryAvg
+  const recoveryAvg = omnia
+    ? (baseline30('localRecoveryPercent' as keyof WhoopDayRecord, wocheRaw) ?? 65)
+    : (baseline30('recoveryPercent') ?? 65)
+  const recoveryHeute = heuteP.recoveryPercent ?? recoveryAvg
   const agingProcess =
     recoveryHeute > 0
       ? Math.round(Math.min(2.5, Math.max(0.4, 1.2 - (recoveryHeute - recoveryAvg) / 100)) * 10) / 10

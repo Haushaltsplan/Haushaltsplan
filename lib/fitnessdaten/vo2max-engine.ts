@@ -343,12 +343,14 @@ export function aktuellesVo2Max(): number | null {
 }
 
 /**
- * Gibt den besten verfügbaren VO2max inkl. Schätzung zurück.
- * Nur für Omnia-Age-Berechnung — NICHT für Dashboard-Anzeige.
+ * Für Omnia Age: lokale Uth-Schätzung / Manuell — nie Cloud-VO₂.
  */
 export function vo2MaxFuerHealthspan(): number | null {
   const s = aktualisiereVo2MaxWennFaellig()
-  return s.manuell ?? s.vo2Max ?? s.schaetzung
+  if (s.schaetzung != null && s.schaetzung > 0) return s.schaetzung
+  if (s.quelle === 'manuell' && s.vo2Max != null) return s.vo2Max
+  if (s.manuell != null) return s.manuell
+  return null
 }
 
 /** Gibt Quelle des aktuellen VO2max zurück. */

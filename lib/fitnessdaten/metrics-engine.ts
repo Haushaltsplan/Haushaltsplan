@@ -19,7 +19,10 @@ import {
   type WhoopJournalEntry,
 } from '@/lib/fitnessdaten/daily-records'
 import { ladeFitnessHistory, aktualisiereStrainFuerAnzeige } from '@/lib/fitnessdaten/history-storage'
-import { projektDisplayFuerQuelle } from '@/lib/fitnessdaten/calibration/display-source'
+import {
+  istOmniaAnzeige,
+  projektDisplayFuerQuelle,
+} from '@/lib/fitnessdaten/calibration/display-source'
 import { topBehaviorInsight } from '@/lib/fitnessdaten/behavior-insights'
 import { heuteIsoLocal, zoneFuerBpm } from '@/lib/fitnessdaten/scores'
 import { profilMaxHr, ladeFitnessProfil } from '@/lib/fitnessdaten/user-profile'
@@ -105,20 +108,24 @@ export function baueWhoopDashboard(
     : ergaenzeZonenUndVitals(tagRecordFuerDatum(selectedDate, store), history, store)
   const tagRecord = projektDisplayFuerQuelle(tagRecordRaw)
 
-  const woche = fenster7TageUmDatum(selectedDate)
+  const omniaView = istOmniaAnzeige()
+  const woche = fenster7TageUmDatum(selectedDate).map((d) => projektDisplayFuerQuelle(d))
+  const daysForBase = omniaView
+    ? ladeDailyStore().days.map((d) => projektDisplayFuerQuelle(d))
+    : ladeDailyStore().days
   const baselines = {
-    hrv: baseline30('hrvRmssd', ladeDailyStore().days),
-    rhr: baseline30('restingHr', ladeDailyStore().days),
-    recovery: baseline30('recoveryPercent', ladeDailyStore().days),
-    strain: baseline30('strain', ladeDailyStore().days),
-    sleep: baseline30('sleepScore', ladeDailyStore().days),
-    respiratory: baseline30('respiratoryRate', ladeDailyStore().days),
+    hrv: baseline30('hrvRmssd', daysForBase),
+    rhr: baseline30('restingHr', daysForBase),
+    recovery: baseline30('recoveryPercent', daysForBase),
+    strain: baseline30('strain', daysForBase),
+    sleep: baseline30('sleepScore', daysForBase),
+    respiratory: baseline30('respiratoryRate', daysForBase),
   }
 
   const tagIso = tagRecord.date
   const tagActs = aktivitaetenFuerDatum(tagIso, store)
   const detected =
-    istHeute && tagActs.length === 0
+    istHeute
       ? erkenneAktivitaeten(
           history.hrSeries,
           tagRecord.restingHr ?? history.baselines.restingHrBpm,
@@ -126,8 +133,12 @@ export function baueWhoopDashboard(
           tagIso,
         )
       : []
-  // Nur Aktivitäten dieses Kalendertags — kein Fallback auf veraltetes activitiesToday
-  const aktivitaeten = tagActs.length > 0 ? tagActs : detected
+  // Omnia: nur BLE-erkannte Aktivitäten — keine Cloud-Workouts
+  const aktivitaeten = omniaView
+    ? detected
+    : tagActs.length > 0
+      ? tagActs
+      : detected
   const journal = journalFuerDatum(tagIso, store)
 
   const hrvHeute = tagRecord.hrvRmssd
