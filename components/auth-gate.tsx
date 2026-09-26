@@ -207,7 +207,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
       setCooldownSec(Math.ceil(COOLDOWN_NACH_SEND_MS / 1000))
       toast.success(
         nativeApp
-          ? 'Code gesendet — 6-stelligen Code aus der E-Mail hier eingeben.'
+          ? 'Link gesendet — in der Mail tippen und Omnia öffnen (nicht Chrome).'
           : 'Login-Link gesendet — im gleichen Browser öffnen.',
       )
     } finally {
@@ -269,7 +269,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
         <h2 className="text-lg font-bold text-[var(--app-text)]">Anmeldung erforderlich</h2>
         <p className="mt-2 text-sm text-[var(--app-text-muted)]">
           {nativeApp
-            ? 'In der Omnia-App: Code aus der E-Mail hier eingeben (nicht den Link im Browser öffnen — der loggt nur die Website ein).'
+            ? 'Login-Link senden, dann in der E-Mail den Link tippen und „Omnia“ wählen (nicht Chrome). Die Anmeldung landet in der App.'
             : schonVertraut
               ? 'Die Sitzung auf diesem Gerät ist weg. Einmalig den Magic-Link bestätigen — danach merkt sich dieses Gerät dich wieder dauerhaft.'
               : 'Einmal E-Mail eingeben und Magic-Link bestätigen. Danach bleibt dieses Gerät angemeldet.'}
@@ -282,7 +282,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
         {linkGesendet && (
           <p className="mt-3 rounded-lg border border-teal-700/40 bg-teal-950/20 px-3 py-2 text-[13px] text-teal-100/90">
             {nativeApp
-              ? 'E-Mail ist unterwegs. Den 6-stelligen Code unten eintragen — fertig. Den Link nicht in Chrome öffnen.'
+              ? 'E-Mail ist unterwegs. Link tippen → Omnia öffnen (nicht Chrome). Es gibt keinen Extra-Code — der Link reicht.'
               : 'Link unterwegs. Im gleichen Browser tippen — fertig.'}
           </p>
         )}
@@ -313,15 +313,13 @@ export function AuthGate({ children }: { children: ReactNode }) {
             ? 'Bitte warten …'
             : cooldownSec > 0
               ? `Warten (${cooldownSec}s)`
-              : nativeApp
-                ? 'Login-Code senden'
-                : 'Login-Link senden'}
+              : 'Login-Link senden'}
         </button>
 
-        {nativeApp || linkGesendet ? (
+        {linkGesendet && !nativeApp ? (
           <div className="mt-4 space-y-2 border-t border-white/10 pt-4">
             <label className="block text-xs font-semibold text-[var(--app-text-muted)]">
-              Code aus der E-Mail
+              Optional: Code aus der E-Mail (falls vorhanden)
             </label>
             <input
               type="text"

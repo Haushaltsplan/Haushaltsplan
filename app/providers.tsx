@@ -1,6 +1,7 @@
 'use client'
 
 import { OmniaNativeBoot } from '@/components/omnia-native-boot'
+import { OmniaAuthDeeplink } from '@/components/omnia-auth-deeplink'
 import { WhoopBleProvider } from '@/components/fitnessdaten/whoop-ble-provider'
 import { WhoopCloudAutoSyncRunner } from '@/components/fitnessdaten/whoop-cloud-auto-sync'
 import { WhoopBleBackgroundSyncRegister } from '@/components/fitnessdaten/whoop-ble-background-sync'
@@ -40,6 +41,7 @@ export function Providers({ children }: { children: ReactNode }) {
   return (
     <>
       <OmniaNativeBoot />
+      <OmniaAuthDeeplink />
       <WhoopBleProvider>
       <AuthGate>
         <AppLockGate>
