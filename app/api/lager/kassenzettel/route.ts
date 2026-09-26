@@ -19,7 +19,7 @@ import {
 import { chargeHinzufuegen } from '@/lib/lager-charge'
 import { lagerKategorieFinal, normalisiereLagerKategorie } from '@/lib/lager-produkt-kategorie'
 import { produktAnzeigeNameAusBon } from '@/lib/produkt-name-normalize'
-import { readGeminiApiKeyFromEnv } from '@/lib/ki-coach-backend'
+import { GEMINI_FREE_FLASH_PRIMARY, readGeminiApiKeyFromEnv } from '@/lib/ki-coach-backend'
 import { createSupabaseFuerRequest } from '@/lib/supabase-user'
 import type { SupabaseClient } from '@supabase/supabase-js'
 
@@ -30,7 +30,7 @@ function geminiModel() {
   return (
     process.env.FINANCE_COACH_GEMINI_MODEL ||
     process.env.GEMINI_MODEL ||
-    'gemini-3.5-flash'
+    GEMINI_FREE_FLASH_PRIMARY
   ).trim()
 }
 

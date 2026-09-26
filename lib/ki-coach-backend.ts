@@ -325,25 +325,20 @@ function buildGeminiModelChain(opts: {
   return out
 }
 
-/** Flash-Modelle mit Google-AI-Studio-Tageskontingent — kein Pro, kein kostenpflichtiges Fallback. */
-export function geminiFreeTierFlashModelKandidaten(opts?: {
+/** Free-Tier Flash: fest 3.8 → 3.5 (kein Lite/Latest/ENV-Chaos). */
+export const GEMINI_FREE_FLASH_PRIMARY = 'gemini-3.8-flash'
+export const GEMINI_FREE_FLASH_FALLBACK = 'gemini-3.5-flash'
+
+/**
+ * Flash-Modelle mit Google-AI-Studio-Tageskontingent — kein Pro, kein Billing-Fallback.
+ * Kette ist fest: gemini-3.8-flash, dann gemini-3.5-flash.
+ * `opts` bleibt für Call-Sites kompatibel, steuert die Reihenfolge aber nicht mehr.
+ */
+export function geminiFreeTierFlashModelKandidaten(_opts?: {
   primaryEnvKeys?: string[]
   fallbackEnvKey?: string
 }): string[] {
-  const chain = buildGeminiModelChain({
-    primaryEnvKeys: opts?.primaryEnvKeys ?? ['FINANCE_COACH_GEMINI_MODEL', 'GEMINI_MODEL'],
-    fallbackEnvKey: opts?.fallbackEnvKey ?? 'GEMINI_MODEL_FALLBACKS',
-    defaultPrimary: 'gemini-3.5-flash',
-    /** Quota/Kapazität oft pro Modell — nächstes Flash = neuer Versuch. Kein Pro. */
-    /** 2.5 tot für neue Free-Projekte. 3.6 unterstützt thinkingLevel=minimal; 3.7/3.8 nicht. */
-    defaultFallbacks: ['gemini-3.5-flash-lite', 'gemini-3.6-flash', 'gemini-flash-latest'],
-  }).filter((m) => {
-    const k = m.toLowerCase()
-    return !k.startsWith('gemini-2.5') && !k.startsWith('gemini-2.0')
-  })
-  return chain.length > 0
-    ? chain
-    : ['gemini-3.5-flash', 'gemini-3.5-flash-lite', 'gemini-3.6-flash', 'gemini-flash-latest']
+  return [GEMINI_FREE_FLASH_PRIMARY, GEMINI_FREE_FLASH_FALLBACK]
 }
 
 /**
@@ -382,19 +377,12 @@ function geminiModelKandidaten(): string[] {
 
 /** Portfolio-KI-Berater — Free-Tier Flash (Google AI Studio). Nie Pro (das wäre Billing). */
 export function portfolioBeraterGeminiModelKandidaten(): string[] {
-  const chain = geminiFreeTierFlashModelKandidaten({
-    primaryEnvKeys: ['PORTFOLIO_BERATER_GEMINI_MODEL', 'FINANCE_COACH_GEMINI_MODEL', 'GEMINI_MODEL'],
-    fallbackEnvKey: 'PORTFOLIO_BERATER_GEMINI_MODEL_FALLBACKS',
-  }).filter((m) => !istGeminiProModell(m))
-  return chain.length > 0 ? chain : ['gemini-3.5-flash', 'gemini-flash-latest']
+  return geminiFreeTierFlashModelKandidaten()
 }
 
-/** Earnings Call — lange Transkripte, bevorzugt neuestes Flash mit Free-Tier-Fallbacks. */
+/** Earnings Call — Free-Tier Flash (3.8 → 3.5). */
 export function earningsCallGeminiModelKandidaten(): string[] {
-  return geminiFreeTierFlashModelKandidaten({
-    primaryEnvKeys: ['EARNINGS_CALL_GEMINI_MODEL', 'FINANCE_COACH_GEMINI_MODEL', 'GEMINI_MODEL'],
-    fallbackEnvKey: 'EARNINGS_CALL_GEMINI_MODEL_FALLBACKS',
-  })
+  return geminiFreeTierFlashModelKandidaten()
 }
 
 function parseGeminiFehlerBody(raw: string): { message: string; apiStatus?: string } {
@@ -465,8 +453,8 @@ export function formatCoachFehlerHint(hint: string, modelsVersucht = 1): string 
   const raw = hint.toLowerCase()
   if (raw.includes('no longer available') || raw.includes('not longer available')) {
     return (
-      'Google hat dieses Gemini-Modell für neue Free-Projekte abgeschaltet (2.5 Flash Lite). ' +
-      'Die App nutzt jetzt 3.5 Flash / 3.5 Flash Lite — bitte KI-Fazit erneut starten.'
+      'Google hat dieses Gemini-Modell für neue Free-Projekte abgeschaltet. ' +
+      'Die App nutzt 3.8 Flash mit Rückfall auf 3.5 Flash — bitte erneut senden.'
     )
   }
   if (art === 'capacity') {
@@ -478,7 +466,7 @@ export function formatCoachFehlerHint(hint: string, modelsVersucht = 1): string 
   if (art === 'limit_zero') {
     return (
       'Google hat dieses Modell im kostenlosen Projekt nicht freigeschaltet (Limit 0). ' +
-      '3.5 Flash in „Haushaltsplan kostenlos“ hat in der Regel noch Kontingent — bitte gleich nochmal senden.'
+      '3.8 Flash / 3.5 Flash haben in der Regel noch Kontingent — bitte gleich nochmal senden.'
     )
   }
   if (art === 'per_day') {
@@ -489,7 +477,7 @@ export function formatCoachFehlerHint(hint: string, modelsVersucht = 1): string 
   }
   if (art === 'per_minute' || art === 'generic_429') {
     return (
-      'Gemini hat die Anfrage gerade mit einem kurzen Rate-Limit beantwortet — das Tageskontingent von 3.5 Flash ist dafür oft noch frei. ' +
+      'Gemini hat die Anfrage gerade mit einem kurzen Rate-Limit beantwortet — das Tageskontingent ist dafür oft noch frei. ' +
       `Bitte 30–60 Sekunden warten und erneut senden.${mehr}`
     )
   }
@@ -510,13 +498,29 @@ type CallGeminiEinModellOptions = {
    * und die sichtbare Antwort mitten im Satz abbricht.
    */
   thinkingMinimal?: boolean
+  /** Erzwingt thinkingLevel (z. B. Retry nach „MINIMAL not supported“). */
+  thinkingLevelOverride?: 'minimal' | 'low' | 'medium' | 'high'
+}
+
+/**
+ * Gemini 3.7+ Full-Flash und Alias `gemini-flash-latest` unterstützen
+ * thinkingLevel=minimal nicht (HTTP 400). Flash-Lite behält minimal.
+ */
+function geminiMinimalThinkingNichtUnterstuetzt(model: string): boolean {
+  const m = model.toLowerCase().replace(/^models\//, '')
+  if (m === 'gemini-flash-latest') return true
+  if (m.includes('lite') || m.includes('image')) return false
+  const full = m.match(/^gemini-(\d+)\.(\d+)-flash(?:-|$)/)
+  if (!full) return false
+  const major = Number(full[1])
+  const minor = Number(full[2])
+  return major > 3 || (major === 3 && minor >= 7)
 }
 
 function geminiThinkingConfig(model: string): Record<string, unknown> {
   const m = model.toLowerCase()
   if (/gemini-2\.5/.test(m)) return { thinkingBudget: 0 }
-  // 3.7/3.8 Flash: thinkingLevel=minimal → 400; low ist der schnellste erlaubte Wert
-  if (/gemini-3\.[78](-|$)/.test(m)) return { thinkingLevel: 'low' }
+  if (geminiMinimalThinkingNichtUnterstuetzt(model)) return { thinkingLevel: 'low' }
   return { thinkingLevel: 'minimal' }
 }
 
@@ -541,7 +545,9 @@ async function callGeminiEinModell(
   if (opts.maxOutputTokens != null && opts.maxOutputTokens > 0) {
     generationConfig.maxOutputTokens = opts.maxOutputTokens
   }
-  if (opts.thinkingMinimal) {
+  if (opts.thinkingLevelOverride) {
+    generationConfig.thinkingConfig = { thinkingLevel: opts.thinkingLevelOverride }
+  } else if (opts.thinkingMinimal) {
     generationConfig.thinkingConfig = geminiThinkingConfig(model)
   }
   if (opts.jsonResponse?.schema) {
@@ -689,14 +695,28 @@ async function callGemini(
     const optsMitTimeout = { ...callOpts, timeoutMs: thisTimeout }
     let r = await callGeminiEinModell(modellKey, model, systemText, userMessages, optsMitTimeout)
 
-    // thinkingConfig unbekannt beim Modell → einmal ohne Thinking-Flag
+    // thinkingLevel=minimal nicht unterstützt (3.7+/flash-latest) → Retry mit low, dann ohne Flag
     if (!r.ok && r.httpStatus === 400 && callOpts.thinkingMinimal && restMs() > 10_000) {
-      console.warn(`[ki-coach] Gemini „${model}“ 400 mit thinkingConfig — Retry ohne Thinking-Flag.`)
-      r = await callGeminiEinModell(modellKey, model, systemText, userMessages, {
-        ...callOpts,
-        thinkingMinimal: false,
-        timeoutMs: Math.min(perModelTimeout, restMs()),
-      })
+      const tipp = r.hint.toLowerCase()
+      const minimalAbgelehnt =
+        tipp.includes('thinking') && (tipp.includes('minimal') || tipp.includes('not supported'))
+      if (minimalAbgelehnt && !callOpts.thinkingLevelOverride) {
+        console.warn(`[ki-coach] Gemini „${model}“ 400 (minimal) — Retry mit thinkingLevel=low.`)
+        r = await callGeminiEinModell(modellKey, model, systemText, userMessages, {
+          ...callOpts,
+          thinkingLevelOverride: 'low',
+          timeoutMs: Math.min(perModelTimeout, restMs()),
+        })
+      }
+      if (!r.ok && r.httpStatus === 400 && restMs() > 10_000) {
+        console.warn(`[ki-coach] Gemini „${model}“ 400 mit thinkingConfig — Retry ohne Thinking-Flag.`)
+        r = await callGeminiEinModell(modellKey, model, systemText, userMessages, {
+          ...callOpts,
+          thinkingMinimal: false,
+          thinkingLevelOverride: undefined,
+          timeoutMs: Math.min(perModelTimeout, restMs()),
+        })
+      }
     }
 
     // Google Search hat oft ein eigenes, winziges Free-Kontingent — ohne Search erneut versuchen
