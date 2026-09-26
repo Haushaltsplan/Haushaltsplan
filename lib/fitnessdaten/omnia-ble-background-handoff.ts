@@ -1,6 +1,6 @@
 /**
- * Native Omnia: Bei Minimieren/Display-aus Capgo-BLE NICHT trennen —
- * nur Foreground-Service am Leben halten. Native GATT nur wenn WebView tot ist.
+ * Hintergrund: Capgo trennen + nativer GATT im :whoopble-Prozess.
+ * Der BLE-Dienst überlebt App-Schließen.
  */
 
 import { istOmniaNativeApp } from '@/lib/fitnessdaten/omnia-native'
@@ -13,7 +13,6 @@ import { istWhoopBleAlwaysOn } from '@/lib/fitnessdaten/whoop-ble-keepalive'
 import { WHOOP_BLE_DEVICE_ID_KEY } from '@/lib/fitnessdaten/web-bluetooth-whoop'
 
 let capgoDisconnect: (() => void) | null = null
-/** true nur wenn wir Capgo absichtlich für nativen GATT abgegeben haben (selten). */
 let handoffAktiv = false
 
 export function registriereCapgoDisconnect(fn: () => void): void {
@@ -29,56 +28,64 @@ function ladeGeraetId(): string | null {
   return window.localStorage.getItem(WHOOP_BLE_DEVICE_ID_KEY)
 }
 
+function sleep(ms: number): Promise<void> {
+  return new Promise((r) => setTimeout(r, ms))
+}
+
 /**
- * Display aus / App minimiert: Keepalive-Service sichern, Capgo-Verbindung behalten.
+ * App geht in den Hintergrund / wird geschlossen:
+ * 1) Keepalive-Service (:whoopble) starten
+ * 2) Capgo disconnect
+ * 3) Nativen GATT armen — läuft weiter wenn UI tot ist
  */
 export async function nativeHintergrundHandoff(live: boolean): Promise<boolean> {
   if (!istOmniaNativeApp() || !istWhoopBleAlwaysOn()) return false
   const deviceId = ladeGeraetId()
-  try {
-    await starteOmniaBleKeepalive(deviceId ?? undefined)
-    // Wichtig: Capgo NICHT disconnecten — das war die Ursache für Verbindungsverlust.
-    return live || Boolean(deviceId)
-  } catch {
+  if (!deviceId) {
+    try {
+      await starteOmniaBleKeepalive()
+    } catch {
+      /* ignore */
+    }
     return false
   }
-}
-
-/**
- * Harter Handoff (App aus Recents / Capgo tot): Capgo trennen, nativer GATT.
- * Wird nur manuell/selten genutzt — Standard ist Keep-Process ohne Disconnect.
- */
-export async function nativeHarterGattHandoff(): Promise<boolean> {
-  if (!istOmniaNativeApp() || !istWhoopBleAlwaysOn()) return false
-  const deviceId = ladeGeraetId()
-  if (!deviceId) return false
+  if (handoffAktiv) return true
   handoffAktiv = true
   try {
+    await starteOmniaBleKeepalive(deviceId)
+    // Zuerst Capgo freigeben, dann nativ verbinden (ein Central zur Zeit)
     const disc = capgoDisconnect
     capgoDisconnect = null
-    disc?.()
+    try {
+      disc?.()
+    } catch {
+      /* ignore */
+    }
+    await sleep(350)
     await armeNativeWhoopLink(deviceId)
-    return true
+    return live || true
   } catch {
     handoffAktiv = false
     return false
   }
 }
 
+export async function nativeHarterGattHandoff(): Promise<boolean> {
+  return nativeHintergrundHandoff(true)
+}
+
 export async function nativeVordergrundUebernahme(
   reconnect: () => Promise<void>,
 ): Promise<void> {
   if (!istOmniaNativeApp()) return
-  const warHandoff = handoffAktiv
   handoffAktiv = false
   try {
     await gebeNativeWhoopLinkFrei()
   } catch {
     /* ignore */
   }
-  // Nach hartem Handoff Capgo neu verbinden; sonst nur nachziehen falls nötig
+  await sleep(200)
   await reconnect()
-  void warHandoff
 }
 
 export function istNativeHandoffAktiv(): boolean {

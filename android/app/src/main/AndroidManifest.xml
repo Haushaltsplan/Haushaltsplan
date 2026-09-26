@@ -22,7 +22,6 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
 
-            <!-- Magic-Link /auth/confirm in der App öffnen (nicht nur Chrome) -->
             <intent-filter android:autoVerify="true">
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
@@ -42,17 +41,20 @@
 
         </activity>
 
+        <!-- Eigener Prozess: überlebt App-Schließen / Recents-Wischen -->
         <service
             android:name=".WhoopBleForegroundService"
             android:exported="false"
             android:stopWithTask="false"
+            android:process=":whoopble"
             android:foregroundServiceType="connectedDevice" />
 
         <receiver
             android:name=".WhoopBleBootReceiver"
             android:enabled="true"
             android:exported="true"
-            android:directBootAware="true">
+            android:directBootAware="true"
+            android:process=":whoopble">
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
                 <action android:name="android.intent.action.LOCKED_BOOT_COMPLETED" />
@@ -70,8 +72,6 @@
                 android:resource="@xml/file_paths"></meta-data>
         </provider>
     </application>
-
-    <!-- Permissions -->
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />

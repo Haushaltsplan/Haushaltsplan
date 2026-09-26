@@ -109,9 +109,8 @@ public class OmniaBleKeepalivePlugin extends Plugin {
     @PluginMethod
     public void stop(PluginCall call) {
         WhoopBleForegroundService.setKeepaliveActive(getContext(), false);
-        WhoopBleLinkHolder holder = WhoopBleForegroundService.linkHolder();
-        holder.release();
-        holder.setAppForeground(true);
+        // LinkHolder lebt im :whoopble-Prozess — nur per Intent freigeben
+        sendServiceAction(WhoopBleForegroundService.ACTION_RELEASE_NATIVE);
         Intent intent = new Intent(getContext(), WhoopBleForegroundService.class);
         getContext().stopService(intent);
         call.resolve();
