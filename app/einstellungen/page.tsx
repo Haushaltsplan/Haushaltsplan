@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
 import { AppLockEinstellungen } from '@/components/app-lock-einstellungen'
+import { OmniaAppAktualisieren } from '@/components/omnia-app-aktualisieren'
 import { PortfolioGastEinstellungen } from '@/components/portfolio-gast-einstellungen'
 import { PageChrome, PageHero, PageSection, PageSectionPanel } from '@/components/page-shell'
 
@@ -15,8 +16,14 @@ export default function EinstellungenPage() {
         density="compact"
         eyebrow="Omnia"
         title="Einstellungen"
-        description="Sicherheit, App-Sperre, Portfolio-Gast und rechtliche Hinweise."
+        description="Aktualisieren, Sicherheit, App-Sperre, Portfolio-Gast und rechtliche Hinweise."
       />
+
+      <PageSection titleId="einstellungen-aktualisieren" title="App aktualisieren">
+        <PageSectionPanel density="compact">
+          <OmniaAppAktualisieren />
+        </PageSectionPanel>
+      </PageSection>
 
       <PageSection titleId="einstellungen-sicherheit" title="Sicherheit">
         <PageSectionPanel density="compact">

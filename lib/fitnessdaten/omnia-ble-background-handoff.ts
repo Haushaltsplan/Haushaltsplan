@@ -27,17 +27,21 @@ function ladeGeraetId(): string | null {
   return window.localStorage.getItem(WHOOP_BLE_DEVICE_ID_KEY)
 }
 
-export async function nativeHintergrundHandoff(live: boolean): Promise<void> {
-  if (!istOmniaNativeApp() || !istWhoopBleAlwaysOn() || !live || handoffAktiv) return
+export async function nativeHintergrundHandoff(live: boolean): Promise<boolean> {
+  if (!istOmniaNativeApp() || !istWhoopBleAlwaysOn() || !live || handoffAktiv) return false
   const deviceId = ladeGeraetId()
-  if (!deviceId) return
+  if (!deviceId) return false
+  // Flag vor Capgo-Disconnect setzen, damit Auto-Reconnect nicht gegen nativen GATT läuft.
   handoffAktiv = true
   try {
-    capgoDisconnect?.()
+    const disc = capgoDisconnect
     capgoDisconnect = null
+    disc?.()
     await armeNativeWhoopLink(deviceId)
+    return true
   } catch {
     handoffAktiv = false
+    return false
   }
 }
 
@@ -45,13 +49,16 @@ export async function nativeVordergrundUebernahme(
   reconnect: () => Promise<void>,
 ): Promise<void> {
   if (!istOmniaNativeApp()) return
+  const warHandoff = handoffAktiv
   handoffAktiv = false
   try {
     await gebeNativeWhoopLinkFrei()
   } catch {
     /* ignore */
   }
-  await reconnect()
+  if (warHandoff || istWhoopBleAlwaysOn()) {
+    await reconnect()
+  }
 }
 
 export function istNativeHandoffAktiv(): boolean {

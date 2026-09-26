@@ -12,6 +12,7 @@ import {
   WHOOP_SW_MESSAGE,
 } from '@/lib/fitnessdaten/whoop-ble-keepalive'
 import {
+  istNativeHandoffAktiv,
   nativeHintergrundHandoff,
   nativeVordergrundUebernahme,
 } from '@/lib/fitnessdaten/omnia-ble-background-handoff'
@@ -113,6 +114,7 @@ export function WhoopBleProvider({ children }: Props) {
 
   const scheduleReconnect = useCallback((device?: BluetoothDevice, fast = false) => {
     if (!istWhoopBleAlwaysOn() || !autoReconnectRef.current) return
+    if (istNativeHandoffAktiv()) return
     if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current)
     const delay = fast
       ? WHOOP_BLE_RECONNECT_FAST_MS
@@ -132,6 +134,13 @@ export function WhoopBleProvider({ children }: Props) {
       debug: WhoopWebBleDebug
       gen5: FitnessSnapshot['gen5']
     }) => {
+      // Während nativem Hintergrund-Handoff: Capgo-Disconnect nicht als idle/Fehler werten.
+      if (istNativeHandoffAktiv() && (u.phase === 'idle' || u.phase === 'error')) {
+        setPhaseBoth('live')
+        setStatusHint('Hintergrund · Band gehalten')
+        setFehler(null)
+        return
+      }
       setPhaseBoth(u.phase)
       setDeviceName(u.deviceName)
       setFehler(u.error)
@@ -162,6 +171,7 @@ export function WhoopBleProvider({ children }: Props) {
     async (auswahl: WhoopDeviceAuswahl, existingDevice?: BluetoothDevice) => {
       if (connectingRef.current) return
       if (!bleOk) return
+      if (istNativeHandoffAktiv()) return
       if (!istWhoopBleAlwaysOn() && !autoReconnectRef.current && auswahl === 'gespeichert' && !existingDevice) {
         return
       }
@@ -233,6 +243,7 @@ export function WhoopBleProvider({ children }: Props) {
 
   const versucheAutoReconnect = useCallback(async () => {
     if (!istWhoopBleAlwaysOn() || !autoReconnectRef.current || !bleOk) return
+    if (istNativeHandoffAktiv()) return
     if (phaseRef.current === 'live' || phaseRef.current === 'connecting' || phaseRef.current === 'waiting_hr') {
       return
     }
@@ -259,6 +270,20 @@ export function WhoopBleProvider({ children }: Props) {
   }, [])
 
   useEffect(() => {
+    const starteHandoff = () => {
+      if (!istOmniaNativeApp() || !istWhoopBleAlwaysOn()) return
+      const live =
+        phaseRef.current === 'live' ||
+        phaseRef.current === 'waiting_hr' ||
+        phaseRef.current === 'connecting'
+      void nativeHintergrundHandoff(live).then((ok) => {
+        if (!ok) return
+        disconnectRef.current = null
+        setPhaseBoth('live')
+        setStatusHint('Hintergrund · Band gehalten')
+        setFehler(null)
+      })
+    }
     const onVisible = () => {
       if (document.visibilityState === 'visible') {
         if (istOmniaNativeApp()) {
@@ -268,21 +293,10 @@ export function WhoopBleProvider({ children }: Props) {
         }
         return
       }
-      if (istOmniaNativeApp() && istWhoopBleAlwaysOn()) {
-        void nativeHintergrundHandoff(
-          phaseRef.current === 'live' ||
-            phaseRef.current === 'waiting_hr' ||
-            phaseRef.current === 'connecting',
-        )
-      }
+      starteHandoff()
     }
     const onHide = () => {
-      if (!istOmniaNativeApp() || !istWhoopBleAlwaysOn()) return
-      void nativeHintergrundHandoff(
-        phaseRef.current === 'live' ||
-          phaseRef.current === 'waiting_hr' ||
-          phaseRef.current === 'connecting',
-      )
+      starteHandoff()
     }
     document.addEventListener('visibilitychange', onVisible)
     window.addEventListener('focus', onVisible)
@@ -296,7 +310,7 @@ export function WhoopBleProvider({ children }: Props) {
       window.removeEventListener('pagehide', onHide)
       document.removeEventListener('resume', onVisible)
     }
-  }, [versucheAutoReconnect])
+  }, [versucheAutoReconnect, setPhaseBoth])
 
   useEffect(() => {
     void versucheAutoReconnect()
@@ -316,6 +330,7 @@ export function WhoopBleProvider({ children }: Props) {
     if (!bleOk || !istWhoopBleAlwaysOn()) return
     let stop: (() => void) | null = null
     void startWhoopNaeheWatcher((device) => {
+      if (istNativeHandoffAktiv()) return
       if (phaseRef.current === 'live') return
       scheduleReconnect(device, true)
     }).then((cleanup) => {

@@ -120,12 +120,32 @@ public class OmniaBleKeepalivePlugin extends Plugin {
     @PluginMethod
     public void openBatterySettings(PluginCall call) {
         try {
-            Intent intent = new Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS);
-            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-            getContext().startActivity(intent);
+            // Direkt-Dialog „Akku-Optimierung ignorieren?“ für Omnia (ein Tap).
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                PowerManager pm =
+                    (PowerManager) getContext().getSystemService(android.content.Context.POWER_SERVICE);
+                if (pm != null && !pm.isIgnoringBatteryOptimizations(getContext().getPackageName())) {
+                    Intent request = new Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS);
+                    request.setData(Uri.parse("package:" + getContext().getPackageName()));
+                    request.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                    getContext().startActivity(request);
+                    call.resolve();
+                    return;
+                }
+            }
+            Intent fallback = new Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS);
+            fallback.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            getContext().startActivity(fallback);
             call.resolve();
         } catch (Exception e) {
-            call.reject("Akku-Einstellungen konnten nicht geöffnet werden.");
+            try {
+                Intent fallback = new Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS);
+                fallback.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                getContext().startActivity(fallback);
+                call.resolve();
+            } catch (Exception e2) {
+                call.reject("Akku-Einstellungen konnten nicht geöffnet werden.");
+            }
         }
     }
 
