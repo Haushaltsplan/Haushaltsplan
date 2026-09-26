@@ -2,6 +2,7 @@
 
 import { istOeffentlicheRoute } from '@/lib/public-routes'
 import { appInputClass, appSectionCardClass } from '@/lib/app-ui'
+import { decodeOmniaSessionCode } from '@/lib/fitnessdaten/omnia-session-code'
 import { istOmniaNativeApp } from '@/lib/fitnessdaten/omnia-native'
 import { supabase } from '@/lib/supabase'
 import { setzeClientZugriff } from '@/lib/zugriff-client'
@@ -106,6 +107,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true)
   const [email, setEmail] = useState('')
   const [otpCode, setOtpCode] = useState('')
+  const [sessionCode, setSessionCode] = useState('')
   const [sending, setSending] = useState(false)
   const [verifying, setVerifying] = useState(false)
   const [nativeApp] = useState(() => istOmniaNativeApp())
@@ -228,6 +230,29 @@ export function AuthGate({ children }: { children: ReactNode }) {
     }
   }
 
+  const uebernehmeSessionCode = async () => {
+    const payload = decodeOmniaSessionCode(sessionCode)
+    if (!payload) {
+      toast.error('Ungültiger Sitzungscode. Bitte neu kopieren von /auth/app-uebernehmen.')
+      return
+    }
+    setVerifying(true)
+    try {
+      const { data, error } = await supabase.auth.setSession({
+        access_token: payload.access_token,
+        refresh_token: payload.refresh_token,
+      })
+      if (error || !data.session) {
+        toast.error(error?.message || 'Sitzung ungültig.')
+        return
+      }
+      uebernehmeSession(data.session)
+      toast.success('Angemeldet')
+    } finally {
+      setVerifying(false)
+    }
+  }
+
   const verifyOtpCode = async () => {
     const clean = email.trim()
     const token = otpCode.replace(/\s/g, '')
@@ -320,16 +345,39 @@ export function AuthGate({ children }: { children: ReactNode }) {
         )}
 
         <div className="mt-3 rounded-lg border border-teal-800/40 bg-teal-950/20 px-3 py-2 text-[13px] leading-relaxed text-teal-100/90">
-          <strong className="font-semibold">Ohne neue E-Mail:</strong> Am PC oder in Chrome auf dem
-          Handy einloggen (falls Session noch da), dann{' '}
-          <a
-            href="/auth/app-uebernehmen"
-            className="font-semibold underline underline-offset-2"
-          >
-            Sitzung in die App übernehmen
-          </a>
-          .
+          <strong className="font-semibold">Ohne neue E-Mail (empfohlen):</strong>
+          <ol className="mt-1 list-decimal space-y-1 pl-4">
+            <li>
+              Im Browser (PC/Chrome) anmelden →{' '}
+              <a href="/auth/app-uebernehmen" className="font-semibold underline underline-offset-2">
+                Sitzungscode kopieren
+              </a>
+            </li>
+            <li>Hier in der App einfügen → „Sitzung übernehmen“</li>
+          </ol>
         </div>
+
+        <div className="mt-4 space-y-2">
+          <label className="block text-xs font-semibold text-[var(--app-text-muted)]">
+            Sitzungscode einfügen
+          </label>
+          <textarea
+            value={sessionCode}
+            onChange={(e) => setSessionCode(e.target.value)}
+            placeholder="omnia1.…"
+            className={`${appInputClass} min-h-[5.5rem] break-all font-mono text-[10px] focus:ring-cyan-500/40`}
+          />
+          <button
+            type="button"
+            disabled={verifying || !sessionCode.trim().startsWith('omnia1.')}
+            onClick={() => void uebernehmeSessionCode()}
+            className="w-full rounded-[0.875rem] border border-teal-500/40 bg-teal-950/40 py-2.5 text-sm font-bold text-teal-100 transition hover:bg-teal-900/50 disabled:opacity-40"
+          >
+            {verifying ? 'Übernehme …' : 'Sitzung übernehmen'}
+          </button>
+        </div>
+
+        <p className="mt-5 text-center text-[11px] text-[var(--app-text-muted)]">— oder Magic-Link —</p>
 
         <input
           type="email"
@@ -340,7 +388,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
           }}
           placeholder="deine@email.de"
           autoComplete="email"
-          className={`${appInputClass} mt-4 focus:ring-cyan-500/40`}
+          className={`${appInputClass} mt-3 focus:ring-cyan-500/40`}
         />
         <button
           type="button"

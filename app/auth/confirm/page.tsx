@@ -1,9 +1,9 @@
 'use client'
 
 /**
- * Magic-Link-Callback.
- * Auf Android außerhalb der Omnia-App: Code NICHT verbrauchen, sondern an die App
- * weiterreichen (Chrome-Session ≠ App-Session). In der App: Session tauschen.
+ * Magic-Link-Callback in der Omnia-App.
+ * Wartet kurz auf Deep-Link-Parameter; leitet Android-Chrome an die App weiter,
+ * ohne den Code im Browser zu verbrauchen.
  */
 
 import { istCapacitorNative } from '@/lib/fitnessdaten/omnia-ble-shim'
@@ -15,6 +15,7 @@ import { useEffect, useState } from 'react'
 
 const LS_LAST_EMAIL = 'omnia-auth-last-email'
 const LS_DEVICE_TRUSTED = 'omnia-auth-device-trusted'
+const SS_PENDING = 'omnia-pending-auth-url'
 
 function speichereNachLogin(email: string | null | undefined) {
   try {
@@ -29,8 +30,27 @@ function speichereNachLogin(email: string | null | undefined) {
 function hatAuthPayload(url: URL): boolean {
   if (url.searchParams.get('code')) return true
   if (url.searchParams.get('token_hash')) return true
+  if (url.searchParams.get('access_token') && url.searchParams.get('refresh_token')) return true
   const h = url.hash || ''
-  return h.includes('access_token') || h.includes('code=')
+  return h.includes('access_token') || h.includes('code=') || h.includes('token_hash')
+}
+
+function mergePendingIntoLocation(): URL {
+  const url = new URL(window.location.href)
+  if (hatAuthPayload(url)) return url
+  try {
+    const pending = sessionStorage.getItem(SS_PENDING)
+    if (!pending) return url
+    const p = new URL(pending)
+    p.searchParams.forEach((v, k) => {
+      if (!url.searchParams.has(k)) url.searchParams.set(k, v)
+    })
+    if (!url.hash && p.hash) url.hash = p.hash
+    sessionStorage.removeItem(SS_PENDING)
+  } catch {
+    /* ignore */
+  }
+  return url
 }
 
 function androidChromeZuOmnia(url: URL): boolean {
@@ -41,13 +61,60 @@ function androidChromeZuOmnia(url: URL): boolean {
   if (!hatAuthPayload(url)) return false
 
   const qs = url.search || ''
-  const hash = url.hash || ''
-  // Intent öffnet die installierte Omnia-App und übergibt Query/Hash unverbraucht.
+  // Kurzer Magic-Link-Code passt in Intents; JWTs nicht.
   const intent =
-    `intent://auth/confirm${qs}${hash}` +
+    `intent://auth/confirm${qs}` +
     '#Intent;scheme=de.omnia.haushalt;package=de.omnia.haushalt;end'
   window.location.replace(intent)
   return true
+}
+
+async function sessionAusUrl(url: URL): Promise<{ ok: true; session: Session | null } | { ok: false; message: string }> {
+  const tokenHash = url.searchParams.get('token_hash')
+  const typeRaw = url.searchParams.get('type')
+  const code = url.searchParams.get('code')
+  const access = url.searchParams.get('access_token')
+  const refresh = url.searchParams.get('refresh_token')
+
+  if (access && refresh) {
+    const { data, error } = await supabase.auth.setSession({
+      access_token: access,
+      refresh_token: refresh,
+    })
+    if (error) return { ok: false, message: error.message }
+    return { ok: true, session: data.session }
+  }
+
+  if (tokenHash && typeRaw) {
+    const { data, error } = await supabase.auth.verifyOtp({
+      token_hash: tokenHash,
+      type: typeRaw as EmailOtpType,
+    })
+    if (error) return { ok: false, message: error.message }
+    return { ok: true, session: data.session ?? null }
+  }
+
+  if (code) {
+    const { data, error } = await supabase.auth.exchangeCodeForSession(code)
+    if (error) return { ok: false, message: error.message }
+    return { ok: true, session: data.session }
+  }
+
+  if (url.hash.includes('access_token')) {
+    const hash = new URLSearchParams(url.hash.replace(/^#/, ''))
+    const a = hash.get('access_token')
+    const r = hash.get('refresh_token')
+    if (a && r) {
+      const { data, error } = await supabase.auth.setSession({
+        access_token: a,
+        refresh_token: r,
+      })
+      if (error) return { ok: false, message: error.message }
+      return { ok: true, session: data.session }
+    }
+  }
+
+  return { ok: false, message: 'no-payload' }
 }
 
 export default function AuthConfirmPage() {
@@ -72,7 +139,7 @@ export default function AuthConfirmPage() {
 
     const run = async () => {
       try {
-        const url = new URL(window.location.href)
+        let url = new URL(window.location.href)
 
         if (androidChromeZuOmnia(url)) {
           if (cancelled) return
@@ -81,63 +148,46 @@ export default function AuthConfirmPage() {
           return
         }
 
-        const tokenHash = url.searchParams.get('token_hash')
-        const typeRaw = url.searchParams.get('type')
-        const code = url.searchParams.get('code')
-
-        if (tokenHash && typeRaw) {
-          const { data, error } = await supabase.auth.verifyOtp({
-            token_hash: tokenHash,
-            type: typeRaw as EmailOtpType,
-          })
-          if (error) {
-            fertig(false, error.message)
-            return
+        // Native: Deep-Link-Parameter können einen Moment später kommen
+        const inApp = istOmniaNativeApp() || istCapacitorNative()
+        if (inApp && !hatAuthPayload(url)) {
+          setStatus('Warte auf Login-Daten …')
+          const ende = Date.now() + 4000
+          while (Date.now() < ende && !cancelled) {
+            url = mergePendingIntoLocation()
+            if (hatAuthPayload(url)) {
+              window.history.replaceState(null, '', url.pathname + url.search + url.hash)
+              break
+            }
+            await new Promise((r) => setTimeout(r, 200))
           }
-          speichereNachLogin(data.session?.user?.email ?? data.user?.email)
-          fertig(true, undefined, data.session ?? null)
+        } else {
+          url = mergePendingIntoLocation()
+        }
+
+        const result = await sessionAusUrl(url)
+        if (result.ok) {
+          speichereNachLogin(result.session?.user?.email)
+          fertig(true, undefined, result.session)
+          return
+        }
+        if (result.message !== 'no-payload') {
+          fertig(false, result.message)
           return
         }
 
-        if (code) {
-          const { data, error } = await supabase.auth.exchangeCodeForSession(code)
-          if (error) {
-            fertig(false, error.message)
-            return
-          }
-          speichereNachLogin(data.session?.user?.email)
-          fertig(true, undefined, data.session)
-          return
-        }
-
-        const warteAufSession = async (): Promise<Session | null> => {
-          const first = await supabase.auth.getSession()
-          if (first.data.session) return first.data.session
-          return await new Promise((resolve) => {
-            const timer = window.setTimeout(() => {
-              sub.subscription.unsubscribe()
-              void supabase.auth.getSession().then(({ data }) => resolve(data.session ?? null))
-            }, 2500)
-            const { data: sub } = supabase.auth.onAuthStateChange((event, next) => {
-              if (event === 'SIGNED_IN' || next) {
-                window.clearTimeout(timer)
-                sub.subscription.unsubscribe()
-                resolve(next ?? null)
-              }
-            })
-          })
-        }
-
-        const session = await warteAufSession()
-        if (session) {
-          speichereNachLogin(session.user?.email)
-          fertig(true, undefined, session)
+        const first = await supabase.auth.getSession()
+        if (first.data.session) {
+          speichereNachLogin(first.data.session.user.email)
+          fertig(true, undefined, first.data.session)
           return
         }
 
         fertig(
           false,
-          'Kein gültiger Login-Link. Bitte den Link aus der aktuellen E-Mail erneut tippen.',
+          inApp
+            ? 'Kein Login in der URL. Am besten: Browser → /auth/app-uebernehmen → Sitzungscode kopieren → hier in der App einfügen. Oder frischen Magic-Link tippen und „Omnia“ wählen.'
+            : 'Kein gültiger Login-Link. Bitte den Link aus der aktuellen E-Mail erneut tippen.',
         )
       } catch (e) {
         fertig(false, e instanceof Error ? e.message : 'Unbekannter Fehler')
@@ -155,7 +205,7 @@ export default function AuthConfirmPage() {
       <p className="text-sm text-[var(--app-text-muted)]">{status}</p>
       {warteAufApp ? (
         <p className="mt-4 text-[13px] leading-relaxed text-[var(--app-text-muted)]">
-          Wenn Omnia nicht von selbst öffnet: oben „Mit Omnia öffnen“ wählen — nicht Chrome.
+          Wenn Omnia nicht von selbst öffnet: „Mit Omnia öffnen“ wählen — nicht Chrome.
         </p>
       ) : null}
       {fehler && (
@@ -164,10 +214,16 @@ export default function AuthConfirmPage() {
             {fehler}
           </p>
           <a
-            href="/"
+            href="/auth/app-uebernehmen"
             className="inline-block text-[13px] font-medium text-teal-400 underline-offset-2 hover:underline"
           >
-            Zurück zur Anmeldung
+            Sitzungscode erzeugen →
+          </a>
+          <a
+            href="/"
+            className="ml-3 inline-block text-[13px] font-medium text-teal-400 underline-offset-2 hover:underline"
+          >
+            Zur Anmeldung
           </a>
         </div>
       )}

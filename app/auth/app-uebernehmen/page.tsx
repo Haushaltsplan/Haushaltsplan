@@ -1,12 +1,12 @@
 'use client'
 
 /**
- * Wenn Magic-Link-Limit greift: bestehende Browser-Session in die Omnia-App übernehmen.
- * Am PC/Handy-Chrome einmal eingeloggt → hier „In Omnia öffnen“.
+ * Wenn Magic-Link-Limit greift: Browser-Sitzung als kopierbaren Code für die Omnia-App.
+ * (Android-Intents sind für JWTs zu kurz / unzuverlässig.)
  */
 
-import { appSectionCardClass } from '@/lib/app-ui'
-import { istOmniaNativeApp } from '@/lib/fitnessdaten/omnia-native'
+import { appInputClass, appSectionCardClass } from '@/lib/app-ui'
+import { encodeOmniaSessionCode } from '@/lib/fitnessdaten/omnia-session-code'
 import { supabase } from '@/lib/supabase'
 import { useEffect, useState } from 'react'
 import toast from 'react-hot-toast'
@@ -14,6 +14,7 @@ import toast from 'react-hot-toast'
 export default function AuthAppUebernehmenPage() {
   const [ready, setReady] = useState(false)
   const [email, setEmail] = useState<string | null>(null)
+  const [code, setCode] = useState('')
   const [busy, setBusy] = useState(false)
 
   useEffect(() => {
@@ -24,7 +25,7 @@ export default function AuthAppUebernehmenPage() {
     })()
   }, [])
 
-  const oeffneInOmnia = async () => {
+  const erstelleCode = async () => {
     setBusy(true)
     try {
       const { data, error } = await supabase.auth.getSession()
@@ -32,23 +33,17 @@ export default function AuthAppUebernehmenPage() {
         toast.error('Keine aktive Sitzung — zuerst im Browser anmelden.')
         return
       }
-      const { access_token, refresh_token } = data.session
-      // Query statt Hash — Android-Intents verlieren oft das #Fragment
-      const qs = new URLSearchParams({
-        access_token,
-        refresh_token,
-      }).toString()
-
-      if (istOmniaNativeApp()) {
-        window.location.replace(`/auth/session?${qs}`)
-        return
+      const next = encodeOmniaSessionCode({
+        access_token: data.session.access_token,
+        refresh_token: data.session.refresh_token,
+      })
+      setCode(next)
+      try {
+        await navigator.clipboard.writeText(next)
+        toast.success('Code kopiert — jetzt Omnia-App öffnen und einfügen.')
+      } catch {
+        toast.success('Code erzeugt — kopieren und in der Omnia-App einfügen.')
       }
-
-      const intent =
-        `intent://auth/session?${qs}` +
-        '#Intent;scheme=de.omnia.haushalt;package=de.omnia.haushalt;end'
-      window.location.href = intent
-      toast.success('Omnia sollte öffnen …')
     } finally {
       setBusy(false)
     }
@@ -64,8 +59,8 @@ export default function AuthAppUebernehmenPage() {
     <div className={`${appSectionCardClass} mx-auto mt-10 max-w-md`}>
       <h1 className="text-lg font-bold text-[var(--app-text)]">Sitzung in Omnia-App</h1>
       <p className="mt-2 text-sm leading-relaxed text-[var(--app-text-muted)]">
-        Wenn das Magic-Link-E-Mail-Limit greift: Hier die aktuelle Browser-Anmeldung ohne neue
-        E-Mail in die App übernehmen.
+        Ohne neue E-Mail: Hier einen Code erzeugen, in der <strong>Omnia-App</strong> unter Anmeldung
+        einfügen.
       </p>
       {email ? (
         <>
@@ -75,19 +70,29 @@ export default function AuthAppUebernehmenPage() {
           <button
             type="button"
             disabled={busy}
-            onClick={() => void oeffneInOmnia()}
+            onClick={() => void erstelleCode()}
             className="mt-4 w-full rounded-xl bg-teal-600 py-2.5 text-sm font-bold text-white hover:bg-teal-500 disabled:opacity-40"
           >
-            {busy ? 'Öffne …' : 'In Omnia-App öffnen'}
+            {busy ? 'Erzeuge …' : 'Sitzungscode kopieren'}
           </button>
-          <p className="mt-3 text-[11px] leading-relaxed text-[var(--app-text-muted)]">
-            Wenn nichts passiert: Link lange drücken → Mit Omnia öffnen. App muss installiert sein.
-          </p>
+          {code ? (
+            <textarea
+              readOnly
+              value={code}
+              className={`${appInputClass} mt-3 min-h-[7rem] break-all font-mono text-[10px]`}
+              onFocus={(e) => e.currentTarget.select()}
+            />
+          ) : null}
+          <ol className="mt-4 list-decimal space-y-1.5 pl-4 text-[12px] leading-relaxed text-[var(--app-text-muted)]">
+            <li>„Sitzungscode kopieren“ tippen</li>
+            <li>Omnia-App öffnen (nicht Chrome)</li>
+            <li>Bei Anmeldung: Code einfügen → „Sitzung übernehmen“</li>
+          </ol>
         </>
       ) : (
         <p className="mt-4 rounded-lg border border-amber-700/40 bg-amber-950/25 px-3 py-2 text-[13px] text-amber-100/90">
-          Du bist hier nicht angemeldet. Warte bis das Supabase-Limit vorbei ist (oft ca. 1 Stunde),
-          logge dich einmal im Browser ein, dann diese Seite erneut öffnen.
+          Du bist im Browser nicht angemeldet. Warte auf das E-Mail-Limit (~1 Std.), logge dich{' '}
+          <strong>einmal im Browser</strong> ein (Link in Chrome öffnen), dann diese Seite erneut.
         </p>
       )}
     </div>

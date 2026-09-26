@@ -1,7 +1,7 @@
 'use client'
 
 /**
- * Fängt Magic-Link / Session-Handoff Deep-Links in der Omnia-APK ab.
+ * Speichert Deep-Link-URLs sofort in sessionStorage und navigiert zur Auth-Seite.
  */
 
 import { istOmniaNativeApp } from '@/lib/fitnessdaten/omnia-native'
@@ -11,9 +11,13 @@ const APP_ORIGIN =
   (typeof process !== 'undefined' && process.env.NEXT_PUBLIC_APP_URL?.replace(/\/+$/, '')) ||
   'https://haushaltsplan-blue.vercel.app'
 
+const SS_PENDING = 'omnia-pending-auth-url'
+
 function zuAppAuthUrl(raw: string): string | null {
   try {
-    const u = new URL(raw)
+    // Manche Android-Intents liefern ungewöhnliche Strings
+    const normalized = raw.includes('://') ? raw : `de.omnia.haushalt://${raw}`
+    const u = new URL(normalized)
     const isCustom = u.protocol.replace(':', '') === 'de.omnia.haushalt'
     const isHttpsAuth = u.protocol === 'https:' && u.pathname.includes('/auth')
     if (!isCustom && !isHttpsAuth) return null
@@ -25,6 +29,7 @@ function zuAppAuthUrl(raw: string): string | null {
 
     const https = new URL(`${APP_ORIGIN}${zielPath}`)
     u.searchParams.forEach((v, k) => https.searchParams.set(k, v))
+    // host=auth path=/confirm → params liegen in search
     if (u.hash) https.hash = u.hash
     return https.toString()
   } catch {
@@ -35,6 +40,11 @@ function zuAppAuthUrl(raw: string): string | null {
 function navigiere(raw: string) {
   const target = zuAppAuthUrl(raw)
   if (!target) return
+  try {
+    sessionStorage.setItem(SS_PENDING, target)
+  } catch {
+    /* ignore */
+  }
   window.location.replace(target)
 }
 
