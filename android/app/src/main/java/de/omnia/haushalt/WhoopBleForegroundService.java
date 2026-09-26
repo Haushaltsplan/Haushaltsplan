@@ -7,7 +7,6 @@ import android.app.PendingIntent;
 import android.app.Service;
 import android.content.Context;
 import android.content.Intent;
-import android.content.SharedPreferences;
 import android.content.pm.ServiceInfo;
 import android.os.Build;
 import android.os.IBinder;
@@ -16,6 +15,7 @@ import androidx.core.app.NotificationCompat;
 
 /**
  * Foreground Service: hält Omnia + native WHOOP-BLE auch nach Schließen der App-Oberfläche aktiv.
+ * Wichtig: Jeder Start über startForegroundService() MUSS startForeground() aufrufen — sonst Absturz.
  */
 public class WhoopBleForegroundService extends Service {
 
@@ -58,6 +58,10 @@ public class WhoopBleForegroundService extends Service {
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
+        // Immer zuerst Notification — sonst: ForegroundServiceDidNotStartInTimeException
+        startForegroundWithNotification(intent);
+        acquireWakeLock();
+
         String action = intent != null ? intent.getStringExtra("action") : null;
         if (action == null && intent != null) {
             action = intent.getAction();
@@ -80,9 +84,6 @@ public class WhoopBleForegroundService extends Service {
                 linkHolder().arm(this, deviceId);
             }
         }
-
-        startForegroundWithNotification(intent);
-        acquireWakeLock();
 
         if (isKeepaliveActive(this)) {
             String deviceId = loadDeviceId(this);

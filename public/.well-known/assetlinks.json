@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "de.omnia.haushalt",
+      "sha256_cert_fingerprints": [
+        "65:19:C0:47:45:DA:04:06:BD:62:BF:F9:7B:FB:DF:26:C6:50:1B:E2:34:7C:3E:CA:A0:64:B6:89:F7:AF:93:AE"
+      ]
+    }
+  }
+]

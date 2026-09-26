@@ -95,7 +95,9 @@ export function AuthGate({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null)
   const [loading, setLoading] = useState(true)
   const [email, setEmail] = useState('')
+  const [otpCode, setOtpCode] = useState('')
   const [sending, setSending] = useState(false)
+  const [verifying, setVerifying] = useState(false)
   const [nativeApp] = useState(() => istOmniaNativeApp())
   const [verweigert, setVerweigert] = useState(false)
   const [linkGesendet, setLinkGesendet] = useState(false)
@@ -147,7 +149,6 @@ export function AuthGate({ children }: { children: ReactNode }) {
       } catch {
         /* ignore */
       }
-      // getSession wartet auf IndexedDB-Storage (async)
       const session: Session | null = (await supabase.auth.getSession()).data.session ?? null
       if (!mounted) return
       uebernehmeSession(session)
@@ -194,7 +195,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
         if (istRateLimitFehler(msg)) {
           setzeCooldown(COOLDOWN_NACH_RATE_LIMIT_MS)
           setCooldownSec(Math.ceil(COOLDOWN_NACH_RATE_LIMIT_MS / 1000))
-          toast.error('E-Mail-Limit erreicht. Bitte später erneut den Link anfordern.')
+          toast.error('E-Mail-Limit erreicht. Bitte später erneut anfordern.')
           return
         }
         toast.error(msg)
@@ -204,9 +205,52 @@ export function AuthGate({ children }: { children: ReactNode }) {
       setLinkGesendet(true)
       setzeCooldown(COOLDOWN_NACH_SEND_MS)
       setCooldownSec(Math.ceil(COOLDOWN_NACH_SEND_MS / 1000))
-      toast.success('Login-Link gesendet — im gleichen Browser öffnen.')
+      toast.success(
+        nativeApp
+          ? 'Code gesendet — 6-stelligen Code aus der E-Mail hier eingeben.'
+          : 'Login-Link gesendet — im gleichen Browser öffnen.',
+      )
     } finally {
       setSending(false)
+    }
+  }
+
+  const verifyOtpCode = async () => {
+    const clean = email.trim()
+    const token = otpCode.replace(/\s/g, '')
+    if (!clean) {
+      toast.error('Bitte E-Mail eingeben.')
+      return
+    }
+    if (!/^\d{6,8}$/.test(token)) {
+      toast.error('Bitte den 6-stelligen Code aus der E-Mail eingeben.')
+      return
+    }
+    setVerifying(true)
+    try {
+      const { data, error } = await supabase.auth.verifyOtp({
+        email: clean,
+        token,
+        type: 'email',
+      })
+      if (error) {
+        const second = await supabase.auth.verifyOtp({
+          email: clean,
+          token,
+          type: 'magiclink',
+        })
+        if (second.error) {
+          toast.error(error.message || 'Code ungültig oder abgelaufen.')
+          return
+        }
+        uebernehmeSession(second.data.session ?? null)
+        toast.success('Angemeldet')
+        return
+      }
+      uebernehmeSession(data.session ?? null)
+      toast.success('Angemeldet')
+    } finally {
+      setVerifying(false)
     }
   }
 
@@ -224,12 +268,11 @@ export function AuthGate({ children }: { children: ReactNode }) {
       <div className={`${appSectionCardClass} mx-auto mt-8 max-w-md`}>
         <h2 className="text-lg font-bold text-[var(--app-text)]">Anmeldung erforderlich</h2>
         <p className="mt-2 text-sm text-[var(--app-text-muted)]">
-          {schonVertraut
-            ? 'Die Sitzung auf diesem Gerät ist weg. Einmalig den Magic-Link bestätigen — danach merkt sich dieses Gerät dich wieder dauerhaft.'
-            : 'Einmal E-Mail eingeben und Magic-Link bestätigen. Danach bleibt dieses Gerät angemeldet — ohne erneute Anmeldung.'}
           {nativeApp
-            ? ' In der Omnia-App den Link so öffnen, dass er in der App landet.'
-            : null}
+            ? 'In der Omnia-App: Code aus der E-Mail hier eingeben (nicht den Link im Browser öffnen — der loggt nur die Website ein).'
+            : schonVertraut
+              ? 'Die Sitzung auf diesem Gerät ist weg. Einmalig den Magic-Link bestätigen — danach merkt sich dieses Gerät dich wieder dauerhaft.'
+              : 'Einmal E-Mail eingeben und Magic-Link bestätigen. Danach bleibt dieses Gerät angemeldet.'}
         </p>
         {verweigert && (
           <p className="mt-3 rounded-lg border border-rose-700/50 bg-rose-950/30 px-3 py-2 text-[13px] text-rose-200">
@@ -238,13 +281,14 @@ export function AuthGate({ children }: { children: ReactNode }) {
         )}
         {linkGesendet && (
           <p className="mt-3 rounded-lg border border-teal-700/40 bg-teal-950/20 px-3 py-2 text-[13px] text-teal-100/90">
-            Link unterwegs. Im <strong className="font-semibold">gleichen Browser</strong> tippen —
-            fertig. Danach kein erneutes Anmelden auf diesem Gerät.
+            {nativeApp
+              ? 'E-Mail ist unterwegs. Den 6-stelligen Code unten eintragen — fertig. Den Link nicht in Chrome öffnen.'
+              : 'Link unterwegs. Im gleichen Browser tippen — fertig.'}
           </p>
         )}
         {cooldownSec > 0 && (
           <p className="mt-3 rounded-lg border border-amber-700/40 bg-amber-950/20 px-3 py-2 text-[13px] text-amber-100/90">
-            Nächster Link in {Math.floor(cooldownSec / 60)}:
+            Nächster Versand in {Math.floor(cooldownSec / 60)}:
             {String(cooldownSec % 60).padStart(2, '0')} Min. (Supabase E-Mail-Limit).
           </p>
         )}
@@ -269,8 +313,38 @@ export function AuthGate({ children }: { children: ReactNode }) {
             ? 'Bitte warten …'
             : cooldownSec > 0
               ? `Warten (${cooldownSec}s)`
-              : 'Login-Link senden'}
+              : nativeApp
+                ? 'Login-Code senden'
+                : 'Login-Link senden'}
         </button>
+
+        {nativeApp || linkGesendet ? (
+          <div className="mt-4 space-y-2 border-t border-white/10 pt-4">
+            <label className="block text-xs font-semibold text-[var(--app-text-muted)]">
+              Code aus der E-Mail
+            </label>
+            <input
+              type="text"
+              inputMode="numeric"
+              autoComplete="one-time-code"
+              value={otpCode}
+              onChange={(e) => setOtpCode(e.target.value.replace(/[^\d]/g, '').slice(0, 8))}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') void verifyOtpCode()
+              }}
+              placeholder="123456"
+              className={`${appInputClass} tracking-[0.35em] focus:ring-cyan-500/40`}
+            />
+            <button
+              type="button"
+              disabled={verifying || otpCode.replace(/\s/g, '').length < 6}
+              onClick={() => void verifyOtpCode()}
+              className="w-full rounded-[0.875rem] border border-teal-500/40 bg-teal-950/40 py-2.5 text-sm font-bold text-teal-100 transition hover:bg-teal-900/50 disabled:opacity-40"
+            >
+              {verifying ? 'Prüfe …' : 'Mit Code anmelden'}
+            </button>
+          </div>
+        ) : null}
       </div>
     )
   }
