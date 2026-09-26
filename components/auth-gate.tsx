@@ -17,10 +17,11 @@ const LS_LAST_EMAIL = 'omnia-auth-last-email'
 const LS_DEVICE_TRUSTED = 'omnia-auth-device-trusted'
 const LS_OTP_COOLDOWN_UNTIL = 'omnia-auth-otp-cooldown-until'
 const COOLDOWN_NACH_SEND_MS = 60_000
-const COOLDOWN_NACH_RATE_LIMIT_MS = 15 * 60_000
+/** Supabase Free-Tier E-Mail-Limit ist oft ~1 Stunde, nicht 15 Min. */
+const COOLDOWN_NACH_RATE_LIMIT_MS = 60 * 60_000
 
 function istRateLimitFehler(message: string): boolean {
-  return /rate.?limit|too many|zu viele/i.test(message)
+  return /rate.?limit|too many|zu viele|email.?rate|over_email/i.test(message)
 }
 
 function leseCooldownUntil(): number {
@@ -37,6 +38,15 @@ function setzeCooldown(ms: number) {
   try {
     if (typeof window === 'undefined') return
     window.localStorage.setItem(LS_OTP_COOLDOWN_UNTIL, String(Date.now() + ms))
+  } catch {
+    /* ignore */
+  }
+}
+
+function loescheLokalenCooldown() {
+  try {
+    if (typeof window === 'undefined') return
+    window.localStorage.removeItem(LS_OTP_COOLDOWN_UNTIL)
   } catch {
     /* ignore */
   }
@@ -195,7 +205,10 @@ export function AuthGate({ children }: { children: ReactNode }) {
         if (istRateLimitFehler(msg)) {
           setzeCooldown(COOLDOWN_NACH_RATE_LIMIT_MS)
           setCooldownSec(Math.ceil(COOLDOWN_NACH_RATE_LIMIT_MS / 1000))
-          toast.error('E-Mail-Limit erreicht. Bitte später erneut anfordern.')
+          toast.error(
+            'Supabase E-Mail-Limit — oft erst nach ~1 Stunde wieder. Sitzung vom Browser übernehmen, falls dort noch eingeloggt.',
+            { duration: 8000 },
+          )
           return
         }
         toast.error(msg)
@@ -287,11 +300,37 @@ export function AuthGate({ children }: { children: ReactNode }) {
           </p>
         )}
         {cooldownSec > 0 && (
-          <p className="mt-3 rounded-lg border border-amber-700/40 bg-amber-950/20 px-3 py-2 text-[13px] text-amber-100/90">
-            Nächster Versand in {Math.floor(cooldownSec / 60)}:
-            {String(cooldownSec % 60).padStart(2, '0')} Min. (Supabase E-Mail-Limit).
-          </p>
+          <div className="mt-3 space-y-2 rounded-lg border border-amber-700/40 bg-amber-950/20 px-3 py-2 text-[13px] text-amber-100/90">
+            <p>
+              Nächster E-Mail-Versuch in ca. {Math.floor(cooldownSec / 60)}:
+              {String(cooldownSec % 60).padStart(2, '0')} Min. (Supabase-Limit, oft 1 Stunde).
+            </p>
+            <button
+              type="button"
+              className="text-[12px] font-semibold underline underline-offset-2"
+              onClick={() => {
+                loescheLokalenCooldown()
+                setCooldownSec(0)
+                toast.success('Lokale Wartezeit gelöscht — Supabase kann trotzdem noch blocken.')
+              }}
+            >
+              Nur lokale Wartezeit zurücksetzen
+            </button>
+          </div>
         )}
+
+        <div className="mt-3 rounded-lg border border-teal-800/40 bg-teal-950/20 px-3 py-2 text-[13px] leading-relaxed text-teal-100/90">
+          <strong className="font-semibold">Ohne neue E-Mail:</strong> Am PC oder in Chrome auf dem
+          Handy einloggen (falls Session noch da), dann{' '}
+          <a
+            href="/auth/app-uebernehmen"
+            className="font-semibold underline underline-offset-2"
+          >
+            Sitzung in die App übernehmen
+          </a>
+          .
+        </div>
+
         <input
           type="email"
           value={email}
@@ -312,7 +351,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
           {sending
             ? 'Bitte warten …'
             : cooldownSec > 0
-              ? `Warten (${cooldownSec}s)`
+              ? `Warten (${Math.ceil(cooldownSec / 60)} Min.)`
               : 'Login-Link senden'}
         </button>
 
