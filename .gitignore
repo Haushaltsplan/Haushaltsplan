@@ -52,3 +52,7 @@ next-env.d.ts
 
 .vercel
 .env*
+
+# Lokale Debug-APK (sideload, nicht committen)
+*.apk
+Omnia-debug.apk

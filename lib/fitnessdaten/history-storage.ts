@@ -190,13 +190,13 @@ function schreibeLocalShadowAufTag(history: FitnessHistoryState, heute: string):
     rec = createEmptyDayRecord(heute)
     store.days.push(rec)
   }
-  if (history.localStrain != null && history.localStrain > 0) {
+  if (history.localStrain != null && history.localStrain >= 0) {
     rec.localStrain = history.localStrain
   }
-  if (history.localRecoveryDate === heute) {
-    if (history.localRecoveryPercent != null) rec.localRecoveryPercent = history.localRecoveryPercent
-    if (history.localRhr != null) rec.localRhr = history.localRhr
-    if (history.localHrv != null) rec.localHrv = history.localHrv
+  if (history.localRhr != null) rec.localRhr = history.localRhr
+  if (history.localHrv != null) rec.localHrv = history.localHrv
+  if (history.localRecoveryDate === heute && history.localRecoveryPercent != null) {
+    rec.localRecoveryPercent = history.localRecoveryPercent
   }
   speichereDailyStore(store)
 }
@@ -428,23 +428,21 @@ export function mergeLiveSnapshot(
   const sleepPerf =
     schlaf.sleepMinutes > 0
       ? schlaf.sleepScore
-      : (prevHeuteRecord.localSleepScore ?? prevHeuteRecord.sleepScore ?? null)
+      : (prevHeuteRecord.localSleepScore ?? null)
 
-  // Lokale Recovery-Shadow (immer im Morgenfenster berechnen)
-  if (istMorgenFenster()) {
-    const localRec = recoveryAusBaseline(
-      rmssd,
-      restingHr,
-      history.baselines.hrvRmssdMs,
-      history.baselines.restingHrBpm,
-      sleepPerf,
-    )
-    if (localRec) {
-      history.localRecoveryPercent = localRec.percent
-      history.localRecoveryDate = heute
-      history.localRhr = restingHr
-      history.localHrv = rmssd
-    }
+  // Lokale Shadows: HRV/RHR/Recovery sobald BLE-Daten da (für Omnia-Ansicht)
+  if (rmssd != null && rmssd > 0) history.localHrv = rmssd
+  if (restingHr != null && restingHr > 0) history.localRhr = restingHr
+  const localRec = recoveryAusBaseline(
+    rmssd,
+    restingHr,
+    history.baselines.hrvRmssdMs,
+    history.baselines.restingHrBpm,
+    sleepPerf,
+  )
+  if (localRec) {
+    history.localRecoveryPercent = localRec.percent
+    history.localRecoveryDate = heute
   }
 
   let recoveryPercent: number | null = prevHeuteRecord.recoveryPercent
@@ -455,16 +453,9 @@ export function mergeLiveSnapshot(
     recoveryPercent = history.localRecoveryPercent
     recoveryLabel = recoveryLabelAusProzent(recoveryPercent)
   } else if (!recoveryLocked && istMorgenFenster()) {
-    const recovery = recoveryAusBaseline(
-      rmssd,
-      restingHr,
-      history.baselines.hrvRmssdMs,
-      history.baselines.restingHrBpm,
-      sleepPerf,
-    )
-    if (recovery) {
-      recoveryPercent = recovery.percent
-      recoveryLabel = recovery.label
+    if (localRec) {
+      recoveryPercent = localRec.percent
+      recoveryLabel = localRec.label
     }
   }
 
