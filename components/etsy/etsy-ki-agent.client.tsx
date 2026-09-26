@@ -245,7 +245,13 @@ export function EtsyKiAgentClient({
     for (const file of Array.from(files)) {
       if (next.length >= 8) break
       try {
-        next.push(await compressImageFileForCoach(file, { maxEdge: 1600, quality: 0.85 }))
+        next.push(
+          await compressImageFileForCoach(file, {
+            maxEdge: 1280,
+            quality: 0.72,
+            forceJpeg: true,
+          }),
+        )
       } catch (e) {
         toast.error(e instanceof Error ? e.message : 'Bildfehler')
       }

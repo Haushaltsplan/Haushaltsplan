@@ -20,6 +20,7 @@ import {
   type EtsyListingBasis,
 } from '@/lib/etsy/etsy-types'
 import {
+  geminiFreeTierFlashModelKandidaten,
   resolveGeminiFreeTierProvider,
   runCoachCompletion,
   type CoachImagePart,
@@ -227,7 +228,7 @@ export async function generiereEtsyListingTexte(
     {
       role: 'user',
       content: baueUserPrompt(basis),
-      images: images.slice(0, 8),
+      images: images.slice(0, 4),
     },
   ]
 
@@ -243,7 +244,11 @@ export async function generiereEtsyListingTexte(
       temperature: 0.45,
       geminiForceFreeApiKey: true,
       thinkingMinimal: true,
-      maxOutputTokens: 4096,
+      /** Listing-JSON ist lang; Thinking zählt mit — nicht zu knapp. */
+      maxOutputTokens: 8192,
+      timeoutMs: 90_000,
+      geminiTotalBudgetMs: 110_000,
+      geminiModels: geminiFreeTierFlashModelKandidaten(),
       jsonResponse: { schema: ETSY_LISTING_JSON_SCHEMA },
     },
   )
@@ -338,7 +343,7 @@ export async function optimiereEtsyListingTexte(
     {
       role: 'user',
       content,
-      images: images.slice(0, 8),
+      images: images.slice(0, 4),
     },
   ]
 
@@ -354,7 +359,10 @@ export async function optimiereEtsyListingTexte(
       temperature: 0.25,
       geminiForceFreeApiKey: true,
       thinkingMinimal: true,
-      maxOutputTokens: 4096,
+      maxOutputTokens: 8192,
+      timeoutMs: 90_000,
+      geminiTotalBudgetMs: 110_000,
+      geminiModels: geminiFreeTierFlashModelKandidaten(),
       jsonResponse: { schema: ETSY_LISTING_JSON_SCHEMA },
     },
   )

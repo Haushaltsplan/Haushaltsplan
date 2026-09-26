@@ -334,14 +334,16 @@ export function geminiFreeTierFlashModelKandidaten(opts?: {
     primaryEnvKeys: opts?.primaryEnvKeys ?? ['FINANCE_COACH_GEMINI_MODEL', 'GEMINI_MODEL'],
     fallbackEnvKey: opts?.fallbackEnvKey ?? 'GEMINI_MODEL_FALLBACKS',
     defaultPrimary: 'gemini-3.5-flash',
-    /** Quota oft pro Modell — nächstes Modell = neues Free-Tier-Kontingent. Kein Pro / kein 3.1-flash-lite. */
-    /** Nur Modelle, die im aktuellen Free-Projekt (3.5 Flash) existieren. 2.5/3-preview oft Limit 0. */
-    defaultFallbacks: ['gemini-3.5-flash-lite', 'gemini-flash-latest'],
+    /** Quota/Kapazität oft pro Modell — nächstes Flash = neuer Versuch. Kein Pro. */
+    /** 2.5 tot für neue Free-Projekte. 3.6 unterstützt thinkingLevel=minimal; 3.7/3.8 nicht. */
+    defaultFallbacks: ['gemini-3.5-flash-lite', 'gemini-3.6-flash', 'gemini-flash-latest'],
   }).filter((m) => {
     const k = m.toLowerCase()
     return !k.startsWith('gemini-2.5') && !k.startsWith('gemini-2.0')
   })
-  return chain.length > 0 ? chain : ['gemini-3.5-flash', 'gemini-3.5-flash-lite', 'gemini-flash-latest']
+  return chain.length > 0
+    ? chain
+    : ['gemini-3.5-flash', 'gemini-3.5-flash-lite', 'gemini-3.6-flash', 'gemini-flash-latest']
 }
 
 /**
@@ -469,8 +471,8 @@ export function formatCoachFehlerHint(hint: string, modelsVersucht = 1): string 
   }
   if (art === 'capacity') {
     return (
-      `Die KI ist gerade stark ausgelastet (Google Gemini). Bitte in 1–2 Minuten erneut versuchen.${mehr} ` +
-      'Das ist meist nur kurzzeitig — kein Fehler in deiner App.'
+      `Google Gemini ist gerade überlastet (Kapazität/high demand) — das ist nicht dein Tageskontingent.${mehr} ` +
+      'Bitte 1–2 Minuten warten und erneut senden.'
     )
   }
   if (art === 'limit_zero') {
@@ -513,6 +515,8 @@ type CallGeminiEinModellOptions = {
 function geminiThinkingConfig(model: string): Record<string, unknown> {
   const m = model.toLowerCase()
   if (/gemini-2\.5/.test(m)) return { thinkingBudget: 0 }
+  // 3.7/3.8 Flash: thinkingLevel=minimal → 400; low ist der schnellste erlaubte Wert
+  if (/gemini-3\.[78](-|$)/.test(m)) return { thinkingLevel: 'low' }
   return { thinkingLevel: 'minimal' }
 }
 
@@ -710,12 +714,15 @@ async function callGemini(
       })
     }
 
-    // Einmal kurz warten und dasselbe Modell bei temporärer Überlastung wiederholen
+    // Kurze Backoffs bei Overload/RPM — oft kein Tageskontingent, sondern Kapazität
     if (!r.ok && r.quotaOderRateLimit && (r.httpStatus === 503 || r.httpStatus === 429) && restMs() > 12_000) {
-      console.warn(`[ki-coach] Gemini „${model}“ (${r.httpStatus}): kurze Pause, ein Retry …`)
-      await sleepMs(2000)
-      const retryTimeout = Math.min(perModelTimeout, restMs())
-      if (retryTimeout >= 8_000) {
+      const pauses = r.httpStatus === 503 ? [2500, 4500] : [2000]
+      for (const pause of pauses) {
+        if (r.ok || restMs() < 12_000) break
+        console.warn(`[ki-coach] Gemini „${model}“ (${r.httpStatus}): Pause ${pause}ms, Retry …`)
+        await sleepMs(pause)
+        const retryTimeout = Math.min(perModelTimeout, restMs())
+        if (retryTimeout < 8_000) break
         r = await callGeminiEinModell(modellKey, model, systemText, userMessages, {
           ...callOpts,
           timeoutMs: retryTimeout,
@@ -745,7 +752,7 @@ async function callGemini(
         modellAbgeschaltet)
     if (naechstesModellMoeglich) {
       console.warn(`[ki-coach] Gemini „${model}“ (${r.httpStatus}): ${r.hint.slice(0, 220)} — versuche „${naechstes}“.`)
-      if (r.quotaOderRateLimit || r.httpStatus === 503) await sleepMs(800)
+      if (r.quotaOderRateLimit || r.httpStatus === 503) await sleepMs(1500)
       continue
     }
     return {

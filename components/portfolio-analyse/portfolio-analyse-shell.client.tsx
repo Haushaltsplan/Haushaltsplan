@@ -19,7 +19,7 @@ export function PortfolioAnalyseShell({
   const { schemaFehlt, dbFehler, buchungenLimit, hatDaten, laden } = usePortfolioAnalyse()
 
   return (
-    <PageChrome density="compact" className="max-w-full min-w-0">
+    <PageChrome density="compact" className="max-w-full min-w-0 overflow-x-visible">
       <PageHero
         density="compact"
         eyebrow="Portfolioanalyse"

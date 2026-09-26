@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { appTableScrollClassName } from '@/components/page-shell'
 import { EarningsCallAnalyseDarstellung } from '@/components/portfolio-analyse/pa-earnings-call-analyse'
 import { PortfolioAnalyseShell } from '@/components/portfolio-analyse/portfolio-analyse-shell.client'
 import { PaCard, PaSectionTitle, PA_SCROLL_ELEGANT } from '@/components/portfolio-analyse/pa-ui'
@@ -139,7 +140,7 @@ function NachkaufPerformancePanel({ daten }: { daten: NachkaufPerformanceUebersi
       )}
 
       {daten.eintraege.length > 0 && (
-        <div className="mt-4 overflow-x-auto">
+        <div className={`mt-4 ${appTableScrollClassName}`}>
           <table className="w-full min-w-[640px] text-left text-xs">
             <thead>
               <tr className="text-[var(--app-text-muted)]">
@@ -853,7 +854,7 @@ function PrognoseSektion({ eintrag }: { eintrag: NachkaufScanEintrag }) {
       <p className="mb-3 text-[10px] text-[var(--app-text-muted)]">
         Mehrjahres-Schätzungen aus Fundamentaldaten — moderat im Score gewichtet.
       </p>
-      <div className="overflow-x-auto">
+      <div className={appTableScrollClassName}>
         <table className="w-full min-w-[280px] text-left text-[12px]">
           <thead>
             <tr className="text-[10px] uppercase tracking-wider text-[var(--app-text-muted)]">

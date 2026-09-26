@@ -158,7 +158,7 @@ export function MobileSwipePageNav({ children }: { children: ReactNode }) {
 
   return (
     <div
-      className="min-h-full min-w-0 max-w-full overflow-x-clip animate-in fade-in duration-300 motion-reduce:animate-none"
+      className="min-h-full min-w-0 max-w-full animate-in fade-in duration-300 motion-reduce:animate-none"
       onPointerDown={onPointerDown}
       onPointerUp={endGesture}
       onPointerCancel={endGesture}

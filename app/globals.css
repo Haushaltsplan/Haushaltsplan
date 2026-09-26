@@ -109,7 +109,8 @@ body {
   min-width: 0;
 }
 
-/* Verhindert, dass breite Kinder die Seite seitlich aufblasen */
+/* Verhindert, dass breite Kinder die Seite seitlich aufblasen.
+   Ausnahme: .app-table-scroll / .app-h-scroll — dort soll Inhalt breiter sein und horizontal scrollen. */
 #app-main img,
 #app-main video,
 #app-main canvas,
@@ -118,8 +119,24 @@ body {
   height: auto;
 }
 
+#app-main .app-table-scroll img,
+#app-main .app-table-scroll video,
+#app-main .app-table-scroll canvas,
+#app-main .app-table-scroll svg,
+#app-main .app-h-scroll img,
+#app-main .app-h-scroll video,
+#app-main .app-h-scroll canvas,
+#app-main .app-h-scroll svg {
+  max-width: none;
+}
+
 #app-main table {
   max-width: 100%;
+}
+
+#app-main .app-table-scroll table,
+#app-main .app-h-scroll table {
+  max-width: none;
 }
 
 #app-main pre {
@@ -276,7 +293,8 @@ html.app-scroll-locked #app-main {
 }
 
 .app-surface-card {
-  overflow: hidden;
+  /* clip statt hidden: gleiche Radius-Maskierung, weniger Konflikte mit inneren Scroll-Containern */
+  overflow: clip;
   border-radius: var(--app-radius-xl);
   border: 1px solid var(--app-border-strong);
   background:
@@ -318,7 +336,7 @@ html.app-scroll-locked #app-main {
 }
 
 .app-section-shell {
-  overflow: hidden;
+  overflow: clip;
   border-radius: var(--app-radius-xl);
   border: 1px solid var(--app-border-strong);
   background: var(--app-surface);

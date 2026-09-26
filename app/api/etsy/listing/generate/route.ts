@@ -55,7 +55,7 @@ function parseImages(raw: Body['images']): CoachImagePart[] {
     if (!base64 || !COACH_IMAGE_MIME.has(mimeType)) continue
     if (base64.length > 3_600_000) continue
     out.push({ mimeType, base64 })
-    if (out.length >= 8) break
+    if (out.length >= 4) break
   }
   return out
 }

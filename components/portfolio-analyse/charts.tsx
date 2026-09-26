@@ -77,7 +77,14 @@ export function PaLinienChart({
 
   return (
     <div className={`w-full ${appTableScrollClassName}`}>
-      <svg width="100%" viewBox={`0 0 ${breite} ${hoehe}`} preserveAspectRatio="xMidYMid meet" style={{ minWidth: breite }} role="img">
+      <svg
+        width={breite}
+        height={hoehe}
+        viewBox={`0 0 ${breite} ${hoehe}`}
+        preserveAspectRatio="xMidYMid meet"
+        className="block max-w-none"
+        role="img"
+      >
         <line x1={padLinks} y1={padOben + plot} x2={breite - padRechts} y2={padOben + plot} stroke="#3f3f46" strokeWidth={1} />
         <text x={padLinks - 4} y={padOben + 4} textAnchor="end" className="fill-[var(--app-text-muted)]" style={{ fontSize: 9 }}>
           {formatEur(max)}
@@ -137,7 +144,14 @@ export function PaMonatsBalken({
 
   return (
     <div className={`w-full ${appTableScrollClassName}`}>
-      <svg width="100%" viewBox={`0 0 ${breite} ${hoehe}`} preserveAspectRatio="xMidYMid meet" style={{ minWidth: breite }} role="img">
+      <svg
+        width={breite}
+        height={hoehe}
+        viewBox={`0 0 ${breite} ${hoehe}`}
+        preserveAspectRatio="xMidYMid meet"
+        className="block max-w-none"
+        role="img"
+      >
         <line x1={padLinks} y1={padOben + plot} x2={breite - padLinks} y2={padOben + plot} stroke="#3f3f46" strokeWidth={1} />
         {daten.map((d, i) => {
           const h = (d.wert / max) * plot
@@ -176,7 +190,14 @@ export function PaCashflowBalken({
 
   return (
     <div className={`w-full ${appTableScrollClassName}`}>
-      <svg width="100%" viewBox={`0 0 ${breite} ${hoehe}`} preserveAspectRatio="xMidYMid meet" style={{ minWidth: breite }} role="img">
+      <svg
+        width={breite}
+        height={hoehe}
+        viewBox={`0 0 ${breite} ${hoehe}`}
+        preserveAspectRatio="xMidYMid meet"
+        className="block max-w-none"
+        role="img"
+      >
         <line x1={padLinks} y1={padOben + plot} x2={breite - padLinks} y2={padOben + plot} stroke="#3f3f46" strokeWidth={1} />
         {daten.map((d, i) => {
           const xMitte = padLinks + gruppenBreite * i + gruppenBreite / 2

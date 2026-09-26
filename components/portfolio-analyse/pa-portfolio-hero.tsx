@@ -180,7 +180,7 @@ export function PaPortfolioHero({
     ) : null
 
   return (
-    <PaCard variant="elevated" className="overflow-hidden">
+    <PaCard variant="elevated" className="min-w-0">
       <div className="grid grid-cols-1 gap-4 p-4 sm:gap-5 sm:p-5 lg:grid-cols-2 lg:items-center lg:gap-8">
         <div className="flex min-w-0 flex-col items-center gap-2">
           {sektorDonutMoeglich ? (

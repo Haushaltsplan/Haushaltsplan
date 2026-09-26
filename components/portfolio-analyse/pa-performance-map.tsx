@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { appTableScrollClassName } from '@/components/page-shell'
 import { PaCard } from '@/components/portfolio-analyse/pa-ui'
 import { formatProzent } from '@/lib/portfolio-analyse/berechnung'
 import { fundamentaldatenHref } from '@/lib/portfolio-analyse/fundamentaldaten-navigation'
@@ -60,61 +61,63 @@ export function PaPerformanceMap({
         <span className="text-xs text-[var(--app-text-muted)]">Performance: Heute (live) bzw. Gesamt-G/V</span>
       </div>
 
-      <PaCard className="overflow-hidden p-1" >
-        <div style={{ minHeight: gesamtH }}>
-        <div className="flex flex-col" style={{ height: gesamtH }}>
-          {sektoren.map((sek) => (
-            <div
-              key={sek.name}
-              className="flex min-h-[3rem] flex-col border border-[var(--app-border)]"
-              style={{ flex: sek.wertEur }}
-            >
-              <div className="shrink-0 bg-[var(--app-surface-muted)]/90 px-2 py-1 text-[11px] font-medium text-[var(--app-text)]">
-                {sek.name}
-              </div>
-              <div className="flex min-h-0 flex-1">
-                {sek.tiles.map((tile) => {
-                  const { background, color } = performanceFarbe(tile.performanceProzent)
-                  const fundamentalHref =
-                    tile.assetKlasse === 'aktie' && tile.isin
-                      ? fundamentaldatenHref({ isin: tile.isin })
-                      : null
-                  return (
-                    <div
-                      key={tile.id}
-                      className={`relative flex min-w-[4rem] flex-col items-center justify-center overflow-hidden border border-[var(--app-border)] p-1 text-center ${fundamentalHref ? 'cursor-pointer hover:ring-1 hover:ring-white/20' : ''}`}
-                      style={{ flex: tile.wertEur, background, color }}
-                      title={`${tile.label}: ${formatProzent(tile.performanceProzent)} · ${tile.gewichtProzent.toFixed(1)} %${fundamentalHref ? ' · Klick für Fundamentaldaten' : ''}`}
-                      onClick={fundamentalHref ? () => router.push(fundamentalHref) : undefined}
-                      onKeyDown={
-                        fundamentalHref
-                          ? (e) => {
-                              if (e.key === 'Enter' || e.key === ' ') {
-                                e.preventDefault()
-                                router.push(fundamentalHref)
+      <PaCard className="min-w-0 p-1">
+        <div className={appTableScrollClassName} style={{ minHeight: gesamtH }}>
+          <div className="flex min-w-[28rem] flex-col sm:min-w-full" style={{ height: gesamtH }}>
+            {sektoren.map((sek) => (
+              <div
+                key={sek.name}
+                className="flex min-h-[3rem] flex-col border border-[var(--app-border)]"
+                style={{ flex: sek.wertEur }}
+              >
+                <div className="shrink-0 bg-[var(--app-surface-muted)]/90 px-2 py-1 text-[11px] font-medium text-[var(--app-text)]">
+                  {sek.name}
+                </div>
+                <div className="flex min-h-0 min-w-0 flex-1">
+                  {sek.tiles.map((tile) => {
+                    const { background, color } = performanceFarbe(tile.performanceProzent)
+                    const fundamentalHref =
+                      tile.assetKlasse === 'aktie' && tile.isin
+                        ? fundamentaldatenHref({ isin: tile.isin })
+                        : null
+                    return (
+                      <div
+                        key={tile.id}
+                        className={`relative flex min-w-0 flex-1 flex-col items-center justify-center overflow-hidden border border-[var(--app-border)] p-1 text-center ${fundamentalHref ? 'cursor-pointer hover:ring-1 hover:ring-white/20' : ''}`}
+                        style={{ flex: Math.max(tile.wertEur, 0.01), background, color }}
+                        title={`${tile.label}: ${formatProzent(tile.performanceProzent)} · ${tile.gewichtProzent.toFixed(1)} %${fundamentalHref ? ' · Klick für Fundamentaldaten' : ''}`}
+                        onClick={fundamentalHref ? () => router.push(fundamentalHref) : undefined}
+                        onKeyDown={
+                          fundamentalHref
+                            ? (e) => {
+                                if (e.key === 'Enter' || e.key === ' ') {
+                                  e.preventDefault()
+                                  router.push(fundamentalHref)
+                                }
                               }
-                            }
-                          : undefined
-                      }
-                      tabIndex={fundamentalHref ? 0 : undefined}
-                      role={fundamentalHref ? 'link' : undefined}
-                    >
-                      <span className="line-clamp-2 text-[10px] font-medium leading-tight">{tile.label}</span>
-                      {tile.performanceProzent != null ? (
-                        <span className="mt-0.5 text-[11px] font-semibold tabular-nums">
-                          {tile.performanceProzent >= 0 ? '+' : ''}
-                          {tile.performanceProzent.toFixed(2)}%
+                            : undefined
+                        }
+                        tabIndex={fundamentalHref ? 0 : undefined}
+                        role={fundamentalHref ? 'link' : undefined}
+                      >
+                        <span className="line-clamp-2 w-full text-[10px] font-medium leading-tight">
+                          {tile.label}
                         </span>
-                      ) : (
-                        <span className="mt-0.5 text-[10px] opacity-70">—</span>
-                      )}
-                    </div>
-                  )
-                })}
+                        {tile.performanceProzent != null ? (
+                          <span className="mt-0.5 text-[11px] font-semibold tabular-nums">
+                            {tile.performanceProzent >= 0 ? '+' : ''}
+                            {tile.performanceProzent.toFixed(2)}%
+                          </span>
+                        ) : (
+                          <span className="mt-0.5 text-[10px] opacity-70">—</span>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
               </div>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
         </div>
       </PaCard>
     </div>

@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
+import { appTableScrollClassName } from '@/components/page-shell'
 import { PaCard } from '@/components/portfolio-analyse/pa-ui'
 import type { PortfolioKorrelationPaket } from '@/lib/portfolio-analyse/portfolio-korrelation-types'
 
@@ -93,8 +94,8 @@ export function PaKorrelationPanel({
       ) : null}
 
       {daten?.ok && daten.ticker.length > 0 ? (
-        <div className="overflow-x-auto">
-          <table className="min-w-full border-collapse text-[10px]">
+        <div className={appTableScrollClassName}>
+          <table className="min-w-max border-collapse text-[10px]">
             <thead>
               <tr>
                 <th className="p-1 text-left text-[var(--app-text-muted)]" />

@@ -42,7 +42,7 @@ export function PortfolioAnalyseMainClient() {
       description="Gewichtungsanalyse, Kapitalfluss und Performance — angelehnt an Parqet."
     >
       {!laden && !hatDaten ? null : (
-        <PaCard variant="elevated" className="min-w-0 overflow-hidden p-4 sm:p-6">
+        <PaCard variant="elevated" className="min-w-0 p-4 sm:p-6">
             {!hatDaten ? (
               <p className="text-sm text-[var(--app-text-muted)]">
                 <Link href="/portfolioanalyse/import" className="text-teal-400 hover:underline">

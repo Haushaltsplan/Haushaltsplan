@@ -16,6 +16,7 @@ import type {
 } from '@/lib/etsy/etsy-seo-audit-types'
 import { pruefeListingRegeln } from '@/lib/etsy/etsy-seo-regeln'
 import {
+  geminiFreeTierFlashModelKandidaten,
   resolveGeminiFreeTierProvider,
   runCoachCompletion,
   type CoachMessage,
@@ -203,7 +204,10 @@ export async function auditiereEtsyListing(
       temperature: 0.35,
       geminiForceFreeApiKey: true,
       thinkingMinimal: true,
-      maxOutputTokens: 4096,
+      maxOutputTokens: 8192,
+      timeoutMs: 90_000,
+      geminiTotalBudgetMs: 110_000,
+      geminiModels: geminiFreeTierFlashModelKandidaten(),
       jsonResponse: { schema: ETSY_SEO_AUDIT_JSON_SCHEMA },
     },
   )

@@ -231,7 +231,7 @@ export function PortfolioDashboardClient() {
         )}
 
         <div className="relative min-h-[28rem] lg:min-h-0">
-          <PaCard variant="elevated" className="flex min-h-[28rem] flex-col overflow-hidden lg:absolute lg:inset-0 lg:min-h-0">
+          <PaCard variant="elevated" className="flex min-h-[28rem] min-w-0 flex-col overflow-hidden lg:absolute lg:inset-0 lg:min-h-0">
           <div className="flex shrink-0 items-center justify-between border-b border-white/[0.04] px-5 py-3">
             <h2 className="text-sm font-semibold text-[var(--app-text)]">Letzte Aktivitäten</h2>
             <Link href="/portfolioanalyse/aktivitaeten" className="text-xs text-teal-400 hover:underline">
@@ -268,7 +268,7 @@ export function PortfolioDashboardClient() {
         </div>
 
         <div className="relative min-h-[28rem] lg:min-h-0">
-        <PaCard variant="elevated" className="flex min-h-[28rem] flex-col overflow-hidden lg:absolute lg:inset-0 lg:min-h-0">
+        <PaCard variant="elevated" className="flex min-h-[28rem] min-w-0 flex-col overflow-hidden lg:absolute lg:inset-0 lg:min-h-0">
           <div className="flex shrink-0 items-start justify-between gap-3 border-b border-white/[0.04] px-5 py-3">
             <div className="min-w-0">
               <h2 className="text-sm font-semibold text-[var(--app-text)]">Top Mover</h2>

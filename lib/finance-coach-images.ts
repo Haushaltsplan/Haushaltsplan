@@ -11,7 +11,7 @@ export const COACH_MAX_IMAGES_PER_SEND = 4
 /** Kassenbon / Foto fürs Canvas; Ausgabe meist JPEG für kleinere Payloads. */
 export async function compressImageFileForCoach(
   file: File,
-  opts?: { maxEdge?: number; quality?: number },
+  opts?: { maxEdge?: number; quality?: number; forceJpeg?: boolean },
 ): Promise<CoachImagePart> {
   const t = (file.type || '').toLowerCase()
   const heic = t === 'image/heic' || t === 'image/heif' || /\.hei[cf]$/i.test(file.name)
@@ -23,6 +23,7 @@ export async function compressImageFileForCoach(
   }
   const maxEdge = opts?.maxEdge ?? MAX_EDGE
   const jpegQuality = opts?.quality ?? JPEG_QUALITY
+  const forceJpeg = opts?.forceJpeg === true
   const bitmap = await createImageBitmap(file).catch(() => {
     throw new Error(
       heic
@@ -40,12 +41,12 @@ export async function compressImageFileForCoach(
     canvas.height = h
     const ctx = canvas.getContext('2d')
     if (!ctx) throw new Error('Canvas nicht verfügbar.')
-    if (file.type === 'image/png' || file.type === 'image/webp' || file.type === 'image/gif') {
+    if (forceJpeg || file.type === 'image/png' || file.type === 'image/webp' || file.type === 'image/gif') {
       ctx.fillStyle = '#fff'
       ctx.fillRect(0, 0, w, h)
     }
     ctx.drawImage(bitmap, 0, 0, w, h)
-    const mimeOut = file.type === 'image/png' && !heic ? 'image/png' : 'image/jpeg'
+    const mimeOut = forceJpeg || file.type !== 'image/png' || heic ? 'image/jpeg' : 'image/png'
     const dataUrl = canvas.toDataURL(mimeOut, mimeOut === 'image/jpeg' ? jpegQuality : undefined)
     const comma = dataUrl.indexOf(',')
     const base64 = comma >= 0 ? dataUrl.slice(comma + 1) : ''

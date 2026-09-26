@@ -97,7 +97,7 @@ export function PaIconTabs<T extends string>({
               key={t.id}
               type="button"
               onClick={() => onChange(t.id)}
-              className={`shrink-0 whitespace-nowrap rounded-lg px-3 py-2 text-xs font-medium transition-all sm:px-3.5 sm:text-sm ${
+              className={`inline-flex shrink-0 items-center justify-center whitespace-nowrap rounded-lg px-3 py-2 text-xs font-medium leading-none transition-all sm:px-3.5 sm:text-sm ${
                 on
                   ? 'bg-[var(--app-surface-hover)] text-teal-600 shadow-sm ring-1 ring-[var(--app-ring)] dark:text-teal-300'
                   : 'text-[var(--app-text-muted)] hover:text-[var(--app-text)]'
@@ -136,7 +136,7 @@ export function PaTextTabs<T extends string>({
               key={t.id}
               type="button"
               onClick={() => onChange(t.id)}
-              className={`shrink-0 whitespace-nowrap border-b-2 px-3 py-2 text-xs font-medium transition sm:px-4 sm:text-sm ${
+              className={`inline-flex shrink-0 items-center justify-center whitespace-nowrap border-b-2 px-3 py-2 text-xs font-medium leading-none transition sm:px-4 sm:text-sm ${
                 on
                   ? '-mb-px border-amber-500 text-[var(--app-text)]'
                   : 'border-transparent text-[var(--app-text-muted)] hover:text-[var(--app-text)]'
@@ -184,7 +184,7 @@ export function PaSubNav() {
     <>
       <div className="sm:hidden">
         <nav
-          className="app-h-scroll flex max-w-full gap-1.5 overflow-x-auto px-0 pb-1"
+          className="app-h-scroll flex max-w-full items-center gap-1.5 overflow-x-auto px-0 pb-1"
           aria-label="Portfolio-Bereich"
           data-no-swipe-nav
         >
@@ -194,7 +194,7 @@ export function PaSubNav() {
               <Link
                 key={item.href}
                 href={item.href}
-                className={`app-touch-target app-press shrink-0 rounded-full px-3.5 text-[12px] font-semibold whitespace-nowrap transition ${
+                className={`app-touch-target app-press inline-flex shrink-0 items-center justify-center rounded-full px-3.5 text-[12px] font-semibold leading-none whitespace-nowrap transition ${
                   aktiv || item.href === aktivHref
                     ? 'bg-teal-500/20 text-teal-300 ring-1 ring-teal-400/40'
                     : 'bg-[var(--app-surface)] text-[var(--app-text-muted)] ring-1 ring-[var(--app-border)]'
@@ -217,7 +217,7 @@ export function PaSubNav() {
               <Link
                 key={item.href}
                 href={item.href}
-                className={`shrink-0 whitespace-nowrap rounded-xl px-3 py-2 text-xs font-medium tracking-tight transition-all sm:px-4 sm:text-sm ${
+                className={`inline-flex shrink-0 items-center justify-center whitespace-nowrap rounded-xl px-3 py-2 text-xs font-medium leading-none tracking-tight transition-all sm:px-4 sm:text-sm ${
                   aktiv
                     ? 'bg-gradient-to-b from-teal-500/20 to-teal-600/10 text-teal-300 ring-1 ring-teal-500/25'
                     : 'text-[var(--app-text-muted)] hover:bg-white/[0.03] hover:text-[var(--app-text)]'
