@@ -184,7 +184,7 @@ export function PaSubNav() {
     <>
       <div className="sm:hidden">
         <nav
-          className="app-h-scroll -mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1"
+          className="app-h-scroll flex max-w-full gap-1.5 overflow-x-auto px-0 pb-1"
           aria-label="Portfolio-Bereich"
           data-no-swipe-nav
         >

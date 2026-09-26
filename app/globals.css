@@ -91,14 +91,40 @@ body {
   -webkit-tap-highlight-color: transparent;
 }
 
-/* Ein Scroll-Container: #app-main in layout.tsx */
+/* Ein Scroll-Container: #app-main — NUR vertikal. Horizontal nur in .app-table-scroll */
 #app-main {
   -webkit-overflow-scrolling: touch;
-  overscroll-behavior: contain;
+  overscroll-behavior-y: contain;
+  overscroll-behavior-x: none;
+  overflow-x: hidden !important;
+  max-width: 100%;
   padding-bottom: max(
     5.25rem,
     calc(env(safe-area-inset-bottom, 0px) + 4.5rem + var(--omnia-keyboard-height, 0px))
   );
+}
+
+#app-main > * {
+  max-width: 100%;
+  min-width: 0;
+}
+
+/* Verhindert, dass breite Kinder die Seite seitlich aufblasen */
+#app-main img,
+#app-main video,
+#app-main canvas,
+#app-main svg {
+  max-width: 100%;
+  height: auto;
+}
+
+#app-main table {
+  max-width: 100%;
+}
+
+#app-main pre {
+  max-width: 100%;
+  overflow-x: auto;
 }
 
 @media (min-width: 768px) {
@@ -125,13 +151,17 @@ html.omnia-keyboard-open #app-main {
   opacity: 0.92;
 }
 
-/** Horizontale Tabellen: Scroll-Hinweis rechts */
+/** Horizontale Tabellen: nur hier seitlich scrollen — nie die ganze Seite */
 .app-table-scroll {
   position: relative;
   max-width: 100%;
+  width: 100%;
+  min-width: 0;
   overflow-x: auto;
+  overflow-y: visible;
   overscroll-behavior-x: contain;
   -webkit-overflow-scrolling: touch;
+  touch-action: pan-x pan-y;
 }
 .app-table-scroll::after {
   content: '';
@@ -139,7 +169,6 @@ html.omnia-keyboard-open #app-main {
   position: sticky;
   right: 0;
   top: 0;
-  display: block;
   float: right;
   width: 1.25rem;
   height: 100%;
@@ -147,18 +176,14 @@ html.omnia-keyboard-open #app-main {
   background: linear-gradient(to left, color-mix(in srgb, var(--app-bg) 85%, transparent), transparent);
 }
 
-button,
-a,
-[role='button'] {
-  touch-action: manipulation;
-}
-
-/** Horizontales Scrollen in Tabellen, Tabs, Karussells */
+/** Horizontales Scrollen in Tabs/Karussells — begrenzt auf Container */
 .app-h-scroll {
   max-width: 100%;
+  min-width: 0;
   overflow-x: auto;
   overscroll-behavior-x: contain;
   -webkit-overflow-scrolling: touch;
+  touch-action: pan-x pan-y;
 }
 
 html.app-scroll-locked #app-main {

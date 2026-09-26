@@ -1,13 +1,13 @@
 'use client'
 
-import { appTableScrollInlineClassName } from '@/components/page-shell'
 import { WhoopChartHeader } from '@/components/fitnessdaten/whoop-info-modal'
 import { HR_ZONE_COLORS } from '@/lib/fitnessdaten/types'
 
 type BarPoint = { label: string; value: number; highlight?: boolean }
 
 function chartBreite(punkte: number): number {
-  return Math.max(360, punkte * 28)
+  // ViewBox-Breite — SVG skaliert auf 100% Container, kein minWidth-Zwang
+  return Math.max(280, punkte * 28)
 }
 
 function labelSchritt(anzahl: number): number {
@@ -43,11 +43,12 @@ export function WhoopWeeklyBarChart({
   return (
     <div className="rounded-2xl border border-white/[0.06] bg-[#111113] p-4">
       <WhoopChartHeader title={title} onInfo={onInfo} />
-      <div className={appTableScrollInlineClassName}>
+      <div className="w-full min-w-0 max-w-full overflow-hidden">
         <svg
           viewBox={`0 0 ${w} ${h}`}
-          style={{ minWidth: w, width: '100%', height: h }}
-          preserveAspectRatio="xMinYMid meet"
+          className="block h-auto w-full max-w-full"
+          style={{ height: h }}
+          preserveAspectRatio="xMidYMid meet"
         >
           {[0.25, 0.5, 0.75, 1].map((f) => (
             <line
@@ -132,11 +133,12 @@ export function WhoopWeeklyLineChart({
   return (
     <div className="rounded-2xl border border-white/[0.06] bg-[#111113] p-4">
       <WhoopChartHeader title={title} onInfo={onInfo} />
-      <div className={appTableScrollInlineClassName}>
+      <div className="w-full min-w-0 max-w-full overflow-hidden">
         <svg
           viewBox={`0 0 ${w} ${h}`}
-          style={{ minWidth: w, width: '100%', height: h }}
-          preserveAspectRatio="xMinYMid meet"
+          className="block h-auto w-full max-w-full"
+          style={{ height: h }}
+          preserveAspectRatio="xMidYMid meet"
         >
           {coords.length >= 2 ? (
             <polyline points={poly} fill="none" stroke={color} strokeWidth="2" strokeLinejoin="round" />

@@ -23,6 +23,7 @@ export const STRAVA_CHART_GRID = {
 
 type StravaChartShellProps = {
   height?: number
+  /** Nur für inneren Scroll bei sehr vielen Punkten — bläht die Seite nicht auf. */
   minWidth?: number
   children: ReactElement
   brush?: boolean
@@ -37,11 +38,21 @@ export function StravaChartShell({
   brushHeight = 22,
 }: StravaChartShellProps) {
   const totalH = brush ? height + brushHeight + 8 : height
+  const needsHScroll = typeof minWidth === 'number' && minWidth > 400
+
   return (
-    <div className="w-full overflow-x-auto" style={minWidth ? { minWidth } : undefined}>
-      <ResponsiveContainer width="100%" height={totalH} minWidth={minWidth ?? 280}>
-        {children}
-      </ResponsiveContainer>
+    <div
+      className={`w-full min-w-0 max-w-full ${needsHScroll ? 'app-table-scroll' : 'overflow-hidden'}`}
+      data-no-swipe-nav={needsHScroll ? true : undefined}
+    >
+      <div
+        className="w-full min-w-0"
+        style={needsHScroll ? { minWidth } : undefined}
+      >
+        <ResponsiveContainer width="100%" height={totalH} debounce={50}>
+          {children}
+        </ResponsiveContainer>
+      </div>
     </div>
   )
 }

@@ -576,7 +576,7 @@ STRAVA_CLIENT_SECRET=dein_client_secret`}
                 />
                 <div className="app-table-frame mx-2 mb-2">
                 <ResponsiveTableWrap>
-                <table className="app-data-table min-w-[520px]">
+                <table className="app-data-table w-full min-w-0 sm:min-w-[520px]">
                   <thead>
                     <tr>
                       <th>Jahr</th>

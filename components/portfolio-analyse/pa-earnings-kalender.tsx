@@ -295,7 +295,7 @@ export function PaEarningsKalender({
           </div>
 
           <div className={`${appTableScrollClassName} rounded-xl border border-[var(--app-border)] bg-[var(--app-surface-muted)]`}>
-            <div className="min-w-[480px] sm:min-w-[640px]">
+            <div className="min-w-0 w-full sm:min-w-[640px]">
               <div className="grid grid-cols-7 border-b border-white/[0.06] bg-[var(--app-surface-muted)]">
                 {KALENDER_WOCHENTAGE.map((w) => (
                   <div

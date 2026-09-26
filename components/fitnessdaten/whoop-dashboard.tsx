@@ -20,7 +20,6 @@ import {
   WhoopWeeklyLineChart,
 } from '@/components/fitnessdaten/whoop-charts'
 import { WhoopCoachBar, WhoopInfoModal, WhoopSyncBanner } from '@/components/fitnessdaten/whoop-info-modal'
-import { appModalScrollHiddenClassName } from '@/lib/app-modal-overlay'
 import {
   WhoopAgeOrb,
   WhoopAgeTrendChart,
@@ -285,7 +284,7 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange, ini
       <div className="pointer-events-none absolute -right-24 top-1/3 h-48 w-48 rounded-full bg-[#00E5FF]/[0.06] blur-3xl" />
 
       <div
-        className={`min-h-0 flex-1 px-3 pb-4 pt-4 sm:overflow-y-auto sm:overscroll-contain sm:px-6 sm:pb-6 sm:pt-6 md:overflow-y-auto ${appModalScrollHiddenClassName}`}
+        className="min-h-0 min-w-0 max-w-full flex-1 px-3 pb-4 pt-4 sm:overflow-y-auto sm:overscroll-contain sm:px-6 sm:pb-6 sm:pt-6 md:overflow-y-auto md:[-ms-overflow-style:none] md:[scrollbar-width:none] md:[&::-webkit-scrollbar]:hidden"
         data-no-swipe-nav
       >
         <WhoopBottomNav tab={tab} onTabChange={setTab} variant="pills" />
