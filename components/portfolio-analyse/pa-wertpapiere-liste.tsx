@@ -334,38 +334,24 @@ function WertpapierZeile({
       role={onOeffnen ? 'link' : undefined}
       aria-label={onOeffnen ? `${p.anzeigeName} — Fundamentaldaten öffnen` : undefined}
     >
-      <div className="flex min-w-0 items-start gap-2 px-4 py-3 sm:gap-3 sm:px-5 sm:py-3.5">
+      <div className="flex min-w-0 items-start gap-2.5 px-4 py-3 sm:gap-3 sm:px-5 sm:py-3.5">
         <PortfolioIsinLogo isin={p.isin} fallbackName={p.name} meta={meta} groesse="md" />
         <div className="min-w-0 flex-1">
           <div className="flex min-w-0 items-start gap-2">
             <div className="min-w-0 flex-1">
-              <p className="flex flex-wrap items-center gap-1 text-[11px] text-[var(--app-text-muted)]">
+              <p className="flex flex-wrap items-center gap-x-1 gap-y-0.5 text-[11px] text-[var(--app-text-muted)]">
                 <span>{assetZeileLabel(p.assetKlasse)}</span>
                 {isin ? (
                   <>
                     <span aria-hidden>·</span>
-                    <span className="font-mono truncate">{isin}</span>
+                    <span className="break-all font-mono">{isin}</span>
                     <CopyIsinButton isin={isin} />
                   </>
                 ) : null}
               </p>
-              <p className="mt-0.5 truncate text-sm font-semibold leading-snug text-[var(--app-text)]">
+              <p className="mt-0.5 break-words text-sm font-semibold leading-snug text-[var(--app-text)]">
                 {p.anzeigeName}
               </p>
-            </div>
-            <div className="shrink-0 text-right">
-              <p className="text-sm font-semibold tabular-nums text-[var(--app-text)]">
-                {formatEur(p.wertLiveEur)}
-              </p>
-              {gvPct != null ? (
-                <p
-                  className={`mt-0.5 text-[11px] tabular-nums ${positiv ? 'text-emerald-400' : 'text-rose-400'}`}
-                >
-                  {formatGewinnEur(gv)} · {formatProzent(gvPct)}
-                </p>
-              ) : (
-                <p className="mt-0.5 text-[11px] text-[var(--app-text-muted)]">—</p>
-              )}
             </div>
             <div className="relative shrink-0">
               <button
@@ -402,7 +388,21 @@ function WertpapierZeile({
               ) : null}
             </div>
           </div>
-          <p className="mt-1.5 text-[11px] tabular-nums text-[var(--app-text-muted)]">
+
+          <div className="mt-1.5 flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+            <span className="text-sm font-semibold tabular-nums text-[var(--app-text)]">
+              {formatEur(p.wertLiveEur)}
+            </span>
+            {gvPct != null ? (
+              <span
+                className={`text-[12px] tabular-nums ${positiv ? 'text-emerald-400' : 'text-rose-400'}`}
+              >
+                {formatGewinnEur(gv)} · {formatProzent(gvPct)}
+              </span>
+            ) : null}
+          </div>
+
+          <p className="mt-1 break-words text-[11px] leading-relaxed tabular-nums text-[var(--app-text-muted)]">
             {metaTeile.join(' · ')}
           </p>
         </div>
@@ -471,7 +471,7 @@ export function PaWertpapiereListe({
   }
 
   return (
-    <PaCard variant="elevated" className="min-w-0 overflow-hidden">
+    <PaCard variant="elevated" className="min-w-0">
       <button
         type="button"
         onClick={() => setOffen((o) => !o)}

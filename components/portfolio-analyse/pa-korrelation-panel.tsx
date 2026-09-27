@@ -64,15 +64,16 @@ export function PaKorrelationPanel({
   if (ticker.length < 2) return null
 
   const n = daten?.ok ? daten.ticker.length : 0
+  const kompakt = n >= 10
   const gridStyle =
     n > 0
       ? {
-          gridTemplateColumns: `minmax(2.25rem, auto) repeat(${n}, minmax(0, 1fr))`,
+          gridTemplateColumns: `minmax(0, 2.75rem) repeat(${n}, minmax(0, 1fr))`,
         }
       : undefined
 
   return (
-    <PaCard variant="glass" className="min-w-0 space-y-3 overflow-hidden p-4">
+    <PaCard variant="glass" className="min-w-0 space-y-3 p-4">
       <div>
         <p className="text-xs font-semibold uppercase tracking-wide text-[var(--app-text-muted)]">
           Korrelationsmatrix · 1J
@@ -106,43 +107,45 @@ export function PaKorrelationPanel({
       ) : null}
 
       {daten?.ok && daten.ticker.length > 0 ? (
-        <div className="grid w-full min-w-0 gap-0.5" style={gridStyle}>
-          <div className="min-w-0" aria-hidden />
-          {daten.ticker.map((t) => (
-            <div
-              key={`h-${t}`}
-              className="min-w-0 truncate px-0.5 text-center font-mono text-[9px] leading-tight text-[var(--app-text-muted)] sm:text-[10px]"
-              title={daten.beta[t] != null ? `${t} · β ${daten.beta[t]!.toFixed(2)}` : t}
-            >
-              <span className="block truncate">{t}</span>
-              {daten.beta[t] != null ? (
-                <span className="block truncate text-[8px] opacity-70 sm:text-[9px]">
-                  β {daten.beta[t]!.toFixed(1)}
-                </span>
-              ) : null}
-            </div>
-          ))}
-          {daten.ticker.map((row, i) => (
-            <div key={`r-${row}`} className="contents">
+        <div className="w-full min-w-0">
+          <div className="grid w-full min-w-0 gap-px" style={gridStyle}>
+            <div aria-hidden />
+            {daten.ticker.map((t) => (
               <div
-                className="flex min-w-0 items-center truncate font-mono text-[9px] text-[var(--app-text-muted)] sm:text-[10px]"
-                title={row}
+                key={`h-${t}`}
+                className="min-w-0 px-px text-center font-mono text-[8px] leading-tight text-[var(--app-text-muted)] sm:text-[9px]"
+                title={daten.beta[t] != null ? `${t} · β ${daten.beta[t]!.toFixed(2)}` : t}
               >
-                {row}
+                <span className="block truncate">{t}</span>
+                {daten.beta[t] != null && !kompakt ? (
+                  <span className="hidden truncate text-[8px] opacity-70 sm:block">
+                    β {daten.beta[t]!.toFixed(1)}
+                  </span>
+                ) : null}
               </div>
-              {daten.matrix[i]!.map((c, j) => (
+            ))}
+            {daten.ticker.map((row, i) => (
+              <div key={`r-${row}`} className="contents">
                 <div
-                  key={`${i}-${j}`}
-                  className={`flex aspect-square min-h-0 min-w-0 items-center justify-center rounded text-[9px] tabular-nums sm:text-[10px] ${corrFarbe(c)} ${
-                    i === j ? 'opacity-40' : ''
-                  }`}
-                  title={`${daten.ticker[i]} ↔ ${daten.ticker[j]}: ${c.toFixed(2)}`}
+                  className="flex min-w-0 items-center truncate pr-0.5 font-mono text-[8px] text-[var(--app-text-muted)] sm:text-[9px]"
+                  title={row}
                 >
-                  {i === j ? '·' : formatCorrKurz(c)}
+                  {row}
                 </div>
-              ))}
-            </div>
-          ))}
+                {daten.matrix[i]!.map((c, j) => (
+                  <div
+                    key={`${i}-${j}`}
+                    className={`flex min-h-[1.35rem] min-w-0 items-center justify-center rounded-sm px-px py-0.5 text-[8px] tabular-nums leading-none sm:min-h-[1.6rem] sm:text-[9px] ${corrFarbe(c)} ${
+                      i === j ? 'opacity-40' : ''
+                    }`}
+                    title={`${daten.ticker[i]} ↔ ${daten.ticker[j]}: ${c.toFixed(2)}`}
+                  >
+                    {i === j ? '·' : formatCorrKurz(c)}
+                  </div>
+                ))}
+              </div>
+            ))}
+          </div>
         </div>
       ) : null}
 
