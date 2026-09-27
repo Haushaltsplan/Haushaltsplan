@@ -1,7 +1,6 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { appTableScrollClassName } from '@/components/page-shell'
 import { PaCard } from '@/components/portfolio-analyse/pa-ui'
 import type { PortfolioKorrelationPaket } from '@/lib/portfolio-analyse/portfolio-korrelation-types'
 
@@ -10,6 +9,11 @@ function corrFarbe(c: number): string {
   if (c >= 0.4) return 'bg-amber-500/50'
   if (c >= 0) return 'bg-emerald-500/25'
   return 'bg-sky-500/30'
+}
+
+function formatCorrKurz(c: number): string {
+  const gerundet = Math.round(c * 10) / 10
+  return gerundet.toFixed(1)
 }
 
 export function PaKorrelationPanel({
@@ -59,8 +63,16 @@ export function PaKorrelationPanel({
 
   if (ticker.length < 2) return null
 
+  const n = daten?.ok ? daten.ticker.length : 0
+  const gridStyle =
+    n > 0
+      ? {
+          gridTemplateColumns: `minmax(2.25rem, auto) repeat(${n}, minmax(0, 1fr))`,
+        }
+      : undefined
+
   return (
-    <PaCard variant="glass" className="space-y-3 p-4">
+    <PaCard variant="glass" className="min-w-0 space-y-3 overflow-hidden p-4">
       <div>
         <p className="text-xs font-semibold uppercase tracking-wide text-[var(--app-text-muted)]">
           Korrelationsmatrix · 1J
@@ -94,41 +106,43 @@ export function PaKorrelationPanel({
       ) : null}
 
       {daten?.ok && daten.ticker.length > 0 ? (
-        <div className={appTableScrollClassName}>
-          <table className="min-w-max border-collapse text-[10px]">
-            <thead>
-              <tr>
-                <th className="p-1 text-left text-[var(--app-text-muted)]" />
-                {daten.ticker.map((t) => (
-                  <th key={t} className="p-1 font-mono font-normal text-[var(--app-text-muted)]">
-                    {t}
-                    {daten.beta[t] != null ? (
-                      <span className="block text-[9px] opacity-70">β {daten.beta[t]!.toFixed(2)}</span>
-                    ) : null}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {daten.ticker.map((row, i) => (
-                <tr key={row}>
-                  <td className="p-1 font-mono text-[var(--app-text-muted)]">{row}</td>
-                  {daten.matrix[i]!.map((c, j) => (
-                    <td key={`${i}-${j}`} className="p-0.5">
-                      <div
-                        className={`flex h-7 w-7 items-center justify-center rounded ${corrFarbe(c)} ${
-                          i === j ? 'opacity-40' : ''
-                        }`}
-                        title={`${daten.ticker[i]} ↔ ${daten.ticker[j]}: ${c.toFixed(2)}`}
-                      >
-                        {i === j ? '·' : c.toFixed(1)}
-                      </div>
-                    </td>
-                  ))}
-                </tr>
+        <div className="grid w-full min-w-0 gap-0.5" style={gridStyle}>
+          <div className="min-w-0" aria-hidden />
+          {daten.ticker.map((t) => (
+            <div
+              key={`h-${t}`}
+              className="min-w-0 truncate px-0.5 text-center font-mono text-[9px] leading-tight text-[var(--app-text-muted)] sm:text-[10px]"
+              title={daten.beta[t] != null ? `${t} · β ${daten.beta[t]!.toFixed(2)}` : t}
+            >
+              <span className="block truncate">{t}</span>
+              {daten.beta[t] != null ? (
+                <span className="block truncate text-[8px] opacity-70 sm:text-[9px]">
+                  β {daten.beta[t]!.toFixed(1)}
+                </span>
+              ) : null}
+            </div>
+          ))}
+          {daten.ticker.map((row, i) => (
+            <div key={`r-${row}`} className="contents">
+              <div
+                className="flex min-w-0 items-center truncate font-mono text-[9px] text-[var(--app-text-muted)] sm:text-[10px]"
+                title={row}
+              >
+                {row}
+              </div>
+              {daten.matrix[i]!.map((c, j) => (
+                <div
+                  key={`${i}-${j}`}
+                  className={`flex aspect-square min-h-0 min-w-0 items-center justify-center rounded text-[9px] tabular-nums sm:text-[10px] ${corrFarbe(c)} ${
+                    i === j ? 'opacity-40' : ''
+                  }`}
+                  title={`${daten.ticker[i]} ↔ ${daten.ticker[j]}: ${c.toFixed(2)}`}
+                >
+                  {i === j ? '·' : formatCorrKurz(c)}
+                </div>
               ))}
-            </tbody>
-          </table>
+            </div>
+          ))}
         </div>
       ) : null}
 
