@@ -220,6 +220,7 @@ html.app-scroll-locked #app-main {
 .app-scroll-list-wrap {
   position: relative;
   display: flex;
+  min-width: 0;
   min-height: 0;
   flex: 1;
   flex-direction: column;
@@ -247,7 +248,7 @@ html.app-scroll-locked #app-main {
   overscroll-behavior-y: auto;
   -webkit-overflow-scrolling: touch;
   scroll-behavior: smooth;
-  scrollbar-gutter: stable;
+  /* kein scrollbar-gutter:stable — auf Android/WebView frisst das rechts Platz und schneidet Badges ab */
   scrollbar-width: thin;
   scrollbar-color: color-mix(in srgb, var(--app-accent) 32%, transparent) transparent;
   padding-inline-end: 2px;

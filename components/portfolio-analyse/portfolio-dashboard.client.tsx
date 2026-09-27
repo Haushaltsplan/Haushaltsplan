@@ -175,7 +175,7 @@ export function PortfolioDashboardClient() {
   const irr = renditeKennzahlen?.izfProzent ?? report?.performance.irrAnnualizedPercent
 
   return (
-    <div className="space-y-5 sm:space-y-8">
+    <div className="min-w-0 space-y-5 sm:space-y-8">
       {k ? (
         <PaPortfolioHero
           positionen={positionen}
@@ -216,129 +216,173 @@ export function PortfolioDashboardClient() {
         return <PaKorrelationPanel ticker={ticker} />
       })()}
 
-      <div className="grid gap-6 lg:grid-cols-3 lg:items-stretch">
+      <div className="grid min-w-0 gap-6 lg:grid-cols-3 lg:items-stretch">
         {renditeKennzahlen ? (
-          <div className="min-h-0 lg:h-full">
+          <div className="min-h-0 min-w-0 lg:h-full">
             <PaRenditePanel kennzahlen={renditeKennzahlen} startDatum={startDatum} />
             {kursFehler ? (
               <p className="mt-2 text-[11px] text-amber-500/90">Live-Kurse teilweise nicht verfügbar.</p>
             ) : null}
           </div>
         ) : (
-          <PaCard variant="elevated" className="h-full p-5">
+          <PaCard variant="elevated" className="h-full min-w-0 p-5">
             <p className="text-sm text-[var(--app-text-muted)]">Rendite wird berechnet …</p>
           </PaCard>
         )}
 
-        <div className="relative min-h-[28rem] lg:min-h-0">
+        <div className="relative min-h-[28rem] min-w-0 lg:min-h-0">
           <PaCard variant="elevated" className="flex min-h-[28rem] min-w-0 flex-col overflow-hidden lg:absolute lg:inset-0 lg:min-h-0">
-          <div className="flex shrink-0 items-center justify-between border-b border-white/[0.04] px-5 py-3">
-            <h2 className="text-sm font-semibold text-[var(--app-text)]">Letzte Aktivitäten</h2>
-            <Link href="/portfolioanalyse/aktivitaeten" className="text-xs text-teal-400 hover:underline">
-              Alle →
-            </Link>
-          </div>
-          <PaScrollList className="divide-y divide-[var(--app-border)]">
-            {letzteAktivitaeten.map((b) => {
-              const href =
-                b.assetKlasse === 'aktie' && b.isin ? fundamentaldatenHref({ isin: b.isin }) : null
-              return (
-              <li
-                key={b.id}
-                className={`flex items-center gap-3 px-4 py-3 ${href ? 'cursor-pointer hover:bg-white/[0.03]' : ''}`}
-                onClick={href ? () => router.push(href) : undefined}
+            <div className="flex shrink-0 items-center justify-between gap-2 border-b border-white/[0.04] px-3 py-3 sm:px-5">
+              <h2 className="min-w-0 truncate text-sm font-semibold text-[var(--app-text)]">
+                Letzte Aktivitäten
+              </h2>
+              <Link
+                href="/portfolioanalyse/aktivitaeten"
+                className="shrink-0 text-xs text-teal-400 hover:underline"
               >
-                <PortfolioIsinLogo isin={b.isin} fallbackName={b.wertpapierName} meta={meta} groesse="sm" />
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm text-[var(--app-text)]">
-                    {anzeigeNameFuerIsin(b.isin, b.wertpapierName, meta)}
-                  </p>
-                  <p className="text-[11px] text-[var(--app-text-muted)]">{formatDatumDe(b.datum)}</p>
-                </div>
-                <div className="text-right">
-                  <PaBadge variant={badgeVariant(b.typ)}>{BUCHUNGS_TYP_LABEL[b.typ]}</PaBadge>
-                  <p className="mt-1 text-sm tabular-nums text-[var(--app-text)]">
-                    {formatEur(anzeigeHandelsBuchung(b).betragEur)}
-                  </p>
-                </div>
-              </li>
-            )})}
-          </PaScrollList>
-        </PaCard>
+                Alle →
+              </Link>
+            </div>
+            <PaScrollList className="divide-y divide-[var(--app-border)]">
+              {letzteAktivitaeten.map((b) => {
+                const href =
+                  b.assetKlasse === 'aktie' && b.isin ? fundamentaldatenHref({ isin: b.isin }) : null
+                return (
+                  <li
+                    key={b.id}
+                    className={`grid min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-x-2.5 gap-y-0.5 px-3 py-3 sm:px-4 ${
+                      href ? 'cursor-pointer hover:bg-white/[0.03]' : ''
+                    }`}
+                    onClick={href ? () => router.push(href) : undefined}
+                  >
+                    <div className="row-span-2 self-center">
+                      <PortfolioIsinLogo
+                        isin={b.isin}
+                        fallbackName={b.wertpapierName}
+                        meta={meta}
+                        groesse="sm"
+                      />
+                    </div>
+                    <p className="min-w-0 truncate text-sm text-[var(--app-text)]">
+                      {anzeigeNameFuerIsin(b.isin, b.wertpapierName, meta)}
+                    </p>
+                    <p className="shrink-0 self-start text-right text-sm font-medium tabular-nums text-[var(--app-text)]">
+                      {formatEur(anzeigeHandelsBuchung(b).betragEur)}
+                    </p>
+                    <p className="min-w-0 truncate text-[11px] text-[var(--app-text-muted)]">
+                      {formatDatumDe(b.datum)}
+                    </p>
+                    <div className="shrink-0 justify-self-end">
+                      <PaBadge variant={badgeVariant(b.typ)}>{BUCHUNGS_TYP_LABEL[b.typ]}</PaBadge>
+                    </div>
+                  </li>
+                )
+              })}
+            </PaScrollList>
+          </PaCard>
         </div>
 
-        <div className="relative min-h-[28rem] lg:min-h-0">
-        <PaCard variant="elevated" className="flex min-h-[28rem] min-w-0 flex-col overflow-hidden lg:absolute lg:inset-0 lg:min-h-0">
-          <div className="flex shrink-0 items-start justify-between gap-3 border-b border-white/[0.04] px-5 py-3">
-            <div className="min-w-0">
-              <h2 className="text-sm font-semibold text-[var(--app-text)]">Top Mover</h2>
-              <button
-                type="button"
-                onClick={() =>
-                  setTopMoverRichtung((r) => (r === 'gewinner' ? 'verlierer' : 'gewinner'))
-                }
-                className="mt-0.5 flex items-center gap-1 rounded-md text-[11px] text-[var(--app-text-muted)] transition-colors hover:text-[var(--app-text)]"
-                aria-label={
-                  topMoverRichtung === 'gewinner'
-                    ? 'Nach größten Verlierern sortieren'
-                    : 'Nach größten Gewinnern sortieren'
-                }
-                title="Gewinner / Verlierer umschalten"
-              >
-                <span className="text-sm leading-none" aria-hidden>
-                  {topMoverRichtung === 'gewinner' ? '↑' : '↓'}
-                </span>
-                <span>{topMoverUntertitel(periodKey, topMoverRichtung)}</span>
-              </button>
-            </div>
-          </div>
-          <PaScrollList className="divide-y divide-[var(--app-border)]">
-            {topMover.length === 0 ? (
-              <li className="px-5 py-8 text-center text-sm text-[var(--app-text-muted)]">
-                {topMoverRichtung === 'verlierer' ? 'Keine Verlierer in diesem Zeitraum.' : 'Keine Live-Performance.'}
-              </li>
-            ) : (
-              topMover.map(({ p, perf }) => {
-                const fundamentalHref =
-                  p.assetKlasse === 'aktie' && p.isin ? fundamentaldatenHref({ isin: p.isin }) : null
-                return (
-                <li
-                  key={p.isin ?? p.name}
-                  className={`flex flex-col gap-2 px-4 py-3 sm:flex-row sm:items-center ${fundamentalHref ? 'cursor-pointer hover:bg-white/[0.03]' : ''}`}
-                  onClick={fundamentalHref ? () => router.push(fundamentalHref) : undefined}
-                  onKeyDown={
-                    fundamentalHref
-                      ? (e) => {
-                          if (e.key === 'Enter' || e.key === ' ') {
-                            e.preventDefault()
-                            router.push(fundamentalHref)
-                          }
-                        }
-                      : undefined
+        <div className="relative min-h-[28rem] min-w-0 lg:min-h-0">
+          <PaCard variant="elevated" className="flex min-h-[28rem] min-w-0 flex-col overflow-hidden lg:absolute lg:inset-0 lg:min-h-0">
+            <div className="flex shrink-0 items-start justify-between gap-3 border-b border-white/[0.04] px-3 py-3 sm:px-5">
+              <div className="min-w-0">
+                <h2 className="text-sm font-semibold text-[var(--app-text)]">Top Mover</h2>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setTopMoverRichtung((r) => (r === 'gewinner' ? 'verlierer' : 'gewinner'))
                   }
-                  tabIndex={fundamentalHref ? 0 : undefined}
-                  role={fundamentalHref ? 'link' : undefined}
-                  aria-label={fundamentalHref ? `${p.anzeigeName} — Fundamentaldaten` : undefined}
+                  className="mt-0.5 flex max-w-full items-center gap-1 rounded-md text-[11px] text-[var(--app-text-muted)] transition-colors hover:text-[var(--app-text)]"
+                  aria-label={
+                    topMoverRichtung === 'gewinner'
+                      ? 'Nach größten Verlierern sortieren'
+                      : 'Nach größten Gewinnern sortieren'
+                  }
+                  title="Gewinner / Verlierer umschalten"
                 >
-                  <div className="flex min-w-0 flex-1 items-center gap-3">
-                    <PortfolioIsinLogo isin={p.isin} fallbackName={p.name} meta={meta} groesse="sm" />
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm text-[var(--app-text)]">{p.anzeigeName}</p>
-                      <p className="text-[11px] text-[var(--app-text-muted)]">{formatEur(p.wertLiveEur)}</p>
-                    </div>
-                  </div>
-                  <div className="shrink-0 self-start sm:self-center">
-                    <PaBadge variant={(perf.gewinnVerlustProzent ?? 0) >= 0 ? 'positive' : 'negative'}>
-                      {perf.gewinnVerlustProzent != null ? formatProzent(perf.gewinnVerlustProzent) : '—'}{' '}
-                      {perf.gewinnVerlustEur >= 0 ? '+' : ''}
-                      {formatEur(perf.gewinnVerlustEur)}
-                    </PaBadge>
-                  </div>
+                  <span className="text-sm leading-none" aria-hidden>
+                    {topMoverRichtung === 'gewinner' ? '↑' : '↓'}
+                  </span>
+                  <span className="truncate">{topMoverUntertitel(periodKey, topMoverRichtung)}</span>
+                </button>
+              </div>
+            </div>
+            <PaScrollList className="divide-y divide-[var(--app-border)]">
+              {topMover.length === 0 ? (
+                <li className="px-3 py-8 text-center text-sm text-[var(--app-text-muted)] sm:px-5">
+                  {topMoverRichtung === 'verlierer'
+                    ? 'Keine Verlierer in diesem Zeitraum.'
+                    : 'Keine Live-Performance.'}
                 </li>
-              )})
-            )}
-          </PaScrollList>
-        </PaCard>
+              ) : (
+                topMover.map(({ p, perf }) => {
+                  const fundamentalHref =
+                    p.assetKlasse === 'aktie' && p.isin
+                      ? fundamentaldatenHref({ isin: p.isin })
+                      : null
+                  const positiv = (perf.gewinnVerlustProzent ?? 0) >= 0
+                  return (
+                    <li
+                      key={p.isin ?? p.name}
+                      className={`grid min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-2.5 px-3 py-3 sm:px-4 ${
+                        fundamentalHref ? 'cursor-pointer hover:bg-white/[0.03]' : ''
+                      }`}
+                      onClick={
+                        fundamentalHref ? () => router.push(fundamentalHref) : undefined
+                      }
+                      onKeyDown={
+                        fundamentalHref
+                          ? (e) => {
+                              if (e.key === 'Enter' || e.key === ' ') {
+                                e.preventDefault()
+                                router.push(fundamentalHref)
+                              }
+                            }
+                          : undefined
+                      }
+                      tabIndex={fundamentalHref ? 0 : undefined}
+                      role={fundamentalHref ? 'link' : undefined}
+                      aria-label={
+                        fundamentalHref ? `${p.anzeigeName} — Fundamentaldaten` : undefined
+                      }
+                    >
+                      <PortfolioIsinLogo
+                        isin={p.isin}
+                        fallbackName={p.name}
+                        meta={meta}
+                        groesse="sm"
+                      />
+                      <div className="min-w-0">
+                        <p className="truncate text-sm text-[var(--app-text)]">{p.anzeigeName}</p>
+                        <p className="text-[11px] tabular-nums text-[var(--app-text-muted)]">
+                          {formatEur(p.wertLiveEur)}
+                        </p>
+                      </div>
+                      <div className="min-w-0 shrink-0 text-right">
+                        <p
+                          className={`text-sm font-semibold tabular-nums ${
+                            positiv ? 'text-emerald-400' : 'text-rose-400'
+                          }`}
+                        >
+                          {perf.gewinnVerlustProzent != null
+                            ? formatProzent(perf.gewinnVerlustProzent)
+                            : '—'}
+                        </p>
+                        <p
+                          className={`text-[11px] tabular-nums ${
+                            positiv ? 'text-emerald-400/90' : 'text-rose-400/90'
+                          }`}
+                        >
+                          {perf.gewinnVerlustEur >= 0 ? '+' : ''}
+                          {formatEur(perf.gewinnVerlustEur)}
+                        </p>
+                      </div>
+                    </li>
+                  )
+                })
+              )}
+            </PaScrollList>
+          </PaCard>
         </div>
       </div>
 

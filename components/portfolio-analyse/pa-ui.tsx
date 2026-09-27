@@ -63,9 +63,9 @@ export function PaScrollList({
   }
 
   return (
-    <div className="app-scroll-list-wrap">
+    <div className="app-scroll-list-wrap min-w-0">
       <ul
-        className={`app-scroll-list min-h-0 flex-1 ${className}`}
+        className={`app-scroll-list min-h-0 min-w-0 flex-1 ${className}`}
         onWheel={onWheel}
       >
         {children}
@@ -262,7 +262,9 @@ export function PaBadge({
     neutral: 'bg-[var(--app-surface-hover)] text-[var(--app-text-muted)] ring-1 ring-white/[0.04]',
   }[variant]
   return (
-    <span className={`inline-flex rounded-md px-2 py-0.5 text-[11px] font-semibold tracking-wide ${cls}`}>
+    <span
+      className={`inline-flex max-w-full shrink-0 items-center rounded-md px-1.5 py-0.5 text-[10px] font-semibold tracking-wide whitespace-nowrap sm:px-2 sm:text-[11px] ${cls}`}
+    >
       {children}
     </span>
   )
