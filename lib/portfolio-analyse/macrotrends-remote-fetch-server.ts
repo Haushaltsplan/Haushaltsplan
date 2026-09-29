@@ -57,26 +57,39 @@ async function fetchViaRelay(url: string): Promise<string | null> {
   const cred = await relayCredentials()
   if (!cred) return null
 
-  const res = await fetch(`${cred.base}/fetch`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      ...(cred.secret ? { Authorization: `Bearer ${cred.secret}` } : {}),
-    },
-    body: JSON.stringify({ url }),
-    signal: AbortSignal.timeout(45_000),
-    cache: 'no-store',
-  })
-  if (!res.ok) {
-    console.warn(`[macrotrends-fetch] Relay HTTP ${res.status}`)
+  try {
+    const res = await fetch(`${cred.base}/fetch`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(cred.secret ? { Authorization: `Bearer ${cred.secret}` } : {}),
+      },
+      body: JSON.stringify({ url }),
+      signal: AbortSignal.timeout(45_000),
+      cache: 'no-store',
+    })
+    if (!res.ok) {
+      const body = await res.text().catch(() => '')
+      console.warn(
+        `[macrotrends-fetch] Relay HTTP ${res.status} ${body.slice(0, 120).replace(/\s+/g, ' ')}`,
+      )
+      return null
+    }
+    const j = (await res.json()) as { html?: string; ok?: boolean; error?: string }
+    if (!j.html || istChallenge(j.html) || !hatDaten(j.html)) {
+      console.warn(`[macrotrends-fetch] Relay ohne Daten: ${j.error ?? 'leer'}`)
+      return null
+    }
+    return j.html
+  } catch (e) {
+    const cause = e instanceof Error && 'cause' in e ? e.cause : null
+    console.warn(
+      '[macrotrends-fetch] Relay fetch failed:',
+      e instanceof Error ? e.message : e,
+      cause instanceof Error ? cause.message : cause ?? '',
+    )
     return null
   }
-  const j = (await res.json()) as { html?: string; ok?: boolean; error?: string }
-  if (!j.html || istChallenge(j.html) || !hatDaten(j.html)) {
-    console.warn(`[macrotrends-fetch] Relay ohne Daten: ${j.error ?? 'leer'}`)
-    return null
-  }
-  return j.html
 }
 
 /** Viele URLs in einem Relay-Request (vermeidet Vercel-Timeouts). */

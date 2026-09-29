@@ -92,7 +92,26 @@ let browser
 let page
 let nav = Promise.resolve()
 
+async function resetBrowser() {
+  try {
+    await browser?.close()
+  } catch {
+    /* ignore */
+  }
+  browser = null
+  page = null
+}
+
+async function ensureChromeCdp() {
+  if (await cdpUp()) return
+  console.warn('Chrome-CDP weg — starte neu')
+  await resetBrowser()
+  startChrome()
+  await waitCdp()
+}
+
 async function ensurePage() {
+  await ensureChromeCdp()
   if (!browser) {
     browser = await chromium.connectOverCDP(`http://127.0.0.1:${CDP_PORT}`)
   }
