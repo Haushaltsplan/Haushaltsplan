@@ -79,6 +79,43 @@ const STROMFELDER = new Set<SecFeld>([
   'akquisitionen',
 ])
 
+/** TTM = Summe der letzten 4 Quartale. Aktienzahl ist ein Bestand, nicht addieren. */
+const TTM_SUMME = new Set<SecFeld>([
+  'umsatz',
+  'bruttogewinn',
+  'cogs',
+  'ebit',
+  'nettogewinn',
+  'eps',
+  'rd',
+  'sga',
+  'sbc',
+  'ocf',
+  'capex',
+  'da',
+  'aktienrueckkauf',
+  'dividenden_gezahlt',
+  'akquisitionen',
+])
+
+/** 10-Q-Cashflow/GuV oft YTD — Quartale per Differenz H1−Q1, 9M−H1, FY−9M. EPS/WAS nicht additiv. */
+const YTD_DIFFERENZ = new Set<SecFeld>([
+  'umsatz',
+  'bruttogewinn',
+  'cogs',
+  'ebit',
+  'nettogewinn',
+  'rd',
+  'sga',
+  'sbc',
+  'ocf',
+  'capex',
+  'da',
+  'aktienrueckkauf',
+  'dividenden_gezahlt',
+  'akquisitionen',
+])
+
 const NEGATIV_ERLAUBT = new Set<SecFeld>([
   'ebit',
   'nettogewinn',
@@ -370,9 +407,13 @@ function jahresreihe(
         if (!e.end || e.val == null || !Number.isFinite(e.val)) continue
         if (!e.form || !JAHRESFORMULARE.has(e.form)) continue
         if (strom) {
-          if (!e.start) continue
-          const tage = (Date.parse(e.end) - Date.parse(e.start)) / 86_400_000
-          if (tage < 330 || tage > 400) continue
+          if (feld === 'aktien' && !e.start) {
+            if (e.fp && e.fp !== 'FY') continue
+          } else {
+            if (!e.start) continue
+            const tage = (Date.parse(e.end) - Date.parse(e.start)) / 86_400_000
+            if (tage < 330 || tage > 400) continue
+          }
         } else if (e.start) {
           continue
         }
@@ -392,37 +433,122 @@ function jahresreihe(
   return out
 }
 
-function quartalsreihe(facts: CompanyFactsJson, waehrung: string, feld: SecFeld): Map<string, Treffer> {
-  const out = new Map<string, Treffer>()
-  const strom = STROMFELDER.has(feld)
-  const negOk = NEGATIV_ERLAUBT.has(feld)
+type Rohfakt = {
+  end: string
+  start?: string
+  val: number
+  filed: string
+  tage: number | null
+  form: string
+}
 
+function sammleRohfakten(facts: CompanyFactsJson, waehrung: string, feld: SecFeld): Rohfakt[] {
+  const out: Rohfakt[] = []
+  const negOk = NEGATIV_ERLAUBT.has(feld)
   for (const tag of TAG_KETTEN[feld]) {
-    const perEnde = new Map<string, Treffer>()
     for (const namespace of Object.values(facts.facts ?? {})) {
       const liste = einheitenFuerFeld(namespace[tag], feld, waehrung)
       if (!liste.length) continue
       for (const e of liste) {
         if (!e.end || e.val == null || !Number.isFinite(e.val)) continue
-        if (!e.form || !QUARTALSFORMULARE.has(e.form)) continue
-        if (strom) {
-          if (!e.start) continue
-          const tage = (Date.parse(e.end) - Date.parse(e.start)) / 86_400_000
-          if (tage < 70 || tage > 110) continue
-        } else if (e.start) {
-          continue
-        }
+        if (!e.form || (!JAHRESFORMULARE.has(e.form) && !QUARTALSFORMULARE.has(e.form))) continue
         if (!negOk && e.val < 0) continue
-        const filed = e.filed ?? e.end
-        const alt = perEnde.get(e.end)
-        if (!alt || filed > alt.filed) {
-          perEnde.set(e.end, { wert: skalieren(feld, e.val), filed, periodenEnde: e.end })
+        const tage = e.start ? (Date.parse(e.end) - Date.parse(e.start)) / 86_400_000 : null
+        out.push({
+          end: e.end,
+          start: e.start,
+          val: e.val,
+          filed: e.filed ?? e.end,
+          tage: tage != null && Number.isFinite(tage) ? tage : null,
+          form: e.form,
+        })
+      }
+    }
+  }
+  return out
+}
+
+function besterRoh(liste: Rohfakt[]): Rohfakt | null {
+  if (!liste.length) return null
+  return liste.reduce((a, b) => (b.filed > a.filed ? b : a))
+}
+
+function setzeRaw(
+  ziel: Map<string, { val: number; filed: string }>,
+  end: string,
+  val: number,
+  filed: string,
+) {
+  if (!Number.isFinite(val)) return
+  const alt = ziel.get(end)
+  if (!alt || filed > alt.filed) ziel.set(end, { val, filed })
+}
+
+function quartalsreihe(facts: CompanyFactsJson, waehrung: string, feld: SecFeld): Map<string, Treffer> {
+  const fakten = sammleRohfakten(facts, waehrung, feld)
+  const raw = new Map<string, { val: number; filed: string }>()
+  const strom = STROMFELDER.has(feld)
+
+  if (feld === 'aktien') {
+    for (const f of fakten) {
+      if (!QUARTALSFORMULARE.has(f.form)) continue
+      if (f.tage != null && f.tage >= 70 && f.tage <= 110) setzeRaw(raw, f.end, f.val, f.filed)
+      else if (f.tage == null) setzeRaw(raw, f.end, f.val, f.filed)
+    }
+  } else {
+    for (const f of fakten) {
+      if (!QUARTALSFORMULARE.has(f.form)) continue
+      if (strom) {
+        if (f.tage == null || f.tage < 70 || f.tage > 110) continue
+      } else if (f.tage != null) {
+        continue
+      }
+      setzeRaw(raw, f.end, f.val, f.filed)
+    }
+
+    if (YTD_DIFFERENZ.has(feld)) {
+      const byStart = new Map<string, Rohfakt[]>()
+      for (const f of fakten) {
+        if (f.tage == null || !f.start) continue
+        const arr = byStart.get(f.start) ?? []
+        arr.push(f)
+        byStart.set(f.start, arr)
+      }
+      for (const [, liste] of byStart) {
+        const q1f = besterRoh(liste.filter((f) => f.tage! >= 70 && f.tage! <= 110))
+        const h1f = besterRoh(liste.filter((f) => f.tage! >= 160 && f.tage! <= 200))
+        const m9f = besterRoh(liste.filter((f) => f.tage! >= 250 && f.tage! <= 290))
+        const fyf = besterRoh(liste.filter((f) => f.tage! >= 330 && f.tage! <= 400))
+
+        const q1 = q1f ? (raw.get(q1f.end)?.val ?? q1f.val) : null
+        if (q1f && !raw.has(q1f.end)) setzeRaw(raw, q1f.end, q1f.val, q1f.filed)
+
+        let q2: number | null = h1f ? (raw.get(h1f.end)?.val ?? null) : null
+        if (q2 == null && h1f && q1 != null) {
+          q2 = h1f.val - q1
+          setzeRaw(raw, h1f.end, q2, h1f.filed)
+        }
+
+        let q3: number | null = m9f ? (raw.get(m9f.end)?.val ?? null) : null
+        if (q3 == null && m9f) {
+          if (q1 != null && q2 != null) q3 = m9f.val - q1 - q2
+          else if (h1f) q3 = m9f.val - h1f.val
+          if (q3 != null) setzeRaw(raw, m9f.end, q3, m9f.filed)
+        }
+
+        if (fyf && !raw.has(fyf.end)) {
+          let q4: number | null = null
+          if (m9f) q4 = fyf.val - m9f.val
+          else if (q1 != null && q2 != null && q3 != null) q4 = fyf.val - q1 - q2 - q3
+          if (q4 != null) setzeRaw(raw, fyf.end, q4, fyf.filed)
         }
       }
     }
-    for (const [ende, treffer] of perEnde) {
-      if (!out.has(ende)) out.set(ende, treffer)
-    }
+  }
+
+  const out = new Map<string, Treffer>()
+  for (const [end, t] of raw) {
+    out.set(end, { wert: skalieren(feld, t.val), filed: t.filed, periodenEnde: end })
   }
   return out
 }
@@ -474,15 +600,23 @@ function werteAusReihe(
   return out
 }
 
-function ttmAusQuartalen(reihe: Map<string, Treffer>, feld: SecFeld | undefined, istStrom: boolean): number | null {
+function ttmAusQuartalen(
+  reihe: Map<string, Treffer>,
+  feld: SecFeld | undefined,
+  modus: 'sum' | 'last',
+): number | null {
   const sortiert = [...reihe.entries()].sort((a, b) => a[0].localeCompare(b[0]))
   if (sortiert.length === 0) return null
-  if (!istStrom) {
+  if (modus !== 'sum') {
     const last = sortiert[sortiert.length - 1]
     return last && feld ? vorzeichen(feld, last[1].wert) : last?.[1].wert ?? null
   }
   const letzte = sortiert.slice(-4)
   if (letzte.length < 4) return null
+  const span =
+    (Date.parse(letzte[letzte.length - 1]![0]) - Date.parse(letzte[0]![0])) / 86_400_000
+  // Vier echte Folgequartale liegen ~9–14 Monate auseinander — nicht vier Q1er über 4 Jahre.
+  if (span < 250 || span > 420) return null
   let sum = 0
   for (const [, t] of letzte) sum += feld ? vorzeichen(feld, t.wert) : t.wert
   return sum
@@ -547,9 +681,16 @@ export async function ladeSecFundamentaldaten(
     if (def.id === 'ebitda' || def.id === 'gesamtverschuldung') continue
     if (!def.feld) continue
     const reihe = reihen.get(def.feld)
-    const ttm = mitTtm ? ttmAusQuartalen(quartalsreihe(facts, waehrung, def.feld), def.feld, STROMFELDER.has(def.feld)) : null
+    const ttm = mitTtm
+      ? ttmAusQuartalen(
+          quartalsreihe(facts, waehrung, def.feld),
+          def.feld,
+          TTM_SUMME.has(def.feld) ? 'sum' : 'last',
+        )
+      : null
     const werte = werteAusReihe(reihe, def.feld, isoListe, ttm)
-    if (mitTtm && werte[FUNDAMENTAL_TTM_KEY] == null) {
+    // Additives TTM nicht mit letztem GJ auffüllen — sonst FCF-TTM = GJ und NI-TTM = 4Q.
+    if (mitTtm && werte[FUNDAMENTAL_TTM_KEY] == null && !TTM_SUMME.has(def.feld)) {
       const last = [...isoListe].reverse().find((iso) => werte[iso] != null)
       if (last) werte[FUNDAMENTAL_TTM_KEY] = werte[last] ?? null
     }
@@ -573,7 +714,7 @@ export async function ladeSecFundamentaldaten(
       const u = umsatzVorab.werte[iso]
       const c =
         iso === FUNDAMENTAL_TTM_KEY
-          ? ttmAusQuartalen(quartalsreihe(facts, waehrung, 'cogs'), 'cogs', true)
+          ? ttmAusQuartalen(quartalsreihe(facts, waehrung, 'cogs'), 'cogs', 'sum')
           : cogsReihe?.get(iso)
             ? vorzeichen('cogs', cogsReihe.get(iso)!.wert)
             : null
@@ -604,7 +745,7 @@ export async function ladeSecFundamentaldaten(
     'langfristigeSchulden',
     isoListe,
     mitTtm
-      ? ttmAusQuartalen(quartalsreihe(facts, waehrung, 'langfristigeSchulden'), 'langfristigeSchulden', false)
+      ? ttmAusQuartalen(quartalsreihe(facts, waehrung, 'langfristigeSchulden'), 'langfristigeSchulden', 'last')
       : null,
   )
   const stWerte = werteAusReihe(
@@ -612,7 +753,7 @@ export async function ladeSecFundamentaldaten(
     'kurzfristigeSchulden',
     isoListe,
     mitTtm
-      ? ttmAusQuartalen(quartalsreihe(facts, waehrung, 'kurzfristigeSchulden'), 'kurzfristigeSchulden', false)
+      ? ttmAusQuartalen(quartalsreihe(facts, waehrung, 'kurzfristigeSchulden'), 'kurzfristigeSchulden', 'last')
       : null,
   )
   const debtWerte: Record<string, number | null> = {}

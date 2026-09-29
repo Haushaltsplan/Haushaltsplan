@@ -1,6 +1,11 @@
 /**
- * Berechnet historische ROIC-Zeitreihe aus GuV/Bilanz, wenn Macrotrends ROI fehlt.
+ * Berechnet historische ROIC-Zeitreihe aus GuV/Bilanz.
  * Zusätzlich: ROIC ex Goodwill (NOPAT / (IC − Goodwill)).
+ *
+ * IC = Eigenkapital + verzinsliche Schulden — **ohne Cash-Abzug**.
+ * Bargeld rauszurechnen lässt den Nenner bei cash-starken Qualitätsfirmen
+ * (ASML, MA, …) kollabieren und erzeugt 80–130 %-Artefakte. Dieselbe
+ * Brutto-Definition steht in `kapitalbasis-ableitung.ts`.
  */
 
 import type { FundamentalMetrikZeile, FundamentalPeriode } from '@/lib/portfolio-analyse/fundamentaldaten-types'
@@ -8,6 +13,9 @@ import { FUNDAMENTAL_TTM_KEY } from '@/lib/portfolio-analyse/fundamentaldaten-ty
 import { wertAusMapFuerIso } from '@/lib/portfolio-analyse/fundamentaldaten-wert-fuer-iso'
 
 const DEFAULT_TAX = 0.21
+/** Ex-Goodwill > 100 % ist fast immer ein Nenner-Artefakt. */
+const MAX_ROIC_EX_GW = 100
+const MAX_ROIC = 80
 
 function wert(zeilen: FundamentalMetrikZeile[], id: string, key: string): number | null {
   return wertAusMapFuerIso(zeilen.find((z) => z.id === id)?.werte, key)
@@ -56,8 +64,34 @@ function anzahlNonNull(zeilen: FundamentalMetrikZeile[], id: string, keys: strin
   return keys.filter((k) => z.werte[k] != null && Number.isFinite(z.werte[k]!)).length
 }
 
+function investedBrutto(zeilen: FundamentalMetrikZeile[], key: string): number | null {
+  const equity = wert(zeilen, 'eigenkapital', key)
+  if (equity == null) return null
+  const debt = wert(zeilen, 'gesamtverschuldung', key)
+  const ic = equity + (debt ?? 0)
+  return ic > 0 ? ic : null
+}
+
+function investedDurchschnitt(
+  zeilen: FundamentalMetrikZeile[],
+  key: string,
+  histOnly: string[],
+): number | null {
+  const cur = investedBrutto(zeilen, key)
+  if (key === FUNDAMENTAL_TTM_KEY) {
+    const a = histOnly.length >= 1 ? investedBrutto(zeilen, histOnly[histOnly.length - 1]!) : null
+    const b = histOnly.length >= 2 ? investedBrutto(zeilen, histOnly[histOnly.length - 2]!) : null
+    if (a != null && b != null) return (a + b) / 2
+    return a ?? cur
+  }
+  const idx = histOnly.indexOf(key)
+  const prev = idx > 0 ? investedBrutto(zeilen, histOnly[idx - 1]!) : null
+  if (prev != null && cur != null) return (prev + cur) / 2
+  return cur
+}
+
 /**
- * Füllt fehlende ROIC-Jahre in-place. Bestehende Macrotrends-Werte bleiben.
+ * Füllt ROIC-Jahre in-place (Brutto-IC, Durchschnitt aus t und t−1).
  * Schreibt immer auch `roi_ex_goodwill`, wenn Goodwill + IC verfügbar.
  */
 export function ergaenzeRoicAusBilanz(
@@ -68,7 +102,6 @@ export function ergaenzeRoicAusBilanz(
 
   const keys = histKeysAusPerioden(perioden)
   const histOnly = keys.filter((k) => k !== FUNDAMENTAL_TTM_KEY)
-  const brauchtRoiFill = anzahlNonNull(zeilen, 'roi', histOnly) < 3
 
   const roiWerte: Record<string, number | null> = {}
   const roiExGw: Record<string, number | null> = {}
@@ -77,47 +110,36 @@ export function ergaenzeRoicAusBilanz(
 
   for (const key of keys) {
     const ebit = wert(zeilen, 'ebit', key)
-    const equity = wert(zeilen, 'eigenkapital', key)
-    const debt = wert(zeilen, 'gesamtverschuldung', key)
-    const cash = wert(zeilen, 'bargeld', key)
     const goodwill = wert(zeilen, 'goodwill', key)
+    const invested = investedDurchschnitt(zeilen, key, histOnly)
 
-    if (ebit == null || equity == null) {
+    if (ebit == null || invested == null || invested <= 0) {
       roiWerte[key] = null
       roiExGw[key] = null
       continue
     }
 
-    const invested = equity + (debt ?? 0) - (cash ?? 0)
     const nopat = ebit * (1 - DEFAULT_TAX)
-
-    if (invested > 0) {
-      const roic = (nopat / invested) * 100
-      if (Number.isFinite(roic) && Math.abs(roic) <= 500) {
-        roiWerte[key] = Math.round(roic * 10) / 10
-        hatRoi = true
-      } else {
-        roiWerte[key] = null
-      }
+    const roic = (nopat / invested) * 100
+    if (Number.isFinite(roic) && roic > 0 && roic <= MAX_ROIC) {
+      roiWerte[key] = Math.round(roic * 10) / 10
+      hatRoi = true
     } else {
       roiWerte[key] = null
     }
 
     const hatGoodwill = goodwill != null && goodwill > 0
-    // Goodwill ≥ IC (typisch MA/V nach Buybacks): tangibles Kapital ~0 → Quotient unsinnig.
     const investedExGw = hatGoodwill ? invested - goodwill : invested
     const gwDominiert = hatGoodwill && invested > 0 && goodwill! >= invested * 0.85
     if (hatGoodwill && investedExGw > 0 && !gwDominiert) {
       const roicX = (nopat / investedExGw) * 100
-      // >150 % bei ex-GW ist fast immer Nenner-Artefakt, kein sinnvolles Renditemaß
-      if (Number.isFinite(roicX) && roicX > 0 && roicX <= 150) {
+      if (Number.isFinite(roicX) && roicX > 0 && roicX <= MAX_ROIC_EX_GW) {
         roiExGw[key] = Math.round(roicX * 10) / 10
         hatExGw = true
       } else {
         roiExGw[key] = null
       }
     } else if (invested > 0 && !hatGoodwill) {
-      // Kein Goodwill → ex Goodwill = klassischer ROIC
       roiExGw[key] = roiWerte[key]
       if (roiExGw[key] != null) hatExGw = true
     } else {
@@ -125,13 +147,12 @@ export function ergaenzeRoicAusBilanz(
     }
   }
 
-  if (brauchtRoiFill && hatRoi) {
-    upsertZeile(zeilen, 'roi', 'Return on Invested Capital (ROIC %)', roiWerte, true)
+  if (hatRoi) {
+    upsertZeile(zeilen, 'roi', 'Return on Invested Capital (ROIC %)', roiWerte, false)
   }
   if (hatExGw) {
     upsertZeile(zeilen, 'roi_ex_goodwill', 'ROIC ex Goodwill %', roiExGw, false)
   } else {
-    // Alte Artefakte (z. B. ROE als „ex Goodwill“) löschen, wenn Goodwill das IC dominiert
     const gwN = anzahlNonNull(zeilen, 'goodwill', histOnly)
     const existing = zeilen.find((r) => r.id === 'roi_ex_goodwill')
     if (gwN > 0 && existing) {

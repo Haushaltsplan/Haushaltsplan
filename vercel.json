@@ -9,6 +9,12 @@
     "app/api/portfolio-analyse/nachkaeufe/cron-scan/route.ts": {
       "maxDuration": 300
     },
+    "app/api/portfolio-analyse/screener/route.ts": {
+      "maxDuration": 180
+    },
+    "app/api/portfolio-analyse/screener/cron/route.ts": {
+      "maxDuration": 180
+    },
     "app/api/portfolio-analyse/quartals-auto-ki/cron/route.ts": {
       "maxDuration": 300
     },
@@ -47,6 +53,10 @@
     {
       "path": "/api/portfolio-analyse/nachkaeufe/cron-scan",
       "schedule": "0 7 1 * *"
+    },
+    {
+      "path": "/api/portfolio-analyse/screener/cron",
+      "schedule": "0 5 * * 0"
     },
     {
       "path": "/api/strava/cron-sync",

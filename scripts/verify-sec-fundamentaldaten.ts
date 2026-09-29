@@ -4,6 +4,10 @@
  *   npx tsx --conditions=react-server --require ./scripts/mock-server-only.cjs scripts/verify-sec-fundamentaldaten.ts
  */
 import { readFileSync } from 'fs'
+import { cagrJaehrlichAusSerie } from '../lib/portfolio-analyse/fundamentaldaten-format'
+import { baueKontextWerte } from '../lib/portfolio-analyse/fundamentaldaten-kontext-werte'
+import { historischeWerteAusZeile, werteGleicherStichtag } from '../lib/portfolio-analyse/fundamentaldaten-roic-hilfen'
+import { FUNDAMENTAL_TTM_KEY } from '../lib/portfolio-analyse/fundamentaldaten-types'
 import {
   ladeMacrotrendsFundamentaldaten,
   loeseMacrotrendsIdent,
@@ -56,6 +60,21 @@ async function main() {
     const secOk = roh?.guvQuelle === 'sec'
     const ok = roh != null && nU >= 6 && nE >= 4 && nK >= 4 && (!x.erwartetSec || secOk)
     if (!ok) fail++
+    const aktien = roh?.zeilen.find((z) => z.id === 'aktien')
+    const fcf = roh?.zeilen.find((z) => z.id === 'fcf')
+    const ni = roh?.zeilen.find((z) => z.id === 'nettogewinn')
+    const aktienHist = historischeWerteAusZeile(aktien, roh?.perioden)
+    const verw = cagrJaehrlichAusSerie(aktienHist)
+    const paar = roh ? werteGleicherStichtag(fcf, ni, roh.perioden) : null
+    const conv = paar != null ? (paar.zaehler / paar.nenner) * 100 : null
+    const ctx = roh
+      ? baueKontextWerte({
+          yahoo: null,
+          roh,
+          schaetzungen: { perioden: [], zeilen: [] },
+          yahooFinanz: null,
+        })
+      : null
     console.log(
       ok ? 'OK' : 'FAIL',
       x.t,
@@ -67,6 +86,19 @@ async function main() {
       `epsJ=${nE}`,
       `ekJ=${nK}`,
       `umsatz=${umsatz?.werte[fy ?? ''] ?? '-'}`,
+    )
+    console.log(
+      ' ',
+      `aktienFY=${aktien?.werte[fy ?? ''] ?? '-'}`,
+      `aktienTTM=${aktien?.werte[FUNDAMENTAL_TTM_KEY] ?? '-'}`,
+      `verwässerung=${verw != null ? verw.toFixed(2) + '%' : '-'}`,
+      `fcfFY=${fcf?.werte[fy ?? ''] ?? '-'}`,
+      `niFY=${ni?.werte[fy ?? ''] ?? '-'}`,
+      `fcfTTM=${fcf?.werte[FUNDAMENTAL_TTM_KEY] ?? '-'}`,
+      `niTTM=${ni?.werte[FUNDAMENTAL_TTM_KEY] ?? '-'}`,
+      `conv=${conv != null ? conv.toFixed(2) + '%' : '-'}`,
+      `ctxVerw=${ctx?.aktienVerwaesserungJaehrlichPct != null ? ctx.aktienVerwaesserungJaehrlichPct.toFixed(2) + '%' : '-'}`,
+      `ctxConv=${ctx?.fcfConversion != null ? ctx.fcfConversion.toFixed(2) + '%' : '-'}`,
     )
   }
   if (fail > 0) process.exit(1)

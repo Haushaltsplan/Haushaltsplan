@@ -1,3 +1,8 @@
+import {
+  holeYahooFinanceAuth,
+  YAHOO_FINANCE_FETCH_HEADERS,
+} from '@/lib/portfolio-analyse/yahoo-finance-auth-server'
+
 const YAHOO_FETCH_HEADERS = {
   'User-Agent':
     'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
@@ -75,4 +80,59 @@ export async function ladeYahooKurse(symbole: string[]): Promise<Map<string, Yah
 
 export function kursFuerSymbol(map: Map<string, YahooKursZeile>, symbol: string): YahooKursZeile | null {
   return trefferKey(map, symbol) ?? null
+}
+
+export type YahooQuoteKennzahl = {
+  preis: number | null
+  marktkap: number | null
+  trailingPE: number | null
+  priceToBook: number | null
+}
+
+const QUOTE_CHUNK = 80
+
+/** Kurs, Marktkap und Trailing-KGV — derselbe Yahoo-Quote-Batch wie Depot/ETF. */
+export async function ladeYahooQuoteKennzahlen(symbole: string[]): Promise<Map<string, YahooQuoteKennzahl>> {
+  const uniq = [...new Set(symbole.map((s) => s.trim().toUpperCase()).filter(Boolean))]
+  const out = new Map<string, YahooQuoteKennzahl>()
+  const auth = await holeYahooFinanceAuth()
+  for (const chunk of teileArray(uniq, QUOTE_CHUNK)) {
+    const u = new URL('https://query1.finance.yahoo.com/v7/finance/quote')
+    u.searchParams.set('symbols', chunk.join(','))
+    if (auth?.crumb) u.searchParams.set('crumb', auth.crumb)
+    try {
+      const res = await fetch(u.toString(), {
+        headers: { ...YAHOO_FINANCE_FETCH_HEADERS, Cookie: auth?.cookie ?? '', ...YAHOO_FETCH_HEADERS },
+        cache: 'no-store',
+      })
+      if (!res.ok) continue
+      const j = (await res.json()) as {
+        quoteResponse?: {
+          result?: Array<{
+            symbol?: string
+            regularMarketPrice?: number
+            marketCap?: number
+            trailingPE?: number
+            priceToBook?: number
+          }>
+        }
+      }
+      for (const q of j.quoteResponse?.result ?? []) {
+        const sym = q.symbol?.trim().toUpperCase()
+        if (!sym) continue
+        const preis = q.regularMarketPrice != null && Number.isFinite(q.regularMarketPrice) ? q.regularMarketPrice : null
+        const marktkap = q.marketCap != null && Number.isFinite(q.marketCap) && q.marketCap > 0 ? q.marketCap : null
+        const trailingPE =
+          q.trailingPE != null && Number.isFinite(q.trailingPE) && q.trailingPE > 0 && q.trailingPE < 400
+            ? q.trailingPE
+            : null
+        const priceToBook =
+          q.priceToBook != null && Number.isFinite(q.priceToBook) && q.priceToBook > 0 ? q.priceToBook : null
+        out.set(sym, { preis, marktkap, trailingPE, priceToBook })
+      }
+    } catch {
+      /* nächster Chunk */
+    }
+  }
+  return out
 }

@@ -25,6 +25,27 @@ export function letzterVerfuegbarerWert(
   return null
 }
 
+/**
+ * Zähler und Nenner derselben Periode (TTM nur wenn beide da, sonst letztes GJ).
+ * Verhindert z. B. TTM-FCF aus 4×Q1-YTD geteilt durch echtes TTM-Nettogewinn.
+ */
+export function werteGleicherStichtag(
+  zaehler: FundamentalMetrikZeile | undefined,
+  nenner: FundamentalMetrikZeile | undefined,
+  perioden: FundamentalPeriode[] | undefined,
+): { zaehler: number; nenner: number; iso: string } | null {
+  if (!zaehler || !nenner) return null
+  const hist = perioden?.filter((p) => !p.istLtm && !p.istNtm && !p.istSchaetzung).map((p) => p.iso) ?? []
+  const keys = [FUNDAMENTAL_TTM_KEY, ...[...hist].reverse()]
+  for (const iso of keys) {
+    const z = zaehler.werte[iso]
+    const n = nenner.werte[iso]
+    if (z == null || n == null || !Number.isFinite(z) || !Number.isFinite(n) || !(n > 0)) continue
+    return { zaehler: z, nenner: n, iso }
+  }
+  return null
+}
+
 export function historischeWerteAusZeile(
   zeile: FundamentalMetrikZeile | undefined,
   perioden: FundamentalPeriode[] | undefined,

@@ -101,6 +101,22 @@ export function cagr3AusSerie(werte: number[]): number | null {
   return cagrProzent(clean.slice(-4), Math.min(3, clean.length - 1))
 }
 
+/**
+ * Jährliche CAGR über die jüngsten `maxJahre` (Verwässerung p.a.).
+ * Splits / Einheitenwechsel (Sprung ≥ ~2×) kappen die Reihe — sonst wirkt ein
+ * 10-für-1-Split wie massive Neuemission.
+ */
+export function cagrJaehrlichAusSerie(
+  werte: number[],
+  maxJahre = 5,
+  maxFaktor = 1.85,
+): number | null {
+  const clean = werteOhneNiveauSprung(werte, maxFaktor)
+  const fenster = clean.slice(-(maxJahre + 1))
+  if (fenster.length < 2) return null
+  return cagrProzent(fenster, fenster.length - 1)
+}
+
 /** Consensus vs. letztes Ist: Sprung >75 % YoY ist fast immer Einheiten- oder Perioden-Mix. */
 export const SCHAETZUNG_VS_IST_MAX_FAKTOR = 1.75
 

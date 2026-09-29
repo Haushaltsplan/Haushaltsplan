@@ -6,7 +6,7 @@ import type {
 } from '@/lib/portfolio-analyse/fundamentaldaten-types'
 import { ergaenzeFcfRenditeKeyMetrics, ergaenzeFcfRenditeZeilen } from '@/lib/portfolio-analyse/fundamentaldaten-fcf-rendite-zeilen'
 
-const LS_KEY = 'pa-fundamentaldaten-v56'
+const LS_KEY = 'pa-fundamentaldaten-v58'
 const LS_MAX_AGE_MS = 24 * 60 * 60 * 1000
 const LS_MAX_TITEL = 8
 

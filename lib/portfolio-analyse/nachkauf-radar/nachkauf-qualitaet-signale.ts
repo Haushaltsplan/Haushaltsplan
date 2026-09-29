@@ -2,6 +2,7 @@
  * Qualitäts-Signale 2–7 für Nachkauf-Radar (ohne Analysten-Meinungen).
  * Ableitung primär aus Macrotrends-Zeitreihen + SEC/Yahoo-Primärdaten.
  */
+import { cagrJaehrlichAusSerie } from '@/lib/portfolio-analyse/fundamentaldaten-format'
 import {
   FUNDAMENTAL_TTM_KEY,
   type FundamentaldatenPaket,
@@ -72,12 +73,6 @@ function letzteWerte(
   return out.reverse()
 }
 
-function cagrPct(a0: number, a1: number, jahre: number): number | null {
-  if (a0 <= 0 || jahre <= 0 || !Number.isFinite(a0) || !Number.isFinite(a1)) return null
-  const r = (Math.pow(a1 / a0, 1 / jahre) - 1) * 100
-  return Number.isFinite(r) ? r : null
-}
-
 /**
  * Extreme Multiples (z. B. Early-Growth-KGV 900×) verzerren Median/Discount/Perzentile.
  * Bevorzugt gefilterte Serie; wenn zu wenig Punkte: Winsorize auf [min, max].
@@ -126,14 +121,14 @@ export function berechneQualitaetSignaleAusPaket(
     adjustedEps?: number | null
   },
 ): NachkaufQualitaetSignale {
-  const aktien = letzteWerte(paket, 'aktien', 6)
+  const aktien = letzteWerte(paket, 'aktien', 12)
   let aktienVerwaesserungJaehrlichPct: number | null = null
   let aktienYoYPct: number | null = null
   if (aktien.length >= 2) {
-    aktienVerwaesserungJaehrlichPct = cagrPct(aktien[0]!, aktien[aktien.length - 1]!, aktien.length - 1)
+    aktienVerwaesserungJaehrlichPct = cagrJaehrlichAusSerie(aktien)
     const a0 = aktien[aktien.length - 2]!
     const a1 = aktien[aktien.length - 1]!
-    if (a0 > 0) aktienYoYPct = ((a1 - a0) / a0) * 100
+    if (a0 > 0 && a1 / a0 < 1.85 && a0 / a1 < 1.85) aktienYoYPct = ((a1 - a0) / a0) * 100
   }
 
   const keys = histKeys(paket.perioden, 5)

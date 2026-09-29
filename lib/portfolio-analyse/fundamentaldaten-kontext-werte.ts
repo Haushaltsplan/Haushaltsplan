@@ -1,4 +1,4 @@
-import { cagr3AusSerie } from '@/lib/portfolio-analyse/fundamentaldaten-format'
+import { cagr3AusSerie, cagrJaehrlichAusSerie, werteOhneNiveauSprung } from '@/lib/portfolio-analyse/fundamentaldaten-format'
 import type { YahooFundamentalKennzahlen } from '@/lib/portfolio-analyse/fundamentaldaten-key-metrics'
 import type { FundamentalSchaetzungenRoh } from '@/lib/portfolio-analyse/fundamentaldaten-schaetzungen-server'
 import type { FundamentalMetrikZeile, FundamentalPeriode } from '@/lib/portfolio-analyse/fundamentaldaten-types'
@@ -6,6 +6,7 @@ import {
   historischeWerteAusZeile,
   letzterVerfuegbarerWert,
   schaetzeWaccPct,
+  werteGleicherStichtag,
 } from '@/lib/portfolio-analyse/fundamentaldaten-roic-hilfen'
 import {
   berechneBruttomargenStabilitaet,
@@ -61,15 +62,13 @@ function roicExGoodwillAusYahoo(yf: MantraYahooFinanzdaten | null | undefined): 
         ? Math.min(0.5, Math.max(0, s.taxProvisionUsd / s.pretaxIncomeUsd))
         : tax
     const nopat = s.operatingIncomeUsd * (1 - t)
-    const ic =
-      s.stockholdersEquityUsd + (s.totalDebtUsd ?? 0) - (s.cashAndEquivalentsUsd ?? 0)
+    const ic = s.stockholdersEquityUsd + (s.totalDebtUsd ?? 0)
     const gw = s.goodwillUsd ?? 0
     const denom = gw > 0 ? ic - gw : ic
     if (denom <= 0) continue
-    // Goodwill dominiert IC → Quotient nicht aussagekräftig (MA/V u. a.)
     if (gw > 0 && ic > 0 && gw >= ic * 0.85) continue
     const pct = (nopat / denom) * 100
-    if (!Number.isFinite(pct) || pct <= 0 || pct > 150) continue
+    if (!Number.isFinite(pct) || pct <= 0 || pct > 100) continue
     return Math.round(pct * 10) / 10
   }
   return null
@@ -266,8 +265,15 @@ export function baueKontextWerte(ctx: FundamentalKontextInput) {
   const dsoAktuell = letzterWert(dsoZeile, perioden)
   const capexSales =
     umsatzMio != null && capexMio != null && umsatzMio > 0 ? (Math.abs(capexMio) / umsatzMio) * 100 : null
+  const fcfNiPaar = werteGleicherStichtag(fcfZeile, nettoZeile, perioden)
   const fcfConversion =
-    nettoMio != null && fcfMio != null && nettoMio > 0 ? (fcfMio / nettoMio) * 100 : null
+    fcfNiPaar != null
+      ? (fcfNiPaar.zaehler / fcfNiPaar.nenner) * 100
+      : nettoMio != null && fcfMio != null && nettoMio > 0
+        ? (fcfMio / nettoMio) * 100
+        : yt?.freeCashFlowUsd != null && yt?.netIncomeUsd != null && yt.netIncomeUsd > 0
+          ? (yt.freeCashFlowUsd / yt.netIncomeUsd) * 100
+          : null
 
   const roic = letzterWert(roiZeile, perioden)
   const hatGoodwillZeile =
@@ -275,7 +281,7 @@ export function baueKontextWerte(ctx: FundamentalKontextInput) {
     (letzterWert(zeile('goodwill'), perioden) != null && (letzterWert(zeile('goodwill'), perioden) ?? 0) > 0)
 
   let roicExGoodwill = letzterWert(zeile('roi_ex_goodwill'), perioden)
-  if (roicExGoodwill != null && (roicExGoodwill <= 0 || roicExGoodwill > 150)) {
+  if (roicExGoodwill != null && (roicExGoodwill <= 0 || roicExGoodwill > 100)) {
     roicExGoodwill = null
   }
   if (roicExGoodwill == null && !hatGoodwillZeile) {
@@ -410,8 +416,12 @@ export function baueKontextWerte(ctx: FundamentalKontextInput) {
       : null
   const pb = ctx.yahoo?.priceToBook ?? null
 
+  const aktienVerwaesserungJaehrlichPct = cagrJaehrlichAusSerie(aktienHist)
+  const aktienFuerTrend = werteOhneNiveauSprung(aktienHist, 1.85)
   const aktienSinkend =
-    aktienHist.length >= 2 ? aktienHist[aktienHist.length - 1]! < aktienHist[0]! : null
+    aktienFuerTrend.length >= 2
+      ? aktienFuerTrend[aktienFuerTrend.length - 1]! < aktienFuerTrend[0]!
+      : null
 
   /** Junge/Wachstumsfirma: niedrige Profitabilität bei hohem Wachstum. */
   const istWachstumsfirma =
@@ -443,16 +453,6 @@ export function baueKontextWerte(ctx: FundamentalKontextInput) {
   }
   const sgaDegressiv =
     sgaRatioHist.length >= 3 && sgaRatioHist[sgaRatioHist.length - 1]! < sgaRatioHist[0]! - 0.5
-
-  let aktienVerwaesserungJaehrlichPct: number | null = null
-  if (aktienHist.length >= 2) {
-    const a0 = aktienHist[0]!
-    const a1 = aktienHist[aktienHist.length - 1]!
-    const jahre = aktienHist.length - 1
-    if (a0 > 0 && jahre > 0) {
-      aktienVerwaesserungJaehrlichPct = (Math.pow(a1 / a0, 1 / jahre) - 1) * 100
-    }
-  }
 
   const eigenkapitalMio = letzterWert(zeile('eigenkapital'), perioden)
   let stockholdersEquityUsd: number | null = null
