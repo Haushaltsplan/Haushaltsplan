@@ -6,7 +6,6 @@ import {
   StartKalenderKompakt,
   StartPortfolioKompakt,
 } from '@/components/start-home-kompakt'
-import { PageChrome } from '@/components/page-shell'
 import { StartHero } from '@/components/start-home-ui'
 import { StartWetterKompakt } from '@/components/start-wetter-kompakt'
 import { parseWetterOrtId, REGION_HAARBACH } from '@/lib/region-haarbach'
