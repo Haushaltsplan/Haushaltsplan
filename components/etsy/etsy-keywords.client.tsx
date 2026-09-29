@@ -1,6 +1,7 @@
 'use client'
 
 import { PageSection, PageSectionPanel } from '@/components/page-shell'
+import type { EtsyTagTausch } from '@/lib/etsy/etsy-cockpit-types'
 import type { EtsyKeywordChance, EtsyKeywordIdee } from '@/lib/etsy/etsy-markt-types'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import toast from 'react-hot-toast'
@@ -50,7 +51,17 @@ function ChanceBadge({ chance }: { chance: EtsyKeywordChance | null }) {
   )
 }
 
-export function EtsyKeywords() {
+type Einbau = {
+  keyword: string
+  laden: boolean
+  busy: boolean
+  plan: EtsyTagTausch | null
+  optionen: Array<{ listingId: number; title: string }>
+  grund?: string
+}
+
+export function EtsyKeywords({ verbunden = false }: { verbunden?: boolean }) {
+  const [einbau, setEinbau] = useState<Einbau | null>(null)
   const [suche, setSuche] = useState('')
   const [holz, setHolz] = useState('')
   const [tief, setTief] = useState(true)
@@ -133,6 +144,64 @@ export function EtsyKeywords() {
       method: 'DELETE',
     })
     if (res.ok) setGemerkt((prev) => prev.filter((g) => g.keyword !== keyword))
+  }
+
+  async function planeEinbau(keyword: string, listingId?: number) {
+    if (!verbunden) {
+      toast.error('Erst oben den Etsy-Shop verbinden.')
+      return
+    }
+    setEinbau((alt) => ({
+      keyword,
+      laden: true,
+      busy: false,
+      plan: null,
+      optionen: alt?.keyword === keyword ? alt.optionen : [],
+    }))
+    requestAnimationFrame(() =>
+      document.getElementById('etsy-keyword-einbau')?.scrollIntoView({ behavior: 'smooth', block: 'center' }),
+    )
+    try {
+      const res = await fetch('/api/etsy/cockpit/aktion', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ art: 'keyword_plan', keyword, listingId }),
+      })
+      const j = (await res.json()) as {
+        error?: string
+        plan?: EtsyTagTausch | null
+        optionen?: Einbau['optionen']
+        grund?: string
+      }
+      if (!res.ok) throw new Error(j.error || 'Planung fehlgeschlagen')
+      setEinbau({ keyword, laden: false, busy: false, plan: j.plan ?? null, optionen: j.optionen ?? [], grund: j.grund })
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Fehler')
+      setEinbau(null)
+    }
+  }
+
+  async function einbauen() {
+    if (!einbau?.plan) return
+    setEinbau({ ...einbau, busy: true })
+    try {
+      const res = await fetch('/api/etsy/cockpit/aktion', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          art: 'tag_tausch',
+          aufgabeKey: `keyword:${einbau.keyword}`,
+          tausch: [{ listingId: einbau.plan.listingId, alt: einbau.plan.alt, neu: einbau.plan.neu }],
+        }),
+      })
+      const j = (await res.json()) as { error?: string }
+      if (!res.ok) throw new Error(j.error || 'Übernehmen fehlgeschlagen')
+      toast.success(`„${einbau.plan.neu}“ ist jetzt Tag bei „${einbau.plan.listingTitle.slice(0, 40)}“.`)
+      setEinbau(null)
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Fehler')
+      setEinbau((alt) => (alt ? { ...alt, busy: false } : alt))
+    }
   }
 
   function kopieren(text: string) {
@@ -278,7 +347,17 @@ export function EtsyKeywords() {
                         <td className="py-2 pr-2">
                           <ChanceBadge chance={i.chance} />
                         </td>
-                        <td className="py-2 text-right">
+                        <td className="whitespace-nowrap py-2 text-right">
+                          {i.tagTauglich && (
+                            <button
+                              type="button"
+                              onClick={() => void planeEinbau(i.keyword)}
+                              className="rounded-lg border border-teal-500/40 px-2 py-1 text-[11px] text-teal-200 hover:bg-teal-500/15"
+                              title="In das passendste Listing als Tag einbauen"
+                            >
+                              Einbauen
+                            </button>
+                          )}
                           <button
                             type="button"
                             onClick={() => void merken(i)}
@@ -306,11 +385,75 @@ export function EtsyKeywords() {
         </PageSection>
       )}
 
+      {einbau && (
+        <div
+          id="etsy-keyword-einbau"
+          className="rounded-2xl border border-teal-500/50 bg-teal-500/10 p-4 text-sm text-[var(--app-text)]"
+        >
+          <div className="flex items-start justify-between gap-2">
+            <p className="font-medium">„{einbau.keyword}“ einbauen</p>
+            <button
+              type="button"
+              onClick={() => setEinbau(null)}
+              className="text-xs text-[var(--app-text-muted)] hover:text-[var(--app-text)]"
+            >
+              Schließen
+            </button>
+          </div>
+          {einbau.optionen.length > 0 && (
+            <label className="mt-2 block text-xs text-[var(--app-text-muted)]">
+              Listing
+              <select
+                value={einbau.plan?.listingId ?? ''}
+                disabled={einbau.laden || einbau.busy}
+                onChange={(e) => void planeEinbau(einbau.keyword, Number(e.target.value))}
+                className="mt-1 w-full rounded-lg border border-[var(--app-border)] bg-[var(--app-surface)] px-2 py-1.5 text-sm text-[var(--app-text)]"
+              >
+                {!einbau.plan && <option value="">— wählen —</option>}
+                {einbau.optionen.map((o) => (
+                  <option key={o.listingId} value={o.listingId}>
+                    {o.title}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+          {einbau.laden ? (
+            <p className="mt-2 text-xs text-[var(--app-text-muted)]">Suche das passendste Listing und den schwächsten Tag…</p>
+          ) : einbau.plan ? (
+            <>
+              <p className="mt-2 text-xs">
+                {einbau.plan.alt ? (
+                  <>
+                    Ersetzt <span className="text-rose-200 line-through">{einbau.plan.alt}</span>{' '}
+                    <span className="text-[var(--app-text-muted)]">({einbau.plan.altGrund})</span> durch{' '}
+                  </>
+                ) : (
+                  <>Nutzt einen freien Tag-Platz: </>
+                )}
+                <span className="font-medium text-emerald-200">{einbau.plan.neu}</span>
+              </p>
+              <button
+                type="button"
+                disabled={einbau.busy}
+                onClick={() => void einbauen()}
+                className="mt-3 rounded-lg bg-teal-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-teal-600 disabled:opacity-60"
+              >
+                {einbau.busy ? 'Wird übernommen…' : 'Auf Etsy übernehmen'}
+              </button>
+            </>
+          ) : (
+            <p className="mt-2 text-xs text-amber-200">{einbau.grund ?? 'Kein passender Platz gefunden.'}</p>
+          )}
+        </div>
+      )}
+
       <PageSection titleId="etsy-keywords-merkliste" title={`Merkliste · ${gemerkt.length}`}>
         <PageSectionPanel density="compact" className="space-y-2">
           {gemerkt.length === 0 ? (
             <p className="text-sm text-[var(--app-text-muted)]">
-              Noch leer. Mit ☆ gemerkte Keywords erscheinen hier und lassen sich gesammelt kopieren.
+              Noch leer. Mit ☆ gemerkte Keywords erscheinen hier — das Cockpit schlägt dann automatisch vor, in
+              welches Listing sie gehören, und die KI nutzt sie bei jedem Check und neuen Listing.
             </p>
           ) : (
             <>
@@ -322,6 +465,16 @@ export function EtsyKeywords() {
                   >
                     {g.keyword}
                     {g.chance && <span className="text-[10px] text-[var(--app-text-muted)]">· {g.chance}</span>}
+                    {g.keyword.length <= 20 && (
+                      <button
+                        type="button"
+                        onClick={() => void planeEinbau(g.keyword)}
+                        className="ml-1 text-[10px] text-teal-300 hover:underline"
+                        title="In das passendste Listing als Tag einbauen"
+                      >
+                        einbauen
+                      </button>
+                    )}
                     <button
                       type="button"
                       onClick={() => void entfernen(g.keyword)}

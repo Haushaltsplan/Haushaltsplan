@@ -14,7 +14,7 @@ import type {
   EtsySeoIssueSeverity,
   EtsyShopListingDetail,
 } from '@/lib/etsy/etsy-seo-audit-types'
-import type { EtsyMarktKontext } from '@/lib/etsy/etsy-markt-types'
+import type { EtsyEigeneSignale, EtsyMarktKontext } from '@/lib/etsy/etsy-markt-types'
 import {
   baueMarktPromptBlock,
   ladeEtsyMarktKontext,
@@ -210,6 +210,8 @@ export type EtsyAuditOptionen = {
   marktLimits?: { maxAutosuggest?: number; maxCompetitor?: number; budgetMs?: number }
   /** Vom Nutzer festgelegter Hauptbegriff; sonst automatisch abgeleitet. */
   hauptbegriff?: string | null
+  /** Merkliste, Top-Drechsler-Tags, Saison (ladeEtsyEigeneSignale) */
+  eigeneSignale?: EtsyEigeneSignale | null
 }
 
 export async function auditiereEtsyListing(
@@ -221,7 +223,7 @@ export async function auditiereEtsyListing(
     throw new Error('GEMINI_API_KEY_FREE fehlt — SEO-Audit nutzt nur den Free-Tier-Key.')
   }
 
-  const markt =
+  const marktRoh =
     opts?.markt !== undefined
       ? opts.markt
       : await ladeEtsyMarktKontext({
@@ -234,6 +236,7 @@ export async function auditiereEtsyListing(
           budgetMs: opts?.marktLimits?.budgetMs ?? 12_000,
           holzKontext: [listing.title, ...(listing.materials ?? [])].join(' '),
         })
+  const markt = marktRoh && opts?.eigeneSignale ? { ...marktRoh, eigeneSignale: opts.eigeneSignale } : marktRoh
 
   const regelReport = pruefeListingRegeln({ ...listing, hauptbegriff: opts?.hauptbegriff ?? null })
   const hb = regelReport.hauptbegriff

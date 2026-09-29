@@ -73,7 +73,7 @@ type ApiShop = {
   shop_location_country_iso?: string | null
 }
 
-type Fokus = { anteil: number; stichprobe: number; preisMedian: number | null }
+type Fokus = { anteil: number; stichprobe: number; preisMedian: number | null; topTags: string[] }
 
 function sleep(ms: number) {
   return new Promise((r) => setTimeout(r, ms))
@@ -146,10 +146,21 @@ async function pruefeFokus(shopId: number): Promise<Fokus | null> {
   const listings = data?.results ?? []
   if (!listings.length) return null
   const schalen = listings.filter((l) => istGedrechselteHolzschale(String(l.title || ''), l.tags ?? []))
+  const tagZaehler = new Map<string, number>()
+  for (const l of schalen.length ? schalen : listings) {
+    for (const t of new Set((l.tags ?? []).map((x) => String(x).trim().toLowerCase()).filter(Boolean))) {
+      tagZaehler.set(t, (tagZaehler.get(t) ?? 0) + 1)
+    }
+  }
   return {
     anteil: Math.round((schalen.length / listings.length) * 1000) / 1000,
     stichprobe: listings.length,
     preisMedian: median(schalen.map((l) => preisEur(l.price)).filter((p): p is number => p != null)),
+    topTags: [...tagZaehler.entries()]
+      .filter(([, n]) => n >= 2)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 20)
+      .map(([t]) => t),
   }
 }
 
@@ -219,6 +230,7 @@ function shopZeile(
     treffer: extra.treffer,
     preis_median: extra.fokus?.preisMedian ?? null,
     schalen_anteil: extra.fokus?.anteil ?? null,
+    top_tags: extra.fokus?.topTags ?? [],
     eigener: extra.eigener,
     manuell: extra.manuell,
     ausgeschlossen: false,
@@ -333,8 +345,18 @@ export async function aktualisiereEtsyKonkurrenz(
     for (const shop of shops) if (shop?.shop_id) snapshots.push(snapshotZeile(ownerUserId, shop, tag))
   }
 
-  const manuellShops = await inGruppen(manuelle, (s) => holeShop(Number(s.shop_id)))
-  for (const shop of manuellShops) if (shop?.shop_id) snapshots.push(snapshotZeile(ownerUserId, shop, tag))
+  const manuellShops = await inGruppen(manuelle, async (s) => {
+    const [shop, fokus] = await Promise.all([
+      holeShop(Number(s.shop_id)),
+      entdecken ? pruefeFokus(Number(s.shop_id)) : Promise.resolve(null),
+    ])
+    return { shop, fokus }
+  })
+  for (const { shop, fokus } of manuellShops) {
+    if (!shop?.shop_id) continue
+    snapshots.push(snapshotZeile(ownerUserId, shop, tag))
+    if (fokus) zeilen.push(shopZeile(ownerUserId, shop, { treffer: 0, fokus, eigener: false, manuell: true }))
+  }
 
   if (eigeneShopId) {
     const [eigen, fokus] = await Promise.all([holeShop(eigeneShopId), entdecken ? pruefeFokus(eigeneShopId) : null])
@@ -415,7 +437,7 @@ export async function ladeEtsyKonkurrenz(sb: SupabaseClient, tage = 90): Promise
   const [{ data: shopRows, error: e1 }, { data: snapRows, error: e2 }] = await Promise.all([
     sb
       .from('etsy_konkurrenz_shop')
-      .select('shop_id, shop_name, url, icon_url, treffer, preis_median, schalen_anteil, eigener, manuell, aktiv, entdeckt_at')
+      .select('shop_id, shop_name, url, icon_url, treffer, preis_median, schalen_anteil, top_tags, eigener, manuell, aktiv, entdeckt_at')
       .eq('aktiv', true),
     sb
       .from('etsy_konkurrenz_snapshot')
@@ -449,6 +471,7 @@ export async function ladeEtsyKonkurrenz(sb: SupabaseClient, tage = 90): Promise
       treffer: Number(s.treffer) || 0,
       preisMedian: s.preis_median != null ? Number(s.preis_median) : null,
       schalenAnteil: s.schalen_anteil != null ? Number(s.schalen_anteil) : null,
+      topTags: Array.isArray(s.top_tags) ? s.top_tags.map(String) : [],
       eigener: Boolean(s.eigener),
       manuell: Boolean(s.manuell),
       verkaeufeGesamt: letzter ? Number(letzter.verkaeufe_gesamt) : null,

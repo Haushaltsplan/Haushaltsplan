@@ -1085,6 +1085,21 @@ export function baueMarktPromptBlock(markt: EtsyMarktKontext | null | undefined)
     zeilen.push(`Keyword-Kandidaten (≤20 Zeichen): ${markt.keywordKandidaten.slice(0, 20).join(' · ')}`)
   }
   if (markt.degradiert) zeilen.push(`Hinweis: ${markt.hinweise.join(' ') || 'Teilweise Fallback-Daten.'}`)
+  const eigen = markt.eigeneSignale
+  if (eigen) {
+    if (eigen.merkliste.length) {
+      zeilen.push(`Vom Verkäufer gemerkte Keywords (bevorzugen, wenn sie zum Produkt passen): ${eigen.merkliste.slice(0, 15).join(' · ')}`)
+    }
+    if (eigen.konkurrenzTags.length) {
+      zeilen.push(
+        `Tags der ${eigen.konkurrenzShops} erfolgreichsten deutschen Drechsler-Shops (Schwerpunkt gedrechselte Schalen): ` +
+          eigen.konkurrenzTags.slice(0, 15).map((t) => `${t.tag} (${t.shops}/${eigen.konkurrenzShops})`).join(' · '),
+      )
+    }
+    for (const s of eigen.saison) {
+      zeilen.push(`SAISON JETZT: ${s.name} — „${s.tag}“ als einen der 13 Tags einplanen.`)
+    }
+  }
   zeilen.push(
     'Nutze Markt-Phrasen nur, wenn sie zum Produkt passen (Holzart/Form). Keine fremden Holzarten/Formen übernehmen. Englische Phrasen nur als Ergänzung (Zielmarkt DE/EU, kein Versand USA/UK). Preise der Konkurrenz sind Orientierung, kein Anker nach unten für Unikate.',
   )

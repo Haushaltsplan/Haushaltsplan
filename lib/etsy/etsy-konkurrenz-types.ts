@@ -11,6 +11,8 @@ export type EtsyKonkurrenzShop = {
   preisMedian: number | null
   /** Anteil gedrechselter Holzschalen am aktiven Sortiment (0–1). */
   schalenAnteil: number | null
+  /** Häufigste Tags im Schalen-Sortiment (wöchentlich aktualisiert). */
+  topTags: string[]
   eigener: boolean
   /** Vom Nutzer hinzugefügt — bleibt immer im Chart. */
   manuell: boolean

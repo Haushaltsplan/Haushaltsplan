@@ -58,6 +58,15 @@ export type EtsyMarktKontext = {
   keywordKandidaten: string[]
   degradiert: boolean
   hinweise: string[]
+  /** Shop-eigene Signale (Merkliste, Top-Drechsler-Tags, Saison) — vom Cockpit angereichert */
+  eigeneSignale?: EtsyEigeneSignale
+}
+
+export type EtsyEigeneSignale = {
+  merkliste: string[]
+  konkurrenzTags: Array<{ tag: string; shops: number }>
+  konkurrenzShops: number
+  saison: Array<{ name: string; tag: string }>
 }
 
 export type EtsyKeywordChance = 'hoch' | 'mittel' | 'niedrig'

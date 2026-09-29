@@ -1,3 +1,4 @@
+import { ladeEtsyEigeneSignale } from '@/lib/etsy/etsy-cockpit-server'
 import { auditiereEtsyListing } from '@/lib/etsy/etsy-seo-audit-engine'
 import {
   ladeEtsyHauptbegriff,
@@ -65,7 +66,8 @@ export async function POST(req: Request, ctx: Ctx) {
       }
     }
 
-    const audit = await auditiereEtsyListing(listing, { hauptbegriff })
+    const eigeneSignale = await ladeEtsyEigeneSignale(user.id).catch(() => null)
+    const audit = await auditiereEtsyListing(listing, { hauptbegriff, eigeneSignale })
     await speichereEtsySeoAudit({
       ownerUserId: user.id,
       listingId,

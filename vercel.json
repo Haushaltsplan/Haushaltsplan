@@ -33,8 +33,14 @@
     "app/api/etsy/konkurrenz/route.ts": {
       "maxDuration": 120
     },
-    "app/api/etsy/konkurrenz/cron/route.ts": {
-      "maxDuration": 120
+    "app/api/etsy/tages-cron/route.ts": {
+      "maxDuration": 180
+    },
+    "app/api/etsy/cockpit/route.ts": {
+      "maxDuration": 60
+    },
+    "app/api/etsy/cockpit/aktion/route.ts": {
+      "maxDuration": 60
     }
   },
   "crons": [
@@ -55,7 +61,7 @@
       "schedule": "0 8 * * 1"
     },
     {
-      "path": "/api/etsy/konkurrenz/cron",
+      "path": "/api/etsy/tages-cron",
       "schedule": "0 4 * * *"
     }
   ]

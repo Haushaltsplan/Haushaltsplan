@@ -9,6 +9,7 @@
  *
  * Query: ?rank=0 überspringt Schritt 1.
  */
+import { ladeEtsyEigeneSignale, ladeEtsyViewsEinbrueche } from '@/lib/etsy/etsy-cockpit-server'
 import { auditiereEtsyListing } from '@/lib/etsy/etsy-seo-audit-engine'
 import {
   ladeEtsyHauptbegriff,
@@ -78,16 +79,24 @@ async function run(opts: { reaudit: boolean; rank: boolean }) {
       }
     }
 
-    const [verluste, weak] = await Promise.all([
+    const [verluste, weak, einbrueche] = await Promise.all([
       ladeEtsyRankVerluste(ownerUserId),
       ladeEtsySeoSchwachstellen(ownerUserId, SCORE_SCHWELLE),
+      ladeEtsyViewsEinbrueche(ownerUserId).catch(() => []),
     ])
     entry.verluste = verluste.length
     entry.weak = weak.map((w) => ({ listingId: w.listingId, score: w.overallScore, title: w.listingTitle }))
 
-    // Ranking-Verluste zuerst (akuter), dann schwächster Score.
+    // Aufruf-Einbruch + Ranking-Verluste zuerst (akuter), dann schwächster Score.
     const scoreMap = new Map(weak.map((w) => [w.listingId, w.overallScore]))
     const kandidaten = new Map<number, Kandidat>()
+    for (const e of einbrueche) {
+      kandidaten.set(e.listingId, {
+        listingId: e.listingId,
+        grund: `Aufrufe eingebrochen: ${e.vorher} → ${e.jetzt} pro Woche`,
+        scoreVorher: scoreMap.get(e.listingId) ?? null,
+      })
+    }
     for (const v of verluste) {
       const alt = v.vorher.found ? `S.${v.vorher.page} #${v.vorher.position}` : 'nicht gefunden'
       const neu = v.jetzt.found ? `S.${v.jetzt.page} #${v.jetzt.position}` : 'nicht gefunden'
@@ -112,6 +121,7 @@ async function run(opts: { reaudit: boolean; rank: boolean }) {
 
     if (opts.reaudit && entry.kandidaten.length > 0) {
       entry.vorschlaege = []
+      const eigeneSignale = await ladeEtsyEigeneSignale(ownerUserId).catch(() => null)
       let erstellt = 0
       for (const k of entry.kandidaten) {
         if (erstellt >= MAX_REAUDITS) break
@@ -134,6 +144,7 @@ async function run(opts: { reaudit: boolean; rank: boolean }) {
           const audit = await auditiereEtsyListing(listing, {
             marktLimits: { maxAutosuggest: 2, maxCompetitor: 1, budgetMs: 12_000 },
             hauptbegriff,
+            eigeneSignale,
           })
           await speichereEtsySeoAudit({
             ownerUserId,

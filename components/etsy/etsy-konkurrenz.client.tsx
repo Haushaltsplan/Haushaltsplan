@@ -331,6 +331,8 @@ export function EtsyKonkurrenz() {
               </table>
             </div>
 
+            <KonkurrenzTags shops={shops} />
+
             <div className="space-y-1 text-[11px] leading-relaxed text-[var(--app-text-muted)]">
               <p>
                 Klick auf einen Shop blendet ihn im Chart ein/aus, ✕ entfernt ihn dauerhaft. Dein eigener Shop ist{' '}
@@ -359,6 +361,71 @@ export function EtsyKonkurrenz() {
         )}
       </div>
     </section>
+  )
+}
+
+function KonkurrenzTags({ shops }: { shops: EtsyKonkurrenzShop[] }) {
+  const [gemerkt, setGemerkt] = useState<Set<string>>(new Set())
+  const { tags, fremde, eigene } = useMemo(() => {
+    const fremdeShops = shops.filter((s) => !s.eigener)
+    const zaehler = new Map<string, number>()
+    for (const s of fremdeShops) for (const t of new Set(s.topTags)) zaehler.set(t, (zaehler.get(t) ?? 0) + 1)
+    return {
+      tags: [...zaehler.entries()].filter(([, n]) => n >= 2).sort((a, b) => b[1] - a[1]).slice(0, 30),
+      fremde: fremdeShops.length,
+      eigene: new Set(shops.find((s) => s.eigener)?.topTags ?? []),
+    }
+  }, [shops])
+
+  if (!tags.length) return null
+
+  async function merken(tag: string) {
+    const res = await fetch('/api/etsy/keywords/merkliste', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ keyword: tag }),
+    })
+    if (!res.ok) {
+      const j = (await res.json().catch(() => ({}))) as { error?: string }
+      toast.error(j.error || 'Merken fehlgeschlagen.')
+      return
+    }
+    setGemerkt((alt) => new Set(alt).add(tag))
+    toast.success(`„${tag}“ gemerkt — das Cockpit schlägt vor, wo er hinpasst.`)
+  }
+
+  return (
+    <div className="rounded-xl border border-[var(--app-border)] p-3">
+      <p className="text-sm font-medium text-[var(--app-text)]">Häufigste Tags der Top-Drechsler</p>
+      <p className="mb-2 text-[11px] text-[var(--app-text-muted)]">
+        Zahl = wie viele der {fremde} Shops den Tag nutzen. Grün = auch in deinen Listings häufig. Klick merkt den Tag fürs Cockpit.
+      </p>
+      <div className="flex flex-wrap gap-1.5">
+        {tags.map(([t, n]) => {
+          const hast = eigene.has(t)
+          const merk = gemerkt.has(t)
+          return (
+            <button
+              key={t}
+              type="button"
+              disabled={hast || merk || t.length > 20}
+              onClick={() => void merken(t)}
+              title={hast ? 'Nutzt du schon' : t.length > 20 ? 'Zu lang für einen Etsy-Tag' : 'Merken'}
+              className={`rounded-full border px-2.5 py-1 text-xs transition ${
+                hast
+                  ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-200'
+                  : merk
+                    ? 'border-amber-500/40 bg-amber-500/10 text-amber-200'
+                    : 'border-[var(--app-border)] text-[var(--app-text)] hover:bg-violet-500/15'
+              }`}
+            >
+              {t} <span className="text-[10px] text-[var(--app-text-muted)]">{n}</span>
+              {merk ? ' ★' : ''}
+            </button>
+          )
+        })}
+      </div>
+    </div>
   )
 }
 

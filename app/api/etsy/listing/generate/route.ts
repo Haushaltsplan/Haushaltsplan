@@ -1,3 +1,4 @@
+import { ladeEtsyEigeneSignale } from '@/lib/etsy/etsy-cockpit-server'
 import {
   generiereEtsyListingTexte,
   optimiereEtsyListingTexte,
@@ -138,7 +139,8 @@ export async function POST(req: Request) {
 
     const istOptimize = Boolean(body.optimize?.title && body.optimize.description)
     const anreichern = istOptimize && body.anreichern === true
-    const markt = await ladeEtsyMarktKontext({
+    const eigeneSignaleP = ladeEtsyEigeneSignale(user.id).catch(() => null)
+    const marktRoh = await ladeEtsyMarktKontext({
       seeds: istOptimize
         ? marktSeedsFuerListing({
             title: String(body.optimize!.title),
@@ -151,6 +153,8 @@ export async function POST(req: Request) {
       budgetMs: 12_000,
       holzKontext: [basis.holzart, istOptimize ? String(body.optimize!.title) : ''].filter(Boolean).join(' '),
     })
+    const eigeneSignale = await eigeneSignaleP
+    const markt = marktRoh && eigeneSignale ? { ...marktRoh, eigeneSignale } : marktRoh
 
     const listing =
       istOptimize && body.optimize

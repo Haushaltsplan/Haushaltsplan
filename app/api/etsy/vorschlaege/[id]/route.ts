@@ -4,6 +4,7 @@ import {
 } from '@/lib/etsy/etsy-seo-audit-cache'
 import { listingFingerprint } from '@/lib/etsy/etsy-seo-diff'
 import { ladeEtsyListingDetail, updateEtsyListing } from '@/lib/etsy/etsy-listings-server'
+import { beschreibeAenderung, protokolliereEtsyAenderung } from '@/lib/etsy/etsy-statistik-server'
 import {
   ETSY_SEO_TAG_COUNT,
   ETSY_SEO_TAG_MAX,
@@ -76,6 +77,17 @@ export async function POST(req: Request, ctx: Ctx) {
 
     const listing = await updateEtsyListing(user.id, listingId, { title, tags, description })
     await setzeEtsySeoVorschlagStatus(user.id, listingId, 'uebernommen')
+    const vorher = { title: aktuell.title, tags: aktuell.tags, description: aktuell.description }
+    const nachher = { title, tags, description: description ?? aktuell.description }
+    await protokolliereEtsyAenderung({
+      ownerUserId: user.id,
+      listingId,
+      listingTitle: aktuell.title,
+      quelle: 'vorschlag',
+      beschreibung: `KI-Vorschlag übernommen: ${beschreibeAenderung(vorher, nachher)}`,
+      before: vorher,
+      after: nachher,
+    })
     return NextResponse.json({ ok: true, status: 'uebernommen', listing })
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'Vorschlag-Aktion fehlgeschlagen'

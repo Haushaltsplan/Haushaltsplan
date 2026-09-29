@@ -3,8 +3,11 @@
 import 'server-only'
 
 import { auditiereEtsyListing } from '@/lib/etsy/etsy-seo-audit-engine'
+import { ladeEtsyEigeneSignale } from '@/lib/etsy/etsy-cockpit-server'
 import {
+  ladeEtsyHauptbegriffe,
   ladeEtsySeoCacheFuerListing,
+  ladeEtsySeoCacheMap,
   speichereEtsySeoAudit,
 } from '@/lib/etsy/etsy-seo-audit-cache'
 import type { EtsySeoAuditResult } from '@/lib/etsy/etsy-seo-audit-types'
@@ -43,10 +46,18 @@ export async function batchAuditiereEtsyShop(opts: {
   force?: boolean
 }): Promise<{ shopId: number; results: EtsyBatchAuditZeile[] }> {
   const limit = Math.min(25, Math.max(1, opts.limit ?? 15))
-  const { shopId, listings } = await ladeEtsyShopListings(opts.ownerUserId, {
-    state: opts.state || 'active',
-    limit,
-  })
+  const [{ shopId, listings: alle }, cacheMap, hauptbegriffe, eigeneSignale] = await Promise.all([
+    ladeEtsyShopListings(opts.ownerUserId, { state: opts.state || 'active', limit: 100 }),
+    ladeEtsySeoCacheMap(opts.ownerUserId).catch(() => new Map()),
+    ladeEtsyHauptbegriffe(opts.ownerUserId).catch(() => new Map<number, string>()),
+    ladeEtsyEigeneSignale(opts.ownerUserId).catch(() => null),
+  ])
+  // Nie geprüfte Listings zuerst, dann älteste Audits — sonst bleibt der Rest ewig ungeprüft.
+  const auditZeit = (id: number) => {
+    const c = cacheMap.get(id) as { auditedAt?: string } | undefined
+    return c?.auditedAt ? Date.parse(c.auditedAt) || 0 : -1
+  }
+  const listings = [...alle].sort((a, b) => auditZeit(a.listingId) - auditZeit(b.listingId)).slice(0, limit)
 
   const results = await mapPool(listings, 2, async (kurz): Promise<EtsyBatchAuditZeile> => {
     try {
@@ -68,6 +79,8 @@ export async function batchAuditiereEtsyShop(opts: {
       }
       const audit = await auditiereEtsyListing(listing, {
         marktLimits: { maxAutosuggest: 1, maxCompetitor: 1 },
+        hauptbegriff: hauptbegriffe.get(listing.listingId) ?? null,
+        eigeneSignale,
       })
       await speichereEtsySeoAudit({
         ownerUserId: opts.ownerUserId,

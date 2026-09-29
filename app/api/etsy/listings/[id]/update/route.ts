@@ -1,4 +1,5 @@
-import { updateEtsyListing } from '@/lib/etsy/etsy-listings-server'
+import { ladeEtsyListingDetail, updateEtsyListing } from '@/lib/etsy/etsy-listings-server'
+import { beschreibeAenderung, protokolliereEtsyAenderung } from '@/lib/etsy/etsy-statistik-server'
 import {
   ETSY_SEO_TAG_COUNT,
   ETSY_SEO_TAG_MAX,
@@ -94,11 +95,27 @@ export async function POST(req: Request, ctx: Ctx) {
       : null
 
   try {
+    const vorher = await ladeEtsyListingDetail(user.id, listingId)
+      .then((r) => r.listing)
+      .catch(() => null)
     const listing = await updateEtsyListing(user.id, listingId, {
       title,
       description,
       tags,
     })
+    if (vorher) {
+      const before = { title: vorher.title, tags: vorher.tags, description: vorher.description }
+      const after = { title: title ?? vorher.title, tags: tags ?? vorher.tags, description: description ?? vorher.description }
+      await protokolliereEtsyAenderung({
+        ownerUserId: user.id,
+        listingId,
+        listingTitle: vorher.title,
+        quelle: 'manuell',
+        beschreibung: beschreibeAenderung(before, after),
+        before,
+        after,
+      })
+    }
     return NextResponse.json({ ok: true, listing, regelReport })
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'Update fehlgeschlagen'

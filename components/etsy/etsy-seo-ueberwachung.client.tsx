@@ -48,7 +48,11 @@ type Vorschlag = {
 
 type ListFilter = 'alle' | 'schwach' | 'schlecht-rank'
 
-type Props = { verbunden: boolean }
+type Props = {
+  verbunden: boolean
+  /** Vom Cockpit: Listing direkt öffnen (force = frischer KI-Check). nonce erzwingt Wiederholung. */
+  fokus?: { listingId: number; force?: boolean; nonce: number } | null
+}
 
 function scoreBadgeClass(score: number | null | undefined) {
   if (score == null) return 'bg-[var(--app-surface-muted)] text-[var(--app-text-muted)]'
@@ -66,7 +70,7 @@ function istSchlechtGerankt(l: ListingRow): boolean {
   return l.rankPage != null && l.rankPage >= 3
 }
 
-export function EtsySeoUeberwachung({ verbunden }: Props) {
+export function EtsySeoUeberwachung({ verbunden, fokus }: Props) {
   const [stateFilter, setStateFilter] = useState('active')
   const [listFilter, setListFilter] = useState<ListFilter>('alle')
   const [listings, setListings] = useState<ListingRow[]>([])
@@ -204,6 +208,14 @@ export function EtsySeoUeberwachung({ verbunden }: Props) {
   useEffect(() => {
     void ladeVorschlaege()
   }, [ladeVorschlaege])
+
+  const fokusNonce = fokus?.nonce
+  useEffect(() => {
+    if (!verbunden || !fokus?.listingId) return
+    void starteAudit(fokus.listingId, Boolean(fokus.force))
+    // Nur bei neuem Cockpit-Sprung (nonce) auslösen, nicht bei jedem Re-Render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fokusNonce, verbunden])
 
   async function vorschlagAktion(listingId: number, aktion: 'uebernehmen' | 'verwerfen') {
     setVorschlagBusy(listingId)

@@ -1,15 +1,18 @@
 'use client'
 
 import { PageChrome, PageHero } from '@/components/page-shell'
+import { EtsyCockpit } from '@/components/etsy/etsy-cockpit.client'
 import { EtsyKeywords } from '@/components/etsy/etsy-keywords.client'
 import { EtsyKonkurrenz } from '@/components/etsy/etsy-konkurrenz.client'
 import { EtsyKiAgentClient } from '@/components/etsy/etsy-ki-agent.client'
 import { EtsySeoUeberwachung } from '@/components/etsy/etsy-seo-ueberwachung.client'
+import type { EtsyCockpitModul } from '@/lib/etsy/etsy-cockpit-types'
 import { oeffneEtsyOAuthUrl } from '@/lib/etsy/etsy-oauth-open'
 import { useCallback, useEffect, useState, useSyncExternalStore } from 'react'
 import toast from 'react-hot-toast'
 
-type Modul = 'agent' | 'seo' | 'keywords' | 'konkurrenz'
+type Modul = 'cockpit' | EtsyCockpitModul
+const MODULE: readonly Modul[] = ['cockpit', 'agent', 'seo', 'keywords', 'konkurrenz']
 
 /** Hochzählen, wenn ETSY_SCOPES erweitert wird — zeigt einmalig den Hinweis „neu verbinden“. */
 const SCOPE_VERSION = '2026-09-transactions'
@@ -24,7 +27,14 @@ type Status = {
 }
 
 export function EtsyHubClient() {
-  const [modul, setModul] = useState<Modul>('agent')
+  const [modul, setModul] = useState<Modul>('cockpit')
+  const [seoFokus, setSeoFokus] = useState<{ listingId: number; force?: boolean; nonce: number } | null>(null)
+
+  const oeffne = useCallback((ziel: EtsyCockpitModul, listingId?: number, force?: boolean) => {
+    if (ziel === 'seo' && listingId) setSeoFokus({ listingId, force, nonce: Date.now() })
+    setModul(ziel)
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }, [])
   const [status, setStatus] = useState<Status | null>(null)
   const [statusLoading, setStatusLoading] = useState(true)
   const [connecting, setConnecting] = useState(false)
@@ -75,7 +85,7 @@ export function EtsyHubClient() {
       window.history.replaceState({}, '', window.location.pathname)
     }
     const m = sp.get('modul')
-    if (m === 'seo' || m === 'agent' || m === 'keywords' || m === 'konkurrenz') setModul(m)
+    if (m && (MODULE as readonly string[]).includes(m)) setModul(m as Modul)
   }, [ladeStatus])
 
   async function verbinden() {
@@ -113,12 +123,13 @@ export function EtsyHubClient() {
         density="compact"
         eyebrow="Omnia"
         title="Etsy"
-        description="Zwei Module: neue Drafts per KI-Agent anlegen oder bestehende Listings per SEO/GEO-Audit überwachen und optimieren."
+        description="Das Cockpit sagt dir jeden Tag, was sich lohnt — Messung, SEO, Keywords und Konkurrenz arbeiten dafür zusammen."
       />
 
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
         {(
           [
+            ['cockpit', 'Cockpit', 'Heute zu tun', 'border-emerald-500/60 bg-emerald-500/10'],
             ['agent', 'Neues Listing', 'Fotos → Entwurf', 'border-amber-500/60 bg-amber-500/10'],
             ['seo', 'Meine Listings', 'Prüfen & verbessern', 'border-teal-500/60 bg-teal-500/10'],
             ['keywords', 'Keywords', 'Was Käufer suchen', 'border-sky-500/60 bg-sky-500/10'],
@@ -130,6 +141,8 @@ export function EtsyHubClient() {
             type="button"
             onClick={() => setModul(id)}
             className={`rounded-2xl border px-3 py-3 text-left transition sm:px-4 ${
+              id === 'cockpit' ? 'col-span-2 sm:col-span-1 ' : ''
+            }${
               modul === id
                 ? aktivStil
                 : 'border-[var(--app-border)] bg-[var(--app-surface)] hover:bg-[var(--app-surface-muted)]'
@@ -204,12 +217,14 @@ export function EtsyHubClient() {
         </div>
       </section>
 
-      {modul === 'agent' ? (
+      {modul === 'cockpit' ? (
+        <EtsyCockpit verbunden={verbunden} statusLaedt={statusLoading} onOeffnen={oeffne} />
+      ) : modul === 'agent' ? (
         <EtsyKiAgentClient hubModus verbunden={verbunden} onStatusRefresh={() => void ladeStatus()} />
       ) : modul === 'seo' ? (
-        <EtsySeoUeberwachung verbunden={verbunden} />
+        <EtsySeoUeberwachung verbunden={verbunden} fokus={seoFokus} />
       ) : modul === 'keywords' ? (
-        <EtsyKeywords />
+        <EtsyKeywords verbunden={verbunden} />
       ) : (
         <EtsyKonkurrenz />
       )}
