@@ -1,24 +1,20 @@
 package de.omnia.haushalt;
 
-import android.content.Intent;
 import android.os.Build;
 import android.os.Bundle;
-import android.util.Log;
 import android.view.WindowManager;
 import androidx.core.view.WindowCompat;
 import androidx.core.view.WindowInsetsControllerCompat;
 import com.getcapacitor.BridgeActivity;
 
 /**
- * Omnia-Haushalt — ohne WHOOP-BLE / Foreground-Service.
- * Fitness läuft in der App „Omnia Whoop“ (de.omnia.whoop).
+ * Omnia-Haushalt — ohne WHOOP-BLE.
+ * Kein Foreground-Service mehr (Crash-Quelle beim Start).
  */
 public class MainActivity extends BridgeActivity {
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
-        // Plugin bleibt registriert, damit Web-Code stop() aufrufen kann (Aufräumen alter Keepalive).
-        registerPlugin(OmniaBleKeepalivePlugin.class);
         super.onCreate(savedInstanceState);
 
         WindowCompat.setDecorFitsSystemWindows(getWindow(), false);
@@ -35,18 +31,9 @@ public class MainActivity extends BridgeActivity {
             bars.setAppearanceLightNavigationBars(false);
         }
 
-        // Alte WHOOP-Benachrichtigung / FGS sofort beenden
-        stopLegacyWhoopKeepalive();
-    }
-
-    private void stopLegacyWhoopKeepalive() {
+        // Nur Flag löschen — Service nicht anfassen (kann beim Start crashen)
         try {
-            WhoopBleForegroundService.setKeepaliveActive(this, false);
-            Intent intent = new Intent(this, WhoopBleForegroundService.class);
-            intent.putExtra("action", WhoopBleForegroundService.ACTION_RELEASE_NATIVE);
-            stopService(intent);
-        } catch (Exception e) {
-            Log.w("OmniaMain", "Whoop-Keepalive stop fehlgeschlagen", e);
-        }
+            WhoopBleStore.setKeepalive(this, false);
+        } catch (Exception ignored) {}
     }
 }

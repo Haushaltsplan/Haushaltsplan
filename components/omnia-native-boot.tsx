@@ -7,7 +7,6 @@ import {
   istOmniaWhoopApp,
 } from '@/lib/omnia-native/omnia-native'
 import { setzeOmniaNativeBereit } from '@/lib/omnia-native/omnia-native-ready'
-import { stoppeOmniaBleKeepalive } from '@/lib/omnia-native/omnia-ble-keepalive-native'
 import { setzeWhoopBleAlwaysOn } from '@/lib/fitnessdaten/whoop-ble-keepalive'
 import { useEffect } from 'react'
 import toast from 'react-hot-toast'
@@ -15,7 +14,7 @@ import toast from 'react-hot-toast'
 /**
  * Native Boot:
  * - Omnia Whoop → BLE-Shim
- * - Omnia Haushalt → kein BLE, alten Whoop-FGS stoppen
+ * - Omnia Haushalt → kein BLE (kein Keepalive-Plugin-Aufruf — Crash-Schutz)
  */
 export function OmniaNativeBoot() {
   useEffect(() => {
@@ -44,11 +43,9 @@ export function OmniaNativeBoot() {
           return
         }
 
-        // Haushalt-App: Whoop-Keepalive/AlwaysOn abschalten, Notification weg
         if (istOmniaHaushaltApp()) {
           try {
             setzeWhoopBleAlwaysOn(false)
-            await stoppeOmniaBleKeepalive()
           } catch {
             /* ignore */
           }
@@ -56,7 +53,6 @@ export function OmniaNativeBoot() {
           return
         }
 
-        // Nur Whoop-App: BLE
         if (!istOmniaWhoopApp()) {
           if (!cancelled) setzeOmniaNativeBereit(true)
           return
