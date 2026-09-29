@@ -66,7 +66,9 @@ export async function batchAuditiereEtsyShop(opts: {
           }
         }
       }
-      const audit = await auditiereEtsyListing(listing)
+      const audit = await auditiereEtsyListing(listing, {
+        marktLimits: { maxAutosuggest: 1, maxCompetitor: 1 },
+      })
       await speichereEtsySeoAudit({
         ownerUserId: opts.ownerUserId,
         listingId: listing.listingId,

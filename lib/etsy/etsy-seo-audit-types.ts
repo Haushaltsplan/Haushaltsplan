@@ -1,5 +1,7 @@
 /** Typen für Etsy SEO & GEO Audit / Überwachung. */
 
+import type { EtsyMarktAbdeckung } from '@/lib/etsy/etsy-markt-types'
+
 export type EtsySeoIssueSeverity = 'error' | 'warning' | 'info'
 
 export type EtsySeoIssueField =
@@ -21,6 +23,20 @@ export type EtsyGeoInsights = {
   missing_contexts: string[]
   what_clarity?: 'Hoch' | 'Mittel' | 'Niedrig'
   occasion_clarity?: 'Hoch' | 'Mittel' | 'Niedrig'
+  /** 0–100: Wie sicher KI-Suchen (Gemini/ChatGPT/Perplexity) das Listing einer Intent-Anfrage zuordnen können. */
+  ai_search_score?: number
+  /** Sprach-/Intent-Anfragen, die das Listing bereits klar beantwortet. */
+  intent_queries_covered?: string[]
+  /** Naheliegende Intent-Anfragen, für die Kontext fehlt. */
+  intent_queries_missing?: string[]
+}
+
+export type EtsyAuditMarktZusammenfassung = {
+  abdeckung: EtsyMarktAbdeckung
+  keywordKandidaten: string[]
+  preisMedianEur: number | null
+  degradiert: boolean
+  hinweise: string[]
 }
 
 export type EtsySeoSuggestions = {
@@ -38,6 +54,8 @@ export type EtsySeoAuditResult = {
   suggestions: EtsySeoSuggestions
   /** Kurzfazit für die UI */
   summary?: string
+  /** Markt-Abgleich (Autosuggest + Konkurrenz) zum Audit-Zeitpunkt */
+  markt?: EtsyAuditMarktZusammenfassung
 }
 
 export type EtsyShopListingKurz = {
@@ -73,5 +91,14 @@ export type EtsyRankTrackingResult = {
   listingId: number
   checkedAt: string
   results: EtsyRankKeywordResult[]
-  provider: 'apify' | 'etsy_search' | 'unavailable'
+  /** `etsy_api_relevanz` = Etsy-Suchseite geblockt, Position aus Open-API-Relevanz (Proxy) */
+  provider: 'apify' | 'etsy_search' | 'etsy_api_relevanz' | 'unavailable'
+}
+
+export type EtsyRankVerlust = {
+  listingId: number
+  keyword: string
+  vorher: { page: number | null; position: number | null; found: boolean }
+  jetzt: { page: number | null; position: number | null; found: boolean }
+  checkedAt: string
 }

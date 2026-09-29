@@ -12,6 +12,8 @@ Prüfe das übergebene Listing und liefere NUR gültiges JSON gemäß Schema.
 - Exact Match: Suchphrase in Titel/Tags/Kategorie/Attributen — Keywords aus dem Titel müssen in Tags abgedeckt sein.
 - Tags: IMMER genau 13; je ≤20 Zeichen; keine Kommas. Long-Tail-Phrasen (mehrere Wörter) statt Einwort-Tags. Keine Stemming-Duplikate (bowl/bowls, Schale/Schalen) — Etsy stemmt selbst. Keine Tags, die nur Kategorie/Material wiederholen (z. B. „wooden bowl“ wenn Category=Bowls und Material=Wood) — Attribute in Long-Tail kombinieren.
 - Beschreibung: sachlich, handwerklich, keine Marketing-Floskeln („Zauber“, „Seele“, „Meisterwerk“).
+- First-2-Sentences-Regel: Die ersten zwei Sätze erscheinen in Etsy-In-App-Vorschau und Google-Snippet — sie müssen Produkt + Holzart + Nutzen enthalten.
+- Fakten-Pflicht: Holzart, exakte Maße (Durchmesser × Höhe in cm), Finish und Pflege müssen in der Beschreibung stehen.
 - Nicht bewerten (Shop-Level): Versandkosten-Ranking, Customer-Service-Score, Antwortzeiten — nur erwähnen wenn offensichtlich aus Listing-Daten.
 
 ### GEO-CHECK (Antwortqualität für KI-Antwortboxen)
@@ -20,6 +22,17 @@ Die ersten Sätze der Beschreibung sollen klar beantworten:
 2) FÜR WEN (Sammler, Küche, Galerie, Geschenk) — auch über VERWENDUNG:-Zeile ok?
 3) WELCHEN ANLASS (Holzhochzeit / Einzug / Geburtstag) — Bonus, nicht Pflicht wenn 1+2 stark sind?
 Handwerkliche Besonderheiten (Figur, Asteinschlüsse, gesicherte Risse, Finish, Pflege) müssen erkennbar sein.
+
+### AI-SEARCH-CHECK (Gemini, ChatGPT, Perplexity)
+Simuliere 4–6 realistische Sprach-/Intent-Anfragen deutscher Käufer (z. B. „nachhaltiges Holzgeschenk zur Holzhochzeit“, „große Obstschale aus Eiche handgemacht“, „Unikat Holzschale aus Bayern kaufen“).
+- intent_queries_covered: Anfragen, für die das Listing als Antwort klar zitierfähig ist (Entität + Attribut + Nutzen explizit im Text).
+- intent_queries_missing: Anfragen, für die ein Fakt/Kontext fehlt.
+- ai_search_score 0–100: Wie eindeutig kann eine KI-Suchmaschine Produkttyp, Material, Maße, Herkunft, Zielgruppe und Anlass extrahieren? Vage Adjektive senken, konkrete Fakten heben.
+
+### MARKT-DATEN (falls mitgeliefert)
+- Reale Etsy-Suchphrasen und häufige Konkurrenz-Tags sind das stärkste Ranking-Signal: fehlende, PASSENDE Phrasen als Issue melden und in optimized_tags/optimized_title einbauen.
+- Unpassende Phrasen (andere Holzart, anderes Produkt, Massenware) ignorieren.
+- Konkurrenz-Preise nur als Kontext; kein Preis-Issue, nur weil das Unikat teurer ist.
 
 ### BEWERTUNG
 - overall_score: 0–100 (streng, aber fair).
@@ -54,6 +67,9 @@ export const ETSY_SEO_AUDIT_JSON_SCHEMA: Record<string, unknown> = {
         missing_contexts: { type: 'ARRAY', items: { type: 'STRING' } },
         what_clarity: { type: 'STRING' },
         occasion_clarity: { type: 'STRING' },
+        ai_search_score: { type: 'NUMBER' },
+        intent_queries_covered: { type: 'ARRAY', items: { type: 'STRING' } },
+        intent_queries_missing: { type: 'ARRAY', items: { type: 'STRING' } },
       },
       required: ['target_audience_clarity', 'missing_contexts'],
     },

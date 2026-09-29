@@ -33,6 +33,19 @@ type ListingRow = EtsyShopListingKurz & {
 
 type HistoriePunkt = { id: string; overallScore: number; createdAt: string }
 
+type VorschlagInhalt = { title: string; tags: string[]; descriptionIntro: string; description?: string }
+
+type Vorschlag = {
+  listingId: number
+  grund: string
+  listingTitle: string
+  scoreVorher: number | null
+  before: VorschlagInhalt
+  after: VorschlagInhalt
+  audit: EtsySeoAuditResult | null
+  createdAt: string
+}
+
 type ListFilter = 'alle' | 'schwach' | 'schlecht-rank'
 
 type Props = { verbunden: boolean }
@@ -80,6 +93,10 @@ export function EtsySeoUeberwachung({ verbunden }: Props) {
 
   const [rank, setRank] = useState<EtsyRankTrackingResult | null>(null)
   const [rankKeywords, setRankKeywords] = useState('')
+
+  const [vorschlaege, setVorschlaege] = useState<Vorschlag[]>([])
+  const [vorschlagOffen, setVorschlagOffen] = useState<number | null>(null)
+  const [vorschlagBusy, setVorschlagBusy] = useState<number | null>(null)
 
   const sichtbareListings = useMemo(() => {
     if (listFilter === 'schwach') return listings.filter(istSchwach)
@@ -159,6 +176,45 @@ export function EtsySeoUeberwachung({ verbunden }: Props) {
   useEffect(() => {
     void ladeListings()
   }, [ladeListings])
+
+  const ladeVorschlaege = useCallback(async () => {
+    if (!verbunden) return
+    try {
+      const res = await fetch('/api/etsy/vorschlaege', { cache: 'no-store' })
+      const j = (await res.json()) as { vorschlaege?: Vorschlag[] }
+      if (res.ok) setVorschlaege(j.vorschlaege ?? [])
+    } catch {
+      /* Vorschläge optional */
+    }
+  }, [verbunden])
+
+  useEffect(() => {
+    void ladeVorschlaege()
+  }, [ladeVorschlaege])
+
+  async function vorschlagAktion(listingId: number, aktion: 'uebernehmen' | 'verwerfen') {
+    setVorschlagBusy(listingId)
+    try {
+      const res = await fetch(`/api/etsy/vorschlaege/${listingId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ aktion }),
+      })
+      const j = (await res.json()) as { error?: string }
+      if (!res.ok) {
+        toast.error(j.error ?? 'Aktion fehlgeschlagen.')
+        if (res.status === 409) void ladeVorschlaege()
+        return
+      }
+      toast.success(aktion === 'uebernehmen' ? 'Auf Etsy übernommen.' : 'Vorschlag verworfen.')
+      setVorschlaege((prev) => prev.filter((v) => v.listingId !== listingId))
+      if (aktion === 'uebernehmen') void ladeListings()
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Fehler')
+    } finally {
+      setVorschlagBusy(null)
+    }
+  }
 
   function applyAuditPayload(j: {
     listing: EtsyShopListingDetail
@@ -353,6 +409,99 @@ export function EtsySeoUeberwachung({ verbunden }: Props) {
 
   return (
     <>
+      {vorschlaege.length > 0 && (
+        <PageSection titleId="seo-vorschlaege" title={`Vorbereitete Vorschläge · ${vorschlaege.length}`}>
+          <PageSectionPanel density="compact" className="space-y-2">
+            <p className="text-xs text-[var(--app-text-muted)]">
+              Vom Wochen-Cron erstellt (Ranking-Verlust oder Score &lt; 70). Diff prüfen, dann mit einem Klick
+              auf Etsy übernehmen. Wurde das Listing inzwischen auf Etsy geändert, wird der Vorschlag als veraltet
+              markiert statt die Änderung zu überschreiben.
+            </p>
+            <ul className="divide-y divide-[var(--app-border)]">
+              {vorschlaege.map((v) => {
+                const offen = vorschlagOffen === v.listingId
+                const diff = baueEtsySeoDiff({
+                  before: {
+                    title: v.before.title,
+                    tags: v.before.tags,
+                    description: v.before.description ?? '',
+                  },
+                  after: { title: v.after.title, tags: v.after.tags, description: v.after.description },
+                })
+                return (
+                  <li key={v.listingId} className="space-y-2 py-2">
+                    <div className="flex flex-wrap items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-medium text-[var(--app-text)]">{v.listingTitle}</p>
+                        <p className="text-xs text-[var(--app-text-muted)]">
+                          #{v.listingId} · {v.grund}
+                          {v.audit ? ` · Audit ${v.audit.overall_score}/100` : ''}
+                          {v.audit?.geo_insights.ai_search_score != null
+                            ? ` · KI-Suche ${v.audit.geo_insights.ai_search_score}`
+                            : ''}
+                          {' · '}
+                          {new Date(v.createdAt).toLocaleDateString('de-DE')}
+                        </p>
+                      </div>
+                      <div className="flex shrink-0 gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => setVorschlagOffen(offen ? null : v.listingId)}
+                          className="rounded-lg border border-[var(--app-border)] px-2.5 py-1.5 text-xs"
+                        >
+                          {offen ? 'Diff zu' : 'Diff'}
+                        </button>
+                        <button
+                          type="button"
+                          disabled={vorschlagBusy != null}
+                          onClick={() => void vorschlagAktion(v.listingId, 'uebernehmen')}
+                          className="rounded-lg bg-teal-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-teal-600 disabled:opacity-50"
+                        >
+                          {vorschlagBusy === v.listingId ? '…' : 'Übernehmen'}
+                        </button>
+                        <button
+                          type="button"
+                          disabled={vorschlagBusy != null}
+                          onClick={() => void vorschlagAktion(v.listingId, 'verwerfen')}
+                          className="rounded-lg border border-[var(--app-border)] px-2.5 py-1.5 text-xs text-[var(--app-text-muted)] disabled:opacity-50"
+                        >
+                          Verwerfen
+                        </button>
+                      </div>
+                    </div>
+                    {offen && (
+                      <div className="space-y-2">
+                        {diff
+                          .filter((d) => d.changed)
+                          .map((d) => (
+                            <div
+                              key={d.field}
+                              className="grid gap-2 rounded-xl border border-amber-500/40 bg-amber-500/5 p-3 text-xs sm:grid-cols-2"
+                            >
+                              <div>
+                                <p className="text-[var(--app-text-muted)]">{d.label} · aktuell</p>
+                                <pre className="mt-1 max-h-28 overflow-auto whitespace-pre-wrap text-[var(--app-text-muted)]">
+                                  {d.before || '—'}
+                                </pre>
+                              </div>
+                              <div>
+                                <p className="text-[var(--app-text-muted)]">Vorschlag</p>
+                                <pre className="mt-1 max-h-28 overflow-auto whitespace-pre-wrap text-[var(--app-text)]">
+                                  {d.after || '—'}
+                                </pre>
+                              </div>
+                            </div>
+                          ))}
+                      </div>
+                    )}
+                  </li>
+                )
+              })}
+            </ul>
+          </PageSectionPanel>
+        </PageSection>
+      )}
+
       <PageSection titleId="seo-overview" title="SEO Überwachung · Übersicht">
         <PageSectionPanel density="compact" className="space-y-3">
           <div className="flex flex-wrap items-center gap-2">
@@ -560,7 +709,12 @@ export function EtsySeoUeberwachung({ verbunden }: Props) {
                       ['Long-Tail', (liveRegeln || regelReport)!.tagsLongtailOk],
                       ['Stemming', (liveRegeln || regelReport)!.tagsStemOk],
                       ['Attr-Duplikat', (liveRegeln || regelReport)!.tagsAttrOk],
+                      ['Stop-Wörter', (liveRegeln || regelReport)!.titleStopwordOk],
                       ['Beschreibung', (liveRegeln || regelReport)!.descriptionOk],
+                      ['First-2', (liveRegeln || regelReport)!.descFirst2Ok],
+                      ['Holzart', (liveRegeln || regelReport)!.descHolzartOk],
+                      ['Maße', (liveRegeln || regelReport)!.descMasseOk],
+                      ['Pflege', (liveRegeln || regelReport)!.descPflegeOk],
                     ] as const
                   ).map(([label, ok]) => (
                     <span
@@ -624,7 +778,55 @@ export function EtsySeoUeberwachung({ verbunden }: Props) {
                   ))}
                 </ul>
               )}
+              {audit.geo_insights.ai_search_score != null && (
+                <div className="mt-2 space-y-1">
+                  <p className="text-xs">
+                    KI-Suche (Gemini/ChatGPT/Perplexity):{' '}
+                    <span
+                      className={`rounded-md px-2 py-0.5 font-semibold tabular-nums ${scoreBadgeClass(audit.geo_insights.ai_search_score)}`}
+                    >
+                      {audit.geo_insights.ai_search_score}
+                    </span>
+                  </p>
+                  {(audit.geo_insights.intent_queries_covered?.length ?? 0) > 0 && (
+                    <p className="text-xs text-emerald-300/90">
+                      ✓ {audit.geo_insights.intent_queries_covered!.join(' · ')}
+                    </p>
+                  )}
+                  {(audit.geo_insights.intent_queries_missing?.length ?? 0) > 0 && (
+                    <p className="text-xs text-amber-300/90">
+                      ✗ {audit.geo_insights.intent_queries_missing!.join(' · ')}
+                    </p>
+                  )}
+                </div>
+              )}
             </div>
+
+            {audit.markt && (
+              <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-3 text-xs">
+                <p className="font-medium text-[var(--app-text-muted)]">
+                  Markt-Abgleich · {audit.markt.abdeckung.abgedeckt.length}/
+                  {audit.markt.abdeckung.abgedeckt.length + audit.markt.abdeckung.fehlend.length} reale
+                  Suchphrasen abgedeckt
+                  {audit.markt.preisMedianEur != null ? ` · Konkurrenz-Median ${audit.markt.preisMedianEur} €` : ''}
+                </p>
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {audit.markt.abdeckung.abgedeckt.map((k) => (
+                    <span key={k} className="rounded bg-emerald-500/15 px-1.5 py-0.5 text-emerald-300">
+                      ✓ {k}
+                    </span>
+                  ))}
+                  {audit.markt.abdeckung.fehlend.map((k) => (
+                    <span key={k} className="rounded border border-dashed border-amber-500/50 px-1.5 py-0.5 text-amber-200">
+                      {k}
+                    </span>
+                  ))}
+                </div>
+                {audit.markt.degradiert && audit.markt.hinweise.length > 0 && (
+                  <p className="mt-1 text-[10px] text-[var(--app-text-muted)]">{audit.markt.hinweise.join(' ')}</p>
+                )}
+              </div>
+            )}
 
             {/* Diff */}
             <div>
@@ -768,7 +970,8 @@ export function EtsySeoUeberwachung({ verbunden }: Props) {
 
             <div className="border-t border-[var(--app-border)] pt-3">
               <p className="text-xs font-medium text-[var(--app-text-muted)]">
-                Rank Tracking (Etsy-Suche{rank ? ` · ${rank.provider}` : ''}
+                Rank Tracking (Etsy-Suche → Fallback API-Relevanz
+                {rank ? ` · genutzt: ${rank.provider === 'etsy_api_relevanz' ? 'API-Relevanz (Proxy)' : rank.provider}` : ''}
                 {', '}optional Apify)
               </p>
               <input

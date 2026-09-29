@@ -2,7 +2,12 @@ import {
   generiereEtsyListingTexte,
   optimiereEtsyListingTexte,
 } from '@/lib/etsy/etsy-listing-generator'
-import { berechneEtsyDraftSeoGeoScore } from '@/lib/etsy/etsy-seo-regeln'
+import {
+  ladeEtsyMarktKontext,
+  marktSeedsFuerBasis,
+  marktSeedsFuerListing,
+} from '@/lib/etsy/etsy-scraping'
+import { berechneEtsyDraftSeoGeoScore, pruefeMarktAbdeckung } from '@/lib/etsy/etsy-seo-regeln'
 import { ladeEtsyVorlage } from '@/lib/etsy/etsy-vorlage-historie'
 import type { EtsyListingBasis } from '@/lib/etsy/etsy-types'
 import { COACH_IMAGE_MIME, type CoachImagePart } from '@/lib/finance-coach-images'
@@ -11,7 +16,7 @@ import { NextResponse } from 'next/server'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
-export const maxDuration = 120
+export const maxDuration = 150
 
 type OptimizeBody = {
   title: string
@@ -44,6 +49,8 @@ type Body = {
   finishText?: string
   /** Wenn gesetzt: SEO/GEO-Nachoptimierung statt Frischgenerierung. */
   optimize?: OptimizeBody
+  /** Mit optimize: frische Markt-Daten ziehen und Tags/Titel darauf ausrichten. */
+  anreichern?: boolean
 }
 
 function parseImages(raw: Body['images']): CoachImagePart[] {
@@ -129,8 +136,23 @@ export async function POST(req: Request) {
       taxonomyId: vorlage.taxonomyId ?? undefined,
     }
 
+    const istOptimize = Boolean(body.optimize?.title && body.optimize.description)
+    const anreichern = istOptimize && body.anreichern === true
+    const markt = await ladeEtsyMarktKontext({
+      seeds: istOptimize
+        ? marktSeedsFuerListing({
+            title: String(body.optimize!.title),
+            tags: Array.isArray(body.optimize!.tags) ? body.optimize!.tags.map(String) : [],
+          })
+        : marktSeedsFuerBasis({ holzart: basis.holzart }),
+      maxAutosuggest: 3,
+      maxCompetitor: anreichern ? 3 : 2,
+      forceRefresh: anreichern,
+      budgetMs: 20_000,
+    })
+
     const listing =
-      body.optimize?.title && body.optimize.description
+      istOptimize && body.optimize
         ? await optimiereEtsyListingTexte(images, basis, {
             title: String(body.optimize.title),
             description: String(body.optimize.description),
@@ -156,8 +178,8 @@ export async function POST(req: Request) {
                     : [],
                 }
               : null,
-          })
-        : await generiereEtsyListingTexte(images, basis)
+          }, { markt, fokus: anreichern ? 'markt' : 'score' })
+        : await generiereEtsyListingTexte(images, basis, { markt })
 
     const score = scoreFuerListing({
       ...listing,
@@ -181,7 +203,25 @@ export async function POST(req: Request) {
         issues: score.regel.issues,
         geoNotes: score.geoNotes,
       },
+      markt: {
+        seeds: markt.seeds,
+        keywordKandidaten: markt.keywordKandidaten.slice(0, 20),
+        abdeckung: pruefeMarktAbdeckung(listing, markt.keywordKandidaten),
+        degradiert: markt.degradiert,
+        hinweise: markt.hinweise,
+        quellen: {
+          autosuggest: markt.autosuggest.map((a) => ({ query: a.query, provider: a.provider, quelle: a.quelle })),
+          competitors: markt.competitors.map((c) => ({
+            keyword: c.keyword,
+            provider: c.provider,
+            quelle: c.quelle,
+            listings: c.listings.length,
+            preisMedianEur: c.preis.median,
+          })),
+        },
+      },
       optimized: Boolean(body.optimize),
+      angereichert: anreichern,
     })
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'Generierung fehlgeschlagen'

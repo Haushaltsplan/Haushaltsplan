@@ -103,6 +103,16 @@ export type EtsyGeneratedListing = {
   taxonomyId: number
   taxonomyLabel: string
   fotoCheck: EtsyFotoCheck
+  geoInsights?: EtsyListingGeoInsights
+}
+
+export type EtsyListingGeoInsights = {
+  zielgruppe: string
+  anlaesse: string[]
+  /** Sprach-/Intent-Anfragen, für die das Listing zitierfähig sein soll */
+  intentQueries: string[]
+  /** Genutzte reale Markt-Phrasen (Autosuggest/Konkurrenz) */
+  marktKeywords: string[]
 }
 
 export type EtsyListingVorlage = {

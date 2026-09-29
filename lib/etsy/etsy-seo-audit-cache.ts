@@ -3,7 +3,7 @@
 import 'server-only'
 
 import { createSupabaseAdmin } from '@/lib/supabase-admin'
-import type { EtsySeoAuditResult } from '@/lib/etsy/etsy-seo-audit-types'
+import type { EtsyRankVerlust, EtsySeoAuditResult } from '@/lib/etsy/etsy-seo-audit-types'
 
 export type EtsySeoCacheEintrag = {
   listingId: number
@@ -155,21 +155,214 @@ export async function speichereEtsyRankErgebnisse(opts: {
   }>
   provider: string
 }): Promise<void> {
+  if (opts.results.length === 0) return
   const admin = createSupabaseAdmin()
   const now = new Date().toISOString()
-  for (const r of opts.results) {
-    await admin.from('etsy_seo_rank_cache').upsert({
-      owner_user_id: opts.ownerUserId,
-      listing_id: opts.listingId,
-      keyword: r.keyword.slice(0, 80),
-      page: r.page,
-      position: r.position,
-      found: r.found,
-      note: r.note?.slice(0, 200) ?? null,
-      provider: opts.provider,
-      checked_at: now,
-    })
+  const zeilen = opts.results.map((r) => ({
+    owner_user_id: opts.ownerUserId,
+    listing_id: opts.listingId,
+    keyword: r.keyword.toLowerCase().slice(0, 80),
+    page: r.page,
+    position: r.position,
+    found: r.found,
+    provider: opts.provider,
+    checked_at: now,
+  }))
+  const { error } = await admin
+    .from('etsy_seo_rank_cache')
+    .upsert(zeilen.map((z, i) => ({ ...z, note: opts.results[i]!.note?.slice(0, 200) ?? null })))
+  if (error) throw new Error(`Rank-Cache: ${error.message}`)
+  const hist = await admin.from('etsy_seo_rank_historie').insert(zeilen)
+  if (hist.error) console.warn('[etsy-rank] historie:', hist.error.message)
+}
+
+/** Bisher getrackte Keywords je Listing = Fokus-Keywords für den Cron. */
+export async function ladeEtsyFokusKeywords(ownerUserId: string): Promise<Map<number, string[]>> {
+  const { data, error } = await createSupabaseAdmin()
+    .from('etsy_seo_rank_cache')
+    .select('listing_id, keyword, checked_at')
+    .eq('owner_user_id', ownerUserId)
+    .order('checked_at', { ascending: false })
+  const map = new Map<number, string[]>()
+  if (error || !data) return map
+  for (const r of data) {
+    const id = Number(r.listing_id)
+    const kw = String(r.keyword || '').trim()
+    if (!Number.isFinite(id) || !kw) continue
+    const arr = map.get(id) ?? []
+    if (!arr.includes(kw) && arr.length < 5) arr.push(kw)
+    map.set(id, arr)
   }
+  return map
+}
+
+/**
+ * Verlust = gefunden → nicht gefunden, schlechtere Seite oder ≥10 Plätze schlechter
+ * (Vergleich der letzten zwei Messungen je Listing+Keyword).
+ */
+export async function ladeEtsyRankVerluste(
+  ownerUserId: string,
+  tage = 21,
+): Promise<EtsyRankVerlust[]> {
+  const seit = new Date(Date.now() - tage * 86_400_000).toISOString()
+  const { data, error } = await createSupabaseAdmin()
+    .from('etsy_seo_rank_historie')
+    .select('listing_id, keyword, page, position, found, checked_at')
+    .eq('owner_user_id', ownerUserId)
+    .gte('checked_at', seit)
+    .order('checked_at', { ascending: false })
+    .limit(2000)
+  if (error || !data) return []
+
+  const gruppen = new Map<string, typeof data>()
+  for (const r of data) {
+    const k = `${r.listing_id}|${r.keyword}`
+    const arr = gruppen.get(k) ?? []
+    if (arr.length < 2) arr.push(r)
+    gruppen.set(k, arr)
+  }
+
+  const verluste: EtsyRankVerlust[] = []
+  for (const [, [jetzt, vorher]] of gruppen) {
+    if (!jetzt || !vorher) continue
+    const j = {
+      page: jetzt.page != null ? Number(jetzt.page) : null,
+      position: jetzt.position != null ? Number(jetzt.position) : null,
+      found: Boolean(jetzt.found),
+    }
+    const v = {
+      page: vorher.page != null ? Number(vorher.page) : null,
+      position: vorher.position != null ? Number(vorher.position) : null,
+      found: Boolean(vorher.found),
+    }
+    const verloren =
+      (v.found && !j.found) ||
+      (v.page != null && j.page != null && j.page > v.page) ||
+      (v.position != null && j.position != null && j.position - v.position >= 10)
+    if (verloren) {
+      verluste.push({
+        listingId: Number(jetzt.listing_id),
+        keyword: String(jetzt.keyword),
+        vorher: v,
+        jetzt: j,
+        checkedAt: String(jetzt.checked_at),
+      })
+    }
+  }
+  return verluste
+}
+
+// ---------------------------------------------------------------------------
+// Vorbereitete Vorschläge (Cron → UI 1-Klick)
+// ---------------------------------------------------------------------------
+
+export type EtsySeoVorschlagInhalt = {
+  title: string
+  tags: string[]
+  descriptionIntro: string
+  description?: string
+}
+
+export type EtsySeoVorschlag = {
+  listingId: number
+  status: 'offen' | 'uebernommen' | 'verworfen' | 'veraltet'
+  grund: string
+  fingerprint: string
+  listingTitle: string
+  scoreVorher: number | null
+  before: EtsySeoVorschlagInhalt
+  after: EtsySeoVorschlagInhalt
+  audit: EtsySeoAuditResult | null
+  createdAt: string
+}
+
+function mapVorschlag(r: Record<string, unknown>): EtsySeoVorschlag {
+  return {
+    listingId: Number(r.listing_id),
+    status: String(r.status) as EtsySeoVorschlag['status'],
+    grund: String(r.grund || ''),
+    fingerprint: String(r.fingerprint || ''),
+    listingTitle: String(r.listing_title || ''),
+    scoreVorher: r.score_vorher != null ? Number(r.score_vorher) : null,
+    before: r.before_json as EtsySeoVorschlagInhalt,
+    after: r.after_json as EtsySeoVorschlagInhalt,
+    audit: (r.audit_json as EtsySeoAuditResult | null) ?? null,
+    createdAt: String(r.created_at),
+  }
+}
+
+export async function speichereEtsySeoVorschlag(opts: {
+  ownerUserId: string
+  listingId: number
+  grund: string
+  fingerprint: string
+  listingTitle: string
+  scoreVorher: number | null
+  before: EtsySeoVorschlagInhalt
+  after: EtsySeoVorschlagInhalt
+  audit: EtsySeoAuditResult
+}): Promise<void> {
+  const { error } = await createSupabaseAdmin().from('etsy_seo_vorschlag').upsert({
+    owner_user_id: opts.ownerUserId,
+    listing_id: opts.listingId,
+    status: 'offen',
+    grund: opts.grund.slice(0, 300),
+    fingerprint: opts.fingerprint,
+    listing_title: opts.listingTitle.slice(0, 200),
+    score_vorher: opts.scoreVorher,
+    before_json: opts.before,
+    after_json: opts.after,
+    audit_json: opts.audit,
+    created_at: new Date().toISOString(),
+    entschieden_at: null,
+  })
+  if (error) throw new Error(`Vorschlag: ${error.message}`)
+}
+
+export async function ladeEtsySeoVorschlaege(
+  ownerUserId: string,
+  status: EtsySeoVorschlag['status'] = 'offen',
+): Promise<EtsySeoVorschlag[]> {
+  const { data, error } = await createSupabaseAdmin()
+    .from('etsy_seo_vorschlag')
+    .select(
+      'listing_id, status, grund, fingerprint, listing_title, score_vorher, before_json, after_json, audit_json, created_at',
+    )
+    .eq('owner_user_id', ownerUserId)
+    .eq('status', status)
+    .order('created_at', { ascending: false })
+    .limit(50)
+  if (error || !data) return []
+  return data.map((r) => mapVorschlag(r as Record<string, unknown>))
+}
+
+export async function ladeEtsySeoVorschlag(
+  ownerUserId: string,
+  listingId: number,
+): Promise<EtsySeoVorschlag | null> {
+  const { data, error } = await createSupabaseAdmin()
+    .from('etsy_seo_vorschlag')
+    .select(
+      'listing_id, status, grund, fingerprint, listing_title, score_vorher, before_json, after_json, audit_json, created_at',
+    )
+    .eq('owner_user_id', ownerUserId)
+    .eq('listing_id', listingId)
+    .maybeSingle()
+  if (error || !data) return null
+  return mapVorschlag(data as Record<string, unknown>)
+}
+
+export async function setzeEtsySeoVorschlagStatus(
+  ownerUserId: string,
+  listingId: number,
+  status: Exclude<EtsySeoVorschlag['status'], 'offen'>,
+): Promise<void> {
+  const { error } = await createSupabaseAdmin()
+    .from('etsy_seo_vorschlag')
+    .update({ status, entschieden_at: new Date().toISOString() })
+    .eq('owner_user_id', ownerUserId)
+    .eq('listing_id', listingId)
+  if (error) throw new Error(`Vorschlag-Status: ${error.message}`)
 }
 
 export type EtsyRankKurz = {

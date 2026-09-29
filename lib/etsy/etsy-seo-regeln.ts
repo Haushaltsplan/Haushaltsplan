@@ -4,6 +4,7 @@
  * (siehe etsy_seo_guidelines_ruleset).
  */
 
+import type { EtsyMarktAbdeckung } from '@/lib/etsy/etsy-markt-types'
 import type { EtsySeoIssue, EtsyShopListingDetail } from '@/lib/etsy/etsy-seo-audit-types'
 import { ETSY_FORM_TAXONOMY } from '@/lib/etsy/etsy-types'
 
@@ -72,17 +73,58 @@ const ATTR_ONLY_STOP = new Set([
   'drechseln',
 ])
 
+const TITLE_STOPWORDS = new Set([
+  // norm() entfernt Umlaut-Diakritika: „für“ → „fur“
+  'und', 'oder', 'mit', 'aus', 'fur', 'fuer', 'der', 'die', 'das', 'den', 'dem', 'ein', 'eine', 'einer',
+  'von', 'zum', 'zur', 'im', 'in', 'am', 'an', 'auf', 'als', 'the', 'and', 'for', 'with', 'of', 'a',
+  'to', 'by',
+])
+
+const HOLZARTEN_RE =
+  /(eiche|esche|ahorn|walnuss|nussbaum|kirsch|birke|buche|linde|pflaume|zwetschg|apfel|birne|ulme|rüster|ruester|robinie|akazie|oliv|zirbe|lärche|laerche|kiefer|fichte|eibe|platane|kastanie|holunder|elsbeere|mooreiche|wurzelholz|maserknolle|\boak\b|\bash\b|maple|walnut|cherry|birch|beech|\belm\b|\byew\b)/i
+
+const PRODUKT_RE =
+  /(schale|schüssel|schuessel|bowl|dose|behälter|behaelter|vase|teller|stab|skulptur|gefäß|gefaess|holzware)/i
+
+const FINISH_RE = /(finish|geölt|geoelt|\böl\b|\boel\b|walnussöl|leinöl|hartwachs|wachs|lack|schellack)/i
+const PFLEGE_RE = /(pflege|abwischen|spülmaschine|spuelmaschine|nachbehandeln|nachölen|feucht)/i
+
+/** Ø/Durchmesser + Höhe oder „22 × 9 cm“ — Platzhalter zählt nicht. */
+export function hatExakteMasse(text: string): boolean {
+  if (/\[MASSE EINFÜGEN\]/i.test(text)) return false
+  const zahl = String.raw`\d+(?:[.,]\d+)?`
+  const kreuz = new RegExp(String.raw`${zahl}\s*(?:cm)?\s*[x×]\s*(?:h\s*)?${zahl}`, 'i')
+  if (kreuz.test(text)) return true
+  const durchmesser = new RegExp(String.raw`(?:ø|⌀|durchmesser)\s*:?\s*(?:ca\.?\s*)?${zahl}\s*cm`, 'i')
+  const hoehe = new RegExp(String.raw`(?:höhe|hoehe|\bh\b)\s*:?\s*(?:ca\.?\s*)?${zahl}\s*cm`, 'i')
+  return durchmesser.test(text) && hoehe.test(text)
+}
+
+/** Text vor dem ersten Detail-Emoji-Block; daraus die ersten zwei Sätze (Etsy/Google-Preview). */
+export function ersteZweiSaetze(description: string): string {
+  const d = description.trim()
+  const cut = d.search(/\n\s*[🪵📏✨💎🧼🚫🌻]/u)
+  const intro = (cut > 0 ? d.slice(0, cut) : d).replace(/\s+/g, ' ').trim()
+  const saetze = intro.split(/(?<=[.!?])\s+/).filter(Boolean)
+  return saetze.slice(0, 2).join(' ').slice(0, 400)
+}
+
 export type EtsySeoRegelReport = {
   issues: EtsySeoIssue[]
   titleOk: boolean
   titleFrontloadOk: boolean
   titleLengthIdeal: boolean
+  titleStopwordOk: boolean
   tagsCountOk: boolean
   tagsLengthOk: boolean
   tagsLongtailOk: boolean
   tagsStemOk: boolean
   tagsAttrOk: boolean
   descriptionOk: boolean
+  descFirst2Ok: boolean
+  descHolzartOk: boolean
+  descMasseOk: boolean
+  descPflegeOk: boolean
   scorePenalty: number
 }
 
@@ -181,6 +223,7 @@ export function pruefeEtsySeoRegeln(input: {
   let titleOk = title.length > 0 && title.length <= ETSY_SEO_TITLE_MAX
   let titleFrontloadOk = true
   let titleLengthIdeal = true
+  let titleStopwordOk = true
   let tagsLengthOk = true
   let tagsLongtailOk = true
   let tagsStemOk = true
@@ -240,6 +283,23 @@ export function pruefeEtsySeoRegeln(input: {
         message: 'Subjektive Füllwörter vorne im Titel — Platz für Exact-Match-Keywords nutzen.',
       })
       scorePenalty += 4
+    }
+
+    // Stop-Wort-Cluster vorne kosten Front-Load-Platz und verwässern Query Matching.
+    const frontTokens = norm(title.slice(0, ETSY_SEO_TITLE_FRONTLOAD))
+      .split(/[^a-z0-9]+/)
+      .filter(Boolean)
+    const stopIdx = frontTokens.map((w) => TITLE_STOPWORDS.has(w))
+    const stopAnteil = frontTokens.length ? stopIdx.filter(Boolean).length / frontTokens.length : 0
+    const stopKette = stopIdx.some((s, i) => s && stopIdx[i + 1])
+    if ((frontTokens.length >= 4 && stopAnteil >= 0.35) || stopKette) {
+      titleStopwordOk = false
+      issues.push({
+        severity: 'warning',
+        field: 'title',
+        message: `Stop-Wort-Cluster in den ersten ${ETSY_SEO_TITLE_FRONTLOAD} Zeichen (${Math.round(stopAnteil * 100)} % Füllwörter) — durch Keywords ersetzen, Trenner „ | “ nutzen.`,
+      })
+      scorePenalty += 3
     }
   }
 
@@ -359,6 +419,58 @@ export function pruefeEtsySeoRegeln(input: {
     scorePenalty += 8
   }
 
+  let descFirst2Ok = true
+  let descHolzartOk = true
+  let descMasseOk = true
+  let descPflegeOk = true
+  if (description) {
+    const materialWorte = (input.materials ?? []).flatMap((m) => woerter(m)).filter((w) => w.length >= 4)
+    const hatHolz = (text: string) =>
+      HOLZARTEN_RE.test(text) || materialWorte.some((w) => norm(text).includes(w))
+
+    const first2 = ersteZweiSaetze(description)
+    if (!(first2.length >= 60 && PRODUKT_RE.test(first2) && hatHolz(first2))) {
+      descFirst2Ok = false
+      issues.push({
+        severity: 'warning',
+        field: 'description',
+        message:
+          'First-2-Sentences-Regel: Die ersten zwei Sätze (Etsy-/Google-Vorschau) müssen Produkt + Holzart klar nennen.',
+      })
+      scorePenalty += 5
+    }
+    if (!hatHolz(description)) {
+      descHolzartOk = false
+      issues.push({ severity: 'warning', field: 'description', message: 'Holzart wird nicht genannt.' })
+      scorePenalty += 4
+    }
+    if (!hatExakteMasse(description)) {
+      descMasseOk = false
+      issues.push({
+        severity: 'warning',
+        field: 'description',
+        message: 'Exakte Maße fehlen (Durchmesser × Höhe in cm, z. B. „Ø 24 × 9 cm“).',
+      })
+      scorePenalty += 4
+    }
+    const hatFinish = FINISH_RE.test(description)
+    const hatPflege = PFLEGE_RE.test(description)
+    if (!hatFinish || !hatPflege) {
+      descPflegeOk = false
+      issues.push({
+        severity: 'info',
+        field: 'description',
+        message: `${!hatFinish ? 'Finish (z. B. Öl/Wachs)' : ''}${!hatFinish && !hatPflege ? ' und ' : ''}${!hatPflege ? 'Pflegehinweis' : ''} fehlt.`,
+      })
+      scorePenalty += 2
+    }
+  } else {
+    descFirst2Ok = false
+    descHolzartOk = false
+    descMasseOk = false
+    descPflegeOk = false
+  }
+
   // Exact Match: relevante Titel-Keywords in Tags (Maße, Standort, Prozess-Füllwörter auslassen)
   const TITLE_TAG_SKIP = new Set([
     'handgedreht',
@@ -416,14 +528,54 @@ export function pruefeEtsySeoRegeln(input: {
     titleOk,
     titleFrontloadOk,
     titleLengthIdeal,
+    titleStopwordOk,
     tagsCountOk,
     tagsLengthOk,
     tagsLongtailOk,
     tagsStemOk,
     tagsAttrOk,
     descriptionOk,
+    descFirst2Ok,
+    descHolzartOk,
+    descMasseOk,
+    descPflegeOk,
     scorePenalty: Math.min(60, scorePenalty),
   }
+}
+
+/** Wie viele reale Markt-Phrasen (Autosuggest/Konkurrenz-Tags) Titel + Tags abdecken. */
+export function pruefeMarktAbdeckung(
+  input: { title: string; tags: string[] },
+  kandidaten: string[],
+  top = 10,
+): EtsyMarktAbdeckung {
+  const pruefliste = kandidaten.slice(0, top)
+  const tagSet = new Set(input.tags.map((t) => norm(t).trim()))
+  const titel = norm(input.title)
+  const abgedeckt: string[] = []
+  const fehlend: string[] = []
+  for (const k of pruefliste) {
+    const n = norm(k).trim()
+    if (tagSet.has(n) || titel.includes(n)) abgedeckt.push(k)
+    else fehlend.push(k)
+  }
+  return {
+    abgedeckt,
+    fehlend,
+    quote: pruefliste.length ? Math.round((abgedeckt.length / pruefliste.length) * 100) / 100 : 1,
+  }
+}
+
+export function marktIssues(abdeckung: EtsyMarktAbdeckung, kandidatenAnzahl: number): EtsySeoIssue[] {
+  if (kandidatenAnzahl < 5) return []
+  if (abdeckung.quote >= 0.3) return []
+  return [
+    {
+      severity: abdeckung.quote < 0.1 ? 'warning' : 'info',
+      field: 'tags',
+      message: `Nur ${abdeckung.abgedeckt.length} von ${abdeckung.abgedeckt.length + abdeckung.fehlend.length} realen Etsy-Suchphrasen abgedeckt — passende ergänzen: ${abdeckung.fehlend.slice(0, 5).join(', ')}.`,
+    },
+  ]
 }
 
 export function pruefeListingRegeln(
@@ -585,6 +737,13 @@ export function berechneEtsyDraftSeoGeoScore(input: {
     { id: 'stem', label: 'Keine Stemming-Duplikate', ok: regel.tagsStemOk, weight: 4, group: 'seo' },
     { id: 'attr', label: 'Keine reinen Kategorie/Material-Tags', ok: regel.tagsAttrOk, weight: 3, group: 'seo' },
     { id: 'exact', label: 'Titel-Keywords in Tags abgedeckt', ok: exactMatchOk, weight: 5, group: 'seo' },
+    { id: 'stopword', label: 'Kein Stop-Wort-Cluster vorne', ok: regel.titleStopwordOk, weight: 2, group: 'seo' },
+
+    // Beschreibung / Fakten
+    { id: 'first2', label: 'Erste 2 Sätze: Produkt + Holzart', ok: regel.descFirst2Ok, weight: 4, group: 'geo' },
+    { id: 'holzart', label: 'Holzart genannt', ok: regel.descHolzartOk, weight: 3, group: 'geo' },
+    { id: 'masse', label: 'Exakte Maße (Ø × H cm)', ok: regel.descMasseOk, weight: 3, group: 'geo' },
+    { id: 'pflege', label: 'Finish + Pflege', ok: regel.descPflegeOk, weight: 2, group: 'geo' },
 
     // GEO (Summe = 30)
     { id: 'what', label: 'GEO: WAS klar', ok: hasWhat, weight: 8, group: 'geo' },

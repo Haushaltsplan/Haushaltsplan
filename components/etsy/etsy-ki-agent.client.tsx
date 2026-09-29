@@ -3,9 +3,12 @@
 import { PageChrome, PageHero, PageSection, PageSectionPanel } from '@/components/page-shell'
 import { compressImageFileForCoach, coachImageDataUrl, type CoachImagePart } from '@/lib/finance-coach-images'
 import { oeffneEtsyOAuthUrl } from '@/lib/etsy/etsy-oauth-open'
+import type { EtsyMarktAbdeckung } from '@/lib/etsy/etsy-markt-types'
 import {
   berechneEtsyDraftSeoGeoScore,
   ETSY_SEO_TAG_COUNT,
+  ETSY_SEO_TAG_MAX,
+  pruefeMarktAbdeckung,
   scoreFarbe,
 } from '@/lib/etsy/etsy-seo-regeln'
 import {
@@ -47,6 +50,24 @@ type DraftResult = {
 
 type Schritt = 'aufnahme' | 'freigabe'
 
+type MarktInfo = {
+  seeds: string[]
+  keywordKandidaten: string[]
+  abdeckung: EtsyMarktAbdeckung
+  degradiert: boolean
+  hinweise: string[]
+  quellen: {
+    autosuggest: Array<{ query: string; provider: string; quelle: string }>
+    competitors: Array<{
+      keyword: string
+      provider: string
+      quelle: string
+      listings: number
+      preisMedianEur: number | null
+    }>
+  }
+}
+
 type EtsyKiAgentClientProps = {
   /** Eingebettet im Etsy-Hub (ohne eigenen Chrome/Connect). */
   hubModus?: boolean
@@ -82,7 +103,8 @@ export function EtsyKiAgentClient({
 
   const [schritt, setSchritt] = useState<Schritt>('aufnahme')
   const [busy, setBusy] = useState(false)
-  const [busyKind, setBusyKind] = useState<'analyse' | 'optimize' | 'draft' | null>(null)
+  const [busyKind, setBusyKind] = useState<'analyse' | 'optimize' | 'anreichern' | 'draft' | null>(null)
+  const [markt, setMarkt] = useState<MarktInfo | null>(null)
 
   const [editTitle, setEditTitle] = useState('')
   const [editDescription, setEditDescription] = useState('')
@@ -365,12 +387,17 @@ export function EtsyKiAgentClient({
           finishText: finishText.trim() || undefined,
         }),
       })
-      const j = (await res.json()) as { error?: string; listing?: EtsyGeneratedListing }
+      const j = (await res.json()) as {
+        error?: string
+        listing?: EtsyGeneratedListing
+        markt?: MarktInfo
+      }
       if (!res.ok || !j.listing) {
         toast.error(j.error ?? 'Analyse fehlgeschlagen.')
         return
       }
       uebernehmeListing(j.listing)
+      setMarkt(j.markt ?? null)
       if (filterFotoWarnungen(j.listing.fotoCheck.warnungen).length) {
         toast(`Foto-Hinweise: ${filterFotoWarnungen(j.listing.fotoCheck.warnungen).length}`, {
           icon: '📷',
@@ -495,6 +522,7 @@ export function EtsyKiAgentClient({
       void ladeVorlageUndHistorie()
       setSchritt('aufnahme')
       setDraftListing(null)
+      setMarkt(null)
       setImages([])
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Fehler')
@@ -540,7 +568,36 @@ export function EtsyKiAgentClient({
     fotoCheck,
   ])
 
-  async function optimiertNeuGenerieren() {
+  const marktLive = useMemo(() => {
+    if (!markt || schritt !== 'freigabe') return null
+    const tags = editTags
+      .split(',')
+      .map((t) => t.trim())
+      .filter(Boolean)
+    return pruefeMarktAbdeckung({ title: editTitle, tags }, markt.keywordKandidaten)
+  }, [markt, schritt, editTags, editTitle])
+
+  function marktTagEinfuegen(kandidat: string) {
+    const tags = editTags
+      .split(',')
+      .map((t) => t.trim())
+      .filter(Boolean)
+    if (tags.some((t) => t.toLowerCase() === kandidat.toLowerCase())) return
+    if (kandidat.length > ETSY_SEO_TAG_MAX) {
+      toast.error(`Tag zu lang (max. ${ETSY_SEO_TAG_MAX}).`)
+      return
+    }
+    if (tags.length >= ETSY_SEO_TAG_COUNT) {
+      const ersetzt = tags[tags.length - 1]
+      tags[tags.length - 1] = kandidat
+      toast(`„${ersetzt}“ → „${kandidat}“`, { icon: '🔁' })
+    } else {
+      tags.push(kandidat)
+    }
+    setEditTags(tags.join(', '))
+  }
+
+  async function optimiertNeuGenerieren(anreichern = false) {
     if (images.length === 0) {
       toast.error('Fotos fehlen für die Neugenerierung.')
       return
@@ -557,13 +614,15 @@ export function EtsyKiAgentClient({
     ].slice(0, 16)
 
     setBusy(true)
-    setBusyKind('optimize')
+    setBusyKind(anreichern ? 'anreichern' : 'optimize')
+    const abdeckungVorher = marktLive?.abgedeckt.length ?? null
     try {
       const res = await fetch('/api/etsy/listing/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           images,
+          anreichern,
           holzart: holzart.trim() || undefined,
           masse: masse.trim() || undefined,
           materials: holzart.trim() ? [holzart.trim()] : undefined,
@@ -590,14 +649,23 @@ export function EtsyKiAgentClient({
         error?: string
         listing?: EtsyGeneratedListing
         score?: { overall: number; seoScore: number; geoScore: number }
+        markt?: MarktInfo
       }
       if (!res.ok || !j.listing) {
         toast.error(j.error ?? 'Optimierung fehlgeschlagen.')
         return
       }
       uebernehmeListing(j.listing)
+      if (j.markt) setMarkt(j.markt)
       const o = j.score?.overall
-      if (o != null && o > scoreVorher) {
+      if (anreichern && j.markt) {
+        const n = j.markt.abdeckung.abgedeckt.length
+        const gesamt = n + j.markt.abdeckung.fehlend.length
+        toast.success(
+          `Markt-Abdeckung ${abdeckungVorher != null ? `${abdeckungVorher} → ` : ''}${n}/${gesamt}` +
+            (o != null ? ` · Score ${scoreVorher} → ${o}` : ''),
+        )
+      } else if (o != null && o > scoreVorher) {
         toast.success(`Score ${scoreVorher} → ${o}`)
       } else if (o != null && o === scoreVorher) {
         toast.success(`Score gehalten (${o}) — Entwurf gehärtet`)
@@ -972,6 +1040,10 @@ export function EtsyKiAgentClient({
                       ['Long-Tail', liveScore.regel.tagsLongtailOk],
                       ['Stemming', liveScore.regel.tagsStemOk],
                       ['Attr', liveScore.regel.tagsAttrOk],
+                      ['Stop-Wörter', liveScore.regel.titleStopwordOk],
+                      ['First-2', liveScore.regel.descFirst2Ok],
+                      ['Maße', liveScore.regel.descMasseOk],
+                      ['Pflege', liveScore.regel.descPflegeOk],
                     ] as const
                   ).map(([label, ok]) => (
                     <span
@@ -1007,23 +1079,81 @@ export function EtsyKiAgentClient({
                     ))}
                   </ul>
                 )}
-                {liveScore.overall < 100 ? (
+                <div className="flex flex-wrap items-center gap-2">
+                  {liveScore.overall < 100 ? (
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => void optimiertNeuGenerieren(false)}
+                      className="rounded-lg bg-teal-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-teal-600 disabled:opacity-50"
+                    >
+                      {busyKind === 'optimize' ? 'Optimiert…' : 'Auf 100 optimieren'}
+                    </button>
+                  ) : (
+                    <p className="text-xs font-medium text-emerald-300">On-Page-Ziel erreicht (100).</p>
+                  )}
                   <button
                     type="button"
                     disabled={busy}
-                    onClick={() => void optimiertNeuGenerieren()}
-                    className="rounded-lg bg-teal-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-teal-600 disabled:opacity-50"
+                    onClick={() => void optimiertNeuGenerieren(true)}
+                    title="Zieht frische Etsy-Markt-Daten (Autosuggest + Top-Konkurrenz) und richtet Titel/Tags darauf aus"
+                    className="rounded-lg border border-amber-500/50 bg-amber-500/10 px-3 py-1.5 text-xs font-medium text-amber-200 hover:bg-amber-500/20 disabled:opacity-50"
                   >
-                    {busyKind === 'optimize' ? 'Optimiert…' : 'Auf 100 optimieren'}
+                    {busyKind === 'anreichern' ? 'Reichert an…' : 'Auto-SEO Anreichern'}
                   </button>
-                ) : (
-                  <p className="text-xs font-medium text-emerald-300">On-Page-Ziel erreicht (100).</p>
-                )}
+                </div>
                 <p className="text-[10px] text-[var(--app-text-muted)]">
-                  SEO-Score = On-Page-Checklist (Relevanz + GEO + Fotos Haupt/Detail). 100 = alles grün.
-                  Maßstab-Fotos sind optional und zählen nicht.
-                  {liveScore.overall < 100 ? ' Optimieren: 1 Free-Gemini-Call.' : ''}
+                  SEO-Score = On-Page-Checklist (Relevanz + GEO + Fakten + Fotos Haupt/Detail). 100 = alles grün.
+                  Maßstab-Fotos sind optional und zählen nicht. Optimieren/Anreichern: je 1 Free-Gemini-Call.
                 </p>
+              </div>
+            )}
+
+            {markt && marktLive && (
+              <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-3 space-y-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-xs font-medium text-[var(--app-text-muted)]">Markt-Signale</span>
+                  <span
+                    className={`rounded-md px-2 py-0.5 text-xs font-semibold tabular-nums ${scoreBadgeClass(Math.round(marktLive.quote * 100))}`}
+                  >
+                    {marktLive.abgedeckt.length}/{marktLive.abgedeckt.length + marktLive.fehlend.length} abgedeckt
+                  </span>
+                  {markt.quellen.competitors
+                    .filter((c) => c.provider !== 'unavailable')
+                    .map((c) => (
+                      <span key={c.keyword} className="text-[10px] text-[var(--app-text-muted)]">
+                        Top-{c.listings} „{c.keyword}“
+                        {c.preisMedianEur != null ? ` · Median ${c.preisMedianEur} €` : ''}
+                        {c.quelle === 'cache' ? ' · Cache' : ''}
+                      </span>
+                    ))}
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {marktLive.abgedeckt.map((k) => (
+                    <span key={k} className="rounded bg-emerald-500/15 px-1.5 py-0.5 text-[10px] text-emerald-300">
+                      ✓ {k}
+                    </span>
+                  ))}
+                  {marktLive.fehlend.map((k) => (
+                    <button
+                      key={k}
+                      type="button"
+                      onClick={() => marktTagEinfuegen(k)}
+                      title="Als Tag übernehmen (ersetzt bei 13/13 den letzten Tag)"
+                      className="rounded border border-dashed border-amber-500/50 px-1.5 py-0.5 text-[10px] text-amber-200 hover:bg-amber-500/15"
+                    >
+                      + {k}
+                    </button>
+                  ))}
+                </div>
+                {markt.degradiert && markt.hinweise.length > 0 && (
+                  <p className="text-[10px] text-[var(--app-text-muted)]">{markt.hinweise.join(' ')}</p>
+                )}
+                {draftListing.geoInsights?.intentQueries.length ? (
+                  <p className="text-[10px] text-[var(--app-text-muted)]">
+                    KI-Such-Intents: {draftListing.geoInsights.intentQueries.join(' · ')}
+                  </p>
+                ) : null}
               </div>
             )}
 

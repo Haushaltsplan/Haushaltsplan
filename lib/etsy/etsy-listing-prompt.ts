@@ -33,9 +33,9 @@ Trenner: | . Keine Emojis im Titel.
 - Primär-Keyword (Produkt + Holz/Handwerk) in den ersten 30–50 Zeichen (Mobile).
 - Keine Füllwörter vorne (beautiful, amazing, wunderbar, traumhaft).
 
-2. PRODUKTBESCHREIBUNG
-- GEO zuerst (2–3 Sätze): WAS (Produkt, Unikat, Holzart) · FÜR WEN (z. B. Obstschale, Sammler, Geschenk, Esstisch/Sideboard) · optional ANLASS (Holzhochzeit, Einzug, Geburtstag).
-- Dann Prozess: Rohling vordrechseln → ca. 1 Jahr kontrollierte Lufttrocknung → finale Formgebung → Finish.
+2. PRODUKTBESCHREIBUNG — Reihenfolge: HOOK → HANDWERK/STORY → SPECS → PFLEGE/ANLASS
+- HOOK / GEO (genau die ersten 2 Sätze = Etsy-Vorschau + Google-Snippet): WAS (Produkt, Unikat, Holzart) · FÜR WEN (z. B. Obstschale, Sammler, Geschenk, Esstisch/Sideboard) · Nutzen. Holzart MUSS in diesen zwei Sätzen stehen.
+- HANDWERK/STORY: Rohling vordrechseln → ca. 1 Jahr kontrollierte Lufttrocknung → finale Formgebung → Finish.
 - Finish-Text (verbindlich, wenn vom Nutzer vorgegeben): ${finish}
 - Details — neue Zeile VOR jedem Emoji:
 🪵 HOLZART: …
@@ -74,7 +74,19 @@ preisMinEur ≤ preisEmpfohlenEur ≤ preisMaxEur.
 - taxonomyId: passende Etsy-Taxonomy-ID — für dekorative Holzschalen IMMER 1003 (Decorative Bowls / Dekorative Schalen); taxonomyLabel „Dekorative Schalen“.
 - taxonomyLabel: kurze DE-Bezeichnung der Kategorie.
 
-7. MASSE: Wenn der Nutzer Maße angibt, exakt übernehmen. Fehlen Maße und sie sind auf Fotos nicht ablesbar: schreibe in 📏 MASSE exakt den Platzhalter [MASSE EINFÜGEN] — sonst echte Maße.
+7. MASSE: Wenn der Nutzer Maße angibt, exakt übernehmen. Fehlen Maße und sie sind auf Fotos nicht ablesbar: schreibe in 📏 MASSE exakt den Platzhalter [MASSE EINFÜGEN] — sonst echte Maße. Format bevorzugt „Ø 24 × H 9 cm“.
+
+8. MARKT-DATEN (falls im Nutzer-Prompt geliefert)
+- Reale Etsy-Suchanfragen und häufige Konkurrenz-Tags haben Vorrang vor erfundenen Tags — aber NUR wenn sie zu Holzart, Form und Unikat-Charakter passen.
+- Die stärkste passende Phrase gehört in die ersten 50 Zeichen des Titels; weitere als Tags (je ≤20 Zeichen).
+- Mindestens 5 der 13 Tags aus den Markt-Daten, sofern passend; Rest Long-Tail aus Bildanalyse/GEO.
+- Konkurrenz-Preise sind Orientierung; Unikat-Preis nicht darunter drücken.
+
+9. GEO_INSIGHTS (geoInsights)
+- zielgruppe: 1 Satz.
+- anlaesse: 2–4 konkrete Anlässe.
+- intentQueries: 3–5 Sprach-/KI-Suchanfragen, auf die dieses Listing eine zitierfähige Antwort ist (z. B. „nachhaltiges Holzgeschenk zur Holzhochzeit“).
+- marktKeywords: die tatsächlich übernommenen Markt-Phrasen (leer, wenn keine geliefert).
 
 AUSGABE: Nur gültiges JSON gemäß Schema.`
 }
@@ -102,6 +114,16 @@ export const ETSY_LISTING_JSON_SCHEMA: Record<string, unknown> = {
         warnungen: { type: 'ARRAY', items: { type: 'STRING' } },
       },
       required: ['hatHauptbild', 'hatDetailMaserung', 'hatMassstab', 'warnungen'],
+    },
+    geoInsights: {
+      type: 'OBJECT',
+      properties: {
+        zielgruppe: { type: 'STRING' },
+        anlaesse: { type: 'ARRAY', items: { type: 'STRING' } },
+        intentQueries: { type: 'ARRAY', items: { type: 'STRING' } },
+        marktKeywords: { type: 'ARRAY', items: { type: 'STRING' } },
+      },
+      required: ['zielgruppe', 'anlaesse', 'intentQueries', 'marktKeywords'],
     },
   },
   required: [

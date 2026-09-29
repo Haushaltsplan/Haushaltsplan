@@ -14,7 +14,13 @@ import type {
   EtsySeoIssueSeverity,
   EtsyShopListingDetail,
 } from '@/lib/etsy/etsy-seo-audit-types'
-import { pruefeListingRegeln } from '@/lib/etsy/etsy-seo-regeln'
+import type { EtsyMarktKontext } from '@/lib/etsy/etsy-markt-types'
+import {
+  baueMarktPromptBlock,
+  ladeEtsyMarktKontext,
+  marktSeedsFuerListing,
+} from '@/lib/etsy/etsy-scraping'
+import { marktIssues, pruefeListingRegeln, pruefeMarktAbdeckung } from '@/lib/etsy/etsy-seo-regeln'
 import {
   geminiFreeTierFlashModelKandidaten,
   resolveGeminiFreeTierProvider,
@@ -130,13 +136,19 @@ function validiereAudit(raw: Record<string, unknown>): EtsySeoAuditResult {
     raw.geo_insights && typeof raw.geo_insights === 'object'
       ? (raw.geo_insights as Record<string, unknown>)
       : {}
+  const strListe = (v: unknown, max: number) =>
+    Array.isArray(v) ? v.map((x) => String(x).trim()).filter(Boolean).slice(0, max) : []
+  const aiScoreRoh = Number(geoRaw.ai_search_score)
   const geo_insights: EtsyGeoInsights = {
     target_audience_clarity: asClarity(geoRaw.target_audience_clarity),
-    missing_contexts: Array.isArray(geoRaw.missing_contexts)
-      ? geoRaw.missing_contexts.map((x) => String(x).trim()).filter(Boolean).slice(0, 12)
-      : [],
+    missing_contexts: strListe(geoRaw.missing_contexts, 12),
     what_clarity: geoRaw.what_clarity != null ? asClarity(geoRaw.what_clarity) : undefined,
     occasion_clarity: geoRaw.occasion_clarity != null ? asClarity(geoRaw.occasion_clarity) : undefined,
+    ai_search_score: Number.isFinite(aiScoreRoh)
+      ? Math.max(0, Math.min(100, Math.round(aiScoreRoh)))
+      : undefined,
+    intent_queries_covered: strListe(geoRaw.intent_queries_covered, 8),
+    intent_queries_missing: strListe(geoRaw.intent_queries_missing, 8),
   }
 
   const sugRaw =
@@ -191,22 +203,48 @@ export function regelbasierteSeoHinweise(listing: EtsyShopListingDetail): EtsySe
   return pruefeListingRegeln(listing).issues
 }
 
+export type EtsyAuditOptionen = {
+  /** Vorab geladener Markt-Kontext; `null` = bewusst ohne Marktdaten. */
+  markt?: EtsyMarktKontext | null
+  /** Limits für automatisches Nachladen (Batch/Cron sparsam halten). */
+  marktLimits?: { maxAutosuggest?: number; maxCompetitor?: number; budgetMs?: number }
+}
+
 export async function auditiereEtsyListing(
   listing: EtsyShopListingDetail,
+  opts?: EtsyAuditOptionen,
 ): Promise<EtsySeoAuditResult> {
   const resolved = resolveGeminiFreeTierProvider()
   if (!resolved) {
     throw new Error('GEMINI_API_KEY_FREE fehlt — SEO-Audit nutzt nur den Free-Tier-Key.')
   }
 
+  const markt =
+    opts?.markt !== undefined
+      ? opts.markt
+      : await ladeEtsyMarktKontext({
+          seeds: marktSeedsFuerListing({ title: listing.title, tags: listing.tags }),
+          maxAutosuggest: opts?.marktLimits?.maxAutosuggest ?? 2,
+          maxCompetitor: opts?.marktLimits?.maxCompetitor ?? 1,
+          budgetMs: opts?.marktLimits?.budgetMs ?? 15_000,
+        })
+
   const regelReport = pruefeListingRegeln(listing)
+  const abdeckung = markt
+    ? pruefeMarktAbdeckung({ title: listing.title, tags: listing.tags }, markt.keywordKandidaten)
+    : null
+  const marktRegelIssues = markt && abdeckung ? marktIssues(abdeckung, markt.keywordKandidaten.length) : []
+  const alleRegelIssues = [...regelReport.issues, ...marktRegelIssues]
+
+  const marktBlock = baueMarktPromptBlock(markt)
   const messages: CoachMessage[] = [
     {
       role: 'user',
       content:
         baueUserPayload(listing) +
+        (marktBlock ? `\n\n${marktBlock}` : '') +
         '\n\nBereits bekannte Regel-Issues:\n' +
-        (regelReport.issues.map((i) => `- [${i.severity}] ${i.field}: ${i.message}`).join('\n') ||
+        (alleRegelIssues.map((i) => `- [${i.severity}] ${i.field}: ${i.message}`).join('\n') ||
           '- keine'),
     },
   ]
@@ -235,11 +273,20 @@ export async function auditiereEtsyListing(
   const audit = validiereAudit(parsed)
   audit.overall_score = Math.max(0, Math.min(100, audit.overall_score - regelReport.scorePenalty))
   const seen = new Set(audit.seo_issues.map((i) => `${i.field}:${i.message}`))
-  for (const r of regelReport.issues) {
+  for (const r of alleRegelIssues) {
     const k = `${r.field}:${r.message}`
     if (!seen.has(k)) {
       audit.seo_issues.unshift(r)
       seen.add(k)
+    }
+  }
+  if (markt && abdeckung) {
+    audit.markt = {
+      abdeckung,
+      keywordKandidaten: markt.keywordKandidaten.slice(0, 20),
+      preisMedianEur: markt.competitors.find((c) => c.preis.median != null)?.preis.median ?? null,
+      degradiert: markt.degradiert,
+      hinweise: markt.hinweise,
     }
   }
   return audit

@@ -6,9 +6,17 @@ import {
   buildEtsyListingSystemPrompt,
   ETSY_LISTING_JSON_SCHEMA,
 } from '@/lib/etsy/etsy-listing-prompt'
+import type { EtsyMarktKontext } from '@/lib/etsy/etsy-markt-types'
+import {
+  baueMarktPromptBlock,
+  ladeEtsyMarktKontext,
+  marktSeedsFuerBasis,
+  marktSeedsFuerListing,
+} from '@/lib/etsy/etsy-scraping'
 import {
   berechneEtsyDraftSeoGeoScore,
   haerteEtsyListingFuerScore,
+  pruefeMarktAbdeckung,
 } from '@/lib/etsy/etsy-seo-regeln'
 import {
   ETSY_DEFAULT_TAXONOMY_ID,
@@ -18,6 +26,7 @@ import {
   type EtsyFotoCheck,
   type EtsyGeneratedListing,
   type EtsyListingBasis,
+  type EtsyListingGeoInsights,
 } from '@/lib/etsy/etsy-types'
 import {
   geminiFreeTierFlashModelKandidaten,
@@ -144,6 +153,21 @@ function normalisiereFotoCheck(raw: unknown, imageCount: number): EtsyFotoCheck 
   }
 }
 
+function normalisiereGeoInsights(raw: unknown): EtsyListingGeoInsights | undefined {
+  if (!raw || typeof raw !== 'object') return undefined
+  const o = raw as Record<string, unknown>
+  const liste = (v: unknown, max: number) =>
+    Array.isArray(v) ? v.map((x) => String(x).trim()).filter(Boolean).slice(0, max) : []
+  const zielgruppe = typeof o.zielgruppe === 'string' ? o.zielgruppe.trim().slice(0, 240) : ''
+  const geo: EtsyListingGeoInsights = {
+    zielgruppe,
+    anlaesse: liste(o.anlaesse, 6),
+    intentQueries: liste(o.intentQueries, 6),
+    marktKeywords: liste(o.marktKeywords, 13),
+  }
+  return zielgruppe || geo.intentQueries.length ? geo : undefined
+}
+
 function validiereListing(raw: Record<string, unknown>, imageCount: number): EtsyGeneratedListing {
   let title = typeof raw.title === 'string' ? raw.title.trim().replace(/\s+/g, ' ') : ''
   if (title.length > TITLE_MAX) title = title.slice(0, TITLE_MAX).trim()
@@ -207,12 +231,27 @@ function validiereListing(raw: Record<string, unknown>, imageCount: number): Ets
     taxonomyId: tax.taxonomyId,
     taxonomyLabel: tax.taxonomyLabel,
     fotoCheck: normalisiereFotoCheck(raw.fotoCheck, imageCount),
+    geoInsights: normalisiereGeoInsights(raw.geoInsights),
   }
 }
 
-function baueUserPrompt(basis: EtsyListingBasis): string {
+async function marktOderLaden(
+  markt: EtsyMarktKontext | null | undefined,
+  seeds: string[],
+): Promise<EtsyMarktKontext | null> {
+  if (markt !== undefined) return markt
+  return ladeEtsyMarktKontext({ seeds, maxAutosuggest: 3, maxCompetitor: 2 })
+}
+
+function unikatZeile(basis: EtsyListingBasis): string {
+  const wer = basis.whoMade === 'i_did' || !basis.whoMade ? 'selbst gedrechselt' : basis.whoMade
+  return `Unikat-Status: Einzelstück (Menge 1), ${wer}${basis.whenMade ? `, Entstehung ${basis.whenMade}` : ''}.`
+}
+
+function baueUserPrompt(basis: EtsyListingBasis, markt: EtsyMarktKontext | null): string {
   const zeilen = [
     'Erstelle ein Etsy-Listing (JSON) für dieses handgedrechselte Holzprodukt.',
+    unikatZeile(basis),
     'Kapazität ~50 Unikate/Jahr — Preisspanne marktfähig und verkaufbar (weder Dumping noch Ladenhüter).',
     'Preisbegründung MUSS Schalengröße/Maße + Holzart + Optik + sorgfältige Handarbeit nennen.',
     'Prüfe Foto-Rollen: Hauptbild, Detail Maserung (Maßstab optional, keine Warnung).',
@@ -229,13 +268,21 @@ function baueUserPrompt(basis: EtsyListingBasis): string {
   if (basis.finishText?.trim()) zeilen.push(`Finish (verbindlich): ${basis.finishText.trim()}`)
   if (basis.standortText?.trim()) zeilen.push(`Standort-Text: ${basis.standortText.trim()}`)
   if (basis.materials?.length) zeilen.push(`Materialien: ${basis.materials.join(', ')}`)
+  const marktBlock = baueMarktPromptBlock(markt)
+  if (marktBlock) zeilen.push('', marktBlock)
   zeilen.push('Analysiere die angehängten Produktfotos gründlich.')
   return zeilen.join('\n')
+}
+
+export type EtsyGeneratorOptionen = {
+  /** Vorab geladener Markt-Kontext; `null` = ohne Marktdaten, `undefined` = automatisch laden. */
+  markt?: EtsyMarktKontext | null
 }
 
 export async function generiereEtsyListingTexte(
   images: CoachImagePart[],
   basis: EtsyListingBasis,
+  opts?: EtsyGeneratorOptionen,
 ): Promise<EtsyGeneratedListing> {
   if (images.length === 0) throw new Error('Mindestens ein Produktfoto ist erforderlich.')
 
@@ -244,10 +291,12 @@ export async function generiereEtsyListingTexte(
     throw new Error('GEMINI_API_KEY_FREE fehlt — der Etsy-Agent nutzt nur den Free-Tier-Key.')
   }
 
+  const markt = await marktOderLaden(opts?.markt, marktSeedsFuerBasis({ holzart: basis.holzart }))
+
   const messages: CoachMessage[] = [
     {
       role: 'user',
-      content: baueUserPrompt(basis),
+      content: baueUserPrompt(basis, markt),
       images: images.slice(0, 4),
     },
   ]
@@ -321,6 +370,10 @@ export async function optimiereEtsyListingTexte(
   images: CoachImagePart[],
   basis: EtsyListingBasis,
   draft: EtsyListingOptimizeInput,
+  opts?: EtsyGeneratorOptionen & {
+    /** `markt` = Auto-SEO Anreichern: Tags/Titel gezielt auf reale Suchphrasen ausrichten. */
+    fokus?: 'score' | 'markt'
+  },
 ): Promise<EtsyGeneratedListing> {
   if (images.length === 0) throw new Error('Mindestens ein Produktfoto ist erforderlich.')
 
@@ -328,6 +381,28 @@ export async function optimiereEtsyListingTexte(
   if (!resolved) {
     throw new Error('GEMINI_API_KEY_FREE fehlt — der Etsy-Agent nutzt nur den Free-Tier-Key.')
   }
+
+  const markt = await marktOderLaden(
+    opts?.markt,
+    marktSeedsFuerListing({ title: draft.title, tags: draft.tags }),
+  )
+  const abdeckung = markt
+    ? pruefeMarktAbdeckung({ title: draft.title, tags: draft.tags }, markt.keywordKandidaten)
+    : null
+  const marktFokus =
+    opts?.fokus === 'markt' && markt
+      ? [
+          'FOKUS MARKT-ANREICHERUNG:',
+          '- Ersetze bis zu 5 schwächste Tags durch passende reale Suchphrasen aus MARKT-DATEN.',
+          '- Stärkste passende Phrase in die ersten 50 Titel-Zeichen (Titel bleibt lesbar, Trenner „ | “).',
+          '- Erste 2 Sätze der Beschreibung um passende Intent-Phrase ergänzen, Fakten unverändert.',
+          abdeckung
+            ? `- Aktuell abgedeckt: ${abdeckung.abgedeckt.join(', ') || 'keine'}; noch offen: ${abdeckung.fehlend.slice(0, 8).join(', ')}`
+            : '',
+        ]
+          .filter(Boolean)
+          .join('\n')
+      : ''
 
   const beforeScore = berechneEtsyDraftSeoGeoScore({
     title: draft.title,
@@ -375,6 +450,9 @@ export async function optimiereEtsyListingTexte(
     basis.holzart?.trim() ? `Holzart (verbindlich): ${basis.holzart.trim()}` : '',
     basis.masse?.trim() ? `Maße (verbindlich): ${basis.masse.trim()}` : '',
     basis.finishText?.trim() ? `Finish (verbindlich): ${basis.finishText.trim()}` : '',
+    unikatZeile(basis),
+    baueMarktPromptBlock(markt),
+    marktFokus,
   ]
     .filter(Boolean)
     .join('\n')
