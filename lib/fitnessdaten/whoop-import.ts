@@ -1,7 +1,8 @@
 /**
- * WHOOP-Datenimport: offizieller App-Export (CSV) + Omnia-JSON-Backup.
+ * WHOOP-Datenimport: offizieller App-Export (CSV/ZIP) + Omnia-JSON-Backup.
  */
 
+import { unzipSync, strFromU8 } from 'fflate'
 import {
   ladeDailyStore,
   speichereDailyStore,
@@ -32,6 +33,40 @@ export type WhoopImportErgebnis = {
   quellen: string[]
   hinweise: string[]
   fehler: string[]
+}
+
+/** Liest CSV-Dateien und/oder Whoop-ZIP-Export (entpackt CSVs mit fflate). */
+export async function leseWhoopImportDateien(
+  files: FileList | File[],
+): Promise<{ name: string; text: string }[]> {
+  const list = Array.from(files)
+  const out: { name: string; text: string }[] = []
+
+  for (const f of list) {
+    const lower = f.name.toLowerCase()
+    if (lower.endsWith('.zip')) {
+      try {
+        const buf = new Uint8Array(await f.arrayBuffer())
+        const unzipped = unzipSync(buf)
+        for (const [path, data] of Object.entries(unzipped)) {
+          const base = path.split(/[/\\]/).pop() ?? path
+          if (!base.toLowerCase().endsWith('.csv')) continue
+          if (path.includes('__MACOSX')) continue
+          out.push({ name: base, text: strFromU8(data) })
+        }
+      } catch (e) {
+        throw new Error(
+          `ZIP konnte nicht gelesen werden (${f.name}): ${e instanceof Error ? e.message : 'unbekannt'}`,
+        )
+      }
+      continue
+    }
+    if (lower.endsWith('.csv') || lower.endsWith('.txt')) {
+      out.push({ name: f.name, text: await f.text() })
+    }
+  }
+
+  return out
 }
 
 export type OmniaFitnessExport = {

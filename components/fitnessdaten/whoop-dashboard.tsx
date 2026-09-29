@@ -356,6 +356,23 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange, ini
 
           return (
             <>
+              {(!heute.sleepScore && !heute.recoveryPercent && !heute.strain) ? (
+                <div className="mt-4">
+                  <FitnessWhoopImportPanel
+                    kompakt
+                    embedded
+                    onImportComplete={() => setDataRevision((r) => r + 1)}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setTab('connect')}
+                    className="mt-2 w-full text-center text-[11px] font-semibold text-sky-300/90 underline-offset-2 hover:underline"
+                  >
+                    Mehr unter Gerät →
+                  </button>
+                </div>
+              ) : null}
+
               {/* ── DREI RINGE (Schlaf | Erholung | Belastung) ── */}
               <div className="mt-5 flex items-center justify-around gap-1">
                 {/* Schlaf */}
@@ -1296,6 +1313,7 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange, ini
 
         {tab === 'connect' && (
           <section className="mt-6 space-y-4">
+            <FitnessWhoopImportPanel embedded onImportComplete={() => setDataRevision((r) => r + 1)} />
             <p className="rounded-xl border border-white/[0.06] bg-white/[0.03] px-3 py-2.5 text-[11px] leading-relaxed text-[var(--app-text-muted)]">
               Omnia Whoop arbeitet nur über Bluetooth am Band — ohne Whoop-Abo und ohne Whoop-Cloud.
               Tageswerte werden über deinen Omnia-Login geräteübergreifend gesichert.
@@ -1303,7 +1321,6 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange, ini
             <FitnessUserProfilePanel embedded onSaved={() => setDataRevision((r) => r + 1)} />
             <FitnessVitalsPanel embedded onSaved={() => setDataRevision((r) => r + 1)} />
             <FitnessWhoopBlePanel embedded />
-            <FitnessWhoopImportPanel embedded onImportComplete={() => setDataRevision((r) => r + 1)} />
           </section>
         )}
       </div>

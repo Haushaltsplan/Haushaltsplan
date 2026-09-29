@@ -5,17 +5,25 @@ import {
   exportiereOmniaJson,
   importiereOmniaJson,
   importiereWhoopCsvDateien,
+  leseWhoopImportDateien,
   type WhoopImportErgebnis,
 } from '@/lib/fitnessdaten/whoop-import'
+import { ladeDailyStore } from '@/lib/fitnessdaten/daily-records'
 import { useCallback, useRef, useState } from 'react'
 import toast from 'react-hot-toast'
 
 type Props = {
   onImportComplete?: () => void
   embedded?: boolean
+  /** Auf Home-Leerzustand als kurzer Einstieg */
+  kompakt?: boolean
 }
 
-export function FitnessWhoopImportPanel({ onImportComplete, embedded = false }: Props) {
+export function FitnessWhoopImportPanel({
+  onImportComplete,
+  embedded = false,
+  kompakt = false,
+}: Props) {
   const csvRef = useRef<HTMLInputElement>(null)
   const jsonRef = useRef<HTMLInputElement>(null)
   const [busy, setBusy] = useState(false)
@@ -40,17 +48,14 @@ export function FitnessWhoopImportPanel({ onImportComplete, embedded = false }: 
       setBusy(true)
       setErgebnis(null)
       try {
-        const dateien: { name: string; text: string }[] = []
-        for (const f of Array.from(files)) {
-          const lower = f.name.toLowerCase()
-          if (!lower.endsWith('.csv') && !lower.endsWith('.txt')) continue
-          dateien.push({ name: f.name, text: await f.text() })
-        }
+        const dateien = await leseWhoopImportDateien(files)
         if (dateien.length === 0) {
-          toast.error('Keine CSV-Dateien ausgewählt.')
+          toast.error('Keine CSV-Dateien gefunden (ZIP entpacken oder .csv wählen).')
           return
         }
         nachImport(importiereWhoopCsvDateien(dateien))
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : 'Import fehlgeschlagen')
       } finally {
         setBusy(false)
         if (csvRef.current) csvRef.current.value = ''
@@ -79,26 +84,43 @@ export function FitnessWhoopImportPanel({ onImportComplete, embedded = false }: 
     toast.success('Backup heruntergeladen.')
   }, [])
 
+  const vorhandeneTage = (() => {
+    try {
+      return ladeDailyStore().days.length
+    } catch {
+      return 0
+    }
+  })()
+
   return (
     <div
-      className={`rounded-2xl border border-white/[0.08] bg-[#111113] ${embedded ? 'p-4' : 'p-5'}`}
+      className={`rounded-2xl border border-sky-500/25 bg-gradient-to-b from-sky-950/40 to-[#111113] ${
+        embedded || kompakt ? 'p-4' : 'p-5'
+      }`}
     >
-      <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-[var(--app-text)]">Daten importieren</p>
-      <p className="mt-2 text-xs leading-relaxed text-[var(--app-text-muted)]">
-        WHOOP-App → Profil → Datenschutz →{' '}
-        <strong className="font-semibold text-[var(--app-text-muted)]">Daten exportieren</strong> → ZIP entpacken → CSVs
-        hochladen. Unterstützt{' '}
-        <code className="text-[var(--app-text-muted)]">physiological_cycles.csv</code>,{' '}
-        <code className="text-[var(--app-text-muted)]">sleeps.csv</code>,{' '}
-        <code className="text-[var(--app-text-muted)]">workouts.csv</code>,{' '}
-        <code className="text-[var(--app-text-muted)]">journal_entries.csv</code>.
+      <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-sky-200">
+        Bisherige Whoop-Daten
       </p>
+      <p className="mt-2 text-xs leading-relaxed text-[var(--app-text-muted)]">
+        In der offiziellen Whoop-App: Profil → Datenschutz →{' '}
+        <strong className="font-semibold text-[var(--app-text)]">Daten exportieren</strong>. ZIP hier
+        wählen — oder die CSVs einzeln (
+        <code className="text-[10px] text-sky-200/80">physiological_cycles.csv</code>,{' '}
+        <code className="text-[10px] text-sky-200/80">sleeps.csv</code>,{' '}
+        <code className="text-[10px] text-sky-200/80">workouts.csv</code>
+        ).
+      </p>
+      {vorhandeneTage > 0 ? (
+        <p className="mt-2 text-[11px] text-emerald-200/80">
+          Bereits {vorhandeneTage} Tage lokal gespeichert — Import ergänzt / aktualisiert.
+        </p>
+      ) : null}
 
       <div className="mt-4 space-y-3">
         <input
           ref={csvRef}
           type="file"
-          accept=".csv,.txt,text/csv"
+          accept=".csv,.txt,.zip,text/csv,application/zip"
           multiple
           className="hidden"
           onChange={(e) => void leseDateien(e.target.files)}
@@ -107,34 +129,38 @@ export function FitnessWhoopImportPanel({ onImportComplete, embedded = false }: 
           type="button"
           disabled={busy}
           onClick={() => csvRef.current?.click()}
-          className="w-full rounded-xl border border-sky-500/30 bg-sky-950/30 py-3 text-sm font-semibold text-sky-200 transition hover:bg-sky-950/50 disabled:opacity-50"
+          className="w-full rounded-xl bg-sky-600 py-3.5 text-sm font-bold text-white shadow-md shadow-sky-950/40 transition hover:bg-sky-500 disabled:opacity-50"
         >
-          {busy ? 'Importiere …' : 'WHOOP-CSV importieren'}
+          {busy ? 'Importiere …' : 'CSV / ZIP importieren'}
         </button>
 
-        <input
-          ref={jsonRef}
-          type="file"
-          accept=".json,application/json"
-          className="hidden"
-          onChange={(e) => void leseJson(e.target.files?.[0] ?? null)}
-        />
-        <button
-          type="button"
-          disabled={busy}
-          onClick={() => jsonRef.current?.click()}
-          className="w-full rounded-xl border border-white/[0.08] bg-white/[0.03] py-2.5 text-sm font-medium text-[var(--app-text)] transition hover:bg-white/[0.06] disabled:opacity-50"
-        >
-          Omnia-Backup (JSON) importieren
-        </button>
+        {!kompakt ? (
+          <>
+            <input
+              ref={jsonRef}
+              type="file"
+              accept=".json,application/json"
+              className="hidden"
+              onChange={(e) => void leseJson(e.target.files?.[0] ?? null)}
+            />
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => jsonRef.current?.click()}
+              className="w-full rounded-xl border border-white/[0.08] bg-white/[0.03] py-2.5 text-sm font-medium text-[var(--app-text)] transition hover:bg-white/[0.06] disabled:opacity-50"
+            >
+              Omnia-Backup (JSON) importieren
+            </button>
 
-        <button
-          type="button"
-          onClick={exportBackup}
-          className="w-full rounded-xl border border-white/[0.06] py-2.5 text-sm font-medium text-[var(--app-text-muted)] transition hover:text-[var(--app-text)]"
-        >
-          Omnia-Backup exportieren
-        </button>
+            <button
+              type="button"
+              onClick={exportBackup}
+              className="w-full rounded-xl border border-white/[0.06] py-2.5 text-sm font-medium text-[var(--app-text-muted)] transition hover:text-[var(--app-text)]"
+            >
+              Omnia-Backup exportieren
+            </button>
+          </>
+        ) : null}
       </div>
 
       {ergebnis ? (
