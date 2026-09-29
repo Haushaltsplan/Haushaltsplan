@@ -16,7 +16,7 @@ import { NextResponse } from 'next/server'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
-export const maxDuration = 150
+export const maxDuration = 180
 
 type OptimizeBody = {
   title: string
@@ -148,7 +148,7 @@ export async function POST(req: Request) {
       maxAutosuggest: 3,
       maxCompetitor: anreichern ? 3 : 2,
       forceRefresh: anreichern,
-      budgetMs: 20_000,
+      budgetMs: 12_000,
     })
 
     const listing =

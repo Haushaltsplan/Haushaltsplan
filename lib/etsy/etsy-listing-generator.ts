@@ -315,8 +315,9 @@ export async function generiereEtsyListingTexte(
       thinkingMinimal: true,
       /** Listing-JSON ist lang; Thinking zählt mit — nicht zu knapp. */
       maxOutputTokens: 8192,
-      timeoutMs: 90_000,
-      geminiTotalBudgetMs: 110_000,
+      /** Pro Modell kürzer als das Gesamtbudget, damit bei hängendem Flash das nächste Modell echte Zeit hat. */
+      timeoutMs: 65_000,
+      geminiTotalBudgetMs: 140_000,
       geminiModels: geminiFreeTierFlashModelKandidaten(),
       jsonResponse: { schema: ETSY_LISTING_JSON_SCHEMA },
     },
@@ -478,8 +479,8 @@ export async function optimiereEtsyListingTexte(
       geminiForceFreeApiKey: true,
       thinkingMinimal: true,
       maxOutputTokens: 8192,
-      timeoutMs: 90_000,
-      geminiTotalBudgetMs: 110_000,
+      timeoutMs: 65_000,
+      geminiTotalBudgetMs: 140_000,
       geminiModels: geminiFreeTierFlashModelKandidaten(),
       jsonResponse: { schema: ETSY_LISTING_JSON_SCHEMA },
     },

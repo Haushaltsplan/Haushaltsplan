@@ -226,7 +226,7 @@ export async function auditiereEtsyListing(
           seeds: marktSeedsFuerListing({ title: listing.title, tags: listing.tags }),
           maxAutosuggest: opts?.marktLimits?.maxAutosuggest ?? 2,
           maxCompetitor: opts?.marktLimits?.maxCompetitor ?? 1,
-          budgetMs: opts?.marktLimits?.budgetMs ?? 15_000,
+          budgetMs: opts?.marktLimits?.budgetMs ?? 12_000,
         })
 
   const regelReport = pruefeListingRegeln(listing)
@@ -259,8 +259,9 @@ export async function auditiereEtsyListing(
       geminiForceFreeApiKey: true,
       thinkingMinimal: true,
       maxOutputTokens: 8192,
-      timeoutMs: 90_000,
-      geminiTotalBudgetMs: 110_000,
+      /** Pro Modell kürzer als das Gesamtbudget, damit bei hängendem Flash das nächste Modell echte Zeit hat. */
+      timeoutMs: 65_000,
+      geminiTotalBudgetMs: 140_000,
       geminiModels: geminiFreeTierFlashModelKandidaten(),
       jsonResponse: { schema: ETSY_SEO_AUDIT_JSON_SCHEMA },
     },

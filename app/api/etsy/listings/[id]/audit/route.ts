@@ -12,7 +12,7 @@ import { NextResponse } from 'next/server'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
-export const maxDuration = 150
+export const maxDuration = 180
 
 type Ctx = { params: Promise<{ id: string }> }
 
