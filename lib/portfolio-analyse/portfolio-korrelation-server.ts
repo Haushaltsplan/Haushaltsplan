@@ -5,13 +5,15 @@
 import 'server-only'
 
 import { ladeYahooHistorieBatchTaeglich } from '@/lib/portfolio-analyse/yahoo-historie-server'
-import type {
-  BetaCluster,
-  KorrelationPaar,
-  PortfolioKorrelationPaket,
+import {
+  KORRELATION_MAX_TICKER,
+  type BetaCluster,
+  type KorrelationAusgelassen,
+  type KorrelationPaar,
+  type PortfolioKorrelationPaket,
 } from '@/lib/portfolio-analyse/portfolio-korrelation-types'
 
-export type { BetaCluster, KorrelationPaar, PortfolioKorrelationPaket }
+export type { BetaCluster, KorrelationAusgelassen, KorrelationPaar, PortfolioKorrelationPaket }
 
 function isoTageZurueck(tage: number): string {
   const d = new Date()
@@ -117,10 +119,11 @@ export async function ladePortfolioKorrelation(opts: {
   beta?: Record<string, number | null>
   lookbackTage?: number
 }): Promise<PortfolioKorrelationPaket> {
-  const ticker = [...new Set(opts.ticker.map((t) => t.trim().toUpperCase()).filter(Boolean))].slice(
-    0,
-    40,
-  )
+  const angefragt = [...new Set(opts.ticker.map((t) => t.trim().toUpperCase()).filter(Boolean))]
+  const ticker = angefragt.slice(0, KORRELATION_MAX_TICKER)
+  const ausgelassen: KorrelationAusgelassen[] = angefragt
+    .slice(KORRELATION_MAX_TICKER)
+    .map((t) => ({ ticker: t, grund: 'limit' as const }))
   const leer: PortfolioKorrelationPaket = {
     ok: false,
     ticker,
@@ -130,6 +133,8 @@ export async function ladePortfolioKorrelation(opts: {
     cluster: [],
     hinweis: ticker.length < 2 ? 'Mindestens 2 Ticker nötig.' : null,
     geladenAm: new Date().toISOString(),
+    angefragt: angefragt.length,
+    ausgelassen,
   }
   if (ticker.length < 2) return leer
 
@@ -137,10 +142,32 @@ export async function ladePortfolioKorrelation(opts: {
   const von = isoTageZurueck(opts.lookbackTage ?? 380)
   const kurse = await ladeYahooHistorieBatchTaeglich(ticker, von, bis)
 
+  const fehlend = ticker.filter((t) => (kurse.get(t)?.size ?? 0) < 40)
+  const fallbackSyms = [
+    ...new Set(
+      fehlend
+        .map((t) => (t.includes('.') ? t.split('.')[0]! : ''))
+        .filter((base) => base.length > 0 && (kurse.get(base)?.size ?? 0) < 40),
+    ),
+  ]
+  if (fallbackSyms.length > 0) {
+    const extra = await ladeYahooHistorieBatchTaeglich(fallbackSyms, von, bis)
+    for (const t of fehlend) {
+      if ((kurse.get(t)?.size ?? 0) >= 40) continue
+      const base = t.includes('.') ? t.split('.')[0]! : ''
+      if (!base) continue
+      const serie = extra.get(base) ?? kurse.get(base)
+      if (serie && serie.size >= 40) kurse.set(t, serie)
+    }
+  }
+
   const returns = new Map<string, number[]>()
   for (const t of ticker) {
     const serie = kurse.get(t)
-    if (!serie || serie.size < 40) continue
+    if (!serie || serie.size < 40) {
+      ausgelassen.push({ ticker: t, grund: 'keine-kurse' })
+      continue
+    }
     returns.set(t, returnsAusPreisen(serie))
   }
 
@@ -148,6 +175,7 @@ export async function ladePortfolioKorrelation(opts: {
   if (valid.length < 2) {
     return {
       ...leer,
+      ausgelassen,
       hinweis: 'Zu wenige Kursdaten für Korrelation.',
     }
   }
@@ -172,6 +200,18 @@ export async function ladePortfolioKorrelation(opts: {
 
   hohePaare.sort((a, b) => b.corr - a.corr)
 
+  const ohneKurse = ausgelassen.filter((a) => a.grund === 'keine-kurse').length
+  const pairHinweis =
+    hohePaare.length > 0
+      ? `${hohePaare.length} Paare mit Korrelation ≥ 0,70 — parallele Drawdowns möglich (Volatility Drag).`
+      : 'Keine extrem hohen Pair-Korrelationen (≥0,70) im 1J-Fenster.'
+  const lueckeHinweis =
+    ohneKurse > 0
+      ? ` ${ohneKurse} Titel ohne ausreichende 1J-Kursreihe.`
+      : ausgelassen.some((a) => a.grund === 'limit')
+        ? ` Nur die ${KORRELATION_MAX_TICKER} schwersten Titel (Yahoo-Limit).`
+        : ''
+
   return {
     ok: true,
     ticker: valid,
@@ -179,10 +219,9 @@ export async function ladePortfolioKorrelation(opts: {
     beta: opts.beta ?? {},
     hohePaare: hohePaare.slice(0, 25),
     cluster: clusterAusMatrix(valid, matrix, 0.7),
-    hinweis:
-      hohePaare.length > 0
-        ? `${hohePaare.length} Paare mit Korrelation ≥ 0,70 — parallele Drawdowns möglich (Volatility Drag).`
-        : 'Keine extrem hohen Pair-Korrelationen (≥0,70) im 1J-Fenster.',
+    hinweis: pairHinweis + lueckeHinweis,
     geladenAm: new Date().toISOString(),
+    angefragt: angefragt.length,
+    ausgelassen,
   }
 }

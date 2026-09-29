@@ -16,6 +16,12 @@ function formatCorrKurz(c: number): string {
   return gerundet.toFixed(1)
 }
 
+/** RMS.PA → RMS in der Zelle, voller Ticker bleibt im title. */
+function tickerKuerzel(t: string): string {
+  const m = t.match(/^([A-Z0-9-]{1,6})\.[A-Z]{1,3}$/)
+  return m?.[1] ?? t
+}
+
 export function PaKorrelationPanel({
   ticker,
   beta,
@@ -64,11 +70,12 @@ export function PaKorrelationPanel({
   if (ticker.length < 2) return null
 
   const n = daten?.ok ? daten.ticker.length : 0
+  const angefragt = daten?.angefragt ?? ticker.length
   const kompakt = n >= 10
   const gridStyle =
     n > 0
       ? {
-          gridTemplateColumns: `minmax(0, 2.75rem) repeat(${n}, minmax(0, 1fr))`,
+          gridTemplateColumns: `minmax(2.4rem, auto) repeat(${n}, minmax(1.55rem, 1fr))`,
         }
       : undefined
 
@@ -77,6 +84,7 @@ export function PaKorrelationPanel({
       <div>
         <p className="text-xs font-semibold uppercase tracking-wide text-[var(--app-text-muted)]">
           Korrelationsmatrix · 1J
+          {n > 0 ? ` · ${n}${angefragt > n ? ` von ${angefragt}` : ''} Aktien` : ''}
         </p>
         <p className="mt-1 text-sm text-[var(--app-text-muted)]">
           Parallel laufende Titel erzeugen Volatility Drag — Cluster mit corr ≥ 0,70 prüfen.
@@ -100,15 +108,15 @@ export function PaKorrelationPanel({
               className="rounded-md bg-rose-500/10 px-2 py-1 text-[11px] text-rose-200"
               title={`Ø-Korrelation ${c.avgCorr}`}
             >
-              {c.ticker.join(' · ')} ({c.avgCorr.toFixed(2)})
+              {c.ticker.map(tickerKuerzel).join(' · ')} ({c.avgCorr.toFixed(2)})
             </span>
           ))}
         </div>
       ) : null}
 
       {daten?.ok && daten.ticker.length > 0 ? (
-        <div className="w-full min-w-0">
-          <div className="grid w-full min-w-0 gap-px" style={gridStyle}>
+        <div className="w-full min-w-0 overflow-x-auto">
+          <div className="grid min-w-max gap-px sm:min-w-full" style={gridStyle}>
             <div aria-hidden />
             {daten.ticker.map((t) => (
               <div
@@ -116,7 +124,7 @@ export function PaKorrelationPanel({
                 className="min-w-0 px-px text-center font-mono text-[8px] leading-tight text-[var(--app-text-muted)] sm:text-[9px]"
                 title={daten.beta[t] != null ? `${t} · β ${daten.beta[t]!.toFixed(2)}` : t}
               >
-                <span className="block truncate">{t}</span>
+                <span className="block truncate">{tickerKuerzel(t)}</span>
                 {daten.beta[t] != null && !kompakt ? (
                   <span className="hidden truncate text-[8px] opacity-70 sm:block">
                     β {daten.beta[t]!.toFixed(1)}
@@ -130,7 +138,7 @@ export function PaKorrelationPanel({
                   className="flex min-w-0 items-center truncate pr-0.5 font-mono text-[8px] text-[var(--app-text-muted)] sm:text-[9px]"
                   title={row}
                 >
-                  {row}
+                  {tickerKuerzel(row)}
                 </div>
                 {daten.matrix[i]!.map((c, j) => (
                   <div
@@ -154,12 +162,19 @@ export function PaKorrelationPanel({
           {daten.hohePaare.slice(0, 8).map((p) => (
             <li key={`${p.a}-${p.b}`}>
               <span className="font-mono text-[var(--app-text)]">
-                {p.a}–{p.b}
+                {tickerKuerzel(p.a)}–{tickerKuerzel(p.b)}
               </span>{' '}
               corr {p.corr.toFixed(2)}
             </li>
           ))}
         </ul>
+      ) : null}
+
+      {daten?.ausgelassen && daten.ausgelassen.length > 0 ? (
+        <p className="text-[11px] text-[var(--app-text-muted)]">
+          Nicht in der Matrix:{' '}
+          {daten.ausgelassen.map((a) => tickerKuerzel(a.ticker)).join(', ')}
+        </p>
       ) : null}
     </PaCard>
   )

@@ -1,5 +1,8 @@
 /** Depot-Korrelation — geteilte Typen (Client + Server). */
 
+/** Hartes Yahoo-Batch-Limit; Depotaktien darunter vollständig vergleichen. */
+export const KORRELATION_MAX_TICKER = 48
+
 export type KorrelationPaar = {
   a: string
   b: string
@@ -13,6 +16,11 @@ export type BetaCluster = {
   avgCorr: number
 }
 
+export type KorrelationAusgelassen = {
+  ticker: string
+  grund: 'limit' | 'keine-kurse'
+}
+
 export type PortfolioKorrelationPaket = {
   ok: boolean
   ticker: string[]
@@ -22,4 +30,6 @@ export type PortfolioKorrelationPaket = {
   cluster: BetaCluster[]
   hinweis: string | null
   geladenAm: string
+  angefragt: number
+  ausgelassen: KorrelationAusgelassen[]
 }

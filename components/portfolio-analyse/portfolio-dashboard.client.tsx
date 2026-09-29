@@ -42,6 +42,15 @@ function badgeVariant(typ: BuchungsTyp): 'buy' | 'sell' | 'dividend' | 'neutral'
   return 'neutral'
 }
 
+/** Voller Yahoo-Ticker (RMS.PA, ATD.TO) — nicht split('.')[0], sonst fallen EU-Titel aus der Matrix. */
+function yahooSymbolFuerKorrelation(p: {
+  isin: string | null
+  symbolYahoo: string | null
+}): string | null {
+  const raw = (p.symbolYahoo ?? isinKenntnis(p.isin)?.symbolYahoo ?? '').trim().toUpperCase()
+  return raw || null
+}
+
 export function PortfolioDashboardClient() {
   const router = useRouter()
   const { live, liveLaden, kursFehler, buchungen, meta, report, hatDaten, laden, neuLaden, sektorLaden } =
@@ -52,6 +61,13 @@ export function PortfolioDashboardClient() {
 
   const k = live?.kennzahlen
   const positionen = live?.positionen ?? []
+
+  const korrelationTicker = useMemo(() => {
+    const aktien = positionen
+      .filter((p) => p.assetKlasse === 'aktie' && p.stueck > 0)
+      .sort((a, b) => b.gewichtProzent - a.gewichtProzent)
+    return [...new Set(aktien.map(yahooSymbolFuerKorrelation).filter((t): t is string => Boolean(t)))]
+  }, [positionen])
 
   const wertFuerPeriode = useMemo(() => {
     if (!k || buchungen.length === 0) return []
@@ -204,17 +220,7 @@ export function PortfolioDashboardClient() {
           }))}
       />
 
-      {(() => {
-        const aktien = (live?.positionen ?? [])
-          .filter((p) => p.assetKlasse === 'aktie' && p.stueck > 0 && p.symbolYahoo)
-          .sort((a, b) => b.gewichtProzent - a.gewichtProzent)
-          .slice(0, 14)
-        const ticker = aktien
-          .map((p) => p.symbolYahoo!.split('.')[0]!.toUpperCase())
-          .filter(Boolean)
-        if (ticker.length < 2) return null
-        return <PaKorrelationPanel ticker={ticker} />
-      })()}
+      {korrelationTicker.length >= 2 ? <PaKorrelationPanel ticker={korrelationTicker} /> : null}
 
       <div className="grid min-w-0 gap-6 lg:grid-cols-3 lg:items-stretch">
         {renditeKennzahlen ? (
