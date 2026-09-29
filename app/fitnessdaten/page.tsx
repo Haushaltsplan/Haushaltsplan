@@ -1,10 +1,11 @@
 import type { Metadata } from 'next'
 import { Suspense } from 'react'
 import { FitnessdatenClient } from '@/components/fitnessdaten/fitnessdaten-client'
+import { FitnessdatenOmniaGate } from '@/components/fitnessdaten/fitnessdaten-omnia-gate'
 
 export const metadata: Metadata = {
   title: 'Whoop',
-  description: 'WHOOP 5.0 in Omnia — Recovery, Strain, Vitalwerte, Verläufe und Live-Puls.',
+  description: 'Omnia Whoop — Recovery, Strain, Vitalwerte und Live-Puls vom Band.',
 }
 
 function WhoopLadenFallback() {
@@ -19,7 +20,9 @@ function WhoopLadenFallback() {
 export default function FitnessdatenPage() {
   return (
     <Suspense fallback={<WhoopLadenFallback />}>
-      <FitnessdatenClient />
+      <FitnessdatenOmniaGate>
+        <FitnessdatenClient />
+      </FitnessdatenOmniaGate>
     </Suspense>
   )
 }

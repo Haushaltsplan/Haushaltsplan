@@ -30,3 +30,12 @@ export function istOmniaWhoopApp(): boolean {
   if (typeof navigator === 'undefined') return false
   return /OmniaWhoopCapacitor/i.test(navigator.userAgent || '')
 }
+
+/** Omnia-Haushalt-App (Capacitor), nicht die Whoop-App. */
+export function istOmniaHaushaltApp(): boolean {
+  if (typeof navigator === 'undefined') return false
+  if (istOmniaWhoopApp()) return false
+  if (/OmniaCapacitor/i.test(navigator.userAgent || '')) return true
+  // Native ohne Whoop-UA (ältere Builds)
+  return istOmniaNativeApp() && !istOmniaWhoopApp()
+}
