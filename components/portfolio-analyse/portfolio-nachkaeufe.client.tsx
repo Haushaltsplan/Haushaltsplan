@@ -26,7 +26,7 @@ import type {
 } from '@/lib/portfolio-analyse/nachkauf-radar/nachkauf-radar-types'
 
 function historischQuelleLabel(q: NachkaufScanEintrag['bewertung']['historischQuelle']): string {
-  if (q === 'macrotrends') return ' (Macrotrends)'
+  if (q === 'macrotrends') return ' (historisch)'
   if (q === 'whitelist') return ' (Whitelist)'
   return ''
 }

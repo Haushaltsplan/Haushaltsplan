@@ -9,7 +9,7 @@ import {
 } from '@/lib/portfolio-analyse/nachkauf-radar/nachkauf-qualitaet-signale'
 
 export type HistorischeBewertung = {
-  /** Median des jährlichen KGV (Macrotrends, letzte 5 Geschäftsjahre). */
+  /** Median des jährlichen KGV (SEC/Yahoo-Historie, letzte 5 Geschäftsjahre). */
   medianPe5y: number | null
   /** Median der FCF-Rendite % (aus Kurs/FCF-Jahreswerten). */
   medianFcfYield5y: number | null

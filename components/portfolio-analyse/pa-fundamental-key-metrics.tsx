@@ -103,7 +103,7 @@ export function PaFundamentalKeyMetrics({
   verfuegbareZeilenIds?: Set<string>
   guvQuelle?: FundamentalGuvQuelle | null
   schaetzungQuelle?: FundamentalSchaetzungQuelle | null
-  fallbackPaketQuelle?: 'macrotrends' | 'yahoo' | 'marketscreener' | null
+  fallbackPaketQuelle?: 'macrotrends' | 'yahoo' | 'marketscreener' | 'sec' | null
 }) {
   const col0 = SEKTIONEN.filter((s) => s.spalte === 0)
   const col1 = SEKTIONEN.filter((s) => s.spalte === 1)

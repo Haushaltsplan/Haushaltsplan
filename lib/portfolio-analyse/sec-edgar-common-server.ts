@@ -41,11 +41,27 @@ export function dokumentUrl(cik: number, accession: string, dateiname: string): 
   return `https://www.sec.gov/Archives/edgar/data/${cik}/${accPath}/${dateiname}`
 }
 
+const SEC_MIN_ABSTAND_MS = 120
+let secLetzterAbruf = 0
+let secWarteschlange: Promise<void> = Promise.resolve()
+
 export async function secFetch(url: string): Promise<Response> {
-  return fetch(url, {
-    headers: { 'User-Agent': secUserAgent(), Accept: 'application/json, text/html, application/xml, */*' },
-    cache: 'no-store',
+  await secWarteschlange
+  let release!: () => void
+  secWarteschlange = new Promise((r) => {
+    release = r
   })
+  try {
+    const pause = SEC_MIN_ABSTAND_MS - (Date.now() - secLetzterAbruf)
+    if (pause > 0) await new Promise((r) => setTimeout(r, pause))
+    secLetzterAbruf = Date.now()
+    return await fetch(url, {
+      headers: { 'User-Agent': secUserAgent(), Accept: 'application/json, text/html, application/xml, */*' },
+      cache: 'no-store',
+    })
+  } finally {
+    release()
+  }
 }
 
 async function ladeTickerCikMap(): Promise<Map<string, number>> {

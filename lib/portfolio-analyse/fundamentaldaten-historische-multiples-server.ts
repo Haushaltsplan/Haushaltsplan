@@ -1,10 +1,5 @@
 /**
- * Historische Bewertungs-Multiples, wenn Macrotrends-Kurscharts leer sind.
- *
- * Typisch EU/CH/UK: GuV, Bilanz und Dividende stehen, KGV/KUV/KBV/Kurs-FCF und
- * historische EV-Multiples aber nicht — Macrotrends liefert dort 0 bzw. keine
- * price-ratio-Charts. Forward-Spalten (Kurs ÷ Schätzung) waren schon da, weil sie
- * den aktuellen Kurs nutzen.
+ * Historische Bewertungs-Multiples aus Yahoo-Kurs × GuV/Bilanz (SEC oder Yahoo/SA).
  *
  * Rechnung: heutige Marktkap skaliert mit Kurs- und Aktienzahl-Veränderung.
  * So fallen ADR-Ratio und Listungswährung aus dem Quotienten; der Nenner kommt

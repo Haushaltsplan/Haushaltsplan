@@ -1,10 +1,9 @@
 /**
  * Kapitalbasis laden: alle Quellen parallel holen, feldweise mergen, Kapitalgrößen ableiten.
  *
- * Rangfolge: SEC XBRL (auch 20-F, also inklusive ASML) → Yahoo → StockAnalysis → Macrotrends.
+ * Rangfolge: SEC XBRL (auch 20-F, also inklusive ASML) → Yahoo → StockAnalysis.
  * Für Titel ohne SEC-Registrierung — Hermès, Sika, Straumann, Halma, Wolters Kluwer,
- * Couche-Tard — trägt Yahoo das Grundgerüst, StockAnalysis füllt Felder, und Macrotrends
- * verlängert die Historie auf die für das ROIIC-Fenster nötigen sieben Jahre.
+ * Couche-Tard — trägt Yahoo das Grundgerüst, StockAnalysis füllt Felder.
  */
 
 import 'server-only'
@@ -21,7 +20,6 @@ import {
   type KapitalbasisRohfeld,
   type KapitalbasisSerie,
 } from '@/lib/portfolio-analyse/kapitalbasis/kapitalbasis-typen'
-import { ladeMacrotrendsKapitalbasis } from '@/lib/portfolio-analyse/kapitalbasis/macrotrends-kapitalbasis-server'
 import { ladeSecKapitalbasis } from '@/lib/portfolio-analyse/kapitalbasis/sec-xbrl-serie-server'
 import { ladeStockanalysisKapitalbasis } from '@/lib/portfolio-analyse/kapitalbasis/stockanalysis-kapitalbasis-server'
 import { ladeYahooKapitalbasis } from '@/lib/portfolio-analyse/kapitalbasis/yahoo-kapitalbasis-server'
@@ -100,7 +98,7 @@ export async function ladeKapitalbasis(
     isin: anfrage.isin,
   })
 
-  const [sec, yahoo, stockanalysis, macrotrends] = await Promise.all([
+  const [sec, yahoo, stockanalysis] = await Promise.all([
     cik != null ? ladeSecKapitalbasis(cik) : Promise.resolve(null),
     ladeYahooKapitalbasis(yahooKandidaten.length > 0 ? yahooKandidaten : [anfrage.symbolYahoo]),
     ladeStockanalysisKapitalbasis({
@@ -109,18 +107,12 @@ export async function ladeKapitalbasis(
       ticker: anfrage.ticker,
       firmenname: anfrage.firmenname,
     }),
-    ladeMacrotrendsKapitalbasis({
-      symbolYahoo: anfrage.symbolYahoo,
-      isin: anfrage.isin,
-      firmenname: anfrage.firmenname,
-    }),
   ])
 
   const beitraege: QuellenBeitrag[] = []
   if (sec) beitraege.push({ quelle: 'sec_xbrl', jahre: sec.jahre })
   if (yahoo) beitraege.push({ quelle: 'yahoo', jahre: yahoo.jahre })
   if (stockanalysis) beitraege.push({ quelle: 'stockanalysis', jahre: stockanalysis.jahre })
-  if (macrotrends) beitraege.push({ quelle: 'macrotrends', jahre: macrotrends.jahre })
   if (beitraege.length === 0) return merke(null)
 
   const merged = mergeKapitalbasis(beitraege)

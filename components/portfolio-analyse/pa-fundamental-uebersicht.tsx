@@ -27,7 +27,7 @@ export function PaFundamentalUebersicht({
   verfuegbareZeilenIds?: Set<string>
   guvQuelle?: FundamentalGuvQuelle | null
   schaetzungQuelle?: FundamentalSchaetzungQuelle | null
-  fallbackPaketQuelle?: 'macrotrends' | 'yahoo' | 'marketscreener' | null
+  fallbackPaketQuelle?: 'macrotrends' | 'yahoo' | 'marketscreener' | 'sec' | null
 }) {
   return (
     <div className="overflow-hidden rounded-xl border border-[var(--app-border)] bg-[var(--app-surface-muted)] ring-1 ring-white/[0.03]">

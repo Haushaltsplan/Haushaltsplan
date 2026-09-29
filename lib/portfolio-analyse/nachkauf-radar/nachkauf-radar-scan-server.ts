@@ -330,7 +330,7 @@ async function scanneEinenTitel(opts: {
 
   const premiumDiscountText =
     bewertungsSignale.premiumDiscountPct != null
-      ? `${bewertungsSignale.premiumDiscountPct > 0 ? '+' : ''}${bewertungsSignale.premiumDiscountPct.toFixed(1)} % vs. 5J-Median${historisch.quelle === 'macrotrends' ? ' (Macrotrends)' : ''}`
+      ? `${bewertungsSignale.premiumDiscountPct > 0 ? '+' : ''}${bewertungsSignale.premiumDiscountPct.toFixed(1)} % vs. 5J-Median${historisch.quelle === 'macrotrends' ? ' (historisch)' : ''}`
       : 'kein historischer Median verfügbar'
 
   const beatMissText =

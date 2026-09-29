@@ -1,4 +1,4 @@
-import 'server-only'
+﻿import 'server-only'
 
 import {
   FUNDAMENTAL_TTM_KEY,
@@ -65,7 +65,7 @@ export type MacrotrendsIdentOpts = {
   erwarteterTicker?: string
   firmenname?: string
   slug?: string
-  /** Macrotrends-Chart-Ticker wenn ≠ Börsensymbol (z. B. MC → LVMUY). */
+  /** Macrotrends-Chart-Ticker wenn â‰  BÃ¶rsensymbol (z. B. MC â†’ LVMUY). */
   macrotrendsTicker?: string
 }
 
@@ -79,7 +79,7 @@ const BEKANNTE_MACROTRENDS_SLUGS: Record<
   WM: { slug: 'waste-management', firmenname: 'Waste Management' },
   HD: { slug: 'home-depot', firmenname: 'Home Depot' },
   MC: { slug: 'louis-vuitton', firmenname: 'LVMH', macrotrendsTicker: 'LVMUY' },
-  RMS: { slug: 'hermes-international', firmenname: 'Hermès', macrotrendsTicker: 'HESAY' },
+  RMS: { slug: 'hermes-international', firmenname: 'HermÃ¨s', macrotrendsTicker: 'HESAY' },
   ASML: { slug: 'asml-holding', firmenname: 'ASML Holding' },
   WKL: { slug: 'wolters-kluwer', firmenname: 'Wolters Kluwer', macrotrendsTicker: 'WTKWY' },
   MUM: { slug: 'mensch-und-maschine', firmenname: 'Mensch und Maschine' },
@@ -142,7 +142,7 @@ const INCOME_STATEMENT_METRIKEN: MetrikDef[] = [
   {
     slug: 'eps-earnings-per-share-diluted',
     id: 'eps',
-    label: 'EPS (verwässert)',
+    label: 'EPS (verwÃ¤ssert)',
     gruppe: 'finanzdaten',
     einheit: 'waehrung_usd_aktie',
     statement: 'income-statement',
@@ -204,7 +204,7 @@ const CASH_FLOW_METRIKEN: MetrikDef[] = [
   {
     slug: 'common-stock-repurchased',
     id: 'aktienrueckkauf',
-    label: 'Aktienrückkäufe',
+    label: 'AktienrÃ¼ckkÃ¤ufe',
     gruppe: 'cashflow',
     einheit: 'waehrung_usd_mio',
     statement: 'cash-flow-statement',
@@ -221,10 +221,10 @@ const CASH_FLOW_METRIKEN: MetrikDef[] = [
 ]
 
 const BALANCE_SHEET_METRIKEN: MetrikDef[] = [
-  { slug: 'total-assets', id: 'gesamtvermoegen', label: 'Gesamtvermögen', gruppe: 'bilanz', einheit: 'waehrung_usd_mio', statement: 'balance-sheet' },
+  { slug: 'total-assets', id: 'gesamtvermoegen', label: 'GesamtvermÃ¶gen', gruppe: 'bilanz', einheit: 'waehrung_usd_mio', statement: 'balance-sheet' },
   { slug: 'total-liabilities', id: 'gesamtverbindlichkeiten', label: 'Gesamtverbindlichkeiten', gruppe: 'bilanz', einheit: 'waehrung_usd_mio', statement: 'balance-sheet' },
   {
-    // Macrotrends 2026: „total-share-holder-equity“ (Bindestrich share-holder)
+    // Macrotrends 2026: â€žtotal-share-holder-equityâ€œ (Bindestrich share-holder)
     slug: 'total-share-holder-equity',
     id: 'eigenkapital',
     label: 'Eigenkapital',
@@ -234,8 +234,8 @@ const BALANCE_SHEET_METRIKEN: MetrikDef[] = [
     aliases: ['total-stockholder-equity', 'total-stockholders-equity', 'total-shareholders-equity'],
   },
   /**
-   * Macrotrends hat kein „total-debt“ (404) — nur langfristig.
-   * Gesamtverschuldung (inkl. kurzfristig + Leases) kommt später von Yahoo.
+   * Macrotrends hat kein â€žtotal-debtâ€œ (404) â€” nur langfristig.
+   * Gesamtverschuldung (inkl. kurzfristig + Leases) kommt spÃ¤ter von Yahoo.
    */
   {
     slug: 'long-term-debt',
@@ -246,7 +246,7 @@ const BALANCE_SHEET_METRIKEN: MetrikDef[] = [
     statement: 'balance-sheet',
     aliases: ['total-debt'],
   },
-  { slug: 'cash-on-hand', id: 'bargeld', label: 'Bargeld & Äquivalente', gruppe: 'bilanz', einheit: 'waehrung_usd_mio', statement: 'balance-sheet' },
+  { slug: 'cash-on-hand', id: 'bargeld', label: 'Bargeld & Ã„quivalente', gruppe: 'bilanz', einheit: 'waehrung_usd_mio', statement: 'balance-sheet' },
   {
     slug: 'receivables-total',
     id: 'forderungen',
@@ -256,7 +256,7 @@ const BALANCE_SHEET_METRIKEN: MetrikDef[] = [
     statement: 'balance-sheet',
     aliases: ['net-receivables'],
   },
-  { slug: 'inventory', id: 'vorraete', label: 'Vorräte', gruppe: 'bilanz', einheit: 'waehrung_usd_mio', statement: 'balance-sheet' },
+  { slug: 'inventory', id: 'vorraete', label: 'VorrÃ¤te', gruppe: 'bilanz', einheit: 'waehrung_usd_mio', statement: 'balance-sheet' },
   {
     slug: 'goodwill',
     id: 'goodwill',
@@ -266,7 +266,7 @@ const BALANCE_SHEET_METRIKEN: MetrikDef[] = [
     statement: 'balance-sheet',
     aliases: ['goodwill-intangible-assets-total'],
   },
-  { slug: 'total-current-assets', id: 'umlaufvermoegen', label: 'Umlaufvermögen', gruppe: 'bilanz', einheit: 'waehrung_usd_mio', statement: 'balance-sheet' },
+  { slug: 'total-current-assets', id: 'umlaufvermoegen', label: 'UmlaufvermÃ¶gen', gruppe: 'bilanz', einheit: 'waehrung_usd_mio', statement: 'balance-sheet' },
   { slug: 'total-current-liabilities', id: 'kurzfrist_verbindl', label: 'Kurzfristige Verbindlichkeiten', gruppe: 'bilanz', einheit: 'waehrung_usd_mio', statement: 'balance-sheet' },
 ]
 
@@ -286,7 +286,7 @@ const FINANCIAL_RATIOS_METRIKEN: MetrikDef[] = [
   { slug: 'ebitda-margin', id: 'ebitda_marge', label: 'EBITDA-Marge %', gruppe: 'margen', einheit: 'prozent', statement: 'financial-ratios' },
   { slug: 'ebit-margin', id: 'ebit_marge', label: 'EBIT-Marge %', gruppe: 'margen', einheit: 'prozent', statement: 'financial-ratios' },
   { slug: 'net-profit-margin', id: 'nettomarge', label: 'Nettomarge %', gruppe: 'margen', einheit: 'prozent', statement: 'financial-ratios' },
-  { slug: 'asset-turnover', id: 'kapitalumschlag', label: 'Kapitalumschlaghäufigkeit', gruppe: 'umschlag', einheit: 'ratio', statement: 'financial-ratios' },
+  { slug: 'asset-turnover', id: 'kapitalumschlag', label: 'KapitalumschlaghÃ¤ufigkeit', gruppe: 'umschlag', einheit: 'ratio', statement: 'financial-ratios' },
   { slug: 'inventory-turnover', id: 'anlagenumschlag', label: 'Lagerumschlag', gruppe: 'umschlag', einheit: 'ratio', statement: 'financial-ratios' },
   { slug: 'receiveable-turnover', id: 'forderungsumschlag', label: 'Forderungsumschlag', gruppe: 'umschlag', einheit: 'ratio', statement: 'financial-ratios' },
   {
@@ -320,7 +320,7 @@ const BEWERTUNG_METRIKEN: Array<
   MetrikDef & {
     wertFeld: 'v3' | 'v1' | 'value'
     ttmFeld?: 'v3' | 'v1'
-    /** Chart-Rohwert multiplizieren (market-cap: v3 in Mrd. USD → Mio.) */
+    /** Chart-Rohwert multiplizieren (market-cap: v3 in Mrd. USD â†’ Mio.) */
     scale?: number
   }
 > = [
@@ -346,7 +346,7 @@ function pause(ms: number): Promise<void> {
 }
 
 function htmlBlockiertOderLeer(html: string, erwartetJson = false): boolean {
-  // JSON-Endpunkte (z. B. Suche) liefern legitim sehr kurze Antworten — Längen-Check nur für HTML-Seiten.
+  // JSON-Endpunkte (z. B. Suche) liefern legitim sehr kurze Antworten â€” LÃ¤ngen-Check nur fÃ¼r HTML-Seiten.
   if (!erwartetJson && html.length < 1_500) return true
   if (erwartetJson && html.trim().length === 0) return true
   if (html.includes('Oops!')) return true
@@ -380,7 +380,7 @@ async function rateLimitedFetch(url: string, erwartetJson = false): Promise<stri
       const viaRemote = await fetchMacrotrendsHtml(url)
       if (viaRemote && !htmlBlockiertOderLeer(viaRemote, erwartetJson)) return viaRemote
 
-      // Legacy Node-fetch (meist 403 hinter Turnstile) — nur als schneller Versuch ohne Remote
+      // Legacy Node-fetch (meist 403 hinter Turnstile) â€” nur als schneller Versuch ohne Remote
       if (attempt === 0 && !(await macrotrendsCdpVerfuegbar())) {
         try {
           const cookie = await ensureMacrotrendsCookies()
@@ -561,7 +561,7 @@ function wertAusChartPunkt(p: ChartPunkt, feld: 'v3' | 'v1' | 'value'): number |
   return parseZahl(v)
 }
 
-/** Price-Ratio-Multiples ≤ 0 sind Platzhalter (Macrotrends) → null. */
+/** Price-Ratio-Multiples â‰¤ 0 sind Platzhalter (Macrotrends) â†’ null. */
 function normalisiereMultipleWert(v: number | null): number | null {
   if (v == null || !Number.isFinite(v) || v <= 0) return null
   return v
@@ -600,7 +600,7 @@ function wertAusChartNaehe(
   return bestJahr ? wertAusChartPunkt(bestJahr, feld) : null
 }
 
-/** Geschäftsjahres-Enddaten mit ±45-Tage-Toleranz zum Chart; letzter Chart-Punkt = TTM. */
+/** GeschÃ¤ftsjahres-Enddaten mit Â±45-Tage-Toleranz zum Chart; letzter Chart-Punkt = TTM. */
 function werteAusChartExakt(
   chart: ChartPunkt[],
   perioden: string[],
@@ -618,7 +618,7 @@ function werteAusChartExakt(
   return out
 }
 
-/** FY-Spalten aus Bewertungs-Charts ergänzen, wenn GuV/FR noch kein aktuelles Jahr hat. */
+/** FY-Spalten aus Bewertungs-Charts ergÃ¤nzen, wenn GuV/FR noch kein aktuelles Jahr hat. */
 function ergaenzePeriodenAusBewertungsCharts(
   periodenIso: string[],
   charts: ChartPunkt[][],
@@ -690,54 +690,21 @@ async function ladeStatementRoh(
   return null
 }
 
-/** Konzern-Umsatz pro Geschäftsjahr (ISO-Jahreszahl) aus GuV — für Segment-Abgleich. */
-/**
- * Alle Positionen eines Statements als `slug → ISO-Datum → Wert` (Mio. Berichtswährung).
- *
- * Die Kapitalbasis braucht Positionen, die `FUNDAMENTAL_METRIKEN` nicht abbildet
- * (Vorsteuerergebnis, Steueraufwand, immaterielle Vermögenswerte). Macrotrends liefert
- * pro Statement-Seite ohnehin **alle** Zeilen über 10+ Jahre — deutlich mehr Historie als
- * StockAnalysis bei Nicht-US-Titeln freigibt.
- */
+/** Konzern-Umsatz pro Geschäftsjahr (ISO-Jahreszahl) aus SEC-GuV — für Segment-Abgleich. */
 export async function ladeMacrotrendsStatementSerien(
-  ident: MacrotrendsIdent,
-  statement: StatementSeite,
-  frequenz: FundamentalFrequenz = 'jahr',
+  _ident: MacrotrendsIdent,
+  _statement: StatementSeite,
+  _frequenz: FundamentalFrequenz = 'jahr',
 ): Promise<Map<string, Map<string, number>> | null> {
-  const roh = await ladeStatementRoh(ident, statement, frequenz)
-  if (!roh) return null
-
-  const out = new Map<string, Map<string, number>>()
-  for (const zeile of roh) {
-    const slug = slugAusFieldName(String(zeile.field_name))
-    if (!slug) continue
-    const serie = out.get(slug) ?? new Map<string, number>()
-    for (const [key, wert] of Object.entries(zeile)) {
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(key)) continue
-      const zahl = parseZahl(wert)
-      if (zahl != null) serie.set(key, zahl)
-    }
-    if (serie.size > 0) out.set(slug, serie)
-  }
-  return out.size > 0 ? out : null
+  return null
 }
 
 export async function baueUmsatzProJahrAusMacrotrends(
   ident: MacrotrendsIdent,
-  frequenz: FundamentalFrequenz = 'jahr',
+  _frequenz: FundamentalFrequenz = 'jahr',
 ): Promise<Map<number, number>> {
-  const roh = await ladeStatementRoh(ident, 'income-statement', frequenz)
-  const rev = roh ? zeileFuerSlug(roh, 'revenue') : null
-  const map = new Map<number, number>()
-  if (!rev) return map
-  for (const key of Object.keys(rev)) {
-    if (key === 'field_name' || key === 'popup_icon') continue
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(key)) continue
-    const val = parseZahl(rev[key])
-    if (val == null || val <= 0) continue
-    map.set(parseInt(key.slice(0, 4), 10), val)
-  }
-  return map
+  const { baueUmsatzProJahrAusSec } = await import('@/lib/portfolio-analyse/sec-fundamentaldaten-server')
+  return baueUmsatzProJahrAusSec(ident)
 }
 
 export async function loeseMacrotrendsIdent(
@@ -751,29 +718,12 @@ export async function loeseMacrotrendsIdent(
   const erwartet = opts.erwarteterTicker?.trim().toUpperCase()
 
   if (erwartet) {
-    const ausSlug = identAusBekanntemSlug(erwartet, opts.slug, firmenname, opts.macrotrendsTicker)
-    if (ausSlug) return ausSlug
+    return identAusBekanntemSlug(erwartet, opts.slug, firmenname, opts.macrotrendsTicker)
   }
 
-  // Ticker zuerst suchen (präziser), Firmenname nur als Fallback —
-  // verhindert, dass generische Namensteile (z. B. „Smith") falsche Treffer liefern.
-  const suchbegriffe: string[] = []
-  if (erwartet) suchbegriffe.push(erwartet)
-  if (q && !suchbegriffe.includes(q)) suchbegriffe.push(q)
-  if (firmenname && !suchbegriffe.includes(firmenname)) suchbegriffe.push(firmenname)
-
-  for (const s of suchbegriffe) {
-    const items = await ladeMacrotrendsSuchergebnisse(s)
-    const ident = waehleMacrotrendsIdent(items, { erwarteterTicker: erwartet, firmenname })
-    if (ident) return ident
-  }
-
-  // Letzter Versuch: Namenssuche ohne Ticker-Zwang (nur wenn kein erwarteter Ticker
-  // oder Ticker-Suche leer blieb und Name eindeutig passt).
-  if (erwartet && firmenname) {
-    const items = await ladeMacrotrendsSuchergebnisse(firmenname)
-    const perName = identsAusSuchergebnis(items).find((k) => namePasstZuIdent(firmenname, k))
-    if (perName) return perName
+  const tickerLike = q.toUpperCase()
+  if (/^[A-Z0-9.-]{1,12}$/.test(tickerLike) && !/\s/.test(q)) {
+    return identAusBekanntemSlug(tickerLike, opts.slug, firmenname, opts.macrotrendsTicker)
   }
 
   return null
@@ -863,7 +813,7 @@ function normalisiereName(s: string): string {
     .trim()
 }
 
-/** Wörter, die allein keinen Firmen-Match rechtfertigen (zu generisch). */
+/** WÃ¶rter, die allein keinen Firmen-Match rechtfertigen (zu generisch). */
 const SCHWACHE_NAMENSWORTER = new Set([
   'smith', 'group', 'holding', 'holdings', 'corp', 'corporation', 'inc', 'ltd',
   'limited', 'plc', 'ag', 'sa', 'nv', 'se', 'co', 'company', 'international',
@@ -874,21 +824,21 @@ function namePasstZuIdent(firmenname: string, ident: MacrotrendsIdent): boolean 
   const n = normalisiereName(firmenname)
   const f = normalisiereName(ident.firmenname)
   if (!n || !f) return false
-  if (/hermes|hermès/.test(n) && /federated|federal/.test(f)) return false
-  if (/hermes|hermès/.test(n) && ident.slug.includes('federated')) return false
-  // Volle Zeichenkette enthalten (z. B. „microsoft" in „microsoft corporation")
+  if (/hermes|hermÃ¨s/.test(n) && /federated|federal/.test(f)) return false
+  if (/hermes|hermÃ¨s/.test(n) && ident.slug.includes('federated')) return false
+  // Volle Zeichenkette enthalten (z. B. â€žmicrosoft" in â€žmicrosoft corporation")
   if (f.includes(n) || n.includes(f)) return true
-  // Wortweise: mind. 2 signifikante Wörter müssen passen — sonst z. B.
-  // „A.O. Smith" → nur „smith" → fälschlich „Smith & Nephew".
+  // Wortweise: mind. 2 signifikante WÃ¶rter mÃ¼ssen passen â€” sonst z. B.
+  // â€žA.O. Smith" â†’ nur â€žsmith" â†’ fÃ¤lschlich â€žSmith & Nephew".
   const signifikante = n.split(' ').filter((w) => w.length > 2 && !SCHWACHE_NAMENSWORTER.has(w))
   if (signifikante.length === 0) {
-    // Nur schwache Wörter (z. B. reine „Smith Corp"): dann ALLE Wörter > 2 Zeichen
+    // Nur schwache WÃ¶rter (z. B. reine â€žSmith Corp"): dann ALLE WÃ¶rter > 2 Zeichen
     const alle = n.split(' ').filter((w) => w.length > 2)
     return alle.length >= 2 && alle.every((w) => f.includes(w))
   }
   if (signifikante.length === 1) {
     // Ein starkes Wort reicht nur, wenn es das dominante Wort im Ident ist
-    // (z. B. „Datadog" → „datadog") — nicht bei Teil-Match in längeren Namen.
+    // (z. B. â€žDatadog" â†’ â€ždatadog") â€” nicht bei Teil-Match in lÃ¤ngeren Namen.
     return f === signifikante[0] || f.startsWith(`${signifikante[0]} `)
   }
   return signifikante.every((w) => f.includes(w))
@@ -904,13 +854,13 @@ function waehleMacrotrendsIdent(
   const erwartet = opts.erwarteterTicker?.toUpperCase()
   if (erwartet) {
     // Bei bekanntem Ticker: NUR exakter Ticker-Treffer.
-    // Kein Namens-Fallback — sonst landet „A.O. Smith"/AOS bei „Smith & Nephew"/SNN.
+    // Kein Namens-Fallback â€” sonst landet â€žA.O. Smith"/AOS bei â€žSmith & Nephew"/SNN.
     return kandidaten.find((k) => k.ticker.toUpperCase() === erwartet) ?? null
   }
 
   if (opts.firmenname) {
-    // Kein blinder Erst-Treffer: Bei Namenssuche ohne Übereinstimmung lieber null
-    // (sonst z. B. „RATIONAL Aktiengesellschaft" → „Deutsche Bank Aktiengesellschaft").
+    // Kein blinder Erst-Treffer: Bei Namenssuche ohne Ãœbereinstimmung lieber null
+    // (sonst z. B. â€žRATIONAL Aktiengesellschaft" â†’ â€žDeutsche Bank Aktiengesellschaft").
     return kandidaten.find((k) => namePasstZuIdent(opts.firmenname!, k)) ?? null
   }
 
@@ -933,8 +883,7 @@ function identAusBekanntemSlug(
       }
     }
   }
-  const slug = slugOverride?.trim() || basis?.slug
-  if (!slug) return null
+  const slug = slugOverride?.trim() || basis?.slug || t.toLowerCase()
   const chartTicker =
     macrotrendsTickerOverride?.trim().toUpperCase() || basis?.macrotrendsTicker?.toUpperCase() || t
   return {
@@ -957,6 +906,9 @@ export type MacrotrendsFundamentalRoh = {
   zeilen: FundamentalMetrikZeile[]
   beschreibung: string | null
   branche: string | null
+  /** SEC Company Facts statt Macrotrends-HTML */
+  guvQuelle?: 'sec'
+  waehrung?: string
 }
 
 async function praefetchSeiten(urls: string[]): Promise<void> {
@@ -971,7 +923,7 @@ async function praefetchSeiten(urls: string[]): Promise<void> {
   for (const [url, html] of pages) {
     pageCache.set(url, { at: now, html, fehler: false })
   }
-  // Fehlende URLs NICHT als Fehler cachen — sonst blockiert ein Teil-Batch den GuV-Retry.
+  // Fehlende URLs NICHT als Fehler cachen â€” sonst blockiert ein Teil-Batch den GuV-Retry.
 }
 
 function statementUrlsFuer(ident: MacrotrendsIdent, frequenz: FundamentalFrequenz): string[] {
@@ -994,242 +946,12 @@ export async function ladeMacrotrendsFundamentaldaten(
   frequenz: FundamentalFrequenz = 'jahr',
   opts?: { nurCache?: boolean },
 ): Promise<MacrotrendsFundamentalRoh | null> {
-  const mtOpts = opts?.nurCache ? { nurCache: true as const } : undefined
-
-  if (!opts?.nurCache) {
-    await praefetchSeiten([...statementUrlsFuer(ident, frequenz), ...bewertungUrlsFuer(ident, frequenz)])
-  }
-
-  const [ratiosRoh, incomeRoh, cfRoh, bsRoh] = await Promise.all([
-    ladeStatementRoh(ident, 'financial-ratios', frequenz, mtOpts),
-    ladeStatementRoh(ident, 'income-statement', frequenz, mtOpts),
-    ladeStatementRoh(ident, 'cash-flow-statement', frequenz, mtOpts),
-    ladeStatementRoh(ident, 'balance-sheet', frequenz, mtOpts),
-  ])
-
-  const ratios = ratiosRoh ?? []
-  const income = incomeRoh ?? []
-  const cf = cfRoh ?? []
-  const bs = bsRoh ?? []
-
-  if (ratios.length === 0 && income.length === 0 && cf.length === 0 && bs.length === 0) {
-    return null
-  }
-
-  /** Union aller Statements — financial-ratios hinkt oft hinter GuV/CF (z. B. ASML FY2025). */
-  let periodenIso = [
-    ...new Set([
-      ...periodenAusRoh(ratios),
-      ...periodenAusRoh(income),
-      ...periodenAusRoh(cf),
-      ...periodenAusRoh(bs),
-    ]),
-  ].sort()
-  if (periodenIso.length === 0) return null
-
-  const mitTtm = frequenz === 'jahr'
-  let perioden = bauePerioden(periodenIso, mitTtm, frequenz)
-  const zeilen: FundamentalMetrikZeile[] = []
-
-  const rohCache = new Map<StatementSeite, RohZeile[]>([
-    ['financial-ratios', ratios],
-    ['income-statement', income],
-    ['cash-flow-statement', cf],
-    ['balance-sheet', bs],
-  ])
-
-  function metrikenAusDefs(defs: MetrikDef[]) {
-    for (const def of defs) {
-      const roh = rohCache.get(def.statement) ?? []
-      const row = zeileFuerSlug(roh, def.slug, def.aliases)
-      if (!row) continue
-      zeilen.push({
-        id: def.id,
-        label: def.label,
-        gruppe: def.gruppe,
-        einheit: def.einheit,
-        werte: werteAusRoh(row, periodenIso),
-        macrotrendsSlug: def.slug,
-        macrotrendsStatement: def.statement === 'price-ratios' ? 'price-ratios' : def.statement,
-      })
-    }
-  }
-
-  metrikenAusDefs(INCOME_STATEMENT_METRIKEN)
-  metrikenAusDefs(CASH_FLOW_METRIKEN)
-  metrikenAusDefs(BALANCE_SHEET_METRIKEN)
-  metrikenAusDefs(FINANCIAL_RATIOS_METRIKEN)
-
-  // Ohne volle Statements kein „ok“-Paket — sonst überschreibt Teil-Scrape den guten Cache.
-  const umsatzZeile = zeilen.find((z) => z.id === 'umsatz')
-  const epsZeile = zeilen.find((z) => z.id === 'eps')
-  const ekZeile = zeilen.find((z) => z.id === 'eigenkapital')
-  const zaehleJahre = (z: FundamentalMetrikZeile | undefined) =>
-    z
-      ? periodenIso.filter((iso) => {
-          const v = z.werte[iso]
-          return v != null && Number.isFinite(v)
-        }).length
-      : 0
-  const umsatzJahre = zaehleJahre(umsatzZeile)
-  const epsJahre = zaehleJahre(epsZeile)
-  const ekJahre = zaehleJahre(ekZeile)
-  if (
-    income.length === 0 ||
-    cf.length === 0 ||
-    bs.length === 0 ||
-    umsatzJahre < 6 ||
-    epsJahre < 4 ||
-    ekJahre < 4
-  ) {
-    console.warn(
-      `[macrotrends] Statements zu dünn für ${ident.ticker} (income=${income.length} cf=${cf.length} bs=${bs.length} umsatzJ=${umsatzJahre} epsJ=${epsJahre} ekJ=${ekJahre}) — verwerfe Paket`,
-    )
-    return null
-  }
-
-  const ocfRow = zeileFuerSlug(cf, 'cash-flow-from-operating-activities')
-  const capexRow = zeileFuerSlug(cf, 'net-change-in-property-plant-equipment')
-  if (ocfRow || capexRow) {
-    const ocfWerte = werteAusRoh(ocfRow, periodenIso)
-    const capexWerte = werteAusRoh(capexRow, periodenIso)
-    zeilen.push({
-      id: 'fcf',
-      label: 'Free Cashflow (FCF)',
-      gruppe: 'cashflow',
-      einheit: 'waehrung_usd_mio',
-      werte: berechneFcf(ocfWerte, capexWerte),
-      macrotrendsStatement: 'cash-flow-statement',
-    })
-  }
-
-  const daRow = zeileFuerSlug(cf, 'depreciation-amortization', ['total-depreciation-amortization-cash-flow'])
-  if (capexRow && daRow) {
-    const capexWerte = werteAusRoh(capexRow, periodenIso)
-    const daWerte = werteAusRoh(daRow, periodenIso)
-    const ratioWerte: Record<string, number | null> = {}
-    for (const iso of periodenIso) {
-      const c = capexWerte[iso]
-      const d = daWerte[iso]
-      if (c != null && d != null && d !== 0) ratioWerte[iso] = Math.abs(c) / Math.abs(d)
-      else ratioWerte[iso] = null
-    }
-    zeilen.push({
-      id: 'capex_da_ratio',
-      label: 'CapEx / D&A (Wartungs-CapEx-Proxy)',
-      gruppe: 'cashflow',
-      einheit: 'ratio',
-      werte: ratioWerte,
-      macrotrendsStatement: 'cash-flow-statement',
-    })
-  }
-
-  const bewertungCharts = await Promise.all(
-    BEWERTUNG_METRIKEN.map(async (def) => {
-      const freqCode = frequenz === 'quartal' ? 'Q' : 'A'
-      const iframeUrl = `${IFRAME_BASE}?t=${encodeURIComponent(ident.ticker)}&type=${encodeURIComponent(def.slug)}&statement=price-ratios&freq=${freqCode}&sub=&yb=15`
-      let iframeHtml = await ladeSeite(iframeUrl)
-      let chart = iframeHtml ? parseChartData(iframeHtml) : null
-      if (!chart?.length && iframeHtml && !htmlHatChartData(iframeHtml)) {
-        pageCache.delete(iframeUrl)
-        iframeHtml = await ladeSeite(iframeUrl, { forceRefresh: true })
-        chart = iframeHtml ? parseChartData(iframeHtml) : null
-      }
-      return { def, chart }
-    }),
-  )
-
-  if (mitTtm && bewertungCharts.some((b) => b.chart?.length)) {
-    const charts = bewertungCharts.map((b) => b.chart).filter((c): c is ChartPunkt[] => c != null && c.length > 0)
-    const erweitert = ergaenzePeriodenAusBewertungsCharts(periodenIso, charts, mitTtm)
-    if (erweitert.length > periodenIso.length) {
-      const neu = erweitert.filter((iso) => !periodenIso.includes(iso))
-      periodenIso = erweitert
-      perioden = bauePerioden(periodenIso, mitTtm, frequenz)
-      for (const z of zeilen) {
-        for (const iso of neu) {
-          if (!(iso in z.werte)) z.werte[iso] = null
-        }
-      }
-    }
-  }
-
-  for (const { def, chart } of bewertungCharts) {
-    const rohWerte = chart
-      ? werteAusChartExakt(chart, periodenIso, def.wertFeld, mitTtm)
-      : Object.fromEntries([...periodenIso, ...(mitTtm ? [FUNDAMENTAL_TTM_KEY] : [])].map((p) => [p, null]))
-    const scale = def.scale && def.scale !== 1 ? def.scale : null
-    const skaliert = scale
-      ? Object.fromEntries(
-          Object.entries(rohWerte).map(([k, v]) => [k, v != null && Number.isFinite(v) ? v * scale : v]),
-        )
-      : rohWerte
-    // KGV/KUV/…: 0 ist kein gültiges Multiple (häufig Macrotrends-Placeholder bei EU).
-    const werte =
-      def.einheit === 'multiple'
-        ? Object.fromEntries(
-            Object.entries(skaliert).map(([k, v]) => [k, normalisiereMultipleWert(v)]),
-          )
-        : skaliert
-    zeilen.push({
-      id: def.id,
-      label: def.label,
-      gruppe: def.gruppe,
-      einheit: def.einheit,
-      werte,
-      macrotrendsSlug: def.slug,
-      macrotrendsStatement: 'price-ratios',
-    })
-  }
-
-  const peChart = bewertungCharts.find((b) => b.def.id === 'kgv')?.chart
-  const kursByIso: Record<string, number | null> = {}
-  if (peChart?.length) {
-    for (const iso of periodenIso) {
-      kursByIso[iso] = wertAusChartNaehe(peChart, iso, 'v1')
-    }
-    if (mitTtm) {
-      const latest = peChart[peChart.length - 1]
-      kursByIso[FUNDAMENTAL_TTM_KEY] = latest ? wertAusChartPunkt(latest, 'v1') : null
-    }
-  }
-
-  const lastFy = [...periodenIso].reverse().find((iso) => {
-    for (const z of zeilen) {
-      if (z.macrotrendsStatement === 'price-ratios') continue
-      const v = z.werte[iso]
-      if (v != null && Number.isFinite(v)) return true
-    }
-    return false
-  })
-  if (lastFy && mitTtm) {
-    for (const z of zeilen) {
-      if (z.macrotrendsStatement === 'price-ratios') continue
-      if (z.werte[FUNDAMENTAL_TTM_KEY] == null && z.werte[lastFy] != null) {
-        z.werte[FUNDAMENTAL_TTM_KEY] = z.werte[lastFy]
-      }
-    }
-  }
-
-  ergaenzeDividendenHistorieZeilen(perioden, zeilen, null, kursByIso)
-  ergaenzeNettoverschuldungZeilen(perioden, zeilen)
-  ergaenzeEvMultiplesZeilen(perioden, zeilen)
-
-  const ratiosUrl = `${BASE}/stocks/charts/${ident.ticker}/${ident.slug}/financial-ratios`
-  const ratiosHtml = pageCache.get(ratiosUrl)?.html ?? (await ladeSeite(ratiosUrl))
-  const metaMatch = ratiosHtml?.match(/<meta name="description" content="([^"]+)"/)
-  const beschreibung =
-    metaMatch?.[1]?.replace(/&lt;[^&]+&gt;/g, '').replace(/&[^;]+;/g, ' ').trim() ?? null
-
-  return {
-    ident,
-    perioden,
-    zeilen,
-    beschreibung,
-    branche: null,
-  }
+  const { ladeSecFundamentaldaten } = await import('@/lib/portfolio-analyse/sec-fundamentaldaten-server')
+  const sec = await ladeSecFundamentaldaten(ident, frequenz)
+  if (sec) return sec
+  if (opts?.nurCache) return null
+  return null
 }
-
 export async function ladeMacrotrendsChartSerie(
   ident: MacrotrendsIdent,
   slug: string,

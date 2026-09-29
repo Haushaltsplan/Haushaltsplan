@@ -7,6 +7,7 @@ export function labelFundamentalGuvQuelle(
   q: FundamentalGuvQuelle | null | undefined,
 ): string | null {
   if (!q) return null
+  if (q === 'sec') return 'SEC EDGAR'
   if (q === 'macrotrends') return 'Macrotrends'
   if (q === 'eu') return 'EU-Berichte'
   if (q === 'marketscreener') return 'MarketScreener'
@@ -28,7 +29,7 @@ export function labelFundamentalSchaetzungQuelle(
 export function fundamentalQuellenZeile(opts: {
   guvQuelle?: FundamentalGuvQuelle | null
   schaetzungQuelle?: FundamentalSchaetzungQuelle | null
-  fallbackPaketQuelle?: 'macrotrends' | 'yahoo' | 'marketscreener' | null
+  fallbackPaketQuelle?: 'macrotrends' | 'yahoo' | 'marketscreener' | 'sec' | null
 }): string | null {
   const guv =
     labelFundamentalGuvQuelle(opts.guvQuelle) ??
@@ -37,9 +38,11 @@ export function fundamentalQuellenZeile(opts: {
         ? 'yahoo'
         : opts.fallbackPaketQuelle === 'marketscreener'
           ? 'marketscreener'
-          : opts.fallbackPaketQuelle === 'macrotrends'
-            ? 'macrotrends'
-            : null,
+          : opts.fallbackPaketQuelle === 'sec'
+            ? 'sec'
+            : opts.fallbackPaketQuelle === 'macrotrends'
+              ? 'macrotrends'
+              : null,
     )
   const schaetz = labelFundamentalSchaetzungQuelle(opts.schaetzungQuelle)
   const teile: string[] = []

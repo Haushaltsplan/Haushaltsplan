@@ -24,7 +24,7 @@ export type FundamentalPeriode = {
 
 export type FundamentalFrequenz = 'jahr' | 'quartal'
 
-export type FundamentalGuvQuelle = 'macrotrends' | 'eu' | 'yahoo' | 'marketscreener'
+export type FundamentalGuvQuelle = 'macrotrends' | 'eu' | 'yahoo' | 'marketscreener' | 'sec'
 
 export type FundamentalSchaetzungQuelle =
   | 'stockanalysis'
@@ -192,7 +192,7 @@ export type FundamentaldatenPaket = {
   news: FundamentalNewsArtikel[]
   symbolYahoo: string | null
   geladenAm: string
-  quelle: 'macrotrends' | 'yahoo' | 'marketscreener'
+  quelle: 'macrotrends' | 'yahoo' | 'marketscreener' | 'sec'
   /** Abschluss-Historie (Übersicht). */
   guvQuelle?: FundamentalGuvQuelle | null
   /** Consensus-Schätzungen (Übersicht). */
