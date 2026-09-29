@@ -10,6 +10,7 @@ import {
   leiteKeywordSeeds,
   mergeKeywordIdeen,
   filtereChancen,
+  menschAnhaengeAusListings,
   type AutoSeedListing,
 } from '@/lib/etsy/etsy-keyword-auto'
 import type { EtsyAutoKeywordScan, EtsyKeywordIdee } from '@/lib/etsy/etsy-markt-types'
@@ -19,7 +20,7 @@ import { ladeEtsyShopListings } from '@/lib/etsy/etsy-listings-server'
 import { createSupabaseAdmin } from '@/lib/supabase-admin'
 
 const AUTO_TTL_MS = 24 * 60 * 60 * 1000
-const MAX_WETTBEWERB = 12
+const MAX_WETTBEWERB = 16
 
 async function ladeAktiveListings(ownerUserId: string): Promise<AutoSeedListing[]> {
   const out: AutoSeedListing[] = []
@@ -85,9 +86,10 @@ export async function scanneEtsyKeywordsFuerShop(
     if (cached) return cached
   }
 
-  const [listings, hauptbegriffe] = await Promise.all([
+  const [listings, hauptbegriffe, konkurrenzTags] = await Promise.all([
     ladeAktiveListings(ownerUserId),
     ladeEtsyHauptbegriffe(ownerUserId).catch(() => new Map<number, string>()),
+    konkurrenzTagZaehler(ownerUserId),
   ])
   if (!listings.length) {
     return {
@@ -102,21 +104,29 @@ export async function scanneEtsyKeywordsFuerShop(
     }
   }
 
-  const { seeds, holzKontext } = leiteKeywordSeeds(listings, [...new Set(hauptbegriffe.values())])
-  const deadline = Date.now() + 50_000
+  const { seeds, holzKontext } = leiteKeywordSeeds(
+    listings,
+    [...new Set(hauptbegriffe.values())],
+    konkurrenzTags,
+  )
+  const anhaenge = menschAnhaengeAusListings(listings)
+  const deadline = Date.now() + 78_000
   const hinweise: string[] = []
   const laeufe: Array<{ seed: string; ideen: EtsyKeywordIdee[] }> = []
   let abfragen = 0
   const seedZuKeyword = new Map<string, string[]>()
 
-  for (const s of seeds) {
+  for (let i = 0; i < seeds.length; i++) {
+    const s = seeds[i]!
     if (Date.now() > deadline) {
       hinweise.push('Zeitbudget — Teilergebnis aus den ersten Suchfeldern.')
       break
     }
     const rest = Math.max(8_000, deadline - Date.now())
     const r = await erkundeEtsyKeywords(s.seed, {
-      tief: false,
+      tief: i < 2,
+      menschlich: true,
+      anhaenge,
       maxWettbewerb: 0,
       budgetMs: rest,
       holzKontext,
@@ -124,14 +134,14 @@ export async function scanneEtsyKeywordsFuerShop(
     abfragen += r.abfragen
     hinweise.push(...r.hinweise.map((h) => `${s.seed}: ${h}`))
     laeufe.push({ seed: s.seed, ideen: r.ideen })
-    for (const i of r.ideen) {
-      const k = i.keyword.toLowerCase()
+    for (const idee of r.ideen) {
+      const k = idee.keyword.toLowerCase()
       seedZuKeyword.set(k, [...new Set([...(seedZuKeyword.get(k) ?? []), s.seed])])
     }
   }
 
   const gemergt = mergeKeywordIdeen(laeufe)
-  const top = gemergt.slice(0, 40)
+  const top = gemergt.slice(0, 80)
   for (const idee of top.slice(0, MAX_WETTBEWERB)) {
     if (Date.now() > deadline) break
     const c = await getCompetitorInsights(idee.keyword, { mitBadges: false })
@@ -142,7 +152,6 @@ export async function scanneEtsyKeywordsFuerShop(
     idee.chance = chanceAus(idee.nachfrage, c.wettbewerbCount)
   }
 
-  const konkurrenzTags = await konkurrenzTagZaehler(ownerUserId)
   const alle = anreichereAutoKeywords({ ideen: top, listings, konkurrenzTags, seedZuKeyword })
   const chancen = filtereChancen(alle)
   if (!chancen.length) hinweise.push('Keine klaren Lücken — deine Tags decken die häufigsten Suchen schon gut ab.')

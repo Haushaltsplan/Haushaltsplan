@@ -5,7 +5,7 @@ import { NextResponse } from 'next/server'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
-export const maxDuration = 90
+export const maxDuration = 120
 
 /** Keyword-Explorer: `?q=holzschale&tief=1&holz=buche` oder `?auto=1` (aus eigenen Listings). */
 export async function GET(req: Request) {

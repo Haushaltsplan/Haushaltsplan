@@ -852,6 +852,39 @@ export async function ladeEtsyMarktKontext(opts: {
 const EXPLORER_BUCHSTABEN = 'abcdefghiklmnoprstuvwz'.split('')
 const EXPLORER_ZUSAETZE = ['geschenk', 'groß', 'klein', 'deko', 'handgemacht', 'rund', 'natur']
 
+/** So tippen Käufer weiter, nachdem das Produktwort da ist. */
+const MENSCH_ANHAENGE_STANDARD = [
+  'geschenk',
+  'unikat',
+  'groß',
+  'klein',
+  'deko',
+  'rustikal',
+  'für',
+  'aus',
+  'massivholz',
+  'handgemacht',
+]
+
+const TITEL_PRODUKT_RE = /schale|vase|schüssel|schuessel|dose|bowl|holz/
+const TITEL_HOLZ_RE = /eiche|nuss|ahorn|buche|kirsch|esche|olive|birke|ulme|linde|pflaume/
+
+function kaeuferNgrammeAusTitel(title: string): string[] {
+  const w = norm(title)
+    .split(/[^a-zäöüß0-9]+/i)
+    .filter((x) => x.length >= 3 && !STOPWORDS.has(x))
+  const out: string[] = []
+  for (let n = 2; n <= 3; n++) {
+    for (let i = 0; i <= w.length - n; i++) {
+      const g = w.slice(i, i + n).join(' ')
+      if (g.length < 8 || g.length > 28) continue
+      if (!TITEL_PRODUKT_RE.test(g) && !TITEL_HOLZ_RE.test(g)) continue
+      out.push(g)
+    }
+  }
+  return out
+}
+
 const SAISON_RE: Array<[RegExp, string]> = [
   [/weihnacht|advent|nikolaus|wichtel/, 'Weihnachten (ab Mitte Okt.)'],
   [/ostern|oster/, 'Ostern'],
@@ -881,7 +914,7 @@ type EtsyTopTags = {
  */
 async function holeEtsyTopTags(keyword: string): Promise<EtsyTopTags | null> {
   if (!etsyApiKonfiguriert()) return null
-  const key = cacheKey('etsytags:de', keyword)
+  const key = cacheKey('etsytags:v2:de', keyword)
   const c = await ladeCache<EtsyTopTags>(key)
   if (c) return c.payload
 
@@ -920,6 +953,15 @@ async function holeEtsyTopTags(keyword: string): Promise<EtsyTopTags | null> {
       t.punkte += gewicht
       tally.set(tag, t)
     }
+    for (const phrase of kaeuferNgrammeAusTitel(String(l.title || ''))) {
+      const tag = bereinigeSuggestion(phrase)
+      if (!tag || gesehen.has(tag)) continue
+      gesehen.add(tag)
+      const t = tally.get(tag) ?? { nutzung: 0, punkte: 0 }
+      t.nutzung++
+      t.punkte += gewicht * 0.7
+      tally.set(tag, t)
+    }
   })
   const erg: EtsyTopTags = {
     listings: listings.length,
@@ -943,21 +985,44 @@ export function chanceAus(nachfrage: number, wettbewerb: number | null): EtsyKey
 
 export async function erkundeEtsyKeywords(
   seedRoh: string,
-  opts?: { tief?: boolean; maxWettbewerb?: number; budgetMs?: number; holzKontext?: string },
+  opts?: {
+    tief?: boolean
+    menschlich?: boolean
+    anhaenge?: string[]
+    maxWettbewerb?: number
+    budgetMs?: number
+    holzKontext?: string
+  },
 ): Promise<EtsyKeywordExplorerErgebnis> {
   const seed = norm(seedRoh).slice(0, 50)
   const hinweise: string[] = []
   if (seed.length < 3) return { seed, ideen: [], abfragen: 0, hinweise: ['Suchbegriff zu kurz'] }
   const deadline = Date.now() + (opts?.budgetMs ?? 40_000)
+  const menschlich = opts?.menschlich === true
+  const anhaenge = [...new Set((opts?.anhaenge?.length ? opts.anhaenge : MENSCH_ANHAENGE_STANDARD).map(norm))].filter(
+    (a) => a.length >= 2 && a !== seed && !seed.includes(a),
+  )
 
   const anfragen: Array<{ quelle: KaeuferQuelle | 'etsy'; q: string }> = [
     { quelle: 'google_de', q: seed },
     { quelle: 'amazon_de', q: seed },
     { quelle: 'etsy', q: seed },
   ]
-  if (opts?.tief) {
+  if (opts?.tief && menschlich) {
+    for (const z of anhaenge.slice(0, 8)) {
+      anfragen.push({ quelle: 'google_de', q: `${seed} ${z}` })
+      anfragen.push({ quelle: 'amazon_de', q: `${seed} ${z}` })
+    }
+    for (const z of anhaenge.slice(0, 4)) {
+      anfragen.push({ quelle: 'etsy', q: `${seed} ${z}` })
+    }
+  } else if (opts?.tief) {
     for (const b of EXPLORER_BUCHSTABEN) anfragen.push({ quelle: 'google_de', q: `${seed} ${b}` })
     for (const z of EXPLORER_ZUSAETZE) anfragen.push({ quelle: 'amazon_de', q: `${seed} ${z}` })
+  } else if (menschlich) {
+    for (const z of anhaenge.slice(0, 3)) {
+      anfragen.push({ quelle: 'google_de', q: `${seed} ${z}` })
+    }
   }
 
   type Treffer = { punkte: number; quellen: Set<EtsyKeywordIdee['quellen'][number]> }
@@ -979,6 +1044,7 @@ export async function erkundeEtsyKeywords(
     if (a.quelle === 'etsy') {
       const e = await getEtsyAutosuggest(a.q)
       if (e.provider === 'etsy_suggest') e.suggestions.forEach((s, i) => merke(s, 'etsy_suggest', i, 1.3))
+      else e.suggestions.forEach((s, i) => merke(s, 'etsy_tags', i, 0.55))
       continue
     }
     const r = await getKaeuferSuggestEinzeln(a.quelle, a.q)
@@ -993,7 +1059,7 @@ export async function erkundeEtsyKeywords(
     const top = [...treffer.entries()]
       .filter(([kw]) => kw !== seed && kw.includes(' '))
       .sort((a, b) => b[1].punkte - a[1].punkte)
-      .slice(0, 3)
+      .slice(0, 4)
       .map(([kw]) => kw)
     etsySeeds.push(...top)
   }
@@ -1033,7 +1099,7 @@ export async function erkundeEtsyKeywords(
       saison: saisonFuer(keyword),
     }))
     .sort((a, b) => b.nachfrage - a.nachfrage)
-    .slice(0, 60)
+    .slice(0, 80)
 
   const maxW = opts?.maxWettbewerb ?? 12
   for (const idee of ideen.slice(0, maxW)) {

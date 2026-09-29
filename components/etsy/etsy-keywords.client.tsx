@@ -2,6 +2,7 @@
 
 import { PageSection, PageSectionPanel } from '@/components/page-shell'
 import type { EtsyTagTausch } from '@/lib/etsy/etsy-cockpit-types'
+import { keywordProduktGruppe } from '@/lib/etsy/etsy-keyword-auto'
 import type {
   EtsyAutoKeyword,
   EtsyAutoKeywordScan,
@@ -115,6 +116,82 @@ function BeiDirZelle({ i }: { i: EtsyKeywordIdee | EtsyAutoKeyword }) {
   return <span className="text-xs text-[var(--app-text-muted)]">—</span>
 }
 
+type SortKey = 'keyword' | 'nachfrage' | 'wettbewerb' | 'chance' | 'beiDir'
+type SortDir = 'asc' | 'desc'
+
+const CHANCE_RANG: Record<EtsyKeywordChance, number> = { hoch: 3, mittel: 2, niedrig: 1 }
+
+function beiDirRang(i: EtsyKeywordIdee | EtsyAutoKeyword): number {
+  if (!istAuto(i)) return -1
+  if (i.status === 'fehlt') return 0
+  if (i.status === 'selten') return 10 + i.eigeneListings
+  return 50 + i.eigeneListings
+}
+
+function sortiereKeywords(
+  ideen: Array<EtsyKeywordIdee | EtsyAutoKeyword>,
+  key: SortKey,
+  dir: SortDir,
+): Array<EtsyKeywordIdee | EtsyAutoKeyword> {
+  const sign = dir === 'asc' ? 1 : -1
+  return [...ideen].sort((a, b) => {
+    let cmp = 0
+    if (key === 'keyword') cmp = a.keyword.localeCompare(b.keyword, 'de')
+    else if (key === 'nachfrage') cmp = a.nachfrage - b.nachfrage
+    else if (key === 'wettbewerb') cmp = (a.wettbewerb ?? -1) - (b.wettbewerb ?? -1)
+    else if (key === 'chance') cmp = (a.chance ? CHANCE_RANG[a.chance] : -1) - (b.chance ? CHANCE_RANG[b.chance] : -1)
+    else cmp = beiDirRang(a) - beiDirRang(b)
+    if (cmp !== 0) return cmp * sign
+    return a.keyword.localeCompare(b.keyword, 'de')
+  })
+}
+
+function seedsVon(i: EtsyKeywordIdee | EtsyAutoKeyword): string[] {
+  return istAuto(i) ? i.seeds : []
+}
+
+function teileNachProdukt(ideen: Array<EtsyKeywordIdee | EtsyAutoKeyword>) {
+  const schale: Array<EtsyKeywordIdee | EtsyAutoKeyword> = []
+  const vase: Array<EtsyKeywordIdee | EtsyAutoKeyword> = []
+  const allgemein: Array<EtsyKeywordIdee | EtsyAutoKeyword> = []
+  for (const i of ideen) {
+    const g = keywordProduktGruppe(i.keyword, seedsVon(i))
+    if (g === 'schale') schale.push(i)
+    else if (g === 'vase') vase.push(i)
+    else allgemein.push(i)
+  }
+  return { schale, vase, allgemein }
+}
+
+function SortTh({
+  label,
+  spalte,
+  aktiv,
+  richtung,
+  onKlick,
+}: {
+  label: string
+  spalte: SortKey
+  aktiv: boolean
+  richtung: SortDir
+  onKlick: (k: SortKey) => void
+}) {
+  return (
+    <th className="py-2 pr-2 font-medium" aria-sort={aktiv ? (richtung === 'asc' ? 'ascending' : 'descending') : 'none'}>
+      <button
+        type="button"
+        onClick={() => onKlick(spalte)}
+        className={`inline-flex items-center gap-1 hover:text-[var(--app-text)] ${
+          aktiv ? 'text-[var(--app-text)]' : 'text-[var(--app-text-muted)]'
+        }`}
+      >
+        {label}
+        <span className="text-[10px] tabular-nums">{aktiv ? (richtung === 'asc' ? '↑' : '↓') : '↕'}</span>
+      </button>
+    </th>
+  )
+}
+
 function KeywordTabelle({
   ideen,
   gemerktSet,
@@ -123,6 +200,10 @@ function KeywordTabelle({
   onMerken,
   onEinbauen,
   extraSpalte,
+  gruppeTitel,
+  sortKey: sortKeyProp,
+  sortDir: sortDirProp,
+  onSort,
 }: {
   ideen: Array<EtsyKeywordIdee | EtsyAutoKeyword>
   gemerktSet: Set<string>
@@ -131,99 +212,176 @@ function KeywordTabelle({
   onMerken: (i: EtsyKeywordIdee) => void
   onEinbauen: (keyword: string) => void
   extraSpalte?: 'bei dir'
+  gruppeTitel?: string
+  sortKey?: SortKey
+  sortDir?: SortDir
+  onSort?: (key: SortKey, dir: SortDir) => void
 }) {
+  const [internKey, setInternKey] = useState<SortKey>('nachfrage')
+  const [internDir, setInternDir] = useState<SortDir>('desc')
+  const sortKey = sortKeyProp ?? internKey
+  const sortDir = sortDirProp ?? internDir
+  const sortiert = useMemo(() => sortiereKeywords(ideen, sortKey, sortDir), [ideen, sortKey, sortDir])
+
+  function klick(key: SortKey) {
+    const nextDir: SortDir = sortKey === key ? (sortDir === 'desc' ? 'asc' : 'desc') : key === 'keyword' ? 'asc' : 'desc'
+    if (onSort) onSort(key, nextDir)
+    else {
+      setInternKey(key)
+      setInternDir(nextDir)
+    }
+  }
+
+  if (ideen.length === 0) return null
+
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full min-w-[36rem] text-sm">
-        <thead>
-          <tr className="border-b border-[var(--app-border)] text-left text-xs text-[var(--app-text-muted)]">
-            <th className="py-2 pr-2 font-medium">Suchphrase</th>
-            <th className="py-2 pr-2 font-medium">Nachfrage</th>
-            <th className="py-2 pr-2 font-medium">Wettbewerb</th>
-            <th className="py-2 pr-2 font-medium">Chance</th>
-            {extraSpalte === 'bei dir' && <th className="py-2 pr-2 font-medium">Bei dir</th>}
-            <th className="py-2 font-medium" />
-          </tr>
-        </thead>
-        <tbody>
-          {ideen.map((i) => (
-            <tr key={i.keyword} className="border-b border-[var(--app-border)]/60 align-middle">
-              <td className="py-2 pr-2">
-                <button
-                  type="button"
-                  onClick={() => onKopieren(i.keyword)}
-                  className="text-left font-medium text-[var(--app-text)] hover:underline"
-                  title="Kopieren"
-                >
-                  {i.keyword}
-                </button>
-                <div className="mt-0.5 flex flex-wrap gap-1 text-[10px] text-[var(--app-text-muted)]">
-                  {QUELLEN_REIHENFOLGE.filter((q) => i.quellen.includes(q)).map((q) => (
-                    <span
-                      key={q}
-                      title={
-                        q === 'etsy_tags' && i.etsyNutzung != null
-                          ? `${i.etsyNutzung} der Top-100-Etsy-Listings nutzen diesen Tag`
-                          : undefined
-                      }
-                      className={`rounded px-1.5 py-0.5 ${
-                        q.startsWith('etsy')
-                          ? 'bg-orange-500/15 font-medium text-orange-200'
-                          : 'bg-[var(--app-surface-muted)]'
-                      }`}
-                    >
-                      {QUELLEN_LABEL[q]}
-                      {q === 'etsy_tags' && i.etsyNutzung != null ? ` · ${i.etsyNutzung}×` : ''}
-                    </span>
-                  ))}
-                  {!i.tagTauglich && <span className="text-amber-300/80">zu lang für Tag → Titel</span>}
-                  {i.saison && <span className="text-sky-300/90">{i.saison}</span>}
-                </div>
-              </td>
-              <td className="py-2 pr-2">
-                <NachfrageBalken wert={i.nachfrage} />
-              </td>
-              <td className="py-2 pr-2 text-xs tabular-nums text-[var(--app-text-muted)]">
-                {i.wettbewerb != null ? i.wettbewerb.toLocaleString('de-DE') : '—'}
-                {i.wettbewerbMarkt === 'DE' ? ' DE' : ''}
-              </td>
-              <td className="py-2 pr-2">
-                <ChanceBadge chance={i.chance} />
-              </td>
+    <div className="space-y-1.5">
+      {gruppeTitel && (
+        <h3 className="text-sm font-semibold tracking-tight text-[var(--app-text)]">{gruppeTitel}</h3>
+      )}
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[36rem] text-sm">
+          <thead>
+            <tr className="border-b border-[var(--app-border)] text-left text-xs">
+              <SortTh label="Suchphrase" spalte="keyword" aktiv={sortKey === 'keyword'} richtung={sortDir} onKlick={klick} />
+              <SortTh label="Nachfrage" spalte="nachfrage" aktiv={sortKey === 'nachfrage'} richtung={sortDir} onKlick={klick} />
+              <SortTh label="Wettbewerb" spalte="wettbewerb" aktiv={sortKey === 'wettbewerb'} richtung={sortDir} onKlick={klick} />
+              <SortTh label="Chance" spalte="chance" aktiv={sortKey === 'chance'} richtung={sortDir} onKlick={klick} />
               {extraSpalte === 'bei dir' && (
-                <td className="py-2 pr-2 text-xs tabular-nums">
-                  <BeiDirZelle i={i} />
-                </td>
+                <SortTh label="Bei dir" spalte="beiDir" aktiv={sortKey === 'beiDir'} richtung={sortDir} onKlick={klick} />
               )}
-              <td className="whitespace-nowrap py-2 text-right">
-                {i.tagTauglich && (
+              <th className="py-2 font-medium" />
+            </tr>
+          </thead>
+          <tbody>
+            {sortiert.map((i) => (
+              <tr key={i.keyword} className="border-b border-[var(--app-border)]/60 align-middle">
+                <td className="py-2 pr-2">
                   <button
                     type="button"
-                    onClick={() => onEinbauen(i.keyword)}
-                    className="rounded-lg border border-teal-500/40 px-2 py-1 text-[11px] text-teal-200 hover:bg-teal-500/15"
-                    title="In das passendste Listing als Tag einbauen"
+                    onClick={() => onKopieren(i.keyword)}
+                    className="text-left font-medium text-[var(--app-text)] hover:underline"
+                    title="Kopieren"
                   >
-                    Einbauen
+                    {i.keyword}
                   </button>
+                  <div className="mt-0.5 flex flex-wrap gap-1 text-[10px] text-[var(--app-text-muted)]">
+                    {QUELLEN_REIHENFOLGE.filter((q) => i.quellen.includes(q)).map((q) => (
+                      <span
+                        key={q}
+                        title={
+                          q === 'etsy_tags' && i.etsyNutzung != null
+                            ? `${i.etsyNutzung} der Top-100-Etsy-Listings nutzen diesen Tag`
+                            : undefined
+                        }
+                        className={`rounded px-1.5 py-0.5 ${
+                          q.startsWith('etsy')
+                            ? 'bg-orange-500/15 font-medium text-orange-200'
+                            : 'bg-[var(--app-surface-muted)]'
+                        }`}
+                      >
+                        {QUELLEN_LABEL[q]}
+                        {q === 'etsy_tags' && i.etsyNutzung != null ? ` · ${i.etsyNutzung}×` : ''}
+                      </span>
+                    ))}
+                    {!i.tagTauglich && <span className="text-amber-300/80">zu lang für Tag → Titel</span>}
+                    {i.saison && <span className="text-sky-300/90">{i.saison}</span>}
+                  </div>
+                </td>
+                <td className="py-2 pr-2">
+                  <NachfrageBalken wert={i.nachfrage} />
+                </td>
+                <td className="py-2 pr-2 text-xs tabular-nums text-[var(--app-text-muted)]">
+                  {i.wettbewerb != null ? i.wettbewerb.toLocaleString('de-DE') : '—'}
+                  {i.wettbewerbMarkt === 'DE' ? ' DE' : ''}
+                </td>
+                <td className="py-2 pr-2">
+                  <ChanceBadge chance={i.chance} />
+                </td>
+                {extraSpalte === 'bei dir' && (
+                  <td className="py-2 pr-2 text-xs tabular-nums">
+                    <BeiDirZelle i={i} />
+                  </td>
                 )}
-                <button
-                  type="button"
-                  disabled={busyKeyword === i.keyword}
-                  onClick={() => onMerken(i)}
-                  className={`ml-1 rounded-lg px-2 py-1 text-[11px] font-medium disabled:opacity-60 ${
-                    gemerktSet.has(i.keyword)
-                      ? 'border border-rose-500/30 text-rose-200 hover:bg-rose-500/10'
-                      : 'border border-amber-500/40 bg-amber-500/10 text-amber-200 hover:bg-amber-500/15'
-                  }`}
-                  title={gemerktSet.has(i.keyword) ? 'Aus Favoriten entfernen' : 'Zu Favoriten hinzufügen'}
-                >
-                  {gemerktSet.has(i.keyword) ? 'Entfernen' : 'Merken'}
-                </button>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+                <td className="whitespace-nowrap py-2 text-right">
+                  {i.tagTauglich && (
+                    <button
+                      type="button"
+                      onClick={() => onEinbauen(i.keyword)}
+                      className="rounded-lg border border-teal-500/40 px-2 py-1 text-[11px] text-teal-200 hover:bg-teal-500/15"
+                      title="In das passendste Listing als Tag einbauen"
+                    >
+                      Einbauen
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    disabled={busyKeyword === i.keyword}
+                    onClick={() => onMerken(i)}
+                    className={`ml-1 rounded-lg px-2 py-1 text-[11px] font-medium disabled:opacity-60 ${
+                      gemerktSet.has(i.keyword)
+                        ? 'border border-rose-500/30 text-rose-200 hover:bg-rose-500/10'
+                        : 'border border-amber-500/40 bg-amber-500/10 text-amber-200 hover:bg-amber-500/15'
+                    }`}
+                    title={gemerktSet.has(i.keyword) ? 'Aus Favoriten entfernen' : 'Zu Favoriten hinzufügen'}
+                  >
+                    {gemerktSet.has(i.keyword) ? 'Entfernen' : 'Merken'}
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  )
+}
+
+function KeywordGruppen({
+  ideen,
+  sortKey,
+  sortDir,
+  onSort,
+  ...rest
+}: {
+  ideen: Array<EtsyKeywordIdee | EtsyAutoKeyword>
+  gemerktSet: Set<string>
+  busyKeyword?: string | null
+  onKopieren: (text: string) => void
+  onMerken: (i: EtsyKeywordIdee) => void
+  onEinbauen: (keyword: string) => void
+  extraSpalte?: 'bei dir'
+  sortKey: SortKey
+  sortDir: SortDir
+  onSort: (key: SortKey, dir: SortDir) => void
+}) {
+  const teile = teileNachProdukt(ideen)
+  const gruppen = (
+    [
+      ['schale', 'Schalen', teile.schale],
+      ['vase', 'Vasen', teile.vase],
+      ['allgemein', 'Allgemein', teile.allgemein],
+    ] as const
+  ).filter(([, , liste]) => liste.length > 0)
+
+  return (
+    <div className="space-y-5">
+      {gruppen.map(([id, label, liste]) => (
+        <KeywordTabelle
+          key={id}
+          ideen={liste}
+          gruppeTitel={`${label} · ${liste.length}`}
+          extraSpalte={rest.extraSpalte}
+          gemerktSet={rest.gemerktSet}
+          busyKeyword={rest.busyKeyword}
+          onKopieren={rest.onKopieren}
+          onMerken={rest.onMerken}
+          onEinbauen={rest.onEinbauen}
+          sortKey={sortKey}
+          sortDir={sortDir}
+          onSort={onSort}
+        />
+      ))}
     </div>
   )
 }
@@ -252,6 +410,10 @@ export function EtsyKeywords({ verbunden = false }: { verbunden?: boolean }) {
   const [autoLaden, setAutoLaden] = useState(false)
   const [autoAnsicht, setAutoAnsicht] = useState<'chancen' | 'alle'>('chancen')
   const [favoritBusy, setFavoritBusy] = useState<string | null>(null)
+  const [favSortKey, setFavSortKey] = useState<SortKey>('nachfrage')
+  const [favSortDir, setFavSortDir] = useState<SortDir>('desc')
+  const [autoSortKey, setAutoSortKey] = useState<SortKey>('nachfrage')
+  const [autoSortDir, setAutoSortDir] = useState<SortDir>('desc')
 
   const ladeMerkliste = useCallback(async () => {
     try {
@@ -475,9 +637,10 @@ export function EtsyKeywords({ verbunden = false }: { verbunden?: boolean }) {
           ) : (
             <>
               <p className="text-xs text-[var(--app-text-muted)]">
-                Das Cockpit schlägt vor, wo sie als Tag hinpassen. Entfernen nimmt sie aus der Liste, nicht von Etsy.
+                Nach Schalen und Vasen getrennt. Spaltenüberschrift anklicken zum Sortieren. Entfernen nimmt sie aus
+                der Liste, nicht von Etsy.
               </p>
-              <KeywordTabelle
+              <KeywordGruppen
                 ideen={favoritenZeilen}
                 gemerktSet={gemerktSet}
                 busyKeyword={favoritBusy}
@@ -485,6 +648,12 @@ export function EtsyKeywords({ verbunden = false }: { verbunden?: boolean }) {
                 onMerken={(i) => void merken(i)}
                 onEinbauen={(kw) => void planeEinbau(kw)}
                 extraSpalte="bei dir"
+                sortKey={favSortKey}
+                sortDir={favSortDir}
+                onSort={(key, dir) => {
+                  setFavSortKey(key)
+                  setFavSortDir(dir)
+                }}
               />
               <button
                 type="button"
@@ -509,8 +678,9 @@ export function EtsyKeywords({ verbunden = false }: { verbunden?: boolean }) {
             <>
               <div className="flex flex-wrap items-start justify-between gap-2">
                 <p className="text-sm text-[var(--app-text-muted)]">
-                  Vorschläge aus deinem Sortiment (Etsy-Top-Tags, Google.de, Amazon.de). Nichts wird von allein
-                  gemerkt — mit <strong>Merken</strong> wählst du aus, was in die Favoriten soll.
+                  Sucht wie ein Käufer: Produkt + Holzart, Nutzung, Geschenk, Größe — plus was Google, Amazon
+                  und die Top-100-Etsy-Treffer (Tags und Titel) wirklich vorschlagen. Mit <strong>Merken</strong>{' '}
+                  kommt es in die Favoriten.
                 </p>
                 <button
                   type="button"
@@ -518,14 +688,19 @@ export function EtsyKeywords({ verbunden = false }: { verbunden?: boolean }) {
                   onClick={() => void ladeAuto(true)}
                   className="shrink-0 rounded-lg border border-[var(--app-border)] px-3 py-1.5 text-xs text-[var(--app-text)] hover:bg-[var(--app-surface-muted)] disabled:opacity-60"
                 >
-                  {autoLaden ? 'Prüft… (20–40 Sek.)' : autoScan ? 'Neu prüfen' : 'Jetzt finden'}
+                  {autoLaden ? 'Prüft… (bis 1 Min.)' : autoScan ? 'Neu prüfen' : 'Jetzt finden'}
                 </button>
               </div>
               {autoScan?.seeds.length ? (
                 <p className="text-[11px] text-[var(--app-text-muted)]">
                   Suchfelder aus {autoScan.listings} Listings
-                  {autoScan.ausCache ? ' · gespeichert (24 Std.)' : ''}:{' '}
-                  {autoScan.seeds.map((s) => s.seed).join(' · ')}
+                  {autoScan.ausCache ? ' · gespeichert (24 Std.) — „Neu prüfen“ für die erweiterte Suche' : ''}:{' '}
+                  {autoScan.seeds.map((s, i) => (
+                    <span key={s.seed}>
+                      {i > 0 ? ' · ' : ''}
+                      <span title={s.grund}>{s.seed}</span>
+                    </span>
+                  ))}
                 </p>
               ) : null}
               {autoLaden && !autoScan ? (
@@ -563,7 +738,7 @@ export function EtsyKeywords({ verbunden = false }: { verbunden?: boolean }) {
                       Keine offenen Lücken in diesem Filter — deine Tags decken die häufigsten Suchen schon.
                     </p>
                   ) : (
-                    <KeywordTabelle
+                    <KeywordGruppen
                       ideen={autoListe}
                       gemerktSet={gemerktSet}
                       busyKeyword={favoritBusy}
@@ -571,6 +746,12 @@ export function EtsyKeywords({ verbunden = false }: { verbunden?: boolean }) {
                       onMerken={(i) => void merken(i)}
                       onEinbauen={(kw) => void planeEinbau(kw)}
                       extraSpalte="bei dir"
+                      sortKey={autoSortKey}
+                      sortDir={autoSortDir}
+                      onSort={(key, dir) => {
+                        setAutoSortKey(key)
+                        setAutoSortDir(dir)
+                      }}
                     />
                   )}
                 </>
