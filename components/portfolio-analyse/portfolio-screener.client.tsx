@@ -54,6 +54,8 @@ type ApiAntwort = {
   n?: number
   schemaVersion?: number
   zeilen?: ScreenerZeile[]
+  cloudGespeichert?: boolean
+  cloudWarnung?: string | null
   message?: string
 }
 
@@ -263,6 +265,7 @@ export function PortfolioScreenerClient() {
   const [laden, setLaden] = useState(true)
   const [erneuern, setErneuern] = useState(false)
   const [fehler, setFehler] = useState<string | null>(null)
+  const [cloudWarnung, setCloudWarnung] = useState<string | null>(null)
   const [filter, setFilter] = useState<ScreenerFilter>(() => qualityCompounderFilter())
   const [aktiveVorlageId, setAktiveVorlageId] = useState<string | null>('quality-compounder')
   const [eigen, setEigen] = useState<ScreenerEigeneVorlage[]>([])
@@ -275,6 +278,7 @@ export function PortfolioScreenerClient() {
     setPeriode(j.periode ?? null)
     setAktualisiertAm(j.aktualisiertAm ?? null)
     setSchemaVersion(j.schemaVersion ?? 1)
+    setCloudWarnung(j.cloudWarnung ?? (j.cloudGespeichert === false ? 'Cloud-Snapshot nicht gespeichert.' : null))
   }, [])
 
   const lade = useCallback(async () => {
@@ -327,6 +331,7 @@ export function PortfolioScreenerClient() {
   const baueUniversum = useCallback(async () => {
     setErneuern(true)
     setFehler(null)
+    setCloudWarnung(null)
     try {
       const res = await fetch('/api/portfolio-analyse/screener', { method: 'POST' })
       const j = (await res.json()) as ApiAntwort
@@ -495,6 +500,12 @@ export function PortfolioScreenerClient() {
             </button>
           </div>
         </div>
+
+        {cloudWarnung ? (
+          <p className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-100">
+            {cloudWarnung}
+          </p>
+        ) : null}
 
         {schemaAlt ? (
           <p className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-100">

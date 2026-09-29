@@ -92,6 +92,24 @@ export function schaetzeWaccPct(opts: {
   return wE * costEquityPct + wD * costDebtPct * (1 - t)
 }
 
+/** iROIC − WACC; Fallback über implizites WACC aus ROIC−Spread (Cache-Read ohne Yahoo/iROIC-Kontext). */
+export function berechneIncrementalValueSpread(opts: {
+  incrementalRoicPct: number | null | undefined
+  wacc: number | null | undefined
+  roicAnzeige: number | null | undefined
+  valueSpread: number | null | undefined
+}): number | null {
+  const roiic = opts.incrementalRoicPct
+  if (roiic == null || !Number.isFinite(roiic)) return null
+  if (opts.wacc != null && Number.isFinite(opts.wacc)) return roiic - opts.wacc
+  const roic = opts.roicAnzeige
+  const spread = opts.valueSpread
+  if (roic != null && spread != null && Number.isFinite(roic) && Number.isFinite(spread)) {
+    return roiic - (roic - spread)
+  }
+  return null
+}
+
 /** Yahoo-Jahressnapshot für Mantra-Finanzdaten (WACC, Schulden). */
 export type YahooJahresSnapshot = {
   datum: string

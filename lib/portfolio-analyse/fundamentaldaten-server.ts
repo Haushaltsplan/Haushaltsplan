@@ -824,11 +824,13 @@ function paketMitKorrigiertemFwdWachstum(p: FundamentaldatenPaket): Fundamentald
   const cleaned = { ...p, perioden, zeilen }
   if (cleaned.keyMetrics.length === 0) return cleaned
   const schaetz = schaetzungenRohAusPaket(cleaned)
+  const roiicAusCache = cleaned.keyMetrics.find((m) => m.id === 'incremental_roic')?.zahl ?? null
   const kontext = baueKontextWerte({
     yahoo: null,
     roh: { perioden: cleaned.perioden, zeilen: cleaned.zeilen },
     schaetzungen: schaetz,
     yahooFinanz: null,
+    incrementalRoicPct: roiicAusCache,
   })
   return {
     ...cleaned,

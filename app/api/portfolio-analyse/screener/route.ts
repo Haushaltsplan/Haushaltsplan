@@ -7,7 +7,10 @@ import {
 export const dynamic = 'force-dynamic'
 export const maxDuration = 180
 
-function paketFuerClient(snap: NonNullable<Awaited<ReturnType<typeof ladeScreenerSnapshot>>>) {
+function paketFuerClient(
+  snap: NonNullable<Awaited<ReturnType<typeof ladeScreenerSnapshot>>>,
+  extra?: { cloudGespeichert?: boolean; cloudWarnung?: string | null },
+) {
   return {
     ok: true as const,
     leer: false as const,
@@ -16,6 +19,8 @@ function paketFuerClient(snap: NonNullable<Awaited<ReturnType<typeof ladeScreene
     n: snap.n,
     schemaVersion: snap.schemaVersion ?? 1,
     zeilen: snap.zeilen.map(({ hist: _hist, ...z }) => z),
+    cloudGespeichert: extra?.cloudGespeichert ?? true,
+    cloudWarnung: extra?.cloudWarnung ?? null,
   }
 }
 
@@ -45,13 +50,13 @@ export async function GET() {
 
 export async function POST() {
   try {
-    const snap = await erneuereScreenerSnapshot()
-    return NextResponse.json(paketFuerClient(snap))
+    const ergebnis = await erneuereScreenerSnapshot()
+    const { cloudGespeichert, cloudWarnung, ...snap } = ergebnis
+    return NextResponse.json(paketFuerClient(snap, { cloudGespeichert, cloudWarnung }))
   } catch (e) {
     console.error('[screener] POST', e)
-    return NextResponse.json(
-      { ok: false, message: e instanceof Error ? e.message : 'Universum konnte nicht geladen werden.' },
-      { status: 500 },
-    )
+    const msg = e instanceof Error ? e.message : 'Universum konnte nicht geladen werden.'
+    const kurz = msg.includes('<!DOCTYPE') ? 'SEC-Universum fehlgeschlagen — unerwartete HTML-Antwort (Netzwerk/Proxy?).' : msg.slice(0, 300)
+    return NextResponse.json({ ok: false, message: kurz }, { status: 500 })
   }
 }

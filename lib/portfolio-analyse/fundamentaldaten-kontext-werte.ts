@@ -5,6 +5,7 @@ import type { FundamentalMetrikZeile, FundamentalPeriode } from '@/lib/portfolio
 import {
   historischeWerteAusZeile,
   letzterVerfuegbarerWert,
+  berechneIncrementalValueSpread,
   schaetzeWaccPct,
   werteGleicherStichtag,
 } from '@/lib/portfolio-analyse/fundamentaldaten-roic-hilfen'
@@ -386,7 +387,12 @@ export function baueKontextWerte(ctx: FundamentalKontextInput) {
   const roic5yAvgPct = mittelLetzte(roicHist, 5, 3)
 
   const roiic = ctx.incrementalRoicPct ?? null
-  const incrementalValueSpread = roiic != null && wacc != null ? roiic - wacc : null
+  const incrementalValueSpread = berechneIncrementalValueSpread({
+    incrementalRoicPct: roiic,
+    wacc,
+    roicAnzeige,
+    valueSpread,
+  })
 
   const reinvest = perioden
     ? berechneReinvestition(

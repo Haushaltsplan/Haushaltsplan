@@ -11,12 +11,14 @@ export async function GET(req: Request) {
     return NextResponse.json({ ok: false, fehler: 'Unauthorized' }, { status: 401 })
   }
   try {
-    const snap = await erneuereScreenerSnapshot()
+    const ergebnis = await erneuereScreenerSnapshot()
     return NextResponse.json({
       ok: true,
-      n: snap.n,
-      periode: snap.periode,
-      zeitstempel: snap.aktualisiertAm,
+      n: ergebnis.n,
+      periode: ergebnis.periode,
+      zeitstempel: ergebnis.aktualisiertAm,
+      cloudGespeichert: ergebnis.cloudGespeichert,
+      cloudWarnung: ergebnis.cloudWarnung,
     })
   } catch (e) {
     console.error('[screener-cron]', e)

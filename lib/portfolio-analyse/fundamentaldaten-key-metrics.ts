@@ -7,7 +7,10 @@ import {
 import {
   fcfRenditeAusPfcf,
 } from '@/lib/portfolio-analyse/fundamentaldaten-fcf-rendite-zeilen'
-import { historischeWerteAusZeile } from '@/lib/portfolio-analyse/fundamentaldaten-roic-hilfen'
+import {
+  berechneIncrementalValueSpread,
+  historischeWerteAusZeile,
+} from '@/lib/portfolio-analyse/fundamentaldaten-roic-hilfen'
 import type { FundamentalSchaetzungenRoh } from '@/lib/portfolio-analyse/fundamentaldaten-schaetzungen-server'
 import type {
   FundamentalKeyMetric,
@@ -757,6 +760,27 @@ export function korrigiereEffizienzKeyMetrics(
 ): FundamentalKeyMetric[] {
   if (!kontextWerte) return keyMetrics
   const w = kontextWerte
+  const roiicKm = keyMetrics.find((m) => m.id === 'incremental_roic')?.zahl ?? null
+  const iSpreadAnzeige = (zahl: number | null | undefined) => ({
+    wert: pctSigned(zahl),
+    zahl: zahl ?? null,
+    ton:
+      zahl == null
+        ? undefined
+        : zahl >= 10
+          ? ('positiv' as const)
+          : zahl >= 0
+            ? ('neutral' as const)
+            : ('negativ' as const),
+  })
+  const incrementalSpread =
+    w.incrementalValueSpread ??
+    berechneIncrementalValueSpread({
+      incrementalRoicPct: w.incrementalRoicPct ?? roiicKm,
+      wacc: w.wacc,
+      roicAnzeige: w.roicAnzeige ?? w.roic,
+      valueSpread: w.valueSpread,
+    })
   let out: FundamentalKeyMetric[] = keyMetrics.map((k): FundamentalKeyMetric => {
     if (k.id === 'ltm_brutto') {
       return {
@@ -803,19 +827,7 @@ export function korrigiereEffizienzKeyMetrics(
     if (k.id === 'reinvest_quote') return { ...k, wert: pctMitVorzeichen(w.reinvestitionsquotePct) }
     if (k.id === 'roic_5y_avg') return { ...k, wert: pctRaw(w.roic5yAvgPct), zahl: w.roic5yAvgPct ?? null }
     if (k.id === 'incremental_value_spread') {
-      return {
-        ...k,
-        wert: pctSigned(w.incrementalValueSpread),
-        zahl: w.incrementalValueSpread ?? null,
-        ton:
-          w.incrementalValueSpread == null
-            ? undefined
-            : w.incrementalValueSpread >= 10
-              ? 'positiv'
-              : w.incrementalValueSpread >= 0
-                ? 'neutral'
-                : 'negativ',
-      }
+      return { ...k, ...iSpreadAnzeige(incrementalSpread) }
     }
     if (k.id === 'sbc_ocf_ratio') {
       return {
@@ -855,17 +867,8 @@ export function korrigiereEffizienzKeyMetrics(
     {
       id: 'incremental_value_spread',
       label: 'Incremental Value Spread (iROIC − WACC)',
-      wert: pctSigned(w.incrementalValueSpread),
-      zahl: w.incrementalValueSpread ?? null,
-      ton:
-        w.incrementalValueSpread == null
-          ? undefined
-          : w.incrementalValueSpread >= 10
-            ? 'positiv'
-            : w.incrementalValueSpread >= 0
-              ? 'neutral'
-              : 'negativ',
       gruppe: 'effizienz',
+      ...iSpreadAnzeige(incrementalSpread),
     },
     'roic_5y_avg',
   )
