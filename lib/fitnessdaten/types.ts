@@ -135,11 +135,12 @@ export const HR_ZONE_LABELS: Record<HrZoneKey, string> = {
   z5: 'Zone 5',
 }
 
+/** Gleich wie `WHOOP_ZONE_COLORS` in `components/fitnessdaten/whoop-design-tokens.ts`. */
 export const HR_ZONE_COLORS: Record<HrZoneKey, string> = {
-  rest: '#3f3f46',
-  z1: '#3b82f6',
-  z2: '#22c55e',
-  z3: '#eab308',
-  z4: '#f97316',
-  z5: '#ef4444',
+  rest: '#3A4150',
+  z1: '#4FC3F7',
+  z2: '#00E676',
+  z3: '#FFD600',
+  z4: '#FF9100',
+  z5: '#FF1744',
 }

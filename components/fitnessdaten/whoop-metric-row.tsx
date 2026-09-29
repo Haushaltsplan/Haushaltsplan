@@ -91,7 +91,7 @@ export function WhoopMetricRow({
 
 export function WhoopInsightCard({ text, link }: { text: string; link?: string }) {
   return (
-    <div className="rounded-2xl border border-white/[0.06] bg-[#111113] p-4">
+    <div className="rounded-2xl border border-white/[0.06] bg-[#12161F] p-4">
       <div className="mb-2 flex items-center gap-2">
         <span className="h-1.5 w-1.5 rounded-full bg-[#00E676]" style={{ boxShadow: '0 0 6px #00E676' }} />
         <span className="text-[9px] font-bold uppercase tracking-[0.18em] text-[#00E676]">Einblick</span>
@@ -149,12 +149,12 @@ export function WhoopHealthTile({
       <button
         type="button"
         onClick={onPress}
-        className="min-w-0 rounded-2xl border border-white/[0.06] bg-[#111113] p-3 text-left transition active:scale-[0.98] hover:border-white/[0.12]"
+        className="min-w-0 rounded-2xl border border-white/[0.06] bg-[#12161F] p-3 text-left transition active:scale-[0.98] hover:border-white/[0.12]"
       >
         {inner}
       </button>
     )
   }
 
-  return <div className="min-w-0 rounded-2xl border border-white/[0.06] bg-[#111113] p-3">{inner}</div>
+  return <div className="min-w-0 rounded-2xl border border-white/[0.06] bg-[#12161F] p-3">{inner}</div>
 }

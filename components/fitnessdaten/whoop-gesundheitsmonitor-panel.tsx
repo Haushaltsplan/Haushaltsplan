@@ -29,7 +29,7 @@ export function WhoopGesundheitsmonitorPanel({
 
   return (
     <div className="space-y-4">
-      <div className="rounded-2xl border border-white/[0.06] bg-[#111113] p-4">
+      <div className="rounded-2xl border border-white/[0.06] bg-[#12161F] p-4">
         <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-[var(--app-text)]">Gesundheitsmonitor</p>
         <div className="mt-3 grid min-w-0 grid-cols-2 gap-2">
           <WhoopHealthTile
@@ -119,7 +119,7 @@ export function WhoopGesundheitsmonitorPanel({
       )}
 
       {journal.length > 0 ? (
-        <div className="rounded-2xl border border-white/[0.06] bg-[#111113] p-4">
+        <div className="rounded-2xl border border-white/[0.06] bg-[#12161F] p-4">
           <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-[var(--app-text)]">Journal heute</p>
           <ul className="mt-3 space-y-2">
             {journal.slice(0, 8).map((j) => (

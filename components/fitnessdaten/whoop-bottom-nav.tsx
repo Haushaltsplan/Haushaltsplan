@@ -8,7 +8,7 @@ const TABS: { id: WhoopTab; label: string; short: string; color: string }[] = [
   { id: 'home', label: 'Home', short: 'Home', color: '#ffffff' },
   { id: 'sleep', label: 'Schlaf', short: 'Schlaf', color: '#00E5FF' },
   { id: 'recovery', label: 'Erholung', short: 'Erhol.', color: '#00E676' },
-  { id: 'strain', label: 'Belastung', short: 'Belast.', color: '#009dff' },
+  { id: 'strain', label: 'Belastung', short: 'Belast.', color: '#00B2FE' },
   { id: 'health', label: 'Gesundheit', short: 'Health', color: '#a78bfa' },
   { id: 'connect', label: 'Gerät & Import', short: 'Daten', color: '#38bdf8' },
 ]

@@ -257,7 +257,7 @@ export function WhoopTrendChart({
                       width={barW}
                       height={Math.max(barH, c.value > 0 ? 3 : 0)}
                       rx={3}
-                      fill={active ? '#3dc4ff' : '#009dff'}
+                      fill={active ? '#3dc4ff' : '#00B2FE'}
                       opacity={active ? 1 : 0.55}
                     />
                   </g>
@@ -267,7 +267,7 @@ export function WhoopTrendChart({
                 <polyline
                   points={coords.map((c) => `${c.x},${c.y}`).join(' ')}
                   fill="none"
-                  stroke="#009dff"
+                  stroke="#00B2FE"
                   strokeWidth="2.75"
                   strokeLinejoin="round"
                   strokeLinecap="round"
@@ -283,7 +283,7 @@ export function WhoopTrendChart({
                       cx={c.x}
                       cy={c.y}
                       r={active ? 6 : 3.5}
-                      fill={active ? '#3dc4ff' : '#009dff'}
+                      fill={active ? '#3dc4ff' : '#00B2FE'}
                       stroke={active ? '#fff' : 'none'}
                       strokeWidth={2}
                     />

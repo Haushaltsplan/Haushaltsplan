@@ -84,8 +84,8 @@ export function WhoopActivityModal({ activity, onClose }: Props) {
 
         <div className={`${appModalScrollHiddenClassName} space-y-4 px-5 py-4`}>
           <div className="flex items-center gap-4">
-            <div className="flex h-16 w-16 flex-col items-center justify-center rounded-2xl bg-[#009dff]/20">
-              <span className="text-2xl font-bold text-[#009dff]">{activity.strain.toFixed(1)}</span>
+            <div className="flex h-16 w-16 flex-col items-center justify-center rounded-2xl bg-[#00B2FE]/20">
+              <span className="text-2xl font-bold text-[#00B2FE]">{activity.strain.toFixed(1)}</span>
               <span className="text-[9px] font-bold uppercase text-[var(--app-text-muted)]">Strain</span>
             </div>
             <div className="grid flex-1 grid-cols-2 gap-2 text-xs">

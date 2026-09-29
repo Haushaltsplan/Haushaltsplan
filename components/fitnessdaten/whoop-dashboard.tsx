@@ -32,7 +32,10 @@ import {
   recoveryColor,
   recoveryLabelDe,
   WhoopRing,
+  WhoopScoreRing,
 } from '@/components/fitnessdaten/whoop-ring'
+import { WhoopSleepArchitectureBar } from '@/components/fitnessdaten/whoop-sleep-architecture'
+import { WHOOP_COLORS } from '@/components/fitnessdaten/whoop-design-tokens'
 import { WhoopBottomNav, type WhoopTab } from '@/components/fitnessdaten/whoop-bottom-nav'
 import { WhoopActivityModal } from '@/components/fitnessdaten/whoop-activity-modal'
 import { WhoopLogbuchPanel } from '@/components/fitnessdaten/whoop-logbuch-panel'
@@ -243,7 +246,7 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange, ini
   })
 
   return (
-    <div className="relative flex flex-col rounded-2xl border border-white/[0.05] bg-black text-white shadow-2xl shadow-black/80 sm:rounded-3xl md:min-h-[calc(100dvh-4rem)] md:max-h-[calc(100dvh-4rem)] md:overflow-hidden">
+    <div className="relative flex flex-col rounded-2xl border border-white/[0.06] bg-[#0B0E14] text-white shadow-2xl shadow-black/80 sm:rounded-3xl md:min-h-[calc(100dvh-4rem)] md:max-h-[calc(100dvh-4rem)] md:overflow-hidden">
       <div
         className="pointer-events-none absolute -left-32 -top-32 h-64 w-64 rounded-full opacity-20 blur-3xl"
         style={{ background: recoveryColor(heute.recoveryPercent) }}
@@ -375,113 +378,30 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange, ini
 
               {/* ── DREI RINGE (Schlaf | Erholung | Belastung) ── */}
               <div className="mt-5 flex items-center justify-around gap-1">
-                {/* Schlaf */}
-                <button
-                  type="button"
-                  onClick={() => setTab('sleep')}
-                  className="flex flex-col items-center gap-1.5 rounded-2xl px-1 transition active:scale-[0.97]"
-                  style={{ filter: heute.sleepScore != null ? 'drop-shadow(0 0 14px #00E5FF40)' : 'none' }}
-                >
-                  <div className="relative" style={{ width: 108, height: 108 }}>
-                    <svg width={108} height={108}>
-                      <circle cx={54} cy={54} r={47} fill="none" stroke="rgba(255,255,255,0.10)" strokeWidth={8} />
-                      {heute.sleepScore != null && (
-                        <circle
-                          cx={54} cy={54} r={47} fill="none"
-                          stroke="#00E5FF" strokeWidth={8}
-                          strokeDasharray={2 * Math.PI * 47}
-                          strokeDashoffset={2 * Math.PI * 47 * (1 - Math.min(1, heute.sleepScore / 100))}
-                          strokeLinecap="round"
-                          transform="rotate(-90 54 54)"
-                          style={{ filter: 'drop-shadow(0 0 6px #00E5FF80)' }}
-                        />
-                      )}
-                    </svg>
-                    <div className="absolute inset-0 flex flex-col items-center justify-center">
-                      <span className="text-[22px] font-bold tabular-nums text-white leading-none">
-                        {heute.sleepScore != null ? `${Math.round(heute.sleepScore)}%` : '—'}
-                      </span>
-                    </div>
-                  </div>
-                  <span className="flex flex-col items-center gap-0.5">
-                    <span className="flex items-center gap-1 text-[11px] font-bold uppercase tracking-[0.12em] text-[#00E5FF]">
-                      SCHLAF <span className="text-[var(--app-text-muted)]">›</span>
-                    </span>
-                    <MetricSourceBadge kind={metricSourceFuer('sleep', heute)} />
-                  </span>
-                </button>
-
-                {/* Erholung */}
-                <button
-                  type="button"
-                  onClick={() => setTab('recovery')}
-                  className="flex flex-col items-center gap-1.5 rounded-2xl px-1 transition active:scale-[0.97]"
-                  style={{ filter: heute.recoveryPercent != null ? `drop-shadow(0 0 14px ${recoveryColor(heute.recoveryPercent)}40)` : 'none' }}
-                >
-                  <div className="relative" style={{ width: 108, height: 108 }}>
-                    <svg width={108} height={108}>
-                      <circle cx={54} cy={54} r={47} fill="none" stroke="rgba(255,255,255,0.10)" strokeWidth={8} />
-                      {heute.recoveryPercent != null && (
-                        <circle
-                          cx={54} cy={54} r={47} fill="none"
-                          stroke={recoveryColor(heute.recoveryPercent)} strokeWidth={8}
-                          strokeDasharray={2 * Math.PI * 47}
-                          strokeDashoffset={2 * Math.PI * 47 * (1 - Math.min(1, heute.recoveryPercent / 100))}
-                          strokeLinecap="round"
-                          transform="rotate(-90 54 54)"
-                          style={{ filter: `drop-shadow(0 0 6px ${recoveryColor(heute.recoveryPercent)}80)` }}
-                        />
-                      )}
-                    </svg>
-                    <div className="absolute inset-0 flex flex-col items-center justify-center">
-                      <span className="text-[22px] font-bold tabular-nums text-white leading-none">
-                        {heute.recoveryPercent != null ? `${Math.round(heute.recoveryPercent)}%` : '—'}
-                      </span>
-                    </div>
-                  </div>
-                  <span className="flex flex-col items-center gap-0.5">
-                    <span className="flex items-center gap-1 text-[11px] font-bold uppercase tracking-[0.12em]" style={{ color: recoveryColor(heute.recoveryPercent) }}>
-                      ERHOLUNG <span className="text-[var(--app-text-muted)]">›</span>
-                    </span>
-                    <MetricSourceBadge kind={metricSourceFuer('recovery', heute)} />
-                  </span>
-                </button>
-
-                {/* Belastung */}
-                <button
-                  type="button"
-                  onClick={() => setTab('strain')}
-                  className="flex flex-col items-center gap-1.5 rounded-2xl px-1 transition active:scale-[0.97]"
-                  style={{ filter: heute.strain != null ? 'drop-shadow(0 0 14px #009dff40)' : 'none' }}
-                >
-                  <div className="relative" style={{ width: 108, height: 108 }}>
-                    <svg width={108} height={108}>
-                      <circle cx={54} cy={54} r={47} fill="none" stroke="rgba(255,255,255,0.10)" strokeWidth={8} />
-                      {heute.strain != null && (
-                        <circle
-                          cx={54} cy={54} r={47} fill="none"
-                          stroke="#009dff" strokeWidth={8}
-                          strokeDasharray={2 * Math.PI * 47}
-                          strokeDashoffset={2 * Math.PI * 47 * (1 - Math.min(1, heute.strain / 21))}
-                          strokeLinecap="round"
-                          transform="rotate(-90 54 54)"
-                          style={{ filter: 'drop-shadow(0 0 6px #009dff80)' }}
-                        />
-                      )}
-                    </svg>
-                    <div className="absolute inset-0 flex flex-col items-center justify-center">
-                      <span className="text-[22px] font-bold tabular-nums text-white leading-none">
-                        {heute.strain != null ? heute.strain.toFixed(1) : '—'}
-                      </span>
-                    </div>
-                  </div>
-                  <span className="flex flex-col items-center gap-0.5">
-                    <span className="flex items-center gap-1 text-[11px] font-bold uppercase tracking-[0.12em] text-[#009dff]">
-                      BELASTUNG <span className="text-[var(--app-text-muted)]">›</span>
-                    </span>
-                    <MetricSourceBadge kind={metricSourceFuer('strain', heute)} />
-                  </span>
-                </button>
+                <WhoopScoreRing
+                  kind="sleep"
+                  value={heute.sleepScore}
+                  max={100}
+                  label="Schlaf"
+                  onPress={() => setTab('sleep')}
+                  badge={<MetricSourceBadge kind={metricSourceFuer('sleep', heute)} />}
+                />
+                <WhoopScoreRing
+                  kind="recovery"
+                  value={heute.recoveryPercent}
+                  max={100}
+                  label="Erholung"
+                  onPress={() => setTab('recovery')}
+                  badge={<MetricSourceBadge kind={metricSourceFuer('recovery', heute)} />}
+                />
+                <WhoopScoreRing
+                  kind="strain"
+                  value={heute.strain}
+                  max={21}
+                  label="Belastung"
+                  onPress={() => setTab('strain')}
+                  badge={<MetricSourceBadge kind={metricSourceFuer('strain', heute)} />}
+                />
               </div>
 
               <section className="mt-4 space-y-3">
@@ -491,7 +411,7 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange, ini
                   <button
                     type="button"
                     onClick={() => setTab('health')}
-                    className="rounded-2xl border border-white/[0.06] bg-[#111113] p-3.5 text-left transition active:scale-[0.97]"
+                    className="rounded-2xl border border-white/[0.06] bg-[#12161F] p-3.5 text-left transition active:scale-[0.97]"
                   >
                     <p className="text-[9px] font-bold uppercase tracking-[0.16em] text-[var(--app-text-muted)]">Gesundheits-Monitor</p>
                     <div className="mt-2 flex items-center gap-2">
@@ -511,7 +431,7 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange, ini
                   <button
                     type="button"
                     onClick={() => setStressModalOpen(true)}
-                    className="rounded-2xl border border-white/[0.06] bg-[#111113] p-3.5 text-left transition active:scale-[0.97]"
+                    className="rounded-2xl border border-white/[0.06] bg-[#12161F] p-3.5 text-left transition active:scale-[0.97]"
                   >
                     <p className="text-[9px] font-bold uppercase tracking-[0.16em] text-[var(--app-text-muted)]">Stress-Monitor</p>
                     <div className="mt-2">
@@ -527,17 +447,17 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange, ini
 
                 {/* ── LIVE HR (kompakt) ── */}
                 {istHeute && (model.liveHr != null || (snapshot?.hrHistory ?? []).length > 0) && (
-                  <div className="rounded-2xl border border-white/[0.06] bg-[#111113] p-4">
+                  <div className="rounded-2xl border border-white/[0.06] bg-[#12161F] p-4">
                     <div className="flex items-baseline gap-3">
                       <span className="text-3xl font-bold tabular-nums text-white">{model.liveHr ?? '—'}</span>
                       <span className="text-sm text-[var(--app-text-muted)]">bpm live</span>
                       {model.hrZone > 0 && (
-                        <span className="ml-auto rounded-full bg-[#009dff]/20 px-2 py-0.5 text-[10px] font-bold text-[#009dff]">
+                        <span className="ml-auto rounded-full bg-[#00B2FE]/20 px-2 py-0.5 text-[10px] font-bold text-[#00B2FE]">
                           Zone {model.hrZone}
                         </span>
                       )}
                     </div>
-                    <WhoopHrChart points={snapshot?.hrHistory ?? []} live={isLive} />
+                    <WhoopHrChart points={snapshot?.hrHistory ?? []} live={isLive} restingHr={heute.restingHr} />
                   </div>
                 )}
 
@@ -559,7 +479,7 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange, ini
                     <button
                       type="button"
                       onClick={() => setCoachExpanded(!coachExpanded)}
-                      className="mt-2 flex w-full items-center gap-3 rounded-2xl border border-white/[0.06] bg-[#111113] px-4 py-3 text-left transition hover:bg-white/[0.03]"
+                      className="mt-2 flex w-full items-center gap-3 rounded-2xl border border-white/[0.06] bg-[#12161F] px-4 py-3 text-left transition hover:bg-white/[0.03]"
                     >
                       <span className="text-lg">☀</span>
                       <span className="flex-1 text-[12px] text-[var(--app-text)]">Dein täglicher Ausblick</span>
@@ -612,7 +532,7 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange, ini
 
                   {/* Heutige Aktivitäten */}
                   {aktivitaeten.length > 0 && (
-                    <div className="mt-2 rounded-2xl border border-white/[0.06] bg-[#111113] p-3.5">
+                    <div className="mt-2 rounded-2xl border border-white/[0.06] bg-[#12161F] p-3.5">
                       <div className="flex items-center justify-between">
                         <p className="text-[9px] font-bold uppercase tracking-[0.16em] text-[var(--app-text-muted)]">Heutige Aktivitäten</p>
                         <button type="button" onClick={() => setTab('strain')} className="text-[10px] text-[var(--app-text-muted)]">↗</button>
@@ -623,9 +543,9 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange, ini
                             <button
                               type="button"
                               onClick={() => setSelectedActivity(a)}
-                              className="flex w-full items-center gap-3 rounded-xl bg-[#009dff]/10 px-3 py-2.5 text-left transition active:scale-[0.98]"
+                              className="flex w-full items-center gap-3 rounded-xl bg-[#00B2FE]/10 px-3 py-2.5 text-left transition active:scale-[0.98]"
                             >
-                              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[#009dff]/20 text-[13px] font-bold text-[#009dff]">
+                              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[#00B2FE]/20 text-[13px] font-bold text-[#00B2FE]">
                                 {a.strain.toFixed(1)}
                               </span>
                               <span className="flex-1">
@@ -661,7 +581,7 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange, ini
 
                 {/* ── SCHLAF HEUTE NACHT ── */}
                 {istHeute && (heute.sleepNeedMinutes != null || heute.wakeTimeMs != null) && (
-                  <div className="rounded-2xl border border-white/[0.06] bg-[#111113] p-4">
+                  <div className="rounded-2xl border border-white/[0.06] bg-[#12161F] p-4">
                     <div className="flex items-center justify-between">
                       <p className="text-[9px] font-bold uppercase tracking-[0.16em] text-[var(--app-text-muted)]">Schlaf für heute Nacht</p>
                       <span className="text-[var(--app-text-muted)]">›</span>
@@ -700,7 +620,7 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange, ini
                     <h2 className="text-base font-bold text-white">Mein Dashboard</h2>
                     <span className="text-[10px] text-[var(--app-text-muted)]">PERSONALISIEREN ✏</span>
                   </div>
-                  <div className="rounded-2xl border border-white/[0.06] bg-[#111113] px-4">
+                  <div className="rounded-2xl border border-white/[0.06] bg-[#12161F] px-4">
                     {[
                       ...HOME_METRICS.map((m) => {
                         const val = heuteWert(m.id, heute)
@@ -748,7 +668,7 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange, ini
                           unit: '',
                           decimals: 1,
                           arrow: dir === 'up' ? '▲' : dir === 'down' ? '▼' : '●',
-                          arrowColor: good == null ? '#3f3f46' : good ? '#009dff' : '#FF1744',
+                          arrowColor: good == null ? '#3f3f46' : good ? '#00B2FE' : '#FF1744',
                           onClick: () => setTab('strain'),
                           badge: null,
                         }
@@ -806,13 +726,21 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange, ini
             <button type="button" onClick={() => showInfo('sleep_score')} className="w-full">
               <WhoopBigRing
                 value={heute.sleepScore}
+                kind="sleep"
                 label="Schlafleistung"
                 sublabel={
                   heute.sleepMinutes ? `${Math.floor(heute.sleepMinutes / 60)}h ${heute.sleepMinutes % 60}m` : undefined
                 }
-                color="#00E5FF"
               />
             </button>
+
+            <WhoopSleepArchitectureBar
+              awakeMin={heute.awakeMinutes}
+              lightMin={heute.lightMinutes}
+              remMin={heute.remMinutes}
+              deepMin={heute.deepMinutes}
+              onInfo={() => showInfo('restorative_sleep')}
+            />
 
             <WhoopDualLineChart
               title="Stunden vs. Bedarf (Stunden)"
@@ -925,13 +853,9 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange, ini
 
         {tab === 'recovery' && (
           <section className="mt-4 space-y-4">
-            <WhoopBigRing
-              value={heute.recoveryPercent}
-              label="Erholung"
-              color={recoveryColor(heute.recoveryPercent)}
-            />
+            <WhoopBigRing value={heute.recoveryPercent} kind="recovery" label="Erholung" />
 
-            <div className="rounded-2xl border border-white/[0.06] bg-[#111113] px-4">
+            <div className="rounded-2xl border border-white/[0.06] bg-[#12161F] px-4">
               <WhoopMetricRow icon="〰" label="Herzfrequenzvariabilität" m={metriken.hrv} unit="ms" onPress={() => setTrendMetric('hrv')} onInfo={() => showInfo('hrv')} sourceKey="hrv" day={heute} />
               <WhoopMetricRow icon="♥" label="Ruheherzfrequenz" m={metriken.rhr} onPress={() => setTrendMetric('rhr')} onInfo={() => showInfo('rhr')} sourceKey="rhr" day={heute} />
               <WhoopMetricRow icon="◎" label="Atemfrequenz" m={metriken.respiratory} decimals={1} onPress={() => setTrendMetric('respiratory')} onInfo={() => showInfo('respiratory')} sourceKey="respiratory" day={heute} />
@@ -977,16 +901,29 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange, ini
               points={wochePunkte(woche, 'recoveryPercent', tagIso)}
               max={100}
               formatValue={(v) => `${v}%`}
-              color={recoveryColor(heute.recoveryPercent ?? 50)}
+              colorFor={recoveryColor}
               onInfo={() => showInfo('recovery')}
             />
 
-            <WhoopWeeklyLineChart title="Herzfrequenzvariabilität" points={wochePunkte(woche, 'hrvRmssd', tagIso)} onInfo={() => showInfo('hrv')} />
-            <WhoopWeeklyLineChart title="Ruheherzfrequenz" points={wochePunkte(woche, 'restingHr', tagIso)} color="#a78bfa" onInfo={() => showInfo('rhr')} />
+            <WhoopWeeklyLineChart
+              title="Herzfrequenzvariabilität"
+              points={wochePunkte(woche, 'hrvRmssd', tagIso)}
+              color={WHOOP_COLORS.hrv}
+              formatValue={(v) => `${Math.round(v)} ms`}
+              onInfo={() => showInfo('hrv')}
+            />
+            <WhoopWeeklyLineChart
+              title="Ruheherzfrequenz"
+              points={wochePunkte(woche, 'restingHr', tagIso)}
+              color={WHOOP_COLORS.rhr}
+              formatValue={(v) => `${Math.round(v)}`}
+              onInfo={() => showInfo('rhr')}
+            />
             <WhoopWeeklyLineChart
               title="Atemfrequenz"
               points={wochePunkte(woche, 'respiratoryRate', tagIso)}
-              color="#5eb3d6"
+              color={WHOOP_COLORS.respiratory}
+              formatValue={(v) => v.toFixed(1)}
               onInfo={() => showInfo('respiratory')}
             />
             <WhoopWeeklyBarChart
@@ -1002,9 +939,9 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange, ini
 
         {tab === 'strain' && (
           <section className="mt-4 space-y-4">
-            <WhoopBigRing value={heute.strain} max={21} label="Belastung" color="#009dff" />
+            <WhoopBigRing value={heute.strain} max={21} label="Belastung" color="#00B2FE" />
 
-            <div className="rounded-2xl border border-white/[0.06] bg-[#111113] px-4">
+            <div className="rounded-2xl border border-white/[0.06] bg-[#12161F] px-4">
               <WhoopMetricRow
                 icon="♥"
                 label="Herzfrequenzzonen 1–3"
@@ -1072,7 +1009,7 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange, ini
             ) : null}
 
             {aktivitaeten.length > 0 ? (
-              <div className="rounded-2xl border border-white/[0.06] bg-[#111113] p-4">
+              <div className="rounded-2xl border border-white/[0.06] bg-[#12161F] p-4">
                 <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-[var(--app-text)]">
                   {istHeute ? 'Aktivitäten heute' : `Aktivitäten · ${labelTagNavigation(tagIso)}`}
                 </p>
@@ -1082,9 +1019,9 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange, ini
                       <button
                         type="button"
                         onClick={() => setSelectedActivity(a)}
-                        className="flex w-full items-center gap-3 rounded-xl border border-white/[0.04] bg-black/30 px-3 py-2.5 text-left transition hover:border-[#009dff]/25"
+                        className="flex w-full items-center gap-3 rounded-xl border border-white/[0.04] bg-black/30 px-3 py-2.5 text-left transition hover:border-[#00B2FE]/25"
                       >
-                        <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-[#009dff]/20 text-sm font-bold text-[#009dff]">
+                        <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-[#00B2FE]/20 text-sm font-bold text-[#00B2FE]">
                           {a.strain.toFixed(1)}
                         </span>
                         <span className="flex-1 text-xs font-bold uppercase tracking-wide">{a.label}</span>
@@ -1099,7 +1036,7 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange, ini
             ) : null}
 
             {aktivitaetenHistorie.filter((a) => !aktivitaeten.some((t) => t.id === a.id)).length > 0 ? (
-              <div className="rounded-2xl border border-white/[0.06] bg-[#111113] p-4">
+              <div className="rounded-2xl border border-white/[0.06] bg-[#12161F] p-4">
                 <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-[var(--app-text)]">Vorangegangene Aktivitäten</p>
                 <ul className="mt-3 space-y-2">
                   {aktivitaetenHistorie
@@ -1110,7 +1047,7 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange, ini
                         <button
                           type="button"
                           onClick={() => setSelectedActivity(a)}
-                          className="flex w-full items-center gap-3 rounded-xl border border-white/[0.04] bg-black/30 px-3 py-2.5 text-left transition hover:border-[#009dff]/25"
+                          className="flex w-full items-center gap-3 rounded-xl border border-white/[0.04] bg-black/30 px-3 py-2.5 text-left transition hover:border-[#00B2FE]/25"
                         >
                           <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[var(--app-surface-muted)] text-xs font-bold text-[var(--app-text)]">
                             {a.strain.toFixed(1)}
@@ -1162,7 +1099,7 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange, ini
             />
 
             {zoneAnteil.length > 0 ? (
-              <div className="rounded-2xl border border-white/[0.06] bg-[#111113] p-4">
+              <div className="rounded-2xl border border-white/[0.06] bg-[#12161F] p-4">
                 <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--app-text-muted)]">
                   {istHeute ? 'Zonen heute' : `Zonen · ${labelTagNavigation(tagIso)}`}
                 </p>
@@ -1200,7 +1137,7 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange, ini
               onInfo={() => showInfo('health_monitor')}
             />
 
-            <details className="rounded-2xl border border-white/[0.06] bg-[#111113]">
+            <details className="rounded-2xl border border-white/[0.06] bg-[#12161F]">
               <summary className="cursor-pointer list-none px-4 py-3 text-[11px] font-bold uppercase tracking-[0.14em] text-[var(--app-text)] [&::-webkit-details-marker]:hidden">
                 Omnia Age & Langzeit-Trends ›
               </summary>
@@ -1286,7 +1223,7 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange, ini
 
             <button
               type="button"
-              className="flex w-full items-center justify-center gap-2 rounded-2xl border border-white/[0.08] bg-[#111113] py-3.5 text-[11px] font-bold uppercase tracking-wider text-[var(--app-text)]"
+              className="flex w-full items-center justify-center gap-2 rounded-2xl border border-white/[0.08] bg-[#12161F] py-3.5 text-[11px] font-bold uppercase tracking-wider text-[var(--app-text)]"
               onClick={() => {
                 const text = [
                   'Omnia Gesundheitsbericht',
@@ -1302,7 +1239,7 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange, ini
             </button>
 
             {snapshot?.gen5 ? (
-              <div className="rounded-2xl border border-white/[0.06] bg-[#111113] p-4 font-mono text-[11px] text-[var(--app-text-muted)]">
+              <div className="rounded-2xl border border-white/[0.06] bg-[#12161F] p-4 font-mono text-[11px] text-[var(--app-text-muted)]">
                 <p className="font-sans text-[10px] font-bold uppercase text-[var(--app-text-muted)]">Gen5 fd4b</p>
                 <p className="mt-1">Phase: {snapshot.gen5.phase}</p>
                 <p>r22: {snapshot.gen5.r22Count} · Historie: {snapshot.gen5.historyPackets}</p>

@@ -55,7 +55,7 @@ export function FitnessUserProfilePanel({ onSaved, embedded = false }: Props) {
 
   return (
     <div
-      className={`rounded-2xl border border-white/[0.08] bg-[#111113] ${embedded ? 'p-4' : 'p-5'}`}
+      className={`rounded-2xl border border-white/[0.08] bg-[#12161F] ${embedded ? 'p-4' : 'p-5'}`}
     >
       <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-[var(--app-text)]">Dein Profil</p>
       <p className="mt-2 text-xs leading-relaxed text-[var(--app-text-muted)]">

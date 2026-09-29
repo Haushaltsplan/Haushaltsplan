@@ -1,28 +1,63 @@
 'use client'
 
-import { WhoopChartHeader } from '@/components/fitnessdaten/whoop-info-modal'
-import { HR_ZONE_COLORS } from '@/lib/fitnessdaten/types'
+import {
+  WHOOP_ANIMATION,
+  WHOOP_AXIS,
+  WHOOP_CHART_MARGIN,
+  WHOOP_CURSOR_BAR,
+  WHOOP_CURSOR_LINE,
+  WHOOP_GRID,
+  WhoopAreaGradient,
+  WhoopBarGradient,
+  WhoopCard,
+  WhoopChartShell,
+  WhoopTooltipBox,
+  asTooltipProps,
+  formatHhMm,
+  formatUhr,
+  type WhoopTooltipRow,
+} from '@/components/fitnessdaten/whoop-chart-kit'
+import { WHOOP_COLORS, WHOOP_SLEEP_STAGES, WHOOP_ZONE_COLORS } from '@/components/fitnessdaten/whoop-design-tokens'
+import { useId } from 'react'
+import {
+  Area,
+  AreaChart,
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Cell,
+  ComposedChart,
+  LabelList,
+  Line,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from 'recharts'
 
 type BarPoint = { label: string; value: number; highlight?: boolean }
 
-function chartBreite(punkte: number): number {
-  // ViewBox-Breite — SVG skaliert auf 100% Container, kein minWidth-Zwang
-  return Math.max(280, punkte * 28)
+function useSvgId(prefix: string): string {
+  return `${prefix}-${useId().replace(/[^a-zA-Z0-9]/g, '')}`
 }
 
-function labelSchritt(anzahl: number): number {
-  if (anzahl <= 10) return 1
-  if (anzahl <= 30) return 2
-  if (anzahl <= 60) return 5
-  return 14
+function hatHighlight(points: { highlight?: boolean }[]): boolean {
+  return points.some((p) => p.highlight)
 }
+
+function tickInterval(n: number): number | 'preserveStartEnd' {
+  if (n <= 10) return 0
+  return 'preserveStartEnd'
+}
+
+const LABEL_STYLE = { fill: WHOOP_COLORS.textMuted, fontSize: 9, fontWeight: 600 } as const
 
 export function WhoopWeeklyBarChart({
   title,
   points,
   max,
   formatValue = (v) => String(v),
-  color = '#5eb3d6',
+  color = WHOOP_COLORS.sleep,
+  colorFor,
   onInfo,
 }: {
   title: string
@@ -30,142 +65,132 @@ export function WhoopWeeklyBarChart({
   max?: number
   formatValue?: (v: number) => string
   color?: string
+  /** Farbe pro Wert (z. B. Recovery-Ampel) — überschreibt `color`. */
+  colorFor?: (v: number) => string
   onInfo?: () => void
 }) {
-  const sichtbar = points.filter((p) => p.value > 0)
-  const peak = max ?? Math.max(...sichtbar.map((p) => p.value), 1)
-  const h = 160
-  const w = chartBreite(sichtbar.length || points.length)
-  const n = sichtbar.length || 1
-  const schritt = labelSchritt(n)
-  const werteAnzeigen = n <= 12
+  const gradId = useSvgId('wbar')
+  const data = points.map((p) => ({ label: p.label, value: p.value > 0 ? p.value : null, highlight: p.highlight }))
+  const fokus = hatHighlight(points)
+  const zeigeWerte = points.length <= 12
 
   return (
-    <div className="rounded-2xl border border-white/[0.06] bg-[#111113] p-4">
-      <WhoopChartHeader title={title} onInfo={onInfo} />
-      <div className="w-full min-w-0 max-w-full overflow-hidden">
-        <svg
-          viewBox={`0 0 ${w} ${h}`}
-          className="block h-auto w-full max-w-full"
-          style={{ height: h }}
-          preserveAspectRatio="xMidYMid meet"
-        >
-          {[0.25, 0.5, 0.75, 1].map((f) => (
-            <line
-              key={f}
-              x1={0}
-              y1={h - 28 - f * (h - 52)}
-              x2={w}
-              y2={h - 28 - f * (h - 52)}
-              stroke="rgba(255,255,255,0.06)"
-              strokeWidth={1}
-            />
-          ))}
-          {(sichtbar.length > 0 ? sichtbar : points).map((p, i) => {
-            const barW = Math.max(12, w / n - 6)
-            const x = i * (w / n) + 3
-            const barH = peak > 0 ? (p.value / peak) * (h - 56) : 0
-            const labelZeigen = p.label && (i % schritt === 0 || i === n - 1)
-            return (
-              <g key={`${p.label}-${i}`}>
-                {p.highlight ? (
-                  <rect x={x - 2} y={10} width={barW + 4} height={h - 20} rx={6} fill="rgba(255,255,255,0.04)" />
-                ) : null}
-                {werteAnzeigen && p.value > 0 ? (
-                  <text x={x + barW / 2} y={18} textAnchor="middle" fill={color} fontSize="9" fontWeight="600">
-                    {formatValue(p.value)}
-                  </text>
-                ) : null}
-                <rect
-                  x={x}
-                  y={h - 28 - barH}
-                  width={barW}
-                  height={Math.max(barH, p.value > 0 ? 3 : 0)}
-                  rx={3}
-                  fill={color}
+    <WhoopCard title={title} onInfo={onInfo}>
+      <WhoopChartShell height={170}>
+        <BarChart data={data} margin={WHOOP_CHART_MARGIN} barCategoryGap="22%">
+          <defs>
+            <WhoopBarGradient id={gradId} color={color} />
+          </defs>
+          <CartesianGrid {...WHOOP_GRID} />
+          <XAxis dataKey="label" {...WHOOP_AXIS} interval={tickInterval(points.length)} />
+          <YAxis hide domain={[0, max ?? 'auto']} />
+          <Tooltip
+            cursor={WHOOP_CURSOR_BAR}
+            content={(raw) => {
+              const p = asTooltipProps(raw)
+              const v = p.payload?.[0]?.value
+              if (!p.active || typeof v !== 'number') return null
+              return (
+                <WhoopTooltipBox
+                  title={String(p.label ?? '')}
+                  rows={[{ label: title, value: formatValue(v), color: colorFor ? colorFor(v) : color }]}
                 />
-                {labelZeigen ? (
-                  <text x={x + barW / 2} y={h - 6} textAnchor="middle" fill="#71717a" fontSize="8">
-                    {p.label}
-                  </text>
-                ) : null}
-              </g>
-            )
-          })}
-        </svg>
-      </div>
-    </div>
+              )
+            }}
+          />
+          <Bar dataKey="value" radius={[6, 6, 3, 3]} minPointSize={3} {...WHOOP_ANIMATION}>
+            {data.map((d, i) => (
+              <Cell
+                key={`${d.label}-${i}`}
+                fill={colorFor && d.value != null ? colorFor(d.value) : `url(#${gradId})`}
+                fillOpacity={!fokus || d.highlight ? 1 : 0.45}
+              />
+            ))}
+            {zeigeWerte ? (
+              <LabelList
+                dataKey="value"
+                position="top"
+                offset={6}
+                style={LABEL_STYLE}
+                formatter={(v: unknown) => (typeof v === 'number' ? formatValue(v) : '')}
+              />
+            ) : null}
+          </Bar>
+        </BarChart>
+      </WhoopChartShell>
+    </WhoopCard>
   )
 }
 
 export function WhoopWeeklyLineChart({
   title,
   points,
-  color = '#5eb3d6',
+  color = WHOOP_COLORS.sleep,
+  formatValue = (v) => (Number.isInteger(v) ? String(v) : v.toFixed(1)),
   onInfo,
 }: {
   title: string
   points: BarPoint[]
   color?: string
+  formatValue?: (v: number) => string
   onInfo?: () => void
 }) {
-  const sichtbar = points.filter((p) => p.value > 0)
-  const h = 160
-  const w = chartBreite(sichtbar.length || points.length)
-  const n = sichtbar.length
-  const schritt = labelSchritt(n)
-  const werteAnzeigen = n <= 10
-  const vals = sichtbar.map((p) => p.value)
-  const min = vals.length ? Math.min(...vals) * 0.92 : 0
-  const max = vals.length ? Math.max(...vals) * 1.08 : 1
-  const range = max - min || 1
-  const padX = 16
-  const chartW = w - padX * 2
-
-  const coords = sichtbar.map((p, i) => {
-    const x = padX + (i / Math.max(n - 1, 1)) * chartW
-    const y = 24 + (1 - (p.value - min) / range) * (h - 52)
-    return { x, y, ...p, i }
-  })
-
-  const poly = coords.map((c) => `${c.x},${c.y}`).join(' ')
+  const gradId = useSvgId('wline')
+  const data = points.map((p) => ({ label: p.label, value: p.value > 0 ? p.value : null, highlight: p.highlight }))
+  const werte = data.map((d) => d.value).filter((v): v is number => v != null)
+  const zeigeWerte = werte.length > 0 && werte.length <= 10
 
   return (
-    <div className="rounded-2xl border border-white/[0.06] bg-[#111113] p-4">
-      <WhoopChartHeader title={title} onInfo={onInfo} />
-      <div className="w-full min-w-0 max-w-full overflow-hidden">
-        <svg
-          viewBox={`0 0 ${w} ${h}`}
-          className="block h-auto w-full max-w-full"
-          style={{ height: h }}
-          preserveAspectRatio="xMidYMid meet"
-        >
-          {coords.length >= 2 ? (
-            <polyline points={poly} fill="none" stroke={color} strokeWidth="2" strokeLinejoin="round" />
-          ) : null}
-          {coords.map((c) => {
-            const labelZeigen = c.label && (c.i % schritt === 0 || c.i === n - 1)
-            return (
-              <g key={`${c.label}-${c.i}`}>
-                <circle cx={c.x} cy={c.y} r={3.5} fill={color} />
-                {werteAnzeigen ? (
-                  <text x={c.x} y={c.y - 10} textAnchor="middle" fill={color} fontSize="8">
-                    {c.value}
-                  </text>
-                ) : null}
-                {labelZeigen ? (
-                  <text x={c.x} y={h - 6} textAnchor="middle" fill="#71717a" fontSize="8">
-                    {c.label}
-                  </text>
-                ) : null}
-              </g>
-            )
-          })}
-        </svg>
-      </div>
-    </div>
+    <WhoopCard title={title} onInfo={onInfo}>
+      <WhoopChartShell height={170}>
+        <AreaChart data={data} margin={WHOOP_CHART_MARGIN}>
+          <defs>
+            <WhoopAreaGradient id={gradId} color={color} />
+          </defs>
+          <CartesianGrid {...WHOOP_GRID} />
+          <XAxis dataKey="label" {...WHOOP_AXIS} interval={tickInterval(points.length)} />
+          <YAxis hide domain={[(min: number) => min * 0.9, (max: number) => max * 1.08]} />
+          <Tooltip
+            cursor={WHOOP_CURSOR_LINE}
+            content={(raw) => {
+              const p = asTooltipProps(raw)
+              const v = p.payload?.[0]?.value
+              if (!p.active || typeof v !== 'number') return null
+              return (
+                <WhoopTooltipBox title={String(p.label ?? '')} rows={[{ label: title, value: formatValue(v), color }]} />
+              )
+            }}
+          />
+          <Area
+            type="monotone"
+            dataKey="value"
+            stroke={color}
+            strokeWidth={2.5}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            fill={`url(#${gradId})`}
+            connectNulls
+            dot={{ r: 2.5, fill: color, stroke: WHOOP_COLORS.surface, strokeWidth: 1.5 }}
+            activeDot={{ r: 5, fill: color, stroke: WHOOP_COLORS.surface, strokeWidth: 2 }}
+            {...WHOOP_ANIMATION}
+          >
+            {zeigeWerte ? (
+              <LabelList
+                dataKey="value"
+                position="top"
+                offset={8}
+                style={{ ...LABEL_STYLE, fill: color }}
+                formatter={(v: unknown) => (typeof v === 'number' ? formatValue(v) : '')}
+              />
+            ) : null}
+          </Area>
+        </AreaChart>
+      </WhoopChartShell>
+    </WhoopCard>
   )
 }
+
+type ZoneDef = { key: string; label: string; color: string }
 
 export function WhoopStackedZoneChart({
   title,
@@ -175,83 +200,93 @@ export function WhoopStackedZoneChart({
 }: {
   title: string
   points: { label: string; segments: { key: string; min: number; color: string }[]; highlight?: boolean }[]
-  zones: { key: string; label: string; color: string }[]
+  zones: ZoneDef[]
   onInfo?: () => void
 }) {
-  const h = 130
-  const peak = Math.max(...points.map((p) => p.segments.reduce((a, s) => a + s.min, 0)), 0.01)
+  const fokus = hatHighlight(points)
+  const data = points.map((p) => {
+    const row: Record<string, string | number | boolean | undefined> = { label: p.label, highlight: p.highlight }
+    let total = 0
+    for (const s of p.segments) {
+      row[s.key] = s.min
+      total += s.min
+    }
+    row.total = total
+    return row
+  })
+  const topKey = zones[zones.length - 1]?.key
 
   return (
-    <div className="rounded-2xl border border-white/[0.06] bg-[#111113] p-4">
-      <WhoopChartHeader title={title} onInfo={onInfo} />
-      <div className="mt-2 flex flex-wrap gap-3 text-[9px] text-[var(--app-text-muted)]">
-        {zones.map((z) => (
-          <span key={z.key} className="flex items-center gap-1">
-            <span className="inline-block h-2 w-2 rounded-sm" style={{ background: z.color }} />
-            {z.label}
-          </span>
-        ))}
-      </div>
-      <svg viewBox={`0 0 360 ${h}`} className="mt-2 w-full">
-        {points.map((p, i) => {
-          const barW = 360 / points.length - 8
-          const x = i * (360 / points.length) + 4
-          const total = p.segments.reduce((a, s) => a + s.min, 0)
-          let yOff = h - 20
-          return (
-            <g key={p.label}>
-              {p.highlight ? (
-                <rect x={x - 2} y={8} width={barW + 4} height={h - 16} rx={6} fill="rgba(255,255,255,0.04)" />
+    <WhoopCard title={title} onInfo={onInfo} legend={zones.map((z) => ({ label: z.label, color: z.color }))}>
+      <WhoopChartShell height={170}>
+        <BarChart data={data} margin={WHOOP_CHART_MARGIN} barCategoryGap="22%">
+          <CartesianGrid {...WHOOP_GRID} />
+          <XAxis dataKey="label" {...WHOOP_AXIS} interval={tickInterval(points.length)} />
+          <YAxis hide />
+          <Tooltip
+            cursor={WHOOP_CURSOR_BAR}
+            content={(raw) => {
+              const p = asTooltipProps(raw)
+              if (!p.active || !p.payload?.length) return null
+              const row = p.payload[0]?.payload ?? {}
+              const rows: WhoopTooltipRow[] = zones.map((z) => ({
+                label: z.label,
+                value: formatHhMm(Number(row[z.key] ?? 0)),
+                color: z.color,
+              }))
+              rows.push({ label: 'Gesamt', value: formatHhMm(Number(row.total ?? 0)) })
+              return <WhoopTooltipBox title={String(p.label ?? '')} rows={rows} />
+            }}
+          />
+          {zones.map((z) => (
+            <Bar
+              key={z.key}
+              dataKey={z.key}
+              stackId="zones"
+              fill={z.color}
+              radius={z.key === topKey ? [6, 6, 0, 0] : [0, 0, 0, 0]}
+              {...WHOOP_ANIMATION}
+            >
+              {data.map((d, i) => (
+                <Cell key={`${z.key}-${i}`} fillOpacity={!fokus || d.highlight ? 1 : 0.45} />
+              ))}
+              {z.key === topKey ? (
+                <LabelList
+                  dataKey="total"
+                  position="top"
+                  offset={6}
+                  style={LABEL_STYLE}
+                  formatter={(v: unknown) => (typeof v === 'number' && v > 0 ? formatHhMm(v) : '')}
+                />
               ) : null}
-              <text x={x + barW / 2} y={14} textAnchor="middle" fill="#a1a1aa" fontSize="9">
-                {total > 0 ? `${Math.floor(total / 60)}:${String(Math.round(total % 60)).padStart(2, '0')}` : '0:00'}
-              </text>
-              {p.segments.map((s) => {
-                const segH = (s.min / peak) * (h - 44)
-                yOff -= segH
-                return (
-                  <rect
-                    key={s.key}
-                    x={x}
-                    y={yOff}
-                    width={barW}
-                    height={Math.max(segH, s.min > 0 ? 2 : 0)}
-                    fill={s.color}
-                    rx={1}
-                  />
-                )
-              })}
-              <text x={x + barW / 2} y={h - 4} textAnchor="middle" fill="#71717a" fontSize="8">
-                {p.label}
-              </text>
-            </g>
-          )
-        })}
-      </svg>
-    </div>
+            </Bar>
+          ))}
+        </BarChart>
+      </WhoopChartShell>
+    </WhoopCard>
   )
 }
 
 export const WHOOP_ZONE_13 = [
-  { key: 'z1', label: 'Zone 1', color: HR_ZONE_COLORS.z1 },
-  { key: 'z2', label: 'Zone 2', color: HR_ZONE_COLORS.z2 },
-  { key: 'z3', label: 'Zone 3', color: HR_ZONE_COLORS.z3 },
+  { key: 'z1', label: 'Zone 1', color: WHOOP_ZONE_COLORS.z1 },
+  { key: 'z2', label: 'Zone 2', color: WHOOP_ZONE_COLORS.z2 },
+  { key: 'z3', label: 'Zone 3', color: WHOOP_ZONE_COLORS.z3 },
 ]
 
 export const WHOOP_ZONE_45 = [
-  { key: 'z4', label: 'Zone 4', color: HR_ZONE_COLORS.z4 },
-  { key: 'z5', label: 'Zone 5', color: HR_ZONE_COLORS.z5 },
+  { key: 'z4', label: 'Zone 4', color: WHOOP_ZONE_COLORS.z4 },
+  { key: 'z5', label: 'Zone 5', color: WHOOP_ZONE_COLORS.z5 },
 ]
 
-/** Zwei Linien: z. B. geschlafen vs. Bedarf (Minuten). */
+/** Zwei Serien: A als Fläche mit Verlauf, B als gestrichelte Referenzlinie (z. B. Bedarf). */
 export function WhoopDualLineChart({
   title,
   seriesA,
   seriesB,
   labelA,
   labelB,
-  colorA = '#5eb3d6',
-  colorB = '#2dd4a8',
+  colorA = WHOOP_COLORS.sleep,
+  colorB = 'rgba(255,255,255,0.55)',
   formatValue = (v) => String(v),
   onInfo,
 }: {
@@ -265,68 +300,88 @@ export function WhoopDualLineChart({
   formatValue?: (v: number) => string
   onInfo?: () => void
 }) {
-  const h = 130
-  const all = [...seriesA, ...seriesB].map((p) => p.value).filter((v) => v > 0)
-  const min = all.length ? Math.min(...all) * 0.9 : 0
-  const max = all.length ? Math.max(...all) * 1.05 : 480
-  const range = max - min || 1
-
-  const line = (pts: BarPoint[], color: string) => {
-    const coords = pts.map((p, i) => {
-      const x = 20 + (i / Math.max(pts.length - 1, 1)) * 320
-      const y = 20 + (1 - (p.value - min) / range) * (h - 44)
-      return { x, y, ...p }
-    })
-    return (
-      <g>
-        <polyline
-          points={coords.map((c) => `${c.x},${c.y}`).join(' ')}
-          fill="none"
-          stroke={color}
-          strokeWidth="2"
-        />
-        {coords.map((c) => (
-          <g key={`${color}-${c.label}`}>
-            <circle cx={c.x} cy={c.y} r={3} fill={color} />
-            <text x={c.x} y={c.y - 6} textAnchor="middle" fill={color} fontSize="8">
-              {formatValue(c.value)}
-            </text>
-          </g>
-        ))}
-      </g>
-    )
-  }
+  const gradId = useSvgId('wdual')
+  const data = seriesA.map((p, i) => ({
+    label: p.label,
+    a: p.value > 0 ? p.value : null,
+    b: (seriesB[i]?.value ?? 0) > 0 ? seriesB[i]!.value : null,
+  }))
 
   return (
-    <div className="rounded-2xl border border-white/[0.06] bg-[#111113] p-4">
-      <WhoopChartHeader title={title} onInfo={onInfo} />
-      <div className="mb-2 flex gap-4 text-[9px] text-[var(--app-text-muted)]">
-        <span className="flex items-center gap-1">
-          <span className="h-2 w-2 rounded-full" style={{ background: colorA }} />
-          {labelA}
-        </span>
-        <span className="flex items-center gap-1">
-          <span className="h-2 w-2 rounded-full" style={{ background: colorB }} />
-          {labelB}
-        </span>
-      </div>
-      <svg viewBox={`0 0 360 ${h}`} className="w-full">
-        {line(seriesA, colorA)}
-        {line(seriesB, colorB)}
-        {seriesA.map((p, i) => {
-          const x = 20 + (i / Math.max(seriesA.length - 1, 1)) * 320
-          return (
-            <text key={p.label} x={x} y={h - 2} textAnchor="middle" fill="#71717a" fontSize="8">
-              {p.label}
-            </text>
-          )
-        })}
-      </svg>
-    </div>
+    <WhoopCard
+      title={title}
+      onInfo={onInfo}
+      legend={[
+        { label: labelA, color: colorA },
+        { label: labelB, color: colorB, dashed: true },
+      ]}
+    >
+      <WhoopChartShell height={170}>
+        <ComposedChart data={data} margin={WHOOP_CHART_MARGIN}>
+          <defs>
+            <WhoopAreaGradient id={gradId} color={colorA} />
+          </defs>
+          <CartesianGrid {...WHOOP_GRID} />
+          <XAxis dataKey="label" {...WHOOP_AXIS} interval={tickInterval(seriesA.length)} />
+          <YAxis hide domain={[(min: number) => min * 0.85, (max: number) => max * 1.08]} />
+          <Tooltip
+            cursor={WHOOP_CURSOR_LINE}
+            content={(raw) => {
+              const p = asTooltipProps(raw)
+              if (!p.active || !p.payload?.length) return null
+              const row = p.payload[0]?.payload ?? {}
+              const rows: WhoopTooltipRow[] = []
+              if (typeof row.a === 'number') rows.push({ label: labelA, value: formatValue(row.a), color: colorA })
+              if (typeof row.b === 'number') rows.push({ label: labelB, value: formatValue(row.b), color: colorB })
+              return <WhoopTooltipBox title={String(p.label ?? '')} rows={rows} />
+            }}
+          />
+          <Area
+            type="monotone"
+            dataKey="a"
+            name={labelA}
+            stroke={colorA}
+            strokeWidth={2.5}
+            strokeLinecap="round"
+            fill={`url(#${gradId})`}
+            connectNulls
+            dot={{ r: 2.5, fill: colorA, stroke: WHOOP_COLORS.surface, strokeWidth: 1.5 }}
+            activeDot={{ r: 5, fill: colorA, stroke: WHOOP_COLORS.surface, strokeWidth: 2 }}
+            {...WHOOP_ANIMATION}
+          />
+          <Line
+            type="monotone"
+            dataKey="b"
+            name={labelB}
+            stroke={colorB}
+            strokeWidth={1.5}
+            strokeDasharray="4 4"
+            strokeLinecap="round"
+            dot={false}
+            activeDot={{ r: 4, fill: colorB, stroke: WHOOP_COLORS.surface, strokeWidth: 2 }}
+            connectNulls
+            {...WHOOP_ANIMATION}
+          />
+        </ComposedChart>
+      </WhoopChartShell>
+    </WhoopCard>
   )
 }
 
-/** Bett-/Weckzeit als vertikaler Balken. */
+/** Minuten seit 18:00 — damit Einschlafen vor/nach Mitternacht auf einer Achse liegt. */
+const ANKER_MIN = 18 * 60
+
+function minSeitAnker(ms: number): number {
+  const d = new Date(ms)
+  return (d.getHours() * 60 + d.getMinutes() - ANKER_MIN + 1440) % 1440
+}
+
+function ankerZuUhr(v: number): string {
+  const m = Math.round(v + ANKER_MIN) % 1440
+  return `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`
+}
+
+/** Schlaffenster als schwebender Balken: Einschlafen (oben) → Aufwachen (unten). */
 export function WhoopTimeInBedChart({
   title,
   points,
@@ -336,101 +391,143 @@ export function WhoopTimeInBedChart({
   points: { label: string; bedMs: number | null; wakeMs: number | null; highlight?: boolean }[]
   onInfo?: () => void
 }) {
-  const h = 140
-  const fmt = (ms: number | null) =>
-    ms != null
-      ? new Date(ms).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })
-      : '—'
+  const gradId = useSvgId('wbed')
+  const fokus = hatHighlight(points)
+  const data = points.map((p) => {
+    if (p.bedMs == null || p.wakeMs == null) return { label: p.label, range: null, highlight: p.highlight, bedMs: null, wakeMs: null }
+    const start = minSeitAnker(p.bedMs)
+    let end = minSeitAnker(p.wakeMs)
+    if (end <= start) end += 1440
+    return { label: p.label, range: [start, end] as [number, number], highlight: p.highlight, bedMs: p.bedMs, wakeMs: p.wakeMs }
+  })
+  const alle = data.flatMap((d) => d.range ?? [])
+  const lo = alle.length ? Math.max(0, Math.floor((Math.min(...alle) - 30) / 60) * 60) : 240
+  const hi = alle.length ? Math.ceil((Math.max(...alle) + 30) / 60) * 60 : 840
+  const ticks: number[] = []
+  for (let t = lo; t <= hi; t += 120) ticks.push(t)
 
   return (
-    <div className="rounded-2xl border border-white/[0.06] bg-[#111113] p-4">
-      <WhoopChartHeader title={title} onInfo={onInfo} />
-      <svg viewBox={`0 0 360 ${h}`} className="w-full">
-        {points.map((p, i) => {
-          const barW = 360 / points.length - 8
-          const x = i * (360 / points.length) + 4
-          const has = p.bedMs != null && p.wakeMs != null
-          const barH = has ? 60 : 4
-          return (
-            <g key={p.label}>
-              {p.highlight ? (
-                <rect x={x - 2} y={8} width={barW + 4} height={h - 16} rx={6} fill="rgba(255,255,255,0.04)" />
-              ) : null}
-              <text x={x + barW / 2} y={16} textAnchor="middle" fill="#5eb3d6" fontSize="8">
-                {fmt(p.bedMs)}
-              </text>
-              <rect x={x} y={28} width={barW} height={barH} rx={3} fill="#5eb3d6" opacity={has ? 1 : 0.2} />
-              <text x={x + barW / 2} y={28 + barH + 12} textAnchor="middle" fill="#a1a1aa" fontSize="8">
-                {fmt(p.wakeMs)}
-              </text>
-              <text x={x + barW / 2} y={h - 2} textAnchor="middle" fill="#71717a" fontSize="8">
-                {p.label}
-              </text>
-            </g>
-          )
-        })}
-      </svg>
-    </div>
+    <WhoopCard title={title} onInfo={onInfo}>
+      <WhoopChartShell height={190}>
+        <BarChart data={data} margin={{ ...WHOOP_CHART_MARGIN, left: 0 }} barCategoryGap="28%">
+          <defs>
+            <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor={WHOOP_SLEEP_STAGES.deep.color} />
+              <stop offset="100%" stopColor={WHOOP_COLORS.sleep} />
+            </linearGradient>
+          </defs>
+          <CartesianGrid {...WHOOP_GRID} />
+          <XAxis dataKey="label" {...WHOOP_AXIS} interval={tickInterval(points.length)} />
+          <YAxis
+            {...WHOOP_AXIS}
+            reversed
+            width={38}
+            domain={[lo, hi]}
+            ticks={ticks}
+            tickFormatter={(v: number) => ankerZuUhr(v)}
+          />
+          <Tooltip
+            cursor={WHOOP_CURSOR_BAR}
+            content={(raw) => {
+              const p = asTooltipProps(raw)
+              const row = p.payload?.[0]?.payload
+              if (!p.active || !row || typeof row.bedMs !== 'number' || typeof row.wakeMs !== 'number') return null
+              const r = row.range as [number, number]
+              return (
+                <WhoopTooltipBox
+                  title={String(p.label ?? '')}
+                  rows={[
+                    { label: 'Eingeschlafen', value: formatUhr(row.bedMs), color: WHOOP_SLEEP_STAGES.deep.color },
+                    { label: 'Aufgewacht', value: formatUhr(row.wakeMs), color: WHOOP_COLORS.sleep },
+                    { label: 'Im Bett', value: formatHhMm(r[1] - r[0]) },
+                  ]}
+                />
+              )
+            }}
+          />
+          <Bar dataKey="range" radius={[8, 8, 8, 8]} fill={`url(#${gradId})`} {...WHOOP_ANIMATION}>
+            {data.map((d, i) => (
+              <Cell key={`${d.label}-${i}`} fillOpacity={!fokus || d.highlight ? 1 : 0.45} />
+            ))}
+          </Bar>
+        </BarChart>
+      </WhoopChartShell>
+    </WhoopCard>
   )
 }
 
-/** REM + Tiefschlaf gestapelt. */
+/** Erholsamer Schlaf: Tief (unten) + REM (oben) gestapelt. */
 export function WhoopRestorativeChart({
   title,
   points,
   onInfo,
 }: {
   title: string
-  points: {
-    label: string
-    remMin: number
-    deepMin: number
-    highlight?: boolean
-  }[]
+  points: { label: string; remMin: number; deepMin: number; highlight?: boolean }[]
   onInfo?: () => void
 }) {
-  const h = 130
-  const peak = Math.max(...points.map((p) => p.remMin + p.deepMin), 1)
+  const fokus = hatHighlight(points)
+  const deep = WHOOP_SLEEP_STAGES.deep
+  const rem = WHOOP_SLEEP_STAGES.rem
+  const data = points.map((p) => ({
+    label: p.label,
+    deep: p.deepMin,
+    rem: p.remMin,
+    total: p.deepMin + p.remMin,
+    highlight: p.highlight,
+  }))
 
   return (
-    <div className="rounded-2xl border border-white/[0.06] bg-[#111113] p-4">
-      <WhoopChartHeader title={title} onInfo={onInfo} />
-      <div className="mb-2 flex gap-4 text-[9px] text-[var(--app-text-muted)]">
-        <span className="flex items-center gap-1">
-          <span className="inline-block h-2 w-2 rounded-sm bg-[#a78bfa]" />
-          REM
-        </span>
-        <span className="flex items-center gap-1">
-          <span className="inline-block h-2 w-2 rounded-sm bg-[#f472b6]" />
-          Tief
-        </span>
-      </div>
-      <svg viewBox={`0 0 360 ${h}`} className="w-full">
-        {points.map((p, i) => {
-          const barW = 360 / points.length - 8
-          const x = i * (360 / points.length) + 4
-          const total = p.remMin + p.deepMin
-          const remH = (p.remMin / peak) * (h - 44)
-          const deepH = (p.deepMin / peak) * (h - 44)
-          return (
-            <g key={p.label}>
-              {p.highlight ? (
-                <rect x={x - 2} y={8} width={barW + 4} height={h - 16} rx={6} fill="rgba(255,255,255,0.04)" />
-              ) : null}
-              <text x={x + barW / 2} y={14} textAnchor="middle" fill="#a1a1aa" fontSize="8">
-                {total > 0
-                  ? `${Math.floor(total / 60)}:${String(Math.round(total % 60)).padStart(2, '0')}`
-                  : '0:00'}
-              </text>
-              <rect x={x} y={h - 20 - remH - deepH} width={barW} height={Math.max(remH, 0)} fill="#a78bfa" />
-              <rect x={x} y={h - 20 - deepH} width={barW} height={Math.max(deepH, 0)} fill="#f472b6" />
-              <text x={x + barW / 2} y={h - 4} textAnchor="middle" fill="#71717a" fontSize="8">
-                {p.label}
-              </text>
-            </g>
-          )
-        })}
-      </svg>
-    </div>
+    <WhoopCard
+      title={title}
+      onInfo={onInfo}
+      legend={[
+        { label: rem.label, color: rem.color },
+        { label: deep.label, color: deep.color },
+      ]}
+    >
+      <WhoopChartShell height={170}>
+        <BarChart data={data} margin={WHOOP_CHART_MARGIN} barCategoryGap="22%">
+          <CartesianGrid {...WHOOP_GRID} />
+          <XAxis dataKey="label" {...WHOOP_AXIS} interval={tickInterval(points.length)} />
+          <YAxis hide />
+          <Tooltip
+            cursor={WHOOP_CURSOR_BAR}
+            content={(raw) => {
+              const p = asTooltipProps(raw)
+              const row = p.payload?.[0]?.payload
+              if (!p.active || !row) return null
+              return (
+                <WhoopTooltipBox
+                  title={String(p.label ?? '')}
+                  rows={[
+                    { label: rem.label, value: formatHhMm(Number(row.rem ?? 0)), color: rem.color },
+                    { label: deep.label, value: formatHhMm(Number(row.deep ?? 0)), color: deep.color },
+                    { label: 'Erholsam', value: formatHhMm(Number(row.total ?? 0)) },
+                  ]}
+                />
+              )
+            }}
+          />
+          <Bar dataKey="deep" stackId="rest" fill={deep.color} {...WHOOP_ANIMATION}>
+            {data.map((d, i) => (
+              <Cell key={`d-${i}`} fillOpacity={!fokus || d.highlight ? 1 : 0.45} />
+            ))}
+          </Bar>
+          <Bar dataKey="rem" stackId="rest" fill={rem.color} radius={[6, 6, 0, 0]} {...WHOOP_ANIMATION}>
+            {data.map((d, i) => (
+              <Cell key={`r-${i}`} fillOpacity={!fokus || d.highlight ? 1 : 0.45} />
+            ))}
+            <LabelList
+              dataKey="total"
+              position="top"
+              offset={6}
+              style={LABEL_STYLE}
+              formatter={(v: unknown) => (typeof v === 'number' && v > 0 ? formatHhMm(v) : '')}
+            />
+          </Bar>
+        </BarChart>
+      </WhoopChartShell>
+    </WhoopCard>
   )
 }

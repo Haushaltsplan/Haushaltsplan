@@ -64,7 +64,7 @@ export function FitnessVitalsPanel({ onSaved, embedded = false }: Props) {
 
   return (
     <div
-      className={`rounded-2xl border border-rose-500/20 bg-[#111113] ${embedded ? 'p-4' : 'p-5'}`}
+      className={`rounded-2xl border border-rose-500/20 bg-[#12161F] ${embedded ? 'p-4' : 'p-5'}`}
     >
       <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-rose-200">Vitalwerte</p>
 

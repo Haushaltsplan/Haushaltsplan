@@ -211,7 +211,7 @@ export function WhoopStressMonitorModal({
         </div>
 
         <div className={`${appModalScrollHiddenClassName} space-y-4 px-4 py-4`}>
-          <div className="rounded-2xl border border-white/[0.06] bg-[#111113] p-5 text-center">
+          <div className="rounded-2xl border border-white/[0.06] bg-[#12161F] p-5 text-center">
             <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--app-text-muted)]">
               Stress-Level
             </p>

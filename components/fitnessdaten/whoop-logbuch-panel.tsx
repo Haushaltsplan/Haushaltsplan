@@ -197,7 +197,7 @@ export function WhoopLogbuchPanel({ selectedDate, onDateChange, onSaved }: Props
   const fortschritt = LOGBUCH_FRAGEN.filter((f) => antwortVollstaendig(record.antworten[f.id])).length
 
   return (
-    <div className="rounded-2xl border border-white/[0.06] bg-[#111113] p-4">
+    <div className="rounded-2xl border border-white/[0.06] bg-[#12161F] p-4">
       <div className="flex items-center justify-between gap-2">
         <p className="text-[9px] font-bold uppercase tracking-[0.16em] text-[var(--app-text-muted)]">Mein Logbuch</p>
         <span className="text-[10px] tabular-nums text-[var(--app-text-muted)]">

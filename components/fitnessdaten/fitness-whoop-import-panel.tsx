@@ -94,7 +94,7 @@ export function FitnessWhoopImportPanel({
 
   return (
     <div
-      className={`rounded-2xl border border-sky-500/25 bg-gradient-to-b from-sky-950/40 to-[#111113] ${
+      className={`rounded-2xl border border-sky-500/25 bg-gradient-to-b from-sky-950/40 to-[#12161F] ${
         embedded || kompakt ? 'p-4' : 'p-5'
       }`}
     >
