@@ -155,6 +155,32 @@ function hatChartPayload(html) {
   )
 }
 
+/** Suche (all_pages_query.php) liefert JSON, kein Chart — nicht 35s auf originalData warten. */
+function jsonBodyAusSeite(html) {
+  const tryParse = (s) => {
+    const t = String(s || '').trim()
+    if (!(t.startsWith('[') || t.startsWith('{'))) return null
+    try {
+      JSON.parse(t)
+      return t
+    } catch {
+      return null
+    }
+  }
+  const direkt = tryParse(html)
+  if (direkt) return direkt
+  const pre = String(html || '').match(/<pre[^>]*>([\s\S]*?)<\/pre>/i)
+  if (pre?.[1]) {
+    const inner = pre[1]
+      .replace(/&quot;/g, '"')
+      .replace(/&#34;/g, '"')
+      .replace(/&amp;/g, '&')
+    const ausPre = tryParse(inner)
+    if (ausPre) return ausPre
+  }
+  return null
+}
+
 /**
  * Nur Chart-/Statement-JSON — nie Meta-only ohne Daten.
  * Früher: leere Meta-HTML als „ok“ → dünne GuV überschrieb den Cache (SPGI/MA).
@@ -198,6 +224,8 @@ async function fetchHtml(url) {
         await new Promise((r) => setTimeout(r, 800))
         continue
       }
+      const jsonBody = jsonBodyAusSeite(html)
+      if (jsonBody) return jsonBody
       if (hatChartPayload(html)) {
         const compact = compactMacrotrendsHtml(html)
         if (compact) return compact
@@ -209,6 +237,8 @@ async function fetchHtml(url) {
     if (/just a moment/i.test(html.slice(0, 2000))) {
       throw new Error('Cloudflare noch aktiv — Checkbox im Chrome-Fenster bestätigen')
     }
+    const jsonBody = jsonBodyAusSeite(html)
+    if (jsonBody) return jsonBody
     const compact = hatChartPayload(html) ? compactMacrotrendsHtml(html) : null
     if (!compact) {
       throw new Error(`Keine Macrotrends-Payload (originalData/chartData) für ${url}`)

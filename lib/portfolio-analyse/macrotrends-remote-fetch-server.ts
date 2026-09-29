@@ -17,7 +17,19 @@ import {
   macrotrendsCdpVerfuegbar,
 } from '@/lib/portfolio-analyse/macrotrends-browser-auth-server'
 
+function istJsonDaten(html: string): boolean {
+  const t = html.trim()
+  if (!(t.startsWith('[') || t.startsWith('{'))) return false
+  try {
+    JSON.parse(t)
+    return true
+  } catch {
+    return false
+  }
+}
+
 function hatDaten(html: string): boolean {
+  if (istJsonDaten(html)) return true
   return (
     html.includes('var originalData') ||
     html.includes('var chartData') ||

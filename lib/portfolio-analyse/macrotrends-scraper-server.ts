@@ -111,6 +111,7 @@ const BEKANNTE_MACROTRENDS_SLUGS: Record<
   UPST: { slug: 'upstart-holdings', firmenname: 'Upstart Holdings' },
   MSCI: { slug: 'msci', firmenname: 'MSCI' },
   AOS: { slug: 'a-o-smith', firmenname: 'A.O. Smith' },
+  FICO: { slug: 'fair-isaac', firmenname: 'Fair Isaac' },
 }
 
 type RohZeile = Record<string, string | number> & { field_name: string }
@@ -778,6 +779,31 @@ export async function loeseMacrotrendsIdent(
   return null
 }
 
+function jsonArrayAusHtml(html: string): string | null {
+  const tryParse = (s: string): string | null => {
+    const t = s.trim()
+    if (!t.startsWith('[')) return null
+    try {
+      const v = JSON.parse(t) as unknown
+      return Array.isArray(v) ? t : null
+    } catch {
+      return null
+    }
+  }
+  const direkt = tryParse(html)
+  if (direkt) return direkt
+  const pre = html.match(/<pre[^>]*>([\s\S]*?)<\/pre>/i)
+  if (pre?.[1]) {
+    const inner = pre[1]
+      .replace(/&quot;/g, '"')
+      .replace(/&#34;/g, '"')
+      .replace(/&amp;/g, '&')
+    const ausPre = tryParse(inner)
+    if (ausPre) return ausPre
+  }
+  return null
+}
+
 async function ladeMacrotrendsSuchergebnisse(q: string): Promise<Array<{ name?: string; url?: string }>> {
   if (!q.trim()) return []
   const url = `${BASE}/assets/php/all_pages_query.php?q=${encodeURIComponent(q.trim())}`
@@ -785,8 +811,13 @@ async function ladeMacrotrendsSuchergebnisse(q: string): Promise<Array<{ name?: 
   for (let versuch = 0; versuch < 2; versuch++) {
     const html = await ladeSeite(url, { erwartetJson: true, ...(versuch > 0 ? { forceRefresh: true } : {}) })
     if (!html) continue
+    const json = jsonArrayAusHtml(html)
+    if (!json) {
+      pageCache.delete(url)
+      continue
+    }
     try {
-      const items = JSON.parse(html) as Array<{ name?: string; url?: string }>
+      const items = JSON.parse(json) as Array<{ name?: string; url?: string }>
       return Array.isArray(items) ? items : []
     } catch {
       pageCache.delete(url)
