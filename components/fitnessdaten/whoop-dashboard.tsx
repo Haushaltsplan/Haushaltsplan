@@ -3,6 +3,7 @@
 import { formatUhrzeit } from '@/lib/fitnessdaten/activity-detect'
 import { WhoopHrChart } from '@/components/fitnessdaten/whoop-hr-chart'
 import { FitnessWhoopBlePanel } from '@/components/fitnessdaten/fitness-whoop-ble-panel'
+import { WhoopBleRohpaketePanel } from '@/components/fitnessdaten/whoop-ble-rohpakete-panel'
 import { FitnessWhoopImportPanel } from '@/components/fitnessdaten/fitness-whoop-import-panel'
 import { FitnessUserProfilePanel } from '@/components/fitnessdaten/fitness-user-profile-panel'
 import { FitnessVitalsPanel } from '@/components/fitnessdaten/fitness-vitals-panel'
@@ -1258,6 +1259,7 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange, ini
             <FitnessUserProfilePanel embedded onSaved={() => setDataRevision((r) => r + 1)} />
             <FitnessVitalsPanel embedded onSaved={() => setDataRevision((r) => r + 1)} />
             <FitnessWhoopBlePanel embedded />
+            <WhoopBleRohpaketePanel />
           </section>
         )}
       </div>

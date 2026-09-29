@@ -21,6 +21,7 @@ import {
   GEN5_CMD_TOGGLE_BROADCAST_HR,
 } from '@/lib/fitnessdaten/whoop-gen5-packet'
 import { abonniereBatteryUpdates, leseWhoopDeviceInfo } from '@/lib/fitnessdaten/device-info'
+import { setzeBleRekorderGeraet, zeichneBlePaketAuf } from '@/lib/fitnessdaten/ble-packet-recorder'
 import type { FitnessHrPoint, FitnessLiveSample, FitnessSnapshot, Gen5StreamStatus, WhoopDeviceInfo } from '@/lib/fitnessdaten/types'
 import { startGen5CustomSession, type Gen5SessionState } from '@/lib/fitnessdaten/whoop-gen5-session'
 import type { Gen5EventSample, R22Sample } from '@/lib/fitnessdaten/whoop-gen5-protocol'
@@ -495,6 +496,7 @@ export async function verbindeWhoopStandardHr(
   debug.services = await listeServices(gatt)
   debug.istGen5 = istGen5Whoop(debug.services)
   deviceInfo = await leseWhoopDeviceInfo(gatt)
+  setzeBleRekorderGeraet(device.name ?? null, deviceInfo?.firmwareRevision ?? null)
   verarbeiteSyncPuffer(device.name ?? 'WHOOP', deviceInfo)
   debug.batteryPercent = await leseBatteryProzent(gatt)
   if (debug.batteryPercent != null) {
@@ -531,6 +533,7 @@ export async function verbindeWhoopStandardHr(
     if (!data || data.byteLength === 0) return
     debug.notifyCount++
     debug.lastRawHex = bytesToHex(data)
+    zeichneBlePaketAuf(char.uuid, new Uint8Array(data.buffer, data.byteOffset, data.byteLength))
     emitDebug()
     const parsed = parseStandardHeartRateMeasurement(data)
     if (!parsed) return

@@ -18,6 +18,7 @@ import {
   type Gen5EventSample,
   type R22Sample,
 } from '@/lib/fitnessdaten/whoop-gen5-protocol'
+import { zeichneBlePaketAuf } from '@/lib/fitnessdaten/ble-packet-recorder'
 
 export type Gen5Phase =
   | 'idle'
@@ -102,6 +103,7 @@ export async function startGen5CustomSession(
       const val = target.value
       if (!val) return
       const raw = kopiereBytes(val)
+      zeichneBlePaketAuf(char.uuid, raw)
       const frame = parseGen5Envelope(raw)
       if (!frame) return
 
