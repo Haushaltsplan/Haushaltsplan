@@ -8,6 +8,7 @@ import {
   stelleShopIdSicher,
 } from '@/lib/etsy/etsy-server'
 import type { EtsyShopListingDetail, EtsyShopListingKurz } from '@/lib/etsy/etsy-seo-audit-types'
+import { ETSY_SEO_TAG_COUNT } from '@/lib/etsy/etsy-seo-regeln'
 
 type EtsyListingApi = {
   listing_id?: number
@@ -17,7 +18,7 @@ type EtsyListingApi = {
   url?: string
   quantity?: number
   taxonomy_id?: number
-  tags?: string[]
+  tags?: string[] | string
   materials?: string[]
   who_made?: string
   when_made?: string
@@ -40,6 +41,26 @@ function priceEurFromApi(price: EtsyListingApi['price']): number | null {
   return Math.round((amount / divisor) * 100) / 100
 }
 
+function parseEtsyTags(raw: unknown): string[] {
+  if (Array.isArray(raw)) return raw.map((t) => String(t).trim()).filter(Boolean)
+  if (typeof raw === 'string') return raw.split(',').map((t) => t.trim()).filter(Boolean)
+  return []
+}
+
+function etsyTagsFormWert(tags: string[]): string {
+  const unique: string[] = []
+  const seen = new Set<string>()
+  for (const t of tags) {
+    const tag = t.trim().slice(0, 20)
+    const k = tag.toLowerCase()
+    if (!tag || seen.has(k)) continue
+    seen.add(k)
+    unique.push(tag)
+    if (unique.length >= ETSY_SEO_TAG_COUNT) break
+  }
+  return unique.join(',')
+}
+
 function mapKurz(r: EtsyListingApi): EtsyShopListingKurz | null {
   const listingId = Number(r.listing_id)
   if (!Number.isFinite(listingId) || listingId <= 0) return null
@@ -49,7 +70,7 @@ function mapKurz(r: EtsyListingApi): EtsyShopListingKurz | null {
     state: String(r.state || ''),
     priceEur: priceEurFromApi(r.price),
     url: typeof r.url === 'string' ? r.url : null,
-    tags: Array.isArray(r.tags) ? r.tags.map(String) : [],
+    tags: parseEtsyTags(r.tags),
     views: r.views != null ? Number(r.views) : null,
     numFavorers: r.num_favorers != null ? Number(r.num_favorers) : null,
     updatedAt:
@@ -135,13 +156,26 @@ export async function updateEtsyListing(
   const body = new URLSearchParams()
   if (updatedData.title?.trim()) body.set('title', updatedData.title.trim().slice(0, 140))
   if (updatedData.description?.trim()) body.set('description', updatedData.description.trim())
-  if (updatedData.tags?.length) {
-    for (const t of updatedData.tags.slice(0, 13)) {
-      const tag = t.trim().slice(0, 20)
-      if (tag) body.append('tags', tag)
+  let tagsSoll: string[] | null = null
+  if (updatedData.tags) {
+    const csv = etsyTagsFormWert(updatedData.tags)
+    tagsSoll = csv ? csv.split(',') : []
+    if (tagsSoll.length !== ETSY_SEO_TAG_COUNT) {
+      throw new Error(
+        `Genau ${ETSY_SEO_TAG_COUNT} Tags nötig (Etsy überschreibt sonst die komplette Liste). Aktuell ${tagsSoll.length}.`,
+      )
     }
+    // Komma-getrennt — mehrfaches append('tags') speichert bei Etsy nur den letzten Tag.
+    body.set('tags', csv)
   }
   if ([...body.keys()].length === 0) throw new Error('Keine Update-Felder gesetzt.')
+
+  const vorher =
+    tagsSoll != null
+      ? await ladeEtsyListingDetail(ownerUserId, listingId)
+          .then((r) => r.listing)
+          .catch(() => null)
+      : null
 
   const data = await etsyFetchJson<EtsyListingApi>(
     tokens.accessToken,
@@ -153,11 +187,26 @@ export async function updateEtsyListing(
     },
   )
 
-  const listing = mapDetail(data)
-  if (!listing) {
-    // Manche Antworten sind dünn — Detail neu laden
-    const neu = await ladeEtsyListingDetail(ownerUserId, listingId)
-    return neu.listing
+  let listing = mapDetail(data)
+  if (!listing || (tagsSoll && parseEtsyTags(data.tags).length < ETSY_SEO_TAG_COUNT)) {
+    listing = (await ladeEtsyListingDetail(ownerUserId, listingId)).listing
   }
+  if (tagsSoll && listing.tags.length < ETSY_SEO_TAG_COUNT) {
+    if (vorher && vorher.tags.length >= ETSY_SEO_TAG_COUNT) {
+      await etsyFetchJson<EtsyListingApi>(
+        tokens.accessToken,
+        `/application/shops/${shopId}/listings/${listingId}`,
+        {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: new URLSearchParams({ tags: etsyTagsFormWert(vorher.tags) }),
+        },
+      ).catch(() => undefined)
+    }
+    throw new Error(
+      `Etsy hat nur ${listing.tags.length} statt ${ETSY_SEO_TAG_COUNT} Tags übernommen — Update abgebrochen.`,
+    )
+  }
+  if (!listing) throw new Error('Listing nach dem Update nicht lesbar.')
   return listing
 }

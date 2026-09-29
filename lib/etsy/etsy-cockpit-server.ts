@@ -31,6 +31,7 @@ import type {
 import { ladeEtsyKonkurrenz } from '@/lib/etsy/etsy-konkurrenz-server'
 import type { EtsyEigeneSignale } from '@/lib/etsy/etsy-markt-types'
 import { ladeEtsyListingDetail, ladeEtsyShopListings, updateEtsyListing } from '@/lib/etsy/etsy-listings-server'
+import { ETSY_SEO_TAG_COUNT, haerteEtsyListingFuerScore } from '@/lib/etsy/etsy-seo-regeln'
 import {
   ladeEtsyHauptbegriffe,
   ladeEtsyRankVerluste,
@@ -353,6 +354,12 @@ export async function baueEtsyCockpit(ownerUserId: string, sbUser: SupabaseClien
     hinweise.push('Verkäufe werden noch nicht gelesen — Etsy einmal trennen und neu verbinden (Berechtigung „Verkäufe“).')
   }
   if (!konkShops.length) hinweise.push('Konkurrenz noch nicht ermittelt — im Tab „Konkurrenz“ einmal starten, dann liefert das Cockpit Tag-Lücken.')
+  const tagsLuecke = listings.filter((l) => l.tags.length !== ETSY_SEO_TAG_COUNT).length
+  if (tagsLuecke) {
+    hinweise.unshift(
+      `${tagsLuecke} Listing${tagsLuecke === 1 ? '' : 's'} haben weniger als 13 Tags. Oben unter Aufgaben mit einem Klick wiederherstellen — nicht einzeln tauschen.`,
+    )
+  }
   if (!merkliste.length) hinweise.push('Tipp: Keywords im Finder merken — das Cockpit schlägt dann vor, wo sie eingebaut werden.')
 
   return {
@@ -402,7 +409,7 @@ export async function fuehreTagTauschAus(
         let alt = t.alt
         const altFehlt =
           alt === undefined ||
-          (alt === null && tags.length >= 13) ||
+          (alt === null && tags.length >= ETSY_SEO_TAG_COUNT) ||
           (alt != null && !tags.some((x) => normTag(x) === normTag(alt!)))
         if (altFehlt) {
           const wahl = waehleErsatzTag(tags, {
@@ -422,6 +429,14 @@ export async function fuehreTagTauschAus(
       if (!getauscht.length) {
         ergebnisse.push({ listingId, ok: false, fehler: 'Tag schon vorhanden oder kein Platz', getauscht })
         continue
+      }
+      if (tags.length !== ETSY_SEO_TAG_COUNT) {
+        tags = haerteEtsyListingFuerScore({
+          title: listing.title,
+          tags,
+          description: listing.description,
+          holzart: listing.materials[0],
+        }).tags
       }
       await updateEtsyListing(ownerUserId, listingId, { tags })
       await protokolliereEtsyAenderung({

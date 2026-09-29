@@ -17,7 +17,7 @@ export async function GET(req: Request) {
 
   const url = new URL(req.url)
   const state = url.searchParams.get('state') || 'active'
-  const limit = Number(url.searchParams.get('limit') || 50)
+  const limit = Number(url.searchParams.get('limit') || 100)
 
   try {
     const [{ shopId, listings }, cacheMap, rankMap] = await Promise.all([

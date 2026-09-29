@@ -16,6 +16,7 @@ export type EtsyCockpitAktion =
   | { art: 'vorschlag'; listingId: number }
   | { art: 'audit'; listingId: number }
   | { art: 'batch_audit'; anzahl: number }
+  | { art: 'tags_reparieren'; anzahl: number }
   | { art: 'oeffnen'; modul: EtsyCockpitModul; listingId?: number }
   | { art: 'merken'; keyword: string }
 
@@ -32,6 +33,7 @@ export type EtsyAufgabeTyp =
   | 'kein_audit'
   | 'keine_favoriten'
   | 'konkurrenz'
+  | 'tags_unvollstaendig'
 
 export type EtsyCockpitAufgabe = {
   /** Stabiler Schlüssel — für „Ausblenden“ (etsy_aufgabe_status) */

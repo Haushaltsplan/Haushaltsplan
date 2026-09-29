@@ -46,7 +46,7 @@ type Vorschlag = {
   createdAt: string
 }
 
-type ListFilter = 'alle' | 'schwach' | 'schlecht-rank'
+type ListFilter = 'alle' | 'schwach' | 'schlecht-rank' | 'tags-fehlen'
 
 type Props = {
   verbunden: boolean
@@ -70,6 +70,10 @@ function istSchlechtGerankt(l: ListingRow): boolean {
   return l.rankPage != null && l.rankPage >= 3
 }
 
+function hatUnvollstaendigeTags(l: ListingRow): boolean {
+  return (l.tags?.length ?? 0) !== ETSY_SEO_TAG_COUNT
+}
+
 export function EtsySeoUeberwachung({ verbunden, fokus }: Props) {
   const [stateFilter, setStateFilter] = useState('active')
   const [listFilter, setListFilter] = useState<ListFilter>('alle')
@@ -77,6 +81,7 @@ export function EtsySeoUeberwachung({ verbunden, fokus }: Props) {
   const [loadingList, setLoadingList] = useState(false)
   const [batchBusy, setBatchBusy] = useState(false)
   const [batchProgress, setBatchProgress] = useState('')
+  const [tagsReparaturBusy, setTagsReparaturBusy] = useState(false)
 
   const [selectedId, setSelectedId] = useState<number | null>(null)
   const [busy, setBusy] = useState(false)
@@ -109,6 +114,7 @@ export function EtsySeoUeberwachung({ verbunden, fokus }: Props) {
   const sichtbareListings = useMemo(() => {
     if (listFilter === 'schwach') return listings.filter(istSchwach)
     if (listFilter === 'schlecht-rank') return listings.filter(istSchlechtGerankt)
+    if (listFilter === 'tags-fehlen') return listings.filter(hatUnvollstaendigeTags)
     return listings
   }, [listings, listFilter])
 
@@ -139,7 +145,9 @@ export function EtsySeoUeberwachung({ verbunden, fokus }: Props) {
     let ohne = 0
     let sum = 0
     let n = 0
+    let tagsFehlen = 0
     for (const l of listings) {
+      if (hatUnvollstaendigeTags(l)) tagsFehlen++
       if (l.cachedScore == null) {
         ohne++
         continue
@@ -151,7 +159,7 @@ export function EtsySeoUeberwachung({ verbunden, fokus }: Props) {
       else if (f === 'gelb') gelb++
       else gruen++
     }
-    return { rot, gelb, gruen, ohne, avg: n ? Math.round(sum / n) : null }
+    return { rot, gelb, gruen, ohne, tagsFehlen, avg: n ? Math.round(sum / n) : null }
   }, [listings])
 
   const diffZeilen: EtsySeoDiffZeile[] = useMemo(() => {
@@ -174,7 +182,7 @@ export function EtsySeoUeberwachung({ verbunden, fokus }: Props) {
     if (!verbunden) return
     setLoadingList(true)
     try {
-      const res = await fetch(`/api/etsy/listings?state=${encodeURIComponent(stateFilter)}&limit=50`, {
+      const res = await fetch(`/api/etsy/listings?state=${encodeURIComponent(stateFilter)}&limit=100`, {
         cache: 'no-store',
       })
       const j = (await res.json()) as { error?: string; listings?: ListingRow[] }
@@ -384,6 +392,51 @@ export function EtsySeoUeberwachung({ verbunden, fokus }: Props) {
     }
   }
 
+  async function repariereAlleTags() {
+    const n = listings.filter(hatUnvollstaendigeTags).length
+    if (!n) {
+      toast.success('Alle geladenen Listings haben 13 Tags.')
+      return
+    }
+    if (
+      typeof window !== 'undefined' &&
+      !window.confirm(
+        `${n} Listing${n === 1 ? '' : 's'} auf Etsy auf ${ETSY_SEO_TAG_COUNT} Tags setzen?\n\nVorhandene Tags bleiben; fehlende kommen aus dem Änderungs-Log oder aus Titel/Holzart.`,
+      )
+    ) {
+      return
+    }
+    setTagsReparaturBusy(true)
+    setBatchProgress('Stelle 13 Tags je Listing wieder her…')
+    try {
+      const res = await fetch('/api/etsy/listings/tags-reparieren', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      })
+      const j = (await res.json()) as {
+        error?: string
+        repariert?: number
+        fehlgeschlagen?: number
+        betroffen?: number
+      }
+      if (!res.ok) {
+        toast.error(j.error ?? 'Tags-Reparatur fehlgeschlagen.')
+        return
+      }
+      toast.success(
+        `${j.repariert ?? 0} von ${j.betroffen ?? n} Listings mit ${ETSY_SEO_TAG_COUNT} Tags auf Etsy` +
+          (j.fehlgeschlagen ? ` · ${j.fehlgeschlagen} fehlgeschlagen` : ''),
+      )
+      void ladeListings()
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Tags-Reparatur fehlgeschlagen')
+    } finally {
+      setTagsReparaturBusy(false)
+      setBatchProgress('')
+    }
+  }
+
   async function pushUpdate(kind: 'title' | 'tags' | 'intro' | 'all') {
     if (!selectedId || !listing) return
     if (confirmPush !== kind) {
@@ -581,7 +634,7 @@ export function EtsySeoUeberwachung({ verbunden, fokus }: Props) {
             </select>
             <button
               type="button"
-              disabled={loadingList || batchBusy}
+              disabled={loadingList || batchBusy || tagsReparaturBusy}
               onClick={() => void ladeListings()}
               className="rounded-lg border border-[var(--app-border)] px-3 py-2 text-sm"
             >
@@ -589,7 +642,7 @@ export function EtsySeoUeberwachung({ verbunden, fokus }: Props) {
             </button>
             <button
               type="button"
-              disabled={batchBusy}
+              disabled={batchBusy || tagsReparaturBusy}
               onClick={() => void batchScan(false)}
               className="rounded-xl bg-teal-700 px-3 py-2 text-sm font-medium text-white hover:bg-teal-600 disabled:opacity-50"
             >
@@ -597,17 +650,42 @@ export function EtsySeoUeberwachung({ verbunden, fokus }: Props) {
             </button>
             <button
               type="button"
-              disabled={batchBusy}
+              disabled={batchBusy || tagsReparaturBusy}
               onClick={() => void batchScan(true)}
               className="rounded-lg border border-[var(--app-border)] px-3 py-2 text-sm disabled:opacity-50"
             >
               Force-Rescan
             </button>
+            {scoreStats.tagsFehlen > 0 && (
+              <button
+                type="button"
+                disabled={batchBusy || tagsReparaturBusy}
+                onClick={() => void repariereAlleTags()}
+                className="rounded-xl bg-rose-700 px-3 py-2 text-sm font-medium text-white hover:bg-rose-600 disabled:opacity-50"
+              >
+                {tagsReparaturBusy
+                  ? 'Stelle Tags her…'
+                  : `${scoreStats.tagsFehlen}× 13 Tags wiederherstellen`}
+              </button>
+            )}
           </div>
+          {scoreStats.tagsFehlen > 0 && (
+            <div className="rounded-xl border border-rose-500/40 bg-rose-500/10 px-3 py-2.5 text-sm text-rose-100">
+              <p className="font-medium">
+                {scoreStats.tagsFehlen} Listing{scoreStats.tagsFehlen === 1 ? '' : 's'} haben weniger als{' '}
+                {ETSY_SEO_TAG_COUNT} Tags.
+              </p>
+              <p className="mt-1 text-xs text-rose-200/90">
+                Ursache: Tag-Updates haben die Liste überschrieben statt alle 13 zu setzen. Ein Klick stellt die
+                Tags aus dem Änderungs-Log wieder her und füllt auf 13 passende Long-Tail-Tags auf.
+              </p>
+            </div>
+          )}
           <div className="flex flex-wrap gap-1.5">
             {(
               [
                 ['alle', 'Alle'],
+                ['tags-fehlen', `Tags fehlen (${scoreStats.tagsFehlen})`],
                 ['schwach', 'Schwach (Score)'],
                 ['schlecht-rank', 'Schlecht gerankt (≥S.3)'],
               ] as const
@@ -640,6 +718,11 @@ export function EtsySeoUeberwachung({ verbunden, fokus }: Props) {
             <span className="rounded-md bg-emerald-500/15 px-2 py-0.5 text-emerald-300">
               Grün {scoreStats.gruen}
             </span>
+            {scoreStats.tagsFehlen > 0 && (
+              <span className="rounded-md bg-rose-500/20 px-2 py-0.5 text-rose-200">
+                Tags unvollständig {scoreStats.tagsFehlen}
+              </span>
+            )}
             {scoreStats.ohne > 0 && (
               <span className="rounded-md bg-[var(--app-surface-muted)] px-2 py-0.5 text-[var(--app-text-muted)]">
                 Ohne Audit {scoreStats.ohne}
@@ -662,7 +745,7 @@ export function EtsySeoUeberwachung({ verbunden, fokus }: Props) {
                 <li
                   key={l.listingId}
                   className={`flex flex-wrap items-center justify-between gap-2 py-2 ${
-                    selectedId === l.listingId ? 'bg-teal-500/5' : ''
+                    selectedId === l.listingId ? 'bg-teal-500/5' : hatUnvollstaendigeTags(l) ? 'bg-rose-500/5' : ''
                   }`}
                 >
                   <div className="min-w-0 flex items-start gap-2">
@@ -682,13 +765,15 @@ export function EtsySeoUeberwachung({ verbunden, fokus }: Props) {
                         {l.cachedAt
                           ? ` · Audit ${new Date(l.cachedAt).toLocaleDateString('de-DE')}`
                           : ''}
+                        {` · ${(l.tags?.length ?? 0)}/${ETSY_SEO_TAG_COUNT} Tags`}
+                        {hatUnvollstaendigeTags(l) ? ' · unvollständig' : ''}
                       </p>
                     </div>
                   </div>
                   <div className="flex shrink-0 gap-1.5">
                     <button
                       type="button"
-                      disabled={busy || batchBusy}
+                      disabled={busy || batchBusy || tagsReparaturBusy}
                       title="Bearbeiten / Keywords & Text neu optimieren"
                       onClick={() => void starteAudit(l.listingId, istSchwach(l) || istSchlechtGerankt(l))}
                       className="rounded-xl border border-[var(--app-border)] px-2.5 py-1.5 text-sm hover:bg-[var(--app-surface-muted)] disabled:opacity-50"
@@ -698,7 +783,7 @@ export function EtsySeoUeberwachung({ verbunden, fokus }: Props) {
                     </button>
                     <button
                       type="button"
-                      disabled={busy || batchBusy}
+                      disabled={busy || batchBusy || tagsReparaturBusy}
                       onClick={() => void starteAudit(l.listingId, false)}
                       className="rounded-xl bg-teal-700 px-3 py-1.5 text-sm font-medium text-white hover:bg-teal-600 disabled:opacity-50"
                     >

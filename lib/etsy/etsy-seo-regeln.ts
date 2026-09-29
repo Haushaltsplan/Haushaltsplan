@@ -385,12 +385,17 @@ export function pruefeEtsySeoRegeln(input: {
 
   const tagsCountOk = tags.length === ETSY_SEO_TAG_COUNT
   if (tags.length !== ETSY_SEO_TAG_COUNT) {
+    const zuWenig = tags.length < ETSY_SEO_TAG_COUNT
     issues.push({
-      severity: tags.length < ETSY_SEO_TAG_COUNT ? 'error' : 'warning',
+      severity: zuWenig ? 'error' : 'warning',
       field: 'tags',
-      message: `${tags.length} von ${ETSY_SEO_TAG_COUNT} Tags genutzt.`,
+      message: zuWenig
+        ? tags.length <= 2
+          ? `Nur ${tags.length} von ${ETSY_SEO_TAG_COUNT} Tags — typisch nach einem fehlerhaften Tag-Update (Liste überschrieben). Shop-weit mit „13 Tags wiederherstellen“ reparieren.`
+          : `${tags.length} von ${ETSY_SEO_TAG_COUNT} Tags genutzt — Etsy-Maximum ausschöpfen.`
+        : `${tags.length} von ${ETSY_SEO_TAG_COUNT} Tags genutzt.`,
     })
-    scorePenalty += tags.length < ETSY_SEO_TAG_COUNT ? 12 : 4
+    scorePenalty += zuWenig ? (tags.length <= 2 ? 40 : tags.length < 8 ? 22 : 12) : 4
   }
 
   for (const t of tags) {

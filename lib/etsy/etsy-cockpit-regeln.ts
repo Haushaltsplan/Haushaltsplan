@@ -360,8 +360,30 @@ export function baueCockpitAufgaben(input: CockpitRegelInput): EtsyCockpitAufgab
     saisonAktiv,
     saisonVorbei,
   })
-  const plane = (l: CockpitListing, neu: string): EtsyTagTausch | null =>
-    planeTagTausch({ ...l, tags: virtuell.get(l.listingId) ?? l.tags }, neu, planOpts(l.listingId))
+  const ohne13 = input.listings.filter((l) => l.tags.length !== ETSY_SEO_TAG_COUNT)
+  if (ohne13.length) {
+    const minTags = Math.min(...ohne13.map((l) => l.tags.length))
+    const beispiel = ohne13.slice(0, 3).map((l) => kurz(l.title, 36)).join(' · ')
+    aufgaben.push({
+      key: `tags_unvollstaendig:${ohne13.length}`,
+      typ: 'tags_unvollstaendig',
+      prioritaet: 99,
+      titel:
+        ohne13.length === 1
+          ? `Nur ${ohne13[0]!.tags.length} von ${ETSY_SEO_TAG_COUNT} Tags: ${kurz(ohne13[0]!.title, 40)}`
+          : `${ohne13.length} Listings haben nur ${minTags === 1 ? '1 Tag' : `${minTags}–${ETSY_SEO_TAG_COUNT - 1} Tags`}`,
+      detail:
+        `Etsy erlaubt ${ETSY_SEO_TAG_COUNT} Tags. Ein fehlerhaftes Tag-Update hat die Liste überschrieben (nur der letzte Tag blieb). Ein Klick stellt ${ETSY_SEO_TAG_COUNT} Tags je Artikel wieder her — zuerst aus unserem Änderungs-Log, sonst aus Titel und Holzart.` +
+        (beispiel ? ` Betroffen u. a.: ${beispiel}` : ''),
+      aktion: { art: 'tags_reparieren', anzahl: ohne13.length },
+    })
+  }
+
+  const plane = (l: CockpitListing, neu: string): EtsyTagTausch | null => {
+    const tags = virtuell.get(l.listingId) ?? l.tags
+    if (tags.length !== ETSY_SEO_TAG_COUNT) return null
+    return planeTagTausch({ ...l, tags }, neu, planOpts(l.listingId))
+  }
   const reserviere = (t: EtsyTagTausch) => {
     const tags = virtuell.get(t.listingId) ?? []
     const neu = wendeTagTauschAn(tags, t.alt, t.neu)

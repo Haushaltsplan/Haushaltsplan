@@ -27,6 +27,7 @@ const TYP_STIL: Record<EtsyAufgabeTyp, { label: string; rand: string; badge: str
   saison_ende: { label: 'Saison vorbei', rand: 'border-l-orange-400', badge: 'bg-orange-500/15 text-orange-200' },
   keyword: { label: 'Favorit', rand: 'border-l-sky-500', badge: 'bg-sky-500/15 text-sky-200' },
   tag_luecke: { label: 'Konkurrenz-Tag', rand: 'border-l-violet-500', badge: 'bg-violet-500/15 text-violet-200' },
+  tags_unvollstaendig: { label: 'Tags weg', rand: 'border-l-rose-600', badge: 'bg-rose-600/20 text-rose-100' },
   schwach: { label: 'SEO', rand: 'border-l-teal-500', badge: 'bg-teal-500/15 text-teal-200' },
   kein_audit: { label: 'SEO', rand: 'border-l-teal-400', badge: 'bg-teal-500/15 text-teal-200' },
   keine_favoriten: { label: 'Foto/Preis', rand: 'border-l-pink-500', badge: 'bg-pink-500/15 text-pink-200' },
@@ -140,6 +141,26 @@ export function EtsyCockpit({ verbunden, statusLaedt, onOeffnen }: Props) {
           limit: aktion.anzahl,
         })
         toast.success(`${j.results?.length ?? 0} Listings geprüft.`)
+        await lade()
+      } else if (aktion.art === 'tags_reparieren') {
+        if (
+          typeof window !== 'undefined' &&
+          !window.confirm(
+            `${aktion.anzahl} Listing${aktion.anzahl === 1 ? '' : 's'} auf Etsy auf 13 Tags setzen?\n\nVorhandene Tags bleiben; fehlende kommen aus dem Änderungs-Log oder aus Titel/Holzart.`,
+          )
+        ) {
+          return
+        }
+        toast('Stelle 13 Tags je Listing wieder her — dauert je nach Shop 1–2 Minuten.')
+        const j = await postJson<{ repariert?: number; fehlgeschlagen?: number; betroffen?: number }>(
+          '/api/etsy/listings/tags-reparieren',
+          {},
+        )
+        toast.success(
+          `${j.repariert ?? 0} von ${j.betroffen ?? aktion.anzahl} Listings mit 13 Tags auf Etsy` +
+            (j.fehlgeschlagen ? ` · ${j.fehlgeschlagen} fehlgeschlagen` : ''),
+        )
+        markiereErledigt(a.key)
         await lade()
       } else if (aktion.art === 'merken') {
         await postJson('/api/etsy/keywords/merkliste', { keyword: aktion.keyword })
@@ -418,7 +439,9 @@ function AufgabeKarte({
           ? 'KI-Check starten'
           : aktion.art === 'batch_audit'
             ? `${aktion.anzahl} jetzt prüfen`
-            : aktion.art === 'merken'
+            : aktion.art === 'tags_reparieren'
+              ? `${aktion.anzahl} Tags wiederherstellen`
+              : aktion.art === 'merken'
               ? 'Merken'
               : aktion.modul === 'konkurrenz'
                 ? 'Konkurrenz ansehen'
