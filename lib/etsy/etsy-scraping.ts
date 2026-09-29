@@ -21,15 +21,24 @@ import type {
   EtsyAutosuggestErgebnis,
   EtsyCompetitorInsights,
   EtsyCompetitorListing,
+  EtsyKeywordExplorerErgebnis,
+  EtsyKeywordIdee,
   EtsyMarktKontext,
   EtsyTagFrequenz,
 } from '@/lib/etsy/etsy-markt-types'
+import {
+  ETSY_KONKURRENZ_SHOP_LOCATION,
+  erkenneHolzGruppen,
+  filtereKandidatenFuerZielmarkt,
+  nenntFremdeHolzart,
+} from '@/lib/etsy/etsy-zielmarkt'
 import { createSupabaseAdmin } from '@/lib/supabase-admin'
 
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000
 const HTML_BLOCK_MS = 30 * 60 * 1000
 const TAG_MAX = 20
 const COMPETITOR_LIMIT = 10
+const MIN_DE_KONKURRENZ = 5
 
 const BROWSER_HEADERS: Record<string, string> = {
   'User-Agent':
@@ -113,9 +122,9 @@ function cacheKey(kind: string, q: string): string {
   return `${kind}:${q.toLowerCase().replace(/\s+/g, ' ').trim()}`.slice(0, 200)
 }
 
-async function ladeCache<T>(key: string): Promise<CacheEintrag<T> | null> {
+async function ladeCache<T>(key: string, ttlMs = CACHE_TTL_MS): Promise<CacheEintrag<T> | null> {
   const mem = memCache.get(key)
-  if (mem && Date.now() - mem.at < CACHE_TTL_MS) return mem as CacheEintrag<T>
+  if (mem && Date.now() - mem.at < ttlMs) return mem as CacheEintrag<T>
   try {
     const { data } = await createSupabaseAdmin()
       .from('etsy_markt_cache')
@@ -124,7 +133,7 @@ async function ladeCache<T>(key: string): Promise<CacheEintrag<T> | null> {
       .maybeSingle()
     if (!data) return null
     const at = new Date(String(data.fetched_at)).getTime()
-    if (!Number.isFinite(at) || Date.now() - at >= CACHE_TTL_MS) return null
+    if (!Number.isFinite(at) || Date.now() - at >= ttlMs) return null
     const eintrag = { at, payload: data.payload as T }
     memCache.set(key, eintrag)
     return eintrag
@@ -299,6 +308,96 @@ export async function getEtsyAutosuggest(
 }
 
 // ---------------------------------------------------------------------------
+// Käufer-Suchvorschläge Google.de / Amazon.de (inoffiziell → wenig Abfragen, 7 Tage Cache)
+// ---------------------------------------------------------------------------
+
+type KaeuferQuelle = 'google_de' | 'amazon_de'
+
+const KAEUFER_TTL_MS = 7 * 24 * 60 * 60 * 1000
+const kaeuferDrossel = erstelleDrossel(300)
+const kaeuferGeblocktBis: Record<KaeuferQuelle, number> = { google_de: 0, amazon_de: 0 }
+
+/** Marken, Möbel, DIY — keine Kaufabsicht für ein gedrechseltes Unikat. */
+const SUGGEST_BLOCK_RE =
+  /\b(ikea|depot|butlers|tchibo|lidl|aldi|obi|hornbach|bauhaus|amazon|ebay|otto|kleinanzeigen|gebraucht|diy|anleitung|basteln|selber|selbst machen|bauen|kurs|lernen|test|rezept)\b|stuhl|sessel|schalenstuhl|schalensitz/
+const SUGGEST_FUELL_RE = /\b(kaufen|günstig|guenstig|online|bestellen|shop)\b/g
+
+function bereinigeSuggestion(raw: string): string | null {
+  const t = norm(raw).replace(SUGGEST_FUELL_RE, ' ').replace(/\s+/g, ' ').trim()
+  if (t.length < 3 || SUGGEST_BLOCK_RE.test(t)) return null
+  return t
+}
+
+async function holeKaeuferRoh(quelle: KaeuferQuelle, q: string): Promise<string[] | null> {
+  if (Date.now() < kaeuferGeblocktBis[quelle]) return null
+  const url =
+    quelle === 'google_de'
+      ? `https://suggestqueries.google.com/complete/search?client=firefox&hl=de&gl=de&ie=utf-8&oe=utf-8&q=${encodeURIComponent(q)}`
+      : `https://completion.amazon.de/api/2017/suggestions?mid=A1PA6795UKMFR9&alias=aps&prefix=${encodeURIComponent(q)}`
+  try {
+    const res = await kaeuferDrossel(() =>
+      fetch(url, {
+        headers: { ...BROWSER_HEADERS, Accept: 'application/json' },
+        cache: 'no-store',
+        signal: AbortSignal.timeout(6_000),
+      }),
+    )
+    if (!res.ok) {
+      if (res.status === 403 || res.status === 429) kaeuferGeblocktBis[quelle] = Date.now() + HTML_BLOCK_MS
+      return null
+    }
+    const json = (await res.json()) as unknown
+    if (quelle === 'google_de') {
+      const liste = Array.isArray(json) && Array.isArray(json[1]) ? (json[1] as unknown[]) : []
+      return liste.map(String)
+    }
+    const s = (json as { suggestions?: Array<{ value?: string }> })?.suggestions ?? []
+    return s.map((x) => String(x.value ?? '')).filter(Boolean)
+  } catch {
+    return null
+  }
+}
+
+/** Gecachte, bereinigte Vorschläge einer Quelle — Reihenfolge = Beliebtheit laut Quelle. */
+async function getKaeuferSuggestEinzeln(
+  quelle: KaeuferQuelle,
+  query: string,
+  opts?: { forceRefresh?: boolean },
+): Promise<EtsyAutosuggestErgebnis | null> {
+  const q = norm(query).slice(0, 60)
+  if (!q) return null
+  const key = cacheKey('suggest', `${quelle}:${q}`)
+  if (!opts?.forceRefresh) {
+    const c = await ladeCache<EtsyAutosuggestErgebnis>(key, KAEUFER_TTL_MS)
+    if (c) return { ...c.payload, quelle: 'cache' }
+  }
+  const roh = await holeKaeuferRoh(quelle, q)
+  if (!roh) return null
+  const suggestions = [...new Set(roh.map(bereinigeSuggestion).filter((s): s is string => Boolean(s)))].slice(0, 12)
+  const erg: EtsyAutosuggestErgebnis = {
+    query: q,
+    suggestions,
+    provider: quelle,
+    quelle: 'live',
+    fetchedAt: new Date().toISOString(),
+  }
+  await speichereCache(key, 'suggest', erg)
+  return erg
+}
+
+/** Google.de + Amazon.de parallel; leere Liste, wenn beide ausfallen. */
+export async function getKaeuferSuggest(
+  query: string,
+  opts?: { forceRefresh?: boolean },
+): Promise<EtsyAutosuggestErgebnis[]> {
+  const [g, a] = await Promise.all([
+    getKaeuferSuggestEinzeln('google_de', query, opts),
+    getKaeuferSuggestEinzeln('amazon_de', query, opts),
+  ])
+  return [g, a].filter((x): x is EtsyAutosuggestErgebnis => Boolean(x && x.suggestions.length > 0))
+}
+
+// ---------------------------------------------------------------------------
 // Konkurrenz
 // ---------------------------------------------------------------------------
 
@@ -320,6 +419,7 @@ function preisEur(p: ApiListing['price']): number | null {
 
 async function holeKonkurrenzViaApi(
   keyword: string,
+  shopLocation?: string,
 ): Promise<{ listings: EtsyCompetitorListing[]; count: number | null } | null> {
   if (!etsyApiKonfiguriert()) return null
   const q = new URLSearchParams({
@@ -327,6 +427,7 @@ async function holeKonkurrenzViaApi(
     sort_on: 'score',
     limit: String(COMPETITOR_LIMIT),
   })
+  if (shopLocation) q.set('shop_location', shopLocation)
   const res = await apiDrossel(() =>
     fetch(`${ETSY_API_BASE}/application/listings/active?${q.toString()}`, {
       headers: { 'x-api-key': etsyApiKeyHeader(), Accept: 'application/json' },
@@ -414,7 +515,7 @@ async function holeSuchHtml(keyword: string): Promise<string | null> {
   if (htmlGeblockt()) return null
   try {
     const res = await htmlDrossel(() =>
-      fetch(`https://www.etsy.com/search?q=${encodeURIComponent(keyword)}&explicit=1`, {
+      fetch(`https://www.etsy.com/search?q=${encodeURIComponent(keyword)}&explicit=1&ship_to=DE`, {
         headers: { ...BROWSER_HEADERS, Accept: 'text/html,application/xhtml+xml' },
         cache: 'no-store',
         signal: AbortSignal.timeout(15_000),
@@ -486,7 +587,7 @@ export async function getCompetitorInsights(
   const kw = norm(keyword).slice(0, 60)
   if (!kw) return leereInsights(kw, 'Leeres Keyword')
 
-  const key = cacheKey('competitor', kw)
+  const key = cacheKey('competitor', `de:${kw}`)
   if (!opts?.forceRefresh) {
     const c = await ladeCache<EtsyCompetitorInsights>(key)
     if (c) return { ...c.payload, quelle: 'cache' }
@@ -496,16 +597,29 @@ export async function getCompetitorInsights(
     let provider: EtsyCompetitorInsights['provider'] = 'unavailable'
     let listings: EtsyCompetitorListing[] = []
     let count: number | null = null
+    let marktFilter: EtsyCompetitorInsights['marktFilter']
     const notes: string[] = []
-
-    const api = await holeKonkurrenzViaApi(kw).catch((e) => {
+    const apiFehler = (e: unknown) => {
       notes.push(e instanceof Error ? e.message.slice(0, 80) : 'API-Fehler')
       return null
-    })
-    if (api && api.listings.length > 0) {
+    }
+
+    // Zielmarkt zuerst: deutsche Shops ranken mit deutschen Tags für DE-Käufer.
+    const apiDe = await holeKonkurrenzViaApi(kw, ETSY_KONKURRENZ_SHOP_LOCATION).catch(apiFehler)
+    if (apiDe && apiDe.listings.length >= MIN_DE_KONKURRENZ) {
       provider = 'etsy_api'
-      listings = api.listings
-      count = api.count
+      listings = apiDe.listings
+      count = apiDe.count
+      marktFilter = 'DE'
+    } else {
+      const api = await holeKonkurrenzViaApi(kw).catch(apiFehler)
+      if (api && api.listings.length > 0) {
+        provider = 'etsy_api'
+        listings = api.listings
+        count = api.count
+        marktFilter = 'global'
+        notes.push(`Nur ${apiDe?.listings.length ?? 0} DE-Shops — globale Konkurrenz genutzt`)
+      }
     }
 
     const brauchtHtml = provider === 'unavailable' || opts?.mitBadges !== false
@@ -542,9 +656,11 @@ export async function getCompetitorInsights(
       },
       badgeAnteil: mitBadge != null && listings.length ? rund(mitBadge / listings.length) : null,
       wettbewerbCount: count,
+      marktFilter,
       note:
         [
           provider === 'etsy_api' ? 'Relevanz-Sortierung Open API (≈ organisch, ohne Ads/Personalisierung)' : '',
+          marktFilter === 'DE' ? 'Konkurrenz: Shops aus Deutschland' : '',
           preise.length < listings.length ? `Preis-Basis: ${preise.length} EUR-Listings` : '',
           ...notes,
         ]
@@ -648,6 +764,8 @@ export async function ladeEtsyMarktKontext(opts: {
   forceRefresh?: boolean
   /** Weitere Seeds werden übersprungen, sobald das Budget verbraucht ist (Cache-Treffer sind ~0 ms). */
   budgetMs?: number
+  /** Holzart/Titel des eigenen Produkts — Kandidaten mit fremder Holzart werden verworfen. */
+  holzKontext?: string
 }): Promise<EtsyMarktKontext> {
   const seeds = [...new Set(opts.seeds.map((s) => norm(s)).filter((s) => s.length >= 3))].slice(0, 4)
   const maxA = Math.max(0, opts.maxAutosuggest ?? 3)
@@ -676,7 +794,12 @@ export async function ladeEtsyMarktKontext(opts: {
   const autosuggest: EtsyAutosuggestErgebnis[] = []
   for (const s of seeds.slice(0, maxA)) {
     if (!zeitUebrig()) break
-    autosuggest.push(await getEtsyAutosuggest(s, { forceRefresh: opts.forceRefresh }))
+    // Käufer-Vorschläge nur 7-tägig gecacht erneuern; forceRefresh gilt für Etsy-Daten.
+    const [etsy, kaeufer] = await Promise.all([
+      getEtsyAutosuggest(s, { forceRefresh: opts.forceRefresh }),
+      getKaeuferSuggest(s),
+    ])
+    autosuggest.push(etsy, ...kaeufer)
   }
   if (!zeitUebrig()) hinweise.push('Zeitbudget für Markt-Daten erreicht — Teil-Daten.')
 
@@ -688,26 +811,145 @@ export async function ladeEtsyMarktKontext(opts: {
     gesehen.add(t)
     kandidaten.push(t)
   }
+  const istKaeufer = (a: EtsyAutosuggestErgebnis) => a.provider === 'google_de' || a.provider === 'amazon_de'
+  // Phrasen, die Google UND Amazon vorschlagen, sind die stärksten Käufer-Signale.
+  const kaeuferZaehler = new Map<string, number>()
+  for (const a of autosuggest.filter(istKaeufer)) {
+    for (const s of a.suggestions) kaeuferZaehler.set(s, (kaeuferZaehler.get(s) ?? 0) + 1)
+  }
   for (const a of autosuggest) if (a.provider === 'etsy_suggest') a.suggestions.forEach(push)
+  for (const [s, n] of kaeuferZaehler) if (n >= 2) push(s)
   for (const c of competitors) c.topTags.filter((t) => t.count >= 2).forEach((t) => push(t.tag))
+  for (const a of autosuggest.filter(istKaeufer)) a.suggestions.forEach(push)
   for (const c of competitors) c.topTitelPhrasen.forEach((t) => push(t.tag))
-  for (const a of autosuggest) if (a.provider !== 'etsy_suggest') a.suggestions.forEach(push)
+  for (const a of autosuggest) if (a.provider === 'competitor_tags' || a.provider === 'seed') a.suggestions.forEach(push)
   for (const c of competitors) c.topTags.forEach((t) => push(t.tag))
 
-  const autosuggestLive = autosuggest.some((a) => a.provider === 'etsy_suggest')
+  const autosuggestLive = autosuggest.some((a) => a.provider === 'etsy_suggest' || istKaeufer(a))
   const compLive = competitors.some((c) => c.provider !== 'unavailable')
-  if (!autosuggestLive && maxA > 0) hinweise.push('Autosuggest nicht erreichbar — Konkurrenz-Tags als Ersatz.')
+  if (!autosuggestLive && maxA > 0) hinweise.push('Keine Suchvorschläge erreichbar — Konkurrenz-Tags als Ersatz.')
+  else if (!autosuggest.some((a) => a.provider === 'etsy_suggest') && maxA > 0) {
+    hinweise.push('Etsy-Autosuggest gesperrt — Suchvorschläge von Google.de/Amazon.de genutzt.')
+  }
   if (!compLive && maxC > 0) hinweise.push('Keine Konkurrenzdaten — nur Domain-Seeds.')
   if (kandidaten.length === 0) DOMAIN_SEEDS.forEach(push)
+  const zielmarkt = filtereKandidatenFuerZielmarkt(kandidaten, opts.holzKontext)
 
   return {
     seeds,
     autosuggest,
     competitors,
-    keywordKandidaten: kandidaten.slice(0, 30),
+    keywordKandidaten: (zielmarkt.length > 0 ? zielmarkt : kandidaten).slice(0, 30),
     degradiert: !autosuggestLive || !compLive,
     hinweise,
   }
+}
+
+// ---------------------------------------------------------------------------
+// Keyword-Explorer (eRank-Keyword-Tool-Ersatz aus freien Quellen)
+// ---------------------------------------------------------------------------
+
+const EXPLORER_BUCHSTABEN = 'abcdefghiklmnoprstuvwz'.split('')
+const EXPLORER_ZUSAETZE = ['geschenk', 'groß', 'klein', 'deko', 'handgemacht', 'rund', 'natur']
+
+const SAISON_RE: Array<[RegExp, string]> = [
+  [/weihnacht|advent|nikolaus|wichtel/, 'Weihnachten (ab Mitte Okt.)'],
+  [/ostern|oster/, 'Ostern'],
+  [/muttertag/, 'Muttertag (Mai)'],
+  [/vatertag/, 'Vatertag'],
+  [/valentin/, 'Valentinstag'],
+  [/hochzeit|jahrestag/, 'Hochzeit/Jahrestag (ganzjährig)'],
+  [/einzug|richtfest|housewarming|neue wohnung/, 'Einzug (ganzjährig)'],
+  [/herbst|erntedank/, 'Herbst'],
+]
+
+function saisonFuer(k: string): string | null {
+  for (const [re, label] of SAISON_RE) if (re.test(k)) return label
+  return null
+}
+
+function chanceAus(nachfrage: number, wettbewerb: number | null): EtsyKeywordIdee['chance'] {
+  if (wettbewerb == null) return null
+  // Nachfrage je Größenordnung Wettbewerb — Nischen mit echter Nachfrage gewinnen.
+  const wert = nachfrage / Math.max(1, Math.log10(wettbewerb + 10))
+  return wert >= 30 ? 'hoch' : wert >= 15 ? 'mittel' : 'niedrig'
+}
+
+export async function erkundeEtsyKeywords(
+  seedRoh: string,
+  opts?: { tief?: boolean; maxWettbewerb?: number; budgetMs?: number; holzKontext?: string },
+): Promise<EtsyKeywordExplorerErgebnis> {
+  const seed = norm(seedRoh).slice(0, 50)
+  const hinweise: string[] = []
+  if (seed.length < 3) return { seed, ideen: [], abfragen: 0, hinweise: ['Suchbegriff zu kurz'] }
+  const deadline = Date.now() + (opts?.budgetMs ?? 40_000)
+
+  const anfragen: Array<{ quelle: KaeuferQuelle | 'etsy'; q: string }> = [
+    { quelle: 'google_de', q: seed },
+    { quelle: 'amazon_de', q: seed },
+    { quelle: 'etsy', q: seed },
+  ]
+  if (opts?.tief) {
+    for (const b of EXPLORER_BUCHSTABEN) anfragen.push({ quelle: 'google_de', q: `${seed} ${b}` })
+    for (const z of EXPLORER_ZUSAETZE) anfragen.push({ quelle: 'amazon_de', q: `${seed} ${z}` })
+  }
+
+  type Treffer = { punkte: number; quellen: Set<EtsyKeywordIdee['quellen'][number]> }
+  const treffer = new Map<string, Treffer>()
+  const merke = (kw: string, quelle: EtsyKeywordIdee['quellen'][number], pos: number, gewicht: number) => {
+    const t = treffer.get(kw) ?? { punkte: 0, quellen: new Set() }
+    t.punkte += gewicht * Math.max(0.1, 1 - pos / 12)
+    t.quellen.add(quelle)
+    treffer.set(kw, t)
+  }
+
+  let abfragen = 0
+  for (const a of anfragen) {
+    if (Date.now() > deadline) {
+      hinweise.push('Zeitbudget erreicht — Teilergebnis.')
+      break
+    }
+    abfragen++
+    if (a.quelle === 'etsy') {
+      const e = await getEtsyAutosuggest(a.q)
+      if (e.provider === 'etsy_suggest') e.suggestions.forEach((s, i) => merke(s, 'etsy_suggest', i, 1.3))
+      continue
+    }
+    const r = await getKaeuferSuggestEinzeln(a.quelle, a.q)
+    // Amazon = Kaufabsicht → leicht höher gewichtet.
+    r?.suggestions.forEach((s, i) => merke(s, a.quelle as KaeuferQuelle, i, a.quelle === 'amazon_de' ? 1.2 : 1))
+  }
+  if (treffer.size === 0) hinweise.push('Keine Suchvorschläge erreichbar (Google/Amazon/Etsy).')
+
+  const max = Math.max(1, ...[...treffer.values()].map((t) => t.punkte + (t.quellen.size - 1) * 0.8))
+  const eigeneHolz = erkenneHolzGruppen(opts?.holzKontext || '')
+  let ideen: EtsyKeywordIdee[] = [...treffer.entries()]
+    .filter(([kw]) => !nenntFremdeHolzart(kw, eigeneHolz))
+    .map(([keyword, t]) => ({
+      keyword,
+      nachfrage: Math.round(((t.punkte + (t.quellen.size - 1) * 0.8) / max) * 100),
+      quellen: [...t.quellen],
+      wettbewerb: null,
+      wettbewerbMarkt: null,
+      chance: null,
+      tagTauglich: keyword.length <= TAG_MAX,
+      saison: saisonFuer(keyword),
+    }))
+    .sort((a, b) => b.nachfrage - a.nachfrage)
+    .slice(0, 60)
+
+  const maxW = opts?.maxWettbewerb ?? 12
+  for (const idee of ideen.slice(0, maxW)) {
+    if (Date.now() > deadline) break
+    const c = await getCompetitorInsights(idee.keyword, { mitBadges: false })
+    if (c.provider === 'unavailable') continue
+    idee.wettbewerb = c.wettbewerbCount
+    idee.wettbewerbMarkt = c.marktFilter ?? null
+    idee.chance = chanceAus(idee.nachfrage, c.wettbewerbCount)
+  }
+  ideen = ideen.filter((i) => i.nachfrage >= 3)
+
+  return { seed, ideen, abfragen, hinweise }
 }
 
 /** Kompakter Prompt-Block — hält Tokens klein (Free-Tier). */
@@ -719,7 +961,11 @@ export function baueMarktPromptBlock(markt: EtsyMarktKontext | null | undefined)
     const label =
       a.provider === 'etsy_suggest'
         ? 'Reale Etsy-Suchanfragen'
-        : a.provider === 'competitor_tags'
+        : a.provider === 'google_de'
+          ? 'Google.de-Suchvorschläge (deutsche Käufer)'
+          : a.provider === 'amazon_de'
+            ? 'Amazon.de-Suchvorschläge (Kaufabsicht)'
+            : a.provider === 'competitor_tags'
           ? 'Ersatz: Tags der Top-Listings'
           : 'Ersatz: Domain-Seeds (nicht live)'
     zeilen.push(`${label} zu „${a.query}“: ${a.suggestions.slice(0, 10).join(' · ')}`)
@@ -727,7 +973,8 @@ export function baueMarktPromptBlock(markt: EtsyMarktKontext | null | undefined)
   for (const c of markt.competitors) {
     if (c.provider === 'unavailable') continue
     const tags = c.topTags.slice(0, 12).map((t) => `${t.tag} (${t.count}/${c.listings.length})`)
-    zeilen.push(`Top-${c.listings.length} Konkurrenz „${c.keyword}“ — häufigste Tags: ${tags.join(' · ')}`)
+    const herkunft = c.marktFilter === 'DE' ? ' (Shops aus DE)' : c.marktFilter === 'global' ? ' (global, v. a. US/UK)' : ''
+    zeilen.push(`Top-${c.listings.length} Konkurrenz „${c.keyword}“${herkunft} — häufigste Tags: ${tags.join(' · ')}`)
     if (c.topTitelPhrasen.length) {
       zeilen.push(`  Titel-Phrasen: ${c.topTitelPhrasen.slice(0, 8).map((t) => t.tag).join(' · ')}`)
     }
@@ -742,7 +989,7 @@ export function baueMarktPromptBlock(markt: EtsyMarktKontext | null | undefined)
   }
   if (markt.degradiert) zeilen.push(`Hinweis: ${markt.hinweise.join(' ') || 'Teilweise Fallback-Daten.'}`)
   zeilen.push(
-    'Nutze Markt-Phrasen nur, wenn sie zum Produkt passen (Holzart/Form). Keine fremden Holzarten/Formen übernehmen. Preise der Konkurrenz sind Orientierung, kein Anker nach unten für Unikate.',
+    'Nutze Markt-Phrasen nur, wenn sie zum Produkt passen (Holzart/Form). Keine fremden Holzarten/Formen übernehmen. Englische Phrasen nur als Ergänzung (Zielmarkt DE/EU, kein Versand USA/UK). Preise der Konkurrenz sind Orientierung, kein Anker nach unten für Unikate.',
   )
   return zeilen.join('\n')
 }

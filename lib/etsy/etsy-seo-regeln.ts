@@ -7,6 +7,7 @@
 import type { EtsyMarktAbdeckung } from '@/lib/etsy/etsy-markt-types'
 import type { EtsySeoIssue, EtsyShopListingDetail } from '@/lib/etsy/etsy-seo-audit-types'
 import { ETSY_FORM_TAXONOMY } from '@/lib/etsy/etsy-types'
+import { ETSY_MAX_FREMDSPRACHIGE_TAGS, zaehleFremdsprachigeTags } from '@/lib/etsy/etsy-zielmarkt'
 
 export const ETSY_SEO_TITLE_MAX = 140
 /** Idealbereich laut Guide (Soft-Warning außerhalb). */
@@ -81,7 +82,7 @@ const TITLE_STOPWORDS = new Set([
 ])
 
 const HOLZARTEN_RE =
-  /(eiche|esche|ahorn|walnuss|nussbaum|kirsch|birke|buche|linde|pflaume|zwetschg|apfel|birne|ulme|rüster|ruester|robinie|akazie|oliv|zirbe|lärche|laerche|kiefer|fichte|eibe|platane|kastanie|holunder|elsbeere|mooreiche|wurzelholz|maserknolle|\boak\b|\bash\b|maple|walnut|cherry|birch|beech|\belm\b|\byew\b)/i
+  /(eiche|\besche|ahorn|walnuss|nussbaum|kirsch|birke|buche|linde|pflaume|zwetschg|apfel|birne|ulme|rüster|ruester|robinie|akazie|oliv|zirbe|lärche|laerche|kiefer|fichte|eibe|platane|kastanie|holunder|elsbeere|mooreiche|wurzelholz|maserknolle|\boak\b|\bash\b|maple|walnut|cherry|birch|beech|\belm\b|\byew\b)/i
 
 const PRODUKT_RE =
   /(schale|schüssel|schuessel|bowl|dose|behälter|behaelter|vase|teller|stab|skulptur|gefäß|gefaess|holzware)/i
@@ -109,6 +110,75 @@ export function ersteZweiSaetze(description: string): string {
   return saetze.slice(0, 2).join(' ').slice(0, 400)
 }
 
+/** Anlass/Stil/Raum ohne Produkt — breite „Wide Net“-Tags (Marmalead-Logik). */
+const BREIT_RE =
+  /(geschenk|deko|dekoration|wohnzimmer|esszimmer|kuche|kueche|kuchen|handgemacht|handarbeit|handmade|unikat|einzug|hochzeit|jahrestag|geburtstag|muttertag|vatertag|weihnacht|ostern|rustikal|landhaus|skandi|nachhaltig|natur|gift|decor)/
+
+export type EtsyTagKlasse = 'praezise' | 'breit' | 'neutral'
+
+/** Präzise = Produkt/Holzart (Tight Net), breit = Anlass/Stil/Raum (Wide Net). */
+export function klassifiziereTag(tag: string): EtsyTagKlasse {
+  const t = norm(tag)
+  if (PRODUKT_RE.test(t) || HOLZARTEN_RE.test(t)) return 'praezise'
+  if (BREIT_RE.test(t)) return 'breit'
+  return 'neutral'
+}
+
+function enthaeltAlleWoerter(text: string, phrase: string): boolean {
+  const blob = woerter(text).map(stemWort).join(' ')
+  const teile = woerter(phrase).filter((w) => w.length >= 3)
+  return teile.length > 0 && teile.every((w) => blob.includes(stemWort(w)))
+}
+
+/**
+ * Ohne gespeicherten Hauptbegriff: längster Mehrwort-Tag, der vorne im Titel steckt;
+ * sonst die ersten Kernwörter des ersten Titel-Segments.
+ */
+export function leiteHauptbegriffAb(title: string, tags: string[]): string {
+  const vorne = title.slice(0, 60)
+  const titelNorm = norm(vorne)
+  const startIndex = (tag: string) => {
+    const erstes = woerter(tag).find((w) => w.length >= 3)
+    const i = erstes ? titelNorm.indexOf(stemWort(erstes)) : -1
+    return i < 0 ? 999 : i
+  }
+  const kandidat = tags
+    .filter((t) => woerter(t).length >= 2 && enthaeltAlleWoerter(vorne, t))
+    .sort((a, b) => startIndex(a) - startIndex(b) || b.length - a.length)[0]
+  if (kandidat) return kandidat.trim().toLowerCase()
+  return woerter(title.split(/[|,–-]/)[0] || '')
+    .filter((w) => w.length >= 3 && !TITLE_STOPWORDS.has(w))
+    .slice(0, 2)
+    .join(' ')
+}
+
+export type EtsyHauptbegriffCheck = {
+  hauptbegriff: string
+  /** true = vom Nutzer festgelegt, false = automatisch abgeleitet */
+  festgelegt: boolean
+  titelVorne: boolean
+  imTag: boolean
+  imEinstieg: boolean
+}
+
+export function pruefeHauptbegriff(
+  hauptbegriffRoh: string | null | undefined,
+  input: { title: string; tags: string[]; description: string },
+): EtsyHauptbegriffCheck {
+  const festgelegt = Boolean(hauptbegriffRoh?.trim())
+  const hauptbegriff = festgelegt
+    ? hauptbegriffRoh!.trim().toLowerCase()
+    : leiteHauptbegriffAb(input.title, input.tags)
+  if (!hauptbegriff) return { hauptbegriff, festgelegt, titelVorne: false, imTag: false, imEinstieg: false }
+  return {
+    hauptbegriff,
+    festgelegt,
+    titelVorne: enthaeltAlleWoerter(input.title.slice(0, 60), hauptbegriff),
+    imTag: input.tags.some((t) => norm(t) === norm(hauptbegriff) || enthaeltAlleWoerter(t, hauptbegriff)),
+    imEinstieg: enthaeltAlleWoerter(ersteZweiSaetze(input.description), hauptbegriff),
+  }
+}
+
 export type EtsySeoRegelReport = {
   issues: EtsySeoIssue[]
   titleOk: boolean
@@ -120,6 +190,15 @@ export type EtsySeoRegelReport = {
   tagsLongtailOk: boolean
   tagsStemOk: boolean
   tagsAttrOk: boolean
+  /** Höchstens ETSY_MAX_FREMDSPRACHIGE_TAGS nicht-deutsche Tags (Zielmarkt DE/EU). */
+  tagsSpracheOk: boolean
+  /** Hauptbegriff vorne im Titel, in einem Tag und in den ersten 2 Sätzen. */
+  hauptbegriff: EtsyHauptbegriffCheck
+  hauptbegriffOk: boolean
+  tagsPraezise: number
+  tagsBreit: number
+  /** Mix aus präzisen (≥5) und breiten (≥2) Tags. */
+  tagMixOk: boolean
   descriptionOk: boolean
   descFirst2Ok: boolean
   descHolzartOk: boolean
@@ -213,6 +292,7 @@ export function pruefeEtsySeoRegeln(input: {
   materials?: string[]
   taxonomyId?: number | null
   taxonomyLabel?: string | null
+  hauptbegriff?: string | null
 }): EtsySeoRegelReport {
   const issues: EtsySeoIssue[] = []
   let scorePenalty = 0
@@ -406,6 +486,17 @@ export function pruefeEtsySeoRegeln(input: {
     }
   }
 
+  const fremdTags = zaehleFremdsprachigeTags(tags)
+  const tagsSpracheOk = fremdTags.length <= ETSY_MAX_FREMDSPRACHIGE_TAGS
+  if (!tagsSpracheOk) {
+    issues.push({
+      severity: 'warning',
+      field: 'tags',
+      message: `${fremdTags.length} fremdsprachige Tags (${fremdTags.slice(0, 4).join(', ')}) — Versand nur DE/EU, max. ${ETSY_MAX_FREMDSPRACHIGE_TAGS}; Rest durch deutsche Long-Tails ersetzen.`,
+    })
+    scorePenalty += 4
+  }
+
   const descriptionOk = description.length >= 80
   if (!description) {
     issues.push({ severity: 'error', field: 'description', message: 'Beschreibung fehlt.' })
@@ -523,8 +614,45 @@ export function pruefeEtsySeoRegeln(input: {
     scorePenalty += 4
   }
 
+  const hb = pruefeHauptbegriff(input.hauptbegriff, { title, tags, description })
+  const hauptbegriffOk = Boolean(hb.hauptbegriff) && hb.titelVorne && hb.imTag && hb.imEinstieg
+  if (hb.hauptbegriff && !hauptbegriffOk) {
+    const fehlt = [
+      !hb.titelVorne ? 'vorne im Titel' : '',
+      !hb.imTag ? 'als Tag' : '',
+      !hb.imEinstieg ? 'in den ersten 2 Sätzen' : '',
+    ].filter(Boolean)
+    issues.push({
+      severity: 'warning',
+      field: 'general',
+      message: `Hauptbegriff „${hb.hauptbegriff}“ fehlt ${fehlt.join(', ')} — Etsy gewichtet Begriffe, die überall konsistent stehen.`,
+    })
+    scorePenalty += 4
+  }
+
+  const klassen = tags.map(klassifiziereTag)
+  const tagsPraezise = klassen.filter((k) => k === 'praezise').length
+  const tagsBreit = klassen.filter((k) => k === 'breit').length
+  const tagMixOk = tags.length < 10 || (tagsPraezise >= 5 && tagsBreit >= 2)
+  if (!tagMixOk) {
+    issues.push({
+      severity: 'info',
+      field: 'tags',
+      message:
+        tagsBreit < 2
+          ? `Nur ${tagsBreit} breite Tags (Anlass/Raum/Stil) — 2–5 ergänzen, z. B. „holzgeschenk“, „wohnzimmer deko“.`
+          : `Nur ${tagsPraezise} präzise Tags (Produkt/Holzart) — mind. 5, z. B. „schale buche“, „obstschale holz“.`,
+    })
+    scorePenalty += 2
+  }
+
   return {
     issues,
+    hauptbegriff: hb,
+    hauptbegriffOk,
+    tagsPraezise,
+    tagsBreit,
+    tagMixOk,
     titleOk,
     titleFrontloadOk,
     titleLengthIdeal,
@@ -534,6 +662,7 @@ export function pruefeEtsySeoRegeln(input: {
     tagsLongtailOk,
     tagsStemOk,
     tagsAttrOk,
+    tagsSpracheOk,
     descriptionOk,
     descFirst2Ok,
     descHolzartOk,
@@ -582,7 +711,7 @@ export function pruefeListingRegeln(
   listing: Pick<
     EtsyShopListingDetail,
     'title' | 'tags' | 'description' | 'materials' | 'taxonomyId'
-  > & { taxonomyLabel?: string | null },
+  > & { taxonomyLabel?: string | null; hauptbegriff?: string | null },
 ): EtsySeoRegelReport {
   return pruefeEtsySeoRegeln({
     title: listing.title,
@@ -591,6 +720,7 @@ export function pruefeListingRegeln(
     materials: listing.materials,
     taxonomyId: listing.taxonomyId,
     taxonomyLabel: listing.taxonomyLabel ?? null,
+    hauptbegriff: listing.hauptbegriff ?? null,
   })
 }
 
@@ -643,6 +773,7 @@ export function berechneEtsyDraftSeoGeoScore(input: {
   taxonomyId?: number | null
   taxonomyLabel?: string | null
   fotoCheck?: EtsyFotoScoreInput | null
+  hauptbegriff?: string | null
 }): EtsyDraftSeoGeoScore {
   const regel = pruefeEtsySeoRegeln(input)
   const desc = (input.description || '').trim()
@@ -738,6 +869,21 @@ export function berechneEtsyDraftSeoGeoScore(input: {
     { id: 'attr', label: 'Keine reinen Kategorie/Material-Tags', ok: regel.tagsAttrOk, weight: 3, group: 'seo' },
     { id: 'exact', label: 'Titel-Keywords in Tags abgedeckt', ok: exactMatchOk, weight: 5, group: 'seo' },
     { id: 'stopword', label: 'Kein Stop-Wort-Cluster vorne', ok: regel.titleStopwordOk, weight: 2, group: 'seo' },
+    {
+      id: 'sprache',
+      label: `Tags primär Deutsch (max. ${ETSY_MAX_FREMDSPRACHIGE_TAGS} fremdsprachig)`,
+      ok: regel.tagsSpracheOk,
+      weight: 3,
+      group: 'seo',
+    },
+    {
+      id: 'hauptbegriff',
+      label: 'Hauptbegriff in Titel, Tag und Einstieg',
+      ok: regel.hauptbegriffOk,
+      weight: 5,
+      group: 'seo',
+    },
+    { id: 'tagmix', label: 'Mix aus präzisen und breiten Tags', ok: regel.tagMixOk, weight: 3, group: 'seo' },
 
     // Beschreibung / Fakten
     { id: 'first2', label: 'Erste 2 Sätze: Produkt + Holzart', ok: regel.descFirst2Ok, weight: 4, group: 'geo' },

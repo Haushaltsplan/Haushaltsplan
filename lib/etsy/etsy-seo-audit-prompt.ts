@@ -2,6 +2,8 @@
  * System-Prompt: Etsy SEO & GEO Audit für handgedrechselte Holzwaren.
  */
 
+import { ETSY_ZIELMARKT_PROMPT } from '@/lib/etsy/etsy-zielmarkt'
+
 export function buildEtsySeoAuditSystemPrompt(): string {
   return `Du bist ein strenger, praxisnaher Auditor für Etsy-SEO und GEO (Generative Engine Optimization), spezialisiert auf handgedrechselte Holzwaren / Unikate aus Deutschland (Niederbayern).
 
@@ -33,6 +35,11 @@ Simuliere 4–6 realistische Sprach-/Intent-Anfragen deutscher Käufer (z. B. �
 - Reale Etsy-Suchphrasen und häufige Konkurrenz-Tags sind das stärkste Ranking-Signal: fehlende, PASSENDE Phrasen als Issue melden und in optimized_tags/optimized_title einbauen.
 - Unpassende Phrasen (andere Holzart, anderes Produkt, Massenware) ignorieren.
 - Konkurrenz-Preise nur als Kontext; kein Preis-Issue, nur weil das Unikat teurer ist.
+
+### ZIELMARKT
+${ETSY_ZIELMARKT_PROMPT}
+- Mehr englische Tags als erlaubt → warning (field tags), in optimized_tags durch deutsche Long-Tails ersetzen.
+- Versprechen zu Weltversand/USA/UK → warning (field description).
 
 ### BEWERTUNG
 - overall_score: 0–100 (streng, aber fair).

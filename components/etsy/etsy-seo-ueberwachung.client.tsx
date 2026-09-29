@@ -94,6 +94,10 @@ export function EtsySeoUeberwachung({ verbunden }: Props) {
   const [rank, setRank] = useState<EtsyRankTrackingResult | null>(null)
   const [rankKeywords, setRankKeywords] = useState('')
 
+  const [hauptbegriffGespeichert, setHauptbegriffGespeichert] = useState<string | null>(null)
+  const [hauptbegriffEingabe, setHauptbegriffEingabe] = useState('')
+  const [hauptbegriffBusy, setHauptbegriffBusy] = useState(false)
+
   const [vorschlaege, setVorschlaege] = useState<Vorschlag[]>([])
   const [vorschlagOffen, setVorschlagOffen] = useState<number | null>(null)
   const [vorschlagBusy, setVorschlagBusy] = useState<number | null>(null)
@@ -112,8 +116,17 @@ export function EtsySeoUeberwachung({ verbunden }: Props) {
       description: editIntro || listing?.description || '',
       materials: listing?.materials,
       taxonomyId: listing?.taxonomyId,
+      hauptbegriff: hauptbegriffGespeichert,
     })
-  }, [editTitle, editTags, editIntro, listing?.description, listing?.materials, listing?.taxonomyId])
+  }, [
+    editTitle,
+    editTags,
+    editIntro,
+    listing?.description,
+    listing?.materials,
+    listing?.taxonomyId,
+    hauptbegriffGespeichert,
+  ])
 
   const scoreStats = useMemo(() => {
     let rot = 0
@@ -236,6 +249,46 @@ export function EtsySeoUeberwachung({ verbunden }: Props) {
     setRankKeywords(j.audit.suggestions.optimized_tags.slice(0, 5).join(', '))
     setConfirmPush(null)
     setShowDiff(true)
+    void ladeHauptbegriff(j.listing.listingId)
+  }
+
+  async function ladeHauptbegriff(listingId: number) {
+    setHauptbegriffGespeichert(null)
+    setHauptbegriffEingabe('')
+    try {
+      const res = await fetch(`/api/etsy/listings/${listingId}/hauptbegriff`, { cache: 'no-store' })
+      const j = (await res.json()) as { hauptbegriff?: string | null }
+      if (res.ok && j.hauptbegriff) {
+        setHauptbegriffGespeichert(j.hauptbegriff)
+        setHauptbegriffEingabe(j.hauptbegriff)
+      }
+    } catch {
+      /* Hauptbegriff optional */
+    }
+  }
+
+  async function speichereHauptbegriff(wert: string | null) {
+    if (!listing) return
+    setHauptbegriffBusy(true)
+    try {
+      const res = await fetch(`/api/etsy/listings/${listing.listingId}/hauptbegriff`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ hauptbegriff: wert }),
+      })
+      const j = (await res.json()) as { hauptbegriff?: string | null; error?: string }
+      if (!res.ok) {
+        toast.error(j.error ?? 'Speichern fehlgeschlagen.')
+        return
+      }
+      setHauptbegriffGespeichert(j.hauptbegriff ?? null)
+      setHauptbegriffEingabe(j.hauptbegriff ?? '')
+      toast.success(j.hauptbegriff ? 'Hauptbegriff gespeichert — wird ab jetzt getrackt.' : 'Wieder automatisch.')
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Fehler')
+    } finally {
+      setHauptbegriffBusy(false)
+    }
   }
 
   async function starteAudit(listingId: number, force = false) {
@@ -690,28 +743,93 @@ export function EtsySeoUeberwachung({ verbunden }: Props) {
               </button>
             </div>
 
+            {/* Hauptbegriff (eRank „Superstar Keyword“) */}
+            {(() => {
+              const r = liveRegeln || regelReport
+              const hb = r?.hauptbegriff
+              return (
+                <div className="rounded-xl border border-sky-500/30 bg-sky-500/5 p-3">
+                  <p className="text-xs font-medium text-[var(--app-text)]">
+                    Hauptbegriff{' '}
+                    <span className="font-normal text-[var(--app-text-muted)]">
+                      — die eine Suche, für die dieses Stück gefunden werden soll
+                    </span>
+                  </p>
+                  <div className="mt-2 flex flex-wrap items-center gap-2">
+                    <input
+                      value={hauptbegriffEingabe}
+                      onChange={(e) => setHauptbegriffEingabe(e.target.value)}
+                      placeholder={hb?.hauptbegriff ? `automatisch: ${hb.hauptbegriff}` : 'z. B. obstschale buche'}
+                      className="min-w-0 flex-1 rounded-lg border border-[var(--app-border)] bg-[var(--app-surface)] px-2.5 py-1.5 text-sm text-[var(--app-text)]"
+                    />
+                    <button
+                      type="button"
+                      disabled={hauptbegriffBusy || !hauptbegriffEingabe.trim()}
+                      onClick={() => void speichereHauptbegriff(hauptbegriffEingabe)}
+                      className="rounded-lg bg-sky-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-sky-600 disabled:opacity-50"
+                    >
+                      Festlegen
+                    </button>
+                    {hauptbegriffGespeichert && (
+                      <button
+                        type="button"
+                        disabled={hauptbegriffBusy}
+                        onClick={() => void speichereHauptbegriff(null)}
+                        className="rounded-lg border border-[var(--app-border)] px-2.5 py-1.5 text-xs text-[var(--app-text-muted)]"
+                      >
+                        Automatisch
+                      </button>
+                    )}
+                  </div>
+                  {hb?.hauptbegriff && (
+                    <div className="mt-2 flex flex-wrap gap-1.5 text-xs">
+                      {(
+                        [
+                          ['Vorne im Titel', hb.titelVorne],
+                          ['Als Tag', hb.imTag],
+                          ['In den ersten 2 Sätzen', hb.imEinstieg],
+                        ] as const
+                      ).map(([label, ok]) => (
+                        <span
+                          key={label}
+                          className={`rounded-md px-2 py-0.5 ${ok ? 'bg-emerald-500/15 text-emerald-300' : 'bg-rose-500/15 text-rose-300'}`}
+                        >
+                          {ok ? '✓' : '✗'} {label}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )
+            })()}
+
             {/* Regel-Checks live */}
             <div className="rounded-xl border border-[var(--app-border)] p-3">
               <p className="text-xs font-medium text-[var(--app-text-muted)]">
-                Regel-Checks (Guide: Front-Load ≤{ETSY_SEO_TITLE_FRONTLOAD}, Titel Ideal{' '}
-                {ETSY_SEO_TITLE_IDEAL_MIN}–{ETSY_SEO_TITLE_IDEAL_MAX}, {ETSY_SEO_TAG_COUNT} Long-Tail-Tags ≤
-                {ETSY_SEO_TAG_MAX})
+                Checkliste (Titel ideal {ETSY_SEO_TITLE_IDEAL_MIN}–{ETSY_SEO_TITLE_IDEAL_MAX} Zeichen, Wichtiges
+                in den ersten {ETSY_SEO_TITLE_FRONTLOAD}, {ETSY_SEO_TAG_COUNT} Tags je ≤{ETSY_SEO_TAG_MAX} Zeichen)
               </p>
               <div className="mt-2 flex flex-wrap gap-2 text-xs">
                 {(liveRegeln || regelReport) &&
                   (
                     [
-                      ['Titel', (liveRegeln || regelReport)!.titleOk],
-                      ['Front-Load', (liveRegeln || regelReport)!.titleFrontloadOk],
-                      ['Titel-Länge', (liveRegeln || regelReport)!.titleLengthIdeal],
-                      ['Tag-Anzahl', (liveRegeln || regelReport)!.tagsCountOk],
-                      ['Tag-Länge', (liveRegeln || regelReport)!.tagsLengthOk],
-                      ['Long-Tail', (liveRegeln || regelReport)!.tagsLongtailOk],
-                      ['Stemming', (liveRegeln || regelReport)!.tagsStemOk],
-                      ['Attr-Duplikat', (liveRegeln || regelReport)!.tagsAttrOk],
-                      ['Stop-Wörter', (liveRegeln || regelReport)!.titleStopwordOk],
+                      ['Titel ≤140 Zeichen', (liveRegeln || regelReport)!.titleOk],
+                      ['Wichtiges vorne', (liveRegeln || regelReport)!.titleFrontloadOk],
+                      ['Titellänge ideal', (liveRegeln || regelReport)!.titleLengthIdeal],
+                      ['Hauptbegriff überall', (liveRegeln || regelReport)!.hauptbegriffOk],
+                      ['Keine Füllwörter vorne', (liveRegeln || regelReport)!.titleStopwordOk],
+                      ['13 Tags', (liveRegeln || regelReport)!.tagsCountOk],
+                      ['Tags ≤20 Zeichen', (liveRegeln || regelReport)!.tagsLengthOk],
+                      ['Präzise Suchphrasen', (liveRegeln || regelReport)!.tagsLongtailOk],
+                      [
+                        `Tag-Mix ${(liveRegeln || regelReport)!.tagsPraezise} präzise / ${(liveRegeln || regelReport)!.tagsBreit} breit`,
+                        (liveRegeln || regelReport)!.tagMixOk,
+                      ],
+                      ['Keine Wortdoppelungen', (liveRegeln || regelReport)!.tagsStemOk],
+                      ['Nicht doppelt zur Kategorie', (liveRegeln || regelReport)!.tagsAttrOk],
+                      ['Tags auf Deutsch', (liveRegeln || regelReport)!.tagsSpracheOk],
                       ['Beschreibung', (liveRegeln || regelReport)!.descriptionOk],
-                      ['First-2', (liveRegeln || regelReport)!.descFirst2Ok],
+                      ['Starker Einstieg', (liveRegeln || regelReport)!.descFirst2Ok],
                       ['Holzart', (liveRegeln || regelReport)!.descHolzartOk],
                       ['Maße', (liveRegeln || regelReport)!.descMasseOk],
                       ['Pflege', (liveRegeln || regelReport)!.descPflegeOk],
@@ -721,7 +839,7 @@ export function EtsySeoUeberwachung({ verbunden }: Props) {
                       key={String(label)}
                       className={`rounded-md px-2 py-0.5 ${ok ? 'bg-emerald-500/15 text-emerald-300' : 'bg-rose-500/15 text-rose-300'}`}
                     >
-                      {label}: {ok ? 'OK' : 'Fail'}
+                      {ok ? '✓' : '✗'} {label}
                     </span>
                   ))}
               </div>

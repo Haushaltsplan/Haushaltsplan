@@ -29,6 +29,12 @@
     },
     "app/api/etsy/listing/generate/route.ts": {
       "maxDuration": 180
+    },
+    "app/api/etsy/konkurrenz/route.ts": {
+      "maxDuration": 120
+    },
+    "app/api/etsy/konkurrenz/cron/route.ts": {
+      "maxDuration": 120
     }
   },
   "crons": [
@@ -47,6 +53,10 @@
     {
       "path": "/api/etsy/seo-cron?reaudit=1",
       "schedule": "0 8 * * 1"
+    },
+    {
+      "path": "/api/etsy/konkurrenz/cron",
+      "schedule": "0 4 * * *"
     }
   ]
 }

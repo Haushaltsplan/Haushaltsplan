@@ -1,6 +1,7 @@
 /** Etsy — Typen & Hilfskonstanten. */
 
-export const ETSY_SCOPES = ['listings_r', 'listings_w', 'shops_r'].join(' ')
+/** Erweiterung erfordert Re-Connect — SCOPE_VERSION in etsy-hub.client.tsx mit hochzählen. */
+export const ETSY_SCOPES = ['listings_r', 'listings_w', 'shops_r', 'transactions_r'].join(' ')
 
 export const ETSY_API_BASE = 'https://openapi.etsy.com/v3'
 

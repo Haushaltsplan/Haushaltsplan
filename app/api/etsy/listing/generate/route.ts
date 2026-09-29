@@ -149,6 +149,7 @@ export async function POST(req: Request) {
       maxCompetitor: anreichern ? 3 : 2,
       forceRefresh: anreichern,
       budgetMs: 12_000,
+      holzKontext: [basis.holzart, istOptimize ? String(body.optimize!.title) : ''].filter(Boolean).join(' '),
     })
 
     const listing =

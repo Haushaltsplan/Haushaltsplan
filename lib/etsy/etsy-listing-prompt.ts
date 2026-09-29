@@ -4,6 +4,7 @@
  */
 
 import { ETSY_DEFAULT_STANDORT, ETSY_DEFAULT_FINISH } from '@/lib/etsy/etsy-types'
+import { ETSY_MAX_FREMDSPRACHIGE_TAGS, ETSY_ZIELMARKT_PROMPT } from '@/lib/etsy/etsy-zielmarkt'
 
 export function buildEtsyListingSystemPrompt(opts?: {
   standortText?: string
@@ -52,11 +53,13 @@ GROSSBUCHSTABEN nur für Überschriften. Keine Füllwörter („Zauber", „Seel
 3. WARENKORB-ZUSAMMENFASSUNG (warenkorbZusammenfassung): IMMER 1–2 nüchterne Sätze (max. ~180 Zeichen) mit Produkt, Holzart, Maßen, Finish — ohne Emojis. Pflicht für DE-Shops (manuell ins Etsy-Feld; API kann es nicht setzen).
 
 4. GENAU 13 ETSY-TAGS (je ≤20 Zeichen, keine Kommas im Tag, keine Emojis).
-- PRIMÄR DEUTSCH (Zielmarkt DACH). Long-Tail mit 2+ Wörtern, z. B. „handgedrehte schale", „obstschale eiche", „holzschale unikat".
-- Englisch nur als Ergänzung, wenn noch Slots frei (max. 2–3 Tags).
+- PRIMÄR DEUTSCH (Hauptmarkt Deutschland, siehe ZIELMARKT). Long-Tail mit 2+ Wörtern, z. B. „handgedrehte schale", „obstschale eiche", „holzschale unikat".
+- Englisch nur als Ergänzung, wenn noch Slots frei (max. ${ETSY_MAX_FREMDSPRACHIGE_TAGS} Tags) — kein Versand nach USA/UK.
 - Keine Stemming-Duplikate (bowl + bowls, Schale + Schalen) — Etsy erkennt Stämme.
 - Keine reinen Kategorie-/Material-Wiederholungen als Tag (z. B. nur „wood", nur „bowl"), wenn das schon in Taxonomy/Material steckt — lieber Attribute stacken (Holzart + Form + Nutzung + Region).
 - Mindestens 3 Nutzungs-/GEO-Tags (Obst, Deko, Geschenk, Esstisch, Niederbayern o. Ä.).
+- TAG-MIX: ≥5 PRÄZISE Tags (Produkt/Holzart, z. B. „schale buche“, „obstschale holz“) + 2–5 BREITE Tags (Anlass/Raum/Stil, z. B. „holzgeschenk“, „wohnzimmer deko“).
+- HAUPTBEGRIFF: Wähle die stärkste Produkt-Suchphrase (z. B. „obstschale buche“). Sie steht wortgleich vorne im Titel (erste 50 Zeichen), als eigener Tag und in den ersten 2 Sätzen der Beschreibung.
 
 5. PREISSPANNE (EUR, ganze Zahlen)
 preisMinEur ≤ preisEmpfohlenEur ≤ preisMaxEur.
@@ -87,6 +90,8 @@ preisMinEur ≤ preisEmpfohlenEur ≤ preisMaxEur.
 - anlaesse: 2–4 konkrete Anlässe.
 - intentQueries: 3–5 Sprach-/KI-Suchanfragen, auf die dieses Listing eine zitierfähige Antwort ist (z. B. „nachhaltiges Holzgeschenk zur Holzhochzeit“).
 - marktKeywords: die tatsächlich übernommenen Markt-Phrasen (leer, wenn keine geliefert).
+
+10. ${ETSY_ZIELMARKT_PROMPT}
 
 AUSGABE: Nur gültiges JSON gemäß Schema.`
 }

@@ -238,9 +238,10 @@ function validiereListing(raw: Record<string, unknown>, imageCount: number): Ets
 async function marktOderLaden(
   markt: EtsyMarktKontext | null | undefined,
   seeds: string[],
+  holzKontext?: string,
 ): Promise<EtsyMarktKontext | null> {
   if (markt !== undefined) return markt
-  return ladeEtsyMarktKontext({ seeds, maxAutosuggest: 3, maxCompetitor: 2 })
+  return ladeEtsyMarktKontext({ seeds, maxAutosuggest: 3, maxCompetitor: 2, holzKontext })
 }
 
 function unikatZeile(basis: EtsyListingBasis): string {
@@ -291,7 +292,11 @@ export async function generiereEtsyListingTexte(
     throw new Error('GEMINI_API_KEY_FREE fehlt — der Etsy-Agent nutzt nur den Free-Tier-Key.')
   }
 
-  const markt = await marktOderLaden(opts?.markt, marktSeedsFuerBasis({ holzart: basis.holzart }))
+  const markt = await marktOderLaden(
+    opts?.markt,
+    marktSeedsFuerBasis({ holzart: basis.holzart }),
+    basis.holzart,
+  )
 
   const messages: CoachMessage[] = [
     {
@@ -386,6 +391,7 @@ export async function optimiereEtsyListingTexte(
   const markt = await marktOderLaden(
     opts?.markt,
     marktSeedsFuerListing({ title: draft.title, tags: draft.tags }),
+    [basis.holzart, draft.title].filter(Boolean).join(' '),
   )
   const abdeckung = markt
     ? pruefeMarktAbdeckung({ title: draft.title, tags: draft.tags }, markt.keywordKandidaten)

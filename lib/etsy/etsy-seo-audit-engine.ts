@@ -208,6 +208,8 @@ export type EtsyAuditOptionen = {
   markt?: EtsyMarktKontext | null
   /** Limits für automatisches Nachladen (Batch/Cron sparsam halten). */
   marktLimits?: { maxAutosuggest?: number; maxCompetitor?: number; budgetMs?: number }
+  /** Vom Nutzer festgelegter Hauptbegriff; sonst automatisch abgeleitet. */
+  hauptbegriff?: string | null
 }
 
 export async function auditiereEtsyListing(
@@ -223,13 +225,18 @@ export async function auditiereEtsyListing(
     opts?.markt !== undefined
       ? opts.markt
       : await ladeEtsyMarktKontext({
-          seeds: marktSeedsFuerListing({ title: listing.title, tags: listing.tags }),
+          seeds: [
+            ...(opts?.hauptbegriff ? [opts.hauptbegriff] : []),
+            ...marktSeedsFuerListing({ title: listing.title, tags: listing.tags }),
+          ],
           maxAutosuggest: opts?.marktLimits?.maxAutosuggest ?? 2,
           maxCompetitor: opts?.marktLimits?.maxCompetitor ?? 1,
           budgetMs: opts?.marktLimits?.budgetMs ?? 12_000,
+          holzKontext: [listing.title, ...(listing.materials ?? [])].join(' '),
         })
 
-  const regelReport = pruefeListingRegeln(listing)
+  const regelReport = pruefeListingRegeln({ ...listing, hauptbegriff: opts?.hauptbegriff ?? null })
+  const hb = regelReport.hauptbegriff
   const abdeckung = markt
     ? pruefeMarktAbdeckung({ title: listing.title, tags: listing.tags }, markt.keywordKandidaten)
     : null
@@ -242,6 +249,9 @@ export async function auditiereEtsyListing(
       role: 'user',
       content:
         baueUserPayload(listing) +
+        (hb.hauptbegriff
+          ? `\n\nHAUPTBEGRIFF (${hb.festgelegt ? 'vom Verkäufer festgelegt' : 'automatisch erkannt'}): „${hb.hauptbegriff}“ — muss in den ersten 50 Titel-Zeichen, als Tag und in den ersten 2 Sätzen stehen; optimized_* entsprechend ausrichten.`
+          : '') +
         (marktBlock ? `\n\n${marktBlock}` : '') +
         '\n\nBereits bekannte Regel-Issues:\n' +
         (alleRegelIssues.map((i) => `- [${i.severity}] ${i.field}: ${i.message}`).join('\n') ||

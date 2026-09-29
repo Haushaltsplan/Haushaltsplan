@@ -1,5 +1,6 @@
 import { auditiereEtsyListing } from '@/lib/etsy/etsy-seo-audit-engine'
 import {
+  ladeEtsyHauptbegriff,
   ladeEtsySeoCacheFuerListing,
   ladeEtsySeoHistorie,
   speichereEtsySeoAudit,
@@ -40,9 +41,12 @@ export async function POST(req: Request, ctx: Ctx) {
   }
 
   try {
-    const { listing } = await ladeEtsyListingDetail(user.id, listingId)
+    const [{ listing }, hauptbegriff] = await Promise.all([
+      ladeEtsyListingDetail(user.id, listingId),
+      ladeEtsyHauptbegriff(user.id, listingId).catch(() => null),
+    ])
     const fingerprint = listingFingerprint(listing)
-    const regels = pruefeListingRegeln(listing)
+    const regels = pruefeListingRegeln({ ...listing, hauptbegriff })
 
     if (!body.force) {
       const cached = await ladeEtsySeoCacheFuerListing(user.id, listingId)
@@ -61,7 +65,7 @@ export async function POST(req: Request, ctx: Ctx) {
       }
     }
 
-    const audit = await auditiereEtsyListing(listing)
+    const audit = await auditiereEtsyListing(listing, { hauptbegriff })
     await speichereEtsySeoAudit({
       ownerUserId: user.id,
       listingId,

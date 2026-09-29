@@ -1031,17 +1031,35 @@ export function EtsyKiAgentClient({
                   )}
                 </div>
                 <p className="text-xs leading-relaxed text-[var(--app-text)]">{liveScore.einschaetzung}</p>
+                {liveScore.regel.hauptbegriff.hauptbegriff && (
+                  <p className="text-xs text-[var(--app-text-muted)]">
+                    Hauptbegriff (erkannt):{' '}
+                    <span className="font-medium text-sky-200">„{liveScore.regel.hauptbegriff.hauptbegriff}“</span>
+                    {' — '}
+                    {[
+                      liveScore.regel.hauptbegriff.titelVorne ? '✓ Titel vorne' : '✗ Titel vorne',
+                      liveScore.regel.hauptbegriff.imTag ? '✓ Tag' : '✗ Tag',
+                      liveScore.regel.hauptbegriff.imEinstieg ? '✓ Einstieg' : '✗ Einstieg',
+                    ].join(' · ')}
+                  </p>
+                )}
                 <div className="flex flex-wrap gap-1.5 text-[10px]">
                   {(
                     [
-                      ['Front-Load', liveScore.regel.titleFrontloadOk],
-                      ['Titel-Länge', liveScore.regel.titleLengthIdeal],
+                      ['Wichtiges vorne', liveScore.regel.titleFrontloadOk],
+                      ['Titellänge', liveScore.regel.titleLengthIdeal],
+                      ['Hauptbegriff überall', liveScore.regel.hauptbegriffOk],
                       ['13 Tags', liveScore.regel.tagsCountOk],
-                      ['Long-Tail', liveScore.regel.tagsLongtailOk],
-                      ['Stemming', liveScore.regel.tagsStemOk],
-                      ['Attr', liveScore.regel.tagsAttrOk],
-                      ['Stop-Wörter', liveScore.regel.titleStopwordOk],
-                      ['First-2', liveScore.regel.descFirst2Ok],
+                      ['Präzise Phrasen', liveScore.regel.tagsLongtailOk],
+                      [
+                        `Tag-Mix ${liveScore.regel.tagsPraezise}/${liveScore.regel.tagsBreit}`,
+                        liveScore.regel.tagMixOk,
+                      ],
+                      ['Keine Wortdoppelungen', liveScore.regel.tagsStemOk],
+                      ['Nicht doppelt zur Kategorie', liveScore.regel.tagsAttrOk],
+                      ['Keine Füllwörter', liveScore.regel.titleStopwordOk],
+                      ['Tags Deutsch', liveScore.regel.tagsSpracheOk],
+                      ['Starker Einstieg', liveScore.regel.descFirst2Ok],
                       ['Maße', liveScore.regel.descMasseOk],
                       ['Pflege', liveScore.regel.descPflegeOk],
                     ] as const
@@ -1050,7 +1068,7 @@ export function EtsyKiAgentClient({
                       key={label}
                       className={`rounded px-1.5 py-0.5 ${ok ? 'bg-emerald-500/15 text-emerald-300' : 'bg-rose-500/15 text-rose-300'}`}
                     >
-                      {label}
+                      {ok ? '✓' : '✗'} {label}
                     </span>
                   ))}
                 </div>

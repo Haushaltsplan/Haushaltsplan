@@ -7,6 +7,7 @@ import 'server-only'
 
 import {
   ladeEtsyFokusKeywords,
+  ladeEtsyHauptbegriffe,
   speichereEtsyRankErgebnisse,
 } from '@/lib/etsy/etsy-seo-audit-cache'
 import type { EtsyRankKeywordResult, EtsyRankTrackingResult } from '@/lib/etsy/etsy-seo-audit-types'
@@ -210,15 +211,18 @@ export async function trackListingRanks(opts: {
     state: 'active',
     limit: Math.min(100, opts.maxListings ?? 100),
   })
-  const fokus = await ladeEtsyFokusKeywords(opts.ownerUserId)
+  const [fokus, hauptbegriffe] = await Promise.all([
+    ladeEtsyFokusKeywords(opts.ownerUserId),
+    ladeEtsyHauptbegriffe(opts.ownerUserId).catch(() => new Map<number, string>()),
+  ])
 
   const keywordZuListings = new Map<string, number[]>()
   for (const l of listings) {
     const eigene = fokus.get(l.listingId)
-    const kws = (eigene && eigene.length > 0
-      ? eigene
-      : l.tags.filter((t) => t.trim().includes(' ')).slice(0, 3)
-    ).map((k) => k.trim().toLowerCase())
+    const hb = hauptbegriffe.get(l.listingId)
+    const basis =
+      eigene && eigene.length > 0 ? eigene : l.tags.filter((t) => t.trim().includes(' ')).slice(0, 3)
+    const kws = [...new Set([...(hb ? [hb] : []), ...basis].map((k) => k.trim().toLowerCase()))]
     for (const k of kws.slice(0, 3)) {
       if (!k) continue
       const arr = keywordZuListings.get(k) ?? []

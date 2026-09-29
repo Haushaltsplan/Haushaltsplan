@@ -410,3 +410,52 @@ export async function ladeEtsyRankMap(ownerUserId: string): Promise<Map<number, 
   }
   return map
 }
+
+// ---------------------------------------------------------------------------
+// Hauptbegriff pro Listing
+// ---------------------------------------------------------------------------
+
+export async function ladeEtsyHauptbegriffe(ownerUserId: string): Promise<Map<number, string>> {
+  const { data, error } = await createSupabaseAdmin()
+    .from('etsy_listing_hauptbegriff')
+    .select('listing_id, hauptbegriff')
+    .eq('owner_user_id', ownerUserId)
+  const map = new Map<number, string>()
+  if (error || !data) return map
+  for (const r of data) {
+    const id = Number(r.listing_id)
+    const hb = String(r.hauptbegriff || '').trim()
+    if (Number.isFinite(id) && hb) map.set(id, hb)
+  }
+  return map
+}
+
+export async function ladeEtsyHauptbegriff(ownerUserId: string, listingId: number): Promise<string | null> {
+  const { data } = await createSupabaseAdmin()
+    .from('etsy_listing_hauptbegriff')
+    .select('hauptbegriff')
+    .eq('owner_user_id', ownerUserId)
+    .eq('listing_id', listingId)
+    .maybeSingle()
+  const hb = String(data?.hauptbegriff || '').trim()
+  return hb || null
+}
+
+/** `null` löscht den festgelegten Begriff → wieder automatisch abgeleitet. */
+export async function speichereEtsyHauptbegriff(
+  ownerUserId: string,
+  listingId: number,
+  hauptbegriff: string | null,
+): Promise<void> {
+  const db = createSupabaseAdmin().from('etsy_listing_hauptbegriff')
+  const hb = hauptbegriff?.trim().toLowerCase().slice(0, 60) || ''
+  const { error } = hb
+    ? await db.upsert({
+        owner_user_id: ownerUserId,
+        listing_id: listingId,
+        hauptbegriff: hb,
+        updated_at: new Date().toISOString(),
+      })
+    : await db.delete().eq('owner_user_id', ownerUserId).eq('listing_id', listingId)
+  if (error) throw new Error(error.message)
+}

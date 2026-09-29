@@ -11,6 +11,7 @@
  */
 import { auditiereEtsyListing } from '@/lib/etsy/etsy-seo-audit-engine'
 import {
+  ladeEtsyHauptbegriff,
   ladeEtsyRankVerluste,
   ladeEtsySeoSchwachstellen,
   ladeEtsySeoVorschlag,
@@ -119,7 +120,10 @@ async function run(opts: { reaudit: boolean; rank: boolean }) {
           break
         }
         try {
-          const { listing } = await ladeEtsyListingDetail(ownerUserId, k.listingId)
+          const [{ listing }, hauptbegriff] = await Promise.all([
+            ladeEtsyListingDetail(ownerUserId, k.listingId),
+            ladeEtsyHauptbegriff(ownerUserId, k.listingId).catch(() => null),
+          ])
           const fingerprint = listingFingerprint(listing)
           const offen = await ladeEtsySeoVorschlag(ownerUserId, k.listingId)
           if (offen?.status === 'offen' && offen.fingerprint === fingerprint) {
@@ -129,6 +133,7 @@ async function run(opts: { reaudit: boolean; rank: boolean }) {
 
           const audit = await auditiereEtsyListing(listing, {
             marktLimits: { maxAutosuggest: 2, maxCompetitor: 1, budgetMs: 12_000 },
+            hauptbegriff,
           })
           await speichereEtsySeoAudit({
             ownerUserId,

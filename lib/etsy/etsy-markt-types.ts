@@ -5,8 +5,11 @@ export type EtsyMarktQuelle = 'live' | 'cache' | 'fallback'
 export type EtsyAutosuggestErgebnis = {
   query: string
   suggestions: string[]
-  /** `etsy_suggest` = Autosuggest-Endpoint, `competitor_tags` = aus Top-Listings abgeleitet, `seed` = Domain-Fallback */
-  provider: 'etsy_suggest' | 'competitor_tags' | 'seed'
+  /**
+   * `etsy_suggest` = Etsy-Autosuggest, `google_de`/`amazon_de` = Suchvorschläge deutscher Käufer,
+   * `competitor_tags` = aus Top-Listings abgeleitet, `seed` = Domain-Fallback
+   */
+  provider: 'etsy_suggest' | 'google_de' | 'amazon_de' | 'competitor_tags' | 'seed'
   quelle: EtsyMarktQuelle
   fetchedAt: string
   note?: string
@@ -42,6 +45,8 @@ export type EtsyCompetitorInsights = {
   badgeAnteil: number | null
   /** Treffer gesamt laut API (Wettbewerbsgröße), null wenn unbekannt */
   wettbewerbCount: number | null
+  /** `DE` = nur Shops aus Deutschland (Zielmarkt), `global` = Fallback bei zu wenig DE-Treffern */
+  marktFilter?: 'DE' | 'global'
   note?: string
 }
 
@@ -52,6 +57,30 @@ export type EtsyMarktKontext = {
   /** Dedupliziert, nach Relevanz sortiert — direkt als Tag-Kandidaten nutzbar (≤20 Zeichen) */
   keywordKandidaten: string[]
   degradiert: boolean
+  hinweise: string[]
+}
+
+export type EtsyKeywordChance = 'hoch' | 'mittel' | 'niedrig'
+
+/** Ergebnis des Keyword-Explorers (Google.de + Amazon.de + Etsy-Wettbewerb). */
+export type EtsyKeywordIdee = {
+  keyword: string
+  /** 0–100: wie oft/weit oben die Phrase in Käufer-Suchvorschlägen auftaucht */
+  nachfrage: number
+  quellen: Array<'google_de' | 'amazon_de' | 'etsy_suggest'>
+  /** Aktive Etsy-Treffer (DE-Shops bevorzugt), null wenn nicht geprüft */
+  wettbewerb: number | null
+  wettbewerbMarkt: 'DE' | 'global' | null
+  chance: EtsyKeywordChance | null
+  /** ≤20 Zeichen → direkt als Etsy-Tag nutzbar */
+  tagTauglich: boolean
+  saison: string | null
+}
+
+export type EtsyKeywordExplorerErgebnis = {
+  seed: string
+  ideen: EtsyKeywordIdee[]
+  abfragen: number
   hinweise: string[]
 }
 
