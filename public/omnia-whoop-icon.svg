@@ -1,0 +1,88 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Omnia Whoop">
+  <defs>
+    <linearGradient id="ow-bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0b1218"/>
+      <stop offset="55%" stop-color="#070b10"/>
+      <stop offset="100%" stop-color="#030508"/>
+    </linearGradient>
+    <linearGradient id="ow-ring" x1="12%" y1="8%" x2="88%" y2="92%">
+      <stop offset="0%" stop-color="#7ee0ff"/>
+      <stop offset="42%" stop-color="#2ec4b6"/>
+      <stop offset="100%" stop-color="#1a8f9c"/>
+    </linearGradient>
+    <linearGradient id="ow-moon" x1="30%" y1="20%" x2="80%" y2="90%">
+      <stop offset="0%" stop-color="#f4f7fb"/>
+      <stop offset="55%" stop-color="#c5ced8"/>
+      <stop offset="100%" stop-color="#8b95a3"/>
+    </linearGradient>
+    <linearGradient id="ow-pulse" x1="0%" y1="50%" x2="100%" y2="50%">
+      <stop offset="0%" stop-color="#7ee0ff" stop-opacity="0"/>
+      <stop offset="20%" stop-color="#7ee0ff"/>
+      <stop offset="50%" stop-color="#2ec4b6"/>
+      <stop offset="80%" stop-color="#7ee0ff"/>
+      <stop offset="100%" stop-color="#7ee0ff" stop-opacity="0"/>
+    </linearGradient>
+    <radialGradient id="ow-glow" cx="48%" cy="42%" r="52%">
+      <stop offset="0%" stop-color="#2ec4b6" stop-opacity="0.22"/>
+      <stop offset="55%" stop-color="#1a8f9c" stop-opacity="0.06"/>
+      <stop offset="100%" stop-color="#030508" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <!-- App-Hintergrund -->
+  <rect width="512" height="512" rx="112" fill="url(#ow-bg)"/>
+  <circle cx="256" cy="248" r="190" fill="url(#ow-glow)"/>
+
+  <!-- Fitness-Ring (Recovery/Strain) -->
+  <circle
+    cx="256" cy="248" r="148"
+    fill="none"
+    stroke="url(#ow-ring)"
+    stroke-width="28"
+    stroke-linecap="round"
+    stroke-dasharray="620 920"
+    transform="rotate(-110 256 248)"
+  />
+  <circle
+    cx="256" cy="248" r="148"
+    fill="none"
+    stroke="#1a3038"
+    stroke-width="28"
+    opacity="0.55"
+  />
+  <circle
+    cx="256" cy="248" r="148"
+    fill="none"
+    stroke="url(#ow-ring)"
+    stroke-width="28"
+    stroke-linecap="round"
+    stroke-dasharray="420 930"
+    transform="rotate(-110 256 248)"
+  />
+
+  <!-- Schlaf-Mond -->
+  <path
+    fill="url(#ow-moon)"
+    d="M286 168
+       a92 92 0 1 0 0 160
+       a72 72 0 1 1 0 -160
+       z"
+  />
+
+  <!-- HF-Puls unten im Ring -->
+  <path
+    fill="none"
+    stroke="url(#ow-pulse)"
+    stroke-width="10"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    d="M150 318
+       L178 318
+       L192 300
+       L208 340
+       L226 270
+       L244 332
+       L260 318
+       L362 318"
+  />
+</svg>
