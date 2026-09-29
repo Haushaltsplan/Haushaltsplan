@@ -8,7 +8,7 @@
 
 import { istCapacitorNative } from '@/lib/omnia-native/omnia-ble-shim'
 import { istOmniaNativeApp } from '@/lib/omnia-native/omnia-native'
-import { loginZielFuerRolle, omniaRolleAusUser, ownerEmailsPublic } from '@/lib/zugriff-rollen'
+import { loginZielNachAuth, omniaRolleAusUser, ownerEmailsPublic } from '@/lib/zugriff-rollen'
 import { supabase } from '@/lib/supabase'
 import type { EmailOtpType, Session } from '@supabase/supabase-js'
 import { useEffect, useState } from 'react'
@@ -133,7 +133,7 @@ export default function AuthConfirmPage() {
         return
       }
       setStatus('Angemeldet — Sitzung gespeichert. Weiterleitung …')
-      const ziel = loginZielFuerRolle(omniaRolleAusUser(session?.user, ownerEmailsPublic()))
+      const ziel = loginZielNachAuth(omniaRolleAusUser(session?.user, ownerEmailsPublic()))
       window.location.replace(ziel)
     }
 

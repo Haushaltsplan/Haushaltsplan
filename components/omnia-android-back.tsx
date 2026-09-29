@@ -2,11 +2,12 @@
 
 /** Android-Zurück: Modal/History, doppel-Back zum Beenden auf Root. */
 
-import { istOmniaNativeApp } from '@/lib/omnia-native/omnia-native'
+import { istOmniaNativeApp, istOmniaWhoopApp } from '@/lib/omnia-native/omnia-native'
 import { usePathname, useRouter } from 'next/navigation'
 import { useEffect, useRef } from 'react'
 
 const ROOT_PATHS = new Set(['/', ''])
+const WHOOP_ROOT = new Set(['/fitnessdaten', '/'])
 
 export function OmniaAndroidBack() {
   const pathname = usePathname()
@@ -17,13 +18,14 @@ export function OmniaAndroidBack() {
     if (!istOmniaNativeApp()) return
 
     let remove: (() => void) | undefined
+    const whoop = istOmniaWhoopApp()
+    const roots = whoop ? WHOOP_ROOT : ROOT_PATHS
 
     void (async () => {
       try {
         const { App } = await import('@capacitor/app')
         const handle = await App.addListener('backButton', ({ canGoBack }) => {
           void (async () => {
-          // Offenes Dialog/Sheet schließen
           const openDialog = document.querySelector(
             '[data-omnia-confirm-open="true"], [data-app-modal-open="true"]',
           )
@@ -32,20 +34,22 @@ export function OmniaAndroidBack() {
             return
           }
 
-          // Drawer?
           const drawerClose = document.querySelector<HTMLElement>('[data-omnia-drawer-close]')
           if (drawerClose && document.body.classList.contains('omnia-drawer-open')) {
             drawerClose.click()
             return
           }
 
-          if (canGoBack && !ROOT_PATHS.has(pathname ?? '')) {
+          const path = pathname ?? ''
+          const aufRoot = roots.has(path) || (whoop && path.startsWith('/auth'))
+
+          if (canGoBack && !aufRoot) {
             router.back()
             return
           }
 
-          if (!ROOT_PATHS.has(pathname ?? '')) {
-            router.push('/')
+          if (!aufRoot) {
+            router.replace(whoop ? '/fitnessdaten' : '/')
             return
           }
 

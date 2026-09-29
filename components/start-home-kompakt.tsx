@@ -7,11 +7,6 @@ import {
   StartSektion,
   StartSkeleton,
 } from '@/components/start-home-ui'
-import { WhoopRing, recoveryColor } from '@/components/fitnessdaten/whoop-ring'
-import { baueWhoopDashboard } from '@/lib/fitnessdaten/metrics-engine'
-import { ladeFitnessSnapshot } from '@/lib/fitnessdaten/history-storage'
-import { WHOOP_BLE_SNAPSHOT_EVENT } from '@/lib/fitnessdaten/whoop-ble-keepalive'
-import { WHOOP_CLOUD_SYNC_EVENT } from '@/lib/fitnessdaten/whoop-cloud-merge'
 import {
   KALENDER_SYNC_EVENT,
   eintraegeImDatumsfenster,
@@ -107,76 +102,6 @@ export function StartKalenderKompakt() {
             )
           })}
         </ul>
-      )}
-    </StartSektion>
-  )
-}
-
-export function StartWhoopKompakt() {
-  const [revision, setRevision] = useState(0)
-
-  useEffect(() => {
-    const bump = () => setRevision((r) => r + 1)
-    window.addEventListener(WHOOP_CLOUD_SYNC_EVENT, bump)
-    window.addEventListener(WHOOP_BLE_SNAPSHOT_EVENT, bump)
-    return () => {
-      window.removeEventListener(WHOOP_CLOUD_SYNC_EVENT, bump)
-      window.removeEventListener(WHOOP_BLE_SNAPSHOT_EVENT, bump)
-    }
-  }, [])
-
-  const heute = useMemo(() => {
-    try {
-      return baueWhoopDashboard(ladeFitnessSnapshot()).heute
-    } catch {
-      return null
-    }
-  }, [revision])
-  const hasData =
-    heute != null &&
-    (heute.sleepScore != null || heute.recoveryPercent != null || heute.strain != null)
-
-  return (
-    <StartSektion
-      titel="WHOOP"
-      icon="◉"
-      href="/fitnessdaten"
-      akzent="whoop"
-      innerClassName={hasData ? 'bg-[#050505]/80' : undefined}
-    >
-      {!hasData || !heute ? (
-        <StartLeer text="Noch keine Daten — WHOOP verbinden oder Cloud-Sync starten." />
-      ) : (
-        <div className="flex items-end justify-center gap-3 py-1 sm:gap-6">
-          <WhoopRing
-            value={heute.sleepScore ?? 0}
-            label="Schlaf"
-            color="#7b61ff"
-            size={80}
-            stroke={6}
-            unavailable={heute.sleepScore == null}
-            onPress={() => {}}
-          />
-          <WhoopRing
-            value={heute.recoveryPercent ?? 0}
-            label="Erholung"
-            color={recoveryColor(heute.recoveryPercent)}
-            size={100}
-            stroke={8}
-            unavailable={heute.recoveryPercent == null}
-            onPress={() => {}}
-          />
-          <WhoopRing
-            value={heute.strain ?? 0}
-            max={21}
-            label="Belastung"
-            color="#009dff"
-            size={80}
-            stroke={6}
-            unavailable={heute.strain == null}
-            onPress={() => {}}
-          />
-        </div>
       )}
     </StartSektion>
   )

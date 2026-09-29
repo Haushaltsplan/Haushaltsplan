@@ -65,3 +65,11 @@ export function gastApiErlaubt(pathname: string): boolean {
 export function loginZielFuerRolle(rolle: OmniaRolle): string {
   return rolle === 'portfolio_gast' ? PORTFOLIO_ANALYSE_PFAD : '/'
 }
+
+/** Nach Login: Whoop-App → nur Fitness, sonst Rollen-Ziel. */
+export function loginZielNachAuth(rolle: OmniaRolle): string {
+  if (typeof navigator !== 'undefined' && /OmniaWhoopCapacitor/i.test(navigator.userAgent || '')) {
+    return '/fitnessdaten'
+  }
+  return loginZielFuerRolle(rolle)
+}

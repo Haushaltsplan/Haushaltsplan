@@ -307,10 +307,20 @@ export function AuthGate({ children }: { children: ReactNode }) {
         }
         uebernehmeSession(second.data.session ?? null)
         toast.success('Angemeldet')
+        if (whoopApp && typeof window !== 'undefined') {
+          window.setTimeout(() => {
+            window.location.replace('/fitnessdaten')
+          }, 200)
+        }
         return
       }
       uebernehmeSession(data.session ?? null)
       toast.success('Angemeldet')
+      if (whoopApp && typeof window !== 'undefined') {
+        window.setTimeout(() => {
+          window.location.replace('/fitnessdaten')
+        }, 200)
+      }
     } finally {
       setVerifying(false)
     }

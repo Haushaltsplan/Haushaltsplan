@@ -5,10 +5,10 @@
  * (ohne neuen Magic-Link / ohne E-Mail).
  */
 
-import { istOmniaNativeApp, istOmniaWhoopApp } from '@/lib/omnia-native/omnia-native'
+import { istOmniaNativeApp } from '@/lib/omnia-native/omnia-native'
 import { decodeOmniaSessionCode } from '@/lib/omnia-native/omnia-session-code'
 import { supabase } from '@/lib/supabase'
-import { loginZielFuerRolle, omniaRolleAusUser, ownerEmailsPublic } from '@/lib/zugriff-rollen'
+import { loginZielNachAuth, omniaRolleAusUser, ownerEmailsPublic } from '@/lib/zugriff-rollen'
 import { useEffect, useState } from 'react'
 
 function tokensAusUrl(): { access_token: string; refresh_token: string } | null {
@@ -42,11 +42,6 @@ function tokensAusUrl(): { access_token: string; refresh_token: string } | null 
   return null
 }
 
-function zielNachLogin(rolle: ReturnType<typeof omniaRolleAusUser>): string {
-  if (istOmniaWhoopApp()) return '/fitnessdaten'
-  return loginZielFuerRolle(rolle)
-}
-
 export default function AuthSessionPage() {
   const [status, setStatus] = useState('Sitzung wird übernommen …')
   const [fehler, setFehler] = useState<string | null>(null)
@@ -78,7 +73,7 @@ export default function AuthSessionPage() {
         /* ignore */
       }
       setStatus('Angemeldet — weiter …')
-      const ziel = zielNachLogin(omniaRolleAusUser(data.session.user, ownerEmailsPublic()))
+      const ziel = loginZielNachAuth(omniaRolleAusUser(data.session.user, ownerEmailsPublic()))
       // Hash aus Adresszeile entfernen
       window.history.replaceState(null, '', '/auth/session')
       window.location.replace(ziel)

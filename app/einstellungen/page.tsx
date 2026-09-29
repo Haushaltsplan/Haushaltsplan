@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 import { AppLockEinstellungen } from '@/components/app-lock-einstellungen'
 import { OmniaAppAktualisieren } from '@/components/omnia-app-aktualisieren'
+import { EinstellungenWhoopSection } from '@/components/einstellungen-whoop-section'
 import { PortfolioGastEinstellungen } from '@/components/portfolio-gast-einstellungen'
 import { PageChrome, PageHero, PageSection, PageSectionPanel } from '@/components/page-shell'
 
@@ -25,6 +26,8 @@ export default function EinstellungenPage() {
         </PageSectionPanel>
       </PageSection>
 
+      <EinstellungenWhoopSection />
+
       <PageSection titleId="einstellungen-sicherheit" title="Sicherheit">
         <PageSectionPanel density="compact">
           <AppLockEinstellungen />
@@ -40,7 +43,7 @@ export default function EinstellungenPage() {
       <PageSection titleId="einstellungen-rechtliches" title="Rechtliches">
         <PageSectionPanel density="compact">
           <p className="text-sm leading-relaxed text-[var(--app-text-muted)]">
-            Datenschutzerklärung für Omnia — wird u. a. beim WHOOP-OAuth angezeigt.
+            Datenschutzerklärung für Omnia.
           </p>
           <Link
             href="/datenschutz"

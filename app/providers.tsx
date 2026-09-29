@@ -7,6 +7,7 @@ import { OmniaAndroidBack } from '@/components/omnia-android-back'
 import { OmniaOfflineBanner } from '@/components/omnia-offline-banner'
 import { OmniaErrorBoundary } from '@/components/omnia-error-boundary'
 import { OmniaExternalLinks } from '@/components/omnia-external-links'
+import { OmniaWhoopRouteLock } from '@/components/omnia-whoop-route-lock'
 import { AppConfirmProvider } from '@/components/app-confirm'
 import { PwaServiceWorkerRegister } from '@/components/pwa-service-worker-register'
 import { TerminMorgenReminderRunner } from '@/components/termin-morgen-reminder'
@@ -17,7 +18,8 @@ import { ClientStateBootstrap } from '@/components/client-state-bootstrap'
 import { ClientStateThemeSync } from '@/components/client-state-theme-sync'
 import { installApiAuth } from '@/lib/api-auth-client'
 import { sichereSpeicherplatzFuerAuth } from '@/lib/local-storage-safe'
-import { useEffect, type ReactNode } from 'react'
+import { istOmniaWhoopApp } from '@/lib/omnia-native/omnia-native'
+import { useEffect, useState, type ReactNode } from 'react'
 
 // Token-Anhang für /api-Aufrufe einmalig installieren (vor dem ersten Request).
 if (typeof window !== 'undefined') {
@@ -30,6 +32,8 @@ if (typeof window !== 'undefined') {
 }
 
 export function Providers({ children }: { children: ReactNode }) {
+  const [whoopApp, setWhoopApp] = useState(false)
+
   useEffect(() => {
     installApiAuth()
     try {
@@ -37,6 +41,7 @@ export function Providers({ children }: { children: ReactNode }) {
     } catch {
       /* ignore */
     }
+    setWhoopApp(istOmniaWhoopApp())
   }, [])
 
   return (
@@ -44,6 +49,7 @@ export function Providers({ children }: { children: ReactNode }) {
       <OmniaNativeBoot />
       <OmniaNativeChrome />
       <OmniaAuthDeeplink />
+      <OmniaWhoopRouteLock />
       <OmniaAndroidBack />
       <OmniaExternalLinks />
       <OmniaErrorBoundary>
@@ -61,7 +67,7 @@ export function Providers({ children }: { children: ReactNode }) {
         </AppConfirmProvider>
       </OmniaErrorBoundary>
       <PwaServiceWorkerRegister />
-      <TerminMorgenReminderRunner />
+      {!whoopApp ? <TerminMorgenReminderRunner /> : null}
     </>
   )
 }

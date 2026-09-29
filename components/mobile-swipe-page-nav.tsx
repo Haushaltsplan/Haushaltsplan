@@ -10,6 +10,7 @@ import {
   adjacentNavHref,
   mergePersistedWithKnown,
 } from '@/lib/nav-model'
+import { istOmniaWhoopApp } from '@/lib/omnia-native/omnia-native'
 
 /** Nur von Screen-Rand starten (System-Back / Listen nicht stören). */
 const EDGE_ZONE_PX = 28
@@ -44,6 +45,11 @@ export function MobileSwipePageNav({ children }: { children: ReactNode }) {
   const router = useRouter()
   const [order, setOrder] = useState<string[]>(DEFAULT_HREF_ORDER)
   const [mobileNav, setMobileNav] = useState(false)
+  const [whoopApp, setWhoopApp] = useState(false)
+
+  useEffect(() => {
+    setWhoopApp(istOmniaWhoopApp())
+  }, [])
 
   const navRef = useRef({ pathname, order })
   navRef.current = { pathname, order }
@@ -65,30 +71,33 @@ export function MobileSwipePageNav({ children }: { children: ReactNode }) {
   }, [])
 
   useLayoutEffect(() => {
+    if (whoopApp) return
     reloadOrderFromStorage()
-  }, [reloadOrderFromStorage])
+  }, [reloadOrderFromStorage, whoopApp])
 
   useEffect(() => {
+    if (whoopApp) return
     window.addEventListener(NAV_ORDER_CHANGED_EVENT, reloadOrderFromStorage)
     return () => window.removeEventListener(NAV_ORDER_CHANGED_EVENT, reloadOrderFromStorage)
-  }, [reloadOrderFromStorage])
+  }, [reloadOrderFromStorage, whoopApp])
 
   useEffect(() => {
+    if (whoopApp) return
     const mq = window.matchMedia('(max-width: 767px)')
     const sync = () => setMobileNav(mq.matches)
     sync()
     mq.addEventListener('change', sync)
     return () => mq.removeEventListener('change', sync)
-  }, [])
+  }, [whoopApp])
 
   useEffect(() => {
-    if (!mobileNav) return
+    if (!mobileNav || whoopApp) return
     const { pathname: p, order: o } = navRef.current
     const next = adjacentNavHref(p, o, 'next')
     const prev = adjacentNavHref(p, o, 'prev')
     if (next) router.prefetch(next)
     if (prev) router.prefetch(prev)
-  }, [mobileNav, pathname, order, router])
+  }, [mobileNav, whoopApp, pathname, order, router])
 
   const gestureRef = useRef<{
     pointerId: number
@@ -100,7 +109,7 @@ export function MobileSwipePageNav({ children }: { children: ReactNode }) {
 
   const onPointerDown = useCallback(
     (e: React.PointerEvent) => {
-      if (!mobileNav) return
+      if (!mobileNav || whoopApp) return
       if (e.pointerType === 'mouse' && e.button !== 0) return
       if (swipeTargetIgnored(e.target)) return
       const el = e.target instanceof Element ? e.target : null
@@ -118,14 +127,14 @@ export function MobileSwipePageNav({ children }: { children: ReactNode }) {
         fromEdge: true,
       }
     },
-    [mobileNav],
+    [mobileNav, whoopApp],
   )
 
   const endGesture = useCallback(
     (e: React.PointerEvent) => {
       const g = gestureRef.current
       gestureRef.current = null
-      if (!g || g.pointerId !== e.pointerId || !mobileNav || !g.fromEdge) return
+      if (!g || g.pointerId !== e.pointerId || !mobileNav || whoopApp || !g.fromEdge) return
 
       const dx = e.clientX - g.x
       const dy = e.clientY - g.y
@@ -133,7 +142,6 @@ export function MobileSwipePageNav({ children }: { children: ReactNode }) {
       const ady = Math.abs(dy)
 
       if (adx < 1 && ady < 1) return
-      // Deutlich horizontal
       if (ady > adx * 0.75) return
 
       const t1 = typeof performance !== 'undefined' ? performance.now() : Date.now()
@@ -153,8 +161,10 @@ export function MobileSwipePageNav({ children }: { children: ReactNode }) {
         router.push(href)
       })
     },
-    [mobileNav, router],
+    [mobileNav, whoopApp, router],
   )
+
+  if (whoopApp) return <>{children}</>
 
   return (
     <div

@@ -154,6 +154,24 @@ html.omnia-keyboard-open #app-main {
   scroll-padding-bottom: calc(var(--omnia-keyboard-height, 0px) + 1rem);
 }
 
+/* Omnia Whoop: kein Haushalt-Chrome / keine Bottom-Nav-Padding */
+html[data-omnia-app='whoop'] [data-omnia-haushalt-chrome] {
+  display: none !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+  height: 0 !important;
+  max-height: 0 !important;
+  overflow: hidden !important;
+}
+
+html[data-omnia-app='whoop'] #app-main {
+  padding-top: max(0.75rem, env(safe-area-inset-top, 0px));
+  padding-bottom: max(
+    1.25rem,
+    calc(env(safe-area-inset-bottom, 0px) + 0.75rem + var(--omnia-keyboard-height, 0px))
+  );
+}
+
 /** Mindesthöhe für Touch-Targets */
 .app-touch-target {
   min-height: 44px;

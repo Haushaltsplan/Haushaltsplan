@@ -1,13 +1,9 @@
 import type { Metadata, Viewport } from "next";
 import { Inter } from "next/font/google";
-import { SiteMobileChrome } from "@/components/site-mobile-chrome";
-import { SiteSidebar } from "@/components/site-sidebar";
-import { MobileSwipePageNav } from "@/components/mobile-swipe-page-nav";
+import { OmniaAppShell } from "@/components/omnia-app-shell";
 import { ThemeProvider } from "@/components/theme-provider";
-import { ThemeToggle } from "@/components/theme-toggle";
 import { ThemeToaster } from "@/components/theme-toaster";
 import "./globals.css";
-import { Providers } from "./providers";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -28,7 +24,6 @@ export const metadata: Metadata = {
   description:
     "Omnia — Finanzen, Speisekammer, Kalender, Etsy KI Agent, Portfolio, Markt & Prompts und mehr an einem Ort.",
   applicationName: "Omnia",
-  // app/apple-icon.png = 180×180 PNG fürs Home-Screen-Icon (nicht im icons-Array duplizieren)
   icons: {
     icon: [
       { url: "/icon.svg", type: "image/svg+xml" },
@@ -56,7 +51,7 @@ export default function RootLayout({
       <head>
         <script
           dangerouslySetInnerHTML={{
-            __html: `(function(){try{var t=localStorage.getItem('omnia-theme');if(t==='light'){document.documentElement.classList.remove('dark')}else{document.documentElement.classList.add('dark')}}catch(e){}})();`,
+            __html: `(function(){try{var t=localStorage.getItem('omnia-theme');if(t==='light'){document.documentElement.classList.remove('dark')}else{document.documentElement.classList.add('dark')}var ua=navigator.userAgent||'';if(/OmniaWhoopCapacitor/i.test(ua)){document.documentElement.setAttribute('data-omnia-app','whoop')}else if(/OmniaCapacitor/i.test(ua)){document.documentElement.setAttribute('data-omnia-app','haushalt')}}catch(e){}})();`,
           }}
         />
       </head>
@@ -65,27 +60,7 @@ export default function RootLayout({
       >
         <ThemeProvider>
           <ThemeToaster />
-
-          <div className="flex h-[100dvh] overflow-hidden">
-            <SiteSidebar />
-
-            <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-              <SiteMobileChrome />
-
-              <header className="app-glass-bar sticky top-0 z-40 hidden h-12 shrink-0 items-center justify-end border-b px-6 md:flex">
-                <ThemeToggle />
-              </header>
-
-              <Providers>
-                <main
-                  id="app-main"
-                  className="min-h-0 w-full min-w-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-y-contain px-3 py-4 sm:px-5 sm:py-6 md:px-8 md:py-8 md:pb-[max(1.25rem,env(safe-area-inset-bottom))]"
-                >
-                  <MobileSwipePageNav>{children}</MobileSwipePageNav>
-                </main>
-              </Providers>
-            </div>
-          </div>
+          <OmniaAppShell>{children}</OmniaAppShell>
         </ThemeProvider>
       </body>
     </html>
