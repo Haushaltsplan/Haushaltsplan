@@ -8,11 +8,12 @@ import {
   type SecSegmentJahrEintrag,
   type SecSegmentRoh,
 } from '@/lib/portfolio-analyse/sec-edgar-segment-extraktion'
+import { merkeBesserenUmsatz } from '@/lib/portfolio-analyse/sec-umsatz-netto'
 
 type Ctx = { dims: Record<string, string>; endYear?: number }
 
 const REVENUE_TAGS =
-  /^(RevenueFromContractWithCustomer(?:Excluding|Including)AssessedTax|Revenues|SalesRevenueNet|PremiumsWrittenGross)$/i
+  /^(RevenueFromContractWithCustomer(?:Excluding|Including)AssessedTax|Revenues|SalesRevenueNet|SalesRevenueServicesNet|Revenue|PremiumsWrittenGross)$/i
 
 const PCT_TAGS = /^PercentageOfRevenue/i
 
@@ -100,8 +101,14 @@ function mio(usd: number): number {
   return Math.round((usd / 1_000_000) * 10) / 10
 }
 
+type UmsatzTreffer = { val: number; tag: string }
+
+function valMap(m: Map<number, UmsatzTreffer>): Map<number, number> {
+  return new Map([...m].map(([k, v]) => [k, v.val]))
+}
+
 function besteProduktFacts(facts: Fact[]): Map<string, Map<number, number>> {
-  const byMember = new Map<string, Map<number, number>>()
+  const byMember = new Map<string, Map<number, UmsatzTreffer>>()
   for (const f of facts) {
     if (!f.prod) continue
     const label = memberLabel(f.prod)
@@ -112,21 +119,16 @@ function besteProduktFacts(facts: Fact[]): Map<string, Map<number, number>> {
       ym = new Map()
       byMember.set(label, ym)
     }
-    const prev = ym.get(f.year)
-    if (prev == null || f.val > prev) ym.set(f.year, f.val)
+    ym.set(f.year, merkeBesserenUmsatz(ym.get(f.year), { val: f.val, tag: f.tag }))
   }
 
   const commodity = ['Bulk', 'Industrial', 'Premium'].filter((n) => byMember.has(n))
-  if (commodity.length >= 2) {
-    const filtered = new Map<string, Map<number, number>>()
-    for (const n of commodity) {
-      const m = byMember.get(n)
-      if (m) filtered.set(n, m)
-    }
-    return filtered
-  }
-
-  return byMember
+  const quelle = commodity.length >= 2
+    ? new Map(commodity.map((n) => [n, byMember.get(n)!] as const))
+    : byMember
+  const out = new Map<string, Map<number, number>>()
+  for (const [k, ym] of quelle) out.set(k, valMap(ym))
+  return out
 }
 
 function jahreAusMap(byMember: Map<string, Map<number, number>>, minSeg = 2): SecSegmentJahrEintrag[] {
@@ -150,7 +152,7 @@ function jahreAusMap(byMember: Map<string, Map<number, number>>, minSeg = 2): Se
 }
 
 function baueGeoAusDollar(facts: Fact[], totals: Map<number, number>): SecSegmentJahrEintrag[] {
-  const geoByMember = new Map<string, Map<number, number>>()
+  const geoByMember = new Map<string, Map<number, UmsatzTreffer>>()
   for (const f of facts) {
     if (!f.geo || PCT_TAGS.test(f.tag)) continue
     const label = memberLabel(f.geo)
@@ -159,12 +161,14 @@ function baueGeoAusDollar(facts: Fact[], totals: Map<number, number>): SecSegmen
       ym = new Map()
       geoByMember.set(label, ym)
     }
-    const prev = ym.get(f.year)
-    if (prev == null || f.val > prev) ym.set(f.year, f.val)
+    ym.set(f.year, merkeBesserenUmsatz(ym.get(f.year), { val: f.val, tag: f.tag }))
   }
 
+  const geoVals = new Map<string, Map<number, number>>()
+  for (const [k, ym] of geoByMember) geoVals.set(k, valMap(ym))
+
   const jahreSet = new Set<number>([...totals.keys()])
-  for (const ym of geoByMember.values()) {
+  for (const ym of geoVals.values()) {
     for (const y of ym.keys()) jahreSet.add(y)
   }
 
@@ -173,18 +177,18 @@ function baueGeoAusDollar(facts: Fact[], totals: Map<number, number>): SecSegmen
     const segmente: SecSegmentRoh[] = []
     const total = totals.get(jahr) ?? 0
 
-    for (const [name, ym] of geoByMember) {
+    for (const [name, ym] of geoVals) {
       const v = ym.get(jahr)
       if (v != null && v > 0) segmente.push({ name, umsatzMio: mio(v), anteilPct: null })
     }
 
-    if (total > 0 && geoByMember.size >= 1 && segmente.length < 2) {
-      const abroad = [...geoByMember.values()].reduce((s, ym) => s + (ym.get(jahr) ?? 0), 0)
+    if (total > 0 && geoVals.size >= 1 && segmente.length < 2) {
+      const abroad = [...geoVals.values()].reduce((s, ym) => s + (ym.get(jahr) ?? 0), 0)
       const us = total - abroad
       if (us > 0 && abroad > 0) {
         segmente.length = 0
         segmente.push({ name: 'United States', umsatzMio: mio(us), anteilPct: null })
-        for (const [name, ym] of geoByMember) {
+        for (const [name, ym] of geoVals) {
           const v = ym.get(jahr)
           if (v != null) segmente.push({ name, umsatzMio: mio(v), anteilPct: null })
         }
@@ -267,31 +271,25 @@ export function extrahiereUmsatzAusIxbrlDimensionen(html: string): {
   const contexts = parseContexts(html)
   const facts = parseFacts(html, contexts)
 
-  const totals = new Map<number, number>()
+  const totalsRoh = new Map<number, UmsatzTreffer>()
   for (const f of facts) {
     if (!f.geo && !f.prod && REVENUE_TAGS.test(f.tag)) {
-      const prev = totals.get(f.year)
-      if (prev == null || f.val > prev) totals.set(f.year, f.val)
+      totalsRoh.set(f.year, merkeBesserenUmsatz(totalsRoh.get(f.year), { val: f.val, tag: f.tag }))
     }
   }
   for (const f of facts) {
     if (f.prod && /ReportableSegment/i.test(f.prod) && REVENUE_TAGS.test(f.tag)) {
-      const prev = totals.get(f.year)
-      if (prev == null || f.val > prev) totals.set(f.year, f.val)
+      totalsRoh.set(f.year, merkeBesserenUmsatz(totalsRoh.get(f.year), { val: f.val, tag: f.tag }))
     }
   }
+  const totals = valMap(totalsRoh)
   const prodMap = besteProduktFacts(facts)
   for (const ym of prodMap.values()) {
     for (const [year, v] of ym) {
-      if (!totals.has(year)) {
-        let summe = 0
-        for (const m of prodMap.values()) summe += m.get(year) ?? 0
-        if (summe > 0) totals.set(year, summe)
-      } else if (totals.get(year)! < v) {
-        let summe = 0
-        for (const m of prodMap.values()) summe += m.get(year) ?? 0
-        if (summe > totals.get(year)!) totals.set(year, summe)
-      }
+      if (v <= 0 || totals.has(year)) continue
+      let summe = 0
+      for (const m of prodMap.values()) summe += m.get(year) ?? 0
+      if (summe > 0) totals.set(year, summe)
     }
   }
 

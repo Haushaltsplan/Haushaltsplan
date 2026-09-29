@@ -95,10 +95,51 @@ export function werteOhneNiveauSprung(werte: number[], maxFaktor = 2.8): number[
   return out
 }
 
+/** Übliche Aktiensplit-Faktoren. 10-für-1 (MA 2014) und 4-für-1 (V 2015) inkl. Band für Restatement-Lücken. */
+const SPLIT_FAKTOREN = [2, 3, 4, 5, 10, 20] as const
+const SPLIT_BAND = 0.18
+
+/**
+ * Erkennt, um welchen Faktor die *ältere* Zahl auf das jüngere (meist restated) Niveau
+ * skaliert werden muss. `aelter/neuer ≈ 0,1` → 10-für-1 noch nicht in der alten Periode.
+ */
+export function splitFaktorAelterZuNeuer(aelter: number, neuer: number): number | null {
+  if (!(aelter > 0) || !(neuer > 0) || !Number.isFinite(aelter) || !Number.isFinite(neuer)) return null
+  const ratio = aelter / neuer
+  for (const f of SPLIT_FAKTOREN) {
+    if (Math.abs(ratio * f - 1) <= SPLIT_BAND) return f
+    if (Math.abs(ratio / f - 1) <= SPLIT_BAND) return 1 / f
+  }
+  return null
+}
+
+/**
+ * Skaliert ältere Aktienzahlen auf den jüngsten Split-Stand (rückwärts).
+ * Sonst wirkt ein 10-für-1 wie Neuemission und zerstört Verwässerung/CAGR.
+ * Chronologische Reihe (alt → neu).
+ */
+export function aktienreiheSplitBereinigt(werte: number[]): number[] {
+  const out = werte.map((v) => v)
+  for (let i = out.length - 1; i >= 1; i--) {
+    const neu = out[i]!
+    const alt = out[i - 1]!
+    const f = splitFaktorAelterZuNeuer(alt, neu)
+    if (f == null) continue
+    out[i - 1] = alt * f
+  }
+  return out
+}
+
 export function cagr3AusSerie(werte: number[]): number | null {
   const clean = werteOhneNiveauSprung(werte)
   if (clean.length < 2) return null
   return cagrProzent(clean.slice(-4), Math.min(3, clean.length - 1))
+}
+
+export function cagr5AusSerie(werte: number[]): number | null {
+  const clean = werteOhneNiveauSprung(werte)
+  if (clean.length < 2) return null
+  return cagrProzent(clean.slice(-6), Math.min(5, clean.length - 1))
 }
 
 /**
@@ -111,7 +152,8 @@ export function cagrJaehrlichAusSerie(
   maxJahre = 5,
   maxFaktor = 1.85,
 ): number | null {
-  const clean = werteOhneNiveauSprung(werte, maxFaktor)
+  const splitOk = aktienreiheSplitBereinigt(werte.filter((v) => Number.isFinite(v) && v > 0))
+  const clean = werteOhneNiveauSprung(splitOk, maxFaktor)
   const fenster = clean.slice(-(maxJahre + 1))
   if (fenster.length < 2) return null
   return cagrProzent(fenster, fenster.length - 1)

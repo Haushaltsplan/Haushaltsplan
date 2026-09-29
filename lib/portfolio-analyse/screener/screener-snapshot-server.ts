@@ -37,11 +37,11 @@ export async function ladeScreenerSnapshot(): Promise<ScreenerSnapshot | null> {
       aktualisiert_am: string
     }
     if (!Array.isArray(row.zeilen) || row.zeilen.length === 0) return null
-    const schemaVersion = row.zeilen.some((z) =>
-      Object.prototype.hasOwnProperty.call(z, 'roicPct'),
-    )
+    const schemaVersion = row.zeilen.some((z) => Object.prototype.hasOwnProperty.call(z, 'iroicPct'))
       ? SCREENER_SCHEMA_VERSION
-      : 1
+      : row.zeilen.some((z) => Object.prototype.hasOwnProperty.call(z, 'roicPct'))
+        ? 2
+        : 1
     const snap: ScreenerSnapshot = {
       periode: row.periode,
       n: row.n,

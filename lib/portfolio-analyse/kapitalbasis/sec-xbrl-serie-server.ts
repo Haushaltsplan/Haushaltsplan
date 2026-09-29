@@ -29,6 +29,7 @@ import {
   type KapitalbasisJahr,
   type KapitalbasisRohfeld,
 } from '@/lib/portfolio-analyse/kapitalbasis/kapitalbasis-typen'
+import { UMSATZ_TAG_KETTE, wendeUmsatzGrossVsNetAufTreffer } from '@/lib/portfolio-analyse/sec-umsatz-netto'
 
 const CACHE_MS = 24 * 60 * 60 * 1000
 const cache = new Map<number, { at: number; data: SecKapitalbasisRoh | null }>()
@@ -77,14 +78,7 @@ const STROMFELDER = new Set<KapitalbasisRohfeld>([
  * `ifrs-full`-Tags stehen mit drin, weil 20-F-Filer teils IFRS-Taxonomie nutzen.
  */
 const TAG_KETTEN: Record<KapitalbasisRohfeld, string[]> = {
-  umsatzMio: [
-    'RevenueFromContractWithCustomerExcludingAssessedTax',
-    'RevenueFromContractWithCustomerIncludingAssessedTax',
-    'Revenues',
-    'SalesRevenueNet',
-    'SalesRevenueServicesNet',
-    'Revenue',
-  ],
+  umsatzMio: [...UMSATZ_TAG_KETTE],
   ebitMio: ['OperatingIncomeLoss', 'ProfitLossFromOperatingActivities'],
   // Kein `...BeforeIncomeTaxesDomestic`: das ist die US-Teilmenge aus der Steuerfußnote,
   // nicht das Konzernergebnis. Bei McDonald's lieferte der Tag 3.291 Mio. gegen einen
@@ -401,6 +395,9 @@ export async function ladeSecKapitalbasis(cik: number): Promise<SecKapitalbasisR
     for (const feld of Object.keys(TAG_KETTEN) as KapitalbasisRohfeld[]) {
       reihen.set(feld, jahresreihe(facts, labels, waehrung, feld))
     }
+    const umsatzKette = reihen.get('umsatzMio')
+    const ebitKette = reihen.get('ebitMio')
+    if (umsatzKette && ebitKette) wendeUmsatzGrossVsNetAufTreffer(umsatzKette, ebitKette)
 
     const alleJahre = new Set<number>()
     for (const reihe of reihen.values()) for (const j of reihe.keys()) alleJahre.add(j)

@@ -1,3 +1,4 @@
+import { qualityCompounderScore } from '@/lib/portfolio-analyse/screener/screener-quality-compounder'
 import type {
   ScreenerFilter,
   ScreenerKennzahl,
@@ -83,7 +84,7 @@ export function passtScreenerFilter(z: ScreenerZeile, f: ScreenerFilter): boolea
   return true
 }
 
-const SORT_ASC_DEFAULT = new Set<ScreenerSort>(['kgv', 'kuv', 'kbv', 'name', 'ticker', 'aktienVerwaesserungJaehrlichPct', 'netDebtEbitda', 'capexSalesPct'])
+const SORT_ASC_DEFAULT = new Set<ScreenerSort>(['kgv', 'kuv', 'kbv', 'name', 'ticker', 'aktienVerwaesserungJaehrlichPct', 'netDebtEbitda', 'capexSalesPct', 'sbcOcfPct'])
 
 export function sortierungIstAufsteigendDefault(sort: ScreenerSort): boolean {
   return SORT_ASC_DEFAULT.has(sort)
@@ -93,6 +94,7 @@ export function sortWert(z: ScreenerZeile, sort: ScreenerSort): number | string 
   if (sort === 'name') return z.name.toLowerCase()
   if (sort === 'ticker') return z.ticker.toLowerCase()
   if (sort === 'mantra') return zaehleMantraTreffer(z)
+  if (sort === 'quality') return qualityCompounderScore(z).ok
   const v = kennzahl(z, sort as ScreenerKennzahl)
   if (v == null) return sortierungIstAufsteigendDefault(sort) ? Number.POSITIVE_INFINITY : Number.NEGATIVE_INFINITY
   return v
@@ -192,13 +194,21 @@ export const SCREENER_KENNZAHLEN: ScreenerKennzahl[] = [
   'capexSalesPct',
   'aktienVerwaesserungJaehrlichPct',
   'netDebtEbitda',
+  'iroicPct',
+  'roic5yAvgPct',
+  'incrementalValueSpreadPct',
+  'bruttoMargePct',
+  'reinvestitionsquotePct',
+  'fcfJeAktieCagr5y',
+  'interestCoverage',
+  'sbcOcfPct',
   'kgv',
   'kuv',
   'kbv',
 ]
 
 const KENNZAHL_SET = new Set<string>(SCREENER_KENNZAHLEN)
-const SORT_SET = new Set<string>([...SCREENER_KENNZAHLEN, 'name', 'mantra', 'ticker'])
+const SORT_SET = new Set<string>([...SCREENER_KENNZAHLEN, 'name', 'mantra', 'quality', 'ticker'])
 
 function parseZahl(v: unknown): number | null {
   if (v == null || v === '') return null

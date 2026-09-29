@@ -24,7 +24,15 @@ import {
   type ScreenerSort,
   type ScreenerZeile,
 } from '@/lib/portfolio-analyse/screener/screener-types'
-import { SCREENER_EINGEBAUTE_VORLAGEN, qualityCompounderFilter } from '@/lib/portfolio-analyse/screener/screener-vorlagen'
+import {
+  SCREENER_EINGEBAUTE_VORLAGEN,
+  qualityCompounderFilter,
+} from '@/lib/portfolio-analyse/screener/screener-vorlagen'
+import {
+  bewerteQualityCompounder,
+  qualityCompounderScore,
+  qualityVerfehlungen,
+} from '@/lib/portfolio-analyse/screener/screener-quality-compounder'
 import {
   leseScreenerVorlagen,
   loescheScreenerVorlage,
@@ -68,10 +76,16 @@ type SpalteId =
   | 'kuv'
   | 'kbv'
   | 'mantra'
+  | 'quality'
+  | 'iroic'
+  | 'brutto'
+  | 'reinvest'
+  | 'zins'
+  | 'sbcOcf'
   | 'kurs'
   | 'watch'
 
-const SPALTEN_KEY = 'pa-screener-spalten-v1'
+const SPALTEN_KEY = 'pa-screener-spalten-v2'
 const INPUT =
   'w-full rounded-md border border-[var(--app-border)] bg-[var(--app-surface-muted)] px-2 py-1 text-sm text-[var(--app-text)]'
 const CHIP =
@@ -101,10 +115,16 @@ const SPALTEN: {
   { id: 'conv', label: 'FCF/NI', sort: 'fcfConversionPct', defaultOn: true },
   { id: 'verw', label: 'Verw. p.a.', sort: 'aktienVerwaesserungJaehrlichPct', defaultOn: false },
   { id: 'ndEbitda', label: 'ND/EBITDA', sort: 'netDebtEbitda', defaultOn: false },
+  { id: 'iroic', label: 'iROIC', sort: 'iroicPct', defaultOn: true },
+  { id: 'brutto', label: 'Brutto', sort: 'bruttoMargePct', defaultOn: false },
+  { id: 'reinvest', label: 'Reinvest', sort: 'reinvestitionsquotePct', defaultOn: false },
+  { id: 'zins', label: 'Zinsdeckung', sort: 'interestCoverage', defaultOn: false },
+  { id: 'sbcOcf', label: 'SBC/OCF', sort: 'sbcOcfPct', defaultOn: false },
   { id: 'kgv', label: 'KGV', sort: 'kgv', defaultOn: true },
   { id: 'kuv', label: 'KUV', sort: 'kuv', defaultOn: false },
   { id: 'kbv', label: 'KBV', sort: 'kbv', defaultOn: false },
-  { id: 'mantra', label: 'Mantra', sort: 'mantra', defaultOn: true },
+  { id: 'mantra', label: 'Mantra', sort: 'mantra', defaultOn: false },
+  { id: 'quality', label: 'Quality', sort: 'quality', defaultOn: true },
   { id: 'kurs', label: 'Kurs', defaultOn: false },
   { id: 'watch', label: '', defaultOn: true, immer: true },
 ]
@@ -131,6 +151,13 @@ function pctTon(v: number | null | undefined): string {
   if (v > 0) return 'text-emerald-400'
   if (v < 0) return 'text-rose-400'
   return 'text-[var(--app-text)]'
+}
+
+function qcKlasse(ok: boolean | null | undefined, fallback: string): string {
+  if (ok === true) return 'text-emerald-400'
+  if (ok === false) return 'text-rose-400'
+  if (ok === null) return 'text-amber-300/85'
+  return fallback
 }
 
 function csvZelle(v: string | number | null | undefined): string {
@@ -363,7 +390,25 @@ export function PortfolioScreenerClient() {
   }, [])
 
   const exportCsv = useCallback(() => {
-    const kopf = ['Ticker', 'Name', 'Börse', 'Jahre', 'Umsatz Mio', 'CAGR 5J', 'ROIC', 'FCF-Marge', 'FCF/NI', 'Verw.', 'ND/EBITDA', 'KGV', 'KUV', 'Mantra']
+    const kopf = [
+      'Ticker',
+      'Name',
+      'Börse',
+      'Jahre',
+      'Umsatz Mio',
+      'CAGR 5J',
+      'ROIC',
+      'iROIC',
+      'Brutto',
+      'FCF-Marge',
+      'FCF/NI',
+      'Reinvest',
+      'ND/EBITDA',
+      'Zins',
+      'SBC/OCF',
+      'KGV',
+      'Quality',
+    ]
     const zeilenCsv = gefiltert.map((z) =>
       [
         z.ticker,
@@ -373,16 +418,17 @@ export function PortfolioScreenerClient() {
         z.umsatzMio,
         z.umsatzCagr5y,
         z.roicPct,
+        z.iroicPct,
+        z.bruttoMargePct,
         z.fcfMargePct,
         z.fcfConversionPct,
-        z.aktienVerwaesserungJaehrlichPct,
+        z.reinvestitionsquotePct,
         z.netDebtEbitda,
+        z.interestCoverage,
+        z.sbcOcfPct,
         z.kgv,
-        z.kuv,
-        zaehleMantraTreffer(z),
-      ]
-        .map(csvZelle)
-        .join(';'),
+        `${qualityCompounderScore(z).ok}/${qualityCompounderScore(z).n}`,
+      ].map(csvZelle).join(';'),
     )
     const blob = new Blob([[kopf.join(';'), ...zeilenCsv].join('\n')], { type: 'text/csv;charset=utf-8' })
     const url = URL.createObjectURL(blob)
@@ -452,8 +498,8 @@ export function PortfolioScreenerClient() {
 
         {schemaAlt ? (
           <p className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-100">
-            Das Universum ist noch ohne ROIC, FCF-Conversion und Verschuldung. Bitte einmal „Universum neu aufbauen“ —
-            oder den Wochen-Cron abwarten.
+            Das Universum ist noch ohne die Quality-Compounder-Kennzahlen (iROIC, Bruttomarge, Zinsdeckung, SBC/OCF).
+            Bitte einmal „Universum neu aufbauen“ — oder den Wochen-Cron abwarten.
           </p>
         ) : null}
 
@@ -536,6 +582,12 @@ export function PortfolioScreenerClient() {
           {vorlageAktiv && 'hinweis' in vorlageAktiv ? (
             <p className="text-[11px] leading-relaxed text-[var(--app-text-muted)]">{vorlageAktiv.hinweis}</p>
           ) : null}
+          {aktiveVorlageId === 'quality-compounder' ? (
+            <p className="rounded-md border border-teal-500/30 bg-teal-500/10 px-3 py-2 text-[11px] leading-relaxed text-teal-100/90">
+              Quality Compounder filtert nur das Universum (Historie, Marktkap, Gewinn, FCF). Die 11 Kriterien sind eine
+              Checkliste: verfehlte oder fehlende Werte bleiben in der Tabelle und sind rot bzw. gelb markiert.
+            </p>
+          ) : null}
         </div>
 
         <div className="grid gap-2">
@@ -578,6 +630,10 @@ export function PortfolioScreenerClient() {
           <FilterGruppe titel="Profitabilität" defaultOpen>
             <SpanneFeld label="ROE %" kennzahl="roePct" filter={filter} onFilter={setFilter} />
             <SpanneFeld label="ROIC %" kennzahl="roicPct" filter={filter} onFilter={setFilter} />
+            <SpanneFeld label="iROIC 3–5J %" kennzahl="iroicPct" filter={filter} onFilter={setFilter} />
+            <SpanneFeld label="ROIC 5J-Schnitt %" kennzahl="roic5yAvgPct" filter={filter} onFilter={setFilter} />
+            <SpanneFeld label="iROIC − WACC Pp." kennzahl="incrementalValueSpreadPct" filter={filter} onFilter={setFilter} />
+            <SpanneFeld label="Bruttomarge %" kennzahl="bruttoMargePct" filter={filter} onFilter={setFilter} />
             <SpanneFeld label="EBIT-Marge %" kennzahl="ebitMargePct" filter={filter} onFilter={setFilter} />
             <SpanneFeld label="NI-Marge %" kennzahl="niMargePct" filter={filter} onFilter={setFilter} />
             <SpanneFeld label="FCF-Marge %" kennzahl="fcfMargePct" filter={filter} onFilter={setFilter} />
@@ -606,12 +662,15 @@ export function PortfolioScreenerClient() {
             <SpanneFeld label="CAGR 10J %" kennzahl="umsatzCagr10y" filter={filter} onFilter={setFilter} />
             <SpanneFeld label="EPS-CAGR 5J %" kennzahl="epsCagr5y" filter={filter} onFilter={setFilter} />
             <SpanneFeld label="FCF-CAGR 5J %" kennzahl="fcfCagr5y" filter={filter} onFilter={setFilter} />
+            <SpanneFeld label="FCF/Aktie-CAGR 5J %" kennzahl="fcfJeAktieCagr5y" filter={filter} onFilter={setFilter} />
             <SpanneFeld label="Rule of 40" kennzahl="ruleOf40" filter={filter} onFilter={setFilter} />
           </FilterGruppe>
 
           <FilterGruppe titel="Cash & Kapital">
             <SpanneFeld label="FCF-Conversion %" kennzahl="fcfConversionPct" filter={filter} onFilter={setFilter} />
+            <SpanneFeld label="Reinvestitionsquote %" kennzahl="reinvestitionsquotePct" filter={filter} onFilter={setFilter} />
             <SpanneFeld label="CapEx/Umsatz %" kennzahl="capexSalesPct" filter={filter} onFilter={setFilter} />
+            <SpanneFeld label="SBC / OCF %" kennzahl="sbcOcfPct" filter={filter} onFilter={setFilter} />
             <SpanneFeld label="Verwässerung p.a. %" kennzahl="aktienVerwaesserungJaehrlichPct" filter={filter} onFilter={setFilter} />
             <label className="flex items-center gap-2 text-xs text-[var(--app-text)]">
               <input
@@ -638,6 +697,7 @@ export function PortfolioScreenerClient() {
 
           <FilterGruppe titel="Bilanz">
             <SpanneFeld label="Net Debt/EBITDA" kennzahl="netDebtEbitda" filter={filter} onFilter={setFilter} />
+            <SpanneFeld label="Zinsdeckung ×" kennzahl="interestCoverage" filter={filter} onFilter={setFilter} />
             <label className="flex items-center gap-2 text-xs text-[var(--app-text)]">
               <input
                 type="checkbox"
@@ -676,7 +736,7 @@ export function PortfolioScreenerClient() {
               <thead>
                 <tr>
                   {sichtbareSpalten.map((s) => (
-                    <th key={s.id} className={s.id === 'ticker' || s.id === 'name' ? '' : 'text-right'}>
+                    <th key={s.id} className={s.id === 'ticker' || s.id === 'name' || s.id === 'quality' ? '' : 'text-right'}>
                       {s.sort ? (
                         <button
                           type="button"
@@ -705,6 +765,14 @@ export function PortfolioScreenerClient() {
               <tbody>
                 {sichtbar.map((z) => {
                   const mantra = zaehleMantraTreffer(z)
+                  const qcListe = bewerteQualityCompounder(z)
+                  const qcScore = qualityCompounderScore(z)
+                  const qcFehl = qualityVerfehlungen(z)
+                  const qc = Object.fromEntries(qcListe.map((e) => [e.id, e])) as Record<
+                    string,
+                    (typeof qcListe)[number]
+                  >
+                  const qcAktiv = aktiveVorlageId === 'quality-compounder'
                   const zellen: Record<SpalteId, ReactNode> = {
                     ticker: (
                       <Link
@@ -731,21 +799,69 @@ export function PortfolioScreenerClient() {
                       </span>
                     ),
                     umsatz: fmtMio(z.umsatzMio),
-                    cagr5: <span className={pctTon(z.umsatzCagr5y)}>{fmtPct(z.umsatzCagr5y)}</span>,
+                    cagr5: (
+                      <span className={qcAktiv ? qcKlasse(qc.umsatzCagr?.ok, pctTon(z.umsatzCagr5y)) : pctTon(z.umsatzCagr5y)}>
+                        {fmtPct(z.umsatzCagr5y)}
+                      </span>
+                    ),
                     wachstum: <span className={pctTon(z.umsatzWachstumPct)}>{fmtPct(z.umsatzWachstumPct)}</span>,
                     niMarge: <span className={pctTon(z.niMargePct)}>{fmtPct(z.niMargePct)}</span>,
                     roe: <span className={pctTon(z.roePct)}>{fmtPct(z.roePct)}</span>,
-                    roic: <span className={pctTon(z.roicPct)}>{fmtPct(z.roicPct)}</span>,
+                    roic: (
+                      <span className={qcAktiv ? qcKlasse(qc.roic5y?.ok, pctTon(z.roicPct)) : pctTon(z.roicPct)}>
+                        {fmtPct(z.roicPct)}
+                      </span>
+                    ),
                     fcfMarge: <span className={pctTon(z.fcfMargePct)}>{fmtPct(z.fcfMargePct)}</span>,
-                    conv: fmtPct(z.fcfConversionPct),
+                    conv: (
+                      <span className={qcAktiv ? qcKlasse(qc.conv?.ok, '') : undefined}>{fmtPct(z.fcfConversionPct)}</span>
+                    ),
                     verw: <span className={pctTon(z.aktienVerwaesserungJaehrlichPct != null ? -z.aktienVerwaesserungJaehrlichPct : null)}>{fmtPct(z.aktienVerwaesserungJaehrlichPct)}</span>,
-                    ndEbitda: fmtZahl(z.netDebtEbitda, 2),
+                    ndEbitda: (
+                      <span className={qcAktiv ? qcKlasse(qc.ndEbitda?.ok, '') : undefined}>
+                        {fmtZahl(z.netDebtEbitda, 2)}
+                      </span>
+                    ),
+                    iroic: (
+                      <span className={qcAktiv ? qcKlasse(qc.iroic?.ok, pctTon(z.iroicPct)) : pctTon(z.iroicPct)}>
+                        {fmtPct(z.iroicPct)}
+                      </span>
+                    ),
+                    brutto: (
+                      <span className={qcAktiv ? qcKlasse(qc.brutto?.ok, '') : undefined}>{fmtPct(z.bruttoMargePct)}</span>
+                    ),
+                    reinvest: (
+                      <span className={qcAktiv ? qcKlasse(qc.reinvest?.ok, '') : undefined}>
+                        {fmtPct(z.reinvestitionsquotePct)}
+                      </span>
+                    ),
+                    zins: (
+                      <span className={qcAktiv ? qcKlasse(qc.zins?.ok, '') : undefined}>
+                        {z.interestCoverage != null ? fmtZahl(z.interestCoverage, 1) : '–'}
+                      </span>
+                    ),
+                    sbcOcf: (
+                      <span className={qcAktiv ? qcKlasse(qc.sbc?.ok, '') : undefined}>{fmtPct(z.sbcOcfPct)}</span>
+                    ),
                     kgv: fmtZahl(z.kgv),
                     kuv: fmtZahl(z.kuv),
                     kbv: fmtZahl(z.kbv),
                     mantra: (
                       <span title="ROIC, Conversion/Ro40, ND/EBITDA, Verwässerung, FCF-Marge">
                         {mantra}/5
+                      </span>
+                    ),
+                    quality: (
+                      <span
+                        className={`block max-w-[14rem] text-left ${qcScore.fehl > 0 ? 'text-rose-300' : qcScore.luecke > 0 ? 'text-amber-200' : 'text-emerald-400'}`}
+                        title={qcListe.map((e) => `${e.kurz}: ${e.text} (${e.soll})${e.ok === true ? ' ✓' : e.ok === false ? ' ✗' : ' ?'}`).join('\n')}
+                      >
+                        {qcScore.ok}/{qcScore.n}
+                        {qcFehl.length > 0 ? (
+                          <span className="mt-0.5 block text-[10px] font-normal leading-snug text-rose-300/90">
+                            {qcFehl.map((e) => `${e.kurz} ${e.text}`).join(' · ')}
+                          </span>
+                        ) : null}
                       </span>
                     ),
                     kurs: fmtZahl(z.kurs, 2),
@@ -765,7 +881,7 @@ export function PortfolioScreenerClient() {
                       {sichtbareSpalten.map((s) => (
                         <td
                           key={s.id}
-                          className={s.id === 'ticker' || s.id === 'name' || s.id === 'boerse' ? '' : 'text-right tabular-nums'}
+                          className={s.id === 'ticker' || s.id === 'name' || s.id === 'boerse' || s.id === 'quality' ? '' : 'text-right tabular-nums'}
                         >
                           {zellen[s.id]}
                         </td>
@@ -784,8 +900,8 @@ export function PortfolioScreenerClient() {
         ) : null}
         <p className="text-xs leading-relaxed text-[var(--app-text-muted)]">
           GuV/Bilanz: SEC EDGAR Frames, Kalenderjahre ab 2009 soweit gemeldet. ROIC brutto (EK + Schulden, ohne Cash-Abzug).
-          Kurs und Multiples: Yahoo Finance. Mantra-Spalte zählt fünf quantitative Punkte (ROIC, Conversion oder Rule of 40,
-          ND/EBITDA, Verwässerung, FCF-Marge). LTV/CAC und NRR fehlen im Snapshot — Moat bleibt auf der Titelseite.
+          Kurs und Multiples: Yahoo Finance. Die Quality-Spalte zählt 11 Compounder-Punkte; verfehlte Schwellen bleiben in
+          der Liste und werden markiert. LTV/CAC und NRR fehlen im Snapshot — Moat bleibt auf der Titelseite.
         </p>
       </PaCard>
     </PortfolioAnalyseShell>

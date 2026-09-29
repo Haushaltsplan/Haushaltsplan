@@ -7,9 +7,10 @@ import 'server-only'
 
 import { leseAlsJson } from '@/lib/http/safe-json-response'
 import { FUNDAMENTAL_TTM_KEY, type FundamentalFrequenz, type FundamentalMetrikZeile, type FundamentalPeriode } from '@/lib/portfolio-analyse/fundamentaldaten-types'
-import { formatFundamentalPeriodeLabel } from '@/lib/portfolio-analyse/fundamentaldaten-format'
+import { aktienreiheSplitBereinigt, formatFundamentalPeriodeLabel } from '@/lib/portfolio-analyse/fundamentaldaten-format'
 import { ergaenzeNettoverschuldungZeilen } from '@/lib/portfolio-analyse/fundamentaldaten-nettoverschuldung-zeilen'
 import { cikFuerTicker, padCik, secFetch } from '@/lib/portfolio-analyse/sec-edgar-common-server'
+import { UMSATZ_TAG_KETTE, wendeUmsatzGrossVsNetAufTreffer } from '@/lib/portfolio-analyse/sec-umsatz-netto'
 import type { MacrotrendsFundamentalRoh, MacrotrendsIdent } from '@/lib/portfolio-analyse/macrotrends-scraper-server'
 
 const CACHE_MS = 24 * 60 * 60 * 1000
@@ -133,14 +134,7 @@ const NEGATIV_ERLAUBT = new Set<SecFeld>([
 const ABFLUSS = new Set<SecFeld>(['capex', 'aktienrueckkauf', 'dividenden_gezahlt', 'akquisitionen'])
 
 const TAG_KETTEN: Record<SecFeld, string[]> = {
-  umsatz: [
-    'RevenueFromContractWithCustomerExcludingAssessedTax',
-    'RevenueFromContractWithCustomerIncludingAssessedTax',
-    'Revenues',
-    'SalesRevenueNet',
-    'SalesRevenueServicesNet',
-    'Revenue',
-  ],
+  umsatz: [...UMSATZ_TAG_KETTE],
   bruttogewinn: ['GrossProfit'],
   cogs: [
     'CostOfGoodsAndServicesSold',
@@ -430,7 +424,19 @@ function jahresreihe(
       if (!out.has(ende)) out.set(ende, treffer)
     }
   }
+  if (feld === 'aktien') wendeAktienSplitsAn(out)
   return out
+}
+
+function wendeAktienSplitsAn(reihe: Map<string, Treffer>): void {
+  const keys = [...reihe.keys()].sort()
+  if (keys.length < 2) return
+  const vals = keys.map((k) => reihe.get(k)!.wert)
+  const clean = aktienreiheSplitBereinigt(vals)
+  for (let i = 0; i < keys.length; i++) {
+    const t = reihe.get(keys[i]!)!
+    reihe.set(keys[i]!, { ...t, wert: Math.round(clean[i]! * 1000) / 1000 })
+  }
 }
 
 type Rohfakt = {
@@ -445,7 +451,9 @@ type Rohfakt = {
 function sammleRohfakten(facts: CompanyFactsJson, waehrung: string, feld: SecFeld): Rohfakt[] {
   const out: Rohfakt[] = []
   const negOk = NEGATIV_ERLAUBT.has(feld)
+  const belegt = new Set<string>()
   for (const tag of TAG_KETTEN[feld]) {
+    const best = new Map<string, Rohfakt>()
     for (const namespace of Object.values(facts.facts ?? {})) {
       const liste = einheitenFuerFeld(namespace[tag], feld, waehrung)
       if (!liste.length) continue
@@ -454,18 +462,34 @@ function sammleRohfakten(facts: CompanyFactsJson, waehrung: string, feld: SecFel
         if (!e.form || (!JAHRESFORMULARE.has(e.form) && !QUARTALSFORMULARE.has(e.form))) continue
         if (!negOk && e.val < 0) continue
         const tage = e.start ? (Date.parse(e.end) - Date.parse(e.start)) / 86_400_000 : null
-        out.push({
+        const tageOk = tage != null && Number.isFinite(tage) ? tage : null
+        const k = rohPrioKey(e.end, tageOk, e.form)
+        const fakt: Rohfakt = {
           end: e.end,
           start: e.start,
           val: e.val,
           filed: e.filed ?? e.end,
-          tage: tage != null && Number.isFinite(tage) ? tage : null,
+          tage: tageOk,
           form: e.form,
-        })
+        }
+        const alt = best.get(k)
+        if (!alt || fakt.filed > alt.filed) best.set(k, fakt)
       }
+    }
+    for (const [k, fakt] of best) {
+      if (belegt.has(k)) continue
+      belegt.add(k)
+      out.push(fakt)
     }
   }
   return out
+}
+
+function rohPrioKey(end: string, tage: number | null, form: string): string {
+  const fam = form.startsWith('10-K') || form.startsWith('20-F') || form.startsWith('40-F') ? 'fy' : 'q'
+  const bucket =
+    tage == null ? 'inst' : tage < 140 ? 'q' : tage < 230 ? 'h1' : tage < 310 ? '9m' : 'fy'
+  return `${end}|${fam}|${bucket}`
 }
 
 function besterRoh(liste: Rohfakt[]): Rohfakt | null {
@@ -550,6 +574,7 @@ function quartalsreihe(facts: CompanyFactsJson, waehrung: string, feld: SecFeld)
   for (const [end, t] of raw) {
     out.set(end, { wert: skalieren(feld, t.val), filed: t.filed, periodenEnde: end })
   }
+  if (feld === 'aktien') wendeAktienSplitsAn(out)
   return out
 }
 
@@ -666,6 +691,11 @@ export async function ladeSecFundamentaldaten(
   const reihen = new Map<SecFeld, Map<string, Treffer>>()
   for (const feld of Object.keys(TAG_KETTEN) as SecFeld[]) {
     reihen.set(feld, quartal ? quartalsreihe(facts, waehrung, feld) : jahresreihe(facts, labels, waehrung, feld))
+  }
+  const umsatzReihe = reihen.get('umsatz')
+  const ebitReihe = reihen.get('ebit')
+  if (!quartal && umsatzReihe && ebitReihe) {
+    wendeUmsatzGrossVsNetAufTreffer(umsatzReihe, ebitReihe)
   }
 
   const isoSet = new Set<string>()

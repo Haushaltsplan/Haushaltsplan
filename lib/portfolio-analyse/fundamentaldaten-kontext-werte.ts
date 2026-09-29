@@ -1,4 +1,4 @@
-import { cagr3AusSerie, cagrJaehrlichAusSerie, werteOhneNiveauSprung } from '@/lib/portfolio-analyse/fundamentaldaten-format'
+import { cagr3AusSerie, cagr5AusSerie, cagrJaehrlichAusSerie, werteOhneNiveauSprung } from '@/lib/portfolio-analyse/fundamentaldaten-format'
 import type { YahooFundamentalKennzahlen } from '@/lib/portfolio-analyse/fundamentaldaten-key-metrics'
 import type { FundamentalSchaetzungenRoh } from '@/lib/portfolio-analyse/fundamentaldaten-schaetzungen-server'
 import type { FundamentalMetrikZeile, FundamentalPeriode } from '@/lib/portfolio-analyse/fundamentaldaten-types'
@@ -112,6 +112,27 @@ function letzterWert(
 function berechneMargePct(zaehler: number | null, nenner: number | null): number | null {
   if (zaehler == null || nenner == null || nenner === 0) return null
   return (zaehler / nenner) * 100
+}
+
+function mittelLetzte(werte: number[], n = 5, min = 3): number | null {
+  const xs = werte.filter((v) => Number.isFinite(v)).slice(-n)
+  if (xs.length < min) return null
+  return xs.reduce((a, b) => a + b, 0) / xs.length
+}
+
+function quotientSerie(
+  zaehler: FundamentalMetrikZeile | undefined,
+  nenner: FundamentalMetrikZeile | undefined,
+  perioden: FundamentalPeriode[] | undefined,
+): number[] {
+  const keys = perioden?.filter((p) => !p.istLtm && !p.istSchaetzung).map((p) => p.iso) ?? []
+  const out: number[] = []
+  for (const k of keys) {
+    const z = zaehler?.werte[k]
+    const n = nenner?.werte[k]
+    if (z != null && n != null && n > 0 && Number.isFinite(z) && Number.isFinite(n)) out.push(z / n)
+  }
+  return out
 }
 
 /** Yahoo payoutRatio ist oft leer — Fallbacks aus GuV/Cashflow oder Div-Rendite × KGV. */
@@ -253,6 +274,12 @@ export function baueKontextWerte(ctx: FundamentalKontextInput) {
     fcfUsd != null && sbcUsd != null && Math.abs(fcfUsd) > 0
       ? (sbcUsd / Math.abs(fcfUsd)) * 100
       : null
+  const ocfMio = letzterWert(ocfZeile, perioden)
+  const ocfUsd = yt?.operatingCashFlowUsd ?? (ocfMio != null ? ocfMio * 1_000_000 : null)
+  const sbcOcfRatio =
+    ocfUsd != null && sbcUsd != null && Math.abs(ocfUsd) > 0
+      ? (Math.abs(sbcUsd) / Math.abs(ocfUsd)) * 100
+      : null
   const sbcAdjFcfConversion =
     netIncomeUsd != null && sbcAdjFcfUsd != null && netIncomeUsd > 0
       ? (sbcAdjFcfUsd / netIncomeUsd) * 100
@@ -350,10 +377,16 @@ export function baueKontextWerte(ctx: FundamentalKontextInput) {
   const sgaHist = historischeWerte(sgaZeile, perioden)
 
   const umsatzCagr3 = cagr3AusSerie(umsatzHist)
+  const umsatzCagr5 = cagr5AusSerie(umsatzHist)
   const epsCagr3 = cagr3AusSerie(epsHist)
+  const epsCagr5 = cagr5AusSerie(epsHist)
   const ebitdaCagr3 = cagr3AusSerie(ebitdaHist)
+  const fcfJeAktieHist = quotientSerie(fcfZeile, aktienZeile, perioden)
+  const fcfJeAktieCagr5 = cagr5AusSerie(fcfJeAktieHist)
+  const roic5yAvgPct = mittelLetzte(roicHist, 5, 3)
 
   const roiic = ctx.incrementalRoicPct ?? null
+  const incrementalValueSpread = roiic != null && wacc != null ? roiic - wacc : null
 
   const reinvest = perioden
     ? berechneReinvestition(
@@ -516,6 +549,8 @@ export function baueKontextWerte(ctx: FundamentalKontextInput) {
     roicQuelle,
     wacc,
     valueSpread,
+    incrementalValueSpread,
+    roic5yAvgPct,
     roe,
     roa,
     netDebt,
@@ -530,8 +565,11 @@ export function baueKontextWerte(ctx: FundamentalKontextInput) {
     beneishMScore: eq.beneishMScore,
     beneishRisiko: eq.beneishRisiko,
     umsatzCagr3,
+    umsatzCagr5,
     epsCagr3,
+    epsCagr5,
     ebitdaCagr3,
+    fcfJeAktieCagr5,
     revGrowthPct,
     ruleOf40,
     assetTurnover,
@@ -554,6 +592,7 @@ export function baueKontextWerte(ctx: FundamentalKontextInput) {
     pricingPowerOk: margeStab.pricingPowerOk,
     sbcAdjFcfMargin,
     sbcFcfRatio,
+    sbcOcfRatio,
     sbcAdjFcfConversion,
     interestCoverage,
     interestUsd,

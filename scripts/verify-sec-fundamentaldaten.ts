@@ -5,6 +5,11 @@
  */
 import { readFileSync } from 'fs'
 import { cagrJaehrlichAusSerie } from '../lib/portfolio-analyse/fundamentaldaten-format'
+import {
+  bereinigeUmsatzGrossVsNet,
+  merkeBesserenUmsatz,
+  waehleNettoUmsatz,
+} from '../lib/portfolio-analyse/sec-umsatz-netto'
 import { baueKontextWerte } from '../lib/portfolio-analyse/fundamentaldaten-kontext-werte'
 import { historischeWerteAusZeile, werteGleicherStichtag } from '../lib/portfolio-analyse/fundamentaldaten-roic-hilfen'
 import { FUNDAMENTAL_TTM_KEY } from '../lib/portfolio-analyse/fundamentaldaten-types'
@@ -38,8 +43,39 @@ function zaehle(zeile: { werte: Record<string, number | null> } | undefined): nu
     .length
 }
 
-async function main() {
+function pruefeUmsatzNettoHelfer(): number {
   let fail = 0
+  if (waehleNettoUmsatz(14_950, 21_831) !== 14_950) {
+    console.log('FAIL waehleNettoUmsatz nimmt nicht die Nettzahl')
+    fail++
+  }
+  const merke = merkeBesserenUmsatz(
+    { val: 21_831, tag: 'RevenueFromContractWithCustomerExcludingAssessedTax' },
+    { val: 14_950, tag: 'Revenues' },
+  )
+  if (merke.val !== 14_950 || merke.tag !== 'Revenues') {
+    console.log('FAIL merkeBesserenUmsatz', merke)
+    fail++
+  }
+  const serie = bereinigeUmsatzGrossVsNet([
+    { umsatz: 14_950, ebit: 6_650 },
+    { umsatz: 21_831, ebit: 7_282 },
+    { umsatz: 24_980, ebit: 8_100 },
+    { umsatz: 18_880, ebit: 9_734 },
+  ])
+  if ((serie[1]!.umsatz ?? 99_999) > 18_000) {
+    console.log('FAIL EBIT-Glaettung Jahr 2 bleibt brutto', serie[1])
+    fail++
+  }
+  if ((serie[2]!.umsatz ?? 99_999) > 20_000) {
+    console.log('FAIL EBIT-Glaettung Jahr 3 bleibt brutto', serie[2])
+    fail++
+  }
+  return fail
+}
+
+async function main() {
+  let fail = pruefeUmsatzNettoHelfer()
   for (const x of TICKER) {
     const t0 = Date.now()
     const ident = await loeseMacrotrendsIdent(x.t, { erwarteterTicker: x.t, firmenname: x.name })
@@ -51,6 +87,19 @@ async function main() {
     const roh = await ladeMacrotrendsFundamentaldaten(ident)
     const ms = Date.now() - t0
     const umsatz = roh?.zeilen.find((z) => z.id === 'umsatz')
+    const fyWerte = Object.entries(umsatz?.werte ?? {})
+      .filter(([k, v]) => /^\d{4}-\d{2}-\d{2}$/.test(k) && v != null)
+      .sort(([a], [b]) => a.localeCompare(b))
+    const u2018 = fyWerte.find(([k]) => k.startsWith('2018'))?.[1]
+    const u2017 = fyWerte.find(([k]) => k.startsWith('2017'))?.[1]
+    if (x.t === 'MA' && u2018 != null && u2018 > 18_000) {
+      console.log('FAIL MA 2018 Umsatz sieht nach Brutto/Incentives aus', u2018)
+      fail++
+    }
+    if (x.t === 'MA' && u2017 != null && u2018 != null && u2018 / u2017 > 1.35) {
+      console.log('FAIL MA 2018/2017 Umsatz-Sprung', u2017, u2018)
+      fail++
+    }
     const eps = roh?.zeilen.find((z) => z.id === 'eps')
     const ek = roh?.zeilen.find((z) => z.id === 'eigenkapital')
     const fy = roh?.perioden.filter((p) => !p.istLtm).at(-1)?.iso
@@ -61,6 +110,13 @@ async function main() {
     const ok = roh != null && nU >= 6 && nE >= 4 && nK >= 4 && (!x.erwartetSec || secOk)
     if (!ok) fail++
     const aktien = roh?.zeilen.find((z) => z.id === 'aktien')
+    if (x.t === 'MA' && aktien) {
+      const a2010 = Object.entries(aktien.werte).find(([k]) => k.startsWith('2010'))?.[1]
+      if (a2010 != null && a2010 < 400) {
+        console.log('FAIL MA 2010 Aktien nicht split-bereinigt', a2010)
+        fail++
+      }
+    }
     const fcf = roh?.zeilen.find((z) => z.id === 'fcf')
     const ni = roh?.zeilen.find((z) => z.id === 'nettogewinn')
     const aktienHist = historischeWerteAusZeile(aktien, roh?.perioden)

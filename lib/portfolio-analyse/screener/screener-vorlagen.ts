@@ -46,16 +46,10 @@ const QUALITY_VERW = verwässerungMaxPct('quality_default')
 export function qualityCompounderFilter(): ScreenerFilter {
   return filterAus({
     fcfPositiv: true,
-    conversionOderRo40: { conversionMin: QUALITY_CONV, ruleOf40Min: 40 },
-    sort: 'roicPct',
+    sort: 'quality',
     spannen: {
       jahreAnzahl: { min: 8 },
       marktkapMio: { min: 2000 },
-      roicPct: { min: QUALITY_ROIC },
-      fcfMargePct: { min: QUALITY_FCF_MARGE },
-      umsatzCagr5y: { min: 8 },
-      aktienVerwaesserungJaehrlichPct: { max: 0 },
-      netDebtEbitda: { max: 2 },
     },
   })
 }
@@ -65,7 +59,7 @@ export const SCREENER_EINGEBAUTE_VORLAGEN: ScreenerVorlage[] = [
     id: 'quality-compounder',
     name: 'Quality Compounder',
     hinweis:
-      'Mantra quality_default: ROIC ≥ 15 %, FCF-Conversion ≥ 90 % oder Rule of 40, FCF-Marge ≥ 12 %, Rückkäufe, ND/EBITDA < 2, plus 5J-Umsatz-CAGR ≥ 8 % und ≥ 2 Mrd. $ Marktkap.',
+      'Checkliste, kein Hartfilter: iROIC > 18 %, ROIC-5J > 15 %, iROIC−WACC > 10 Pp., Bruttomarge > 40 % (stabil), Reinvestition > 30 %, Umsatz-CAGR 5–15 %, EPS- oder FCF/Aktie-CAGR > 10 %, FCF/NI > 80 %, ND/EBITDA < 1,5×, Zinsdeckung > 10×, SBC/OCF < 5 %. Verfehlte Punkte bleiben sichtbar.',
     eingebaut: true,
     filter: qualityCompounderFilter(),
   },

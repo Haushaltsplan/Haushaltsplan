@@ -5,11 +5,11 @@ import 'server-only'
 import { leseAlsJson } from '@/lib/http/safe-json-response'
 import type { SecKennzahlenHistorie } from '@/lib/portfolio-analyse/fundamentaldaten-erweitert-types'
 import { padCik, secFetch } from '@/lib/portfolio-analyse/sec-edgar-common-server'
+import { UMSATZ_TAG_KETTE, wendeUmsatzGrossVsNetAufMappe } from '@/lib/portfolio-analyse/sec-umsatz-netto'
 
 const CACHE_MS = 24 * 60 * 60 * 1000
 /** Cache-Invalidierung bei Logik-Änderungen (Jahr aus period end, nicht fy). */
-export const SEC_COMPANYFACTS_CACHE_VERSION = 3
-const MIN_JAHRE = 10
+export const SEC_COMPANYFACTS_CACHE_VERSION = 5
 const MAX_JAHRE = 16
 
 const cache = new Map<number, { at: number; version: number; data: SecKennzahlenHistorie | null }>()
@@ -46,12 +46,7 @@ const TAG_KETTEN: Record<
   >,
   string[]
 > = {
-  umsatzMio: [
-    'RevenueFromContractWithCustomerExcludingAssessedTax',
-    'Revenues',
-    'SalesRevenueNet',
-    'RevenueFromContractWithCustomerIncludingAssessedTax',
-  ],
+  umsatzMio: [...UMSATZ_TAG_KETTE],
   nettogewinnMio: ['NetIncomeLoss', 'ProfitLoss'],
   ebitMio: [
     'OperatingIncomeLoss',
@@ -156,6 +151,7 @@ function extrahiereJahresreihe(
   const namespaces: Array<'us-gaap' | 'dei'> = ['us-gaap', 'dei']
 
   for (const tag of tags) {
+    const diesesTag = new Map<number, { val: number; filed: string }>()
     for (const ns of namespaces) {
       const einheiten = facts.facts?.[ns]?.[tag]?.units
       if (!einheiten) continue
@@ -183,18 +179,16 @@ function extrahiereJahresreihe(
 
           const filed = e.filed ?? e.end ?? ''
           const gerundet = Math.round(norm * 10) / 10
-          const prev = map.get(jahr)
-          if (
-            !prev ||
-            filed > prev.filed ||
-            (filed === prev.filed && Math.abs(gerundet) > Math.abs(prev.val))
-          ) {
-            map.set(jahr, { val: gerundet, filed })
+          const prevTag = diesesTag.get(jahr)
+          if (!prevTag || filed > prevTag.filed) {
+            diesesTag.set(jahr, { val: gerundet, filed })
           }
         }
       }
     }
-    if (map.size >= MIN_JAHRE) break
+    for (const [jahr, v] of diesesTag) {
+      if (!map.has(jahr)) map.set(jahr, v)
+    }
   }
 
   return new Map([...map.entries()].map(([j, { val }]) => [j, val]))
@@ -260,6 +254,7 @@ export async function ladeSecCompanyFacts(cik: number): Promise<SecKennzahlenHis
     const umsatz = extrahiereJahresreihe(facts, TAG_KETTEN.umsatzMio, { mio: true })
     const netto = extrahiereJahresreihe(facts, TAG_KETTEN.nettogewinnMio, { mio: true })
     const ebit = extrahiereJahresreihe(facts, TAG_KETTEN.ebitMio, { mio: true })
+    wendeUmsatzGrossVsNetAufMappe(umsatz, ebit)
     const rnd = extrahiereJahresreihe(facts, TAG_KETTEN.rndMio, { mio: true })
     const capex = extrahiereJahresreihe(facts, TAG_KETTEN.capexMio, { mio: true, allowNegative: true })
     const ocf = extrahiereJahresreihe(facts, TAG_KETTEN.ocfMio, { mio: true, allowNegative: true })
@@ -361,6 +356,8 @@ export async function ladeSecCapitalAllocation(cik: number): Promise<SecCapitalA
     const buyMap = extrahiereJahresreihe(facts, TAG_KETTEN.aktienrueckkaufMio, { mio: true, allowNegative: true })
     const mnaMap = extrahiereJahresreihe(facts, [...CAP_ALLOC_EXTRA_TAGS.mnaMio], { mio: true, allowNegative: true })
     const umsatzMap = extrahiereJahresreihe(facts, TAG_KETTEN.umsatzMio, { mio: true })
+    const ebitMap = extrahiereJahresreihe(facts, TAG_KETTEN.ebitMio, { mio: true })
+    wendeUmsatzGrossVsNetAufMappe(umsatzMap, ebitMap)
 
     return {
       jahr,

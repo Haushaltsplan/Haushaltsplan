@@ -1,5 +1,6 @@
 import {
   cagr3AusSerie,
+  cagr5AusSerie,
   cagrProzent,
   formatFundamentalWert,
 } from '@/lib/portfolio-analyse/fundamentaldaten-format'
@@ -369,6 +370,28 @@ export function baueKeyMetrics(
       gruppe: 'effizienz',
     },
     {
+      id: 'roic_5y_avg',
+      label: 'Hist. ROIC (5J-Schnitt)',
+      wert: pctRaw(w?.roic5yAvgPct),
+      zahl: w?.roic5yAvgPct ?? null,
+      gruppe: 'effizienz',
+    },
+    {
+      id: 'incremental_value_spread',
+      label: 'Incremental Value Spread (iROIC − WACC)',
+      wert: pctSigned(w?.incrementalValueSpread),
+      zahl: w?.incrementalValueSpread ?? null,
+      ton:
+        w?.incrementalValueSpread == null
+          ? undefined
+          : w.incrementalValueSpread >= 10
+            ? 'positiv'
+            : w.incrementalValueSpread >= 0
+              ? 'neutral'
+              : 'negativ',
+      gruppe: 'effizienz',
+    },
+    {
       id: 'sloan_ratio',
       label: 'Sloan-Ratio (Accruals)',
       wert: w?.sloanRatio != null ? zahl(w.sloanRatio) : '–',
@@ -415,6 +438,13 @@ export function baueKeyMetrics(
       gruppe: 'wachstum',
     },
     {
+      id: 'rev_cagr_5y',
+      label: 'Umsatz-CAGR (5J)',
+      wert: pctRaw(w?.umsatzCagr5),
+      zahl: w?.umsatzCagr5 ?? null,
+      gruppe: 'wachstum',
+    },
+    {
       id: 'ebitda_cagr_3y',
       label: 'EBITDA-CAGR (3J)',
       wert: pctRaw(w?.ebitdaCagr3),
@@ -424,6 +454,20 @@ export function baueKeyMetrics(
       id: 'eps_cagr_3y',
       label: 'EPS-CAGR (3J)',
       wert: pctRaw(w?.epsCagr3),
+      gruppe: 'wachstum',
+    },
+    {
+      id: 'eps_cagr_5y',
+      label: 'EPS-CAGR (5J)',
+      wert: pctRaw(w?.epsCagr5),
+      zahl: w?.epsCagr5 ?? null,
+      gruppe: 'wachstum',
+    },
+    {
+      id: 'fcf_je_aktie_cagr_5y',
+      label: 'FCF je Aktie CAGR (5J)',
+      wert: pctRaw(w?.fcfJeAktieCagr5),
+      zahl: w?.fcfJeAktieCagr5 ?? null,
       gruppe: 'wachstum',
     },
   )
@@ -593,6 +637,21 @@ export function baueKeyMetrics(
       gruppe: 'effizienz',
     },
     {
+      id: 'sbc_ocf_ratio',
+      label: 'SBC / Operativer Cashflow',
+      wert: pctRaw(w?.sbcOcfRatio),
+      zahl: w?.sbcOcfRatio ?? null,
+      ton:
+        w?.sbcOcfRatio == null
+          ? undefined
+          : w.sbcOcfRatio < 5
+            ? 'positiv'
+            : w.sbcOcfRatio < 10
+              ? 'neutral'
+              : 'negativ',
+      gruppe: 'effizienz',
+    },
+    {
       id: 'nrr',
       label: 'NRR (Net Retention)',
       wert: pctRaw(w?.nrrPct),
@@ -634,6 +693,15 @@ function cagr3AusPaketZeile(
   return cagr3AusSerie(historischeWerteAusZeile(z, historisch.perioden))
 }
 
+function cagr5AusPaketZeile(
+  zeileId: string,
+  historisch: { perioden: FundamentalPeriode[]; zeilen: FundamentalMetrikZeile[] } | undefined,
+): number | null {
+  if (!historisch) return null
+  const z = historisch.zeilen.find((r) => r.id === zeileId)
+  return cagr5AusSerie(historischeWerteAusZeile(z, historisch.perioden))
+}
+
 /** Korrigiert Erw.-CAGR und 3J-CAGR in gespeicherten Key Metrics (Quartal/Einheiten-Mix). */
 export function korrigiereFwdWachstumKeyMetrics(
   keyMetrics: FundamentalKeyMetric[],
@@ -662,6 +730,8 @@ export function korrigiereFwdWachstumKeyMetrics(
   const rev3 = cagr3AusPaketZeile('umsatz', historisch)
   const ebitda3 = cagr3AusPaketZeile('ebitda', historisch)
   const eps3 = cagr3AusPaketZeile('eps', historisch)
+  const rev5 = cagr5AusPaketZeile('umsatz', historisch)
+  const eps5 = cagr5AusPaketZeile('eps', historisch)
   return keyMetrics.map((k) => {
     if (k.id === 'fwd_rev_cagr_2y') return { ...k, wert: pctRaw(rev) }
     if (k.id === 'fwd_eps_cagr_2y') return { ...k, wert: pctRaw(eps) }
@@ -669,6 +739,8 @@ export function korrigiereFwdWachstumKeyMetrics(
     if (k.id === 'rev_cagr_3y' && historisch) return { ...k, wert: pctRaw(rev3) }
     if (k.id === 'ebitda_cagr_3y' && historisch) return { ...k, wert: pctRaw(ebitda3) }
     if (k.id === 'eps_cagr_3y' && historisch) return { ...k, wert: pctRaw(eps3) }
+    if (k.id === 'rev_cagr_5y' && historisch) return { ...k, wert: pctRaw(rev5), zahl: rev5 }
+    if (k.id === 'eps_cagr_5y' && historisch) return { ...k, wert: pctRaw(eps5), zahl: eps5 }
     return k
   })
 }
@@ -685,7 +757,7 @@ export function korrigiereEffizienzKeyMetrics(
 ): FundamentalKeyMetric[] {
   if (!kontextWerte) return keyMetrics
   const w = kontextWerte
-  return keyMetrics.map((k) => {
+  let out: FundamentalKeyMetric[] = keyMetrics.map((k): FundamentalKeyMetric => {
     if (k.id === 'ltm_brutto') {
       return {
         ...k,
@@ -729,6 +801,143 @@ export function korrigiereEffizienzKeyMetrics(
       }
     }
     if (k.id === 'reinvest_quote') return { ...k, wert: pctMitVorzeichen(w.reinvestitionsquotePct) }
+    if (k.id === 'roic_5y_avg') return { ...k, wert: pctRaw(w.roic5yAvgPct), zahl: w.roic5yAvgPct ?? null }
+    if (k.id === 'incremental_value_spread') {
+      return {
+        ...k,
+        wert: pctSigned(w.incrementalValueSpread),
+        zahl: w.incrementalValueSpread ?? null,
+        ton:
+          w.incrementalValueSpread == null
+            ? undefined
+            : w.incrementalValueSpread >= 10
+              ? 'positiv'
+              : w.incrementalValueSpread >= 0
+                ? 'neutral'
+                : 'negativ',
+      }
+    }
+    if (k.id === 'sbc_ocf_ratio') {
+      return {
+        ...k,
+        wert: pctRaw(w.sbcOcfRatio),
+        zahl: w.sbcOcfRatio ?? null,
+        ton:
+          w.sbcOcfRatio == null
+            ? undefined
+            : w.sbcOcfRatio < 5
+              ? 'positiv'
+              : w.sbcOcfRatio < 10
+                ? 'neutral'
+                : 'negativ',
+      }
+    }
+    if (k.id === 'rev_cagr_5y') return { ...k, wert: pctRaw(w.umsatzCagr5), zahl: w.umsatzCagr5 ?? null }
+    if (k.id === 'eps_cagr_5y') return { ...k, wert: pctRaw(w.epsCagr5), zahl: w.epsCagr5 ?? null }
+    if (k.id === 'fcf_je_aktie_cagr_5y') {
+      return { ...k, wert: pctRaw(w.fcfJeAktieCagr5), zahl: w.fcfJeAktieCagr5 ?? null }
+    }
     return k
   })
+  out = upsertNach(
+    out,
+    {
+      id: 'roic_5y_avg',
+      label: 'Hist. ROIC (5J-Schnitt)',
+      wert: pctRaw(w.roic5yAvgPct),
+      zahl: w.roic5yAvgPct ?? null,
+      gruppe: 'effizienz',
+    },
+    'incremental_roic',
+  )
+  out = upsertNach(
+    out,
+    {
+      id: 'incremental_value_spread',
+      label: 'Incremental Value Spread (iROIC − WACC)',
+      wert: pctSigned(w.incrementalValueSpread),
+      zahl: w.incrementalValueSpread ?? null,
+      ton:
+        w.incrementalValueSpread == null
+          ? undefined
+          : w.incrementalValueSpread >= 10
+            ? 'positiv'
+            : w.incrementalValueSpread >= 0
+              ? 'neutral'
+              : 'negativ',
+      gruppe: 'effizienz',
+    },
+    'roic_5y_avg',
+  )
+  out = upsertNach(
+    out,
+    {
+      id: 'sbc_ocf_ratio',
+      label: 'SBC / Operativer Cashflow',
+      wert: pctRaw(w.sbcOcfRatio),
+      zahl: w.sbcOcfRatio ?? null,
+      ton:
+        w.sbcOcfRatio == null
+          ? undefined
+          : w.sbcOcfRatio < 5
+            ? 'positiv'
+            : w.sbcOcfRatio < 10
+              ? 'neutral'
+              : 'negativ',
+      gruppe: 'effizienz',
+    },
+    'sbc_fcf_ratio',
+  )
+  out = upsertNach(
+    out,
+    {
+      id: 'rev_cagr_5y',
+      label: 'Umsatz-CAGR (5J)',
+      wert: pctRaw(w.umsatzCagr5),
+      zahl: w.umsatzCagr5 ?? null,
+      gruppe: 'wachstum',
+    },
+    'rev_cagr_3y',
+  )
+  out = upsertNach(
+    out,
+    {
+      id: 'eps_cagr_5y',
+      label: 'EPS-CAGR (5J)',
+      wert: pctRaw(w.epsCagr5),
+      zahl: w.epsCagr5 ?? null,
+      gruppe: 'wachstum',
+    },
+    'eps_cagr_3y',
+  )
+  out = upsertNach(
+    out,
+    {
+      id: 'fcf_je_aktie_cagr_5y',
+      label: 'FCF je Aktie CAGR (5J)',
+      wert: pctRaw(w.fcfJeAktieCagr5),
+      zahl: w.fcfJeAktieCagr5 ?? null,
+      gruppe: 'wachstum',
+    },
+    'eps_cagr_5y',
+  )
+  return out
+}
+
+function upsertNach(
+  liste: FundamentalKeyMetric[],
+  neu: FundamentalKeyMetric,
+  nachId: string,
+): FundamentalKeyMetric[] {
+  const i = liste.findIndex((k) => k.id === neu.id)
+  if (i >= 0) {
+    const out = [...liste]
+    out[i] = { ...out[i]!, ...neu }
+    return out
+  }
+  const j = liste.findIndex((k) => k.id === nachId)
+  const out = [...liste]
+  if (j >= 0) out.splice(j + 1, 0, neu)
+  else out.push(neu)
+  return out
 }

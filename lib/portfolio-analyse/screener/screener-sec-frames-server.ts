@@ -6,8 +6,12 @@
 import 'server-only'
 
 import { leseAlsJson } from '@/lib/http/safe-json-response'
-import { cagrJaehrlichAusSerie } from '@/lib/portfolio-analyse/fundamentaldaten-format'
+import { cagrJaehrlichAusSerie, aktienreiheSplitBereinigt } from '@/lib/portfolio-analyse/fundamentaldaten-format'
+import { berechneBruttomargenStabilitaet } from '@/lib/portfolio-analyse/fundamentaldaten-pricing-power'
+import { schaetzeWaccPct } from '@/lib/portfolio-analyse/fundamentaldaten-roic-hilfen'
 import { secFetch } from '@/lib/portfolio-analyse/sec-edgar-common-server'
+import { waehleNettoUmsatz, bereinigeUmsatzGrossVsNet } from '@/lib/portfolio-analyse/sec-umsatz-netto'
+import { iroicAusJahresreihe, roic5ySchnitt } from '@/lib/portfolio-analyse/screener/screener-quality-compounder'
 import { SCREENER_SCHEMA_VERSION } from '@/lib/portfolio-analyse/screener/screener-types'
 import { ladeYahooQuoteKennzahlen } from '@/lib/portfolio-analyse/yahoo-kurse-server'
 import type {
@@ -37,6 +41,9 @@ type JahrRoh = {
   cash?: number
   da?: number
   aktien?: number
+  gp?: number
+  zins?: number
+  sbc?: number
 }
 
 const MAX_ROIC_PCT = 80
@@ -103,6 +110,21 @@ function mergen(primaer: Map<number, number>, ...rest: Map<number, number>[]): M
     for (const [cik, val] of extra) {
       if (!out.has(cik)) out.set(cik, val)
     }
+  }
+  return out
+}
+
+/** Netto-Tags zuerst; bei Gross-vs-Net-Konflikt die kleinere Zahl. */
+function mergenUmsatzNetto(
+  netto: Map<number, number>[],
+  grob: Map<number, number>[],
+): Map<number, number> {
+  const n = mergen(netto[0] ?? new Map(), ...netto.slice(1))
+  const g = mergen(grob[0] ?? new Map(), ...grob.slice(1))
+  const out = new Map(n)
+  for (const [cik, gv] of g) {
+    const w = waehleNettoUmsatz(out.get(cik), gv)
+    if (w != null) out.set(cik, w)
   }
   return out
 }
@@ -179,10 +201,11 @@ export async function baueScreenerSnapshot(): Promise<ScreenerSnapshot> {
   for (let jahr = ERSTES_FRAME_JAHR; jahr <= bisJahr; jahr++) {
     const dauer = `CY${jahr}`
     const stichtag = `CY${jahr}Q4I`
-    const [umsatzAsc, umsatzRev, umsatzSales, ebit, ni, ocf, capex, eps, ek, assets] = await Promise.all([
-      ladeFrame('us-gaap', 'RevenueFromContractWithCustomerExcludingAssessedTax', 'USD', dauer),
+    const [umsatzRev, umsatzSales, umsatzAsc, umsatzAscTax, ebit, ni, ocf, capex, eps, ek, assets] = await Promise.all([
       ladeFrame('us-gaap', 'Revenues', 'USD', dauer),
       ladeFrame('us-gaap', 'SalesRevenueNet', 'USD', dauer),
+      ladeFrame('us-gaap', 'RevenueFromContractWithCustomerExcludingAssessedTax', 'USD', dauer),
+      ladeFrame('us-gaap', 'RevenueFromContractWithCustomerIncludingAssessedTax', 'USD', dauer),
       ladeFrame('us-gaap', 'OperatingIncomeLoss', 'USD', dauer),
       ladeFrame('us-gaap', 'NetIncomeLoss', 'USD', dauer),
       ladeFrame('us-gaap', 'NetCashProvidedByUsedInOperatingActivities', 'USD', dauer),
@@ -191,15 +214,18 @@ export async function baueScreenerSnapshot(): Promise<ScreenerSnapshot> {
       ladeFrame('us-gaap', 'StockholdersEquity', 'USD', stichtag),
       ladeFrame('us-gaap', 'Assets', 'USD', stichtag),
     ])
-    const [ltDebt, debtCur, ltDebtCur, cash, shares, da] = await Promise.all([
+    const [ltDebt, debtCur, ltDebtCur, cash, shares, da, gp, zins, sbc] = await Promise.all([
       ladeFrame('us-gaap', 'LongTermDebt', 'USD', stichtag),
       ladeFrame('us-gaap', 'DebtCurrent', 'USD', stichtag),
       ladeFrame('us-gaap', 'LongTermDebtCurrent', 'USD', stichtag),
       ladeFrame('us-gaap', 'CashAndCashEquivalentsAtCarryingValue', 'USD', stichtag),
       ladeFrame('us-gaap', 'WeightedAverageNumberOfDilutedSharesOutstanding', 'shares', dauer),
       ladeFrame('us-gaap', 'DepreciationDepletionAndAmortization', 'USD', dauer),
+      ladeFrame('us-gaap', 'GrossProfit', 'USD', dauer),
+      ladeFrame('us-gaap', 'InterestExpense', 'USD', dauer),
+      ladeFrame('us-gaap', 'ShareBasedCompensation', 'USD', dauer),
     ])
-    const umsatz = mergen(umsatzAsc, umsatzRev, umsatzSales)
+    const umsatz = mergenUmsatzNetto([umsatzRev, umsatzSales], [umsatzAsc, umsatzAscTax])
     const debt = addMaps(ltDebt, mergen(debtCur, ltDebtCur))
     for (const [cik, val] of umsatz) setz(perCik, cik, jahr, 'umsatz', val)
     for (const [cik, val] of ebit) setz(perCik, cik, jahr, 'ebit', val)
@@ -213,10 +239,14 @@ export async function baueScreenerSnapshot(): Promise<ScreenerSnapshot> {
     for (const [cik, val] of cash) setz(perCik, cik, jahr, 'cash', val)
     for (const [cik, val] of shares) setz(perCik, cik, jahr, 'aktien', val)
     for (const [cik, val] of da) setz(perCik, cik, jahr, 'da', val)
+    for (const [cik, val] of gp) setz(perCik, cik, jahr, 'gp', val)
+    for (const [cik, val] of zins) setz(perCik, cik, jahr, 'zins', val)
+    for (const [cik, val] of sbc) setz(perCik, cik, jahr, 'sbc', val)
   }
 
   const zeilen: ScreenerZeile[] = []
   const gesehen = new Set<string>()
+  const zinsUsdByCik = new Map<number, number>()
   for (const [cik, name, sym, exchange] of ticker) {
     if (gesehen.has(sym)) continue
     gesehen.add(sym)
@@ -245,6 +275,11 @@ export async function baueScreenerSnapshot(): Promise<ScreenerSnapshot> {
         aktienMio: zuAktienMio(r.aktien),
       }
     })
+    const umsatzGlatt = bereinigeUmsatzGrossVsNet(hist.map((p) => ({ umsatz: p.umsatzMio, ebit: p.ebitMio })))
+    for (let i = 0; i < hist.length; i++) {
+      const neu = umsatzGlatt[i]!.umsatz
+      if (neu != null) hist[i]!.umsatzMio = Math.round(neu * 10) / 10
+    }
     const last = hist[hist.length - 1]!
     const vor = hist.length >= 2 ? hist[hist.length - 2]! : null
     const lastRoh = jahreMap.get(last.jahr)!
@@ -274,12 +309,44 @@ export async function baueScreenerSnapshot(): Promise<ScreenerSnapshot> {
         : runde((last.ebitMio ?? 0) + Math.abs(last.daMio ?? 0))
     const netDebtEbitda =
       netDebtMio == null || ebitdaMio == null || !(ebitdaMio > 0) ? null : runde(netDebtMio / ebitdaMio, 2)
-    const aktienSerie = hist.map((p) => p.aktienMio).filter((v): v is number => v != null && v > 0)
+    const aktienRoh = hist.map((p) => p.aktienMio).filter((v): v is number => v != null && v > 0)
+    const aktienSerie = aktienreiheSplitBereinigt(aktienRoh)
     const aktienVerwaesserungJaehrlichPct = runde(cagrJaehrlichAusSerie(aktienSerie), 2)
     const ruleOf40 =
       umsatzWachstumPct == null && fcfMargePct == null
         ? null
         : runde((umsatzWachstumPct ?? 0) + (fcfMargePct ?? 0))
+    const bruttoSerie: number[] = []
+    for (const jahr of jahre) {
+      const r = jahreMap.get(jahr)!
+      const m = pct(zuMio(r.gp), zuMio(r.umsatz))
+      if (m != null) bruttoSerie.push(m)
+    }
+    const bruttoMargePct = pct(zuMio(lastRoh.gp), last.umsatzMio)
+    const bruttoStab = berechneBruttomargenStabilitaet(bruttoSerie)
+    const capexAbs = zuMio(lastRoh.capex) != null ? Math.abs(zuMio(lastRoh.capex)!) : null
+    const daAbs = last.daMio != null ? Math.abs(last.daMio) : null
+    const reinvestitionsquotePct =
+      capexAbs != null && last.fcfMio != null && Math.abs(last.fcfMio) >= 1
+        ? runde(((capexAbs - (daAbs ?? 0)) / Math.abs(last.fcfMio)) * 100)
+        : null
+    const fcfJeAktieSerie = hist
+      .filter((p) => p.fcfMio != null && p.fcfMio > 0 && p.aktienMio != null && p.aktienMio > 0)
+      .map((p) => ({ jahr: p.jahr, val: p.fcfMio! / p.aktienMio! }))
+    const zinsMio = zuMio(lastRoh.zins)
+    const interestCoverage =
+      last.ebitMio != null && zinsMio != null && Math.abs(zinsMio) > 0.05
+        ? runde(last.ebitMio / Math.abs(zinsMio), 1)
+        : null
+    const sbcMio = zuMio(lastRoh.sbc)
+    const ocfMioNow = zuMio(lastRoh.ocf)
+    const sbcOcfPct =
+      sbcMio != null && ocfMioNow != null && Math.abs(ocfMioNow) > 0
+        ? runde((Math.abs(sbcMio) / Math.abs(ocfMioNow)) * 100)
+        : null
+    const iroicPct = iroicAusJahresreihe(hist)
+    const roic5yAvgPct = roic5ySchnitt(hist)
+    if (zinsMio != null) zinsUsdByCik.set(cik, Math.abs(zinsMio) * 1_000_000)
     zeilen.push({
       ticker: sym,
       name,
@@ -312,6 +379,14 @@ export async function baueScreenerSnapshot(): Promise<ScreenerSnapshot> {
       aktienVerwaesserungJaehrlichPct,
       netDebtMio,
       netDebtEbitda,
+      iroicPct,
+      roic5yAvgPct,
+      bruttoMargePct,
+      bruttoMargeStabil: bruttoStab.pricingPowerOk,
+      reinvestitionsquotePct,
+      fcfJeAktieCagr5y: cagr(fcfJeAktieSerie, 5),
+      interestCoverage,
+      sbcOcfPct,
       jahreAnzahl: umsatzSerie.length,
       vonJahr: hist[0]?.jahr ?? null,
       bisJahr: last.jahr,
@@ -341,6 +416,15 @@ export async function baueScreenerSnapshot(): Promise<ScreenerSnapshot> {
     )
     z.sektor = q?.sektor ?? null
     z.industrie = q?.industrie ?? null
+    const wacc = schaetzeWaccPct({
+      beta: q?.beta,
+      marketCapUsd: q?.marktkap,
+      totalDebtUsd: z.debtMio != null ? z.debtMio * 1_000_000 : null,
+      interestExpenseUsd: zinsUsdByCik.get(z.cik) ?? null,
+    })
+    z.waccPct = wacc != null ? runde(wacc) : null
+    z.incrementalValueSpreadPct =
+      z.iroicPct != null && z.waccPct != null ? runde(z.iroicPct - z.waccPct) : null
   }
 
   zeilen.sort((a, b) => (b.umsatzMio ?? -1) - (a.umsatzMio ?? -1))

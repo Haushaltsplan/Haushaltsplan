@@ -1,6 +1,6 @@
 export type ScreenerBoerse = 'Nasdaq' | 'NYSE' | 'CBOE'
 
-export const SCREENER_SCHEMA_VERSION = 2
+export const SCREENER_SCHEMA_VERSION = 4
 
 export type ScreenerHistPunkt = {
   jahr: number
@@ -50,6 +50,16 @@ export type ScreenerZeile = {
   aktienVerwaesserungJaehrlichPct?: number | null
   netDebtMio?: number | null
   netDebtEbitda?: number | null
+  iroicPct?: number | null
+  roic5yAvgPct?: number | null
+  waccPct?: number | null
+  incrementalValueSpreadPct?: number | null
+  bruttoMargePct?: number | null
+  bruttoMargeStabil?: boolean | null
+  reinvestitionsquotePct?: number | null
+  fcfJeAktieCagr5y?: number | null
+  interestCoverage?: number | null
+  sbcOcfPct?: number | null
   jahreAnzahl: number
   vonJahr: number | null
   bisJahr: number | null
@@ -89,11 +99,19 @@ export type ScreenerKennzahl =
   | 'capexSalesPct'
   | 'aktienVerwaesserungJaehrlichPct'
   | 'netDebtEbitda'
+  | 'iroicPct'
+  | 'roic5yAvgPct'
+  | 'incrementalValueSpreadPct'
+  | 'bruttoMargePct'
+  | 'reinvestitionsquotePct'
+  | 'fcfJeAktieCagr5y'
+  | 'interestCoverage'
+  | 'sbcOcfPct'
   | 'kgv'
   | 'kuv'
   | 'kbv'
 
-export type ScreenerSort = ScreenerKennzahl | 'name' | 'mantra' | 'ticker'
+export type ScreenerSort = ScreenerKennzahl | 'name' | 'mantra' | 'quality' | 'ticker'
 
 export type ScreenerSpanne = {
   min?: number | null
