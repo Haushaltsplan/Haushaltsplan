@@ -13,6 +13,19 @@ type MerkBody = {
   saison?: string | null
 }
 
+function dbFehler(error: { code?: string; message: string }) {
+  const fehltTabelle =
+    error.code === '42P01' || error.code === 'PGRST205' || /etsy_keyword_merkliste/.test(error.message)
+  return NextResponse.json(
+    {
+      error: fehltTabelle
+        ? 'Tabelle etsy_keyword_merkliste fehlt — Migration 20260929140000_etsy_keywords_hauptbegriff.sql in Supabase ausführen.'
+        : `Datenbank: ${error.message}`,
+    },
+    { status: fehltTabelle ? 503 : 502 },
+  )
+}
+
 async function nutzer(req: Request) {
   const sb = createSupabaseFuerRequest(req)
   if (!sb) return null
@@ -29,7 +42,7 @@ export async function GET(req: Request) {
     .from('etsy_keyword_merkliste')
     .select('keyword, nachfrage, wettbewerb, chance, quellen, saison, created_at')
     .order('created_at', { ascending: false })
-  if (error) return NextResponse.json({ error: error.message }, { status: 502 })
+  if (error) return dbFehler(error)
   return NextResponse.json({ ok: true, keywords: data ?? [] })
 }
 
@@ -49,7 +62,7 @@ export async function POST(req: Request) {
     quellen: Array.isArray(body.quellen) ? body.quellen.map(String).slice(0, 5) : [],
     saison: body.saison ? String(body.saison).slice(0, 60) : null,
   })
-  if (error) return NextResponse.json({ error: error.message }, { status: 502 })
+  if (error) return dbFehler(error)
   return NextResponse.json({ ok: true })
 }
 
@@ -59,6 +72,6 @@ export async function DELETE(req: Request) {
   const keyword = (new URL(req.url).searchParams.get('keyword') || '').trim().toLowerCase()
   if (!keyword) return NextResponse.json({ error: 'Keyword fehlt.' }, { status: 400 })
   const { error } = await n.sb.from('etsy_keyword_merkliste').delete().eq('keyword', keyword)
-  if (error) return NextResponse.json({ error: error.message }, { status: 502 })
+  if (error) return dbFehler(error)
   return NextResponse.json({ ok: true })
 }

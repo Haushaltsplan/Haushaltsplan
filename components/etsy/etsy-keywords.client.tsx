@@ -118,7 +118,8 @@ export function EtsyKeywords() {
       body: JSON.stringify(i),
     })
     if (!res.ok) {
-      toast.error('Merken fehlgeschlagen — Migration eingespielt?')
+      const j = (await res.json().catch(() => ({}))) as { error?: string }
+      toast.error(j.error || `Merken fehlgeschlagen (${res.status}).`, { duration: 8000 })
       return
     }
     setGemerkt((prev) => [
