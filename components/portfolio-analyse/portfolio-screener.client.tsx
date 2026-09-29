@@ -40,9 +40,6 @@ function fmtPct(v: number | null): string {
   if (v == null) return '–'
   return `${v.toLocaleString('de-DE', { maximumFractionDigits: 1 })} %`
 }
-  if (v == null) return '–'
-  return `${v.toLocaleString('de-DE', { maximumFractionDigits: 1 })} %`
-}
 
 function pctTon(v: number | null): string {
   if (v == null) return 'text-[var(--app-text-muted)]'
