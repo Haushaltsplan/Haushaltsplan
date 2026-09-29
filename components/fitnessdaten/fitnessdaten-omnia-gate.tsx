@@ -46,13 +46,20 @@ export function FitnessdatenOmniaGate({ children }: { children: React.ReactNode 
           Fitness und Band-Verbindung laufen nur noch in der App <strong className="text-[var(--app-text)]">Omnia Whoop</strong>.
           In Omnia (Haushalt) gibt es keinen Whoop-Tracker mehr.
         </p>
-        <p className="text-sm text-[var(--app-text-muted)]">Du wirst gleich zur Startseite weitergeleitet …</p>
-        <Link
-          href="/"
-          className="inline-flex rounded-xl bg-white/[0.08] px-4 py-2.5 text-sm font-semibold text-white ring-1 ring-white/[0.08]"
-        >
-          Zur Startseite
-        </Link>
+        <div className="flex flex-wrap gap-2">
+          <Link
+            href="/auth/app-uebernehmen"
+            className="inline-flex rounded-xl bg-teal-600 px-4 py-2.5 text-sm font-semibold text-white"
+          >
+            Anmeldung an Whoop senden
+          </Link>
+          <Link
+            href="/"
+            className="inline-flex rounded-xl bg-white/[0.08] px-4 py-2.5 text-sm font-semibold text-white ring-1 ring-white/[0.08]"
+          >
+            Zur Startseite
+          </Link>
+        </div>
       </PageChrome>
     )
   }

@@ -3,7 +3,7 @@
 import { istOeffentlicheRoute } from '@/lib/public-routes'
 import { appInputClass, appSectionCardClass } from '@/lib/app-ui'
 import { decodeOmniaSessionCode } from '@/lib/omnia-native/omnia-session-code'
-import { istOmniaNativeApp } from '@/lib/omnia-native/omnia-native'
+import { istOmniaNativeApp, istOmniaWhoopApp } from '@/lib/omnia-native/omnia-native'
 import { supabase } from '@/lib/supabase'
 import { setzeClientZugriff } from '@/lib/zugriff-client'
 import { omniaRolleAusUser, ownerEmailsPublic } from '@/lib/zugriff-rollen'
@@ -111,6 +111,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
   const [sending, setSending] = useState(false)
   const [verifying, setVerifying] = useState(false)
   const [nativeApp] = useState(() => istOmniaNativeApp())
+  const [whoopApp] = useState(() => istOmniaWhoopApp())
   const [verweigert, setVerweigert] = useState(false)
   const [linkGesendet, setLinkGesendet] = useState(false)
   const [cooldownSec, setCooldownSec] = useState(0)
@@ -230,10 +231,14 @@ export function AuthGate({ children }: { children: ReactNode }) {
     }
   }
 
-  const uebernehmeSessionCode = async () => {
-    const payload = decodeOmniaSessionCode(sessionCode)
+  const uebernehmeSessionCode = async (raw?: string) => {
+    const payload = decodeOmniaSessionCode(raw ?? sessionCode)
     if (!payload) {
-      toast.error('Ungültiger Sitzungscode. Bitte neu kopieren von /auth/app-uebernehmen.')
+      toast.error(
+        whoopApp
+          ? 'Ungültiger Sitzungscode. In der Omnia-App „An Omnia Whoop übergeben“ tippen.'
+          : 'Ungültiger Sitzungscode. Bitte neu kopieren von /auth/app-uebernehmen.',
+      )
       return
     }
     setVerifying(true)
@@ -248,8 +253,27 @@ export function AuthGate({ children }: { children: ReactNode }) {
       }
       uebernehmeSession(data.session)
       toast.success('Angemeldet')
+      if (whoopApp && typeof window !== 'undefined') {
+        window.setTimeout(() => {
+          window.location.replace('/fitnessdaten')
+        }, 200)
+      }
     } finally {
       setVerifying(false)
+    }
+  }
+
+  const ausZwischenablage = async () => {
+    try {
+      const text = (await navigator.clipboard.readText()).trim()
+      if (!text.startsWith('omnia1.')) {
+        toast.error('Zwischenablage enthält keinen Sitzungscode. Zuerst in Omnia kopieren.')
+        return
+      }
+      setSessionCode(text)
+      await uebernehmeSessionCode(text)
+    } catch {
+      toast.error('Zwischenablage nicht lesbar — Code manuell einfügen.')
     }
   }
 
@@ -304,13 +328,17 @@ export function AuthGate({ children }: { children: ReactNode }) {
     const schonVertraut = geraetWarSchonAngemeldet()
     return (
       <div className={`${appSectionCardClass} mx-auto mt-8 max-w-md`}>
-        <h2 className="text-lg font-bold text-[var(--app-text)]">Anmeldung erforderlich</h2>
+        <h2 className="text-lg font-bold text-[var(--app-text)]">
+          {whoopApp ? 'Omnia Whoop — Anmeldung' : 'Anmeldung erforderlich'}
+        </h2>
         <p className="mt-2 text-sm text-[var(--app-text-muted)]">
-          {nativeApp
-            ? 'Am einfachsten: 6-stelligen Code aus der E-Mail hier eintippen — kein Magic-Link nötig. Alternativ Sitzungscode vom Browser.'
-            : schonVertraut
-              ? 'Die Sitzung auf diesem Gerät ist weg. Einmalig den Magic-Link bestätigen — danach merkt sich dieses Gerät dich wieder dauerhaft.'
-              : 'Einmal E-Mail eingeben und Magic-Link bestätigen. Danach bleibt dieses Gerät angemeldet.'}
+          {whoopApp
+            ? 'Gleiche Zugangsdaten wie Omnia, aber eigene App-Sitzung. Am schnellsten: in Omnia „An Omnia Whoop übergeben“, dann hier Zwischenablage.'
+            : nativeApp
+              ? 'Am einfachsten: 6-stelligen Code aus der E-Mail hier eintippen — kein Magic-Link nötig. Alternativ Sitzungscode vom Browser.'
+              : schonVertraut
+                ? 'Die Sitzung auf diesem Gerät ist weg. Einmalig den Magic-Link bestätigen — danach merkt sich dieses Gerät dich wieder dauerhaft.'
+                : 'Einmal E-Mail eingeben und Magic-Link bestätigen. Danach bleibt dieses Gerät angemeldet.'}
         </p>
         {verweigert && (
           <p className="mt-3 rounded-lg border border-rose-700/50 bg-rose-950/30 px-3 py-2 text-[13px] text-rose-200">
@@ -347,17 +375,42 @@ export function AuthGate({ children }: { children: ReactNode }) {
         <div className="mt-3 rounded-lg border border-teal-800/40 bg-teal-950/20 px-3 py-2 text-[13px] leading-relaxed text-teal-100/90">
           <strong className="font-semibold">Ohne neue E-Mail (empfohlen):</strong>
           <ol className="mt-1 list-decimal space-y-1 pl-4">
-            <li>
-              Im Browser (PC/Chrome) anmelden →{' '}
-              <a href="/auth/app-uebernehmen" className="font-semibold underline underline-offset-2">
-                Sitzungscode kopieren
-              </a>
-            </li>
-            <li>Hier in der App einfügen → „Sitzung übernehmen“</li>
+            {whoopApp ? (
+              <>
+                <li>
+                  In der <strong>Omnia</strong>-App → „An Omnia Whoop übergeben“ (oder{' '}
+                  <a href="/auth/app-uebernehmen" className="font-semibold underline underline-offset-2">
+                    Sitzungscode
+                  </a>
+                  )
+                </li>
+                <li>Hier „Aus Zwischenablage“ oder Code einfügen</li>
+              </>
+            ) : (
+              <>
+                <li>
+                  Im Browser (PC/Chrome) anmelden →{' '}
+                  <a href="/auth/app-uebernehmen" className="font-semibold underline underline-offset-2">
+                    Sitzungscode kopieren
+                  </a>
+                </li>
+                <li>Hier in der App einfügen → „Sitzung übernehmen“</li>
+              </>
+            )}
           </ol>
         </div>
 
         <div className="mt-4 space-y-2">
+          {whoopApp ? (
+            <button
+              type="button"
+              disabled={verifying}
+              onClick={() => void ausZwischenablage()}
+              className="w-full rounded-[0.875rem] bg-gradient-to-b from-teal-500 to-teal-600 py-2.5 text-sm font-bold text-white shadow-md shadow-teal-950/25 ring-1 ring-white/10 transition hover:from-teal-400 hover:to-teal-500 disabled:opacity-40"
+            >
+              {verifying ? 'Übernehme …' : 'Aus Zwischenablage übernehmen'}
+            </button>
+          ) : null}
           <label className="block text-xs font-semibold text-[var(--app-text-muted)]">
             Sitzungscode einfügen
           </label>

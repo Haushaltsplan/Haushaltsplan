@@ -6,6 +6,7 @@ import {
   StartKalenderKompakt,
   StartPortfolioKompakt,
 } from '@/components/start-home-kompakt'
+import { OmniaWhoopLoginHinweis } from '@/components/omnia-whoop-login-hinweis'
 import { StartHero } from '@/components/start-home-ui'
 import { StartWetterKompakt } from '@/components/start-wetter-kompakt'
 import { parseWetterOrtId, REGION_HAARBACH } from '@/lib/region-haarbach'
@@ -32,6 +33,7 @@ export default async function StartUebersichtPage({ searchParams }: StartPagePro
   return (
     <PageChrome density="compact" className="max-w-2xl mx-auto space-y-4">
       <StartHero />
+      <OmniaWhoopLoginHinweis />
 
       <Suspense fallback={<StartBlockSkeleton />}>
         <StartWetterKompakt ortId={ortId} />

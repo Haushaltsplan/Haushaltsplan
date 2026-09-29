@@ -13,14 +13,33 @@ const APP_ORIGIN =
 
 const SS_PENDING = 'omnia-pending-auth-url'
 
+const CUSTOM_SCHEMES = new Set(['de.omnia.haushalt', 'de.omnia.whoop'])
+
 function zuAppAuthUrl(raw: string): string | null {
   try {
     // Manche Android-Intents liefern ungewöhnliche Strings
     const normalized = raw.includes('://') ? raw : `de.omnia.haushalt://${raw}`
     const u = new URL(normalized)
-    const isCustom = u.protocol.replace(':', '') === 'de.omnia.haushalt'
+    const scheme = u.protocol.replace(':', '')
+    const isCustom = CUSTOM_SCHEMES.has(scheme)
     const isHttpsAuth = u.protocol === 'https:' && u.pathname.includes('/auth')
     if (!isCustom && !isHttpsAuth) return null
+
+    // Whoop: nur App öffnen / Login — ohne Tokens → Fitness (AuthGate)
+    if (scheme === 'de.omnia.whoop') {
+      const hostPath = `${u.host}${u.pathname}`.replace(/\/+/g, '/').toLowerCase()
+      if (
+        hostPath.includes('login') ||
+        hostPath.includes('paste') ||
+        hostPath === 'auth' ||
+        hostPath === 'auth/' ||
+        hostPath.startsWith('app/')
+      ) {
+        if (!u.searchParams.has('access_token') && !u.searchParams.has('omnia_code') && !u.hash.includes('access_token')) {
+          return `${APP_ORIGIN}/fitnessdaten`
+        }
+      }
+    }
 
     const zielPath =
       raw.includes('auth/session') || u.pathname.includes('session')

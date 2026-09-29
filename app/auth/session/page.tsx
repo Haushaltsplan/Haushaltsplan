@@ -5,7 +5,8 @@
  * (ohne neuen Magic-Link / ohne E-Mail).
  */
 
-import { istOmniaNativeApp } from '@/lib/omnia-native/omnia-native'
+import { istOmniaNativeApp, istOmniaWhoopApp } from '@/lib/omnia-native/omnia-native'
+import { decodeOmniaSessionCode } from '@/lib/omnia-native/omnia-session-code'
 import { supabase } from '@/lib/supabase'
 import { loginZielFuerRolle, omniaRolleAusUser, ownerEmailsPublic } from '@/lib/zugriff-rollen'
 import { useEffect, useState } from 'react'
@@ -13,6 +14,13 @@ import { useEffect, useState } from 'react'
 function tokensAusUrl(): { access_token: string; refresh_token: string } | null {
   try {
     const url = new URL(window.location.href)
+    const code =
+      url.searchParams.get('omnia_code') || url.searchParams.get('code') || ''
+    if (code.startsWith('omnia1.')) {
+      const decoded = decodeOmniaSessionCode(code)
+      if (decoded) return decoded
+    }
+
     let access = url.searchParams.get('access_token')
     let refresh = url.searchParams.get('refresh_token')
 
@@ -20,6 +28,11 @@ function tokensAusUrl(): { access_token: string; refresh_token: string } | null 
       const hash = new URLSearchParams(url.hash.replace(/^#/, ''))
       access = access || hash.get('access_token')
       refresh = refresh || hash.get('refresh_token')
+      const hashCode = hash.get('omnia_code') || hash.get('code') || ''
+      if ((!access || !refresh) && hashCode.startsWith('omnia1.')) {
+        const decoded = decodeOmniaSessionCode(hashCode)
+        if (decoded) return decoded
+      }
     }
 
     if (access && refresh) return { access_token: access, refresh_token: refresh }
@@ -27,6 +40,11 @@ function tokensAusUrl(): { access_token: string; refresh_token: string } | null 
     /* ignore */
   }
   return null
+}
+
+function zielNachLogin(rolle: ReturnType<typeof omniaRolleAusUser>): string {
+  if (istOmniaWhoopApp()) return '/fitnessdaten'
+  return loginZielFuerRolle(rolle)
 }
 
 export default function AuthSessionPage() {
@@ -60,9 +78,7 @@ export default function AuthSessionPage() {
         /* ignore */
       }
       setStatus('Angemeldet — weiter …')
-      const ziel = loginZielFuerRolle(
-        omniaRolleAusUser(data.session.user, ownerEmailsPublic()),
-      )
+      const ziel = zielNachLogin(omniaRolleAusUser(data.session.user, ownerEmailsPublic()))
       // Hash aus Adresszeile entfernen
       window.history.replaceState(null, '', '/auth/session')
       window.location.replace(ziel)

@@ -40,6 +40,13 @@
                 <data android:scheme="de.omnia.whoop" android:host="auth" />
             </intent-filter>
 
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="de.omnia.whoop" android:host="app" />
+            </intent-filter>
+
         </activity>
 
         <!-- Gleicher Prozess wie UI: FGS hält Prozess nach App-Schließen am Leben -->
