@@ -11,6 +11,10 @@ type MerkBody = {
   chance?: string | null
   quellen?: string[]
   saison?: string | null
+  etsyNutzung?: number | null
+  wettbewerbMarkt?: 'DE' | 'global' | null
+  eigeneListings?: number
+  status?: 'fehlt' | 'selten' | 'drin'
 }
 
 function dbFehler(error: { code?: string; message: string }) {
@@ -24,6 +28,27 @@ function dbFehler(error: { code?: string; message: string }) {
     },
     { status: fehltTabelle ? 503 : 502 },
   )
+}
+
+function parseMerkExtra(raw: unknown): {
+  etsyNutzung: number | null
+  wettbewerbMarkt: 'DE' | 'global' | null
+  eigeneListings: number | null
+  status: 'fehlt' | 'selten' | 'drin' | null
+} {
+  const leer = { etsyNutzung: null, wettbewerbMarkt: null, eigeneListings: null, status: null }
+  if (typeof raw !== 'string' || !raw.trim().startsWith('{')) return leer
+  try {
+    const o = JSON.parse(raw) as Record<string, unknown>
+    return {
+      etsyNutzung: typeof o.etsyNutzung === 'number' ? o.etsyNutzung : null,
+      wettbewerbMarkt: o.wettbewerbMarkt === 'DE' || o.wettbewerbMarkt === 'global' ? o.wettbewerbMarkt : null,
+      eigeneListings: typeof o.eigeneListings === 'number' ? o.eigeneListings : null,
+      status: o.status === 'fehlt' || o.status === 'selten' || o.status === 'drin' ? o.status : null,
+    }
+  } catch {
+    return leer
+  }
 }
 
 async function nutzer(req: Request) {
@@ -40,10 +65,25 @@ export async function GET(req: Request) {
   if (!n) return NextResponse.json({ error: 'Anmeldung erforderlich.' }, { status: 401 })
   const { data, error } = await n.sb
     .from('etsy_keyword_merkliste')
-    .select('keyword, nachfrage, wettbewerb, chance, quellen, saison, created_at')
+    .select('keyword, nachfrage, wettbewerb, chance, quellen, saison, notiz, created_at')
     .order('created_at', { ascending: false })
   if (error) return dbFehler(error)
-  return NextResponse.json({ ok: true, keywords: data ?? [] })
+  const keywords = (data ?? []).map((r) => {
+    const extra = parseMerkExtra(r.notiz)
+    return {
+      keyword: String(r.keyword),
+      nachfrage: r.nachfrage != null ? Number(r.nachfrage) : null,
+      wettbewerb: r.wettbewerb != null ? Number(r.wettbewerb) : null,
+      chance: r.chance != null ? String(r.chance) : null,
+      quellen: Array.isArray(r.quellen) ? r.quellen.map(String) : [],
+      saison: r.saison != null ? String(r.saison) : null,
+      etsyNutzung: extra.etsyNutzung,
+      wettbewerbMarkt: extra.wettbewerbMarkt,
+      eigeneListings: extra.eigeneListings,
+      status: extra.status,
+    }
+  })
+  return NextResponse.json({ ok: true, keywords })
 }
 
 export async function POST(req: Request) {
@@ -53,6 +93,12 @@ export async function POST(req: Request) {
   const keyword = String(body.keyword || '').trim().toLowerCase().slice(0, 80)
   if (keyword.length < 2) return NextResponse.json({ error: 'Keyword fehlt.' }, { status: 400 })
   const chance = ['hoch', 'mittel', 'niedrig'].includes(String(body.chance)) ? String(body.chance) : null
+  const extra = {
+    etsyNutzung: typeof body.etsyNutzung === 'number' ? Math.round(body.etsyNutzung) : null,
+    wettbewerbMarkt: body.wettbewerbMarkt === 'DE' || body.wettbewerbMarkt === 'global' ? body.wettbewerbMarkt : null,
+    eigeneListings: typeof body.eigeneListings === 'number' ? Math.max(0, Math.round(body.eigeneListings)) : null,
+    status: body.status === 'fehlt' || body.status === 'selten' || body.status === 'drin' ? body.status : null,
+  }
   const { error } = await n.sb.from('etsy_keyword_merkliste').upsert({
     owner_user_id: n.userId,
     keyword,
@@ -61,6 +107,7 @@ export async function POST(req: Request) {
     chance,
     quellen: Array.isArray(body.quellen) ? body.quellen.map(String).slice(0, 5) : [],
     saison: body.saison ? String(body.saison).slice(0, 60) : null,
+    notiz: JSON.stringify(extra),
   })
   if (error) return dbFehler(error)
   return NextResponse.json({ ok: true })

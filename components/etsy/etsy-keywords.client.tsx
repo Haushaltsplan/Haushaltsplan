@@ -17,6 +17,11 @@ type Gemerkt = {
   wettbewerb: number | null
   chance: EtsyKeywordChance | null
   saison: string | null
+  quellen?: EtsyKeywordIdee['quellen']
+  etsyNutzung?: number | null
+  wettbewerbMarkt?: 'DE' | 'global' | null
+  eigeneListings?: number | null
+  status?: EtsyAutoKeyword['status'] | null
 }
 
 type Filter = 'alle' | 'etsy' | 'tags' | 'chance'
@@ -29,6 +34,46 @@ const QUELLEN_LABEL: Record<EtsyKeywordIdee['quellen'][number], string> = {
 }
 
 const QUELLEN_REIHENFOLGE: EtsyKeywordIdee['quellen'][number][] = ['etsy_tags', 'etsy_suggest', 'amazon_de', 'google_de']
+const QUELLEN_OK = new Set(QUELLEN_REIHENFOLGE)
+
+function quellenVon(raw: unknown): EtsyKeywordIdee['quellen'] {
+  if (!Array.isArray(raw)) return []
+  return raw.filter((q): q is EtsyKeywordIdee['quellen'][number] =>
+    QUELLEN_OK.has(q as EtsyKeywordIdee['quellen'][number]),
+  )
+}
+
+function chanceVon(raw: unknown): EtsyKeywordChance | null {
+  return raw === 'hoch' || raw === 'mittel' || raw === 'niedrig' ? raw : null
+}
+
+function gemerktAlsIdee(
+  g: Gemerkt,
+  live?: EtsyKeywordIdee | EtsyAutoKeyword,
+): EtsyKeywordIdee | EtsyAutoKeyword {
+  if (live && istAuto(live)) return live
+  const idee: EtsyKeywordIdee = {
+    keyword: g.keyword,
+    nachfrage: live?.nachfrage ?? g.nachfrage ?? 0,
+    quellen: live?.quellen?.length ? live.quellen : quellenVon(g.quellen),
+    etsyNutzung: live?.etsyNutzung ?? g.etsyNutzung ?? null,
+    wettbewerb: live?.wettbewerb ?? g.wettbewerb ?? null,
+    wettbewerbMarkt: live?.wettbewerbMarkt ?? g.wettbewerbMarkt ?? null,
+    chance: live?.chance ?? chanceVon(g.chance),
+    tagTauglich: g.keyword.length <= 20,
+    saison: live?.saison ?? g.saison,
+  }
+  if (g.status && g.eigeneListings != null) {
+    return {
+      ...idee,
+      eigeneListings: g.eigeneListings,
+      konkurrenzShops: 0,
+      status: g.status,
+      seeds: [],
+    }
+  }
+  return idee
+}
 
 const CHANCE_STIL: Record<EtsyKeywordChance, string> = {
   hoch: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/40',
@@ -36,7 +81,8 @@ const CHANCE_STIL: Record<EtsyKeywordChance, string> = {
   niedrig: 'bg-rose-500/10 text-rose-300 border-rose-500/30',
 }
 
-function NachfrageBalken({ wert }: { wert: number }) {
+function NachfrageBalken({ wert }: { wert: number | null }) {
+  if (wert == null) return <span className="text-xs text-[var(--app-text-muted)]">—</span>
   return (
     <div className="flex items-center gap-2" title={`Nachfrage-Signal ${wert}/100`}>
       <div className="h-1.5 w-20 overflow-hidden rounded-full bg-[var(--app-surface-muted)]">
@@ -58,6 +104,15 @@ function ChanceBadge({ chance }: { chance: EtsyKeywordChance | null }) {
 
 function istAuto(i: EtsyKeywordIdee | EtsyAutoKeyword): i is EtsyAutoKeyword {
   return 'status' in i && 'eigeneListings' in i
+}
+
+function BeiDirZelle({ i }: { i: EtsyKeywordIdee | EtsyAutoKeyword }) {
+  if (istAuto(i)) {
+    if (i.status === 'fehlt') return <span className="text-amber-200">fehlt</span>
+    if (i.status === 'selten') return <span className="text-sky-200">{i.eigeneListings}×</span>
+    return <span className="text-emerald-200">{i.eigeneListings}×</span>
+  }
+  return <span className="text-xs text-[var(--app-text-muted)]">—</span>
 }
 
 function KeywordTabelle({
@@ -135,15 +190,9 @@ function KeywordTabelle({
               <td className="py-2 pr-2">
                 <ChanceBadge chance={i.chance} />
               </td>
-              {extraSpalte === 'bei dir' && istAuto(i) && (
+              {extraSpalte === 'bei dir' && (
                 <td className="py-2 pr-2 text-xs tabular-nums">
-                  {i.status === 'fehlt' ? (
-                    <span className="text-amber-200">fehlt</span>
-                  ) : i.status === 'selten' ? (
-                    <span className="text-sky-200">{i.eigeneListings}×</span>
-                  ) : (
-                    <span className="text-emerald-200">{i.eigeneListings}×</span>
-                  )}
+                  <BeiDirZelle i={i} />
                 </td>
               )}
               <td className="whitespace-nowrap py-2 text-right">
@@ -208,7 +257,15 @@ export function EtsyKeywords({ verbunden = false }: { verbunden?: boolean }) {
     try {
       const res = await fetch('/api/etsy/keywords/merkliste', { cache: 'no-store' })
       const j = (await res.json()) as { keywords?: Gemerkt[] }
-      if (res.ok) setGemerkt(j.keywords ?? [])
+      if (res.ok) {
+        setGemerkt(
+          (j.keywords ?? []).map((g) => ({
+            ...g,
+            chance: chanceVon(g.chance),
+            quellen: quellenVon(g.quellen),
+          })),
+        )
+      }
     } catch {
       /* Merkliste optional */
     }
@@ -269,6 +326,13 @@ export function EtsyKeywords({ verbunden = false }: { verbunden?: boolean }) {
 
   const gemerktSet = useMemo(() => new Set(gemerkt.map((g) => g.keyword)), [gemerkt])
 
+  const favoritenZeilen = useMemo(() => {
+    const live = new Map<string, EtsyKeywordIdee | EtsyAutoKeyword>()
+    for (const i of ideen) live.set(i.keyword, i)
+    for (const i of autoScan?.alle ?? []) live.set(i.keyword, i)
+    return gemerkt.map((g) => gemerktAlsIdee(g, live.get(g.keyword)))
+  }, [gemerkt, ideen, autoScan])
+
   async function merken(i: EtsyKeywordIdee) {
     if (gemerktSet.has(i.keyword)) {
       await entfernen(i.keyword)
@@ -287,7 +351,18 @@ export function EtsyKeywords({ verbunden = false }: { verbunden?: boolean }) {
         return
       }
       setGemerkt((prev) => [
-        { keyword: i.keyword, nachfrage: i.nachfrage, wettbewerb: i.wettbewerb, chance: i.chance, saison: i.saison },
+        {
+          keyword: i.keyword,
+          nachfrage: i.nachfrage,
+          wettbewerb: i.wettbewerb,
+          chance: i.chance,
+          saison: i.saison,
+          quellen: i.quellen,
+          etsyNutzung: i.etsyNutzung,
+          wettbewerbMarkt: i.wettbewerbMarkt,
+          eigeneListings: istAuto(i) ? i.eigeneListings : null,
+          status: istAuto(i) ? i.status : null,
+        },
         ...prev.filter((g) => g.keyword !== i.keyword),
       ])
       toast.success(`„${i.keyword}“ in Favoriten.`)
@@ -402,33 +477,15 @@ export function EtsyKeywords({ verbunden = false }: { verbunden?: boolean }) {
               <p className="text-xs text-[var(--app-text-muted)]">
                 Das Cockpit schlägt vor, wo sie als Tag hinpassen. Entfernen nimmt sie aus der Liste, nicht von Etsy.
               </p>
-              <ul className="divide-y divide-[var(--app-border)]/60">
-                {gemerkt.map((g) => (
-                  <li key={g.keyword} className="flex flex-wrap items-center gap-2 py-2">
-                    <span className="min-w-0 flex-1 font-medium text-[var(--app-text)]">{g.keyword}</span>
-                    {g.chance && (
-                      <span className="text-[10px] text-[var(--app-text-muted)]">{g.chance}</span>
-                    )}
-                    {g.keyword.length <= 20 && (
-                      <button
-                        type="button"
-                        onClick={() => void planeEinbau(g.keyword)}
-                        className="rounded-lg border border-teal-500/40 px-2 py-1 text-[11px] text-teal-200 hover:bg-teal-500/15"
-                      >
-                        Einbauen
-                      </button>
-                    )}
-                    <button
-                      type="button"
-                      disabled={favoritBusy === g.keyword}
-                      onClick={() => void entfernen(g.keyword)}
-                      className="rounded-lg border border-rose-500/30 px-2 py-1 text-[11px] text-rose-200 hover:bg-rose-500/10 disabled:opacity-60"
-                    >
-                      {favoritBusy === g.keyword ? '…' : 'Entfernen'}
-                    </button>
-                  </li>
-                ))}
-              </ul>
+              <KeywordTabelle
+                ideen={favoritenZeilen}
+                gemerktSet={gemerktSet}
+                busyKeyword={favoritBusy}
+                onKopieren={kopieren}
+                onMerken={(i) => void merken(i)}
+                onEinbauen={(kw) => void planeEinbau(kw)}
+                extraSpalte="bei dir"
+              />
               <button
                 type="button"
                 onClick={() => kopieren(gemerkt.map((g) => g.keyword).join(', '))}
