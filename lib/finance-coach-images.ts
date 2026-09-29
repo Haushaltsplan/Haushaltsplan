@@ -61,6 +61,62 @@ export function coachImageDataUrl(part: CoachImagePart): string {
   return `data:${part.mimeType};base64,${part.base64}`
 }
 
+/**
+ * Vercel lehnt Request-Bodys > ~4,5 MB mit 413 ab. Rechnet Bilder schrittweise kleiner,
+ * bis die Summe der Base64-Längen unter `maxBase64Zeichen` liegt (Standard ≈ 3,6 MB).
+ */
+export async function passeBilderAnUploadBudget(
+  parts: CoachImagePart[],
+  maxBase64Zeichen = 3_600_000,
+): Promise<CoachImagePart[]> {
+  const summe = (p: CoachImagePart[]) => p.reduce((n, x) => n + x.base64.length, 0)
+  let aktuell = parts
+  for (let runde = 0; runde < 4 && summe(aktuell) > maxBase64Zeichen; runde++) {
+    const faktor = Math.sqrt(maxBase64Zeichen / summe(aktuell)) * 0.95
+    const qualitaet = Math.max(0.55, 0.7 - runde * 0.05)
+    aktuell = await Promise.all(
+      aktuell.map(async (p) => {
+        const blob = await (await fetch(coachImageDataUrl(p))).blob()
+        const bitmap = await createImageBitmap(blob)
+        try {
+          const w = Math.max(1, Math.round(bitmap.width * Math.min(1, faktor)))
+          const h = Math.max(1, Math.round(bitmap.height * Math.min(1, faktor)))
+          const canvas = document.createElement('canvas')
+          canvas.width = w
+          canvas.height = h
+          const ctx = canvas.getContext('2d')
+          if (!ctx) return p
+          ctx.fillStyle = '#fff'
+          ctx.fillRect(0, 0, w, h)
+          ctx.drawImage(bitmap, 0, 0, w, h)
+          const dataUrl = canvas.toDataURL('image/jpeg', qualitaet)
+          const base64 = dataUrl.slice(dataUrl.indexOf(',') + 1)
+          return base64 ? { mimeType: 'image/jpeg', base64 } : p
+        } finally {
+          bitmap.close()
+        }
+      }),
+    )
+  }
+  return aktuell
+}
+
+/** `res.json()` ohne Absturz bei HTML-/Text-Antworten (413, 504 von Vercel). */
+export async function leseJsonAntwort<T extends { error?: string }>(res: Response): Promise<T> {
+  const text = await res.text()
+  try {
+    return JSON.parse(text) as T
+  } catch {
+    const error =
+      res.status === 413
+        ? 'Fotos zu groß für den Upload (413). Bitte weniger oder kleinere Fotos wählen.'
+        : res.status === 504
+          ? 'Zeitüberschreitung beim Server (504). Bitte erneut versuchen.'
+          : `Serverfehler ${res.status}: ${text.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 160)}`
+    return { error } as T
+  }
+}
+
 export type CompressImageUploadOpts = {
   /** Längere Kante max. in px (Standard: 1024 — kleinere Requests, z. B. Vercel-Payload-Limit). */
   maxEdge?: number

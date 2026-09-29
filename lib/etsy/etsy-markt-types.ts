@@ -62,12 +62,14 @@ export type EtsyMarktKontext = {
 
 export type EtsyKeywordChance = 'hoch' | 'mittel' | 'niedrig'
 
-/** Ergebnis des Keyword-Explorers (Google.de + Amazon.de + Etsy-Wettbewerb). */
+/** Ergebnis des Keyword-Explorers (Etsy-Top-Listings + Google.de + Amazon.de + Etsy-Wettbewerb). */
 export type EtsyKeywordIdee = {
   keyword: string
-  /** 0–100: wie oft/weit oben die Phrase in Käufer-Suchvorschlägen auftaucht */
+  /** 0–100: wie oft/weit oben die Phrase in Käufer-Suchvorschlägen / Etsy-Top-Tags auftaucht */
   nachfrage: number
-  quellen: Array<'google_de' | 'amazon_de' | 'etsy_suggest'>
+  quellen: Array<'etsy_tags' | 'etsy_suggest' | 'google_de' | 'amazon_de'>
+  /** Wie viele der Top-100-Etsy-Listings diese Phrase als Tag nutzen (null = kein Etsy-Tag). */
+  etsyNutzung: number | null
   /** Aktive Etsy-Treffer (DE-Shops bevorzugt), null wenn nicht geprüft */
   wettbewerb: number | null
   wettbewerbMarkt: 'DE' | 'global' | null

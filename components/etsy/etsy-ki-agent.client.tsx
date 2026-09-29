@@ -1,7 +1,14 @@
 'use client'
 
 import { PageChrome, PageHero, PageSection, PageSectionPanel } from '@/components/page-shell'
-import { compressImageFileForCoach, coachImageDataUrl, type CoachImagePart } from '@/lib/finance-coach-images'
+import {
+  COACH_MAX_IMAGES_PER_SEND,
+  coachImageDataUrl,
+  compressImageFileForCoach,
+  leseJsonAntwort,
+  passeBilderAnUploadBudget,
+  type CoachImagePart,
+} from '@/lib/finance-coach-images'
 import { oeffneEtsyOAuthUrl } from '@/lib/etsy/etsy-oauth-open'
 import type { EtsyMarktAbdeckung } from '@/lib/etsy/etsy-markt-types'
 import {
@@ -46,6 +53,8 @@ type DraftResult = {
   listingUrl: string | null
   warenkorbZusammenfassung?: string
   manuellHinweise?: string[]
+  bilderHochgeladen?: number
+  bildFehler?: string[]
 }
 
 type Schritt = 'aufnahme' | 'freigabe'
@@ -379,7 +388,7 @@ export function EtsyKiAgentClient({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          images,
+          images: await passeBilderAnUploadBudget(images.slice(0, COACH_MAX_IMAGES_PER_SEND)),
           holzart: holzart.trim(),
           masse: masse.trim(),
           materials: [holzart.trim()],
@@ -387,11 +396,11 @@ export function EtsyKiAgentClient({
           finishText: finishText.trim() || undefined,
         }),
       })
-      const j = (await res.json()) as {
+      const j = await leseJsonAntwort<{
         error?: string
         listing?: EtsyGeneratedListing
         markt?: MarktInfo
-      }
+      }>(res)
       if (!res.ok || !j.listing) {
         toast.error(j.error ?? 'Analyse fehlgeschlagen.')
         return
@@ -491,7 +500,7 @@ export function EtsyKiAgentClient({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          images,
+          images: await passeBilderAnUploadBudget(images),
           holzart: holzart.trim(),
           masse: masse.trim(),
           preisEur: listing.preisEmpfohlenEur,
@@ -506,19 +515,27 @@ export function EtsyKiAgentClient({
           listing,
         }),
       })
-      const j = (await res.json()) as {
+      const j = await leseJsonAntwort<{
         error?: string
         draft?: DraftResult
         verwendeterPreisEur?: number
-      }
+      }>(res)
       if (!res.ok || !j.draft) {
         toast.error(j.error ?? 'Draft fehlgeschlagen.')
         return
       }
       setLastDraft(j.draft)
-      toast.success(
-        `Draft #${j.draft.listingId} · ${j.verwendeterPreisEur ?? listing.preisEmpfohlenEur} € · ${j.draft.tags?.length ?? 0} Tags`,
-      )
+      const fotoFehler = j.draft.bildFehler?.length ?? 0
+      if (fotoFehler > 0) {
+        toast.error(
+          `Draft #${j.draft.listingId} angelegt, aber ${fotoFehler} Foto(s) fehlgeschlagen — Details unten. Nicht erneut anlegen.`,
+          { duration: 10_000 },
+        )
+      } else {
+        toast.success(
+          `Draft #${j.draft.listingId} · ${j.verwendeterPreisEur ?? listing.preisEmpfohlenEur} € · ${j.draft.tags?.length ?? 0} Tags · ${j.draft.bilderHochgeladen ?? images.length} Fotos`,
+        )
+      }
       void ladeVorlageUndHistorie()
       setSchritt('aufnahme')
       setDraftListing(null)
@@ -621,7 +638,7 @@ export function EtsyKiAgentClient({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          images,
+          images: await passeBilderAnUploadBudget(images.slice(0, COACH_MAX_IMAGES_PER_SEND)),
           anreichern,
           holzart: holzart.trim() || undefined,
           masse: masse.trim() || undefined,
@@ -645,12 +662,12 @@ export function EtsyKiAgentClient({
           },
         }),
       })
-      const j = (await res.json()) as {
+      const j = await leseJsonAntwort<{
         error?: string
         listing?: EtsyGeneratedListing
         score?: { overall: number; seoScore: number; geoScore: number }
         markt?: MarktInfo
-      }
+      }>(res)
       if (!res.ok || !j.listing) {
         toast.error(j.error ?? 'Optimierung fehlgeschlagen.')
         return
@@ -1301,6 +1318,19 @@ export function EtsyKiAgentClient({
                 >
                   Kopieren
                 </button>
+              </div>
+            ) : null}
+            {lastDraft.bildFehler && lastDraft.bildFehler.length > 0 ? (
+              <div className="space-y-1 rounded-xl border border-rose-500/40 bg-rose-500/10 p-3 text-xs text-rose-100">
+                <p className="font-medium">
+                  Foto-Upload zu Etsy: {lastDraft.bilderHochgeladen ?? 0} ok, {lastDraft.bildFehler.length}{' '}
+                  fehlgeschlagen
+                </p>
+                {lastDraft.bildFehler.map((f) => (
+                  <p key={f} className="break-words font-mono text-[11px] opacity-90">
+                    {f}
+                  </p>
+                ))}
               </div>
             ) : null}
             {lastDraft.manuellHinweise && lastDraft.manuellHinweise.length > 0 ? (

@@ -868,6 +868,72 @@ function saisonFuer(k: string): string | null {
   return null
 }
 
+type EtsyTopTags = {
+  listings: number
+  markt: 'DE' | 'global'
+  tags: Array<{ tag: string; nutzung: number; punkte: number }>
+}
+
+/**
+ * Echte Etsy-Daten trotz blockiertem Autosuggest: Tags der von Etsy am besten gerankten
+ * Listings (Open API, sort_on=score). Gewicht = Rang × Favoriten — Tags erfolgreicher
+ * Listings sind die Suchphrasen, über die Etsy-Käufer tatsächlich finden.
+ */
+async function holeEtsyTopTags(keyword: string): Promise<EtsyTopTags | null> {
+  if (!etsyApiKonfiguriert()) return null
+  const key = cacheKey('etsytags:de', keyword)
+  const c = await ladeCache<EtsyTopTags>(key)
+  if (c) return c.payload
+
+  const lade = async (shopLocation?: string) => {
+    const q = new URLSearchParams({ keywords: keyword, sort_on: 'score', limit: '100' })
+    if (shopLocation) q.set('shop_location', shopLocation)
+    const res = await apiDrossel(() =>
+      fetch(`${ETSY_API_BASE}/application/listings/active?${q.toString()}`, {
+        headers: { 'x-api-key': etsyApiKeyHeader(), Accept: 'application/json' },
+        cache: 'no-store',
+        signal: AbortSignal.timeout(12_000),
+      }),
+    ).catch(() => null)
+    if (!res?.ok) return [] as ApiListing[]
+    return ((await res.json()) as { results?: ApiListing[] }).results ?? []
+  }
+
+  let markt: EtsyTopTags['markt'] = 'DE'
+  let listings = await lade(ETSY_KONKURRENZ_SHOP_LOCATION)
+  if (listings.length < 20) {
+    markt = 'global'
+    listings = await lade()
+  }
+  if (listings.length === 0) return null
+
+  const tally = new Map<string, { nutzung: number; punkte: number }>()
+  listings.forEach((l, rang) => {
+    const gewicht = Math.max(0.2, 1 - rang / 120) * (1 + Math.log10(1 + Number(l.num_favorers || 0)) / 2)
+    const gesehen = new Set<string>()
+    for (const roh of l.tags ?? []) {
+      const tag = bereinigeSuggestion(norm(String(roh)))
+      if (!tag || gesehen.has(tag)) continue
+      gesehen.add(tag)
+      const t = tally.get(tag) ?? { nutzung: 0, punkte: 0 }
+      t.nutzung++
+      t.punkte += gewicht
+      tally.set(tag, t)
+    }
+  })
+  const erg: EtsyTopTags = {
+    listings: listings.length,
+    markt,
+    tags: [...tally.entries()]
+      .filter(([, t]) => t.nutzung >= 2)
+      .map(([tag, t]) => ({ tag, nutzung: t.nutzung, punkte: Math.round(t.punkte * 100) / 100 }))
+      .sort((a, b) => b.punkte - a.punkte)
+      .slice(0, 40),
+  }
+  await speichereCache(key, 'competitor', erg)
+  return erg
+}
+
 function chanceAus(nachfrage: number, wettbewerb: number | null): EtsyKeywordIdee['chance'] {
   if (wettbewerb == null) return null
   // Nachfrage je Größenordnung Wettbewerb — Nischen mit echter Nachfrage gewinnen.
@@ -919,6 +985,36 @@ export async function erkundeEtsyKeywords(
     // Amazon = Kaufabsicht → leicht höher gewichtet.
     r?.suggestions.forEach((s, i) => merke(s, a.quelle as KaeuferQuelle, i, a.quelle === 'amazon_de' ? 1.2 : 1))
   }
+  // Etsy selbst: Tags der Top-Listings für den Suchbegriff (+ bei Tiefensuche für die
+  // stärksten Käuferphrasen). Wichtigste Quelle — hier wird tatsächlich verkauft.
+  const etsyNutzung = new Map<string, number>()
+  const etsySeeds = [seed]
+  if (opts?.tief) {
+    const top = [...treffer.entries()]
+      .filter(([kw]) => kw !== seed && kw.includes(' '))
+      .sort((a, b) => b[1].punkte - a[1].punkte)
+      .slice(0, 3)
+      .map(([kw]) => kw)
+    etsySeeds.push(...top)
+  }
+  let etsyOk = false
+  for (const q of etsySeeds) {
+    if (q !== seed && Date.now() > deadline) break
+    abfragen++
+    const e = await holeEtsyTopTags(q)
+    if (!e) continue
+    etsyOk = true
+    const maxP = e.tags[0]?.punkte || 1
+    e.tags.forEach((t, i) => {
+      const tr = treffer.get(t.tag) ?? { punkte: 0, quellen: new Set() }
+      tr.punkte += 1.5 * (0.3 + 0.7 * (t.punkte / maxP)) * Math.max(0.3, 1 - i / 40)
+      tr.quellen.add('etsy_tags')
+      treffer.set(t.tag, tr)
+      etsyNutzung.set(t.tag, Math.max(etsyNutzung.get(t.tag) ?? 0, t.nutzung))
+    })
+    if (q === seed && e.markt === 'global') hinweise.push('Etsy-Tags aus globalen Listings (zu wenig deutsche Treffer).')
+  }
+  if (!etsyOk) hinweise.push('Etsy-Top-Listings nicht erreichbar — nur Google/Amazon.')
   if (treffer.size === 0) hinweise.push('Keine Suchvorschläge erreichbar (Google/Amazon/Etsy).')
 
   const max = Math.max(1, ...[...treffer.values()].map((t) => t.punkte + (t.quellen.size - 1) * 0.8))
@@ -929,6 +1025,7 @@ export async function erkundeEtsyKeywords(
       keyword,
       nachfrage: Math.round(((t.punkte + (t.quellen.size - 1) * 0.8) / max) * 100),
       quellen: [...t.quellen],
+      etsyNutzung: etsyNutzung.get(keyword) ?? null,
       wettbewerb: null,
       wettbewerbMarkt: null,
       chance: null,

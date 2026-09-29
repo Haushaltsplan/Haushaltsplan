@@ -48,6 +48,7 @@ export function EtsyKonkurrenz() {
   const [modus, setModus] = useState<Modus>('zuwachs')
   const [zeitraum, setZeitraum] = useState<Zeitraum>(90)
   const [ausgeblendet, setAusgeblendet] = useState<Set<number>>(new Set())
+  const [neuerShop, setNeuerShop] = useState('')
 
   const lade = useCallback(async (tage: Zeitraum) => {
     setLaden(true)
@@ -88,6 +89,40 @@ export function EtsyKonkurrenz() {
     } finally {
       setBusy(false)
     }
+  }
+
+  async function shopHinzufuegen(e: React.FormEvent) {
+    e.preventDefault()
+    const name = neuerShop.trim()
+    if (!name) return
+    setBusy(true)
+    try {
+      const res = await fetch('/api/etsy/konkurrenz', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ hinzufuegen: name }),
+      })
+      const j = (await res.json()) as { error?: string; name?: string }
+      if (!res.ok) throw new Error(j.error || 'Hinzufügen fehlgeschlagen')
+      toast.success(`${j.name ?? name} wird ab jetzt verfolgt.`)
+      setNeuerShop('')
+      await lade(zeitraum)
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Fehler')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function shopEntfernen(s: EtsyKonkurrenzShop) {
+    if (!window.confirm(`${s.name} aus dem Chart nehmen und nicht mehr vorschlagen?`)) return
+    const res = await fetch(`/api/etsy/konkurrenz?shopId=${s.shopId}`, { method: 'DELETE' })
+    if (!res.ok) {
+      toast.error('Entfernen fehlgeschlagen.')
+      return
+    }
+    toast.success(`${s.name} entfernt.`)
+    await lade(zeitraum)
   }
 
   const shops = useMemo(() => daten?.shops ?? [], [daten])
@@ -134,7 +169,7 @@ export function EtsyKonkurrenz() {
         <div>
           <h2 className="text-base font-semibold tracking-tight text-[var(--app-text)]">Konkurrenz-Verkaufschart</h2>
           <p className="text-xs text-[var(--app-text-muted)]">
-            Die 10 größten deutschen Etsy-Shops für gedrechselte Schalen — täglich gemessen.
+            Die 10 größten deutschen Drechsler-Shops mit Schwerpunkt Holzschalen — täglich gemessen.
           </p>
         </div>
         <button
@@ -148,14 +183,31 @@ export function EtsyKonkurrenz() {
       </div>
 
       <div className="space-y-4 px-4 py-3 sm:px-5 sm:py-4">
+        <form onSubmit={(e) => void shopHinzufuegen(e)} className="flex flex-wrap gap-2">
+          <input
+            value={neuerShop}
+            onChange={(e) => setNeuerShop(e.target.value)}
+            placeholder="Shop hinzufügen, z. B. JoergZube oder Etsy-Shop-Link"
+            className="min-w-0 flex-1 rounded-lg border border-[var(--app-border)] bg-[var(--app-surface)] px-3 py-1.5 text-sm text-[var(--app-text)] placeholder:text-[var(--app-text-muted)]"
+          />
+          <button
+            type="submit"
+            disabled={busy || !neuerShop.trim()}
+            className="rounded-lg bg-violet-700 px-3 py-1.5 text-sm font-medium text-white hover:bg-violet-600 disabled:opacity-50"
+          >
+            Hinzufügen
+          </button>
+        </form>
+
         {laden && !daten ? (
           <p className="text-sm text-[var(--app-text-muted)]">Lade Konkurrenz-Daten…</p>
         ) : shops.length === 0 ? (
           <div className="rounded-xl border border-dashed border-[var(--app-border)] p-4 text-sm text-[var(--app-text-muted)]">
             <p>
-              Noch keine Konkurrenten erfasst. Die App sucht auf Etsy nach deutschen Shops, die viele gedrechselte
-              Schalen anbieten, und nimmt die 10 mit den meisten Verkäufen. Danach wird jeden Morgen automatisch
-              gemessen.
+              Noch keine Konkurrenten erfasst. Füge oben Shops hinzu, die du kennst — oder lass die App suchen: Sie
+              prüft das Sortiment deutscher Shops und nimmt nur solche, bei denen mindestens{' '}
+              {Math.round((daten?.minSchalenAnteil ?? 0.4) * 100)} % der Artikel Holzschalen sind (keine Deko-,
+              Epoxid- oder Gemischtwaren-Shops). Danach wird jeden Morgen automatisch gemessen.
             </p>
             <button
               type="button"
@@ -258,7 +310,8 @@ export function EtsyKonkurrenz() {
                     <th className="py-2 pr-2 font-medium">Letzte 30 Tage</th>
                     <th className="py-2 pr-2 text-right font-medium">7 Tage</th>
                     <th className="py-2 pr-2 text-right font-medium">Ø / Tag</th>
-                    <th className="py-2 text-right font-medium">Bewertung</th>
+                    <th className="py-2 pr-2 text-right font-medium">Bewertung</th>
+                    <th className="w-6 py-2" />
                   </tr>
                 </thead>
                 <tbody>
@@ -270,6 +323,7 @@ export function EtsyKonkurrenz() {
                       farbe={farbe.get(s.shopId) ?? CHART.sky}
                       aus={ausgeblendet.has(s.shopId)}
                       onToggle={() => umschalten(s.shopId)}
+                      onEntfernen={() => void shopEntfernen(s)}
                       max30={max30}
                     />
                   ))}
@@ -279,16 +333,18 @@ export function EtsyKonkurrenz() {
 
             <div className="space-y-1 text-[11px] leading-relaxed text-[var(--app-text-muted)]">
               <p>
-                Klick auf einen Shop blendet ihn im Chart ein/aus. Dein eigener Shop ist{' '}
-                <span style={{ color: EIGEN_FARBE }}>gelb</span> hervorgehoben.
+                Klick auf einen Shop blendet ihn im Chart ein/aus, ✕ entfernt ihn dauerhaft. Dein eigener Shop ist{' '}
+                <span style={{ color: EIGEN_FARBE }}>gelb</span> hervorgehoben, von dir hinzugefügte Shops sind
+                „fest verfolgt“.
               </p>
               <p>
                 Gezählt werden alle verkauften Artikel des ganzen Shops (Etsy veröffentlicht keine Verkäufe pro
-                Listing). „Schalen-Treffer“ zeigt, wie viele Listings des Shops in der deutschen Schalen-Suche
-                auftauchen — je höher, desto stärker ist der Shop auf Schalen spezialisiert.
+                Listing). „% Schalen“ = Anteil gedrechselter Holzschalen am Sortiment — automatisch vorgeschlagen
+                werden nur Shops ab {Math.round((daten?.minSchalenAnteil ?? 0.4) * 100)} %.
               </p>
               <p>
-                Suchbegriffe: {daten?.suchbegriffe.join(', ')}. Die Top 10 werden wöchentlich neu bestimmt.{' '}
+                Suchbegriffe: {daten?.suchbegriffe.join(', ')}. Die automatischen Plätze werden wöchentlich neu
+                bestimmt.{' '}
                 <button
                   type="button"
                   disabled={busy}
@@ -337,6 +393,7 @@ function ShopZeile({
   farbe,
   aus,
   onToggle,
+  onEntfernen,
   max30,
 }: {
   rang: number
@@ -344,8 +401,15 @@ function ShopZeile({
   farbe: string
   aus: boolean
   onToggle: () => void
+  onEntfernen: () => void
   max30: number
 }) {
+  const info = [
+    s.eigener ? 'Dein Shop' : s.manuell ? 'fest verfolgt' : null,
+    s.schalenAnteil != null ? `${Math.round(s.schalenAnteil * 100)} % Schalen` : null,
+    s.preisMedian != null ? `Ø ${zahl(s.preisMedian)} €` : null,
+    s.aktiveListings != null ? `${zahl(s.aktiveListings)} Listings` : null,
+  ].filter(Boolean)
   const wert30 = s.plus30 ?? s.seitStart
   return (
     <tr
@@ -376,12 +440,7 @@ function ShopZeile({
             ) : (
               <span className="block truncate font-medium text-[var(--app-text)]">{s.name}</span>
             )}
-            <span className="text-[11px] text-[var(--app-text-muted)]">
-              {s.eigener
-                ? 'Dein Shop'
-                : `${s.treffer} Schalen-Treffer${s.preisMedian != null ? ` · Ø ${zahl(s.preisMedian)} €` : ''}`}
-              {s.aktiveListings != null ? ` · ${zahl(s.aktiveListings)} Listings` : ''}
-            </span>
+            <span className="text-[11px] text-[var(--app-text-muted)]">{info.join(' · ')}</span>
           </div>
         </div>
       </td>
@@ -407,9 +466,24 @@ function ShopZeile({
         {s.plus7 == null ? '—' : `+${zahl(s.plus7)}`}
       </td>
       <td className="py-2 pr-2 text-right text-xs tabular-nums text-[var(--app-text)]">{zahl(s.proTag, 1)}</td>
-      <td className="py-2 text-right text-xs tabular-nums text-[var(--app-text-muted)]">
+      <td className="py-2 pr-2 text-right text-xs tabular-nums text-[var(--app-text-muted)]">
         {s.bewertungSchnitt != null ? `${zahl(s.bewertungSchnitt, 1)} ★` : '—'}
         {s.bewertungen != null ? ` (${zahl(s.bewertungen)})` : ''}
+      </td>
+      <td className="py-2 text-right">
+        {!s.eigener && (
+          <button
+            type="button"
+            title="Aus dem Chart entfernen"
+            onClick={(e) => {
+              e.stopPropagation()
+              onEntfernen()
+            }}
+            className="rounded px-1.5 text-xs text-[var(--app-text-muted)] hover:bg-rose-500/15 hover:text-rose-300"
+          >
+            ✕
+          </button>
+        )}
       </td>
     </tr>
   )

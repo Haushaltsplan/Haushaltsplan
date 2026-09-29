@@ -13,13 +13,16 @@ type Gemerkt = {
   saison: string | null
 }
 
-type Filter = 'alle' | 'tags' | 'chance'
+type Filter = 'alle' | 'etsy' | 'tags' | 'chance'
 
 const QUELLEN_LABEL: Record<EtsyKeywordIdee['quellen'][number], string> = {
+  etsy_tags: 'Etsy',
+  etsy_suggest: 'Etsy-Suche',
   google_de: 'Google',
   amazon_de: 'Amazon',
-  etsy_suggest: 'Etsy',
 }
+
+const QUELLEN_REIHENFOLGE: EtsyKeywordIdee['quellen'][number][] = ['etsy_tags', 'etsy_suggest', 'amazon_de', 'google_de']
 
 const CHANCE_STIL: Record<EtsyKeywordChance, string> = {
   hoch: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/40',
@@ -139,6 +142,7 @@ export function EtsyKeywords() {
   }
 
   const sichtbar = useMemo(() => {
+    if (filter === 'etsy') return ideen.filter((i) => i.quellen.some((q) => q.startsWith('etsy')))
     if (filter === 'tags') return ideen.filter((i) => i.tagTauglich)
     if (filter === 'chance') return ideen.filter((i) => i.chance === 'hoch' || i.chance === 'mittel')
     return ideen
@@ -149,8 +153,9 @@ export function EtsyKeywords() {
       <PageSection titleId="etsy-keywords" title="Keyword-Finder">
         <PageSectionPanel density="compact" className="space-y-3">
           <p className="text-sm text-[var(--app-text-muted)]">
-            Findet heraus, wonach deutsche Käufer wirklich suchen — aus den Suchvorschlägen von Google.de,
-            Amazon.de und Etsy — und wie viele Etsy-Shops schon dafür ranken.
+            Findet heraus, wonach deutsche Käufer wirklich suchen: aus den Tags der Listings, die Etsy für
+            den Begriff ganz oben zeigt, plus den Suchvorschlägen von Google.de und Amazon.de — und wie viele
+            Etsy-Shops schon dafür ranken.
           </p>
           <form onSubmit={(e) => void erkunden(e)} className="grid gap-2 sm:grid-cols-[1fr_10rem_auto]">
             <input
@@ -188,6 +193,7 @@ export function EtsyKeywords() {
               {(
                 [
                   ['alle', 'Alle'],
+                  ['etsy', 'Auf Etsy bewährt'],
                   ['tags', 'Als Tag nutzbar (≤20 Zeichen)'],
                   ['chance', 'Nur gute Chancen'],
                 ] as const
@@ -239,9 +245,22 @@ export function EtsyKeywords() {
                             {i.keyword}
                           </button>
                           <div className="mt-0.5 flex flex-wrap gap-1 text-[10px] text-[var(--app-text-muted)]">
-                            {i.quellen.map((q) => (
-                              <span key={q} className="rounded bg-[var(--app-surface-muted)] px-1.5 py-0.5">
+                            {QUELLEN_REIHENFOLGE.filter((q) => i.quellen.includes(q)).map((q) => (
+                              <span
+                                key={q}
+                                title={
+                                  q === 'etsy_tags' && i.etsyNutzung != null
+                                    ? `${i.etsyNutzung} der Top-100-Etsy-Listings nutzen diesen Tag`
+                                    : undefined
+                                }
+                                className={`rounded px-1.5 py-0.5 ${
+                                  q.startsWith('etsy')
+                                    ? 'bg-orange-500/15 font-medium text-orange-200'
+                                    : 'bg-[var(--app-surface-muted)]'
+                                }`}
+                              >
                                 {QUELLEN_LABEL[q]}
+                                {q === 'etsy_tags' && i.etsyNutzung != null ? ` · ${i.etsyNutzung}×` : ''}
                               </span>
                             ))}
                             {!i.tagTauglich && <span className="text-amber-300/80">zu lang für Tag → Titel</span>}
@@ -277,9 +296,10 @@ export function EtsyKeywords() {
               </div>
             )}
             <p className="text-[11px] text-[var(--app-text-muted)]">
-              Nachfrage ist ein relatives Signal (keine Suchvolumen-Zahl): Phrasen, die Google und Amazon
-              gleichzeitig und weit oben vorschlagen, werden am häufigsten gesucht. Wettbewerb wird für die
-              Top 12 geprüft.
+              Nachfrage ist ein relatives Signal (keine Suchvolumen-Zahl). Am stärksten zählt „Etsy · 14×“: so
+              viele der 100 von Etsy am besten platzierten deutschen Listings nutzen die Phrase als Tag —
+              Listings mit vielen Favoriten zählen mehr. Phrasen, die zusätzlich Google oder Amazon vorschlagen,
+              werden auch außerhalb von Etsy gesucht. Wettbewerb wird für die Top 12 geprüft.
             </p>
           </PageSectionPanel>
         </PageSection>

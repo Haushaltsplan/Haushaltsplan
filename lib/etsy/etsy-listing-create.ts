@@ -37,6 +37,9 @@ export type EtsyDraftErgebnis = {
   warenkorbZusammenfassung: string
   /** Manuelle Schritte, die die API nicht setzen kann. */
   manuellHinweise: string[]
+  bilderHochgeladen: number
+  /** Etsy-Fehlermeldungen pro fehlgeschlagenem Foto (Draft existiert trotzdem). */
+  bildFehler: string[]
 }
 
 function mimeToExt(mime: string): string {
@@ -113,11 +116,29 @@ async function uploadListingImage(opts: {
         'x-api-key': etsyApiKeyHeader(),
       },
       body: form,
+      signal: AbortSignal.timeout(30_000),
     },
   )
   if (!res.ok) {
     const text = await res.text()
-    throw new Error(`Bild-Upload Rank ${opts.rank} fehlgeschlagen (${res.status}): ${text.slice(0, 300)}`)
+    const err = new Error(`Foto ${opts.rank}: Etsy ${res.status} — ${text.slice(0, 300)}`) as Error & {
+      status?: number
+    }
+    err.status = res.status
+    throw err
+  }
+}
+
+/** Einmal wiederholen bei Rate-Limit/Serverfehler/Timeout; 4xx-Validierungsfehler sofort melden. */
+async function uploadMitRetry(opts: Parameters<typeof uploadListingImage>[0]): Promise<void> {
+  try {
+    await uploadListingImage(opts)
+  } catch (e) {
+    const status = (e as { status?: number }).status
+    const nochmal = status == null || status === 429 || status >= 500
+    if (!nochmal) throw e
+    await new Promise((r) => setTimeout(r, 2000))
+    await uploadListingImage(opts)
   }
 }
 
@@ -292,20 +313,31 @@ export async function legeEtsyDraftAn(opts: {
     .join(' · ')
     .slice(0, 250)
 
+  // Der Draft existiert ab hier auf Etsy — Foto-Fehler dürfen ihn nicht „verwaisen“ lassen
+  // (sonst legt ein erneuter Versuch ein Duplikat an).
   let rank = 1
+  let bilderHochgeladen = 0
+  const bildFehler: string[] = []
   for (const image of opts.images.slice(0, 10)) {
     const altText =
       rank === 1
         ? altBasis
         : `${materials[0]} Detail Maserung · handgedrehte Schale`.slice(0, 250)
-    await uploadListingImage({
-      accessToken: tokens.accessToken,
-      shopId,
-      listingId,
-      image,
-      rank,
-      altText,
-    })
+    try {
+      await uploadMitRetry({
+        accessToken: tokens.accessToken,
+        shopId,
+        listingId,
+        image,
+        rank: bilderHochgeladen + 1,
+        altText,
+      })
+      bilderHochgeladen += 1
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : `Foto ${rank}: Upload fehlgeschlagen`
+      console.error('[etsy draft] Bild-Upload', listingId, msg)
+      bildFehler.push(msg)
+    }
     rank += 1
   }
 
@@ -316,7 +348,14 @@ export async function legeEtsyDraftAn(opts: {
     tags: savedTags.length >= 13 ? savedTags : tags,
     listingUrl: typeof created.url === 'string' ? created.url : null,
     warenkorbZusammenfassung: warenkorb,
+    bilderHochgeladen,
+    bildFehler,
     manuellHinweise: [
+      ...(bildFehler.length
+        ? [
+            `${bildFehler.length} von ${bilderHochgeladen + bildFehler.length} Fotos konnten nicht zu Etsy hochgeladen werden — bitte im Etsy-Draft manuell ergänzen (Draft ist angelegt, nicht erneut erstellen).`,
+          ]
+        : []),
       'Warenkorbzusammenfassung: in Etsy manuell einfügen (API unterstützt das DE-Pflichtfeld nicht) — Text unten kopieren.',
       'Herstellung: „Wird von Grund auf neu hergestellt“ in Etsy setzen (API-Lücke).',
       'Werkzeuge: „Handgeführte oder handgehaltene Werkzeuge“ in Etsy setzen (API-Lücke).',

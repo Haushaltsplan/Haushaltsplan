@@ -7,8 +7,13 @@ export type EtsyKonkurrenzShop = {
   iconUrl: string | null
   /** Anzahl passender Schalen-Listings in der DE-Suche (Relevanz für die Nische). */
   treffer: number
+  /** Median-Preis der Holzschalen im Sortiment. */
   preisMedian: number | null
+  /** Anteil gedrechselter Holzschalen am aktiven Sortiment (0–1). */
+  schalenAnteil: number | null
   eigener: boolean
+  /** Vom Nutzer hinzugefügt — bleibt immer im Chart. */
+  manuell: boolean
   verkaeufeGesamt: number | null
   bewertungen: number | null
   bewertungSchnitt: number | null
@@ -32,4 +37,5 @@ export type EtsyKonkurrenzErgebnis = {
   letzterSnapshot: string | null
   entdecktAm: string | null
   suchbegriffe: string[]
+  minSchalenAnteil: number
 }
