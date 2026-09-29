@@ -27,18 +27,25 @@ export const FITNESS_DAILY_STORAGE_KEY = 'mein-haushalt:fitnessdaten-daily'
 
 const WHOOP_CLOUD_META_LS_KEY = 'mein-haushalt:fitnessdaten-whoop-cloud'
 
-/** true = Nutzer hat mindestens einmal erfolgreich mit WHOOP Cloud synchronisiert */
+/** Ein alter Marker aus der OAuth-Zeit darf BLE-Schätzungen nicht dauerhaft sperren. */
+const WHOOP_CLOUD_SYNC_GUELTIG_MS = 3 * 86_400_000
+
+/** true = WHOOP Cloud hat in den letzten Tagen synchronisiert (dann keine lokale Schätzung). */
 function hatWhoopCloudSync(): boolean {
   if (typeof window === 'undefined') return false
   try {
     const raw = window.localStorage.getItem(WHOOP_CLOUD_META_LS_KEY)
     if (!raw) return false
     const m = JSON.parse(raw) as { lastSyncedAt?: string | null }
-    return Boolean(m.lastSyncedAt)
+    const t = m.lastSyncedAt ? Date.parse(m.lastSyncedAt) : NaN
+    return Number.isFinite(t) && Date.now() - t < WHOOP_CLOUD_SYNC_GUELTIG_MS
   } catch {
     return false
   }
 }
+
+/** Tagesarchiv: ~2 Jahre, damit ein kompletter WHOOP-Export nicht abgeschnitten wird. */
+export const MAX_TAGE_ARCHIV = 730
 
 export type WhoopDayRecord = {
   date: string
@@ -246,13 +253,13 @@ export function ladeDailyStore(): WhoopDailyStore {
   }
 }
 
-/** Kürzt Historie, damit localStorage nicht volläuft (Charts brauchen ~90 Tage). */
+/** Kürzt Historie, damit localStorage nicht volläuft. */
 function kuerzeDailyStore(store: WhoopDailyStore, aggressiv = false): WhoopDailyStore {
-  const maxDays = aggressiv ? 45 : 120
-  const maxActs = aggressiv ? 80 : 250
-  const maxJournal = aggressiv ? 40 : 120
-  const maxLog = aggressiv ? 40 : 120
-  const maxVitals = aggressiv ? 40 : 120
+  const maxDays = aggressiv ? 180 : MAX_TAGE_ARCHIV
+  const maxActs = aggressiv ? 250 : 1500
+  const maxJournal = aggressiv ? 500 : 4000
+  const maxLog = aggressiv ? 60 : 400
+  const maxVitals = aggressiv ? 60 : 400
   const days = [...(store.days ?? [])].sort((a, b) => a.date.localeCompare(b.date)).slice(-maxDays)
   const activities = [...(store.activities ?? [])]
     .sort((a, b) => a.startMs - b.startMs)
@@ -265,7 +272,9 @@ function kuerzeDailyStore(store: WhoopDailyStore, aggressiv = false): WhoopDaily
       .filter((a) => aktivitaetDatum(a) === heute)
       .slice(-20),
     activities,
-    journal: (store.journal ?? []).slice(-maxJournal),
+    journal: [...(store.journal ?? [])]
+      .sort((a, b) => b.date.localeCompare(a.date))
+      .slice(0, maxJournal),
     logbuch: (store.logbuch ?? []).slice(-maxLog),
     vitals: (store.vitals ?? []).slice(-maxVitals),
     skinTempBaseline: store.skinTempBaseline ?? null,
@@ -296,10 +305,10 @@ export function speichereDailyStore(store: WhoopDailyStore): void {
     return
   }
 
-  // Notfall: nur letzte 21 Tage, keine Aktivitäten/Journal
+  // Notfall: nur letzte 60 Tage, keine Aktivitäten/Journal
   next = {
     version: 2,
-    days: next.days.slice(-21),
+    days: next.days.slice(-60),
     activitiesToday: [],
     activities: [],
     journal: [],
@@ -326,8 +335,8 @@ export function kompaktierenDailyStoreFallsNoetig(): void {
   try {
     const raw = window.localStorage.getItem(FITNESS_DAILY_STORAGE_KEY)
     if (!raw) return
-    // ~1.5 MB JSON ist riskant; typisches Quota ~5 MB gesamt
-    if (raw.length < 800_000) return
+    // Typisches Quota ~5 MB gesamt; 2 Jahre Tage + Workouts liegen bei ~1–1,5 MB
+    if (raw.length < 2_500_000) return
     const store = migrateStore(JSON.parse(raw))
     speichereDailyStore(store)
   } catch (err) {
@@ -621,7 +630,7 @@ export function aktualisiereHeuteAusSnapshot(
   else store.days.push(recordFinal)
 
   store.days.sort((a, b) => a.date.localeCompare(b.date))
-  if (store.days.length > 365) store.days = store.days.slice(-365)
+  if (store.days.length > MAX_TAGE_ARCHIV) store.days = store.days.slice(-MAX_TAGE_ARCHIV)
 
   speichereDailyStore(store)
   return recordFinal
@@ -674,8 +683,11 @@ export function labelTagNavigation(iso: string): string {
   })
 }
 
+/** Zurück bis zum ältesten gespeicherten Tag (z. B. WHOOP-Import), mindestens maxTage. */
 export function kannTagZurueck(iso: string, maxTage = MAX_TAGE_NAVIGATION): boolean {
-  const earliest = isoAddDays(heuteIsoLocal(), -(maxTage - 1))
+  const fenster = isoAddDays(heuteIsoLocal(), -(maxTage - 1))
+  const aeltester = ladeDailyStore().days[0]?.date
+  const earliest = aeltester && aeltester < fenster ? aeltester : fenster
   return iso > earliest
 }
 
