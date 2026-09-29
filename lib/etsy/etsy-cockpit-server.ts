@@ -353,7 +353,7 @@ export async function baueEtsyCockpit(ownerUserId: string, sbUser: SupabaseClien
     hinweise.push('Verkäufe werden noch nicht gelesen — Etsy einmal trennen und neu verbinden (Berechtigung „Verkäufe“).')
   }
   if (!konkShops.length) hinweise.push('Konkurrenz noch nicht ermittelt — im Tab „Konkurrenz“ einmal starten, dann liefert das Cockpit Tag-Lücken.')
-  if (!merkliste.length) hinweise.push('Tipp: Keywords im Keyword-Finder merken — das Cockpit schlägt vor, wo sie eingebaut werden.')
+  if (!merkliste.length) hinweise.push('Tipp: Keywords im Finder merken — das Cockpit schlägt dann vor, wo sie eingebaut werden.')
 
   return {
     kpis,

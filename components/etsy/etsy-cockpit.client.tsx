@@ -25,7 +25,7 @@ const TYP_STIL: Record<EtsyAufgabeTyp, { label: string; rand: string; badge: str
   hauptbegriff: { label: 'Hauptbegriff', rand: 'border-l-amber-500', badge: 'bg-amber-500/15 text-amber-200' },
   saison: { label: 'Saison', rand: 'border-l-orange-500', badge: 'bg-orange-500/15 text-orange-200' },
   saison_ende: { label: 'Saison vorbei', rand: 'border-l-orange-400', badge: 'bg-orange-500/15 text-orange-200' },
-  keyword: { label: 'Merkliste', rand: 'border-l-sky-500', badge: 'bg-sky-500/15 text-sky-200' },
+  keyword: { label: 'Favorit', rand: 'border-l-sky-500', badge: 'bg-sky-500/15 text-sky-200' },
   tag_luecke: { label: 'Konkurrenz-Tag', rand: 'border-l-violet-500', badge: 'bg-violet-500/15 text-violet-200' },
   schwach: { label: 'SEO', rand: 'border-l-teal-500', badge: 'bg-teal-500/15 text-teal-200' },
   kein_audit: { label: 'SEO', rand: 'border-l-teal-400', badge: 'bg-teal-500/15 text-teal-200' },

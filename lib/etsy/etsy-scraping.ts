@@ -934,7 +934,7 @@ async function holeEtsyTopTags(keyword: string): Promise<EtsyTopTags | null> {
   return erg
 }
 
-function chanceAus(nachfrage: number, wettbewerb: number | null): EtsyKeywordIdee['chance'] {
+export function chanceAus(nachfrage: number, wettbewerb: number | null): EtsyKeywordIdee['chance'] {
   if (wettbewerb == null) return null
   // Nachfrage je Größenordnung Wettbewerb — Nischen mit echter Nachfrage gewinnen.
   const wert = nachfrage / Math.max(1, Math.log10(wettbewerb + 10))

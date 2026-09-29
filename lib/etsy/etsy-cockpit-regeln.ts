@@ -537,7 +537,7 @@ export function baueCockpitAufgaben(input: CockpitRegelInput): EtsyCockpitAufgab
       key: `keyword:${normTag(m.keyword)}`,
       typ: 'keyword',
       prioritaet: 58 + (m.chance === 'hoch' ? 6 : m.chance === 'mittel' ? 3 : 0),
-      titel: `Gemerktes Keyword einbauen: „${m.keyword}“`,
+      titel: `Favorit einbauen: „${m.keyword}“`,
       detail:
         `Passt am besten zu „${kurz(plan.listingTitle, 45)}“.` +
         (m.nachfrage != null ? ` Nachfrage ${m.nachfrage}/100.` : ''),

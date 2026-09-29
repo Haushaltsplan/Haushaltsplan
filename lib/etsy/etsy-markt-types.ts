@@ -95,6 +95,29 @@ export type EtsyKeywordExplorerErgebnis = {
   hinweise: string[]
 }
 
+export type EtsyAutoKeywordStatus = 'fehlt' | 'selten' | 'drin'
+
+/** Automatischer Scan: Käufer-Nachfrage zu den eigenen Produkten, inkl. Abdeckung im Shop. */
+export type EtsyAutoKeyword = EtsyKeywordIdee & {
+  eigeneListings: number
+  konkurrenzShops: number
+  status: EtsyAutoKeywordStatus
+  seeds: string[]
+}
+
+export type EtsyAutoKeywordSeed = { seed: string; grund: string }
+
+export type EtsyAutoKeywordScan = {
+  seeds: EtsyAutoKeywordSeed[]
+  listings: number
+  chancen: EtsyAutoKeyword[]
+  alle: EtsyAutoKeyword[]
+  ausCache: boolean
+  stand: string
+  hinweise: string[]
+  abfragen: number
+}
+
 export type EtsyMarktAbdeckung = {
   abgedeckt: string[]
   fehlend: string[]

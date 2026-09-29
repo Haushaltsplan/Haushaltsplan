@@ -2,7 +2,12 @@
 
 import { PageSection, PageSectionPanel } from '@/components/page-shell'
 import type { EtsyTagTausch } from '@/lib/etsy/etsy-cockpit-types'
-import type { EtsyKeywordChance, EtsyKeywordIdee } from '@/lib/etsy/etsy-markt-types'
+import type {
+  EtsyAutoKeyword,
+  EtsyAutoKeywordScan,
+  EtsyKeywordChance,
+  EtsyKeywordIdee,
+} from '@/lib/etsy/etsy-markt-types'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import toast from 'react-hot-toast'
 
@@ -51,6 +56,129 @@ function ChanceBadge({ chance }: { chance: EtsyKeywordChance | null }) {
   )
 }
 
+function istAuto(i: EtsyKeywordIdee | EtsyAutoKeyword): i is EtsyAutoKeyword {
+  return 'status' in i && 'eigeneListings' in i
+}
+
+function KeywordTabelle({
+  ideen,
+  gemerktSet,
+  busyKeyword,
+  onKopieren,
+  onMerken,
+  onEinbauen,
+  extraSpalte,
+}: {
+  ideen: Array<EtsyKeywordIdee | EtsyAutoKeyword>
+  gemerktSet: Set<string>
+  busyKeyword?: string | null
+  onKopieren: (text: string) => void
+  onMerken: (i: EtsyKeywordIdee) => void
+  onEinbauen: (keyword: string) => void
+  extraSpalte?: 'bei dir'
+}) {
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full min-w-[36rem] text-sm">
+        <thead>
+          <tr className="border-b border-[var(--app-border)] text-left text-xs text-[var(--app-text-muted)]">
+            <th className="py-2 pr-2 font-medium">Suchphrase</th>
+            <th className="py-2 pr-2 font-medium">Nachfrage</th>
+            <th className="py-2 pr-2 font-medium">Wettbewerb</th>
+            <th className="py-2 pr-2 font-medium">Chance</th>
+            {extraSpalte === 'bei dir' && <th className="py-2 pr-2 font-medium">Bei dir</th>}
+            <th className="py-2 font-medium" />
+          </tr>
+        </thead>
+        <tbody>
+          {ideen.map((i) => (
+            <tr key={i.keyword} className="border-b border-[var(--app-border)]/60 align-middle">
+              <td className="py-2 pr-2">
+                <button
+                  type="button"
+                  onClick={() => onKopieren(i.keyword)}
+                  className="text-left font-medium text-[var(--app-text)] hover:underline"
+                  title="Kopieren"
+                >
+                  {i.keyword}
+                </button>
+                <div className="mt-0.5 flex flex-wrap gap-1 text-[10px] text-[var(--app-text-muted)]">
+                  {QUELLEN_REIHENFOLGE.filter((q) => i.quellen.includes(q)).map((q) => (
+                    <span
+                      key={q}
+                      title={
+                        q === 'etsy_tags' && i.etsyNutzung != null
+                          ? `${i.etsyNutzung} der Top-100-Etsy-Listings nutzen diesen Tag`
+                          : undefined
+                      }
+                      className={`rounded px-1.5 py-0.5 ${
+                        q.startsWith('etsy')
+                          ? 'bg-orange-500/15 font-medium text-orange-200'
+                          : 'bg-[var(--app-surface-muted)]'
+                      }`}
+                    >
+                      {QUELLEN_LABEL[q]}
+                      {q === 'etsy_tags' && i.etsyNutzung != null ? ` · ${i.etsyNutzung}×` : ''}
+                    </span>
+                  ))}
+                  {!i.tagTauglich && <span className="text-amber-300/80">zu lang für Tag → Titel</span>}
+                  {i.saison && <span className="text-sky-300/90">{i.saison}</span>}
+                </div>
+              </td>
+              <td className="py-2 pr-2">
+                <NachfrageBalken wert={i.nachfrage} />
+              </td>
+              <td className="py-2 pr-2 text-xs tabular-nums text-[var(--app-text-muted)]">
+                {i.wettbewerb != null ? i.wettbewerb.toLocaleString('de-DE') : '—'}
+                {i.wettbewerbMarkt === 'DE' ? ' DE' : ''}
+              </td>
+              <td className="py-2 pr-2">
+                <ChanceBadge chance={i.chance} />
+              </td>
+              {extraSpalte === 'bei dir' && istAuto(i) && (
+                <td className="py-2 pr-2 text-xs tabular-nums">
+                  {i.status === 'fehlt' ? (
+                    <span className="text-amber-200">fehlt</span>
+                  ) : i.status === 'selten' ? (
+                    <span className="text-sky-200">{i.eigeneListings}×</span>
+                  ) : (
+                    <span className="text-emerald-200">{i.eigeneListings}×</span>
+                  )}
+                </td>
+              )}
+              <td className="whitespace-nowrap py-2 text-right">
+                {i.tagTauglich && (
+                  <button
+                    type="button"
+                    onClick={() => onEinbauen(i.keyword)}
+                    className="rounded-lg border border-teal-500/40 px-2 py-1 text-[11px] text-teal-200 hover:bg-teal-500/15"
+                    title="In das passendste Listing als Tag einbauen"
+                  >
+                    Einbauen
+                  </button>
+                )}
+                <button
+                  type="button"
+                  disabled={busyKeyword === i.keyword}
+                  onClick={() => onMerken(i)}
+                  className={`ml-1 rounded-lg px-2 py-1 text-[11px] font-medium disabled:opacity-60 ${
+                    gemerktSet.has(i.keyword)
+                      ? 'border border-rose-500/30 text-rose-200 hover:bg-rose-500/10'
+                      : 'border border-amber-500/40 bg-amber-500/10 text-amber-200 hover:bg-amber-500/15'
+                  }`}
+                  title={gemerktSet.has(i.keyword) ? 'Aus Favoriten entfernen' : 'Zu Favoriten hinzufügen'}
+                >
+                  {gemerktSet.has(i.keyword) ? 'Entfernen' : 'Merken'}
+                </button>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
 type Einbau = {
   keyword: string
   laden: boolean
@@ -71,6 +199,10 @@ export function EtsyKeywords({ verbunden = false }: { verbunden?: boolean }) {
   const [gesucht, setGesucht] = useState<string | null>(null)
   const [filter, setFilter] = useState<Filter>('alle')
   const [gemerkt, setGemerkt] = useState<Gemerkt[]>([])
+  const [autoScan, setAutoScan] = useState<EtsyAutoKeywordScan | null>(null)
+  const [autoLaden, setAutoLaden] = useState(false)
+  const [autoAnsicht, setAutoAnsicht] = useState<'chancen' | 'alle'>('chancen')
+  const [favoritBusy, setFavoritBusy] = useState<string | null>(null)
 
   const ladeMerkliste = useCallback(async () => {
     try {
@@ -85,6 +217,28 @@ export function EtsyKeywords({ verbunden = false }: { verbunden?: boolean }) {
   useEffect(() => {
     void ladeMerkliste()
   }, [ladeMerkliste])
+
+  const ladeAuto = useCallback(
+    async (force = false) => {
+      if (!verbunden) return
+      setAutoLaden(true)
+      try {
+        const res = await fetch(`/api/etsy/keywords?auto=1${force ? '&force=1' : ''}`, { cache: 'no-store' })
+        const j = (await res.json()) as EtsyAutoKeywordScan & { error?: string }
+        if (!res.ok) throw new Error(j.error || 'Auto-Scan fehlgeschlagen')
+        setAutoScan(j)
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : 'Keywords zu deinen Produkten nicht ladbar.')
+      } finally {
+        setAutoLaden(false)
+      }
+    },
+    [verbunden],
+  )
+
+  useEffect(() => {
+    void ladeAuto()
+  }, [ladeAuto])
 
   async function erkunden(e?: React.FormEvent) {
     e?.preventDefault()
@@ -117,33 +271,47 @@ export function EtsyKeywords({ verbunden = false }: { verbunden?: boolean }) {
 
   async function merken(i: EtsyKeywordIdee) {
     if (gemerktSet.has(i.keyword)) {
-      const res = await fetch(`/api/etsy/keywords/merkliste?keyword=${encodeURIComponent(i.keyword)}`, {
-        method: 'DELETE',
+      await entfernen(i.keyword)
+      return
+    }
+    setFavoritBusy(i.keyword)
+    try {
+      const res = await fetch('/api/etsy/keywords/merkliste', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(i),
       })
-      if (res.ok) setGemerkt((prev) => prev.filter((g) => g.keyword !== i.keyword))
-      return
+      if (!res.ok) {
+        const j = (await res.json().catch(() => ({}))) as { error?: string }
+        toast.error(j.error || `Merken fehlgeschlagen (${res.status}).`, { duration: 8000 })
+        return
+      }
+      setGemerkt((prev) => [
+        { keyword: i.keyword, nachfrage: i.nachfrage, wettbewerb: i.wettbewerb, chance: i.chance, saison: i.saison },
+        ...prev.filter((g) => g.keyword !== i.keyword),
+      ])
+      toast.success(`„${i.keyword}“ in Favoriten.`)
+    } finally {
+      setFavoritBusy(null)
     }
-    const res = await fetch('/api/etsy/keywords/merkliste', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(i),
-    })
-    if (!res.ok) {
-      const j = (await res.json().catch(() => ({}))) as { error?: string }
-      toast.error(j.error || `Merken fehlgeschlagen (${res.status}).`, { duration: 8000 })
-      return
-    }
-    setGemerkt((prev) => [
-      { keyword: i.keyword, nachfrage: i.nachfrage, wettbewerb: i.wettbewerb, chance: i.chance, saison: i.saison },
-      ...prev,
-    ])
   }
 
   async function entfernen(keyword: string) {
-    const res = await fetch(`/api/etsy/keywords/merkliste?keyword=${encodeURIComponent(keyword)}`, {
-      method: 'DELETE',
-    })
-    if (res.ok) setGemerkt((prev) => prev.filter((g) => g.keyword !== keyword))
+    setFavoritBusy(keyword)
+    try {
+      const res = await fetch(`/api/etsy/keywords/merkliste?keyword=${encodeURIComponent(keyword)}`, {
+        method: 'DELETE',
+      })
+      if (!res.ok) {
+        const j = (await res.json().catch(() => ({}))) as { error?: string }
+        toast.error(j.error || 'Entfernen fehlgeschlagen.')
+        return
+      }
+      setGemerkt((prev) => prev.filter((g) => g.keyword !== keyword))
+      toast.success(`„${keyword}“ aus Favoriten entfernt.`)
+    } finally {
+      setFavoritBusy(null)
+    }
   }
 
   async function planeEinbau(keyword: string, listingId?: number) {
@@ -218,14 +386,147 @@ export function EtsyKeywords({ verbunden = false }: { verbunden?: boolean }) {
     return ideen
   }, [ideen, filter])
 
+  const autoListe = autoAnsicht === 'chancen' ? (autoScan?.chancen ?? []) : (autoScan?.alle ?? [])
+
   return (
     <>
-      <PageSection titleId="etsy-keywords" title="Keyword-Finder">
+      <PageSection titleId="etsy-keywords-merkliste" title={`Favoriten · ${gemerkt.length}`}>
+        <PageSectionPanel density="compact" className="space-y-2">
+          {gemerkt.length === 0 ? (
+            <p className="text-sm text-[var(--app-text-muted)]">
+              Noch leer. Unten bei den gefundenen Keywords auf <strong>Merken</strong> — nur diese kommen ins Cockpit
+              und in die KI. Hier kannst du sie jederzeit wieder entfernen.
+            </p>
+          ) : (
+            <>
+              <p className="text-xs text-[var(--app-text-muted)]">
+                Das Cockpit schlägt vor, wo sie als Tag hinpassen. Entfernen nimmt sie aus der Liste, nicht von Etsy.
+              </p>
+              <ul className="divide-y divide-[var(--app-border)]/60">
+                {gemerkt.map((g) => (
+                  <li key={g.keyword} className="flex flex-wrap items-center gap-2 py-2">
+                    <span className="min-w-0 flex-1 font-medium text-[var(--app-text)]">{g.keyword}</span>
+                    {g.chance && (
+                      <span className="text-[10px] text-[var(--app-text-muted)]">{g.chance}</span>
+                    )}
+                    {g.keyword.length <= 20 && (
+                      <button
+                        type="button"
+                        onClick={() => void planeEinbau(g.keyword)}
+                        className="rounded-lg border border-teal-500/40 px-2 py-1 text-[11px] text-teal-200 hover:bg-teal-500/15"
+                      >
+                        Einbauen
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      disabled={favoritBusy === g.keyword}
+                      onClick={() => void entfernen(g.keyword)}
+                      className="rounded-lg border border-rose-500/30 px-2 py-1 text-[11px] text-rose-200 hover:bg-rose-500/10 disabled:opacity-60"
+                    >
+                      {favoritBusy === g.keyword ? '…' : 'Entfernen'}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+              <button
+                type="button"
+                onClick={() => kopieren(gemerkt.map((g) => g.keyword).join(', '))}
+                className="rounded-lg border border-[var(--app-border)] px-3 py-1.5 text-xs text-[var(--app-text-muted)]"
+              >
+                Alle kopieren (kommagetrennt)
+              </button>
+            </>
+          )}
+        </PageSectionPanel>
+      </PageSection>
+
+      <PageSection titleId="etsy-keywords-auto" title="Für deine Produkte">
+        <PageSectionPanel density="compact" className="space-y-3">
+          {!verbunden ? (
+            <p className="text-sm text-[var(--app-text-muted)]">
+              Shop oben verbinden — dann prüft der Finder selbst, wonach Käufer bei Sortimenten wie deinem suchen,
+              und zeigt was bei dir noch fehlt.
+            </p>
+          ) : (
+            <>
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <p className="text-sm text-[var(--app-text-muted)]">
+                  Vorschläge aus deinem Sortiment (Etsy-Top-Tags, Google.de, Amazon.de). Nichts wird von allein
+                  gemerkt — mit <strong>Merken</strong> wählst du aus, was in die Favoriten soll.
+                </p>
+                <button
+                  type="button"
+                  disabled={autoLaden}
+                  onClick={() => void ladeAuto(true)}
+                  className="shrink-0 rounded-lg border border-[var(--app-border)] px-3 py-1.5 text-xs text-[var(--app-text)] hover:bg-[var(--app-surface-muted)] disabled:opacity-60"
+                >
+                  {autoLaden ? 'Prüft… (20–40 Sek.)' : autoScan ? 'Neu prüfen' : 'Jetzt finden'}
+                </button>
+              </div>
+              {autoScan?.seeds.length ? (
+                <p className="text-[11px] text-[var(--app-text-muted)]">
+                  Suchfelder aus {autoScan.listings} Listings
+                  {autoScan.ausCache ? ' · gespeichert (24 Std.)' : ''}:{' '}
+                  {autoScan.seeds.map((s) => s.seed).join(' · ')}
+                </p>
+              ) : null}
+              {autoLaden && !autoScan ? (
+                <p className="text-sm text-[var(--app-text-muted)]">
+                  Gleicht dein Sortiment mit Etsy, Google und Amazon ab…
+                </p>
+              ) : autoScan ? (
+                <>
+                  <div className="flex flex-wrap gap-1.5">
+                    {(
+                      [
+                        ['chancen', `Chancen · ${autoScan.chancen.length}`],
+                        ['alle', `Alle Treffer · ${autoScan.alle.length}`],
+                      ] as const
+                    ).map(([id, label]) => (
+                      <button
+                        key={id}
+                        type="button"
+                        onClick={() => setAutoAnsicht(id)}
+                        className={`rounded-full border px-3 py-1 text-xs ${
+                          autoAnsicht === id
+                            ? 'border-teal-500/60 bg-teal-500/15 text-teal-200'
+                            : 'border-[var(--app-border)] text-[var(--app-text-muted)]'
+                        }`}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                  {autoScan.hinweise.length > 0 && (
+                    <p className="text-xs text-amber-200/80">{autoScan.hinweise.slice(0, 3).join(' ')}</p>
+                  )}
+                  {autoListe.length === 0 ? (
+                    <p className="text-sm text-emerald-200/90">
+                      Keine offenen Lücken in diesem Filter — deine Tags decken die häufigsten Suchen schon.
+                    </p>
+                  ) : (
+                    <KeywordTabelle
+                      ideen={autoListe}
+                      gemerktSet={gemerktSet}
+                      busyKeyword={favoritBusy}
+                      onKopieren={kopieren}
+                      onMerken={(i) => void merken(i)}
+                      onEinbauen={(kw) => void planeEinbau(kw)}
+                      extraSpalte="bei dir"
+                    />
+                  )}
+                </>
+              ) : null}
+            </>
+          )}
+        </PageSectionPanel>
+      </PageSection>
+
+      <PageSection titleId="etsy-keywords" title="Einzelne Suche">
         <PageSectionPanel density="compact" className="space-y-3">
           <p className="text-sm text-[var(--app-text-muted)]">
-            Findet heraus, wonach deutsche Käufer wirklich suchen: aus den Tags der Listings, die Etsy für
-            den Begriff ganz oben zeigt, plus den Suchvorschlägen von Google.de und Amazon.de — und wie viele
-            Etsy-Shops schon dafür ranken.
+            Findet Phrasen zu einem freien Suchbegriff — zusätzlich zum automatischen Scan oben.
           </p>
           <form onSubmit={(e) => void erkunden(e)} className="grid gap-2 sm:grid-cols-[1fr_10rem_auto]">
             <input
@@ -287,93 +588,14 @@ export function EtsyKeywords({ verbunden = false }: { verbunden?: boolean }) {
             {sichtbar.length === 0 ? (
               <p className="text-sm text-[var(--app-text-muted)]">Keine Treffer für diesen Filter.</p>
             ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full min-w-[36rem] text-sm">
-                  <thead>
-                    <tr className="border-b border-[var(--app-border)] text-left text-xs text-[var(--app-text-muted)]">
-                      <th className="py-2 pr-2 font-medium">Suchphrase</th>
-                      <th className="py-2 pr-2 font-medium" title="Wie häufig und weit oben die Phrase vorgeschlagen wird">
-                        Nachfrage
-                      </th>
-                      <th className="py-2 pr-2 font-medium" title="Aktive Etsy-Listings zu dieser Suche">
-                        Wettbewerb
-                      </th>
-                      <th className="py-2 pr-2 font-medium">Chance</th>
-                      <th className="py-2 font-medium" />
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {sichtbar.map((i) => (
-                      <tr key={i.keyword} className="border-b border-[var(--app-border)]/60 align-middle">
-                        <td className="py-2 pr-2">
-                          <button
-                            type="button"
-                            onClick={() => kopieren(i.keyword)}
-                            className="text-left font-medium text-[var(--app-text)] hover:underline"
-                            title="Kopieren"
-                          >
-                            {i.keyword}
-                          </button>
-                          <div className="mt-0.5 flex flex-wrap gap-1 text-[10px] text-[var(--app-text-muted)]">
-                            {QUELLEN_REIHENFOLGE.filter((q) => i.quellen.includes(q)).map((q) => (
-                              <span
-                                key={q}
-                                title={
-                                  q === 'etsy_tags' && i.etsyNutzung != null
-                                    ? `${i.etsyNutzung} der Top-100-Etsy-Listings nutzen diesen Tag`
-                                    : undefined
-                                }
-                                className={`rounded px-1.5 py-0.5 ${
-                                  q.startsWith('etsy')
-                                    ? 'bg-orange-500/15 font-medium text-orange-200'
-                                    : 'bg-[var(--app-surface-muted)]'
-                                }`}
-                              >
-                                {QUELLEN_LABEL[q]}
-                                {q === 'etsy_tags' && i.etsyNutzung != null ? ` · ${i.etsyNutzung}×` : ''}
-                              </span>
-                            ))}
-                            {!i.tagTauglich && <span className="text-amber-300/80">zu lang für Tag → Titel</span>}
-                            {i.saison && <span className="text-sky-300/90">📅 {i.saison}</span>}
-                          </div>
-                        </td>
-                        <td className="py-2 pr-2">
-                          <NachfrageBalken wert={i.nachfrage} />
-                        </td>
-                        <td className="py-2 pr-2 text-xs tabular-nums text-[var(--app-text-muted)]">
-                          {i.wettbewerb != null ? i.wettbewerb.toLocaleString('de-DE') : '—'}
-                          {i.wettbewerbMarkt === 'DE' ? ' DE' : ''}
-                        </td>
-                        <td className="py-2 pr-2">
-                          <ChanceBadge chance={i.chance} />
-                        </td>
-                        <td className="whitespace-nowrap py-2 text-right">
-                          {i.tagTauglich && (
-                            <button
-                              type="button"
-                              onClick={() => void planeEinbau(i.keyword)}
-                              className="rounded-lg border border-teal-500/40 px-2 py-1 text-[11px] text-teal-200 hover:bg-teal-500/15"
-                              title="In das passendste Listing als Tag einbauen"
-                            >
-                              Einbauen
-                            </button>
-                          )}
-                          <button
-                            type="button"
-                            onClick={() => void merken(i)}
-                            className={`rounded-lg px-2 py-1 text-base ${
-                              gemerktSet.has(i.keyword) ? 'text-amber-300' : 'text-[var(--app-text-muted)]'
-                            }`}
-                            title={gemerktSet.has(i.keyword) ? 'Aus Merkliste entfernen' : 'Merken'}
-                          >
-                            {gemerktSet.has(i.keyword) ? '★' : '☆'}
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+              <KeywordTabelle
+                ideen={sichtbar}
+                gemerktSet={gemerktSet}
+                busyKeyword={favoritBusy}
+                onKopieren={kopieren}
+                onMerken={(i) => void merken(i)}
+                onEinbauen={(kw) => void planeEinbau(kw)}
+              />
             )}
             <p className="text-[11px] text-[var(--app-text-muted)]">
               Nachfrage ist ein relatives Signal (keine Suchvolumen-Zahl). Am stärksten zählt „Etsy · 14×“: so
@@ -447,56 +669,6 @@ export function EtsyKeywords({ verbunden = false }: { verbunden?: boolean }) {
           )}
         </div>
       )}
-
-      <PageSection titleId="etsy-keywords-merkliste" title={`Merkliste · ${gemerkt.length}`}>
-        <PageSectionPanel density="compact" className="space-y-2">
-          {gemerkt.length === 0 ? (
-            <p className="text-sm text-[var(--app-text-muted)]">
-              Noch leer. Mit ☆ gemerkte Keywords erscheinen hier — das Cockpit schlägt dann automatisch vor, in
-              welches Listing sie gehören, und die KI nutzt sie bei jedem Check und neuen Listing.
-            </p>
-          ) : (
-            <>
-              <div className="flex flex-wrap gap-1.5">
-                {gemerkt.map((g) => (
-                  <span
-                    key={g.keyword}
-                    className="inline-flex items-center gap-1 rounded-full border border-[var(--app-border)] bg-[var(--app-surface)] px-2.5 py-1 text-xs text-[var(--app-text)]"
-                  >
-                    {g.keyword}
-                    {g.chance && <span className="text-[10px] text-[var(--app-text-muted)]">· {g.chance}</span>}
-                    {g.keyword.length <= 20 && (
-                      <button
-                        type="button"
-                        onClick={() => void planeEinbau(g.keyword)}
-                        className="ml-1 text-[10px] text-teal-300 hover:underline"
-                        title="In das passendste Listing als Tag einbauen"
-                      >
-                        einbauen
-                      </button>
-                    )}
-                    <button
-                      type="button"
-                      onClick={() => void entfernen(g.keyword)}
-                      className="ml-0.5 text-[var(--app-text-muted)] hover:text-rose-300"
-                      aria-label={`${g.keyword} entfernen`}
-                    >
-                      ×
-                    </button>
-                  </span>
-                ))}
-              </div>
-              <button
-                type="button"
-                onClick={() => kopieren(gemerkt.map((g) => g.keyword).join(', '))}
-                className="rounded-lg border border-[var(--app-border)] px-3 py-1.5 text-xs text-[var(--app-text-muted)]"
-              >
-                Alle kopieren (kommagetrennt)
-              </button>
-            </>
-          )}
-        </PageSectionPanel>
-      </PageSection>
     </>
   )
 }

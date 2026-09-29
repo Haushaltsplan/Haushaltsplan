@@ -2,8 +2,10 @@
  * Täglicher Etsy-Cron (vercel.json: 04:00 UTC). GET/POST mit Authorization: Bearer CRON_SECRET.
  * 1) Eigene Listings: Aufrufe/Favoriten-Snapshot + Verkäufe (Wirkungsmessung, Cockpit-KPIs)
  * 2) Konkurrenz-Verkaufschart (Top-Drechsler-Shops)
- * Kein Gemini — nur Etsy-API.
+ * 3) Keyword-Auto-Scan (Nachfrage zu den eigenen Produkten, 24h-Cache)
+ * Kein Gemini — nur Etsy-/Google-/Amazon-Daten.
  */
+import { scanneEtsyKeywordsFuerShop } from '@/lib/etsy/etsy-keyword-auto-server'
 import { aktualisiereEtsyKonkurrenz } from '@/lib/etsy/etsy-konkurrenz-server'
 import { erfasseEtsyListingStatistik } from '@/lib/etsy/etsy-statistik-server'
 import { createSupabaseAdmin } from '@/lib/supabase-admin'
@@ -33,7 +35,12 @@ export async function GET(req: Request) {
         fehler: e instanceof Error ? e.message.slice(0, 160) : 'Fehler',
       })),
     ])
-    report.push({ ownerUserId, statistik, konkurrenz })
+    const keywords = await scanneEtsyKeywordsFuerShop(ownerUserId)
+      .then((s) => ({ chancen: s.chancen.length, seeds: s.seeds.length, ausCache: s.ausCache }))
+      .catch((e) => ({
+        fehler: e instanceof Error ? e.message.slice(0, 160) : 'Fehler',
+      }))
+    report.push({ ownerUserId, statistik, konkurrenz, keywords })
   }
   console.info('[etsy-tages-cron]', JSON.stringify(report))
   return NextResponse.json({ ok: true, report })

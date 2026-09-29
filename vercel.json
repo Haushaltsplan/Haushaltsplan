@@ -27,8 +27,8 @@
     "app/api/etsy/listings/[id]/rank/route.ts": {
       "maxDuration": 120
     },
-    "app/api/etsy/listing/generate/route.ts": {
-      "maxDuration": 180
+    "app/api/etsy/keywords/route.ts": {
+      "maxDuration": 90
     },
     "app/api/etsy/konkurrenz/route.ts": {
       "maxDuration": 120
