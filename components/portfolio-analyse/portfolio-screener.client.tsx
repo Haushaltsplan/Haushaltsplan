@@ -330,6 +330,7 @@ export function PortfolioScreenerClient() {
               <option value={25}>≤ 25</option>
               <option value={35}>≤ 35</option>
             </select>
+          </label>
           <label className="flex items-center gap-2 text-xs text-[var(--app-text)]">
             <input type="checkbox" checked={nurGewinn} onChange={(e) => setNurGewinn(e.target.checked)} />
             nur Gewinn
