@@ -215,8 +215,13 @@ function SpanneFeld({
 }
 
 function FilterGruppe({ titel, defaultOpen, children }: { titel: string; defaultOpen?: boolean; children: ReactNode }) {
+  const [offen, setOffen] = useState(Boolean(defaultOpen))
   return (
-    <details defaultOpen={defaultOpen} className="rounded-lg border border-[var(--app-border)] bg-[var(--app-surface-muted)]/35 px-3 py-2">
+    <details
+      open={offen}
+      onToggle={(e) => setOffen(e.currentTarget.open)}
+      className="rounded-lg border border-[var(--app-border)] bg-[var(--app-surface-muted)]/35 px-3 py-2"
+    >
       <summary className="cursor-pointer select-none text-xs font-medium text-[var(--app-text)]">{titel}</summary>
       <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">{children}</div>
     </details>
