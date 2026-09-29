@@ -10,7 +10,7 @@ import type {
 import { isinKenntnis, loesePortfolioIsin } from '@/lib/portfolio-analyse/isin-kenntnisse'
 
 const TABLE = 'fundamentaldaten_paket_cache' as const
-export const FUNDAMENTALDATEN_CACHE_VERSION = 1
+export const FUNDAMENTALDATEN_CACHE_VERSION = 2
 /** Frisch: kein erneuter Scrape. Danach einmal prüfen, ob sich die GuV geändert hat. */
 const FRISCH_MS = 20 * 60 * 60 * 1000
 
@@ -43,6 +43,8 @@ export function fundamentaldatenFingerprint(p: FundamentaldatenPaket): string {
   }
   return JSON.stringify({
     v: FUNDAMENTALDATEN_CACHE_VERSION,
+    quelle: p.quelle,
+    guvQuelle: p.guvQuelle ?? null,
     hist,
     umsatz: serie('umsatz'),
     eps: serie('eps'),

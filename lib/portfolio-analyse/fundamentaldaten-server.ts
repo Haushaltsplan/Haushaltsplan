@@ -871,7 +871,12 @@ export async function ladeFundamentaldaten(anfrage: FundamentaldatenAnfrage): Pr
   if (live.ok && cacheKey) {
     const liveKorr = paketMitKorrigiertemFwdWachstum(live)
     const fp = fundamentaldatenFingerprint(liveKorr)
-    if (cached && cached.fingerprint === fp) {
+    if (
+      cached &&
+      cached.fingerprint === fp &&
+      cached.paket.quelle === liveKorr.quelle &&
+      cached.paket.guvQuelle === liveKorr.guvQuelle
+    ) {
       await speichereFundamentaldatenPaketCache({
         cacheKey,
         anfrage,
