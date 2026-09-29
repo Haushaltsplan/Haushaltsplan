@@ -1,14 +1,13 @@
 'use client'
 
-import { installiereOmniaBleShim, istCapacitorNative } from '@/lib/fitnessdaten/omnia-ble-shim'
-import { istOmniaNativeApp } from '@/lib/fitnessdaten/omnia-native'
-import { setzeOmniaNativeBereit } from '@/lib/fitnessdaten/omnia-native-ready'
+import { installiereOmniaBleShim, istCapacitorNative } from '@/lib/omnia-native/omnia-ble-shim'
+import { istOmniaNativeApp, istOmniaWhoopApp } from '@/lib/omnia-native/omnia-native'
+import { setzeOmniaNativeBereit } from '@/lib/omnia-native/omnia-native-ready'
 import { useEffect } from 'react'
 import toast from 'react-hot-toast'
 
 /**
- * Native Omnia (Capacitor): BLE-Plugin initialisieren + Web-Bluetooth-Shim.
- * Darf die App nie crashen — Fehler nur als Toast/Hinweis.
+ * Native Boot: Whoop-App → BLE-Shim; Omnia-Haushalt → nur Native-Ready (kein BLE).
  */
 export function OmniaNativeBoot() {
   useEffect(() => {
@@ -34,6 +33,13 @@ export function OmniaNativeBoot() {
 
         if (!native) {
           setzeOmniaNativeBereit(true)
+          return
+        }
+
+        // BLE nur in der Whoop-App (oder Dev-Web mit /fitnessdaten + Cap)
+        const brauchtBle = istOmniaWhoopApp() || window.location.pathname.startsWith('/fitnessdaten')
+        if (!brauchtBle) {
+          if (!cancelled) setzeOmniaNativeBereit(true)
           return
         }
 

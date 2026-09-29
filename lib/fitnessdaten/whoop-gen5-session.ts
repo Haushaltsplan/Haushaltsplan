@@ -6,8 +6,11 @@
 import {
   buildCursorAckPacket,
   buildGen5InitSequence,
+  buildGen5WhoopPacket,
   extractHistoryCursor,
   GEN5_CMD_CHAR,
+  GEN5_CMD_GET_DATA_RANGE,
+  GEN5_CMD_SEND_HISTORICAL,
   GEN5_SERVICE,
   parseGen5Envelope,
   parseGen5Event,
@@ -182,7 +185,35 @@ export async function startGen5CustomSession(
   phase = 'streaming'
   emit()
 
+  /** Nach Handshake History erneut anfordern — fängt Offline-Nächte zuverlässiger ab. */
+  const historyRefresh = async (label: string) => {
+    if (!cmdChar) return
+    try {
+      phase = 'historical'
+      emit()
+      await cmdChar.writeValue(new Uint8Array(buildGen5WhoopPacket(seq++, GEN5_CMD_GET_DATA_RANGE, 0x00)))
+      await new Promise((r) => setTimeout(r, 80))
+      await cmdChar.writeValue(new Uint8Array(buildGen5WhoopPacket(seq++, GEN5_CMD_SEND_HISTORICAL, 0x00)))
+      log.push(`History-Refresh (${label}) gesendet`)
+      emit()
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e)
+      log.push(`History-Refresh (${label}): ${msg.slice(0, 50)}`)
+      emit()
+    }
+  }
+
+  void historyRefresh('post-handshake')
+  const historyTimer = globalThis.setTimeout(() => {
+    void historyRefresh('delayed-30s')
+  }, 30_000)
+  const historyInterval = globalThis.setInterval(() => {
+    void historyRefresh('periodic-10m')
+  }, 10 * 60_000)
+
   return () => {
+    globalThis.clearTimeout(historyTimer)
+    globalThis.clearInterval(historyInterval)
     for (const { char, fn } of listeners) {
       try {
         char.removeEventListener('characteristicvaluechanged', fn)

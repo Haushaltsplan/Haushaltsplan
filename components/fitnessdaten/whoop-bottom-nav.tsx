@@ -1,6 +1,6 @@
 'use client'
 
-import { omniaHapticLight } from '@/lib/fitnessdaten/omnia-native-ux'
+import { omniaHapticLight } from '@/lib/omnia-native/omnia-native-ux'
 
 export type WhoopTab = 'home' | 'sleep' | 'recovery' | 'strain' | 'health' | 'connect'
 

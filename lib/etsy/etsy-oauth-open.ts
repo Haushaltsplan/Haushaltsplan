@@ -1,6 +1,6 @@
 /** Etsy-OAuth: In der Native-App extern öffnen. */
 
-import { istOmniaNativeApp } from '@/lib/fitnessdaten/omnia-native'
+import { istOmniaNativeApp } from '@/lib/omnia-native/omnia-native'
 
 const ETSY_AUTH_HOSTS = new Set(['www.etsy.com', 'etsy.com'])
 

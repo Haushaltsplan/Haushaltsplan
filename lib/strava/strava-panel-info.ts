@@ -39,8 +39,6 @@ export const STRAVA_PANEL_INFO = {
     'Wie regelmäßig du trainierst: aktuelle Streak in Wochen mit mindestens einer Einheit, plus Anteil aktiver Wochen an allen Wochen im Zeitraum.',
   intensityMix:
     'Verteilung der Zeit in leichten (Z1–2), moderaten (Z3) und harten (Z4–5) Zonen — Polarisation. Viel „Easy“ mit wenig „Hard“ entspricht oft einem gesunden Ausdauerprofil.',
-  whoopBridge:
-    'Verknüpft WHOOP-Recovery mit Strava-Belastung: war an Tagen mit hohem TSS am Folgetag die Recovery niedrig? Kein Ersatz für medizinische Beratung — nur Muster.',
   volumeChart:
     'Wöchentliche Kilometer nach Sportart gestapelt. Konsistentes Volume ist oft wichtiger als einzelne Spitzenwochen.',
   zoneDonut:

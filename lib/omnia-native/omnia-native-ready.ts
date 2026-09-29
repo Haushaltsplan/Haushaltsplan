@@ -1,4 +1,4 @@
-import { istOmniaNativeApp } from '@/lib/fitnessdaten/omnia-native'
+import { istOmniaNativeApp } from '@/lib/omnia-native/omnia-native'
 
 let bereit = false
 let fehler: string | null = null

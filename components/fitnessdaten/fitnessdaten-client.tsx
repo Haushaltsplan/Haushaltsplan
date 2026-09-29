@@ -1,13 +1,13 @@
 'use client'
 
 import { WhoopDashboard } from '@/components/fitnessdaten/whoop-dashboard'
-import { useWhoopBle } from '@/components/fitnessdaten/whoop-ble-provider'
+import { WhoopBleProvider, useWhoopBle } from '@/components/fitnessdaten/whoop-ble-provider'
+import { WhoopBleBackgroundSyncRegister } from '@/components/fitnessdaten/whoop-ble-background-sync'
 import { PageChrome } from '@/components/page-shell'
 import { ladeFitnessSnapshot, loescheFitnessDaten } from '@/lib/fitnessdaten/history-storage'
 import { kompaktierenDailyStoreFallsNoetig } from '@/lib/fitnessdaten/daily-records'
 import { befreieLocalStorageQuota, istQuotaFehler } from '@/lib/local-storage-safe'
 import { WHOOP_BLE_SNAPSHOT_EVENT } from '@/lib/fitnessdaten/whoop-ble-keepalive'
-import { WHOOP_CLOUD_SYNC_EVENT } from '@/lib/fitnessdaten/whoop-cloud-merge'
 import type { FitnessSnapshot } from '@/lib/fitnessdaten/types'
 import { useSearchParams } from 'next/navigation'
 import { Component, useCallback, useEffect, useState, type ErrorInfo, type ReactNode } from 'react'
@@ -65,7 +65,7 @@ class WhoopErrorBoundary extends Component<{ children: ReactNode }, { error: Err
   }
 }
 
-export function FitnessdatenClient() {
+function FitnessdatenClientInner() {
   const searchParams = useSearchParams()
   const initialTab = searchParams.get('tab') === 'health' ? ('health' as const) : undefined
   const { phase, snapshot: bleSnapshot } = useWhoopBle()
@@ -80,12 +80,9 @@ export function FitnessdatenClient() {
       const detail = (ev as CustomEvent<FitnessSnapshot>).detail
       if (detail) setSnapshot(detail)
     }
-    const onCloud = () => setSnapshot(ladeFitnessSnapshot())
     window.addEventListener(WHOOP_BLE_SNAPSHOT_EVENT, onSnap)
-    window.addEventListener(WHOOP_CLOUD_SYNC_EVENT, onCloud)
     return () => {
       window.removeEventListener(WHOOP_BLE_SNAPSHOT_EVENT, onSnap)
-      window.removeEventListener(WHOOP_CLOUD_SYNC_EVENT, onCloud)
     }
   }, [])
 
@@ -126,8 +123,25 @@ export function FitnessdatenClient() {
           Alle Daten löschen
         </button>
         <span className="hidden sm:inline">·</span>
-        <span>Lokal · abofrei · Omnia</span>
+        <span>Lokal · abofrei · Omnia Whoop</span>
       </div>
     </PageChrome>
+  )
+}
+
+export function FitnessdatenClient() {
+  useEffect(() => {
+    try {
+      kompaktierenDailyStoreFallsNoetig()
+    } catch {
+      /* ignore */
+    }
+  }, [])
+
+  return (
+    <WhoopBleProvider>
+      <FitnessdatenClientInner />
+      <WhoopBleBackgroundSyncRegister />
+    </WhoopBleProvider>
   )
 }

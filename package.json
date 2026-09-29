@@ -27,7 +27,13 @@
     "cap:open": "cap open android",
     "omnia:keystore": "node scripts/ensure-omnia-keystore.mjs",
     "omnia:install": "node scripts/ensure-omnia-keystore.mjs && cd android && gradlew.bat installDebug",
-    "omnia:android": "node scripts/ensure-omnia-keystore.mjs && cap sync android && cap open android"
+    "omnia:android": "node scripts/ensure-omnia-keystore.mjs && cap sync android && cap open android",
+    "whoop:bootstrap": "node scripts/whoop-cap.mjs bootstrap",
+    "whoop:sync": "node scripts/whoop-cap.mjs sync",
+    "whoop:open": "node scripts/whoop-cap.mjs open",
+    "whoop:android": "node scripts/whoop-cap.mjs android",
+    "whoop:apk": "node scripts/whoop-cap.mjs apk",
+    "whoop:install": "node scripts/whoop-cap.mjs install"
   },
   "dependencies": {
     "@capacitor-community/keep-awake": "^8.0.1",

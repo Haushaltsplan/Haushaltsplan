@@ -2,7 +2,7 @@
  * Haptics + Keep-Awake Helfer für die native Omnia-App.
  */
 
-import { istOmniaNativeApp } from '@/lib/fitnessdaten/omnia-native'
+import { istOmniaNativeApp } from '@/lib/omnia-native/omnia-native'
 
 export async function omniaHapticLight(): Promise<void> {
   if (!istOmniaNativeApp()) return

@@ -4,9 +4,9 @@ import { StravaAnalyticsView } from '@/components/strava/strava-analytics-view'
 import { StravaCard, StravaSectionTitle } from '@/components/strava/strava-card'
 import { StravaInfoModal, type StravaInfoModalState } from '@/components/strava/strava-info-modal'
 import { STRAVA_COLORS, STRAVA_INTERACTIVE } from '@/components/strava/design-tokens'
-import { WhoopWeeklyBarChart } from '@/components/fitnessdaten/whoop-charts'
+import { StravaWeeklyBarChart } from '@/components/strava/strava-charts'
 import { PageChrome, PageHero, PageSection, PageSectionPanel, ResponsiveTableWrap, appTableScrollInlineClassName } from '@/components/page-shell'
-import { istOmniaNativeApp } from '@/lib/fitnessdaten/omnia-native'
+import { istOmniaNativeApp } from '@/lib/omnia-native/omnia-native'
 import { stravaApiFetch } from '@/lib/strava/strava-api-fetch'
 import { oeffneStravaOAuthUrl } from '@/lib/strava/strava-oauth-open'
 import { stravaRedirectUri } from '@/lib/strava/strava-types'
@@ -524,7 +524,7 @@ STRAVA_CLIENT_SECRET=dein_client_secret`}
           ) : tab === 'entwicklung' ? (
             <div className="space-y-6">
               {auswertung.wkgMonat.some((m) => m.rides > 0) ? (
-                <WhoopWeeklyBarChart
+                <StravaWeeklyBarChart
                   title="W/kg — letzte 24 Monate (Ø pro Monat, ≥20 min mit Leistung)"
                   points={auswertung.wkgMonat.map((m) => ({
                     label: m.label,
@@ -538,7 +538,7 @@ STRAVA_CLIENT_SECRET=dein_client_secret`}
                   }
                 />
               ) : null}
-              <WhoopWeeklyBarChart
+              <StravaWeeklyBarChart
                 title="Kilometer pro Jahr"
                 points={auswertung.jahre.map((j) => ({
                   label: String(j.year),
@@ -548,7 +548,7 @@ STRAVA_CLIENT_SECRET=dein_client_secret`}
                 color={STRAVA_COLORS.orange}
                 onInfo={() => setInfoModal({ title: 'Kilometer pro Jahr', body: STRAVA_PANEL_INFO.yearlyKm })}
               />
-              <WhoopWeeklyBarChart
+              <StravaWeeklyBarChart
                 title="Fahrten pro Jahr"
                 points={auswertung.jahre.map((j) => ({
                   label: String(j.year),
@@ -557,7 +557,7 @@ STRAVA_CLIENT_SECRET=dein_client_secret`}
                 color="#f97316"
                 onInfo={() => setInfoModal({ title: 'Fahrten pro Jahr', body: STRAVA_PANEL_INFO.yearlyRides })}
               />
-              <WhoopWeeklyBarChart
+              <StravaWeeklyBarChart
                 title="Höhenmeter pro Jahr"
                 points={auswertung.jahre.map((j) => ({
                   label: String(j.year),

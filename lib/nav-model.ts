@@ -5,14 +5,6 @@ export const NAV_LINK_DEFS = [
   { href: '/kalender', label: 'Kalender', shortLabel: 'Kalender', emoji: '📅', color: 'text-teal-400', ring: 'focus-visible:ring-teal-500/50' },
   { href: '/rennrad', label: 'Rennrad', shortLabel: 'Rennrad', emoji: '🚴', color: 'text-rose-400', ring: 'focus-visible:ring-rose-500/50' },
   {
-    href: '/fitnessdaten',
-    label: 'Whoop',
-    shortLabel: 'Whoop',
-    emoji: '⬡',
-    color: 'text-orange-400',
-    ring: 'focus-visible:ring-orange-500/50',
-  },
-  {
     href: '/etsy-ki-agent',
     label: 'Etsy',
     shortLabel: 'Etsy',

@@ -33,7 +33,6 @@ import {
   StravaTssBudgetPanel,
 } from '@/components/strava/strava-progress-panels'
 import { StravaWeatherPanel } from '@/components/strava/strava-weather-panel'
-import { StravaWhoopPanel } from '@/components/strava/strava-whoop-panel'
 import type { BackfillStatus } from '@/lib/strava/strava-backfill-status'
 import type { KpiPeriod } from '@/lib/strava/strava-dashboard-analytics'
 import {
@@ -41,7 +40,6 @@ import {
   type StravaExtendedAnalytics,
 } from '@/lib/strava/strava-extended-analytics'
 import type { StravaSegmentEffortRow } from '@/lib/strava/strava-segments'
-import { berechneWhoopStravaInsight } from '@/lib/strava/strava-whoop-bridge'
 import type { StravaActivityRow, StravaAthleteProfile } from '@/lib/strava/strava-types'
 import { useMemo, useState } from 'react'
 
@@ -106,11 +104,6 @@ export function StravaAnalyticsView({
       backfill?.categories.find((c) => c.key === 'weather')?.pending ??
       activities.filter((a) => a.weather_temp_c == null).length,
     [backfill, activities],
-  )
-
-  const whoopInsight = useMemo(
-    () => berechneWhoopStravaInsight(activities, athlete?.ftp ?? analytics.eftp),
-    [activities, athlete?.ftp, analytics.eftp],
   )
 
   const selectedActivity = useMemo(
@@ -201,10 +194,9 @@ export function StravaAnalyticsView({
         />
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+      <div className="grid gap-4 md:grid-cols-2">
         <StravaConsistencyPanel stats={analytics.consistency} />
         <StravaIntensityPanel mix={analytics.intensityMix} />
-        <StravaWhoopPanel insight={whoopInsight} />
       </div>
 
       <div className="grid gap-4 xl:grid-cols-2">

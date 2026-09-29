@@ -4,7 +4,7 @@
  * App-Confirm statt window.confirm — Bottom-Sheet mit großen Buttons.
  */
 
-import { omniaHapticMedium } from '@/lib/fitnessdaten/omnia-native-ux'
+import { omniaHapticMedium } from '@/lib/omnia-native/omnia-native-ux'
 import {
   createContext,
   useCallback,

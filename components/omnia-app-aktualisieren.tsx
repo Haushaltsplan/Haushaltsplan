@@ -1,9 +1,9 @@
 'use client'
 
-import { aktualisiereOmniaApp } from '@/lib/fitnessdaten/omnia-app-aktualisieren'
-import { istOmniaNativeApp } from '@/lib/fitnessdaten/omnia-native'
+import { aktualisiereOmniaApp } from '@/lib/omnia-native/omnia-app-aktualisieren'
+import { istOmniaNativeApp } from '@/lib/omnia-native/omnia-native'
 import { OmniaNativeVersionLabel } from '@/components/omnia-native-version'
-import { oeffneAkkuEinstellungen } from '@/lib/fitnessdaten/omnia-ble-keepalive-native'
+import { oeffneAkkuEinstellungen } from '@/lib/omnia-native/omnia-ble-keepalive-native'
 import { useEffect, useState } from 'react'
 import toast from 'react-hot-toast'
 
@@ -21,7 +21,7 @@ export function OmniaAppAktualisieren() {
     void (async () => {
       try {
         const { omniaBleKeepalivePlugin } = await import(
-          '@/lib/fitnessdaten/omnia-ble-keepalive-native'
+          '@/lib/omnia-native/omnia-ble-keepalive-native'
         )
         const r = await omniaBleKeepalivePlugin().isBatteryOptimized()
         setAkkuOk(r.ignored)

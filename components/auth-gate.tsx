@@ -2,8 +2,8 @@
 
 import { istOeffentlicheRoute } from '@/lib/public-routes'
 import { appInputClass, appSectionCardClass } from '@/lib/app-ui'
-import { decodeOmniaSessionCode } from '@/lib/fitnessdaten/omnia-session-code'
-import { istOmniaNativeApp } from '@/lib/fitnessdaten/omnia-native'
+import { decodeOmniaSessionCode } from '@/lib/omnia-native/omnia-session-code'
+import { istOmniaNativeApp } from '@/lib/omnia-native/omnia-native'
 import { supabase } from '@/lib/supabase'
 import { setzeClientZugriff } from '@/lib/zugriff-client'
 import { omniaRolleAusUser, ownerEmailsPublic } from '@/lib/zugriff-rollen'

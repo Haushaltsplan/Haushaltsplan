@@ -3,11 +3,11 @@
  * Handoff wird awaited (nicht void), damit vor App-Schließen fertig.
  */
 
-import { istOmniaNativeApp } from '@/lib/fitnessdaten/omnia-native'
+import { istOmniaNativeApp } from '@/lib/omnia-native/omnia-native'
 import {
   armeNativeWhoopLink,
   starteOmniaBleKeepalive,
-} from '@/lib/fitnessdaten/omnia-ble-keepalive-native'
+} from '@/lib/omnia-native/omnia-ble-keepalive-native'
 import { istWhoopBleAlwaysOn } from '@/lib/fitnessdaten/whoop-ble-keepalive'
 import { WHOOP_BLE_DEVICE_ID_KEY } from '@/lib/fitnessdaten/web-bluetooth-whoop'
 

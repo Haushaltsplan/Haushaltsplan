@@ -1,7 +1,7 @@
 'use client'
 
 import { useWhoopBle } from '@/components/fitnessdaten/whoop-ble-provider'
-import { istOmniaNativeApp } from '@/lib/fitnessdaten/omnia-native'
+import { istOmniaNativeApp } from '@/lib/omnia-native/omnia-native'
 import { istWhoopBleAlwaysOn, setzeWhoopBleAlwaysOn } from '@/lib/fitnessdaten/whoop-ble-keepalive'
 import { istMobileBrowser, WHOOP_WIEDERHERSTELLUNG } from '@/lib/fitnessdaten/web-bluetooth-whoop'
 import { registerPlugin } from '@capacitor/core'
@@ -43,7 +43,7 @@ export function FitnessWhoopBlePanel({ embedded = false }: Props) {
   const oeffneAkku = async () => {
     try {
       const { oeffneAkkuEinstellungen } = await import(
-        '@/lib/fitnessdaten/omnia-ble-keepalive-native'
+        '@/lib/omnia-native/omnia-ble-keepalive-native'
       )
       await oeffneAkkuEinstellungen()
     } catch {
@@ -183,16 +183,16 @@ export function FitnessWhoopBlePanel({ embedded = false }: Props) {
         </summary>
         <ul className="mt-2 list-disc space-y-1.5 pl-4 leading-relaxed">
           <li>
-            <strong className="text-[var(--app-text)]">Native Omnia (Android)</strong>: Foreground Service hält
+            <strong className="text-[var(--app-text)]">Native Omnia Whoop (Android)</strong>: Foreground Service hält
             BLE bei Standby. Akku → Uneingeschränkt. Nicht „Beenden erzwingen“.
           </li>
           <li>
             <strong className="text-[var(--app-text)]">Browser/PWA</strong>: System trennt BLE beim Schließen —
-            Historie holt Omnia beim nächsten Öffnen vom Band nach.
+            Historie holt die App beim nächsten Öffnen vom Band nach (History-Offload).
           </li>
           <li>
-            <strong className="text-[var(--app-text)]">Cloud-Sync</strong> (mit Abo): läuft ohne BLE für
-            Whoop-Vergleich — ersetzt aber keine Omnia-Shadows.
+            <strong className="text-[var(--app-text)]">Kein Whoop-Abo</strong>: alle Scores lokal aus Band-Daten;
+            geräteübergreifend über deinen Omnia-Login.
           </li>
         </ul>
       </details>

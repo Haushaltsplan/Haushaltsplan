@@ -5,7 +5,7 @@
  * (ohne neuen Magic-Link / ohne E-Mail).
  */
 
-import { istOmniaNativeApp } from '@/lib/fitnessdaten/omnia-native'
+import { istOmniaNativeApp } from '@/lib/omnia-native/omnia-native'
 import { supabase } from '@/lib/supabase'
 import { loginZielFuerRolle, omniaRolleAusUser, ownerEmailsPublic } from '@/lib/zugriff-rollen'
 import { useEffect, useState } from 'react'

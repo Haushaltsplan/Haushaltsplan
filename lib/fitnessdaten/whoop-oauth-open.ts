@@ -1,6 +1,6 @@
 /** WHOOP-OAuth: In der Native-App extern öffnen (Capacitor blockiert sonst api.prod.whoop.com). */
 
-import { istOmniaNativeApp } from '@/lib/fitnessdaten/omnia-native'
+import { istOmniaNativeApp } from '@/lib/omnia-native/omnia-native'
 
 const WHOOP_AUTH_HOST = 'api.prod.whoop.com'
 

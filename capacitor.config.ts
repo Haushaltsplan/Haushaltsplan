@@ -62,9 +62,6 @@ const config: CapacitorConfig = {
           url: serverUrl,
           cleartext: serverUrl.startsWith('http://'),
           allowNavigation: [
-            'api.prod.whoop.com',
-            '*.whoop.com',
-            'whoop.com',
             'www.strava.com',
             'strava.com',
           ],

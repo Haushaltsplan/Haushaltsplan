@@ -2,7 +2,7 @@
 
 /** Android-Zurück: Modal/History, doppel-Back zum Beenden auf Root. */
 
-import { istOmniaNativeApp } from '@/lib/fitnessdaten/omnia-native'
+import { istOmniaNativeApp } from '@/lib/omnia-native/omnia-native'
 import { usePathname, useRouter } from 'next/navigation'
 import { useEffect, useRef } from 'react'
 

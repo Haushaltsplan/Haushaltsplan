@@ -2,7 +2,7 @@
 
 /** Externe Links (mailto/tel/http) in Capacitor über Browser/Intent öffnen. */
 
-import { istOmniaNativeApp } from '@/lib/fitnessdaten/omnia-native'
+import { istOmniaNativeApp } from '@/lib/omnia-native/omnia-native'
 import { useEffect } from 'react'
 
 export function OmniaExternalLinks() {

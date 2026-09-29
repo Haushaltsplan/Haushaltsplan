@@ -4,7 +4,7 @@
  * Speichert Deep-Link-URLs sofort in sessionStorage und navigiert zur Auth-Seite.
  */
 
-import { istOmniaNativeApp } from '@/lib/fitnessdaten/omnia-native'
+import { istOmniaNativeApp } from '@/lib/omnia-native/omnia-native'
 import { useEffect } from 'react'
 
 const APP_ORIGIN =

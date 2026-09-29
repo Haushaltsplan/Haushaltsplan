@@ -3,7 +3,6 @@
  * Omnia = streng lokal (kein Cloud-Fallback), damit die Qualität sichtbar ist.
  */
 
-import { istOmniaOfflineMode } from '@/lib/fitnessdaten/calibration/omnia-offline-mode'
 import {
   createEmptyDayRecord,
   ladeDailyStore,
@@ -21,31 +20,19 @@ export type DisplaySource = 'whoop' | 'omnia'
 export const DISPLAY_SOURCE_KEY = 'mein-haushalt:fitness-display-source'
 export const DISPLAY_SOURCE_EVENT = 'mein-haushalt:fitness-display-source'
 
+/** Immer lokal — Whoop-Cloud/Abo entfällt. */
 export function ladeDisplaySource(): DisplaySource {
-  if (typeof window === 'undefined') return 'whoop'
-  if (istOmniaOfflineMode()) return 'omnia'
-  try {
-    const v = window.localStorage.getItem(DISPLAY_SOURCE_KEY)
-    return v === 'omnia' ? 'omnia' : 'whoop'
-  } catch {
-    return 'whoop'
-  }
+  return 'omnia'
 }
 
-export function setzeDisplaySource(source: DisplaySource): void {
+export function setzeDisplaySource(_source: DisplaySource): void {
   if (typeof window === 'undefined') return
-  if (istOmniaOfflineMode() && source === 'whoop') {
-    window.dispatchEvent(
-      new CustomEvent(DISPLAY_SOURCE_EVENT, { detail: { source: 'omnia', blocked: true } }),
-    )
-    return
-  }
-  window.localStorage.setItem(DISPLAY_SOURCE_KEY, source)
-  window.dispatchEvent(new CustomEvent(DISPLAY_SOURCE_EVENT, { detail: { source } }))
+  window.localStorage.setItem(DISPLAY_SOURCE_KEY, 'omnia')
+  window.dispatchEvent(new CustomEvent(DISPLAY_SOURCE_EVENT, { detail: { source: 'omnia' as DisplaySource } }))
 }
 
 export function istOmniaAnzeige(): boolean {
-  return ladeDisplaySource() === 'omnia'
+  return true
 }
 
 function letzteManuelleSpo2(date: string): number | null {

@@ -15,9 +15,9 @@ import {
   istNativeHandoffAktiv,
   nativeHintergrundHandoff,
   nativeVordergrundUebernahme,
-} from '@/lib/fitnessdaten/omnia-ble-background-handoff'
-import { istOmniaNativeApp } from '@/lib/fitnessdaten/omnia-native'
-import { warteAufOmniaNativeBereit } from '@/lib/fitnessdaten/omnia-native-ready'
+} from '@/lib/omnia-native/omnia-ble-background-handoff'
+import { istOmniaNativeApp } from '@/lib/omnia-native/omnia-native'
+import { warteAufOmniaNativeBereit } from '@/lib/omnia-native/omnia-native-ready'
 import {
   findeGespeichertesWhoopDevice,
   startWhoopNaeheWatcher,
@@ -272,11 +272,11 @@ export function WhoopBleProvider({ children }: Props) {
   useEffect(() => {
     if (!istOmniaNativeApp()) return
     const live = phase === 'live' || phase === 'waiting_hr'
-    void import('@/lib/fitnessdaten/omnia-native-ux').then(({ omniaKeepAwake }) => {
+    void import('@/lib/omnia-native/omnia-native-ux').then(({ omniaKeepAwake }) => {
       void omniaKeepAwake(live)
     })
     return () => {
-      void import('@/lib/fitnessdaten/omnia-native-ux').then(({ omniaKeepAwake }) => {
+      void import('@/lib/omnia-native/omnia-native-ux').then(({ omniaKeepAwake }) => {
         void omniaKeepAwake(false)
       })
     }
@@ -288,7 +288,7 @@ export function WhoopBleProvider({ children }: Props) {
     void (async () => {
       try {
         const { omniaBleKeepalivePlugin } = await import(
-          '@/lib/fitnessdaten/omnia-ble-keepalive-native'
+          '@/lib/omnia-native/omnia-ble-keepalive-native'
         )
         const P = omniaBleKeepalivePlugin()
         const handle = await P.addListener('hrUpdate', (data) => {

@@ -1,6 +1,6 @@
 /** Strava-OAuth: In der Native-App extern öffnen. */
 
-import { istOmniaNativeApp } from '@/lib/fitnessdaten/omnia-native'
+import { istOmniaNativeApp } from '@/lib/omnia-native/omnia-native'
 
 const STRAVA_AUTH_HOSTS = new Set(['www.strava.com', 'strava.com'])
 

@@ -5,8 +5,6 @@ import { WhoopHrChart } from '@/components/fitnessdaten/whoop-hr-chart'
 import { FitnessWhoopBlePanel } from '@/components/fitnessdaten/fitness-whoop-ble-panel'
 import { FitnessWhoopImportPanel } from '@/components/fitnessdaten/fitness-whoop-import-panel'
 import { FitnessUserProfilePanel } from '@/components/fitnessdaten/fitness-user-profile-panel'
-import { FitnessWhoopCloudPanel } from '@/components/fitnessdaten/fitness-whoop-cloud-panel'
-import { WhoopCalibrationPanel } from '@/components/fitnessdaten/whoop-calibration-panel'
 import { FitnessVitalsPanel } from '@/components/fitnessdaten/fitness-vitals-panel'
 import { WhoopBigRing } from '@/components/fitnessdaten/whoop-big-ring'
 import {
@@ -29,10 +27,7 @@ import {
 } from '@/components/fitnessdaten/whoop-healthspan'
 import { WhoopGesundheitsmonitorPanel } from '@/components/fitnessdaten/whoop-gesundheitsmonitor-panel'
 import { WhoopInsightCard, WhoopMetricRow, MetricSourceBadge } from '@/components/fitnessdaten/whoop-metric-row'
-import { FitnessDisplaySourceToggle } from '@/components/fitnessdaten/fitness-display-source-toggle'
 import { metricSourceFuer } from '@/lib/fitnessdaten/calibration/metric-source'
-import { DISPLAY_SOURCE_EVENT } from '@/lib/fitnessdaten/calibration/display-source'
-import { OMNIA_OFFLINE_MODE_EVENT } from '@/lib/fitnessdaten/calibration/omnia-offline-mode'
 import {
   recoveryColor,
   recoveryLabelDe,
@@ -78,8 +73,6 @@ import { useMemo, useState, useEffect, useCallback } from 'react'
 import toast from 'react-hot-toast'
 import { useWhoopBle } from '@/components/fitnessdaten/whoop-ble-provider'
 import { setzeWhoopBleAlwaysOn } from '@/lib/fitnessdaten/whoop-ble-keepalive'
-import { ladeWhoopCloudMeta, syncWhoopCloudVomServer, WHOOP_CLOUD_SYNC_EVENT } from '@/lib/fitnessdaten/whoop-cloud-merge'
-import { versucheWhoopCloudAutoSync } from '@/lib/fitnessdaten/whoop-cloud-auto-sync'
 import { migriereStalenVo2AusDaily, stelleVo2MaxAusGesynctenVitalenSicher, vo2MaxQuelle } from '@/lib/fitnessdaten/vo2max-engine'
 import { migriereStalenSchritteAusDaily } from '@/lib/fitnessdaten/steps-engine'
 
@@ -166,44 +159,19 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange, ini
   const isLive = phase === 'live'
   const isConnecting = phase === 'connecting' || phase === 'waiting_hr'
 
-  const cloudSync = useCallback(async (mitToast = false): Promise<boolean> => {
-    const res = await syncWhoopCloudVomServer()
-    if (res.ok) {
-      setDataRevision((r) => r + 1)
-      if (mitToast) toast.success(res.message)
-      return true
-    }
-    const fehler = res.fehler ?? res.message ?? ''
-    if (mitToast && fehler && !/nicht verbunden/i.test(fehler)) {
-      toast.error(fehler)
-    }
-    return false
-  }, [])
-
   useEffect(() => {
     migriereStalenVo2AusDaily()
     if (stelleVo2MaxAusGesynctenVitalenSicher() != null) {
       setDataRevision((r) => r + 1)
     }
     migriereStalenSchritteAusDaily()
-    // Force-Sync: Cycle-Daten neu datieren (Sleep-Onset → App-Tag)
-    void versucheWhoopCloudAutoSync(true).then((ok) => {
-      if (ok) {
-        stelleVo2MaxAusGesynctenVitalenSicher()
-        setDataRevision((r) => r + 1)
-      }
-    })
     const onSync = () => setDataRevision((r) => r + 1)
-    window.addEventListener(WHOOP_CLOUD_SYNC_EVENT, onSync)
-    window.addEventListener(OMNIA_OFFLINE_MODE_EVENT, onSync)
-    window.addEventListener(DISPLAY_SOURCE_EVENT, onSync)
+    window.addEventListener('omnia-client-state-synced', onSync)
     const strainTick = window.setInterval(() => {
       if (aktualisiereStrainFuerAnzeige()) setDataRevision((r) => r + 1)
     }, 60_000)
     return () => {
-      window.removeEventListener(WHOOP_CLOUD_SYNC_EVENT, onSync)
-      window.removeEventListener(OMNIA_OFFLINE_MODE_EVENT, onSync)
-      window.removeEventListener(DISPLAY_SOURCE_EVENT, onSync)
+      window.removeEventListener('omnia-client-state-synced', onSync)
       window.clearInterval(strainTick)
     }
   }, [])
@@ -213,20 +181,19 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange, ini
     setStatusBusy(true)
     try {
       if (isLive) {
-        await cloudSync(true)
+        toast.success('Band verbunden — Daten laufen live.')
         return
       }
       setzeWhoopBleAlwaysOn(true)
       if (!bleOk) {
-        toast.error('Bluetooth nicht verfügbar — nur Cloud-Sync wird versucht.')
-        await cloudSync(true)
+        toast.error('Bluetooth nicht verfügbar. Bitte Berechtigungen prüfen.')
         return
       }
-      await Promise.all([verbinden('whoop'), cloudSync(false)])
+      await verbinden('whoop')
     } finally {
       setStatusBusy(false)
     }
-  }, [bleOk, cloudSync, isConnecting, isLive, statusBusy, verbinden])
+  }, [bleOk, isConnecting, isLive, statusBusy, verbinden])
 
   const statusLabel = statusBusy
     ? isLive
@@ -308,7 +275,6 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange, ini
 
           {/* Datum-Navigation */}
           <div className="flex flex-col items-center gap-1">
-            <FitnessDisplaySourceToggle />
             <div className="flex items-center gap-0.5">
             <button
               type="button"
@@ -1330,9 +1296,11 @@ export function WhoopDashboard({ snapshot, phase, onSnapshot, onPhaseChange, ini
 
         {tab === 'connect' && (
           <section className="mt-6 space-y-4">
+            <p className="rounded-xl border border-white/[0.06] bg-white/[0.03] px-3 py-2.5 text-[11px] leading-relaxed text-[var(--app-text-muted)]">
+              Omnia Whoop arbeitet nur über Bluetooth am Band — ohne Whoop-Abo und ohne Whoop-Cloud.
+              Tageswerte werden über deinen Omnia-Login geräteübergreifend gesichert.
+            </p>
             <FitnessUserProfilePanel embedded onSaved={() => setDataRevision((r) => r + 1)} />
-            <FitnessWhoopCloudPanel embedded onSyncComplete={() => setDataRevision((r) => r + 1)} />
-            <WhoopCalibrationPanel cloudConnected={Boolean(ladeWhoopCloudMeta()?.lastSyncedAt)} />
             <FitnessVitalsPanel embedded onSaved={() => setDataRevision((r) => r + 1)} />
             <FitnessWhoopBlePanel embedded />
             <FitnessWhoopImportPanel embedded onImportComplete={() => setDataRevision((r) => r + 1)} />

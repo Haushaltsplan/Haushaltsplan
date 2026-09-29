@@ -6,7 +6,7 @@
  */
 
 import { appInputClass, appSectionCardClass } from '@/lib/app-ui'
-import { encodeOmniaSessionCode } from '@/lib/fitnessdaten/omnia-session-code'
+import { encodeOmniaSessionCode } from '@/lib/omnia-native/omnia-session-code'
 import { supabase } from '@/lib/supabase'
 import { useEffect, useState } from 'react'
 import toast from 'react-hot-toast'

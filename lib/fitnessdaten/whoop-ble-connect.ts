@@ -2,8 +2,8 @@
  * Einheitlicher WHOOP-BLE-Einstieg: Browser-PWA oder Omnia Native (Capacitor + BLE-Shim).
  */
 
-import { istOmniaNativeApp } from '@/lib/fitnessdaten/omnia-native'
-import { ladeOmniaNativeFehler, warteAufOmniaNativeBereit } from '@/lib/fitnessdaten/omnia-native-ready'
+import { istOmniaNativeApp } from '@/lib/omnia-native/omnia-native'
+import { ladeOmniaNativeFehler, warteAufOmniaNativeBereit } from '@/lib/omnia-native/omnia-native-ready'
 import {
   findeGespeichertesWhoopDevice,
   startWhoopNaeheWatcher,
@@ -41,13 +41,13 @@ async function startNativeForegroundService(deviceId?: string): Promise<void> {
     deviceId ||
     (typeof window !== 'undefined' ? window.localStorage.getItem(WHOOP_BLE_DEVICE_ID_KEY) : null) ||
     undefined
-  const { starteOmniaBleKeepalive } = await import('@/lib/fitnessdaten/omnia-ble-keepalive-native')
+  const { starteOmniaBleKeepalive } = await import('@/lib/omnia-native/omnia-ble-keepalive-native')
   await starteOmniaBleKeepalive(id ?? undefined)
 }
 
 async function stopNativeForegroundService(): Promise<void> {
   if (!istOmniaNativeApp()) return
-  const { stoppeOmniaBleKeepalive } = await import('@/lib/fitnessdaten/omnia-ble-keepalive-native')
+  const { stoppeOmniaBleKeepalive } = await import('@/lib/omnia-native/omnia-ble-keepalive-native')
   await stoppeOmniaBleKeepalive()
 }
 
@@ -67,7 +67,7 @@ export async function verbindeWhoopBle(
 
   if (istOmniaNativeApp()) {
     await startNativeForegroundService()
-    const handoff = await import('@/lib/fitnessdaten/omnia-ble-background-handoff')
+    const handoff = await import('@/lib/omnia-native/omnia-ble-background-handoff')
     // Nur Capgo-Disconnect registrieren (ohne FGS-Stop)
     const capgoOnlyDisconnect = session.disconnect
     handoff.registriereCapgoDisconnect(capgoOnlyDisconnect)

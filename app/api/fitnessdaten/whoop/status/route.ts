@@ -1,12 +1,13 @@
-import { whoopCloudStatus } from '@/lib/fitnessdaten/whoop-cloud-server'
-import { createSupabaseFuerRequest } from '@/lib/supabase-user'
 import { NextResponse } from 'next/server'
 
-export const runtime = 'nodejs'
-export const dynamic = 'force-dynamic'
+/** Whoop-Cloud-API entfernt — kein Abo mehr. */
+export async function GET() {
+  return NextResponse.json(
+    { error: 'whoop_cloud_disabled', message: 'Whoop-Cloud ist deaktiviert. Nutze BLE am Band.' },
+    { status: 410 },
+  )
+}
 
-export async function GET(req: Request) {
-  const sb = createSupabaseFuerRequest(req)
-  const status = await whoopCloudStatus(sb)
-  return NextResponse.json(status)
+export async function POST() {
+  return GET()
 }

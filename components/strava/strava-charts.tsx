@@ -11,10 +11,106 @@ import {
   STRAVA_CHART_AXIS,
 } from '@/components/strava/strava-recharts'
 import { StravaCard, StravaSectionTitle } from '@/components/strava/strava-card'
+import { StravaChartHeader } from '@/components/strava/strava-info-modal'
 import { STRAVA_PANEL_INFO } from '@/lib/strava/strava-panel-info'
 import type { SpeedTrendPoint, WeeklyVolumeBar, ZoneSlice } from '@/lib/strava/strava-dashboard-analytics'
 import { SPORT_COLORS } from '@/lib/strava/strava-dashboard-analytics'
 import { useMemo } from 'react'
+
+type BarPoint = { label: string; value: number; highlight?: boolean }
+
+function chartBreite(punkte: number): number {
+  return Math.max(280, punkte * 28)
+}
+
+function labelSchritt(anzahl: number): number {
+  if (anzahl <= 10) return 1
+  if (anzahl <= 30) return 2
+  if (anzahl <= 60) return 5
+  return 14
+}
+
+/** Einfaches Jahres-/Monats-Balkendiagramm (früher WhoopWeeklyBarChart-Reuse). */
+export function StravaWeeklyBarChart({
+  title,
+  points,
+  max,
+  formatValue = (v) => String(v),
+  color = '#f97316',
+  onInfo,
+}: {
+  title: string
+  points: BarPoint[]
+  max?: number
+  formatValue?: (v: number) => string
+  color?: string
+  onInfo?: () => void
+}) {
+  const sichtbar = points.filter((p) => p.value > 0)
+  const peak = max ?? Math.max(...sichtbar.map((p) => p.value), 1)
+  const h = 160
+  const w = chartBreite(sichtbar.length || points.length)
+  const n = sichtbar.length || 1
+  const schritt = labelSchritt(n)
+  const werteAnzeigen = n <= 12
+
+  return (
+    <div className="rounded-2xl border border-white/[0.06] bg-[#111113] p-4">
+      <StravaChartHeader title={title} onInfo={onInfo} />
+      <div className="w-full min-w-0 max-w-full overflow-hidden">
+        <svg
+          viewBox={`0 0 ${w} ${h}`}
+          className="block h-auto w-full max-w-full"
+          style={{ height: h }}
+          preserveAspectRatio="xMidYMid meet"
+        >
+          {[0.25, 0.5, 0.75, 1].map((f) => (
+            <line
+              key={f}
+              x1={0}
+              y1={h - 28 - f * (h - 52)}
+              x2={w}
+              y2={h - 28 - f * (h - 52)}
+              stroke="rgba(255,255,255,0.06)"
+              strokeWidth={1}
+            />
+          ))}
+          {(sichtbar.length > 0 ? sichtbar : points).map((p, i) => {
+            const barW = Math.max(12, w / n - 6)
+            const x = i * (w / n) + 3
+            const barH = peak > 0 ? (p.value / peak) * (h - 56) : 0
+            const labelZeigen = p.label && (i % schritt === 0 || i === n - 1)
+            return (
+              <g key={`${p.label}-${i}`}>
+                {p.highlight ? (
+                  <rect x={x - 2} y={10} width={barW + 4} height={h - 20} rx={6} fill="rgba(255,255,255,0.04)" />
+                ) : null}
+                {werteAnzeigen && p.value > 0 ? (
+                  <text x={x + barW / 2} y={18} textAnchor="middle" fill={color} fontSize="9" fontWeight="600">
+                    {formatValue(p.value)}
+                  </text>
+                ) : null}
+                <rect
+                  x={x}
+                  y={h - 28 - barH}
+                  width={barW}
+                  height={Math.max(barH, p.value > 0 ? 3 : 0)}
+                  rx={3}
+                  fill={color}
+                />
+                {labelZeigen ? (
+                  <text x={x + barW / 2} y={h - 6} textAnchor="middle" fill="#71717a" fontSize="8">
+                    {p.label}
+                  </text>
+                ) : null}
+              </g>
+            )
+          })}
+        </svg>
+      </div>
+    </div>
+  )
+}
 
 type VolumeChartProps = {
   data: WeeklyVolumeBar[]

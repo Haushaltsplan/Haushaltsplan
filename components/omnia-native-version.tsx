@@ -1,6 +1,6 @@
 'use client'
 
-import { istOmniaNativeApp } from '@/lib/fitnessdaten/omnia-native'
+import { istOmniaNativeApp } from '@/lib/omnia-native/omnia-native'
 import { useEffect, useState } from 'react'
 
 /** Zeigt native versionName/versionCode + Web-Hinweis. */

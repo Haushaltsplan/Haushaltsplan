@@ -6,8 +6,8 @@
  * ohne den Code im Browser zu verbrauchen.
  */
 
-import { istCapacitorNative } from '@/lib/fitnessdaten/omnia-ble-shim'
-import { istOmniaNativeApp } from '@/lib/fitnessdaten/omnia-native'
+import { istCapacitorNative } from '@/lib/omnia-native/omnia-ble-shim'
+import { istOmniaNativeApp } from '@/lib/omnia-native/omnia-native'
 import { loginZielFuerRolle, omniaRolleAusUser, ownerEmailsPublic } from '@/lib/zugriff-rollen'
 import { supabase } from '@/lib/supabase'
 import type { EmailOtpType, Session } from '@supabase/supabase-js'

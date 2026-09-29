@@ -5,7 +5,6 @@ import {
   StartFinanzenKompakt,
   StartKalenderKompakt,
   StartPortfolioKompakt,
-  StartWhoopKompakt,
 } from '@/components/start-home-kompakt'
 import { StartHero } from '@/components/start-home-ui'
 import { StartWetterKompakt } from '@/components/start-wetter-kompakt'
@@ -39,7 +38,6 @@ export default async function StartUebersichtPage({ searchParams }: StartPagePro
       </Suspense>
 
       <StartKalenderKompakt />
-      <StartWhoopKompakt />
 
       <Suspense fallback={<StartBlockSkeleton />}>
         <StartPortfolioKompakt />

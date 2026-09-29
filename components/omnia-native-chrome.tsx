@@ -5,7 +5,7 @@
  * Nur in der Capacitor-App aktiv.
  */
 
-import { istOmniaNativeApp } from '@/lib/fitnessdaten/omnia-native'
+import { istOmniaNativeApp } from '@/lib/omnia-native/omnia-native'
 import { useTheme } from 'next-themes'
 import { useEffect, useRef } from 'react'
 

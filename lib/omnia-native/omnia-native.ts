@@ -24,3 +24,9 @@ export function ladeOmniaNativeInfo(): OmniaNativeInfo {
 export function istOmniaNativeApp(): boolean {
   return ladeOmniaNativeInfo().native
 }
+
+/** Separate Whoop-Capacitor-App (User-Agent OmniaWhoopCapacitor). */
+export function istOmniaWhoopApp(): boolean {
+  if (typeof navigator === 'undefined') return false
+  return /OmniaWhoopCapacitor/i.test(navigator.userAgent || '')
+}

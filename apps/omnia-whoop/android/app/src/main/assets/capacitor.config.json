@@ -1,0 +1,33 @@
+{
+	"appId": "de.omnia.whoop",
+	"appName": "Omnia Whoop",
+	"webDir": "capacitor-www",
+	"android": {
+		"path": "apps/omnia-whoop/android",
+		"allowMixedContent": false,
+		"appendUserAgent": " OmniaWhoopCapacitor/1.0"
+	},
+	"plugins": {
+		"SplashScreen": {
+			"launchAutoHide": false,
+			"backgroundColor": "#08090d",
+			"showSpinner": false,
+			"androidSplashResourceName": "splash",
+			"splashFullScreen": true,
+			"splashImmersive": true
+		},
+		"StatusBar": {
+			"style": "DARK",
+			"backgroundColor": "#08090d",
+			"overlaysWebView": true
+		},
+		"Keyboard": {
+			"resizeOnFullScreen": true
+		}
+	},
+	"server": {
+		"url": "https://haushaltsplan-blue.vercel.app/fitnessdaten",
+		"cleartext": false,
+		"allowNavigation": []
+	}
+}

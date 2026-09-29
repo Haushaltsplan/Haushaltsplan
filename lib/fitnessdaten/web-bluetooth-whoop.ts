@@ -10,7 +10,7 @@ import {
   verarbeiteSyncPuffer,
 } from '@/lib/fitnessdaten/offline-sync'
 import { berechneRmssd, parseStandardHeartRateMeasurement } from '@/lib/fitnessdaten/standard-hr-parse'
-import { istOmniaNativeApp } from '@/lib/fitnessdaten/omnia-native'
+import { istOmniaNativeApp } from '@/lib/omnia-native/omnia-native'
 import {
   buildGen4WhoopPacket,
   CMD_TOGGLE_BROADCAST_HR,
