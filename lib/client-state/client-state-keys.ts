@@ -10,6 +10,7 @@ export const CLIENT_STATE_KEYS = {
   watchlist: 'watchlist',
   kalenderMeta: 'kalender-meta',
   chartAnalyse: 'chart-analyse',
+  screenerVorlagen: 'screener-vorlagen',
 } as const
 
 export type ClientStateKey = (typeof CLIENT_STATE_KEYS)[keyof typeof CLIENT_STATE_KEYS]

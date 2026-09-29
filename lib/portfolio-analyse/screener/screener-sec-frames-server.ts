@@ -6,7 +6,9 @@
 import 'server-only'
 
 import { leseAlsJson } from '@/lib/http/safe-json-response'
+import { cagrJaehrlichAusSerie } from '@/lib/portfolio-analyse/fundamentaldaten-format'
 import { secFetch } from '@/lib/portfolio-analyse/sec-edgar-common-server'
+import { SCREENER_SCHEMA_VERSION } from '@/lib/portfolio-analyse/screener/screener-types'
 import { ladeYahooQuoteKennzahlen } from '@/lib/portfolio-analyse/yahoo-kurse-server'
 import type {
   ScreenerBoerse,
@@ -31,7 +33,13 @@ type JahrRoh = {
   ek?: number
   assets?: number
   eps?: number
+  debt?: number
+  cash?: number
+  da?: number
+  aktien?: number
 }
+
+const MAX_ROIC_PCT = 80
 
 function zuMio(val: number | null | undefined): number | null {
   if (val == null || !Number.isFinite(val)) return null
@@ -99,6 +107,36 @@ function mergen(primaer: Map<number, number>, ...rest: Map<number, number>[]): M
   return out
 }
 
+function addMaps(a: Map<number, number>, b: Map<number, number>): Map<number, number> {
+  const out = new Map(a)
+  for (const [cik, val] of b) {
+    out.set(cik, (out.get(cik) ?? 0) + val)
+  }
+  return out
+}
+
+function zuAktienMio(val: number | null | undefined): number | null {
+  if (val == null || !Number.isFinite(val) || val <= 0) return null
+  const mio = val >= 1_000_000 ? val / 1_000_000 : val
+  return Math.round(mio * 100) / 100
+}
+
+function investedMio(ekMio: number | null, debtMio: number | null): number | null {
+  if (ekMio == null) return null
+  const ic = ekMio + (debtMio ?? 0)
+  return ic > 0 ? ic : null
+}
+
+function roicPctAus(ebitMio: number | null, icNow: number | null, icPrev: number | null): number | null {
+  if (ebitMio == null || icNow == null) return null
+  const avg = icPrev != null ? (icNow + icPrev) / 2 : icNow
+  if (!(avg > 0)) return null
+  const v = ((ebitMio * 0.79) / avg) * 100
+  if (!Number.isFinite(v)) return null
+  if (v > MAX_ROIC_PCT) return MAX_ROIC_PCT
+  return runde(v)
+}
+
 function setz(ziel: Map<number, Map<number, JahrRoh>>, cik: number, jahr: number, feld: keyof JahrRoh, roh: number) {
   let jahre = ziel.get(cik)
   if (!jahre) {
@@ -153,7 +191,16 @@ export async function baueScreenerSnapshot(): Promise<ScreenerSnapshot> {
       ladeFrame('us-gaap', 'StockholdersEquity', 'USD', stichtag),
       ladeFrame('us-gaap', 'Assets', 'USD', stichtag),
     ])
+    const [ltDebt, debtCur, ltDebtCur, cash, shares, da] = await Promise.all([
+      ladeFrame('us-gaap', 'LongTermDebt', 'USD', stichtag),
+      ladeFrame('us-gaap', 'DebtCurrent', 'USD', stichtag),
+      ladeFrame('us-gaap', 'LongTermDebtCurrent', 'USD', stichtag),
+      ladeFrame('us-gaap', 'CashAndCashEquivalentsAtCarryingValue', 'USD', stichtag),
+      ladeFrame('us-gaap', 'WeightedAverageNumberOfDilutedSharesOutstanding', 'shares', dauer),
+      ladeFrame('us-gaap', 'DepreciationDepletionAndAmortization', 'USD', dauer),
+    ])
     const umsatz = mergen(umsatzAsc, umsatzRev, umsatzSales)
+    const debt = addMaps(ltDebt, mergen(debtCur, ltDebtCur))
     for (const [cik, val] of umsatz) setz(perCik, cik, jahr, 'umsatz', val)
     for (const [cik, val] of ebit) setz(perCik, cik, jahr, 'ebit', val)
     for (const [cik, val] of ni) setz(perCik, cik, jahr, 'ni', val)
@@ -162,6 +209,10 @@ export async function baueScreenerSnapshot(): Promise<ScreenerSnapshot> {
     for (const [cik, val] of eps) setz(perCik, cik, jahr, 'eps', val)
     for (const [cik, val] of ek) setz(perCik, cik, jahr, 'ek', val)
     for (const [cik, val] of assets) setz(perCik, cik, jahr, 'assets', val)
+    for (const [cik, val] of debt) setz(perCik, cik, jahr, 'debt', val)
+    for (const [cik, val] of cash) setz(perCik, cik, jahr, 'cash', val)
+    for (const [cik, val] of shares) setz(perCik, cik, jahr, 'aktien', val)
+    for (const [cik, val] of da) setz(perCik, cik, jahr, 'da', val)
   }
 
   const zeilen: ScreenerZeile[] = []
@@ -188,6 +239,10 @@ export async function baueScreenerSnapshot(): Promise<ScreenerSnapshot> {
         fcfMio,
         ekMio: zuMio(r.ek),
         eps: r.eps != null && Number.isFinite(r.eps) ? Math.round(r.eps * 1000) / 1000 : null,
+        debtMio: zuMio(r.debt),
+        cashMio: zuMio(r.cash),
+        daMio: zuMio(r.da),
+        aktienMio: zuAktienMio(r.aktien),
       }
     })
     const last = hist[hist.length - 1]!
@@ -197,10 +252,34 @@ export async function baueScreenerSnapshot(): Promise<ScreenerSnapshot> {
       jahr: p.jahr,
       val: p.umsatzMio!,
     }))
+    const epsSerie = hist.filter((p) => p.eps != null && p.eps > 0).map((p) => ({ jahr: p.jahr, val: p.eps! }))
+    const fcfSerie = hist.filter((p) => p.fcfMio != null && p.fcfMio > 0).map((p) => ({ jahr: p.jahr, val: p.fcfMio! }))
     const niMargen = hist
       .map((p) => pct(p.niMio, p.umsatzMio))
       .filter((v): v is number => v != null)
-    const epsLast = last.eps
+    const fcfMargePct = pct(last.fcfMio, last.umsatzMio)
+    const umsatzWachstumPct = wachstum(last.umsatzMio, vor?.umsatzMio ?? null)
+    const fcfConversionPct =
+      last.niMio != null && last.niMio > 0 && last.fcfMio != null ? runde((last.fcfMio / last.niMio) * 100) : null
+    const capexSalesPct = pct(zuMio(lastRoh.capex) != null ? Math.abs(zuMio(lastRoh.capex)!) : null, last.umsatzMio)
+    const icNow = investedMio(last.ekMio, last.debtMio ?? null)
+    const icPrev = vor ? investedMio(vor.ekMio, vor.debtMio ?? null) : null
+    const netDebtMio =
+      last.debtMio == null && last.cashMio == null
+        ? null
+        : runde((last.debtMio ?? 0) - (last.cashMio ?? 0))
+    const ebitdaMio =
+      last.ebitMio == null && last.daMio == null
+        ? null
+        : runde((last.ebitMio ?? 0) + Math.abs(last.daMio ?? 0))
+    const netDebtEbitda =
+      netDebtMio == null || ebitdaMio == null || !(ebitdaMio > 0) ? null : runde(netDebtMio / ebitdaMio, 2)
+    const aktienSerie = hist.map((p) => p.aktienMio).filter((v): v is number => v != null && v > 0)
+    const aktienVerwaesserungJaehrlichPct = runde(cagrJaehrlichAusSerie(aktienSerie), 2)
+    const ruleOf40 =
+      umsatzWachstumPct == null && fcfMargePct == null
+        ? null
+        : runde((umsatzWachstumPct ?? 0) + (fcfMargePct ?? 0))
     zeilen.push({
       ticker: sym,
       name,
@@ -213,15 +292,26 @@ export async function baueScreenerSnapshot(): Promise<ScreenerSnapshot> {
       fcfMio: last.fcfMio,
       ekMio: last.ekMio,
       assetsMio: zuMio(lastRoh.assets),
+      debtMio: last.debtMio ?? null,
+      cashMio: last.cashMio ?? null,
       niMargePct: pct(last.niMio, last.umsatzMio),
       ebitMargePct: pct(last.ebitMio, last.umsatzMio),
       roePct: pct(last.niMio, last.ekMio),
-      fcfMargePct: pct(last.fcfMio, last.umsatzMio),
-      umsatzWachstumPct: wachstum(last.umsatzMio, vor?.umsatzMio ?? null),
+      roicPct: roicPctAus(last.ebitMio, icNow, icPrev),
+      fcfMargePct,
+      fcfConversionPct,
+      capexSalesPct,
+      umsatzWachstumPct,
       umsatzCagr3y: cagr(umsatzSerie, 3),
       umsatzCagr5y: cagr(umsatzSerie, 5),
       umsatzCagr10y: cagr(umsatzSerie, 10),
+      epsCagr5y: cagr(epsSerie, 5),
+      fcfCagr5y: cagr(fcfSerie, 5),
+      ruleOf40,
       niMargeMedian: runde(median(niMargen)),
+      aktienVerwaesserungJaehrlichPct,
+      netDebtMio,
+      netDebtEbitda,
       jahreAnzahl: umsatzSerie.length,
       vonJahr: hist[0]?.jahr ?? null,
       bisJahr: last.jahr,
@@ -249,6 +339,8 @@ export async function baueScreenerSnapshot(): Promise<ScreenerSnapshot> {
     z.kbv = runde(
       q?.priceToBook ?? (mcapMio != null && z.ekMio != null && z.ekMio > 0 ? mcapMio / z.ekMio : null),
     )
+    z.sektor = q?.sektor ?? null
+    z.industrie = q?.industrie ?? null
   }
 
   zeilen.sort((a, b) => (b.umsatzMio ?? -1) - (a.umsatzMio ?? -1))
@@ -257,6 +349,7 @@ export async function baueScreenerSnapshot(): Promise<ScreenerSnapshot> {
     periode: `CY${bisJahr}`,
     aktualisiertAm: new Date().toISOString(),
     n: zeilen.length,
+    schemaVersion: SCREENER_SCHEMA_VERSION,
     zeilen,
   }
 }

@@ -14,6 +14,7 @@ function paketFuerClient(snap: NonNullable<Awaited<ReturnType<typeof ladeScreene
     periode: snap.periode,
     aktualisiertAm: snap.aktualisiertAm,
     n: snap.n,
+    schemaVersion: snap.schemaVersion ?? 1,
     zeilen: snap.zeilen.map(({ hist: _hist, ...z }) => z),
   }
 }
@@ -28,6 +29,7 @@ export async function GET() {
         periode: null,
         aktualisiertAm: null,
         n: 0,
+        schemaVersion: 1,
         zeilen: [],
       })
     }

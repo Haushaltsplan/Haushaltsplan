@@ -87,6 +87,8 @@ export type YahooQuoteKennzahl = {
   marktkap: number | null
   trailingPE: number | null
   priceToBook: number | null
+  sektor: string | null
+  industrie: string | null
 }
 
 const QUOTE_CHUNK = 80
@@ -114,6 +116,8 @@ export async function ladeYahooQuoteKennzahlen(symbole: string[]): Promise<Map<s
             marketCap?: number
             trailingPE?: number
             priceToBook?: number
+            sector?: string
+            industry?: string
           }>
         }
       }
@@ -128,7 +132,9 @@ export async function ladeYahooQuoteKennzahlen(symbole: string[]): Promise<Map<s
             : null
         const priceToBook =
           q.priceToBook != null && Number.isFinite(q.priceToBook) && q.priceToBook > 0 ? q.priceToBook : null
-        out.set(sym, { preis, marktkap, trailingPE, priceToBook })
+        const sektor = typeof q.sector === 'string' && q.sector.trim() ? q.sector.trim() : null
+        const industrie = typeof q.industry === 'string' && q.industry.trim() ? q.industry.trim() : null
+        out.set(sym, { preis, marktkap, trailingPE, priceToBook, sektor, industrie })
       }
     } catch {
       /* nächster Chunk */

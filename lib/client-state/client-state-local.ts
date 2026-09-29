@@ -178,6 +178,12 @@ export async function leseLocalPayload(schluessel: ClientStateKey): Promise<unkn
       if (Object.keys(k).length === 0 && !leseClientStateRev(CLIENT_STATE_KEYS.chartAnalyse)) return null
       return k
     }
+    case CLIENT_STATE_KEYS.screenerVorlagen: {
+      const { leseScreenerVorlagen } = await import('@/lib/portfolio-analyse/screener/screener-vorlagen-store')
+      const v = leseScreenerVorlagen()
+      if (v.length === 0 && !leseClientStateRev(CLIENT_STATE_KEYS.screenerVorlagen)) return null
+      return { vorlagen: v }
+    }
     case CLIENT_STATE_KEYS.kalenderMeta:
       return null
     default:
@@ -255,6 +261,13 @@ export async function wendeClientStateAn(eintrag: ClientStateEintrag): Promise<v
         schreibeChartAnalyseKarte(parseChartAnalyseKarte(payload))
         break
       }
+      case CLIENT_STATE_KEYS.screenerVorlagen: {
+        const { parseScreenerVorlagenPayload, schreibeScreenerVorlagen } = await import(
+          '@/lib/portfolio-analyse/screener/screener-vorlagen-store'
+        )
+        schreibeScreenerVorlagen(parseScreenerVorlagenPayload(payload).vorlagen, { mitCloud: false })
+        break
+      }
       default:
         break
     }
@@ -272,4 +285,5 @@ export const ALLE_UPLOAD_KEYS: ClientStateKey[] = [
   CLIENT_STATE_KEYS.terminReminder,
   CLIENT_STATE_KEYS.watchlist,
   CLIENT_STATE_KEYS.chartAnalyse,
+  CLIENT_STATE_KEYS.screenerVorlagen,
 ]

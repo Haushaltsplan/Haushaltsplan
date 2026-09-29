@@ -4,6 +4,7 @@ import 'server-only'
 
 import { createSupabaseAdmin } from '@/lib/supabase-admin'
 import type { ScreenerSnapshot } from '@/lib/portfolio-analyse/screener/screener-types'
+import { SCREENER_SCHEMA_VERSION } from '@/lib/portfolio-analyse/screener/screener-types'
 import { baueScreenerSnapshot } from '@/lib/portfolio-analyse/screener/screener-sec-frames-server'
 
 const TABLE = 'screener_sec_snapshot' as const
@@ -36,11 +37,17 @@ export async function ladeScreenerSnapshot(): Promise<ScreenerSnapshot | null> {
       aktualisiert_am: string
     }
     if (!Array.isArray(row.zeilen) || row.zeilen.length === 0) return null
+    const schemaVersion = row.zeilen.some((z) =>
+      Object.prototype.hasOwnProperty.call(z, 'roicPct'),
+    )
+      ? SCREENER_SCHEMA_VERSION
+      : 1
     const snap: ScreenerSnapshot = {
       periode: row.periode,
       n: row.n,
       zeilen: row.zeilen,
       aktualisiertAm: row.aktualisiert_am,
+      schemaVersion,
     }
     memory = { at: Date.now(), data: snap }
     return snap
