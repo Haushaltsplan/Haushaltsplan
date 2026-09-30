@@ -29,6 +29,7 @@ const GROSSE_CACHE_KEYS = [
   'pa-fundamentaldaten-v59',
   'pa-fundamentaldaten-v60',
   'pa-fundamentaldaten-v61',
+  'pa-fundamentaldaten-v62',
   'pa-earnings-call-unternehmen-v1',
   'pa-sec-berichte-unternehmen-v4',
   'pa-sec-berichte-unternehmen-v1',

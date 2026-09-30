@@ -16,6 +16,9 @@ import type { MacrotrendsFundamentalRoh, MacrotrendsIdent } from '@/lib/portfoli
 const CACHE_MS = 24 * 60 * 60 * 1000
 const JAHRESFORMULARE = new Set(['10-K', '10-K/A', '20-F', '20-F/A', '40-F', '40-F/A'])
 const QUARTALSFORMULARE = new Set(['10-Q', '10-Q/A', '6-K'])
+/** Gleiche Kalender-Tiefe für Jahres- und Quartalsreihen (XBRL ~ab 2009). */
+const SEC_HIST_JAHRE = 16
+const SEC_HIST_QUARTALE = SEC_HIST_JAHRE * 4
 
 type FactsUnit = {
   start?: string
@@ -700,7 +703,8 @@ export async function ladeSecFundamentaldaten(
 
   const isoSet = new Set<string>()
   for (const reihe of reihen.values()) for (const ende of reihe.keys()) isoSet.add(ende)
-  const isoListe = [...isoSet].sort().slice(quartal ? -16 : -16)
+  // Früher: Quartal auch slice(-16) → nur ~4 Jahre; Jahr und Quartal sollen gleich weit zurückreichen.
+  const isoListe = [...isoSet].sort().slice(quartal ? -SEC_HIST_QUARTALE : -SEC_HIST_JAHRE)
   if (isoListe.length < (quartal ? 4 : 6)) return merke(null)
 
   const mitTtm = frequenz === 'jahr'

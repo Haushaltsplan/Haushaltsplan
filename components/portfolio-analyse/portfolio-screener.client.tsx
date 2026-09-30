@@ -9,11 +9,15 @@ import { CLIENT_STATE_APPLIED_EVENT, CLIENT_STATE_KEYS } from '@/lib/client-stat
 import { fundamentaldatenHref } from '@/lib/portfolio-analyse/fundamentaldaten-navigation'
 import {
   aktiveFilterChips,
+  diagnostiziereFilter,
   filterGleich,
   hatAktiveFilterAusserSuche,
+  hatKennzahlFokus,
+  kennzahlAbdeckungPct,
   kloneFilter,
   leerScreenerFilter,
   passtScreenerFilter,
+  SCREENER_KENNZAHL_LABEL,
   setzeSpanne,
   sortiereScreenerZeilen,
   sortierungIstAufsteigendDefault,
@@ -398,16 +402,27 @@ function SpanneFeld({
   kennzahl,
   filter,
   onFilter,
+  abdeckung,
 }: {
   label: string
   kennzahl: ScreenerKennzahl
   filter: ScreenerFilter
   onFilter: (f: ScreenerFilter) => void
+  abdeckung?: Map<ScreenerKennzahl, number>
 }) {
   const sp = filter.spannen[kennzahl] ?? {}
+  const abdeckungPct = abdeckung?.get(kennzahl)
+  const duenn = abdeckungPct != null && abdeckungPct < 15
   return (
     <label className="block text-[11px] text-[var(--app-text-muted)]">
-      {label}
+      <span className="flex items-baseline justify-between gap-2">
+        <span>{label}</span>
+        {abdeckungPct != null ? (
+          <span className={duenn ? 'text-amber-300/90' : 'text-[var(--app-text-muted)]'}>
+            {abdeckungPct.toLocaleString('de-DE', { maximumFractionDigits: 0 })} % Daten
+          </span>
+        ) : null}
+      </span>
       <div className="mt-1 grid grid-cols-2 gap-1">
         <ZahlInput value={sp.min} placeholder="min" onChange={(min) => onFilter(setzeSpanne(filter, kennzahl, { min }))} />
         <ZahlInput value={sp.max} placeholder="max" onChange={(max) => onFilter(setzeSpanne(filter, kennzahl, { max }))} />
@@ -537,11 +552,28 @@ export function PortfolioScreenerClient() {
 
   const sichtbar = gefiltert.slice(0, 250)
   const autoSpalten = useMemo(() => spaltenAusFilter(filter), [filter])
+  const fokusAktiv = useMemo(() => hatKennzahlFokus(filter), [filter])
   const sichtbareSpalten = useMemo(() => {
+    // Bei aktivem Kennzahl-Filter: Tabelle folgt den Filtern (Basis + gefilterte Spalten).
+    if (fokusAktiv && autoSpalten.size > 0) {
+      const fokusIds = new Set<SpalteId>(['ticker', 'name', 'jahre', 'watch', ...autoSpalten])
+      if (spalten.has('quality')) fokusIds.add('quality')
+      if (spalten.has('umsatz')) fokusIds.add('umsatz')
+      return SPALTEN.filter((s) => fokusIds.has(s.id) || s.immer)
+    }
     return SPALTEN.filter((s) => spalten.has(s.id) || s.immer || autoSpalten.has(s.id))
-  }, [spalten, autoSpalten])
+  }, [spalten, autoSpalten, fokusAktiv])
   const chips = useMemo(() => aktiveFilterChips(filter), [filter])
   const hatFilter = hatAktiveFilterAusserSuche(filter)
+  const diagnose = useMemo(() => diagnostiziereFilter(zeilen, filter), [zeilen, filter])
+  const abdeckung = useMemo(() => {
+    const m = new Map<ScreenerKennzahl, number>()
+    if (zeilen.length === 0) return m
+    for (const k of Object.keys(SCREENER_KENNZAHL_LABEL) as ScreenerKennzahl[]) {
+      m.set(k, kennzahlAbdeckungPct(zeilen, k))
+    }
+    return m
+  }, [zeilen])
   const sektoren = useMemo(() => {
     const set = new Set<string>()
     for (const z of zeilen) {
@@ -741,7 +773,34 @@ export function PortfolioScreenerClient() {
         ) : null}
         {schemaAlt ? (
           <p className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-100">
-            Universum ohne Schema v5 (KGV5y, IC−Cash, iROIC-Lag u. a.). Einmal „Universum neu aufbauen“.
+            Universum-Schema veraltet (v{schemaVersion} &lt; v{SCREENER_SCHEMA_VERSION}: KGV5y, IC−Cash, iROIC-Lag, CapEx-Tags).
+            Bitte einmal „Universum neu aufbauen“ — sonst liefern Filter auf fehlende Kennzahlen 0 Treffer.
+          </p>
+        ) : null}
+
+        {hatFilter && diagnose.treffer === 0 && zeilen.length > 0 ? (
+          <p className="rounded-md border border-rose-500/35 bg-rose-500/10 px-3 py-2 text-xs text-rose-100">
+            {diagnose.toteKennzahlen.length > 0 ? (
+              <>
+                0 Treffer — Kennzahl(en){' '}
+                {diagnose.toteKennzahlen.map((k) => SCREENER_KENNZAHL_LABEL[k]).join(', ')} fehlen im Universum
+                (&lt; 5 % Abdeckung). Universum neu aufbauen oder Filter entfernen.
+              </>
+            ) : diagnose.ohneDaten > 0 && !filter.lueckenErlaubt ? (
+              <>
+                0 Treffer — {diagnose.ohneDaten.toLocaleString('de-DE')} Titel ohne Daten für aktive Filter (nur{' '}
+                {diagnose.mitDaten.toLocaleString('de-DE')} mit Werten). „unvollständige Zeilen behalten“ aktivieren oder
+                Schwellen lockern.
+              </>
+            ) : (
+              <>0 Treffer — Schwellen zu eng. Chips oben entfernen oder Min/Max anpassen.</>
+            )}
+          </p>
+        ) : null}
+
+        {fokusAktiv && autoSpalten.size > 0 ? (
+          <p className="text-[11px] text-[var(--app-text-muted)]">
+            Tabellenfokus: nur Basis + gefilterte Kennzahlen (●). Filter zurücksetzen zeigt wieder alle Spalten.
           </p>
         ) : null}
 
@@ -945,9 +1004,9 @@ export function PortfolioScreenerClient() {
                       ))}
                     </select>
                   </label>
-                  <SpanneFeld label="Historie (Jahre)" kennzahl="jahreAnzahl" filter={filter} onFilter={setFilter} />
-                  <SpanneFeld label="Umsatz (Mio $)" kennzahl="umsatzMio" filter={filter} onFilter={setFilter} />
-                  <SpanneFeld label="Marktkap (Mio $)" kennzahl="marktkapMio" filter={filter} onFilter={setFilter} />
+                  <SpanneFeld label="Historie (Jahre)" kennzahl="jahreAnzahl" filter={filter} onFilter={setFilter} abdeckung={abdeckung} />
+                  <SpanneFeld label="Umsatz (Mio $)" kennzahl="umsatzMio" filter={filter} onFilter={setFilter} abdeckung={abdeckung} />
+                  <SpanneFeld label="Marktkap (Mio $)" kennzahl="marktkapMio" filter={filter} onFilter={setFilter} abdeckung={abdeckung} />
                   <CheckFeld
                     checked={filter.lueckenErlaubt}
                     onChange={(v) => setFilter({ ...filter, sektor: filter.sektor ?? '', lueckenErlaubt: v })}
@@ -959,15 +1018,15 @@ export function PortfolioScreenerClient() {
 
               {filterTab === 'profit' ? (
                 <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-                  <SpanneFeld label="ROE %" kennzahl="roePct" filter={filter} onFilter={setFilter} />
-                  <SpanneFeld label="ROIC %" kennzahl="roicPct" filter={filter} onFilter={setFilter} />
-                  <SpanneFeld label="iROIC 3–5J %" kennzahl="iroicPct" filter={filter} onFilter={setFilter} />
-                  <SpanneFeld label="ROIC 5J-Schnitt %" kennzahl="roic5yAvgPct" filter={filter} onFilter={setFilter} />
-                  <SpanneFeld label="iROIC − WACC Pp." kennzahl="incrementalValueSpreadPct" filter={filter} onFilter={setFilter} />
-                  <SpanneFeld label="Bruttomarge %" kennzahl="bruttoMargePct" filter={filter} onFilter={setFilter} />
-                  <SpanneFeld label="EBIT-Marge %" kennzahl="ebitMargePct" filter={filter} onFilter={setFilter} />
-                  <SpanneFeld label="NI-Marge %" kennzahl="niMargePct" filter={filter} onFilter={setFilter} />
-                  <SpanneFeld label="FCF-Marge %" kennzahl="fcfMargePct" filter={filter} onFilter={setFilter} />
+                  <SpanneFeld label="ROE %" kennzahl="roePct" filter={filter} onFilter={setFilter} abdeckung={abdeckung} />
+                  <SpanneFeld label="ROIC %" kennzahl="roicPct" filter={filter} onFilter={setFilter} abdeckung={abdeckung} />
+                  <SpanneFeld label="iROIC 3–5J %" kennzahl="iroicPct" filter={filter} onFilter={setFilter} abdeckung={abdeckung} />
+                  <SpanneFeld label="ROIC 5J-Schnitt %" kennzahl="roic5yAvgPct" filter={filter} onFilter={setFilter} abdeckung={abdeckung} />
+                  <SpanneFeld label="iROIC − WACC Pp." kennzahl="incrementalValueSpreadPct" filter={filter} onFilter={setFilter} abdeckung={abdeckung} />
+                  <SpanneFeld label="Bruttomarge %" kennzahl="bruttoMargePct" filter={filter} onFilter={setFilter} abdeckung={abdeckung} />
+                  <SpanneFeld label="EBIT-Marge %" kennzahl="ebitMargePct" filter={filter} onFilter={setFilter} abdeckung={abdeckung} />
+                  <SpanneFeld label="NI-Marge %" kennzahl="niMargePct" filter={filter} onFilter={setFilter} abdeckung={abdeckung} />
+                  <SpanneFeld label="FCF-Marge %" kennzahl="fcfMargePct" filter={filter} onFilter={setFilter} abdeckung={abdeckung} />
                   <CheckFeld checked={filter.nurGewinn} onChange={(v) => setFilter({ ...filter, nurGewinn: v })}>
                     nur Gewinn
                   </CheckFeld>
@@ -979,24 +1038,24 @@ export function PortfolioScreenerClient() {
 
               {filterTab === 'wachstum' ? (
                 <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-                  <SpanneFeld label="Umsatz 1J %" kennzahl="umsatzWachstumPct" filter={filter} onFilter={setFilter} />
-                  <SpanneFeld label="CAGR 3J %" kennzahl="umsatzCagr3y" filter={filter} onFilter={setFilter} />
-                  <SpanneFeld label="CAGR 5J %" kennzahl="umsatzCagr5y" filter={filter} onFilter={setFilter} />
-                  <SpanneFeld label="CAGR 10J %" kennzahl="umsatzCagr10y" filter={filter} onFilter={setFilter} />
-                  <SpanneFeld label="EPS-CAGR 5J %" kennzahl="epsCagr5y" filter={filter} onFilter={setFilter} />
-                  <SpanneFeld label="FCF-CAGR 5J %" kennzahl="fcfCagr5y" filter={filter} onFilter={setFilter} />
-                  <SpanneFeld label="FCF/Aktie-CAGR 5J %" kennzahl="fcfJeAktieCagr5y" filter={filter} onFilter={setFilter} />
-                  <SpanneFeld label="Rule of 40" kennzahl="ruleOf40" filter={filter} onFilter={setFilter} />
+                  <SpanneFeld label="Umsatz 1J %" kennzahl="umsatzWachstumPct" filter={filter} onFilter={setFilter} abdeckung={abdeckung} />
+                  <SpanneFeld label="CAGR 3J %" kennzahl="umsatzCagr3y" filter={filter} onFilter={setFilter} abdeckung={abdeckung} />
+                  <SpanneFeld label="CAGR 5J %" kennzahl="umsatzCagr5y" filter={filter} onFilter={setFilter} abdeckung={abdeckung} />
+                  <SpanneFeld label="CAGR 10J %" kennzahl="umsatzCagr10y" filter={filter} onFilter={setFilter} abdeckung={abdeckung} />
+                  <SpanneFeld label="EPS-CAGR 5J %" kennzahl="epsCagr5y" filter={filter} onFilter={setFilter} abdeckung={abdeckung} />
+                  <SpanneFeld label="FCF-CAGR 5J %" kennzahl="fcfCagr5y" filter={filter} onFilter={setFilter} abdeckung={abdeckung} />
+                  <SpanneFeld label="FCF/Aktie-CAGR 5J %" kennzahl="fcfJeAktieCagr5y" filter={filter} onFilter={setFilter} abdeckung={abdeckung} />
+                  <SpanneFeld label="Rule of 40" kennzahl="ruleOf40" filter={filter} onFilter={setFilter} abdeckung={abdeckung} />
                 </div>
               ) : null}
 
               {filterTab === 'cash' ? (
                 <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-                  <SpanneFeld label="FCF-Conversion %" kennzahl="fcfConversionPct" filter={filter} onFilter={setFilter} />
-                  <SpanneFeld label="Reinvestitionsquote %" kennzahl="reinvestitionsquotePct" filter={filter} onFilter={setFilter} />
-                  <SpanneFeld label="CapEx/Umsatz %" kennzahl="capexSalesPct" filter={filter} onFilter={setFilter} />
-                  <SpanneFeld label="SBC / OCF %" kennzahl="sbcOcfPct" filter={filter} onFilter={setFilter} />
-                  <SpanneFeld label="Verwässerung p.a. %" kennzahl="aktienVerwaesserungJaehrlichPct" filter={filter} onFilter={setFilter} />
+                  <SpanneFeld label="FCF-Conversion %" kennzahl="fcfConversionPct" filter={filter} onFilter={setFilter} abdeckung={abdeckung} />
+                  <SpanneFeld label="Reinvestitionsquote %" kennzahl="reinvestitionsquotePct" filter={filter} onFilter={setFilter} abdeckung={abdeckung} />
+                  <SpanneFeld label="CapEx/Umsatz %" kennzahl="capexSalesPct" filter={filter} onFilter={setFilter} abdeckung={abdeckung} />
+                  <SpanneFeld label="SBC / OCF %" kennzahl="sbcOcfPct" filter={filter} onFilter={setFilter} abdeckung={abdeckung} />
+                  <SpanneFeld label="Verwässerung p.a. %" kennzahl="aktienVerwaesserungJaehrlichPct" filter={filter} onFilter={setFilter} abdeckung={abdeckung} />
                   <CheckFeld checked={filter.aktienSinkend} onChange={(v) => setFilter({ ...filter, aktienSinkend: v })}>
                     nur sinkende Aktienzahl
                   </CheckFeld>
@@ -1060,8 +1119,8 @@ export function PortfolioScreenerClient() {
 
               {filterTab === 'bilanz' ? (
                 <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-                  <SpanneFeld label="Net Debt/EBITDA" kennzahl="netDebtEbitda" filter={filter} onFilter={setFilter} />
-                  <SpanneFeld label="Zinsdeckung ×" kennzahl="interestCoverage" filter={filter} onFilter={setFilter} />
+                  <SpanneFeld label="Net Debt/EBITDA" kennzahl="netDebtEbitda" filter={filter} onFilter={setFilter} abdeckung={abdeckung} />
+                  <SpanneFeld label="Zinsdeckung ×" kennzahl="interestCoverage" filter={filter} onFilter={setFilter} abdeckung={abdeckung} />
                   <CheckFeld checked={filter.ekPositiv} onChange={(v) => setFilter({ ...filter, ekPositiv: v })}>
                     Eigenkapital &gt; 0
                   </CheckFeld>
@@ -1070,9 +1129,13 @@ export function PortfolioScreenerClient() {
 
               {filterTab === 'bewertung' ? (
                 <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-                  <SpanneFeld label="KGV" kennzahl="kgv" filter={filter} onFilter={setFilter} />
-                  <SpanneFeld label="KUV" kennzahl="kuv" filter={filter} onFilter={setFilter} />
-                  <SpanneFeld label="KBV" kennzahl="kbv" filter={filter} onFilter={setFilter} />
+                  <SpanneFeld label="KGV" kennzahl="kgv" filter={filter} onFilter={setFilter} abdeckung={abdeckung} />
+                  <SpanneFeld label="KGV 5J (norm.)" kennzahl="kgv5y" filter={filter} onFilter={setFilter} abdeckung={abdeckung} />
+                  <SpanneFeld label="KUV" kennzahl="kuv" filter={filter} onFilter={setFilter} abdeckung={abdeckung} />
+                  <SpanneFeld label="KUV 5J (norm.)" kennzahl="kuv5y" filter={filter} onFilter={setFilter} abdeckung={abdeckung} />
+                  <SpanneFeld label="KBV" kennzahl="kbv" filter={filter} onFilter={setFilter} abdeckung={abdeckung} />
+                  <SpanneFeld label="KBV 5J (norm.)" kennzahl="kbv5y" filter={filter} onFilter={setFilter} abdeckung={abdeckung} />
+                  <SpanneFeld label="WACC %" kennzahl="waccPct" filter={filter} onFilter={setFilter} abdeckung={abdeckung} />
                 </div>
               ) : null}
 

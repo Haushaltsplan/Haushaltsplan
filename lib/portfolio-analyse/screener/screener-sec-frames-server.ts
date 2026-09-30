@@ -211,19 +211,22 @@ export async function baueScreenerSnapshot(): Promise<ScreenerSnapshot> {
   for (let jahr = ERSTES_FRAME_JAHR; jahr <= bisJahr; jahr++) {
     const dauer = `CY${jahr}`
     const stichtag = `CY${jahr}Q4I`
-    const [umsatzRev, umsatzSales, umsatzAsc, umsatzAscTax, ebit, ni, ocf, capex, eps, ek, assets] = await Promise.all([
-      ladeFrame('us-gaap', 'Revenues', 'USD', dauer),
-      ladeFrame('us-gaap', 'SalesRevenueNet', 'USD', dauer),
-      ladeFrame('us-gaap', 'RevenueFromContractWithCustomerExcludingAssessedTax', 'USD', dauer),
-      ladeFrame('us-gaap', 'RevenueFromContractWithCustomerIncludingAssessedTax', 'USD', dauer),
-      ladeFrame('us-gaap', 'OperatingIncomeLoss', 'USD', dauer),
-      ladeFrame('us-gaap', 'NetIncomeLoss', 'USD', dauer),
-      ladeFrame('us-gaap', 'NetCashProvidedByUsedInOperatingActivities', 'USD', dauer),
-      ladeFrame('us-gaap', 'PaymentsToAcquirePropertyPlantAndEquipment', 'USD', dauer),
-      ladeFrame('us-gaap', 'EarningsPerShareDiluted', 'USD-per-shares', dauer),
-      ladeFrame('us-gaap', 'StockholdersEquity', 'USD', stichtag),
-      ladeFrame('us-gaap', 'Assets', 'USD', stichtag),
-    ])
+    const [umsatzRev, umsatzSales, umsatzAsc, umsatzAscTax, ebit, ni, ocf, capex, capexProd, capexOther, eps, ek, assets] =
+      await Promise.all([
+        ladeFrame('us-gaap', 'Revenues', 'USD', dauer),
+        ladeFrame('us-gaap', 'SalesRevenueNet', 'USD', dauer),
+        ladeFrame('us-gaap', 'RevenueFromContractWithCustomerExcludingAssessedTax', 'USD', dauer),
+        ladeFrame('us-gaap', 'RevenueFromContractWithCustomerIncludingAssessedTax', 'USD', dauer),
+        ladeFrame('us-gaap', 'OperatingIncomeLoss', 'USD', dauer),
+        ladeFrame('us-gaap', 'NetIncomeLoss', 'USD', dauer),
+        ladeFrame('us-gaap', 'NetCashProvidedByUsedInOperatingActivities', 'USD', dauer),
+        ladeFrame('us-gaap', 'PaymentsToAcquirePropertyPlantAndEquipment', 'USD', dauer),
+        ladeFrame('us-gaap', 'PaymentsToAcquireProductiveAssets', 'USD', dauer),
+        ladeFrame('us-gaap', 'PaymentsToAcquireOtherPropertyPlantAndEquipment', 'USD', dauer),
+        ladeFrame('us-gaap', 'EarningsPerShareDiluted', 'USD-per-shares', dauer),
+        ladeFrame('us-gaap', 'StockholdersEquity', 'USD', stichtag),
+        ladeFrame('us-gaap', 'Assets', 'USD', stichtag),
+      ])
     const [ltDebt, ltDebtLease, debtCur, ltDebtCur, shortBorrow, cash, sti, stiOther, shares, da, gp, zins, zinsDebt, sbc] =
       await Promise.all([
         ladeFrame('us-gaap', 'LongTermDebt', 'USD', stichtag),
@@ -242,6 +245,7 @@ export async function baueScreenerSnapshot(): Promise<ScreenerSnapshot> {
         ladeFrame('us-gaap', 'ShareBasedCompensation', 'USD', dauer),
       ])
     const umsatz = mergenUmsatzNetto([umsatzRev, umsatzSales], [umsatzAsc, umsatzAscTax])
+    const capexGesamt = mergen(capex, capexProd, capexOther)
     // LT: Lease-Tag oft vollständiger; sonst LongTermDebt. Current + Short-Term Borrowings.
     const debtLt = mergen(ltDebtLease, ltDebt)
     const debt = addMaps(debtLt, addMaps(mergen(debtCur, ltDebtCur), shortBorrow))
@@ -251,7 +255,7 @@ export async function baueScreenerSnapshot(): Promise<ScreenerSnapshot> {
     for (const [cik, val] of ebit) setz(perCik, cik, jahr, 'ebit', val)
     for (const [cik, val] of ni) setz(perCik, cik, jahr, 'ni', val)
     for (const [cik, val] of ocf) setz(perCik, cik, jahr, 'ocf', val)
-    for (const [cik, val] of capex) setz(perCik, cik, jahr, 'capex', val)
+    for (const [cik, val] of capexGesamt) setz(perCik, cik, jahr, 'capex', val)
     for (const [cik, val] of eps) setz(perCik, cik, jahr, 'eps', val)
     for (const [cik, val] of ek) setz(perCik, cik, jahr, 'ek', val)
     for (const [cik, val] of assets) setz(perCik, cik, jahr, 'assets', val)

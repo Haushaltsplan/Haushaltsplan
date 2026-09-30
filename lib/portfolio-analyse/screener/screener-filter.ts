@@ -189,6 +189,63 @@ export function setzeSpanne(f: ScreenerFilter, k: ScreenerKennzahl, teil: Screen
   return next
 }
 
+/** Anteil der Zeilen mit gültigem Kennzahl-Wert (0–100). */
+export function kennzahlAbdeckungPct(zeilen: ScreenerZeile[], k: ScreenerKennzahl): number {
+  if (zeilen.length === 0) return 0
+  let n = 0
+  for (const z of zeilen) {
+    if (kennzahl(z, k) != null) n++
+  }
+  return Math.round((n / zeilen.length) * 1000) / 10
+}
+
+export type FilterDiagnose = {
+  treffer: number
+  mitDaten: number
+  ohneDaten: number
+  /** Kennzahlen im Filter mit Abdeckung &lt; 5 % — Universum vermutlich veraltet. */
+  toteKennzahlen: ScreenerKennzahl[]
+}
+
+/** Warum 0 Treffer? Datenlücke vs. zu enge Schwellen. */
+export function diagnostiziereFilter(zeilen: ScreenerZeile[], f: ScreenerFilter): FilterDiagnose {
+  const aktive = (Object.entries(f.spannen) as [ScreenerKennzahl, ScreenerSpanne | undefined][]).filter(([, sp]) =>
+    hatSpanne(sp),
+  )
+  const toteKennzahlen: ScreenerKennzahl[] = []
+  for (const [k] of aktive) {
+    if (kennzahlAbdeckungPct(zeilen, k) < 5) toteKennzahlen.push(k)
+  }
+  let mitDaten = zeilen.length
+  let ohneDaten = 0
+  if (aktive.length > 0 && !f.lueckenErlaubt) {
+    mitDaten = 0
+    for (const z of zeilen) {
+      let ok = true
+      for (const [k] of aktive) {
+        if (kennzahl(z, k) == null) {
+          ok = false
+          break
+        }
+      }
+      if (ok) mitDaten++
+      else ohneDaten++
+    }
+  }
+  const treffer = zeilen.filter((z) => passtScreenerFilter(z, f)).length
+  return { treffer, mitDaten, ohneDaten, toteKennzahlen }
+}
+
+/** True wenn Filter Kennzahl-Spannen oder harte Flags setzt (Spalten-Fokus aktivieren). */
+export function hatKennzahlFokus(f: ScreenerFilter): boolean {
+  if (f.nurGewinn || f.fcfPositiv || f.aktienSinkend || f.ekPositiv || f.conversionOderRo40) return true
+  if (f.sektor.trim()) return true
+  for (const sp of Object.values(f.spannen)) {
+    if (hatSpanne(sp)) return true
+  }
+  return false
+}
+
 export const SCREENER_KENNZAHL_LABEL: Record<ScreenerKennzahl, string> = {
   umsatzMio: 'Umsatz Mio',
   marktkapMio: 'Marktkap Mio',
