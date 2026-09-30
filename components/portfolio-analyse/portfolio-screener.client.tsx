@@ -12,7 +12,6 @@ import {
   diagnostiziereFilter,
   filterGleich,
   hatAktiveFilterAusserSuche,
-  hatKennzahlFokus,
   kennzahlAbdeckungPct,
   kloneFilter,
   leerScreenerFilter,
@@ -103,6 +102,7 @@ type SpalteId =
 type FilterTabId = 'universum' | 'profit' | 'wachstum' | 'cash' | 'bilanz' | 'bewertung' | 'spalten'
 
 const SPALTEN_KEY = 'pa-screener-spalten-v3'
+const SPALTEN_LAYOUT_KEY = 'pa-screener-spalten-layout-v1'
 const INPUT =
   'w-full rounded-md border border-[var(--app-border)] bg-[var(--app-surface-muted)] px-2 py-1 text-sm text-[var(--app-text)]'
 const CHIP =
@@ -262,6 +262,51 @@ const SORT_OPTIONEN: { id: ScreenerSort; label: string }[] = [
 
 function defaultSpalten(): Set<SpalteId> {
   return new Set(SPALTEN.filter((s) => s.defaultOn || s.immer).map((s) => s.id))
+}
+
+function defaultSpaltenOrder(): SpalteId[] {
+  return SPALTEN.map((s) => s.id)
+}
+
+type SpaltenLayout = { order: SpalteId[]; widths: Partial<Record<SpalteId, number>> }
+
+function leseSpaltenLayout(): SpaltenLayout {
+  const fallback: SpaltenLayout = { order: defaultSpaltenOrder(), widths: {} }
+  if (typeof window === 'undefined') return fallback
+  try {
+    const raw = window.localStorage.getItem(SPALTEN_LAYOUT_KEY)
+    if (!raw) return fallback
+    const j = JSON.parse(raw) as Partial<SpaltenLayout>
+    const order: SpalteId[] = []
+    const seen = new Set<SpalteId>()
+    for (const id of j.order ?? []) {
+      if (typeof id === 'string' && SPALTEN.some((s) => s.id === id) && !seen.has(id as SpalteId)) {
+        order.push(id as SpalteId)
+        seen.add(id as SpalteId)
+      }
+    }
+    for (const s of SPALTEN) if (!seen.has(s.id)) order.push(s.id)
+    const widths: Partial<Record<SpalteId, number>> = {}
+    if (j.widths && typeof j.widths === 'object') {
+      for (const [k, v] of Object.entries(j.widths)) {
+        if (SPALTEN.some((s) => s.id === k) && typeof v === 'number' && v >= 48 && v <= 480) {
+          widths[k as SpalteId] = Math.round(v)
+        }
+      }
+    }
+    return { order, widths }
+  } catch {
+    return fallback
+  }
+}
+
+function speichereSpaltenLayout(layout: SpaltenLayout) {
+  if (typeof window === 'undefined') return
+  try {
+    window.localStorage.setItem(SPALTEN_LAYOUT_KEY, JSON.stringify(layout))
+  } catch {
+    /* quota */
+  }
 }
 
 function leseSpalten(): Set<SpalteId> {
@@ -464,6 +509,9 @@ export function PortfolioScreenerClient() {
   const [filterTab, setFilterTab] = useState<FilterTabId>('universum')
   const [filterOffen, setFilterOffen] = useState(true)
   const [spalten, setSpalten] = useState<Set<SpalteId>>(defaultSpalten)
+  const [spaltenOrder, setSpaltenOrder] = useState<SpalteId[]>(defaultSpaltenOrder)
+  const [spaltenWidths, setSpaltenWidths] = useState<Partial<Record<SpalteId, number>>>({})
+  const [dragSpalte, setDragSpalte] = useState<SpalteId | null>(null)
   const [watchKeys, setWatchKeys] = useState<Set<string>>(new Set())
   const [qualityMarkierung, setQualityMarkierung] = useState(true)
 
@@ -496,6 +544,9 @@ export function PortfolioScreenerClient() {
 
   useEffect(() => {
     setSpalten(leseSpalten())
+    const layout = leseSpaltenLayout()
+    setSpaltenOrder(layout.order)
+    setSpaltenWidths(layout.widths)
   }, [])
 
   useEffect(() => {
@@ -552,17 +603,65 @@ export function PortfolioScreenerClient() {
 
   const sichtbar = gefiltert.slice(0, 250)
   const autoSpalten = useMemo(() => spaltenAusFilter(filter), [filter])
-  const fokusAktiv = useMemo(() => hatKennzahlFokus(filter), [filter])
   const sichtbareSpalten = useMemo(() => {
-    // Bei aktivem Kennzahl-Filter: Tabelle folgt den Filtern (Basis + gefilterte Spalten).
-    if (fokusAktiv && autoSpalten.size > 0) {
-      const fokusIds = new Set<SpalteId>(['ticker', 'name', 'jahre', 'watch', ...autoSpalten])
-      if (spalten.has('quality')) fokusIds.add('quality')
-      if (spalten.has('umsatz')) fokusIds.add('umsatz')
-      return SPALTEN.filter((s) => fokusIds.has(s.id) || s.immer)
-    }
-    return SPALTEN.filter((s) => spalten.has(s.id) || s.immer || autoSpalten.has(s.id))
-  }, [spalten, autoSpalten, fokusAktiv])
+    // Manuelle Auswahl + Filter-Spalten (Filter blendet ein, überschreibt nie)
+    const basis = SPALTEN.filter((s) => spalten.has(s.id) || s.immer || autoSpalten.has(s.id))
+    const rank = new Map(spaltenOrder.map((id, i) => [id, i]))
+    return [...basis].sort((a, b) => (rank.get(a.id) ?? 999) - (rank.get(b.id) ?? 999))
+  }, [spalten, autoSpalten, spaltenOrder])
+
+  const setzeSpaltenOrder = useCallback((order: SpalteId[]) => {
+    setSpaltenOrder(order)
+    speichereSpaltenLayout({ order, widths: spaltenWidths })
+  }, [spaltenWidths])
+
+  const setzeSpaltenWidth = useCallback((id: SpalteId, width: number) => {
+    setSpaltenWidths((prev) => {
+      const next = { ...prev, [id]: width }
+      speichereSpaltenLayout({ order: spaltenOrder, widths: next })
+      return next
+    })
+  }, [spaltenOrder])
+
+  const onSpalteDrop = useCallback(
+    (ziel: SpalteId) => {
+      if (!dragSpalte || dragSpalte === ziel) {
+        setDragSpalte(null)
+        return
+      }
+      const ids = sichtbareSpalten.map((s) => s.id)
+      const from = ids.indexOf(dragSpalte)
+      const to = ids.indexOf(ziel)
+      if (from < 0 || to < 0) {
+        setDragSpalte(null)
+        return
+      }
+      const nextVis = [...ids]
+      nextVis.splice(from, 1)
+      nextVis.splice(to, 0, dragSpalte)
+      // Volle Order: sichtbare neu, Rest unverändert hinten
+      const rest = spaltenOrder.filter((id) => !nextVis.includes(id))
+      setzeSpaltenOrder([...nextVis, ...rest])
+      setDragSpalte(null)
+    },
+    [dragSpalte, sichtbareSpalten, spaltenOrder, setzeSpaltenOrder],
+  )
+
+  const starteSpaltenResize = useCallback(
+    (id: SpalteId, startX: number, startW: number) => {
+      const onMove = (e: MouseEvent) => {
+        const w = Math.min(480, Math.max(48, startW + (e.clientX - startX)))
+        setzeSpaltenWidth(id, w)
+      }
+      const onUp = () => {
+        window.removeEventListener('mousemove', onMove)
+        window.removeEventListener('mouseup', onUp)
+      }
+      window.addEventListener('mousemove', onMove)
+      window.addEventListener('mouseup', onUp)
+    },
+    [setzeSpaltenWidth],
+  )
   const chips = useMemo(() => aktiveFilterChips(filter), [filter])
   const hatFilter = hatAktiveFilterAusserSuche(filter)
   const diagnose = useMemo(() => diagnostiziereFilter(zeilen, filter), [zeilen, filter])
@@ -798,11 +897,7 @@ export function PortfolioScreenerClient() {
           </p>
         ) : null}
 
-        {fokusAktiv && autoSpalten.size > 0 ? (
-          <p className="text-[11px] text-[var(--app-text-muted)]">
-            Tabellenfokus: nur Basis + gefilterte Kennzahlen (●). Filter zurücksetzen zeigt wieder alle Spalten.
-          </p>
-        ) : null}
+        {/* Fokus-Banner entfernt: Spalten-Checkboxen gelten immer; Filter blenden nur zusätzlich ein. */}
 
         {/* 2 Eigene Vorlagen */}
         <section className="space-y-2 rounded-lg border border-[var(--app-border)] bg-[var(--app-surface-muted)]/25 px-3 py-2.5">
@@ -1142,8 +1237,9 @@ export function PortfolioScreenerClient() {
               {filterTab === 'spalten' ? (
                 <div className="space-y-2">
                   <p className="text-[11px] text-[var(--app-text-muted)]">
-                    Aktive Filter blenden zugehörige Spalten automatisch ein (● in der Tabelle). Hier feste Spalten
-                    setzen — ROIC/NI-Marge sowie KGV/KUV/KBV zeigen zusätzlich 5J darunter.
+                    Haken = Spalte sichtbar. Aktive Filter blenden zugehörige Spalten zusätzlich ein (●). In der Tabelle:
+                    Spaltenköpfe ziehen zum Umsortieren, rechten Rand ziehen zum Vergrößern/Verkleinern. ROIC/NI-Marge und
+                    KGV/KUV/KBV zeigen LTM + 5J.
                   </p>
                   <div className="flex flex-wrap gap-x-3 gap-y-2">
                     {SPALTEN.filter((s) => !s.immer).map((s) => {
@@ -1196,11 +1292,17 @@ export function PortfolioScreenerClient() {
                     const mitHist =
                       s.id === 'roic' || s.id === 'niMarge' || s.id === 'kgv' || s.id === 'kuv' || s.id === 'kbv'
                     const tip =
-                      SPALTEN_TOOLTIP[s.id] ?? (viaFilter ? 'Spalte wegen aktivem Filter' : undefined)
+                      SPALTEN_TOOLTIP[s.id] ??
+                      (viaFilter ? 'Spalte wegen aktivem Filter' : 'Ziehen = Reihenfolge, rechter Rand = Breite')
+                    const w = spaltenWidths[s.id]
                     return (
                       <th
                         key={s.id}
-                        className={
+                        draggable
+                        onDragStart={() => setDragSpalte(s.id)}
+                        onDragOver={(e) => e.preventDefault()}
+                        onDrop={() => onSpalteDrop(s.id)}
+                        className={`relative select-none ${
                           s.id === 'ticker' ||
                           s.id === 'name' ||
                           s.id === 'sektor' ||
@@ -1208,7 +1310,8 @@ export function PortfolioScreenerClient() {
                           s.id === 'quality'
                             ? ''
                             : 'text-right'
-                        }
+                        } ${dragSpalte === s.id ? 'opacity-60' : ''}`}
+                        style={w != null ? { width: w, minWidth: w, maxWidth: w } : { minWidth: 64 }}
                         title={!s.sort ? tip : undefined}
                       >
                         {s.sort ? (
@@ -1237,8 +1340,22 @@ export function PortfolioScreenerClient() {
                             {filter.sort === s.sort ? (filter.sortAsc ? ' ↑' : ' ↓') : ''}
                           </button>
                         ) : (
-                          label
+                          <span title={tip}>{label || '·'}</span>
                         )}
+                        <span
+                          role="separator"
+                          aria-orientation="vertical"
+                          aria-label={`${s.label || s.id} Breite`}
+                          className="absolute top-0 right-0 z-10 h-full w-1.5 cursor-col-resize hover:bg-teal-400/40"
+                          onMouseDown={(e) => {
+                            e.preventDefault()
+                            e.stopPropagation()
+                            const th = (e.target as HTMLElement).parentElement
+                            const startW = th?.getBoundingClientRect().width ?? w ?? 80
+                            starteSpaltenResize(s.id, e.clientX, startW)
+                          }}
+                          draggable={false}
+                        />
                       </th>
                     )
                   })}
@@ -1452,6 +1569,15 @@ export function PortfolioScreenerClient() {
                             s.id === 'quality'
                               ? ''
                               : 'text-right tabular-nums'
+                          }
+                          style={
+                            spaltenWidths[s.id] != null
+                              ? {
+                                  width: spaltenWidths[s.id],
+                                  minWidth: spaltenWidths[s.id],
+                                  maxWidth: spaltenWidths[s.id],
+                                }
+                              : undefined
                           }
                         >
                           {zellen[s.id]}

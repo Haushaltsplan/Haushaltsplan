@@ -1,6 +1,6 @@
 export type ScreenerBoerse = 'Nasdaq' | 'NYSE' | 'CBOE'
 
-export const SCREENER_SCHEMA_VERSION = 5
+export const SCREENER_SCHEMA_VERSION = 7
 
 export type ScreenerHistPunkt = {
   jahr: number

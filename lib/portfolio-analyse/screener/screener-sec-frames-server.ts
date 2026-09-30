@@ -110,9 +110,9 @@ function cagr(serie: { jahr: number; val: number }[], fenster: number): number |
       best = p
     }
   }
-  if (!best || bestDist > 1 || !(last.val > 0)) return null
+  if (!best || bestDist > 2 || !(last.val > 0)) return null
   const n = last.jahr - best.jahr
-  if (n < 2) return null
+  if (n < Math.max(2, fenster - 2)) return null
   return runde((Math.pow(last.val / best.val, 1 / n) - 1) * 100)
 }
 
@@ -211,61 +211,143 @@ export async function baueScreenerSnapshot(): Promise<ScreenerSnapshot> {
   for (let jahr = ERSTES_FRAME_JAHR; jahr <= bisJahr; jahr++) {
     const dauer = `CY${jahr}`
     const stichtag = `CY${jahr}Q4I`
-    const [umsatzRev, umsatzSales, umsatzAsc, umsatzAscTax, ebit, ni, ocf, capex, capexProd, capexOther, eps, ek, assets] =
-      await Promise.all([
-        ladeFrame('us-gaap', 'Revenues', 'USD', dauer),
-        ladeFrame('us-gaap', 'SalesRevenueNet', 'USD', dauer),
-        ladeFrame('us-gaap', 'RevenueFromContractWithCustomerExcludingAssessedTax', 'USD', dauer),
-        ladeFrame('us-gaap', 'RevenueFromContractWithCustomerIncludingAssessedTax', 'USD', dauer),
-        ladeFrame('us-gaap', 'OperatingIncomeLoss', 'USD', dauer),
-        ladeFrame('us-gaap', 'NetIncomeLoss', 'USD', dauer),
-        ladeFrame('us-gaap', 'NetCashProvidedByUsedInOperatingActivities', 'USD', dauer),
-        ladeFrame('us-gaap', 'PaymentsToAcquirePropertyPlantAndEquipment', 'USD', dauer),
-        ladeFrame('us-gaap', 'PaymentsToAcquireProductiveAssets', 'USD', dauer),
-        ladeFrame('us-gaap', 'PaymentsToAcquireOtherPropertyPlantAndEquipment', 'USD', dauer),
-        ladeFrame('us-gaap', 'EarningsPerShareDiluted', 'USD-per-shares', dauer),
-        ladeFrame('us-gaap', 'StockholdersEquity', 'USD', stichtag),
-        ladeFrame('us-gaap', 'Assets', 'USD', stichtag),
-      ])
-    const [ltDebt, ltDebtLease, debtCur, ltDebtCur, shortBorrow, cash, sti, stiOther, shares, da, gp, zins, zinsDebt, sbc] =
-      await Promise.all([
-        ladeFrame('us-gaap', 'LongTermDebt', 'USD', stichtag),
-        ladeFrame('us-gaap', 'LongTermDebtAndCapitalLeaseObligation', 'USD', stichtag),
-        ladeFrame('us-gaap', 'DebtCurrent', 'USD', stichtag),
-        ladeFrame('us-gaap', 'LongTermDebtCurrent', 'USD', stichtag),
-        ladeFrame('us-gaap', 'ShortTermBorrowings', 'USD', stichtag),
-        ladeFrame('us-gaap', 'CashAndCashEquivalentsAtCarryingValue', 'USD', stichtag),
-        ladeFrame('us-gaap', 'ShortTermInvestments', 'USD', stichtag),
-        ladeFrame('us-gaap', 'OtherShortTermInvestments', 'USD', stichtag),
-        ladeFrame('us-gaap', 'WeightedAverageNumberOfDilutedSharesOutstanding', 'shares', dauer),
-        ladeFrame('us-gaap', 'DepreciationDepletionAndAmortization', 'USD', dauer),
-        ladeFrame('us-gaap', 'GrossProfit', 'USD', dauer),
-        ladeFrame('us-gaap', 'InterestExpense', 'USD', dauer),
-        ladeFrame('us-gaap', 'InterestExpenseDebt', 'USD', dauer),
-        ladeFrame('us-gaap', 'ShareBasedCompensation', 'USD', dauer),
-      ])
+    const [
+      umsatzRev,
+      umsatzSales,
+      umsatzAsc,
+      umsatzAscTax,
+      ebit,
+      ni,
+      ocf,
+      ocfCont,
+      capex,
+      capexProd,
+      capexOther,
+      capexImp,
+      eps,
+      ek,
+      ekNc,
+      assets,
+      cogs,
+      cogsRev,
+    ] = await Promise.all([
+      ladeFrame('us-gaap', 'Revenues', 'USD', dauer),
+      ladeFrame('us-gaap', 'SalesRevenueNet', 'USD', dauer),
+      ladeFrame('us-gaap', 'RevenueFromContractWithCustomerExcludingAssessedTax', 'USD', dauer),
+      ladeFrame('us-gaap', 'RevenueFromContractWithCustomerIncludingAssessedTax', 'USD', dauer),
+      ladeFrame('us-gaap', 'OperatingIncomeLoss', 'USD', dauer),
+      ladeFrame('us-gaap', 'NetIncomeLoss', 'USD', dauer),
+      ladeFrame('us-gaap', 'NetCashProvidedByUsedInOperatingActivities', 'USD', dauer),
+      ladeFrame('us-gaap', 'NetCashProvidedByUsedInOperatingActivitiesContinuingOperations', 'USD', dauer),
+      ladeFrame('us-gaap', 'PaymentsToAcquirePropertyPlantAndEquipment', 'USD', dauer),
+      ladeFrame('us-gaap', 'PaymentsToAcquireProductiveAssets', 'USD', dauer),
+      ladeFrame('us-gaap', 'PaymentsToAcquireOtherPropertyPlantAndEquipment', 'USD', dauer),
+      ladeFrame('us-gaap', 'PaymentsForCapitalImprovements', 'USD', dauer),
+      ladeFrame('us-gaap', 'EarningsPerShareDiluted', 'USD-per-shares', dauer),
+      ladeFrame('us-gaap', 'StockholdersEquity', 'USD', stichtag),
+      ladeFrame(
+        'us-gaap',
+        'StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest',
+        'USD',
+        stichtag,
+      ),
+      ladeFrame('us-gaap', 'Assets', 'USD', stichtag),
+      ladeFrame('us-gaap', 'CostOfGoodsAndServicesSold', 'USD', dauer),
+      ladeFrame('us-gaap', 'CostOfRevenue', 'USD', dauer),
+    ])
+    const [
+      ltDebt,
+      ltDebtNc,
+      ltDebtLease,
+      debtCur,
+      ltDebtCur,
+      ltDebtLeaseCur,
+      shortBorrow,
+      commercialPaper,
+      leaseLt,
+      leaseSt,
+      cash,
+      cashSti,
+      sti,
+      stiOther,
+      shares,
+      sharesBasic,
+      da,
+      da2,
+      da3,
+      gp,
+      zins,
+      zinsDebt,
+      zinsNonop,
+      zinsAndDebt,
+      sbc,
+      sbc2,
+    ] = await Promise.all([
+      ladeFrame('us-gaap', 'LongTermDebt', 'USD', stichtag),
+      ladeFrame('us-gaap', 'LongTermDebtNoncurrent', 'USD', stichtag),
+      ladeFrame('us-gaap', 'LongTermDebtAndCapitalLeaseObligations', 'USD', stichtag),
+      ladeFrame('us-gaap', 'DebtCurrent', 'USD', stichtag),
+      ladeFrame('us-gaap', 'LongTermDebtCurrent', 'USD', stichtag),
+      ladeFrame('us-gaap', 'LongTermDebtAndCapitalLeaseObligationsCurrent', 'USD', stichtag),
+      ladeFrame('us-gaap', 'ShortTermBorrowings', 'USD', stichtag),
+      ladeFrame('us-gaap', 'CommercialPaper', 'USD', stichtag),
+      ladeFrame('us-gaap', 'OperatingLeaseLiabilityNoncurrent', 'USD', stichtag),
+      ladeFrame('us-gaap', 'OperatingLeaseLiabilityCurrent', 'USD', stichtag),
+      ladeFrame('us-gaap', 'CashAndCashEquivalentsAtCarryingValue', 'USD', stichtag),
+      ladeFrame('us-gaap', 'CashCashEquivalentsAndShortTermInvestments', 'USD', stichtag),
+      ladeFrame('us-gaap', 'ShortTermInvestments', 'USD', stichtag),
+      ladeFrame('us-gaap', 'OtherShortTermInvestments', 'USD', stichtag),
+      ladeFrame('us-gaap', 'WeightedAverageNumberOfDilutedSharesOutstanding', 'shares', dauer),
+      ladeFrame('us-gaap', 'WeightedAverageNumberOfShareOutstandingBasicAndDiluted', 'shares', dauer),
+      ladeFrame('us-gaap', 'DepreciationDepletionAndAmortization', 'USD', dauer),
+      ladeFrame('us-gaap', 'DepreciationAndAmortization', 'USD', dauer),
+      ladeFrame('us-gaap', 'DepreciationAmortizationAndAccretionNet', 'USD', dauer),
+      ladeFrame('us-gaap', 'GrossProfit', 'USD', dauer),
+      ladeFrame('us-gaap', 'InterestExpense', 'USD', dauer),
+      ladeFrame('us-gaap', 'InterestExpenseDebt', 'USD', dauer),
+      ladeFrame('us-gaap', 'InterestExpenseNonoperating', 'USD', dauer),
+      ladeFrame('us-gaap', 'InterestAndDebtExpense', 'USD', dauer),
+      ladeFrame('us-gaap', 'ShareBasedCompensation', 'USD', dauer),
+      ladeFrame('us-gaap', 'AllocatedShareBasedCompensationExpense', 'USD', dauer),
+    ])
     const umsatz = mergenUmsatzNetto([umsatzRev, umsatzSales], [umsatzAsc, umsatzAscTax])
-    const capexGesamt = mergen(capex, capexProd, capexOther)
-    // LT: Lease-Tag oft vollständiger; sonst LongTermDebt. Current + Short-Term Borrowings.
-    const debtLt = mergen(ltDebtLease, ltDebt)
-    const debt = addMaps(debtLt, addMaps(mergen(debtCur, ltDebtCur), shortBorrow))
-    const cashGesamt = addMaps(cash, mergen(sti, stiOther))
-    const zinsGesamt = mergen(zins, zinsDebt)
+    const capexGesamt = mergen(capex, capexProd, capexOther, capexImp)
+    const ocfGesamt = mergen(ocf, ocfCont)
+    const ekGesamt = mergen(ek, ekNc)
+    const sharesGesamt = mergen(shares, sharesBasic)
+    const debtLt = mergen(ltDebtLease, ltDebtNc, ltDebt)
+    const debtSt = mergen(debtCur, ltDebtLeaseCur, ltDebtCur, shortBorrow, commercialPaper)
+    const debt = addMaps(addMaps(debtLt, debtSt), addMaps(leaseLt, leaseSt))
+    const cashTeile = addMaps(cash, mergen(sti, stiOther))
+    const cashGesamt = mergen(cashSti, cashTeile)
+    const daGesamt = mergen(da, da2, da3)
+    const zinsGesamt = mergen(zins, zinsDebt, zinsNonop, zinsAndDebt)
+    const sbcGesamt = mergen(sbc, sbc2)
+    const cogsGesamt = mergen(cogs, cogsRev)
+    // Bruttogewinn: Tag zuerst, sonst Umsatz − COGS (keine Schein-100 %-Marge ohne COGS)
+    const gpGesamt = new Map(gp)
+    for (const [cik, u] of umsatz) {
+      if (gpGesamt.has(cik)) continue
+      const c = cogsGesamt.get(cik)
+      if (c == null || !(u > 0)) continue
+      const brutto = u - Math.abs(c)
+      if (Number.isFinite(brutto)) gpGesamt.set(cik, brutto)
+    }
     for (const [cik, val] of umsatz) setz(perCik, cik, jahr, 'umsatz', val)
     for (const [cik, val] of ebit) setz(perCik, cik, jahr, 'ebit', val)
     for (const [cik, val] of ni) setz(perCik, cik, jahr, 'ni', val)
-    for (const [cik, val] of ocf) setz(perCik, cik, jahr, 'ocf', val)
+    for (const [cik, val] of ocfGesamt) setz(perCik, cik, jahr, 'ocf', val)
     for (const [cik, val] of capexGesamt) setz(perCik, cik, jahr, 'capex', val)
     for (const [cik, val] of eps) setz(perCik, cik, jahr, 'eps', val)
-    for (const [cik, val] of ek) setz(perCik, cik, jahr, 'ek', val)
+    for (const [cik, val] of ekGesamt) setz(perCik, cik, jahr, 'ek', val)
     for (const [cik, val] of assets) setz(perCik, cik, jahr, 'assets', val)
     for (const [cik, val] of debt) setz(perCik, cik, jahr, 'debt', val)
     for (const [cik, val] of cashGesamt) setz(perCik, cik, jahr, 'cash', val)
-    for (const [cik, val] of shares) setz(perCik, cik, jahr, 'aktien', val)
-    for (const [cik, val] of da) setz(perCik, cik, jahr, 'da', val)
-    for (const [cik, val] of gp) setz(perCik, cik, jahr, 'gp', val)
+    for (const [cik, val] of sharesGesamt) setz(perCik, cik, jahr, 'aktien', val)
+    for (const [cik, val] of daGesamt) setz(perCik, cik, jahr, 'da', val)
+    for (const [cik, val] of gpGesamt) setz(perCik, cik, jahr, 'gp', val)
     for (const [cik, val] of zinsGesamt) setz(perCik, cik, jahr, 'zins', val)
-    for (const [cik, val] of sbc) setz(perCik, cik, jahr, 'sbc', val)
+    for (const [cik, val] of sbcGesamt) setz(perCik, cik, jahr, 'sbc', val)
   }
 
   const zeilen: ScreenerZeile[] = []
@@ -293,9 +375,14 @@ export async function baueScreenerSnapshot(): Promise<ScreenerSnapshot> {
         niMio: zuMio(r.ni),
         fcfMio,
         ekMio: zuMio(r.ek),
-        eps: r.eps != null && Number.isFinite(r.eps) ? Math.round(r.eps * 1000) / 1000 : null,
-        debtMio: zuMio(r.debt),
-        cashMio: zuMio(r.cash),
+        eps:
+          r.eps != null && Number.isFinite(r.eps)
+            ? Math.round(r.eps * 1000) / 1000
+            : r.ni != null && r.aktien != null && r.aktien > 0
+              ? Math.round((r.ni / r.aktien) * 1000) / 1000
+              : null,
+        debtMio: zuMio(r.debt) ?? (r.ek != null || r.assets != null ? 0 : null),
+        cashMio: zuMio(r.cash) ?? (r.ek != null || r.assets != null ? 0 : null),
         daMio: zuMio(r.da),
         aktienMio: zuAktienMio(r.aktien),
       }
@@ -322,19 +409,23 @@ export async function baueScreenerSnapshot(): Promise<ScreenerSnapshot> {
     const fcfConversionPct =
       last.niMio != null && last.niMio > 0 && last.fcfMio != null ? runde((last.fcfMio / last.niMio) * 100) : null
     const capexSalesPct = pct(zuMio(lastRoh.capex) != null ? Math.abs(zuMio(lastRoh.capex)!) : null, last.umsatzMio)
-    // Net Debt: ohne Debt-Tag kein „0 Schulden“-Fake.
+    // Schulden: fehlendes Debt-Tag bei vorhandener Bilanz = 0 (Nullverschuldung meldet oft keinen Tag).
+    const hatBilanz = last.ekMio != null || zuMio(lastRoh.assets) != null
+    const debtFuerNd =
+      last.debtMio != null ? last.debtMio : hatBilanz ? 0 : null
+    const cashFuerNd = last.cashMio ?? (hatBilanz ? 0 : null)
     const netDebtMio =
-      last.debtMio == null
-        ? null
-        : runde(last.debtMio - (last.cashMio ?? 0))
+      debtFuerNd == null || cashFuerNd == null ? null : runde(debtFuerNd - cashFuerNd)
+    // EBITDA = EBIT + |D&A|; D&A-Lücke → EBIT als Untergrenze (besser als null)
     const ebitdaMio =
-      last.ebitMio == null && last.daMio == null
+      last.ebitMio == null
         ? null
-        : last.ebitMio == null
-          ? null
-          : runde(last.ebitMio + Math.abs(last.daMio ?? 0))
+        : runde(last.ebitMio + Math.abs(last.daMio ?? 0))
+    // ND/EBITDA auch bei Netto-Cash (negativ); nur ohne positives EBITDA sinnlos
     const netDebtEbitda =
-      netDebtMio == null || ebitdaMio == null || !(ebitdaMio > 0) ? null : runde(netDebtMio / ebitdaMio, 2)
+      netDebtMio == null || ebitdaMio == null || !(ebitdaMio > 0)
+        ? null
+        : runde(netDebtMio / ebitdaMio, 2)
     const aktienRoh = hist.map((p) => p.aktienMio).filter((v): v is number => v != null && v > 0)
     const aktienSerie = aktienreiheSplitBereinigt(aktienRoh)
     const aktienVerwaesserungJaehrlichPct = runde(cagrJaehrlichAusSerie(aktienSerie), 2)
@@ -363,10 +454,18 @@ export async function baueScreenerSnapshot(): Promise<ScreenerSnapshot> {
       .filter((p) => p.fcfMio != null && p.fcfMio > 0 && p.aktienMio != null && p.aktienMio > 0)
       .map((p) => ({ jahr: p.jahr, val: p.fcfMio! / p.aktienMio! }))
     const zinsMio = zuMio(lastRoh.zins)
-    const interestCoverage =
-      last.ebitMio != null && zinsMio != null && Math.abs(zinsMio) > 0.05
-        ? runde(last.ebitMio / Math.abs(zinsMio), 1)
-        : null
+    // Zinsdeckung: EBIT / |Zins|. Keine/minimale Zinsen bei ~0 Schulden → sehr hohe Deckung (Filter „≥10“).
+    let interestCoverage: number | null = null
+    if (last.ebitMio != null && zinsMio != null && Math.abs(zinsMio) > 0.05) {
+      interestCoverage = runde(last.ebitMio / Math.abs(zinsMio), 1)
+    } else if (
+      last.ebitMio != null &&
+      last.ebitMio > 0 &&
+      (zinsMio == null || Math.abs(zinsMio) <= 0.05) &&
+      (debtFuerNd == null || debtFuerNd < 1)
+    ) {
+      interestCoverage = 999
+    }
     const sbcMio = zuMio(lastRoh.sbc)
     const ocfMioNow = zuMio(lastRoh.ocf)
     const sbcOcfPct =
@@ -388,8 +487,8 @@ export async function baueScreenerSnapshot(): Promise<ScreenerSnapshot> {
       fcfMio: last.fcfMio,
       ekMio: last.ekMio,
       assetsMio: zuMio(lastRoh.assets),
-      debtMio: last.debtMio ?? null,
-      cashMio: last.cashMio ?? null,
+      debtMio: debtFuerNd,
+      cashMio: last.cashMio ?? cashFuerNd,
       niMargePct: pct(last.niMio, last.umsatzMio),
       ebitMargePct: pct(last.ebitMio, last.umsatzMio),
       roePct: pct(last.niMio, last.ekMio),
@@ -447,19 +546,19 @@ export async function baueScreenerSnapshot(): Promise<ScreenerSnapshot> {
     const eps5 = mittelLetzte(
       histPts.map((h) => h.eps),
       5,
-      3,
+      2,
       true,
     )
     const umsatz5 = mittelLetzte(
       histPts.map((h) => h.umsatzMio),
       5,
-      3,
+      2,
       true,
     )
     const ek5 = mittelLetzte(
       histPts.map((h) => h.ekMio),
       5,
-      3,
+      2,
       true,
     )
     z.kgv5y = runde(kurs != null && eps5 != null && eps5 > 0 ? kurs / eps5 : null)
