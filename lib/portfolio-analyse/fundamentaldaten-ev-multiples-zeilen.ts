@@ -45,8 +45,9 @@ function nettoVerschuldungMio(zeilen: FundamentalMetrikZeile[], key: string): nu
   if (netto != null && Number.isFinite(netto)) return netto
   const debt = wert(zeilen, 'gesamtverschuldung', key)
   const cash = wert(zeilen, 'bargeld', key)
-  if (debt == null && cash == null) return null
-  return (debt ?? 0) - (cash ?? 0)
+  // Beide Seiten nötig — fehlende Schulden ≠ 0 (sonst ND = −Cash)
+  if (debt == null || cash == null) return null
+  return debt - cash
 }
 
 /** Enterprise Value in Mio. USD für eine Perioden-Spalte. */

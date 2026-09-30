@@ -16,6 +16,8 @@ function upsertTageZeile(
   id: string,
   label: string,
   werte: Record<string, number | null>,
+  /** true = korrekte Formel überschreibt falsche Vorbefüllung (z. B. Umsatz-basiertes DIO) */
+  ueberschreiben = false,
 ): void {
   const existing = zeilen.find((z) => z.id === id)
   if (!existing) {
@@ -29,7 +31,8 @@ function upsertTageZeile(
     return
   }
   for (const [k, v] of Object.entries(werte)) {
-    if (v != null && (existing.werte[k] == null || !Number.isFinite(existing.werte[k]!))) {
+    if (v == null) continue
+    if (ueberschreiben || existing.werte[k] == null || !Number.isFinite(existing.werte[k]!)) {
       existing.werte[k] = v
     }
   }
@@ -73,12 +76,12 @@ export function ergaenzeWorkingCapitalTageZeilen(
     const cogs = umsatz != null && brutto != null ? umsatz - brutto : null
     const vorraete = wert(zeilen, 'vorraete', key)
     const forderungen = wert(zeilen, 'forderungen', key)
-    const verbindl = wert(zeilen, 'kurzfrist_verbindl', key)
-    // Macrotrends mappt inventory-turnover auf id „anlagenumschlag“
+    const lieferverb = wert(zeilen, 'lieferverbindlichkeiten', key)
     const lagerUmschlag = wert(zeilen, 'anlagenumschlag', key)
     const fordUmschlag = wert(zeilen, 'forderungsumschlag', key)
 
-    let dioV = tageAusBestandUndTagesrate(vorraete, cogs)
+    // DIO: Vorräte / COGS × 365 (nie Umsatz)
+    let dioV = tageAusBestandUndTagesrate(vorraete, cogs != null && cogs > 0 ? cogs : null)
     if (dioV == null && lagerUmschlag != null && lagerUmschlag > 0) {
       const ausTurnover = 365 / lagerUmschlag
       if (Number.isFinite(ausTurnover) && ausTurnover > 0 && ausTurnover < 800) {
@@ -94,11 +97,11 @@ export function ergaenzeWorkingCapitalTageZeilen(
       }
     }
 
-    // DPO-Proxy: Payables ≈ ~35 % der kurzfristigen Verbindlichkeiten vs. COGS (oder Umsatz)
-    const kostenbasis = cogs != null && cogs > 0 ? cogs : umsatz != null && umsatz > 0 ? umsatz * 0.55 : null
+    // DPO nur mit Accounts Payable / COGS — kein Current-Liabilities-Proxy
+    const kostenbasis = cogs != null && cogs > 0 ? cogs : null
     const dpoV =
-      verbindl != null && kostenbasis != null
-        ? tageAusBestandUndTagesrate(verbindl * 0.35, kostenbasis)
+      lieferverb != null && kostenbasis != null
+        ? tageAusBestandUndTagesrate(lieferverb, kostenbasis)
         : null
 
     dio[key] = dioV
@@ -109,9 +112,9 @@ export function ergaenzeWorkingCapitalTageZeilen(
     if (dpoV != null) hatDpo = true
   }
 
-  if (hatDio) upsertTageZeile(zeilen, 'dio', 'Lagerdauer (DIO, Tage)', dio)
-  if (hatDso) upsertTageZeile(zeilen, 'dso', 'Forderungslaufzeit (DSO, Tage)', dso)
-  if (hatDpo) upsertTageZeile(zeilen, 'dpo', 'Verbindlichkeitenlaufzeit (DPO, Tage)', dpo)
+  if (hatDio) upsertTageZeile(zeilen, 'dio', 'Lagerdauer (DIO, Tage)', dio, true)
+  if (hatDso) upsertTageZeile(zeilen, 'dso', 'Forderungslaufzeit (DSO, Tage)', dso, true)
+  if (hatDpo) upsertTageZeile(zeilen, 'dpo', 'Verbindlichkeitenlaufzeit (DPO, Tage)', dpo, true)
 
   // Cash Conversion Cycle (DSO + DIO − DPO) — Kapitalbindungs-Proxy, auch für Finanzdienstleister
   const dioZ = zeilen.find((z) => z.id === 'dio')

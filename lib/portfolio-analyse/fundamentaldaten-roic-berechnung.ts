@@ -121,7 +121,8 @@ export function ergaenzeRoicAusBilanz(
 
     const nopat = ebit * (1 - DEFAULT_TAX)
     const roic = (nopat / invested) * 100
-    if (Number.isFinite(roic) && roic > 0 && roic <= MAX_ROIC) {
+    // Auch negative ROIC ausweisen (Verlustjahre); Extremwerte weiter kappen
+    if (Number.isFinite(roic) && Math.abs(roic) <= MAX_ROIC) {
       roiWerte[key] = Math.round(roic * 10) / 10
       hatRoi = true
     } else {
@@ -133,7 +134,7 @@ export function ergaenzeRoicAusBilanz(
     const gwDominiert = hatGoodwill && invested > 0 && goodwill! >= invested * 0.85
     if (hatGoodwill && investedExGw > 0 && !gwDominiert) {
       const roicX = (nopat / investedExGw) * 100
-      if (Number.isFinite(roicX) && roicX > 0 && roicX <= MAX_ROIC_EX_GW) {
+      if (Number.isFinite(roicX) && Math.abs(roicX) <= MAX_ROIC_EX_GW) {
         roiExGw[key] = Math.round(roicX * 10) / 10
         hatExGw = true
       } else {

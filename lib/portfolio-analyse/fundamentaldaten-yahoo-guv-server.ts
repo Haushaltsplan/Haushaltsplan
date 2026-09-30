@@ -359,9 +359,12 @@ async function baueYahooGuVRoh(
     putMio(schuldMio, iso, debt.get(iso))
     const ni = nettoMio.get(iso)
     const eq = equityMio.get(iso)
-    // Quartals-NI / EK ist kein Jahres-ROE — nur bei GJ rechnen.
+    // Quartals-NI / EK ist kein Jahres-ROE — nur bei GJ; Nenner = Ø EK (t, t−1)
     if (frequenz !== 'quartal' && ni != null && eq != null && eq > 0) {
-      const roe = (ni / eq) * 100
+      const idx = periodenIso.indexOf(iso)
+      const prevEq = idx > 0 ? equityMio.get(periodenIso[idx - 1]!) : null
+      const denom = prevEq != null && prevEq > 0 ? (prevEq + eq) / 2 : eq
+      const roe = (ni / denom) * 100
       if (Number.isFinite(roe) && Math.abs(roe) < 500) roeMap.set(iso, Math.round(roe * 10) / 10)
     }
   }

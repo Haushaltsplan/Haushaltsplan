@@ -212,8 +212,8 @@ function SerieMark({
   )
 }
 
-/** Cash-Abflüsse (Dividende, Buybacks) liegen in der GuV/CF oft negativ — im Chart Betrag nach oben. */
-const CHART_BETRAG_POSITIV = new Set(['dividenden_gezahlt', 'aktienrueckkauf'])
+/** Cash-Abflüsse liegen in der GuV/CF oft negativ — im Chart Betrag nach oben. */
+const CHART_BETRAG_POSITIV = new Set(['dividenden_gezahlt', 'aktienrueckkauf', 'capex', 'akquisitionen'])
 
 function chartWert(id: string, wert: number): number {
   if (CHART_BETRAG_POSITIV.has(id) && wert < 0) return Math.abs(wert)

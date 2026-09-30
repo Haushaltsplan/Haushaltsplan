@@ -16,8 +16,8 @@ import type { MacrotrendsFundamentalRoh, MacrotrendsIdent } from '@/lib/portfoli
 const CACHE_MS = 24 * 60 * 60 * 1000
 const JAHRESFORMULARE = new Set(['10-K', '10-K/A', '20-F', '20-F/A', '40-F', '40-F/A'])
 const QUARTALSFORMULARE = new Set(['10-Q', '10-Q/A', '6-K'])
-/** Gleiche Kalender-Tiefe für Jahres- und Quartalsreihen (XBRL ~ab 2009). */
-const SEC_HIST_JAHRE = 16
+/** Obergrenze nur als Schutz vor Extremfällen; SEC-XBRL reicht meist ~2009–heute. */
+const SEC_HIST_JAHRE = 40
 const SEC_HIST_QUARTALE = SEC_HIST_JAHRE * 4
 
 type FactsUnit = {
@@ -43,6 +43,8 @@ type SecFeld =
   | 'eps'
   | 'rd'
   | 'sga'
+  | 'sga_verkauf'
+  | 'sga_verwaltung'
   | 'sbc'
   | 'aktien'
   | 'ocf'
@@ -56,6 +58,8 @@ type SecFeld =
   | 'eigenkapital'
   | 'langfristigeSchulden'
   | 'kurzfristigeSchulden'
+  | 'leaseLangfristig'
+  | 'leaseKurzfristig'
   | 'bargeld'
   | 'forderungen'
   | 'vorraete'
@@ -63,6 +67,7 @@ type SecFeld =
   | 'intangibles'
   | 'umlaufvermoegen'
   | 'kurzfrist_verbindl'
+  | 'lieferverbindlichkeiten'
 
 const STROMFELDER = new Set<SecFeld>([
   'umsatz',
@@ -73,6 +78,8 @@ const STROMFELDER = new Set<SecFeld>([
   'eps',
   'rd',
   'sga',
+  'sga_verkauf',
+  'sga_verwaltung',
   'sbc',
   'aktien',
   'ocf',
@@ -111,6 +118,8 @@ const YTD_DIFFERENZ = new Set<SecFeld>([
   'nettogewinn',
   'rd',
   'sga',
+  'sga_verkauf',
+  'sga_verwaltung',
   'sbc',
   'ocf',
   'capex',
@@ -143,17 +152,17 @@ const TAG_KETTEN: Record<SecFeld, string[]> = {
     'CostOfGoodsAndServicesSold',
     'CostOfRevenue',
     'CostOfGoodsSold',
+    // Nur Fallback: sonst D&A-Lage vs. EBITDA inkonsistent
     'CostOfGoodsAndServiceExcludingDepreciationDepletionAndAmortization',
   ],
   ebit: ['OperatingIncomeLoss', 'ProfitLossFromOperatingActivities'],
   nettogewinn: ['NetIncomeLoss', 'ProfitLoss', 'NetIncomeLossAvailableToCommonStockholdersBasic'],
   eps: ['EarningsPerShareDiluted', 'EarningsPerShareBasicAndDiluted', 'EarningsPerShareBasic'],
   rd: ['ResearchAndDevelopmentExpense', 'ResearchAndDevelopmentExpenseExcludingAcquiredInProcessCost'],
-  sga: [
-    'SellingGeneralAndAdministrativeExpense',
-    'SellingAndMarketingExpense',
-    'GeneralAndAdministrativeExpense',
-  ],
+  // Kombiniert zuerst — Teilsätze nur als Lückenfüllung (Summe), nie einzeln statt Gesamt
+  sga: ['SellingGeneralAndAdministrativeExpense'],
+  sga_verkauf: ['SellingAndMarketingExpense'],
+  sga_verwaltung: ['GeneralAndAdministrativeExpense'],
   sbc: [
     'ShareBasedCompensation',
     'AllocatedShareBasedCompensationExpense',
@@ -197,7 +206,8 @@ const TAG_KETTEN: Record<SecFeld, string[]> = {
     'PaymentsToAcquireBusinessesGross',
   ],
   gesamtvermoegen: ['Assets'],
-  gesamtverbindlichkeiten: ['Liabilities', 'LiabilitiesAndStockholdersEquity'],
+  // Nie LiabilitiesAndStockholdersEquity (= Bilanzsumme L+E, nicht Verbindlichkeiten)
+  gesamtverbindlichkeiten: ['Liabilities'],
   eigenkapital: [
     'StockholdersEquity',
     'StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest',
@@ -217,10 +227,13 @@ const TAG_KETTEN: Record<SecFeld, string[]> = {
     'ShortTermBorrowings',
     'CommercialPaper',
   ],
+  leaseLangfristig: ['OperatingLeaseLiabilityNoncurrent'],
+  leaseKurzfristig: ['OperatingLeaseLiabilityCurrent'],
   bargeld: [
+    'CashCashEquivalentsAndShortTermInvestments',
     'CashAndCashEquivalentsAtCarryingValue',
-    'CashCashEquivalentsRestrictedCashAndRestrictedCashEquivalents',
     'CashAndCashEquivalents',
+    'CashCashEquivalentsRestrictedCashAndRestrictedCashEquivalents',
   ],
   forderungen: [
     'AccountsReceivableNetCurrent',
@@ -237,6 +250,11 @@ const TAG_KETTEN: Record<SecFeld, string[]> = {
   ],
   umlaufvermoegen: ['AssetsCurrent'],
   kurzfrist_verbindl: ['LiabilitiesCurrent'],
+  lieferverbindlichkeiten: [
+    'AccountsPayableCurrent',
+    'AccountsPayable',
+    'AccountsPayableAndAccruedLiabilitiesCurrent',
+  ],
 }
 
 type ZeileDef = {
@@ -265,6 +283,7 @@ const ZEILEN: ZeileDef[] = [
   { id: 'da', feld: 'da', label: 'Abschreibungen (D&A)', gruppe: 'cashflow', einheit: 'waehrung_usd_mio', statement: 'cash-flow-statement', slug: 'depreciation-amortization' },
   { id: 'aktienrueckkauf', feld: 'aktienrueckkauf', label: 'Aktienrückkäufe', gruppe: 'cashflow', einheit: 'waehrung_usd_mio', statement: 'cash-flow-statement', slug: 'common-stock-repurchased' },
   { id: 'dividenden_gezahlt', feld: 'dividenden_gezahlt', label: 'Gezahlte Dividenden', gruppe: 'cashflow', einheit: 'waehrung_usd_mio', statement: 'cash-flow-statement', slug: 'common-stock-dividends-paid' },
+  { id: 'akquisitionen', feld: 'akquisitionen', label: 'Akquisitionen (Cash)', gruppe: 'cashflow', einheit: 'waehrung_usd_mio', statement: 'cash-flow-statement', slug: 'cash-acquisitions' },
   { id: 'gesamtvermoegen', feld: 'gesamtvermoegen', label: 'Gesamtvermögen', gruppe: 'bilanz', einheit: 'waehrung_usd_mio', statement: 'balance-sheet', slug: 'total-assets' },
   { id: 'gesamtverbindlichkeiten', feld: 'gesamtverbindlichkeiten', label: 'Gesamtverbindlichkeiten', gruppe: 'bilanz', einheit: 'waehrung_usd_mio', statement: 'balance-sheet', slug: 'total-liabilities' },
   { id: 'eigenkapital', feld: 'eigenkapital', label: 'Eigenkapital', gruppe: 'bilanz', einheit: 'waehrung_usd_mio', statement: 'balance-sheet', slug: 'total-share-holder-equity' },
@@ -272,6 +291,7 @@ const ZEILEN: ZeileDef[] = [
   { id: 'bargeld', feld: 'bargeld', label: 'Bargeld & Äquivalente', gruppe: 'bilanz', einheit: 'waehrung_usd_mio', statement: 'balance-sheet', slug: 'cash-on-hand' },
   { id: 'forderungen', feld: 'forderungen', label: 'Forderungen (netto)', gruppe: 'bilanz', einheit: 'waehrung_usd_mio', statement: 'balance-sheet', slug: 'receivables-total' },
   { id: 'vorraete', feld: 'vorraete', label: 'Vorräte', gruppe: 'bilanz', einheit: 'waehrung_usd_mio', statement: 'balance-sheet', slug: 'inventory' },
+  { id: 'lieferverbindlichkeiten', feld: 'lieferverbindlichkeiten', label: 'Lieferverbindlichkeiten', gruppe: 'bilanz', einheit: 'waehrung_usd_mio', statement: 'balance-sheet', slug: 'accounts-payable' },
   { id: 'goodwill', feld: 'goodwill', label: 'Goodwill', gruppe: 'bilanz', einheit: 'waehrung_usd_mio', statement: 'balance-sheet', slug: 'goodwill' },
   { id: 'umlaufvermoegen', feld: 'umlaufvermoegen', label: 'Umlaufvermögen', gruppe: 'bilanz', einheit: 'waehrung_usd_mio', statement: 'balance-sheet', slug: 'total-current-assets' },
   { id: 'kurzfrist_verbindl', feld: 'kurzfrist_verbindl', label: 'Kurzfristige Verbindlichkeiten', gruppe: 'bilanz', einheit: 'waehrung_usd_mio', statement: 'balance-sheet', slug: 'total-current-liabilities' },
@@ -641,13 +661,39 @@ function ttmAusQuartalen(
   }
   const letzte = sortiert.slice(-4)
   if (letzte.length < 4) return null
+  // Folgequartale: Abstand je ~60–130 Tage (kein Lücken-TTM aus Q1+Q2+Q3+Q1)
+  for (let i = 1; i < letzte.length; i++) {
+    const gap =
+      (Date.parse(letzte[i]![0]) - Date.parse(letzte[i - 1]![0])) / 86_400_000
+    if (gap < 60 || gap > 130) return null
+  }
   const span =
     (Date.parse(letzte[letzte.length - 1]![0]) - Date.parse(letzte[0]![0])) / 86_400_000
-  // Vier echte Folgequartale liegen ~9–14 Monate auseinander — nicht vier Q1er über 4 Jahre.
   if (span < 250 || span > 420) return null
   let sum = 0
   for (const [, t] of letzte) sum += feld ? vorzeichen(feld, t.wert) : t.wert
   return sum
+}
+
+/** SG&A: fehlende Perioden = Selling & Marketing + G&A (nie nur eine Teilleiste). */
+function ergaenzeSgaAusTeilen(
+  sga: Map<string, Treffer>,
+  verkauf: Map<string, Treffer> | undefined,
+  verwaltung: Map<string, Treffer> | undefined,
+): void {
+  if (!verkauf && !verwaltung) return
+  const ends = new Set<string>()
+  for (const e of verkauf?.keys() ?? []) ends.add(e)
+  for (const e of verwaltung?.keys() ?? []) ends.add(e)
+  for (const ende of ends) {
+    if (sga.has(ende)) continue
+    const a = verkauf?.get(ende)
+    const b = verwaltung?.get(ende)
+    if (a == null && b == null) continue
+    const wert = (a?.wert ?? 0) + (b?.wert ?? 0)
+    const filed = [a?.filed, b?.filed].filter(Boolean).sort().at(-1) ?? ende
+    sga.set(ende, { wert, filed, periodenEnde: ende })
+  }
 }
 
 function ratioPct(a: number | null, b: number | null): number | null {
@@ -658,6 +704,25 @@ function ratioPct(a: number | null, b: number | null): number | null {
 function ratio(a: number | null, b: number | null): number | null {
   if (a == null || b == null || !(b > 0) || !Number.isFinite(a)) return null
   return a / b
+}
+
+/** Durchschnitt Bestand t / t−1 (ROE/ROA-Standard). */
+function durchschnittBestand(
+  zeile: FundamentalMetrikZeile | undefined,
+  iso: string,
+  isoListe: string[],
+): number | null {
+  const cur = zeile?.werte[iso] ?? null
+  if (iso === FUNDAMENTAL_TTM_KEY) {
+    const a = isoListe.length >= 1 ? (zeile?.werte[isoListe[isoListe.length - 1]!] ?? null) : null
+    const b = isoListe.length >= 2 ? (zeile?.werte[isoListe[isoListe.length - 2]!] ?? null) : null
+    if (a != null && b != null) return (a + b) / 2
+    return a ?? cur
+  }
+  const idx = isoListe.indexOf(iso)
+  const prev = idx > 0 ? (zeile?.werte[isoListe[idx - 1]!] ?? null) : null
+  if (prev != null && cur != null) return (prev + cur) / 2
+  return cur
 }
 
 function zaehle(zeile: FundamentalMetrikZeile | undefined, isoListe: string[]): number {
@@ -695,15 +760,20 @@ export async function ladeSecFundamentaldaten(
   for (const feld of Object.keys(TAG_KETTEN) as SecFeld[]) {
     reihen.set(feld, quartal ? quartalsreihe(facts, waehrung, feld) : jahresreihe(facts, labels, waehrung, feld))
   }
+  const sgaReihe = reihen.get('sga')
+  if (sgaReihe) {
+    ergaenzeSgaAusTeilen(sgaReihe, reihen.get('sga_verkauf'), reihen.get('sga_verwaltung'))
+  }
   const umsatzReihe = reihen.get('umsatz')
   const ebitReihe = reihen.get('ebit')
-  if (!quartal && umsatzReihe && ebitReihe) {
+  // Gross-vs-Net für Jahr und Quartal (ASC-606-Klasse)
+  if (umsatzReihe && ebitReihe) {
     wendeUmsatzGrossVsNetAufTreffer(umsatzReihe, ebitReihe)
   }
 
   const isoSet = new Set<string>()
   for (const reihe of reihen.values()) for (const ende of reihe.keys()) isoSet.add(ende)
-  // Früher: Quartal auch slice(-16) → nur ~4 Jahre; Jahr und Quartal sollen gleich weit zurückreichen.
+  // Früher: Quartal auch slice(-16) → nur ~4 Jahre. Jahr und Quartal gleiche Kalender-Tiefe (bis 40J).
   const isoListe = [...isoSet].sort().slice(quartal ? -SEC_HIST_QUARTALE : -SEC_HIST_JAHRE)
   if (isoListe.length < (quartal ? 4 : 6)) return merke(null)
 
@@ -714,6 +784,8 @@ export async function ladeSecFundamentaldaten(
   for (const def of ZEILEN) {
     if (def.id === 'ebitda' || def.id === 'gesamtverschuldung') continue
     if (!def.feld) continue
+    // Hilfsfelder nur intern (SG&A-Teile) — nicht als Chart-Zeile
+    if (def.feld === 'sga_verkauf' || def.feld === 'sga_verwaltung') continue
     const reihe = reihen.get(def.feld)
     const ttm = mitTtm
       ? ttmAusQuartalen(
@@ -754,6 +826,19 @@ export async function ladeSecFundamentaldaten(
             : null
       if (u != null && c != null) bruttoZeile.werte[iso] = u - Math.abs(c)
     }
+    // Nach Gross→Net-Umsatz: Bruttogewinn darf Umsatz nicht übersteigen
+    for (const iso of [...isoListe, ...(mitTtm ? [FUNDAMENTAL_TTM_KEY] : [])]) {
+      const u = umsatzVorab.werte[iso]
+      const b = bruttoZeile.werte[iso]
+      if (u == null || b == null || !(b > u)) continue
+      const c =
+        iso === FUNDAMENTAL_TTM_KEY
+          ? ttmAusQuartalen(quartalsreihe(facts, waehrung, 'cogs'), 'cogs', 'sum')
+          : cogsReihe?.get(iso)
+            ? vorzeichen('cogs', cogsReihe.get(iso)!.wert)
+            : null
+      bruttoZeile.werte[iso] = c != null ? u - Math.abs(c) : null
+    }
   }
 
   const ebit = zeilen.find((z) => z.id === 'ebit')
@@ -790,12 +875,27 @@ export async function ladeSecFundamentaldaten(
       ? ttmAusQuartalen(quartalsreihe(facts, waehrung, 'kurzfristigeSchulden'), 'kurzfristigeSchulden', 'last')
       : null,
   )
+  const leaseLt = werteAusReihe(
+    reihen.get('leaseLangfristig'),
+    'leaseLangfristig',
+    isoListe,
+    mitTtm
+      ? ttmAusQuartalen(quartalsreihe(facts, waehrung, 'leaseLangfristig'), 'leaseLangfristig', 'last')
+      : null,
+  )
+  const leaseSt = werteAusReihe(
+    reihen.get('leaseKurzfristig'),
+    'leaseKurzfristig',
+    isoListe,
+    mitTtm
+      ? ttmAusQuartalen(quartalsreihe(facts, waehrung, 'leaseKurzfristig'), 'leaseKurzfristig', 'last')
+      : null,
+  )
   const debtWerte: Record<string, number | null> = {}
   for (const iso of [...isoListe, ...(mitTtm ? [FUNDAMENTAL_TTM_KEY] : [])]) {
-    const a = ltWerte[iso]
-    const b = stWerte[iso]
-    if (a == null && b == null) debtWerte[iso] = null
-    else debtWerte[iso] = (a ?? 0) + (b ?? 0)
+    const teile = [ltWerte[iso], stWerte[iso], leaseLt[iso], leaseSt[iso]]
+    if (teile.every((v) => v == null)) debtWerte[iso] = null
+    else debtWerte[iso] = teile.reduce<number>((s, v) => s + (v ?? 0), 0)
   }
   zeilen.push({
     id: 'gesamtverschuldung',
@@ -814,8 +914,9 @@ export async function ladeSecFundamentaldaten(
     for (const iso of [...isoListe, ...(mitTtm ? [FUNDAMENTAL_TTM_KEY] : [])]) {
       const o = ocf?.werte[iso]
       const c = capex?.werte[iso]
-      if (o == null && c == null) fcf[iso] = null
-      else fcf[iso] = (o ?? 0) + (c ?? 0)
+      // FCF nur mit OCF — CapEx allein ist kein Free Cashflow
+      if (o == null) fcf[iso] = null
+      else fcf[iso] = o + (c ?? 0)
     }
     zeilen.push({
       id: 'fcf',
@@ -834,7 +935,29 @@ export async function ladeSecFundamentaldaten(
   const assets = zeilen.find((z) => z.id === 'gesamtvermoegen')
   const vorraete = zeilen.find((z) => z.id === 'vorraete')
   const forderungen = zeilen.find((z) => z.id === 'forderungen')
-  const verb = zeilen.find((z) => z.id === 'kurzfrist_verbindl')
+  const lieferverb = zeilen.find((z) => z.id === 'lieferverbindlichkeiten')
+  const epsZeile = zeilen.find((z) => z.id === 'eps')
+  const aktienZeile = zeilen.find((z) => z.id === 'aktien')
+
+  // TTM-EPS = NI_TTM / verwässerte WAS (Summe Quartals-EPS verzerrt bei Share-Count-Änderung)
+  if (mitTtm && epsZeile && netto && aktienZeile) {
+    const niTtm = netto.werte[FUNDAMENTAL_TTM_KEY]
+    const wasTtm = aktienZeile.werte[FUNDAMENTAL_TTM_KEY]
+    if (niTtm != null && wasTtm != null && wasTtm > 0) {
+      epsZeile.werte[FUNDAMENTAL_TTM_KEY] = niTtm / wasTtm
+    }
+  }
+
+  const cogsFuerIso = (iso: string): number | null => {
+    const u = umsatz?.werte[iso] ?? null
+    const b = brutto?.werte[iso] ?? null
+    if (u != null && b != null) {
+      const c = u - b
+      return c > 0 ? c : null
+    }
+    const roh = reihen.get('cogs')?.get(iso)
+    return roh != null ? Math.abs(vorzeichen('cogs', roh.wert)) : null
+  }
 
   const ratioZeile = (
     id: string,
@@ -862,16 +985,17 @@ export async function ladeSecFundamentaldaten(
     ratioPct(netto?.werte[iso] ?? null, umsatz?.werte[iso] ?? null),
   )
   ratioZeile('roa', 'Gesamtkapitalrendite (ROA %)', 'rentabilitaet', 'prozent', 'roa', (iso) =>
-    ratioPct(netto?.werte[iso] ?? null, assets?.werte[iso] ?? null),
+    ratioPct(netto?.werte[iso] ?? null, durchschnittBestand(assets, iso, isoListe)),
   )
   ratioZeile('roe', 'Eigenkapitalrendite (ROE %)', 'rentabilitaet', 'prozent', 'roe', (iso) =>
-    ratioPct(netto?.werte[iso] ?? null, ek?.werte[iso] ?? null),
+    ratioPct(netto?.werte[iso] ?? null, durchschnittBestand(ek, iso, isoListe)),
   )
   ratioZeile('kapitalumschlag', 'Kapitalumschlaghäufigkeit', 'umschlag', 'ratio', 'asset-turnover', (iso) =>
-    ratio(umsatz?.werte[iso] ?? null, assets?.werte[iso] ?? null),
+    ratio(umsatz?.werte[iso] ?? null, durchschnittBestand(assets, iso, isoListe)),
   )
+  // Lagerumschlag / DIO: COGS / Vorräte (nicht Umsatz)
   ratioZeile('anlagenumschlag', 'Lagerumschlag', 'umschlag', 'ratio', 'inventory-turnover', (iso) =>
-    ratio(umsatz?.werte[iso] ?? null, vorraete?.werte[iso] ?? null),
+    ratio(cogsFuerIso(iso), vorraete?.werte[iso] ?? null),
   )
   ratioZeile('forderungsumschlag', 'Forderungsumschlag', 'umschlag', 'ratio', 'receiveable-turnover', (iso) =>
     ratio(umsatz?.werte[iso] ?? null, forderungen?.werte[iso] ?? null),
@@ -881,11 +1005,13 @@ export async function ladeSecFundamentaldaten(
     return t == null ? null : t * 365
   })
   ratioZeile('dio', 'Lagerdauer (DIO, Tage)', 'umschlag', 'zahl', 'days-in-inventory', (iso) => {
-    const t = ratio(vorraete?.werte[iso] ?? null, umsatz?.werte[iso] ?? null)
+    const t = ratio(vorraete?.werte[iso] ?? null, cogsFuerIso(iso))
     return t == null ? null : t * 365
   })
+  // DPO: Accounts Payable / COGS — nicht Current Liabilities / Umsatz
   ratioZeile('dpo', 'Verbindlichkeitenlaufzeit (DPO, Tage)', 'umschlag', 'zahl', 'days-payables-outstanding', (iso) => {
-    const t = ratio(verb?.werte[iso] ?? null, umsatz?.werte[iso] ?? null)
+    const ap = lieferverb?.werte[iso] ?? null
+    const t = ratio(ap, cogsFuerIso(iso))
     return t == null ? null : t * 365
   })
 

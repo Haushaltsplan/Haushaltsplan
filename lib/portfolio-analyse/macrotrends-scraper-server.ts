@@ -654,10 +654,10 @@ function berechneFcf(ocf: Record<string, number | null>, capex: Record<string, n
   for (const k of keys) {
     const o = ocf[k]
     const c = capex[k]
-    if (o == null && c == null) {
+    if (o == null) {
       out[k] = null
     } else {
-      out[k] = (o ?? 0) + (c ?? 0)
+      out[k] = o + (c ?? 0)
     }
   }
   return out
