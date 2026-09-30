@@ -161,76 +161,12 @@ export async function speichereScreenerSnapshot(snap: ScreenerSnapshot): Promise
   }
 }
 
-export async function erneuereScreenerSnapshot(): Promise<ScreenerSnapshot & ScreenerCloudStatus> {
-  const snap = await baueScreenerSnapshot()
+export async function erneuereScreenerSnapshot(opts?: {
+  onProgress?: (p: import('@/lib/portfolio-analyse/screener/screener-sec-frames-server').ScreenerBuildProgress) => void
+  budgetMs?: number
+}): Promise<ScreenerSnapshot & ScreenerCloudStatus> {
+  const snap = await baueScreenerSnapshot(opts)
+  opts?.onProgress?.({ phase: 'speichern', message: 'Speichere Snapshot…' })
   const cloud = await speichereScreenerSnapshot(snap)
   return { ...snap, ...cloud }
-}
-
-export type ScreenerBuildStatus = {
-  laeuft: boolean
-  gestartetAm: string | null
-  fertigAm: string | null
-  fehler: string | null
-  n: number | null
-  periode: string | null
-  schemaVersion: number | null
-}
-
-let buildStatus: ScreenerBuildStatus = {
-  laeuft: false,
-  gestartetAm: null,
-  fertigAm: null,
-  fehler: null,
-  n: null,
-  periode: null,
-  schemaVersion: null,
-}
-
-export function leseScreenerBuildStatus(): ScreenerBuildStatus {
-  return { ...buildStatus }
-}
-
-/** Markiert Build als laufend — eigentliche Arbeit in next/after ausführen. */
-export function reserviereScreenerBuild(): { ok: true } | { ok: false; schonAktiv: true } {
-  if (buildStatus.laeuft) return { ok: false, schonAktiv: true }
-  buildStatus = {
-    laeuft: true,
-    gestartetAm: new Date().toISOString(),
-    fertigAm: null,
-    fehler: null,
-    n: null,
-    periode: null,
-    schemaVersion: null,
-  }
-  return { ok: true }
-}
-
-export async function fuehreReserviertenScreenerBuildAus(): Promise<void> {
-  try {
-    const ergebnis = await erneuereScreenerSnapshot()
-    buildStatus = {
-      laeuft: false,
-      gestartetAm: buildStatus.gestartetAm,
-      fertigAm: new Date().toISOString(),
-      fehler: null,
-      n: ergebnis.n,
-      periode: ergebnis.periode,
-      schemaVersion: ergebnis.schemaVersion ?? SCREENER_SCHEMA_VERSION,
-    }
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e)
-    buildStatus = {
-      laeuft: false,
-      gestartetAm: buildStatus.gestartetAm,
-      fertigAm: new Date().toISOString(),
-      fehler: msg.includes('<!DOCTYPE')
-        ? 'SEC-Universum fehlgeschlagen — unerwartete HTML-Antwort.'
-        : msg.slice(0, 400),
-      n: null,
-      periode: null,
-      schemaVersion: null,
-    }
-    console.error('[screener] Hintergrund-Build', e)
-  }
 }

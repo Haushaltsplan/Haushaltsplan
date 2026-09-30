@@ -223,8 +223,8 @@ async function sleepMs(ms: number) {
 async function ladeFrame(taxonomy: string, tag: string, unit: string, periode: string): Promise<Map<number, number>> {
   const url = `https://data.sec.gov/api/xbrl/frames/${taxonomy}/${tag}/${unit}/${periode}.json`
   const out = new Map<number, number>()
-  let warteMs = 600
-  for (let versuch = 0; versuch < 60; versuch++) {
+  let warteMs = 400
+  for (let versuch = 0; versuch < 12; versuch++) {
     const res = await secFetch(url)
     if (res.status === 404) return out
     if (res.status === 429 || res.status === 503 || res.status >= 500) {
@@ -323,17 +323,62 @@ async function ladeUsBoersenTicker(): Promise<TickerRow[]> {
   return out
 }
 
-export async function baueScreenerSnapshot(): Promise<ScreenerSnapshot> {
+export type ScreenerBuildProgress = {
+  phase: 'start' | 'jahr' | 'kennzahlen' | 'kurse' | 'speichern'
+  jahr?: number
+  vonJahr?: number
+  bisJahr?: number
+  jahreFertig?: number
+  jahreGesamt?: number
+  message?: string
+}
+
+export async function baueScreenerSnapshot(opts?: {
+  onProgress?: (p: ScreenerBuildProgress) => void
+  /** Soft-Deadline für SEC-Jahre (Rest für Kennzahlen/Yahoo/Save). Default ~3,5 Min. */
+  budgetMs?: number
+}): Promise<ScreenerSnapshot> {
+  const t0 = Date.now()
+  const budgetMs = opts?.budgetMs ?? 210_000
   const bisJahr = await neuestesDauerJahr()
   const ticker = await ladeUsBoersenTicker()
   const perCik = new Map<number, Map<number, JahrRoh>>()
+  const jahreGesamt = bisJahr - ERSTES_FRAME_JAHR + 1
+  opts?.onProgress?.({
+    phase: 'start',
+    bisJahr,
+    vonJahr: ERSTES_FRAME_JAHR,
+    jahreGesamt,
+    message: `Lade SEC-Frames CY${bisJahr}…${ERSTES_FRAME_JAHR}`,
+  })
 
-  // Alle Kalenderjahre bis Frame-Start — neueste zuerst (bei hartem Timeout bleiben aktuelle Kennzahlen).
-  // Kein Abbruch bei 429: ladeFrame retryt, bis die SEC liefert.
+  // Neueste Jahre zuerst — bei Zeitdruck bleiben aktuelle CAGRs erhalten.
+  let jahreFertig = 0
+  let aeltestesGeladen: number | null = null
   for (let jahr = bisJahr; jahr >= ERSTES_FRAME_JAHR; jahr--) {
+    if (Date.now() - t0 > budgetMs && jahreFertig >= 6) {
+      console.warn(`[screener] Zeitbudget — stoppe bei CY${jahr + 1} (${jahreFertig} Jahre geladen)`)
+      opts?.onProgress?.({
+        phase: 'jahr',
+        jahr,
+        jahreFertig,
+        jahreGesamt,
+        message: `Zeitbudget: Historie ab CY${aeltestesGeladen ?? jahr + 1} (neueste ${jahreFertig} Jahre)`,
+      })
+      break
+    }
     const dauer = `CY${jahr}`
     const stichtag = `CY${jahr}Q4I`
     console.info(`[screener] SEC-Frames ${dauer} …`)
+    opts?.onProgress?.({
+      phase: 'jahr',
+      jahr,
+      bisJahr,
+      vonJahr: ERSTES_FRAME_JAHR,
+      jahreFertig,
+      jahreGesamt,
+      message: `SEC ${dauer} (${jahreFertig + 1}/${jahreGesamt})`,
+    })
     const [
       umsatzRev,
       umsatzSales,
@@ -505,7 +550,11 @@ export async function baueScreenerSnapshot(): Promise<ScreenerSnapshot> {
     for (const [cik, val] of cogsGesamt) setz(perCik, cik, jahr, 'cogs', val)
     for (const [cik, val] of zinsGesamt) setz(perCik, cik, jahr, 'zins', val)
     for (const [cik, val] of sbcGesamt) setz(perCik, cik, jahr, 'sbc', val)
+    jahreFertig++
+    aeltestesGeladen = jahr
   }
+
+  opts?.onProgress?.({ phase: 'kennzahlen', message: 'Kennzahlen berechnen…', jahreFertig, jahreGesamt })
 
   const zeilen: ScreenerZeile[] = []
   const gesehen = new Set<string>()
@@ -690,6 +739,7 @@ export async function baueScreenerSnapshot(): Promise<ScreenerSnapshot> {
     })
   }
 
+  opts?.onProgress?.({ phase: 'kurse', message: 'Yahoo-Kurse & Multiples…', jahreFertig, jahreGesamt })
   const quotes = await ladeYahooQuoteKennzahlen(zeilen.map((z) => z.ticker))
   for (const z of zeilen) {
     const q = quotes.get(z.ticker)

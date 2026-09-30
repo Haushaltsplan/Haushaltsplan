@@ -519,6 +519,7 @@ export function PortfolioScreenerClient() {
   const [schemaVersion, setSchemaVersion] = useState(1)
   const [laden, setLaden] = useState(true)
   const [erneuern, setErneuern] = useState(false)
+  const [buildProgress, setBuildProgress] = useState<string | null>(null)
   const [fehler, setFehler] = useState<string | null>(null)
   const [cloudWarnung, setCloudWarnung] = useState<string | null>(null)
   const [filter, setFilter] = useState<ScreenerFilter>(() => leerScreenerFilter())
@@ -598,57 +599,61 @@ export function PortfolioScreenerClient() {
     setErneuern(true)
     setFehler(null)
     setCloudWarnung(null)
-    const vorherAm = aktualisiertAm
-    const vorherSchema = schemaVersion
-    const leseJson = async (res: Response): Promise<ApiAntwort> => {
-      const text = await res.text()
-      try {
-        return JSON.parse(text) as ApiAntwort
-      } catch {
-        const kurz = text.replace(/\s+/g, ' ').trim().slice(0, 160)
-        if (/an error occurred/i.test(kurz) || res.status === 504 || res.status === 502) {
-          throw new Error(
-            'Server-/Proxy-Timeout. Der Aufbau läuft im Hintergrund — Seite in 2–3 Min. neu laden oder erneut versuchen.',
-          )
-        }
-        throw new Error(kurz || `Ungültige Server-Antwort (HTTP ${res.status}).`)
-      }
-    }
+    setBuildProgress('Starte SEC-Universum…')
     try {
-      const startRes = await fetch('/api/portfolio-analyse/screener', { method: 'POST' })
-      const start = await leseJson(startRes)
-      if (!startRes.ok || !start.ok) throw new Error(start.message ?? 'Universum konnte nicht gestartet werden.')
-
-      const deadline = Date.now() + 320_000
-      while (Date.now() < deadline) {
-        await new Promise((r) => setTimeout(r, 5000))
-        const pollRes = await fetch('/api/portfolio-analyse/screener?frisch=1', { cache: 'no-store' })
-        const poll = await leseJson(pollRes)
-        if (!pollRes.ok || !poll.ok) throw new Error(poll.message ?? 'Status konnte nicht geladen werden.')
-
-        if (poll.build?.fehler) throw new Error(poll.build.fehler)
-
-        const neuAm = poll.aktualisiertAm != null && poll.aktualisiertAm !== vorherAm
-        const neuSchema =
-          poll.schemaVersion != null &&
-          poll.schemaVersion >= SCREENER_SCHEMA_VERSION &&
-          (vorherSchema < SCREENER_SCHEMA_VERSION || neuAm)
-        const buildFertigLokal = poll.build != null && !poll.build.laeuft && Boolean(poll.build.fertigAm) && !poll.build.fehler
-
-        if ((neuAm || neuSchema || buildFertigLokal) && (poll.zeilen?.length ?? 0) > 0) {
-          uebernehme(poll)
-          return
+      const res = await fetch('/api/portfolio-analyse/screener', { method: 'POST' })
+      if (!res.ok || !res.body) {
+        const text = await res.text()
+        throw new Error(text.replace(/\s+/g, ' ').trim().slice(0, 200) || `HTTP ${res.status}`)
+      }
+      const reader = res.body.getReader()
+      const dec = new TextDecoder()
+      let buf = ''
+      let fertig: ApiAntwort | null = null
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        buf += dec.decode(value, { stream: true })
+        const lines = buf.split('\n')
+        buf = lines.pop() ?? ''
+        for (const line of lines) {
+          const t = line.trim()
+          if (!t) continue
+          let msg: ApiAntwort & { phase?: string; message?: string; jahr?: number }
+          try {
+            msg = JSON.parse(t) as ApiAntwort & { phase?: string; message?: string; jahr?: number }
+          } catch {
+            continue
+          }
+          if (msg.phase === 'error' || msg.ok === false) {
+            throw new Error(msg.message ?? 'Universum-Aufbau fehlgeschlagen.')
+          }
+          if (msg.message) setBuildProgress(msg.message)
+          else if (msg.phase === 'jahr' && msg.jahr != null) setBuildProgress(`SEC CY${msg.jahr}…`)
+          if (msg.phase === 'done' && msg.ok) fertig = msg
         }
       }
-      throw new Error(
-        'Universum-Aufbau noch nicht fertig (Zeitlimit). In 1–2 Minuten Seite neu laden — bei Erfolg ist das neue Schema sichtbar.',
-      )
+      if (buf.trim()) {
+        try {
+          const msg = JSON.parse(buf.trim()) as ApiAntwort & { phase?: string }
+          if (msg.phase === 'error' || msg.ok === false) throw new Error(msg.message ?? 'Universum-Aufbau fehlgeschlagen.')
+          if (msg.phase === 'done' && msg.ok) fertig = msg
+        } catch (e) {
+          if (e instanceof Error && e.message.includes('Universum')) throw e
+        }
+      }
+      if (!fertig?.zeilen?.length) {
+        throw new Error('Universum-Aufbau ohne Ergebnis beendet — bitte erneut versuchen.')
+      }
+      uebernehme(fertig)
+      setBuildProgress(null)
     } catch (e) {
       setFehler(e instanceof Error ? e.message : 'Universum konnte nicht geladen werden.')
+      setBuildProgress(null)
     } finally {
       setErneuern(false)
     }
-  }, [uebernehme, aktualisiertAm, schemaVersion])
+  }, [uebernehme])
 
   const vorlageAktiv = useMemo(
     () => (aktiveVorlageId ? eigen.find((v) => v.id === aktiveVorlageId) ?? null : null),
@@ -928,7 +933,11 @@ export function PortfolioScreenerClient() {
               CSV
             </button>
             <button type="button" onClick={() => void baueUniversum()} disabled={erneuern} className={BTN_WARN}>
-              {erneuern ? 'Lade SEC-Universum …' : zeilen.length > 0 ? 'Universum neu aufbauen' : 'Universum laden'}
+              {erneuern
+                ? buildProgress ?? 'Lade SEC-Universum …'
+                : zeilen.length > 0
+                  ? 'Universum neu aufbauen'
+                  : 'Universum laden'}
             </button>
           </div>
         </div>

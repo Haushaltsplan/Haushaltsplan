@@ -1,10 +1,9 @@
-import { after, NextResponse } from 'next/server'
+import { NextResponse } from 'next/server'
 import {
-  fuehreReserviertenScreenerBuildAus,
+  erneuereScreenerSnapshot,
   ladeScreenerSnapshot,
-  leseScreenerBuildStatus,
-  reserviereScreenerBuild,
 } from '@/lib/portfolio-analyse/screener/screener-snapshot-server'
+import type { ScreenerBuildProgress } from '@/lib/portfolio-analyse/screener/screener-sec-frames-server'
 
 export const dynamic = 'force-dynamic'
 /** SEC-Frame-Historie braucht Pacing — Pro-Plan-Maximum. */
@@ -30,7 +29,6 @@ function paketFuerClient(
 export async function GET(req: Request) {
   try {
     const frisch = new URL(req.url).searchParams.get('frisch') === '1'
-    const build = leseScreenerBuildStatus()
     const snap = await ladeScreenerSnapshot({ frisch })
     if (!snap) {
       return NextResponse.json({
@@ -41,10 +39,9 @@ export async function GET(req: Request) {
         n: 0,
         schemaVersion: 1,
         zeilen: [],
-        build,
       })
     }
-    return NextResponse.json({ ...paketFuerClient(snap), build })
+    return NextResponse.json(paketFuerClient(snap))
   } catch (e) {
     console.error('[screener] GET', e)
     return NextResponse.json(
@@ -55,34 +52,48 @@ export async function GET(req: Request) {
 }
 
 /**
- * Sofort JSON zurück (kein Browser-/Proxy-Timeout).
- * Der schwere SEC-Build läuft in next/after bis maxDuration.
- * Client pollt GET bis build.laeuft === false.
+ * NDJSON-Stream: hält die HTTP-Verbindung offen (kein Proxy-Idle-Timeout),
+ * sendet Fortschritt pro Jahr, am Ende das fertige Universum.
  */
 export async function POST() {
-  try {
-    const reserviert = reserviereScreenerBuild()
-    if (reserviert.ok) {
-      after(async () => {
-        await fuehreReserviertenScreenerBuildAus()
-      })
-    }
-    const schonAktiv = !reserviert.ok
-    return NextResponse.json({
-      ok: true,
-      gestartet: true,
-      schonAktiv,
-      message: schonAktiv
-        ? 'Universum-Aufbau läuft bereits — bitte warten.'
-        : 'Universum-Aufbau gestartet (SEC Frames, kann einige Minuten dauern).',
-      build: leseScreenerBuildStatus(),
-    })
-  } catch (e) {
-    console.error('[screener] POST', e)
-    const msg = e instanceof Error ? e.message : 'Universum konnte nicht gestartet werden.'
-    const kurz = msg.includes('<!DOCTYPE')
-      ? 'SEC-Universum fehlgeschlagen — unerwartete HTML-Antwort (Netzwerk/Proxy?).'
-      : msg.slice(0, 300)
-    return NextResponse.json({ ok: false, message: kurz }, { status: 500 })
-  }
+  const encoder = new TextEncoder()
+  const stream = new ReadableStream<Uint8Array>({
+    async start(controller) {
+      const send = (obj: Record<string, unknown>) => {
+        controller.enqueue(encoder.encode(`${JSON.stringify(obj)}\n`))
+      }
+      try {
+        send({ ok: true, phase: 'start', message: 'Universum-Aufbau gestartet…' })
+        const ergebnis = await erneuereScreenerSnapshot({
+          onProgress: (p: ScreenerBuildProgress) => {
+            send({ ok: true, ...p })
+          },
+          budgetMs: 210_000,
+        })
+        const { cloudGespeichert, cloudWarnung, ...snap } = ergebnis
+        send({
+          ...paketFuerClient(snap, { cloudGespeichert, cloudWarnung }),
+          phase: 'done',
+          message: `Fertig: ${snap.n.toLocaleString('de-DE')} Titel (${snap.periode}).`,
+        })
+      } catch (e) {
+        console.error('[screener] POST', e)
+        const msg = e instanceof Error ? e.message : 'Universum konnte nicht geladen werden.'
+        const kurz = msg.includes('<!DOCTYPE')
+          ? 'SEC-Universum fehlgeschlagen — unerwartete HTML-Antwort (Netzwerk/Proxy?).'
+          : msg.slice(0, 300)
+        send({ ok: false, phase: 'error', message: kurz })
+      } finally {
+        controller.close()
+      }
+    },
+  })
+
+  return new Response(stream, {
+    headers: {
+      'Content-Type': 'application/x-ndjson; charset=utf-8',
+      'Cache-Control': 'no-store, no-transform',
+      'X-Content-Type-Options': 'nosniff',
+    },
+  })
 }
