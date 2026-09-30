@@ -1,12 +1,13 @@
 /**
  * SEC XBRL Frames → Universum aller an Nasdaq/NYSE/CBOE gelisteten Filer.
- * Pro Titel die komplette Kalenderjahr-Reihe (so weit Frames zurückreichen), Kurse von Yahoo.
+ * Pro Titel die komplette Kalenderjahr-Reihe ab Frame-Start (XBRL-Ära ~2009).
+ * Pacing ≤10 Req/s ist SEC-Vorgabe — wir drosseln und retryen, statt Jahre wegzulassen.
  */
 
 import 'server-only'
 
 import { leseAlsJson } from '@/lib/http/safe-json-response'
-import { cagrJaehrlichAusSerie, aktienreiheSplitBereinigt } from '@/lib/portfolio-analyse/fundamentaldaten-format'
+import { aktienreiheSplitBereinigt } from '@/lib/portfolio-analyse/fundamentaldaten-format'
 import { berechneBruttomargenStabilitaet } from '@/lib/portfolio-analyse/fundamentaldaten-pricing-power'
 import { schaetzeWaccPct } from '@/lib/portfolio-analyse/fundamentaldaten-roic-hilfen'
 import { secFetch } from '@/lib/portfolio-analyse/sec-edgar-common-server'
@@ -42,6 +43,7 @@ type JahrRoh = {
   da?: number
   aktien?: number
   gp?: number
+  cogs?: number
   zins?: number
   sbc?: number
 }
@@ -67,23 +69,19 @@ function runde(n: number | null, stellen = 1): number | null {
   return Math.round(n * f) / f
 }
 
-function median(werte: number[]): number | null {
-  if (werte.length === 0) return null
-  const s = [...werte].sort((a, b) => a - b)
-  const m = Math.floor(s.length / 2)
-  return s.length % 2 ? s[m]! : (s[m - 1]! + s[m]!) / 2
-}
-
-/** Mittel der letzten maxN endlichen Werte (auch ≤0); mind. minN. */
-function mittelLetzte(
-  werte: Array<number | null | undefined>,
-  maxN = 5,
-  minN = 3,
+/** Mittel der Werte in [endJahr − fenster + 1 … endJahr]; mind. minN. */
+function mittelKalenderFenster(
+  punkte: Array<{ jahr: number; val: number | null | undefined }>,
+  endJahr: number,
+  fenster = 5,
+  minN = 2,
   nurPositiv = false,
 ): number | null {
+  const von = endJahr - fenster + 1
   const genommen: number[] = []
-  for (let i = werte.length - 1; i >= 0 && genommen.length < maxN; i--) {
-    const v = werte[i]
+  for (const p of punkte) {
+    if (p.jahr < von || p.jahr > endJahr) continue
+    const v = p.val
     if (v == null || !Number.isFinite(v)) continue
     if (nurPositiv && !(v > 0)) continue
     genommen.push(v)
@@ -92,42 +90,164 @@ function mittelLetzte(
   return genommen.reduce((a, b) => a + b, 0) / genommen.length
 }
 
-/**
- * CAGR über ~fenster Jahre. Startjahr muss nahe jahr−fenster liegen (±1),
- * sonst wäre z. B. ein 6J-Fenster als „5J“ gelabelt.
- */
-function cagr(serie: { jahr: number; val: number }[], fenster: number): number | null {
-  if (serie.length < 2) return null
-  const last = serie[serie.length - 1]!
-  const ziel = last.jahr - fenster
-  let best: { jahr: number; val: number } | null = null
-  let bestDist = Infinity
-  for (const p of serie) {
-    if (!(p.val > 0) || p.jahr >= last.jahr) continue
-    const dist = Math.abs(p.jahr - ziel)
-    if (dist < bestDist) {
-      bestDist = dist
-      best = p
-    }
-  }
-  if (!best || bestDist > 2 || !(last.val > 0)) return null
-  const n = last.jahr - best.jahr
-  if (n < Math.max(2, fenster - 2)) return null
-  return runde((Math.pow(last.val / best.val, 1 / n) - 1) * 100)
+function median(werte: number[]): number | null {
+  if (werte.length === 0) return null
+  const s = [...werte].sort((a, b) => a - b)
+  const m = Math.floor(s.length / 2)
+  return s.length % 2 ? s[m]! : (s[m - 1]! + s[m]!) / 2
 }
 
-async function ladeFrame(taxonomy: string, tag: string, unit: string, periode: string): Promise<Map<number, number>> {
-  const url = `https://data.sec.gov/api/xbrl/frames/${taxonomy}/${tag}/${unit}/${periode}.json`
-  const res = await secFetch(url)
+/**
+ * CAGR exakt über fenster Kalenderjahre (Start = Ende − fenster).
+ * Keine Lücken-Kompression, kein „irgendein positives Jahr in der Nähe“.
+ */
+function cagr(
+  serie: { jahr: number; val: number }[],
+  fenster: number,
+  minEndJahr: number,
+): number | null {
+  if (serie.length < 2) return null
+  const last = serie[serie.length - 1]!
+  if (last.jahr < minEndJahr || !(last.val > 0)) return null
+  const start = serie.find((p) => p.jahr === last.jahr - fenster)
+  if (!start || !(start.val > 0)) return null
+  return runde((Math.pow(last.val / start.val, 1 / fenster) - 1) * 100)
+}
+
+/** Kontinuierliche Jahre vom aktuellen Ende rückwärts. */
+function kontigueVomEnde(serie: { jahr: number }[]): { n: number; von: number; bis: number } | null {
+  if (serie.length === 0) return null
+  const bis = serie[serie.length - 1]!.jahr
+  let n = 1
+  for (let i = serie.length - 1; i > 0; i--) {
+    if (serie[i]!.jahr - serie[i - 1]!.jahr === 1) n++
+    else break
+  }
+  return { n, von: bis - n + 1, bis }
+}
+
+/** Verwässerung p.a. aus Folgejahren (nicht Array-Schritten ohne Kalenderjahr). */
+function aktienCagrPaare(
+  punkte: Array<{ jahr: number; aktienMio?: number | null }>,
+  minEndJahr: number,
+): number | null {
+  const serie = punkte
+    .filter((p) => p.aktienMio != null && p.aktienMio > 0)
+    .map((p) => ({ jahr: p.jahr, val: p.aktienMio! }))
+  if (serie.length < 2) return null
+  const clean = aktienreiheSplitBereinigt(serie.map((s) => s.val))
+  const mitJahr = serie.map((s, i) => ({ jahr: s.jahr, val: clean[i]! }))
+  const last = mitJahr[mitJahr.length - 1]!
+  if (last.jahr < minEndJahr) return null
+  const deltas: number[] = []
+  for (let i = mitJahr.length - 1; i > 0 && deltas.length < 5; i--) {
+    const a = mitJahr[i - 1]!
+    const b = mitJahr[i]!
+    if (b.jahr - a.jahr !== 1 || !(a.val > 0) || !(b.val > 0)) break
+    deltas.push(b.val / a.val - 1)
+  }
+  if (deltas.length < 2) return null
+  const geo = deltas.reduce((p, r) => p * (1 + r), 1)
+  return runde((Math.pow(geo, 1 / deltas.length) - 1) * 100, 2)
+}
+
+function baueDebtMap(parts: {
+  ltDebtNc: Map<number, number>
+  ltDebtLease: Map<number, number>
+  ltDebt: Map<number, number>
+  debtCur: Map<number, number>
+  ltDebtCur: Map<number, number>
+  ltDebtLeaseCur: Map<number, number>
+  shortBorrow: Map<number, number>
+  commercialPaper: Map<number, number>
+  leaseLt: Map<number, number>
+  leaseSt: Map<number, number>
+  financeLeaseLt: Map<number, number>
+  financeLeaseSt: Map<number, number>
+}): Map<number, number> {
   const out = new Map<number, number>()
-  if (!res.ok) return out
-  const json = await leseAlsJson<FrameJson>(res)
-  for (const e of json?.data ?? []) {
-    if (e.cik == null || e.val == null || !Number.isFinite(e.val)) continue
-    const prev = out.get(e.cik)
-    if (prev == null || Math.abs(e.val) > Math.abs(prev)) out.set(e.cik, e.val)
+  const ciks = new Set<number>()
+  for (const m of Object.values(parts)) for (const cik of m.keys()) ciks.add(cik)
+  for (const cik of ciks) {
+    const nc = parts.ltDebtNc.get(cik)
+    const combined = parts.ltDebtLease.get(cik)
+    const plain = parts.ltDebt.get(cik)
+    // Combined = LT + Finance-Leases → Finance-Tags nicht nochmal addieren.
+    const ltQuelle: 'nc' | 'combined' | 'plain' | 'none' =
+      nc != null ? 'nc' : combined != null ? 'combined' : plain != null ? 'plain' : 'none'
+    const lt = nc ?? combined ?? plain ?? 0
+
+    let st = 0
+    if (parts.debtCur.has(cik)) {
+      st = parts.debtCur.get(cik)!
+    } else {
+      st += parts.shortBorrow.get(cik) ?? 0
+      st += parts.commercialPaper.get(cik) ?? 0
+      if (ltQuelle === 'combined') {
+        st += parts.ltDebtLeaseCur.get(cik) ?? parts.ltDebtCur.get(cik) ?? 0
+      } else if (ltQuelle !== 'none') {
+        st += parts.ltDebtCur.get(cik) ?? 0
+      }
+    }
+
+    // Operating-Leases (ASC 842) sind nie im Debt-Tag.
+    let lease = (parts.leaseLt.get(cik) ?? 0) + (parts.leaseSt.get(cik) ?? 0)
+    if (ltQuelle !== 'combined') {
+      lease += parts.financeLeaseLt.get(cik) ?? 0
+      if (!parts.debtCur.has(cik)) lease += parts.financeLeaseSt.get(cik) ?? 0
+    }
+
+    const sum = lt + st + lease
+    if (
+      sum !== 0 ||
+      ltQuelle !== 'none' ||
+      parts.debtCur.has(cik) ||
+      parts.leaseLt.has(cik) ||
+      parts.leaseSt.has(cik) ||
+      parts.financeLeaseLt.has(cik)
+    ) {
+      out.set(cik, sum)
+    }
   }
   return out
+}
+
+async function sleepMs(ms: number) {
+  await new Promise((r) => setTimeout(r, ms))
+}
+
+/**
+ * Ein Frames-Endpoint — bei 429/503/5xx so lange retryen, bis die SEC antwortet.
+ * 404 = Tag/Jahr existiert nicht (leere Map). Nie stillschweigend abbrechen.
+ */
+async function ladeFrame(taxonomy: string, tag: string, unit: string, periode: string): Promise<Map<number, number>> {
+  const url = `https://data.sec.gov/api/xbrl/frames/${taxonomy}/${tag}/${unit}/${periode}.json`
+  const out = new Map<number, number>()
+  let warteMs = 600
+  for (let versuch = 0; versuch < 60; versuch++) {
+    const res = await secFetch(url)
+    if (res.status === 404) return out
+    if (res.status === 429 || res.status === 503 || res.status >= 500) {
+      const ra = res.headers.get('retry-after')
+      const ausHeader =
+        ra && /^\d+(\.\d+)?$/.test(ra.trim()) ? Math.ceil(Number(ra.trim()) * 1000) : null
+      await sleepMs(ausHeader ?? warteMs)
+      warteMs = Math.min(20_000, Math.round(warteMs * 1.4))
+      continue
+    }
+    if (!res.ok) {
+      // z. B. 400 für nicht existierende Tag/Unit-Kombis in frühen Jahren
+      return out
+    }
+    const json = await leseAlsJson<FrameJson>(res)
+    for (const e of json?.data ?? []) {
+      if (e.cik == null || e.val == null || !Number.isFinite(e.val)) continue
+      const prev = out.get(e.cik)
+      if (prev == null || Math.abs(e.val) > Math.abs(prev)) out.set(e.cik, e.val)
+    }
+    return out
+  }
+  throw new Error(`SEC Frame nach Retries ohne Antwort: ${taxonomy}/${tag}/${periode}`)
 }
 
 function mergen(primaer: Map<number, number>, ...rest: Map<number, number>[]): Map<number, number> {
@@ -208,15 +328,19 @@ export async function baueScreenerSnapshot(): Promise<ScreenerSnapshot> {
   const ticker = await ladeUsBoersenTicker()
   const perCik = new Map<number, Map<number, JahrRoh>>()
 
-  for (let jahr = ERSTES_FRAME_JAHR; jahr <= bisJahr; jahr++) {
+  // Alle Kalenderjahre bis Frame-Start — neueste zuerst (bei hartem Timeout bleiben aktuelle Kennzahlen).
+  // Kein Abbruch bei 429: ladeFrame retryt, bis die SEC liefert.
+  for (let jahr = bisJahr; jahr >= ERSTES_FRAME_JAHR; jahr--) {
     const dauer = `CY${jahr}`
     const stichtag = `CY${jahr}Q4I`
+    console.info(`[screener] SEC-Frames ${dauer} …`)
     const [
       umsatzRev,
       umsatzSales,
       umsatzAsc,
       umsatzAscTax,
       ebit,
+      ebitAlt,
       ni,
       ocf,
       ocfCont,
@@ -224,18 +348,23 @@ export async function baueScreenerSnapshot(): Promise<ScreenerSnapshot> {
       capexProd,
       capexOther,
       capexImp,
+      capexSoft,
+      capexSoftDev,
+      capexSoftAcq,
       eps,
       ek,
       ekNc,
       assets,
       cogs,
       cogsRev,
+      cogsSold,
     ] = await Promise.all([
       ladeFrame('us-gaap', 'Revenues', 'USD', dauer),
       ladeFrame('us-gaap', 'SalesRevenueNet', 'USD', dauer),
       ladeFrame('us-gaap', 'RevenueFromContractWithCustomerExcludingAssessedTax', 'USD', dauer),
       ladeFrame('us-gaap', 'RevenueFromContractWithCustomerIncludingAssessedTax', 'USD', dauer),
       ladeFrame('us-gaap', 'OperatingIncomeLoss', 'USD', dauer),
+      ladeFrame('us-gaap', 'ProfitLossFromOperatingActivities', 'USD', dauer),
       ladeFrame('us-gaap', 'NetIncomeLoss', 'USD', dauer),
       ladeFrame('us-gaap', 'NetCashProvidedByUsedInOperatingActivities', 'USD', dauer),
       ladeFrame('us-gaap', 'NetCashProvidedByUsedInOperatingActivitiesContinuingOperations', 'USD', dauer),
@@ -243,6 +372,9 @@ export async function baueScreenerSnapshot(): Promise<ScreenerSnapshot> {
       ladeFrame('us-gaap', 'PaymentsToAcquireProductiveAssets', 'USD', dauer),
       ladeFrame('us-gaap', 'PaymentsToAcquireOtherPropertyPlantAndEquipment', 'USD', dauer),
       ladeFrame('us-gaap', 'PaymentsForCapitalImprovements', 'USD', dauer),
+      ladeFrame('us-gaap', 'PaymentsForSoftware', 'USD', dauer),
+      ladeFrame('us-gaap', 'PaymentsToDevelopSoftware', 'USD', dauer),
+      ladeFrame('us-gaap', 'PaymentsToAcquireSoftware', 'USD', dauer),
       ladeFrame('us-gaap', 'EarningsPerShareDiluted', 'USD-per-shares', dauer),
       ladeFrame('us-gaap', 'StockholdersEquity', 'USD', stichtag),
       ladeFrame(
@@ -254,6 +386,7 @@ export async function baueScreenerSnapshot(): Promise<ScreenerSnapshot> {
       ladeFrame('us-gaap', 'Assets', 'USD', stichtag),
       ladeFrame('us-gaap', 'CostOfGoodsAndServicesSold', 'USD', dauer),
       ladeFrame('us-gaap', 'CostOfRevenue', 'USD', dauer),
+      ladeFrame('us-gaap', 'CostOfGoodsSold', 'USD', dauer),
     ])
     const [
       ltDebt,
@@ -266,6 +399,8 @@ export async function baueScreenerSnapshot(): Promise<ScreenerSnapshot> {
       commercialPaper,
       leaseLt,
       leaseSt,
+      financeLeaseLt,
+      financeLeaseSt,
       cash,
       cashSti,
       sti,
@@ -293,6 +428,8 @@ export async function baueScreenerSnapshot(): Promise<ScreenerSnapshot> {
       ladeFrame('us-gaap', 'CommercialPaper', 'USD', stichtag),
       ladeFrame('us-gaap', 'OperatingLeaseLiabilityNoncurrent', 'USD', stichtag),
       ladeFrame('us-gaap', 'OperatingLeaseLiabilityCurrent', 'USD', stichtag),
+      ladeFrame('us-gaap', 'FinanceLeaseLiabilityNoncurrent', 'USD', stichtag),
+      ladeFrame('us-gaap', 'FinanceLeaseLiabilityCurrent', 'USD', stichtag),
       ladeFrame('us-gaap', 'CashAndCashEquivalentsAtCarryingValue', 'USD', stichtag),
       ladeFrame('us-gaap', 'CashCashEquivalentsAndShortTermInvestments', 'USD', stichtag),
       ladeFrame('us-gaap', 'ShortTermInvestments', 'USD', stichtag),
@@ -311,20 +448,39 @@ export async function baueScreenerSnapshot(): Promise<ScreenerSnapshot> {
       ladeFrame('us-gaap', 'AllocatedShareBasedCompensationExpense', 'USD', dauer),
     ])
     const umsatz = mergenUmsatzNetto([umsatzRev, umsatzSales], [umsatzAsc, umsatzAscTax])
-    const capexGesamt = mergen(capex, capexProd, capexOther, capexImp)
+    const ebitGesamt = mergen(ebit, ebitAlt)
+    const capexPpe = mergen(capex, capexProd, capexOther, capexImp)
+    const capexSoftware = mergen(capexSoft, capexSoftDev, capexSoftAcq)
+    const capexGesamt = addMaps(capexPpe, capexSoftware)
     const ocfGesamt = mergen(ocf, ocfCont)
     const ekGesamt = mergen(ek, ekNc)
     const sharesGesamt = mergen(shares, sharesBasic)
-    const debtLt = mergen(ltDebtLease, ltDebtNc, ltDebt)
-    const debtSt = mergen(debtCur, ltDebtLeaseCur, ltDebtCur, shortBorrow, commercialPaper)
-    const debt = addMaps(addMaps(debtLt, debtSt), addMaps(leaseLt, leaseSt))
+    const debt = baueDebtMap({
+      ltDebtNc,
+      ltDebtLease,
+      ltDebt,
+      debtCur,
+      ltDebtCur,
+      ltDebtLeaseCur,
+      shortBorrow,
+      commercialPaper,
+      leaseLt,
+      leaseSt,
+      financeLeaseLt,
+      financeLeaseSt,
+    })
     const cashTeile = addMaps(cash, mergen(sti, stiOther))
-    const cashGesamt = mergen(cashSti, cashTeile)
+    // Größeren Cash+STI-Wert wählen (Combined-Tag vs. Summe der Teile).
+    const cashGesamt = new Map(cashSti)
+    for (const [cik, val] of cashTeile) {
+      const prev = cashGesamt.get(cik)
+      if (prev == null || Math.abs(val) > Math.abs(prev)) cashGesamt.set(cik, val)
+    }
     const daGesamt = mergen(da, da2, da3)
     const zinsGesamt = mergen(zins, zinsDebt, zinsNonop, zinsAndDebt)
     const sbcGesamt = mergen(sbc, sbc2)
-    const cogsGesamt = mergen(cogs, cogsRev)
-    // Bruttogewinn: Tag zuerst, sonst Umsatz − COGS (keine Schein-100 %-Marge ohne COGS)
+    const cogsGesamt = mergen(cogs, cogsRev, cogsSold)
+    // Bruttogewinn: Tag zuerst, sonst Umsatz − COGS
     const gpGesamt = new Map(gp)
     for (const [cik, u] of umsatz) {
       if (gpGesamt.has(cik)) continue
@@ -334,7 +490,7 @@ export async function baueScreenerSnapshot(): Promise<ScreenerSnapshot> {
       if (Number.isFinite(brutto)) gpGesamt.set(cik, brutto)
     }
     for (const [cik, val] of umsatz) setz(perCik, cik, jahr, 'umsatz', val)
-    for (const [cik, val] of ebit) setz(perCik, cik, jahr, 'ebit', val)
+    for (const [cik, val] of ebitGesamt) setz(perCik, cik, jahr, 'ebit', val)
     for (const [cik, val] of ni) setz(perCik, cik, jahr, 'ni', val)
     for (const [cik, val] of ocfGesamt) setz(perCik, cik, jahr, 'ocf', val)
     for (const [cik, val] of capexGesamt) setz(perCik, cik, jahr, 'capex', val)
@@ -346,6 +502,7 @@ export async function baueScreenerSnapshot(): Promise<ScreenerSnapshot> {
     for (const [cik, val] of sharesGesamt) setz(perCik, cik, jahr, 'aktien', val)
     for (const [cik, val] of daGesamt) setz(perCik, cik, jahr, 'da', val)
     for (const [cik, val] of gpGesamt) setz(perCik, cik, jahr, 'gp', val)
+    for (const [cik, val] of cogsGesamt) setz(perCik, cik, jahr, 'cogs', val)
     for (const [cik, val] of zinsGesamt) setz(perCik, cik, jahr, 'zins', val)
     for (const [cik, val] of sbcGesamt) setz(perCik, cik, jahr, 'sbc', val)
   }
@@ -363,11 +520,11 @@ export async function baueScreenerSnapshot(): Promise<ScreenerSnapshot> {
       const r = jahreMap.get(jahr)!
       const ocfMio = zuMio(r.ocf)
       const capexMio = zuMio(r.capex)
-      // FCF nur mit OCF — CapEx allein erzeugt kein negatives Fake-FCF.
+      // FCF nur mit OCF und CapEx — fehlendes CapEx ≠ 0
       const fcfMio =
-        ocfMio == null
+        ocfMio == null || capexMio == null
           ? null
-          : Math.round((ocfMio - Math.abs(capexMio ?? 0)) * 10) / 10
+          : Math.round((ocfMio - Math.abs(capexMio)) * 10) / 10
       return {
         jahr,
         umsatzMio: zuMio(r.umsatz),
@@ -391,19 +548,30 @@ export async function baueScreenerSnapshot(): Promise<ScreenerSnapshot> {
     for (let i = 0; i < hist.length; i++) {
       const neu = umsatzGlatt[i]!.umsatz
       if (neu != null) hist[i]!.umsatzMio = Math.round(neu * 10) / 10
+      // Brutto an bereinigten Umsatz koppeln (sonst GP-Tag auf Brutto-ASC / Netto-Umsatz)
+      const h = hist[i]!
+      const r = jahreMap.get(h.jahr)!
+      const cogsMio = zuMio(r.cogs)
+      if (h.umsatzMio != null && cogsMio != null) {
+        r.gp = (h.umsatzMio - Math.abs(cogsMio)) * 1_000_000
+      } else if (h.umsatzMio != null && r.gp != null && zuMio(r.umsatz) != null && zuMio(r.umsatz)! > 0) {
+        const faktor = h.umsatzMio / zuMio(r.umsatz)!
+        if (faktor > 0 && faktor < 1.01) r.gp = r.gp * faktor
+      }
     }
-    const last = hist[hist.length - 1]!
-    const vor = hist.length >= 2 ? hist[hist.length - 2]! : null
+    const umsatzSerie = hist
+      .filter((p) => p.umsatzMio != null && p.umsatzMio > 0)
+      .map((p) => ({ jahr: p.jahr, val: p.umsatzMio! }))
+    if (umsatzSerie.length === 0) continue
+    // Kennzahlen/CAGR immer am aktuellen Ende — veraltete Serien (z. B. nur bis 2013) raus.
+    const minEndJahr = bisJahr - 1
+    const lastU = umsatzSerie[umsatzSerie.length - 1]!
+    if (lastU.jahr < minEndJahr) continue
+    const last = hist.find((p) => p.jahr === lastU.jahr)!
+    const vor = hist.find((p) => p.jahr === lastU.jahr - 1) ?? null
     const lastRoh = jahreMap.get(last.jahr)!
-    const umsatzSerie = hist.filter((p) => p.umsatzMio != null && p.umsatzMio > 0).map((p) => ({
-      jahr: p.jahr,
-      val: p.umsatzMio!,
-    }))
     const epsSerie = hist.filter((p) => p.eps != null && p.eps > 0).map((p) => ({ jahr: p.jahr, val: p.eps! }))
     const fcfSerie = hist.filter((p) => p.fcfMio != null && p.fcfMio > 0).map((p) => ({ jahr: p.jahr, val: p.fcfMio! }))
-    const niMargen = hist
-      .map((p) => pct(p.niMio, p.umsatzMio))
-      .filter((v): v is number => v != null)
     const fcfMargePct = pct(last.fcfMio, last.umsatzMio)
     const umsatzWachstumPct = wachstum(last.umsatzMio, vor?.umsatzMio ?? null)
     const fcfConversionPct =
@@ -426,21 +594,22 @@ export async function baueScreenerSnapshot(): Promise<ScreenerSnapshot> {
       netDebtMio == null || ebitdaMio == null || !(ebitdaMio > 0)
         ? null
         : runde(netDebtMio / ebitdaMio, 2)
-    const aktienRoh = hist.map((p) => p.aktienMio).filter((v): v is number => v != null && v > 0)
-    const aktienSerie = aktienreiheSplitBereinigt(aktienRoh)
-    const aktienVerwaesserungJaehrlichPct = runde(cagrJaehrlichAusSerie(aktienSerie), 2)
-    // Rule of 40: beide Beine nötig — Wachstum allein gilt nicht.
+    const aktienVerwaesserungJaehrlichPct = aktienCagrPaare(hist, minEndJahr)
+    // Rule of 40 (FCF-Variante): Wachstum + FCF-Marge
     const ruleOf40 =
       umsatzWachstumPct == null || fcfMargePct == null
         ? null
         : runde(umsatzWachstumPct + fcfMargePct)
-    // Brutto auf bereinigtem Umsatz (gleiche Basis wie Stability).
+    // Brutto auf bereinigtem Umsatz
     const bruttoSerie: number[] = []
+    const niMargeLetzte5: number[] = []
     for (let i = 0; i < hist.length; i++) {
       const h = hist[i]!
       const r = jahreMap.get(h.jahr)!
       const m = pct(zuMio(r.gp), h.umsatzMio)
       if (m != null) bruttoSerie.push(m)
+      const niM = pct(h.niMio, h.umsatzMio)
+      if (niM != null && h.jahr >= lastU.jahr - 4) niMargeLetzte5.push(niM)
     }
     const bruttoMargePct = pct(zuMio(lastRoh.gp), last.umsatzMio)
     const bruttoStab = berechneBruttomargenStabilitaet(bruttoSerie)
@@ -454,17 +623,10 @@ export async function baueScreenerSnapshot(): Promise<ScreenerSnapshot> {
       .filter((p) => p.fcfMio != null && p.fcfMio > 0 && p.aktienMio != null && p.aktienMio > 0)
       .map((p) => ({ jahr: p.jahr, val: p.fcfMio! / p.aktienMio! }))
     const zinsMio = zuMio(lastRoh.zins)
-    // Zinsdeckung: EBIT / |Zins|. Keine/minimale Zinsen bei ~0 Schulden → sehr hohe Deckung (Filter „≥10“).
+    // Zinsdeckung: EBIT / |Zins|. Ohne Zinsaufwand → null (kein Fake-999).
     let interestCoverage: number | null = null
     if (last.ebitMio != null && zinsMio != null && Math.abs(zinsMio) > 0.05) {
       interestCoverage = runde(last.ebitMio / Math.abs(zinsMio), 1)
-    } else if (
-      last.ebitMio != null &&
-      last.ebitMio > 0 &&
-      (zinsMio == null || Math.abs(zinsMio) <= 0.05) &&
-      (debtFuerNd == null || debtFuerNd < 1)
-    ) {
-      interestCoverage = 999
     }
     const sbcMio = zuMio(lastRoh.sbc)
     const ocfMioNow = zuMio(lastRoh.ocf)
@@ -472,9 +634,10 @@ export async function baueScreenerSnapshot(): Promise<ScreenerSnapshot> {
       sbcMio != null && ocfMioNow != null && ocfMioNow > 0
         ? runde((Math.abs(sbcMio) / ocfMioNow) * 100)
         : null
-    const iroicPct = iroicAusJahresreihe(hist)
-    const roic5yAvgPct = roic5ySchnitt(hist)
+    const iroicPct = iroicAusJahresreihe(hist, minEndJahr)
+    const roic5yAvgPct = roic5ySchnitt(hist, lastU.jahr)
     if (zinsMio != null) zinsUsdByCik.set(cik, Math.abs(zinsMio) * 1_000_000)
+    const track = kontigueVomEnde(umsatzSerie)
     zeilen.push({
       ticker: sym,
       name,
@@ -497,13 +660,13 @@ export async function baueScreenerSnapshot(): Promise<ScreenerSnapshot> {
       fcfConversionPct,
       capexSalesPct,
       umsatzWachstumPct,
-      umsatzCagr3y: cagr(umsatzSerie, 3),
-      umsatzCagr5y: cagr(umsatzSerie, 5),
-      umsatzCagr10y: cagr(umsatzSerie, 10),
-      epsCagr5y: cagr(epsSerie, 5),
-      fcfCagr5y: cagr(fcfSerie, 5),
+      umsatzCagr3y: cagr(umsatzSerie, 3, minEndJahr),
+      umsatzCagr5y: cagr(umsatzSerie, 5, minEndJahr),
+      umsatzCagr10y: cagr(umsatzSerie, 10, minEndJahr),
+      epsCagr5y: cagr(epsSerie, 5, minEndJahr),
+      fcfCagr5y: cagr(fcfSerie, 5, minEndJahr),
       ruleOf40,
-      niMargeMedian: runde(median(niMargen)),
+      niMargeMedian: runde(median(niMargeLetzte5)),
       aktienVerwaesserungJaehrlichPct,
       netDebtMio,
       netDebtEbitda,
@@ -512,12 +675,12 @@ export async function baueScreenerSnapshot(): Promise<ScreenerSnapshot> {
       bruttoMargePct,
       bruttoMargeStabil: bruttoStab.pricingPowerOk,
       reinvestitionsquotePct,
-      fcfJeAktieCagr5y: cagr(fcfJeAktieSerie, 5),
+      fcfJeAktieCagr5y: cagr(fcfJeAktieSerie, 5, minEndJahr),
       interestCoverage,
       sbcOcfPct,
-      jahreAnzahl: umsatzSerie.length,
-      vonJahr: hist[0]?.jahr ?? null,
-      bisJahr: last.jahr,
+      jahreAnzahl: track?.n ?? umsatzSerie.length,
+      vonJahr: track?.von ?? umsatzSerie[0]?.jahr ?? null,
+      bisJahr: track?.bis ?? lastU.jahr,
       kurs: null,
       marktkapMio: null,
       kgv: null,
@@ -543,24 +706,37 @@ export async function baueScreenerSnapshot(): Promise<ScreenerSnapshot> {
       q?.priceToBook ?? (mcapMio != null && z.ekMio != null && z.ekMio > 0 ? mcapMio / z.ekMio : null),
     )
     const histPts = z.hist ?? []
-    const eps5 = mittelLetzte(
-      histPts.map((h) => h.eps),
-      5,
-      2,
-      true,
-    )
-    const umsatz5 = mittelLetzte(
-      histPts.map((h) => h.umsatzMio),
-      5,
-      2,
-      true,
-    )
-    const ek5 = mittelLetzte(
-      histPts.map((h) => h.ekMio),
-      5,
-      2,
-      true,
-    )
+    const endJahr = z.bisJahr ?? histPts.at(-1)?.jahr
+    const eps5 =
+      endJahr != null
+        ? mittelKalenderFenster(
+            histPts.map((h) => ({ jahr: h.jahr, val: h.eps })),
+            endJahr,
+            5,
+            2,
+            true,
+          )
+        : null
+    const umsatz5 =
+      endJahr != null
+        ? mittelKalenderFenster(
+            histPts.map((h) => ({ jahr: h.jahr, val: h.umsatzMio })),
+            endJahr,
+            5,
+            2,
+            true,
+          )
+        : null
+    const ek5 =
+      endJahr != null
+        ? mittelKalenderFenster(
+            histPts.map((h) => ({ jahr: h.jahr, val: h.ekMio })),
+            endJahr,
+            5,
+            2,
+            true,
+          )
+        : null
     z.kgv5y = runde(kurs != null && eps5 != null && eps5 > 0 ? kurs / eps5 : null)
     z.kuv5y = runde(mcapMio != null && umsatz5 != null && umsatz5 > 0 ? mcapMio / umsatz5 : null)
     z.kbv5y = runde(mcapMio != null && ek5 != null && ek5 > 0 ? mcapMio / ek5 : null)

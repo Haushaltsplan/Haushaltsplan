@@ -41,10 +41,12 @@ export function dokumentUrl(cik: number, accession: string, dateiname: string): 
   return `https://www.sec.gov/Archives/edgar/data/${cik}/${accPath}/${dateiname}`
 }
 
-const SEC_MIN_ABSTAND_MS = 120
+const SEC_MIN_ABSTAND_MS_BASE = 110
+let secMinAbstandMs = SEC_MIN_ABSTAND_MS_BASE
 let secLetzterAbruf = 0
 let secWarteschlange: Promise<void> = Promise.resolve()
 
+/** SEC Fair Access: ≤10 Req/s. Bei 429/503 drosseln wir temporär, damit der Lauf durchkommt. */
 export async function secFetch(url: string): Promise<Response> {
   await secWarteschlange
   let release!: () => void
@@ -52,13 +54,19 @@ export async function secFetch(url: string): Promise<Response> {
     release = r
   })
   try {
-    const pause = SEC_MIN_ABSTAND_MS - (Date.now() - secLetzterAbruf)
+    const pause = secMinAbstandMs - (Date.now() - secLetzterAbruf)
     if (pause > 0) await new Promise((r) => setTimeout(r, pause))
     secLetzterAbruf = Date.now()
-    return await fetch(url, {
+    const res = await fetch(url, {
       headers: { 'User-Agent': secUserAgent(), Accept: 'application/json, text/html, application/xml, */*' },
       cache: 'no-store',
     })
+    if (res.status === 429 || res.status === 503) {
+      secMinAbstandMs = Math.min(500, Math.round(secMinAbstandMs * 1.6))
+    } else if (res.ok && secMinAbstandMs > SEC_MIN_ABSTAND_MS_BASE) {
+      secMinAbstandMs = Math.max(SEC_MIN_ABSTAND_MS_BASE, Math.round(secMinAbstandMs * 0.92))
+    }
+    return res
   } finally {
     release()
   }

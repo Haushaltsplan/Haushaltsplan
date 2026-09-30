@@ -59,14 +59,18 @@ function eintrag(teil: {
   return teil
 }
 
-/** Investiertes Kapital: EK + verzinsliche Schulden − Cash/STI. */
+/**
+ * Investiertes Kapital (Brutto): EK + verzinsliche Schulden — **ohne Cash-Abzug**.
+ * Cash-Net lässt den Nenner bei cash-starken Titeln (MA, ASML, …) kollabieren und
+ * erzeugt leere ROIC/iROIC-Zellen. Gleiche Definition wie Chart/Kapitalbasis.
+ */
 export function investedCapitalMio(
   ekMio: number | null | undefined,
   debtMio: number | null | undefined,
-  cashMio: number | null | undefined,
+  _cashMio?: number | null | undefined,
 ): number | null {
   if (ekMio == null || !Number.isFinite(ekMio)) return null
-  const ic = ekMio + (debtMio ?? 0) - (cashMio ?? 0)
+  const ic = ekMio + (debtMio ?? 0)
   return ic > 0 ? ic : null
 }
 
@@ -236,7 +240,7 @@ type IcSnap = { jahr: number; nopat: number; ic: number }
 
 /**
  * Incremental ROIC: ΔNOPAT / ΔIC mit ΔIC um 1 Jahr versetzt.
- * IC = EK + Debt − Cash. Negative Werte bleiben sichtbar (kein Nullen).
+ * IC brutto (EK + Debt). Negative Werte bleiben sichtbar (kein Nullen).
  */
 export function iroicAusJahresreihe(
   punkte: Array<{
@@ -246,6 +250,7 @@ export function iroicAusJahresreihe(
     debtMio?: number | null
     cashMio?: number | null
   }>,
+  minEndJahr?: number,
 ): number | null {
   const byJahr = new Map<number, IcSnap>()
   for (const p of punkte) {
@@ -256,6 +261,7 @@ export function iroicAusJahresreihe(
   const jahre = [...byJahr.keys()].sort((a, b) => a - b)
   if (jahre.length < 4) return null
   const lastJahr = jahre[jahre.length - 1]!
+  if (minEndJahr != null && lastJahr < minEndJahr) return null
   const last = byJahr.get(lastJahr)!
 
   for (const span of [5, 4, 3]) {
@@ -266,7 +272,6 @@ export function iroicAusJahresreihe(
     const dIc = icEnd.ic - icStart.ic
     const dNopat = last.nopat - nopatStart.nopat
     if (!(Math.abs(dIc) > 1) || !Number.isFinite(dNopat)) continue
-    // Kapitalleicht / Schrumpfung: Nenner zu klein oder negativ → überspringen
     if (dIc <= 1) continue
     const pct = (dNopat / dIc) * 100
     if (!Number.isFinite(pct) || Math.abs(pct) > MAX_IROIC_ABS) continue
@@ -275,27 +280,30 @@ export function iroicAusJahresreihe(
   return null
 }
 
-/** ROIC-5J-Schnitt: alle endlichen Werte der letzten 5 verfügbaren Jahre (inkl. ≤0). */
+/** ROIC-5J-Schnitt: Kalenderjahre endJahr−4 … endJahr (mind. 3 Werte). */
 export function roic5ySchnitt(
   punkte: Array<{
+    jahr?: number
     ebitMio: number | null
     ekMio: number | null
     debtMio?: number | null
     cashMio?: number | null
   }>,
+  endJahr?: number,
 ): number | null {
   const vals: number[] = []
-  for (const p of punkte) {
+  const sorted = [...punkte].sort((a, b) => (a.jahr ?? 0) - (b.jahr ?? 0))
+  const bis = endJahr ?? sorted[sorted.length - 1]?.jahr
+  for (const p of sorted) {
+    if (bis != null && p.jahr != null && (p.jahr < bis - 4 || p.jahr > bis)) continue
     const ic = investedCapitalMio(p.ekMio, p.debtMio, p.cashMio)
     if (p.ebitMio == null || ic == null) continue
     const v = ((p.ebitMio * STEUER) / ic) * 100
     if (!Number.isFinite(v)) continue
-    // Cap nur für Extrem-Ausreißer in der Anzeige-Mittelung
     vals.push(Math.min(MAX_ROIC_PCT, Math.max(-MAX_ROIC_PCT, v)))
   }
-  const last5 = vals.slice(-5)
-  if (last5.length < 3) return null
-  return runde(last5.reduce((a, b) => a + b, 0) / last5.length)
+  if (vals.length < 3) return null
+  return runde(vals.reduce((a, b) => a + b, 0) / vals.length)
 }
 
 export function roicPctAusPunkt(p: ScreenerHistPunkt, prev?: ScreenerHistPunkt | null): number | null {

@@ -167,17 +167,22 @@ const SPALTEN: {
 
 /** Kurze Formeln / Definitionen für Spaltenköpfe (title). */
 const SPALTEN_TOOLTIP: Partial<Record<SpalteId, string>> = {
-  roic: 'ROIC = NOPAT / Investiertes Kapital (EK + Debt − Cash)',
-  iroic: 'iROIC = ΔNOPAT / ΔIC (IC um 1 Jahr versetzt)',
-  fcfMarge: 'FCF-Marge = Free Cashflow / Umsatz',
+  cagr5: 'Umsatz-CAGR exakt über 5 Kalenderjahre (Ende − 5 → Ende)',
+  cagr3: 'Umsatz-CAGR exakt über 3 Kalenderjahre',
+  cagr10: 'Umsatz-CAGR exakt über 10 Kalenderjahre',
+  jahre: 'Kontinuierliche Umsatz-Jahre vom aktuellen Ende rückwärts',
+  roic: 'ROIC = NOPAT / (EK + Debt) — Brutto-IC, ohne Cash-Abzug; Anzeige: letztes GJ + 5J-Schnitt',
+  iroic: 'iROIC = ΔNOPAT / ΔIC (IC um 1 Jahr versetzt, Brutto-IC)',
+  fcfMarge: 'FCF-Marge = Free Cashflow / Umsatz (FCF = OCF − CapEx inkl. Software)',
   conv: 'FCF-Conversion = FCF / Net Income',
-  ndEbitda: 'Net Debt / EBITDA',
+  ndEbitda: 'Net Debt / EBITDA (Quality-Soll: < 1,5×)',
   ruleOf40: 'Rule of 40 = Umsatzwachstum % + FCF-Marge %',
-  kgv: 'KGV = Kurs / EPS; 5J = Kurs heute / Ø-EPS 5J',
+  kgv: 'KGV = Kurs / EPS letztes GJ; 5J = Kurs heute / Ø-EPS der letzten 5 Kalenderjahre',
   wacc: 'WACC = gewichtete Kapitalkosten (Eigen- + Fremdkapital)',
   quality: 'Quality-Compounder: 11 Kriterien (✓/✗/?), kein Ausschlussfilter',
-  reinvest: 'Reinvestitionsquote = CapEx / (CapEx + FCF)',
+  reinvest: 'Reinvestitionsquote = (CapEx − D&A) / |FCF|',
   sbcOcf: 'SBC/OCF = aktienbasierte Vergütung / operativer Cashflow',
+  zins: 'Zinsdeckung = EBIT / |Zinsaufwand| — ohne Zinsaufwand: keine Fake-999',
 }
 
 /** Welche Spalten erscheinen automatisch, wenn die Kennzahl gefiltert wird. */
@@ -463,7 +468,10 @@ function SpanneFeld({
       <span className="flex items-baseline justify-between gap-2">
         <span>{label}</span>
         {abdeckungPct != null ? (
-          <span className={duenn ? 'text-amber-300/90' : 'text-[var(--app-text-muted)]'}>
+          <span
+            className={duenn ? 'text-amber-300/90' : 'text-[var(--app-text-muted)]'}
+            title="Anteil der Titel mit Umsatz, die diese Kennzahl haben"
+          >
             {abdeckungPct.toLocaleString('de-DE', { maximumFractionDigits: 0 })} % Daten
           </span>
         ) : null}
@@ -512,6 +520,8 @@ export function PortfolioScreenerClient() {
   const [spaltenOrder, setSpaltenOrder] = useState<SpalteId[]>(defaultSpaltenOrder)
   const [spaltenWidths, setSpaltenWidths] = useState<Partial<Record<SpalteId, number>>>({})
   const [dragSpalte, setDragSpalte] = useState<SpalteId | null>(null)
+  const [dropZiel, setDropZiel] = useState<SpalteId | null>(null)
+  const [resizeSpalte, setResizeSpalte] = useState<SpalteId | null>(null)
   const [watchKeys, setWatchKeys] = useState<Set<string>>(new Set())
   const [qualityMarkierung, setQualityMarkierung] = useState(true)
 
@@ -627,6 +637,7 @@ export function PortfolioScreenerClient() {
     (ziel: SpalteId) => {
       if (!dragSpalte || dragSpalte === ziel) {
         setDragSpalte(null)
+        setDropZiel(null)
         return
       }
       const ids = sichtbareSpalten.map((s) => s.id)
@@ -634,6 +645,7 @@ export function PortfolioScreenerClient() {
       const to = ids.indexOf(ziel)
       if (from < 0 || to < 0) {
         setDragSpalte(null)
+        setDropZiel(null)
         return
       }
       const nextVis = [...ids]
@@ -643,17 +655,20 @@ export function PortfolioScreenerClient() {
       const rest = spaltenOrder.filter((id) => !nextVis.includes(id))
       setzeSpaltenOrder([...nextVis, ...rest])
       setDragSpalte(null)
+      setDropZiel(null)
     },
     [dragSpalte, sichtbareSpalten, spaltenOrder, setzeSpaltenOrder],
   )
 
   const starteSpaltenResize = useCallback(
     (id: SpalteId, startX: number, startW: number) => {
+      setResizeSpalte(id)
       const onMove = (e: MouseEvent) => {
         const w = Math.min(480, Math.max(48, startW + (e.clientX - startX)))
         setzeSpaltenWidth(id, w)
       }
       const onUp = () => {
+        setResizeSpalte(null)
         window.removeEventListener('mousemove', onMove)
         window.removeEventListener('mouseup', onUp)
       }
@@ -872,7 +887,8 @@ export function PortfolioScreenerClient() {
         ) : null}
         {schemaAlt ? (
           <p className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-100">
-            Universum-Schema veraltet (v{schemaVersion} &lt; v{SCREENER_SCHEMA_VERSION}: KGV5y, IC−Cash, iROIC-Lag, CapEx-Tags).
+            Universum-Schema veraltet (v{schemaVersion} &lt; v{SCREENER_SCHEMA_VERSION}). Bitte „Universum neu
+            aufbauen“ — sonst bleiben Abdeckung und Kennzahlen auf dem alten Stand.
             Bitte einmal „Universum neu aufbauen“ — sonst liefern Filter auf fehlende Kennzahlen 0 Treffer.
           </p>
         ) : null}
@@ -1238,8 +1254,8 @@ export function PortfolioScreenerClient() {
                 <div className="space-y-2">
                   <p className="text-[11px] text-[var(--app-text-muted)]">
                     Haken = Spalte sichtbar. Aktive Filter blenden zugehörige Spalten zusätzlich ein (●). In der Tabelle:
-                    Spaltenköpfe ziehen zum Umsortieren, rechten Rand ziehen zum Vergrößern/Verkleinern. ROIC/NI-Marge und
-                    KGV/KUV/KBV zeigen LTM + 5J.
+                    am ⠿-Griff ziehen zum Umsortieren, am rechten Spaltenrand (│) ziehen zum Verbreitern. ROIC/NI-Marge und
+                    KGV/KUV/KBV zeigen letztes GJ + 5J-Norm.
                   </p>
                   <div className="flex flex-wrap gap-x-3 gap-y-2">
                     {SPALTEN.filter((s) => !s.immer).map((s) => {
@@ -1270,6 +1286,21 @@ export function PortfolioScreenerClient() {
         {laden ? <p className="text-sm text-[var(--app-text-muted)]">Lade Snapshot …</p> : null}
 
         {/* 5 Tabelle */}
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-[var(--app-text-muted)]">
+          <span className="inline-flex items-center gap-1">
+            <span className="rounded border border-[var(--app-border)] bg-[var(--app-surface)] px-1 font-mono text-[10px] text-teal-200/90">
+              ⠿
+            </span>
+            ziehen = Reihenfolge
+          </span>
+          <span className="text-[var(--app-border)]">·</span>
+          <span className="inline-flex items-center gap-1">
+            <span className="inline-block h-3 w-1 rounded-sm bg-teal-400/70" aria-hidden />
+            Rand ziehen = Breite
+          </span>
+          <span className="text-[var(--app-border)]">·</span>
+          <span>Klick auf Titel = Sortieren</span>
+        </div>
         <div className={`${PA_TABLE_FRAME} ${PA_SCROLL_ELEGANT}`}>
           <div className={appTableScrollClassName}>
             <table className={PA_TABLE_COMPACT}>
@@ -1291,71 +1322,104 @@ export function PortfolioScreenerClient() {
                                 : s.label
                     const mitHist =
                       s.id === 'roic' || s.id === 'niMarge' || s.id === 'kgv' || s.id === 'kuv' || s.id === 'kbv'
-                    const tip =
-                      SPALTEN_TOOLTIP[s.id] ??
-                      (viaFilter ? 'Spalte wegen aktivem Filter' : 'Ziehen = Reihenfolge, rechter Rand = Breite')
+                    const tip = SPALTEN_TOOLTIP[s.id] ?? (viaFilter ? 'Spalte wegen aktivem Filter' : undefined)
                     const w = spaltenWidths[s.id]
+                    const wirdGezogen = dragSpalte === s.id
+                    const istDropZiel = dropZiel === s.id && dragSpalte != null && dragSpalte !== s.id
+                    const wirdResized = resizeSpalte === s.id
+                    const rechtsBuendig = !(
+                      s.id === 'ticker' ||
+                      s.id === 'name' ||
+                      s.id === 'sektor' ||
+                      s.id === 'industrie' ||
+                      s.id === 'quality'
+                    )
                     return (
                       <th
                         key={s.id}
-                        draggable
-                        onDragStart={() => setDragSpalte(s.id)}
-                        onDragOver={(e) => e.preventDefault()}
+                        onDragOver={(e) => {
+                          e.preventDefault()
+                          if (dragSpalte && dragSpalte !== s.id) setDropZiel(s.id)
+                        }}
+                        onDragLeave={() => setDropZiel((z) => (z === s.id ? null : z))}
                         onDrop={() => onSpalteDrop(s.id)}
-                        className={`relative select-none ${
-                          s.id === 'ticker' ||
-                          s.id === 'name' ||
-                          s.id === 'sektor' ||
-                          s.id === 'industrie' ||
-                          s.id === 'quality'
-                            ? ''
-                            : 'text-right'
-                        } ${dragSpalte === s.id ? 'opacity-60' : ''}`}
-                        style={w != null ? { width: w, minWidth: w, maxWidth: w } : { minWidth: 64 }}
-                        title={!s.sort ? tip : undefined}
+                        className={`relative select-none px-1 py-1.5 transition-colors ${
+                          rechtsBuendig ? 'text-right' : 'text-left'
+                        } ${wirdGezogen ? 'opacity-45' : ''} ${
+                          istDropZiel ? 'bg-teal-500/20 ring-1 ring-inset ring-teal-400/70' : ''
+                        } ${wirdResized ? 'bg-teal-500/10' : ''}`}
+                        style={w != null ? { width: w, minWidth: w, maxWidth: w } : { minWidth: 72 }}
                       >
-                        {s.sort ? (
-                          <button
-                            type="button"
-                            title={tip}
-                            onClick={() => {
-                              if (filter.sort === s.sort)
-                                setFilter({ ...filter, sektor: filter.sektor ?? '', sortAsc: !filter.sortAsc })
-                              else {
-                                setFilter({
-                                  ...filter,
-                                  sektor: filter.sektor ?? '',
-                                  sort: s.sort!,
-                                  sortAsc: sortierungIstAufsteigendDefault(s.sort!),
-                                })
-                              }
+                        <div className="flex items-center gap-0.5 pr-2.5">
+                          <span
+                            draggable
+                            onDragStart={(e) => {
+                              setDragSpalte(s.id)
+                              e.dataTransfer.effectAllowed = 'move'
+                              e.dataTransfer.setData('text/plain', s.id)
                             }}
-                            className={viaFilter ? 'text-teal-200/90 hover:text-teal-100' : 'hover:text-teal-200'}
+                            onDragEnd={() => {
+                              setDragSpalte(null)
+                              setDropZiel(null)
+                            }}
+                            title="Ziehen: Spalte verschieben"
+                            aria-label={`${label || s.id} verschieben`}
+                            className="inline-flex shrink-0 cursor-grab items-center justify-center rounded px-0.5 text-[11px] leading-none text-[var(--app-text-muted)] hover:bg-teal-500/20 hover:text-teal-200 active:cursor-grabbing"
                           >
-                            {label || '·'}
-                            {mitHist ? (
-                              <span className="ml-0.5 text-[10px] font-normal text-[var(--app-text-muted)]">/5J</span>
-                            ) : null}
-                            {viaFilter ? <span className="ml-0.5 text-[9px] text-teal-300/70">●</span> : null}
-                            {filter.sort === s.sort ? (filter.sortAsc ? ' ↑' : ' ↓') : ''}
-                          </button>
-                        ) : (
-                          <span title={tip}>{label || '·'}</span>
-                        )}
+                            ⠿
+                          </span>
+                          <div className={`min-w-0 flex-1 ${rechtsBuendig ? 'text-right' : 'text-left'}`}>
+                            {s.sort ? (
+                              <button
+                                type="button"
+                                title={tip ?? 'Klicken zum Sortieren'}
+                                onClick={() => {
+                                  if (filter.sort === s.sort)
+                                    setFilter({ ...filter, sektor: filter.sektor ?? '', sortAsc: !filter.sortAsc })
+                                  else {
+                                    setFilter({
+                                      ...filter,
+                                      sektor: filter.sektor ?? '',
+                                      sort: s.sort!,
+                                      sortAsc: sortierungIstAufsteigendDefault(s.sort!),
+                                    })
+                                  }
+                                }}
+                                className={viaFilter ? 'text-teal-200/90 hover:text-teal-100' : 'hover:text-teal-200'}
+                              >
+                                {label || '·'}
+                                {mitHist ? (
+                                  <span className="ml-0.5 text-[10px] font-normal text-[var(--app-text-muted)]">/5J</span>
+                                ) : null}
+                                {viaFilter ? <span className="ml-0.5 text-[9px] text-teal-300/70">●</span> : null}
+                                {filter.sort === s.sort ? (filter.sortAsc ? ' ↑' : ' ↓') : ''}
+                              </button>
+                            ) : (
+                              <span title={tip}>{label || '·'}</span>
+                            )}
+                          </div>
+                        </div>
                         <span
                           role="separator"
                           aria-orientation="vertical"
-                          aria-label={`${s.label || s.id} Breite`}
-                          className="absolute top-0 right-0 z-10 h-full w-1.5 cursor-col-resize hover:bg-teal-400/40"
+                          aria-label={`${s.label || s.id} Breite ändern`}
+                          title="Ziehen: Spaltenbreite ändern"
+                          className={`absolute top-1 bottom-1 right-0 z-10 flex w-2.5 cursor-col-resize items-center justify-center rounded-sm ${
+                            wirdResized
+                              ? 'bg-teal-400'
+                              : 'bg-[var(--app-border)]/80 hover:bg-teal-400/80'
+                          }`}
                           onMouseDown={(e) => {
                             e.preventDefault()
                             e.stopPropagation()
-                            const th = (e.target as HTMLElement).parentElement
+                            const th = (e.target as HTMLElement).closest('th')
                             const startW = th?.getBoundingClientRect().width ?? w ?? 80
                             starteSpaltenResize(s.id, e.clientX, startW)
                           }}
                           draggable={false}
-                        />
+                        >
+                          <span className="h-3 w-px bg-[var(--app-bg)]/60" aria-hidden />
+                        </span>
                       </th>
                     )
                   })}
@@ -1521,7 +1585,7 @@ export function PortfolioScreenerClient() {
                       />
                     ),
                     mantra: (
-                      <span title="ROIC≥15; Conv≥80 ODER Ro40≥40; ND/EBITDA&lt;2; Verw.&lt;2 %; FCF-Marge≥12">
+                      <span title="ROIC≥15; Conv≥80 ODER Ro40≥40; ND/EBITDA&lt;1,5; Verw.&lt;2 %; FCF-Marge≥12">
                         {mantra}/5
                       </span>
                     ),
@@ -1596,9 +1660,9 @@ export function PortfolioScreenerClient() {
           </p>
         ) : null}
         <p className="text-xs leading-relaxed text-[var(--app-text-muted)]">
-          GuV/Bilanz: SEC EDGAR Frames. Kurs/Multiples: Yahoo. Gefilterte Kennzahlen erscheinen als Spalten; ROIC zeigt
-          LTM + 5J-Schnitt, NI-Marge LTM + Median, KGV/KUV/KBV aktuell + normalisiert (Kurs/Marktkap heute ÷ Ø 5J EPS/Umsatz/EK).
-          Quality zählt 11 Punkte ohne auszufiltern.
+          GuV/Bilanz: SEC EDGAR Kalenderjahr-Frames (CY). Kurs/Multiples: Yahoo. Kennzahlen am frischesten GJ
+          (Ende ≥ Vorjahr); CAGR exakt über Kalenderjahre. ROIC: letztes GJ + 5J-Schnitt; NI-Marge: GJ + Median 5J;
+          KGV/KUV/KBV: aktuell + normalisiert (Kurs/Marktkap heute ÷ Ø 5J EPS/Umsatz/EK). Quality: 11 Punkte, kein Ausschluss.
         </p>
       </PaCard>
     </PortfolioAnalyseShell>

@@ -136,7 +136,7 @@ export function zaehleMantraTreffer(z: ScreenerZeile): number {
   const convOk = z.fcfConversionPct != null && z.fcfConversionPct >= 80
   const ro40Ok = z.ruleOf40 != null && z.ruleOf40 >= 40
   if (convOk || ro40Ok) n++
-  if (z.netDebtEbitda != null && z.netDebtEbitda < 2) n++
+  if (z.netDebtEbitda != null && z.netDebtEbitda < 1.5) n++
   if (z.aktienVerwaesserungJaehrlichPct != null && z.aktienVerwaesserungJaehrlichPct < 2) n++
   if (z.fcfMargePct != null && z.fcfMargePct >= 12) n++
   return n
@@ -189,14 +189,17 @@ export function setzeSpanne(f: ScreenerFilter, k: ScreenerKennzahl, teil: Screen
   return next
 }
 
-/** Anteil der Zeilen mit gültigem Kennzahl-Wert (0–100). */
+/** Anteil der Zeilen mit gültigem Kennzahl-Wert (0–100), bezogen auf Titel mit Umsatz. */
 export function kennzahlAbdeckungPct(zeilen: ScreenerZeile[], k: ScreenerKennzahl): number {
   if (zeilen.length === 0) return 0
+  const mitUmsatz = zeilen.filter((z) => z.umsatzMio != null && z.umsatzMio > 0)
+  const pool = mitUmsatz.length >= Math.max(50, Math.floor(zeilen.length * 0.25)) ? mitUmsatz : zeilen
+  if (pool.length === 0) return 0
   let n = 0
-  for (const z of zeilen) {
+  for (const z of pool) {
     if (kennzahl(z, k) != null) n++
   }
-  return Math.round((n / zeilen.length) * 1000) / 10
+  return Math.round((n / pool.length) * 1000) / 10
 }
 
 export type FilterDiagnose = {

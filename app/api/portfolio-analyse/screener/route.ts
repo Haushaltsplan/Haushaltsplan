@@ -5,7 +5,8 @@ import {
 } from '@/lib/portfolio-analyse/screener/screener-snapshot-server'
 
 export const dynamic = 'force-dynamic'
-export const maxDuration = 300
+/** Volle SEC-Frame-Historie (~17 Jahre × viele Tags) braucht Pacing ≤10/s — Zeitbudget hoch. */
+export const maxDuration = 800
 
 function paketFuerClient(
   snap: NonNullable<Awaited<ReturnType<typeof ladeScreenerSnapshot>>>,

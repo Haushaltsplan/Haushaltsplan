@@ -10,10 +10,10 @@
       "maxDuration": 300
     },
     "app/api/portfolio-analyse/screener/route.ts": {
-      "maxDuration": 300
+      "maxDuration": 800
     },
     "app/api/portfolio-analyse/screener/cron/route.ts": {
-      "maxDuration": 300
+      "maxDuration": 800
     },
     "app/api/portfolio-analyse/quartals-auto-ki/cron/route.ts": {
       "maxDuration": 300
