@@ -15,6 +15,12 @@ export type ScreenerVorlagenPayload = {
   vorlagen: ScreenerEigeneVorlage[]
 }
 
+function parseSpalten(raw: unknown): string[] | undefined {
+  if (!Array.isArray(raw)) return undefined
+  const ids = raw.filter((x): x is string => typeof x === 'string' && x.trim().length > 0).map((x) => x.trim())
+  return ids.length > 0 ? ids : undefined
+}
+
 function parseEine(raw: unknown): ScreenerEigeneVorlage | null {
   if (!raw || typeof raw !== 'object') return null
   const r = raw as Record<string, unknown>
@@ -25,6 +31,7 @@ function parseEine(raw: unknown): ScreenerEigeneVorlage | null {
     id,
     name: name.slice(0, 80),
     filter: parseScreenerFilter(r.filter),
+    spalten: parseSpalten(r.spalten),
     aktualisiertAm: typeof r.aktualisiertAm === 'string' ? r.aktualisiertAm : new Date().toISOString(),
   }
 }
@@ -75,24 +82,49 @@ export function schreibeScreenerVorlagen(vorlagen: ScreenerEigeneVorlage[], opts
   return gekappt
 }
 
-export function speichereScreenerVorlage(name: string, filter: ScreenerFilter, id?: string): ScreenerEigeneVorlage[] {
+export type SpeichereVorlageOpts = {
+  name: string
+  filter: ScreenerFilter
+  spalten?: string[]
+  id?: string
+}
+
+export function speichereScreenerVorlage(opts: SpeichereVorlageOpts): ScreenerEigeneVorlage[] {
   const liste = leseScreenerVorlagen()
   const jetzt = new Date().toISOString()
-  const titel = name.trim().slice(0, 80) || 'Unbenannt'
-  if (id) {
-    const idx = liste.findIndex((v) => v.id === id)
+  const titel = opts.name.trim().slice(0, 80) || 'Unbenannt'
+  const spalten = opts.spalten && opts.spalten.length > 0 ? [...opts.spalten] : undefined
+  if (opts.id) {
+    const idx = liste.findIndex((v) => v.id === opts.id)
     if (idx >= 0) {
-      liste[idx] = { ...liste[idx]!, name: titel, filter, aktualisiertAm: jetzt }
+      liste[idx] = {
+        ...liste[idx]!,
+        name: titel,
+        filter: opts.filter,
+        spalten,
+        aktualisiertAm: jetzt,
+      }
       return schreibeScreenerVorlagen(liste)
     }
   }
   const neu: ScreenerEigeneVorlage = {
     id: `eigen-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
     name: titel,
-    filter,
+    filter: opts.filter,
+    spalten,
     aktualisiertAm: jetzt,
   }
   return schreibeScreenerVorlagen([neu, ...liste.filter((v) => v.id !== neu.id)])
+}
+
+export function benenneScreenerVorlageUm(id: string, name: string): ScreenerEigeneVorlage[] {
+  const liste = leseScreenerVorlagen()
+  const idx = liste.findIndex((v) => v.id === id)
+  if (idx < 0) return liste
+  const titel = name.trim().slice(0, 80)
+  if (!titel) return liste
+  liste[idx] = { ...liste[idx]!, name: titel, aktualisiertAm: new Date().toISOString() }
+  return schreibeScreenerVorlagen(liste)
 }
 
 export function loescheScreenerVorlage(id: string): ScreenerEigeneVorlage[] {

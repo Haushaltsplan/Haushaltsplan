@@ -8,8 +8,11 @@ import { PaCard, PA_SCROLL_ELEGANT, PA_TABLE_COMPACT, PA_TABLE_FRAME } from '@/c
 import { CLIENT_STATE_APPLIED_EVENT, CLIENT_STATE_KEYS } from '@/lib/client-state/client-state-keys'
 import { fundamentaldatenHref } from '@/lib/portfolio-analyse/fundamentaldaten-navigation'
 import {
+  aktiveFilterChips,
   filterGleich,
+  hatAktiveFilterAusserSuche,
   kloneFilter,
+  leerScreenerFilter,
   passtScreenerFilter,
   setzeSpanne,
   sortiereScreenerZeilen,
@@ -25,15 +28,12 @@ import {
   type ScreenerZeile,
 } from '@/lib/portfolio-analyse/screener/screener-types'
 import {
-  SCREENER_EINGEBAUTE_VORLAGEN,
-  qualityCompounderFilter,
-} from '@/lib/portfolio-analyse/screener/screener-vorlagen'
-import {
   bewerteQualityCompounder,
   qualityCompounderScore,
   qualityVerfehlungen,
 } from '@/lib/portfolio-analyse/screener/screener-quality-compounder'
 import {
+  benenneScreenerVorlageUm,
   leseScreenerVorlagen,
   loescheScreenerVorlage,
   SCREENER_VORLAGEN_EVENT,
@@ -87,14 +87,22 @@ type SpalteId =
   | 'kurs'
   | 'watch'
 
-const SPALTEN_KEY = 'pa-screener-spalten-v2'
+type FilterTabId = 'universum' | 'profit' | 'wachstum' | 'cash' | 'bilanz' | 'bewertung' | 'spalten'
+
+const SPALTEN_KEY = 'pa-screener-spalten-v3'
 const INPUT =
   'w-full rounded-md border border-[var(--app-border)] bg-[var(--app-surface-muted)] px-2 py-1 text-sm text-[var(--app-text)]'
 const CHIP =
-  'rounded-full border px-2.5 py-1 text-[11px] font-medium transition'
+  'rounded-md border px-2.5 py-1 text-[11px] font-medium transition'
 const CHIP_AN = 'border-teal-400/70 bg-teal-500/20 text-teal-100'
 const CHIP_AUS = 'border-[var(--app-border)] text-[var(--app-text-muted)] hover:border-teal-500/40'
 const CHIP_TWEAK = 'border-amber-400/60 bg-amber-500/15 text-amber-100'
+const BTN =
+  'rounded-md border border-[var(--app-border)] px-3 py-1.5 text-xs text-[var(--app-text)] transition hover:border-teal-500/40 disabled:opacity-50'
+const BTN_PRIM =
+  'rounded-md border border-teal-500/40 bg-teal-500/15 px-3 py-1.5 text-xs text-teal-100 transition hover:bg-teal-500/25 disabled:opacity-50'
+const BTN_WARN =
+  'rounded-md border border-amber-500/40 bg-amber-500/20 px-3 py-1.5 text-xs font-medium text-amber-100 transition hover:bg-amber-500/30 disabled:opacity-50'
 
 const SPALTEN: {
   id: SpalteId
@@ -130,6 +138,76 @@ const SPALTEN: {
   { id: 'kurs', label: 'Kurs', defaultOn: false },
   { id: 'watch', label: '', defaultOn: true, immer: true },
 ]
+
+const FILTER_TABS: { id: FilterTabId; label: string }[] = [
+  { id: 'universum', label: 'Universum' },
+  { id: 'profit', label: 'Profitabilität' },
+  { id: 'wachstum', label: 'Wachstum' },
+  { id: 'cash', label: 'Cash & Kapital' },
+  { id: 'bilanz', label: 'Bilanz' },
+  { id: 'bewertung', label: 'Bewertung' },
+  { id: 'spalten', label: 'Spalten' },
+]
+
+const SORT_OPTIONEN: { id: ScreenerSort; label: string }[] = [
+  { id: 'umsatzCagr5y', label: 'CAGR 5J' },
+  { id: 'roicPct', label: 'ROIC' },
+  { id: 'iroicPct', label: 'iROIC' },
+  { id: 'fcfMargePct', label: 'FCF-Marge' },
+  { id: 'fcfConversionPct', label: 'FCF/NI' },
+  { id: 'quality', label: 'Quality' },
+  { id: 'mantra', label: 'Mantra' },
+  { id: 'kgv', label: 'KGV' },
+  { id: 'marktkapMio', label: 'Marktkap' },
+  { id: 'umsatzMio', label: 'Umsatz' },
+  { id: 'name', label: 'Name' },
+  { id: 'ticker', label: 'Ticker' },
+]
+
+function defaultSpalten(): Set<SpalteId> {
+  return new Set(SPALTEN.filter((s) => s.defaultOn || s.immer).map((s) => s.id))
+}
+
+function leseSpalten(): Set<SpalteId> {
+  const basis = defaultSpalten()
+  if (typeof window === 'undefined') return basis
+  try {
+    const raw = window.localStorage.getItem(SPALTEN_KEY) ?? window.localStorage.getItem('pa-screener-spalten-v2')
+    if (!raw) return basis
+    const ids = JSON.parse(raw) as unknown
+    if (!Array.isArray(ids)) return basis
+    const out = new Set<SpalteId>()
+    for (const id of ids) {
+      if (typeof id === 'string' && SPALTEN.some((s) => s.id === id)) out.add(id as SpalteId)
+    }
+    for (const s of SPALTEN) if (s.immer) out.add(s.id)
+    return out.size >= 3 ? out : basis
+  } catch {
+    return basis
+  }
+}
+
+function speichereSpaltenLokal(next: Set<SpalteId>) {
+  try {
+    window.localStorage.setItem(SPALTEN_KEY, JSON.stringify([...next]))
+  } catch {
+    /* quota */
+  }
+}
+
+function spaltenAusVorlage(ids: string[] | undefined): Set<SpalteId> | null {
+  if (!ids?.length) return null
+  const out = new Set<SpalteId>()
+  for (const id of ids) {
+    if (SPALTEN.some((s) => s.id === id)) out.add(id as SpalteId)
+  }
+  for (const s of SPALTEN) if (s.immer) out.add(s.id)
+  return out.size >= 3 ? out : null
+}
+
+function gleichOhneSuche(a: ScreenerFilter, b: ScreenerFilter): boolean {
+  return filterGleich({ ...a, suche: '' }, { ...b, suche: '' })
+}
 
 function fmtMio(v: number | null | undefined): string {
   if (v == null) return '–'
@@ -167,29 +245,6 @@ function csvZelle(v: string | number | null | undefined): string {
   const s = String(v)
   if (/[";\n]/.test(s)) return `"${s.replace(/"/g, '""')}"`
   return s
-}
-
-function leseSpalten(): Set<SpalteId> {
-  const basis = new Set(SPALTEN.filter((s) => s.defaultOn || s.immer).map((s) => s.id))
-  if (typeof window === 'undefined') return basis
-  try {
-    const raw = window.localStorage.getItem(SPALTEN_KEY)
-    if (!raw) return basis
-    const ids = JSON.parse(raw) as unknown
-    if (!Array.isArray(ids)) return basis
-    const out = new Set<SpalteId>()
-    for (const id of ids) {
-      if (typeof id === 'string' && SPALTEN.some((s) => s.id === id)) out.add(id as SpalteId)
-    }
-    for (const s of SPALTEN) if (s.immer) out.add(s.id)
-    return out.size >= 3 ? out : basis
-  } catch {
-    return basis
-  }
-}
-
-function gleichOhneSuche(a: ScreenerFilter, b: ScreenerFilter): boolean {
-  return filterGleich({ ...a, suche: '' }, { ...b, suche: '' })
 }
 
 function ZahlInput({
@@ -243,17 +298,20 @@ function SpanneFeld({
   )
 }
 
-function FilterGruppe({ titel, defaultOpen, children }: { titel: string; defaultOpen?: boolean; children: ReactNode }) {
-  const [offen, setOffen] = useState(Boolean(defaultOpen))
+function CheckFeld({
+  checked,
+  onChange,
+  children,
+}: {
+  checked: boolean
+  onChange: (v: boolean) => void
+  children: ReactNode
+}) {
   return (
-    <details
-      open={offen}
-      onToggle={(e) => setOffen(e.currentTarget.open)}
-      className="rounded-lg border border-[var(--app-border)] bg-[var(--app-surface-muted)]/35 px-3 py-2"
-    >
-      <summary className="cursor-pointer select-none text-xs font-medium text-[var(--app-text)]">{titel}</summary>
-      <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">{children}</div>
-    </details>
+    <label className="flex items-center gap-2 text-xs text-[var(--app-text)]">
+      <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} />
+      {children}
+    </label>
   )
 }
 
@@ -266,12 +324,15 @@ export function PortfolioScreenerClient() {
   const [erneuern, setErneuern] = useState(false)
   const [fehler, setFehler] = useState<string | null>(null)
   const [cloudWarnung, setCloudWarnung] = useState<string | null>(null)
-  const [filter, setFilter] = useState<ScreenerFilter>(() => qualityCompounderFilter())
-  const [aktiveVorlageId, setAktiveVorlageId] = useState<string | null>('quality-compounder')
+  const [filter, setFilter] = useState<ScreenerFilter>(() => leerScreenerFilter())
+  const [aktiveVorlageId, setAktiveVorlageId] = useState<string | null>(null)
   const [eigen, setEigen] = useState<ScreenerEigeneVorlage[]>([])
   const [saveName, setSaveName] = useState('')
-  const [spalten, setSpalten] = useState<Set<SpalteId>>(() => new Set(SPALTEN.filter((s) => s.defaultOn || s.immer).map((s) => s.id)))
+  const [filterTab, setFilterTab] = useState<FilterTabId>('universum')
+  const [filterOffen, setFilterOffen] = useState(true)
+  const [spalten, setSpalten] = useState<Set<SpalteId>>(defaultSpalten)
   const [watchKeys, setWatchKeys] = useState<Set<string>>(new Set())
+  const [qualityMarkierung, setQualityMarkierung] = useState(true)
 
   const uebernehme = useCallback((j: ApiAntwort) => {
     setZeilen(j.zeilen ?? [])
@@ -344,14 +405,10 @@ export function PortfolioScreenerClient() {
     }
   }, [uebernehme])
 
-  const vorlageAktiv = useMemo(() => {
-    if (!aktiveVorlageId) return null
-    return (
-      SCREENER_EINGEBAUTE_VORLAGEN.find((v) => v.id === aktiveVorlageId) ??
-      eigen.find((v) => v.id === aktiveVorlageId) ??
-      null
-    )
-  }, [aktiveVorlageId, eigen])
+  const vorlageAktiv = useMemo(
+    () => (aktiveVorlageId ? eigen.find((v) => v.id === aktiveVorlageId) ?? null : null),
+    [aktiveVorlageId, eigen],
+  )
 
   const angepasst = Boolean(vorlageAktiv && !gleichOhneSuche(filter, vorlageAktiv.filter))
 
@@ -362,6 +419,8 @@ export function PortfolioScreenerClient() {
 
   const sichtbar = gefiltert.slice(0, 250)
   const sichtbareSpalten = SPALTEN.filter((s) => spalten.has(s.id) || s.immer)
+  const chips = useMemo(() => aktiveFilterChips(filter), [filter])
+  const hatFilter = hatAktiveFilterAusserSuche(filter)
 
   const merke = useCallback((z: ScreenerZeile) => {
     if (findeWatchlistIdx(ladeWatchlist(), { symbol: z.ticker }) >= 0) return
@@ -374,10 +433,19 @@ export function PortfolioScreenerClient() {
     })
   }, [])
 
-  const wendeVorlageAn = useCallback((id: string, vorlagenFilter: ScreenerFilter) => {
-    setAktiveVorlageId(id)
-    setFilter(kloneFilter({ ...vorlagenFilter, suche: filter.suche }))
-  }, [filter.suche])
+  const wendeVorlageAn = useCallback(
+    (v: ScreenerEigeneVorlage) => {
+      setAktiveVorlageId(v.id)
+      setFilter(kloneFilter({ ...v.filter, suche: filter.suche }))
+      const ausVorlage = spaltenAusVorlage(v.spalten)
+      if (ausVorlage) {
+        setSpalten(ausVorlage)
+        speichereSpaltenLokal(ausVorlage)
+      }
+      setSaveName(v.name)
+    },
+    [filter.suche],
+  )
 
   const toggleSpalte = useCallback((id: SpalteId) => {
     setSpalten((prev) => {
@@ -385,11 +453,7 @@ export function PortfolioScreenerClient() {
       if (next.has(id)) next.delete(id)
       else next.add(id)
       for (const s of SPALTEN) if (s.immer) next.add(s.id)
-      try {
-        window.localStorage.setItem(SPALTEN_KEY, JSON.stringify([...next]))
-      } catch {
-        /* quota */
-      }
+      speichereSpaltenLokal(next)
       return next
     })
   }, [])
@@ -414,8 +478,9 @@ export function PortfolioScreenerClient() {
       'KGV',
       'Quality',
     ]
-    const zeilenCsv = gefiltert.map((z) =>
-      [
+    const zeilenCsv = gefiltert.map((z) => {
+      const qc = qualityCompounderScore(z)
+      return [
         z.ticker,
         z.name,
         z.boerse,
@@ -432,9 +497,11 @@ export function PortfolioScreenerClient() {
         z.interestCoverage,
         z.sbcOcfPct,
         z.kgv,
-        `${qualityCompounderScore(z).ok}/${qualityCompounderScore(z).n}`,
-      ].map(csvZelle).join(';'),
-    )
+        `${qc.ok}/${qc.n}`,
+      ]
+        .map(csvZelle)
+        .join(';')
+    })
     const blob = new Blob([[kopf.join(';'), ...zeilenCsv].join('\n')], { type: 'text/csv;charset=utf-8' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
@@ -444,36 +511,59 @@ export function PortfolioScreenerClient() {
     URL.revokeObjectURL(url)
   }, [gefiltert, periode])
 
-  const speichern = useCallback(() => {
+  const speichernNeu = useCallback(() => {
     const name = saveName.trim() || vorlageAktiv?.name || 'Meine Vorlage'
-    const liste = speichereScreenerVorlage(name, kloneFilter(filter))
+    const liste = speichereScreenerVorlage({
+      name,
+      filter: kloneFilter(filter),
+      spalten: [...spalten],
+    })
     setEigen(liste)
     const neu = liste[0]
     if (neu) {
       setAktiveVorlageId(neu.id)
-      setSaveName('')
+      setSaveName(neu.name)
     }
-  }, [filter, saveName, vorlageAktiv?.name])
+  }, [filter, saveName, spalten, vorlageAktiv?.name])
 
   const ueberschreiben = useCallback(() => {
-    if (!aktiveVorlageId || SCREENER_EINGEBAUTE_VORLAGEN.some((v) => v.id === aktiveVorlageId)) return
+    if (!aktiveVorlageId) return
     const name = saveName.trim() || eigen.find((v) => v.id === aktiveVorlageId)?.name || 'Meine Vorlage'
-    setEigen(speichereScreenerVorlage(name, kloneFilter(filter), aktiveVorlageId))
+    setEigen(
+      speichereScreenerVorlage({
+        name,
+        filter: kloneFilter(filter),
+        spalten: [...spalten],
+        id: aktiveVorlageId,
+      }),
+    )
+    setSaveName(name)
+  }, [aktiveVorlageId, eigen, filter, saveName, spalten])
+
+  const umbenennen = useCallback(() => {
+    if (!aktiveVorlageId || !saveName.trim()) return
+    setEigen(benenneScreenerVorlageUm(aktiveVorlageId, saveName.trim()))
+  }, [aktiveVorlageId, saveName])
+
+  const zuruecksetzen = useCallback(() => {
+    setFilter(leerScreenerFilter())
+    setAktiveVorlageId(null)
     setSaveName('')
-  }, [aktiveVorlageId, eigen, filter, saveName])
+  }, [])
 
   const stand = aktualisiertAm
     ? new Date(aktualisiertAm).toLocaleString('de-DE', { dateStyle: 'short', timeStyle: 'short' })
     : null
   const schemaAlt = zeilen.length > 0 && schemaVersion < SCREENER_SCHEMA_VERSION
-  const eigeneAktiv = Boolean(aktiveVorlageId && eigen.some((v) => v.id === aktiveVorlageId))
+  const qcSpalteAn = spalten.has('quality')
 
   return (
     <PortfolioAnalyseShell
       title="Aktienscreener"
-      description="US-gelistete SEC-Filer (Nasdaq, NYSE, CBOE) nach Qualität filtern — Daten aus EDGAR-Frames, unabhängig vom Depot."
+      description="US-gelistete SEC-Filer filtern — eigene Vorlagen, volle Kontrolle über Schwellen und Spalten."
     >
-      <PaCard className="space-y-4 p-4 sm:p-5">
+      <PaCard className="space-y-3 p-4 sm:p-5">
+        {/* 1 Header */}
         <div className="flex flex-wrap items-center justify-between gap-3">
           <p className="text-sm text-[var(--app-text-muted)]">
             {zeilen.length > 0
@@ -482,272 +572,350 @@ export function PortfolioScreenerClient() {
             {stand ? ` · Stand ${stand}` : ''}
           </p>
           <div className="flex flex-wrap gap-2">
-            <button
-              type="button"
-              onClick={exportCsv}
-              disabled={gefiltert.length === 0}
-              className="rounded-md border border-[var(--app-border)] px-3 py-1.5 text-xs text-[var(--app-text)] disabled:opacity-50"
-            >
+            <button type="button" onClick={exportCsv} disabled={gefiltert.length === 0} className={BTN}>
               CSV
             </button>
-            <button
-              type="button"
-              onClick={() => void baueUniversum()}
-              disabled={erneuern}
-              className="rounded-md border border-amber-500/40 bg-amber-500/20 px-3 py-1.5 text-xs font-medium text-amber-100 transition hover:bg-amber-500/30 disabled:opacity-50"
-            >
+            <button type="button" onClick={() => void baueUniversum()} disabled={erneuern} className={BTN_WARN}>
               {erneuern ? 'Lade SEC-Universum …' : zeilen.length > 0 ? 'Universum neu aufbauen' : 'Universum laden'}
             </button>
           </div>
         </div>
 
         {cloudWarnung ? (
-          <p className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-100">
-            {cloudWarnung}
-          </p>
+          <p className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-100">{cloudWarnung}</p>
         ) : null}
-
         {schemaAlt ? (
           <p className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-100">
-            Das Universum ist noch ohne die Quality-Compounder-Kennzahlen (iROIC, Bruttomarge, Zinsdeckung, SBC/OCF).
-            Bitte einmal „Universum neu aufbauen“ — oder den Wochen-Cron abwarten.
+            Universum ohne neuere Kennzahlen (iROIC, Brutto, Zins, SBC/OCF). Einmal „Universum neu aufbauen“.
           </p>
         ) : null}
 
-        <div className="space-y-2">
-          <p className="text-[11px] font-medium uppercase tracking-wide text-[var(--app-text-muted)]">Eingebaute Vorlagen</p>
-          <div className="flex flex-wrap gap-1.5">
-            {SCREENER_EINGEBAUTE_VORLAGEN.map((v) => {
-              const an = aktiveVorlageId === v.id
-              return (
-                <button
-                  key={v.id}
-                  type="button"
-                  title={v.hinweis}
-                  onClick={() => wendeVorlageAn(v.id, v.filter)}
-                  className={`${CHIP} ${an ? (angepasst ? CHIP_TWEAK : CHIP_AN) : CHIP_AUS}`}
-                >
-                  {v.name}
-                  {an && angepasst ? ' · angepasst' : ''}
-                </button>
-              )
-            })}
+        {/* 2 Eigene Vorlagen */}
+        <section className="space-y-2 rounded-lg border border-[var(--app-border)] bg-[var(--app-surface-muted)]/25 px-3 py-2.5">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="text-[11px] font-medium uppercase tracking-wide text-[var(--app-text-muted)]">Meine Vorlagen</p>
+            <button type="button" onClick={zuruecksetzen} className="text-[11px] text-[var(--app-text-muted)] hover:text-teal-200">
+              Filter zurücksetzen
+            </button>
           </div>
           {eigen.length > 0 ? (
-            <>
-              <p className="pt-1 text-[11px] font-medium uppercase tracking-wide text-[var(--app-text-muted)]">Eigene</p>
-              <div className="flex flex-wrap gap-1.5">
-                {eigen.map((v) => {
-                  const an = aktiveVorlageId === v.id
-                  return (
-                    <span key={v.id} className="inline-flex items-center gap-1">
-                      <button
-                        type="button"
-                        onClick={() => wendeVorlageAn(v.id, v.filter)}
-                        className={`${CHIP} ${an ? (angepasst ? CHIP_TWEAK : CHIP_AN) : CHIP_AUS}`}
-                      >
-                        {v.name}
-                        {an && angepasst ? ' · angepasst' : ''}
-                      </button>
-                      <button
-                        type="button"
-                        aria-label={`${v.name} löschen`}
-                        onClick={() => {
-                          setEigen(loescheScreenerVorlage(v.id))
-                          if (aktiveVorlageId === v.id) setAktiveVorlageId(null)
-                        }}
-                        className="text-[11px] text-[var(--app-text-muted)] hover:text-rose-300"
-                      >
-                        ×
-                      </button>
-                    </span>
-                  )
-                })}
-              </div>
-            </>
-          ) : null}
-          <div className="flex flex-wrap items-center gap-2 pt-1">
+            <div className="flex flex-wrap gap-1.5">
+              {eigen.map((v) => {
+                const an = aktiveVorlageId === v.id
+                return (
+                  <span key={v.id} className="inline-flex items-center gap-0.5">
+                    <button
+                      type="button"
+                      onClick={() => wendeVorlageAn(v)}
+                      className={`${CHIP} ${an ? (angepasst ? CHIP_TWEAK : CHIP_AN) : CHIP_AUS}`}
+                    >
+                      {v.name}
+                      {an && angepasst ? ' · angepasst' : ''}
+                    </button>
+                    <button
+                      type="button"
+                      aria-label={`${v.name} löschen`}
+                      onClick={() => {
+                        setEigen(loescheScreenerVorlage(v.id))
+                        if (aktiveVorlageId === v.id) {
+                          setAktiveVorlageId(null)
+                          setSaveName('')
+                        }
+                      }}
+                      className="px-1 text-[11px] text-[var(--app-text-muted)] hover:text-rose-300"
+                    >
+                      ×
+                    </button>
+                  </span>
+                )
+              })}
+            </div>
+          ) : (
+            <p className="text-[11px] text-[var(--app-text-muted)]">
+              Noch keine Vorlage — Filter setzen, Namen vergeben und speichern.
+            </p>
+          )}
+          <div className="flex flex-wrap items-center gap-2">
             <input
               value={saveName}
               onChange={(e) => setSaveName(e.target.value)}
-              placeholder="Name für eigene Vorlage"
+              placeholder="Name der Vorlage"
               className={`${INPUT} max-w-xs`}
             />
+            <button type="button" onClick={speichernNeu} className={BTN_PRIM}>
+              Neu speichern
+            </button>
+            {vorlageAktiv ? (
+              <>
+                <button type="button" onClick={ueberschreiben} className={BTN}>
+                  Überschreiben
+                </button>
+                <button type="button" onClick={umbenennen} disabled={!saveName.trim()} className={BTN}>
+                  Umbenennen
+                </button>
+              </>
+            ) : null}
+          </div>
+        </section>
+
+        {/* 3 Aktive Filter-Chips */}
+        {chips.length > 0 ? (
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="text-[11px] text-[var(--app-text-muted)]">Aktiv:</span>
+            {chips.map((c) => (
+              <button
+                key={c.id}
+                type="button"
+                onClick={() => setFilter(c.entferne(filter))}
+                className="rounded-md border border-teal-500/35 bg-teal-500/10 px-2 py-0.5 text-[11px] text-teal-100 hover:border-rose-400/50 hover:bg-rose-500/10"
+                title="Entfernen"
+              >
+                {c.label} ×
+              </button>
+            ))}
             <button
               type="button"
-              onClick={speichern}
-              className="rounded-md border border-teal-500/40 bg-teal-500/15 px-3 py-1.5 text-xs text-teal-100"
+              onClick={() => setFilter({ ...leerScreenerFilter(), suche: filter.suche, sort: filter.sort, sortAsc: filter.sortAsc })}
+              className="text-[11px] text-[var(--app-text-muted)] underline hover:text-rose-200"
             >
-              Speichern
+              alle löschen
             </button>
-            {eigeneAktiv ? (
-              <button
-                type="button"
-                onClick={ueberschreiben}
-                className="rounded-md border border-[var(--app-border)] px-3 py-1.5 text-xs text-[var(--app-text)]"
-              >
-                Überschreiben
-              </button>
-            ) : null}
           </div>
-          {vorlageAktiv && 'hinweis' in vorlageAktiv ? (
-            <p className="text-[11px] leading-relaxed text-[var(--app-text-muted)]">{vorlageAktiv.hinweis}</p>
-          ) : null}
-          {aktiveVorlageId === 'quality-compounder' ? (
-            <p className="rounded-md border border-teal-500/30 bg-teal-500/10 px-3 py-2 text-[11px] leading-relaxed text-teal-100/90">
-              Quality Compounder filtert nur das Universum (Historie, Marktkap, Gewinn, FCF). Die 11 Kriterien sind eine
-              Checkliste: verfehlte oder fehlende Werte bleiben in der Tabelle und sind rot bzw. gelb markiert.
-            </p>
-          ) : null}
-        </div>
+        ) : null}
 
-        <div className="grid gap-2">
-          <FilterGruppe titel="Universum" defaultOpen>
-            <label className="block text-[11px] text-[var(--app-text-muted)]">
-              Suche
-              <input
-                value={filter.suche}
-                onChange={(e) => setFilter({ ...filter, suche: e.target.value })}
-                placeholder="Ticker, Name, Sektor"
-                className={`mt-1 ${INPUT}`}
-              />
-            </label>
-            <label className="block text-[11px] text-[var(--app-text-muted)]">
-              Börse
+        {/* 4 Filter-Toolbar */}
+        <section className="space-y-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <input
+              value={filter.suche}
+              onChange={(e) => setFilter({ ...filter, suche: e.target.value })}
+              placeholder="Suche: Ticker, Name, Sektor …"
+              className={`${INPUT} max-w-sm`}
+            />
+            <label className="flex items-center gap-1.5 text-[11px] text-[var(--app-text-muted)]">
+              Sort
               <select
-                value={filter.boerse}
-                onChange={(e) => setFilter({ ...filter, boerse: e.target.value as ScreenerFilter['boerse'] })}
-                className={`mt-1 ${INPUT}`}
+                value={filter.sort}
+                onChange={(e) => {
+                  const sort = e.target.value as ScreenerSort
+                  setFilter({
+                    ...filter,
+                    sort,
+                    sortAsc: sortierungIstAufsteigendDefault(sort),
+                  })
+                }}
+                className={`${INPUT} w-auto min-w-[7rem]`}
               >
-                <option value="alle">Nasdaq + NYSE + CBOE</option>
-                <option value="Nasdaq">Nasdaq</option>
-                <option value="NYSE">NYSE</option>
-                <option value="CBOE">CBOE</option>
+                {SORT_OPTIONEN.map((o) => (
+                  <option key={o.id} value={o.id}>
+                    {o.label}
+                  </option>
+                ))}
               </select>
             </label>
-            <SpanneFeld label="Historie (Jahre)" kennzahl="jahreAnzahl" filter={filter} onFilter={setFilter} />
-            <SpanneFeld label="Umsatz (Mio $)" kennzahl="umsatzMio" filter={filter} onFilter={setFilter} />
-            <SpanneFeld label="Marktkap (Mio $)" kennzahl="marktkapMio" filter={filter} onFilter={setFilter} />
-            <label className="flex items-center gap-2 text-xs text-[var(--app-text)]">
-              <input
-                type="checkbox"
-                checked={filter.lueckenErlaubt}
-                onChange={(e) => setFilter({ ...filter, lueckenErlaubt: e.target.checked })}
-              />
-              unvollständige Zeilen behalten
-            </label>
-          </FilterGruppe>
-
-          <FilterGruppe titel="Profitabilität" defaultOpen>
-            <SpanneFeld label="ROE %" kennzahl="roePct" filter={filter} onFilter={setFilter} />
-            <SpanneFeld label="ROIC %" kennzahl="roicPct" filter={filter} onFilter={setFilter} />
-            <SpanneFeld label="iROIC 3–5J %" kennzahl="iroicPct" filter={filter} onFilter={setFilter} />
-            <SpanneFeld label="ROIC 5J-Schnitt %" kennzahl="roic5yAvgPct" filter={filter} onFilter={setFilter} />
-            <SpanneFeld label="iROIC − WACC Pp." kennzahl="incrementalValueSpreadPct" filter={filter} onFilter={setFilter} />
-            <SpanneFeld label="Bruttomarge %" kennzahl="bruttoMargePct" filter={filter} onFilter={setFilter} />
-            <SpanneFeld label="EBIT-Marge %" kennzahl="ebitMargePct" filter={filter} onFilter={setFilter} />
-            <SpanneFeld label="NI-Marge %" kennzahl="niMargePct" filter={filter} onFilter={setFilter} />
-            <SpanneFeld label="FCF-Marge %" kennzahl="fcfMargePct" filter={filter} onFilter={setFilter} />
-            <label className="flex items-center gap-2 text-xs text-[var(--app-text)]">
-              <input
-                type="checkbox"
-                checked={filter.nurGewinn}
-                onChange={(e) => setFilter({ ...filter, nurGewinn: e.target.checked })}
-              />
-              nur Gewinn
-            </label>
-            <label className="flex items-center gap-2 text-xs text-[var(--app-text)]">
-              <input
-                type="checkbox"
-                checked={filter.fcfPositiv}
-                onChange={(e) => setFilter({ ...filter, fcfPositiv: e.target.checked })}
-              />
-              FCF &gt; 0
-            </label>
-          </FilterGruppe>
-
-          <FilterGruppe titel="Wachstum">
-            <SpanneFeld label="Umsatz 1J %" kennzahl="umsatzWachstumPct" filter={filter} onFilter={setFilter} />
-            <SpanneFeld label="CAGR 3J %" kennzahl="umsatzCagr3y" filter={filter} onFilter={setFilter} />
-            <SpanneFeld label="CAGR 5J %" kennzahl="umsatzCagr5y" filter={filter} onFilter={setFilter} />
-            <SpanneFeld label="CAGR 10J %" kennzahl="umsatzCagr10y" filter={filter} onFilter={setFilter} />
-            <SpanneFeld label="EPS-CAGR 5J %" kennzahl="epsCagr5y" filter={filter} onFilter={setFilter} />
-            <SpanneFeld label="FCF-CAGR 5J %" kennzahl="fcfCagr5y" filter={filter} onFilter={setFilter} />
-            <SpanneFeld label="FCF/Aktie-CAGR 5J %" kennzahl="fcfJeAktieCagr5y" filter={filter} onFilter={setFilter} />
-            <SpanneFeld label="Rule of 40" kennzahl="ruleOf40" filter={filter} onFilter={setFilter} />
-          </FilterGruppe>
-
-          <FilterGruppe titel="Cash & Kapital">
-            <SpanneFeld label="FCF-Conversion %" kennzahl="fcfConversionPct" filter={filter} onFilter={setFilter} />
-            <SpanneFeld label="Reinvestitionsquote %" kennzahl="reinvestitionsquotePct" filter={filter} onFilter={setFilter} />
-            <SpanneFeld label="CapEx/Umsatz %" kennzahl="capexSalesPct" filter={filter} onFilter={setFilter} />
-            <SpanneFeld label="SBC / OCF %" kennzahl="sbcOcfPct" filter={filter} onFilter={setFilter} />
-            <SpanneFeld label="Verwässerung p.a. %" kennzahl="aktienVerwaesserungJaehrlichPct" filter={filter} onFilter={setFilter} />
-            <label className="flex items-center gap-2 text-xs text-[var(--app-text)]">
-              <input
-                type="checkbox"
-                checked={filter.aktienSinkend}
-                onChange={(e) => setFilter({ ...filter, aktienSinkend: e.target.checked })}
-              />
-              nur sinkende Aktienzahl
-            </label>
-            {filter.conversionOderRo40 ? (
-              <p className="sm:col-span-2 text-[11px] text-teal-200/80">
-                ODER-Regel: Conversion ≥ {filter.conversionOderRo40.conversionMin} % oder Rule of 40 ≥{' '}
-                {filter.conversionOderRo40.ruleOf40Min}
-                <button
-                  type="button"
-                  className="ml-2 underline"
-                  onClick={() => setFilter({ ...filter, conversionOderRo40: null })}
-                >
-                  entfernen
-                </button>
-              </p>
-            ) : null}
-          </FilterGruppe>
-
-          <FilterGruppe titel="Bilanz">
-            <SpanneFeld label="Net Debt/EBITDA" kennzahl="netDebtEbitda" filter={filter} onFilter={setFilter} />
-            <SpanneFeld label="Zinsdeckung ×" kennzahl="interestCoverage" filter={filter} onFilter={setFilter} />
-            <label className="flex items-center gap-2 text-xs text-[var(--app-text)]">
-              <input
-                type="checkbox"
-                checked={filter.ekPositiv}
-                onChange={(e) => setFilter({ ...filter, ekPositiv: e.target.checked })}
-              />
-              Eigenkapital &gt; 0
-            </label>
-          </FilterGruppe>
-
-          <FilterGruppe titel="Bewertung">
-            <SpanneFeld label="KGV" kennzahl="kgv" filter={filter} onFilter={setFilter} />
-            <SpanneFeld label="KUV" kennzahl="kuv" filter={filter} onFilter={setFilter} />
-            <SpanneFeld label="KBV" kennzahl="kbv" filter={filter} onFilter={setFilter} />
-          </FilterGruppe>
-        </div>
-
-        <details className="text-xs text-[var(--app-text-muted)]">
-          <summary className="cursor-pointer">Spalten</summary>
-          <div className="mt-2 flex flex-wrap gap-2">
-            {SPALTEN.filter((s) => !s.immer).map((s) => (
-              <label key={s.id} className="inline-flex items-center gap-1.5">
-                <input type="checkbox" checked={spalten.has(s.id)} onChange={() => toggleSpalte(s.id)} />
-                {s.label}
-              </label>
-            ))}
+            <button
+              type="button"
+              onClick={() => setFilter({ ...filter, sortAsc: !filter.sortAsc })}
+              className={BTN}
+              title="Sortierrichtung"
+            >
+              {filter.sortAsc ? '↑ aufsteigend' : '↓ absteigend'}
+            </button>
+            <CheckFeld checked={qualityMarkierung} onChange={setQualityMarkierung}>
+              Quality-Markierung
+            </CheckFeld>
+            <button type="button" onClick={() => setFilterOffen((v) => !v)} className={BTN}>
+              {filterOffen ? 'Filter einklappen' : 'Filter ausklappen'}
+              {hatFilter ? ` · ${chips.length}` : ''}
+            </button>
           </div>
-        </details>
+
+          {filterOffen ? (
+            <div className="rounded-lg border border-[var(--app-border)] bg-[var(--app-surface-muted)]/30 px-3 py-2.5">
+              <div className="mb-3 flex flex-wrap gap-1">
+                {FILTER_TABS.map((t) => (
+                  <button
+                    key={t.id}
+                    type="button"
+                    onClick={() => setFilterTab(t.id)}
+                    className={`${CHIP} ${filterTab === t.id ? CHIP_AN : CHIP_AUS}`}
+                  >
+                    {t.label}
+                  </button>
+                ))}
+              </div>
+
+              {filterTab === 'universum' ? (
+                <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+                  <label className="block text-[11px] text-[var(--app-text-muted)]">
+                    Börse
+                    <select
+                      value={filter.boerse}
+                      onChange={(e) => setFilter({ ...filter, boerse: e.target.value as ScreenerFilter['boerse'] })}
+                      className={`mt-1 ${INPUT}`}
+                    >
+                      <option value="alle">Nasdaq + NYSE + CBOE</option>
+                      <option value="Nasdaq">Nasdaq</option>
+                      <option value="NYSE">NYSE</option>
+                      <option value="CBOE">CBOE</option>
+                    </select>
+                  </label>
+                  <SpanneFeld label="Historie (Jahre)" kennzahl="jahreAnzahl" filter={filter} onFilter={setFilter} />
+                  <SpanneFeld label="Umsatz (Mio $)" kennzahl="umsatzMio" filter={filter} onFilter={setFilter} />
+                  <SpanneFeld label="Marktkap (Mio $)" kennzahl="marktkapMio" filter={filter} onFilter={setFilter} />
+                  <CheckFeld checked={filter.lueckenErlaubt} onChange={(v) => setFilter({ ...filter, lueckenErlaubt: v })}>
+                    unvollständige Zeilen behalten
+                  </CheckFeld>
+                </div>
+              ) : null}
+
+              {filterTab === 'profit' ? (
+                <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+                  <SpanneFeld label="ROE %" kennzahl="roePct" filter={filter} onFilter={setFilter} />
+                  <SpanneFeld label="ROIC %" kennzahl="roicPct" filter={filter} onFilter={setFilter} />
+                  <SpanneFeld label="iROIC 3–5J %" kennzahl="iroicPct" filter={filter} onFilter={setFilter} />
+                  <SpanneFeld label="ROIC 5J-Schnitt %" kennzahl="roic5yAvgPct" filter={filter} onFilter={setFilter} />
+                  <SpanneFeld label="iROIC − WACC Pp." kennzahl="incrementalValueSpreadPct" filter={filter} onFilter={setFilter} />
+                  <SpanneFeld label="Bruttomarge %" kennzahl="bruttoMargePct" filter={filter} onFilter={setFilter} />
+                  <SpanneFeld label="EBIT-Marge %" kennzahl="ebitMargePct" filter={filter} onFilter={setFilter} />
+                  <SpanneFeld label="NI-Marge %" kennzahl="niMargePct" filter={filter} onFilter={setFilter} />
+                  <SpanneFeld label="FCF-Marge %" kennzahl="fcfMargePct" filter={filter} onFilter={setFilter} />
+                  <CheckFeld checked={filter.nurGewinn} onChange={(v) => setFilter({ ...filter, nurGewinn: v })}>
+                    nur Gewinn
+                  </CheckFeld>
+                  <CheckFeld checked={filter.fcfPositiv} onChange={(v) => setFilter({ ...filter, fcfPositiv: v })}>
+                    FCF &gt; 0
+                  </CheckFeld>
+                </div>
+              ) : null}
+
+              {filterTab === 'wachstum' ? (
+                <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+                  <SpanneFeld label="Umsatz 1J %" kennzahl="umsatzWachstumPct" filter={filter} onFilter={setFilter} />
+                  <SpanneFeld label="CAGR 3J %" kennzahl="umsatzCagr3y" filter={filter} onFilter={setFilter} />
+                  <SpanneFeld label="CAGR 5J %" kennzahl="umsatzCagr5y" filter={filter} onFilter={setFilter} />
+                  <SpanneFeld label="CAGR 10J %" kennzahl="umsatzCagr10y" filter={filter} onFilter={setFilter} />
+                  <SpanneFeld label="EPS-CAGR 5J %" kennzahl="epsCagr5y" filter={filter} onFilter={setFilter} />
+                  <SpanneFeld label="FCF-CAGR 5J %" kennzahl="fcfCagr5y" filter={filter} onFilter={setFilter} />
+                  <SpanneFeld label="FCF/Aktie-CAGR 5J %" kennzahl="fcfJeAktieCagr5y" filter={filter} onFilter={setFilter} />
+                  <SpanneFeld label="Rule of 40" kennzahl="ruleOf40" filter={filter} onFilter={setFilter} />
+                </div>
+              ) : null}
+
+              {filterTab === 'cash' ? (
+                <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+                  <SpanneFeld label="FCF-Conversion %" kennzahl="fcfConversionPct" filter={filter} onFilter={setFilter} />
+                  <SpanneFeld label="Reinvestitionsquote %" kennzahl="reinvestitionsquotePct" filter={filter} onFilter={setFilter} />
+                  <SpanneFeld label="CapEx/Umsatz %" kennzahl="capexSalesPct" filter={filter} onFilter={setFilter} />
+                  <SpanneFeld label="SBC / OCF %" kennzahl="sbcOcfPct" filter={filter} onFilter={setFilter} />
+                  <SpanneFeld label="Verwässerung p.a. %" kennzahl="aktienVerwaesserungJaehrlichPct" filter={filter} onFilter={setFilter} />
+                  <CheckFeld checked={filter.aktienSinkend} onChange={(v) => setFilter({ ...filter, aktienSinkend: v })}>
+                    nur sinkende Aktienzahl
+                  </CheckFeld>
+                  <div className="sm:col-span-2 space-y-2 rounded-md border border-[var(--app-border)]/60 px-2 py-2">
+                    <CheckFeld
+                      checked={filter.conversionOderRo40 != null}
+                      onChange={(an) =>
+                        setFilter({
+                          ...filter,
+                          conversionOderRo40: an ? { conversionMin: 75, ruleOf40Min: 40 } : null,
+                        })
+                      }
+                    >
+                      ODER: Conversion ≥ x % oder Rule of 40 ≥ y
+                    </CheckFeld>
+                    {filter.conversionOderRo40 ? (
+                      <div className="grid grid-cols-2 gap-2">
+                        <label className="block text-[11px] text-[var(--app-text-muted)]">
+                          Conversion min %
+                          <ZahlInput
+                            value={filter.conversionOderRo40.conversionMin}
+                            placeholder="75"
+                            onChange={(n) =>
+                              setFilter({
+                                ...filter,
+                                conversionOderRo40:
+                                  n == null
+                                    ? null
+                                    : {
+                                        conversionMin: n,
+                                        ruleOf40Min: filter.conversionOderRo40?.ruleOf40Min ?? 40,
+                                      },
+                              })
+                            }
+                          />
+                        </label>
+                        <label className="block text-[11px] text-[var(--app-text-muted)]">
+                          Rule of 40 min
+                          <ZahlInput
+                            value={filter.conversionOderRo40.ruleOf40Min}
+                            placeholder="40"
+                            onChange={(n) =>
+                              setFilter({
+                                ...filter,
+                                conversionOderRo40:
+                                  n == null
+                                    ? null
+                                    : {
+                                        conversionMin: filter.conversionOderRo40?.conversionMin ?? 75,
+                                        ruleOf40Min: n,
+                                      },
+                              })
+                            }
+                          />
+                        </label>
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
+              ) : null}
+
+              {filterTab === 'bilanz' ? (
+                <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+                  <SpanneFeld label="Net Debt/EBITDA" kennzahl="netDebtEbitda" filter={filter} onFilter={setFilter} />
+                  <SpanneFeld label="Zinsdeckung ×" kennzahl="interestCoverage" filter={filter} onFilter={setFilter} />
+                  <CheckFeld checked={filter.ekPositiv} onChange={(v) => setFilter({ ...filter, ekPositiv: v })}>
+                    Eigenkapital &gt; 0
+                  </CheckFeld>
+                </div>
+              ) : null}
+
+              {filterTab === 'bewertung' ? (
+                <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+                  <SpanneFeld label="KGV" kennzahl="kgv" filter={filter} onFilter={setFilter} />
+                  <SpanneFeld label="KUV" kennzahl="kuv" filter={filter} onFilter={setFilter} />
+                  <SpanneFeld label="KBV" kennzahl="kbv" filter={filter} onFilter={setFilter} />
+                </div>
+              ) : null}
+
+              {filterTab === 'spalten' ? (
+                <div className="flex flex-wrap gap-x-3 gap-y-2">
+                  {SPALTEN.filter((s) => !s.immer).map((s) => (
+                    <label key={s.id} className="inline-flex items-center gap-1.5 text-xs text-[var(--app-text)]">
+                      <input type="checkbox" checked={spalten.has(s.id)} onChange={() => toggleSpalte(s.id)} />
+                      {s.label}
+                    </label>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+        </section>
 
         {fehler ? <p className="text-sm text-rose-300">{fehler}</p> : null}
         {laden ? <p className="text-sm text-[var(--app-text-muted)]">Lade Snapshot …</p> : null}
 
+        {/* 5 Tabelle */}
         <div className={`${PA_TABLE_FRAME} ${PA_SCROLL_ELEGANT}`}>
           <div className={appTableScrollClassName}>
             <table className={PA_TABLE_COMPACT}>
               <thead>
                 <tr>
                   {sichtbareSpalten.map((s) => (
-                    <th key={s.id} className={s.id === 'ticker' || s.id === 'name' || s.id === 'quality' ? '' : 'text-right'}>
+                    <th
+                      key={s.id}
+                      className={s.id === 'ticker' || s.id === 'name' || s.id === 'quality' ? '' : 'text-right'}
+                    >
                       {s.sort ? (
                         <button
                           type="button"
@@ -783,7 +951,7 @@ export function PortfolioScreenerClient() {
                     string,
                     (typeof qcListe)[number]
                   >
-                  const qcAktiv = aktiveVorlageId === 'quality-compounder'
+                  const mark = qualityMarkierung && qcSpalteAn
                   const zellen: Record<SpalteId, ReactNode> = {
                     ticker: (
                       <Link
@@ -811,7 +979,7 @@ export function PortfolioScreenerClient() {
                     ),
                     umsatz: fmtMio(z.umsatzMio),
                     cagr5: (
-                      <span className={qcAktiv ? qcKlasse(qc.umsatzCagr?.ok, pctTon(z.umsatzCagr5y)) : pctTon(z.umsatzCagr5y)}>
+                      <span className={mark ? qcKlasse(qc.umsatzCagr?.ok, pctTon(z.umsatzCagr5y)) : pctTon(z.umsatzCagr5y)}>
                         {fmtPct(z.umsatzCagr5y)}
                       </span>
                     ),
@@ -819,53 +987,64 @@ export function PortfolioScreenerClient() {
                     niMarge: <span className={pctTon(z.niMargePct)}>{fmtPct(z.niMargePct)}</span>,
                     roe: <span className={pctTon(z.roePct)}>{fmtPct(z.roePct)}</span>,
                     roic: (
-                      <span className={qcAktiv ? qcKlasse(qc.roic5y?.ok, pctTon(z.roicPct)) : pctTon(z.roicPct)}>
+                      <span className={mark ? qcKlasse(qc.roic5y?.ok, pctTon(z.roicPct)) : pctTon(z.roicPct)}>
                         {fmtPct(z.roicPct)}
                       </span>
                     ),
                     fcfMarge: <span className={pctTon(z.fcfMargePct)}>{fmtPct(z.fcfMargePct)}</span>,
                     conv: (
-                      <span className={qcAktiv ? qcKlasse(qc.conv?.ok, '') : undefined}>{fmtPct(z.fcfConversionPct)}</span>
+                      <span className={mark ? qcKlasse(qc.conv?.ok, '') : undefined}>{fmtPct(z.fcfConversionPct)}</span>
                     ),
-                    verw: <span className={pctTon(z.aktienVerwaesserungJaehrlichPct != null ? -z.aktienVerwaesserungJaehrlichPct : null)}>{fmtPct(z.aktienVerwaesserungJaehrlichPct)}</span>,
+                    verw: (
+                      <span
+                        className={pctTon(
+                          z.aktienVerwaesserungJaehrlichPct != null ? -z.aktienVerwaesserungJaehrlichPct : null,
+                        )}
+                      >
+                        {fmtPct(z.aktienVerwaesserungJaehrlichPct)}
+                      </span>
+                    ),
                     ndEbitda: (
-                      <span className={qcAktiv ? qcKlasse(qc.ndEbitda?.ok, '') : undefined}>
+                      <span className={mark ? qcKlasse(qc.ndEbitda?.ok, '') : undefined}>
                         {fmtZahl(z.netDebtEbitda, 2)}
                       </span>
                     ),
                     iroic: (
-                      <span className={qcAktiv ? qcKlasse(qc.iroic?.ok, pctTon(z.iroicPct)) : pctTon(z.iroicPct)}>
+                      <span className={mark ? qcKlasse(qc.iroic?.ok, pctTon(z.iroicPct)) : pctTon(z.iroicPct)}>
                         {fmtPct(z.iroicPct)}
                       </span>
                     ),
                     brutto: (
-                      <span className={qcAktiv ? qcKlasse(qc.brutto?.ok, '') : undefined}>{fmtPct(z.bruttoMargePct)}</span>
+                      <span className={mark ? qcKlasse(qc.brutto?.ok, '') : undefined}>{fmtPct(z.bruttoMargePct)}</span>
                     ),
                     reinvest: (
-                      <span className={qcAktiv ? qcKlasse(qc.reinvest?.ok, '') : undefined}>
+                      <span className={mark ? qcKlasse(qc.reinvest?.ok, '') : undefined}>
                         {fmtPct(z.reinvestitionsquotePct)}
                       </span>
                     ),
                     zins: (
-                      <span className={qcAktiv ? qcKlasse(qc.zins?.ok, '') : undefined}>
+                      <span className={mark ? qcKlasse(qc.zins?.ok, '') : undefined}>
                         {z.interestCoverage != null ? fmtZahl(z.interestCoverage, 1) : '–'}
                       </span>
                     ),
                     sbcOcf: (
-                      <span className={qcAktiv ? qcKlasse(qc.sbc?.ok, '') : undefined}>{fmtPct(z.sbcOcfPct)}</span>
+                      <span className={mark ? qcKlasse(qc.sbc?.ok, '') : undefined}>{fmtPct(z.sbcOcfPct)}</span>
                     ),
                     kgv: fmtZahl(z.kgv),
                     kuv: fmtZahl(z.kuv),
                     kbv: fmtZahl(z.kbv),
                     mantra: (
-                      <span title="ROIC, Conversion/Ro40, ND/EBITDA, Verwässerung, FCF-Marge">
-                        {mantra}/5
-                      </span>
+                      <span title="ROIC, Conversion/Ro40, ND/EBITDA, Verwässerung, FCF-Marge">{mantra}/5</span>
                     ),
                     quality: (
                       <span
                         className={`block max-w-[14rem] text-left ${qcScore.fehl > 0 ? 'text-rose-300' : qcScore.luecke > 0 ? 'text-amber-200' : 'text-emerald-400'}`}
-                        title={qcListe.map((e) => `${e.kurz}: ${e.text} (${e.soll})${e.ok === true ? ' ✓' : e.ok === false ? ' ✗' : ' ?'}`).join('\n')}
+                        title={qcListe
+                          .map(
+                            (e) =>
+                              `${e.kurz}: ${e.text} (${e.soll})${e.ok === true ? ' ✓' : e.ok === false ? ' ✗' : ' ?'}`,
+                          )
+                          .join('\n')}
                       >
                         {qcScore.ok}/{qcScore.n}
                         {qcFehl.length > 0 ? (
@@ -892,7 +1071,11 @@ export function PortfolioScreenerClient() {
                       {sichtbareSpalten.map((s) => (
                         <td
                           key={s.id}
-                          className={s.id === 'ticker' || s.id === 'name' || s.id === 'boerse' || s.id === 'quality' ? '' : 'text-right tabular-nums'}
+                          className={
+                            s.id === 'ticker' || s.id === 'name' || s.id === 'boerse' || s.id === 'quality'
+                              ? ''
+                              : 'text-right tabular-nums'
+                          }
                         >
                           {zellen[s.id]}
                         </td>
@@ -910,9 +1093,7 @@ export function PortfolioScreenerClient() {
           </p>
         ) : null}
         <p className="text-xs leading-relaxed text-[var(--app-text-muted)]">
-          GuV/Bilanz: SEC EDGAR Frames, Kalenderjahre ab 2009 soweit gemeldet. ROIC brutto (EK + Schulden, ohne Cash-Abzug).
-          Kurs und Multiples: Yahoo Finance. Die Quality-Spalte zählt 11 Compounder-Punkte; verfehlte Schwellen bleiben in
-          der Liste und werden markiert. LTV/CAC und NRR fehlen im Snapshot — Moat bleibt auf der Titelseite.
+          GuV/Bilanz: SEC EDGAR Frames. Kurs/Multiples: Yahoo. Quality zählt 11 Compounder-Punkte ohne auszufiltern.
         </p>
       </PaCard>
     </PortfolioAnalyseShell>

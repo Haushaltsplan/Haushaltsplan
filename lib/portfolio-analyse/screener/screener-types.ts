@@ -133,17 +133,11 @@ export type ScreenerFilter = {
   spannen: Partial<Record<ScreenerKennzahl, ScreenerSpanne>>
 }
 
-export type ScreenerVorlage = {
-  id: string
-  name: string
-  hinweis: string
-  eingebaut: boolean
-  filter: ScreenerFilter
-}
-
 export type ScreenerEigeneVorlage = {
   id: string
   name: string
   filter: ScreenerFilter
+  /** Sichtbare Tabellenspalten (IDs); fehlend = Client-Defaults. */
+  spalten?: string[]
   aktualisiertAm: string
 }

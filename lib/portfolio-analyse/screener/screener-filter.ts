@@ -11,7 +11,7 @@ export function leerScreenerFilter(): ScreenerFilter {
   return {
     suche: '',
     boerse: 'alle',
-    nurGewinn: true,
+    nurGewinn: false,
     fcfPositiv: false,
     aktienSinkend: false,
     ekPositiv: false,
@@ -19,11 +19,7 @@ export function leerScreenerFilter(): ScreenerFilter {
     conversionOderRo40: null,
     sort: 'umsatzCagr5y',
     sortAsc: false,
-    spannen: {
-      umsatzMio: { min: 500 },
-      jahreAnzahl: { min: 8 },
-      umsatzCagr5y: { min: 5 },
-    },
+    spannen: {},
   }
 }
 
@@ -174,6 +170,125 @@ export function setzeSpanne(f: ScreenerFilter, k: ScreenerKennzahl, teil: Screen
   return next
 }
 
+export const SCREENER_KENNZAHL_LABEL: Record<ScreenerKennzahl, string> = {
+  umsatzMio: 'Umsatz Mio',
+  marktkapMio: 'Marktkap Mio',
+  jahreAnzahl: 'Jahre',
+  roePct: 'ROE %',
+  roicPct: 'ROIC %',
+  ebitMargePct: 'EBIT-Marge %',
+  niMargePct: 'NI-Marge %',
+  fcfMargePct: 'FCF-Marge %',
+  umsatzWachstumPct: 'Umsatz 1J %',
+  umsatzCagr3y: 'CAGR 3J %',
+  umsatzCagr5y: 'CAGR 5J %',
+  umsatzCagr10y: 'CAGR 10J %',
+  epsCagr5y: 'EPS-CAGR 5J %',
+  fcfCagr5y: 'FCF-CAGR 5J %',
+  ruleOf40: 'Rule of 40',
+  fcfConversionPct: 'FCF/NI %',
+  capexSalesPct: 'CapEx/Umsatz %',
+  aktienVerwaesserungJaehrlichPct: 'Verw. p.a. %',
+  netDebtEbitda: 'ND/EBITDA',
+  iroicPct: 'iROIC %',
+  roic5yAvgPct: 'ROIC 5J %',
+  incrementalValueSpreadPct: 'iROIC−WACC',
+  bruttoMargePct: 'Brutto %',
+  reinvestitionsquotePct: 'Reinvest %',
+  fcfJeAktieCagr5y: 'FCF/Aktie-CAGR %',
+  interestCoverage: 'Zinsdeckung',
+  sbcOcfPct: 'SBC/OCF %',
+  kgv: 'KGV',
+  kuv: 'KUV',
+  kbv: 'KBV',
+}
+
+export type ScreenerFilterChip = {
+  id: string
+  label: string
+  entferne: (f: ScreenerFilter) => ScreenerFilter
+}
+
+function fmtChipZahl(n: number): string {
+  return n.toLocaleString('de-DE', { maximumFractionDigits: 2 })
+}
+
+/** Aktive Filter als Chips (ohne Freitext-Suche). */
+export function aktiveFilterChips(f: ScreenerFilter): ScreenerFilterChip[] {
+  const chips: ScreenerFilterChip[] = []
+  if (f.boerse !== 'alle') {
+    chips.push({
+      id: 'boerse',
+      label: f.boerse,
+      entferne: (x) => ({ ...x, boerse: 'alle' }),
+    })
+  }
+  if (f.nurGewinn) {
+    chips.push({
+      id: 'nurGewinn',
+      label: 'nur Gewinn',
+      entferne: (x) => ({ ...x, nurGewinn: false }),
+    })
+  }
+  if (f.fcfPositiv) {
+    chips.push({
+      id: 'fcfPositiv',
+      label: 'FCF > 0',
+      entferne: (x) => ({ ...x, fcfPositiv: false }),
+    })
+  }
+  if (f.aktienSinkend) {
+    chips.push({
+      id: 'aktienSinkend',
+      label: 'Aktienzahl sinkt',
+      entferne: (x) => ({ ...x, aktienSinkend: false }),
+    })
+  }
+  if (f.ekPositiv) {
+    chips.push({
+      id: 'ekPositiv',
+      label: 'EK > 0',
+      entferne: (x) => ({ ...x, ekPositiv: false }),
+    })
+  }
+  if (f.lueckenErlaubt) {
+    chips.push({
+      id: 'luecken',
+      label: 'Lücken erlaubt',
+      entferne: (x) => ({ ...x, lueckenErlaubt: false }),
+    })
+  }
+  if (f.conversionOderRo40) {
+    const c = f.conversionOderRo40
+    chips.push({
+      id: 'convOderRo40',
+      label: `Conv ≥ ${fmtChipZahl(c.conversionMin)} % ∨ Ro40 ≥ ${fmtChipZahl(c.ruleOf40Min)}`,
+      entferne: (x) => ({ ...x, conversionOderRo40: null }),
+    })
+  }
+  for (const [k, sp] of Object.entries(f.spannen) as [ScreenerKennzahl, ScreenerSpanne | undefined][]) {
+    if (!hatSpanne(sp)) continue
+    const name = SCREENER_KENNZAHL_LABEL[k] ?? k
+    const teile: string[] = []
+    if (sp!.min != null) teile.push(`≥ ${fmtChipZahl(sp!.min)}`)
+    if (sp!.max != null) teile.push(`≤ ${fmtChipZahl(sp!.max)}`)
+    chips.push({
+      id: `spanne:${k}`,
+      label: `${name} ${teile.join(' ')}`,
+      entferne: (x) => {
+        const next = kloneFilter(x)
+        delete next.spannen[k]
+        return next
+      },
+    })
+  }
+  return chips
+}
+
+export function hatAktiveFilterAusserSuche(f: ScreenerFilter): boolean {
+  return aktiveFilterChips(f).length > 0
+}
+
 export const SCREENER_KENNZAHLEN: ScreenerKennzahl[] = [
   'umsatzMio',
   'marktkapMio',
@@ -251,7 +366,7 @@ export function parseScreenerFilter(raw: unknown): ScreenerFilter {
   return {
     suche: typeof r.suche === 'string' ? r.suche : '',
     boerse: boerse === 'Nasdaq' || boerse === 'NYSE' || boerse === 'CBOE' || boerse === 'alle' ? boerse : 'alle',
-    nurGewinn: r.nurGewinn !== false,
+    nurGewinn: r.nurGewinn === true,
     fcfPositiv: r.fcfPositiv === true,
     aktienSinkend: r.aktienSinkend === true,
     ekPositiv: r.ekPositiv === true,
