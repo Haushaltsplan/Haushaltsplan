@@ -120,10 +120,10 @@ components/portfolio-analyse/
 
 ## Deployment
 
-- **Manuell** (user will selbst deployen)
-- Deploy Hook: `https://api.vercel.com/v1/integrations/deploy/prj_RkC8ZDQI4xumpWLiyPReP94TXjyi/0BzbhpUDnH`
-- URL im Browser öffnen → triggert Vercel Build von Branch `main`
-- Nach Deploy: DB-Eintrag ggf. löschen + "Neu generieren" klicken
+- **Produktion:** Vercel-Projekt mit Domain `https://haushaltsplan-blue.vercel.app`
+- **Zuverlässiger Weg:** Push auf GitHub `main` (`Haushaltsplan/Haushaltsplan`) → `vercel[bot]` deployed Production
+- **Nicht** den alten Deploy-Hook `prj_RkC8…/0Bzbhp…` nutzen — der trifft dieses Projekt nicht zuverlässig (Jobs landen „irgendwo“, nicht sichtbar in Haushaltsplan)
+- Nach Deploy: DB-Eintrag ggf. löschen + „Neu generieren“ klicken
 
 ## EV-Multiples (Aug 2026)
 
