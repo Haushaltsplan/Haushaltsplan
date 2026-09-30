@@ -56,6 +56,17 @@ type ApiAntwort = {
   cloudGespeichert?: boolean
   cloudWarnung?: string | null
   message?: string
+  gestartet?: boolean
+  schonAktiv?: boolean
+  build?: {
+    laeuft: boolean
+    gestartetAm: string | null
+    fertigAm: string | null
+    fehler: string | null
+    n: number | null
+    periode: string | null
+    schemaVersion: number | null
+  }
 }
 
 type SpalteId =
@@ -587,17 +598,57 @@ export function PortfolioScreenerClient() {
     setErneuern(true)
     setFehler(null)
     setCloudWarnung(null)
+    const vorherAm = aktualisiertAm
+    const vorherSchema = schemaVersion
+    const leseJson = async (res: Response): Promise<ApiAntwort> => {
+      const text = await res.text()
+      try {
+        return JSON.parse(text) as ApiAntwort
+      } catch {
+        const kurz = text.replace(/\s+/g, ' ').trim().slice(0, 160)
+        if (/an error occurred/i.test(kurz) || res.status === 504 || res.status === 502) {
+          throw new Error(
+            'Server-/Proxy-Timeout. Der Aufbau läuft im Hintergrund — Seite in 2–3 Min. neu laden oder erneut versuchen.',
+          )
+        }
+        throw new Error(kurz || `Ungültige Server-Antwort (HTTP ${res.status}).`)
+      }
+    }
     try {
-      const res = await fetch('/api/portfolio-analyse/screener', { method: 'POST' })
-      const j = (await res.json()) as ApiAntwort
-      if (!res.ok || !j.ok) throw new Error(j.message ?? 'Universum konnte nicht geladen werden.')
-      uebernehme(j)
+      const startRes = await fetch('/api/portfolio-analyse/screener', { method: 'POST' })
+      const start = await leseJson(startRes)
+      if (!startRes.ok || !start.ok) throw new Error(start.message ?? 'Universum konnte nicht gestartet werden.')
+
+      const deadline = Date.now() + 320_000
+      while (Date.now() < deadline) {
+        await new Promise((r) => setTimeout(r, 5000))
+        const pollRes = await fetch('/api/portfolio-analyse/screener?frisch=1', { cache: 'no-store' })
+        const poll = await leseJson(pollRes)
+        if (!pollRes.ok || !poll.ok) throw new Error(poll.message ?? 'Status konnte nicht geladen werden.')
+
+        if (poll.build?.fehler) throw new Error(poll.build.fehler)
+
+        const neuAm = poll.aktualisiertAm != null && poll.aktualisiertAm !== vorherAm
+        const neuSchema =
+          poll.schemaVersion != null &&
+          poll.schemaVersion >= SCREENER_SCHEMA_VERSION &&
+          (vorherSchema < SCREENER_SCHEMA_VERSION || neuAm)
+        const buildFertigLokal = poll.build != null && !poll.build.laeuft && Boolean(poll.build.fertigAm) && !poll.build.fehler
+
+        if ((neuAm || neuSchema || buildFertigLokal) && (poll.zeilen?.length ?? 0) > 0) {
+          uebernehme(poll)
+          return
+        }
+      }
+      throw new Error(
+        'Universum-Aufbau noch nicht fertig (Zeitlimit). In 1–2 Minuten Seite neu laden — bei Erfolg ist das neue Schema sichtbar.',
+      )
     } catch (e) {
       setFehler(e instanceof Error ? e.message : 'Universum konnte nicht geladen werden.')
     } finally {
       setErneuern(false)
     }
-  }, [uebernehme])
+  }, [uebernehme, aktualisiertAm, schemaVersion])
 
   const vorlageAktiv = useMemo(
     () => (aktiveVorlageId ? eigen.find((v) => v.id === aktiveVorlageId) ?? null : null),

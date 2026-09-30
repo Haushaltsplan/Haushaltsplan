@@ -1,7 +1,9 @@
-import { NextResponse } from 'next/server'
+import { after, NextResponse } from 'next/server'
 import {
-  erneuereScreenerSnapshot,
+  fuehreReserviertenScreenerBuildAus,
   ladeScreenerSnapshot,
+  leseScreenerBuildStatus,
+  reserviereScreenerBuild,
 } from '@/lib/portfolio-analyse/screener/screener-snapshot-server'
 
 export const dynamic = 'force-dynamic'
@@ -25,9 +27,11 @@ function paketFuerClient(
   }
 }
 
-export async function GET() {
+export async function GET(req: Request) {
   try {
-    const snap = await ladeScreenerSnapshot()
+    const frisch = new URL(req.url).searchParams.get('frisch') === '1'
+    const build = leseScreenerBuildStatus()
+    const snap = await ladeScreenerSnapshot({ frisch })
     if (!snap) {
       return NextResponse.json({
         ok: true,
@@ -37,9 +41,10 @@ export async function GET() {
         n: 0,
         schemaVersion: 1,
         zeilen: [],
+        build,
       })
     }
-    return NextResponse.json(paketFuerClient(snap))
+    return NextResponse.json({ ...paketFuerClient(snap), build })
   } catch (e) {
     console.error('[screener] GET', e)
     return NextResponse.json(
@@ -49,15 +54,35 @@ export async function GET() {
   }
 }
 
+/**
+ * Sofort JSON zurück (kein Browser-/Proxy-Timeout).
+ * Der schwere SEC-Build läuft in next/after bis maxDuration.
+ * Client pollt GET bis build.laeuft === false.
+ */
 export async function POST() {
   try {
-    const ergebnis = await erneuereScreenerSnapshot()
-    const { cloudGespeichert, cloudWarnung, ...snap } = ergebnis
-    return NextResponse.json(paketFuerClient(snap, { cloudGespeichert, cloudWarnung }))
+    const reserviert = reserviereScreenerBuild()
+    if (reserviert.ok) {
+      after(async () => {
+        await fuehreReserviertenScreenerBuildAus()
+      })
+    }
+    const schonAktiv = !reserviert.ok
+    return NextResponse.json({
+      ok: true,
+      gestartet: true,
+      schonAktiv,
+      message: schonAktiv
+        ? 'Universum-Aufbau läuft bereits — bitte warten.'
+        : 'Universum-Aufbau gestartet (SEC Frames, kann einige Minuten dauern).',
+      build: leseScreenerBuildStatus(),
+    })
   } catch (e) {
     console.error('[screener] POST', e)
-    const msg = e instanceof Error ? e.message : 'Universum konnte nicht geladen werden.'
-    const kurz = msg.includes('<!DOCTYPE') ? 'SEC-Universum fehlgeschlagen — unerwartete HTML-Antwort (Netzwerk/Proxy?).' : msg.slice(0, 300)
+    const msg = e instanceof Error ? e.message : 'Universum konnte nicht gestartet werden.'
+    const kurz = msg.includes('<!DOCTYPE')
+      ? 'SEC-Universum fehlgeschlagen — unerwartete HTML-Antwort (Netzwerk/Proxy?).'
+      : msg.slice(0, 300)
     return NextResponse.json({ ok: false, message: kurz }, { status: 500 })
   }
 }
