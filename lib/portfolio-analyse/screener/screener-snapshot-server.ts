@@ -3,7 +3,7 @@
 import 'server-only'
 
 import { createSupabaseAdmin } from '@/lib/supabase-admin'
-import type { ScreenerSnapshot } from '@/lib/portfolio-analyse/screener/screener-types'
+import type { ScreenerSnapshot, ScreenerZeile } from '@/lib/portfolio-analyse/screener/screener-types'
 import { SCREENER_SCHEMA_VERSION } from '@/lib/portfolio-analyse/screener/screener-types'
 import { baueScreenerSnapshot } from '@/lib/portfolio-analyse/screener/screener-sec-frames-server'
 
@@ -33,8 +33,25 @@ function cloudWarnungAusFehler(e: unknown, fallback: string): string {
   if (raw.includes('<!DOCTYPE html>') || raw.includes('520') || raw.includes('Web server is returning an unknown error')) {
     return 'Supabase vorübergehend nicht erreichbar (Cloudflare 520). Das Universum läuft nur im Server-Speicher — in ein paar Minuten erneut „Universum neu aufbauen“ für Cloud-Sync.'
   }
+  if (/statement timeout|canceling statement/i.test(raw)) {
+    return 'Cloud-Speichern abgebrochen (Postgres-Timeout) — Universum ist im Server-Speicher. Bitte erneut versuchen; der Snapshot ist jetzt ohne Jahres-Historie-Blob deutlich kleiner.'
+  }
   if (raw.length > 180) return `${fallback} (Antwort war kein JSON — oft kurzer Supabase-Ausfall).`
   return raw || fallback
+}
+
+function zeilenOhneHist(zeilen: ScreenerSnapshot['zeilen']): ScreenerSnapshot['zeilen'] {
+  return zeilen.map(({ hist: _hist, ...z }) => z)
+}
+
+/** Fallback nur für Alt-Snapshots ohne schema_version-Spalte — nie auf „aktuell“ raten. */
+function schemaAusZeilenHeuristik(zeilen: ScreenerZeile[]): number {
+  const probe = zeilen.find((z) => z.ticker) ?? zeilen[0]
+  if (!probe) return 1
+  if (Object.prototype.hasOwnProperty.call(probe, 'kgv5y')) return 5
+  if (Object.prototype.hasOwnProperty.call(probe, 'iroicPct')) return 4
+  if (Object.prototype.hasOwnProperty.call(probe, 'roicPct')) return 2
+  return 1
 }
 
 export async function ladeScreenerSnapshot(): Promise<ScreenerSnapshot | null> {
@@ -43,10 +60,38 @@ export async function ladeScreenerSnapshot(): Promise<ScreenerSnapshot | null> {
   try {
     const { data, error } = await createSupabaseAdmin()
       .from(TABLE)
-      .select('periode, zeilen, n, aktualisiert_am')
+      .select('periode, zeilen, n, aktualisiert_am, schema_version')
       .eq('id', SNAPSHOT_ID)
       .maybeSingle()
     if (error || !data) {
+      // Alt-Schema ohne schema_version-Spalte
+      if (error?.message?.includes('schema_version')) {
+        const alt = await createSupabaseAdmin()
+          .from(TABLE)
+          .select('periode, zeilen, n, aktualisiert_am')
+          .eq('id', SNAPSHOT_ID)
+          .maybeSingle()
+        if (alt.error || !alt.data) {
+          if (alt.error) console.warn('[screener] laden', alt.error.message)
+          return memory?.data ?? null
+        }
+        const row = alt.data as {
+          periode: string
+          zeilen: ScreenerSnapshot['zeilen']
+          n: number
+          aktualisiert_am: string
+        }
+        if (!Array.isArray(row.zeilen) || row.zeilen.length === 0) return null
+        const snap: ScreenerSnapshot = {
+          periode: row.periode,
+          n: row.n,
+          zeilen: row.zeilen,
+          aktualisiertAm: row.aktualisiert_am,
+          schemaVersion: schemaAusZeilenHeuristik(row.zeilen),
+        }
+        memory = { at: Date.now(), data: snap }
+        return snap
+      }
       if (error) console.warn('[screener] laden', error.message)
       return memory?.data ?? null
     }
@@ -55,13 +100,13 @@ export async function ladeScreenerSnapshot(): Promise<ScreenerSnapshot | null> {
       zeilen: ScreenerSnapshot['zeilen']
       n: number
       aktualisiert_am: string
+      schema_version?: number | null
     }
     if (!Array.isArray(row.zeilen) || row.zeilen.length === 0) return null
-    const schemaVersion = row.zeilen.some((z) => Object.prototype.hasOwnProperty.call(z, 'iroicPct'))
-      ? SCREENER_SCHEMA_VERSION
-      : row.zeilen.some((z) => Object.prototype.hasOwnProperty.call(z, 'roicPct'))
-        ? 2
-        : 1
+    const schemaVersion =
+      row.schema_version != null && Number.isFinite(row.schema_version)
+        ? Number(row.schema_version)
+        : schemaAusZeilenHeuristik(row.zeilen)
     const snap: ScreenerSnapshot = {
       periode: row.periode,
       n: row.n,
@@ -78,18 +123,31 @@ export async function ladeScreenerSnapshot(): Promise<ScreenerSnapshot | null> {
 }
 
 export async function speichereScreenerSnapshot(snap: ScreenerSnapshot): Promise<ScreenerCloudStatus> {
-  memory = { at: Date.now(), data: snap }
+  const schemaVersion = snap.schemaVersion ?? SCREENER_SCHEMA_VERSION
+  const schlank: ScreenerSnapshot = {
+    ...snap,
+    schemaVersion,
+    zeilen: zeilenOhneHist(snap.zeilen),
+  }
+  memory = { at: Date.now(), data: schlank }
   if (!cloudOk()) {
     return { cloudGespeichert: false, cloudWarnung: 'Supabase nicht konfiguriert — nur Server-Speicher.' }
   }
   try {
-    const { error } = await createSupabaseAdmin().from(TABLE).upsert({
+    const payload = {
       id: SNAPSHOT_ID,
-      periode: snap.periode,
-      zeilen: snap.zeilen,
-      n: snap.n,
-      aktualisiert_am: snap.aktualisiertAm,
-    })
+      periode: schlank.periode,
+      zeilen: schlank.zeilen,
+      n: schlank.n,
+      aktualisiert_am: schlank.aktualisiertAm,
+      schema_version: schemaVersion,
+    }
+    let { error } = await createSupabaseAdmin().from(TABLE).upsert(payload)
+    // Migration noch nicht angewendet → ohne schema_version speichern
+    if (error?.message?.includes('schema_version')) {
+      const { schema_version: _sv, ...ohne } = payload
+      ;({ error } = await createSupabaseAdmin().from(TABLE).upsert(ohne))
+    }
     if (error) {
       const cloudWarnung = cloudWarnungAusFehler(error, 'Cloud-Snapshot konnte nicht gespeichert werden.')
       console.warn('[screener] speichern', cloudWarnung)

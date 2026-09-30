@@ -1,6 +1,6 @@
 export type ScreenerBoerse = 'Nasdaq' | 'NYSE' | 'CBOE'
 
-export const SCREENER_SCHEMA_VERSION = 4
+export const SCREENER_SCHEMA_VERSION = 5
 
 export type ScreenerHistPunkt = {
   jahr: number
@@ -68,6 +68,12 @@ export type ScreenerZeile = {
   kgv: number | null
   kuv: number | null
   kbv: number | null
+  /** Kurs heute / Ø-EPS der letzten 5 GJ (normalisiertes KGV). */
+  kgv5y?: number | null
+  /** Marktkap heute / Ø-Umsatz 5J. */
+  kuv5y?: number | null
+  /** Marktkap heute / Ø-EK 5J. */
+  kbv5y?: number | null
   hist?: ScreenerHistPunkt[]
 }
 
@@ -110,6 +116,10 @@ export type ScreenerKennzahl =
   | 'kgv'
   | 'kuv'
   | 'kbv'
+  | 'kgv5y'
+  | 'kuv5y'
+  | 'kbv5y'
+  | 'waccPct'
 
 export type ScreenerSort = ScreenerKennzahl | 'name' | 'mantra' | 'quality' | 'ticker'
 
@@ -121,6 +131,8 @@ export type ScreenerSpanne = {
 export type ScreenerFilter = {
   suche: string
   boerse: 'alle' | ScreenerBoerse
+  /** Leerer String = alle Sektoren; sonst exakter Sektor-Name. */
+  sektor: string
   nurGewinn: boolean
   fcfPositiv: boolean
   aktienSinkend: boolean

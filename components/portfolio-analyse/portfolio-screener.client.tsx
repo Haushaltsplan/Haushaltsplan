@@ -27,11 +27,7 @@ import {
   type ScreenerSort,
   type ScreenerZeile,
 } from '@/lib/portfolio-analyse/screener/screener-types'
-import {
-  bewerteQualityCompounder,
-  qualityCompounderScore,
-  qualityVerfehlungen,
-} from '@/lib/portfolio-analyse/screener/screener-quality-compounder'
+import { bewerteQualityCompounder } from '@/lib/portfolio-analyse/screener/screener-quality-compounder'
 import {
   benenneScreenerVorlageUm,
   leseScreenerVorlagen,
@@ -63,15 +59,26 @@ type SpalteId =
   | 'ticker'
   | 'name'
   | 'boerse'
+  | 'sektor'
+  | 'industrie'
   | 'jahre'
   | 'umsatz'
+  | 'marktkap'
+  | 'cagr3'
   | 'cagr5'
+  | 'cagr10'
   | 'wachstum'
+  | 'epsCagr5'
+  | 'fcfCagr5'
+  | 'fcfJeAktieCagr'
   | 'niMarge'
+  | 'ebitMarge'
   | 'roe'
   | 'roic'
   | 'fcfMarge'
   | 'conv'
+  | 'ruleOf40'
+  | 'capex'
   | 'verw'
   | 'ndEbitda'
   | 'kgv'
@@ -80,6 +87,8 @@ type SpalteId =
   | 'mantra'
   | 'quality'
   | 'iroic'
+  | 'wacc'
+  | 'iSpread'
   | 'brutto'
   | 'reinvest'
   | 'zins'
@@ -114,18 +123,31 @@ const SPALTEN: {
   { id: 'ticker', label: 'Ticker', sort: 'ticker', defaultOn: true, immer: true },
   { id: 'name', label: 'Name', sort: 'name', defaultOn: true },
   { id: 'boerse', label: 'Börse', defaultOn: false },
+  { id: 'sektor', label: 'Sektor', defaultOn: false },
+  { id: 'industrie', label: 'Industrie', defaultOn: false },
   { id: 'jahre', label: 'Jahre', sort: 'jahreAnzahl', defaultOn: true },
   { id: 'umsatz', label: 'Umsatz', sort: 'umsatzMio', defaultOn: true },
+  { id: 'marktkap', label: 'Marktkap', sort: 'marktkapMio', defaultOn: false },
+  { id: 'cagr3', label: 'CAGR 3J', sort: 'umsatzCagr3y', defaultOn: false },
   { id: 'cagr5', label: 'CAGR 5J', sort: 'umsatzCagr5y', defaultOn: true },
+  { id: 'cagr10', label: 'CAGR 10J', sort: 'umsatzCagr10y', defaultOn: false },
   { id: 'wachstum', label: 'Umsatz 1J', sort: 'umsatzWachstumPct', defaultOn: false },
+  { id: 'epsCagr5', label: 'EPS-CAGR 5J', sort: 'epsCagr5y', defaultOn: false },
+  { id: 'fcfCagr5', label: 'FCF-CAGR 5J', sort: 'fcfCagr5y', defaultOn: false },
+  { id: 'fcfJeAktieCagr', label: 'FCF/Aktie-CAGR', sort: 'fcfJeAktieCagr5y', defaultOn: false },
   { id: 'niMarge', label: 'NI-Marge', sort: 'niMargePct', defaultOn: false },
+  { id: 'ebitMarge', label: 'EBIT-Marge', sort: 'ebitMargePct', defaultOn: false },
   { id: 'roe', label: 'ROE', sort: 'roePct', defaultOn: false },
   { id: 'roic', label: 'ROIC', sort: 'roicPct', defaultOn: true },
   { id: 'fcfMarge', label: 'FCF-Marge', sort: 'fcfMargePct', defaultOn: true },
   { id: 'conv', label: 'FCF/NI', sort: 'fcfConversionPct', defaultOn: true },
+  { id: 'ruleOf40', label: 'Rule of 40', sort: 'ruleOf40', defaultOn: false },
+  { id: 'capex', label: 'CapEx/Umsatz', sort: 'capexSalesPct', defaultOn: false },
   { id: 'verw', label: 'Verw. p.a.', sort: 'aktienVerwaesserungJaehrlichPct', defaultOn: false },
   { id: 'ndEbitda', label: 'ND/EBITDA', sort: 'netDebtEbitda', defaultOn: false },
   { id: 'iroic', label: 'iROIC', sort: 'iroicPct', defaultOn: true },
+  { id: 'wacc', label: 'WACC', sort: 'waccPct', defaultOn: false },
+  { id: 'iSpread', label: 'iROIC−WACC', sort: 'incrementalValueSpreadPct', defaultOn: false },
   { id: 'brutto', label: 'Brutto', sort: 'bruttoMargePct', defaultOn: false },
   { id: 'reinvest', label: 'Reinvest', sort: 'reinvestitionsquotePct', defaultOn: false },
   { id: 'zins', label: 'Zinsdeckung', sort: 'interestCoverage', defaultOn: false },
@@ -138,6 +160,76 @@ const SPALTEN: {
   { id: 'kurs', label: 'Kurs', defaultOn: false },
   { id: 'watch', label: '', defaultOn: true, immer: true },
 ]
+
+/** Kurze Formeln / Definitionen für Spaltenköpfe (title). */
+const SPALTEN_TOOLTIP: Partial<Record<SpalteId, string>> = {
+  roic: 'ROIC = NOPAT / Investiertes Kapital (EK + Debt − Cash)',
+  iroic: 'iROIC = ΔNOPAT / ΔIC (IC um 1 Jahr versetzt)',
+  fcfMarge: 'FCF-Marge = Free Cashflow / Umsatz',
+  conv: 'FCF-Conversion = FCF / Net Income',
+  ndEbitda: 'Net Debt / EBITDA',
+  ruleOf40: 'Rule of 40 = Umsatzwachstum % + FCF-Marge %',
+  kgv: 'KGV = Kurs / EPS; 5J = Kurs heute / Ø-EPS 5J',
+  wacc: 'WACC = gewichtete Kapitalkosten (Eigen- + Fremdkapital)',
+  quality: 'Quality-Compounder: 11 Kriterien (✓/✗/?), kein Ausschlussfilter',
+  reinvest: 'Reinvestitionsquote = CapEx / (CapEx + FCF)',
+  sbcOcf: 'SBC/OCF = aktienbasierte Vergütung / operativer Cashflow',
+}
+
+/** Welche Spalten erscheinen automatisch, wenn die Kennzahl gefiltert wird. */
+const KENNZAHL_ZU_SPALTEN: Partial<Record<ScreenerKennzahl, SpalteId[]>> = {
+  umsatzMio: ['umsatz'],
+  marktkapMio: ['marktkap'],
+  jahreAnzahl: ['jahre'],
+  roePct: ['roe'],
+  roicPct: ['roic'],
+  roic5yAvgPct: ['roic'],
+  ebitMargePct: ['ebitMarge'],
+  niMargePct: ['niMarge'],
+  fcfMargePct: ['fcfMarge'],
+  umsatzWachstumPct: ['wachstum'],
+  umsatzCagr3y: ['cagr3'],
+  umsatzCagr5y: ['cagr5'],
+  umsatzCagr10y: ['cagr10'],
+  epsCagr5y: ['epsCagr5'],
+  fcfCagr5y: ['fcfCagr5'],
+  fcfJeAktieCagr5y: ['fcfJeAktieCagr'],
+  ruleOf40: ['ruleOf40'],
+  fcfConversionPct: ['conv'],
+  capexSalesPct: ['capex'],
+  aktienVerwaesserungJaehrlichPct: ['verw'],
+  netDebtEbitda: ['ndEbitda'],
+  iroicPct: ['iroic'],
+  incrementalValueSpreadPct: ['iSpread'],
+  bruttoMargePct: ['brutto'],
+  reinvestitionsquotePct: ['reinvest'],
+  interestCoverage: ['zins'],
+  sbcOcfPct: ['sbcOcf'],
+  kgv: ['kgv'],
+  kuv: ['kuv'],
+  kbv: ['kbv'],
+  kgv5y: ['kgv'],
+  kuv5y: ['kuv'],
+  kbv5y: ['kbv'],
+  waccPct: ['wacc'],
+}
+
+function spaltenAusFilter(f: ScreenerFilter): Set<SpalteId> {
+  const out = new Set<SpalteId>()
+  for (const [k, sp] of Object.entries(f.spannen) as [ScreenerKennzahl, { min?: number | null; max?: number | null } | undefined][]) {
+    if (!sp) continue
+    if (sp.min == null && sp.max == null) continue
+    for (const id of KENNZAHL_ZU_SPALTEN[k] ?? []) out.add(id)
+  }
+  if (f.nurGewinn) out.add('niMarge')
+  if (f.fcfPositiv) out.add('fcfMarge')
+  if (f.aktienSinkend) out.add('verw')
+  if (f.conversionOderRo40) {
+    out.add('conv')
+    out.add('ruleOf40')
+  }
+  return out
+}
 
 const FILTER_TABS: { id: FilterTabId; label: string }[] = [
   { id: 'universum', label: 'Universum' },
@@ -224,6 +316,32 @@ function fmtZahl(v: number | null | undefined, stellen = 1): string {
 function fmtPct(v: number | null | undefined): string {
   if (v == null) return '–'
   return `${v.toLocaleString('de-DE', { maximumFractionDigits: 1 })} %`
+}
+
+/** Aktueller Wert + optionaler 5J-/Historien-Zusatz darunter. */
+function WertMitHist({
+  aktuell,
+  hist,
+  histLabel = '5J',
+  ton,
+  fmt = fmtPct,
+}: {
+  aktuell: number | null | undefined
+  hist?: number | null
+  histLabel?: string
+  ton?: string
+  fmt?: (v: number | null | undefined) => string
+}) {
+  return (
+    <span className={`inline-block text-right ${ton ?? ''}`}>
+      <span className="block">{fmt(aktuell)}</span>
+      {hist != null && Number.isFinite(hist) ? (
+        <span className="block text-[10px] font-normal leading-tight text-[var(--app-text-muted)]">
+          {histLabel} {fmt(hist)}
+        </span>
+      ) : null}
+    </span>
+  )
 }
 
 function pctTon(v: number | null | undefined): string {
@@ -418,9 +536,20 @@ export function PortfolioScreenerClient() {
   }, [zeilen, filter])
 
   const sichtbar = gefiltert.slice(0, 250)
-  const sichtbareSpalten = SPALTEN.filter((s) => spalten.has(s.id) || s.immer)
+  const autoSpalten = useMemo(() => spaltenAusFilter(filter), [filter])
+  const sichtbareSpalten = useMemo(() => {
+    return SPALTEN.filter((s) => spalten.has(s.id) || s.immer || autoSpalten.has(s.id))
+  }, [spalten, autoSpalten])
   const chips = useMemo(() => aktiveFilterChips(filter), [filter])
   const hatFilter = hatAktiveFilterAusserSuche(filter)
+  const sektoren = useMemo(() => {
+    const set = new Set<string>()
+    for (const z of zeilen) {
+      const s = z.sektor?.trim()
+      if (s) set.add(s)
+    }
+    return [...set].sort((a, b) => a.localeCompare(b, 'de'))
+  }, [zeilen])
 
   const merke = useCallback((z: ScreenerZeile) => {
     if (findeWatchlistIdx(ladeWatchlist(), { symbol: z.ticker }) >= 0) return
@@ -436,7 +565,7 @@ export function PortfolioScreenerClient() {
   const wendeVorlageAn = useCallback(
     (v: ScreenerEigeneVorlage) => {
       setAktiveVorlageId(v.id)
-      setFilter(kloneFilter({ ...v.filter, suche: filter.suche }))
+      setFilter(kloneFilter({ ...v.filter, suche: filter.suche, sektor: v.filter.sektor ?? '' }))
       const ausVorlage = spaltenAusVorlage(v.spalten)
       if (ausVorlage) {
         setSpalten(ausVorlage)
@@ -463,41 +592,67 @@ export function PortfolioScreenerClient() {
       'Ticker',
       'Name',
       'Börse',
+      'Sektor',
+      'Industrie',
       'Jahre',
       'Umsatz Mio',
+      'Marktkap Mio',
       'CAGR 5J',
       'ROIC',
+      'ROIC 5J',
       'iROIC',
+      'WACC',
+      'iROIC−WACC',
       'Brutto',
       'FCF-Marge',
       'FCF/NI',
+      'Rule of 40',
       'Reinvest',
       'ND/EBITDA',
       'Zins',
       'SBC/OCF',
       'KGV',
+      'KGV 5J',
+      'KUV',
+      'KUV 5J',
+      'KBV',
+      'KBV 5J',
       'Quality',
     ]
     const zeilenCsv = gefiltert.map((z) => {
-      const qc = qualityCompounderScore(z)
+      const qcListe = bewerteQualityCompounder(z)
+      let ok = 0
+      for (const e of qcListe) if (e.ok === true) ok++
       return [
         z.ticker,
         z.name,
         z.boerse,
+        z.sektor ?? '',
+        z.industrie ?? '',
         z.jahreAnzahl,
         z.umsatzMio,
+        z.marktkapMio,
         z.umsatzCagr5y,
         z.roicPct,
+        z.roic5yAvgPct,
         z.iroicPct,
+        z.waccPct,
+        z.incrementalValueSpreadPct,
         z.bruttoMargePct,
         z.fcfMargePct,
         z.fcfConversionPct,
+        z.ruleOf40,
         z.reinvestitionsquotePct,
         z.netDebtEbitda,
         z.interestCoverage,
         z.sbcOcfPct,
         z.kgv,
-        `${qc.ok}/${qc.n}`,
+        z.kgv5y,
+        z.kuv,
+        z.kuv5y,
+        z.kbv,
+        z.kbv5y,
+        `${ok}/${qcListe.length}`,
       ]
         .map(csvZelle)
         .join(';')
@@ -586,7 +741,7 @@ export function PortfolioScreenerClient() {
         ) : null}
         {schemaAlt ? (
           <p className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-100">
-            Universum ohne neuere Kennzahlen (iROIC, Brutto, Zins, SBC/OCF). Einmal „Universum neu aufbauen“.
+            Universum ohne Schema v5 (KGV5y, IC−Cash, iROIC-Lag u. a.). Einmal „Universum neu aufbauen“.
           </p>
         ) : null}
 
@@ -675,7 +830,15 @@ export function PortfolioScreenerClient() {
             ))}
             <button
               type="button"
-              onClick={() => setFilter({ ...leerScreenerFilter(), suche: filter.suche, sort: filter.sort, sortAsc: filter.sortAsc })}
+              onClick={() =>
+                setFilter({
+                  ...leerScreenerFilter(),
+                  suche: filter.suche,
+                  sort: filter.sort,
+                  sortAsc: filter.sortAsc,
+                  sektor: '',
+                })
+              }
               className="text-[11px] text-[var(--app-text-muted)] underline hover:text-rose-200"
             >
               alle löschen
@@ -688,7 +851,7 @@ export function PortfolioScreenerClient() {
           <div className="flex flex-wrap items-center gap-2">
             <input
               value={filter.suche}
-              onChange={(e) => setFilter({ ...filter, suche: e.target.value })}
+              onChange={(e) => setFilter({ ...filter, sektor: filter.sektor ?? '', suche: e.target.value })}
               placeholder="Suche: Ticker, Name, Sektor …"
               className={`${INPUT} max-w-sm`}
             />
@@ -700,6 +863,7 @@ export function PortfolioScreenerClient() {
                   const sort = e.target.value as ScreenerSort
                   setFilter({
                     ...filter,
+                    sektor: filter.sektor ?? '',
                     sort,
                     sortAsc: sortierungIstAufsteigendDefault(sort),
                   })
@@ -715,7 +879,7 @@ export function PortfolioScreenerClient() {
             </label>
             <button
               type="button"
-              onClick={() => setFilter({ ...filter, sortAsc: !filter.sortAsc })}
+              onClick={() => setFilter({ ...filter, sektor: filter.sektor ?? '', sortAsc: !filter.sortAsc })}
               className={BTN}
               title="Sortierrichtung"
             >
@@ -751,7 +915,13 @@ export function PortfolioScreenerClient() {
                     Börse
                     <select
                       value={filter.boerse}
-                      onChange={(e) => setFilter({ ...filter, boerse: e.target.value as ScreenerFilter['boerse'] })}
+                      onChange={(e) =>
+                        setFilter({
+                          ...filter,
+                          sektor: filter.sektor ?? '',
+                          boerse: e.target.value as ScreenerFilter['boerse'],
+                        })
+                      }
                       className={`mt-1 ${INPUT}`}
                     >
                       <option value="alle">Nasdaq + NYSE + CBOE</option>
@@ -760,10 +930,28 @@ export function PortfolioScreenerClient() {
                       <option value="CBOE">CBOE</option>
                     </select>
                   </label>
+                  <label className="block text-[11px] text-[var(--app-text-muted)]">
+                    Sektor
+                    <select
+                      value={filter.sektor ?? ''}
+                      onChange={(e) => setFilter({ ...filter, sektor: e.target.value })}
+                      className={`mt-1 ${INPUT}`}
+                    >
+                      <option value="">Alle Sektoren</option>
+                      {sektoren.map((s) => (
+                        <option key={s} value={s}>
+                          {s}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
                   <SpanneFeld label="Historie (Jahre)" kennzahl="jahreAnzahl" filter={filter} onFilter={setFilter} />
                   <SpanneFeld label="Umsatz (Mio $)" kennzahl="umsatzMio" filter={filter} onFilter={setFilter} />
                   <SpanneFeld label="Marktkap (Mio $)" kennzahl="marktkapMio" filter={filter} onFilter={setFilter} />
-                  <CheckFeld checked={filter.lueckenErlaubt} onChange={(v) => setFilter({ ...filter, lueckenErlaubt: v })}>
+                  <CheckFeld
+                    checked={filter.lueckenErlaubt}
+                    onChange={(v) => setFilter({ ...filter, sektor: filter.sektor ?? '', lueckenErlaubt: v })}
+                  >
                     unvollständige Zeilen behalten
                   </CheckFeld>
                 </div>
@@ -889,13 +1077,30 @@ export function PortfolioScreenerClient() {
               ) : null}
 
               {filterTab === 'spalten' ? (
-                <div className="flex flex-wrap gap-x-3 gap-y-2">
-                  {SPALTEN.filter((s) => !s.immer).map((s) => (
-                    <label key={s.id} className="inline-flex items-center gap-1.5 text-xs text-[var(--app-text)]">
-                      <input type="checkbox" checked={spalten.has(s.id)} onChange={() => toggleSpalte(s.id)} />
-                      {s.label}
-                    </label>
-                  ))}
+                <div className="space-y-2">
+                  <p className="text-[11px] text-[var(--app-text-muted)]">
+                    Aktive Filter blenden zugehörige Spalten automatisch ein (● in der Tabelle). Hier feste Spalten
+                    setzen — ROIC/NI-Marge sowie KGV/KUV/KBV zeigen zusätzlich 5J darunter.
+                  </p>
+                  <div className="flex flex-wrap gap-x-3 gap-y-2">
+                    {SPALTEN.filter((s) => !s.immer).map((s) => {
+                      const auto = autoSpalten.has(s.id)
+                      return (
+                        <label key={s.id} className="inline-flex items-center gap-1.5 text-xs text-[var(--app-text)]">
+                          <input
+                            type="checkbox"
+                            checked={spalten.has(s.id) || auto}
+                            disabled={auto && !spalten.has(s.id)}
+                            onChange={() => toggleSpalte(s.id)}
+                          />
+                          {s.label}
+                          {auto && !spalten.has(s.id) ? (
+                            <span className="text-[10px] text-teal-300/80">Filter</span>
+                          ) : null}
+                        </label>
+                      )
+                    })}
+                  </div>
                 </div>
               ) : null}
             </div>
@@ -911,42 +1116,85 @@ export function PortfolioScreenerClient() {
             <table className={PA_TABLE_COMPACT}>
               <thead>
                 <tr>
-                  {sichtbareSpalten.map((s) => (
-                    <th
-                      key={s.id}
-                      className={s.id === 'ticker' || s.id === 'name' || s.id === 'quality' ? '' : 'text-right'}
-                    >
-                      {s.sort ? (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            if (filter.sort === s.sort) setFilter({ ...filter, sortAsc: !filter.sortAsc })
-                            else {
-                              setFilter({
-                                ...filter,
-                                sort: s.sort!,
-                                sortAsc: sortierungIstAufsteigendDefault(s.sort!),
-                              })
-                            }
-                          }}
-                          className="hover:text-teal-200"
-                        >
-                          {s.label || '·'}
-                          {filter.sort === s.sort ? (filter.sortAsc ? ' ↑' : ' ↓') : ''}
-                        </button>
-                      ) : (
-                        s.label
-                      )}
-                    </th>
-                  ))}
+                  {sichtbareSpalten.map((s) => {
+                    const viaFilter = autoSpalten.has(s.id) && !spalten.has(s.id) && !s.immer
+                    const label =
+                      s.id === 'roic'
+                        ? 'ROIC'
+                        : s.id === 'niMarge'
+                          ? 'NI-Marge'
+                          : s.id === 'kgv'
+                            ? 'KGV'
+                            : s.id === 'kuv'
+                              ? 'KUV'
+                              : s.id === 'kbv'
+                                ? 'KBV'
+                                : s.label
+                    const mitHist =
+                      s.id === 'roic' || s.id === 'niMarge' || s.id === 'kgv' || s.id === 'kuv' || s.id === 'kbv'
+                    const tip =
+                      SPALTEN_TOOLTIP[s.id] ?? (viaFilter ? 'Spalte wegen aktivem Filter' : undefined)
+                    return (
+                      <th
+                        key={s.id}
+                        className={
+                          s.id === 'ticker' ||
+                          s.id === 'name' ||
+                          s.id === 'sektor' ||
+                          s.id === 'industrie' ||
+                          s.id === 'quality'
+                            ? ''
+                            : 'text-right'
+                        }
+                        title={!s.sort ? tip : undefined}
+                      >
+                        {s.sort ? (
+                          <button
+                            type="button"
+                            title={tip}
+                            onClick={() => {
+                              if (filter.sort === s.sort)
+                                setFilter({ ...filter, sektor: filter.sektor ?? '', sortAsc: !filter.sortAsc })
+                              else {
+                                setFilter({
+                                  ...filter,
+                                  sektor: filter.sektor ?? '',
+                                  sort: s.sort!,
+                                  sortAsc: sortierungIstAufsteigendDefault(s.sort!),
+                                })
+                              }
+                            }}
+                            className={viaFilter ? 'text-teal-200/90 hover:text-teal-100' : 'hover:text-teal-200'}
+                          >
+                            {label || '·'}
+                            {mitHist ? (
+                              <span className="ml-0.5 text-[10px] font-normal text-[var(--app-text-muted)]">/5J</span>
+                            ) : null}
+                            {viaFilter ? <span className="ml-0.5 text-[9px] text-teal-300/70">●</span> : null}
+                            {filter.sort === s.sort ? (filter.sortAsc ? ' ↑' : ' ↓') : ''}
+                          </button>
+                        ) : (
+                          label
+                        )}
+                      </th>
+                    )
+                  })}
                 </tr>
               </thead>
               <tbody>
                 {sichtbar.map((z) => {
                   const mantra = zaehleMantraTreffer(z)
                   const qcListe = bewerteQualityCompounder(z)
-                  const qcScore = qualityCompounderScore(z)
-                  const qcFehl = qualityVerfehlungen(z)
+                  let qcOk = 0
+                  let qcFehlN = 0
+                  let qcLuecke = 0
+                  for (const e of qcListe) {
+                    if (e.ok === true) qcOk++
+                    else if (e.ok === false) qcFehlN++
+                    else qcLuecke++
+                  }
+                  const qcScore = { ok: qcOk, fehl: qcFehlN, luecke: qcLuecke, n: qcListe.length }
+                  const qcFehl = qcListe.filter((e) => e.ok === false)
                   const qc = Object.fromEntries(qcListe.map((e) => [e.id, e])) as Record<
                     string,
                     (typeof qcListe)[number]
@@ -967,6 +1215,19 @@ export function PortfolioScreenerClient() {
                       </span>
                     ),
                     boerse: <span className="text-[var(--app-text-muted)]">{z.boerse}</span>,
+                    sektor: (
+                      <span className="block max-w-[10rem] truncate text-[var(--app-text-muted)]" title={z.sektor ?? undefined}>
+                        {z.sektor?.trim() || '–'}
+                      </span>
+                    ),
+                    industrie: (
+                      <span
+                        className="block max-w-[10rem] truncate text-[var(--app-text-muted)]"
+                        title={z.industrie ?? undefined}
+                      >
+                        {z.industrie?.trim() || '–'}
+                      </span>
+                    ),
                     jahre: (
                       <span className="text-[var(--app-text-muted)]">
                         {z.jahreAnzahl}
@@ -978,23 +1239,42 @@ export function PortfolioScreenerClient() {
                       </span>
                     ),
                     umsatz: fmtMio(z.umsatzMio),
+                    marktkap: fmtMio(z.marktkapMio),
+                    cagr3: <span className={pctTon(z.umsatzCagr3y)}>{fmtPct(z.umsatzCagr3y)}</span>,
                     cagr5: (
                       <span className={mark ? qcKlasse(qc.umsatzCagr?.ok, pctTon(z.umsatzCagr5y)) : pctTon(z.umsatzCagr5y)}>
                         {fmtPct(z.umsatzCagr5y)}
                       </span>
                     ),
+                    cagr10: <span className={pctTon(z.umsatzCagr10y)}>{fmtPct(z.umsatzCagr10y)}</span>,
                     wachstum: <span className={pctTon(z.umsatzWachstumPct)}>{fmtPct(z.umsatzWachstumPct)}</span>,
-                    niMarge: <span className={pctTon(z.niMargePct)}>{fmtPct(z.niMargePct)}</span>,
+                    epsCagr5: <span className={pctTon(z.epsCagr5y)}>{fmtPct(z.epsCagr5y)}</span>,
+                    fcfCagr5: <span className={pctTon(z.fcfCagr5y)}>{fmtPct(z.fcfCagr5y)}</span>,
+                    fcfJeAktieCagr: <span className={pctTon(z.fcfJeAktieCagr5y)}>{fmtPct(z.fcfJeAktieCagr5y)}</span>,
+                    niMarge: (
+                      <WertMitHist
+                        aktuell={z.niMargePct}
+                        hist={z.niMargeMedian}
+                        histLabel="Med"
+                        ton={pctTon(z.niMargePct)}
+                      />
+                    ),
+                    ebitMarge: <span className={pctTon(z.ebitMargePct)}>{fmtPct(z.ebitMargePct)}</span>,
                     roe: <span className={pctTon(z.roePct)}>{fmtPct(z.roePct)}</span>,
                     roic: (
-                      <span className={mark ? qcKlasse(qc.roic5y?.ok, pctTon(z.roicPct)) : pctTon(z.roicPct)}>
-                        {fmtPct(z.roicPct)}
-                      </span>
+                      <WertMitHist
+                        aktuell={z.roicPct}
+                        hist={z.roic5yAvgPct}
+                        histLabel="5J"
+                        ton={pctTon(z.roicPct)}
+                      />
                     ),
                     fcfMarge: <span className={pctTon(z.fcfMargePct)}>{fmtPct(z.fcfMargePct)}</span>,
                     conv: (
                       <span className={mark ? qcKlasse(qc.conv?.ok, '') : undefined}>{fmtPct(z.fcfConversionPct)}</span>
                     ),
+                    ruleOf40: <span className={pctTon(z.ruleOf40)}>{fmtZahl(z.ruleOf40, 1)}</span>,
+                    capex: fmtPct(z.capexSalesPct),
                     verw: (
                       <span
                         className={pctTon(
@@ -1014,6 +1294,12 @@ export function PortfolioScreenerClient() {
                         {fmtPct(z.iroicPct)}
                       </span>
                     ),
+                    wacc: <span className="text-[var(--app-text-muted)]">{fmtPct(z.waccPct)}</span>,
+                    iSpread: (
+                      <span className={pctTon(z.incrementalValueSpreadPct)}>
+                        {fmtPct(z.incrementalValueSpreadPct)}
+                      </span>
+                    ),
                     brutto: (
                       <span className={mark ? qcKlasse(qc.brutto?.ok, '') : undefined}>{fmtPct(z.bruttoMargePct)}</span>
                     ),
@@ -1030,11 +1316,34 @@ export function PortfolioScreenerClient() {
                     sbcOcf: (
                       <span className={mark ? qcKlasse(qc.sbc?.ok, '') : undefined}>{fmtPct(z.sbcOcfPct)}</span>
                     ),
-                    kgv: fmtZahl(z.kgv),
-                    kuv: fmtZahl(z.kuv),
-                    kbv: fmtZahl(z.kbv),
+                    kgv: (
+                      <WertMitHist
+                        aktuell={z.kgv}
+                        hist={z.kgv5y}
+                        histLabel="5J"
+                        fmt={(v) => fmtZahl(v, 1)}
+                      />
+                    ),
+                    kuv: (
+                      <WertMitHist
+                        aktuell={z.kuv}
+                        hist={z.kuv5y}
+                        histLabel="5J"
+                        fmt={(v) => fmtZahl(v, 1)}
+                      />
+                    ),
+                    kbv: (
+                      <WertMitHist
+                        aktuell={z.kbv}
+                        hist={z.kbv5y}
+                        histLabel="5J"
+                        fmt={(v) => fmtZahl(v, 1)}
+                      />
+                    ),
                     mantra: (
-                      <span title="ROIC, Conversion/Ro40, ND/EBITDA, Verwässerung, FCF-Marge">{mantra}/5</span>
+                      <span title="ROIC≥15; Conv≥80 ODER Ro40≥40; ND/EBITDA&lt;2; Verw.&lt;2 %; FCF-Marge≥12">
+                        {mantra}/5
+                      </span>
                     ),
                     quality: (
                       <span
@@ -1072,7 +1381,12 @@ export function PortfolioScreenerClient() {
                         <td
                           key={s.id}
                           className={
-                            s.id === 'ticker' || s.id === 'name' || s.id === 'boerse' || s.id === 'quality'
+                            s.id === 'ticker' ||
+                            s.id === 'name' ||
+                            s.id === 'boerse' ||
+                            s.id === 'sektor' ||
+                            s.id === 'industrie' ||
+                            s.id === 'quality'
                               ? ''
                               : 'text-right tabular-nums'
                           }
@@ -1093,7 +1407,9 @@ export function PortfolioScreenerClient() {
           </p>
         ) : null}
         <p className="text-xs leading-relaxed text-[var(--app-text-muted)]">
-          GuV/Bilanz: SEC EDGAR Frames. Kurs/Multiples: Yahoo. Quality zählt 11 Compounder-Punkte ohne auszufiltern.
+          GuV/Bilanz: SEC EDGAR Frames. Kurs/Multiples: Yahoo. Gefilterte Kennzahlen erscheinen als Spalten; ROIC zeigt
+          LTM + 5J-Schnitt, NI-Marge LTM + Median, KGV/KUV/KBV aktuell + normalisiert (Kurs/Marktkap heute ÷ Ø 5J EPS/Umsatz/EK).
+          Quality zählt 11 Punkte ohne auszufiltern.
         </p>
       </PaCard>
     </PortfolioAnalyseShell>

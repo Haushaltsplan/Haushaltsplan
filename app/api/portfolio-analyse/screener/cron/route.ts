@@ -2,12 +2,15 @@ import { NextResponse } from 'next/server'
 import { erneuereScreenerSnapshot } from '@/lib/portfolio-analyse/screener/screener-snapshot-server'
 
 export const dynamic = 'force-dynamic'
-export const maxDuration = 180
+export const maxDuration = 300
 
 export async function GET(req: Request) {
   const authHeader = req.headers.get('authorization')
-  const secret = process.env.CRON_SECRET
-  if (secret && authHeader !== `Bearer ${secret}`) {
+  const secret = process.env.CRON_SECRET?.trim()
+  if (!secret) {
+    return NextResponse.json({ ok: false, fehler: 'CRON_SECRET fehlt.' }, { status: 503 })
+  }
+  if (authHeader !== `Bearer ${secret}`) {
     return NextResponse.json({ ok: false, fehler: 'Unauthorized' }, { status: 401 })
   }
   try {

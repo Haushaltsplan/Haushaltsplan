@@ -5,7 +5,7 @@ import {
 } from '@/lib/portfolio-analyse/screener/screener-snapshot-server'
 
 export const dynamic = 'force-dynamic'
-export const maxDuration = 180
+export const maxDuration = 300
 
 function paketFuerClient(
   snap: NonNullable<Awaited<ReturnType<typeof ladeScreenerSnapshot>>>,

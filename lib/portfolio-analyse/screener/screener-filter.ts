@@ -11,6 +11,7 @@ export function leerScreenerFilter(): ScreenerFilter {
   return {
     suche: '',
     boerse: 'alle',
+    sektor: '',
     nurGewinn: false,
     fcfPositiv: false,
     aktienSinkend: false,
@@ -43,6 +44,10 @@ function kennzahl(z: ScreenerZeile, k: ScreenerKennzahl): number | null {
 
 export function passtScreenerFilter(z: ScreenerZeile, f: ScreenerFilter): boolean {
   if (f.boerse !== 'alle' && z.boerse !== f.boerse) return false
+  if (f.sektor.trim()) {
+    const soll = f.sektor.trim().toLowerCase()
+    if ((z.sektor ?? '').trim().toLowerCase() !== soll) return false
+  }
   if (f.nurGewinn && !(z.niMio != null && z.niMio > 0)) return false
   if (f.fcfPositiv && !(z.fcfMio != null && z.fcfMio > 0)) return false
   if (f.ekPositiv && !(z.ekMio != null && z.ekMio > 0)) return false
@@ -80,7 +85,20 @@ export function passtScreenerFilter(z: ScreenerZeile, f: ScreenerFilter): boolea
   return true
 }
 
-const SORT_ASC_DEFAULT = new Set<ScreenerSort>(['kgv', 'kuv', 'kbv', 'name', 'ticker', 'aktienVerwaesserungJaehrlichPct', 'netDebtEbitda', 'capexSalesPct', 'sbcOcfPct'])
+const SORT_ASC_DEFAULT = new Set<ScreenerSort>([
+  'kgv',
+  'kuv',
+  'kbv',
+  'kgv5y',
+  'kuv5y',
+  'kbv5y',
+  'name',
+  'ticker',
+  'aktienVerwaesserungJaehrlichPct',
+  'netDebtEbitda',
+  'capexSalesPct',
+  'sbcOcfPct',
+])
 
 export function sortierungIstAufsteigendDefault(sort: ScreenerSort): boolean {
   return SORT_ASC_DEFAULT.has(sort)
@@ -111,11 +129,11 @@ export function sortiereScreenerZeilen(zeilen: ScreenerZeile[], sort: ScreenerSo
   return out
 }
 
-/** Fünf quantitative Mantra-Punkte (ohne LTV/CAC). */
+/** Fünf quantitative Mantra-Punkte (ohne LTV/CAC). Conv-Schwelle = Quality (80 %). */
 export function zaehleMantraTreffer(z: ScreenerZeile): number {
   let n = 0
   if (z.roicPct != null && z.roicPct >= 15) n++
-  const convOk = z.fcfConversionPct != null && z.fcfConversionPct >= 90
+  const convOk = z.fcfConversionPct != null && z.fcfConversionPct >= 80
   const ro40Ok = z.ruleOf40 != null && z.ruleOf40 >= 40
   if (convOk || ro40Ok) n++
   if (z.netDebtEbitda != null && z.netDebtEbitda < 2) n++
@@ -140,6 +158,7 @@ export function normalisiereFilter(f: ScreenerFilter): ScreenerFilter {
   return {
     suche: f.suche,
     boerse: f.boerse,
+    sektor: f.sektor ?? '',
     nurGewinn: f.nurGewinn,
     fcfPositiv: f.fcfPositiv,
     aktienSinkend: f.aktienSinkend,
@@ -201,6 +220,10 @@ export const SCREENER_KENNZAHL_LABEL: Record<ScreenerKennzahl, string> = {
   kgv: 'KGV',
   kuv: 'KUV',
   kbv: 'KBV',
+  kgv5y: 'KGV 5J',
+  kuv5y: 'KUV 5J',
+  kbv5y: 'KBV 5J',
+  waccPct: 'WACC %',
 }
 
 export type ScreenerFilterChip = {
@@ -221,6 +244,13 @@ export function aktiveFilterChips(f: ScreenerFilter): ScreenerFilterChip[] {
       id: 'boerse',
       label: f.boerse,
       entferne: (x) => ({ ...x, boerse: 'alle' }),
+    })
+  }
+  if (f.sektor.trim()) {
+    chips.push({
+      id: 'sektor',
+      label: `Sektor: ${f.sektor.trim()}`,
+      entferne: (x) => ({ ...x, sektor: '' }),
     })
   }
   if (f.nurGewinn) {
@@ -320,6 +350,10 @@ export const SCREENER_KENNZAHLEN: ScreenerKennzahl[] = [
   'kgv',
   'kuv',
   'kbv',
+  'kgv5y',
+  'kuv5y',
+  'kbv5y',
+  'waccPct',
 ]
 
 const KENNZAHL_SET = new Set<string>(SCREENER_KENNZAHLEN)
@@ -366,6 +400,7 @@ export function parseScreenerFilter(raw: unknown): ScreenerFilter {
   return {
     suche: typeof r.suche === 'string' ? r.suche : '',
     boerse: boerse === 'Nasdaq' || boerse === 'NYSE' || boerse === 'CBOE' || boerse === 'alle' ? boerse : 'alle',
+    sektor: typeof r.sektor === 'string' ? r.sektor : '',
     nurGewinn: r.nurGewinn === true,
     fcfPositiv: r.fcfPositiv === true,
     aktienSinkend: r.aktienSinkend === true,
@@ -373,7 +408,10 @@ export function parseScreenerFilter(raw: unknown): ScreenerFilter {
     lueckenErlaubt: r.lueckenErlaubt === true,
     conversionOderRo40,
     sort,
-    sortAsc: r.sortAsc === true,
+    sortAsc:
+      typeof r.sortAsc === 'boolean'
+        ? r.sortAsc
+        : sortierungIstAufsteigendDefault(sort),
     spannen,
   }
 }
