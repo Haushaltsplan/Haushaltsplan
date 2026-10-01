@@ -217,8 +217,8 @@ async function sleepMs(ms: number) {
 }
 
 /**
- * Ein Frames-Endpoint — bei 429/503/5xx so lange retryen, bis die SEC antwortet.
- * 404 = Tag/Jahr existiert nicht (leere Map). Nie stillschweigend abbrechen.
+ * Ein Frames-Endpoint — bei 429/503/5xx retryen.
+ * 404 / hartnäckiges Rate-Limit → leere Map (Jahr/Tag fehlt), Build läuft weiter.
  */
 async function ladeFrame(taxonomy: string, tag: string, unit: string, periode: string): Promise<Map<number, number>> {
   const url = `https://data.sec.gov/api/xbrl/frames/${taxonomy}/${tag}/${unit}/${periode}.json`
@@ -247,7 +247,8 @@ async function ladeFrame(taxonomy: string, tag: string, unit: string, periode: s
     }
     return out
   }
-  throw new Error(`SEC Frame nach Retries ohne Antwort: ${taxonomy}/${tag}/${periode}`)
+  console.warn(`[screener] SEC Frame nach Retries übersprungen: ${taxonomy}/${tag}/${periode}`)
+  return out
 }
 
 function mergen(primaer: Map<number, number>, ...rest: Map<number, number>[]): Map<number, number> {
