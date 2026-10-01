@@ -14,7 +14,7 @@ export async function GET(req: Request) {
     return NextResponse.json({ ok: false, fehler: 'Unauthorized' }, { status: 401 })
   }
   try {
-    const ergebnis = await erneuereScreenerSnapshot()
+    const ergebnis = await erneuereScreenerSnapshot({ budgetMs: 240_000 })
     return NextResponse.json({
       ok: true,
       n: ergebnis.n,

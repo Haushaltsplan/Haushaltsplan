@@ -599,56 +599,47 @@ export function PortfolioScreenerClient() {
     setErneuern(true)
     setFehler(null)
     setCloudWarnung(null)
-    setBuildProgress('Starte SEC-Universum…')
+    setBuildProgress('Lade SEC-Frames (neueste Jahre zuerst)…')
     try {
       const res = await fetch('/api/portfolio-analyse/screener', { method: 'POST' })
-      if (!res.ok || !res.body) {
-        const text = await res.text()
-        throw new Error(text.replace(/\s+/g, ' ').trim().slice(0, 200) || `HTTP ${res.status}`)
+      const text = await res.text()
+      let start: ApiAntwort
+      try {
+        start = JSON.parse(text) as ApiAntwort
+      } catch {
+        const kurz = text.replace(/\s+/g, ' ').trim().slice(0, 160)
+        throw new Error(
+          /an error occurred|timeout/i.test(kurz) || res.status >= 500
+            ? 'Server-Timeout beim Universum-Aufbau. Bitte in 1 Minute erneut versuchen.'
+            : kurz || `Ungültige Server-Antwort (HTTP ${res.status}).`,
+        )
       }
-      const reader = res.body.getReader()
-      const dec = new TextDecoder()
-      let buf = ''
-      let fertig: ApiAntwort | null = null
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
-        buf += dec.decode(value, { stream: true })
-        const lines = buf.split('\n')
-        buf = lines.pop() ?? ''
-        for (const line of lines) {
-          const t = line.trim()
-          if (!t) continue
-          let msg: ApiAntwort & { phase?: string; message?: string; jahr?: number }
-          try {
-            msg = JSON.parse(t) as ApiAntwort & { phase?: string; message?: string; jahr?: number }
-          } catch {
-            continue
-          }
-          if (msg.phase === 'error' || msg.ok === false) {
-            throw new Error(msg.message ?? 'Universum-Aufbau fehlgeschlagen.')
-          }
-          if (msg.message) setBuildProgress(msg.message)
-          else if (msg.phase === 'jahr' && msg.jahr != null) setBuildProgress(`SEC CY${msg.jahr}…`)
-          if (msg.phase === 'done' && msg.ok) fertig = msg
-        }
+      if (!res.ok || !start.ok) throw new Error(start.message ?? 'Universum konnte nicht geladen werden.')
+
+      setBuildProgress('Lade fertiges Universum…')
+      const pollRes = await fetch('/api/portfolio-analyse/screener?frisch=1', { cache: 'no-store' })
+      const pollText = await pollRes.text()
+      let poll: ApiAntwort
+      try {
+        poll = JSON.parse(pollText) as ApiAntwort
+      } catch {
+        throw new Error('Universum gespeichert, aber Abruf fehlgeschlagen — Seite neu laden.')
       }
-      if (buf.trim()) {
-        try {
-          const msg = JSON.parse(buf.trim()) as ApiAntwort & { phase?: string }
-          if (msg.phase === 'error' || msg.ok === false) throw new Error(msg.message ?? 'Universum-Aufbau fehlgeschlagen.')
-          if (msg.phase === 'done' && msg.ok) fertig = msg
-        } catch (e) {
-          if (e instanceof Error && e.message.includes('Universum')) throw e
-        }
+      if (!pollRes.ok || !poll.ok || !(poll.zeilen?.length)) {
+        throw new Error(poll.message ?? 'Universum leer nach Aufbau — bitte erneut versuchen.')
       }
-      if (!fertig?.zeilen?.length) {
-        throw new Error('Universum-Aufbau ohne Ergebnis beendet — bitte erneut versuchen.')
-      }
-      uebernehme(fertig)
+      uebernehme(poll)
       setBuildProgress(null)
     } catch (e) {
-      setFehler(e instanceof Error ? e.message : 'Universum konnte nicht geladen werden.')
+      const raw = e instanceof Error ? e.message : String(e)
+      const netz =
+        /failed to fetch|networkerror|load failed|network request failed/i.test(raw) ||
+        (e instanceof TypeError && /fetch/i.test(raw))
+      setFehler(
+        netz
+          ? 'Netzwerkabbruch (Verbindung zum Server gerissen). Bitte erneut „Universum neu aufbauen“ — der Lauf ist kürzer und ohne Stream.'
+          : raw || 'Universum konnte nicht geladen werden.',
+      )
       setBuildProgress(null)
     } finally {
       setErneuern(false)

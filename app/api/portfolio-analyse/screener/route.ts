@@ -3,7 +3,6 @@ import {
   erneuereScreenerSnapshot,
   ladeScreenerSnapshot,
 } from '@/lib/portfolio-analyse/screener/screener-snapshot-server'
-import type { ScreenerBuildProgress } from '@/lib/portfolio-analyse/screener/screener-sec-frames-server'
 
 export const dynamic = 'force-dynamic'
 /** SEC-Frame-Historie braucht Pacing — Pro-Plan-Maximum. */
@@ -52,48 +51,30 @@ export async function GET(req: Request) {
 }
 
 /**
- * NDJSON-Stream: hält die HTTP-Verbindung offen (kein Proxy-Idle-Timeout),
- * sendet Fortschritt pro Jahr, am Ende das fertige Universum.
+ * Synchroner Build, kurze JSON-Antwort (ohne Zeilen-Blob).
+ * Client lädt danach GET ?frisch=1 — vermeidet Stream-/Network-Abbruch bei Multi-MB-Payload.
+ * budgetMs hält den Lauf unter typischen Proxy-Limits; neueste Jahre zuerst.
  */
 export async function POST() {
-  const encoder = new TextEncoder()
-  const stream = new ReadableStream<Uint8Array>({
-    async start(controller) {
-      const send = (obj: Record<string, unknown>) => {
-        controller.enqueue(encoder.encode(`${JSON.stringify(obj)}\n`))
-      }
-      try {
-        send({ ok: true, phase: 'start', message: 'Universum-Aufbau gestartet…' })
-        const ergebnis = await erneuereScreenerSnapshot({
-          onProgress: (p: ScreenerBuildProgress) => {
-            send({ ok: true, ...p })
-          },
-          budgetMs: 210_000,
-        })
-        const { cloudGespeichert, cloudWarnung, ...snap } = ergebnis
-        send({
-          ...paketFuerClient(snap, { cloudGespeichert, cloudWarnung }),
-          phase: 'done',
-          message: `Fertig: ${snap.n.toLocaleString('de-DE')} Titel (${snap.periode}).`,
-        })
-      } catch (e) {
-        console.error('[screener] POST', e)
-        const msg = e instanceof Error ? e.message : 'Universum konnte nicht geladen werden.'
-        const kurz = msg.includes('<!DOCTYPE')
-          ? 'SEC-Universum fehlgeschlagen — unerwartete HTML-Antwort (Netzwerk/Proxy?).'
-          : msg.slice(0, 300)
-        send({ ok: false, phase: 'error', message: kurz })
-      } finally {
-        controller.close()
-      }
-    },
-  })
-
-  return new Response(stream, {
-    headers: {
-      'Content-Type': 'application/x-ndjson; charset=utf-8',
-      'Cache-Control': 'no-store, no-transform',
-      'X-Content-Type-Options': 'nosniff',
-    },
-  })
+  try {
+    const ergebnis = await erneuereScreenerSnapshot({ budgetMs: 100_000 })
+    return NextResponse.json({
+      ok: true,
+      phase: 'done',
+      periode: ergebnis.periode,
+      aktualisiertAm: ergebnis.aktualisiertAm,
+      n: ergebnis.n,
+      schemaVersion: ergebnis.schemaVersion ?? 1,
+      cloudGespeichert: ergebnis.cloudGespeichert,
+      cloudWarnung: ergebnis.cloudWarnung,
+      message: `Fertig: ${ergebnis.n.toLocaleString('de-DE')} Titel (${ergebnis.periode}).`,
+    })
+  } catch (e) {
+    console.error('[screener] POST', e)
+    const msg = e instanceof Error ? e.message : 'Universum konnte nicht geladen werden.'
+    const kurz = msg.includes('<!DOCTYPE')
+      ? 'SEC-Universum fehlgeschlagen — unerwartete HTML-Antwort (Netzwerk/Proxy?).'
+      : msg.slice(0, 300)
+    return NextResponse.json({ ok: false, message: kurz }, { status: 500 })
+  }
 }
