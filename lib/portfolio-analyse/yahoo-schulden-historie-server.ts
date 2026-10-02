@@ -150,7 +150,7 @@ export async function ladeYahooSchuldenHistorie(symbol: string): Promise<YahooSc
 
 const MATCH_TOLERANZ_MS = 45 * 24 * 3600 * 1000
 
-/** Findet Yahoo-Jahr zur FY-ISO (±45 Tage, sonst gleiches Kalenderjahr). */
+/** Findet Yahoo-Jahr zur FY-ISO (±45 Tage; kein Jahres-Fallback). */
 export function findeYahooSchuldenFuerIso(
   jahre: YahooSchuldenJahr[],
   iso: string,
@@ -168,9 +168,5 @@ export function findeYahooSchuldenFuerIso(
       best = j
     }
   }
-  if (best) return best
-
-  const jahr = iso.slice(0, 4)
-  const gleiche = jahre.filter((j) => j.datum.startsWith(jahr)).sort((a, b) => b.datum.localeCompare(a.datum))
-  return gleiche[0] ?? null
+  return best
 }

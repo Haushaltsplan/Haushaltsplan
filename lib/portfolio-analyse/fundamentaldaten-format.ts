@@ -130,16 +130,41 @@ export function aktienreiheSplitBereinigt(werte: number[]): number[] {
   return out
 }
 
-export function cagr3AusSerie(werte: number[]): number | null {
+export function cagr3AusSerie(werte: number[], opts?: { quartal?: boolean }): number | null {
   const clean = werteOhneNiveauSprung(werte)
   if (clean.length < 2) return null
+  if (opts?.quartal) {
+    // YoY: Punkt t vs t−12 Quartale (= 3 Jahre)
+    if (clean.length < 13) return null
+    return cagrProzent([clean[clean.length - 13]!, clean[clean.length - 1]!], 3)
+  }
   return cagrProzent(clean.slice(-4), Math.min(3, clean.length - 1))
 }
 
-export function cagr5AusSerie(werte: number[]): number | null {
+export function cagr5AusSerie(werte: number[], opts?: { quartal?: boolean }): number | null {
   const clean = werteOhneNiveauSprung(werte)
   if (clean.length < 2) return null
+  if (opts?.quartal) {
+    if (clean.length < 21) return null
+    return cagrProzent([clean[clean.length - 21]!, clean[clean.length - 1]!], 5)
+  }
   return cagrProzent(clean.slice(-6), Math.min(5, clean.length - 1))
+}
+
+/** 5J-Schnitt auf Quartal: jeder 4. TTM-Snapshot (≈ Jahresabstand). */
+export function mittelLetzteJahresSnapshots(werte: number[], n: number, minN: number): number | null {
+  if (werte.length < minN) return null
+  const snaps: number[] = []
+  for (let i = werte.length - 1; i >= 0 && snaps.length < n; i -= 4) {
+    snaps.push(werte[i]!)
+  }
+  if (snaps.length < minN) {
+    // Fallback: letzte n Werte (Jahresmodus)
+    const slice = werte.slice(-n)
+    if (slice.length < minN) return null
+    return slice.reduce((a, b) => a + b, 0) / slice.length
+  }
+  return snaps.reduce((a, b) => a + b, 0) / snaps.length
 }
 
 /**
@@ -151,9 +176,18 @@ export function cagrJaehrlichAusSerie(
   werte: number[],
   maxJahre = 5,
   maxFaktor = 1.85,
+  opts?: { quartal?: boolean },
 ): number | null {
   const splitOk = aktienreiheSplitBereinigt(werte.filter((v) => Number.isFinite(v) && v > 0))
-  const clean = werteOhneNiveauSprung(splitOk, maxFaktor)
+  let clean = werteOhneNiveauSprung(splitOk, maxFaktor)
+  if (opts?.quartal) {
+    // Jährliche Snapshots: jeder 4. Punkt von hinten
+    const snaps: number[] = []
+    for (let i = clean.length - 1; i >= 0 && snaps.length < maxJahre + 1; i -= 4) {
+      snaps.unshift(clean[i]!)
+    }
+    clean = snaps
+  }
   const fenster = clean.slice(-(maxJahre + 1))
   if (fenster.length < 2) return null
   return cagrProzent(fenster, fenster.length - 1)

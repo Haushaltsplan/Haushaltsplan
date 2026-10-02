@@ -1,12 +1,14 @@
-import { cagr3AusSerie, cagr5AusSerie, cagrJaehrlichAusSerie, werteOhneNiveauSprung } from '@/lib/portfolio-analyse/fundamentaldaten-format'
+import { cagr3AusSerie, cagr5AusSerie, cagrJaehrlichAusSerie, mittelLetzteJahresSnapshots, werteOhneNiveauSprung } from '@/lib/portfolio-analyse/fundamentaldaten-format'
 import type { YahooFundamentalKennzahlen } from '@/lib/portfolio-analyse/fundamentaldaten-key-metrics'
 import type { FundamentalSchaetzungenRoh } from '@/lib/portfolio-analyse/fundamentaldaten-schaetzungen-server'
 import type { FundamentalMetrikZeile, FundamentalPeriode } from '@/lib/portfolio-analyse/fundamentaldaten-types'
 import {
   historischeWerteAusZeile,
+  istQuartalsPerioden,
   letzterVerfuegbarerWert,
   berechneIncrementalValueSpread,
   schaetzeWaccPct,
+  ttmOderLetzterFlow,
   werteGleicherStichtag,
 } from '@/lib/portfolio-analyse/fundamentaldaten-roic-hilfen'
 import {
@@ -184,6 +186,7 @@ function berechneAusschuettungsquotePct(ctx: FundamentalKontextInput): number | 
 /** Zentrale Kennzahlen — eine Quelle für Key Metrics und Mantra-Check. */
 export function baueKontextWerte(ctx: FundamentalKontextInput) {
   const perioden = ctx.roh?.perioden
+  const quartal = istQuartalsPerioden(perioden)
   const zeile = (id: string) => ctx.roh?.zeilen.find((z) => z.id === id)
 
   const umsatzZeile = zeile('umsatz')
@@ -209,19 +212,23 @@ export function baueKontextWerte(ctx: FundamentalKontextInput) {
   const dsoZeile = zeile('dso')
   const yt = ctx.yahooFinanz
 
-  const umsatzMio = letzterWert(umsatzZeile, perioden)
-  const fcfMio = letzterWert(fcfZeile, perioden)
-  const nettoMio = letzterWert(nettoZeile, perioden)
-  const capexMio = letzterWert(capexZeile, perioden)
-  const ebitdaMio = letzterWert(ebitdaZeile, perioden)
-  const ebitMio = letzterWert(ebitZeile, perioden)
+  // Flows: auf Quartalspaket TTM (Summe 4Q), sonst letzter/TTM-Wert
+  const umsatzMio = ttmOderLetzterFlow(umsatzZeile, perioden)
+  const fcfMio = ttmOderLetzterFlow(fcfZeile, perioden)
+  const nettoMio = ttmOderLetzterFlow(nettoZeile, perioden)
+  const capexMio = ttmOderLetzterFlow(capexZeile, perioden)
+  const ebitdaMio = ttmOderLetzterFlow(ebitdaZeile, perioden)
+  const ebitMio = ttmOderLetzterFlow(ebitZeile, perioden)
 
   const revenueUsd = yt?.revenueUsd ?? (umsatzMio != null ? umsatzMio * 1_000_000 : null)
   const fcfUsd = yt?.freeCashFlowUsd ?? (fcfMio != null ? fcfMio * 1_000_000 : null)
   const netIncomeUsd = yt?.netIncomeUsd ?? (nettoMio != null ? nettoMio * 1_000_000 : null)
   const sbcUsd =
     yt?.stockBasedCompensationUsd ??
-    (letzterWert(sbcZeile, perioden) != null ? letzterWert(sbcZeile, perioden)! * 1_000_000 : null)
+    (() => {
+      const v = ttmOderLetzterFlow(sbcZeile, perioden)
+      return v != null ? v * 1_000_000 : null
+    })()
   const interestUsd =
     yt?.interestExpenseUsd ??
     (ctx.yahoo?.totalDebt != null && ctx.yahoo.totalDebt > 0
@@ -230,10 +237,16 @@ export function baueKontextWerte(ctx: FundamentalKontextInput) {
   const opIncomeUsd = yt?.operatingIncomeUsd ?? (ebitMio != null ? ebitMio * 1_000_000 : null)
   const rdUsd =
     yt?.researchDevelopmentUsd ??
-    (letzterWert(rdZeile, perioden) != null ? letzterWert(rdZeile, perioden)! * 1_000_000 : null)
+    (() => {
+      const v = ttmOderLetzterFlow(rdZeile, perioden)
+      return v != null ? v * 1_000_000 : null
+    })()
   const sgaUsd =
     yt?.sgaUsd ??
-    (letzterWert(sgaZeile, perioden) != null ? letzterWert(sgaZeile, perioden)! * 1_000_000 : null)
+    (() => {
+      const v = ttmOderLetzterFlow(sgaZeile, perioden)
+      return v != null ? v * 1_000_000 : null
+    })()
 
   const sbcAdjFcfUsd = fcfUsd != null && sbcUsd != null ? fcfUsd - sbcUsd : null
 
@@ -275,7 +288,7 @@ export function baueKontextWerte(ctx: FundamentalKontextInput) {
     fcfUsd != null && sbcUsd != null && Math.abs(fcfUsd) > 0
       ? (sbcUsd / Math.abs(fcfUsd)) * 100
       : null
-  const ocfMio = letzterWert(ocfZeile, perioden)
+  const ocfMio = ttmOderLetzterFlow(ocfZeile, perioden)
   const ocfUsd = yt?.operatingCashFlowUsd ?? (ocfMio != null ? ocfMio * 1_000_000 : null)
   const sbcOcfRatio =
     ocfUsd != null && sbcUsd != null && Math.abs(ocfUsd) > 0
@@ -360,14 +373,20 @@ export function baueKontextWerte(ctx: FundamentalKontextInput) {
   } else if (ctx.yahoo?.totalDebt != null && ctx.yahoo?.totalCash != null) {
     netDebt = ctx.yahoo.totalDebt - ctx.yahoo.totalCash
   }
+  const netDebtEbitdaZeile = zeile('net_debt_ebitda')
+  const netDebtEbitdaAusZeile = letzterWert(netDebtEbitdaZeile, perioden)
   const netDebtEbitda =
-    netDebt != null && ebitdaMio != null && ebitdaMio > 0 ? netDebt / (ebitdaMio * 1_000_000) : null
+    netDebtEbitdaAusZeile ??
+    (netDebt != null && ebitdaMio != null && ebitdaMio > 0
+      ? netDebt / (ebitdaMio * 1_000_000)
+      : null)
 
   const fcfUsdAbs =
     fcfMio != null ? Math.abs(fcfMio) * 1_000_000 : fcfUsd != null ? Math.abs(fcfUsd) : null
   const netDebtFcf =
     netDebt != null && fcfUsdAbs != null && fcfUsdAbs > 0 ? netDebt / fcfUsdAbs : null
 
+  const qOpts = quartal ? { quartal: true as const } : undefined
   const umsatzHist = historischeWerte(umsatzZeile, perioden)
   const epsHist = historischeWerte(epsZeile, perioden)
   const ebitdaHist = historischeWerte(ebitdaZeile, perioden)
@@ -377,14 +396,16 @@ export function baueKontextWerte(ctx: FundamentalKontextInput) {
   const ebitHist = historischeWerte(ebitZeile, perioden)
   const sgaHist = historischeWerte(sgaZeile, perioden)
 
-  const umsatzCagr3 = cagr3AusSerie(umsatzHist)
-  const umsatzCagr5 = cagr5AusSerie(umsatzHist)
-  const epsCagr3 = cagr3AusSerie(epsHist)
-  const epsCagr5 = cagr5AusSerie(epsHist)
-  const ebitdaCagr3 = cagr3AusSerie(ebitdaHist)
+  const umsatzCagr3 = cagr3AusSerie(umsatzHist, qOpts)
+  const umsatzCagr5 = cagr5AusSerie(umsatzHist, qOpts)
+  const epsCagr3 = cagr3AusSerie(epsHist, qOpts)
+  const epsCagr5 = cagr5AusSerie(epsHist, qOpts)
+  const ebitdaCagr3 = cagr3AusSerie(ebitdaHist, qOpts)
   const fcfJeAktieHist = quotientSerie(fcfZeile, aktienZeile, perioden)
-  const fcfJeAktieCagr5 = cagr5AusSerie(fcfJeAktieHist)
-  const roic5yAvgPct = mittelLetzte(roicHist, 5, 3)
+  const fcfJeAktieCagr5 = cagr5AusSerie(fcfJeAktieHist, qOpts)
+  const roic5yAvgPct = quartal
+    ? mittelLetzteJahresSnapshots(roicHist, 5, 3)
+    : mittelLetzte(roicHist, 5, 3)
 
   const roiic = ctx.incrementalRoicPct ?? null
   const incrementalValueSpread = berechneIncrementalValueSpread({
@@ -394,12 +415,13 @@ export function baueKontextWerte(ctx: FundamentalKontextInput) {
     valueSpread,
   })
 
+  // Quartal: kein FY-M&A in die Reinvestitionsquote mischen
   const reinvest = perioden
     ? berechneReinvestition(
         perioden,
         ctx.roh?.zeilen ?? [],
-        mnaMioAusYahoo(ctx.yahooFinanz),
-        daMioAusYahoo(ctx.yahooFinanz),
+        quartal ? null : mnaMioAusYahoo(ctx.yahooFinanz),
+        quartal ? null : daMioAusYahoo(ctx.yahooFinanz),
         roiic,
       )
     : { reinvestitionsquotePct: null, incrementalRoicPct: roiic, bruttoReinvestMio: null }
@@ -455,7 +477,7 @@ export function baueKontextWerte(ctx: FundamentalKontextInput) {
       : null
   const pb = ctx.yahoo?.priceToBook ?? null
 
-  const aktienVerwaesserungJaehrlichPct = cagrJaehrlichAusSerie(aktienHist)
+  const aktienVerwaesserungJaehrlichPct = cagrJaehrlichAusSerie(aktienHist, 5, 1.85, qOpts)
   const aktienFuerTrend = werteOhneNiveauSprung(aktienHist, 1.85)
   const aktienSinkend =
     aktienFuerTrend.length >= 2

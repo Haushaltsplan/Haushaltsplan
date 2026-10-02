@@ -45,14 +45,23 @@ function parseEuKeyFiguresHistorieAusText(text) {
   return { periodenIso, zeilen }
 }
 
-function wertAusMapFuerIso(werte, iso) {
+function wertAusMapFuerIso(werte, iso, maxDiffTage = 45) {
   if (!werte) return null
   if (werte[iso] != null && Number.isFinite(werte[iso])) return werte[iso]
-  const jahr = iso.slice(0, 4)
-  const gleiche = Object.entries(werte)
-    .filter(([k, v]) => v != null && Number.isFinite(v) && k.startsWith(jahr))
-    .sort((a, b) => b[0].localeCompare(a[0]))
-  return gleiche[0]?.[1] ?? null
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(iso)) return null
+  const ziel = new Date(`${iso}T12:00:00Z`).getTime()
+  const maxMs = maxDiffTage * 24 * 3600 * 1000
+  let best = null
+  let bestDiff = Infinity
+  for (const [k, v] of Object.entries(werte)) {
+    if (v == null || !Number.isFinite(v) || !/^\d{4}-\d{2}-\d{2}$/.test(k)) continue
+    const diff = Math.abs(new Date(`${k}T12:00:00Z`).getTime() - ziel)
+    if (diff < bestDiff && diff <= maxMs) {
+      bestDiff = diff
+      best = v
+    }
+  }
+  return best
 }
 
 async function main() {

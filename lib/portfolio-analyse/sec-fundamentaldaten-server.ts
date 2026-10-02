@@ -90,14 +90,14 @@ const STROMFELDER = new Set<SecFeld>([
   'akquisitionen',
 ])
 
-/** TTM = Summe der letzten 4 Quartale. Aktienzahl ist ein Bestand, nicht addieren. */
+/** TTM = Summe der letzten 4 Quartale. Aktienzahl/EPS nicht addieren. */
 const TTM_SUMME = new Set<SecFeld>([
   'umsatz',
   'bruttogewinn',
   'cogs',
   'ebit',
   'nettogewinn',
-  'eps',
+  // eps bewusst nicht: Summe verwässert bei Share-Count-Änderung — nur NI/WAS
   'rd',
   'sga',
   'sbc',
@@ -171,7 +171,9 @@ const TAG_KETTEN: Record<SecFeld, string[]> = {
   aktien: [
     'WeightedAverageNumberOfDilutedSharesOutstanding',
     'WeightedAverageNumberOfShareOutstandingBasicAndDiluted',
+    'WeightedAverageNumberOfSharesOutstandingBasic',
     'CommonStockSharesOutstanding',
+    'EntityCommonStockSharesOutstanding',
   ],
   ocf: [
     'NetCashProvidedByUsedInOperatingActivities',
@@ -222,10 +224,11 @@ const TAG_KETTEN: Record<SecFeld, string[]> = {
   ],
   kurzfristigeSchulden: [
     'LongTermDebtCurrent',
-    'LongTermDebtAndCapitalLeaseObligationsCurrent',
-    'DebtCurrent',
     'ShortTermBorrowings',
     'CommercialPaper',
+    // Nur Fallback wenn keine Teilleisten — sonst Doppelzählung mit CPLTD/ST
+    'DebtCurrent',
+    'LongTermDebtAndCapitalLeaseObligationsCurrent',
   ],
   leaseLangfristig: ['OperatingLeaseLiabilityNoncurrent'],
   leaseKurzfristig: ['OperatingLeaseLiabilityCurrent'],
@@ -472,6 +475,9 @@ type Rohfakt = {
 }
 
 function sammleRohfakten(facts: CompanyFactsJson, waehrung: string, feld: SecFeld): Rohfakt[] {
+  // Kurzfristige Schulden: CPLTD + ST Borrowings + CP addieren (nicht „erster Tag gewinnt“)
+  if (feld === 'kurzfristigeSchulden') return sammleKurzfristigeSchulden(facts, waehrung)
+
   const out: Rohfakt[] = []
   const negOk = NEGATIV_ERLAUBT.has(feld)
   const belegt = new Set<string>()
@@ -508,6 +514,79 @@ function sammleRohfakten(facts: CompanyFactsJson, waehrung: string, feld: SecFel
   return out
 }
 
+/** Additive ST-Debt-Tags; DebtCurrent nur wenn keine Teilleisten. */
+const ST_DEBT_TEILE = ['LongTermDebtCurrent', 'ShortTermBorrowings', 'CommercialPaper'] as const
+const ST_DEBT_FALLBACK = [
+  'DebtCurrent',
+  'LongTermDebtAndCapitalLeaseObligationsCurrent',
+] as const
+
+function besteInstantsProKey(
+  facts: CompanyFactsJson,
+  tag: string,
+  waehrung: string,
+): Map<string, Rohfakt> {
+  const best = new Map<string, Rohfakt>()
+  for (const namespace of Object.values(facts.facts ?? {})) {
+    const liste = einheitenFuerFeld(namespace[tag], 'kurzfristigeSchulden', waehrung)
+    if (!liste.length) continue
+    for (const e of liste) {
+      if (!e.end || e.val == null || !Number.isFinite(e.val) || e.val < 0) continue
+      if (!e.form || (!JAHRESFORMULARE.has(e.form) && !QUARTALSFORMULARE.has(e.form))) continue
+      if (e.start) continue
+      const k = rohPrioKey(e.end, null, e.form)
+      const fakt: Rohfakt = {
+        end: e.end,
+        val: e.val,
+        filed: e.filed ?? e.end,
+        tage: null,
+        form: e.form,
+      }
+      const alt = best.get(k)
+      if (!alt || fakt.filed > alt.filed) best.set(k, fakt)
+    }
+  }
+  return best
+}
+
+function sammleKurzfristigeSchulden(facts: CompanyFactsJson, waehrung: string): Rohfakt[] {
+  const teileMaps = ST_DEBT_TEILE.map((tag) => besteInstantsProKey(facts, tag, waehrung))
+  const keys = new Set<string>()
+  for (const m of teileMaps) for (const k of m.keys()) keys.add(k)
+
+  const out = new Map<string, Rohfakt>()
+  for (const k of keys) {
+    let sum = 0
+    let filed = ''
+    let end = ''
+    let form = ''
+    let n = 0
+    for (const m of teileMaps) {
+      const t = m.get(k)
+      if (!t) continue
+      sum += t.val
+      n++
+      if (t.filed > filed) {
+        filed = t.filed
+        end = t.end
+        form = t.form
+      }
+    }
+    if (n > 0 && Number.isFinite(sum)) {
+      out.set(k, { end, val: sum, filed, tage: null, form })
+    }
+  }
+
+  for (const tag of ST_DEBT_FALLBACK) {
+    for (const [k, fakt] of besteInstantsProKey(facts, tag, waehrung)) {
+      if (out.has(k)) continue
+      out.set(k, fakt)
+    }
+  }
+
+  return [...out.values()]
+}
+
 function rohPrioKey(end: string, tage: number | null, form: string): string {
   const fam = form.startsWith('10-K') || form.startsWith('20-F') || form.startsWith('40-F') ? 'fy' : 'q'
   const bucket =
@@ -531,24 +610,66 @@ function setzeRaw(
   if (!alt || filed > alt.filed) ziel.set(end, { val, filed })
 }
 
+/** Bilanz-Stichtage (±10 Tage) auf GuV-Anker legen — eine Spalte pro Quartal. */
+function snapReiheAufAnker(reihe: Map<string, Treffer>, anker: Map<string, Treffer>): void {
+  const ankerEnds = [...anker.keys()]
+  if (ankerEnds.length === 0) return
+  const bewegungen: Array<{ von: string; nach: string; t: Treffer }> = []
+  for (const [ende, t] of reihe) {
+    if (anker.has(ende)) continue
+    let best: string | null = null
+    let bestDiff = Infinity
+    for (const a of ankerEnds) {
+      const d = Math.abs(Date.parse(a) - Date.parse(ende)) / 86_400_000
+      if (d < bestDiff && d <= 10) {
+        bestDiff = d
+        best = a
+      }
+    }
+    if (best) bewegungen.push({ von: ende, nach: best, t })
+  }
+  for (const { von, nach, t } of bewegungen) {
+    reihe.delete(von)
+    const alt = reihe.get(nach)
+    if (!alt || t.filed > alt.filed) {
+      reihe.set(nach, { ...t, periodenEnde: nach })
+    }
+  }
+}
+
 function quartalsreihe(facts: CompanyFactsJson, waehrung: string, feld: SecFeld): Map<string, Treffer> {
   const fakten = sammleRohfakten(facts, waehrung, feld)
   const raw = new Map<string, { val: number; filed: string }>()
   const strom = STROMFELDER.has(feld)
+  const negOk = NEGATIV_ERLAUBT.has(feld)
 
   if (feld === 'aktien') {
     for (const f of fakten) {
-      if (!QUARTALSFORMULARE.has(f.form)) continue
-      if (f.tage != null && f.tage >= 70 && f.tage <= 110) setzeRaw(raw, f.end, f.val, f.filed)
-      else if (f.tage == null) setzeRaw(raw, f.end, f.val, f.filed)
+      // Gewichtete Aktien: Quartal in 10-Q; Q4 oft nur in 10-K
+      if (f.tage != null && f.tage >= 70 && f.tage <= 110) {
+        if (QUARTALSFORMULARE.has(f.form) || JAHRESFORMULARE.has(f.form)) {
+          setzeRaw(raw, f.end, f.val, f.filed)
+        }
+      } else if (f.tage == null && QUARTALSFORMULARE.has(f.form)) {
+        setzeRaw(raw, f.end, f.val, f.filed)
+      }
+    }
+    // Q4: kein 90-Tage-WAS in der 10-K → Jahres-WAS am FY-Ende als Näherung (für EPS=NI/WAS)
+    for (const f of fakten) {
+      if (!JAHRESFORMULARE.has(f.form)) continue
+      if (f.tage == null || f.tage < 330 || f.tage > 400) continue
+      if (!raw.has(f.end)) setzeRaw(raw, f.end, f.val, f.filed)
     }
   } else {
     for (const f of fakten) {
-      if (!QUARTALSFORMULARE.has(f.form)) continue
       if (strom) {
+        // Echtes Quartal (≈90 Tage): 10-Q/6-K, Q4 oft nur in 10-K/20-F
         if (f.tage == null || f.tage < 70 || f.tage > 110) continue
-      } else if (f.tage != null) {
-        continue
+        if (!QUARTALSFORMULARE.has(f.form) && !JAHRESFORMULARE.has(f.form)) continue
+      } else {
+        // Bilanz-Instant: 10-Q und 10-K (Q4/FY-Ende nur in 10-K)
+        if (f.tage != null) continue
+        if (!QUARTALSFORMULARE.has(f.form) && !JAHRESFORMULARE.has(f.form)) continue
       }
       setzeRaw(raw, f.end, f.val, f.filed)
     }
@@ -562,32 +683,59 @@ function quartalsreihe(facts: CompanyFactsJson, waehrung: string, feld: SecFeld)
         byStart.set(f.start, arr)
       }
       for (const [, liste] of byStart) {
-        const q1f = besterRoh(liste.filter((f) => f.tage! >= 70 && f.tage! <= 110))
-        const h1f = besterRoh(liste.filter((f) => f.tage! >= 160 && f.tage! <= 200))
-        const m9f = besterRoh(liste.filter((f) => f.tage! >= 250 && f.tage! <= 290))
-        const fyf = besterRoh(liste.filter((f) => f.tage! >= 330 && f.tage! <= 400))
+        // Interim nur aus 10-Q/6-K; FY nur aus 10-K/20-F — sonst YTD/FY-Mix
+        const q1f = besterRoh(
+          liste.filter((f) => QUARTALSFORMULARE.has(f.form) && f.tage! >= 70 && f.tage! <= 110),
+        )
+        const h1f = besterRoh(
+          liste.filter((f) => QUARTALSFORMULARE.has(f.form) && f.tage! >= 160 && f.tage! <= 200),
+        )
+        const m9f = besterRoh(
+          liste.filter((f) => QUARTALSFORMULARE.has(f.form) && f.tage! >= 250 && f.tage! <= 290),
+        )
+        const fyf = besterRoh(
+          liste.filter((f) => JAHRESFORMULARE.has(f.form) && f.tage! >= 330 && f.tage! <= 400),
+        )
 
         const q1 = q1f ? (raw.get(q1f.end)?.val ?? q1f.val) : null
         if (q1f && !raw.has(q1f.end)) setzeRaw(raw, q1f.end, q1f.val, q1f.filed)
 
+        // Echtes Quartal am H1-Ende hat Vorrang vor H1−Q1
         let q2: number | null = h1f ? (raw.get(h1f.end)?.val ?? null) : null
         if (q2 == null && h1f && q1 != null) {
-          q2 = h1f.val - q1
-          setzeRaw(raw, h1f.end, q2, h1f.filed)
+          const diff = h1f.val - q1
+          if (Number.isFinite(diff) && (negOk || diff >= 0 || feld === 'capex' || ABFLUSS.has(feld))) {
+            q2 = diff
+            setzeRaw(raw, h1f.end, q2, h1f.filed)
+          }
         }
 
         let q3: number | null = m9f ? (raw.get(m9f.end)?.val ?? null) : null
         if (q3 == null && m9f) {
-          if (q1 != null && q2 != null) q3 = m9f.val - q1 - q2
-          else if (h1f) q3 = m9f.val - h1f.val
-          if (q3 != null) setzeRaw(raw, m9f.end, q3, m9f.filed)
+          let diff: number | null = null
+          if (q1 != null && q2 != null) diff = m9f.val - q1 - q2
+          else if (h1f) diff = m9f.val - h1f.val
+          if (
+            diff != null &&
+            Number.isFinite(diff) &&
+            (negOk || diff >= 0 || feld === 'capex' || ABFLUSS.has(feld))
+          ) {
+            q3 = diff
+            setzeRaw(raw, m9f.end, q3, m9f.filed)
+          }
         }
 
         if (fyf && !raw.has(fyf.end)) {
           let q4: number | null = null
           if (m9f) q4 = fyf.val - m9f.val
           else if (q1 != null && q2 != null && q3 != null) q4 = fyf.val - q1 - q2 - q3
-          if (q4 != null) setzeRaw(raw, fyf.end, q4, fyf.filed)
+          if (
+            q4 != null &&
+            Number.isFinite(q4) &&
+            (negOk || q4 >= 0 || feld === 'capex' || ABFLUSS.has(feld))
+          ) {
+            setzeRaw(raw, fyf.end, q4, fyf.filed)
+          }
         }
       }
     }
@@ -771,8 +919,28 @@ export async function ladeSecFundamentaldaten(
     wendeUmsatzGrossVsNetAufTreffer(umsatzReihe, ebitReihe)
   }
 
+  // Quartal: Perioden-Achse an GuV-Umsatz (keine Orphan-Spalten aus Bilanz-Instants)
   const isoSet = new Set<string>()
-  for (const reihe of reihen.values()) for (const ende of reihe.keys()) isoSet.add(ende)
+  if (quartal) {
+    const anker =
+      umsatzReihe && umsatzReihe.size > 0
+        ? umsatzReihe
+        : reihen.get('nettogewinn') && reihen.get('nettogewinn')!.size > 0
+          ? reihen.get('nettogewinn')!
+          : reihen.get('eps')
+    if (anker && anker.size > 0) {
+      for (const ende of anker.keys()) isoSet.add(ende)
+      // Bilanz-Werte auf nächstgelegenen GuV-Stichtag (±10d) legen
+      for (const reihe of reihen.values()) {
+        if (reihe === anker) continue
+        snapReiheAufAnker(reihe, anker)
+      }
+    } else {
+      for (const reihe of reihen.values()) for (const ende of reihe.keys()) isoSet.add(ende)
+    }
+  } else {
+    for (const reihe of reihen.values()) for (const ende of reihe.keys()) isoSet.add(ende)
+  }
   // Früher: Quartal auch slice(-16) → nur ~4 Jahre. Jahr und Quartal gleiche Kalender-Tiefe (bis 40J).
   const isoListe = [...isoSet].sort().slice(quartal ? -SEC_HIST_QUARTALE : -SEC_HIST_JAHRE)
   if (isoListe.length < (quartal ? 4 : 6)) return merke(null)
@@ -843,6 +1011,32 @@ export async function ladeSecFundamentaldaten(
 
   const ebit = zeilen.find((z) => z.id === 'ebit')
   const da = zeilen.find((z) => z.id === 'da')
+
+  /** Viele Emittenten melden OperatingIncomeLoss erst spät quartalsweise. */
+  if (quartal && ebit && bruttoZeile) {
+    const sgaZeile = zeilen.find((z) => z.id === 'sga')
+    const rdZeile = zeilen.find((z) => z.id === 'rd')
+    for (const iso of isoListe) {
+      if (ebit.werte[iso] != null && Number.isFinite(ebit.werte[iso]!)) continue
+      const bg = bruttoZeile.werte[iso]
+      const sga = sgaZeile?.werte[iso]
+      // Ohne SG&A wäre EBIT ≈ Bruttogewinn — systematisch zu hoch
+      if (bg == null || sga == null || !Number.isFinite(bg) || !Number.isFinite(sga)) continue
+      const rd = rdZeile?.werte[iso]
+      const dep = da?.werte[iso]
+      let est = bg - Math.abs(sga)
+      if (rd != null && Number.isFinite(rd)) est -= Math.abs(rd)
+      // D&A nur abziehen wenn wahrscheinlich unter dem Brutto (nicht schon in COGS).
+      // Wenn |DA| > 35 % von (Gross−OpEx), ist Doppelzählung wahrscheinlicher.
+      if (dep != null && Number.isFinite(dep) && est > 0) {
+        const daAbs = Math.abs(dep)
+        if (daAbs / est <= 0.35) est -= daAbs
+      }
+      if (!Number.isFinite(est)) continue
+      ebit.werte[iso] = Math.round(est * 1000) / 1000
+    }
+  }
+
   const ebitdaWerte: Record<string, number | null> = {}
   for (const iso of [...isoListe, ...(mitTtm ? [FUNDAMENTAL_TTM_KEY] : [])]) {
     const e = ebit?.werte[iso]
@@ -914,9 +1108,9 @@ export async function ladeSecFundamentaldaten(
     for (const iso of [...isoListe, ...(mitTtm ? [FUNDAMENTAL_TTM_KEY] : [])]) {
       const o = ocf?.werte[iso]
       const c = capex?.werte[iso]
-      // FCF nur mit OCF — CapEx allein ist kein Free Cashflow
-      if (o == null) fcf[iso] = null
-      else fcf[iso] = o + (c ?? 0)
+      // FCF nur wenn beide Seiten da — fehlendes CapEx ≠ 0 (sonst FCF = OCF)
+      if (o == null || c == null) fcf[iso] = null
+      else fcf[iso] = o + c
     }
     zeilen.push({
       id: 'fcf',
@@ -939,12 +1133,27 @@ export async function ladeSecFundamentaldaten(
   const epsZeile = zeilen.find((z) => z.id === 'eps')
   const aktienZeile = zeilen.find((z) => z.id === 'aktien')
 
-  // TTM-EPS = NI_TTM / verwässerte WAS (Summe Quartals-EPS verzerrt bei Share-Count-Änderung)
-  if (mitTtm && epsZeile && netto && aktienZeile) {
-    const niTtm = netto.werte[FUNDAMENTAL_TTM_KEY]
-    const wasTtm = aktienZeile.werte[FUNDAMENTAL_TTM_KEY]
+  // TTM-EPS nur NI_TTM / WAS — nie Summe der Quartals-EPS
+  if (mitTtm && epsZeile) {
+    const niTtm = netto?.werte[FUNDAMENTAL_TTM_KEY]
+    const wasTtm = aktienZeile?.werte[FUNDAMENTAL_TTM_KEY]
     if (niTtm != null && wasTtm != null && wasTtm > 0) {
       epsZeile.werte[FUNDAMENTAL_TTM_KEY] = niTtm / wasTtm
+    } else {
+      epsZeile.werte[FUNDAMENTAL_TTM_KEY] = null
+    }
+  }
+
+  // Fehlendes Quartals-EPS: NI / WAS (beide Mio.). Kein YTD-EPS — nicht additiv.
+  if (quartal && epsZeile && netto && aktienZeile) {
+    for (const iso of isoListe) {
+      if (epsZeile.werte[iso] != null) continue
+      const ni = netto.werte[iso]
+      const was = aktienZeile.werte[iso]
+      if (ni == null || was == null || was <= 0) continue
+      const derived = Math.round((ni / was) * 1000) / 1000
+      if (!Number.isFinite(derived) || Math.abs(derived) > 500) continue
+      epsZeile.werte[iso] = derived
     }
   }
 
@@ -984,36 +1193,56 @@ export async function ladeSecFundamentaldaten(
   ratioZeile('nettomarge', 'Nettomarge %', 'margen', 'prozent', 'net-profit-margin', (iso) =>
     ratioPct(netto?.werte[iso] ?? null, umsatz?.werte[iso] ?? null),
   )
-  ratioZeile('roa', 'Gesamtkapitalrendite (ROA %)', 'rentabilitaet', 'prozent', 'roa', (iso) =>
-    ratioPct(netto?.werte[iso] ?? null, durchschnittBestand(assets, iso, isoListe)),
-  )
-  ratioZeile('roe', 'Eigenkapitalrendite (ROE %)', 'rentabilitaet', 'prozent', 'roe', (iso) =>
-    ratioPct(netto?.werte[iso] ?? null, durchschnittBestand(ek, iso, isoListe)),
-  )
-  ratioZeile('kapitalumschlag', 'Kapitalumschlaghäufigkeit', 'umschlag', 'ratio', 'asset-turnover', (iso) =>
-    ratio(umsatz?.werte[iso] ?? null, durchschnittBestand(assets, iso, isoListe)),
-  )
-  // Lagerumschlag / DIO: COGS / Vorräte (nicht Umsatz)
-  ratioZeile('anlagenumschlag', 'Lagerumschlag', 'umschlag', 'ratio', 'inventory-turnover', (iso) =>
-    ratio(cogsFuerIso(iso), vorraete?.werte[iso] ?? null),
-  )
-  ratioZeile('forderungsumschlag', 'Forderungsumschlag', 'umschlag', 'ratio', 'receiveable-turnover', (iso) =>
-    ratio(umsatz?.werte[iso] ?? null, forderungen?.werte[iso] ?? null),
-  )
-  ratioZeile('dso', 'Forderungslaufzeit (DSO, Tage)', 'umschlag', 'zahl', 'days-sales-in-receivables', (iso) => {
-    const t = ratio(forderungen?.werte[iso] ?? null, umsatz?.werte[iso] ?? null)
-    return t == null ? null : t * 365
-  })
-  ratioZeile('dio', 'Lagerdauer (DIO, Tage)', 'umschlag', 'zahl', 'days-in-inventory', (iso) => {
-    const t = ratio(vorraete?.werte[iso] ?? null, cogsFuerIso(iso))
-    return t == null ? null : t * 365
-  })
-  // DPO: Accounts Payable / COGS — nicht Current Liabilities / Umsatz
-  ratioZeile('dpo', 'Verbindlichkeitenlaufzeit (DPO, Tage)', 'umschlag', 'zahl', 'days-payables-outstanding', (iso) => {
-    const ap = lieferverb?.werte[iso] ?? null
-    const t = ratio(ap, cogsFuerIso(iso))
-    return t == null ? null : t * 365
-  })
+  // Quartal: ROA/ROE/Umschlag hier nicht als Einzelquartal — TTM in ergaenzeQuartalsRenditenTTM
+  if (!quartal) {
+    ratioZeile('roa', 'Gesamtkapitalrendite (ROA %)', 'rentabilitaet', 'prozent', 'roa', (iso) =>
+      ratioPct(netto?.werte[iso] ?? null, durchschnittBestand(assets, iso, isoListe)),
+    )
+    ratioZeile('roe', 'Eigenkapitalrendite (ROE %)', 'rentabilitaet', 'prozent', 'roe', (iso) =>
+      ratioPct(netto?.werte[iso] ?? null, durchschnittBestand(ek, iso, isoListe)),
+    )
+    ratioZeile('kapitalumschlag', 'Kapitalumschlaghäufigkeit', 'umschlag', 'ratio', 'asset-turnover', (iso) =>
+      ratio(umsatz?.werte[iso] ?? null, durchschnittBestand(assets, iso, isoListe)),
+    )
+    ratioZeile('anlagenumschlag', 'Lagerumschlag', 'umschlag', 'ratio', 'inventory-turnover', (iso) =>
+      ratio(cogsFuerIso(iso), vorraete?.werte[iso] ?? null),
+    )
+    ratioZeile('forderungsumschlag', 'Forderungsumschlag', 'umschlag', 'ratio', 'receiveable-turnover', (iso) =>
+      ratio(umsatz?.werte[iso] ?? null, forderungen?.werte[iso] ?? null),
+    )
+  } else {
+    ratioZeile('roa', 'Gesamtkapitalrendite (ROA %)', 'rentabilitaet', 'prozent', 'roa', () => null)
+    ratioZeile('roe', 'Eigenkapitalrendite (ROE %)', 'rentabilitaet', 'prozent', 'roe', () => null)
+    ratioZeile('kapitalumschlag', 'Kapitalumschlaghäufigkeit', 'umschlag', 'ratio', 'asset-turnover', () => null)
+    ratioZeile('anlagenumschlag', 'Lagerumschlag', 'umschlag', 'ratio', 'inventory-turnover', () => null)
+    ratioZeile('forderungsumschlag', 'Forderungsumschlag', 'umschlag', 'ratio', 'receiveable-turnover', () => null)
+  }
+  // Quartal: DSO/DIO/DPO hier NICHT mit ×365 auf Quartals-Flows — das wären ~4× zu groß.
+  // TTM-Korrektur in ergaenzeQuartalsRenditenTTM. Jahresmodus: ×365 auf Jahresraten OK.
+  if (!quartal) {
+    ratioZeile('dso', 'Forderungslaufzeit (DSO, Tage)', 'umschlag', 'zahl', 'days-sales-in-receivables', (iso) => {
+      const t = ratio(forderungen?.werte[iso] ?? null, umsatz?.werte[iso] ?? null)
+      return t == null ? null : t * 365
+    })
+    ratioZeile('dio', 'Lagerdauer (DIO, Tage)', 'umschlag', 'zahl', 'days-in-inventory', (iso) => {
+      const t = ratio(vorraete?.werte[iso] ?? null, cogsFuerIso(iso))
+      return t == null ? null : t * 365
+    })
+    ratioZeile('dpo', 'Verbindlichkeitenlaufzeit (DPO, Tage)', 'umschlag', 'zahl', 'days-payables-outstanding', (iso) => {
+      const ap = lieferverb?.werte[iso] ?? null
+      const t = ratio(ap, cogsFuerIso(iso))
+      return t == null ? null : t * 365
+    })
+  } else {
+    // Platzhalter-Zeilen (null) — Charts erwarten die IDs; Werte kommen aus TTM-Pfad
+    for (const [id, label, slug] of [
+      ['dso', 'Forderungslaufzeit (DSO, Tage)', 'days-sales-in-receivables'],
+      ['dio', 'Lagerdauer (DIO, Tage)', 'days-in-inventory'],
+      ['dpo', 'Verbindlichkeitenlaufzeit (DPO, Tage)', 'days-payables-outstanding'],
+    ] as const) {
+      ratioZeile(id, label, 'umschlag', 'zahl', slug, () => null)
+    }
+  }
 
   const capexDa: Record<string, number | null> = {}
   for (const iso of [...isoListe, ...(mitTtm ? [FUNDAMENTAL_TTM_KEY] : [])]) {
@@ -1035,7 +1264,10 @@ export async function ladeSecFundamentaldaten(
   const umsatzJ = zaehle(umsatz, isoListe)
   const epsJ = zaehle(zeilen.find((z) => z.id === 'eps'), isoListe)
   const ekJ = zaehle(ek, isoListe)
-  if (umsatzJ < (quartal ? 4 : 6) || epsJ < (quartal ? 4 : 4) || ekJ < (quartal ? 4 : 4)) {
+  // Quartal: EPS in XBRL fehlt bei manchen Titeln (z. B. Visa) — Umsatz+EK reichen,
+  // EPS kommt ggf. aus Yahoo/NI÷WAS. Jahr: EPS weiter Pflicht.
+  const epsMin = quartal ? 0 : 4
+  if (umsatzJ < (quartal ? 4 : 6) || epsJ < epsMin || ekJ < (quartal ? 4 : 4)) {
     console.warn(
       `[sec-fundamental] zu dünn für ${ident.ticker} umsatz=${umsatzJ} eps=${epsJ} ek=${ekJ}`,
     )

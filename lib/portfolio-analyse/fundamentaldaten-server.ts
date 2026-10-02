@@ -69,7 +69,7 @@ import { ISIN_WAEHRUNG, istEuIsin } from '@/lib/portfolio-analyse/eu-portfolio-i
 import { ladeUnitEconomics } from '@/lib/portfolio-analyse/unit-economics-server'
 import { ladeYahooFundamentalKennzahlenMitFallback } from '@/lib/portfolio-analyse/yahoo-kennzahlen-fallback-server'
 import { ergaenzeFehlendeStatementZeilen } from '@/lib/portfolio-analyse/fundamentaldaten-zeilen-backfill-server'
-import { ergaenzeRoicAusBilanz } from '@/lib/portfolio-analyse/fundamentaldaten-roic-berechnung'
+import { ergaenzeQuartalsRenditenTTM, ergaenzeRoicAusBilanz } from '@/lib/portfolio-analyse/fundamentaldaten-roic-berechnung'
 import { ergaenzeWorkingCapitalTageZeilen } from '@/lib/portfolio-analyse/fundamentaldaten-working-capital-zeilen'
 import { ladeIncrementalRoic } from '@/lib/portfolio-analyse/incremental-roic-server'
 import { ergaenzeHistorischeMultiplesZeilen } from '@/lib/portfolio-analyse/fundamentaldaten-historische-multiples-server'
@@ -289,6 +289,19 @@ function quartalsGuVDuen(roh: { perioden: FundamentalPeriode[]; zeilen: Fundamen
   const umsatz = roh.zeilen.find((z) => z.id === 'umsatz')
   const n = hist.filter((p) => {
     const v = umsatz?.werte[p.iso]
+    return v != null && Number.isFinite(v)
+  }).length
+  return n < 4
+}
+
+/** SEC ohne XBRL-EPS (z. B. Visa) — Yahoo/SA dürfen Lücken füllen, ohne Umsatz zu überschreiben. */
+function quartalsEpsDuen(roh: { perioden: FundamentalPeriode[]; zeilen: FundamentalMetrikZeile[] } | null | undefined): boolean {
+  if (!roh || roh.zeilen.length === 0) return true
+  const hist = roh.perioden.filter((p) => !p.istLtm && !p.istSchaetzung && !p.istNtm)
+  if (hist.length < 4) return true
+  const eps = roh.zeilen.find((z) => z.id === 'eps')
+  const n = hist.filter((p) => {
+    const v = eps?.werte[p.iso]
     return v != null && Number.isFinite(v)
   }).length
   return n < 4
@@ -548,8 +561,14 @@ async function ladeFundamentaldatenLive(anfrage: FundamentaldatenAnfrage): Promi
     }
   } else if (roh && roh.guvQuelle !== 'sec' && symbolYahoo && frequenz === 'jahr' && euGuV) {
     roh = await ergaenzeMacrotrendsMitYahooGuV(roh, symbolYahoo, mergeOpts)
-  } else if (roh && roh.guvQuelle !== 'sec' && symbolYahoo && frequenz === 'quartal' && (euGuV || quartalsGuVDuen(roh))) {
-    roh = await ergaenzeMacrotrendsMitYahooGuV(roh, symbolYahoo, mergeOpts)
+  } else if (roh && symbolYahoo && frequenz === 'quartal') {
+    const brauchtMerge =
+      roh.guvQuelle !== 'sec'
+        ? euGuV || quartalsGuVDuen(roh)
+        : quartalsGuVDuen(roh) || quartalsEpsDuen(roh)
+    if (brauchtMerge) {
+      roh = await ergaenzeMacrotrendsMitYahooGuV(roh, symbolYahoo, mergeOpts)
+    }
   }
 
   const yahooExt = yahooRaw as (YahooFundamentalKennzahlen & {
@@ -622,6 +641,8 @@ async function ladeFundamentaldatenLive(anfrage: FundamentaldatenAnfrage): Promi
     ergaenzeEvMultiplesZeilen(merged.perioden, merged.zeilen)
     ergaenzeRoicAusBilanz(merged.perioden, merged.zeilen)
     ergaenzeWorkingCapitalTageZeilen(merged.perioden, merged.zeilen)
+  } else {
+    ergaenzeQuartalsRenditenTTM(merged.perioden, merged.zeilen)
   }
 
   if (euGuV && frequenz === 'jahr' && roh.guvQuelle !== 'sec') {
@@ -819,7 +840,11 @@ function paketMitKorrigiertemFwdWachstum(p: FundamentaldatenPaket): Fundamentald
   const zeilen = bereinigeSchaetzungsniveausInZeilen(p.perioden, p.zeilen)
   ergaenzeFcfRenditeZeilen(p.perioden, zeilen)
   ergaenzeMargenZeilen(p.perioden, zeilen)
-  ergaenzeRoicAusBilanz(p.perioden, zeilen)
+  if (p.frequenz === 'quartal') {
+    ergaenzeQuartalsRenditenTTM(p.perioden, zeilen)
+  } else {
+    ergaenzeRoicAusBilanz(p.perioden, zeilen)
+  }
   const perioden = periodenOhneLeereSchaetzungen(p.perioden, zeilen)
   const cleaned = { ...p, perioden, zeilen }
   if (cleaned.keyMetrics.length === 0) return cleaned

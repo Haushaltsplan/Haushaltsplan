@@ -59,7 +59,13 @@ export function ergaenzeNettoverschuldungZeilen(
   if (hatNd) {
     upsert(zeilen, 'nettoverschuldung', 'Nettoverschuldung', 'bilanz', 'waehrung_usd_mio', ndWerte)
   }
-  if (hatNdE && !opts?.ohneEbitdaMultiple) {
+  if (opts?.ohneEbitdaMultiple) {
+    // Quartals-EBITDA ist ~¼ FY → ND/EBITDA wäre 4× zu hoch. Bestehende Serie löschen.
+    const existing = zeilen.find((z) => z.id === 'net_debt_ebitda')
+    if (existing) {
+      for (const p of perioden) existing.werte[p.iso] = null
+    }
+  } else if (hatNdE) {
     upsert(
       zeilen,
       'net_debt_ebitda',

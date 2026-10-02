@@ -518,17 +518,21 @@ function pickWert(...kandidaten: Array<number | null | undefined>): number | nul
   return null
 }
 
-/** Wert aus Zeile — exakt oder ±45 Tage / gleiches Jahr (Macrotrends vs. URD/Yahoo). */
+/** Wert aus Zeile — exakt oder nah am Stichtag (kein Jahres-Fallback). */
 function pickWertFuerIso(
   iso: string,
-  ...quellen: Array<Record<string, number | null | undefined> | undefined>
+  quellen: Array<Record<string, number | null | undefined> | undefined>,
+  opts?: { maxDiffTage?: number },
 ): number | null {
   for (const q of quellen) {
-    const v = wertAusMapFuerIso(q, iso)
+    const v = wertAusMapFuerIso(q, iso, opts)
     if (v != null) return v
   }
   return null
 }
+
+/** Quartals-Stichtage: nur eng matchen (±10d), sonst rutscht Q2 in Q1. */
+const QUARTAL_ISO_MAX_DIFF_TAGE = 10
 
 function guvRohAusStockanalysis(reihe: StockanalysisJahresForecastEintrag[]): YahooGuVRoh | null {
   if (reihe.length < 2) return null
@@ -782,8 +786,8 @@ export async function ergaenzeMacrotrendsMitYahooGuV(
       const werte: Record<string, number | null> = {}
       for (const iso of histIso) {
         werte[iso] = preferUrd
-          ? pickWertFuerIso(iso, uz?.werte, sz?.werte, stz?.werte, mz?.werte, yz?.werte, z.werte)
-          : pickWertFuerIso(iso, sz?.werte, stz?.werte, mz?.werte, yz?.werte, uz?.werte, z.werte)
+          ? pickWertFuerIso(iso, [uz?.werte, sz?.werte, stz?.werte, mz?.werte, yz?.werte, z.werte])
+          : pickWertFuerIso(iso, [sz?.werte, stz?.werte, mz?.werte, yz?.werte, uz?.werte, z.werte])
       }
       if (ttm) {
         werte[FUNDAMENTAL_TTM_KEY] = pickWert(
@@ -859,19 +863,22 @@ function mergeQuartalsQuellen(
   const mergedZeilen: FundamentalMetrikZeile[] = []
   const gesehen = new Set<string>()
 
+  const qOpts = { maxDiffTage: QUARTAL_ISO_MAX_DIFF_TAGE }
+
   for (const z of roh.zeilen) {
     gesehen.add(z.id)
     if (YAHOO_GUV_ZEILEN_IDS.has(z.id)) {
       const fremd = extraById.map((m) => m.get(z.id)?.werte)
       const werte: Record<string, number | null> = {}
       for (const iso of histIso) {
-        werte[iso] = pickWertFuerIso(iso, z.werte, ...fremd)
+        // Primärquelle (SEC/MT) exakt bevorzugen — kein weites Datums-Rutschen
+        werte[iso] = pickWertFuerIso(iso, [z.werte, ...fremd], qOpts)
       }
       mergedZeilen.push({ ...z, werte })
     } else {
       const werte: Record<string, number | null> = { ...z.werte }
       for (const iso of histIso) {
-        const nah = wertAusMapFuerIso(z.werte, iso)
+        const nah = wertAusMapFuerIso(z.werte, iso, qOpts)
         if (nah != null) werte[iso] = nah
         else if (!(iso in werte)) werte[iso] = null
       }
@@ -885,7 +892,7 @@ function mergeQuartalsQuellen(
       gesehen.add(z.id)
       const werte: Record<string, number | null> = {}
       for (const iso of histIso) {
-        werte[iso] = wertAusMapFuerIso(z.werte, iso)
+        werte[iso] = wertAusMapFuerIso(z.werte, iso, qOpts)
       }
       mergedZeilen.push({ ...z, werte })
     }

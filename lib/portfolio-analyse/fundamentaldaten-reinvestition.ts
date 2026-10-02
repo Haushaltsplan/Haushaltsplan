@@ -48,16 +48,39 @@ export function berechneReinvestition(
     }
   }
 
-  const t = keys[keys.length - 1]!
+  const quartal =
+    keys.length >= 3 &&
+    (() => {
+      const gaps: number[] = []
+      for (let i = 1; i < Math.min(keys.length, 8); i++) {
+        gaps.push((Date.parse(keys[i]!) - Date.parse(keys[i - 1]!)) / 86_400_000)
+      }
+      gaps.sort((a, b) => a - b)
+      const med = gaps[Math.floor(gaps.length / 2)] ?? 0
+      return med >= 60 && med <= 130
+    })()
 
-  const capex = w(zeilen, 'capex', t)
-  const daZeile = w(zeilen, 'da', t)
-  const da = daZeile ?? daMioFallback
-  const fcf = w(zeilen, 'fcf', t)
+  const sumFlow = (id: string): number | null => {
+    if (!quartal || keys.length < 4) return w(zeilen, id, keys[keys.length - 1]!)
+    const letzte = keys.slice(-4)
+    let sum = 0
+    for (const k of letzte) {
+      const v = w(zeilen, id, k)
+      if (v == null) return null
+      sum += v
+    }
+    return sum
+  }
+
+  const capex = sumFlow('capex')
+  const daZeile = sumFlow('da')
+  const da = daZeile ?? (quartal ? null : daMioFallback)
+  const fcf = sumFlow('fcf')
 
   const capexAbs = capex != null ? Math.abs(capex) : null
   const daAbs = da != null ? Math.abs(da) : null
-  const mnaAbs = mnaMio != null && mnaMio > 0 ? mnaMio : 0
+  // FY-M&A nicht in Quartals-TTM mischen
+  const mnaAbs = !quartal && mnaMio != null && mnaMio > 0 ? mnaMio : 0
 
   let bruttoReinvestMio: number | null = null
   if (capexAbs != null) {

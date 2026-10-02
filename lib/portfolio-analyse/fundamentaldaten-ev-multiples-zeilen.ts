@@ -5,7 +5,7 @@
  * Primär: Macrotrends market-cap Chart (v3 in Mrd. → Mio.)
  * Fallback: P/S × Umsatz, dann KGV × EPS × Aktien
  *
- * Werte werden periodennahe gematcht (±45 Tage / gleiches Jahr), weil nach dem
+ * Werte werden periodennahe gematcht (±45 Tage), weil nach dem
  * Yahoo/SA-GuV-Merge Umsatz auf neuen FY-ISOs liegt, Marktkap/P/S oft noch auf
  * Macrotrends-Daten — exakter Key-Match ließ die Historie leer.
  */
@@ -58,7 +58,9 @@ export function enterpriseValueMioFuerKey(
   const mc = marktKapMio(zeilen, key)
   if (mc == null) return null
   const nd = nettoVerschuldungMio(zeilen, key)
-  return nd != null ? mc + nd : mc
+  // Unvollständige Nettoverschuldung → kein EV (sonst MC-only unter dem Label „EV“)
+  if (nd == null) return null
+  return mc + nd
 }
 
 function upsertZeile(
@@ -112,8 +114,9 @@ export function ergaenzeEvMultiplesZeilen(
   for (const key of keys) {
     const ev = enterpriseValueMioFuerKey(zeilen, key)
     const rev = wert(zeilen, 'umsatz', key)
-    const ebitda = wert(zeilen, 'ebitda', key) ?? wert(zeilen, 'ebit', key)
+    const ebitda = wert(zeilen, 'ebitda', key)
     evRev[key] = safeDiv(ev, rev)
+    // Kein EBIT-Fallback — sonst Label „EV/EBITDA“ mit zu hohem Multiple
     evEbitda[key] = safeDiv(ev, ebitda != null && ebitda > 0 ? ebitda : null)
     if (evRev[key] != null || evEbitda[key] != null) hat = true
   }

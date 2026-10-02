@@ -25,6 +25,57 @@ export function letzterVerfuegbarerWert(
   return null
 }
 
+/** Median-Abstand der Hist-ISOs — ~90 Tage ⇒ Quartalspaket. */
+export function istQuartalsPerioden(perioden: FundamentalPeriode[] | undefined): boolean {
+  const keys = perioden
+    ?.filter((p) => !p.istLtm && !p.istNtm && !p.istSchaetzung && /^\d{4}-\d{2}-\d{2}$/.test(p.iso))
+    .map((p) => p.iso)
+    .sort()
+  if (!keys || keys.length < 3) return false
+  const gaps: number[] = []
+  for (let i = 1; i < keys.length; i++) {
+    gaps.push((Date.parse(keys[i]!) - Date.parse(keys[i - 1]!)) / 86_400_000)
+  }
+  gaps.sort((a, b) => a - b)
+  const med = gaps[Math.floor(gaps.length / 2)]!
+  return med >= 60 && med <= 130
+}
+
+/**
+ * Flow-Kennzahl für „LTM“-Key-Metrics:
+ * TTM-Spalte, sonst Summe der letzten 4 Folgequartale, sonst letzter Einzelwert (Jahresmodus).
+ */
+export function ttmOderLetzterFlow(
+  zeile: FundamentalMetrikZeile | undefined,
+  perioden: FundamentalPeriode[] | undefined,
+): number | null {
+  if (!zeile) return null
+  const ttm = zeile.werte[FUNDAMENTAL_TTM_KEY]
+  if (ttm != null && Number.isFinite(ttm)) return ttm
+
+  const keys =
+    perioden
+      ?.filter((p) => !p.istLtm && !p.istNtm && !p.istSchaetzung && /^\d{4}-\d{2}-\d{2}$/.test(p.iso))
+      .map((p) => p.iso)
+      .sort() ?? []
+  if (keys.length >= 4 && istQuartalsPerioden(perioden)) {
+    const letzte = keys.slice(-4)
+    for (let i = 1; i < letzte.length; i++) {
+      const gap =
+        (Date.parse(letzte[i]!) - Date.parse(letzte[i - 1]!)) / 86_400_000
+      if (gap < 60 || gap > 130) return letzterVerfuegbarerWert(zeile, perioden)
+    }
+    let sum = 0
+    for (const k of letzte) {
+      const v = zeile.werte[k]
+      if (v == null || !Number.isFinite(v)) return letzterVerfuegbarerWert(zeile, perioden)
+      sum += v
+    }
+    return sum
+  }
+  return letzterVerfuegbarerWert(zeile, perioden)
+}
+
 /**
  * Zähler und Nenner derselben Periode (TTM nur wenn beide da, sonst letztes GJ).
  * Verhindert z. B. TTM-FCF aus 4×Q1-YTD geteilt durch echtes TTM-Nettogewinn.

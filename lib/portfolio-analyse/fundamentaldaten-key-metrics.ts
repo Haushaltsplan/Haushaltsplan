@@ -10,6 +10,7 @@ import {
 import {
   berechneIncrementalValueSpread,
   historischeWerteAusZeile,
+  ttmOderLetzterFlow,
 } from '@/lib/portfolio-analyse/fundamentaldaten-roic-hilfen'
 import type { FundamentalSchaetzungenRoh } from '@/lib/portfolio-analyse/fundamentaldaten-schaetzungen-server'
 import type {
@@ -482,10 +483,10 @@ export function baueKeyMetrics(
   const evRevZeile = roh?.zeilen.find((z) => z.id === 'ev_rev')
   const evEbitdaZeile = roh?.zeilen.find((z) => z.id === 'ev_ebitda')
 
-  const ltmUmsatzUsd =
-    letzterGeschaeftsjahresWert(umsatzZeile, perioden) != null
-      ? letzterGeschaeftsjahresWert(umsatzZeile, perioden)! * 1_000_000
-      : null
+  const ltmUmsatzUsd = (() => {
+    const mio = ttmOderLetzterFlow(umsatzZeile, perioden)
+    return mio != null ? mio * 1_000_000 : null
+  })()
   const ltmEvRevenue =
     yahoo?.enterpriseValue != null && ltmUmsatzUsd != null && ltmUmsatzUsd > 0
       ? yahoo.enterpriseValue / ltmUmsatzUsd
@@ -513,10 +514,10 @@ export function baueKeyMetrics(
     yahoo?.forwardPE ??
     null
 
-  const ltmFcfUsd =
-    letzterGeschaeftsjahresWert(fcfZeile, perioden) != null
-      ? letzterGeschaeftsjahresWert(fcfZeile, perioden)! * 1_000_000
-      : null
+  const ltmFcfUsd = (() => {
+    const mio = ttmOderLetzterFlow(fcfZeile, perioden)
+    return mio != null ? mio * 1_000_000 : null
+  })()
   const fwdMcFcf =
     fyWert(pfcfZeile) ??
     (yahoo?.marketCap != null && ltmFcfUsd != null && ltmFcfUsd > 0 && yahoo?.revenueGrowth != null
@@ -803,6 +804,24 @@ export function korrigiereEffizienzKeyMetrics(
     if (k.id === 'ltm_roe') return { ...k, wert: pctRaw(w.roe) }
     if (k.id === 'ltm_roic') return { ...k, wert: pctRaw(w.roicAnzeige ?? w.roic) }
     if (k.id === 'ltm_roic_ex_gw') return { ...k, wert: pctRaw(w.roicExGoodwill) }
+    if (k.id === 'net_debt_ebitda') {
+      const v = w.netDebtEbitda
+      return {
+        ...k,
+        wert: v != null ? (v < 0 ? `(${multiple(Math.abs(v))})` : multiple(v)) : '–',
+      }
+    }
+    if (k.id === 'net_debt_fcf') {
+      const v = w.netDebtFcf
+      return {
+        ...k,
+        wert: v != null ? (v < 0 ? `(${multiple(Math.abs(v))})` : multiple(v)) : '–',
+      }
+    }
+    if (k.id === 'umsatz_cagr_3y') return { ...k, wert: pctRaw(w.umsatzCagr3), zahl: w.umsatzCagr3 ?? null }
+    if (k.id === 'umsatz_cagr_5y') return { ...k, wert: pctRaw(w.umsatzCagr5), zahl: w.umsatzCagr5 ?? null }
+    if (k.id === 'eps_cagr_3y') return { ...k, wert: pctRaw(w.epsCagr3), zahl: w.epsCagr3 ?? null }
+    if (k.id === 'eps_cagr_5y') return { ...k, wert: pctRaw(w.epsCagr5), zahl: w.epsCagr5 ?? null }
     if (k.id === 'ltm_value_spread') {
       return {
         ...k,
