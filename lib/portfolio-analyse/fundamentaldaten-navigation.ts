@@ -6,12 +6,13 @@ export type FundamentalKandidat = {
   name: string
   symbolYahoo: string | null
   symbolCandidates: string[]
-  quelle: 'depot' | 'watchlist'
+  quelle: 'depot' | 'watchlist' | 'suche'
 }
 
 export function fundamentaldatenHref(opts: {
   isin?: string | null
   symbol?: string | null
+  name?: string | null
 }): string {
   const params = new URLSearchParams()
   const isin = opts.isin?.trim().toUpperCase()
@@ -20,6 +21,8 @@ export function fundamentaldatenHref(opts: {
     const symbol = opts.symbol?.trim()
     if (symbol) params.set('symbol', symbol)
   }
+  const name = opts.name?.trim()
+  if (name) params.set('name', name)
   const q = params.toString()
   return q ? `${FUNDAMENTALDATEN_PFAD}?${q}` : FUNDAMENTALDATEN_PFAD
 }

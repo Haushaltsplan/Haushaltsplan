@@ -16,24 +16,38 @@ import {
   WATCHLIST_PFAD,
 } from '@/lib/portfolio-analyse/fundamentaldaten-navigation'
 import { isinKenntnis } from '@/lib/portfolio-analyse/isin-kenntnisse'
-import { ladeWatchlist } from '@/lib/portfolio-analyse/watchlist-client'
+import {
+  findeWatchlistIdx,
+  fuegeZurWatchlistHinzu,
+  ladeWatchlist,
+  WATCHLIST_CHANGED_EVENT,
+  watchlistEintragAusMeta,
+} from '@/lib/portfolio-analyse/watchlist-client'
+import type { IsinMetadata } from '@/lib/portfolio-analyse/isin-lookup-server'
 
 export function PortfolioFundamentaldatenClient() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const isinParam = searchParams.get('isin')
   const symbolParam = searchParams.get('symbol')
+  const nameParam = searchParams.get('name')
   const { live, meta, hatDaten, laden: paLaden } = usePortfolioAnalyse()
   const setBeraterFocus = usePortfolioBeraterFocus()
   const [selectedIdx, setSelectedIdx] = useState(0)
   const [watchlistVersion, setWatchlistVersion] = useState(0)
+  const [watchHinweis, setWatchHinweis] = useState<string | null>(null)
 
   useEffect(() => {
+    const bump = () => setWatchlistVersion((v) => v + 1)
     const onStorage = (e: StorageEvent) => {
-      if (e.key === 'pa-watchlist-v1') setWatchlistVersion((v) => v + 1)
+      if (e.key === 'pa-watchlist-v1') bump()
     }
     window.addEventListener('storage', onStorage)
-    return () => window.removeEventListener('storage', onStorage)
+    window.addEventListener(WATCHLIST_CHANGED_EVENT, bump)
+    return () => {
+      window.removeEventListener('storage', onStorage)
+      window.removeEventListener(WATCHLIST_CHANGED_EVENT, bump)
+    }
   }, [])
 
   const kandidaten = useMemo<FundamentalKandidat[]>(() => {
@@ -65,10 +79,37 @@ export function PortfolioFundamentaldatenClient() {
       }))
 
     void watchlistVersion
-    return [...depot, ...watchlist]
-  }, [live?.positionen, meta, watchlistVersion])
+    const basis = [...depot, ...watchlist]
+
+    const isin = isinParam?.trim().toUpperCase() || null
+    const symbol = symbolParam?.trim() || null
+    if (!isin && !symbol) return basis
+
+    const schonDa = findeFundamentalPositionIdx(basis, { isin, symbol })
+    if (schonDa >= 0) return basis
+
+    const k = isin ? isinKenntnis(isin) : undefined
+    const m = isin ? meta.get(isin) : undefined
+    const suche: FundamentalKandidat = {
+      isin,
+      name: nameParam?.trim() || k?.name || m?.name || symbol || isin || 'Aktie',
+      symbolYahoo: symbol || k?.symbolYahoo || m?.symbolYahoo || null,
+      symbolCandidates: [
+        ...(symbol ? [symbol] : []),
+        ...(k?.symbolCandidates ?? []),
+        ...(m?.symbolYahoo ? [m.symbolYahoo] : []),
+      ],
+      quelle: 'suche',
+    }
+    return [suche, ...basis]
+  }, [live?.positionen, meta, watchlistVersion, isinParam, symbolParam, nameParam])
 
   const selected = kandidaten[selectedIdx] ?? null
+
+  const aufWatchlist = useMemo(() => {
+    if (!selected) return false
+    return findeWatchlistIdx(ladeWatchlist(), { isin: selected.isin, symbol: selected.symbolYahoo }) >= 0
+  }, [selected, watchlistVersion])
 
   useEffect(() => {
     if (!selected) {
@@ -91,12 +132,31 @@ export function PortfolioFundamentaldatenClient() {
   const waehleKandidat = useCallback(
     (idx: number) => {
       setSelectedIdx(idx)
+      setWatchHinweis(null)
       const p = kandidaten[idx]
       if (!p) return
-      router.replace(fundamentaldatenHref({ isin: p.isin, symbol: p.symbolYahoo }), { scroll: false })
+      router.replace(
+        fundamentaldatenHref({ isin: p.isin, symbol: p.symbolYahoo, name: p.name }),
+        { scroll: false },
+      )
     },
     [kandidaten, router],
   )
+
+  const zurWatchlist = useCallback(() => {
+    if (!selected) return
+    const metaLike: IsinMetadata = {
+      isin: selected.isin ?? '',
+      name: selected.name,
+      symbolYahoo: selected.symbolYahoo,
+      symbolCandidates: selected.symbolCandidates,
+      wkn: null,
+      assetType: 'EQUITY',
+    }
+    fuegeZurWatchlistHinzu(watchlistEintragAusMeta(metaLike, selected.isin))
+    setWatchlistVersion((v) => v + 1)
+    setWatchHinweis(`${selected.name} zur Watchlist hinzugefügt.`)
+  }, [selected])
 
   const anfrage = useMemo(
     () =>
@@ -114,22 +174,25 @@ export function PortfolioFundamentaldatenClient() {
 
   const depotAnzahl = kandidaten.filter((k) => k.quelle === 'depot').length
   const watchlistAnzahl = kandidaten.filter((k) => k.quelle === 'watchlist').length
+  const sucheAnzahl = kandidaten.filter((k) => k.quelle === 'suche').length
+  const hatUrlTitel = Boolean(isinParam || symbolParam)
+  const leerOhneSuche = kandidaten.length === 0 && !hatUrlTitel
 
   return (
     <PortfolioAnalyseShell
       title="Fundamentaldaten"
       description="Historische Kennzahlen und Bewertungsmultiples im TIKR-Stil — Daten von Macrotrends.net."
     >
-      {!hatDaten && !paLaden && kandidaten.length === 0 ? (
+      {!hatDaten && !paLaden && leerOhneSuche ? (
         <PaCard className="space-y-3 p-6 text-sm text-[var(--app-text-muted)]">
-          <p>Importiere Portfolio-Daten oder lege Aktien auf der Watchlist an.</p>
+          <p>Importiere Portfolio-Daten, lege Aktien auf der Watchlist an — oder nutze die Suche oben.</p>
           <Link href={WATCHLIST_PFAD} className="inline-block text-teal-400 hover:underline">
             Zur Watchlist →
           </Link>
         </PaCard>
-      ) : kandidaten.length === 0 ? (
+      ) : leerOhneSuche ? (
         <PaCard className="space-y-3 p-6 text-sm text-[var(--app-text-muted)]">
-          <p>Keine Aktien im Depot und keine Einträge auf der Watchlist.</p>
+          <p>Keine Aktien im Depot und keine Einträge auf der Watchlist. Suche oben nach einem Ticker.</p>
           <Link href={WATCHLIST_PFAD} className="inline-block text-teal-400 hover:underline">
             Watchlist anlegen →
           </Link>
@@ -142,15 +205,42 @@ export function PortfolioFundamentaldatenClient() {
               <label className="text-[11px] font-medium uppercase tracking-wide text-[var(--app-text-muted)]">
                 Unternehmen
               </label>
-              <Link href={WATCHLIST_PFAD} className="text-[11px] text-teal-400 hover:underline">
-                Watchlist verwalten
-              </Link>
+              <div className="flex flex-wrap items-center gap-3">
+                {selected && !aufWatchlist ? (
+                  <button
+                    type="button"
+                    onClick={zurWatchlist}
+                    className="text-[11px] font-medium text-teal-300 hover:text-teal-200 hover:underline"
+                  >
+                    + Watchlist
+                  </button>
+                ) : selected && aufWatchlist ? (
+                  <span className="text-[11px] text-[var(--app-text-muted)]">Auf Watchlist</span>
+                ) : null}
+                <Link href={WATCHLIST_PFAD} className="text-[11px] text-teal-400 hover:underline">
+                  Watchlist verwalten
+                </Link>
+              </div>
             </div>
+            {watchHinweis ? <p className="mb-2 text-[11px] text-teal-300/90">{watchHinweis}</p> : null}
             <select
               value={selectedIdx}
               onChange={(e) => waehleKandidat(Number(e.target.value))}
               className="w-full rounded-lg border border-[var(--app-border-strong)] bg-[var(--app-surface-muted)] px-3 py-2 text-sm text-[var(--app-text)]"
             >
+              {sucheAnzahl > 0 ? (
+                <optgroup label="Suche">
+                  {kandidaten
+                    .map((p, i) => ({ p, i }))
+                    .filter(({ p }) => p.quelle === 'suche')
+                    .map(({ p, i }) => (
+                      <option key={`suche-${p.isin ?? p.symbolYahoo ?? p.name}-${i}`} value={i}>
+                        {p.name}
+                        {p.symbolYahoo ? ` (${p.symbolYahoo})` : ''}
+                      </option>
+                    ))}
+                </optgroup>
+              ) : null}
               {depotAnzahl > 0 ? (
                 <optgroup label="Depot">
                   {kandidaten
@@ -182,7 +272,7 @@ export function PortfolioFundamentaldatenClient() {
 
           <PaFundamentalInhalt
             anfrage={anfrage}
-            selectionKey={selected ? `${selected.quelle}:${selected.isin ?? selected.name}` : undefined}
+            selectionKey={selected ? `${selected.quelle}:${selected.isin ?? selected.symbolYahoo ?? selected.name}` : undefined}
             alleScrapZiele={kandidaten.map((k) => ({
               isin: k.isin,
               name: k.name,

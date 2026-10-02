@@ -24,6 +24,7 @@ import { CSS } from '@dnd-kit/utilities'
 import { NavLinkList } from '@/components/nav-link-list'
 import { OmniaNativeVersionLabel } from '@/components/omnia-native-version'
 import { ThemeToggle } from '@/components/theme-toggle'
+import { PaGlobalAktienSuche } from '@/components/portfolio-analyse/pa-global-aktien-suche'
 import { useOmniaRolle } from '@/components/zugriff-gate'
 import { lockAppScroll } from '@/lib/app-scroll-lock'
 import { istInvestmentsGesperrt, investmentsSperreNavTitle } from '@/lib/investments-sperre'
@@ -179,11 +180,11 @@ export function SiteMobileChrome() {
   return (
     <>
       <header className="app-glass-bar sticky top-0 z-50 border-b pt-[env(safe-area-inset-top,0px)] md:hidden">
-        <div className="flex h-14 min-w-0 items-center gap-2 px-3">
+        <div className="flex h-12 min-w-0 items-center gap-2 px-3">
           <button
             type="button"
             onClick={() => setDrawerOpen(true)}
-            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-[var(--app-text)] outline-none transition hover:bg-[var(--app-surface-hover)] focus-visible:ring-2 focus-visible:ring-teal-500/40"
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-[var(--app-text)] outline-none transition hover:bg-[var(--app-surface-hover)] focus-visible:ring-2 focus-visible:ring-teal-500/40"
             aria-label="Menü öffnen"
             aria-expanded={drawerOpen}
           >
@@ -196,12 +197,15 @@ export function SiteMobileChrome() {
             <p className="truncate app-eyebrow text-[10px]">
               {gast ? 'Portfolioanalyse' : 'Omnia'}
             </p>
-            <p className="truncate text-base font-semibold text-[var(--app-text)]">
+            <p className="truncate text-sm font-semibold text-[var(--app-text)]">
               {currentDef?.label ?? 'Start'}
             </p>
           </div>
 
           <ThemeToggle />
+        </div>
+        <div className="border-t border-[var(--app-border)] px-3 py-2">
+          <PaGlobalAktienSuche />
         </div>
       </header>
 

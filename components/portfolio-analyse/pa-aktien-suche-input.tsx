@@ -18,6 +18,9 @@ export function PaAktienSucheInput({
   fehler,
   onFehler,
   kompakt = false,
+  /** Nur Treffer wählen, kein „+“-Button (Header-Suche). */
+  nurSuche = false,
+  placeholder,
 }: {
   onAuswahl: (auswahl: AktienSucheAuswahl) => void | Promise<void>
   laden?: boolean
@@ -25,6 +28,8 @@ export function PaAktienSucheInput({
   onFehler?: (msg: string | null) => void
   /** Weniger Labels / Hilfstext — für enge Sidebars. */
   kompakt?: boolean
+  nurSuche?: boolean
+  placeholder?: string
 }) {
   const listId = useId()
   const wrapRef = useRef<HTMLDivElement>(null)
@@ -184,7 +189,7 @@ export function PaAktienSucheInput({
                 setOffen(false)
               }
             }}
-            placeholder={kompakt ? 'Name, Ticker, ISIN …' : 'Apple, Microsoft, AAPL …'}
+            placeholder={placeholder ?? (kompakt || nurSuche ? 'Name, Ticker, ISIN …' : 'Apple, Microsoft, AAPL …')}
             autoComplete="off"
             aria-label="Aktie suchen"
             aria-autocomplete="list"
@@ -203,7 +208,7 @@ export function PaAktienSucheInput({
             <ul
               id={listId}
               role="listbox"
-              className="absolute z-20 mt-1 max-h-56 w-full overflow-y-auto rounded-lg border border-[var(--app-border-strong)] bg-[var(--app-surface-muted)] py-1 shadow-xl shadow-black/40"
+              className="absolute z-[60] mt-1 max-h-56 w-full overflow-y-auto rounded-lg border border-[var(--app-border-strong)] bg-[var(--app-surface-muted)] py-1 shadow-xl shadow-black/40"
             >
               {treffer.map((t, i) => (
                 <li key={t.symbol} role="option" aria-selected={i === aktivIdx}>
@@ -226,15 +231,17 @@ export function PaAktienSucheInput({
             </ul>
           ) : null}
         </div>
-        <button
-          type="submit"
-          disabled={laden || !query.trim()}
-          className={`shrink-0 rounded-lg bg-teal-600/90 px-3 text-sm font-medium text-white hover:bg-teal-500 disabled:opacity-50 ${
-            kompakt ? 'py-1.5' : 'py-2'
-          }`}
-        >
-          +
-        </button>
+        {!nurSuche ? (
+          <button
+            type="submit"
+            disabled={laden || !query.trim()}
+            className={`shrink-0 rounded-lg bg-teal-600/90 px-3 text-sm font-medium text-white hover:bg-teal-500 disabled:opacity-50 ${
+              kompakt ? 'py-1.5' : 'py-2'
+            }`}
+          >
+            +
+          </button>
+        ) : null}
       </div>
       {fehler ? (
         <p className="mt-1.5 text-[11px] text-amber-400/90">{fehler}</p>
