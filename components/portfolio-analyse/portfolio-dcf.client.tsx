@@ -502,7 +502,13 @@ export function PortfolioDcfClient() {
 
                 <AssumptionRow
                   label="FCF-Wachstum (Start)"
-                  hint={`Quelle: ${inputs.gStartQuelle === 'schaetzung' ? 'Consensus' : inputs.gStartQuelle === 'cagr5' ? 'FCF-CAGR 5J' : 'Fallback 10 %'}`}
+                  hint={`Quelle: ${
+                    inputs.gStartQuelle === 'schaetzung'
+                      ? 'Consensus FY1/FY0 (nicht Restjahr)'
+                      : inputs.gStartQuelle === 'cagr5'
+                        ? 'FCF-CAGR 5J'
+                        : 'Fallback 10 %'
+                  }`}
                 >
                   <NumSlider
                     value={annahmen.gStartPct}

@@ -25,6 +25,15 @@ function clip(v: number, lo: number, hi: number): number {
   return Math.min(hi, Math.max(lo, v))
 }
 
+function runde1(v: number): number {
+  return Math.round(v * 10) / 10
+}
+
+/** Sinnvolles High-Growth-g für 5–10J-DCF (nicht Restjahr FY0≈TTM). */
+function istBrauchbaresWachstum(gPct: number): boolean {
+  return Number.isFinite(gPct) && gPct >= 4 && gPct <= 25
+}
+
 /** DE-formatierte Key-Metric-Strings → Zahl (wie Nachkauf-Radar). */
 export function parseMetricWert(wertStr: string | null | undefined): number | null {
   if (!wertStr) return null
@@ -60,34 +69,48 @@ function fcfUsdAusPaket(paket: FundamentaldatenPaket): { usd: number | null; que
   return { usd: null, quelle: null }
 }
 
+/**
+ * High-Growth-Default für den DCF (mehrjährig), nicht „Restjahr“.
+ *
+ * Reihenfolge:
+ * 1. Consensus FY1E / FY0E (echtes Forward-YoY)
+ * 2. Consensus FY1E / TTM (wenn FY0 fehlt oder ≈ TTM)
+ * 3. Historischer FCF-CAGR 5J
+ * 4. Fallback 10 %
+ *
+ * Nie FY0E/TTM allein — bei Compoundern ist FY0 oft ≈ TTM → Schein-1–2 %.
+ */
 function gStartAusPaket(paket: FundamentaldatenPaket, fcf0Usd: number | null): {
   gStartPct: number
   quelle: DcfPaketInputs['gStartQuelle']
 } {
   const sz = zeile(paket, 'fcf_schaetzung')
-  if (sz && fcf0Usd != null && fcf0Usd > 0) {
-    const fy0 = sz.werte[FUNDAMENTAL_FY0E_KEY]
-    const fy1 = sz.werte[FUNDAMENTAL_FY1E_KEY]
-    // Schätzung in Mio. USD
-    if (fy0 != null && fy0 > 0) {
-      const g = ((fy0 * 1_000_000 - fcf0Usd) / fcf0Usd) * 100
-      if (Number.isFinite(g)) {
-        return { gStartPct: clip(g, -5, 25), quelle: 'schaetzung' }
-      }
-    }
-    if (fy0 != null && fy1 != null && fy0 > 0) {
-      const g = ((fy1 - fy0) / fy0) * 100
-      if (Number.isFinite(g)) {
-        return { gStartPct: clip(g, -5, 25), quelle: 'schaetzung' }
-      }
+  const fy0Mio = sz?.werte[FUNDAMENTAL_FY0E_KEY] ?? null
+  const fy1Mio = sz?.werte[FUNDAMENTAL_FY1E_KEY] ?? null
+
+  // 1) Echtes Forward-YoY aus Consensus
+  if (fy0Mio != null && fy1Mio != null && fy0Mio > 0) {
+    const g = ((fy1Mio - fy0Mio) / fy0Mio) * 100
+    if (istBrauchbaresWachstum(g)) {
+      return { gStartPct: runde1(clip(g, -5, 25)), quelle: 'schaetzung' }
     }
   }
 
+  // 2) Historischer Trend — zuverlässiger als Restjahr/schwaches FY1
   const fcfHist = historischeWerteAusZeile(zeile(paket, 'fcf'), paket.perioden)
   const cagr = cagr5AusSerie(fcfHist)
-  if (cagr != null && Number.isFinite(cagr)) {
-    return { gStartPct: clip(cagr, -5, 25), quelle: 'cagr5' }
+  if (cagr != null && Number.isFinite(cagr) && cagr > -5) {
+    return { gStartPct: runde1(clip(cagr, -5, 25)), quelle: 'cagr5' }
   }
+
+  // 3) FY1 vs. TTM nur wenn CAGR fehlt und Wachstum substanziell ist
+  if (fy1Mio != null && fy1Mio > 0 && fcf0Usd != null && fcf0Usd > 0) {
+    const g = ((fy1Mio * 1_000_000 - fcf0Usd) / fcf0Usd) * 100
+    if (istBrauchbaresWachstum(g)) {
+      return { gStartPct: runde1(clip(g, -5, 25)), quelle: 'schaetzung' }
+    }
+  }
+
   return { gStartPct: DEFAULT_G_START, quelle: 'fallback' }
 }
 
