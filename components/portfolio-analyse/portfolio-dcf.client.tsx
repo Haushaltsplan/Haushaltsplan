@@ -1,7 +1,7 @@
 'use client'
 
 import { useRouter, useSearchParams } from 'next/navigation'
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { PaAktienSucheInput, type AktienSucheAuswahl } from '@/components/portfolio-analyse/pa-aktien-suche-input'
 import { usePortfolioAnalyse } from '@/components/portfolio-analyse/pa-data-provider'
 import { PaInfoHint, type PaInfoHintInhalt } from '@/components/portfolio-analyse/pa-info-hint'
@@ -208,6 +208,7 @@ export function PortfolioDcfClient() {
   const hatTitel = Boolean(isin || symbol)
   /** Stabile Auswahl-ID — steuert Laden/Reset beim Titelwechsel. */
   const selectionKey = `${isin ?? ''}|${(symbol ?? '').toUpperCase()}`
+  const loadGenRef = useRef(0)
 
   const resetTitelState = useCallback(() => {
     setPaket(null)
@@ -223,23 +224,31 @@ export function PortfolioDcfClient() {
   const navigiereZu = useCallback(
     (opts: { isin?: string | null; symbol?: string | null; name?: string | null }) => {
       const nextIsin = opts.isin?.trim().toUpperCase() || null
-      const nextSymbol = opts.symbol?.trim() || null
+      const nextSymbolRaw = opts.symbol?.trim() || null
+      const nextSymbol = nextSymbolRaw
       if (!nextIsin && !nextSymbol) {
         setSucheFehler('Kein Ticker für diesen Treffer.')
         return
       }
-      const nextKey = `${nextIsin ?? ''}|${(nextSymbol ?? '').toUpperCase()}`
-      if (nextKey === selectionKey) {
+
+      const gleicherTitel =
+        (nextIsin != null && isin != null && nextIsin === isin) ||
+        (nextSymbol != null &&
+          symbol != null &&
+          nextSymbol.toUpperCase() === symbol.toUpperCase() &&
+          (nextIsin == null || isin == null || nextIsin === isin))
+
+      if (gleicherTitel) {
         setSucheFehler(null)
         return
       }
+
       setSucheFehler(null)
-      // Sofort leeren — sonst bleibt der alte Titel sichtbar / „klebt“.
       resetTitelState()
       setLaden(true)
       router.push(dcfHref({ isin: nextIsin, symbol: nextSymbol, name: opts.name }))
     },
-    [router, selectionKey, resetTitelState],
+    [router, isin, symbol, resetTitelState],
   )
 
   const onSucheAuswahl = useCallback(
@@ -253,11 +262,17 @@ export function PortfolioDcfClient() {
     [navigiereZu],
   )
 
-  const anfrage = useMemo<FundamentaldatenAnfrage | null>(() => {
-    if (!hatTitel) return null
+  useEffect(() => {
+    if (!hatTitel) {
+      resetTitelState()
+      setLaden(false)
+      return
+    }
+
+    const gen = ++loadGenRef.current
     const k = isin ? isinKenntnis(isin) : undefined
     const symbolYahoo = symbol || k?.symbolYahoo || null
-    return {
+    const req: FundamentaldatenAnfrage = {
       isin,
       name: name || k?.name || symbolYahoo || isin || undefined,
       symbolYahoo,
@@ -268,22 +283,13 @@ export function PortfolioDcfClient() {
       ],
       frequenz: 'jahr',
     }
-  }, [hatTitel, isin, symbol, name])
 
-  useEffect(() => {
-    if (!anfrage || !hatTitel) {
-      resetTitelState()
-      setLaden(false)
-      return
+    function nochAktuell() {
+      return loadGenRef.current === gen
     }
 
-    let cancelled = false
-    const ac = new AbortController()
-    const req = anfrage
-    const erwartetKey = selectionKey
-
     function applyPaket(p: FundamentaldatenPaket) {
-      if (cancelled) return
+      if (!nochAktuell()) return
       const inp = dcfInputsAusPaket(p)
       const exitMultiple = defaultExitMultipleFuerPaket(p)
       const base = annahmenAusPaketInputs(inp, { exitMultiple })
@@ -305,31 +311,29 @@ export function PortfolioDcfClient() {
       setLaden(true)
       setFehler(null)
       const cached = ladeFundamentaldatenAusLocalCache(req)
-      if (cached?.ok && !cancelled) {
+      if (cached?.ok && nochAktuell()) {
         applyPaket(cached)
       }
       try {
-        const live = await ladeFundamentaldatenClient(req, { signal: ac.signal })
-        if (cancelled) return
+        // Kein AbortSignal: Aborts wurden als „Laden fehlgeschlagen“ angezeigt.
+        // Veraltete Antworten werden über loadGenRef verworfen.
+        const live = await ladeFundamentaldatenClient(req)
+        if (!nochAktuell()) return
         applyPaket(live)
       } catch (e) {
-        if (cancelled || (e instanceof DOMException && e.name === 'AbortError')) return
-        setFehler(e instanceof Error ? e.message : 'Laden fehlgeschlagen.')
-        // Alten Titel nicht stehen lassen, wenn der neue Fetch scheitert.
+        if (!nochAktuell()) return
+        const msg = e instanceof Error ? e.message : 'Laden fehlgeschlagen.'
+        // Abort/Cancel nie als User-Fehler zeigen
+        if (/abort/i.test(msg)) return
+        setFehler(msg)
         if (!cached?.ok) resetTitelState()
       } finally {
-        if (!cancelled && erwartetKey === `${isin ?? ''}|${(symbol ?? '').toUpperCase()}`) {
-          setLaden(false)
-        }
+        if (nochAktuell()) setLaden(false)
       }
     }
 
     void run()
-    return () => {
-      cancelled = true
-      ac.abort()
-    }
-  }, [selectionKey, anfrage, hatTitel, isin, symbol, resetTitelState])
+  }, [selectionKey, hatTitel, isin, symbol, name, resetTitelState])
 
   const patchAnnahmen = useCallback((patch: Partial<DcfAnnahmen>) => {
     setAnnahmen((prev) => (prev ? { ...prev, ...patch } : prev))
