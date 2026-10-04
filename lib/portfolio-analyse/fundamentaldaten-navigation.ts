@@ -1,4 +1,5 @@
 export const FUNDAMENTALDATEN_PFAD = '/portfolioanalyse/fundamentaldaten'
+export const DCF_PFAD = '/portfolioanalyse/dcf'
 export const WATCHLIST_PFAD = '/portfolioanalyse/watchlist'
 
 export type FundamentalKandidat = {
@@ -9,11 +10,10 @@ export type FundamentalKandidat = {
   quelle: 'depot' | 'watchlist' | 'suche'
 }
 
-export function fundamentaldatenHref(opts: {
-  isin?: string | null
-  symbol?: string | null
-  name?: string | null
-}): string {
+function portfolioAnalyseQueryHref(
+  pfad: string,
+  opts: { isin?: string | null; symbol?: string | null; name?: string | null },
+): string {
   const params = new URLSearchParams()
   const isin = opts.isin?.trim().toUpperCase()
   if (isin) params.set('isin', isin)
@@ -24,7 +24,23 @@ export function fundamentaldatenHref(opts: {
   const name = opts.name?.trim()
   if (name) params.set('name', name)
   const q = params.toString()
-  return q ? `${FUNDAMENTALDATEN_PFAD}?${q}` : FUNDAMENTALDATEN_PFAD
+  return q ? `${pfad}?${q}` : pfad
+}
+
+export function fundamentaldatenHref(opts: {
+  isin?: string | null
+  symbol?: string | null
+  name?: string | null
+}): string {
+  return portfolioAnalyseQueryHref(FUNDAMENTALDATEN_PFAD, opts)
+}
+
+export function dcfHref(opts: {
+  isin?: string | null
+  symbol?: string | null
+  name?: string | null
+}): string {
+  return portfolioAnalyseQueryHref(DCF_PFAD, opts)
 }
 
 export function watchlistHref(opts: { isin?: string | null; symbol?: string | null } = {}): string {
