@@ -13,9 +13,14 @@ import { ThemeToggle } from '@/components/theme-toggle'
 import { PaGlobalAktienSuche } from '@/components/portfolio-analyse/pa-global-aktien-suche'
 import { Providers } from '@/app/providers'
 import { istOmniaWhoopApp } from '@/lib/omnia-native/omnia-native'
+import { usePathname } from 'next/navigation'
 import { useEffect, type ReactNode } from 'react'
 
 export function OmniaAppShell({ children }: { children: ReactNode }) {
+  const pathname = usePathname()
+  const inPortfolioAnalyse =
+    pathname === '/portfolioanalyse' || pathname.startsWith('/portfolioanalyse/')
+
   useEffect(() => {
     try {
       const w = istOmniaWhoopApp()
@@ -44,7 +49,11 @@ export function OmniaAppShell({ children }: { children: ReactNode }) {
           data-omnia-haushalt-chrome
           className="app-glass-bar sticky top-0 z-40 hidden h-12 shrink-0 items-center gap-4 overflow-visible border-b px-6 md:flex"
         >
-          <PaGlobalAktienSuche className="mx-auto max-w-xl" />
+          {inPortfolioAnalyse ? (
+            <PaGlobalAktienSuche className="mx-auto max-w-xl" />
+          ) : (
+            <div className="mx-auto flex-1" />
+          )}
           <ThemeToggle />
         </header>
 

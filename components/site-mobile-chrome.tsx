@@ -204,9 +204,11 @@ export function SiteMobileChrome() {
 
           <ThemeToggle />
         </div>
-        <div className="border-t border-[var(--app-border)] px-3 py-2">
-          <PaGlobalAktienSuche />
-        </div>
+        {pathname === '/portfolioanalyse' || pathname.startsWith('/portfolioanalyse/') ? (
+          <div className="border-t border-[var(--app-border)] px-3 py-2">
+            <PaGlobalAktienSuche />
+          </div>
+        ) : null}
       </header>
 
       <nav
