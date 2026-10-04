@@ -42,6 +42,27 @@
     "app/api/etsy/tages-cron/route.ts": {
       "maxDuration": 180
     },
+    "app/api/etsy/wochen-cron/route.ts": {
+      "maxDuration": 180
+    },
+    "app/api/etsy/geld/route.ts": {
+      "maxDuration": 60
+    },
+    "app/api/etsy/betrieb/route.ts": {
+      "maxDuration": 90
+    },
+    "app/api/etsy/zahlen/route.ts": {
+      "maxDuration": 60
+    },
+    "app/api/etsy/wachstum/route.ts": {
+      "maxDuration": 90
+    },
+    "app/api/etsy/kunden/route.ts": {
+      "maxDuration": 60
+    },
+    "app/api/etsy/strategie/route.ts": {
+      "maxDuration": 90
+    },
     "app/api/etsy/cockpit/route.ts": {
       "maxDuration": 60
     },
@@ -73,6 +94,10 @@
     {
       "path": "/api/etsy/tages-cron",
       "schedule": "0 4 * * *"
+    },
+    {
+      "path": "/api/etsy/wochen-cron",
+      "schedule": "0 7 * * 0"
     }
   ]
 }

@@ -1,10 +1,12 @@
 /**
  * Täglicher Etsy-Cron (vercel.json: 04:00 UTC). GET/POST mit Authorization: Bearer CRON_SECRET.
  * 1) Eigene Listings: Aufrufe/Favoriten-Snapshot + Verkäufe (Wirkungsmessung, Cockpit-KPIs)
- * 2) Konkurrenz-Verkaufschart (Top-Drechsler-Shops)
- * 3) Keyword-Auto-Scan (Nachfrage zu den eigenen Produkten, 24h-Cache)
+ * 2) Bestell-Receipts sync (Betrieb-Pipeline)
+ * 3) Konkurrenz-Verkaufschart (Top-Drechsler-Shops)
+ * 4) Keyword-Auto-Scan (Nachfrage zu den eigenen Produkten, 24h-Cache)
  * Kein Gemini — nur Etsy-/Google-/Amazon-Daten.
  */
+import { syncEtsyBestellungen } from '@/lib/etsy/etsy-bestellung-server'
 import { scanneEtsyKeywordsFuerShop } from '@/lib/etsy/etsy-keyword-auto-server'
 import { aktualisiereEtsyKonkurrenz } from '@/lib/etsy/etsy-konkurrenz-server'
 import { erfasseEtsyListingStatistik } from '@/lib/etsy/etsy-statistik-server'
@@ -27,8 +29,12 @@ export async function GET(req: Request) {
   const userIds = [...new Set((owners ?? []).map((o) => String(o.owner_user_id)).filter(Boolean))]
   const report: Array<Record<string, unknown>> = []
   for (const ownerUserId of userIds) {
-    const [statistik, konkurrenz] = await Promise.all([
+    const [statistik, bestellungen, konkurrenz] = await Promise.all([
       erfasseEtsyListingStatistik(ownerUserId).catch((e) => ({
+        fehler: e instanceof Error ? e.message.slice(0, 160) : 'Fehler',
+      })),
+      syncEtsyBestellungen(ownerUserId).catch((e) => ({
+        anzahl: 0,
         fehler: e instanceof Error ? e.message.slice(0, 160) : 'Fehler',
       })),
       aktualisiereEtsyKonkurrenz(ownerUserId).catch((e) => ({
@@ -40,7 +46,7 @@ export async function GET(req: Request) {
       .catch((e) => ({
         fehler: e instanceof Error ? e.message.slice(0, 160) : 'Fehler',
       }))
-    report.push({ ownerUserId, statistik, konkurrenz, keywords })
+    report.push({ ownerUserId, statistik, bestellungen, konkurrenz, keywords })
   }
   console.info('[etsy-tages-cron]', JSON.stringify(report))
   return NextResponse.json({ ok: true, report })

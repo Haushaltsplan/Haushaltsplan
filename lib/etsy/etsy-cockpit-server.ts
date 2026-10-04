@@ -362,6 +362,22 @@ export async function baueEtsyCockpit(ownerUserId: string, sbUser: SupabaseClien
   }
   if (!merkliste.length) hinweise.push('Tipp: Keywords im Finder merken — das Cockpit schlägt dann vor, wo sie eingebaut werden.')
 
+  const kostenProbe = await createSupabaseAdmin()
+    .from('etsy_produkt_kosten')
+    .select('*', { count: 'exact', head: true })
+    .eq('owner_user_id', ownerUserId)
+  if (!fehltTabelle(kostenProbe.error) && (kostenProbe.count ?? 0) === 0 && listings.length > 0) {
+    hinweise.push('Noch keine Stückkosten — Tab „Geld“: sonst ist die Marge blind.')
+  }
+  const bestProbe = await createSupabaseAdmin()
+    .from('etsy_bestellung')
+    .select('*', { count: 'exact', head: true })
+    .eq('owner_user_id', ownerUserId)
+    .in('status', ['neu', 'fertigung', 'verpacken'])
+  if (!fehltTabelle(bestProbe.error) && (bestProbe.count ?? 0) > 0) {
+    hinweise.unshift(`${bestProbe.count} offene Bestellung(en) — Tab „Betrieb“.`)
+  }
+
   return {
     kpis,
     aufgaben,

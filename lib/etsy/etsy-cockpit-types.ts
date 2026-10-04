@@ -1,6 +1,16 @@
 /** Etsy-Cockpit: gemeinsame Typen für Regel-Engine, API und UI. */
 
-export type EtsyCockpitModul = 'agent' | 'seo' | 'keywords' | 'konkurrenz'
+export type EtsyCockpitModul =
+  | 'agent'
+  | 'seo'
+  | 'keywords'
+  | 'konkurrenz'
+  | 'geld'
+  | 'betrieb'
+  | 'zahlen'
+  | 'wachstum'
+  | 'kunden'
+  | 'strategie'
 
 export type EtsyTagTausch = {
   listingId: number
