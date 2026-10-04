@@ -1,4 +1,5 @@
 import { heuteIsoUtc } from '@/lib/portfolio-analyse/dividenden-datum-hilfen'
+import type { Berichtszeit } from '@/lib/portfolio-analyse/earnings-berichtszeit'
 import type { EarningsTerminQuelle } from '@/lib/portfolio-analyse/earnings-termine'
 
 export type AnkuendigtesEarningsQuelle = EarningsTerminQuelle
@@ -11,8 +12,8 @@ export type AnkuendigtesEarningsEintrag = {
   symbol: string
   quelle: AnkuendigtesEarningsQuelle
   bestaetigt: boolean
-  berichtszeit: null
-  berichtszeitAnzeige: null
+  berichtszeit: Berichtszeit | null
+  berichtszeitAnzeige: string | null
 }
 
 export type AnkuendigterEarningsMonat = {

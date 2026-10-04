@@ -1,10 +1,16 @@
 import 'server-only'
 
-import { heuteIsoUtc } from '@/lib/portfolio-analyse/dividenden-datum-hilfen'
+import {
+  berichtszeitAusKalenderListe,
+  berichtszeitLabel,
+  type Berichtszeit,
+} from '@/lib/portfolio-analyse/earnings-berichtszeit'
+import { brokerSymbolKandidaten } from '@/lib/portfolio-analyse/dividenden-datum-hilfen'
 import {
   earningsZeitraum,
   ladeAlleEarningsTermineFuerIsin,
 } from '@/lib/portfolio-analyse/earnings-termine-alle'
+import { ladeFinnhubEarningsKalenderAlleImZeitraum } from '@/lib/portfolio-analyse/finnhub-earnings-kalender-server'
 import { isinAusYahooSymbol, isinKenntnis } from '@/lib/portfolio-analyse/isin-kenntnisse'
 import type { DepotPositionAnfrage } from '@/lib/portfolio-analyse/ankuendigte-dividenden'
 import {
@@ -13,6 +19,7 @@ import {
   type AnkuendigtesEarningsEintrag,
 } from '@/lib/portfolio-analyse/ankuendigte-earnings'
 import { loescheEarningsDepotCacheDatei } from '@/lib/portfolio-analyse/earnings-depot-cache-server'
+import { ladeYahooEarningsKalenderTerminKandidaten } from '@/lib/portfolio-analyse/yahoo-earnings-schaetzungen-server'
 
 function isinFuerPosition(pos: DepotPositionAnfrage): string {
   const direkt = pos.isin?.trim().toUpperCase() ?? ''
@@ -84,9 +91,29 @@ export async function berechneAnkuendigteEarningsDepot(
       return []
     }
 
+    const symbole = [
+      ...brokerSymbolKandidaten(pos.symbolYahoo ?? k?.symbolYahoo ?? ''),
+      ...(pos.symbolCandidates ?? []).flatMap((s) => brokerSymbolKandidaten(s)),
+      ...(k?.symbolCandidates ?? []).flatMap((s) => brokerSymbolKandidaten(s)),
+    ].filter((s, i, a) => s && a.indexOf(s) === i)
+
+    const [yahooTermin, finnhubKalender] = await Promise.all([
+      symbole.length > 0 ? ladeYahooEarningsKalenderTerminKandidaten(symbole) : null,
+      symbole.length > 0 ? ladeFinnhubEarningsKalenderAlleImZeitraum(symbole, von, bis) : [],
+    ])
+
     const rows = merged.map((hit) => {
       if (hit.quelle === 'divvydiary') lokalStat.divvydiary++
       else lokalStat.prognose++
+
+      let berichtszeit: Berichtszeit | null =
+        berichtszeitAusKalenderListe(finnhubKalender, hit.terminDatumIso) ??
+        (yahooTermin &&
+        Math.abs(
+          (Date.parse(yahooTermin.terminDatumIso) - Date.parse(hit.terminDatumIso)) / 86_400_000,
+        ) <= 1
+          ? yahooTermin.berichtszeit
+          : null)
 
       return {
         isin: pos.isin ?? isin,
@@ -96,8 +123,8 @@ export async function berechneAnkuendigteEarningsDepot(
         symbol,
         quelle: hit.quelle,
         bestaetigt: hit.bestaetigt,
-        berichtszeit: null,
-        berichtszeitAnzeige: null,
+        berichtszeit,
+        berichtszeitAnzeige: berichtszeitLabel(berichtszeit),
       } satisfies AnkuendigtesEarningsEintrag
     })
 
@@ -138,7 +165,7 @@ export async function berechneAnkuendigteEarningsDepot(
   }
 
   hinweise.push(
-    'Termine nur von DivvyDiary — jeweils der nächste Quartalsbericht (~1 Quartal voraus). Konsens beim Klick.',
+    'Termine von DivvyDiary; BMO/AMC nach Möglichkeit von Finnhub/Yahoo. Konsens beim Klick oder im Tages-Briefing.',
   )
 
   return {

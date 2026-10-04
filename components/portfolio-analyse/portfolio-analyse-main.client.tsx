@@ -6,18 +6,22 @@ import { PaGewichtungPanel } from '@/components/portfolio-analyse/pa-gewichtung-
 import { PaKapitalflussHeatmapGrid } from '@/components/portfolio-analyse/pa-kapitalfluss-grid'
 import { PaSteuernPanel } from '@/components/portfolio-analyse/pa-steuern-panel'
 import { PaPerformanceMap } from '@/components/portfolio-analyse/pa-performance-map'
+import { PaRebalancingPanel } from '@/components/portfolio-analyse/pa-rebalancing-panel'
+import { PaInvestmentJournal } from '@/components/portfolio-analyse/pa-investment-journal'
 import { usePortfolioAnalyse } from '@/components/portfolio-analyse/pa-data-provider'
 import { PortfolioAnalyseShell } from '@/components/portfolio-analyse/portfolio-analyse-shell.client'
 import { PaCard, PaIconTabs } from '@/components/portfolio-analyse/pa-ui'
 import { berechneKapitalflussHeatmap } from '@/lib/portfolio-analyse/kapitalfluss-heatmap'
 
-type AnalyseTab = 'gewichtung' | 'kapital' | 'performance' | 'steuern'
+type AnalyseTab = 'gewichtung' | 'ziele' | 'kapital' | 'performance' | 'steuern' | 'journal'
 
 const HAUPT_TABS: { id: AnalyseTab; label: string; shortLabel: string }[] = [
   { id: 'gewichtung', label: 'Gewichtung', shortLabel: 'Gewicht.' },
+  { id: 'ziele', label: 'Ziele / Rebalancing', shortLabel: 'Ziele' },
   { id: 'kapital', label: 'Kapital', shortLabel: 'Kapital' },
   { id: 'performance', label: 'Performance Map', shortLabel: 'Perf.' },
   { id: 'steuern', label: 'Steuern', shortLabel: 'Steuern' },
+  { id: 'journal', label: 'Journal', shortLabel: 'Journal' },
 ]
 
 export function PortfolioAnalyseMainClient() {
@@ -81,6 +85,10 @@ export function PortfolioAnalyseMainClient() {
                     />
                   </div>
                 )}
+
+                {tab === 'ziele' && <PaRebalancingPanel />}
+
+                {tab === 'journal' && <PaInvestmentJournal />}
 
                 {tab === 'kapital' && (
                   <div className="space-y-4">

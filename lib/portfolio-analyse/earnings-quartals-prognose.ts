@@ -13,6 +13,10 @@ export type QuartalsPrognoseZeile = {
   vorjahrAnzeige: string | null
   wachstumProzent: number | null
   wachstumAnzeige: string | null
+  /** Konsens-Spanne (Yahoo u. a.). */
+  low?: number | null
+  high?: number | null
+  numberOfAnalysts?: number | null
   /** Veröffentlichtes Ergebnis (nach Earnings). */
   istWert?: number | null
   istAnzeige?: string | null
@@ -29,6 +33,8 @@ export type EarningsQuartalsPrognose = {
   berichtszeit: Berichtszeit | null
   berichtszeitLabel: string | null
   zeilen: QuartalsPrognoseZeile[]
+  /** Yahoo epsTrend / epsRevisions — optional. */
+  revisionMeta?: import('@/lib/portfolio-analyse/earnings-revision-meta').EarningsRevisionMeta | null
 }
 
 export function formatKompaktUsd(n: number): string {

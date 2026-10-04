@@ -18,6 +18,15 @@
     "app/api/portfolio-analyse/quartals-auto-ki/cron/route.ts": {
       "maxDuration": 300
     },
+    "app/api/portfolio-analyse/alerts/cron/route.ts": {
+      "maxDuration": 300
+    },
+    "app/api/portfolio-analyse/earnings/briefing-tag/route.ts": {
+      "maxDuration": 300
+    },
+    "app/api/portfolio-analyse/monatsbriefing/route.ts": {
+      "maxDuration": 180
+    },
     "app/api/portfolio-analyse/news-terminal/summary/route.ts": {
       "maxDuration": 300
     },
@@ -86,6 +95,10 @@
     {
       "path": "/api/portfolio-analyse/quartals-auto-ki/cron",
       "schedule": "0 5 * * *"
+    },
+    {
+      "path": "/api/portfolio-analyse/alerts/cron",
+      "schedule": "0 6 * * *"
     },
     {
       "path": "/api/etsy/seo-cron?reaudit=1",

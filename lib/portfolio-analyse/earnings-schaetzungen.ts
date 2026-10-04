@@ -23,6 +23,11 @@ import {
   wallstreetZuQuartalsPrognose,
 } from '@/lib/portfolio-analyse/wallstreet-earnings-schaetzungen-server'
 import {
+  leereRevisionMeta,
+  type EarningsRevisionMeta,
+} from '@/lib/portfolio-analyse/earnings-revision-meta'
+import { ladeYahooEarningsSchaetzungen } from '@/lib/portfolio-analyse/yahoo-earnings-schaetzungen-server'
+import {
   ladeYahooEarningsTrend,
   ladeYahooQuartalsPrognose,
 } from '@/lib/portfolio-analyse/yahoo-earnings-trend-server'
@@ -44,6 +49,8 @@ export type EarningsSchaetzungen = {
   quartal?: number | null
   jahr?: number | null
   berichtszeit?: string | null
+  /** Typisierte Berichtszeit (BMO/AMC). */
+  berichtszeitTyp?: Berichtszeit | null
   prognosePeriode?: string | null
   /** Quartr-artige Quartalstabelle (nur Quartalszahlen). */
   quartalsPrognose: EarningsQuartalsPrognose | null
@@ -53,6 +60,7 @@ export type EarningsSchaetzungen = {
   investorRelationsUrl?: string | null
   /** Earnings-Termin liegt in der Vergangenheit (Istwerte möglich). */
   berichtVeroeffentlicht?: boolean
+  revisionMeta?: EarningsRevisionMeta | null
   kennzahlen: EarningsKennzahlPrognose[]
   weitereKennzahlen: EarningsKennzahlPrognose[]
 }
@@ -111,6 +119,9 @@ function mergeZeilen(
       wachstumProzent: cur.wachstumProzent ?? z.wachstumProzent,
       wachstumAnzeige: cur.wachstumAnzeige ?? z.wachstumAnzeige,
       waehrung: cur.waehrung || z.waehrung,
+      low: cur.low ?? z.low,
+      high: cur.high ?? z.high,
+      numberOfAnalysts: cur.numberOfAnalysts ?? z.numberOfAnalysts,
     }
   }
   out.sort(
@@ -125,6 +136,14 @@ function hatKernDaten(q: EarningsQuartalsPrognose | null): boolean {
   const u = q.zeilen.find((z) => z.metrik === 'umsatz')
   const e = q.zeilen.find((z) => z.metrik === 'eps')
   return (u?.schaetzung != null && u.schaetzung > 0) || (e?.schaetzung != null && e.schaetzung !== 0)
+}
+
+/** Fehlende EPS- oder Umsatz-Zeile? → Fill-Quellen nutzen. */
+function fehltEpsOderUmsatz(q: EarningsQuartalsPrognose | null): boolean {
+  if (!q) return true
+  const u = q.zeilen.find((z) => z.metrik === 'umsatz')
+  const e = q.zeilen.find((z) => z.metrik === 'eps')
+  return u?.schaetzung == null || e?.schaetzung == null
 }
 
 function metrikAusSchluessel(s: EarningsKennzahlSchluessel): QuartalsPrognoseMetrik | null {
@@ -170,30 +189,33 @@ function ausQuartalsPrognose(
     investorRelationsUrl: string | null
     berichtVeroeffentlicht: boolean
     zusaetzlicheKennzahlen?: EarningsKennzahlPrognose[]
+    revisionMeta?: EarningsRevisionMeta | null
+    calendarEventsFill?: { eps: EarningsSchaetzungSpanne; umsatz: EarningsSchaetzungSpanne } | null
   },
 ): EarningsSchaetzungen {
   const umsatzZ = q.zeilen.find((z) => z.metrik === 'umsatz')
   const epsZ = q.zeilen.find((z) => z.metrik === 'eps')
   const berichtszeit = berichtszeitExtern ?? q.berichtszeit
+  const cal = extras.calendarEventsFill
 
   const umsatz = {
-    low: null,
-    high: null,
-    average: umsatzZ?.schaetzung ?? null,
-    averageAnzeige: umsatzZ?.schaetzungAnzeige ?? null,
+    low: umsatzZ?.low ?? cal?.umsatz.low ?? null,
+    high: umsatzZ?.high ?? cal?.umsatz.high ?? null,
+    average: umsatzZ?.schaetzung ?? cal?.umsatz.average ?? null,
+    averageAnzeige: umsatzZ?.schaetzungAnzeige ?? cal?.umsatz.averageAnzeige ?? null,
   }
   const eps = {
-    low: null,
-    high: null,
-    average: epsZ?.schaetzung ?? null,
-    averageAnzeige: epsZ?.schaetzungAnzeige ?? null,
+    low: epsZ?.low ?? cal?.eps.low ?? null,
+    high: epsZ?.high ?? cal?.eps.high ?? null,
+    average: epsZ?.schaetzung ?? cal?.eps.average ?? null,
+    averageAnzeige: epsZ?.schaetzungAnzeige ?? cal?.eps.averageAnzeige ?? null,
   }
 
   const kennzahlen: EarningsKennzahlPrognose[] = []
   for (const z of q.zeilen) {
     const spanne = {
-      low: null,
-      high: null,
+      low: z.low ?? null,
+      high: z.high ?? null,
       average: z.schaetzung,
       averageAnzeige: z.schaetzungAnzeige,
     }
@@ -235,15 +257,18 @@ function ausQuartalsPrognose(
     umsatz,
     prognosePeriode: q.quartalLabel,
     berichtszeit: berichtszeitLabel(berichtszeit) ?? q.berichtszeitLabel,
+    berichtszeitTyp: berichtszeit ?? null,
     quartalsPrognose: {
       ...q,
       zeilen: zeilenVoll,
       berichtszeit: berichtszeit ?? q.berichtszeit,
       berichtszeitLabel: berichtszeitLabel(berichtszeit) ?? q.berichtszeitLabel,
+      revisionMeta: extras.revisionMeta ?? q.revisionMeta ?? null,
     },
     jahresSchaetzung: extras.jahresSchaetzung,
     investorRelationsUrl: extras.investorRelationsUrl,
     berichtVeroeffentlicht: extras.berichtVeroeffentlicht,
+    revisionMeta: extras.revisionMeta ?? q.revisionMeta ?? leereRevisionMeta(),
     kennzahlen,
     weitereKennzahlen: kennzahlen.filter(
       (k) => k.schluessel !== 'eps' && k.schluessel !== 'umsatz',
@@ -268,6 +293,7 @@ export async function ladeEarningsSchaetzungen(
     finnhubKalender,
     wallstreet,
     investorRelationsUrl,
+    yahooCalendarEvents,
   ] = await Promise.all([
     primaerSymbol ? ladeYahooQuartalsPrognose(primaerSymbol, termin) : null,
     primaerSymbol ? ladeYahooEarningsTrend(primaerSymbol, termin) : null,
@@ -278,6 +304,7 @@ export async function ladeEarningsSchaetzungen(
     symbole.length > 0 ? ladeFinnhubEarningsSchaetzungenKandidaten(symbole, termin) : null,
     isin.length >= 10 ? ladeWallstreetEarningsSchaetzungen(isin, name) : null,
     isin.length >= 10 ? ladeInvestorRelationsUrl(isin, name, primaerSymbol) : null,
+    primaerSymbol ? ladeYahooEarningsSchaetzungen(primaerSymbol) : null,
   ])
 
   const marketscreenerQ = marketscreenerPaket?.prognose ?? null
@@ -288,23 +315,29 @@ export async function ladeEarningsSchaetzungen(
 
   let prognose: EarningsQuartalsPrognose | null = null
   const quellen: string[] = []
+  let revisionMeta: EarningsRevisionMeta | null = null
 
   if (marketscreenerQ && (hatKernDaten(marketscreenerQ) || marketscreenerQ.zeilen.length > 0)) {
     prognose = { ...marketscreenerQ }
     quellen.push('marketscreener')
   }
 
-  if (!hatKernDaten(prognose) && wallstreet) {
+  // Wallstreet/Finnhub als Feld-Fill, auch wenn MS schon Umsatz hat (EPS-Lücke)
+  if (fehltEpsOderUmsatz(prognose) && wallstreet) {
     const wsQ = wallstreetZuQuartalsPrognose(wallstreet, termin ?? null)
     if (wsQ) {
       prognose = prognose
-        ? { ...prognose, zeilen: mergeZeilen(prognose.zeilen, wsQ.zeilen), terminDatumIso: prognose.terminDatumIso ?? wsQ.terminDatumIso }
+        ? {
+            ...prognose,
+            zeilen: mergeZeilen(prognose.zeilen, wsQ.zeilen),
+            terminDatumIso: prognose.terminDatumIso ?? wsQ.terminDatumIso,
+          }
         : wsQ
-      quellen.push('wallstreet')
+      if (!quellen.includes('wallstreet')) quellen.push('wallstreet')
     }
   }
 
-  if (!hatKernDaten(prognose) && finnhubKalender) {
+  if (fehltEpsOderUmsatz(prognose) && finnhubKalender) {
     const umsatzZ = finnhubKalender.umsatz.average
     const epsZ = finnhubKalender.eps.average
     const zeilen: QuartalsPrognoseZeile[] = []
@@ -352,7 +385,7 @@ export async function ladeEarningsSchaetzungen(
             berichtszeitLabel: finnhubKalender.berichtszeit ?? null,
             zeilen,
           }
-      quellen.push('finnhub')
+      if (!quellen.includes('finnhub')) quellen.push('finnhub')
     }
   }
 
@@ -364,12 +397,16 @@ export async function ladeEarningsSchaetzungen(
         quartalLabel: prognose.quartalLabel || yahooQ.quartalLabel,
         vorjahrQuartalLabel: prognose.vorjahrQuartalLabel || yahooQ.vorjahrQuartalLabel,
         terminDatumIso: prognose.terminDatumIso ?? yahooQ.terminDatumIso,
+        berichtszeit: prognose.berichtszeit ?? yahooQ.berichtszeit,
+        berichtszeitLabel: prognose.berichtszeitLabel ?? yahooQ.berichtszeitLabel,
+        revisionMeta: prognose.revisionMeta ?? yahooQ.revisionMeta,
       }
       if (!quellen.includes('yahoo')) quellen.push('yahoo')
     } else if (hatKernDaten(yahooQ) || yahooQ.zeilen.length > 0) {
       prognose = { ...yahooQ }
       quellen.push('yahoo')
     }
+    revisionMeta = yahooQ.revisionMeta ?? revisionMeta
   }
 
   if (prognose && finnhubVergleich) {
@@ -440,15 +477,72 @@ export async function ladeEarningsSchaetzungen(
     prognose = { ...prognose, terminDatumIso: termin }
   }
 
+  // calendarEvents Low/High/Avg als Spannen-Fill
+  if (yahooCalendarEvents && prognose) {
+    const calZeilen: QuartalsPrognoseZeile[] = []
+    if (yahooCalendarEvents.umsatz.average != null) {
+      calZeilen.push({
+        metrik: 'umsatz',
+        label: 'Revenue',
+        waehrung: 'USD',
+        schaetzung: yahooCalendarEvents.umsatz.average,
+        schaetzungAnzeige: yahooCalendarEvents.umsatz.averageAnzeige,
+        vorjahr: null,
+        vorjahrAnzeige: null,
+        wachstumProzent: null,
+        wachstumAnzeige: null,
+        low: yahooCalendarEvents.umsatz.low,
+        high: yahooCalendarEvents.umsatz.high,
+      })
+    }
+    if (yahooCalendarEvents.eps.average != null) {
+      calZeilen.push({
+        metrik: 'eps',
+        label: 'EPS',
+        waehrung: 'USD',
+        schaetzung: yahooCalendarEvents.eps.average,
+        schaetzungAnzeige: yahooCalendarEvents.eps.averageAnzeige,
+        vorjahr: null,
+        vorjahrAnzeige: null,
+        wachstumProzent: null,
+        wachstumAnzeige: null,
+        low: yahooCalendarEvents.eps.low,
+        high: yahooCalendarEvents.eps.high,
+      })
+    }
+    if (calZeilen.length > 0) {
+      prognose = { ...prognose, zeilen: mergeZeilen(prognose.zeilen, calZeilen) }
+      if (!quellen.includes('yahoo')) quellen.push('yahoo')
+    }
+  }
+
+  const berichtszeitFinal: Berichtszeit | null =
+    req.berichtszeit ??
+    prognose.berichtszeit ??
+    yahooQ?.berichtszeit ??
+    null
+
+  if (berichtszeitFinal && prognose && !prognose.berichtszeit) {
+    prognose = {
+      ...prognose,
+      berichtszeit: berichtszeitFinal,
+      berichtszeitLabel: berichtszeitLabel(berichtszeitFinal),
+    }
+  }
+
   const quelle: EarningsSchaetzungen['quelle'] =
     quellen.length > 1 ? 'kombiniert' : (quellen[0] as EarningsSchaetzungen['quelle']) ?? 'yahoo'
 
   const jahresSchaetzung = jahresPromise ? await jahresPromise : null
 
-  return ausQuartalsPrognose(prognose, req.berichtszeit ?? prognose.berichtszeit, quelle, {
+  return ausQuartalsPrognose(prognose, berichtszeitFinal, quelle, {
     jahresSchaetzung,
     investorRelationsUrl,
     berichtVeroeffentlicht: false,
     zusaetzlicheKennzahlen: wallstreet?.kennzahlen,
+    revisionMeta: revisionMeta ?? prognose.revisionMeta ?? trend?.revisionMeta ?? null,
+    calendarEventsFill: yahooCalendarEvents
+      ? { eps: yahooCalendarEvents.eps, umsatz: yahooCalendarEvents.umsatz }
+      : null,
   })
 }

@@ -13,6 +13,11 @@ import type { EarningsKennzahlPrognose } from '@/lib/portfolio-analyse/earnings-
 import { kennzahlAusSpanne, formatGrosserBetrag } from '@/lib/portfolio-analyse/earnings-kennzahlen'
 import type { EarningsSchaetzungSpanne } from '@/lib/portfolio-analyse/earnings-schaetzungen'
 import {
+  leereRevisionMeta,
+  revisionsRichtungAusMeta,
+  type EarningsRevisionMeta,
+} from '@/lib/portfolio-analyse/earnings-revision-meta'
+import {
   holeYahooFinanceAuth,
   YAHOO_FINANCE_FETCH_HEADERS,
 } from '@/lib/portfolio-analyse/yahoo-finance-auth-server'
@@ -95,6 +100,43 @@ function waehleTrendZeile(trend: TrendZeile[], terminDatumIso?: string): TrendZe
   return quartale.find((t) => t.period === '0q') ?? quartale.find((t) => t.period === '+1q') ?? null
 }
 
+function pctChange(current: number | null, ago: number | null): number | null {
+  if (current == null || ago == null || !Number.isFinite(current) || !Number.isFinite(ago) || ago === 0) {
+    return null
+  }
+  return ((current - ago) / Math.abs(ago)) * 100
+}
+
+function parseRevisionMeta(row: TrendZeile): EarningsRevisionMeta {
+  const epsEst = row.earningsEstimate as Record<string, unknown> | undefined
+  const revEst = row.revenueEstimate as Record<string, unknown> | undefined
+  const epsTrend = row.epsTrend as Record<string, unknown> | undefined
+  const epsRev = row.epsRevisions as Record<string, unknown> | undefined
+
+  const current = rawUnix(epsTrend?.current)
+  const d30 = rawUnix(epsTrend?.['30daysAgo'])
+  const d90 = rawUnix(epsTrend?.['90daysAgo'])
+  const up30 = rawUnix(epsRev?.upLast30days)
+  const down30 = rawUnix(epsRev?.downLast30days) ?? rawUnix(epsRev?.downLast30Days)
+
+  const epsTrend30dPct = pctChange(current, d30)
+  const epsTrend90dPct = pctChange(current, d90)
+  const meta = {
+    epsAnalysten: rawUnix(epsEst?.numberOfAnalysts),
+    umsatzAnalysten: rawUnix(revEst?.numberOfAnalysts),
+    epsTrend30dPct,
+    epsTrend90dPct,
+    revisionenUp30d: up30,
+    revisionenDown30d: down30,
+    revisionsRichtung: revisionsRichtungAusMeta({
+      epsTrend30dPct,
+      revisionenUp30d: up30,
+      revisionenDown30d: down30,
+    }),
+  }
+  return meta
+}
+
 function parseTrendZuPrognose(
   row: TrendZeile,
   terminDatumIso: string | null,
@@ -107,8 +149,8 @@ function parseTrendZuPrognose(
   const epsEst = row.earningsEstimate as Record<string, unknown> | undefined
   const revEst = row.revenueEstimate as Record<string, unknown> | undefined
 
-  const epsAvg = rawUnix(epsEst?.avg)
-  const revAvg = rawUnix(revEst?.avg)
+  const epsSpanne = spanneAusEstimate(epsEst)
+  const revSpanne = spanneAusEstimate(revEst)
   const epsYoy = rawUnix(epsEst?.yearAgoEps)
   const revYoy = rawUnix(revEst?.yearAgoRevenue)
   const epsGrowth = wachstumProzentAusDezimal(wachstumDezimal(epsEst?.growth) ?? wachstumDezimal(row.growth))
@@ -120,10 +162,24 @@ function parseTrendZuPrognose(
     'USD'
 
   const zeilen: QuartalsPrognoseZeile[] = []
-  const umsatz = bauePrognoseZeile('umsatz', 'Revenue', waehrung, revAvg, revYoy, revGrowth)
-  const eps = bauePrognoseZeile('eps', 'EPS', waehrung, epsAvg, epsYoy, epsGrowth)
-  if (umsatz) zeilen.push(umsatz)
-  if (eps) zeilen.push(eps)
+  const umsatz = bauePrognoseZeile('umsatz', 'Revenue', waehrung, revSpanne.average, revYoy, revGrowth)
+  const eps = bauePrognoseZeile('eps', 'EPS', waehrung, epsSpanne.average, epsYoy, epsGrowth)
+  if (umsatz) {
+    zeilen.push({
+      ...umsatz,
+      low: revSpanne.low,
+      high: revSpanne.high,
+      numberOfAnalysts: rawUnix(revEst?.numberOfAnalysts),
+    })
+  }
+  if (eps) {
+    zeilen.push({
+      ...eps,
+      low: epsSpanne.low,
+      high: epsSpanne.high,
+      numberOfAnalysts: rawUnix(epsEst?.numberOfAnalysts),
+    })
+  }
 
   if (zeilen.length === 0) return null
 
@@ -140,6 +196,7 @@ function parseTrendZuPrognose(
           ? 'After market close'
           : null,
     zeilen,
+    revisionMeta: parseRevisionMeta(row),
   }
 }
 
@@ -152,33 +209,7 @@ export type YahooEarningsTrendDaten = {
   epsWachstumProzent: number | null
   umsatzWachstumProzent: number | null
   kennzahlen: EarningsKennzahlPrognose[]
-}
-
-async function fetchTrend(sym: string): Promise<TrendZeile[]> {
-  const auth = await holeYahooFinanceAuth()
-  if (!auth) return []
-
-  const u = new URL(
-    `https://query2.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(sym)}`,
-  )
-  u.searchParams.set('modules', 'earningsTrend,calendarEvents')
-  u.searchParams.set('crumb', auth.crumb)
-
-  const res = await fetch(u.toString(), {
-    headers: { ...YAHOO_FINANCE_FETCH_HEADERS, Cookie: auth.cookie },
-    next: { revalidate: CACHE_REVALIDATE },
-  })
-  if (!res.ok) return []
-
-  const j = (await res.json()) as {
-    quoteSummary?: {
-      result?: Array<{
-        earningsTrend?: { trend?: TrendZeile[] }
-        calendarEvents?: { earnings?: Record<string, unknown> }
-      }>
-    }
-  }
-  return j.quoteSummary?.result?.[0]?.earningsTrend?.trend ?? []
+  revisionMeta: EarningsRevisionMeta
 }
 
 function kalenderAusResult(
@@ -246,14 +277,14 @@ export async function ladeYahooEarningsTrend(
   const epsZ = prognose.zeilen.find((z) => z.metrik === 'eps')
 
   const umsatz: EarningsSchaetzungSpanne = {
-    low: null,
-    high: null,
+    low: umsatzZ?.low ?? null,
+    high: umsatzZ?.high ?? null,
     average: umsatzZ?.schaetzung ?? null,
     averageAnzeige: umsatzZ?.schaetzung != null ? formatGrosserBetrag(umsatzZ.schaetzung) : null,
   }
   const eps: EarningsSchaetzungSpanne = {
-    low: null,
-    high: null,
+    low: epsZ?.low ?? null,
+    high: epsZ?.high ?? null,
     average: epsZ?.schaetzung ?? null,
     averageAnzeige: epsZ?.schaetzungAnzeige ?? null,
   }
@@ -288,5 +319,6 @@ export async function ladeYahooEarningsTrend(
     epsWachstumProzent: epsZ?.wachstumProzent ?? null,
     umsatzWachstumProzent: umsatzZ?.wachstumProzent ?? null,
     kennzahlen,
+    revisionMeta: prognose.revisionMeta ?? leereRevisionMeta(),
   }
 }

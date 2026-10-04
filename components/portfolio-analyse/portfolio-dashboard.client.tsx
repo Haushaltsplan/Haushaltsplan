@@ -10,6 +10,10 @@ import { PaWertpapiereListe } from '@/components/portfolio-analyse/pa-wertpapier
 import { PaRenditePanel } from '@/components/portfolio-analyse/pa-rendite-panel'
 import { PaBadge, PaCard, PaScrollList } from '@/components/portfolio-analyse/pa-ui'
 import { PaNewsTerminalTeaser } from '@/components/portfolio-analyse/pa-news-terminal-teaser'
+import { PaEarningsBriefingKarte } from '@/components/portfolio-analyse/pa-earnings-briefing-karte'
+import { PaAlertsInbox } from '@/components/portfolio-analyse/pa-alerts-inbox'
+import { PaMonatsbriefing } from '@/components/portfolio-analyse/pa-monatsbriefing'
+import { PaBenchmarkPanel } from '@/components/portfolio-analyse/pa-benchmark-panel'
 import { PaKorrelationPanel } from '@/components/portfolio-analyse/pa-korrelation-panel'
 import {
   formatDatumDe,
@@ -220,12 +224,20 @@ export function PortfolioDashboardClient() {
           }))}
       />
 
+      <div className="grid min-w-0 gap-4 lg:grid-cols-2">
+        <PaAlertsInbox />
+        <PaMonatsbriefing />
+      </div>
+
+      <PaEarningsBriefingKarte />
+
       {korrelationTicker.length >= 2 ? <PaKorrelationPanel ticker={korrelationTicker} /> : null}
 
       <div className="grid min-w-0 gap-6 lg:grid-cols-3 lg:items-stretch">
         {renditeKennzahlen ? (
-          <div className="min-h-0 min-w-0 lg:h-full">
+          <div className="min-h-0 min-w-0 space-y-4 lg:h-full">
             <PaRenditePanel kennzahlen={renditeKennzahlen} startDatum={startDatum} />
+            <PaBenchmarkPanel startDatumIso={startDatumIso} />
             {kursFehler ? (
               <p className="mt-2 text-[11px] text-amber-500/90">Live-Kurse teilweise nicht verfügbar.</p>
             ) : null}

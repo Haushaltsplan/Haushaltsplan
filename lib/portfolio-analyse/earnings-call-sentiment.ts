@@ -110,3 +110,29 @@ export function sentimentScoreAusZusammenfassung(
   }
   return heur
 }
+
+/** Letzte Call-/Filing-Aussage zur Guidance-Richtung (kein Whisper). */
+export type GuidanceRichtung = 'up' | 'down' | 'inline' | 'unbekannt'
+
+export function guidanceRichtungAusText(text: string | null | undefined): GuidanceRichtung {
+  if (!text || text.trim().length < 20) return 'unbekannt'
+  const t = text.toLowerCase()
+  const up =
+    /\b(raised guidance|guidance angehoben|prognose angehoben|outlook raised|anhebung der guidance|erhöhte? (den )?ausblick)\b/i.test(
+      t,
+    ) || /\bguidance\b.{0,40}\b(raised|erhöht|angehoben|lifted)\b/i.test(t)
+  const down =
+    /\b(lowered guidance|guidance gesenkt|prognose gesenkt|outlook lowered|senkung der guidance|gesenkte? (den )?ausblick|cut guidance)\b/i.test(
+      t,
+    ) || /\bguidance\b.{0,40}\b(lowered|gesenkt|geschnitten|cut|reduced)\b/i.test(t)
+  const inline =
+    /\b(maintained guidance|guidance bestätigt|guidance beibehalten|reaffirmed guidance|inline with guidance|im rahmen der guidance)\b/i.test(
+      t,
+    )
+
+  if (up && !down) return 'up'
+  if (down && !up) return 'down'
+  if (inline && !up && !down) return 'inline'
+  if (up && down) return 'unbekannt'
+  return 'unbekannt'
+}
